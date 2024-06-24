@@ -37,7 +37,7 @@ namespace LambdaP.Syntax
       | abs    : Ty n -> Tm (n + 1) -> Tm n       -- λ(x: T) t
       | pairtm : Fin n -> TmName -> Fin n -> Tm n -- ⟨y, a = z⟩
       | pairty : Fin n -> TyName -> Ty n -> Tm n  -- ⟨y, A = T⟩ TODO: not entirely clear: should the dependent component be a Ty n or a Ty (n + 1)?
-      | app    : Fin n -> Fin n -> Tm n           -- x y
+      | app    : Path n -> Path n -> Tm n         -- p q
       | let    : Tm n -> Tm (n + 1) -> Tm n       -- let x = s in t
       | asc    : Tm n -> Ty n -> Tm n             -- t : T
 
