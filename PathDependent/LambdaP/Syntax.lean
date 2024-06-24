@@ -1,5 +1,4 @@
-namespace LambdaP
-  namespace Syntax
+namespace LambdaP.Syntax
 
     -- Global symbolic names for type members
     def TyName := Nat
@@ -50,5 +49,4 @@ namespace LambdaP
     def Range.upper: Range n -> Ty n
     | RRange _ u => u
 
-  end Syntax
-end LambdaP
+end LambdaP.Syntax
