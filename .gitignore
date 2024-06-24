@@ -1,0 +1,6 @@
+/.lake
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
