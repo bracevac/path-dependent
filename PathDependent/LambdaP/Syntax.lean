@@ -7,10 +7,10 @@ namespace LambdaP.Syntax
 
     -- Syntax is intrinsically scoped, i.e., it is usually indexed by the length of the typing context binding the free variables (deBruijn indices).
 
-    inductive Path: Nat -> Type where
-    | pvar  : Fin n  -> Path n           -- term variable
-    | pself : Path n -> Path n           -- select the "first" component of the pair pointed to by the given path
-    | psel  : TmName -> Path n -> Path n -- select the named "second" term component of the pair pointed to by the given path
+    inductive Path: Nat -> Type
+    | var  : Fin n  -> Path n           -- term variable
+    | fst : Path n -> Path n           -- select the "first" component of the pair pointed to by the given path
+    | sel  : TmName -> Path n -> Path n -- select the named "second" term component of the pair pointed to by the given path
 
     mutual
 
@@ -19,34 +19,36 @@ namespace LambdaP.Syntax
       --   lower : Ty n
       --   upper : Ty n
       -- Instead, we need to define an inductive type here, along with explicit destructors outside of the mutual block.
-      inductive Range: Nat -> Type where
-      | RRange : Ty n -> Ty n -> Range n
+      inductive Range: Nat -> Type
+      | I : Ty n -> Ty n -> Range n
 
-      inductive Ty: Nat -> Type where
-      | TTop    : Ty n                                    -- ⊤
-      | TBot    : Ty n                                    -- ⊥
-      | TFun    : Ty n -> Ty (n + 1) -> Ty n              -- (x: S) -> T[x]
-      | TPairTm : Ty n -> TmName -> Ty (n + 1) -> Ty n    -- ⟨x: S, a: T[x]⟩, dependent pair with term member
-      | TPairTy : Ty n -> TyName -> Range (n + 1) -> Ty n -- ⟨x: S, A: Range[x]⟩, dependent pair with type member
-      | TSingle : Path n -> Ty n                          -- Singleton denoted by the given path p
-      | TSel    : TyName -> Path n -> Ty n                -- Type member named A of the given path p
+      inductive Ty: Nat -> Type
+      | Top    : Ty n                                    -- ⊤
+      | Bot    : Ty n                                    -- ⊥
+      | Fun    : Ty n -> Ty (n + 1) -> Ty n              -- (x: S) -> T[x]
+      | PairTm : Ty n -> TmName -> Ty (n + 1) -> Ty n    -- ⟨x: S, a: T[x]⟩, dependent pair with term member
+      | PairTy : Ty n -> TyName -> Range (n + 1) -> Ty n -- ⟨x: S, A: Range[x]⟩, dependent pair with type member
+      | Single : Path n -> Ty n                          -- Singleton denoted by the given path p
+      | Sel    : TyName -> Path n -> Ty n                -- Type member named A of the given path p
 
       -- terms are in monadic normal form (MNF)
-      inductive Tm: Nat -> Type where
-      | tpath   : Path n -> Tm n                   -- paths p subsume the variable case
-      | tabs    : Ty n -> Tm (n + 1) -> Tm n       -- λ(x: T) t
-      | tpairtm : Fin n -> TmName -> Fin n -> Tm n -- ⟨y, a = z⟩
-      | tpairty : Fin n -> TyName -> Ty n -> Tm n  -- ⟨y, A = T⟩ TODO: not entirely clear: should the dependent component be a Ty n or a Ty (n + 1)?
-      | tapp    : Fin n -> Fin n -> Tm n           -- x y
-      | tlet    : Tm n -> Tm (n + 1) -> Tm n       -- let x = s in t
-      | tasc    : Tm n -> Ty n -> Tm n             -- t : T
+      inductive Tm: Nat -> Type
+      | path   : Path n -> Tm n                   -- paths p subsume the variable case
+      | abs    : Ty n -> Tm (n + 1) -> Tm n       -- λ(x: T) t
+      | pairtm : Fin n -> TmName -> Fin n -> Tm n -- ⟨y, a = z⟩
+      | pairty : Fin n -> TyName -> Ty n -> Tm n  -- ⟨y, A = T⟩ TODO: not entirely clear: should the dependent component be a Ty n or a Ty (n + 1)?
+      | app    : Fin n -> Fin n -> Tm n           -- x y
+      | let    : Tm n -> Tm (n + 1) -> Tm n       -- let x = s in t
+      | asc    : Tm n -> Ty n -> Tm n             -- t : T
 
     end
 
     def Range.lower: Range n -> Ty n
-    | RRange l _ => l
+    | I l _ => l
 
     def Range.upper: Range n -> Ty n
-    | RRange _ u => u
+    | I _ u => u
+
+    def Ty.open: Ty (n + 1) -> Path n -> Ty n := sorry -- TODO
 
 end LambdaP.Syntax

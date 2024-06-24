@@ -2,3 +2,5 @@
 -- Import modules here that should be built as part of the library.
 import «PathDependent».Basic
 import «PathDependent».LambdaP.Syntax
+import «PathDependent».LambdaP.Context
+import «PathDependent».LambdaP.Typing
