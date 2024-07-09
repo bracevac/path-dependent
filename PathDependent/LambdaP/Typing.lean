@@ -7,148 +7,145 @@ namespace LambdaP.Typing
   open Ty
   open Context
   open Ctx
-  open ComponentSig renaming field -> VAL, type -> TYPE
+  open Tau
 
   -- Path typing classifies a path as either a field selection with a Type, or a type selection with an Interval
-  inductive Path.Ty: Ctx n -> Path n -> ComponentSig n mκ -> Prop
+  inductive Path.Ty: Ctx n -> Path n -> Tau n κ -> Prop
   | var : Binds Γ x T ->
           ------------------------------
-          Path.Ty Γ (Path.var x) (VAL T)
+          Path.Ty Γ (Path.var x) (ty T)
 
-  | fst : Path.Ty Γ p (VAL (Pair S α τ)) ->
+  | fst : Path.Ty Γ p (ty (Pair S α τ)) ->
           ---------------------------------
-          Path.Ty Γ p.fst (VAL S)
+          Path.Ty Γ p.fst (ty S)
 
-  | sel_r : Path.Ty Γ p (VAL (Pair S α τ)) ->
+  | sel_r : Path.Ty Γ p (ty (Pair S α τ)) ->
           -----------------------------------
           Path.Ty Γ (p.sel a) (τ.open p.fst)
 
-  | sel_l : Path.Ty Γ p (VAL (Pair S β τ')) ->
+  | sel_l : Path.Ty Γ p (ty (Pair S β τ')) ->
           Path.Ty Γ (p.fst.sel α) τ ->
           α ≠ β ->
           ------------------------------------
           Path.Ty Γ (p.sel a) τ -- FIXME: check with Martin, there's no dependency required
 
+  inductive Tau.Sub: Ctx n -> Tau n κ -> Tau n κ -> Prop
+  | refl  : Tau.Sub Γ τ τ
 
-  -- TODO: prefix with ComponentSig instead of Ty
-  -- TODO: better names for Component{Sig,Def}
-  inductive Ty.Sub: Ctx n -> ComponentSig n mκ -> ComponentSig n mκ -> Prop
-  | refl  : Ty.Sub Γ τ τ
-
-  | trans : Ty.Sub Γ τ1 τ2 ->
-          Ty.Sub Γ τ2 τ3 ->
+  | trans : Tau.Sub Γ τ1 τ2 ->
+          Tau.Sub Γ τ2 τ3 ->
           ------------------
-          Ty.Sub Γ τ1 τ3
+          Tau.Sub Γ τ1 τ3
 
-  | bot   : Ty.Sub Γ (VAL Bot) (VAL T)
+  | bot   : Tau.Sub Γ (ty Bot) (ty T)
 
-  | top   : Ty.Sub Γ (VAL T) (VAL Top)
+  | top   : Tau.Sub Γ (ty T) (ty Top)
 
-  | widen  : Path.Ty Γ p (VAL T) ->
+  | widen  : Path.Ty Γ p (ty T) ->
             ---------------------------------
-            Ty.Sub Γ (VAL (Single p)) (VAL T)
+            Tau.Sub Γ (ty (Single p)) (ty T)
 
-  | symm  : Path.Ty Γ p (VAL (Single q)) ->
+  | symm  : Path.Ty Γ p (ty (Single q)) ->
             ------------------------------------------
-            Ty.Sub Γ (VAL (Single q)) (VAL (Single p))
+            Tau.Sub Γ (ty (Single q)) (ty (Single p))
 
-  | sel_hi: Path.Ty Γ (Path.sel p A) (TYPE S T) ->
-            Ty.Sub Γ (VAL S) (VAL T) ->
+  | sel_hi: Path.Ty Γ (Path.sel p A) (intv S T) ->
+            Tau.Sub Γ (ty S) (ty T) ->
             -----------------------------------------
-            Ty.Sub Γ (VAL (Single (p.sel A))) (VAL T)
+            Tau.Sub Γ (ty (Single (p.sel A))) (ty T)
 
-  | sel_lo: Path.Ty Γ (Path.sel p A) (TYPE S T) ->
-            Ty.Sub Γ (VAL S) (VAL T) ->
+  | sel_lo: Path.Ty Γ (Path.sel p A) (intv S T) ->
+            Tau.Sub Γ (ty S) (ty T) ->
             -----------------------------------------
-            Ty.Sub Γ (VAL S) (VAL (Single (p.sel A)))
+            Tau.Sub Γ (ty S) (ty (Single (p.sel A)))
 
-  | fun   : Ty.Sub Γ (VAL S') (VAL S) ->
-            Ty.Sub (Γ.snoc S') (VAL T) (VAL T') ->
+  | fun   : Tau.Sub Γ (ty S') (ty S) ->
+            Tau.Sub (Γ.snoc S') (ty T) (ty T') ->
             ------------------------------------------
-            Ty.Sub Γ (VAL (Fun S T)) (VAL (Fun S' T'))
+            Tau.Sub Γ (ty (Fun S T)) (ty (Fun S' T'))
 
-  | pair  : Ty.Sub Γ (VAL S) (VAL S') ->
-            Ty.Sub (Γ.snoc S) τ τ' ->
+  | pair  : Tau.Sub Γ (ty S) (ty S') ->
+            Tau.Sub (Γ.snoc S) τ τ' ->
             ------------------------------------------------
-            Ty.Sub Γ (VAL (Pair S α τ)) (VAL (Pair S' α τ'))
+            Tau.Sub Γ (ty (Pair S α τ)) (ty (Pair S' α τ'))
 
-  | bounds: Ty.Sub Γ (VAL S') (VAL S) ->
-            Ty.Sub Γ (VAL T) (VAL T') ->
-            Ty.Sub Γ (VAL S) (VAL T)  ->
+  | bounds: Tau.Sub Γ (ty S') (ty S) ->
+            Tau.Sub Γ (ty T) (ty T') ->
+            Tau.Sub Γ (ty S) (ty T)  ->
             --------------------------------
-            Ty.Sub Γ (TYPE S T) (TYPE S' T')
+            Tau.Sub Γ (intv S T) (intv S' T')
 
-  inductive Ty.Wf: Ctx n -> ComponentSig n mκ -> Prop
-  | bot   : Ty.Wf Γ (VAL Bot)
+  inductive Tau.Wf: Ctx n -> Tau n κ -> Prop
+  | bot   : Tau.Wf Γ (ty Bot)
 
-  | top   : Ty.Wf Γ (VAL Top)
+  | top   : Tau.Wf Γ (ty Top)
 
-  | path  : Path.Ty Γ p (VAL T) ->
+  | path  : Path.Ty Γ p (ty T) ->
             ------------------------
-            Ty.Wf Γ (VAL (Single p))
+            Tau.Wf Γ (ty (Single p))
 
-  | sel   : Path.Ty Γ p (VAL (Pair S A (TYPE T U))) ->
+  | sel   : Path.Ty Γ p (ty (Pair S A (intv T U))) ->
             ------------------------------------------
-            Ty.Wf Γ (VAL (Single (p.sel A)))
+            Tau.Wf Γ (ty (Single (p.sel A)))
 
-  | fun   : Ty.Wf Γ (VAL S) ->
-            Ty.Wf (Γ.snoc S) (VAL T) ->
+  | fun   : Tau.Wf Γ (ty S) ->
+            Tau.Wf (Γ.snoc S) (ty T) ->
             ---------------------------
-            Ty.Wf Γ (VAL (Fun S T))
+            Tau.Wf Γ (ty (Fun S T))
 
-  | pair  : Ty.Wf Γ (VAL S) ->
-            Ty.Wf (Γ.snoc S) τ ->
+  | pair  : Tau.Wf Γ (ty S) ->
+            Tau.Wf (Γ.snoc S) τ ->
             --------------------------
-            Ty.Wf Γ (VAL (Pair S α τ))
+            Tau.Wf Γ (ty (Pair S α τ))
 
-  | bounds_wf: Ty.Wf Γ (VAL S) ->
-            Ty.Wf Γ (VAL T) ->
-            Ty.Sub Γ (VAL S) (VAL T) ->
+  | bounds_wf: Tau.Wf Γ (ty S) ->
+            Tau.Wf Γ (ty T) ->
+            Tau.Sub Γ (ty S) (ty T) ->
             ---------------------------
-            Ty.Wf Γ (TYPE S T)
+            Tau.Wf Γ (intv S T)
 
   open Tm
-  open ComponentDef renaming field -> val, type -> typ
+  open Def
 
   inductive Tm.Ty: Ctx n -> Tm n -> Ty n -> Prop
-  | path  : Path.Ty Γ p (VAL T) ->
+  | path  : Path.Ty Γ p (ty T) ->
             ---------------------------
             Tm.Ty Γ (path p) (Single p)
 
   | abs   : Tm.Ty (Γ.snoc S) t T ->
-            Ty.Wf Γ (VAL S) ->
+            Tau.Wf Γ (ty S) ->
             ---------------------------
             Tm.Ty Γ (abs S t) (Fun S T)
 
   | app   : Tm.Ty Γ (path p) (Fun S T) ->
             Tm.Ty Γ (path q) S ->
             -------------------------------
-            Tm.Ty Γ (app p q) (Ty.open T q)
+            Tm.Ty Γ (app p q) (T.open q)
 
   | pair  : Binds Γ y S ->
             Binds Γ z T ->
             --------------------------------------------------------------------------------------------------------------
-            Tm.Ty Γ (pair y a (val (path (Path.var z)))) (Pair (Single (Path.var y)) a (VAL (Single (Path.var z)).weaken))
+            Tm.Ty Γ (pair y a (val (path (Path.var z)))) (Pair (Single (Path.var y)) a (ty (Single (Path.var z)).weaken))
 
   | tpair : Binds Γ y S ->
-            Ty.Wf Γ (VAL T) ->
+            Tau.Wf Γ (ty T) ->
             ---------------------------------------------------------------------------
-            Tm.Ty Γ (pair y A (typ T)) (Pair (Single (Path.var y)) A (TYPE T T).weaken)
+            Tm.Ty Γ (pair y A (type T)) (Pair (Single (Path.var y)) A (intv T T).weaken)
 
   | let   : Tm.Ty Γ s S ->
-            Ty.Wf Γ (VAL T) -> -- implies x ∉ fv(T)
+            Tau.Wf Γ (ty T) -> -- implies x ∉ fv(T)
             Tm.Ty (Γ.snoc S) t T.weaken ->
             ------------------------------
             Tm.Ty Γ (Tm.let s t) T
 
   | typed : Tm.Ty Γ t T ->
-            Ty.Wf Γ (VAL T) ->
+            Tau.Wf Γ (ty T) ->
             ---------------------
             Tm.Ty Γ (typed t T) T
 
   | sub   : Tm.Ty Γ t S ->
-            Ty.Sub Γ (VAL S) (VAL T) ->
-            Ty.Wf Γ (VAL T) ->
+            Tau.Sub Γ (ty S) (ty T) ->
+            Tau.Wf Γ (ty T) ->
             ---------------------------
             Tm.Ty Γ t T
 
