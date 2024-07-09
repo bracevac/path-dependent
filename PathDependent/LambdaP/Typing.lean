@@ -7,109 +7,116 @@ namespace LambdaP.Typing
   open Ty
   open Context
   open Ctx
+  open ComponentSig renaming field -> VAL, type -> TYPE
 
-  inductive Path.Ty: Ctx n -> Path n -> Ty n -> Prop
+  -- Path typing classifies a path as either a field selection with a Type, or a type selection with an Interval
+  inductive Path.Ty: Ctx n -> Path n -> ComponentSig n mκ -> Prop
   | var : Binds Γ x T ->
-          -------------------------
-          Path.Ty Γ (Path.var x) T
-
-  | fst : Path.Ty Γ p (PairTm S a T) ->
           ------------------------------
-          Path.Ty Γ (Path.fst p) S
+          Path.Ty Γ (Path.var x) (VAL T)
 
-  | snd : Path.Ty Γ p (PairTm S a T) ->
-          ---------------------------------------------------
-          Path.Ty Γ (Path.sel a p) (Ty.open T (Path.fst p))
+  | fst : Path.Ty Γ p (VAL (Pair S α τ)) ->
+          ---------------------------------
+          Path.Ty Γ p.fst (VAL S)
 
-  mutual
+  | sel_r : Path.Ty Γ p (VAL (Pair S α τ)) ->
+          -----------------------------------
+          Path.Ty Γ (p.sel a) (τ.open p.fst)
 
-    inductive Ty.Sub: Ctx n -> Ty n -> Ty n -> Prop
-    | refl  : Ty.Sub Γ T T
+  | sel_l : Path.Ty Γ p (VAL (Pair S β τ')) ->
+          Path.Ty Γ (p.fst.sel α) τ ->
+          α ≠ β ->
+          ------------------------------------
+          Path.Ty Γ (p.sel a) τ -- FIXME: check with Martin, there's no dependency required
 
-    | bot   : Ty.Sub Γ Bot T
 
-    | top   : Ty.Sub Γ T Top
+  -- TODO: prefix with ComponentSig instead of Ty
+  -- TODO: better names for Component{Sig,Def}
+  inductive Ty.Sub: Ctx n -> ComponentSig n mκ -> ComponentSig n mκ -> Prop
+  | refl  : Ty.Sub Γ τ τ
 
-    | widen : Path.Ty Γ p T ->
-              ----------------------
-              Ty.Sub Γ (Single p) T
+  | trans : Ty.Sub Γ τ1 τ2 ->
+          Ty.Sub Γ τ2 τ3 ->
+          ------------------
+          Ty.Sub Γ τ1 τ3
 
-    | symm  : Path.Ty Γ p (Single q) ->
-              -------------------------------
-              Ty.Sub Γ (Single q) (Single p)
+  | bot   : Ty.Sub Γ (VAL Bot) (VAL T)
 
-    | sel_hi: Path.Ty Γ p (PairTy U A (Range.I S T)) ->
-              Ty.Sub (snoc Γ U) S T ->
-              ---------------------------------------------
-              Ty.Sub Γ (Sel A p) (Ty.open T (Path.fst p))
+  | top   : Ty.Sub Γ (VAL T) (VAL Top)
 
-    | sel_lo: Path.Ty Γ p (PairTy U A (Range.I S T)) ->
-              Ty.Sub (snoc Γ U) S T ->
-              ---------------------------------------------
-              Ty.Sub Γ (Ty.open S (Path.fst p)) (Sel A p)
+  | widen  : Path.Ty Γ p (VAL T) ->
+            ---------------------------------
+            Ty.Sub Γ (VAL (Single p)) (VAL T)
 
-    | pair  : Ty.Sub Γ S S' ->
-              Ty.Sub (snoc Γ S) T T' ->
-              -----------------------------------------
-              Ty.Sub Γ (PairTm S a T) (PairTm S' a T')
+  | symm  : Path.Ty Γ p (VAL (Single q)) ->
+            ------------------------------------------
+            Ty.Sub Γ (VAL (Single q)) (VAL (Single p))
 
-    | tpair : Ty.Sub Γ U V ->
-              Ty.Sub (snoc Γ U) S' S ->
-              Ty.Sub (snoc Γ U) T T' ->
-              Ty.Sub (snoc Γ U) S T ->
-              -----------------------------------------
-              Ty.Sub Γ (PairTy U A (Range.I S T)) (PairTy V A (Range.I S' T'))
+  | sel_hi: Path.Ty Γ (Path.sel p A) (TYPE S T) ->
+            Ty.Sub Γ (VAL S) (VAL T) ->
+            -----------------------------------------
+            Ty.Sub Γ (VAL (Single (p.sel A))) (VAL T)
 
-    | fun   : Ty.Sub Γ S' S ->
-              Ty.Sub (snoc Γ S') T T' -> -- TODO: check with martin
-              -------------------------------
-              Ty.Sub Γ (Fun S T) (Fun S' T')
+  | sel_lo: Path.Ty Γ (Path.sel p A) (TYPE S T) ->
+            Ty.Sub Γ (VAL S) (VAL T) ->
+            -----------------------------------------
+            Ty.Sub Γ (VAL S) (VAL (Single (p.sel A)))
 
-    | trans : Ty.Sub Γ T1 T2 ->
-              Ty.Sub Γ T2 T3 ->
-              ------------------
-              Ty.Sub Γ T1 T3
+  | fun   : Ty.Sub Γ (VAL S') (VAL S) ->
+            Ty.Sub (Γ.snoc S') (VAL T) (VAL T') ->
+            ------------------------------------------
+            Ty.Sub Γ (VAL (Fun S T)) (VAL (Fun S' T'))
 
-    inductive Ty.Wf: Ctx n -> Ty n -> Prop
-    | bot   : Ty.Wf Γ Bot
+  | pair  : Ty.Sub Γ (VAL S) (VAL S') ->
+            Ty.Sub (Γ.snoc S) τ τ' ->
+            ------------------------------------------------
+            Ty.Sub Γ (VAL (Pair S α τ)) (VAL (Pair S' α τ'))
 
-    | top   : Ty.Wf Γ Top
+  | bounds: Ty.Sub Γ (VAL S') (VAL S) ->
+            Ty.Sub Γ (VAL T) (VAL T') ->
+            Ty.Sub Γ (VAL S) (VAL T)  ->
+            --------------------------------
+            Ty.Sub Γ (TYPE S T) (TYPE S' T')
 
-    | path  : Path.Ty Γ p T ->
-              ------------------
-              Ty.Wf Γ (Single p)
+  inductive Ty.Wf: Ctx n -> ComponentSig n mκ -> Prop
+  | bot   : Ty.Wf Γ (VAL Bot)
 
-    | sel   : Path.Ty Γ p (PairTy S A I) ->
-              -----------------------------
-              Ty.Wf Γ (Sel A p)
+  | top   : Ty.Wf Γ (VAL Top)
 
-    | pair  : Ty.Wf Γ S ->
-              Ty.Wf (snoc Γ S) T ->
-              ----------------------
-              Ty.Wf Γ (PairTm S a T)
+  | path  : Path.Ty Γ p (VAL T) ->
+            ------------------------
+            Ty.Wf Γ (VAL (Single p))
 
-    | tpair : Ty.Wf Γ U ->
-              Ty.Wf (snoc Γ U) S ->
-              Ty.Wf (snoc Γ U) T ->
-              Ty.Sub (snoc Γ U) S T ->
-              ----------------------------------
-              Ty.Wf Γ (PairTy U A (Range.I S T))
+  | sel   : Path.Ty Γ p (VAL (Pair S A (TYPE T U))) ->
+            ------------------------------------------
+            Ty.Wf Γ (VAL (Single (p.sel A)))
 
-    | fun   : Ty.Wf Γ S ->
-              Ty.Wf (snoc Γ S) T ->
-              ---------------------
-              Ty.Wf Γ (Fun S T)
-  end
+  | fun   : Ty.Wf Γ (VAL S) ->
+            Ty.Wf (Γ.snoc S) (VAL T) ->
+            ---------------------------
+            Ty.Wf Γ (VAL (Fun S T))
+
+  | pair  : Ty.Wf Γ (VAL S) ->
+            Ty.Wf (Γ.snoc S) τ ->
+            --------------------------
+            Ty.Wf Γ (VAL (Pair S α τ))
+
+  | bounds_wf: Ty.Wf Γ (VAL S) ->
+            Ty.Wf Γ (VAL T) ->
+            Ty.Sub Γ (VAL S) (VAL T) ->
+            ---------------------------
+            Ty.Wf Γ (TYPE S T)
 
   open Tm
+  open ComponentDef renaming field -> val, type -> typ
 
   inductive Tm.Ty: Ctx n -> Tm n -> Ty n -> Prop
-  | path  : Path.Ty Γ p T ->
+  | path  : Path.Ty Γ p (VAL T) ->
             ---------------------------
-            Tm.Ty Γ (path p) (Single P)
+            Tm.Ty Γ (path p) (Single p)
 
-  | abs   : Tm.Ty (snoc Γ S) t T ->
-            Ty.Wf Γ S ->
+  | abs   : Tm.Ty (Γ.snoc S) t T ->
+            Ty.Wf Γ (VAL S) ->
             ---------------------------
             Tm.Ty Γ (abs S t) (Fun S T)
 
@@ -120,24 +127,29 @@ namespace LambdaP.Typing
 
   | pair  : Binds Γ y S ->
             Binds Γ z T ->
-            -------------------------------------------------------------
-            Tm.Ty Γ (pairtm y a z) (PairTm (Single (Path.var y)) a sorry) -- FIXME: needs weakening
+            --------------------------------------------------------------------------------------------------------------
+            Tm.Ty Γ (pair y a (val (path (Path.var z)))) (Pair (Single (Path.var y)) a (VAL (Single (Path.var z)).weaken))
 
   | tpair : Binds Γ y S ->
-            Ty.Wf Γ T -> -- TODO check with martin
-            -----------------------------------------
-            Tm.Ty Γ (pairty y A T) (PairTy (Single (Path.var y)) A (Range.I sorry sorry)) -- FIXME: needs weakening
+            Ty.Wf Γ (VAL T) ->
+            ---------------------------------------------------------------------------
+            Tm.Ty Γ (pair y A (typ T)) (Pair (Single (Path.var y)) A (TYPE T T).weaken)
 
   | let   : Tm.Ty Γ s S ->
-            Ty.Wf Γ T ->
-            Tm.Ty (snoc Γ S) t sorry -> -- FIXME: needs weakening, + check with martin
-            ---------------------------
+            Ty.Wf Γ (VAL T) -> -- implies x ∉ fv(T)
+            Tm.Ty (Γ.snoc S) t T.weaken ->
+            ------------------------------
             Tm.Ty Γ (Tm.let s t) T
 
+  | typed : Tm.Ty Γ t T ->
+            Ty.Wf Γ (VAL T) ->
+            ---------------------
+            Tm.Ty Γ (typed t T) T
+
   | sub   : Tm.Ty Γ t S ->
-            Ty.Sub Γ S T ->
-            Ty.Wf Γ T ->
-            ---------------
+            Ty.Sub Γ (VAL S) (VAL T) ->
+            Ty.Wf Γ (VAL T) ->
+            ---------------------------
             Tm.Ty Γ t T
 
 end LambdaP.Typing
