@@ -43,21 +43,21 @@ namespace LambdaP.Typing
 
   | widen  : Path.Ty Γ p (ty T) ->
             ---------------------------------
-            Tau.Sub Γ (ty (Single p)) (ty T)
+            Tau.Sub Γ (ty p) (ty T)
 
   | symm  : Path.Ty Γ p (ty (Single q)) ->
             ------------------------------------------
-            Tau.Sub Γ (ty (Single q)) (ty (Single p))
+            Tau.Sub Γ (ty q) (ty p)
 
   | sel_hi: Path.Ty Γ (Path.sel p A) (intv S T) ->
             Tau.Sub Γ (ty S) (ty T) ->
             -----------------------------------------
-            Tau.Sub Γ (ty (Single (p.sel A))) (ty T)
+            Tau.Sub Γ (ty (p.sel A)) (ty T)
 
   | sel_lo: Path.Ty Γ (Path.sel p A) (intv S T) ->
             Tau.Sub Γ (ty S) (ty T) ->
             -----------------------------------------
-            Tau.Sub Γ (ty S) (ty (Single (p.sel A)))
+            Tau.Sub Γ (ty S) (ty (p.sel A))
 
   | fun   : Tau.Sub Γ (ty S') (ty S) ->
             Tau.Sub (Γ.snoc S') (ty T) (ty T') ->
@@ -109,8 +109,8 @@ namespace LambdaP.Typing
 
   inductive Tm.Ty: Ctx n -> Tm n -> Ty n -> Prop
   | path  : Path.Ty Γ p (ty T) ->
-            ---------------------------
-            Tm.Ty Γ (path p) (Single p)
+            ---------------------
+            Tm.Ty Γ p p
 
   | abs   : Tm.Ty (Γ.snoc S) t T ->
             Tau.Wf Γ (ty S) ->
@@ -125,12 +125,12 @@ namespace LambdaP.Typing
   | pair  : Binds Γ y S ->
             Binds Γ z T ->
             --------------------------------------------------------------------------------------------------------------
-            Tm.Ty Γ (pair y a (val (path (Path.var z)))) (Pair (Single (Path.var y)) a (ty (Single (Path.var z)).weaken))
+            Tm.Ty Γ (pair y a (val (Path.var z))) (Pair (Path.var y) a (ty (Path.var z).weaken))
 
   | tpair : Binds Γ y S ->
             Tau.Wf Γ (ty T) ->
             ---------------------------------------------------------------------------
-            Tm.Ty Γ (pair y A (type T)) (Pair (Single (Path.var y)) A (intv T T).weaken)
+            Tm.Ty Γ (pair y A (type T)) (Pair (Path.var y) A (intv T T).weaken)
 
   | let   : Tm.Ty Γ s S ->
             Tau.Wf Γ (ty T) -> -- implies x ∉ fv(T)

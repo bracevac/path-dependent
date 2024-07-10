@@ -15,13 +15,13 @@ namespace LambdaP.Syntax
 
     mutual
 
-      inductive Tau: Nat -> Kind -> Type -- classifies the dependent second component of a pair _type_
-      | ty  : Ty n -> Tau n star            -- field member of type T
-      | intv: Ty n -> Ty n -> Tau n iota    -- type member with interval S .. T
+      inductive Tau : Nat -> Kind -> Type -- classifies the dependent second component of a pair _type_
+      | ty  : Ty n -> Tau n Kind.star            -- field member of type T
+      | intv: Ty n -> Ty n -> Tau n Kind.iota    -- type member with interval S .. T
 
       inductive Def: Nat -> Kind -> Type -- classifies the second component of a pair _term_
-      | val  : Tm n -> Def n star           -- field member definition
-      | type : Ty n -> Def n iota           -- type member definition
+      | val  : Tm n -> Def n Kind.star           -- field member definition
+      | type : Ty n -> Def n Kind.iota           -- type member definition
 
       inductive Ty: Nat -> Type
       | Top    : Ty n                                   -- ⊤
@@ -56,21 +56,47 @@ namespace LambdaP.Syntax
 
     abbrev Interval (n: Nat) := Ty n × Ty n
 
-    def Tau.interval {n} (sig : Tau n iota): Interval n :=
+    def Tau.interval {n} (sig : Tau n Kind.iota): Interval n :=
       match sig with
       | Tau.intv S T => (S, T)
-      | _ => sorry -- TODO impossible
 
-    def Ty.open: Ty (n + 1) -> Path n -> Ty n := sorry -- TODO
 
-    def Tau.open: Tau (n + 1) mκ -> Path n -> Tau n mκ -- TODO
-    | ty T  => sorry
-    | intv S T => sorry
+      -- match sig with
+      -- | Tau.intv S T => (S, T)
+      -- | _ => sorry -- TODO impossible
 
-    def Tm.weaken: Tm n -> Tm (n + 1) := sorry
+    def Path.weaken: Path n -> Path (n + 1)
+    | Path.var n   => Path.var (Fin.castSucc n)
+    | Path.fst p   => Path.fst p.weaken
+    | Path.sel p α => Path.sel p.weaken α
 
-    def Ty.weaken: Ty n -> Ty (n + 1) := sorry
+    def Path.open: Path (n + 1) -> Path n -> Path n := sorry
 
-    def Tau.weaken: Tau n mκ -> Tau (n + 1) mκ := sorry -- TODO
+    mutual
+
+      def Ty.weaken: Ty n -> Ty (n + 1) := sorry
+
+      def Tau.weaken: Tau n κ -> Tau (n + 1) κ := sorry -- TODO
+
+      def Tm.weaken: Tm n -> Tm (n + 1) := sorry
+
+    end
+
+    mutual
+
+      def Ty.open:  Ty (n + 1) -> Path n -> Ty n
+      | Ty.Top       , _ => Ty.Top
+      | Ty.Bot       , _ => Ty.Bot
+      | Ty.Fun S T   , p => Ty.Fun (S.open p) (T.open p.weaken)
+      | Ty.Pair S α τ, p => Ty.Pair (S.open p) α (τ.open p.weaken)
+      | Ty.Single p' , p => Ty.Single (p'.open p)
+
+      def Tau.open: Tau (n + 1) κ -> Path n -> Tau n κ
+      | Tau.ty T,     p => Tau.ty (T.open p)
+      | Tau.intv S T, p => Tau.intv (S.open p) (T.open p)
+
+    end
+
+
 
 end LambdaP.Syntax
