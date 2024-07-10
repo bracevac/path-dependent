@@ -1,3 +1,5 @@
+import PathDependent.FinFun.Basic
+
 namespace LambdaP.Syntax
 
     abbrev Name: Type := Nat -- Label names for fields and types
@@ -20,7 +22,7 @@ namespace LambdaP.Syntax
       | intv: Ty n -> Ty n -> Tau n Kind.iota    -- type member with interval S .. T
 
       inductive Def: Nat -> Kind -> Type -- classifies the second component of a pair _term_
-      | val  : Tm n -> Def n Kind.star           -- field member definition
+      | val  : Fin n -> Def n Kind.star          -- field member definition (in MNF this can only be a variable)
       | type : Ty n -> Def n Kind.iota           -- type member definition
 
       inductive Ty: Nat -> Type
@@ -41,13 +43,13 @@ namespace LambdaP.Syntax
 
     end
 
-    -- FIXME: these appear to have no effect?
     instance : Coe (Path n) (Ty n) where
       coe p := Ty.Single p
 
     instance : Coe (Path n) (Tm n) where
       coe p := Tm.path p
 
+    -- FIXME: these appear to have no effect?
     instance : Coe (Ty n) (Tau n Kind.star) where
       coe T := Tau.ty T
 
@@ -60,27 +62,47 @@ namespace LambdaP.Syntax
       match sig with
       | Tau.intv S T => (S, T)
 
-
-      -- match sig with
-      -- | Tau.intv S T => (S, T)
-      -- | _ => sorry -- TODO impossible
-
-    def Path.weaken: Path n -> Path (n + 1)
-    | Path.var n   => Path.var (Fin.castSucc n)
-    | Path.fst p   => Path.fst p.weaken
-    | Path.sel p α => Path.sel p.weaken α
-
-    def Path.open: Path (n + 1) -> Path n -> Path n := sorry
+    def Path.rename: Path n -> FinFun n m -> Path m
+    | Path.var n,   f => Path.var (f n)
+    | Path.fst p,   f => Path.fst (p.rename f)
+    | Path.sel p α, f => Path.sel (p.rename f) α
 
     mutual
 
-      def Ty.weaken: Ty n -> Ty (n + 1) := sorry
+      def Ty.rename: Ty n -> FinFun n m -> Ty m
+      | Ty.Top       , _ => Ty.Top
+      | Ty.Bot       , _ => Ty.Bot
+      | Ty.Fun S T   , f => Ty.Fun (S.rename f) (T.rename f.ext)
+      | Ty.Pair S α τ, f => Ty.Pair (S.rename f) α (τ.rename f.ext)
+      | Ty.Single p' , f => Ty.Single (p'.rename f)
 
-      def Tau.weaken: Tau n κ -> Tau (n + 1) κ := sorry -- TODO
+      def Tau.rename: Tau n κ -> FinFun n m -> Tau m κ
+      | Tau.ty T,     f => Tau.ty (T.rename f)
+      | Tau.intv S T, f => Tau.intv (S.rename f) (T.rename f)
 
-      def Tm.weaken: Tm n -> Tm (n + 1) := sorry
+      def Tm.rename: Tm n -> FinFun n m -> Tm m
+      | Tm.path p,     f => Tm.path (p.rename f)
+      | Tm.abs T t,    f => Tm.abs (T.rename f) (t.rename f.ext)
+      | Tm.pair x α d, f => Tm.pair (f x) α (d.rename f)
+      | Tm.app p q,    f => Tm.app (p.rename f) (q.rename f)
+      | Tm.let t1 t2,  f => Tm.let (t1.rename f) (t2.rename f.ext)
+      | Tm.typed t T,  f => Tm.typed (t.rename f) (T.rename f)
+
+      def Def.rename: Def n κ -> FinFun n m -> Def m κ
+      | Def.val x,  f => Def.val (f x)
+      | Def.type T, f => Def.type (T.rename f)
 
     end
+
+    def Path.weaken (p: Path n): Path (n + 1) := p.rename FinFun.weaken
+
+    def Ty.weaken (T: Ty n): Ty (n + 1) := T.rename FinFun.weaken
+
+    def Tau.weaken (τ: Tau n κ): Tau (n + 1) κ := τ.rename FinFun.weaken
+
+    def Tm.weaken (t: Tm n): Tm (n + 1) := t.rename FinFun.weaken
+
+    def Path.open: Path (n + 1) -> Path n -> Path n := sorry
 
     mutual
 
@@ -96,7 +118,5 @@ namespace LambdaP.Syntax
       | Tau.intv S T, p => Tau.intv (S.open p) (T.open p)
 
     end
-
-
 
 end LambdaP.Syntax

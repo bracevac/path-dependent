@@ -125,7 +125,7 @@ namespace LambdaP.Typing
   | pair  : Binds Γ y S ->
             Binds Γ z T ->
             --------------------------------------------------------------------------------------------------------------
-            Tm.Ty Γ (pair y a (val (Path.var z))) (Pair (Path.var y) a (ty (Path.var z).weaken))
+            Tm.Ty Γ (pair y a (val z)) (Pair (Path.var y) a (ty (Path.var z).weaken))
 
   | tpair : Binds Γ y S ->
             Tau.Wf Γ (ty T) ->
