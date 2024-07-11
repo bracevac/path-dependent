@@ -1,54 +1,151 @@
+import PathDependent.FinFun.Basic
+
 namespace LambdaP.Syntax
 
-    -- Global symbolic names for type members
-    def TyName := Nat
-    -- Global symbolic names for term members
-    def TmName := Nat -- TODO: is it better to wrap those in inductives to make them truly different sorts?
+    abbrev Name: Type := Nat -- Label names for fields and types
+
+    inductive Kind: Type
+    | star -- types
+    | iota -- intervals
 
     -- Syntax is intrinsically scoped, i.e., it is usually indexed by the length of the typing context binding the free variables (deBruijn indices).
 
     inductive Path: Nat -> Type
-    | var  : Fin n  -> Path n           -- term variable
-    | fst : Path n -> Path n           -- select the "first" component of the pair pointed to by the given path
-    | sel  : TmName -> Path n -> Path n -- select the named "second" term component of the pair pointed to by the given path
+    | var : Fin n  -> Path n         -- term variable
+    | fst : Path n -> Path n         -- select the "first" component of the pair pointed to by the given path
+    | sel : Path n -> Name -> Path n -- select the named component of the pair pointed to by the given path
 
     mutual
 
-      -- For ranges/type intervals, we can't do the straightforward structure definition in a mutual block:
-      -- structure Range (n: Nat) where
-      --   lower : Ty n
-      --   upper : Ty n
-      -- Instead, we need to define an inductive type here, along with explicit destructors outside of the mutual block.
-      inductive Range: Nat -> Type
-      | I : Ty n -> Ty n -> Range n
+      inductive Tau : Nat -> Kind -> Type -- classifies the dependent second component of a pair _type_
+      | ty  : Ty n -> Tau n Kind.star            -- field member of type T
+      | intv: Ty n -> Ty n -> Tau n Kind.iota    -- type member with interval S .. T
+
+      inductive Def: Nat -> Kind -> Type -- classifies the second component of a pair _term_
+      | val  : Fin n -> Def n Kind.star          -- field member definition (in MNF this can only be a variable)
+      | type : Ty n -> Def n Kind.iota           -- type member definition
 
       inductive Ty: Nat -> Type
-      | Top    : Ty n                                    -- ⊤
-      | Bot    : Ty n                                    -- ⊥
-      | Fun    : Ty n -> Ty (n + 1) -> Ty n              -- (x: S) -> T[x]
-      | PairTm : Ty n -> TmName -> Ty (n + 1) -> Ty n    -- ⟨x: S, a: T[x]⟩, dependent pair with term member
-      | PairTy : Ty n -> TyName -> Range (n + 1) -> Ty n -- ⟨x: S, A: Range[x]⟩, dependent pair with type member
-      | Single : Path n -> Ty n                          -- Singleton denoted by the given path p
-      | Sel    : TyName -> Path n -> Ty n                -- Type member named A of the given path p
+      | Top    : Ty n                                   -- ⊤
+      | Bot    : Ty n                                   -- ⊥
+      | Fun    : Ty n -> Ty (n + 1) -> Ty n             -- (x: S) -> T[x]
+      | Pair   : Ty n -> Name -> Tau (n + 1) κ -> Ty n  -- ⟨x: S, a: Tau[x]⟩, dependent pair with named term member or type interval
+      | Single : Path n -> Ty n                         -- Singleton denoted by the given path p
 
       -- terms are in monadic normal form (MNF)
       inductive Tm: Nat -> Type
-      | path   : Path n -> Tm n                   -- paths p subsume the variable case
-      | abs    : Ty n -> Tm (n + 1) -> Tm n       -- λ(x: T) t
-      | pairtm : Fin n -> TmName -> Fin n -> Tm n -- ⟨y, a = z⟩
-      | pairty : Fin n -> TyName -> Ty n -> Tm n  -- ⟨y, A = T⟩ TODO: not entirely clear: should the dependent component be a Ty n or a Ty (n + 1)?
-      | app    : Path n -> Path n -> Tm n         -- p q
-      | let    : Tm n -> Tm (n + 1) -> Tm n       -- let x = s in t
-      | asc    : Tm n -> Ty n -> Tm n             -- t : T
+      | path   : Path n -> Tm n                         -- paths p subsume the variable case
+      | abs    : Ty n -> Tm (n + 1) -> Tm n             -- λ(x: T) t
+      | pair   : Fin n -> Name -> Def n κ -> Tm n       -- ⟨y, a = z⟩ | <y, A = T>
+      | app    : Path n -> Path n -> Tm n               -- p q
+      | let    : Tm n -> Tm (n + 1) -> Tm n             -- let x = s in t
+      | typed  : Tm n -> Ty n -> Tm n                   -- type ascription t : T
 
     end
 
-    def Range.lower: Range n -> Ty n
-    | I l _ => l
+    instance : Coe (Path n) (Ty n) where
+      coe p := Ty.Single p
 
-    def Range.upper: Range n -> Ty n
-    | I _ u => u
+    instance : Coe (Path n) (Tm n) where
+      coe p := Tm.path p
 
-    def Ty.open: Ty (n + 1) -> Path n -> Ty n := sorry -- TODO
+    -- FIXME: these appear to have no effect?
+    instance : Coe (Ty n) (Tau n Kind.star) where
+      coe T := Tau.ty T
+
+    instance : Coe (Ty n) (Def n Kind.iota) where
+      coe T := Def.type T
+
+    abbrev Interval (n: Nat) := Ty n × Ty n
+
+    def Tau.interval {n} (sig : Tau n Kind.iota): Interval n :=
+      match sig with
+      | Tau.intv S T => (S, T)
+
+    open FinFun
+
+    def Path.rename: Path n -> FinFun n m -> Path m
+    | Path.var n,   f => Path.var (f n)
+    | Path.fst p,   f => Path.fst (p.rename f)
+    | Path.sel p α, f => Path.sel (p.rename f) α
+
+    mutual
+
+      def Ty.rename: Ty n -> FinFun n m -> Ty m
+      | Ty.Top       , _ => Ty.Top
+      | Ty.Bot       , _ => Ty.Bot
+      | Ty.Fun S T   , f => Ty.Fun (S.rename f) (T.rename f.ext)
+      | Ty.Pair S α τ, f => Ty.Pair (S.rename f) α (τ.rename f.ext)
+      | Ty.Single p' , f => Ty.Single (p'.rename f)
+
+      def Tau.rename: Tau n κ -> FinFun n m -> Tau m κ
+      | Tau.ty T,     f => Tau.ty (T.rename f)
+      | Tau.intv S T, f => Tau.intv (S.rename f) (T.rename f)
+
+      def Tm.rename: Tm n -> FinFun n m -> Tm m
+      | Tm.path p,     f => Tm.path (p.rename f)
+      | Tm.abs T t,    f => Tm.abs (T.rename f) (t.rename f.ext)
+      | Tm.pair x α d, f => Tm.pair (f x) α (d.rename f)
+      | Tm.app p q,    f => Tm.app (p.rename f) (q.rename f)
+      | Tm.let t1 t2,  f => Tm.let (t1.rename f) (t2.rename f.ext)
+      | Tm.typed t T,  f => Tm.typed (t.rename f) (T.rename f)
+
+      def Def.rename: Def n κ -> FinFun n m -> Def m κ
+      | Def.val x,  f => Def.val (f x)
+      | Def.type T, f => Def.type (T.rename f)
+
+    end
+
+    def Path.weaken (p: Path n): Path (n + 1) := p.rename FinFun.weaken
+
+    def Ty.weaken (T: Ty n): Ty (n + 1) := T.rename FinFun.weaken
+
+    def Tau.weaken (τ: Tau n κ): Tau (n + 1) κ := τ.rename FinFun.weaken
+
+    def Tm.weaken (t: Tm n): Tm (n + 1) := t.rename FinFun.weaken
+
+    def Path.open: Path (n + 1) -> Path n -> Path n := sorry
+
+    mutual
+
+      def Ty.open:  Ty (n + 1) -> Path n -> Ty n
+      | Ty.Top       , _ => Ty.Top
+      | Ty.Bot       , _ => Ty.Bot
+      | Ty.Fun S T   , p => Ty.Fun (S.open p) (T.open p.weaken)
+      | Ty.Pair S α τ, p => Ty.Pair (S.open p) α (τ.open p.weaken)
+      | Ty.Single p' , p => Ty.Single (p'.open p)
+
+      def Tau.open: Tau (n + 1) κ -> Path n -> Tau n κ
+      | Tau.ty T,     p => Tau.ty (T.open p)
+      | Tau.intv S T, p => Tau.intv (S.open p) (T.open p)
+
+    end
+
+    theorem Path.rename_rename (p : Path n) (f : FinFun n m) (g: FinFun m k) : (p.rename f).rename g = p.rename (g ∘ f) := sorry
+
+    theorem Ty.rename_rename (T : Ty n) (f : FinFun n m) (g: FinFun m k) : (T.rename f).rename g = T.rename (g ∘ f) :=
+      match T with
+      | Ty.Top        => by simp [rename]
+      | Ty.Bot        => by simp [rename]
+      | Ty.Fun S T    => by
+        have ih1 := Ty.rename_rename S f g
+        have ih2 := Ty.rename_rename T f.ext g.ext
+        simp [rename, ih1, ih2, FinFun.ext_comp_ext]
+      | Ty.Pair S α τ => sorry
+      | Ty.Single p'  => sorry
+
+    theorem Tau.rename_rename (τ : Tau n κ) (f : FinFun n m) (g: FinFun m k) : (τ.rename f).rename g = τ.rename (g ∘ f) := sorry
+
+    theorem Tm.rename_rename (t : Tm n) (f : FinFun n m) (g: FinFun m k) : (t.rename f).rename g = t.rename (g ∘ f) := sorry
+
+    theorem Path.weaken_rename {p : Path n}: (p.rename f).weaken = p.weaken.rename f.ext := sorry
+
+    theorem Ty.weaken_rename {T : Ty n}: (T.rename f).weaken = T.weaken.rename f.ext := by
+      simp [weaken, FinFun.comp_weaken]
+      sorry
+
+    theorem Tau.weaken_rename {τ : Tau n κ}: (τ.rename f).weaken = τ.weaken.rename f.ext := sorry
+
+    theorem Tm.weaken_rename {t : Tm n}: (t.rename f).weaken = t.weaken.rename f.ext := sorry
 
 end LambdaP.Syntax

@@ -1,8 +1,7 @@
 import «PathDependent»
 
 open LambdaP.Syntax
-
-def foo : TyName := (0 : Nat)
+open LambdaP.Typing
 
 def main : IO Unit :=
   IO.println s!"Hello, {hello}!"
