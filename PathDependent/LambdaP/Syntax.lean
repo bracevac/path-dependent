@@ -121,22 +121,63 @@ namespace LambdaP.Syntax
 
     end
 
-    theorem Path.rename_rename (p : Path n) (f : FinFun n m) (g: FinFun m k) : (p.rename f).rename g = p.rename (g ∘ f) := sorry
+    theorem Path.rename_rename (p : Path n) (f : FinFun n m) (g: FinFun m k) : (p.rename f).rename g = p.rename (g ∘ f) :=
+      match p with
+      | var x   => by simp [Path.rename]
+      | fst p   => by simp [Path.rename, Path.rename_rename]
+      | sel p α => by simp [Path.rename, Path.rename_rename]
 
-    theorem Ty.rename_rename (T : Ty n) (f : FinFun n m) (g: FinFun m k) : (T.rename f).rename g = T.rename (g ∘ f) :=
-      match T with
-      | Ty.Top        => by simp [rename]
-      | Ty.Bot        => by simp [rename]
-      | Ty.Fun S T    => by
-        have ih1 := Ty.rename_rename S f g
-        have ih2 := Ty.rename_rename T f.ext g.ext
-        simp [rename, ih1, ih2, FinFun.ext_comp_ext]
-      | Ty.Pair S α τ => sorry
-      | Ty.Single p'  => sorry
+    mutual
 
-    theorem Tau.rename_rename (τ : Tau n κ) (f : FinFun n m) (g: FinFun m k) : (τ.rename f).rename g = τ.rename (g ∘ f) := sorry
+      theorem Ty.rename_rename (T : Ty n) (f : FinFun n m) (g: FinFun m k) : (T.rename f).rename g = T.rename (g ∘ f) :=
+        match T with
+        | Ty.Top        => by simp [Ty.rename]
+        | Ty.Bot        => by simp [Ty.rename]
+        | Ty.Fun S T    => by
+          have ih1 := Ty.rename_rename S f g
+          have ih2 := Ty.rename_rename T f.ext g.ext
+          simp [Ty.rename, ih1, ih2, FinFun.ext_comp_ext]
+        | Ty.Pair S α τ => by
+          have ih1 := Ty.rename_rename S f g
+          have ih2 := Tau.rename_rename τ f.ext g.ext
+          simp [Ty.rename, ih1, ih2, FinFun.ext_comp_ext]
+        | Ty.Single p'  => by
+          simp [Ty.rename, Path.rename_rename]
 
-    theorem Tm.rename_rename (t : Tm n) (f : FinFun n m) (g: FinFun m k) : (t.rename f).rename g = t.rename (g ∘ f) := sorry
+      theorem Tau.rename_rename (τ : Tau n κ) (f : FinFun n m) (g: FinFun m k) : (τ.rename f).rename g = τ.rename (g ∘ f) :=
+        match τ with
+        | Tau.ty T     => by
+          have ih := Ty.rename_rename T f g
+          simp [Tau.rename, ih]
+        | Tau.intv S T => by
+          have ih1 := Ty.rename_rename S f g
+          have ih2 := Ty.rename_rename T f g
+          simp [Tau.rename, ih1, ih2]
+
+      theorem Tm.rename_rename (t : Tm n) (f : FinFun n m) (g: FinFun m k) : (t.rename f).rename g = t.rename (g ∘ f) :=
+        match t with
+        | Tm.path p     => by simp [Tm.rename, Path.rename_rename]
+        | Tm.abs T t    => by
+          have ih := Tm.rename_rename t f.ext g.ext
+          simp [Tm.rename, ih, Ty.rename_rename, FinFun.ext_comp_ext]
+        | Tm.pair x α d => by simp [Tm.rename, Def.rename_rename]
+        | Tm.app p q    => by simp [Tm.rename, Path.rename_rename]
+        | Tm.let t1 t2  => by
+          have ih1 := Tm.rename_rename t1 f g
+          have ih2 := Tm.rename_rename t2 f.ext g.ext
+          simp [Tm.rename, ih1, ih2, FinFun.ext_comp_ext]
+        | Tm.typed t T  => by
+          have ih := Tm.rename_rename t f g
+          simp [Tm.rename, ih, Ty.rename_rename]
+
+      theorem Def.rename_rename (d: Def n κ) (f : FinFun n m) (g: FinFun m k) : (d.rename f).rename g = d.rename (g ∘ f) :=
+        match d with
+        | Def.val _  => by
+          simp [Def.rename]
+        | Def.type _ => by
+          simp [Def.rename, Ty.rename_rename]
+
+    end
 
     theorem Path.weaken_rename {p : Path n}: (p.rename f).weaken = p.weaken.rename f.ext := sorry
 

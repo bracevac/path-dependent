@@ -122,6 +122,8 @@ namespace LambdaP.Typing
             -------------------------------
             Tm.Ty Γ (app p q) (T.open q)
 
+  -- note: we could have a typing judgment on Def, saving one pair typing rule, at the cost of extra indirection/more mutually dependent stuff
+  -- makes sense to probably do that at some point once we add more features to the language
   | pair  : Binds Γ y S ->
             Binds Γ z T ->
             -------------------------------------------------------------------------
