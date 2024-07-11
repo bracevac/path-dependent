@@ -5,3 +5,5 @@ import «PathDependent».FinFun.Basic
 import «PathDependent».LambdaP.Syntax
 import «PathDependent».LambdaP.Context
 import «PathDependent».LambdaP.Typing
+import «PathDependent».LambdaP.Renaming.Basic
+import «PathDependent».LambdaP.Renaming.Typing

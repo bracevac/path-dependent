@@ -62,6 +62,8 @@ namespace LambdaP.Syntax
       match sig with
       | Tau.intv S T => (S, T)
 
+    open FinFun
+
     def Path.rename: Path n -> FinFun n m -> Path m
     | Path.var n,   f => Path.var (f n)
     | Path.fst p,   f => Path.fst (p.rename f)
@@ -118,5 +120,32 @@ namespace LambdaP.Syntax
       | Tau.intv S T, p => Tau.intv (S.open p) (T.open p)
 
     end
+
+    theorem Path.rename_rename (p : Path n) (f : FinFun n m) (g: FinFun m k) : (p.rename f).rename g = p.rename (g ∘ f) := sorry
+
+    theorem Ty.rename_rename (T : Ty n) (f : FinFun n m) (g: FinFun m k) : (T.rename f).rename g = T.rename (g ∘ f) :=
+      match T with
+      | Ty.Top        => by simp [rename]
+      | Ty.Bot        => by simp [rename]
+      | Ty.Fun S T    => by
+        have ih1 := Ty.rename_rename S f g
+        have ih2 := Ty.rename_rename T f.ext g.ext
+        simp [rename, ih1, ih2, FinFun.ext_comp_ext]
+      | Ty.Pair S α τ => sorry
+      | Ty.Single p'  => sorry
+
+    theorem Tau.rename_rename (τ : Tau n κ) (f : FinFun n m) (g: FinFun m k) : (τ.rename f).rename g = τ.rename (g ∘ f) := sorry
+
+    theorem Tm.rename_rename (t : Tm n) (f : FinFun n m) (g: FinFun m k) : (t.rename f).rename g = t.rename (g ∘ f) := sorry
+
+    theorem Path.weaken_rename {p : Path n}: (p.rename f).weaken = p.weaken.rename f.ext := sorry
+
+    theorem Ty.weaken_rename {T : Ty n}: (T.rename f).weaken = T.weaken.rename f.ext := by
+      simp [weaken, FinFun.comp_weaken]
+      sorry
+
+    theorem Tau.weaken_rename {τ : Tau n κ}: (τ.rename f).weaken = τ.weaken.rename f.ext := sorry
+
+    theorem Tm.weaken_rename {t : Tm n}: (t.rename f).weaken = t.weaken.rename f.ext := sorry
 
 end LambdaP.Syntax

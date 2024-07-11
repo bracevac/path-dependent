@@ -42,21 +42,21 @@ namespace LambdaP.Typing
   | top   : Tau.Sub Γ (ty T) (ty Top)
 
   | widen  : Path.Ty Γ p (ty T) ->
-            ---------------------------------
+            -----------------------
             Tau.Sub Γ (ty p) (ty T)
 
   | symm  : Path.Ty Γ p (ty (Single q)) ->
-            ------------------------------------------
+            ------------------------------
             Tau.Sub Γ (ty q) (ty p)
 
   | sel_hi: Path.Ty Γ (Path.sel p A) (intv S T) ->
             Tau.Sub Γ (ty S) (ty T) ->
-            -----------------------------------------
+            --------------------------------------
             Tau.Sub Γ (ty (p.sel A)) (ty T)
 
   | sel_lo: Path.Ty Γ (Path.sel p A) (intv S T) ->
             Tau.Sub Γ (ty S) (ty T) ->
-            -----------------------------------------
+            --------------------------------------
             Tau.Sub Γ (ty S) (ty (p.sel A))
 
   | fun   : Tau.Sub Γ (ty S') (ty S) ->
@@ -66,13 +66,13 @@ namespace LambdaP.Typing
 
   | pair  : Tau.Sub Γ (ty S) (ty S') ->
             Tau.Sub (Γ.snoc S) τ τ' ->
-            ------------------------------------------------
+            -----------------------------------------------
             Tau.Sub Γ (ty (Pair S α τ)) (ty (Pair S' α τ'))
 
   | bounds: Tau.Sub Γ (ty S') (ty S) ->
             Tau.Sub Γ (ty T) (ty T') ->
             Tau.Sub Γ (ty S) (ty T)  ->
-            --------------------------------
+            ---------------------------------
             Tau.Sub Γ (intv S T) (intv S' T')
 
   inductive Tau.Wf: Ctx n -> Tau n κ -> Prop
@@ -124,12 +124,12 @@ namespace LambdaP.Typing
 
   | pair  : Binds Γ y S ->
             Binds Γ z T ->
-            --------------------------------------------------------------------------------------------------------------
+            -------------------------------------------------------------------------
             Tm.Ty Γ (pair y a (val z)) (Pair (Path.var y) a (ty (Path.var z).weaken))
 
   | tpair : Binds Γ y S ->
             Tau.Wf Γ (ty T) ->
-            ---------------------------------------------------------------------------
+            -------------------------------------------------------------------
             Tm.Ty Γ (pair y A (type T)) (Pair (Path.var y) A (intv T T).weaken)
 
   | let   : Tm.Ty Γ s S ->
