@@ -13,7 +13,6 @@ namespace LambdaP.Cont
   | sel  : Name -> Frame
 
   inductive Tm.Frame: Nat -> Type
-  | path  : Frame n
   | let   : Tm (n + 1) -> Frame n
   | app_l : Path n -> Frame n
   | app_r : Fin n -> Frame n
@@ -22,7 +21,6 @@ namespace LambdaP.Cont
   def Tm.Cont (n: Nat) := List (Tm.Frame n)
 
   def Tm.Frame.rename (F: Tm.Frame n) (f: FinFun n m): Tm.Frame m := match F with
-  | Tm.Frame.path => Tm.Frame.path
   | Tm.Frame.let t => Tm.Frame.let (t.rename f.ext)
   | app_l p => app_l (p.rename f)
   | app_r x => app_r (f x)
