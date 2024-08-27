@@ -62,6 +62,13 @@ namespace LambdaP.Syntax
       match sig with
       | Tau.intv S T => (S, T)
 
+    inductive Path.IsVar: Path n -> Prop
+    | var : IsVar (var x)
+
+    inductive Tm.IsValue: Tm n -> Prop
+    | labs : IsValue (abs T t)
+    | pair : IsValue (pair y α δ)
+
     open FinFun
 
     def Path.rename: Path n -> FinFun n m -> Path m
@@ -103,6 +110,8 @@ namespace LambdaP.Syntax
     def Tau.weaken (τ: Tau n κ): Tau (n + 1) κ := τ.rename FinFun.weaken
 
     def Tm.weaken (t: Tm n): Tm (n + 1) := t.rename FinFun.weaken
+
+    def Tm.open: Tm (n + 1) -> Fin n -> Tm n := sorry
 
     def Path.open: Path (n + 1) -> Path n -> Path n := sorry
 
