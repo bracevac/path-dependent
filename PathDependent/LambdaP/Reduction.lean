@@ -1,4 +1,5 @@
 import PathDependent.LambdaP.Syntax
+import PathDependent.LambdaP.Context
 import PathDependent.LambdaP.Cont
 import PathDependent.LambdaP.Store
 
@@ -7,12 +8,17 @@ namespace LambdaP.Reduction
   open LambdaP.Syntax
   open LambdaP.Cont
   open LambdaP.Store
+  open LambdaP.Context
 
   structure State (n: Nat) where
     σ    : Store n
     cont_tm : Tm.Cont n
     cont_path : Path.Cont
     term : Tm n
+
+  inductive State.Ty: Ctx n -> State n -> Prop -- TODO: continuation typing
+  | ok: {σ : Store n} -> Store.Ty Γ σ ->
+        State.Ty Γ ⟨σ, k, p, t⟩
 
   inductive State.Step : State n -> State m -> Prop
   | app_push_l {σ : Store n} :

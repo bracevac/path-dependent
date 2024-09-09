@@ -1,7 +1,11 @@
 import PathDependent.LambdaP.Syntax
+import PathDependent.LambdaP.Context
+import PathDependent.LambdaP.Typing
 
 namespace LambdaP.Store
   open LambdaP.Syntax
+  open LambdaP.Context
+  open LambdaP.Typing
 
   inductive Store: Nat -> Type
   | empty : Store n
@@ -13,5 +17,11 @@ namespace LambdaP.Store
 
   lemma Store.Binds.IsValue: Store.Binds σ x v -> v.IsValue := by
     sorry
+
+  inductive Store.Ty: Ctx n -> Store n -> Prop
+  | empty : Ty Ctx.nil Store.empty
+  | val: Ty Γ σ ->
+         Tm.Ty Γ t T ->
+         Ty (Γ.snoc T) (σ.val t vt)
 
 end LambdaP.Store
