@@ -21,13 +21,13 @@ namespace LambdaP.Typing
 
   | sel_r : Path.Ty Γ p (ty (Pair S α τ)) ->
           -----------------------------------
-          Path.Ty Γ (p.sel a) (τ.open p.fst)
+          Path.Ty Γ (p.sel α) (τ.open p.fst)
 
   | sel_l : Path.Ty Γ p (ty (Pair S β τ')) ->
           Path.Ty Γ (p.fst.sel α) τ ->
           α ≠ β ->
           ------------------------------------
-          Path.Ty Γ (p.sel a) τ -- FIXME: check with Martin, there's no dependency required
+          Path.Ty Γ (p.sel α) τ -- FIXME: check with Martin, there's no dependency required
 
   inductive Tau.Sub: Ctx n -> Tau n κ -> Tau n κ -> Prop
   | refl  : Tau.Sub Γ τ τ
