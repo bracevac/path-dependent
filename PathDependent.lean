@@ -7,3 +7,4 @@ import «PathDependent».LambdaP.Context
 import «PathDependent».LambdaP.Typing
 import «PathDependent».LambdaP.Renaming.Basic
 import «PathDependent».LambdaP.Renaming.Typing
+import «PathDependent».LambdaP.Reduction
