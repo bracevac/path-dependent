@@ -42,10 +42,15 @@ namespace LambdaP.Reduction
         σ.Binds x (Tm.abs T t) ->
         Step ⟨σ, k, Tm.app p q⟩ ⟨σ, k, t.open y⟩
 
+  | path {σ: Store n} :
+        Path.reduce p σ x ->
+        ¬ p.IsVar ->
+        Step ⟨σ, k, Tm.path p⟩ ⟨σ, k, Tm.path (Path.var x)⟩
+
   | let_push {σ : Store n} :
         Step ⟨σ, k, Tm.let s t⟩ ⟨σ, Tm.Frame.let t :: k, s⟩
 
-  | rename {σ : Store n} :
+  | rename {σ : Store n} : -- TODO: should this be more general and allow renaming with paths?
         Step ⟨σ, Tm.Frame.let t :: k, Tm.path (Path.var x)⟩ ⟨σ, k, t.open x ⟩
 
   | lift {σ : Store n} :

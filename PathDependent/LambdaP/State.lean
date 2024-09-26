@@ -24,4 +24,12 @@ namespace LambdaP.State
         Tm.Ty Γ t S ->
         State.Ty Γ ⟨σ, k, t⟩ T
 
+  inductive State.IsFinal: State n -> Prop
+  | is_var : {σ : Store n} ->
+        σ.Binds x v ->
+        State.IsFinal ⟨σ, [], (Tm.path (Path.var x))⟩
+  | is_val : {σ : Store n} ->
+        v.IsValue ->
+        State.IsFinal ⟨σ, [], v⟩
+
 end LambdaP.State
