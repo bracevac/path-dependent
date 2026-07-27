@@ -73,7 +73,7 @@ def Den (Θ : Sto) (h : Heap) : Nat -> Ty 0 -> Nat -> Prop
       Den Θ h n S ℓ1 ∧
       ∀ (q : Path 0), PathEval h q ℓ1 -> ∀ j, j ≤ n ->
         (∀ y, Den Θ h j (T1.open q) y -> Den Θ h j (.tsel (.var (.free ℓ)) A) y) ∧
-        (∀ y, Den Θ h j (.tsel (.var (.free ℓ)) A) y -> Den Θ h j (T2.open q) y)
+        (∀ y, Den Θ h j (.tsel (.var (.free ℓ)) A) y -> ∀ i, i < j -> Den Θ h i (T2.open q) y)
 termination_by n T _ => (n, T.structSize)
 decreasing_by
   all_goals simp_wf
