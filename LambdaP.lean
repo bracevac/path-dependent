@@ -10,3 +10,4 @@ import LambdaP.Soundness.Store
 import LambdaP.Soundness.Den
 import LambdaP.Soundness.PathLemmas
 import LambdaP.Soundness.DenLemmas
+import LambdaP.Soundness.Closure
