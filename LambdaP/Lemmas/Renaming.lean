@@ -1,0 +1,215 @@
+import LambdaP.Semantics
+
+/-!
+Renaming lemmas for the judgments: all judgments are preserved under
+context-respecting renamings. Weakening is the instance at `Rename.succ`.
+
+The store typing `Θ` is untouched throughout — renamings act only on bound
+variables, and heap locations are free names.
+-/
+
+namespace LambdaP
+
+/-- A renaming `f` is context-respecting from `Γ` to `Δ` if it maps each
+binding of `Γ` to a binding of `Δ` at the renamed type. -/
+def Renaming (Γ : Ctx s1) (f : Rename s1 s2) (Δ : Ctx s2) : Prop :=
+  ∀ {x : BVar s1} {T : Ty s1},
+    Ctx.LookupVar Γ x T -> Ctx.LookupVar Δ (f.var x) (T.rename f)
+
+/-- Extends a context-respecting renaming under a binder. -/
+theorem Renaming.ext {s1 s2 : Sig} {Γ : Ctx s1} {f : Rename s1 s2} {Δ : Ctx s2}
+    (ρ : Renaming Γ f Δ) {T : Ty s1} :
+    Renaming (Γ.push T) f.lift (Δ.push (T.rename f)) := by
+  intro x S h
+  cases h with
+  | here =>
+    rw [Ty.weaken_rename_comm]
+    exact .here
+  | there h' =>
+    rw [Ty.weaken_rename_comm]
+    exact .there (ρ h')
+
+/-- The weakening renaming is context-respecting. -/
+theorem Renaming.succ {Γ : Ctx s} {S : Ty s} :
+    Renaming Γ Rename.succ (Γ.push S) := by
+  intro x T h
+  exact .there h
+
+/-- Subtyping is preserved under renaming. -/
+theorem Sub.rename {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) :
+    ∀ {s2} {f : Rename s1 s2} {Δ : Ctx s2}, Renaming Γ f Δ ->
+      Sub Θ Δ (τ1.rename f) (τ2.rename f) := by
+  induction h with
+  | refl =>
+    intro _ _ _ _
+    exact .refl
+  | trans _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .trans (ih1 ρ) (ih2 ρ)
+  | bot =>
+    intro _ _ _ _
+    exact .bot
+  | top =>
+    intro _ _ _ _
+    exact .top
+  | var_bound hx =>
+    intro _ _ _ ρ
+    exact .var_bound (ρ hx)
+  | var_free hl =>
+    intro _ _ _ _
+    simp only [Tau.rename, Ty.rename, Path.rename, Var.rename, Ty.fromClosed_rename]
+    exact .var_free hl
+  | symm _ ih =>
+    intro _ _ _ ρ
+    exact .symm (ih ρ)
+  | fst_tm _ ih =>
+    intro _ _ _ ρ
+    exact .fst_tm (ih ρ)
+  | fst_ty _ ih =>
+    intro _ _ _ ρ
+    exact .fst_ty (ih ρ)
+  | sel_tm _ ih =>
+    intro _ _ _ ρ
+    simp only [Tau.rename, Ty.rename, Path.rename]
+    rw [← Ty.open_rename_comm]
+    exact Sub.sel_tm (ih ρ)
+  | sel_ty _ ih =>
+    intro _ _ _ ρ
+    simp only [Tau.rename, Ty.rename]
+    rw [← Ty.open_rename_comm, ← Ty.open_rename_comm]
+    exact Sub.sel_ty (ih ρ)
+  | sel_hi _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .sel_hi (ih1 ρ) (ih2 ρ)
+  | sel_lo _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .sel_lo (ih1 ρ) (ih2 ρ)
+  | arrow _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .arrow (ih1 ρ) (ih2 (Renaming.ext ρ))
+  | pair_tm _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .pair_tm (ih1 ρ) (ih2 (Renaming.ext ρ))
+  | pair_ty _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .pair_ty (ih1 ρ) (ih2 (Renaming.ext ρ))
+  | ival _ _ _ ih1 ih2 ih3 =>
+    intro _ _ _ ρ
+    exact .ival (ih1 ρ) (ih2 ρ) (ih3 ρ)
+
+/-- Path wellformedness is preserved under renaming. -/
+theorem Path.Wf.rename {Θ} {Γ : Ctx s1} {p : Path s1} (h : Path.Wf Θ Γ p) :
+    ∀ {s2} {f : Rename s1 s2} {Δ : Ctx s2}, Renaming Γ f Δ ->
+      Path.Wf Θ Δ (p.rename f) := by
+  induction h with
+  | var_bound hx =>
+    intro _ _ _ ρ
+    exact .var_bound (ρ hx)
+  | var_free hl =>
+    intro _ _ _ _
+    exact .var_free hl
+  | fst_tm _ hsub ih =>
+    intro _ _ _ ρ
+    exact .fst_tm (ih ρ) (hsub.rename ρ)
+  | fst_ty _ hsub ih =>
+    intro _ _ _ ρ
+    exact .fst_ty (ih ρ) (hsub.rename ρ)
+  | sel _ hsub ih =>
+    intro _ _ _ ρ
+    exact .sel (ih ρ) (hsub.rename ρ)
+
+/-- Type wellformedness is preserved under renaming. -/
+theorem Wf.rename {Θ} {Γ : Ctx s1} {τ : Tau s1} (h : Wf Θ Γ τ) :
+    ∀ {s2} {f : Rename s1 s2} {Δ : Ctx s2}, Renaming Γ f Δ ->
+      Wf Θ Δ (τ.rename f) := by
+  induction h with
+  | bot =>
+    intro _ _ _ _
+    exact .bot
+  | top =>
+    intro _ _ _ _
+    exact .top
+  | single hp =>
+    intro _ _ _ ρ
+    exact .single (hp.rename ρ)
+  | tsel hp hsub =>
+    intro _ _ _ ρ
+    exact .tsel (hp.rename ρ) (hsub.rename ρ)
+  | arrow _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .arrow (ih1 ρ) (ih2 (Renaming.ext ρ))
+  | pair_tm _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .pair_tm (ih1 ρ) (ih2 (Renaming.ext ρ))
+  | pair_ty _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .pair_ty (ih1 ρ) (ih2 (Renaming.ext ρ))
+  | intv _ _ hsub ih1 ih2 =>
+    intro _ _ _ ρ
+    exact .intv (ih1 ρ) (ih2 ρ) (hsub.rename ρ)
+
+/-- Term typing is preserved under renaming. -/
+theorem HasType.rename {Θ} {Γ : Ctx s1} {t : Tm s1} {T : Ty s1} (h : HasType Θ Γ t T) :
+    ∀ {s2} {f : Rename s1 s2} {Δ : Ctx s2}, Renaming Γ f Δ ->
+      HasType Θ Δ (t.rename f) (T.rename f) := by
+  induction h with
+  | path hp =>
+    intro _ _ _ ρ
+    exact .path (hp.rename ρ)
+  | sub _ hsub hwf ih =>
+    intro _ _ _ ρ
+    exact .sub (ih ρ) (hsub.rename ρ) (hwf.rename ρ)
+  | abs hwf _ ih =>
+    intro _ _ _ ρ
+    exact .abs (hwf.rename ρ) (ih (Renaming.ext ρ))
+  | app _ _ ih1 ih2 =>
+    intro _ _ _ ρ
+    simp only [Tm.rename]
+    rw [← Ty.open_rename_comm]
+    exact HasType.app (ih1 ρ) (ih2 ρ)
+  | pair_tm hy hz =>
+    intro _ _ _ ρ
+    have hy' := hy.rename ρ
+    have hz' := hz.rename ρ
+    simp only [Path.rename] at hy' hz'
+    simp only [Tm.rename, Ty.rename, Path.rename, Ty.weaken_rename_comm]
+    exact HasType.pair_tm hy' hz'
+  | pair_ty hy hwf =>
+    intro _ _ _ ρ
+    have hy' := hy.rename ρ
+    have hwf' := hwf.rename ρ
+    simp only [Path.rename] at hy'
+    simp only [Tm.rename, Ty.rename, Path.rename, Ty.weaken_rename_comm]
+    exact HasType.pair_ty hy' hwf'
+  | letin _ hwf _ ih1 ih3 =>
+    intro _ _ _ ρ
+    refine .letin (ih1 ρ) (hwf.rename ρ) ?_
+    have h3 := ih3 (Renaming.ext ρ)
+    rwa [Ty.weaken_rename_comm] at h3
+  | typed _ hwf ih =>
+    intro _ _ _ ρ
+    exact .typed (ih ρ) (hwf.rename ρ)
+
+/-! ### Weakening -/
+
+/-- Weakening for subtyping. -/
+theorem Sub.weaken {Θ} {Γ : Ctx s} {τ1 τ2 : Tau s} {S : Ty s} (h : Sub Θ Γ τ1 τ2) :
+    Sub Θ (Γ.push S) τ1.weaken τ2.weaken :=
+  h.rename Renaming.succ
+
+/-- Weakening for path wellformedness. -/
+theorem Path.Wf.weaken {Θ} {Γ : Ctx s} {p : Path s} {S : Ty s} (h : Path.Wf Θ Γ p) :
+    Path.Wf Θ (Γ.push S) p.weaken :=
+  h.rename Renaming.succ
+
+/-- Weakening for type wellformedness. -/
+theorem Wf.weaken {Θ} {Γ : Ctx s} {τ : Tau s} {S : Ty s} (h : Wf Θ Γ τ) :
+    Wf Θ (Γ.push S) τ.weaken :=
+  h.rename Renaming.succ
+
+/-- Weakening for term typing. -/
+theorem HasType.weaken {Θ} {Γ : Ctx s} {t : Tm s} {T S : Ty s} (h : HasType Θ Γ t T) :
+    HasType Θ (Γ.push S) t.weaken T.weaken :=
+  h.rename Renaming.succ
+
+end LambdaP
