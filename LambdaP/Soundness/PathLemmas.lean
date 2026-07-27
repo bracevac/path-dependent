@@ -43,6 +43,75 @@ theorem PathEval.deterministic {h : Heap} {p : Path 0} {m1 m2 : Nat}
       cases Option.some.inj (hl1.symm.trans hl2)
       rfl
 
+/-- Pointwise co-evaluation of two closing substitutions. -/
+def CoEval (h : Heap) (σ1 σ2 : Subst s 0) : Prop :=
+  ∀ (x : BVar s) (m : Nat), PathEval h (σ1.var x) m ↔ PathEval h (σ2.var x) m
+
+/-- Evaluation of a substituted path only depends on the targets of the
+substituted-in paths: pointwise co-evaluating substitutions yield
+co-evaluating instances. -/
+theorem PathEval.subst_congr {h : Heap} {σ1 σ2 : Subst s 0}
+    (hco : CoEval h σ1 σ2) :
+    ∀ {p : Path s} {m : Nat},
+      PathEval h (p.subst σ1) m -> PathEval h (p.subst σ2) m := by
+  intro p
+  induction p with
+  | var x =>
+    intro m he
+    cases x with
+    | bound b => exact (hco b m).mp he
+    | free n => exact he
+  | fst p ih =>
+    intro m he
+    cases he with
+    | fst_tm he' hl => exact .fst_tm (ih he') hl
+    | fst_ty he' hl => exact .fst_ty (ih he') hl
+  | sel p a ih =>
+    intro m he
+    cases he with
+    | sel he' hl => exact .sel (ih he') hl
+
+/-- In a well-typed heap, a path that evaluates to an in-store target is
+wellformed: each projection step is justified by the precise pair type of
+the location it goes through. -/
+theorem PathEval.to_wf {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h)
+    {p : Path 0} {m : Nat} (he : PathEval h p m) :
+    m < Θ.length -> Path.Wf Θ .empty p := by
+  induction he with
+  | var =>
+    intro hm
+    exact .var_free (List.getElem?_eq_getElem hm)
+  | fst_tm he' hl ih =>
+    intro _
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    have hmid := (List.getElem?_eq_some_iff.mp hl).1
+    rw [← hh.1] at hmid
+    cases hpre with
+    | pair_tm _ _ =>
+      have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
+      rw [Ty.fromClosed_zero] at hloc
+      exact .fst_tm (ih hmid) (.trans (he'.to_sub hh) hloc)
+  | fst_ty he' hl ih =>
+    intro _
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    have hmid := (List.getElem?_eq_some_iff.mp hl).1
+    rw [← hh.1] at hmid
+    cases hpre with
+    | pair_ty _ _ =>
+      have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
+      rw [Ty.fromClosed_zero] at hloc
+      exact .fst_ty (ih hmid) (.trans (he'.to_sub hh) hloc)
+  | sel he' hl ih =>
+    intro _
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    have hmid := (List.getElem?_eq_some_iff.mp hl).1
+    rw [← hh.1] at hmid
+    cases hpre with
+    | pair_tm _ _ =>
+      have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
+      rw [Ty.fromClosed_zero] at hloc
+      exact .sel (ih hmid) (.trans (he'.to_sub hh) hloc)
+
 /-- Evaluation of an opened path only depends on the target of the opening
 path: if `q` and `q'` co-evaluate, then `p[q/x]` and `p[q'/x]` co-evaluate.
 Structural in `p` because evaluation consults the prefix only through its
