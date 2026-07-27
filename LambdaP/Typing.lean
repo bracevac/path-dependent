@@ -66,7 +66,18 @@ theorem Tau.open_subst_comm {τ : Tau (s1+1)} {p : Path s1} {σ : Subst s1 s2} :
     (τ.subst σ.lift).open (p.subst σ) = (τ.open p).subst σ := by
   simp [Tau.open, Tau.subst_comp, Subst.openPath_subst_comm]
 
-/-! ### Subtyping -/
+/-! ### Subtyping and path wellformedness (mutual)
+
+`sel_lo` introduces a type selection on the right out of nothing, so it
+carries a `Path.Wf` premise: a member of `p` may only be reflected when
+`p` is a wellformed path. (The draft's path-typing variant demands the
+same implicitly — `p.A :: I` requires `p` typed. Without the premise, a
+vacuous selection through a stuck path can be introduced below a type
+with inhabitants, which breaks the semantic subtyping lemma; see
+DESIGN.md, inversion architecture.) This makes `Sub` and `Path.Wf`
+mutually inductive. -/
+
+mutual
 
 /-- Pure subtyping on generalized types, `Θ; Γ ⊢ τ1 <: τ2`. -/
 inductive Sub : Sto -> Ctx s -> Tau s -> Tau s -> Prop where
@@ -118,8 +129,10 @@ interval guard. -/
   Sub Θ Γ (.ty (T1.open p.fst)) (.ty (T2.open p.fst)) ->
   Sub Θ Γ (.ty (.tsel p A)) (.ty (T2.open p.fst))
 /-- A type selection is above the (opened) declared lower bound of its own
-member (DOT's <:-Sel), with the same anchoring and non-emptiness guard. -/
+member (DOT's <:-Sel), with the same anchoring and non-emptiness guard,
+plus wellformedness of the selected path (see the mutual-block comment). -/
 | sel_lo :
+  Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
   Sub Θ Γ (.ty (T1.open p.fst)) (.ty (T2.open p.fst)) ->
   Sub Θ Γ (.ty (T1.open p.fst)) (.ty (.tsel p A))
@@ -146,8 +159,6 @@ under the smaller domain. -/
   Sub Θ Γ (.ty S) (.ty T) ->
   Sub Θ Γ (.intv S T) (.intv S' T')
 
-/-! ### Wellformedness -/
-
 /-- Wellformedness of paths: every projection/selection is justified by
 subtyping evidence at a pair type. -/
 inductive Path.Wf : Sto -> Ctx s -> Path s -> Prop where
@@ -169,6 +180,10 @@ inductive Path.Wf : Sto -> Ctx s -> Path s -> Prop where
   Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTm S a T)) ->
   Path.Wf Θ Γ (p.sel a)
+
+end
+
+/-! ### Wellformedness of types -/
 
 /-- Wellformedness of generalized types. -/
 inductive Wf : Sto -> Ctx s -> Tau s -> Prop where

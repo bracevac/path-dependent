@@ -52,93 +52,59 @@ theorem SubstTyping.lift {s1 s2 : Sig} {Θ : Sto} {σ : Subst s1 s2} {Γ : Ctx s
     | here => exact .var_bound .here
     | there x' => exact (hσ.wf x').weaken
 
+mutual
+
 /-- Subtyping is closed under conforming substitution. -/
 theorem Sub.subst {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) :
-    ∀ {s2} {σ : Subst s1 s2} {Δ : Ctx s2}, SubstTyping Θ σ Γ Δ ->
-      Sub Θ Δ (τ1.subst σ) (τ2.subst σ) := by
-  induction h with
-  | refl =>
-    intro _ _ _ _
-    exact .refl
-  | trans _ _ ih1 ih2 =>
-    intro _ _ _ hσ
-    exact .trans (ih1 hσ) (ih2 hσ)
-  | bot =>
-    intro _ _ _ _
-    exact .bot
-  | top =>
-    intro _ _ _ _
-    exact .top
-  | var_bound hx =>
-    intro _ _ _ hσ
-    exact hσ.conforms hx
-  | var_free hl =>
-    intro _ _ _ _
+    ∀ {s2 : Sig} {σ : Subst s1 s2} {Δ : Ctx s2}, SubstTyping Θ σ Γ Δ ->
+      Sub Θ Δ (τ1.subst σ) (τ2.subst σ) :=
+  match h with
+  | .refl => fun _ => .refl
+  | .trans h1 h2 => fun hσ => .trans (h1.subst hσ) (h2.subst hσ)
+  | .bot => fun _ => .bot
+  | .top => fun _ => .top
+  | .var_bound hx => fun hσ => hσ.conforms hx
+  | .var_free hl => fun _ => by
     simp only [Tau.subst, Ty.subst, Path.subst, Var.subst, Ty.fromClosed_subst]
     exact .var_free hl
-  | symm _ ih =>
-    intro _ _ _ hσ
-    exact .symm (ih hσ)
-  | fst_tm _ ih =>
-    intro _ _ _ hσ
-    exact .fst_tm (ih hσ)
-  | fst_ty _ ih =>
-    intro _ _ _ hσ
-    exact .fst_ty (ih hσ)
-  | sel_tm _ ih =>
-    intro _ _ _ hσ
+  | .symm h1 => fun hσ => .symm (h1.subst hσ)
+  | .fst_tm h1 => fun hσ => .fst_tm (h1.subst hσ)
+  | .fst_ty h1 => fun hσ => .fst_ty (h1.subst hσ)
+  | .sel_tm h1 => fun hσ => by
     simp only [Tau.subst, Ty.subst, Path.subst]
     rw [← Ty.open_subst_comm]
-    exact .sel_tm (ih hσ)
-  | sel_hi _ _ ih1 ih2 =>
-    intro _ _ _ hσ
-    have h2 := ih2 hσ
-    simp only [Tau.subst] at h2
-    rw [← Ty.open_subst_comm, ← Ty.open_subst_comm] at h2
+    exact Sub.sel_tm (h1.subst hσ)
+  | .sel_hi h1 h2 => fun hσ => by
+    have h2' := h2.subst hσ
+    simp only [Tau.subst] at h2'
+    rw [← Ty.open_subst_comm, ← Ty.open_subst_comm] at h2'
     simp only [Tau.subst, Ty.subst]
     rw [← Ty.open_subst_comm]
-    exact .sel_hi (ih1 hσ) h2
-  | sel_lo _ _ ih1 ih2 =>
-    intro _ _ _ hσ
-    have h2 := ih2 hσ
-    simp only [Tau.subst] at h2
-    rw [← Ty.open_subst_comm, ← Ty.open_subst_comm] at h2
+    exact Sub.sel_hi (h1.subst hσ) h2'
+  | .sel_lo hw h1 h2 => fun hσ => by
+    have h2' := h2.subst hσ
+    simp only [Tau.subst] at h2'
+    rw [← Ty.open_subst_comm, ← Ty.open_subst_comm] at h2'
     simp only [Tau.subst, Ty.subst]
     rw [← Ty.open_subst_comm]
-    exact .sel_lo (ih1 hσ) h2
-  | arrow _ _ ih1 ih2 =>
-    intro _ _ _ hσ
-    exact .arrow (ih1 hσ) (ih2 hσ.lift)
-  | pair_tm _ _ ih1 ih2 =>
-    intro _ _ _ hσ
-    exact .pair_tm (ih1 hσ) (ih2 hσ.lift)
-  | pair_ty _ _ ih1 ih2 =>
-    intro _ _ _ hσ
-    exact .pair_ty (ih1 hσ) (ih2 hσ.lift)
-  | ival _ _ _ ih1 ih2 ih3 =>
-    intro _ _ _ hσ
-    exact .ival (ih1 hσ) (ih2 hσ) (ih3 hσ)
+    exact Sub.sel_lo (hw.subst hσ) (h1.subst hσ) h2'
+  | .arrow h1 h2 => fun hσ => .arrow (h1.subst hσ) (h2.subst hσ.lift)
+  | .pair_tm h1 h2 => fun hσ => .pair_tm (h1.subst hσ) (h2.subst hσ.lift)
+  | .pair_ty h1 h2 => fun hσ => .pair_ty (h1.subst hσ) (h2.subst hσ.lift)
+  | .ival h1 h2 h3 => fun hσ => .ival (h1.subst hσ) (h2.subst hσ) (h3.subst hσ)
 
 /-- Path wellformedness is closed under conforming substitution. -/
 theorem Path.Wf.subst {Θ} {Γ : Ctx s1} {p : Path s1} (h : Path.Wf Θ Γ p) :
-    ∀ {s2} {σ : Subst s1 s2} {Δ : Ctx s2}, SubstTyping Θ σ Γ Δ ->
-      Path.Wf Θ Δ (p.subst σ) := by
-  induction h with
-  | var_bound hx =>
-    intro _ _ _ hσ
-    exact hσ.wf _
-  | var_free hl =>
-    intro _ _ _ _
-    exact .var_free hl
-  | fst_tm _ hsub ih =>
-    intro _ _ _ hσ
-    exact .fst_tm (ih hσ) (hsub.subst hσ)
-  | fst_ty _ hsub ih =>
-    intro _ _ _ hσ
-    exact .fst_ty (ih hσ) (hsub.subst hσ)
-  | sel _ hsub ih =>
-    intro _ _ _ hσ
-    exact .sel (ih hσ) (hsub.subst hσ)
+    ∀ {s2 : Sig} {σ : Subst s1 s2} {Δ : Ctx s2}, SubstTyping Θ σ Γ Δ ->
+      Path.Wf Θ Δ (p.subst σ) :=
+  match h with
+  | .var_bound _ => fun hσ => hσ.wf _
+  | .var_free hl => fun _ => .var_free hl
+  | .fst_tm h1 hsub => fun hσ => .fst_tm (h1.subst hσ) (hsub.subst hσ)
+  | .fst_ty h1 hsub => fun hσ => .fst_ty (h1.subst hσ) (hsub.subst hσ)
+  | .sel h1 hsub => fun hσ => .sel (h1.subst hσ) (hsub.subst hσ)
+
+end
 
 /-- Type wellformedness is closed under conforming substitution. -/
 theorem Wf.subst {Θ} {Γ : Ctx s1} {τ : Tau s1} (h : Wf Θ Γ τ) :

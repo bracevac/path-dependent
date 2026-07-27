@@ -35,93 +35,59 @@ theorem Renaming.succ {Γ : Ctx s} {S : Ty s} :
   intro x T h
   exact .there h
 
+mutual
+
 /-- Subtyping is preserved under renaming. -/
 theorem Sub.rename {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) :
-    ∀ {s2} {f : Rename s1 s2} {Δ : Ctx s2}, Renaming Γ f Δ ->
-      Sub Θ Δ (τ1.rename f) (τ2.rename f) := by
-  induction h with
-  | refl =>
-    intro _ _ _ _
-    exact .refl
-  | trans _ _ ih1 ih2 =>
-    intro _ _ _ ρ
-    exact .trans (ih1 ρ) (ih2 ρ)
-  | bot =>
-    intro _ _ _ _
-    exact .bot
-  | top =>
-    intro _ _ _ _
-    exact .top
-  | var_bound hx =>
-    intro _ _ _ ρ
-    exact .var_bound (ρ hx)
-  | var_free hl =>
-    intro _ _ _ _
+    ∀ {s2 : Sig} {f : Rename s1 s2} {Δ : Ctx s2}, Renaming Γ f Δ ->
+      Sub Θ Δ (τ1.rename f) (τ2.rename f) :=
+  match h with
+  | .refl => fun _ => .refl
+  | .trans h1 h2 => fun ρ => .trans (h1.rename ρ) (h2.rename ρ)
+  | .bot => fun _ => .bot
+  | .top => fun _ => .top
+  | .var_bound hx => fun ρ => .var_bound (ρ hx)
+  | .var_free hl => fun _ => by
     simp only [Tau.rename, Ty.rename, Path.rename, Var.rename, Ty.fromClosed_rename]
     exact .var_free hl
-  | symm _ ih =>
-    intro _ _ _ ρ
-    exact .symm (ih ρ)
-  | fst_tm _ ih =>
-    intro _ _ _ ρ
-    exact .fst_tm (ih ρ)
-  | fst_ty _ ih =>
-    intro _ _ _ ρ
-    exact .fst_ty (ih ρ)
-  | sel_tm _ ih =>
-    intro _ _ _ ρ
+  | .symm h1 => fun ρ => .symm (h1.rename ρ)
+  | .fst_tm h1 => fun ρ => .fst_tm (h1.rename ρ)
+  | .fst_ty h1 => fun ρ => .fst_ty (h1.rename ρ)
+  | .sel_tm h1 => fun ρ => by
     simp only [Tau.rename, Ty.rename, Path.rename]
     rw [← Ty.open_rename_comm]
-    exact Sub.sel_tm (ih ρ)
-  | sel_hi _ _ ih1 ih2 =>
-    intro _ _ _ ρ
-    have h2 := ih2 ρ
-    simp only [Tau.rename] at h2
-    rw [← Ty.open_rename_comm, ← Ty.open_rename_comm] at h2
+    exact Sub.sel_tm (h1.rename ρ)
+  | .sel_hi h1 h2 => fun ρ => by
+    have h2' := h2.rename ρ
+    simp only [Tau.rename] at h2'
+    rw [← Ty.open_rename_comm, ← Ty.open_rename_comm] at h2'
     simp only [Tau.rename, Ty.rename]
     rw [← Ty.open_rename_comm]
-    exact .sel_hi (ih1 ρ) h2
-  | sel_lo _ _ ih1 ih2 =>
-    intro _ _ _ ρ
-    have h2 := ih2 ρ
-    simp only [Tau.rename] at h2
-    rw [← Ty.open_rename_comm, ← Ty.open_rename_comm] at h2
+    exact Sub.sel_hi (h1.rename ρ) h2'
+  | .sel_lo hw h1 h2 => fun ρ => by
+    have h2' := h2.rename ρ
+    simp only [Tau.rename] at h2'
+    rw [← Ty.open_rename_comm, ← Ty.open_rename_comm] at h2'
     simp only [Tau.rename, Ty.rename]
     rw [← Ty.open_rename_comm]
-    exact .sel_lo (ih1 ρ) h2
-  | arrow _ _ ih1 ih2 =>
-    intro _ _ _ ρ
-    exact .arrow (ih1 ρ) (ih2 (Renaming.ext ρ))
-  | pair_tm _ _ ih1 ih2 =>
-    intro _ _ _ ρ
-    exact .pair_tm (ih1 ρ) (ih2 (Renaming.ext ρ))
-  | pair_ty _ _ ih1 ih2 =>
-    intro _ _ _ ρ
-    exact .pair_ty (ih1 ρ) (ih2 (Renaming.ext ρ))
-  | ival _ _ _ ih1 ih2 ih3 =>
-    intro _ _ _ ρ
-    exact .ival (ih1 ρ) (ih2 ρ) (ih3 ρ)
+    exact Sub.sel_lo (hw.rename ρ) (h1.rename ρ) h2'
+  | .arrow h1 h2 => fun ρ => .arrow (h1.rename ρ) (h2.rename (Renaming.ext ρ))
+  | .pair_tm h1 h2 => fun ρ => .pair_tm (h1.rename ρ) (h2.rename (Renaming.ext ρ))
+  | .pair_ty h1 h2 => fun ρ => .pair_ty (h1.rename ρ) (h2.rename (Renaming.ext ρ))
+  | .ival h1 h2 h3 => fun ρ => .ival (h1.rename ρ) (h2.rename ρ) (h3.rename ρ)
 
 /-- Path wellformedness is preserved under renaming. -/
 theorem Path.Wf.rename {Θ} {Γ : Ctx s1} {p : Path s1} (h : Path.Wf Θ Γ p) :
-    ∀ {s2} {f : Rename s1 s2} {Δ : Ctx s2}, Renaming Γ f Δ ->
-      Path.Wf Θ Δ (p.rename f) := by
-  induction h with
-  | var_bound hx =>
-    intro _ _ _ ρ
-    exact .var_bound (ρ hx)
-  | var_free hl =>
-    intro _ _ _ _
-    exact .var_free hl
-  | fst_tm _ hsub ih =>
-    intro _ _ _ ρ
-    exact .fst_tm (ih ρ) (hsub.rename ρ)
-  | fst_ty _ hsub ih =>
-    intro _ _ _ ρ
-    exact .fst_ty (ih ρ) (hsub.rename ρ)
-  | sel _ hsub ih =>
-    intro _ _ _ ρ
-    exact .sel (ih ρ) (hsub.rename ρ)
+    ∀ {s2 : Sig} {f : Rename s1 s2} {Δ : Ctx s2}, Renaming Γ f Δ ->
+      Path.Wf Θ Δ (p.rename f) :=
+  match h with
+  | .var_bound hx => fun ρ => .var_bound (ρ hx)
+  | .var_free hl => fun _ => .var_free hl
+  | .fst_tm h1 hsub => fun ρ => .fst_tm (h1.rename ρ) (hsub.rename ρ)
+  | .fst_ty h1 hsub => fun ρ => .fst_ty (h1.rename ρ) (hsub.rename ρ)
+  | .sel h1 hsub => fun ρ => .sel (h1.rename ρ) (hsub.rename ρ)
+
+end
 
 /-- Type wellformedness is preserved under renaming. -/
 theorem Wf.rename {Θ} {Γ : Ctx s1} {τ : Tau s1} (h : Wf Θ Γ τ) :

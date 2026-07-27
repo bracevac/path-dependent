@@ -21,18 +21,27 @@ theorem Ctx.LookupVar.empty_elim {x : BVar 0} {T : Ty 0}
 theorem Ty.fromClosed_zero {T : Ty 0} : (T.fromClosed : Ty 0) = T := by
   rw [Ty.fromClosed, ← Rename.fromZero_unique Rename.id, Ty.rename_id]
 
-/-- In a well-typed heap, every stored value has a recorded precise type. -/
+/-- In a well-typed heap, every stored value has a recorded precise type,
+and value and type mention only earlier locations. -/
 theorem HeapTyped.lookup_heap {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h)
     {ℓ : Nat} {v : Tm 0} (hl : Heap.Lookup h ℓ v) :
-    ∃ T, Sto.Lookup Θ ℓ T ∧ Val.PreciseTy Θ v T := by
+    ∃ T, Sto.Lookup Θ ℓ T ∧ Val.PreciseTy Θ v T
+      ∧ T.LocsBelow ℓ ∧ v.LocsBelow ℓ := by
   obtain ⟨hlen, hmap⟩ := hh
   have hlt : ℓ < h.length := (List.getElem?_eq_some_iff.mp hl).1
   have hltΘ : ℓ < Θ.length := by rw [hlen]; exact hlt
   have hT : Sto.Lookup Θ ℓ Θ[ℓ] := List.getElem?_eq_getElem hltΘ
-  obtain ⟨v', hv', hpre⟩ := hmap hT
+  obtain ⟨hTb, v', hv', hvb, hpre⟩ := hmap hT
   have hveq : v' = v := Option.some.inj (hv'.symm.trans hl)
   subst hveq
-  exact ⟨Θ[ℓ], hT, hpre⟩
+  exact ⟨Θ[ℓ], hT, hpre, hTb, hvb⟩
+
+/-- A typed heap is bounded (acyclic). -/
+theorem HeapTyped.bounded {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h) :
+    Heap.Bounded h := by
+  intro ℓ v hl
+  obtain ⟨-, -, -, -, hvb⟩ := hh.lookup_heap hl
+  exact hvb
 
 /-- A path is a subtype of (the singleton of) the location it evaluates to.
 By `Sub.symm`, they are mutual subtypes. -/
@@ -42,21 +51,21 @@ theorem PathEval.to_sub {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h)
   induction he with
   | var => exact .refl
   | fst_tm _ hl ih =>
-    obtain ⟨T, hΘ, hpre⟩ := hh.lookup_heap hl
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
     cases hpre with
     | pair_tm _ _ =>
       have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
       rw [Ty.fromClosed_zero] at hloc
       exact .fst_tm (.trans ih hloc)
   | fst_ty _ hl ih =>
-    obtain ⟨T, hΘ, hpre⟩ := hh.lookup_heap hl
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
     cases hpre with
     | pair_ty _ _ =>
       have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
       rw [Ty.fromClosed_zero] at hloc
       exact .fst_ty (.trans ih hloc)
   | sel _ hl ih =>
-    obtain ⟨T, hΘ, hpre⟩ := hh.lookup_heap hl
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
     cases hpre with
     | pair_tm _ _ =>
       have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ

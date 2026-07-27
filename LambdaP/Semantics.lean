@@ -94,6 +94,55 @@ inductive Final : Tm 0 -> Prop where
 | val : Tm.IsValue v -> Final v
 | loc : Final (.path (.var (.free ℓ)))
 
+/-! ### Heap acyclicity
+
+Pair values store variables and allocation proceeds in order, so every
+stored value mentions only strictly earlier locations. This gives λ_p
+heaps a well-founded structure (unlike DOT's cyclic object stores) on
+which the semantic denotation recurses. -/
+
+/-- All free locations mentioned are strictly below `k`. -/
+def Var.LocsBelow (k : Nat) : Var s -> Prop
+| .bound _ => True
+| .free ℓ => ℓ < k
+
+def Path.LocsBelow (k : Nat) : Path s -> Prop
+| .var x => x.LocsBelow k
+| .fst p => p.LocsBelow k
+| .sel p _ => p.LocsBelow k
+
+def Ty.LocsBelow (k : Nat) : Ty s -> Prop
+| .top => True
+| .bot => True
+| .arrow S T => S.LocsBelow k ∧ T.LocsBelow k
+| .pairTm S _ T => S.LocsBelow k ∧ T.LocsBelow k
+| .pairTy S _ T1 T2 => S.LocsBelow k ∧ T1.LocsBelow k ∧ T2.LocsBelow k
+| .single p => p.LocsBelow k
+| .tsel p _ => p.LocsBelow k
+
+def Tm.LocsBelow (k : Nat) : Tm s -> Prop
+| .path p => p.LocsBelow k
+| .abs T t => T.LocsBelow k ∧ t.LocsBelow k
+| .pairTm y _ z => y.LocsBelow k ∧ z.LocsBelow k
+| .pairTy y _ T => y.LocsBelow k ∧ T.LocsBelow k
+| .app p q => p.LocsBelow k ∧ q.LocsBelow k
+| .letin t1 t2 => t1.LocsBelow k ∧ t2.LocsBelow k
+| .typed t T => t.LocsBelow k ∧ T.LocsBelow k
+
+/-- A heap is bounded if each stored value mentions only earlier locations. -/
+def Heap.Bounded (h : Heap) : Prop :=
+  ∀ {ℓ : Nat} {v : Tm 0}, Heap.Lookup h ℓ v -> v.LocsBelow ℓ
+
+/-- In a bounded heap, path evaluation descends: the target of a path is
+strictly below any bound on the path's own locations. -/
+theorem PathEval.target_lt {h : Heap} (hb : Heap.Bounded h) {p : Path 0} {m k : Nat}
+    (he : PathEval h p m) (hp : p.LocsBelow k) : m < k := by
+  induction he with
+  | var => exact hp
+  | fst_tm _ hl ih => exact Nat.lt_trans (hb hl).1 (ih hp)
+  | fst_ty _ hl ih => exact Nat.lt_trans (hb hl).1 (ih hp)
+  | sel _ hl ih => exact Nat.lt_trans (hb hl).2 (ih hp)
+
 /-! ### Heap typing -/
 
 /-- Precise typing of stored values: λ-abstractions get their declared
@@ -116,11 +165,13 @@ inductive Val.PreciseTy (Θ : Sto) : Tm 0 -> Ty 0 -> Prop where
   Val.PreciseTy Θ (.pairTy (.free ℓ1) A T)
     (.pairTy (.single (.var (.free ℓ1))) A T.weaken T.weaken)
 
-/-- A store typing describes a heap: same domain, and every location holds
-a value of its recorded precise type. -/
+/-- A store typing describes a heap: same domain, every location holds a
+value of its recorded precise type, and both the value and the type
+mention only earlier locations (acyclicity). -/
 def HeapTyped (Θ : Sto) (h : Heap) : Prop :=
   Θ.length = h.length ∧
   ∀ {ℓ : Nat} {T : Ty 0}, Sto.Lookup Θ ℓ T ->
-    ∃ v, Heap.Lookup h ℓ v ∧ Val.PreciseTy Θ v T
+    T.LocsBelow ℓ ∧
+    ∃ v, Heap.Lookup h ℓ v ∧ v.LocsBelow ℓ ∧ Val.PreciseTy Θ v T
 
 end LambdaP
