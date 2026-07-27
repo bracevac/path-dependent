@@ -5,3 +5,4 @@ import LambdaP.Context
 import LambdaP.Typing
 import LambdaP.Semantics
 import LambdaP.Lemmas.Renaming
+import LambdaP.Lemmas.Subst
