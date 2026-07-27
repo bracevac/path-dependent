@@ -7,3 +7,4 @@ import LambdaP.Semantics
 import LambdaP.Lemmas.Renaming
 import LambdaP.Lemmas.Subst
 import LambdaP.Soundness.Store
+import LambdaP.Soundness.Den
