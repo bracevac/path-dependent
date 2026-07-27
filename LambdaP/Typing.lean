@@ -108,21 +108,21 @@ inductive Sub : Sto -> Ctx s -> Tau s -> Tau s -> Prop where
 | sel_tm :
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTm S a T)) ->
   Sub Θ Γ (.ty (.single (p.sel a))) (.ty (T.open p.fst))
-/-- Type-member selection: p.A is within the declared interval. -/
-| sel_ty :
-  Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
-  Sub Θ Γ (.ty (.tsel p A)) (.intv (T1.open p.fst) (T2.open p.fst))
-/-- A type selection is below its upper bound — provided the interval is
-non-empty (the draft's guard against bad bounds). -/
+/-- A type selection is below the (opened) declared upper bound of *its own*
+member. The pair-type premise anchors the bounds to the member being
+selected (DOT's SEL-<:); the draft's unanchored formulation is unsound —
+see DESIGN.md, deviation 7. The second premise is the draft's non-empty
+interval guard. -/
 | sel_hi :
-  Sub Θ Γ (.ty (.tsel p A)) (.intv S T) ->
-  Sub Θ Γ (.ty S) (.ty T) ->
-  Sub Θ Γ (.ty (.tsel p A)) (.ty T)
-/-- A type selection is above its lower bound — same non-emptiness guard. -/
+  Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
+  Sub Θ Γ (.ty (T1.open p.fst)) (.ty (T2.open p.fst)) ->
+  Sub Θ Γ (.ty (.tsel p A)) (.ty (T2.open p.fst))
+/-- A type selection is above the (opened) declared lower bound of its own
+member (DOT's <:-Sel), with the same anchoring and non-emptiness guard. -/
 | sel_lo :
-  Sub Θ Γ (.ty (.tsel p A)) (.intv S T) ->
-  Sub Θ Γ (.ty S) (.ty T) ->
-  Sub Θ Γ (.ty S) (.ty (.tsel p A))
+  Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
+  Sub Θ Γ (.ty (T1.open p.fst)) (.ty (T2.open p.fst)) ->
+  Sub Θ Γ (.ty (T1.open p.fst)) (.ty (.tsel p A))
 /-- Dependent function types: contravariant domain, covariant codomain
 under the smaller domain. -/
 | arrow :

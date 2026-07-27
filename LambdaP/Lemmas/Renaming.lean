@@ -73,17 +73,22 @@ theorem Sub.rename {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2)
     simp only [Tau.rename, Ty.rename, Path.rename]
     rw [← Ty.open_rename_comm]
     exact Sub.sel_tm (ih ρ)
-  | sel_ty _ ih =>
-    intro _ _ _ ρ
-    simp only [Tau.rename, Ty.rename]
-    rw [← Ty.open_rename_comm, ← Ty.open_rename_comm]
-    exact Sub.sel_ty (ih ρ)
   | sel_hi _ _ ih1 ih2 =>
     intro _ _ _ ρ
-    exact .sel_hi (ih1 ρ) (ih2 ρ)
+    have h2 := ih2 ρ
+    simp only [Tau.rename] at h2
+    rw [← Ty.open_rename_comm, ← Ty.open_rename_comm] at h2
+    simp only [Tau.rename, Ty.rename]
+    rw [← Ty.open_rename_comm]
+    exact .sel_hi (ih1 ρ) h2
   | sel_lo _ _ ih1 ih2 =>
     intro _ _ _ ρ
-    exact .sel_lo (ih1 ρ) (ih2 ρ)
+    have h2 := ih2 ρ
+    simp only [Tau.rename] at h2
+    rw [← Ty.open_rename_comm, ← Ty.open_rename_comm] at h2
+    simp only [Tau.rename, Ty.rename]
+    rw [← Ty.open_rename_comm]
+    exact .sel_lo (ih1 ρ) h2
   | arrow _ _ ih1 ih2 =>
     intro _ _ _ ρ
     exact .arrow (ih1 ρ) (ih2 (Renaming.ext ρ))

@@ -90,17 +90,22 @@ theorem Sub.subst {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) 
     simp only [Tau.subst, Ty.subst, Path.subst]
     rw [← Ty.open_subst_comm]
     exact .sel_tm (ih hσ)
-  | sel_ty _ ih =>
-    intro _ _ _ hσ
-    simp only [Tau.subst, Ty.subst]
-    rw [← Ty.open_subst_comm, ← Ty.open_subst_comm]
-    exact .sel_ty (ih hσ)
   | sel_hi _ _ ih1 ih2 =>
     intro _ _ _ hσ
-    exact .sel_hi (ih1 hσ) (ih2 hσ)
+    have h2 := ih2 hσ
+    simp only [Tau.subst] at h2
+    rw [← Ty.open_subst_comm, ← Ty.open_subst_comm] at h2
+    simp only [Tau.subst, Ty.subst]
+    rw [← Ty.open_subst_comm]
+    exact .sel_hi (ih1 hσ) h2
   | sel_lo _ _ ih1 ih2 =>
     intro _ _ _ hσ
-    exact .sel_lo (ih1 hσ) (ih2 hσ)
+    have h2 := ih2 hσ
+    simp only [Tau.subst] at h2
+    rw [← Ty.open_subst_comm, ← Ty.open_subst_comm] at h2
+    simp only [Tau.subst, Ty.subst]
+    rw [← Ty.open_subst_comm]
+    exact .sel_lo (ih1 hσ) h2
   | arrow _ _ ih1 ih2 =>
     intro _ _ _ hσ
     exact .arrow (ih1 hσ) (ih2 hσ.lift)
@@ -268,5 +273,58 @@ theorem HasType.open_weaken {Θ} {Γ : Ctx s} {t : Tm (s+1)} {T : Ty s} {y : Var
     HasType Θ Γ (t.open y) T := by
   have := HasType.open h hy hsub
   rwa [Ty.weaken_open] at this
+
+/-! ### Narrowing
+
+Narrowing is the identity substitution viewed as a conforming substitution
+from `Γ, x: S` to `Γ, x: S1` when `S1 <: S`. -/
+
+/-- The identity substitution conforms from a context to its narrowing. -/
+theorem SubstTyping.narrow {Θ} {Γ : Ctx s} {S1 S : Ty s}
+    (hsub : Sub Θ Γ (.ty S1) (.ty S)) :
+    SubstTyping Θ Subst.id (Γ.push S) (Γ.push S1) := by
+  constructor
+  · intro x T h
+    cases h with
+    | here =>
+      rw [Ty.subst_id]
+      exact .trans (.var_bound .here) hsub.weaken
+    | there h' =>
+      rw [Ty.subst_id]
+      exact .var_bound (.there h')
+  · intro x
+    obtain ⟨T, hT⟩ := Ctx.lookupVar_total (Γ.push S1) x
+    exact .var_bound hT
+
+/-- Narrowing for subtyping. -/
+theorem Sub.narrow {Θ} {Γ : Ctx s} {S1 S : Ty s} {τ1 τ2 : Tau (s+1)}
+    (h : Sub Θ (Γ.push S) τ1 τ2) (hsub : Sub Θ Γ (.ty S1) (.ty S)) :
+    Sub Θ (Γ.push S1) τ1 τ2 := by
+  have := h.subst (SubstTyping.narrow hsub)
+  rwa [Tau.subst_id, Tau.subst_id] at this
+
+/-- Narrowing for path wellformedness. -/
+theorem Path.Wf.narrow {Θ} {Γ : Ctx s} {S1 S : Ty s} {p : Path (s+1)}
+    (h : Path.Wf Θ (Γ.push S) p) (hsub : Sub Θ Γ (.ty S1) (.ty S)) :
+    Path.Wf Θ (Γ.push S1) p := by
+  have := h.subst (SubstTyping.narrow hsub)
+  rwa [Path.subst_id] at this
+
+/-- Narrowing for type wellformedness. -/
+theorem Wf.narrow {Θ} {Γ : Ctx s} {S1 S : Ty s} {τ : Tau (s+1)}
+    (h : Wf Θ (Γ.push S) τ) (hsub : Sub Θ Γ (.ty S1) (.ty S)) :
+    Wf Θ (Γ.push S1) τ := by
+  have := h.subst (SubstTyping.narrow hsub)
+  rwa [Tau.subst_id] at this
+
+/-- Narrowing for term typing. -/
+theorem HasType.narrow {Θ} {Γ : Ctx s} {S1 S : Ty s} {t : Tm (s+1)} {T : Ty (s+1)}
+    (h : HasType Θ (Γ.push S) t T) (hsub : Sub Θ Γ (.ty S1) (.ty S)) :
+    HasType Θ (Γ.push S1) t T := by
+  have hst : SubstTyping Θ (VSubst.id).toSubst (Γ.push S) (Γ.push S1) := by
+    rw [VSubst.toSubst_id]
+    exact SubstTyping.narrow hsub
+  have := h.subst hst
+  rwa [Tm.subst_id, VSubst.toSubst_id, Ty.subst_id] at this
 
 end LambdaP
