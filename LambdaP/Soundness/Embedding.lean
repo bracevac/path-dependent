@@ -196,6 +196,41 @@ theorem Sub.to_ssub {Θ : Sto} {T1 T2 : Ty 0}
     (hs : Sub Θ .empty (.ty T1) (.ty T2)) : ∃ n, SSub Θ T1 T2 n :=
   hs.to_ssub_aux rfl
 
+/-! ### First harvest: inversion for the declarative judgment, and the
+theorems that fall out of it. -/
+
+/-- Inversion for declarative runtime subtyping: embed, then invert. -/
+theorem Sub.invert {Θ : Sto} {T1 T2 : Ty 0} (hwf : Sto.Shaped Θ)
+    (h : Sub Θ .empty (.ty T1) (.ty T2)) : ∃ n, SOut Θ n T1 T2 := by
+  obtain ⟨n, hs⟩ := h.to_ssub
+  exact ⟨n, SSub.invert hwf n hs⟩
+
+/-- Unconditional syntactic consistency, at every shaped store:
+`⊤ <: ⊥` is underivable. Subsumes the empty-store consistency theorem
+(the empty store is vacuously shaped). -/
+theorem Sub.consistency {Θ : Sto} (hwf : Sto.Shaped Θ) :
+    ¬ Sub Θ .empty (.ty .top) (.ty .bot) := by
+  intro h
+  obtain ⟨n, o⟩ := Sub.invert hwf h
+  exact o
+
+/-- Consistency at the empty store, with no hypotheses at all. -/
+theorem Sub.consistency_empty : ¬ Sub [] .empty (.ty .top) (.ty .bot) :=
+  Sub.consistency (fun {ℓ T} hl => nomatch hl)
+
+/-- Runtime collapse-freedom (the ⊥-collapse never reaches typed
+heaps): no path is below ⊥ at a shaped store. -/
+theorem Sub.no_bot_path {Θ : Sto} {p : Path 0} (hwf : Sto.Shaped Θ)
+    (h : Sub Θ .empty (.ty (.single p)) (.ty .bot)) : False := by
+  obtain ⟨n, o⟩ := Sub.invert hwf h
+  obtain ⟨ℓ0, E, hcp, hE0, m, hm, hEbot⟩ := o
+  have oE := SSub.invert hwf m hEbot
+  rcases (hwf hE0).1 with hs | hs | hs
+  all_goals exact (oE : False).elim
+
+#print axioms LambdaP.Sub.consistency
+#print axioms LambdaP.Sub.no_bot_path
+
 end LambdaP
 
 section

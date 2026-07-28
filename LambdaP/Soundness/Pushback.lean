@@ -2675,6 +2675,7 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
               exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
             · exact nomatch hYeq
 
+
 #print axioms LambdaP.SSub.invert
 
 end LambdaP
