@@ -21,7 +21,7 @@ def InvSubClosure : Prop :=
 
 /-- Component locations of a precise entry are themselves recorded. -/
 theorem HeapTyped.entry_lt {Θ : Sto} {h : Heap} {ℓ ℓc : Nat} {T : Ty 0}
-    (hh : HeapTyped Θ h) (hl : Sto.Lookup Θ ℓ T) (hc : ℓc < ℓ) :
+    (_hh : HeapTyped Θ h) (hl : Sto.Lookup Θ ℓ T) (hc : ℓc < ℓ) :
     ∃ Tc, Sto.Lookup Θ ℓc Tc :=
   Sto.lookup_lt (Nat.lt_trans hc (List.getElem?_eq_some_iff.mp hl).1)
 
