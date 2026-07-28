@@ -1,4 +1,5 @@
 import LambdaP.Soundness.Store
+import LambdaP.Lemmas.Locs
 
 /-!
 The trans-free runtime subtyping pipeline (deviation 9 endgame):
@@ -239,6 +240,15 @@ theorem SSub.mono {Θ} {T1 T2 : Ty 0} {n n' : Nat}
   induction k with
   | zero => exact h
   | succ k ih => exact ih.succ
+
+/-- Alias entries at the same location and label carry the same alias. -/
+theorem alias_unify {Θ : Sto} {m ℓa ℓb : Nat} {A : Name} {Wa Wb : Ty 0}
+    (h : Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓa))) A (Ty.weaken Wa) (Ty.weaken Wa)))
+    (h' : Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓb))) A (Ty.weaken Wb) (Ty.weaken Wb))) :
+    Wa = Wb := by
+  have heq := Option.some_inj.mp ((Eq.symm h).trans h')
+  injection heq with _ _ _ hT1 _
+  exact Ty.weaken_inj hT1
 
 /-! ### The trans-free layer
 
@@ -707,26 +717,25 @@ components are `m ≤ n`. The `PEq` wrapper keeps the single-subject
 tsel tail strict under transport. -/
 def SOut (Θ : Sto) (n : Nat) : Ty 0 -> Ty 0 -> Prop
 | .single p, .single q => PEq Θ p q
-| .single p, .pairTm S a _ =>
-    ∃ ℓ0 ℓ1 ℓ2, Chains Θ p ℓ0 ∧
-      Sto.Lookup Θ ℓ0 (.pairTm (.single (.var (.free ℓ1))) a
-        (Ty.single (.var (.free ℓ2))).weaken) ∧
-      ∃ m, m ≤ n ∧ SSub Θ (.single (.var (.free ℓ1))) S m
-| .single p, .pairTy S A _ _ =>
-    ∃ ℓ0 ℓ1 W, Chains Θ p ℓ0 ∧
-      Sto.Lookup Θ ℓ0 (.pairTy (.single (.var (.free ℓ1))) A
-        (Ty.weaken W) (Ty.weaken W)) ∧
-      ∃ m, m ≤ n ∧ SSub Θ (.single (.var (.free ℓ1))) S m
-| .single p, .arrow S _ =>
-    ∃ ℓ0 S0 T0, Chains Θ p ℓ0 ∧
-      Sto.Lookup Θ ℓ0 (.arrow S0 T0) ∧
-      ∃ m, m ≤ n ∧ SSub Θ S S0 m
+| .single p, .pairTm S a T =>
+    ∃ ℓ0 E, Chains Θ p ℓ0 ∧ Sto.Lookup Θ ℓ0 E ∧
+      ∃ m, m ≤ n ∧ SSub Θ E (.pairTm S a T) m
+| .single p, .pairTy S A T1 T2 =>
+    ∃ ℓ0 E, Chains Θ p ℓ0 ∧ Sto.Lookup Θ ℓ0 E ∧
+      ∃ m, m ≤ n ∧ SSub Θ E (.pairTy S A T1 T2) m
+| .single p, .arrow S T =>
+    ∃ ℓ0 E, Chains Θ p ℓ0 ∧ Sto.Lookup Θ ℓ0 E ∧
+      ∃ m, m ≤ n ∧ SSub Θ E (.arrow S T) m
 | .single p, .tsel q A =>
-    ∃ mq ℓ1 W, Chains Θ q mq ∧
+    (∃ ℓ0 E, Chains Θ p ℓ0 ∧ Sto.Lookup Θ ℓ0 E ∧
+      ∃ m, m ≤ n ∧ SSub Θ E (.tsel q A) m) ∨
+    (∃ mq ℓ1 W, Chains Θ q mq ∧
       Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
         (Ty.weaken W) (Ty.weaken W)) ∧
-      ∃ p', PEq Θ p p' ∧ ∃ m, m < n ∧ SSub Θ (.single p') W m
-| .single _, .bot => False
+      ∃ p', PEq Θ p p' ∧ ∃ m, m ≤ n ∧ SSub Θ (.single p') W m)
+| .single p, .bot =>
+    ∃ ℓ0 E, Chains Θ p ℓ0 ∧ Sto.Lookup Θ ℓ0 E ∧
+      ∃ m, m ≤ n ∧ SSub Θ E .bot m
 | .single _, .top => True
 | .pairTm S a _, .pairTm S' a' _ =>
     a = a' ∧ ∃ m, m ≤ n ∧ SSub Θ S S' m
@@ -770,17 +779,17 @@ def SOut (Θ : Sto) (n : Nat) : Ty 0 -> Ty 0 -> Prop
     (∃ mq ℓ1 W, Chains Θ q mq ∧
       Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
         (Ty.weaken W) (Ty.weaken W)) ∧
-      ∃ m, m < n ∧ SSub Θ W X m) ∨
+      ∃ m, m ≤ n ∧ SSub Θ W X m) ∨
     (∃ p2 A2 mq ℓ1 W, X = .tsel p2 A2 ∧ Chains Θ p2 mq ∧
       Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A2
         (Ty.weaken W) (Ty.weaken W)) ∧
-      ∃ m, m < n ∧ SSub Θ (.tsel q A) W m)
+      ∃ m, m ≤ n ∧ SSub Θ (.tsel q A) W m)
 | .top, .top => True
 | .top, .tsel q A =>
     ∃ mq ℓ1 W, Chains Θ q mq ∧
       Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
         (Ty.weaken W) (Ty.weaken W)) ∧
-      ∃ m, m < n ∧ SSub Θ .top W m
+      ∃ m, m ≤ n ∧ SSub Θ .top W m
 | .top, _ => False
 | .bot, _ => True
 
@@ -791,21 +800,23 @@ theorem SOut.mono {Θ : Sto} {n n' : Nat} {T1 T2 : Ty 0}
     simp only [SOut] at h ⊢ <;>
     first
     | exact h
+    | (obtain ⟨a1, a2, h1, h2, m, hm, hs⟩ := h
+       exact ⟨a1, a2, h1, h2, m, by omega, hs⟩)
     | (obtain ⟨a1, a2, a3, h1, h2, m, hm, hs⟩ := h
        exact ⟨a1, a2, a3, h1, h2, m, by omega, hs⟩)
-    | (obtain ⟨a1, a2, a3, h1, h2, p', hpe, m, hm, hs⟩ := h
-       exact ⟨a1, a2, a3, h1, h2, p', hpe, m, by omega, hs⟩)
     | (obtain ⟨he, m, hm, hs⟩ := h
        exact ⟨he, m, by omega, hs⟩)
     | (obtain ⟨m, hm, hs⟩ := h
        exact ⟨m, by omega, hs⟩)
+    | (rcases h with ⟨a1, a2, h1, h2, m, hm, hs⟩ |
+         ⟨a1, a2, a3, h1, h2, p', hpe, m, hm, hs⟩
+       · exact Or.inl ⟨a1, a2, h1, h2, m, by omega, hs⟩
+       · exact Or.inr ⟨a1, a2, a3, h1, h2, p', hpe, m, by omega, hs⟩)
     | (rcases h with ⟨p2, hX, hpe⟩ | ⟨a1, a2, a3, h1, h2, m, hm, hs⟩
          | ⟨p2, A2, a1, a2, a3, hX, h1, h2, m, hm, hs⟩
        · exact Or.inl ⟨p2, hX, hpe⟩
        · exact Or.inr (Or.inl ⟨a1, a2, a3, h1, h2, m, by omega, hs⟩)
        · exact Or.inr (Or.inr ⟨p2, A2, a1, a2, a3, hX, h1, h2, m, by omega, hs⟩))
-
-
 
 /-- Chains from a bare location resolve to it. -/
 theorem Chains.var_free_eq {Θ : Sto} {ℓ m : Nat}
@@ -814,31 +825,860 @@ theorem Chains.var_free_eq {Θ : Sto} {ℓ m : Nat}
   | loc _ => rfl
 
 
-/-- Subject transport: `SOut` facts about a singleton subject move along
-path equivalence (chains via `chains_iff`, tsel wrappers via `trans`;
-fuel only ever grows). -/
+/-- Subject transport: `SOut` facts about a singleton subject move
+along path equivalence. -/
 theorem SOut.peq_subject {Θ : Sto} {p p0 : Path 0} {S : Ty 0} {m n : Nat}
     (hpe : PEq Θ p p0)
     (o : SOut Θ m (.single p0) S) (hmn : m ≤ n) :
     SOut Θ n (.single p) S := by
   cases S with
   | single s => exact hpe.trans o
-  | pairTm S a T =>
-    obtain ⟨ℓ0, ℓ1, ℓ2, hc, hE, m', hm', dom⟩ := o
-    exact ⟨ℓ0, ℓ1, ℓ2, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, dom⟩
-  | pairTy S A T1 T2 =>
-    obtain ⟨ℓ0, ℓ1, W, hc, hE, m', hm', dom⟩ := o
-    exact ⟨ℓ0, ℓ1, W, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, dom⟩
-  | arrow S T =>
-    obtain ⟨ℓ0, S0, T0, hc, hE, m', hm', dom⟩ := o
-    exact ⟨ℓ0, S0, T0, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, dom⟩
-  | tsel q A =>
-    obtain ⟨mq, ℓ1, W, hcq, hE, p', hpe', m', hm', tail⟩ := o
-    exact ⟨mq, ℓ1, W, hcq, hE, p', hpe.trans hpe', m', by omega, tail⟩
   | top => trivial
-  | bot => exact o.elim
+  | tsel q A =>
+    rcases o with ⟨ℓ0, E, hc, hE, m', hm', hs⟩ |
+      ⟨mq, ℓ1, W, hcq, hEq, p', hpe', m', hm', hs⟩
+    · exact Or.inl ⟨ℓ0, E, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, hs⟩
+    · exact Or.inr ⟨mq, ℓ1, W, hcq, hEq, p', hpe.trans hpe', m', by omega, hs⟩
+  | pairTm S a T =>
+    obtain ⟨ℓ0, E, hc, hE, m', hm', hs⟩ := o
+    exact ⟨ℓ0, E, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, hs⟩
+  | pairTy S A T1 T2 =>
+    obtain ⟨ℓ0, E, hc, hE, m', hm', hs⟩ := o
+    exact ⟨ℓ0, E, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, hs⟩
+  | arrow S T =>
+    obtain ⟨ℓ0, E, hc, hE, m', hm', hs⟩ := o
+    exact ⟨ℓ0, E, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, hs⟩
+  | bot =>
+    obtain ⟨ℓ0, E, hc, hE, m', hm', hs⟩ := o
+    exact ⟨ℓ0, E, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, hs⟩
 
 
+set_option maxHeartbeats 1600000 in
+/-- The tsel-middle workhorse for the trans case of inversion:
+compose two sized tails meeting at a stored alias interval, recursing
+along alias hops — well-founded because alias contents mention only
+older locations (`Chains.target_lt`). Takes the outer induction
+hypothesis as an argument. -/
+theorem SSub.descend {Θ : Sto} (hwf : Sto.Shaped Θ) {k : Nat}
+    (IH : ∀ j, j ≤ k → ∀ {A B : Ty 0}, SSub Θ A B j → SOut Θ j A B) :
+    ∀ manchor : Nat, ∀ {ℓ1 : Nat} {An : Name} {W X Y : Ty 0} {m1 m2 : Nat},
+      Sto.Lookup Θ manchor (.pairTy (.single (.var (.free ℓ1))) An
+        (Ty.weaken W) (Ty.weaken W)) ->
+      SSub Θ X W m1 -> SSub Θ W Y m2 -> m1 ≤ k -> m2 ≤ k ->
+      SOut Θ (k+1) X Y := by
+  intro manchor
+  induction manchor using Nat.strongRecOn with
+  | ind manchor IHa =>
+    intro ℓ1 An W X Y m1 m2 hE hXW hWY hm1 hm2
+    have o1 := IH m1 hm1 hXW
+    have o2 := IH m2 hm2 hWY
+    cases W with
+    | top =>
+      cases X with
+      | bot => trivial
+      | top => exact o2.mono (by omega)
+      | single p =>
+        cases Y with
+        | top => trivial
+        | tsel y B =>
+          obtain ⟨my, ℓy, Wy, hcy, hEy, m3, hm3, hW2⟩ := o2
+          exact Or.inr ⟨my, ℓy, Wy, hcy, hEy, p, .refl, _, by omega,
+            .trans (hXW.mono (Nat.le_max_left m1 m3))
+                   (hW2.mono (Nat.le_max_right m1 m3))⟩
+        | single _ => exact o2.elim
+        | bot => exact o2.elim
+        | arrow _ _ => exact o2.elim
+        | pairTm _ _ _ => exact o2.elim
+        | pairTy _ _ _ _ => exact o2.elim
+      | arrow S T =>
+        cases Y with
+        | top => trivial
+        | tsel y B =>
+          obtain ⟨my, ℓy, Wy, hcy, hEy, m3, hm3, hW2⟩ := o2
+          exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+            .trans (hXW.mono (Nat.le_max_left m1 m3))
+                   (hW2.mono (Nat.le_max_right m1 m3))⟩
+        | single _ => exact o2.elim
+        | bot => exact o2.elim
+        | arrow _ _ => exact o2.elim
+        | pairTm _ _ _ => exact o2.elim
+        | pairTy _ _ _ _ => exact o2.elim
+      | pairTm S a T =>
+        cases Y with
+        | top => trivial
+        | tsel y B =>
+          obtain ⟨my, ℓy, Wy, hcy, hEy, m3, hm3, hW2⟩ := o2
+          exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+            .trans (hXW.mono (Nat.le_max_left m1 m3))
+                   (hW2.mono (Nat.le_max_right m1 m3))⟩
+        | single _ => exact o2.elim
+        | bot => exact o2.elim
+        | arrow _ _ => exact o2.elim
+        | pairTm _ _ _ => exact o2.elim
+        | pairTy _ _ _ _ => exact o2.elim
+      | pairTy S A T1 T2 =>
+        cases Y with
+        | top => trivial
+        | tsel y B =>
+          obtain ⟨my, ℓy, Wy, hcy, hEy, m3, hm3, hW2⟩ := o2
+          exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+            .trans (hXW.mono (Nat.le_max_left m1 m3))
+                   (hW2.mono (Nat.le_max_right m1 m3))⟩
+        | single _ => exact o2.elim
+        | bot => exact o2.elim
+        | arrow _ _ => exact o2.elim
+        | pairTm _ _ _ => exact o2.elim
+        | pairTy _ _ _ _ => exact o2.elim
+      | tsel q A =>
+        cases Y with
+        | top => trivial
+        | tsel y B =>
+          obtain ⟨my, ℓy, Wy, hcy, hEy, m3, hm3, hW2⟩ := o2
+          exact Or.inr (Or.inr ⟨y, B, my, ℓy, Wy, rfl, hcy, hEy, _, by omega,
+            .trans (hXW.mono (Nat.le_max_left m1 m3))
+                   (hW2.mono (Nat.le_max_right m1 m3))⟩)
+        | single _ => exact o2.elim
+        | bot => exact o2.elim
+        | arrow _ _ => exact o2.elim
+        | pairTm _ _ _ => exact o2.elim
+        | pairTy _ _ _ _ => exact o2.elim
+    | bot =>
+      cases X with
+      | bot => trivial
+      | top => exact o1.elim
+      | single p =>
+        obtain ⟨ℓ0, E, hcp, hE0, m3, hm3, hEbot⟩ := o1
+        have oE := IH m3 (by omega) hEbot
+        rcases (hwf hE0).1 with hs | hs | hs
+        all_goals first
+          | exact (oE : False).elim
+      | arrow _ _ => exact o1.elim
+      | pairTm _ _ _ => exact o1.elim
+      | pairTy _ _ _ _ => exact o1.elim
+      | tsel q A =>
+        rcases o1 with ⟨p2, hX, hpe⟩ | ⟨mq, ℓq, Wq, hcq, hEq, m3, hm3, htail⟩
+          | ⟨p2, A2, mq, ℓq, Wq, hX, hcq, hEq, m3, hm3, htail⟩
+        · exact absurd hX (by intro h; cases h)
+        · have tl : SSub Θ Wq Y (max m3 m2 + 1) :=
+            .trans (htail.mono (Nat.le_max_left m3 m2))
+                   (hWY.mono (Nat.le_max_right m3 m2))
+          cases Y with
+          | top => trivial
+          | single _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | bot => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+        · exact absurd hX (by intro h; cases h)
+    | single w =>
+      cases X with
+      | bot => trivial
+      | top => exact o1.elim
+      | arrow _ _ => exact o1.elim
+      | pairTm _ _ _ => exact o1.elim
+      | pairTy _ _ _ _ => exact o1.elim
+      | single p => exact o2.peq_subject o1 (by omega)
+      | tsel q A =>
+        rcases o1 with ⟨p2, hX, hpe⟩ | ⟨mq, ℓq, Wq, hcq, hEq, m3, hm3, htail⟩
+          | ⟨p2, A2, mq, ℓq, Wq, hX, hcq, hEq, m3, hm3, htail⟩
+        · exact absurd hX (by intro h; cases h)
+        · have tl : SSub Θ Wq Y (max m3 m2 + 1) :=
+            .trans (htail.mono (Nat.le_max_left m3 m2))
+                   (hWY.mono (Nat.le_max_right m3 m2))
+          cases Y with
+          | top => trivial
+          | single _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | bot => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+        · exact absurd hX (by intro h; cases h)
+    | arrow S0 T0 =>
+      cases X with
+      | bot => trivial
+      | top => exact o1.elim
+      | pairTm _ _ _ => exact o1.elim
+      | pairTy _ _ _ _ => exact o1.elim
+      | single p =>
+        obtain ⟨ℓ0, E, hcp, hE0, m3, hm3, tailE⟩ := o1
+        have tl : SSub Θ E Y (max m3 m2 + 1) :=
+          .trans (tailE.mono (Nat.le_max_left m3 m2))
+                 (hWY.mono (Nat.le_max_right m3 m2))
+        cases Y with
+        | top => trivial
+        | single s => exact o2.elim
+        | bot => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | arrow _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | pairTm _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | pairTy _ _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | tsel _ _ => exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+      | arrow S T =>
+        obtain ⟨m3, hm3, dom1⟩ := o1
+        cases Y with
+        | top => trivial
+        | arrow S' T' =>
+          obtain ⟨m4, hm4, dom2⟩ := o2
+          exact ⟨_, by omega, .trans (dom2.mono (Nat.le_max_left m4 m3))
+            (dom1.mono (Nat.le_max_right m4 m3))⟩
+        | tsel y C =>
+          obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
+          exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+            .trans (hXW.mono (Nat.le_max_left m1 m4))
+                   (tail2.mono (Nat.le_max_right m1 m4))⟩
+        | single _ => exact o2.elim
+        | bot => exact o2.elim
+        | pairTm _ _ _ => exact o2.elim
+        | pairTy _ _ _ _ => exact o2.elim
+      | tsel q A =>
+        rcases o1 with ⟨p2, hX, hpe⟩ | ⟨mq, ℓq, Wq, hcq, hEq, m3, hm3, htail⟩
+          | ⟨p2, A2, mq, ℓq, Wq, hX, hcq, hEq, m3, hm3, htail⟩
+        · exact absurd hX (by intro h; cases h)
+        · have tl : SSub Θ Wq Y (max m3 m2 + 1) :=
+            .trans (htail.mono (Nat.le_max_left m3 m2))
+                   (hWY.mono (Nat.le_max_right m3 m2))
+          cases Y with
+          | top => trivial
+          | single _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | bot => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+        · exact absurd hX (by intro h; cases h)
+    | pairTm S0 a0 T0 =>
+      cases X with
+      | bot => trivial
+      | top => exact o1.elim
+      | arrow _ _ => exact o1.elim
+      | pairTy _ _ _ _ => exact o1.elim
+      | single p =>
+        obtain ⟨ℓ0, E, hcp, hE0, m3, hm3, tailE⟩ := o1
+        have tl : SSub Θ E Y (max m3 m2 + 1) :=
+          .trans (tailE.mono (Nat.le_max_left m3 m2))
+                 (hWY.mono (Nat.le_max_right m3 m2))
+        cases Y with
+        | top => trivial
+        | single s => exact o2.elim
+        | bot => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | arrow _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | pairTm _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | pairTy _ _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | tsel _ _ => exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+      | pairTm S a T =>
+        obtain ⟨ha0, m3, hm3, dom1⟩ := o1
+        cases Y with
+        | top => trivial
+        | pairTm S' a' T' =>
+          obtain ⟨ha1, m4, hm4, dom2⟩ := o2
+          exact ⟨ha0.trans ha1, _, by omega,
+            .trans (dom1.mono (Nat.le_max_left m3 m4))
+                   (dom2.mono (Nat.le_max_right m3 m4))⟩
+        | tsel y C =>
+          obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
+          exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+            .trans (hXW.mono (Nat.le_max_left m1 m4))
+                   (tail2.mono (Nat.le_max_right m1 m4))⟩
+        | single _ => exact o2.elim
+        | bot => exact o2.elim
+        | arrow _ _ => exact o2.elim
+        | pairTy _ _ _ _ => exact o2.elim
+      | tsel q A =>
+        rcases o1 with ⟨p2, hX, hpe⟩ | ⟨mq, ℓq, Wq, hcq, hEq, m3, hm3, htail⟩
+          | ⟨p2, A2, mq, ℓq, Wq, hX, hcq, hEq, m3, hm3, htail⟩
+        · exact absurd hX (by intro h; cases h)
+        · have tl : SSub Θ Wq Y (max m3 m2 + 1) :=
+            .trans (htail.mono (Nat.le_max_left m3 m2))
+                   (hWY.mono (Nat.le_max_right m3 m2))
+          cases Y with
+          | top => trivial
+          | single _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | bot => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+        · exact absurd hX (by intro h; cases h)
+    | pairTy S0 A0 T01 T02 =>
+      cases X with
+      | bot => trivial
+      | top => exact o1.elim
+      | arrow _ _ => exact o1.elim
+      | pairTm _ _ _ => exact o1.elim
+      | single p =>
+        obtain ⟨ℓ0, E, hcp, hE0, m3, hm3, tailE⟩ := o1
+        have tl : SSub Θ E Y (max m3 m2 + 1) :=
+          .trans (tailE.mono (Nat.le_max_left m3 m2))
+                 (hWY.mono (Nat.le_max_right m3 m2))
+        cases Y with
+        | top => trivial
+        | single s => exact o2.elim
+        | bot => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | arrow _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | pairTm _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | pairTy _ _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | tsel _ _ => exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+      | pairTy S A T1c T2c =>
+        obtain ⟨hA0, m3, hm3, dom1⟩ := o1
+        cases Y with
+        | top => trivial
+        | pairTy S' A' T1' T2' =>
+          obtain ⟨hA1, m4, hm4, dom2⟩ := o2
+          exact ⟨hA0.trans hA1, _, by omega,
+            .trans (dom1.mono (Nat.le_max_left m3 m4))
+                   (dom2.mono (Nat.le_max_right m3 m4))⟩
+        | tsel y C =>
+          obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
+          exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+            .trans (hXW.mono (Nat.le_max_left m1 m4))
+                   (tail2.mono (Nat.le_max_right m1 m4))⟩
+        | single _ => exact o2.elim
+        | bot => exact o2.elim
+        | arrow _ _ => exact o2.elim
+        | pairTm _ _ _ => exact o2.elim
+      | tsel q A =>
+        rcases o1 with ⟨p2, hX, hpe⟩ | ⟨mq, ℓq, Wq, hcq, hEq, m3, hm3, htail⟩
+          | ⟨p2, A2, mq, ℓq, Wq, hX, hcq, hEq, m3, hm3, htail⟩
+        · exact absurd hX (by intro h; cases h)
+        · have tl : SSub Θ Wq Y (max m3 m2 + 1) :=
+            .trans (htail.mono (Nat.le_max_left m3 m2))
+                   (hWY.mono (Nat.le_max_right m3 m2))
+          cases Y with
+          | top => trivial
+          | single _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | bot => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+          | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓq, Wq, hcq, hEq, _, by omega, tl⟩)
+        · exact absurd hX (by intro h; cases h)
+    | tsel r B =>
+      have hrb : Path.LocsBelow manchor r := by
+        have hb := (hwf hE).2
+        exact (Ty.locsBelow_rename.mp hb.2.1 : Ty.LocsBelow manchor (.tsel r B))
+      have o1 := IH m1 hm1 hXW
+      have o2 := IH m2 hm2 hWY
+      cases X with
+      | bot => trivial
+      | top =>
+        obtain ⟨mq, ℓw, W', hcr, hE', m3, hm3, tail1⟩ := o1
+        have hlt : mq < manchor := Chains.target_lt hwf hcr hrb
+        cases Y with
+        | top => trivial
+        | tsel y C =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+            exact ⟨mq, ℓw, W', (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tail1⟩
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+            exact ⟨mq2, ℓ2', W2, hc2, hE2, _, by omega,
+              .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩
+        | single s =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | bot =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | arrow S' T' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | pairTm S' a' T' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | pairTy S' A' T1' T2' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+      | single p =>
+        rcases o1 with ⟨ℓ0, E, hcp, hE0, m3, hm3, tailE⟩ |
+          ⟨mq, ℓw, W', hcr, hE', p', hpe', m3, hm3, tail1⟩
+        · -- o1 = unfold: raw-compose the entry tail with the raw right arg
+          cases Y with
+          | top => trivial
+          | tsel y C =>
+            exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega,
+              .trans (tailE.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩
+          | single s =>
+            -- invert the entry tail (fuel ≤ k), det-unify, recurse: (shaped, single) = False
+            have oE := IH m3 (by omega) tailE
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · cases hYeq
+            · cases (hwf hE0).1 with
+              | arrow =>
+                obtain ⟨mqE, ℓwE, WE, hcrE, hEE, m4, hm4, tailE2⟩ := oE
+                cases hcrE.deterministic hcr'
+                cases alias_unify hEE hE''
+                exact ((IHa mq' (Chains.target_lt hwf hcrE hrb) hEE tailE2 tail2
+                  (by omega) (by omega) : SOut _ _ _ _) : False).elim
+              | pair_tm =>
+                obtain ⟨mqE, ℓwE, WE, hcrE, hEE, m4, hm4, tailE2⟩ := oE
+                cases hcrE.deterministic hcr'
+                cases alias_unify hEE hE''
+                exact ((IHa mq' (Chains.target_lt hwf hcrE hrb) hEE tailE2 tail2
+                  (by omega) (by omega) : SOut _ _ _ _) : False).elim
+              | pair_ty =>
+                obtain ⟨mqE, ℓwE, WE, hcrE, hEE, m4, hm4, tailE2⟩ := oE
+                cases hcrE.deterministic hcr'
+                cases alias_unify hEE hE''
+                exact ((IHa mq' (Chains.target_lt hwf hcrE hrb) hEE tailE2 tail2
+                  (by omega) (by omega) : SOut _ _ _ _) : False).elim
+            · cases hYeq
+          | bot =>
+            exact ⟨ℓ0, E, hcp, hE0, _, by omega,
+              .trans (tailE.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩
+          | arrow S' T' =>
+            exact ⟨ℓ0, E, hcp, hE0, _, by omega,
+              .trans (tailE.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩
+          | pairTm S' a' T' =>
+            exact ⟨ℓ0, E, hcp, hE0, _, by omega,
+              .trans (tailE.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩
+          | pairTy S' A' T1' T2' =>
+            exact ⟨ℓ0, E, hcp, hE0, _, by omega,
+              .trans (tailE.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩
+        · -- o1 = RHS-anchored at r (subject transported by PEq p p')
+          have hlt : mq < manchor := Chains.target_lt hwf hcr hrb
+          cases Y with
+          | top => trivial
+          | tsel y C =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · cases hYeq
+              exact Or.inr ⟨mq, ℓw, W', (hpe2.chains_iff mq).mp hcr, hE',
+                p', hpe', m3, by omega, tail1⟩
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact SOut.peq_subject hpe'
+                (IHa mq hlt hE' tail1 tail2 (by omega) (by omega)) (Nat.le_refl _)
+            · cases hYeq
+              exact Or.inr ⟨mq2, ℓ2', W2, hc2, hE2, p, .refl, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩
+          | single s =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · cases hYeq
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact SOut.peq_subject hpe'
+                (IHa mq hlt hE' tail1 tail2 (by omega) (by omega)) (Nat.le_refl _)
+            · cases hYeq
+          | bot =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · cases hYeq
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact SOut.peq_subject hpe'
+                (IHa mq hlt hE' tail1 tail2 (by omega) (by omega)) (Nat.le_refl _)
+            · cases hYeq
+          | arrow S' T' =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · cases hYeq
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact SOut.peq_subject hpe'
+                (IHa mq hlt hE' tail1 tail2 (by omega) (by omega)) (Nat.le_refl _)
+            · cases hYeq
+          | pairTm S' a' T' =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · cases hYeq
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact SOut.peq_subject hpe'
+                (IHa mq hlt hE' tail1 tail2 (by omega) (by omega)) (Nat.le_refl _)
+            · cases hYeq
+          | pairTy S' A' T1' T2' =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · cases hYeq
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact SOut.peq_subject hpe'
+                (IHa mq hlt hE' tail1 tail2 (by omega) (by omega)) (Nat.le_refl _)
+            · cases hYeq
+      | tsel q0 A0 =>
+        rcases o1 with ⟨r', hReq, hpe0⟩ |
+          ⟨mq0, ℓw0, W0, hcq0, hE0', m3, hm3, tailA⟩ |
+          ⟨p2, A2, mq, ℓw, W', hReq, hcr, hE', m3, hm3, tailB⟩
+        · -- o1 congruent: PEq q0 r (and B = A0)
+          cases hReq
+          cases Y with
+          | top => trivial
+          | tsel y C =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inl ⟨p2, hYeq, hpe0.trans hpe2⟩
+            · exact Or.inr (Or.inl ⟨mq', ℓw', W'',
+                (hpe0.chains_iff mq').mpr hcr', hE'', m5, by omega, tail2⟩)
+            · exact Or.inr (Or.inr ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | single s =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inl ⟨p2, hYeq, hpe0.trans hpe2⟩
+            · exact Or.inr (Or.inl ⟨mq', ℓw', W'',
+                (hpe0.chains_iff mq').mpr hcr', hE'', m5, by omega, tail2⟩)
+            · exact Or.inr (Or.inr ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | bot =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inl ⟨p2, hYeq, hpe0.trans hpe2⟩
+            · exact Or.inr (Or.inl ⟨mq', ℓw', W'',
+                (hpe0.chains_iff mq').mpr hcr', hE'', m5, by omega, tail2⟩)
+            · exact Or.inr (Or.inr ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | arrow S' T' =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inl ⟨p2, hYeq, hpe0.trans hpe2⟩
+            · exact Or.inr (Or.inl ⟨mq', ℓw', W'',
+                (hpe0.chains_iff mq').mpr hcr', hE'', m5, by omega, tail2⟩)
+            · exact Or.inr (Or.inr ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | pairTm S' a' T' =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inl ⟨p2, hYeq, hpe0.trans hpe2⟩
+            · exact Or.inr (Or.inl ⟨mq', ℓw', W'',
+                (hpe0.chains_iff mq').mpr hcr', hE'', m5, by omega, tail2⟩)
+            · exact Or.inr (Or.inr ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | pairTy S' A' T1' T2' =>
+            rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inl ⟨p2, hYeq, hpe0.trans hpe2⟩
+            · exact Or.inr (Or.inl ⟨mq', ℓw', W'',
+                (hpe0.chains_iff mq').mpr hcr', hE'', m5, by omega, tail2⟩)
+            · exact Or.inr (Or.inr ⟨p2, A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+        · -- o1 LHS-anchored at q0: uniform raw composition, o2 untouched
+          cases Y with
+          | top => trivial
+          | tsel y C =>
+            exact Or.inr (Or.inl ⟨mq0, ℓw0, W0, hcq0, hE0', _, by omega,
+              .trans (tailA.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩)
+          | single s =>
+            exact Or.inr (Or.inl ⟨mq0, ℓw0, W0, hcq0, hE0', _, by omega,
+              .trans (tailA.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩)
+          | bot =>
+            exact Or.inr (Or.inl ⟨mq0, ℓw0, W0, hcq0, hE0', _, by omega,
+              .trans (tailA.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩)
+          | arrow S' T' =>
+            exact Or.inr (Or.inl ⟨mq0, ℓw0, W0, hcq0, hE0', _, by omega,
+              .trans (tailA.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩)
+          | pairTm S' a' T' =>
+            exact Or.inr (Or.inl ⟨mq0, ℓw0, W0, hcq0, hE0', _, by omega,
+              .trans (tailA.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩)
+          | pairTy S' A' T1' T2' =>
+            exact Or.inr (Or.inl ⟨mq0, ℓw0, W0, hcq0, hE0', _, by omega,
+              .trans (tailA.mono (Nat.le_max_left _ _)) (hWY.mono (Nat.le_max_right _ _))⟩)
+        · -- o1 RHS-anchored at r
+          cases hReq
+          have hlt : mq < manchor := Chains.target_lt hwf hcr hrb
+          cases Y with
+          | top => trivial
+          | tsel y C =>
+            rcases o2 with ⟨p2', hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inr (Or.inr ⟨p2', _, mq, ℓw, W', hYeq,
+                (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tailB⟩)
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact IHa mq hlt hE' tailB tail2 (by omega) (by omega)
+            · exact Or.inr (Or.inr ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | single s =>
+            rcases o2 with ⟨p2', hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inr (Or.inr ⟨p2', _, mq, ℓw, W', hYeq,
+                (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tailB⟩)
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact IHa mq hlt hE' tailB tail2 (by omega) (by omega)
+            · exact Or.inr (Or.inr ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | bot =>
+            rcases o2 with ⟨p2', hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inr (Or.inr ⟨p2', _, mq, ℓw, W', hYeq,
+                (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tailB⟩)
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact IHa mq hlt hE' tailB tail2 (by omega) (by omega)
+            · exact Or.inr (Or.inr ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | arrow S' T' =>
+            rcases o2 with ⟨p2', hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inr (Or.inr ⟨p2', _, mq, ℓw, W', hYeq,
+                (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tailB⟩)
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact IHa mq hlt hE' tailB tail2 (by omega) (by omega)
+            · exact Or.inr (Or.inr ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | pairTm S' a' T' =>
+            rcases o2 with ⟨p2', hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inr (Or.inr ⟨p2', _, mq, ℓw, W', hYeq,
+                (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tailB⟩)
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact IHa mq hlt hE' tailB tail2 (by omega) (by omega)
+            · exact Or.inr (Or.inr ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+          | pairTy S' A' T1' T2' =>
+            rcases o2 with ⟨p2', hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+              ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+            · exact Or.inr (Or.inr ⟨p2', _, mq, ℓw, W', hYeq,
+                (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tailB⟩)
+            · cases hcr.deterministic hcr'
+              cases alias_unify hE' hE''
+              exact IHa mq hlt hE' tailB tail2 (by omega) (by omega)
+            · exact Or.inr (Or.inr ⟨p2', A2', mq2, ℓ2', W2, hYeq, hc2, hE2, _, by omega,
+                .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩)
+      | arrow S1 T1 =>
+        obtain ⟨mq, ℓw, W', hcr, hE', m3, hm3, tail1⟩ := o1
+        have hlt : mq < manchor := Chains.target_lt hwf hcr hrb
+        cases Y with
+        | top => trivial
+        | tsel y C =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+            exact ⟨mq, ℓw, W', (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tail1⟩
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+            exact ⟨mq2, ℓ2', W2, hc2, hE2, _, by omega,
+              .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩
+        | single s =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | bot =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | arrow S' T' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | pairTm S' a' T' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | pairTy S' A' T1' T2' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+      | pairTm S1 a1 T1 =>
+        obtain ⟨mq, ℓw, W', hcr, hE', m3, hm3, tail1⟩ := o1
+        have hlt : mq < manchor := Chains.target_lt hwf hcr hrb
+        cases Y with
+        | top => trivial
+        | tsel y C =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+            exact ⟨mq, ℓw, W', (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tail1⟩
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+            exact ⟨mq2, ℓ2', W2, hc2, hE2, _, by omega,
+              .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩
+        | single s =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | bot =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | arrow S' T' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | pairTm S' a' T' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | pairTy S' A' T1' T2' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+      | pairTy S1 A1 T11 T12 =>
+        obtain ⟨mq, ℓw, W', hcr, hE', m3, hm3, tail1⟩ := o1
+        have hlt : mq < manchor := Chains.target_lt hwf hcr hrb
+        cases Y with
+        | top => trivial
+        | tsel y C =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+            exact ⟨mq, ℓw, W', (hpe2.chains_iff mq).mp hcr, hE', m3, by omega, tail1⟩
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+            exact ⟨mq2, ℓ2', W2, hc2, hE2, _, by omega,
+              .trans (hXW.mono (Nat.le_max_left _ _)) (tail2.mono (Nat.le_max_right _ _))⟩
+        | single s =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | bot =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | arrow S' T' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | pairTm S' a' T' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
+        | pairTy S' A' T1' T2' =>
+          rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+            ⟨mq', ℓw', W'', hcr', hE'', m5, hm5, tail2⟩ |
+            ⟨p2, A2, mq2, ℓ2', W2, hYeq, hc2, hE2, m5, hm5, tail2⟩
+          · cases hYeq
+          · cases hcr.deterministic hcr'
+            cases alias_unify hE' hE''
+            exact IHa mq hlt hE' tail1 tail2 (by omega) (by omega)
+          · cases hYeq
 
 /-- The sized inversion theorem: every sized runtime subtyping fact
 reads off as its shape-directed store content. -/
@@ -868,14 +1708,11 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
       rw [Ty.fromClosed_zero]
       cases (hwf hl).1 with
       | arrow =>
-        rename_i S0 T0
-        exact ⟨ℓ, S0, T0, .loc hl, hl, 1, by omega, .refl⟩
+        exact ⟨ℓ, _, .loc hl, hl, 1, by omega, .refl⟩
       | pair_tm =>
-        rename_i ℓ1 a ℓ2
-        exact ⟨ℓ, ℓ1, ℓ2, .loc hl, hl, 1, by omega, .refl⟩
+        exact ⟨ℓ, _, .loc hl, hl, 1, by omega, .refl⟩
       | pair_ty =>
-        rename_i ℓ1 A W
-        exact ⟨ℓ, ℓ1, W, .loc hl, hl, 1, by omega, .refl⟩
+        exact ⟨ℓ, _, .loc hl, hl, 1, by omega, .refl⟩
     | symm hw h =>
       rename_i p q k
       exact (IH k (by omega) h).symm
@@ -902,7 +1739,7 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
       rw [Ty.fromClosed_zero] at h
       cases T1 with
       | single u =>
-        exact ⟨m0, ℓ1, W, hc, hl, u, .refl, k, by omega, h⟩
+        exact Or.inr ⟨m0, ℓ1, W, hc, hl, u, .refl, k, by omega, h⟩
       | pairTm S a T => exact ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩
       | pairTy S A T1 T2 => exact ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩
       | arrow S T => exact ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩
@@ -946,19 +1783,898 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
         exact ⟨by trivial, k + 1, by omega, .repl hwp hwq h1 h2⟩
     | fst_tm h =>
       rename_i p a T k
-      obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE, m, hm, hdom⟩ := IH k (by omega) h
-      have hcf : Chains Θ p.fst ℓ1 := .fst_tm hcp hE
-      obtain ⟨E1, hE1⟩ := hcf.in_dom hwf
-      have oS := IH m (by omega) hdom
-      exact oS.peq_subject (.cochain hcf (.loc hE1)) (by omega)
+      obtain ⟨ℓ0, E0, hcp, hE0, m1, hm1, hres⟩ := IH k (by omega) h
+      cases (hwf hE0).1 with
+      | arrow => exact ((IH m1 (by omega) hres : SOut _ _ _ _) : False).elim
+      | pair_ty => exact ((IH m1 (by omega) hres : SOut _ _ _ _) : False).elim
+      | pair_tm =>
+        rename_i ℓ1 b ℓ2
+        obtain ⟨hba, m2, hm2, hdom⟩ := IH m1 (by omega) hres
+        have hcf : Chains Θ p.fst ℓ1 := .fst_tm hcp hE0
+        obtain ⟨E1, hE1⟩ := hcf.in_dom hwf
+        have oS := IH m2 (by omega) hdom
+        exact oS.peq_subject (.cochain hcf (.loc hE1)) (by omega)
     | fst_ty h =>
       rename_i p A T1c T2c k
-      obtain ⟨ℓ0, ℓ1, W, hcp, hE, m, hm, hdom⟩ := IH k (by omega) h
-      have hcf : Chains Θ p.fst ℓ1 := .fst_ty hcp hE
-      obtain ⟨E1, hE1⟩ := hcf.in_dom hwf
-      have oS := IH m (by omega) hdom
-      exact oS.peq_subject (.cochain hcf (.loc hE1)) (by omega)
+      obtain ⟨ℓ0, E0, hcp, hE0, m1, hm1, hres⟩ := IH k (by omega) h
+      cases (hwf hE0).1 with
+      | arrow => exact ((IH m1 (by omega) hres : SOut _ _ _ _) : False).elim
+      | pair_tm => exact ((IH m1 (by omega) hres : SOut _ _ _ _) : False).elim
+      | pair_ty =>
+        rename_i ℓ1 B W0
+        obtain ⟨hBA, m2, hm2, hdom⟩ := IH m1 (by omega) hres
+        have hcf : Chains Θ p.fst ℓ1 := .fst_ty hcp hE0
+        obtain ⟨E1, hE1⟩ := hcf.in_dom hwf
+        have oS := IH m2 (by omega) hdom
+        exact oS.peq_subject (.cochain hcf (.loc hE1)) (by omega)
     | trans h1 h2 =>
-      sorry
+      rename_i M k
+      have o1 := IH k (by omega) h1
+      have o2 := IH k (by omega) h2
+      have IHd : ∀ j, j ≤ k → ∀ {A B : Ty 0}, SSub Θ A B j → SOut Θ j A B :=
+        fun j hj {A B} h => IH j (by omega) h
+      cases T1 with
+      | bot => trivial
+      | top =>
+        cases M with
+        | top => exact o2.mono (by omega)
+        | bot => exact o1.elim
+        | single _ => exact o1.elim
+        | arrow _ _ => exact o1.elim
+        | pairTm _ _ _ => exact o1.elim
+        | pairTy _ _ _ _ => exact o1.elim
+        | tsel q A =>
+          obtain ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailT⟩ := o1
+          cases T2 with
+          | top => trivial
+          | tsel y C =>
+            rcases o2 with ⟨p2, hYeq, hpe⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+            · injection hYeq with hs0 hy hC
+              subst hy; subst hC
+              exact ⟨mq, ℓw, W, (hpe.chains_iff mq).mp hcq, hEw, m3, by omega, tailT⟩
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailT tail2 (by omega) (by omega)
+            · injection hYeq with hs0 hy hC
+              subst hy; subst hC
+              exact ⟨mq2, ℓ22, W2, hc2, hE2, _, by omega,
+                .trans (h1.mono (Nat.le_max_left k m4))
+                       (tail2.mono (Nat.le_max_right k m4))⟩
+          | single _ =>
+            rcases o2 with ⟨p2, hYeq, hpe⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ | ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailT tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | bot =>
+            rcases o2 with ⟨p2, hYeq, hpe⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ | ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailT tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | arrow _ _ =>
+            rcases o2 with ⟨p2, hYeq, hpe⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ | ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailT tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | pairTm _ _ _ =>
+            rcases o2 with ⟨p2, hYeq, hpe⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ | ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailT tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | pairTy _ _ _ _ =>
+            rcases o2 with ⟨p2, hYeq, hpe⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ | ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailT tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+      | single p =>
+        cases M with
+        | single p0 => exact o2.peq_subject o1 (by omega)
+        | top =>
+          cases T2 with
+          | top => trivial
+          | tsel y C =>
+            obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, hW⟩ := o2
+            exact Or.inr ⟨my, ℓy, Wy, hcy, hEy, p, .refl, _, by omega,
+              .trans (h1.mono (Nat.le_max_left k m4))
+                     (hW.mono (Nat.le_max_right k m4))⟩
+          | single _ => exact o2.elim
+          | bot => exact o2.elim
+          | arrow _ _ => exact o2.elim
+          | pairTm _ _ _ => exact o2.elim
+          | pairTy _ _ _ _ => exact o2.elim
+        | bot =>
+          obtain ⟨ℓ0, E, hcp, hE0, m3, hm3, hEbot⟩ := o1
+          have oE := IHd m3 (by omega) hEbot
+          rcases (hwf hE0).1 with hs | hs | hs
+          all_goals exact (oE : False).elim
+        | arrow S0 T0 =>
+          obtain ⟨ℓ0, E, hcp, hE0, m3, hm3, tailE⟩ := o1
+          have tl : SSub Θ E T2 (max m3 k + 1) :=
+            .trans (tailE.mono (Nat.le_max_left m3 k))
+                   (h2.mono (Nat.le_max_right m3 k))
+          cases T2 with
+          | top => trivial
+          | single s => exact o2.elim
+          | bot => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | arrow _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | pairTm _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | pairTy _ _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | tsel _ _ => exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | pairTm S0 a0 T0 =>
+          obtain ⟨ℓ0, E, hcp, hE0, m3, hm3, tailE⟩ := o1
+          have tl : SSub Θ E T2 (max m3 k + 1) :=
+            .trans (tailE.mono (Nat.le_max_left m3 k))
+                   (h2.mono (Nat.le_max_right m3 k))
+          cases T2 with
+          | top => trivial
+          | single s => exact o2.elim
+          | bot => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | arrow _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | pairTm _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | pairTy _ _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | tsel _ _ => exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | pairTy S0 A0 T01 T02 =>
+          obtain ⟨ℓ0, E, hcp, hE0, m3, hm3, tailE⟩ := o1
+          have tl : SSub Θ E T2 (max m3 k + 1) :=
+            .trans (tailE.mono (Nat.le_max_left m3 k))
+                   (h2.mono (Nat.le_max_right m3 k))
+          cases T2 with
+          | top => trivial
+          | single s => exact o2.elim
+          | bot => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | arrow _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | pairTm _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | pairTy _ _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+          | tsel _ _ => exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
+        | tsel q A =>
+          rcases o1 with ⟨ℓ0, E, hcp, hE0, m3, hm3, tailE⟩ |
+            ⟨mq, ℓw, W, hcq, hEw, p', hpe', m3, hm3, tailW⟩
+          · cases T2 with
+            | top => trivial
+            | tsel y C =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · injection hYeq with hs0 hy hC
+                subst hy; subst hC
+                exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega,
+                  .trans (tailE.mono (Nat.le_max_left m3 k))
+                         (h2.mono (Nat.le_max_right m3 k))⟩
+              · exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega,
+                  .trans (tailE.mono (Nat.le_max_left m3 k))
+                         (h2.mono (Nat.le_max_right m3 k))⟩
+              · injection hYeq with hs0 hy hC
+                subst hy; subst hC
+                exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega,
+                  .trans (tailE.mono (Nat.le_max_left m3 k))
+                         (h2.mono (Nat.le_max_right m3 k))⟩
+            | single s =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · have oE := IHd m3 (by omega) tailE
+                rcases (hwf hE0).1 with hs | hs | hs <;>
+                  (obtain ⟨mq'', ℓw'', W'', hcq'', hEw'', m5, hm5, tail3⟩ := oE
+                   cases hcq''.deterministic hcq'
+                   cases alias_unify hEw'' hEw'
+                   exact ((SSub.descend hwf IHd mq' hEw' tail3 tail2
+                     (by omega) (by omega) : SOut _ _ _ _) : False).elim)
+              · exact nomatch hYeq
+            | bot =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · exact ⟨ℓ0, E, hcp, hE0, _, by omega,
+                  .trans (tailE.mono (Nat.le_max_left m3 k))
+                         (h2.mono (Nat.le_max_right m3 k))⟩
+              · exact nomatch hYeq
+            | arrow _ _ =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · exact ⟨ℓ0, E, hcp, hE0, _, by omega,
+                  .trans (tailE.mono (Nat.le_max_left m3 k))
+                         (h2.mono (Nat.le_max_right m3 k))⟩
+              · exact nomatch hYeq
+            | pairTm _ _ _ =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · exact ⟨ℓ0, E, hcp, hE0, _, by omega,
+                  .trans (tailE.mono (Nat.le_max_left m3 k))
+                         (h2.mono (Nat.le_max_right m3 k))⟩
+              · exact nomatch hYeq
+            | pairTy _ _ _ _ =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · exact ⟨ℓ0, E, hcp, hE0, _, by omega,
+                  .trans (tailE.mono (Nat.le_max_left m3 k))
+                         (h2.mono (Nat.le_max_right m3 k))⟩
+              · exact nomatch hYeq
+          · cases T2 with
+            | top => trivial
+            | tsel y C =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · injection hYeq with hs0 hy hC
+                subst hy; subst hC
+                exact Or.inr ⟨mq, ℓw, W, (hpe2.chains_iff mq).mp hcq, hEw,
+                  p', hpe', m3, by omega, tailW⟩
+              · cases hcq'.deterministic hcq
+                cases alias_unify hEw' hEw
+                exact (SSub.descend hwf IHd mq hEw tailW tail2
+                  (by omega) (by omega)).peq_subject hpe' (Nat.le_refl _)
+              · injection hYeq with hs0 hy hC
+                subst hy; subst hC
+                exact Or.inr ⟨mq2, ℓ22, W2, hc2, hE2, p, .refl, _, by omega,
+                  .trans (h1.mono (Nat.le_max_left k m4))
+                         (tail2.mono (Nat.le_max_right k m4))⟩
+            | single s =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hcq'.deterministic hcq
+                cases alias_unify hEw' hEw
+                exact (SSub.descend hwf IHd mq hEw tailW tail2
+                  (by omega) (by omega)).peq_subject hpe' (Nat.le_refl _)
+              · exact nomatch hYeq
+            | bot =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hcq'.deterministic hcq
+                cases alias_unify hEw' hEw
+                exact (SSub.descend hwf IHd mq hEw tailW tail2
+                  (by omega) (by omega)).peq_subject hpe' (Nat.le_refl _)
+              · exact nomatch hYeq
+            | arrow _ _ =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hcq'.deterministic hcq
+                cases alias_unify hEw' hEw
+                exact (SSub.descend hwf IHd mq hEw tailW tail2
+                  (by omega) (by omega)).peq_subject hpe' (Nat.le_refl _)
+              · exact nomatch hYeq
+            | pairTm _ _ _ =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hcq'.deterministic hcq
+                cases alias_unify hEw' hEw
+                exact (SSub.descend hwf IHd mq hEw tailW tail2
+                  (by omega) (by omega)).peq_subject hpe' (Nat.le_refl _)
+              · exact nomatch hYeq
+            | pairTy _ _ _ _ =>
+              rcases o2 with ⟨p2, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p2, A2, mq2, ℓ22, W2, hYeq, hc2, hE2, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hcq'.deterministic hcq
+                cases alias_unify hEw' hEw
+                exact (SSub.descend hwf IHd mq hEw tailW tail2
+                  (by omega) (by omega)).peq_subject hpe' (Nat.le_refl _)
+              · exact nomatch hYeq
+      | tsel q A =>
+        cases M with
+        | top =>
+          cases T2 with
+          | top => trivial
+          | tsel y C =>
+            obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, hW⟩ := o2
+            exact Or.inr (Or.inr ⟨y, C, my, ℓy, Wy, rfl, hcy, hEy, _, by omega,
+              .trans (h1.mono (Nat.le_max_left k m4))
+                     (hW.mono (Nat.le_max_right k m4))⟩)
+          | single _ => exact o2.elim
+          | bot => exact o2.elim
+          | arrow _ _ => exact o2.elim
+          | pairTm _ _ _ => exact o2.elim
+          | pairTy _ _ _ _ => exact o2.elim
+        | single w =>
+          rcases o1 with ⟨p2, hMeq, hpe⟩ |
+            ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailW⟩ |
+            ⟨p2, A2, mq2, ℓ22, W2, hMeq, hc2, hE2, m3, hm3, tailM⟩
+          · exact nomatch hMeq
+          · cases T2 with
+            | top => trivial
+            | single _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | bot => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+          · exact nomatch hMeq
+        | bot =>
+          rcases o1 with ⟨p2, hMeq, hpe⟩ |
+            ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailW⟩ |
+            ⟨p2, A2, mq2, ℓ22, W2, hMeq, hc2, hE2, m3, hm3, tailM⟩
+          · exact nomatch hMeq
+          · cases T2 with
+            | top => trivial
+            | single _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | bot => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+          · exact nomatch hMeq
+        | arrow _ _ =>
+          rcases o1 with ⟨p2, hMeq, hpe⟩ |
+            ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailW⟩ |
+            ⟨p2, A2, mq2, ℓ22, W2, hMeq, hc2, hE2, m3, hm3, tailM⟩
+          · exact nomatch hMeq
+          · cases T2 with
+            | top => trivial
+            | single _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | bot => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+          · exact nomatch hMeq
+        | pairTm _ _ _ =>
+          rcases o1 with ⟨p2, hMeq, hpe⟩ |
+            ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailW⟩ |
+            ⟨p2, A2, mq2, ℓ22, W2, hMeq, hc2, hE2, m3, hm3, tailM⟩
+          · exact nomatch hMeq
+          · cases T2 with
+            | top => trivial
+            | single _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | bot => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+          · exact nomatch hMeq
+        | pairTy _ _ _ _ =>
+          rcases o1 with ⟨p2, hMeq, hpe⟩ |
+            ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailW⟩ |
+            ⟨p2, A2, mq2, ℓ22, W2, hMeq, hc2, hE2, m3, hm3, tailM⟩
+          · exact nomatch hMeq
+          · cases T2 with
+            | top => trivial
+            | single _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | bot => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+          · exact nomatch hMeq
+        | tsel qM AM =>
+          rcases o1 with ⟨p2, hMeq, hpe⟩ |
+            ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailW⟩ |
+            ⟨p2, A2, mq2, ℓ22, W2, hMeq, hc2, hE2, m3, hm3, tailM⟩
+          · cases hMeq
+            cases T2 with
+            | top => trivial
+            | tsel y C =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · injection hYeq with hs0 hy hC
+                subst hy; subst hC
+                exact Or.inl ⟨_, rfl, hpe.trans hpe2⟩
+              · exact Or.inr (Or.inl ⟨mq', ℓw', W',
+                  (hpe.chains_iff mq').mpr hcq', hEw', m4, by omega, tail2⟩)
+              · injection hYeq with hs0 hy hC
+                subst hy; subst hC
+                exact Or.inr (Or.inr ⟨_, _, mq3, ℓ33, W3, rfl, hc3, hE3,
+                  _, by omega, .trans (h1.mono (Nat.le_max_left k m4))
+                                      (tail2.mono (Nat.le_max_right k m4))⟩)
+            | single _ =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · exact Or.inr (Or.inl ⟨mq', ℓw', W',
+                  (hpe.chains_iff mq').mpr hcq', hEw', m4, by omega, tail2⟩)
+              · exact nomatch hYeq
+            | bot =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · exact Or.inr (Or.inl ⟨mq', ℓw', W',
+                  (hpe.chains_iff mq').mpr hcq', hEw', m4, by omega, tail2⟩)
+              · exact nomatch hYeq
+            | arrow _ _ =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · exact Or.inr (Or.inl ⟨mq', ℓw', W',
+                  (hpe.chains_iff mq').mpr hcq', hEw', m4, by omega, tail2⟩)
+              · exact nomatch hYeq
+            | pairTm _ _ _ =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · exact Or.inr (Or.inl ⟨mq', ℓw', W',
+                  (hpe.chains_iff mq').mpr hcq', hEw', m4, by omega, tail2⟩)
+              · exact nomatch hYeq
+            | pairTy _ _ _ _ =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · exact Or.inr (Or.inl ⟨mq', ℓw', W',
+                  (hpe.chains_iff mq').mpr hcq', hEw', m4, by omega, tail2⟩)
+              · exact nomatch hYeq
+          · cases T2 with
+            | top => trivial
+            | single _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | bot => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | arrow _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTm _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | pairTy _ _ _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+            | tsel _ _ => exact Or.inr (Or.inl ⟨mq, ℓw, W, hcq, hEw, _, by omega,
+                .trans (tailW.mono (Nat.le_max_left m3 k))
+                       (h2.mono (Nat.le_max_right m3 k))⟩)
+          · cases hMeq
+            cases T2 with
+            | top => trivial
+            | tsel y C =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq2', ℓ22', W2', hc2', hE2', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · injection hYeq with hs0 hy hC
+                subst hy; subst hC
+                exact Or.inr (Or.inr ⟨_, _, mq2, ℓ22, W2, rfl,
+                  (hpe2.chains_iff mq2).mp hc2, hE2, m3, by omega, tailM⟩)
+              · cases hc2'.deterministic hc2
+                cases alias_unify hE2' hE2
+                exact SSub.descend hwf IHd mq2 hE2 tailM tail2 (by omega) (by omega)
+              · injection hYeq with hs0 hy hC
+                subst hy; subst hC
+                exact Or.inr (Or.inr ⟨_, _, mq3, ℓ33, W3, rfl, hc3, hE3,
+                  _, by omega, .trans (h1.mono (Nat.le_max_left k m4))
+                                      (tail2.mono (Nat.le_max_right k m4))⟩)
+            | single _ =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq2', ℓ22', W2', hc2', hE2', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hc2'.deterministic hc2
+                cases alias_unify hE2' hE2
+                exact SSub.descend hwf IHd mq2 hE2 tailM tail2 (by omega) (by omega)
+              · exact nomatch hYeq
+            | bot =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq2', ℓ22', W2', hc2', hE2', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hc2'.deterministic hc2
+                cases alias_unify hE2' hE2
+                exact SSub.descend hwf IHd mq2 hE2 tailM tail2 (by omega) (by omega)
+              · exact nomatch hYeq
+            | arrow _ _ =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq2', ℓ22', W2', hc2', hE2', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hc2'.deterministic hc2
+                cases alias_unify hE2' hE2
+                exact SSub.descend hwf IHd mq2 hE2 tailM tail2 (by omega) (by omega)
+              · exact nomatch hYeq
+            | pairTm _ _ _ =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq2', ℓ22', W2', hc2', hE2', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hc2'.deterministic hc2
+                cases alias_unify hE2' hE2
+                exact SSub.descend hwf IHd mq2 hE2 tailM tail2 (by omega) (by omega)
+              · exact nomatch hYeq
+            | pairTy _ _ _ _ =>
+              rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+                ⟨mq2', ℓ22', W2', hc2', hE2', m4, hm4, tail2⟩ |
+                ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+              · exact nomatch hYeq
+              · cases hc2'.deterministic hc2
+                cases alias_unify hE2' hE2
+                exact SSub.descend hwf IHd mq2 hE2 tailM tail2 (by omega) (by omega)
+              · exact nomatch hYeq
+      | arrow S T =>
+        cases M with
+        | bot => exact o1.elim
+        | single _ => exact o1.elim
+        | pairTm _ _ _ => exact o1.elim
+        | pairTy _ _ _ _ => exact o1.elim
+        | top =>
+          cases T2 with
+          | top => trivial
+          | tsel y C =>
+            obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, hW⟩ := o2
+            exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+              .trans (h1.mono (Nat.le_max_left k m4))
+                     (hW.mono (Nat.le_max_right k m4))⟩
+          | single _ => exact o2.elim
+          | bot => exact o2.elim
+          | arrow _ _ => exact o2.elim
+          | pairTm _ _ _ => exact o2.elim
+          | pairTy _ _ _ _ => exact o2.elim
+        | arrow S0 T0 =>
+          obtain ⟨m3, hm3, dom1⟩ := o1
+          cases T2 with
+          | top => trivial
+          | arrow S' T' =>
+            obtain ⟨m4, hm4, dom2⟩ := o2
+            exact ⟨_, by omega, .trans (dom2.mono (Nat.le_max_left m4 m3))
+              (dom1.mono (Nat.le_max_right m4 m3))⟩
+          | tsel y C =>
+            obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
+            exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+              .trans (h1.mono (Nat.le_max_left k m4))
+                     (tail2.mono (Nat.le_max_right k m4))⟩
+          | single _ => exact o2.elim
+          | bot => exact o2.elim
+          | pairTm _ _ _ => exact o2.elim
+          | pairTy _ _ _ _ => exact o2.elim
+        | tsel q' A' =>
+          obtain ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailW⟩ := o1
+          cases T2 with
+          | top => trivial
+          | tsel y C =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · injection hYeq with hs0 hy hC
+              subst hy; subst hC
+              exact ⟨mq, ℓw, W, (hpe2.chains_iff mq).mp hcq, hEw, m3, by omega, tailW⟩
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · injection hYeq with hs0 hy hC
+              subst hy; subst hC
+              exact ⟨mq3, ℓ33, W3, hc3, hE3, _, by omega,
+                .trans (h1.mono (Nat.le_max_left k m4))
+                       (tail2.mono (Nat.le_max_right k m4))⟩
+          | single _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | bot =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | arrow _ _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | pairTm _ _ _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | pairTy _ _ _ _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+      | pairTm S a T =>
+        cases M with
+        | bot => exact o1.elim
+        | single _ => exact o1.elim
+        | arrow _ _ => exact o1.elim
+        | pairTy _ _ _ _ => exact o1.elim
+        | top =>
+          cases T2 with
+          | top => trivial
+          | tsel y C =>
+            obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, hW⟩ := o2
+            exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+              .trans (h1.mono (Nat.le_max_left k m4))
+                     (hW.mono (Nat.le_max_right k m4))⟩
+          | single _ => exact o2.elim
+          | bot => exact o2.elim
+          | arrow _ _ => exact o2.elim
+          | pairTm _ _ _ => exact o2.elim
+          | pairTy _ _ _ _ => exact o2.elim
+        | pairTm S0 a0 T0 =>
+          obtain ⟨ha0, m3, hm3, dom1⟩ := o1
+          cases T2 with
+          | top => trivial
+          | pairTm S' a' T' =>
+            obtain ⟨ha1, m4, hm4, dom2⟩ := o2
+            exact ⟨ha0.trans ha1, _, by omega,
+              .trans (dom1.mono (Nat.le_max_left m3 m4))
+                     (dom2.mono (Nat.le_max_right m3 m4))⟩
+          | tsel y C =>
+            obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
+            exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+              .trans (h1.mono (Nat.le_max_left k m4))
+                     (tail2.mono (Nat.le_max_right k m4))⟩
+          | single _ => exact o2.elim
+          | bot => exact o2.elim
+          | arrow _ _ => exact o2.elim
+          | pairTy _ _ _ _ => exact o2.elim
+        | tsel q' A' =>
+          obtain ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailW⟩ := o1
+          cases T2 with
+          | top => trivial
+          | tsel y C =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · injection hYeq with hs0 hy hC
+              subst hy; subst hC
+              exact ⟨mq, ℓw, W, (hpe2.chains_iff mq).mp hcq, hEw, m3, by omega, tailW⟩
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · injection hYeq with hs0 hy hC
+              subst hy; subst hC
+              exact ⟨mq3, ℓ33, W3, hc3, hE3, _, by omega,
+                .trans (h1.mono (Nat.le_max_left k m4))
+                       (tail2.mono (Nat.le_max_right k m4))⟩
+          | single _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | bot =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | arrow _ _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | pairTm _ _ _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | pairTy _ _ _ _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+      | pairTy S A T1c T2c =>
+        cases M with
+        | bot => exact o1.elim
+        | single _ => exact o1.elim
+        | arrow _ _ => exact o1.elim
+        | pairTm _ _ _ => exact o1.elim
+        | top =>
+          cases T2 with
+          | top => trivial
+          | tsel y C =>
+            obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, hW⟩ := o2
+            exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+              .trans (h1.mono (Nat.le_max_left k m4))
+                     (hW.mono (Nat.le_max_right k m4))⟩
+          | single _ => exact o2.elim
+          | bot => exact o2.elim
+          | arrow _ _ => exact o2.elim
+          | pairTm _ _ _ => exact o2.elim
+          | pairTy _ _ _ _ => exact o2.elim
+        | pairTy S0 A0 T01 T02 =>
+          obtain ⟨hA0, m3, hm3, dom1⟩ := o1
+          cases T2 with
+          | top => trivial
+          | pairTy S' A' T1' T2' =>
+            obtain ⟨hA1, m4, hm4, dom2⟩ := o2
+            exact ⟨hA0.trans hA1, _, by omega,
+              .trans (dom1.mono (Nat.le_max_left m3 m4))
+                     (dom2.mono (Nat.le_max_right m3 m4))⟩
+          | tsel y C =>
+            obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
+            exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
+              .trans (h1.mono (Nat.le_max_left k m4))
+                     (tail2.mono (Nat.le_max_right k m4))⟩
+          | single _ => exact o2.elim
+          | bot => exact o2.elim
+          | arrow _ _ => exact o2.elim
+          | pairTm _ _ _ => exact o2.elim
+        | tsel q' A' =>
+          obtain ⟨mq, ℓw, W, hcq, hEw, m3, hm3, tailW⟩ := o1
+          cases T2 with
+          | top => trivial
+          | tsel y C =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · injection hYeq with hs0 hy hC
+              subst hy; subst hC
+              exact ⟨mq, ℓw, W, (hpe2.chains_iff mq).mp hcq, hEw, m3, by omega, tailW⟩
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · injection hYeq with hs0 hy hC
+              subst hy; subst hC
+              exact ⟨mq3, ℓ33, W3, hc3, hE3, _, by omega,
+                .trans (h1.mono (Nat.le_max_left k m4))
+                       (tail2.mono (Nat.le_max_right k m4))⟩
+          | single _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | bot =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | arrow _ _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | pairTm _ _ _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+          | pairTy _ _ _ _ =>
+            rcases o2 with ⟨p3, hYeq, hpe2⟩ |
+              ⟨mq', ℓw', W', hcq', hEw', m4, hm4, tail2⟩ |
+              ⟨p3, A3, mq3, ℓ33, W3, hYeq, hc3, hE3, m4, hm4, tail2⟩
+            · exact nomatch hYeq
+            · cases hcq'.deterministic hcq
+              cases alias_unify hEw' hEw
+              exact SSub.descend hwf IHd mq hEw tailW tail2 (by omega) (by omega)
+            · exact nomatch hYeq
+
+#print axioms LambdaP.SSub.invert
 
 end LambdaP
