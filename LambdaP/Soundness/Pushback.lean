@@ -770,7 +770,11 @@ def SOut (Θ : Sto) (n : Nat) : Ty 0 -> Ty 0 -> Prop
     (∃ mq ℓ1 W, Chains Θ q mq ∧
       Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
         (Ty.weaken W) (Ty.weaken W)) ∧
-      ∃ m, m < n ∧ SSub Θ W X m)
+      ∃ m, m < n ∧ SSub Θ W X m) ∨
+    (∃ p2 A2 mq ℓ1 W, X = .tsel p2 A2 ∧ Chains Θ p2 mq ∧
+      Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A2
+        (Ty.weaken W) (Ty.weaken W)) ∧
+      ∃ m, m < n ∧ SSub Θ (.tsel q A) W m)
 | .top, .top => True
 | .top, .tsel q A =>
     ∃ mq ℓ1 W, Chains Θ q mq ∧
@@ -796,8 +800,165 @@ theorem SOut.mono {Θ : Sto} {n n' : Nat} {T1 T2 : Ty 0}
     | (obtain ⟨m, hm, hs⟩ := h
        exact ⟨m, by omega, hs⟩)
     | (rcases h with ⟨p2, hX, hpe⟩ | ⟨a1, a2, a3, h1, h2, m, hm, hs⟩
+         | ⟨p2, A2, a1, a2, a3, hX, h1, h2, m, hm, hs⟩
        · exact Or.inl ⟨p2, hX, hpe⟩
-       · exact Or.inr ⟨a1, a2, a3, h1, h2, m, by omega, hs⟩)
+       · exact Or.inr (Or.inl ⟨a1, a2, a3, h1, h2, m, by omega, hs⟩)
+       · exact Or.inr (Or.inr ⟨p2, A2, a1, a2, a3, hX, h1, h2, m, by omega, hs⟩))
 
+
+
+/-- Chains from a bare location resolve to it. -/
+theorem Chains.var_free_eq {Θ : Sto} {ℓ m : Nat}
+    (h : Chains Θ (.var (.free ℓ) : Path 0) m) : m = ℓ := by
+  cases h with
+  | loc _ => rfl
+
+
+/-- Subject transport: `SOut` facts about a singleton subject move along
+path equivalence (chains via `chains_iff`, tsel wrappers via `trans`;
+fuel only ever grows). -/
+theorem SOut.peq_subject {Θ : Sto} {p p0 : Path 0} {S : Ty 0} {m n : Nat}
+    (hpe : PEq Θ p p0)
+    (o : SOut Θ m (.single p0) S) (hmn : m ≤ n) :
+    SOut Θ n (.single p) S := by
+  cases S with
+  | single s => exact hpe.trans o
+  | pairTm S a T =>
+    obtain ⟨ℓ0, ℓ1, ℓ2, hc, hE, m', hm', dom⟩ := o
+    exact ⟨ℓ0, ℓ1, ℓ2, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, dom⟩
+  | pairTy S A T1 T2 =>
+    obtain ⟨ℓ0, ℓ1, W, hc, hE, m', hm', dom⟩ := o
+    exact ⟨ℓ0, ℓ1, W, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, dom⟩
+  | arrow S T =>
+    obtain ⟨ℓ0, S0, T0, hc, hE, m', hm', dom⟩ := o
+    exact ⟨ℓ0, S0, T0, (hpe.chains_iff ℓ0).mpr hc, hE, m', by omega, dom⟩
+  | tsel q A =>
+    obtain ⟨mq, ℓ1, W, hcq, hE, p', hpe', m', hm', tail⟩ := o
+    exact ⟨mq, ℓ1, W, hcq, hE, p', hpe.trans hpe', m', by omega, tail⟩
+  | top => trivial
+  | bot => exact o.elim
+
+
+
+/-- The sized inversion theorem: every sized runtime subtyping fact
+reads off as its shape-directed store content. -/
+theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
+    ∀ (n : Nat) {T1 T2 : Ty 0}, SSub Θ T1 T2 n -> SOut Θ n T1 T2 := by
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n IH =>
+    intro T1 T2 hs
+    cases hs with
+    | refl =>
+      rename_i k
+      cases T1 with
+      | single p => exact .refl
+      | pairTm S a T => exact ⟨rfl, 1, by omega, .refl⟩
+      | pairTy S A T1 T2 => exact ⟨rfl, 1, by omega, .refl⟩
+      | arrow S T => exact ⟨1, by omega, .refl⟩
+      | tsel q A => exact Or.inl ⟨q, rfl, .refl⟩
+      | top => trivial
+      | bot => trivial
+    | bot => trivial
+    | top =>
+      rename_i k
+      cases T1 <;> simp only [SOut] <;> trivial
+    | var_free hl =>
+      rename_i ℓ T k
+      rw [Ty.fromClosed_zero]
+      cases (hwf hl).1 with
+      | arrow =>
+        rename_i S0 T0
+        exact ⟨ℓ, S0, T0, .loc hl, hl, 1, by omega, .refl⟩
+      | pair_tm =>
+        rename_i ℓ1 a ℓ2
+        exact ⟨ℓ, ℓ1, ℓ2, .loc hl, hl, 1, by omega, .refl⟩
+      | pair_ty =>
+        rename_i ℓ1 A W
+        exact ⟨ℓ, ℓ1, W, .loc hl, hl, 1, by omega, .refl⟩
+    | symm hw h =>
+      rename_i p q k
+      exact (IH k (by omega) h).symm
+    | sel_tm_loc hc hl =>
+      rename_i p m0 S a ℓ2 k
+      have hlt : m0 < Θ.length := (List.getElem?_eq_some_iff.mp hl).1
+      have hb := (hwf hl).2
+      simp [Ty.LocsBelow, Path.LocsBelow, Var.LocsBelow, Ty.weaken,
+        Ty.rename, Path.rename, Var.rename] at hb
+      obtain ⟨E2, hE2⟩ := Sto.lookup_lt (show ℓ2 < Θ.length by omega)
+      exact .cochain (.sel hc hl) (.loc hE2)
+    | sel_hi_loc hc hl h =>
+      rename_i p m0 ℓ1 A W k
+      rw [Ty.fromClosed_zero] at h
+      cases T2 <;> simp only [SOut]
+      · exact Or.inr (Or.inl ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩)
+      · exact Or.inr (Or.inl ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩)
+      · exact Or.inr (Or.inl ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩)
+      · exact Or.inr (Or.inl ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩)
+      · exact Or.inr (Or.inl ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩)
+      · exact Or.inr (Or.inl ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩)
+    | sel_lo_loc hc hl h =>
+      rename_i p m0 ℓ1 A W k
+      rw [Ty.fromClosed_zero] at h
+      cases T1 with
+      | single u =>
+        exact ⟨m0, ℓ1, W, hc, hl, u, .refl, k, by omega, h⟩
+      | pairTm S a T => exact ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩
+      | pairTy S A T1 T2 => exact ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩
+      | arrow S T => exact ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩
+      | tsel u B =>
+        exact Or.inr (Or.inr ⟨p, _, m0, ℓ1, W, rfl, hc, hl, k, by omega, h⟩)
+      | top => exact ⟨m0, ℓ1, W, hc, hl, k, by omega, h⟩
+      | bot => trivial
+    | skip_tm_loc hc hl hne =>
+      exact .skip_tm hc hl hne
+    | skip_ty_loc hc hl =>
+      exact .skip_ty hc hl
+    | arrow h1 h2 =>
+      rename_i S' S k T T'
+      exact ⟨k, by omega, h1⟩
+    | pair_tm h1 h2 =>
+      rename_i S S' k T T' a
+      exact ⟨rfl, k, by omega, h1⟩
+    | pair_ty h1 h2 h3 =>
+      rename_i S S' k T1' T1 T2 T2' A
+      exact ⟨rfl, k, by omega, h1⟩
+    | repl hwp hwq h1 h2 =>
+      rename_i p q k T0
+      have hpe : PEq Θ p q := IH k (by omega) h1
+      cases T0 with
+      | top => simp only [Ty.open, Ty.subst, SOut]
+      | bot => simp only [Ty.open, Ty.subst, SOut]
+      | single r =>
+        simp only [Ty.open, Ty.subst, SOut]
+        exact .congr hwp hwq hpe
+      | tsel r B =>
+        simp only [Ty.open, Ty.subst, SOut]
+        exact Or.inl ⟨_, rfl, .congr hwp hwq hpe⟩
+      | arrow S0 T0' =>
+        simp only [Ty.open, Ty.subst, SOut]
+        exact ⟨k + 1, by omega, .repl hwq hwp h2 h1⟩
+      | pairTm S0 b T0' =>
+        simp only [Ty.open, Ty.subst, SOut]
+        exact ⟨by trivial, k + 1, by omega, .repl hwp hwq h1 h2⟩
+      | pairTy S0 B T01 T02 =>
+        simp only [Ty.open, Ty.subst, SOut]
+        exact ⟨by trivial, k + 1, by omega, .repl hwp hwq h1 h2⟩
+    | fst_tm h =>
+      rename_i p a T k
+      obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE, m, hm, hdom⟩ := IH k (by omega) h
+      have hcf : Chains Θ p.fst ℓ1 := .fst_tm hcp hE
+      obtain ⟨E1, hE1⟩ := hcf.in_dom hwf
+      have oS := IH m (by omega) hdom
+      exact oS.peq_subject (.cochain hcf (.loc hE1)) (by omega)
+    | fst_ty h =>
+      rename_i p A T1c T2c k
+      obtain ⟨ℓ0, ℓ1, W, hcp, hE, m, hm, hdom⟩ := IH k (by omega) h
+      have hcf : Chains Θ p.fst ℓ1 := .fst_ty hcp hE
+      obtain ⟨E1, hE1⟩ := hcf.in_dom hwf
+      have oS := IH m (by omega) hdom
+      exact oS.peq_subject (.cochain hcf (.loc hE1)) (by omega)
+    | trans h1 h2 =>
+      sorry
 
 end LambdaP
