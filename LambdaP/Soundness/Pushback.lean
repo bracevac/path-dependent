@@ -591,4 +591,71 @@ theorem Ty.open_eq_bot {T : Ty 1} {q : Path 0}
   | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
 
 
+
+/-! ### Inversion pack under shaped stores. -/
+
+/-- Entry-shaped types are never below a singleton in the trans-free
+judgment (the shape lemma the symm and singles cases consult). -/
+theorem SPP.entry_no_single {Θ : Sto} {E U : Ty 0}
+    (hs : Sto.EntryShape E) (h : SPP Θ E U) :
+    ∀ {q : Path 0}, U = .single q -> False := by
+  cases h with
+  | refl =>
+    intro q hU
+    subst hU
+    nomatch hs
+  | bot => nomatch hs
+  | top => intro q hU; cases hU
+  | sngl _ => nomatch hs
+  | unfold _ _ _ => nomatch hs
+  | tsel_hi _ _ _ => nomatch hs
+  | tsel_lo _ _ _ => intro q hU; cases hU
+  | repl hwp hwq hpe =>
+    intro q hU
+    obtain ⟨P0, hT, -⟩ := Ty.open_eq_single hU
+    subst hT
+    simp only [Ty.open, Ty.subst] at hs
+    nomatch hs
+  | arrow _ _ => intro q hU; cases hU
+  | pair_tm _ _ => intro q hU; cases hU
+  | pair_ty _ _ _ => intro q hU; cases hU
+
+/-- Trans-free singleton-singleton facts are path equivalences. -/
+theorem SPP.single_single_inv {Θ : Sto} {T1 T2 : Ty 0}
+    (hwf : Sto.Shaped Θ) (h : SPP Θ T1 T2) :
+    ∀ {p q : Path 0}, T1 = .single p -> T2 = .single q -> PEq Θ p q := by
+  cases h with
+  | refl =>
+    intro p q h1 h2
+    subst h1
+    injection h2 with hs0 hpq
+    subst hpq
+    exact .refl
+  | bot => intro p q h1 _; cases h1
+  | top => intro p q _ h2; cases h2
+  | sngl hpe =>
+    intro p q h1 h2
+    injection h1 with hs1 e1
+    injection h2 with hs2 e2
+    subst e1; subst e2
+    exact hpe
+  | unfold hc hl hE =>
+    intro p q h1 h2
+    exact absurd h2 (fun h2 => SPP.entry_no_single (hwf hl).1 hE h2)
+  | tsel_hi _ _ _ => intro p q h1 _; cases h1
+  | tsel_lo _ _ _ => intro p q _ h2; cases h2
+  | repl hwp hwq hpe =>
+    intro p q h1 h2
+    obtain ⟨P1, hT1, hp⟩ := Ty.open_eq_single h1
+    obtain ⟨P2, hT2, hq⟩ := Ty.open_eq_single h2
+    subst hT1
+    injection hT2 with hs0 hP
+    subst hP
+    subst hp; subst hq
+    exact .congr hwp hwq hpe
+  | arrow _ _ => intro p q h1 _; cases h1
+  | pair_tm _ _ => intro p q h1 _; cases h1
+  | pair_ty _ _ _ => intro p q h1 _; cases h1
+
+
 end LambdaP
