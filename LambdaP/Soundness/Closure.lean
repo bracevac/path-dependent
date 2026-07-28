@@ -191,6 +191,18 @@ theorem Sub.den {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s} (hs : Sub Θ Γ τ1 τ
       have hres := hOp _ (PathEval.fst_tm hev hlk') n
       rw [← Ty.open_subst_comm]
       exact hres
+    | sel_skip_tm hev hlk hne hin =>
+      have ih := ih1 hh hok hσ n _ (by simp only [Ty.subst, Den]; exact hev)
+      simp only [Ty.subst, Den] at ih
+      obtain ⟨ℓ1', ℓ2', hlk', -, -, -⟩ := ih
+      have heq := Option.some.inj (hlk.symm.trans hlk')
+      injection heq with _ _ hab _
+      exact absurd hab.symm hne
+    | sel_skip_ty hev hlk hin =>
+      have ih := ih1 hh hok hσ n _ (by simp only [Ty.subst, Den]; exact hev)
+      simp only [Ty.subst, Den] at ih
+      obtain ⟨ℓ1', ℓ2', hlk', -, -, -⟩ := ih
+      cases Option.some.inj (hlk.symm.trans hlk')
   · rename_i h1 h2u ih1 ih2u
     intro Ξ hp σ hh hok hσ n ℓ hd
     simp only [Ty.subst, Den] at hd
@@ -298,6 +310,40 @@ theorem Sub.den {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s} (hs : Sub Θ Γ τ1 τ
     rw [← Ty.open_subst_comm] at hd
     rw [← Ty.open_subst_comm]
     exact Den.open_coeval hh hok _ _ (Nat.le_refl _) hevp hq' hwp' hwq' n ℓ hd
+  · -- skip_tm
+    rename_i h1 hne ih1
+    intro Ξ hp σ hh hok hσ n ℓcand hd
+    simp only [Ty.subst, Den] at hd ⊢
+    cases hd with
+    | sel hev hlk =>
+      have ih := ih1 hh hok hσ 0 _ (by simp only [Ty.subst, Den]; exact hev)
+      simp only [Ty.subst, Den] at ih
+      obtain ⟨ℓ1', ℓ2', hlk', -, -, -⟩ := ih
+      have heq := Option.some.inj (hlk.symm.trans hlk')
+      injection heq with _ _ hab _
+      exact absurd hab hne
+    | sel_skip_tm hev hlk hne' hin => exact hin
+    | sel_skip_ty hev hlk hin =>
+      have ih := ih1 hh hok hσ 0 _ (by simp only [Ty.subst, Den]; exact hev)
+      simp only [Ty.subst, Den] at ih
+      obtain ⟨ℓ1', ℓ2', hlk', -, -, -⟩ := ih
+      cases Option.some.inj (hlk.symm.trans hlk')
+  · -- skip_ty
+    rename_i h1 ih1
+    intro Ξ hp σ hh hok hσ n ℓcand hd
+    simp only [Ty.subst, Den] at hd ⊢
+    cases hd with
+    | sel hev hlk =>
+      have ih := ih1 hh hok hσ 0 _ (by simp only [Ty.subst, Den]; exact hev)
+      simp only [Ty.subst, Den] at ih
+      obtain ⟨ℓ1', W', hlk', -, -, -⟩ := ih
+      cases Option.some.inj (hlk.symm.trans hlk')
+    | sel_skip_tm hev hlk hne' hin =>
+      have ih := ih1 hh hok hσ 0 _ (by simp only [Ty.subst, Den]; exact hev)
+      simp only [Ty.subst, Den] at ih
+      obtain ⟨ℓ1', W', hlk', -, -, -⟩ := ih
+      cases Option.some.inj (hlk.symm.trans hlk')
+    | sel_skip_ty hev hlk hin => exact hin
   · rename_i x T hx
     intro Ξ hp σ hh hok hσ
     obtain ⟨m, hev, -⟩ := hσ.realized hx
@@ -325,6 +371,14 @@ theorem Sub.den {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s} (hs : Sub Θ Γ τ1 τ
     simp only [Ty.subst, Den] at ih
     obtain ⟨ℓ1, ℓ2, hlk, -, -, -⟩ := ih
     exact ⟨ℓ2, .sel hev hlk⟩
+  · intros
+    rename_i h1 hsub hne ih1 ihsub Ξx hpx σx hh hok hσ
+    obtain ⟨m, hin⟩ := ih1 hh hok hσ
+    exact PathEval.sel_from_skip hin
+  · intros
+    rename_i h1 hsub ih1 ihsub Ξx hpx σx hh hok hσ
+    obtain ⟨m, hin⟩ := ih1 hh hok hσ
+    exact PathEval.sel_from_skip hin
 
 /-- Wellformed paths evaluate, under realized closing substitutions. -/
 theorem Path.Wf.den_eval {Θ : Sto} {Γ : Ctx s} {p : Path s} (hw : Path.Wf Θ Γ p) :
@@ -360,5 +414,13 @@ theorem Path.Wf.den_eval {Θ : Sto} {Γ : Ctx s} {p : Path s} (hw : Path.Wf Θ �
     simp only [Ty.subst, Den] at ih
     obtain ⟨ℓ1, ℓ2, hlk, -, -, -⟩ := ih
     exact ⟨ℓ2, .sel hev hlk⟩
+  · intros
+    rename_i h1 hsub hne ih1 ihT Ξx hpx σx hh hok hσ
+    obtain ⟨m, hin⟩ := ih1 hh hok hσ
+    exact PathEval.sel_from_skip hin
+  · intros
+    rename_i h1 hsub ih1 ihT Ξx hpx σx hh hok hσ
+    obtain ⟨m, hin⟩ := ih1 hh hok hσ
+    exact PathEval.sel_from_skip hin
 
 end LambdaP

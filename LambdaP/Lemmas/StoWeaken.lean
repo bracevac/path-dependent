@@ -35,6 +35,8 @@ theorem Sub.sto_weaken {Θ Θ' : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s}
   | .repl hwp hwq h1 h2 =>
     .repl (hwp.sto_weaken hext) (hwq.sto_weaken hext)
       (h1.sto_weaken hext) (h2.sto_weaken hext)
+  | .skip_tm h1 hne => .skip_tm (h1.sto_weaken hext) hne
+  | .skip_ty h1 => .skip_ty (h1.sto_weaken hext)
 
 /-- Path wellformedness is monotone under store-typing extension. -/
 theorem Path.Wf.sto_weaken {Θ Θ' : Sto} {Γ : Ctx s} {p : Path s}
@@ -45,6 +47,10 @@ theorem Path.Wf.sto_weaken {Θ Θ' : Sto} {Γ : Ctx s} {p : Path s}
   | .fst_tm h1 hsub => .fst_tm (h1.sto_weaken hext) (hsub.sto_weaken hext)
   | .fst_ty h1 hsub => .fst_ty (h1.sto_weaken hext) (hsub.sto_weaken hext)
   | .sel h1 hsub => .sel (h1.sto_weaken hext) (hsub.sto_weaken hext)
+  | .sel_skip_tm h1 hsub hne =>
+    .sel_skip_tm (h1.sto_weaken hext) (hsub.sto_weaken hext) hne
+  | .sel_skip_ty h1 hsub =>
+    .sel_skip_ty (h1.sto_weaken hext) (hsub.sto_weaken hext)
 
 end
 

@@ -200,6 +200,17 @@ inductive Chains (Θ : Sto) : Path 0 -> Nat -> Prop where
   Chains Θ p ℓ ->
   Sto.Lookup Θ ℓ (.pairTm S a (Ty.single (.var (.free ℓ2))).weaken) ->
   Chains Θ (p.sel a) ℓ2
+| sel_skip_tm :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTm S b Tc) ->
+  a ≠ b ->
+  Chains Θ ((Path.fst p).sel a) m ->
+  Chains Θ (p.sel a) m
+| sel_skip_ty :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTy S B T1 T2) ->
+  Chains Θ ((Path.fst p).sel a) m ->
+  Chains Θ (p.sel a) m
 
 theorem Chains.deterministic {Θ : Sto} {p : Path 0} {ℓ1 ℓ2 : Nat}
     (h1 : Chains Θ p ℓ1) (h2 : Chains Θ p ℓ2) : ℓ1 = ℓ2 := by
@@ -234,6 +245,34 @@ theorem Chains.deterministic {Θ : Sto} {p : Path 0} {ℓ1 ℓ2 : Nat}
       have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
       cases this
       rfl
+    | sel_skip_tm h2 hl2 hne2 _ =>
+      cases ih h2
+      have heq := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      injection heq with hs h1e h2e h3e
+      exact absurd h2e hne2
+    | sel_skip_ty h2 hl2 _ =>
+      cases ih h2
+      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+  | sel_skip_tm h1 hl1 hne1 _ ihp ihin =>
+    cases h2 with
+    | sel h2 hl2 =>
+      cases ihp h2
+      have heq := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      injection heq with hs h1e h2e h3e
+      exact absurd h2e.symm hne1
+    | sel_skip_tm h2 hl2 hne2 hin2 => exact ihin hin2
+    | sel_skip_ty h2 hl2 hin2 =>
+      cases ihp h2
+      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+  | sel_skip_ty h1 hl1 _ ihp ihin =>
+    cases h2 with
+    | sel h2 hl2 =>
+      cases ihp h2
+      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+    | sel_skip_tm h2 hl2 hne2 hin2 =>
+      cases ihp h2
+      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+    | sel_skip_ty h2 hl2 hin2 => exact ihin hin2
 
 /-- Recorded pair entries agree with stored pair values componentwise. -/
 theorem HeapTyped.entry_value_tm {Θ : Sto} {h : Heap} {ℓ ℓ1 : Nat}
@@ -276,5 +315,15 @@ theorem Chains.pathEval {Θ : Sto} {h : Heap} {p : Path 0} {ℓ : Nat}
     simp only [Ty.weaken, Ty.rename, Path.rename, Var.rename] at heq
     cases heq
     exact .sel ih hvl
+  | sel_skip_tm hc hl hne hin ihc ihin =>
+    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨ℓ1', b', ℓ2', he⟩ | ⟨_, _, _, he⟩ <;>
+      cases he
+    obtain ⟨ℓ2'', heq, hvl⟩ := hh.entry_value_tm hl
+    exact .sel_skip_tm ihc hvl hne ihin
+  | sel_skip_ty hc hl hin ihc ihin =>
+    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨_, _, _, he⟩ | ⟨ℓ1', B', W', he⟩ <;>
+      cases he
+    obtain ⟨W'', heq1, heq2, hvl⟩ := hh.entry_value_ty hl
+    exact .sel_skip_ty ihc hvl ihin
 
 end LambdaP

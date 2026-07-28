@@ -92,6 +92,8 @@ theorem Path.Wf.locsBelow {Θ : Sto} {Γ : Ctx s} {p : Path s}
   | .fst_tm h1 _ => h1.locsBelow
   | .fst_ty h1 _ => h1.locsBelow
   | .sel h1 _ => h1.locsBelow
+  | .sel_skip_tm h1 _ _ => h1.locsBelow
+  | .sel_skip_ty h1 _ => h1.locsBelow
 
 /-- Wellformed types mention only recorded locations. -/
 theorem Wf.locsBelow {Θ : Sto} {Γ : Ctx s} {τ : Tau s}

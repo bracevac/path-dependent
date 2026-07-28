@@ -173,6 +173,16 @@ singleton inclusion would be unsound at contravariant positions. -/
   Sub Θ Γ (.ty (.single p)) (.ty (.single q)) ->
   Sub Θ Γ (.ty (.single q)) (.ty (.single p)) ->
   Sub Θ Γ (.ty (Ty.open T p)) (.ty (Ty.open T q))
+/-- Selection skip over a term member with a different label (records
+as nested pairs; the fixed form of the draft's scoping-buggy sel-l). -/
+| skip_tm :
+  Sub Θ Γ (.ty (.single p)) (.ty (.pairTm S b T)) ->
+  a ≠ b ->
+  Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single ((Path.fst p).sel a)))
+/-- Selection skip over a type member. -/
+| skip_ty :
+  Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S B T1 T2)) ->
+  Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single ((Path.fst p).sel a)))
 
 /-- Wellformedness of paths: every projection/selection is justified by
 subtyping evidence at a pair type. -/
@@ -194,6 +204,16 @@ inductive Path.Wf : Sto -> Ctx s -> Path s -> Prop where
 | sel :
   Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTm S a T)) ->
+  Path.Wf Θ Γ (p.sel a)
+/-- A skipping selection is wellformed when its skipped form is. -/
+| sel_skip_tm :
+  Path.Wf Θ Γ ((Path.fst p).sel a) ->
+  Sub Θ Γ (.ty (.single p)) (.ty (.pairTm S b T)) ->
+  a ≠ b ->
+  Path.Wf Θ Γ (p.sel a)
+| sel_skip_ty :
+  Path.Wf Θ Γ ((Path.fst p).sel a) ->
+  Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S B T1 T2)) ->
   Path.Wf Θ Γ (p.sel a)
 
 end

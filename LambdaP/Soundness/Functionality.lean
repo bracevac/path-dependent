@@ -1,4 +1,5 @@
 import LambdaP.Soundness.Progress
+import LambdaP.Lemmas.Locs
 
 /-!
 Support for the functionality lemma (`T.open q` and `T.open ℓ` are mutual
@@ -11,26 +12,8 @@ namespace LambdaP
 /-- Wellformed closed paths evaluate into the store. -/
 theorem Path.Wf.eval_target_lt {Θ : Sto} {h : Heap} {p : Path 0} {m : Nat}
     (hh : HeapTyped Θ h) (hw : Path.Wf Θ .empty p) (he : PathEval h p m) :
-    m < Θ.length := by
-  induction he with
-  | var =>
-    cases hw with
-    | var_free hl => exact (List.getElem?_eq_some_iff.mp hl).1
-  | fst_tm _ hl _ =>
-    obtain ⟨-, -, -, -, hb⟩ := hh.lookup_heap hl
-    have hlt := (List.getElem?_eq_some_iff.mp hl).1
-    rw [hh.1]
-    exact Nat.lt_trans hb.1 hlt
-  | fst_ty _ hl _ =>
-    obtain ⟨-, -, -, -, hb⟩ := hh.lookup_heap hl
-    have hlt := (List.getElem?_eq_some_iff.mp hl).1
-    rw [hh.1]
-    exact Nat.lt_trans hb.1 hlt
-  | sel _ hl _ =>
-    obtain ⟨-, -, -, -, hb⟩ := hh.lookup_heap hl
-    have hlt := (List.getElem?_eq_some_iff.mp hl).1
-    rw [hh.1]
-    exact Nat.lt_trans hb.2 hlt
+    m < Θ.length :=
+  PathEval.target_lt hh.bounded he hw.locsBelow
 
 /-- The vacuous renaming embeds the empty context into any context. -/
 theorem Renaming.fromEmpty {s : Sig} {Γ : Ctx s} :

@@ -72,6 +72,20 @@ theorem PathEval.to_sub {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h)
       rw [Ty.fromClosed_zero] at hloc
       have hres := Sub.sel_tm (.trans ih hloc)
       rwa [Ty.weaken_open] at hres
+  | sel_skip_tm _ hl hne _ ihp ihin =>
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    cases hpre with
+    | pair_tm _ _ =>
+      have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
+      rw [Ty.fromClosed_zero] at hloc
+      exact .trans (.skip_tm (.trans ihp hloc) hne) ihin
+  | sel_skip_ty _ hl _ ihp ihin =>
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    cases hpre with
+    | pair_ty _ _ =>
+      have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
+      rw [Ty.fromClosed_zero] at hloc
+      exact .trans (.skip_ty (.trans ihp hloc)) ihin
 
 /-- Inversion for path typing: a typed path is wellformed and its singleton
 is below the ascribed type. -/

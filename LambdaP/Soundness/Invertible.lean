@@ -191,6 +191,10 @@ theorem Sub.intv_main {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s}
     cases hE
     exact ⟨_, _, rfl, h1, h2⟩
   · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intros; trivial
+  · intros; trivial
   · intros; trivial
   · intros; trivial
   · intros; trivial
@@ -330,35 +334,99 @@ theorem Ty.open_eq_bot {T : Ty 1} {q : Path 0}
   | pairTm _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
   | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
 
+/-- Pointwise co-resolution of two closing substitutions. -/
+def CoChains (Θ : Sto) (σ1 σ2 : Subst s 0) : Prop :=
+  ∀ (x : BVar s) (m : Nat), Chains Θ (σ1.var x) m ↔ Chains Θ (σ2.var x) m
+
+/-- Resolution of a substituted path only depends on the targets of the
+substituted-in paths (store-side mirror of `PathEval.subst_congr`). -/
+theorem Chains.subst_congr {Θ : Sto} {σ1 σ2 : Subst s 0}
+    (hco : CoChains Θ σ1 σ2) :
+    ∀ {p : Path s} {m : Nat},
+      Chains Θ (p.subst σ1) m -> Chains Θ (p.subst σ2) m := by
+  intro p m he
+  generalize hE : p.subst σ1 = r at he
+  induction he generalizing p with
+  | loc hl =>
+    match p, hE with
+    | .var (.bound b), hE =>
+      exact (hco b _).mp (by show Chains Θ ((Path.var (Var.bound b)).subst σ1) _; rw [hE]; exact .loc hl)
+    | .var (.free n), hE =>
+      cases hE
+      exact .loc hl
+  | fst_tm he' hl ih =>
+    match p, hE with
+    | .var (.bound b), hE =>
+      exact (hco b _).mp (by show Chains Θ ((Path.var (Var.bound b)).subst σ1) _; rw [hE]; exact .fst_tm he' hl)
+    | .var (.free n), hE => cases hE
+    | .fst p', hE =>
+      simp only [Path.subst] at hE
+      cases hE
+      exact .fst_tm (ih (p := p') rfl) hl
+  | fst_ty he' hl ih =>
+    match p, hE with
+    | .var (.bound b), hE =>
+      exact (hco b _).mp (by show Chains Θ ((Path.var (Var.bound b)).subst σ1) _; rw [hE]; exact .fst_ty he' hl)
+    | .var (.free n), hE => cases hE
+    | .fst p', hE =>
+      simp only [Path.subst] at hE
+      cases hE
+      exact .fst_ty (ih (p := p') rfl) hl
+  | sel he' hl ih =>
+    match p, hE with
+    | .var (.bound b), hE =>
+      exact (hco b _).mp (by show Chains Θ ((Path.var (Var.bound b)).subst σ1) _; rw [hE]; exact .sel he' hl)
+    | .var (.free n), hE => cases hE
+    | .sel p' a', hE =>
+      simp only [Path.subst] at hE
+      cases hE
+      exact .sel (ih (p := p') rfl) hl
+  | sel_skip_tm hp hl hne hin ihp ihin =>
+    match p, hE with
+    | .var (.bound b), hE =>
+      exact (hco b _).mp (by show Chains Θ ((Path.var (Var.bound b)).subst σ1) _; rw [hE]; exact .sel_skip_tm hp hl hne hin)
+    | .var (.free n), hE => cases hE
+    | .sel p' a', hE =>
+      simp only [Path.subst] at hE
+      cases hE
+      exact .sel_skip_tm (ihp (p := p') rfl) hl hne
+        (ihin (p := (Path.fst p').sel _) (by simp only [Path.subst]))
+  | sel_skip_ty hp hl hin ihp ihin =>
+    match p, hE with
+    | .var (.bound b), hE =>
+      exact (hco b _).mp (by show Chains Θ ((Path.var (Var.bound b)).subst σ1) _; rw [hE]; exact .sel_skip_ty hp hl hin)
+    | .var (.free n), hE => cases hE
+    | .sel p' a', hE =>
+      simp only [Path.subst] at hE
+      cases hE
+      exact .sel_skip_ty (ihp (p := p') rfl) hl
+        (ihin (p := (Path.fst p').sel _) (by simp only [Path.subst]))
+
+/-- Co-resolution of the two opening substitutions of co-resolving
+opener paths. -/
+theorem CoChains.openPath {Θ : Sto} {q q' : Path 0} {ℓq : Nat}
+    (hq : Chains Θ q ℓq) (hq' : Chains Θ q' ℓq) :
+    CoChains Θ (Subst.openPath q) (Subst.openPath q') := by
+  intro x m
+  cases x with
+  | here =>
+    constructor
+    · intro he
+      cases Chains.deterministic he hq
+      exact hq'
+    · intro he
+      cases Chains.deterministic he hq'
+      exact hq
+  | there b => exact nomatch b
+
 /-- Resolution of an opened path only depends on the target of the
 opening path (the store-side mirror of `PathEval.open_congr`). -/
 theorem Chains.open_congr {Θ : Sto} {q q' : Path 0} {ℓq : Nat}
     (hq : Chains Θ q ℓq) (hq' : Chains Θ q' ℓq) :
     ∀ {p : Path 1} {m : Nat},
       Chains Θ (p.subst (Subst.openPath q)) m ->
-      Chains Θ (p.subst (Subst.openPath q')) m := by
-  intro p
-  induction p with
-  | var x =>
-    intro m he
-    cases x with
-    | bound b =>
-      cases b with
-      | here =>
-        have : m = ℓq := Chains.deterministic he hq
-        subst this
-        exact hq'
-      | there b => exact nomatch b
-    | free n => exact he
-  | fst p ih =>
-    intro m he
-    cases he with
-    | fst_tm he' hl => exact .fst_tm (ih he') hl
-    | fst_ty he' hl => exact .fst_ty (ih he') hl
-  | sel p a ih =>
-    intro m he
-    cases he with
-    | sel he' hl => exact .sel (ih he') hl
+      Chains Θ (p.subst (Subst.openPath q')) m :=
+  fun he => Chains.subst_congr (CoChains.openPath hq hq') he
 
 /-- A location with a possible singleton type is the path's target. -/
 theorem Inv.single_inv {Θ : Sto} {h : Heap} {ℓ : Nat} {q : Path 0}
@@ -514,6 +582,14 @@ theorem TightSub.inv_closure {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h)
       have hlt := Nat.lt_trans (Ty.locsBelow_rename.mp ((hh.2 hl).1).2) hm
       obtain ⟨T1, hl1⟩ := Sto.lookup_lt hlt
       exact .sngl (.loc hl1)
+    | sel_skip_tm hc' hl' hne' hin' =>
+      cases Chains.deterministic hc' hc
+      have heq := Option.some_inj.mp ((Eq.symm hl').trans hl)
+      injection heq with hs h1 h2 h3
+      exact absurd h2.symm hne'
+    | sel_skip_ty hc' hl' hin' =>
+      cases Chains.deterministic hc' hc
+      cases Option.some_inj.mp ((Eq.symm hl').trans hl)
   | sel_hi hc hl =>
     intro ℓ' hi
     obtain ⟨m'', ℓ1'', W'', hc'', hl'', hiW⟩ := Inv.tsel_inv hh hi

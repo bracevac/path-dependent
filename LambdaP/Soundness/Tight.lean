@@ -96,6 +96,14 @@ theorem Chains.to_sub {Θ : Sto} {p : Path 0} {ℓ : Nat}
     rw [Ty.fromClosed_zero] at hvf
     have hs := Sub.sel_tm (.trans ih hvf)
     rwa [Ty.weaken_open] at hs
+  | sel_skip_tm _ hl hne _ ihp ihin =>
+    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
+    rw [Ty.fromClosed_zero] at hvf
+    exact .trans (.skip_tm (.trans ihp hvf) hne) ihin
+  | sel_skip_ty _ hl _ ihp ihin =>
+    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
+    rw [Ty.fromClosed_zero] at hvf
+    exact .trans (.skip_ty (.trans ihp hvf)) ihin
 
 /-- Store-side resolution yields general path wellformedness. -/
 theorem Chains.wf {Θ : Sto} {p : Path 0} {ℓ : Nat}
@@ -114,6 +122,14 @@ theorem Chains.wf {Θ : Sto} {p : Path 0} {ℓ : Nat}
     have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
     rw [Ty.fromClosed_zero] at hvf
     exact .sel ih (.trans hc.to_sub hvf)
+  | sel_skip_tm hc hl hne _ ihp ihin =>
+    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
+    rw [Ty.fromClosed_zero] at hvf
+    exact .sel_skip_tm ihin (.trans hc.to_sub hvf) hne
+  | sel_skip_ty hc hl _ ihp ihin =>
+    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
+    rw [Ty.fromClosed_zero] at hvf
+    exact .sel_skip_ty ihin (.trans hc.to_sub hvf)
 
 /-- The precise pair-type evidence used by the anchored selection rules,
 in general form: a chaining path sits below its target's entry. -/

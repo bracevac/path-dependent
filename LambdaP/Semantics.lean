@@ -51,6 +51,20 @@ inductive PathEval (h : Heap) : Path 0 -> Nat -> Prop where
   PathEval h p ℓ ->
   Heap.Lookup h ℓ (.pairTm (.free ℓ1) a (.free ℓ2)) ->
   PathEval h (p.sel a) ℓ2
+/-- Selection skips a term member with a different label: records are
+nested pairs, so the member is found in the first component. -/
+| sel_skip_tm :
+  PathEval h p ℓ ->
+  Heap.Lookup h ℓ (.pairTm (.free ℓ1) b (.free ℓ2)) ->
+  a ≠ b ->
+  PathEval h ((Path.fst p).sel a) m ->
+  PathEval h (p.sel a) m
+/-- Selection skips a type member. -/
+| sel_skip_ty :
+  PathEval h p ℓ ->
+  Heap.Lookup h ℓ (.pairTy (.free ℓ1) B T) ->
+  PathEval h ((Path.fst p).sel a) m ->
+  PathEval h (p.sel a) m
 
 /-- Small-step reduction on heap/term configurations. -/
 inductive Step : Heap -> Tm 0 -> Heap -> Tm 0 -> Prop where
@@ -142,6 +156,8 @@ theorem PathEval.target_lt {h : Heap} (hb : Heap.Bounded h) {p : Path 0} {m k : 
   | fst_tm _ hl ih => exact Nat.lt_trans (hb hl).1 (ih hp)
   | fst_ty _ hl ih => exact Nat.lt_trans (hb hl).1 (ih hp)
   | sel _ hl ih => exact Nat.lt_trans (hb hl).2 (ih hp)
+  | sel_skip_tm _ _ _ _ _ ihs => exact ihs hp
+  | sel_skip_ty _ _ _ _ ihs => exact ihs hp
 
 /-! ### Heap typing -/
 
