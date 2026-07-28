@@ -180,4 +180,101 @@ theorem PrecisePath.single_lt {Θ : Sto} {h : Heap} {p : Path 0} {ℓ' : Nat}
   · cases he
     exact hlt
 
+/-! ### Store-side path resolution -/
+
+/-- `Chains Θ p ℓ`: the store-typing mirror of `PathEval` — the path
+resolves to `ℓ` reading component locations off the precise entries. -/
+inductive Chains (Θ : Sto) : Path 0 -> Nat -> Prop where
+| loc :
+  Sto.Lookup Θ ℓ T ->
+  Chains Θ (.var (.free ℓ)) ℓ
+| fst_tm :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTm (.single (.var (.free ℓ1))) a Tc) ->
+  Chains Θ p.fst ℓ1
+| fst_ty :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTy (.single (.var (.free ℓ1))) A T1 T2) ->
+  Chains Θ p.fst ℓ1
+| sel :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTm S a (Ty.single (.var (.free ℓ2))).weaken) ->
+  Chains Θ (p.sel a) ℓ2
+
+theorem Chains.deterministic {Θ : Sto} {p : Path 0} {ℓ1 ℓ2 : Nat}
+    (h1 : Chains Θ p ℓ1) (h2 : Chains Θ p ℓ2) : ℓ1 = ℓ2 := by
+  induction h1 generalizing ℓ2 with
+  | loc _ => cases h2 with | loc _ => rfl
+  | fst_tm h1 hl1 ih =>
+    cases h2 with
+    | fst_tm h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+      rfl
+    | fst_ty h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+  | fst_ty h1 hl1 ih =>
+    cases h2 with
+    | fst_tm h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+    | fst_ty h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+      rfl
+  | sel h1 hl1 ih =>
+    cases h2 with
+    | sel h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+      rfl
+
+/-- Recorded pair entries agree with stored pair values componentwise. -/
+theorem HeapTyped.entry_value_tm {Θ : Sto} {h : Heap} {ℓ ℓ1 : Nat}
+    {a : Name} {Tc : Ty 1}
+    (hh : HeapTyped Θ h)
+    (hl : Sto.Lookup Θ ℓ (.pairTm (.single (.var (.free ℓ1))) a Tc)) :
+    ∃ ℓ2, Tc = (Ty.single (.var (.free ℓ2))).weaken ∧
+      Heap.Lookup h ℓ (.pairTm (.free ℓ1) a (.free ℓ2)) := by
+  obtain ⟨-, v, hvl, -, hpre⟩ := hh.2 hl
+  cases hpre with
+  | pair_tm hy hz =>
+    exact ⟨_, rfl, hvl⟩
+
+theorem HeapTyped.entry_value_ty {Θ : Sto} {h : Heap} {ℓ ℓ1 : Nat}
+    {A : Name} {T1 T2 : Ty 1}
+    (hh : HeapTyped Θ h)
+    (hl : Sto.Lookup Θ ℓ (.pairTy (.single (.var (.free ℓ1))) A T1 T2)) :
+    ∃ W, T1 = W.weaken ∧ T2 = W.weaken ∧
+      Heap.Lookup h ℓ (.pairTy (.free ℓ1) A W) := by
+  obtain ⟨-, v, hvl, -, hpre⟩ := hh.2 hl
+  cases hpre with
+  | pair_ty hy hwf =>
+    exact ⟨_, rfl, rfl, hvl⟩
+
+/-- Store-side resolution transfers to heap evaluation. -/
+theorem Chains.pathEval {Θ : Sto} {h : Heap} {p : Path 0} {ℓ : Nat}
+    (hh : HeapTyped Θ h) (hc : Chains Θ p ℓ) : PathEval h p ℓ := by
+  induction hc with
+  | loc _ => exact .var
+  | fst_tm _ hl ih =>
+    obtain ⟨ℓ2, -, hvl⟩ := hh.entry_value_tm hl
+    exact .fst_tm ih hvl
+  | fst_ty _ hl ih =>
+    obtain ⟨W, -, -, hvl⟩ := hh.entry_value_ty hl
+    exact .fst_ty ih hvl
+  | sel hc hl ih =>
+    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨ℓ1', a', ℓ2', he⟩ | ⟨_, _, _, he⟩ <;>
+      cases he
+    obtain ⟨ℓ2'', heq, hvl⟩ := hh.entry_value_tm hl
+    simp only [Ty.weaken, Ty.rename, Path.rename, Var.rename] at heq
+    cases heq
+    exact .sel ih hvl
+
 end LambdaP
