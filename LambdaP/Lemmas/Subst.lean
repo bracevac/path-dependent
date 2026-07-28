@@ -92,6 +92,10 @@ theorem Sub.subst {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) 
   | .pair_tm h1 h2 => fun hσ => .pair_tm (h1.subst hσ) (h2.subst hσ.lift)
   | .pair_ty h1 h2 => fun hσ => .pair_ty (h1.subst hσ) (h2.subst hσ.lift)
   | .ival h1 h2 h3 => fun hσ => .ival (h1.subst hσ) (h2.subst hσ) (h3.subst hσ)
+  | .repl hwp hwq h1 h2 => fun hσ => by
+    simp only [Tau.subst, Ty.subst]
+    rw [← Ty.open_subst_comm, ← Ty.open_subst_comm]
+    exact Sub.repl (hwp.subst hσ) (hwq.subst hσ) (h1.subst hσ) (h2.subst hσ)
 
 /-- Path wellformedness is closed under conforming substitution. -/
 theorem Path.Wf.subst {Θ} {Γ : Ctx s1} {p : Path s1} (h : Path.Wf Θ Γ p) :

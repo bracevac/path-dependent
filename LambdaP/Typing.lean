@@ -161,6 +161,18 @@ under the smaller domain. -/
   Sub Θ Γ (.ty T) (.ty T') ->
   Sub Θ Γ (.ty S) (.ty T) ->
   Sub Θ Γ (.intv S T) (.intv S' T')
+/-- Path replacement: mutually-aliased wellformed paths are interchangeable
+under type openings (cf. pDOT's replacement subtyping). Without this rule
+subtyping cannot track aliasing through dependent openings, which
+preservation needs (`T.open q` vs `T.open ℓ` for `q ⇓ ℓ`); see DESIGN.md,
+deviation 8. Bidirectionality of the premises is essential: one-sided
+singleton inclusion would be unsound at contravariant positions. -/
+| repl :
+  Path.Wf Θ Γ p ->
+  Path.Wf Θ Γ q ->
+  Sub Θ Γ (.ty (.single p)) (.ty (.single q)) ->
+  Sub Θ Γ (.ty (.single q)) (.ty (.single p)) ->
+  Sub Θ Γ (.ty (Ty.open T p)) (.ty (Ty.open T q))
 
 /-- Wellformedness of paths: every projection/selection is justified by
 subtyping evidence at a pair type. -/

@@ -1,4 +1,5 @@
 import LambdaP.Soundness.DenLemmas
+import LambdaP.Soundness.Transfer
 
 /-!
 The closure lemma: subtyping is sound for the denotation, per level,
@@ -286,6 +287,17 @@ theorem Sub.den {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s} (hs : Sub Θ Γ τ1 τ
     intro Ξ hp σ hh hok hσ
     exact ⟨fun n ℓ hd => ih1 hh hok hσ n ℓ hd,
            fun n ℓ hd => ih2 hh hok hσ n ℓ hd⟩
+  · -- repl: semantic transfer through co-evaluating openings
+    rename_i hwp hwq h1 h2 ihwp ihwq ih1 ih2
+    intro Ξ hp σ hh hok hσ n ℓ hd
+    obtain ⟨mp, hevp⟩ := ihwp hh hok hσ
+    have hq' := ih1 hh hok hσ 0 mp (by simp only [Ty.subst, Den]; exact hevp)
+    simp only [Ty.subst, Den] at hq'
+    have hwp' := hwp.subst hσ.conforms
+    have hwq' := hwq.subst hσ.conforms
+    rw [← Ty.open_subst_comm] at hd
+    rw [← Ty.open_subst_comm]
+    exact Den.open_coeval hh hok _ _ (Nat.le_refl _) hevp hq' hwp' hwq' n ℓ hd
   · rename_i x T hx
     intro Ξ hp σ hh hok hσ
     obtain ⟨m, hev, -⟩ := hσ.realized hx

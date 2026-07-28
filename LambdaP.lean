@@ -15,3 +15,4 @@ import LambdaP.Soundness.Progress
 import LambdaP.Soundness.Functionality
 import LambdaP.Lemmas.StoWeaken
 import LambdaP.Lemmas.Locs
+import LambdaP.Soundness.Transfer

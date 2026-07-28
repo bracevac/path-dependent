@@ -75,6 +75,10 @@ theorem Sub.rename {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2)
   | .pair_tm h1 h2 => fun ρ => .pair_tm (h1.rename ρ) (h2.rename (Renaming.ext ρ))
   | .pair_ty h1 h2 => fun ρ => .pair_ty (h1.rename ρ) (h2.rename (Renaming.ext ρ))
   | .ival h1 h2 h3 => fun ρ => .ival (h1.rename ρ) (h2.rename ρ) (h3.rename ρ)
+  | .repl hwp hwq h1 h2 => fun ρ => by
+    simp only [Tau.rename, Ty.rename]
+    rw [← Ty.open_rename_comm, ← Ty.open_rename_comm]
+    exact Sub.repl (hwp.rename ρ) (hwq.rename ρ) (h1.rename ρ) (h2.rename ρ)
 
 /-- Path wellformedness is preserved under renaming. -/
 theorem Path.Wf.rename {Θ} {Γ : Ctx s1} {p : Path s1} (h : Path.Wf Θ Γ p) :
