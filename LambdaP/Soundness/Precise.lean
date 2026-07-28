@@ -101,4 +101,83 @@ theorem PrecisePath.locsBelow {Θ : Sto} {h : Heap} {p : Path 0} {T : Ty 0}
   | fst_ty _ ih => exact ih.1
   | sel hp ih => exact Ty.LocsBelow.open ih.2 hp.path_locsBelow
 
+/-! ### Shallow structure over a well-typed heap -/
+
+/-- Store entries have one of the three precise value-type shapes. -/
+theorem HeapTyped.lookup_shape {Θ : Sto} {h : Heap} {ℓ : Nat} {T : Ty 0}
+    (hh : HeapTyped Θ h) (hl : Sto.Lookup Θ ℓ T) :
+    (∃ S B, T = .arrow S B) ∨
+    (∃ ℓ1 a ℓ2, T = .pairTm (.single (.var (.free ℓ1))) a
+      (Ty.single (.var (.free ℓ2))).weaken) ∨
+    (∃ (ℓ1 : Nat) (A : Name) (W : Ty 0), T = .pairTy (.single (.var (.free ℓ1))) A W.weaken W.weaken) := by
+  obtain ⟨-, v, -, -, hpre⟩ := hh.2 hl
+  cases hpre with
+  | abs _ _ => exact .inl ⟨_, _, rfl⟩
+  | pair_tm _ _ => exact .inr (.inl ⟨_, _, _, rfl⟩)
+  | pair_ty _ _ => exact .inr (.inr ⟨_, _, _, rfl⟩)
+
+/-- Characterization over a well-typed heap: a precisely typed path is
+either a bare location carrying its store entry, or its type is a
+location singleton strictly below some recorded location (its root). -/
+theorem PrecisePath.char {Θ : Sto} {h : Heap} {p : Path 0} {T : Ty 0}
+    (hh : HeapTyped Θ h) (hp : PrecisePath Θ p T) :
+    (∃ ℓr, p = .var (.free ℓr) ∧ Sto.Lookup Θ ℓr T) ∨
+    (∃ ℓ', T = .single (.var (.free ℓ')) ∧
+      ∃ ℓr Tr, Sto.Lookup Θ ℓr Tr ∧ ℓ' < ℓr) := by
+  induction hp with
+  | loc hl => exact .inl ⟨_, rfl, hl⟩
+  | fst_tm hp' ih =>
+    rcases ih with ⟨ℓr, -, hl⟩ | ⟨ℓ', he, -⟩
+    · rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨ℓ1, a', ℓ2, he⟩ | ⟨_, _, _, he⟩ <;>
+        cases he
+      have hb := (hh.2 hl).1
+      exact .inr ⟨ℓ1, rfl, ℓr, _, hl, hb.1⟩
+    · cases he
+  | fst_ty hp' ih =>
+    rcases ih with ⟨ℓr, -, hl⟩ | ⟨ℓ', he, -⟩
+    · rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨_, _, _, he⟩ | ⟨ℓ1, A', W, he⟩ <;>
+        cases he
+      have hb := (hh.2 hl).1
+      exact .inr ⟨ℓ1, rfl, ℓr, _, hl, hb.1⟩
+    · cases he
+  | sel hp' ih =>
+    rcases ih with ⟨ℓr, -, hl⟩ | ⟨ℓ', he, -⟩
+    · rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨ℓ1, a', ℓ2, he⟩ | ⟨_, _, _, he⟩ <;>
+        cases he
+      have hb := (hh.2 hl).1
+      rw [Ty.weaken_open]
+      exact .inr ⟨ℓ2, rfl, ℓr, _, hl, Ty.locsBelow_rename.mp hb.2⟩
+    · cases he
+
+/-- A path precisely typed at a term-member pair type is a bare location. -/
+theorem PrecisePath.pairTm_inv {Θ : Sto} {h : Heap} {p : Path 0}
+    {S : Ty 0} {a : Name} {Tc : Ty 1}
+    (hh : HeapTyped Θ h) (hp : PrecisePath Θ p (.pairTm S a Tc)) :
+    ∃ ℓr, p = .var (.free ℓr) ∧ Sto.Lookup Θ ℓr (.pairTm S a Tc) := by
+  rcases hp.char hh with ⟨ℓr, hpe, hl⟩ | ⟨ℓ', he, -⟩
+  · exact ⟨ℓr, hpe, hl⟩
+  · cases he
+
+/-- A path precisely typed at a type-member pair type is a bare location. -/
+theorem PrecisePath.pairTy_inv {Θ : Sto} {h : Heap} {p : Path 0}
+    {S : Ty 0} {A : Name} {T1 T2 : Ty 1}
+    (hh : HeapTyped Θ h) (hp : PrecisePath Θ p (.pairTy S A T1 T2)) :
+    ∃ ℓr, p = .var (.free ℓr) ∧ Sto.Lookup Θ ℓr (.pairTy S A T1 T2) := by
+  rcases hp.char hh with ⟨ℓr, hpe, hl⟩ | ⟨ℓ', he, -⟩
+  · exact ⟨ℓr, hpe, hl⟩
+  · cases he
+
+/-- Descent: a path precisely typed at a location singleton points
+strictly below some recorded location. This is the measure for alias
+chains. -/
+theorem PrecisePath.single_lt {Θ : Sto} {h : Heap} {p : Path 0} {ℓ' : Nat}
+    (hh : HeapTyped Θ h)
+    (hp : PrecisePath Θ p (.single (.var (.free ℓ')))) :
+    ∃ ℓr Tr, Sto.Lookup Θ ℓr Tr ∧ ℓ' < ℓr := by
+  rcases hp.char hh with ⟨ℓr, -, hl⟩ | ⟨ℓ'', he, hlt⟩
+  · rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨_, _, _, he⟩ | ⟨_, _, _, he⟩ <;>
+      cases he
+  · cases he
+    exact hlt
+
 end LambdaP
