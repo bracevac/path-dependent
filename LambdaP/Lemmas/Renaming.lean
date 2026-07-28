@@ -50,7 +50,7 @@ theorem Sub.rename {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2)
   | .var_free hl => fun _ => by
     simp only [Tau.rename, Ty.rename, Path.rename, Var.rename, Ty.fromClosed_rename]
     exact .var_free hl
-  | .symm h1 => fun ρ => .symm (h1.rename ρ)
+  | .symm hw h1 => fun ρ => .symm (hw.rename ρ) (h1.rename ρ)
   | .fst_tm h1 => fun ρ => .fst_tm (h1.rename ρ)
   | .fst_ty h1 => fun ρ => .fst_ty (h1.rename ρ)
   | .sel_tm h1 => fun ρ => by

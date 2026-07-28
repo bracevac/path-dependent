@@ -26,15 +26,17 @@ theorem HeapTyped.den_precise {Θ : Sto} {Ξ : SemSto} {h : Heap}
   | pair_tm h1 h2 =>
     simp only [Den]
     refine ⟨_, _, hv, .refl, ?_, ?_⟩
-    · exact .var
-    · intro q hq
+    · intro k
+      exact .var
+    · intro q hq k
       rw [Ty.weaken_open]
       simp only [Den]
       exact .var
   | pair_ty h1 hwf =>
     simp only [Den]
     refine ⟨_, _, hv, .refl, ?_, ?_⟩
-    · exact .var
+    · intro k
+      exact .var
     · cases n with
       | zero => trivial
       | succ n0 =>

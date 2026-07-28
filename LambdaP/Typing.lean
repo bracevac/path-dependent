@@ -103,8 +103,11 @@ inductive Sub : Sto -> Ctx s -> Tau s -> Tau s -> Prop where
 | var_free :
   Sto.Lookup Θ ℓ T ->
   Sub Θ Γ (.ty (.single (.var (.free ℓ)))) (.ty T.fromClosed)
-/-- Singleton subtyping is symmetric: paths that alias are mutual subtypes. -/
+/-- Singleton subtyping is symmetric: paths that alias are mutual
+subtypes. Aliasing presupposes that the path denotes, hence the
+wellformedness premise (like `sel_lo`). -/
 | symm :
+  Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.single q)) ->
   Sub Θ Γ (.ty (.single q)) (.ty (.single p))
 /-- First projection, term-member pair. -/

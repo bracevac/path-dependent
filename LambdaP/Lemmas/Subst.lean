@@ -67,7 +67,7 @@ theorem Sub.subst {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) 
   | .var_free hl => fun _ => by
     simp only [Tau.subst, Ty.subst, Path.subst, Var.subst, Ty.fromClosed_subst]
     exact .var_free hl
-  | .symm h1 => fun hσ => .symm (h1.subst hσ)
+  | .symm hw h1 => fun hσ => .symm (hw.subst hσ) (h1.subst hσ)
   | .fst_tm h1 => fun hσ => .fst_tm (h1.subst hσ)
   | .fst_ty h1 => fun hσ => .fst_ty (h1.subst hσ)
   | .sel_tm h1 => fun hσ => by

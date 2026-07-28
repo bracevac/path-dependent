@@ -65,15 +65,15 @@ def Den (Θ : Sto) (Ξ : SemSto) (h : Heap) : Nat -> Ty 0 -> Nat -> Prop
       HasType Θ (Ctx.empty.push T0) t T1 ∧
       Sub Θ .empty (.ty S) (.ty T0) ∧
       Sub Θ (Ctx.empty.push S) (.ty T1) (.ty T)
-| n, .pairTm S a T, ℓ =>
+| _, .pairTm S a T, ℓ =>
     ∃ ℓ1 ℓ2, Heap.Lookup h ℓ (.pairTm (.free ℓ1) a (.free ℓ2)) ∧
       Sub Θ .empty (.ty (.single (.var (.free ℓ1)))) (.ty S) ∧
-      Den Θ Ξ h n S ℓ1 ∧
-      ∀ (q : Path 0), PathEval h q ℓ1 -> Den Θ Ξ h n (T.open q) ℓ2
+      (∀ k, Den Θ Ξ h k S ℓ1) ∧
+      ∀ (q : Path 0), PathEval h q ℓ1 -> ∀ k, Den Θ Ξ h k (T.open q) ℓ2
 | n, .pairTy S A T1 T2, ℓ =>
     ∃ ℓ1 W, Heap.Lookup h ℓ (.pairTy (.free ℓ1) A W) ∧
       Sub Θ .empty (.ty (.single (.var (.free ℓ1)))) (.ty S) ∧
-      Den Θ Ξ h n S ℓ1 ∧
+      (∀ k, Den Θ Ξ h k S ℓ1) ∧
       match n with
       | 0 => True
       | n0+1 =>
