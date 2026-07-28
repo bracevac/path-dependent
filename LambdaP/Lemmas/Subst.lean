@@ -106,8 +106,8 @@ theorem Sub.subst {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) 
     exact Sub.sel_lo_loc hc.subst hl
   | .arrow h1 h2 => fun hσ => .arrow (h1.subst hσ) (h2.subst hσ.lift)
   | .pair_tm h1 h2 => fun hσ => .pair_tm (h1.subst hσ) (h2.subst hσ.lift)
-  | .pair_ty h1 h2 => fun hσ => .pair_ty (h1.subst hσ) (h2.subst hσ.lift)
-  | .ival h1 h2 h3 => fun hσ => .ival (h1.subst hσ) (h2.subst hσ) (h3.subst hσ)
+  | .pair_ty h1 h2 h3 => fun hσ =>
+    .pair_ty (h1.subst hσ) (h2.subst hσ.lift) (h3.subst hσ.lift)
   | .repl hwp hwq h1 h2 => fun hσ => by
     simp only [Tau.subst]
     rw [← Ty.open_subst_comm, ← Ty.open_subst_comm]

@@ -27,45 +27,6 @@ theorem Path.root_not_isBound_zero (p : Path 0) : ¬ p.root.IsBound := by
   | bound b => exact nomatch b
   | free ℓ => exact fun hb => hb
 
-/-- Motive for interval inversion: mixed tau shapes are impossible,
-ty-ty is trivial, intv-intv yields the componentwise facts. -/
-def IntvGoal (Θ : Sto) (Γ : Ctx s) : Tau s -> Tau s -> Prop
-  | .ty _, .ty _ => True
-  | .intv T1 T2, .intv T1' T2' =>
-      Sub Θ Γ (.ty T1') (.ty T1) ∧ Sub Θ Γ (.ty T2) (.ty T2')
-  | _, _ => False
-
-theorem Sub.intv_inv_aux {s : Sig} {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s}
-    (hs : Sub Θ Γ τ1 τ2) : IntvGoal Θ Γ τ1 τ2 := by
-  induction hs using Sub.rec (motive_2 := fun {s} Θ Γ p _ => True)
-  -- refl
-  · rename_i τ
-    cases τ
-    · trivial
-    · exact ⟨.refl, .refl⟩
-  -- trans
-  · rename_i τ1 τ2 τ3 h1 h2 ih1 ih2
-    cases τ1 <;> cases τ2 <;> cases τ3 <;>
-      first
-      | trivial
-      | exact (ih1 : False).elim
-      | exact (ih2 : False).elim
-      | exact ⟨.trans ih2.1 ih1.1, .trans ih1.2 ih2.2⟩
-  -- bot, top, var_bound, var_free, symm, fst_tm, fst_ty, sel_tm,
-  -- sel_tm_loc, sel_hi, sel_lo, sel_hi_loc, sel_lo_loc, arrow,
-  -- pair_tm, pair_ty (16 ty-ty conclusions)
-  all_goals first
-  | trivial
-  | (rename_i h1 h2 h3 ih1 ih2 ih3; exact ⟨h1, h2⟩)
-  | (intros; trivial)
-
-/-- Interval subtyping inverts componentwise (the guard is not
-recoverable and not returned). -/
-theorem Sub.intv_inv {s : Sig} {Θ : Sto} {Γ : Ctx s} {T1 T2 T1' T2' : Ty s}
-    (hs : Sub Θ Γ (.intv T1 T2) (.intv T1' T2')) :
-    Sub Θ Γ (.ty T1') (.ty T1) ∧ Sub Θ Γ (.ty T2) (.ty T2') :=
-  hs.intv_inv_aux
-
 /-- The embedding motive at scope 0: ty-ty is the SSub existence goal,
 intv-intv is trivial, mixed shapes are impossible (False), which bakes
 tau-kind preservation into the induction (consumed at trans). -/
@@ -184,16 +145,12 @@ theorem Sub.to_ssub_aux {s : Sig} {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s}
     exact ⟨n + 1, .pair_tm hn h2⟩
   -- pair_ty
   · intro h
-    rename_i h1 h2 ih1 ih2
+    rename_i h1 h2 h3 ih1 ih2 ih3
     subst h
     have hE := Ctx.eq_empty' ‹Ctx 0›
     subst hE
     obtain ⟨n, hn⟩ := ih1 rfl
-    obtain ⟨hlo, hhi⟩ := Sub.intv_inv h2
-    exact ⟨n + 1, .pair_ty hn hlo hhi⟩
-  -- ival
-  · intro h; subst h
-    trivial
+    exact ⟨n + 1, .pair_ty hn h2 h3⟩
   -- repl
   · intro h
     rename_i hwp hwq h1 h2 ihwp ihwq ih1 ih2

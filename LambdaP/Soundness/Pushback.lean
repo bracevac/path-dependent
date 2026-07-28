@@ -240,4 +240,100 @@ theorem SSub.mono {Θ} {T1 T2 : Ty 0} {n n' : Nat}
   | zero => exact h
   | succ k ih => exact ih.succ
 
+/-! ### The trans-free layer
+
+`PEq` is runtime path equivalence — the directed, invertible core of
+singleton subtyping (Chains co-targeting, label skips, and congruence
+under opening; symmetry and transitivity are primitive since PEq is a
+leaf: the pushback never recurses into it). `SPP` is trans-free
+runtime subtyping: reflexivity is primitive (stuck selections have no
+chains to rebuild it from), selections anchor to the store with
+recursive upper tails and lazy general lower tails, and congruence
+first components are recursive (the pushback walks them) while
+push-context premises stay lazy at the general judgment. Inversion
+lemmas carry `Sto.Shaped`; the judgments themselves are hypothesis-free. -/
+
+/-- Runtime path equivalence. -/
+inductive PEq (Θ : Sto) : Path 0 -> Path 0 -> Prop where
+| refl :
+  PEq Θ p p
+| symm :
+  PEq Θ p q -> PEq Θ q p
+| trans :
+  PEq Θ p q -> PEq Θ q r -> PEq Θ p r
+| cochain :
+  Chains Θ p ℓ -> Chains Θ q ℓ -> PEq Θ p q
+| skip_tm :
+  Chains Θ p ℓ -> Sto.Lookup Θ ℓ (.pairTm S b Tc) -> a ≠ b ->
+  PEq Θ (p.sel a) ((Path.fst p).sel a)
+| skip_ty :
+  Chains Θ p ℓ -> Sto.Lookup Θ ℓ (.pairTy S B T1 T2) ->
+  PEq Θ (p.sel a) ((Path.fst p).sel a)
+| congr :
+  Path.Wf Θ .empty p -> Path.Wf Θ .empty q -> PEq Θ p q ->
+  PEq Θ (Path.subst r (Subst.openPath p)) (Path.subst r (Subst.openPath q))
+
+/-- Trans-free runtime subtyping. -/
+inductive SPP (Θ : Sto) : Ty 0 -> Ty 0 -> Prop where
+| refl :
+  SPP Θ T T
+| bot :
+  SPP Θ .bot T
+| top :
+  SPP Θ T .top
+| sngl :
+  PEq Θ p q -> SPP Θ (.single p) (.single q)
+| unfold :
+  Chains Θ p ℓ -> Sto.Lookup Θ ℓ E -> SPP Θ E U ->
+  SPP Θ (.single p) U
+| tsel_hi :
+  Chains Θ p m ->
+  Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓ1))) A (Ty.weaken W) (Ty.weaken W)) ->
+  SPP Θ W U ->
+  SPP Θ (.tsel p A) U
+| tsel_lo :
+  Chains Θ p m ->
+  Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓ1))) A (Ty.weaken W) (Ty.weaken W)) ->
+  Sub Θ .empty (.ty U) (.ty W) ->
+  SPP Θ U (.tsel p A)
+| repl :
+  Path.Wf Θ .empty p -> Path.Wf Θ .empty q -> PEq Θ p q ->
+  SPP Θ (Ty.open T p) (Ty.open T q)
+| arrow :
+  SPP Θ S' S ->
+  Sub Θ (Ctx.empty.push S') (.ty T) (.ty T') ->
+  SPP Θ (.arrow S T) (.arrow S' T')
+| pair_tm :
+  SPP Θ S S' ->
+  Sub Θ (Ctx.empty.push S) (.ty T) (.ty T') ->
+  SPP Θ (.pairTm S a T) (.pairTm S' a T')
+| pair_ty :
+  SPP Θ S S' ->
+  Sub Θ (Ctx.empty.push S) (.ty T1') (.ty T1) ->
+  Sub Θ (Ctx.empty.push S) (.ty T2) (.ty T2') ->
+  SPP Θ (.pairTy S A T1 T2) (.pairTy S' A T1' T2')
+
+/-- The sized judgment is sound for the general one (used to grow the
+lazy general tails during pushback compositions). -/
+theorem SSub.to_sub {Θ : Sto} {T1 T2 : Ty 0} {n : Nat}
+    (h : SSub Θ T1 T2 n) : Sub Θ .empty (.ty T1) (.ty T2) := by
+  induction h with
+  | refl => exact .refl
+  | trans _ _ ih1 ih2 => exact .trans ih1 ih2
+  | bot => exact .bot
+  | top => exact .top
+  | var_free hl => exact .var_free hl
+  | symm hw _ ih => exact .symm hw ih
+  | fst_tm _ ih => exact .fst_tm ih
+  | fst_ty _ ih => exact .fst_ty ih
+  | sel_tm_loc hc hl => exact .sel_tm_loc hc hl
+  | sel_hi_loc hc hl _ ih => exact .trans (.sel_hi_loc hc hl) ih
+  | sel_lo_loc hc hl _ ih => exact .trans ih (.sel_lo_loc hc hl)
+  | arrow _ h2 ih => exact .arrow ih h2
+  | pair_tm _ h2 ih => exact .pair_tm ih h2
+  | pair_ty _ h1 h2 ih => exact .pair_ty ih h1 h2
+  | repl hwp hwq _ _ ih1 ih2 => exact .repl hwp hwq ih1 ih2
+  | skip_tm_loc hc hl hne => exact .skip_tm_loc hc hl hne
+  | skip_ty_loc hc hl => exact .skip_ty_loc hc hl
+
 end LambdaP

@@ -82,8 +82,8 @@ theorem Sub.rename {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2)
     exact Sub.sel_lo_loc hc.rename hl
   | .arrow h1 h2 => fun ρ => .arrow (h1.rename ρ) (h2.rename (Renaming.ext ρ))
   | .pair_tm h1 h2 => fun ρ => .pair_tm (h1.rename ρ) (h2.rename (Renaming.ext ρ))
-  | .pair_ty h1 h2 => fun ρ => .pair_ty (h1.rename ρ) (h2.rename (Renaming.ext ρ))
-  | .ival h1 h2 h3 => fun ρ => .ival (h1.rename ρ) (h2.rename ρ) (h3.rename ρ)
+  | .pair_ty h1 h2 h3 => fun ρ =>
+    .pair_ty (h1.rename ρ) (h2.rename (Renaming.ext ρ)) (h3.rename (Renaming.ext ρ))
   | .repl hwp hwq h1 h2 => fun ρ => by
     simp only [Tau.rename]
     rw [← Ty.open_rename_comm, ← Ty.open_rename_comm]

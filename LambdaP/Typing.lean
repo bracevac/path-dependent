@@ -315,14 +315,9 @@ under the smaller domain. -/
 /-- Pair types with a type member, covariant with interval widening. -/
 | pair_ty :
   Sub Θ Γ (.ty S) (.ty S') ->
-  Sub Θ (Γ.push S) (.intv T1 T2) (.intv T1' T2') ->
+  Sub Θ (Γ.push S) (.ty T1') (.ty T1) ->
+  Sub Θ (Γ.push S) (.ty T2) (.ty T2') ->
   Sub Θ Γ (.ty (.pairTy S A T1 T2)) (.ty (.pairTy S' A T1' T2'))
-/-- Interval subtyping: a smaller, *non-empty* interval is below a wider one. -/
-| ival :
-  Sub Θ Γ (.ty S') (.ty S) ->
-  Sub Θ Γ (.ty T) (.ty T') ->
-  Sub Θ Γ (.ty S) (.ty T) ->
-  Sub Θ Γ (.intv S T) (.intv S' T')
 /-- Path replacement: mutually-aliased wellformed paths are interchangeable
 under type openings (cf. pDOT's replacement subtyping). Without this rule
 subtyping cannot track aliasing through dependent openings, which

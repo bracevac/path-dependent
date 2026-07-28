@@ -33,9 +33,8 @@ theorem Sub.sto_weaken {Θ Θ' : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s}
   | .sel_lo_loc hc hl => .sel_lo_loc (hc.sto_weaken hext) (hext hl)
   | .arrow h1 h2 => .arrow (h1.sto_weaken hext) (h2.sto_weaken hext)
   | .pair_tm h1 h2 => .pair_tm (h1.sto_weaken hext) (h2.sto_weaken hext)
-  | .pair_ty h1 h2 => .pair_ty (h1.sto_weaken hext) (h2.sto_weaken hext)
-  | .ival h1 h2 h3 =>
-    .ival (h1.sto_weaken hext) (h2.sto_weaken hext) (h3.sto_weaken hext)
+  | .pair_ty h1 h2 h3 =>
+    .pair_ty (h1.sto_weaken hext) (h2.sto_weaken hext) (h3.sto_weaken hext)
   | .repl hwp hwq h1 h2 =>
     .repl (hwp.sto_weaken hext) (hwq.sto_weaken hext)
       (h1.sto_weaken hext) (h2.sto_weaken hext)
