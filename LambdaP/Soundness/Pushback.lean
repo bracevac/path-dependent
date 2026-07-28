@@ -493,4 +493,102 @@ theorem PEq.chains_iff {Θ : Sto} {p q : Path 0} (h : PEq Θ p q) :
     · exact Chains.subst_congr (CoChains.of_iff (fun m => (ih m).symm))
 
 
+
+/-! ### Opening decompositions (ported): heads survive opening, so
+replacement conclusions decompose by the template's head. -/
+
+theorem Ty.open_eq_arrow {T : Ty 1} {q : Path 0} {S : Ty 0} {B : Ty 1}
+    (he : T.open q = .arrow S B) :
+    ∃ S0 B0, T = .arrow S0 B0 ∧ S = S0.open q ∧
+      B = B0.subst (Subst.openPath q).lift := by
+  cases T with
+  | arrow S0 B0 =>
+    simp only [Ty.open, Ty.subst] at he
+    injection he with hs h1 h2
+    exact ⟨S0, B0, rfl, h1.symm, h2.symm⟩
+  | top => cases he
+  | bot => cases he
+  | pairTm _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | single p => simp only [Ty.open, Ty.subst] at he; cases he
+  | tsel p A => simp only [Ty.open, Ty.subst] at he; cases he
+
+theorem Ty.open_eq_pairTm {T : Ty 1} {q : Path 0} {S : Ty 0} {a : Name} {B : Ty 1}
+    (he : T.open q = .pairTm S a B) :
+    ∃ S0 B0, T = .pairTm S0 a B0 ∧ S = S0.open q ∧
+      B = B0.subst (Subst.openPath q).lift := by
+  cases T with
+  | pairTm S0 a0 B0 =>
+    simp only [Ty.open, Ty.subst] at he
+    injection he with hs h1 h2 h3
+    subst h2
+    exact ⟨S0, B0, rfl, h1.symm, h3.symm⟩
+  | top => cases he
+  | bot => cases he
+  | arrow _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | single p => simp only [Ty.open, Ty.subst] at he; cases he
+  | tsel p A => simp only [Ty.open, Ty.subst] at he; cases he
+
+theorem Ty.open_eq_pairTy {T : Ty 1} {q : Path 0} {S : Ty 0} {A : Name} {B1 B2 : Ty 1}
+    (he : T.open q = .pairTy S A B1 B2) :
+    ∃ S0 C1 C2, T = .pairTy S0 A C1 C2 ∧ S = S0.open q ∧
+      B1 = C1.subst (Subst.openPath q).lift ∧
+      B2 = C2.subst (Subst.openPath q).lift := by
+  cases T with
+  | pairTy S0 A0 C1 C2 =>
+    simp only [Ty.open, Ty.subst] at he
+    injection he with hs h1 h2 h3 h4
+    subst h2
+    exact ⟨S0, C1, C2, rfl, h1.symm, h3.symm, h4.symm⟩
+  | top => cases he
+  | bot => cases he
+  | arrow _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTm _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | single p => simp only [Ty.open, Ty.subst] at he; cases he
+  | tsel p A => simp only [Ty.open, Ty.subst] at he; cases he
+
+theorem Ty.open_eq_single {T : Ty 1} {q : Path 0} {r : Path 0}
+    (he : T.open q = .single r) :
+    ∃ P0, T = .single P0 ∧ r = P0.subst (Subst.openPath q) := by
+  cases T with
+  | single P0 =>
+    simp only [Ty.open, Ty.subst] at he
+    injection he with hs h1
+    exact ⟨P0, rfl, h1.symm⟩
+  | top => cases he
+  | bot => cases he
+  | arrow _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTm _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | tsel _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+
+theorem Ty.open_eq_tsel {T : Ty 1} {q : Path 0} {r : Path 0} {A : Name}
+    (he : T.open q = .tsel r A) :
+    ∃ P0, T = .tsel P0 A ∧ r = P0.subst (Subst.openPath q) := by
+  cases T with
+  | tsel P0 A0 =>
+    simp only [Ty.open, Ty.subst] at he
+    injection he with hs h1 h2
+    subst h2
+    exact ⟨P0, rfl, h1.symm⟩
+  | top => cases he
+  | bot => cases he
+  | arrow _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTm _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | single _ => simp only [Ty.open, Ty.subst] at he; cases he
+
+theorem Ty.open_eq_bot {T : Ty 1} {q : Path 0}
+    (he : T.open q = .bot) : T = .bot := by
+  cases T with
+  | bot => rfl
+  | top => cases he
+  | single _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | tsel _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | arrow _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTm _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+
+
 end LambdaP
