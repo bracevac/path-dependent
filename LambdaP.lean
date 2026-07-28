@@ -19,3 +19,4 @@ import LambdaP.Soundness.Transfer
 import LambdaP.Soundness.Preservation
 import LambdaP.Soundness.Safety
 import LambdaP.Examples
+import LambdaP.Soundness.Precise
