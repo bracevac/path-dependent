@@ -24,3 +24,4 @@ import LambdaP.Soundness.Tight
 import LambdaP.Soundness.Invertible
 import LambdaP.Soundness.PT
 import LambdaP.Soundness.Bridge
+import LambdaP.Soundness.PTTransfer
