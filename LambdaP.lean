@@ -21,3 +21,4 @@ import LambdaP.Soundness.Safety
 import LambdaP.Examples
 import LambdaP.Soundness.Precise
 import LambdaP.Soundness.Tight
+import LambdaP.Soundness.Invertible
