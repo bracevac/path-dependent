@@ -15,6 +15,133 @@ The trans-free runtime subtyping pipeline (deviation 9 endgame):
 
 namespace LambdaP
 
+
+/-! ### Store-shape prerequisites (review finding F1)
+
+Pushback and the trans-free inversion lemmas are false over an
+unconstrained store typing (countermodel: a `⊥` entry lets `unfold`
+conclude anything). The syntactic shape invariant below is exactly the
+image of `Val.PreciseTy`, so it is discharged from `HeapTyped` at every
+use site and end-to-end safety stays unconditional. -/
+
+/-- The shapes a precise store entry can take. -/
+inductive Sto.EntryShape : Ty 0 -> Prop where
+| arrow : Sto.EntryShape (.arrow S T)
+| pair_tm :
+    Sto.EntryShape (.pairTm (.single (.var (.free ℓ1))) a
+      (Ty.single (.var (.free ℓ2))).weaken)
+| pair_ty :
+    Sto.EntryShape (.pairTy (.single (.var (.free ℓ1))) A
+      (Ty.weaken W) (Ty.weaken W))
+
+/-- Syntactic store wellformedness: every entry is precise-value-shaped
+and mentions only older locations. -/
+def Sto.Shaped (Θ : Sto) : Prop :=
+  ∀ {ℓ : Nat} {T : Ty 0}, Sto.Lookup Θ ℓ T ->
+    Sto.EntryShape T ∧ T.LocsBelow ℓ
+
+/-- Typed heaps have shaped store typings. -/
+theorem HeapTyped.shaped {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h) :
+    Sto.Shaped Θ := by
+  intro ℓ T hl
+  obtain ⟨hb, v, -, -, hpre⟩ := hh.2 hl
+  refine ⟨?_, hb⟩
+  cases hpre with
+  | abs _ _ => exact .arrow
+  | pair_tm _ _ => exact .pair_tm
+  | pair_ty _ _ => exact .pair_ty
+
+/-! ### Chains as subtyping evidence (ports of the tight-layer lemmas;
+the selection cases are now single anchored-rule applications). -/
+
+/-- A chaining path is a subtype of its target's singleton. -/
+theorem Chains.to_sub {Θ : Sto} {p : Path 0} {ℓ : Nat}
+    (hc : Chains Θ p ℓ) :
+    Sub Θ .empty (.ty (.single p)) (.ty (.single (.var (.free ℓ)))) := by
+  induction hc with
+  | loc _ => exact .refl
+  | fst_tm _ hl ih =>
+    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
+    rw [Ty.fromClosed_zero] at hvf
+    exact .fst_tm (.trans ih hvf)
+  | fst_ty _ hl ih =>
+    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
+    rw [Ty.fromClosed_zero] at hvf
+    exact .fst_ty (.trans ih hvf)
+  | sel hc hl ih => exact Sub.sel_tm_loc hc hl
+  | sel_skip_tm hc hl hne _ ihp ihin =>
+    exact .trans (Sub.skip_tm_loc hc hl hne) ihin
+  | sel_skip_ty hc hl _ ihp ihin =>
+    exact .trans (Sub.skip_ty_loc hc hl) ihin
+
+/-- A chaining path sits below its target's entry. -/
+theorem Chains.to_sub_entry {Θ : Sto} {p : Path 0} {m : Nat} {T : Ty 0}
+    (hc : Chains Θ p m) (hl : Sto.Lookup Θ m T) :
+    Sub Θ .empty (.ty (.single p)) (.ty T) := by
+  have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
+  rw [Ty.fromClosed_zero] at hvf
+  exact .trans hc.to_sub hvf
+
+/-- Store-side resolution yields wellformedness. -/
+theorem Chains.wf {Θ : Sto} {p : Path 0} {ℓ : Nat}
+    (hc : Chains Θ p ℓ) : Path.Wf Θ .empty p := by
+  induction hc with
+  | loc hl => exact .var_free hl
+  | fst_tm hc hl ih => exact .fst_tm ih (hc.to_sub_entry hl)
+  | fst_ty hc hl ih => exact .fst_ty ih (hc.to_sub_entry hl)
+  | sel hc hl ih => exact .sel ih (hc.to_sub_entry hl)
+  | sel_skip_tm hc hl hne _ ihp ihin =>
+    exact .sel_skip_tm ihin (hc.to_sub_entry hl) hne
+  | sel_skip_ty hc hl _ ihp ihin =>
+    exact .sel_skip_ty ihin (hc.to_sub_entry hl)
+
+/-- Co-chaining paths are mutual subtypes. -/
+theorem Chains.mutual_sub {Θ : Sto} {p q : Path 0} {ℓ0 : Nat}
+    (hp : Chains Θ p ℓ0) (hq : Chains Θ q ℓ0) :
+    Sub Θ .empty (.ty (.single p)) (.ty (.single q)) :=
+  .trans hp.to_sub (.symm hq.wf hq.to_sub)
+
+/-- Contiguity: any index below the store length is recorded (hoisted
+from the quarantined preservation file). -/
+theorem Sto.lookup_lt {Θ : Sto} {m : Nat} (hm : m < Θ.length) :
+    ∃ T, Sto.Lookup Θ m T :=
+  ⟨Θ[m], List.getElem?_eq_some_iff.mpr ⟨hm, rfl⟩⟩
+
+/-- Chain targets are recorded (locations mentioned by entries are older
+and the store is contiguous). -/
+theorem Chains.in_dom {Θ : Sto} {p : Path 0} {m : Nat}
+    (hwf : Sto.Shaped Θ) (hc : Chains Θ p m) :
+    ∃ E, Sto.Lookup Θ m E := by
+  induction hc with
+  | loc hl => exact ⟨_, hl⟩
+  | fst_tm hc hl ih =>
+    obtain ⟨hs, hb⟩ := hwf hl
+    have hlt : Θ.length > _ := (List.getElem?_eq_some_iff.mp hl).1
+    exact Sto.lookup_lt (by
+      simp [Ty.LocsBelow, Path.LocsBelow, Var.LocsBelow] at hb
+      omega)
+  | fst_ty hc hl ih =>
+    obtain ⟨hs, hb⟩ := hwf hl
+    have hlt : Θ.length > _ := (List.getElem?_eq_some_iff.mp hl).1
+    exact Sto.lookup_lt (by
+      simp [Ty.LocsBelow, Path.LocsBelow, Var.LocsBelow] at hb
+      omega)
+  | sel hc hl ih =>
+    obtain ⟨hs, hb⟩ := hwf hl
+    have hlt : Θ.length > _ := (List.getElem?_eq_some_iff.mp hl).1
+    exact Sto.lookup_lt (by
+      simp [Ty.LocsBelow, Path.LocsBelow, Var.LocsBelow, Ty.weaken,
+        Ty.rename, Path.rename, Var.rename] at hb
+      omega)
+  | sel_skip_tm _ _ _ _ _ ihin => exact ihin
+  | sel_skip_ty _ _ _ _ ihin => exact ihin
+
+/-- Weakening is injective on types. -/
+theorem Ty.weaken_inj {T1 T2 : Ty s}
+    (h : (Ty.weaken T1 : Ty (s+1)) = Ty.weaken T2) : T1 = T2 := by
+  have h2 := congrArg (fun X => Ty.open X (.var (.free 0))) h
+  simpa [Ty.weaken_open] using h2
+
 /-- Sized runtime subtyping over proper types at the empty context. -/
 inductive SSub (Θ : Sto) : Ty 0 -> Ty 0 -> Nat -> Prop where
 | refl :
