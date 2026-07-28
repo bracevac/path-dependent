@@ -13,3 +13,4 @@ import LambdaP.Soundness.DenLemmas
 import LambdaP.Soundness.Closure
 import LambdaP.Soundness.Progress
 import LambdaP.Soundness.Functionality
+import LambdaP.Lemmas.StoWeaken
