@@ -99,7 +99,7 @@ private theorem Den.oc_tsel {Θ : Sto} {Ξ : SemSto} {h : Heap}
 /-- Semantic transfer: co-evaluating wellformed closed paths induce the
 same denotations through openings, at every level. -/
 theorem Den.open_coeval {Θ : Sto} {Ξ : SemSto} {h : Heap}
-    (hh : HeapTyped Θ h) (hok : SemStoOk Θ Ξ h) :
+    (hh : HeapTyped Θ h) (_hok : SemStoOk Θ Ξ h) :
     ∀ (sz : Nat) (T : Ty 1), T.structSize ≤ sz ->
     ∀ {p q : Path 0} {m : Nat},
       PathEval h p m -> PathEval h q m ->
@@ -110,7 +110,7 @@ theorem Den.open_coeval {Θ : Sto} {Ξ : SemSto} {h : Heap}
   | zero =>
     intro T hsz p q m hp hq hwp hwq n ℓ hd
     match T with
-    | .top => simpa only [Ty.open, Ty.subst, Den] using hd
+    | .top => simp only [Ty.open, Ty.subst, Den]
     | .bot => simp only [Ty.open, Ty.subst, Den] at hd
     | .single P => exact Den.oc_single hp hq hd
     | .tsel P A => exact Den.oc_tsel hp hq hd
@@ -121,7 +121,7 @@ theorem Den.open_coeval {Θ : Sto} {Ξ : SemSto} {h : Heap}
     intro T hsz p q m hp hq hwp hwq n ℓ hd
     obtain ⟨hs_pq, hs_qp⟩ := PathEval.mutual_singles hh hp hq hwp hwq
     match T with
-    | .top => simpa only [Ty.open, Ty.subst, Den] using hd
+    | .top => simp only [Ty.open, Ty.subst, Den]
     | .bot => simp only [Ty.open, Ty.subst, Den] at hd
     | .single P => exact Den.oc_single hp hq hd
     | .tsel P A => exact Den.oc_tsel hp hq hd
@@ -153,7 +153,7 @@ theorem Den.open_coeval {Θ : Sto} {Ξ : SemSto} {h : Heap}
       · intro q' hq' k
         have hV := hmem q' hq' k
         rw [Ty.openlift_open] at hV ⊢
-        exact ih _ (by simp [Ty.structSize]; omega) hp hq hwp hwq k ℓ2 hV
+        exact ih _ (by simp; omega) hp hq hwp hwq k ℓ2 hV
     | .pairTy S A T1 T2 =>
       simp only [Ty.structSize] at hsz
       simp only [Ty.open, Ty.subst, Den] at hd ⊢
@@ -170,13 +170,13 @@ theorem Den.open_coeval {Θ : Sto} {Ξ : SemSto} {h : Heap}
           constructor
           · intro hy
             rw [Ty.openlift_open] at hy
-            have hy' := ih _ (by simp [Ty.structSize]; omega) hq hp hwq hwp n0 y hy
+            have hy' := ih _ (by simp; omega) hq hp hwq hwp n0 y hy
             simp only [Ty.open] at hy'
             rw [← Ty.openlift_open] at hy'
             exact (hsand q' hq' y).1 hy'
           · intro hΞy
             have hy := (hsand q' hq' y).2 hΞy
             rw [Ty.openlift_open] at hy ⊢
-            exact ih _ (by simp [Ty.structSize]; omega) hp hq hwp hwq n0 y hy
+            exact ih _ (by simp; omega) hp hq hwp hwq n0 y hy
 
 end LambdaP

@@ -93,7 +93,7 @@ theorem Sub.subst {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) 
   | .pair_ty h1 h2 => fun hσ => .pair_ty (h1.subst hσ) (h2.subst hσ.lift)
   | .ival h1 h2 h3 => fun hσ => .ival (h1.subst hσ) (h2.subst hσ) (h3.subst hσ)
   | .repl hwp hwq h1 h2 => fun hσ => by
-    simp only [Tau.subst, Ty.subst]
+    simp only [Tau.subst]
     rw [← Ty.open_subst_comm, ← Ty.open_subst_comm]
     exact Sub.repl (hwp.subst hσ) (hwq.subst hσ) (h1.subst hσ) (h2.subst hσ)
 

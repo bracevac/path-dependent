@@ -126,7 +126,7 @@ theorem Sub.repl_push {Θ : Sto} {p q : Path 0} {ℓ0 : Nat} {S0 : Ty 0} {B0 : T
 whose recorded signature relates: tight on the domain, general under
 the domain on the codomain. -/
 theorem Inv.arrow_inv {Θ : Sto} {h : Heap} {ℓ : Nat} {S : Ty 0} {T : Ty 1}
-    (hh : HeapTyped Θ h) (hi : Inv Θ ℓ (.arrow S T)) :
+    (_hh : HeapTyped Θ h) (hi : Inv Θ ℓ (.arrow S T)) :
     ∃ T0 T1, Sto.Lookup Θ ℓ (.arrow T0 T1) ∧
       TightSub Θ (.ty S) (.ty T0) ∧
       Sub Θ (Ctx.empty.push S) (.ty T1) (.ty T) := by

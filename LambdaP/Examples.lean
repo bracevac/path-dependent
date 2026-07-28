@@ -1,4 +1,5 @@
 import LambdaP.Soundness.Safety
+import LambdaP.Soundness.Invertible
 
 /-!
 Smoke tests: small derivations exercising the system, and an axiom audit
@@ -40,6 +41,16 @@ example (hgood : SemStoExists) {t t' : Tm 0} {h' : Heap} {T : Ty 0}
     Final t' ∨ ∃ h'' t'', Step h' t' h'' t'' :=
   type_safety_init hgood ht hred
 
+/-! ### Consistency -/
+
+/-- Subtyping is consistent: ⊤ <: ⊥ is underivable at the empty context
+(unconditionally — the empty heap's semantic store typing is trivial). -/
+theorem consistency : ¬ Sub [] .empty (.ty .top) (.ty .bot) := by
+  intro h
+  have hd := Sub.den_empty (Ξ := fun _ _ _ _ => True) h HeapTyped.empty (SemStoOk.empty (Ξ := fun _ _ _ _ => True)) 0 0
+  simp only [Den] at hd
+  exact hd trivial
+
 /-! ### Axiom audit -/
 
 #print axioms LambdaP.Sub.den
@@ -47,5 +58,7 @@ example (hgood : SemStoExists) {t t' : Tm 0} {h' : Heap} {T : Ty 0}
 #print axioms LambdaP.preservation
 #print axioms LambdaP.type_safety
 #print axioms LambdaP.Den.open_coeval
+#print axioms LambdaP.Examples.consistency
+#print axioms LambdaP.TightSub.inv_closure
 
 end LambdaP.Examples
