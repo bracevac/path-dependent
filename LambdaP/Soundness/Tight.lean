@@ -33,14 +33,17 @@ inductive TightSub (Θ : Sto) : Tau 0 -> Tau 0 -> Prop where
   TightSub Θ (.ty (.single p)) (.ty (.single q)) ->
   TightSub Θ (.ty (.single q)) (.ty (.single p))
 | fst_tm :
-  TightSub Θ (.ty (.single p)) (.ty (.pairTm S a T)) ->
-  TightSub Θ (.ty (.single p.fst)) (.ty S)
+  Chains Θ p m ->
+  Sto.Lookup Θ m (.pairTm (.single (.var (.free ℓ1))) a Tc) ->
+  TightSub Θ (.ty (.single p.fst)) (.ty (.single (.var (.free ℓ1))))
 | fst_ty :
-  TightSub Θ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
-  TightSub Θ (.ty (.single p.fst)) (.ty S)
+  Chains Θ p m ->
+  Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓ1))) A T1 T2) ->
+  TightSub Θ (.ty (.single p.fst)) (.ty (.single (.var (.free ℓ1))))
 | sel_tm :
-  TightSub Θ (.ty (.single p)) (.ty (.pairTm S a T)) ->
-  TightSub Θ (.ty (.single (p.sel a))) (.ty (T.open p.fst))
+  Chains Θ p m ->
+  Sto.Lookup Θ m (.pairTm S a (Ty.single (.var (.free ℓ2))).weaken) ->
+  TightSub Θ (.ty (.single (p.sel a))) (.ty (.single (.var (.free ℓ2))))
 | sel_hi :
   Chains Θ p m ->
   Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓ1))) A W.weaken W.weaken) ->
@@ -131,9 +134,9 @@ theorem TightSub.to_sub {Θ : Sto} {τ1 τ2 : Tau 0}
   | top => exact .top
   | var_free hl => exact .var_free hl
   | symm hc _ ih => exact .symm hc.wf ih
-  | fst_tm _ ih => exact .fst_tm ih
-  | fst_ty _ ih => exact .fst_ty ih
-  | sel_tm _ ih => exact .sel_tm ih
+  | fst_tm hc hl => exact (Chains.fst_tm hc hl).to_sub
+  | fst_ty hc hl => exact (Chains.fst_ty hc hl).to_sub
+  | sel_tm hc hl => exact (Chains.sel hc hl).to_sub
   | sel_hi hc hl =>
     have hs := Sub.sel_hi (hc.to_sub_entry hl) .refl
     rwa [Ty.weaken_open] at hs
