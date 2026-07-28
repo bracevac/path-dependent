@@ -37,7 +37,7 @@ def PT (Θ : Sto) : Ty 0 -> Nat -> Prop
       Sub Θ .empty (.ty (.single (.var (.free ℓ1)))) (.ty S) ∧
       PT Θ S ℓ1 ∧
       ∀ q', Chains Θ q' ℓ1 ->
-        (∀ y, PT Θ (T1.open q') y -> Inv Θ y W) ∧
+        (∀ y, Inv Θ y (T1.open q') -> Inv Θ y W) ∧
         (∀ y, Inv Θ y W -> PT Θ (T2.open q') y)
 termination_by T _ => T.structSize
 decreasing_by all_goals simp [Ty.structSize, Ty.structSize_open]; omega
