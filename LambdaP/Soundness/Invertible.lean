@@ -156,4 +156,134 @@ theorem Inv.arrow_inv {Θ : Sto} {h : Heap} {ℓ : Nat} {S : Ty 0} {T : Ty 1}
     · have hnarrowed := hg'.narrow (TightSub.repl hcq hcp).to_sub
       exact .trans hnarrowed (Sub.repl_push hcp hcq)
 
+/-! ### Interval inversion -/
+
+/-- Forward interval tracking: a subtyping derivation from an interval
+ends at an interval, with componentwise residues (contravariant lower,
+covariant upper). Intervals only arise from refl, trans, and ival. -/
+theorem Sub.intv_main {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s}
+    (hs : Sub Θ Γ τ1 τ2) :
+    ∀ A B, τ1 = .intv A B →
+      ∃ C D, τ2 = .intv C D ∧ Sub Θ Γ (.ty C) (.ty A) ∧ Sub Θ Γ (.ty B) (.ty D) := by
+  induction hs using Sub.rec (motive_2 := fun {s} Θ Γ p _ => True)
+  · intro A B hE
+    exact ⟨A, B, hE, .refl, .refl⟩
+  · rename_i h1 h2 ih1 ih2
+    intro A B hE
+    obtain ⟨E, F, hmid, h1a, h1b⟩ := ih1 A B hE
+    obtain ⟨C, D, hend, h2a, h2b⟩ := ih2 E F hmid
+    exact ⟨C, D, hend, .trans h2a h1a, .trans h1b h2b⟩
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · intro A B hE; cases hE
+  · rename_i h1 h2 h3 ih1 ih2 ih3
+    intro A B hE
+    cases hE
+    exact ⟨_, _, rfl, h1, h2⟩
+  · intro A B hE; cases hE
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+
+/-- Interval subtyping inverts componentwise. -/
+theorem Sub.intv_inv {Θ : Sto} {Γ : Ctx s} {A B C D : Ty s}
+    (hs : Sub Θ Γ (.intv A B) (.intv C D)) :
+    Sub Θ Γ (.ty C) (.ty A) ∧ Sub Θ Γ (.ty B) (.ty D) := by
+  obtain ⟨C', D', hE, h1, h2⟩ := hs.intv_main A B rfl
+  cases hE
+  exact ⟨h1, h2⟩
+
+/-! ### Read-off: pairs -/
+
+/-- A location with a possible term-member pair type stores that pair,
+with a tight residue on the first component and a general residue under
+it on the member. -/
+theorem Inv.pairTm_inv {Θ : Sto} {h : Heap} {ℓ : Nat} {S : Ty 0}
+    {a : Name} {T : Ty 1}
+    (hh : HeapTyped Θ h) (hi : Inv Θ ℓ (.pairTm S a T)) :
+    ∃ ℓ1 ℓ2, Sto.Lookup Θ ℓ
+        (.pairTm (.single (.var (.free ℓ1))) a (Ty.single (.var (.free ℓ2))).weaken) ∧
+      TightSub Θ (.ty (.single (.var (.free ℓ1)))) (.ty S) ∧
+      Sub Θ (Ctx.empty.push (.single (.var (.free ℓ1))))
+        (.ty (Ty.single (.var (.free ℓ2))).weaken) (.ty T) := by
+  generalize hU : Ty.pairTm S a T = U at hi
+  induction hi generalizing S T with
+  | precise hl =>
+    subst hU
+    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨ℓ1, a', ℓ2, he⟩ | ⟨_, _, _, he⟩ <;>
+      cases he
+    exact ⟨ℓ1, ℓ2, hl, .refl, .refl⟩
+  | sngl _ => cases hU
+  | top => cases hU
+  | arrow_sub _ _ _ _ => cases hU
+  | pair_tm_sub hi' ht hg ih =>
+    cases hU
+    obtain ⟨ℓ1, ℓ2, hl, ht', hg'⟩ := ih rfl
+    exact ⟨ℓ1, ℓ2, hl, ht'.trans ht,
+      .trans hg' (hg.narrow ht'.to_sub)⟩
+  | pair_ty_sub _ _ _ _ => cases hU
+  | tsel_intro _ _ _ _ => cases hU
+  | open_repl hi' hcp hcq ih =>
+    obtain ⟨S0, B0, hTt, hS, hB⟩ := Ty.open_eq_pairTm hU.symm
+    subst hTt
+    subst hS
+    subst hB
+    obtain ⟨ℓ1, ℓ2, hl, ht', hg'⟩ := ih rfl
+    exact ⟨ℓ1, ℓ2, hl, ht'.trans (TightSub.repl hcp hcq),
+      .trans hg' (Sub.repl_push hcp hcq)⟩
+
+/-- A location with a possible type-member pair type stores that pair;
+the declared interval sandwiches the stored alias. -/
+theorem Inv.pairTy_inv {Θ : Sto} {h : Heap} {ℓ : Nat} {S : Ty 0}
+    {A : Name} {T1 T2 : Ty 1}
+    (hh : HeapTyped Θ h) (hi : Inv Θ ℓ (.pairTy S A T1 T2)) :
+    ∃ (ℓ1 : Nat) (W : Ty 0), Sto.Lookup Θ ℓ
+        (.pairTy (.single (.var (.free ℓ1))) A W.weaken W.weaken) ∧
+      TightSub Θ (.ty (.single (.var (.free ℓ1)))) (.ty S) ∧
+      Sub Θ (Ctx.empty.push (.single (.var (.free ℓ1))))
+        (.ty T1) (.ty W.weaken) ∧
+      Sub Θ (Ctx.empty.push (.single (.var (.free ℓ1))))
+        (.ty W.weaken) (.ty T2) := by
+  generalize hU : Ty.pairTy S A T1 T2 = U at hi
+  induction hi generalizing S T1 T2 with
+  | precise hl =>
+    subst hU
+    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨_, _, _, he⟩ | ⟨ℓ1, A', W, he⟩ <;>
+      cases he
+    exact ⟨ℓ1, W, hl, .refl, .refl, .refl⟩
+  | sngl _ => cases hU
+  | top => cases hU
+  | arrow_sub _ _ _ _ => cases hU
+  | pair_tm_sub _ _ _ _ => cases hU
+  | pair_ty_sub hi' ht hg ih =>
+    cases hU
+    obtain ⟨ℓ1, W, hl, ht', hlo', hhi'⟩ := ih rfl
+    obtain ⟨hlo, hhi⟩ := hg.intv_inv
+    exact ⟨ℓ1, W, hl, ht'.trans ht,
+      .trans (hlo.narrow ht'.to_sub) hlo',
+      .trans hhi' (hhi.narrow ht'.to_sub)⟩
+  | tsel_intro _ _ _ _ => cases hU
+  | open_repl hi' hcp hcq ih =>
+    obtain ⟨S0, C1, C2, hTt, hS, hB1, hB2⟩ := Ty.open_eq_pairTy hU.symm
+    subst hTt
+    subst hS
+    subst hB1
+    subst hB2
+    obtain ⟨ℓ1, W, hl, ht', hlo', hhi'⟩ := ih rfl
+    exact ⟨ℓ1, W, hl, ht'.trans (TightSub.repl hcp hcq),
+      .trans (Sub.repl_push hcq hcp) hlo',
+      .trans hhi' (Sub.repl_push hcp hcq)⟩
+
 end LambdaP
