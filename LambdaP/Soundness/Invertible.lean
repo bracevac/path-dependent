@@ -100,4 +100,60 @@ theorem Ty.open_eq_pairTy {T : Ty 1} {q : Path 0} {S : Ty 0} {A : Name} {B1 B2 :
   | single p => simp only [Ty.open, Ty.subst] at he; cases he
   | tsel p A => simp only [Ty.open, Ty.subst] at he; cases he
 
+/-! ### Read-off: arrows -/
+
+/-- Mutually-aliased singleton subtyping from two co-chaining paths. -/
+theorem Chains.mutual_sub {Θ : Sto} {p q : Path 0} {ℓ0 : Nat}
+    (hcp : Chains Θ p ℓ0) (hcq : Chains Θ q ℓ0) :
+    Sub Θ .empty (.ty (.single p)) (.ty (.single q)) :=
+  .trans hcp.to_sub (.symm hcq.wf hcq.to_sub)
+
+/-- The pushed replacement instance: opened bodies of a binder transfer
+across co-chaining paths in any pushed context. -/
+theorem Sub.repl_push {Θ : Sto} {p q : Path 0} {ℓ0 : Nat} {S0 : Ty 0} {B0 : Ty 2}
+    (hcp : Chains Θ p ℓ0) (hcq : Chains Θ q ℓ0) :
+    Sub Θ (Ctx.empty.push S0)
+      (.ty (B0.subst (Subst.openPath p).lift))
+      (.ty (B0.subst (Subst.openPath q).lift)) := by
+  have h := Sub.repl (T := B0.rename Rename.swap)
+    (Γ := Ctx.empty.push S0)
+    (hcp.wf.weaken) (hcq.wf.weaken)
+    ((hcp.mutual_sub hcq).weaken) ((hcq.mutual_sub hcp).weaken)
+  simp only [Path.weaken] at h
+  rwa [Ty.swap_open_weaken, Ty.swap_open_weaken] at h
+
+/-- A location whose possible types include a function type stores a λ
+whose recorded signature relates: tight on the domain, general under
+the domain on the codomain. -/
+theorem Inv.arrow_inv {Θ : Sto} {h : Heap} {ℓ : Nat} {S : Ty 0} {T : Ty 1}
+    (hh : HeapTyped Θ h) (hi : Inv Θ ℓ (.arrow S T)) :
+    ∃ T0 T1, Sto.Lookup Θ ℓ (.arrow T0 T1) ∧
+      TightSub Θ (.ty S) (.ty T0) ∧
+      Sub Θ (Ctx.empty.push S) (.ty T1) (.ty T) := by
+  generalize hU : Ty.arrow S T = U at hi
+  induction hi generalizing S T with
+  | precise hl =>
+    cases hU
+    exact ⟨S, T, hl, .refl, .refl⟩
+  | sngl _ => cases hU
+  | top => cases hU
+  | arrow_sub hi' ht hg ih =>
+    cases hU
+    obtain ⟨T0, T1, hl, ht', hg'⟩ := ih rfl
+    exact ⟨T0, T1, hl, ht.trans ht',
+      .trans (hg'.narrow ht.to_sub) hg⟩
+  | pair_tm_sub _ _ _ _ => cases hU
+  | pair_ty_sub _ _ _ _ => cases hU
+  | tsel_intro _ _ _ _ => cases hU
+  | open_repl hi' hcp hcq ih =>
+    obtain ⟨S0, B0, hTt, hS, hB⟩ := Ty.open_eq_arrow hU.symm
+    subst hTt
+    subst hS
+    subst hB
+    obtain ⟨T0, T1, hl, ht', hg'⟩ := ih rfl
+    refine ⟨T0, T1, hl, ?_, ?_⟩
+    · exact (TightSub.repl hcq hcp).trans ht'
+    · have hnarrowed := hg'.narrow (TightSub.repl hcq hcp).to_sub
+      exact .trans hnarrowed (Sub.repl_push hcp hcq)
+
 end LambdaP
