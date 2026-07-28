@@ -43,6 +43,35 @@ theorem HeapTyped.bounded {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h) :
   obtain ⟨-, -, -, -, hvb⟩ := hh.lookup_heap hl
   exact hvb
 
+/-- Heap path evaluation resolves through the store typing, provided the
+target is recorded (the bare-location case needs the entry; every
+composite case supplies its own from the heap lookup). -/
+theorem PathEval.to_chains {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h)
+    {p : Path 0} {ℓ : Nat} (he : PathEval h p ℓ)
+    (hend : ∃ T, Sto.Lookup Θ ℓ T) : Chains Θ p ℓ := by
+  induction he with
+  | var => obtain ⟨T, hT⟩ := hend; exact .loc hT
+  | fst_tm hp hl ih =>
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    cases hpre with
+    | pair_tm _ _ => exact .fst_tm (ih ⟨_, hΘ⟩) hΘ
+  | fst_ty hp hl ih =>
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    cases hpre with
+    | pair_ty _ _ => exact .fst_ty (ih ⟨_, hΘ⟩) hΘ
+  | sel hp hl ih =>
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    cases hpre with
+    | pair_tm _ _ => exact .sel (ih ⟨_, hΘ⟩) hΘ
+  | sel_skip_tm hp hl hne _ ihp ihin =>
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    cases hpre with
+    | pair_tm _ _ => exact .sel_skip_tm (ihp ⟨_, hΘ⟩) hΘ hne (ihin hend)
+  | sel_skip_ty hp hl _ ihp ihin =>
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    cases hpre with
+    | pair_ty _ _ => exact .sel_skip_ty (ihp ⟨_, hΘ⟩) hΘ (ihin hend)
+
 /-- A path is a subtype of (the singleton of) the location it evaluates to.
 By `Sub.symm`, they are mutual subtypes. -/
 theorem PathEval.to_sub {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h)
@@ -64,28 +93,20 @@ theorem PathEval.to_sub {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h)
       have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
       rw [Ty.fromClosed_zero] at hloc
       exact .fst_ty (.trans ih hloc)
-  | sel _ hl ih =>
+  | sel hp hl ih =>
+    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
+    cases hpre with
+    | pair_tm _ _ => exact Sub.sel_tm_loc (hp.to_chains hh ⟨_, hΘ⟩) hΘ
+  | sel_skip_tm hp hl hne _ ihp ihin =>
     obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
     cases hpre with
     | pair_tm _ _ =>
-      have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
-      rw [Ty.fromClosed_zero] at hloc
-      have hres := Sub.sel_tm (.trans ih hloc)
-      rwa [Ty.weaken_open] at hres
-  | sel_skip_tm _ hl hne _ ihp ihin =>
-    obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
-    cases hpre with
-    | pair_tm _ _ =>
-      have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
-      rw [Ty.fromClosed_zero] at hloc
-      exact .trans (.skip_tm (.trans ihp hloc) hne) ihin
-  | sel_skip_ty _ hl _ ihp ihin =>
+      exact .trans (Sub.skip_tm_loc (hp.to_chains hh ⟨_, hΘ⟩) hΘ hne) ihin
+  | sel_skip_ty hp hl _ ihp ihin =>
     obtain ⟨T, hΘ, hpre, -, -⟩ := hh.lookup_heap hl
     cases hpre with
     | pair_ty _ _ =>
-      have hloc := Sub.var_free (Θ := Θ) (Γ := Ctx.empty) hΘ
-      rw [Ty.fromClosed_zero] at hloc
-      exact .trans (.skip_ty (.trans ihp hloc)) ihin
+      exact .trans (Sub.skip_ty_loc (hp.to_chains hh ⟨_, hΘ⟩) hΘ) ihin
 
 /-- Inversion for path typing: a typed path is wellformed and its singleton
 is below the ascribed type. -/

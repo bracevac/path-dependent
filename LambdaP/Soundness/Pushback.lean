@@ -39,9 +39,10 @@ inductive SSub (Θ : Sto) : Ty 0 -> Ty 0 -> Nat -> Prop where
 | fst_ty :
   SSub Θ (.single p) (.pairTy S A T1 T2) n ->
   SSub Θ (.single p.fst) S (n+1)
-| sel_tm :
-  SSub Θ (.single p) (.pairTm S a T) n ->
-  SSub Θ (.single (p.sel a)) (T.open p.fst) (n+1)
+| sel_tm_loc :
+  Chains Θ p m ->
+  Sto.Lookup Θ m (.pairTm S a (Ty.single (.var (.free ℓ2))).weaken) ->
+  SSub Θ (.single (p.sel a)) (.single (.var (.free ℓ2))) (n+1)
 | sel_hi_loc :
   Chains Θ p m ->
   Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓ1))) A (Ty.weaken W) (Ty.weaken W)) ->
@@ -53,28 +54,31 @@ inductive SSub (Θ : Sto) : Ty 0 -> Ty 0 -> Nat -> Prop where
   SSub Θ U (Ty.fromClosed W) n ->
   SSub Θ U (.tsel p A) (n+1)
 | arrow :
-  Sub Θ .empty (.ty S') (.ty S) ->
+  SSub Θ S' S n ->
   Sub Θ (Ctx.empty.push S') (.ty T) (.ty T') ->
   SSub Θ (.arrow S T) (.arrow S' T') (n+1)
 | pair_tm :
-  Sub Θ .empty (.ty S) (.ty S') ->
+  SSub Θ S S' n ->
   Sub Θ (Ctx.empty.push S) (.ty T) (.ty T') ->
   SSub Θ (.pairTm S a T) (.pairTm S' a T') (n+1)
 | pair_ty :
-  Sub Θ .empty (.ty S) (.ty S') ->
-  Sub Θ (Ctx.empty.push S) (.intv T1 T2) (.intv T1' T2') ->
+  SSub Θ S S' n ->
+  Sub Θ (Ctx.empty.push S) (.ty T1') (.ty T1) ->
+  Sub Θ (Ctx.empty.push S) (.ty T2) (.ty T2') ->
   SSub Θ (.pairTy S A T1 T2) (.pairTy S' A T1' T2') (n+1)
 | repl :
   Path.Wf Θ .empty p -> Path.Wf Θ .empty q ->
   SSub Θ (.single p) (.single q) n ->
   SSub Θ (.single q) (.single p) n ->
   SSub Θ (Ty.open T p) (Ty.open T q) (n+1)
-| skip_tm :
-  SSub Θ (.single p) (.pairTm S b T) n ->
+| skip_tm_loc :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTm S b Tc) ->
   a ≠ b ->
   SSub Θ (.single (p.sel a)) (.single ((Path.fst p).sel a)) (n+1)
-| skip_ty :
-  SSub Θ (.single p) (.pairTy S B T1 T2) n ->
+| skip_ty_loc :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTy S B T1 T2) ->
   SSub Θ (.single (p.sel a)) (.single ((Path.fst p).sel a)) (n+1)
 
 /-- Growing a derivation by one (right-premise growth keeps the size
@@ -90,15 +94,15 @@ theorem SSub.succ {Θ} {T1 T2 : Ty 0} {n : Nat}
   | symm hw _ ih => exact .symm hw ih
   | fst_tm _ ih => exact .fst_tm ih
   | fst_ty _ ih => exact .fst_ty ih
-  | sel_tm _ ih => exact .sel_tm ih
+  | sel_tm_loc hc hl => exact .sel_tm_loc hc hl
   | sel_hi_loc hc hl _ ih => exact .sel_hi_loc hc hl ih
   | sel_lo_loc hc hl _ ih => exact .sel_lo_loc hc hl ih
-  | arrow h1 h2 => exact .arrow h1 h2
-  | pair_tm h1 h2 => exact .pair_tm h1 h2
-  | pair_ty h1 h2 => exact .pair_ty h1 h2
+  | arrow _ h2 ih => exact .arrow ih h2
+  | pair_tm _ h2 ih => exact .pair_tm ih h2
+  | pair_ty _ h1 h2 ih => exact .pair_ty ih h1 h2
   | repl hwp hwq _ _ ih1 ih2 => exact .repl hwp hwq ih1 ih2
-  | skip_tm _ hne ih => exact .skip_tm ih hne
-  | skip_ty _ ih => exact .skip_ty ih
+  | skip_tm_loc hc hl hne => exact .skip_tm_loc hc hl hne
+  | skip_ty_loc hc hl => exact .skip_ty_loc hc hl
 
 /-- Sizes are monotone (minidot's upgrade idiom). -/
 theorem SSub.mono {Θ} {T1 T2 : Ty 0} {n n' : Nat}

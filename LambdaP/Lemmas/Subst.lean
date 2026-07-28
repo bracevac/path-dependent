@@ -75,17 +75,21 @@ theorem Sub.subst {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) 
   | .symm hw h1 => fun hσ => .symm (hw.subst hσ) (h1.subst hσ)
   | .fst_tm h1 => fun hσ => .fst_tm (h1.subst hσ)
   | .fst_ty h1 => fun hσ => .fst_ty (h1.subst hσ)
-  | .sel_tm h1 => fun hσ => by
+  | .sel_tm hr h1 => fun hσ => by
     simp only [Tau.subst, Ty.subst, Path.subst]
     rw [← Ty.open_subst_comm]
-    exact Sub.sel_tm (h1.subst hσ)
-  | .sel_hi hr h1 h2 => fun hσ => by
+    exact Sub.sel_tm (Path.root_isBound_subst hr hσ.rooted) (h1.subst hσ)
+  | .sel_tm_loc hc hl => fun _ => by
+    simp only [Tau.subst, Ty.subst, Path.subst, Var.subst]
+    exact Sub.sel_tm_loc hc.subst hl
+  | .sel_hi hr hw h1 h2 => fun hσ => by
     have h2' := h2.subst hσ
     simp only [Tau.subst] at h2'
     rw [← Ty.open_subst_comm, ← Ty.open_subst_comm] at h2'
     simp only [Tau.subst, Ty.subst]
     rw [← Ty.open_subst_comm]
-    exact Sub.sel_hi (Path.root_isBound_subst hr hσ.rooted) (h1.subst hσ) h2'
+    exact Sub.sel_hi (Path.root_isBound_subst hr hσ.rooted) (hw.subst hσ)
+      (h1.subst hσ) h2'
   | .sel_lo hr hw h1 h2 => fun hσ => by
     have h2' := h2.subst hσ
     simp only [Tau.subst] at h2'
@@ -108,8 +112,16 @@ theorem Sub.subst {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) 
     simp only [Tau.subst]
     rw [← Ty.open_subst_comm, ← Ty.open_subst_comm]
     exact Sub.repl (hwp.subst hσ) (hwq.subst hσ) (h1.subst hσ) (h2.subst hσ)
-  | .skip_tm h1 hne => fun hσ => .skip_tm (h1.subst hσ) hne
-  | .skip_ty h1 => fun hσ => .skip_ty (h1.subst hσ)
+  | .skip_tm hr h1 hne => fun hσ =>
+    .skip_tm (Path.root_isBound_subst hr hσ.rooted) (h1.subst hσ) hne
+  | .skip_ty hr h1 => fun hσ =>
+    .skip_ty (Path.root_isBound_subst hr hσ.rooted) (h1.subst hσ)
+  | .skip_tm_loc hc hl hne => fun _ => by
+    simp only [Tau.subst, Ty.subst, Path.subst]
+    exact Sub.skip_tm_loc hc.subst hl hne
+  | .skip_ty_loc hc hl => fun _ => by
+    simp only [Tau.subst, Ty.subst, Path.subst]
+    exact Sub.skip_ty_loc hc.subst hl
 
 /-- Path wellformedness is closed under conforming substitution. -/
 theorem Path.Wf.subst {Θ} {Γ : Ctx s1} {p : Path s1} (h : Path.Wf Θ Γ p) :

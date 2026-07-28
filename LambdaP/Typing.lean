@@ -254,8 +254,16 @@ wellformedness premise (like `sel_lo`). -/
   Sub Θ Γ (.ty (.single p.fst)) (.ty S)
 /-- Term-member selection: p.a is below the declared member type. -/
 | sel_tm :
+  p.root.IsBound ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTm S a T)) ->
   Sub Θ Γ (.ty (.single (p.sel a))) (.ty (T.open p.fst))
+/-- Store-anchored term-member selection for location-rooted paths
+(deviation 10): the stored component is a location, so the selection
+is an exact alias of it. -/
+| sel_tm_loc :
+  Chains Θ p m ->
+  Sto.Lookup Θ m (.pairTm S a (Ty.single (.var (.free ℓ2))).weaken) ->
+  Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single (.var (.free ℓ2))))
 /-- A type selection is below the (opened) declared upper bound of *its own*
 member. The pair-type premise anchors the bounds to the member being
 selected (DOT's SEL-<:); the draft's unanchored formulation is unsound —
@@ -263,6 +271,7 @@ see DESIGN.md, deviation 7. The second premise is the draft's non-empty
 interval guard. -/
 | sel_hi :
   p.root.IsBound ->
+  Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
   Sub Θ Γ (.ty (T1.open p.fst)) (.ty (T2.open p.fst)) ->
   Sub Θ Γ (.ty (.tsel p A)) (.ty (T2.open p.fst))
@@ -329,12 +338,25 @@ singleton inclusion would be unsound at contravariant positions. -/
 /-- Selection skip over a term member with a different label (records
 as nested pairs; the fixed form of the draft's scoping-buggy sel-l). -/
 | skip_tm :
+  p.root.IsBound ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTm S b T)) ->
   a ≠ b ->
   Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single ((Path.fst p).sel a)))
 /-- Selection skip over a type member. -/
 | skip_ty :
+  p.root.IsBound ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S B T1 T2)) ->
+  Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single ((Path.fst p).sel a)))
+/-- Store-anchored selection skips for location-rooted paths
+(completing deviation 9 for records-as-nested-pairs). -/
+| skip_tm_loc :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTm S b Tc) ->
+  a ≠ b ->
+  Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single ((Path.fst p).sel a)))
+| skip_ty_loc :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTy S B T1 T2) ->
   Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single ((Path.fst p).sel a)))
 
 /-- Wellformedness of paths: every projection/selection is justified by
