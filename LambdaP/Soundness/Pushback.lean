@@ -658,4 +658,42 @@ theorem SPP.single_single_inv {Θ : Sto} {T1 T2 : Ty 0}
   | pair_ty _ _ _ => intro p q h1 _; cases h1
 
 
+
+/-- Resolution targets of location-bounded paths are strictly below
+the bound over shaped stores: entries mention only older locations,
+so chains descend. This is the well-founded measure for the
+alias-hop descent (lexicographic with fuel). -/
+theorem Chains.target_lt {Θ : Sto} {q : Path 0} {mq k : Nat}
+    (hwf : Sto.Shaped Θ) (hc : Chains Θ q mq)
+    (hb : Path.LocsBelow k q) : mq < k := by
+  induction hc with
+  | loc _ => exact hb
+  | fst_tm hc hl ih =>
+    have h1 := (hwf hl).2
+    have := ih hb
+    simp [Ty.LocsBelow, Path.LocsBelow, Var.LocsBelow] at h1
+    omega
+  | fst_ty hc hl ih =>
+    have h1 := (hwf hl).2
+    have := ih hb
+    simp [Ty.LocsBelow, Path.LocsBelow, Var.LocsBelow] at h1
+    omega
+  | sel hc hl ih =>
+    have h1 := (hwf hl).2
+    have := ih hb
+    simp [Ty.LocsBelow, Path.LocsBelow, Var.LocsBelow, Ty.weaken,
+      Ty.rename, Path.rename, Var.rename] at h1
+    omega
+  | sel_skip_tm hc hl hne hin ihp ihin =>
+    have hp := ihp hb
+    exact ihin (by
+      simp only [Path.LocsBelow] at hb ⊢
+      exact hb)
+  | sel_skip_ty hc hl hin ihp ihin =>
+    have hp := ihp hb
+    exact ihin (by
+      simp only [Path.LocsBelow] at hb ⊢
+      exact hb)
+
+
 end LambdaP
