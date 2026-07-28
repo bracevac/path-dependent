@@ -696,4 +696,108 @@ theorem Chains.target_lt {Θ : Sto} {q : Path 0} {mq k : Nat}
       exact hb)
 
 
+
+/-! ### The sized inversion package: statement
+
+`SOut` is the shape-directed reading of a sized runtime subtyping fact
+over a shaped store. Fuel discipline (NOTES, "LOCKED"): tsel-anchored
+tails are strict (`m < n`) except the shaped-subject ones (`m ≤ n`,
+built by raw-premise composition, never re-inverted); dominance
+components are `m ≤ n`. The `PEq` wrapper keeps the single-subject
+tsel tail strict under transport. -/
+def SOut (Θ : Sto) (n : Nat) : Ty 0 -> Ty 0 -> Prop
+| .single p, .single q => PEq Θ p q
+| .single p, .pairTm S a _ =>
+    ∃ ℓ0 ℓ1 ℓ2, Chains Θ p ℓ0 ∧
+      Sto.Lookup Θ ℓ0 (.pairTm (.single (.var (.free ℓ1))) a
+        (Ty.single (.var (.free ℓ2))).weaken) ∧
+      ∃ m, m ≤ n ∧ SSub Θ (.single (.var (.free ℓ1))) S m
+| .single p, .pairTy S A _ _ =>
+    ∃ ℓ0 ℓ1 W, Chains Θ p ℓ0 ∧
+      Sto.Lookup Θ ℓ0 (.pairTy (.single (.var (.free ℓ1))) A
+        (Ty.weaken W) (Ty.weaken W)) ∧
+      ∃ m, m ≤ n ∧ SSub Θ (.single (.var (.free ℓ1))) S m
+| .single p, .arrow S _ =>
+    ∃ ℓ0 S0 T0, Chains Θ p ℓ0 ∧
+      Sto.Lookup Θ ℓ0 (.arrow S0 T0) ∧
+      ∃ m, m ≤ n ∧ SSub Θ S S0 m
+| .single p, .tsel q A =>
+    ∃ mq ℓ1 W, Chains Θ q mq ∧
+      Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
+        (Ty.weaken W) (Ty.weaken W)) ∧
+      ∃ p', PEq Θ p p' ∧ ∃ m, m < n ∧ SSub Θ (.single p') W m
+| .single _, .bot => False
+| .single _, .top => True
+| .pairTm S a _, .pairTm S' a' _ =>
+    a = a' ∧ ∃ m, m ≤ n ∧ SSub Θ S S' m
+| .pairTy S A _ _, .pairTy S' A' _ _ =>
+    A = A' ∧ ∃ m, m ≤ n ∧ SSub Θ S S' m
+| .arrow S _, .arrow S' _ =>
+    ∃ m, m ≤ n ∧ SSub Θ S' S m
+| .pairTm S a T, .tsel q A =>
+    ∃ mq ℓ1 W, Chains Θ q mq ∧
+      Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
+        (Ty.weaken W) (Ty.weaken W)) ∧
+      ∃ m, m ≤ n ∧ SSub Θ (.pairTm S a T) W m
+| .pairTy S A T1 T2, .tsel q A' =>
+    ∃ mq ℓ1 W, Chains Θ q mq ∧
+      Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A'
+        (Ty.weaken W) (Ty.weaken W)) ∧
+      ∃ m, m ≤ n ∧ SSub Θ (.pairTy S A T1 T2) W m
+| .arrow S T, .tsel q A =>
+    ∃ mq ℓ1 W, Chains Θ q mq ∧
+      Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
+        (Ty.weaken W) (Ty.weaken W)) ∧
+      ∃ m, m ≤ n ∧ SSub Θ (.arrow S T) W m
+| .pairTm _ _ _, .top => True
+| .pairTy _ _ _ _, .top => True
+| .arrow _ _, .top => True
+| .pairTm _ _ _, .pairTy _ _ _ _ => False
+| .pairTm _ _ _, .arrow _ _ => False
+| .pairTm _ _ _, .single _ => False
+| .pairTm _ _ _, .bot => False
+| .pairTy _ _ _ _, .pairTm _ _ _ => False
+| .pairTy _ _ _ _, .arrow _ _ => False
+| .pairTy _ _ _ _, .single _ => False
+| .pairTy _ _ _ _, .bot => False
+| .arrow _ _, .pairTm _ _ _ => False
+| .arrow _ _, .pairTy _ _ _ _ => False
+| .arrow _ _, .single _ => False
+| .arrow _ _, .bot => False
+| .tsel _ _, .top => True
+| .tsel q A, X =>
+    (∃ p2, X = .tsel p2 A ∧ PEq Θ q p2) ∨
+    (∃ mq ℓ1 W, Chains Θ q mq ∧
+      Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
+        (Ty.weaken W) (Ty.weaken W)) ∧
+      ∃ m, m < n ∧ SSub Θ W X m)
+| .top, .top => True
+| .top, .tsel q A =>
+    ∃ mq ℓ1 W, Chains Θ q mq ∧
+      Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
+        (Ty.weaken W) (Ty.weaken W)) ∧
+      ∃ m, m < n ∧ SSub Θ .top W m
+| .top, _ => False
+| .bot, _ => True
+
+/-- `SOut` is monotone in fuel. -/
+theorem SOut.mono {Θ : Sto} {n n' : Nat} {T1 T2 : Ty 0}
+    (h : SOut Θ n T1 T2) (hle : n ≤ n') : SOut Θ n' T1 T2 := by
+  cases T1 <;> cases T2 <;>
+    simp only [SOut] at h ⊢ <;>
+    first
+    | exact h
+    | (obtain ⟨a1, a2, a3, h1, h2, m, hm, hs⟩ := h
+       exact ⟨a1, a2, a3, h1, h2, m, by omega, hs⟩)
+    | (obtain ⟨a1, a2, a3, h1, h2, p', hpe, m, hm, hs⟩ := h
+       exact ⟨a1, a2, a3, h1, h2, p', hpe, m, by omega, hs⟩)
+    | (obtain ⟨he, m, hm, hs⟩ := h
+       exact ⟨he, m, by omega, hs⟩)
+    | (obtain ⟨m, hm, hs⟩ := h
+       exact ⟨m, by omega, hs⟩)
+    | (rcases h with ⟨p2, hX, hpe⟩ | ⟨a1, a2, a3, h1, h2, m, hm, hs⟩
+       · exact Or.inl ⟨p2, hX, hpe⟩
+       · exact Or.inr ⟨a1, a2, a3, h1, h2, m, by omega, hs⟩)
+
+
 end LambdaP
