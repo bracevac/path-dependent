@@ -430,4 +430,113 @@ theorem Inv.bot_elim {Θ : Sto} {h : Heap} {ℓ : Nat}
     subst hTt
     exact ih rfl
 
+/-! ### The closure lemma: possible types are closed under tight steps -/
+
+/-- Weakening of types is injective (open any weakened type to recover it). -/
+theorem Ty.weaken_inj {T1 T2 : Ty s} (h : T1.weaken = T2.weaken) : T1 = T2 := by
+  have := congrArg (fun X => Ty.open X (.var (.free 0))) h
+  simpa [Ty.weaken_open] using this
+
+/-- Possible types at the generalized-type level (intervals carry no
+membership content). -/
+def InvTau (Θ : Sto) (ℓ : Nat) : Tau 0 -> Prop
+| .ty U => Inv Θ ℓ U
+| .intv _ _ => True
+
+/-- Closure: tight subtyping preserves possible types. -/
+theorem TightSub.inv_closure {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h)
+    {τ1 τ2 : Tau 0} (ht : TightSub Θ τ1 τ2) :
+    ∀ ℓ, InvTau Θ ℓ τ1 -> InvTau Θ ℓ τ2 := by
+  induction ht with
+  | refl => exact fun _ hi => hi
+  | trans _ _ ih1 ih2 => exact fun ℓ hi => ih2 ℓ (ih1 ℓ hi)
+  | bot => exact fun ℓ hi => absurd hi (fun hi => Inv.bot_elim hh hi)
+  | top => exact fun ℓ _ => .top
+  | var_free hl =>
+    intro ℓ' hi
+    have hc := Inv.single_inv hh hi
+    cases hc with
+    | loc _ =>
+      show Inv _ _ _
+      rw [Ty.fromClosed_zero]
+      exact .precise hl
+  | symm hc _ ih =>
+    intro ℓ' hi
+    have hcq' := Inv.single_inv hh hi
+    have hcq := Inv.single_inv hh (ih _ (.sngl hc))
+    cases Chains.deterministic hcq' hcq
+    exact .sngl hc
+  | fst_tm hc hl =>
+    intro ℓ' hi
+    have hcf := Inv.single_inv hh hi
+    cases hcf with
+    | fst_tm hc' hl' =>
+      cases Chains.deterministic hc' hc
+      have heq := Option.some_inj.mp ((Eq.symm hl').trans hl)
+      injection heq with hs h1 h2 h3
+      cases h1
+      have hm := (List.getElem?_eq_some_iff.mp hl).1
+      have hlt := Nat.lt_trans ((hh.2 hl).1).1 hm
+      obtain ⟨T1, hl1⟩ := Sto.lookup_lt hlt
+      exact .sngl (.loc hl1)
+    | fst_ty hc' hl' =>
+      cases Chains.deterministic hc' hc
+      have heq := Option.some_inj.mp ((Eq.symm hl').trans hl)
+      cases heq
+  | fst_ty hc hl =>
+    intro ℓ' hi
+    have hcf := Inv.single_inv hh hi
+    cases hcf with
+    | fst_tm hc' hl' =>
+      cases Chains.deterministic hc' hc
+      have heq := Option.some_inj.mp ((Eq.symm hl').trans hl)
+      cases heq
+    | fst_ty hc' hl' =>
+      cases Chains.deterministic hc' hc
+      have heq := Option.some_inj.mp ((Eq.symm hl').trans hl)
+      injection heq with hs h1 h2 h3 h4
+      cases h1
+      have hm := (List.getElem?_eq_some_iff.mp hl).1
+      have hlt := Nat.lt_trans ((hh.2 hl).1).1 hm
+      obtain ⟨T1, hl1⟩ := Sto.lookup_lt hlt
+      exact .sngl (.loc hl1)
+  | sel_tm hc hl =>
+    intro ℓ' hi
+    have hcf := Inv.single_inv hh hi
+    cases hcf with
+    | sel hc' hl' =>
+      cases Chains.deterministic hc' hc
+      have heq := Option.some_inj.mp ((Eq.symm hl').trans hl)
+      injection heq with hs h1 h2 h3
+      have h3' := Ty.weaken_inj h3
+      cases h3'
+      have hm := (List.getElem?_eq_some_iff.mp hl).1
+      have hlt := Nat.lt_trans (Ty.locsBelow_rename.mp ((hh.2 hl).1).2) hm
+      obtain ⟨T1, hl1⟩ := Sto.lookup_lt hlt
+      exact .sngl (.loc hl1)
+  | sel_hi hc hl =>
+    intro ℓ' hi
+    obtain ⟨m'', ℓ1'', W'', hc'', hl'', hiW⟩ := Inv.tsel_inv hh hi
+    cases Chains.deterministic hc'' hc
+    have heq := Option.some_inj.mp ((Eq.symm hl'').trans hl)
+    injection heq with hs h1 h2 h3 h4
+    cases Ty.weaken_inj h3
+    exact hiW
+  | sel_lo hc hl =>
+    intro ℓ' hi
+    exact .tsel_intro hc hl hi
+  | arrow ht hg ih =>
+    intro ℓ' hi
+    exact .arrow_sub hi ht hg
+  | pair_tm ht hg ih =>
+    intro ℓ' hi
+    exact .pair_tm_sub hi ht hg
+  | pair_ty ht hg ih =>
+    intro ℓ' hi
+    exact .pair_ty_sub hi ht hg
+  | ival _ _ _ _ _ _ => exact fun _ _ => trivial
+  | repl hcp hcq =>
+    intro ℓ' hi
+    exact .open_repl hi hcp hcq
+
 end LambdaP
