@@ -286,4 +286,148 @@ theorem Inv.pairTy_inv {Θ : Sto} {h : Heap} {ℓ : Nat} {S : Ty 0}
       .trans (Sub.repl_push hcq hcp) hlo',
       .trans hhi' (Sub.repl_push hcp hcq)⟩
 
+/-! ### Read-off: singletons, selections, bottom -/
+
+theorem Ty.open_eq_single {T : Ty 1} {q : Path 0} {r : Path 0}
+    (he : T.open q = .single r) :
+    ∃ P0, T = .single P0 ∧ r = P0.subst (Subst.openPath q) := by
+  cases T with
+  | single P0 =>
+    simp only [Ty.open, Ty.subst] at he
+    injection he with hs h1
+    exact ⟨P0, rfl, h1.symm⟩
+  | top => cases he
+  | bot => cases he
+  | arrow _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTm _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | tsel _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+
+theorem Ty.open_eq_tsel {T : Ty 1} {q : Path 0} {r : Path 0} {A : Name}
+    (he : T.open q = .tsel r A) :
+    ∃ P0, T = .tsel P0 A ∧ r = P0.subst (Subst.openPath q) := by
+  cases T with
+  | tsel P0 A0 =>
+    simp only [Ty.open, Ty.subst] at he
+    injection he with hs h1 h2
+    subst h2
+    exact ⟨P0, rfl, h1.symm⟩
+  | top => cases he
+  | bot => cases he
+  | arrow _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTm _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | single _ => simp only [Ty.open, Ty.subst] at he; cases he
+
+theorem Ty.open_eq_bot {T : Ty 1} {q : Path 0}
+    (he : T.open q = .bot) : T = .bot := by
+  cases T with
+  | bot => rfl
+  | top => cases he
+  | single _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | tsel _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | arrow _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTm _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+  | pairTy _ _ _ _ => simp only [Ty.open, Ty.subst] at he; cases he
+
+/-- Resolution of an opened path only depends on the target of the
+opening path (the store-side mirror of `PathEval.open_congr`). -/
+theorem Chains.open_congr {Θ : Sto} {q q' : Path 0} {ℓq : Nat}
+    (hq : Chains Θ q ℓq) (hq' : Chains Θ q' ℓq) :
+    ∀ {p : Path 1} {m : Nat},
+      Chains Θ (p.subst (Subst.openPath q)) m ->
+      Chains Θ (p.subst (Subst.openPath q')) m := by
+  intro p
+  induction p with
+  | var x =>
+    intro m he
+    cases x with
+    | bound b =>
+      cases b with
+      | here =>
+        have : m = ℓq := Chains.deterministic he hq
+        subst this
+        exact hq'
+      | there b => exact nomatch b
+    | free n => exact he
+  | fst p ih =>
+    intro m he
+    cases he with
+    | fst_tm he' hl => exact .fst_tm (ih he') hl
+    | fst_ty he' hl => exact .fst_ty (ih he') hl
+  | sel p a ih =>
+    intro m he
+    cases he with
+    | sel he' hl => exact .sel (ih he') hl
+
+/-- A location with a possible singleton type is the path's target. -/
+theorem Inv.single_inv {Θ : Sto} {h : Heap} {ℓ : Nat} {q : Path 0}
+    (hh : HeapTyped Θ h) (hi : Inv Θ ℓ (.single q)) :
+    Chains Θ q ℓ := by
+  generalize hU : Ty.single q = U at hi
+  induction hi generalizing q with
+  | precise hl =>
+    subst hU
+    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨_, _, _, he⟩ | ⟨_, _, _, he⟩ <;>
+      cases he
+  | sngl hc => cases hU; exact hc
+  | top => cases hU
+  | arrow_sub _ _ _ _ => cases hU
+  | pair_tm_sub _ _ _ _ => cases hU
+  | pair_ty_sub _ _ _ _ => cases hU
+  | tsel_intro _ _ _ _ => cases hU
+  | open_repl hi' hcp hcq ih =>
+    obtain ⟨P0, hTt, hr⟩ := Ty.open_eq_single hU.symm
+    subst hTt
+    subst hr
+    exact Chains.open_congr hcp hcq (ih rfl)
+
+/-- A location with a possible selection type: the selected path chains
+to a stored type-member pair whose alias is itself possible. -/
+theorem Inv.tsel_inv {Θ : Sto} {h : Heap} {ℓ : Nat} {q : Path 0} {A : Name}
+    (hh : HeapTyped Θ h) (hi : Inv Θ ℓ (.tsel q A)) :
+    ∃ (m ℓ1 : Nat) (W : Ty 0), Chains Θ q m ∧
+      Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓ1))) A W.weaken W.weaken) ∧
+      Inv Θ ℓ W := by
+  generalize hU : Ty.tsel q A = U at hi
+  induction hi generalizing q with
+  | precise hl =>
+    subst hU
+    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨_, _, _, he⟩ | ⟨_, _, _, he⟩ <;>
+      cases he
+  | sngl _ => cases hU
+  | top => cases hU
+  | arrow_sub _ _ _ _ => cases hU
+  | pair_tm_sub _ _ _ _ => cases hU
+  | pair_ty_sub _ _ _ _ => cases hU
+  | tsel_intro hc hl hiW _ =>
+    cases hU
+    exact ⟨_, _, _, hc, hl, hiW⟩
+  | open_repl hi' hcp hcq ih =>
+    obtain ⟨P0, hTt, hr⟩ := Ty.open_eq_tsel hU.symm
+    subst hTt
+    subst hr
+    obtain ⟨m, ℓ1, W, hc, hl, hiW⟩ := ih rfl
+    exact ⟨m, ℓ1, W, Chains.open_congr hcp hcq hc, hl, hiW⟩
+
+/-- No location has possible type ⊥. -/
+theorem Inv.bot_elim {Θ : Sto} {h : Heap} {ℓ : Nat}
+    (hh : HeapTyped Θ h) (hi : Inv Θ ℓ .bot) : False := by
+  generalize hU : (Ty.bot : Ty 0) = U at hi
+  induction hi with
+  | precise hl =>
+    subst hU
+    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨_, _, _, he⟩ | ⟨_, _, _, he⟩ <;>
+      cases he
+  | sngl _ => cases hU
+  | top => cases hU
+  | arrow_sub _ _ _ _ => cases hU
+  | pair_tm_sub _ _ _ _ => cases hU
+  | pair_ty_sub _ _ _ _ => cases hU
+  | tsel_intro _ _ _ _ => cases hU
+  | open_repl hi' hcp hcq ih =>
+    have hTt := Ty.open_eq_bot hU.symm
+    subst hTt
+    exact ih rfl
+
 end LambdaP
