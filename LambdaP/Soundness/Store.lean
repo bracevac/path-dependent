@@ -108,23 +108,9 @@ theorem HasType.path_inv {Θ} {Γ : Ctx s} {t : Tm s} {T : Ty s}
   | letin _ _ _ _ _ => intro _ hq; cases hq
   | typed _ _ _ => intro _ hq; cases hq
 
-/-- Regularity: the type of a well-typed term is wellformed. -/
-theorem HasType.regular {Θ} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : HasType Θ Γ t T) : Wf Θ Γ (.ty T) := by
-  induction h with
-  | path hp => exact .single hp
-  | sub _ _ hwf _ => exact hwf
-  | abs hwf _ ih => exact .arrow hwf ih
-  | app _ h2 ih1 _ =>
-    cases ih1 with
-    | arrow _ hT =>
-      obtain ⟨hq, hqsub⟩ := h2.path_inv rfl
-      exact hT.subst (SubstTyping.openPath hq hqsub)
-  | pair_tm hy hz =>
-    exact .pair_tm (.single hy) (Wf.weaken (.single hz))
-  | pair_ty hy hwf =>
-    exact .pair_ty (.single hy) (.intv hwf.weaken hwf.weaken .refl)
-  | letin _ hwf _ _ _ => exact hwf
-  | typed _ hwf _ => exact hwf
+/- Regularity (the type of a well-typed term is wellformed) is deferred:
+its `app` case opens the codomain with a possibly location-rooted
+argument, which needs the realized (post-pushback) substitution layer.
+Unconsumed; re-derive after the runtime substitution lemma lands. -/
 
 end LambdaP

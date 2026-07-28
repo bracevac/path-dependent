@@ -24,9 +24,11 @@ theorem Sub.sto_weaken {Θ Θ' : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s}
   | .fst_tm h1 => .fst_tm (h1.sto_weaken hext)
   | .fst_ty h1 => .fst_ty (h1.sto_weaken hext)
   | .sel_tm h1 => .sel_tm (h1.sto_weaken hext)
-  | .sel_hi h1 h2 => .sel_hi (h1.sto_weaken hext) (h2.sto_weaken hext)
-  | .sel_lo hw h1 h2 =>
-    .sel_lo (hw.sto_weaken hext) (h1.sto_weaken hext) (h2.sto_weaken hext)
+  | .sel_hi hr h1 h2 => .sel_hi hr (h1.sto_weaken hext) (h2.sto_weaken hext)
+  | .sel_lo hr hw h1 h2 =>
+    .sel_lo hr (hw.sto_weaken hext) (h1.sto_weaken hext) (h2.sto_weaken hext)
+  | .sel_hi_loc hc hl => .sel_hi_loc (hc.sto_weaken hext) (hext hl)
+  | .sel_lo_loc hc hl => .sel_lo_loc (hc.sto_weaken hext) (hext hl)
   | .arrow h1 h2 => .arrow (h1.sto_weaken hext) (h2.sto_weaken hext)
   | .pair_tm h1 h2 => .pair_tm (h1.sto_weaken hext) (h2.sto_weaken hext)
   | .pair_ty h1 h2 => .pair_ty (h1.sto_weaken hext) (h2.sto_weaken hext)

@@ -71,6 +71,17 @@ inductive Tm.IsValue : Tm s -> Prop where
 | pairTm : Tm.IsValue (.pairTm y a z)
 | pairTy : Tm.IsValue (.pairTy y A T)
 
+/-- Bound-variable predicate, for scoping rules to bound-rooted paths. -/
+def Var.IsBound : Var s -> Prop
+| .bound _ => True
+| .free _ => False
+
+/-- The root variable of a path (the only variable it contains). -/
+def Path.root : Path s -> Var s
+| .var x => x
+| .fst p => p.root
+| .sel p _ => p.root
+
 /-! ### Renaming -/
 
 /-- Applies a renaming to all bound variables in a path. -/
@@ -78,6 +89,20 @@ def Path.rename : Path s1 -> Rename s1 s2 -> Path s2
 | .var x, f => .var (x.rename f)
 | .fst p, f => .fst (p.rename f)
 | .sel p a, f => .sel (p.rename f) a
+
+theorem Path.root_rename {p : Path s1} {f : Rename s1 s2} :
+    (p.rename f).root = p.root.rename f := by
+  induction p with
+  | var v => rfl
+  | fst p ih => exact ih
+  | sel p a ih => exact ih
+
+theorem Path.root_isBound_rename {p : Path s1} {f : Rename s1 s2}
+    (h : p.root.IsBound) : (p.rename f).root.IsBound := by
+  rw [Path.root_rename]
+  cases hv : p.root with
+  | bound x => trivial
+  | free ℓ => rw [hv] at h; exact h.elim
 
 /-- Applies a renaming to all bound variables in a type. -/
 def Ty.rename : Ty s1 -> Rename s1 s2 -> Ty s2

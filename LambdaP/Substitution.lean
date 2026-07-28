@@ -54,6 +54,16 @@ def Path.subst : Path s1 -> Subst s1 s2 -> Path s2
 | .fst p, σ => .fst (p.subst σ)
 | .sel p a, σ => .sel (p.subst σ) a
 
+theorem Path.root_isBound_subst {p : Path s1} {σ : Subst s1 s2}
+    (h : p.root.IsBound) (hb : ∀ x : BVar s1, (σ.var x).root.IsBound) :
+    (p.subst σ).root.IsBound := by
+  induction p with
+  | var v => cases v with
+    | bound x => exact hb x
+    | free ℓ => exact h.elim
+  | fst p ih => exact ih h
+  | sel p a ih => exact ih h
+
 /-- Applies a substitution to a type. -/
 def Ty.subst : Ty s1 -> Subst s1 s2 -> Ty s2
 | .top, _ => .top

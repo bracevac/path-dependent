@@ -182,36 +182,6 @@ theorem PrecisePath.single_lt {Θ : Sto} {h : Heap} {p : Path 0} {ℓ' : Nat}
 
 /-! ### Store-side path resolution -/
 
-/-- `Chains Θ p ℓ`: the store-typing mirror of `PathEval` — the path
-resolves to `ℓ` reading component locations off the precise entries. -/
-inductive Chains (Θ : Sto) : Path 0 -> Nat -> Prop where
-| loc :
-  Sto.Lookup Θ ℓ T ->
-  Chains Θ (.var (.free ℓ)) ℓ
-| fst_tm :
-  Chains Θ p ℓ ->
-  Sto.Lookup Θ ℓ (.pairTm (.single (.var (.free ℓ1))) a Tc) ->
-  Chains Θ p.fst ℓ1
-| fst_ty :
-  Chains Θ p ℓ ->
-  Sto.Lookup Θ ℓ (.pairTy (.single (.var (.free ℓ1))) A T1 T2) ->
-  Chains Θ p.fst ℓ1
-| sel :
-  Chains Θ p ℓ ->
-  Sto.Lookup Θ ℓ (.pairTm S a (Ty.single (.var (.free ℓ2))).weaken) ->
-  Chains Θ (p.sel a) ℓ2
-| sel_skip_tm :
-  Chains Θ p ℓ ->
-  Sto.Lookup Θ ℓ (.pairTm S b Tc) ->
-  a ≠ b ->
-  Chains Θ ((Path.fst p).sel a) m ->
-  Chains Θ (p.sel a) m
-| sel_skip_ty :
-  Chains Θ p ℓ ->
-  Sto.Lookup Θ ℓ (.pairTy S B T1 T2) ->
-  Chains Θ ((Path.fst p).sel a) m ->
-  Chains Θ (p.sel a) m
-
 theorem Chains.deterministic {Θ : Sto} {p : Path 0} {ℓ1 ℓ2 : Nat}
     (h1 : Chains Θ p ℓ1) (h2 : Chains Θ p ℓ2) : ℓ1 = ℓ2 := by
   induction h1 generalizing ℓ2 with

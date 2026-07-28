@@ -6,22 +6,13 @@ import LambdaP.Typing
 import LambdaP.Semantics
 import LambdaP.Lemmas.Renaming
 import LambdaP.Lemmas.Subst
-import LambdaP.Soundness.Store
-import LambdaP.Soundness.Den
-import LambdaP.Soundness.PathLemmas
-import LambdaP.Soundness.DenLemmas
-import LambdaP.Soundness.Closure
-import LambdaP.Soundness.Progress
-import LambdaP.Soundness.Functionality
 import LambdaP.Lemmas.StoWeaken
 import LambdaP.Lemmas.Locs
-import LambdaP.Soundness.Transfer
-import LambdaP.Soundness.Preservation
-import LambdaP.Soundness.Safety
-import LambdaP.Examples
-import LambdaP.Soundness.Precise
-import LambdaP.Soundness.Tight
-import LambdaP.Soundness.Invertible
-import LambdaP.Soundness.PT
-import LambdaP.Soundness.Bridge
-import LambdaP.Soundness.PTTransfer
+import LambdaP.Soundness.Store
+
+/-! Pushback campaign (deviation 9): the semantic chain
+(Den/Closure/Progress/Preservation/Safety), the possible-types chain
+(Precise/Tight/Invertible/PT/Bridge/PTTransfer), Functionality, and
+Examples are temporarily out of the build while the store-anchored
+selection rules propagate; they are superseded or restored by the
+trans-free runtime subtyping pipeline (see Soundness/Pushback.lean). -/

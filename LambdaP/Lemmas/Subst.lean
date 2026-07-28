@@ -33,6 +33,7 @@ structure SubstTyping (Θ : Sto) (σ : Subst s1 s2) (Γ : Ctx s1) (Δ : Ctx s2) 
   conforms : ∀ {x : BVar s1} {T : Ty s1},
     Ctx.LookupVar Γ x T -> Sub Θ Δ (.ty (.single (σ.var x))) (.ty (T.subst σ))
   wf : ∀ (x : BVar s1), Path.Wf Θ Δ (σ.var x)
+  rooted : ∀ (x : BVar s1), (σ.var x).root.IsBound
 
 /-- Conforming substitutions extend under a binder. -/
 theorem SubstTyping.lift {s1 s2 : Sig} {Θ : Sto} {σ : Subst s1 s2} {Γ : Ctx s1} {Δ : Ctx s2}
@@ -51,6 +52,10 @@ theorem SubstTyping.lift {s1 s2 : Sig} {Θ : Sto} {σ : Subst s1 s2} {Γ : Ctx s
     cases x with
     | here => exact .var_bound .here
     | there x' => exact (hσ.wf x').weaken
+  · intro x
+    cases x with
+    | here => trivial
+    | there x' => exact Path.root_isBound_rename (hσ.rooted x')
 
 mutual
 
@@ -74,20 +79,27 @@ theorem Sub.subst {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2) 
     simp only [Tau.subst, Ty.subst, Path.subst]
     rw [← Ty.open_subst_comm]
     exact Sub.sel_tm (h1.subst hσ)
-  | .sel_hi h1 h2 => fun hσ => by
+  | .sel_hi hr h1 h2 => fun hσ => by
     have h2' := h2.subst hσ
     simp only [Tau.subst] at h2'
     rw [← Ty.open_subst_comm, ← Ty.open_subst_comm] at h2'
     simp only [Tau.subst, Ty.subst]
     rw [← Ty.open_subst_comm]
-    exact Sub.sel_hi (h1.subst hσ) h2'
-  | .sel_lo hw h1 h2 => fun hσ => by
+    exact Sub.sel_hi (Path.root_isBound_subst hr hσ.rooted) (h1.subst hσ) h2'
+  | .sel_lo hr hw h1 h2 => fun hσ => by
     have h2' := h2.subst hσ
     simp only [Tau.subst] at h2'
     rw [← Ty.open_subst_comm, ← Ty.open_subst_comm] at h2'
     simp only [Tau.subst, Ty.subst]
     rw [← Ty.open_subst_comm]
-    exact Sub.sel_lo (hw.subst hσ) (h1.subst hσ) h2'
+    exact Sub.sel_lo (Path.root_isBound_subst hr hσ.rooted) (hw.subst hσ)
+      (h1.subst hσ) h2'
+  | .sel_hi_loc hc hl => fun _ => by
+    simp only [Tau.subst, Ty.subst, Ty.fromClosed_subst]
+    exact Sub.sel_hi_loc hc.subst hl
+  | .sel_lo_loc hc hl => fun _ => by
+    simp only [Tau.subst, Ty.subst, Ty.fromClosed_subst]
+    exact Sub.sel_lo_loc hc.subst hl
   | .arrow h1 h2 => fun hσ => .arrow (h1.subst hσ) (h2.subst hσ.lift)
   | .pair_tm h1 h2 => fun hσ => .pair_tm (h1.subst hσ) (h2.subst hσ.lift)
   | .pair_ty h1 h2 => fun hσ => .pair_ty (h1.subst hσ) (h2.subst hσ.lift)
@@ -207,7 +219,8 @@ theorem HasType.subst {Θ} {Γ : Ctx s1} {t : Tm s1} {T : Ty s1} (h : HasType Θ
 if `q` is wellformed with `single q <: S`, then `[x := q]` conforms from
 `Γ, x: S` to `Γ`. -/
 theorem SubstTyping.openPath {Θ} {Γ : Ctx s} {q : Path s} {S : Ty s}
-    (hq : Path.Wf Θ Γ q) (hsub : Sub Θ Γ (.ty (.single q)) (.ty S)) :
+    (hq : Path.Wf Θ Γ q) (hsub : Sub Θ Γ (.ty (.single q)) (.ty S))
+    (hroot : q.root.IsBound) :
     SubstTyping Θ (Subst.openPath q) (Γ.push S) Γ := by
   have wsub : ∀ (T : Ty s), T.weaken.subst (Subst.openPath q) = T := fun _ => Ty.weaken_open
   constructor
@@ -225,29 +238,36 @@ theorem SubstTyping.openPath {Θ} {Γ : Ctx s} {q : Path s} {S : Ty s}
     | there x' =>
       obtain ⟨T, hT⟩ := Ctx.lookupVar_total Γ x'
       exact .var_bound hT
+  · intro x
+    cases x with
+    | here => exact hroot
+    | there x' => trivial
 
 /-- The variable-substitution version of `SubstTyping.openPath`. -/
 theorem SubstTyping.openVar {Θ} {Γ : Ctx s} {y : Var s} {S : Ty s}
-    (hy : Path.Wf Θ Γ (.var y)) (hsub : Sub Θ Γ (.ty (.single (.var y))) (.ty S)) :
+    (hy : Path.Wf Θ Γ (.var y)) (hsub : Sub Θ Γ (.ty (.single (.var y))) (.ty S))
+    (hroot : Var.IsBound y) :
     SubstTyping Θ (VSubst.openVar y).toSubst (Γ.push S) Γ := by
   rw [VSubst.openVar_toSubst]
-  exact SubstTyping.openPath hy hsub
+  exact SubstTyping.openPath hy hsub hroot
 
 /-- Opening for term typing: a let/β body typed under a binder can be opened
 with any wellformed variable conforming to the binder's type. -/
 theorem HasType.open {Θ} {Γ : Ctx s} {t : Tm (s+1)} {T : Ty (s+1)} {y : Var s} {S : Ty s}
     (h : HasType Θ (Γ.push S) t T)
-    (hy : Path.Wf Θ Γ (.var y)) (hsub : Sub Θ Γ (.ty (.single (.var y))) (.ty S)) :
+    (hy : Path.Wf Θ Γ (.var y)) (hsub : Sub Θ Γ (.ty (.single (.var y))) (.ty S))
+    (hroot : Var.IsBound y) :
     HasType Θ Γ (t.open y) (T.open (.var y)) := by
-  have := h.subst (SubstTyping.openVar hy hsub)
+  have := h.subst (SubstTyping.openVar hy hsub hroot)
   rwa [VSubst.openVar_toSubst] at this
 
 /-- Opening for term typing when the result type does not use the binder. -/
 theorem HasType.open_weaken {Θ} {Γ : Ctx s} {t : Tm (s+1)} {T : Ty s} {y : Var s} {S : Ty s}
     (h : HasType Θ (Γ.push S) t T.weaken)
-    (hy : Path.Wf Θ Γ (.var y)) (hsub : Sub Θ Γ (.ty (.single (.var y))) (.ty S)) :
+    (hy : Path.Wf Θ Γ (.var y)) (hsub : Sub Θ Γ (.ty (.single (.var y))) (.ty S))
+    (hroot : Var.IsBound y) :
     HasType Θ Γ (t.open y) T := by
-  have := HasType.open h hy hsub
+  have := HasType.open h hy hsub hroot
   rwa [Ty.weaken_open] at this
 
 /-! ### Narrowing
@@ -271,6 +291,8 @@ theorem SubstTyping.narrow {Θ} {Γ : Ctx s} {S1 S : Ty s}
   · intro x
     obtain ⟨T, hT⟩ := Ctx.lookupVar_total (Γ.push S1) x
     exact .var_bound hT
+  · intro x
+    trivial
 
 /-- Narrowing for subtyping. -/
 theorem Sub.narrow {Θ} {Γ : Ctx s} {S1 S : Ty s} {τ1 τ2 : Tau (s+1)}

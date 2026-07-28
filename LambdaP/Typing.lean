@@ -66,6 +66,77 @@ theorem Tau.open_subst_comm {τ : Tau (s1+1)} {p : Path s1} {σ : Subst s1 s2} :
     (τ.subst σ.lift).open (p.subst σ) = (τ.open p).subst σ := by
   simp [Tau.open, Tau.subst_comp, Subst.openPath_subst_comm]
 
+/-! ### Store-side path resolution
+
+`Chains Θ p m`: the path `p` resolves through the store typing to the
+location `m`, reading component locations off the precise entries
+(the `Θ`-side mirror of big-step path evaluation, scope-generic since
+location-rooted paths contain no bound variables). Selections skip
+mismatched outer members into the first component (records as nested
+pairs). -/
+inductive Chains (Θ : Sto) : Path s -> Nat -> Prop where
+| loc :
+  Sto.Lookup Θ ℓ T ->
+  Chains Θ (.var (.free ℓ)) ℓ
+| fst_tm :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTm (.single (.var (.free ℓ1))) a Tc) ->
+  Chains Θ p.fst ℓ1
+| fst_ty :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTy (.single (.var (.free ℓ1))) A T1 T2) ->
+  Chains Θ p.fst ℓ1
+| sel :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTm S a (Ty.single (.var (.free ℓ2))).weaken) ->
+  Chains Θ (p.sel a) ℓ2
+| sel_skip_tm :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTm S b Tc) ->
+  a ≠ b ->
+  Chains Θ ((Path.fst p).sel a) m ->
+  Chains Θ (p.sel a) m
+| sel_skip_ty :
+  Chains Θ p ℓ ->
+  Sto.Lookup Θ ℓ (.pairTy S B T1 T2) ->
+  Chains Θ ((Path.fst p).sel a) m ->
+  Chains Θ (p.sel a) m
+
+/-- Store-side resolution is monotone under store-typing extension. -/
+theorem Chains.sto_weaken {Θ Θ' : Sto} {p : Path s} {m : Nat}
+    (h : Chains Θ p m) (hext : Θ'.Extends Θ) : Chains Θ' p m := by
+  induction h with
+  | loc hl => exact .loc (hext hl)
+  | fst_tm _ hl ih => exact .fst_tm ih (hext hl)
+  | fst_ty _ hl ih => exact .fst_ty ih (hext hl)
+  | sel _ hl ih => exact .sel ih (hext hl)
+  | sel_skip_tm _ hl hne _ ih ihs => exact .sel_skip_tm ih (hext hl) hne ihs
+  | sel_skip_ty _ hl _ ih ihs => exact .sel_skip_ty ih (hext hl) ihs
+
+/-- Store-side resolution only touches locations, so it is invariant
+under substitution. -/
+theorem Chains.subst {Θ : Sto} {p : Path s1} {m : Nat}
+    (h : Chains Θ p m) {σ : Subst s1 s2} : Chains Θ (p.subst σ) m := by
+  induction h with
+  | loc hl => exact .loc hl
+  | fst_tm _ hl ih => exact .fst_tm ih hl
+  | fst_ty _ hl ih => exact .fst_ty ih hl
+  | sel _ hl ih => exact .sel ih hl
+  | sel_skip_tm _ hl hne _ ih ihs => exact .sel_skip_tm ih hl hne ihs
+  | sel_skip_ty _ hl _ ih ihs => exact .sel_skip_ty ih hl ihs
+
+/-- Store-side resolution only touches locations, so it is invariant
+under renaming. -/
+theorem Chains.rename {Θ : Sto} {p : Path s1} {m : Nat}
+    (h : Chains Θ p m) {f : Rename s1 s2} : Chains Θ (p.rename f) m := by
+  induction h with
+  | loc hl => exact .loc hl
+  | fst_tm _ hl ih => exact .fst_tm ih hl
+  | fst_ty _ hl ih => exact .fst_ty ih hl
+  | sel _ hl ih => exact .sel ih hl
+  | sel_skip_tm _ hl hne _ ih ihs => exact .sel_skip_tm ih hl hne ihs
+  | sel_skip_ty _ hl _ ih ihs => exact .sel_skip_ty ih hl ihs
+
 /-! ### Subtyping and path wellformedness (mutual)
 
 `sel_lo` introduces a type selection on the right out of nothing, so it
@@ -128,6 +199,7 @@ selected (DOT's SEL-<:); the draft's unanchored formulation is unsound —
 see DESIGN.md, deviation 7. The second premise is the draft's non-empty
 interval guard. -/
 | sel_hi :
+  p.root.IsBound ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
   Sub Θ Γ (.ty (T1.open p.fst)) (.ty (T2.open p.fst)) ->
   Sub Θ Γ (.ty (.tsel p A)) (.ty (T2.open p.fst))
@@ -135,10 +207,28 @@ interval guard. -/
 member (DOT's <:-Sel), with the same anchoring and non-emptiness guard,
 plus wellformedness of the selected path (see the mutual-block comment). -/
 | sel_lo :
+  p.root.IsBound ->
   Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
   Sub Θ Γ (.ty (T1.open p.fst)) (.ty (T2.open p.fst)) ->
   Sub Θ Γ (.ty (T1.open p.fst)) (.ty (.tsel p A))
+/-- Store-anchored selection bounds for location-rooted paths
+(deviation 9, minidot's strong selection): at runtime the path resolves
+through the precise store to its member's stored alias interval. The
+evidence-shaped `sel_hi`/`sel_lo` above are scoped to bound-var-rooted
+paths, so at the empty context every selection derivation is forced
+through the store — which is what makes runtime subtyping invertible.
+Source programs cannot mention locations, so declarative typing is
+unchanged. No interval guard is needed: alias intervals are non-empty
+by reflexivity. -/
+| sel_hi_loc :
+  Chains Θ p m ->
+  Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓ1))) A (Ty.weaken W) (Ty.weaken W)) ->
+  Sub Θ Γ (.ty (.tsel p A)) (.ty (Ty.fromClosed W))
+| sel_lo_loc :
+  Chains Θ p m ->
+  Sto.Lookup Θ m (.pairTy (.single (.var (.free ℓ1))) A (Ty.weaken W) (Ty.weaken W)) ->
+  Sub Θ Γ (.ty (Ty.fromClosed W)) (.ty (.tsel p A))
 /-- Dependent function types: contravariant domain, covariant codomain
 under the smaller domain. -/
 | arrow :
