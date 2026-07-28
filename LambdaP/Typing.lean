@@ -137,6 +137,69 @@ theorem Chains.rename {Θ : Sto} {p : Path s1} {m : Nat}
   | sel_skip_tm _ hl hne _ ih ihs => exact .sel_skip_tm ih hl hne ihs
   | sel_skip_ty _ hl _ ih ihs => exact .sel_skip_ty ih hl ihs
 
+/-- Store-side resolution is deterministic. -/
+theorem Chains.deterministic {Θ : Sto} {p : Path s} {ℓ1 ℓ2 : Nat}
+    (h1 : Chains Θ p ℓ1) (h2 : Chains Θ p ℓ2) : ℓ1 = ℓ2 := by
+  induction h1 generalizing ℓ2 with
+  | loc _ => cases h2 with | loc _ => rfl
+  | fst_tm h1 hl1 ih =>
+    cases h2 with
+    | fst_tm h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+      rfl
+    | fst_ty h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+  | fst_ty h1 hl1 ih =>
+    cases h2 with
+    | fst_tm h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+    | fst_ty h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+      rfl
+  | sel h1 hl1 ih =>
+    cases h2 with
+    | sel h2 hl2 =>
+      cases ih h2
+      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      cases this
+      rfl
+    | sel_skip_tm h2 hl2 hne2 _ =>
+      cases ih h2
+      have heq := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      injection heq with hs h1e h2e h3e
+      exact absurd h2e hne2
+    | sel_skip_ty h2 hl2 _ =>
+      cases ih h2
+      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+  | sel_skip_tm h1 hl1 hne1 _ ihp ihin =>
+    cases h2 with
+    | sel h2 hl2 =>
+      cases ihp h2
+      have heq := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+      injection heq with hs h1e h2e h3e
+      exact absurd h2e.symm hne1
+    | sel_skip_tm h2 hl2 hne2 hin2 => exact ihin hin2
+    | sel_skip_ty h2 hl2 hin2 =>
+      cases ihp h2
+      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+  | sel_skip_ty h1 hl1 _ ihp ihin =>
+    cases h2 with
+    | sel h2 hl2 =>
+      cases ihp h2
+      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+    | sel_skip_tm h2 hl2 hne2 hin2 =>
+      cases ihp h2
+      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
+    | sel_skip_ty h2 hl2 hin2 => exact ihin hin2
+
 /-! ### Subtyping and path wellformedness (mutual)
 
 `sel_lo` introduces a type selection on the right out of nothing, so it

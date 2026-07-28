@@ -9,6 +9,7 @@ import LambdaP.Lemmas.Subst
 import LambdaP.Lemmas.StoWeaken
 import LambdaP.Lemmas.Locs
 import LambdaP.Soundness.Store
+import LambdaP.Soundness.Pushback
 
 /-! Pushback campaign (deviation 9): the semantic chain
 (Den/Closure/Progress/Preservation/Safety), the possible-types chain
