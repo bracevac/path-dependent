@@ -12,6 +12,7 @@ import LambdaP.Soundness.Store
 import LambdaP.Soundness.Pushback
 import LambdaP.Soundness.Embedding
 import LambdaP.Soundness.RealizedSubst
+import LambdaP.Soundness.Progress
 
 /-! Pushback campaign (deviation 9): the semantic chain
 (Den/Closure/Progress/Preservation/Safety), the possible-types chain

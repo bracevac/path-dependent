@@ -1,118 +1,129 @@
-import LambdaP.Soundness.Closure
+import LambdaP.Soundness.Embedding
 
-/-!
-Canonical forms and progress, harvested from the closure lemma at the
-empty context: a well-typed closed term is final or steps.
--/
+/-! Syntactic progress: replaces the quarantined semantic version.
+Ports the heap-transfer helpers from the superseded precise layer,
+then value-or-step by induction on typing, consuming path progress
+(Wf.chains), canonical forms, and store-to-heap resolution transfer. -/
 
 namespace LambdaP
 
-/-- The empty scope has a unique context. -/
-theorem Ctx.eq_empty (Γ : Ctx 0) : Γ = .empty := by
-  cases Γ
-  rfl
+theorem HeapTyped.lookup_shape {Θ : Sto} {h : Heap} {ℓ : Nat} {T : Ty 0}
+    (hh : HeapTyped Θ h) (hl : Sto.Lookup Θ ℓ T) :
+    (∃ S B, T = .arrow S B) ∨
+    (∃ ℓ1 a ℓ2, T = .pairTm (.single (.var (.free ℓ1))) a
+      (Ty.single (.var (.free ℓ2))).weaken) ∨
+    (∃ (ℓ1 : Nat) (A : Name) (W : Ty 0),
+      T = .pairTy (.single (.var (.free ℓ1))) A W.weaken W.weaken) := by
+  obtain ⟨-, v, -, -, hpre⟩ := hh.2 hl
+  cases hpre with
+  | abs _ _ => exact .inl ⟨_, _, rfl⟩
+  | pair_tm _ _ => exact .inr (.inl ⟨_, _, _, rfl⟩)
+  | pair_ty _ _ => exact .inr (.inr ⟨_, _, _, rfl⟩)
 
-/-- The identity substitution realizes the empty context. -/
-theorem SemSubst.empty {Θ : Sto} {Ξ : SemSto} {h : Heap} :
-    SemSubst Θ Ξ h Subst.id .empty := by
-  constructor
-  · constructor
-    · intro x T hx
-      exact absurd hx (fun hx => nomatch hx)
-    · intro x
-      exact nomatch x
-  · intro x T hx
-    exact nomatch hx
+theorem HeapTyped.entry_value_tm {Θ : Sto} {h : Heap} {ℓ ℓ1 : Nat}
+    {a : Name} {Tc : Ty 1}
+    (hh : HeapTyped Θ h)
+    (hl : Sto.Lookup Θ ℓ (.pairTm (.single (.var (.free ℓ1))) a Tc)) :
+    ∃ ℓ2, Tc = (Ty.single (.var (.free ℓ2))).weaken ∧
+      Heap.Lookup h ℓ (.pairTm (.free ℓ1) a (.free ℓ2)) := by
+  obtain ⟨-, v, hvl, -, hpre⟩ := hh.2 hl
+  cases hpre with
+  | pair_tm hy hz => exact ⟨_, rfl, hvl⟩
 
-/-- Closure at the empty context, with the identity substitution erased. -/
-theorem Sub.den_empty {Θ : Sto} {Ξ : SemSto} {h : Heap} {U1 U2 : Ty 0}
-    (hs : Sub Θ .empty (.ty U1) (.ty U2))
-    (hh : HeapTyped Θ h) (hok : SemStoOk Θ Ξ h) :
-    ∀ n ℓ, Den Θ Ξ h n U1 ℓ -> Den Θ Ξ h n U2 ℓ := by
-  have := hs.den hh hok SemSubst.empty
-  rwa [Tau.subst_id, Tau.subst_id] at this
+theorem HeapTyped.entry_value_ty {Θ : Sto} {h : Heap} {ℓ ℓ1 : Nat}
+    {A : Name} {T1 T2 : Ty 1}
+    (hh : HeapTyped Θ h)
+    (hl : Sto.Lookup Θ ℓ (.pairTy (.single (.var (.free ℓ1))) A T1 T2)) :
+    ∃ W, T1 = W.weaken ∧ T2 = W.weaken ∧
+      Heap.Lookup h ℓ (.pairTy (.free ℓ1) A W) := by
+  obtain ⟨-, v, hvl, -, hpre⟩ := hh.2 hl
+  cases hpre with
+  | pair_ty hy hwf => exact ⟨_, rfl, rfl, hvl⟩
 
-/-- Wellformed closed paths evaluate. -/
-theorem Path.Wf.eval_empty {Θ : Sto} {Ξ : SemSto} {h : Heap} {p : Path 0}
-    (hw : Path.Wf Θ .empty p)
-    (hh : HeapTyped Θ h) (hok : SemStoOk Θ Ξ h) :
-    ∃ m, PathEval h p m := by
-  have := hw.den_eval hh hok (SemSubst.empty (Ξ := Ξ))
-  rwa [Path.subst_id] at this
-
-/-- Canonical forms at arrow type: a path typed at a function type
-evaluates to a stored λ with a compatible signature. -/
-theorem canonical_arrow {Θ : Sto} {Ξ : SemSto} {h : Heap} {p : Path 0}
-    {S : Ty 0} {T : Ty 1}
-    (hh : HeapTyped Θ h) (hok : SemStoOk Θ Ξ h)
-    (ht : HasType Θ .empty (.path p) (.arrow S T)) :
-    ∃ ℓf T0 t T1, PathEval h p ℓf ∧ Heap.Lookup h ℓf (.abs T0 t) ∧
-      Wf Θ .empty (.ty T0) ∧ HasType Θ (Ctx.empty.push T0) t T1 ∧
-      Sub Θ .empty (.ty S) (.ty T0) ∧
-      Sub Θ (Ctx.empty.push S) (.ty T1) (.ty T) := by
-  obtain ⟨hw, hsub⟩ := ht.path_inv rfl
-  obtain ⟨ℓf, hev⟩ := hw.eval_empty hh hok
-  have hd := Sub.den_empty hsub hh hok 0 ℓf (by simp only [Den]; exact hev)
-  simp only [Den] at hd
-  obtain ⟨T0, t, T1, hlk, hwf0, hty, hdom, hcod⟩ := hd
-  exact ⟨ℓf, T0, t, T1, hev, hlk, hwf0, hty, hdom, hcod⟩
+/-- Store-side resolution transfers to heap evaluation. -/
+theorem Chains.pathEval {Θ : Sto} {h : Heap} {p : Path 0} {ℓ : Nat}
+    (hh : HeapTyped Θ h) (hc : Chains Θ p ℓ) : PathEval h p ℓ := by
+  induction hc with
+  | loc _ => exact .var
+  | fst_tm _ hl ih =>
+    obtain ⟨ℓ2, -, hvl⟩ := hh.entry_value_tm hl
+    exact .fst_tm ih hvl
+  | fst_ty _ hl ih =>
+    obtain ⟨W, -, -, hvl⟩ := hh.entry_value_ty hl
+    exact .fst_ty ih hvl
+  | sel hc hl ih =>
+    rcases hh.lookup_shape hl with ⟨_, _, he⟩ | ⟨ℓ1', a', ℓ2', he⟩ | ⟨_, _, _, he⟩ <;>
+      cases he
+    obtain ⟨ℓ2'', heq, hvl⟩ := hh.entry_value_tm hl
+    simp only [Ty.weaken, Ty.rename, Path.rename, Var.rename] at heq
+    cases heq
+    exact .sel ih hvl
+  | sel_skip_tm hc hl hne hin ihc ihin =>
+    rcases hh.lookup_shape hl with ⟨_, _, he⟩ | ⟨ℓ1', b', ℓ2', he⟩ | ⟨_, _, _, he⟩ <;>
+      cases he
+    obtain ⟨ℓ2'', heq, hvl⟩ := hh.entry_value_tm hl
+    exact .sel_skip_tm ihc hvl hne ihin
+  | sel_skip_ty hc hl hin ihc ihin =>
+    rcases hh.lookup_shape hl with ⟨_, _, he⟩ | ⟨_, _, _, he⟩ | ⟨ℓ1', B', W', he⟩ <;>
+      cases he
+    obtain ⟨W'', heq1, heq2, hvl⟩ := hh.entry_value_ty hl
+    exact .sel_skip_ty ihc hvl ihin
 
 /-- Progress: a closed well-typed term is final or steps. -/
-theorem progress {Θ : Sto} {Ξ : SemSto} {h : Heap} {t : Tm 0} {T : Ty 0}
-    (hh : HeapTyped Θ h) (hok : SemStoOk Θ Ξ h)
-    (ht : HasType Θ .empty t T) :
-    Final t ∨ ∃ h' t', Step h t h' t' := by
-  suffices go : ∀ {s : Sig} {Γ : Ctx s} {t' : Tm s} {T' : Ty s},
-      HasType Θ Γ t' T' -> HeapTyped Θ h -> SemStoOk Θ Ξ h -> ∀ (hs : s = 0),
-      Final (hs ▸ t') ∨ ∃ h' t'', Step h (hs ▸ t') h' t'' by
-    exact go ht hh hok rfl
-  clear hh hok ht
-  intro s Γ t' T' ht'
-  induction ht' with
+theorem progress {Θ : Sto} {h : Heap} :
+    ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s},
+      HasType Θ Γ t T -> HeapTyped Θ h -> ∀ (hs : s = 0),
+      Final (hs ▸ t) ∨ ∃ h' t', Step h (hs ▸ t) h' t' := by
+  intro s Γ t T ht
+  induction ht with
   | path hp =>
-    intro hh hok hs
+    intro hh' hs
     subst hs
-    have hE := Ctx.eq_empty ‹Ctx 0›
+    have hE := Ctx.eq_empty' ‹Ctx 0›
     subst hE
-    rename_i px
-    obtain ⟨m, hev⟩ := hp.eval_empty hh hok
-    match px, hev with
-    | .var (.free ℓ), _ => exact .inl .loc
-    | .fst p', hev => exact .inr ⟨_, _, .path hev (by intro hcontra; cases hcontra)⟩
-    | .sel p' a, hev => exact .inr ⟨_, _, .path hev (by intro hcontra; cases hcontra)⟩
-  | sub _ _ _ ih => exact ih
+    obtain ⟨ℓ, hc⟩ := (Path.Wf.chains hh'.shaped hp) rfl
+    rename_i p
+    by_cases hpe : p = .var (.free ℓ)
+    · subst hpe
+      exact .inl .loc
+    · exact .inr ⟨h, _, .path (hc.pathEval hh') hpe⟩
+  | sub _ _ _ ih =>
+    intro hh' hs
+    exact ih hh' hs
   | abs _ _ _ =>
-    intro _ _ hs
+    intro hh' hs
     subst hs
     exact .inl (.val .abs)
-  | app h1 h2 =>
-    intro hh hok hs
+  | app hf ha _ _ =>
+    intro hh' hs
     subst hs
-    have hE := Ctx.eq_empty ‹Ctx 0›
+    have hE := Ctx.eq_empty' ‹Ctx 0›
     subst hE
-    obtain ⟨ℓf, T0, tb, T1, hevf, hlk, -, -, -, -⟩ := canonical_arrow hh hok h1
-    obtain ⟨hwq, -⟩ := h2.path_inv rfl
-    obtain ⟨ℓa, heva⟩ := hwq.eval_empty hh hok
-    exact .inr ⟨_, _, .apply hevf heva hlk⟩
+    obtain ⟨hwp, hsubp⟩ := hf.path_inv rfl
+    obtain ⟨hwq, hsubq⟩ := ha.path_inv rfl
+    obtain ⟨ℓ0, S0, T0, t0, hcp, hlv, -, -, -, -⟩ :=
+      Sub.canonical_arrow hh' hsubp
+    obtain ⟨ℓa, hca⟩ := (Path.Wf.chains hh'.shaped hwq) rfl
+    exact .inr ⟨h, _, .apply (hcp.pathEval hh') (hca.pathEval hh') hlv⟩
   | pair_tm _ _ =>
-    intro _ _ hs
+    intro hh' hs
     subst hs
     exact .inl (.val .pairTm)
   | pair_ty _ _ =>
-    intro _ _ hs
+    intro hh' hs
     subst hs
     exact .inl (.val .pairTy)
-  | letin h1 hwf h2 ih1 ih2 =>
-    intro hh hok hs
+  | letin ht1 _ _ ih1 _ =>
+    intro hh' hs
     subst hs
-    rcases ih1 hh hok rfl with hfin | ⟨h', t1', hstep⟩
+    rcases ih1 hh' rfl with hfin | ⟨h', t1', hstep⟩
     · cases hfin with
       | val hv => exact .inr ⟨_, _, .let_val hv⟩
-      | loc => exact .inr ⟨_, _, .let_path .var⟩
-    · exact .inr ⟨_, _, .let_ctx hstep⟩
+      | loc => exact .inr ⟨h, _, .let_path .var⟩
+    · exact .inr ⟨h', _, .let_ctx hstep⟩
   | typed _ _ _ =>
-    intro _ _ hs
+    intro hh' hs
     subst hs
-    exact .inr ⟨_, _, .ascribe⟩
+    exact .inr ⟨h, _, .ascribe⟩
 
 end LambdaP
