@@ -108,6 +108,8 @@ tsel_co∘reapp corner: producers — repl, refl, trans — always have
 them; skip-generated co-chains never make tsel cells). -/
 | tsel_co {s : Sig} {Δ : Ctx s} {n : Nat} {p q : Path s} {A : Name} :
     CoChain Θ Δ p q →
+    Path.Wf Θ Δ p →
+    Path.Wf Θ Δ q →
     Sub Θ Δ (.ty (.single p)) (.ty (.single q)) →
     Sub Θ Δ (.ty (.single q)) (.ty (.single p)) →
     DOut Θ Δ n (.tsel p A) (.tsel q A)
@@ -119,6 +121,7 @@ tsel-subject orientation. -/
     Path.Wf Θ Δ r →
     Path.Wf Θ Δ q →
     Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
+    Sub Θ Δ (.ty (.single r)) (.ty (.single q)) →
     Sub Θ Δ (.ty (.single r)) (.ty (.pairTy S A T1 T2)) →
     Sub Θ Δ (.ty (T1.open r.fst)) (.ty (T2.open r.fst)) →
     DOut Θ Δ n (T2.open r.fst) Y →
@@ -131,6 +134,7 @@ tsel-subject orientation. -/
     Path.Wf Θ Δ r →
     Path.Wf Θ Δ q →
     Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
+    Sub Θ Δ (.ty (.single r)) (.ty (.single q)) →
     Sub Θ Δ (.ty (.single r)) (.ty (.pairTy S A T1 T2)) →
     Sub Θ Δ (.ty (T1.open r.fst)) (.ty (T2.open r.fst)) →
     DOut Θ Δ n X (T1.open r.fst) →
@@ -175,11 +179,11 @@ theorem DOut.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat} {T1 T2 : Ty s}
     exact .tsel_r hc hE (by omega) ih l1
   | tsel_l hc hE hm d1 l1 ih =>
     exact .tsel_l hc hE (by omega) ih l1
-  | tsel_co hco l1 l2 => exact .tsel_co hco l1 l2
-  | reapp_l hrb hwr hwq hlk hev hgd d1 l1 ih =>
-    exact .reapp_l hrb hwr hwq hlk hev hgd ih l1
-  | reapp_r hrb hwr hwq hlk hev hgd d1 l1 ih =>
-    exact .reapp_r hrb hwr hwq hlk hev hgd ih l1
+  | tsel_co hco hwp hwq l1 l2 => exact .tsel_co hco hwp hwq l1 l2
+  | reapp_l hrb hwr hwq hlk hlk2 hev hgd d1 l1 ih =>
+    exact .reapp_l hrb hwr hwq hlk hlk2 hev hgd ih l1
+  | reapp_r hrb hwr hwq hlk hlk2 hev hgd d1 l1 ih =>
+    exact .reapp_r hrb hwr hwq hlk hlk2 hev hgd ih l1
   | arrow d1 l1 l2 ih => exact .arrow ih l1 l2
   | pair_tm d1 l1 l2 ih => exact .pair_tm ih l1 l2
   | pair_ty d1 l1 l2 l3 ih => exact .pair_ty ih l1 l2 l3
