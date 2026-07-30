@@ -231,6 +231,148 @@ theorem Sub.no_bot_path {Θ : Sto} {p : Path 0} (hwf : Sto.Shaped Θ)
 #print axioms LambdaP.Sub.consistency
 #print axioms LambdaP.Sub.no_bot_path
 
+/-! ### Anchored read-offs: what a single-below-shape fact says about
+the store. These are the currency of canonical forms, path progress,
+and the realized substitution lemma. -/
+
+/-- A path below a term-member pair type chains to a term-member pair
+entry with the same label, whose first component is below the declared
+first component. -/
+theorem Sub.single_pairTm_anchor {Θ : Sto} {p : Path 0} {S : Ty 0}
+    {a : Name} {T : Ty 1} (hwf : Sto.Shaped Θ)
+    (h : Sub Θ .empty (.ty (.single p)) (.ty (.pairTm S a T))) :
+    ∃ ℓ0 ℓ1 ℓ2, Chains Θ p ℓ0 ∧
+      Sto.Lookup Θ ℓ0 (.pairTm (.single (.var (.free ℓ1))) a
+        (Ty.single (.var (.free ℓ2))).weaken) ∧
+      ∃ m, SSub Θ (.single (.var (.free ℓ1))) S m := by
+  obtain ⟨n, o⟩ := Sub.invert hwf h
+  obtain ⟨ℓ0, E, hcp, hE0, m, hm, hres⟩ := o
+  have oE := SSub.invert hwf m hres
+  rcases (hwf hE0).1 with hs | hs | hs
+  · exact (oE : False).elim
+  · obtain ⟨hba, m2, hm2, dom⟩ := oE
+    subst hba
+    exact ⟨ℓ0, _, _, hcp, hE0, m2, dom⟩
+  · exact (oE : False).elim
+
+/-- A path below a type-member pair type chains to a type-member pair
+entry with the same label and a stored alias interval. -/
+theorem Sub.single_pairTy_anchor {Θ : Sto} {p : Path 0} {S : Ty 0}
+    {A : Name} {T1 T2 : Ty 1} (hwf : Sto.Shaped Θ)
+    (h : Sub Θ .empty (.ty (.single p)) (.ty (.pairTy S A T1 T2))) :
+    ∃ ℓ0 ℓ1 W, Chains Θ p ℓ0 ∧
+      Sto.Lookup Θ ℓ0 (.pairTy (.single (.var (.free ℓ1))) A
+        (Ty.weaken W) (Ty.weaken W)) ∧
+      ∃ m, SSub Θ (.single (.var (.free ℓ1))) S m := by
+  obtain ⟨n, o⟩ := Sub.invert hwf h
+  obtain ⟨ℓ0, E, hcp, hE0, m, hm, hres⟩ := o
+  have oE := SSub.invert hwf m hres
+  rcases (hwf hE0).1 with hs | hs | hs
+  · exact (oE : False).elim
+  · exact (oE : False).elim
+  · obtain ⟨hBA, m2, hm2, dom⟩ := oE
+    subst hBA
+    exact ⟨ℓ0, _, _, hcp, hE0, m2, dom⟩
+
+/-- A path below an arrow type chains to an arrow entry whose domain
+is above the declared domain. -/
+theorem Sub.single_arrow_anchor {Θ : Sto} {p : Path 0} {S : Ty 0}
+    {T : Ty 1} (hwf : Sto.Shaped Θ)
+    (h : Sub Θ .empty (.ty (.single p)) (.ty (.arrow S T))) :
+    ∃ ℓ0 S0 T0, Chains Θ p ℓ0 ∧
+      Sto.Lookup Θ ℓ0 (.arrow S0 T0) ∧
+      ∃ m, SSub Θ S S0 m := by
+  obtain ⟨n, o⟩ := Sub.invert hwf h
+  obtain ⟨ℓ0, E, hcp, hE0, m, hm, hres⟩ := o
+  have oE := SSub.invert hwf m hres
+  rcases (hwf hE0).1 with hs | hs | hs
+  · obtain ⟨m2, hm2, dom⟩ := oE
+    exact ⟨ℓ0, _, _, hcp, hE0, m2, dom⟩
+  · exact (oE : False).elim
+  · exact (oE : False).elim
+
+/-- Path progress (M2): wellformed runtime paths resolve through the
+store. Manual application of the joint recursor (trivial Sub motive);
+goal order is argument order. -/
+theorem Path.Wf.chains {s0 : Sig} {Θ0 : Sto} {Γ0 : Ctx s0} {p0 : Path s0}
+    (hwf : Sto.Shaped Θ0) (h : Path.Wf Θ0 Γ0 p0) :
+    ∀ (hs : s0 = 0), ∃ m, Chains Θ0 (hs ▸ p0) m := by
+  suffices core : ∀ hs : s0 = 0, Sto.Shaped Θ0 → ∃ m, Chains Θ0 (hs ▸ p0) m from
+    fun hs => core hs hwf
+  refine Path.Wf.rec (motive_1 := fun {s} Θ Γ τ1 τ2 _ => True)
+    (motive_2 := fun {s} Θ Γ p _ =>
+      ∀ hs : s = 0, Sto.Shaped Θ → ∃ m, Chains Θ (hs ▸ p) m)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · intros; trivial
+  · -- Wf.var_bound
+    intro s Γ x T Θ hx hs hwf'
+    subst hs
+    exact nomatch x
+  · -- Wf.var_free
+    intro s Θ ℓ T Γ hl hs hwf'
+    subst hs
+    exact ⟨ℓ, .loc hl⟩
+  · -- Wf.fst_tm
+    intro s Θ Γ p S a T hwp hsub ihw ihs hs hwf'
+    subst hs
+    have hE := Ctx.eq_empty' Γ
+    subst hE
+    obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE0, -⟩ := Sub.single_pairTm_anchor hwf' hsub
+    exact ⟨ℓ1, .fst_tm hcp hE0⟩
+  · -- Wf.fst_ty
+    intro s Θ Γ p S A T1 T2 hwp hsub ihw ihs hs hwf'
+    subst hs
+    have hE := Ctx.eq_empty' Γ
+    subst hE
+    obtain ⟨ℓ0, ℓ1, W, hcp, hE0, -⟩ := Sub.single_pairTy_anchor hwf' hsub
+    exact ⟨ℓ1, .fst_ty hcp hE0⟩
+  · -- Wf.sel
+    intro s Θ Γ p S a T hwp hsub ihw ihs hs hwf'
+    subst hs
+    have hE := Ctx.eq_empty' Γ
+    subst hE
+    obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE0, -⟩ := Sub.single_pairTm_anchor hwf' hsub
+    exact ⟨ℓ2, .sel hcp hE0⟩
+  · -- Wf.sel_skip_tm
+    intro s Θ Γ p a S b Tc hwin hsub hne ihw ihs hs hwf'
+    subst hs
+    have hE := Ctx.eq_empty' Γ
+    subst hE
+    obtain ⟨m, hm⟩ := ihw rfl hwf'
+    obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE0, -⟩ := Sub.single_pairTm_anchor hwf' hsub
+    exact ⟨m, .sel_skip_tm hcp hE0 hne hm⟩
+  · -- Wf.sel_skip_ty
+    intro s Θ Γ p a S B T1 T2 hwin hsub ihw ihs hs hwf'
+    subst hs
+    have hE := Ctx.eq_empty' Γ
+    subst hE
+    obtain ⟨m, hm⟩ := ihw rfl hwf'
+    obtain ⟨ℓ0, ℓ1, W, hcp, hE0, -⟩ := Sub.single_pairTy_anchor hwf' hsub
+    exact ⟨m, .sel_skip_ty hcp hE0 hm⟩
+
 end LambdaP
 
 section
