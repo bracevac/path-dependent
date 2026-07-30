@@ -274,20 +274,22 @@ theorem Sub.single_pairTy_anchor {Θ : Sto} {p : Path 0} {S : Ty 0}
     subst hBA
     exact ⟨ℓ0, _, _, hcp, hE0, m2, dom⟩
 
-/-- A path below an arrow type chains to an arrow entry whose domain
-is above the declared domain. -/
+/-- Canonical-forms seed (M3): a path below an arrow type chains to an
+arrow entry whose domain is above the declared domain and whose
+codomain is below the declared codomain under the declared domain. -/
 theorem Sub.single_arrow_anchor {Θ : Sto} {p : Path 0} {S : Ty 0}
     {T : Ty 1} (hwf : Sto.Shaped Θ)
     (h : Sub Θ .empty (.ty (.single p)) (.ty (.arrow S T))) :
     ∃ ℓ0 S0 T0, Chains Θ p ℓ0 ∧
       Sto.Lookup Θ ℓ0 (.arrow S0 T0) ∧
-      ∃ m, SSub Θ S S0 m := by
+      (∃ m, SSub Θ S S0 m) ∧
+      Sub Θ (Ctx.empty.push S) (.ty T0) (.ty T) := by
   obtain ⟨n, o⟩ := Sub.invert hwf h
   obtain ⟨ℓ0, E, hcp, hE0, m, hm, hres⟩ := o
   have oE := SSub.invert hwf m hres
   rcases (hwf hE0).1 with hs | hs | hs
-  · obtain ⟨m2, hm2, dom⟩ := oE
-    exact ⟨ℓ0, _, _, hcp, hE0, m2, dom⟩
+  · obtain ⟨⟨m2, hm2, dom⟩, res⟩ := oE
+    exact ⟨ℓ0, _, _, hcp, hE0, ⟨m2, dom⟩, res⟩
   · exact (oE : False).elim
   · exact (oE : False).elim
 

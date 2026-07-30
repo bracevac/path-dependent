@@ -583,4 +583,50 @@ theorem Tm.open_subst_comm {t : Tm (s1+1)} {y : Var s1} {σ : VSubst s1 s2} :
     (t.subst σ.lift).open (y.vsubst σ) = (t.open y).subst σ := by
   simp [Tm.open, Tm.subst_comp, VSubst.openVar_subst_comm]
 
+/-! ### Binder swap (hoisted from the superseded transfer file) -/
+
+/-- Swaps the two innermost binders. -/
+def Rename.swap {s : Sig} : Rename (s+2) (s+2) where
+  var := fun
+    | .here => .there .here
+    | .there .here => .here
+    | .there (.there x) => .there (.there x)
+
+/-- Filling the outer slot with `r`, then the remaining slot with `q`,
+equals swapping, filling with `q`, then filling with `r`. Stated in the
+substitution spelling that `Den`'s clauses expose after simplification. -/
+theorem Ty.openlift_open {T : Ty (s+2)} {r q : Path s} :
+    (T.subst (Subst.openPath r).lift).subst (Subst.openPath q)
+      = ((T.rename Rename.swap).subst (Subst.openPath q).lift).subst (Subst.openPath r) := by
+  have wo : ∀ (u v : Path s),
+      (u.rename Rename.succ).subst (Subst.openPath v) = u :=
+    fun u v => Path.weaken_open
+  simp only [Ty.subst_comp, Ty.rename_subst_comm]
+  congr 1
+  apply Subst.funext
+  intro x
+  cases x with
+  | here =>
+    show q = (q.rename Rename.succ).subst (Subst.openPath r)
+    exact (wo q r).symm
+  | there y =>
+    cases y with
+    | here =>
+      show (r.rename Rename.succ).subst (Subst.openPath q) = r
+      exact wo r q
+    | there z => rfl
+
+/-- Opening a swap-renamed type with a weakened path fills the outer slot. -/
+theorem Ty.swap_open_weaken {T : Ty (s+2)} {r : Path s} :
+    (T.rename Rename.swap).open (r.rename Rename.succ)
+      = T.subst (Subst.openPath r).lift := by
+  simp only [Ty.open, Ty.rename_subst_comm]
+  congr 1
+  apply Subst.funext
+  intro x
+  match x with
+  | .here => rfl
+  | .there .here => rfl
+  | .there (.there x) => rfl
+
 end LambdaP
