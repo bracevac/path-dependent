@@ -186,7 +186,17 @@ store interval (`Chains` + stored `[W,W]` alias), or a bound-rooted
 wellformed mediator's declared lower bound. Field-for-field the anchor
 packages of `tsel_l`/`tsel_r` resp. `reapp_l`/`reapp_r`; the Sub leg
 `M ≤ tsel q A` is derivable (`sel_lo_loc`, resp. `sel_lo` +
-`repl_tsel` through the mutual mediator links). -/
+`repl_tsel` through the mutual mediator links).
+
+**The anchor dichotomy is exclusive** (`wf_7bf01782` follow-up): a
+`mediator` anchor also records that the ANCHORED path `q` is
+bound-rooted, which every producer has (`MS.sel_hi`/`MS.sel_lo` emit at
+`q = r = p̂` in the bound branch, and the only anchor-moving step in
+`DOut.compose` is a `tsel_co` re-anchoring, which moves `q` along a
+`CoChain` — root-boundness preserving, `CoChain.root_iff`). A `store`
+anchor's `q` resolves, hence is location-rooted. So a `sel_bridge`
+whose two anchors are of DIFFERENT kinds is unreachable, and the two
+mixed corners of `DOut.compose` discharge by contradiction. -/
 inductive SelLoAnchor (Θ : Sto) : {s : Sig} → Ctx s → Nat → Path s → Name → Ty s → Prop where
 | store {s : Sig} {Δ : Ctx s} {n : Nat} {q : Path s} {mq ℓ1 : Nat}
     {A : Name} {W : Ty 0} :
@@ -198,6 +208,7 @@ inductive SelLoAnchor (Θ : Sto) : {s : Sig} → Ctx s → Nat → Path s → Na
 | mediator {s : Sig} {Δ : Ctx s} {n : Nat} {q r : Path s} {S : Ty s}
     {A : Name} {T1 T2 : Ty (s+1)} :
     r.root.IsBound →
+    q.root.IsBound →
     Path.Wf Θ Δ r →
     Path.Wf Θ Δ q →
     Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
@@ -220,6 +231,7 @@ inductive SelHiAnchor (Θ : Sto) : {s : Sig} → Ctx s → Nat → Path s → Na
 | mediator {s : Sig} {Δ : Ctx s} {n : Nat} {q r : Path s} {S : Ty s}
     {A : Name} {T1 T2 : Ty (s+1)} :
     r.root.IsBound →
+    q.root.IsBound →
     Path.Wf Θ Δ r →
     Path.Wf Θ Δ q →
     Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
@@ -234,8 +246,8 @@ theorem SelLoAnchor.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat}
     SelLoAnchor Θ Δ n' q A M := by
   cases h with
   | store hc hl hm => exact .store hc hl (by omega)
-  | mediator hrb hwr hwq hqr hrq hev hgd =>
-    exact .mediator hrb hwr hwq hqr hrq hev hgd
+  | mediator hrb hqb hwr hwq hqr hrq hev hgd =>
+    exact .mediator hrb hqb hwr hwq hqr hrq hev hgd
 
 theorem SelHiAnchor.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat}
     {q : Path s} {A : Name} {M : Ty s}
@@ -243,8 +255,8 @@ theorem SelHiAnchor.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat}
     SelHiAnchor Θ Δ n' q A M := by
   cases h with
   | store hc hl hm => exact .store hc hl (by omega)
-  | mediator hrb hwr hwq hqr hrq hev hgd =>
-    exact .mediator hrb hwr hwq hqr hrq hev hgd
+  | mediator hrb hqb hwr hwq hqr hrq hev hgd =>
+    exact .mediator hrb hqb hwr hwq hqr hrq hev hgd
 
 /-- The Δ-level facts table, v2. -/
 inductive DOut (Θ : Sto) : {s : Sig} → Ctx s → Nat → Ty s → Ty s → Prop where
@@ -313,10 +325,12 @@ them; skip-generated co-chains never make tsel cells). -/
     Sub Θ Δ (.ty (.single q)) (.ty (.single p)) →
     DOut Θ Δ n (.tsel p A) (.tsel q A)
 /-- Re-application through a bound-rooted wellformed mediator,
-tsel-subject orientation. -/
+tsel-subject orientation. The anchored path `q` is bound-rooted too —
+see `SelLoAnchor` for why that invariant holds and what it buys. -/
 | reapp_l {s : Sig} {Δ : Ctx s} {n : Nat} {q r : Path s}
     {S : Ty s} {A : Name} {T1 T2 : Ty (s+1)} {Y : Ty s} :
     r.root.IsBound →
+    q.root.IsBound →
     Path.Wf Θ Δ r →
     Path.Wf Θ Δ q →
     Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
@@ -330,6 +344,7 @@ tsel-subject orientation. -/
 | reapp_r {s : Sig} {Δ : Ctx s} {n : Nat} {q r : Path s}
     {S : Ty s} {A : Name} {T1 T2 : Ty (s+1)} {X : Ty s} :
     r.root.IsBound →
+    q.root.IsBound →
     Path.Wf Θ Δ r →
     Path.Wf Θ Δ q →
     Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
@@ -396,10 +411,10 @@ theorem DOut.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat} {T1 T2 : Ty s}
   | tsel_l hc hE hm d1 l1 ih =>
     exact .tsel_l hc hE (by omega) ih l1
   | tsel_co hco hwp hwq l1 l2 => exact .tsel_co hco hwp hwq l1 l2
-  | reapp_l hrb hwr hwq hlk hlk2 hev hgd d1 l1 ih =>
-    exact .reapp_l hrb hwr hwq hlk hlk2 hev hgd ih l1
-  | reapp_r hrb hwr hwq hlk hlk2 hev hgd d1 l1 ih =>
-    exact .reapp_r hrb hwr hwq hlk hlk2 hev hgd ih l1
+  | reapp_l hrb hqb hwr hwq hlk hlk2 hev hgd d1 l1 ih =>
+    exact .reapp_l hrb hqb hwr hwq hlk hlk2 hev hgd ih l1
+  | reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd d1 l1 ih =>
+    exact .reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd ih l1
   | sel_bridge lo hi d1 l1 d2 l2 ih1 ih2 =>
     exact .sel_bridge (lo.mono hle) (hi.mono hle) ih1 l1 ih2 l2
   | arrow d1 l1 l2 ih => exact .arrow ih l1 l2

@@ -203,6 +203,7 @@ inductive DOutH (Θ : Sto) : {s : Sig} → Ctx s → Nat → Ty s → Ty s → N
 | reapp_l {s : Sig} {Δ : Ctx s} {n : Nat} {q r : Path s}
     {S : Ty s} {A : Name} {T1 T2 : Ty (s+1)} {Y : Ty s} {k : Nat} :
     r.root.IsBound →
+    q.root.IsBound →
     Path.Wf Θ Δ r →
     Path.Wf Θ Δ q →
     Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
@@ -215,6 +216,7 @@ inductive DOutH (Θ : Sto) : {s : Sig} → Ctx s → Nat → Ty s → Ty s → N
 | reapp_r {s : Sig} {Δ : Ctx s} {n : Nat} {q r : Path s}
     {S : Ty s} {A : Name} {T1 T2 : Ty (s+1)} {X : Ty s} {k : Nat} :
     r.root.IsBound →
+    q.root.IsBound →
     Path.Wf Θ Δ r →
     Path.Wf Θ Δ q →
     Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
@@ -267,8 +269,8 @@ theorem DOutH.toDOut {s : Sig} {Θ : Sto} {Δ : Ctx s} {n : Nat} {T1 T2 : Ty s}
   | tsel_r hc hE hm _ l1 ih => exact .tsel_r hc hE hm ih l1
   | tsel_l hc hE hm _ l1 ih => exact .tsel_l hc hE hm ih l1
   | tsel_co hco hwp hwq l1 l2 => exact .tsel_co hco hwp hwq l1 l2
-  | reapp_l hrb hwr hwq hlk hlk2 hev hgd _ l1 ih => exact .reapp_l hrb hwr hwq hlk hlk2 hev hgd ih l1
-  | reapp_r hrb hwr hwq hlk hlk2 hev hgd _ l1 ih => exact .reapp_r hrb hwr hwq hlk hlk2 hev hgd ih l1
+  | reapp_l hrb hqb hwr hwq hlk hlk2 hev hgd _ l1 ih => exact .reapp_l hrb hqb hwr hwq hlk hlk2 hev hgd ih l1
+  | reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd _ l1 ih => exact .reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd ih l1
   | sel_bridge lo hi _ l1 _ l2 ih1 ih2 => exact .sel_bridge lo hi ih1 l1 ih2 l2
   | arrow _ l1 l2 ih => exact .arrow ih l1 l2
   | pair_tm _ l1 l2 ih => exact .pair_tm ih l1 l2
@@ -289,10 +291,10 @@ theorem DOut.toH {s : Sig} {Θ : Sto} {Δ : Ctx s} {n : Nat} {T1 T2 : Ty s}
   | tsel_r hc hE hm _ l1 ih => exact ⟨_, .tsel_r hc hE hm ih.choose_spec l1⟩
   | tsel_l hc hE hm _ l1 ih => exact ⟨_, .tsel_l hc hE hm ih.choose_spec l1⟩
   | tsel_co hco hwp hwq l1 l2 => exact ⟨0, .tsel_co hco hwp hwq l1 l2⟩
-  | reapp_l hrb hwr hwq hlk hlk2 hev hgd _ l1 ih =>
-    exact ⟨_, .reapp_l hrb hwr hwq hlk hlk2 hev hgd ih.choose_spec l1⟩
-  | reapp_r hrb hwr hwq hlk hlk2 hev hgd _ l1 ih =>
-    exact ⟨_, .reapp_r hrb hwr hwq hlk hlk2 hev hgd ih.choose_spec l1⟩
+  | reapp_l hrb hqb hwr hwq hlk hlk2 hev hgd _ l1 ih =>
+    exact ⟨_, .reapp_l hrb hqb hwr hwq hlk hlk2 hev hgd ih.choose_spec l1⟩
+  | reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd _ l1 ih =>
+    exact ⟨_, .reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd ih.choose_spec l1⟩
   | sel_bridge lo hi _ l1 _ l2 ih1 ih2 =>
     exact ⟨_, .sel_bridge lo hi ih1.choose_spec l1 ih2.choose_spec l2⟩
   | arrow _ l1 l2 ih => exact ⟨_, .arrow ih.choose_spec l1 l2⟩
@@ -339,8 +341,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
       exact .tsel_r hcq hEq hmq
         (IH _ (by omega) (Nat.le_refl _) (.topR (k := 0)) res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_r hrb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
-      exact .reapp_r hrb hwr hwq hqr hrq hrp hgd
+    | reapp_r hrb hqb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
+      exact .reapp_r hrb hqb hwr hwq hqr hrq hrp hgd
         (IH _ (by omega) (Nat.le_refl _) (.topR (k := 0)) res2 sAB lazy2)
         (sAB.trans lazy2)
     | sel_bridge lo hi cellL lzL cellR lzR =>
@@ -365,8 +367,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
       exact .tsel_r hcq hEq hmq
         (IH _ (by omega) (Nat.le_refl _) (.single (k := 0) hco) res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_r hrb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
-      exact .reapp_r hrb hwr hwq hqr hrq hrp hgd
+    | reapp_r hrb hqb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
+      exact .reapp_r hrb hqb hwr hwq hqr hrq hrp hgd
         (IH _ (by omega) (Nat.le_refl _) (.single (k := 0) hco) res2 sAB lazy2)
         (sAB.trans lazy2)
     | sel_bridge lo hi cellL lzL cellR lzR =>
@@ -379,8 +381,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
   | tsel_l hcq hEq hmq res1 lazy1 =>
     exact .tsel_l hcq hEq hmq
       (IH _ (by omega) (Nat.le_refl _) res1 d2 lazy1 sBC) (lazy1.trans sBC)
-  | reapp_l hrb hwr hwq hqr hrq hrp hgd res1 lazy1 =>
-    exact .reapp_l hrb hwr hwq hqr hrq hrp hgd
+  | reapp_l hrb hqb hwr hwq hqr hrq hrp hgd res1 lazy1 =>
+    exact .reapp_l hrb hqb hwr hwq hqr hrq hrp hgd
       (IH _ (by omega) (Nat.le_refl _) res1 d2 lazy1 sBC) (lazy1.trans sBC)
   | tsel_r hcq hEq hmq res1 lazy1 =>
     -- B = tsel q An, store-anchored on the left
@@ -401,56 +403,55 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
         (IH _ (by omega) (Nat.le_refl _) (.tsel_r hcq hEq hmq res1 lazy1)
           res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_r hrb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
-      exact .reapp_r hrb hwr hwq hqr hrq hrp hgd
+    | reapp_r hrb hqb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
+      exact .reapp_r hrb hqb hwr hwq hqr hrq hrp hgd
         (IH _ (by omega) (Nat.le_refl _) (.tsel_r hcq hEq hmq res1 lazy1)
           res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_l hrb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
-      -- store anchor vs mediator anchor: bridge at the tsel middle
-      exact .sel_bridge (.store hcq hEq hmq)
-        (.mediator hrb hwr hwq hqr hrq hrp hgd)
-        res1.toDOut lazy1 res2.toDOut lazy2
+    | reapp_l hrb hqb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
+      -- UNREACHABLE: the store anchor resolves `q`, the mediator anchor
+      -- declares it bound-rooted (anchor dichotomy, see `SelLoAnchor`)
+      exact absurd hqb hcq.root_not_bound
     | sel_bridge lo hi cellL lzL cellR lzR =>
       exact .sel_bridge lo hi
         (IH _ (by omega) (Nat.le_refl _) (.tsel_r hcq hEq hmq res1 lazy1)
           cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
-  | reapp_r hrb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1 =>
+  | reapp_r hrb1 hqb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1 =>
     -- B = tsel q An, mediator-anchored on the left
     cases d2 with
-    | refl => exact .reapp_r hrb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1.toDOut lazy1
+    | refl => exact .reapp_r hrb1 hqb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1.toDOut lazy1
     | bot_tok hb => exact .bot_tok (sAB.trans hb)
     | topR => exact .topR
     | tsel_l hcq2 hEq2 hm2 res2 lazy2 =>
-      -- mediator anchor vs store anchor: bridge at the tsel middle
-      exact .sel_bridge (.mediator hrb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1)
-        (.store hcq2 hEq2 hm2) res1.toDOut lazy1 res2.toDOut lazy2
+      -- UNREACHABLE (anchor dichotomy, mirror of the corner above)
+      exact absurd hqb1 hcq2.root_not_bound
     | tsel_co hco2 hwp2 hwq2 s1' s2' =>
       -- rebuild the reapp cell at the co-chained subject: its Wf is
       -- carried by tsel_co; the mediator links compose with the
-      -- mutual legs
-      exact .reapp_r hrb1 hwr1 hwq2 (s2'.trans hqr1) (hrq1.trans s1')
-        hrp1 hgd1 res1.toDOut lazy1
+      -- mutual legs, and the anchor's root-boundness moves along the
+      -- co-chain (`CoChain.root_iff`)
+      exact .reapp_r hrb1 (hco2.root_iff.mp hqb1) hwr1 hwq2
+        (s2'.trans hqr1) (hrq1.trans s1') hrp1 hgd1 res1.toDOut lazy1
     | tsel_r hcq3 hEq3 hm3 res2 lazy2 =>
       exact .tsel_r hcq3 hEq3 hm3
         (IH _ (by omega) (Nat.le_refl _)
-          (.reapp_r hrb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1) res2 sAB lazy2)
+          (.reapp_r hrb1 hqb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1) res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_r hrb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
-      exact .reapp_r hrb hwr hwq hqr hrq hrp hgd
+    | reapp_r hrb hqb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
+      exact .reapp_r hrb hqb hwr hwq hqr hrq hrp hgd
         (IH _ (by omega) (Nat.le_refl _)
-          (.reapp_r hrb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1) res2 sAB lazy2)
+          (.reapp_r hrb1 hqb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1) res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_l hrb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
+    | reapp_l hrb hqb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
       -- two distinct mediators: bridge at the tsel middle
-      exact .sel_bridge (.mediator hrb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1)
-        (.mediator hrb hwr hwq hqr hrq hrp hgd)
+      exact .sel_bridge (.mediator hrb1 hqb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1)
+        (.mediator hrb hqb hwr hwq hqr hrq hrp hgd)
         res1.toDOut lazy1 res2.toDOut lazy2
     | sel_bridge lo hi cellL lzL cellR lzR =>
       exact .sel_bridge lo hi
         (IH _ (by omega) (Nat.le_refl _)
-          (.reapp_r hrb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1)
+          (.reapp_r hrb1 hqb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1)
           cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
   | tsel_co hco hwp hwq s1 s2 =>
@@ -469,17 +470,17 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
         (IH _ (by omega) (Nat.le_refl _) (.tsel_co (k := 0) hco hwp hwq s1 s2)
           res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_r hrb hwr hwq2 hqr hrq hrp hgd res2 lazy2 =>
-      exact .reapp_r hrb hwr hwq2 hqr hrq hrp hgd
+    | reapp_r hrb hqb hwr hwq2 hqr hrq hrp hgd res2 lazy2 =>
+      exact .reapp_r hrb hqb hwr hwq2 hqr hrq hrp hgd
         (IH _ (by omega) (Nat.le_refl _) (.tsel_co (k := 0) hco hwp hwq s1 s2)
           res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_l hrb hwr hwq2 hqr hrq hrp hgd res2 lazy2 =>
+    | reapp_l hrb hqb hwr hwq2 hqr hrq hrp hgd res2 lazy2 =>
       -- rebuild the reapp cell at the co-chained subject: its Wf is
       -- carried by tsel_co; the mediator links compose with the
       -- mutual legs
-      exact .reapp_l hrb hwr hwp (s1.trans hqr) (hrq.trans s2)
-        hrp hgd res2.toDOut lazy2
+      exact .reapp_l hrb (hco.root_iff.mpr hqb) hwr hwp (s1.trans hqr)
+        (hrq.trans s2) hrp hgd res2.toDOut lazy2
     | sel_bridge lo hi cellL lzL cellR lzR =>
       exact .sel_bridge lo hi
         (IH _ (by omega) (Nat.le_refl _) (.tsel_co (k := 0) hco hwp hwq s1 s2)
@@ -495,8 +496,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
       exact .tsel_r hcq hEq hmq
         (IH _ (by omega) (Nat.le_refl _) (.arrow dom1 l1 l2) res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_r hrb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
-      exact .reapp_r hrb hwr hwq hqr hrq hrp hgd
+    | reapp_r hrb hqb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
+      exact .reapp_r hrb hqb hwr hwq hqr hrq hrp hgd
         (IH _ (by omega) (Nat.le_refl _) (.arrow dom1 l1 l2) res2 sAB lazy2)
         (sAB.trans lazy2)
     | arrow dom2 l1' l2' =>
@@ -517,8 +518,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
       exact .tsel_r hcq hEq hmq
         (IH _ (by omega) (Nat.le_refl _) (.pair_tm dom1 l1 l2) res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_r hrb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
-      exact .reapp_r hrb hwr hwq hqr hrq hrp hgd
+    | reapp_r hrb hqb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
+      exact .reapp_r hrb hqb hwr hwq hqr hrq hrp hgd
         (IH _ (by omega) (Nat.le_refl _) (.pair_tm dom1 l1 l2) res2 sAB lazy2)
         (sAB.trans lazy2)
     | pair_tm dom2 l1' l2' =>
@@ -538,8 +539,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
       exact .tsel_r hcq hEq hmq
         (IH _ (by omega) (Nat.le_refl _) (.pair_ty dom1 l1 lo1 hi1) res2 sAB lazy2)
         (sAB.trans lazy2)
-    | reapp_r hrb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
-      exact .reapp_r hrb hwr hwq hqr hrq hrp hgd
+    | reapp_r hrb hqb hwr hwq hqr hrq hrp hgd res2 lazy2 =>
+      exact .reapp_r hrb hqb hwr hwq hqr hrq hrp hgd
         (IH _ (by omega) (Nat.le_refl _) (.pair_ty dom1 l1 lo1 hi1) res2 sAB lazy2)
         (sAB.trans lazy2)
     | pair_ty dom2 l1' lo2 hi2 =>
