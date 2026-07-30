@@ -90,6 +90,88 @@ theorem CoChain.root_iff {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s}
       | here => exact ih
       | there x' => exact Iff.rfl
 
+/-! ### `RtEq`: the wellformed-equality closure of runtime co-targeting
+
+`CoChain` is *not* usable as the equivalence carried by the facts table
+once `DOut.repl` has to build cells at `r[p]` vs `r[q]` for a `Sub.repl`
+whose openers are merely mutual aliases (they need not co-resolve, they
+need not resolve at all).  `RtEq` is the closure that does work: runtime
+co-targeting plus *wellformed declared-equality* (replacement) hops.
+
+Unlike `CoChain` it omits the skip hops, and that omission is forced:
+`CoChain.skip_tm` relates `p.sel a` to `(p.fst).sel a` at a store entry
+whose member label is `b ≠ a`, and `Path.Wf (p.sel a)` derived by
+`Path.Wf.sel` (a junk-`Δ` claim that `p` has an `a` member) does *not*
+give `Path.Wf ((p.fst).sel a)`.  So `CoChain` transfers neither
+wellformedness nor mutual subtyping, while `RtEq` transfers both
+(`RtEq.wf_iff`, `RtEq.to_sub`) — which is exactly what a capture mediator
+needs.  `CoChain.toRtEq` converts at a store-resolved subject, where the
+skip hops become co-targeting hops (`CoChain.chains_iff`).
+
+`RtEq` does NOT transfer root-boundness: machine-checked, `Θ = [T]`,
+`Δ = ⟨u : single ℓ0⟩` makes `single ℓ0` and `single u` mutual subtypes
+(`Sub.var_bound` + `Sub.symm`), so `RtEq.repl` at the template
+`.var (.bound .here)` relates a free-rooted to a bound-rooted path. Any
+`bound_tok` transport through a `RtEq` middle must therefore case on
+boundness rather than move it. -/
+inductive RtEq (Θ : Sto) : {s : Sig} → Ctx s → Path s → Path s → Prop where
+| refl {s : Sig} {Δ : Ctx s} {p : Path s} :
+    RtEq Θ Δ p p
+| symm {s : Sig} {Δ : Ctx s} {p q : Path s} :
+    RtEq Θ Δ p q → RtEq Θ Δ q p
+| trans {s : Sig} {Δ : Ctx s} {p q r : Path s} :
+    RtEq Θ Δ p q → RtEq Θ Δ q r → RtEq Θ Δ p r
+| cochain {s : Sig} {Δ : Ctx s} {p q : Path s} {ℓ0 : Nat} :
+    Chains Θ p ℓ0 → Chains Θ q ℓ0 → RtEq Θ Δ p q
+/-- The replacement hop: `Sub.repl`'s own premises, at an arbitrary
+template.  `r = .var (.bound .here)` gives the plain declared alias. -/
+| repl {s : Sig} {Δ : Ctx s} {p q : Path s} {r : Path (s+1)} :
+    Path.Wf Θ Δ p → Path.Wf Θ Δ q →
+    Sub Θ Δ (.ty (.single p)) (.ty (.single q)) →
+    Sub Θ Δ (.ty (.single q)) (.ty (.single p)) →
+    RtEq Θ Δ (Path.subst r (Subst.openPath p)) (Path.subst r (Subst.openPath q))
+
+/-- A plain declared alias is a `RtEq` hop (`repl` at the variable
+template). -/
+theorem RtEq.alias {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s}
+    (hwp : Path.Wf Θ Δ p) (hwq : Path.Wf Θ Δ q)
+    (h1 : Sub Θ Δ (.ty (.single p)) (.ty (.single q)))
+    (h2 : Sub Θ Δ (.ty (.single q)) (.ty (.single p))) : RtEq Θ Δ p q :=
+  RtEq.repl (r := .var (.bound .here)) hwp hwq h1 h2
+
+/-- **Transfer 1**: mutual subtyping legs across the closure. Co-targeting
+hops go by `Chains.mutual_sub`, replacement hops by `Sub.repl`. -/
+theorem RtEq.to_sub {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s}
+    (h : RtEq Θ Δ p q) :
+    Sub Θ Δ (.ty (.single p)) (.ty (.single q)) ∧
+    Sub Θ Δ (.ty (.single q)) (.ty (.single p)) := by
+  induction h with
+  | refl => exact ⟨.refl, .refl⟩
+  | symm _ ih => exact ⟨ih.2, ih.1⟩
+  | trans _ _ ih1 ih2 => exact ⟨ih1.1.trans ih2.1, ih2.2.trans ih1.2⟩
+  | cochain hp hq => exact ⟨Chains.mutual_sub hp hq, Chains.mutual_sub hq hp⟩
+  | repl hwp hwq h1 h2 =>
+    rename_i r
+    exact ⟨Sub.repl (T := .single r) hwp hwq h1 h2,
+           Sub.repl (T := .single r) hwq hwp h2 h1⟩
+
+/-- **Transfer 2**: wellformedness across the closure. Co-targeting hops
+give it outright (`Chains.wf`), replacement hops by `Path.Wf.repl`. -/
+theorem RtEq.wf_iff {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s}
+    (h : RtEq Θ Δ p q) : Path.Wf Θ Δ p ↔ Path.Wf Θ Δ q := by
+  induction h with
+  | refl => exact Iff.rfl
+  | symm _ ih => exact ih.symm
+  | trans _ _ ih1 ih2 => exact ih1.trans ih2
+  | cochain hp hq => exact ⟨fun _ => hq.wf, fun _ => hp.wf⟩
+  | repl hwp hwq h1 h2 =>
+    rename_i r
+    exact ⟨fun hh => Path.Wf.repl (r := r) hwq hwp h2 h1 hh,
+           fun hh => Path.Wf.repl (r := r) hwp hwq h1 h2 hh⟩
+
+theorem RtEq.wf_left {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s}
+    (h : RtEq Θ Δ p q) (hw : Path.Wf Θ Δ p) : Path.Wf Θ Δ q := h.wf_iff.mp hw
+
 /-- The production guard of the substR motive: a cell is owed for every
 substituted conclusion except those whose subject is a bound-rooted
 SINGLE (those re-derive directly, and trans skips their cells via

@@ -127,6 +127,17 @@ theorem CoChain.chains_iff {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s}
     · exact Chains.subst_congr' (CoChainsG.of_iff ih)
     · exact Chains.subst_congr' (CoChainsG.of_iff (fun m => (ih m).symm))
 
+/-- **Transfer 3**: at a store-resolved subject a `CoChain` collapses into
+an `RtEq`.  Both endpoints then co-target (`CoChain.chains_iff`), so the
+whole chain — skip hops included — is a single co-targeting hop, and the
+`RtEq` transfer lemmas (`RtEq.to_sub`, `RtEq.wf_iff`) become available for
+a `CoChain`-carried cell.  This is the only route from `CoChain` to
+`RtEq`: `CoChain` on its own transfers neither wellformedness nor mutual
+subtyping (see the `RtEq` doc comment in `DOut.lean`). -/
+theorem CoChain.toRtEq {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s} {m : Nat}
+    (h : CoChain Θ Δ p q) (hc : Chains Θ p m) : RtEq Θ Δ p q :=
+  .cochain hc ((h.chains_iff m).mp hc)
+
 /-! ### Height-indexed copy of `DOut`.
 
 Composition shrinks the left cell in some cases, the right cell in
