@@ -165,4 +165,88 @@ theorem Captured.discharge_skip_ty {p r : Path s} {a : Name} {S : Ty s}
     (.trans (.skip_ty hrb hwr hevr) (Sub.repl_sel hwrf hwpf hf2 hf1))
 
 
+/-! ### §6 Realized conforming substitutions -/
+
+/-- A realized conforming substitution (P4.4): conformance and
+wellformedness as in `SubstTyping`, but images may be BARE heap
+locations instead of bound-rooted paths, provided the declared type
+substitutes to a CLOSED type to which the location conforms at the
+empty context (dischargeable: λ-domains and let-binder types are
+wellformed at their outer scope, closed at top level; preservation
+only ever opens ONE variable with a bare location). Ambient
+`Sto.Shaped` is a hypothesis of the theorems, not a field. -/
+structure SubstTypingR (Θ : Sto) (σ : Subst s1 s2) (Γ : Ctx s1) (Δ : Ctx s2) : Prop where
+  conforms : ∀ {x : BVar s1} {T : Ty s1},
+    Ctx.LookupVar Γ x T → Sub Θ Δ (.ty (.single (σ.var x))) (.ty (T.subst σ))
+  wf : ∀ (x : BVar s1), Path.Wf Θ Δ (σ.var x)
+  images : ∀ (x : BVar s1),
+    (σ.var x).root.IsBound ∨ ∃ ℓ : Nat, σ.var x = .var (.free ℓ)
+  realized : ∀ {x : BVar s1} {T : Ty s1} {ℓ : Nat},
+    Ctx.LookupVar Γ x T → σ.var x = .var (.free ℓ) →
+    ∃ T0 : Ty 0, T.subst σ = Ty.fromClosed T0 ∧
+      Sub Θ .empty (.ty (.single (.var (.free ℓ)))) (.ty T0)
+
+/-- Realized conforming substitutions extend under a binder (the new
+variable maps to itself: bound-rooted, so `realized` is vacuous there;
+`there`-images keep their closed realizations via
+`Ty.fromClosed_weaken`). -/
+theorem SubstTypingR.lift {s1 s2 : Sig} {Θ : Sto} {σ : Subst s1 s2}
+    {Γ : Ctx s1} {Δ : Ctx s2}
+    (hσ : SubstTypingR Θ σ Γ Δ) {S : Ty s1} :
+    SubstTypingR Θ σ.lift (Γ.push S) (Δ.push (S.subst σ)) := by
+  constructor
+  · intro x T h
+    cases h with
+    | here =>
+      rw [Ty.weaken_subst_comm]
+      exact Sub.var_bound .here
+    | there h' =>
+      rw [Ty.weaken_subst_comm]
+      exact (hσ.conforms h').weaken
+  · intro x
+    cases x with
+    | here => exact .var_bound .here
+    | there x' => exact (hσ.wf x').weaken
+  · intro x
+    cases x with
+    | here => exact Or.inl trivial
+    | there x' =>
+      rcases hσ.images x' with hb | ⟨ℓ, he⟩
+      · exact Or.inl (Path.root_isBound_rename hb)
+      · exact Or.inr ⟨ℓ, by
+          show (σ.var x').rename Rename.succ = _
+          rw [he]
+          rfl⟩
+  · intro x T ℓ hlk he
+    cases x with
+    | here =>
+      exact absurd he (by intro h; cases h)
+    | there x' =>
+      cases hlk with
+      | there hlk' =>
+      have he' : σ.var x' = .var (.free ℓ) := by
+        have hshow : (σ.var x').rename Rename.succ = .var (.free ℓ) := he
+        cases hv : σ.var x' with
+        | var v =>
+          rw [hv] at hshow
+          cases v with
+          | bound b => exact absurd hshow (by intro h; cases h)
+          | free ℓ' =>
+            have : ℓ' = ℓ := by
+              have := hshow
+              simp [Path.rename, Var.rename] at this
+              exact this
+            subst this
+            rfl
+        | fst p' =>
+          rw [hv] at hshow
+          exact absurd hshow (by intro h; cases h)
+        | sel p' a' =>
+          rw [hv] at hshow
+          exact absurd hshow (by intro h; cases h)
+      obtain ⟨T0, hTs, hsub⟩ := hσ.realized hlk' he'
+      refine ⟨T0, ?_, hsub⟩
+      rw [Ty.weaken_subst_comm, hTs]
+      exact Ty.fromClosed_rename
+
 end LambdaP
