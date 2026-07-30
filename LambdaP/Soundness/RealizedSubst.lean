@@ -119,4 +119,50 @@ theorem bridge_fst_component {Θ : Sto} (hwf : Sto.Shaped Θ) {p : Path 0} {m �
          .trans hhi0 (Sub.repl (T := T2) hwl hwpf h2 h1)⟩
 
 
+
+/-- sel_lo consumption, captured evidence (mirror of `discharge_sel_hi`). -/
+theorem Captured.discharge_sel_lo {p r : Path s} {A : Name} {S : Ty s} {T1 T2 : Ty (s+1)}
+    (hrb : r.root.IsBound)
+    (hwr : Path.Wf Θ Δ r)
+    (hwp : Path.Wf Θ Δ p)
+    (hcap : Sub Θ Δ (.ty (.single p)) (.ty (.single r)))
+    (hev : Sub Θ Δ (.ty (.single p)) (.ty (.pairTy S A T1 T2)))
+    (hgd : Sub Θ Δ (.ty (T1.open p.fst)) (.ty (T2.open p.fst))) :
+    Sub Θ Δ (.ty (T1.open p.fst)) (.ty (.tsel p A)) := by
+  have hrev : Sub Θ Δ (.ty (.single r)) (.ty (.single p)) := .symm hwp hcap
+  have hevr : Sub Θ Δ (.ty (.single r)) (.ty (.pairTy S A T1 T2)) := .trans hrev hev
+  have hwpf : Path.Wf Θ Δ p.fst := .fst_ty hwp hev
+  have hwrf : Path.Wf Θ Δ r.fst := .fst_ty hwr hevr
+  have hf1 : Sub Θ Δ (.ty (.single p.fst)) (.ty (.single r.fst)) :=
+    Sub.repl_fst hwp hwr hcap hrev
+  have hf2 : Sub Θ Δ (.ty (.single r.fst)) (.ty (.single p.fst)) :=
+    Sub.repl_fst hwr hwp hrev hcap
+  have hgdr : Sub Θ Δ (.ty (T1.open r.fst)) (.ty (T2.open r.fst)) :=
+    .trans (Sub.repl (T := T1) hwrf hwpf hf2 hf1)
+      (.trans hgd (Sub.repl (T := T2) hwpf hwrf hf1 hf2))
+  exact .trans (Sub.repl (T := T1) hwpf hwrf hf1 hf2)
+    (.trans (.sel_lo hrb hwr hevr hgdr)
+      (Sub.repl_tsel hwr hwp hrev hcap))
+
+/-- skip_ty consumption, captured evidence (mirror of `discharge_skip_tm`). -/
+theorem Captured.discharge_skip_ty {p r : Path s} {a : Name} {S : Ty s}
+    {B : Name} {T1 T2 : Ty (s+1)}
+    (hrb : r.root.IsBound)
+    (hwr : Path.Wf Θ Δ r)
+    (hwp : Path.Wf Θ Δ p)
+    (hcap : Sub Θ Δ (.ty (.single p)) (.ty (.single r)))
+    (hev : Sub Θ Δ (.ty (.single p)) (.ty (.pairTy S B T1 T2))) :
+    Sub Θ Δ (.ty (.single (p.sel a))) (.ty (.single ((Path.fst p).sel a))) := by
+  have hrev : Sub Θ Δ (.ty (.single r)) (.ty (.single p)) := .symm hwp hcap
+  have hevr : Sub Θ Δ (.ty (.single r)) (.ty (.pairTy S B T1 T2)) := .trans hrev hev
+  have hwpf : Path.Wf Θ Δ p.fst := .fst_ty hwp hev
+  have hwrf : Path.Wf Θ Δ r.fst := .fst_ty hwr hevr
+  have hf1 : Sub Θ Δ (.ty (.single p.fst)) (.ty (.single r.fst)) :=
+    Sub.repl_fst hwp hwr hcap hrev
+  have hf2 : Sub Θ Δ (.ty (.single r.fst)) (.ty (.single p.fst)) :=
+    Sub.repl_fst hwr hwp hrev hcap
+  exact .trans (Sub.repl_sel hwp hwr hcap hrev)
+    (.trans (.skip_ty hrb hwr hevr) (Sub.repl_sel hwrf hwpf hf2 hf1))
+
+
 end LambdaP
