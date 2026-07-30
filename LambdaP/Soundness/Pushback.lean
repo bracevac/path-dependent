@@ -56,18 +56,16 @@ theorem HeapTyped.shaped {Θ : Sto} {h : Heap} (hh : HeapTyped Θ h) :
 the selection cases are now single anchored-rule applications). -/
 
 /-- A chaining path is a subtype of its target's singleton. -/
-theorem Chains.to_sub {Θ : Sto} {p : Path 0} {ℓ : Nat}
+theorem Chains.to_sub {s : Sig} {Θ : Sto} {Γ : Ctx s} {p : Path s} {ℓ : Nat}
     (hc : Chains Θ p ℓ) :
-    Sub Θ .empty (.ty (.single p)) (.ty (.single (.var (.free ℓ)))) := by
+    Sub Θ Γ (.ty (.single p)) (.ty (.single (.var (.free ℓ)))) := by
   induction hc with
   | loc _ => exact .refl
   | fst_tm _ hl ih =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
+    have hvf := Sub.var_free (Γ := Γ) hl
     exact .fst_tm (.trans ih hvf)
   | fst_ty _ hl ih =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
+    have hvf := Sub.var_free (Γ := Γ) hl
     exact .fst_ty (.trans ih hvf)
   | sel hc hl ih => exact Sub.sel_tm_loc hc hl
   | sel_skip_tm hc hl hne _ ihp ihin =>
@@ -76,16 +74,16 @@ theorem Chains.to_sub {Θ : Sto} {p : Path 0} {ℓ : Nat}
     exact .trans (Sub.skip_ty_loc hc hl) ihin
 
 /-- A chaining path sits below its target's entry. -/
-theorem Chains.to_sub_entry {Θ : Sto} {p : Path 0} {m : Nat} {T : Ty 0}
+theorem Chains.to_sub_entry {s : Sig} {Θ : Sto} {Γ : Ctx s} {p : Path s}
+    {m : Nat} {T : Ty 0}
     (hc : Chains Θ p m) (hl : Sto.Lookup Θ m T) :
-    Sub Θ .empty (.ty (.single p)) (.ty T) := by
-  have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-  rw [Ty.fromClosed_zero] at hvf
+    Sub Θ Γ (.ty (.single p)) (.ty (Ty.fromClosed T)) := by
+  have hvf := Sub.var_free (Γ := Γ) hl
   exact .trans hc.to_sub hvf
 
 /-- Store-side resolution yields wellformedness. -/
-theorem Chains.wf {Θ : Sto} {p : Path 0} {ℓ : Nat}
-    (hc : Chains Θ p ℓ) : Path.Wf Θ .empty p := by
+theorem Chains.wf {s : Sig} {Θ : Sto} {Γ : Ctx s} {p : Path s} {ℓ : Nat}
+    (hc : Chains Θ p ℓ) : Path.Wf Θ Γ p := by
   induction hc with
   | loc hl => exact .var_free hl
   | fst_tm hc hl ih => exact .fst_tm ih (hc.to_sub_entry hl)
@@ -97,9 +95,9 @@ theorem Chains.wf {Θ : Sto} {p : Path 0} {ℓ : Nat}
     exact .sel_skip_ty ihin (hc.to_sub_entry hl)
 
 /-- Co-chaining paths are mutual subtypes. -/
-theorem Chains.mutual_sub {Θ : Sto} {p q : Path 0} {ℓ0 : Nat}
-    (hp : Chains Θ p ℓ0) (hq : Chains Θ q ℓ0) :
-    Sub Θ .empty (.ty (.single p)) (.ty (.single q)) :=
+theorem Chains.mutual_sub {s : Sig} {Θ : Sto} {Γ : Ctx s} {p q : Path s}
+    {ℓ0 : Nat} (hp : Chains Θ p ℓ0) (hq : Chains Θ q ℓ0) :
+    Sub Θ Γ (.ty (.single p)) (.ty (.single q)) :=
   .trans hp.to_sub (.symm hq.wf hq.to_sub)
 
 /-- Contiguity: any index below the store length is recorded (hoisted
@@ -107,6 +105,34 @@ from the quarantined preservation file). -/
 theorem Sto.lookup_lt {Θ : Sto} {m : Nat} (hm : m < Θ.length) :
     ∃ T, Sto.Lookup Θ m T :=
   ⟨Θ[m], List.getElem?_eq_some_iff.mpr ⟨hm, rfl⟩⟩
+
+
+/-! ### Replacement corollaries (P4.3): mutual singleton aliases are
+congruences for projections, selections, and arbitrary openings. -/
+
+/-- Mutual aliases transport through first projection. -/
+theorem Sub.repl_fst {s : Sig} {Θ : Sto} {Γ : Ctx s} {p q : Path s}
+    (hwp : Path.Wf Θ Γ p) (hwq : Path.Wf Θ Γ q)
+    (h1 : Sub Θ Γ (.ty (.single p)) (.ty (.single q)))
+    (h2 : Sub Θ Γ (.ty (.single q)) (.ty (.single p))) :
+    Sub Θ Γ (.ty (.single p.fst)) (.ty (.single q.fst)) :=
+  Sub.repl (T := .single ((Path.var (Var.bound .here)).fst)) hwp hwq h1 h2
+
+/-- Mutual aliases transport through selection. -/
+theorem Sub.repl_sel {s : Sig} {Θ : Sto} {Γ : Ctx s} {p q : Path s} {a : Name}
+    (hwp : Path.Wf Θ Γ p) (hwq : Path.Wf Θ Γ q)
+    (h1 : Sub Θ Γ (.ty (.single p)) (.ty (.single q)))
+    (h2 : Sub Θ Γ (.ty (.single q)) (.ty (.single p))) :
+    Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single (q.sel a))) :=
+  Sub.repl (T := .single ((Path.var (Var.bound .here)).sel a)) hwp hwq h1 h2
+
+/-- Mutual aliases transport through type selection. -/
+theorem Sub.repl_tsel {s : Sig} {Θ : Sto} {Γ : Ctx s} {p q : Path s} {A : Name}
+    (hwp : Path.Wf Θ Γ p) (hwq : Path.Wf Θ Γ q)
+    (h1 : Sub Θ Γ (.ty (.single p)) (.ty (.single q)))
+    (h2 : Sub Θ Γ (.ty (.single q)) (.ty (.single p))) :
+    Sub Θ Γ (.ty (.tsel p A)) (.ty (.tsel q A)) :=
+  Sub.repl (T := .tsel (Path.var (Var.bound .here)) A) hwp hwq h1 h2
 
 /-- Chain targets are recorded (locations mentioned by entries are older
 and the store is contiguous). -/
