@@ -375,6 +375,27 @@ theorem Path.Wf.chains {s0 : Sig} {Θ0 : Sto} {Γ0 : Ctx s0} {p0 : Path s0}
     obtain ⟨ℓ0, ℓ1, W, hcp, hE0, -⟩ := Sub.single_pairTy_anchor hwf' hsub
     exact ⟨m, .sel_skip_ty hcp hE0 hm⟩
 
+
+/-- Canonical forms for functions (M3): a runtime path below an arrow
+type resolves to a stored lambda with a typed body, contravariant
+domain, and covariant codomain under the declared domain. -/
+theorem Sub.canonical_arrow {Θ : Sto} {h : Heap} {p : Path 0}
+    {S : Ty 0} {T : Ty 1} (hh : HeapTyped Θ h)
+    (hsub : Sub Θ .empty (.ty (.single p)) (.ty (.arrow S T))) :
+    ∃ ℓ0 S0 T0 t, Chains Θ p ℓ0 ∧
+      Heap.Lookup h ℓ0 (.abs S0 t) ∧
+      Wf Θ .empty (.ty S0) ∧
+      HasType Θ (Ctx.empty.push S0) t T0 ∧
+      Sub Θ .empty (.ty S) (.ty S0) ∧
+      Sub Θ (Ctx.empty.push S) (.ty T0) (.ty T) := by
+  obtain ⟨ℓ0, S0, T0, hcp, hE0, ⟨m, dom⟩, res⟩ :=
+    Sub.single_arrow_anchor hh.shaped hsub
+  obtain ⟨-, v, hlv, -, hpre⟩ := hh.2 hE0
+  cases hpre with
+  | abs hwf0 hty =>
+    exact ⟨ℓ0, S0, T0, _, hcp, hlv, hwf0, hty, dom.to_sub, res⟩
+
+
 end LambdaP
 
 section
