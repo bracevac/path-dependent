@@ -283,6 +283,20 @@ this cell is vacuous there). -/
 | single {s : Sig} {Δ : Ctx s} {n : Nat} {p q : Path s} :
     CoChain Θ Δ p q →
     DOut Θ Δ n (.single p) (.single q)
+/-- **Subject transport along co-resolution.** `DOut.chains_subject` as a
+ROW. Re-anchoring a cell at a co-resolving subject used to be a fifteen-
+case induction that every new row had to extend and that the height-
+indexed campaign owed a height-preserving replay of; as a cell it is one
+constructor, it composes uniformly (recurse into the residue), and
+`harvest` reads it by moving its own `Chains` hypothesis across the hop
+(`CoChain.chains_iff`) and transporting the read-off back
+(`Chains.mutual_sub` gives the mutual legs the escapes need, because both
+endpoints resolve to the SAME location here). -/
+| co_subject {s : Sig} {Δ : Ctx s} {n : Nat} {p q : Path s} {Y : Ty s} :
+    CoChain Θ Δ p q →
+    DOut Θ Δ n (.single q) Y →
+    Sub Θ Δ (.ty (.single q)) (.ty Y) →
+    DOut Θ Δ n (.single p) Y
 /-- Uniform unfold: a chaining single subject reads off through its
 entry; the residual cell lives at the SAME bound (the v2 fix), the
 lazy leg composes with raw premises in trans. -/
@@ -294,6 +308,29 @@ lazy leg composes with raw premises in trans. -/
     DOut Θ Δ n (Ty.fromClosed E) X →
     Sub Θ Δ (.ty (Ty.fromClosed E)) (.ty X) →
     DOut Θ Δ n (.single p) X
+/-- **The projection rows.** `MS.fst_tm`/`MS.fst_ty` are the only
+consumption sites with no wellformedness premise, so they can route
+neither of `harvest`'s escapes: pushing a capture mediator through `.fst`
+needs `Sub.repl`, hence `Path.Wf` of both endpoints, and the collapse
+escape is fine but the capture one is not. They therefore RECORD the
+projection instead of resolving it — the cell keeps the subject's own
+evidence cell with its lazy leg, and the read-off happens inside
+`harvest`, which does have the subject's resolution (`Chains (p.fst) ℓ`
+inverts to `Chains p m` plus a pair entry at `m`). -/
+| fst_of_tm {s : Sig} {Δ : Ctx s} {n : Nat} {p : Path s} {S : Ty s}
+    {a : Name} {T : Ty (s+1)} {Y : Ty s} :
+    DOut Θ Δ n (.single p) (.pairTm S a T) →
+    Sub Θ Δ (.ty (.single p)) (.ty (.pairTm S a T)) →
+    DOut Θ Δ n S Y →
+    Sub Θ Δ (.ty S) (.ty Y) →
+    DOut Θ Δ n (.single p.fst) Y
+| fst_of_ty {s : Sig} {Δ : Ctx s} {n : Nat} {p : Path s} {S : Ty s}
+    {A : Name} {T1 T2 : Ty (s+1)} {Y : Ty s} :
+    DOut Θ Δ n (.single p) (.pairTy S A T1 T2) →
+    Sub Θ Δ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) →
+    DOut Θ Δ n S Y →
+    Sub Θ Δ (.ty S) (.ty Y) →
+    DOut Θ Δ n (.single p.fst) Y
 /-- Tsel on the right, RHS-anchored; residue at the cell bound. -/
 | tsel_r {s : Sig} {Δ : Ctx s} {n : Nat} {X : Ty s} {q : Path s}
     {mq ℓ1 : Nat} {A : Name} {W : Ty 0} :
@@ -370,6 +407,29 @@ from the anchors and is not stored. -/
     DOut Θ Δ n M2 Y →
     Sub Θ Δ (.ty M2) (.ty Y) →
     DOut Θ Δ n X Y
+/-- **The replacement bridge.** `Sub.repl` relates `T.open p` and
+`T.open q` at an ARBITRARY template for mutually-aliased wellformed
+openers, and neither middle survives to the conclusion — so, exactly like
+`sel_bridge`, the cell carries both residue cells at their own middles,
+both lazy legs, and the equivalence; the middle bridge
+`T.open p ≤ T.open q` is derivable (`RtEq.to_sub` + `RtEq.wf_iff` +
+`Sub.repl`) whenever either opener's wellformedness is in scope, and is
+not stored.
+
+The field is an `RtEq` rather than the four `Sub.repl` premises because
+`DOut.compose` has to CHAIN hops: at a `single`/`tsel` middle the
+neighbouring cell's own equivalence composes with this one (that is what
+makes the `RtEq` swap of `tsel_co`/`single` mechanical — the corners that
+`CoChain.chains_iff`/`root_iff` used to serve fall back to this row), and
+no wellformedness is available in the `bound_tok` corner. -/
+| repl_bridge {s : Sig} {Δ : Ctx s} {n : Nat} {X Y : Ty s} {T : Ty (s+1)}
+    {p q : Path s} :
+    RtEq Θ Δ p q →
+    DOut Θ Δ n X (T.open p) →
+    Sub Θ Δ (.ty X) (.ty (T.open p)) →
+    DOut Θ Δ n (T.open q) Y →
+    Sub Θ Δ (.ty (T.open q)) (.ty Y) →
+    DOut Θ Δ n X Y
 /-- Arrow diagonal: recursive contravariant first component (+ lazy),
 lazy codomain at the push context. -/
 | arrow {s : Sig} {Δ : Ctx s} {n : Nat} {S S' : Ty s} {T T' : Ty (s+1)} :
@@ -404,8 +464,11 @@ theorem DOut.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat} {T1 T2 : Ty s}
   | botL => exact .botL
   | topR => exact .topR
   | single hco => exact .single hco
+  | co_subject hco d1 l1 ih => exact .co_subject hco ih l1
   | sngl_unfold hc hE hm d1 l1 ih =>
     exact .sngl_unfold hc hE (by omega) ih l1
+  | fst_of_tm d1 l1 d2 l2 ih1 ih2 => exact .fst_of_tm ih1 l1 ih2 l2
+  | fst_of_ty d1 l1 d2 l2 ih1 ih2 => exact .fst_of_ty ih1 l1 ih2 l2
   | tsel_r hc hE hm d1 l1 ih =>
     exact .tsel_r hc hE (by omega) ih l1
   | tsel_l hc hE hm d1 l1 ih =>
@@ -417,6 +480,7 @@ theorem DOut.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat} {T1 T2 : Ty s}
     exact .reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd ih l1
   | sel_bridge lo hi d1 l1 d2 l2 ih1 ih2 =>
     exact .sel_bridge (lo.mono hle) (hi.mono hle) ih1 l1 ih2 l2
+  | repl_bridge hco d1 l1 d2 l2 ih1 ih2 => exact .repl_bridge hco ih1 l1 ih2 l2
   | arrow d1 l1 l2 ih => exact .arrow ih l1 l2
   | pair_tm d1 l1 l2 ih => exact .pair_tm ih l1 l2
   | pair_ty d1 l1 l2 l3 ih => exact .pair_ty ih l1 l2 l3
