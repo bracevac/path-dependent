@@ -99,7 +99,7 @@ theorem Sub.to_ssub_aux {s : Sig} {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s}
     exact ⟨n + 1, .fst_ty hn⟩
   -- sel_tm (vacuous at scope 0)
   · intro h
-    rename_i hr hsub ih
+    rename_i hr hw hsub ihw ih
     subst h
     exact (Path.root_not_isBound_zero _ hr).elim
   -- sel_tm_loc
@@ -164,12 +164,12 @@ theorem Sub.to_ssub_aux {s : Sig} {Θ : Sto} {Γ : Ctx s} {τ1 τ2 : Tau s}
                     (hs2.mono (Nat.le_max_right n1 n2))⟩
   -- skip_tm (vacuous at scope 0)
   · intro h
-    rename_i hr hsub hne ih
+    rename_i hr hw hsub hne ihw ih
     subst h
     exact (Path.root_not_isBound_zero _ hr).elim
   -- skip_ty (vacuous at scope 0)
   · intro h
-    rename_i hr hsub ih
+    rename_i hr hw hsub ihw ih
     subst h
     exact (Path.root_not_isBound_zero _ hr).elim
   -- skip_tm_loc
