@@ -1,10 +1,10 @@
-import LambdaP.Soundness.Safety
-import LambdaP.Soundness.Invertible
+import LambdaP.Soundness.Progress
+import LambdaP.Soundness.RealizedSubst
 
 /-!
 Smoke tests: small derivations exercising the system, and an axiom audit
-of the main theorems (they must use nothing beyond `propext`, `Quot.sound`,
-and `Classical.choice`).
+of the main theorems (they must use nothing beyond `propext` and
+`Quot.sound`).
 -/
 
 namespace LambdaP.Examples
@@ -15,31 +15,23 @@ open LambdaP
 example {Θ : Sto} {Γ : Ctx s} : Wf Θ Γ (.intv .top .top) :=
   .intv .top .top .refl
 
-/-- Sealing: the alias interval T..T widens to the full interval ⊥..⊤
-(the draft's motivating "sealed abstract type" pattern), provided T is a
-wellformed non-empty bound. -/
-example {Θ : Sto} {Γ : Ctx s} {T : Ty s} :
-    Sub Θ Γ (.intv T T) (.intv .bot .top) :=
-  .ival .bot .top .refl
+/-- Sealing: a pair with the alias interval T..T widens to the fully
+abstract member ⊥..⊤ — componentwise, guard-free (deviation 11). -/
+example {Θ : Sto} {Γ : Ctx s} {S : Ty s} {T : Ty s} {A : Name} :
+    Sub Θ Γ (.ty (.pairTy S A T.weaken T.weaken))
+            (.ty (.pairTy S A .bot .top)) :=
+  .pair_ty .refl .bot .top
 
-/-- The identity function at ⊤, typed closed: λ(x:⊤).x : ⊤ → ⊤ ... via the
-singleton: the body x has type single x <: ⊤ by subsumption. -/
+/-- The identity function at ⊤, typed closed. -/
 example {Θ : Sto} : HasType Θ .empty (.abs .top (.path (.var (.bound .here)))) (.arrow .top .top) :=
   .abs .top (.sub (.path (.var_bound .here)) .top .top)
 
 /-- A dependent pair with a sealed type member: typing ⟨y, A = ⊤⟩ gives the
 precise singleton pair type with the alias interval ⊤..⊤. -/
-example {Θ : Sto} {ℓ : Nat} (hl : Sto.Lookup Θ ℓ .top) :
+example {Θ : Sto} {ℓ : Nat} {A : Name} (hl : Sto.Lookup Θ ℓ .top) :
     HasType Θ .empty (.pairTy (.free ℓ) A .top)
       (.pairTy (.single (.var (.free ℓ))) A (Ty.top).weaken (Ty.top).weaken) :=
   .pair_ty (.var_free hl) .top
-
-/-- Empty-heap safety, specialized: any term typed against the empty store
-reduces without getting stuck, given the semantic-store hypothesis. -/
-example (hgood : SemStoExists) {t t' : Tm 0} {h' : Heap} {T : Ty 0}
-    (ht : HasType [] .empty t T) (hred : Reduce [] t h' t') :
-    Final t' ∨ ∃ h'' t'', Step h' t' h'' t'' :=
-  type_safety_init hgood ht hred
 
 /-! ### A sealed abstract type, end to end
 
@@ -72,7 +64,7 @@ private abbrev SealCtx : Ctx 3 :=
 
 /-- ... and it types, at ⊤, in the empty store. The domain of `g` is the
 abstract selection `p.A`; the argument `f` enters it through the sealed
-member's lower bound (`sel-lo`). -/
+member's lower bound (`sel-lo`, whose subject is bound-rooted). -/
 example : HasType [] .empty sealed .top := by
   refine .letin (.abs .top (.sub (.path (.var_bound .here)) .top .top)) .top ?_
   refine .letin (.pair_ty (.var_bound .here) .top) .top ?_
@@ -87,7 +79,7 @@ example : HasType [] .empty sealed .top := by
     .var_bound hlkp
   have hsel : Sub [] SealCtx (.ty .top)
       (.ty (.tsel (.var (.bound (.there .here))) 0)) := by
-    have h := Sub.sel_lo hwp hpair .refl
+    have h := Sub.sel_lo (by trivial) hwp hpair .refl
     exact h
   have hwfD : Wf [] SealCtx (.ty (.tsel (.var (.bound (.there .here))) 0)) :=
     .tsel hwp hpair
@@ -100,24 +92,21 @@ example : HasType [] .empty sealed .top := by
   case hf =>
     exact .sub (.path (.var_bound (.there (.there .here)))) (.trans .top hsel) hwfD
 
-/-! ### Consistency -/
+/-! ### Consistency and collapse-freedom (now syntactic) -/
 
-/-- Subtyping is consistent: ⊤ <: ⊥ is underivable at the empty context
-(unconditionally — the empty heap's semantic store typing is trivial). -/
-theorem consistency : ¬ Sub [] .empty (.ty .top) (.ty .bot) := by
-  intro h
-  have hd := Sub.den_empty (Ξ := fun _ _ _ _ => True) h HeapTyped.empty (SemStoOk.empty (Ξ := fun _ _ _ _ => True)) 0 0
-  simp only [Den] at hd
-  exact hd trivial
+/-- Subtyping is consistent at the empty store, unconditionally. -/
+theorem consistency : ¬ Sub [] .empty (.ty .top) (.ty .bot) :=
+  Sub.consistency_empty
 
 /-! ### Axiom audit -/
 
-#print axioms LambdaP.Sub.den
+#print axioms LambdaP.Sub.to_ssub
+#print axioms LambdaP.SSub.invert
+#print axioms LambdaP.Sub.consistency
+#print axioms LambdaP.Sub.no_bot_path
+#print axioms LambdaP.Path.Wf.chains
+#print axioms LambdaP.Sub.canonical_arrow
 #print axioms LambdaP.progress
-#print axioms LambdaP.preservation
-#print axioms LambdaP.type_safety
-#print axioms LambdaP.Den.open_coeval
 #print axioms LambdaP.Examples.consistency
-#print axioms LambdaP.TightSub.inv_closure
 
 end LambdaP.Examples
