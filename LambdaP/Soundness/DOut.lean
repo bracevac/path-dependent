@@ -55,6 +55,71 @@ def Ty.CellDue : Ty s → Prop
 | .single p => ¬ p.root.IsBound
 | _ => True
 
+/-- Anchored lower approach to a selection `q.A`: either the precise
+store interval (`Chains` + stored `[W,W]` alias), or a bound-rooted
+wellformed mediator's declared lower bound. Field-for-field the anchor
+packages of `tsel_l`/`tsel_r` resp. `reapp_l`/`reapp_r`; the Sub leg
+`M ≤ tsel q A` is derivable (`sel_lo_loc`, resp. `sel_lo` +
+`repl_tsel` through the mutual mediator links). -/
+inductive SelLoAnchor (Θ : Sto) : {s : Sig} → Ctx s → Nat → Path s → Name → Ty s → Prop where
+| store {s : Sig} {Δ : Ctx s} {n : Nat} {q : Path s} {mq ℓ1 : Nat}
+    {A : Name} {W : Ty 0} :
+    Chains Θ q mq →
+    Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
+      (Ty.weaken W) (Ty.weaken W)) →
+    mq < n →
+    SelLoAnchor Θ Δ n q A (Ty.fromClosed W)
+| mediator {s : Sig} {Δ : Ctx s} {n : Nat} {q r : Path s} {S : Ty s}
+    {A : Name} {T1 T2 : Ty (s+1)} :
+    r.root.IsBound →
+    Path.Wf Θ Δ r →
+    Path.Wf Θ Δ q →
+    Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
+    Sub Θ Δ (.ty (.single r)) (.ty (.single q)) →
+    Sub Θ Δ (.ty (.single r)) (.ty (.pairTy S A T1 T2)) →
+    Sub Θ Δ (.ty (T1.open r.fst)) (.ty (T2.open r.fst)) →
+    SelLoAnchor Θ Δ n q A (T1.open r.fst)
+
+/-- Anchored upper exit from a selection `q.A`; dual of `SelLoAnchor`
+(`tsel q A ≤ M` derivable via `sel_hi_loc`, resp. `repl_tsel` +
+`sel_hi`). -/
+inductive SelHiAnchor (Θ : Sto) : {s : Sig} → Ctx s → Nat → Path s → Name → Ty s → Prop where
+| store {s : Sig} {Δ : Ctx s} {n : Nat} {q : Path s} {mq ℓ1 : Nat}
+    {A : Name} {W : Ty 0} :
+    Chains Θ q mq →
+    Sto.Lookup Θ mq (.pairTy (.single (.var (.free ℓ1))) A
+      (Ty.weaken W) (Ty.weaken W)) →
+    mq < n →
+    SelHiAnchor Θ Δ n q A (Ty.fromClosed W)
+| mediator {s : Sig} {Δ : Ctx s} {n : Nat} {q r : Path s} {S : Ty s}
+    {A : Name} {T1 T2 : Ty (s+1)} :
+    r.root.IsBound →
+    Path.Wf Θ Δ r →
+    Path.Wf Θ Δ q →
+    Sub Θ Δ (.ty (.single q)) (.ty (.single r)) →
+    Sub Θ Δ (.ty (.single r)) (.ty (.single q)) →
+    Sub Θ Δ (.ty (.single r)) (.ty (.pairTy S A T1 T2)) →
+    Sub Θ Δ (.ty (T1.open r.fst)) (.ty (T2.open r.fst)) →
+    SelHiAnchor Θ Δ n q A (T2.open r.fst)
+
+theorem SelLoAnchor.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat}
+    {q : Path s} {A : Name} {M : Ty s}
+    (h : SelLoAnchor Θ Δ n q A M) (hle : n ≤ n') :
+    SelLoAnchor Θ Δ n' q A M := by
+  cases h with
+  | store hc hl hm => exact .store hc hl (by omega)
+  | mediator hrb hwr hwq hqr hrq hev hgd =>
+    exact .mediator hrb hwr hwq hqr hrq hev hgd
+
+theorem SelHiAnchor.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat}
+    {q : Path s} {A : Name} {M : Ty s}
+    (h : SelHiAnchor Θ Δ n q A M) (hle : n ≤ n') :
+    SelHiAnchor Θ Δ n' q A M := by
+  cases h with
+  | store hc hl hm => exact .store hc hl (by omega)
+  | mediator hrb hwr hwq hqr hrq hev hgd =>
+    exact .mediator hrb hwr hwq hqr hrq hev hgd
+
 /-- The Δ-level facts table, v2. -/
 inductive DOut (Θ : Sto) : {s : Sig} → Ctx s → Nat → Ty s → Ty s → Prop where
 | refl {s : Sig} {Δ : Ctx s} {n : Nat} {T : Ty s} :
@@ -140,6 +205,22 @@ tsel-subject orientation. -/
     DOut Θ Δ n X (T1.open r.fst) →
     Sub Θ Δ (.ty X) (.ty (T1.open r.fst)) →
     DOut Θ Δ n X (.tsel q A)
+/-- Anchored selection bridge: hosts the compositions whose two cells
+anchor a `tsel q A` middle differently (precise store interval vs a
+bound-rooted mediator's declared interval, or two distinct mediators).
+Neither side's residue shape survives to the conclusion, so the cell
+carries BOTH residue cells at their own anchors, both anchor packages,
+and the lazy legs; the Sub bridge `M1 ≤ tsel q A ≤ M2` is derivable
+from the anchors and is not stored. -/
+| sel_bridge {s : Sig} {Δ : Ctx s} {n : Nat} {X Y M1 M2 : Ty s}
+    {q : Path s} {A : Name} :
+    SelLoAnchor Θ Δ n q A M1 →
+    SelHiAnchor Θ Δ n q A M2 →
+    DOut Θ Δ n X M1 →
+    Sub Θ Δ (.ty X) (.ty M1) →
+    DOut Θ Δ n M2 Y →
+    Sub Θ Δ (.ty M2) (.ty Y) →
+    DOut Θ Δ n X Y
 /-- Arrow diagonal: recursive contravariant first component (+ lazy),
 lazy codomain at the push context. -/
 | arrow {s : Sig} {Δ : Ctx s} {n : Nat} {S S' : Ty s} {T T' : Ty (s+1)} :
@@ -184,6 +265,8 @@ theorem DOut.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat} {T1 T2 : Ty s}
     exact .reapp_l hrb hwr hwq hlk hlk2 hev hgd ih l1
   | reapp_r hrb hwr hwq hlk hlk2 hev hgd d1 l1 ih =>
     exact .reapp_r hrb hwr hwq hlk hlk2 hev hgd ih l1
+  | sel_bridge lo hi d1 l1 d2 l2 ih1 ih2 =>
+    exact .sel_bridge (lo.mono hle) (hi.mono hle) ih1 l1 ih2 l2
   | arrow d1 l1 l2 ih => exact .arrow ih l1 l2
   | pair_tm d1 l1 l2 ih => exact .pair_tm ih l1 l2
   | pair_ty d1 l1 l2 l3 ih => exact .pair_ty ih l1 l2 l3

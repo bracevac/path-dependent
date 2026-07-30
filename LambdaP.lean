@@ -16,6 +16,7 @@ import LambdaP.Soundness.Progress
 import LambdaP.Examples
 import LambdaP.Soundness.PreservationPrep
 import LambdaP.Soundness.DOut
+import LambdaP.Soundness.Compose
 
 /-! Pushback campaign (deviation 9): the semantic chain
 (Den/Closure/Progress/Preservation/Safety), the possible-types chain
