@@ -134,6 +134,168 @@ theorem Sub.repl_tsel {s : Sig} {Θ : Sto} {Γ : Ctx s} {p q : Path s} {A : Name
     Sub Θ Γ (.ty (.tsel p A)) (.ty (.tsel q A)) :=
   Sub.repl (T := .tsel (Path.var (Var.bound .here)) A) hwp hwq h1 h2
 
+/-- Wellformedness transports along a mutual alias, at every template.
+Induction runs on the wellformedness DERIVATION, not on the template:
+the skip rules recurse into `(r.fst).sel a`, which is *bigger* than the
+template `r.sel a` they justify. -/
+theorem Path.Wf.repl_aux {s0 : Sig} {Θ0 : Sto} {Δ0 : Ctx s0} {w0 : Path s0}
+    (h : Path.Wf Θ0 Δ0 w0) :
+    ∀ (p q : Path s0), Path.Wf Θ0 Δ0 p → Path.Wf Θ0 Δ0 q →
+      Sub Θ0 Δ0 (.ty (.single p)) (.ty (.single q)) →
+      Sub Θ0 Δ0 (.ty (.single q)) (.ty (.single p)) →
+      ∀ (r : Path (s0+1)), r.subst (Subst.openPath q) = w0 →
+        Path.Wf Θ0 Δ0 (r.subst (Subst.openPath p)) := by
+  refine Path.Wf.rec (motive_1 := fun {s} Θ Γ _ _ _ => True)
+    (motive_2 := fun {s} Θ Γ w _ =>
+      ∀ (p q : Path s), Path.Wf Θ Γ p → Path.Wf Θ Γ q →
+        Sub Θ Γ (.ty (.single p)) (.ty (.single q)) →
+        Sub Θ Γ (.ty (.single q)) (.ty (.single p)) →
+        ∀ (r : Path (s+1)), r.subst (Subst.openPath q) = w →
+          Path.Wf Θ Γ (r.subst (Subst.openPath p)))
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+  all_goals try (intros; trivial)
+  -- var_bound
+  · intros
+    rename_i hx
+    intro p q hwp hwq h1 h2 r hr
+    cases r with
+    | var v =>
+      cases v with
+      | bound y =>
+        cases y with
+        | here => exact hwp
+        | there y' =>
+          have hr' : (Path.var (Var.bound y')) = Path.var (Var.bound _) := hr
+          injection hr' with e1; injection e1 with e2; subst e2
+          exact .var_bound hx
+      | free ℓ =>
+        have hr' : (Path.var (Var.free ℓ)) = Path.var (Var.bound _) := hr
+        exact absurd hr' (by intro hh; cases hh)
+    | fst r' => exact absurd hr (by intro hh; cases hh)
+    | sel r' a => exact absurd hr (by intro hh; cases hh)
+  -- var_free
+  · intros
+    rename_i hl
+    intro p q hwp hwq h1 h2 r hr
+    cases r with
+    | var v =>
+      cases v with
+      | bound y =>
+        cases y with
+        | here => exact hwp
+        | there y' =>
+          have hr' : (Path.var (Var.bound y')) = Path.var (Var.free _) := hr
+          exact absurd hr' (by intro hh; cases hh)
+      | free ℓ' =>
+        have hr' : (Path.var (Var.free ℓ')) = Path.var (Var.free _) := hr
+        injection hr' with e1; injection e1 with e2; subst e2
+        exact .var_free hl
+    | fst r' => exact absurd hr (by intro hh; cases hh)
+    | sel r' a => exact absurd hr (by intro hh; cases hh)
+  -- fst_tm
+  · intros
+    rename_i hw0 hsub ihp _
+    intro p q hwp hwq h1 h2 r hr
+    cases r with
+    | var v =>
+      cases v with
+      | bound y =>
+        cases y with
+        | here => exact hwp
+        | there y' => exact absurd hr (by intro hh; cases hh)
+      | free ℓ => exact absurd hr (by intro hh; cases hh)
+    | fst r' =>
+      injection hr with hr'
+      subst hr'
+      exact .fst_tm (ihp p q hwp hwq h1 h2 r' rfl)
+        (.trans (Sub.repl (T := .single r') hwp hwq h1 h2) hsub)
+    | sel r' a => exact absurd hr (by intro hh; cases hh)
+  -- fst_ty
+  · intros
+    rename_i hw0 hsub ihp _
+    intro p q hwp hwq h1 h2 r hr
+    cases r with
+    | var v =>
+      cases v with
+      | bound y =>
+        cases y with
+        | here => exact hwp
+        | there y' => exact absurd hr (by intro hh; cases hh)
+      | free ℓ => exact absurd hr (by intro hh; cases hh)
+    | fst r' =>
+      injection hr with hr'
+      subst hr'
+      exact .fst_ty (ihp p q hwp hwq h1 h2 r' rfl)
+        (.trans (Sub.repl (T := .single r') hwp hwq h1 h2) hsub)
+    | sel r' a => exact absurd hr (by intro hh; cases hh)
+  -- sel
+  · intros
+    rename_i hw0 hsub ihp _
+    intro p q hwp hwq h1 h2 r hr
+    cases r with
+    | var v =>
+      cases v with
+      | bound y =>
+        cases y with
+        | here => exact hwp
+        | there y' => exact absurd hr (by intro hh; cases hh)
+      | free ℓ => exact absurd hr (by intro hh; cases hh)
+    | fst r' => exact absurd hr (by intro hh; cases hh)
+    | sel r' a' =>
+      injection hr with hr' hra
+      subst hra
+      subst hr'
+      exact .sel (ihp p q hwp hwq h1 h2 r' rfl)
+        (.trans (Sub.repl (T := .single r') hwp hwq h1 h2) hsub)
+  -- sel_skip_tm
+  · intros
+    rename_i hwin hsub hne ihin _
+    intro p q hwp hwq h1 h2 r hr
+    cases r with
+    | var v =>
+      cases v with
+      | bound y =>
+        cases y with
+        | here => exact hwp
+        | there y' => exact absurd hr (by intro hh; cases hh)
+      | free ℓ => exact absurd hr (by intro hh; cases hh)
+    | fst r' => exact absurd hr (by intro hh; cases hh)
+    | sel r' a' =>
+      injection hr with hr' hra
+      subst hra
+      subst hr'
+      exact .sel_skip_tm (ihin p q hwp hwq h1 h2 ((Path.fst r').sel a') rfl)
+        (.trans (Sub.repl (T := .single r') hwp hwq h1 h2) hsub) hne
+  -- sel_skip_ty
+  · intros
+    rename_i hwin hsub ihin _
+    intro p q hwp hwq h1 h2 r hr
+    cases r with
+    | var v =>
+      cases v with
+      | bound y =>
+        cases y with
+        | here => exact hwp
+        | there y' => exact absurd hr (by intro hh; cases hh)
+      | free ℓ => exact absurd hr (by intro hh; cases hh)
+    | fst r' => exact absurd hr (by intro hh; cases hh)
+    | sel r' a' =>
+      injection hr with hr' hra
+      subst hra
+      subst hr'
+      exact .sel_skip_ty (ihin p q hwp hwq h1 h2 ((Path.fst r').sel a') rfl)
+        (.trans (Sub.repl (T := .single r') hwp hwq h1 h2) hsub)
+
+/-- Wellformedness transports along a mutual alias (public form). -/
+theorem Path.Wf.repl {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s}
+    {r : Path (s+1)} (hwp : Path.Wf Θ Δ p) (hwq : Path.Wf Θ Δ q)
+    (h1 : Sub Θ Δ (.ty (.single p)) (.ty (.single q)))
+    (h2 : Sub Θ Δ (.ty (.single q)) (.ty (.single p)))
+    (h : Path.Wf Θ Δ (r.subst (Subst.openPath q))) :
+    Path.Wf Θ Δ (r.subst (Subst.openPath p)) :=
+  h.repl_aux p q hwp hwq h1 h2 r rfl
+
 /-- Chain targets are recorded (locations mentioned by entries are older
 and the store is contiguous). -/
 theorem Chains.in_dom {Θ : Sto} {p : Path 0} {m : Nat}

@@ -46,6 +46,50 @@ inductive CoChain (Θ : Sto) : {s : Sig} → Ctx s → Path s → Path s → Pro
     Path.Wf Θ Δ p → Path.Wf Θ Δ q → CoChain Θ Δ p q →
     CoChain Θ Δ (Path.subst r (Subst.openPath p)) (Path.subst r (Subst.openPath q))
 
+/-- The root of a substituted path is the root of the image of the root. -/
+theorem Path.root_subst {s1 s2 : Sig} {p : Path s1} {σ : Subst s1 s2} :
+    (p.subst σ).root = (Var.subst p.root σ).root := by
+  induction p with
+  | var v => cases v <;> rfl
+  | fst p ih => exact ih
+  | sel p a ih => exact ih
+
+/-- Store-resolved paths are location-rooted. -/
+theorem Chains.root_not_bound {s : Sig} {Θ : Sto} {p : Path s} {m : Nat}
+    (h : Chains Θ p m) : ¬ p.root.IsBound := by
+  induction h with
+  | loc _ => exact fun hb => hb
+  | fst_tm _ _ ih => exact ih
+  | fst_ty _ _ ih => exact ih
+  | sel _ _ ih => exact ih
+  | sel_skip_tm _ _ _ _ ih _ => exact ih
+  | sel_skip_ty _ _ _ ih _ => exact ih
+
+/-- Runtime path equivalence preserves root-boundness: co-chained paths
+are both store-resolved, skips keep the root, and congruence images agree
+because they substitute the same template. -/
+theorem CoChain.root_iff {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s}
+    (h : CoChain Θ Δ p q) : p.root.IsBound ↔ q.root.IsBound := by
+  induction h with
+  | refl => exact Iff.rfl
+  | symm _ ih => exact ih.symm
+  | trans _ _ ih1 ih2 => exact ih1.trans ih2
+  | cochain hp hq =>
+    exact ⟨fun hb => absurd hb hp.root_not_bound,
+           fun hb => absurd hb hq.root_not_bound⟩
+  | skip_tm _ _ _ => exact Iff.rfl
+  | skip_ty _ _ => exact Iff.rfl
+  | congr _ _ _ ih =>
+    rename_i p0 q0 r _ _ _
+    show (Path.subst r (Subst.openPath p0)).root.IsBound ↔
+      (Path.subst r (Subst.openPath q0)).root.IsBound
+    rw [Path.root_subst, Path.root_subst]
+    cases hv : r.root with
+    | free ℓ => exact Iff.rfl
+    | bound x => cases x with
+      | here => exact ih
+      | there x' => exact Iff.rfl
+
 /-- The production guard of the substR motive: a cell is owed for every
 substituted conclusion except those whose subject is a bound-rooted
 SINGLE (those re-derive directly, and trans skips their cells via
@@ -126,6 +170,14 @@ inductive DOut (Θ : Sto) : {s : Sig} → Ctx s → Nat → Ty s → Ty s → Pr
     DOut Θ Δ n T T
 | captured {s : Sig} {Δ : Ctx s} {n : Nat} {p : Path s} {T2 : Ty s} :
     CapturedTok Θ Δ p →
+    DOut Θ Δ n (.single p) T2
+/-- Bound-rooted singleton subjects are exactly the ones `Ty.CellDue`
+exempts: they re-derive directly at Δ, so no facts are owed for them.
+The token records that, which is what lets `trans`/`compose` pass through
+such a middle (the consumption sites are all at bare-rooted subjects, so
+this cell is vacuous there). -/
+| bound_tok {s : Sig} {Δ : Ctx s} {n : Nat} {p : Path s} {T2 : Ty s} :
+    p.root.IsBound →
     DOut Θ Δ n (.single p) T2
 | bot_tok {s : Sig} {Δ : Ctx s} {n : Nat} {T1 T2 : Ty s} :
     Sub Θ Δ (.ty T1) (.ty .bot) →
@@ -250,6 +302,7 @@ theorem DOut.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat} {T1 T2 : Ty s}
   induction h with
   | refl => exact .refl
   | captured hc => exact .captured hc
+  | bound_tok hb => exact .bound_tok hb
   | bot_tok hb => exact .bot_tok hb
   | botL => exact .botL
   | topR => exact .topR

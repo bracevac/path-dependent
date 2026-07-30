@@ -142,6 +142,10 @@ inductive DOutH (Θ : Sto) : {s : Sig} → Ctx s → Nat → Ty s → Ty s → N
 | captured {s : Sig} {Δ : Ctx s} {n : Nat} {p : Path s} {T2 : Ty s} {k : Nat} :
     CapturedTok Θ Δ p →
     DOutH Θ Δ n (.single p) T2 k
+/-- Mirror of `DOut.bound_tok`. -/
+| bound_tok {s : Sig} {Δ : Ctx s} {n : Nat} {p : Path s} {T2 : Ty s} {k : Nat} :
+    p.root.IsBound →
+    DOutH Θ Δ n (.single p) T2 k
 | bot_tok {s : Sig} {Δ : Ctx s} {n : Nat} {T1 T2 : Ty s} {k : Nat} :
     Sub Θ Δ (.ty T1) (.ty .bot) →
     DOutH Θ Δ n T1 T2 k
@@ -243,6 +247,7 @@ theorem DOutH.toDOut {s : Sig} {Θ : Sto} {Δ : Ctx s} {n : Nat} {T1 T2 : Ty s}
   induction h with
   | refl => exact .refl
   | captured hc => exact .captured hc
+  | bound_tok hb => exact .bound_tok hb
   | bot_tok hb => exact .bot_tok hb
   | botL => exact .botL
   | topR => exact .topR
@@ -264,6 +269,7 @@ theorem DOut.toH {s : Sig} {Θ : Sto} {Δ : Ctx s} {n : Nat} {T1 T2 : Ty s}
   induction h with
   | refl => exact ⟨0, .refl⟩
   | captured hc => exact ⟨0, .captured hc⟩
+  | bound_tok hb => exact ⟨0, .bound_tok hb⟩
   | bot_tok hb => exact ⟨0, .bot_tok hb⟩
   | botL => exact ⟨0, .botL⟩
   | topR => exact ⟨0, .topR⟩
@@ -304,6 +310,7 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
   cases d1 with
   | refl => exact d2.toDOut
   | captured hc => exact .captured hc
+  | bound_tok hb => exact .bound_tok hb
   | bot_tok hb => exact .bot_tok hb
   | botL => exact .botL
   | sel_bridge lo hi cellL lzL cellR lzR =>
@@ -334,6 +341,7 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
     -- bot_tok, topR, single, sngl_unfold, tsel_r, reapp_r
     cases d2 with
     | refl => exact .single hco
+    | bound_tok hb2 => exact .bound_tok (hco.root_iff.mpr hb2)
     | captured hc2 =>
       obtain ⟨r, hrb, hwr, hsub⟩ := hc2
       exact .captured ⟨r, hrb, hwr, sAB.trans hsub⟩
