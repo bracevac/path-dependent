@@ -244,15 +244,17 @@ theorem Sub.single_pairTm_anchor {Θ : Sto} {p : Path 0} {S : Ty 0}
     ∃ ℓ0 ℓ1 ℓ2, Chains Θ p ℓ0 ∧
       Sto.Lookup Θ ℓ0 (.pairTm (.single (.var (.free ℓ1))) a
         (Ty.single (.var (.free ℓ2))).weaken) ∧
-      ∃ m, SSub Θ (.single (.var (.free ℓ1))) S m := by
+      (∃ m, SSub Θ (.single (.var (.free ℓ1))) S m) ∧
+      Sub Θ (Ctx.empty.push (.single (.var (.free ℓ1))))
+        (.ty (Ty.single (.var (.free ℓ2))).weaken) (.ty T) := by
   obtain ⟨n, o⟩ := Sub.invert hwf h
   obtain ⟨ℓ0, E, hcp, hE0, m, hm, hres⟩ := o
   have oE := SSub.invert hwf m hres
   rcases (hwf hE0).1 with hs | hs | hs
   · exact (oE : False).elim
-  · obtain ⟨hba, m2, hm2, dom⟩ := oE
+  · obtain ⟨hba, ⟨m2, hm2, dom⟩, res⟩ := oE
     subst hba
-    exact ⟨ℓ0, _, _, hcp, hE0, m2, dom⟩
+    exact ⟨ℓ0, _, _, hcp, hE0, ⟨m2, dom⟩, res⟩
   · exact (oE : False).elim
 
 /-- A path below a type-member pair type chains to a type-member pair
@@ -263,16 +265,20 @@ theorem Sub.single_pairTy_anchor {Θ : Sto} {p : Path 0} {S : Ty 0}
     ∃ ℓ0 ℓ1 W, Chains Θ p ℓ0 ∧
       Sto.Lookup Θ ℓ0 (.pairTy (.single (.var (.free ℓ1))) A
         (Ty.weaken W) (Ty.weaken W)) ∧
-      ∃ m, SSub Θ (.single (.var (.free ℓ1))) S m := by
+      (∃ m, SSub Θ (.single (.var (.free ℓ1))) S m) ∧
+      Sub Θ (Ctx.empty.push (.single (.var (.free ℓ1))))
+        (.ty T1) (.ty (Ty.weaken W)) ∧
+      Sub Θ (Ctx.empty.push (.single (.var (.free ℓ1))))
+        (.ty (Ty.weaken W)) (.ty T2) := by
   obtain ⟨n, o⟩ := Sub.invert hwf h
   obtain ⟨ℓ0, E, hcp, hE0, m, hm, hres⟩ := o
   have oE := SSub.invert hwf m hres
   rcases (hwf hE0).1 with hs | hs | hs
   · exact (oE : False).elim
   · exact (oE : False).elim
-  · obtain ⟨hBA, m2, hm2, dom⟩ := oE
+  · obtain ⟨hBA, ⟨m2, hm2, dom⟩, lo, hi⟩ := oE
     subst hBA
-    exact ⟨ℓ0, _, _, hcp, hE0, m2, dom⟩
+    exact ⟨ℓ0, _, _, hcp, hE0, ⟨m2, dom⟩, lo, hi⟩
 
 /-- Canonical-forms seed (M3): a path below an arrow type chains to an
 arrow entry whose domain is above the declared domain and whose
@@ -342,21 +348,21 @@ theorem Path.Wf.chains {s0 : Sig} {Θ0 : Sto} {Γ0 : Ctx s0} {p0 : Path s0}
     subst hs
     have hE := Ctx.eq_empty' Γ
     subst hE
-    obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE0, -⟩ := Sub.single_pairTm_anchor hwf' hsub
+    obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE0, -, -⟩ := Sub.single_pairTm_anchor hwf' hsub
     exact ⟨ℓ1, .fst_tm hcp hE0⟩
   · -- Wf.fst_ty
     intro s Θ Γ p S A T1 T2 hwp hsub ihw ihs hs hwf'
     subst hs
     have hE := Ctx.eq_empty' Γ
     subst hE
-    obtain ⟨ℓ0, ℓ1, W, hcp, hE0, -⟩ := Sub.single_pairTy_anchor hwf' hsub
+    obtain ⟨ℓ0, ℓ1, W, hcp, hE0, -, -, -⟩ := Sub.single_pairTy_anchor hwf' hsub
     exact ⟨ℓ1, .fst_ty hcp hE0⟩
   · -- Wf.sel
     intro s Θ Γ p S a T hwp hsub ihw ihs hs hwf'
     subst hs
     have hE := Ctx.eq_empty' Γ
     subst hE
-    obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE0, -⟩ := Sub.single_pairTm_anchor hwf' hsub
+    obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE0, -, -⟩ := Sub.single_pairTm_anchor hwf' hsub
     exact ⟨ℓ2, .sel hcp hE0⟩
   · -- Wf.sel_skip_tm
     intro s Θ Γ p a S b Tc hwin hsub hne ihw ihs hs hwf'
@@ -364,7 +370,7 @@ theorem Path.Wf.chains {s0 : Sig} {Θ0 : Sto} {Γ0 : Ctx s0} {p0 : Path s0}
     have hE := Ctx.eq_empty' Γ
     subst hE
     obtain ⟨m, hm⟩ := ihw rfl hwf'
-    obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE0, -⟩ := Sub.single_pairTm_anchor hwf' hsub
+    obtain ⟨ℓ0, ℓ1, ℓ2, hcp, hE0, -, -⟩ := Sub.single_pairTm_anchor hwf' hsub
     exact ⟨m, .sel_skip_tm hcp hE0 hne hm⟩
   · -- Wf.sel_skip_ty
     intro s Θ Γ p a S B T1 T2 hwin hsub ihw ihs hs hwf'
@@ -372,7 +378,7 @@ theorem Path.Wf.chains {s0 : Sig} {Θ0 : Sto} {Γ0 : Ctx s0} {p0 : Path s0}
     have hE := Ctx.eq_empty' Γ
     subst hE
     obtain ⟨m, hm⟩ := ihw rfl hwf'
-    obtain ⟨ℓ0, ℓ1, W, hcp, hE0, -⟩ := Sub.single_pairTy_anchor hwf' hsub
+    obtain ⟨ℓ0, ℓ1, W, hcp, hE0, -, -, -⟩ := Sub.single_pairTy_anchor hwf' hsub
     exact ⟨m, .sel_skip_ty hcp hE0 hm⟩
 
 

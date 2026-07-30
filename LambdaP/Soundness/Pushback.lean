@@ -737,10 +737,13 @@ def SOut (Θ : Sto) (n : Nat) : Ty 0 -> Ty 0 -> Prop
     ∃ ℓ0 E, Chains Θ p ℓ0 ∧ Sto.Lookup Θ ℓ0 E ∧
       ∃ m, m ≤ n ∧ SSub Θ E .bot m
 | .single _, .top => True
-| .pairTm S a _, .pairTm S' a' _ =>
-    a = a' ∧ ∃ m, m ≤ n ∧ SSub Θ S S' m
-| .pairTy S A _ _, .pairTy S' A' _ _ =>
-    A = A' ∧ ∃ m, m ≤ n ∧ SSub Θ S S' m
+| .pairTm S a T, .pairTm S' a' T' =>
+    a = a' ∧ (∃ m, m ≤ n ∧ SSub Θ S S' m) ∧
+    Sub Θ (Ctx.empty.push S) (.ty T) (.ty T')
+| .pairTy S A T1 T2, .pairTy S' A' T1' T2' =>
+    A = A' ∧ (∃ m, m ≤ n ∧ SSub Θ S S' m) ∧
+    Sub Θ (Ctx.empty.push S) (.ty T1') (.ty T1) ∧
+    Sub Θ (Ctx.empty.push S) (.ty T2) (.ty T2')
 | .arrow S T, .arrow S' T' =>
     (∃ m, m ≤ n ∧ SSub Θ S' S m) ∧
     Sub Θ (Ctx.empty.push S') (.ty T) (.ty T')
@@ -807,6 +810,10 @@ theorem SOut.mono {Θ : Sto} {n n' : Nat} {T1 T2 : Ty 0}
        exact ⟨a1, a2, a3, h1, h2, m, by omega, hs⟩)
     | (obtain ⟨he, m, hm, hs⟩ := h
        exact ⟨he, m, by omega, hs⟩)
+    | (obtain ⟨he, ⟨m, hm, hs⟩, r⟩ := h
+       exact ⟨he, ⟨m, by omega, hs⟩, r⟩)
+    | (obtain ⟨he, ⟨m, hm, hs⟩, r1, r2⟩ := h
+       exact ⟨he, ⟨m, by omega, hs⟩, r1, r2⟩)
     | (obtain ⟨m, hm, hs⟩ := h
        exact ⟨m, by omega, hs⟩)
     | (obtain ⟨⟨m, hm, hs⟩, res⟩ := h
@@ -1071,14 +1078,15 @@ theorem SSub.descend {Θ : Sto} (hwf : Sto.Shaped Θ) {k : Nat}
         | pairTy _ _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
         | tsel _ _ => exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
       | pairTm S a T =>
-        obtain ⟨ha0, m3, hm3, dom1⟩ := o1
+        obtain ⟨ha0, ⟨m3, hm3, dom1⟩, res1⟩ := o1
         cases Y with
         | top => trivial
         | pairTm S' a' T' =>
-          obtain ⟨ha1, m4, hm4, dom2⟩ := o2
-          exact ⟨ha0.trans ha1, _, by omega,
+          obtain ⟨ha1, ⟨m4, hm4, dom2⟩, res2⟩ := o2
+          exact ⟨ha0.trans ha1, ⟨_, by omega,
             .trans (dom1.mono (Nat.le_max_left m3 m4))
-                   (dom2.mono (Nat.le_max_right m3 m4))⟩
+                   (dom2.mono (Nat.le_max_right m3 m4))⟩,
+            .trans res1 (res2.narrow dom1.to_sub)⟩
         | tsel y C =>
           obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
           exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
@@ -1124,14 +1132,16 @@ theorem SSub.descend {Θ : Sto} (hwf : Sto.Shaped Θ) {k : Nat}
         | pairTy _ _ _ _ => exact ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
         | tsel _ _ => exact Or.inl ⟨ℓ0, E, hcp, hE0, _, by omega, tl⟩
       | pairTy S A T1c T2c =>
-        obtain ⟨hA0, m3, hm3, dom1⟩ := o1
+        obtain ⟨hA0, ⟨m3, hm3, dom1⟩, lo1, hi1⟩ := o1
         cases Y with
         | top => trivial
         | pairTy S' A' T1' T2' =>
-          obtain ⟨hA1, m4, hm4, dom2⟩ := o2
-          exact ⟨hA0.trans hA1, _, by omega,
+          obtain ⟨hA1, ⟨m4, hm4, dom2⟩, lo2, hi2⟩ := o2
+          exact ⟨hA0.trans hA1, ⟨_, by omega,
             .trans (dom1.mono (Nat.le_max_left m3 m4))
-                   (dom2.mono (Nat.le_max_right m3 m4))⟩
+                   (dom2.mono (Nat.le_max_right m3 m4))⟩,
+            .trans (lo2.narrow dom1.to_sub) lo1,
+            .trans hi1 (hi2.narrow dom1.to_sub)⟩
         | tsel y C =>
           obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
           exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
@@ -1697,8 +1707,8 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
       rename_i k
       cases T1 with
       | single p => exact .refl
-      | pairTm S a T => exact ⟨rfl, 1, by omega, .refl⟩
-      | pairTy S A T1 T2 => exact ⟨rfl, 1, by omega, .refl⟩
+      | pairTm S a T => exact ⟨rfl, ⟨1, by omega, .refl⟩, .refl⟩
+      | pairTy S A T1 T2 => exact ⟨rfl, ⟨1, by omega, .refl⟩, .refl, .refl⟩
       | arrow S T => exact ⟨⟨1, by omega, .refl⟩, .refl⟩
       | tsel q A => exact Or.inl ⟨q, rfl, .refl⟩
       | top => trivial
@@ -1760,10 +1770,10 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
       exact ⟨⟨k, by omega, h1⟩, h2⟩
     | pair_tm h1 h2 =>
       rename_i S S' k T T' a
-      exact ⟨rfl, k, by omega, h1⟩
+      exact ⟨rfl, ⟨k, by omega, h1⟩, h2⟩
     | pair_ty h1 h2 h3 =>
       rename_i S S' k T1' T1 T2 T2' A
-      exact ⟨rfl, k, by omega, h1⟩
+      exact ⟨rfl, ⟨k, by omega, h1⟩, h2, h3⟩
     | repl hwp hwq h1 h2 =>
       rename_i p q k T0
       have hpe : PEq Θ p q := IH k (by omega) h1
@@ -1788,10 +1798,31 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
         exact hreplT
       | pairTm S0 b T0' =>
         simp only [Ty.open, Ty.subst, SOut]
-        exact ⟨by trivial, k + 1, by omega, .repl hwp hwq h1 h2⟩
+        refine ⟨by trivial, ⟨k + 1, by omega, .repl hwp hwq h1 h2⟩, ?_⟩
+        have hreplT : Sub Θ (Ctx.empty.push (Ty.open S0 p))
+            (.ty ((T0'.rename Rename.swap).open (p.rename Rename.succ)))
+            (.ty ((T0'.rename Rename.swap).open (q.rename Rename.succ))) :=
+          Sub.repl hwp.weaken hwq.weaken
+            (SSub.to_sub h1).weaken (SSub.to_sub h2).weaken
+        rw [Ty.swap_open_weaken, Ty.swap_open_weaken] at hreplT
+        exact hreplT
       | pairTy S0 B T01 T02 =>
         simp only [Ty.open, Ty.subst, SOut]
-        exact ⟨by trivial, k + 1, by omega, .repl hwp hwq h1 h2⟩
+        refine ⟨by trivial, ⟨k + 1, by omega, .repl hwp hwq h1 h2⟩, ?_, ?_⟩
+        · have hreplT : Sub Θ (Ctx.empty.push (Ty.open S0 p))
+              (.ty ((T01.rename Rename.swap).open (q.rename Rename.succ)))
+              (.ty ((T01.rename Rename.swap).open (p.rename Rename.succ))) :=
+            Sub.repl hwq.weaken hwp.weaken
+              (SSub.to_sub h2).weaken (SSub.to_sub h1).weaken
+          rw [Ty.swap_open_weaken, Ty.swap_open_weaken] at hreplT
+          exact hreplT
+        · have hreplT : Sub Θ (Ctx.empty.push (Ty.open S0 p))
+              (.ty ((T02.rename Rename.swap).open (p.rename Rename.succ)))
+              (.ty ((T02.rename Rename.swap).open (q.rename Rename.succ))) :=
+            Sub.repl hwp.weaken hwq.weaken
+              (SSub.to_sub h1).weaken (SSub.to_sub h2).weaken
+          rw [Ty.swap_open_weaken, Ty.swap_open_weaken] at hreplT
+          exact hreplT
     | fst_tm h =>
       rename_i p a T k
       obtain ⟨ℓ0, E0, hcp, hE0, m1, hm1, hres⟩ := IH k (by omega) h
@@ -1800,7 +1831,7 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
       | pair_ty => exact ((IH m1 (by omega) hres : SOut _ _ _ _) : False).elim
       | pair_tm =>
         rename_i ℓ1 b ℓ2
-        obtain ⟨hba, m2, hm2, hdom⟩ := IH m1 (by omega) hres
+        obtain ⟨hba, ⟨m2, hm2, hdom⟩, -⟩ := IH m1 (by omega) hres
         have hcf : Chains Θ p.fst ℓ1 := .fst_tm hcp hE0
         obtain ⟨E1, hE1⟩ := hcf.in_dom hwf
         have oS := IH m2 (by omega) hdom
@@ -1813,7 +1844,7 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
       | pair_tm => exact ((IH m1 (by omega) hres : SOut _ _ _ _) : False).elim
       | pair_ty =>
         rename_i ℓ1 B W0
-        obtain ⟨hBA, m2, hm2, hdom⟩ := IH m1 (by omega) hres
+        obtain ⟨hBA, ⟨m2, hm2, hdom⟩, -, -⟩ := IH m1 (by omega) hres
         have hcf : Chains Θ p.fst ℓ1 := .fst_ty hcp hE0
         obtain ⟨E1, hE1⟩ := hcf.in_dom hwf
         have oS := IH m2 (by omega) hdom
@@ -2504,14 +2535,15 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
           | pairTm _ _ _ => exact o2.elim
           | pairTy _ _ _ _ => exact o2.elim
         | pairTm S0 a0 T0 =>
-          obtain ⟨ha0, m3, hm3, dom1⟩ := o1
+          obtain ⟨ha0, ⟨m3, hm3, dom1⟩, res1⟩ := o1
           cases T2 with
           | top => trivial
           | pairTm S' a' T' =>
-            obtain ⟨ha1, m4, hm4, dom2⟩ := o2
-            exact ⟨ha0.trans ha1, _, by omega,
+            obtain ⟨ha1, ⟨m4, hm4, dom2⟩, res2⟩ := o2
+            exact ⟨ha0.trans ha1, ⟨_, by omega,
               .trans (dom1.mono (Nat.le_max_left m3 m4))
-                     (dom2.mono (Nat.le_max_right m3 m4))⟩
+                     (dom2.mono (Nat.le_max_right m3 m4))⟩,
+              .trans res1 (res2.narrow dom1.to_sub)⟩
           | tsel y C =>
             obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
             exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
@@ -2605,14 +2637,16 @@ theorem SSub.invert {Θ : Sto} (hwf : Sto.Shaped Θ) :
           | pairTm _ _ _ => exact o2.elim
           | pairTy _ _ _ _ => exact o2.elim
         | pairTy S0 A0 T01 T02 =>
-          obtain ⟨hA0, m3, hm3, dom1⟩ := o1
+          obtain ⟨hA0, ⟨m3, hm3, dom1⟩, lo1, hi1⟩ := o1
           cases T2 with
           | top => trivial
           | pairTy S' A' T1' T2' =>
-            obtain ⟨hA1, m4, hm4, dom2⟩ := o2
-            exact ⟨hA0.trans hA1, _, by omega,
+            obtain ⟨hA1, ⟨m4, hm4, dom2⟩, lo2, hi2⟩ := o2
+            exact ⟨hA0.trans hA1, ⟨_, by omega,
               .trans (dom1.mono (Nat.le_max_left m3 m4))
-                     (dom2.mono (Nat.le_max_right m3 m4))⟩
+                     (dom2.mono (Nat.le_max_right m3 m4))⟩,
+              .trans (lo2.narrow dom1.to_sub) lo1,
+              .trans hi1 (hi2.narrow dom1.to_sub)⟩
           | tsel y C =>
             obtain ⟨my, ℓy, Wy, hcy, hEy, m4, hm4, tail2⟩ := o2
             exact ⟨my, ℓy, Wy, hcy, hEy, _, by omega,
