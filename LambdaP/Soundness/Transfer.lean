@@ -12,56 +12,16 @@ handles the two-openings composition in pair member positions.
 
 namespace LambdaP
 
-/-! ### Binder swap -/
+/-! ### Binder swap
 
-/-- Swaps the two innermost binders. -/
-def Rename.swap {s : Sig} : Rename (s+2) (s+2) where
-  var := fun
-    | .here => .there .here
-    | .there .here => .here
-    | .there (.there x) => .there (.there x)
+`Rename.swap`, `Ty.openlift_open` and `Ty.swap_open_weaken` used to live
+here; they were promoted verbatim into `LambdaP/Substitution.lean` during
+the pushback campaign and are imported from there (V13). -/
 
 @[simp]
 theorem Ty.structSize_rename {T : Ty s1} {f : Rename s1 s2} :
     (T.rename f).structSize = T.structSize := by
   induction T generalizing s2 <;> simp [Ty.rename, Ty.structSize, *]
-
-/-- Filling the outer slot with `r`, then the remaining slot with `q`,
-equals swapping, filling with `q`, then filling with `r`. Stated in the
-substitution spelling that `Den`'s clauses expose after simplification. -/
-theorem Ty.openlift_open {T : Ty (s+2)} {r q : Path s} :
-    (T.subst (Subst.openPath r).lift).subst (Subst.openPath q)
-      = ((T.rename Rename.swap).subst (Subst.openPath q).lift).subst (Subst.openPath r) := by
-  have wo : ∀ (u v : Path s),
-      (u.rename Rename.succ).subst (Subst.openPath v) = u :=
-    fun u v => Path.weaken_open
-  simp only [Ty.subst_comp, Ty.rename_subst_comm]
-  congr 1
-  apply Subst.funext
-  intro x
-  cases x with
-  | here =>
-    show q = (q.rename Rename.succ).subst (Subst.openPath r)
-    exact (wo q r).symm
-  | there y =>
-    cases y with
-    | here =>
-      show (r.rename Rename.succ).subst (Subst.openPath q) = r
-      exact wo r q
-    | there z => rfl
-
-/-- Opening a swap-renamed type with a weakened path fills the outer slot. -/
-theorem Ty.swap_open_weaken {T : Ty (s+2)} {r : Path s} :
-    (T.rename Rename.swap).open (r.rename Rename.succ)
-      = T.subst (Subst.openPath r).lift := by
-  simp only [Ty.open, Ty.rename_subst_comm]
-  congr 1
-  apply Subst.funext
-  intro x
-  match x with
-  | .here => rfl
-  | .there .here => rfl
-  | .there (.there x) => rfl
 
 /-! ### Mutual singleton subtyping from co-evaluation -/
 

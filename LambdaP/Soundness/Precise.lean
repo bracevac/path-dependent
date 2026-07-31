@@ -1,5 +1,4 @@
-import LambdaP.Lemmas.Locs
-import LambdaP.Soundness.Preservation
+import LambdaP.Soundness.Progress
 
 /-!
 M1 slice 1: precise path typing over the store typing — the Θ-side mirror
@@ -103,18 +102,8 @@ theorem PrecisePath.locsBelow {Θ : Sto} {h : Heap} {p : Path 0} {T : Ty 0}
 
 /-! ### Shallow structure over a well-typed heap -/
 
-/-- Store entries have one of the three precise value-type shapes. -/
-theorem HeapTyped.lookup_shape {Θ : Sto} {h : Heap} {ℓ : Nat} {T : Ty 0}
-    (hh : HeapTyped Θ h) (hl : Sto.Lookup Θ ℓ T) :
-    (∃ S B, T = .arrow S B) ∨
-    (∃ ℓ1 a ℓ2, T = .pairTm (.single (.var (.free ℓ1))) a
-      (Ty.single (.var (.free ℓ2))).weaken) ∨
-    (∃ (ℓ1 : Nat) (A : Name) (W : Ty 0), T = .pairTy (.single (.var (.free ℓ1))) A W.weaken W.weaken) := by
-  obtain ⟨-, v, -, -, hpre⟩ := hh.2 hl
-  cases hpre with
-  | abs _ _ => exact .inl ⟨_, _, rfl⟩
-  | pair_tm _ _ => exact .inr (.inl ⟨_, _, _, rfl⟩)
-  | pair_ty _ _ => exact .inr (.inr ⟨_, _, _, rfl⟩)
+/- `HeapTyped.lookup_shape` was promoted to `Soundness/Progress.lean`
+(live build) during the pushback campaign; imported from there (V13). -/
 
 /-- Characterization over a well-typed heap: a precisely typed path is
 either a bare location carrying its store entry, or its type is a
@@ -182,118 +171,9 @@ theorem PrecisePath.single_lt {Θ : Sto} {h : Heap} {p : Path 0} {ℓ' : Nat}
 
 /-! ### Store-side path resolution -/
 
-theorem Chains.deterministic {Θ : Sto} {p : Path 0} {ℓ1 ℓ2 : Nat}
-    (h1 : Chains Θ p ℓ1) (h2 : Chains Θ p ℓ2) : ℓ1 = ℓ2 := by
-  induction h1 generalizing ℓ2 with
-  | loc _ => cases h2 with | loc _ => rfl
-  | fst_tm h1 hl1 ih =>
-    cases h2 with
-    | fst_tm h2 hl2 =>
-      cases ih h2
-      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-      cases this
-      rfl
-    | fst_ty h2 hl2 =>
-      cases ih h2
-      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-      cases this
-  | fst_ty h1 hl1 ih =>
-    cases h2 with
-    | fst_tm h2 hl2 =>
-      cases ih h2
-      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-      cases this
-    | fst_ty h2 hl2 =>
-      cases ih h2
-      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-      cases this
-      rfl
-  | sel h1 hl1 ih =>
-    cases h2 with
-    | sel h2 hl2 =>
-      cases ih h2
-      have := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-      cases this
-      rfl
-    | sel_skip_tm h2 hl2 hne2 _ =>
-      cases ih h2
-      have heq := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-      injection heq with hs h1e h2e h3e
-      exact absurd h2e hne2
-    | sel_skip_ty h2 hl2 _ =>
-      cases ih h2
-      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-  | sel_skip_tm h1 hl1 hne1 _ ihp ihin =>
-    cases h2 with
-    | sel h2 hl2 =>
-      cases ihp h2
-      have heq := Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-      injection heq with hs h1e h2e h3e
-      exact absurd h2e.symm hne1
-    | sel_skip_tm h2 hl2 hne2 hin2 => exact ihin hin2
-    | sel_skip_ty h2 hl2 hin2 =>
-      cases ihp h2
-      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-  | sel_skip_ty h1 hl1 _ ihp ihin =>
-    cases h2 with
-    | sel h2 hl2 =>
-      cases ihp h2
-      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-    | sel_skip_tm h2 hl2 hne2 hin2 =>
-      cases ihp h2
-      cases Option.some_inj.mp ((Eq.symm hl1).trans hl2)
-    | sel_skip_ty h2 hl2 hin2 => exact ihin hin2
-
-/-- Recorded pair entries agree with stored pair values componentwise. -/
-theorem HeapTyped.entry_value_tm {Θ : Sto} {h : Heap} {ℓ ℓ1 : Nat}
-    {a : Name} {Tc : Ty 1}
-    (hh : HeapTyped Θ h)
-    (hl : Sto.Lookup Θ ℓ (.pairTm (.single (.var (.free ℓ1))) a Tc)) :
-    ∃ ℓ2, Tc = (Ty.single (.var (.free ℓ2))).weaken ∧
-      Heap.Lookup h ℓ (.pairTm (.free ℓ1) a (.free ℓ2)) := by
-  obtain ⟨-, v, hvl, -, hpre⟩ := hh.2 hl
-  cases hpre with
-  | pair_tm hy hz =>
-    exact ⟨_, rfl, hvl⟩
-
-theorem HeapTyped.entry_value_ty {Θ : Sto} {h : Heap} {ℓ ℓ1 : Nat}
-    {A : Name} {T1 T2 : Ty 1}
-    (hh : HeapTyped Θ h)
-    (hl : Sto.Lookup Θ ℓ (.pairTy (.single (.var (.free ℓ1))) A T1 T2)) :
-    ∃ W, T1 = W.weaken ∧ T2 = W.weaken ∧
-      Heap.Lookup h ℓ (.pairTy (.free ℓ1) A W) := by
-  obtain ⟨-, v, hvl, -, hpre⟩ := hh.2 hl
-  cases hpre with
-  | pair_ty hy hwf =>
-    exact ⟨_, rfl, rfl, hvl⟩
-
-/-- Store-side resolution transfers to heap evaluation. -/
-theorem Chains.pathEval {Θ : Sto} {h : Heap} {p : Path 0} {ℓ : Nat}
-    (hh : HeapTyped Θ h) (hc : Chains Θ p ℓ) : PathEval h p ℓ := by
-  induction hc with
-  | loc _ => exact .var
-  | fst_tm _ hl ih =>
-    obtain ⟨ℓ2, -, hvl⟩ := hh.entry_value_tm hl
-    exact .fst_tm ih hvl
-  | fst_ty _ hl ih =>
-    obtain ⟨W, -, -, hvl⟩ := hh.entry_value_ty hl
-    exact .fst_ty ih hvl
-  | sel hc hl ih =>
-    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨ℓ1', a', ℓ2', he⟩ | ⟨_, _, _, he⟩ <;>
-      cases he
-    obtain ⟨ℓ2'', heq, hvl⟩ := hh.entry_value_tm hl
-    simp only [Ty.weaken, Ty.rename, Path.rename, Var.rename] at heq
-    cases heq
-    exact .sel ih hvl
-  | sel_skip_tm hc hl hne hin ihc ihin =>
-    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨ℓ1', b', ℓ2', he⟩ | ⟨_, _, _, he⟩ <;>
-      cases he
-    obtain ⟨ℓ2'', heq, hvl⟩ := hh.entry_value_tm hl
-    exact .sel_skip_tm ihc hvl hne ihin
-  | sel_skip_ty hc hl hin ihc ihin =>
-    rcases HeapTyped.lookup_shape hh hl with ⟨_, _, he⟩ | ⟨_, _, _, he⟩ | ⟨ℓ1', B', W', he⟩ <;>
-      cases he
-    obtain ⟨W'', heq1, heq2, hvl⟩ := hh.entry_value_ty hl
-    exact .sel_skip_ty ihc hvl ihin
+/- `Chains.deterministic` (now `Typing.lean`), `HeapTyped.entry_value_tm`
+/`entry_value_ty` and `Chains.pathEval` (now `Soundness/Progress.lean`)
+were promoted into the live build during the pushback campaign; they are
+imported from there (V13). -/
 
 end LambdaP

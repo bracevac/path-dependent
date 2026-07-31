@@ -6,7 +6,13 @@ Selection rules anchor to precise store entries (whose member intervals
 are aliases, so both bounds collapse to the stored member type);
 replacement and symmetry take store-side resolution (`Chains`) evidence
 instead of derivation premises. Context-extending premises stay general
-(as in pDOT's tight typing). The collapse theorem (general implies
+(as in pDOT's tight typing). V13: the two anchored selection rules now
+map onto the store-anchored `sel_hi_loc`/`sel_lo_loc` of deviation 9
+(which is what those rules were introduced for), `pair_ty` carries the
+two split interval legs of the current `Sub.pair_ty`, and the `ival` rule
+is gone with `Sub`'s. NOTE (V13 route decision): this layer is SUPERSEDED
+by `SSub`/`SOut` (`Soundness/Pushback.lean` + `Embedding.lean`) — kept as
+documentation, not on the critical path. The collapse theorem (general implies
 tight over a well-typed heap) is the goal of this layer; this file
 gives the definition and the embedding back into general subtyping.
 -/
@@ -62,83 +68,17 @@ inductive TightSub (Θ : Sto) : Tau 0 -> Tau 0 -> Prop where
   TightSub Θ (.ty (.pairTm S a T)) (.ty (.pairTm S' a T'))
 | pair_ty :
   TightSub Θ (.ty S) (.ty S') ->
-  Sub Θ (Ctx.empty.push S) (.intv T1 T2) (.intv T1' T2') ->
+  Sub Θ (Ctx.empty.push S) (.ty T1') (.ty T1) ->
+  Sub Θ (Ctx.empty.push S) (.ty T2) (.ty T2') ->
   TightSub Θ (.ty (.pairTy S A T1 T2)) (.ty (.pairTy S' A T1' T2'))
-| ival :
-  TightSub Θ (.ty S') (.ty S) ->
-  TightSub Θ (.ty T) (.ty T') ->
-  TightSub Θ (.ty S) (.ty T) ->
-  TightSub Θ (.intv S T) (.intv S' T')
 | repl :
   Chains Θ p ℓ ->
   Chains Θ q ℓ ->
   TightSub Θ (.ty (Ty.open T p)) (.ty (Ty.open T q))
 
-/-! ### Chains embed into the general judgments -/
-
-/-- Store-side resolution yields general singleton subtyping to the
-target location (the Θ-mirror of `PathEval.to_sub`). -/
-theorem Chains.to_sub {Θ : Sto} {p : Path 0} {ℓ : Nat}
-    (hc : Chains Θ p ℓ) :
-    Sub Θ .empty (.ty (.single p)) (.ty (.single (.var (.free ℓ)))) := by
-  induction hc with
-  | loc _ => exact .refl
-  | fst_tm _ hl ih =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    exact .fst_tm (.trans ih hvf)
-  | fst_ty _ hl ih =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    exact .fst_ty (.trans ih hvf)
-  | sel _ hl ih =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    have hs := Sub.sel_tm (.trans ih hvf)
-    rwa [Ty.weaken_open] at hs
-  | sel_skip_tm _ hl hne _ ihp ihin =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    exact .trans (.skip_tm (.trans ihp hvf) hne) ihin
-  | sel_skip_ty _ hl _ ihp ihin =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    exact .trans (.skip_ty (.trans ihp hvf)) ihin
-
-/-- Store-side resolution yields general path wellformedness. -/
-theorem Chains.wf {Θ : Sto} {p : Path 0} {ℓ : Nat}
-    (hc : Chains Θ p ℓ) : Path.Wf Θ .empty p := by
-  induction hc with
-  | loc hl => exact .var_free hl
-  | fst_tm hc hl ih =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    exact .fst_tm ih (.trans hc.to_sub hvf)
-  | fst_ty hc hl ih =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    exact .fst_ty ih (.trans hc.to_sub hvf)
-  | sel hc hl ih =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    exact .sel ih (.trans hc.to_sub hvf)
-  | sel_skip_tm hc hl hne _ ihp ihin =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    exact .sel_skip_tm ihin (.trans hc.to_sub hvf) hne
-  | sel_skip_ty hc hl _ ihp ihin =>
-    have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-    rw [Ty.fromClosed_zero] at hvf
-    exact .sel_skip_ty ihin (.trans hc.to_sub hvf)
-
-/-- The precise pair-type evidence used by the anchored selection rules,
-in general form: a chaining path sits below its target's entry. -/
-theorem Chains.to_sub_entry {Θ : Sto} {p : Path 0} {m : Nat} {T : Ty 0}
-    (hc : Chains Θ p m) (hl : Sto.Lookup Θ m T) :
-    Sub Θ .empty (.ty (.single p)) (.ty T) := by
-  have hvf := Sub.var_free (Γ := (Ctx.empty : Ctx 0)) hl
-  rw [Ty.fromClosed_zero] at hvf
-  exact .trans hc.to_sub hvf
+/- `Chains.to_sub`, `Chains.wf` and `Chains.to_sub_entry` were promoted
+into `Soundness/Pushback.lean` (live build) during the pushback campaign;
+they are imported from there (V13). -/
 
 /-- Tight subtyping is sound for general subtyping. -/
 theorem TightSub.to_sub {Θ : Sto} {τ1 τ2 : Tau 0}
@@ -154,15 +94,15 @@ theorem TightSub.to_sub {Θ : Sto} {τ1 τ2 : Tau 0}
   | fst_ty hc hl => exact (Chains.fst_ty hc hl).to_sub
   | sel_tm hc hl => exact (Chains.sel hc hl).to_sub
   | sel_hi hc hl =>
-    have hs := Sub.sel_hi (hc.to_sub_entry hl) .refl
-    rwa [Ty.weaken_open] at hs
+    -- deviation 9: the store-anchored rule is exactly this tight rule
+    have hs := Sub.sel_hi_loc (Γ := (Ctx.empty : Ctx 0)) hc hl
+    rwa [Ty.fromClosed_zero] at hs
   | sel_lo hc hl =>
-    have hs := Sub.sel_lo hc.wf (hc.to_sub_entry hl) .refl
-    rwa [Ty.weaken_open] at hs
+    have hs := Sub.sel_lo_loc (Γ := (Ctx.empty : Ctx 0)) hc hl
+    rwa [Ty.fromClosed_zero] at hs
   | arrow _ hg ih => exact .arrow ih hg
   | pair_tm _ hg ih => exact .pair_tm ih hg
-  | pair_ty _ hg ih => exact .pair_ty ih hg
-  | ival _ _ _ ih1 ih2 ih3 => exact .ival ih1 ih2 ih3
+  | pair_ty _ hg1 hg2 ih => exact .pair_ty ih hg1 hg2
   | repl hcp hcq =>
     exact .repl hcp.wf hcq.wf
       (.trans hcp.to_sub (.symm hcq.wf hcq.to_sub))
