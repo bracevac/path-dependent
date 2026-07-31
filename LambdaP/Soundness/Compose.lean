@@ -257,6 +257,7 @@ inductive DOutH (Θ : Sto) : {s : Sig} → Ctx s → Nat → Ty s → Ty s → N
 | repl_bridge {s : Sig} {Δ : Ctx s} {n : Nat} {X Y : Ty s} {T : Ty (s+1)}
     {p q : Path s} {k1 k2 : Nat} :
     RtEq Θ Δ p q →
+    Path.Wf Θ Δ p →
     DOutH Θ Δ n X (T.open p) k1 →
     Sub Θ Δ (.ty X) (.ty (T.open p)) →
     DOutH Θ Δ n (T.open q) Y k2 →
@@ -302,7 +303,7 @@ theorem DOutH.toDOut {s : Sig} {Θ : Sto} {Δ : Ctx s} {n : Nat} {T1 T2 : Ty s}
   | reapp_l hrb hqb hwr hwq hlk hlk2 hev hgd _ l1 ih => exact .reapp_l hrb hqb hwr hwq hlk hlk2 hev hgd ih l1
   | reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd _ l1 ih => exact .reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd ih l1
   | sel_bridge lo hi _ l1 _ l2 ih1 ih2 => exact .sel_bridge lo hi ih1 l1 ih2 l2
-  | repl_bridge hco _ l1 _ l2 ih1 ih2 => exact .repl_bridge hco ih1 l1 ih2 l2
+  | repl_bridge hco hwu _ l1 _ l2 ih1 ih2 => exact .repl_bridge hco hwu ih1 l1 ih2 l2
   | arrow _ l1 l2 ih => exact .arrow ih l1 l2
   | pair_tm _ l1 l2 ih => exact .pair_tm ih l1 l2
   | pair_ty _ l1 l2 l3 ih => exact .pair_ty ih l1 l2 l3
@@ -333,8 +334,8 @@ theorem DOut.toH {s : Sig} {Θ : Sto} {Δ : Ctx s} {n : Nat} {T1 T2 : Ty s}
     exact ⟨_, .reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd ih.choose_spec l1⟩
   | sel_bridge lo hi _ l1 _ l2 ih1 ih2 =>
     exact ⟨_, .sel_bridge lo hi ih1.choose_spec l1 ih2.choose_spec l2⟩
-  | repl_bridge hco _ l1 _ l2 ih1 ih2 =>
-    exact ⟨_, .repl_bridge hco ih1.choose_spec l1 ih2.choose_spec l2⟩
+  | repl_bridge hco hwu _ l1 _ l2 ih1 ih2 =>
+    exact ⟨_, .repl_bridge hco hwu ih1.choose_spec l1 ih2.choose_spec l2⟩
   | arrow _ l1 l2 ih => exact ⟨_, .arrow ih.choose_spec l1 l2⟩
   | pair_tm _ l1 l2 ih => exact ⟨_, .pair_tm ih.choose_spec l1 l2⟩
   | pair_ty _ l1 l2 l3 ih => exact ⟨_, .pair_ty ih.choose_spec l1 l2 l3⟩
@@ -368,9 +369,9 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
     -- recurse the right residue against d2; the left side is verbatim
     exact .sel_bridge lo hi cellL.toDOut lzL
       (IH _ (by omega) (Nat.le_refl _) cellR d2 lzR sBC) (lzR.trans sBC)
-  | repl_bridge hrt cellL lzL cellR lzR =>
+  | repl_bridge hrt hwu cellL lzL cellR lzR =>
     -- same shape as `sel_bridge`: the facing residue absorbs `d2`
-    exact .repl_bridge hrt cellL.toDOut lzL
+    exact .repl_bridge hrt hwu cellL.toDOut lzL
       (IH _ (by omega) (Nat.le_refl _) cellR d2 lzR sBC) (lzR.trans sBC)
   | topR =>
     -- B = ⊤; the only right cells with ⊤ subject: refl, bot_tok, topR,
@@ -391,8 +392,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
       exact .sel_bridge lo hi
         (IH _ (by omega) (Nat.le_refl _) (.topR (k := 0)) cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
-    | repl_bridge hrt cellL lzL cellR lzR =>
-      exact .repl_bridge hrt
+    | repl_bridge hrt hwu cellL lzL cellR lzR =>
+      exact .repl_bridge hrt hwu
         (IH _ (by omega) (Nat.le_refl _) (.topR (k := 0)) cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
   | single hco =>
@@ -452,8 +453,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
         (IH _ (by omega) (Nat.le_refl _) (.tsel_r hcq hEq hmq res1 lazy1)
           cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
-    | repl_bridge hrt cellL lzL cellR lzR =>
-      exact .repl_bridge hrt
+    | repl_bridge hrt hwu cellL lzL cellR lzR =>
+      exact .repl_bridge hrt hwu
         (IH _ (by omega) (Nat.le_refl _) (.tsel_r hcq hEq hmq res1 lazy1)
           cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
@@ -494,8 +495,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
           (.reapp_r hrb1 hqb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1)
           cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
-    | repl_bridge hrt cellL lzL cellR lzR =>
-      exact .repl_bridge hrt
+    | repl_bridge hrt hwu cellL lzL cellR lzR =>
+      exact .repl_bridge hrt hwu
         (IH _ (by omega) (Nat.le_refl _)
           (.reapp_r hrb1 hqb1 hwr1 hwq1 hqr1 hrq1 hrp1 hgd1 res1 lazy1)
           cellL sAB lzL)
@@ -532,8 +533,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
         (IH _ (by omega) (Nat.le_refl _) (.tsel_co (k := 0) hco hwp hwq s1 s2)
           cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
-    | repl_bridge hrt cellL lzL cellR lzR =>
-      exact .repl_bridge hrt
+    | repl_bridge hrt hwu cellL lzL cellR lzR =>
+      exact .repl_bridge hrt hwu
         (IH _ (by omega) (Nat.le_refl _) (.tsel_co (k := 0) hco hwp hwq s1 s2)
           cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
@@ -559,8 +560,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
       exact .sel_bridge lo hi
         (IH _ (by omega) (Nat.le_refl _) (.arrow dom1 l1 l2) cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
-    | repl_bridge hrt cellL lzL cellR lzR =>
-      exact .repl_bridge hrt
+    | repl_bridge hrt hwu cellL lzL cellR lzR =>
+      exact .repl_bridge hrt hwu
         (IH _ (by omega) (Nat.le_refl _) (.arrow dom1 l1 l2) cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
   | pair_tm dom1 l1 l2 =>
@@ -584,8 +585,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
       exact .sel_bridge lo hi
         (IH _ (by omega) (Nat.le_refl _) (.pair_tm dom1 l1 l2) cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
-    | repl_bridge hrt cellL lzL cellR lzR =>
-      exact .repl_bridge hrt
+    | repl_bridge hrt hwu cellL lzL cellR lzR =>
+      exact .repl_bridge hrt hwu
         (IH _ (by omega) (Nat.le_refl _) (.pair_tm dom1 l1 l2) cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
   | pair_ty dom1 l1 lo1 hi1 =>
@@ -609,8 +610,8 @@ theorem DOutH.compose {s : Sig} {Θ : Sto} {Δ : Ctx s} (hwf : Sto.Shaped Θ) {n
       exact .sel_bridge lo hi
         (IH _ (by omega) (Nat.le_refl _) (.pair_ty dom1 l1 lo1 hi1) cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
-    | repl_bridge hrt cellL lzL cellR lzR =>
-      exact .repl_bridge hrt
+    | repl_bridge hrt hwu cellL lzL cellR lzR =>
+      exact .repl_bridge hrt hwu
         (IH _ (by omega) (Nat.le_refl _) (.pair_ty dom1 l1 lo1 hi1) cellL sAB lzL)
         (sAB.trans lzL) cellR.toDOut lzR
 

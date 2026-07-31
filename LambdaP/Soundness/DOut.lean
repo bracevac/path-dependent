@@ -425,6 +425,7 @@ no wellformedness is available in the `bound_tok` corner. -/
 | repl_bridge {s : Sig} {Δ : Ctx s} {n : Nat} {X Y : Ty s} {T : Ty (s+1)}
     {p q : Path s} :
     RtEq Θ Δ p q →
+    Path.Wf Θ Δ p →
     DOut Θ Δ n X (T.open p) →
     Sub Θ Δ (.ty X) (.ty (T.open p)) →
     DOut Θ Δ n (T.open q) Y →
@@ -480,7 +481,7 @@ theorem DOut.mono {s : Sig} {Θ : Sto} {Δ : Ctx s} {n n' : Nat} {T1 T2 : Ty s}
     exact .reapp_r hrb hqb hwr hwq hlk hlk2 hev hgd ih l1
   | sel_bridge lo hi d1 l1 d2 l2 ih1 ih2 =>
     exact .sel_bridge (lo.mono hle) (hi.mono hle) ih1 l1 ih2 l2
-  | repl_bridge hco d1 l1 d2 l2 ih1 ih2 => exact .repl_bridge hco ih1 l1 ih2 l2
+  | repl_bridge hco hwu d1 l1 d2 l2 ih1 ih2 => exact .repl_bridge hco hwu ih1 l1 ih2 l2
   | arrow d1 l1 l2 ih => exact .arrow ih l1 l2
   | pair_tm d1 l1 l2 ih => exact .pair_tm ih l1 l2
   | pair_ty d1 l1 l2 l3 ih => exact .pair_ty ih l1 l2 l3
