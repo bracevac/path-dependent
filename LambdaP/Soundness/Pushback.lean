@@ -296,6 +296,61 @@ theorem Path.Wf.repl {s : Sig} {Θ : Sto} {Δ : Ctx s} {p q : Path s}
     Path.Wf Θ Δ (r.subst (Subst.openPath p)) :=
   h.repl_aux p q hwp hwq h1 h2 r rfl
 
+/-! ### Wellformedness is closed under path prefixes
+
+Both projection rules and all three selection rules carry a
+wellformedness premise for a path that has the subject's prefix as *its*
+prefix, so `Path.Wf` of a compound path always re-derives `Path.Wf` of
+the path it is built from. The `.fst` half is one inversion; the `.sel`
+half needs an induction, because `sel_skip_*` justifies `p.sel a` by
+`(p.fst).sel a`, which is *bigger* than the conclusion. -/
+
+/-- Wellformedness of a projection re-derives wellformedness of its
+prefix (both rules for `p.fst` carry `Path.Wf p`). -/
+theorem Path.Wf.of_fst {s : Sig} {Θ : Sto} {Δ : Ctx s} {q : Path s}
+    (h : Path.Wf Θ Δ q.fst) : Path.Wf Θ Δ q := by
+  cases h with
+  | fst_tm hw _ => exact hw
+  | fst_ty hw _ => exact hw
+
+/-- Wellformedness of a selection re-derives wellformedness of its
+prefix. Induction on the derivation: the two skip rules descend to
+`(p.fst).sel a`, whose prefix `p.fst` yields `p` by `of_fst`. -/
+theorem Path.Wf.of_sel_aux {s0 : Sig} {Θ0 : Sto} {Δ0 : Ctx s0} {w0 : Path s0}
+    (h : Path.Wf Θ0 Δ0 w0) :
+    ∀ (q : Path s0) (a : Name), w0 = q.sel a → Path.Wf Θ0 Δ0 q := by
+  refine Path.Wf.rec (motive_1 := fun {s} Θ Γ _ _ _ => True)
+    (motive_2 := fun {s} Θ Γ w _ =>
+      ∀ (q : Path s) (a : Name), w = q.sel a → Path.Wf Θ Γ q)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+  all_goals try (intros; trivial)
+  -- var_bound
+  · intros; intro q a hq; exact absurd hq (by intro hh; cases hh)
+  -- var_free
+  · intros; intro q a hq; exact absurd hq (by intro hh; cases hh)
+  -- fst_tm
+  · intros; intro q a hq; exact absurd hq (by intro hh; cases hh)
+  -- fst_ty
+  · intros; intro q a hq; exact absurd hq (by intro hh; cases hh)
+  -- sel
+  · intros; rename_i hw _ _ _
+    intro q a hq; injection hq with hq1 _; subst hq1; exact hw
+  -- sel_skip_tm
+  · intros; rename_i ihin _
+    intro q a hq; injection hq with hq1 hq2; subst hq1; subst hq2
+    exact (ihin _ _ rfl).of_fst
+  -- sel_skip_ty
+  · intros; rename_i ihin _
+    intro q a hq; injection hq with hq1 hq2; subst hq1; subst hq2
+    exact (ihin _ _ rfl).of_fst
+
+/-- Wellformedness of a selection re-derives wellformedness of its
+prefix (public form). -/
+theorem Path.Wf.of_sel {s : Sig} {Θ : Sto} {Δ : Ctx s} {q : Path s} {a : Name}
+    (h : Path.Wf Θ Δ (q.sel a)) : Path.Wf Θ Δ q :=
+  h.of_sel_aux q a rfl
+
 /-- Chain targets are recorded (locations mentioned by entries are older
 and the store is contiguous). -/
 theorem Chains.in_dom {Θ : Sto} {p : Path 0} {m : Nat}
