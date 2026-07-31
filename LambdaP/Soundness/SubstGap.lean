@@ -71,13 +71,13 @@ theorem declx : Sub Thw Dw (.ty (.single xp)) (.ty D0.weaken) :=
 
 /-- `⌊0⌋ <: x.A` — the lower half of `x`'s junk interval. -/
 theorem lo : Sub Thw Dw (.ty (.single p0)) (.ty (.tsel xp A)) := by
-  have h := Sub.sel_lo (Θ := Thw) (Γ := Dw) (p := xp) xb wfx
+  have h := Sub.sel_lo (Θ := Thw) (Γ := Dw) (p := xp) wfx
     (declx.trans (Sub.pair_ty .refl .refl .top)) .top
   exact h
 
 /-- `x.A <: { B : ⊥ .. ⌊1⌋ }` — the upper half. -/
 theorem hi : Sub Thw Dw (.ty (.tsel xp A)) (.ty Dcl1) := by
-  have h := Sub.sel_hi (Θ := Thw) (Γ := Dw) (p := xp) xb wfx
+  have h := Sub.sel_hi (Θ := Thw) (Γ := Dw) (p := xp) wfx
     (declx.trans (Sub.pair_ty .refl .bot .refl)) .bot
   exact h
 
@@ -102,6 +102,16 @@ theorem bad_derivable (hlib : LibSelHi) :
 theorem bad_skip_derivable (hlib : LibSkipTy) :
     Sub Thw Dw (.ty (.single (p0.sel 7))) (.ty (.single ((Path.fst p0).sel 7))) :=
   hlib wf0 ev0
+
+/-- **V14 step 1 landed**: `LibSelHi` is now literally `Sub.sel_hi`, so
+V9's junk fact is derivable outright, with no hypothesis. -/
+theorem bad_underivable_no_more :
+    Sub Thw Dw (.ty (.tsel p0 B)) (.ty (.single (.var (.free 1)))) :=
+  bad_derivable (fun hw hev hgd => Sub.sel_hi hw hev hgd)
+
+theorem bad_skip_underivable_no_more :
+    Sub Thw Dw (.ty (.single (p0.sel 7))) (.ty (.single ((Path.fst p0).sel 7))) :=
+  bad_skip_derivable (fun hw hev => Sub.skip_ty hw hev)
 
 /-! ### V9's substitution IS the preservation instance.
 

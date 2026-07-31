@@ -13,15 +13,46 @@ import LambdaP.Soundness.Pushback
 import LambdaP.Soundness.Embedding
 import LambdaP.Soundness.RealizedSubst
 import LambdaP.Soundness.Progress
-import LambdaP.Examples
 import LambdaP.Soundness.PreservationPrep
 import LambdaP.Soundness.EmbedGap
 import LambdaP.Soundness.SubstGap
 import LambdaP.Soundness.GSub
+import LambdaP.Soundness.Preservation
+import LambdaP.Soundness.Safety
+import LambdaP.Examples
 
-/-! Pushback campaign (deviation 9): the semantic chain
-(Den/Closure/Progress/Preservation/Safety), the possible-types chain
-(Precise/Tight/Invertible/PT/Bridge/PTTransfer), Functionality, and
-Examples are temporarily out of the build while the store-anchored
-selection rules propagate; they are superseded or restored by the
-trans-free runtime subtyping pipeline (see Soundness/Pushback.lean). -/
+/-! Pushback campaign (deviation 9). IN the build as of V14: the
+syntactic pipeline `Store → Pushback → Embedding → {Progress,
+RealizedSubst} → PreservationPrep → Preservation → Safety`, i.e. progress,
+preservation and TYPE SAFETY, plus the two gap files (`EmbedGap`,
+`SubstGap`) and the sized scope-generic table (`GSub`).
+
+OUT of the build (superseded): the semantic tower `Den`/`DenLemmas`/
+`PathLemmas`/`Transfer`/`Closure` — it existed only to build the `Ξ` that
+the old `SemStoExists` fed to canonical forms, and `Sub.canonical_arrow`
+retired that obligation; and the possible-types chain `Precise`/`Tight`/
+`Invertible`/`PT`/`Bridge`/`PTTransfer`, subsumed by `SSub`/`SOut`.
+`Functionality` is imported by `Preservation`. -/
+
+/-! ### Axiom audit (V14). `type_safety` is unconditional except for the
+single remaining leaf `Sto.ResidueCollapse` (see `Soundness/Embedding.lean`
+and NOTES.md, "V14 EXECUTION REPORT"): no `sorryAx` anywhere. -/
+section
+open LambdaP
+#print axioms LambdaP.type_safety
+#print axioms LambdaP.type_safety_init
+#print axioms LambdaP.preservation
+#print axioms LambdaP.progress
+#print axioms LambdaP.Sub.to_ssub
+#print axioms LambdaP.Sub.subst
+#print axioms LambdaP.GSub.subst
+#print axioms LambdaP.GSub.subst_loc
+#print axioms LambdaP.Sub.to_gsub
+#print axioms LambdaP.GSub.to_sub
+#print axioms LambdaP.gsubstLift
+#print axioms LambdaP.Sub.canonical_arrow
+#print axioms LambdaP.Sub.consistency_empty
+#print axioms LambdaP.EmbedGap.substPower
+#print axioms LambdaP.EmbedGap.embPower_of_residueCollapse
+#print axioms LambdaP.EmbedGap.residueCollapse_of_embPower
+end

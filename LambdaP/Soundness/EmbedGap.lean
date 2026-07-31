@@ -275,6 +275,43 @@ theorem oracle_gives_legpower {Θ : Sto} (hsp : SubstPower Θ)
   obtain ⟨ℓ, hch⟩ := hq
   exact hemb (hsp hch.wf hc h)
 
+/-! ### (V14) WHERE THE PREMISE DELETION LEFT THE GAP
+
+Step 1 of the V14 plan (the deviation-11 reversal) landed, so the first
+of the two powers is no longer a hypothesis: `SubstPower` is a one-liner,
+exactly as predicted. The second is now the live `Sto.ResidueCollapse`,
+and the two theorems below pin it to `EmbPower` in both directions — so
+the V14 leaf is neither weaker nor stronger than the V11/V12 wall: it is
+ONE leaf, and it is that wall. -/
+
+/-- **V14 step 1, cashed.** `SubstPower` needed `SubstTyping.rooted` for a
+location-rooted image; with the five `IsBound` premises deleted, the
+opening substitution conforms outright. -/
+theorem substPower {Θ : Sto} : SubstPower Θ := by
+  intro S0 A B q hwq hq h
+  have := h.subst (SubstTyping.openPath hwq hq)
+  simpa only [Tau.subst] using this
+
+/-- The live leaf implies the oracle (at any non-empty store): weaken a
+closed derivation under a singleton-location binder and read the leaf back
+at that location. The V12 argument (`legpower_forces_oracle`), retuned to
+the singleton domain the leaf actually uses. -/
+theorem embPower_of_residueCollapse {Θ : Sto} {ℓ0 : Nat} {E : Ty 0}
+    (hl : Sto.Lookup Θ ℓ0 E) (hcol : Sto.ResidueCollapse Θ) : EmbPower Θ := by
+  intro X Y h
+  have hw : Sub Θ (Ctx.empty.push (.single (.var (.free ℓ0))))
+      (.ty X.weaken) (.ty Y.weaken) := h.weaken
+  have hn := hcol ⟨E, hl⟩ hw
+  rw [Ty.weaken_open, Ty.weaken_open] at hn
+  exact hn
+
+/-- …and conversely, so the leaf is exactly the oracle. -/
+theorem residueCollapse_of_embPower {Θ : Sto} (hemb : EmbPower Θ) :
+    Sto.ResidueCollapse Θ := by
+  intro ℓ A B hmem h
+  obtain ⟨T, hT⟩ := hmem
+  exact hemb (substPower (Path.Wf.var_free hT) .refl h)
+
 end EmbedGap
 end LambdaP
 

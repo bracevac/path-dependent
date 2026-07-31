@@ -72,57 +72,57 @@ theorem Chains.pathEval {Θ : Sto} {h : Heap} {p : Path 0} {ℓ : Nat}
 /-- Progress: a closed well-typed term is final or steps. -/
 theorem progress {Θ : Sto} {h : Heap} :
     ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s},
-      HasType Θ Γ t T -> HeapTyped Θ h -> ∀ (hs : s = 0),
+      HasType Θ Γ t T -> Sto.ResidueCollapse Θ -> HeapTyped Θ h -> ∀ (hs : s = 0),
       Final (hs ▸ t) ∨ ∃ h' t', Step h (hs ▸ t) h' t' := by
   intro s Γ t T ht
   induction ht with
   | path hp =>
-    intro hh' hs
+    intro hcol hh' hs
     subst hs
     have hE := Ctx.eq_empty' ‹Ctx 0›
     subst hE
-    obtain ⟨ℓ, hc⟩ := (Path.Wf.chains hh'.shaped hp) rfl
+    obtain ⟨ℓ, hc⟩ := (Path.Wf.chains hh'.shaped hcol hp) rfl
     rename_i p
     by_cases hpe : p = .var (.free ℓ)
     · subst hpe
       exact .inl .loc
     · exact .inr ⟨h, _, .path (hc.pathEval hh') hpe⟩
   | sub _ _ _ ih =>
-    intro hh' hs
-    exact ih hh' hs
+    intro hcol hh' hs
+    exact ih hcol hh' hs
   | abs _ _ _ =>
-    intro hh' hs
+    intro hcol hh' hs
     subst hs
     exact .inl (.val .abs)
   | app hf ha _ _ =>
-    intro hh' hs
+    intro hcol hh' hs
     subst hs
     have hE := Ctx.eq_empty' ‹Ctx 0›
     subst hE
     obtain ⟨hwp, hsubp⟩ := hf.path_inv rfl
     obtain ⟨hwq, hsubq⟩ := ha.path_inv rfl
     obtain ⟨ℓ0, S0, T0, t0, hcp, hlv, -, -, -, -⟩ :=
-      Sub.canonical_arrow hh' hsubp
-    obtain ⟨ℓa, hca⟩ := (Path.Wf.chains hh'.shaped hwq) rfl
+      Sub.canonical_arrow hh' hcol hsubp
+    obtain ⟨ℓa, hca⟩ := (Path.Wf.chains hh'.shaped hcol hwq) rfl
     exact .inr ⟨h, _, .apply (hcp.pathEval hh') (hca.pathEval hh') hlv⟩
   | pair_tm _ _ =>
-    intro hh' hs
+    intro hcol hh' hs
     subst hs
     exact .inl (.val .pairTm)
   | pair_ty _ _ =>
-    intro hh' hs
+    intro hcol hh' hs
     subst hs
     exact .inl (.val .pairTy)
   | letin ht1 _ _ ih1 _ =>
-    intro hh' hs
+    intro hcol hh' hs
     subst hs
-    rcases ih1 hh' rfl with hfin | ⟨h', t1', hstep⟩
+    rcases ih1 hcol hh' rfl with hfin | ⟨h', t1', hstep⟩
     · cases hfin with
       | val hv => exact .inr ⟨_, _, .let_val hv⟩
       | loc => exact .inr ⟨h, _, .let_path .var⟩
     · exact .inr ⟨h', _, .let_ctx hstep⟩
   | typed _ _ _ =>
-    intro hh' hs
+    intro hcol hh' hs
     subst hs
     exact .inr ⟨h, _, .ascribe⟩
 

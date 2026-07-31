@@ -254,7 +254,6 @@ wellformedness premise (like `sel_lo`). -/
   Sub Θ Γ (.ty (.single p.fst)) (.ty S)
 /-- Term-member selection: p.a is below the declared member type. -/
 | sel_tm :
-  p.root.IsBound ->
   Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTm S a T)) ->
   Sub Θ Γ (.ty (.single (p.sel a))) (.ty (T.open p.fst))
@@ -271,7 +270,6 @@ selected (DOT's SEL-<:); the draft's unanchored formulation is unsound —
 see DESIGN.md, deviation 7. The second premise is the draft's non-empty
 interval guard. -/
 | sel_hi :
-  p.root.IsBound ->
   Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
   Sub Θ Γ (.ty (T1.open p.fst)) (.ty (T2.open p.fst)) ->
@@ -280,7 +278,6 @@ interval guard. -/
 member (DOT's <:-Sel), with the same anchoring and non-emptiness guard,
 plus wellformedness of the selected path (see the mutual-block comment). -/
 | sel_lo :
-  p.root.IsBound ->
   Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S A T1 T2)) ->
   Sub Θ Γ (.ty (T1.open p.fst)) (.ty (T2.open p.fst)) ->
@@ -334,14 +331,12 @@ singleton inclusion would be unsound at contravariant positions. -/
 /-- Selection skip over a term member with a different label (records
 as nested pairs; the fixed form of the draft's scoping-buggy sel-l). -/
 | skip_tm :
-  p.root.IsBound ->
   Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTm S b T)) ->
   a ≠ b ->
   Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single ((Path.fst p).sel a)))
 /-- Selection skip over a type member. -/
 | skip_ty :
-  p.root.IsBound ->
   Path.Wf Θ Γ p ->
   Sub Θ Γ (.ty (.single p)) (.ty (.pairTy S B T1 T2)) ->
   Sub Θ Γ (.ty (.single (p.sel a))) (.ty (.single ((Path.fst p).sel a)))

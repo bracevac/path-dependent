@@ -53,27 +53,27 @@ theorem Sub.rename {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2)
   | .symm hw h1 => fun ρ => .symm (hw.rename ρ) (h1.rename ρ)
   | .fst_tm h1 => fun ρ => .fst_tm (h1.rename ρ)
   | .fst_ty h1 => fun ρ => .fst_ty (h1.rename ρ)
-  | .sel_tm hr hw h1 => fun ρ => by
+  | .sel_tm hw h1 => fun ρ => by
     simp only [Tau.rename, Ty.rename, Path.rename]
     rw [← Ty.open_rename_comm]
-    exact Sub.sel_tm (Path.root_isBound_rename hr) (hw.rename ρ) (h1.rename ρ)
+    exact Sub.sel_tm (hw.rename ρ) (h1.rename ρ)
   | .sel_tm_loc hc hl => fun _ => by
     simp only [Tau.rename, Ty.rename, Path.rename, Var.rename]
     exact Sub.sel_tm_loc hc.rename hl
-  | .sel_hi hr hw h1 h2 => fun ρ => by
+  | .sel_hi hw h1 h2 => fun ρ => by
     have h2' := h2.rename ρ
     simp only [Tau.rename] at h2'
     rw [← Ty.open_rename_comm, ← Ty.open_rename_comm] at h2'
     simp only [Tau.rename, Ty.rename]
     rw [← Ty.open_rename_comm]
-    exact Sub.sel_hi (Path.root_isBound_rename hr) (hw.rename ρ) (h1.rename ρ) h2'
-  | .sel_lo hr hw h1 h2 => fun ρ => by
+    exact Sub.sel_hi (hw.rename ρ) (h1.rename ρ) h2'
+  | .sel_lo hw h1 h2 => fun ρ => by
     have h2' := h2.rename ρ
     simp only [Tau.rename] at h2'
     rw [← Ty.open_rename_comm, ← Ty.open_rename_comm] at h2'
     simp only [Tau.rename, Ty.rename]
     rw [← Ty.open_rename_comm]
-    exact Sub.sel_lo (Path.root_isBound_rename hr) (hw.rename ρ) (h1.rename ρ) h2'
+    exact Sub.sel_lo (hw.rename ρ) (h1.rename ρ) h2'
   | .sel_hi_loc hc hl => fun _ => by
     simp only [Tau.rename, Ty.rename, Ty.fromClosed_rename]
     exact Sub.sel_hi_loc hc.rename hl
@@ -88,10 +88,10 @@ theorem Sub.rename {Θ} {Γ : Ctx s1} {τ1 τ2 : Tau s1} (h : Sub Θ Γ τ1 τ2)
     simp only [Tau.rename]
     rw [← Ty.open_rename_comm, ← Ty.open_rename_comm]
     exact Sub.repl (hwp.rename ρ) (hwq.rename ρ) (h1.rename ρ) (h2.rename ρ)
-  | .skip_tm hr hw h1 hne => fun ρ =>
-    .skip_tm (Path.root_isBound_rename hr) (hw.rename ρ) (h1.rename ρ) hne
-  | .skip_ty hr hw h1 => fun ρ =>
-    .skip_ty (Path.root_isBound_rename hr) (hw.rename ρ) (h1.rename ρ)
+  | .skip_tm hw h1 hne => fun ρ =>
+    .skip_tm (hw.rename ρ) (h1.rename ρ) hne
+  | .skip_ty hw h1 => fun ρ =>
+    .skip_ty (hw.rename ρ) (h1.rename ρ)
   | .skip_tm_loc hc hl hne => fun _ => by
     simp only [Tau.rename, Ty.rename, Path.rename]
     exact Sub.skip_tm_loc hc.rename hl hne

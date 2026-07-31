@@ -20,7 +20,6 @@ probe): a captured pair-evidence re-derives selection conclusions via
 the mediator. -/
 
 theorem Captured.discharge_sel_hi {p r : Path s} {A : Name} {S : Ty s} {T1 T2 : Ty (s+1)}
-    (hrb : r.root.IsBound)
     (hwr : Path.Wf Θ Δ r)          -- MISSING from the refined token
     (hwp : Path.Wf Θ Δ p)          -- from sel_hi's Wf premise (motive)
     (hcap : Sub Θ Δ (.ty (.single p)) (.ty (.single r)))
@@ -39,14 +38,13 @@ theorem Captured.discharge_sel_hi {p r : Path s} {A : Name} {S : Ty s} {T1 T2 : 
     .trans (Sub.repl (T := T1) hwrf hwpf hf2 hf1)
       (.trans hgd (Sub.repl (T := T2) hwpf hwrf hf1 hf2))
   exact .trans (Sub.repl_tsel hwp hwr hcap hrev)                       -- uses hwr
-    (.trans (.sel_hi hrb hwr hevr hgdr)                                -- uses hwr (rule premise)
+    (.trans (.sel_hi hwr hevr hgdr)                                -- uses hwr (rule premise)
       (Sub.repl (T := T2) hwrf hwpf hf2 hf1))
 
 /-- sel_tm consumption, captured evidence. The rule `Sub.sel_tm` has NO
 `Path.Wf p` premise, so `hwp` has no source in the motive — yet symm,
 repl_sel, repl_fst, and the final repl all demand it. -/
 theorem Captured.discharge_sel_tm {p r : Path s} {a : Name} {S : Ty s} {T : Ty (s+1)}
-    (hrb : r.root.IsBound)
     (hwr : Path.Wf Θ Δ r)          -- MISSING from the refined token
     (hwp : Path.Wf Θ Δ p)          -- NO source: sel_tm carries no Wf premise
     (hcap : Sub Θ Δ (.ty (.single p)) (.ty (.single r)))
@@ -61,11 +59,10 @@ theorem Captured.discharge_sel_tm {p r : Path s} {a : Name} {S : Ty s} {T : Ty (
   have hf2 : Sub Θ Δ (.ty (.single r.fst)) (.ty (.single p.fst)) :=
     Sub.repl_fst hwr hwp hrev hcap
   exact .trans (Sub.repl_sel hwp hwr hcap hrev)
-    (.trans (.sel_tm hrb hwr hevr) (Sub.repl (T := T) hwrf hwpf hf2 hf1))
+    (.trans (.sel_tm hwr hevr) (Sub.repl (T := T) hwrf hwpf hf2 hf1))
 
 /-- skip_tm consumption, captured evidence. Same Wf gap as sel_tm. -/
 theorem Captured.discharge_skip_tm {p r : Path s} {a b : Name} {S : Ty s} {T : Ty (s+1)}
-    (hrb : r.root.IsBound)
     (hwr : Path.Wf Θ Δ r)          -- MISSING from the refined token
     (hwp : Path.Wf Θ Δ p)          -- NO source: skip_tm carries no Wf premise
     (hcap : Sub Θ Δ (.ty (.single p)) (.ty (.single r)))
@@ -81,7 +78,7 @@ theorem Captured.discharge_skip_tm {p r : Path s} {a b : Name} {S : Ty s} {T : T
   have hf2 : Sub Θ Δ (.ty (.single r.fst)) (.ty (.single p.fst)) :=
     Sub.repl_fst hwr hwp hrev hcap
   exact .trans (Sub.repl_sel hwp hwr hcap hrev)
-    (.trans (.skip_tm hrb hwr hevr hne) (Sub.repl_sel hwrf hwpf hf2 hf1))
+    (.trans (.skip_tm hwr hevr hne) (Sub.repl_sel hwrf hwpf hf2 hf1))
 
 /-- Cone descent: the alias component of a pairTy entry is strictly
 older than the entry itself. -/
@@ -122,7 +119,6 @@ theorem bridge_fst_component {Θ : Sto} (hwf : Sto.Shaped Θ) {p : Path 0} {m �
 
 /-- sel_lo consumption, captured evidence (mirror of `discharge_sel_hi`). -/
 theorem Captured.discharge_sel_lo {p r : Path s} {A : Name} {S : Ty s} {T1 T2 : Ty (s+1)}
-    (hrb : r.root.IsBound)
     (hwr : Path.Wf Θ Δ r)
     (hwp : Path.Wf Θ Δ p)
     (hcap : Sub Θ Δ (.ty (.single p)) (.ty (.single r)))
@@ -141,13 +137,12 @@ theorem Captured.discharge_sel_lo {p r : Path s} {A : Name} {S : Ty s} {T1 T2 : 
     .trans (Sub.repl (T := T1) hwrf hwpf hf2 hf1)
       (.trans hgd (Sub.repl (T := T2) hwpf hwrf hf1 hf2))
   exact .trans (Sub.repl (T := T1) hwpf hwrf hf1 hf2)
-    (.trans (.sel_lo hrb hwr hevr hgdr)
+    (.trans (.sel_lo hwr hevr hgdr)
       (Sub.repl_tsel hwr hwp hrev hcap))
 
 /-- skip_ty consumption, captured evidence (mirror of `discharge_skip_tm`). -/
 theorem Captured.discharge_skip_ty {p r : Path s} {a : Name} {S : Ty s}
     {B : Name} {T1 T2 : Ty (s+1)}
-    (hrb : r.root.IsBound)
     (hwr : Path.Wf Θ Δ r)
     (hwp : Path.Wf Θ Δ p)
     (hcap : Sub Θ Δ (.ty (.single p)) (.ty (.single r)))
@@ -162,7 +157,7 @@ theorem Captured.discharge_skip_ty {p r : Path s} {a : Name} {S : Ty s}
   have hf2 : Sub Θ Δ (.ty (.single r.fst)) (.ty (.single p.fst)) :=
     Sub.repl_fst hwr hwp hrev hcap
   exact .trans (Sub.repl_sel hwp hwr hcap hrev)
-    (.trans (.skip_ty hrb hwr hevr) (Sub.repl_sel hwrf hwpf hf2 hf1))
+    (.trans (.skip_ty hwr hevr) (Sub.repl_sel hwrf hwpf hf2 hf1))
 
 
 /-! ### §6 Realized conforming substitutions -/

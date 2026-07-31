@@ -79,7 +79,7 @@ example : HasType [] .empty sealed .top := by
     .var_bound hlkp
   have hsel : Sub [] SealCtx (.ty .top)
       (.ty (.tsel (.var (.bound (.there .here))) 0)) := by
-    have h := Sub.sel_lo (by trivial) hwp hpair .refl
+    have h := Sub.sel_lo hwp hpair .refl
     exact h
   have hwfD : Wf [] SealCtx (.ty (.tsel (.var (.bound (.there .here))) 0)) :=
     .tsel hwp hpair
@@ -107,6 +107,7 @@ theorem consistency : ¬ Sub [] .empty (.ty .top) (.ty .bot) :=
 #print axioms LambdaP.Path.Wf.chains
 #print axioms LambdaP.Sub.canonical_arrow
 #print axioms LambdaP.progress
+#print axioms LambdaP.Sub.subst
 #print axioms LambdaP.Examples.consistency
 
 end LambdaP.Examples

@@ -3,21 +3,15 @@ import LambdaP.Soundness.Preservation
 /-!
 Type safety, threaded through reduction sequences.
 
-Progress and preservation both consume a semantic store typing (`Ξ` with
-`SemStoOk`) for the current heap; preservation does not produce one for
-the successor heap. Safety therefore takes the existence of semantic
-store typings for well-typed heaps as an explicit hypothesis
-(`SemStoExists`) — the one remaining semantic obligation of the
-development, discharged trivially for the empty initial heap. See
-DESIGN.md ("Runtime & soundness plan") for the state of the canonical
-construction.
+V14: UNCONDITIONAL. The old statement took `SemStoExists` (existence of a
+semantic store typing for every well-typed heap) as a hypothesis, because
+the old progress/preservation consumed a semantic `Ξ` for canonical
+forms. The store-anchored canonical-forms lemma (`Sub.canonical_arrow`)
+retired that obligation, so both consumers are hypothesis-free and the
+semantic tower (`Den`/`Closure`/…) is no longer part of the safety proof.
 -/
 
 namespace LambdaP
-
-/-- Every well-typed heap admits a semantic store typing. -/
-def SemStoExists : Prop :=
-  ∀ (Θ : Sto) (h : Heap), HeapTyped Θ h -> ∃ Ξ, SemStoOk Θ Ξ h
 
 /-- The empty heap is typed by the empty store typing. -/
 theorem HeapTyped.empty : HeapTyped [] [] := by
@@ -25,34 +19,25 @@ theorem HeapTyped.empty : HeapTyped [] [] := by
   intro ℓ T hl
   exact absurd hl (by intro hl; cases hl)
 
-/-- Any semantic store typing works for the empty heap. -/
-theorem SemStoOk.empty {Ξ : SemSto} : SemStoOk [] Ξ [] := by
-  intro ℓ ℓ1 A W hlk
-  exact absurd hlk (by intro hl; cases hl)
-
-/-- Type safety along a reduction sequence: assuming semantic store
-typings exist for well-typed heaps, a closed well-typed term never gets
-stuck — every reduct is final or steps again. -/
-theorem type_safety (hgood : SemStoExists)
+/-- Type safety along a reduction sequence: a closed well-typed term never
+gets stuck — every reduct is final or steps again. -/
+theorem type_safety (hcol : ∀ Θ : Sto, Sto.ResidueCollapse Θ)
     {Θ : Sto} {h h' : Heap} {t t' : Tm 0} {T : Ty 0}
     (hred : Reduce h t h' t')
     (hh : HeapTyped Θ h) (ht : HasType Θ .empty t T) :
     Final t' ∨ ∃ h'' t'', Step h' t' h'' t'' := by
   induction hred generalizing Θ T with
-  | refl =>
-    obtain ⟨Ξ, hok⟩ := hgood Θ _ hh
-    exact progress hh hok ht
+  | refl => exact progress ht (hcol _) hh rfl
   | step hstp _ ih =>
-    obtain ⟨Ξ, hok⟩ := hgood Θ _ hh
-    obtain ⟨Θ', _, hh', T', ht', -⟩ := preservation hstp hh hok ht
+    obtain ⟨Θ', _, hh', T', ht', -⟩ := preservation (hcol _) hstp hh ht
     exact ih hh' ht'
 
 /-- Type safety from the initial configuration: a term typed against the
 empty store never gets stuck. -/
-theorem type_safety_init (hgood : SemStoExists)
+theorem type_safety_init (hcol : ∀ Θ : Sto, Sto.ResidueCollapse Θ)
     {h' : Heap} {t t' : Tm 0} {T : Ty 0}
     (ht : HasType [] .empty t T) (hred : Reduce [] t h' t') :
     Final t' ∨ ∃ h'' t'', Step h' t' h'' t'' :=
-  type_safety hgood hred HeapTyped.empty ht
+  type_safety hcol hred HeapTyped.empty ht
 
 end LambdaP
