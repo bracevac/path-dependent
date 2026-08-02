@@ -76,18 +76,10 @@ def SubCode.rename
       intro m f Delta rho
       simpa [Tau.rename, Ty.rename] using
         SubCode.fun (ihDomain rho) (ihCodomain rho.ext)
-  | pair_fst first ihFirst =>
+  | pair first member ihFirst ihMember =>
       intro m f Delta rho
       simpa [Tau.rename, Ty.rename] using
-        SubCode.pair_fst (ihFirst rho)
-  | pair_single_member path underBinder opened
-      ihUnderBinder ihOpened =>
-      intro m f Delta rho
-      have opened' := ihOpened rho
-      rw [Tau.open_rename, Tau.open_rename] at opened'
-      simpa [Tau.rename, Ty.rename, Path.rename] using
-        SubCode.pair_single_member (path.rename rho)
-          (ihUnderBinder rho.ext) opened'
+        SubCode.pair (ihFirst rho) (ihMember rho.ext)
   | bounds lower upper nonempty ihLower ihUpper ihNonempty =>
       intro m f Delta rho
       simpa [Tau.rename] using

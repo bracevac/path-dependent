@@ -1,12 +1,12 @@
 import LambdaPFC.SemanticEvidence
 import LambdaPFC.CodeMetatheory
+import LambdaPFC.StoreStratification
 
 /-!
 Execution and elaboration of finite semantic evidence.  Runtime conversion is
 first normalized to structural congruence.  Source subtyping is compiled
-eagerly under a semantic environment; the sole suspended source derivations
-are function codomains, which are compiled after application supplies their
-bound argument.
+eagerly under a semantic environment.  Function codomains and dependent-pair
+members are suspended until execution supplies their bound locations.
 -/
 
 namespace LambdaPFC
@@ -200,28 +200,53 @@ noncomputable def SubCode.compile
         exact .selLo resolution lower
 | .fun domain codomain =>
     .fun (domain.compile environment) (.source environment codomain)
-| .pair_fst first =>
-    .pairFst (first.compile environment)
-| @SubCode.pair_single_member _ _ p P kind dependent dependent'
-      label path underBinder opened => by
-    obtain ⟨endpoint, resolution, realizes⟩ := path.resolve environment
-    cases realizes with
-    | val possible =>
-        have openedCode := opened.compile environment
-        have openedCode' :
-            Coercion sigma
-              ((dependent.rename rho.ext).open (p.rename rho))
-              ((dependent'.rename rho.ext).open (p.rename rho)) := by
-          simpa only [Tau.open_rename] using openedCode
-        simpa [Tau.rename, Ty.rename, Path.rename, Tau.open_rename] using
-          Coercion.pairMember resolution openedCode'
+| .pair first member =>
+    .pair (first.compile environment) (.source environment member)
 | .bounds lower upper nonempty =>
     .bounds (lower.compile environment) (upper.compile environment)
       (nonempty.compile environment)
 
+/-! ## Instantiating dependent-pair members -/
+
+/-- Compile a delayed member comparison after the stored pair exposes its
+concrete first-component location. -/
+noncomputable def MemberClosure.instantiate
+    {m : Nat} {sigma : Store m} {S : Ty m} {k : Kind}
+    {d d' : Tau (m + 1) k} {x : Fin m} :
+    MemberClosure sigma S d d' ->
+    Store.Possible sigma x S ->
+    Coercion sigma (d.open (.var x)) (d'.open (.var x))
+| .source environment code, argument => by
+    have extended := Environment.snoc environment argument
+    have compiled := SubCode.compile extended code
+    simpa only [← Tau.rename_openAt_eq_open_var,
+      Tau.rename_ext_openAt] using compiled
+
+/-! ## Coercion size -/
+
+/-- Structural size used as the secondary component of coercion action's
+well-founded measure. -/
+def Coercion.treeSize : Coercion sigma d1 d2 -> Nat
+| .refl => 1
+| .trans first second => first.treeSize + second.treeSize + 1
+| .runtime _ => 1
+| .bot => 1
+| .top => 1
+| .widen _ _ => 1
+| .alias _ _ => 1
+| .selLo _ lower => lower.treeSize + 1
+| .selHi _ upper => upper.treeSize + 1
+| .fun domain _ => domain.treeSize + 1
+| .pair first _ => first.treeSize + 1
+| .bounds lower upper middle =>
+    lower.treeSize + upper.treeSize + middle.treeSize + 1
+
 /-! ## Coercion action -/
 
-/-- Execute a finite coercion on generalized endpoint realization. -/
+/-- Execute a finite coercion on generalized endpoint realization.  Ordinary
+recursive calls consume a proper subcoercion.  Acting on a pair descends to
+the older first-component and member endpoints recorded by its store
+binding, which is the primary component of the well-founded measure. -/
 noncomputable def Coercion.action
     {m : Nat} {sigma : Store m} {k : Kind} {d1 d2 : Tau m k}
     {endpoint : Path.Endpoint m} :
@@ -252,20 +277,14 @@ noncomputable def Coercion.action
         | single resolution =>
             cases resolution.deterministic sourceResolution
             exact .val (.single targetResolution)
-| .selLo resolution lower, realizes => by
-    cases realizes with
-    | val possible =>
-        have witness := lower.action (.val possible)
-        cases witness with
-        | val possibleWitness =>
-            exact .val (.selection resolution possibleWitness)
-| .selHi resolution upper, realizes => by
-    cases realizes with
-    | val possible =>
-        cases possible with
-        | selection sourceResolution witness =>
-            cases sourceResolution.deterministic resolution
-            exact upper.action (.val witness)
+| .selLo resolution lower, .val possible => by
+    have witness := lower.action (.val possible)
+    cases witness with
+    | val possibleWitness =>
+        exact .val (.selection resolution possibleWitness)
+| .selHi resolution upper, .val (.selection sourceResolution witness) => by
+    cases sourceResolution.deterministic resolution
+    exact upper.action (.val witness)
 | .fun domain codomain, realizes => by
     cases realizes with
     | val possible =>
@@ -274,36 +293,27 @@ noncomputable def Coercion.action
             exact .val (.fun binding body
               (.trans domain input)
               (.trans (.narrow domain output) codomain))
-| .pairFst firstCode, realizes => by
-    cases realizes with
-    | val possible =>
-        cases possible with
-        | pair binding first member =>
-            have mapped := firstCode.action (.val first)
-            cases mapped with
-            | val mappedFirst =>
-                exact .val (.pair binding mappedFirst member)
-| @Coercion.pairMember m sigma p x a k dependent dependent'
-      pathResolution opened, realizes => by
-    cases realizes with
-    | val possible =>
-        cases possible with
-        | @pair _ _ _ y _ _ delta _ _ binding first member =>
-            cases first with
-            | single firstResolution =>
-                cases firstResolution.deterministic pathResolution
-                let paths : Path.RuntimeEq sigma (.var x) p :=
-                  .ofResolve .var pathResolution
-                have atPath := member.convert
-                  (Tau.RuntimeConv.replace dependent paths)
-                have mapped := opened.action atPath
-                have atLocation := mapped.convert
-                  (Tau.RuntimeConv.replace dependent' paths.symm)
-                exact .val (.pair binding (.single firstResolution) atLocation)
+| .pair firstCode memberClosure,
+    .val (@Store.Possible.pair _ _ _ _ _ _ _ _ _
+      binding first member) => by
+    have firstStratum := binding.pair_first_stratum_lt
+    have memberStratum := binding.pair_endpoint_stratum_lt
+    have mapped := firstCode.action (.val first)
+    cases mapped with
+    | val mappedFirst =>
+        have mappedMember :=
+          (memberClosure.instantiate first).action member
+        exact .val (.pair binding mappedFirst mappedMember)
 | .bounds lower upper nonempty, realizes => by
     cases realizes with
     | type sourceLower sourceUpper =>
         exact .type (.trans lower sourceLower) (.trans sourceUpper upper)
+termination_by coercion _ =>
+  (endpoint.stratum, coercion.treeSize)
+decreasing_by
+  all_goals simp_wf
+  all_goals simp only [Coercion.treeSize]
+  all_goals omega
 
 /-- Proper-type specialization of coercion action. -/
 noncomputable def Coercion.actionPossible

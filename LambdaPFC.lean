@@ -6,6 +6,7 @@ import LambdaPFC.Derivations
 import LambdaPFC.StaticMetatheory
 import LambdaPFC.CodeMetatheory
 import LambdaPFC.Runtime
+import LambdaPFC.StoreStratification
 import LambdaPFC.RuntimeEquality
 import LambdaPFC.Valuation
 import LambdaPFC.SemanticEvidence
@@ -20,3 +21,4 @@ import LambdaPFC.MachineSupport
 import LambdaPFC.SemanticProgress
 import LambdaPFC.SemanticPreservation
 import LambdaPFC.SemanticSafety
+import LambdaPFC.GeneralPairRegression

@@ -19,6 +19,7 @@
 \newcommand{\resolve}{\Downarrow}
 \newcommand{\semmap}{\mathrel{\Rightarrow_{\!s}}}
 \newcommand{\defermap}{\mathrel{\Rightarrow_{\!d}}}
+\newcommand{\membermap}{\mathrel{\Rightarrow_{\!m}}}
 \newcommand{\bodyev}{\mathsf{Body}}
 \newcommand{\runtimeeq}{\mathrel{\equiv_{\sigma}}}
 \newcommand{\judgheader}[3][]{%
@@ -44,9 +45,9 @@ pairs. A pair member may depend on the first component and may contain either
 a term reference or a type definition. The calculus distinguishes term
 singleton types from abstract type selections. Conflating the two makes
 singleton symmetry unsound: we give a closed, well-typed program that becomes
-stuck. We restrict dependent-member subtyping to pairs whose first component
-has singleton type and prove type safety in Lean. The unrestricted pair rule
-remains an open question.
+stuck. Dependent-pair covariance compares member signatures under the source
+first-component type. Its semantic interpretation retains this comparison
+until the concrete first component is known. We prove type safety in Lean.
 \end{abstract}
 
 \keywords{path-dependent types, dependent pairs, singleton types, type
@@ -88,22 +89,25 @@ version represented both with one constructor. We show that singleton
 symmetry then turns abstract membership into a false path equality and yields
 a closed stuck program.
 
-Second, changing the dependent member requires a singleton type for the first
-component; widening the first component is a separate rule. The member premise
-is opened at the singleton path, providing the comparison used by the semantic
-interpretation. Soundness of the unrestricted rule with distinct singleton
-and selection types remains open.
+Second, dependent-pair covariance compares members under the source
+first-component type. The semantic interpretation records this premise as a
+closure over its source environment and instantiates it when a runtime pair
+exposes its first-component location. Coercion action is well founded because
+the append-only store places both endpoints stored in a pair below the pair
+cell in allocation order.
 
 \paragraph{Contributions.}
 The paper gives a closed counterexample showing that abstract membership
 cannot justify singleton symmetry; a calculus that separates those notions
-and retains dependent abstract members with explicit bound checks; and a
-type-safety proof based on proof-relevant source derivations, store-local
-realization, runtime path equivalence, and finite semantic coercions. The sound
-calculus, the regression excluding the critical false alias, and the safety
-proof are formalized in Lean 4 \citep{demoura2021lean4}. Recursive objects,
+and retains dependent abstract members with explicit bound checks and
+unrestricted dependent-pair covariance; and a type-safety proof based on
+proof-relevant source derivations, store-local realization, runtime path
+equivalence, and finite semantic coercions. The calculus, the regression
+excluding the critical false alias, dependent-pair regressions at both member
+kinds, and the safety proof are formalized in Lean 4
+\citep{demoura2021lean4}. Recursive objects,
 recursive types, mutation,
-intersections, and unions lie outside the core language; termination, type
+intersections, and unions lie outside the core language; program termination, type
 inference, and elimination of primitive transitivity lie outside the present
 development.
 
@@ -230,8 +234,8 @@ well-formedness.}
 
 \Cref{fig:subtyping} gives the complete declarative subtyping relation. The
 safety argument uses the restriction of \textsc{S-Alias} to term singletons,
-the bound-consistency premise \(L<:U\) in the selection rules, and the
-separation of first-component widening from dependent-member subtyping.
+the bound-consistency premise \(L<:U\) in the selection rules, and the source
+first-component type in the member premise of \textsc{S-Pair}.
 
 The well-formedness rules enforce the same distinctions. A singleton must
 contain a term-denoting path, whereas a selection must name an interval
@@ -287,23 +291,14 @@ check.
    \Gamma,x:S'\vdash T<:T'}
   {\Gamma\vdash (x:S)\to T<:(x:S')\to T'}
 \and
-\inferrule*[right=\textsc{S-Pair-Fst}]
-  {\Gamma\vdash S<:S'}
+\inferrule*[right=\textsc{S-Pair}]
+  {\Gamma\vdash S<:S'
+   \\
+   \Gamma,x:S\vdash\tau<:\tau'}
   {\Gamma\vdash
     \pairty{x}{S}{a}{\tau}
     <:
-    \pairty{x}{S'}{a}{\tau}}
-\and
-\inferrule*[right=\textsc{S-Pair-Single}]
-  {\Gamma\vdash p::P
-   \\
-   \Gamma,x:\sing{p}\vdash\tau<:\tau'
-   \\
-   \Gamma\vdash\subst{\tau}{p}{x}<:\subst{\tau'}{p}{x}}
-  {\Gamma\vdash
-    \pairty{x}{\sing{p}}{a}{\tau}
-    <:
-    \pairty{x}{\sing{p}}{a}{\tau'}}
+    \pairty{x}{S'}{a}{\tau'}}
 \and
 \inferrule*[right=\textsc{S-Bounds}]
   {\Gamma\vdash L'<:L
@@ -318,14 +313,14 @@ check.
 and intervals with intervals.}
 \Description{The complete declarative subtyping relation on member signatures,
 including primitive transitivity, singleton and selection rules, functions,
-the two restricted pair rules, and interval subtyping.}
+dependent pairs, and interval subtyping.}
 \label{fig:subtyping}
 \end{figure}
 
-In \textsc{S-Pair-Single}, the last premise compares the two members after
-opening them at \(p\), supplementing their comparison under
-\(x:\sing{p}\). Declarative transitivity composes this rule with
-\textsc{S-Pair-Fst}.
+Rule \textsc{S-Pair} checks the member comparison under the source
+first-component type \(S\). This is the assumption realized by the concrete
+first component of a source pair. The first component and the member signature
+may change in the same derivation.
 
 \subsection{Term typing}
 
@@ -603,48 +598,53 @@ distinction explicit.
 
 \subsection{The pair rule}
 
-The unrestricted rule one might first write is
+Rule \textsc{S-Pair} compares the member signatures under a hypothetical
+component \(x:S\). A semantic environment for \(\Gamma\) does not yet assign a
+store location to \(x\), so this premise cannot be compiled immediately into a
+store-local coercion. The interpretation retains the proof-relevant member
+derivation together with the environment for \(\Gamma\). When coercion action
+observes a source pair \(\pairval{y}{a}{\delta}\), realization supplies
+\(\mathsf{Poss}_{\sigma}(y,S)\). Extending the retained environment with
+\(x\mapsto y\) compiles the member premise to
 \[
-\inferrule
-  {\Gamma\vdash S<:S'
-   \\
-   \Gamma,x:S\vdash\tau<:\tau'}
-  {\Gamma\vdash
-    \pairty{x}{S}{a}{\tau}
-    <:
-    \pairty{x}{S'}{a}{\tau'}}.
-\tag{Unrestricted Pair}
+  \sigma\vdash
+    \subst{\tau}{y}{x}\semmap\subst{\tau'}{y}{x}.
 \]
-The premise compares the members under a hypothetical component \(x:S\),
-whereas preservation needs its instance at the concrete location \(y\) stored
-in a runtime pair. The present pair interpretation avoids this mismatch by
-requiring a singleton path \(p\) and an explicit comparison opened at \(p\).
-Once the pair is observed, co-resolution of \(p\) with its first component
-transports that comparison to the member opened at \(y\).
+This coercion acts on the stored member endpoint, while the first premise of
+\textsc{S-Pair} maps the realization of \(y\) from \(S\) to \(S'\).
 
-\textsc{S-Pair-Single} fixes a path \(p\) and provides that specialized
-comparison explicitly. If the stored first component \(y\) realizes
-\(\sing{p}\), then \(p\) resolves to \(y\), hence \(p\runtimeeq y\).
-Conversion transports the opened comparison at \(p\) to the member opened at
-\(y\).
-
-The two pair rules derive the following abstraction pattern. If
+The rule derives the usual abstraction pattern directly. If
 \(\Gamma\vdash p::P\), then
 \[
-\begin{aligned}
-&\pairty{x}{\sing{p}}{A}{\sing{p}..\sing{p}}
-\\[-1mm]
-&\quad<:\pairty{x}{\sing{p}}{A}{\bot..\sing{x}}
-\\[-1mm]
-&\quad<:\pairty{x}{P}{A}{\bot..\sing{x}}.
-\end{aligned}
+\pairty{x}{\sing{p}}{A}{\sing{p}..\sing{p}}
+\;<:\;
+\pairty{x}{P}{A}{\bot..\sing{x}}.
 \]
-The first step hides an exact definition behind dependent bounds while the
-first component is a singleton; the second widens that component.
+The first premise follows by singleton widening. Under
+\(x:\sing{p}\), interval subtyping uses \(\bot<:\sing{p}\), singleton aliasing
+to obtain \(\sing{p}<:\sing{x}\), and reflexivity for consistency of the source
+bounds.
 
-The semantic interpretation validates the restricted rule. Soundness of the
-unrestricted rule remains open; we have neither a proof nor a counterexample
-for \lambdap{}.
+The mechanization also checks instances whose source first component is not a
+singleton. In particular,
+\[
+\pairty{x}{\top}{a}{\sing{x}}
+  <:\pairty{x}{\top}{a}{\top}
+\qquad\text{and}\qquad
+\pairty{x}{\top}{A}{\sing{x}..\sing{x}}
+  <:\pairty{x}{\top}{A}{\bot..\top}.
+\]
+The second derivation exercises interval members. Its source type is inhabited
+by the closed term
+\[
+\mathbf{let}\ y=\lambda(z:\top).z\ \mathbf{in}\
+\bigl(\pairval{y}{A}{\sing{y}}:
+  \pairty{x}{\top}{A}{\sing{x}..\sing{x}}\bigr).
+\]
+The lambda is subsumed to \(\top\) before it is bound. The pair ascription fixes
+the dependent source type, and the displayed interval derivation gives the
+whole term type \(\pairty{x}{\top}{A}{\bot..\top}\). Type safety is specialized
+to this closed typing derivation in the mechanized regression.
 
 \section{Soundness}
 \label{sec:soundness}
@@ -1003,21 +1003,13 @@ store locations, and both endpoint-realization rules.}
   {\sigma\vdash
     (z:S)\to T\semmap(z:S')\to T'}
 \and
-\inferrule*[right=\textsc{M-Pair-Fst}]
-  {\sigma\vdash S\semmap S'}
+\inferrule*[right=\textsc{M-Pair}]
+  {\sigma\vdash S\semmap S'
+   \\
+   \sigma\vdash_{z:S}\tau\membermap\tau'}
   {\sigma\vdash
     \pairty{z}{S}{a}{\tau}\semmap
-    \pairty{z}{S'}{a}{\tau}}
-\and
-\inferrule*[right=\textsc{M-Pair-Member}]
-  {\sigma\vdash p\resolve\mathsf{val}(x)
-   \\
-   \sigma\vdash
-     \subst{\tau}{p}{z}\semmap
-     \subst{\tau'}{p}{z}}
-  {\sigma\vdash
-    \pairty{z}{\sing{p}}{a}{\tau}\semmap
-    \pairty{z}{\sing{p}}{a}{\tau'}}
+    \pairty{z}{S'}{a}{\tau'}}
 \and
 \inferrule*[right=\textsc{M-Bounds}]
   {\sigma\vdash L'\semmap L
@@ -1030,9 +1022,9 @@ store locations, and both endpoint-realization rules.}
 \end{minipage}
 \caption{The complete finite coercion relation. Conversion is generated by
 store-indexed runtime path equality. Selection rules retain the resolved type
-and the corresponding bound coercion. Function coercions defer their
-codomain component until an argument location is available.}
-\Description{All thirteen constructors of store-local semantic coercions.}
+and the corresponding bound coercion. Function coercions retain a deferred
+codomain coercion, and pair coercions retain a dependent-member closure.}
+\Description{All twelve constructors of store-local semantic coercions.}
 \label{fig:fc-coercions}
 \end{figure}
 
@@ -1069,6 +1061,17 @@ codomain component until an argument location is available.}
      \rho^+(T)\defermap\rho^+(U)}
 \end{mathpar}
 
+\judgheader{Dependent-member closure}
+  {\sigma\vdash_{z:S}\tau\membermap\tau'}
+\begin{mathpar}
+\inferrule*[right=\textsc{MC-Source}]
+  {\rho\models_{\sigma}\Gamma
+   \\
+   \Gamma,z:S\vdash_{\mathsf c}\tau<:\tau'}
+  {\sigma\vdash_{z:\rho(S)}
+     \rho^+(\tau)\membermap\rho^+(\tau')}
+\end{mathpar}
+
 \judgheader{Body closure}{\bodyev_{\sigma}(S,t,T)}
 \begin{mathpar}
 \inferrule*[right=\textsc{B-Source}]
@@ -1079,13 +1082,15 @@ codomain component until an argument location is available.}
     \bigl(\rho(S),\rho^+(t),\rho^+(T)\bigr)}
 \end{mathpar}
 \end{minipage}
-\caption{Evidence retained beneath a source binder. Deferred coercions are
-instantiated only after application supplies a location possible at the
-indexed domain. A body closure pairs a proof-relevant source typing derivation
-with an environment for its free variables. Here \(\rho^+\) is the lift of
-\(\rho\) through the fresh binder, and \(\vdash_{\mathsf c}\) denotes a
-proof-relevant source derivation.}
-\Description{All five deferred-coercion rules and the body-closure schema.}
+\caption{Evidence retained beneath a source binder. Deferred codomain
+coercions support composition, conversion, and narrowing before application
+supplies an argument. A dependent-member closure records the member premise of
+\textsc{S-Pair} until pair coercion action supplies the first component. A body
+closure retains a source term derivation. Each source constructor closes a
+proof-relevant derivation over the environment for its free variables. Here
+\(\rho^+\) is the lift of \(\rho\) through the fresh binder.}
+\Description{All five deferred-codomain rules, the dependent-member closure
+rule, and the body-closure rule.}
 \label{fig:fc-deferred}
 \end{figure}
 
@@ -1212,23 +1217,59 @@ type together with a realization at that type.
 
 Interval realization is the recursive point of the definition. A stored type
 \(W\) realizes \(L..U\) by finite coercions from \(L\) to \(W\) and from
-\(W\) to \(U\). These coercions are inductive data, which permits action to be
-defined by recursion over a finite derivation. Selection action follows the
-stored lower or upper coercion. Transitivity composes actions, and runtime
-conversion transports realizations along paths that co-resolve in the store.
+\(W\) to \(U\). These coercions are finite inductive data. Selection action
+follows the stored lower or upper coercion. Transitivity composes actions, and
+runtime conversion transports realizations along paths that co-resolve in the
+store.
 
 The codomain premise of function subtyping is suspended until application
 supplies an argument location. A source deferred coercion closes a
 proof-relevant subtyping derivation with the environment for its free
-variables. Instantiation extends that environment with the actual argument
-and compiles the saved derivation. Body closures use the same construction for
-function and let bodies.
+variables. Deferred coercions support the composition and narrowing required
+when function coercions act on possible functions. Instantiation extends the
+saved environment with the actual argument and compiles the source derivation.
+Body closures use the same environment-passing construction for function and
+let bodies.
 
-The dependent-member coercion implements \textsc{S-Pair-Single}. If the first
-component \(y\) realizes \(\sing{p}\), then \(p\runtimeeq y\). Runtime
-conversion moves the stored member from \(\subst{\tau}{y}{z}\) to
-\(\subst{\tau}{p}{z}\), the explicit opened coercion acts there, and a second
-conversion returns to \(\subst{\tau'}{y}{z}\).
+Rule \textsc{M-Pair} retains its member premise in a separate dependent-member
+closure. This closure has a single source constructor: it pairs the
+proof-relevant derivation of
+\(\Gamma,z:S\vdash\tau<:\tau'\) with an environment for \(\Gamma\). If a
+source pair stored at \(r\) contains first component \(y\), rule
+\textsc{P-Pair} supplies \(\mathsf{Poss}_{\sigma}(y,S)\). Instantiation maps
+\(z\) to \(y\) and compiles the retained derivation. The resulting coercion
+maps the member endpoint from \(\subst{\tau}{y}{z}\) to
+\(\subst{\tau'}{y}{z}\); the first-component coercion independently maps
+\(\mathsf{Poss}_{\sigma}(y,S)\) to
+\(\mathsf{Poss}_{\sigma}(y,S')\).
+
+Coercion action uses well-founded recursion because a member closure can
+compile to a coercion that is not a subterm of the enclosing pair coercion.
+Let \(n\) be the length of \(\sigma\). Runtime endpoints have stratum
+\[
+\mathsf{str}_{\sigma}(\mathsf{val}(x))=n-\mathsf{index}(x),
+\qquad
+\mathsf{str}_{\sigma}(\mathsf{type}(W))=0,
+\]
+where index zero denotes the newest store location. Allocation increments the
+indices of old locations, leaving their strata unchanged. The append-only
+store ensures that if
+\(\sigma(r)=\pairval{y}{a}{\delta}\), then
+\[
+\mathsf{str}_{\sigma}(\mathsf{val}(y))
+  <\mathsf{str}_{\sigma}(\mathsf{val}(r))
+\quad\text{and}\quad
+\mathsf{str}_{\sigma}(\mathsf{endpoint}(\delta))
+  <\mathsf{str}_{\sigma}(\mathsf{val}(r)).
+\]
+Action of coercion \(c\) on endpoint \(e\) is defined using the lexicographic
+measure \((\mathsf{str}_{\sigma}(e),|c|)\), where \(|c|\) is coercion-tree
+size. Every recursive call outside the pair case keeps the endpoint fixed and
+uses a proper subcoercion, decreasing \(|c|\). The pair case invokes action
+once on the stored first component and once on the stored member endpoint.
+Both calls decrease the primary stratum component. In particular, the second
+call may use the newly compiled member coercion without requiring a structural
+decrease from the enclosing coercion.
 
 \begin{lemma}[Coercion compilation and action]
 \label{lem:coercions}
@@ -1242,20 +1283,26 @@ Suppose \(\rho\models_{\sigma}\Gamma\).
 \item If \(\sigma\vdash_{z:S}T\defermap U\) and
   \(\mathsf{Poss}_{\sigma}(x,S)\), then
   \(\sigma\vdash\subst{T}{x}{z}\semmap\subst{U}{x}{z}\).
+\item If \(\sigma\vdash_{z:S}\tau\membermap\tau'\) and
+  \(\mathsf{Poss}_{\sigma}(x,S)\), then
+  \(\sigma\vdash\subst{\tau}{x}{z}\semmap
+    \subst{\tau'}{x}{z}\).
 \end{enumerate}
 \end{lemma}
 
 The first clause compiles source subtyping. Its selection cases use the
 coercions contained in interval realization, and its transitivity case builds
 finite composition. The second clause is coercion action. The third is the
-instantiation operation used in dependent beta reduction.
+deferred-codomain instantiation used in dependent beta reduction, and the
+fourth is dependent-member instantiation used by pair coercion action.
 
 \subsection{Fundamental interpretation}
 
 The interpretation is parameterized by the valuation that connects a source
 scope to the current store. Extending an environment maps the newest source
 variable to a location possible at the renamed binder type. This operation is
-used when a deferred coercion or body closure receives its argument.
+used when a deferred coercion, dependent-member closure, or body closure
+receives its argument.
 
 \begin{lemma}[Fundamental interpretation]
 \label{lem:fundamental}
@@ -1309,10 +1356,10 @@ to the input type of its continuation.
 
 Allocation shifts every old location. Runtime equality, environments,
 possible locations, endpoint realizations, coercions, deferred coercions,
-body closures, terms, and continuations are all stable under this uniform
-weakening. A newly allocated value is possible at the weakening of its
-advertised type, which supplies the fresh argument used to resume the saved
-body closure.
+dependent-member closures, body closures, terms, and continuations are all
+stable under this uniform weakening. A newly allocated value is possible at
+the weakening of its advertised type, which supplies the fresh argument used
+to resume the saved body closure.
 
 \subsection{Progress and preservation}
 
@@ -1392,10 +1439,11 @@ in the safety proof.
 \lambdap{} isolates paths, dependent pairs, and abstract type members. Its
 counterexample shows that abstract membership cannot justify singleton
 symmetry. The safety proof interprets proof-relevant source derivations using
-store-local realization, runtime path equivalence, deferred body evidence, and
-finite semantic coercions. The restricted pair rule is validated by an
-explicit coercion opened at its singleton first component. Whether
-unrestricted pair subtyping is sound for \lambdap{} remains open.
+store-local realization, runtime path equivalence, deferred evidence, and
+finite semantic coercions. Unrestricted dependent-pair covariance is validated
+by closing the member derivation over its source environment and instantiating
+it at the stored first component. The append-only allocation order and
+coercion-tree size provide the lexicographic measure for coercion action.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../references}
