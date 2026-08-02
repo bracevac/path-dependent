@@ -244,11 +244,6 @@ theorem Tm.Cont.StructTy.weaken_runtime
       simpa only [Tm.Cont.weaken, Tm.Cont.rename, List.map_cons] using
         Tm.Cont.StructTy.cons ih (hf.weaken_runtime v vv)
 
-private theorem Renaming.identity (Gamma : Ctx n) :
-    Renaming Gamma FinFun.id Gamma := by
-  intro x T hx
-  simpa only [Ty.rename_id] using hx
-
 private theorem Path.RelHom.scoped_to_runtime_extension
     {n : Nat} {sigma : Store n} {v : Tm n} {vv : v.IsValue} :
     Path.RelHom (Path.ScopedLift (Path.RuntimeEq sigma))
@@ -269,7 +264,7 @@ theorem StructPreserve.lift
           cases hframe with
           | «let» hbody =>
               have hbody' := hbody.renameExact
-                (Renaming.identity (Gamma.snoc _))
+                (Renaming.id (Gamma.snoc _))
                 (Path.RelHom.scoped_to_runtime_extension (v := v) (vv := vv))
               apply StructPreserve.extend
               apply State.StructTy.ok (.val hstore hvalue vv)

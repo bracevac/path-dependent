@@ -880,21 +880,6 @@ theorem Tau.StructSub.mapped_subst
 
 /-! ## Exact-store identity instance -/
 
-private theorem Path.StructSubstitution.mapped_identity
-    (Gamma : Ctx n) (sigma : Store n) :
-    Path.StructSubstitution Gamma PathSubst.id Gamma
-      (Path.RuntimeEq sigma) := by
-  intro x T hb
-  simpa only [Path.subst_id, Tau.subst, Ty.subst_id] using
-    (Path.StructCheck.var (R := Path.RuntimeEq sigma) hb)
-
-private theorem Path.SubstRelHom.mapped_identity
-    (sigma : Store n) :
-    Path.SubstRelHom (Path.RuntimeEq sigma) (Path.RuntimeEq sigma)
-      PathSubst.id := by
-  intro p q hpq
-  simpa only [Path.subst_id] using hpq
-
 private theorem Store.StructPreciseTy.mapped_identity
     (hstore : Store.StructPreciseTy Gamma sigma) :
     Path.MappedSubstitution Gamma PathSubst.id Gamma sigma := by
@@ -914,8 +899,8 @@ theorem Path.StructCheck.mapped_resolves
       Path.Endpoint.MappedRealizes Gamma sigma endpoint d := by
   simpa only [Path.subst_id, Tau.subst_id] using
     h.mapped_subst
-      (Path.StructSubstitution.mapped_identity Gamma sigma)
-      (Path.SubstRelHom.mapped_identity sigma)
+      Path.StructSubstitution.id
+      Path.SubstRelHom.id
       hstore.mapped_identity
 
 /-- Structural runtime subtyping denotes a semantic map in every exact
@@ -926,8 +911,8 @@ theorem Tau.StructSub.mapped
     Tau.SemMap Gamma sigma d1 d2 := by
   simpa only [Tau.subst_id] using
     h.mapped_subst
-      (Path.StructSubstitution.mapped_identity Gamma sigma)
-      (Path.SubstRelHom.mapped_identity sigma)
+      Path.StructSubstitution.id
+      Path.SubstRelHom.id
       hstore.mapped_identity
 
 end LambdaP

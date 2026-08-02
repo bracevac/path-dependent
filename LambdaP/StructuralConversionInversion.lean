@@ -39,7 +39,7 @@ theorem Tau.swap01_open_weaken
     (template.subst PathSubst.swap01).open p.weaken =
       template.subst (PathSubst.openAt p).lift := by
   unfold Tau.open
-  rw [Tau.subst_subst]
+  rw [Tau.subst_comp]
   apply congrArg (fun rho => template.subst rho)
   funext x
   refine Fin.cases ?_ (fun y => ?_) x

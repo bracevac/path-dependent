@@ -58,20 +58,6 @@ theorem Tm.PreciseTy.weaken (h : Tm.PreciseTy Gamma v T) :
     Tm.PreciseTy (Gamma.snoc S) v.weaken T.weaken := by
   simpa [Tm.weaken, Ty.weaken] using h.rename (Renaming.weaken (S := S))
 
-def Ctx.lookup : (Gamma : Ctx n) -> Fin n -> Ty n
-| .nil, x => Fin.elim0 x
-| .snoc Gamma T, x =>
-    Fin.cases T.weaken (fun y => (Ctx.lookup Gamma y).weaken) x
-
-theorem Ctx.Binds.lookup_eq (h : Ctx.Binds Gamma x T) : Ctx.lookup Gamma x = T := by
-  induction h with
-  | here => rfl
-  | there _ ih => simpa [Ctx.lookup] using congrArg Ty.weaken ih
-
-theorem Ctx.Binds.unique
-    (h1 : Ctx.Binds Gamma x T1) (h2 : Ctx.Binds Gamma x T2) : T1 = T2 := by
-  exact h1.lookup_eq.symm.trans h2.lookup_eq
-
 /-- A store and context built in lockstep from exact value-introduction types. -/
 inductive Store.PreciseTy : Ctx n -> Store n -> Prop where
 | empty : Store.PreciseTy Ctx.nil (Store.empty : Store 0)

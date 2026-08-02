@@ -155,12 +155,6 @@ theorem PreciseStructPreserve.toStructPreserve
 
 /-! ## Allocation -/
 
-/-- Identity is an exact renaming of a context to itself. -/
-private theorem Renaming.structPrecise_identity (Gamma : Ctx n) :
-    Renaming Gamma FinFun.id Gamma := by
-  intro x T hx
-  simpa only [Ty.rename_id] using hx
-
 /-- After allocation, every equation from the scoped pre-allocation relation
 is an equation in the concrete extended-store relation. -/
 private theorem Path.RelHom.structPrecise_scoped_to_runtime
@@ -195,7 +189,7 @@ theorem PreciseStructPreserve.lift
               obtain ⟨P, hprecise, hsub⟩ := hvalue.value_inversion vv
               have hbodyNarrow := hbody.narrow hsub
               have hbodyRuntime := hbodyNarrow.renameExact
-                (Renaming.structPrecise_identity (Gamma.snoc P))
+                (Renaming.id (Gamma.snoc P))
                 (Path.RelHom.structPrecise_scoped_to_runtime
                   (v := v) (vv := vv))
               apply PreciseStructPreserve.extend
