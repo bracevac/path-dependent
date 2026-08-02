@@ -1,6 +1,6 @@
 name = "path-dependent"
 version = "0.1.0"
-defaultTargets = ["LambdaP"]
+defaultTargets = ["LambdaP", "LambdaPFC"]
 
 [leanOptions]
 pp.unicode.fun = true
@@ -9,3 +9,6 @@ relaxedAutoImplicit = true
 
 [[lean_lib]]
 name = "LambdaP"
+
+[[lean_lib]]
+name = "LambdaPFC"
