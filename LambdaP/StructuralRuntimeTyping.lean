@@ -692,20 +692,6 @@ end
 
 /-! ## One-binder opening -/
 
-/-- Renaming the newest variable to `x` is the same operation on paths as
-opening by the variable path `x`. -/
-theorem Path.rename_openAt_eq_open_var
-    (p : Path (n + 1)) (x : Fin n) :
-    p.rename (FinFun.openAt x) = p.open (.var x) := by
-  induction p with
-  | var y =>
-      refine Fin.cases ?_ (fun z => ?_) y <;> rfl
-  | fst p ih =>
-      simpa [Path.rename, Path.open, Path.subst] using congrArg Path.fst ih
-  | sel p a ih =>
-      simpa [Path.rename, Path.open, Path.subst] using
-        congrArg (fun q => Path.sel q a) ih
-
 /-- Opening discharges the scoped relation: the bound variable is replaced
 by `x`, related to itself by ambient reflexivity. -/
 theorem Path.RelHom.openAt

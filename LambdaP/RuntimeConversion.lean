@@ -149,38 +149,6 @@ theorem Path.RuntimeEq.weaken
       simpa only [Path.weaken, Path.open_rename] using
         (Path.RuntimeEq.congr ih (r.rename FinFun.weaken.ext))
 
-/-! ## A non-collapse property for stuck paths -/
-
-/-- In an empty store, the only paths which reduce are variables. -/
-theorem Path.reduce.eq_var_of_empty
-    {n : Nat} {p : Path n} {x : Fin n}
-    (h : Path.reduce p (Store.empty : Store n) x) : p = .var x := by
-  cases h with
-  | var => rfl
-  | fst _ hb => cases hb
-  | sel_hit _ hb => cases hb
-  | sel_miss _ hb _ _ => cases hb
-
-/-- On an empty store, runtime equality is just syntactic equality.  Thus the
-runtime relation does not collapse distinct stuck paths. -/
-theorem Path.RuntimeEq.eq_of_empty
-    {n : Nat} {p q : Path n}
-    (h : Path.RuntimeEq (Store.empty : Store n) p q) : p = q := by
-  induction h with
-  | refl => rfl
-  | symm _ ih => exact ih.symm
-  | trans _ _ ih1 ih2 => exact ih1.trans ih2
-  | coresolve hp hq =>
-      exact hp.eq_var_of_empty.trans hq.eq_var_of_empty.symm
-  | congr _ r ih =>
-      exact congrArg (fun s => r.open s) ih
-
-theorem Path.RuntimeEq.not_of_empty
-    {n : Nat} {p q : Path n} (hne : p ≠ q) :
-    ¬ Path.RuntimeEq (Store.empty : Store n) p q := by
-  intro h
-  exact hne h.eq_of_empty
-
 /-! ## Runtime conversion of generalized types -/
 
 /-- Store-indexed conversion of generalized types.  The replacement rule is

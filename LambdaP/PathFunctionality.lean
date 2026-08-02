@@ -11,27 +11,6 @@ eliminated with `cases`, simultaneously identifying the kinds and signatures.
 
 namespace LambdaP
 
-/-- The type stored at a context index, weakened through every newer binder. -/
-def Ctx.typeAt : (Γ : Ctx n) -> Fin n -> Ty n
-| .nil, x => Fin.elim0 x
-| .snoc Γ T, x =>
-    Fin.cases T.weaken (fun i => (Ctx.typeAt Γ i).weaken) x
-
-/-- A derivation of context lookup computes the deterministic type at that
-index. -/
-theorem Ctx.Binds.eq_typeAt (h : Ctx.Binds Γ x T) : T = Γ.typeAt x := by
-  induction h with
-  | here => rfl
-  | there h ih =>
-      change _ = (Ctx.typeAt _ _).weaken
-      exact congrArg Ty.weaken ih
-
-/-- Context lookup is functional.  This deliberately uses a different name
-from `Ctx.Binds.unique` in `PreciseStore`. -/
-theorem Ctx.Binds.functional
-    (h1 : Ctx.Binds Γ x T1) (h2 : Ctx.Binds Γ x T2) : T1 = T2 :=
-  h1.eq_typeAt.trans h2.eq_typeAt.symm
-
 /-- Dependent equality of generalized types, including equality of their
 kind indices. -/
 inductive Tau.DEq {n k} (τ : Tau n k) : {k' : Kind} -> Tau n k' -> Prop where
@@ -63,7 +42,7 @@ theorem Path.Ty.functional
   | var hb1 =>
       cases h2 with
       | var hb2 =>
-          cases Ctx.Binds.functional hb1 hb2
+          cases Ctx.Binds.unique hb1 hb2
           exact .refl
   | fst hp1 ih =>
       cases h2 with

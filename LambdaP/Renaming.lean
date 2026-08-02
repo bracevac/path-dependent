@@ -13,6 +13,18 @@ contexts. -/
 abbrev Renaming (Γ : Ctx n) (f : FinFun n m) (Δ : Ctx m) : Prop :=
   ∀ {x T}, Ctx.Binds Γ x T -> Ctx.Binds Δ (f x) (T.rename f)
 
+/-- Identity is a context-respecting renaming. -/
+theorem Renaming.id (Γ : Ctx n) : Renaming Γ FinFun.id Γ := by
+  intro x T hx
+  simpa only [Ty.rename_id] using hx
+
+/-- Context-respecting renamings are closed under composition. -/
+theorem Renaming.comp
+    (ρ : Renaming Γ f Δ) (θ : Renaming Δ g Ξ) :
+    Renaming Γ (f.comp g) Ξ := by
+  intro x T hx
+  simpa only [FinFun.comp_apply, Ty.rename_rename] using θ (ρ hx)
+
 /-- Extend a context-respecting renaming below one dependent binder. -/
 theorem Renaming.ext (ρ : Renaming Γ f Δ) :
     Renaming (Γ.snoc T) f.ext (Δ.snoc (T.rename f)) := by

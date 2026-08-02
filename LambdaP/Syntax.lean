@@ -4,6 +4,11 @@ import LambdaP.FinFun
 Intrinsically scoped syntax for `lambda_p`.  Term singleton types and
 abstract type selections are distinct constructors.  Function codomains and
 pair members bind their first component.
+
+Dependencies admit substitution of arbitrary paths.  Pair definitions store
+variables, so terms and definitions support the corresponding variable-only
+action through renaming; their one-binder opening operations reflect this
+restriction.
 -/
 
 namespace LambdaP
@@ -131,6 +136,10 @@ def Def.weaken (d : Def n k) : Def (n + 1) k := d.rename FinFun.weaken
 /-- A simultaneous substitution of paths for variables. -/
 abbrev PathSubst (n m : Nat) : Type := Fin n -> Path m
 
+/-- Regard a variable renaming as a path substitution. -/
+def FinFun.asSubst (f : FinFun n m) : PathSubst n m :=
+  fun x => .var (f x)
+
 namespace PathSubst
 
 /-- The identity path substitution. -/
@@ -144,13 +153,29 @@ def lift (σ : PathSubst n m) : PathSubst (n + 1) (m + 1) :=
 def openAt (p : Path n) : PathSubst (n + 1) n :=
   Fin.cases p (fun i => .var i)
 
+/-- Post-compose a path substitution with a renaming. -/
+def compRename (σ : PathSubst n m) (f : FinFun m l) : PathSubst n l :=
+  fun x => (σ x).rename f
+
 end PathSubst
+
+/-- Pre-compose a renaming with a path substitution. -/
+def FinFun.compSubst (f : FinFun n m) (σ : PathSubst m l) : PathSubst n l :=
+  fun x => σ (f x)
 
 /-- Simultaneous path substitution. -/
 def Path.subst : Path n -> PathSubst n m -> Path m
 | .var x, σ => σ x
 | .fst p, σ => .fst (p.subst σ)
 | .sel p a, σ => .sel (p.subst σ) a
+
+namespace PathSubst
+
+/-- Composition of path substitutions, in diagrammatic order. -/
+def comp (σ : PathSubst n m) (θ : PathSubst m l) : PathSubst n l :=
+  fun x => (σ x).subst θ
+
+end PathSubst
 
 mutual
 
@@ -199,7 +224,7 @@ theorem Path.rename_id (p : Path n) : p.rename FinFun.id = p := by
   | sel p a ih => simp only [Path.rename, ih]
 
 theorem Path.rename_rename (p : Path n) (f : FinFun n m) (g : FinFun m l) :
-    (p.rename f).rename g = p.rename (g ∘ f) := by
+    (p.rename f).rename g = p.rename (f.comp g) := by
   induction p with
   | var x => rfl
   | fst p ih => simp only [Path.rename, ih]
@@ -244,42 +269,42 @@ end
 mutual
 
 theorem Ty.rename_rename (T : Ty n) (f : FinFun n m) (g : FinFun m l) :
-    (T.rename f).rename g = T.rename (g ∘ f) :=
+    (T.rename f).rename g = T.rename (f.comp g) :=
   match T with
   | .Top => rfl
   | .Bot => rfl
   | .Fun S T => by
       simp only [Ty.rename, Ty.rename_rename S f g,
-        Ty.rename_rename T f.ext g.ext, FinFun.ext_comp_ext]
+        Ty.rename_rename T f.ext g.ext, FinFun.ext_comp]
   | .Pair S a d => by
       simp only [Ty.rename, Ty.rename_rename S f g,
-        Tau.rename_rename d f.ext g.ext, FinFun.ext_comp_ext]
+        Tau.rename_rename d f.ext g.ext, FinFun.ext_comp]
   | .Single p => by simp only [Ty.rename, Path.rename_rename]
   | .TSel p A => by simp only [Ty.rename, Path.rename_rename]
 
 theorem Tau.rename_rename (d : Tau n k) (f : FinFun n m) (g : FinFun m l) :
-    (d.rename f).rename g = d.rename (g ∘ f) :=
+    (d.rename f).rename g = d.rename (f.comp g) :=
   match d with
   | .ty T => by simp only [Tau.rename, Ty.rename_rename]
   | .intv S T => by simp only [Tau.rename, Ty.rename_rename]
 
 theorem Tm.rename_rename (t : Tm n) (f : FinFun n m) (g : FinFun m l) :
-    (t.rename f).rename g = t.rename (g ∘ f) :=
+    (t.rename f).rename g = t.rename (f.comp g) :=
   match t with
   | .path p => by simp only [Tm.rename, Path.rename_rename]
   | .abs T t => by
       simp only [Tm.rename, Ty.rename_rename, Tm.rename_rename,
-        FinFun.ext_comp_ext]
+        FinFun.ext_comp]
   | .pair x a d => by
       simp only [Tm.rename, Def.rename_rename]
       rfl
   | .app p q => by simp only [Tm.rename, Path.rename_rename]
   | .let t u => by
-      simp only [Tm.rename, Tm.rename_rename, FinFun.ext_comp_ext]
+      simp only [Tm.rename, Tm.rename_rename, FinFun.ext_comp]
   | .typed t T => by simp only [Tm.rename, Tm.rename_rename, Ty.rename_rename]
 
 theorem Def.rename_rename (d : Def n k) (f : FinFun n m) (g : FinFun m l) :
-    (d.rename f).rename g = d.rename (g ∘ f) :=
+    (d.rename f).rename g = d.rename (f.comp g) :=
   match d with
   | .val x => rfl
   | .type T => by simp only [Def.rename, Ty.rename_rename]
@@ -320,40 +345,45 @@ namespace PathSubst
 @[simp] theorem openAt_succ (p : Path n) (x : Fin n) :
     openAt p x.succ = .var x := rfl
 
+@[simp] theorem comp_apply (σ : PathSubst n m) (θ : PathSubst m l)
+    (x : Fin n) : σ.comp θ x = (σ x).subst θ := rfl
+
+@[simp] theorem compRename_apply (σ : PathSubst n m) (f : FinFun m l)
+    (x : Fin n) : σ.compRename f x = (σ x).rename f := rfl
+
 theorem lift_id : (id (n := n)).lift = id := by
   apply _root_.funext
   intro x
   refine Fin.cases ?_ (fun i => ?_) x <;> rfl
 
-/-- Post-renaming commutes with lifting a path substitution. -/
-theorem lift_post_rename (σ : PathSubst n m) (f : FinFun m l) :
-    (fun x => (σ.lift x).rename f.ext) =
-      PathSubst.lift (fun x => (σ x).rename f) := by
+/-- Post-composition with a renaming commutes with lifting. -/
+theorem compRename_lift (σ : PathSubst n m) (f : FinFun m l) :
+    (σ.compRename f).lift = σ.lift.compRename f.ext := by
   apply _root_.funext
   intro x
   refine Fin.cases ?_ (fun i => ?_) x
   · rfl
-  · change (σ i).weaken.rename f.ext = ((σ i).rename f).weaken
-    exact (Path.weaken_rename (σ i) f).symm
+  · change ((σ i).rename f).weaken = (σ i).weaken.rename f.ext
+    exact Path.weaken_rename (σ i) f
 
-/-- Pre-renaming commutes with lifting a path substitution. -/
-theorem lift_pre_rename (g : FinFun n m) (σ : PathSubst m l) :
-    (fun x => σ.lift (g.ext x)) = PathSubst.lift (fun x => σ (g x)) := by
+/-- Pre-composition by a renaming commutes with lifting. -/
+theorem compSubst_lift (g : FinFun n m) (σ : PathSubst m l) :
+    (g.compSubst σ).lift = g.ext.compSubst σ.lift := by
   apply _root_.funext
   intro x
   refine Fin.cases ?_ (fun i => ?_) x <;> rfl
 
 /-- Opening is natural with respect to a subsequent renaming. -/
 theorem openAt_rename (p : Path n) (f : FinFun n m) :
-    (fun x => (openAt p x).rename f) =
-      (fun x => openAt (p.rename f) (f.ext x)) := by
+    (openAt p).compRename f =
+      f.ext.compSubst (openAt (p.rename f)) := by
   apply _root_.funext
   intro x
   refine Fin.cases ?_ (fun i => ?_) x <;> rfl
 
 /-- The opening substitution cancels weakening. -/
 theorem openAt_weaken (p : Path n) :
-    (fun x => openAt p (FinFun.weaken x)) = id := by
+    FinFun.weaken.compSubst (openAt p) = id := by
   apply _root_.funext
   intro x
   rfl
@@ -367,14 +397,14 @@ theorem Path.subst_id (p : Path n) : p.subst PathSubst.id = p := by
   | sel p a ih => simp only [Path.subst, ih]
 
 theorem Path.subst_rename (p : Path n) (σ : PathSubst n m) (f : FinFun m l) :
-    (p.subst σ).rename f = p.subst (fun x => (σ x).rename f) := by
+    (p.subst σ).rename f = p.subst (σ.compRename f) := by
   induction p with
   | var x => rfl
   | fst p ih => simp only [Path.subst, Path.rename, ih]
   | sel p a ih => simp only [Path.subst, Path.rename, ih]
 
 theorem Path.rename_subst (p : Path n) (g : FinFun n m) (σ : PathSubst m l) :
-    (p.rename g).subst σ = p.subst (fun x => σ (g x)) := by
+    (p.rename g).subst σ = p.subst (g.compSubst σ) := by
   induction p with
   | var x => rfl
   | fst p ih => simp only [Path.rename, Path.subst, ih]
@@ -403,21 +433,21 @@ end
 mutual
 
 theorem Ty.subst_rename (T : Ty n) (σ : PathSubst n m) (f : FinFun m l) :
-    (T.subst σ).rename f = T.subst (fun x => (σ x).rename f) :=
+    (T.subst σ).rename f = T.subst (σ.compRename f) :=
   match T with
   | .Top => rfl
   | .Bot => rfl
   | .Fun S T => by
       simp only [Ty.subst, Ty.rename, Ty.subst_rename S σ f,
-        Ty.subst_rename T σ.lift f.ext, PathSubst.lift_post_rename]
+        Ty.subst_rename T σ.lift f.ext, PathSubst.compRename_lift]
   | .Pair S a d => by
       simp only [Ty.subst, Ty.rename, Ty.subst_rename S σ f,
-        Tau.subst_rename d σ.lift f.ext, PathSubst.lift_post_rename]
+        Tau.subst_rename d σ.lift f.ext, PathSubst.compRename_lift]
   | .Single p => by simp only [Ty.subst, Ty.rename, Path.subst_rename]
   | .TSel p A => by simp only [Ty.subst, Ty.rename, Path.subst_rename]
 
 theorem Tau.subst_rename (d : Tau n k) (σ : PathSubst n m) (f : FinFun m l) :
-    (d.subst σ).rename f = d.subst (fun x => (σ x).rename f) :=
+    (d.subst σ).rename f = d.subst (σ.compRename f) :=
   match d with
   | .ty T => by simp only [Tau.subst, Tau.rename, Ty.subst_rename]
   | .intv S T => by simp only [Tau.subst, Tau.rename, Ty.subst_rename]
@@ -427,26 +457,237 @@ end
 mutual
 
 theorem Ty.rename_subst (T : Ty n) (g : FinFun n m) (σ : PathSubst m l) :
-    (T.rename g).subst σ = T.subst (fun x => σ (g x)) :=
+    (T.rename g).subst σ = T.subst (g.compSubst σ) :=
   match T with
   | .Top => rfl
   | .Bot => rfl
   | .Fun S T => by
       simp only [Ty.rename, Ty.subst, Ty.rename_subst S g σ,
-        Ty.rename_subst T g.ext σ.lift, PathSubst.lift_pre_rename]
+        Ty.rename_subst T g.ext σ.lift, PathSubst.compSubst_lift]
   | .Pair S a d => by
       simp only [Ty.rename, Ty.subst, Ty.rename_subst S g σ,
-        Tau.rename_subst d g.ext σ.lift, PathSubst.lift_pre_rename]
+        Tau.rename_subst d g.ext σ.lift, PathSubst.compSubst_lift]
   | .Single p => by simp only [Ty.rename, Ty.subst, Path.rename_subst]
   | .TSel p A => by simp only [Ty.rename, Ty.subst, Path.rename_subst]
 
 theorem Tau.rename_subst (d : Tau n k) (g : FinFun n m) (σ : PathSubst m l) :
-    (d.rename g).subst σ = d.subst (fun x => σ (g x)) :=
+    (d.rename g).subst σ = d.subst (g.compSubst σ) :=
   match d with
   | .ty T => by simp only [Tau.rename, Tau.subst, Ty.rename_subst]
   | .intv S T => by simp only [Tau.rename, Tau.subst, Ty.rename_subst]
 
 end
+
+/-! ### Composition and renamings as substitutions -/
+
+namespace FinFun
+
+@[simp] theorem compSubst_apply (f : FinFun n m) (σ : PathSubst m l)
+    (x : Fin n) : f.compSubst σ x = σ (f x) := rfl
+
+@[simp] theorem asSubst_apply (f : FinFun n m) (x : Fin n) :
+    f.asSubst x = .var (f x) := rfl
+
+@[simp] theorem asSubst_id : (id (n := n)).asSubst = PathSubst.id := by
+  apply _root_.funext
+  intro x
+  rfl
+
+theorem asSubst_ext (f : FinFun n m) :
+    f.ext.asSubst = f.asSubst.lift := by
+  apply _root_.funext
+  intro x
+  refine Fin.cases ?_ (fun i => ?_) x <;> rfl
+
+theorem openAt_asSubst (x : Fin n) :
+    (openAt x).asSubst = PathSubst.openAt (.var x) := by
+  apply _root_.funext
+  intro y
+  refine Fin.cases ?_ (fun i => ?_) y <;> rfl
+
+end FinFun
+
+theorem Path.subst_asSubst (p : Path n) (f : FinFun n m) :
+    p.subst f.asSubst = p.rename f := by
+  induction p with
+  | var x => rfl
+  | fst p ih => simp only [Path.subst, Path.rename, ih]
+  | sel p a ih => simp only [Path.subst, Path.rename, ih]
+
+mutual
+
+theorem Ty.subst_asSubst (T : Ty n) (f : FinFun n m) :
+    T.subst f.asSubst = T.rename f :=
+  match T with
+  | .Top => rfl
+  | .Bot => rfl
+  | .Fun S T => by
+      simp only [Ty.subst, Ty.rename, Ty.subst_asSubst S f,
+        ← FinFun.asSubst_ext, Ty.subst_asSubst T f.ext]
+  | .Pair S a d => by
+      simp only [Ty.subst, Ty.rename, Ty.subst_asSubst S f,
+        ← FinFun.asSubst_ext, Tau.subst_asSubst d f.ext]
+  | .Single p => by simp only [Ty.subst, Ty.rename, Path.subst_asSubst]
+  | .TSel p A => by simp only [Ty.subst, Ty.rename, Path.subst_asSubst]
+
+theorem Tau.subst_asSubst (d : Tau n k) (f : FinFun n m) :
+    d.subst f.asSubst = d.rename f :=
+  match d with
+  | .ty T => by simp only [Tau.subst, Tau.rename, Ty.subst_asSubst]
+  | .intv S T => by simp only [Tau.subst, Tau.rename, Ty.subst_asSubst]
+
+end
+
+/-- Weakening commutes with a lifted path substitution. -/
+theorem Path.weaken_subst_lift (p : Path n) (σ : PathSubst n m) :
+    p.weaken.subst σ.lift = (p.subst σ).weaken := by
+  simp only [Path.weaken, Path.rename_subst, Path.subst_rename]
+  rfl
+
+/-- Type weakening commutes with a lifted path substitution. -/
+theorem Ty.weaken_subst_lift (T : Ty n) (σ : PathSubst n m) :
+    T.weaken.subst σ.lift = (T.subst σ).weaken := by
+  simp only [Ty.weaken, Ty.rename_subst, Ty.subst_rename]
+  rfl
+
+/-- Generalized-type weakening commutes with a lifted path substitution. -/
+theorem Tau.weaken_subst_lift (d : Tau n k) (σ : PathSubst n m) :
+    d.weaken.subst σ.lift = (d.subst σ).weaken := by
+  simp only [Tau.weaken, Tau.rename_subst, Tau.subst_rename]
+  rfl
+
+namespace PathSubst
+
+/-- Composition of path substitutions commutes with lifting. -/
+theorem comp_lift (σ : PathSubst n m) (θ : PathSubst m l) :
+    (σ.comp θ).lift = σ.lift.comp θ.lift := by
+  apply _root_.funext
+  intro x
+  refine Fin.cases ?_ (fun i => ?_) x
+  · rfl
+  · exact (Path.weaken_subst_lift (σ i) θ).symm
+
+end PathSubst
+
+theorem Path.subst_comp (p : Path n) (σ : PathSubst n m)
+    (θ : PathSubst m l) :
+    (p.subst σ).subst θ = p.subst (σ.comp θ) := by
+  induction p with
+  | var x => rfl
+  | fst p ih => simp only [Path.subst, ih]
+  | sel p a ih => simp only [Path.subst, ih]
+
+mutual
+
+theorem Ty.subst_comp (T : Ty n) (σ : PathSubst n m)
+    (θ : PathSubst m l) :
+    (T.subst σ).subst θ = T.subst (σ.comp θ) :=
+  match T with
+  | .Top => rfl
+  | .Bot => rfl
+  | .Fun S T => by
+      simp only [Ty.subst, Ty.subst_comp S σ θ,
+        Ty.subst_comp T σ.lift θ.lift, PathSubst.comp_lift]
+  | .Pair S a d => by
+      simp only [Ty.subst, Ty.subst_comp S σ θ,
+        Tau.subst_comp d σ.lift θ.lift, PathSubst.comp_lift]
+  | .Single p => by simp only [Ty.subst, Path.subst_comp]
+  | .TSel p A => by simp only [Ty.subst, Path.subst_comp]
+
+theorem Tau.subst_comp (d : Tau n k) (σ : PathSubst n m)
+    (θ : PathSubst m l) :
+    (d.subst σ).subst θ = d.subst (σ.comp θ) :=
+  match d with
+  | .ty T => by simp only [Tau.subst, Ty.subst_comp]
+  | .intv S T => by simp only [Tau.subst, Ty.subst_comp]
+
+end
+
+namespace PathSubst
+
+@[simp] theorem id_comp (σ : PathSubst n m) : id.comp σ = σ := by
+  apply _root_.funext
+  intro x
+  rfl
+
+@[simp] theorem comp_id (σ : PathSubst n m) : σ.comp id = σ := by
+  apply _root_.funext
+  intro x
+  exact Path.subst_id (σ x)
+
+theorem comp_assoc (σ : PathSubst n m) (θ : PathSubst m l)
+    (υ : PathSubst l r) :
+    (σ.comp θ).comp υ = σ.comp (θ.comp υ) := by
+  apply _root_.funext
+  intro x
+  exact Path.subst_comp (σ x) θ υ
+
+theorem comp_asSubst (σ : PathSubst n m) (f : FinFun m l) :
+    σ.comp f.asSubst = σ.compRename f := by
+  apply _root_.funext
+  intro x
+  exact Path.subst_asSubst (σ x) f
+
+end PathSubst
+
+theorem FinFun.asSubst_comp (f : FinFun n m) (g : FinFun m l) :
+    (f.comp g).asSubst = f.asSubst.comp g.asSubst := by
+  apply _root_.funext
+  intro x
+  rfl
+
+theorem FinFun.asSubst_compSubst (f : FinFun n m) (σ : PathSubst m l) :
+    f.asSubst.comp σ = f.compSubst σ := by
+  apply _root_.funext
+  intro x
+  rfl
+
+/-- The two ways of composing a one-binder opening with a simultaneous
+substitution agree. -/
+theorem PathSubst.openAt_comp (p : Path n) (σ : PathSubst n m) :
+    (PathSubst.openAt p).comp σ =
+      σ.lift.comp (PathSubst.openAt (p.subst σ)) := by
+  apply _root_.funext
+  intro x
+  refine Fin.cases ?_ (fun y => ?_) x
+  · rfl
+  · change σ y = (σ y).weaken.open (p.subst σ)
+    simp only [Path.weaken, Path.open, Path.rename_subst,
+      PathSubst.openAt_weaken, Path.subst_id]
+
+/-- Opening commutes with a subsequent path substitution. -/
+theorem Path.open_subst (p : Path (n + 1)) (q : Path n)
+    (σ : PathSubst n m) :
+    (p.open q).subst σ = (p.subst σ.lift).open (q.subst σ) := by
+  unfold Path.open
+  rw [Path.subst_comp, Path.subst_comp, PathSubst.openAt_comp]
+
+theorem Ty.open_subst (T : Ty (n + 1)) (p : Path n)
+    (σ : PathSubst n m) :
+    (T.open p).subst σ = (T.subst σ.lift).open (p.subst σ) := by
+  unfold Ty.open
+  rw [Ty.subst_comp, Ty.subst_comp, PathSubst.openAt_comp]
+
+theorem Tau.open_subst (d : Tau (n + 1) k) (p : Path n)
+    (σ : PathSubst n m) :
+    (d.open p).subst σ = (d.subst σ.lift).open (p.subst σ) := by
+  unfold Tau.open
+  rw [Tau.subst_comp, Tau.subst_comp, PathSubst.openAt_comp]
+
+theorem Path.rename_openAt_eq_open_var (p : Path (n + 1)) (x : Fin n) :
+    p.rename (FinFun.openAt x) = p.open (.var x) := by
+  rw [← Path.subst_asSubst, FinFun.openAt_asSubst]
+  rfl
+
+theorem Ty.rename_openAt_eq_open_var (T : Ty (n + 1)) (x : Fin n) :
+    T.rename (FinFun.openAt x) = T.open (.var x) := by
+  rw [← Ty.subst_asSubst, FinFun.openAt_asSubst]
+  rfl
+
+theorem Tau.rename_openAt_eq_open_var (d : Tau (n + 1) k) (x : Fin n) :
+    d.rename (FinFun.openAt x) = d.open (.var x) := by
+  rw [← Tau.subst_asSubst, FinFun.openAt_asSubst]
+  rfl
 
 theorem Path.open_rename (p : Path (n + 1)) (q : Path n) (f : FinFun n m) :
     (p.open q).rename f = (p.rename f.ext).open (q.rename f) := by

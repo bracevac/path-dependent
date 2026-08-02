@@ -17,64 +17,6 @@ check on a result variable be reflected by the value stored at that variable.
 
 namespace LambdaP
 
-/-! ## Renaming-as-opening algebra -/
-
-private theorem Path.rename_as_subst
-    (p : Path n) (f : FinFun n m) :
-    p.rename f = p.subst (fun x => .var (f x)) := by
-  induction p with
-  | var x => rfl
-  | fst p ih => simp only [Path.rename, Path.subst, ih]
-  | sel p a ih => simp only [Path.rename, Path.subst, ih]
-
-private theorem PathSubst.lift_vars (f : FinFun n m) :
-    (fun x => Path.var (f.ext x)) =
-      PathSubst.lift (fun x => Path.var (f x)) := by
-  funext x
-  refine Fin.cases ?_ (fun y => ?_) x <;> rfl
-
-mutual
-
-private theorem Ty.rename_as_subst
-    (T : Ty n) (f : FinFun n m) :
-    T.rename f = T.subst (fun x => .var (f x)) :=
-  match T with
-  | .Top => rfl
-  | .Bot => rfl
-  | .Fun S T => by
-      simp only [Ty.rename, Ty.subst, Ty.rename_as_subst S f,
-        Ty.rename_as_subst T f.ext]
-      rw [PathSubst.lift_vars]
-  | .Pair S a d => by
-      simp only [Ty.rename, Ty.subst, Ty.rename_as_subst S f,
-        Tau.rename_as_subst d f.ext]
-      rw [PathSubst.lift_vars]
-  | .Single p => by
-      simp only [Ty.rename, Ty.subst, Path.rename_as_subst]
-  | .TSel p A => by
-      simp only [Ty.rename, Ty.subst, Path.rename_as_subst]
-
-private theorem Tau.rename_as_subst
-    (d : Tau n k) (f : FinFun n m) :
-    d.rename f = d.subst (fun x => .var (f x)) :=
-  match d with
-  | .ty T => by simp only [Tau.rename, Tau.subst, Ty.rename_as_subst]
-  | .intv S T => by
-      simp only [Tau.rename, Tau.subst, Ty.rename_as_subst]
-
-end
-
-/-- On generalized types, opening by a variable is exactly the machine's
-`FinFun.openAt` renaming. -/
-theorem Tau.rename_openAt_eq_open_var
-    (d : Tau (n + 1) k) (x : Fin n) :
-    d.rename (FinFun.openAt x) = d.open (.var x) := by
-  rw [Tau.rename_as_subst]
-  unfold Tau.open
-  congr 1
-  funext y
-  refine Fin.cases ?_ (fun z => ?_) y <;> rfl
-
 /-! ## The dependent-member opening step -/
 
 /-- Open a structural member-subtyping premise under the precise singleton

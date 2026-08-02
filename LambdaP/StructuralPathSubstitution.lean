@@ -14,103 +14,6 @@ property.
 
 namespace LambdaP
 
-/-! ## Substitution algebra -/
-
-/-- Weakening commutes with a lifted path substitution. -/
-theorem Path.weaken_subst_lift
-    (p : Path n) (rho : PathSubst n m) :
-    p.weaken.subst rho.lift = (p.subst rho).weaken := by
-  simp only [Path.weaken, Path.rename_subst, Path.subst_rename]
-  rfl
-
-/-- Type weakening commutes with a lifted path substitution. -/
-theorem Ty.weaken_subst_lift
-    (T : LambdaP.Ty n) (rho : PathSubst n m) :
-    T.weaken.subst rho.lift = (T.subst rho).weaken := by
-  simp only [LambdaP.Ty.weaken, Ty.rename_subst,
-    Ty.subst_rename]
-  rfl
-
-/-- Generalized-type weakening commutes with a lifted substitution. -/
-theorem Tau.weaken_subst_lift
-    (d : Tau n k) (rho : PathSubst n m) :
-    d.weaken.subst rho.lift = (d.subst rho).weaken := by
-  simp only [Tau.weaken, Tau.rename_subst, Tau.subst_rename]
-  rfl
-
-/-- Substitution after a lifted substitution is again the lift of the
-pointwise composite. -/
-theorem PathSubst.lift_post_subst
-    (rho : PathSubst n m) (theta : PathSubst m l) :
-    (fun x => (rho.lift x).subst theta.lift) =
-      PathSubst.lift (fun x => (rho x).subst theta) := by
-  funext x
-  refine Fin.cases ?_ (fun y => ?_) x
-  · rfl
-  · exact Path.weaken_subst_lift (rho y) theta
-
-theorem Path.subst_subst
-    (p : Path n) (rho : PathSubst n m) (theta : PathSubst m l) :
-    (p.subst rho).subst theta =
-      p.subst (fun x => (rho x).subst theta) := by
-  induction p with
-  | var x => rfl
-  | fst p ih => simp only [Path.subst, ih]
-  | sel p a ih => simp only [Path.subst, ih]
-
-mutual
-
-theorem Ty.subst_subst
-    (T : LambdaP.Ty n)
-    (rho : PathSubst n m) (theta : PathSubst m l) :
-    (T.subst rho).subst theta =
-      T.subst (fun x => (rho x).subst theta) :=
-  match T with
-  | .Top => rfl
-  | .Bot => rfl
-  | .Fun S T => by
-      simp only [Ty.subst, Ty.subst_subst S rho theta,
-        Ty.subst_subst T rho.lift theta.lift,
-        PathSubst.lift_post_subst]
-  | .Pair S a d => by
-      simp only [Ty.subst, Ty.subst_subst S rho theta,
-        Tau.subst_subst d rho.lift theta.lift,
-        PathSubst.lift_post_subst]
-  | .Single p => by simp only [Ty.subst, Path.subst_subst]
-  | .TSel p A => by simp only [Ty.subst, Path.subst_subst]
-
-theorem Tau.subst_subst
-    (d : Tau n k) (rho : PathSubst n m) (theta : PathSubst m l) :
-    (d.subst rho).subst theta =
-      d.subst (fun x => (rho x).subst theta) :=
-  match d with
-  | .ty T => by simp only [Tau.subst, Ty.subst_subst]
-  | .intv S T => by simp only [Tau.subst, Ty.subst_subst]
-
-end
-
-/-- The two ways of composing a one-binder opening with a simultaneous
-substitution agree pointwise. -/
-theorem PathSubst.openAt_post_subst
-    (p : Path n) (rho : PathSubst n m) :
-    (fun x => (PathSubst.openAt p x).subst rho) =
-      (fun x => (rho.lift x).subst
-        (PathSubst.openAt (p.subst rho))) := by
-  funext x
-  refine Fin.cases ?_ (fun y => ?_) x
-  · rfl
-  · change rho y = (rho y).weaken.open (p.subst rho)
-    exact (Path.weaken_open (rho y) (p.subst rho)).symm
-
-/-- Opening commutes with a subsequent path substitution. -/
-theorem Tau.open_subst
-    (d : Tau (n + 1) k) (p : Path n) (rho : PathSubst n m) :
-    (d.open p).subst rho =
-      (d.subst rho.lift).open (p.subst rho) := by
-  unfold Tau.open
-  rw [Tau.subst_subst, Tau.subst_subst,
-    PathSubst.openAt_post_subst]
-
 /-! ## Relation and context substitutions -/
 
 /-- A path substitution maps an abstract source relation into a target
@@ -119,6 +22,20 @@ abbrev Path.SubstRelHom
     (R : Path n -> Path n -> Prop)
     (E : Path m -> Path m -> Prop) (rho : PathSubst n m) : Prop :=
   forall {p q}, R p q -> E (p.subst rho) (q.subst rho)
+
+/-- Identity substitution preserves a path relation. -/
+theorem Path.SubstRelHom.id :
+    Path.SubstRelHom R R PathSubst.id := by
+  intro p q hpq
+  simpa only [Path.subst_id] using hpq
+
+/-- Relation-respecting substitutions are closed under composition. -/
+theorem Path.SubstRelHom.comp
+    (hρ : Path.SubstRelHom R E ρ)
+    (hθ : Path.SubstRelHom E F θ) :
+    Path.SubstRelHom R F (ρ.comp θ) := by
+  intro p q hpq
+  simpa only [Path.subst_comp] using hθ (hρ hpq)
 
 /-- A relation-respecting path substitution lifts through a binder. -/
 theorem Path.SubstRelHom.scoped
@@ -156,6 +73,13 @@ abbrev Path.StructSubstitution
     (E : Path m -> Path m -> Prop) : Prop :=
   forall {x T}, Ctx.Binds Gamma x T ->
     Path.StructCheck Delta E (rho x) (Tau.ty (T.subst rho))
+
+/-- Identity is a structural context substitution. -/
+theorem Path.StructSubstitution.id :
+    Path.StructSubstitution Gamma PathSubst.id Gamma E := by
+  intro x T hx
+  simpa only [Path.subst_id, Tau.subst, Ty.subst_id] using
+    (Path.StructCheck.var (R := E) hx)
 
 /-- Structural context substitutions extend through a dependent binder. -/
 theorem Path.StructSubstitution.lift
@@ -417,6 +341,19 @@ theorem Tau.StructWf.subst
       intro m rho Delta E hctx hrel
       exact .bounds_wf (ihS hctx hrel) (ihT hctx hrel)
         (hsub.subst hctx hrel)
+
+/-- Structural context substitutions are closed under composition. -/
+theorem Path.StructSubstitution.comp
+    {Gamma : Ctx n} {Delta : Ctx m} {Xi : Ctx l}
+    {rho : PathSubst n m} {theta : PathSubst m l}
+    {E : Path m -> Path m -> Prop} {F : Path l -> Path l -> Prop}
+    (hρ : Path.StructSubstitution Gamma rho Delta E)
+    (hθ : Path.StructSubstitution Delta theta Xi F)
+    (hrel : Path.SubstRelHom E F theta) :
+    Path.StructSubstitution Gamma (rho.comp theta) Xi F := by
+  intro x T hx
+  have h := (hρ hx).subst hθ hrel
+  simpa only [PathSubst.comp_apply, Tau.subst, Ty.subst_comp] using h
 
 /-- Replacing the newest context variable by an arbitrary path checked at
 the binder type is a structural context substitution. -/

@@ -251,19 +251,6 @@ theorem Tm.StructCheck.renameExact
 
 /-! ## Structural renaming -/
 
-/-- Every intrinsically scoped variable has some exact context lookup.  The
-lookup type is not fixed by either pair-value conclusion, so this totality
-fact is sufficient to preserve their source-shaped `Ctx.Binds` premises. -/
-private theorem Ctx.target_binding (Gamma : Ctx n) (x : Fin n) :
-    exists T, Ctx.Binds Gamma x T := by
-  induction Gamma with
-  | nil => exact Fin.elim0 x
-  | snoc Gamma S ih =>
-      refine Fin.cases ?_ (fun y => ?_) x
-      · exact ⟨S.weaken, .here⟩
-      · obtain ⟨T, hT⟩ := ih y
-        exact ⟨T.weaken, .there hT⟩
-
 /-- Structural well-formedness is stable under a structural variable
 environment and a compatible relation morphism. -/
 theorem Tau.StructWf.rename
@@ -335,14 +322,14 @@ theorem Tm.StructCheck.rename
         Tm.StructCheck.app (ihp rho hrel) (ihq rho hrel)
   | pair hy hz =>
       intro m f Delta E rho hrel
-      obtain ⟨Sy, hy'⟩ := Ctx.target_binding Delta (f _)
-      obtain ⟨Sz, hz'⟩ := Ctx.target_binding Delta (f _)
+      obtain ⟨Sy, hy'⟩ := Ctx.Binds.exists Delta (f _)
+      obtain ⟨Sz, hz'⟩ := Ctx.Binds.exists Delta (f _)
       simpa [Tm.rename, Def.rename, Ty.rename, Tau.rename, Path.rename,
         Path.weaken_rename] using
         Tm.StructCheck.pair (R := E) hy' hz'
   | tpair hy hwf =>
       intro m f Delta E rho hrel
-      obtain ⟨Sy, hy'⟩ := Ctx.target_binding Delta (f _)
+      obtain ⟨Sy, hy'⟩ := Ctx.Binds.exists Delta (f _)
       simpa only [Tm.rename, Def.rename, LambdaP.Ty.rename,
         Tau.rename, Path.rename, ← Tau.weaken_rename] using
         Tm.StructCheck.tpair (R := E) hy' (hwf.rename rho hrel)

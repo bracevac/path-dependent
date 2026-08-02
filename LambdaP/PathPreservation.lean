@@ -7,16 +7,6 @@ import LambdaP.TypingInversion
 
 namespace LambdaP
 
-theorem Ctx.Binds.exists (Gamma : Ctx n) (x : Fin n) :
-    exists T, Ctx.Binds Gamma x T := by
-  induction Gamma with
-  | nil => exact Fin.elim0 x
-  | snoc Gamma S ih =>
-      refine Fin.cases ?_ (fun y => ?_) x
-      · exact ⟨S.weaken, .here⟩
-      · obtain ⟨T, hT⟩ := ih y
-        exact ⟨T.weaken, .there hT⟩
-
 theorem Ty.weaken_subst_openAt {T : Ty n} {p : Path n} :
     T.weaken.subst (PathSubst.openAt p) = T := by
   simpa [Ty.open] using Ty.weaken_open T p

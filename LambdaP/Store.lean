@@ -8,10 +8,9 @@ the current store length.
 
 namespace LambdaP
 
-/-- A store of values, indexed by its scope size.  `empty` is polymorphic in
-the index, as in the inductive definition. -/
+/-- A store of values, indexed by its exact scope size. -/
 inductive Store : Nat -> Type where
-| empty : Store n
+| empty : Store 0
 | val : Store n -> (t : Tm n) -> t.IsValue -> Store (n + 1)
 
 /-- Lookup in an intrinsically scoped store. -/
@@ -23,7 +22,7 @@ inductive Store.Binds : Store n -> Fin n -> Tm n -> Prop where
 
 /-- Executable lookup corresponding to `Store.Binds`. -/
 def Store.lookup? : (σ : Store n) -> Fin n -> Option (Tm n)
-| .empty, _ => none
+| .empty, x => Fin.elim0 x
 | .val σ v _, x =>
     Fin.cases (some v.weaken)
       (fun y => (Store.lookup? σ y).map Tm.weaken) x
