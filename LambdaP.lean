@@ -1,4 +1,6 @@
 import LambdaP.Debruijn
+import LambdaP.Original
+import LambdaP.Repaired
 import LambdaP.Syntax
 import LambdaP.Substitution
 import LambdaP.Context
