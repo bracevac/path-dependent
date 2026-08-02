@@ -1,0 +1,11 @@
+name = "path-dependent"
+version = "0.1.0"
+defaultTargets = ["LambdaP"]
+
+[leanOptions]
+pp.unicode.fun = true
+autoImplicit = true
+relaxedAutoImplicit = true
+
+[[lean_lib]]
+name = "LambdaP"
