@@ -1,13 +1,14 @@
-import LambdaP.Syntax
-import LambdaP.Context
+import LambdaPHistory.Syntax
+import LambdaPHistory.Context
 
 /-!
-Static semantics for `lambda_p`.  Paths synthesize precise generalized
-types; pair members may be proper types or abstract intervals; and interval
-selection is guarded by a nonempty-bounds premise.
+The static semantics of the original, intrinsically scoped `lambda_p`
+calculus.  This is a faithful restoration of the rules at `8c6a06d`:
+paths have a precise generalized type, pair components may be types or
+abstract intervals, and interval selection is guarded by nonempty bounds.
 -/
 
-namespace LambdaP
+namespace LambdaPHistory
 
 open Ty
 open Ctx
@@ -56,30 +57,19 @@ inductive Tau.Sub : Ctx n -> Tau n k -> Tau n k -> Prop where
 | sel_hi :
     Path.Ty Γ (Path.sel p A) (Tau.intv S T) ->
     Tau.Sub Γ (Tau.ty S) (Tau.ty T) ->
-    Tau.Sub Γ (Tau.ty (Ty.TSel p A)) (Tau.ty T)
+    Tau.Sub Γ (Tau.ty (Ty.Single (p.sel A))) (Tau.ty T)
 | sel_lo :
     Path.Ty Γ (Path.sel p A) (Tau.intv S T) ->
     Tau.Sub Γ (Tau.ty S) (Tau.ty T) ->
-    Tau.Sub Γ (Tau.ty S) (Tau.ty (Ty.TSel p A))
+    Tau.Sub Γ (Tau.ty S) (Tau.ty (Ty.Single (p.sel A)))
 | «fun» :
     Tau.Sub Γ (Tau.ty S') (Tau.ty S) ->
     Tau.Sub (Γ.snoc S') (Tau.ty T) (Tau.ty T') ->
     Tau.Sub Γ (Tau.ty (Ty.Fun S T)) (Tau.ty (Ty.Fun S' T'))
-/-- Covariance of the first component, leaving the dependent member
-unchanged. -/
-| pair_fst :
+| pair :
     Tau.Sub Γ (Tau.ty S) (Tau.ty S') ->
-    Tau.Sub Γ (Tau.ty (Ty.Pair S a τ)) (Tau.ty (Ty.Pair S' a τ))
-/-- A dependent member may change only when the first component is the
-singleton of a proper path.  The member comparison is recorded both under
-the singleton binder and after opening it at that path. -/
-| pair_single_member :
-    Path.Ty Γ p (Tau.ty P) ->
-    Tau.Sub (Γ.snoc (Ty.Single p)) τ τ' ->
-    Tau.Sub Γ (τ.open p) (τ'.open p) ->
-    Tau.Sub Γ
-      (Tau.ty (Ty.Pair (Ty.Single p) a τ))
-      (Tau.ty (Ty.Pair (Ty.Single p) a τ'))
+    Tau.Sub (Γ.snoc S) τ τ' ->
+    Tau.Sub Γ (Tau.ty (Ty.Pair S a τ)) (Tau.ty (Ty.Pair S' a τ'))
 | bounds :
     Tau.Sub Γ (Tau.ty S') (Tau.ty S) ->
     Tau.Sub Γ (Tau.ty T) (Tau.ty T') ->
@@ -97,7 +87,7 @@ inductive Tau.Wf : Ctx n -> Tau n k -> Prop where
     Tau.Wf Γ (Tau.ty (Ty.Single p))
 | sel :
     Path.Ty Γ p (Tau.ty (Ty.Pair S A (Tau.intv T U))) ->
-    Tau.Wf Γ (Tau.ty (Ty.TSel p A))
+    Tau.Wf Γ (Tau.ty (Ty.Single (p.sel A)))
 | «fun» :
     Tau.Wf Γ (Tau.ty S) ->
     Tau.Wf (Γ.snoc S) (Tau.ty T) ->
@@ -151,4 +141,4 @@ inductive Tm.Ty : Ctx n -> Tm n -> Ty n -> Prop where
     Tau.Wf Γ (Tau.ty T) ->
     Tm.Ty Γ t T
 
-end LambdaP
+end LambdaPHistory

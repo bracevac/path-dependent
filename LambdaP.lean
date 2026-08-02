@@ -1,60 +1,46 @@
-import LambdaP.Debruijn
-import LambdaP.Original
-import LambdaP.Repaired
+import LambdaP.FinFun
 import LambdaP.Syntax
-import LambdaP.Substitution
 import LambdaP.Context
 import LambdaP.Typing
-import LambdaP.Semantics
-import LambdaP.Lemmas.Renaming
-import LambdaP.Lemmas.Subst
-import LambdaP.Lemmas.StoWeaken
-import LambdaP.Lemmas.Locs
-import LambdaP.Soundness.Store
-import LambdaP.Soundness.Pushback
-import LambdaP.Soundness.Embedding
-import LambdaP.Soundness.RealizedSubst
-import LambdaP.Soundness.Progress
-import LambdaP.Soundness.PreservationPrep
-import LambdaP.Soundness.EmbedGap
-import LambdaP.Soundness.SubstGap
-import LambdaP.Soundness.GSub
-import LambdaP.Soundness.Preservation
-import LambdaP.Soundness.Safety
+import LambdaP.Renaming
+import LambdaP.Opening
+import LambdaP.Store
+import LambdaP.PathReduction
+import LambdaP.Lookup
+import LambdaP.Cont
+import LambdaP.State
+import LambdaP.Machine
+import LambdaP.PathFunctionality
+import LambdaP.TypingInversion
+import LambdaP.PreciseStore
+import LambdaP.ValueInversion
+import LambdaP.Canonical
+import LambdaP.PathPreservation
+import LambdaP.PathProgress
+import LambdaP.Progress
+import LambdaP.PreciseProgress
+import LambdaP.AdministrativePreservation
+import LambdaP.CounterexampleRegression
+import LambdaP.RuntimeConversion
+import LambdaP.ScopedRuntimeEq
+import LambdaP.StructuralRuntimeTyping
+import LambdaP.StructuralTermTyping
+import LambdaP.StructuralRuntimeLemmas
+import LambdaP.StructuralMachineInvariant
+import LambdaP.StructuralValueInversion
+import LambdaP.StructuralPathSubstitution
+import LambdaP.StructuralNarrowing
+import LambdaP.StructuralPreciseStore
+import LambdaP.StructuralResolution
+import LambdaP.StructuralApplicationBoundary
 import LambdaP.Examples
+import LambdaP.Safety
 
-/-! Pushback campaign (deviation 9). IN the build as of V14: the
-syntactic pipeline `Store → Pushback → Embedding → {Progress,
-RealizedSubst} → PreservationPrep → Preservation → Safety`, i.e. progress,
-preservation and TYPE SAFETY, plus the two gap files (`EmbedGap`,
-`SubstGap`) and the sized scope-generic table (`GSub`).
+/-!
+The intrinsically scoped `lambda_p` calculus and its metatheory.
 
-OUT of the build (superseded): the semantic tower `Den`/`DenLemmas`/
-`PathLemmas`/`Transfer`/`Closure` — it existed only to build the `Ξ` that
-the old `SemStoExists` fed to canonical forms, and `Sub.canonical_arrow`
-retired that obligation; and the possible-types chain `Precise`/`Tight`/
-`Invertible`/`PT`/`Bridge`/`PTTransfer`, subsumed by `SSub`/`SOut`.
-`Functionality` is imported by `Preservation`. -/
-
-/-! ### Axiom audit (V14). `type_safety` is unconditional except for the
-single remaining leaf `Sto.ResidueCollapse` (see `Soundness/Embedding.lean`
-and NOTES.md, "V14 EXECUTION REPORT"): no `sorryAx` anywhere. -/
-section
-open LambdaP
-#print axioms LambdaP.type_safety
-#print axioms LambdaP.type_safety_init
-#print axioms LambdaP.preservation
-#print axioms LambdaP.progress
-#print axioms LambdaP.Sub.to_ssub
-#print axioms LambdaP.Sub.subst
-#print axioms LambdaP.GSub.subst
-#print axioms LambdaP.GSub.subst_loc
-#print axioms LambdaP.Sub.to_gsub
-#print axioms LambdaP.GSub.to_sub
-#print axioms LambdaP.gsubstLift
-#print axioms LambdaP.Sub.canonical_arrow
-#print axioms LambdaP.Sub.consistency_empty
-#print axioms LambdaP.EmbedGap.substPower
-#print axioms LambdaP.EmbedGap.embPower_of_residueCollapse
-#print axioms LambdaP.EmbedGap.residueCollapse_of_embPower
-end
+`Ty.Single p` is a term singleton and `Ty.TSel p A` is an abstract type
+selection.  This aggregate includes the source calculus, CK machine,
+proof-relevant realization, exact-store canonical forms, progress,
+preservation, closed finite-run type safety, and checked examples.
+-/

@@ -1,8 +1,8 @@
-import LambdaP.Syntax
+import LambdaPHistory.Syntax
 
-/-! Intrinsically scoped typing contexts for the calculus. -/
+/-! Intrinsically scoped typing contexts for the restored calculus. -/
 
-namespace LambdaP
+namespace LambdaPHistory
 
 /-- A context stores each type in the scope preceding its binder. -/
 inductive Ctx : Nat -> Type where
@@ -18,4 +18,4 @@ inductive Binds : Ctx n -> Fin n -> Ty n -> Prop where
 
 end Ctx
 
-end LambdaP
+end LambdaPHistory

@@ -1,0 +1,73 @@
+import LambdaPHistory.FinFun
+import LambdaPHistory.Syntax
+import LambdaPHistory.Context
+import LambdaPHistory.Typing
+import LambdaPHistory.Renaming
+import LambdaPHistory.Opening
+import LambdaPHistory.Store
+import LambdaPHistory.PathReduction
+import LambdaPHistory.Lookup
+import LambdaPHistory.PreciseStore
+import LambdaPHistory.PathFunctionality
+import LambdaPHistory.PathPreservation
+import LambdaPHistory.PathProgress
+import LambdaPHistory.RuntimeConversion
+import LambdaPHistory.ScopedRuntimeEq
+import LambdaPHistory.ScopedTypeConversion
+import LambdaPHistory.StructuralRuntimeTyping
+import LambdaPHistory.StructuralTermTyping
+import LambdaPHistory.StructuralRuntimeLemmas
+import LambdaPHistory.StructuralMachineInvariant
+import LambdaPHistory.StructuralValueInversion
+import LambdaPHistory.StructuralApplicationBoundary
+import LambdaPHistory.StructuralRefinedProgress
+import LambdaPHistory.StructuralRuntimePathValidity
+import LambdaPHistory.StructuralResolution
+import LambdaPHistory.StructuralPathSubstitution
+import LambdaPHistory.StructuralNarrowing
+import LambdaPHistory.StructuralApplicationCompatibility
+import LambdaPHistory.StructuralPreservation
+import LambdaPHistory.StructuralProgress
+import LambdaPHistory.StructuralHeadReflection
+import LambdaPHistory.StructuralSafetyBoundary
+import LambdaPHistory.StructuralPreciseStore
+import LambdaPHistory.StructuralPreciseCanonical
+import LambdaPHistory.StructuralPreciseProgress
+import LambdaPHistory.StructuralPrecisePreservation
+import LambdaPHistory.StructuralPrecisePushbackCounterexample
+import LambdaPHistory.StructuralPreciseFunctionPushbackCounterexample
+import LambdaPHistory.RuntimeTyping
+import LambdaPHistory.RuntimePathPreservation
+import LambdaPHistory.RuntimeOpeningProbe
+import LambdaPHistory.RuntimeChecking
+import LambdaPHistory.DeepRuntimeTyping
+import LambdaPHistory.DeepRenaming
+import LambdaPHistory.PromotedPathChecking
+import LambdaPHistory.DeepPathPreservation
+import LambdaPHistory.DeepMachineInvariant
+import LambdaPHistory.DeepValueInversion
+import LambdaPHistory.DeepApplicationBoundary
+import LambdaPHistory.ValueInversion
+import LambdaPHistory.StoreRefinement
+import LambdaPHistory.Canonical
+import LambdaPHistory.TypingInversion
+import LambdaPHistory.Cont
+import LambdaPHistory.State
+import LambdaPHistory.Machine
+import LambdaPHistory.Progress
+import LambdaPHistory.PreciseProgress
+import LambdaPHistory.RefinedPathProgress
+import LambdaPHistory.AdministrativePreservation
+import LambdaPHistory.LookupCounterexample
+import LambdaPHistory.RuntimeCounterexampleRepair
+import LambdaPHistory.ClosedCounterexample
+import LambdaPHistory.SourceUnsoundnessCounterexample
+
+/-!
+The original precise-path-typing presentation of `lambda_p`, reconstructed
+from the final pre-restart development and completed with capture-avoiding
+binding operations.
+
+Soundness modules are imported here only once their statements and proofs are
+checked; this keeps the root an honest account of the completed development.
+-/

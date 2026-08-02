@@ -9,3 +9,6 @@ relaxedAutoImplicit = true
 
 [[lean_lib]]
 name = "LambdaP"
+
+[[lean_lib]]
+name = "LambdaPHistory"

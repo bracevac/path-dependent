@@ -1,4 +1,14 @@
-/.lake
+/.lake/
+/tmp/
+/lambda_p.aux
+/lambda_p.bbl
+/lambda_p.blg
+/lambda_p.fdb_latexmk
+/lambda_p.fls
+/lambda_p.log
+/lambda_p.out
+/lambda_p.pdf
+/lambda_p.synctex.gz
 .vscode/
 .idea/
 *.swp

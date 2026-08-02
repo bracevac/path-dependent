@@ -1,12 +1,12 @@
-import LambdaP.FinFun
+import LambdaPHistory.FinFun
 
 /-!
-Intrinsically scoped syntax for `lambda_p`.  Term singleton types and
-abstract type selections are distinct constructors.  Function codomains and
-pair members bind their first component.
+The intrinsically scoped syntax from the last pre-restart `lambda_p`
+development (`8c6a06d`), isolated from the active calculus.  Unlike the
+historical file, every renaming and opening operation is implemented.
 -/
 
-namespace LambdaP
+namespace LambdaPHistory
 
 /-- Labels for term and type members. -/
 abbrev Name : Type := Nat
@@ -36,15 +36,13 @@ inductive Def : Nat -> Kind -> Type where
 | val : Fin n -> Def n .star
 | «type» : Ty n -> Def n .iota
 
-/-- Types. -/
+/-- Types of the original calculus. -/
 inductive Ty : Nat -> Type where
 | Top : Ty n
 | Bot : Ty n
 | Fun : Ty n -> Ty (n + 1) -> Ty n
 | Pair : Ty n -> Name -> Tau (n + 1) k -> Ty n
 | Single : Path n -> Ty n
-/-- Abstract type-member selection `p.A`, distinct from the term singleton `{p}`. -/
-| TSel : Path n -> Name -> Ty n
 
 /-- Terms in monadic normal form. -/
 inductive Tm : Nat -> Type where
@@ -80,7 +78,7 @@ def Tau.interval (sig : Tau n .iota) : Interval n :=
 inductive Path.IsVar : Path n -> Prop where
 | var : IsVar (.var x)
 
-/-- Values of the MNF calculus. -/
+/-- Values of the original MNF calculus. -/
 inductive Tm.IsValue : Tm n -> Prop where
 | abs : IsValue (.abs T t)
 | pair : IsValue (.pair y a d)
@@ -100,7 +98,6 @@ def Ty.rename : Ty n -> FinFun n m -> Ty m
 | .Fun S T, f => .Fun (S.rename f) (T.rename f.ext)
 | .Pair S a d, f => .Pair (S.rename f) a (d.rename f.ext)
 | .Single p, f => .Single (p.rename f)
-| .TSel p A, f => .TSel (p.rename f) A
 
 def Tau.rename : Tau n k -> FinFun n m -> Tau m k
 | .ty T, f => .ty (T.rename f)
@@ -161,7 +158,6 @@ def Ty.subst : Ty n -> PathSubst n m -> Ty m
 | .Fun S T, σ => .Fun (S.subst σ) (T.subst σ.lift)
 | .Pair S a d, σ => .Pair (S.subst σ) a (d.subst σ.lift)
 | .Single p, σ => .Single (p.subst σ)
-| .TSel p A, σ => .TSel (p.subst σ) A
 
 /-- Capture-avoiding simultaneous path substitution in generalized types. -/
 def Tau.subst : Tau n k -> PathSubst n m -> Tau m k
@@ -216,7 +212,6 @@ theorem Ty.rename_id (T : Ty n) : T.rename FinFun.id = T :=
   | .Pair S a d => by
       simp only [Ty.rename, FinFun.ext_id, Ty.rename_id S, Tau.rename_id d]
   | .Single p => by simp only [Ty.rename, Path.rename_id]
-  | .TSel p A => by simp only [Ty.rename, Path.rename_id]
 
 theorem Tau.rename_id (d : Tau n k) : d.rename FinFun.id = d :=
   match d with
@@ -255,7 +250,6 @@ theorem Ty.rename_rename (T : Ty n) (f : FinFun n m) (g : FinFun m l) :
       simp only [Ty.rename, Ty.rename_rename S f g,
         Tau.rename_rename d f.ext g.ext, FinFun.ext_comp_ext]
   | .Single p => by simp only [Ty.rename, Path.rename_rename]
-  | .TSel p A => by simp only [Ty.rename, Path.rename_rename]
 
 theorem Tau.rename_rename (d : Tau n k) (f : FinFun n m) (g : FinFun m l) :
     (d.rename f).rename g = d.rename (g ∘ f) :=
@@ -391,7 +385,6 @@ theorem Ty.subst_id (T : Ty n) : T.subst PathSubst.id = T :=
   | .Pair S a d => by
       simp only [Ty.subst, PathSubst.lift_id, Ty.subst_id S, Tau.subst_id d]
   | .Single p => by simp only [Ty.subst, Path.subst_id]
-  | .TSel p A => by simp only [Ty.subst, Path.subst_id]
 
 theorem Tau.subst_id (d : Tau n k) : d.subst PathSubst.id = d :=
   match d with
@@ -414,7 +407,6 @@ theorem Ty.subst_rename (T : Ty n) (σ : PathSubst n m) (f : FinFun m l) :
       simp only [Ty.subst, Ty.rename, Ty.subst_rename S σ f,
         Tau.subst_rename d σ.lift f.ext, PathSubst.lift_post_rename]
   | .Single p => by simp only [Ty.subst, Ty.rename, Path.subst_rename]
-  | .TSel p A => by simp only [Ty.subst, Ty.rename, Path.subst_rename]
 
 theorem Tau.subst_rename (d : Tau n k) (σ : PathSubst n m) (f : FinFun m l) :
     (d.subst σ).rename f = d.subst (fun x => (σ x).rename f) :=
@@ -438,7 +430,6 @@ theorem Ty.rename_subst (T : Ty n) (g : FinFun n m) (σ : PathSubst m l) :
       simp only [Ty.rename, Ty.subst, Ty.rename_subst S g σ,
         Tau.rename_subst d g.ext σ.lift, PathSubst.lift_pre_rename]
   | .Single p => by simp only [Ty.rename, Ty.subst, Path.rename_subst]
-  | .TSel p A => by simp only [Ty.rename, Ty.subst, Path.rename_subst]
 
 theorem Tau.rename_subst (d : Tau n k) (g : FinFun n m) (σ : PathSubst m l) :
     (d.rename g).subst σ = d.subst (fun x => σ (g x)) :=
@@ -498,4 +489,4 @@ theorem Tm.IsValue.rename {t : Tm n} (hv : Tm.IsValue t) (f : FinFun n m) :
 theorem Tm.IsValue.weaken {t : Tm n} (hv : Tm.IsValue t) : Tm.IsValue t.weaken :=
   hv.rename FinFun.weaken
 
-end LambdaP
+end LambdaPHistory
