@@ -34,11 +34,10 @@ preservation, and the combined theorem
 is blocked. `Realization.lean` contains the semantic-coercion argument and its
 fundamental lemma.
 
-The paper presentation is in `../lambda_p.tex`. It can be rebuilt from the
-repository root with:
+The paper presentation for this proof is `lambda_p.tex`. It can be rebuilt
+from the repository root with:
 
 ```sh
-mkdir -p tmp/pdfs
-latexmk -pdf -interaction=nonstopmode -halt-on-error \
-  -outdir=tmp/pdfs lambda_p.tex
+latexmk -cd -pdf -interaction=nonstopmode -halt-on-error \
+  LambdaP/lambda_p.tex
 ```
