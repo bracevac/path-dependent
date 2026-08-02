@@ -1,0 +1,395 @@
+import LambdaPFC.SemanticEvidence
+
+/-!
+Allocation weakening for semantic evidence.  Allocating a fresh value shifts
+all existing store locations.  Evidence below a source binder is renamed by
+the lifted weakening, which leaves the bound variable fixed while shifting
+the locations supplied by the enclosing environment.
+-/
+
+namespace LambdaPFC
+
+noncomputable section
+
+/-! ## Runtime conversion below a binder -/
+
+/-- Scoped runtime equality is stable under allocation in the ambient store. -/
+noncomputable def Path.ScopedLift.weakenRuntime
+    {n : Nat} {sigma : Store n} {p q : Path (n + 1)}
+    (evidence : Path.ScopedLift (Path.RuntimeEq sigma) p q)
+    (v : Tm n) (vv : v.IsValue) :
+    Path.ScopedLift (Path.RuntimeEq (Store.val sigma v vv))
+      (p.rename FinFun.weaken.ext) (q.rename FinFun.weaken.ext) := by
+  induction evidence with
+  | bound => exact .bound
+  | old evidence =>
+      simpa only [Path.weaken, Path.rename_rename, FinFun.comp_weaken] using
+        Path.ScopedLift.old (evidence.weaken v vv)
+  | symm _ ih => exact .symm ih
+  | trans _ _ ih1 ih2 => exact .trans ih1 ih2
+  | fst _ ih => exact .fst ih
+  | sel _ ih => exact .sel ih
+
+/-- Runtime conversion below a binder is stable under allocation in the
+ambient store. -/
+noncomputable def Tau.RuntimeConv.weakenScoped
+    {n : Nat} {sigma : Store n} {d1 d2 : Tau (n + 1) k}
+    (conversion :
+      Tau.RuntimeConv (Path.ScopedLift (Path.RuntimeEq sigma)) d1 d2)
+    (v : Tm n) (vv : v.IsValue) :
+    Tau.RuntimeConv
+      (Path.ScopedLift (Path.RuntimeEq (Store.val sigma v vv)))
+      (d1.rename FinFun.weaken.ext) (d2.rename FinFun.weaken.ext) :=
+  conversion.rename FinFun.weaken.ext
+    (fun evidence => evidence.weakenRuntime v vv)
+
+/-! ## Allocation weakening -/
+
+/-- Weakening commutes with taking the endpoint of a stored definition. -/
+@[simp] theorem Def.endpoint_weaken (d : Def n k) :
+    (d.rename FinFun.weaken).endpoint = d.endpoint.weaken := by
+  cases d <;> rfl
+
+private abbrev EnvironmentAllocation
+    {n m : Nat} (Gamma : Ctx n) (rho : Valuation n m)
+    (sigma : Store m) (_ : Environment Gamma rho sigma) : Type 1 :=
+  forall (v : Tm m) (vv : v.IsValue),
+    Environment Gamma rho.weaken (Store.val sigma v vv)
+
+private abbrev PossibleAllocation
+    {m : Nat} (sigma : Store m) (x : Fin m) (T : Ty m)
+    (_ : Store.Possible sigma x T) : Type 1 :=
+  forall (v : Tm m) (vv : v.IsValue),
+    Store.Possible (Store.val sigma v vv) x.succ T.weaken
+
+private abbrev RealizesAllocation
+    {m : Nat} {k : Kind} (sigma : Store m)
+    (endpoint : Path.Endpoint m) (d : Tau m k)
+    (_ : Path.Endpoint.Realizes sigma endpoint d) : Type 1 :=
+  forall (v : Tm m) (vv : v.IsValue),
+    Path.Endpoint.Realizes (Store.val sigma v vv)
+      endpoint.weaken d.weaken
+
+private abbrev CoercionAllocation
+    {m : Nat} {k : Kind} (sigma : Store m) (d1 d2 : Tau m k)
+    (_ : Coercion sigma d1 d2) : Type 1 :=
+  forall (v : Tm m) (vv : v.IsValue),
+    Coercion (Store.val sigma v vv) d1.weaken d2.weaken
+
+private abbrev DeferredAllocation
+    {m : Nat} (sigma : Store m) (S : Ty m) (T U : Ty (m + 1))
+    (_ : DeferredCoercion sigma S T U) : Type 1 :=
+  forall (v : Tm m) (vv : v.IsValue),
+    DeferredCoercion (Store.val sigma v vv) S.weaken
+      (T.rename FinFun.weaken.ext) (U.rename FinFun.weaken.ext)
+
+private abbrev BodyAllocation
+    {m : Nat} (sigma : Store m) (S : Ty m)
+    (body : Tm (m + 1)) (T : Ty (m + 1))
+    (_ : BodyClosure sigma S body T) : Type 1 :=
+  forall (v : Tm m) (vv : v.IsValue),
+    BodyClosure (Store.val sigma v vv) S.weaken
+      (body.rename FinFun.weaken.ext) (T.rename FinFun.weaken.ext)
+
+/-! The constructor clauses below instantiate the mutual induction principle
+generated for the six semantic evidence families. -/
+
+private noncomputable def allocateEnvironmentIntro
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m}
+    (lookup : forall x : Fin n,
+      Store.Possible sigma (rho x) ((Gamma.lookup x).rename rho))
+    (ih : forall x, PossibleAllocation sigma (rho x)
+      ((Gamma.lookup x).rename rho) (lookup x)) :
+    EnvironmentAllocation Gamma rho sigma (.intro lookup) :=
+  fun v vv => by
+    apply Environment.intro
+    intro x
+    simpa only [Valuation.weaken, Valuation.comp, Ty.weaken,
+      Ty.rename_rename] using ih x v vv
+
+private noncomputable def allocatePossibleTop :
+    PossibleAllocation sigma x .Top .top :=
+  fun _ _ => .top
+
+private noncomputable def allocatePossibleFun
+    (binding : Store.Binds sigma x (.abs A body))
+    (closure : BodyClosure sigma A body B)
+    (domain : Coercion sigma (.ty S) (.ty A))
+    (codomain : DeferredCoercion sigma S B U)
+    (closureIH : BodyAllocation sigma A body B closure)
+    (domainIH : CoercionAllocation sigma (.ty S) (.ty A) domain)
+    (codomainIH : DeferredAllocation sigma S B U codomain) :
+    PossibleAllocation sigma x (.Fun S U)
+      (.fun binding closure domain codomain) :=
+  fun v vv => .fun (.there binding) (closureIH v vv)
+    (domainIH v vv) (codomainIH v vv)
+
+private noncomputable def allocatePossiblePair
+    (binding : Store.Binds sigma x (.pair y a delta))
+    (first : Store.Possible sigma y S)
+    (member : Path.Endpoint.Realizes sigma delta.endpoint
+      (d.open (.var y)))
+    (firstIH : PossibleAllocation sigma y S first)
+    (memberIH : RealizesAllocation sigma delta.endpoint
+      (d.open (.var y)) member) :
+    PossibleAllocation sigma x (.Pair S a d)
+      (.pair binding first member) :=
+  fun v vv => by
+    refine .pair (.there binding) (firstIH v vv) ?_
+    rw [Def.endpoint_weaken]
+    simpa only [Tm.weaken, Tm.rename,
+      Tau.weaken, Tau.open_rename, Path.weaken, Path.rename] using
+      memberIH v vv
+
+private noncomputable def allocatePossibleSingle
+    (resolution : Path.Resolve p sigma (.val x)) :
+    PossibleAllocation sigma x (.Single p) (.single resolution) :=
+  fun v vv => .single (resolution.weaken v vv)
+
+private noncomputable def allocatePossibleSelection
+    (resolution : Path.Resolve (p.sel A) sigma (.type W))
+    (witness : Store.Possible sigma x W)
+    (witnessIH : PossibleAllocation sigma x W witness) :
+    PossibleAllocation sigma x (.TSel p A)
+      (.selection resolution witness) :=
+  fun v vv => .selection (resolution.weaken v vv) (witnessIH v vv)
+
+private noncomputable def allocateRealizesVal
+    (possible : Store.Possible sigma x T)
+    (possibleIH : PossibleAllocation sigma x T possible) :
+    RealizesAllocation sigma (.val x) (.ty T) (.val possible) :=
+  fun v vv => .val (possibleIH v vv)
+
+private noncomputable def allocateRealizesType
+    (lower : Coercion sigma (.ty L) (.ty W))
+    (upper : Coercion sigma (.ty W) (.ty U))
+    (lowerIH : CoercionAllocation sigma (.ty L) (.ty W) lower)
+    (upperIH : CoercionAllocation sigma (.ty W) (.ty U) upper) :
+    RealizesAllocation sigma (.type W) (.intv L U)
+      (.type lower upper) :=
+  fun v vv => .type (lowerIH v vv) (upperIH v vv)
+
+private noncomputable def allocateCoercionRefl :
+    CoercionAllocation sigma d d .refl :=
+  fun _ _ => .refl
+
+private noncomputable def allocateCoercionTrans
+    (first : Coercion sigma d1 d2) (second : Coercion sigma d2 d3)
+    (firstIH : CoercionAllocation sigma d1 d2 first)
+    (secondIH : CoercionAllocation sigma d2 d3 second) :
+    CoercionAllocation sigma d1 d3 (.trans first second) :=
+  fun v vv => .trans (firstIH v vv) (secondIH v vv)
+
+private noncomputable def allocateCoercionRuntime
+    (conversion : Tau.RuntimeConv (Path.RuntimeEq sigma) d1 d2) :
+    CoercionAllocation sigma d1 d2 (.runtime conversion) :=
+  fun v vv => .runtime (conversion.weaken v vv)
+
+private noncomputable def allocateCoercionBot :
+    CoercionAllocation sigma (.ty .Bot) (.ty T) .bot :=
+  fun _ _ => .bot
+
+private noncomputable def allocateCoercionTop :
+    CoercionAllocation sigma (.ty T) (.ty .Top) .top :=
+  fun _ _ => .top
+
+private noncomputable def allocateCoercionWiden
+    (resolution : Path.Resolve p sigma (.val x))
+    (possible : Store.Possible sigma x T)
+    (possibleIH : PossibleAllocation sigma x T possible) :
+    CoercionAllocation sigma (.ty (.Single p)) (.ty T)
+      (.widen resolution possible) :=
+  fun v vv => .widen (resolution.weaken v vv) (possibleIH v vv)
+
+private noncomputable def allocateCoercionAlias
+    (left : Path.Resolve p sigma (.val x))
+    (right : Path.Resolve q sigma (.val x)) :
+    CoercionAllocation sigma (.ty (.Single q)) (.ty (.Single p))
+      (.alias left right) :=
+  fun v vv => .alias (left.weaken v vv) (right.weaken v vv)
+
+private noncomputable def allocateCoercionSelLo
+    (resolution : Path.Resolve (p.sel A) sigma (.type W))
+    (lower : Coercion sigma (.ty L) (.ty W))
+    (lowerIH : CoercionAllocation sigma (.ty L) (.ty W) lower) :
+    CoercionAllocation sigma (.ty L) (.ty (.TSel p A))
+      (.selLo resolution lower) :=
+  fun v vv => .selLo (resolution.weaken v vv) (lowerIH v vv)
+
+private noncomputable def allocateCoercionSelHi
+    (resolution : Path.Resolve (p.sel A) sigma (.type W))
+    (upper : Coercion sigma (.ty W) (.ty U))
+    (upperIH : CoercionAllocation sigma (.ty W) (.ty U) upper) :
+    CoercionAllocation sigma (.ty (.TSel p A)) (.ty U)
+      (.selHi resolution upper) :=
+  fun v vv => .selHi (resolution.weaken v vv) (upperIH v vv)
+
+private noncomputable def allocateCoercionFun
+    (domain : Coercion sigma (.ty S') (.ty S))
+    (codomain : DeferredCoercion sigma S' T T')
+    (domainIH : CoercionAllocation sigma (.ty S') (.ty S) domain)
+    (codomainIH : DeferredAllocation sigma S' T T' codomain) :
+    CoercionAllocation sigma (.ty (.Fun S T)) (.ty (.Fun S' T'))
+      (.fun domain codomain) :=
+  fun v vv => .fun (domainIH v vv) (codomainIH v vv)
+
+private noncomputable def allocateCoercionPairFst
+    (first : Coercion sigma (.ty S) (.ty S'))
+    (firstIH : CoercionAllocation sigma (.ty S) (.ty S') first) :
+    CoercionAllocation sigma (.ty (.Pair S a d)) (.ty (.Pair S' a d))
+      (.pairFst first) :=
+  fun v vv => .pairFst (firstIH v vv)
+
+private noncomputable def allocateCoercionPairMember
+    (resolution : Path.Resolve p sigma (.val x))
+    (member : Coercion sigma (d.open p) (d'.open p))
+    (memberIH : CoercionAllocation sigma (d.open p) (d'.open p) member) :
+    CoercionAllocation sigma
+      (.ty (.Pair (.Single p) a d))
+      (.ty (.Pair (.Single p) a d'))
+      (.pairMember resolution member) :=
+  fun v vv => by
+    refine .pairMember (resolution.weaken v vv) ?_
+    simpa only [Tau.weaken, Tau.open_rename, Path.weaken] using
+      memberIH v vv
+
+private noncomputable def allocateCoercionBounds
+    (lower : Coercion sigma (.ty S') (.ty S))
+    (upper : Coercion sigma (.ty T) (.ty T'))
+    (middle : Coercion sigma (.ty S) (.ty T))
+    (lowerIH : CoercionAllocation sigma (.ty S') (.ty S) lower)
+    (upperIH : CoercionAllocation sigma (.ty T) (.ty T') upper)
+    (middleIH : CoercionAllocation sigma (.ty S) (.ty T) middle) :
+    CoercionAllocation sigma (.intv S T) (.intv S' T')
+      (.bounds lower upper middle) :=
+  fun v vv => .bounds (lowerIH v vv) (upperIH v vv) (middleIH v vv)
+
+private noncomputable def allocateDeferredRefl :
+    DeferredAllocation sigma S T T .refl :=
+  fun _ _ => .refl
+
+private noncomputable def allocateDeferredTrans
+    (first : DeferredCoercion sigma S T U)
+    (second : DeferredCoercion sigma S U V)
+    (firstIH : DeferredAllocation sigma S T U first)
+    (secondIH : DeferredAllocation sigma S U V second) :
+    DeferredAllocation sigma S T V (.trans first second) :=
+  fun v vv => .trans (firstIH v vv) (secondIH v vv)
+
+private noncomputable def allocateDeferredRuntime
+    (conversion : Tau.RuntimeConv
+      (Path.ScopedLift (Path.RuntimeEq sigma)) (.ty T) (.ty U)) :
+    DeferredAllocation sigma S T U (.runtime conversion) :=
+  fun v vv => .runtime (conversion.weakenScoped v vv)
+
+private noncomputable def allocateDeferredNarrow
+    (domain : Coercion sigma (.ty S') (.ty S))
+    (codomain : DeferredCoercion sigma S T U)
+    (domainIH : CoercionAllocation sigma (.ty S') (.ty S) domain)
+    (codomainIH : DeferredAllocation sigma S T U codomain) :
+    DeferredAllocation sigma S' T U (.narrow domain codomain) :=
+  fun v vv => .narrow (domainIH v vv) (codomainIH v vv)
+
+private noncomputable def allocateDeferredSource
+    (environment : Environment Gamma rho sigma)
+    (code : SubCode (Gamma.snoc S) (.ty T) (.ty U))
+    (environmentIH : EnvironmentAllocation Gamma rho sigma environment) :
+    DeferredAllocation sigma (S.rename rho)
+      (T.rename rho.ext) (U.rename rho.ext)
+      (.source environment code) :=
+  fun v vv => by
+    simpa only [Valuation.weaken, Valuation.comp, Ty.weaken,
+      Ty.rename_rename, FinFun.ext_comp] using
+      DeferredCoercion.source (environmentIH v vv) code
+
+private noncomputable def allocateBodySource
+    (environment : Environment Gamma rho sigma)
+    (code : TermCode (Gamma.snoc S) body T)
+    (environmentIH : EnvironmentAllocation Gamma rho sigma environment) :
+    BodyAllocation sigma (S.rename rho)
+      (body.rename rho.ext) (T.rename rho.ext)
+      (.source environment code) :=
+  fun v vv => by
+    simpa only [Valuation.weaken, Valuation.comp, Ty.weaken,
+      Ty.rename_rename, Tm.rename_rename, FinFun.ext_comp] using
+      BodyClosure.source (environmentIH v vv) code
+
+local macro "allocationRec(" recursor:term ")" : term =>
+  `($recursor
+      (motive_1 := EnvironmentAllocation)
+      (motive_2 := PossibleAllocation)
+      (motive_3 := RealizesAllocation)
+      (motive_4 := CoercionAllocation)
+      (motive_5 := DeferredAllocation)
+      (motive_6 := BodyAllocation)
+      allocateEnvironmentIntro
+      allocatePossibleTop allocatePossibleFun allocatePossiblePair
+      allocatePossibleSingle allocatePossibleSelection
+      allocateRealizesVal allocateRealizesType
+      allocateCoercionRefl allocateCoercionTrans allocateCoercionRuntime
+      allocateCoercionBot allocateCoercionTop allocateCoercionWiden
+      allocateCoercionAlias allocateCoercionSelLo allocateCoercionSelHi
+      allocateCoercionFun allocateCoercionPairFst
+      allocateCoercionPairMember allocateCoercionBounds
+      allocateDeferredRefl allocateDeferredTrans allocateDeferredRuntime
+      allocateDeferredNarrow allocateDeferredSource allocateBodySource)
+
+/-- An environment remains valid when all its target locations are shifted by
+a fresh store allocation. -/
+noncomputable def Environment.weaken
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m}
+    (evidence : Environment Gamma rho sigma)
+    (v : Tm m) (vv : v.IsValue) :
+    Environment Gamma rho.weaken (Store.val sigma v vv) :=
+  allocationRec(Environment.rec) evidence v vv
+
+/-- A possible typing of an old store location survives allocation. -/
+noncomputable def Store.Possible.weaken
+    {m : Nat} {sigma : Store m} {x : Fin m} {T : LambdaPFC.Ty m}
+    (evidence : Store.Possible sigma x T)
+    (v : Tm m) (vv : v.IsValue) :
+    Store.Possible (Store.val sigma v vv) x.succ T.weaken :=
+  allocationRec(Store.Possible.rec) evidence v vv
+
+/-- Endpoint realization survives allocation. -/
+noncomputable def Path.Endpoint.Realizes.weaken
+    {m : Nat} {k : Kind} {sigma : Store m}
+    {endpoint : Path.Endpoint m} {d : Tau m k}
+    (evidence : Path.Endpoint.Realizes sigma endpoint d)
+    (v : Tm m) (vv : v.IsValue) :
+    Path.Endpoint.Realizes (Store.val sigma v vv)
+      endpoint.weaken d.weaken :=
+  allocationRec(Path.Endpoint.Realizes.rec) evidence v vv
+
+/-- An executable coercion between old types survives allocation. -/
+noncomputable def Coercion.weaken
+    {m : Nat} {k : Kind} {sigma : Store m} {d1 d2 : Tau m k}
+    (evidence : Coercion sigma d1 d2)
+    (v : Tm m) (vv : v.IsValue) :
+    Coercion (Store.val sigma v vv) d1.weaken d2.weaken :=
+  allocationRec(Coercion.rec) evidence v vv
+
+/-- A deferred codomain coercion survives allocation in its ambient store. -/
+noncomputable def DeferredCoercion.weaken
+    {m : Nat} {sigma : Store m} {S : Ty m}
+    {T U : Ty (m + 1)}
+    (evidence : DeferredCoercion sigma S T U)
+    (v : Tm m) (vv : v.IsValue) :
+    DeferredCoercion (Store.val sigma v vv) S.weaken
+      (T.rename FinFun.weaken.ext) (U.rename FinFun.weaken.ext) :=
+  allocationRec(DeferredCoercion.rec) evidence v vv
+
+/-- A source body closure survives allocation in its ambient store. -/
+noncomputable def BodyClosure.weaken
+    {m : Nat} {sigma : Store m} {S : Ty m}
+    {body : Tm (m + 1)} {T : Ty (m + 1)}
+    (evidence : BodyClosure sigma S body T)
+    (v : Tm m) (vv : v.IsValue) :
+    BodyClosure (Store.val sigma v vv) S.weaken
+      (body.rename FinFun.weaken.ext) (T.rename FinFun.weaken.ext) :=
+  allocationRec(BodyClosure.rec) evidence v vv
+
+end
+end LambdaPFC

@@ -1,0 +1,1378 @@
+\documentclass[acmsmall,screen,nonacm]{acmart}
+
+\usepackage{mathpartir}
+\usepackage[nameinlink,noabbrev]{cleveref}
+
+\settopmatter{printacmref=false,printccs=false,printfolios=true}
+\raggedbottom
+
+\newcommand{\lambdap}{\ensuremath{\lambda_{\mathsf p}}}
+\newcommand{\ctxempty}{\varnothing}
+\newcommand{\sing}[1]{\{#1\}}
+\newcommand{\pairty}[4]{\langle #1\!:\!#2;\,#3\!:\!#4\rangle}
+\newcommand{\pairval}[3]{\langle #1;\,#2=#3\rangle}
+\newcommand{\subst}[3]{#1[#2/#3]}
+\newcommand{\wf}{\mathrel{\mathsf{wf}}}
+\newcommand{\final}{\mathsf{final}}
+\newcommand{\steps}{\longrightarrow^{*}}
+\newcommand{\sstep}{\longrightarrow}
+\newcommand{\resolve}{\Downarrow}
+\newcommand{\semmap}{\mathrel{\Rightarrow_{\!s}}}
+\newcommand{\runtimeeq}{\mathrel{\equiv_{\sigma}}}
+\newcommand{\struct}{\Vdash}
+\newcommand{\exact}{\mathsf{exact}}
+\newcommand{\storeexact}{\mathsf{ExactStore}}
+\newcommand{\introty}{\mathrel{\mathsf{intro}}}
+\newcommand{\judgheader}[3][]{%
+  \par\addvspace{0.75em}%
+  \noindent\textbf{#2}%
+  \if\relax\detokenize{#1}\relax\else\quad #1\fi
+  \hfill{\setlength{\fboxsep}{4pt}\setlength{\fboxrule}{0.5pt}%
+    \fbox{\(\strut #3\)}}\par
+  \nobreak\addvspace{0.85em}%
+}
+
+\title{\texorpdfstring{\lambdap}{lambda-p}: Paths through Dependent Pairs}
+\author{Oliver Bra\v{c}evac}
+\author{Martin Odersky}
+\renewcommand{\shortauthors}{Bra\v{c}evac and Odersky}
+\authorsaddresses{}
+
+\begin{document}
+
+\begin{abstract}
+We present \lambdap{}, a calculus in which paths traverse immutable dependent
+pairs. A pair member may depend on the first component and may contain either
+a term reference or a type definition. The calculus distinguishes term
+singleton types from abstract type selections. Conflating the two makes
+singleton symmetry unsound: we give a closed, well-typed program that becomes
+stuck. We restrict dependent-member subtyping to pairs whose first component
+has singleton type and prove type safety in Lean. The unrestricted pair rule
+remains an open question.
+\end{abstract}
+
+\keywords{path-dependent types, dependent pairs, singleton types, type
+soundness, Lean}
+
+\maketitle
+
+\section{Introduction}
+
+A path-dependent type assigns a type component to a stable term path. DOT
+presents this mechanism together with recursive objects, refinements,
+intersections, unions, and declarative subtyping
+\citep{amin2014foundations,rompf2016dot}. \lambdap{} isolates paths, abstract
+type members, and dependency between the two components of a pair.
+
+\lambdap{} is a call-by-value calculus in monadic normal form whose values are
+functions and immutable dependent pairs. Paths are formed from variables,
+first projections, and labelled selections. A pair stores a first component
+together with either a term reference or a type definition, and its member
+signature may depend on the first component. Chains of pairs encode records:
+lookup resumes through the first component when the outer label differs. Term
+singleton types record path identity, while abstract selections range over
+explicitly checked lower and upper bounds. The static semantics includes
+dependent functions and declarative subtyping with primitive transitivity;
+evaluation combines big-step path resolution with a CK machine over an
+append-only store.
+
+For example, let \(r_1=\pairval{b}{a}{z}\) and
+\(r_2=\pairval{r_1}{A}{T}\). Selection \(r_2.A\) hits the outer type member,
+whereas \(r_2.a\) misses \(A\) and continues as \(r_2.1.a\), eventually
+returning \(z\). The signature of the outer member may refer to its binder for
+\(r_1\), so the same pair structure supports both record extension and
+dependency on the preceding component.
+
+The proof relies on two design choices. First, the singleton type
+\(\sing{p}\), which expresses value identity, is distinct from the abstract
+selection \(p.A\), which denotes a type between declared bounds. An earlier
+version represented both with one constructor. We show that singleton
+symmetry then turns abstract membership into a false path equality and yields
+a closed stuck program.
+
+Second, changing the dependent member requires a singleton type for the first
+component; widening the first component is a separate rule. The member premise
+is opened at the singleton path, providing the comparison used by the semantic
+interpretation. Soundness of the unrestricted rule with distinct singleton
+and selection types remains open.
+
+\paragraph{Contributions.}
+The paper gives a closed counterexample showing that abstract membership
+cannot justify singleton symmetry; a calculus that separates those notions
+and retains dependent abstract members with explicit bound checks; and a
+type-safety proof based on exact stores, runtime path equivalence, and an
+inductive interpretation of subtyping by semantic coercions. The sound
+calculus, the regression excluding the critical false alias, and the safety
+proof are formalized in Lean 4 \citep{demoura2021lean4}. Recursive objects,
+recursive types, mutation,
+intersections, and unions lie outside the core language; termination, type
+inference, and elimination of primitive transitivity lie outside the present
+development.
+
+\section{The calculus}
+\label{sec:calculus}
+
+\subsection{Syntax}
+
+\Cref{fig:syntax} gives the syntax. A member signature \(\tau\) is either a
+proper type or an interval, and a member definition \(\delta\) stores either
+a variable or a proper type. The typing rules match variable definitions with
+proper signatures and type definitions with interval signatures.
+
+\begin{figure}[H]
+\[
+\begin{array}{rcl}
+p,q &::=& x \mid p.1 \mid p.a\\
+T,U &::=& \top \mid \bot \mid (x:S)\to T
+  \mid \pairty{x}{S}{a}{\tau}\\
+&& {}\mid \sing{p} \mid p.A\\
+\tau &::=& T \mid L..U\\
+\delta &::=& z \mid T\\
+t,u &::=& p \mid \lambda(x:S).t
+  \mid \pairval{y}{a}{\delta}\\
+&& {}\mid p\,q
+  \mid \mathbf{let}\ x=t\ \mathbf{in}\ u
+  \mid (t:T)\\
+v &::=& \lambda(x:S).t \mid \pairval{y}{a}{\delta}\\
+\Gamma &::=& \ctxempty \mid \Gamma,x:T
+\end{array}
+\]
+\caption{Source syntax. Uppercase labels conventionally denote type members.}
+\Description{Grammar of paths, proper types, member signatures, definitions,
+terms, values, and contexts.}
+\label{fig:syntax}
+\end{figure}
+
+The binder \(x\) in a function scopes over its codomain. In
+\(\pairty{x}{S}{a}{\tau}\), it scopes over the member signature \(\tau\).
+We write \(\subst{\tau}{p}{x}\) for capture-avoiding opening. Terms are in
+monadic normal form: pair components are variables, and both sides of an
+application are paths.
+
+The static semantics consists of precise path typing, subtyping,
+well-formedness of member signatures, and term typing. The double colon marks a
+synthesis judgment without subsumption; term typing admits subsumption through
+\textsc{T-Sub}.
+
+\subsection{Static semantics}
+
+\Cref{fig:path-wf} defines precise path typing and well-formedness. Selection
+opens a dependent member with the receiver's first projection. If the outer
+pair carries a different label, \textsc{P-Miss} continues at \(p.1.a\); this
+is the static counterpart of missed-label lookup in \cref{fig:dynamics}.
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Precise path typing}{\Gamma\vdash p::\tau}
+\begin{mathpar}
+\inferrule*[right=\textsc{P-Var}]
+  {\Gamma(x)=T}
+  {\Gamma\vdash x::T}
+\and
+\inferrule*[right=\textsc{P-Fst}]
+  {\Gamma\vdash p::\pairty{x}{S}{a}{\tau}}
+  {\Gamma\vdash p.1::S}
+\and
+\inferrule*[right=\textsc{P-Sel}]
+  {\Gamma\vdash p::\pairty{x}{S}{a}{\tau}}
+  {\Gamma\vdash p.a::\subst{\tau}{p.1}{x}}
+\and
+\inferrule*[right=\textsc{P-Miss}]
+  {\Gamma\vdash p::\pairty{x}{S}{b}{\tau'}
+   \\
+   \Gamma\vdash p.1.a::\tau
+   \\
+   a\ne b}
+  {\Gamma\vdash p.a::\tau}
+\end{mathpar}
+
+\judgheader{Member-signature well-formedness}
+  {\Gamma\vdash\tau\ \wf}
+\begin{mathpar}
+\inferrule*[right=\textsc{W-Bot}]
+  { }{\Gamma\vdash\bot\ \wf}
+\and
+\inferrule*[right=\textsc{W-Top}]
+  { }{\Gamma\vdash\top\ \wf}
+\and
+\inferrule*[right=\textsc{W-Single}]
+  {\Gamma\vdash p::T}
+  {\Gamma\vdash\sing{p}\ \wf}
+\and
+\inferrule*[right=\textsc{W-Select}]
+  {\Gamma\vdash p::\pairty{x}{S}{A}{L..U}}
+  {\Gamma\vdash p.A\ \wf}
+\and
+\inferrule*[right=\textsc{W-Fun}]
+  {\Gamma\vdash S\ \wf
+   \\
+   \Gamma,x:S\vdash T\ \wf}
+  {\Gamma\vdash(x:S)\to T\ \wf}
+\and
+\inferrule*[right=\textsc{W-Pair}]
+  {\Gamma\vdash S\ \wf
+   \\
+   \Gamma,x:S\vdash\tau\ \wf}
+  {\Gamma\vdash\pairty{x}{S}{a}{\tau}\ \wf}
+\and
+\inferrule*[right=\textsc{W-Bounds}]
+  {\Gamma\vdash L\ \wf
+   \\
+   \Gamma\vdash U\ \wf
+   \\
+   \Gamma\vdash L<:U}
+  {\Gamma\vdash L..U\ \wf}
+\end{mathpar}
+\end{minipage}
+\caption{Precise path typing and member-signature well-formedness.}
+\Description{Inference rules for precise path typing and member-signature
+well-formedness.}
+\label{fig:path-wf}
+\end{figure}
+
+\Cref{fig:subtyping} gives the complete declarative subtyping relation. The
+safety argument uses the restriction of \textsc{S-Alias} to term singletons,
+the bound-consistency premise \(L<:U\) in the selection rules, and the
+separation of first-component widening from dependent-member subtyping.
+
+The well-formedness rules enforce the same distinctions. A singleton must
+contain a term-denoting path, whereas a selection must name an interval
+member. Forming or widening an interval requires a derivation \(L<:U\); the
+lower bound varies contravariantly and the upper bound covariantly. These
+guards rule out locally inconsistent bounds. The counterexample in
+\cref{sec:pairs} uses \(\top..\top\) throughout and satisfies this consistency
+check.
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Subtyping}
+  {\Gamma\vdash\tau_1<:\tau_2}
+\begin{mathpar}
+\inferrule*[right=\textsc{S-Refl}]
+  { }{\Gamma\vdash\tau<:\tau}
+\and
+\inferrule*[right=\textsc{S-Trans}]
+  {\Gamma\vdash\tau_1<:\tau_2
+   \\
+   \Gamma\vdash\tau_2<:\tau_3}
+  {\Gamma\vdash\tau_1<:\tau_3}
+\and
+\inferrule*[right=\textsc{S-Bot}]
+  { }{\Gamma\vdash\bot<:T}
+\and
+\inferrule*[right=\textsc{S-Top}]
+  { }{\Gamma\vdash T<:\top}
+\and
+\inferrule*[right=\textsc{S-Widen}]
+  {\Gamma\vdash p::T}
+  {\Gamma\vdash\sing{p}<:T}
+\and
+\inferrule*[right=\textsc{S-Alias}]
+  {\Gamma\vdash p::\sing{q}}
+  {\Gamma\vdash\sing{q}<:\sing{p}}
+\and
+\inferrule*[right=\textsc{S-Sel-Lo}]
+  {\Gamma\vdash p.A::L..U
+   \\
+   \Gamma\vdash L<:U}
+  {\Gamma\vdash L<:p.A}
+\and
+\inferrule*[right=\textsc{S-Sel-Hi}]
+  {\Gamma\vdash p.A::L..U
+   \\
+   \Gamma\vdash L<:U}
+  {\Gamma\vdash p.A<:U}
+\and
+\inferrule*[right=\textsc{S-Fun}]
+  {\Gamma\vdash S'<:S
+   \\
+   \Gamma,x:S'\vdash T<:T'}
+  {\Gamma\vdash (x:S)\to T<:(x:S')\to T'}
+\and
+\inferrule*[right=\textsc{S-Pair-Fst}]
+  {\Gamma\vdash S<:S'}
+  {\Gamma\vdash
+    \pairty{x}{S}{a}{\tau}
+    <:
+    \pairty{x}{S'}{a}{\tau}}
+\and
+\inferrule*[right=\textsc{S-Pair-Single}]
+  {\Gamma\vdash p::P
+   \\
+   \Gamma,x:\sing{p}\vdash\tau<:\tau'
+   \\
+   \Gamma\vdash\subst{\tau}{p}{x}<:\subst{\tau'}{p}{x}}
+  {\Gamma\vdash
+    \pairty{x}{\sing{p}}{a}{\tau}
+    <:
+    \pairty{x}{\sing{p}}{a}{\tau'}}
+\and
+\inferrule*[right=\textsc{S-Bounds}]
+  {\Gamma\vdash L'<:L
+   \\
+   \Gamma\vdash U<:U'
+   \\
+   \Gamma\vdash L<:U}
+  {\Gamma\vdash L..U<:L'..U'}
+\end{mathpar}
+\end{minipage}
+\caption{Subtyping. Proper types are compared with proper types,
+and intervals with intervals.}
+\Description{The complete declarative subtyping relation on member signatures,
+including primitive transitivity, singleton and selection rules, functions,
+the two restricted pair rules, and interval subtyping.}
+\label{fig:subtyping}
+\end{figure}
+
+In \textsc{S-Pair-Single}, the last premise compares the two members after
+opening them at \(p\), supplementing their comparison under
+\(x:\sing{p}\). Declarative transitivity composes this rule with
+\textsc{S-Pair-Fst}.
+
+\subsection{Term typing}
+
+\Cref{fig:typing} gives term typing. Rule \textsc{T-Path} assigns \(\sing{p}\)
+to a precisely typed path, and dependent application substitutes the argument
+path into the result. The pair rules assign singleton types to stored term
+components and equal bounds to stored type definitions.
+The side condition on \textsc{T-Let} excludes its bound variable from the
+result type. A value that escapes a let is named by its stable store location.
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Term typing}{\Gamma\vdash t:T}
+\begin{mathpar}
+\inferrule*[right=\textsc{T-Path}]
+  {\Gamma\vdash p::T}
+  {\Gamma\vdash p:\sing{p}}
+\and
+\inferrule*[right=\textsc{T-Abs}]
+  {\Gamma,x:S\vdash t:T
+   \\
+   \Gamma\vdash S\ \wf}
+  {\Gamma\vdash\lambda(x:S).t:(x:S)\to T}
+\and
+\inferrule*[right=\textsc{T-App}]
+  {\Gamma\vdash p:(x:S)\to T
+   \\
+   \Gamma\vdash q:S}
+  {\Gamma\vdash p\,q:\subst{T}{q}{x}}
+\and
+\inferrule*[right=\textsc{T-Pair}]
+  {\Gamma(y)=S
+   \\
+   \Gamma(z)=T}
+  {\Gamma\vdash
+    \pairval{y}{a}{z}:
+    \pairty{x}{\sing{y}}{a}{\sing{z}}}
+\and
+\inferrule*[right=\textsc{T-Type-Pair}]
+  {\Gamma(y)=S
+   \\
+   \Gamma\vdash T\ \wf}
+  {\Gamma\vdash
+    \pairval{y}{A}{T}:
+    \pairty{x}{\sing{y}}{A}{T..T}}
+\and
+\inferrule*[right=\textsc{T-Let}]
+  {\Gamma\vdash s:S
+   \\
+   \Gamma\vdash T\ \wf
+   \\
+   \Gamma,x:S\vdash t:T
+   \\
+   x\notin\mathsf{fv}(T)}
+  {\Gamma\vdash
+    \mathbf{let}\ x=s\ \mathbf{in}\ t:T}
+\and
+\inferrule*[right=\textsc{T-Ascribe}]
+  {\Gamma\vdash t:T
+   \\
+   \Gamma\vdash T\ \wf}
+  {\Gamma\vdash(t:T):T}
+\and
+\inferrule*[right=\textsc{T-Sub}]
+  {\Gamma\vdash t:S
+   \\
+   \Gamma\vdash S<:T
+   \\
+   \Gamma\vdash T\ \wf}
+  {\Gamma\vdash t:T}
+\end{mathpar}
+\end{minipage}
+\caption{Term typing. Names bound by pair types are in scope in their member
+signature.}
+\Description{Typing rules for paths, abstractions, applications, term and
+type pairs, let expressions, ascriptions, and subsumption.}
+\label{fig:typing}
+\end{figure}
+
+\subsection{Dynamics}
+\label{sec:dynamics}
+
+A store \(\sigma\) is an immutable sequence of values, and a stored value may
+refer only to earlier cells. We write \(\sigma(x)=v\) for lookup and
+\(\sigma\mathbin{\cdot}(x\mapsto v)\) for extension at a fresh location.
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Machine configurations}
+  {s=\langle\sigma,K,t\rangle}
+\[
+\begin{array}{rcl}
+\sigma &::=& \varnothing \mid \sigma\mathbin{\cdot}(x\mapsto v)\\
+F &::=& \mathbf{let}\ x=[\,]\ \mathbf{in}\ t\\
+K &::=& [\,] \mid F::K\\
+s &::=& \langle\sigma,K,t\rangle
+\end{array}
+\]
+
+\judgheader{Final state}{\final(s)}
+\begin{mathpar}
+\inferrule*[right=\textsc{F-Loc}]
+  {\sigma(x)=v}
+  {\final(\langle\sigma,[\,],x\rangle)}
+\and
+\inferrule*[right=\textsc{F-Val}]
+  {v\ \mathsf{value}}
+  {\final(\langle\sigma,[\,],v\rangle)}
+\end{mathpar}
+\end{minipage}
+\caption{Runtime syntax and final states. Stores grow only
+at fresh locations.}
+\Description{Grammar of stores, let frames, continuation stacks, and machine
+states, together with both final-state rules.}
+\label{fig:machine-syntax}
+\end{figure}
+
+Runtime terms are source terms whose free variables name cells in the current
+store. Values therefore have exactly the grammar in \cref{fig:syntax}; the
+machine adds stores, let frames, and continuation stacks, but no separate
+runtime term forms.
+
+Source path resolution, written \(\sigma\vdash p\resolve x\), is big-step.
+Projection returns the stored first component, a matching term member returns
+its stored location, and a missed label continues from the first component.
+Resolution is deterministic but partial on arbitrary stores; totality for
+well-typed paths is part of the soundness argument.
+
+Machine states are triples \(\langle\sigma,K,t\rangle\), with continuations
+made only of the let frames in \cref{fig:machine-syntax}. The rules at the
+bottom of \cref{fig:dynamics}
+resolve applications and paths, evaluate let-bound computations, and
+allocate syntactic values. Application first resolves both operand paths; the
+canonical-forms lemma establishes the abstraction shape required at the
+operator location.
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Path resolution}{\sigma\vdash p\resolve x}
+\begin{mathpar}
+\inferrule*[right=\textsc{R-Var}]
+  { }{\sigma\vdash x\resolve x}
+\and
+\inferrule*[right=\textsc{R-Fst}]
+  {\sigma\vdash p\resolve x
+   \\
+   \sigma(x)=\pairval{y}{a}{\delta}}
+  {\sigma\vdash p.1\resolve y}
+\and
+\inferrule*[right=\textsc{R-Hit}]
+  {\sigma\vdash p\resolve x
+   \\
+   \sigma(x)=\pairval{y}{a}{z}}
+  {\sigma\vdash p.a\resolve z}
+\and
+\inferrule*[right=\textsc{R-Miss}]
+  {\sigma\vdash p\resolve x
+   \\
+   \sigma(x)=\pairval{y}{b}{\delta}
+   \\
+   a\ne b
+   \\
+   \sigma\vdash y.a\resolve z}
+  {\sigma\vdash p.a\resolve z}
+\end{mathpar}
+
+\judgheader{Machine transition}
+  {\langle\sigma,K,t\rangle\sstep\langle\sigma',K',t'\rangle}
+\begin{mathpar}
+\inferrule*[right=\textsc{E-App}]
+  {\sigma\vdash p\resolve f
+   \\
+   \sigma\vdash q\resolve y
+   \\
+   \sigma(f)=\lambda(x:S).t}
+  {\langle\sigma,K,p\,q\rangle
+   \sstep
+   \langle\sigma,K,\subst{t}{y}{x}\rangle}
+\and
+\inferrule*[right=\textsc{E-Path}]
+  {\sigma\vdash p\resolve x
+   \\
+   p\ \mathsf{not\ a\ variable}}
+  {\langle\sigma,K,p\rangle
+   \sstep
+   \langle\sigma,K,x\rangle}
+\and
+\inferrule*[right=\textsc{E-Let}]
+  {F=\mathbf{let}\ x=[\,]\ \mathbf{in}\ t}
+  {\langle\sigma,K,\mathbf{let}\ x=s\ \mathbf{in}\ t\rangle
+   \sstep
+   \langle\sigma,F::K,s\rangle}
+\and
+\inferrule*[right=\textsc{E-Return}]
+  {F=\mathbf{let}\ x=[\,]\ \mathbf{in}\ t}
+  {\langle\sigma,F::K,y\rangle
+   \sstep
+   \langle\sigma,K,\subst{t}{y}{x}\rangle}
+\and
+\inferrule*[right=\textsc{E-Alloc}]
+  {F=\mathbf{let}\ x=[\,]\ \mathbf{in}\ t
+   \\
+   v\ \mathsf{value}
+   \\
+   \ell\ \mathsf{fresh}}
+  {\langle\sigma,F::K,v\rangle
+   \sstep
+   \langle\sigma\mathbin{\cdot}(\ell\mapsto v),K,
+     \subst{t}{\ell}{x}\rangle}
+\and
+\inferrule*[right=\textsc{E-Ascribe}]
+  { }
+  {\langle\sigma,K,(t:T)\rangle
+   \sstep
+   \langle\sigma,K,t\rangle}
+\end{mathpar}
+\end{minipage}
+\caption{Big-step path resolution and CK machine transitions.}
+\Description{Rules for resolving paths through an immutable store and for
+stepping applications, paths, let frames, allocations, and ascriptions.}
+\label{fig:dynamics}
+\end{figure}
+
+\section{Two design decisions}
+\label{sec:pairs}
+
+\subsection{Singletons and abstract selections}
+
+The term singleton \(\sing{p}\) asserts value identity. In particular,
+\textsc{S-Alias} is justified when precise typing says that one path has
+another path's singleton type. An abstract selection \(p.A\) denotes an
+unknown type between the bounds stored at \(A\); membership in \(p.A\)
+carries no path-equality information.
+
+In a precursor to \lambdap{}, both forms used one type constructor, so
+singleton symmetry accepted either role. Let
+\[
+\begin{array}{rcl}
+f &=& \lambda(x:\top).x,\\
+q &=& \pairval{f}{A}{\top},\\
+h &=& \lambda(z:q.A).q.
+\end{array}
+\]
+The historical rules type the body of \(h\) by the chain
+\[
+  \sing{q}<:\top<:q.A<:\sing{z}.
+\]
+The last edge applies singleton symmetry to the context binding \(z:q.A\),
+treating abstract membership as equality. The same rules accept \(f\) as an
+argument of type \(q.A\). The application \(h\,f\) therefore evaluates to
+\(q\) despite receiving the result type \(\sing{f}\).
+
+Consequently, the closed program
+\[
+\begin{array}{l}
+\mathbf{let}\ f=\lambda(x:\top).x\ \mathbf{in}\\
+\mathbf{let}\ q=\pairval{f}{A}{\top}\ \mathbf{in}\\
+\mathbf{let}\ h=\lambda(z:q.A).q\ \mathbf{in}\\
+\mathbf{let}\ r=h\,f\ \mathbf{in}\ r\,f
+\end{array}
+\]
+reaches an application whose operator location contains the pair \(q\). It is
+neither final nor reducible. Every interval in the derivation is
+\(\top..\top\), so all bounds pass the consistency check. An admissible
+transitivity lemma would compose the same chain.
+
+In the present syntax, a binding \(z:q.A\) cannot serve as a premise for
+\textsc{S-Alias}. The mechanized regression proves that the critical
+subtyping \(\sing{q}<:\sing{z}\) remains underivable even with primitive
+transitivity.
+
+The counterexample shows that singleton symmetry must distinguish term
+identity from abstract membership. Separate constructors make this
+distinction explicit.
+
+\subsection{The pair rule}
+
+The unrestricted rule one might first write is
+\[
+\inferrule
+  {\Gamma\vdash S<:S'
+   \\
+   \Gamma,x:S\vdash\tau<:\tau'}
+  {\Gamma\vdash
+    \pairty{x}{S}{a}{\tau}
+    <:
+    \pairty{x}{S'}{a}{\tau'}}.
+\tag{Unrestricted Pair}
+\]
+The premise compares the members under the binder \(x:S\). A runtime pair,
+however, contains an actual component \(y\), so preservation requires a
+comparison from \(\subst{\tau}{y}{x}\) to \(\subst{\tau'}{y}{x}\). The
+semantic interpretation of the rule must be constructed before \(y\) is
+known, while its premise yields the required comparison only after the binder
+has been instantiated. The finite inductive interpretation used by the proof
+has no constructor for such an inhabitant-indexed family.
+
+\textsc{S-Pair-Single} fixes a path \(p\) and provides that specialized
+comparison explicitly. If the stored first component \(y\) realizes
+\(\sing{p}\), then \(p\) resolves to \(y\), hence \(p\runtimeeq y\).
+Conversion transports the opened comparison at \(p\) to the member opened at
+\(y\).
+
+The two pair rules derive the following abstraction pattern. If
+\(\Gamma\vdash p::P\), then
+\[
+\begin{aligned}
+&\pairty{x}{\sing{p}}{A}{\sing{p}..\sing{p}}
+\\[-1mm]
+&\quad<:\pairty{x}{\sing{p}}{A}{\bot..\sing{x}}
+\\[-1mm]
+&\quad<:\pairty{x}{P}{A}{\bot..\sing{x}}.
+\end{aligned}
+\]
+The first step hides an exact definition behind dependent bounds while the
+first component is a singleton; the second widens that component.
+
+The semantic interpretation validates the restricted rule. Soundness of the
+unrestricted rule remains open; we have neither a proof nor a counterexample
+for \lambdap{}.
+
+\section{Soundness}
+\label{sec:soundness}
+
+The proof records store locations at their exact introduction types, relates
+paths by runtime equivalence, and uses semantic coercions to interpret
+subtyping. The operational semantics is the machine in
+\cref{sec:dynamics}.
+
+Write \(\steps\) for the reflexive--transitive closure of \(\sstep\).
+Thus \(\langle\varnothing,[\,],t\rangle\steps s\) means that execution of
+\(t\) from the empty store and continuation reaches \(s\) in finitely many
+machine steps. Type safety states non-stuckness for every such state.
+
+\begin{theorem}[Type safety]
+\label{thm:safety}
+If \(\ctxempty\vdash t:T\) and
+\(\langle\varnothing,[\,],t\rangle\steps s\), then
+\(s\) is final or there exists \(s'\) such that \(s\sstep s'\).
+\end{theorem}
+
+The theorem concerns finite execution prefixes; termination lies outside its
+scope. Its proof maintains a stronger runtime invariant over exact stores and
+machine states.
+
+Write \(\Delta\struct_{\exact}s:U\) when the store of \(s\) is recorded at
+exact introduction types and its current term and continuation satisfy the
+auxiliary runtime judgments. Context--type extension is the least relation
+generated by
+\[
+\inferrule
+  { }
+  {(\Gamma,T)\preceq(\Gamma,T)}
+\qquad
+\inferrule
+  {(\Gamma,T)\preceq(\Delta,U)}
+  {(\Gamma,T)\preceq((\Delta,\ell:P),U^\uparrow)}.
+\]
+Here \(U^\uparrow\) is weakening into the fresh context extension; with the
+named presentation used in the paper it has the same concrete syntax as
+\(U\).
+
+\begin{theorem}[Reachable-state invariant]
+\label{thm:reachable}
+If \(\ctxempty\vdash t:T\) and
+\(\langle\varnothing,[\,],t\rangle\steps s\), then for some
+\(\Delta,U\),
+\[
+(\ctxempty,T)\preceq(\Delta,U)
+\qquad\text{and}\qquad
+\Delta\struct_{\exact}s:U.
+\]
+\end{theorem}
+
+Allocation extends the store context, and preservation weakens the result type
+along that extension. The exact-state judgment is the invariant maintained by
+machine transitions. \Cref{thm:safety} follows from
+\cref{thm:reachable,thm:progress}.
+
+The proof proceeds through the relations defined in
+\cref{fig:runtime-proof,fig:auxiliary,fig:runtime-typing,fig:realization,fig:coercions}.
+An exact store retains the syntax-directed type of every allocated value.
+Endpoint resolution then
+follows a well-typed path to a value location or a stored type definition,
+and runtime path equivalence accounts for the equalities created by lookup.
+The source rules extend to auxiliary judgments closed under conversion along
+this equivalence. A simultaneous induction interprets auxiliary path checking
+by endpoint realization and auxiliary subtyping by semantic coercions.
+Coercion action gives canonical forms, from which progress and preservation
+follow.
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Endpoint resolution}{\sigma\vdash p\resolve e}
+\[
+e ::= \mathsf{val}(x) \mid \mathsf{type}(W)
+\qquad
+\mathsf{endpoint}(z)=\mathsf{val}(z)
+\qquad
+\mathsf{endpoint}(T)=\mathsf{type}(T)
+\]
+\begin{mathpar}
+\inferrule*[right=\textsc{G-Var}]
+  { }
+  {\sigma\vdash x\resolve\mathsf{val}(x)}
+\and
+\inferrule*[right=\textsc{G-Fst}]
+  {\sigma\vdash p\resolve\mathsf{val}(x)
+   \\
+   \sigma(x)=\pairval{y}{a}{\delta}}
+  {\sigma\vdash p.1\resolve\mathsf{val}(y)}
+\and
+\inferrule*[right=\textsc{G-Sel-Val}]
+  {\sigma\vdash p\resolve\mathsf{val}(x)
+   \\
+   \sigma(x)=\pairval{y}{a}{z}}
+  {\sigma\vdash p.a\resolve\mathsf{val}(z)}
+\and
+\inferrule*[right=\textsc{G-Sel-Type}]
+  {\sigma\vdash p\resolve\mathsf{val}(x)
+   \\
+   \sigma(x)=\pairval{y}{A}{W}}
+  {\sigma\vdash p.A\resolve\mathsf{type}(W)}
+\and
+\inferrule*[right=\textsc{G-Miss}]
+  {\sigma\vdash p\resolve\mathsf{val}(x)
+   \\
+   \sigma(x)=\pairval{y}{b}{\delta}
+   \\
+   a\ne b
+   \\
+   \sigma\vdash y.a\resolve e}
+  {\sigma\vdash p.a\resolve e}
+\end{mathpar}
+
+\judgheader{Runtime path equivalence}{p\runtimeeq q}
+\begin{mathpar}
+\inferrule*[right=\textsc{Q-Refl}]
+  { }
+  {p\runtimeeq p}
+\and
+\inferrule*[right=\textsc{Q-Symm}]
+  {p\runtimeeq q}
+  {q\runtimeeq p}
+\and
+\inferrule*[right=\textsc{Q-Trans}]
+  {p\runtimeeq q \\ q\runtimeeq r}
+  {p\runtimeeq r}
+\and
+\inferrule*[right=\textsc{Q-Resolve}]
+  {\sigma\vdash p\resolve\mathsf{val}(x)
+   \\
+   \sigma\vdash q\resolve\mathsf{val}(x)}
+  {p\runtimeeq q}
+\and
+\inferrule*[right=\textsc{Q-Congr}]
+  {p\runtimeeq q}
+  {\subst{r}{p}{z}\runtimeeq\subst{r}{q}{z}}
+\end{mathpar}
+\end{minipage}
+\caption{Endpoint resolution and runtime path equivalence. Endpoint
+resolution extends source path resolution with stored type definitions. The
+term-endpoint fragment coincides with \cref{fig:dynamics}. Runtime path
+equivalence is the least equivalence closed under every one-hole path
+context.}
+\Description{All five endpoint-resolution rules and all five rules of
+runtime path equivalence.}
+\label{fig:runtime-proof}
+\end{figure}
+
+For a path relation \(R\), the auxiliary judgments
+\(\Gamma\struct_R J\) contain the source rules of
+\cref{fig:path-wf,fig:subtyping,fig:typing}, with every premise recursively
+read in the auxiliary system. Below a fresh binder \(z\), the relation is
+\(R+z\), the least path congruence extending \(R\) on old paths and relating
+\(z\) only to itself. The rules in \cref{fig:auxiliary} are the only rules
+added to the source system.
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Member-signature conversion}{\tau_1\cong_R\tau_2}
+\begin{mathpar}
+\inferrule*[right=\textsc{C-Refl}]
+  { }
+  {\tau\cong_R\tau}
+\and
+\inferrule*[right=\textsc{C-Symm}]
+  {\tau_1\cong_R\tau_2}
+  {\tau_2\cong_R\tau_1}
+\and
+\inferrule*[right=\textsc{C-Trans}]
+  {\tau_1\cong_R\tau_2 \\ \tau_2\cong_R\tau_3}
+  {\tau_1\cong_R\tau_3}
+\and
+\inferrule*[right=\textsc{C-Replace}]
+  {p\mathrel{R}q}
+  {\subst{\tau}{p}{z}\cong_R\subst{\tau}{q}{z}}
+\end{mathpar}
+
+\judgheader{Additional auxiliary rules}{\Gamma\struct_R J}
+\begin{mathpar}
+\inferrule*[right=\textsc{P-Sub}]
+  {\Gamma\struct_R p::\tau_1
+   \\
+   \Gamma\struct_R\tau_1<:\tau_2}
+  {\Gamma\struct_R p::\tau_2}
+\and
+\inferrule*[right=\textsc{P-Promote}]
+  {\Gamma\struct_R p::U
+   \\
+   \Gamma\struct_R\sing{p}<:T}
+  {\Gamma\struct_R p::T}
+\and
+\inferrule*[right=\textsc{S-Conv}]
+  {\tau_1\cong_R\tau_2}
+  {\Gamma\struct_R\tau_1<:\tau_2}
+\end{mathpar}
+\end{minipage}
+\caption{Complete extension from source typing to typing modulo a path
+congruence. Conversion is generated by replacement in an arbitrary member
+signature. All source rules are inherited recursively; the three rules shown
+are the only additions.}
+\Description{All four conversion rules and the three rules added by the
+auxiliary typing layer.}
+\label{fig:auxiliary}
+\end{figure}
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Exact value introduction}
+  {\Gamma\struct_{\sigma}v\introty P}
+\begin{mathpar}
+\inferrule*[right=\textsc{I-Abs}]
+  {\Gamma,z:S\struct_{\equiv_\sigma+z}t:T
+   \\
+   \Gamma\struct_{\sigma}S\ \wf}
+  {\Gamma\struct_{\sigma}
+    \lambda(z:S).t\introty(z:S)\to T}
+\and
+\inferrule*[right=\textsc{I-Pair}]
+  {\Gamma(y)=S \\ \Gamma(z)=T}
+  {\Gamma\struct_{\sigma}
+    \pairval{y}{a}{z}\introty
+    \pairty{x}{\sing{y}}{a}{\sing{z}}}
+\and
+\inferrule*[right=\textsc{I-Type-Pair}]
+  {\Gamma(y)=S \\ \Gamma\struct_{\sigma}T\ \wf}
+  {\Gamma\struct_{\sigma}
+    \pairval{y}{A}{T}\introty
+    \pairty{x}{\sing{y}}{A}{T..T}}
+\end{mathpar}
+
+\judgheader{Exact store typing}{\storeexact(\Gamma;\sigma)}
+\begin{mathpar}
+\inferrule*[right=\textsc{X-Empty}]
+  { }
+  {\storeexact(\ctxempty;\varnothing)}
+\and
+\inferrule*[right=\textsc{X-Extend}]
+  {\storeexact(\Gamma;\sigma)
+   \\
+   \Gamma\struct_{\sigma}v\introty P
+   \\
+   v\ \mathsf{value}
+   \\
+   \ell\ \mathsf{fresh}}
+  {\storeexact(\Gamma,\ell:P;
+     \sigma\mathbin{\cdot}(\ell\mapsto v))}
+\end{mathpar}
+
+\judgheader{Continuation typing}
+  {\Gamma;\sigma\vdash K:S\Rightarrow T}
+\begin{mathpar}
+\inferrule*[right=\textsc{K-Hole}]
+  {\Gamma\struct_{\sigma}S<:T}
+  {\Gamma;\sigma\vdash[\,]:S\Rightarrow T}
+\and
+\inferrule*[right=\textsc{K-Let}]
+  {\Gamma;\sigma\vdash K:S\Rightarrow T
+   \\
+   \Gamma,z:U\struct_{\equiv_\sigma+z}t:S}
+  {\Gamma;\sigma\vdash
+    (\mathbf{let}\ z=[\,]\ \mathbf{in}\ t)::K:U\Rightarrow T}
+\end{mathpar}
+
+\judgheader{Exact runtime state typing}
+  {\Gamma\struct_{\exact}\langle\sigma,K,t\rangle:T}
+\begin{mathpar}
+\inferrule*[right=\textsc{X-State}]
+  {\storeexact(\Gamma;\sigma)
+   \\
+   \Gamma\struct_{\sigma}t:S
+   \\
+   \Gamma;\sigma\vdash K:S\Rightarrow T}
+  {\Gamma\struct_{\exact}\langle\sigma,K,t\rangle:T}
+\end{mathpar}
+\end{minipage}
+\caption{Exact runtime typing. Exact value introduction consists of the three
+syntax-directed value rules without subsumption. Continuation typing contains
+one empty-stack rule and one let-frame rule.}
+\Description{All rules for exact value introduction, exact stores,
+continuations, and exact runtime states.}
+\label{fig:runtime-typing}
+\end{figure}
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Endpoint realization}
+  {e\in\llbracket\tau\rrbracket_{\Gamma,\sigma}}
+\begin{mathpar}
+\inferrule*[right=\textsc{V-Top}]
+  { }
+  {\mathsf{val}(x)\in\llbracket\top\rrbracket_{\Gamma,\sigma}}
+\and
+\inferrule*[right=\textsc{V-Single}]
+  {\sigma\vdash p\resolve\mathsf{val}(x)}
+  {\mathsf{val}(x)\in
+    \llbracket\sing{p}\rrbracket_{\Gamma,\sigma}}
+\and
+\inferrule*[right=\textsc{V-Select}]
+  {\sigma\vdash p.A\resolve\mathsf{type}(W)
+   \\
+   \mathsf{val}(x)\in\llbracket W\rrbracket_{\Gamma,\sigma}}
+  {\mathsf{val}(x)\in\llbracket p.A\rrbracket_{\Gamma,\sigma}}
+\and
+\inferrule*[right=\textsc{V-Interval}]
+  {\Gamma;\sigma\vdash L\semmap W
+   \\
+   \Gamma;\sigma\vdash W\semmap U}
+  {\mathsf{type}(W)\in
+    \llbracket L..U\rrbracket_{\Gamma,\sigma}}
+\and
+\inferrule*[right=\textsc{V-Fun}]
+  {\sigma(x)=\lambda(z:A).t
+   \\
+   \Gamma(x)=(z:A)\to B
+   \\
+   \Gamma\struct_{\sigma}\lambda(z:A).t\introty(z:A)\to B
+   \\
+   \Gamma\struct_{\sigma}S<:A
+   \\
+   \Gamma,z:S\struct_{\equiv_\sigma+z}B<:U}
+  {\mathsf{val}(x)\in
+    \llbracket(z:S)\to U\rrbracket_{\Gamma,\sigma}}
+\and
+\inferrule*[right=\textsc{V-Pair}]
+  {\sigma(x)=\pairval{y}{a}{\delta}
+   \\
+   \Gamma\struct_{\sigma}y::S
+   \\
+   \mathsf{val}(y)\in\llbracket S\rrbracket_{\Gamma,\sigma}
+   \\
+   \mathsf{endpoint}(\delta)\in
+     \llbracket\subst{\tau}{y}{z}\rrbracket_{\Gamma,\sigma}}
+  {\mathsf{val}(x)\in
+    \llbracket\pairty{z}{S}{a}{\tau}\rrbracket_{\Gamma,\sigma}}
+\end{mathpar}
+
+\judgheader{Realized path substitution}
+  {\rho\models^{R}_{\Delta,\sigma}\Gamma}
+\[
+\rho\models^{R}_{\Delta,\sigma}\Gamma
+\quad\Longleftrightarrow\quad
+\left\{
+\begin{array}{ll}
+\forall(x:T)\in\Gamma. &
+  \Delta\struct_{\sigma}\rho(x)::\rho(T),
+\\[1mm]
+\forall(x:T)\in\Gamma. &
+  \exists e.\;\sigma\vdash\rho(x)\resolve e
+    \land e\in\llbracket\rho(T)\rrbracket_{\Delta,\sigma},
+\\[1mm]
+\forall p,q. & p\mathrel{R}q\ \Longrightarrow\
+  \rho(p)\runtimeeq\rho(q).
+\end{array}
+\right.
+\]
+\end{minipage}
+\caption{Endpoint realization and realized path substitutions. The six
+realization rules are mutually defined with semantic coercions. A realized
+substitution checks every substituted context binding, realizes it in the
+target store, and maps the source path relation into runtime equivalence.}
+\Description{All six endpoint-realization rules and the complete
+three-clause definition of realized path substitution.}
+\label{fig:realization}
+\end{figure}
+
+\begin{figure}[H]
+\begin{minipage}{\textwidth}
+\judgheader{Semantic coercions}
+  {\Gamma;\sigma\vdash\tau_1\semmap\tau_2}
+\begin{mathpar}
+\inferrule*[right=\textsc{M-Refl}]
+  { }
+  {\Gamma;\sigma\vdash\tau\semmap\tau}
+\and
+\inferrule*[right=\textsc{M-Trans}]
+  {\Gamma;\sigma\vdash\tau_1\semmap\tau_2
+   \\
+   \Gamma;\sigma\vdash\tau_2\semmap\tau_3
+   \\
+   \Gamma\struct_{\sigma}\tau_1<:\tau_3}
+  {\Gamma;\sigma\vdash\tau_1\semmap\tau_3}
+\and
+\inferrule*[right=\textsc{M-Conv}]
+  {\tau_1\cong_{\equiv_\sigma}\tau_2}
+  {\Gamma;\sigma\vdash\tau_1\semmap\tau_2}
+\and
+\inferrule*[right=\textsc{M-Bot}]
+  { }
+  {\Gamma;\sigma\vdash\bot\semmap T}
+\and
+\inferrule*[right=\textsc{M-Top}]
+  { }
+  {\Gamma;\sigma\vdash T\semmap\top}
+\and
+\inferrule*[right=\textsc{M-Widen}]
+  {\Gamma\struct_{\sigma}p::T
+   \\
+   \sigma\vdash p\resolve\mathsf{val}(x)
+   \\
+   \mathsf{val}(x)\in\llbracket T\rrbracket_{\Gamma,\sigma}}
+  {\Gamma;\sigma\vdash\sing{p}\semmap T}
+\and
+\inferrule*[right=\textsc{M-Alias}]
+  {\Gamma\struct_{\sigma}p::\sing{q}
+   \\
+   \sigma\vdash p\resolve\mathsf{val}(x)
+   \\
+   \sigma\vdash q\resolve\mathsf{val}(x)}
+  {\Gamma;\sigma\vdash\sing{q}\semmap\sing{p}}
+\and
+\inferrule*[right=\textsc{M-Sel-Lo}]
+  {\Gamma\struct_{\sigma}p.A::L..U
+   \\
+   \Gamma\struct_{\sigma}L<:U
+   \\
+   \sigma\vdash p.A\resolve\mathsf{type}(W)
+   \\
+   \Gamma;\sigma\vdash L\semmap W}
+  {\Gamma;\sigma\vdash L\semmap p.A}
+\and
+\inferrule*[right=\textsc{M-Sel-Hi}]
+  {\Gamma\struct_{\sigma}p.A::L..U
+   \\
+   \Gamma\struct_{\sigma}L<:U
+   \\
+   \sigma\vdash p.A\resolve\mathsf{type}(W)
+   \\
+   \Gamma;\sigma\vdash W\semmap U}
+  {\Gamma;\sigma\vdash p.A\semmap U}
+\and
+\inferrule*[right=\textsc{M-Fun}]
+  {\Gamma\struct_{\sigma}S'<:S
+   \\
+   \Gamma,z:S'\struct_{\equiv_\sigma+z}T<:T'}
+  {\Gamma;\sigma\vdash
+    (z:S)\to T\semmap(z:S')\to T'}
+\and
+\inferrule*[right=\textsc{M-Pair-Fst}]
+  {\Gamma\struct_{\sigma}S<:S'
+   \\
+   \Gamma;\sigma\vdash S\semmap S'}
+  {\Gamma;\sigma\vdash
+    \pairty{z}{S}{a}{\tau}\semmap
+    \pairty{z}{S'}{a}{\tau}}
+\and
+\inferrule*[right=\textsc{M-Pair-Single}]
+  {\Gamma\struct_{\sigma}p::P
+   \\
+   \Gamma,z:\sing{p}\struct_{\equiv_\sigma+z}\tau<:\tau'
+   \\
+   \Gamma\struct_{\sigma}
+     \subst{\tau}{p}{z}<:\subst{\tau'}{p}{z}
+   \\
+   \Gamma;\sigma\vdash
+     \subst{\tau}{p}{z}\semmap\subst{\tau'}{p}{z}}
+  {\Gamma;\sigma\vdash
+    \pairty{z}{\sing{p}}{a}{\tau}\semmap
+    \pairty{z}{\sing{p}}{a}{\tau'}}
+\and
+\inferrule*[right=\textsc{M-Bounds}]
+  {\Gamma\struct_{\sigma}L'<:L
+   \\
+   \Gamma\struct_{\sigma}U<:U'
+   \\
+   \Gamma\struct_{\sigma}L<:U
+   \\
+   \Gamma;\sigma\vdash L'\semmap L
+   \\
+   \Gamma;\sigma\vdash U\semmap U'}
+  {\Gamma;\sigma\vdash L..U\semmap L'..U'}
+\end{mathpar}
+\end{minipage}
+\caption{The complete inductive definition of semantic coercions. Static
+premises are retained so that erasure recovers auxiliary subtyping; recursive
+coercion premises provide the corresponding semantic action.}
+\Description{All thirteen semantic-coercion constructors.}
+\label{fig:coercions}
+\end{figure}
+
+\subsection{Path resolution and exact stores}
+
+Precise synthesis is not preserved by path resolution. Suppose a stored pair
+has first component \(y\). The path \(p.1\) may synthesize \(\sing{y}\),
+whereas the endpoint \(y\) synthesizes the type assigned by the store context.
+The proof therefore uses checking modulo runtime path equivalence.
+
+\begin{lemma}[Typed path resolution]
+\label{lem:path-resolution}
+If \(\storeexact(\Gamma;\sigma)\) and
+\(\Gamma\struct_{\sigma}p::\tau\), then there is an endpoint \(e\)
+such that
+\[
+\sigma\vdash p\resolve e
+\qquad\text{and}\qquad
+e\in\llbracket\tau\rrbracket_{\Gamma,\sigma}.
+\]
+\end{lemma}
+
+If \(\tau=T\), then \(e=\mathsf{val}(x)\); if \(\tau=L..U\), then
+\(e=\mathsf{type}(W)\). In the first case, runtime path
+equivalence identifies \(p\) with \(x\); singleton conversion and auxiliary
+subsumption then re-establish \(\Gamma\struct_{\sigma}x::T\) from
+\(\Gamma\struct_{\sigma}p::T\).
+
+Exact stores also supply the inversion needed for canonical forms. An
+ordinary store typing may record a location at a supertype of its stored
+value, hiding its introduction form. An exact store records the
+syntax-directed type assigned by
+\textsc{T-Abs}, \textsc{T-Pair}, or \textsc{T-Type-Pair}. Allocation extends
+the store with precisely this type; value inversion and narrowing recheck the
+suspended let body under the more informative binding.
+
+\subsection{Runtime path equivalence and typing modulo equivalence}
+
+Runtime path equivalence \(p\runtimeeq q\) is the least path congruence
+relating paths that resolve to the same location in \(\sigma\). Conversion
+along this equivalence relates a selected member opened at \(p.1\) to the same
+member opened at the location returned by that projection.
+
+The auxiliary judgments for paths, subtyping, terms, continuations, and states
+extend the corresponding source rules with conversion along a path
+congruence. For a congruence \(R\), write \(\Gamma\struct_R J\) for such a
+judgment; \(\Gamma\struct_{\sigma}J\) abbreviates the instance
+\(R=\runtimeeq\). A representative rule replaces equivalent paths inside a
+type:
+\[
+\inferrule
+  {p\runtimeeq q}
+  {\Gamma\struct_{\sigma}
+    \subst{\tau}{p}{x}<:\subst{\tau}{q}{x}}.
+\tag{Conversion}
+\]
+Because \(\runtimeeq\) is a congruence, the same principle applies beneath
+projections, selections, functions, and pair signatures.
+
+\subsection{Realization and semantic coercions}
+\label{sec:realization}
+
+Endpoint resolution in \cref{fig:runtime-proof} follows both term and type
+members. A value endpoint realizes a proper type, while a type-definition
+endpoint realizes an interval. The rules in
+\cref{fig:realization,fig:coercions} record the data used in the
+canonical-forms proof. For
+an exact closure with signature \((z:A)\to B\) observed at
+\((z:S)\to U\), function realization records \(S<:A\) and, under \(z:S\),
+\(B<:U\). The former checks an actual argument against the closure domain;
+the latter subsumes the opened body at the advertised result type. Pair
+realization records realizations of the first component and of the member
+opened at that component. Singleton realization is resolution to the
+designated location; selection realization first resolves the type member to
+its stored definition.
+
+Interval realization is the recursive point of the interpretation. If a
+stored definition \(W\) realizes \(L..U\), the proof needs operations taking
+realizers of \(L\) to realizers of \(W\), and realizers of \(W\) to realizers
+of \(U\). Placing those operations directly in the definition as functions
+would put the realization relation to the left of an arrow in its own mutual
+definition. We therefore defunctionalize them as an inductive family of finite
+derivations, written
+\(\Gamma;\sigma\vdash\tau_1\semmap\tau_2\), called semantic coercions. This
+auxiliary relation is used to establish canonical forms for the CK machine of
+\cref{fig:dynamics}.
+
+Each coercion constructor retains the auxiliary premises of the subtyping
+rule it interprets. Reflexivity and transitivity become identity and
+composition. Selection resolves the member definition and uses the lower or
+upper coercion stored by interval realization. A function coercion retains
+the domain and codomain comparisons used when the abstraction is applied.
+First-component pair widening acts recursively on the stored component.
+Interval subtyping composes its lower and upper maps in the variance-directed
+order.
+
+The dependent-member case accounts for the specialized source rule. A pair
+whose first component \(y\) realizes \(\sing{p}\) satisfies
+\(y\runtimeeq p\). Conversion first changes the realized member from
+\(\subst{\tau}{y}{x}\) to \(\subst{\tau}{p}{x}\); the explicit opened
+coercion from \textsc{S-Pair-Single} acts at \(p\); a second conversion changes
+the result to \(\subst{\tau'}{y}{x}\). The pair coercion stores the opened map
+and the auxiliary premises; its action performs the two conversions around
+that map.
+
+\begin{lemma}[Coercion construction, action, and erasure]
+\label{lem:coercions}
+The following properties hold.
+\begin{enumerate}
+\item If \(\storeexact(\Gamma;\sigma)\) and
+  \(\Gamma\struct_{\sigma}\tau_1<:\tau_2\), then
+  \(\Gamma;\sigma\vdash\tau_1\semmap\tau_2\).
+\item If \(\Gamma;\sigma\vdash\tau_1\semmap\tau_2\) and
+  \(e\in\llbracket\tau_1\rrbracket_{\Gamma,\sigma}\), then
+  \(e\in\llbracket\tau_2\rrbracket_{\Gamma,\sigma}\).
+\item If \(\Gamma;\sigma\vdash\tau_1\semmap\tau_2\), then
+  \(\Gamma\struct_{\sigma}\tau_1<:\tau_2\).
+\end{enumerate}
+\end{lemma}
+
+The first clause constructs a coercion from auxiliary subtyping in an exact
+store; it is the identity instance of the fundamental lemma below. The second
+clause is coercion action, and the third erases the semantic evidence.
+
+\subsection{Fundamental lemma and canonical forms}
+
+The central induction is a simultaneous substitution argument using the
+realized-substitution judgment in \cref{fig:realization}. It requires
+auxiliary checking of substituted context bindings, preservation of the path
+relation, and endpoint realization. These hypotheses provide the endpoint
+needed when the induction crosses a binder.
+
+\begin{lemma}[Fundamental lemma]
+\label{lem:fundamental}
+Suppose \(\rho\models^R_{\Delta,\sigma}\Gamma\).
+\begin{enumerate}
+\item If \(\Gamma\struct_R p::\tau\), then for some \(e\),
+  \(\sigma\vdash\rho(p)\resolve e\) and
+  \(e\in\llbracket\rho(\tau)\rrbracket_{\Delta,\sigma}\).
+\item If \(\Gamma\struct_R\tau_1<:\tau_2\), then
+  \(\Delta;\sigma\vdash
+    \rho(\tau_1)\semmap\rho(\tau_2)\).
+\end{enumerate}
+\end{lemma}
+
+A realized substitution carries the store facts required by the induction.
+For an exact store, the identity substitution satisfies
+\(\mathsf{id}\models^{\runtimeeq}_{\Gamma,\sigma}\Gamma\), which is the
+instance used by the runtime proof.
+
+The cases for selection use interval realization; transitivity composes
+coercions. In the singleton-pair case, the induction stores the coercion
+obtained from the explicit comparison opened at \(p\). When that coercion is
+applied to a realized pair, runtime path equivalence transports it to the
+actual first component. Instantiating \cref{lem:fundamental} with the identity
+substitution gives \cref{lem:path-resolution} and constructs a semantic
+coercion for every auxiliary subtyping derivation in an exact store.
+
+Applying such a coercion to the realization of a location singleton yields
+the canonical forms used by the machine.
+
+\begin{lemma}[Canonical forms]
+\label{lem:canonical}
+Let \(\sigma\) be exact for \(\Gamma\).
+\begin{enumerate}
+\item If \(\Gamma\struct_{\sigma}\sing{x}<:(z:S)\to T\), then
+  \(\sigma(x)\) is an
+  abstraction.
+\item If \(\Gamma\struct_{\sigma}\sing{x}<:\pairty{z}{S}{a}{\tau}\), then
+  \(\sigma(x)\) is a pair.
+\end{enumerate}
+\end{lemma}
+
+The function case also recovers the exact closure signature and the residual
+subtypings relating it to \((z:S)\to T\). Preservation for dependent beta
+reduction uses the recovered signature and these residual derivations.
+
+\subsection{Progress and preservation}
+
+\begin{theorem}[Progress]
+\label{thm:progress}
+If \(\Gamma\struct_{\exact}s:T\), then \(s\) is final or there exists \(s'\)
+such that \(s\sstep s'\).
+\end{theorem}
+
+\begin{theorem}[Preservation]
+\label{thm:preservation}
+If \(\Gamma\struct_{\exact}s:T\) and \(s\sstep s'\), then for some
+\(\Delta,U\),
+\[
+(\Gamma,T)\preceq(\Delta,U)
+\qquad\text{and}\qquad
+\Delta\struct_{\exact}s':U.
+\]
+\end{theorem}
+
+Progress proceeds by cases on the current term of an exactly typed runtime
+state. Path terms use \cref{lem:path-resolution}. An application resolves the
+operator and operand paths, and \cref{lem:canonical} exposes an abstraction
+at the operator location. Pair canonical forms supply the inversion needed by
+first projection and labelled selection during path resolution.
+
+Preservation is by cases on the machine step. If
+\(\sigma\vdash p\resolve\mathsf{val}(x)\), runtime path equivalence converts
+\(\sing{p}\) to \(\sing{x}\) inside the invariant, preserving the enclosing
+auxiliary term judgment. Beta reduction uses the closure signature and
+residual comparisons obtained from function realization after coercion
+action.
+When a let-bound value is allocated, exact value inversion determines the new
+store binding, narrowing checks the suspended body at that exact type, and
+the old continuation remains syntactically unchanged while its typing is
+weakened into the extended store context. The remaining administrative steps
+preserve the invariant. Iterating
+\cref{thm:preservation} proves \cref{thm:reachable}; applying
+\cref{thm:progress} at the endpoint proves \cref{thm:safety}.
+
+\section{Related work}
+
+DOT combines abstract type members with recursive objects, refinements,
+intersections, and a rich subtyping lattice
+\citep{amin2014foundations,rompf2016dot}. Its soundness proofs must control
+which abstract bounds can be exposed in arbitrary contexts. The tight-typing
+account of \citet{rapoport2017simple}, for example, factors reasoning through
+inert contexts in which runtime values admit strong inversion principles.
+
+For \lambdap{}, the exact-store invariant provides the required inversion
+principle: a location retains the introduction type of its stored
+function or pair even when declarative subtyping presents it at another type.
+Semantic coercions interpret primitive transitivity and abstract selection
+without a separate inert/tight-typing judgment.
+
+pDOT adds arbitrary-length paths and singleton types to recursive objects and
+gives a Coq-mechanized safety proof \citep{rapoport2019pdot}. \lambdap{}
+represents record extension by dependent-pair chains, with explicit hit and
+miss rules for static selection and dynamic lookup. Removing recursive
+objects, intersections, and unions leaves path lookup as a distinct obligation
+in the safety proof.
+
+\section{Conclusion}
+
+\lambdap{} isolates paths, dependent pairs, and abstract type members. Its
+counterexample shows that abstract membership cannot justify singleton
+symmetry. The safety proof combines exact stores, runtime path equivalence, and
+semantic coercions for the restricted pair rule. Whether unrestricted pair
+subtyping is sound for \lambdap{} remains open.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{../references}
+
+\end{document}
