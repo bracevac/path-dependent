@@ -90,17 +90,12 @@ inductive SubCode :
     SubCode (Gamma.snoc S') (.ty T) (.ty T') ->
     SubCode Gamma
       (.ty (.Fun S T)) (.ty (.Fun S' T'))
-| pair_fst :
+| pair :
     SubCode Gamma (.ty S) (.ty S') ->
+    SubCode (Gamma.snoc S) d d' ->
     SubCode Gamma
-      (.ty (.Pair S a d)) (.ty (.Pair S' a d))
-| pair_single_member :
-    PathCode Gamma p (.ty P) ->
-    SubCode (Gamma.snoc (.Single p)) d d' ->
-    SubCode Gamma (d.open p) (d'.open p) ->
-    SubCode Gamma
-      (.ty (.Pair (.Single p) a d))
-      (.ty (.Pair (.Single p) a d'))
+      (.ty (.Pair S a d))
+      (.ty (.Pair S' a d'))
 | bounds :
     SubCode Gamma (.ty S') (.ty S) ->
     SubCode Gamma (.ty T) (.ty T') ->
@@ -119,9 +114,7 @@ def SubCode.erase : SubCode Gamma d1 d2 -> Tau.Sub Gamma d1 d2
 | .sel_hi path boundCode => .sel_hi path.erase boundCode.erase
 | .sel_lo path boundCode => .sel_lo path.erase boundCode.erase
 | .fun domain codomain => .fun domain.erase codomain.erase
-| .pair_fst first => .pair_fst first.erase
-| .pair_single_member path underBinder opened =>
-    .pair_single_member path.erase underBinder.erase opened.erase
+| .pair first member => .pair first.erase member.erase
 | .bounds lower upper nonempty =>
     .bounds lower.erase upper.erase nonempty.erase
 
@@ -155,14 +148,10 @@ theorem SubCode.nonempty_of_sub
       obtain ⟨domain⟩ := ihDomain
       obtain ⟨codomain⟩ := ihCodomain
       exact ⟨.fun domain codomain⟩
-  | pair_fst _ ihFirst =>
+  | pair _ _ ihFirst ihMember =>
       obtain ⟨first⟩ := ihFirst
-      exact ⟨.pair_fst first⟩
-  | pair_single_member path _ _ ihUnderBinder ihOpened =>
-      obtain ⟨pathCode⟩ := PathCode.nonempty_of_ty path
-      obtain ⟨underBinder⟩ := ihUnderBinder
-      obtain ⟨opened⟩ := ihOpened
-      exact ⟨.pair_single_member pathCode underBinder opened⟩
+      obtain ⟨member⟩ := ihMember
+      exact ⟨.pair first member⟩
   | bounds _ _ _ ihLower ihUpper ihNonempty =>
       obtain ⟨lower⟩ := ihLower
       obtain ⟨upper⟩ := ihUpper

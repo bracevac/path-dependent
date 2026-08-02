@@ -8,6 +8,8 @@ proof-relevant derivations and store-local semantic evidence.
 The development proves:
 
 - resolution and determinism for term paths and generalized endpoints;
+- unrestricted covariance for dependent pairs, including proper and interval
+  members;
 - a finite semantic interpretation of every declarative subtyping derivation;
 - a fundamental theorem for path typing, subtyping, and term typing under
   store valuations;
@@ -29,23 +31,30 @@ realizes its renamed type. `PathCode.resolve` interprets typed paths, and
 available at a location or generalized path endpoint. Coercion action
 preserves these observations. Function codomain coercions and body typings are
 closed over their source environments and instantiated when execution supplies
-the argument location. Coercions serve as semantic evidence in the proof; the
-source and runtime syntax are defined in `Syntax.lean` and `Runtime.lean`.
+the argument location. A `MemberClosure` similarly retains a dependent-member
+subtyping derivation until a stored pair supplies its first-component
+location. Coercions serve as semantic evidence in the proof; the source and
+runtime syntax are defined in `Syntax.lean` and `Runtime.lean`.
+
+Dependent pairs are covariant in both components: from `S <: S'` and a member
+comparison under a binder of type `S`, the rule derives
+`Pair S a d <: Pair S' a d'`. Coercion action instantiates the saved member
+derivation at the first component stored in the pair. Its termination follows
+from the append-only store order: a pair's first component and member endpoint
+are older than the pair cell. The mechanization uses endpoint stratum as the
+primary termination measure and coercion-tree size for recursive calls at the
+same endpoint.
 
 `TermEvidence` normalizes subsumption into a final coercion at each runtime
 constructor. This yields direct inversion for progress and preservation.
 Allocation weakens all old evidence and records the corresponding weakening of
 the final result type through `Ty.Extends`.
 
-The dependent-pair member rule remains the restricted source rule from
-`Typing.lean`: changing the member requires a singleton first component and an
-explicit comparison after opening at that path. Soundness of a generalized
-rule for an arbitrary first-component type remains open.
-
 ## Files
 
 - `Syntax.lean`, `Context.lean`, and `Typing.lean`: source calculus.
-- `Runtime.lean`: stores, path lookup, and the CK machine.
+- `Runtime.lean` and `StoreStratification.lean`: stores, path lookup, the CK
+  machine, and the allocation-order lemmas used by coercion action.
 - `Derivations.lean`, `StaticMetatheory.lean`, and `CodeMetatheory.lean`:
   proof-relevant elaboration and scoped renaming.
 - `RuntimeEquality.lean` and `Valuation.lean`: runtime path equality,
@@ -59,6 +68,8 @@ rule for an arbitrary first-component type remains open.
 - `SemanticFundamental.lean`, `SemanticProgress.lean`,
   `SemanticPreservation.lean`, and `SemanticSafety.lean`: the fundamental
   theorem and type safety.
+- `GeneralPairRegression.lean`: proper-member, interval-member, and closed
+  end-to-end regressions for unrestricted dependent-pair covariance.
 
 ## Building
 

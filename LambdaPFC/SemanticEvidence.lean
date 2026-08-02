@@ -10,10 +10,10 @@ been renamed into that scope, so these families do not carry a target typing
 context.
 
 Ordinary coercions are executable finite trees.  Source subtyping below a
-function binder remains deferred until an argument location is known; the
-deferred constructor retains the source code and its outer environment.
-Likewise, a function body is retained as a source typing code closed by its
-outer environment.
+function binder remains deferred until an argument location is known.
+Dependent-pair members use a separate closure which is instantiated at the
+concrete first-component location stored in the pair.  Both closures retain
+source code and its outer environment.
 -/
 
 namespace LambdaPFC
@@ -123,18 +123,12 @@ inductive Coercion :
     Coercion sigma (.ty S') (.ty S) ->
     DeferredCoercion sigma S' T T' ->
     Coercion sigma (.ty (.Fun S T)) (.ty (.Fun S' T'))
-| pairFst {m : Nat} {sigma : Store m} {S S' : Ty m}
-    {a : Name} {k : Kind} {d : Tau (m + 1) k} :
+| pair {m : Nat} {sigma : Store m} {S S' : Ty m}
+    {a : Name} {k : Kind} {d d' : Tau (m + 1) k} :
     Coercion sigma (.ty S) (.ty S') ->
+    MemberClosure sigma S d d' ->
     Coercion sigma
-      (.ty (.Pair S a d)) (.ty (.Pair S' a d))
-| pairMember {m : Nat} {sigma : Store m} {p : Path m}
-    {x : Fin m} {a : Name} {k : Kind} {d d' : Tau (m + 1) k} :
-    Path.Resolve p sigma (.val x) ->
-    Coercion sigma (d.open p) (d'.open p) ->
-    Coercion sigma
-      (.ty (.Pair (.Single p) a d))
-      (.ty (.Pair (.Single p) a d'))
+      (.ty (.Pair S a d)) (.ty (.Pair S' a d'))
 | bounds {m : Nat} {sigma : Store m} {S S' T T' : Ty m} :
     Coercion sigma (.ty S') (.ty S) ->
     Coercion sigma (.ty T) (.ty T') ->
@@ -170,6 +164,20 @@ inductive DeferredCoercion :
     SubCode (Gamma.snoc S) (.ty T) (.ty U) ->
     DeferredCoercion sigma (S.rename rho)
       (T.rename rho.ext) (U.rename rho.ext)
+
+/-- A dependent-pair member comparison waiting for the concrete first
+component.  A member closure corresponds directly to the single member
+premise of the source pair rule and retains its source code and environment. -/
+inductive MemberClosure :
+    {m : Nat} -> Store m -> Ty m -> {k : Kind} ->
+    Tau (m + 1) k -> Tau (m + 1) k -> Type 1 where
+| source {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {S : Ty n} {k : Kind}
+    {d d' : Tau (n + 1) k} :
+    Environment Gamma rho sigma ->
+    SubCode (Gamma.snoc S) d d' ->
+    MemberClosure sigma (S.rename rho)
+      (d.rename rho.ext) (d'.rename rho.ext)
 
 /-- A source function body paired with the semantic environment for its free
 variables.  Its formal argument is deliberately absent from the environment

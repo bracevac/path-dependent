@@ -103,17 +103,10 @@ theorem Tau.Sub.rename {Γ : Ctx n} {τ1 τ2 : Tau n k}
       intro m f Δ ρ
       simpa [Tau.rename, Ty.rename] using
         Tau.Sub.fun (ihdom ρ) (ihcod (Renaming.ext ρ))
-  | pair_fst hfst ihfst =>
+  | pair hfst hmember ihfst ihmember =>
       intro m f Δ ρ
       simpa [Tau.rename, Ty.rename] using
-        Tau.Sub.pair_fst (ihfst ρ)
-  | pair_single_member hp hsnd hopen ihsnd ihopen =>
-      intro m f Δ ρ
-      have hopen' := ihopen ρ
-      rw [Tau.open_rename, Tau.open_rename] at hopen'
-      simpa [Tau.rename, Ty.rename, Path.rename] using
-        Tau.Sub.pair_single_member (hp.rename ρ)
-          (ihsnd (Renaming.ext ρ)) hopen'
+        Tau.Sub.pair (ihfst ρ) (ihmember (Renaming.ext ρ))
   | bounds hlo hhi hnonempty ihlo ihhi ihnonempty =>
       intro m f Δ ρ
       simpa [Tau.rename] using
