@@ -43,7 +43,7 @@ inductive TermEvidence :
     {n : Nat} -> Store n -> Tm n -> Ty n -> Type 1 where
 | path {n : Nat} {sigma : Store n} {p : Path n}
     {x : Fin n} {T : Ty n} :
-    Path.reduce p sigma x ->
+    Path.Resolve p sigma (.loc x) ->
     Coercion sigma (.ty (.Single p)) (.ty T) ->
     TermEvidence sigma (.path p) T
 | value {n : Nat} {sigma : Store n} {v : Tm n} {T : Ty n} :
@@ -61,10 +61,6 @@ inductive TermEvidence :
     BodyClosure sigma S body U.weaken ->
     Coercion sigma (.ty U) (.ty T) ->
     TermEvidence sigma (.let s body) T
-| typed {n : Nat} {sigma : Store n} {t : Tm n} {A T : Ty n} :
-    TermEvidence sigma t A ->
-    Coercion sigma (.ty A) (.ty T) ->
-    TermEvidence sigma (.typed t A) T
 
 /-- A value-evidence derivation supplies the runtime value classifier. -/
 def ValueEvidence.isValue : ValueEvidence sigma v T -> v.IsValue
@@ -88,26 +84,25 @@ def TermEvidence.cast
     (suffix : Coercion sigma (.ty S) (.ty T)) :
     TermEvidence sigma t T :=
   match evidence with
-  | .path reduction old => .path reduction (old.comp suffix)
+  | .path resolution old => .path resolution (old.comp suffix)
   | .value valueEvidence => .value (valueEvidence.cast suffix)
   | .app function argument old =>
       .app function argument (old.comp suffix)
   | .let bound body old => .let bound body (old.comp suffix)
-  | .typed term old => .typed term (old.comp suffix)
 
 /-! ## Syntax-directed views -/
 
 structure PathEvidenceView (sigma : Store n) (p : Path n)
     (T : Ty n) : Type 1 where
   location : Fin n
-  reduction : Path.reduce p sigma location
+  resolution : Path.Resolve p sigma (.loc location)
   suffix : Coercion sigma (.ty (.Single p)) (.ty T)
 
 def TermEvidence.pathView
     (evidence : TermEvidence sigma (.path p) T) :
     PathEvidenceView sigma p T := by
   cases evidence with
-  | path reduction suffix => exact ⟨_, reduction, suffix⟩
+  | path resolution suffix => exact ⟨_, resolution, suffix⟩
   | value valueEvidence => cases valueEvidence
 
 structure AppEvidenceView (sigma : Store n) (p q : Path n)
@@ -143,41 +138,18 @@ def TermEvidence.letView
   | «let» bound closure suffix =>
       exact ⟨_, _, bound, closure, suffix⟩
 
-structure TypedEvidenceView (sigma : Store n) (t : Tm n)
-    (A T : Ty n) : Type 1 where
-  term : TermEvidence sigma t A
-  suffix : Coercion sigma (.ty A) (.ty T)
-
-def TermEvidence.typedView
-    (evidence : TermEvidence sigma (.typed t A) T) :
-    TypedEvidenceView sigma t A T := by
-  cases evidence with
-  | value valueEvidence => cases valueEvidence
-  | typed term suffix => exact ⟨term, suffix⟩
-
 /-- Value inversion is propositionally truncated because `Tm.IsValue` lives
 in `Prop` while the resulting evidence lives in `Type`. -/
 theorem TermEvidence.nonemptyValueView
     (evidence : TermEvidence sigma v T) (value : v.IsValue) :
     Nonempty (ValueEvidence sigma v T) := by
   cases evidence with
-  | path reduction suffix => cases value
+  | path resolution suffix => cases value
   | value valueEvidence => exact ⟨valueEvidence⟩
   | app function argument suffix => cases value
   | «let» bound closure suffix => cases value
-  | typed term suffix => cases value
 
 /-! ## Continuations and states -/
-
-/-- Evidence that a let frame consumes `S` and resumes at `T`. -/
-inductive Tm.Frame.Evidence :
-    {n : Nat} -> Store n -> LambdaPFC.Ty n -> Tm.Frame n ->
-      LambdaPFC.Ty n -> Type 1 where
-| «let» {n : Nat} {sigma : Store n} {body : Tm (n + 1)}
-    {S T U : LambdaPFC.Ty n} :
-    BodyClosure sigma S body U.weaken ->
-    Coercion sigma (.ty U) (.ty T) ->
-    Tm.Frame.Evidence sigma S (.let body) T
 
 /-- Evidence that a continuation maps the current type to its final type. -/
 inductive Tm.Cont.Evidence :
@@ -186,11 +158,12 @@ inductive Tm.Cont.Evidence :
 | hole {n : Nat} {sigma : Store n} {S T : LambdaPFC.Ty n} :
     Coercion sigma (.ty S) (.ty T) ->
     Tm.Cont.Evidence sigma S [] T
-| cons {n : Nat} {sigma : Store n} {S U T : LambdaPFC.Ty n}
-    {frame : Tm.Frame n} {cont : Tm.Cont n} :
+| cons {n : Nat} {sigma : Store n} {S U V T : LambdaPFC.Ty n}
+    {body : Tm (n + 1)} {cont : Tm.Cont n} :
     Tm.Cont.Evidence sigma U cont T ->
-    Tm.Frame.Evidence sigma S frame U ->
-    Tm.Cont.Evidence sigma S (frame :: cont) T
+    BodyClosure sigma S body V.weaken ->
+    Coercion sigma (.ty V) (.ty U) ->
+    Tm.Cont.Evidence sigma S (body :: cont) T
 
 /-- The store-local invariant for a complete machine state. -/
 inductive State.Evidence :

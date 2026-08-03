@@ -1,4 +1,3 @@
-import LambdaPFC.MachineSupport
 import LambdaPFC.SemanticAction
 import LambdaPFC.SemanticTyping
 
@@ -6,24 +5,24 @@ import LambdaPFC.SemanticTyping
 Progress from normalized store-local evidence.
 
 The proof observes only the outer runtime term.  Function canonical forms are
-obtained by applying the path's suffix coercion to its singleton realization;
-total lookup in intrinsically scoped stores supplies the binding needed for a
-final location.
+obtained by applying the path's suffix coercion to its singleton realization.
+Intrinsic store scope ensures that a runtime variable denotes an allocated
+location.
 -/
 
 namespace LambdaPFC
 
 noncomputable section
 
-/-- A typed path reducing to `x` makes `x` a possible inhabitant of the
+/-- A typed path resolving to `x` makes `x` a possible inhabitant of the
 advertised type. -/
 noncomputable def TermEvidence.pathPossibleAt
     {n : Nat} {sigma : Store n} {p : Path n} {T : Ty n}
     {x : Fin n}
     (evidence : TermEvidence sigma (.path p) T)
-    (reduction : Path.reduce p sigma x) :
+    (resolution : Path.Resolve p sigma (.loc x)) :
     Store.Possible sigma x T :=
-  evidence.pathView.suffix.actionPossible (.single reduction.toResolve)
+  evidence.pathView.suffix.actionPossible (.single resolution)
 
 /-- Every runtime term carrying semantic evidence is final or can take a
 machine step, independently of its continuation's typing. -/
@@ -32,14 +31,15 @@ theorem TermEvidence.progress
     (evidence : TermEvidence sigma term T) (cont : Tm.Cont n) :
     State.Progress (State.mk sigma cont term) := by
   cases evidence with
-  | @path p x T reduction suffix =>
-      rcases Path.isVar_or_not p with isVariable | notVariable
-      · cases isVariable with
-        | var =>
-            cases reduction
-            obtain ⟨value, binding⟩ := Store.exists_binds sigma x
-            exact State.Progress.path_var binding
-      · exact State.Progress.path reduction notVariable
+  | @path p x T resolution suffix =>
+      cases p with
+      | var =>
+          cases resolution
+          exact State.Progress.path_var
+      | fst =>
+          exact State.Progress.path resolution (fun isVariable => by cases isVariable)
+      | sel =>
+          exact State.Progress.path resolution (fun isVariable => by cases isVariable)
   | value valueEvidence =>
       exact State.Progress.value valueEvidence.isValue
   | app function argument suffix =>
@@ -54,8 +54,6 @@ theorem TermEvidence.progress
           exact State.Progress.app functionReduction argumentReduction binding
   | «let» bound closure suffix =>
       exact State.Progress.let_term
-  | typed term suffix =>
-      exact State.Progress.ascribed
 
 /-- The complete machine invariant entails progress. -/
 theorem State.Evidence.progress

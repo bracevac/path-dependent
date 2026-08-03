@@ -45,11 +45,6 @@ noncomputable def Tau.RuntimeConv.weakenScoped
 
 /-! ## Allocation weakening -/
 
-/-- Weakening commutes with taking the endpoint of a stored definition. -/
-@[simp] theorem Def.endpoint_weaken (d : Def n k) :
-    (d.rename FinFun.weaken).endpoint = d.endpoint.weaken := by
-  cases d <;> rfl
-
 private abbrev EnvironmentAllocation
     {n m : Nat} (Gamma : Ctx n) (rho : Valuation n m)
     (sigma : Store m) (_ : Environment Gamma rho sigma) : Type 1 :=
@@ -64,11 +59,11 @@ private abbrev PossibleAllocation
 
 private abbrev RealizesAllocation
     {m : Nat} {k : Kind} (sigma : Store m)
-    (endpoint : Path.Endpoint m) (d : Tau m k)
-    (_ : Path.Endpoint.Realizes sigma endpoint d) : Type 1 :=
+    (referent : Path.Referent m) (d : Tau m k)
+    (_ : Path.Referent.Realizes sigma referent d) : Type 1 :=
   forall (v : Tm m) (vv : v.IsValue),
-    Path.Endpoint.Realizes (Store.val sigma v vv)
-      endpoint.weaken d.weaken
+    Path.Referent.Realizes (Store.val sigma v vv)
+      referent.weaken d.weaken
 
 private abbrev CoercionAllocation
     {m : Nat} {k : Kind} (sigma : Store m) (d1 d2 : Tau m k)
@@ -100,7 +95,7 @@ private abbrev BodyAllocation
       (body.rename FinFun.weaken.ext) (T.rename FinFun.weaken.ext)
 
 /-! The constructor clauses below instantiate the mutual induction principle
-generated for the six semantic evidence families. -/
+generated for the seven semantic evidence families. -/
 
 private noncomputable def allocateEnvironmentIntro
     {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
@@ -136,22 +131,22 @@ private noncomputable def allocatePossibleFun
 private noncomputable def allocatePossiblePair
     (binding : Store.Binds sigma x (.pair y a delta))
     (first : Store.Possible sigma y S)
-    (member : Path.Endpoint.Realizes sigma delta.endpoint
+    (member : Path.Referent.Realizes sigma delta.referent
       (d.open (.var y)))
     (firstIH : PossibleAllocation sigma y S first)
-    (memberIH : RealizesAllocation sigma delta.endpoint
+    (memberIH : RealizesAllocation sigma delta.referent
       (d.open (.var y)) member) :
     PossibleAllocation sigma x (.Pair S a d)
       (.pair binding first member) :=
   fun v vv => by
     refine .pair (.there binding) (firstIH v vv) ?_
-    rw [Def.endpoint_weaken]
+    rw [Def.referent_weaken]
     simpa only [Tm.weaken, Tm.rename,
       Tau.weaken, Tau.open_rename, Path.weaken, Path.rename] using
       memberIH v vv
 
 private noncomputable def allocatePossibleSingle
-    (resolution : Path.Resolve p sigma (.val x)) :
+    (resolution : Path.Resolve p sigma (.loc x)) :
     PossibleAllocation sigma x (.Single p) (.single resolution) :=
   fun v vv => .single (resolution.weaken v vv)
 
@@ -163,11 +158,11 @@ private noncomputable def allocatePossibleSelection
       (.selection resolution witness) :=
   fun v vv => .selection (resolution.weaken v vv) (witnessIH v vv)
 
-private noncomputable def allocateRealizesVal
+private noncomputable def allocateRealizesLoc
     (possible : Store.Possible sigma x T)
     (possibleIH : PossibleAllocation sigma x T possible) :
-    RealizesAllocation sigma (.val x) (.ty T) (.val possible) :=
-  fun v vv => .val (possibleIH v vv)
+    RealizesAllocation sigma (.loc x) (.ty T) (.loc possible) :=
+  fun v vv => .loc (possibleIH v vv)
 
 private noncomputable def allocateRealizesType
     (lower : Coercion sigma (.ty L) (.ty W))
@@ -203,7 +198,7 @@ private noncomputable def allocateCoercionTop :
   fun _ _ => .top
 
 private noncomputable def allocateCoercionWiden
-    (resolution : Path.Resolve p sigma (.val x))
+    (resolution : Path.Resolve p sigma (.loc x))
     (possible : Store.Possible sigma x T)
     (possibleIH : PossibleAllocation sigma x T possible) :
     CoercionAllocation sigma (.ty (.Single p)) (.ty T)
@@ -211,8 +206,8 @@ private noncomputable def allocateCoercionWiden
   fun v vv => .widen (resolution.weaken v vv) (possibleIH v vv)
 
 private noncomputable def allocateCoercionAlias
-    (left : Path.Resolve p sigma (.val x))
-    (right : Path.Resolve q sigma (.val x)) :
+    (left : Path.Resolve p sigma (.loc x))
+    (right : Path.Resolve q sigma (.loc x)) :
     CoercionAllocation sigma (.ty (.Single q)) (.ty (.Single p))
       (.alias left right) :=
   fun v vv => .alias (left.weaken v vv) (right.weaken v vv)
@@ -291,7 +286,7 @@ private noncomputable def allocateDeferredNarrow
 
 private noncomputable def allocateDeferredSource
     (environment : Environment Gamma rho sigma)
-    (code : SubCode (Gamma.snoc S) (.ty T) (.ty U))
+    (code : Tau.Sub (Gamma.snoc S) (.ty T) (.ty U))
     (environmentIH : EnvironmentAllocation Gamma rho sigma environment) :
     DeferredAllocation sigma (S.rename rho)
       (T.rename rho.ext) (U.rename rho.ext)
@@ -303,7 +298,7 @@ private noncomputable def allocateDeferredSource
 
 private noncomputable def allocateMemberSource
     (environment : Environment Gamma rho sigma)
-    (code : SubCode (Gamma.snoc S) d d')
+    (code : Tau.Sub (Gamma.snoc S) d d')
     (environmentIH : EnvironmentAllocation Gamma rho sigma environment) :
     MemberAllocation sigma (S.rename rho)
       (d.rename rho.ext) (d'.rename rho.ext)
@@ -315,7 +310,7 @@ private noncomputable def allocateMemberSource
 
 private noncomputable def allocateBodySource
     (environment : Environment Gamma rho sigma)
-    (code : TermCode (Gamma.snoc S) body T)
+    (code : Tm.Ty (Gamma.snoc S) body T)
     (environmentIH : EnvironmentAllocation Gamma rho sigma environment) :
     BodyAllocation sigma (S.rename rho)
       (body.rename rho.ext) (T.rename rho.ext)
@@ -337,7 +332,7 @@ local macro "allocationRec(" recursor:term ")" : term =>
       allocateEnvironmentIntro
       allocatePossibleTop allocatePossibleFun allocatePossiblePair
       allocatePossibleSingle allocatePossibleSelection
-      allocateRealizesVal allocateRealizesType
+      allocateRealizesLoc allocateRealizesType
       allocateCoercionRefl allocateCoercionTrans allocateCoercionRuntime
       allocateCoercionBot allocateCoercionTop allocateCoercionWiden
       allocateCoercionAlias allocateCoercionSelLo allocateCoercionSelHi
@@ -346,34 +341,6 @@ local macro "allocationRec(" recursor:term ")" : term =>
       allocateDeferredNarrow allocateDeferredSource
       allocateMemberSource allocateBodySource)
 
-/-- An environment remains valid when all its target locations are shifted by
-a fresh store allocation. -/
-noncomputable def Environment.weaken
-    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
-    {sigma : Store m}
-    (evidence : Environment Gamma rho sigma)
-    (v : Tm m) (vv : v.IsValue) :
-    Environment Gamma rho.weaken (Store.val sigma v vv) :=
-  allocationRec(Environment.rec) evidence v vv
-
-/-- A possible typing of an old store location survives allocation. -/
-noncomputable def Store.Possible.weaken
-    {m : Nat} {sigma : Store m} {x : Fin m} {T : LambdaPFC.Ty m}
-    (evidence : Store.Possible sigma x T)
-    (v : Tm m) (vv : v.IsValue) :
-    Store.Possible (Store.val sigma v vv) x.succ T.weaken :=
-  allocationRec(Store.Possible.rec) evidence v vv
-
-/-- Endpoint realization survives allocation. -/
-noncomputable def Path.Endpoint.Realizes.weaken
-    {m : Nat} {k : Kind} {sigma : Store m}
-    {endpoint : Path.Endpoint m} {d : Tau m k}
-    (evidence : Path.Endpoint.Realizes sigma endpoint d)
-    (v : Tm m) (vv : v.IsValue) :
-    Path.Endpoint.Realizes (Store.val sigma v vv)
-      endpoint.weaken d.weaken :=
-  allocationRec(Path.Endpoint.Realizes.rec) evidence v vv
-
 /-- An executable coercion between old types survives allocation. -/
 noncomputable def Coercion.weaken
     {m : Nat} {k : Kind} {sigma : Store m} {d1 d2 : Tau m k}
@@ -381,27 +348,6 @@ noncomputable def Coercion.weaken
     (v : Tm m) (vv : v.IsValue) :
     Coercion (Store.val sigma v vv) d1.weaken d2.weaken :=
   allocationRec(Coercion.rec) evidence v vv
-
-/-- A deferred codomain coercion survives allocation in its ambient store. -/
-noncomputable def DeferredCoercion.weaken
-    {m : Nat} {sigma : Store m} {S : Ty m}
-    {T U : Ty (m + 1)}
-    (evidence : DeferredCoercion sigma S T U)
-    (v : Tm m) (vv : v.IsValue) :
-    DeferredCoercion (Store.val sigma v vv) S.weaken
-      (T.rename FinFun.weaken.ext) (U.rename FinFun.weaken.ext) :=
-  allocationRec(DeferredCoercion.rec) evidence v vv
-
-/-- A delayed dependent-pair member comparison survives allocation in its
-ambient store. -/
-noncomputable def MemberClosure.weaken
-    {m : Nat} {sigma : Store m} {S : Ty m} {k : Kind}
-    {d d' : Tau (m + 1) k}
-    (evidence : MemberClosure sigma S d d')
-    (v : Tm m) (vv : v.IsValue) :
-    MemberClosure (Store.val sigma v vv) S.weaken
-      (d.rename FinFun.weaken.ext) (d'.rename FinFun.weaken.ext) :=
-  allocationRec(MemberClosure.rec) evidence v vv
 
 /-- A source body closure survives allocation in its ambient store. -/
 noncomputable def BodyClosure.weaken

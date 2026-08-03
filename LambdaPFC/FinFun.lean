@@ -47,26 +47,6 @@ def ext (f : FinFun n m) : FinFun (n + 1) (m + 1) :=
 theorem funext {f g : FinFun n m} (h : forall i, f i = g i) : f = g :=
   _root_.funext h
 
-theorem weaken_injective : Function.Injective (weaken (n := n)) := by
-  intro i j h
-  exact Fin.succ_inj.mp h
-
-@[simp] theorem id_comp (f : FinFun n m) : id.comp f = f := by
-  apply funext
-  intro i
-  rfl
-
-@[simp] theorem comp_id (f : FinFun n m) : f.comp id = f := by
-  apply funext
-  intro i
-  rfl
-
-theorem comp_assoc (f : FinFun n m) (g : FinFun m k) (h : FinFun k l) :
-    (f.comp g).comp h = f.comp (g.comp h) := by
-  apply funext
-  intro i
-  rfl
-
 @[simp] theorem ext_id : (id (n := n)).ext = id := by
   apply funext
   intro i
@@ -85,20 +65,6 @@ theorem ext_comp {f : FinFun n m} {g : FinFun m k} :
   apply funext
   intro i
   refine Fin.cases ?_ (fun j => ?_) i <;> rfl
-
-/-- Opening is natural with respect to renaming. -/
-theorem openAt_comp {f : FinFun n m} {x : Fin n} :
-    (openAt x).comp f = f.ext.comp (openAt (f x)) := by
-  apply funext
-  intro i
-  refine Fin.cases ?_ (fun j => ?_) i <;> rfl
-
-/-- Opening after weakening is the identity. -/
-@[simp] theorem openAt_weaken (x : Fin n) :
-    weaken.comp (openAt x) = id := by
-  apply funext
-  intro i
-  rfl
 
 end FinFun
 

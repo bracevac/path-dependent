@@ -1,4 +1,5 @@
 import LambdaPFC.SemanticSafety
+import LambdaPFC.StaticMetatheory
 
 /-!
 Regressions for unrestricted dependent-pair covariance.
@@ -23,13 +24,9 @@ def properSource : Ty 0 :=
 def properTarget : Ty 0 :=
   .Pair .Top label (.ty .Top)
 
-def properCode :
-    SubCode Ctx.nil (.ty properSource) (.ty properTarget) :=
-  .pair .refl .top
-
-theorem proper_subtyping :
+def proper_subtyping :
     Tau.Sub Ctx.nil (.ty properSource) (.ty properTarget) :=
-  properCode.erase
+  .pair .refl .top
 
 /-! ## Abstract members -/
 
@@ -40,87 +37,71 @@ def intervalSource : Ty 0 :=
 def intervalTarget : Ty 0 :=
   .Pair .Top label (.intv .Bot .Top)
 
-def intervalCode :
-    SubCode Ctx.nil (.ty intervalSource) (.ty intervalTarget) :=
-  .pair .refl (.bounds .bot .top .refl)
-
-theorem interval_subtyping :
+def interval_subtyping :
     Tau.Sub Ctx.nil (.ty intervalSource) (.ty intervalTarget) :=
-  intervalCode.erase
+  .pair .refl (.bounds .bot .top .refl)
 
 /-! ## Closed end-to-end regression -/
 
 /--
-The stored type is the singleton of `y`.  The ascription first exposes it as
-the exact dependent interval `{x}..{x}`; the enclosing typing derivation then
-uses `intervalCode` to hide that interval behind `Bot..Top` while the first
-component remains `Top`.
+The stored type is the singleton of `y`.  Subsumption first exposes the exact
+dependent interval `{x}..{x}` and then hides it behind `Bot..Top`, while the
+first component remains `Top`.
 -/
 def term : Tm 0 :=
   .let
     (.abs .Top (.path (.var 0)))
-    (.typed
-      (.pair 0 label (.type (.Single (.var 0))))
-      intervalSource.weaken)
+    (.pair 0 label (.type (.Single (.var 0))))
 
 private def intervalSourceWf :
-    WfCode Ctx.nil (.ty intervalSource) :=
+    Tau.Wf Ctx.nil (.ty intervalSource) :=
   .pair .top
     (.bounds_wf
-      (.path (.var .here))
-      (.path (.var .here))
+      (.path .var)
+      (.path .var)
       .refl)
 
 private def intervalTargetWf :
-    WfCode Ctx.nil (.ty intervalTarget) :=
+    Tau.Wf Ctx.nil (.ty intervalTarget) :=
   .pair .top (.bounds_wf .bot .top .bot)
 
-private def boundCode :
-    TermCode Ctx.nil
+private def boundTyping :
+    Tm.Ty Ctx.nil
       (.abs .Top (.path (.var 0))) .Top :=
   .sub
-    (.abs (.path (.var .here)) .top)
+    (.abs (.path .var) .top)
     .top
     .top
 
 private def exactToIntervalSource :
-    SubCode (Ctx.nil.snoc .Top)
+    Tau.Sub (Ctx.nil.snoc .Top)
       (.ty (.Pair (.Single (.var 0)) label
         (Tau.intv (.Single (.var 0)) (.Single (.var 0))).weaken))
       (.ty intervalSource.weaken) :=
   .pair .top
     (.bounds
-      (.widen (.var .here))
-      (.symm (.var .here))
+      (.widen .var)
+      (.symm .var)
       .refl)
 
-private def annotatedSourceCode :
-    TermCode (Ctx.nil.snoc .Top)
-      (.typed
-        (.pair 0 label (.type (.Single (.var 0))))
-        intervalSource.weaken)
+private def sourceTyping :
+    Tm.Ty (Ctx.nil.snoc .Top)
+      (.pair 0 label (.type (.Single (.var 0))))
       intervalSource.weaken :=
-  .typed
-    (.sub
-      (.tpair .here (.path (.var .here)))
-      exactToIntervalSource
-      intervalSourceWf.weaken)
+  .sub
+    (.tpair (.path .var))
+    exactToIntervalSource
     intervalSourceWf.weaken
 
-private def bodyCode :
-    TermCode (Ctx.nil.snoc .Top)
-      (.typed
-        (.pair 0 label (.type (.Single (.var 0))))
-        intervalSource.weaken)
+private def bodyTyping :
+    Tm.Ty (Ctx.nil.snoc .Top)
+      (.pair 0 label (.type (.Single (.var 0))))
       intervalTarget.weaken :=
-  .sub annotatedSourceCode intervalCode.weaken intervalTargetWf.weaken
+  .sub sourceTyping interval_subtyping.weaken intervalTargetWf.weaken
 
-def termCode : TermCode Ctx.nil term intervalTarget := by
+def term_typing : Tm.Ty Ctx.nil term intervalTarget := by
   unfold term
-  exact .let boundCode intervalTargetWf bodyCode
-
-theorem term_typing : Tm.Ty Ctx.nil term intervalTarget :=
-  termCode.erase
+  exact .let boundTyping intervalTargetWf bodyTyping
 
 theorem term_type_safety
     {n : Nat} {target : State n}

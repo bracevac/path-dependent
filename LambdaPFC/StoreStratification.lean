@@ -8,105 +8,88 @@ older locations stored in the pair value.
 
 namespace LambdaPFC
 
-/-- Remaining allocation depth of a runtime endpoint.  Stored type
+/-- Remaining allocation depth of a runtime referent.  Stored type
 definitions have no value-location depth. -/
-def Path.Endpoint.stratum {n : Nat} : Path.Endpoint n -> Nat
-| .val x => n - x.val
+def Path.Referent.stratum {n : Nat} : Path.Referent n -> Nat
+| .loc x => n - x.val
 | .type _ => 0
 
-@[simp] theorem Path.Endpoint.stratum_weaken
-    (endpoint : Path.Endpoint n) :
-    endpoint.weaken.stratum = endpoint.stratum := by
-  cases endpoint with
-  | val x =>
-      simp only [Path.Endpoint.weaken, Path.Endpoint.stratum, Fin.val_succ]
+@[simp] theorem Path.Referent.stratum_weaken
+    (referent : Path.Referent n) :
+    referent.weaken.stratum = referent.stratum := by
+  cases referent with
+  | loc x =>
+      simp only [Path.Referent.weaken, Path.Referent.stratum, Fin.val_succ]
       omega
   | type T => rfl
 
-@[simp] theorem Path.Endpoint.stratum_val_succ (x : Fin n) :
-    (Path.Endpoint.val x.succ : Path.Endpoint (n + 1)).stratum =
-      (Path.Endpoint.val x : Path.Endpoint n).stratum := by
-  simp only [Path.Endpoint.stratum, Fin.val_succ]
+@[simp] theorem Path.Referent.stratum_loc_succ (x : Fin n) :
+    (Path.Referent.loc x.succ : Path.Referent (n + 1)).stratum =
+      (Path.Referent.loc x : Path.Referent n).stratum := by
+  simp only [Path.Referent.stratum, Fin.val_succ]
   omega
 
-@[simp] theorem Def.endpoint_rename_weaken (d : Def n k) :
-    (d.rename FinFun.weaken).endpoint = d.endpoint.weaken := by
-  cases d <;> rfl
-
 /-- A definition stored in a fresh cell has lower stratum than that cell. -/
-theorem Def.endpoint_weaken_stratum_lt (d : Def n k) :
-    d.endpoint.weaken.stratum <
-      (Path.Endpoint.val (0 : Fin (n + 1))).stratum := by
+theorem Def.referent_weaken_stratum_lt (d : Def n k) :
+    d.referent.weaken.stratum <
+      (Path.Referent.loc (0 : Fin (n + 1))).stratum := by
   cases d with
   | val x =>
-      simp only [Def.endpoint, Path.Endpoint.weaken,
-        Path.Endpoint.stratum, Fin.val_succ, Fin.val_zero]
+      simp only [Def.referent, Path.Referent.weaken,
+        Path.Referent.stratum, Fin.val_succ, Fin.val_zero]
       omega
   | type T =>
-      simp [Def.endpoint, Path.Endpoint.weaken, Path.Endpoint.stratum]
+      simp [Def.referent, Path.Referent.weaken, Path.Referent.stratum]
 
-/-- Every endpoint mentioned by a stored pair is older than the pair cell. -/
-private theorem Store.Binds.pair_endpoint_stratum_lt_aux
+/-- Every referent mentioned by a stored pair is older than the pair cell. -/
+private theorem Store.Binds.pair_referent_stratum_lt_aux
     (binding : Store.Binds sigma x term)
     (equation : term = .pair y a d) :
-    d.endpoint.stratum < (Path.Endpoint.val x).stratum := by
+    d.referent.stratum < (Path.Referent.loc x).stratum := by
   induction binding with
   | @here n sigma value isValue =>
       cases value <;> try { cases equation }
       case pair first label definition =>
         cases equation
-        simpa only [Def.endpoint_rename_weaken] using
-          Def.endpoint_weaken_stratum_lt definition
+        simpa only [Def.referent_weaken] using
+          Def.referent_weaken_stratum_lt definition
   | @there n sigma x value older fresh freshValue ih =>
       cases value <;> try { cases equation }
       case pair first label definition =>
         cases equation
-        simpa only [Def.endpoint_rename_weaken,
-          Path.Endpoint.stratum_weaken,
-          Path.Endpoint.stratum_val_succ] using ih rfl
+        simpa only [Def.referent_weaken,
+          Path.Referent.stratum_weaken,
+          Path.Referent.stratum_loc_succ] using ih rfl
 
-theorem Store.Binds.pair_endpoint_stratum_lt
+theorem Store.Binds.pair_referent_stratum_lt
     (binding : Store.Binds sigma x (.pair y a d)) :
-    d.endpoint.stratum < (Path.Endpoint.val x).stratum :=
-  binding.pair_endpoint_stratum_lt_aux rfl
-
-private def Tm.pairFirst? : Tm n -> Option (Fin n)
-| .pair y _ _ => some y
-| _ => none
-
-@[simp] private theorem Tm.pairFirst?_weaken (term : Tm n) :
-    term.weaken.pairFirst? = term.pairFirst?.map Fin.succ := by
-  cases term <;> rfl
+    d.referent.stratum < (Path.Referent.loc x).stratum :=
+  binding.pair_referent_stratum_lt_aux rfl
 
 private theorem Store.Binds.pair_first_stratum_lt_aux
     (binding : Store.Binds sigma x term)
-    (equation : term.pairFirst? = some y) :
-    (Path.Endpoint.val y).stratum <
-      (Path.Endpoint.val x).stratum := by
+    (equation : term = .pair y a d) :
+    (Path.Referent.loc y).stratum <
+      (Path.Referent.loc x).stratum := by
   induction binding with
   | @here n sigma value isValue =>
-      rw [Tm.pairFirst?_weaken] at equation
-      cases hfirst : value.pairFirst? with
-      | none => simp [hfirst] at equation
-      | some first =>
-          simp only [hfirst, Option.map_some, Option.some.injEq] at equation
-          subst y
-          rw [Path.Endpoint.stratum_val_succ]
-          simpa only [Path.Endpoint.stratum, Fin.val_zero] using
-            Nat.lt_succ_of_le (Nat.sub_le n first.val)
+      cases value <;> try { cases equation }
+      case pair memberKind first label =>
+        cases equation
+        rw [FinFun.weaken_apply, Path.Referent.stratum_loc_succ]
+        simpa only [Path.Referent.stratum, Fin.val_zero] using
+          Nat.lt_succ_of_le (Nat.sub_le n first.val)
   | @there n sigma x value fresh freshValue older ih =>
-      rw [Tm.pairFirst?_weaken] at equation
-      cases hfirst : value.pairFirst? with
-      | none => simp [hfirst] at equation
-      | some first =>
-          simp only [hfirst, Option.map_some, Option.some.injEq] at equation
-          subst y
-          simpa only [Path.Endpoint.stratum_val_succ] using ih hfirst
+      cases value <;> try { cases equation }
+      case pair memberKind first label =>
+        cases equation
+        simpa only [FinFun.weaken_apply,
+          Path.Referent.stratum_loc_succ] using ih rfl
 
 theorem Store.Binds.pair_first_stratum_lt
     (binding : Store.Binds sigma x (.pair y a d)) :
-    (Path.Endpoint.val y).stratum <
-      (Path.Endpoint.val x).stratum :=
+    (Path.Referent.loc y).stratum <
+      (Path.Referent.loc x).stratum :=
   binding.pair_first_stratum_lt_aux rfl
 
 end LambdaPFC
