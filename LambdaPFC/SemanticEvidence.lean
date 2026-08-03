@@ -1,6 +1,5 @@
 import LambdaPFC.RuntimeEquality
 import LambdaPFC.Valuation
-import LambdaPFC.Derivations
 
 /-!
 Finite semantic evidence for source derivations instantiated in a runtime
@@ -24,9 +23,7 @@ noncomputable section
 
 mutual
 
-/-- A source context interpreted by concrete locations in a target store.
-Functional context lookup avoids eliminating a proposition-valued binding
-derivation into semantic data. -/
+/-- A source context interpreted by concrete locations in a target store. -/
 inductive Environment :
     {n m : Nat} -> Ctx n -> Valuation n m -> Store m -> Type 1 where
 | intro {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
@@ -52,10 +49,10 @@ inductive Store.Possible :
     {S : Ty m} {d : Tau (m + 1) k} :
     Store.Binds sigma x (Tm.pair y a delta) ->
     Store.Possible sigma y S ->
-    Path.Endpoint.Realizes sigma delta.endpoint (d.open (.var y)) ->
+    Path.Referent.Realizes sigma delta.referent (d.open (.var y)) ->
     Store.Possible sigma x (.Pair S a d)
 | single {m : Nat} {sigma : Store m} {x : Fin m} {p : Path m} :
-    Path.Resolve p sigma (.val x) ->
+    Path.Resolve p sigma (.loc x) ->
     Store.Possible sigma x (.Single p)
 | selection {m : Nat} {sigma : Store m} {x : Fin m}
     {p : Path m} {A : Name} {W : Ty m} :
@@ -63,19 +60,19 @@ inductive Store.Possible :
     Store.Possible sigma x W ->
     Store.Possible sigma x (.TSel p A)
 
-/-- A generalized runtime endpoint realizing an instantiated generalized
-type.  Interval endpoints retain finite coercions for both advertised
+/-- A generalized runtime referent realizing an instantiated generalized
+type.  Type referents retain finite coercions for both advertised
 bounds. -/
-inductive Path.Endpoint.Realizes :
+inductive Path.Referent.Realizes :
     {m : Nat} -> {k : Kind} -> Store m ->
-    Path.Endpoint m -> Tau m k -> Type 1 where
-| val {m : Nat} {sigma : Store m} {x : Fin m} {T : Ty m} :
+    Path.Referent m -> Tau m k -> Type 1 where
+| loc {m : Nat} {sigma : Store m} {x : Fin m} {T : Ty m} :
     Store.Possible sigma x T ->
-    Path.Endpoint.Realizes sigma (.val x) (.ty T)
+    Path.Referent.Realizes sigma (.loc x) (.ty T)
 | type {m : Nat} {sigma : Store m} {L W U : Ty m} :
     Coercion sigma (.ty L) (.ty W) ->
     Coercion sigma (.ty W) (.ty U) ->
-    Path.Endpoint.Realizes sigma (.type W) (.intv L U)
+    Path.Referent.Realizes sigma (.type W) (.intv L U)
 
 /-- Executable semantic coercions in one store scope.  Selection coercions
 contain the concrete selected witness and the finite coercion retrieved from
@@ -100,13 +97,13 @@ inductive Coercion :
     Coercion sigma (.ty T) (.ty .Top)
 | widen {m : Nat} {sigma : Store m} {p : Path m}
     {x : Fin m} {T : Ty m} :
-    Path.Resolve p sigma (.val x) ->
+    Path.Resolve p sigma (.loc x) ->
     Store.Possible sigma x T ->
     Coercion sigma (.ty (.Single p)) (.ty T)
 | alias {m : Nat} {sigma : Store m} {p q : Path m}
     {x : Fin m} :
-    Path.Resolve p sigma (.val x) ->
-    Path.Resolve q sigma (.val x) ->
+    Path.Resolve p sigma (.loc x) ->
+    Path.Resolve q sigma (.loc x) ->
     Coercion sigma (.ty (.Single q)) (.ty (.Single p))
 | selLo {m : Nat} {sigma : Store m} {p : Path m}
     {A : Name} {L W : Ty m} :
@@ -161,7 +158,7 @@ inductive DeferredCoercion :
 | source {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
     {sigma : Store m} {S : Ty n} {T U : Ty (n + 1)} :
     Environment Gamma rho sigma ->
-    SubCode (Gamma.snoc S) (.ty T) (.ty U) ->
+    Tau.Sub (Gamma.snoc S) (.ty T) (.ty U) ->
     DeferredCoercion sigma (S.rename rho)
       (T.rename rho.ext) (U.rename rho.ext)
 
@@ -175,7 +172,7 @@ inductive MemberClosure :
     {sigma : Store m} {S : Ty n} {k : Kind}
     {d d' : Tau (n + 1) k} :
     Environment Gamma rho sigma ->
-    SubCode (Gamma.snoc S) d d' ->
+    Tau.Sub (Gamma.snoc S) d d' ->
     MemberClosure sigma (S.rename rho)
       (d.rename rho.ext) (d'.rename rho.ext)
 
@@ -189,7 +186,7 @@ inductive BodyClosure :
     {sigma : Store m} {S : Ty n} {body : Tm (n + 1)}
     {T : Ty (n + 1)} :
     Environment Gamma rho sigma ->
-    TermCode (Gamma.snoc S) body T ->
+    Tm.Ty (Gamma.snoc S) body T ->
     BodyClosure sigma (S.rename rho)
       (body.rename rho.ext) (T.rename rho.ext)
 
@@ -205,9 +202,9 @@ def Environment.lookup
   cases environment with
   | intro lookup => exact lookup x
 
-/-- The empty source context has a semantic environment in every store. -/
-def Environment.empty (sigma : Store m) :
-    Environment Ctx.nil (fun x => Fin.elim0 x) sigma :=
+/-- The empty source context has the initial semantic environment. -/
+def Environment.empty :
+    Environment Ctx.nil Valuation.id Store.empty :=
   .intro (fun x => Fin.elim0 x)
 
 /-- Extend an environment with a concrete realization of the newest source
@@ -229,12 +226,6 @@ def Coercion.comp
     (first : Coercion sigma d1 d2)
     (second : Coercion sigma d2 d3) :
     Coercion sigma d1 d3 :=
-  .trans first second
-
-def DeferredCoercion.comp
-    (first : DeferredCoercion sigma S T U)
-    (second : DeferredCoercion sigma S U V) :
-    DeferredCoercion sigma S T V :=
   .trans first second
 
 end

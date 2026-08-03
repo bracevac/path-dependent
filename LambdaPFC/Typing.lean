@@ -17,10 +17,9 @@ open Def
 
 /-- Precise typing for paths.  The kind records whether a path selection
 denotes a term member (`star`) or an abstract type member (`iota`). -/
-inductive Path.Ty : Ctx n -> Path n -> Tau n k -> Prop where
+inductive Path.Ty : Ctx n -> Path n -> Tau n k -> Type where
 | var :
-    Ctx.Binds Γ x T ->
-    Path.Ty Γ (Path.var x) (Tau.ty T)
+    Path.Ty Γ (Path.var x) (Tau.ty (Γ.lookup x))
 | fst :
     Path.Ty Γ p (Tau.ty (Ty.Pair S a τ)) ->
     Path.Ty Γ p.fst (Tau.ty S)
@@ -36,7 +35,7 @@ inductive Path.Ty : Ctx n -> Path n -> Tau n k -> Prop where
 /-- Subtyping for proper types and abstract intervals.  The explicit
 premises `S <: T` on selection and interval formation are the historical
 nonemptiness guards. -/
-inductive Tau.Sub : Ctx n -> Tau n k -> Tau n k -> Prop where
+inductive Tau.Sub : Ctx n -> Tau n k -> Tau n k -> Type where
 | refl :
     Tau.Sub Γ τ τ
 | trans :
@@ -80,7 +79,7 @@ the source first-component type. -/
     Tau.Sub Γ (Tau.intv S T) (Tau.intv S' T')
 
 /-- Well-formed generalized types. -/
-inductive Tau.Wf : Ctx n -> Tau n k -> Prop where
+inductive Tau.Wf : Ctx n -> Tau n k -> Type where
 | bot :
     Tau.Wf Γ (Tau.ty Ty.Bot)
 | top :
@@ -106,7 +105,7 @@ inductive Tau.Wf : Ctx n -> Tau n k -> Prop where
     Tau.Wf Γ (Tau.intv S T)
 
 /-- Typing for monadic-normal-form terms. -/
-inductive Tm.Ty : Ctx n -> Tm n -> Ty n -> Prop where
+inductive Tm.Ty : Ctx n -> Tm n -> Ty n -> Type where
 | path :
     Path.Ty Γ p (Tau.ty T) ->
     Tm.Ty Γ (Tm.path p) (Ty.Single p)
@@ -119,13 +118,10 @@ inductive Tm.Ty : Ctx n -> Tm n -> Ty n -> Prop where
     Tm.Ty Γ (Tm.path q) S ->
     Tm.Ty Γ (Tm.app p q) (T.open q)
 | pair :
-    Ctx.Binds Γ y S ->
-    Ctx.Binds Γ z T ->
     Tm.Ty Γ (Tm.pair y a (Def.val z))
       (Ty.Pair (Ty.Single (Path.var y)) a
         (Tau.ty (Ty.Single (Path.var z).weaken)))
 | tpair :
-    Ctx.Binds Γ y S ->
     Tau.Wf Γ (Tau.ty T) ->
     Tm.Ty Γ (Tm.pair y A (Def.type T))
       (Ty.Pair (Ty.Single (Path.var y)) A (Tau.intv T T).weaken)
@@ -134,10 +130,6 @@ inductive Tm.Ty : Ctx n -> Tm n -> Ty n -> Prop where
     Tau.Wf Γ (Tau.ty T) ->
     Tm.Ty (Γ.snoc S) t T.weaken ->
     Tm.Ty Γ (Tm.let s t) T
-| typed :
-    Tm.Ty Γ t T ->
-    Tau.Wf Γ (Tau.ty T) ->
-    Tm.Ty Γ (Tm.typed t T) T
 | sub :
     Tm.Ty Γ t S ->
     Tau.Sub Γ (Tau.ty S) (Tau.ty T) ->

@@ -60,16 +60,16 @@ private noncomputable def TermEvidence.beta
     (function : TermEvidence sigma (.path p) (.Fun S U))
     (argument : TermEvidence sigma (.path q) S)
     (suffix : Coercion sigma (.ty (U.open q)) (.ty T))
-    (functionReduction : Path.reduce p sigma f)
-    (argumentReduction : Path.reduce q sigma y)
+    (functionResolution : Path.Resolve p sigma (.loc f))
+    (argumentResolution : Path.Resolve q sigma (.loc y))
     (binding : Store.Binds sigma f (.abs A body)) :
     TermEvidence sigma (body.open y) T := by
   have applied := Store.Possible.beta
-    (function.pathPossibleAt functionReduction)
-    (argument.pathPossibleAt argumentReduction) binding
+    (function.pathPossibleAt functionResolution)
+    (argument.pathPossibleAt argumentResolution) binding
   have relocate :
       Coercion sigma (.ty (U.open (.var y))) (.ty (U.open q)) :=
-    .runtime (.replace (.ty U) (.symm (.ofReduce argumentReduction)))
+    .runtime (.replace (.ty U) (.symm (.ofResolve argumentResolution .var)))
   exact applied.cast (relocate.comp suffix)
 
 /-! ## One-step preservation -/
@@ -84,21 +84,21 @@ theorem State.Evidence.preservation
     exists U : LambdaPFC.Ty m,
       Ty.Extends T U /\ Nonempty (State.Evidence target U) := by
   cases step with
-  | app functionReduction argumentReduction binding =>
+  | app functionResolution argumentResolution binding =>
       cases evidence with
       | ok continuation term =>
           obtain ⟨argumentType, codomain, function, argument, suffix⟩ :=
             term.appView
           have reduced := function.beta argument suffix
-            functionReduction argumentReduction binding
+            functionResolution argumentResolution binding
           exact ⟨_, .refl, ⟨.ok continuation reduced⟩⟩
-  | path reduction notVariable =>
+  | path resolution notVariable =>
       cases evidence with
       | ok continuation term =>
-          obtain ⟨location, storedReduction, suffix⟩ := term.pathView
+          obtain ⟨location, storedResolution, suffix⟩ := term.pathView
           have back : Coercion _
               (.ty (.Single (.var _))) (.ty (.Single _)) :=
-            .runtime (.single (.symm (.ofReduce reduction)))
+            .runtime (.single (.symm (.ofResolve resolution .var)))
           exact ⟨_, .refl, ⟨.ok continuation (.path .var (back.comp suffix))⟩⟩
   | let_push =>
       cases evidence with
@@ -106,38 +106,29 @@ theorem State.Evidence.preservation
           obtain ⟨boundType, resultType, bound, closure, suffix⟩ :=
             term.letView
           exact ⟨_, .refl,
-            ⟨.ok (.cons continuation (.let closure suffix)) bound⟩⟩
+            ⟨.ok (.cons continuation closure suffix) bound⟩⟩
   | «return» =>
       cases evidence with
       | ok continuation term =>
           cases continuation with
-          | cons tail frame =>
-              cases frame with
-              | «let» closure suffix =>
-                  have argument := term.pathPossibleAt .var
-                  have resumed := closure.apply argument
-                  have resumed' := by
-                    simpa only [Ty.weaken_open] using resumed
-                  exact ⟨_, .refl,
-                    ⟨.ok tail (resumed'.cast suffix)⟩⟩
+          | cons tail closure suffix =>
+              have argument := term.pathPossibleAt .var
+              have resumed := closure.apply argument
+              have resumed' := by
+                simpa only [Ty.weaken_open] using resumed
+              exact ⟨_, .refl,
+                ⟨.ok tail (resumed'.cast suffix)⟩⟩
   | allocate value =>
       cases evidence with
       | ok continuation term =>
           cases continuation with
-          | cons tail frame =>
-              cases frame with
-              | «let» closure suffix =>
-                  rcases term.nonemptyValueView value with
-                    ⟨valueEvidence⟩
-                  have bodyEvidence := closure.allocate valueEvidence value
-                  have resumed := bodyEvidence.cast (suffix.weaken _ value)
-                  exact ⟨_, .alloc .refl,
-                    ⟨.ok (tail.weaken _ value) resumed⟩⟩
-  | ascribe =>
-      cases evidence with
-      | ok continuation term =>
-          obtain ⟨inner, suffix⟩ := term.typedView
-          exact ⟨_, .refl, ⟨.ok continuation (inner.cast suffix)⟩⟩
+          | cons tail closure suffix =>
+              rcases term.nonemptyValueView value with
+                ⟨valueEvidence⟩
+              have bodyEvidence := closure.allocate valueEvidence value
+              have resumed := bodyEvidence.cast (suffix.weaken _ value)
+              exact ⟨_, .alloc .refl,
+                ⟨.ok (tail.weaken _ value) resumed⟩⟩
 
 end
 

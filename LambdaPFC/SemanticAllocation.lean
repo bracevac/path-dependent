@@ -29,13 +29,13 @@ noncomputable def ValueEvidence.possibleOfBinding
       apply suffix.actionPossible
       refine .pair binding (.single .var) ?_
       simpa only [Tau.open, Tau.subst, Ty.weaken_open] using
-        Path.Endpoint.Realizes.val
+        Path.Referent.Realizes.loc
           (Store.Possible.single (Path.Resolve.var (x := z)))
   | @tpair y A W _ suffix =>
       apply suffix.actionPossible
       refine .pair binding (.single .var) ?_
       simpa only [Tau.weaken_open] using
-        Path.Endpoint.Realizes.type
+        Path.Referent.Realizes.type
           (Coercion.refl (d := .ty W)) (Coercion.refl (d := .ty W))
 
 /-- The newly allocated location realizes the weakened advertised type. -/
