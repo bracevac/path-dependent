@@ -189,9 +189,8 @@ noncomputable def Tau.Sub.compile
     .fun (domain.compile environment) (.source environment codomain)
 | .pair first member =>
     .pair (first.compile environment) (.source environment member)
-| .bounds lower upper nonempty =>
+| .bounds lower upper _nonempty =>
     .bounds (lower.compile environment) (upper.compile environment)
-      (nonempty.compile environment)
 
 /-! ## Instantiating dependent-pair members -/
 
@@ -225,8 +224,8 @@ def Coercion.treeSize : Coercion sigma d1 d2 -> Nat
 | .selHi _ upper => upper.treeSize + 1
 | .fun domain _ => domain.treeSize + 1
 | .pair first _ => first.treeSize + 1
-| .bounds lower upper middle =>
-    lower.treeSize + upper.treeSize + middle.treeSize + 1
+| .bounds lower upper =>
+    lower.treeSize + upper.treeSize + 1
 
 /-! ## Coercion action -/
 
@@ -291,7 +290,7 @@ noncomputable def Coercion.action
         have mappedMember :=
           (memberClosure.instantiate first).action member
         exact .loc (.pair binding mappedFirst mappedMember)
-| .bounds lower upper nonempty, realizes => by
+| .bounds lower upper, realizes => by
     cases realizes with
     | type sourceLower sourceUpper =>
         exact .type (.trans lower sourceLower) (.trans sourceUpper upper)

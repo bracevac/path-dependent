@@ -129,7 +129,6 @@ inductive Coercion :
 | bounds {m : Nat} {sigma : Store m} {S S' T T' : Ty m} :
     Coercion sigma (.ty S') (.ty S) ->
     Coercion sigma (.ty T) (.ty T') ->
-    Coercion sigma (.ty S) (.ty T) ->
     Coercion sigma (.intv S T) (.intv S' T')
 
 /-- A function-codomain coercion waiting for a concrete argument.  Only this
