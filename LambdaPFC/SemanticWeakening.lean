@@ -250,13 +250,11 @@ private noncomputable def allocateCoercionPair
 private noncomputable def allocateCoercionBounds
     (lower : Coercion sigma (.ty S') (.ty S))
     (upper : Coercion sigma (.ty T) (.ty T'))
-    (middle : Coercion sigma (.ty S) (.ty T))
     (lowerIH : CoercionAllocation sigma (.ty S') (.ty S) lower)
-    (upperIH : CoercionAllocation sigma (.ty T) (.ty T') upper)
-    (middleIH : CoercionAllocation sigma (.ty S) (.ty T) middle) :
+    (upperIH : CoercionAllocation sigma (.ty T) (.ty T') upper) :
     CoercionAllocation sigma (.intv S T) (.intv S' T')
-      (.bounds lower upper middle) :=
-  fun v vv => .bounds (lowerIH v vv) (upperIH v vv) (middleIH v vv)
+      (.bounds lower upper) :=
+  fun v vv => .bounds (lowerIH v vv) (upperIH v vv)
 
 private noncomputable def allocateDeferredRefl :
     DeferredAllocation sigma S T T .refl :=
