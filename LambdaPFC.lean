@@ -2,7 +2,6 @@ import LambdaPFC.FinFun
 import LambdaPFC.Syntax
 import LambdaPFC.Context
 import LambdaPFC.Typing
-import LambdaPFC.StaticMetatheory
 import LambdaPFC.Runtime
 import LambdaPFC.StoreStratification
 import LambdaPFC.RuntimeEquality
