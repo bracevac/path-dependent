@@ -36,10 +36,8 @@ theorem TermEvidence.progress
       | var =>
           cases resolution
           exact State.Progress.path_var
-      | fst =>
-          exact State.Progress.path resolution (fun isVariable => by cases isVariable)
-      | sel =>
-          exact State.Progress.path resolution (fun isVariable => by cases isVariable)
+      | fst _ | sel _ _ =>
+          exact State.Progress.path resolution nofun
   | value valueEvidence =>
       exact State.Progress.value valueEvidence.isValue
   | app function argument suffix =>

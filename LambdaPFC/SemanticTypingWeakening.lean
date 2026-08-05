@@ -53,8 +53,8 @@ noncomputable def Tm.Cont.Evidence.weaken
     Tm.Cont.Evidence (Store.val sigma v vv) S.weaken
       cont.weaken T.weaken := by
   induction evidence with
-  | hole suffix =>
-      exact .hole (suffix.weaken v vv)
+  | hole =>
+      exact .hole
   | cons tail closure suffix ih =>
       refine .cons ih ?_ (suffix.weaken v vv)
       simpa only [Ty.weaken_rename] using closure.weaken v vv

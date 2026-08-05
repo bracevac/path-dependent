@@ -12,7 +12,6 @@ import LambdaPFC.SemanticAction
 import LambdaPFC.SemanticWeakening
 import LambdaPFC.SemanticTypingWeakening
 import LambdaPFC.SemanticFundamental
-import LambdaPFC.SemanticClosure
 import LambdaPFC.SemanticAllocation
 import LambdaPFC.SemanticProgress
 import LambdaPFC.SemanticPreservation

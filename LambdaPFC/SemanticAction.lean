@@ -329,12 +329,8 @@ noncomputable def DeferredCoercion.instantiate
       (Path.RuntimeEq.eqCongruence sigma) (.var x))
 | .narrow domain deferred, argument =>
     deferred.instantiate (domain.actionPossible argument)
-| @DeferredCoercion.source n m Gamma rho sigma A B C
-      environment code, argument => by
-    have extended := Environment.snoc environment argument
-    have compiled := Tau.Sub.compile extended code
-    simpa only [← Ty.rename_openAt_eq_open_var,
-      Ty.rename_ext_openAt] using compiled
+| .source environment code, argument =>
+    (MemberClosure.source environment code).instantiate argument
 
 end
 end LambdaPFC

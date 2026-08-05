@@ -1,4 +1,4 @@
-import LambdaPFC.SemanticClosure
+import LambdaPFC.SemanticFundamental
 import LambdaPFC.SemanticTypingWeakening
 import LambdaPFC.SemanticAction
 
