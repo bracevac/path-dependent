@@ -53,7 +53,7 @@ private noncomputable def TermEvidence.beta
       cases Store.Binds.unique stored binding
       have relocate :
           Coercion sigma (.ty (U.open (.var y))) (.ty (U.open q)) :=
-        .runtime (.replace (.ty U) (.symm (.ofResolve argumentResolution .var)))
+        .runtime (.replace (.ty U) (.symm (.coresolve argumentResolution .var)))
       exact ((closure.apply (input.actionPossible argumentPossible)).cast
         (output.instantiate argumentPossible)).cast (relocate.trans suffix)
 

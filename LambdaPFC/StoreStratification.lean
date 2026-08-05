@@ -41,55 +41,45 @@ theorem Def.referent_weaken_stratum_lt (d : Def n k) :
   | type T =>
       simp [Def.referent, Path.Referent.weaken, Path.Referent.stratum]
 
-/-- Every referent mentioned by a stored pair is older than the pair cell. -/
-private theorem Store.Binds.pair_referent_stratum_lt_aux
+/-- Both referents mentioned by a stored pair are older than the pair cell:
+its first component and the referent of its member definition. -/
+private theorem Store.Binds.pair_strata_lt_aux
     (binding : Store.Binds sigma x term)
     (equation : term = .pair y a d) :
-    d.referent.stratum < (Path.Referent.loc x).stratum := by
+    (Path.Referent.loc y).stratum < (Path.Referent.loc x).stratum /\
+      d.referent.stratum < (Path.Referent.loc x).stratum := by
   induction binding with
   | @here n sigma value isValue =>
       cases value <;> try { cases equation }
-      case pair first label definition =>
+      case pair memberKind first label definition =>
         cases equation
-        simpa only [Def.referent_weaken] using
-          Def.referent_weaken_stratum_lt definition
+        refine ⟨?_, ?_⟩
+        · rw [FinFun.weaken_apply, Path.Referent.stratum_loc_succ]
+          simpa only [Path.Referent.stratum, Fin.val_zero] using
+            Nat.lt_succ_of_le (Nat.sub_le n label.val)
+        · simpa only [Def.referent_weaken] using
+            Def.referent_weaken_stratum_lt definition
   | @there n sigma x value older fresh freshValue ih =>
       cases value <;> try { cases equation }
-      case pair first label definition =>
+      case pair memberKind first label definition =>
         cases equation
-        simpa only [Def.referent_weaken,
-          Path.Referent.stratum_weaken,
-          Path.Referent.stratum_loc_succ] using ih rfl
-
-theorem Store.Binds.pair_referent_stratum_lt
-    (binding : Store.Binds sigma x (.pair y a d)) :
-    d.referent.stratum < (Path.Referent.loc x).stratum :=
-  binding.pair_referent_stratum_lt_aux rfl
-
-private theorem Store.Binds.pair_first_stratum_lt_aux
-    (binding : Store.Binds sigma x term)
-    (equation : term = .pair y a d) :
-    (Path.Referent.loc y).stratum <
-      (Path.Referent.loc x).stratum := by
-  induction binding with
-  | @here n sigma value isValue =>
-      cases value <;> try { cases equation }
-      case pair memberKind first label =>
-        cases equation
-        rw [FinFun.weaken_apply, Path.Referent.stratum_loc_succ]
-        simpa only [Path.Referent.stratum, Fin.val_zero] using
-          Nat.lt_succ_of_le (Nat.sub_le n first.val)
-  | @there n sigma x value fresh freshValue older ih =>
-      cases value <;> try { cases equation }
-      case pair memberKind first label =>
-        cases equation
-        simpa only [FinFun.weaken_apply,
-          Path.Referent.stratum_loc_succ] using ih rfl
+        obtain ⟨firstLt, memberLt⟩ := ih rfl
+        refine ⟨?_, ?_⟩
+        · simpa only [FinFun.weaken_apply,
+            Path.Referent.stratum_loc_succ] using firstLt
+        · simpa only [Def.referent_weaken,
+            Path.Referent.stratum_weaken,
+            Path.Referent.stratum_loc_succ] using memberLt
 
 theorem Store.Binds.pair_first_stratum_lt
     (binding : Store.Binds sigma x (.pair y a d)) :
     (Path.Referent.loc y).stratum <
       (Path.Referent.loc x).stratum :=
-  binding.pair_first_stratum_lt_aux rfl
+  (binding.pair_strata_lt_aux rfl).1
+
+theorem Store.Binds.pair_referent_stratum_lt
+    (binding : Store.Binds sigma x (.pair y a d)) :
+    d.referent.stratum < (Path.Referent.loc x).stratum :=
+  (binding.pair_strata_lt_aux rfl).2
 
 end LambdaPFC
