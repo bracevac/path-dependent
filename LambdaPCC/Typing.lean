@@ -3,8 +3,8 @@ import LambdaPCC.Context
 
 /-!
 Static semantics for `lambda_p` with capture checking. Paths synthesize
-generalized signatures, capture sets are ordered by subcapturing, and types
-separate capture qualifiers from their underlying shapes.
+member signatures, capture sets are ordered by subcapturing, and types
+separate capture sets from their underlying shape types.
 -/
 
 namespace LambdaPCC
@@ -32,8 +32,8 @@ inductive Path.Ty : Ctx n -> Path n -> Tau n k -> Type where
 
 /-! ## Subcapturing and subtyping -/
 
-/-- Subcapturing. A proper path exposes the captures of its synthesized type;
-an abstract capture member lies between its declared bounds. -/
+/-- Subcapturing. A term path exposes the capture set of its synthesized type;
+an abstract capture-set member lies between its declared bounds. -/
 inductive CaptureSet.Sub : Ctx n -> CaptureSet n -> CaptureSet n -> Type where
 | refl :
     CaptureSet.Sub Gamma C C
@@ -74,7 +74,7 @@ inductive CaptureSet.Sub : Ctx n -> CaptureSet n -> CaptureSet n -> Type where
 
 mutual
 
-/-- Subtyping of capture-annotated types. -/
+/-- Subtyping of capturing types. -/
 inductive Ty.Sub : Ctx n -> Ty n -> Ty n -> Type where
 | refl :
     Ty.Sub Gamma T T
@@ -87,7 +87,7 @@ inductive Ty.Sub : Ctx n -> Ty n -> Ty n -> Type where
     Shape.Sub Gamma S T ->
     Ty.Sub Gamma (.capt C S) (.capt D T)
 
-/-- Subtyping of shapes. -/
+/-- Subtyping of shape types. -/
 inductive Shape.Sub : Ctx n -> Shape n -> Shape n -> Type where
 | refl :
     Shape.Sub Gamma S S
@@ -122,7 +122,7 @@ inductive Shape.Sub : Ctx n -> Shape n -> Shape n -> Type where
     Tau.Sub (Gamma.snoc S) tau tau' ->
     Shape.Sub Gamma (.Pair S a tau) (.Pair S' a tau')
 
-/-- Subtyping of generalized signatures. -/
+/-- Subtyping of member signatures. -/
 inductive Tau.Sub : Ctx n -> Tau n k -> Tau n k -> Type where
 | refl :
     Tau.Sub Gamma tau tau
@@ -148,8 +148,8 @@ end
 
 /-! ## Well-formedness -/
 
-/-- Well-formed capture sets. Capture-member selection is admitted only when
-the selected interval has consistent bounds. -/
+/-- Well-formed capture sets. Selection from a capture-set member is admitted
+only when the selected interval has consistent bounds. -/
 inductive CaptureSet.Wf : Ctx n -> CaptureSet n -> Type where
 | empty :
     CaptureSet.Wf Gamma .empty
@@ -167,7 +167,7 @@ inductive CaptureSet.Wf : Ctx n -> CaptureSet n -> Type where
 
 mutual
 
-/-- Well-formed capture-annotated types. -/
+/-- Well-formed capturing types. -/
 inductive Ty.Wf : Ctx n -> Ty n -> Type where
 | capt :
     CaptureSet.Wf Gamma C ->
@@ -196,7 +196,7 @@ inductive Shape.Wf : Ctx n -> Shape n -> Type where
     Tau.Wf (Gamma.snoc S) tau ->
     Shape.Wf Gamma (.Pair S a tau)
 
-/-- Well-formed generalized signatures. -/
+/-- Well-formed member signatures. -/
 inductive Tau.Wf : Ctx n -> Tau n k -> Type where
 | term :
     Ty.Wf Gamma T ->

@@ -1,10 +1,10 @@
 import LambdaPCC.CaptureSafety
 
 /-!
-Public observations supported by the primitive-free CK machine.  Invocation
-coverage predicts the paths inspected by application; final-value prediction
-relates a returned value's introduction qualifier to its result
-type.
+Operational bounds supported by the primitive-free CK machine. Application
+coverage bounds the paths inspected by application. The returned-value bound
+relates the capture set assigned to a returned value at introduction to the
+capture set of its result type.
 -/
 
 namespace LambdaPCC
@@ -12,24 +12,24 @@ namespace Cap
 
 noncomputable section
 
-/-! ## Introduction qualifiers of values -/
+/-! ## Capture sets assigned to values at introduction -/
 
-/-- A value's introduction qualifier is below the outer qualifier of its
-assigned type. -/
+/-- The capture set assigned to a value at introduction is below the capture
+set of its assigned type. -/
 noncomputable def Value.captureRelation
     {n : Nat} {sigma : Store n} {world : World sigma}
     {v : Tm n} {T : Ty n} {Q : CaptureSet n}
-    (value : Value world v T Q) : Relation world Q T.qualifier := by
+    (value : Value world v T Q) : Relation world Q T.captureSet := by
   cases value with
   | abs body suffix => exact suffix.captureRelation
-  | pair qualifier suffix =>
-      cases qualifier
+  | pair captureSet suffix =>
+      cases captureSet
       exact suffix.captureRelation
-  | typePair qualifier suffix =>
-      cases qualifier
+  | typePair captureSet suffix =>
+      cases captureSet
       exact suffix.captureRelation
-  | capturePair qualifier suffix =>
-      cases qualifier
+  | capturePair captureSet suffix =>
+      cases captureSet
       exact suffix.captureRelation
 
 /-! ## Returned values -/
@@ -43,20 +43,20 @@ inductive State.Returns : State n -> Tm n -> Prop where
     Store.Binds sigma x v ->
     State.Returns (State.mk sigma [] (.path (.var x))) v
 
-/-- Evidence exposed by capture prediction for a final result. -/
+/-- A returned value together with its assigned capture-set bound. -/
 structure FinalCapture
     {n : Nat} {sigma : Store n} {world : World sigma}
     (valid : World.Valid world) (state : State n) (T : Ty n) : Type 1 where
   valueTerm : Tm n
   valueType : Ty n
-  introductionQualifier : CaptureSet n
+  assignedCaptureSet : CaptureSet n
   returns : State.Returns state valueTerm
-  value : Value world valueTerm valueType introductionQualifier
-  subcapture : Relation world introductionQualifier T.qualifier
+  value : Value world valueTerm valueType assignedCaptureSet
+  subcapture : Relation world assignedCaptureSet T.captureSet
 
-/-- A final state has a returned value whose introduction qualifier is below
-the qualifier of the state's result type. -/
-theorem StateEvidence.capturePrediction
+/-- A final state has a returned value whose assigned capture set is below
+the capture set of the state's result type. -/
+theorem StateEvidence.returnedCaptureBound
     {n : Nat} {state : State n} {world : World state.store}
     {valid : World.Valid world} {T : Ty n} {C : CaptureSet n}
     (evidence : StateEvidence valid state T C)
@@ -70,14 +70,14 @@ theorem StateEvidence.capturePrediction
           | hole resultSuffix useCoverage =>
               let entry := valid.entry x
               have captures : Relation world
-                  entry.introductionQualifier T.qualifier :=
+                  entry.assignedCaptureSet T.captureSet :=
                 (Relation.fold Path.Resolve.var entry.lookup).comp
                   (term.pathView.suffix.captureRelation.comp
                     resultSuffix.captureRelation)
               exact ⟨
                 { valueTerm := entry.term
                   valueType := entry.assignedType
-                  introductionQualifier := entry.introductionQualifier
+                  assignedCaptureSet := entry.assignedCaptureSet
                   returns := .location entry.lookup.binds
                   value := entry.value
                   subcapture := captures }⟩
@@ -90,7 +90,7 @@ theorem StateEvidence.capturePrediction
               exact ⟨
                 { valueTerm := v
                   valueType := _
-                  introductionQualifier := view.introductionQualifier
+                  assignedCaptureSet := view.assignedCaptureSet
                   returns := .value isValue
                   value := view.value
                   subcapture := view.value.captureRelation.comp
@@ -98,16 +98,15 @@ theorem StateEvidence.capturePrediction
 
 /-! ## Closed executions -/
 
-/-- Use prediction for an application reached by a closed finite execution.
-The reported bound is the source use set transported through every preceding
-allocation. -/
-theorem Tm.Ty.closed_finite_use_prediction
+/-- Application coverage for a step reached by a closed finite execution. The
+bound is the source use set transported through preceding allocations. -/
+theorem Tm.Ty.closed_finite_application_coverage
     {term : Tm 0} {T : Ty 0} {C : CaptureSet 0}
     (typing : Tm.Ty Ctx.nil term T C)
     {n m : Nat} {source : State n} {target : State m}
     (steps : State.Steps (State.initial term) source)
     (step : State.Step source target) {p q : Path n}
-    (event : State.Step.Invokes step p q) :
+    (event : State.Step.ApplicationEvent step p q) :
     exists (world : World source.store) (valid : World.Valid world)
       (U : Ty n) (D : CaptureSet n),
       Ty.Extends T U /\ CaptureSet.Extends C D /\
@@ -117,13 +116,13 @@ theorem Tm.Ty.closed_finite_use_prediction
               Relation world (.singleton q) D)) := by
   obtain ⟨world, valid, U, D, typeExtension, captureExtension,
       ⟨evidence⟩⟩ := typing.closed_finite_preservation steps
-  rcases evidence.coversInvocation step event with ⟨coverage⟩
+  rcases evidence.coversApplication step event with ⟨coverage⟩
   exact ⟨world, valid, U, D, typeExtension, captureExtension,
     ⟨evidence, coverage⟩⟩
 
-/-- Capture prediction for a final state reached by a closed finite
+/-- Assigned capture-set bound for the value returned by a closed finite
 execution. -/
-theorem Tm.Ty.closed_finite_capture_prediction
+theorem Tm.Ty.closed_finite_returned_capture_bound
     {term : Tm 0} {T : Ty 0} {C : CaptureSet 0}
     (typing : Tm.Ty Ctx.nil term T C)
     {n : Nat} {target : State n}
@@ -136,7 +135,7 @@ theorem Tm.Ty.closed_finite_capture_prediction
   obtain ⟨world, valid, U, D, typeExtension, captureExtension,
       ⟨evidence⟩⟩ := typing.closed_finite_preservation steps
   exact ⟨world, valid, U, D, typeExtension, captureExtension,
-    evidence.capturePrediction final⟩
+    evidence.returnedCaptureBound final⟩
 
 end
 end Cap

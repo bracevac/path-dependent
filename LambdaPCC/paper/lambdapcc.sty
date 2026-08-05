@@ -1,0 +1,72 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{lambdapcc}[2026/08/05 LambdaPCC paper notation]
+
+\RequirePackage{graphicx}
+\RequirePackage{bcprules}
+\RequirePackage{mathtools}
+\RequirePackage{float}
+\RequirePackage[nameinlink,noabbrev]{cleveref}
+
+\settopmatter{printacmref=false,printccs=false,printfolios=true}
+\raggedbottom
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+
+% Clickable rule names.
+\newcounter{RuleRef}
+\newcommand{\ruledef}[1]{%
+  \refstepcounter{RuleRef}\textsc{#1}\label{rule:#1}}
+\newcommand{\ruleuse}[1]{%
+  \hyperref[rule:#1]{\textsc{#1}}}
+\newcommand{\ruleref}[1]{%
+  \textsc{(\hyperref[rule:#1]{#1})}}
+
+\newcommand{\lambdapcc}{\ensuremath{\lambda_{\mathsf p}^{\mathsf{cc}}}}
+\newcommand{\LET}{\textsf{let}\ }
+\newcommand{\IN}{\ \textsf{in}\ }
+\newcommand{\ctxempty}{\varnothing}
+\newcommand{\set}[1]{\{{#1}\}}
+\newcommand{\smallwedge}{%
+  \mathrel{\!\text{\raisebox{0.7ex}{\scalebox{0.6}{$\wedge$}}}\!}}
+\newcommand\capt{\smallwedge}
+\newcommand{\typ}[4]{{#1}; {#2}\vdash {#3} : {#4}}
+\newcommand{\semtyp}[4]{{#1}; {#2}\vdash_{\mathsf e} {#3} : {#4}}
+\newcommand{\sing}[1]{#1.\mathsf{type}}
+\newcommand{\pairshape}[4]{\langle #1\!:\!#2;\,#3\!:\!#4\rangle}
+\newcommand{\pairval}[3]{\langle #1;\,#2=#3\rangle}
+\newcommand{\subst}[3]{#1[#2/#3]}
+\newcommand{\wf}{\mathrel{\mathsf{wf}}}
+\newcommand{\sstep}{\longrightarrow}
+\newcommand{\steps}{\longrightarrow^{*}}
+\newcommand{\resolve}{\Downarrow}
+\newcommand{\loc}[1]{\mathsf{loc}(#1)}
+\newcommand{\typeref}[1]{\mathsf{type}(#1)}
+\newcommand{\capref}[1]{\mathsf{capture}(#1)}
+\newcommand{\refdef}[1]{\mathsf{ref}(#1)}
+\newcommand{\tcoerce}{\mathrel{\rightsquigarrow_{\mathsf t}}}
+\newcommand{\scoerce}{\mathrel{\rightsquigarrow_{\mathsf s}}}
+\newcommand{\coerce}{\mathrel{\rightsquigarrow}}
+\newcommand{\extends}{\mathrel{\preccurlyeq_{\mathsf{alloc}}}}
+\newcommand{\semleq}{\mathrel{\preceq}}
+\newcommand{\valid}{\mathrel{\mathsf{valid}}}
+\newcommand{\returns}{\mathrel{\mathsf{returns}}}
+
+% A judgment header keeps the judgment form visible without shrinking rules.
+\newcommand{\plateheader}[2]{%
+  \par\addvspace{1em}%
+  \noindent\textbf{#1}%
+  \if\relax\detokenize{#2}\relax\else
+    \hfill{\setlength{\fboxsep}{3pt}\setlength{\fboxrule}{0.5pt}%
+      \fbox{\(\strut #2\)}}%
+  \fi\par
+  \nobreak\addvspace{0.65em}%
+}
+\newcommand{\rulesetup}{%
+  \small
+  \smallrulenames
+  \setlength{\afterruleskip}{1.45em plus 0.2em minus 0.1em}%
+  \setlength{\labelminsep}{0.65em}%
+  \renewcommand{\arraystretch}{1.15}%
+  \renewcommand{\andalso}{\qquad}%
+}

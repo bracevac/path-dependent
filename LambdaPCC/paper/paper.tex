@@ -1,69 +1,7 @@
 \documentclass[acmsmall,screen,nonacm]{acmart}
+\usepackage{lambdapcc}
 
-\usepackage{bcprules}
-\usepackage{mathtools}
-\usepackage{float}
-\usepackage[nameinlink,noabbrev]{cleveref}
-
-\settopmatter{printacmref=false,printccs=false,printfolios=true}
-\raggedbottom
-
-\newtheorem{theorem}{Theorem}
-\newtheorem{lemma}[theorem]{Lemma}
-
-\newcounter{RuleRef}
-\newcommand{\ruledef}[1]{%
-  \refstepcounter{RuleRef}\textsc{#1}\label{rule:#1}}
-\newcommand{\ruleuse}[1]{%
-  \hyperref[rule:#1]{\textsc{#1}}}
-\newcommand{\ruleref}[1]{%
-  \textsc{(\hyperref[rule:#1]{#1})}}
-
-\newcommand{\lambdapcc}{\ensuremath{\lambda_{\mathsf p}^{\mathsf{cc}}}}
-\newcommand{\ctxempty}{\varnothing}
-\newcommand{\cempty}{\varnothing}
-\newcommand{\cset}[1]{\{#1\}}
-\newcommand{\capt}[2]{#1^{#2}}
-\newcommand{\sing}[1]{#1.\mathsf{type}}
-\newcommand{\pairshape}[4]{\langle #1\!:\!#2;\,#3\!:\!#4\rangle}
-\newcommand{\pairval}[3]{\langle #1;\,#2=#3\rangle}
-\newcommand{\subst}[3]{#1[#2/#3]}
-\newcommand{\wf}{\mathrel{\mathsf{wf}}}
-\newcommand{\uses}{\mathbin{\triangleright}}
-\newcommand{\sstep}{\longrightarrow}
-\newcommand{\steps}{\longrightarrow^{*}}
-\newcommand{\resolve}{\Downarrow}
-\newcommand{\loc}[1]{\mathsf{loc}(#1)}
-\newcommand{\typeref}[1]{\mathsf{type}(#1)}
-\newcommand{\capref}[1]{\mathsf{capture}(#1)}
-\newcommand{\refdef}[1]{\mathsf{ref}(#1)}
-\newcommand{\tcoerce}{\mathrel{\rightsquigarrow_{\mathsf t}}}
-\newcommand{\scoerce}{\mathrel{\rightsquigarrow_{\mathsf s}}}
-\newcommand{\coerce}{\mathrel{\rightsquigarrow}}
-\newcommand{\extends}{\mathrel{\preccurlyeq_{\mathsf{alloc}}}}
-\newcommand{\semleq}{\mathrel{\preceq}}
-\newcommand{\qual}{\mathsf{qual}}
-\newcommand{\valid}{\mathrel{\mathsf{valid}}}
-\newcommand{\returns}{\mathrel{\mathsf{returns}}}
-\newcommand{\plateheader}[2]{%
-  \par\addvspace{1em}%
-  \noindent\textbf{#1}%
-  \if\relax\detokenize{#2}\relax\else
-    \hfill{\setlength{\fboxsep}{3pt}\setlength{\fboxrule}{0.5pt}%
-      \fbox{\(\strut #2\)}}%
-  \fi\par
-  \nobreak\addvspace{0.65em}%
-}
-\newcommand{\rulesetup}{%
-  \small
-  \smallrulenames
-  \setlength{\afterruleskip}{1.45em plus 0.2em minus 0.1em}%
-  \setlength{\labelminsep}{0.65em}%
-  \renewcommand{\arraystretch}{1.15}%
-  \renewcommand{\andalso}{\qquad}%
-}
-
-\title{Capture-Checked Paths through Dependent Pairs}
+\title{Capture Checking for Path-Dependent Pairs}
 \author{Oliver Bra\v{c}evac}
 \author{Martin Odersky}
 \renewcommand{\shortauthors}{Bra\v{c}evac and Odersky}
@@ -73,30 +11,29 @@
 
 \begin{abstract}
 We extend a small calculus of path-dependent types based on immutable
-dependent pairs with capture qualifiers, use sets, and abstract capture-set
+dependent pairs with capturing types, use sets, and abstract capture-set
 members. Capture sets contain paths of arbitrary length. A pair member may
 describe a term, a type interval, or a capture-set interval, and its signature
-may depend on the pair's first component. Subcapturing expands a proper path
-to the qualifier of its synthesized type, relates an abstract capture
-selection to its declared bounds, and contracts proper projections and term
-selections to their root.
+may depend on the pair's first component. Subcapturing places the singleton
+capture set of a term path below the capture set of its synthesized type, relates an
+abstract capture-set selection to its declared bounds, and contracts
+projections and term-member selections to their root.
 
 The soundness proof interprets subtyping derivations as store-indexed
-semantic coercions.  An annotated store records the qualifier assigned by
-the introduction rule of each allocated value.  Qualifier-aware inhabitants
-retain this introduction qualifier and a subcapturing derivation to the
-qualifier of their assigned type.  Coercion action preserves the introduction
-qualifier, including through dependent functions, pairs, and abstract
-members.  The general pair rule is handled by applying its first-component
+coercions. An annotated store records, for each allocated value, the capture
+set assigned by its introduction rule. Value typing retains this set
+and a subcapturing derivation to the capture set of the assigned type.
+Coercion action preserves the assigned capture set through dependent functions,
+pairs, and abstract members. The general pair rule is handled by applying its first-component
 coercion at the stored component and instantiating its member coercion at the
-same location.  Coercion action is well founded in the allocation order of
+same location. Coercion action is well founded in the allocation order of
 the immutable store.
 
 The mechanization proves progress, preservation, and non-stuckness for
 closed programs.  It also proves that both operands inspected by every
 application are covered by the source use set, transported through preceding
-allocations, and that the introduction qualifier of a returned value is
-below the qualifier of its result type.
+allocations. For a returned value, the capture set assigned by its
+introduction rule subcaptures the capture set of the result type.
 \end{abstract}
 
 \keywords{path-dependent types, capture checking, dependent pairs,
@@ -113,42 +50,46 @@ mechanisms become more useful when paths may be longer than variables: a
 component selected from a structure can carry its own type and its own
 capture information.
 
+Capabilities are named by stable term paths in this calculus. Capture sets
+over-approximate the capability paths retained by values, while use sets
+over-approximate those used during evaluation.
+
 The calculus studied here, \lambdapcc{}, combines these ideas in a small
 call-by-value language of immutable dependent pairs. It retains the path,
 singleton, abstract-type, function, and general pair-subtyping mechanisms of
 the underlying path calculus. It adds three ingredients from capture
-checking. First, every proper type is a shape qualified by a capture set.
+checking. First, every type is a capturing type.
 Second, term typing produces a \emph{use set}, an upper bound on the
 capabilities used to evaluate the term. Third, pairs may contain abstract
 capture-set members with lower and upper bounds, in parallel with abstract
 type members.
 
-A qualified type is written \(\capt{S}{C}\). The shape \(S\) describes the
-value, while \(C\) records capabilities retained by that value. A typing
+A capturing type \(S\capt C\) consists of a shape type \(S\) and a capture
+set \(C\), which upper-bounds the capabilities that a value may capture. A typing
 judgment
 \[
-  \Gamma\vdash t:T\uses C
+  \typ{C}{\Gamma}{t}{T}
 \]
-assigns result type \(T\) and use set \(C\) to \(t\). Values have empty use
-sets because their evaluation is complete. A function value is therefore
-pure as an expression, while the qualifier on its function type records the
-capabilities used by its body. This separation gives the usual distinction
+assigns result type \(T\) and use set \(C\) to \(t\). Values have an empty
+use set because their evaluation is complete. For an abstraction, the use set
+of the body becomes the capture set of the function type. This separation gives the usual distinction
 between capabilities used now and capabilities retained for later use
 \citep{xu2025box,boruch2023capture}.
 
-Capture sets may contain a capability path \(p\) and an abstract capture
-selection \(p.a\). We write the former as the singleton \(\cset p\); the
+Capture sets may contain a capability path \(p\) and an abstract capture-set
+selection \(p.a\). We write the former as the singleton \(\set p\); the
 latter is itself a capture-set expression. The two forms have different
-roles. If \(p\) synthesizes \(\capt{S}{C}\), subcapturing derives
-\(\cset p<:C\). If the capture member \(p.a\) has bounds \(L..U\), then
-\(L<:p.a<:U\). Proper projections and term selections contract to their
-owner, for example \(\cset{p.a}<:\cset p\). There is no corresponding rule
-\(p.a<:\cset p\): a capture member is a static definition whose contents
+roles. If \(p\) synthesizes \(S\capt C\), subcapturing derives
+\(\set p<:C\). If the capture-set member \(p.a\) has bounds \(L..U\), then
+\(L<:p.a<:U\). Projections and term-member selections contract to their
+owner, for example \(\set{p.a}<:\set p\). There is no corresponding rule
+\(p.a<:\set p\): a capture-set member is a static definition whose contents
 need not be owned by its receiver. This distinction prevents an arbitrary
-concrete capture definition from being collapsed through the receiver's
-qualifier.
+concrete capture-set definition from being collapsed through the receiver's
+capture set.
 
-The main subtype of interest is the general pair rule:
+A member signature \(\mu\) is a capturing type, a type interval, or a
+capture-set interval. The main subtype of interest is the general pair rule:
 \begingroup
 \rulesetup
 \infrule[\ruleuse{ss-pair}]
@@ -159,23 +100,21 @@ The main subtype of interest is the general pair rule:
     \pairshape{x}{T}{a}{\mu}<:
     \pairshape{x}{T'}{a}{\mu'}}
 \endgroup
-The member signature \(\mu\) can be a qualified type, a type interval, or a
-capture interval. Its premise cannot be compiled to a closed semantic
+The premise under \(x:T\) cannot be compiled to a closed semantic
 coercion until a concrete pair supplies the location denoted by \(x\).
-The proof retains this premise as a member closure. When a pair at location
+The proof retains this premise as a suspended member premise. When a pair at location
 \(z\) is observed, its runtime value exposes a first component \(y\) and a
-member referent. The proof coerces \(y\), instantiates the member closure with
+member referent. The proof coerces \(y\), instantiates the suspended premise with
 \(x\mapsto y\), and applies the resulting coercion to that referent.
 
-The semantic interpretation retains both capture-related indices of source
-typing.  A value carries its \emph{introduction qualifier}: the qualifier
-fixed by the value rule before any enclosing subsumption.  For an abstraction
-this is the free part of its body's use set; for a pair it is determined by
-the stored components.  An introduction qualifier need not be minimal or
-principal, since its source derivation may itself contain subsumption.
-Runtime term evidence also retains the use set assigned to the current term.
-These two indices support separate results for ordinary type safety, use
-prediction, and capture prediction.
+The annotated store records each allocated value together with the capture
+set \(Q\) assigned by its introduction rule. Runtime typing of that value at
+\(S\capt C\) retains a derivation \(Q<:C\). For an abstraction, \(Q\) is
+obtained from the body's use set; for a pair, it is determined by the stored
+components. The premise of a value-introduction rule may already contain
+subsumption, so \(Q\) need not be least. Runtime term typing also retains the
+use set of the current term. Retaining both sets supports separate results for type
+safety, application coverage, and the capture-set bound on returned values.
 
 The rest of the paper presents the complete calculus, its operational
 semantics, the coercion interpretation, and the soundness argument. The
@@ -188,36 +127,40 @@ organization of the mechanization.
 \subsection{Notation and syntactic categories}
 
 Variables are written \(x,y,z\), and labels are written \(a,b\). Labels
-inhabit one syntactic namespace. The kind of a selection is determined by
-path synthesis, rather than by label typography. Paths \(p,q\) consist of variables, first
-projections, and labelled selections. Only a path that synthesizes a
-qualified type may occur as a term or as a singleton capture.
+inhabit one syntactic namespace. Path synthesis determines whether a
+selection denotes a term, type, or capture-set member. Paths \(p,q\) consist
+of variables, first projections, and labelled selections. A \emph{term path}
+is a path that synthesizes a capturing type; only term paths may occur as
+terms or singleton capture sets.
 
-Capture sets are written \(C,D\), shapes \(R,S\), qualified types \(T,U\),
-and generalized member signatures \(\mu,\nu\). A member signature is a
-qualified term type, a shape interval, or a capture interval. We omit an
-empty qualifier, writing \(S\) for \(\capt{S}{\cempty}\). The singleton
-shape of a path is \(\sing p\), whereas \(\cset p\) is a singleton capture
+Capture sets are written \(C,D\), shape types \(R,S\), types \(T,U\),
+and member signatures \(\mu,\nu\). A member signature is a
+capturing type, a shape-type interval, or a capture-set interval. We omit an
+empty capture set, writing \(S\) for \(S\capt\set{}\). The singleton
+shape type of a path is \(\sing p\), whereas \(\set p\) is a singleton capture
 set. The binder in a function scopes over its codomain. The binder in
 \(\pairshape{x}{T}{a}{\mu}\) scopes over \(\mu\) and denotes the first
 component. Capture-avoiding opening is written \(\subst{X}{p}{x}\) for any
-type, shape, signature, or capture set \(X\).
+type, shape type, signature, or capture set \(X\).
 
-Primes and numeric subscripts denote further metavariables of the same
-category.  In rules that apply uniformly to type and capture intervals,
-\(L\) and \(U\) denote the lower and upper bound; the member kind determines
-whether they range over shapes or capture sets.
+Objects well scoped in \(\Gamma\) may also be used under an extension
+\(\Gamma,x:T\); this weakening is implicit. Primes and subscripts denote
+further metavariables of the same category. In rules that apply uniformly to
+type and capture-set intervals, \(L\) and \(U\) denote the lower and upper
+bound; the interval form determines whether they range over shape types or
+capture sets.
 
-The term language is in monadic normal form. Applications take paths as
-operands, and a pair stores a first-component variable together with a term
-variable, shape definition, or capture-set definition. The runtime retains
-shape and capture definitions so generalized path lookup has a uniform
-referent.
+Terms are in monadic normal form: applications take paths, and pairs store a
+first component together with a term, shape-type, or capture-set definition.
+Shape-type and capture-set definitions are retained only as static lookup
+metadata. Their paths are not captured capabilities, so pair introduction
+records only term components in the capture set.
 
-\subsection{Static semantics}
-
-The next three pages give the complete source syntax, static semantics,
-runtime syntax, generalized path resolution, and CK machine.
+The static judgments are path synthesis \(\Gamma\vdash p\Rightarrow\mu\),
+well-formedness \(\Gamma\vdash X\ \wf\), subcapturing
+\(\Gamma\vdash C<:D\), subtyping \(\Gamma\vdash T<:U\),
+\(\Gamma\vdash S<:R\), and \(\Gamma\vdash\mu<:\nu\), and term typing
+\(\typ{C}{\Gamma}{t}{T}\).
 
 \clearpage
 \begingroup
@@ -249,13 +192,13 @@ runtime syntax, generalized path resolution, and CK machine.
  & \(p.1\) & first projection\\
  & \(p.a\) & member selection\\[0.35em]
 \(C,D ::= \) && \textbf{Capture set}\\
- & \(\cempty\) & empty\\
+ & \(\set{}\) & empty\\
  & \(C\cup D\) & union\\
- & \(\cset p\) & capability path\\
- & \(p.a\) & capture selection\\[0.35em]
-\(T,U ::= \) && \textbf{Qualified type}\\
- & \(\capt{S}{C}\) & capturing\\[0.35em]
-\(R,S ::= \) && \textbf{Shape}\\
+ & \(\set p\) & capability path\\
+ & \(p.a\) & capture-set selection\\[0.35em]
+\(T,U ::= \) && \textbf{Type}\\
+ & \(S\capt C\) & capturing\\[0.35em]
+\(R,S ::= \) && \textbf{Shape type}\\
  & \(\top\mid\bot\) & extrema\\
  & \((x:T)\to U\) & function\\
  & \(\pairshape{x}{T}{a}{\mu}\) & pair\\
@@ -268,17 +211,17 @@ runtime syntax, generalized path resolution, and CK machine.
 \(\mu,\nu ::= \) && \textbf{Member signature}\\
  & \(T\) & term member\\
  & \(S..R\) & type interval\\
- & \(C..D\) & capture interval\\[0.35em]
+ & \(C..D\) & capture-set interval\\[0.35em]
 \(\delta ::= \) && \textbf{Member definition}\\
  & \(z\) & term definition\\
  & \(S\) & type definition\\
- & \(C\) & capture definition\\[0.35em]
+ & \(C\) & capture-set definition\\[0.35em]
 \(t,u ::= \) && \textbf{Term}\\
  & \(p\) & path\\
  & \(\lambda(x:T).t\) & abstraction\\
  & \(\pairval{y}{a}{\delta}\) & pair\\
  & \(p\,q\) & application\\
- & \(\mathbf{let}\ x=t\ \mathbf{in}\ u\) & let\\[0.35em]
+ & \(\LET x=t\ \IN u\) & let\\[0.35em]
 \(v ::= \) && \textbf{Value}\\
  & \(\lambda(x:T).t\mid\pairval{y}{a}{\delta}\) &\\[0.35em]
 \(\Gamma ::= \) && \textbf{Context}\\
@@ -296,18 +239,18 @@ runtime syntax, generalized path resolution, and CK machine.
 
 \infrule[\ruledef{p-fst}]
   {\Gamma\vdash p\Rightarrow
-    \capt{\pairshape{x}{T}{a}{\mu}}{C}}
+    \pairshape{x}{T}{a}{\mu}\capt C}
   {\Gamma\vdash p.1\Rightarrow T}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.51\linewidth}
 \infrule[\ruledef{p-sel}]
   {\Gamma\vdash p\Rightarrow
-    \capt{\pairshape{x}{T}{a}{\mu}}{C}}
+    \pairshape{x}{T}{a}{\mu}\capt C}
   {\Gamma\vdash p.a\Rightarrow\subst{\mu}{p.1}{x}}
 
 \infrule[\ruledef{p-miss}]
   {\Gamma\vdash p\Rightarrow
-     \capt{\pairshape{x}{T}{b}{\nu}}{C}
+     \pairshape{x}{T}{b}{\nu}\capt C
    \\
    \Gamma\vdash p.1.a\Rightarrow\mu
    \andalso a\ne b}
@@ -321,7 +264,7 @@ runtime syntax, generalized path resolution, and CK machine.
 \noindent\textit{Capture sets}\par\nobreak
 \begin{minipage}[t]{0.46\linewidth}
 \infax[\ruledef{wfc-empty}]
-  {\Gamma\vdash\cempty\ \wf}
+  {\Gamma\vdash\set{}\ \wf}
 
 \infrule[\ruledef{wfc-union}]
   {\Gamma\vdash C\ \wf\quad\Gamma\vdash D\ \wf}
@@ -330,7 +273,7 @@ runtime syntax, generalized path resolution, and CK machine.
 \begin{minipage}[t]{0.51\linewidth}
 \infrule[\ruledef{wfc-path}]
   {\Gamma\vdash p\Rightarrow T}
-  {\Gamma\vdash\cset p\ \wf}
+  {\Gamma\vdash\set p\ \wf}
 
 \infrule[\ruledef{wfc-select}]
   {\Gamma\vdash p.a\Rightarrow C..D
@@ -359,13 +302,13 @@ runtime syntax, generalized path resolution, and CK machine.
 \end{minipage}
 \end{minipage}
 
-\plateheader{Qualified-type and shape well-formedness}
+\plateheader{Type and shape-type well-formedness}
   {\Gamma\vdash T\ \wf\quad\Gamma\vdash S\ \wf}
 \noindent
 \begin{minipage}[t]{0.31\linewidth}
 \infrule[\ruledef{wft-capt}]
   {\Gamma\vdash C\ \wf\andalso\Gamma\vdash S\ \wf}
-  {\Gamma\vdash\capt{S}{C}\ \wf}
+  {\Gamma\vdash S\capt C\ \wf}
 
 \infax[\ruledef{wfs-bot}]
   {\Gamma\vdash\bot\ \wf}
@@ -420,7 +363,7 @@ well-formedness judgments.}
   {\Gamma\vdash C<:C'}
 
 \infax[\ruledef{sc-empty}]
-  {\Gamma\vdash\cempty<:C}
+  {\Gamma\vdash\set{}<:C}
 
 \infax[\ruledef{sc-union-left}]
   {\Gamma\vdash C<:C\cup D}
@@ -436,21 +379,21 @@ well-formedness judgments.}
   {\Gamma\vdash C\cup D<:C'}
 
 \infrule[\ruledef{sc-path}]
-  {\Gamma\vdash p\Rightarrow\capt{S}{C}}
-  {\Gamma\vdash\cset p<:C}
+  {\Gamma\vdash p\Rightarrow S\capt C}
+  {\Gamma\vdash\set p<:C}
 
 \infrule[\ruledef{sc-alias}]
-  {\Gamma\vdash p\Rightarrow\capt{\sing q}{C}}
-  {\Gamma\vdash\cset q<:\cset p}
+  {\Gamma\vdash p\Rightarrow\sing q\capt C}
+  {\Gamma\vdash\set q<:\set p}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.34\linewidth}
 \infrule[\ruledef{sc-fst-root}]
   {\Gamma\vdash p.1\Rightarrow T}
-  {\Gamma\vdash\cset{p.1}<:\cset p}
+  {\Gamma\vdash\set{p.1}<:\set p}
 
 \infrule[\ruledef{sc-sel-root}]
   {\Gamma\vdash p.a\Rightarrow T}
-  {\Gamma\vdash\cset{p.a}<:\cset p}
+  {\Gamma\vdash\set{p.a}<:\set p}
 
 \infrule[\ruledef{sc-select-lower}]
   {\Gamma\vdash p.a\Rightarrow L..U
@@ -465,7 +408,7 @@ well-formedness judgments.}
   {\Gamma\vdash p.a<:U}
 \end{minipage}
 
-\plateheader{Qualified-type subtyping}{\Gamma\vdash T<:U}
+\plateheader{Type subtyping}{\Gamma\vdash T<:U}
 \noindent
 \begin{minipage}[t]{0.30\linewidth}
 \infax[\ruledef{st-refl}]
@@ -483,10 +426,10 @@ well-formedness judgments.}
   {\Gamma\vdash C<:D
    \andalso
    \Gamma\vdash S<:R}
-  {\Gamma\vdash\capt{S}{C}<:\capt{R}{D}}
+  {\Gamma\vdash S\capt C<:R\capt D}
 \end{minipage}
 
-\plateheader{Shape subtyping}{\Gamma\vdash S<:R}
+\plateheader{Shape-type subtyping}{\Gamma\vdash S<:R}
 \noindent
 \begin{minipage}[t]{0.31\linewidth}
 \infax[\ruledef{ss-refl}]
@@ -506,10 +449,10 @@ well-formedness judgments.}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.32\linewidth}
 \infrule[\ruledef{ss-widen}]
-  {\Gamma\vdash p\Rightarrow\capt{S}{C}}
+  {\Gamma\vdash p\Rightarrow S\capt C}
   {\Gamma\vdash\sing p<:S}
 \infrule[\ruledef{ss-alias}]
-  {\Gamma\vdash p\Rightarrow\capt{\sing q}{C}}
+  {\Gamma\vdash p\Rightarrow\sing q\capt C}
   {\Gamma\vdash\sing q<:\sing p}
 
 \infrule[\ruledef{ss-select-lower}]
@@ -576,7 +519,7 @@ well-formedness judgments.}
 
 \caption{Static semantics (continued): subcapturing and all subtyping
 judgments.}
-\Description{The complete subcapturing, qualified-type, shape, and
+\Description{The complete subcapturing, type, shape-type, and
 member-signature subtyping judgments.}
 \label{fig:subcapturing}
 \label{fig:subtyping}
@@ -587,61 +530,60 @@ member-signature subtyping judgments.}
 \begin{figure}[H]
 \ContinuedFloat
 
-\plateheader{Term typing}{\Gamma\vdash t:T\uses C}
+\plateheader{Term typing}{\typ{C}{\Gamma}{t}{T}}
 \noindent
 \begin{minipage}[t]{0.47\linewidth}
 \infrule[\ruledef{t-path}]
   {\Gamma\vdash p\Rightarrow T}
-  {\Gamma\vdash p:\capt{\sing p}{\cset p}\uses\cset p}
+  {\typ{\set p}{\Gamma}{p}{\sing p\capt\set p}}
 
 \infrule[\ruledef{t-abs}]
-  {\Gamma,x:T\vdash t:U\uses C^{\uparrow}\cup\cset x
+  {\typ{C\cup\set x}{\Gamma,x:T}{t}{U}
    \\
    \Gamma\vdash T\ \wf
    \andalso
    \Gamma\vdash C\ \wf}
-  {\Gamma\vdash\lambda(x:T).t:
-    \capt{(x:T)\to U}{C}\uses\cempty}
+  {\typ{\set{}}{\Gamma}{\lambda(x:T).t}{((x:T)\to U)\capt C}}
 
 \infrule[\ruledef{t-app}]
-  {\Gamma\vdash p:\capt{(x:T)\to U}{C}\uses C_p
+  {\typ{C_p}{\Gamma}{p}{((x:T)\to U)\capt C}
    \\
-   \Gamma\vdash q:T\uses C_q}
-  {\Gamma\vdash p\,q:\subst{U}{q}{x}\uses C_p\cup C_q}
+   \typ{C_q}{\Gamma}{q}{T}}
+  {\typ{C_p\cup C_q}{\Gamma}{p\,q}{\subst{U}{q}{x}}}
 
 \infax[\ruledef{t-pair}]
   {\begin{gathered}
-   \Gamma\vdash\pairval{y}{a}{z}:\\[-2pt]
-   \capt{\pairshape{x}{\capt{\sing y}{\cset y}}{a}
-     {\capt{\sing{z^{\uparrow}}}{\cset{z^{\uparrow}}}}}
-     {\cset y\cup\cset z}\uses\cempty
+   \set{};\,\Gamma\vdash\pairval{y}{a}{z}:\\[-2pt]
+   \pairshape{x}{\sing y\capt\set y}{a}
+     {\sing z\capt\set z}
+     \capt(\set y\cup\set z)
    \end{gathered}}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.51\linewidth}
 \infrule[\ruledef{t-type-pair}]
   {\Gamma\vdash S\ \wf}
-  {\Gamma\vdash\pairval{y}{a}{S}:
-   \capt{\pairshape{x}{\capt{\sing y}{\cset y}}{a}
-     {S^{\uparrow}..S^{\uparrow}}}{\cset y}\uses\cempty}
+  {\typ{\set{}}{\Gamma}{\pairval{y}{a}{S}}{
+   \pairshape{x}{\sing y\capt\set y}{a}
+     {S..S}\capt\set y}}
 
 \infrule[\ruledef{t-capture-pair}]
   {\Gamma\vdash C\ \wf}
-  {\Gamma\vdash\pairval{y}{a}{C}:
-   \capt{\pairshape{x}{\capt{\sing y}{\cset y}}{a}
-     {C^{\uparrow}..C^{\uparrow}}}{\cset y}\uses\cempty}
+  {\typ{\set{}}{\Gamma}{\pairval{y}{a}{C}}{
+   \pairshape{x}{\sing y\capt\set y}{a}
+     {C..C}\capt\set y}}
 
 \infrule[\ruledef{t-let}]
-  {\Gamma\vdash t:T\uses C
+  {\typ{C}{\Gamma}{t}{T}
    \andalso
-   \Gamma,x:T\vdash u:U^{\uparrow}\uses C^{\uparrow}
+   \typ{C}{\Gamma,x:T}{u}{U}
    \\
    \Gamma\vdash U\ \wf
    \andalso
    \Gamma\vdash C\ \wf}
-  {\Gamma\vdash\mathbf{let}\ x=t\ \mathbf{in}\ u:U\uses C}
+  {\typ{C}{\Gamma}{\LET x=t\ \IN u}{U}}
 
 \infrule[\ruledef{t-sub}]
-  {\Gamma\vdash t:T\uses C
+  {\typ{C}{\Gamma}{t}{T}
    \andalso
    \Gamma\vdash T<:U
    \andalso
@@ -650,7 +592,7 @@ member-signature subtyping judgments.}
    \Gamma\vdash U\ \wf
    \andalso
    \Gamma\vdash D\ \wf}
-  {\Gamma\vdash t:U\uses D}
+  {\typ{D}{\Gamma}{t}{U}}
 \end{minipage}
 
 \noindent
@@ -659,10 +601,10 @@ member-signature subtyping judgments.}
 \[
 \begin{array}{rcl@{\qquad}l}
 r &::=& \loc x\mid\typeref S\mid\capref C & \text{referent}\cr
-\sigma &::=& \cempty\mid\sigma\mathbin{\cdot}(x\mapsto v)
+\sigma &::=& \emptyset\mid\sigma\mathbin{\cdot}(x\mapsto v)
   & \text{store}\cr
 k &::=& [\,]\mid
-  (\mathbf{let}\ x=[\,]\ \mathbf{in}\ u)::k
+  (\LET x=[\,]\ \IN u)::k
   & \text{continuation}\cr
 s &::=& \langle\sigma,k,t\rangle & \text{state}
 \end{array}
@@ -718,11 +660,11 @@ s &::=& \langle\sigma,k,t\rangle & \text{state}
 \noindent
 \begin{minipage}[t]{0.47\linewidth}
 \infrule[\ruledef{e-app}]
-  {\sigma\vdash p\resolve\loc f
+  {\sigma\vdash p\resolve\loc z
    \andalso
    \sigma\vdash q\resolve\loc y
    \\
-   \sigma(f)=\lambda(x:T).t}
+   \sigma(z)=\lambda(x:T).t}
   {\langle\sigma,k,p\,q\rangle\sstep
    \langle\sigma,k,\subst{t}{y}{x}\rangle}
 
@@ -733,22 +675,22 @@ s &::=& \langle\sigma,k,t\rangle & \text{state}
    \langle\sigma,k,x\rangle}
 
 \infax[\ruledef{e-let}]
-  {\langle\sigma,k,\mathbf{let}\ x=t\ \mathbf{in}\ u\rangle
+  {\langle\sigma,k,\LET x=t\ \IN u\rangle
    \sstep
-   \langle\sigma,(\mathbf{let}\ x=[\,]\ \mathbf{in}\ u)::k,t\rangle}
+   \langle\sigma,(\LET x=[\,]\ \IN u)::k,t\rangle}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.51\linewidth}
 \infax[\ruledef{e-return}]
   {\langle\sigma,
-      (\mathbf{let}\ x=[\,]\ \mathbf{in}\ u)::k,y\rangle
+      (\LET x=[\,]\ \IN u)::k,y\rangle
    \sstep
    \langle\sigma,k,\subst{u}{y}{x}\rangle}
 
 \infrule[\ruledef{e-allocate}]
   {v\ \mathsf{value}
-   \andalso z\notin\mathsf{dom}(\sigma)}
+   \andalso \sigma(z)\ \mathsf{undefined}}
   {\langle\sigma,
-      (\mathbf{let}\ x=[\,]\ \mathbf{in}\ u)::k,v\rangle
+      (\LET x=[\,]\ \IN u)::k,v\rangle
    \sstep\\
    \langle\sigma\mathbin{\cdot}(z\mapsto v),k,
      \subst{u}{z}{x}\rangle}
@@ -768,55 +710,52 @@ transition relation.}
 \clearpage
 
 Path synthesis \(\Gamma\vdash p\Rightarrow\mu\) is precise and has no
-subsumption. The outer qualifier of a pair is irrelevant to lookup. Matching
+subsumption. The capture set of a pair type is irrelevant to lookup. Matching
 selection opens the dependent member with the receiver's first projection.
 When labels differ, selection continues through the first component; this
 represents a right-nested record without a separate record calculus.
 
 There are four subtyping judgments. Subcapturing
-\(\Gamma\vdash C<:D\) compares capture sets. Qualified-type and shape
+\(\Gamma\vdash C<:D\) compares capture sets. Type and shape-type
 subtyping are written \(\Gamma\vdash T<:U\) and
 \(\Gamma\vdash S<:R\); the syntactic categories disambiguate them.
-Generalized signature subtyping uses the same notation. Interval
-well-formedness and the type- and capture-selection subtyping rules carry
-consistency premises. A qualified type may also be regarded as a generalized
+Member-signature subtyping uses the same notation. Interval
+well-formedness and the type- and capture-set-selection subtyping rules carry
+consistency premises. A capturing type may also be regarded as a
 term signature. Since the grammar presents this inclusion without a
 constructor, the premise and conclusion of the corresponding
 well-formedness and subtyping rules have the same typography but belong to
 different judgment families.
 
-The abstraction rule deserves one point of notation. If \(C\) is formed in
-\(\Gamma\), then \(C^{\uparrow}\) is its weakening to
-\(\Gamma,x:T\). The premise use set
-\(C^{\uparrow}\cup\cset x\) contains no free occurrence of the new binder
-after abstraction. Subsumption and the proper-path root rules allow any path
-rooted at \(x\), such as \(x.1.a\), to be widened to \(\cset x\). Let
-typing similarly requires the body's result type and use bound to be
+The premise use set \(C\cup\set x\) of the abstraction rule contains no free
+occurrence of the new binder after abstraction. Subsumption and the term-path
+root rules allow any path
+rooted at \(x\), such as \(x.1.a\), to be widened to \(\set x\). Let
+typing similarly requires the body's result type and use set to be
 formed in the outer context; subsumption must eliminate the local root before
 the rule applies.
 
 We write
-\(\mathsf{initial}(t)=\langle\varnothing,[\,],t\rangle\).  A store is an
-immutable sequence of allocated values; \(\mathsf{dom}(\sigma)\) is exactly
-its set of allocated locations.  In particular, every runtime variable names
+\(\mathsf{initial}(t)=\langle\emptyset,[\,],t\rangle\). A store is an
+immutable sequence of allocated values. In particular, every runtime variable names
 a store cell.  Allocation chooses a fresh location and transports the old
 store, continuation, and term into the extended location scope.  The named
 presentation of \ruleref{e-allocate} leaves this transport implicit.
 
-Call a generalized signature bound-consistent in \(\Gamma\) when it is a
+Call a member signature bound-consistent in \(\Gamma\) when it is a
 term signature, or when it is an interval whose lower bound is below its
 upper bound in the corresponding subtype judgment.
 
 \begin{lemma}[Bound consistency]
 \label{lem:bound-consistency}
-Every well-formed generalized signature is bound-consistent.  If
+Every well-formed member signature is bound-consistent. If
 \(\Gamma\vdash\mu<:\nu\) and \(\mu\) is bound-consistent, then \(\nu\) is
 bound-consistent.
 \end{lemma}
 
 The well-formedness result follows immediately from the interval rules.  For
 signature subtyping, the type-interval case chains
-\(S'<:S<:R<:R'\), and the capture-interval case chains
+\(S'<:S<:R<:R'\), and the capture-set-interval case chains
 \(C'<:C<:D<:D'\); reflexivity and transitivity preserve the property.
 The mechanization does not yet include a full context-formation and typing
 regularity theorem.  That stronger result requires the opening and path
@@ -835,33 +774,34 @@ hypothesis determines the tail referent.  Generalized resolution is used in
 the static and semantic arguments; the machine steps only when its result is
 a location.
 
-\subsection{Capture members and root contraction}
+\subsection{Capture-set members and root contraction}
 
-A capture definition packages a capture set behind a stable path.  For
+A capture-set definition packages a capture set behind a stable path. For
 example, after allocating
 \[
-  r=\pairval{y}{a}{W},
+  z=\pairval{y}{a}{D},
 \]
-where \(W\) is a capture set, path synthesis exposes the exact interval
-\(r.a\Rightarrow W..W\).  Subcapturing may subsequently forget precision by
-placing \(r.a\) between wider declared bounds.  Capture selection therefore
+path synthesis exposes the exact interval
+\(z.a\Rightarrow D..D\). Subcapturing may subsequently forget precision by
+placing \(z.a\) between wider declared bounds. Capture-set selection therefore
 provides capture-set abstraction without adding a separate binder form or
 explicit capture polymorphism to terms.
 
-The root rules apply only to singleton capture sets of proper term paths.
+The root rules apply only to singleton capture sets of term paths.
 They express that using \(p.1\) or \(p.a\) requires access to the root
-capability \(p\).  An abstract capture selection has no such ownership
-interpretation.  This restriction is visible in the type of a concrete
-capture pair: its outer qualifier is \(\cset y\), independent of the stored
-definition \(W\).  If one added \(p.a<:\cset p\), the exact lower bound
-\(W<:p.a\), together with \(\cset p<:\cset y\), would derive
-\(W<:\cset y\) for an arbitrary stored capture set.  The qualifier would
-then cease to bound the capabilities retained by the definition.
+capability \(p\). An abstract capture-set selection has no such ownership
+interpretation. This restriction is visible in the type of a concrete
+capture-set pair: its capture set is \(\set y\), independent of the definition
+\(D\), which is static metadata. If one added \(p.a<:\set p\), the exact lower
+bound \(D<:p.a\), together with \(\set p<:\set y\), would derive
+\(D<:\set y\) for an arbitrary definition. This would impose an ownership
+constraint on static metadata that the value-introduction rule does not
+establish.
 
 The two syntactic occurrences of paths in capture sets also remain distinct.
-The singleton \(\cset p\) denotes the capability named by a term path; the
-selection \(p.a\) denotes the capture set stored in a capture member.  This
-distinction is used by both path synthesis and the capture-coercion rules.
+The singleton \(\set p\) denotes the capability named by a term path; the
+selection \(p.a\) denotes the capture set stored in a capture-set member. This
+distinction is used by both path synthesis and store-indexed subcapturing.
 
 \subsection{The general pair rule}
 
@@ -881,31 +821,31 @@ representative instances are
 \end{array}
 \qquad
 \begin{array}{c}
- x:\top\vdash \cempty<:\cset x
+ x:\top\vdash \set{}<:\set x
  \qquad
- x:\top\vdash \cset x<:\cset x
+ x:\top\vdash \set x<:\set x
  \\[-1pt]
  \hline
- \pairshape{x}{\top}{a}{\cset x..\cset x}
- <: \pairshape{x}{\top}{a}{\cempty..\cset x}.
+ \pairshape{x}{\top}{a}{\set x..\set x}
+ <: \pairshape{x}{\top}{a}{\set{}..\set x}.
 \end{array}
 \]
 The mechanization exercises both derivations in closed executions that
 allocate the coerced pair, thereby forcing the semantic pair action rather
-than merely constructing a source derivation.  A separate capture-selection
+than merely constructing a source derivation. A separate capture-set-selection
 execution forces both the lower- and upper-bound selection coercions.  The
 examples are useful because the member premises genuinely mention \(x\), even
 though the first-component types on both sides are \(\top\).
 
-\section{Qualifier-aware store interpretation}
+\section{Store-indexed interpretation of capturing types}
 \label{sec:semantics}
 
 The preservation argument translates source subtyping derivations into
-store-indexed coercions.  Coercion application maps semantic evidence for a
-source type to evidence for its target type, so preservation never needs to
-invert a derivation ending in transitivity.  The interpretation also retains
-the two capture-related indices of source typing: the introduction qualifier
-of every stored value and the use set of every running term.
+store-indexed coercions. Coercion application maps runtime typing at a source
+type to runtime typing at its target type, so preservation does not invert a
+derivation ending in transitivity. The interpretation also retains the
+capture set assigned to every stored value and the use set of every running
+term.
 
 \subsection{Runtime path equality and conversion}
 
@@ -949,14 +889,14 @@ additional variable \(x\).
 \end{figure}
 
 Runtime conversion \(X\simeq_\sigma Y\) is defined for capture sets,
-qualified types, shapes, and member signatures.  For each category it is the
+types, shape types, and member signatures. For each category it is the
 least reflexive, symmetric, transitive, constructor-compatible relation
 containing
 \[
   \frac{p\equiv_\sigma q}
        {\subst{X}{p}{x}\simeq_\sigma\subst{X}{q}{x}}.
 \]
-Conversion preserves the outer constructor and member kind.  Beneath a
+Conversion preserves the outer constructor and the form of a member signature. Beneath a
 binder, ambient equalities are weakened and the bound variable is related
 only to itself; we write the resulting conversion as
 \(X\simeq^x_\sigma Y\).  Opening it with runtime-equal paths yields ordinary
@@ -964,38 +904,83 @@ conversion.
 
 \subsection{Annotated stores and semantic judgments}
 
-An annotated store \(\Omega\) has the same spine as \(\sigma\) and records an
-introduction qualifier beside each stored value:
+An annotated store \(\Omega\) has the same spine as \(\sigma\) and records
+beside each stored value the capture set assigned by its introduction rule:
 \[
   \Omega ::= [\,] \mid \Omega\mathbin{\cdot}(v@Q).
 \]
-We write \(\Omega(x)=v@Q\) for lookup.  All locations in \(v\) and \(Q\)
-refer to earlier cells, as they do in the underlying store.  The judgment
-\(\Omega\valid\sigma\), defined below together with value evidence, ensures
-that each annotation is justified by the value rule that produced the same
-stored value.
+We call \(Q\) the \emph{assigned capture set} of \(v\), and write
+\(\Omega(x)=v@Q\) for lookup. All locations in \(v\) and \(Q\)
+refer to earlier cells, as they do in the underlying store. The judgment
+\(\Omega\valid\sigma\), defined after value typing, states
+that each annotation is justified by the introduction rule for the
+corresponding stored value.
 
-Let \(\qual(\capt S C)=C\).  The core semantic judgments are
+A valuation for a context \(\Gamma\) in a store \(\sigma\) is a total function
+\[
+  \rho : \mathsf{Fin}(|\Gamma|)\longrightarrow
+         \mathsf{Fin}(|\sigma|),
+\]
+where \(|\Gamma|\) and \(|\sigma|\) are the numbers of context bindings and
+store cells. The actions \(\rho(p)\), \(\rho(t)\), and \(\rho(X)\) replace
+every free variable in a path, term, type, shape type, capture set, or member
+signature with the location selected by \(\rho\), while leaving a displayed
+binder in place. Valuations need not be injective.
+
+The semantic judgments are
 \[
 \begin{array}{rcll}
+ \rho\models^\Omega_\sigma\Gamma
+   &&& \text{environment satisfaction},\\
  \Omega;\sigma\vdash C\semleq D
-   &&& \text{semantic subcapturing},\\
+   &&& \text{store-indexed subcapturing},\\
  \Omega;\sigma\vdash T\tcoerce U
-   &&& \text{qualified-type coercion},\\
+   &&& \text{type coercion},\\
  \Omega;\sigma\vdash S\scoerce R
-   &&& \text{shape coercion},\\
+   &&& \text{shape-type coercion},\\
  \Omega;\sigma\vdash\mu\coerce\nu
    &&& \text{member coercion},\\
+ \Omega;\sigma;x:T\vdash U\rightsquigarrow_{\mathsf d}U'
+   &&& \text{deferred function-result coercion},\\
+ \mathsf{Body}_{\Omega;\sigma}(\typ{C}{x:T}{t}{U})
+   &&& \text{suspended body typing},\\
+ \mathsf{Member}_{\Omega;\sigma}(x:T\vdash\mu<:\nu)
+   &&& \text{suspended member premise},\\
  \Omega;\sigma\models x:T@Q
-   &&& \text{location inhabitation with introduction qualifier }Q,\\
+   &&& \text{location typing with assigned capture set }Q,\\
  \Omega;\sigma\models r:\mu
-   &&& \text{generalized-referent realization}.
+   &&& \text{referent typing},\\
+ \Omega;\sigma\vdash_{\mathsf v}v:T@Q
+   &&& \text{value typing}.
 \end{array}
 \]
-They are mutually defined.  Source premises are closed by a valuation
-\(\rho:\mathsf{dom}(\Gamma)\to\mathsf{dom}(\sigma)\).  The notation
-\(\rho(X)\) replaces the free variables of \(X\) with their locations while
-leaving a displayed binder in place.  Valuations need not be injective.
+These judgments are mutually defined. Annotated store typing
+\(\Omega\valid\sigma\) is subsequently defined by empty-store and allocation
+rules; allocation requires value typing for the new entry.
+
+\paragraph{Proof structure.}
+Once \(\rho\models^\Omega_\sigma\Gamma\) holds, source subcapturing and
+subtyping derivations compile to the corresponding store-indexed relations.
+Coercion action then transports referent typing:
+\[
+\begin{array}{c@{\qquad}c@{\qquad}c}
+ \Gamma\vdash\mu<:\nu
+ &\Longrightarrow&
+ \Omega;\sigma\vdash\rho(\mu)\coerce\rho(\nu),
+ \\[3pt]
+ \Omega;\sigma\models r:\rho(\mu)
+ \quad
+ \Omega;\sigma\vdash\rho(\mu)\coerce\rho(\nu)
+ &\Longrightarrow&
+ \Omega;\sigma\models r:\rho(\nu).
+\end{array}
+\]
+The annotation \(Q\) is unchanged by this action, while the derivation from
+\(Q\) to the capture set of the assigned type is composed with subcapturing.
+For dependent pairs, compilation retains the member premise under its binder;
+action instantiates that premise only after lookup supplies the stored first
+component. The following figures define the relations used by these two
+steps.
 
 \clearpage
 \begingroup
@@ -1006,7 +991,7 @@ leaving a displayed binder in place.  Valuations need not be injective.
 \rulesetup
 
 \begin{figure}[H]
-\plateheader{Semantic subcapturing}{\Omega;\sigma\vdash C\semleq D}
+\plateheader{Store-indexed subcapturing}{\Omega;\sigma\vdash C\semleq D}
 \noindent
 \begin{minipage}[t]{0.31\linewidth}
 \infrule[\ruledef{cap-source}]
@@ -1021,15 +1006,15 @@ leaving a displayed binder in place.  Valuations need not be injective.
 \infrule[\ruledef{cap-trans}]
   {\Omega;\sigma\vdash C\semleq D
    \\
-   \Omega;\sigma\vdash D\semleq E}
-  {\Omega;\sigma\vdash C\semleq E}
+   \Omega;\sigma\vdash D\semleq C'}
+  {\Omega;\sigma\vdash C\semleq C'}
 
 \infrule[\ruledef{cap-conv}]
   {C\simeq_\sigma D}
   {\Omega;\sigma\vdash C\semleq D}
 
 \infax[\ruledef{cap-empty}]
-  {\Omega;\sigma\vdash\cempty\semleq C}
+  {\Omega;\sigma\vdash\set{}\semleq C}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.31\linewidth}
 \infax[\ruledef{cap-union-left}]
@@ -1039,53 +1024,53 @@ leaving a displayed binder in place.  Valuations need not be injective.
   {\Omega;\sigma\vdash D\semleq C\cup D}
 
 \infrule[\ruledef{cap-union-elim}]
-  {\Omega;\sigma\vdash C\semleq E
+  {\Omega;\sigma\vdash C\semleq C'
    \\
-   \Omega;\sigma\vdash D\semleq E}
-  {\Omega;\sigma\vdash C\cup D\semleq E}
+   \Omega;\sigma\vdash D\semleq C'}
+  {\Omega;\sigma\vdash C\cup D\semleq C'}
 
 \infrule[\ruledef{cap-alias}]
   {\sigma\vdash p\resolve\loc x
    \\
    \sigma\vdash q\resolve\loc x}
-  {\Omega;\sigma\vdash\cset q\semleq\cset p}
+  {\Omega;\sigma\vdash\set q\semleq\set p}
 
 \infrule[\ruledef{cap-fold}]
   {\sigma\vdash p\resolve\loc x
    \\
    \Omega(x)=v@Q}
-  {\Omega;\sigma\vdash Q\semleq\cset p}
+  {\Omega;\sigma\vdash Q\semleq\set p}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.34\linewidth}
 \infrule[\ruledef{cap-fst-root}]
   {\sigma\vdash p.1\resolve\loc x}
-  {\Omega;\sigma\vdash\cset{p.1}\semleq\cset p}
+  {\Omega;\sigma\vdash\set{p.1}\semleq\set p}
 
 \infrule[\ruledef{cap-sel-root}]
   {\sigma\vdash p.a\resolve\loc x}
-  {\Omega;\sigma\vdash\cset{p.a}\semleq\cset p}
+  {\Omega;\sigma\vdash\set{p.a}\semleq\set p}
 
 \infrule[\ruledef{cap-select-lower}]
-  {\sigma\vdash p.a\resolve\capref W
+  {\sigma\vdash p.a\resolve\capref C
    \\
-   \Omega;\sigma\vdash L\semleq W}
+   \Omega;\sigma\vdash L\semleq C}
   {\Omega;\sigma\vdash L\semleq p.a}
 
 \infrule[\ruledef{cap-select-upper}]
-  {\sigma\vdash p.a\resolve\capref W
+  {\sigma\vdash p.a\resolve\capref C
    \\
-   \Omega;\sigma\vdash W\semleq U}
+   \Omega;\sigma\vdash C\semleq U}
   {\Omega;\sigma\vdash p.a\semleq U}
 \end{minipage}
 
-\caption{The complete semantic subcapturing relation.}
-\Description{All rules of world-indexed semantic subcapturing.}
+\caption{The complete store-indexed subcapturing relation.}
+\Description{All rules of store-indexed subcapturing.}
 \label{fig:semantic-subcapturing}
 \end{figure}
 
 \begin{figure}[H]
 \ContinuedFloat
-\plateheader{Qualified-type coercion}{\Omega;\sigma\vdash T\tcoerce U}
+\plateheader{Type coercion}{\Omega;\sigma\vdash T\tcoerce U}
 \noindent
 \begin{minipage}[t]{0.22\linewidth}
 \infax[\ruledef{tc-refl}]
@@ -1108,17 +1093,17 @@ leaving a displayed binder in place.  Valuations need not be injective.
   {\Omega;\sigma\vdash C\semleq D
    \\
    \Omega;\sigma\vdash S\scoerce R}
-  {\Omega;\sigma\vdash\capt S C\tcoerce\capt R D}
+  {\Omega;\sigma\vdash S\capt C\tcoerce R\capt D}
 \end{minipage}
 
-\caption{The complete qualified-type coercion.}
-\Description{All rules for qualifier-aware type coercion.}
+\caption{The complete coercion relation for capturing types.}
+\Description{All rules for coercions between capturing types.}
 \label{fig:type-coercion}
 \end{figure}
 
 \begin{figure}[H]
 \ContinuedFloat
-\plateheader{Shape coercion}{\Omega;\sigma\vdash S\scoerce R}
+\plateheader{Shape-type coercion}{\Omega;\sigma\vdash S\scoerce R}
 \noindent
 \begin{minipage}[t]{0.30\linewidth}
 \infax[\ruledef{shc-refl}]
@@ -1144,7 +1129,7 @@ leaving a displayed binder in place.  Valuations need not be injective.
 \infrule[\ruledef{shc-widen}]
   {\sigma\vdash p\resolve\loc x
    \\
-   \Omega;\sigma\models x:\capt S C@Q}
+   \Omega;\sigma\models x:S\capt C@Q}
   {\Omega;\sigma\vdash\sing p\scoerce S}
 
 \infrule[\ruledef{shc-alias}]
@@ -1154,15 +1139,15 @@ leaving a displayed binder in place.  Valuations need not be injective.
   {\Omega;\sigma\vdash\sing q\scoerce\sing p}
 
 \infrule[\ruledef{shc-select-lower}]
-  {\sigma\vdash p.a\resolve\typeref W
+  {\sigma\vdash p.a\resolve\typeref R
    \\
-   \Omega;\sigma\vdash L\scoerce W}
+   \Omega;\sigma\vdash L\scoerce R}
   {\Omega;\sigma\vdash L\scoerce p.a}
 
 \infrule[\ruledef{shc-select-upper}]
-  {\sigma\vdash p.a\resolve\typeref W
+  {\sigma\vdash p.a\resolve\typeref R
    \\
-   \Omega;\sigma\vdash W\scoerce U}
+   \Omega;\sigma\vdash R\scoerce U}
   {\Omega;\sigma\vdash p.a\scoerce U}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.36\linewidth}
@@ -1184,14 +1169,14 @@ leaving a displayed binder in place.  Valuations need not be injective.
     \pairshape{x}{T'}{a}{\mu'}}
 \end{minipage}
 
-\caption{The complete shape coercion.}
-\Description{All rules for qualifier-aware shape coercion.}
+\caption{The complete coercion relation for shape types.}
+\Description{All rules for shape-type coercion.}
 \label{fig:shape-coercion}
 \end{figure}
 
 \begin{figure}[H]
 \ContinuedFloat
-\plateheader{Generalized member coercion}
+\plateheader{Member coercion}
   {\Omega;\sigma\vdash\mu\coerce\nu}
 \noindent
 \begin{minipage}[t]{0.31\linewidth}
@@ -1227,30 +1212,30 @@ leaving a displayed binder in place.  Valuations need not be injective.
   {\Omega;\sigma\vdash C..D\coerce C'..D'}
 \end{minipage}
 
-\caption{The complete generalized member coercion.}
-\Description{All rules for generalized member coercion.}
+\caption{The complete member coercion relation.}
+\Description{All rules for member coercion.}
 \label{fig:member-coercions}
 \end{figure}
 
 \begin{figure}[H]
 \ContinuedFloat
 \plateheader{Suspended body}
- {\mathsf{Body}_{\Omega;\sigma}(x:T\vdash t:U\uses C)}
+ {\mathsf{Body}_{\Omega;\sigma}(\typ{C}{x:T}{t}{U})}
 \infrule[\ruledef{body-source}]
   {\rho\models^\Omega_\sigma\Gamma
    \andalso
-   \Gamma,x:S\vdash t:U\uses C}
+   \typ{C}{\Gamma,x:T_0}{t}{U}}
   {\mathsf{Body}_{\Omega;\sigma}
-    (x:\rho(S)\vdash\rho(t):\rho(U)\uses\rho(C))}
+    (\typ{\rho(C)}{x:\rho(T_0)}{\rho(t)}{\rho(U)})}
 
 \plateheader{Suspended member premise}
  {\mathsf{Member}_{\Omega;\sigma}(x:T\vdash\mu<:\nu)}
 \infrule[\ruledef{member-source}]
   {\rho\models^\Omega_\sigma\Gamma
    \andalso
-   \Gamma,x:S\vdash\mu<:\nu}
+   \Gamma,x:T_0\vdash\mu<:\nu}
   {\mathsf{Member}_{\Omega;\sigma}
-    (x:\rho(S)\vdash\rho(\mu)<:\rho(\nu))}
+    (x:\rho(T_0)\vdash\rho(\mu)<:\rho(\nu))}
 
 \plateheader{Deferred function-result coercion}
  {\Omega;\sigma;x:T\vdash U\rightsquigarrow_{\mathsf d}U'}
@@ -1294,27 +1279,27 @@ and all rules for coercions suspended beneath a function binder.}
 \endgroup
 
 Rule \ruleref{cap-source} embeds a source subcapturing derivation together
-with the environment that justifies its path premises.  The remaining rules
-are the closure operations needed by coercion action and reduction.  In
+with the environment that justifies its path premises. The other constructors
+provide the properties needed by coercion action and reduction. In
 particular, \ruleref{cap-fold} states that a path naming a stored value
-summarizes that value's introduction qualifier.  There is no inverse rule.
-Abstract capture selections are related only through their stored interval
+subsumes its assigned capture set. There is no inverse rule.
+Abstract capture-set selections are related only through their stored interval
 bounds.
 
 Function coercions retain their codomain premise until an argument location
 is available.  Pair coercions retain the member premise until the stored
-first component is available.  Type and capture intervals are contravariant
-in the lower bound and covariant in the upper bound.  In the three source
-closure rules, \(\rho\) acts on variables from \(\Gamma\); the displayed
+first component is available. Type and capture-set intervals are contravariant
+in the lower bound and covariant in the upper bound. In the source-premise
+rules, \(\rho\) acts on variables from \(\Gamma\); the displayed
 \(x\) remains bound.
 
-\subsection{Qualifier-aware inhabitants and valid stores}
+\subsection{Value typing and annotated stores}
 
-Environment satisfaction, location inhabitation, referent realization, and
-value evidence are shown in the next two figures.  Location evidence carries
-an explicit introduction qualifier \(Q\).  Every location rule retrieves the
-same \(Q\) from \(\Omega\) and proves \(Q\semleq C\), where \(C\) is the
-outer qualifier of the assigned type.
+Environment satisfaction, location typing, referent typing, and value typing
+are shown in the next two figures. Location typing carries an explicit assigned
+capture set \(Q\). Every location rule retrieves the same \(Q\) from
+\(\Omega\) and proves \(Q\semleq C\), where \(C\) is the capture set of the
+assigned type.
 
 \begingroup
 \setlength{\abovedisplayskip}{5pt plus 1pt minus 1pt}
@@ -1326,12 +1311,12 @@ outer qualifier of the assigned type.
 \begin{figure}[H]
 \plateheader{Environment satisfaction}{\rho\models^\Omega_\sigma\Gamma}
 \infrule[\ruledef{sem-env}]
-  {\forall x\in\mathsf{dom}(\Gamma).\;
+  {\forall x:\mathsf{Fin}(|\Gamma|).\;
    \exists Q.\;
    \Omega;\sigma\models\rho(x):\rho(\Gamma(x))@Q}
   {\rho\models^\Omega_\sigma\Gamma}
 
-\plateheader{Referent realization}{\Omega;\sigma\models r:\mu}
+\plateheader{Referent typing}{\Omega;\sigma\models r:\mu}
 \noindent
 \begin{minipage}[t]{0.31\linewidth}
 \infrule[\ruledef{sem-ref-loc}]
@@ -1340,41 +1325,41 @@ outer qualifier of the assigned type.
 \end{minipage}\hfill
 \begin{minipage}[t]{0.32\linewidth}
 \infrule[\ruledef{sem-ref-type}]
-  {\Omega;\sigma\vdash L\scoerce W
+  {\Omega;\sigma\vdash L\scoerce R
    \\
-   \Omega;\sigma\vdash W\scoerce U}
-  {\Omega;\sigma\models\typeref W:L..U}
+   \Omega;\sigma\vdash R\scoerce U}
+  {\Omega;\sigma\models\typeref R:L..U}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.34\linewidth}
 \infrule[\ruledef{sem-ref-capture}]
-  {\Omega;\sigma\vdash L\semleq W
+  {\Omega;\sigma\vdash L\semleq C
    \\
-   \Omega;\sigma\vdash W\semleq U}
-  {\Omega;\sigma\models\capref W:L..U}
+   \Omega;\sigma\vdash C\semleq U}
+  {\Omega;\sigma\models\capref C:L..U}
 \end{minipage}
 
-\plateheader{Location inhabitation}{\Omega;\sigma\models x:T@Q}
+\plateheader{Location typing}{\Omega;\sigma\models x:T@Q}
 \noindent
 \begin{minipage}[t]{0.47\linewidth}
 \infrule[\ruledef{sem-loc-top}]
   {\Omega(x)=v@Q
    \andalso
    \Omega;\sigma\vdash Q\semleq C}
-  {\Omega;\sigma\models x:\capt\top C@Q}
+  {\Omega;\sigma\models x:\top\capt C@Q}
 
 \infrule[\ruledef{sem-loc-fun}]
-  {\Omega(x)=\lambda(z:A).t@Q
+  {\Omega(x)=\lambda(z:T_0).t@Q
    \\
    \mathsf{Body}_{\Omega;\sigma}
-     (z:A\vdash t:B\uses Q^\uparrow\cup\cset z)
+     (\typ{Q\cup\set z}{z:T_0}{t}{U_0})
    \\
-   \Omega;\sigma\vdash S\tcoerce A
+   \Omega;\sigma\vdash T\tcoerce T_0
    \andalso
-   \Omega;\sigma;z:S\vdash B\rightsquigarrow_{\mathsf d}U
+   \Omega;\sigma;z:T\vdash U_0\rightsquigarrow_{\mathsf d}U
    \\
    \Omega;\sigma\vdash Q\semleq C}
   {\Omega;\sigma\models
-    x:\capt{(z:S)\to U}{C}@Q}
+    x:((z:T)\to U)\capt C@Q}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.51\linewidth}
 \infrule[\ruledef{sem-loc-pair}]
@@ -1387,7 +1372,7 @@ outer qualifier of the assigned type.
    \\
    \Omega;\sigma\vdash Q\semleq C}
   {\Omega;\sigma\models
-    x:\capt{\pairshape{z}{T}{a}{\mu}}{C}@Q}
+    x:\pairshape{z}{T}{a}{\mu}\capt C@Q}
 
 \infrule[\ruledef{sem-loc-single}]
   {\Omega(x)=v@Q
@@ -1395,24 +1380,23 @@ outer qualifier of the assigned type.
    \sigma\vdash p\resolve\loc x
    \\
    \Omega;\sigma\vdash Q\semleq C}
-  {\Omega;\sigma\models x:\capt{\sing p}{C}@Q}
+  {\Omega;\sigma\models x:\sing p\capt C@Q}
 
 \infrule[\ruledef{sem-loc-select}]
   {\Omega(x)=v@Q
    \andalso
-   \sigma\vdash p.a\resolve\typeref W
+   \sigma\vdash p.a\resolve\typeref R
    \\
-   \Omega;\sigma\models x:\capt W E@Q
+   \Omega;\sigma\models x:R\capt D@Q
    \andalso
    \Omega;\sigma\vdash Q\semleq C}
-  {\Omega;\sigma\models x:\capt{p.a}{C}@Q}
+  {\Omega;\sigma\models x:p.a\capt C@Q}
 \end{minipage}
 
-\caption{Environment satisfaction, referent realization, and
-qualifier-aware location inhabitation.}
+\caption{Environment satisfaction, referent typing, and location typing.}
 \Description{All rules for semantic environments, generalized referents,
-and location inhabitants.}
-\label{fig:semantic-evidence}
+and locations.}
+\label{fig:store-typing-relations}
 \end{figure}
 
 \endgroup
@@ -1421,27 +1405,22 @@ The introduction types of pair values are abbreviated as follows:
 \[
 \begin{array}{rcl}
 I_{\mathsf{term}}(y,a,z)
- &=& \capt{
-   \pairshape{x}{\capt{\sing y}{\cset y}}{a}
-    {\capt{\sing{z^{\uparrow}}}{\cset{z^{\uparrow}}}}}
-   {\cset y\cup\cset z},
+ &=& \pairshape{x}{\sing y\capt\set y}{a}
+    {\sing z\capt\set z}
+   \capt(\set y\cup\set z),
 \\[2pt]
-I_{\mathsf{type}}(y,a,W)
- &=& \capt{
-   \pairshape{x}{\capt{\sing y}{\cset y}}{a}
-    {W^{\uparrow}..W^{\uparrow}}}
-   {\cset y},
+I_{\mathsf{type}}(y,a,R)
+ &=& \pairshape{x}{\sing y\capt\set y}{a}
+    {R..R}
+   \capt\set y,
 \\[2pt]
-I_{\mathsf{capture}}(y,a,W)
- &=& \capt{
-   \pairshape{x}{\capt{\sing y}{\cset y}}{a}
-    {W^{\uparrow}..W^{\uparrow}}}
-   {\cset y}.
+I_{\mathsf{capture}}(y,a,C)
+ &=& \pairshape{x}{\sing y\capt\set y}{a}
+    {C..C}
+   \capt\set y.
 \end{array}
 \]
-Here \(W\) is a shape in \(I_{\mathsf{type}}\) and a capture set in
-\(I_{\mathsf{capture}}\).  The superscript \({}^{\uparrow}\) transports an
-object beneath the pair binder without changing its free paths.
+As above, weakening beneath the pair binder is implicit.
 
 \begingroup
 \setlength{\abovedisplayskip}{5pt plus 1pt minus 1pt}
@@ -1451,44 +1430,44 @@ object beneath the pair binder without changing its free paths.
 \rulesetup
 
 \begin{figure}[H]
-\plateheader{Value evidence}
+\plateheader{Value typing}
  {\Omega;\sigma\vdash_{\mathsf v}v:T@Q}
 \noindent
 \begin{minipage}[t]{0.47\linewidth}
 \infrule[\ruledef{ve-abs}]
   {\mathsf{Body}_{\Omega;\sigma}
-     (x:A\vdash t:B\uses Q^\uparrow\cup\cset x)
+     (\typ{Q\cup\set x}{x:T_0}{t}{U_0})
    \\
    \Omega;\sigma\vdash
-      \capt{(x:A)\to B}{Q}\tcoerce T}
+      ((x:T_0)\to U_0)\capt Q\tcoerce T}
   {\Omega;\sigma\vdash_{\mathsf v}
-     \lambda(x:A).t:T@Q}
+     \lambda(x:T_0).t:T@Q}
 
 \infrule[\ruledef{ve-term-pair}]
   {\Omega;\sigma\vdash I_{\mathsf{term}}(y,a,z)\tcoerce T}
   {\Omega;\sigma\vdash_{\mathsf v}
-     \pairval{y}{a}{z}:T@(\cset y\cup\cset z)}
+     \pairval{y}{a}{z}:T@(\set y\cup\set z)}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.51\linewidth}
 \infrule[\ruledef{ve-type-pair}]
-  {\Omega;\sigma\vdash I_{\mathsf{type}}(y,a,W)\tcoerce T}
+  {\Omega;\sigma\vdash I_{\mathsf{type}}(y,a,R)\tcoerce T}
   {\Omega;\sigma\vdash_{\mathsf v}
-     \pairval{y}{a}{W}:T@\cset y}
+     \pairval{y}{a}{R}:T@\set y}
 
 \infrule[\ruledef{ve-capture-pair}]
-  {\Omega;\sigma\vdash I_{\mathsf{capture}}(y,a,W)\tcoerce T}
+  {\Omega;\sigma\vdash I_{\mathsf{capture}}(y,a,C)\tcoerce T}
   {\Omega;\sigma\vdash_{\mathsf v}
-     \pairval{y}{a}{W}:T@\cset y}
+     \pairval{y}{a}{C}:T@\set y}
 \end{minipage}
 
-\plateheader{Valid annotated store}{\Omega\valid\sigma}
+\plateheader{Annotated store typing}{\Omega\valid\sigma}
 \noindent
 \begin{minipage}[t]{0.26\linewidth}
-\infax[\ruledef{world-empty}]
-  {[\,]\valid[\,]}
+\infax[\ruledef{store-empty}]
+  {[\,]\valid\emptyset}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.68\linewidth}
-\infrule[\ruledef{world-allocate}]
+\infrule[\ruledef{store-allocate}]
   {\Omega\valid\sigma
    \andalso
    \Omega;\sigma\vdash_{\mathsf v}v:T@Q
@@ -1497,26 +1476,25 @@ object beneath the pair binder without changing its free paths.
    \sigma\mathbin{\cdot}(z\mapsto v)}
 \end{minipage}
 
-\caption{Value evidence and validity of annotated stores.}
-\Description{All value-evidence and annotated-store validity rules.}
-\label{fig:value-world-evidence}
+\caption{Value typing and annotated store typing.}
+\Description{All rules for value typing and annotated store typing.}
+\label{fig:value-store-typing}
 \end{figure}
 
 \endgroup
 
-The qualifier after \(@\) is fixed by the introduction rule.  It need not be
-minimal or principal: the body derivation in \ruleref{ve-abs}, for example,
-may already contain subsumption.  The coercion suffix records any further
-subsumption above the value constructor.  Projecting the outer capture
-component of that suffix gives
+The assigned capture set \(Q\) following \(@\) is fixed by the introduction
+rule. It need not be minimal: the body derivation in \ruleref{ve-abs}, for
+example, may already contain subsumption. The coercion derivation records any further subsumption above
+the value constructor. For every shape type \(S\),
 \[
-  \Omega;\sigma\vdash_{\mathsf v}v:T@Q
+  \Omega;\sigma\vdash_{\mathsf v}v:S\capt C@Q
   \quad\Longrightarrow\quad
-  \Omega;\sigma\vdash Q\semleq\qual(T).
+  \Omega;\sigma\vdash Q\semleq C.
 \]
-Validity ties each annotation to value evidence for the same store entry.
-Because stores are append-only, \ruleref{world-allocate} depends only on the
-previous annotated store.  Allocation preserves all earlier evidence by
+Annotated store typing ties each annotation to value typing for the same store entry.
+Because stores are append-only, \ruleref{store-allocate} depends only on the
+previous annotated store. Allocation preserves all earlier typing derivations by
 weakening locations uniformly.
 
 \subsection{Compilation and coercion action}
@@ -1547,12 +1525,12 @@ source environment:
  \Omega;\sigma\vdash\rho(\mu)\coerce\rho(\nu).
 \end{array}
 \]
-Each construction follows its source derivation.  Transitivity builds an
+Each construction follows its source derivation. Transitivity builds an
 explicit composition.  Function subtyping produces \ruleref{shc-fun} with a
-deferred result coercion.  Pair subtyping produces \ruleref{shc-pair} with a
-member closure.  Neither case requires transitivity inversion.
+deferred result coercion. Pair subtyping produces \ruleref{shc-pair} with a
+suspended member premise. Neither case requires transitivity inversion.
 
-\begin{lemma}[Qualifier-preserving coercion action]
+\begin{lemma}[Coercion action]
 \label{lem:coercion-action}
 If \(\Omega;\sigma\models r:\mu\) and
 \(\Omega;\sigma\vdash\mu\coerce\nu\), then
@@ -1567,72 +1545,80 @@ If \(\Omega;\sigma\models r:\mu\) and
 \end{lemma}
 
 Identity returns its argument, composition applies its components in order,
-and runtime conversion transports evidence along store-induced path
-equality.  Interval action composes the coercions on their bounds.  For
-qualified types, \ruleref{tc-capt} composes the existing evidence
-\(Q\semleq C\) with its premise \(C\semleq D\).  Shape action changes the
-shape evidence while retaining the same \(Q\).  This is the step that makes
-capture prediction survive subsumption.
+and runtime conversion transports typing derivations along store-induced path
+equality. Interval action composes the coercions on their bounds. For
+capturing types, \ruleref{tc-capt} composes the existing derivation
+\(Q\semleq C\) with its premise \(C\semleq D\). The shape-type component
+changes the assigned shape type while retaining the same \(Q\). This step preserves the
+returned-value capture-set bound through subsumption.
 
 \subsection{Action for a dependent pair}
 \label{sec:pair-action}
 
-Suppose \(z\) has pair evidence with introduction qualifier \(Q\):
+Suppose \(z\) has pair typing with assigned capture set \(Q\):
 \[
  \Omega;\sigma\models
- z:\capt{\pairshape{x}{T}{a}{\mu}}{C}@Q,
+ z:\pairshape{x}{T}{a}{\mu}\capt C@Q,
  \qquad
  \Omega;\sigma\vdash Q\semleq C.
 \]
+Consider a coercion to a pair type with first-component type \(T'\), member
+signature \(\mu'\), and capture set \(D\):
+\[
+ \Omega;\sigma\vdash
+ \pairshape{x}{T}{a}{\mu}\capt C
+ \tcoerce
+ \pairshape{x}{T'}{a}{\mu'}\capt D.
+\]
 Inverting \ruleref{sem-loc-pair} exposes a first location \(y\), a member
-referent \(r\), and evidence
+referent \(r\), and the typing facts
 \[
- R_y:\Omega;\sigma\models y:T@Q_y,
+ \Omega;\sigma\models y:T@Q',
  \qquad
- R_r:\Omega;\sigma\models r:\subst{\mu}{y}{x}.
+ \Omega;\sigma\models r:\subst{\mu}{y}{x}.
 \]
-The shape component of a compiled pair coercion contains
+The shape-type component of a compiled pair coercion contains
 \[
- C_1:\Omega;\sigma\vdash T\tcoerce T',
+ \Omega;\sigma\vdash T\tcoerce T',
  \qquad
- M:\mathsf{Member}_{\Omega;\sigma}(x:T\vdash\mu<:\mu').
+ \mathsf{Member}_{\Omega;\sigma}(x:T\vdash\mu<:\mu').
 \]
-Its action first obtains
-\(C_1(R_y):\Omega;\sigma\models y:T'@Q_y\).  It then instantiates the saved
-source premise in \(M\) with the same location \(y\), using the source
-evidence \(R_y\):
+Coercion action first derives \(\Omega;\sigma\models y:T'@Q'\). It then
+instantiates the suspended member premise with the same location \(y\),
+using its typing at the source first-component type:
 \[
- M[y/x](R_y):
  \Omega;\sigma\vdash
  \subst{\mu}{y}{x}\coerce\subst{\mu'}{y}{x}.
 \]
-Applying this coercion to \(R_r\) realizes the target member.  The outer pair
-retains introduction qualifier \(Q\); the capture component of the enclosing
-type coercion composes \(Q\semleq C\semleq D\).  This proves the general pair
-rule for term, type, and capture members without requiring the dependent
+Applying this coercion to the member's typing derives the target signature.
+The outer pair retains the assigned capture set \(Q\); the enclosing
+coercion's subcapturing premise composes \(Q\semleq C\semleq D\). This proves the general pair
+rule for term, type, and capture-set members without requiring the dependent
 member to ignore \(x\).
 
-Member action creates a coercion only after the outer pair coercion has
-started.  Structural recursion on the original coercion is therefore
-insufficient.  Pair cells mention only older locations, and stored type and
-capture definitions occupy the base stratum.  The recursive member call
-moves to a smaller allocation stratum; all other calls decrease coercion
-size.  The lexicographic pair of allocation stratum and coercion size is a
-well-founded measure.
+Coercion action on a member creates a new coercion after action on the outer
+pair has started, so structural recursion on the original coercion is
+insufficient. Define the allocation stratum of a location as one plus the
+number of cells allocated before it, and that of a shape-type or capture-set
+referent as zero. Thus newer locations have greater
+strata. Pair cells refer only to older locations, so action on either stored
+component decreases the stratum. Every other recursive call traverses a
+strict subderivation and decreases the coercion tree size. The lexicographic
+pair of allocation stratum and coercion tree size is therefore well founded.
 
-\section{The qualifier-aware machine invariant}
+\section{Runtime typing invariant}
 \label{sec:invariant}
 
-The machine invariant retains result types and use sets together.  Source
-subsumption is represented by a type-coercion suffix and a semantic
-subcapturing suffix at the outer runtime constructor.  The judgment
-\(\Omega;\sigma\vdash_{\mathsf e}t:T\uses C\) assigns the running term its
-current type and use bound.  A continuation judgment
+The machine invariant retains result types and use sets together. Source
+subsumption is retained as a type-coercion derivation and a store-indexed
+subcapturing derivation at the outer runtime constructor. The judgment
+\(\semtyp{C}{\Omega;\sigma}{t}{T}\) assigns the running term its
+current type and use set. A continuation judgment
 \[
- \Omega;\sigma\vdash k:(S,E)\Rightarrow(T,C)
+ \Omega;\sigma\vdash k:(U,D)\Rightarrow(T,C)
 \]
-says that a continuation accepting a current result of type \(S\) and use
-\(E\) produces final type \(T\) with use bounded by \(C\).
+says that a continuation accepting a current result of type \(U\) and use
+set \(D\) produces final type \(T\) with use set \(C\).
 
 \begingroup
 \setlength{\abovedisplayskip}{5pt plus 1pt minus 1pt}
@@ -1642,137 +1628,134 @@ says that a continuation accepting a current result of type \(S\) and use
 \rulesetup
 
 \begin{figure}[H]
-\plateheader{Term evidence}
- {\Omega;\sigma\vdash_{\mathsf e}t:T\uses C}
+\plateheader{Runtime term typing}
+ {\semtyp{C}{\Omega;\sigma}{t}{T}}
 \noindent
 \begin{minipage}[t]{0.47\linewidth}
 \infrule[\ruledef{te-path}]
   {\sigma\vdash p\resolve\loc x
    \\
    \Omega;\sigma\vdash
-     \capt{\sing p}{\cset p}\tcoerce T
+     \sing p\capt\set p\tcoerce T
    \\
-   \Omega;\sigma\vdash\cset p\semleq C}
-  {\Omega;\sigma\vdash_{\mathsf e}p:T\uses C}
+   \Omega;\sigma\vdash\set p\semleq C}
+  {\semtyp{C}{\Omega;\sigma}{p}{T}}
 
 \infrule[\ruledef{te-value}]
   {\Omega;\sigma\vdash_{\mathsf v}v:T@Q
    \\
-   \Omega;\sigma\vdash\cempty\semleq C}
-  {\Omega;\sigma\vdash_{\mathsf e}v:T\uses C}
+   \Omega;\sigma\vdash\set{}\semleq C}
+  {\semtyp{C}{\Omega;\sigma}{v}{T}}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.51\linewidth}
 \infrule[\ruledef{te-app}]
-  {\Omega;\sigma\vdash_{\mathsf e}
-      p:\capt{(x:S)\to U}{C_f}\uses C_p
+  {\semtyp{C_p}{\Omega;\sigma}{p}{((x:T_0)\to U)\capt C_f}
    \\
-   \Omega;\sigma\vdash_{\mathsf e}q:S\uses C_q
+   \semtyp{C_q}{\Omega;\sigma}{q}{T_0}
    \\
    \Omega;\sigma\vdash\subst{U}{q}{x}\tcoerce T
    \andalso
    \Omega;\sigma\vdash C_p\cup C_q\semleq C}
-  {\Omega;\sigma\vdash_{\mathsf e}p\,q:T\uses C}
+  {\semtyp{C}{\Omega;\sigma}{p\,q}{T}}
 
 \infrule[\ruledef{te-let}]
-  {\Omega;\sigma\vdash_{\mathsf e}t:S\uses C
+  {\semtyp{C}{\Omega;\sigma}{t}{T_0}
    \\
    \mathsf{Body}_{\Omega;\sigma}
-      (x:S\vdash u:U^\uparrow\uses C^\uparrow)
+      (\typ{C}{x:T_0}{u}{U})
    \\
    \Omega;\sigma\vdash U\tcoerce T
    \andalso
    \Omega;\sigma\vdash C\semleq D}
-  {\Omega;\sigma\vdash_{\mathsf e}
-    \mathbf{let}\ x=t\ \mathbf{in}\ u:T\uses D}
+  {\semtyp{D}{\Omega;\sigma}
+    {\LET x=t\ \IN u}{T}}
 \end{minipage}
 
-\caption{The complete qualifier-aware runtime term evidence.}
+\caption{The complete runtime term-typing judgment.}
 \Description{All rules for runtime terms with result types and use sets.}
-\label{fig:term-evidence}
+\label{fig:runtime-term-typing}
 \end{figure}
 
 \begin{figure}[H]
-\ContinuedFloat
-\plateheader{Continuation evidence}
- {\Omega;\sigma\vdash k:(S,E)\Rightarrow(T,C)}
+\plateheader{Continuation typing}
+ {\Omega;\sigma\vdash k:(U,D)\Rightarrow(T,C)}
 \noindent
 \begin{minipage}[t]{0.39\linewidth}
 \infrule[\ruledef{ke-hole}]
-  {\Omega;\sigma\vdash S\tcoerce T
+  {\Omega;\sigma\vdash U\tcoerce T
    \\
-   \Omega;\sigma\vdash E\semleq C}
-  {\Omega;\sigma\vdash[\,]:(S,E)\Rightarrow(T,C)}
+   \Omega;\sigma\vdash D\semleq C}
+  {\Omega;\sigma\vdash[\,]:(U,D)\Rightarrow(T,C)}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.58\linewidth}
 \infrule[\ruledef{ke-cons}]
-  {\Omega;\sigma\vdash k:(U,D)\Rightarrow(T,C)
+  {\Omega;\sigma\vdash k:(T_1,C_1)\Rightarrow(T,C)
    \\
    \mathsf{Body}_{\Omega;\sigma}
-      (x:S\vdash u:V^\uparrow\uses F^\uparrow)
+      (\typ{C_2}{x:T_0}{u}{T_2})
    \\
-   \Omega;\sigma\vdash V\tcoerce U
+   \Omega;\sigma\vdash T_2\tcoerce T_1
    \andalso
-   \Omega;\sigma\vdash E\semleq C
+   \Omega;\sigma\vdash C_0\semleq C
    \andalso
-   \Omega;\sigma\vdash F\semleq D}
+   \Omega;\sigma\vdash C_2\semleq C_1}
   {\Omega;\sigma\vdash
-   (u::k):(S,E)\Rightarrow(T,C)}
+   (u::k):(T_0,C_0)\Rightarrow(T,C)}
 \end{minipage}
 
-\plateheader{State evidence}
+\plateheader{State typing}
  {\Omega\models\langle\sigma,k,t\rangle:(T,C)}
 \infrule[\ruledef{se-state}]
   {\Omega\valid\sigma
    \andalso
-   \Omega;\sigma\vdash k:(S,E)\Rightarrow(T,C)
+   \Omega;\sigma\vdash k:(U,D)\Rightarrow(T,C)
    \\
-   \Omega;\sigma\vdash_{\mathsf e}t:S\uses E}
+   \semtyp{D}{\Omega;\sigma}{t}{U}}
   {\Omega\models\langle\sigma,k,t\rangle:(T,C)}
 
-\caption{The complete continuation and state evidence.}
-\Description{All rules for continuation and machine-state evidence.}
-\label{fig:state-evidence}
+\caption{The complete continuation- and state-typing judgments.}
+\Description{All rules for continuation and machine-state typing.}
+\label{fig:machine-typing}
 \end{figure}
 
 \endgroup
 
-Value evidence separates retained captures from immediate uses.  A value has
-empty use in \ruleref{te-value}, while its introduction qualifier remains in
-the premise.  Application evidence records both operand uses and their common
-upper bound.  Continuation evidence carries that bound through suspended let
-bodies, so state evidence gives one public use bound for the remainder of the
-execution.
+Value typing separates captured capabilities from immediate uses. A value has
+an empty use set in \ruleref{te-value}, while its assigned capture set remains in the
+premise. Runtime typing of an application records both operand use sets and
+their common upper bound. Continuation typing carries that set through
+suspended let bodies, so state typing gives one use set for the remainder of
+the execution.
 
 \begin{lemma}[Source typing interpretation]
 \label{lem:source-interpretation}
-If \(\Gamma\vdash t:T\uses C\),
+If \(\typ{C}{\Gamma}{t}{T}\),
 \(\rho\models^\Omega_\sigma\Gamma\), and \(\Omega\valid\sigma\), then
 \[
- \Omega;\sigma\vdash_{\mathsf e}
-   \rho(t):\rho(T)\uses\rho(C).
+ \semtyp{\rho(C)}{\Omega;\sigma}{\rho(t)}{\rho(T)}.
 \]
 \end{lemma}
 
 The proof follows source typing.  Abstraction and let retain their body
-derivations, including the use index.  Pair introductions use the
-introduction types above.  Applications interpret both paths.  Subsumption
-compiles type subtyping and subcapturing and composes both suffixes at the
-outer constructor.
+derivations, including the use set.  Pair introductions use the
+introduction types above. Applications interpret both paths. Subsumption
+compiles type subtyping and subcapturing and composes the resulting coercion
+and store-indexed subcapturing derivations at the outer constructor.
 
-\section{Soundness and capture predictions}
+\section{Soundness and operational bounds}
 \label{sec:soundness}
 
 Write \(s\steps s'\) for the reflexive-transitive closure of machine steps,
 and let \(\mathsf{progress}(s)\) mean that \(s\) is final or takes a step.
 
-\begin{theorem}[Semantic progress]
+\begin{theorem}[Progress]
 \label{thm:semantic-progress}
 If \(\Omega\models s:(T,C)\), then \(\mathsf{progress}(s)\).
 \end{theorem}
 
-The term-evidence constructor determines the proof.  Paths resolve, values
+The runtime term-typing rule determines the proof. Paths resolve, values
 return or allocate, and lets push a frame.  In the application case,
-qualifier-preserving coercion action exposes a stored abstraction at the
+coercion action exposes a stored abstraction at the
 operator location and a well-typed argument at the operand location.
 
 Allocation changes the location scope.  We write \(T\extends U\) and
@@ -1791,47 +1774,48 @@ such that
 \]
 \end{theorem}
 
-Nonallocating transitions retain \(\Omega,T,C\).  Allocation obtains
-\(v:T_v@Q\) from the current value evidence, extends the store annotation by
-\(v@Q\), and applies \ruleref{world-allocate}.  All earlier evidence is
+Nonallocating transitions retain \(\Omega,T,C\). Allocation obtains
+\(v:T_0@Q\) from the current value typing, extends the store annotation by
+\(v@Q\), and applies \ruleref{store-allocate}. All earlier typing derivations are
 weakened once, including the final type and use set, after which the waiting
 body is interpreted at the fresh location.
 
 The path case uses co-resolution to convert the source path to the location
-returned by \ruleref{e-path}.  The let transitions move a body closure into
+returned by \ruleref{e-path}. The let transitions move a suspended body
+typing derivation into
 the continuation or instantiate it with an existing location.  The
-application case is the only case where the introduction qualifier of a
-stored value contributes to evaluation; it is detailed next.
+application case is the only transition in which a stored value's
+assigned capture set contributes to the use set; it is detailed next.
 
 \subsection{Beta reduction and use coverage}
 
 Suppose an application \(p\,q\) resolves its operator to a stored closure
-with introduction qualifier \(Q\), and resolves its argument to location
-\(y\).  The body closure retained by \ruleref{sem-loc-fun} has use
-\(Q^\uparrow\cup\cset x\).  Opening the body at \(y\) therefore yields use
-\(Q\cup\cset y\).
+with assigned capture set \(Q\), and resolves its argument to location
+\(y\). The suspended body typing retained by \ruleref{sem-loc-fun} has use set
+\(Q\cup\set x\). Opening the body at \(y\) therefore yields use set
+\(Q\cup\set y\).
 
-Term evidence supplies
+Runtime term typing supplies
 \[
- \Omega;\sigma\vdash\cset p\semleq C_p,
+ \Omega;\sigma\vdash\set p\semleq C_p,
  \qquad
- \Omega;\sigma\vdash\cset q\semleq C_q,
+ \Omega;\sigma\vdash\set q\semleq C_q,
  \qquad
  \Omega;\sigma\vdash C_p\cup C_q\semleq C.
 \]
 Since \(p\) names the closure, \ruleref{cap-fold} gives
-\(Q\semleq\cset p\).  Since \(q\) and \(y\) resolve to the same location,
-\ruleref{cap-alias} gives \(\cset y\semleq\cset q\).  Hence
+\(Q\semleq\set p\).  Since \(q\) and \(y\) resolve to the same location,
+\ruleref{cap-alias} gives \(\set y\semleq\set q\).  Hence
 \[
 \begin{array}{rcl}
- Q &\semleq& \cset p\semleq C_p\semleq C,
+ Q &\semleq& \set p\semleq C_p\semleq C,
  \\
- \cset y &\semleq& \cset q\semleq C_q\semleq C,
+ \set y &\semleq& \set q\semleq C_q\semleq C,
 \end{array}
 \]
 and \ruleref{cap-union-elim} derives
-\(Q\cup\cset y\semleq C\).  The reduced body consequently has the same
-public use bound as the application.  The deferred codomain coercion is
+\(Q\cup\set y\semleq C\). The reduced body consequently has the same
+use set as the application. The deferred codomain coercion is
 instantiated with \(y\), and runtime conversion relates the codomain opened
 with \(y\) to the source result opened with \(q\).
 
@@ -1845,17 +1829,17 @@ If \(\Omega\models s:(T,C)\) and \(s\steps s'\), then there are
 
 The empty annotated store validates the empty store.  Source interpretation
 with the empty valuation and an identity empty continuation gives initial
-state evidence.
+state typing.
 
 \begin{theorem}[Closed progress]
 \label{thm:closed-progress}
-If \(\ctxempty\vdash t:T\uses C\), then
+If \(\typ{C}{\ctxempty}{t}{T}\), then
 \(\mathsf{progress}(\mathsf{initial}(t))\).
 \end{theorem}
 
 \begin{theorem}[Closed finite preservation]
 \label{thm:closed-preservation}
-If \(\ctxempty\vdash t:T\uses C\) and
+If \(\typ{C}{\ctxempty}{t}{T}\) and
 \(\mathsf{initial}(t)\steps s\), then there are
 \(\Omega,U,D\) such that \(\Omega\) validates the store in \(s\),
 \(T\extends U\), \(C\extends D\), and
@@ -1864,49 +1848,55 @@ If \(\ctxempty\vdash t:T\uses C\) and
 
 \begin{theorem}[Type safety]
 \label{thm:type-safety}
-If \(\ctxempty\vdash t:T\uses C\) and
+If \(\typ{C}{\ctxempty}{t}{T}\) and
 \(\mathsf{initial}(t)\steps s\), then \(\mathsf{progress}(s)\).
 \end{theorem}
 
 This is the ordinary non-stuckness result: every finite execution prefix of a
 closed, well-typed program ends in a final state or a state that can step.
 
-\subsection{Use prediction}
+\subsection{Application coverage}
 
-An invocation event records the two paths inspected by an application step:
+An application event records the two paths inspected by an application step:
 \begingroup
 \rulesetup
-\infrule[\ruledef{inv-app}]
-  {\sigma\vdash p\resolve\loc f
+\plateheader{Application event}
+ {\mathsf{application}(s\sstep s';p,q)}
+\infrule[\ruledef{app-event}]
+  {\sigma\vdash p\resolve\loc z
    \andalso
    \sigma\vdash q\resolve\loc y
    \andalso
-   \sigma(f)=\lambda(x:A).t}
-  {\mathsf{invokes}(
+   \sigma(z)=\lambda(x:T_0).t}
+  {\mathsf{application}(
     \langle\sigma,k,p\,q\rangle\sstep
-    \langle\sigma,k,\subst{t}{y}{x}\rangle;,p,q)}
+    \langle\sigma,k,\subst{t}{y}{x}\rangle;p,q)}
 \endgroup
 
-\begin{theorem}[Use prediction]
-\label{thm:use-prediction}
-Suppose \(\ctxempty\vdash t:T\uses C\),
-\(\mathsf{initial}(t)\steps s\), and a step from \(s\) invokes \(p\) with
-argument path \(q\).  Then there are a valid annotation \(\Omega\) of the
-store \(\sigma\) in \(s\) and an allocation extension \(C\extends D\) such
-that
+\begin{theorem}[Application coverage]
+\label{thm:application-coverage}
+Suppose \(\typ{C}{\ctxempty}{t}{T}\),
+\(\mathsf{initial}(t)\steps s\), and a step from \(s\) is an application
+event with operator path \(p\) and argument path \(q\). Let \(\sigma\) be the
+store of \(s\). Then there are an annotation \(\Omega\) and a capture set
+\(D\) such that
 \[
- \Omega;\sigma\vdash\cset p\semleq D
- \qquad\text{and}\qquad
- \Omega;\sigma\vdash\cset q\semleq D.
+ \Omega\valid\sigma,
+ \qquad
+ C\extends D,
+ \qquad
+ \Omega;\sigma\vdash\set p\semleq D,
+ \qquad
+ \Omega;\sigma\vdash\set q\semleq D.
 \]
 \end{theorem}
 
 The result follows by finite preservation and inversion of
-\ruleref{te-app}; continuation evidence lifts the term-local coverage to the
-public use bound \(D\).  It concerns precisely the operand paths inspected by
+\ruleref{te-app}; continuation typing lifts the term-local coverage to the
+use set \(D\). It concerns precisely the operand paths inspected by
 the CK application transition.
 
-\subsection{Capture prediction for returned values}
+\subsection{Capture-set bound for returned values}
 
 The final-state relation \(s\returns v\) exposes the returned value whether
 it appears directly or through a final location:
@@ -1921,39 +1911,45 @@ it appears directly or through a final location:
   {\langle\sigma,[\,],x\rangle\returns v}
 \endgroup
 
-\begin{theorem}[Final capture prediction]
-\label{thm:capture-prediction}
-Suppose \(\ctxempty\vdash t:T\uses C\),
-\(\mathsf{initial}(t)\steps s\), and \(s\) is final.  Then there are a valid
-annotation \(\Omega\), allocation extensions \(T\extends U\) and
-\(C\extends D\), a returned value \(v\), a type \(V\), and an introduction
-qualifier \(Q\) such that
+\begin{theorem}[Returned-value capture-set bound]
+\label{thm:returned-capture-bound}
+Suppose \(\typ{C}{\ctxempty}{t}{T}\),
+\(\mathsf{initial}(t)\steps s\), and \(s\) is final. Let \(\sigma\) be the
+store of \(s\). Then there are an annotation \(\Omega\), a shape type \(R\),
+capture sets \(C',D,Q\), a returned value \(v\), and a type \(U\) such that \(Q\) is the assigned
+capture set of \(v\) and
 \[
+ \begin{gathered}
+ \Omega\valid\sigma,
+ \qquad T\extends R\capt C',
+ \qquad C\extends D,
+ \\
  s\returns v,
  \qquad
- \Omega;\sigma\vdash_{\mathsf v}v:V@Q,
+ \Omega;\sigma\vdash_{\mathsf v}v:U@Q,
  \qquad
- \Omega;\sigma\vdash Q\semleq\qual(U).
+ \Omega;\sigma\vdash Q\semleq C'.
+ \end{gathered}
 \]
 \end{theorem}
 
-For a direct value, the conclusion follows from its value evidence and the
-empty continuation's coercion suffix.  For a returned location, validity
-supplies the value and introduction qualifier stored at that location;
-\ruleref{cap-fold}, the path's type-coercion suffix, and the continuation
-suffix relate that qualifier to \(\qual(U)\).
+For a direct value, the conclusion follows from value typing and the type
+coercion retained by the empty continuation. For a returned location,
+annotated store typing supplies the value and its assigned capture set;
+\ruleref{cap-fold} and the type coercions retained by path and continuation
+typing relate that set to \(C'\).
 
-Type safety, use prediction, and final capture prediction have distinct
-conclusions.  Type safety rules out stuck states.  Use prediction bounds the
-paths inspected by application.  Capture prediction bounds the capabilities
-retained by a returned value.  The calculus has no primitive capability
+Type safety, application coverage, and the returned-value capture-set bound have
+distinct conclusions. Type safety rules out stuck states. Application
+coverage bounds the paths inspected by application. The final result bounds
+the assigned capture set of a returned value. The calculus has no primitive capability
 operation or effect event, so these results do not constitute a theorem about
 I/O or another external effect semantics.
 
 \section{Limitations and next steps}
 
 The calculus has immutable stores, monadic normal form, stable paths,
-dependent functions, singleton types, abstract type and capture members, and
+dependent functions, singleton types, abstract type and capture-set members, and
 dependent pairs.  It omits intersections, recursive self types, mutable
 state, higher-kinded types, and a module initialization discipline.  These
 omissions keep the proof independent of the narrowing and inert-type
@@ -1962,7 +1958,7 @@ infrastructure used by larger DOT calculi.
 The dynamic observations in this development are application operands and
 returned values.  Adding primitive capabilities would require syntax and an
 event semantics for their operations, together with a theorem connecting
-those events to the use bound.  The metatheoretic coercions would remain proof
+those events to the use set. The metatheoretic coercions would remain proof
 objects.
 
 A next extension can add intersections in a controlled fragment and
@@ -2000,16 +1996,17 @@ modalities.  An explicit intermediate elaboration may become useful when
 connecting the calculus to a realistic compiler
 \citep{martres2023compilation}.
 
-Capture qualifiers and use sets follow Capturing Types
-\citep{boruch2023capture}.  The System Capless core includes bounded and
-unbounded quantification over capture sets; its surface-language account is
-designed to infer this polymorphism and avoid exposing explicit capture
-variables in ordinary programs \citep{xu2025box}.  Abstract capture members
-provide path-dependent capture-set abstraction here.  Use prediction and
-final capture prediction give the corresponding qualifiers an operational
-meaning for the observations present in this calculus.
+Capturing types and subcapturing follow Capturing Types
+\citep{boruch2023capture}. The use-set typing judgment follows System Capless,
+which provides explicit universal and existential capture quantification.
+System Cappy gives a lightweight surface syntax and a type-preserving
+translation to Capless, avoiding explicit capture variables in ordinary
+programs \citep{xu2025box}. Abstract capture-set members
+provide path-dependent capture-set abstraction here. Application coverage
+relates use sets to the paths inspected during evaluation, while the
+returned-value theorem bounds the assigned capture set of the returned value.
 
-Type and capture members both use intervals.  Their variance follows the
+Type and capture-set members both use intervals. Their variance follows the
 standard order on lower and upper bounds; consistency premises exclude
 inverted intervals at formation and selection sites.  More expressive
 higher-order interval systems raise additional questions outside the current
@@ -2018,17 +2015,17 @@ calculus \citep{stucki2021intervals}.
 \section{Conclusion}
 
 \lambdapcc{} combines path-dependent types and capture checking through one
-dependent-pair mechanism.  Abstract type and capture members share path
-lookup and interval subtyping; proper term paths additionally support root
+dependent-pair mechanism. Abstract type and capture-set members share path
+lookup and interval subtyping; term paths additionally support root
 contraction.  Store-indexed coercions account for explicit transitivity,
-path selections, dependent functions, and the general pair rule.  The
-qualifier-aware invariant preserves both result types and use sets while
-retaining the introduction qualifier of each stored value.  The mechanized
-development proves progress, preservation, and non-stuckness, predicts both
-paths inspected by every reachable application, and bounds the introduction
-qualifier of every returned value by the qualifier of its result type.
+path selections, dependent functions, and the general pair rule. The runtime
+typing invariant preserves both result types and use sets while retaining the
+assigned capture set of each stored value. The mechanized development proves
+progress, preservation, and non-stuckness, covers both paths inspected by
+every reachable application, and bounds the assigned capture set of every
+returned value by the capture set of its result type.
 
 \bibliographystyle{ACM-Reference-Format}
-\bibliography{../references}
+\bibliography{../../../references}
 
 \end{document}

@@ -2,8 +2,8 @@ import LambdaPCC.CaptureAllocation
 
 /-!
 Progress and one-step preservation for the joint typing-and-use invariant.
-The application case discharges a closure's latent qualifier through the path
-used to invoke it.  Allocation extends the valid world and weakens the result
+The application case discharges a closure's capture set through the path used
+when it is applied. Allocation extends the valid world and weakens the result
 type and use set.
 -/
 
@@ -62,9 +62,9 @@ private theorem CaptureSet.open_body_use
     (CaptureSet.singleton (.var y)) = _
   rw [CaptureSet.weaken_open]
 
-/-- Reduce one semantically typed application.  The latent qualifier of the
-closure is folded through the function path, and the formal argument path is
-aliased with the concrete argument path. -/
+/-- Reduce one semantically typed application. The capture set of the closure
+is folded through the function path, and the formal argument path is aliased
+with the concrete argument path. -/
 private noncomputable def TermEvidence.beta
     {n : Nat} {sigma : Store n} {world : World sigma}
     {valid : World.Valid world} {p q : Path n}
@@ -105,10 +105,10 @@ private noncomputable def TermEvidence.beta
       simpa only [CaptureSet.open_body_use] using
         bodyUse.comp applicationCoverage
 
-/-! ## Invocation coverage -/
+/-! ## Application coverage -/
 
-/-- A function invocation event extracted from an application transition. -/
-inductive State.Step.Invokes :
+/-- An application event extracted from an application transition. -/
+inductive State.Step.ApplicationEvent :
     {n m : Nat} -> {source : State n} -> {target : State m} ->
       (step : State.Step source target) -> Path n -> Path n -> Prop where
 | app {n : Nat} {sigma : Store n} {p q : Path n} {f y : Fin n}
@@ -116,18 +116,18 @@ inductive State.Step.Invokes :
     (function : Path.Resolve p sigma (.loc f))
     (argument : Path.Resolve q sigma (.loc y))
     (binding : Store.Binds sigma f (.abs A body)) :
-    State.Step.Invokes
+    State.Step.ApplicationEvent
       (State.Step.app (k := cont) function argument binding) p q
 
-/-- Both paths inspected by an application transition are covered by the
-use bound of its runtime term. -/
-theorem TermEvidence.coversInvocation
+/-- Both paths inspected by an application transition are covered by the use
+set of its runtime term. -/
+theorem TermEvidence.coversApplication
     {n m : Nat} {sigma : Store n} {world : World sigma}
     {valid : World.Valid world} {cont : Tm.Cont n} {term : Tm n}
     {target : State m} {T : Ty n} {C : CaptureSet n} {p q : Path n}
     (evidence : TermEvidence valid term T C)
     (step : State.Step (State.mk sigma cont term) target)
-    (event : State.Step.Invokes step p q) :
+    (event : State.Step.ApplicationEvent step p q) :
     Nonempty
       (Relation world (.singleton p) C ×
         Relation world (.singleton q) C) := by
@@ -141,15 +141,15 @@ theorem TermEvidence.coversInvocation
           (Relation.unionRight.comp view.coverage)
       ⟩⟩
 
-/-- Application operands are covered by the public use set of the complete
+/-- Application operands are covered by the use set of the complete
 machine invariant, including its continuation. -/
-theorem StateEvidence.coversInvocation
+theorem StateEvidence.coversApplication
     {n m : Nat} {source : State n} {target : State m}
     {world : World source.store} {valid : World.Valid world}
     {T : Ty n} {C : CaptureSet n} {p q : Path n}
     (evidence : StateEvidence valid source T C)
     (step : State.Step source target)
-    (event : State.Step.Invokes step p q) :
+    (event : State.Step.ApplicationEvent step p q) :
     Nonempty
       (Relation world (.singleton p) C ×
         Relation world (.singleton q) C) := by
@@ -157,7 +157,7 @@ theorem StateEvidence.coversInvocation
   | mk sigma cont runtimeTerm =>
       cases evidence with
       | ok continuation term =>
-          rcases term.coversInvocation step event with
+          rcases term.coversApplication step event with
             ⟨⟨functionCoverage, argumentCoverage⟩⟩
           exact ⟨⟨
             functionCoverage.comp continuation.inputCoverage,
@@ -190,7 +190,7 @@ theorem CaptureSet.Extends.trans
   | alloc _ ih => exact .alloc (ih first)
 
 /-- One transition preserves joint state evidence.  An allocation transition
-extends the world and weakens both public indices once. -/
+extends the world and weakens both type and use indices once. -/
 theorem StateEvidence.preservation
     {n m : Nat} {source : State n} {target : State m}
     {world : World source.store} {valid : World.Valid world}

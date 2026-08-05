@@ -2,13 +2,13 @@ import LambdaPCC.RuntimeEquality
 import LambdaPCC.Valuation
 
 /-!
-A qualifier-aware semantic interpretation.
+A capture-aware semantic interpretation.
 
-These evidence families retain the introduction qualifier assigned by each
-value rule.  Location evidence carries both the assigned shape and a proof
-from the introduction qualifier to the type's outer qualifier.  The same
-qualifier-aware evidence is used recursively in function, pair, and member
-coercions.
+These evidence families retain the capture set assigned by each value rule.
+Location evidence carries both the assigned shape type and a proof from the
+capture set assigned at introduction to the capture set of the assigned type.
+The same capture-aware evidence is used recursively in function, pair, and
+member coercions.
 -/
 
 namespace LambdaPCC
@@ -17,7 +17,7 @@ namespace Cap
 noncomputable section
 
 /-- Allocation metadata for a body and its source-level use set. `World.Valid`
-relates this immutable syntax and qualifier to semantic value evidence. -/
+relates this immutable syntax and capture set to semantic value evidence. -/
 inductive ExactBody :
     {n : Nat} -> Store n -> Ty n -> Tm (n + 1) -> Ty (n + 1) ->
       CaptureSet (n + 1) -> Type 1 where
@@ -28,9 +28,9 @@ inductive ExactBody :
     ExactBody sigma (S.rename rho) (body.rename rho.ext)
       (T.rename rho.ext) (C.rename rho.ext)
 
-/-- Allocation-time evidence for a value's introduction qualifier. This
-family is independent of the capture-aware world, so the world stores the
-qualifier fixed by the introduction rule. -/
+/-- Allocation-time evidence for the capture set assigned to a value by its
+introduction rule. This family is independent of the capture-aware world, so
+the world stores that capture set. -/
 inductive ExactValue :
     {n : Nat} -> Store n -> Tm n -> CaptureSet n -> Type 1 where
 | abs {n : Nat} {sigma : Store n} {A : Ty n} {body : Tm (n + 1)}
@@ -48,7 +48,7 @@ inductive ExactValue :
     {W : CaptureSet n} :
     ExactValue sigma (.pair y a (.capture W)) (.singleton (.var y))
 
-/-- A store together with an introduction-qualifier witness for every
+/-- A store together with an introduction capture-set witness for every
 allocated value. -/
 inductive World : {n : Nat} -> Store n -> Type 1 where
 | empty : World Store.empty
@@ -57,8 +57,8 @@ inductive World : {n : Nat} -> Store n -> Type 1 where
     (exact : ExactValue sigma v Q) :
     World (Store.val sigma v vv)
 
-/-- Lookup retains the introduction qualifier of a stored value while
-transporting it through later allocations. -/
+/-- Lookup retains the capture set assigned to a stored value at introduction
+while transporting it through later allocations. -/
 inductive Lookup :
     {n : Nat} -> {sigma : Store n} -> (world : Cap.World sigma) ->
       Fin n -> Tm n -> CaptureSet n -> Type 1 where
@@ -86,8 +86,8 @@ inductive Environment :
       LocationEvidence world (rho x) ((Gamma.lookup x).rename rho)) ->
     Environment world Gamma rho
 
-/-- A location has an assigned qualified type and remains tied to the
-introduction qualifier stored in the world. -/
+/-- A location has an assigned capturing type and remains tied to the capture
+set stored for its value introduction. -/
 inductive LocationEvidence :
     {n : Nat} -> {sigma : Store n} -> (world : Cap.World sigma) ->
       Fin n -> Ty n -> Type 1 where
@@ -126,7 +126,7 @@ inductive LocationEvidence :
     LocationEvidence world x (.capt E W) -> Relation world Q C ->
     LocationEvidence world x (.capt C (.TSel p a))
 
-/-- Capture-aware realization of term, type, and capture members. -/
+/-- Capture-aware realization of term, type, and capture-set members. -/
 inductive Realizes :
     {n : Nat} -> {k : Kind} -> {sigma : Store n} ->
       (world : Cap.World sigma) -> Path.Referent n -> Tau n k -> Type 1 where
@@ -194,7 +194,7 @@ inductive Relation :
     {p : Path n} {a : Name} {W U : CaptureSet n} :
     Path.Resolve (p.sel a) sigma (.capture W) -> Relation world W U ->
     Relation world (.select p a) U
-/-- Capture-aware coercions between qualified types. -/
+/-- Capture-aware coercions between capturing types. -/
 inductive TyCoercion :
     {n : Nat} -> {sigma : Store n} -> (world : Cap.World sigma) ->
       Ty n -> Ty n -> Type 1 where
@@ -255,7 +255,7 @@ inductive ShapeCoercion :
     TyCoercion world S S' -> MemberClosure world S d d' ->
     ShapeCoercion world (.Pair S a d) (.Pair S' a d')
 
-/-- Capture-aware coercions between generalized signatures. -/
+/-- Capture-aware coercions between member signatures. -/
 inductive Coercion :
     {n : Nat} -> {k : Kind} -> {sigma : Store n} ->
       (world : Cap.World sigma) -> Tau n k -> Tau n k -> Type 1 where
@@ -327,7 +327,7 @@ inductive Body :
     Body world (S.rename rho) (body.rename rho.ext)
       (T.rename rho.ext) (C.rename rho.ext)
 
-/-- Joint value evidence, indexed by its introduction qualifier. -/
+/-- Joint value evidence, indexed by its assigned capture set. -/
 inductive Value :
     {n : Nat} -> {sigma : Store n} -> (world : Cap.World sigma) ->
       Tm n -> Ty n -> CaptureSet n -> Type 1 where
@@ -374,7 +374,7 @@ end
 
 /-! ## Valid worlds -/
 
-/-- Every introduction qualifier stored in a world is justified by the same
+/-- Every assigned capture set stored in a world is justified by the same
 value evidence used by the capture-aware interpretation. -/
 inductive World.Valid : {n : Nat} -> {sigma : Store n} ->
     World sigma -> Type 1 where

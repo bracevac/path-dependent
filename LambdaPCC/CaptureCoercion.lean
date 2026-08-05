@@ -2,9 +2,10 @@ import LambdaPCC.CaptureStatic
 import LambdaPCC.StoreStratification
 
 /-!
-Action of qualifier-aware coercions on semantic inhabitants.  Every change
-to an outer qualifier is justified by a `Cap.Relation`; recursive shape
-coercions preserve the introduction qualifier recorded by the world.
+Action of capture-aware coercions on semantic inhabitants. Every change
+to a type's capture set is justified by a `Cap.Relation`; recursive shape
+coercions preserve the capture set assigned at introduction and recorded by
+the world.
 -/
 
 namespace LambdaPCC
@@ -61,7 +62,7 @@ end
 
 /-! ## Coercion action -/
 
-/-- Apply a qualifier-aware coercion to a realized runtime referent. -/
+/-- Apply a capture-aware coercion to a realized runtime referent. -/
 noncomputable def Coercion.action
     {n : Nat} {k : Kind} {sigma : Store n} {world : World sigma}
     {d e : Tau n k} {referent : Path.Referent n} :
@@ -82,25 +83,25 @@ noncomputable def Coercion.action
 | .term (.runtime conversion), .loc possible =>
     .loc (possible.convert conversion)
 | .term (.capt captures .refl), .loc possible =>
-    .loc (possible.widenQualifier captures)
+    .loc (possible.widenCaptureSet captures)
 | .term (.capt captures (.trans first second)), .loc possible => by
     have firstResult :=
       (Coercion.term (TyCoercion.capt .refl first)).action (.loc possible)
     have secondResult :=
       (Coercion.term (TyCoercion.capt .refl second)).action firstResult
     cases secondResult with
-    | loc result => exact .loc (result.widenQualifier captures)
+    | loc result => exact .loc (result.widenCaptureSet captures)
 | .term (.capt captures (.runtime conversion)), .loc possible =>
     .loc ((possible.convertCongruent
       (.capt
         (CaptureSet.RuntimeCongruent.refl
           (Path.RuntimeEq.eqCongruence sigma) _)
         (conversion.runtimeCongruent
-          (Path.RuntimeEq.eqCongruence sigma)))).widenQualifier captures)
+          (Path.RuntimeEq.eqCongruence sigma)))).widenCaptureSet captures)
 | .term (.capt captures .bot), .loc possible => by
     cases possible
 | .term (.capt captures .top), .loc possible =>
-    .loc (possible.toTop.widenQualifier captures)
+    .loc (possible.toTop.widenCaptureSet captures)
 | .term (.capt captures (.widen targetResolution target)),
     .loc (.single lookup sourceResolution sourceCoverage) => by
     cases sourceResolution.deterministic targetResolution
@@ -112,7 +113,7 @@ noncomputable def Coercion.action
       (sourceCoverage.comp captures))
 | .term (.capt captures (.selectLower resolution lower)),
     .loc possible => by
-    let view := possible.qualifierView
+    let view := possible.captureSetView
     have witness :=
       (Coercion.term (TyCoercion.capt .refl lower)).action (.loc possible)
     cases witness with

@@ -1,7 +1,7 @@
 import LambdaPCC.CapturePreservation
 
 /-!
-Finite preservation and closed type safety for the qualifier-aware machine
+Finite preservation and closed type safety for the capture-aware machine
 invariant.  Store allocation may weaken both the result type and
 the source use set.
 -/

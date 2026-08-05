@@ -1,6 +1,16 @@
 /.lake/
 /tmp/
 /output/
+/LambdaPCC/paper/build/
+/LambdaPCC/paper/paper.aux
+/LambdaPCC/paper/paper.bbl
+/LambdaPCC/paper/paper.blg
+/LambdaPCC/paper/paper.fdb_latexmk
+/LambdaPCC/paper/paper.fls
+/LambdaPCC/paper/paper.log
+/LambdaPCC/paper/paper.out
+/LambdaPCC/paper/paper.pdf
+/LambdaPCC/paper/paper.synctex.gz
 lambda_p.aux
 lambda_p.bbl
 lambda_p.blg

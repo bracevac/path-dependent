@@ -75,7 +75,8 @@ def Def.referent : Def n k -> Path.Referent n
     (d.rename FinFun.weaken).referent = d.referent.weaken := by
   cases d <;> rfl
 
-/-- Follow a path to a location, stored type, or stored capture set. -/
+/-- Follow a path to a location, stored shape-type definition, or stored
+capture-set definition. -/
 inductive Path.Resolve : Path n -> Store n -> Path.Referent n -> Prop where
 | var : Path.Resolve (.var x) sigma (.loc x)
 | fst :

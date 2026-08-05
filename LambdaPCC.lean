@@ -17,6 +17,6 @@ import LambdaPCC.CaptureInterpretation
 import LambdaPCC.CaptureAllocation
 import LambdaPCC.CapturePreservation
 import LambdaPCC.CaptureSafety
-import LambdaPCC.CapturePrediction
+import LambdaPCC.CaptureBounds
 import LambdaPCC.CaptureRegression
 import LambdaPCC.GeneralPairRegression
