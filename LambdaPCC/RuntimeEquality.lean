@@ -285,7 +285,7 @@ inductive CaptureSet.RuntimeConv :
 | select : R p q ->
     CaptureSet.RuntimeConv R (.select p a) (.select q a)
 
-/-- Conversion of capture-qualified types. -/
+/-- Conversion of capturing types. -/
 inductive Ty.RuntimeConv :
     {n : Nat} -> (Path n -> Path n -> Type) -> Ty n -> Ty n -> Type 1 where
 | refl : Ty.RuntimeConv R T T
@@ -346,12 +346,12 @@ inductive Tau.RuntimeConv :
 
 end
 
-/-- Project the conversion of outer qualifiers from a runtime conversion of
-capture-qualified types. -/
+/-- Project the capture-set conversion from a runtime conversion of
+capturing types. -/
 noncomputable def Ty.RuntimeConv.captureConversion
     {n : Nat} {R : Path n -> Path n -> Type}
     {T U : Ty n} (conversion : Ty.RuntimeConv R T U) :
-    CaptureSet.RuntimeConv R T.qualifier U.qualifier :=
+    CaptureSet.RuntimeConv R T.captureSet U.captureSet :=
   match conversion with
   | .refl => .refl
   | .symm code => .symm code.captureConversion
@@ -471,7 +471,7 @@ noncomputable def Tau.RuntimeConv.rename
 
 end
 
-/-- Scoped qualified-type conversion is stable under ambient allocation. -/
+/-- Scoped capturing-type conversion is stable under ambient allocation. -/
 noncomputable def Ty.RuntimeConv.weakenScoped
     {n : Nat} {sigma : Store n} {T U : Ty (n + 1)}
     (conversion : Ty.RuntimeConv (Path.ScopedLift (Path.RuntimeEq sigma)) T U)
@@ -906,7 +906,7 @@ noncomputable def CaptureSet.RuntimeConv.runtimeCongruent
   | .singleton path => .singleton path
   | .select path => .select path
 
-/-- Normalize qualified-type conversion to componentwise path congruence. -/
+/-- Normalize capturing-type conversion to componentwise path congruence. -/
 noncomputable def Ty.RuntimeConv.runtimeCongruent
     {n : Nat} {R : Path n -> Path n -> Type}
     (operations : Path.EqCongruence R) {T U : Ty n}

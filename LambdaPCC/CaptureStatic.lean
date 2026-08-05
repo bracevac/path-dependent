@@ -1,7 +1,7 @@
 import LambdaPCC.CaptureAction
 
 /-!
-Static operations for the qualifier-aware semantic interpretation.  Source
+Static operations for the capture-aware semantic interpretation. Source
 contexts are interpreted by `Cap.Environment`; path typing resolves to
 capture-aware realization evidence, and source subtyping compiles to the
 corresponding capture-aware coercions.

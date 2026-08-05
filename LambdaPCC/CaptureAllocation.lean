@@ -4,7 +4,7 @@ import LambdaPCC.CaptureInterpretation
 
 /-!
 Allocation operations for the capture-aware invariant. Validity supplies the
-value evidence and introduction qualifier at every store location. The
+value evidence and assigned capture set at every store location. The
 internal allocation summary is obtained from that same derivation.
 -/
 
@@ -29,13 +29,13 @@ def Value.toExact
     (value : Value world v T Q) : ExactValue sigma v Q := by
   cases value with
   | abs body suffix => exact .abs body.toExact
-  | @pair y z a qualifier suffix =>
+  | @pair y z a captureSet suffix =>
       subst Q
       exact .pair
-  | @typePair y a W qualifier suffix =>
+  | @typePair y a W captureSet suffix =>
       subst Q
       exact .typePair
-  | @capturePair y a W qualifier suffix =>
+  | @capturePair y a W captureSet suffix =>
       subst Q
       exact .capturePair
 
@@ -47,10 +47,10 @@ structure World.Entry
     {n : Nat} {sigma : Store n} {world : World sigma}
     (valid : World.Valid world) (x : Fin n) : Type 1 where
   term : Tm n
-  introductionQualifier : CaptureSet n
+  assignedCaptureSet : CaptureSet n
   assignedType : Ty n
-  lookup : Lookup world x term introductionQualifier
-  value : Value world term assignedType introductionQualifier
+  lookup : Lookup world x term assignedCaptureSet
+  value : Value world term assignedType assignedCaptureSet
 
 noncomputable def World.Valid.entry
     {n : Nat} {sigma : Store n} {world : World sigma}
@@ -61,14 +61,14 @@ noncomputable def World.Valid.entry
       refine Fin.cases ?_ (fun y => ?_) x
       · exact
           { term := v.weaken
-            introductionQualifier := Q.weaken
+            assignedCaptureSet := Q.weaken
             assignedType := T.weaken
             lookup := .here
             value := value.weaken exact vv }
       · let old := ih y
         exact
           { term := old.term.weaken
-            introductionQualifier := old.introductionQualifier.weaken
+            assignedCaptureSet := old.assignedCaptureSet.weaken
             assignedType := old.assignedType.weaken
             lookup := .there old.lookup
             value := old.value.weaken exact vv }
@@ -93,18 +93,18 @@ noncomputable def Value.atLookup
   | abs body suffix =>
       apply suffix.actionLocation
       exact .fun lookup body .refl .refl .refl
-  | pair qualifier suffix =>
+  | pair captureSet suffix =>
       rename_i a y z
-      cases qualifier
+      cases captureSet
       apply suffix.actionLocation
       let first := (valid.entry y).singletonLocation
       let second := (valid.entry z).singletonLocation
       apply LocationEvidence.pair lookup first
       · simpa only [Tau.weaken_open] using Realizes.loc second
       · exact .refl
-  | typePair qualifier suffix =>
+  | typePair captureSet suffix =>
       rename_i a y W
-      cases qualifier
+      cases captureSet
       apply suffix.actionLocation
       apply LocationEvidence.pair lookup (valid.entry y).singletonLocation
       · change Realizes world (.type W)
@@ -114,9 +114,9 @@ noncomputable def Value.atLookup
             (ShapeCoercion.refl (world := world) (S := W))
             (ShapeCoercion.refl (world := world) (S := W))
       · exact .refl
-  | capturePair qualifier suffix =>
+  | capturePair captureSet suffix =>
       rename_i a y W
-      cases qualifier
+      cases captureSet
       apply suffix.actionLocation
       apply LocationEvidence.pair lookup (valid.entry y).singletonLocation
       · change Realizes world (.capture W)

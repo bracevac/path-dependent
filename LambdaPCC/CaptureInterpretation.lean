@@ -1,7 +1,7 @@
 import LambdaPCC.CaptureTyping
 
 /-!
-Interpretation of source typing in the qualifier-aware runtime invariant.
+Interpretation of source typing in the capture-aware runtime invariant.
 Result types and use sets are interpreted together; source subsumption becomes
 an explicit type coercion and a runtime subcapturing edge.
 -/

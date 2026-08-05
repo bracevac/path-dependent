@@ -7,7 +7,7 @@ Regression for unrestricted covariance of dependent pairs.
 The first component of each source and target pair type is `Top`.  Stored type
 and capture-set definitions are nevertheless related to intervals mentioning
 the first-component binder.  The examples therefore exercise the general
-pair rule at both abstract-member kinds.
+pair rule for both abstract member forms.
 -/
 
 namespace LambdaPCC.GeneralPairRegression

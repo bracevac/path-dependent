@@ -13,12 +13,12 @@ def TyCoercion.comp
     (first : TyCoercion world T U) (second : TyCoercion world U V) :
     TyCoercion world T V := .trans first second
 
-/-- Every coercion between qualified types contains a subcapturing
-derivation between their outer qualifiers. -/
+/-- Every coercion between capturing types contains a subcapturing
+derivation between their capture sets. -/
 noncomputable def TyCoercion.captureRelation
     {n : Nat} {sigma : Store n} {world : World sigma}
     {T U : Ty n} (coercion : TyCoercion world T U) :
-    Relation world T.qualifier U.qualifier :=
+    Relation world T.captureSet U.captureSet :=
   match coercion with
   | .refl => .refl
   | .trans first second =>
@@ -26,17 +26,17 @@ noncomputable def TyCoercion.captureRelation
   | .runtime conversion => .runtime conversion.captureConversion
   | .capt captures _ => captures
 
-structure QualifierView
+structure CaptureSetView
     {n : Nat} {sigma : Store n} (world : World sigma)
     (x : Fin n) (C : CaptureSet n) : Type 1 where
   value : Tm n
-  introductionQualifier : CaptureSet n
-  lookup : Lookup world x value introductionQualifier
-  captures : Relation world introductionQualifier C
+  assignedCaptureSet : CaptureSet n
+  lookup : Lookup world x value assignedCaptureSet
+  captures : Relation world assignedCaptureSet C
 
-def LocationEvidence.qualifierView
+def LocationEvidence.captureSetView
     (possible : LocationEvidence world x (.capt C S)) :
-    QualifierView world x C := by
+    CaptureSetView world x C := by
   cases possible with
   | top lookup captures => exact ⟨_, _, lookup, captures⟩
   | «fun» lookup body input output captures =>
@@ -50,7 +50,7 @@ def LocationEvidence.qualifierView
 def LocationEvidence.toTop
     (possible : LocationEvidence world x (.capt C S)) :
     LocationEvidence world x (.capt C .Top) :=
-  let view := possible.qualifierView
+  let view := possible.captureSetView
   .top view.lookup view.captures
 
 /-- World lookup entails lookup in the underlying runtime store. -/
@@ -61,21 +61,21 @@ theorem Lookup.binds {n : Nat} {sigma : Store n}
   | here => exact .here
   | there _ ih => exact .there ih
 
-private def World.lookupQualifier {n : Nat} {sigma : Store n} :
+private def World.lookupCaptureSet {n : Nat} {sigma : Store n} :
     (world : World sigma) -> Fin n -> CaptureSet n
 | .empty, x => Fin.elim0 x
 | @World.val n sigma v vv Q world exact, x =>
     Fin.cases Q.weaken
-      (fun y => (world.lookupQualifier y).weaken) x
+      (fun y => (world.lookupCaptureSet y).weaken) x
 
-private theorem Lookup.qualifier_eq {n : Nat} {sigma : Store n}
+private theorem Lookup.captureSet_eq {n : Nat} {sigma : Store n}
     {world : World sigma} {x : Fin n} {v : Tm n} {Q : CaptureSet n}
     (evidence : Lookup world x v Q) :
-    world.lookupQualifier x = Q := by
+    world.lookupCaptureSet x = Q := by
   induction evidence with
   | here => rfl
   | there old ih =>
-      simpa [World.lookupQualifier] using congrArg CaptureSet.weaken ih
+      simpa [World.lookupCaptureSet] using congrArg CaptureSet.weaken ih
 
 /-- World lookup is deterministic at a location. -/
 theorem Lookup.unique
@@ -84,10 +84,10 @@ theorem Lookup.unique
     (first : Lookup world x v Q) (second : Lookup world x u R) :
     v = u /\ Q = R :=
   ⟨Store.Binds.unique first.binds second.binds,
-    first.qualifier_eq.symm.trans second.qualifier_eq⟩
+    first.captureSet_eq.symm.trans second.captureSet_eq⟩
 
-/-- Widen a location's outer qualifier using a proved subcapturing edge. -/
-noncomputable def LocationEvidence.widenQualifier
+/-- Widen a location's capture set using a proved subcapturing edge. -/
+noncomputable def LocationEvidence.widenCaptureSet
     (possible : LocationEvidence world x (.capt C S))
     (captures : Relation world C D) :
     LocationEvidence world x (.capt D S) := by
@@ -103,7 +103,7 @@ noncomputable def LocationEvidence.widenQualifier
       exact .selection lookup resolution witness (old.comp captures)
 
 /-- Replace a lookup witness at the same world location, preserving the
-stored shape evidence and using the supplied qualifier bound. -/
+stored shape evidence and using the supplied capture-set bound. -/
 noncomputable def LocationEvidence.replaceLookup
     (possible : LocationEvidence world x (.capt C S))
     (lookup : Lookup world x v Q)
@@ -135,10 +135,10 @@ noncomputable def LocationEvidence.convertCongruent
     LocationEvidence world x T ->
     Ty.RuntimeCongruent (Path.RuntimeEq sigma) T U ->
     LocationEvidence world x U
-| .top lookup captures, .capt qualifier .top =>
-    .top lookup (captures.comp (.runtime qualifier.toRuntimeConv))
+| .top lookup captures, .capt captureSetConversion .top =>
+    .top lookup (captures.comp (.runtime captureSetConversion.toRuntimeConv))
 | .fun lookup body input output captures,
-    .capt qualifier (.fun domain codomain) =>
+    .capt captureSetConversion (.fun domain codomain) =>
     let operations := Path.RuntimeEq.eqCongruence sigma
     let backwards : TyCoercion world _ _ :=
       .runtime ((domain.symm operations).toRuntimeConv)
@@ -146,24 +146,25 @@ noncomputable def LocationEvidence.convertCongruent
       (.trans backwards input)
       (.trans (.narrow backwards output)
         (.runtime codomain.toRuntimeConv))
-      (captures.comp (.runtime qualifier.toRuntimeConv))
+      (captures.comp (.runtime captureSetConversion.toRuntimeConv))
 | @LocationEvidence.pair n k sigma world x y _ C a _ S d lookup
       first member captures,
-    .capt qualifier (.pair firstConversion memberConversion) =>
+    .capt captureSetConversion (.pair firstConversion memberConversion) =>
     let operations := Path.RuntimeEq.eqCongruence sigma
     let opened := memberConversion.toRuntimeConv.openSame operations (.var y)
     .pair lookup
       (LocationEvidence.convertCongruent first firstConversion)
       (Realizes.convertCongruent member
         (opened.runtimeCongruent operations))
-      (captures.comp (.runtime qualifier.toRuntimeConv))
-| .single lookup resolution captures, .capt qualifier (.single paths) =>
+      (captures.comp (.runtime captureSetConversion.toRuntimeConv))
+| .single lookup resolution captures,
+    .capt captureSetConversion (.single paths) =>
     .single lookup ((paths.resolve_iff _).mp resolution)
-      (captures.comp (.runtime qualifier.toRuntimeConv))
+      (captures.comp (.runtime captureSetConversion.toRuntimeConv))
 | .selection lookup resolution witness captures,
-    .capt qualifier (.selection paths) =>
+    .capt captureSetConversion (.selection paths) =>
     .selection lookup (((paths.sel _).resolve_iff _).mp resolution)
-      witness (captures.comp (.runtime qualifier.toRuntimeConv))
+      witness (captures.comp (.runtime captureSetConversion.toRuntimeConv))
 
 /-- Structural runtime conversion preserves capture-aware referent
 realization. -/

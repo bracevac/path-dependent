@@ -3,7 +3,7 @@ import LambdaPCC.CaptureCoercion
 /-!
 Store-local typing and use evidence for the capture-aware CK invariant.  A
 runtime term carries its result type and a use set; a valid world connects
-stored introduction qualifiers with the values that introduced them.
+stored values with the capture sets assigned by their introduction rules.
 -/
 
 namespace LambdaPCC
@@ -28,8 +28,8 @@ def Value.cast
   | .typePair exact old => .typePair exact (old.comp suffix)
   | .capturePair exact old => .capturePair exact (old.comp suffix)
 
-/-- Runtime term evidence, indexed jointly by result type and predicted use
-set.  Subsumption is retained as a suffix at the outer term constructor. -/
+/-- Runtime term evidence, indexed jointly by result type and use set.
+Subsumption is retained as a suffix at the outer term constructor. -/
 inductive TermEvidence :
     {n : Nat} -> {sigma : Store n} -> {world : World sigma} ->
       (valid : World.Valid world) -> Tm n -> Ty n -> CaptureSet n -> Type 1 where
@@ -154,8 +154,8 @@ def TermEvidence.letView
 structure ValueEvidenceView
     {n : Nat} {sigma : Store n} (world : World sigma)
     (v : Tm n) (T : Ty n) : Type 1 where
-  introductionQualifier : CaptureSet n
-  value : Value world v T introductionQualifier
+  assignedCaptureSet : CaptureSet n
+  value : Value world v T assignedCaptureSet
 
 theorem TermEvidence.nonemptyValueView
     {n : Nat} {sigma : Store n} {world : World sigma}

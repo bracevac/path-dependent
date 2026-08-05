@@ -1,8 +1,8 @@
 import LambdaPCC.CaptureEvidence
 
 /-!
-Allocation weakening for qualifier-aware semantic evidence.  A fresh store
-cell extends the semantic world with the introduction qualifier of the allocated
+Allocation weakening for capture-aware semantic evidence. A fresh store cell
+extends the semantic world with the assigned capture set of the allocated
 value; all earlier locations and all evidence about them are shifted by the
 same intrinsic renaming.
 -/
@@ -548,7 +548,7 @@ private noncomputable def allocateValueAbs
     · exact suffixIH exact vv
 
 private noncomputable def allocateValuePair
-    (qualifier : Q =
+    (captureSetEquation : Q =
       .union (.singleton (.var y)) (.singleton (.var z)))
     (suffix : TyCoercion world
       (.capt Q
@@ -559,17 +559,17 @@ private noncomputable def allocateValuePair
               (.Single (Path.var z).weaken))))) T)
     (suffixIH : TyAllocation world _ T suffix) :
     ValueAllocation world (.pair y a (.val z)) T Q
-      (.pair qualifier suffix) :=
+      (.pair captureSetEquation suffix) :=
   fun exact vv => by
     apply Value.pair
     · simpa [CaptureSet.weaken, CaptureSet.rename, Path.rename] using
-        congrArg (fun C => C.rename FinFun.weaken) qualifier
+        congrArg (fun C => C.rename FinFun.weaken) captureSetEquation
     · simpa [Ty.weaken, Ty.rename, Shape.rename, Tau.rename,
         CaptureSet.rename, Path.rename, ← Path.weaken_rename] using
         suffixIH exact vv
 
 private noncomputable def allocateValueTypePair
-    (qualifier : Q = .singleton (.var y))
+    (captureSetEquation : Q = .singleton (.var y))
     (suffix : TyCoercion world
       (.capt Q
         (.Pair
@@ -577,17 +577,17 @@ private noncomputable def allocateValueTypePair
           (.type W.weaken W.weaken))) T)
     (suffixIH : TyAllocation world _ T suffix) :
     ValueAllocation world (.pair y a (.type W)) T Q
-      (.typePair qualifier suffix) :=
+      (.typePair captureSetEquation suffix) :=
   fun exact vv => by
     apply Value.typePair
     · simpa [CaptureSet.weaken, CaptureSet.rename, Path.rename] using
-        congrArg (fun C => C.rename FinFun.weaken) qualifier
+        congrArg (fun C => C.rename FinFun.weaken) captureSetEquation
     · simpa [Ty.weaken, Ty.rename, Shape.rename, Tau.rename,
         CaptureSet.rename, Path.rename, ← Shape.weaken_rename] using
         suffixIH exact vv
 
 private noncomputable def allocateValueCapturePair
-    (qualifier : Q = .singleton (.var y))
+    (captureSetEquation : Q = .singleton (.var y))
     (suffix : TyCoercion world
       (.capt Q
         (.Pair
@@ -595,11 +595,11 @@ private noncomputable def allocateValueCapturePair
           (.capture W.weaken W.weaken))) T)
     (suffixIH : TyAllocation world _ T suffix) :
     ValueAllocation world (.pair y a (.capture W)) T Q
-      (.capturePair qualifier suffix) :=
+      (.capturePair captureSetEquation suffix) :=
   fun exact vv => by
     apply Value.capturePair
     · simpa [CaptureSet.weaken, CaptureSet.rename, Path.rename] using
-        congrArg (fun C => C.rename FinFun.weaken) qualifier
+        congrArg (fun C => C.rename FinFun.weaken) captureSetEquation
     · simpa [Ty.weaken, Ty.rename, Shape.rename, Tau.rename,
         CaptureSet.rename, Path.rename,
         ← CaptureSet.weaken_rename] using suffixIH exact vv

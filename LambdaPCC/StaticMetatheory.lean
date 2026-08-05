@@ -350,13 +350,13 @@ def Tm.Ty.weaken (h : Tm.Ty Gamma term T C) :
 
 /-! ## Consistency of member bounds -/
 
-/-- The bound-consistency property carried by a generalized signature. -/
+/-- The bound-consistency property carried by a member signature. -/
 def Tau.Consistent (Gamma : Ctx n) : Tau n k -> Type
 | .term _ => Unit
 | .type lower upper => Shape.Sub Gamma lower upper
 | .capture lower upper => CaptureSet.Sub Gamma lower upper
 
-/-- Well-formed generalized signatures have consistent bounds. -/
+/-- Well-formed member signatures have consistent bounds. -/
 def Tau.Wf.consistent (wf : Tau.Wf Gamma tau) : tau.Consistent Gamma :=
   match wf with
   | .term _ => ()

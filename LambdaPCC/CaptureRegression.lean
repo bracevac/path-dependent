@@ -2,8 +2,8 @@ import LambdaPCC.Typing
 import LambdaPCC.StaticMetatheory
 
 /-!
-Small static regressions for capture members, capture-dependent types, and
-the root accounting of proper term paths.
+Small static regressions for capture-set members, capture-dependent types, and
+the root accounting of term paths.
 -/
 
 namespace LambdaPCC.CaptureRegression
@@ -13,11 +13,11 @@ noncomputable section
 def captureLabel : Name := 0
 def termLabel : Name := 1
 
-/-! ## Exact and abstract capture members -/
+/-! ## Exact and abstract capture-set members -/
 
 def firstType : Ty 0 := .capt .empty .Top
 
-/-- The capture member is exactly the pair's dependent first component. -/
+/-- The capture-set member is exactly the pair's dependent first component. -/
 def receiverType : Ty 0 :=
   .capt .empty
     (.Pair firstType captureLabel
@@ -54,7 +54,7 @@ def capture_member_upper :
       (.singleton receiver.fst) :=
   .select_upper exact_capture_member .refl
 
-/-! ## Pair covariance at capture-member kind -/
+/-! ## Pair covariance at capture-set-member kind -/
 
 def pairSource : Shape 0 :=
   .Pair firstType captureLabel
@@ -75,8 +75,8 @@ def capture_pair_covariance :
 
 /-! ## Capture-dependent function results -/
 
-/-- A codomain whose qualifier mentions both a projection of its argument and
-a term selection rooted at that projection. -/
+/-- A codomain whose capture set mentions both a projection of its argument
+and a term selection rooted at that projection. -/
 def dependentCodomain (n : Nat) : Ty (n + 1) :=
   .capt
     (.union
@@ -93,7 +93,7 @@ theorem dependent_codomain_beta (q : Path n) :
         .Top := by
   rfl
 
-/-- Application opens the dependent qualifier with the caller's argument
+/-- Application opens the dependent capture set with the caller's argument
 path and combines the uses of the function and argument paths. -/
 def application_opens_capture
     {Gamma : Ctx n} {p q : Path n} {S : Ty n}
@@ -110,7 +110,7 @@ def application_opens_capture
       (.union Cp Cq) := by
   simpa only [dependent_codomain_beta] using Tm.Ty.app hfun harg
 
-/-! ## Roots of proper term paths -/
+/-! ## Roots of term paths -/
 
 def first_projection_contracts
     (h : Path.Ty Gamma p.fst (.term T)) :
@@ -125,7 +125,7 @@ def term_selection_contracts
 /-!
 There is deliberately no corresponding root-contraction rule from the
 abstract capture-set selection `CaptureSet.select p a` to the owner path
-`p`. Abstract capture members participate in subcapturing only through their
+`p`. Abstract capture-set members participate in subcapturing only through their
 declared lower and upper bounds.
 -/
 

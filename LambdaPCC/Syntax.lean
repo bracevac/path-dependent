@@ -1,7 +1,7 @@
 import LambdaPCC.FinFun
 
 /-!
-Intrinsically scoped syntax for `lambda_p` with capture annotations and
+Intrinsically scoped syntax for `lambda_p` with capture sets and
 abstract capture-set members. Function codomains and pair members bind their
 first component.
 
@@ -40,11 +40,11 @@ inductive CaptureSet : Nat -> Type where
 | singleton : Path n -> CaptureSet n
 | select : Path n -> Name -> CaptureSet n
 
-/-- Capture-annotated types. -/
+/-- Capturing types. -/
 inductive Ty : Nat -> Type where
 | capt : CaptureSet n -> Shape n -> Ty n
 
-/-- Shapes underlying capture-annotated types. -/
+/-- Shape types underlying capturing types. -/
 inductive Shape : Nat -> Type where
 | Top : Shape n
 | Bot : Shape n
@@ -54,7 +54,7 @@ inductive Shape : Nat -> Type where
 /-- Abstract type-member selection `p.A`, distinct from the term singleton `{p}`. -/
 | TSel : Path n -> Name -> Shape n
 
-/-- Generalized signatures used as dependent pair components. -/
+/-- Member signatures used as dependent pair components. -/
 inductive Tau : Nat -> Kind -> Type where
 | term : Ty n -> Tau n .term
 | «type» : Shape n -> Shape n -> Tau n .type
@@ -62,8 +62,8 @@ inductive Tau : Nat -> Kind -> Type where
 
 end
 
-/-- The outer capture qualifier of a type. -/
-def Ty.qualifier : Ty n -> CaptureSet n
+/-- The capture set of a capturing type. -/
+def Ty.captureSet : Ty n -> CaptureSet n
 | .capt captures _ => captures
 
 /-- Definitions stored in pair values. -/
