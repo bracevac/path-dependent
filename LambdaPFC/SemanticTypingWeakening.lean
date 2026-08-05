@@ -13,17 +13,6 @@ namespace LambdaPFC
 
 noncomputable section
 
-private theorem tpairType_rename_weaken
-    (y : Fin n) (A : Name) (W : Ty n) :
-    (Ty.Pair (.Single (.var y)) A
-      (Tau.intv W W).weaken).rename FinFun.weaken =
-      Ty.Pair (.Single (.var (FinFun.weaken y))) A
-        (Tau.intv (W.rename FinFun.weaken)
-          (W.rename FinFun.weaken)).weaken := by
-  simp only [Ty.rename, Path.rename]
-  rw [← Tau.weaken_rename]
-  rfl
-
 /-- Value evidence for an old term survives allocation. -/
 noncomputable def ValueEvidence.weaken
     {n : Nat} {sigma : Store n} {term : Tm n} {T : Ty n}
@@ -35,14 +24,11 @@ noncomputable def ValueEvidence.weaken
       exact .abs (closure.weaken v vv) (suffix.weaken v vv)
   | pair suffix =>
       exact .pair (suffix.weaken v vv)
-  | @tpair y A W T suffix =>
-      have weakened := suffix.weaken v vv
-      change Coercion (Store.val sigma v vv)
-        (.ty ((Ty.Pair (.Single (.var y)) A
-          (Tau.intv W W).weaken).rename FinFun.weaken))
-        (.ty (T.rename FinFun.weaken)) at weakened
-      rw [tpairType_rename_weaken] at weakened
-      exact .tpair weakened
+  | tpair suffix =>
+      refine .tpair ?_
+      simpa only [Ty.weaken, Tau.weaken, Ty.rename, Path.rename,
+        Tau.rename, Ty.rename_rename, FinFun.comp_weaken] using
+        suffix.weaken v vv
 
 /-- Continuation evidence survives allocation. -/
 noncomputable def Tm.Cont.Evidence.weaken

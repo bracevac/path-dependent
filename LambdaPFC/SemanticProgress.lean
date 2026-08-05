@@ -37,7 +37,7 @@ theorem TermEvidence.progress
           cases resolution
           exact State.Progress.path_var
       | fst _ | sel _ _ =>
-          exact State.Progress.path resolution nofun
+          exact .step (.path resolution nofun)
   | value valueEvidence =>
       exact State.Progress.value valueEvidence.isValue
   | app function argument suffix =>
@@ -49,9 +49,9 @@ theorem TermEvidence.progress
         function.pathPossibleAt functionReduction
       cases possibleFunction with
       | «fun» binding closure input output =>
-          exact State.Progress.app functionReduction argumentReduction binding
+          exact .step (.app functionReduction argumentReduction binding)
   | «let» bound closure suffix =>
-      exact State.Progress.let_term
+      exact .step .let_push
 
 /-- The complete machine invariant entails progress. -/
 theorem State.Evidence.progress
