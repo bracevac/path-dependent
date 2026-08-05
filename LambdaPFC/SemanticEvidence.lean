@@ -203,7 +203,7 @@ def Environment.lookup
 
 /-- The empty source context has the initial semantic environment. -/
 def Environment.empty :
-    Environment Ctx.nil Valuation.id Store.empty :=
+    Environment Ctx.nil FinFun.id Store.empty :=
   .intro (fun x => Fin.elim0 x)
 
 /-- Extend an environment with a concrete realization of the newest source

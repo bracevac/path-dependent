@@ -108,7 +108,7 @@ private noncomputable def allocateEnvironmentIntro
   fun v vv => by
     apply Environment.intro
     intro x
-    simpa only [Valuation.weaken, Valuation.comp, Ty.weaken,
+    simpa only [Valuation.weaken, FinFun.comp, Ty.weaken,
       Ty.rename_rename] using ih x v vv
 
 private noncomputable def allocatePossibleTop :
@@ -290,7 +290,7 @@ private noncomputable def allocateDeferredSource
       (T.rename rho.ext) (U.rename rho.ext)
       (.source environment code) :=
   fun v vv => by
-    simpa only [Valuation.weaken, Valuation.comp, Ty.weaken,
+    simpa only [Valuation.weaken, FinFun.comp, Ty.weaken,
       Ty.rename_rename, FinFun.ext_comp] using
       DeferredCoercion.source (environmentIH v vv) code
 
@@ -302,7 +302,7 @@ private noncomputable def allocateMemberSource
       (d.rename rho.ext) (d'.rename rho.ext)
       (.source environment code) :=
   fun v vv => by
-    simpa only [Valuation.weaken, Valuation.comp, Ty.weaken,
+    simpa only [Valuation.weaken, FinFun.comp, Ty.weaken,
       Ty.rename_rename, Tau.rename_rename, FinFun.ext_comp] using
       MemberClosure.source (environmentIH v vv) code
 
@@ -314,7 +314,7 @@ private noncomputable def allocateBodySource
       (body.rename rho.ext) (T.rename rho.ext)
       (.source environment code) :=
   fun v vv => by
-    simpa only [Valuation.weaken, Valuation.comp, Ty.weaken,
+    simpa only [Valuation.weaken, FinFun.comp, Ty.weaken,
       Ty.rename_rename, Tm.rename_rename, FinFun.ext_comp] using
       BodyClosure.source (environmentIH v vv) code
 
