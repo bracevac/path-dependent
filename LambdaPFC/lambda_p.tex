@@ -81,30 +81,22 @@
 \begin{abstract}
 We study a small call-by-value calculus of path-dependent types based on
 immutable dependent pairs. A pair contains a first-component location and
-either a term member or a type member. The member signature may mention the
-first component: term members have proper-type signatures, while type members
-have interval signatures.
-
+either a term member with a proper-type signature or a type member with an
+interval signature; the member signature may mention the first component.
 The central subtyping rule is covariant in both pair components and compares
-the member signatures under the source first-component type. Its dependent
+the member signatures under the source first-component type, so its dependent
 premise cannot be interpreted until a concrete pair realization supplies the
-location bound by that premise. The soundness proof interprets each subtyping
-derivation as a store-indexed coercion. A path resolves to a referent, which
-is either a location or a stored type definition, and the realization
-judgment records which signatures that referent supports. Applying a
-coercion transforms a realization derivation for its source signature into one
-for its target signature.
+location bound by that premise.
 
-Dependent premises for function codomains and pair members are retained with
-their closing substitutions until the corresponding location is known. In
-the pair case, the member premise is interpreted at the stored first
-component and the resulting coercion is applied to the member referent.
-Coercion application is well founded by lexicographic induction on
-allocation rank and coercion size: both referents contained in a pair precede
-the pair cell, while a stored type definition has rank zero. We give the
-complete calculus and operational semantics, the coercion interpretation,
-the machine-typing invariant, and proofs of progress and preservation. The
-development is mechanized in Lean 4.
+The soundness proof interprets each subtyping derivation as a store-indexed
+coercion that transforms realization derivations for its source signature
+into realization derivations for its target signature. Dependent premises for
+function codomains and pair members are retained with their closing
+substitutions until the corresponding location is known, and coercion
+application is well founded by lexicographic induction on allocation rank and
+coercion size. We give the complete calculus and operational semantics, the
+coercion interpretation, the machine-typing invariant, and proofs of progress
+and preservation, all mechanized in Lean 4.
 \end{abstract}
 
 \keywords{path-dependent types, dependent pairs, subtyping, semantic
@@ -178,16 +170,12 @@ location is available.
 
 For \ruleref{s-pair}, interpretation produces a coercion for \(S<:S'\) and
 suspends the derivation of \(\tau<:\tau'\) with its closing substitution.
-Applying the pair coercion at a location \(z\) exposes a stored first
-component \(y\) and member definition \(\delta\). The first coercion
-establishes that \(y\) realizes \(S'\). The suspended member premise extends
-its closing substitution by \(x\mapsto y\), produces a coercion from
-\(\tau[y/x]\) to \(\tau'[y/x]\), and applies that coercion to the referent of
-\(\delta\). This last coercion need not occur within the enclosing pair
-coercion. Its application nevertheless decreases the allocation
-rank,
-because \(y\) and every location mentioned by \(\delta\) precede \(z\) in
-the immutable store.
+Applying the pair coercion at a location instantiates the suspended premise
+at the stored first component \(y\) and applies the resulting member coercion
+to the member referent (\cref{sec:coercion-pair}). Although that coercion is
+not structurally contained in the pair coercion, its application decreases
+the allocation rank, because both referents stored in a pair precede the
+pair cell in the immutable store (\cref{sec:coercion-termination}).
 
 The coercions are metatheoretic proof objects. Programs and
 machine states contain the source terms given in \cref{sec:calculus};
@@ -283,7 +271,6 @@ the exact interval \(T..T\). Subtyping subsequently hides either component. In
 not depend on \(x\).
 
 \subsection{Runtime configurations and transitions}
-\label{sec:runtime-configurations}
 \label{sec:machine}
 
 A store is an immutable sequence of values. Source variables and allocated
@@ -801,26 +788,16 @@ member-subtyping derivation until these realization derivations become
 available, permitting \ruleref{s-pair} to vary both the first component and the member
 signature.
 
-\subsection{Proof architecture}
-
-The proof has three stages. First, typed path resolution interprets a
-path-synthesis derivation as a run-time resolution derivation together with a
-realization derivation for its referent. Second, the subtyping interpretation
-maps a subtyping derivation to a store-indexed coercion, and coercion
-application maps source realizations to target realizations. An open
-codomain coercion retains a dependent function premise until application
-supplies the argument location; a suspended member premise retains the
-dependent pair premise until inversion of pair realization supplies its
-first-component location.
-Third, interpretation of source typing produces syntax-directed machine
-typing for the current term. Continuation typing records how the current
-result is used, and the two judgments form the invariant for progress and
-preservation. Sections~\ref{sec:coercions} and~\ref{sec:invariant} define
-these interpretations before applying them to the soundness proof.
-
 \section{Store-indexed semantic interpretation}
-\label{sec:realization}
 \label{sec:coercions}
+
+The proof has three stages: typed path resolution interprets path-synthesis
+derivations as run-time resolutions together with realizations of their
+referents; the subtyping interpretation compiles subtyping derivations to
+store-indexed coercions, whose application maps source realizations to
+target realizations; and interpretation of source typing produces the
+syntax-directed machine invariant for progress and preservation
+(\cref{sec:invariant}).
 
 \subsection{Store-induced equality}
 
@@ -858,36 +835,18 @@ rigid path relation.
 \subsection{Realization and coercions}
 
 Fix a source context \(\Gamma\) and a store \(\sigma\). A closing
-substitution has signature
+substitution \(\rho:\mathsf{dom}(\Gamma)\longrightarrow\mathsf{dom}(\sigma)\)
+totally assigns allocated store locations to the source variables bound by
+\(\Gamma\); distinct variables may share a location. For any path, type,
+signature, member definition, or term \(X\), \(\rho(X)\) denotes
+capture-avoiding application of \(\rho\), which replaces each free source
+variable by its assigned location and leaves bound variables unchanged.
+Extension \(\rho[z\mapsto y]\) maps the fresh variable \(z\) to
+\(y\in\mathsf{dom}(\sigma)\) and satisfies
 \[
-  \rho:\mathsf{dom}(\Gamma)\longrightarrow\mathsf{dom}(\sigma).
+  \subst{\rho(X)}{y}{z}=(\rho[z\mapsto y])(X)
 \]
-It is a total assignment of the source variables bound by \(\Gamma\) to
-allocated store locations; distinct variables may be assigned the same
-location. For any path, type, signature, member definition, or term \(X\),
-\(\rho(X)\) denotes capture-avoiding application of the closing substitution,
-which replaces each free source variable \(x\) by \(\rho(x)\). The
-substitution extends homomorphically to syntax; for paths,
-\[
-\rho(p.1)=\rho(p).1,
-\qquad
-\rho(p.a)=\rho(p).a.
-\]
-Beneath a function, pair, or let binder, the bound variable is left unchanged
-and \(\rho\) acts on the remaining free variables. If
-\(z\notin\mathsf{dom}(\Gamma)\) and \(y\in\mathsf{dom}(\sigma)\), extension
-of the closing substitution has signature
-\[
-  \rho[z\mapsto y]:
-  \mathsf{dom}(\Gamma,z:S)\longrightarrow\mathsf{dom}(\sigma),
-\]
-with \(\rho[z\mapsto y](z)=y\) and
-\(\rho[z\mapsto y](x)=\rho(x)\) for every
-\(x\in\mathsf{dom}(\Gamma)\). For any such \(X\) formed beneath the displayed
-binder \(z\), \(\rho(X)\) leaves \(z\) bound and the extension satisfies
-\[
-  \subst{\rho(X)}{y}{z}=(\rho[z\mapsto y])(X).
-\]
+for any \(X\) formed beneath the binder \(z\).
 
 The primary semantic judgments are
 \[
@@ -1238,14 +1197,11 @@ Singleton and selection coercions retain concrete resolution derivations.
 Interval coercions retain the comparisons needed to reconstruct the target
 bounds.
 
-The dependent cases suspend their binder premises. An open codomain coercion
-may be composed, transported by store-induced equality, or narrowed before
-the preservation proof supplies an argument location. As specified by
-\ruleref{mem-source}, a suspended member premise pairs an open member-subtyping
-derivation with a closing substitution satisfying its outer context. It is
-interpreted when inversion of pair realization supplies the stored first
-component. The two forms differ because open
-codomain coercions must survive further function subtyping, whereas the member
+The dependent cases suspend their binder premises, as specified by
+\ruleref{cod-source} and \ruleref{mem-source}. The two forms differ because an
+open codomain coercion must survive further function subtyping, and may be
+composed, transported by store-induced equality, or narrowed before the
+preservation proof supplies an argument location, whereas a suspended member
 premise is interpreted immediately after pair-realization inversion.
 
 \begin{lemma}[Constructor inversion for store-induced equality]
@@ -1333,13 +1289,6 @@ subtyping interpretation by its last source rule.
 The rule label in the left margin identifies that rule, and \(\pi_i\) denotes its
 immediate premise derivations in their displayed order in
 \cref{fig:path-typing,fig:subtyping}.
-
-Typed resolution uses realization invariance under store-induced equality;
-subtyping interpretation then uses typed resolution. Member instantiation
-interprets a suspended premise under an extended closing substitution, and
-coercion application invokes it in the pair case. The preservation argument
-instantiates an open codomain coercion after a function application identifies
-the argument location.
 
 Premises beneath a binder cannot be interpreted until a store location is
 available. Let \(\pi_b\) derive \(\Gamma,z:S\vdash t:T\), let
@@ -1466,11 +1415,7 @@ the source interval but contributes no evidence to the resulting coercion.
    \andalso \compilepi{\mathcal R}{\pi_2}=C_2}
   {\compilepi{\mathcal R}{\pi}=\ruleuse{c-bounds}(C_1,C_2)}
 
-The selection cases use the lower or upper coercion already present in the
-realized interval. The dependent cases retain \(\pi_2\) without recursively
-interpreting it. Its closing substitution lacks the bound variable until
-an argument location is known or pair-realization inversion supplies the
-first-component location.
+The dependent cases retain \(\pi_2\) without recursively interpreting it.
 \endgroup
 \caption{Interpretation of all eleven subtyping rules as semantic coercions.}
 \Description{The eleven equations defining subtyping interpretation. The
@@ -1717,8 +1662,6 @@ instantiation. These are all recursive coercion applications.
 \subsection{Semantic subtyping}
 \label{sec:coercion-totality}
 
-The preceding definitions have the following typing properties.
-
 \begin{lemma}[Subtyping interpretation]
 \label{lem:coercion-construction}
 If \(\mathcal R:\rho\realizes_\sigma\Gamma\) and
@@ -1845,8 +1788,8 @@ metatheoretic judgments over the run-time syntax.
 \begin{minipage}[t]{0.43\linewidth}
 \typicallabel{kont-hole}
 \infrule[\ruledef{kont-hole}]
-  {\sigma\vdash S\coerce T}
-  {\sigma\vdash[\,]:S\Rightarrow T}
+  {}
+  {\sigma\vdash[\,]:T\Rightarrow T}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.55\linewidth}
 \typicallabel{kont-let}
@@ -1879,8 +1822,8 @@ continuation-typing rules, and the configuration-typing rule.}
 The two pair-value rules begin from the types assigned by the corresponding
 source pair rules. In \ruleref{term-let}, \(U\) is independent of the let
 binder. Continuations are typed as transformations from the type of the
-current term to the final result type. The empty-continuation rule permits a
-coercion, absorbing subsumption at the boundary of the machine stack.
+current term to the final result type; the empty continuation is the
+identity transformation.
 
 For \(c=\langle\sigma,K,t\rangle\), write \(\vdash c:T\) for configuration
 typing in \cref{fig:configuration-typing}.
@@ -1936,17 +1879,8 @@ extends that substitution by \(z\mapsto y\); applying
 \cref{lem:semantic-typing} to the suspended derivation proves the result.
 
 For the empty context and store, \cref{lem:semantic-typing}, together with
-\ruleref{kont-hole} at reflexivity and \ruleref{cfg-state}, gives
+\ruleref{kont-hole} and \ruleref{cfg-state}, gives
 \(\vdash\mathsf{initial}(t):T\) from \(\ctxempty\vdash t:T\).
-
-This interpretation connects the semantic coercions to preservation. Source
-subsumption becomes the final coercion in syntax-directed machine typing.
-Elimination cases apply that coercion to obtain the realization required for
-inversion, such as \ruleref{loc-fun} in the application case. Allocation
-constructs a realization at the type assigned by the syntax-directed value
-rule and then applies the final coercion. Body and codomain premises are instantiated after a
-reduction identifies their bound location; a member premise is instantiated
-during coercion application after pair-realization inversion.
 
 \subsection{Progress}
 
@@ -1980,7 +1914,11 @@ semantic and machine-typing judgments over \(\sigma\) remain valid over
 \end{lemma}
 
 The named presentation chooses globally fresh locations, so weakening into
-the extended store leaves existing names unchanged.
+the extended store leaves existing names unchanged. In the intrinsically
+scoped mechanization, allocation renames every location, including those in
+the result type: the Lean preservation theorems return typing at a weakened
+copy of \(T\) (the relation \texttt{Ty.Extends}), which the named
+presentation renders invisible.
 
 \begin{theorem}[One-step preservation]
 \label{thm:preservation}
@@ -2081,9 +2019,37 @@ capture-avoiding substitution and globally fresh locations. Member signatures
 are also indexed by their sort, so a term member cannot receive an interval
 signature and a type member cannot receive a proper-type signature.
 
-The formalized results cover the complete calculus and machine, typed path
-resolution, subtyping interpretation, coercion application, machine typing,
-progress, preservation, and \cref{thm:safety}.
+The named presentation and the Lean development correspond as follows.
+\begin{center}
+\small
+\begin{tabular}{ll}
+\toprule
+Paper & Lean\\
+\midrule
+closing substitution \(\rho\) & \texttt{Valuation}\\
+context satisfaction \(\rho\realizes_\sigma\Gamma\) & \texttt{Environment}\\
+realization \(\sigma\realizes r:\tau\) &
+  \texttt{Store.Possible}, \texttt{Path.Referent.Realizes}\\
+coercions and suspended premises &
+  \texttt{Coercion}, \texttt{DeferredCoercion},\\
+& \texttt{MemberClosure}, \texttt{BodyClosure}\\
+typed resolution (\cref{lem:typed-resolution}) & \texttt{Path.Ty.resolve}\\
+subtyping interpretation (\cref{lem:coercion-construction}) &
+  \texttt{Tau.Sub.compile}\\
+coercion application (\cref{lem:coercion-action}) &
+  \texttt{Coercion.action}\\
+allocation rank and \(|C|\) & \texttt{stratum}, \texttt{treeSize}\\
+machine typing (\cref{fig:machine-typing}) &
+  \texttt{ValueEvidence}, \texttt{TermEvidence}, \texttt{State.Evidence}\\
+\cref{thm:progress} & \texttt{State.Evidence.progress}\\
+\cref{thm:preservation} &
+  \texttt{State.Evidence.preservation} (via \texttt{Ty.Extends})\\
+\cref{thm:safety} & \texttt{Tm.Ty.closed\_type\_safety}\\
+\bottomrule
+\end{tabular}
+\end{center}
+Two rule names differ: \ruleref{s-alias} is the constructor \texttt{symm},
+and \ruleref{c-eq} is \texttt{runtime}.
 
 \subsection{Examples}
 
@@ -2187,31 +2153,21 @@ and interval subtyping.
 
 Work on GADT reasoning in Scala and cDOT studies equality and subtyping
 constraints recovered by pattern matching
-\citep{parreaux2019gadt,boruchgruszecki2022cdot}. Those calculi address
-features absent from \lambdap{}, but they reinforce the importance of
-tracking the evidence behind path-dependent type refinement. Type-preserving
-translations from class-based calculi to DOT address the complementary
-question of connecting a source language to a sound path-dependent core
-\citep{martres2023compilation}.
+\citep{parreaux2019gadt,boruchgruszecki2022cdot}, and type-preserving
+translations from class-based calculi to DOT connect a source language to a
+sound path-dependent core \citep{martres2023compilation}. Both address
+features absent from \lambdap{}.
 
 \section{Conclusion}
 
 The dependent-pair covariance rule is sound when its member premise remains
 available until inversion of a concrete pair realization supplies the
-first-component location.
-Store-indexed semantic coercions provide the required proof object. They
-compose along transitivity, retain the resolution derivations and lower- or
-upper-bound coercions needed by singleton and selection rules, and transform realizations of referents
-without extending the program syntax. Pair coercion application instantiates
-its suspended member premise at the stored component and terminates by
-descending in the allocation-order rank.
-
-This construction proves progress and preservation for \lambdap{} with
-arbitrary paths, abstract type members with interval signatures, an explicit
-transitivity rule, and covariance of both pair components. The proof relies on
-typed resolution, realization at referents, derivation-directed subtyping
-interpretation, and syntax-directed machine typing with final coercions at
-the typing boundary.
+first-component location. Store-indexed semantic coercions provide the
+required proof object, and the allocation order of the immutable store makes
+their application well founded. This construction proves progress and
+preservation for \lambdap{} with arbitrary paths, abstract type members with
+interval signatures, an explicit transitivity rule, and covariance of both
+pair components.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../references}
