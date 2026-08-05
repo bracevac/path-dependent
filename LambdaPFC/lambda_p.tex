@@ -803,18 +803,19 @@ syntax-directed machine invariant for progress and preservation
 
 Path resolution may end at a location or at a stored type definition. We
 write \(p\equiv_\sigma q\) for the least equivalence containing every pair
-of paths that resolve to the same referent and closed under substitution into
-paths. Store-induced signature equality
-\(\tau\simeq_\sigma\tau'\) is the least sort-preserving equivalence generated
+of paths that resolve to the same referent and closed under first projection
+and member selection. Store-induced signature equality
+\(\tau\simeq_\sigma\tau'\) is the least sort-preserving congruence generated
 by replacement of store-equal paths:
 \[
   p\equiv_\sigma q
   \quad\Longrightarrow\quad
   \subst{\tau_0}{p}{z}\simeq_\sigma\subst{\tau_0}{q}{z}.
 \]
-The analogous substitution rule makes path equality a congruence. Both
-substitutions replace every free occurrence of \(z\), alpha-renaming an
-intervening binder when necessary.
+Replacement substitutes every free occurrence of \(z\), alpha-renaming an
+intervening binder when necessary. Symmetry of \(\simeq_\sigma\) is
+admissible because \(\equiv_\sigma\) is symmetric; transitivity is not part
+of the relation and enters the proof only through coercion composition.
 
 Beneath a binder \(z\), the scoped path relation
 \(\equiv_{\sigma;z}\) is the least path congruence containing
@@ -909,6 +910,7 @@ the paths occurring in a signature and is used solely in the metatheory.
 \rulesetup
 
 \begin{figure}[H]
+\setlength{\afterruleskip}{1.7em plus 0.2em minus 0.1em}
 \noindent
 \begin{minipage}[t]{0.48\linewidth}
 \plateheader{Store-induced path equality}{p\equiv_\sigma q}
@@ -932,9 +934,13 @@ the paths occurring in a signature and is used solely in the metatheory.
    \sigma\vdash q\resolve r}
   {p\equiv_\sigma q}
 
-\infrule[\ruledef{peq-cong}]
+\infrule[\ruledef{peq-fst}]
   {p\equiv_\sigma q}
-  {\subst{p_0}{p}{z}\equiv_\sigma\subst{p_0}{q}{z}}
+  {p.1\equiv_\sigma q.1}
+
+\infrule[\ruledef{peq-sel}]
+  {p\equiv_\sigma q}
+  {p.a\equiv_\sigma q.a}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.50\linewidth}
 \plateheader{Store-induced signature equality}{\tau\simeq_\sigma\tau'}
@@ -942,41 +948,38 @@ the paths occurring in a signature and is used solely in the metatheory.
 \infax[\ruledef{seq-refl}]
   {\tau\simeq_\sigma\tau}
 
-\infrule[\ruledef{seq-symm}]
-  {\tau\simeq_\sigma\tau'}
-  {\tau'\simeq_\sigma\tau}
-
-\infrule[\ruledef{seq-trans}]
-  {\tau_1\simeq_\sigma\tau_2
-   \andalso
-   \tau_2\simeq_\sigma\tau_3}
-  {\tau_1\simeq_\sigma\tau_3}
-
 \infrule[\ruledef{seq-replace}]
   {p\equiv_\sigma q}
   {\subst{\tau_0}{p}{z}\simeq_\sigma
    \subst{\tau_0}{q}{z}}
-\end{minipage}\par
-\begin{minipage}[t]{0.48\linewidth}
-\plateheader{Context satisfaction}{\rho\realizes_\sigma\Gamma}
-\typicallabel{env}
-\infrule[\ruledef{env}]
-  {\forall x\in\mathsf{dom}(\Gamma).\;
-   \sigma\realizes\rho(x):\rho(\Gamma(x))}
-  {\rho\realizes_\sigma\Gamma}
 
-\end{minipage}\hfill
-\begin{minipage}[t]{0.50\linewidth}
-\plateheader{Suspended body typing}
-  {\bodycl{\sigma}{z}{S}{t}{T}}
-\typicallabel{body-source}
-\infrule[\ruledef{body-source}]
-  {\mathcal R:\rho\realizes_{\sigma}\Gamma
+\infrule[\ruledef{seq-fun}]
+  {S\simeq_\sigma S'
    \andalso
-   \Gamma,z:S\vdash t:T}
-  {\bodycl{\sigma}{z}{\rho(S)}{\rho(t)}{\rho(T)}}
+   T\simeq_{\sigma;z}T'}
+  {(z:S)\to T\simeq_\sigma(z:S')\to T'}
 
-\end{minipage}
+\infrule[\ruledef{seq-pair}]
+  {S\simeq_\sigma S'
+   \andalso
+   \tau\simeq_{\sigma;z}\tau'}
+  {\pairty{z}{S}{a}{\tau}\simeq_\sigma
+   \pairty{z}{S'}{a}{\tau'}}
+
+\infrule[\ruledef{seq-single}]
+  {p\equiv_\sigma q}
+  {\sing p\simeq_\sigma\sing q}
+
+\infrule[\ruledef{seq-sel}]
+  {p\equiv_\sigma q}
+  {p.A\simeq_\sigma q.A}
+
+\infrule[\ruledef{seq-intv}]
+  {S_1\simeq_\sigma S_2
+   \andalso
+   T_1\simeq_\sigma T_2}
+  {S_1..T_1\simeq_\sigma S_2..T_2}
+\end{minipage}\par
 
 \plateheader{Referent realization}{\sigma\realizes r:\tau}
 \noindent
@@ -1033,11 +1036,10 @@ the paths occurring in a signature and is used solely in the metatheory.
    \sigma\realizes x:T}
   {\sigma\realizes x:p.A}
 \end{minipage}
-\caption{Store-indexed judgments (part 1): path and signature equality,
-context satisfaction, suspended body typing, and realization.}
-\Description{All five path-equality rules, all four signature-equality rules,
-the context rule, the suspended-body rule, both referent rules, and all five
-location-realization rules.}
+\caption{Store-indexed judgments (part 1): path and signature equality and
+realization.}
+\Description{All six path-equality rules, all seven signature-equality rules,
+both referent rules, and all five location-realization rules.}
 \label{fig:runtime-eq}
 \label{fig:semantic-judgments}
 \end{figure}
@@ -1045,7 +1047,29 @@ location-realization rules.}
 \clearpage
 \begin{figure}[H]
 \ContinuedFloat
-\setlength{\afterruleskip}{1.55em plus 0.15em minus 0.1em}
+\setlength{\afterruleskip}{0.9em plus 0.15em minus 0.1em}
+\noindent
+\begin{minipage}[t]{0.48\linewidth}
+\plateheader{Context satisfaction}{\rho\realizes_\sigma\Gamma}
+\typicallabel{env}
+\infrule[\ruledef{env}]
+  {\forall x\in\mathsf{dom}(\Gamma).\;
+   \sigma\realizes\rho(x):\rho(\Gamma(x))}
+  {\rho\realizes_\sigma\Gamma}
+
+\end{minipage}\hfill
+\begin{minipage}[t]{0.50\linewidth}
+\plateheader{Suspended body typing}
+  {\bodycl{\sigma}{z}{S}{t}{T}}
+\typicallabel{body-source}
+\infrule[\ruledef{body-source}]
+  {\mathcal R:\rho\realizes_{\sigma}\Gamma
+   \andalso
+   \Gamma,z:S\vdash t:T}
+  {\bodycl{\sigma}{z}{\rho(S)}{\rho(t)}{\rho(T)}}
+
+\end{minipage}
+
 \plateheader{Suspended member premise}
   {\membercl{\sigma}{z}{S}{\tau}{\tau'}}
 \typicallabel{mem-source}
@@ -1162,10 +1186,10 @@ location-realization rules.}
    \Gamma,z:S\vdash T<:T'}
   {\sigma;z:\rho(S)\vdash\rho(T)\coerce\rho(T')}
 \end{minipage}
-\caption{Store-indexed judgments (part 2): suspended member premises,
-semantic coercions, and open codomain coercions.}
-\Description{The suspended-member rule, all twelve semantic-coercion rules,
-and all five open-codomain rules.}
+\caption{Store-indexed judgments (part 2): context satisfaction, suspended
+premises, semantic coercions, and open codomain coercions.}
+\Description{The context rule, the suspended-body rule, the suspended-member
+rule, all twelve semantic-coercion rules, and all five open-codomain rules.}
 \end{figure}
 
 \endgroup
@@ -1238,9 +1262,7 @@ proper type is never equal to an interval.
 
 The proof is induction on signature equality. Replacement preserves the
 outer constructor by induction on the signature \(\tau_0\) in the replacement
-rule. In the
-transitivity case, both induction hypotheses identify the constructor of the
-intermediate signature, and their component equalities compose.
+rule; the congruence cases are immediate.
 
 \begin{lemma}[Realization invariance]
 \label{lem:conversion-transport}

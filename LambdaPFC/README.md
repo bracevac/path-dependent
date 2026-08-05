@@ -55,15 +55,13 @@ the final result type through `Ty.Extends`.
 - `Syntax.lean`, `Context.lean`, and `Typing.lean`: source calculus.
 - `Runtime.lean` and `StoreStratification.lean`: stores, path resolution, the
   CK machine, and the allocation-order lemmas used by coercion action.
-- `StaticMetatheory.lean`: scoped renaming for the static judgments.
 - `RuntimeEquality.lean` and `Valuation.lean`: runtime path equality,
   conversion, and binder-aware valuations.
 - `SemanticEvidence.lean`, `SemanticAction.lean`, and
   `SemanticTyping.lean`: finite coercions, their interpretation, and the
   runtime invariant.
-- `SemanticWeakening.lean`, `SemanticTypingWeakening.lean`,
-  `SemanticClosure.lean`, and `SemanticAllocation.lean`: binder instantiation
-  and store extension.
+- `SemanticWeakening.lean`, `SemanticTypingWeakening.lean`, and
+  `SemanticAllocation.lean`: binder instantiation and store extension.
 - `SemanticFundamental.lean`, `SemanticProgress.lean`,
   `SemanticPreservation.lean`, and `SemanticSafety.lean`: the fundamental
   theorem and type safety.
