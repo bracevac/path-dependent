@@ -13,12 +13,6 @@ abbrev Valuation (n m : Nat) : Type := FinFun n m
 
 namespace Valuation
 
-def id : Valuation n n := FinFun.id
-
-/-- Diagrammatic composition: first `rho`, then `theta`. -/
-def comp (rho : Valuation n m) (theta : Valuation m l) : Valuation n l :=
-  FinFun.comp rho theta
-
 /-- Extend a valuation by mapping the newest source variable to `y`. -/
 def snoc (rho : Valuation n m) (y : Fin m) : Valuation (n + 1) m :=
   Fin.cases y rho
@@ -26,12 +20,6 @@ def snoc (rho : Valuation n m) (y : Fin m) : Valuation (n + 1) m :=
 /-- Weaken every target location into a freshly extended target scope. -/
 def weaken (rho : Valuation n m) : Valuation n (m + 1) :=
   rho.comp FinFun.weaken
-
-@[simp] theorem id_apply (x : Fin n) : id x = x := rfl
-
-@[simp] theorem comp_apply
-    (rho : Valuation n m) (theta : Valuation m l) (x : Fin n) :
-    rho.comp theta x = theta (rho x) := rfl
 
 @[simp] theorem snoc_zero (rho : Valuation n m) (y : Fin m) :
     rho.snoc y 0 = y := rfl
@@ -45,8 +33,7 @@ def weaken (rho : Valuation n m) : Valuation n (m + 1) :=
 runtime argument. -/
 theorem ext_comp_openAt (rho : Valuation n m) (y : Fin m) :
     rho.ext.comp (FinFun.openAt y) = rho.snoc y := by
-  apply FinFun.funext
-  intro x
+  funext x
   refine Fin.cases ?_ (fun i => ?_) x <;> rfl
 
 end Valuation

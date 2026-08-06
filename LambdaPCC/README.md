@@ -19,9 +19,6 @@ The development proves:
 
 - deterministic resolution of paths to locations, shape-type definitions,
   or capture-set definitions;
-- context-respecting renaming and weakening for all static judgments;
-- preservation of type- and capture-set-interval consistency by member
-  subtyping;
 - a source typing interpretation that preserves use sets;
 - progress, one-step preservation, and finite preservation for
   the runtime typing invariant;
@@ -53,7 +50,6 @@ member.
 
 - `Syntax.lean`, `Context.lean`, and `Typing.lean`: source syntax, capture
   sets, static judgments, and term use sets.
-- `StaticMetatheory.lean`: renaming and weakening of the static semantics.
 - `Runtime.lean` and `StoreStratification.lean`: stores, generalized path
   resolution, the CK machine, and allocation-order lemmas.
 - `RuntimeEquality.lean` and `Valuation.lean`: runtime path equality,

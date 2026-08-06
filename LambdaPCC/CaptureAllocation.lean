@@ -29,15 +29,9 @@ def Value.toExact
     (value : Value world v T Q) : ExactValue sigma v Q := by
   cases value with
   | abs body suffix => exact .abs body.toExact
-  | @pair y z a captureSet suffix =>
-      subst Q
-      exact .pair
-  | @typePair y a W captureSet suffix =>
-      subst Q
-      exact .typePair
-  | @capturePair y a W captureSet suffix =>
-      subst Q
-      exact .capturePair
+  | pair suffix => exact .pair
+  | typePair suffix => exact .typePair
+  | capturePair suffix => exact .capturePair
 
 /-! ## Valid store entries -/
 
@@ -93,18 +87,16 @@ noncomputable def Value.atLookup
   | abs body suffix =>
       apply suffix.actionLocation
       exact .fun lookup body .refl .refl .refl
-  | pair captureSet suffix =>
+  | pair suffix =>
       rename_i a y z
-      cases captureSet
       apply suffix.actionLocation
       let first := (valid.entry y).singletonLocation
       let second := (valid.entry z).singletonLocation
       apply LocationEvidence.pair lookup first
       · simpa only [Tau.weaken_open] using Realizes.loc second
       · exact .refl
-  | typePair captureSet suffix =>
+  | typePair suffix =>
       rename_i a y W
-      cases captureSet
       apply suffix.actionLocation
       apply LocationEvidence.pair lookup (valid.entry y).singletonLocation
       · change Realizes world (.type W)
@@ -114,9 +106,8 @@ noncomputable def Value.atLookup
             (ShapeCoercion.refl (world := world) (S := W))
             (ShapeCoercion.refl (world := world) (S := W))
       · exact .refl
-  | capturePair captureSet suffix =>
+  | capturePair suffix =>
       rename_i a y W
-      cases captureSet
       apply suffix.actionLocation
       apply LocationEvidence.pair lookup (valid.entry y).singletonLocation
       · change Realizes world (.capture W)
@@ -152,9 +143,7 @@ noncomputable def ContEvidence.weaken
       (valid.extend value (exact := value.toExact) (vv := vv))
       S.weaken E.weaken cont.weaken T.weaken C.weaken := by
   induction continuation with
-  | hole suffix coverage =>
-      exact .hole (suffix.weaken value.toExact vv)
-        (coverage.weaken value.toExact vv)
+  | hole => exact .hole
   | cons tail body suffix current bodyCoverage ih =>
       apply ContEvidence.cons ih
       · simpa only [← Ty.weaken_rename,
@@ -167,8 +156,7 @@ noncomputable def ContEvidence.weaken
 private theorem FinFun.capture_weaken_ext_comp_openAt_zero {n : Nat} :
     (FinFun.weaken (n := n)).ext.comp
       (FinFun.openAt (0 : Fin (n + 1))) = FinFun.id := by
-  apply FinFun.funext
-  intro x
+  funext x
   refine Fin.cases ?_ (fun _ => ?_) x <;> rfl
 
 /-- Allocate a value consumed by a let frame and instantiate the suspended

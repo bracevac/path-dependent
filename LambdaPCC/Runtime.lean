@@ -243,20 +243,4 @@ theorem State.Progress.value
   | nil => exact .final (.value vv)
   | cons body k => exact .step (.allocate vv)
 
-theorem State.Progress.path
-    (hr : Path.Resolve p sigma (.loc x)) (hvar : Not p.IsVar) :
-    State.Progress (State.mk sigma k (.path p)) :=
-  .step (.path hr hvar)
-
-theorem State.Progress.app
-    (hp : Path.Resolve p sigma (.loc f))
-    (hq : Path.Resolve q sigma (.loc y))
-    (hfun : Store.Binds sigma f (.abs A body)) :
-    State.Progress (State.mk sigma k (.app p q)) :=
-  .step (.app hp hq hfun)
-
-theorem State.Progress.let_term :
-    State.Progress (State.mk sigma k (.let s body)) :=
-  .step .let_push
-
 end LambdaPCC

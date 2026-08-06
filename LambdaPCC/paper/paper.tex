@@ -851,8 +851,7 @@ term.
 
 The store equates paths that resolve to the same referent.  We write
 \(p\equiv_\sigma q\) for the least equivalence and path congruence generated
-by co-resolution.  In \ruleref{peq-cong}, \(p_0\) is formed under one
-additional variable \(x\).
+by co-resolution.
 
 \begin{figure}[H]
 \begingroup
@@ -878,9 +877,13 @@ additional variable \(x\).
    \sigma\vdash q\resolve r}
   {p\equiv_\sigma q}
 
-\infrule[\ruledef{peq-cong}]
+\infrule[\ruledef{peq-fst}]
   {p\equiv_\sigma q}
-  {\subst{p_0}{p}{x}\equiv_\sigma\subst{p_0}{q}{x}}
+  {p.1\equiv_\sigma q.1}
+
+\infrule[\ruledef{peq-sel}]
+  {p\equiv_\sigma q}
+  {p.a\equiv_\sigma q.a}
 \end{minipage}
 \endgroup
 \caption{Store-induced equality of paths.}
@@ -889,16 +892,18 @@ additional variable \(x\).
 \end{figure}
 
 Runtime conversion \(X\simeq_\sigma Y\) is defined for capture sets,
-types, shape types, and member signatures. For each category it is the
-least reflexive, symmetric, transitive, constructor-compatible relation
-containing
+types, shape types, and member signatures. For each category it is generated
+inductively by reflexivity, replacement, and congruence for every constructor.
+Replacement has the schema
 \[
   \frac{p\equiv_\sigma q}
        {\subst{X}{p}{x}\simeq_\sigma\subst{X}{q}{x}}.
 \]
-Conversion preserves the outer constructor and the form of a member signature. Beneath a
-binder, ambient equalities are weakened and the bound variable is related
-only to itself; we write the resulting conversion as
+Reverse replacements use symmetry of path equality; sequences of conversions
+are composed by the semantic coercion judgments below. Conversion preserves
+the outer constructor and the form of a member signature. Beneath a binder,
+ambient equalities are weakened and the bound variable is related only to
+itself; we write the resulting conversion as
 \(X\simeq^x_\sigma Y\).  Opening it with runtime-equal paths yields ordinary
 conversion.
 
@@ -1681,11 +1686,8 @@ set \(D\) produces final type \(T\) with use set \(C\).
  {\Omega;\sigma\vdash k:(U,D)\Rightarrow(T,C)}
 \noindent
 \begin{minipage}[t]{0.39\linewidth}
-\infrule[\ruledef{ke-hole}]
-  {\Omega;\sigma\vdash U\tcoerce T
-   \\
-   \Omega;\sigma\vdash D\semleq C}
-  {\Omega;\sigma\vdash[\,]:(U,D)\Rightarrow(T,C)}
+\infax[\ruledef{ke-hole}]
+  {\Omega;\sigma\vdash[\,]:(T,C)\Rightarrow(T,C)}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.58\linewidth}
 \infrule[\ruledef{ke-cons}]
@@ -1933,11 +1935,12 @@ capture set of \(v\) and
 \]
 \end{theorem}
 
-For a direct value, the conclusion follows from value typing and the type
-coercion retained by the empty continuation. For a returned location,
-annotated store typing supplies the value and its assigned capture set;
-\ruleref{cap-fold} and the type coercions retained by path and continuation
-typing relate that set to \(C'\).
+For a direct value, inversion of the empty continuation identifies the
+runtime value's indices with the final type and capture set, after which the
+conclusion follows from value typing. For a returned location, annotated
+store typing supplies the value and its assigned capture set;
+\ruleref{cap-fold} and the coercion retained by path typing relate that set
+to \(C'\).
 
 Type safety, application coverage, and the returned-value capture-set bound have
 distinct conclusions. Type safety rules out stuck states. Application
