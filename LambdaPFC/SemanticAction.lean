@@ -20,7 +20,7 @@ mutual
 noncomputable def Store.Possible.convertCongruent
     {m : Nat} {sigma : Store m} {x : Fin m} {S T : Ty m} :
     Store.Possible sigma x S ->
-      Ty.RuntimeCongruent (Path.RuntimeEq sigma) S T ->
+      Tau.RuntimeCongruent (Path.RuntimeEq sigma) (.ty S) (.ty T) ->
       Store.Possible sigma x T
 | .top, .top => .top
 | .fun binding body input output, .fun domain codomain =>
@@ -49,19 +49,20 @@ noncomputable def Store.Possible.convertCongruent
 realization. -/
 noncomputable def Path.Referent.Realizes.convertCongruent
     {m : Nat} {k : Kind} {sigma : Store m}
-    {referent : Path.Referent m} {d1 d2 : Tau m k} :
-    Path.Referent.Realizes sigma referent d1 ->
-      Tau.RuntimeCongruent (Path.RuntimeEq sigma) d1 d2 ->
-      Path.Referent.Realizes sigma referent d2
-| .loc possible, .proper types =>
-    .loc (Store.Possible.convertCongruent possible types)
-| .type lower upper, .interval lowerConversion upperConversion =>
-    let operations := Path.RuntimeEq.eqCongruence sigma
-    .type
-      (.trans
-        (.runtime ((lowerConversion.symm operations).toRuntimeConv))
-        lower)
-      (.trans upper (.runtime upperConversion.toRuntimeConv))
+    {referent : Path.Referent m} {d1 d2 : Tau m k}
+    (realizes : Path.Referent.Realizes sigma referent d1)
+    (congruent : Tau.RuntimeCongruent (Path.RuntimeEq sigma) d1 d2) :
+    Path.Referent.Realizes sigma referent d2 :=
+  match d2, realizes, congruent with
+  | .ty _, .loc possible, types =>
+      .loc (Store.Possible.convertCongruent possible types)
+  | .intv _ _, .type lower upper, .interval lowerConversion upperConversion =>
+      let operations := Path.RuntimeEq.eqCongruence sigma
+      .type
+        (.trans
+          (.runtime ((lowerConversion.symm operations).toRuntimeConv))
+          lower)
+        (.trans upper (.runtime upperConversion.toRuntimeConv))
 
 end
 
@@ -119,7 +120,7 @@ noncomputable def Path.Ty.resolve
               have paths :
                   Path.RuntimeEq sigma (.var y)
                     ((receiverPath.rename rho).fst) :=
-                .ofResolve .var firstResolution
+                .coresolve .var firstResolution
               have converted := member.convert
                 (Tau.RuntimeConv.replace (dependent.rename rho.ext) paths)
               have converted' :
@@ -329,12 +330,8 @@ noncomputable def DeferredCoercion.instantiate
       (Path.RuntimeEq.eqCongruence sigma) (.var x))
 | .narrow domain deferred, argument =>
     deferred.instantiate (domain.actionPossible argument)
-| @DeferredCoercion.source n m Gamma rho sigma A B C
-      environment code, argument => by
-    have extended := Environment.snoc environment argument
-    have compiled := Tau.Sub.compile extended code
-    simpa only [← Ty.rename_openAt_eq_open_var,
-      Ty.rename_ext_openAt] using compiled
+| .source environment code, argument =>
+    (MemberClosure.source environment code).instantiate argument
 
 end
 end LambdaPFC

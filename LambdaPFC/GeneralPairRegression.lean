@@ -1,5 +1,4 @@
 import LambdaPFC.SemanticSafety
-import LambdaPFC.StaticMetatheory
 
 /-!
 Regressions for unrestricted dependent-pair covariance.
@@ -53,16 +52,21 @@ def term : Tm 0 :=
     (.abs .Top (.path (.var 0)))
     (.pair 0 label (.type (.Single (.var 0))))
 
-private def intervalSourceWf :
-    Tau.Wf Ctx.nil (.ty intervalSource) :=
+/- The helper derivations below are context-generic: the derivations are
+   identical in any context, so weakening the closed statements is a matter
+   of definitional reduction rather than a renaming lemma. -/
+
+private def intervalSourceWf {n} {Gamma : Ctx n} :
+    Tau.Wf Gamma (.ty (.Pair .Top label
+      (.intv (.Single (.var 0)) (.Single (.var 0))))) :=
   .pair .top
     (.bounds_wf
       (.path .var)
       (.path .var)
       .refl)
 
-private def intervalTargetWf :
-    Tau.Wf Ctx.nil (.ty intervalTarget) :=
+private def intervalTargetWf {n} {Gamma : Ctx n} :
+    Tau.Wf Gamma (.ty (.Pair .Top label (.intv .Bot .Top))) :=
   .pair .top (.bounds_wf .bot .top .bot)
 
 private def boundTyping :
@@ -91,17 +95,16 @@ private def sourceTyping :
   .sub
     (.tpair (.path .var))
     exactToIntervalSource
-    intervalSourceWf.weaken
+    intervalSourceWf
 
 private def bodyTyping :
     Tm.Ty (Ctx.nil.snoc .Top)
       (.pair 0 label (.type (.Single (.var 0))))
       intervalTarget.weaken :=
-  .sub sourceTyping interval_subtyping.weaken intervalTargetWf.weaken
+  .sub sourceTyping (.pair .refl (.bounds .bot .top .refl)) intervalTargetWf
 
-def term_typing : Tm.Ty Ctx.nil term intervalTarget := by
-  unfold term
-  exact .let boundTyping intervalTargetWf bodyTyping
+def term_typing : Tm.Ty Ctx.nil term intervalTarget :=
+  .let boundTyping intervalTargetWf bodyTyping
 
 theorem term_type_safety
     {n : Nat} {target : State n}

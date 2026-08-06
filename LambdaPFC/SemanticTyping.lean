@@ -74,9 +74,9 @@ def ValueEvidence.cast
     (suffix : Coercion sigma (.ty S) (.ty T)) :
     ValueEvidence sigma v T :=
   match evidence with
-  | .abs body old => .abs body (old.comp suffix)
-  | .pair old => .pair (old.comp suffix)
-  | .tpair old => .tpair (old.comp suffix)
+  | .abs body old => .abs body (old.trans suffix)
+  | .pair old => .pair (old.trans suffix)
+  | .tpair old => .tpair (old.trans suffix)
 
 /-- Compose a further coercion with the suffix at a term constructor. -/
 def TermEvidence.cast
@@ -84,11 +84,11 @@ def TermEvidence.cast
     (suffix : Coercion sigma (.ty S) (.ty T)) :
     TermEvidence sigma t T :=
   match evidence with
-  | .path resolution old => .path resolution (old.comp suffix)
+  | .path resolution old => .path resolution (old.trans suffix)
   | .value valueEvidence => .value (valueEvidence.cast suffix)
   | .app function argument old =>
-      .app function argument (old.comp suffix)
-  | .let bound body old => .let bound body (old.comp suffix)
+      .app function argument (old.trans suffix)
+  | .let bound body old => .let bound body (old.trans suffix)
 
 /-! ## Syntax-directed views -/
 
@@ -155,9 +155,8 @@ theorem TermEvidence.nonemptyValueView
 inductive Tm.Cont.Evidence :
     {n : Nat} -> Store n -> LambdaPFC.Ty n -> Tm.Cont n ->
       LambdaPFC.Ty n -> Type 1 where
-| hole {n : Nat} {sigma : Store n} {S T : LambdaPFC.Ty n} :
-    Coercion sigma (.ty S) (.ty T) ->
-    Tm.Cont.Evidence sigma S [] T
+| hole {n : Nat} {sigma : Store n} {T : LambdaPFC.Ty n} :
+    Tm.Cont.Evidence sigma T [] T
 | cons {n : Nat} {sigma : Store n} {S U V T : LambdaPFC.Ty n}
     {body : Tm (n + 1)} {cont : Tm.Cont n} :
     Tm.Cont.Evidence sigma U cont T ->

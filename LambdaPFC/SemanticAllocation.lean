@@ -1,4 +1,4 @@
-import LambdaPFC.SemanticClosure
+import LambdaPFC.SemanticFundamental
 import LambdaPFC.SemanticTypingWeakening
 import LambdaPFC.SemanticAction
 
@@ -50,8 +50,7 @@ noncomputable def ValueEvidence.freshPossible
 private theorem FinFun.weaken_ext_comp_openAt_zero {n : Nat} :
     (FinFun.weaken (n := n)).ext.comp
       (FinFun.openAt (0 : Fin (n + 1))) = FinFun.id := by
-  apply FinFun.funext
-  intro x
+  funext x
   refine Fin.cases ?_ (fun _ => ?_) x <;> rfl
 
 /-- Allocate an argument value and interpret a body closure with its formal

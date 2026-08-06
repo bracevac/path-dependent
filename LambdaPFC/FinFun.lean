@@ -1,5 +1,3 @@
-import Init.Data.Fin.Lemmas
-
 /-!
 Finite renamings for the intrinsically scoped `lambda_p` development.
 -/
@@ -44,26 +42,20 @@ def ext (f : FinFun n m) : FinFun (n + 1) (m + 1) :=
 
 @[simp] theorem ext_succ (f : FinFun n m) (i : Fin n) : f.ext i.succ = (f i).succ := rfl
 
-theorem funext {f g : FinFun n m} (h : forall i, f i = g i) : f = g :=
-  _root_.funext h
-
 @[simp] theorem ext_id : (id (n := n)).ext = id := by
-  apply funext
-  intro i
+  funext i
   refine Fin.cases ?_ (fun j => ?_) i <;> rfl
 
 /-- Weakening commutes with lifting a renaming. -/
 theorem comp_weaken {f : FinFun n m} :
     f.comp weaken = weaken.comp f.ext := by
-  apply funext
-  intro i
+  funext i
   rfl
 
 /-- Lifting preserves composition. -/
 theorem ext_comp {f : FinFun n m} {g : FinFun m k} :
     f.ext.comp g.ext = (f.comp g).ext := by
-  apply funext
-  intro i
+  funext i
   refine Fin.cases ?_ (fun j => ?_) i <;> rfl
 
 end FinFun

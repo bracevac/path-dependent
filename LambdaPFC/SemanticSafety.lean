@@ -19,16 +19,9 @@ noncomputable def Tm.Ty.initialEvidence
     {term : Tm 0} {T : LambdaPFC.Ty 0}
     (code : Tm.Ty Ctx.nil term T) :
     State.Evidence (State.initial term) T := by
-  let rho : Valuation 0 0 := Valuation.id
-  have environment : Environment Ctx.nil rho Store.empty :=
-    Environment.empty
-  have interpreted := code.interpret environment
-  have stateEvidence :
-      State.Evidence
-        (State.mk Store.empty [] (term.rename rho)) (T.rename rho) :=
-    .ok (.hole .refl) interpreted
-  simpa only [State.initial, rho, Valuation.id, Tm.rename_id,
-    Ty.rename_id] using stateEvidence
+  simpa only [State.initial, FinFun.id, Tm.rename_id,
+    Ty.rename_id] using
+    State.Evidence.ok .hole (code.interpret Environment.empty)
 
 /-- Semantic preservation iterated over a finite execution. -/
 theorem State.Steps.preservation

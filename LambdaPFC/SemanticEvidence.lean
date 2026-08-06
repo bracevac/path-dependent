@@ -203,7 +203,7 @@ def Environment.lookup
 
 /-- The empty source context has the initial semantic environment. -/
 def Environment.empty :
-    Environment Ctx.nil Valuation.id Store.empty :=
+    Environment Ctx.nil FinFun.id Store.empty :=
   .intro (fun x => Fin.elim0 x)
 
 /-- Extend an environment with a concrete realization of the newest source
@@ -220,12 +220,6 @@ def Environment.snoc
   · simpa [Ctx.lookup, Ty.weaken, Ty.rename_rename] using argument
   · simpa [Ctx.lookup, Ty.weaken, Ty.rename_rename] using
       Environment.lookup environment i
-
-def Coercion.comp
-    (first : Coercion sigma d1 d2)
-    (second : Coercion sigma d2 d3) :
-    Coercion sigma d1 d3 :=
-  .trans first second
 
 end
 end LambdaPFC

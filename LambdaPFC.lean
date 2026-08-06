@@ -2,7 +2,6 @@ import LambdaPFC.FinFun
 import LambdaPFC.Syntax
 import LambdaPFC.Context
 import LambdaPFC.Typing
-import LambdaPFC.StaticMetatheory
 import LambdaPFC.Runtime
 import LambdaPFC.StoreStratification
 import LambdaPFC.RuntimeEquality
@@ -13,7 +12,6 @@ import LambdaPFC.SemanticAction
 import LambdaPFC.SemanticWeakening
 import LambdaPFC.SemanticTypingWeakening
 import LambdaPFC.SemanticFundamental
-import LambdaPFC.SemanticClosure
 import LambdaPFC.SemanticAllocation
 import LambdaPFC.SemanticProgress
 import LambdaPFC.SemanticPreservation
