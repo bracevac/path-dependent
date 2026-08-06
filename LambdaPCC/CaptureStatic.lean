@@ -23,7 +23,7 @@ def Environment.lookup
   | intro lookup => exact lookup x
 
 def Environment.empty :
-    Environment World.empty Ctx.nil Valuation.id :=
+    Environment World.empty Ctx.nil FinFun.id :=
   .intro (fun x => Fin.elim0 x)
 
 /-- Extend an interpreted source context with a realized location. -/
@@ -81,7 +81,7 @@ noncomputable def Path.Ty.resolve
               have paths :
                   Path.RuntimeEq sigma (.var y)
                     ((receiverPath.rename rho).fst) :=
-                .ofResolve .var firstResolution
+                .coresolve .var firstResolution
               have converted := member.convert
                 (Tau.RuntimeConv.replace (dependent.rename rho.ext) paths)
               have converted' :

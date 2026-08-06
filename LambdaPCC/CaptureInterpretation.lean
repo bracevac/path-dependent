@@ -53,7 +53,7 @@ noncomputable def Tm.Ty.interpret
         Tau.rename, CaptureSet.rename, Path.rename,
         ← Path.weaken_rename] using
         TermEvidence.value (valid := valid)
-          (Value.pair (world := world) rfl
+          (Value.pair (world := world)
             (TyCoercion.refl (world := world)))
           (Relation.refl (world := world))
   | type_pair member =>
@@ -61,7 +61,7 @@ noncomputable def Tm.Ty.interpret
         Tau.rename, CaptureSet.rename, Path.rename,
         ← Shape.weaken_rename] using
         TermEvidence.value (valid := valid)
-          (Value.typePair (world := world) rfl
+          (Value.typePair (world := world)
             (TyCoercion.refl (world := world)))
           (Relation.refl (world := world))
   | capture_pair captures =>
@@ -69,7 +69,7 @@ noncomputable def Tm.Ty.interpret
         Tau.rename, CaptureSet.rename, Path.rename,
         ← CaptureSet.weaken_rename] using
         TermEvidence.value (valid := valid)
-          (Value.capturePair (world := world) rfl
+          (Value.capturePair (world := world)
             (TyCoercion.refl (world := world)))
           (Relation.refl (world := world))
   | «let» bound body result captures ihBound ihBody =>

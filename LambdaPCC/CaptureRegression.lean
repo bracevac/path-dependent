@@ -1,5 +1,4 @@
 import LambdaPCC.Typing
-import LambdaPCC.StaticMetatheory
 
 /-!
 Small static regressions for capture-set members, capture-dependent types, and

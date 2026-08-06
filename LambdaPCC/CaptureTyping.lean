@@ -15,18 +15,18 @@ noncomputable section
 
 def Value.isValue : Value world v T Q -> v.IsValue
 | .abs _ _ => .abs
-| .pair _ _ => .pair
-| .typePair _ _ => .pair
-| .capturePair _ _ => .pair
+| .pair _ => .pair
+| .typePair _ => .pair
+| .capturePair _ => .pair
 
 def Value.cast
     (value : Value world v S Q)
     (suffix : TyCoercion world S T) : Value world v T Q :=
   match value with
   | .abs body old => .abs body (old.comp suffix)
-  | .pair exact old => .pair exact (old.comp suffix)
-  | .typePair exact old => .typePair exact (old.comp suffix)
-  | .capturePair exact old => .capturePair exact (old.comp suffix)
+  | .pair old => .pair (old.comp suffix)
+  | .typePair old => .typePair (old.comp suffix)
+  | .capturePair old => .capturePair (old.comp suffix)
 
 /-- Runtime term evidence, indexed jointly by result type and use set.
 Subsumption is retained as a suffix at the outer term constructor. -/
@@ -178,9 +178,8 @@ inductive ContEvidence :
       (valid : World.Valid world) -> Ty n -> CaptureSet n ->
       Tm.Cont n -> Ty n -> CaptureSet n -> Type 1 where
 | hole {n : Nat} {sigma : Store n} {world : World sigma}
-    {valid : World.Valid world} {S T : Ty n} {E C : CaptureSet n} :
-    TyCoercion world S T -> Relation world E C ->
-    ContEvidence valid S E [] T C
+    {valid : World.Valid world} {T : Ty n} {C : CaptureSet n} :
+    ContEvidence valid T C [] T C
 | cons {n : Nat} {sigma : Store n} {world : World sigma}
     {valid : World.Valid world} {S U V T : Ty n}
     {E F D C : CaptureSet n} {body : Tm (n + 1)}
@@ -198,7 +197,7 @@ def ContEvidence.inputCoverage
     (continuation : ContEvidence valid S E cont T C) :
     Relation world E C :=
   match continuation with
-  | .hole _ coverage => coverage
+  | .hole => .refl
   | .cons _ _ _ coverage _ => coverage
 
 /-- Joint machine invariant for a valid capture-aware world. -/

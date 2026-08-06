@@ -16,19 +16,11 @@ noncomputable def Tm.Ty.initialEvidence
     {term : Tm 0} {T : LambdaPCC.Ty 0} {C : CaptureSet 0}
     (code : Tm.Ty Ctx.nil term T C) :
     Cap.StateEvidence Cap.World.Valid.empty (State.initial term) T C := by
-  let rho : Valuation 0 0 := Valuation.id
-  have environment :
-      Cap.Environment Cap.World.empty Ctx.nil rho :=
-    Cap.Environment.empty
-  have interpreted := Cap.Tm.Ty.interpret code environment
-    Cap.World.Valid.empty
-  have stateEvidence :
-      Cap.StateEvidence Cap.World.Valid.empty
-        (State.mk Store.empty [] (term.rename rho))
-        (T.rename rho) (C.rename rho) :=
-    .ok (.hole .refl .refl) interpreted
-  simpa only [State.initial, rho, Valuation.id, Tm.rename_id,
-    Ty.rename_id, CaptureSet.rename_id] using stateEvidence
+  simpa only [State.initial, FinFun.id, Tm.rename_id,
+    Ty.rename_id, CaptureSet.rename_id] using
+    Cap.StateEvidence.ok .hole
+      (Cap.Tm.Ty.interpret code Cap.Environment.empty
+        Cap.World.Valid.empty)
 
 /-- Joint semantic preservation iterated over a heterogeneous finite
 execution. -/

@@ -26,12 +26,8 @@ theorem TermEvidence.progress
       | var =>
           cases resolution
           exact State.Progress.path_var
-      | fst =>
-          exact State.Progress.path resolution
-            (fun isVariable => by cases isVariable)
-      | sel =>
-          exact State.Progress.path resolution
-            (fun isVariable => by cases isVariable)
+      | fst _ | sel _ _ =>
+          exact .step (.path resolution nofun)
   | value value coverage =>
       exact State.Progress.value value.isValue
   | app function argument suffix coverage =>
@@ -41,10 +37,10 @@ theorem TermEvidence.progress
         function.pathLocationAt functionView.resolution
       cases possibleFunction with
       | «fun» lookup body input output captures =>
-          exact State.Progress.app functionView.resolution
-            argumentView.resolution lookup.binds
+          exact .step (.app functionView.resolution
+            argumentView.resolution lookup.binds)
   | «let» bound body suffix coverage =>
-      exact State.Progress.let_term
+      exact .step .let_push
 
 theorem StateEvidence.progress
     (evidence : StateEvidence valid state T C) : State.Progress state := by
@@ -91,7 +87,7 @@ private noncomputable def TermEvidence.beta
       have relocate :
           TyCoercion world (U.open (.var y)) (U.open q) :=
         .runtime (.replace U
-          (.symm (.ofResolve argumentResolution .var)))
+          (.symm (.coresolve argumentResolution .var)))
       have functionUse : Relation world _ Cp :=
         (Relation.fold functionResolution lookup).comp
           function.pathView.coverage
@@ -216,7 +212,7 @@ theorem StateEvidence.preservation
       | ok continuation term =>
           let view := term.pathView
           have paths : Path.RuntimeEq _ (.var _) _ :=
-            .ofResolve .var resolution
+            .coresolve .var resolution
           have back : TyCoercion world
               (.capt (.singleton (.var _)) (.Single (.var _)))
               (.capt (.singleton _) (.Single _)) :=

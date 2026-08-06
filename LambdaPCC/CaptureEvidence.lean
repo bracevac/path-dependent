@@ -338,37 +338,32 @@ inductive Value :
     TyCoercion world (.capt Q (.Fun A B)) T ->
     Value world (.abs A body) T Q
 | pair {n : Nat} {sigma : Store n} {world : Cap.World sigma}
-    {y z : Fin n} {a : Name} {T : Ty n}
-    {Q : CaptureSet n} :
-    Q = .union (.singleton (.var y)) (.singleton (.var z)) ->
+    {y z : Fin n} {a : Name} {T : Ty n} :
     TyCoercion world
-      (.capt Q
+      (.capt (.union (.singleton (.var y)) (.singleton (.var z)))
         (.Pair
           (.capt (.singleton (.var y)) (.Single (.var y))) a
           (.term
             (.capt (.singleton (Path.var z).weaken)
               (.Single (Path.var z).weaken))))) T ->
-    Value world (.pair y a (.val z)) T Q
+    Value world (.pair y a (.val z)) T
+      (.union (.singleton (.var y)) (.singleton (.var z)))
 | typePair {n : Nat} {sigma : Store n} {world : Cap.World sigma}
-    {y : Fin n} {a : Name} {W : Shape n} {T : Ty n}
-    {Q : CaptureSet n} :
-    Q = .singleton (.var y) ->
+    {y : Fin n} {a : Name} {W : Shape n} {T : Ty n} :
     TyCoercion world
-      (.capt Q
+      (.capt (.singleton (.var y))
         (.Pair
           (.capt (.singleton (.var y)) (.Single (.var y))) a
           (.type W.weaken W.weaken))) T ->
-    Value world (.pair y a (.type W)) T Q
+    Value world (.pair y a (.type W)) T (.singleton (.var y))
 | capturePair {n : Nat} {sigma : Store n} {world : Cap.World sigma}
-    {y : Fin n} {a : Name} {W : CaptureSet n} {T : Ty n}
-    {Q : CaptureSet n} :
-    Q = .singleton (.var y) ->
+    {y : Fin n} {a : Name} {W : CaptureSet n} {T : Ty n} :
     TyCoercion world
-      (.capt Q
+      (.capt (.singleton (.var y))
         (.Pair
           (.capt (.singleton (.var y)) (.Single (.var y))) a
           (.capture W.weaken W.weaken))) T ->
-    Value world (.pair y a (.capture W)) T Q
+    Value world (.pair y a (.capture W)) T (.singleton (.var y))
 
 end
 

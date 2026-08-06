@@ -1,5 +1,4 @@
 import LambdaPCC.CaptureSafety
-import LambdaPCC.StaticMetatheory
 
 /-!
 Regression for unrestricted covariance of dependent pairs.
@@ -27,13 +26,30 @@ def target : Ty 0 :=
   .capt .empty
     (.Pair (pureTop 0) label (.type .Bot .Top))
 
-def source_sub_target : Ty.Sub .nil source target :=
+/- The helper derivations are context-polymorphic because their only free
+   variable is the first-component binder introduced by the pair type. -/
+
+private def sourceSubTarget {n : Nat} {Gamma : Ctx n} :
+    Ty.Sub Gamma
+      (.capt .empty
+        (.Pair (pureTop n) label
+          (.type (.Single (.var 0)) (.Single (.var 0)))))
+      (.capt .empty
+        (.Pair (pureTop n) label (.type .Bot .Top))) :=
   .capt .refl (.pair .refl (.type .bot .top .refl))
 
-private def pureTopWf : Ty.Wf .nil (pureTop 0) :=
+def source_sub_target : Ty.Sub .nil source target :=
+  sourceSubTarget
+
+private def pureTopWf {n : Nat} {Gamma : Ctx n} :
+    Ty.Wf Gamma (pureTop n) :=
   .capt .empty .top
 
-private def sourceWf : Ty.Wf .nil source :=
+private def sourceWf {n : Nat} {Gamma : Ctx n} :
+    Ty.Wf Gamma
+      (.capt .empty
+        (.Pair (pureTop n) label
+          (.type (.Single (.var 0)) (.Single (.var 0))))) :=
   .capt .empty
     (.pair pureTopWf
       (.type
@@ -41,7 +57,10 @@ private def sourceWf : Ty.Wf .nil source :=
         (.singleton .var)
         .refl))
 
-private def targetWf : Ty.Wf .nil target :=
+private def targetWf {n : Nat} {Gamma : Ctx n} :
+    Ty.Wf Gamma
+      (.capt .empty
+        (.Pair (pureTop n) label (.type .Bot .Top))) :=
   .capt .empty (.pair pureTopWf (.type .bot .top .bot))
 
 /-! ## A closed program using the rule -/
@@ -52,8 +71,9 @@ def boundResult : Ty 1 :=
 def boundType : Ty 0 :=
   .capt .empty (.Fun (pureTop 0) boundResult)
 
-private def boundResultWf :
-    Ty.Wf (Ctx.nil.snoc (pureTop 0)) boundResult :=
+private def boundResultWf {n : Nat} {Gamma : Ctx n} :
+    Ty.Wf (Gamma.snoc (pureTop n))
+      (.capt (.singleton (.var 0)) (.Single (.var 0))) :=
   .capt (.singleton .var) (.singleton .var)
 
 private def boundBodyTyping :
@@ -72,7 +92,11 @@ private def boundTyping :
       (.abs (pureTop 0) (.path (.var 0))) boundType .empty :=
   .abs boundBodyTyping pureTopWf .empty
 
-private def boundTypeWf : Ty.Wf .nil boundType :=
+private def boundTypeWf {n : Nat} {Gamma : Ctx n} :
+    Ty.Wf Gamma
+      (.capt .empty
+        (.Fun (pureTop n)
+          (.capt (.singleton (.var 0)) (.Single (.var 0))))) :=
   .capt .empty (.fun pureTopWf boundResultWf)
 
 def exactFirst : Ty 1 :=
@@ -107,7 +131,7 @@ private def sourceBodyTyping :
     (.type_pair storedShapeWf)
     exactToSource
     .refl
-    sourceWf.weaken
+    sourceWf
     .empty
 
 private def targetBodyTyping :
@@ -115,9 +139,9 @@ private def targetBodyTyping :
       (.pair 0 label (.type storedShape)) target.weaken .empty :=
   .sub
     sourceBodyTyping
-    source_sub_target.weaken
+    sourceSubTarget
     .refl
-    targetWf.weaken
+    targetWf
     .empty
 
 def term : Tm 0 :=
@@ -134,7 +158,7 @@ private def targetPathTyping :
     (.path .var)
     (.capt (.path .var) (.singleton_widen .var))
     (.path .var)
-    targetWf.weaken.weaken
+    targetWf
     .empty
 
 private def targetLetTyping :
@@ -143,7 +167,7 @@ private def targetLetTyping :
         (.pair 0 label (.type storedShape))
         (.path (.var 0)))
       target.weaken .empty :=
-  .let targetBodyTyping targetPathTyping targetWf.weaken .empty
+  .let targetBodyTyping targetPathTyping targetWf .empty
 
 def term_typing : Tm.Ty .nil term target .empty := by
   unfold term
@@ -194,11 +218,29 @@ def captureTarget : Ty 0 :=
     (.Pair (pureTop 0) label
       (.capture .empty (.singleton (.var 0))))
 
-def captureSource_sub_captureTarget :
-    Ty.Sub .nil captureSource captureTarget :=
+private def captureSourceSubCaptureTarget {n : Nat} {Gamma : Ctx n} :
+    Ty.Sub Gamma
+      (.capt .empty
+        (.Pair (pureTop n) label
+          (.capture
+            (.singleton (.var 0))
+            (.singleton (.var 0)))))
+      (.capt .empty
+        (.Pair (pureTop n) label
+          (.capture .empty (.singleton (.var 0))))) :=
   .capt .refl (.pair .refl (.capture .empty .refl .refl))
 
-private def captureSourceWf : Ty.Wf .nil captureSource :=
+def captureSource_sub_captureTarget :
+    Ty.Sub .nil captureSource captureTarget :=
+  captureSourceSubCaptureTarget
+
+private def captureSourceWf {n : Nat} {Gamma : Ctx n} :
+    Ty.Wf Gamma
+      (.capt .empty
+        (.Pair (pureTop n) label
+          (.capture
+            (.singleton (.var 0))
+            (.singleton (.var 0))))) :=
   .capt .empty
     (.pair pureTopWf
       (.capture
@@ -206,7 +248,11 @@ private def captureSourceWf : Ty.Wf .nil captureSource :=
         (.singleton .var)
         .refl))
 
-private def captureTargetWf : Ty.Wf .nil captureTarget :=
+private def captureTargetWf {n : Nat} {Gamma : Ctx n} :
+    Ty.Wf Gamma
+      (.capt .empty
+        (.Pair (pureTop n) label
+          (.capture .empty (.singleton (.var 0))))) :=
   .capt .empty
     (.pair pureTopWf
       (.capture .empty (.singleton .var) .empty))
@@ -242,7 +288,7 @@ private def captureSourceBodyTyping :
     (.capture_pair storedCaptureWf)
     exactCaptureToSource
     .refl
-    captureSourceWf.weaken
+    captureSourceWf
     .empty
 
 private def captureTargetBodyTyping :
@@ -251,9 +297,9 @@ private def captureTargetBodyTyping :
       captureTarget.weaken .empty :=
   .sub
     captureSourceBodyTyping
-    captureSource_sub_captureTarget.weaken
+    captureSourceSubCaptureTarget
     .refl
-    captureTargetWf.weaken
+    captureTargetWf
     .empty
 
 def captureTerm : Tm 0 :=
@@ -270,7 +316,7 @@ private def captureTargetPathTyping :
     (.path .var)
     (.capt (.path .var) (.singleton_widen .var))
     (.path .var)
-    captureTargetWf.weaken.weaken
+    captureTargetWf
     .empty
 
 private def captureTargetLetTyping :
@@ -280,7 +326,7 @@ private def captureTargetLetTyping :
         (.path (.var 0)))
       captureTarget.weaken .empty :=
   .let captureTargetBodyTyping captureTargetPathTyping
-    captureTargetWf.weaken .empty
+    captureTargetWf .empty
 
 def captureTerm_typing :
     Tm.Ty .nil captureTerm captureTarget .empty := by
@@ -360,7 +406,7 @@ private def selectedCaptureBodyTyping :
       (.path (.var (x := 1)))
       (.singleton_widen (.var (x := 1))))
     captureSelectionToEmpty
-    boundTypeWf.weaken.weaken
+    boundTypeWf
     .empty
 
 private def captureSelectionLetTyping :
@@ -370,7 +416,7 @@ private def captureSelectionLetTyping :
         (.path (.var 1)))
       boundType.weaken .empty :=
   .let exactCapturePairTyping selectedCaptureBodyTyping
-    boundTypeWf.weaken .empty
+    boundTypeWf .empty
 
 def captureSelectionTerm : Tm 0 :=
   .let

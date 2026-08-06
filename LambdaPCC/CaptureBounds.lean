@@ -22,15 +22,9 @@ noncomputable def Value.captureRelation
     (value : Value world v T Q) : Relation world Q T.captureSet := by
   cases value with
   | abs body suffix => exact suffix.captureRelation
-  | pair captureSet suffix =>
-      cases captureSet
-      exact suffix.captureRelation
-  | typePair captureSet suffix =>
-      cases captureSet
-      exact suffix.captureRelation
-  | capturePair captureSet suffix =>
-      cases captureSet
-      exact suffix.captureRelation
+  | pair suffix => exact suffix.captureRelation
+  | typePair suffix => exact suffix.captureRelation
+  | capturePair suffix => exact suffix.captureRelation
 
 /-! ## Returned values -/
 
@@ -67,13 +61,12 @@ theorem StateEvidence.returnedCaptureBound
       cases evidence with
       | ok continuation term =>
           cases continuation with
-          | hole resultSuffix useCoverage =>
+          | hole =>
               let entry := valid.entry x
               have captures : Relation world
                   entry.assignedCaptureSet T.captureSet :=
                 (Relation.fold Path.Resolve.var entry.lookup).comp
-                  (term.pathView.suffix.captureRelation.comp
-                    resultSuffix.captureRelation)
+                  term.pathView.suffix.captureRelation
               exact ⟨
                 { valueTerm := entry.term
                   valueType := entry.assignedType
@@ -85,7 +78,7 @@ theorem StateEvidence.returnedCaptureBound
       cases evidence with
       | ok continuation term =>
           cases continuation with
-          | hole resultSuffix useCoverage =>
+          | hole =>
               rcases term.nonemptyValueView isValue with ⟨view⟩
               exact ⟨
                 { valueTerm := v
@@ -93,8 +86,7 @@ theorem StateEvidence.returnedCaptureBound
                   assignedCaptureSet := view.assignedCaptureSet
                   returns := .value isValue
                   value := view.value
-                  subcapture := view.value.captureRelation.comp
-                    resultSuffix.captureRelation }⟩
+                  subcapture := view.value.captureRelation }⟩
 
 /-! ## Closed executions -/
 

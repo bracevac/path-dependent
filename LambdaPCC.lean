@@ -2,7 +2,6 @@ import LambdaPCC.FinFun
 import LambdaPCC.Syntax
 import LambdaPCC.Context
 import LambdaPCC.Typing
-import LambdaPCC.StaticMetatheory
 import LambdaPCC.Runtime
 import LambdaPCC.StoreStratification
 import LambdaPCC.RuntimeEquality
