@@ -53,6 +53,8 @@ Inductive PathReferent (n : nat) : Type :=
 Arguments RefLoc {n} _.
 Arguments RefType {n} _.
 
+Derive NoConfusionHom for PathReferent.
+
 Definition referent_weaken {n : nat} (r : PathReferent n) :
     PathReferent (S n) :=
   match r with
