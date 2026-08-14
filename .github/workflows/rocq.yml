@@ -1,0 +1,29 @@
+name: Rocq proofs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ocaml-base-compiler.4.14.2
+          opam-repositories: |
+            rocq-released: https://rocq-prover.org/opam/released
+            default: https://github.com/ocaml/opam-repository.git
+      - name: Install locked Rocq dependencies
+        run: opam install . --deps-only --locked --yes
+      - name: Lint package metadata
+        run: opam lint path-dependent-rocq.opam
+      - name: Build and audit Rocq proofs
+        run: opam exec -- make rocq-audit

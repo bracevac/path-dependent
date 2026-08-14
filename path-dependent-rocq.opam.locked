@@ -1,0 +1,59 @@
+opam-version: "2.0"
+name: "path-dependent-rocq"
+version: "0.1.0"
+synopsis:
+  "Axiom-free Rocq cross-check of the path-dependent type-safety developments"
+description: """\
+Rocq ports of the LambdaP, LambdaPFC, and LambdaPCC metatheory developments.
+The ports preserve intrinsic scoping and are checked without admitted lemmas,
+functional extensionality, propositional extensionality, or proof irrelevance."""
+maintainer: "Mario"
+authors: "Mario"
+homepage: "https://github.com/bracevac/path-dependent"
+bug-reports: "https://github.com/bracevac/path-dependent/issues"
+depends: [
+  "base" {= "v0.16.5"}
+  "base-bigarray" {= "base"}
+  "base-threads" {= "base"}
+  "base-unix" {= "base"}
+  "conf-gmp" {= "5"}
+  "conf-pkg-config" {= "5"}
+  "coq-core" {= "9.2.0"}
+  "csexp" {= "1.5.2"}
+  "dune" {= "3.23.1"}
+  "dune-configurator" {= "3.23.1"}
+  "ocaml" {= "4.14.2"}
+  "ocaml-base-compiler" {= "4.14.2"}
+  "ocaml-compiler-libs" {= "v0.12.4"}
+  "ocaml-config" {= "2"}
+  "ocaml-options-vanilla" {= "1"}
+  "ocamlfind" {= "1.9.8"}
+  "ppx_derivers" {= "1.2.1"}
+  "ppx_optcomp" {= "v0.16.0"}
+  "ppxlib" {= "0.35.0"}
+  "rocq-core" {= "9.2.0"}
+  "rocq-equations" {= "1.3.2+9.2"}
+  "rocq-prover" {= "meta.1"}
+  "rocq-runtime" {= "9.2.0"}
+  "rocq-stdlib" {= "9.2.0"}
+  "sexplib0" {= "v0.16.0"}
+  "stdio" {= "v0.16.0"}
+  "stdlib-shims" {= "0.3.0"}
+  "zarith" {= "1.14"}
+]
+build: [make "rocq"]
+dev-repo: "git+https://github.com/bracevac/path-dependent.git"
+pin-depends: [
+  [
+    "rocq-core.9.2.0"
+    "https://github.com/rocq-prover/rocq/releases/download/V9.2.0/rocq-9.2.0.tar.gz"
+  ]
+  [
+    "rocq-equations.1.3.2+9.2"
+    "https://github.com/mattam82/Coq-Equations/archive/refs/tags/v1.3.2-9.2.tar.gz"
+  ]
+  [
+    "rocq-stdlib.9.2.0"
+    "https://github.com/coq/stdlib/releases/download/V9.2.0/stdlib-9.2.0.tar.gz"
+  ]
+]

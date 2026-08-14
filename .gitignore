@@ -1,4 +1,15 @@
 /.lake/
+/_opam/
+/Makefile.rocq
+/Makefile.rocq.conf
+/.Makefile.rocq.d
+/.lia.cache
+*.vo
+*.vos
+*.vok
+*.glob
+*.aux
+.*.aux
 /tmp/
 /output/
 /LambdaPCC/paper/build/
