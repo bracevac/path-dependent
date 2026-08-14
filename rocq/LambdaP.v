@@ -1,0 +1,40 @@
+From PathDependent.LambdaP Require Export
+  FinFun
+  Syntax
+  Context
+  Typing
+  Renaming
+  Opening
+  Store
+  PathReduction
+  Lookup
+  Cont
+  State
+  Machine
+  PathFunctionality
+  TypingInversion
+  PreciseStore
+  ValueInversion
+  Canonical
+  PathPreservation
+  PathProgress
+  Progress
+  PreciseProgress
+  AdministrativePreservation
+  CounterexampleRegression
+  RuntimeConversion
+  ScopedRuntimeEq
+  StructuralRuntimeTyping
+  StructuralTermTyping
+  StructuralRuntimeLemmas
+  StructuralMachineInvariant
+  StructuralValueInversion
+  StructuralPathSubstitution
+  StructuralNarrowing
+  StructuralPreciseStore
+  StructuralResolution
+  StructuralApplicationBoundary
+  Examples
+  Safety.
+
+(** The intrinsically scoped LambdaP calculus and its complete metatheory. *)
