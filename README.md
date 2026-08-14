@@ -1,6 +1,7 @@
 # Exploring Path-Dependent Types
 
 [![Lean proofs](https://github.com/bracevac/path-dependent/actions/workflows/lean.yml/badge.svg?branch=main)](https://github.com/bracevac/path-dependent/actions/workflows/lean.yml)
+[![Rocq proofs](https://github.com/bracevac/path-dependent/actions/workflows/rocq.yml/badge.svg?branch=main)](https://github.com/bracevac/path-dependent/actions/workflows/rocq.yml)
 
 ## Compiling
 
