@@ -154,6 +154,13 @@ with BodyClosure : forall {m : nat}, Store m -> Ty m ->
     BodyClosure sigma (ty_rename S rho)
       (tm_rename body (ext rho)) (ty_rename T (ext rho)).
 
+Derive Signature for Environment.
+Derive NoConfusionHom for Environment.
+Derive Signature for StorePossible.
+Derive NoConfusionHom for StorePossible.
+Derive Signature for ReferentRealizes.
+Derive NoConfusionHom for ReferentRealizes.
+
 Arguments Env_intro {n m Gamma rho sigma} _.
 
 (** Retrieve the realization stored at a source variable. *)

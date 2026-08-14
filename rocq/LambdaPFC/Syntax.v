@@ -11,6 +11,8 @@ Inductive Kind : Type :=
 | KStar
 | KIota.
 
+Derive NoConfusionHom for Kind.
+
 Definition kind_eq_dec (x y : Kind) : {x = y} + {x <> y}.
 Proof. decide equality. Defined.
 
@@ -65,6 +67,11 @@ Arguments TmAbs {n} _ _.
 Arguments TmPair {n k} _ _ _.
 Arguments TmApp {n} _ _.
 Arguments TmLet {n} _ _.
+
+Derive Signature for Tau.
+Derive NoConfusionHom for Tau.
+Derive Signature for Ty.
+Derive NoConfusionHom for Ty.
 
 (** Syntactic variables and values. *)
 Inductive Path_IsVar {n : nat} : Path n -> Prop :=
