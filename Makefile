@@ -19,7 +19,7 @@ $(ROCQ_MAKEFILE): $(ROCQ_PROJECT) $(ROCQ_SOURCES)
 	$(ROCQ) makefile -f $(ROCQ_PROJECT) $(ROCQ_SOURCES) -o $(ROCQ_MAKEFILE)
 
 rocq-audit: rocq
-	@if rg -n '\b(Axiom|Conjecture|Admitted|admit|Abort|Parameter|FunctionalExtensionality|PropExtensionality|ProofIrrelevance|JMeq_eq|ClassicalChoice)\b' rocq -g '*.v'; then \
+	@if rg -n '\b(Axiom|Conjecture|Admitted|admit|sorry|Abort|Parameter|FunctionalExtensionality|PropExtensionality|ProofIrrelevance|JMeq_eq|ClassicalChoice|Classical|Equations[[:space:]]+With[[:space:]]+UIP)\b' rocq -g '*.v'; then \
 		echo 'Forbidden unchecked assumption or extensionality import found.' >&2; \
 		exit 1; \
 	fi
