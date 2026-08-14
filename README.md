@@ -5,10 +5,19 @@
 
 ## Compiling
 
-First, make sure to have [Lean 4](https://lean-lang.org/lean4/doc/quickstart.html)
-properly set up. Then, to compile everything, navigate to this project's root directory
-in a terminal and run
-```bash
-> lake build
+Set up [Lean 4](https://lean-lang.org/install/) and
+[Rocq with opam](https://rocq-prover.org/docs/using-opam), then run the
+corresponding build from the repository root.
+
+### Lean
+
+```sh
+lake build
 ```
-voilà!
+
+### Rocq
+
+```sh
+opam install . --deps-only --locked
+make rocq
+```
