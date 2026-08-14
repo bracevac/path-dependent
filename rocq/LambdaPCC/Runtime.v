@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import Lists.List Program.Equality.
+From Stdlib Require Import Lists.List.
 From PathDependent.LambdaPCC Require Import FinFun Syntax Context Typing.
 
 Import ListNotations.
