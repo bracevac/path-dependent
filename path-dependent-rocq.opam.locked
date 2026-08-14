@@ -7,8 +7,8 @@ description: """\
 Rocq ports of the LambdaP, LambdaPFC, and LambdaPCC metatheory developments.
 The ports preserve intrinsic scoping and are checked without admitted lemmas,
 functional extensionality, propositional extensionality, or proof irrelevance."""
-maintainer: "Mario"
-authors: "Mario"
+maintainer: "Oliver Bračevac"
+authors: "Oliver Bračevac"
 homepage: "https://github.com/bracevac/path-dependent"
 bug-reports: "https://github.com/bracevac/path-dependent/issues"
 depends: [
