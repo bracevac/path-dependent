@@ -80,5 +80,5 @@ lake build LambdaPCC
 Build the version-local report with:
 
 ```sh
-make -C LambdaPCC/paper
+make -C lean/LambdaPCC/paper
 ```

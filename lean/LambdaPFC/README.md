@@ -81,5 +81,5 @@ root it can be rebuilt with:
 
 ```sh
 latexmk -cd -pdf -interaction=nonstopmode -halt-on-error \
-  LambdaPFC/lambda_p.tex
+  lean/LambdaPFC/lambda_p.tex
 ```

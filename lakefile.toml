@@ -1,5 +1,6 @@
 name = "path-dependent"
 version = "0.1.0"
+srcDir = "lean"
 defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC"]
 
 [leanOptions]

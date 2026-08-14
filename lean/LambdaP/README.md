@@ -39,5 +39,5 @@ from the repository root with:
 
 ```sh
 latexmk -cd -pdf -interaction=nonstopmode -halt-on-error \
-  LambdaP/lambda_p.tex
+  lean/LambdaP/lambda_p.tex
 ```
