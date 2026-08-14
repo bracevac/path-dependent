@@ -174,3 +174,6 @@ Theorem Path_lookup_iff_reduce {n : nat} {p : Path n}
     {s : Store n} {x : Fin.t n} :
     Path_lookup p s x <-> Path_reduce p s x.
 Proof. split; [apply Path_lookup_toReduce|apply Path_reduce_toLookup]. Qed.
+
+Print Assumptions Path_lookup_deterministic.
+Print Assumptions Path_lookup_iff_reduce.
