@@ -17,3 +17,4 @@ import LambdaPFC.SemanticProgress
 import LambdaPFC.SemanticPreservation
 import LambdaPFC.SemanticSafety
 import LambdaPFC.GeneralPairRegression
+import LambdaPFC.RecordRegression

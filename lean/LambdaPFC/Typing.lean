@@ -88,7 +88,8 @@ inductive Tau.Wf : Ctx n -> Tau n k -> Type where
     Path.Ty Γ p (Tau.ty T) ->
     Tau.Wf Γ (Tau.ty (Ty.Single p))
 | sel :
-    Path.Ty Γ p (Tau.ty (Ty.Pair S A (Tau.intv T U))) ->
+    Path.Ty Γ (p.sel A) (Tau.intv T U) ->
+    Tau.Sub Γ (Tau.ty T) (Tau.ty U) ->
     Tau.Wf Γ (Tau.ty (Ty.TSel p A))
 | «fun» :
     Tau.Wf Γ (Tau.ty S) ->
