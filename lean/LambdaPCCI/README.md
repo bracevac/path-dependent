@@ -51,6 +51,8 @@ member. `RecordRegression.lean` checks a right-nested record whose function
 consumes a value at an earlier path-dependent type member.
 `IntersectionRegression.lean` checks a closed self-application that uses one
 closure through two incomparable function views with empty capture sets.
+`RecordIntersectionRegression.lean` checks two empty-capture aliases of one
+record whose same stored member is used through incomparable function views.
 
 ## Files
 
@@ -76,6 +78,8 @@ closure through two incomparable function views with empty capture sets.
   dependent-pair covariance, and nested record lookup.
 - `IntersectionRegression.lean`: capture-aware use of both projections of an
   opaque shape intersection.
+- `RecordIntersectionRegression.lean`: a closed same-label record intersection
+  whose two aliases select one stored member through incomparable views.
 
 ## Building
 
