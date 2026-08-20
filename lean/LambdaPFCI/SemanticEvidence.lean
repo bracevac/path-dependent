@@ -107,6 +107,13 @@ inductive Coercion :
     Coercion sigma (.ty (.Inter S T)) (.ty S)
 | interRight {m : Nat} {sigma : Store m} {S T : Ty m} :
     Coercion sigma (.ty (.Inter S T)) (.ty T)
+| pairInter {m : Nat} {sigma : Store m} {S : Ty m}
+    {a : Name} {T U : Ty (m + 1)} :
+    Coercion sigma
+      (.ty (.Inter
+        (.Pair S a (.ty T))
+        (.Pair S a (.ty U))))
+      (.ty (.Pair S a (.ty (.Inter T U))))
 | widen {m : Nat} {sigma : Store m} {p : Path m}
     {x : Fin m} {T : Ty m} :
     Path.Resolve p sigma (.loc x) ->

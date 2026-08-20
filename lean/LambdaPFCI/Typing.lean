@@ -69,6 +69,14 @@ inductive Tau.Sub : Ctx n -> Tau n k -> Tau n k -> Type where
     Tau.Sub Γ (Tau.ty (Ty.Inter T U)) (Tau.ty T)
 | inter_right :
     Tau.Sub Γ (Tau.ty (Ty.Inter T U)) (Tau.ty U)
+/-- Merge two views of the same term-member slot.  Requiring the first
+component type and label to agree makes both views refer to one stored member. -/
+| pair_inter :
+    Tau.Sub Γ
+      (Tau.ty (Ty.Inter
+        (Ty.Pair S a (Tau.ty T))
+        (Ty.Pair S a (Tau.ty U))))
+      (Tau.ty (Ty.Pair S a (Tau.ty (Ty.Inter T U))))
 | «fun» :
     Tau.Sub Γ (Tau.ty S') (Tau.ty S) ->
     Tau.Sub (Γ.snoc S') (Tau.ty T) (Tau.ty T') ->

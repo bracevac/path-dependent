@@ -245,6 +245,14 @@ inductive ShapeCoercion :
 | interRight {n : Nat} {sigma : Store n} {world : Cap.World sigma}
     {S T : Shape n} :
     ShapeCoercion world (.Inter S T) T
+| pairInter {n : Nat} {sigma : Store n} {world : Cap.World sigma}
+    {S : Ty n} {a : Name} {C : CaptureSet (n + 1)}
+    {T U : Shape (n + 1)} :
+    ShapeCoercion world
+      (.Inter
+        (.Pair S a (.term (.capt C T)))
+        (.Pair S a (.term (.capt C U))))
+      (.Pair S a (.term (.capt C (.Inter T U))))
 | widen {n : Nat} {sigma : Store n} {world : Cap.World sigma}
     {p : Path n} {x : Fin n} {C : CaptureSet n} {S : Shape n} :
     Path.Resolve p sigma (.loc x) -> LocationEvidence world x (.capt C S) ->

@@ -22,6 +22,9 @@ The path-valued lets bind `left` and `right` as aliases of the one stored pair
 location.  Their precise branch types then let ordinary path selection expose
 the same member as `L` for the function and `R` for its argument, without
 adding intersection projection to precise path typing.
+
+The final section merges `Q(L) ∧ Q(R)` into `Q(L ∧ R)`, then checks
+`merged.f merged.f` through one precise alias.
 -/
 
 namespace LambdaPFCI.RecordIntersectionRegression
@@ -195,6 +198,96 @@ theorem term_type_safety
     (steps : State.Steps (State.initial term) target) :
     State.Progress target :=
   term_typing.closed_type_safety steps
+
+/-! ## Merging the two views -/
+
+/-- One precise record view whose stored member retains both function views. -/
+def mergedRecord : Ty n :=
+  .Pair .Top memberLabel
+    (.ty (.Inter leftView.weaken rightView.weaken))
+
+/-- A single alias obtained by merging the two same-slot record views. -/
+def mergedRecordAlias : Tm 2 :=
+  .path (.var 0)
+
+/-- The same selected member supplies both sides of the application. -/
+def mergedBody : Tm 3 :=
+  .app ((Path.var 0).sel memberLabel) ((Path.var 0).sel memberLabel)
+
+def mergedTerm : Tm 0 :=
+  .let value
+    (.let recordValue
+      (.let mergedRecordAlias mergedBody))
+
+private def mergedContext3 : Ctx 3 :=
+  context2.snoc mergedRecord
+
+private def mergedRecordWf {n} {Gamma : Ctx n} :
+    Tau.Wf Gamma (.ty (mergedRecord (n := n))) := by
+  apply Tau.Wf.pair .top
+  apply Tau.Wf.inter
+  · simpa [leftView, functionType] using
+      (leftViewWf (Gamma := Gamma.snoc (.Top : Ty n)))
+  · simpa [rightView, functionType] using
+      (rightViewWf (Gamma := Gamma.snoc (.Top : Ty n)))
+
+private def recordIntersectionToMerged :
+    Tau.Sub context2 (.ty recordIntersection) (.ty mergedRecord) := by
+  simpa [recordIntersection, leftRecord, rightRecord, mergedRecord] using
+    (Tau.Sub.pair_inter (Γ := context2)
+      (S := .Top) (a := memberLabel)
+      (T := leftView.weaken) (U := rightView.weaken))
+
+private def mergedRecordAliasTyping :
+    Tm.Ty context2 mergedRecordAlias mergedRecord :=
+  .sub
+    (.path .var)
+    (.trans (.widen .var) recordIntersectionToMerged)
+    mergedRecordWf
+
+private def mergedRecordPathTyping :
+    Path.Ty mergedContext3 (.var 0) (.ty mergedRecord) := by
+  simpa [mergedContext3, context2, context1, Ctx.lookup, mergedRecord,
+    leftView, rightView, functionType, Ty.weaken, Tau.weaken,
+    Ty.rename, Tau.rename] using
+    (Path.Ty.var : Path.Ty mergedContext3 (.var 0)
+      (.ty (Ctx.lookup mergedContext3 0)))
+
+private def mergedMemberPathTyping :
+    Path.Ty mergedContext3 ((Path.var 0).sel memberLabel)
+      (.ty (.Inter leftView rightView)) := by
+  simpa [mergedRecord, Tau.weaken_open] using
+    mergedRecordPathTyping.sel_r
+
+private def mergedFunctionTyping :
+    Tm.Ty mergedContext3 (.path ((Path.var 0).sel memberLabel)) leftView :=
+  .sub
+    (.path mergedMemberPathTyping)
+    (.trans (.widen mergedMemberPathTyping) .inter_left)
+    leftViewWf
+
+private def mergedArgumentTyping :
+    Tm.Ty mergedContext3 (.path ((Path.var 0).sel memberLabel)) rightView :=
+  .sub
+    (.path mergedMemberPathTyping)
+    (.trans (.widen mergedMemberPathTyping) .inter_right)
+    rightViewWf
+
+private def mergedBodyTyping :
+    Tm.Ty mergedContext3 mergedBody functionType := by
+  simpa [mergedBody, leftView, rightView, functionType, Ty.weaken_open] using
+    Tm.Ty.app mergedFunctionTyping mergedArgumentTyping
+
+def merged_term_typing : Tm.Ty Ctx.nil mergedTerm functionType :=
+  .let valueSourceTyping functionTypeWf
+    (.let recordValueIntersectionTyping functionTypeWf
+      (.let mergedRecordAliasTyping functionTypeWf mergedBodyTyping))
+
+theorem merged_term_type_safety
+    {n : Nat} {target : State n}
+    (steps : State.Steps (State.initial mergedTerm) target) :
+    State.Progress target :=
+  merged_term_typing.closed_type_safety steps
 
 end
 
