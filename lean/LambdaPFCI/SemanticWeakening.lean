@@ -113,6 +113,7 @@ noncomputable def Coercion.weaken
       .inter (left.weaken v vv) (right.weaken v vv)
   | .interLeft => .interLeft
   | .interRight => .interRight
+  | .pairInter => .pairInter
   | .widen resolution possible =>
       .widen (resolution.weaken v vv) (possible.weaken v vv)
   | .alias left right =>

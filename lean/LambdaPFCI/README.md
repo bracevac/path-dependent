@@ -12,6 +12,8 @@ The development proves:
 - deterministic path resolution to location and type-definition referents;
 - binary intersections of proper types, interpreted as simultaneous
   realization at one store location;
+- merging of same-label term-member record views into one view whose member
+  retains the intersection of their proper types;
 - unrestricted covariance for dependent pairs, including proper and interval
   members;
 - a finite semantic interpretation of every declarative subtyping derivation;
@@ -75,7 +77,8 @@ the final result type through `Ty.Extends`.
 - `IntersectionRegression.lean`: a closed self-application that uses one
   closure through two incomparable function views of an intersection.
 - `RecordIntersectionRegression.lean`: a closed same-label record intersection
-  whose two aliases select one stored member through incomparable views.
+  that first selects one stored member through two aliases, then merges the
+  views so one alias uses the member at both incomparable component types.
 
 ## Building
 

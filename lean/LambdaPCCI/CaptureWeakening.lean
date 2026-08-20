@@ -186,6 +186,7 @@ noncomputable def ShapeCoercion.weaken
       .inter (left.weaken exact vv) (right.weaken exact vv)
   | .interLeft => .interLeft
   | .interRight => .interRight
+  | .pairInter => .pairInter
   | .widen resolution possible =>
       .widen (resolution.weaken _ vv) (possible.weaken exact vv)
   | .alias left right =>

@@ -22,6 +22,8 @@ The development proves:
   or capture-set definitions;
 - binary intersections of shape types, interpreted as simultaneous
   realization at one store location;
+- merging of same-label, same-capture term-member record views into one view
+  whose member retains the intersection of their shapes;
 - a source typing interpretation that preserves use sets;
 - progress, one-step preservation, and finite preservation for
   the runtime typing invariant;
@@ -51,8 +53,10 @@ member. `RecordRegression.lean` checks a right-nested record whose function
 consumes a value at an earlier path-dependent type member.
 `IntersectionRegression.lean` checks a closed self-application that uses one
 closure through two incomparable function views with empty capture sets.
-`RecordIntersectionRegression.lean` checks two empty-capture aliases of one
-record whose same stored member is used through incomparable function views.
+`RecordIntersectionRegression.lean` first checks two empty-capture aliases of
+one record whose same stored member is used through incomparable function
+views, then merges those views so one alias uses the member at both component
+shapes.
 
 ## Files
 
@@ -79,7 +83,7 @@ record whose same stored member is used through incomparable function views.
 - `IntersectionRegression.lean`: capture-aware use of both projections of an
   opaque shape intersection.
 - `RecordIntersectionRegression.lean`: a closed same-label record intersection
-  whose two aliases select one stored member through incomparable views.
+  with both a two-alias view and a merged one-alias view of the same member.
 
 ## Building
 

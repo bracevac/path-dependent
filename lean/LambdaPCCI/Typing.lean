@@ -121,6 +121,15 @@ inductive Shape.Sub : Ctx n -> Shape n -> Shape n -> Type where
     Shape.Sub Gamma (.Inter T U) T
 | inter_right :
     Shape.Sub Gamma (.Inter T U) U
+/-- Merge two views of one term-member slot.  The first-component type,
+label, and member capture set must agree, so both views describe the same
+stored member with the same capture contract. -/
+| pair_inter :
+    Shape.Sub Gamma
+      (.Inter
+        (.Pair S a (.term (.capt C T)))
+        (.Pair S a (.term (.capt C U))))
+      (.Pair S a (.term (.capt C (.Inter T U))))
 | fun :
     Ty.Sub Gamma S' S ->
     Ty.Sub (Gamma.snoc S') T T' ->

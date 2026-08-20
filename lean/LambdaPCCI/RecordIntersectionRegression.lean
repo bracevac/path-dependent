@@ -17,7 +17,8 @@ in left.f right.f
 The two aliases resolve to the same record location, and both selections
 therefore resolve to its one stored `f` member.  Their source typings expose
 that member through the incomparable views `L = F -> F` and `R = F`.
-Every public capture and use set is empty.
+The final section merges the views into `Q(L ∧ R)` and uses one precise alias
+for both operands. Every public capture and use set is empty.
 -/
 
 namespace LambdaPCCI.RecordIntersectionRegression
@@ -346,6 +347,137 @@ theorem term_type_safety
     (steps : State.Steps (State.initial term) target) :
     State.Progress target :=
   term_typing.closed_type_safety steps
+
+/-! ## Merging the two views -/
+
+/-- One precise record view whose stored member retains both function views. -/
+def mergedRecord (n : Nat) : Ty n :=
+  .capt .empty
+    (recordShape (IntersectionRegression.intersectionType (n + 1)))
+
+/-- A single empty-use alias obtained by merging the same-slot views. -/
+def mergedRecordAlias : Tm 2 :=
+  .path (.var 0)
+
+/-- The same selected member supplies both sides of the application. -/
+def mergedBody : Tm 3 :=
+  .app ((Path.var 0).sel memberLabel) ((Path.var 0).sel memberLabel)
+
+def mergedTerm : Tm 0 :=
+  .let value
+    (.let recordValue
+      (.let mergedRecordAlias mergedBody))
+
+private def mergedContext3 : Ctx 3 :=
+  context2.snoc (mergedRecord 2)
+
+private def mergedRecordWf {Gamma : Ctx n} :
+    Ty.Wf Gamma (mergedRecord n) :=
+  .capt .empty
+    (.pair pureTopWf (.term IntersectionRegression.intersectionTypeWf))
+
+private def recordIntersectionToMerged :
+    Ty.Sub context2 (recordIntersection 2) (mergedRecord 2) := by
+  exact .capt .refl .pair_inter
+
+private def mergedRecordAliasTyping :
+    Tm.Ty context2 mergedRecordAlias (mergedRecord 2) .empty :=
+  .sub
+    (.path intersectionPathInContext2)
+    (.trans
+      (.capt (.path intersectionPathInContext2)
+        (.singleton_widen intersectionPathInContext2))
+      recordIntersectionToMerged)
+    (.path intersectionPathInContext2)
+    mergedRecordWf
+    .empty
+
+private def mergedRecordPathTyping :
+    Path.Ty mergedContext3 (.var 0) (.term (mergedRecord 3)) := by
+  simpa [mergedContext3, context2, context1, Ctx.lookup, mergedRecord,
+    recordShape, IntersectionRegression.intersectionType,
+    IntersectionRegression.intersectionShape,
+    IntersectionRegression.leftViewShape,
+    IntersectionRegression.rightViewShape,
+    IntersectionRegression.functionType,
+    IntersectionRegression.functionShape] using
+    (Path.Ty.var : Path.Ty mergedContext3 (.var 0)
+      (.term (Ctx.lookup mergedContext3 0)))
+
+private def mergedMemberPathTyping :
+    Path.Ty mergedContext3 ((Path.var 0).sel memberLabel)
+      (.term (IntersectionRegression.intersectionType 3)) := by
+  simpa [mergedRecord, recordShape, Tau.open, Ty.open, Shape.open,
+    Tau.subst, Ty.subst, Shape.subst, CaptureSet.subst, Path.subst,
+    PathSubst.openAt, IntersectionRegression.intersectionType,
+    IntersectionRegression.intersectionShape,
+    IntersectionRegression.leftViewShape,
+    IntersectionRegression.rightViewShape,
+    IntersectionRegression.functionType,
+    IntersectionRegression.functionShape] using
+    mergedRecordPathTyping.sel_r
+
+private def mergedSelectionToEmpty :
+    CaptureSet.Sub mergedContext3
+      (.singleton ((Path.var 0).sel memberLabel)) .empty :=
+  .trans (.sel_root mergedMemberPathTyping) (.path mergedRecordPathTyping)
+
+private def mergedFunctionTyping :
+    Tm.Ty mergedContext3 (.path ((Path.var 0).sel memberLabel))
+      (IntersectionRegression.leftView 3) .empty :=
+  .sub
+    (.path mergedMemberPathTyping)
+    (.capt mergedSelectionToEmpty
+      (.trans
+        (.singleton_widen mergedMemberPathTyping)
+        .inter_left))
+    mergedSelectionToEmpty
+    IntersectionRegression.leftViewWf
+    .empty
+
+private def mergedArgumentTyping :
+    Tm.Ty mergedContext3 (.path ((Path.var 0).sel memberLabel))
+      (IntersectionRegression.rightView 3) .empty :=
+  .sub
+    (.path mergedMemberPathTyping)
+    (.capt mergedSelectionToEmpty
+      (.trans
+        (.singleton_widen mergedMemberPathTyping)
+        .inter_right))
+    mergedSelectionToEmpty
+    IntersectionRegression.rightViewWf
+    .empty
+
+private def mergedBodyTyping :
+    Tm.Ty mergedContext3 mergedBody
+      (IntersectionRegression.functionType 3) .empty := by
+  apply Tm.Ty.sub
+  · simpa [mergedBody, IntersectionRegression.leftView,
+      IntersectionRegression.leftViewShape, IntersectionRegression.rightView,
+      IntersectionRegression.rightViewShape,
+      IntersectionRegression.functionType,
+      IntersectionRegression.functionShape, Ty.open, Ty.subst, Shape.subst,
+      CaptureSet.subst, Path.subst, PathSubst.openAt] using
+      Tm.Ty.app mergedFunctionTyping mergedArgumentTyping
+  · exact .refl
+  · exact .union_elim .empty .empty
+  · exact IntersectionRegression.functionTypeWf
+  · exact .empty
+
+def merged_term_typing :
+    Tm.Ty Ctx.nil mergedTerm (IntersectionRegression.functionType 0) .empty :=
+  .let valueSourceTyping
+    (.let recordValueIntersectionTyping
+      (.let mergedRecordAliasTyping mergedBodyTyping
+        IntersectionRegression.functionTypeWf .empty)
+      IntersectionRegression.functionTypeWf .empty)
+    IntersectionRegression.functionTypeWf .empty
+
+theorem merged_term_type_safety
+    {n : Nat} {target : State n}
+    (steps : State.Steps (State.initial mergedTerm) target) :
+    State.Progress target :=
+  merged_term_typing.closed_type_safety steps
 
 end
 
