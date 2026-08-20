@@ -67,6 +67,8 @@ the final result type through `Ty.Extends`.
   theorem and type safety.
 - `GeneralPairRegression.lean`: proper-member, interval-member, and closed
   end-to-end regressions for unrestricted dependent-pair covariance.
+- `RecordRegression.lean`: a closed three-member record spine whose function
+  consumes a value at an earlier path-dependent type member.
 
 ## Building
 

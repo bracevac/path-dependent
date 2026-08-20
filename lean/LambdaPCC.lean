@@ -19,3 +19,4 @@ import LambdaPCC.CaptureSafety
 import LambdaPCC.CaptureBounds
 import LambdaPCC.CaptureRegression
 import LambdaPCC.GeneralPairRegression
+import LambdaPCC.RecordRegression

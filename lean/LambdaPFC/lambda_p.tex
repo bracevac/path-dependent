@@ -267,7 +267,9 @@ is made under the source first-component type and applies uniformly to
 proper-type and interval signatures.
 
 Well-formed intervals have consistent bounds. Term paths receive singleton
-types, while pair introduction exposes exact information: a term member
+types. A selected type is well formed whenever path synthesis resolves its
+member to an interval, including lookup through earlier pair components.
+Pair introduction exposes exact information: a term member
 receives the singleton type of its location, and a type definition receives
 the exact interval \(T..T\). Subtyping subsequently hides either component. In
 \ruleref{t-let}, the result type \(T\) is formed in the outer context and does
@@ -419,7 +421,9 @@ allocated and the body is opened at its fresh location.
   {\Gamma\vdash\sing{p}\ \wf}
 
 \infrule[\ruledef{wf-select}]
-  {\Gamma\vdash p\Rightarrow\pairty{x}{S}{A}{T..U}}
+  {\Gamma\vdash p.A\Rightarrow T..U
+   \andalso
+   \Gamma\vdash T<:U}
   {\Gamma\vdash p.A\ \wf}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.51\linewidth}

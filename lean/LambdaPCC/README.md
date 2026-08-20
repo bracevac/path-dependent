@@ -44,7 +44,8 @@ capture-set-member pair covariance, capture-dependent result types, and root
 contraction for term paths. `GeneralPairRegression.lean` gives closed
 allocation traces for general dependent-pair covariance at both
 interval-member forms and for lower/upper selection of a stored capture-set
-member.
+member. `RecordRegression.lean` checks a right-nested record whose function
+consumes a value at an earlier path-dependent type member.
 
 ## Files
 
@@ -65,8 +66,9 @@ member.
   preservation, and closed type safety.
 - `CaptureBounds.lean`: application coverage and the returned-value
   capture-set bound.
-- `CaptureRegression.lean` and `GeneralPairRegression.lean`: checked examples
-  for capture-set members and general dependent-pair covariance.
+- `CaptureRegression.lean`, `GeneralPairRegression.lean`, and
+  `RecordRegression.lean`: checked examples for capture-set members, general
+  dependent-pair covariance, and nested record lookup.
 - `paper/`: paper-style presentation of the calculus and proof.
 
 ## Building
