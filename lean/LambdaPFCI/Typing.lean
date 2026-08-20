@@ -77,6 +77,14 @@ inductive Tau.Sub : Ctx n -> Tau n k -> Tau n k -> Type where
     Tau.Sub Γ (Tau.ty S) (Tau.ty U) ->
     Tau.Sub Γ (Tau.ty T) (Tau.ty U) ->
     Tau.Sub Γ (Tau.ty (Ty.Union S T)) (Tau.ty U)
+/-- Merge the first-component views of one stored pair while retaining its
+identical member signature. -/
+| pair_first_inter :
+    Tau.Sub Γ
+      (Tau.ty (Ty.Inter
+        (Ty.Pair S a d)
+        (Ty.Pair T a d)))
+      (Tau.ty (Ty.Pair (Ty.Inter S T) a d))
 /-- Merge two views of the same term-member slot.  Requiring the first
 component type and label to agree makes both views refer to one stored member. -/
 | pair_inter :
@@ -119,6 +127,18 @@ the source first-component type. -/
     Tau.Sub Γ (Tau.ty T) (Tau.ty T') ->
     Tau.Sub Γ (Tau.ty S) (Tau.ty T) ->
     Tau.Sub Γ (Tau.intv S T) (Tau.intv S' T')
+
+/-- Pair covariance already provides the reverse direction of
+`pair_first_inter`. -/
+def Tau.Sub.pair_first_inter_reverse :
+    Tau.Sub Γ
+      (Tau.ty (Ty.Pair (Ty.Inter S T) a d))
+      (Tau.ty (Ty.Inter
+        (Ty.Pair S a d)
+        (Ty.Pair T a d))) :=
+  .inter
+    (.pair .inter_left .refl)
+    (.pair .inter_right .refl)
 
 /-- Well-formed generalized types. -/
 inductive Tau.Wf : Ctx n -> Tau n k -> Type where

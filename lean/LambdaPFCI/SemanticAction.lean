@@ -180,6 +180,7 @@ noncomputable def Tau.Sub.compile
 | .union_right => .unionRight
 | .union left right =>
     .union (left.compile environment) (right.compile environment)
+| .pair_first_inter => .pairFirstInter
 | .pair_inter => .pairInter
 | .pair_type_inter => .pairTypeInter
 | .pair_type_union_inter => .pairTypeUnionInter
@@ -244,6 +245,7 @@ def Coercion.treeSize : Coercion sigma d1 d2 -> Nat
 | .unionLeft => 1
 | .unionRight => 1
 | .union left right => left.treeSize + right.treeSize + 1
+| .pairFirstInter => 1
 | .pairInter => 1
 | .pairTypeInter => 1
 | .pairTypeUnionInter => 1
@@ -294,6 +296,16 @@ noncomputable def Coercion.action
     left.action (.loc possible)
 | .union _ right, .loc (.unionRight possible) =>
     right.action (.loc possible)
+| .pairFirstInter, .loc (.inter left right) => by
+    cases left with
+    | @pair _ _ _ _ _ _ leftDefinition _ _
+        leftBinding leftFirst leftMember =>
+        cases right with
+        | @pair _ _ _ _ _ _ rightDefinition _ _
+            rightBinding rightFirst _ =>
+            cases Store.Binds.unique leftBinding rightBinding
+            exact .loc (.pair leftBinding (.inter leftFirst rightFirst)
+              leftMember)
 | .pairInter, .loc (.inter left right) => by
     cases left with
     | @pair _ _ _ _ _ _ leftDefinition _ _

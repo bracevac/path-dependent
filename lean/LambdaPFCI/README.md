@@ -17,6 +17,8 @@ The development proves:
   alternative at one store location;
 - merging of same-label term-member record views into one view whose member
   retains the intersection of their proper types;
+- merging aligned first-component views of one pair, allowing intersections
+  of same-layout record telescopes to normalize to one selectable spine;
 - merging of same-first-component, same-label abstract type-member views with
   arbitrary lower bounds into one interval whose lower bound is their union
   and whose upper bound is their intersection;
@@ -85,6 +87,9 @@ the final result type through `Ty.Extends`.
 - `RecordIntersectionRegression.lean`: a closed same-label record intersection
   that first selects one stored member through two aliases, then merges the
   views so one alias uses the member at both incomparable component types.
+- `AlignedRecordIntersectionRegression.lean`: a closed two-member telescope
+  whose aligned outer views merge their record tails, normalize the older
+  member, and select it through the outer member with one precise alias.
 - `TypeMemberIntersectionRegression.lean`: a closed abstract-member merge whose
   selected type is used through its shared lower bound and both merged upper
   views.
