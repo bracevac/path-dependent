@@ -121,6 +121,13 @@ inductive Coercion :
     Coercion sigma (.ty S) (.ty U) ->
     Coercion sigma (.ty T) (.ty U) ->
     Coercion sigma (.ty (.Union S T)) (.ty U)
+| pairFirstInter {m : Nat} {sigma : Store m} {S T : Ty m}
+    {a : Name} {k : Kind} {d : Tau (m + 1) k} :
+    Coercion sigma
+      (.ty (.Inter
+        (.Pair S a d)
+        (.Pair T a d)))
+      (.ty (.Pair (.Inter S T) a d))
 | pairInter {m : Nat} {sigma : Store m} {S : Ty m}
     {a : Name} {T U : Ty (m + 1)} :
     Coercion sigma

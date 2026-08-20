@@ -119,6 +119,7 @@ noncomputable def Coercion.weaken
   | .unionRight => .unionRight
   | .union left right =>
       .union (left.weaken v vv) (right.weaken v vv)
+  | .pairFirstInter => .pairFirstInter
   | .pairInter => .pairInter
   | .pairTypeInter => .pairTypeInter
   | .pairTypeUnionInter => .pairTypeUnionInter
