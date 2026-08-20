@@ -21,3 +21,4 @@ import LambdaPCCI.CaptureRegression
 import LambdaPCCI.GeneralPairRegression
 import LambdaPCCI.RecordRegression
 import LambdaPCCI.IntersectionRegression
+import LambdaPCCI.RecordIntersectionRegression

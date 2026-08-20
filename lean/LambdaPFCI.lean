@@ -19,3 +19,4 @@ import LambdaPFCI.SemanticSafety
 import LambdaPFCI.GeneralPairRegression
 import LambdaPFCI.RecordRegression
 import LambdaPFCI.IntersectionRegression
+import LambdaPFCI.RecordIntersectionRegression

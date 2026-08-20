@@ -74,6 +74,8 @@ the final result type through `Ty.Extends`.
   consumes a value at an earlier path-dependent type member.
 - `IntersectionRegression.lean`: a closed self-application that uses one
   closure through two incomparable function views of an intersection.
+- `RecordIntersectionRegression.lean`: a closed same-label record intersection
+  whose two aliases select one stored member through incomparable views.
 
 ## Building
 
