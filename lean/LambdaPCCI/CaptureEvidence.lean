@@ -253,6 +253,13 @@ inductive ShapeCoercion :
         (.Pair S a (.term (.capt C T)))
         (.Pair S a (.term (.capt C U))))
       (.Pair S a (.term (.capt C (.Inter T U))))
+| pairTypeInter {n : Nat} {sigma : Store n} {world : Cap.World sigma}
+    {S : Ty n} {a : Name} {L U V : Shape (n + 1)} :
+    ShapeCoercion world
+      (.Inter
+        (.Pair S a (.type L U))
+        (.Pair S a (.type L V)))
+      (.Pair S a (.type L (.Inter U V)))
 | widen {n : Nat} {sigma : Store n} {world : Cap.World sigma}
     {p : Path n} {x : Fin n} {C : CaptureSet n} {S : Shape n} :
     Path.Resolve p sigma (.loc x) -> LocationEvidence world x (.capt C S) ->

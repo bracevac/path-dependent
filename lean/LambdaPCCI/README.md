@@ -24,6 +24,8 @@ The development proves:
   realization at one store location;
 - merging of same-label, same-capture term-member record views into one view
   whose member retains the intersection of their shapes;
+- merging of same-label abstract type-member views with a shared lower bound
+  into one interval whose upper bound is their shape intersection;
 - a source typing interpretation that preserves use sets;
 - progress, one-step preservation, and finite preservation for
   the runtime typing invariant;
@@ -56,7 +58,9 @@ closure through two incomparable function views with empty capture sets.
 `RecordIntersectionRegression.lean` first checks two empty-capture aliases of
 one record whose same stored member is used through incomparable function
 views, then merges those views so one alias uses the member at both component
-shapes.
+shapes. `TypeMemberIntersectionRegression.lean` merges two views of one
+abstract type member and uses its selected type through the shared lower bound
+and both merged upper views.
 
 ## Files
 
@@ -84,6 +88,8 @@ shapes.
   opaque shape intersection.
 - `RecordIntersectionRegression.lean`: a closed same-label record intersection
   with both a two-alias view and a merged one-alias view of the same member.
+- `TypeMemberIntersectionRegression.lean`: a closed shared-lower abstract
+  type-member merge, with empty captures and uses.
 
 ## Building
 

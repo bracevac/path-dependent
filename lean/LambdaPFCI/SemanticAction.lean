@@ -173,6 +173,7 @@ noncomputable def Tau.Sub.compile
 | .inter_left => .interLeft
 | .inter_right => .interRight
 | .pair_inter => .pairInter
+| .pair_type_inter => .pairTypeInter
 | .widen path => by
     obtain ⟨referent, resolution, realizes⟩ := path.resolve environment
     cases realizes with
@@ -232,6 +233,7 @@ def Coercion.treeSize : Coercion sigma d1 d2 -> Nat
 | .interLeft => 1
 | .interRight => 1
 | .pairInter => 1
+| .pairTypeInter => 1
 | .widen _ _ => 1
 | .alias _ _ => 1
 | .selLo _ lower => lower.treeSize + 1
@@ -291,6 +293,24 @@ noncomputable def Coercion.action
                         | loc rightPossible =>
                             exact .loc (.pair leftBinding leftFirst
                               (.loc (.inter leftPossible rightPossible)))
+| .pairTypeInter, .loc (.inter left right) => by
+    cases left with
+    | @pair _ _ _ _ _ _ leftDefinition _ _
+        leftBinding leftFirst leftMember =>
+        cases leftDefinition with
+        | type _ =>
+            cases right with
+            | @pair _ _ _ _ _ _ rightDefinition _ _
+                rightBinding _ rightMember =>
+                cases rightDefinition with
+                | type _ =>
+                    cases Store.Binds.unique leftBinding rightBinding
+                    cases leftMember with
+                    | type leftLower leftUpper =>
+                        cases rightMember with
+                        | type _ rightUpper =>
+                            exact .loc (.pair leftBinding leftFirst
+                              (.type leftLower (.inter leftUpper rightUpper)))
 | .widen resolution target, realizes => by
     cases realizes with
     | loc possible =>

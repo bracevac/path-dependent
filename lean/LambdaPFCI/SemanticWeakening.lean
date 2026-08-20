@@ -114,6 +114,7 @@ noncomputable def Coercion.weaken
   | .interLeft => .interLeft
   | .interRight => .interRight
   | .pairInter => .pairInter
+  | .pairTypeInter => .pairTypeInter
   | .widen resolution possible =>
       .widen (resolution.weaken v vv) (possible.weaken v vv)
   | .alias left right =>

@@ -160,6 +160,7 @@ noncomputable def Shape.Sub.compile
   | .inter_left => .interLeft
   | .inter_right => .interRight
   | .pair_inter => .pairInter
+  | .pair_type_inter => .pairTypeInter
   | .singleton_widen path => by
       obtain ⟨referent, resolution, realizes⟩ :=
         Cap.Path.Ty.resolve environment path

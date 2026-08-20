@@ -85,8 +85,10 @@ immutable dependent pairs. A pair contains a first-component location and
 either a term member with a proper-type signature or a type member with an
 interval signature; the member signature may mention the first component.
 Proper types also include binary intersections with the three standard meet
-rules and a restricted rule that merges term-member pair views with an identical
-first-component type and label.
+rules and restricted rules that merge pair views with an identical
+first-component type and label. Proper term-member signatures are combined by
+intersection; interval signatures with a shared lower bound are combined by
+intersecting their upper bounds.
 An intersection records two semantic realizations of one location; it adds no
 value form, cast, or machine transition.
 The central subtyping rule is covariant in both pair components and compares
@@ -198,7 +200,7 @@ The contributions are:
 \item a small calculus combining arbitrary stable paths, singleton types,
   binary intersections, abstract type selections, dependent functions, and
   dependent pairs with term and type members, including controlled merging of
-  term-member views with an identical first-component type and label;
+  same-label term-member views and shared-lower type-member views;
 \item a store-indexed coercion interpretation of its full declarative
   subtyping relation, including the explicit transitivity rule and covariance
   of both components of dependent pairs;
@@ -243,17 +245,28 @@ Labels occupy one syntactic name space.
 
 The binary proper type \(\interty{S}{T}\) is controlled. Its three meet rules
 introduce a meet from two views of the same source and eliminate either
-component. One additional rule merges two pair views only when they have the
-same first-component type, the same label, and proper term-member signatures:
+component. Two additional rules merge pair views only when they have the same
+first-component type and label. For proper term-member signatures, the member
+types are intersected:
 \[
   \interty{\pairty{x}{S}{a}{T}}{\pairty{x}{S}{a}{U}}
   <:\pairty{x}{S}{a}{\interty{T}{U}}.
 \]
+For interval type-member signatures, the rule additionally requires an
+identical lower bound and intersects only the upper bounds:
+\[
+  \interty{\pairty{x}{S}{A}{L..U}}{\pairty{x}{S}{A}{L..V}}
+  <:\pairty{x}{S}{A}{L..\interty{U}{V}}.
+\]
+This shared-lower restriction is material. Combining unrelated intervals
+symmetrically while retaining both lower-bound guarantees would require a
+lower bound above both source lowers, conventionally their union; unions are
+not part of \lambdap{}.
 There is no term-level intersection introduction: existing subsumption is the
 only way to assign an intersection type to a term. In particular, path
 synthesis is not extended with rules that project through intersections, and
 the calculus has no general member merging, unrestricted distributivity
-beyond this one pair rule, or intersection-specific record operation.
+beyond these two pair rules, or intersection-specific record operation.
 
 The binder in a function scopes over its codomain. The binder \(x\) in
 \(\pairty{x}{S}{a}{\tau}\) scopes over the member signature \(\tau\); it
@@ -291,9 +304,12 @@ proper-type and interval signatures.
 Binary intersections use the three meet rules: a source below both components
 is below their intersection, and an intersection is below either component.
 Rule \ruleref{s-pair-inter} additionally combines the term-member signatures
-of two pair views whose first-component type and label agree. It does not
-apply to interval members, differing labels, or differing first-component
-types. None of these rules changes the precise type synthesized by
+of two pair views whose first-component type and label agree. Rule
+\ruleref{s-pair-type-inter} combines interval signatures under the same
+structural restrictions, and only when their lower bound agrees. Thus neither
+rule merges differing labels or differing first-component types, and interval
+members with distinct lower bounds remain separate. None of these rules
+changes the precise type synthesized by
 \(\mathsf{Path.Ty}\) (the judgment written
 \(\Gamma\vdash p\Rightarrow\tau\) here).
 
@@ -580,6 +596,11 @@ rules, and all eight signature well-formedness rules.}
     \interty{\pairty{x}{S}{a}{T}}{\pairty{x}{S}{a}{U}}
     <:\pairty{x}{S}{a}{\interty{T}{U}}}
 
+\infax[\ruledef{s-pair-type-inter}]
+  {\Gamma\vdash
+    \interty{\pairty{x}{S}{A}{L..U}}{\pairty{x}{S}{A}{L..V}}
+    <:\pairty{x}{S}{A}{L..\interty{U}{V}}}
+
 \infrule[\ruledef{s-bounds}]
   {\Gamma\vdash S'<:S
    \andalso
@@ -591,7 +612,7 @@ rules, and all eight signature well-formedness rules.}
 
 \caption{Source syntax and static semantics (continued): signature
 subtyping.}
-\Description{All fifteen signature-subtyping rules.}
+\Description{All sixteen signature-subtyping rules.}
 \label{fig:subtyping}
 \end{figure}
 
@@ -1134,7 +1155,7 @@ both referent rules, and all six location-realization rules.}
 \clearpage
 \begin{figure}[H]
 \ContinuedFloat
-\setlength{\afterruleskip}{1.2em plus 0.15em minus 0.1em}
+\setlength{\afterruleskip}{0.5em plus 0.05em minus 0.05em}
 \noindent
 \begin{minipage}[t]{0.48\linewidth}
 \plateheader{Context satisfaction}{\rho\realizes_\sigma\Gamma}
@@ -1203,6 +1224,15 @@ both referent rules, and all six location-realization rules.}
     \interty{\pairty{z}{S}{a}{T}}{\pairty{z}{S}{a}{U}}
    \\
    \coerce\pairty{z}{S}{a}{\interty{T}{U}}
+   \end{gathered}}
+
+\typicallabel{c-pair-type-inter}
+\infax[\ruledef{c-pair-type-inter}]
+  {\begin{gathered}
+   \sigma\vdash
+    \interty{\pairty{z}{S}{A}{L..U}}{\pairty{z}{S}{A}{L..V}}
+   \\
+   \coerce\pairty{z}{S}{A}{L..\interty{U}{V}}
    \end{gathered}}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.54\linewidth}
@@ -1302,7 +1332,7 @@ both referent rules, and all six location-realization rules.}
 \caption{Store-indexed judgments (part 2): context satisfaction, suspended
 premises, semantic coercions, and open codomain coercions.}
 \Description{The context rule, the suspended-body rule, the suspended-member
-rule, all sixteen semantic-coercion rules, and all five open-codomain rules.}
+rule, all seventeen semantic-coercion rules, and all five open-codomain rules.}
 \end{figure}
 
 \endgroup
@@ -1338,10 +1368,13 @@ bounds.
 Rule \ruleref{c-inter} retains both coercions from the common source, while
 \ruleref{c-inter-left} and \ruleref{c-inter-right} contain no additional
 evidence: their action simply projects the corresponding realization.
-Rule \ruleref{c-pair-inter} is likewise nullary. Its action inverts the two
-pair realizations stored by \ruleref{loc-inter}, uses functionality of store
-lookup to identify their one stored pair, and combines the two realizations
-of that pair's term-member location.
+Rules \ruleref{c-pair-inter} and \ruleref{c-pair-type-inter} are likewise
+nullary. Their actions invert the two pair realizations stored by
+\ruleref{loc-inter} and use functionality of store lookup to identify their
+one stored pair. The former combines two realizations of that pair's
+term-member location. The latter identifies one stored type witness, reuses a
+coercion from the shared lower bound to that witness, and intersects the two
+coercions from the witness to the advertised upper bounds.
 
 The dependent cases suspend their binder premises, as specified by
 \ruleref{cod-source} and \ruleref{mem-source}. The two forms differ because an
@@ -1518,6 +1551,10 @@ the source interval but contributes no evidence to the resulting coercion.
 \typicallabel{s-pair-inter}
 \infax[\ruleuse{s-pair-inter}]
   {\compilepi{\mathcal R}{\pi}=\ruleuse{c-pair-inter}}
+
+\typicallabel{s-pair-type-inter}
+\infax[\ruleuse{s-pair-type-inter}]
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-pair-type-inter}}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.515\linewidth}
 \typicallabel{s-sel-hi}
@@ -1589,8 +1626,8 @@ the source interval but contributes no evidence to the resulting coercion.
    \andalso \compilepi{\mathcal R}{\pi_2}=C_2}
   {\compilepi{\mathcal R}{\pi}=\ruleuse{c-bounds}(C_1,C_2)}
 \endgroup
-\caption{Interpretation of all fifteen subtyping rules as semantic coercions.}
-\Description{The fifteen equations defining subtyping interpretation. The
+\caption{Interpretation of all sixteen subtyping rules as semantic coercions.}
+\Description{The sixteen equations defining subtyping interpretation. The
 function and pair-covariance coercions retain their dependent premise
 derivations.}
 \label{fig:subtyping-interpretation}
@@ -1654,8 +1691,8 @@ The elimination coercions merely select stored semantic evidence:
 This packaging exists only in realization evidence; it is not a source or
 runtime term constructor.
 
-The restricted pair merge also acts without a run-time operation. Suppose the
-two components of an intersection realization invert to
+The term-member pair merge also acts without a run-time operation. Suppose
+the two components of an intersection realization invert to
 \[
 \begin{array}{rcl}
   R_L&=&\ruleuse{loc-pair}
@@ -1685,6 +1722,38 @@ respective signatures opened with the common first component. Their
 This argument relies on both source branches describing the same receiver
 location and on the rule requiring identical first-component types and
 labels; it does not extend to arbitrary pairs.
+
+The type-member merge uses the same immutable-binding argument, but the common
+member referent is a stored type definition. Suppose inversion, followed by
+transport along binding uniqueness, gives
+\[
+\begin{array}{rcl}
+  R_L&=&\ruleuse{loc-pair}
+    (B_x,R_y,\ruleuse{ref-type}(C_L,C_U)),\\[2pt]
+  R_R&=&\ruleuse{loc-pair}
+    (B_x,R_y,\ruleuse{ref-type}(C_L',C_V)).
+\end{array}
+\]
+Both member realizations describe the same stored witness \(W\). The shared
+source lower bound makes either \(C_L\) or \(C_L'\) suitable for the target
+interval, while \ruleref{c-inter} combines
+\(C_U:\sigma\vdash W\coerce U\) and
+\(C_V:\sigma\vdash W\coerce V\). Thus
+\[
+\begin{aligned}
+  &\action{\ruleuse{c-pair-type-inter}}
+    {\ruleuse{ref-loc}(\ruleuse{loc-inter}(R_L,R_R))}
+  \\[2pt]
+  &\qquad=\ruleuse{ref-loc}\bigl(
+    \ruleuse{loc-pair}(B_x,R_y,
+      \ruleuse{ref-type}(C_L,
+        \ruleuse{c-inter}(C_U,C_V)))\bigr).
+\end{aligned}
+\]
+All interval bounds in this equation are understood after opening them with
+the common first-component location. With distinct source lowers, neither
+lower coercion would in general establish the target lower bound; the
+calculus deliberately provides no rule for that case.
 
 Selection coercions use the lower or upper coercion contained in the realized
 interval. For lower selection, if applying
@@ -1901,10 +1970,10 @@ secondary component. The intersection projections do not recurse. In
 \ruleref{c-pair}, the first recursive application concerns \(\loc y\), and the
 second concerns \(\referentof{\delta}\).  Both strictly decrease the primary
 component, independently of the size of the coercion obtained by member
-instantiation. Rule \ruleref{c-pair-inter} has coercion size one and performs
-no recursive coercion application: it uses store-binding uniqueness and
-rebuilds realization evidence directly. These are all recursive coercion
-applications.
+instantiation. Rules \ruleref{c-pair-inter} and
+\ruleref{c-pair-type-inter} each have coercion size one and perform no
+recursive coercion application: they use store-binding uniqueness and rebuild
+realization evidence directly. These are all recursive coercion applications.
 
 \subsection{Semantic subtyping}
 \label{sec:coercion-totality}
@@ -2279,7 +2348,10 @@ weakened into that scope. The named presentation uses globally fresh
 locations and leaves this renaming implicit. Closed regressions exercise
 intersection introduction and both eliminations in one function application,
 two incomparable same-label views of one stored record member, and the
-restricted merge of those views into one selectable member intersection.
+restricted merge of those views into one selectable member intersection. A
+further closed regression merges two interval views of one stored abstract
+type member, selects the merged interval, and exercises both its lower bound
+and the two projections of its intersected upper bound.
 
 \subsection{Examples}
 
@@ -2317,6 +2389,30 @@ The mechanized closed example first allocates \(v:S\) and the single pair
 \(a\)-member at \(\interty{L}{R}\), and the same selected path supplies both
 operator and argument of the application. The merge rule neither allocates a
 record nor adds a projection from the outer intersection to path synthesis.
+
+The type-member rule places the intersection behind abstract type selection.
+Write
+\[
+  P(U)=\pairty{x}{\top}{A}{S..U}.
+\]
+The shared-lower rule derives
+\[
+  \interty{P(L)}{P(R)}<:P(\interty{L}{R}).
+\]
+The mechanized closed example allocates the same value \(v:S\) and one pair
+\(r=\pairval{v}{A}{S}\), whose type definition is exactly \(A=S\). Pair
+covariance exposes \(r\) at \(P(L)\) and \(P(R)\), and intersection
+introduction gives their conjunction. One path-only alias \(q\) receives the
+merged type \(P(\interty{L}{R})\), so ordinary path synthesis exposes
+\[
+  q.A:S..\interty{L}{R}.
+\]
+In the body \(v\,v\), both occurrences of \(v\) first cross the selected
+lower bound \(S<:q.A\). Selection of the merged upper bound followed by
+\ruleref{s-inter-left} views the operator at \(L\); the corresponding
+\ruleref{s-inter-right} path views the argument at \(R\). Thus the example
+does not merely construct the merged interval: it uses the abstract selected
+type to mediate the final application.
 
 The following derivations illustrate \ruleref{s-pair} with a non-singleton
 first component:
@@ -2370,8 +2466,9 @@ metatheory in different ways, including inert or tight typing
 \citep{rapoport2017simple} and definitional-interpreter techniques
 \citep{amin2017definitional}. \lambdap{} removes recursive objects and unions
 and studies paths built from immutable dependent pairs. It retains controlled
-binary intersections with the three meet rules and one term-member merge for
-an identical first-component type and label. Unlike richer DOT intersections,
+binary intersections with the three meet rules, a term-member merge for an
+identical first-component type and label, and a corresponding type-member
+merge restricted to a shared lower bound. Unlike richer DOT intersections,
 they do not generally merge members, distribute through other type
 constructors, or participate directly in precise path synthesis. The
 resulting runtime makes allocation order available as a
@@ -2450,12 +2547,12 @@ rank than the pair cell. Together with typed path resolution and the
 syntax-directed machine invariant, the coercion interpretation establishes
 progress, preservation, and type safety for every finite execution prefix.
 The intersection extension is intentionally limited to meet introduction and
-elimination plus the term-member merge for an identical first-component type
-and label. It has no path-typing projection, general member merging (in
-particular for intervals, unequal labels, or unequal first-component types),
-distributivity beyond this one pair rule, term introduction form, or
-operational rule; extending any of those dimensions would be a separate
-calculus change.
+elimination, the term-member merge for an identical first-component type and
+label, and the analogous type-member merge when the lower interval bound is
+shared. It has no path-typing projection, merging for intervals with distinct
+lower bounds, merging for unequal labels or unequal first-component types,
+other distributivity, term introduction form, or operational rule; extending
+any of those dimensions would be a separate calculus change.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../../references}
