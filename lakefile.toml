@@ -1,7 +1,7 @@
 name = "path-dependent"
 version = "0.1.0"
 srcDir = "lean"
-defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC"]
+defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC", "LambdaPFCI", "LambdaPCCI"]
 
 [leanOptions]
 pp.unicode.fun = true
@@ -16,3 +16,9 @@ name = "LambdaPFC"
 
 [[lean_lib]]
 name = "LambdaPCC"
+
+[[lean_lib]]
+name = "LambdaPFCI"
+
+[[lean_lib]]
+name = "LambdaPCCI"

@@ -1,0 +1,2371 @@
+\documentclass[acmsmall,screen,nonacm]{acmart}
+
+\usepackage{bcprules}
+\usepackage{mathtools}
+\usepackage[nameinlink,noabbrev]{cleveref}
+
+\settopmatter{printacmref=false,printccs=false,printfolios=true}
+\raggedbottom
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+
+\newcounter{RuleRef}
+\newcommand{\ruledef}[1]{%
+  \refstepcounter{RuleRef}\textsc{#1}\label{rule:#1}}
+\newcommand{\ruleuse}[1]{%
+  \hyperref[rule:#1]{\textsc{#1}}}
+\newcommand{\ruleref}[1]{%
+  \textsc{(\hyperref[rule:#1]{#1})}}
+
+\newcommand{\lambdap}{\ensuremath{\lambda_{\mathsf p}}}
+\newcommand{\ctxempty}{\varnothing}
+\newcommand{\sing}[1]{\{#1\}}
+\newcommand{\pairty}[4]{\langle #1\!:\!#2;\,#3\!:\!#4\rangle}
+\newcommand{\interty}[2]{#1\mathbin{\wedge}#2}
+\newcommand{\pairval}[3]{\langle #1;\,#2=#3\rangle}
+\newcommand{\subst}[3]{#1[#2/#3]}
+\newcommand{\wf}{\mathrel{\mathsf{wf}}}
+\newcommand{\final}{\mathsf{final}}
+\newcommand{\steps}{\longrightarrow^{*}}
+\newcommand{\sstep}{\longrightarrow}
+\newcommand{\resolve}{\Downarrow}
+\newcommand{\loc}[1]{\mathsf{loc}(#1)}
+\newcommand{\typeref}[1]{\mathsf{type}(#1)}
+\newcommand{\referentof}[1]{\mathsf{ref}(#1)}
+\newcommand{\realizes}{\Vdash}
+\newcommand{\coerce}{\mathrel{\rightsquigarrow}}
+\newcommand{\bodycl}[5]{%
+  \mathsf{Body}_{#1}(#2\!:\!#3\vdash #4:#5)}
+\newcommand{\membercl}[5]{%
+  \mathsf{Member}_{#1}(#2\!:\!#3\vdash #4<:#5)}
+\newcommand{\resolvepi}[2]{\mathsf{resolve}_{#1}(#2)}
+\newcommand{\compilepi}[2]{\llbracket #2\rrbracket_{#1}}
+\newcommand{\action}[2]{#1(#2)}
+\newcommand{\forcemem}[2]{\mathsf{inst}_{\mathsf{mem}}(#1,#2)}
+\newcommand{\forcecod}[2]{\mathsf{inst}_{\mathsf{cod}}(#1,#2)}
+\newcommand{\closure}[3]{\langle #1,#2\rangle}
+\newcommand{\judgheader}[3][]{%
+  \par\addvspace{0.75em}%
+  \noindent\textbf{#2}%
+  \if\relax\detokenize{#1}\relax\else\quad #1\fi
+  \hfill{\setlength{\fboxsep}{4pt}\setlength{\fboxrule}{0.5pt}%
+    \fbox{\(\strut #3\)}}\par
+  \nobreak\addvspace{0.85em}%
+}
+\newcommand{\plateheader}[2]{%
+  \par\addvspace{1.1em}%
+  \noindent\textbf{#1}%
+  \if\relax\detokenize{#2}\relax\else
+    \hfill{\setlength{\fboxsep}{3pt}\setlength{\fboxrule}{0.5pt}%
+      \fbox{\(\strut #2\)}}%
+  \fi\par
+  \nobreak\addvspace{0.65em}%
+}
+\newcommand{\rulesetup}{%
+  \small
+  \smallrulenames
+  \setlength{\afterruleskip}{2em plus 0.2em minus 0.1em}%
+  \setlength{\labelminsep}{0.6em}%
+  \renewcommand{\arraystretch}{1.15}%
+  \renewcommand{\andalso}{\qquad}%
+}
+
+\title{Semantic Coercions for Paths through Dependent Pairs}
+\author{Oliver Bra\v{c}evac}
+\author{Martin Odersky}
+\renewcommand{\shortauthors}{Bra\v{c}evac and Odersky}
+\authorsaddresses{}
+
+\begin{document}
+
+\begin{abstract}
+We study a small call-by-value calculus of path-dependent types based on
+immutable dependent pairs. A pair contains a first-component location and
+either a term member with a proper-type signature or a type member with an
+interval signature; the member signature may mention the first component.
+Proper types also include binary intersections with the three standard meet
+rules. An intersection records two semantic realizations of one location; it
+adds no value form, cast, or machine transition.
+The central subtyping rule is covariant in both pair components and compares
+the member signatures under the source first-component type, so its dependent
+premise cannot be interpreted until a concrete pair realization supplies the
+location bound by that premise.
+
+The soundness proof relates paths to their run-time referents, which are
+locations or stored type definitions. A realization derivation records the
+signature supported by a referent. Each subtyping derivation is interpreted
+as a store-indexed coercion that maps a realization of its source signature
+to a realization of its target signature at the same referent. Dependent
+premises are retained with their closing substitutions until the corresponding
+location is known. In the pair case, inversion supplies the stored first
+component; the member premise is interpreted at that location, and the
+resulting coercion is applied to the member referent. Coercion application is
+well founded lexicographically by referent rank and coercion size. We give the
+complete calculus and operational semantics, the coercion interpretation, the
+machine-typing invariant, and mechanized proofs of progress and preservation.
+\end{abstract}
+
+\keywords{path-dependent types, dependent pairs, subtyping, semantic
+coercions, type soundness, Lean}
+
+\maketitle
+
+\section{Introduction}
+
+Path-dependent types associate type information with stable term paths. DOT
+calculi place this mechanism in a rich object calculus with recursive self
+types, refinements, intersections, and abstract type members
+\citep{amin2014foundations,rompf2016dot}. The interaction among those
+features has led to several distinct soundness arguments. The calculus in
+this paper, \lambdap{}, isolates a smaller question: how much of paths and
+abstract type selection can be based on ordinary dependent pairs?
+
+A \lambdap{} value is an abstraction or an immutable pair
+\(\pairval{y}{a}{\delta}\). Its first component is a store location. The
+second component is either another location, representing a term member, or
+a type definition, representing a type member. Its signature may refer to the
+first component. Paths consist of variables, first projections, and labelled
+selections. When the outer pair has a different label, selection continues
+through its first component, so nested pairs can represent record extension.
+Singleton types \(\sing{p}\) record path identity. A type selection \(p.A\)
+has the lower and upper bounds declared by the corresponding pair signature;
+the run-time pair itself stores a concrete type definition. The language also
+contains dependent functions, declarative subtyping with an explicit
+transitivity rule, binary meets, and bound-consistency premises for type
+intervals.
+
+Write \(\Gamma\vdash\tau<:\tau'\) when signature \(\tau\) is a subtype of
+\(\tau'\) under typing context \(\Gamma\). The difficult rule is covariance
+of dependent pairs. Here \(S,S'\) range over proper types, while
+\(\tau,\tau'\) range over member signatures, which may be either proper
+types or type intervals. The type \(\pairty{x}{S}{a}{\tau}\) binds \(x\) in
+\(\tau\), where \(x\) denotes the first component and \(a\) is the member
+label:
+\begingroup
+\rulesetup
+\typicallabel{s-pair}
+\infrule[\ruleuse{s-pair}]
+  {\Gamma\vdash S<:S'
+   \andalso
+   \Gamma,x:S\vdash \tau<:\tau'}
+  {\Gamma\vdash
+    \pairty{x}{S}{a}{\tau}<:\pairty{x}{S'}{a}{\tau'}}
+\endgroup
+The source pair supplies a component of type \(S\), so \(S\) is the natural
+assumption for comparing the members. At run time, however, the member
+signature is opened with the concrete location \(y\) stored in the pair. A
+proof of preservation must use the second premise at that location and must
+relate source paths to the referents found by run-time resolution.
+
+We interpret subtyping derivations using store-indexed coercions. Fix a store
+\(\sigma\) and a closing substitution \(\rho\) that maps the variables of
+\(\Gamma\) to locations in \(\sigma\). A path resolves to a \emph{referent},
+which is either a location or a stored type definition. We write
+\(\sigma\realizes r:\tau\) when referent \(r\) realizes signature \(\tau\).
+A derivation of \(\Gamma\vdash\tau<:\tau'\) is interpreted as a coercion
+\[
+  C:\sigma\vdash\rho(\tau)\coerce\rho(\tau').
+\]
+Applying \(C\) to a derivation of
+\(\sigma\realizes r:\rho(\tau)\) produces a derivation of
+\(\sigma\realizes r:\rho(\tau')\). Transitivity is interpreted by coercion
+composition. The singleton and selection cases retain resolution derivations
+and lower- or upper-bound coercions needed when the coercion is applied.
+Dependent
+premises under function and pair binders are retained until a concrete binder
+location is available.
+
+For \ruleref{s-pair}, interpretation produces a coercion for \(S<:S'\) and
+suspends the derivation of \(\tau<:\tau'\) with its closing substitution.
+Applying the pair coercion at a location instantiates the suspended premise
+at the stored first component \(y\) and applies the resulting member coercion
+to the member referent (\cref{sec:coercion-pair}). Although that coercion is
+not structurally contained in the pair coercion, its application decreases
+the allocation rank, because both referents stored in a pair precede the
+pair cell in the immutable store (\cref{sec:coercion-termination}).
+
+The coercions are metatheoretic proof objects. Programs and
+machine states contain the source terms given in \cref{sec:calculus};
+execution performs no casts or type checks. Typed intermediate calculi such
+as System FC instead place equality evidence and casts in the intermediate
+program and erase them before execution \citep{sulzmann2007systemfc}.
+
+The contributions are:
+\begin{itemize}
+\item a small calculus combining arbitrary stable paths, singleton types,
+  binary intersections, abstract type selections, dependent functions, and
+  dependent pairs with term and type members;
+\item a store-indexed coercion interpretation of its full declarative
+  subtyping relation, including the explicit transitivity rule and covariance
+  of both components of dependent pairs;
+\item a well-founded definition of coercion application based on the allocation order
+  of immutable stores; and
+\item a Lean 4 mechanization of typed path resolution, subtyping
+  interpretation, coercion application, machine typing, progress,
+  preservation, and
+  non-stuckness of every finite execution prefix.
+\end{itemize}
+
+The result is type safety for the calculus as presented. It does not establish
+normalization, decidability of subtyping, or admissibility of transitivity.
+
+\section{The calculus}
+\label{sec:calculus}
+
+\lambdap{} isolates path-dependent types in a call-by-value calculus with
+immutable dependent pairs. Terms sequence computations with
+\(\mathbf{let}\); applications take paths as operands, and pair components
+are variables or type definitions. The operational semantics combines path
+resolution with a CK machine.
+
+\subsection{Source language}
+\label{sec:syntax}
+
+Proper types and member signatures are defined mutually. In the grammar,
+\(S,T,U\) range over proper types; \(\tau,\tau'\) range over proper
+or interval signatures; \(p,q\) range over paths; \(t,u\) range over
+terms; \(v\) ranges over values; \(x,y,z\) range over variables; \(a,b\)
+range over labels; \(\delta\) ranges over member definitions; and \(\Gamma\)
+ranges over typing contexts. Primes and numeric subscripts distinguish
+metavariables of the same category. Uppercase labels such as \(A\) are a
+typographical convention for type members and do not form a separate label
+sort.
+
+A member signature is either a proper type or an interval. A term-member
+definition is a variable that names a location at run time and therefore has
+a proper-type signature. A type-member definition is a type and therefore
+has an interval signature.
+Labels occupy one syntactic name space.
+
+The binary proper type \(\interty{S}{T}\) is deliberately only a meet. Its
+subtyping rules introduce a meet from two views of the same source and
+eliminate either component. There is no term-level intersection
+introduction: existing subsumption is the only way to assign an intersection
+type to a term. In particular, path synthesis is not extended with rules
+that project through intersections, and the calculus has no member merging,
+distributivity rules, or intersection-specific record operation.
+
+The binder in a function scopes over its codomain. The binder \(x\) in
+\(\pairty{x}{S}{a}{\tau}\) scopes over the member signature \(\tau\); it
+denotes the first component of the pair. We write
+\(\subst{\tau}{p}{x}\) for capture-avoiding opening. Singleton types
+\(\sing{p}\) record term identity. An abstract type selection \(p.A\) denotes an
+unknown type constrained by the bounds declared for \(A\).
+
+The paper uses names, with \(\Gamma(x)=T\) for context lookup, and treats
+well-scopedness of the syntax in each judgment as implicit. Substitution and
+renaming are capture avoiding; beneath a binder they act on the free variables
+and leave the bound variable fixed.
+
+\subsection{Static semantics}
+\label{sec:static-semantics}
+
+The static semantics consists of path synthesis
+\(\Gamma\vdash p\Rightarrow\tau\), signature subtyping
+\(\Gamma\vdash\tau<:\tau'\), signature well-formedness
+\(\Gamma\vdash\tau\ \wf\), and term typing \(\Gamma\vdash t:T\). Path
+synthesis produces either a proper type or an interval and admits no
+subsumption. Term typing assigns a singleton type to a path and provides
+subsumption separately. The semantic interpretation is derivation directed:
+its result may depend on the chosen derivation of a judgment.
+
+The matching selection rule opens the member at the receiver's first
+projection. A pair can extend a chain of earlier pairs: if its label differs
+from the requested label, \ruleref{p-miss} continues at \(p.1.a\). Run-time
+path resolution uses the same convention. Function domains are contravariant,
+and codomains are compared under the target domain. Dependent pairs are
+covariant in their first component and their member; the member comparison
+is made under the source first-component type and applies uniformly to
+proper-type and interval signatures.
+
+Binary intersections use exactly the meet rules: a source below both
+components is below their intersection, and an intersection is below either
+component. These rules can combine otherwise independent views of one path,
+but they do not change the precise type synthesized by \(\mathsf{Path.Ty}\)
+(the judgment written \(\Gamma\vdash p\Rightarrow\tau\) here).
+
+Well-formed intervals have consistent bounds. Term paths receive singleton
+types. A selected type is well formed whenever path synthesis resolves its
+member to an interval, including lookup through earlier pair components.
+Pair introduction exposes exact information: a term member
+receives the singleton type of its location, and a type definition receives
+the exact interval \(T..T\). Subtyping subsequently hides either component. In
+\ruleref{t-let}, the result type \(T\) is formed in the outer context and does
+not depend on \(x\).
+
+\subsection{Runtime configurations and transitions}
+\label{sec:machine}
+
+A store is an immutable sequence of values. Source variables and allocated
+locations share the metavariables \(x,y,z\); their role is determined by the
+judgment in which they occur. A value appended at a fresh location may refer
+only to older cells. We write \(\sigma(x)=v\) for lookup,
+\(\sigma\mathbin{\cdot}(z\mapsto v)\) for extension at a fresh location
+\(z\), and
+\(\mathsf{dom}(\sigma)=\{i\mid i<|\sigma|\}\) for the allocated locations.
+Machine configurations are well scoped by their store, so every free runtime
+variable names an allocated location. Runtime terms therefore use the source
+grammar.
+
+Intersections are absent from values, referents, continuations, and machine
+states except as types decorating the metatheory. They add no path-resolution
+or transition rule, and execution neither constructs intersection packages
+nor performs casts. Thus the runtime syntax and operational semantics below
+are unchanged by the meet extension.
+
+Path resolution yields either a location or a stored type; machine rules that
+require a location stipulate a result of the form \(\loc{x}\).
+
+The CK machine evaluates a let's bound computation before its body. A location
+returns through a suspended let body without allocation. A syntactic value is
+allocated and the body is opened at its fresh location.
+
+\clearpage
+\begingroup
+\setlength{\abovedisplayskip}{5pt plus 1pt minus 1pt}
+\setlength{\belowdisplayskip}{5pt plus 1pt minus 1pt}
+\setlength{\intextsep}{4pt}
+\captionsetup{skip=6pt}
+\rulesetup
+
+\begin{figure}[H]
+\noindent
+\begin{minipage}[t]{\linewidth}
+\plateheader{Source syntax}{}
+\noindent
+\begin{minipage}[t]{0.48\linewidth}
+\begin{tabular*}{\linewidth}{@{}r@{\ }l@{\extracolsep{\fill}}r@{}}
+\(x,y,z\) && \textbf{Term variable}
+\\
+\(a,b,A\) && \textbf{Member label}
+\\[0.35em]
+\(p,q\coloneqq\) && \textbf{Path}
+\\
+  & \(x\) & variable
+\\
+  & \(p.1\) & first projection
+\\
+  & \(p.a\) & member selection
+\\[0.35em]
+\(S,T,U\coloneqq\) && \textbf{Proper type}
+\\
+  & \(\top\) & top
+\\
+  & \(\bot\) & bottom
+\\
+  & \((x:S)\to T\) & dependent function
+\\
+  & \(\pairty{x}{S}{a}{\tau}\) & dependent pair
+\\
+  & \(\interty{S}{T}\) & binary intersection
+\\
+  & \(\sing{p}\) & singleton
+\\
+  & \(p.A\) & type selection
+\\[0.35em]
+\(\tau,\tau'\coloneqq\) && \textbf{Member signature}
+\\
+  & \(T\) & proper type
+\\
+  & \(S..T\) & interval
+\end{tabular*}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\linewidth}
+\begin{tabular*}{\linewidth}{@{}r@{\ }l@{\extracolsep{\fill}}r@{}}
+\(\delta\coloneqq\) && \textbf{Member definition}
+\\
+  & \(z\) & term member
+\\
+  & \(T\) & type member
+\\[0.35em]
+\(t,u\coloneqq\) && \textbf{Term}
+\\
+  & \(p\) & path
+\\
+  & \(\lambda(x:S).t\) & abstraction
+\\
+  & \(\pairval{y}{a}{\delta}\) & pair
+\\
+  & \(p\,q\) & application
+\\
+  & \(\mathbf{let}\ x=t\ \mathbf{in}\ u\) & let
+\\[0.35em]
+\(v\coloneqq\) && \textbf{Value}
+\\
+  & \(\lambda(x:S).t\) & abstraction
+\\
+  & \(\pairval{y}{a}{\delta}\) & pair
+\\[0.35em]
+\(\Gamma\coloneqq\) && \textbf{Typing context}
+\\
+  & \(\ctxempty\) & empty
+\\
+  & \(\Gamma,x:T\) & term binding
+\end{tabular*}
+\end{minipage}
+\end{minipage}\par
+\begin{minipage}[t]{\linewidth}
+\plateheader{Path synthesis}{\Gamma\vdash p\Rightarrow\tau}
+\typicallabel{p-miss}
+\noindent
+\begin{minipage}[t]{0.47\linewidth}
+\infrule[\ruledef{p-var}]
+  {\Gamma(x)=T}
+  {\Gamma\vdash x\Rightarrow T}
+
+\infrule[\ruledef{p-fst}]
+  {\Gamma\vdash p\Rightarrow\pairty{x}{S}{a}{\tau}}
+  {\Gamma\vdash p.1\Rightarrow S}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.51\linewidth}
+\infrule[\ruledef{p-sel}]
+  {\Gamma\vdash p\Rightarrow\pairty{x}{S}{a}{\tau}}
+  {\Gamma\vdash p.a\Rightarrow\subst{\tau}{p.1}{x}}
+
+\infrule[\ruledef{p-miss}]
+  {\Gamma\vdash p\Rightarrow\pairty{x}{S}{b}{\tau'}
+   \\
+   \Gamma\vdash p.1.a\Rightarrow\tau
+   \andalso
+   a\ne b}
+  {\Gamma\vdash p.a\Rightarrow\tau}
+\end{minipage}
+\end{minipage}
+
+\plateheader{Signature well-formedness}{\Gamma\vdash\tau\ \wf}
+\noindent
+\begin{minipage}[t]{0.47\linewidth}
+\typicallabel{wf-single}
+\infax[\ruledef{wf-bot}]
+  {\Gamma\vdash\bot\ \wf}
+
+\infax[\ruledef{wf-top}]
+  {\Gamma\vdash\top\ \wf}
+
+\infrule[\ruledef{wf-single}]
+  {\Gamma\vdash p\Rightarrow T}
+  {\Gamma\vdash\sing{p}\ \wf}
+
+\infrule[\ruledef{wf-select}]
+  {\Gamma\vdash p.A\Rightarrow T..U
+   \andalso
+   \Gamma\vdash T<:U}
+  {\Gamma\vdash p.A\ \wf}
+
+\infrule[\ruledef{wf-inter}]
+  {\Gamma\vdash S\ \wf
+   \andalso
+   \Gamma\vdash T\ \wf}
+  {\Gamma\vdash\interty{S}{T}\ \wf}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.51\linewidth}
+\typicallabel{wf-bounds}
+\infrule[\ruledef{wf-fun}]
+  {\Gamma\vdash S\ \wf
+   \andalso
+   \Gamma,x:S\vdash T\ \wf}
+  {\Gamma\vdash (x:S)\to T\ \wf}
+
+\infrule[\ruledef{wf-pair}]
+  {\Gamma\vdash S\ \wf
+   \andalso
+   \Gamma,x:S\vdash\tau\ \wf}
+  {\Gamma\vdash\pairty{x}{S}{a}{\tau}\ \wf}
+
+\infrule[\ruledef{wf-bounds}]
+  {\Gamma\vdash S\ \wf
+   \andalso
+   \Gamma\vdash T\ \wf
+   \\
+   \Gamma\vdash S<:T}
+  {\Gamma\vdash S..T\ \wf}
+\end{minipage}
+
+\caption{Source syntax and static semantics: source syntax, path
+synthesis, and signature well-formedness.}
+\Description{The complete source grammar, all four path-synthesis
+rules, and all eight signature well-formedness rules.}
+\label{fig:source-syntax}
+\label{fig:path-typing}
+\label{fig:well-formedness}
+\end{figure}
+
+\clearpage
+\begin{figure}[H]
+\ContinuedFloat
+\plateheader{Signature subtyping}{\Gamma\vdash\tau<:\tau'}
+\noindent
+\begin{minipage}[t]{0.47\linewidth}
+\typicallabel{s-trans}
+\infax[\ruledef{s-refl}]
+  {\Gamma\vdash\tau<:\tau}
+
+\infrule[\ruledef{s-trans}]
+  {\Gamma\vdash\tau_1<:\tau_2
+   \andalso
+   \Gamma\vdash\tau_2<:\tau_3}
+  {\Gamma\vdash\tau_1<:\tau_3}
+
+\infax[\ruledef{s-bot}]
+  {\Gamma\vdash\bot<:T}
+
+\infax[\ruledef{s-top}]
+  {\Gamma\vdash T<:\top}
+
+\infrule[\ruledef{s-inter}]
+  {\Gamma\vdash S<:T
+   \andalso
+   \Gamma\vdash S<:U}
+  {\Gamma\vdash S<:\interty{T}{U}}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.51\linewidth}
+\typicallabel{s-sel-hi}
+\infrule[\ruledef{s-widen}]
+  {\Gamma\vdash p\Rightarrow T}
+  {\Gamma\vdash\sing{p}<:T}
+
+\infrule[\ruledef{s-alias}]
+  {\Gamma\vdash p\Rightarrow\sing{q}}
+  {\Gamma\vdash\sing{q}<:\sing{p}}
+
+\infrule[\ruledef{s-sel-hi}]
+  {\Gamma\vdash p.A\Rightarrow S..T
+   \andalso
+   \Gamma\vdash S<:T}
+  {\Gamma\vdash p.A<:T}
+
+\infrule[\ruledef{s-sel-lo}]
+  {\Gamma\vdash p.A\Rightarrow S..T
+   \andalso
+   \Gamma\vdash S<:T}
+  {\Gamma\vdash S<:p.A}
+
+\infax[\ruledef{s-inter-left}]
+  {\Gamma\vdash\interty{T}{U}<:T}
+
+\infax[\ruledef{s-inter-right}]
+  {\Gamma\vdash\interty{T}{U}<:U}
+\end{minipage}\par
+\begin{minipage}[t]{\linewidth}
+\typicallabel{s-bounds}
+\infrule[\ruledef{s-fun}]
+  {\Gamma\vdash S'<:S
+   \andalso
+   \Gamma,x:S'\vdash T<:T'}
+  {\Gamma\vdash (x:S)\to T<:(x:S')\to T'}
+
+\infrule[\ruledef{s-pair}]
+  {\Gamma\vdash S<:S'
+   \andalso
+   \Gamma,x:S\vdash\tau<:\tau'}
+  {\Gamma\vdash
+    \pairty{x}{S}{a}{\tau}<:
+    \pairty{x}{S'}{a}{\tau'}}
+
+\infrule[\ruledef{s-bounds}]
+  {\Gamma\vdash S'<:S
+   \andalso
+   \Gamma\vdash T<:T'
+   \andalso
+   \Gamma\vdash S<:T}
+  {\Gamma\vdash S..T<:S'..T'}
+\end{minipage}
+
+\caption{Source syntax and static semantics (continued): signature
+subtyping.}
+\Description{All fourteen signature-subtyping rules.}
+\label{fig:subtyping}
+\end{figure}
+
+\begin{figure}[H]
+\plateheader{Term typing}{\Gamma\vdash t:T}
+\noindent
+\begin{minipage}[t]{0.40\linewidth}
+\typicallabel{t-path}
+\infrule[\ruledef{t-path}]
+  {\Gamma\vdash p\Rightarrow T}
+  {\Gamma\vdash p:\sing{p}}
+
+\infrule[\ruledef{t-abs}]
+  {\Gamma,x:S\vdash t:T
+   \andalso
+   \Gamma\vdash S\ \wf}
+  {\Gamma\vdash\lambda(x:S).t:(x:S)\to T}
+\typicallabel{t-app}
+
+\infrule[\ruledef{t-app}]
+  {\Gamma\vdash p:(x:S)\to T
+   \andalso
+   \Gamma\vdash q:S}
+  {\Gamma\vdash p\,q:\subst{T}{q}{x}}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.57\linewidth}
+\typicallabel{t-type-pair}
+\infax[\ruledef{t-pair}]
+  {\Gamma\vdash
+    \pairval{y}{a}{z}:
+    \pairty{x}{\sing{y}}{a}{\sing{z}}}
+
+\infrule[\ruledef{t-type-pair}]
+  {\Gamma\vdash T\ \wf}
+  {\Gamma\vdash
+    \pairval{y}{A}{T}:
+    \pairty{x}{\sing{y}}{A}{T..T}}
+\typicallabel{t-let}
+\infrule[\ruledef{t-let}]
+  {\Gamma\vdash t:S
+   \andalso
+   \Gamma\vdash T\ \wf
+   \andalso
+   \Gamma,x:S\vdash u:T}
+  {\Gamma\vdash
+    \mathbf{let}\ x=t\ \mathbf{in}\ u:T}
+
+\infrule[\ruledef{t-sub}]
+  {\Gamma\vdash t:S
+   \andalso
+   \Gamma\vdash S<:T
+   \andalso
+   \Gamma\vdash T\ \wf}
+  {\Gamma\vdash t:T}
+\end{minipage}
+
+\par\addvspace{1.25em}
+\noindent
+\begin{minipage}[t]{0.57\linewidth}
+\plateheader{Runtime syntax}{}
+\[
+\begin{array}{rcl}
+r &::=& \loc{x} \mid \typeref{T}
+\\
+\sigma &::=& \varnothing
+  \mid \sigma\mathbin{\cdot}(x\mapsto v)
+\\
+K &::=& [\,]
+  \mid (\mathbf{let}\ x=[\,]\ \mathbf{in}\ u)::K
+\\
+c &::=& \langle\sigma,K,t\rangle
+\end{array}
+\]
+\[
+\referentof{z}=\loc{z}
+\qquad
+\referentof{T}=\typeref{T}.
+\]
+\end{minipage}\hfill
+\begin{minipage}[t]{0.40\linewidth}
+\plateheader{Final state}{\final(c)}
+\typicallabel{f-loc}
+\infax[\ruledef{f-loc}]
+  {\final(\langle\sigma,[\,],x\rangle)}
+
+\infax[\ruledef{f-val}]
+  {\final(\langle\sigma,[\,],v\rangle)}
+\end{minipage}
+
+\caption{Term typing and run-time configurations: term typing, run-time
+syntax, and final configurations.}
+\Description{All seven term-typing rules, the complete run-time grammar,
+and both final-state rules.}
+\label{fig:term-typing}
+\label{fig:runtime-syntax}
+\end{figure}
+
+\clearpage
+\begin{figure}[H]
+\ContinuedFloat
+
+\begin{minipage}[t]{\linewidth}
+\plateheader{Path resolution}{\sigma\vdash p\resolve r}
+\typicallabel{res-miss}
+\noindent
+\begin{minipage}[t]{0.47\linewidth}
+\infax[\ruledef{res-var}]
+  {\sigma\vdash x\resolve\loc{x}}
+
+\infrule[\ruledef{res-fst}]
+  {\sigma\vdash p\resolve\loc{x}
+   \andalso
+   \sigma(x)=\pairval{y}{a}{\delta}}
+  {\sigma\vdash p.1\resolve\loc{y}}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.51\linewidth}
+\infrule[\ruledef{res-sel}]
+  {\sigma\vdash p\resolve\loc{x}
+   \andalso
+   \sigma(x)=\pairval{y}{a}{\delta}}
+  {\sigma\vdash p.a\resolve\referentof{\delta}}
+
+\infrule[\ruledef{res-miss}]
+  {\sigma\vdash p\resolve\loc{x}
+   \andalso
+   \sigma(x)=\pairval{y}{b}{\delta}
+   \\
+   a\ne b
+   \andalso
+   \sigma\vdash y.a\resolve r}
+  {\sigma\vdash p.a\resolve r}
+\end{minipage}
+\end{minipage}
+
+\plateheader{Machine transition}
+  {\langle\sigma,K,t\rangle\sstep
+   \langle\sigma',K',t'\rangle}
+\noindent
+\begin{minipage}[t]{0.43\linewidth}
+\typicallabel{e-app}
+\infrule[\ruledef{e-app}]
+   {\sigma\vdash p\resolve\loc{x}
+   \andalso
+   \sigma\vdash q\resolve\loc{y}
+   \\
+   \sigma(x)=\lambda(z:S).t}
+  {\langle\sigma,K,p\,q\rangle
+   \sstep\\
+   \langle\sigma,K,\subst{t}{y}{z}\rangle}
+
+\infrule[\ruledef{e-path}]
+   {\sigma\vdash p\resolve\loc{x}
+   \andalso
+   p\ \mathsf{not\ a\ variable}}
+  {\langle\sigma,K,p\rangle
+   \sstep\\
+   \langle\sigma,K,x\rangle}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.54\linewidth}
+\typicallabel{e-return}
+\infax[\ruledef{e-let}]
+  {\langle\sigma,K,\mathbf{let}\ x=t\ \mathbf{in}\ u\rangle
+   \sstep\\
+   \langle\sigma,
+     (\mathbf{let}\ x=[\,]\ \mathbf{in}\ u)::K,t\rangle}
+
+\infax[\ruledef{e-return}]
+  {\langle\sigma,
+      (\mathbf{let}\ x=[\,]\ \mathbf{in}\ u)::K,y\rangle
+   \sstep\\
+   \langle\sigma,K,\subst{u}{y}{x}\rangle}
+\end{minipage}\par
+\begin{minipage}[t]{\linewidth}
+\typicallabel{e-alloc}
+\infrule[\ruledef{e-alloc}]
+  {z\ \mathsf{fresh}}
+  {\langle\sigma,
+      (\mathbf{let}\ x=[\,]\ \mathbf{in}\ u)::K,v\rangle
+   \sstep\\
+   \langle
+     \sigma\mathbin{\cdot}(z\mapsto v),K,
+     \subst{u}{z}{x}\rangle}
+\end{minipage}
+
+\caption{Term typing and run-time configurations (continued):
+path resolution and CK-machine transitions.}
+\Description{All four path-resolution rules and all five machine
+transitions.}
+\label{fig:path-resolution}
+\label{fig:machine}
+\end{figure}
+
+\endgroup
+\clearpage
+
+We write \(\mathsf{initial}(t)=\langle\varnothing,[\,],t\rangle\) for the
+initial state of a closed term \(t\).
+
+\begin{lemma}[Resolution determinism]
+\label{lem:resolution-determinism}
+If \(\sigma\vdash p\resolve r\) and
+\(\sigma\vdash p\resolve r'\), then \(r=r'\).
+\end{lemma}
+
+The proof is induction on the first resolution derivation. In the
+nonmatching-selection case, both derivations follow the same store binding
+and the induction hypothesis applies to the tail resolution.
+
+\section{Challenges for preservation}
+\label{sec:obligations}
+
+\subsection{Singleton types and abstract type selections}
+
+The distinction between singleton types and abstract type selections is required
+by the alias rule. A premise \(\Gamma\vdash p\Rightarrow\sing{q}\) says that \(p\)
+has the singleton type of \(q\), and therefore justifies reversing the alias:
+\(\sing{q}<:\sing{p}\). A premise \(\Gamma\vdash p\Rightarrow q.A\) only places the
+type of \(p\) between the bounds declared by \(q.A\).
+
+An earlier syntax used one type constructor for both roles. Singleton
+symmetry could then consume a premise assigning a path a selected type. With
+\[
+  f=\lambda(x:\top).x,
+  \qquad q=\pairval{f}{A}{\top},
+  \qquad h=\lambda(z:q.A).q,
+\]
+the conflated rules admitted the chain
+\[
+  \sing{q}<:\top<:q.A<:\sing{z}.
+\]
+They consequently assigned \(\sing{f}\) to \(h\,f\), although the
+application returns \(q\). The complete closed program is
+\[
+\begin{array}{l}
+\mathbf{let}\ f=\lambda(x:\top).x\ \mathbf{in}\\
+\mathbf{let}\ q=\pairval{f}{A}{\top}\ \mathbf{in}\\
+\mathbf{let}\ h=\lambda(z:q.A).q\ \mathbf{in}\\
+\mathbf{let}\ g=h\,f\ \mathbf{in}\ g\,f.
+\end{array}
+\]
+Evaluation binds \(g\) to the pair \(q\), while the erroneous singleton
+type makes \(g\) usable as the function \(f\). The final application is
+stuck because its operator cell contains a pair. Separate constructors
+prevent a selected-type premise from serving as evidence of path identity. All intervals
+in the example may have equal bounds, so the bound-consistency premises do
+not address this problem.
+
+\subsection{The dependent premise of pair subtyping}
+
+The second premise of \ruleref{s-pair} is a derivation under a hypothetical
+variable. An assignment of concrete locations to the variables in \(\Gamma\)
+contains no location for that variable. Interpreting the premise immediately
+would require choosing one before the source pair is observed. Ordinary
+substitution lemmas also leave the critical semantic fact unstated: the
+chosen location must have type \(S\), and the member referent must have the
+source member signature opened at the same location.
+
+A pair-realization derivation contains exactly these facts. If
+\(\sigma(z)=\pairval{y}{a}{\delta}\) realizes
+\(\pairty{x}{S}{a}{\tau}\), then \(y\) realizes \(S\) and the referent stored
+by \(\delta\) realizes \(\tau[y/x]\). The coercion interpretation retains the
+member-subtyping derivation until these realization derivations become
+available, permitting \ruleref{s-pair} to vary both the first component and the member
+signature.
+
+\section{Store-indexed semantic interpretation}
+\label{sec:coercions}
+
+The proof has three stages. Typed path resolution interprets a path-synthesis
+derivation as a run-time resolution together with a realization of its
+referent. The subtyping interpretation compiles subtyping derivations to
+store-indexed coercions, whose application maps source realizations to target
+realizations. Premises beneath function and pair binders remain suspended:
+function application supplies the argument location, while pair-realization
+inversion supplies the stored first component. Finally, interpretation of
+source typing produces syntax-directed typing for the running term;
+continuation typing completes the invariant used for progress and
+preservation (\cref{sec:invariant}).
+
+\subsection{Store-induced path equality and signature conversion}
+
+Path resolution may end at a location or at a stored type definition. We
+write \(p\equiv_\sigma q\) for the least equivalence containing every pair
+of paths that resolve to the same referent and closed under first projection
+and member selection. Store-induced signature conversion
+\(\tau\simeq_\sigma\tau'\) is the sort-preserving relation generated by
+reflexivity, replacement of store-equal paths, and congruence for every
+signature constructor:
+\[
+  p\equiv_\sigma q
+  \quad\Longrightarrow\quad
+  \subst{\tau_0}{p}{z}\simeq_\sigma\subst{\tau_0}{q}{z}.
+\]
+Replacement substitutes every free occurrence of \(z\), alpha-renaming an
+intervening binder when necessary. Reversing the component path equalities
+reverses a conversion. Sequences of conversions are handled by semantic
+coercion composition. In particular, intersection conversion is
+componentwise and neither reorders nor distributes its components.
+
+Beneath a binder \(z\), the scoped path relation
+\(\equiv_{\sigma;z}\) is the least path congruence containing
+\(z\equiv_{\sigma;z}z\) and every equality inherited from
+\(\equiv_\sigma\) between paths not containing \(z\). The corresponding
+signature conversion \(\simeq_{\sigma;z}\) is generated by replacement with
+this scoped path relation. It opens at any allocated location:
+\[
+  \tau\simeq_{\sigma;z}\tau'
+  \quad y\in\mathsf{dom}(\sigma)
+  \quad\Longrightarrow\quad
+  \subst{\tau}{y}{z}\simeq_\sigma\subst{\tau'}{y}{z}.
+\]
+The complete unscoped rules appear in
+\cref{fig:semantic-judgments}; scoped conversion uses the same rules with the
+rigid path relation.
+
+\subsection{Realization and coercions}
+
+Fix a source context \(\Gamma\) and a store \(\sigma\). A closing
+substitution \(\rho:\mathsf{dom}(\Gamma)\longrightarrow\mathsf{dom}(\sigma)\)
+totally assigns allocated store locations to the source variables bound by
+\(\Gamma\); distinct variables may share a location. For any path, type,
+signature, member definition, or term \(X\), \(\rho(X)\) denotes
+capture-avoiding application of \(\rho\), which replaces each free source
+variable by its assigned location and leaves bound variables unchanged.
+Extension \(\rho[z\mapsto y]\) maps the fresh variable \(z\) to
+\(y\in\mathsf{dom}(\sigma)\) and satisfies
+\[
+  \subst{\rho(X)}{y}{z}=(\rho[z\mapsto y])(X)
+\]
+for any \(X\) formed beneath the binder \(z\).
+
+The primary semantic judgments are
+\[
+\begin{array}{lll}
+\rho\realizes_\sigma\Gamma
+  &\quad&\text{the closing substitution \(\rho\) satisfies \(\Gamma\),}\\
+\sigma\realizes x:T
+  &&\text{location \(x\) realizes proper type \(T\),}\\
+\sigma\realizes r:\tau
+  &&\text{referent \(r\) realizes signature \(\tau\),}\\
+\sigma\vdash\tau\coerce\tau'
+  &&\text{a semantic coercion from \(\tau\) to \(\tau'\).}
+\end{array}
+\]
+Realization is an inductive, store-indexed typing relation. A coercion is a
+finite proof object whose application transforms a realization derivation at
+a fixed referent. Capital letters \(Q\), \(R\), and \(C\) range over
+resolution derivations, realization derivations, and coercions, respectively.
+We write \(\mathcal R:\rho\realizes_\sigma\Gamma\) for a derivation of context
+satisfaction.
+
+Dependent premises use three auxiliary forms:
+\[
+\begin{array}{lll}
+\bodycl{\sigma}{z}{S}{t}{T}
+  &\quad&\text{a suspended body-typing derivation,}\\
+\sigma;z:S\vdash T\coerce T'
+  &&\text{an open codomain coercion,}\\
+\membercl{\sigma}{z}{S}{\tau}{\tau'}
+  &&\text{a suspended member-subtyping derivation.}
+\end{array}
+\]
+The body and member forms suspend source derivations together with a closing
+substitution satisfying their outer context. An open codomain coercion can be
+composed or narrowed before the preservation proof instantiates it at an
+argument location; \ruleref{cod-source} suspends the source subtyping derivation. A
+suspended member premise is interpreted when inversion of a pair realization
+supplies the stored first component. Alpha-equivalent choices of binder name
+are identified.
+
+Here \emph{closed} means that every free source variable has been replaced
+by a location in \(\sigma\); a closed coercion may therefore mention store
+locations. The judgments are mutually defined: realizations may contain
+coercions, and coercions may contain realization derivations or suspended
+source derivations. Their complete rules appear in
+\cref{fig:semantic-judgments}.
+
+Store-induced path equality preserves resolution: if
+\(p\equiv_\sigma q\), then
+\(\sigma\vdash p\resolve r\) exactly when
+\(\sigma\vdash q\resolve r\). Store-induced signature conversion changes only
+the paths occurring in a signature and is used solely in the metatheory.
+
+\clearpage
+\begingroup
+\setlength{\abovedisplayskip}{5pt plus 1pt minus 1pt}
+\setlength{\belowdisplayskip}{5pt plus 1pt minus 1pt}
+\setlength{\intextsep}{4pt}
+\captionsetup{skip=6pt}
+\rulesetup
+
+\begin{figure}[H]
+\setlength{\afterruleskip}{1.7em plus 0.2em minus 0.1em}
+\noindent
+\begin{minipage}[t]{0.48\linewidth}
+\plateheader{Store-induced path equality}{p\equiv_\sigma q}
+\typicallabel{peq-resolve}
+\infax[\ruledef{peq-refl}]
+  {p\equiv_\sigma p}
+
+\infrule[\ruledef{peq-symm}]
+  {p\equiv_\sigma q}
+  {q\equiv_\sigma p}
+
+\infrule[\ruledef{peq-trans}]
+  {p\equiv_\sigma q
+   \andalso
+   q\equiv_\sigma p'}
+  {p\equiv_\sigma p'}
+
+\infrule[\ruledef{peq-resolve}]
+  {\sigma\vdash p\resolve r
+   \andalso
+   \sigma\vdash q\resolve r}
+  {p\equiv_\sigma q}
+
+\infrule[\ruledef{peq-fst}]
+  {p\equiv_\sigma q}
+  {p.1\equiv_\sigma q.1}
+
+\infrule[\ruledef{peq-sel}]
+  {p\equiv_\sigma q}
+  {p.a\equiv_\sigma q.a}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.50\linewidth}
+\plateheader{Store-induced signature conversion}{\tau\simeq_\sigma\tau'}
+\typicallabel{seq-replace}
+\infax[\ruledef{seq-refl}]
+  {\tau\simeq_\sigma\tau}
+
+\infrule[\ruledef{seq-replace}]
+  {p\equiv_\sigma q}
+  {\subst{\tau_0}{p}{z}\simeq_\sigma
+   \subst{\tau_0}{q}{z}}
+
+\infrule[\ruledef{seq-fun}]
+  {S\simeq_\sigma S'
+   \andalso
+   T\simeq_{\sigma;z}T'}
+  {(z:S)\to T\simeq_\sigma(z:S')\to T'}
+
+\infrule[\ruledef{seq-pair}]
+  {S\simeq_\sigma S'
+   \andalso
+   \tau\simeq_{\sigma;z}\tau'}
+  {\pairty{z}{S}{a}{\tau}\simeq_\sigma
+   \pairty{z}{S'}{a}{\tau'}}
+
+\infrule[\ruledef{seq-inter}]
+  {S_1\simeq_\sigma S_2
+   \andalso
+   T_1\simeq_\sigma T_2}
+  {\interty{S_1}{T_1}\simeq_\sigma
+   \interty{S_2}{T_2}}
+
+\infrule[\ruledef{seq-single}]
+  {p\equiv_\sigma q}
+  {\sing p\simeq_\sigma\sing q}
+
+\infrule[\ruledef{seq-sel}]
+  {p\equiv_\sigma q}
+  {p.A\simeq_\sigma q.A}
+
+\infrule[\ruledef{seq-intv}]
+  {S_1\simeq_\sigma S_2
+   \andalso
+   T_1\simeq_\sigma T_2}
+  {S_1..T_1\simeq_\sigma S_2..T_2}
+\end{minipage}\par
+
+\plateheader{Referent realization}{\sigma\realizes r:\tau}
+\noindent
+\begin{minipage}[t]{0.42\linewidth}
+\typicallabel{ref-type}
+\infrule[\ruledef{ref-loc}]
+  {\sigma\realizes x:T}
+  {\sigma\realizes\loc x:T}
+
+\end{minipage}\hfill
+\begin{minipage}[t]{0.55\linewidth}
+\typicallabel{ref-type}
+\infrule[\ruledef{ref-type}]
+  {\sigma\vdash S\coerce T
+   \andalso
+   \sigma\vdash T\coerce U}
+  {\sigma\realizes\typeref T:S..U}
+\end{minipage}
+
+\plateheader{Location realization}{\sigma\realizes x:T}
+\noindent
+\begin{minipage}[t]{0.50\linewidth}
+\typicallabel{loc-single}
+\infax[\ruledef{loc-top}]
+  {\sigma\realizes x:\top}
+
+\infrule[\ruledef{loc-inter}]
+  {\sigma\realizes x:S
+   \andalso
+   \sigma\realizes x:T}
+  {\sigma\realizes x:\interty{S}{T}}
+
+\infrule[\ruledef{loc-fun}]
+  {\sigma(x)=\lambda(z:S_0).t
+   \quad
+   \bodycl{\sigma}{z}{S_0}{t}{T_0}
+   \\
+   \sigma\vdash S\coerce S_0
+   \quad
+   \sigma;z:S\vdash T_0\coerce T}
+  {\sigma\realizes x:(z:S)\to T}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\linewidth}
+\typicallabel{loc-select}
+\infrule[\ruledef{loc-pair}]
+  {\sigma(x)=\pairval{y}{a}{\delta}
+   \andalso
+   \sigma\realizes y:S
+   \\
+   \sigma\realizes\referentof{\delta}:\subst{\tau}{y}{z}}
+  {\sigma\realizes x:\pairty{z}{S}{a}{\tau}}
+
+\infrule[\ruledef{loc-single}]
+  {\sigma\vdash p\resolve\loc x}
+  {\sigma\realizes x:\sing p}
+
+\infrule[\ruledef{loc-select}]
+  {\sigma\vdash p.A\resolve\typeref T
+   \andalso
+   \sigma\realizes x:T}
+  {\sigma\realizes x:p.A}
+\end{minipage}
+\caption{Store-indexed judgments (part 1): path equality, signature
+conversion, and realization.}
+\Description{All six path-equality rules, all eight signature-conversion rules,
+both referent rules, and all six location-realization rules.}
+\label{fig:runtime-eq}
+\label{fig:semantic-judgments}
+\end{figure}
+
+\clearpage
+\begin{figure}[H]
+\ContinuedFloat
+\setlength{\afterruleskip}{1.2em plus 0.15em minus 0.1em}
+\noindent
+\begin{minipage}[t]{0.48\linewidth}
+\plateheader{Context satisfaction}{\rho\realizes_\sigma\Gamma}
+\typicallabel{env}
+\infrule[\ruledef{env}]
+  {\forall x\in\mathsf{dom}(\Gamma).\;
+   \sigma\realizes\rho(x):\rho(\Gamma(x))}
+  {\rho\realizes_\sigma\Gamma}
+
+\end{minipage}\hfill
+\begin{minipage}[t]{0.50\linewidth}
+\plateheader{Suspended body typing}
+  {\bodycl{\sigma}{z}{S}{t}{T}}
+\typicallabel{body-source}
+\infrule[\ruledef{body-source}]
+  {\mathcal R:\rho\realizes_{\sigma}\Gamma
+   \andalso
+   \Gamma,z:S\vdash t:T}
+  {\bodycl{\sigma}{z}{\rho(S)}{\rho(t)}{\rho(T)}}
+
+\end{minipage}
+
+\plateheader{Suspended member premise}
+  {\membercl{\sigma}{z}{S}{\tau}{\tau'}}
+\typicallabel{mem-source}
+\infrule[\ruledef{mem-source}]
+  {\mathcal R:\rho\realizes_\sigma\Gamma
+   \andalso
+   \Gamma,z:S\vdash\tau<:\tau'}
+  {\membercl{\sigma}{z}{\rho(S)}{\rho(\tau)}{\rho(\tau')}}
+
+\plateheader{Semantic coercion}
+  {\sigma\vdash \tau_1\coerce \tau_2}
+\noindent
+\begin{minipage}[t]{0.43\linewidth}
+\typicallabel{c-trans}
+\infax[\ruledef{c-refl}]
+  {\sigma\vdash \tau\coerce \tau}
+
+\infrule[\ruledef{c-trans}]
+  {\sigma\vdash \tau_1\coerce \tau_2
+   \andalso
+   \sigma\vdash \tau_2\coerce \tau_3}
+  {\sigma\vdash \tau_1\coerce \tau_3}
+
+\infrule[\ruledef{c-eq}]
+  {\tau_1\simeq_\sigma\tau_2}
+  {\sigma\vdash \tau_1\coerce \tau_2}
+
+\infax[\ruledef{c-bot}]
+  {\sigma\vdash\bot\coerce T}
+
+\infax[\ruledef{c-top}]
+  {\sigma\vdash T\coerce\top}
+
+\infrule[\ruledef{c-bounds}]
+  {\sigma\vdash S'\coerce S
+   \andalso
+   \sigma\vdash T\coerce T'}
+  {\sigma\vdash S..T\coerce S'..T'}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.54\linewidth}
+\typicallabel{c-sel-hi}
+\infrule[\ruledef{c-widen}]
+  {\sigma\vdash p\resolve\loc x
+   \andalso
+   \sigma\realizes x:T}
+  {\sigma\vdash\sing p\coerce T}
+
+\infrule[\ruledef{c-alias}]
+  {\sigma\vdash p\resolve\loc x
+   \andalso
+   \sigma\vdash q\resolve\loc x}
+  {\sigma\vdash\sing q\coerce\sing p}
+
+\infrule[\ruledef{c-sel-lo}]
+  {\sigma\vdash p.A\resolve\typeref T
+   \andalso
+   \sigma\vdash S\coerce T}
+  {\sigma\vdash S\coerce p.A}
+
+\infrule[\ruledef{c-sel-hi}]
+  {\sigma\vdash p.A\resolve\typeref T
+   \andalso
+   \sigma\vdash T\coerce U}
+  {\sigma\vdash p.A\coerce U}
+
+\infrule[\ruledef{c-fun}]
+  {\sigma\vdash S'\coerce S
+   \andalso
+   \sigma;z:S'\vdash T\coerce T'}
+  {\sigma\vdash
+    (z:S)\to T\coerce(z:S')\to T'}
+
+\infrule[\ruledef{c-pair}]
+  {\sigma\vdash S\coerce S'
+   \andalso
+   \membercl{\sigma}{z}{S}{\tau}{\tau'}}
+  {\sigma\vdash
+    \pairty{z}{S}{a}{\tau}\coerce
+    \pairty{z}{S'}{a}{\tau'}}
+\end{minipage}
+
+\noindent
+\begin{minipage}[t]{0.44\linewidth}
+\typicallabel{c-inter}
+\infrule[\ruledef{c-inter}]
+  {\sigma\vdash R\coerce S
+   \andalso
+   \sigma\vdash R\coerce T}
+  {\sigma\vdash R\coerce\interty{S}{T}}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.26\linewidth}
+\typicallabel{c-inter-left}
+\infax[\ruledef{c-inter-left}]
+  {\sigma\vdash\interty{S}{T}\coerce S}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.26\linewidth}
+\typicallabel{c-inter-right}
+\infax[\ruledef{c-inter-right}]
+  {\sigma\vdash\interty{S}{T}\coerce T}
+\end{minipage}
+
+\plateheader{Open codomain coercion}
+  {\sigma;z:S\vdash T\coerce T'}
+\noindent
+\begin{minipage}[t]{0.48\linewidth}
+\typicallabel{cod-trans}
+\infax[\ruledef{cod-refl}]
+  {\sigma;z:S\vdash T\coerce T}
+
+\infrule[\ruledef{cod-trans}]
+  {\sigma;z:S\vdash T_1\coerce T_2
+   \quad
+   \sigma;z:S\vdash T_2\coerce T_3}
+  {\sigma;z:S\vdash T_1\coerce T_3}
+
+\infrule[\ruledef{cod-eq}]
+  {T\simeq_{\sigma;z}T'}
+  {\sigma;z:S\vdash T\coerce T'}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.51\linewidth}
+\typicallabel{cod-narrow}
+\infrule[\ruledef{cod-narrow}]
+  {\sigma\vdash S'\coerce S
+   \andalso
+   \sigma;z:S\vdash T\coerce T'}
+  {\sigma;z:S'\vdash T\coerce T'}
+
+\infrule[\ruledef{cod-source}]
+  {\mathcal R:\rho\realizes_\sigma\Gamma
+   \andalso
+   \Gamma,z:S\vdash T<:T'}
+  {\sigma;z:\rho(S)\vdash\rho(T)\coerce\rho(T')}
+\end{minipage}
+\caption{Store-indexed judgments (part 2): context satisfaction, suspended
+premises, semantic coercions, and open codomain coercions.}
+\Description{The context rule, the suspended-body rule, the suspended-member
+rule, all fifteen semantic-coercion rules, and all five open-codomain rules.}
+\end{figure}
+
+\endgroup
+
+We write \(\ruleuse{ref-loc}(R_x)\),
+\(\ruleuse{ref-type}(C_L,C_U)\), and
+\(\ruleuse{loc-single}(Q)\) for the derivations obtained by the corresponding
+realization rules.
+
+We abbreviate \(\ruleuse{c-trans}(C_1,C_2)\) by \(C_1;C_2\); the notation is
+also used for \ruleref{cod-trans} on open codomain coercions.
+
+Rule \ruleref{env} makes context satisfaction pointwise. Thus
+\(\rho[z\mapsto y]\realizes_\sigma\Gamma,z:S\) whenever
+\(\rho\realizes_\sigma\Gamma\) and
+\(\sigma\realizes y:\rho(S)\). Every location names a store cell, so
+\ruleref{loc-top} needs no separate lookup premise, and \(\bot\) has no
+realization rule. Rule \ruleref{loc-inter} records two realizations of the
+same location, one for each component; it imposes no condition on the stored
+value beyond those already imposed by its premises. Rule \ruleref{loc-fun} records the stored abstraction and its
+body, a coercion from the ascribed argument type to the stored domain, and an
+open codomain coercion from the stored body type to the ascribed result type.
+Rule \ruleref{loc-pair} records realization of the first component and of the
+member referent opened at that component.
+
+A closed coercion contains the derivations needed to preserve realization at
+the same referent. Identity and transitivity give identity and composition.
+Rule \ruleref{c-eq} embeds store-induced signature conversion, whose soundness
+follows from realization invariance below.
+Singleton and selection coercions retain concrete resolution derivations.
+Interval coercions retain the comparisons needed to reconstruct the target
+bounds.
+Rule \ruleref{c-inter} retains both coercions from the common source, while
+\ruleref{c-inter-left} and \ruleref{c-inter-right} contain no additional
+evidence: their action simply projects the corresponding realization.
+
+The dependent cases suspend their binder premises, as specified by
+\ruleref{cod-source} and \ruleref{mem-source}. The two forms differ because an
+open codomain coercion must survive further function subtyping, and may be
+composed, transported by store-induced conversion, or narrowed before the
+preservation proof supplies an argument location, whereas a suspended member
+premise is interpreted immediately after pair-realization inversion.
+
+\begin{lemma}[Constructor inversion for signature conversion]
+\label{lem:conversion-structure}
+If \(\tau\simeq_\sigma\tau'\), then the two signatures have the same outer
+constructor. After alpha-renaming binders to a common name, the non-nullary
+cases satisfy
+\[
+\begin{array}{rcl}
+(z:S_1)\to T_1\simeq_\sigma(z:S_2)\to T_2
+&\Longrightarrow&
+S_1\simeq_\sigma S_2\ \land\ T_1\simeq_{\sigma;z}T_2,
+\\[2pt]
+\interty{S_1}{T_1}\simeq_\sigma\interty{S_2}{T_2}
+&\Longrightarrow&
+S_1\simeq_\sigma S_2\ \land\ T_1\simeq_\sigma T_2,
+\\[2pt]
+\pairty{z}{S_1}{a}{\tau_1}\simeq_\sigma
+\pairty{z}{S_2}{a'}{\tau_2}
+&\Longrightarrow&
+a=a'\ \land\ S_1\simeq_\sigma S_2\ \land\
+\tau_1\simeq_{\sigma;z}\tau_2,
+\\[2pt]
+\sing p\simeq_\sigma\sing q
+&\Longrightarrow& p\equiv_\sigma q,
+\\[2pt]
+p.A\simeq_\sigma q.A'
+&\Longrightarrow& A=A'\ \land\ p\equiv_\sigma q,
+\\[2pt]
+S_1..T_1\simeq_\sigma S_2..T_2
+&\Longrightarrow&
+S_1\simeq_\sigma S_2\ \land\ T_1\simeq_\sigma T_2.
+\end{array}
+\]
+In particular, \(\top\) and \(\bot\) convert only to themselves, and a
+proper type never converts to an interval.
+\end{lemma}
+
+The proof is induction on signature conversion. Replacement preserves the
+outer constructor by induction on the signature \(\tau_0\) in the replacement
+rule; the congruence cases are immediate.
+
+\begin{lemma}[Realization invariance]
+\label{lem:conversion-transport}
+If \(\tau\simeq_\sigma\tau'\) and
+\(\sigma\realizes r:\tau\), then
+\(\sigma\realizes r:\tau'\).
+\end{lemma}
+
+The proof is a simultaneous induction on referent and location realization,
+using constructor inversion. Singleton and selection cases use preservation
+of resolution under path equality. Function domains use conversion in the
+contravariant direction; the open codomain coercion contained in the
+function-realization derivation is narrowed to the target domain and composed
+with the scoped codomain conversion. The intersection case transports both
+component realizations independently and rebuilds \ruleref{loc-inter}. In the pair
+case, scoped conversion of member
+signatures is opened at the stored first component before applying the
+induction hypothesis to the member referent. Interval bounds are handled by
+coercions induced by their component conversions.
+
+\subsection{Interpreting source derivations}
+\label{sec:coercion-construction}
+
+Let \(\mathcal R:\rho\realizes_\sigma\Gamma\). Metavariables
+\(\pi_p\) and \(\pi_s\) range over derivation trees of path synthesis and
+subtyping, respectively. They are metatheoretic
+objects and do not extend the source syntax or its judgments. Typed path
+resolution and subtyping interpretation have signatures
+\[
+\begin{array}{rcll}
+\resolvepi{\mathcal R}{\pi_p}=\langle r,Q,R\rangle
+&\quad&(\pi_p\text{ derives }\Gamma\vdash p\Rightarrow\tau),
+&
+Q:\sigma\vdash\rho(p)\resolve r,
+\\[2pt]
+&&&R:\sigma\realizes r:\rho(\tau),
+\\[2pt]
+\compilepi{\mathcal R}{\pi_s}=C
+&&(\pi_s\text{ derives }\Gamma\vdash\tau<:\tau'),
+&C:\sigma\vdash\rho(\tau)\coerce\rho(\tau').
+\end{array}
+\]
+The result depends on the chosen derivation: two derivations of the same
+subtyping judgment may produce different coercions. Bracket notation denotes
+this derivation-directed interpretation. The equations below define the
+subtyping interpretation by its last source rule.
+The rule label in the left margin identifies that rule, and \(\pi_i\) denotes its
+immediate premise derivations in their displayed order in
+\cref{fig:path-typing,fig:subtyping}.
+
+Premises beneath a binder cannot be interpreted until a store location is
+available. Let \(\pi_b\) derive \(\Gamma,z:S\vdash t:T\), let
+\(\pi_m\) derive \(\Gamma,z:S\vdash\tau<:\tau'\), and let \(\pi_c\)
+derive \(\Gamma,z:S\vdash T<:T'\). Suspending a premise pairs
+\(\mathcal R\) with the corresponding open source derivation:
+\[
+\begin{array}{rcl}
+\closure{\mathcal R}{\pi_b}{body}
+  &:& \bodycl{\sigma}{z}{\rho(S)}{\rho(t)}{\rho(T)},
+\\
+\closure{\mathcal R}{\pi_m}{mem}
+  &:& \membercl{\sigma}{z}{\rho(S)}{\rho(\tau)}{\rho(\tau')},
+\\
+\closure{\mathcal R}{\pi_c}{cod}
+  &:& \sigma;z:\rho(S)\vdash\rho(T)\coerce\rho(T').
+\end{array}
+\]
+The first line uses \ruleref{body-source}, the second \ruleref{mem-source}, and
+the third \ruleref{cod-source}. Their types record whether the suspended
+derivation is body typing, member subtyping, or codomain subtyping.
+
+\begin{lemma}[Typed path resolution]
+\label{lem:typed-resolution}
+If \(\mathcal R:\rho\realizes_\sigma\Gamma\) and
+\(\pi_p\) derives \(\Gamma\vdash p\Rightarrow\tau\), then
+\[
+  \resolvepi{\mathcal R}{\pi_p}=\langle r,Q,R\rangle
+\]
+for some referent \(r\), resolution derivation
+\(Q:\sigma\vdash\rho(p)\resolve r\), and realization derivation
+\(R:\sigma\realizes r:\rho(\tau)\).
+\end{lemma}
+
+The proof is induction on path synthesis. The two selection cases carry
+the substance. For a matching label, pair realization supplies the stored
+first component \(y\) and a realization of the member signature opened at
+\(y\). The paths \(y\) and \(\rho(p).1\) resolve to the same location, so
+store-induced path equality and \cref{lem:conversion-transport} transfer the
+member realization to the signature synthesized by \ruleref{p-sel}. For a
+nonmatching label, the induction hypothesis resolves the tail from
+\(\rho(p).1\); equality with \(y\) transports that tail resolution before
+\ruleref{res-miss} continues the lookup.
+
+For \(R_y:\sigma\realizes y:\rho(S)\), the notation
+\(\mathcal R[z\mapsto(y,R_y)]\) denotes the context-satisfaction derivation
+\(\rho[z\mapsto y]\realizes_\sigma\Gamma,z:S\).
+
+\begin{figure}[H]
+\begingroup
+\raggedright
+\rulesetup
+\setlength{\afterruleskip}{1.35em plus 0.15em minus 0.1em}
+\plateheader{Interpretation of subtyping derivations}
+  {\compilepi{\mathcal R}{\pi}=C}
+The bound-consistency premises of the selection rules produce no coercion.
+Likewise, the third premise of \ruleref{s-bounds} establishes consistency of
+the source interval but contributes no evidence to the resulting coercion.
+
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\typicallabel{s-trans}
+\infax[\ruleuse{s-refl}]
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-refl}}
+
+\infrule[\ruleuse{s-trans}]
+  {\compilepi{\mathcal R}{\pi_1}=C_1
+   \andalso
+   \compilepi{\mathcal R}{\pi_2}=C_2}
+  {\compilepi{\mathcal R}{\pi}=C_1;C_2}
+
+\infax[\ruleuse{s-bot}]
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-bot}}
+
+\infax[\ruleuse{s-top}]
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-top}}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.515\linewidth}
+\typicallabel{s-sel-hi}
+\infrule[\ruleuse{s-widen}]
+  {\begin{gathered}
+   \resolvepi{\mathcal R}{\pi_1}=\\
+   \langle\loc x,Q,\ruleuse{ref-loc}(R_T)\rangle
+   \end{gathered}}
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-widen}(Q,R_T)}
+
+\infrule[\ruleuse{s-alias}]
+  {\begin{gathered}
+   \resolvepi{\mathcal R}{\pi_1}=\\
+   \langle\loc x,Q_p,
+      \ruleuse{ref-loc}(\ruleuse{loc-single}(Q_q))\rangle
+   \end{gathered}}
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-alias}(Q_p,Q_q)}
+
+\infrule[\ruleuse{s-sel-hi}]
+  {\begin{gathered}
+   \resolvepi{\mathcal R}{\pi_1}=\\
+   \langle\typeref W,Q,\ruleuse{ref-type}(C_L,C_U)\rangle
+   \end{gathered}}
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-sel-hi}(Q,C_U)}
+
+\infrule[\ruleuse{s-sel-lo}]
+  {\begin{gathered}
+   \resolvepi{\mathcal R}{\pi_1}=\\
+   \langle\typeref W,Q,\ruleuse{ref-type}(C_L,C_U)\rangle
+   \end{gathered}}
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-sel-lo}(Q,C_L)}
+\end{minipage}
+
+\plateheader{Intersection cases}{}
+\noindent
+\begin{minipage}[t]{0.44\linewidth}
+\typicallabel{s-inter}
+\infrule[\ruleuse{s-inter}]
+  {\compilepi{\mathcal R}{\pi_1}=C_1
+   \andalso
+   \compilepi{\mathcal R}{\pi_2}=C_2}
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-inter}(C_1,C_2)}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.26\linewidth}
+\typicallabel{s-inter-left}
+\infax[\ruleuse{s-inter-left}]
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-inter-left}}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.26\linewidth}
+\typicallabel{s-inter-right}
+\infax[\ruleuse{s-inter-right}]
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-inter-right}}
+\end{minipage}
+
+\plateheader{Dependent cases}{}
+
+\infrule[\ruleuse{s-fun}]
+  {\compilepi{\mathcal R}{\pi_1}=C_D
+   \andalso F=\closure{\mathcal R}{\pi_2}{cod}}
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-fun}(C_D,F)}
+
+\infrule[\ruleuse{s-pair}]
+  {\compilepi{\mathcal R}{\pi_1}=C_S
+   \andalso M=\closure{\mathcal R}{\pi_2}{mem}}
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-pair}(C_S,M)}
+
+\infrule[\ruleuse{s-bounds}]
+  {\compilepi{\mathcal R}{\pi_1}=C_1
+   \andalso \compilepi{\mathcal R}{\pi_2}=C_2}
+  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-bounds}(C_1,C_2)}
+\endgroup
+\caption{Interpretation of all fourteen subtyping rules as semantic coercions.}
+\Description{The fourteen equations defining subtyping interpretation. The
+function and pair coercions retain their dependent premise derivations.}
+\label{fig:subtyping-interpretation}
+\end{figure}
+
+The dependent cases retain \(\pi_2\) together with \(\mathcal R\) instead of
+interpreting it recursively. The closing substitution in \(\mathcal R\)
+covers \(\Gamma\), but not the variable bound by the premise. For functions,
+the retained derivation becomes an open codomain coercion that is instantiated
+when application supplies the argument location. For pairs, it becomes a
+suspended member premise that is instantiated after pair-realization inversion
+supplies the stored first component. Extending the closing substitution with
+that location then interprets \(\pi_2\) as a closed coercion.
+
+\subsection{Coercion application}
+\label{sec:coercion-action}
+
+For \(C:\sigma\vdash\tau\coerce\tau'\) and
+\(R:\sigma\realizes r:\tau\), coercion application has the signature
+\[
+  \action{C}{R}:\sigma\realizes r:\tau'.
+\]
+Application follows the coercion derivation. Reflexivity returns \(R\), and
+composition applies its two coercions in sequence:
+\[
+  \action{\ruleuse{c-refl}}{R}=R,
+  \qquad
+  \action{C_1;C_2}{R}=\action{C_2}{\action{C_1}{R}}.
+\]
+For \ruleref{c-eq}, \cref{lem:conversion-transport} supplies the target
+realization. Widening and aliasing use the resolution derivations retained in
+their coercions; resolution determinism identifies their locations with the
+referent in \(R\). The \ruleref{c-bot} case is vacuous because \(\bot\) has
+no realization.
+
+Intersection introduction runs both retained coercions on the same source
+realization. If
+\[
+  \action{C_1}{\ruleuse{ref-loc}(R_0)}=\ruleuse{ref-loc}(R_1),
+  \qquad
+  \action{C_2}{\ruleuse{ref-loc}(R_0)}=\ruleuse{ref-loc}(R_2),
+\]
+then
+\[
+  \action{\ruleuse{c-inter}(C_1,C_2)}
+    {\ruleuse{ref-loc}(R_0)}
+  =\ruleuse{ref-loc}(\ruleuse{loc-inter}(R_1,R_2)).
+\]
+The elimination coercions merely select stored semantic evidence:
+\[
+\begin{array}{rcl}
+  \action{\ruleuse{c-inter-left}}
+    {\ruleuse{ref-loc}(\ruleuse{loc-inter}(R_1,R_2))}
+  &=&\ruleuse{ref-loc}(R_1),
+  \\[2pt]
+  \action{\ruleuse{c-inter-right}}
+    {\ruleuse{ref-loc}(\ruleuse{loc-inter}(R_1,R_2))}
+  &=&\ruleuse{ref-loc}(R_2).
+\end{array}
+\]
+This packaging exists only in realization evidence; it is not a source or
+runtime term constructor.
+
+Selection coercions use the lower or upper coercion contained in the realized
+interval. For lower selection, if applying
+\(C_L:\sigma\vdash S\coerce W\) gives
+\[
+  \action{C_L}{\ruleuse{ref-loc}(R_x)}=
+  \ruleuse{ref-loc}(R_W),
+\]
+then the retained resolution derivation
+\(Q:\sigma\vdash p.A\resolve\typeref W\) reconstructs the selection
+realization:
+\[
+  \action{\ruleuse{c-sel-lo}(Q,C_L)}
+    {\ruleuse{ref-loc}(R_x)}
+  =\ruleuse{ref-loc}(\ruleuse{loc-select}(Q,R_W)).
+\]
+For upper selection, inversion exposes the witness realization at the stored
+type. Resolution determinism identifies the two stored types, after which the
+upper coercion is applied:
+\[
+  \action{\ruleuse{c-sel-hi}(Q,C_U)}
+    {\ruleuse{ref-loc}(\ruleuse{loc-select}(Q',R_W))}
+  =\action{C_U}{\ruleuse{ref-loc}(R_W)},
+\]
+where determinism has identified the result type of \(Q'\) with \(W\).
+
+The function and interval cases compose the component coercions. Suppose a
+function realization contains a domain coercion
+\(C_I:\sigma\vdash S\coerce S_0\) and an open codomain coercion
+\(F_I:\sigma;z:S\vdash T_0\coerce T\). Applying
+\(\ruleuse{c-fun}(C_D,F)\), where
+\(C_D:\sigma\vdash S'\coerce S\) and
+\(F:\sigma;z:S'\vdash T\coerce T'\), replaces them by
+\[
+  C_D;C_I:\sigma\vdash S'\coerce S_0,
+  \qquad
+  \ruleuse{cod-narrow}(C_D,F_I);F:
+    \sigma;z:S'\vdash T_0\coerce T'.
+\]
+For an interval realization of \(\typeref W:S..T\), let
+\(C_L:\sigma\vdash S\coerce W\) and
+\(C_U:\sigma\vdash W\coerce T\). Applying
+\(\ruleuse{c-bounds}(C_1,C_2)\), with
+\(C_1:\sigma\vdash S'\coerce S\),
+and \(C_2:\sigma\vdash T\coerce T'\), constructs the target realization
+\[
+  C_1;C_L:\sigma\vdash S'\coerce W,
+  \qquad
+  C_U;C_2:\sigma\vdash W\coerce T'.
+\]
+The consistency premise of the source subtyping rule is needed to admit the
+interval, but coercion application uses only these two component coercions.
+
+The pair case is the only application clause that interprets a suspended
+source derivation. It is stated in full below.
+
+\begin{figure}[H]
+\begingroup
+\raggedright
+\hfuzz=2pt
+\rulesetup
+\plateheader{Member-premise instantiation}
+  {\forcemem{M}{R_y}}
+For \(M:\membercl{\sigma}{z}{S}{\tau}{\tau'}\) and
+\(R_y:\sigma\realizes y:S\), instantiation has result type
+\[
+\forcemem{M}{R_y}:
+\sigma\vdash\subst{\tau}{y}{z}\coerce\subst{\tau'}{y}{z}.
+\]
+Its sole equation resumes the exact derivation retained by
+\ruleref{mem-source}:
+\[
+\forcemem{\closure{\mathcal R}{\pi_s}{mem}}{R_y}
+=\compilepi{\mathcal R[z\mapsto(y,R_y)]}{\pi_s}.
+\]
+
+\plateheader{Open-codomain instantiation}
+  {\forcecod{F}{R_y}}
+For \(F:\sigma;z:S\vdash T\coerce T'\) and
+\(R_y:\sigma\realizes y:S\), instantiation has result type
+\[
+\forcecod{F}{R_y}:
+\sigma\vdash\subst{T}{y}{z}\coerce\subst{T'}{y}{z}.
+\]
+
+Instantiation preserves identity, composition, and store-induced conversion.
+Narrowing first converts the argument realization to the domain expected by
+the remaining open codomain coercion:
+\[
+\forcecod{\ruleuse{cod-narrow}(C_D,F)}{R_y}
+  =\forcecod{F}{R_y'}
+\quad\text{where}\quad
+\action{C_D}{\ruleuse{ref-loc}(R_y)}=\ruleuse{ref-loc}(R_y').
+\]
+The \ruleref{cod-source} case resumes its suspended derivation:
+\[
+\forcecod{\closure{\mathcal R}{\pi_s}{cod}}{R_y}
+  =\compilepi{\mathcal R[z\mapsto(y,R_y)]}{\pi_s}.
+\]
+\endgroup
+\caption{Instantiation of suspended member and codomain premises.}
+\Description{The result types of member-premise and open-codomain
+instantiation, together with their source-derivation equations.}
+\end{figure}
+
+Coercion application preserves the referent; it changes only the realization
+derivation, while the store and machine state remain fixed.
+
+\subsection{The dependent-pair case}
+\label{sec:coercion-pair}
+
+Fix
+\[
+  \mathcal R:\rho\realizes_\sigma\Gamma,
+  \qquad
+  \pi_1:\Gamma\vdash S<:S',
+  \qquad
+  \pi_2:\Gamma,z:S\vdash\tau<:\tau'.
+\]
+For a derivation ending in \ruleref{s-pair}, interpretation yields
+\[
+  C_S=\compilepi{\mathcal R}{\pi_1},
+  \qquad
+  M=\closure{\mathcal R}{\pi_2}{mem},
+  \qquad
+  C=\ruleuse{c-pair}(C_S,M).
+\]
+Suppose
+\[
+  R:\sigma\realizes\loc x:
+    \pairty{z}{\rho(S)}{a}{\rho(\tau)}.
+\]
+Inversion of \(R\) by \ruleref{ref-loc} and \ruleref{loc-pair} supplies
+\[
+  B_x:\sigma(x)=\pairval{y}{a}{\delta},
+  \qquad
+  R_y:\sigma\realizes y:\rho(S),
+  \qquad
+  R_\delta:\sigma\realizes\referentof{\delta}:
+    \subst{\rho(\tau)}{y}{z}.
+\]
+Coercion application computes
+\[
+  \action{C_S}{\ruleuse{ref-loc}(R_y)}=\ruleuse{ref-loc}(R_y'),
+  \qquad
+  C_\tau=\forcemem{M}{R_y},
+  \qquad
+  R_\delta'=\action{C_\tau}{R_\delta}.
+\]
+The first equation gives
+\(R_y':\sigma\realizes y:\rho(S')\). Member instantiation extends
+\(\mathcal R\) with the original realization
+\(R_y:\sigma\realizes y:\rho(S)\), resumes \(\pi_2\), and gives
+\[
+  C_\tau:\sigma\vdash
+  \subst{\rho(\tau)}{y}{z}\coerce
+  \subst{\rho(\tau')}{y}{z}.
+\]
+The last equation gives
+\[
+  R_\delta':\sigma\realizes\referentof{\delta}:
+    \subst{\rho(\tau')}{y}{z}.
+\]
+Rule \ruleref{loc-pair}, with the unchanged binding \(B_x\), now derives
+\[
+  \sigma\realizes x:
+    \pairty{z}{\rho(S')}{a}{\rho(\tau')},
+\]
+and \ruleref{ref-loc} supplies \(\action{C}{R}\). The first-component
+location remains \(y\); only its realization and the member realization are
+reconstructed at the target signatures. The same argument covers term and
+type members, since \(\referentof{\delta}\) is respectively a location or a
+stored type definition.
+
+\subsection{Well-foundedness of coercion application}
+\label{sec:coercion-termination}
+
+The transitivity, intersection-introduction, and selection cases recurse on
+coercions appearing as premises of the current coercion derivation. The pair case also invokes the coercion obtained by
+instantiating its suspended member premise. That coercion can be larger than
+the enclosing pair coercion, so coercion structure alone does not justify
+recursion. The allocation order of the immutable store provides the required
+decrease.
+
+Give a location referent \(\loc{x}\) its position in the allocation order,
+starting at one, and give every type referent rank zero. Write this number as
+\(\mathsf{rank}_\sigma(r)\). If
+\[
+  \sigma(x)=\pairval{y}{a}{\delta},
+\]
+then both referents stored in the pair have smaller rank:
+\[
+  \mathsf{rank}_\sigma(\loc y)
+    <\mathsf{rank}_\sigma(\loc x),
+  \qquad
+  \mathsf{rank}_\sigma(\referentof{\delta})
+    <\mathsf{rank}_\sigma(\loc x).
+\]
+For a type member, \(\referentof{\delta}=\typeref{T}\) has rank zero. For a
+term member it is an older location named by the stored pair.
+Fresh allocation preserves the relative rank of all existing referents.
+
+Let \(|C|\) measure the structural size of a closed coercion, ignoring
+resolution derivations and suspended premises. Coercion application is
+defined by well-founded induction on
+\[
+  \bigl(\mathsf{rank}_\sigma(r),|C|\bigr)
+\]
+in lexicographic order. The premises of \ruleref{c-trans},
+\ruleref{c-inter}, \ruleref{c-sel-lo}, and \ruleref{c-sel-hi} retain the
+referent and recurse on a structurally smaller coercion, decreasing the
+secondary component. The intersection projections do not recurse. In
+\ruleref{c-pair}, the first recursive application concerns \(\loc y\), and the
+second concerns \(\referentof{\delta}\).  Both strictly decrease the primary
+component, independently of the size of the coercion obtained by member
+instantiation. These are all recursive coercion applications.
+
+\subsection{Semantic subtyping}
+\label{sec:coercion-totality}
+
+\begin{lemma}[Subtyping interpretation]
+\label{lem:coercion-construction}
+If \(\mathcal R:\rho\realizes_\sigma\Gamma\) and
+\(\pi_s\) derives \(\Gamma\vdash\tau_1<:\tau_2\), then
+\[
+  \compilepi{\mathcal R}{\pi_s}:
+  \sigma\vdash\rho(\tau_1)\coerce\rho(\tau_2).
+\]
+\end{lemma}
+
+The proof is induction on the source derivation using the equations in
+\cref{fig:subtyping-interpretation}. Typed path resolution supplies the
+referent and its realization at the synthesized signature in the widening,
+alias, and selection
+cases. The dependent premise of a function or pair is suspended rather than
+interpreted under a closing substitution that lacks its bound variable.
+
+\begin{lemma}[Coercion application]
+\label{lem:coercion-action}
+If \(C:\sigma\vdash\tau_1\coerce\tau_2\) and
+\(R:\sigma\realizes r:\tau_1\), then
+\[
+  \action{C}{R}:\sigma\realizes r:\tau_2.
+\]
+\end{lemma}
+
+The referent remains \(r\); application changes only its realization
+derivation. The well-founded induction needed for the pair case was established in
+\cref{sec:coercion-termination}.
+
+Subtyping interpretation followed by coercion application gives the semantic
+content of a source subtyping derivation.
+
+\begin{theorem}[Semantic subtyping]
+\label{thm:semantic-subtyping}
+If \(\mathcal R:\rho\realizes_\sigma\Gamma\),
+\(\pi_s\) derives \(\Gamma\vdash\tau<:\tau'\), and
+\(R:\sigma\realizes r:\rho(\tau)\), then
+\[
+  \action{\compilepi{\mathcal R}{\pi_s}}{R}:
+  \sigma\realizes r:\rho(\tau').
+\]
+\end{theorem}
+
+\section{The machine invariant}
+\label{sec:invariant}
+
+\subsection{Syntax-directed machine typing}
+
+Source typing permits subsumption at any depth, so direct inversion may first
+expose an arbitrary \ruleref{t-sub} derivation. The machine invariant uses
+syntax-directed typing and places subsumption at the boundary of each value
+or non-value term derivation. Its value and term judgments,
+\(\sigma\vdash_{\mathsf v}v:T\) and
+\(\sigma\vdash_{\mathsf{tm}}t:T\), relate the result type of the
+corresponding syntax-directed source rule to \(T\) by a final coercion;
+a machine term that is already a value delegates to value typing. These are
+metatheoretic judgments over the run-time syntax.
+
+\begin{figure}[H]
+\begingroup
+\raggedright
+\rulesetup
+\judgheader{Runtime value typing}{\sigma\vdash_{\mathsf v} v:T}
+\noindent
+\begin{minipage}[t]{\linewidth}
+\typicallabel{val-abs}
+\infrule[\ruledef{val-abs}]
+  {\bodycl{\sigma}{x}{S_0}{t}{T_0}
+   \andalso
+   \sigma\vdash (x:S_0)\to T_0\coerce T}
+  {\sigma\vdash_{\mathsf v}\lambda(x:S_0).t:T}
+\end{minipage}\par
+\begin{minipage}[t]{0.49\linewidth}
+\typicallabel{val-pair}
+\infrule[\ruledef{val-pair}]
+  {\sigma\vdash
+    \pairty{x}{\sing y}{a}{\sing z}\coerce T}
+  {\sigma\vdash_{\mathsf v}\pairval{y}{a}{z}:T}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.505\linewidth}
+\typicallabel{val-type-pair}
+\infrule[\ruledef{val-type-pair}]
+  {\sigma\vdash
+    \pairty{x}{\sing y}{A}{S..S}\coerce T}
+  {\sigma\vdash_{\mathsf v}\pairval{y}{A}{S}:T}
+\end{minipage}
+
+\judgheader{Machine-term typing}{\sigma\vdash_{\mathsf{tm}} t:T}
+\noindent
+\begin{minipage}[t]{0.43\linewidth}
+\typicallabel{term-value}
+\infrule[\ruledef{term-path}]
+  {\sigma\vdash p\resolve\loc x
+   \andalso
+   \sigma\vdash\sing p\coerce T}
+  {\sigma\vdash_{\mathsf{tm}} p:T}
+
+\infrule[\ruledef{term-value}]
+  {\sigma\vdash_{\mathsf v} v:T}
+  {\sigma\vdash_{\mathsf{tm}} v:T}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.55\linewidth}
+\typicallabel{term-let}
+\infrule[\ruledef{term-app}]
+  {\sigma\vdash_{\mathsf{tm}} p:(x:S)\to U
+   \andalso
+   \sigma\vdash_{\mathsf{tm}} q:S
+   \\
+   \sigma\vdash\subst{U}{q}{x}\coerce T}
+  {\sigma\vdash_{\mathsf{tm}} p\,q:T}
+
+\infrule[\ruledef{term-let}]
+  {\sigma\vdash_{\mathsf{tm}} t:S
+   \andalso
+   \bodycl{\sigma}{x}{S}{u}{U}
+   \\
+   \sigma\vdash U\coerce T}
+  {\sigma\vdash_{\mathsf{tm}}\mathbf{let}\ x=t\ \mathbf{in}\ u:T}
+\end{minipage}
+
+\judgheader{Continuation typing}{\sigma\vdash K:S\Rightarrow T}
+\noindent
+\begin{minipage}[t]{0.43\linewidth}
+\typicallabel{kont-hole}
+\infax[\ruledef{kont-hole}]
+  {\sigma\vdash[\,]:T\Rightarrow T}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.55\linewidth}
+\typicallabel{kont-let}
+\infrule[\ruledef{kont-let}]
+  {\sigma\vdash K:U\Rightarrow T
+   \andalso
+   \bodycl{\sigma}{x}{S}{u}{U'}
+   \\
+   \sigma\vdash U'\coerce U}
+  {\sigma\vdash
+    (\mathbf{let}\ x=[\,]\ \mathbf{in}\ u)::K:S\Rightarrow T}
+\end{minipage}
+
+\judgheader{Configuration typing}{\vdash\langle\sigma,K,t\rangle:T}
+\typicallabel{cfg-state}
+\infrule[\ruledef{cfg-state}]
+  {\sigma\vdash_{\mathsf{tm}} t:S
+   \andalso
+   \sigma\vdash K:S\Rightarrow T}
+  {\vdash\langle\sigma,K,t\rangle:T}
+\endgroup
+\caption{The complete store-indexed machine invariant: syntax-directed
+typing for values, terms, continuations, and configurations.}
+\Description{All three value-typing rules, four machine-term rules, two
+continuation-typing rules, and the configuration-typing rule.}
+\label{fig:machine-typing}
+\label{fig:configuration-typing}
+\end{figure}
+
+The two pair-value rules begin from the types assigned by the corresponding
+source pair rules. In \ruleref{term-let}, \(U\) is independent of the let
+binder. Continuations are typed as transformations from the type of the
+current term to the final result type; the empty continuation is the
+identity transformation.
+
+For \(c=\langle\sigma,K,t\rangle\), write \(\vdash c:T\) for configuration
+typing in \cref{fig:configuration-typing}.
+
+\subsection{Interpretation of source typing}
+
+Machine typing is closed under further subtyping. Value rules and non-value
+term rules carry a final coercion from their syntax-directed result type to
+the type stated by the judgment; another coercion is incorporated by
+composition. The value-delegation rule uses the corresponding value result.
+
+\begin{lemma}[Machine subsumption]
+\label{lem:machine-postcomposition}
+If \(\sigma\vdash_{\mathsf{tm}} t:S\) and \(C:\sigma\vdash S\coerce T\), then
+\(\sigma\vdash_{\mathsf{tm}} t:T\). Likewise, if
+\(\sigma\vdash_{\mathsf v} v:S\) and \(C:\sigma\vdash S\coerce T\), then
+\(\sigma\vdash_{\mathsf v} v:T\).
+\end{lemma}
+
+The proof is simultaneous induction on machine-term and value typing. For a
+rule carrying a final coercion, \(C\) is composed after that coercion; the
+\ruleref{term-value} case uses the value induction hypothesis.
+
+\begin{lemma}[Typing interpretation]
+\label{lem:semantic-typing}
+If \(\mathcal R:\rho\realizes_\sigma\Gamma\) and
+\(\Gamma\vdash t:T\), then
+\[
+  \sigma\vdash_{\mathsf{tm}}\rho(t):\rho(T).
+\]
+\end{lemma}
+
+The proof is induction on the source typing derivation. The path case uses
+typed path resolution. Abstraction and let suspend the premise beneath their binder
+together with \(\mathcal R\). Pair introduction and application use their
+syntax-directed result types with reflexive final coercions. In the subsumption case,
+\cref{lem:coercion-construction} interprets the subtyping premise, and
+\cref{lem:machine-postcomposition} composes the resulting coercion with the
+machine-typing derivation.
+
+\begin{lemma}[Body instantiation]
+\label{lem:body-instantiation}
+If \(B:\bodycl{\sigma}{z}{S}{t}{T}\) and
+\(R_y:\sigma\realizes y:S\), then
+\[
+  \sigma\vdash_{\mathsf{tm}}\subst{t}{y}{z}:\subst{T}{y}{z}.
+\]
+\end{lemma}
+
+Inverting \ruleref{body-source} yields a suspended source-typing derivation and a
+closing substitution satisfying its outer context. The realization \(R_y\)
+extends that substitution by \(z\mapsto y\); applying
+\cref{lem:semantic-typing} to the suspended derivation proves the result.
+
+For the empty context and store, \cref{lem:semantic-typing}, together with
+\ruleref{kont-hole} and \ruleref{cfg-state}, gives
+\(\vdash\mathsf{initial}(t):T\) from \(\ctxempty\vdash t:T\).
+
+Typing interpretation is the bridge from source subtyping to the machine
+invariant. Source subsumption becomes the final coercion carried by machine
+typing. An elimination case applies that coercion before inverting the
+realization of a stored value. Allocation constructs the introduction
+realization for the fresh cell, applies the final coercion, and resumes the
+continuation. Body and codomain premises are instantiated when beta reduction
+or return supplies the bound location; a pair-member premise is instantiated
+during coercion application after pair-realization inversion supplies the
+stored first component.
+
+\subsection{Progress}
+
+Machine typing for a path \(p:T\), together with
+\(\sigma\vdash p\resolve\loc x\), yields \(\sigma\realizes x:T\): construct
+the singleton realization from the resolution and apply the final coercion.
+This observation supplies canonical forms for applications. If the operator
+has a function type, inversion of \ruleref{loc-fun} produces an abstraction at
+the resolved location.
+
+All remaining progress cases follow the outer term constructor. A
+non-variable path resolves to its location; a variable is final under an empty
+continuation or returns through a suspended let body. Values are final under
+an empty continuation and allocate under a nonempty continuation. A let
+expression pushes its body onto the continuation.
+
+\begin{theorem}[Progress]
+\label{thm:progress}
+If \(\vdash c:T\), then either \(\final(c)\) or there is a state
+\(c'\) such that \(c\sstep c'\).
+\end{theorem}
+
+\subsection{Preservation}
+
+\begin{lemma}[Store extension]
+\label{lem:store-extension}
+If \(\sigma'\) is obtained by appending fresh bindings to \(\sigma\), then
+resolution, store-induced path equality, signature conversion, and all
+store-indexed semantic and machine-typing judgments over \(\sigma\) remain
+valid over \(\sigma'\).
+\end{lemma}
+
+The named presentation chooses globally fresh locations, so weakening into
+the extended store leaves existing names unchanged.
+
+\begin{theorem}[One-step preservation]
+\label{thm:preservation}
+If \(\vdash c:T\) and \(c\sstep c'\), then \(\vdash c':T\).
+\end{theorem}
+
+The application case contains the essential dependent reasoning. Suppose
+\(p\) resolves to \(x\) and \(q\) resolves to \(y\). Inverting
+\ruleref{term-app} gives operator typing at \((z:S)\to U\), argument typing
+at \(S\), and a final coercion
+\(C_R:\sigma\vdash\subst{U}{q}{z}\coerce T\). Preservation constructs
+typing for the reduct in the following order.
+\begin{enumerate}
+\item Apply the operator's final coercion to the singleton realization of
+  \(x\). Inversion of \ruleref{loc-fun} then exposes the stored abstraction,
+  a suspended body derivation \(B:\bodycl{\sigma}{z}{S_0}{t}{U_0}\), a domain
+  coercion \(C_I:\sigma\vdash S\coerce S_0\), and an open codomain coercion
+  \(F_O:\sigma;z:S\vdash U_0\coerce U\). Store lookup is functional, so
+  this binding identifies the stored abstraction with the one used by the
+  \ruleref{e-app} transition.
+\item The argument typing and its resolution give
+  \(R_y:\sigma\realizes y:S\). Coercion application gives
+  \[
+    \action{C_I}{\ruleuse{ref-loc}(R_y)}=\ruleuse{ref-loc}(R_y'),
+    \qquad R_y':\sigma\realizes y:S_0.
+  \]
+\item Applying \cref{lem:body-instantiation} to \(B\) and the converted
+  realization \(R_y'\) gives
+  \[
+    \sigma\vdash_{\mathsf{tm}}\subst{t}{y}{z}:\subst{U_0}{y}{z}.
+  \]
+\item Instantiating the open codomain coercion with the original argument
+  realization gives
+  \[
+    C_F=\forcecod{F_O}{R_y},
+    \qquad
+    C_F:\sigma\vdash\subst{U_0}{y}{z}\coerce\subst{U}{y}{z}.
+  \]
+\item Since \(q\) and the location name \(y\) resolve to the same location,
+  store-induced signature conversion gives a coercion \(C_q\) from
+  \(\subst{U}{y}{z}\) to \(\subst{U}{q}{z}\). Composing the three
+  coercions and applying \cref{lem:machine-postcomposition} gives
+  \[
+    \sigma\vdash_{\mathsf{tm}}\subst{t}{y}{z}:T.
+  \]
+\end{enumerate}
+Thus the body is interpreted at the stored domain, while the open codomain
+comparison is instantiated using the argument type ascribed by the function
+realization.
+
+For a path step, \(p\) resolves to \(x\). The target term has singleton type
+\(\sing{x}\). Store-induced path equality gives a coercion from
+\(\sing{x}\) to \(\sing{p}\), which composes with the path rule's final
+coercion. Continuation typing for the frame pushed by a let step retains the
+suspended body derivation.
+At return, the returned location name's resolution and final coercion first
+establish that its location realizes the frame's input type. Body
+instantiation then types the suspended body at that location, and machine
+subsumption composes the frame's final coercion. In the allocation case,
+inversion exposes the value's introduction typing and final coercion.
+After adding the fresh cell, the proof first weakens this value typing to the
+extended store; the corresponding location-realization rule and coercion
+application show that the new location realizes the value's ascribed type. It
+then weakens the continuation-typing derivation, including its suspended body
+derivation and final coercion, instantiates the body at the fresh location, and composes
+the weakened frame coercion with the resulting machine typing.
+
+\subsection{Finite executions}
+
+Write \(\steps\) for the reflexive-transitive closure of \(\sstep\).
+Iterating \cref{thm:preservation} carries configuration typing through
+any finite execution. Applying \cref{thm:progress} at its last state gives the
+standard non-stuckness statement.
+
+\begin{theorem}[Finite preservation]
+\label{thm:finite-preservation}
+If \(\ctxempty\vdash t:T\) and
+\(\mathsf{initial}(t)\steps c\), then \(\vdash c:T\).
+\end{theorem}
+
+\begin{theorem}[Type safety]
+\label{thm:safety}
+If \(\ctxempty\vdash t:T\) and
+\(\mathsf{initial}(t)\steps c\), then \(c\) is final or can take a step.
+\end{theorem}
+
+The theorem quantifies over arbitrary finite prefixes. Divergent programs are
+permitted; the last state of any finite prefix is not stuck.
+
+\section{Mechanization and examples}
+\label{sec:mechanization}
+
+The Lean 4 development \citep{demoura2021lean4} uses intrinsically scoped
+syntax. Types, terms, contexts, and stores are indexed by their available
+variables or locations, and allocation extends the store scope. The named
+presentation in this paper expresses the corresponding operations through
+capture-avoiding substitution and globally fresh locations. Member signatures
+are also indexed by their sort, so a term member cannot receive an interval
+signature and a type member cannot receive a proper-type signature.
+
+The formalization covers the complete calculus and abstract machine, typed
+path resolution, subtyping interpretation, coercion application, machine
+typing, progress, preservation, and \cref{thm:safety}. Allocation extends the
+intrinsic store scope, so the preservation theorem returns the result type
+weakened into that scope. The named presentation uses globally fresh
+locations and leaves this renaming implicit. It also includes a closed
+regression theorem exercising intersection introduction and both
+eliminations in one application.
+
+\subsection{Examples}
+
+Intersections permit one function value to be used through two independently
+derived views. Let
+\[
+  F=\top\to\top,
+  \qquad S=\top\to F,
+  \qquad L=F\to F,
+  \qquad R=F.
+\]
+The value \(v=\lambda({\_}:\top).\lambda(y:\top).y\) has type \(S\).
+Function subtyping gives \(S<:L\) by narrowing the outer domain and
+\(S<:R\) by widening its codomain. Hence \ruleref{s-inter} gives
+\(S<:\interty{L}{R}\), and the closed term
+\[
+  \mathbf{let}\ f=v\ \mathbf{in}\ f\,f
+\]
+has type \(F\): the operator occurrence uses \ruleref{s-inter-left} to view
+\(f\) at \(L\), while the argument occurrence uses
+\ruleref{s-inter-right} to view the same path at \(R\). At run time this is
+ordinary function application; no intersection object is built.
+
+The following derivations illustrate \ruleref{s-pair} with a non-singleton
+first component:
+\[
+  \pairty{x}{\top}{a}{\sing{x}}
+  <:
+  \pairty{x}{\top}{a}{\top}
+\]
+and
+\[
+  \pairty{x}{\top}{A}{\sing{x}..\sing{x}}
+  <:
+  \pairty{x}{\top}{A}{\bot..\top}.
+\]
+The first uses \ruleref{s-pair}, reflexivity for the first component, and
+\ruleref{s-top} for the member. The second uses \ruleref{s-bounds} under the
+pair binder; its lower, upper, and bound-consistency premises are respectively
+\ruleref{s-bot}, \ruleref{s-top}, and reflexivity.
+
+The interval derivation also occurs in the closed program
+\[
+\begin{aligned}
+t_{\mathsf{int}}
+  &={\mathbf{let}\ y=\lambda(x:\top).x\ \mathbf{in}\
+      \pairval{y}{A}{\sing{y}}},
+\\
+\ctxempty&\vdash t_{\mathsf{int}}:
+  \pairty{x}{\top}{A}{\bot..\top}.
+\end{aligned}
+\]
+Pair introduction first assigns
+\(\pairty{x}{\sing{y}}{A}{\sing{y}..\sing{y}}\). Under
+\(x:\sing y\), \ruleref{s-widen} derives
+\(\sing x<:\sing y\), \ruleref{s-alias} derives
+\(\sing y<:\sing x\), and \ruleref{s-bounds} uses these premises with
+reflexivity to derive
+\(\sing y..\sing y<:\sing x..\sing x\). Hence one application of
+\ruleref{s-pair} widens the first component to \(\top\) and expresses the
+member interval as \(\sing{x}..\sing{x}\); a second application hides that
+interval behind \(\bot..\top\). The mechanization specializes
+\cref{thm:safety} to every finite execution from this term.
+
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Dependent object types.}
+Foundational DOT systems account for abstract type members, dependent method
+types, recursive objects, and rich subtyping
+\citep{amin2014foundations,rompf2016dot}. Subsequent proofs factor the
+metatheory in different ways, including inert or tight typing
+\citep{rapoport2017simple} and definitional-interpreter techniques
+\citep{amin2017definitional}. \lambdap{} removes recursive objects and unions
+and studies paths built from immutable dependent pairs. It retains only
+controlled binary intersections with the three meet rules: unlike richer DOT
+intersections, they do not merge members, distribute through type
+constructors, or participate in precise path synthesis. The resulting runtime makes allocation order available as a
+well-founded measure for the coercions generated by dependent-pair subtyping.
+
+pDOT supports types depending on paths of arbitrary length and uses singleton
+types to track path equality \citep{rapoport2019pdot}. Its soundness proof
+adapts syntactic DOT techniques and imposes conditions needed for path
+lookup. \lambdap{} likewise separates singleton identity from abstract type
+selection, while representing record traversal by pair lookup and proving
+typed path resolution through store-indexed realization.
+
+gDOT gives a step-indexed logical-relations model in Iris for a guarded DOT
+calculus with recursive types and objects
+\citep{giarrusso2020gdot,jung2018iris}. Its surface calculus exposes a later
+type former and an explicit coercion term to control guarded recursive
+reasoning. For the recursion-free \lambdap{} core, semantic coercions and the
+allocation-order rank of referents suffice for well-foundedness.
+
+\paragraph{Coercion interpretations.}
+Coercion semantics translates subtyping or inheritance derivations into
+explicit evidence. Transitivity becomes composition, and multiple derivations
+of the same judgment raise a coherence question
+\citep{breazutannen1991coercion,crary2000inclusive}. System FC makes type
+equality evidence and casts explicit in a typed intermediate language and
+proves erasure before execution \citep{sulzmann2007systemfc}. Our semantic
+coercions follow a derivation-directed interpretation and preserve
+realization at a fixed referent within a store. Type safety requires each
+interpreted derivation to preserve realization; it does not require two
+derivations of the same subtyping judgment to produce the same coercion. The
+dependent cases suspend source derivations and interpret them only after a
+concrete location is supplied.
+
+Stratified semantic models have long used worlds or store levels to break
+circular definitions involving higher-order state
+\citep{ahmed2002stratified}. Location referents are ranked by their allocation
+position in the immutable store, while type referents have rank zero. The
+rank is used solely to justify recursive coercion application at referents
+stored inside a pair.
+
+\paragraph{Intervals, GADTs, and compilation to DOT.}
+Type intervals also support a uniform account of higher-order bounded
+abstraction and translucent definitions in
+\(F^{\omega}_{..}\) \citep{stucki2021intervals}. \lambdap{} uses first-order
+intervals as signatures of abstract type members represented by pairs and
+retains explicit bound-consistency premises in selection, interval formation,
+and interval subtyping.
+
+Work on GADT reasoning in Scala and cDOT studies equality and subtyping
+constraints recovered by pattern matching
+\citep{parreaux2019gadt,boruchgruszecki2022cdot}. These systems refine the
+typing assumptions within a branch after a constructor match, a facility that
+would become relevant when extending \lambdap{} with sums and pattern
+matching. Type-preserving translations from class-based calculi to DOT study
+how practical source-language constructs elaborate into a sound
+path-dependent core \citep{martres2023compilation}. Such a translation would
+also provide a setting in which to assess the coverage of the dependent-pair
+encodings used here.
+
+\section{Conclusion}
+
+We have proved type safety for \lambdap{} with arbitrary stable paths,
+singleton types, controlled binary intersections, abstract type members with
+interval signatures, explicit subtyping transitivity, and covariance of both
+components of dependent pairs.
+The semantic interpretation records which signatures a location or stored
+type definition realizes. Interpreting a subtyping derivation produces a
+coercion that preserves the referent while changing its realization.
+
+The dependent-pair case retains the member-subtyping premise until inversion
+reveals the stored first component. Instantiating the premise at that location
+yields a member coercion, which is applied to the pair's member referent. This
+coercion may be larger than the enclosing pair coercion; recursive application
+remains well founded because both component referents have lower allocation
+rank than the pair cell. Together with typed path resolution and the
+syntax-directed machine invariant, the coercion interpretation establishes
+progress, preservation, and type safety for every finite execution prefix.
+The intersection extension is intentionally limited to meet introduction and
+elimination. It has no path-typing projections, member merging,
+distributivity, term introduction form, or operational rule; extending any of
+those dimensions would be a separate calculus change.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{../../references}
+
+\end{document}
