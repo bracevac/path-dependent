@@ -40,6 +40,8 @@ def LocationEvidence.captureSetView
   cases possible with
   | top lookup captures => exact ⟨_, _, lookup, captures⟩
   | inter left _ => exact left.captureSetView
+  | unionLeft possible => exact possible.captureSetView
+  | unionRight possible => exact possible.captureSetView
   | «fun» lookup body input output captures =>
       exact ⟨_, _, lookup, captures⟩
   | pair lookup first member captures =>
@@ -97,6 +99,10 @@ noncomputable def LocationEvidence.widenCaptureSet
   | inter left right =>
       exact .inter (left.widenCaptureSet captures)
         (right.widenCaptureSet captures)
+  | unionLeft possible =>
+      exact .unionLeft (possible.widenCaptureSet captures)
+  | unionRight possible =>
+      exact .unionRight (possible.widenCaptureSet captures)
   | «fun» lookup body input output old =>
       exact .fun lookup body input output (old.comp captures)
   | pair lookup first member old =>
@@ -120,6 +126,10 @@ noncomputable def LocationEvidence.replaceLookup
   | inter left right =>
       exact .inter (left.replaceLookup lookup captures)
         (right.replaceLookup lookup captures)
+  | unionLeft possible =>
+      exact .unionLeft (possible.replaceLookup lookup captures)
+  | unionRight possible =>
+      exact .unionRight (possible.replaceLookup lookup captures)
   | «fun» oldLookup body input output old =>
       obtain ⟨rfl, rfl⟩ := oldLookup.unique lookup
       exact .fun lookup body input output captures
@@ -150,6 +160,16 @@ noncomputable def LocationEvidence.convertCongruent
       (LocationEvidence.convertCongruent left
         (.capt captureSetConversion leftConversion))
       (LocationEvidence.convertCongruent right
+        (.capt captureSetConversion rightConversion))
+| .unionLeft possible,
+    .capt captureSetConversion (.union leftConversion rightConversion) =>
+    .unionLeft
+      (LocationEvidence.convertCongruent possible
+        (.capt captureSetConversion leftConversion))
+| .unionRight possible,
+    .capt captureSetConversion (.union leftConversion rightConversion) =>
+    .unionRight
+      (LocationEvidence.convertCongruent possible
         (.capt captureSetConversion rightConversion))
 | .fun lookup body input output captures,
     .capt captureSetConversion (.fun domain codomain) =>

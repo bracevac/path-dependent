@@ -1,6 +1,6 @@
 # LambdaPCCI
 
-`LambdaPCCI` is the self-contained intersection-type variant of the
+`LambdaPCCI` is the self-contained intersection-and-union-type variant of the
 capture-checking path-dependent-pair calculus. It defines its own intrinsically
 scoped syntax, static semantics, store, path resolution, CK machine, and
 soundness proof, leaving `LambdaPCC` unchanged as the baseline calculus.
@@ -22,10 +22,13 @@ The development proves:
   or capture-set definitions;
 - binary intersections of shape types, interpreted as simultaneous
   realization at one store location;
+- binary unions of shape types, interpreted as a tagged realization of one
+  alternative at one store location;
 - merging of same-label, same-capture term-member record views into one view
   whose member retains the intersection of their shapes;
-- merging of same-label abstract type-member views with a shared lower bound
-  into one interval whose upper bound is their shape intersection;
+- merging of same-first-component, same-label abstract type-member views with
+  arbitrary lower bounds into one interval whose lower bound is their shape
+  union and whose upper bound is their shape intersection;
 - a source typing interpretation that preserves use sets;
 - progress, one-step preservation, and finite preservation for
   the runtime typing invariant;
@@ -60,7 +63,8 @@ one record whose same stored member is used through incomparable function
 views, then merges those views so one alias uses the member at both component
 shapes. `TypeMemberIntersectionRegression.lean` merges two views of one
 abstract type member and uses its selected type through the shared lower bound
-and both merged upper views.
+and both merged upper views. `TypeMemberUnionRegression.lean` removes that
+shared-lower restriction by merging the two lowers with a shape union.
 
 ## Files
 
@@ -90,6 +94,8 @@ and both merged upper views.
   with both a two-alias view and a merged one-alias view of the same member.
 - `TypeMemberIntersectionRegression.lean`: a closed shared-lower abstract
   type-member merge, with empty captures and uses.
+- `TypeMemberUnionRegression.lean`: the corresponding distinct-lower merge,
+  with empty captures and uses.
 
 ## Building
 

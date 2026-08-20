@@ -198,6 +198,10 @@ inductive Tau.RuntimeConv :
     Tau.RuntimeConv R (.ty S) (.ty S') ->
     Tau.RuntimeConv R (.ty T) (.ty T') ->
     Tau.RuntimeConv R (.ty (.Inter S T)) (.ty (.Inter S' T'))
+| union :
+    Tau.RuntimeConv R (.ty S) (.ty S') ->
+    Tau.RuntimeConv R (.ty T) (.ty T') ->
+    Tau.RuntimeConv R (.ty (.Union S T)) (.ty (.Union S' T'))
 | fun :
     Tau.RuntimeConv R (.ty S) (.ty S') ->
     Tau.RuntimeConv (Path.ScopedLift R) (.ty T) (.ty T') ->
@@ -236,6 +240,8 @@ noncomputable def Tau.RuntimeConv.subst
           (mapPaths evidence)
   | .inter left right =>
       .inter (left.subst mapPaths) (right.subst mapPaths)
+  | .union left right =>
+      .union (left.subst mapPaths) (right.subst mapPaths)
   | .fun domain codomain =>
       .fun (domain.subst mapPaths)
         (codomain.subst (rho := rho.lift)
@@ -295,6 +301,10 @@ inductive Tau.RuntimeCongruent :
     Tau.RuntimeCongruent R (.ty S) (.ty S') ->
     Tau.RuntimeCongruent R (.ty T) (.ty T') ->
     Tau.RuntimeCongruent R (.ty (.Inter S T)) (.ty (.Inter S' T'))
+| union :
+    Tau.RuntimeCongruent R (.ty S) (.ty S') ->
+    Tau.RuntimeCongruent R (.ty T) (.ty T') ->
+    Tau.RuntimeCongruent R (.ty (.Union S T)) (.ty (.Union S' T'))
 | fun :
     Tau.RuntimeCongruent R (.ty S) (.ty S') ->
     Tau.RuntimeCongruent (Path.ScopedLift R) (.ty T) (.ty T') ->
@@ -336,6 +346,9 @@ noncomputable def Ty.runtimeCongruentRefl
 | .Inter S T =>
     .inter (Ty.runtimeCongruentRefl operations S)
       (Ty.runtimeCongruentRefl operations T)
+| .Union S T =>
+    .union (Ty.runtimeCongruentRefl operations S)
+      (Ty.runtimeCongruentRefl operations T)
 | .Fun S T =>
     .fun (Ty.runtimeCongruentRefl operations S)
       (Ty.runtimeCongruentRefl
@@ -365,6 +378,8 @@ noncomputable def Tau.RuntimeCongruent.symm :
 | _, .bot => .bot
 | operations, .inter left right =>
     .inter (left.symm operations) (right.symm operations)
+| operations, .union left right =>
+    .union (left.symm operations) (right.symm operations)
 | operations, .fun domain codomain =>
     .fun (domain.symm operations)
       (codomain.symm (Path.ScopedLift.eqCongruence operations))
@@ -391,6 +406,9 @@ noncomputable def Ty.runtimeCongruentOfSubst
 | .Bot => .bot
 | .Inter S T =>
     .inter (Ty.runtimeCongruentOfSubst operations rho1 rho2 related S)
+      (Ty.runtimeCongruentOfSubst operations rho1 rho2 related T)
+| .Union S T =>
+    .union (Ty.runtimeCongruentOfSubst operations rho1 rho2 related S)
       (Ty.runtimeCongruentOfSubst operations rho1 rho2 related T)
 | .Fun S T =>
     .fun (Ty.runtimeCongruentOfSubst operations rho1 rho2 related S)
@@ -432,6 +450,8 @@ noncomputable def Tau.RuntimeCongruent.toRuntimeConv :
 | .bot => .refl
 | .inter left right =>
     .inter left.toRuntimeConv right.toRuntimeConv
+| .union left right =>
+    .union left.toRuntimeConv right.toRuntimeConv
 | .fun domain codomain =>
     .fun domain.toRuntimeConv codomain.toRuntimeConv
 | .pair first member =>
@@ -459,6 +479,9 @@ noncomputable def Tau.RuntimeConv.runtimeCongruent
         context
   | .inter left right =>
       .inter (left.runtimeCongruent operations)
+        (right.runtimeCongruent operations)
+  | .union left right =>
+      .union (left.runtimeCongruent operations)
         (right.runtimeCongruent operations)
   | .fun domain codomain =>
       .fun (domain.runtimeCongruent operations)

@@ -121,6 +121,14 @@ inductive Shape.Sub : Ctx n -> Shape n -> Shape n -> Type where
     Shape.Sub Gamma (.Inter T U) T
 | inter_right :
     Shape.Sub Gamma (.Inter T U) U
+| union_left :
+    Shape.Sub Gamma S (.Union S T)
+| union_right :
+    Shape.Sub Gamma T (.Union S T)
+| union :
+    Shape.Sub Gamma S U ->
+    Shape.Sub Gamma T U ->
+    Shape.Sub Gamma (.Union S T) U
 /-- Merge two views of one term-member slot.  The first-component type,
 label, and member capture set must agree, so both views describe the same
 stored member with the same capture contract. -/
@@ -139,6 +147,15 @@ same stored type. -/
         (.Pair S a (.type L U))
         (.Pair S a (.type L V)))
       (.Pair S a (.type L (.Inter U V)))
+/-- Merge arbitrary lower-bound views of one abstract type-member slot.  The
+union retains both lower guarantees while the intersection retains both upper
+guarantees. -/
+| pair_type_union_inter :
+    Shape.Sub Gamma
+      (.Inter
+        (.Pair S a (.type L U))
+        (.Pair S a (.type M V)))
+      (.Pair S a (.type (.Union L M) (.Inter U V)))
 | fun :
     Ty.Sub Gamma S' S ->
     Ty.Sub (Gamma.snoc S') T T' ->
@@ -217,6 +234,10 @@ inductive Shape.Wf : Ctx n -> Shape n -> Type where
     Shape.Wf Gamma S ->
     Shape.Wf Gamma T ->
     Shape.Wf Gamma (.Inter S T)
+| union :
+    Shape.Wf Gamma S ->
+    Shape.Wf Gamma T ->
+    Shape.Wf Gamma (.Union S T)
 | fun :
     Ty.Wf Gamma S ->
     Ty.Wf (Gamma.snoc S) T ->

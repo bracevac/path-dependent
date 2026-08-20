@@ -46,8 +46,12 @@ def ShapeCoercion.treeSize : ShapeCoercion world S T -> Nat
 | .inter left right => left.treeSize + right.treeSize + 1
 | .interLeft => 1
 | .interRight => 1
+| .unionLeft => 1
+| .unionRight => 1
+| .union left right => left.treeSize + right.treeSize + 1
 | .pairInter => 1
 | .pairTypeInter => 1
+| .pairTypeUnionInter => 1
 | .widen _ _ => 1
 | .alias _ _ => 1
 | .selectLower _ lower => lower.treeSize + 2
@@ -122,6 +126,22 @@ noncomputable def Coercion.action
     .loc (left.widenCaptureSet captures)
 | .term (.capt captures .interRight), .loc (.inter _ right) =>
     .loc (right.widenCaptureSet captures)
+| .term (.capt captures .unionLeft), .loc possible =>
+    .loc (.unionLeft (possible.widenCaptureSet captures))
+| .term (.capt captures .unionRight), .loc possible =>
+    .loc (.unionRight (possible.widenCaptureSet captures))
+| .term (.capt captures (.union left right)),
+    .loc (.unionLeft possible) => by
+    have result :=
+      (Coercion.term (TyCoercion.capt .refl left)).action (.loc possible)
+    cases result with
+    | loc mapped => exact .loc (mapped.widenCaptureSet captures)
+| .term (.capt captures (.union left right)),
+    .loc (.unionRight possible) => by
+    have result :=
+      (Coercion.term (TyCoercion.capt .refl right)).action (.loc possible)
+    cases result with
+    | loc mapped => exact .loc (mapped.widenCaptureSet captures)
 | .term (.capt captures .pairInter), .loc (.inter left right) => by
     cases left with
     | @pair _ _ _ _ _ _ _ _ _ leftDefinition _ _
@@ -165,6 +185,30 @@ noncomputable def Coercion.action
                 | type _ rightUpper =>
                     exact .loc (.pair leftLookup leftFirst
                       (.type leftLower (.inter leftUpper rightUpper))
+                      (leftCoverage.comp captures))
+| .term (.capt captures .pairTypeUnionInter),
+    .loc (.inter left right) => by
+    cases left with
+    | @pair _ _ _ _ _ _ _ _ _ leftDefinition _ _
+        leftLookup leftFirst leftMember leftCoverage =>
+        cases leftDefinition with
+        | type _ =>
+        cases right with
+        | @pair _ _ _ _ _ _ _ _ _ rightDefinition _ _
+            rightLookup _ rightMember _ =>
+            cases rightDefinition with
+            | type _ =>
+            obtain ⟨valueEq, captureEq⟩ :=
+              leftLookup.unique rightLookup
+            cases valueEq
+            cases captureEq
+            cases leftMember with
+            | type leftLower leftUpper =>
+                cases rightMember with
+                | type rightLower rightUpper =>
+                    exact .loc (.pair leftLookup leftFirst
+                      (.type (.union leftLower rightLower)
+                        (.inter leftUpper rightUpper))
                       (leftCoverage.comp captures))
 | .term (.capt captures (.widen targetResolution target)),
     .loc (.single lookup sourceResolution sourceCoverage) => by

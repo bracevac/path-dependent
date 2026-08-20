@@ -85,6 +85,10 @@ noncomputable def LocationEvidence.weaken
       .top (lookup.weaken exact vv) (coverage.weaken exact vv)
   | .inter left right =>
       .inter (left.weaken exact vv) (right.weaken exact vv)
+  | .unionLeft possible =>
+      .unionLeft (possible.weaken exact vv)
+  | .unionRight possible =>
+      .unionRight (possible.weaken exact vv)
   | .fun lookup closure input output coverage => by
       apply LocationEvidence.fun (lookup.weaken exact vv)
       · simpa only [CaptureSet.rename, Path.rename,
@@ -186,8 +190,13 @@ noncomputable def ShapeCoercion.weaken
       .inter (left.weaken exact vv) (right.weaken exact vv)
   | .interLeft => .interLeft
   | .interRight => .interRight
+  | .unionLeft => .unionLeft
+  | .unionRight => .unionRight
+  | .union left right =>
+      .union (left.weaken exact vv) (right.weaken exact vv)
   | .pairInter => .pairInter
   | .pairTypeInter => .pairTypeInter
+  | .pairTypeUnionInter => .pairTypeUnionInter
   | .widen resolution possible =>
       .widen (resolution.weaken _ vv) (possible.weaken exact vv)
   | .alias left right =>
