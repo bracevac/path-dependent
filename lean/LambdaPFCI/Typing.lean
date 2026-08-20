@@ -4,8 +4,8 @@ import LambdaPFCI.Context
 /-!
 Static semantics for `lambda_p`.  Paths synthesize precise generalized
 types; pair members may be proper types or abstract intervals; proper types
-form a meet-semilattice under intersection; and interval selection is guarded
-by a nonempty-bounds premise.
+support binary meets and joins; and interval selection is guarded by a
+nonempty-bounds premise.
 -/
 
 namespace LambdaPFCI
@@ -69,6 +69,14 @@ inductive Tau.Sub : Ctx n -> Tau n k -> Tau n k -> Type where
     Tau.Sub Γ (Tau.ty (Ty.Inter T U)) (Tau.ty T)
 | inter_right :
     Tau.Sub Γ (Tau.ty (Ty.Inter T U)) (Tau.ty U)
+| union_left :
+    Tau.Sub Γ (Tau.ty T) (Tau.ty (Ty.Union T U))
+| union_right :
+    Tau.Sub Γ (Tau.ty U) (Tau.ty (Ty.Union T U))
+| union :
+    Tau.Sub Γ (Tau.ty S) (Tau.ty U) ->
+    Tau.Sub Γ (Tau.ty T) (Tau.ty U) ->
+    Tau.Sub Γ (Tau.ty (Ty.Union S T)) (Tau.ty U)
 /-- Merge two views of the same term-member slot.  Requiring the first
 component type and label to agree makes both views refer to one stored member. -/
 | pair_inter :
@@ -85,6 +93,15 @@ bound agrees.  The stored witness then lies below both advertised uppers. -/
         (Ty.Pair S A (Tau.intv L U))
         (Ty.Pair S A (Tau.intv L V))))
       (Tau.ty (Ty.Pair S A (Tau.intv L (Ty.Inter U V))))
+/-- Merge arbitrary interval views of the same abstract type-member slot.
+The lower bounds join while the upper bounds meet. -/
+| pair_type_union_inter :
+    Tau.Sub Γ
+      (Tau.ty (Ty.Inter
+        (Ty.Pair S A (Tau.intv L1 U1))
+        (Ty.Pair S A (Tau.intv L2 U2))))
+      (Tau.ty (Ty.Pair S A
+        (Tau.intv (Ty.Union L1 L2) (Ty.Inter U1 U2))))
 | «fun» :
     Tau.Sub Γ (Tau.ty S') (Tau.ty S) ->
     Tau.Sub (Γ.snoc S') (Tau.ty T) (Tau.ty T') ->
@@ -120,6 +137,10 @@ inductive Tau.Wf : Ctx n -> Tau n k -> Type where
     Tau.Wf Γ (Tau.ty T) ->
     Tau.Wf Γ (Tau.ty U) ->
     Tau.Wf Γ (Tau.ty (Ty.Inter T U))
+| union :
+    Tau.Wf Γ (Tau.ty T) ->
+    Tau.Wf Γ (Tau.ty U) ->
+    Tau.Wf Γ (Tau.ty (Ty.Union T U))
 | «fun» :
     Tau.Wf Γ (Tau.ty S) ->
     Tau.Wf (Γ.snoc S) (Tau.ty T) ->

@@ -248,6 +248,10 @@ inductive Shape.RuntimeConv :
     Shape.RuntimeConv R S S' ->
     Shape.RuntimeConv R T T' ->
     Shape.RuntimeConv R (.Inter S T) (.Inter S' T')
+| union :
+    Shape.RuntimeConv R S S' ->
+    Shape.RuntimeConv R T T' ->
+    Shape.RuntimeConv R (.Union S T) (.Union S' T')
 | fun :
     Ty.RuntimeConv R S S' ->
     Ty.RuntimeConv (Path.ScopedLift R) T T' ->
@@ -331,6 +335,8 @@ noncomputable def Shape.RuntimeConv.subst
 | .bot => .bot
 | .inter left right =>
     .inter (left.subst mapPaths) (right.subst mapPaths)
+| .union left right =>
+    .union (left.subst mapPaths) (right.subst mapPaths)
 | .fun domain codomain =>
     .fun (domain.subst mapPaths)
       (codomain.subst (rho := rho.lift) fun evidence => evidence.subst mapPaths)
@@ -530,6 +536,10 @@ inductive Shape.RuntimeCongruent :
     Shape.RuntimeCongruent R S S' ->
     Shape.RuntimeCongruent R T T' ->
     Shape.RuntimeCongruent R (.Inter S T) (.Inter S' T')
+| union :
+    Shape.RuntimeCongruent R S S' ->
+    Shape.RuntimeCongruent R T T' ->
+    Shape.RuntimeCongruent R (.Union S T) (.Union S' T')
 | fun :
     Ty.RuntimeCongruent R S S' ->
     Ty.RuntimeCongruent (Path.ScopedLift R) T T' ->
@@ -586,6 +596,8 @@ noncomputable def Shape.RuntimeCongruent.refl
 | .Bot => .bot
 | .Inter S T => .inter (Shape.RuntimeCongruent.refl operations S)
     (Shape.RuntimeCongruent.refl operations T)
+| .Union S T => .union (Shape.RuntimeCongruent.refl operations S)
+    (Shape.RuntimeCongruent.refl operations T)
 | .Fun S T => .fun (Ty.RuntimeCongruent.refl operations S)
     (Ty.RuntimeCongruent.refl (Path.ScopedLift.eqCongruence operations) T)
 | .Pair S _ d => .pair (Ty.RuntimeCongruent.refl operations S)
@@ -632,6 +644,7 @@ noncomputable def Shape.RuntimeCongruent.symm
 | .top => .top
 | .bot => .bot
 | .inter left right => .inter (left.symm operations) (right.symm operations)
+| .union left right => .union (left.symm operations) (right.symm operations)
 | .fun domain codomain => .fun (domain.symm operations)
     (codomain.symm (Path.ScopedLift.eqCongruence operations))
 | .pair first member => .pair (first.symm operations)
@@ -700,6 +713,9 @@ noncomputable def Shape.RuntimeCongruent.ofSubst
 | .Inter S T => .inter
     (Shape.RuntimeCongruent.ofSubst operations rho1 rho2 related S)
     (Shape.RuntimeCongruent.ofSubst operations rho1 rho2 related T)
+| .Union S T => .union
+    (Shape.RuntimeCongruent.ofSubst operations rho1 rho2 related S)
+    (Shape.RuntimeCongruent.ofSubst operations rho1 rho2 related T)
 | .Fun S T => .fun (Ty.RuntimeCongruent.ofSubst operations rho1 rho2 related S)
     (Ty.RuntimeCongruent.ofSubst (Path.ScopedLift.eqCongruence operations)
       rho1.lift rho2.lift (Path.ScopedLift.pointwise related) T)
@@ -745,6 +761,7 @@ noncomputable def Shape.RuntimeCongruent.toRuntimeConv :
 | .top => .top
 | .bot => .bot
 | .inter left right => .inter left.toRuntimeConv right.toRuntimeConv
+| .union left right => .union left.toRuntimeConv right.toRuntimeConv
 | .fun domain codomain => .fun domain.toRuntimeConv codomain.toRuntimeConv
 | .pair first member => .pair first.toRuntimeConv member.toRuntimeConv
 | .single path => .single path
@@ -812,6 +829,9 @@ noncomputable def Shape.RuntimeConv.runtimeCongruent
   | .bot => .bot
   | .inter left right =>
       .inter (left.runtimeCongruent operations)
+        (right.runtimeCongruent operations)
+  | .union left right =>
+      .union (left.runtimeCongruent operations)
         (right.runtimeCongruent operations)
   | .fun domain codomain =>
       .fun (domain.runtimeCongruent operations)

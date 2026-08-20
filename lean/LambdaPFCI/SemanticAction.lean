@@ -27,6 +27,10 @@ noncomputable def Store.Possible.convertCongruent
     .inter
       (Store.Possible.convertCongruent left leftConversion)
       (Store.Possible.convertCongruent right rightConversion)
+| .unionLeft left, .union leftConversion _ =>
+    .unionLeft (Store.Possible.convertCongruent left leftConversion)
+| .unionRight right, .union _ rightConversion =>
+    .unionRight (Store.Possible.convertCongruent right rightConversion)
 | .fun binding body input output, .fun domain codomain =>
     let operations := Path.RuntimeEq.eqCongruence sigma
     let backwards : Coercion sigma _ _ :=
@@ -172,8 +176,13 @@ noncomputable def Tau.Sub.compile
     .inter (left.compile environment) (right.compile environment)
 | .inter_left => .interLeft
 | .inter_right => .interRight
+| .union_left => .unionLeft
+| .union_right => .unionRight
+| .union left right =>
+    .union (left.compile environment) (right.compile environment)
 | .pair_inter => .pairInter
 | .pair_type_inter => .pairTypeInter
+| .pair_type_union_inter => .pairTypeUnionInter
 | .widen path => by
     obtain ⟨referent, resolution, realizes⟩ := path.resolve environment
     cases realizes with
@@ -232,8 +241,12 @@ def Coercion.treeSize : Coercion sigma d1 d2 -> Nat
 | .inter left right => left.treeSize + right.treeSize + 1
 | .interLeft => 1
 | .interRight => 1
+| .unionLeft => 1
+| .unionRight => 1
+| .union left right => left.treeSize + right.treeSize + 1
 | .pairInter => 1
 | .pairTypeInter => 1
+| .pairTypeUnionInter => 1
 | .widen _ _ => 1
 | .alias _ _ => 1
 | .selLo _ lower => lower.treeSize + 1
@@ -275,6 +288,12 @@ noncomputable def Coercion.action
             exact .loc (.inter leftPossible rightPossible)
 | .interLeft, .loc (.inter left _) => .loc left
 | .interRight, .loc (.inter _ right) => .loc right
+| .unionLeft, .loc possible => .loc (.unionLeft possible)
+| .unionRight, .loc possible => .loc (.unionRight possible)
+| .union left _, .loc (.unionLeft possible) =>
+    left.action (.loc possible)
+| .union _ right, .loc (.unionRight possible) =>
+    right.action (.loc possible)
 | .pairInter, .loc (.inter left right) => by
     cases left with
     | @pair _ _ _ _ _ _ leftDefinition _ _
@@ -311,6 +330,25 @@ noncomputable def Coercion.action
                         | type _ rightUpper =>
                             exact .loc (.pair leftBinding leftFirst
                               (.type leftLower (.inter leftUpper rightUpper)))
+| .pairTypeUnionInter, .loc (.inter left right) => by
+    cases left with
+    | @pair _ _ _ _ _ _ leftDefinition _ _
+        leftBinding leftFirst leftMember =>
+        cases leftDefinition with
+        | type _ =>
+            cases right with
+            | @pair _ _ _ _ _ _ rightDefinition _ _
+                rightBinding _ rightMember =>
+                cases rightDefinition with
+                | type _ =>
+                    cases Store.Binds.unique leftBinding rightBinding
+                    cases leftMember with
+                    | type leftLower leftUpper =>
+                        cases rightMember with
+                        | type rightLower rightUpper =>
+                            exact .loc (.pair leftBinding leftFirst
+                              (.type (.union leftLower rightLower)
+                                (.inter leftUpper rightUpper)))
 | .widen resolution target, realizes => by
     cases realizes with
     | loc possible =>

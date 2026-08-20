@@ -100,6 +100,14 @@ inductive LocationEvidence :
     LocationEvidence world x (.capt C S) ->
     LocationEvidence world x (.capt C T) ->
     LocationEvidence world x (.capt C (.Inter S T))
+| unionLeft {n : Nat} {sigma : Store n} {world : Cap.World sigma}
+    {x : Fin n} {C : CaptureSet n} {S T : Shape n} :
+    LocationEvidence world x (.capt C S) ->
+    LocationEvidence world x (.capt C (.Union S T))
+| unionRight {n : Nat} {sigma : Store n} {world : Cap.World sigma}
+    {x : Fin n} {C : CaptureSet n} {S T : Shape n} :
+    LocationEvidence world x (.capt C T) ->
+    LocationEvidence world x (.capt C (.Union S T))
 | fun {n : Nat} {sigma : Store n} {world : Cap.World sigma}
     {x : Fin n} {Q C : CaptureSet n} {A S : Ty n}
     {body : Tm (n + 1)} {B U : Ty (n + 1)} :
@@ -245,6 +253,17 @@ inductive ShapeCoercion :
 | interRight {n : Nat} {sigma : Store n} {world : Cap.World sigma}
     {S T : Shape n} :
     ShapeCoercion world (.Inter S T) T
+| unionLeft {n : Nat} {sigma : Store n} {world : Cap.World sigma}
+    {S T : Shape n} :
+    ShapeCoercion world S (.Union S T)
+| unionRight {n : Nat} {sigma : Store n} {world : Cap.World sigma}
+    {S T : Shape n} :
+    ShapeCoercion world T (.Union S T)
+| union {n : Nat} {sigma : Store n} {world : Cap.World sigma}
+    {S T U : Shape n} :
+    ShapeCoercion world S U ->
+    ShapeCoercion world T U ->
+    ShapeCoercion world (.Union S T) U
 | pairInter {n : Nat} {sigma : Store n} {world : Cap.World sigma}
     {S : Ty n} {a : Name} {C : CaptureSet (n + 1)}
     {T U : Shape (n + 1)} :
@@ -260,6 +279,13 @@ inductive ShapeCoercion :
         (.Pair S a (.type L U))
         (.Pair S a (.type L V)))
       (.Pair S a (.type L (.Inter U V)))
+| pairTypeUnionInter {n : Nat} {sigma : Store n} {world : Cap.World sigma}
+    {S : Ty n} {a : Name} {L M U V : Shape (n + 1)} :
+    ShapeCoercion world
+      (.Inter
+        (.Pair S a (.type L U))
+        (.Pair S a (.type M V)))
+      (.Pair S a (.type (.Union L M) (.Inter U V)))
 | widen {n : Nat} {sigma : Store n} {world : Cap.World sigma}
     {p : Path n} {x : Fin n} {C : CaptureSet n} {S : Shape n} :
     Path.Resolve p sigma (.loc x) -> LocationEvidence world x (.capt C S) ->

@@ -1,6 +1,7 @@
 # LambdaPFCI
 
-`LambdaPFCI` is the self-contained intersection-type variant of `LambdaPFC`.
+`LambdaPFCI` is the self-contained intersection-and-union-type variant of
+`LambdaPFC`.
 It contains its own intrinsically scoped syntax, declarative static semantics,
 store, generalized path resolution, and CK machine, leaving `LambdaPFC`
 unchanged as the baseline calculus. The static judgments are proof-relevant,
@@ -12,10 +13,13 @@ The development proves:
 - deterministic path resolution to location and type-definition referents;
 - binary intersections of proper types, interpreted as simultaneous
   realization at one store location;
+- binary unions of proper types, interpreted as a tagged realization of one
+  alternative at one store location;
 - merging of same-label term-member record views into one view whose member
   retains the intersection of their proper types;
-- merging of same-label abstract type-member views with a shared lower bound
-  into one interval whose upper bound is their intersection;
+- merging of same-first-component, same-label abstract type-member views with
+  arbitrary lower bounds into one interval whose lower bound is their union
+  and whose upper bound is their intersection;
 - unrestricted covariance for dependent pairs, including proper and interval
   members;
 - a finite semantic interpretation of every declarative subtyping derivation;
@@ -84,6 +88,9 @@ the final result type through `Ty.Extends`.
 - `TypeMemberIntersectionRegression.lean`: a closed abstract-member merge whose
   selected type is used through its shared lower bound and both merged upper
   views.
+- `TypeMemberUnionRegression.lean`: a closed abstract-member merge with
+  distinct lower bounds, using their union through selection and both
+  components of the intersected upper bound.
 
 ## Building
 

@@ -51,6 +51,7 @@ inductive Shape : Nat -> Type where
 | Fun : Ty n -> Ty (n + 1) -> Shape n
 | Pair : Ty n -> Name -> Tau (n + 1) k -> Shape n
 | Inter : Shape n -> Shape n -> Shape n
+| Union : Shape n -> Shape n -> Shape n
 | Single : Path n -> Shape n
 /-- Abstract type-member selection `p.A`, distinct from the term singleton `{p}`. -/
 | TSel : Path n -> Name -> Shape n
@@ -114,6 +115,7 @@ def Shape.rename : Shape n -> FinFun n m -> Shape m
 | .Fun S T, f => .Fun (S.rename f) (T.rename f.ext)
 | .Pair S a d, f => .Pair (S.rename f) a (d.rename f.ext)
 | .Inter S T, f => .Inter (S.rename f) (T.rename f)
+| .Union S T, f => .Union (S.rename f) (T.rename f)
 | .Single p, f => .Single (p.rename f)
 | .TSel p A, f => .TSel (p.rename f) A
 
@@ -201,6 +203,7 @@ def Shape.subst : Shape n -> PathSubst n m -> Shape m
 | .Fun S T, σ => .Fun (S.subst σ) (T.subst σ.lift)
 | .Pair S a d, σ => .Pair (S.subst σ) a (d.subst σ.lift)
 | .Inter S T, σ => .Inter (S.subst σ) (T.subst σ)
+| .Union S T, σ => .Union (S.subst σ) (T.subst σ)
 | .Single p, σ => .Single (p.subst σ)
 | .TSel p A, σ => .TSel (p.subst σ) A
 
@@ -276,6 +279,8 @@ theorem Shape.rename_id (S : Shape n) : S.rename FinFun.id = S :=
       simp only [Shape.rename, FinFun.ext_id, Ty.rename_id S, Tau.rename_id d]
   | .Inter S T => by
       simp only [Shape.rename, Shape.rename_id S, Shape.rename_id T]
+  | .Union S T => by
+      simp only [Shape.rename, Shape.rename_id S, Shape.rename_id T]
   | .Single p => by simp only [Shape.rename, Path.rename_id]
   | .TSel p A => by simp only [Shape.rename, Path.rename_id]
 
@@ -336,6 +341,9 @@ theorem Shape.rename_rename (S : Shape n) (f : FinFun n m) (g : FinFun m l) :
       simp only [Shape.rename, Ty.rename_rename S f g,
         Tau.rename_rename d f.ext g.ext, FinFun.ext_comp]
   | .Inter S T => by
+      simp only [Shape.rename, Shape.rename_rename S f g,
+        Shape.rename_rename T f g]
+  | .Union S T => by
       simp only [Shape.rename, Shape.rename_rename S f g,
         Shape.rename_rename T f g]
   | .Single p => by simp only [Shape.rename, Path.rename_rename]
@@ -446,6 +454,8 @@ theorem Shape.subst_id (S : Shape n) : S.subst PathSubst.id = S :=
       simp only [Shape.subst, PathSubst.lift_id, Ty.subst_id S, Tau.subst_id d]
   | .Inter S T => by
       simp only [Shape.subst, Shape.subst_id S, Shape.subst_id T]
+  | .Union S T => by
+      simp only [Shape.subst, Shape.subst_id S, Shape.subst_id T]
   | .Single p => by simp only [Shape.subst, Path.subst_id]
   | .TSel p A => by simp only [Shape.subst, Path.subst_id]
 
@@ -516,6 +526,9 @@ theorem Shape.subst_asSubst (S : Shape n) (f : FinFun n m) :
       simp only [Shape.subst, Shape.rename, Ty.subst_asSubst S f,
         ← FinFun.asSubst_ext, Tau.subst_asSubst d f.ext]
   | .Inter S T => by
+      simp only [Shape.subst, Shape.rename, Shape.subst_asSubst S f,
+        Shape.subst_asSubst T f]
+  | .Union S T => by
       simp only [Shape.subst, Shape.rename, Shape.subst_asSubst S f,
         Shape.subst_asSubst T f]
   | .Single p => by simp only [Shape.subst, Shape.rename, Path.subst_asSubst]
@@ -608,6 +621,9 @@ theorem Shape.subst_comp (S : Shape n) (σ : PathSubst n m)
       simp only [Shape.subst, Ty.subst_comp S σ θ,
         Tau.subst_comp d σ.lift θ.lift, PathSubst.comp_lift]
   | .Inter S T => by
+      simp only [Shape.subst, Shape.subst_comp S σ θ,
+        Shape.subst_comp T σ θ]
+  | .Union S T => by
       simp only [Shape.subst, Shape.subst_comp S σ θ,
         Shape.subst_comp T σ θ]
   | .Single p => by simp only [Shape.subst, Path.subst_comp]

@@ -41,6 +41,12 @@ inductive Store.Possible :
     Store.Possible sigma x S ->
     Store.Possible sigma x T ->
     Store.Possible sigma x (.Inter S T)
+| unionLeft {m : Nat} {sigma : Store m} {x : Fin m} {S T : Ty m} :
+    Store.Possible sigma x S ->
+    Store.Possible sigma x (.Union S T)
+| unionRight {m : Nat} {sigma : Store m} {x : Fin m} {S T : Ty m} :
+    Store.Possible sigma x T ->
+    Store.Possible sigma x (.Union S T)
 | fun {m : Nat} {sigma : Store m} {x : Fin m}
     {A S : Ty m} {body : Tm (m + 1)} {B U : Ty (m + 1)} :
     Store.Binds sigma x (.abs A body) ->
@@ -107,6 +113,14 @@ inductive Coercion :
     Coercion sigma (.ty (.Inter S T)) (.ty S)
 | interRight {m : Nat} {sigma : Store m} {S T : Ty m} :
     Coercion sigma (.ty (.Inter S T)) (.ty T)
+| unionLeft {m : Nat} {sigma : Store m} {S T : Ty m} :
+    Coercion sigma (.ty S) (.ty (.Union S T))
+| unionRight {m : Nat} {sigma : Store m} {S T : Ty m} :
+    Coercion sigma (.ty T) (.ty (.Union S T))
+| union {m : Nat} {sigma : Store m} {S T U : Ty m} :
+    Coercion sigma (.ty S) (.ty U) ->
+    Coercion sigma (.ty T) (.ty U) ->
+    Coercion sigma (.ty (.Union S T)) (.ty U)
 | pairInter {m : Nat} {sigma : Store m} {S : Ty m}
     {a : Name} {T U : Ty (m + 1)} :
     Coercion sigma
@@ -121,6 +135,14 @@ inductive Coercion :
         (.Pair S A (.intv L U))
         (.Pair S A (.intv L V))))
       (.ty (.Pair S A (.intv L (.Inter U V))))
+| pairTypeUnionInter {m : Nat} {sigma : Store m} {S : Ty m}
+    {A : Name} {L1 L2 U1 U2 : Ty (m + 1)} :
+    Coercion sigma
+      (.ty (.Inter
+        (.Pair S A (.intv L1 U1))
+        (.Pair S A (.intv L2 U2))))
+      (.ty (.Pair S A
+        (.intv (.Union L1 L2) (.Inter U1 U2))))
 | widen {m : Nat} {sigma : Store m} {p : Path m}
     {x : Fin m} {T : Ty m} :
     Path.Resolve p sigma (.loc x) ->

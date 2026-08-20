@@ -72,6 +72,8 @@ noncomputable def Store.Possible.weaken
   | .top => .top
   | .inter left right =>
       .inter (left.weaken v vv) (right.weaken v vv)
+  | .unionLeft left => .unionLeft (left.weaken v vv)
+  | .unionRight right => .unionRight (right.weaken v vv)
   | .fun binding closure domain codomain =>
       .fun (.there binding) (closure.weaken v vv)
         (domain.weaken v vv) (codomain.weaken v vv)
@@ -113,8 +115,13 @@ noncomputable def Coercion.weaken
       .inter (left.weaken v vv) (right.weaken v vv)
   | .interLeft => .interLeft
   | .interRight => .interRight
+  | .unionLeft => .unionLeft
+  | .unionRight => .unionRight
+  | .union left right =>
+      .union (left.weaken v vv) (right.weaken v vv)
   | .pairInter => .pairInter
   | .pairTypeInter => .pairTypeInter
+  | .pairTypeUnionInter => .pairTypeUnionInter
   | .widen resolution possible =>
       .widen (resolution.weaken v vv) (possible.weaken v vv)
   | .alias left right =>

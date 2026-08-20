@@ -48,6 +48,7 @@ inductive Ty : Nat -> Type where
 | Fun : Ty n -> Ty (n + 1) -> Ty n
 | Pair : Ty n -> Name -> Tau (n + 1) k -> Ty n
 | Inter : Ty n -> Ty n -> Ty n
+| Union : Ty n -> Ty n -> Ty n
 | Single : Path n -> Ty n
 /-- Abstract type-member selection `p.A`, distinct from the term singleton `{p}`. -/
 | TSel : Path n -> Name -> Ty n
@@ -86,6 +87,7 @@ def Ty.rename : Ty n -> FinFun n m -> Ty m
 | .Fun S T, f => .Fun (S.rename f) (T.rename f.ext)
 | .Pair S a d, f => .Pair (S.rename f) a (d.rename f.ext)
 | .Inter S T, f => .Inter (S.rename f) (T.rename f)
+| .Union S T, f => .Union (S.rename f) (T.rename f)
 | .Single p, f => .Single (p.rename f)
 | .TSel p A, f => .TSel (p.rename f) A
 
@@ -158,6 +160,7 @@ def Ty.subst : Ty n -> PathSubst n m -> Ty m
 | .Fun S T, σ => .Fun (S.subst σ) (T.subst σ.lift)
 | .Pair S a d, σ => .Pair (S.subst σ) a (d.subst σ.lift)
 | .Inter S T, σ => .Inter (S.subst σ) (T.subst σ)
+| .Union S T, σ => .Union (S.subst σ) (T.subst σ)
 | .Single p, σ => .Single (p.subst σ)
 | .TSel p A, σ => .TSel (p.subst σ) A
 
@@ -211,6 +214,8 @@ theorem Ty.rename_id (T : Ty n) : T.rename FinFun.id = T :=
       simp only [Ty.rename, FinFun.ext_id, Ty.rename_id S, Tau.rename_id d]
   | .Inter S T => by
       simp only [Ty.rename, Ty.rename_id S, Ty.rename_id T]
+  | .Union S T => by
+      simp only [Ty.rename, Ty.rename_id S, Ty.rename_id T]
   | .Single p => by simp only [Ty.rename, Path.rename_id]
   | .TSel p A => by simp only [Ty.rename, Path.rename_id]
 
@@ -250,6 +255,8 @@ theorem Ty.rename_rename (T : Ty n) (f : FinFun n m) (g : FinFun m l) :
       simp only [Ty.rename, Ty.rename_rename S f g,
         Tau.rename_rename d f.ext g.ext, FinFun.ext_comp]
   | .Inter S T => by
+      simp only [Ty.rename, Ty.rename_rename S f g, Ty.rename_rename T f g]
+  | .Union S T => by
       simp only [Ty.rename, Ty.rename_rename S f g, Ty.rename_rename T f g]
   | .Single p => by simp only [Ty.rename, Path.rename_rename]
   | .TSel p A => by simp only [Ty.rename, Path.rename_rename]
@@ -335,6 +342,8 @@ theorem Ty.subst_id (T : Ty n) : T.subst PathSubst.id = T :=
       simp only [Ty.subst, PathSubst.lift_id, Ty.subst_id S, Tau.subst_id d]
   | .Inter S T => by
       simp only [Ty.subst, Ty.subst_id S, Ty.subst_id T]
+  | .Union S T => by
+      simp only [Ty.subst, Ty.subst_id S, Ty.subst_id T]
   | .Single p => by simp only [Ty.subst, Path.subst_id]
   | .TSel p A => by simp only [Ty.subst, Path.subst_id]
 
@@ -385,6 +394,9 @@ theorem Ty.subst_asSubst (T : Ty n) (f : FinFun n m) :
       simp only [Ty.subst, Ty.rename, Ty.subst_asSubst S f,
         ← FinFun.asSubst_ext, Tau.subst_asSubst d f.ext]
   | .Inter S T => by
+      simp only [Ty.subst, Ty.rename, Ty.subst_asSubst S f,
+        Ty.subst_asSubst T f]
+  | .Union S T => by
       simp only [Ty.subst, Ty.rename, Ty.subst_asSubst S f,
         Ty.subst_asSubst T f]
   | .Single p => by simp only [Ty.subst, Ty.rename, Path.subst_asSubst]
@@ -456,6 +468,8 @@ theorem Ty.subst_comp (T : Ty n) (σ : PathSubst n m)
       simp only [Ty.subst, Ty.subst_comp S σ θ,
         Tau.subst_comp d σ.lift θ.lift, PathSubst.comp_lift]
   | .Inter S T => by
+      simp only [Ty.subst, Ty.subst_comp S σ θ, Ty.subst_comp T σ θ]
+  | .Union S T => by
       simp only [Ty.subst, Ty.subst_comp S σ θ, Ty.subst_comp T σ θ]
   | .Single p => by simp only [Ty.subst, Path.subst_comp]
   | .TSel p A => by simp only [Ty.subst, Path.subst_comp]
