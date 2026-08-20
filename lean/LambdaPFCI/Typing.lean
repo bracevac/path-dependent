@@ -77,6 +77,14 @@ component type and label to agree makes both views refer to one stored member. -
         (Ty.Pair S a (Tau.ty T))
         (Ty.Pair S a (Tau.ty U))))
       (Tau.ty (Ty.Pair S a (Tau.ty (Ty.Inter T U))))
+/-- Merge two views of the same abstract type-member slot when their lower
+bound agrees.  The stored witness then lies below both advertised uppers. -/
+| pair_type_inter :
+    Tau.Sub Γ
+      (Tau.ty (Ty.Inter
+        (Ty.Pair S A (Tau.intv L U))
+        (Ty.Pair S A (Tau.intv L V))))
+      (Tau.ty (Ty.Pair S A (Tau.intv L (Ty.Inter U V))))
 | «fun» :
     Tau.Sub Γ (Tau.ty S') (Tau.ty S) ->
     Tau.Sub (Γ.snoc S') (Tau.ty T) (Tau.ty T') ->

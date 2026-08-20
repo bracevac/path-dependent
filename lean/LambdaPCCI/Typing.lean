@@ -130,6 +130,15 @@ stored member with the same capture contract. -/
         (.Pair S a (.term (.capt C T)))
         (.Pair S a (.term (.capt C U))))
       (.Pair S a (.term (.capt C (.Inter T U))))
+/-- Merge two views of one abstract type-member slot.  The first-component
+type, label, and lower bound must agree, so both upper bounds constrain the
+same stored type. -/
+| pair_type_inter :
+    Shape.Sub Gamma
+      (.Inter
+        (.Pair S a (.type L U))
+        (.Pair S a (.type L V)))
+      (.Pair S a (.type L (.Inter U V)))
 | fun :
     Ty.Sub Gamma S' S ->
     Ty.Sub (Gamma.snoc S') T T' ->

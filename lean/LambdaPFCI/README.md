@@ -14,6 +14,8 @@ The development proves:
   realization at one store location;
 - merging of same-label term-member record views into one view whose member
   retains the intersection of their proper types;
+- merging of same-label abstract type-member views with a shared lower bound
+  into one interval whose upper bound is their intersection;
 - unrestricted covariance for dependent pairs, including proper and interval
   members;
 - a finite semantic interpretation of every declarative subtyping derivation;
@@ -79,6 +81,9 @@ the final result type through `Ty.Extends`.
 - `RecordIntersectionRegression.lean`: a closed same-label record intersection
   that first selects one stored member through two aliases, then merges the
   views so one alias uses the member at both incomparable component types.
+- `TypeMemberIntersectionRegression.lean`: a closed abstract-member merge whose
+  selected type is used through its shared lower bound and both merged upper
+  views.
 
 ## Building
 

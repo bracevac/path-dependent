@@ -47,6 +47,7 @@ def ShapeCoercion.treeSize : ShapeCoercion world S T -> Nat
 | .interLeft => 1
 | .interRight => 1
 | .pairInter => 1
+| .pairTypeInter => 1
 | .widen _ _ => 1
 | .alias _ _ => 1
 | .selectLower _ lower => lower.treeSize + 2
@@ -142,6 +143,28 @@ noncomputable def Coercion.action
                 | loc rightPossible =>
                     exact .loc (.pair leftLookup leftFirst
                       (.loc (.inter leftPossible rightPossible))
+                      (leftCoverage.comp captures))
+| .term (.capt captures .pairTypeInter), .loc (.inter left right) => by
+    cases left with
+    | @pair _ _ _ _ _ _ _ _ _ leftDefinition _ _
+        leftLookup leftFirst leftMember leftCoverage =>
+        cases leftDefinition with
+        | type _ =>
+        cases right with
+        | @pair _ _ _ _ _ _ _ _ _ rightDefinition _ _
+            rightLookup _ rightMember _ =>
+            cases rightDefinition with
+            | type _ =>
+            obtain ⟨valueEq, captureEq⟩ :=
+              leftLookup.unique rightLookup
+            cases valueEq
+            cases captureEq
+            cases leftMember with
+            | type leftLower leftUpper =>
+                cases rightMember with
+                | type _ rightUpper =>
+                    exact .loc (.pair leftLookup leftFirst
+                      (.type leftLower (.inter leftUpper rightUpper))
                       (leftCoverage.comp captures))
 | .term (.capt captures (.widen targetResolution target)),
     .loc (.single lookup sourceResolution sourceCoverage) => by
