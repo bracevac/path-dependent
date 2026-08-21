@@ -24,6 +24,8 @@
 \newcommand{\pairty}[4]{\langle #1\!:\!#2;\,#3\!:\!#4\rangle}
 \newcommand{\interty}[2]{#1\mathbin{\wedge}#2}
 \newcommand{\unionty}[2]{#1\mathbin{\vee}#2}
+\newcommand{\mergeop}{\mathbin{\bowtie}}
+\newcommand{\joinop}{\mathbin{\sqcup}}
 \newcommand{\pairval}[3]{\langle #1;\,#2=#3\rangle}
 \newcommand{\subst}[3]{#1[#2/#3]}
 \newcommand{\wf}{\mathrel{\mathsf{wf}}}
@@ -86,11 +88,13 @@ immutable dependent pairs. A pair contains a first-component location and
 either a term member with a proper-type signature or a type member with an
 interval signature; the member signature may mention the first component.
 Proper types also include binary intersections and unions with the standard
-meet and join rules, plus controlled rules that merge aligned pair views.
-One rule intersects differing first-component views when the label and member
-signature agree. The remaining rules intersect proper term-member signatures;
-for intervals, one preserves a shared lower bound and one joins arbitrary
-lower bounds, while both intersect their upper bounds.
+meet and join rules. A proof-relevant merge judgment can retain two proper
+types as an opaque intersection or recursively normalize aligned pair views.
+The pair case requires the same outer label, recursively merges the first
+components, and merges the member signatures under the resulting
+first-component type. Interval members preserve an equal lower bound or join
+distinct lowers, while recursively merging their upper bounds. One subtyping
+rule turns a chosen merge plan into a subtype from the original intersection.
 An intersection records two semantic realizations of one location; a union
 records a tagged realization of one arm. Neither adds a value form, cast, or
 machine transition.
@@ -108,8 +112,9 @@ premises are retained with their closing substitutions until the corresponding
 location is known. In the pair-covariance case, inversion supplies the stored first
 component; the member premise is interpreted at that location, and the
 resulting coercion is applied to the member referent. Coercion application is
-well founded lexicographically by referent rank and coercion size. We give the
-complete calculus and operational semantics, the coercion interpretation, the
+well founded lexicographically by referent rank and coercion size; the separate
+merge action is structurally recursive on its finite plan. We give the complete
+calculus and operational semantics, the coercion interpretation, the
 machine-typing invariant, and mechanized proofs of progress and preservation.
 \end{abstract}
 
@@ -193,6 +198,14 @@ not structurally contained in the pair-covariance coercion, its application decr
 the allocation rank, because both referents stored in a pair precede the
 pair cell in the immutable store (\cref{sec:coercion-termination}).
 
+For \ruleref{s-merge}, interpretation retains the selected finite merge plan
+together with \(\mathcal R\). Applying the resulting coercion to an
+intersection realization invokes a separate structural action on that plan.
+At a pair node the action first merges the concrete first-component evidence,
+extends \(\mathcal R\) at that location, and interprets the member subplan in
+the extended environment. This is how a dependent later member remains tied
+to the record prefix produced by recursive normalization.
+
 The coercions are metatheoretic proof objects. Programs and
 machine states contain the source terms given in \cref{sec:calculus};
 execution performs no casts or type checks. Typed intermediate calculi such
@@ -203,12 +216,12 @@ The contributions are:
 \begin{itemize}
 \item a small calculus combining arbitrary stable paths, singleton types,
   binary intersections and unions, abstract type selections, dependent
-  functions, and dependent pairs with term and type members, including
-  controlled merging of aligned first-component views, same-label term-member
-  views, and both shared-lower and general type-member interval views;
+  functions, and dependent pairs with term and type members, including a
+  recursive, binder-aware judgment for normalizing aligned record spines;
 \item a store-indexed coercion interpretation of its full declarative
   subtyping relation, including the explicit transitivity rule and covariance
-  of both components of dependent pairs;
+  of both components of dependent pairs, together with a structural semantic
+  action for merge plans;
 \item a well-founded definition of coercion application based on the allocation order
   of immutable stores; and
 \item a Lean 4 mechanization of typed path resolution, subtyping
@@ -255,49 +268,94 @@ into a join, and a join eliminates when both arms have the same target. The
 joins are proof-oriented proper types rather than term-level sums: there are
 no injection values or case terms.
 
-Four additional rules merge aligned pair views. The first combines two views
-whose label and complete member signature agree, intersecting only their
-first-component types:
+Aligned record normalization is described by a separate proof-relevant
+judgment
 \[
+  \Gamma\vdash \tau_1\mergeop\tau_2\Longrightarrow\tau.
+\]
+Equal signatures may be kept unchanged, while any two proper types may be
+left as their opaque intersection. The recursive pair plan is
+\[
+  \frac{
+    \Gamma\vdash S_1\mergeop S_2\Longrightarrow S
+    \qquad
+    \Gamma,x:S\vdash\tau_1\mergeop\tau_2\Longrightarrow\tau
+  }{
+    \Gamma\vdash
+    \pairty{x}{S_1}{a}{\tau_1}\mergeop
+    \pairty{x}{S_2}{a}{\tau_2}
+    \Longrightarrow
+    \pairty{x}{S}{a}{\tau}
+  }.
+\]
+The member plan is deliberately checked under the \emph{merged}
+first-component type \(S\). Consequently later members may depend on the
+record prefix that the first premise has just normalized. Repeated use of
+this rule traverses an arbitrarily long aligned record spine, and it can
+merge both the prefix and the outer member in one derivation.
+
+For interval members a small lower-join judgment either preserves a common
+lower bound or forms a union:
+\[
+  \Gamma\vdash L\joinop L\Longrightarrow L,
+  \qquad
+  \Gamma\vdash L_1\joinop L_2\Longrightarrow\unionty{L_1}{L_2}.
+\]
+Together with an upper merge it yields
+\[
+  \frac{
+    \Gamma\vdash L_1\joinop L_2\Longrightarrow L
+    \qquad
+    \Gamma\vdash U_1\mergeop U_2\Longrightarrow U
+  }{
+    \Gamma\vdash (L_1..U_1)\mergeop(L_2..U_2)
+      \Longrightarrow L..U}.
+\]
+Finally, one source subtyping rule executes a chosen plan:
+\[
+  \frac{\Gamma\vdash S\mergeop T\Longrightarrow U}
+       {\Gamma\vdash\interty{S}{T}<:U}.
+\]
+This judgment is plan directed rather than deterministic. For aligned pair
+types one may stop at the opaque-intersection plan or choose the recursive
+pair plan; the calculus does not claim a unique normal form.
+
+The four earlier one-cell merge principles are now derived instances. They
+respectively choose: an intersecting first plan and an unchanged member; an
+unchanged first plan and an intersecting proper member; an unchanged first
+plan with a shared interval lower and intersected upper; or an unchanged
+first plan with a union lower and intersected upper. Thus they still derive
+\[
+\begin{gathered}
   \interty{\pairty{x}{S}{a}{\tau}}{\pairty{x}{T}{a}{\tau}}
-  <:\pairty{x}{\interty{S}{T}}{a}{\tau}.
-\]
-The converse is already derivable: pair covariance projects
-\(\interty{S}{T}\) to \(S\) and \(T\), and meet introduction combines the
-two resulting pair views. Thus this restricted shape commutes with
-intersection up to mutual subtyping. For proper term-member signatures with
-an identical first component, the member types are intersected:
-\[
+    <:\pairty{x}{\interty{S}{T}}{a}{\tau},
+  \\
   \interty{\pairty{x}{S}{a}{T}}{\pairty{x}{S}{a}{U}}
-  <:\pairty{x}{S}{a}{\interty{T}{U}}.
-\]
-For interval type-member signatures, the restricted rule additionally
-requires an identical lower bound and intersects only the upper bounds:
-\[
+    <:\pairty{x}{S}{a}{\interty{T}{U}},
+  \\
   \interty{\pairty{x}{S}{A}{L..U}}{\pairty{x}{S}{A}{L..V}}
-  <:\pairty{x}{S}{A}{L..\interty{U}{V}}.
-\]
-The general rule combines arbitrary lower bounds by their union and upper
-bounds by their intersection:
-\[
+    <:\pairty{x}{S}{A}{L..\interty{U}{V}},
+  \\
   \interty{\pairty{x}{S}{A}{L_1..U_1}}
            {\pairty{x}{S}{A}{L_2..U_2}}
-  <: \pairty{x}{S}{A}
+    <:\pairty{x}{S}{A}
        {\unionty{L_1}{L_2}..\interty{U_1}{U_2}}.
+\end{gathered}
 \]
-The shared-lower rule remains useful because it preserves \(L\) exactly,
+The shared-lower plan remains useful because it preserves \(L\) exactly,
 instead of producing \(\unionty{L}{L}\).
-The general merge is a subtyping rule, not a well-formedness rule. To use its
-target as a term type through \ruleref{t-sub}, one must separately establish
-the interval consistency
-\(\unionty{L_1}{L_2}<:\interty{U_1}{U_2}\); in general this includes the two
-cross-bound comparisons \(L_1<:U_2\) and \(L_2<:U_1\).
+
+A merge plan proves subtyping, not well-formedness. To use its target as a
+term type through \ruleref{t-sub}, one must separately prove that target well
+formed. In particular, an interval target may require
+\(\unionty{L_1}{L_2}<:\interty{U_1}{U_2}\), including the cross-bound
+comparisons \(L_1<:U_2\) and \(L_2<:U_1\).
 There is no dedicated term-level intersection or union introduction: existing
 subsumption is the only way to assign either type to a term. In particular,
 path synthesis is not extended with rules that project through intersections
-or unions, and the calculus has no merging for unequal labels, simultaneous
-changes to both pair components, unrestricted distributivity, or
-meet/join-specific record operation.
+or unions. Recursive pair plans require identical labels, member sorts, and
+record order at every pair node they traverse. They do not merge unequal
+labels, reorder fields, or provide unrestricted distributivity.
 
 The binder in a function scopes over its codomain. The binder \(x\) in
 \(\pairty{x}{S}{a}{\tau}\) scopes over the member signature \(\tau\); it
@@ -336,21 +394,16 @@ Binary intersections use the three meet rules: a source below both components
 is below their intersection, and an intersection is below either component.
 Binary unions dually use two injections and an elimination rule whose two
 premises share a target.
-Rule \ruleref{s-pair-inter} additionally combines the term-member signatures
-of two pair views whose first-component type and label agree. Rule
-\ruleref{s-pair-type-inter} combines interval signatures under the same
-structural restrictions when their lower bound agrees. Rule
-\ruleref{s-pair-type-union-inter} handles arbitrary lowers by joining them and
-meeting the upper bounds. Rule \ruleref{s-pair-first-inter} instead combines
-differing first-component types when the label and entire member signature
-agree. Thus none of the merge rules combines differing labels or changes both
-pair components simultaneously. None changes the precise type synthesized by
-\(\mathsf{Path.Ty}\) (the judgment written
-\(\Gamma\vdash p\Rightarrow\tau\) here).
-As with subtyping generally, the general interval merge rule does not assert
-that its target is well formed. Any use of that target in term subsumption
-supplies the separate \ruleref{wf-bounds} derivation for the joined lower and
-intersected upper.
+Rule \ruleref{s-merge} turns a proof-relevant merge plan into subtyping from
+an intersection. The four plan rules either preserve an identical signature,
+form an opaque proper-type intersection, recursively merge same-label pair
+views, or merge interval signatures. The pair rule checks its member plan
+under the recursively merged first-component type. The two lower-join plans
+preserve an identical interval lower or form its union. No merge plan changes
+the precise type synthesized by path typing. As with subtyping generally,
+\ruleref{s-merge} does not assert that its target is well formed. Any use of
+that target in term subsumption supplies a separate well-formedness
+derivation, including \ruleref{wf-bounds} for every merged interval.
 
 Well-formed intervals have consistent bounds. Term paths receive singleton
 types. A selected type is well formed whenever path synthesis resolves its
@@ -572,6 +625,48 @@ rules, and all nine signature well-formedness rules.}
 \clearpage
 \begin{figure}[H]
 \ContinuedFloat
+\plateheader{Lower-bound join plan}
+  {\Gamma\vdash L_1\joinop L_2\Longrightarrow L}
+\noindent
+\begin{minipage}[t]{0.47\linewidth}
+\infax[\ruledef{j-same}]
+  {\Gamma\vdash L\joinop L\Longrightarrow L}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.51\linewidth}
+\infax[\ruledef{j-union}]
+  {\Gamma\vdash L_1\joinop L_2
+    \Longrightarrow\unionty{L_1}{L_2}}
+\end{minipage}
+
+\plateheader{Aligned signature merge plan}
+  {\Gamma\vdash\tau_1\mergeop\tau_2\Longrightarrow\tau}
+\noindent
+\begin{minipage}[t]{0.47\linewidth}
+\infax[\ruledef{m-same}]
+  {\Gamma\vdash\tau\mergeop\tau\Longrightarrow\tau}
+
+\infax[\ruledef{m-inter}]
+  {\Gamma\vdash S\mergeop T\Longrightarrow\interty{S}{T}}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.51\linewidth}
+\infrule[\ruledef{m-intv}]
+  {\Gamma\vdash L_1\joinop L_2\Longrightarrow L
+   \andalso
+   \Gamma\vdash U_1\mergeop U_2\Longrightarrow U}
+  {\Gamma\vdash
+    (L_1..U_1)\mergeop(L_2..U_2)\Longrightarrow L..U}
+\end{minipage}
+
+\infrule[\ruledef{m-pair}]
+  {\Gamma\vdash S_1\mergeop S_2\Longrightarrow S
+   \andalso
+   \Gamma,x:S\vdash\tau_1\mergeop\tau_2\Longrightarrow\tau}
+  {\Gamma\vdash
+   \pairty{x}{S_1}{a}{\tau_1}\mergeop
+   \pairty{x}{S_2}{a}{\tau_2}
+   \Longrightarrow
+   \pairty{x}{S}{a}{\tau}}
+
 \plateheader{Signature subtyping}{\Gamma\vdash\tau<:\tau'}
 \noindent
 \begin{minipage}[t]{0.47\linewidth}
@@ -653,33 +748,9 @@ rules, and all nine signature well-formedness rules.}
     \pairty{x}{S}{a}{\tau}<:
     \pairty{x}{S'}{a}{\tau'}}
 
-\infax[\ruledef{s-pair-first-inter}]
-  {\begin{gathered}
-   \Gamma\vdash
-    \interty{\pairty{x}{S}{a}{\tau}}{\pairty{x}{T}{a}{\tau}}
-   \\
-   <:\pairty{x}{\interty{S}{T}}{a}{\tau}
-   \end{gathered}}
-
-\infax[\ruledef{s-pair-inter}]
-  {\Gamma\vdash
-    \interty{\pairty{x}{S}{a}{T}}{\pairty{x}{S}{a}{U}}
-    <:\pairty{x}{S}{a}{\interty{T}{U}}}
-
-\infax[\ruledef{s-pair-type-inter}]
-  {\Gamma\vdash
-    \interty{\pairty{x}{S}{A}{L..U}}{\pairty{x}{S}{A}{L..V}}
-    <:\pairty{x}{S}{A}{L..\interty{U}{V}}}
-
-\infax[\ruledef{s-pair-type-union-inter}]
-  {\begin{gathered}
-   \Gamma\vdash
-    \interty{\pairty{x}{S}{A}{L_1..U_1}}
-             {\pairty{x}{S}{A}{L_2..U_2}}
-   \\
-   <:\pairty{x}{S}{A}
-       {\unionty{L_1}{L_2}..\interty{U_1}{U_2}}
-   \end{gathered}}
+\infrule[\ruledef{s-merge}]
+  {\Gamma\vdash S\mergeop T\Longrightarrow U}
+  {\Gamma\vdash\interty{S}{T}<:U}
 
 \infrule[\ruledef{s-bounds}]
   {\Gamma\vdash S'<:S
@@ -691,8 +762,9 @@ rules, and all nine signature well-formedness rules.}
 \end{minipage}
 
 \caption{Source syntax and static semantics (continued): signature
-subtyping.}
-\Description{All twenty-one signature-subtyping rules.}
+merge plans and subtyping.}
+\Description{Both lower-join plans, all four aligned-merge plans, and all
+eighteen signature-subtyping rules.}
 \label{fig:subtyping}
 \end{figure}
 
@@ -1356,50 +1428,13 @@ both referent rules, and all eight location-realization rules.}
     \pairty{z}{S'}{a}{\tau'}}
 \end{minipage}
 
-\noindent
-\begin{minipage}[t]{0.48\linewidth}
-\typicallabel{c-pair-first-inter}
-\infax[\ruledef{c-pair-first-inter}]
-  {\begin{gathered}
-   \sigma\vdash
-    \interty{\pairty{z}{S}{a}{\tau}}{\pairty{z}{T}{a}{\tau}}
-   \\
-   \coerce\pairty{z}{\interty{S}{T}}{a}{\tau}
-   \end{gathered}}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.50\linewidth}
-\typicallabel{c-pair-inter}
-\infax[\ruledef{c-pair-inter}]
-  {\begin{gathered}
-   \sigma\vdash
-    \interty{\pairty{z}{S}{a}{T}}{\pairty{z}{S}{a}{U}}
-   \\
-   \coerce\pairty{z}{S}{a}{\interty{T}{U}}
-   \end{gathered}}
-\end{minipage}
-
-\noindent
-\begin{minipage}[t]{0.50\linewidth}
-\typicallabel{c-pair-type-inter}
-\infax[\ruledef{c-pair-type-inter}]
-  {\begin{gathered}
-   \sigma\vdash
-    \interty{\pairty{z}{S}{A}{L..U}}{\pairty{z}{S}{A}{L..V}}
-   \\
-   \coerce\pairty{z}{S}{A}{L..\interty{U}{V}}
-   \end{gathered}}
-\end{minipage}
-
-\typicallabel{c-pair-type-union-inter}
-\infax[\ruledef{c-pair-type-union-inter}]
-  {\begin{gathered}
-   \sigma\vdash
-    \interty{\pairty{z}{S}{A}{L_1..U_1}}
-             {\pairty{z}{S}{A}{L_2..U_2}}
-   \\
-   \coerce\pairty{z}{S}{A}
-      {\unionty{L_1}{L_2}..\interty{U_1}{U_2}}
-   \end{gathered}}
+\typicallabel{c-merge}
+\infrule[\ruledef{c-merge}]
+  {\mathcal R:\rho\realizes_\sigma\Gamma
+   \andalso
+   \Gamma\vdash S\mergeop T\Longrightarrow U}
+  {\sigma\vdash
+   \interty{\rho(S)}{\rho(T)}\coerce\rho(U)}
 
 \noindent
 \begin{minipage}[t]{0.40\linewidth}
@@ -1476,7 +1511,7 @@ both referent rules, and all eight location-realization rules.}
 \caption{Store-indexed judgments (part 2): context satisfaction, suspended
 premises, semantic coercions, and open codomain coercions.}
 \Description{The context rule, the suspended-body rule, the suspended-member
-rule, all twenty-two semantic-coercion rules, and all five open-codomain rules.}
+rule, all nineteen semantic-coercion rules, and all five open-codomain rules.}
 \end{figure}
 
 \endgroup
@@ -1517,18 +1552,17 @@ Rule \ruleref{c-inter} retains both coercions from the common source, while
 evidence: their action simply projects the corresponding realization.
 The union injections add the corresponding semantic tag, while
 \ruleref{c-union} retains both arm coercions and dispatches on that tag.
-Rules \ruleref{c-pair-first-inter}, \ruleref{c-pair-inter},
-\ruleref{c-pair-type-inter}, and \ruleref{c-pair-type-union-inter} are
-likewise nullary. Their actions invert the two pair realizations stored by
-\ruleref{loc-inter} and use functionality of store lookup to identify their
-one stored pair. The first combines the two realizations of that pair's first
-location and reuses its identical member realization. The term-member rule
-instead combines two realizations of the member location. The restricted
-type-member rule identifies one stored type witness, reuses a coercion from
-the shared lower bound to that witness, and intersects the two coercions from
-the witness to the advertised upper bounds. The general rule combines both
-lower coercions by union elimination and both upper coercions by intersection
-introduction.
+Rule \ruleref{c-merge} closes a source merge plan with the environment in
+which it was compiled. Its structural action combines two realizations of
+the same referent according to that plan. At a pair node it inverts both pair
+realizations and uses functionality of store lookup to identify their one
+stored pair, recursively merges the first-component evidence, extends the
+saved environment with that concrete merged component, and only then
+recursively merges the member evidence. At an interval node it combines the
+lower coercions according to the lower-join plan and combines both upper
+coercions before continuing with the upper merge plan. This single semantic
+form covers the four former one-cell merge coercions and arbitrary aligned
+record spines.
 
 The dependent cases suspend their binder premises, as specified by
 \ruleref{cod-source} and \ruleref{mem-source}. The two forms differ because an
@@ -1708,27 +1742,12 @@ the source interval but contributes no evidence to the resulting coercion.
 \infax[\ruleuse{s-top}]
   {\compilepi{\mathcal R}{\pi}=\ruleuse{c-top}}
 
-\typicallabel{s-pair-first-inter}
-\infax[\ruleuse{s-pair-first-inter}]
-  {\begin{gathered}
-   \compilepi{\mathcal R}{\pi}=\\[-1pt]
-   \ruleuse{c-pair-first-inter}
-   \end{gathered}}
-
-\typicallabel{s-pair-inter}
-\infax[\ruleuse{s-pair-inter}]
-  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-pair-inter}}
-
-\typicallabel{s-pair-type-inter}
-\infax[\ruleuse{s-pair-type-inter}]
-  {\compilepi{\mathcal R}{\pi}=\ruleuse{c-pair-type-inter}}
-
-\typicallabel{s-pair-type-union-inter}
-\infax[\ruleuse{s-pair-type-union-inter}]
-  {\begin{gathered}
-   \compilepi{\mathcal R}{\pi}=\\[-1pt]
-   \ruleuse{c-pair-type-union-inter}
-   \end{gathered}}
+\typicallabel{s-merge}
+\infrule[\ruleuse{s-merge}]
+  {\mathcal M:
+    \Gamma\vdash S\mergeop T\Longrightarrow U}
+  {\compilepi{\mathcal R}{\pi}=
+    \ruleuse{c-merge}(\mathcal R,\mathcal M)}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.515\linewidth}
 \typicallabel{s-sel-hi}
@@ -1829,10 +1848,10 @@ the source interval but contributes no evidence to the resulting coercion.
    \andalso \compilepi{\mathcal R}{\pi_2}=C_2}
   {\compilepi{\mathcal R}{\pi}=\ruleuse{c-bounds}(C_1,C_2)}
 \endgroup
-\caption{Interpretation of all twenty-one subtyping rules as semantic coercions.}
-\Description{The twenty-one equations defining subtyping interpretation. The
+\caption{Interpretation of all eighteen subtyping rules as semantic coercions.}
+\Description{The eighteen equations defining subtyping interpretation. The
 function and pair-covariance coercions retain their dependent premise
-derivations.}
+derivations; the merge coercion retains its source plan and environment.}
 \label{fig:subtyping-interpretation}
 \end{figure}
 
@@ -1920,123 +1939,104 @@ Elimination dispatches to the coercion for the arm named by that tag:
 The tag exists only in semantic evidence; source and run-time terms remain
 untagged.
 
-The aligned first-component merge also acts only on evidence. Suppose the two
-components of an intersection realization invert to
-\[
-\begin{array}{rcl}
-  R_L&=&\ruleuse{loc-pair}(B_x,R_S,R_\tau),\\[2pt]
-  R_R&=&\ruleuse{loc-pair}(B_x',R_T,R_\tau').
-\end{array}
-\]
-Both derivations describe the pair stored at the same receiver location.
-Functionality of immutable-store lookup identifies their stored first
-location, label, and member definition. Because the source rule requires an
-identical member signature, either transported member realization can be
-reused, while \ruleref{loc-inter} combines the two realizations of the first
-location:
+Merge coercions also act only on evidence. Let
+\(\mathsf{merge}_{\mathcal R}(\mathcal M;R_1,R_2)\) denote the structural
+action of a plan
+\(\mathcal M:\Gamma\vdash\tau_1\mergeop\tau_2\Longrightarrow\tau\)
+on two realizations of the same referent under \(\mathcal R\). Then
 \[
 \begin{aligned}
-  &\action{\ruleuse{c-pair-first-inter}}
-    {\ruleuse{ref-loc}(\ruleuse{loc-inter}(R_L,R_R))}
-  \\[2pt]
-  &\qquad=\ruleuse{ref-loc}\bigl(
-    \ruleuse{loc-pair}(B_x,\ruleuse{loc-inter}(R_S,R_T),R_\tau)\bigr).
+ &\action{\ruleuse{c-merge}(\mathcal R,\mathcal M)}
+   {\ruleuse{ref-loc}(\ruleuse{loc-inter}(R_1,R_2))}
+ \\
+ &\qquad=
+   \mathsf{merge}_{\mathcal R}
+     (\mathcal M;\ruleuse{ref-loc}(R_1),\ruleuse{ref-loc}(R_2)).
 \end{aligned}
 \]
-Thus the result exposes the one stored first component at
-\(\interty{S}{T}\) without changing the physical pair or its member.
+For a plan ending in \ruleref{m-same}, this action returns the first
+realization. For a proper-type plan ending in \ruleref{m-inter}, it packages
+the two location realizations with \ruleref{loc-inter}. These two choices
+explain why merge normalization is plan directed: the same pair of equal or
+aligned types can deliberately be kept opaque rather than recursively
+normalized.
 
-The term-member pair merge also acts without a run-time operation. Suppose
-the two components of an intersection realization invert to
+The pair case contains the binder-sensitive step. Suppose the two inputs
+invert to
 \[
 \begin{array}{rcl}
-  R_L&=&\ruleuse{loc-pair}
-    (B_x,R_y,\ruleuse{ref-loc}(R_T)),\\[2pt]
-  R_R&=&\ruleuse{loc-pair}
-    (B_x',R_y',\ruleuse{ref-loc}(R_U)).
+  R_1&=&\ruleuse{ref-loc}
+    (\ruleuse{loc-pair}(B_x,R_{S_1},R_{\tau_1})),\\[2pt]
+  R_2&=&\ruleuse{ref-loc}
+    (\ruleuse{loc-pair}(B_x',R_{S_2},R_{\tau_2})).
 \end{array}
 \]
-Both bindings describe the value stored at the same receiver location \(x\).
-Functionality of immutable-store lookup therefore identifies the complete
-stored pairs, including their first-component location and term-member
-location. After transporting the second derivation along that equality,
-coercion application rebuilds one pair realization:
+Both bindings concern the same receiver location. Functionality of immutable
+store lookup identifies the complete stored pair: in particular, both views
+have the same stored first location \(y\), label \(a\), member definition
+\(\delta\), and member referent. Let the pair plan have first subplan
+\(\mathcal M_S\) and member subplan \(\mathcal M_\tau\). First compute
 \[
-\begin{aligned}
-  &\action{\ruleuse{c-pair-inter}}
-    {\ruleuse{ref-loc}(\ruleuse{loc-inter}(R_L,R_R))}
-  \\[2pt]
-  &\qquad=\ruleuse{ref-loc}\bigl(
-    \ruleuse{loc-pair}(B_x,R_y,
-      \ruleuse{ref-loc}(\ruleuse{loc-inter}(R_T,R_U)))\bigr).
-\end{aligned}
+  \ruleuse{ref-loc}(R_S)
+  =\mathsf{merge}_{\mathcal R}
+     (\mathcal M_S;
+       \ruleuse{ref-loc}(R_{S_1}),
+       \ruleuse{ref-loc}(R_{S_2})).
 \]
-Here \(R_T\) and \(R_U\) realize the one stored member location at the
-respective signatures opened with the common first component. Their
-\ruleref{loc-inter} combination realizes the opened member intersection.
-This argument relies on both source branches describing the same receiver
-location and on the rule requiring identical first-component types and
-labels; it does not extend to arbitrary pairs.
+If \(\mathcal M_S\) produces \(S\), then \(R_S\) proves that the concrete
+location \(y\) realizes \(\rho(S)\). Extend the saved environment with that
+fact:
+\[
+  \mathcal R'=\mathcal R[x\mapsto(y,R_S)]
+  :\rho[x\mapsto y]\realizes_\sigma\Gamma,x:S.
+\]
+The member subplan was formed under exactly this merged binder. Both stored
+member realizations have already been opened at the same \(y\), so after the
+standard closing-substitution equation they can be merged as
+\[
+  R_\tau=
+  \mathsf{merge}_{\mathcal R'}
+    (\mathcal M_\tau;R_{\tau_1},R_{\tau_2}).
+\]
+The result is one realization of the unchanged physical cell:
+\[
+  \ruleuse{ref-loc}
+    (\ruleuse{loc-pair}(B_x,R_S,R_\tau)).
+\]
+Thus recursive normalization may change the record prefix and a dependent
+outer member simultaneously, while the environment extension gives the
+member plan the concrete interpretation of its merged binder. Recursing on
+the first subplan walks older cells in an aligned record spine. Requiring the
+same label and member sort at every pair node is essential: one immutable
+cell contains one label and one definition, and the calculus has no row
+permutation with which to realign differently ordered fields.
 
-The type-member merge uses the same immutable-binding argument, but the common
-member referent is a stored type definition. Suppose inversion, followed by
-transport along binding uniqueness, gives
+For an interval plan, both realizations concern the same stored type witness
+\(W\):
 \[
-\begin{array}{rcl}
-  R_L&=&\ruleuse{loc-pair}
-    (B_x,R_y,\ruleuse{ref-type}(C_L,C_U)),\\[2pt]
-  R_R&=&\ruleuse{loc-pair}
-    (B_x,R_y,\ruleuse{ref-type}(C_L',C_V)).
-\end{array}
+  \ruleuse{ref-type}(C_{L_1},C_{U_1}),
+  \qquad
+  \ruleuse{ref-type}(C_{L_2},C_{U_2}).
 \]
-Both member realizations describe the same stored witness \(W\). The shared
-source lower bound makes either \(C_L\) or \(C_L'\) suitable for the target
-interval, while \ruleref{c-inter} combines
-\(C_U:\sigma\vdash W\coerce U\) and
-\(C_V:\sigma\vdash W\coerce V\). Thus
+If the lower-join subplan ends in \ruleref{j-same}, either lower coercion is
+reused. If it ends in \ruleref{j-union}, union elimination gives
 \[
-\begin{aligned}
-  &\action{\ruleuse{c-pair-type-inter}}
-    {\ruleuse{ref-loc}(\ruleuse{loc-inter}(R_L,R_R))}
-  \\[2pt]
-  &\qquad=\ruleuse{ref-loc}\bigl(
-    \ruleuse{loc-pair}(B_x,R_y,
-      \ruleuse{ref-type}(C_L,
-        \ruleuse{c-inter}(C_U,C_V)))\bigr).
-\end{aligned}
+  \ruleuse{c-union}(C_{L_1},C_{L_2}):
+  \sigma\vdash\unionty{L_1}{L_2}\coerce W.
 \]
-All interval bounds in this equation are understood after opening them with
-the common first-component location.
-
-The general type-member merge permits arbitrary source lowers. Binding
-uniqueness gives the two member realizations
+For an upper subplan
+\(\mathcal M_U:\Gamma\vdash U_1\mergeop U_2\Longrightarrow U\), first use
+intersection introduction and then the merge coercion retained for that
+subplan:
 \[
-\begin{array}{rcl}
-  R_1&=&\ruleuse{loc-pair}
-    (B_x,R_y,\ruleuse{ref-type}(C_{L_1},C_{U_1})),\\[2pt]
-  R_2&=&\ruleuse{loc-pair}
-    (B_x,R_y,\ruleuse{ref-type}(C_{L_2},C_{U_2})).
-\end{array}
+  \ruleuse{c-inter}(C_{U_1},C_{U_2});
+  \ruleuse{c-merge}(\mathcal R,\mathcal M_U)
+  :\sigma\vdash W\coerce U.
 \]
-Union elimination combines the two lower coercions into
-\(\ruleuse{c-union}(C_{L_1},C_{L_2}):
-\unionty{L_1}{L_2}\coerce W\), while intersection introduction combines the
-upper coercions. Consequently,
-\[
-\begin{aligned}
-  &\action{\ruleuse{c-pair-type-union-inter}}
-    {\ruleuse{ref-loc}(\ruleuse{loc-inter}(R_1,R_2))}
-  \\[2pt]
-  &\quad=\ruleuse{ref-loc}\bigl(
-    \ruleuse{loc-pair}(B_x,R_y,
-      \ruleuse{ref-type}
-        (\ruleuse{c-union}(C_{L_1},C_{L_2}),
-         \ruleuse{c-inter}(C_{U_1},C_{U_2})))\bigr).
-\end{aligned}
-\]
-This coercion is semantically valid for arbitrary lowers. A source term that
-uses the resulting pair type must independently prove the merged interval
-well formed, as required by \ruleref{t-sub}.
+Those lower and upper coercions reconstruct realization of the merged
+interval. This action is semantically valid whether or not the target
+interval is syntactically consistent. A source term using the result must
+independently prove the target well formed, as required by \ruleref{t-sub}.
 
 Selection coercions use the lower or upper coercion contained in the realized
 interval. For lower selection, if applying
@@ -2255,11 +2255,13 @@ The intersection projections and union injections do not recurse. In
 \ruleref{c-pair}, the first recursive application concerns \(\loc y\), and the
 second concerns \(\referentof{\delta}\).  Both strictly decrease the primary
 component, independently of the size of the coercion obtained by member
-instantiation. Rules \ruleref{c-pair-first-inter},
-\ruleref{c-pair-inter}, \ruleref{c-pair-type-inter}, and
-\ruleref{c-pair-type-union-inter} each have coercion size one and perform no
-recursive coercion application: they use store-binding uniqueness and rebuild
-realization evidence directly. These are all recursive coercion applications.
+instantiation. Rule \ruleref{c-merge} also has coercion size one and invokes a
+separate structural action on its retained finite merge plan. That action
+recurses only on strict first-component and member subplans. At an interval
+node it constructs, but does not immediately apply, the coercion retained for
+the strict upper subplan. Consequently merge-plan action terminates by the
+structural size of the plan and adds no recursive case to the lexicographic
+coercion-action argument above. These are all recursive coercion applications.
 
 \subsection{Semantic subtyping}
 \label{sec:coercion-totality}
@@ -2634,15 +2636,14 @@ weakened into that scope. The named presentation uses globally fresh
 locations and leaves this renaming implicit. Closed regressions exercise
 intersection introduction and both eliminations in one function application,
 two incomparable same-label views of one stored record member, and the
-restricted merge of those views into one selectable member intersection. A
-two-member regression intersects aligned record spines, merges their differing
-tails, normalizes the older same-label member with the existing term-member
-rule, and then selects that member through the outer extension. A
-further closed regression merges two interval views of one stored abstract
-type member, selects the merged interval, and exercises both its lower bound
-and the two projections of its intersected upper bound. A companion regression
-uses distinct lowers, proves the joined-lower/intersected-upper interval well
-formed, and exercises union injection before the same selected application.
+derived merge of those views into one selectable member intersection. A
+mixed two-cell regression uses one recursive plan to merge an older abstract
+type member and, under the resulting record-prefix type, two different views
+of a later term member, one of which depends on the prefix. Further closed
+regressions merge two interval views of one stored abstract type member,
+select the merged interval, and exercise both its lower and upper evidence;
+the distinct-lower variant separately proves the joined-lower,
+intersected-upper interval well formed and exercises union injection.
 
 \subsection{Examples}
 
@@ -2666,9 +2667,10 @@ has type \(F\): the operator occurrence uses \ruleref{s-inter-left} to view
 \ruleref{s-inter-right} to view the same path at \(R\). At run time this is
 ordinary function application; no intersection object is built.
 
-The controlled pair rule makes the same two views useful behind one record
-member. Write \(Q(X)=\pairty{x}{\top}{a}{X}\). Then
-\ruleref{s-pair-inter} derives
+The one-cell term-member plan makes the same two views useful behind one
+record member. Write \(Q(X)=\pairty{x}{\top}{a}{X}\). Rule
+\ruleref{m-pair}, with \ruleref{m-same} for the first component and
+\ruleref{m-inter} for the member, followed by \ruleref{s-merge}, derives
 \[
   \interty{Q(L)}{Q(R)}<:Q(\interty{L}{R}).
 \]
@@ -2681,39 +2683,63 @@ The mechanized closed example first allocates \(v:S\) and the single pair
 operator and argument of the application. The merge rule neither allocates a
 record nor adds a projection from the outer intersection to path synthesis.
 
-The aligned first-component rule makes the same normalization compositional
-over a record spine. Let
+The mixed recursive regression demonstrates why the member premise of
+\ruleref{m-pair} is formed under the merged first component. Define four
+views of an older type-member cell:
 \[
-  \mathsf{Tail}(X)=\pairty{x}{\top}{a}{X},
+\begin{array}{ll}
+ Q_0=\pairty{z}{\top}{A}{S..S},
+ &Q_L=\pairty{z}{\top}{A}{S..L},\\[2pt]
+ Q_R=\pairty{z}{\top}{A}{S..R},
+ &Q_I=\pairty{z}{\top}{A}{S..\interty{L}{R}}.
+\end{array}
+\]
+The corresponding outer term-member views are
+\[
+\begin{array}{rcl}
+ P_0&=&\pairty{x}{Q_0}{f}{x.A},\\
+ P_L&=&\pairty{x}{Q_L}{f}{x.A},\\
+ P_R&=&\pairty{x}{Q_R}{f}{R},\\
+ P_I&=&\pairty{x}{Q_I}{f}{\interty{x.A}{R}}.
+\end{array}
+\]
+An inner pair plan preserves \(\top\), preserves the common interval lower
+\(S\), and intersects the upper bounds, deriving
+\(Q_L\mergeop Q_R\Longrightarrow Q_I\). The outer pair plan uses that whole
+derivation for its first component. Its member subplan is checked under
+\(x:Q_I\), where it intersects the genuinely dependent type \(x.A\) with
+the direct view \(R\). Hence one recursive plan derives
+\[
+  P_L\mergeop P_R\Longrightarrow P_I,
   \qquad
-  \mathsf{Outer}(X)=
-    \pairty{x}{\mathsf{Tail}(X)}{b}{\top},
-  \qquad a\ne b.
+  \interty{P_L}{P_R}<:P_I.
 \]
-The two outer views have the same \(b\)-member but different record tails, so
-\ruleref{s-pair-first-inter} gives
-\[
-  \interty{\mathsf{Outer}(L)}{\mathsf{Outer}(R)}
-  <:
-  \pairty{x}{
-    \interty{\mathsf{Tail}(L)}{\mathsf{Tail}(R)}}{b}{\top}.
-\]
-Rule \ruleref{s-pair-inter} normalizes the first-component intersection to
-\(\mathsf{Tail}(\interty{L}{R})\), and pair covariance transports the
-unchanged \(b\)-member across that step. The mechanized program allocates one
-physical \(a\)-then-\(b\) pair spine, gives one path-only alias the resulting
-precise outer type, and selects \(a\). Path lookup skips \(b\) and exposes the
-older member at \(\interty{L}{R}\); its two projections again type the
-self-application. Conversely, pair covariance and meet introduction derive
-the reverse direction of \ruleref{s-pair-first-inter}, so the aligned shape is
-preserved by intersection up to mutual subtyping.
+This single step changes both axes of the outer pair; none of the former
+one-axis principles expressed it.
 
-The type-member rule places the intersection behind abstract type selection.
+The closed program allocates \(v:S\), then an older cell storing the exact
+definition \(A=S\), and finally a newer cell storing \(f=v\) at the selected
+type of the older cell. Pair and interval subtyping expose the resulting
+physical spine at both \(P_L\) and \(P_R\), after which intersection
+introduction and the recursive plan give one precise alias \(q:P_I\). Its
+member has type
+\[
+  q.f:\interty{q.1.A}{R}.
+\]
+For the operator occurrence of \(q.f\), the left projection enters \(q.1.A\)
+and its merged upper bound exits at \(L\). For the argument occurrence, the
+right projection directly supplies \(R=F\). Thus the one stored path types
+the self-application \(q.f\;q.f\), while the proof necessarily uses the
+environment extension at the merged prefix described in
+\cref{sec:coercion-action}.
+
+An interval merge also places the intersection behind abstract type selection.
 Write
 \[
   P(U)=\pairty{x}{\top}{A}{S..U}.
 \]
-The shared-lower rule derives
+The lower plan preserves \(S\), the upper plan chooses an opaque intersection,
+and \ruleref{m-pair} and \ruleref{s-merge} derive
 \[
   \interty{P(L)}{P(R)}<:P(\interty{L}{R}).
 \]
@@ -2732,11 +2758,12 @@ lower bound \(S<:q.A\). Selection of the merged upper bound followed by
 does not merely construct the merged interval: it uses the abstract selected
 type to mediate the final application.
 
-The general merge is exercised with genuinely different lower bounds. Write
+The union-lower plan is exercised with genuinely different lower bounds. Write
 \[
   Q(X,Y)=\pairty{x}{\top}{A}{X..Y}.
 \]
-The new pair rule derives
+Rules \ruleref{j-union}, \ruleref{m-intv}, \ruleref{m-pair}, and
+\ruleref{s-merge} derive
 \[
   \interty{Q(\bot,L)}{Q(S,R)}
   <:
@@ -2814,17 +2841,17 @@ metatheory in different ways, including inert or tight typing
 \citep{rapoport2017simple} and definitional-interpreter techniques
 \citep{amin2017definitional}. \lambdap{} removes recursive objects and studies
 paths built from immutable dependent pairs. It retains controlled binary
-intersections and unions with the three standard meet and join rules, a
-first-component merge for aligned pair spines, a term-member merge for an
-identical first-component type and label, and both a shared-lower and a general
-type-member merge. The first rule gives one restricted distributivity law for
-records with an unchanged outer member; the general interval rule joins lower
-bounds and meets upper bounds. Using the latter's target in term typing
-separately requires the resulting interval to be consistent. These
-connectives do not generally distribute through other type constructors or
-participate directly in precise path synthesis, and the proper-type union is
-not a sum type. The resulting runtime makes allocation order available as a
-well-founded measure for the coercions generated by dependent-pair subtyping.
+intersections and unions with the three standard meet and join rules and a
+plan-directed recursive merge judgment for aligned pair spines. The judgment
+can simultaneously normalize a record prefix and a dependent later member,
+but only when labels, member sorts, and field order align. Interval plans
+preserve equal lowers or join distinct lowers and recursively merge the upper
+bounds. Using a merged target in term typing separately requires that target
+well formed. These connectives do not generally distribute through other type
+constructors or participate directly in precise path synthesis, and the
+proper-type union is not a sum type. The resulting runtime makes allocation
+order available as a well-founded measure for the coercions generated by
+dependent-pair subtyping.
 
 pDOT supports types depending on paths of arbitrary length and uses singleton
 types to track path equality \citep{rapoport2019pdot}. Its soundness proof
@@ -2899,16 +2926,18 @@ rank than the pair cell. Together with typed path resolution and the
 syntax-directed machine invariant, the coercion interpretation establishes
 progress, preservation, and type safety for every finite execution prefix.
 The meet/join extension is intentionally limited to the three standard rules
-for each connective, the aligned first-component merge with an unchanged
-member, the term-member merge for an identical first-component type and label,
-the shared-lower type-member merge, and the general rule that joins lower
-bounds while meeting upper bounds. The general rule does not discharge target
-interval consistency; term subsumption still requires its separate
-well-formedness proof. The calculus has no path-typing projection through
-either connective, merge for unequal labels or simultaneous changes to both
-pair components, other distributivity, dedicated term introduction or
-elimination form, sum values, or operational rule; extending any of those
-dimensions would be a separate calculus change.
+for each connective and one plan-directed aligned merge judgment. A plan may
+retain an opaque intersection or recursively merge same-label pair spines;
+the member recursion is interpreted under the merged first-component binder.
+Interval plans preserve a shared lower or form its union and recursively merge
+their uppers. The four former one-cell principles are derived instances of
+this judgment. A plan does not discharge target well-formedness, so term
+subsumption still requires a separate proof, including interval consistency.
+The calculus has no path-typing projection through either connective, merge
+for unequal labels or differently ordered fields, canonical merge normal
+form, other distributivity, dedicated term introduction or elimination form,
+sum values, or operational merge rule; extending any of those dimensions
+would be a separate calculus change.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../../references}

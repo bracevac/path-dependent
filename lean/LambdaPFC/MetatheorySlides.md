@@ -231,36 +231,55 @@ certificate; execution still calls the one stored closure.
 
 ---
 
-# 9. Restricted record-view merging
+# 9. Plan-directed aligned record merging
 
-Let `Pₐ(S,T)` mean one pair cell with predecessor type `S` and term member
-`a:T`.
-
-~~~text
-Pₐ(S,T) ∧ Pₐ(S,U) <: Pₐ(S,T ∧ U)
-~~~
-
-Soundness argument:
-
-1. both source certificates concern one receiver location `r`;
-2. invert both as pair certificates;
-3. immutable lookup functionality identifies the same stored pair and member
-   location `m`;
-4. retain both certificates `σ ⊨ m:T` and `σ ⊨ m:U`;
-5. rebuild one pair certificate with member `T ∧ U`.
-
-No records are combined at runtime.
-
-For a type member, two views of the same stored witness `W` merge as:
+Write `Γ ⊢ δ₁ ⋈ δ₂ ⇒ δ` for a merge plan. Its structural cases are:
 
 ~~~text
-L₁..U₁  and  L₂..U₂
-          ↓
-(L₁ ∨ L₂)..(U₁ ∧ U₂)
+δ ⋈ δ ⇒ δ                    S ⋈ T ⇒ S ∧ T
+
+S₁ ⋈ S₂ ⇒ S       Γ,x:S ⊢ δ₁ ⋈ δ₂ ⇒ δ
+──────────────────────────────────────────
+{x:S₁; a:δ₁} ⋈ {x:S₂; a:δ₂} ⇒ {x:S; a:δ}
+
+L₁ ⊔ L₂ ⇒ L       U₁ ⋈ U₂ ⇒ U
+───────────────────────────────────
+L₁..U₁ ⋈ L₂..U₂ ⇒ L..U
 ~~~
 
-This is deliberately restricted to the same physical slot and label—not a
-general record-intersection or row-merge operation.
+The lower plan chooses either `L ⊔ L ⇒ L` or
+`L₁ ⊔ L₂ ⇒ L₁ ∨ L₂`. A proper-type plan justifies:
+
+~~~text
+Γ ⊢ S ⋈ T ⇒ U
+─────────────────
+Γ ⊢ S ∧ T <: U
+~~~
+
+Key point: the member plan is checked under the **merged** prefix `x:S`.
+This permits binder-dependent recursion down a whole record spine. Labels and
+member order must still match; there is no row permutation or width merge.
+Target well-formedness is separate—in particular, an interval result still
+requires a proof that its lower bound is below its upper bound.
+
+Compiling the plan closes it over the semantic environment. One structural
+interpreter then combines two certificates for the same referent. At a pair,
+lookup functionality identifies one physical cell; the interpreter merges its
+predecessor, extends the environment with that location, and merges the
+dependent member. Nothing is combined at runtime.
+
+Mixed regression:
+
+~~~text
+Qₗ={A:S..L}       Qᵣ={A:S..R}       Qᵢ={A:S..(L∧R)}
+Pₗ={x:Qₗ;f:x.A}    Pᵣ={x:Qᵣ;f:R}    Pᵢ={x:Qᵢ;f:x.A∧R}
+
+Qₗ ⋈ Qᵣ ⇒ Qᵢ       x:Qᵢ ⊢ x.A ⋈ R ⇒ x.A ∧ R
+───────────────────────────────────────────
+              Pₗ ∧ Pᵣ <: Pᵢ
+~~~
+
+Both the prefix and its dependent later member change in one recursive plan.
 
 ---
 
@@ -342,8 +361,8 @@ body[y] : B[y]  ⇝  U[y]  ⇝  U[q]  ⇝  T
 ~~~
 
 For `LambdaPFCI`, this proof is unchanged. The new work was already discharged
-by meet/join coercion action, same-cell record merging, structural conversion,
-and weakening.
+by meet/join coercion action, recursive aligned same-cell merging, structural
+conversion, and weakening.
 
 ---
 
@@ -397,8 +416,6 @@ Questions worth discussing:
    replacement?
 3. Which restriction can be relaxed without losing the simple acyclic-store
    argument?
-4. Which aligned record merges can be generalized without making precise path
-   lookup ambiguous?
 
 ---
 
@@ -424,7 +441,7 @@ Intersection/union implementation map:
 | paired/tagged realization | `SemanticEvidence.lean` |
 | compilation and coercion action | `SemanticAction.lean` |
 | runtime conversion and allocation transport | `RuntimeEquality.lean`, `SemanticWeakening.lean` |
-| worked programs | `IntersectionRegression.lean`, `RecordIntersectionRegression.lean`, `AlignedRecordIntersectionRegression.lean`, `TypeMemberIntersectionRegression.lean`, `TypeMemberUnionRegression.lean` |
+| worked programs | `IntersectionRegression.lean`, `RecordIntersectionRegression.lean`, `AlignedRecordIntersectionRegression.lean`, `RecursiveRecordMergeRegression.lean`, `TypeMemberIntersectionRegression.lean`, `TypeMemberUnionRegression.lean` |
 
 - [Full walkthrough](Metatheory.md)
 - [Source typing](Typing.lean)

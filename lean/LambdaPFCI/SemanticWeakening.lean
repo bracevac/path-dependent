@@ -119,10 +119,10 @@ noncomputable def Coercion.weaken
   | .unionRight => .unionRight
   | .union left right =>
       .union (left.weaken v vv) (right.weaken v vv)
-  | .pairFirstInter => .pairFirstInter
-  | .pairInter => .pairInter
-  | .pairTypeInter => .pairTypeInter
-  | .pairTypeUnionInter => .pairTypeUnionInter
+  | .merge environment plan => by
+      simpa only [Valuation.weaken, FinFun.comp, Tau.weaken, Tau.rename,
+        Ty.weaken, Ty.rename, Ty.rename_rename] using
+        Coercion.merge (environment.weaken v vv) plan
   | .widen resolution possible =>
       .widen (resolution.weaken v vv) (possible.weaken v vv)
   | .alias left right =>
