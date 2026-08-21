@@ -180,10 +180,7 @@ noncomputable def Tau.Sub.compile
 | .union_right => .unionRight
 | .union left right =>
     .union (left.compile environment) (right.compile environment)
-| .pair_first_inter => .pairFirstInter
-| .pair_inter => .pairInter
-| .pair_type_inter => .pairTypeInter
-| .pair_type_union_inter => .pairTypeUnionInter
+| .merge plan => .merge environment plan
 | .widen path => by
     obtain ⟨referent, resolution, realizes⟩ := path.resolve environment
     cases realizes with
@@ -212,6 +209,82 @@ noncomputable def Tau.Sub.compile
     .pair (first.compile environment) (.source environment member)
 | .bounds lower upper _nonempty =>
     .bounds (lower.compile environment) (upper.compile environment)
+
+/-! ## Executing aligned merge plans -/
+
+/-- Combine the two lower-bound coercions prescribed by an interval merge. -/
+noncomputable def Ty.Join.action
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {L1 L2 L : Ty n} {W : Ty m}
+    (plan : Ty.Join Gamma L1 L2 L)
+    (left : Coercion sigma (.ty (L1.rename rho)) (.ty W))
+    (right : Coercion sigma (.ty (L2.rename rho)) (.ty W)) :
+    Coercion sigma (.ty (L.rename rho)) (.ty W) :=
+  match plan with
+  | .same => left
+  | .union => .union left right
+
+/-- Merge generalized member certificates.  Proper members recurse on their
+types.  Pair recursion first merges the stored predecessor and then
+interprets the member plan under that concrete merged predecessor.  Interval
+members join their lower bounds and recursively merge their upper bounds. -/
+noncomputable def Tau.Merge.action
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {k : Kind} {d1 d2 d : Tau n k}
+    {referent : Path.Referent m} :
+    (plan : Tau.Merge Gamma d1 d2 d) ->
+    (environment : Environment Gamma rho sigma) ->
+    Path.Referent.Realizes sigma referent (d1.rename rho) ->
+    Path.Referent.Realizes sigma referent (d2.rename rho) ->
+    Path.Referent.Realizes sigma referent (d.rename rho)
+  | .same, _, left, _ => left
+  | .inter, _, left, right => by
+      change Path.Referent.Realizes sigma referent (.ty _) at left right ⊢
+      cases left with
+      | loc left =>
+        cases right with
+        | loc right =>
+          exact .loc (.inter left right)
+  | .pair firstPlan memberPlan, environment, left, right => by
+      change Path.Referent.Realizes sigma referent (.ty (.Pair _ _ _))
+        at left right ⊢
+      cases left with
+      | loc left =>
+        cases right with
+        | loc right =>
+          cases left with
+          | @pair _ _ _ _ _ _ leftDefinition _ _
+              leftBinding leftFirst leftMember =>
+            cases right with
+            | @pair _ _ _ _ _ _ rightDefinition _ _
+                rightBinding rightFirst rightMember =>
+              cases Store.Binds.unique leftBinding rightBinding
+              have mergedFirstRealizes :=
+                firstPlan.action environment (.loc leftFirst) (.loc rightFirst)
+              cases mergedFirstRealizes with
+              | loc mergedFirst =>
+                have extended := Environment.snoc environment mergedFirst
+                have normalizedLeft := by
+                  simpa only [← Tau.rename_openAt_eq_open_var,
+                    Tau.rename_ext_openAt] using leftMember
+                have normalizedRight := by
+                  simpa only [← Tau.rename_openAt_eq_open_var,
+                    Tau.rename_ext_openAt] using rightMember
+                have mergedMember :=
+                  memberPlan.action extended normalizedLeft normalizedRight
+                refine .loc (.pair leftBinding mergedFirst ?_)
+                simpa only [← Tau.rename_openAt_eq_open_var,
+                  Tau.rename_ext_openAt] using mergedMember
+  | .intv lowerPlan upperPlan, environment, left, right => by
+      change Path.Referent.Realizes sigma referent (.intv _ _) at left right ⊢
+      cases left with
+      | type leftLower leftUpper =>
+        cases right with
+        | type rightLower rightUpper =>
+          exact .type
+            (lowerPlan.action leftLower rightLower)
+            (.trans (.inter leftUpper rightUpper)
+              (.merge environment upperPlan))
 
 /-! ## Instantiating dependent-pair members -/
 
@@ -245,10 +318,7 @@ def Coercion.treeSize : Coercion sigma d1 d2 -> Nat
 | .unionLeft => 1
 | .unionRight => 1
 | .union left right => left.treeSize + right.treeSize + 1
-| .pairFirstInter => 1
-| .pairInter => 1
-| .pairTypeInter => 1
-| .pairTypeUnionInter => 1
+| .merge _ _ => 1
 | .widen _ _ => 1
 | .alias _ _ => 1
 | .selLo _ lower => lower.treeSize + 1
@@ -296,71 +366,8 @@ noncomputable def Coercion.action
     left.action (.loc possible)
 | .union _ right, .loc (.unionRight possible) =>
     right.action (.loc possible)
-| .pairFirstInter, .loc (.inter left right) => by
-    cases left with
-    | @pair _ _ _ _ _ _ leftDefinition _ _
-        leftBinding leftFirst leftMember =>
-        cases right with
-        | @pair _ _ _ _ _ _ rightDefinition _ _
-            rightBinding rightFirst _ =>
-            cases Store.Binds.unique leftBinding rightBinding
-            exact .loc (.pair leftBinding (.inter leftFirst rightFirst)
-              leftMember)
-| .pairInter, .loc (.inter left right) => by
-    cases left with
-    | @pair _ _ _ _ _ _ leftDefinition _ _
-        leftBinding leftFirst leftMember =>
-        cases leftDefinition with
-        | val _ =>
-            cases right with
-            | @pair _ _ _ _ _ _ rightDefinition _ _
-                rightBinding _ rightMember =>
-                cases rightDefinition with
-                | val _ =>
-                    cases Store.Binds.unique leftBinding rightBinding
-                    cases leftMember with
-                    | loc leftPossible =>
-                        cases rightMember with
-                        | loc rightPossible =>
-                            exact .loc (.pair leftBinding leftFirst
-                              (.loc (.inter leftPossible rightPossible)))
-| .pairTypeInter, .loc (.inter left right) => by
-    cases left with
-    | @pair _ _ _ _ _ _ leftDefinition _ _
-        leftBinding leftFirst leftMember =>
-        cases leftDefinition with
-        | type _ =>
-            cases right with
-            | @pair _ _ _ _ _ _ rightDefinition _ _
-                rightBinding _ rightMember =>
-                cases rightDefinition with
-                | type _ =>
-                    cases Store.Binds.unique leftBinding rightBinding
-                    cases leftMember with
-                    | type leftLower leftUpper =>
-                        cases rightMember with
-                        | type _ rightUpper =>
-                            exact .loc (.pair leftBinding leftFirst
-                              (.type leftLower (.inter leftUpper rightUpper)))
-| .pairTypeUnionInter, .loc (.inter left right) => by
-    cases left with
-    | @pair _ _ _ _ _ _ leftDefinition _ _
-        leftBinding leftFirst leftMember =>
-        cases leftDefinition with
-        | type _ =>
-            cases right with
-            | @pair _ _ _ _ _ _ rightDefinition _ _
-                rightBinding _ rightMember =>
-                cases rightDefinition with
-                | type _ =>
-                    cases Store.Binds.unique leftBinding rightBinding
-                    cases leftMember with
-                    | type leftLower leftUpper =>
-                        cases rightMember with
-                        | type rightLower rightUpper =>
-                            exact .loc (.pair leftBinding leftFirst
-                              (.type (.union leftLower rightLower)
-                                (.inter leftUpper rightUpper)))
+| .merge environment plan, .loc (.inter left right) =>
+    plan.action environment (.loc left) (.loc right)
 | .widen resolution target, realizes => by
     cases realizes with
     | loc possible =>

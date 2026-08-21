@@ -33,6 +33,37 @@ inductive Path.Ty : Ctx n -> Path n -> Tau n k -> Type where
     a ≠ b ->
     Path.Ty Γ (p.sel a) τ
 
+/-! ## Aligned record merging
+
+These proof-relevant plans describe how two views of the same immutable
+record spine are combined.  A proper type may either be left unchanged,
+retained as an opaque intersection, or merged recursively when both views
+have the same outer label.  Member plans are checked under the *merged*
+first-component type, which is what makes the recursion binder-aware. -/
+
+/-- The lower bound produced when two abstract-member intervals are merged. -/
+inductive Ty.Join : Ctx n -> Ty n -> Ty n -> Ty n -> Type where
+| same : Ty.Join Γ L L L
+| union : Ty.Join Γ L R (.Union L R)
+
+/-- A structural plan for merging aligned proper types or interval members.
+Using one kind-indexed family makes semantic action structurally recursive on
+the plan, including when it descends from a pair into its member. -/
+inductive Tau.Merge : Ctx n -> Tau n k -> Tau n k -> Tau n k -> Type where
+| same : Tau.Merge Γ d d d
+| inter : Tau.Merge Γ (.ty S) (.ty T) (.ty (.Inter S T))
+| pair :
+    Tau.Merge Γ (.ty S1) (.ty S2) (.ty S) ->
+    Tau.Merge (Γ.snoc S) d1 d2 d ->
+    Tau.Merge Γ
+      (.ty (.Pair S1 a d1))
+      (.ty (.Pair S2 a d2))
+      (.ty (.Pair S a d))
+| intv :
+    Ty.Join Γ L1 L2 L ->
+    Tau.Merge Γ (.ty U1) (.ty U2) (.ty U) ->
+    Tau.Merge Γ (.intv L1 U1) (.intv L2 U2) (.intv L U)
+
 /-- Subtyping for proper types and abstract intervals.  The explicit
 premises `S <: T` on selection and interval formation are the historical
 nonemptiness guards. -/
@@ -77,39 +108,12 @@ inductive Tau.Sub : Ctx n -> Tau n k -> Tau n k -> Type where
     Tau.Sub Γ (Tau.ty S) (Tau.ty U) ->
     Tau.Sub Γ (Tau.ty T) (Tau.ty U) ->
     Tau.Sub Γ (Tau.ty (Ty.Union S T)) (Tau.ty U)
-/-- Merge the first-component views of one stored pair while retaining its
-identical member signature. -/
-| pair_first_inter :
-    Tau.Sub Γ
-      (Tau.ty (Ty.Inter
-        (Ty.Pair S a d)
-        (Ty.Pair T a d)))
-      (Tau.ty (Ty.Pair (Ty.Inter S T) a d))
-/-- Merge two views of the same term-member slot.  Requiring the first
-component type and label to agree makes both views refer to one stored member. -/
-| pair_inter :
-    Tau.Sub Γ
-      (Tau.ty (Ty.Inter
-        (Ty.Pair S a (Tau.ty T))
-        (Ty.Pair S a (Tau.ty U))))
-      (Tau.ty (Ty.Pair S a (Tau.ty (Ty.Inter T U))))
-/-- Merge two views of the same abstract type-member slot when their lower
-bound agrees.  The stored witness then lies below both advertised uppers. -/
-| pair_type_inter :
-    Tau.Sub Γ
-      (Tau.ty (Ty.Inter
-        (Ty.Pair S A (Tau.intv L U))
-        (Ty.Pair S A (Tau.intv L V))))
-      (Tau.ty (Ty.Pair S A (Tau.intv L (Ty.Inter U V))))
-/-- Merge arbitrary interval views of the same abstract type-member slot.
-The lower bounds join while the upper bounds meet. -/
-| pair_type_union_inter :
-    Tau.Sub Γ
-      (Tau.ty (Ty.Inter
-        (Ty.Pair S A (Tau.intv L1 U1))
-        (Ty.Pair S A (Tau.intv L2 U2))))
-      (Tau.ty (Ty.Pair S A
-        (Tau.intv (Ty.Union L1 L2) (Ty.Inter U1 U2))))
+/-- Execute an aligned merge plan as a subtyping derivation.  As with the
+other subtyping constructors, this does not manufacture well-formedness of
+its target; term subsumption checks that obligation separately. -/
+| merge :
+    Tau.Merge Γ (.ty S) (.ty T) (.ty U) ->
+    Tau.Sub Γ (Tau.ty (Ty.Inter S T)) (Tau.ty U)
 | «fun» :
     Tau.Sub Γ (Tau.ty S') (Tau.ty S) ->
     Tau.Sub (Γ.snoc S') (Tau.ty T) (Tau.ty T') ->
@@ -127,6 +131,44 @@ the source first-component type. -/
     Tau.Sub Γ (Tau.ty T) (Tau.ty T') ->
     Tau.Sub Γ (Tau.ty S) (Tau.ty T) ->
     Tau.Sub Γ (Tau.intv S T) (Tau.intv S' T')
+
+/-- Merge the first-component views of one stored pair while retaining its
+identical member signature. -/
+def Tau.Sub.pair_first_inter :
+    Tau.Sub Γ
+      (Tau.ty (Ty.Inter
+        (Ty.Pair S a d)
+        (Ty.Pair T a d)))
+      (Tau.ty (Ty.Pair (Ty.Inter S T) a d)) :=
+  .merge (.pair .inter .same)
+
+/-- Merge two views of the same term-member slot. -/
+def Tau.Sub.pair_inter :
+    Tau.Sub Γ
+      (Tau.ty (Ty.Inter
+        (Ty.Pair S a (Tau.ty T))
+        (Ty.Pair S a (Tau.ty U))))
+      (Tau.ty (Ty.Pair S a (Tau.ty (Ty.Inter T U)))) :=
+  .merge (.pair .same .inter)
+
+/-- Merge two abstract type-member views with a shared lower bound. -/
+def Tau.Sub.pair_type_inter :
+    Tau.Sub Γ
+      (Tau.ty (Ty.Inter
+        (Ty.Pair S A (Tau.intv L U))
+        (Ty.Pair S A (Tau.intv L V))))
+      (Tau.ty (Ty.Pair S A (Tau.intv L (Ty.Inter U V)))) :=
+  .merge (.pair .same (.intv .same .inter))
+
+/-- Merge arbitrary interval views of the same abstract type-member slot. -/
+def Tau.Sub.pair_type_union_inter :
+    Tau.Sub Γ
+      (Tau.ty (Ty.Inter
+        (Ty.Pair S A (Tau.intv L1 U1))
+        (Ty.Pair S A (Tau.intv L2 U2))))
+      (Tau.ty (Ty.Pair S A
+        (Tau.intv (Ty.Union L1 L2) (Ty.Inter U1 U2)))) :=
+  .merge (.pair .same (.intv .union .inter))
 
 /-- Pair covariance already provides the reverse direction of
 `pair_first_inter`. -/

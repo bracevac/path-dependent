@@ -23,3 +23,4 @@ import LambdaPFCI.RecordIntersectionRegression
 import LambdaPFCI.AlignedRecordIntersectionRegression
 import LambdaPFCI.TypeMemberIntersectionRegression
 import LambdaPFCI.TypeMemberUnionRegression
+import LambdaPFCI.RecursiveRecordMergeRegression

@@ -121,35 +121,16 @@ inductive Coercion :
     Coercion sigma (.ty S) (.ty U) ->
     Coercion sigma (.ty T) (.ty U) ->
     Coercion sigma (.ty (.Union S T)) (.ty U)
-| pairFirstInter {m : Nat} {sigma : Store m} {S T : Ty m}
-    {a : Name} {k : Kind} {d : Tau (m + 1) k} :
+/-- A source merge plan closed over the environment in which it was
+compiled.  Its structural action combines two certificates for the same
+location; it never changes the store or introduces a runtime cast. -/
+| merge {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {S T U : Ty n} :
+    Environment Gamma rho sigma ->
+    Tau.Merge Gamma (.ty S) (.ty T) (.ty U) ->
     Coercion sigma
-      (.ty (.Inter
-        (.Pair S a d)
-        (.Pair T a d)))
-      (.ty (.Pair (.Inter S T) a d))
-| pairInter {m : Nat} {sigma : Store m} {S : Ty m}
-    {a : Name} {T U : Ty (m + 1)} :
-    Coercion sigma
-      (.ty (.Inter
-        (.Pair S a (.ty T))
-        (.Pair S a (.ty U))))
-      (.ty (.Pair S a (.ty (.Inter T U))))
-| pairTypeInter {m : Nat} {sigma : Store m} {S : Ty m}
-    {A : Name} {L U V : Ty (m + 1)} :
-    Coercion sigma
-      (.ty (.Inter
-        (.Pair S A (.intv L U))
-        (.Pair S A (.intv L V))))
-      (.ty (.Pair S A (.intv L (.Inter U V))))
-| pairTypeUnionInter {m : Nat} {sigma : Store m} {S : Ty m}
-    {A : Name} {L1 L2 U1 U2 : Ty (m + 1)} :
-    Coercion sigma
-      (.ty (.Inter
-        (.Pair S A (.intv L1 U1))
-        (.Pair S A (.intv L2 U2))))
-      (.ty (.Pair S A
-        (.intv (.Union L1 L2) (.Inter U1 U2))))
+      (.ty (.Inter (S.rename rho) (T.rename rho)))
+      (.ty (U.rename rho))
 | widen {m : Nat} {sigma : Store m} {p : Path m}
     {x : Fin m} {T : Ty m} :
     Path.Resolve p sigma (.loc x) ->

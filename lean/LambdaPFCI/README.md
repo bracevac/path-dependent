@@ -15,13 +15,10 @@ The development proves:
   realization at one store location;
 - binary unions of proper types, interpreted as a tagged realization of one
   alternative at one store location;
-- merging of same-label term-member record views into one view whose member
-  retains the intersection of their proper types;
-- merging aligned first-component views of one pair, allowing intersections
-  of same-layout record telescopes to normalize to one selectable spine;
-- merging of same-first-component, same-label abstract type-member views with
-  arbitrary lower bounds into one interval whose lower bound is their union
-  and whose upper bound is their intersection;
+- plan-directed recursive merging of same-layout record spines: aligned
+  proper members may meet, abstract-member lower bounds may join while upper
+  bounds recursively merge, and later member signatures are interpreted under
+  the merged prefix;
 - binder-dependent subtyping for function results and pair members;
 - a finite semantic interpretation of every declarative subtyping derivation;
 - a fundamental theorem for path typing, subtyping, and term typing under
@@ -47,6 +44,15 @@ the argument location. A `MemberClosure` similarly retains a dependent-member
 subtyping derivation until a stored pair supplies its first-component
 location. Coercions serve as semantic evidence in the proof; the source and
 runtime syntax are defined in `Syntax.lean` and `Runtime.lean`.
+
+An aligned merge is an explicit structural plan, not a row-reordering
+algorithm. At each matching pair label it first merges the stored predecessor,
+then extends the semantic environment with that concrete merged location and
+continues with the dependent member. The same judgment subsumes the earlier
+one-slot term-member, type-member, and first-component rules. Output
+well-formedness remains a separate typing obligation, in particular for
+intervals whose joined lower bound must lie below their merged upper
+bound.
 
 For a dependent pair, the comparison of member signatures is suspended until
 the first component has a concrete store location. Its termination follows
@@ -87,6 +93,9 @@ the final result type through `Ty.Extends`.
 - `AlignedRecordIntersectionRegression.lean`: a closed two-member telescope
   whose aligned outer views merge their record tails, normalize the older
   member, and select it through the outer member with one precise alias.
+- `RecursiveRecordMergeRegression.lean`: a closed mixed two-member telescope
+  whose recursive merge simultaneously combines different record tails and
+  different outer signatures, retaining a dependent selected-type component.
 - `TypeMemberIntersectionRegression.lean`: a closed abstract-member merge whose
   selected type is used through its shared lower bound and both merged upper
   views.
