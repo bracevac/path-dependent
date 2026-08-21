@@ -65,6 +65,10 @@ the final result type through `Ty.Extends`.
 - `SemanticFundamental.lean`, `SemanticProgress.lean`,
   `SemanticPreservation.lean`, and `SemanticSafety.lean`: the fundamental
   theorem and type safety.
+- `Metatheory.md`: a TAPL-style overview and complete walkthrough of the
+  progress and preservation proofs.
+- `MetatheorySlides.md`: a condensed, slide-shaped presentation of the
+  proof architecture and its position relative to DOT and pDOT.
 - `GeneralPairRegression.lean`: proper-member, interval-member, and closed
   end-to-end regressions for unrestricted dependent-pair covariance.
 - `RecordRegression.lean`: a closed three-member record spine whose function
