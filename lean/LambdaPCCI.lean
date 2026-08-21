@@ -24,3 +24,4 @@ import LambdaPCCI.IntersectionRegression
 import LambdaPCCI.RecordIntersectionRegression
 import LambdaPCCI.TypeMemberIntersectionRegression
 import LambdaPCCI.TypeMemberUnionRegression
+import LambdaPCCI.RecursiveRecordMergeRegression

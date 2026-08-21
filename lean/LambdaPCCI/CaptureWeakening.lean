@@ -194,9 +194,10 @@ noncomputable def ShapeCoercion.weaken
   | .unionRight => .unionRight
   | .union left right =>
       .union (left.weaken exact vv) (right.weaken exact vv)
-  | .pairInter => .pairInter
-  | .pairTypeInter => .pairTypeInter
-  | .pairTypeUnionInter => .pairTypeUnionInter
+  | .merge environment plan => by
+      simpa only [Valuation.weaken, FinFun.comp, Shape.weaken,
+        Shape.rename, Shape.rename_rename] using
+        ShapeCoercion.merge (environment.weaken exact vv) plan
   | .widen resolution possible =>
       .widen (resolution.weaken _ vv) (possible.weaken exact vv)
   | .alias left right =>
