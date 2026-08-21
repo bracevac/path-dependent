@@ -22,8 +22,7 @@ The development proves:
 - merging of same-first-component, same-label abstract type-member views with
   arbitrary lower bounds into one interval whose lower bound is their union
   and whose upper bound is their intersection;
-- unrestricted covariance for dependent pairs, including proper and interval
-  members;
+- binder-dependent subtyping for function results and pair members;
 - a finite semantic interpretation of every declarative subtyping derivation;
 - a fundamental theorem for path typing, subtyping, and term typing under
   store valuations;
@@ -49,10 +48,8 @@ subtyping derivation until a stored pair supplies its first-component
 location. Coercions serve as semantic evidence in the proof; the source and
 runtime syntax are defined in `Syntax.lean` and `Runtime.lean`.
 
-Dependent pairs are covariant in both components: from `S <: S'` and a member
-comparison under a binder of type `S`, the rule derives
-`Pair S a d <: Pair S' a d'`. Coercion action instantiates the saved member
-derivation at the first component stored in the pair. Its termination follows
+For a dependent pair, the comparison of member signatures is suspended until
+the first component has a concrete store location. Its termination follows
 from the append-only store order: a pair's first component and member referent
 are older than the pair cell. The mechanization uses referent stratum as the
 primary termination measure and coercion-tree size for recursive calls at the
@@ -78,8 +75,8 @@ the final result type through `Ty.Extends`.
 - `SemanticFundamental.lean`, `SemanticProgress.lean`,
   `SemanticPreservation.lean`, and `SemanticSafety.lean`: the fundamental
   theorem and type safety.
-- `GeneralPairRegression.lean`: proper-member, interval-member, and closed
-  end-to-end regressions for unrestricted dependent-pair covariance.
+- `GeneralPairRegression.lean`: proper-member and interval-member regression
+  examples for dependent pair subtyping.
 - `RecordRegression.lean`: a closed three-member record spine whose function
   consumes a value at an earlier path-dependent type member.
 - `IntersectionRegression.lean`: a closed self-application that uses one

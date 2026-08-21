@@ -9,8 +9,7 @@ derivations as store-local semantic evidence.
 The development proves:
 
 - deterministic path resolution to location and type-definition referents;
-- unrestricted covariance for dependent pairs, including proper and interval
-  members;
+- binder-dependent subtyping for function results and pair members;
 - a finite semantic interpretation of every declarative subtyping derivation;
 - a fundamental theorem for path typing, subtyping, and term typing under
   store valuations;
@@ -19,6 +18,8 @@ The development proves:
   program.
 
 The main result is `Tm.Ty.closed_type_safety` in `SemanticSafety.lean`.
+The separate `LambdaPFCI` development extends the same architecture with
+intersection and union types while leaving this baseline unchanged.
 
 ## Proof structure
 
@@ -36,10 +37,8 @@ subtyping derivation until a stored pair supplies its first-component
 location. Coercions serve as semantic evidence in the proof; the source and
 runtime syntax are defined in `Syntax.lean` and `Runtime.lean`.
 
-Dependent pairs are covariant in both components: from `S <: S'` and a member
-comparison under a binder of type `S`, the rule derives
-`Pair S a d <: Pair S' a d'`. Coercion action instantiates the saved member
-derivation at the first component stored in the pair. Its termination follows
+For a dependent pair, the comparison of member signatures is suspended until
+the first component has a concrete store location. Its termination follows
 from the append-only store order: a pair's first component and member referent
 are older than the pair cell. The mechanization uses referent stratum as the
 primary termination measure and coercion-tree size for recursive calls at the
@@ -69,10 +68,12 @@ the final result type through `Ty.Extends`.
   progress and preservation proofs.
 - `MetatheorySlides.md`: a condensed, slide-shaped presentation of the
   proof architecture and its position relative to DOT and pDOT.
-- `GeneralPairRegression.lean`: proper-member, interval-member, and closed
-  end-to-end regressions for unrestricted dependent-pair covariance.
+- `GeneralPairRegression.lean`: proper-member and interval-member regression
+  examples for dependent pair subtyping.
 - `RecordRegression.lean`: a closed three-member record spine whose function
   consumes a value at an earlier path-dependent type member.
+- `Metatheory.md` and `MetatheorySlides.md` also explain how the same proof
+  architecture handles the separate `LambdaPFCI` intersection/union extension.
 
 ## Building
 

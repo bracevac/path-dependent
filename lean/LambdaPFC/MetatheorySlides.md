@@ -1,19 +1,39 @@
-# LambdaPFC soundness
+# LambdaPFC and LambdaPFCI
 
-## Derivation-directed, store-indexed evidence for path-dependent pairs
+## Interpreting typing proofs at concrete stores
 
-Central question:
+The proof idea in one line:
 
-> Can both components of an immutable dependent pair be covariant while
-> retaining non-variable paths through immutable pair spines and declarative
-> transitivity?
+~~~text
+declarative source derivation
+            ↓ interpret
+finite evidence about one concrete store
+            ↓ preserve with the machine
+progress and preservation
+~~~
 
-Result: a mechanized progress-and-preservation proof for the calculus, with
-no casts or type checks in the runtime language.
+The runtime language contains no proofs, coercions, casts, or type checks.
 
 ---
 
-# 1. The deliberately small calculus
+# 1. Why the textbook proof becomes awkward
+
+Four mismatches appear at once:
+
+1. A source variable is hypothetical; execution uses a concrete store
+   location.
+2. A source path may be compound; execution eventually identifies one
+   location or stored type.
+3. Subsumption hides the introduction rule needed for canonical forms.
+4. Allocation adds a location and shifts every old intrinsic index.
+
+The goal is not to prove large global substitution and inversion lemmas and
+then recover these runtime facts indirectly. The proof records the runtime
+facts explicitly when they become known.
+
+---
+
+# 2. The language boundary
 
 ~~~text
 p ::= x | p.fst | p.a
@@ -24,158 +44,23 @@ t ::= path p | v | p q | let x = s in t
 
 T ::= Top | Bot | (x:S)→T | Pair(x:S,a:τ) | {p} | p.A
 τ ::= T | L..U
+d ::= val z | type W
 ~~~
 
-- Paths traverse immutable pair cells.
-- Pair components are existing locations or stored type definitions.
+- Paths traverse immutable pair spines.
+- A pair points to already allocated locations or stores a type definition.
 - Applications take paths; lets sequence computations.
-- No recursive self types, mutation, intersections/unions, or captures in
-  this baseline.
+- The baseline has no recursive self types, mutation, intersections/unions,
+  or capture checking.
+- `LambdaPFCI` separately adds intersections and unions without changing the
+  machine.
 
-Nested pairs form record spines: if the outer label differs, lookup continues
-through `.fst`.
-
----
-
-# 2. The rule that drives the proof
-
-~~~text
-Γ ⊢ S <: S′
-Γ,x:S ⊢ τ <: τ′
-──────────────────────────────────────── pair
-Γ ⊢ Pair(x:S,a:τ) <: Pair(x:S′,a:τ′)
-~~~
-
-The member comparison is checked under the **source** first-component type.
-
-At compile time, `x` is hypothetical. At runtime, a realized pair
-reveals a concrete first-component location:
-
-~~~text
-σ(z) = pair y a d
-σ ⊨ y : S
-σ ⊨ referent(d) : τ[y/x]
-~~~
-
-Only then can the second premise be interpreted at `y`.
+These restrictions matter to the proof and must not be confused with the
+semantic technique itself.
 
 ---
 
-# 3. The central move: interpret derivations
-
-The semantic interpretation consumes a proof-relevant typing derivation, not
-only syntax:
-
-~~~text
-code : Γ ⊢ t : T        env : ρ realizes Γ in σ
-────────────────────────────────────────────────
-interpret(code,env) : σ ⊢tm ρ(t) : ρ(T)
-~~~
-
-Likewise, under the same environment:
-
-~~~text
-Γ ⊢ τ <: τ′        env : ρ realizes Γ in σ
-────────────────────────────────────────── compile
-σ ⊢ ρ(τ) ⇝ ρ(τ′)
-~~~
-
-- Different subtyping derivations may compile differently.
-- Transitivity becomes coercion composition.
-- This is Lean proof computation, not object-language execution.
-
----
-
-# 4. What a runtime type means
-
-`Store.Possible σ x T` is a canonical-form certificate for location
-`x` at type `T`.
-
-- `Top`: no observation required.
-- `Fun S U`: exposes a stored lambda, its body closure, input
-  adapter, and deferred output adapter.
-- `Pair S a τ`: exposes the stored pair and realizations of both
-  components.
-- `{p}`: records that `p` resolves to `x`.
-- `p.A`: records the selected stored type and realization at it.
-- `Bot`: no constructor.
-
-A type-member referent realizes `L..U` by storing a concrete witness:
-
-~~~text
-L ⇝ W ⇝ U
-~~~
-
-Canonical forms therefore come from runtime realization—not inversion of an
-arbitrary declarative subtyping derivation.
-
----
-
-# 5. Coercions change evidence, not programs
-
-~~~text
-C : σ ⊢ τ ⇝ τ′       R : σ ⊨ r : τ
-─────────────────────────────────────
-          action(C,R) : σ ⊨ r : τ′
-~~~
-
-`Coercion.action` preserves the same store and referent.
-
-Examples:
-
-- singleton widening: `{p} ⇝ T` recovers the known realization of
-  the location denoted by `p`;
-- aliases: co-resolving paths give `{q} ⇝ {p}`;
-- functions: prepend a contravariant input adapter and defer the dependent
-  output comparison;
-- selections: use the stored witness `L ⇝ W ⇝ U`;
-- pairs: convert the first location now and the member after its binder is
-  instantiated.
-
-There is no cast syntax, cast transition, or erasure theorem.
-
----
-
-# 6. Closures postpone exactly one missing location
-
-~~~text
-saved:
-    code : Γ,x:S ⊢ body : T
-    env  : ρ realizes Γ in σ
-
-later:
-    arg  : σ ⊨ y : ρ(S)
-────────────────────────────────
-    σ ⊢tm ρ(body)[y] : ρ(T)[y]
-~~~
-
-Three forms:
-
-- `BodyClosure`: function or let body typing;
-- `DeferredCoercion`: function-codomain subtyping;
-- `MemberClosure`: dependent pair-member subtyping.
-
-They retain the source derivation plus an environment certified in `σ`.
-Allocation weakening transports them to an extended store.
-
-This replaces a general typing-substitution theorem with the concrete
-location-specific instances execution actually needs.
-
-The complete machine invariant also types the control stack, which is a list
-of suspended let bodies:
-
-~~~text
-σ ⊢tm t : S       σ ⊢K K : S ⇒ T
-──────────────────────────────────
-       ⊢ ⟨σ,K,t⟩ : T
-~~~
-
-The focused type `S` may change after a transition; `T` is
-the final answer type tracked by preservation.
-
----
-
-# 7. A closed path-dependent example
+# 3. A path-dependent program
 
 ~~~text
 I   = Top → Top
@@ -188,136 +73,307 @@ r₃  = { r₂; use }
 result = r₃.use r₃.x
 ~~~
 
-What the typing exercises:
+This exercises:
 
-- `r₂.A` skips the outer `x` field to reach
-  `r₁.A`;
-- `r₃.A` would skip both `use` and `x`;
-- the annotation on `use` is literally the selected type
-  `r₂.A`;
-- the stored exact definition `A=I` supports both
-  `I <: r₂.A` and `r₂.A <: I`;
-- the final application views `r₃.x` at the domain expected by
-  `r₃.use`.
+- lookup through a nested record spine;
+- an exact stored type viewed abstractly through a selection;
+- a function whose parameter is literally the selected type `r₂.A`;
+- conversion between source paths and the locations found at runtime.
 
-The theorem specializes closed finite-prefix safety to this program.
+The final theorem says that every finite execution prefix of this closed
+program ends in a state that is final or can step.
 
 ---
 
-# 8. Progress is four evidence cases
+# 4. The semantic bridge
 
-Normalized `TermEvidence` has exactly four outer forms:
+Let `ρ` map source variables to locations in store `σ`.
+
+~~~text
+D : Γ ⊢ t : T          ρ ⊨σ Γ
+──────────────────────────────── interpretation
+         σ ⊢run ρ(t) : ρ(T)
+~~~
+
+`ρ ⊨σ Γ` means that every variable in `Γ` is mapped to a location that
+supports its declared type.
+
+Interpretation recurses on the chosen derivation `D`, not merely on `t`.
+Consequently, a subsumption step is visible and can be translated into
+semantic evidence.
+
+This is proof computation in Lean. Machine states still contain only a
+store, a continuation, and a term.
+
+---
+
+# 5. What it means for a location to have a type
+
+Write:
+
+~~~text
+σ ⊨ x : T       location x supports proper type T
+σ ⊨ r : τ       referent r supports generalized signature τ
+~~~
+
+These judgments are constructive canonical-form evidence:
+
+- at a function type, expose the stored lambda and suspended body proof;
+- at a pair type, expose the stored pair and both component realizations;
+- at `{p}`, record that `p` resolves to this location;
+- at `p.A`, record the selected stored type and realization at it;
+- at `Top`, require no observation;
+- at `Bot`, provide no case.
+
+A stored type `W` supports an interval `L..U` by carrying:
+
+~~~text
+L ⇝ W ⇝ U
+~~~
+
+Canonical forms are therefore obtained by inspecting realized evidence at a
+location, rather than by inverting arbitrary source subtyping.
+
+---
+
+# 6. Subtyping becomes proof-only coercion
+
+Under a realized environment:
+
+~~~text
+Γ ⊢ τ <: τ′       ρ ⊨σ Γ
+────────────────────────── compilation
+      σ ⊢ ρ(τ) ⇝ ρ(τ′)
+~~~
+
+A coercion acts on evidence while preserving the referent:
+
+~~~text
+σ ⊢ τ ⇝ τ′       σ ⊨ r : τ
+─────────────────────────── action
+          σ ⊨ r : τ′
+~~~
+
+Examples:
+
+- transitivity becomes composition;
+- singleton widening recovers the known type of a resolved location;
+- co-resolving paths transport singleton and dependent-type evidence;
+- function coercion adapts the input now and delays the dependent output;
+- type selection uses the concrete interval witness `L ⇝ W ⇝ U`.
+
+Nothing is added to the program being evaluated.
+
+---
+
+# 7. Delay a binder until its location exists
+
+Before the argument is known, retain:
+
+~~~text
+Dbody : Γ,x:S ⊢ body : T
+env   : ρ ⊨σ Γ
+~~~
+
+When execution supplies a location:
+
+~~~text
+σ ⊨ y : ρ(S)
+──────────────────────────────── instantiation
+σ ⊢run ρ(body)[y] : ρ(T)[y]
+~~~
+
+The same pattern suspends:
+
+- a function or let body;
+- a dependent function-codomain comparison;
+- a dependent pair-member comparison.
+
+This replaces the needed instances of a global typing-substitution theorem
+with interpretation at the concrete locations execution actually reaches.
+Renaming, opening, and weakening equations are still required.
+
+---
+
+# 8. Intersections are paired certificates
+
+The separate `LambdaPFCI` variant adds the standard meet rules:
+
+~~~text
+S <: T       S <: U
+───────────────────       T ∧ U <: T       T ∧ U <: U
+     S <: T ∧ U
+~~~
+
+Their runtime meaning is direct:
+
+~~~text
+σ ⊨ x:T       σ ⊨ x:U
+─────────────────────
+       σ ⊨ x:T ∧ U
+~~~
+
+Both certificates describe the **same location**.
+
+- meet introduction runs two coercions on one input certificate;
+- meet elimination returns one retained certificate;
+- no intersection value, cast, or transition is added;
+- no separate term-introduction rule is needed—ordinary subsumption supplies
+  an intersection view.
+
+The companion union evidence is tagged left or right. Its tag exists only in
+the proof and selects the appropriate branch during coercion action.
+
+Small closed example: if `S=Top→F`, `L=F→F`, `R=F`, and one closure has type
+`S` with `S<:L` and `S<:R`, subsumption gives it `L∧R`. In `f f`, the operator
+uses the retained `L` certificate and the argument uses the retained `R`
+certificate; execution still calls the one stored closure.
+
+---
+
+# 9. Restricted record-view merging
+
+Let `Pₐ(S,T)` mean one pair cell with predecessor type `S` and term member
+`a:T`.
+
+~~~text
+Pₐ(S,T) ∧ Pₐ(S,U) <: Pₐ(S,T ∧ U)
+~~~
+
+Soundness argument:
+
+1. both source certificates concern one receiver location `r`;
+2. invert both as pair certificates;
+3. immutable lookup functionality identifies the same stored pair and member
+   location `m`;
+4. retain both certificates `σ ⊨ m:T` and `σ ⊨ m:U`;
+5. rebuild one pair certificate with member `T ∧ U`.
+
+No records are combined at runtime.
+
+For a type member, two views of the same stored witness `W` merge as:
+
+~~~text
+L₁..U₁  and  L₂..U₂
+          ↓
+(L₁ ∨ L₂)..(U₁ ∧ U₂)
+~~~
+
+This is deliberately restricted to the same physical slot and label—not a
+general record-intersection or row-merge operation.
+
+---
+
+# 10. The complete machine invariant
+
+A continuation is a stack of suspended let bodies.
+
+~~~text
+σ ⊢run t : S       σ ⊢cont K : S ⇒ T
+─────────────────────────────────────
+            ⊨ ⟨σ,K,t⟩ : T
+~~~
+
+Meaning:
+
+- the focused term will produce a location usable at `S`;
+- the continuation knows how to turn such a result into a final answer at
+  `T`.
+
+A nonempty frame retains an open body proof and a coercion from that body's
+result to the input type expected by the remaining frames.
+
+The focused type `S` changes as control moves. The answer type `T` is the
+quantity preserved by the machine, except for scope extension at allocation.
+
+---
+
+# 11. Progress
+
+Runtime term evidence has four syntax-directed forms.
 
 1. **Path**
-   - variable + empty continuation: final;
-   - variable + frame: return;
-   - compound path: resolve and canonicalize to its location.
+   - a variable is final under an empty continuation or returns to a frame;
+   - a compound path steps to the location it resolves to.
 2. **Value**
-   - empty continuation: final;
-   - frame waiting: allocate.
+   - final under an empty continuation;
+   - otherwise allocated for the waiting frame.
 3. **Application**
    - resolve operator and argument;
-   - execute the operator suffix;
-   - invert `Possible Fun` to expose the stored lambda;
+   - act on the operator's accumulated coercion;
+   - function realization exposes the stored lambda;
    - take the application step.
 4. **Let**
-   - push its body and focus its bound computation.
+   - push its body and focus the bound computation.
 
-No source-subtyping inversion occurs in progress.
+The continuation's typing data is not needed to choose a step; preservation
+uses it to type the successor.
 
----
-
-# 9. Preservation is the five machine rules
-
-~~~text
-Evidence(c,T)       c → c′
-────────────────────────────────────────────
-∃T′. T Extends T′ ∧ Nonempty(Evidence(c′,T′))
-~~~
-
-- **Application:** instantiate the stored body and dependent result evidence.
-- **Path canonicalization:** prepend an alias coercion.
-- **Let push:** move the body closure and result suffix into continuation
-  evidence.
-- **Return:** instantiate that closure at an existing location.
-- **Allocation:** establish the fresh realization and weaken the tail.
-
-The dependent beta chain is:
-
-~~~text
-body[y] : B[y]
-          │ saved function output
-          ▼
-         U[y]
-          │ q and var y resolve together
-          ▼
-         U[q]
-          │ application's final suffix
-          ▼
-           T
-~~~
-
-Runtime path equality transports the entire dependent codomain, not merely a
-singleton type.
+Intersections add no fifth case: they occur inside the coercion suffixes and
+location certificates used by these same four cases.
 
 ---
 
-# 10. Allocation and termination
+# 12. Preservation
 
-Allocation changes the intrinsic scope:
-
-~~~text
-T : Ty n       T.weaken : Ty (n+1)
-~~~
-
-`Ty.Extends` records zero or more such changes across a finite
-execution. It is scope extension, not subtyping.
-
-Coercion action is well founded on:
+Write `T ⪯ T′` when `T′` is `T` transported through zero or more allocations.
 
 ~~~text
-(stratum(referent), treeSize(coercion))
+⊨ c : T       c → c′
+────────────────────────────
+∃T′. T ⪯ T′  and  ⊨ c′ : T′
 ~~~
 
-For `σ(x)=pair y a d`:
+Five cases:
+
+- **application:** instantiate the stored body and dependent result evidence;
+- **path:** prepend evidence that the old path and its location co-resolve;
+- **let push:** move the suspended body proof into continuation evidence;
+- **return:** instantiate it at an existing location;
+- **allocation:** establish the fresh location's realization and transport all
+  old evidence to the larger store.
+
+For dependent beta, if `q` resolves to `y`:
 
 ~~~text
-stratum(loc y)       < stratum(loc x)
-stratum(referent d)  < stratum(loc x)
+body[y] : B[y]  ⇝  U[y]  ⇝  U[q]  ⇝  T
+                    ^         ^
+              saved result   path co-resolution
 ~~~
 
-Pair recursion moves to an older referent; same-referent recursion moves to a
-strict coercion subtree.
+For `LambdaPFCI`, this proof is unchanged. The new work was already discharged
+by meet/join coercion action, same-cell record merging, structural conversion,
+and weakening.
 
 ---
 
-# 11. Position relative to DOT and pDOT
+# 13. What is avoided, and what is only relocated
 
-Localized into runtime evidence:
+Relocated into store-indexed evidence:
 
-- selected-type canonical forms → concrete witness `L ⇝ W ⇝ U`;
-- transitivity-obscured inversion → execute a compiled coercion first;
-- narrowing and substitution → instantiate closures at realized locations;
-- path replacement → store co-resolution plus structural runtime conversion;
-- global store typing → local realization certificates plus weakening.
+- canonical forms hidden by subsumption;
+- the runtime instances of narrowing and binder substitution;
+- replacement of a source path by the location it denotes;
+- preservation of existing facts when the store grows.
 
-Avoided by restricting the calculus:
+Avoided by restricting the language:
 
-- fresh bad-bound relations → require `L <: U` independently;
-- recursive self types and circular semantic worlds;
-- computational or cyclic paths;
+- fresh bad-bound relations: using `L..U` requires an independent proof of
+  `L <: U`;
+- recursive self-reference and cyclic path lookup;
 - mutation and heap updates;
-- intersections/unions, captures, polymorphism, and pattern matching.
+- the baseline's omitted type and term forms.
 
-This is not a proof of full DOT. In particular, requiring `L <: U`
-independently prevents abstract members from introducing fresh custom
-subtyping relations.
+So this is not a simpler proof of full DOT or pDOT. It tests a different
+factorization of the soundness argument on a deliberately smaller calculus.
+
+Intersections test that factorization further: they enlarge certificate
+structure and subtyping interpretation, while leaving the machine and the
+progress/preservation case split fixed.
 
 ---
 
-# 12. Result, non-results, and discussion
-
-Mechanized result:
+# 14. Result and open questions
 
 ~~~text
 ∅ ⊢ t : T       initial(t) →* c
@@ -327,29 +383,51 @@ Mechanized result:
 
 Not established:
 
-- normalization;
-- decidability or an algorithmic type system;
+- normalization or termination;
+- decidable or algorithmic typing/subtyping;
 - admissibility of transitivity;
-- equality/coherence of compiled coercions;
-- recursion, mutation, or the other omitted features.
+- coherence of different compiled subtyping derivations;
+- a translation or simulation relating this calculus to DOT or pDOT.
 
-Questions:
+Questions worth discussing:
 
-1. Is realization-directed subtyping interpretation a useful complement to
-   inert/tight typing for larger path-dependent calculi?
-2. Which restriction should be relaxed first without losing the
-   allocation-order argument?
-3. Can the source-to-runtime bridge be factored into a reusable core shared
-   by the capture and intersection variants?
+1. Does derivation-to-evidence interpretation remain useful when genuine DOT
+   bounds are restored?
+2. Can store-indexed path equality be related to a useful fragment of pDOT
+   replacement?
+3. Which restriction can be relaxed without losing the simple acyclic-store
+   argument?
+4. Which aligned record merges can be generalized without making precise path
+   lookup ambiguous?
 
 ---
 
-# Backup: pointers
+# Backup: implementation map
 
-- [Full pedagogical walkthrough](Metatheory.md)
-- [Static semantics](Typing.lean)
+| Mathematical object | Lean declaration |
+|---|---|
+| `ρ ⊨σ Γ` | `Environment` |
+| `σ ⊨ x:T` | `Store.Possible` |
+| `σ ⊨ r:τ` | `Path.Referent.Realizes` |
+| `σ ⊢ τ ⇝ τ′` | `Coercion` |
+| `σ ⊢run t:T` | `TermEvidence` |
+| `σ ⊢cont K:S⇒T` | `Tm.Cont.Evidence` |
+| derivation interpretation | `Tm.Ty.interpret` |
+| coercion compilation/action | `Tau.Sub.compile`, `Coercion.action` |
+| progress/preservation | `TermEvidence.progress`, `State.Evidence.preservation` |
+
+Intersection/union implementation map:
+
+| Mathematical addition | `LambdaPFCI` location |
+|---|---|
+| `T ∧ U`, `T ∨ U`, meet/join rules | `Syntax.lean`, `Typing.lean` |
+| paired/tagged realization | `SemanticEvidence.lean` |
+| compilation and coercion action | `SemanticAction.lean` |
+| runtime conversion and allocation transport | `RuntimeEquality.lean`, `SemanticWeakening.lean` |
+| worked programs | `IntersectionRegression.lean`, `RecordIntersectionRegression.lean`, `AlignedRecordIntersectionRegression.lean`, `TypeMemberIntersectionRegression.lean`, `TypeMemberUnionRegression.lean` |
+
+- [Full walkthrough](Metatheory.md)
+- [Source typing](Typing.lean)
 - [Semantic evidence](SemanticEvidence.lean)
-- [Subtyping compilation and coercion action](SemanticAction.lean)
 - [Progress](SemanticProgress.lean)
 - [Preservation](SemanticPreservation.lean)
-- [Finite safety](SemanticSafety.lean)
