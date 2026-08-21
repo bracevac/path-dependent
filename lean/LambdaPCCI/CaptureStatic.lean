@@ -164,9 +164,7 @@ noncomputable def Shape.Sub.compile
   | .union left right =>
       .union (Cap.Shape.Sub.compile environment left)
         (Cap.Shape.Sub.compile environment right)
-  | .pair_inter => .pairInter
-  | .pair_type_inter => .pairTypeInter
-  | .pair_type_union_inter => .pairTypeUnionInter
+  | .merge plan => .merge environment plan
   | .singleton_widen path => by
       obtain ⟨referent, resolution, realizes⟩ :=
         Cap.Path.Ty.resolve environment path

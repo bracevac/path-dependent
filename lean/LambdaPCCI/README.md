@@ -11,10 +11,7 @@ sets contain term paths and selections of abstract capture-set members.
 Dependent function results and pair members may mention the bound argument or
 first component, including in capture sets. Pairs support term members,
 abstract type members, and abstract capture-set members; the latter two are
-represented by lower and upper
-bounds. Dependent-pair covariance is uniform across term, type, and
-capture-set members and compares the second component under the source
-first-component type.
+represented by lower and upper bounds.
 
 The development proves:
 
@@ -24,11 +21,14 @@ The development proves:
   realization at one store location;
 - binary unions of shape types, interpreted as a tagged realization of one
   alternative at one store location;
-- merging of same-label, same-capture term-member record views into one view
-  whose member retains the intersection of their shapes;
-- merging of same-first-component, same-label abstract type-member views with
-  arbitrary lower bounds into one interval whose lower bound is their shape
-  union and whose upper bound is their shape intersection;
+- recursive, binder-aware merging of aligned same-label record spines, with
+  member plans interpreted under the merged first-component type;
+- conservative capture-aware merging: distinct capture annotations on first
+  components or term members widen to `C ∪ D`, while their shapes are
+  recursively merged or intersected;
+- merging of abstract type-member intervals by joining their lower shapes and
+  recursively merging their upper shapes, and of abstract capture-member
+  intervals by joining distinct lowers when their upper bound agrees;
 - a source typing interpretation that preserves use sets;
 - progress, one-step preservation, and finite preservation for
   the runtime typing invariant;
@@ -42,6 +42,13 @@ The public theorems are `Tm.Ty.closed_progress`,
 `Tm.Ty.closed_finite_preservation`, `Tm.Ty.closed_type_safety`,
 `Cap.Tm.Ty.closed_finite_application_coverage`, and
 `Cap.Tm.Ty.closed_finite_returned_capture_bound`.
+
+The capture union produced by a merge is a common upper bound, not a
+capture-set intersection; it can therefore lose capture precision. Distinct
+upper bounds on abstract capture members are not merged, because preserving
+both would require capture-set intersection syntax. As with ordinary
+subtyping, a merge supplies no target well-formedness proof; clients must
+separately establish any resulting interval bounds.
 
 The runtime calculus has no primitive capability operations. Application
 coverage therefore accounts for the paths inspected by function application,
@@ -65,11 +72,16 @@ shapes. `TypeMemberIntersectionRegression.lean` merges two views of one
 abstract type member and uses its selected type through the shared lower bound
 and both merged upper views. `TypeMemberUnionRegression.lean` removes that
 shared-lower restriction by merging the two lowers with a shape union.
+`RecursiveRecordMergeRegression.lean` recursively merges a two-cell spine:
+its inner abstract capture member joins lower bounds, while its outer term
+member joins two distinct views of one genuinely captured capability and
+intersects their shape views. The final selected member exposes that nonempty
+capture union at an empty evaluation-use set before a closed self-application.
 
 ## Files
 
 - `Syntax.lean`, `Context.lean`, and `Typing.lean`: source syntax, capture
-  sets, static judgments, and term use sets.
+  sets, static judgments, recursive merge plans, and term use sets.
 - `Runtime.lean` and `StoreStratification.lean`: stores, generalized path
   resolution, the CK machine, and allocation-order lemmas.
 - `RuntimeEquality.lean` and `Valuation.lean`: runtime path equality,
@@ -96,6 +108,8 @@ shared-lower restriction by merging the two lowers with a shape union.
   type-member merge, with empty captures and uses.
 - `TypeMemberUnionRegression.lean`: the corresponding distinct-lower merge,
   with empty captures and uses.
+- `RecursiveRecordMergeRegression.lean`: recursive capture-member and term-
+  member merging with distinct dependent capture contracts.
 
 ## Building
 

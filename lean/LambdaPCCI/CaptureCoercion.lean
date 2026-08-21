@@ -27,6 +27,152 @@ noncomputable def MemberClosure.instantiate
     simpa only [← Tau.rename_openAt_eq_open_var,
       Tau.rename_ext_openAt] using compiled
 
+/-! ## Executing capture-aware merge plans -/
+
+/-- Widen the left capture contract to the contract selected by a join. -/
+noncomputable def CaptureSet.Join.leftRelation
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {world : World sigma} {C1 C2 C : CaptureSet n}
+    (plan : CaptureSet.Join Gamma C1 C2 C) :
+    Relation world (C1.rename rho) (C.rename rho) :=
+  match plan with
+  | .same => .refl
+  | .union => .unionLeft
+
+/-- Widen the right capture contract to the contract selected by a join. -/
+noncomputable def CaptureSet.Join.rightRelation
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {world : World sigma} {C1 C2 C : CaptureSet n}
+    (plan : CaptureSet.Join Gamma C1 C2 C) :
+    Relation world (C2.rename rho) (C.rename rho) :=
+  match plan with
+  | .same => .refl
+  | .union => .unionRight
+
+/-- Combine the two lower-bound relations prescribed by a capture-member
+merge.  The direction differs from widening a type's capture annotation. -/
+noncomputable def CaptureSet.Join.lowerAction
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {world : World sigma}
+    {L1 L2 L : CaptureSet n} {W : CaptureSet m}
+    (plan : CaptureSet.Join Gamma L1 L2 L)
+    (left : Relation world (L1.rename rho) W)
+    (right : Relation world (L2.rename rho) W) :
+    Relation world (L.rename rho) W :=
+  match plan with
+  | .same => left
+  | .union => .unionElim left right
+
+/-- Combine the lower-bound coercions prescribed by a type-member merge. -/
+noncomputable def Shape.Join.lowerAction
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {world : World sigma}
+    {L1 L2 L : Shape n} {W : Shape m}
+    (plan : Shape.Join Gamma L1 L2 L)
+    (left : ShapeCoercion world (L1.rename rho) W)
+    (right : ShapeCoercion world (L2.rename rho) W) :
+    ShapeCoercion world (L.rename rho) W :=
+  match plan with
+  | .same => left
+  | .union => .union left right
+
+mutual
+
+/-- Merge two certificates for one location at capturing types. -/
+noncomputable def Ty.Merge.action
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {world : World sigma} {S1 S2 S : Ty n}
+    {x : Fin m} :
+    (plan : Ty.Merge Gamma S1 S2 S) ->
+    (environment : Environment world Gamma rho) ->
+    LocationEvidence world x (S1.rename rho) ->
+    LocationEvidence world x (S2.rename rho) ->
+    LocationEvidence world x (S.rename rho)
+  | .same, _, left, _ => left
+  | .capt capturePlan shapePlan, environment, left, right =>
+      Shape.Merge.action shapePlan environment
+        (left.widenCaptureSet
+          (CaptureSet.Join.leftRelation capturePlan))
+        (right.widenCaptureSet
+          (CaptureSet.Join.rightRelation capturePlan))
+
+/-- Merge two shape certificates carrying one common outer capture contract. -/
+noncomputable def Shape.Merge.action
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {world : World sigma} {S1 S2 S : Shape n}
+    {C : CaptureSet m} {x : Fin m} :
+    (plan : Shape.Merge Gamma S1 S2 S) ->
+    (environment : Environment world Gamma rho) ->
+    LocationEvidence world x (.capt C (S1.rename rho)) ->
+    LocationEvidence world x (.capt C (S2.rename rho)) ->
+    LocationEvidence world x (.capt C (S.rename rho))
+  | .same, _, left, _ => left
+  | .inter, _, left, right => .inter left right
+  | .pair firstPlan memberPlan, environment, left, right => by
+      cases left with
+      | @pair _ _ _ _ _ _ _ _ _ leftDefinition _ _
+          leftLookup leftFirst leftMember leftCoverage =>
+        cases right with
+        | @pair _ _ _ _ _ _ _ _ _ rightDefinition _ _
+            rightLookup rightFirst rightMember _ =>
+          obtain ⟨valueEq, captureEq⟩ := leftLookup.unique rightLookup
+          cases valueEq
+          cases captureEq
+          have mergedFirstRealizes :=
+            Ty.Merge.action firstPlan environment leftFirst rightFirst
+          have extended := environment.snoc mergedFirstRealizes
+          have normalizedLeft := by
+            simpa only [← Tau.rename_openAt_eq_open_var,
+              Tau.rename_ext_openAt] using leftMember
+          have normalizedRight := by
+            simpa only [← Tau.rename_openAt_eq_open_var,
+              Tau.rename_ext_openAt] using rightMember
+          have mergedMember :=
+            Tau.Merge.action memberPlan extended normalizedLeft normalizedRight
+          refine .pair leftLookup mergedFirstRealizes ?_ leftCoverage
+          simpa only [← Tau.rename_openAt_eq_open_var,
+            Tau.rename_ext_openAt] using mergedMember
+
+/-- Merge realization evidence for term, type, or capture-set members. -/
+noncomputable def Tau.Merge.action
+    {n m : Nat} {Gamma : Ctx n} {rho : Valuation n m}
+    {sigma : Store m} {world : World sigma} {k : Kind}
+    {d1 d2 d : Tau n k} {referent : Path.Referent m} :
+    (plan : Tau.Merge Gamma d1 d2 d) ->
+    (environment : Environment world Gamma rho) ->
+    Realizes world referent (d1.rename rho) ->
+    Realizes world referent (d2.rename rho) ->
+    Realizes world referent (d.rename rho)
+  | .same, _, left, _ => left
+  | .term typePlan, environment, left, right => by
+      change Realizes world referent (.term _) at left right ⊢
+      cases left with
+      | loc left =>
+        cases right with
+        | loc right =>
+          exact .loc (Ty.Merge.action typePlan environment left right)
+  | .type lowerPlan upperPlan, environment, left, right => by
+      change Realizes world referent (.type _ _) at left right ⊢
+      cases left with
+      | type leftLower leftUpper =>
+        cases right with
+        | type rightLower rightUpper =>
+          exact .type
+            (Shape.Join.lowerAction lowerPlan leftLower rightLower)
+            (.trans (.inter leftUpper rightUpper)
+              (.merge environment upperPlan))
+  | .capture lowerPlan, _, left, right => by
+      change Realizes world referent (.capture _ _) at left right ⊢
+      cases left with
+      | capture leftLower leftUpper =>
+        cases right with
+        | capture rightLower _ =>
+          exact .capture
+            (CaptureSet.Join.lowerAction lowerPlan leftLower rightLower)
+            leftUpper
+
+end
+
 /-! ## Coercion sizes -/
 
 mutual
@@ -49,9 +195,7 @@ def ShapeCoercion.treeSize : ShapeCoercion world S T -> Nat
 | .unionLeft => 1
 | .unionRight => 1
 | .union left right => left.treeSize + right.treeSize + 1
-| .pairInter => 1
-| .pairTypeInter => 1
-| .pairTypeUnionInter => 1
+| .merge _ _ => 1
 | .widen _ _ => 1
 | .alias _ _ => 1
 | .selectLower _ lower => lower.treeSize + 2
@@ -142,74 +286,9 @@ noncomputable def Coercion.action
       (Coercion.term (TyCoercion.capt .refl right)).action (.loc possible)
     cases result with
     | loc mapped => exact .loc (mapped.widenCaptureSet captures)
-| .term (.capt captures .pairInter), .loc (.inter left right) => by
-    cases left with
-    | @pair _ _ _ _ _ _ _ _ _ leftDefinition _ _
-        leftLookup leftFirst leftMember leftCoverage =>
-        cases leftDefinition with
-        | val _ =>
-        cases right with
-        | @pair _ _ _ _ _ _ _ _ _ rightDefinition _ _
-            rightLookup _ rightMember _ =>
-            cases rightDefinition with
-            | val _ =>
-            obtain ⟨valueEq, captureEq⟩ :=
-              leftLookup.unique rightLookup
-            cases valueEq
-            cases captureEq
-            cases leftMember with
-            | loc leftPossible =>
-                cases rightMember with
-                | loc rightPossible =>
-                    exact .loc (.pair leftLookup leftFirst
-                      (.loc (.inter leftPossible rightPossible))
-                      (leftCoverage.comp captures))
-| .term (.capt captures .pairTypeInter), .loc (.inter left right) => by
-    cases left with
-    | @pair _ _ _ _ _ _ _ _ _ leftDefinition _ _
-        leftLookup leftFirst leftMember leftCoverage =>
-        cases leftDefinition with
-        | type _ =>
-        cases right with
-        | @pair _ _ _ _ _ _ _ _ _ rightDefinition _ _
-            rightLookup _ rightMember _ =>
-            cases rightDefinition with
-            | type _ =>
-            obtain ⟨valueEq, captureEq⟩ :=
-              leftLookup.unique rightLookup
-            cases valueEq
-            cases captureEq
-            cases leftMember with
-            | type leftLower leftUpper =>
-                cases rightMember with
-                | type _ rightUpper =>
-                    exact .loc (.pair leftLookup leftFirst
-                      (.type leftLower (.inter leftUpper rightUpper))
-                      (leftCoverage.comp captures))
-| .term (.capt captures .pairTypeUnionInter),
-    .loc (.inter left right) => by
-    cases left with
-    | @pair _ _ _ _ _ _ _ _ _ leftDefinition _ _
-        leftLookup leftFirst leftMember leftCoverage =>
-        cases leftDefinition with
-        | type _ =>
-        cases right with
-        | @pair _ _ _ _ _ _ _ _ _ rightDefinition _ _
-            rightLookup _ rightMember _ =>
-            cases rightDefinition with
-            | type _ =>
-            obtain ⟨valueEq, captureEq⟩ :=
-              leftLookup.unique rightLookup
-            cases valueEq
-            cases captureEq
-            cases leftMember with
-            | type leftLower leftUpper =>
-                cases rightMember with
-                | type rightLower rightUpper =>
-                    exact .loc (.pair leftLookup leftFirst
-                      (.type (.union leftLower rightLower)
-                        (.inter leftUpper rightUpper))
-                      (leftCoverage.comp captures))
+| .term (.capt captures (.merge environment plan)),
+    .loc (.inter left right) =>
+    .loc ((Shape.Merge.action plan environment left right).widenCaptureSet captures)
 | .term (.capt captures (.widen targetResolution target)),
     .loc (.single lookup sourceResolution sourceCoverage) => by
     cases sourceResolution.deterministic targetResolution
