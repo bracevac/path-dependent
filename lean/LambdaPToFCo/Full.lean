@@ -63,6 +63,7 @@ import LambdaPToFCo.Full.StaticAdaptation
 import LambdaPToFCo.Full.IntroductionCompiler
 import LambdaPToFCo.Full.PairIntroductionCompiler
 import LambdaPToFCo.Full.RecordImplementationStaticRegression
+import LambdaPToFCo.Full.RecordFirstLetPlanningRegression
 import LambdaPToFCo.Full.RecordIntroductionStaticRegression
 import LambdaPToFCo.Full.GeneralPairIntroductionStaticRegression
 import LambdaPToFCo.Full.GeneralPairLetPlanningRegression
