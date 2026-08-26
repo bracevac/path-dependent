@@ -72,8 +72,8 @@ def plan
 
 end PlanEndpoint
 
-/-- Result of derivation-directed proper covariance. Its public target
-producer is forced to retain the exact source subtyping derivation. -/
+/-- Internal result of derivation-indexed proper covariance. The refined high
+layer certifies the returned target plan against source structure. -/
 structure ProperPushResult
     {sourceView targetView : ScopeView n targetContext}
     (alignment : ScopeAlignment sourceView targetView)
@@ -100,8 +100,8 @@ def positive
 
 end ProperPushResult
 
-/-- Result of derivation-directed proper contravariance. Its public source
-demand is forced to retain the exact pull trace. -/
+/-- Internal result of derivation-indexed proper contravariance. The refined
+high layer retains the exact pulled demand trace. -/
 structure ProperPullResult
     {sourceView targetView : ScopeView n targetContext}
     (alignment : ScopeAlignment sourceView targetView)
