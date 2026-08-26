@@ -255,6 +255,144 @@ noncomputable def arguments {base : Ctx sig}
 
 end Interval
 
+/-! ## Outer pair repacking -/
+
+namespace Pair
+
+/-- Repack an outer pair after converting its Church representation.  The
+source package's actual hidden identity and payload are retained; only its
+`I -> representation` observation is postcomposed. -/
+private noncomputable def targetArguments (base : Ctx sig)
+    (sourceRepresentation targetRepresentation : Telescope sig)
+    (representation : Conversion base sourceRepresentation.existsTy
+      targetRepresentation.existsTy) :
+    Telescope.Args ((Direct.Pair.plan sourceRepresentation).context base)
+      (Direct.Pair.plan (targetRepresentation.rename
+        (Direct.Pair.plan sourceRepresentation).telescope.weaken)).telescope :=
+  let source := Direct.Pair.plan sourceRepresentation
+  let mapping := source.telescope.weaken
+  let targetAt := targetRepresentation.rename mapping
+  let representationFunction := representation.function.rename mapping
+  let representationTyping : Exp.HasType (source.context base)
+      representationFunction
+      (.arrow (Direct.Pair.finalRepresentationTy sourceRepresentation)
+        targetAt.existsTy) := by
+    simpa only [Direct.Pair.finalRepresentationTy, Ty.rename,
+      Package.existsTy_rename] using
+        representation.functionTyping.rename
+          (source.telescope.weaken_typed base)
+  let toTarget := Direct.Adapter.compose source.identityTy
+    (Direct.Pair.toRepresentation sourceRepresentation)
+    representationFunction
+  let toTargetTyping := Direct.Adapter.compose_hasType
+    (Direct.Pair.toRepresentation_hasType base sourceRepresentation)
+    representationTyping
+  .tvar source.identityTy
+    (.var source.payload (source.payload_hasType base)
+      (.var toTarget (by
+        exact (Direct.Pair.toRepresentationField_open targetAt
+          source.identityTy source.payload).symm ▸ toTargetTyping) .nil))
+
+private noncomputable def apply (base : Ctx sig)
+    (sourceRepresentation targetRepresentation : Telescope sig)
+    (representation : Conversion base sourceRepresentation.existsTy
+      targetRepresentation.existsTy)
+    (package : Exp sig) : Exp sig :=
+  let source := Direct.Pair.plan sourceRepresentation
+  let mapping := source.telescope.weaken
+  let targetAt := targetRepresentation.rename mapping
+  let result := (Direct.Pair.plan targetAt).pack
+    (targetArguments base sourceRepresentation targetRepresentation
+      representation)
+  source.unpack package (Direct.Pair.plan targetRepresentation).inputTy result
+
+private noncomputable def apply_hasType (base : Ctx sig)
+    (sourceRepresentation targetRepresentation : Telescope sig)
+    (representation : Conversion base sourceRepresentation.existsTy
+      targetRepresentation.existsTy)
+    {package : Exp sig}
+    (packageTyping : Exp.HasType base package
+      (Direct.Pair.plan sourceRepresentation).inputTy) :
+    Exp.HasType base
+      (apply base sourceRepresentation targetRepresentation representation
+        package)
+      (Direct.Pair.plan targetRepresentation).inputTy := by
+  let source := Direct.Pair.plan sourceRepresentation
+  let mapping := source.telescope.weaken
+  let targetAt := targetRepresentation.rename mapping
+  let arguments := targetArguments base sourceRepresentation
+    targetRepresentation representation
+  let result := (Direct.Pair.plan targetAt).pack arguments
+  have resultTyping : Exp.HasType (source.context base) result
+      ((Direct.Pair.plan targetRepresentation).inputTy.rename mapping) := by
+    rw [Direct.Pair.inputTy_rename]
+    exact (Direct.Pair.plan targetAt).pack_hasType arguments
+  exact source.unpack_hasType packageTyping resultTyping
+
+private noncomputable def function (base : Ctx sig)
+    (sourceRepresentation targetRepresentation : Telescope sig)
+    (representation : Conversion base sourceRepresentation.existsTy
+      targetRepresentation.existsTy) : Exp sig :=
+  let sourceInput :=
+    (Direct.Pair.plan sourceRepresentation).inputTy
+  let underInput := base.bindVar sourceInput
+  let mapping : Rename sig (sig ,, .var) := Rename.weaken .var
+  let sourceAt := sourceRepresentation.rename mapping
+  let targetAt := targetRepresentation.rename mapping
+  let representationAt : Conversion underInput sourceAt.existsTy
+      targetAt.existsTy :=
+    .mk (representation.function.rename mapping)
+      (by
+        simpa only [Ty.weaken, Ty.rename, Package.existsTy_rename] using
+          representation.functionTyping.weaken (.var sourceInput))
+  Direct.Adapter.ofBody sourceInput
+    (apply underInput sourceAt targetAt representationAt (.var .here))
+
+private noncomputable def function_hasType (base : Ctx sig)
+    (sourceRepresentation targetRepresentation : Telescope sig)
+    (representation : Conversion base sourceRepresentation.existsTy
+      targetRepresentation.existsTy) :
+    Exp.HasType base
+      (function base sourceRepresentation targetRepresentation
+        representation)
+      (.arrow (Direct.Pair.plan sourceRepresentation).inputTy
+        (Direct.Pair.plan targetRepresentation).inputTy) := by
+  apply Direct.Adapter.ofBody_hasType
+  let sourceInput := (Direct.Pair.plan sourceRepresentation).inputTy
+  let underInput := base.bindVar sourceInput
+  let mapping : Rename sig (sig ,, .var) := Rename.weaken .var
+  let sourceAt := sourceRepresentation.rename mapping
+  let targetAt := targetRepresentation.rename mapping
+  let representationAt : Conversion underInput sourceAt.existsTy
+      targetAt.existsTy :=
+    .mk (representation.function.rename mapping)
+      (by
+        simpa only [Ty.weaken, Ty.rename, Package.existsTy_rename] using
+          representation.functionTyping.weaken (.var sourceInput))
+  have variableTyping : Exp.HasType underInput (.var .here)
+      (Direct.Pair.plan sourceAt).inputTy := by
+    have raw : Exp.HasType underInput (.var .here)
+        (sourceInput.rename mapping) := .var Ctx.Lookup.here
+    rwa [Direct.Pair.inputTy_rename] at raw
+  have bodyTyping := apply_hasType underInput sourceAt targetAt
+    representationAt variableTyping
+  rw [<- Direct.Pair.inputTy_rename] at bodyTyping
+  exact bodyTyping
+
+/-- Lift a representation conversion through the stable outer pair shell. -/
+noncomputable def retarget (base : Ctx sig)
+    (sourceRepresentation targetRepresentation : Telescope sig)
+    (representation : Conversion base sourceRepresentation.existsTy
+      targetRepresentation.existsTy) :
+    Conversion base (Direct.Pair.plan sourceRepresentation).inputTy
+      (Direct.Pair.plan targetRepresentation).inputTy :=
+  .mk (function base sourceRepresentation targetRepresentation
+    representation)
+    (function_hasType base sourceRepresentation targetRepresentation
+      representation)
+
+end Pair
+
 end Conversion
 
 end LambdaPToFCo.Direct.Internal
