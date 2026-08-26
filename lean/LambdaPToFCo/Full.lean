@@ -24,6 +24,8 @@ import LambdaPToFCo.Full.PairStableAdapter
 import LambdaPToFCo.Full.StableIdentityReduction
 import LambdaPToFCo.Full.TranslationModelCore
 import LambdaPToFCo.Full.TranslationInterfaces
+import LambdaPToFCo.Full.PairedInstantiation
+import LambdaPToFCo.Full.WfPlan
 
 /-!
 # Full LambdaPFC compilation track
