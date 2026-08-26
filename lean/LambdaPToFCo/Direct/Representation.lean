@@ -216,7 +216,7 @@ private theorem Package.Plan.open_subst
     plan.telescope.weaken_liftSubst, ← Package.Plan.subst_comp,
     Package.Plan.rename_asSubst']
 
-private theorem Shape.open_rename
+theorem Shape.open_rename
     (shape : Shape source) (mapping : Rename source target) :
     (shape.rename shape.binders.weaken).rename
         (shape.liftRename mapping) =
@@ -230,7 +230,7 @@ private theorem Shape.open_rename
         ((Telescope.var type Telescope.nil).weakenType_liftRename
           type mapping)
 
-private theorem Shape.open_subst
+theorem Shape.open_subst
     (shape : Shape source) (substitution : Subst source target) :
     (shape.rename shape.binders.weaken).subst
         (shape.liftSubst substitution) =
