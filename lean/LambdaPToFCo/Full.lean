@@ -14,6 +14,7 @@ import LambdaPToFCo.Full.ValueModel
 import LambdaPToFCo.Full.AtomicModels
 import LambdaPToFCo.Full.FunctionModel
 import LambdaPToFCo.Full.PairModel
+import LambdaPToFCo.Full.IntervalPairModelV2
 import LambdaPToFCo.Full.ValueInterface
 import LambdaPToFCo.Full.PlanScope
 import LambdaPToFCo.Full.ScopeView
