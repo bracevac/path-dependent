@@ -65,6 +65,7 @@ import LambdaPToFCo.Full.StaticAdaptation
 import LambdaPToFCo.Full.TermCompilation
 import LambdaPToFCo.Full.NormalizedTermCompilation
 import LambdaPToFCo.Full.IntroductionCompiler
+import LambdaPToFCo.Full.AbstractionIntroductionCompiler
 import LambdaPToFCo.Full.PairIntroductionCompiler
 import LambdaPToFCo.Full.RecordImplementationStaticRegression
 import LambdaPToFCo.Full.RecordFirstLetPlanningRegression
@@ -73,6 +74,7 @@ import LambdaPToFCo.Full.RecordFirstValueStaticRegression
 import LambdaPToFCo.Full.RecordSecondLetPlanningRegression
 import LambdaPToFCo.Full.GeneralPairIntroductionStaticRegression
 import LambdaPToFCo.Full.GeneralPairLetPlanningRegression
+import LambdaPToFCo.Full.GeneralPairAbstractionIntroductionRegression
 import LambdaPToFCo.Full.NormalizedTermCompilationRegression
 import LambdaPToFCo.Full.GeneralPairObservedIntervalSubtypingRegression
 import LambdaPToFCo.Full.GeneralPairCanonicalIntervalSubtypingRegression
