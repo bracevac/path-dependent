@@ -6,6 +6,7 @@ import LambdaPToFCo.Full.IntroductionResultWellFormed
 import LambdaPToFCo.Full.IdentityRegression
 import LambdaPToFCo.Full.IllWfSubtypingRegression
 import LambdaPToFCo.Full.PathTypingUniqueness
+import LambdaPToFCo.Full.PathRootFactorizationRegression
 import LambdaPToFCo.Full.ContextSubtyping
 import LambdaPToFCo.Full.TranslationOrigins
 import LambdaPToFCo.Full.OriginConstruction
@@ -34,6 +35,7 @@ import LambdaPToFCo.Full.TargetModelRenaming
 import LambdaPToFCo.Full.ScopeModelBinding
 import LambdaPToFCo.Full.PairedInstantiation
 import LambdaPToFCo.Full.ModelInstantiationCoherence
+import LambdaPToFCo.Full.ScopedPathResolution
 import LambdaPToFCo.Full.WfPlan
 import LambdaPToFCo.Full.SubtypingCompilerCore
 import LambdaPToFCo.Full.IntervalSubtypingCompilerCore
