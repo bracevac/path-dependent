@@ -71,6 +71,7 @@ import LambdaPToFCo.Full.NormalizedTermCompilation
 import LambdaPToFCo.Full.IntroductionCompiler
 import LambdaPToFCo.Full.AbstractionIntroductionCompiler
 import LambdaPToFCo.Full.PairIntroductionCompiler
+import LambdaPToFCo.Full.IntervalPairIntroductionV2
 import LambdaPToFCo.Full.PairIntroductionTermCompiler
 import LambdaPToFCo.Full.RecordImplementationStaticRegression
 import LambdaPToFCo.Full.RecordFirstLetPlanningRegression
