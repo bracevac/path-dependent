@@ -28,8 +28,26 @@ noncomputable def pathPlan
     WfPlan.Proper sourceContext targetContext scope result :=
   WfPlan.properWithResolver resolver scope (PathTermTyping.resultWf typing)
 
-/-- A function-use demand is fixed by the actual application premise, while
-its target plan is the canonical plan derived from that path typing. -/
+/-- A function-use demand is fixed by the actual application premise and one
+demand-local certified plan for its function type.  Callers that have already
+translated the needed path can therefore avoid manufacturing a global path
+resolver. -/
+def functionDemandFromPlan
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    (scope : ScopeModel sourceContext targetContext)
+    {path : LambdaPFC.Path n}
+    {domain : LambdaPFC.Ty n} {codomain : LambdaPFC.Ty (n + 1)}
+    (typing : LambdaPFC.Tm.Ty sourceContext (.path path)
+      (.Fun domain codomain))
+    (planned : WfPlan.Proper sourceContext targetContext scope
+      (.Fun domain codomain)) :
+    ProperDemand sourceContext targetContext scope (.Fun domain codomain) :=
+  { trace := .root (.structural (.functionUse typing))
+    model := ⟨planned.plan, planned.model.demand⟩ }
+
+/-- Convenience wrapper that obtains the function plan from the total
+resolver API. -/
 noncomputable def functionDemand
     (resolver : WfPlan.Resolver)
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
@@ -40,8 +58,6 @@ noncomputable def functionDemand
     (typing : LambdaPFC.Tm.Ty sourceContext (.path path)
       (.Fun domain codomain)) :
     ProperDemand sourceContext targetContext scope (.Fun domain codomain) :=
-  let planned := pathPlan resolver scope typing
-  { trace := .root (.structural (.functionUse typing))
-    model := ⟨planned.plan, planned.model.demand⟩ }
+  functionDemandFromPlan scope typing (pathPlan resolver scope typing)
 
 end LambdaPToFCo.Full.ApplicationPlanning
