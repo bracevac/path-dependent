@@ -112,3 +112,31 @@ interval-member `sel_r`; finish the later nested-record values and
 application; turn the sealed path/subtyping/introduction pieces into total
 dispatchers; and then lift unrestricted CK image preservation. None of those
 claims is implied merely by the completed GeneralPair regression.
+
+## Capture-aware target follow-up
+
+After the full `LambdaPFC` compiler is complete, capture-bearing source
+versions will target a separate, future `SystemFCoCap` calculus. This leaves
+both the original `SystemFCo` and the current `SystemFCoExt` unchanged. The
+following is a design boundary, not an implemented target or compiler claim.
+
+Capture expressions use one pair of same-category metavariables throughout:
+
+```text
+C, D ::= empty | κ | atom(α) | C union D
+```
+
+Here `α, β` range over target identity types, `κ` is a bound capture variable,
+and `ε` ranges over evidence. The target propositions distinguish identity
+equality `α ≡ β`, capture equality `C ≡ D`, and subcapturing `C ⊆ D`. A source
+singleton capture `{p}` translates to `atom(I_p)`, where `I_p` is the stable
+hidden identity type assigned to `p`. Identity equality entails atom
+congruence,
+
+```text
+α ≡ β  implies  atom(α) ≡ atom(β),
+```
+
+There is no automatic converse deriving `α ≡ β` from
+`atom(α) ≡ atom(β)`: captures may also contain variables and unions. Thus `C`
+and `D`, and only those letters, serve as capture-expression metavariables.
