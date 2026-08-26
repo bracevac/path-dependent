@@ -1,7 +1,18 @@
 # LambdaPToFCo
 
-This directory develops a derivation-directed compilation of a restricted
-path-dependent-pairs calculus into `SystemFCo`.
+This directory contains two derivation-directed compilation tracks:
+
+- the established restricted compiler targets the original `SystemFCo`;
+- `Full/` is the in-progress constructor-complete compiler for the existing
+  `LambdaPFC` calculus and targets the separate `SystemFCoExt` library.
+
+The original `SystemFCo` is intentionally frozen. Full LambdaPFC needs
+computational adapters for dependent function and pair transport (and a
+Bottom eliminator), so those additions live only in the separately named
+target calculus rather than silently changing the theorem statements or
+dynamics of the original one.
+
+## Restricted compiler
 
 The representation is syntactic and object-language based. An abstract type
 member with bounds `L..U` is compiled to a Church package containing:
@@ -73,3 +84,17 @@ than merely target typability. The source-progress fact used to rule out
 environment evidence retained by `StateImage`. Standalone `SystemFCo` safety
 is available, but it is not a logical premise of this source-safety proof.
 No runtime realization judgment or runtime subtyping is used.
+
+## Full compiler track
+
+`Full.lean` aggregates the new compiler development. It does not assume
+`Fragment` or `OperationallyAdmissible`: its source views cover every existing
+`LambdaPFC.Tm.Ty` constructor, and its producer/demand interfaces retain the
+hidden identities needed by dependent selections, functions, and pairs.
+
+The full track is still a draft. It currently includes the separate target
+metatheory, faithful mixed-telescope value models, scoped path packages,
+demand-directed subtyping kernels, direct term introductions, and concrete
+full-calculus Record/GeneralPair introduction regressions. The remaining work
+is to compose the scoped path and heterogeneous subtyping evidence into the
+total term dispatcher, then lift the unrestricted CK machine simulation.
