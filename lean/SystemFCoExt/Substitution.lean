@@ -1,0 +1,1052 @@
+import SystemFCoExt.Syntax
+
+/-!
+Simultaneous substitution for the three namespaces of `SystemFCoExt`.
+
+A `Subst source target` acts on one heterogeneous signature.  Its three
+components record the syntactic class replacing variables of each kind; all
+lifting and composition operations remain uniform in the binder kind.
+-/
+
+namespace SystemFCoExt
+
+/-- A simultaneous substitution for term, type, and coercion variables. -/
+structure Subst (source target : Sig) where
+  var : BVar source .var -> Exp target
+  tvar : BVar source .tvar -> Ty target
+  cvar : BVar source .cvar -> Co target
+
+namespace Subst
+
+/-- Lift a substitution through one binder of an arbitrary kind. -/
+def lift (subst : Subst source target) (kind : Kind) :
+    Subst (source ,, kind) (target ,, kind) where
+  var := fun x => by
+    cases x with
+    | here => exact .var .here
+    | there x => exact (subst.var x).rename (Rename.weaken kind)
+  tvar := fun x => by
+    cases x with
+    | here => exact .tvar .here
+    | there x => exact (subst.tvar x).rename (Rename.weaken kind)
+  cvar := fun x => by
+    cases x with
+    | here => exact .cvar .here
+    | there x => exact (subst.cvar x).rename (Rename.weaken kind)
+
+/-- Lift a substitution through an ordered telescope of newer binders. -/
+def liftMany (subst : Subst source target) :
+    (binders : Sig) -> Subst (binders ++ source) (binders ++ target)
+  | [] => subst
+  | kind :: binders => (subst.liftMany binders).lift kind
+
+/-- The identity simultaneous substitution. -/
+def id : Subst sig sig where
+  var := .var
+  tvar := .tvar
+  cvar := .cvar
+
+/-- Replace the newest term variable by an expression. -/
+def openVar (argument : Exp sig) : Subst (sig ,, .var) sig where
+  var := fun
+    | .here => argument
+    | .there x => .var x
+  tvar := fun
+    | .there x => .tvar x
+  cvar := fun
+    | .there x => .cvar x
+
+/-- Replace the newest type variable by a type. -/
+def openTVar (argument : Ty sig) : Subst (sig ,, .tvar) sig where
+  var := fun
+    | .there x => .var x
+  tvar := fun
+    | .here => argument
+    | .there x => .tvar x
+  cvar := fun
+    | .there x => .cvar x
+
+/-- Replace the newest coercion variable by a coercion. -/
+def openCVar (argument : Co sig) : Subst (sig ,, .cvar) sig where
+  var := fun
+    | .there x => .var x
+  tvar := fun
+    | .there x => .tvar x
+  cvar := fun
+    | .here => argument
+    | .there x => .cvar x
+
+end Subst
+
+/-! ## Action on syntax -/
+
+def Ty.subst : Ty source -> Subst source target -> Ty target
+  | .top, _ => .top
+  | .tvar x, subst => subst.tvar x
+  | .arrow parameter result, subst =>
+      .arrow (parameter.subst subst) (result.subst subst)
+  | .poly body, subst => .poly (body.subst (subst.lift .tvar))
+  | .qual source result body, subst =>
+      .qual (source.subst subst) (result.subst subst)
+        (body.subst (subst.lift .cvar))
+
+mutual
+
+def Co.subst : Co source -> Subst source target -> Co target
+  | .cvar x, subst => subst.cvar x
+  | .refl ty, subst => .refl (ty.subst subst)
+  | .trans first second, subst =>
+      .trans (first.subst subst) (second.subst subst)
+  | .top ty, subst => .top (ty.subst subst)
+  | .bottom ty, subst => .bottom (ty.subst subst)
+  | .adapter source body, subst =>
+      .adapter (source.subst subst) (body.subst (subst.lift .var))
+  | .arrow parameter result, subst =>
+      .arrow (parameter.subst subst) (result.subst subst)
+  | .poly body, subst => .poly (body.subst (subst.lift .tvar))
+  | .qual argument result, subst =>
+      .qual (argument.subst (subst.lift .cvar))
+        (result.subst (subst.lift .cvar))
+
+def Exp.subst : Exp source -> Subst source target -> Exp target
+  | .var x, subst => subst.var x
+  | .abs parameter body, subst =>
+      .abs (parameter.subst subst) (body.subst (subst.lift .var))
+  | .app function argument, subst =>
+      .app (function.subst subst) (argument.subst subst)
+  | .tabs body, subst => .tabs (body.subst (subst.lift .tvar))
+  | .tapp function argument, subst =>
+      .tapp (function.subst subst) (argument.subst subst)
+  | .cabs source result body, subst =>
+      .cabs (source.subst subst) (result.subst subst)
+        (body.subst (subst.lift .cvar))
+  | .capp function argument, subst =>
+      .capp (function.subst subst) (argument.subst subst)
+  | .cast expression coercion, subst =>
+      .cast (expression.subst subst) (coercion.subst subst)
+
+end
+
+@[simp] theorem Ty.bottom_subst (substitution : Subst source target) :
+    (Ty.bottom : Ty source).subst substitution = Ty.bottom := rfl
+
+namespace Subst
+
+/-- Function extensionality for simultaneous substitutions. -/
+theorem funext {first second : Subst source target}
+    (var : forall x, first.var x = second.var x)
+    (tvar : forall x, first.tvar x = second.tvar x)
+    (cvar : forall x, first.cvar x = second.cvar x) :
+    first = second := by
+  cases first
+  cases second
+  simp only [mk.injEq]
+  constructor
+  · funext x
+    exact var x
+  constructor
+  · funext x
+    exact tvar x
+  · funext x
+    exact cvar x
+
+/-- Diagrammatic composition: apply `first`, then apply `second`. -/
+def comp (first : Subst source middle) (second : Subst middle target) :
+    Subst source target where
+  var := fun x => (first.var x).subst second
+  tvar := fun x => (first.tvar x).subst second
+  cvar := fun x => (first.cvar x).subst second
+
+@[simp] theorem lift_var_here (subst : Subst source target) :
+    (subst.lift .var).var (.here : BVar (source ,, .var) .var) =
+      .var .here := rfl
+
+@[simp] theorem lift_var_there
+    (subst : Subst source target) (x : BVar source .var) :
+    (subst.lift kind).var (.there x) =
+      (subst.var x).rename (Rename.weaken kind) := rfl
+
+@[simp] theorem lift_tvar_here (subst : Subst source target) :
+    (subst.lift .tvar).tvar (.here : BVar (source ,, .tvar) .tvar) =
+      .tvar .here := rfl
+
+@[simp] theorem lift_tvar_there
+    (subst : Subst source target) (x : BVar source .tvar) :
+    (subst.lift kind).tvar (.there x) =
+      (subst.tvar x).rename (Rename.weaken kind) := rfl
+
+@[simp] theorem lift_cvar_here (subst : Subst source target) :
+    (subst.lift .cvar).cvar (.here : BVar (source ,, .cvar) .cvar) =
+      .cvar .here := rfl
+
+@[simp] theorem lift_cvar_there
+    (subst : Subst source target) (x : BVar source .cvar) :
+    (subst.lift kind).cvar (.there x) =
+      (subst.cvar x).rename (Rename.weaken kind) := rfl
+
+end Subst
+
+/-! ## Renaming algebra -/
+
+namespace Rename
+
+theorem funext {first second : Rename source target}
+    (var : forall {kind} (x : BVar source kind),
+      first.var x = second.var x) : first = second := by
+  cases first
+  cases second
+  congr
+  funext kind x
+  exact var x
+
+/-- Lift a renaming through an ordered telescope of newer binders. -/
+def liftMany (rename : Rename source target) :
+    (binders : Sig) -> Rename (binders ++ source) (binders ++ target)
+  | [] => rename
+  | kind :: binders => (rename.liftMany binders).lift kind
+
+@[simp] theorem lift_id :
+    (Rename.id : Rename source source).lift kind = Rename.id := by
+  apply Rename.funext
+  intro other x
+  cases x <;> rfl
+
+theorem lift_comp
+    (first : Rename source middle) (second : Rename middle target) :
+    (first.comp second).lift kind =
+      (first.lift kind).comp (second.lift kind) := by
+  apply Rename.funext
+  intro other x
+  cases x <;> rfl
+
+theorem weaken_lift_comm (rename : Rename source target) :
+    (Rename.weaken kind).comp (rename.lift kind) =
+      rename.comp (Rename.weaken kind) := by
+  apply Rename.funext
+  intro other x
+  rfl
+
+@[simp] theorem id_comp (rename : Rename source target) :
+    Rename.id.comp rename = rename := by
+  apply Rename.funext
+  intro kind x
+  rfl
+
+@[simp] theorem comp_id (rename : Rename source target) :
+    rename.comp Rename.id = rename := by
+  apply Rename.funext
+  intro kind x
+  rfl
+
+theorem comp_assoc
+    (first : Rename source middle)
+    (second : Rename middle middle') (third : Rename middle' target) :
+    (first.comp second).comp third = first.comp (second.comp third) := by
+  apply Rename.funext
+  intro kind x
+  rfl
+
+@[simp] theorem liftMany_id :
+    (Rename.id : Rename source source).liftMany binders = Rename.id := by
+  induction binders with
+  | nil => rfl
+  | cons kind binders ih =>
+      simp only [Rename.liftMany, ih, lift_id]
+      rfl
+
+theorem liftMany_comp
+    (first : Rename source middle) (second : Rename middle target) :
+    (first.comp second).liftMany binders =
+      (first.liftMany binders).comp (second.liftMany binders) := by
+  induction binders with
+  | nil => rfl
+  | cons kind binders ih =>
+      simp only [Rename.liftMany, ih, lift_comp]
+      rfl
+
+end Rename
+
+@[simp] theorem Ty.rename_id (ty : Ty sig) : ty.rename Rename.id = ty := by
+  induction ty with
+  | top | tvar => rfl
+  | arrow parameter result parameter_ih result_ih =>
+      simp only [Ty.rename, parameter_ih, result_ih]
+  | poly body body_ih =>
+      simp only [Ty.rename, Rename.lift_id, body_ih]
+  | qual source result body source_ih result_ih body_ih =>
+      simp only [Ty.rename, Rename.lift_id, source_ih, result_ih, body_ih]
+
+mutual
+
+@[simp] theorem Co.rename_id : (coercion : Co sig) ->
+    coercion.rename Rename.id = coercion
+  | .cvar _ => rfl
+  | .refl ty => by simp only [Co.rename, Ty.rename_id]
+  | .trans first second => by
+      simp only [Co.rename, Co.rename_id first, Co.rename_id second]
+  | .top ty => by simp only [Co.rename, Ty.rename_id]
+  | .bottom ty => by simp only [Co.rename, Ty.rename_id]
+  | .adapter source body => by
+      simp only [Co.rename, Ty.rename_id, Rename.lift_id, Exp.rename_id body]
+  | .arrow parameter result => by
+      simp only [Co.rename, Co.rename_id parameter, Co.rename_id result]
+  | .poly body => by
+      simp only [Co.rename, Rename.lift_id, Co.rename_id body]
+  | .qual argument result => by
+      simp only [Co.rename, Rename.lift_id, Co.rename_id argument,
+        Co.rename_id result]
+termination_by coercion => coercion.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Co.complexity]
+  all_goals omega
+
+@[simp] theorem Exp.rename_id : (expression : Exp sig) ->
+    expression.rename Rename.id = expression
+  | .var _ => rfl
+  | .abs parameter body => by
+      simp only [Exp.rename, Ty.rename_id, Rename.lift_id, Exp.rename_id body]
+  | .app function argument => by
+      simp only [Exp.rename, Exp.rename_id function, Exp.rename_id argument]
+  | .tabs body => by
+      simp only [Exp.rename, Rename.lift_id, Exp.rename_id body]
+  | .tapp function argument => by
+      simp only [Exp.rename, Exp.rename_id function, Ty.rename_id]
+  | .cabs source result body => by
+      simp only [Exp.rename, Ty.rename_id, Rename.lift_id,
+        Exp.rename_id body]
+  | .capp function argument => by
+      simp only [Exp.rename, Exp.rename_id function, Co.rename_id argument]
+  | .cast expression coercion => by
+      simp only [Exp.rename, Exp.rename_id expression, Co.rename_id coercion]
+termination_by expression => expression.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Exp.complexity]
+  all_goals omega
+
+end
+
+theorem Ty.rename_comp (ty : Ty source)
+    (first : Rename source middle) (second : Rename middle target) :
+    (ty.rename first).rename second = ty.rename (first.comp second) := by
+  induction ty generalizing middle target with
+  | top | tvar => rfl
+  | arrow parameter result parameter_ih result_ih =>
+      simp only [Ty.rename, parameter_ih, result_ih]
+  | poly body body_ih =>
+      simp only [Ty.rename, body_ih, Rename.lift_comp]
+  | qual source result body source_ih result_ih body_ih =>
+      simp only [Ty.rename, source_ih, result_ih, body_ih,
+        Rename.lift_comp]
+
+mutual
+
+theorem Co.rename_comp : (coercion : Co source) ->
+    (first : Rename source middle) -> (second : Rename middle target) ->
+    (coercion.rename first).rename second =
+      coercion.rename (first.comp second)
+  | .cvar _, _, _ => rfl
+  | .refl ty, _, _ => by simp only [Co.rename, Ty.rename_comp]
+  | .trans firstCo secondCo, first, second => by
+      simp only [Co.rename, Co.rename_comp firstCo first second,
+        Co.rename_comp secondCo first second]
+  | .top ty, _, _ => by simp only [Co.rename, Ty.rename_comp]
+  | .bottom ty, _, _ => by simp only [Co.rename, Ty.rename_comp]
+  | .adapter source body, first, second => by
+      simp only [Co.rename, Ty.rename_comp,
+        Exp.rename_comp body (first.lift .var) (second.lift .var),
+        Rename.lift_comp]
+  | .arrow parameter result, first, second => by
+      simp only [Co.rename, Co.rename_comp parameter first second,
+        Co.rename_comp result first second]
+  | .poly body, first, second => by
+      simp only [Co.rename,
+        Co.rename_comp body (first.lift .tvar) (second.lift .tvar),
+        Rename.lift_comp]
+  | .qual argument result, first, second => by
+      simp only [Co.rename,
+        Co.rename_comp argument (first.lift .cvar) (second.lift .cvar),
+        Co.rename_comp result (first.lift .cvar) (second.lift .cvar),
+        Rename.lift_comp]
+termination_by coercion _ _ => coercion.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Co.complexity]
+  all_goals omega
+
+theorem Exp.rename_comp : (expression : Exp source) ->
+    (first : Rename source middle) -> (second : Rename middle target) ->
+    (expression.rename first).rename second =
+      expression.rename (first.comp second)
+  | .var _, _, _ => rfl
+  | .abs parameter body, first, second => by
+      simp only [Exp.rename, Ty.rename_comp,
+        Exp.rename_comp body (first.lift .var) (second.lift .var),
+        Rename.lift_comp]
+  | .app function argument, first, second => by
+      simp only [Exp.rename, Exp.rename_comp function first second,
+        Exp.rename_comp argument first second]
+  | .tabs body, first, second => by
+      simp only [Exp.rename,
+        Exp.rename_comp body (first.lift .tvar) (second.lift .tvar),
+        Rename.lift_comp]
+  | .tapp function argument, first, second => by
+      simp only [Exp.rename, Exp.rename_comp function first second,
+        Ty.rename_comp]
+  | .cabs source result body, first, second => by
+      simp only [Exp.rename, Ty.rename_comp,
+        Exp.rename_comp body (first.lift .cvar) (second.lift .cvar),
+        Rename.lift_comp]
+  | .capp function argument, first, second => by
+      simp only [Exp.rename, Exp.rename_comp function first second,
+        Co.rename_comp argument first second]
+  | .cast expression coercion, first, second => by
+      simp only [Exp.rename, Exp.rename_comp expression first second,
+        Co.rename_comp coercion first second]
+termination_by expression _ _ => expression.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Exp.complexity]
+  all_goals omega
+
+end
+
+theorem Ty.weaken_rename_comm (ty : Ty source)
+    (rename : Rename source target) :
+    (ty.weaken kind).rename (rename.lift kind) =
+      (ty.rename rename).weaken kind := by
+  unfold Ty.weaken
+  rw [Ty.rename_comp, Ty.rename_comp, Rename.weaken_lift_comm]
+
+theorem Co.weaken_rename_comm (coercion : Co source)
+    (rename : Rename source target) :
+    (coercion.weaken kind).rename (rename.lift kind) =
+      (coercion.rename rename).weaken kind := by
+  unfold Co.weaken
+  rw [Co.rename_comp, Co.rename_comp, Rename.weaken_lift_comm]
+
+theorem Exp.weaken_rename_comm (expression : Exp source)
+    (rename : Rename source target) :
+    (expression.weaken kind).rename (rename.lift kind) =
+      (expression.rename rename).weaken kind := by
+  unfold Exp.weaken
+  rw [Exp.rename_comp, Exp.rename_comp, Rename.weaken_lift_comm]
+
+/-- Renaming commutes with weakening, in the orientation used by binders. -/
+theorem Ty.rename_weaken_comm (ty : Ty source)
+    (rename : Rename source target) :
+    (ty.rename rename).weaken kind =
+      (ty.weaken kind).rename (rename.lift kind) :=
+  (ty.weaken_rename_comm rename).symm
+
+theorem Co.rename_weaken_comm (coercion : Co source)
+    (rename : Rename source target) :
+    (coercion.rename rename).weaken kind =
+      (coercion.weaken kind).rename (rename.lift kind) :=
+  (coercion.weaken_rename_comm rename).symm
+
+theorem Exp.rename_weaken_comm (expression : Exp source)
+    (rename : Rename source target) :
+    (expression.rename rename).weaken kind =
+      (expression.weaken kind).rename (rename.lift kind) :=
+  (expression.weaken_rename_comm rename).symm
+
+/-! ## The generic renaming/substitution square -/
+
+namespace Subst
+
+/-- Pointwise compatibility of a substitution with source and target renaming. -/
+structure RenameComm (subst : Subst source target)
+    (sourceRename : Rename source source')
+    (targetRename : Rename target target')
+    (subst' : Subst source' target') : Prop where
+  var : forall x,
+    (subst.var x).rename targetRename = subst'.var (sourceRename.var x)
+  tvar : forall x,
+    (subst.tvar x).rename targetRename = subst'.tvar (sourceRename.var x)
+  cvar : forall x,
+    (subst.cvar x).rename targetRename = subst'.cvar (sourceRename.var x)
+
+theorem RenameComm.lift
+    (comm : RenameComm subst sourceRename targetRename subst')
+    (kind : Kind) :
+    RenameComm (subst.lift kind) (sourceRename.lift kind)
+      (targetRename.lift kind) (subst'.lift kind) := by
+  constructor
+  · intro x
+    cases x with
+    | here => rfl
+    | there x =>
+        simp only [lift_var_there, Rename.lift_there]
+        rw [Exp.rename_comp, Rename.weaken_lift_comm,
+          ← Exp.rename_comp, comm.var]
+  · intro x
+    cases x with
+    | here => rfl
+    | there x =>
+        simp only [lift_tvar_there, Rename.lift_there]
+        rw [Ty.rename_comp, Rename.weaken_lift_comm,
+          ← Ty.rename_comp, comm.tvar]
+  · intro x
+    cases x with
+    | here => rfl
+    | there x =>
+        simp only [lift_cvar_there, Rename.lift_there]
+        rw [Co.rename_comp, Rename.weaken_lift_comm,
+          ← Co.rename_comp, comm.cvar]
+
+theorem RenameComm.liftMany
+    (comm : RenameComm subst sourceRename targetRename subst') :
+    (binders : Sig) ->
+    RenameComm (subst.liftMany binders)
+      (sourceRename.liftMany binders) (targetRename.liftMany binders)
+      (subst'.liftMany binders)
+  | [] => comm
+  | kind :: binders => (comm.liftMany binders).lift kind
+
+end Subst
+
+/-- The fundamental commuting-square theorem for types. -/
+theorem Ty.rename_subst_comm (ty : Ty source)
+    {source' target target' : Sig}
+    {substitution : Subst source target}
+    {sourceRename : Rename source source'}
+    {targetRename : Rename target target'}
+    {substitution' : Subst source' target'}
+    (comm : Subst.RenameComm substitution sourceRename targetRename
+      substitution') :
+    (ty.subst substitution).rename targetRename =
+      (ty.rename sourceRename).subst substitution' := by
+  induction ty generalizing source' target target' with
+  | top => rfl
+  | tvar =>
+      simp only [Ty.subst, Ty.rename]
+      exact comm.tvar _
+  | arrow parameter result parameter_ih result_ih =>
+      simp only [Ty.subst, Ty.rename, parameter_ih comm, result_ih comm]
+  | poly body body_ih =>
+      simp only [Ty.subst, Ty.rename]
+      exact congrArg Ty.poly (body_ih (comm.lift .tvar))
+  | qual source result body source_ih result_ih body_ih =>
+      simp only [Ty.subst, Ty.rename, source_ih comm, result_ih comm]
+      exact congrArg (Ty.qual _ _) (body_ih (comm.lift .cvar))
+
+mutual
+
+/-- The fundamental commuting-square theorem for coercions. -/
+theorem Co.rename_subst_comm
+    {source' target target' : Sig}
+    {substitution : Subst source target}
+    {sourceRename : Rename source source'}
+    {targetRename : Rename target target'}
+    {substitution' : Subst source' target'} :
+    (coercion : Co source) ->
+    (comm : Subst.RenameComm substitution sourceRename targetRename
+      substitution') ->
+    (coercion.subst substitution).rename targetRename =
+      (coercion.rename sourceRename).subst substitution'
+  | .cvar _, comm => by
+      simp only [Co.subst, Co.rename]
+      exact comm.cvar _
+  | .refl ty, comm => by
+      simp only [Co.subst, Co.rename, ty.rename_subst_comm comm]
+  | .trans first second, comm => by
+      simp only [Co.subst, Co.rename, first.rename_subst_comm comm,
+        second.rename_subst_comm comm]
+  | .top ty, comm => by
+      simp only [Co.subst, Co.rename, ty.rename_subst_comm comm]
+  | .bottom ty, comm => by
+      simp only [Co.subst, Co.rename, ty.rename_subst_comm comm]
+  | .adapter source body, comm => by
+      simp only [Co.subst, Co.rename, source.rename_subst_comm comm,
+        Exp.rename_subst_comm body (comm.lift .var)]
+  | .arrow parameter result, comm => by
+      simp only [Co.subst, Co.rename, parameter.rename_subst_comm comm,
+        result.rename_subst_comm comm]
+  | .poly body, comm => by
+      simp only [Co.subst, Co.rename]
+      exact congrArg Co.poly (body.rename_subst_comm (comm.lift .tvar))
+  | .qual argument result, comm => by
+      simp only [Co.subst, Co.rename]
+      congr
+      · exact argument.rename_subst_comm (comm.lift .cvar)
+      · exact result.rename_subst_comm (comm.lift .cvar)
+termination_by coercion _ => coercion.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Co.complexity]
+  all_goals omega
+
+/-- The fundamental commuting-square theorem for expressions. -/
+theorem Exp.rename_subst_comm
+    {source' target target' : Sig}
+    {substitution : Subst source target}
+    {sourceRename : Rename source source'}
+    {targetRename : Rename target target'}
+    {substitution' : Subst source' target'} :
+    (expression : Exp source) ->
+    (comm : Subst.RenameComm substitution sourceRename targetRename
+      substitution') ->
+    (expression.subst substitution).rename targetRename =
+      (expression.rename sourceRename).subst substitution'
+  | .var _, comm => by
+      simp only [Exp.subst, Exp.rename]
+      exact comm.var _
+  | .abs parameter body, comm => by
+      simp only [Exp.subst, Exp.rename, parameter.rename_subst_comm comm]
+      exact congrArg (Exp.abs _) (body.rename_subst_comm (comm.lift .var))
+  | .app function argument, comm => by
+      simp only [Exp.subst, Exp.rename, function.rename_subst_comm comm,
+        argument.rename_subst_comm comm]
+  | .tabs body, comm => by
+      simp only [Exp.subst, Exp.rename]
+      exact congrArg Exp.tabs (body.rename_subst_comm (comm.lift .tvar))
+  | .tapp function argument, comm => by
+      simp only [Exp.subst, Exp.rename, function.rename_subst_comm comm,
+        argument.rename_subst_comm comm]
+  | .cabs source result body, comm => by
+      simp only [Exp.subst, Exp.rename, source.rename_subst_comm comm,
+        result.rename_subst_comm comm]
+      exact congrArg (Exp.cabs _ _)
+        (body.rename_subst_comm (comm.lift .cvar))
+  | .capp function argument, comm => by
+      simp only [Exp.subst, Exp.rename, function.rename_subst_comm comm,
+        argument.rename_subst_comm comm]
+  | .cast expression coercion, comm => by
+      simp only [Exp.subst, Exp.rename, expression.rename_subst_comm comm,
+        coercion.rename_subst_comm comm]
+termination_by expression _ => expression.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Exp.complexity]
+  all_goals omega
+
+end
+
+namespace Subst
+
+/-- The commuting square induced by weakening a substitution. -/
+theorem weakenComm (subst : Subst source target) (kind : Kind) :
+    RenameComm subst (Rename.weaken kind) (Rename.weaken kind)
+      (subst.lift kind) := by
+  constructor <;> intro x <;> rfl
+
+end Subst
+
+/-! ## Weakening and substitution -/
+
+/-- Weakening/substitution commutation below an arbitrary binder telescope. -/
+theorem Ty.weaken_subst_comm
+    {ty : Ty (binders ++ source)} (subst : Subst source target) :
+    (ty.subst (subst.liftMany binders)).rename
+        ((Rename.weaken kind).liftMany binders) =
+      (ty.rename ((Rename.weaken kind).liftMany binders)).subst
+        ((subst.lift kind).liftMany binders) :=
+  ty.rename_subst_comm ((subst.weakenComm kind).liftMany binders)
+
+theorem Co.weaken_subst_comm
+    {coercion : Co (binders ++ source)} (subst : Subst source target) :
+    (coercion.subst (subst.liftMany binders)).rename
+        ((Rename.weaken kind).liftMany binders) =
+      (coercion.rename ((Rename.weaken kind).liftMany binders)).subst
+        ((subst.lift kind).liftMany binders) :=
+  coercion.rename_subst_comm ((subst.weakenComm kind).liftMany binders)
+
+theorem Exp.weaken_subst_comm
+    {expression : Exp (binders ++ source)} (subst : Subst source target) :
+    (expression.subst (subst.liftMany binders)).rename
+        ((Rename.weaken kind).liftMany binders) =
+      (expression.rename ((Rename.weaken kind).liftMany binders)).subst
+        ((subst.lift kind).liftMany binders) :=
+  expression.rename_subst_comm ((subst.weakenComm kind).liftMany binders)
+
+/-- The usual one-binder weakening/substitution equation. -/
+theorem Ty.weaken_subst_comm_base (ty : Ty source)
+    (subst : Subst source target) :
+    (ty.subst subst).weaken kind =
+      (ty.weaken kind).subst (subst.lift kind) :=
+  ty.rename_subst_comm (subst.weakenComm kind)
+
+theorem Co.weaken_subst_comm_base (coercion : Co source)
+    (subst : Subst source target) :
+    (coercion.subst subst).weaken kind =
+      (coercion.weaken kind).subst (subst.lift kind) :=
+  coercion.rename_subst_comm (subst.weakenComm kind)
+
+theorem Exp.weaken_subst_comm_base (expression : Exp source)
+    (subst : Subst source target) :
+    (expression.subst subst).weaken kind =
+      (expression.weaken kind).subst (subst.lift kind) :=
+  expression.rename_subst_comm (subst.weakenComm kind)
+
+/-! ## Substitution algebra -/
+
+namespace Subst
+
+@[simp] theorem lift_id :
+    (Subst.id : Subst source source).lift kind = Subst.id := by
+  apply Subst.funext
+  · intro x
+    cases x <;> rfl
+  · intro x
+    cases x <;> rfl
+  · intro x
+    cases x <;> rfl
+
+@[simp] theorem liftMany_id :
+    (Subst.id : Subst source source).liftMany binders = Subst.id := by
+  induction binders with
+  | nil => rfl
+  | cons kind binders ih =>
+      simp only [Subst.liftMany, ih, lift_id]
+      rfl
+
+/-- Composition is preserved by lifting through one binder. -/
+theorem comp_lift
+    (first : Subst source middle) (second : Subst middle target) :
+    (first.comp second).lift kind =
+      (first.lift kind).comp (second.lift kind) := by
+  apply Subst.funext
+  · intro x
+    cases x with
+    | here => rfl
+    | there x =>
+        simp only [lift_var_there, comp]
+        exact (first.var x).weaken_subst_comm_base second
+  · intro x
+    cases x with
+    | here => rfl
+    | there x =>
+        simp only [lift_tvar_there, comp]
+        exact (first.tvar x).weaken_subst_comm_base second
+  · intro x
+    cases x with
+    | here => rfl
+    | there x =>
+        simp only [lift_cvar_there, comp]
+        exact (first.cvar x).weaken_subst_comm_base second
+
+/-- Composition is preserved by lifting through a binder telescope. -/
+theorem comp_liftMany
+    (first : Subst source middle) (second : Subst middle target) :
+    (first.comp second).liftMany binders =
+      (first.liftMany binders).comp (second.liftMany binders) := by
+  induction binders with
+  | nil => rfl
+  | cons kind binders ih =>
+      simp only [Subst.liftMany, ih, comp_lift]
+      rfl
+
+end Subst
+
+@[simp] theorem Ty.subst_id (ty : Ty source) :
+    ty.subst Subst.id = ty := by
+  induction ty with
+  | top | tvar => rfl
+  | arrow parameter result parameter_ih result_ih =>
+      simp only [Ty.subst, parameter_ih, result_ih]
+  | poly body body_ih =>
+      simp only [Ty.subst, Subst.lift_id, body_ih]
+  | qual source result body source_ih result_ih body_ih =>
+      simp only [Ty.subst, Subst.lift_id, source_ih, result_ih, body_ih]
+
+mutual
+
+@[simp] theorem Co.subst_id : (coercion : Co source) ->
+    coercion.subst Subst.id = coercion
+  | .cvar _ => rfl
+  | .refl ty => by simp only [Co.subst, Ty.subst_id]
+  | .trans first second => by
+      simp only [Co.subst, Co.subst_id first, Co.subst_id second]
+  | .top ty => by simp only [Co.subst, Ty.subst_id]
+  | .bottom ty => by simp only [Co.subst, Ty.subst_id]
+  | .adapter source body => by
+      simp only [Co.subst, Ty.subst_id, Subst.lift_id, Exp.subst_id body]
+  | .arrow parameter result => by
+      simp only [Co.subst, Co.subst_id parameter, Co.subst_id result]
+  | .poly body => by
+      simp only [Co.subst, Subst.lift_id, Co.subst_id body]
+  | .qual argument result => by
+      simp only [Co.subst, Subst.lift_id, Co.subst_id argument,
+        Co.subst_id result]
+termination_by coercion => coercion.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Co.complexity]
+  all_goals omega
+
+@[simp] theorem Exp.subst_id : (expression : Exp source) ->
+    expression.subst Subst.id = expression
+  | .var _ => rfl
+  | .abs parameter body => by
+      simp only [Exp.subst, Ty.subst_id, Subst.lift_id, Exp.subst_id body]
+  | .app function argument => by
+      simp only [Exp.subst, Exp.subst_id function, Exp.subst_id argument]
+  | .tabs body => by
+      simp only [Exp.subst, Subst.lift_id, Exp.subst_id body]
+  | .tapp function argument => by
+      simp only [Exp.subst, Exp.subst_id function, Ty.subst_id]
+  | .cabs source result body => by
+      simp only [Exp.subst, Ty.subst_id, Subst.lift_id, Exp.subst_id body]
+  | .capp function argument => by
+      simp only [Exp.subst, Exp.subst_id function, Co.subst_id argument]
+  | .cast expression coercion => by
+      simp only [Exp.subst, Exp.subst_id expression, Co.subst_id coercion]
+termination_by expression => expression.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Exp.complexity]
+  all_goals omega
+
+end
+
+theorem Ty.subst_comp (ty : Ty source)
+    (first : Subst source middle) (second : Subst middle target) :
+    (ty.subst first).subst second = ty.subst (first.comp second) := by
+  induction ty generalizing middle target with
+  | top | tvar => rfl
+  | arrow parameter result parameter_ih result_ih =>
+      simp only [Ty.subst, parameter_ih, result_ih]
+  | poly body body_ih =>
+      simp only [Ty.subst, body_ih, Subst.comp_lift]
+  | qual source result body source_ih result_ih body_ih =>
+      simp only [Ty.subst, source_ih, result_ih, body_ih, Subst.comp_lift]
+
+mutual
+
+theorem Co.subst_comp : (coercion : Co source) ->
+    (first : Subst source middle) -> (second : Subst middle target) ->
+    (coercion.subst first).subst second =
+      coercion.subst (first.comp second)
+  | .cvar _, _, _ => rfl
+  | .refl ty, _, _ => by simp only [Co.subst, Ty.subst_comp]
+  | .trans firstCo secondCo, first, second => by
+      simp only [Co.subst, Co.subst_comp firstCo first second,
+        Co.subst_comp secondCo first second]
+  | .top ty, _, _ => by simp only [Co.subst, Ty.subst_comp]
+  | .bottom ty, _, _ => by simp only [Co.subst, Ty.subst_comp]
+  | .adapter source body, first, second => by
+      simp only [Co.subst, Ty.subst_comp,
+        Exp.subst_comp body (first.lift .var) (second.lift .var),
+        Subst.comp_lift]
+  | .arrow parameter result, first, second => by
+      simp only [Co.subst, Co.subst_comp parameter first second,
+        Co.subst_comp result first second]
+  | .poly body, first, second => by
+      simp only [Co.subst,
+        Co.subst_comp body (first.lift .tvar) (second.lift .tvar),
+        Subst.comp_lift]
+  | .qual argument result, first, second => by
+      simp only [Co.subst,
+        Co.subst_comp argument (first.lift .cvar) (second.lift .cvar),
+        Co.subst_comp result (first.lift .cvar) (second.lift .cvar),
+        Subst.comp_lift]
+termination_by coercion _ _ => coercion.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Co.complexity]
+  all_goals omega
+
+theorem Exp.subst_comp : (expression : Exp source) ->
+    (first : Subst source middle) -> (second : Subst middle target) ->
+    (expression.subst first).subst second =
+      expression.subst (first.comp second)
+  | .var _, _, _ => rfl
+  | .abs parameter body, first, second => by
+      simp only [Exp.subst, Ty.subst_comp,
+        Exp.subst_comp body (first.lift .var) (second.lift .var),
+        Subst.comp_lift]
+  | .app function argument, first, second => by
+      simp only [Exp.subst, Exp.subst_comp function first second,
+        Exp.subst_comp argument first second]
+  | .tabs body, first, second => by
+      simp only [Exp.subst,
+        Exp.subst_comp body (first.lift .tvar) (second.lift .tvar),
+        Subst.comp_lift]
+  | .tapp function argument, first, second => by
+      simp only [Exp.subst, Exp.subst_comp function first second,
+        Ty.subst_comp]
+  | .cabs source result body, first, second => by
+      simp only [Exp.subst, Ty.subst_comp,
+        Exp.subst_comp body (first.lift .cvar) (second.lift .cvar),
+        Subst.comp_lift]
+  | .capp function argument, first, second => by
+      simp only [Exp.subst, Exp.subst_comp function first second,
+        Co.subst_comp argument first second]
+  | .cast expression coercion, first, second => by
+      simp only [Exp.subst, Exp.subst_comp expression first second,
+        Co.subst_comp coercion first second]
+termination_by expression _ _ => expression.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Exp.complexity]
+  all_goals omega
+
+end
+
+namespace Subst
+
+@[simp] theorem id_comp (subst : Subst source target) :
+    Subst.id.comp subst = subst := by
+  apply Subst.funext <;> intro x <;> rfl
+
+@[simp] theorem comp_id (subst : Subst source target) :
+    subst.comp Subst.id = subst := by
+  apply Subst.funext
+  · intro x
+    exact Exp.subst_id _
+  · intro x
+    exact Ty.subst_id _
+  · intro x
+    exact Co.subst_id _
+
+theorem comp_assoc
+    (first : Subst source middle)
+    (second : Subst middle middle') (third : Subst middle' target) :
+    (first.comp second).comp third = first.comp (second.comp third) := by
+  apply Subst.funext
+  · intro x
+    exact Exp.subst_comp _ _ _
+  · intro x
+    exact Ty.subst_comp _ _ _
+  · intro x
+    exact Co.subst_comp _ _ _
+
+end Subst
+
+/-! ## Renamings as substitutions -/
+
+namespace Rename
+
+/-- Embed a sort-preserving renaming into simultaneous substitutions. -/
+def asSubst (rename : Rename source target) : Subst source target where
+  var := fun x => .var (rename.var x)
+  tvar := fun x => .tvar (rename.var x)
+  cvar := fun x => .cvar (rename.var x)
+
+@[simp] theorem asSubst_lift (rename : Rename source target) :
+    (rename.lift kind).asSubst = rename.asSubst.lift kind := by
+  apply Subst.funext
+  · intro x
+    cases x <;> rfl
+  · intro x
+    cases x <;> rfl
+  · intro x
+    cases x <;> rfl
+
+@[simp] theorem asSubst_liftMany (rename : Rename source target) :
+    (rename.liftMany binders).asSubst =
+      rename.asSubst.liftMany binders := by
+  induction binders with
+  | nil => rfl
+  | cons kind binders ih =>
+      simp only [Rename.liftMany, Subst.liftMany]
+      exact (asSubst_lift (rename.liftMany binders)).trans
+        (congrArg (fun substitution => substitution.lift kind) ih)
+
+@[simp] theorem asSubst_id :
+    (Rename.id : Rename source source).asSubst = Subst.id := rfl
+
+theorem asSubst_comp
+    (first : Rename source middle) (second : Rename middle target) :
+    (first.comp second).asSubst = first.asSubst.comp second.asSubst := by
+  apply Subst.funext <;> intro x <;> rfl
+
+end Rename
+
+@[simp] theorem Ty.subst_asSubst (ty : Ty source)
+    (rename : Rename source target) :
+    ty.subst rename.asSubst = ty.rename rename := by
+  induction ty generalizing target with
+  | top | tvar => rfl
+  | arrow parameter result parameter_ih result_ih =>
+      simp only [Ty.subst, Ty.rename, parameter_ih, result_ih]
+  | poly body body_ih =>
+      simp only [Ty.subst, Ty.rename, ← Rename.asSubst_lift, body_ih]
+  | qual source result body source_ih result_ih body_ih =>
+      simp only [Ty.subst, Ty.rename, source_ih, result_ih,
+        ← Rename.asSubst_lift, body_ih]
+
+mutual
+
+@[simp] theorem Co.subst_asSubst : (coercion : Co source) ->
+    (rename : Rename source target) ->
+    coercion.subst rename.asSubst = coercion.rename rename
+  | .cvar _, _ => rfl
+  | .refl ty, _ => by
+      simp only [Co.subst, Co.rename, Ty.subst_asSubst]
+  | .trans first second, _ => by
+      simp only [Co.subst, Co.rename, Co.subst_asSubst first,
+        Co.subst_asSubst second]
+  | .top ty, _ => by
+      simp only [Co.subst, Co.rename, Ty.subst_asSubst]
+  | .bottom ty, _ => by
+      simp only [Co.subst, Co.rename, Ty.subst_asSubst]
+  | .adapter source body, _ => by
+      simp only [Co.subst, Co.rename, Ty.subst_asSubst,
+        ← Rename.asSubst_lift, Exp.subst_asSubst body]
+  | .arrow parameter result, _ => by
+      simp only [Co.subst, Co.rename, Co.subst_asSubst parameter,
+        Co.subst_asSubst result]
+  | .poly body, _ => by
+      simp only [Co.subst, Co.rename, ← Rename.asSubst_lift,
+        Co.subst_asSubst body]
+  | .qual argument result, _ => by
+      simp only [Co.subst, Co.rename, ← Rename.asSubst_lift,
+        Co.subst_asSubst argument, Co.subst_asSubst result]
+termination_by coercion _ => coercion.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Co.complexity]
+  all_goals omega
+
+@[simp] theorem Exp.subst_asSubst : (expression : Exp source) ->
+    (rename : Rename source target) ->
+    expression.subst rename.asSubst = expression.rename rename
+  | .var _, _ => rfl
+  | .abs parameter body, _ => by
+      simp only [Exp.subst, Exp.rename, Ty.subst_asSubst,
+        ← Rename.asSubst_lift, Exp.subst_asSubst body]
+  | .app function argument, _ => by
+      simp only [Exp.subst, Exp.rename, Exp.subst_asSubst function,
+        Exp.subst_asSubst argument]
+  | .tabs body, _ => by
+      simp only [Exp.subst, Exp.rename, ← Rename.asSubst_lift,
+        Exp.subst_asSubst body]
+  | .tapp function argument, _ => by
+      simp only [Exp.subst, Exp.rename, Exp.subst_asSubst function,
+        Ty.subst_asSubst]
+  | .cabs source result body, _ => by
+      simp only [Exp.subst, Exp.rename, Ty.subst_asSubst,
+        ← Rename.asSubst_lift, Exp.subst_asSubst body]
+  | .capp function argument, _ => by
+      simp only [Exp.subst, Exp.rename, Exp.subst_asSubst function,
+        Co.subst_asSubst argument]
+  | .cast expression coercion, _ => by
+      simp only [Exp.subst, Exp.rename, Exp.subst_asSubst expression,
+        Co.subst_asSubst coercion]
+termination_by expression _ => expression.complexity
+decreasing_by
+  all_goals simp_wf
+  all_goals simp [Exp.complexity]
+  all_goals omega
+
+end
+
+theorem Ty.rename_asSubst (ty : Ty source)
+    (rename : Rename source target) :
+    ty.rename rename = ty.subst rename.asSubst :=
+  (ty.subst_asSubst rename).symm
+
+theorem Co.rename_asSubst (coercion : Co source)
+    (rename : Rename source target) :
+    coercion.rename rename = coercion.subst rename.asSubst :=
+  (coercion.subst_asSubst rename).symm
+
+theorem Exp.rename_asSubst (expression : Exp source)
+    (rename : Rename source target) :
+    expression.rename rename = expression.subst rename.asSubst :=
+  (expression.subst_asSubst rename).symm
+
+end SystemFCoExt
