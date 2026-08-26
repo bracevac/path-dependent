@@ -36,6 +36,7 @@ import LambdaPToFCo.Full.ScopeModelBinding
 import LambdaPToFCo.Full.PairedInstantiation
 import LambdaPToFCo.Full.ModelInstantiationCoherence
 import LambdaPToFCo.Full.ScopedPathResolution
+import LambdaPToFCo.Full.FocusedPathTranslationCore
 import LambdaPToFCo.Full.WfPlan
 import LambdaPToFCo.Full.SubtypingCompilerCore
 import LambdaPToFCo.Full.IntervalSubtypingCompilerCore
