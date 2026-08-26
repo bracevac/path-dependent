@@ -39,6 +39,7 @@ import LambdaPToFCo.Full.DemandDirectedSubtyping
 import LambdaPToFCo.Full.FunctionCodeBridgeConstruction
 import LambdaPToFCo.Full.PairRepresentationBridgeConstruction
 import LambdaPToFCo.Full.IntroductionCompiler
+import LambdaPToFCo.Full.PairIntroductionCompiler
 import LambdaPToFCo.Full.ApplicationCompilerCore
 import LambdaPToFCo.Full.ApplicationPlanning
 import LambdaPToFCo.Full.LetCompilerCore
