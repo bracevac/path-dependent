@@ -43,6 +43,7 @@ import LambdaPToFCo.Full.ProperMemberOpening
 import LambdaPToFCo.Full.ProperPairMemberPackage
 import LambdaPToFCo.Full.ScopedPathResolution
 import LambdaPToFCo.Full.FocusedPathTranslationCore
+import LambdaPToFCo.Full.ProperSelectionConstruction
 import LambdaPToFCo.Full.WfPlan
 import LambdaPToFCo.Full.SubtypingCompilerCore
 import LambdaPToFCo.Full.IntervalSubtypingCompilerCore
