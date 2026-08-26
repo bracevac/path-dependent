@@ -40,6 +40,7 @@ import LambdaPToFCo.Full.TranslationModelRebase
 import LambdaPToFCo.Full.DemandDirectedSubtyping
 import LambdaPToFCo.Full.FunctionCodeBridgeConstruction
 import LambdaPToFCo.Full.PairRepresentationBridgeConstruction
+import LambdaPToFCo.Full.PairSubtypingRuleConstruction
 import LambdaPToFCo.Full.IntervalPairRepresentationBridgeConstruction
 import LambdaPToFCo.Full.IntroductionCompiler
 import LambdaPToFCo.Full.PairIntroductionCompiler
