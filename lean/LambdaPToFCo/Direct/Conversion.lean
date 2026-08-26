@@ -29,6 +29,15 @@ structure Conversion (base : Ctx sig) (source target : Ty sig) : Type where
 
 namespace Conversion
 
+/-- Package an already constructed ordinary target function with its
+extrinsic typing derivation.  This is compiler IR: it accepts only
+`SystemFCo` syntax and does not expose a source-level adaptation callback. -/
+noncomputable def ofFunction {base : Ctx sig} {source target : Ty sig}
+    (function : Exp sig)
+    (typing : Exp.HasType base function (.arrow source target)) :
+    Conversion base source target :=
+  .mk function typing
+
 /-- Ordinary identity implements reflexive source subtyping. -/
 noncomputable def refl (base : Ctx sig) (type : Ty sig) :
     Conversion base type type :=
