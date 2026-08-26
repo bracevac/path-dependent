@@ -177,17 +177,23 @@ noncomputable def adaptation : PairFusedAdaptation
       GeneralPairIntroductionStaticRegression.bodyScope.view)
     firstSubtyping memberSubtyping source demand endpoints first member
 
+noncomputable def staticAdaptation : StaticAdaptation
+    (ScopeAlignment.identity
+      GeneralPairIntroductionStaticRegression.bodyScope.view)
+    pairSubtyping (.ordinary source) demand :=
+  StaticAdaptation.ofPair source adaptation
+
 noncomputable def outerAdapter : StableIdentity.Adapter BaseTargetContext
     source.plan demand.plan :=
-  adaptation.adapter
+  staticAdaptation.adapter
 
 noncomputable def adaptedPackage : CompiledPackage BaseTargetContext
     demand.plan :=
-  adaptation.package
+  staticAdaptation.package
 
 noncomputable def pushed : OrdinaryProducer SourceContext BaseTargetContext
     GeneralPairIntroductionStaticRegression.bodyScope TargetPair :=
-  adaptation.toOrdinary targetResult.model.producer
+  staticAdaptation.toOrdinary targetResult.model.producer
 
 noncomputable def targetTerm_hasType :
     Exp.HasType BaseTargetContext pushed.package.expression

@@ -1,5 +1,5 @@
 import LambdaPToFCo.Full.GeneralPairIntroductionStaticRegression
-import LambdaPToFCo.Full.DemandDirectedPairSubtyping
+import LambdaPToFCo.Full.StaticAdaptation
 import LambdaPToFCo.Full.TargetModelRenaming
 
 /-!
@@ -409,13 +409,21 @@ noncomputable def adaptation : PairFusedAdaptation
       GeneralPairIntroductionStaticRegression.bodyScope.view)
     firstSubtyping memberSubtyping source demand endpoints first member
 
+/- The dispatcher-facing sum embeds the sealed pair branch without changing
+its derivation, source, demand, alignment, or computed adapter. -/
+noncomputable def staticAdaptation : StaticAdaptation
+    (ScopeAlignment.identity
+      GeneralPairIntroductionStaticRegression.bodyScope.view)
+    pairSubtyping (.ordinary source) demand :=
+  StaticAdaptation.ofPair source adaptation
+
 noncomputable def outerAdapter : StableIdentity.Adapter BaseTargetContext
     source.plan demand.plan :=
-  adaptation.adapter
+  staticAdaptation.adapter
 
 noncomputable def adaptedPackage : CompiledPackage BaseTargetContext
     demand.plan :=
-  adaptation.package
+  staticAdaptation.package
 
 /-- The concrete result of the first source subsumption. Its origin is the
 exact pair derivation, its positive target model is the locally constructed
@@ -423,7 +431,7 @@ exact pair derivation, its positive target model is the locally constructed
 sealed rank-2 bridge adapter. -/
 noncomputable def pushed : OrdinaryProducer SourceContext BaseTargetContext
     GeneralPairIntroductionStaticRegression.bodyScope TargetPair :=
-  adaptation.toOrdinary targetResult.model.producer
+  staticAdaptation.toOrdinary targetResult.model.producer
 
 noncomputable def targetTerm_hasType :
     Exp.HasType BaseTargetContext pushed.package.expression
