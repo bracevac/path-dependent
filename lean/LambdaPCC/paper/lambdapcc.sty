@@ -13,14 +13,28 @@
 \newtheorem{theorem}{Theorem}
 \newtheorem{lemma}[theorem]{Lemma}
 
+% Rule labels are normal lowercase text.  The rule body is \small under
+% \rulesetup, so its \footnotesize label remains visually subordinate.
+\renewcommand{\rn}[1]{%
+  \ifmmode
+    \mathchoice
+      {\mbox{\choosernsize{\footnotesize}{\small}\normalfont #1}}
+      {\mbox{\choosernsize{\footnotesize}{\small}\normalfont #1}}
+      {\mbox{\choosernsize{\scriptsize}{\footnotesize}\normalfont #1}}
+      {\mbox{\choosernsize{\tiny}{\scriptsize}\normalfont #1}}%
+  \else
+    \hbox{\choosernsize{\footnotesize}{\small}\normalfont #1}%
+  \fi}
+
 % Clickable rule names.
 \newcounter{RuleRef}
+\newcommand{\rulename}[1]{\textnormal{\MakeLowercase{#1}}}
 \newcommand{\ruledef}[1]{%
-  \refstepcounter{RuleRef}\textsc{#1}\label{rule:#1}}
+  \refstepcounter{RuleRef}\rulename{#1}\label{rule:#1}}
 \newcommand{\ruleuse}[1]{%
-  \hyperref[rule:#1]{\textsc{#1}}}
+  \hyperref[rule:#1]{\rulename{#1}}}
 \newcommand{\ruleref}[1]{%
-  \textsc{(\hyperref[rule:#1]{#1})}}
+  \textnormal{(\hyperref[rule:#1]{\MakeLowercase{#1}})}}
 
 \newcommand{\lambdapcc}{\ensuremath{\lambda_{\mathsf p}^{\mathsf{cc}}}}
 \newcommand{\LET}{\textsf{let}\ }
