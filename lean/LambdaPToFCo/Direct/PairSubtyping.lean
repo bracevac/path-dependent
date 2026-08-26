@@ -1,4 +1,5 @@
 import LambdaPToFCo.Direct.AtomicSubtyping
+import LambdaPToFCo.Direct.ArgumentCancellation
 import LambdaPToFCo.Direct.TermIntroduction
 
 /-!
@@ -2003,6 +2004,606 @@ noncomputable def exactTypePair
     newestSingletonFamily, Representation.Env.enter,
     Representation.Env.extend, Fin.cases_zero, Shape.inputTy_rename] using
       exactSingletonInterval (label := label) firstRelation
+
+/-! ## Generic derivation-indexed proper-member covariance -/
+
+/-- Compiled first premise, indexed by the literal first premise of the
+source pair rule. -/
+structure FirstCompilation
+    {sourceContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    (base : Ctx sig)
+    (_derivation : LambdaPFC.Tau.Sub sourceContext
+      (.ty sourceFirstType) (.ty targetFirstType))
+    (sourceFirst targetFirst : Shape sig) : Type where
+  relation : Relation base sourceFirstType targetFirstType
+    sourceFirst targetFirst
+
+private def genericTargetFirstAtSource
+    (sourceFirst : Shape sig) (sourceMember : Shape sourceFirst.scope)
+    (targetFirst : Shape sig) :
+    Shape (sourceMemberAtBinder sourceFirst sourceMember).scope :=
+  targetFirst.rename (properOpening sourceFirst sourceMember)
+
+private def genericTargetMemberAtSource
+    (sourceFirst : Shape sig) (sourceMember : Shape sourceFirst.scope)
+    (targetFirst : Shape sig) (targetMember : Shape targetFirst.scope) :
+    Shape (genericTargetFirstAtSource sourceFirst sourceMember
+      targetFirst).scope :=
+  Pair.Proper.renameMember targetFirst targetMember
+    (properOpening sourceFirst sourceMember)
+
+private def genericTargetProperRepresentationAtSource
+    (sourceFirst : Shape sig) (sourceMember : Shape sourceFirst.scope)
+    (targetFirst : Shape sig) (targetMember : Shape targetFirst.scope) :
+    Telescope (sourceMemberAtBinder sourceFirst sourceMember).scope :=
+  Pair.Proper.representation
+    (genericTargetFirstAtSource sourceFirst sourceMember targetFirst)
+    (genericTargetMemberAtSource sourceFirst sourceMember targetFirst
+      targetMember)
+
+/-- Exact recursive scope reached after opening a source proper-pair
+representation and mapping its first component.  The source member is the
+actual interface already present in the opened representation; the target
+member is instantiated by the mapped target-first interface. -/
+noncomputable def properMemberScopeAt
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig} {finalContext : Ctx final}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
+      final)
+    (typed : Rename.Typed (sourceOpenedContext base sourceFirst sourceMember)
+      finalContext mapping)
+    (sourceFirstInterface : Shape.Interface finalContext
+      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
+        mapping))
+    (targetFirstInterface : Shape.Interface finalContext
+      ((genericTargetFirstAtSource sourceFirst sourceMember
+        targetFirst).rename mapping)) :
+    MemberScope sourceContext targetContext sourceFirstType targetFirstType
+      sourceMemberType targetMemberType finalContext :=
+  let openedMapping := properOpening sourceFirst sourceMember
+  let openedTyped := properOpening_typed base sourceFirst sourceMember
+  let sourceFirstRepOpened := firstRelation.sourceRep.targetRename
+    openedMapping openedTyped
+  let targetFirstRepOpened := firstRelation.targetRep.targetRename
+    openedMapping openedTyped
+  let sourceFirstRepAt := sourceFirstRepOpened.targetRename mapping typed
+  let targetFirstRepAt := targetFirstRepOpened.targetRename mapping typed
+  let sourceEnvironmentAt :=
+    (environments.source.targetRename openedMapping openedTyped).targetRename
+      mapping typed
+  let targetEnvironmentAt :=
+    (environments.target.targetRename openedMapping openedTyped).targetRename
+      mapping typed
+  let sourceMemberRepAt :=
+    (openedSourceMemberRep base sourceFirst sourceMember
+      sourceMemberRep).targetRename mapping typed
+  let targetMemberRepOpened := targetMemberRep.targetRename
+    (targetFirst.liftRename openedMapping)
+    (targetFirst.liftRename_typed openedTyped)
+  let targetMemberRepAt := targetMemberRepOpened.targetRename
+    ((targetFirst.rename openedMapping).liftRename mapping)
+    ((targetFirst.rename openedMapping).liftRename_typed typed)
+  let targetMemberInstantiated := targetMemberRepAt.targetSubst
+    targetFirstInterface.substitution
+    targetFirstInterface.arguments.substitution_typed
+  {
+    source := {
+      environment := extendAtInterface
+        sourceEnvironmentAt
+        sourceFirstType sourceFirstInterface sourceFirstRepAt
+      memberShape :=
+        (sourceMemberActual sourceFirst sourceMember).rename mapping
+      memberRep := sourceMemberRepAt
+    }
+    target := {
+      environment := extendAtInterface
+        targetEnvironmentAt
+        targetFirstType targetFirstInterface targetFirstRepAt
+      memberShape :=
+        (Pair.Proper.renameMember (targetFirst.rename openedMapping)
+          (Pair.Proper.renameMember targetFirst targetMember openedMapping)
+          mapping).subst
+          targetFirstInterface.substitution
+      memberRep := targetMemberInstantiated
+    }
+  }
+
+/-- Recursive compilation of the literal proper-member premise.  Its only
+higher-order field is indexed by that premise and receives the two exact
+first interfaces in the continuation scope chosen by the first relation. -/
+structure ProperMemberCompiler
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    (_derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)) : Type where
+  compile : {final : Sig} -> {finalContext : Ctx final} ->
+    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
+      final) ->
+    (typed : Rename.Typed
+      (sourceOpenedContext base sourceFirst sourceMember)
+      finalContext mapping) ->
+    (sourceFirstInterface : Shape.Interface finalContext
+      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
+        mapping)) ->
+    (targetFirstInterface : Shape.Interface finalContext
+      ((genericTargetFirstAtSource sourceFirst sourceMember
+        targetFirst).rename mapping)) ->
+    let scope := properMemberScopeAt environments firstRelation
+      sourceMemberRep targetMemberRep mapping typed sourceFirstInterface
+      targetFirstInterface
+    Relation finalContext sourceMemberType targetMemberType
+      scope.source.memberShape scope.target.memberShape
+
+private noncomputable def properMemberArguments
+    {base : Ctx sig} {first : Shape sig} {member : Shape first.scope}
+    (firstInterface : Shape.Interface base first)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename sig final)
+    (typed : Rename.Typed base finalContext mapping)
+    (memberInterface : Shape.Interface finalContext
+      ((member.subst firstInterface.substitution).rename mapping)) :
+    Telescope.Args finalContext
+      ((Pair.Proper.renameMember first member mapping).binders.subst
+        (firstInterface.rename mapping typed).substitution) := by
+  rw [Shape.binders_subst]
+  unfold Pair.Proper.renameMember
+  rw [← Shape.subst_interface_rename first member firstInterface
+    mapping typed]
+  exact memberInterface.arguments
+
+private noncomputable def properPackageContinuation
+    {base : Ctx sig} (first : Shape sig) (member : Shape first.scope)
+    (firstInterface : Shape.Interface base first) :
+    InterfaceMap.Continuation base
+      (member.subst firstInterface.substitution)
+      (Pair.Proper.representation first member).existsTy where
+  body mapping finalContext typed memberInterface :=
+    let firstAt := first.rename mapping
+    let memberAt := Pair.Proper.renameMember first member mapping
+    let firstAtInterface := firstInterface.rename mapping typed
+    Telescope.pack (Pair.Proper.representationArguments firstAt memberAt
+      firstAtInterface.arguments
+      (properMemberArguments firstInterface mapping typed memberInterface))
+  body_hasType mapping finalContext typed memberInterface := by
+    let firstAt := first.rename mapping
+    let memberAt := Pair.Proper.renameMember first member mapping
+    let firstAtInterface := firstInterface.rename mapping typed
+    have packed := Telescope.pack_hasType
+      (Pair.Proper.representationArguments firstAt memberAt
+        firstAtInterface.arguments
+        (properMemberArguments firstInterface mapping typed memberInterface))
+    simpa only [Package.existsTy_rename,
+      Pair.Proper.representation_rename] using packed
+
+private noncomputable def genericProperMemberBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig} {finalContext : Ctx final}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler environments firstRelation
+      sourceMemberRep targetMemberRep memberDerivation)
+    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
+      final)
+    (typed : Rename.Typed (sourceOpenedContext base sourceFirst sourceMember)
+      finalContext mapping)
+    (targetFirstInterfaceAtSource : Shape.Interface finalContext
+      ((targetFirstAtSource sourceFirst sourceMember targetFirst).rename
+        mapping)) :
+    Path.Body finalContext
+      ((genericTargetProperRepresentationAtSource sourceFirst sourceMember
+        targetFirst targetMember).existsTy.rename mapping) := by
+  let sourceFirstInterface : Shape.Interface finalContext
+      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
+        mapping) :=
+    (openedSourceFirstInterface base sourceFirst sourceMember).rename
+      mapping typed
+  let targetFirstInterface : Shape.Interface finalContext
+      ((genericTargetFirstAtSource sourceFirst sourceMember
+        targetFirst).rename mapping) := by
+    simpa only [genericTargetFirstAtSource, properOpening,
+      targetFirstAtSource,
+      sourceFirstAtBinder, Shape.rename_comp] using
+        targetFirstInterfaceAtSource
+  let scope := properMemberScopeAt environments firstRelation
+    sourceMemberRep targetMemberRep mapping typed sourceFirstInterface
+    targetFirstInterface
+  let memberRelation := compiler.compile mapping typed
+    sourceFirstInterface targetFirstInterface
+  let sourceMemberInterface : Shape.Interface finalContext
+      scope.source.memberShape := by
+    exact (openedSourceMemberInterface base sourceFirst sourceMember).rename
+      mapping typed
+  let targetFirstAt :=
+    (genericTargetFirstAtSource sourceFirst sourceMember targetFirst).rename
+      mapping
+  let targetMemberAt :=
+    Pair.Proper.renameMember
+      (genericTargetFirstAtSource sourceFirst sourceMember targetFirst)
+      (genericTargetMemberAtSource sourceFirst sourceMember targetFirst
+        targetMember) mapping
+  let answer := (Pair.Proper.representation targetFirstAt
+    targetMemberAt).existsTy
+  let continuation := properPackageContinuation targetFirstAt targetMemberAt
+    targetFirstInterface
+  let result := memberRelation.interfaceMap.run sourceMemberInterface
+    answer continuation
+  have resultTyping := memberRelation.interfaceMap.run_hasType
+    sourceMemberInterface answer continuation
+  have answerEq :
+      answer =
+        (genericTargetProperRepresentationAtSource sourceFirst sourceMember
+          targetFirst targetMember).existsTy.rename mapping := by
+    dsimp only [answer, targetFirstAt, targetMemberAt]
+    rw [Package.existsTy_rename]
+    unfold genericTargetProperRepresentationAtSource
+    rw [Pair.Proper.representation_rename]
+  exact {
+    expression := result
+    typing := answerEq ▸ resultTyping
+  }
+
+private noncomputable def genericProperFirstContinuation
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler environments firstRelation
+      sourceMemberRep targetMemberRep memberDerivation) :
+    InterfaceMap.Continuation
+      (sourceOpenedContext base sourceFirst sourceMember)
+      (targetFirstAtSource sourceFirst sourceMember targetFirst)
+      (genericTargetProperRepresentationAtSource sourceFirst sourceMember
+        targetFirst targetMember).existsTy where
+  body mapping _finalContext typed targetFirstInterface :=
+    (genericProperMemberBody environments firstRelation sourceMemberRep
+      targetMemberRep compiler mapping typed targetFirstInterface).expression
+  body_hasType mapping _finalContext typed targetFirstInterface :=
+    (genericProperMemberBody environments firstRelation sourceMemberRep
+      targetMemberRep compiler mapping typed targetFirstInterface).typing
+
+private theorem genericTargetProperRepresentationAtSource_eq
+    (sourceFirst : Shape sig) (sourceMember : Shape sourceFirst.scope)
+    (targetFirst : Shape sig) (targetMember : Shape targetFirst.scope) :
+    (properRepresentationAtBinder targetFirst targetMember).rename
+        (sourceOpening sourceFirst sourceMember) =
+      genericTargetProperRepresentationAtSource sourceFirst sourceMember
+        targetFirst targetMember := by
+  rw [← properRepresentationAtBinder_eq]
+  unfold genericTargetProperRepresentationAtSource
+    genericTargetFirstAtSource genericTargetMemberAtSource
+  unfold properOpening
+  calc
+    ((Pair.Proper.representation targetFirst targetMember).rename
+        (Rename.weaken .var)).rename
+        (sourceOpening sourceFirst sourceMember) =
+      (Pair.Proper.representation targetFirst targetMember).rename
+        ((Rename.weaken .var).comp
+          (sourceOpening sourceFirst sourceMember)) :=
+      Telescope.rename_comp _ _ _
+    _ = Pair.Proper.representation
+        (targetFirst.rename ((Rename.weaken .var).comp
+          (sourceOpening sourceFirst sourceMember)))
+        (Pair.Proper.renameMember targetFirst targetMember
+          ((Rename.weaken .var).comp
+            (sourceOpening sourceFirst sourceMember))) :=
+      Pair.Proper.representation_rename targetFirst targetMember _
+
+private noncomputable def genericProperNestedBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler environments firstRelation
+      sourceMemberRep targetMemberRep memberDerivation) :
+    Path.Body (sourceOpenedContext base sourceFirst sourceMember)
+      (genericTargetProperRepresentationAtSource sourceFirst sourceMember
+        targetFirst targetMember).existsTy :=
+  let relationAt := adjustedFirstRelationAtSource
+    (sourceMember := sourceMember) firstRelation
+  let sourceInterface : Shape.Interface
+      (sourceOpenedContext base sourceFirst sourceMember)
+      ((sourceFirstAtBinder sourceFirst).rename
+        (sourceOpening sourceFirst sourceMember)) := by
+    simpa only [properOpening, sourceFirstAtBinder,
+      Shape.rename_comp] using
+        openedSourceFirstInterface base sourceFirst sourceMember
+  let continuation := genericProperFirstContinuation environments
+    firstRelation sourceMemberRep targetMemberRep compiler
+  {
+    expression := relationAt.interfaceMap.run sourceInterface
+      (genericTargetProperRepresentationAtSource sourceFirst sourceMember
+        targetFirst targetMember).existsTy continuation
+    typing := relationAt.interfaceMap.run_hasType sourceInterface
+      (genericTargetProperRepresentationAtSource sourceFirst sourceMember
+        targetFirst targetMember).existsTy continuation
+  }
+
+private noncomputable def genericProperOpenedBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler environments firstRelation
+      sourceMemberRep targetMemberRep memberDerivation) :
+    Exp (properRepresentationAtBinder sourceFirst sourceMember).scope :=
+  Pair.fromSuffixExp (sourceFirstAtBinder sourceFirst).binders
+    (sourceMemberAtBinder sourceFirst sourceMember).binders
+    (genericProperNestedBody environments firstRelation sourceMemberRep
+      targetMemberRep compiler).expression
+
+private noncomputable def genericProperOpenedBody_hasType
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler environments firstRelation
+      sourceMemberRep targetMemberRep memberDerivation) :
+    Exp.HasType
+      ((properRepresentationAtBinder sourceFirst sourceMember).context
+        (base.bindVar
+          (Pair.Proper.representation sourceFirst sourceMember).existsTy))
+      (genericProperOpenedBody environments firstRelation sourceMemberRep
+        targetMemberRep compiler)
+      ((properRepresentationAtBinder targetFirst targetMember).existsTy.rename
+        (properRepresentationAtBinder sourceFirst sourceMember).weaken) := by
+  let firstTele := (sourceFirstAtBinder sourceFirst).binders
+  let memberTele := (sourceMemberAtBinder sourceFirst sourceMember).binders
+  have nested := (genericProperNestedBody environments firstRelation
+    sourceMemberRep targetMemberRep compiler).typing
+  have transported := fromSuffixExp_hasType firstTele memberTele nested
+  have targetEq :
+      (genericTargetProperRepresentationAtSource sourceFirst sourceMember
+        targetFirst targetMember).existsTy =
+      (((properRepresentationAtBinder targetFirst targetMember).existsTy.rename
+        firstTele.weaken).rename memberTele.weaken) := by
+    rw [← genericTargetProperRepresentationAtSource_eq]
+    rw [← Package.existsTy_rename]
+    unfold sourceOpening
+    rw [Ty.rename_comp]
+    rfl
+  have finalTypeEq :
+      Pair.fromSuffixTy firstTele memberTele
+        (genericTargetProperRepresentationAtSource sourceFirst sourceMember
+          targetFirst targetMember).existsTy =
+      (properRepresentationAtBinder targetFirst targetMember).existsTy.rename
+        (properRepresentationAtBinder sourceFirst sourceMember).weaken := by
+    calc
+      Pair.fromSuffixTy firstTele memberTele
+          (genericTargetProperRepresentationAtSource sourceFirst sourceMember
+            targetFirst targetMember).existsTy =
+        Pair.fromSuffixTy firstTele memberTele
+          (((properRepresentationAtBinder targetFirst targetMember).existsTy.rename
+            firstTele.weaken).rename memberTele.weaken) :=
+        congrArg (Pair.fromSuffixTy firstTele memberTele) targetEq
+      _ = (properRepresentationAtBinder targetFirst targetMember).existsTy.rename
+          (firstTele.append memberTele).weaken :=
+        fromSuffixTy_weaken firstTele memberTele _
+      _ = _ := rfl
+  exact finalTypeEq ▸ transported
+
+private noncomputable def genericProperRepresentationBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler environments firstRelation
+      sourceMemberRep targetMemberRep memberDerivation) : Exp (sig ,, .var) :=
+  (properRepresentationAtBinder sourceFirst sourceMember).unpack (.var .here)
+    (properRepresentationAtBinder targetFirst targetMember).existsTy
+    (genericProperOpenedBody environments firstRelation sourceMemberRep
+      targetMemberRep compiler)
+
+private noncomputable def genericProperRepresentationBody_hasType
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler environments firstRelation
+      sourceMemberRep targetMemberRep memberDerivation) :
+    Exp.HasType
+      (base.bindVar
+        (Pair.Proper.representation sourceFirst sourceMember).existsTy)
+      (genericProperRepresentationBody environments firstRelation
+        sourceMemberRep targetMemberRep compiler)
+      ((Pair.Proper.representation targetFirst targetMember).existsTy.weaken
+        .var) := by
+  have result :=
+    (properRepresentationAtBinder sourceFirst sourceMember).unpack_hasType
+      (properRepresentationVariable_hasType base sourceFirst sourceMember)
+      (genericProperOpenedBody_hasType environments firstRelation
+        sourceMemberRep targetMemberRep compiler)
+  rw [Ty.weaken, Package.existsTy_rename,
+    properRepresentationAtBinder_eq]
+  exact result
+
+private noncomputable def genericProperRepresentationConversion
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler environments firstRelation
+      sourceMemberRep targetMemberRep memberDerivation) :
+    Conversion base
+      (Pair.Proper.representation sourceFirst sourceMember).existsTy
+      (Pair.Proper.representation targetFirst targetMember).existsTy :=
+  Conversion.ofFunction
+    (Adapter.ofBody
+      (Pair.Proper.representation sourceFirst sourceMember).existsTy
+      (genericProperRepresentationBody environments firstRelation
+        sourceMemberRep targetMemberRep compiler))
+    (Adapter.ofBody_hasType
+      (genericProperRepresentationBody_hasType environments firstRelation
+        sourceMemberRep targetMemberRep compiler))
+
+/-- Compile the literal proper-member dependent-pair covariance rule. -/
+noncomputable def proper
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {label : LambdaPFC.Name}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    {firstDerivation : LambdaPFC.Tau.Sub sourceContext
+      (.ty sourceFirstType) (.ty targetFirstType)}
+    (first : FirstCompilation base firstDerivation sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (member : ProperMemberCompiler environments first.relation
+      sourceMemberRep targetMemberRep memberDerivation) :
+    Relation base
+      (.Pair sourceFirstType label (.ty sourceMemberType))
+      (.Pair targetFirstType label (.ty targetMemberType))
+      (.stable (Pair.Proper.plan sourceFirst sourceMember))
+      (.stable (Pair.Proper.plan targetFirst targetMember)) :=
+  let sourceRepresentation :=
+    Pair.Proper.representation sourceFirst sourceMember
+  let targetRepresentation :=
+    Pair.Proper.representation targetFirst targetMember
+  let representation := genericProperRepresentationConversion environments
+    first.relation sourceMemberRep targetMemberRep member
+  let conversion := Conversion.Pair.retarget base sourceRepresentation
+    targetRepresentation representation
+  Relation.ofConversion
+    (.properPair first.relation.sourceRep sourceMemberRep)
+    (.properPair first.relation.targetRep targetMemberRep)
+    conversion
 
 
 
