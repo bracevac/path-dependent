@@ -12,10 +12,12 @@ members directly at the plan level.
 For equal source contexts, the initial ordinary constructor is exact
 reflexivity between endpoints whose plans are propositionally equal; it
 computes the stable identity adapter internally. Across genuinely
-heterogeneous contexts, the only initial constructors are the canonical static
-maps to `Top.plan` and from `Bot.plan`. No constructor accepts a pull result,
-plan satisfaction, stable adapter, or adapter-producing callback, and the
-Bottom case makes no readiness claim.
+heterogeneous contexts, observation erasure is available whenever the exact
+negative endpoint is canonical `Top.plan`, in either context orientation;
+the contravariant orientation also retains the canonical static map from
+`Bot.plan`. No constructor accepts a pull result, plan satisfaction, stable
+adapter, or adapter-producing callback, and the Bottom case makes no
+readiness claim.
 -/
 
 namespace LambdaPToFCo.Full
@@ -215,6 +217,21 @@ inductive ContravariantHeterogeneousPlanAdaptation
       (producerPlan_eq : producer.plan = Bot.plan sig) :
       ContravariantHeterogeneousPlanAdaptation targetContext contexts alignment
         subtyping producer demand
+  | toTop
+      {n : Nat} {leftContext rightContext : Ctx n}
+      (contexts : ContextSubtyping leftContext rightContext)
+      {producerScope : ScopeModel rightContext targetContext}
+      {demandScope : ScopeModel leftContext targetContext}
+      (alignment : ScopeAlignment producerScope.view demandScope.view)
+      {sourceType targetType : Ty n}
+      (subtyping : Tau.Sub leftContext (.ty sourceType) (.ty targetType))
+      (producer : PositivePlan rightContext targetContext producerScope.view
+        sourceType)
+      (demand : NegativePlan leftContext targetContext demandScope.view
+        targetType)
+      (demandPlan_eq : demand.plan = Top.plan sig) :
+      ContravariantHeterogeneousPlanAdaptation targetContext contexts alignment
+        subtyping producer demand
 
 namespace ContravariantHeterogeneousPlanAdaptation
 
@@ -230,6 +247,9 @@ noncomputable def adapter
   | fromBottom _ _ _ _ demand producerPlan_eq =>
       rw [producerPlan_eq]
       exact StableIdentity.Adapter.fromBottom targetContext demand.plan
+  | toTop _ _ _ producer _ demandPlan_eq =>
+      rw [demandPlan_eq]
+      exact StableIdentity.Adapter.toTop targetContext producer.plan
 
 /-- Embed a sealed homogeneous adaptation while preserving the exact
 proof-relevant relation between the equal source contexts. No reverse context
@@ -270,6 +290,28 @@ noncomputable def canonicalBottom
     ContravariantHeterogeneousPlanAdaptation targetContext contexts alignment
       subtyping producer demand :=
   .fromBottom contexts alignment subtyping producer demand producerPlan_eq
+
+/-- Observation erasure is independent of which side of a heterogeneous
+context relation contains the positive endpoint. The exact negative endpoint
+is forced to canonical `Top.plan`, and the stable adapter is computed
+internally. -/
+noncomputable def observationFree
+    {n : Nat} {leftContext rightContext : Ctx n}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    {producerScope : ScopeModel rightContext targetContext}
+    {demandScope : ScopeModel leftContext targetContext}
+    {sourceType targetType : Ty n}
+    (contexts : ContextSubtyping leftContext rightContext)
+    (alignment : ScopeAlignment producerScope.view demandScope.view)
+    (subtyping : Tau.Sub leftContext (.ty sourceType) (.ty targetType))
+    (producer : PositivePlan rightContext targetContext producerScope.view
+      sourceType)
+    (demand : NegativePlan leftContext targetContext demandScope.view
+      targetType)
+    (demandPlan_eq : demand.plan = Top.plan sig) :
+    ContravariantHeterogeneousPlanAdaptation targetContext contexts alignment
+      subtyping producer demand :=
+  .toTop contexts alignment subtyping producer demand demandPlan_eq
 
 end ContravariantHeterogeneousPlanAdaptation
 
