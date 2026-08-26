@@ -11,11 +11,14 @@ demand and its structural model remain under the right context. No source
 path typing, well-formedness proof, or plan model is transported between
 those contexts.
 
-The initial family has only two closed realizations. Equal contexts delegate
-to an existing sealed `FusedAdaptation`; arbitrary related contexts may erase
-observations into the exact opaque demand. A structural heterogeneous member
-adapter will require further derivation-specific constructors rather than a
-free stable adapter.
+The initial producer-left family has only two closed realizations. Equal
+contexts delegate to an existing sealed `FusedAdaptation`; arbitrary related
+contexts may erase observations into the exact opaque demand. Its
+producer-right dual records the orientation required by contravariant
+function domains: the codomain derivation and demand remain on the left while
+the retained source result producer remains on the right. Neither family
+claims arbitrary observed recursive construction; that requires further
+derivation-specific constructors rather than a free stable adapter.
 -/
 
 namespace LambdaPToFCo.Full
@@ -132,5 +135,100 @@ noncomputable def package
   source.package.adapt adaptation.adapter
 
 end HeterogeneousAdaptation
+
+/-! ## Producer-right heterogeneous adaptation
+
+For a function premise `targetDomain <: sourceDomain`, context subtyping runs
+from `Γ,targetDomain` to `Γ,sourceDomain`. The codomain derivation and target
+demand inhabit the left context, but the retained source-function codomain
+producer is modeled under the right context. Reversing `ContextSubtyping`
+would be invalid, so this dual family records that orientation directly. -/
+
+/-- A sealed static adaptation whose source producer inhabits the right side
+of a context refinement while its derivation and demand inhabit the left.
+Both target scope views still share one concrete System FCo context. -/
+inductive ContravariantHeterogeneousAdaptation
+    {sig : Sig} (targetContext : SystemFCoExt.Ctx sig) :
+    {n : Nat} ->
+    {leftContext rightContext : Ctx n} ->
+    (contexts : ContextSubtyping leftContext rightContext) ->
+    {sourceScope : ScopeModel rightContext targetContext} ->
+    {demandScope : ScopeModel leftContext targetContext} ->
+    (alignment : ScopeAlignment sourceScope.view demandScope.view) ->
+    {sourceType targetType : Ty n} ->
+    (subtyping : Tau.Sub leftContext (.ty sourceType) (.ty targetType)) ->
+    (source : OrdinaryProducer rightContext targetContext sourceScope
+      sourceType) ->
+    (demand : ProperDemand leftContext targetContext demandScope targetType) ->
+    Type where
+  | ofFused
+      {n : Nat} {context : Ctx n}
+      {sourceScope demandScope : ScopeModel context targetContext}
+      {alignment : ScopeAlignment sourceScope.view demandScope.view}
+      {sourceType targetType : Ty n}
+      {subtyping : Tau.Sub context (.ty sourceType) (.ty targetType)}
+      {source : OrdinaryProducer context targetContext sourceScope sourceType}
+      {demand : ProperDemand context targetContext demandScope targetType}
+      (adaptation : FusedAdaptation alignment subtyping (.ordinary source)
+        demand) :
+      @ContravariantHeterogeneousAdaptation sig targetContext n context context
+        (.identity context) sourceScope demandScope alignment sourceType
+        targetType subtyping source demand
+  | toOpaque
+      {n : Nat} {leftContext rightContext : Ctx n}
+      (contexts : ContextSubtyping leftContext rightContext)
+      {sourceScope : ScopeModel rightContext targetContext}
+      {demandScope : ScopeModel leftContext targetContext}
+      (alignment : ScopeAlignment sourceScope.view demandScope.view)
+      {sourceType targetType : Ty n}
+      (subtyping : Tau.Sub leftContext (.ty sourceType) (.ty targetType))
+      (source : OrdinaryProducer rightContext targetContext sourceScope
+        sourceType)
+      (trace : DemandTrace leftContext targetType) :
+      ContravariantHeterogeneousAdaptation targetContext contexts alignment
+        subtyping source (opaqueDemand demandScope trace)
+
+namespace ContravariantHeterogeneousAdaptation
+
+/-- The exact stable adapter determined by the sealed dual evidence. -/
+noncomputable def adapter
+    (adaptation : ContravariantHeterogeneousAdaptation targetContext contexts
+      alignment subtyping source demand) :
+    StableIdentity.Adapter targetContext source.plan demand.plan :=
+  match adaptation with
+  | .ofFused fused => fused.adapter
+  | .toOpaque _ _ _ source _ =>
+      StableIdentity.Adapter.toTop targetContext source.plan
+
+/-- Equal-context fused evidence embeds without changing either endpoint. -/
+noncomputable def fromFused
+    {n : Nat} {context : Ctx n}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    {sourceScope demandScope : ScopeModel context targetContext}
+    {alignment : ScopeAlignment sourceScope.view demandScope.view}
+    {sourceType targetType : Ty n}
+    {subtyping : Tau.Sub context (.ty sourceType) (.ty targetType)}
+    {source : OrdinaryProducer context targetContext sourceScope sourceType}
+    {demand : ProperDemand context targetContext demandScope targetType}
+    (adaptation : FusedAdaptation alignment subtyping (.ordinary source)
+      demand) :
+    ContravariantHeterogeneousAdaptation targetContext (.identity context)
+      alignment subtyping source demand :=
+  .ofFused adaptation
+
+/-- Observation erasure is sound at any related producer-right/demand-left
+contexts. -/
+noncomputable def observationFree
+    (contexts : ContextSubtyping leftContext rightContext)
+    (alignment : ScopeAlignment sourceScope.view demandScope.view)
+    (subtyping : Tau.Sub leftContext (.ty sourceType) (.ty targetType))
+    (source : OrdinaryProducer rightContext targetContext sourceScope
+      sourceType)
+    (trace : DemandTrace leftContext targetType) :
+    ContravariantHeterogeneousAdaptation targetContext contexts alignment
+      subtyping source (opaqueDemand demandScope trace) :=
+  .toOpaque contexts alignment subtyping source trace
+
+end ContravariantHeterogeneousAdaptation
 
 end LambdaPToFCo.Full

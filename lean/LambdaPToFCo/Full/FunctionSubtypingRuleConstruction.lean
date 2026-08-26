@@ -2,7 +2,7 @@ import LambdaPToFCo.Full.HeterogeneousAdaptation
 import LambdaPToFCo.Full.FunctionCodeBridgeConstruction
 
 /-!
-# Closed observation-free function subtyping
+# Closed contextual function subtyping seams
 
 This leaf assembles one exact `Tau.Sub.fun` adaptation without transporting a
 codomain model between its two binder contexts. The contravariant domain is
@@ -12,10 +12,13 @@ retained source codomain producer model lives under
 `Gamma.snoc sourceDomain`.
 
 The contextual result family is indexed by the exact
-`ContextSubtyping.underBinder domainSubtyping` proof. Its only constructor
-forces the target codomain plan to canonical `Top.plan` and constructs the
-common-context result adapter internally with `StableIdentity.Adapter.toTop`.
-No result adapter, code coercion, or model transport is accepted as input.
+`ContextSubtyping.underBinder domainSubtyping` proof. Observation erasure
+remains a closed base case. A recursive result may instead consume sealed
+`ContravariantHeterogeneousAdaptation`: its derivation and target demand stay
+under the target-domain context on the relation's left, while the source
+codomain producer stays under the source-domain context on its right. No raw
+result adapter, callback, code coercion, path substitution, reverse context
+relation, or homogeneous model transport is accepted.
 -/
 
 namespace LambdaPToFCo.Full.FunctionSubtypingRuleConstruction
@@ -98,6 +101,24 @@ abbrev CodomainContexts
       (sourceContext.snoc sourceDomain) :=
   ContextSubtyping.underBinder domainSubtyping
 
+/-- The exact target context in which the wrapper has opened the received
+target-domain package, adapted it to the source domain, opened that package,
+and applied the retained source code. -/
+abbrev CommonResultContext
+    {sourceScope demandScope : ScopeModel sourceContext targetContext}
+    {sourceDomain targetDomain : LambdaPFC.Ty n}
+    {sourceCodomain targetCodomain : LambdaPFC.Ty (n + 1)}
+    {source : OrdinaryProducer sourceContext targetContext sourceScope
+      (.Fun sourceDomain sourceCodomain)}
+    {demand : ProperDemand sourceContext targetContext demandScope
+      (.Fun targetDomain targetCodomain)}
+    (endpoints : EndpointModels source demand) :=
+  (FunctionCodeBridgeConstruction.sourceDomainCommon
+    endpoints.sourceDomainPlan endpoints.targetDomainPlan).context
+    (FunctionCodeBridgeConstruction.commonContext targetContext
+      endpoints.sourceDomainPlan endpoints.sourceCodomainPlan
+      endpoints.targetDomainPlan)
+
 /-- Reindexing canonical `Top.plan` into the common result context remains
 canonical `Top.plan`. -/
 theorem targetResultPlan_top
@@ -135,6 +156,75 @@ private noncomputable def observationFreeResultAdapter
         endpoints.sourceDomainPlan endpoints.sourceCodomainPlan
         endpoints.targetDomainPlan)
 
+/-- Exact recursive codomain evidence in the code wrapper's common target
+context. The source producer/model remains under `Γ,sourceDomain`; the target
+demand/model and codomain derivation remain under `Γ,targetDomain`.
+
+The recursive field is the sealed producer-right heterogeneous family. This
+record contains no stable adapter or callback. It establishes the correctly
+oriented recursive boundary but does not claim that arbitrary observed
+codomains already have inhabitants. -/
+structure HeterogeneousResultInput
+    {sourceScope demandScope : ScopeModel sourceContext targetContext}
+    {sourceDomain targetDomain : LambdaPFC.Ty n}
+    {sourceCodomain targetCodomain : LambdaPFC.Ty (n + 1)}
+    {source : OrdinaryProducer sourceContext targetContext sourceScope
+      (.Fun sourceDomain sourceCodomain)}
+    {demand : ProperDemand sourceContext targetContext demandScope
+      (.Fun targetDomain targetCodomain)}
+    (endpoints : EndpointModels source demand)
+    (domainSubtyping : Tau.Sub sourceContext (.ty targetDomain)
+      (.ty sourceDomain))
+    (codomainSubtyping : Tau.Sub (sourceContext.snoc targetDomain)
+      (.ty sourceCodomain) (.ty targetCodomain)) : Type where
+  producerScope : ScopeModel (sourceContext.snoc sourceDomain)
+    (CommonResultContext endpoints)
+  demandScope : ScopeModel (sourceContext.snoc targetDomain)
+    (CommonResultContext endpoints)
+  alignment : ScopeAlignment producerScope.view demandScope.view
+  producer : OrdinaryProducer (sourceContext.snoc sourceDomain)
+    (CommonResultContext endpoints) producerScope sourceCodomain
+  demand : ProperDemand (sourceContext.snoc targetDomain)
+    (CommonResultContext endpoints) demandScope targetCodomain
+  adaptation : ContravariantHeterogeneousAdaptation
+    (CommonResultContext endpoints) (CodomainContexts domainSubtyping)
+    alignment codomainSubtyping producer demand
+  producerPlan_eq : producer.plan =
+    FunctionCodeBridgeConstruction.sourceResultPlan targetContext
+      endpoints.sourceDomainPlan endpoints.sourceCodomainPlan
+      endpoints.targetDomainPlan
+  demandPlan_eq : demand.plan =
+    FunctionCodeBridgeConstruction.targetResultPlan endpoints.sourceDomainPlan
+      endpoints.targetDomainPlan endpoints.targetCodomainPlan
+
+namespace HeterogeneousResultInput
+
+/-- Eliminate the sealed recursive evidence into exactly the result adapter
+required by `FunctionCodeBridgeConstruction`. -/
+noncomputable def resultAdapter
+    {sourceScope demandScope : ScopeModel sourceContext targetContext}
+    {sourceDomain targetDomain : LambdaPFC.Ty n}
+    {sourceCodomain targetCodomain : LambdaPFC.Ty (n + 1)}
+    {source : OrdinaryProducer sourceContext targetContext sourceScope
+      (.Fun sourceDomain sourceCodomain)}
+    {demand : ProperDemand sourceContext targetContext demandScope
+      (.Fun targetDomain targetCodomain)}
+    {endpoints : EndpointModels source demand}
+    {domainSubtyping : Tau.Sub sourceContext (.ty targetDomain)
+      (.ty sourceDomain)}
+    {codomainSubtyping : Tau.Sub (sourceContext.snoc targetDomain)
+      (.ty sourceCodomain) (.ty targetCodomain)}
+    (input : HeterogeneousResultInput endpoints domainSubtyping
+      codomainSubtyping) :
+    FunctionCodeBridgeConstruction.ResultAdapter targetContext
+      endpoints.sourceDomainPlan endpoints.sourceCodomainPlan
+      endpoints.targetDomainPlan endpoints.targetCodomainPlan where
+  adapter := by
+    rw [← input.producerPlan_eq, ← input.demandPlan_eq]
+    exact input.adaptation.adapter
+
+end HeterogeneousResultInput
+
 /-- Closed evidence for the contextual codomain result adapter. The context
 index can be constructed only from the exact contravariant domain premise. -/
 inductive ContextualResultAdaptationEvidence
@@ -161,9 +251,16 @@ inductive ContextualResultAdaptationEvidence
       ContextualResultAdaptationEvidence endpoints domainSubtyping codomainSubtyping
         (ContextSubtyping.underBinder domainSubtyping)
         (observationFreeResultAdapter endpoints targetPlan_eq)
+  | heterogeneous
+      (input : HeterogeneousResultInput endpoints domainSubtyping
+        codomainSubtyping) :
+      ContextualResultAdaptationEvidence endpoints domainSubtyping
+        codomainSubtyping (ContextSubtyping.underBinder domainSubtyping)
+        input.resultAdapter
 
 /-- The sealed result-adapter output. Its adapter is accepted only when the
-evidence family fixes it to the observation-free construction above. -/
+evidence family computes it from observation erasure or exact recursive
+producer-right heterogeneous evidence. -/
 structure ContextualResultAdaptation
     {sourceScope demandScope : ScopeModel sourceContext targetContext}
     {sourceDomain targetDomain : LambdaPFC.Ty n}
@@ -208,6 +305,29 @@ noncomputable def observationFree
       (ContextSubtyping.underBinder domainSubtyping) codomainSubtyping where
   resultAdapter := observationFreeResultAdapter endpoints targetPlan_eq
   evidence := .observationFree targetPlan_eq
+
+/-- Consume the correctly oriented sealed recursive codomain adaptation.
+This computes the exact result adapter; it does not accept one as input. -/
+noncomputable def ofHeterogeneous
+    {sourceScope demandScope : ScopeModel sourceContext targetContext}
+    {sourceDomain targetDomain : LambdaPFC.Ty n}
+    {sourceCodomain targetCodomain : LambdaPFC.Ty (n + 1)}
+    {source : OrdinaryProducer sourceContext targetContext sourceScope
+      (.Fun sourceDomain sourceCodomain)}
+    {demand : ProperDemand sourceContext targetContext demandScope
+      (.Fun targetDomain targetCodomain)}
+    {endpoints : EndpointModels source demand}
+    {domainSubtyping : Tau.Sub sourceContext (.ty targetDomain)
+      (.ty sourceDomain)}
+    {codomainSubtyping : Tau.Sub (sourceContext.snoc targetDomain)
+      (.ty sourceCodomain) (.ty targetCodomain)}
+    (input : HeterogeneousResultInput endpoints domainSubtyping
+      codomainSubtyping) :
+    ContextualResultAdaptation endpoints domainSubtyping
+      (ContextSubtyping.underBinder domainSubtyping)
+      codomainSubtyping where
+  resultAdapter := input.resultAdapter
+  evidence := .heterogeneous input
 
 end ContextualResultAdaptation
 
