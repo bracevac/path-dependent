@@ -19,6 +19,7 @@ import LambdaPToFCo.Full.FunctionInterface
 import LambdaPToFCo.Full.PairInterface
 import LambdaPToFCo.Full.PathPackageZipper
 import LambdaPToFCo.Full.StableIdentity
+import LambdaPToFCo.Full.StableIdentitySubstitution
 import LambdaPToFCo.Full.FunctionStableAdapter
 import LambdaPToFCo.Full.PairStableAdapter
 import LambdaPToFCo.Full.StableIdentityReduction
