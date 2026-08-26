@@ -715,6 +715,22 @@ def substitution {sig : Sig} {base : Ctx sig} {tele : Telescope sig} :
 | @Args.cvar _ _ _ _ tail argument _ rest =>
     (tail.liftSubst (Subst.openCVar argument)).comp rest.substitution
 
+end Args
+
+/-- Typed arguments extracted from a substitution whose source is an opened
+telescope scope.  `cancel` records that reopening those arguments after the
+ambient base substitution recovers the supplied substitution exactly. -/
+structure SubstitutionArguments
+    (tele : Telescope source) {target : Sig} (targetContext : Ctx target)
+    (opening : Subst tele.scope target) : Type where
+  arguments : Args targetContext
+    (tele.subst (tele.weaken.asSubst.comp opening))
+  cancel :
+    (tele.liftSubst (tele.weaken.asSubst.comp opening)).comp
+        arguments.substitution = opening
+
+namespace Args
+
 /-- `instantiate` is exactly ordinary type substitution by the heterogeneous
 argument substitution. -/
 theorem instantiate_eq_subst
@@ -1694,6 +1710,266 @@ theorem identity_liftRename_cancel
             (identity tail (base.bindCVar source target)).substitution :=
           eq_of_heq whole
         _ = Subst.id := ih (base.bindCVar source target)
+
+private theorem openedSubst_var
+    (tail : Telescope (source ,, .var))
+    (opening : Subst tail.scope target) :
+    let total :=
+      (((Rename.weaken .var).comp tail.weaken).asSubst).comp opening
+    let argument :=
+      ((.var .here : Exp (source ,, .var)).rename tail.weaken).subst opening
+    (total.lift .var).comp (Subst.openVar argument) =
+      tail.weaken.asSubst.comp opening := by
+  dsimp only
+  apply Subst.funext
+  · intro index
+    cases index with
+    | here => rfl
+    | there index =>
+        exact Exp.weaken_subst_cancel _ _
+          (Subst.weakenAsSubst_comp_openVar _)
+  · intro index
+    cases index with
+    | there index =>
+        exact Ty.weaken_subst_cancel _ _
+          (Subst.weakenAsSubst_comp_openVar _)
+  · intro index
+    cases index with
+    | there index =>
+        exact Co.weaken_subst_cancel _ _
+          (Subst.weakenAsSubst_comp_openVar _)
+
+private theorem openedSubst_tvar
+    (tail : Telescope (source ,, .tvar))
+    (opening : Subst tail.scope target) :
+    let total :=
+      (((Rename.weaken .tvar).comp tail.weaken).asSubst).comp opening
+    let argument :=
+      ((.tvar .here : Ty (source ,, .tvar)).rename tail.weaken).subst opening
+    (total.lift .tvar).comp (Subst.openTVar argument) =
+      tail.weaken.asSubst.comp opening := by
+  dsimp only
+  apply Subst.funext
+  · intro index
+    cases index with
+    | there index =>
+        exact Exp.weaken_subst_cancel _ _
+          (Subst.weakenAsSubst_comp_openTVar _)
+  · intro index
+    cases index with
+    | here => rfl
+    | there index =>
+        exact Ty.weaken_subst_cancel _ _
+          (Subst.weakenAsSubst_comp_openTVar _)
+  · intro index
+    cases index with
+    | there index =>
+        exact Co.weaken_subst_cancel _ _
+          (Subst.weakenAsSubst_comp_openTVar _)
+
+private theorem openedSubst_cvar
+    (tail : Telescope (source ,, .cvar))
+    (opening : Subst tail.scope target) :
+    let total :=
+      (((Rename.weaken .cvar).comp tail.weaken).asSubst).comp opening
+    let argument :=
+      ((.cvar .here : Co (source ,, .cvar)).rename tail.weaken).subst opening
+    (total.lift .cvar).comp (Subst.openCVar argument) =
+      tail.weaken.asSubst.comp opening := by
+  dsimp only
+  apply Subst.funext
+  · intro index
+    cases index with
+    | there index =>
+        exact Exp.weaken_subst_cancel _ _
+          (Subst.weakenAsSubst_comp_openCVar _)
+  · intro index
+    cases index with
+    | there index =>
+        exact Ty.weaken_subst_cancel _ _
+          (Subst.weakenAsSubst_comp_openCVar _)
+  · intro index
+    cases index with
+    | here => rfl
+    | there index =>
+        exact Co.weaken_subst_cancel _ _
+          (Subst.weakenAsSubst_comp_openCVar _)
+
+/-- Extract every telescope field from an arbitrary typed substitution out
+of the telescope's opened scope.  This is the target-only context
+decomposition used when a later continuation recloses a dependent package. -/
+noncomputable def fromOpenedSubst
+    (tele : Telescope source) (sourceContext : Ctx source)
+    {target : Sig} {targetContext : Ctx target}
+    (opening : Subst tele.scope target)
+    (typed : Subst.Typed (tele.context sourceContext) targetContext opening) :
+    SubstitutionArguments tele targetContext opening := by
+  induction tele with
+  | nil =>
+      refine { arguments := .nil, cancel := ?_ }
+      change (Subst.id.comp opening).comp Subst.id = opening
+      rw [Subst.id_comp, Subst.comp_id]
+  | @var sig type tail ih =>
+      let total :=
+        (((Rename.weaken .var).comp tail.weaken).asSubst).comp opening
+      let argument : Exp target :=
+        ((.var .here : Exp (_ ,, .var)).rename tail.weaken).subst opening
+      have immediate : Exp.HasType (sourceContext.bindVar type)
+          (.var .here) (type.weaken .var) := .var .here
+      have argumentTyping :=
+        (immediate.rename (tail.weaken_typed _)).subst typed
+      have argumentTyping' : Exp.HasType targetContext argument
+          (type.subst total) := by
+        simpa only [argument, total, Ty.weaken, Ty.rename_comp,
+          Ty.rename_asSubst, Ty.subst_comp] using argumentTyping
+      let rest := ih (sourceContext := sourceContext.bindVar type)
+        opening typed
+      have opened := openedSubst_var tail opening
+      have tailEqual :
+          (tail.subst (total.lift .var)).subst
+              (Subst.openVar argument) =
+            tail.subst (tail.weaken.asSubst.comp opening) := by
+        rw [tail.subst_comp, opened]
+      let restArguments : Args targetContext
+          ((tail.subst (total.lift .var)).subst
+            (Subst.openVar argument)) :=
+        tailEqual.symm ▸ rest.arguments
+      refine {
+        arguments := .var argument argumentTyping' restArguments
+        cancel := ?_
+      }
+      simp only [liftSubst]
+      have lifted := tail.liftSubst_comp_heq
+        (total.lift .var) (Subst.openVar argument)
+      have restCast := Args.substitution_transport_heq' tailEqual.symm
+        rest.arguments
+      have firstPair : HEq
+          ((tail.liftSubst (total.lift .var)).comp
+            ((tail.subst (total.lift .var)).liftSubst
+              (Subst.openVar argument)))
+          (tail.liftSubst (tail.weaken.asSubst.comp opening)) :=
+        HEq.trans lifted.symm (by rw [opened])
+      have whole := Subst.comp_heq rfl
+        (congrArg Telescope.scope tailEqual) rfl firstPair restCast
+      calc
+        _ = ((tail.liftSubst (total.lift .var)).comp
+              ((tail.subst (total.lift .var)).liftSubst
+                (Subst.openVar argument))).comp
+              restArguments.substitution :=
+          (Subst.comp_assoc _ _ _).symm
+        _ = (tail.liftSubst
+              (tail.weaken.asSubst.comp opening)).comp
+              rest.arguments.substitution := eq_of_heq whole
+        _ = opening := rest.cancel
+  | @tvar sig tail ih =>
+      let total :=
+        (((Rename.weaken .tvar).comp tail.weaken).asSubst).comp opening
+      let argument : Ty target :=
+        ((.tvar .here : Ty (_ ,, .tvar)).rename tail.weaken).subst opening
+      let rest := ih (sourceContext := sourceContext.bindTVar)
+        opening typed
+      have opened := openedSubst_tvar tail opening
+      have tailEqual :
+          (tail.subst (total.lift .tvar)).subst
+              (Subst.openTVar argument) =
+            tail.subst (tail.weaken.asSubst.comp opening) := by
+        rw [tail.subst_comp, opened]
+      let restArguments : Args targetContext
+          ((tail.subst (total.lift .tvar)).subst
+            (Subst.openTVar argument)) :=
+        tailEqual.symm ▸ rest.arguments
+      refine {
+        arguments := .tvar argument restArguments
+        cancel := ?_
+      }
+      simp only [liftSubst]
+      have lifted := tail.liftSubst_comp_heq
+        (total.lift .tvar) (Subst.openTVar argument)
+      have restCast := Args.substitution_transport_heq' tailEqual.symm
+        rest.arguments
+      have firstPair : HEq
+          ((tail.liftSubst (total.lift .tvar)).comp
+            ((tail.subst (total.lift .tvar)).liftSubst
+              (Subst.openTVar argument)))
+          (tail.liftSubst (tail.weaken.asSubst.comp opening)) :=
+        HEq.trans lifted.symm (by rw [opened])
+      have whole := Subst.comp_heq rfl
+        (congrArg Telescope.scope tailEqual) rfl firstPair restCast
+      calc
+        _ = ((tail.liftSubst (total.lift .tvar)).comp
+              ((tail.subst (total.lift .tvar)).liftSubst
+                (Subst.openTVar argument))).comp
+              restArguments.substitution :=
+          (Subst.comp_assoc _ _ _).symm
+        _ = (tail.liftSubst
+              (tail.weaken.asSubst.comp opening)).comp
+              rest.arguments.substitution := eq_of_heq whole
+        _ = opening := rest.cancel
+  | @cvar sig source result tail ih =>
+      let total :=
+        (((Rename.weaken .cvar).comp tail.weaken).asSubst).comp opening
+      let argument : Co target :=
+        ((.cvar .here : Co (_ ,, .cvar)).rename tail.weaken).subst opening
+      have immediate : Co.HasType
+          (sourceContext.bindCVar source result) (.cvar .here)
+          (source.weaken .cvar) (result.weaken .cvar) := .cvar .here
+      have argumentTyping :=
+        (immediate.rename (tail.weaken_typed _)).subst typed
+      have argumentTyping' : Co.HasType targetContext argument
+          (source.subst total) (result.subst total) := by
+        simpa only [argument, total, Ty.weaken, Ty.rename_comp,
+          Ty.rename_asSubst, Ty.subst_comp] using argumentTyping
+      let rest := ih (sourceContext :=
+        sourceContext.bindCVar source result) opening typed
+      have opened := openedSubst_cvar tail opening
+      have tailEqual :
+          (tail.subst (total.lift .cvar)).subst
+              (Subst.openCVar argument) =
+            tail.subst (tail.weaken.asSubst.comp opening) := by
+        rw [tail.subst_comp, opened]
+      let restArguments : Args targetContext
+          ((tail.subst (total.lift .cvar)).subst
+            (Subst.openCVar argument)) :=
+        tailEqual.symm ▸ rest.arguments
+      refine {
+        arguments := .cvar argument argumentTyping' restArguments
+        cancel := ?_
+      }
+      simp only [liftSubst]
+      have lifted := tail.liftSubst_comp_heq
+        (total.lift .cvar) (Subst.openCVar argument)
+      have restCast := Args.substitution_transport_heq' tailEqual.symm
+        rest.arguments
+      have firstPair : HEq
+          ((tail.liftSubst (total.lift .cvar)).comp
+            ((tail.subst (total.lift .cvar)).liftSubst
+              (Subst.openCVar argument)))
+          (tail.liftSubst (tail.weaken.asSubst.comp opening)) :=
+        HEq.trans lifted.symm (by rw [opened])
+      have whole := Subst.comp_heq rfl
+        (congrArg Telescope.scope tailEqual) rfl firstPair restCast
+      calc
+        _ = ((tail.liftSubst (total.lift .cvar)).comp
+              ((tail.subst (total.lift .cvar)).liftSubst
+                (Subst.openCVar argument))).comp
+              restArguments.substitution :=
+          (Subst.comp_assoc _ _ _).symm
+        _ = (tail.liftSubst
+              (tail.weaken.asSubst.comp opening)).comp
+              rest.arguments.substitution := eq_of_heq whole
+        _ = opening := rest.cancel
+
+/-- Named cancellation theorem for arguments extracted by
+`fromOpenedSubst`. -/
+theorem fromOpenedSubst_cancel
+    (tele : Telescope source) (sourceContext : Ctx source)
+    {target : Sig} {targetContext : Ctx target}
+    (opening : Subst tele.scope target)
+    (typed : Subst.Typed (tele.context sourceContext) targetContext opening) :
+    (tele.liftSubst (tele.weaken.asSubst.comp opening)).comp
+        (fromOpenedSubst tele sourceContext opening typed).arguments.substitution =
+      opening :=
+  (fromOpenedSubst tele sourceContext opening typed).cancel
 
 /-- Concatenate argument spines for dependent telescopes. The second spine is
 indexed by the second telescope after the first spine has instantiated it. -/
