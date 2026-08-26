@@ -156,7 +156,26 @@ def Proper.top
   plan := Top.plan sig
   model := .both .top (.opaque .Top)
 
-/-- Singleton Wf reuses the exact plan translated for its precise path. -/
+/-- Demand-local singleton Wf reuses one exact already-translated path
+package. This is sufficient for callers that resolve only the path required by
+their current constructor and does not demand a global `Resolver`. -/
+def Proper.singletonFromPathPackage
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    (scope : ScopeModel sourceContext targetContext)
+    {path : LambdaPFC.Path n} {referent : LambdaPFC.Ty n}
+    (precise : LambdaPFC.Path.Ty sourceContext path (.ty referent))
+    (translated : ProperPathPackage sourceContext targetContext scope
+      precise) :
+    Proper sourceContext targetContext scope (.Single path) :=
+  { wf := .path precise
+    plan := translated.plan
+    model := .both
+      (.singleton precise translated.modeled)
+      (.singleton precise translated.modeled) }
+
+/-- Convenience wrapper that obtains the exact path package from a total
+resolver. -/
 def Proper.singleton
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
@@ -164,12 +183,7 @@ def Proper.singleton
     {path : LambdaPFC.Path n} {referent : LambdaPFC.Ty n}
     (precise : LambdaPFC.Path.Ty sourceContext path (.ty referent)) :
     Proper sourceContext targetContext scope (.Single path) :=
-  let translated := resolver.proper scope precise
-  { wf := .path precise
-    plan := translated.plan
-    model := .both
-      (.singleton precise translated.modeled)
-      (.singleton precise translated.modeled) }
+  Proper.singletonFromPathPackage scope precise (resolver.proper scope precise)
 
 /-- Selection Wf opens only the exact descriptor translated for the selected
 path. Its hidden representation becomes the selected plan and never escapes

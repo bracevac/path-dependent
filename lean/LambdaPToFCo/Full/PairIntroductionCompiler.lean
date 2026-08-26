@@ -29,7 +29,8 @@ open TranslationInterfaces
 
 /-! ## Direct value-member pairs -/
 
-private noncomputable def variableSingleton
+/-- The exact singleton producer for one certified source variable. -/
+noncomputable def variableSingleton
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
     (scope : ScopeModel sourceContext targetContext) (index : Fin n) :
@@ -105,6 +106,8 @@ noncomputable def valuePair
 
 /-! ## Direct type-member pairs -/
 
+/-- Both polarities of the exact singleton plan used as a type-pair first
+component. -/
 private noncomputable def variableSingletonBidirectional
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
@@ -115,13 +118,28 @@ private noncomputable def variableSingletonBidirectional
     (.singleton (.var (x := index)) (scope.slot index))
     (.singleton (.var (x := index)) (scope.slot index))
 
-private noncomputable def bindVariableSingleton
+/-- The exact source/target scope opened below a type-pair's singleton first
+component. -/
+noncomputable def bindVariableSingleton
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
     (scope : ScopeModel sourceContext targetContext) (index : Fin n) :
     ScopeModel (sourceContext.snoc (.Single (.var index)))
       ((variableSingleton scope index).plan.context targetContext) :=
   scope.bindBidirectional (variableSingletonBidirectional scope index)
+
+/-- Demand-local witness compilation required by a direct type-member pair.
+Unlike `WfPlan.Resolver`, this fixes one weakened witness in the exact scope
+opened by the pair's singleton first component. -/
+abbrev WitnessPlan
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    (scope : ScopeModel sourceContext targetContext) (first : Fin n)
+    (witness : LambdaPFC.Ty n) :=
+  WfPlan.Proper
+    (sourceContext.snoc (.Single (.var first)))
+    ((variableSingleton scope first).plan.context targetContext)
+    (bindVariableSingleton scope first) witness.weaken
 
 private noncomputable def weakenedWitnessResult
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
@@ -130,89 +148,119 @@ private noncomputable def weakenedWitnessResult
     (scope : ScopeModel sourceContext targetContext) (first : Fin n)
     {witness : LambdaPFC.Ty n}
     (witnessWf : LambdaPFC.Tau.Wf sourceContext (.ty witness)) :
-    WfPlan.Proper
-      (sourceContext.snoc (.Single (.var first)))
-      ((variableSingleton scope first).plan.context targetContext)
-      (bindVariableSingleton scope first) witness.weaken :=
+    WitnessPlan scope first witness :=
   WfPlan.properWithResolver resolver (bindVariableSingleton scope first)
     (TypeWellFormed.weaken witnessWf (.Single (.var first)))
 
 private noncomputable def openedWitnessRepresentation
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
-    (resolver : WfPlan.Resolver)
     (scope : ScopeModel sourceContext targetContext) (first : Fin n)
     {witness : LambdaPFC.Ty n}
-    (witnessWf : LambdaPFC.Tau.Wf sourceContext (.ty witness)) :
+    (witnessPlan : WitnessPlan scope first witness) :
     SystemFCoExt.Ty sig :=
-  (weakenedWitnessResult resolver scope first witnessWf).plan.inputTy.subst
+  witnessPlan.plan.inputTy.subst
     (variableArguments scope first).substitution
 
 private noncomputable def lowerPackageEvidence
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
-    (resolver : WfPlan.Resolver)
     (scope : ScopeModel sourceContext targetContext) (first : Fin n)
     {witness : LambdaPFC.Ty n}
-    (witnessWf : LambdaPFC.Tau.Wf sourceContext (.ty witness)) : Co sig :=
-  let representation := openedWitnessRepresentation resolver scope first
-    witnessWf
+    (witnessPlan : WitnessPlan scope first witness) : Co sig :=
+  let representation := openedWitnessRepresentation scope first witnessPlan
   Selection.lowerToPackage targetContext representation
     (.refl representation)
 
 private noncomputable def lowerPackageEvidence_hasType
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
-    (resolver : WfPlan.Resolver)
     (scope : ScopeModel sourceContext targetContext) (first : Fin n)
     {witness : LambdaPFC.Ty n}
-    (witnessWf : LambdaPFC.Tau.Wf sourceContext (.ty witness)) :
+    (witnessPlan : WitnessPlan scope first witness) :
     Co.HasType targetContext
-      (lowerPackageEvidence resolver scope first witnessWf)
-      ((weakenedWitnessResult resolver scope first witnessWf).plan.inputTy.subst
+      (lowerPackageEvidence scope first witnessPlan)
+      (witnessPlan.plan.inputTy.subst
         (variableArguments scope first).substitution)
-      (Selection.plan (openedWitnessRepresentation resolver scope first
-        witnessWf)).inputTy :=
+      (Selection.plan (openedWitnessRepresentation scope first
+        witnessPlan)).inputTy :=
   Selection.lowerToPackage_hasType targetContext
-    (openedWitnessRepresentation resolver scope first witnessWf)
-    (openedWitnessRepresentation resolver scope first witnessWf)
-    (.refl (openedWitnessRepresentation resolver scope first witnessWf))
+    (openedWitnessRepresentation scope first witnessPlan)
+    (openedWitnessRepresentation scope first witnessPlan)
+    (.refl (openedWitnessRepresentation scope first witnessPlan))
     Co.HasType.refl
 
 private noncomputable def upperPackageEvidence
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
-    (resolver : WfPlan.Resolver)
     (scope : ScopeModel sourceContext targetContext) (first : Fin n)
     {witness : LambdaPFC.Ty n}
-    (witnessWf : LambdaPFC.Tau.Wf sourceContext (.ty witness)) : Co sig :=
-  let representation := openedWitnessRepresentation resolver scope first
-    witnessWf
+    (witnessPlan : WitnessPlan scope first witness) : Co sig :=
+  let representation := openedWitnessRepresentation scope first witnessPlan
   Selection.packageToUpper representation (.refl representation)
 
 private noncomputable def upperPackageEvidence_hasType
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
-    (resolver : WfPlan.Resolver)
     (scope : ScopeModel sourceContext targetContext) (first : Fin n)
     {witness : LambdaPFC.Ty n}
-    (witnessWf : LambdaPFC.Tau.Wf sourceContext (.ty witness)) :
+    (witnessPlan : WitnessPlan scope first witness) :
     Co.HasType targetContext
-      (upperPackageEvidence resolver scope first witnessWf)
-      (Selection.plan (openedWitnessRepresentation resolver scope first
-        witnessWf)).inputTy
-      ((weakenedWitnessResult resolver scope first witnessWf).plan.inputTy.subst
+      (upperPackageEvidence scope first witnessPlan)
+      (Selection.plan (openedWitnessRepresentation scope first
+        witnessPlan)).inputTy
+      (witnessPlan.plan.inputTy.subst
         (variableArguments scope first).substitution) :=
   Selection.packageToUpper_hasType targetContext
-    (openedWitnessRepresentation resolver scope first witnessWf)
-    (openedWitnessRepresentation resolver scope first witnessWf)
-    (.refl (openedWitnessRepresentation resolver scope first witnessWf))
+    (openedWitnessRepresentation scope first witnessPlan)
+    (openedWitnessRepresentation scope first witnessPlan)
+    (.refl (openedWitnessRepresentation scope first witnessPlan))
     Co.HasType.refl
 
-/-- Compile the direct type-member pair.  The resolver is used only through
-`WfPlan` after opening the exact singleton first component.  Both interval
-package adapters are the canonical selection wrapper/unwrapper around
-reflexivity at the resulting opened witness-package type. -/
+/-- Compile a direct type-member pair from the exact already-compiled witness
+plan in the singleton-bound scope. Both interval package adapters are computed
+as the canonical selection wrapper/unwrapper around reflexivity at its opened
+input type; callers supply no representation or coercion. -/
+noncomputable def typePairFromWitnessPlan
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    (scope : ScopeModel sourceContext targetContext)
+    (first : Fin n) (label : LambdaPFC.Name)
+    {witness : LambdaPFC.Ty n}
+    (witnessWf : LambdaPFC.Tau.Wf sourceContext (.ty witness))
+    (witnessPlan : WitnessPlan scope first witness) :
+    OrdinaryProducer sourceContext targetContext scope
+      (.Pair (.Single (.var first)) label
+        ((Tau.intv witness witness).weaken)) where
+  origin := .value (Tm.Ty.tpair (y := first) (A := label) witnessWf) .pair
+  model :=
+    ⟨Pair.Interval.plan (variableSingleton scope first).plan
+        witnessPlan.plan.inputTy witnessPlan.plan.inputTy,
+      .intervalPair (variableSingleton scope first).modeled
+        (.bounds
+          witnessPlan.model.demand witnessPlan.model.producer)⟩
+  package :=
+    { expression := Pair.Interval.exactTypePair
+        (variableSingleton scope first).plan
+        witnessPlan.plan.inputTy witnessPlan.plan.inputTy
+        (variableArguments scope first)
+        (openedWitnessRepresentation scope first witnessPlan)
+        (lowerPackageEvidence scope first witnessPlan)
+        (lowerPackageEvidence_hasType scope first witnessPlan)
+        (upperPackageEvidence scope first witnessPlan)
+        (upperPackageEvidence_hasType scope first witnessPlan)
+      typing := Pair.Interval.exactTypePair_hasType
+        (variableSingleton scope first).plan
+        witnessPlan.plan.inputTy witnessPlan.plan.inputTy
+        (variableArguments scope first)
+        (openedWitnessRepresentation scope first witnessPlan)
+        (lowerPackageEvidence scope first witnessPlan)
+        (lowerPackageEvidence_hasType scope first witnessPlan)
+        (upperPackageEvidence scope first witnessPlan)
+        (upperPackageEvidence_hasType scope first witnessPlan) }
+
+/-- Convenience wrapper that obtains the exact demand-local witness plan from
+the existing total `WfPlan.Resolver`. -/
 noncomputable def typePair
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
@@ -223,37 +271,8 @@ noncomputable def typePair
     (witnessWf : LambdaPFC.Tau.Wf sourceContext (.ty witness)) :
     OrdinaryProducer sourceContext targetContext scope
       (.Pair (.Single (.var first)) label
-        ((Tau.intv witness witness).weaken)) where
-  origin := .value (Tm.Ty.tpair (y := first) (A := label) witnessWf) .pair
-  model :=
-    ⟨Pair.Interval.plan (variableSingleton scope first).plan
-        (weakenedWitnessResult resolver scope first witnessWf).plan.inputTy
-        (weakenedWitnessResult resolver scope first witnessWf).plan.inputTy,
-      .intervalPair (variableSingleton scope first).modeled
-        (.bounds
-          (weakenedWitnessResult resolver scope first witnessWf).model.demand
-          (weakenedWitnessResult resolver scope first
-            witnessWf).model.producer)⟩
-  package :=
-    { expression := Pair.Interval.exactTypePair
-        (variableSingleton scope first).plan
-        (weakenedWitnessResult resolver scope first witnessWf).plan.inputTy
-        (weakenedWitnessResult resolver scope first witnessWf).plan.inputTy
-        (variableArguments scope first)
-        (openedWitnessRepresentation resolver scope first witnessWf)
-        (lowerPackageEvidence resolver scope first witnessWf)
-        (lowerPackageEvidence_hasType resolver scope first witnessWf)
-        (upperPackageEvidence resolver scope first witnessWf)
-        (upperPackageEvidence_hasType resolver scope first witnessWf)
-      typing := Pair.Interval.exactTypePair_hasType
-        (variableSingleton scope first).plan
-        (weakenedWitnessResult resolver scope first witnessWf).plan.inputTy
-        (weakenedWitnessResult resolver scope first witnessWf).plan.inputTy
-        (variableArguments scope first)
-        (openedWitnessRepresentation resolver scope first witnessWf)
-        (lowerPackageEvidence resolver scope first witnessWf)
-        (lowerPackageEvidence_hasType resolver scope first witnessWf)
-        (upperPackageEvidence resolver scope first witnessWf)
-        (upperPackageEvidence_hasType resolver scope first witnessWf) }
+        ((Tau.intv witness witness).weaken)) :=
+  typePairFromWitnessPlan scope first label witnessWf
+    (weakenedWitnessResult resolver scope first witnessWf)
 
 end LambdaPToFCo.Full.PairIntroductionCompiler
