@@ -14,6 +14,8 @@ import SystemFCoExt.ChurchPackageCovariance
 import SystemFCoExt.ChurchPackageRegression
 import SystemFCoExt.ChurchPair
 import SystemFCoExt.Telescope
+import SystemFCoExt.TelescopeInstances
+import SystemFCoExt.TelescopeInstancesRegression
 import SystemFCoExt.TelescopeReduction
 import SystemFCoExt.TelescopeReductionRegression
 import SystemFCoExt.BottomRegression
