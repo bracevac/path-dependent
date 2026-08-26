@@ -75,9 +75,40 @@ noncomputable def rename
     (interface : ValueInterface sourceContext)
     (mapping : Rename source target)
     (typed : Rename.Typed sourceContext targetContext mapping) :
-    ValueInterface targetContext :=
-  ofArguments (interface.plan.rename mapping)
-    (interface.arguments.rename mapping typed)
+    ValueInterface targetContext where
+  plan := interface.plan.rename mapping
+  identity := interface.identity.rename mapping
+  payload := interface.payload.rename mapping
+  payloadTyping := interface.payloadTyping.rename typed
+  observations := by
+    have renamed := interface.observations.rename mapping typed
+    rw [(interface.plan.observations.subst
+          ((Subst.openTVar interface.identity).lift .var)).rename_subst_comm
+        (Subst.openVarRenameComm interface.payload mapping),
+      interface.plan.observations.rename_subst_comm
+        ((Subst.openTVarRenameComm interface.identity mapping).lift .var)]
+      at renamed
+    exact renamed
+
+@[simp] theorem rename_identity
+    {source target : Sig} {sourceContext : Ctx source}
+    {targetContext : Ctx target}
+    (interface : ValueInterface sourceContext)
+    (mapping : Rename source target)
+    (typed : Rename.Typed sourceContext targetContext mapping) :
+    (interface.rename mapping typed).identity =
+      interface.identity.rename mapping := by
+  rfl
+
+@[simp] theorem rename_payload
+    {source target : Sig} {sourceContext : Ctx source}
+    {targetContext : Ctx target}
+    (interface : ValueInterface sourceContext)
+    (mapping : Rename source target)
+    (typed : Rename.Typed sourceContext targetContext mapping) :
+    (interface.rename mapping typed).payload =
+      interface.payload.rename mapping := by
+  rfl
 
 end ValueInterface
 
