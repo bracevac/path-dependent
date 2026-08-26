@@ -39,6 +39,7 @@ import LambdaPToFCo.Full.IntervalSubtypingCompilerCore
 import LambdaPToFCo.Full.AtomicSubtypingCompiler
 import LambdaPToFCo.Full.TranslationModelRebase
 import LambdaPToFCo.Full.DemandDirectedSubtyping
+import LambdaPToFCo.Full.HeterogeneousAdaptation
 import LambdaPToFCo.Full.FunctionCodeBridgeConstruction
 import LambdaPToFCo.Full.PairRepresentationBridgeConstruction
 import LambdaPToFCo.Full.PairSubtypingRuleConstruction
