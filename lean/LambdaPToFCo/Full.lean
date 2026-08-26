@@ -63,6 +63,7 @@ import LambdaPToFCo.Full.RecordIntroductionStaticRegression
 import LambdaPToFCo.Full.GeneralPairIntroductionStaticRegression
 import LambdaPToFCo.Full.GeneralPairLetPlanningRegression
 import LambdaPToFCo.Full.GeneralPairObservedIntervalSubtypingRegression
+import LambdaPToFCo.Full.GeneralPairCanonicalIntervalSubtypingRegression
 import LambdaPToFCo.Full.ApplicationCompilerCore
 import LambdaPToFCo.Full.ApplicationPlanning
 import LambdaPToFCo.Full.LetCompilerCore
