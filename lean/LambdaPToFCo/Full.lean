@@ -80,6 +80,7 @@ import LambdaPToFCo.Full.RecordIntroductionStaticRegression
 import LambdaPToFCo.Full.RecordFirstValueStaticRegression
 import LambdaPToFCo.Full.RecordFirstValueV2WidenRegression
 import LambdaPToFCo.Full.RecordSecondValueV2Regression
+import LambdaPToFCo.Full.RecordSecondValueV2Binding
 import LambdaPToFCo.Full.RecordSecondLetPlanningRegression
 import LambdaPToFCo.Full.GeneralPairIntroductionStaticRegression
 import LambdaPToFCo.Full.PairIntroductionTermCompilationRegression
