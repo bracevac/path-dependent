@@ -1,0 +1,627 @@
+import LambdaPToFCo.OperationalFunctionPathCore
+import LambdaPToFCo.OperationalTypedPathView
+import LambdaPToFCo.OperationalApplicationStore
+
+/-!
+# Exact-core function paths
+
+The executable application core admits a deliberately small provenance for
+the operator path.  A path is first introduced at its singleton and widened
+directly to the precise arrow advertised by its static referent.  Only
+reflexive, transitive, and structural arrow subtyping may surround that base.
+
+This source-only spine has two closed interpretations:
+
+* it rebuilds the `FunctionView` generated around a known canonical physical
+  function value;
+* it transports argument evidence through exactly the contravariant arrow
+  layers recorded by the spine.
+
+The store-facing boundary is explicit.  A current lexical slot and its
+physical native binding must agree both on the exposed function expression
+and on the closed domain binder plan.  Neither fact follows from equality of
+untyped target expressions, and aliases or adapted `bindLocation` slots do
+not satisfy it automatically.
+-/
+
+namespace LambdaPToFCo
+namespace OperationalFunctionPathSpine
+
+open SystemFCo
+open StaticTranslation
+open OperationalEnvironment
+open OperationalBindingView
+open OperationalApplication
+open OperationalApplicationTranslation
+open OperationalApplicationStore
+open OperationalApplicationSpine
+open OperationalValueEvidence
+open OperationalStoreEnvironment
+open OperationalPathCoherence
+open OperationalTypedPathView
+
+namespace FunctionPathSpine
+
+/-- Well-formedness of the domain advertised by the final operator type. -/
+def domainWf :
+    FunctionPathSpine (sourceContext := sourceContext)
+      (domain := domain) (codomain := codomain) typing ->
+    Fragment.Wf sourceContext domain
+  | .widen _ domainWf _ _ => domainWf
+  | .sub _ coercion => coercion.targetDomainWf
+
+/-- Every final operator domain admitted by the spine is ordinary. -/
+def domainShape :
+    FunctionPathSpine (sourceContext := sourceContext)
+      (domain := domain) (codomain := codomain) typing ->
+    OrdinaryShape domain
+  | .widen _ _ _ domainShape => domainShape
+  | .sub _ coercion => coercion.targetDomainShape
+
+/-- The domain of the precise arrow exposed by the base path lookup. -/
+noncomputable def baseDomain
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {path : LambdaPFC.Path n} {domain codomain : LambdaPFC.Ty n}
+    {typing : Fragment.HasType sourceContext (.path path)
+      (.Fun domain codomain.weaken)} :
+    FunctionPathSpine typing -> LambdaPFC.Ty n
+  | @widen _ _ _ domain _ _ _ _ _ => domain
+  | .sub inner _ => inner.baseDomain
+
+/-- Well-formedness of the base path referent's precise arrow domain. -/
+noncomputable def baseDomainWf (spine : FunctionPathSpine
+    (sourceContext := sourceContext) typing) :
+    Fragment.Wf sourceContext spine.baseDomain := by
+  induction spine with
+  | widen _ domainWf _ _ => exact domainWf
+  | sub _ _ ih => exact ih
+
+/-- The base path referent's precise arrow domain is ordinary. -/
+noncomputable def baseDomainShape (spine : FunctionPathSpine
+    (sourceContext := sourceContext) typing) :
+    OrdinaryShape spine.baseDomain := by
+  induction spine with
+  | widen _ _ _ domainShape => exact domainShape
+  | sub _ _ ih => exact ih
+
+/-- Closed translation of the path before the base singleton-widen cast. -/
+noncomputable def baseExpression
+    (spine : FunctionPathSpine
+      (sourceContext := sourceContext) typing)
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig []) : Exp [] :=
+  match spine with
+  | .widen pathTyping _ _ _ =>
+      environment.closeExp (translatePath scope pathTyping).expression
+  | .sub inner _ => inner.baseExpression scope environment
+
+/-! ## Closed function view -/
+
+/-- Regard a canonical function value as source syntax for the same value.
+Structural arrow casts are retained; no target cast is claimed to vanish. -/
+def canonicalView : FunctionValue plan result body ->
+    FunctionView plan result body
+  | .lambda => .lambda
+  | .arrow inner domain codomain =>
+      .cast (canonicalView inner) (.arrow domain codomain)
+
+@[simp] theorem canonicalView_expression
+    (function : FunctionValue plan result body) :
+    (canonicalView function).expression = function.expression := by
+  induction function with
+  | lambda => rfl
+  | arrow inner domain codomain ih =>
+      simp only [canonicalView, FunctionView.expression,
+        FunctionValue.expression, FunctionCo.coercion, ih]
+
+@[simp] theorem canonicalView_normalize_value
+    (function : FunctionValue plan result body) :
+    (canonicalView function).normalize.value = function := by
+  induction function with
+  | lambda => rfl
+  | arrow inner domain codomain ih =>
+      simp only [canonicalView, FunctionView.normalize,
+        FunctionCo.normalize, ih]
+
+/-- Rebuild exactly the nested target function view generated by this source
+operator-path spine around a canonical physical function value. -/
+noncomputable def closedView
+    (spine : FunctionPathSpine
+      (sourceContext := sourceContext) typing)
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig [])
+    {plan : Interface.BinderPlan []} {result : Ty []}
+    {body : Exp plan.scope}
+    (base : FunctionValue plan result body) :
+    FunctionView plan result body :=
+  match spine with
+  | .widen _ domainWf codomainWf _ =>
+      .cast (canonicalView base)
+        (.refl (environment.closeTy
+          (translateType scope (.arrow domainWf codomainWf))))
+  | .sub inner coercion =>
+      .cast (inner.closedView scope environment base)
+        (coercion.fragment.close scope environment)
+
+/-- The rebuilt view starts at the actual closed compilation of the typed
+operator path, provided the canonical physical function is the path lookup
+endpoint. -/
+theorem closedView_expression_eq
+    (spine : FunctionPathSpine
+      (sourceContext := sourceContext) typing)
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig [])
+    {plan : Interface.BinderPlan []} {result : Ty []}
+    {body : Exp plan.scope}
+    (base : FunctionValue plan result body)
+    (base_eq : base.expression = spine.baseExpression scope environment) :
+    (spine.closedView scope environment base).expression =
+      environment.closeExp (TermTranslation.elaborate scope typing) := by
+  induction spine with
+  | widen pathTyping domainWf codomainWf domainShape =>
+      simp only [closedView, FunctionView.expression, canonicalView_expression,
+        TermTranslation.elaborate, ClosingEnv.closeExp, Exp.subst,
+        CoercionTranslation.elaborateSub, Co.subst]
+      change base.expression =
+        environment.closeExp (translatePath scope pathTyping).expression
+        at base_eq
+      rw [base_eq]
+      rfl
+  | sub inner coercion ih =>
+      change Exp.cast
+          (inner.closedView scope environment base).expression
+          (coercion.fragment.close scope environment).coercion =
+        Exp.cast
+          (environment.closeExp
+            (TermTranslation.elaborate scope _))
+          (environment.closeCo
+            (CoercionTranslation.elaborateSub scope _))
+      rw [ih base_eq, coercion.fragment.close_coercion scope environment]
+
+/-! ## Closed argument evidence -/
+
+/-- Transport compatibility with the base physical function through every
+operator-path coercion layer.  The callback is the precise boundary to the
+native function spine: it states which closed binder plan the physical
+function accepts. -/
+noncomputable def argumentEvidence
+    (spine : FunctionPathSpine
+      (sourceContext := sourceContext) typing)
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig [])
+    {plan : Interface.BinderPlan []} {result : Ty []}
+    {body : Exp plan.scope}
+    (base : FunctionValue plan result body)
+    (baseEvidence :
+      {outerPlan : Interface.BinderPlan []} ->
+      (outer : EliminationView outerPlan) ->
+      outerPlan = closedPlan scope environment spine.baseDomainWf ->
+      ArgumentEvidence base outer)
+    {outerPlan : Interface.BinderPlan []}
+    (outer : EliminationView outerPlan)
+    (outerPlan_eq :
+      outerPlan = closedPlan scope environment spine.domainWf) :
+    ArgumentEvidence
+      (spine.closedView scope environment base).normalize.value outer := by
+  induction spine generalizing outerPlan with
+  | widen pathTyping domainWf codomainWf domainShape =>
+      simpa only [closedView, FunctionView.normalize, FunctionCo.normalize,
+        canonicalView_normalize_value] using
+          baseEvidence outer outerPlan_eq
+  | @sub sourceDomain sourceCodomain targetDomain targetCodomain innerTyping
+      subtype shape inner coercion ih =>
+      let sourceEvidence :
+          {sourcePlan : Interface.BinderPlan []} ->
+          (source : EliminationView sourcePlan) ->
+          sourcePlan = closedPlan scope environment coercion.sourceDomainWf ->
+          ArgumentEvidence
+            (inner.closedView scope environment base).normalize.value source :=
+        fun source sourcePlan_eq =>
+          ih baseEvidence source
+            (sourcePlan_eq.trans
+              (closedPlan_irrel_of_ordinary scope environment
+                coercion.sourceDomainWf inner.domainWf
+                coercion.sourceDomainShape))
+      exact coercion.argumentEvidence scope environment
+        (inner.closedView scope environment base).normalize.value
+        sourceEvidence outer outerPlan_eq
+
+/-! ## Compatibility with closed typed-path images -/
+
+/-- Both the rebuilt function view and the generic typed-path compiler reach
+the same ready endpoint.  This is a consequence of deterministic target
+reduction, not an additional store invariant. -/
+theorem canonical_eq_pathArgument
+    (spine : FunctionPathSpine
+      (sourceContext := sourceContext) typing)
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig [])
+    {plan : Interface.BinderPlan []} {result : Ty []}
+    {body : Exp plan.scope}
+    (base : FunctionValue plan result body)
+    (base_eq : base.expression = spine.baseExpression scope environment)
+    (pathImage : ClosedPathView scope typing environment) :
+    (spine.closedView scope environment base).normalize.value.expression =
+      pathImage.view.argument := by
+  have functionSteps : Exp.Steps
+      (environment.closeExp (TermTranslation.elaborate scope typing))
+      (spine.closedView scope environment base).normalize.value.expression := by
+    rw [← spine.closedView_expression_eq scope environment base base_eq]
+    exact (spine.closedView scope environment base).normalize.reductions
+  have pathSteps : Exp.Steps
+      (environment.closeExp (TermTranslation.elaborate scope typing))
+      pathImage.view.argument := by
+    rw [pathImage.argument_eq]
+    exact pathImage.normalization.reductions
+  exact value_endpoint_unique functionSteps pathSteps
+    (spine.closedView scope environment base).normalize.value.ready
+    pathImage.view.ready
+
+/-- The application argument evidence selected by the outer operator domain.
+`ClosedPathView.applicationPlan_eq` supplies the only proof-irrelevance
+transport on the argument side. -/
+noncomputable def closedArgumentEvidence
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {functionPath argumentPath : LambdaPFC.Path n}
+    {domain codomain : LambdaPFC.Ty n}
+    {functionTyping : Fragment.HasType sourceContext (.path functionPath)
+      (.Fun domain codomain.weaken)}
+    (spine : FunctionPathSpine functionTyping)
+    {argumentTyping : Fragment.HasType sourceContext (.path argumentPath)
+      domain}
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig [])
+    {plan : Interface.BinderPlan []} {result : Ty []}
+    {body : Exp plan.scope}
+    (base : FunctionValue plan result body)
+    (baseEvidence :
+      {outerPlan : Interface.BinderPlan []} ->
+      (outer : EliminationView outerPlan) ->
+      outerPlan = closedPlan scope environment spine.baseDomainWf ->
+      ArgumentEvidence base outer)
+    (argumentImage : ClosedPathView scope argumentTyping environment) :
+    ArgumentEvidence
+      (spine.closedView scope environment base).normalize.value
+      argumentImage.view :=
+  spine.argumentEvidence scope environment base baseEvidence argumentImage.view
+    (ClosedPathView.applicationPlan_eq
+      (scope := scope) (typing := argumentTyping) (environment := environment)
+      spine.domainWf spine.domainShape)
+
+/-- Apply the ready lexical endpoint of a typed operator path to the ready
+endpoint of its typed argument path. -/
+noncomputable def endpointApplication
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {functionPath argumentPath : LambdaPFC.Path n}
+    {domain codomain : LambdaPFC.Ty n}
+    {functionTyping : Fragment.HasType sourceContext (.path functionPath)
+      (.Fun domain codomain.weaken)}
+    (spine : FunctionPathSpine functionTyping)
+    {argumentTyping : Fragment.HasType sourceContext (.path argumentPath)
+      domain}
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig [])
+    {plan : Interface.BinderPlan []} {result : Ty []}
+    {body : Exp plan.scope}
+    (base : FunctionValue plan result body)
+    (base_eq : base.expression = spine.baseExpression scope environment)
+    (baseEvidence :
+      {outerPlan : Interface.BinderPlan []} ->
+      (outer : EliminationView outerPlan) ->
+      outerPlan = closedPlan scope environment spine.baseDomainWf ->
+      ArgumentEvidence base outer)
+    (functionImage : ClosedPathView scope functionTyping environment)
+    (argumentImage : ClosedPathView scope argumentTyping environment) :
+    ApplicationView body functionImage.view.argument
+      argumentImage.view.argument := by
+  rw [← spine.canonical_eq_pathArgument scope environment base base_eq
+    functionImage]
+  exact (spine.closedView scope environment base).normalize.value.application
+    (spine.closedArgumentEvidence scope environment base baseEvidence
+      argumentImage).toArgumentView
+
+/-- Complete target reduction corresponding to a closed source application:
+first the operator path, then the argument path, then the application macro. -/
+theorem closedApplication_steps
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {functionPath argumentPath : LambdaPFC.Path n}
+    {domain codomain : LambdaPFC.Ty n}
+    {functionTyping : Fragment.HasType sourceContext (.path functionPath)
+      (.Fun domain codomain.weaken)}
+    (spine : FunctionPathSpine functionTyping)
+    {argumentTyping : Fragment.HasType sourceContext (.path argumentPath)
+      domain}
+    (codomainWf : Fragment.Wf sourceContext codomain)
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig [])
+    {plan : Interface.BinderPlan []} {result : Ty []}
+    {body : Exp plan.scope}
+    (base : FunctionValue plan result body)
+    (base_eq : base.expression = spine.baseExpression scope environment)
+    (baseEvidence :
+      {outerPlan : Interface.BinderPlan []} ->
+      (outer : EliminationView outerPlan) ->
+      outerPlan = closedPlan scope environment spine.baseDomainWf ->
+      ArgumentEvidence base outer)
+    (functionImage : ClosedPathView scope functionTyping environment)
+    (argumentImage : ClosedPathView scope argumentTyping environment) :
+    let application := spine.endpointApplication scope environment base base_eq
+      baseEvidence functionImage argumentImage
+    Exp.Steps
+      (environment.closeExp
+        (TermTranslation.elaborate scope
+          (.app functionTyping argumentTyping codomainWf)))
+      (application.context.plug
+        (body.subst application.elimination.substitution)) := by
+  dsimp only
+  let application := spine.endpointApplication scope environment base base_eq
+    baseEvidence functionImage argumentImage
+  have functionSteps : Exp.Steps
+      (environment.closeExp (TermTranslation.elaborate scope functionTyping))
+      functionImage.view.argument := by
+    rw [functionImage.argument_eq]
+    exact functionImage.normalization.reductions
+  have argumentSteps : Exp.Steps
+      (environment.closeExp (TermTranslation.elaborate scope argumentTyping))
+      argumentImage.view.argument := by
+    rw [argumentImage.argument_eq]
+    exact argumentImage.normalization.reductions
+  change Exp.Steps
+    (.app
+      (environment.closeExp (TermTranslation.elaborate scope functionTyping))
+      (environment.closeExp (TermTranslation.elaborate scope argumentTyping))) _
+  exact
+    (OperationalApplication.Steps.appFunction functionSteps).trans
+      ((OperationalApplication.Steps.appArgument functionImage.view.ready
+        argumentSteps).trans application.reductions)
+
+/-! ## The exact store boundary -/
+
+/-- Closing the base path translation exposes the current lexical slot at
+the static referent.  Outer function coercions do not change that referent. -/
+theorem baseExpression_eq_slot
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {path : LambdaPFC.Path n} {domain codomain : LambdaPFC.Ty n}
+    {typing : Fragment.HasType sourceContext (.path path)
+      (.Fun domain codomain.weaken)}
+    (spine : FunctionPathSpine
+      (sourceContext := sourceContext) typing)
+    {current : Nat} {sourceStore : LambdaPFC.Store current}
+    {valuation : OperationalCode.SourceValuation n current}
+    {sig : Sig} {targetContext : Ctx sig}
+    {scope : Scope sourceContext targetContext}
+    {environment : ClosingEnv sig []}
+    (store : StoreEnvironment sourceContext sourceStore valuation
+      targetContext scope environment)
+    (coherent : StorePathCoherence store) :
+    spine.baseExpression scope environment =
+      (store.lookup (typedPathReferent typing)).slot.behavior.argument := by
+  induction spine with
+  | widen pathTyping domainWf codomainWf domainShape =>
+      rw [typedPathReferent_sub, typedPathReferent_path]
+      simpa only [baseExpression] using coherent pathTyping
+  | sub inner coercion ih =>
+      rw [typedPathReferent_sub]
+      exact ih
+
+end FunctionPathSpine
+
+/-! The following wrapper forgets the native source indices after compiling
+them.  This is useful because a physical function closure and its current
+lexical slot may originate in different source contexts. -/
+
+/-- Target behavior exported by a closed native `ApplicationSpine`.  The
+source indices have been forgotten; `behavior` is the physical allocation
+slot endpoint supplied by the store. -/
+structure NativeFunctionImage (behavior : Exp []) : Type where
+  plan : Interface.BinderPlan []
+  result : Ty []
+  body : Exp plan.scope
+  value : FunctionValue plan result body
+  domainPlan : Interface.BinderPlan []
+  argumentEvidence :
+    {outerPlan : Interface.BinderPlan []} ->
+    (outer : EliminationView outerPlan) ->
+    outerPlan = domainPlan -> ArgumentEvidence value outer
+  behavior_eq : value.expression = behavior
+
+/-- The generated closed view for function value evidence exposes precisely
+the normalized canonical function expression. -/
+theorem applicationSpine_closedView_argument
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {nativeDomain domain codomain : LambdaPFC.Ty n}
+    {sourceBody : LambdaPFC.Tm (n + 1)}
+    {typing : Fragment.HasType sourceContext (.abs nativeDomain sourceBody)
+      (.Fun domain codomain.weaken)}
+    (spine : ApplicationSpine typing)
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig [])
+    (ready :
+      (ApplicationValueEvidence.function spine).ClosedReady scope
+        environment) :
+    ((ApplicationValueEvidence.function spine).closedView scope environment
+      ready).view.argument =
+      (spine.functionSpine.close scope environment).image.view.normalize.value.expression := by
+  simp only [ApplicationValueEvidence.closedView,
+    ApplicationValueEvidence.valueEvidence, ValueEvidence.closedView,
+    FunctionSpine.closedView, EliminationView.castPlan_argument,
+    EliminationView.ofDirect, BindingView.ofInstantiation,
+    Instantiation.argument]
+
+namespace NativeFunctionImage
+
+/-- Compile a retained native function spine and connect its canonical value
+to the supplied physical slot endpoint.  In the function branch of a store
+lookup, `nativeReady` and `nativeBehavior_eq` instantiate the last two
+arguments directly. -/
+noncomputable def ofApplicationSpine
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {nativeDomain domain codomain : LambdaPFC.Ty n}
+    {sourceBody : LambdaPFC.Tm (n + 1)}
+    {typing : Fragment.HasType sourceContext (.abs nativeDomain sourceBody)
+      (.Fun domain codomain.weaken)}
+    (spine : ApplicationSpine typing)
+    {sig : Sig} {targetContext : Ctx sig}
+    (scope : Scope sourceContext targetContext)
+    (environment : ClosingEnv sig [])
+    (ready :
+      (ApplicationValueEvidence.function spine).ClosedReady scope environment)
+    (behavior : Exp [])
+    (behavior_eq :
+      ((ApplicationValueEvidence.function spine).closedView scope environment
+        ready).view.argument = behavior) :
+    NativeFunctionImage behavior := by
+  let evidence := spine.functionSpine.close scope environment
+  let image := evidence.image
+  refine
+    { plan := image.plan
+      result := image.result
+      body := image.body
+      value := image.view.normalize.value
+      domainPlan := closedPlan scope environment spine.domainWf
+      argumentEvidence := fun outer outerPlan_eq =>
+        spine.argumentEvidence scope environment outer outerPlan_eq
+      behavior_eq := ?_ }
+  exact (applicationSpine_closedView_argument spine scope environment ready).symm
+    |>.trans behavior_eq
+
+end NativeFunctionImage
+
+/-! ## Direct lexical/native compatibility -/
+
+/-- The two facts which are not recoverable from an untyped target-expression
+equality.
+
+`lexicalBehavior_eq` excludes alias and adapted `bindLocation` slots unless a
+separate syntactic invariant proves that they preserve the physical slot
+endpoint.  `domainPlan_eq` connects the current source domain to the native
+function spine's independently closed source domain. -/
+structure DirectNativeCompatibility
+    {n current : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sourceStore : LambdaPFC.Store current}
+    {valuation : OperationalCode.SourceValuation n current}
+    {sig : Sig} {targetContext : Ctx sig}
+    {scope : Scope sourceContext targetContext}
+    {environment : ClosingEnv sig []}
+    (store : StoreEnvironment sourceContext sourceStore valuation
+      targetContext scope environment)
+    {functionPath : LambdaPFC.Path n}
+    {domain codomain : LambdaPFC.Ty n}
+    {typing : Fragment.HasType sourceContext (.path functionPath)
+      (.Fun domain codomain.weaken)}
+    (spine : FunctionPathSpine typing)
+    (native : NativeFunctionImage
+      (store.lookup
+        (typedPathReferent typing)).compiled.slot.behavior.argument) : Prop where
+  lexicalBehavior_eq :
+    (store.lookup (typedPathReferent typing)).slot.behavior.argument =
+      (store.lookup
+        (typedPathReferent typing)).compiled.slot.behavior.argument
+  domainPlan_eq :
+    closedPlan scope environment spine.baseDomainWf = native.domainPlan
+
+namespace DirectNativeCompatibility
+
+/-- The native canonical value is the base path lookup endpoint. -/
+theorem base_eq
+    {n current : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sourceStore : LambdaPFC.Store current}
+    {valuation : OperationalCode.SourceValuation n current}
+    {sig : Sig} {targetContext : Ctx sig}
+    {scope : Scope sourceContext targetContext}
+    {environment : ClosingEnv sig []}
+    {store : StoreEnvironment sourceContext sourceStore valuation
+      targetContext scope environment}
+    {functionPath : LambdaPFC.Path n}
+    {domain codomain : LambdaPFC.Ty n}
+    {typing : Fragment.HasType sourceContext (.path functionPath)
+      (.Fun domain codomain.weaken)}
+    {spine : FunctionPathSpine typing}
+    {native : NativeFunctionImage
+      (store.lookup
+        (typedPathReferent typing)).compiled.slot.behavior.argument}
+    (compatibility : DirectNativeCompatibility store spine native)
+    (coherent : StorePathCoherence store) :
+    native.value.expression = spine.baseExpression scope environment := by
+  calc
+    native.value.expression =
+        (store.lookup
+          (typedPathReferent typing)).compiled.slot.behavior.argument :=
+      native.behavior_eq
+    _ = (store.lookup
+          (typedPathReferent typing)).slot.behavior.argument :=
+      compatibility.lexicalBehavior_eq.symm
+    _ = spine.baseExpression scope environment :=
+      (spine.baseExpression_eq_slot store coherent).symm
+
+/-- Native argument compatibility reindexed to the current source domain. -/
+noncomputable def baseEvidence
+    {n current : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sourceStore : LambdaPFC.Store current}
+    {valuation : OperationalCode.SourceValuation n current}
+    {sig : Sig} {targetContext : Ctx sig}
+    {scope : Scope sourceContext targetContext}
+    {environment : ClosingEnv sig []}
+    {store : StoreEnvironment sourceContext sourceStore valuation
+      targetContext scope environment}
+    {functionPath : LambdaPFC.Path n}
+    {domain codomain : LambdaPFC.Ty n}
+    {typing : Fragment.HasType sourceContext (.path functionPath)
+      (.Fun domain codomain.weaken)}
+    {spine : FunctionPathSpine typing}
+    {native : NativeFunctionImage
+      (store.lookup
+        (typedPathReferent typing)).compiled.slot.behavior.argument}
+    (compatibility : DirectNativeCompatibility store spine native) :
+    {outerPlan : Interface.BinderPlan []} ->
+    (outer : EliminationView outerPlan) ->
+    outerPlan = closedPlan scope environment spine.baseDomainWf ->
+    ArgumentEvidence native.value outer :=
+  fun outer outerPlan_eq =>
+    native.argumentEvidence outer
+      (outerPlan_eq.trans compatibility.domainPlan_eq)
+
+/-- Store-facing application endpoint for the exact direct-function core. -/
+noncomputable def endpointApplication
+    {n current : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sourceStore : LambdaPFC.Store current}
+    {valuation : OperationalCode.SourceValuation n current}
+    {sig : Sig} {targetContext : Ctx sig}
+    {scope : Scope sourceContext targetContext}
+    {environment : ClosingEnv sig []}
+    {store : StoreEnvironment sourceContext sourceStore valuation
+      targetContext scope environment}
+    {functionPath : LambdaPFC.Path n}
+    {domain codomain : LambdaPFC.Ty n}
+    {typing : Fragment.HasType sourceContext (.path functionPath)
+      (.Fun domain codomain.weaken)}
+    {spine : FunctionPathSpine typing}
+    {native : NativeFunctionImage
+      (store.lookup
+        (typedPathReferent typing)).compiled.slot.behavior.argument}
+    {argumentPath : LambdaPFC.Path n}
+    {argumentTyping : Fragment.HasType sourceContext (.path argumentPath)
+      domain}
+    (compatibility : DirectNativeCompatibility store spine native)
+    (coherent : StorePathCoherence store)
+    (functionImage : ClosedPathView scope typing environment)
+    (argumentImage : ClosedPathView scope argumentTyping environment) :
+    ApplicationView native.body functionImage.view.argument
+      argumentImage.view.argument :=
+  spine.endpointApplication scope environment native.value
+    (compatibility.base_eq coherent) compatibility.baseEvidence functionImage
+    argumentImage
+
+end DirectNativeCompatibility
+
+end OperationalFunctionPathSpine
+end LambdaPToFCo
