@@ -2,6 +2,7 @@ import LambdaPToFCo.Full.TypingViews
 import LambdaPToFCo.Full.ValueTypingViews
 import LambdaPToFCo.Full.ContextWellFormed
 import LambdaPToFCo.Full.PathTermWellFormed
+import LambdaPToFCo.Full.IntroductionResultWellFormed
 import LambdaPToFCo.Full.IdentityRegression
 import LambdaPToFCo.Full.IllWfSubtypingRegression
 import LambdaPToFCo.Full.PathTypingUniqueness
