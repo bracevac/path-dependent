@@ -1,5 +1,5 @@
 import LambdaPToFCo.Full.GeneralPairIntroductionStaticRegression
-import LambdaPToFCo.Full.IntervalPairSubtypingRuleConstruction
+import LambdaPToFCo.Full.DemandDirectedPairSubtyping
 import LambdaPToFCo.Full.TargetModelRenaming
 
 /-!
@@ -32,6 +32,7 @@ open TranslationInterfaces
 open DemandDirectedSubtyping
 open IntervalPairSubtypingRuleConstruction
 open SubtypingCompilerCore
+open DemandDirectedPairSubtyping
 
 noncomputable section
 
@@ -397,24 +398,32 @@ def pairSubtyping : Tau.Sub SourceContext
     (.ty SourcePair) (.ty TargetPair) :=
   .pair firstSubtyping memberSubtyping
 
+/- The generic post-rule wrapper seals the already constructed exact
+rank-2 pair evidence before any package or positive result is exposed. -/
+noncomputable def adaptation : PairFusedAdaptation
+    (ScopeAlignment.identity
+      GeneralPairIntroductionStaticRegression.bodyScope.view)
+    pairSubtyping source demand :=
+  PairFusedAdaptation.ofInterval
+    (ScopeAlignment.identity
+      GeneralPairIntroductionStaticRegression.bodyScope.view)
+    firstSubtyping memberSubtyping source demand endpoints first member
+
 noncomputable def outerAdapter : StableIdentity.Adapter BaseTargetContext
     source.plan demand.plan :=
-  IntervalPairSubtypingRuleConstruction.adapter firstSubtyping memberSubtyping
-    endpoints first member
+  adaptation.adapter
 
 noncomputable def adaptedPackage : CompiledPackage BaseTargetContext
     demand.plan :=
-  source.package.adapt outerAdapter
+  adaptation.package
 
 /-- The concrete result of the first source subsumption. Its origin is the
 exact pair derivation, its positive target model is the locally constructed
 `intervalSource` model, and its package is obtained only by applying the
 sealed rank-2 bridge adapter. -/
 noncomputable def pushed : OrdinaryProducer SourceContext BaseTargetContext
-    GeneralPairIntroductionStaticRegression.bodyScope TargetPair where
-  origin := .push pairSubtyping source.origin
-  model := ⟨demand.plan, targetResult.model.producer⟩
-  package := adaptedPackage
+    GeneralPairIntroductionStaticRegression.bodyScope TargetPair :=
+  adaptation.toOrdinary targetResult.model.producer
 
 noncomputable def targetTerm_hasType :
     Exp.HasType BaseTargetContext pushed.package.expression

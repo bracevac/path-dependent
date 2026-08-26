@@ -25,6 +25,7 @@ open TranslationInterfaces
 open DemandDirectedSubtyping
 open SubtypingCompilerCore
 open IntervalPairSubtypingRuleConstruction
+open DemandDirectedPairSubtyping
 
 noncomputable section
 
@@ -165,20 +166,28 @@ noncomputable def member : ContextualEndpointAdaptation endpoints
     memberSubtyping :=
   ContextualEndpointAdaptation.canonical firstSubtyping memberSubtyping rfl rfl
 
+/- Generic pair-rule sealing begins only after the exact canonical contextual
+endpoint evidence above has been constructed. -/
+noncomputable def adaptation : PairFusedAdaptation
+    (ScopeAlignment.identity
+      GeneralPairIntroductionStaticRegression.bodyScope.view)
+    pairSubtyping source demand :=
+  PairFusedAdaptation.ofInterval
+    (ScopeAlignment.identity
+      GeneralPairIntroductionStaticRegression.bodyScope.view)
+    firstSubtyping memberSubtyping source demand endpoints first member
+
 noncomputable def outerAdapter : StableIdentity.Adapter BaseTargetContext
     source.plan demand.plan :=
-  IntervalPairSubtypingRuleConstruction.adapter firstSubtyping memberSubtyping
-    endpoints first member
+  adaptation.adapter
 
 noncomputable def adaptedPackage : CompiledPackage BaseTargetContext
     demand.plan :=
-  source.package.adapt outerAdapter
+  adaptation.package
 
 noncomputable def pushed : OrdinaryProducer SourceContext BaseTargetContext
-    GeneralPairIntroductionStaticRegression.bodyScope TargetPair where
-  origin := .push pairSubtyping source.origin
-  model := ⟨demand.plan, targetResult.model.producer⟩
-  package := adaptedPackage
+    GeneralPairIntroductionStaticRegression.bodyScope TargetPair :=
+  adaptation.toOrdinary targetResult.model.producer
 
 noncomputable def targetTerm_hasType :
     Exp.HasType BaseTargetContext pushed.package.expression

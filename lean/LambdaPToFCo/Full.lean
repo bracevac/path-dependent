@@ -58,6 +58,7 @@ import LambdaPToFCo.Full.PairRepresentationBridgeConstruction
 import LambdaPToFCo.Full.PairSubtypingRuleConstruction
 import LambdaPToFCo.Full.IntervalPairRepresentationBridgeConstruction
 import LambdaPToFCo.Full.IntervalPairSubtypingRuleConstruction
+import LambdaPToFCo.Full.DemandDirectedPairSubtyping
 import LambdaPToFCo.Full.IntroductionCompiler
 import LambdaPToFCo.Full.PairIntroductionCompiler
 import LambdaPToFCo.Full.RecordIntroductionStaticRegression
