@@ -35,6 +35,7 @@ import LambdaPToFCo.Full.TargetModelRenaming
 import LambdaPToFCo.Full.ScopeModelBinding
 import LambdaPToFCo.Full.PairedInstantiation
 import LambdaPToFCo.Full.ConstructedScopeInstantiation
+import LambdaPToFCo.Full.ProducerPairHead
 import LambdaPToFCo.Full.ModelInstantiationCoherence
 import LambdaPToFCo.Full.ScopedPathResolution
 import LambdaPToFCo.Full.FocusedPathTranslationCore
