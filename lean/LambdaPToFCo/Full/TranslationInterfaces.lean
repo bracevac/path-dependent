@@ -149,7 +149,7 @@ inductive DemandPlanModel :
       (model : SelectionPlanModel sourceContext targetContext view origin plan) :
       DemandPlanModel sourceContext targetContext view (.TSel path label) plan
   | function
-      (domainModel : BidirectionalPlanModel sourceContext targetContext view
+      (domainModel : ProducerPlanModel sourceContext targetContext view
         domain domainPlan)
       (codomainModel : DemandPlanModel (sourceContext.snoc domain)
         (domainPlan.context targetContext)

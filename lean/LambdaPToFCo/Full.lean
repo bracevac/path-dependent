@@ -30,6 +30,7 @@ import LambdaPToFCo.Full.SubtypingCompilerCore
 import LambdaPToFCo.Full.IntervalSubtypingCompilerCore
 import LambdaPToFCo.Full.AtomicSubtypingCompiler
 import LambdaPToFCo.Full.TranslationModelRebase
+import LambdaPToFCo.Full.DemandDirectedSubtyping
 
 /-!
 # Full LambdaPFC compilation track

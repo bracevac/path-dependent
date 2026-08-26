@@ -218,7 +218,7 @@ noncomputable def Proper.function
   plan := Function.plan domainResult.plan codomainResult.plan
   model := .both
     (.function domainResult.model codomainResult.model.producer)
-    (.function domainResult.model codomainResult.model.demand)
+    (.function domainResult.model.producer codomainResult.model.demand)
 
 /-- Proper-pair Wf shares the first bidirectional plan across the dependent
 member scope. -/
