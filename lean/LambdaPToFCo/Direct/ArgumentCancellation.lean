@@ -330,6 +330,24 @@ theorem subst_arguments_rename
     Shape.rename_asSubst, Shape.subst_comp,
     Telescope.Args.substitution_rename_comp arguments mapping typed]
 
+/-- Interface instantiation commutes with target renaming through the
+shape-specific lifted renaming. -/
+theorem subst_interface_rename
+    {source target : Sig} {sourceContext : Ctx source}
+    {targetContext : Ctx target} (first : Shape source)
+    (member : Shape first.scope)
+    (interface : Shape.Interface sourceContext first)
+    (mapping : Rename source target)
+    (typed : Rename.Typed sourceContext targetContext mapping) :
+    (member.subst interface.substitution).rename mapping =
+      (member.rename (first.liftRename mapping)).subst
+        (interface.rename mapping typed).substitution := by
+  cases first with
+  | stable plan =>
+      exact subst_arguments_rename member interface.arguments mapping typed
+  | «opaque» type =>
+      exact subst_arguments_rename member interface.arguments mapping typed
+
 /-- Shape substitution cancels any target renaming cancelled by the opening. -/
 theorem rename_subst_cancel
     (shape : Shape source)
