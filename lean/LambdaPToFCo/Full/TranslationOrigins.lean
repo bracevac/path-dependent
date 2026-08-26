@@ -97,8 +97,10 @@ inductive DemandTrace (context : LambdaPFC.Ctx n) :
 
 /-- Public producer origins. `value` retains the complete introduction and
 subtyping view; `lookup` retains actual source typing of the resolved path;
-`push` records every derivation-directed change. Bottom and Top are distinct
-provenance constructors even though both eventually use target adapters. -/
+`application` and `letResult` retain the two non-value computations which can
+produce a package; and `push` records every derivation-directed change. Bottom
+and Top are distinct provenance constructors even though both eventually use
+target adapters. -/
 inductive ProducerOrigin (context : LambdaPFC.Ctx n) :
     LambdaPFC.Ty n -> Type where
   | value
@@ -108,6 +110,17 @@ inductive ProducerOrigin (context : LambdaPFC.Ctx n) :
   | lookup
       (typing : LambdaPFC.Tm.Ty context (.path path) advertised) :
       ProducerOrigin context advertised
+  | application
+      (functionTyping : LambdaPFC.Tm.Ty context (.path function)
+        (.Fun domain codomain))
+      (argumentTyping : LambdaPFC.Tm.Ty context (.path argument) domain) :
+      ProducerOrigin context (codomain.open argument)
+  | letResult
+      (boundTyping : LambdaPFC.Tm.Ty context bound boundType)
+      (resultWf : LambdaPFC.Tau.Wf context (.ty resultType))
+      (bodyTyping : LambdaPFC.Tm.Ty (context.snoc boundType) body
+        resultType.weaken) :
+      ProducerOrigin context resultType
   | push
       (subtyping : LambdaPFC.Tau.Sub context (.ty source) (.ty target))
       (sourceOrigin : ProducerOrigin context source) :

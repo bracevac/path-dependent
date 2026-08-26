@@ -100,6 +100,30 @@ def ofPathSingleton
     ProducerOrigin context (.Single path) :=
   .lookup (Tm.Ty.path precise)
 
+/-- Every normalized full typing view has exact producer provenance.  This is
+source-only: application and let roots record their complete typing premises,
+while the single accumulated suffix becomes one `push`. -/
+def ofTypingView :
+    TypingView context term advertised -> ProducerOrigin context advertised
+  | .path precise suffix =>
+      .push suffix (.lookup (.path precise))
+  | .abs bodyTyping domainWf suffix =>
+      .push suffix (.value (.abs bodyTyping domainWf) .abs)
+  | .pair suffix =>
+      .push suffix (.value .pair .pair)
+  | .typePair witnessWf suffix =>
+      .push suffix (.value (.tpair witnessWf) .pair)
+  | .app functionTyping argumentTyping suffix =>
+      .push suffix (.application functionTyping argumentTyping)
+  | .let boundTyping resultWf bodyTyping suffix =>
+      .push suffix (.letResult boundTyping resultWf bodyTyping)
+
+/-- Total producer provenance for every full source typing derivation. -/
+def ofTyping
+    (typing : Tm.Ty context term advertised) :
+    ProducerOrigin context advertised :=
+  ofTypingView (TypingView.ofTyping typing)
+
 end ProducerOrigin
 
 namespace IntervalProducerOrigin
@@ -117,6 +141,11 @@ example
     (precise : Path.Ty context path (.ty preciseType)) :
     ProducerOrigin context preciseType :=
   ProducerOrigin.ofPrecisePath precise
+
+example
+    (typing : Tm.Ty context term advertised) :
+    ProducerOrigin context advertised :=
+  ProducerOrigin.ofTyping typing
 
 example
     (wf : Tau.Wf context source) : TauDemandTrace context source :=
