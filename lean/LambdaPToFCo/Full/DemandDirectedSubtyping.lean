@@ -292,6 +292,27 @@ noncomputable def package
     CompiledPackage targetContext demand.plan :=
   source.package.adapt adaptation.adapter
 
+/-- Re-expose a fused result as an ordinary positive endpoint when the exact
+demand plan is also certified positively.  This is the static chaining seam
+used after a well-formed subsumption target: the package is still computed by
+the sealed adaptation, and the source origin retains the exact subtyping
+derivation.  It makes no operational readiness claim (in particular for a
+Bottom-derived package). -/
+noncomputable def toOrdinary
+    {sourceScope demandScope : ScopeModel sourceContext targetContext}
+    {alignment : ScopeAlignment sourceScope.view demandScope.view}
+    {sourceType targetType : LambdaPFC.Ty n}
+    {subtyping : Tau.Sub sourceContext (.ty sourceType) (.ty targetType)}
+    {source : ProperProducer sourceContext targetContext sourceScope sourceType}
+    {demand : ProperDemand sourceContext targetContext demandScope targetType}
+    (adaptation : FusedAdaptation alignment subtyping source demand)
+    (targetModel : ProducerPlanModel sourceContext targetContext
+      demandScope.view targetType demand.plan) :
+    OrdinaryProducer sourceContext targetContext demandScope targetType where
+  origin := .push subtyping source.origin
+  model := ⟨demand.plan, targetModel⟩
+  package := adaptation.package
+
 end FusedAdaptation
 
 /-! ## Continuation demand -/
