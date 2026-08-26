@@ -6,6 +6,7 @@ import LambdaPToFCo.Full.IntroductionResultWellFormed
 import LambdaPToFCo.Full.IdentityRegression
 import LambdaPToFCo.Full.IllWfSubtypingRegression
 import LambdaPToFCo.Full.PathTypingUniqueness
+import LambdaPToFCo.Full.ContextSubtyping
 import LambdaPToFCo.Full.TranslationOrigins
 import LambdaPToFCo.Full.OriginConstruction
 import LambdaPToFCo.Full.ValueModel
