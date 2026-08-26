@@ -13,6 +13,7 @@ import LambdaPToFCo.Full.PairModel
 import LambdaPToFCo.Full.ValueInterface
 import LambdaPToFCo.Full.PlanScope
 import LambdaPToFCo.Full.ScopeView
+import LambdaPToFCo.Full.InterfaceSubstitution
 import LambdaPToFCo.Full.InterfacePackageBridge
 import LambdaPToFCo.Full.FunctionInterface
 import LambdaPToFCo.Full.PairInterface
