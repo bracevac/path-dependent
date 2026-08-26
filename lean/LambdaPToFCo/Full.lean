@@ -28,6 +28,7 @@ import LambdaPToFCo.Full.PairedInstantiation
 import LambdaPToFCo.Full.WfPlan
 import LambdaPToFCo.Full.SubtypingCompilerCore
 import LambdaPToFCo.Full.IntervalSubtypingCompilerCore
+import LambdaPToFCo.Full.AtomicSubtypingCompiler
 
 /-!
 # Full LambdaPFC compilation track
