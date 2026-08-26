@@ -64,6 +64,7 @@ import LambdaPToFCo.Full.IntervalPairSubtypingRuleConstruction
 import LambdaPToFCo.Full.DemandDirectedPairSubtyping
 import LambdaPToFCo.Full.StaticAdaptation
 import LambdaPToFCo.Full.StaticAdaptationComposition
+import LambdaPToFCo.Full.ExactReflexiveAdaptationRegression
 import LambdaPToFCo.Full.TermCompilation
 import LambdaPToFCo.Full.NormalizedTermCompilation
 import LambdaPToFCo.Full.IntroductionCompiler

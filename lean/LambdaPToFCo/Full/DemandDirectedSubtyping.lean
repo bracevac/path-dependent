@@ -211,6 +211,17 @@ inductive FusedAdaptationEvidence
         { trace := trace
           model := ⟨translated.plan, demandModel⟩ }
         (StableIdentity.Adapter.identity targetContext translated.plan)
+  | reflExact
+      (source : OrdinaryProducer sourceContext targetContext sourceScope
+        sourceType)
+      (trace : DemandTrace sourceContext sourceType)
+      (demandModel : DemandPlanModel sourceContext targetContext
+        demandScope.view sourceType source.plan) :
+      FusedAdaptationEvidence alignment
+        (Tau.Sub.refl (τ := .ty sourceType)) (.ordinary source)
+        { trace := trace
+          model := ⟨source.plan, demandModel⟩ }
+        (StableIdentity.Adapter.identity targetContext source.plan)
   | function
       (domain : Tau.Sub sourceContext (.ty targetDomain) (.ty sourceDomain))
       (codomain : Tau.Sub (sourceContext.snoc targetDomain)
@@ -292,6 +303,26 @@ noncomputable def widenResolved
         model := ⟨translated.plan, demandModel⟩ } where
   adapter := StableIdentity.Adapter.identity targetContext translated.plan
   evidence := .widenResolved precise translated trace demandModel
+
+/-- Reflexivity at one exact retained ordinary package and one demand indexed
+definitionally by that package's plan.  The target adapter is necessarily
+stable identity and is computed inside the sealed evidence; callers supply
+neither a plan equality nor an adapter. -/
+noncomputable def reflExact
+    {sourceScope demandScope : ScopeModel sourceContext targetContext}
+    (alignment : ScopeAlignment sourceScope.view demandScope.view)
+    {sourceType : LambdaPFC.Ty n}
+    (source : OrdinaryProducer sourceContext targetContext sourceScope
+      sourceType)
+    (trace : DemandTrace sourceContext sourceType)
+    (demandModel : DemandPlanModel sourceContext targetContext
+      demandScope.view sourceType source.plan) :
+    FusedAdaptation alignment (Tau.Sub.refl (τ := .ty sourceType))
+      (.ordinary source)
+      { trace := trace
+        model := ⟨source.plan, demandModel⟩ } where
+  adapter := StableIdentity.Adapter.identity targetContext source.plan
+  evidence := .reflExact source trace demandModel
 
 /-- Consume the exact typed bridge for one structural function rule.  This
 does not derive the bridge from the two recursive subtyping premises. -/
