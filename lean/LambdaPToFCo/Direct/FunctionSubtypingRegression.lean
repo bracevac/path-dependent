@@ -72,41 +72,22 @@ noncomputable def domainCompilation :
   relation :=
     (AtomicSubtyping.top targetDomain).relation
 
-noncomputable def codomainCompilation : CodomainCompiler
-    (sourceContext := SourceContext)
-    (targetContext := SourceContext)
-    (sourceDomainType := (.Top : LambdaPFC.Ty 0))
-    (targetDomainType := (.Bot : LambdaPFC.Ty 0))
-    (sourceCodomainType := (.Bot : LambdaPFC.Ty 1))
-    (targetCodomainType := (.Top : LambdaPFC.Ty 1))
-    codomainDerivation where
-  compile scope := by
-    cases scope with
-    | mk sourceView targetView =>
-        cases sourceView with
-        | mk sourceEnvironment sourceShape sourceRep =>
-            cases targetView with
-            | mk targetEnvironment targetShape targetRep =>
-                cases sourceRep
-                cases targetRep
-                exact (AtomicSubtyping.top (Wf.Proper.bottom _)).relation
+/-- The material codomain instance used by the recursive Formation
+dispatcher.  A generic `CodomainCompiler` can no longer erase its endpoint
+formations to arbitrary `Rep`s: closed endpoints require those formations to
+be exposed in lockstep. -/
+abbrev CodomainContext := sourceDomain.shape.context TargetContext
 
-/-- Direct compilation of the exact `.fun .top .top` derivation. -/
-noncomputable def compiled : Relation TargetContext
-    (.Fun (.Top : LambdaPFC.Ty 0) (.Bot : LambdaPFC.Ty 1))
-    (.Fun (.Bot : LambdaPFC.Ty 0) (.Top : LambdaPFC.Ty 1))
-    (.stable (Function.plan sourceDomain.shape sourceCodomain.shape))
-    (.stable (Function.plan targetDomain.shape targetCodomain.shape)) :=
-  compile environments domainCompilation sourceCodomain.rep
-    targetCodomain.rep codomainCompilation
+noncomputable def materialCodomain : Relation CodomainContext
+    (.Bot : LambdaPFC.Ty 1) (.Top : LambdaPFC.Ty 1)
+    (.stable (Bot.plan sourceDomain.shape.scope))
+    (.stable (Top.plan sourceDomain.shape.scope)) :=
+  (AtomicSubtyping.top (Wf.Proper.bottom CodomainContext)).relation
 
-/-- The emitted program is an ordinary unchanged-SystemFCo function between
-the two stable function package types. -/
-example : Exp.HasType TargetContext compiled.conversion.function
-    (.arrow
-      (Function.plan sourceDomain.shape sourceCodomain.shape).inputTy
-      (Function.plan targetDomain.shape targetCodomain.shape).inputTy) :=
-  compiled.conversion.functionTyping
+example : Exp.HasType CodomainContext materialCodomain.conversion.function
+    (.arrow (Bot.plan sourceDomain.shape.scope).inputTy
+      (Top.plan sourceDomain.shape.scope).inputTy) :=
+  materialCodomain.conversion.functionTyping
 
 end
 end LambdaPToFCo.Direct.FunctionSubtypingRegression

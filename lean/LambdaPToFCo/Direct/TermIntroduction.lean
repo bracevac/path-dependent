@@ -253,13 +253,14 @@ the callback never asks for or fabricates a shape equality. -/
 abbrev LetBodyCompiler
     {n : Nat} {root : Sig} (sourceContext : LambdaPFC.Ctx n)
     (rootContext : SystemFCo.Ctx root) (answer : SystemFCo.Ty root)
-    (boundSource resultSource : LambdaPFC.Ty n) : Type :=
+    (boundSource : LambdaPFC.Ty n) {resultSource : LambdaPFC.Ty n}
+    (result : Wf.Proper rootContext resultSource) : Type :=
   forall {current : Sig} {currentContext : SystemFCo.Ctx current},
     (mapping : SystemFCo.Rename root current) ->
     (typed : SystemFCo.Rename.Typed rootContext currentContext mapping) ->
     Env (sourceContext.snoc boundSource) currentContext ->
-    (result : Wf.Proper currentContext resultSource) ->
-    (consume : Shape.Interface currentContext result.shape ->
+    (consume : Shape.Interface currentContext
+      (result.shape.rename mapping) ->
       Path.Body currentContext (answer.rename mapping)) ->
     Path.Body currentContext (answer.rename mapping)
 
@@ -274,7 +275,7 @@ noncomputable def compileLet
     (result : Wf.Proper targetContext resultSource)
     (answer : SystemFCo.Ty sig)
     (body : LetBodyCompiler sourceContext targetContext answer
-      boundSource resultSource)
+      boundSource result)
     (consumer : ValueConsumer sourceContext targetContext answer
       resultSource) :
     Path.Body targetContext answer :=
@@ -292,7 +293,7 @@ noncomputable def compileLet
       boundSource (Shape.Interface.canonical currentContext boundSlot.shape)
       openedRep
     let resultAt := result.targetRename combined combinedTyped
-    let openedBody := body combined combinedTyped openedEnvironment resultAt
+    let openedBody := body combined combinedTyped openedEnvironment
       (fun resultInterface =>
         consumer combined combinedTyped
           (currentEnvironment.targetRename opening openingTyped)

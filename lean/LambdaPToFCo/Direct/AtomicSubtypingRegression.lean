@@ -70,14 +70,23 @@ noncomputable def singletonEnvironment :=
     WfRegression.singletonEndpoint.shape
     WfRegression.singletonEndpoint.rep
 
-/-- Literal `.symm .var`: `{older} <: {newest}` with the newest variable
-resolved at its exact singleton package. -/
-noncomputable def symmetryVariable :
-    Result
-      (WfRegression.singletonEndpoint.shape.context MemberContext)
-      (.Single (.var 1) : LambdaPFC.Ty 2)
-      (.Single (.var 0) : LambdaPFC.Ty 2) :=
-  symmAt (.var 0) (singletonEnvironment.lookup 0)
+/-- A closed inhabitant used only as the answer of the symmetry CPS check. -/
+private def topValue {sig : Sig} : Exp sig :=
+  .cast (.abs .top (.var .here)) (.top (.arrow .top .top))
+
+private noncomputable def topValue_hasType (base : Ctx sig) :
+    Exp.HasType base (topValue : Exp sig) .top :=
+  .cast (.abs (.var Ctx.Lookup.here)) .top
+
+/-- Literal `.symm .var`: the exact singleton result is consumed beneath any
+faithful closure layers rather than escaping as a material relation. -/
+noncomputable def symmetryVariable : Path.Body
+    (WfRegression.singletonEndpoint.shape.context MemberContext) .top :=
+  symmAt (.var 0) (singletonEnvironment.lookup 0) .top
+    (fun _mapping _typed _result => {
+      expression := topValue
+      typing := topValue_hasType _
+    })
 
 end
 end LambdaPToFCo.Direct.AtomicSubtypingRegression

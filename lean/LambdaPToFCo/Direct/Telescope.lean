@@ -1545,6 +1545,156 @@ noncomputable def identity : (tele : Telescope sig) -> (base : Ctx sig) ->
       exact (duplicateCVar_telescope tail).symm ▸
         identity tail (base.bindCVar source target)
 
+private theorem liftRename_asSubst_heq
+    (tele : Telescope source) (mapping : Rename source target) :
+    HEq (tele.liftRename mapping).asSubst
+      (tele.liftSubst mapping.asSubst) := by
+  induction tele generalizing target with
+  | nil => rfl
+  | var type tail ih =>
+      simp only [liftRename, liftSubst]
+      exact HEq.trans (ih (mapping.lift .var))
+        (liftSubst_congr_heq tail (Rename.asSubst_lift mapping))
+  | tvar tail ih =>
+      simp only [liftRename, liftSubst]
+      exact HEq.trans (ih (mapping.lift .tvar))
+        (liftSubst_congr_heq tail (Rename.asSubst_lift mapping))
+  | cvar source target tail ih =>
+      simp only [liftRename, liftSubst]
+      exact HEq.trans (ih (mapping.lift .cvar))
+        (liftSubst_congr_heq tail (Rename.asSubst_lift mapping))
+
+private theorem liftRename_open_heq
+    (tele : Telescope source) (mapping : Rename source middle)
+    (opening : Subst middle target) :
+    HEq
+      ((tele.liftRename mapping).asSubst.comp
+        ((tele.rename mapping).liftSubst opening))
+      (tele.liftSubst (mapping.asSubst.comp opening)) := by
+  have telescopeEqual := tele.rename_asSubst mapping
+  have liftSubst_telescope_heq
+      (first second : Telescope middle) (equal : first = second) :
+      HEq (first.liftSubst opening) (second.liftSubst opening) := by
+    cases equal
+    rfl
+  have openedEqual :
+      HEq ((tele.rename mapping).liftSubst opening)
+        ((tele.subst mapping.asSubst).liftSubst opening) := by
+    exact liftSubst_telescope_heq _ _ telescopeEqual
+  have openedTelescopeEqual :
+      (tele.rename mapping).subst opening =
+        (tele.subst mapping.asSubst).subst opening :=
+    congrArg (fun telescope => telescope.subst opening) telescopeEqual
+  have composed := Subst.comp_heq rfl
+    (congrArg Telescope.scope telescopeEqual)
+    (congrArg Telescope.scope openedTelescopeEqual)
+    (liftRename_asSubst_heq tele mapping) openedEqual
+  exact HEq.trans composed
+    (tele.liftSubst_comp_heq mapping.asSubst opening).symm
+
+private theorem Args.substitution_transport_heq'
+    {first second : Telescope sig} (equal : first = second)
+    (arguments : Args base first) :
+    HEq (equal ▸ arguments).substitution arguments.substitution := by
+  cases equal
+  rfl
+
+/-- Reopening the canonically duplicated telescope fields cancels the
+renaming into that duplicate scope. -/
+theorem identity_liftRename_cancel
+    (tele : Telescope sig) (base : Ctx sig) :
+    (tele.liftRename tele.weaken).asSubst.comp
+        (identity tele base).substitution = Subst.id := by
+  induction tele with
+  | nil => rfl
+  | var type tail ih =>
+      simp only [liftRename, weaken, identity, substitution, id_eq]
+      let mapping := ((Rename.weaken .var).comp tail.weaken).lift .var
+      let opening := Subst.openVar
+        ((.var .here : Exp (_ ,, .var)).rename tail.weaken)
+      let rest := (duplicateVar_telescope tail).symm ▸
+        identity tail (base.bindVar type)
+      have opened := liftRename_open_heq tail mapping opening
+      have collapsed := liftSubst_congr_heq tail
+        (duplicateVar_open tail.weaken)
+      have ordinary := (liftRename_asSubst_heq tail tail.weaken).symm
+      have firstPair := HEq.trans opened (HEq.trans collapsed ordinary)
+      have restSubstitution := Args.substitution_transport_heq'
+        (duplicateVar_telescope tail).symm
+        (identity tail (base.bindVar type))
+      have whole := Subst.comp_heq rfl
+        (congrArg Telescope.scope (duplicateVar_telescope tail)) rfl
+        firstPair restSubstitution
+      calc
+        _ = ((tail.liftRename mapping).asSubst.comp
+              ((tail.rename mapping).liftSubst opening)).comp
+            rest.substitution :=
+          (Subst.comp_assoc (tail.liftRename mapping).asSubst
+            ((tail.rename mapping).liftSubst opening)
+            rest.substitution).symm
+        _ = (tail.liftRename tail.weaken).asSubst.comp
+            (identity tail (base.bindVar type)).substitution :=
+          eq_of_heq whole
+        _ = Subst.id := ih (base.bindVar type)
+  | tvar tail ih =>
+      simp only [liftRename, weaken, identity, substitution, id_eq]
+      let mapping := ((Rename.weaken .tvar).comp tail.weaken).lift .tvar
+      let opening := Subst.openTVar
+        ((.tvar .here : Ty (_ ,, .tvar)).rename tail.weaken)
+      let rest := (duplicateTVar_telescope tail).symm ▸
+        identity tail base.bindTVar
+      have opened := liftRename_open_heq tail mapping opening
+      have collapsed := liftSubst_congr_heq tail
+        (duplicateTVar_open tail.weaken)
+      have ordinary := (liftRename_asSubst_heq tail tail.weaken).symm
+      have firstPair := HEq.trans opened (HEq.trans collapsed ordinary)
+      have restSubstitution := Args.substitution_transport_heq'
+        (duplicateTVar_telescope tail).symm
+        (identity tail base.bindTVar)
+      have whole := Subst.comp_heq rfl
+        (congrArg Telescope.scope (duplicateTVar_telescope tail)) rfl
+        firstPair restSubstitution
+      calc
+        _ = ((tail.liftRename mapping).asSubst.comp
+              ((tail.rename mapping).liftSubst opening)).comp
+            rest.substitution :=
+          (Subst.comp_assoc (tail.liftRename mapping).asSubst
+            ((tail.rename mapping).liftSubst opening)
+            rest.substitution).symm
+        _ = (tail.liftRename tail.weaken).asSubst.comp
+            (identity tail base.bindTVar).substitution :=
+          eq_of_heq whole
+        _ = Subst.id := ih base.bindTVar
+  | cvar source target tail ih =>
+      simp only [liftRename, weaken, identity, substitution, id_eq]
+      let mapping := ((Rename.weaken .cvar).comp tail.weaken).lift .cvar
+      let opening := Subst.openCVar
+        ((.cvar .here : Co (_ ,, .cvar)).rename tail.weaken)
+      let rest := (duplicateCVar_telescope tail).symm ▸
+        identity tail (base.bindCVar source target)
+      have opened := liftRename_open_heq tail mapping opening
+      have collapsed := liftSubst_congr_heq tail
+        (duplicateCVar_open tail.weaken)
+      have ordinary := (liftRename_asSubst_heq tail tail.weaken).symm
+      have firstPair := HEq.trans opened (HEq.trans collapsed ordinary)
+      have restSubstitution := Args.substitution_transport_heq'
+        (duplicateCVar_telescope tail).symm
+        (identity tail (base.bindCVar source target))
+      have whole := Subst.comp_heq rfl
+        (congrArg Telescope.scope (duplicateCVar_telescope tail)) rfl
+        firstPair restSubstitution
+      calc
+        _ = ((tail.liftRename mapping).asSubst.comp
+              ((tail.rename mapping).liftSubst opening)).comp
+            rest.substitution :=
+          (Subst.comp_assoc (tail.liftRename mapping).asSubst
+            ((tail.rename mapping).liftSubst opening)
+            rest.substitution).symm
+        _ = (tail.liftRename tail.weaken).asSubst.comp
+            (identity tail (base.bindCVar source target)).substitution :=
+          eq_of_heq whole
+        _ = Subst.id := ih (base.bindCVar source target)
+
 /-- Concatenate argument spines for dependent telescopes. The second spine is
 indexed by the second telescope after the first spine has instantiated it. -/
 noncomputable def append :

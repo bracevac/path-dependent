@@ -1576,14 +1576,20 @@ private noncomputable def exactSymmetryRelation
     (sourceRep : Rep base (.Single sourcePath) source) :
     Relation base (.Single sourcePath) (.Single newest) source
       (.stable (Single.plan source.inputTy)) := by
-  cases sourceRep with
-  | singleton _ _ referent =>
+  cases source with
+  | stable plan =>
+      cases sourceRep with
+      | singleton _ _ referent =>
+        exact Relation.ofConversion
+          (.singleton base sourcePath referent)
+          (.singleton base newest (Single.plan referent).inputTy)
+          (Conversion.Singleton.retarget base referent
+            (Single.plan referent).inputTy
+            (Conversion.Singleton.selfBridge base referent))
+  | «opaque» type =>
       exact Relation.ofConversion
-        (.singleton base sourcePath referent)
-        (.singleton base newest (Single.plan referent).inputTy)
-        (Conversion.Singleton.retarget base referent
-          (Single.plan referent).inputTy
-          (Conversion.Singleton.selfBridge base referent))
+        sourceRep (.singleton base newest type)
+        (Conversion.Singleton.wrap base type)
 
 private noncomputable def singletonTargetPackageAt
     {sourcePath : LambdaPFC.Path n}

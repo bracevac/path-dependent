@@ -161,29 +161,55 @@ noncomputable def widen
             (focusedEnvironments environments side mapping typed focused)
             (widenAt path slot))
 
-/-- Exact singleton-symmetry result at a resolved singleton path slot. -/
+/-- Exact singleton-symmetry result after faithful closure exposure has
+reached the literal singleton representation. -/
+private noncomputable def symmResult
+    {base : Ctx sig} {sourcePath : LambdaPFC.Path n}
+    (targetPath : LambdaPFC.Path n)
+    (referent : Ty sig) :
+    Result base (.Single sourcePath) (.Single targetPath) :=
+  let targetRep : Rep base (.Single targetPath)
+      (.stable (Single.plan (Single.plan referent).inputTy)) :=
+    .singleton base targetPath (Single.plan referent).inputTy
+  let bridge := Conversion.Singleton.selfBridge base referent
+  let conversion := Conversion.Singleton.retarget base referent
+    (Single.plan referent).inputTy bridge
+  {
+    source := .stable (Single.plan referent)
+    target := .stable (Single.plan (Single.plan referent).inputTy)
+    relation := Relation.ofConversion
+      (.singleton base sourcePath referent) targetRep conversion
+  }
+
+/-- Expose a possibly closed singleton slot and consume its exact symmetry
+result under every carrier elimination scope. -/
 noncomputable def symmAt
     {base : Ctx sig} {sourcePath : LambdaPFC.Path n}
     (targetPath : LambdaPFC.Path n)
-    (slot : Slot base (.Single sourcePath)) :
-    Result base (.Single sourcePath) (.Single targetPath) := by
+    (slot : Slot base (.Single sourcePath))
+    (answer : Ty sig)
+    (consumer : forall {current : Sig} {currentContext : Ctx current},
+      (mapping : Rename sig current) ->
+      Rename.Typed base currentContext mapping ->
+      Result currentContext (.Single sourcePath) (.Single targetPath) ->
+      Path.Body currentContext (answer.rename mapping)) :
+    Path.Body base answer := by
   cases slot with
   | mk shape interface rep =>
-      cases rep with
-      | singleton _ _ referent =>
-          let targetRep : Rep base (.Single targetPath)
-              (.stable (Single.plan (Single.plan referent).inputTy)) :=
-            .singleton base targetPath (Single.plan referent).inputTy
-          let bridge := Conversion.Singleton.selfBridge base referent
-          let conversion := Conversion.Singleton.retarget base referent
-            (Single.plan referent).inputTy bridge
-          exact {
-            source := .stable (Single.plan referent)
-            target := .stable
-              (Single.plan (Single.plan referent).inputTy)
-            relation := Relation.ofConversion
-              (.singleton base sourcePath referent) targetRep conversion
-          }
+      let exposed := rep.expose interface answer
+        (fun mapping typed _ exposedRep => by
+          cases exposedRep with
+          | singleton _ _ referent =>
+              let body := consumer mapping typed
+                (symmResult targetPath referent)
+              exact {
+                expression := body.expression
+                typing := body.typing
+              })
+      exact {
+        expression := exposed.expression
+        typing := exposed.typing
+      }
 
 /-- Compile singleton symmetry under the literal path derivation. -/
 noncomputable def symm
@@ -201,9 +227,15 @@ noncomputable def symm
     (fun mapping typed focused view => by
       cases view with
       | proper slot =>
-          exact consumer mapping typed
-            (focusedEnvironments environments side mapping typed focused)
-            (symmAt path slot))
+          exact symmAt path slot (answer.rename mapping)
+            (fun next nextTyped result => by
+              let combined := mapping.comp next
+              let combinedTyped := TypedRename.comp typed nextTyped
+              let focusedAt := focused.targetRename next nextTyped
+              let environmentsAt := focusedEnvironments environments side
+                combined combinedTyped focusedAt
+              simpa only [Ty.rename_comp] using
+                consumer combined combinedTyped environmentsAt result))
 
 /-- The ordinary runtime witness retained by one opened interval. -/
 def intervalWitness

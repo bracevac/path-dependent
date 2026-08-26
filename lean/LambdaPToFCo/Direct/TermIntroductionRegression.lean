@@ -73,12 +73,10 @@ shape equality is assumed. -/
 noncomputable def topBody
     (answer : SystemFCo.Ty []) :
     LetBodyCompiler LambdaPFC.Ctx.nil TargetContext answer
-      BoundSource .Top :=
-  fun _mapping _typed _environment result consume => by
-    cases result with
-    | mk shape rep =>
-        cases rep with
-        | top => exact consume (topInterface _)
+      BoundSource (LambdaPToFCo.Direct.Internal.Wf.Proper.top TargetContext) :=
+  fun mapping _typed _environment consume => by
+    simpa only [LambdaPToFCo.Direct.Internal.Wf.Proper.top,
+      Shape.rename, Top.plan_rename] using consume (topInterface _)
 
 /-- A closed instantiation of the let kernel.  The caller remains free to
 choose how the resulting exact Top Slot is consumed. -/

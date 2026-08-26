@@ -200,6 +200,39 @@ private noncomputable def Zipper.openAppendPrefix
     rw [fromSuffixTy_weaken] at transported
     exact transported
 
+/-- Open one faithful closed representation layer around the path zipper.
+The carrier fields recover the exact stored package, whose real Shape is then
+eliminated before structural inspection continues. -/
+private noncomputable def Zipper.openClosed
+    {root current : Sig}
+    {rootContext : SystemFCo.Ctx root} {answer : SystemFCo.Ty root}
+    {currentContext : SystemFCo.Ctx current}
+    (zipper : Zipper rootContext answer currentContext)
+    (fields : Telescope current)
+    (storedShape : Shape fields.scope)
+    (storedPackage : Exp fields.scope)
+    (storedTyping : Exp.HasType (fields.context currentContext)
+      storedPackage storedShape.inputTy)
+    (carrier : Exp current)
+    (carrierTyping : Exp.HasType currentContext carrier fields.existsTy) :
+    Zipper rootContext answer
+      (storedShape.context (fields.context currentContext)) where
+  mapping := (zipper.mapping.comp fields.weaken).comp
+    storedShape.binders.weaken
+  typed := TypedRename.comp
+    (TypedRename.comp zipper.typed (fields.weaken_typed currentContext))
+    (storedShape.binders.weaken_typed (fields.context currentContext))
+  close := fun body => zipper.close
+    (fields.unpack carrier (answer.rename zipper.mapping)
+      (storedShape.eliminate storedPackage
+        ((answer.rename zipper.mapping).rename fields.weaken) body))
+  close_hasType := by
+    intro body bodyTyping
+    apply zipper.close_hasType
+    apply fields.unpack_hasType carrierTyping
+    apply storedShape.eliminate_hasType storedTyping
+    simpa only [Ty.rename_comp, Rename.comp_assoc] using bodyTyping
+
 /-! ## Exact pair-representation observations -/
 
 private noncomputable def properRepresentationPackage
@@ -273,7 +306,7 @@ private noncomputable def intervalRepresentationPackage_hasType
   rw [resultType] at opened
   exact opened
 
-/-! ## Private recursive compiler -/
+/-! ## Closure-aware structural inspection -/
 
 private abbrev Continuation
     {n : Nat} {root : Sig} (sourceContext : LambdaPFC.Ctx n)
@@ -284,6 +317,166 @@ private abbrev Continuation
     Env sourceContext currentContext ->
     View currentContext result ->
     Body rootContext answer
+
+private noncomputable def resolveFirstRep
+    {n : Nat} {kind : LambdaPFC.Kind}
+    {sourceContext : LambdaPFC.Ctx n}
+    {firstSource : LambdaPFC.Ty n}
+    {label : LambdaPFC.Name}
+    {dependent : LambdaPFC.Tau (n + 1) kind}
+    {root current : Sig}
+    {rootContext : SystemFCo.Ctx root} {answer : SystemFCo.Ty root}
+    {currentContext : SystemFCo.Ctx current}
+    {shape : Shape current}
+    (rep : Rep currentContext (.Pair firstSource label dependent) shape)
+    (interface : Shape.Interface currentContext shape)
+    (zipper : Zipper rootContext answer currentContext)
+    (environment : Env sourceContext currentContext)
+    (continuation : Continuation sourceContext rootContext answer
+      (.ty firstSource)) : Body rootContext answer := by
+  generalize sourceEq :
+    LambdaPFC.Ty.Pair firstSource label dependent = sourceType at rep
+  induction rep generalizing root with
+  | top => cases sourceEq
+  | bottom => cases sourceEq
+  | singleton => cases sourceEq
+  | selection => cases sourceEq
+  | function => cases sourceEq
+  | @properPair _ _ pairContext _ _ _ first member firstRep memberRep =>
+      cases sourceEq
+      let package := properRepresentationPackage interface
+      have packageTyping := properRepresentationPackage_hasType interface
+      let projectedZipper := zipper.openAppendPrefix first.binders
+        member.binders package packageTyping
+      let targetMapping := first.binders.weaken
+      let targetTyping := first.binders.weaken_typed pairContext
+      let projectedEnvironment := environment.targetRename
+        targetMapping targetTyping
+      let projectedSlot : Slot (first.context pairContext) _ :=
+        { shape := first.rename targetMapping
+          interface := Shape.Interface.canonical pairContext first
+          rep := firstRep.targetRename targetMapping targetTyping }
+      exact continuation projectedZipper projectedEnvironment
+        (.proper projectedSlot)
+  | @intervalPair _ _ pairContext _ _ _ _ first lower upper firstRep lowerRep
+      upperRep =>
+      cases sourceEq
+      let suffix := Pair.Interval.memberTelescope lower upper
+      let package := intervalRepresentationPackage interface
+      have packageTyping := intervalRepresentationPackage_hasType interface
+      let projectedZipper := zipper.openAppendPrefix first.binders suffix
+        package packageTyping
+      let targetMapping := first.binders.weaken
+      let targetTyping := first.binders.weaken_typed pairContext
+      let projectedEnvironment := environment.targetRename
+        targetMapping targetTyping
+      let projectedSlot : Slot (first.context pairContext) _ :=
+        { shape := first.rename targetMapping
+          interface := Shape.Interface.canonical pairContext first
+          rep := firstRep.targetRename targetMapping targetTyping }
+      exact continuation projectedZipper projectedEnvironment
+        (.proper projectedSlot)
+  | @closed _ _ closedContext _ fields storedShape storedPackage
+      storedTyping openedRep openedIH =>
+      let openedZipper := zipper.openClosed fields storedShape storedPackage
+        storedTyping interface.package interface.package_hasType
+      let targetMapping := fields.weaken.comp storedShape.binders.weaken
+      let targetTyping := TypedRename.comp
+        (fields.weaken_typed closedContext)
+        (storedShape.binders.weaken_typed (fields.context closedContext))
+      let openedEnvironment := environment.targetRename
+        targetMapping targetTyping
+      let openedInterface := Shape.Interface.canonical
+        (fields.context closedContext) storedShape
+      exact openedIH openedInterface openedZipper openedEnvironment
+        continuation sourceEq
+
+private noncomputable def resolveRightRep
+    {n : Nat} {kind : LambdaPFC.Kind}
+    {sourceContext : LambdaPFC.Ctx n}
+    {receiverPath : LambdaPFC.Path n}
+    {firstSource : LambdaPFC.Ty n}
+    {label : LambdaPFC.Name}
+    {dependent : LambdaPFC.Tau (n + 1) kind}
+    {root current : Sig}
+    {rootContext : SystemFCo.Ctx root} {answer : SystemFCo.Ty root}
+    {currentContext : SystemFCo.Ctx current}
+    {shape : Shape current}
+    (rep : Rep currentContext (.Pair firstSource label dependent) shape)
+    (interface : Shape.Interface currentContext shape)
+    (zipper : Zipper rootContext answer currentContext)
+    (environment : Env sourceContext currentContext)
+    (continuation : Continuation sourceContext rootContext answer
+      (dependent.open receiverPath.fst)) : Body rootContext answer := by
+  generalize sourceEq :
+    LambdaPFC.Ty.Pair firstSource label dependent = sourceType at rep
+  induction rep generalizing root with
+  | top => cases sourceEq
+  | bottom => cases sourceEq
+  | singleton => cases sourceEq
+  | selection => cases sourceEq
+  | function => cases sourceEq
+  | @properPair _ _ pairContext _ _ _ first member firstRep memberRep =>
+      cases sourceEq
+      let package := properRepresentationPackage interface
+      have packageTyping := properRepresentationPackage_hasType interface
+      let projectedZipper := zipper.openAppend first.binders member.binders
+        package packageTyping
+      let firstMapping := first.binders.weaken
+      let firstTyping := first.binders.weaken_typed pairContext
+      let memberMapping := member.binders.weaken
+      let memberTyping := member.binders.weaken_typed
+        (first.context pairContext)
+      let targetMapping := firstMapping.comp memberMapping
+      let targetTyping := TypedRename.comp firstTyping memberTyping
+      let projectedEnvironment := environment.targetRename
+        targetMapping targetTyping
+      let projectedSlot : Slot (member.context (first.context pairContext)) _ :=
+        { shape := member.rename memberMapping
+          interface := Shape.Interface.canonical (first.context pairContext)
+            member
+          rep := (memberRep.sourceSubst
+            (LambdaPFC.PathSubst.openAt receiverPath.fst)).targetRename
+              memberMapping memberTyping }
+      exact continuation projectedZipper projectedEnvironment
+        (.proper projectedSlot)
+  | @intervalPair _ _ pairContext _ _ _ _ first lower upper firstRep
+      lowerRep upperRep =>
+      cases sourceEq
+      let suffix := Pair.Interval.memberTelescope lower upper
+      let package := intervalRepresentationPackage interface
+      have packageTyping := intervalRepresentationPackage_hasType interface
+      let projectedZipper := zipper.openAppend first.binders suffix package
+        packageTyping
+      let firstMapping := first.binders.weaken
+      let firstTyping := first.binders.weaken_typed pairContext
+      let memberMapping := suffix.weaken
+      let memberTyping := suffix.weaken_typed (first.context pairContext)
+      let targetMapping := firstMapping.comp memberMapping
+      let targetTyping := TypedRename.comp firstTyping memberTyping
+      let projectedEnvironment := environment.targetRename
+        targetMapping targetTyping
+      let projectedInterval :=
+        (IntervalRep.opened lowerRep upperRep).sourceSubst
+          (LambdaPFC.PathSubst.openAt receiverPath.fst)
+      exact continuation projectedZipper projectedEnvironment
+        (.interval projectedInterval)
+  | @closed _ _ closedContext _ fields storedShape storedPackage
+      storedTyping openedRep openedIH =>
+      let openedZipper := zipper.openClosed fields storedShape storedPackage
+        storedTyping interface.package interface.package_hasType
+      let targetMapping := fields.weaken.comp storedShape.binders.weaken
+      let targetTyping := TypedRename.comp
+        (fields.weaken_typed closedContext)
+        (storedShape.binders.weaken_typed (fields.context closedContext))
+      let openedEnvironment := environment.targetRename
+        targetMapping targetTyping
+      let openedInterface := Shape.Interface.canonical
+        (fields.context closedContext) storedShape
+      exact openedIH openedInterface openedZipper openedEnvironment
+        continuation sourceEq
+
+/-! ## Private recursive compiler -/
 
 private noncomputable def resolve
     {n : Nat} {kind : LambdaPFC.Kind}
@@ -308,41 +501,8 @@ private noncomputable def resolve
       | proper slot =>
           cases slot with
           | mk shape interface rep =>
-            cases rep with
-            | @properPair _ _ _ _ _ _ first member firstRep memberRep =>
-              let package := properRepresentationPackage interface
-              have packageTyping :=
-                properRepresentationPackage_hasType interface
-              let projectedZipper := nextZipper.openAppendPrefix first.binders
-                member.binders package packageTyping
-              let targetMapping := first.binders.weaken
-              let targetTyping := first.binders.weaken_typed nextContext
-              let projectedEnvironment := nextEnvironment.targetRename
-                targetMapping targetTyping
-              let projectedSlot : Slot (first.context nextContext) _ :=
-                { shape := first.rename targetMapping
-                  interface := Shape.Interface.canonical nextContext first
-                  rep := firstRep.targetRename targetMapping targetTyping }
-              exact continuation projectedZipper projectedEnvironment
-                (.proper projectedSlot)
-            | @intervalPair _ _ _ _ _ _ _ first lower upper firstRep
-                lowerRep upperRep =>
-              let suffix := Pair.Interval.memberTelescope lower upper
-              let package := intervalRepresentationPackage interface
-              have packageTyping :=
-                intervalRepresentationPackage_hasType interface
-              let projectedZipper := nextZipper.openAppendPrefix first.binders
-                suffix package packageTyping
-              let targetMapping := first.binders.weaken
-              let targetTyping := first.binders.weaken_typed nextContext
-              let projectedEnvironment := nextEnvironment.targetRename
-                targetMapping targetTyping
-              let projectedSlot : Slot (first.context nextContext) _ :=
-                { shape := first.rename targetMapping
-                  interface := Shape.Interface.canonical nextContext first
-                  rep := firstRep.targetRename targetMapping targetTyping }
-              exact continuation projectedZipper projectedEnvironment
-                (.proper projectedSlot)
+            exact resolveFirstRep rep interface nextZipper nextEnvironment
+              continuation
   | @sel_r _ _ receiverPath firstSource label dependent receiver receiverIH =>
       apply receiverIH zipper environment
       intro next nextContext nextZipper nextEnvironment receiverView
@@ -350,54 +510,8 @@ private noncomputable def resolve
       | proper slot =>
           cases slot with
           | mk shape interface rep =>
-            cases rep with
-            | @properPair _ _ _ _ _ _ first member firstRep memberRep =>
-              let package := properRepresentationPackage interface
-              have packageTyping :=
-                properRepresentationPackage_hasType interface
-              let projectedZipper := nextZipper.openAppend first.binders
-                member.binders package packageTyping
-              let firstMapping := first.binders.weaken
-              let firstTyping := first.binders.weaken_typed nextContext
-              let memberMapping := member.binders.weaken
-              let memberTyping := member.binders.weaken_typed
-                (first.context nextContext)
-              let targetMapping := firstMapping.comp memberMapping
-              let targetTyping := TypedRename.comp firstTyping memberTyping
-              let projectedEnvironment := nextEnvironment.targetRename
-                targetMapping targetTyping
-              let projectedSlot :
-                  Slot (member.context (first.context nextContext)) _ :=
-                { shape := member.rename memberMapping
-                  interface := Shape.Interface.canonical
-                    (first.context nextContext) member
-                  rep := (memberRep.sourceSubst
-                    (LambdaPFC.PathSubst.openAt receiverPath.fst)).targetRename
-                      memberMapping memberTyping }
-              exact continuation projectedZipper projectedEnvironment
-                (.proper projectedSlot)
-            | @intervalPair _ _ _ _ _ _ _ first lower upper firstRep
-                lowerRep upperRep =>
-              let suffix := Pair.Interval.memberTelescope lower upper
-              let package := intervalRepresentationPackage interface
-              have packageTyping :=
-                intervalRepresentationPackage_hasType interface
-              let projectedZipper := nextZipper.openAppend first.binders suffix
-                package packageTyping
-              let firstMapping := first.binders.weaken
-              let firstTyping := first.binders.weaken_typed nextContext
-              let memberMapping := suffix.weaken
-              let memberTyping := suffix.weaken_typed
-                (first.context nextContext)
-              let targetMapping := firstMapping.comp memberMapping
-              let targetTyping := TypedRename.comp firstTyping memberTyping
-              let projectedEnvironment := nextEnvironment.targetRename
-                targetMapping targetTyping
-              let projectedInterval :=
-                (IntervalRep.opened lowerRep upperRep).sourceSubst
-                  (LambdaPFC.PathSubst.openAt receiverPath.fst)
-              exact continuation projectedZipper projectedEnvironment
-                (.interval projectedInterval)
+            exact resolveRightRep (receiverPath := receiverPath) rep interface
+              nextZipper nextEnvironment continuation
   | sel_l receiver inner unequal receiverIH innerIH =>
       exact innerIH zipper environment continuation
 

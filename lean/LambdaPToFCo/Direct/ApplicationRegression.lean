@@ -127,65 +127,27 @@ noncomputable def functionCompilation :
     FunctionComputation functionDerivation TargetContext :=
   compileWidenedPath functionPathTyping
 
-/-- The full argument derivation compiled against the exact Top domain
-demanded by the function.  Pattern matching `Rep.top` determines the domain
-shape; no shape equality is supplied or returned. -/
-noncomputable def argumentCompilation :
-    ArgumentCompiler argumentDerivation where
-  compile nextEnvironment _domain domainRep answer consumer := by
-    cases domainRep with
-    | top =>
-        exact Path.compile argumentPathTyping nextEnvironment answer
-          (fun mapping typed focusedEnvironment view => by
-            cases view with
-            | proper referent =>
-                cases referent with
-                | mk referentShape referentInterface referentRep =>
-                    cases referentRep with
-                    | top =>
-                        let referentSlot : Slot _ DomainSource := {
-                          shape := .stable (Top.plan _)
-                          interface := referentInterface
-                          rep := .top _ }
-                        let singleton :=
-                          singletonSlot argumentPath referentSlot
-                        let widening :=
-                          AtomicSubtyping.widenAt argumentPath referentSlot
-                        let adapted := TermAdaptation.adaptSlot
-                          focusedEnvironment singleton widening.relation
-                        let exactConsumer : ValueConsumer SourceContext _
-                            (answer.rename mapping) DomainSource :=
-                          fun next nextTyped finalEnvironment result => by
-                            cases result with
-                            | mk resultShape resultInterface resultRep =>
-                                cases resultRep with
-                                | top =>
-                                    let combined := mapping.comp next
-                                    let combinedTyped :=
-                                      TypedRename.comp typed nextTyped
-                                    simpa only [Ty.rename_comp] using
-                                      consumer combined combinedTyped
-                                        finalEnvironment resultInterface
-                        exact adapted (answer.rename mapping) exactConsumer)
-
-/-- Direct compilation of the exact variable-application derivation. -/
-noncomputable def compiled : ValueComputation SourceContext TargetContext
+/-- The exact application kernel instantiated with the already compiled
+function and argument interfaces.  The derivation-directed outer dispatcher
+will supply the same two interfaces after its recursive cuts. -/
+noncomputable def compiledExact : ValueComputation SourceContext TargetContext
     (CodomainSource.open argumentPath) :=
-  Application.compile functionCompilation argumentCompilation
+  applyExact environment argumentPath functionSlot.interface domain.rep
+    body.rep argumentSlot.interface
 
 /-- The closed CPS program produced by the rule is typed in unchanged
 System FCo. -/
 noncomputable def compiledAtTop : Path.Body TargetContext
     (Top.plan []).inputTy :=
-  compiled (Top.plan []).inputTy
-    (fun _mapping _typed _environment result => by
-      cases result with
-      | mk shape interface rep =>
-          cases rep with
-          | top =>
-              exact {
-                expression := interface.package
-                typing := interface.package_hasType })
+  compiledExact (Top.plan []).inputTy
+    (fun {current} {currentContext} mapping _typed _environment _result => by
+      let canonical := topSlot (n := 2) currentContext
+      exact {
+        expression := canonical.interface.package
+        typing := by
+          simpa only [Shape.inputTy_rename, Shape.rename,
+            Top.plan_rename] using canonical.interface.package_hasType
+      })
 
 example : Exp.HasType TargetContext compiledAtTop.expression
     (Top.plan []).inputTy :=

@@ -184,39 +184,60 @@ noncomputable def compile
         environment functionSlot => by
       cases functionSlot with
       | mk functionShape functionInterface functionRep =>
-          cases functionRep with
-          | @function _ _ _ _ _ domain codomain domainRep codomainRep =>
-              exact argument.compile environment domainRep
-                (answer.rename mapping)
-                (fun {final} {finalContext} next nextTyped finalEnvironment
-                    argumentInterface => by
+          let exposed := functionRep.expose functionInterface
+            (answer.rename mapping)
+            (fun next nextTyped exposedInterface exposedRep => by
+              cases exposedRep with
+              | @function _ _ _ _ _ domain codomain domainRep codomainRep =>
                   let combined := mapping.comp next
                   let combinedTyped := TypedRename.comp typed nextTyped
-                  let domainAt := domain.rename next
-                  let codomainAt :=
-                    Function.renameCodomain domain codomain next
-                  let functionInterfaceAt : Shape.Interface finalContext
-                      (.stable (Function.plan domainAt codomainAt)) := by
-                    simpa only [Shape.rename, Function.plan_rename] using
-                      functionInterface.rename next nextTyped
-                  let domainRepAt := domainRep.targetRename next nextTyped
-                  let codomainRepAt := codomainRep.targetRename
-                    (domain.liftRename next)
-                    (domain.liftRename_typed nextTyped)
-                  let localConsumer : ValueConsumer sourceContext finalContext
-                      (answer.rename combined)
-                      (codomainSource.open argumentPath) :=
-                    fun {opened} {openedContext} opening openingTyped
-                        openedEnvironment resultSlot => by
-                      let total := combined.comp opening
+                  let exposedEnvironment := environment.targetRename
+                    next nextTyped
+                  have compiled := argument.compile exposedEnvironment domainRep
+                    (answer.rename combined)
+                    (fun {final} {finalContext} argumentMapping
+                        argumentTyped finalEnvironment argumentInterface => by
+                      let total := combined.comp argumentMapping
                       let totalTyped := TypedRename.comp combinedTyped
-                        openingTyped
-                      simpa only [Ty.rename_comp, Rename.comp_assoc] using
-                        consumer total totalTyped openedEnvironment resultSlot
-                  have applied := applyExact finalEnvironment argumentPath
-                    functionInterfaceAt domainRepAt codomainRepAt
-                    argumentInterface
-                    (answer.rename combined) localConsumer
-                  simpa only [Ty.rename_comp] using applied))
+                        argumentTyped
+                      let domainAt := domain.rename argumentMapping
+                      let codomainAt := Function.renameCodomain domain codomain
+                        argumentMapping
+                      let functionInterfaceAt : Shape.Interface finalContext
+                          (.stable (Function.plan domainAt codomainAt)) := by
+                        simpa only [Shape.rename, Function.plan_rename] using
+                          exposedInterface.rename argumentMapping argumentTyped
+                      let domainRepAt := domainRep.targetRename argumentMapping
+                        argumentTyped
+                      let codomainRepAt := codomainRep.targetRename
+                        (domain.liftRename argumentMapping)
+                        (domain.liftRename_typed argumentTyped)
+                      let localConsumer :
+                          ValueConsumer sourceContext finalContext
+                            (answer.rename total)
+                            (codomainSource.open argumentPath) :=
+                        fun {opened} {openedContext} opening openingTyped
+                            openedEnvironment resultSlot => by
+                          let totalMapping := total.comp opening
+                          let totalMappingTyped := TypedRename.comp totalTyped
+                            openingTyped
+                          simpa only [Ty.rename_comp, Rename.comp_assoc] using
+                            consumer totalMapping totalMappingTyped
+                              openedEnvironment resultSlot
+                      have applied := applyExact finalEnvironment argumentPath
+                        functionInterfaceAt domainRepAt codomainRepAt
+                        argumentInterface
+                        (answer.rename total) localConsumer
+                      simpa only [Ty.rename_comp] using applied)
+                  exact {
+                    expression := compiled.expression
+                    typing := by
+                      simpa only [combined, Ty.rename_comp] using
+                        compiled.typing
+                  })
+          exact {
+            expression := exposed.expression
+            typing := exposed.typing
+          })
 
 end LambdaPToFCo.Direct.Internal.Application

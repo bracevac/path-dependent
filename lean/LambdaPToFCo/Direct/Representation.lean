@@ -12,9 +12,11 @@ views expose one genuinely opaque selected target type and two ordinary typed
 endpoint functions; no selected source type or fabricated stable plan exists.
 
 The opened environment stores the exact `Shape.Interface` already available
-at each source variable. Looking up a variable therefore cannot reopen its
-package into a deeper target scope. Source provenance continues to come from
-the derivation being compiled; no auxiliary compiler-certificate hierarchy is
+at each source variable.  A `closed` representation retains the real package
+and its typing while an existential focus is brought back to that environment;
+later inspection eliminates that package under a rank-2 consumer, so no
+hidden target type escapes.  Source provenance continues to come from the
+derivation being compiled; no auxiliary compiler-certificate hierarchy is
 stored here.
 -/
 
@@ -79,6 +81,168 @@ inductive Rep : {n : Nat} -> {sig : Sig} ->
     Rep targetContext
       (.Pair firstSource label (.intv lowerSource upperSource))
       (.stable (Pair.Interval.plan first lower upper))
+| closed
+    {targetContext : SystemFCo.Ctx sig}
+    {sourceType : LambdaPFC.Ty n}
+    (fields : Telescope sig)
+    (storedShape : Shape fields.scope)
+    (storedPackage : Exp fields.scope)
+    (storedTyping : Exp.HasType (fields.context targetContext)
+      storedPackage storedShape.inputTy)
+    (openedRep : Rep
+      (storedShape.context (fields.context targetContext)) sourceType
+      (storedShape.rename storedShape.binders.weaken)) :
+    Rep targetContext sourceType (.opaque fields.existsTy)
+
+/-- The exact ordinary representation reached after every faithful closure
+layer has been eliminated.  This view deliberately has no `closed`
+constructor, so consumers may inspect source structure without an impossible
+or recursively duplicated closure branch. -/
+inductive Rep.Exposed : {n : Nat} -> {sig : Sig} ->
+    SystemFCo.Ctx sig -> LambdaPFC.Ty n -> Shape sig -> Type where
+| top (targetContext : SystemFCo.Ctx sig) :
+    Rep.Exposed targetContext .Top (.stable (Top.plan sig))
+| bottom (targetContext : SystemFCo.Ctx sig) :
+    Rep.Exposed targetContext .Bot (.stable (Bot.plan sig))
+| singleton (targetContext : SystemFCo.Ctx sig)
+    (path : LambdaPFC.Path n) (referentIdentity : SystemFCo.Ty sig) :
+    Rep.Exposed targetContext (.Single path)
+      (.stable (Single.plan referentIdentity))
+| selection
+    {targetContext : SystemFCo.Ctx sig}
+    {path : LambdaPFC.Path n} {label : LambdaPFC.Name}
+    {lowerSource upperSource : LambdaPFC.Ty n}
+    {lower upper : Shape sig} {selectedType : SystemFCo.Ty sig}
+    (lowerRep : Rep targetContext lowerSource lower)
+    (upperRep : Rep targetContext upperSource upper)
+    (lowerFunction : Exp sig)
+    (lowerTyping : Exp.HasType targetContext lowerFunction
+      (.arrow lower.inputTy selectedType))
+    (upperFunction : Exp sig)
+    (upperTyping : Exp.HasType targetContext upperFunction
+      (.arrow selectedType upper.inputTy)) :
+    Rep.Exposed targetContext (.TSel path label) (.opaque selectedType)
+| function
+    {targetContext : SystemFCo.Ctx sig}
+    {domainSource : LambdaPFC.Ty n}
+    {codomainSource : LambdaPFC.Ty (n + 1)}
+    {domain : Shape sig} {codomain : Shape domain.scope}
+    (domainRep : Rep targetContext domainSource domain)
+    (codomainRep : Rep (domain.context targetContext)
+      codomainSource codomain) :
+    Rep.Exposed targetContext (.Fun domainSource codomainSource)
+      (.stable (Function.plan domain codomain))
+| properPair
+    {targetContext : SystemFCo.Ctx sig}
+    {firstSource : LambdaPFC.Ty n}
+    {memberSource : LambdaPFC.Ty (n + 1)}
+    {label : LambdaPFC.Name}
+    {first : Shape sig} {member : Shape first.scope}
+    (firstRep : Rep targetContext firstSource first)
+    (memberRep : Rep (first.context targetContext)
+      memberSource member) :
+    Rep.Exposed targetContext (.Pair firstSource label (.ty memberSource))
+      (.stable (Pair.Proper.plan first member))
+| intervalPair
+    {targetContext : SystemFCo.Ctx sig}
+    {firstSource : LambdaPFC.Ty n}
+    {lowerSource upperSource : LambdaPFC.Ty (n + 1)}
+    {label : LambdaPFC.Name}
+    {first : Shape sig} {lower upper : Shape first.scope}
+    (firstRep : Rep targetContext firstSource first)
+    (lowerRep : Rep (first.context targetContext) lowerSource lower)
+    (upperRep : Rep (first.context targetContext) upperSource upper) :
+    Rep.Exposed targetContext
+      (.Pair firstSource label (.intv lowerSource upperSource))
+      (.stable (Pair.Interval.plan first lower upper))
+
+namespace Rep.Exposed
+
+/-- Forget the closure-free inspection view back to the exact recursive
+representation. -/
+def toRep
+    {targetContext : SystemFCo.Ctx sig}
+    {sourceType : LambdaPFC.Ty n} {shape : Shape sig}
+    (exposed : Rep.Exposed targetContext sourceType shape) :
+    Rep targetContext sourceType shape :=
+  match exposed with
+  | .top context => .top context
+  | .bottom context => .bottom context
+  | .singleton context path referent => .singleton context path referent
+  | .selection lowerRep upperRep lowerFunction lowerTyping upperFunction
+      upperTyping =>
+      .selection lowerRep upperRep lowerFunction lowerTyping
+        upperFunction upperTyping
+  | .function domainRep codomainRep => .function domainRep codomainRep
+  | .properPair firstRep memberRep => .properPair firstRep memberRep
+  | .intervalPair firstRep lowerRep upperRep =>
+      .intervalPair firstRep lowerRep upperRep
+
+end Rep.Exposed
+
+private theorem Package.Plan.rename_asSubst'
+    (plan : Package.Plan source) (mapping : Rename source target) :
+    plan.rename mapping = plan.subst mapping.asSubst := by
+  cases plan with
+  | mk observations =>
+      have equal :
+          observations.rename ((mapping.lift .tvar).lift .var) =
+            observations.subst
+              (((mapping.asSubst).lift .tvar).lift .var) := by
+        simpa only [Rename.asSubst_lift] using
+          observations.rename_asSubst ((mapping.lift .tvar).lift .var)
+      change Package.Plan.mk
+          (observations.rename ((mapping.lift .tvar).lift .var)) =
+        Package.Plan.mk
+          (observations.subst (((mapping.asSubst).lift .tvar).lift .var))
+      rw [equal]
+
+private theorem Package.Plan.open_rename
+    (plan : Package.Plan source) (mapping : Rename source target) :
+    (plan.rename plan.telescope.weaken).rename
+        (plan.telescope.liftRename mapping) =
+      (plan.rename mapping).rename
+        (plan.telescope.rename mapping).weaken := by
+  rw [Package.Plan.rename_comp, Package.Plan.rename_comp,
+    plan.telescope.weaken_liftRename]
+
+private theorem Package.Plan.open_subst
+    (plan : Package.Plan source) (substitution : Subst source target) :
+    (plan.rename plan.telescope.weaken).subst
+        (plan.telescope.liftSubst substitution) =
+      (plan.subst substitution).rename
+        (plan.telescope.subst substitution).weaken := by
+  rw [Package.Plan.rename_asSubst', Package.Plan.subst_comp,
+    plan.telescope.weaken_liftSubst, ← Package.Plan.subst_comp,
+    Package.Plan.rename_asSubst']
+
+private theorem Shape.open_rename
+    (shape : Shape source) (mapping : Rename source target) :
+    (shape.rename shape.binders.weaken).rename
+        (shape.liftRename mapping) =
+      (shape.rename mapping).rename
+        (shape.rename mapping).binders.weaken := by
+  cases shape with
+  | stable plan =>
+      exact congrArg Shape.stable (Package.Plan.open_rename plan mapping)
+  | «opaque» type =>
+      exact congrArg Shape.opaque
+        ((Telescope.var type Telescope.nil).weakenType_liftRename
+          type mapping)
+
+private theorem Shape.open_subst
+    (shape : Shape source) (substitution : Subst source target) :
+    (shape.rename shape.binders.weaken).subst
+        (shape.liftSubst substitution) =
+      (shape.subst substitution).rename
+        (shape.subst substitution).binders.weaken := by
+  cases shape with
+  | stable plan =>
+      exact congrArg Shape.stable (Package.Plan.open_subst plan substitution)
+  | «opaque» type =>
+      exact congrArg Shape.opaque
+        ((Telescope.var type Telescope.nil).weakenType_liftSubst
+          type substitution)
 
 noncomputable def Rep.sourceRename
     {targetContext : SystemFCo.Ctx sig}
@@ -103,6 +267,9 @@ noncomputable def Rep.sourceRename
   | intervalPair firstRep lowerRep upperRep firstIH lowerIH upperIH =>
       exact .intervalPair (firstIH mapping) (lowerIH mapping.ext)
         (upperIH mapping.ext)
+  | closed fields storedShape storedPackage storedTyping openedRep openedIH =>
+      exact .closed fields storedShape storedPackage storedTyping
+        (openedIH mapping)
 
 /-- Substitute source paths without changing the target representation. -/
 noncomputable def Rep.sourceSubst
@@ -129,6 +296,9 @@ noncomputable def Rep.sourceSubst
   | intervalPair firstRep lowerRep upperRep firstIH lowerIH upperIH =>
       exact .intervalPair (firstIH substitution)
         (lowerIH substitution.lift) (upperIH substitution.lift)
+  | closed fields storedShape storedPackage storedTyping openedRep openedIH =>
+      exact .closed fields storedShape storedPackage storedTyping
+        (openedIH substitution)
 
 /-- Reindex one representation through a typed target renaming. -/
 noncomputable def Rep.targetRename
@@ -183,6 +353,27 @@ noncomputable def Rep.targetRename
         (first.liftRename mapping) lifted
       simpa only [Shape.rename, Pair.Interval.plan_rename] using
         Rep.intervalPair renamedFirst renamedLower renamedUpper
+  | closed fields storedShape storedPackage storedTyping openedRep openedIH =>
+      let fieldsMapping := fields.liftRename mapping
+      let fieldsTyped := fields.liftRename_typed typed
+      let renamedShape := storedShape.rename fieldsMapping
+      let renamedPackage := storedPackage.rename fieldsMapping
+      have renamedTyping : Exp.HasType
+          ((fields.rename mapping).context targetContext) renamedPackage
+          renamedShape.inputTy := by
+        simpa only [renamedPackage, renamedShape, Shape.inputTy_rename] using
+          storedTyping.rename fieldsTyped
+      let openedMapping := storedShape.liftRename fieldsMapping
+      let openedTyped := storedShape.liftRename_typed fieldsTyped
+      let renamedOpened := openedIH openedMapping openedTyped
+      dsimp only [openedMapping, fieldsMapping] at renamedOpened
+      let normalizedOpened :=
+        Shape.open_rename storedShape (fields.liftRename mapping) ▸
+          renamedOpened
+      let result := Rep.closed (targetContext := targetContext)
+        (fields.rename mapping) renamedShape renamedPackage renamedTyping
+        normalizedOpened
+      simpa only [Shape.rename, Package.existsTy_rename] using result
 
 /-- Reindex one representation through a typed target substitution. -/
 noncomputable def Rep.targetSubst
@@ -238,6 +429,118 @@ noncomputable def Rep.targetSubst
         (first.liftSubst substitution) lifted
       simpa only [Shape.subst, Pair.Interval.plan_subst] using
         Rep.intervalPair substitutedFirst substitutedLower substitutedUpper
+  | closed fields storedShape storedPackage storedTyping openedRep openedIH =>
+      let fieldsSubstitution := fields.liftSubst substitution
+      let fieldsTyped := fields.liftSubst_typed typed
+      let substitutedShape := storedShape.subst fieldsSubstitution
+      let substitutedPackage := storedPackage.subst fieldsSubstitution
+      have substitutedTyping : Exp.HasType
+          ((fields.subst substitution).context targetContext)
+          substitutedPackage substitutedShape.inputTy := by
+        simpa only [substitutedPackage, substitutedShape,
+          Shape.inputTy_subst] using storedTyping.subst fieldsTyped
+      let openedSubstitution := storedShape.liftSubst fieldsSubstitution
+      let openedTyped := storedShape.liftSubst_typed fieldsTyped
+      let substitutedOpened := openedIH openedSubstitution openedTyped
+      dsimp only [openedSubstitution, fieldsSubstitution] at substitutedOpened
+      let normalizedOpened :=
+        Shape.open_subst storedShape (fields.liftSubst substitution) ▸
+          substitutedOpened
+      let result := Rep.closed (targetContext := targetContext)
+        (fields.subst substitution) substitutedShape substitutedPackage
+        substitutedTyping normalizedOpened
+      simpa only [Shape.subst, Package.existsTy_subst] using result
+
+/-- One typed body produced after exposing a possibly closed representation. -/
+structure Rep.ExposeBody {sig : Sig}
+    (targetContext : SystemFCo.Ctx sig)
+    (targetType : SystemFCo.Ty sig) where
+  expression : SystemFCo.Exp sig
+  typing : SystemFCo.Exp.HasType targetContext expression targetType
+
+/-- A representation consumer natural in every target scope opened by a
+closure carrier.  It is invoked only for a non-closed representation. -/
+abbrev Rep.ExposeConsumer
+    {n : Nat} {root : Sig} (rootContext : SystemFCo.Ctx root)
+    (sourceType : LambdaPFC.Ty n) (answer : SystemFCo.Ty root) : Type :=
+  forall {current : Sig} {currentContext : SystemFCo.Ctx current}
+    {shape : Shape current},
+    (mapping : Rename root current) ->
+    Rename.Typed rootContext currentContext mapping ->
+    Shape.Interface currentContext shape ->
+    Rep.Exposed currentContext sourceType shape ->
+    Rep.ExposeBody currentContext (answer.rename mapping)
+
+private noncomputable def Rep.exposeAt
+    {n : Nat} {root current : Sig}
+    {rootContext : SystemFCo.Ctx root}
+    {currentContext : SystemFCo.Ctx current}
+    {sourceType : LambdaPFC.Ty n} {shape : Shape current}
+    (rep : Rep currentContext sourceType shape)
+    (interface : Shape.Interface currentContext shape)
+    (answer : SystemFCo.Ty root)
+    (mapping : Rename root current)
+    (typed : Rename.Typed rootContext currentContext mapping)
+    (consumer : Rep.ExposeConsumer rootContext sourceType answer) :
+    Rep.ExposeBody currentContext (answer.rename mapping) := by
+  induction rep generalizing root with
+  | top => exact consumer mapping typed interface (.top _)
+  | bottom => exact consumer mapping typed interface (.bottom _)
+  | singleton targetContext path referentIdentity =>
+      exact consumer mapping typed interface
+        (.singleton targetContext path referentIdentity)
+  | selection lowerRep upperRep lowerFunction lowerTyping upperFunction
+      upperTyping =>
+      exact consumer mapping typed interface
+        (.selection lowerRep upperRep lowerFunction lowerTyping
+          upperFunction upperTyping)
+  | function domainRep codomainRep =>
+      exact consumer mapping typed interface (.function domainRep codomainRep)
+  | properPair firstRep memberRep =>
+      exact consumer mapping typed interface (.properPair firstRep memberRep)
+  | intervalPair firstRep lowerRep upperRep =>
+      exact consumer mapping typed interface
+        (.intervalPair firstRep lowerRep upperRep)
+  | @closed _ _ closedContext _ fields storedShape storedPackage storedTyping
+      openedRep openedIH =>
+      let fieldsMapping := mapping.comp fields.weaken
+      let fieldsTyped := TypedRename.comp typed (fields.weaken_typed _)
+      let openedMapping := fieldsMapping.comp storedShape.binders.weaken
+      let openedTyped := TypedRename.comp fieldsTyped
+        (storedShape.binders.weaken_typed _)
+      let openedInterface := Shape.Interface.canonical
+        (fields.context closedContext) storedShape
+      let opened := openedIH openedInterface answer openedMapping openedTyped
+        consumer
+      let storedBody := storedShape.eliminate storedPackage
+        (answer.rename fieldsMapping) opened.expression
+      have storedBodyTyping : Exp.HasType (fields.context closedContext)
+          storedBody
+          (answer.rename fieldsMapping) := by
+        apply storedShape.eliminate_hasType storedTyping
+        simpa only [openedMapping, fieldsMapping, Ty.rename_comp] using
+          opened.typing
+      refine {
+        expression := fields.unpack interface.package (answer.rename mapping)
+          storedBody
+        typing := ?_ }
+      apply fields.unpack_hasType interface.package_hasType
+      simpa only [fieldsMapping, Ty.rename_comp] using storedBodyTyping
+
+/-- Recursively expose every closure layer and continue with the first exact
+non-closed representation.  Each hidden type remains scoped inside ordinary
+System FCo elimination. -/
+noncomputable def Rep.expose
+    {n : Nat} {sig : Sig} {targetContext : SystemFCo.Ctx sig}
+    {sourceType : LambdaPFC.Ty n} {shape : Shape sig}
+    (rep : Rep targetContext sourceType shape)
+    (interface : Shape.Interface targetContext shape)
+    (answer : SystemFCo.Ty sig)
+    (consumer : Rep.ExposeConsumer targetContext sourceType answer) :
+    Rep.ExposeBody targetContext answer := by
+  simpa only [SystemFCo.Ty.rename_id] using
+    rep.exposeAt interface answer Rename.id (TypedRename.id targetContext)
+      consumer
 
 /-- Every stable representation produced by the source relation has a
 term-only observation telescope. This is exactly the admissibility witness
