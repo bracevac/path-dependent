@@ -57,6 +57,7 @@ import LambdaPToFCo.Full.IntervalPairRepresentationBridgeConstruction
 import LambdaPToFCo.Full.IntervalPairSubtypingRuleConstruction
 import LambdaPToFCo.Full.IntroductionCompiler
 import LambdaPToFCo.Full.PairIntroductionCompiler
+import LambdaPToFCo.Full.RecordIntroductionStaticRegression
 import LambdaPToFCo.Full.ApplicationCompilerCore
 import LambdaPToFCo.Full.ApplicationPlanning
 import LambdaPToFCo.Full.LetCompilerCore
