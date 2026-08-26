@@ -10,9 +10,10 @@ either implementation or introducing a dependency cycle.
 
 Each branch retains the exact scope alignment, subtyping derivation, source,
 and target demand.  The cached adapter can only come from an already sealed
-`FusedAdaptation` or `PairFusedAdaptation`; there is no raw-adapter constructor
-or callback.  Package construction and positive re-exposure are static only
-and make no operational-readiness claim.
+`FusedAdaptation`, `PairFusedAdaptation`, or the definitional composition of
+two recursively sealed branches through their literal middle producer; there
+is no raw-adapter constructor or callback.  Package construction and positive
+re-exposure are static only and make no operational-readiness claim.
 -/
 
 namespace LambdaPToFCo.Full
@@ -29,9 +30,9 @@ variable {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
 /-- Closed provenance for one unified static adaptation.  The pair branch is
 necessarily indexed by an ordinary source because structural pair evidence
 retains the exact source pair model and package. -/
-inductive StaticAdaptationEvidence
-    {sourceScope demandScope : ScopeModel sourceContext targetContext}
-    (alignment : ScopeAlignment sourceScope.view demandScope.view) :
+inductive StaticAdaptationEvidence :
+    {sourceScope demandScope : ScopeModel sourceContext targetContext} ->
+    (alignment : ScopeAlignment sourceScope.view demandScope.view) ->
     {sourceType targetType : LambdaPFC.Ty n} ->
     (subtyping : Tau.Sub sourceContext (.ty sourceType) (.ty targetType)) ->
     (source : ProperProducer sourceContext targetContext sourceScope
@@ -40,6 +41,8 @@ inductive StaticAdaptationEvidence
       targetType) ->
     StableIdentity.Adapter targetContext source.plan demand.plan -> Type where
   | core
+      {sourceScope demandScope : ScopeModel sourceContext targetContext}
+      {alignment : ScopeAlignment sourceScope.view demandScope.view}
       {sourceType targetType : LambdaPFC.Ty n}
       {subtyping : Tau.Sub sourceContext (.ty sourceType) (.ty targetType)}
       {source : ProperProducer sourceContext targetContext sourceScope
@@ -50,6 +53,8 @@ inductive StaticAdaptationEvidence
       StaticAdaptationEvidence alignment subtyping source demand
         adaptation.adapter
   | pair
+      {sourceScope demandScope : ScopeModel sourceContext targetContext}
+      {alignment : ScopeAlignment sourceScope.view demandScope.view}
       {sourceType targetType : LambdaPFC.Ty n}
       {subtyping : Tau.Sub sourceContext (.ty sourceType) (.ty targetType)}
       (source : OrdinaryProducer sourceContext targetContext sourceScope
@@ -59,6 +64,39 @@ inductive StaticAdaptationEvidence
       (adaptation : PairFusedAdaptation alignment subtyping source demand) :
       StaticAdaptationEvidence alignment subtyping (.ordinary source) demand
         adaptation.adapter
+  | trans
+      {sourceScope middleScope demandScope :
+        ScopeModel sourceContext targetContext}
+      {sourceType middleType targetType : LambdaPFC.Ty n}
+      {firstSubtyping : Tau.Sub sourceContext
+        (.ty sourceType) (.ty middleType)}
+      {secondSubtyping : Tau.Sub sourceContext
+        (.ty middleType) (.ty targetType)}
+      {firstAlignment : ScopeAlignment sourceScope.view middleScope.view}
+      {secondAlignment : ScopeAlignment middleScope.view demandScope.view}
+      {source : ProperProducer sourceContext targetContext sourceScope
+        sourceType}
+      {middleDemand : ProperDemand sourceContext targetContext middleScope
+        middleType}
+      {firstAdapter : StableIdentity.Adapter targetContext source.plan
+        middleDemand.plan}
+      (firstEvidence : StaticAdaptationEvidence firstAlignment firstSubtyping
+        source middleDemand firstAdapter)
+      (middleModel : ProducerPlanModel sourceContext targetContext
+        middleScope.view middleType middleDemand.plan)
+      {demand : ProperDemand sourceContext targetContext demandScope targetType}
+      {secondAdapter : StableIdentity.Adapter targetContext middleDemand.plan
+        demand.plan}
+      (secondEvidence : StaticAdaptationEvidence secondAlignment
+        secondSubtyping
+        (.ordinary
+          { origin := .push firstSubtyping source.origin
+            model := ⟨middleDemand.plan, middleModel⟩
+            package := source.package.adapt firstAdapter })
+        demand secondAdapter) :
+      StaticAdaptationEvidence (firstAlignment.compose secondAlignment)
+        (.trans firstSubtyping secondSubtyping) source demand
+        (firstAdapter.compose secondAdapter)
 
 /-- The common dispatcher-facing result for every presently sealed static
 subtyping branch. -/
