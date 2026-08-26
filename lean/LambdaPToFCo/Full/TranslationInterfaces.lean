@@ -957,6 +957,23 @@ inductive ProperPushEvidence
             model := model
             package := source.package.adapt adapter })
         adapter
+  | throughBottom
+      (source : OrdinaryProducer sourceContext targetContext sourceScope
+        sourceType)
+      (first : LambdaPFC.Tau.Sub sourceContext (.ty sourceType) (.ty .Bot))
+      (second : LambdaPFC.Tau.Sub sourceContext (.ty .Bot) (.ty targetType))
+      (model : Sigma fun plan =>
+        ProducerPlanModel sourceContext targetContext targetScope.view .Bot plan)
+      (adapter : StableIdentity.Adapter targetContext source.plan model.1) :
+      ProperPushEvidence alignment (.trans first second) (.ordinary source)
+        (.absurd
+          { origin := .push first source.origin
+            plan := model.1
+            view := targetScope.view
+            modeled := model.2
+            package := source.package.adapt adapter }
+          targetType)
+        adapter
   | fromBottom
       (source : OrdinaryProducer sourceContext targetContext sourceScope .Bot)
       (subtyping : LambdaPFC.Tau.Sub sourceContext (.ty .Bot)
@@ -1014,6 +1031,32 @@ noncomputable def ordinary
           package := source.package.adapt adapter }
     adapter := adapter
     evidence := .ordinary source model adapter }
+
+/-- Push an ordinary source to a certified Bottom plan, then retain that
+exact adapter-produced package as absurd provenance for the second leg. -/
+noncomputable def throughBottom
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    {sourceScope targetScope : ScopeModel sourceContext targetContext}
+    (alignment : ScopeAlignment sourceScope.view targetScope.view)
+    {sourceType targetType : LambdaPFC.Ty n}
+    (first : LambdaPFC.Tau.Sub sourceContext (.ty sourceType) (.ty .Bot))
+    (second : LambdaPFC.Tau.Sub sourceContext (.ty .Bot) (.ty targetType))
+    (source : OrdinaryProducer sourceContext targetContext sourceScope
+      sourceType)
+    (model : Sigma fun plan =>
+      ProducerPlanModel sourceContext targetContext targetScope.view .Bot plan)
+    (adapter : StableIdentity.Adapter targetContext source.plan model.1) :
+    ProperPushResult alignment (.trans first second) (.ordinary source) :=
+  let bottom : BottomProducer sourceContext targetContext :=
+    { origin := .push first source.origin
+      plan := model.1
+      view := targetScope.view
+      modeled := model.2
+      package := source.package.adapt adapter }
+  { target := .absurd bottom targetType
+    adapter := adapter
+    evidence := .throughBottom source first second model adapter }
 
 /-- Push canonical Bottom to an arbitrary advertised raw target while
 retaining the same Bottom capability. -/
