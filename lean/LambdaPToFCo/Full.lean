@@ -60,6 +60,7 @@ import LambdaPToFCo.Full.IntervalPairRepresentationBridgeConstruction
 import LambdaPToFCo.Full.IntervalPairSubtypingRuleConstruction
 import LambdaPToFCo.Full.DemandDirectedPairSubtyping
 import LambdaPToFCo.Full.StaticAdaptation
+import LambdaPToFCo.Full.TermCompilation
 import LambdaPToFCo.Full.IntroductionCompiler
 import LambdaPToFCo.Full.PairIntroductionCompiler
 import LambdaPToFCo.Full.RecordImplementationStaticRegression
@@ -70,6 +71,7 @@ import LambdaPToFCo.Full.GeneralPairLetPlanningRegression
 import LambdaPToFCo.Full.GeneralPairObservedIntervalSubtypingRegression
 import LambdaPToFCo.Full.GeneralPairCanonicalIntervalSubtypingRegression
 import LambdaPToFCo.Full.GeneralPairClosedStaticRegression
+import LambdaPToFCo.Full.GeneralPairTermCompilationRegression
 import LambdaPToFCo.Full.ApplicationCompilerCore
 import LambdaPToFCo.Full.ApplicationPlanning
 import LambdaPToFCo.Full.LetCompilerCore
