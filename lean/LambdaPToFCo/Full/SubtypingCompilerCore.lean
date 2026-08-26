@@ -121,17 +121,47 @@ noncomputable def pullReflSameScope
 
 /-- Every sealed demand for source `Top` is observation-free, including any
 number of proof-relevant target renamings. -/
-private def topDemandPlan_eq
+private theorem source_eq_top_of_weaken_eq
+    {n : Nat} {sourceType : LambdaPFC.Ty n}
+    (source_eq : sourceType.weaken = .Top) : sourceType = .Top := by
+  cases sourceType with
+  | Top => rfl
+  | Bot => cases source_eq
+  | Fun => cases source_eq
+  | Pair => cases source_eq
+  | Single => cases source_eq
+  | TSel => cases source_eq
+
+private def topDemandPlan_eq_of_source_eq
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    {view : ScopeView n targetContext} {sourceType : LambdaPFC.Ty n}
+    {plan : ValuePlan sig}
+    (model : DemandPlanModel sourceContext targetContext view sourceType plan)
+    (source_eq : sourceType = .Top) : plan = Top.plan sig :=
+  match model with
+  | .opaque _ => rfl
+  | .bottom => nomatch source_eq
+  | .singleton _ _ => nomatch source_eq
+  | .selection _ => nomatch source_eq
+  | .function _ _ => nomatch source_eq
+  | .properPair _ _ => nomatch source_eq
+  | .intervalPair _ _ => nomatch source_eq
+  | .underBinding _ previous => by
+      have older_eq := source_eq_top_of_weaken_eq source_eq
+      rw [topDemandPlan_eq_of_source_eq previous older_eq]
+      rfl
+  | .targetRename previous _ _ => by
+      rw [topDemandPlan_eq_of_source_eq previous source_eq]
+      rfl
+
+private theorem topDemandPlan_eq
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
     {view : ScopeView n targetContext} {plan : ValuePlan sig}
     (model : DemandPlanModel sourceContext targetContext view .Top plan) :
     plan = Top.plan sig :=
-  match model with
-  | .opaque _ => rfl
-  | .targetRename previous _ _ => by
-      rw [topDemandPlan_eq previous]
-      rfl
+  topDemandPlan_eq_of_source_eq model rfl
 
 /-- Bottom covariance preserves the exact package as distinct absurd
 provenance. -/

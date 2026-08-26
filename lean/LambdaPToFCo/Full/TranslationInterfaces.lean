@@ -187,6 +187,14 @@ inductive DemandPlanModel :
       DemandPlanModel sourceContext targetContext view
         (.Pair first label (.intv lower upper))
         (Pair.Interval.plan firstPlan lowerPlan.inputTy upperPlan.inputTy)
+  | underBinding
+      (boundModel : ProducerPlanModel sourceContext targetContext view
+        boundType boundPlan)
+      (olderModel : DemandPlanModel sourceContext targetContext view olderType
+        olderPlan) :
+      DemandPlanModel (sourceContext.snoc boundType)
+        (boundPlan.context targetContext) (ScopeView.bindPlan view boundPlan)
+        olderType.weaken (olderPlan.rename boundPlan.telescope.weaken)
   | targetRename
       {sourceSig targetSig : Sig}
       {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
