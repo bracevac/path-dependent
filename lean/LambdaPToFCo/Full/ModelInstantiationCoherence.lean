@@ -1,4 +1,4 @@
-import LambdaPToFCo.Full.PairedInstantiation
+import LambdaPToFCo.Full.ConstructedScopeInstantiation
 import LambdaPToFCo.Full.InterfaceArgumentCancellation
 import LambdaPToFCo.Full.ScopeModelBinding
 import LambdaPToFCo.Full.StableIdentitySubstitution
@@ -8,9 +8,10 @@ import LambdaPToFCo.Full.StableIdentitySubstitution
 
 Dependent path selection opens one precisely typed source binding together
 with the actual argument spine of its target value plan. `ModelInstantiation`
-records only that exact opening and its binder lifts. The seven mutual
-coherence relations mirror the sealed plan-model constructors and determine
-the substituted target models without accepting an arbitrary model callback.
+records that opening, target-renamed opening, closed scope renaming and
+source/target binder insertion, together with their binder lifts. The seven
+mutual coherence relations mirror the sealed plan-model constructors and
+determine substituted targets without accepting an arbitrary model callback.
 
 `ProducerInstantiationCoherence.Result` is the high-boundary seam for models
 stored through dependent equality transports, notably `ScopeModel.bind.slot`.
@@ -22,6 +23,14 @@ There is intentionally no function which certifies an arbitrary
 construction provenance. A total path compiler must return a high result that
 retains the appropriate coherence result; `WfPlan.Resolver` path and selection
 cases must delegate to that certified path layer.
+
+There is likewise no total exchange certificate for an arbitrary member
+headed by `targetRename`. Such a member may retain an unrelated target
+mapping, while binder exchange retains no preimage of its inserted bound or
+first model along that mapping. Only an outer rename whose exact factorization
+is retained by construction can be commuted. High pair projection must retain
+per-member coherence (or stronger constructed-model history) rather than
+inventing that factorization here.
 -/
 
 namespace LambdaPToFCo.Full
@@ -87,9 +96,9 @@ noncomputable def openAt
 
 end PairedInstantiation
 
-/-- Closed provenance for the only instantiations needed by dependent path
-selection: an exact source/target opening, followed by zero or more matching
-binder lifts. -/
+/-- Closed provenance for synchronized instantiations used by dependent path
+selection. Every root is one exact construction action; there is no
+constructor from an arbitrary `PairedInstantiation`. -/
 inductive ModelInstantiation :
     {sourceArity targetArity : Nat} ->
     (sourceContext : LambdaPFC.Ctx sourceArity) ->
@@ -121,6 +130,62 @@ inductive ModelInstantiation :
         (plan.context targetContext) targetContext
         (TranslationInterfaces.ScopeView.bindPlan scope.view plan) scope.view
         (PathSubst.openAt path) arguments.substitution
+  | targetRenameScope
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sourceSig targetSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      (scope : ScopeModel sourceContext sourceTargetContext)
+      (_constructed : ConstructedScope scope)
+      (mapping : Rename sourceSig targetSig)
+      (typed : Rename.Typed sourceTargetContext targetTargetContext mapping) :
+      ModelInstantiation (sourceArity := sourceArity)
+        (targetArity := sourceArity) (sourceSig := sourceSig)
+        (targetSig := targetSig) sourceContext sourceContext
+        sourceTargetContext targetTargetContext scope.view
+        (TranslationInterfaces.ScopeModel.targetRename
+          (source := sourceSig) (target := targetSig) scope mapping typed).view
+        (PathSubst.id : PathSubst sourceArity sourceArity)
+        (mapping.asSubst : Subst sourceSig targetSig)
+  | weakenUnderBinding
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+      {boundType : LambdaPFC.Ty sourceArity}
+      {boundPlan : ValuePlan sig}
+      (scope : ScopeModel sourceContext targetContext)
+      (_constructed : ConstructedScope scope)
+      (bound : ProducerPlanModel sourceContext targetContext scope.view
+        boundType boundPlan) :
+      ModelInstantiation sourceContext (sourceContext.snoc boundType)
+        targetContext (boundPlan.context targetContext) scope.view
+        (scope.bind bound).view FinFun.weaken.asSubst
+        boundPlan.telescope.weaken.asSubst
+  | openAtTargetRename
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sourceSig targetSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      {boundType : LambdaPFC.Ty sourceArity}
+      {path : LambdaPFC.Path sourceArity}
+      {plan : ValuePlan sourceSig}
+      (scope : ScopeModel sourceContext sourceTargetContext)
+      (_constructed : ConstructedScope scope)
+      (mapping : Rename sourceSig targetSig)
+      (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+      (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
+      (replacement : ProducerPlanModel sourceContext sourceTargetContext
+        scope.view boundType plan)
+      (arguments : Telescope.Args targetTargetContext
+        (plan.rename mapping).telescope) :
+      ModelInstantiation (sourceContext.snoc boundType) sourceContext
+        (plan.context sourceTargetContext) targetTargetContext
+        (TranslationInterfaces.ScopeView.bindPlan scope.view plan)
+        (scope.targetRename mapping typed).view (PathSubst.openAt path)
+        ((plan.telescope.liftRename mapping).asSubst.comp
+          arguments.substitution)
   | lift
       (previous : ModelInstantiation sourceContext targetSourceContext
         sourceTargetContext targetTargetContext sourceView targetView
@@ -151,6 +216,13 @@ noncomputable def pairing :
       targetSubstitution
   | .openAt scope precise replacement arguments =>
       PairedInstantiation.openAt scope precise replacement arguments
+  | .targetRenameScope scope _ mapping typed =>
+      PairedInstantiation.targetRenameScope scope mapping typed
+  | .weakenUnderBinding scope _ bound =>
+      PairedInstantiation.weakenUnderBinding scope bound
+  | .openAtTargetRename scope _ mapping typed precise replacement arguments =>
+      PairedInstantiation.openAtTargetRename scope mapping typed precise
+        replacement arguments
   | .lift previous newBound => previous.pairing.liftWith newBound
   | .preTargetRename mapping typed next =>
       next.pairing.preTargetRename mapping typed
@@ -193,6 +265,32 @@ noncomputable def openWeakenedProducer
     (path : LambdaPFC.Path sourceArity)
     (arguments : Telescope.Args sourceTargetContext binderPlan.telescope) :
     ProducerPlanModel sourceContext sourceTargetContext sourceView
+      (sourceType.weaken.subst (PathSubst.openAt path))
+      ((sourcePlan.rename binderPlan.telescope.weaken).subst
+        arguments.substitution) := by
+  have sourceCancel :
+      sourceType.weaken.subst (PathSubst.openAt path) = sourceType :=
+    LambdaPFC.Ty.weaken_open sourceType path
+  have targetCancel := ValuePlan.rename_subst_cancel sourcePlan
+    binderPlan.telescope.weaken arguments.substitution
+    (TargetArguments.weaken_comp_substitution arguments)
+  exact sourceCancel.symm ▸ targetCancel.symm ▸ model
+
+/-- Negative analogue of `openWeakenedProducer`, available now that demand
+models retain their exact positive binder. -/
+noncomputable def openWeakenedDemand
+    {sourceArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {sourceSig : Sig}
+    {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+    {sourceView : ScopeView sourceArity sourceTargetContext}
+    {sourceType : LambdaPFC.Ty sourceArity}
+    {sourcePlan binderPlan : ValuePlan sourceSig}
+    (model : DemandPlanModel sourceContext sourceTargetContext sourceView
+      sourceType sourcePlan)
+    (path : LambdaPFC.Path sourceArity)
+    (arguments : Telescope.Args sourceTargetContext binderPlan.telescope) :
+    DemandPlanModel sourceContext sourceTargetContext sourceView
       (sourceType.weaken.subst (PathSubst.openAt path))
       ((sourcePlan.rename binderPlan.telescope.weaken).subst
         arguments.substitution) := by
@@ -400,6 +498,215 @@ noncomputable def targetRenameDemandTarget
     DemandTarget next sourceType (plan.rename mapping) := by
   simpa only [DemandTarget, TargetModelRenaming.plan_rename_asSubst,
     ValuePlan.subst_comp] using target
+
+/-- The exact positive target of the closed target-only scope action. -/
+noncomputable def targetRenameScopeProducerTarget
+    {sourceArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {source target : Sig}
+    {sourceTargetContext : SystemFCoExt.Ctx source}
+    {targetTargetContext : SystemFCoExt.Ctx target}
+    (scope : ScopeModel sourceContext sourceTargetContext)
+    (constructed : ConstructedScope scope)
+    (mapping : Rename source target)
+    (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+    {sourceType : LambdaPFC.Ty sourceArity}
+    {plan : ValuePlan source}
+    (model : ProducerPlanModel sourceContext sourceTargetContext scope.view
+      sourceType plan) :
+    ProducerTarget (.targetRenameScope scope constructed mapping typed)
+      sourceType plan := by
+  have sourceEq : sourceType.subst PathSubst.id = sourceType :=
+    LambdaPFC.Ty.subst_id sourceType
+  have targetEq : plan.subst mapping.asSubst = plan.rename mapping := by
+    rw [TargetModelRenaming.plan_rename_asSubst]
+  change ProducerPlanModel sourceContext targetTargetContext
+    (scope.targetRename mapping typed).view
+    (sourceType.subst PathSubst.id) (plan.subst mapping.asSubst)
+  rw [targetEq, sourceEq]
+  exact TargetModelRenaming.producer model mapping typed
+
+/-- The exact negative target of the closed target-only scope action. -/
+noncomputable def targetRenameScopeDemandTarget
+    {sourceArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {source target : Sig}
+    {sourceTargetContext : SystemFCoExt.Ctx source}
+    {targetTargetContext : SystemFCoExt.Ctx target}
+    (scope : ScopeModel sourceContext sourceTargetContext)
+    (constructed : ConstructedScope scope)
+    (mapping : Rename source target)
+    (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+    {sourceType : LambdaPFC.Ty sourceArity}
+    {plan : ValuePlan source}
+    (model : DemandPlanModel sourceContext sourceTargetContext scope.view
+      sourceType plan) :
+    DemandTarget (.targetRenameScope scope constructed mapping typed)
+      sourceType plan := by
+  have sourceEq : sourceType.subst PathSubst.id = sourceType :=
+    LambdaPFC.Ty.subst_id sourceType
+  have targetEq : plan.subst mapping.asSubst = plan.rename mapping := by
+    rw [TargetModelRenaming.plan_rename_asSubst]
+  change DemandPlanModel sourceContext targetTargetContext
+    (scope.targetRename mapping typed).view
+    (sourceType.subst PathSubst.id) (plan.subst mapping.asSubst)
+  rw [targetEq, sourceEq]
+  exact TargetModelRenaming.demand model mapping typed
+
+/-- Adding one retained scope binder weakens an arbitrary positive model by
+the exact source and target substitutions of `weakenUnderBinding`. -/
+noncomputable def weakenUnderBindingProducerTarget
+    {sourceArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    (scope : ScopeModel sourceContext targetContext)
+    (constructed : ConstructedScope scope)
+    {boundType sourceType : LambdaPFC.Ty sourceArity}
+    {boundPlan sourcePlan : ValuePlan sig}
+    (bound : ProducerPlanModel sourceContext targetContext scope.view
+      boundType boundPlan)
+    (model : ProducerPlanModel sourceContext targetContext scope.view
+      sourceType sourcePlan) :
+    ProducerTarget (.weakenUnderBinding scope constructed bound)
+      sourceType sourcePlan := by
+  have sourceEq : sourceType.subst FinFun.weaken.asSubst =
+      sourceType.weaken := by
+    simpa only [LambdaPFC.Ty.weaken] using
+      LambdaPFC.Ty.subst_asSubst sourceType FinFun.weaken
+  change ProducerPlanModel (sourceContext.snoc boundType)
+    (boundPlan.context targetContext) (scope.bind bound).view
+    (sourceType.subst FinFun.weaken.asSubst)
+    (sourcePlan.subst boundPlan.telescope.weaken.asSubst)
+  rw [sourceEq]
+  simpa only [TargetModelRenaming.plan_rename_asSubst] using
+    ProducerPlanModel.underBinding bound model
+
+/-- Negative analogue of `weakenUnderBindingProducerTarget`. -/
+noncomputable def weakenUnderBindingDemandTarget
+    {sourceArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    (scope : ScopeModel sourceContext targetContext)
+    (constructed : ConstructedScope scope)
+    {boundType sourceType : LambdaPFC.Ty sourceArity}
+    {boundPlan sourcePlan : ValuePlan sig}
+    (bound : ProducerPlanModel sourceContext targetContext scope.view
+      boundType boundPlan)
+    (model : DemandPlanModel sourceContext targetContext scope.view
+      sourceType sourcePlan) :
+    DemandTarget (.weakenUnderBinding scope constructed bound)
+      sourceType sourcePlan := by
+  have sourceEq : sourceType.subst FinFun.weaken.asSubst =
+      sourceType.weaken := by
+    simpa only [LambdaPFC.Ty.weaken] using
+      LambdaPFC.Ty.subst_asSubst sourceType FinFun.weaken
+  change DemandPlanModel (sourceContext.snoc boundType)
+    (boundPlan.context targetContext) (scope.bind bound).view
+    (sourceType.subst FinFun.weaken.asSubst)
+    (sourcePlan.subst boundPlan.telescope.weaken.asSubst)
+  rw [sourceEq]
+  simpa only [TargetModelRenaming.plan_rename_asSubst] using
+    DemandPlanModel.underBinding bound model
+
+/-- The named closed binder-exchange action used by dependent pair members.
+Its predecessor is exactly `weakenUnderBinding`; its lifted bound is the
+factorization-safe weakening of the retained first model. -/
+noncomputable def exchangeUnderBinding
+    {sourceArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    (scope : ScopeModel sourceContext targetContext)
+    (constructed : ConstructedScope scope)
+    {boundType firstType : LambdaPFC.Ty sourceArity}
+    {boundPlan firstPlan : ValuePlan sig}
+    (bound : ProducerPlanModel sourceContext targetContext scope.view
+      boundType boundPlan)
+    (first : ProducerPlanModel sourceContext targetContext scope.view
+      firstType firstPlan) :=
+  ModelInstantiation.lift (.weakenUnderBinding scope constructed bound)
+    (weakenUnderBindingProducerTarget scope constructed bound first)
+
+/-- Opening after a typed target rename cancels an older positive model's
+source weakening and retains its exact target-renamed structure. -/
+noncomputable def openAtTargetRenameWeakenedProducerTarget
+    {sourceArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {source target : Sig}
+    {sourceTargetContext : SystemFCoExt.Ctx source}
+    {targetTargetContext : SystemFCoExt.Ctx target}
+    (scope : ScopeModel sourceContext sourceTargetContext)
+    (constructed : ConstructedScope scope)
+    (mapping : Rename source target)
+    (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+    {boundType : LambdaPFC.Ty sourceArity}
+    {path : LambdaPFC.Path sourceArity}
+    (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
+    {boundPlan : ValuePlan source}
+    (replacement : ProducerPlanModel sourceContext sourceTargetContext
+      scope.view boundType boundPlan)
+    (arguments : Telescope.Args targetTargetContext
+      (boundPlan.rename mapping).telescope)
+    {olderType : LambdaPFC.Ty sourceArity}
+    {olderPlan : ValuePlan source}
+    (older : ProducerPlanModel sourceContext sourceTargetContext scope.view
+      olderType olderPlan) :
+    ProducerTarget (.openAtTargetRename scope constructed mapping typed
+      precise replacement arguments) olderType.weaken
+      (olderPlan.rename boundPlan.telescope.weaken) := by
+  have sourceCancel :
+      olderType.weaken.subst (PathSubst.openAt path) = olderType :=
+    LambdaPFC.Ty.weaken_open olderType path
+  have targetCancel := ValuePlan.rename_weaken_openAfterRename_cancel
+    olderPlan boundPlan mapping arguments
+  change ProducerPlanModel sourceContext targetTargetContext
+    (scope.targetRename mapping typed).view
+    (olderType.weaken.subst (PathSubst.openAt path))
+    ((olderPlan.rename boundPlan.telescope.weaken).subst
+      ((boundPlan.telescope.liftRename mapping).asSubst.comp
+        arguments.substitution))
+  rw [sourceCancel, targetCancel]
+  exact TargetModelRenaming.producer older mapping typed
+
+/-- Negative analogue of
+`openAtTargetRenameWeakenedProducerTarget`. -/
+noncomputable def openAtTargetRenameWeakenedDemandTarget
+    {sourceArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {source target : Sig}
+    {sourceTargetContext : SystemFCoExt.Ctx source}
+    {targetTargetContext : SystemFCoExt.Ctx target}
+    (scope : ScopeModel sourceContext sourceTargetContext)
+    (constructed : ConstructedScope scope)
+    (mapping : Rename source target)
+    (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+    {boundType : LambdaPFC.Ty sourceArity}
+    {path : LambdaPFC.Path sourceArity}
+    (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
+    {boundPlan : ValuePlan source}
+    (replacement : ProducerPlanModel sourceContext sourceTargetContext
+      scope.view boundType boundPlan)
+    (arguments : Telescope.Args targetTargetContext
+      (boundPlan.rename mapping).telescope)
+    {olderType : LambdaPFC.Ty sourceArity}
+    {olderPlan : ValuePlan source}
+    (older : DemandPlanModel sourceContext sourceTargetContext scope.view
+      olderType olderPlan) :
+    DemandTarget (.openAtTargetRename scope constructed mapping typed precise
+      replacement arguments) olderType.weaken
+      (olderPlan.rename boundPlan.telescope.weaken) := by
+  have sourceCancel :
+      olderType.weaken.subst (PathSubst.openAt path) = olderType :=
+    LambdaPFC.Ty.weaken_open olderType path
+  have targetCancel := ValuePlan.rename_weaken_openAfterRename_cancel
+    olderPlan boundPlan mapping arguments
+  change DemandPlanModel sourceContext targetTargetContext
+    (scope.targetRename mapping typed).view
+    (olderType.weaken.subst (PathSubst.openAt path))
+    ((olderPlan.rename boundPlan.telescope.weaken).subst
+      ((boundPlan.telescope.liftRename mapping).asSubst.comp
+        arguments.substitution))
+  rw [sourceCancel, targetCancel]
+  exact TargetModelRenaming.demand older mapping typed
 
 section AtomicTargets
 
@@ -920,6 +1227,44 @@ inductive ProducerInstantiationCoherence :
         (.targetRename sourceModel mapping typed)
         (ModelInstantiation.targetRenameProducerTarget (mapping := mapping)
           (typed := typed) targetModel)
+  | targetRenameScope
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sourceSig targetSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      {sourceType : LambdaPFC.Ty sourceArity}
+      {sourcePlan : ValuePlan sourceSig}
+      (scope : ScopeModel sourceContext sourceTargetContext)
+      (constructed : ConstructedScope scope)
+      (mapping : Rename sourceSig targetSig)
+      (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+      (sourceModel : ProducerPlanModel sourceContext sourceTargetContext
+        scope.view sourceType sourcePlan) :
+      ProducerInstantiationCoherence
+        (.targetRenameScope scope constructed mapping typed) sourceModel
+        (ModelInstantiation.targetRenameScopeProducerTarget
+          (source := sourceSig) (target := targetSig)
+          (sourceTargetContext := sourceTargetContext)
+          (targetTargetContext := targetTargetContext) scope constructed
+          mapping typed sourceModel)
+  | weakenUnderBinding
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sourceSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {boundType sourceType : LambdaPFC.Ty sourceArity}
+      {boundPlan sourcePlan : ValuePlan sourceSig}
+      (scope : ScopeModel sourceContext sourceTargetContext)
+      (constructed : ConstructedScope scope)
+      (bound : ProducerPlanModel sourceContext sourceTargetContext scope.view
+        boundType boundPlan)
+      (sourceModel : ProducerPlanModel sourceContext sourceTargetContext
+        scope.view sourceType sourcePlan) :
+      ProducerInstantiationCoherence
+        (.weakenUnderBinding scope constructed bound) sourceModel
+        (ModelInstantiation.weakenUnderBindingProducerTarget scope constructed
+          bound sourceModel)
   | boundOpen
       (scope : ScopeModel sourceContext targetTargetContext)
       (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
@@ -948,6 +1293,60 @@ inductive ProducerInstantiationCoherence :
         (.openAt scope precise replacement arguments)
         (.underBinding replacement older)
         (ModelInstantiation.openWeakenedProducer older path arguments)
+  | boundOpenAtTargetRename
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sourceSig targetSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      {boundType : LambdaPFC.Ty sourceArity}
+      {path : LambdaPFC.Path sourceArity}
+      {boundPlan : ValuePlan sourceSig}
+      (scope : ScopeModel sourceContext sourceTargetContext)
+      (constructed : ConstructedScope scope)
+      (mapping : Rename sourceSig targetSig)
+      (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+      (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
+      (replacement : ProducerPlanModel sourceContext sourceTargetContext
+        scope.view boundType boundPlan)
+      (arguments : Telescope.Args targetTargetContext
+        (boundPlan.rename mapping).telescope) :
+      ProducerInstantiationCoherence
+        (.openAtTargetRename scope constructed mapping typed precise
+          replacement arguments)
+        (.bound replacement)
+        (ModelInstantiation.boundTarget
+          (.openAtTargetRename scope constructed mapping typed precise
+            replacement arguments))
+  | underBindingOpenAtTargetRename
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sourceSig targetSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      {boundType olderType : LambdaPFC.Ty sourceArity}
+      {path : LambdaPFC.Path sourceArity}
+      {boundPlan olderPlan : ValuePlan sourceSig}
+      (scope : ScopeModel sourceContext sourceTargetContext)
+      (constructed : ConstructedScope scope)
+      (mapping : Rename sourceSig targetSig)
+      (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+      (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
+      (replacement : ProducerPlanModel sourceContext sourceTargetContext
+        scope.view boundType boundPlan)
+      (arguments : Telescope.Args targetTargetContext
+        (boundPlan.rename mapping).telescope)
+      (older : ProducerPlanModel sourceContext sourceTargetContext scope.view
+        olderType olderPlan) :
+      ProducerInstantiationCoherence
+        (.openAtTargetRename scope constructed mapping typed precise
+          replacement arguments)
+        (.underBinding replacement older)
+        (ModelInstantiation.openAtTargetRenameWeakenedProducerTarget
+          (source := sourceSig) (target := targetSig)
+          (sourceTargetContext := sourceTargetContext)
+          (targetTargetContext := targetTargetContext) scope constructed
+          mapping typed precise replacement arguments older)
   | underBindingLift
       (bound : ProducerInstantiationCoherence previous sourceBound
         targetBound)
@@ -1037,6 +1436,92 @@ inductive DemandInstantiationCoherence :
         (.targetRename sourceModel mapping typed)
         (ModelInstantiation.targetRenameDemandTarget (mapping := mapping)
           (typed := typed) targetModel)
+  | targetRenameScope
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sourceSig targetSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      {sourceType : LambdaPFC.Ty sourceArity}
+      {sourcePlan : ValuePlan sourceSig}
+      (scope : ScopeModel sourceContext sourceTargetContext)
+      (constructed : ConstructedScope scope)
+      (mapping : Rename sourceSig targetSig)
+      (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+      (sourceModel : DemandPlanModel sourceContext sourceTargetContext
+        scope.view sourceType sourcePlan) :
+      DemandInstantiationCoherence
+        (.targetRenameScope scope constructed mapping typed) sourceModel
+        (ModelInstantiation.targetRenameScopeDemandTarget
+          (source := sourceSig) (target := targetSig)
+          (sourceTargetContext := sourceTargetContext)
+          (targetTargetContext := targetTargetContext) scope constructed
+          mapping typed sourceModel)
+  | weakenUnderBinding
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sourceSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {boundType sourceType : LambdaPFC.Ty sourceArity}
+      {boundPlan sourcePlan : ValuePlan sourceSig}
+      (scope : ScopeModel sourceContext sourceTargetContext)
+      (constructed : ConstructedScope scope)
+      (bound : ProducerPlanModel sourceContext sourceTargetContext scope.view
+        boundType boundPlan)
+      (sourceModel : DemandPlanModel sourceContext sourceTargetContext
+        scope.view sourceType sourcePlan) :
+      DemandInstantiationCoherence
+        (.weakenUnderBinding scope constructed bound) sourceModel
+        (ModelInstantiation.weakenUnderBindingDemandTarget scope constructed
+          bound sourceModel)
+  | underBindingOpen
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {targetSig : Sig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      {boundType olderType : LambdaPFC.Ty sourceArity}
+      {path : LambdaPFC.Path sourceArity}
+      {boundPlan olderPlan : ValuePlan targetSig}
+      (scope : ScopeModel sourceContext targetTargetContext)
+      (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
+      (replacement : ProducerPlanModel sourceContext targetTargetContext
+        scope.view boundType boundPlan)
+      (arguments : Telescope.Args targetTargetContext boundPlan.telescope)
+      (older : DemandPlanModel sourceContext targetTargetContext scope.view
+        olderType olderPlan) :
+      DemandInstantiationCoherence
+        (.openAt scope precise replacement arguments)
+        (.underBinding replacement older)
+        (ModelInstantiation.openWeakenedDemand older path arguments)
+  | underBindingOpenAtTargetRename
+      {sourceArity : Nat}
+      {sourceContext : LambdaPFC.Ctx sourceArity}
+      {sourceSig targetSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      {boundType olderType : LambdaPFC.Ty sourceArity}
+      {path : LambdaPFC.Path sourceArity}
+      {boundPlan olderPlan : ValuePlan sourceSig}
+      (scope : ScopeModel sourceContext sourceTargetContext)
+      (constructed : ConstructedScope scope)
+      (mapping : Rename sourceSig targetSig)
+      (typed : Rename.Typed sourceTargetContext targetTargetContext mapping)
+      (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
+      (replacement : ProducerPlanModel sourceContext sourceTargetContext
+        scope.view boundType boundPlan)
+      (arguments : Telescope.Args targetTargetContext
+        (boundPlan.rename mapping).telescope)
+      (older : DemandPlanModel sourceContext sourceTargetContext scope.view
+        olderType olderPlan) :
+      DemandInstantiationCoherence
+        (.openAtTargetRename scope constructed mapping typed precise
+          replacement arguments)
+        (.underBinding replacement older)
+        (ModelInstantiation.openAtTargetRenameWeakenedDemandTarget
+          (source := sourceSig) (target := targetSig)
+          (sourceTargetContext := sourceTargetContext)
+          (targetTargetContext := targetTargetContext) scope constructed
+          mapping typed precise replacement arguments older)
 
 inductive BidirectionalInstantiationCoherence :
     {sourceArity targetArity : Nat} ->
@@ -1348,6 +1833,73 @@ noncomputable def liftSlot
     · rfl
 
 end ProducerInstantiationCoherence
+
+namespace IntervalProducerInstantiationCoherence
+
+/-- Heterogeneous high-boundary wrapper for a retained positive interval
+member. The instantiated interval is determined by its structural coherence
+certificate; no endpoint model or transport callback is accepted. -/
+structure Result
+    {sourceArity targetArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {targetSourceContext : LambdaPFC.Ctx targetArity}
+    {sourceSig targetSig : Sig}
+    {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+    {targetTargetContext : SystemFCoExt.Ctx targetSig}
+    {sourceView : ScopeView sourceArity sourceTargetContext}
+    {targetView : ScopeView targetArity targetTargetContext}
+    {sourceSubstitution : PathSubst sourceArity targetArity}
+    {targetSubstitution : Subst sourceSig targetSig}
+    (action : ModelInstantiation sourceContext targetSourceContext
+      sourceTargetContext targetTargetContext sourceView targetView
+      sourceSubstitution targetSubstitution)
+    {lower upper : LambdaPFC.Ty sourceArity}
+    {lowerPlan upperPlan : ValuePlan sourceSig}
+    (source : IntervalProducerPlanModel sourceContext sourceTargetContext
+      sourceView lower upper lowerPlan upperPlan) : Type where
+  canonicalLower : LambdaPFC.Ty sourceArity
+  canonicalUpper : LambdaPFC.Ty sourceArity
+  canonicalLowerPlan : ValuePlan sourceSig
+  canonicalUpperPlan : ValuePlan sourceSig
+  lower_eq : lower = canonicalLower
+  upper_eq : upper = canonicalUpper
+  lowerPlan_eq : lowerPlan = canonicalLowerPlan
+  upperPlan_eq : upperPlan = canonicalUpperPlan
+  canonicalSource : IntervalProducerPlanModel sourceContext
+    sourceTargetContext sourceView canonicalLower canonicalUpper
+    canonicalLowerPlan canonicalUpperPlan
+  source_heq : HEq source canonicalSource
+  target : ModelInstantiation.IntervalProducerTarget action canonicalLower
+    canonicalUpper canonicalLowerPlan canonicalUpperPlan
+  coherence : IntervalProducerInstantiationCoherence action canonicalSource
+    target
+
+/-- Recover exact interval coherence after eliminating the retained endpoint
+and model transports. -/
+noncomputable def Result.transport
+    {source : IntervalProducerPlanModel sourceContext sourceTargetContext
+      sourceView lower upper lowerPlan upperPlan}
+    (result : Result action source) :
+    Sigma fun target : ModelInstantiation.IntervalProducerTarget action lower
+      upper lowerPlan upperPlan =>
+        IntervalProducerInstantiationCoherence action source target := by
+  rcases result with
+    ⟨_, _, _, _, rfl, rfl, rfl, rfl, canonicalSource, sourceHEq,
+      target, coherence⟩
+  have sourceEq : source = canonicalSource := eq_of_heq sourceHEq
+  cases sourceEq
+  exact ⟨target, coherence⟩
+
+/-- The exact instantiated positive interval recovered from a sealed result. -/
+noncomputable def Result.instantiated
+    {source : IntervalProducerPlanModel sourceContext sourceTargetContext
+      sourceView lower upper lowerPlan upperPlan}
+    (result : Result action source) :
+    ModelInstantiation.IntervalProducerTarget action lower upper lowerPlan
+      upperPlan :=
+  result.transport.1
+
+end IntervalProducerInstantiationCoherence
 
 
 end LambdaPToFCo.Full
