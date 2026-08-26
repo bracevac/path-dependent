@@ -102,20 +102,20 @@ theorem subst_comp (shape : Shape source)
     Ty.subst_comp]
 
 /-- Reindexing induced between the two opened shape scopes. -/
-def liftRename (shape : Shape source)
-    (mapping : Rename source target) :
-    Rename shape.scope (shape.rename mapping).scope := by
-  change Rename shape.binders.scope (shape.rename mapping).binders.scope
-  rw [<- binders_rename]
-  exact shape.binders.liftRename mapping
+def liftRename : (shape : Shape source) ->
+    (mapping : Rename source target) ->
+    Rename shape.scope (shape.rename mapping).scope
+| .stable plan, mapping => plan.telescope.liftRename mapping
+| .opaque type, mapping =>
+    (Telescope.var type Telescope.nil).liftRename mapping
 
 /-- Substitution induced between the two opened shape scopes. -/
-def liftSubst (shape : Shape source)
-    (substitution : Subst source target) :
-    Subst shape.scope (shape.subst substitution).scope := by
-  change Subst shape.binders.scope (shape.subst substitution).binders.scope
-  rw [<- binders_subst]
-  exact shape.binders.liftSubst substitution
+def liftSubst : (shape : Shape source) ->
+    (substitution : Subst source target) ->
+    Subst shape.scope (shape.subst substitution).scope
+| .stable plan, substitution => plan.telescope.liftSubst substitution
+| .opaque type, substitution =>
+    (Telescope.var type Telescope.nil).liftSubst substitution
 
 /-- Typed base renamings lift through every binder exposed by a shape. -/
 noncomputable def liftRename_typed
@@ -235,14 +235,19 @@ noncomputable def canonical (base : Ctx sig) (shape : Shape sig) :
 /-- The sole raw argument of an opaque interface. -/
 private def opaqueArgument {base : Ctx sig} {type : Ty sig} :
     Telescope.Args base (.var type .nil) -> Exp sig
-| .var argument _ _ => argument
+| arguments => arguments.substitution.var .here
 
 private noncomputable def opaqueArgument_hasType
     {base : Ctx sig} {type : Ty sig}
     (arguments : Telescope.Args base (.var type .nil)) :
     Exp.HasType base (opaqueArgument arguments) type := by
   cases arguments with
-  | var argument argumentTyping rest => exact argumentTyping
+  | var argument argumentTyping rest =>
+      cases rest
+      change Exp.HasType base
+        (((Subst.openVar argument).comp Subst.id).var .here) type
+      rw [Subst.comp_id]
+      exact argumentTyping
 
 private theorem opaqueArgument_isValue
     {base : Ctx sig} {type : Ty sig}
@@ -250,7 +255,25 @@ private theorem opaqueArgument_isValue
     (allValues : arguments.AllValues) :
     Exp.IsValue (opaqueArgument arguments) := by
   cases arguments with
-  | var argument argumentTyping rest => exact allValues.1
+  | var argument argumentTyping rest =>
+      cases rest
+      change Exp.IsValue
+        (((Subst.openVar argument).comp Subst.id).var .here)
+      rw [Subst.comp_id]
+      exact allValues.1
+
+private theorem opaqueArguments_substitution
+    {base : Ctx sig} {type : Ty sig}
+    (arguments : Telescope.Args base (.var type .nil)) :
+    arguments.substitution = Subst.openVar (opaqueArgument arguments) := by
+  cases arguments with
+  | var argument argumentTyping rest =>
+      cases rest
+      change (Subst.openVar argument).comp Subst.id =
+        Subst.openVar
+          (((Subst.openVar argument).comp Subst.id).var .here)
+      rw [Subst.comp_id]
+      congr 1
 
 /-- Reclose a typed argument spine at the shape's public input type. -/
 private noncomputable def packageArguments (base : Ctx sig) :
@@ -263,15 +286,17 @@ noncomputable def package {shape : Shape sig} {base : Ctx sig}
     (interface : Interface base shape) : Exp sig :=
   packageArguments base shape interface.arguments
 
-/-- Substitution induced by an opened interface.
-
-Stable interfaces substitute every mixed package field.  Opaque interfaces
-substitute their sole raw value binder directly. -/
-noncomputable def substitution {shape : Shape sig} {base : Ctx sig}
+/-- Substitution induced by all binders of an opened interface. -/
+def substitution {shape : Shape sig} {base : Ctx sig}
     (interface : Interface base shape) : Subst shape.scope sig :=
-  match shape with
-  | .stable _ => interface.arguments.substitution
-  | .opaque _ => Subst.openVar interface.package
+  interface.arguments.substitution
+
+/-- The shape-specific substitution agrees with the complete interface
+argument substitution. -/
+theorem arguments_substitution
+    {shape : Shape sig} {base : Ctx sig}
+    (interface : Interface base shape) :
+    interface.arguments.substitution = interface.substitution := rfl
 
 /-- Recloses exactly at `Shape.inputTy`. -/
 noncomputable def package_hasType
@@ -336,10 +361,17 @@ theorem eliminate_interface_steps
   | «opaque» type =>
       cases interface with
       | mk arguments =>
-          exact Exp.Steps.single
+          change Exp.Steps
+            (Adapter.apply (Adapter.ofBody type body)
+              (Interface.opaqueArgument arguments))
+            (body.subst arguments.substitution)
+          let reduced := Exp.Steps.single
             (Adapter.ofBody_apply_step (source := type) (body := body)
               (argument := Interface.opaqueArgument arguments)
               (Interface.opaqueArgument_isValue arguments argumentsValue))
+          exact (congrArg (fun opening => body.subst opening)
+            (Interface.opaqueArguments_substitution
+              (type := type) arguments)).symm ▸ reduced
 
 end Shape
 
