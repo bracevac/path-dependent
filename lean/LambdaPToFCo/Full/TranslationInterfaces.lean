@@ -127,6 +127,19 @@ inductive ProducerPlanModel :
       ProducerPlanModel (sourceContext.snoc boundType)
         (boundPlan.context targetContext) (ScopeView.bindPlan view boundPlan)
         olderType.weaken (olderPlan.rename boundPlan.telescope.weaken)
+  | targetRename
+      {sourceSig targetSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      {sourceView : ScopeView n sourceTargetContext}
+      {sourceType : LambdaPFC.Ty n} {sourcePlan : ValuePlan sourceSig}
+      (model : ProducerPlanModel sourceContext sourceTargetContext sourceView
+        sourceType sourcePlan)
+      (mapping : Rename sourceSig targetSig)
+      (typed : Rename.Typed sourceTargetContext targetTargetContext mapping) :
+      ProducerPlanModel sourceContext targetTargetContext
+        (sourceView.rename mapping typed) sourceType
+        (sourcePlan.rename mapping)
 
 /-- Negative structural meaning. `opaque` is the only constructor that can
 model an arbitrary raw source type, and fixes its plan to Top. -/
@@ -174,6 +187,19 @@ inductive DemandPlanModel :
       DemandPlanModel sourceContext targetContext view
         (.Pair first label (.intv lower upper))
         (Pair.Interval.plan firstPlan lowerPlan.inputTy upperPlan.inputTy)
+  | targetRename
+      {sourceSig targetSig : Sig}
+      {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+      {targetTargetContext : SystemFCoExt.Ctx targetSig}
+      {sourceView : ScopeView n sourceTargetContext}
+      {sourceType : LambdaPFC.Ty n} {sourcePlan : ValuePlan sourceSig}
+      (model : DemandPlanModel sourceContext sourceTargetContext sourceView
+        sourceType sourcePlan)
+      (mapping : Rename sourceSig targetSig)
+      (typed : Rename.Typed sourceTargetContext targetTargetContext mapping) :
+      DemandPlanModel sourceContext targetTargetContext
+        (sourceView.rename mapping typed) sourceType
+        (sourcePlan.rename mapping)
 
 /-- A binder-facing plan supports both observation polarities at the exact
 same target plan. Function domains and negative proper-pair fields use this

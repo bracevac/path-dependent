@@ -1,6 +1,6 @@
 import LambdaPToFCo.Full.ContextWellFormed
 import LambdaPToFCo.Full.InterfaceSubstitution
-import LambdaPToFCo.Full.TranslationInterfaces
+import LambdaPToFCo.Full.TargetModelRenaming
 
 /-!
 # Synchronized source and target instantiation
@@ -46,6 +46,56 @@ structure PairedInstantiation
       ((sourceView index).plan.subst targetSubstitution)
 
 namespace PairedInstantiation
+
+/-- Precompose the target half of a synchronized instantiation with one
+proof-relevant target rename.  The source substitution is unchanged; the
+target substitution applies the rename embedding and then the retained
+instantiation. -/
+noncomputable def preTargetRename
+    {sourceArity targetArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {targetSourceContext : LambdaPFC.Ctx targetArity}
+    {preSig sourceSig targetSig : Sig}
+    {preTargetContext : SystemFCoExt.Ctx preSig}
+    {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+    {targetTargetContext : SystemFCoExt.Ctx targetSig}
+    {preView : ScopeView sourceArity preTargetContext}
+    {targetView : ScopeView targetArity targetTargetContext}
+    {sourceSubstitution : PathSubst sourceArity targetArity}
+    {targetSubstitution : Subst sourceSig targetSig}
+    (mapping : Rename preSig sourceSig)
+    (typed : Rename.Typed preTargetContext sourceTargetContext mapping)
+    (pairing : PairedInstantiation sourceContext targetSourceContext
+      sourceTargetContext targetTargetContext
+      (preView.rename mapping typed) targetView sourceSubstitution
+      targetSubstitution) :
+    PairedInstantiation sourceContext targetSourceContext preTargetContext
+      targetTargetContext preView targetView sourceSubstitution
+      (mapping.asSubst.comp targetSubstitution) := by
+  let composedTyped :=
+    (TargetModelRenaming.substTyped typed).comp pairing.targetTyped
+  let substitutedView := ScopeView.subst preView
+    (mapping.asSubst.comp targetSubstitution) composedTyped
+  refine
+    { sourceTyped := pairing.sourceTyped
+      targetTyped := composedTyped
+      image := substitutedView
+      alignment := ScopeAlignment.identity substitutedView
+      image_plan := ?_
+      slotModel := ?_ }
+  · intro index
+    exact ValueInterface.subst_plan _ _ _
+  · intro index
+    have renamed := pairing.slotModel index
+    have plan_eq :
+        ((preView.rename mapping typed index).plan.subst targetSubstitution) =
+          (preView index).plan.subst
+            (mapping.asSubst.comp targetSubstitution) := by
+      change ((preView index).plan.rename mapping).subst
+        targetSubstitution = _
+      rw [TargetModelRenaming.plan_rename_asSubst,
+        ValuePlan.subst_comp]
+    exact plan_eq ▸ renamed
 
 /-- Lift synchronized instantiation through one positive source binding and
 its complete target value plan. -/

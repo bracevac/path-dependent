@@ -101,6 +101,16 @@ inductive ModelInstantiation :
     (targetView : ScopeView targetArity targetTargetContext) ->
     (sourceSubstitution : PathSubst sourceArity targetArity) ->
     (targetSubstitution : Subst sourceSig targetSig) -> Type where
+  | preTargetRename
+      (mapping : Rename preSig sourceSig)
+      (typed : Rename.Typed preTargetContext sourceTargetContext mapping)
+      (next : ModelInstantiation sourceContext targetSourceContext
+        sourceTargetContext targetTargetContext
+        (preView.rename mapping typed) targetView sourceSubstitution
+        targetSubstitution) :
+      ModelInstantiation sourceContext targetSourceContext preTargetContext
+        targetTargetContext preView targetView sourceSubstitution
+        (mapping.asSubst.comp targetSubstitution)
   | openAt
       (scope : ScopeModel sourceContext targetContext)
       (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
@@ -142,6 +152,8 @@ noncomputable def pairing :
   | .openAt scope precise replacement arguments =>
       PairedInstantiation.openAt scope precise replacement arguments
   | .lift previous newBound => previous.pairing.liftWith newBound
+  | .preTargetRename mapping typed next =>
+      next.pairing.preTargetRename mapping typed
 
 end ModelInstantiation
 
@@ -333,6 +345,61 @@ abbrev IntervalBidirectionalTarget
     targetView (lower.subst sourceSubstitution)
     (upper.subst sourceSubstitution) (lowerPlan.subst targetSubstitution)
     (upperPlan.subst targetSubstitution)
+
+/-- Reassociate the composed target substitution after recursively
+instantiating the predecessor of a proof-relevant positive target rename. -/
+noncomputable def targetRenameProducerTarget
+    {sourceArity targetArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {targetSourceContext : LambdaPFC.Ctx targetArity}
+    {preSig sourceSig targetSig : Sig}
+    {preTargetContext : SystemFCoExt.Ctx preSig}
+    {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+    {targetTargetContext : SystemFCoExt.Ctx targetSig}
+    {preView : ScopeView sourceArity preTargetContext}
+    {targetView : ScopeView targetArity targetTargetContext}
+    {sourceSubstitution : PathSubst sourceArity targetArity}
+    {targetSubstitution : Subst sourceSig targetSig}
+    (mapping : Rename preSig sourceSig)
+    (typed : Rename.Typed preTargetContext sourceTargetContext mapping)
+    {next : ModelInstantiation sourceContext targetSourceContext
+      sourceTargetContext targetTargetContext
+      (preView.rename mapping typed) targetView sourceSubstitution
+      targetSubstitution}
+    {sourceType : LambdaPFC.Ty sourceArity}
+    {plan : ValuePlan preSig}
+    (target : ProducerTarget
+      (.preTargetRename mapping typed next) sourceType plan) :
+    ProducerTarget next sourceType (plan.rename mapping) := by
+  simpa only [ProducerTarget, TargetModelRenaming.plan_rename_asSubst,
+    ValuePlan.subst_comp] using target
+
+/-- Negative analogue of `targetRenameProducerTarget`. -/
+noncomputable def targetRenameDemandTarget
+    {sourceArity targetArity : Nat}
+    {sourceContext : LambdaPFC.Ctx sourceArity}
+    {targetSourceContext : LambdaPFC.Ctx targetArity}
+    {preSig sourceSig targetSig : Sig}
+    {preTargetContext : SystemFCoExt.Ctx preSig}
+    {sourceTargetContext : SystemFCoExt.Ctx sourceSig}
+    {targetTargetContext : SystemFCoExt.Ctx targetSig}
+    {preView : ScopeView sourceArity preTargetContext}
+    {targetView : ScopeView targetArity targetTargetContext}
+    {sourceSubstitution : PathSubst sourceArity targetArity}
+    {targetSubstitution : Subst sourceSig targetSig}
+    (mapping : Rename preSig sourceSig)
+    (typed : Rename.Typed preTargetContext sourceTargetContext mapping)
+    {next : ModelInstantiation sourceContext targetSourceContext
+      sourceTargetContext targetTargetContext
+      (preView.rename mapping typed) targetView sourceSubstitution
+      targetSubstitution}
+    {sourceType : LambdaPFC.Ty sourceArity}
+    {plan : ValuePlan preSig}
+    (target : DemandTarget
+      (.preTargetRename mapping typed next) sourceType plan) :
+    DemandTarget next sourceType (plan.rename mapping) := by
+  simpa only [DemandTarget, TargetModelRenaming.plan_rename_asSubst,
+    ValuePlan.subst_comp] using target
 
 section AtomicTargets
 
@@ -836,6 +903,23 @@ inductive ProducerInstantiationCoherence :
         (.intervalPair (label := label) sourceFirst sourceMember)
         (ModelInstantiation.intervalPairProducerTarget action targetFirst
           targetMember)
+  | targetRename
+      (mapping : Rename preSig sourceSig)
+      (typed : Rename.Typed preTargetContext sourceTargetContext mapping)
+      (action : ModelInstantiation sourceContext targetSourceContext
+        sourceTargetContext targetTargetContext
+        (preView.rename mapping typed) targetView sourceSubstitution
+        targetSubstitution)
+      (sourceModel : ProducerPlanModel sourceContext preTargetContext preView
+        sourceType sourcePlan)
+      (targetModel : ModelInstantiation.ProducerTarget
+        (.preTargetRename mapping typed action) sourceType sourcePlan)
+      (previous : ProducerInstantiationCoherence
+        (.preTargetRename mapping typed action) sourceModel targetModel) :
+      ProducerInstantiationCoherence action
+        (.targetRename sourceModel mapping typed)
+        (ModelInstantiation.targetRenameProducerTarget (mapping := mapping)
+          (typed := typed) targetModel)
   | boundOpen
       (scope : ScopeModel sourceContext targetTargetContext)
       (precise : LambdaPFC.Path.Ty sourceContext path (.ty boundType))
@@ -936,6 +1020,23 @@ inductive DemandInstantiationCoherence :
         (.intervalPair (label := label) sourceFirst sourceMember)
         (ModelInstantiation.intervalPairDemandTarget action targetFirst
           targetMember)
+  | targetRename
+      (mapping : Rename preSig sourceSig)
+      (typed : Rename.Typed preTargetContext sourceTargetContext mapping)
+      (action : ModelInstantiation sourceContext targetSourceContext
+        sourceTargetContext targetTargetContext
+        (preView.rename mapping typed) targetView sourceSubstitution
+        targetSubstitution)
+      (sourceModel : DemandPlanModel sourceContext preTargetContext preView
+        sourceType sourcePlan)
+      (targetModel : ModelInstantiation.DemandTarget
+        (.preTargetRename mapping typed action) sourceType sourcePlan)
+      (previous : DemandInstantiationCoherence
+        (.preTargetRename mapping typed action) sourceModel targetModel) :
+      DemandInstantiationCoherence action
+        (.targetRename sourceModel mapping typed)
+        (ModelInstantiation.targetRenameDemandTarget (mapping := mapping)
+          (typed := typed) targetModel)
 
 inductive BidirectionalInstantiationCoherence :
     {sourceArity targetArity : Nat} ->

@@ -119,6 +119,20 @@ noncomputable def pullReflSameScope
 
 /-! ## Bottom and Top -/
 
+/-- Every sealed demand for source `Top` is observation-free, including any
+number of proof-relevant target renamings. -/
+private def topDemandPlan_eq
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
+    {view : ScopeView n targetContext} {plan : ValuePlan sig}
+    (model : DemandPlanModel sourceContext targetContext view .Top plan) :
+    plan = Top.plan sig :=
+  match model with
+  | .opaque _ => rfl
+  | .targetRename previous _ _ => by
+      rw [topDemandPlan_eq previous]
+      rfl
+
 /-- Bottom covariance preserves the exact package as distinct absurd
 provenance. -/
 noncomputable def pushBottom
@@ -157,12 +171,12 @@ noncomputable def pullTop
     (target : ProperDemand sourceContext targetContext targetScope .Top) :
     ProperPullResult alignment (Tau.Sub.top (T := sourceType)) target := by
   rcases target with ⟨trace, ⟨plan, model⟩⟩
-  cases model with
-  | «opaque» =>
-      exact
-        { model := ⟨Top.plan sig, .opaque sourceType⟩
-          adapter := StableIdentity.Adapter.identity targetContext
-            (Top.plan sig) }
+  have plan_eq : plan = Top.plan sig := topDemandPlan_eq model
+  subst plan
+  exact
+    { model := ⟨Top.plan sig, .opaque sourceType⟩
+      adapter := StableIdentity.Adapter.identity targetContext
+        (Top.plan sig) }
 
 /-- Bottom contravariance statically supplies every target observation. -/
 noncomputable def pullBottom
