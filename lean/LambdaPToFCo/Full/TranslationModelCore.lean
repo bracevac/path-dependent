@@ -4,7 +4,13 @@ import LambdaPToFCo.Full.StableIdentity
 import LambdaPToFCo.Full.TranslationOrigins
 
 /-!
-# Static proper and interval translation carriers
+# Internal proper-plan and interval translation carriers
+
+This is an internal package-map carrier, not the public compiler ABI. Its raw
+proper endpoint records intentionally do not certify that a target plan
+models the advertised source type. `TranslationInterfaces` supplies that
+closed evidence and is the only layer derivation-directed compiler code
+should consume. Raw constructors here are used only after refinement.
 
 An interval producer owns a positive existential descriptor
 
@@ -27,46 +33,44 @@ open SystemFCoExt
 variable {n : Nat} {sourceContext : LambdaPFC.Ctx n}
 variable {sig : Sig} {targetContext : SystemFCoExt.Ctx sig}
 
-/-! ## Source-indexed proper endpoints -/
+/-! ## Source-indexed plan endpoints -/
 
-/-- A concrete positive endpoint advertised by the derivation-directed
-compiler. The origin is source indexed; the target plan is not supplied to
-an interval origin or demand constructor. -/
-structure ProperProducer (sourceContext : LambdaPFC.Ctx n)
+/-- Internal positive plan endpoint. It intentionally has no source term
+origin or package: interval upper bounds need plans without inhabitants. -/
+structure PositivePlan (sourceContext : LambdaPFC.Ctx n)
     (targetContext : SystemFCoExt.Ctx sig)
     (view : ScopeView n targetContext)
     (sourceType : LambdaPFC.Ty n) : Type where
-  origin : ProducerOrigin sourceContext sourceType
   plan : ValuePlan sig
 
-/-- A concrete negative endpoint selected from a source demand trace. -/
-structure ProperDemand (sourceContext : LambdaPFC.Ctx n)
+/-- Internal negative plan endpoint. It intentionally has no demand trace:
+interval lower/upper descriptors need polarity, not term evidence. -/
+structure NegativePlan (sourceContext : LambdaPFC.Ctx n)
     (targetContext : SystemFCoExt.Ctx sig)
     (view : ScopeView n targetContext)
     (sourceType : LambdaPFC.Ty n) : Type where
-  trace : DemandTrace sourceContext sourceType
   plan : ValuePlan sig
 
 /-- The only proper endpoint forms retained by interval carriers. -/
-inductive ProperInterface (sourceContext : LambdaPFC.Ctx n)
+inductive PlanEndpoint (sourceContext : LambdaPFC.Ctx n)
     (targetContext : SystemFCoExt.Ctx sig)
     (view : ScopeView n targetContext)
     (sourceType : LambdaPFC.Ty n) : Type where
-  | producer
-      (value : ProperProducer sourceContext targetContext view sourceType)
-  | demand
-      (value : ProperDemand sourceContext targetContext view sourceType)
+  | positive
+      (value : PositivePlan sourceContext targetContext view sourceType)
+  | negative
+      (value : NegativePlan sourceContext targetContext view sourceType)
 
-namespace ProperInterface
+namespace PlanEndpoint
 
 def plan
-    (interface : ProperInterface sourceContext targetContext view sourceType) :
+    (interface : PlanEndpoint sourceContext targetContext view sourceType) :
     ValuePlan sig :=
   match interface with
-  | .producer value => value.plan
-  | .demand value => value.plan
+  | .positive value => value.plan
+  | .negative value => value.plan
 
-end ProperInterface
+end PlanEndpoint
 
 /-- Result of derivation-directed proper covariance. Its public target
 producer is forced to retain the exact source subtyping derivation. -/
@@ -76,23 +80,22 @@ structure ProperPushResult
     {sourceType targetType : LambdaPFC.Ty n}
     (subtyping : LambdaPFC.Tau.Sub sourceContext (.ty sourceType)
       (.ty targetType))
-    (source : ProperProducer sourceContext targetContext sourceView sourceType) :
+    (source : PositivePlan sourceContext targetContext sourceView sourceType) :
     Type where
   plan : ValuePlan sig
   adapter : StableIdentity.Adapter targetContext source.plan plan
 
 namespace ProperPushResult
 
-def producer
+def positive
     {sourceView targetView : ScopeView n targetContext}
     (alignment : ScopeAlignment sourceView targetView)
     {sourceType targetType : LambdaPFC.Ty n}
     (subtyping : LambdaPFC.Tau.Sub sourceContext (.ty sourceType)
       (.ty targetType))
-    (source : ProperProducer sourceContext targetContext sourceView sourceType)
+    (source : PositivePlan sourceContext targetContext sourceView sourceType)
     (result : ProperPushResult alignment subtyping source) :
-    ProperProducer sourceContext targetContext targetView targetType where
-  origin := .push subtyping source.origin
+    PositivePlan sourceContext targetContext targetView targetType where
   plan := result.plan
 
 end ProperPushResult
@@ -105,23 +108,22 @@ structure ProperPullResult
     {sourceType targetType : LambdaPFC.Ty n}
     (subtyping : LambdaPFC.Tau.Sub sourceContext (.ty sourceType)
       (.ty targetType))
-    (target : ProperDemand sourceContext targetContext targetView targetType) :
+    (target : NegativePlan sourceContext targetContext targetView targetType) :
     Type where
   plan : ValuePlan sig
   adapter : StableIdentity.Adapter targetContext plan target.plan
 
 namespace ProperPullResult
 
-def demand
+def negative
     {sourceView targetView : ScopeView n targetContext}
     (alignment : ScopeAlignment sourceView targetView)
     {sourceType targetType : LambdaPFC.Ty n}
     (subtyping : LambdaPFC.Tau.Sub sourceContext (.ty sourceType)
       (.ty targetType))
-    (target : ProperDemand sourceContext targetContext targetView targetType)
+    (target : NegativePlan sourceContext targetContext targetView targetType)
     (result : ProperPullResult alignment subtyping target) :
-    ProperDemand sourceContext targetContext sourceView sourceType where
-  trace := .pull subtyping target.trace
+    NegativePlan sourceContext targetContext sourceView sourceType where
   plan := result.plan
 
 end ProperPullResult
@@ -132,9 +134,9 @@ structure ProperSatisfaction
     {producerView demandView : ScopeView n targetContext}
     (alignment : ScopeAlignment producerView demandView)
     {sourceType : LambdaPFC.Ty n}
-    (producer : ProperProducer sourceContext targetContext producerView
+    (producer : PositivePlan sourceContext targetContext producerView
       sourceType)
-    (demand : ProperDemand sourceContext targetContext demandView sourceType) :
+    (demand : NegativePlan sourceContext targetContext demandView sourceType) :
     Type where
   adapter : StableIdentity.Adapter targetContext producer.plan demand.plan
 
@@ -147,8 +149,8 @@ inductive IntervalDescriptor (sourceContext : LambdaPFC.Ctx n)
     (targetContext : SystemFCoExt.Ctx sig)
     {lowerView upperView : ScopeView n targetContext}
     {lowerType upperType : LambdaPFC.Ty n}
-    (lower : ProperInterface sourceContext targetContext lowerView lowerType)
-    (upper : ProperInterface sourceContext targetContext upperView upperType) :
+    (lower : PlanEndpoint sourceContext targetContext lowerView lowerType)
+    (upper : PlanEndpoint sourceContext targetContext upperView upperType) :
     Type where
   | selected (representation : SystemFCoExt.Ty sig)
       (lowerToSelected : StableIdentity.Adapter targetContext lower.plan
@@ -168,13 +170,13 @@ structure Map
     (upperAlignment : ScopeAlignment sourceUpperView targetUpperView)
     {sourceLowerType sourceUpperType targetLowerType targetUpperType :
       LambdaPFC.Ty n}
-    (sourceLower : ProperInterface sourceContext targetContext sourceLowerView
+    (sourceLower : PlanEndpoint sourceContext targetContext sourceLowerView
       sourceLowerType)
-    (sourceUpper : ProperInterface sourceContext targetContext sourceUpperView
+    (sourceUpper : PlanEndpoint sourceContext targetContext sourceUpperView
       sourceUpperType)
-    (targetLower : ProperInterface sourceContext targetContext targetLowerView
+    (targetLower : PlanEndpoint sourceContext targetContext targetLowerView
       targetLowerType)
-    (targetUpper : ProperInterface sourceContext targetContext targetUpperView
+    (targetUpper : PlanEndpoint sourceContext targetContext targetUpperView
       targetUpperType) : Type where
   lower : StableIdentity.Adapter targetContext targetLower.plan sourceLower.plan
   upper : StableIdentity.Adapter targetContext sourceUpper.plan targetUpper.plan
@@ -195,8 +197,8 @@ noncomputable def map
 
 /-- Identity positive map. -/
 noncomputable def Map.identity
-    (lower : ProperInterface sourceContext targetContext view lowerType)
-    (upper : ProperInterface sourceContext targetContext view upperType) :
+    (lower : PlanEndpoint sourceContext targetContext view lowerType)
+    (upper : PlanEndpoint sourceContext targetContext view upperType) :
     Map (ScopeAlignment.identity view) (ScopeAlignment.identity view)
       lower upper lower upper where
   lower := StableIdentity.Adapter.identity targetContext lower.plan
@@ -220,8 +222,8 @@ a raw coercion between representation types. -/
 noncomputable def memberArguments
     {view : ScopeView n targetContext}
     {lowerType upperType : LambdaPFC.Ty n}
-    {lower : ProperInterface sourceContext targetContext view lowerType}
-    {upper : ProperInterface sourceContext targetContext view upperType}
+    {lower : PlanEndpoint sourceContext targetContext view lowerType}
+    {upper : PlanEndpoint sourceContext targetContext view upperType}
     (descriptor : IntervalDescriptor sourceContext targetContext lower upper) :
     Telescope.Args targetContext
       (Pair.Interval.memberTelescope lower.plan.inputTy upper.plan.inputTy) :=
@@ -243,10 +245,10 @@ structure IntervalProducer (sourceContext : LambdaPFC.Ctx n)
     (view : ScopeView n targetContext)
     (lowerType upperType : LambdaPFC.Ty n) : Type where
   origin : IntervalProducerOrigin sourceContext lowerType upperType
-  lower : ProperDemand sourceContext targetContext view lowerType
-  upper : ProperProducer sourceContext targetContext view upperType
-  descriptor : IntervalDescriptor sourceContext targetContext (.demand lower)
-    (.producer upper)
+  lower : NegativePlan sourceContext targetContext view lowerType
+  upper : PositivePlan sourceContext targetContext view upperType
+  descriptor : IntervalDescriptor sourceContext targetContext (.negative lower)
+    (.positive upper)
 
 /-- An interval demand fixes no selected representation. It is the dual
 recipe: a positive lower endpoint and a negative upper endpoint. -/
@@ -255,8 +257,8 @@ structure IntervalDemand (sourceContext : LambdaPFC.Ctx n)
     (view : ScopeView n targetContext)
     (lowerType upperType : LambdaPFC.Ty n) : Type where
   trace : IntervalDemandTrace sourceContext lowerType upperType
-  lower : ProperProducer sourceContext targetContext view lowerType
-  upper : ProperDemand sourceContext targetContext view upperType
+  lower : PositivePlan sourceContext targetContext view lowerType
+  upper : NegativePlan sourceContext targetContext view upperType
 
 namespace IntervalProducer
 
@@ -278,13 +280,13 @@ noncomputable def pushBounds
     (upperResult : ProperPushResult alignment upperSubtyping source.upper) :
     IntervalProducer sourceContext targetContext targetView targetLower
       targetUpper := by
-  let targetLowerDemand := ProperPullResult.demand alignment.symm
+  let targetLowerDemand := ProperPullResult.negative alignment.symm
     lowerSubtyping source.lower lowerResult
-  let targetUpperProducer := ProperPushResult.producer alignment
+  let targetUpperProducer := ProperPushResult.positive alignment
     upperSubtyping source.upper upperResult
   let mapping : IntervalDescriptor.Map alignment.symm alignment
-      (.demand source.lower) (.producer source.upper)
-      (.demand targetLowerDemand) (.producer targetUpperProducer) :=
+      (.negative source.lower) (.positive source.upper)
+      (.negative targetLowerDemand) (.positive targetUpperProducer) :=
     { lower := lowerResult.adapter
       upper := upperResult.adapter }
   exact
@@ -317,9 +319,9 @@ def pullBounds
     IntervalDemand sourceContext targetContext sourceView sourceLower
       sourceUpper where
   trace := .pull (.bounds lowerSubtyping upperSubtyping nonempty) target.trace
-  lower := ProperPushResult.producer alignment.symm lowerSubtyping
+  lower := ProperPushResult.positive alignment.symm lowerSubtyping
     target.lower lowerResult
-  upper := ProperPullResult.demand alignment upperSubtyping target.upper
+  upper := ProperPullResult.negative alignment upperSubtyping target.upper
     upperResult
 
 /-- Satisfy a dual interval demand with any positive producer descriptor.
@@ -336,11 +338,11 @@ noncomputable def satisfy
     (alignment : ScopeAlignment producerView demandView)
     (lower : ProperSatisfaction alignment.symm demand.lower producer.lower)
     (upper : ProperSatisfaction alignment producer.upper demand.upper) :
-    IntervalDescriptor sourceContext targetContext (.producer demand.lower)
-      (.demand demand.upper) := by
+    IntervalDescriptor sourceContext targetContext (.positive demand.lower)
+      (.negative demand.upper) := by
   let mapping : IntervalDescriptor.Map alignment.symm alignment
-      (.demand producer.lower) (.producer producer.upper)
-      (.producer demand.lower) (.demand demand.upper) :=
+      (.negative producer.lower) (.positive producer.upper)
+      (.positive demand.lower) (.negative demand.upper) :=
     { lower := lower.adapter
       upper := upper.adapter }
   exact producer.descriptor.map mapping
@@ -356,8 +358,8 @@ def Consumer
   (alignment : ScopeAlignment producerView demandView) ->
   ProperSatisfaction alignment.symm demand.lower producer.lower ->
   ProperSatisfaction alignment producer.upper demand.upper ->
-  IntervalDescriptor sourceContext targetContext (.producer demand.lower)
-    (.demand demand.upper)
+  IntervalDescriptor sourceContext targetContext (.positive demand.lower)
+    (.negative demand.upper)
 
 noncomputable def consumer
     (demand : IntervalDemand sourceContext targetContext demandView lowerType
@@ -371,8 +373,8 @@ end IntervalDemand
 /-! ## Focused static checks -/
 
 noncomputable example
-    (lower : ProperInterface sourceContext targetContext view lowerType)
-    (upper : ProperInterface sourceContext targetContext view upperType)
+    (lower : PlanEndpoint sourceContext targetContext view lowerType)
+    (upper : PlanEndpoint sourceContext targetContext view upperType)
     (descriptor : IntervalDescriptor sourceContext targetContext lower upper) :
     IntervalDescriptor sourceContext targetContext lower upper :=
   descriptor.map (IntervalDescriptor.Map.identity lower upper)

@@ -22,6 +22,7 @@ import LambdaPToFCo.Full.FunctionStableAdapter
 import LambdaPToFCo.Full.PairStableAdapter
 import LambdaPToFCo.Full.StableIdentityReduction
 import LambdaPToFCo.Full.TranslationModelCore
+import LambdaPToFCo.Full.TranslationInterfaces
 
 /-!
 # Full LambdaPFC compilation track
