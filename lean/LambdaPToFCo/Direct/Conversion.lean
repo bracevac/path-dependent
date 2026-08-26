@@ -57,6 +57,15 @@ noncomputable def rename
     (by
       simpa only [Ty.rename] using conversion.functionTyping.rename typed)
 
+/-- Regard an already sealed stable-package adapter as an ordinary
+conversion.  This does not admit a raw function: the adapter itself can only
+be built from `Stable.Repack` and the closed constructors in `Atomic`. -/
+noncomputable def ofStableAdapter
+    {base : Ctx sig} {source target : Package.Plan sig}
+    (adapter : Stable.Adapter base source target) :
+    Conversion base source.inputTy target.inputTy :=
+  .mk adapter.function adapter.functionTyping
+
 /-- Forget all stable observations while retaining the exact hidden identity
 and payload opened from the source package. -/
 noncomputable def stableTop (base : Ctx sig) (source : Package.Plan sig) :
