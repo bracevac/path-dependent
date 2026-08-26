@@ -37,6 +37,7 @@ import LambdaPToFCo.Full.PairedInstantiation
 import LambdaPToFCo.Full.ConstructedScopeInstantiation
 import LambdaPToFCo.Full.ProducerPairHead
 import LambdaPToFCo.Full.ModelInstantiationCoherence
+import LambdaPToFCo.Full.ProducerPairProjection
 import LambdaPToFCo.Full.ScopedPathResolution
 import LambdaPToFCo.Full.FocusedPathTranslationCore
 import LambdaPToFCo.Full.WfPlan
