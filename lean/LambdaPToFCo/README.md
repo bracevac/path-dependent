@@ -5,8 +5,9 @@ This directory contains three derivation-directed compilation tracks:
 - the established restricted compiler targets the original `SystemFCo`;
 - `Full/` is the proof-first prototype for the existing `LambdaPFC` calculus
   and targets the separate experimental `SystemFCoExt` library; and
-- `Direct/` is the replacement constructor-complete compiler. It targets the
-  unchanged original `SystemFCo` and emits ordinary target syntax directly.
+- `Direct/` is the replacement compiler under construction. It targets the
+  unchanged original `SystemFCo` and emits ordinary target syntax directly;
+  its total constructor dispatcher has not yet landed.
 
 The original `SystemFCo` is intentionally frozen. The earlier Full prototype
 forced every source subtyping derivation into the target coercion sort and
