@@ -94,7 +94,21 @@ hidden identities needed by dependent selections, functions, and pairs.
 
 The full track is still a draft. It currently includes the separate target
 metatheory, faithful mixed-telescope value models, scoped path packages,
-demand-directed subtyping kernels, direct term introductions, and concrete
-full-calculus Record/GeneralPair introduction regressions. The remaining work
-is to compose the scoped path and heterogeneous subtyping evidence into the
-total term dispatcher, then lift the unrestricted CK machine simulation.
+demand-directed subtyping kernels, direct term introductions, and a
+one-suffix normalized term-compilation boundary. Construction-certified
+proper paths cover variables, both forms of `fst`, proper-member `sel_r`, and
+`sel_l` while retaining their exact zipper and model history.
+
+The existing unrestricted `GeneralPairRegression.term` now compiles
+end-to-end to a closed, well-typed `SystemFCoExt` expression, including both
+dependent interval-pair subsumptions and final `let` closure. The nested
+record acceptance chain has compiled its implementation abstraction and
+first type-member value through the literal source rule
+`.pair (.widen .var) .refl`, with each actual package threaded into the next
+`let` scope.
+
+Remaining work is explicit: certify the actual Church package behind
+interval-member `sel_r`; finish the later nested-record values and
+application; turn the sealed path/subtyping/introduction pieces into total
+dispatchers; and then lift unrestricted CK image preservation. None of those
+claims is implied merely by the completed GeneralPair regression.
