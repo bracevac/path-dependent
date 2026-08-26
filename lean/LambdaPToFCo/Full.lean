@@ -29,6 +29,7 @@ import LambdaPToFCo.Full.PairStableAdapter
 import LambdaPToFCo.Full.StableIdentityReduction
 import LambdaPToFCo.Full.TranslationModelCore
 import LambdaPToFCo.Full.TranslationInterfaces
+import LambdaPToFCo.Full.ScopeModelBinding
 import LambdaPToFCo.Full.PairedInstantiation
 import LambdaPToFCo.Full.WfPlan
 import LambdaPToFCo.Full.SubtypingCompilerCore
