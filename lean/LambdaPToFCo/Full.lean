@@ -81,6 +81,8 @@ import LambdaPToFCo.Full.ApplicationCompilerCore
 import LambdaPToFCo.Full.ApplicationPlanning
 import LambdaPToFCo.Full.LetCompilerCore
 import LambdaPToFCo.Full.LetPlanning
+import LambdaPToFCo.Full.LetIntroductionCompiler
+import LambdaPToFCo.Full.GeneralPairLetIntroductionRegression
 
 /-!
 # Full LambdaPFC compilation track
