@@ -1,16 +1,22 @@
 # LambdaPToFCo
 
-This directory contains two derivation-directed compilation tracks:
+This directory contains three derivation-directed compilation tracks:
 
 - the established restricted compiler targets the original `SystemFCo`;
-- `Full/` is the in-progress constructor-complete compiler for the existing
-  `LambdaPFC` calculus and targets the separate `SystemFCoExt` library.
+- `Full/` is the proof-first prototype for the existing `LambdaPFC` calculus
+  and targets the separate experimental `SystemFCoExt` library; and
+- `Direct/` is the replacement constructor-complete compiler. It targets the
+  unchanged original `SystemFCo` and emits ordinary target syntax directly.
 
-The original `SystemFCo` is intentionally frozen. Full LambdaPFC needs
-computational adapters for dependent function and pair transport (and a
-Bottom eliminator), so those additions live only in the separately named
-target calculus rather than silently changing the theorem statements or
-dynamics of the original one.
+The original `SystemFCo` is intentionally frozen. The earlier Full prototype
+forced every source subtyping derivation into the target coercion sort and
+therefore introduced computational `Co.adapter` and `Co.bottom` constructors
+in `SystemFCoExt`. That restriction was unnecessary. In the direct compiler,
+dependent unpack/repack transformations are ordinary typed target functions,
+and impredicative Bottom elimination is ordinary type application. Target
+typing is proved separately from syntax generation. `SystemFCoExt` remains as
+an experiment and source of proved representation lemmas, not as the target
+required by the final compiler.
 
 ## Restricted compiler
 
