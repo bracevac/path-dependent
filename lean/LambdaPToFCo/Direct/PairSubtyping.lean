@@ -2605,6 +2605,627 @@ noncomputable def proper
     (.properPair first.relation.targetRep targetMemberRep)
     conversion
 
+/-! ## Generic derivation-indexed interval-member covariance -/
+
+private def genericTargetIntervalEndpointAt
+    (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope)
+    (targetFirst : Shape sig) (targetEndpoint : Shape targetFirst.scope)
+    {final : Sig}
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+    {finalContext : Ctx final}
+    (targetFirstInterface : Shape.Interface finalContext
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).rename mapping)) : Shape final :=
+  ((targetIntervalLowerAtSource sourceFirst sourceLower sourceUpper
+    targetFirst targetEndpoint).rename
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).liftRename mapping)).subst
+    targetFirstInterface.substitution
+
+/-- Exact interval endpoints and endpoint environments reached after opening
+the source representation and mapping its first component.  The selected
+runtime shape is intentionally absent here: it comes from the actual opened
+witness and is preserved by `IntervalRelation.mapWitness`. -/
+structure IntervalMemberScope
+    (sourceContext targetContext : LambdaPFC.Ctx n)
+    (sourceFirstType targetFirstType : LambdaPFC.Ty n)
+    (sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1))
+    (base : Ctx sig) : Type where
+  environments : EndpointEnvs (sourceContext.snoc sourceFirstType)
+    (targetContext.snoc targetFirstType) base
+  source : Wf.Interval base sourceLowerType sourceUpperType
+  target : Wf.Interval base targetLowerType targetUpperType
+
+/-- Build the exact recursive interval scope in the continuation selected by
+the first-component interface map. -/
+noncomputable def intervalMemberScopeAt
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig} {finalContext : Ctx final}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+    (typed : Rename.Typed
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      finalContext mapping)
+    (sourceFirstInterface : Shape.Interface finalContext
+      (((sourceFirstAtBinder sourceFirst).rename
+        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
+          mapping))
+    (targetFirstInterface : Shape.Interface finalContext
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).rename mapping)) :
+    IntervalMemberScope sourceContext targetContext sourceFirstType
+      targetFirstType sourceLowerType sourceUpperType targetLowerType
+      targetUpperType finalContext :=
+  let opening := intervalOpening sourceFirst sourceLower sourceUpper
+  let openingTyped := intervalOpening_typed base sourceFirst sourceLower
+    sourceUpper
+  let firstAt := (adjustedIntervalFirstRelationAtSource
+    (sourceLower := sourceLower) (sourceUpper := sourceUpper)
+    firstRelation).targetRename mapping typed
+  let environmentsAt := (environments.targetRename opening
+    openingTyped).targetRename mapping typed
+  let source := sourceIntervalAt sourceLowerRep sourceUpperRep mapping typed
+  let targetLowerRepAt := targetIntervalEndpointRepAt targetLowerRep mapping
+    typed targetFirstInterface
+  let targetUpperRepAt := targetIntervalEndpointRepAt targetUpperRep mapping
+    typed targetFirstInterface
+  {
+    environments := {
+      source := extendAtInterface environmentsAt.source sourceFirstType
+        sourceFirstInterface firstAt.sourceRep
+      target := extendAtInterface environmentsAt.target targetFirstType
+        targetFirstInterface firstAt.targetRep
+    }
+    source := source
+    target := {
+      lower := genericTargetIntervalEndpointAt sourceFirst sourceLower
+        sourceUpper targetFirst targetLower mapping targetFirstInterface
+      upper := genericTargetIntervalEndpointAt sourceFirst sourceLower
+        sourceUpper targetFirst targetUpper mapping targetFirstInterface
+      lowerRep := targetLowerRepAt
+      upperRep := targetUpperRepAt
+    }
+  }
+
+/-- Recursive compilation of the literal interval-member premise.  The
+compiler receives both exact first interfaces and the computed two-endpoint
+scope; it returns only the contravariant-lower/covariant-upper relations. -/
+structure IntervalMemberCompiler
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    (_derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)) : Type where
+  compile : {final : Sig} -> {finalContext : Ctx final} ->
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final) ->
+    (typed : Rename.Typed
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      finalContext mapping) ->
+    (sourceFirstInterface : Shape.Interface finalContext
+      (((sourceFirstAtBinder sourceFirst).rename
+        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
+          mapping)) ->
+    (targetFirstInterface : Shape.Interface finalContext
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).rename mapping)) ->
+    let scope := intervalMemberScopeAt environments firstRelation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep mapping typed
+      sourceFirstInterface targetFirstInterface
+    AtomicSubtyping.IntervalRelation scope.source scope.target
+
+private theorem targetIntervalRepresentationAtSource_rename
+    (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope)
+    (targetFirst : Shape sig)
+    (targetLower targetUpper : Shape targetFirst.scope)
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope
+      final) :
+    (targetIntervalRepresentationAtSource sourceFirst sourceLower sourceUpper
+      targetFirst targetLower targetUpper).rename mapping =
+      Pair.Interval.representation
+        ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+          targetFirst).rename mapping)
+        ((targetIntervalLowerAtSource sourceFirst sourceLower sourceUpper
+          targetFirst targetLower).rename
+            ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+              targetFirst).liftRename mapping))
+        ((targetIntervalUpperAtSource sourceFirst sourceLower sourceUpper
+          targetFirst targetUpper).rename
+            ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+              targetFirst).liftRename mapping)) :=
+  Pair.Interval.representation_rename _ _ _ mapping
+
+private noncomputable def genericIntervalMemberBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig} {finalContext : Ctx final}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler environments firstRelation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+      memberDerivation)
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+    (typed : Rename.Typed
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      finalContext mapping)
+    (targetFirstInterface : Shape.Interface finalContext
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).rename mapping)) :
+    Path.Body finalContext
+      ((targetIntervalRepresentationAtSource sourceFirst sourceLower
+        sourceUpper targetFirst targetLower targetUpper).existsTy.rename
+          mapping) := by
+  let sourceFirstInterface : Shape.Interface finalContext
+      (((sourceFirstAtBinder sourceFirst).rename
+        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
+          mapping) :=
+    (intervalSourceFirstInterface base sourceFirst sourceLower
+      sourceUpper).rename mapping typed
+  let scope := intervalMemberScopeAt environments firstRelation
+    sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep mapping typed
+    sourceFirstInterface targetFirstInterface
+  let intervalRelation := compiler.compile mapping typed sourceFirstInterface
+    targetFirstInterface
+  let witnessAt := renameIntervalWitness
+    (openedIntervalWitness base sourceFirst sourceLower sourceUpper)
+    mapping typed
+  let mapped := intervalRelation.mapWitness witnessAt
+  let targetFirstAt :=
+    (targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+      targetFirst).rename mapping
+  let targetLowerAt :=
+    (targetIntervalLowerAtSource sourceFirst sourceLower sourceUpper
+      targetFirst targetLower).rename
+        ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+          targetFirst).liftRename mapping)
+  let targetUpperAt :=
+    (targetIntervalUpperAtSource sourceFirst sourceLower sourceUpper
+      targetFirst targetUpper).rename
+        ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+          targetFirst).liftRename mapping)
+  let arguments := Pair.Interval.representationArguments targetFirstAt
+    targetLowerAt targetUpperAt targetFirstInterface mapped.selected
+    mapped.lowerFunction (by
+      exact mapped.lowerTyping)
+    mapped.upperFunction (by
+      exact mapped.upperTyping)
+  exact {
+    expression := Telescope.pack arguments
+    typing := by
+      have packed := Telescope.pack_hasType arguments
+      simpa only [Package.existsTy_rename,
+        targetIntervalRepresentationAtSource_rename] using packed
+  }
+
+private noncomputable def genericIntervalFirstContinuation
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler environments firstRelation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+      memberDerivation) :
+    InterfaceMap.Continuation
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst)
+      (targetIntervalRepresentationAtSource sourceFirst sourceLower sourceUpper
+        targetFirst targetLower targetUpper).existsTy where
+  body mapping _finalContext typed targetFirstInterface :=
+    (genericIntervalMemberBody environments firstRelation sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep compiler mapping typed
+      targetFirstInterface).expression
+  body_hasType mapping _finalContext typed targetFirstInterface :=
+    (genericIntervalMemberBody environments firstRelation sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep compiler mapping typed
+      targetFirstInterface).typing
+
+private noncomputable def genericIntervalNestedBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler environments firstRelation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+      memberDerivation) :
+    Path.Body
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (targetIntervalRepresentationAtSource sourceFirst sourceLower sourceUpper
+        targetFirst targetLower targetUpper).existsTy :=
+  let relationAt := adjustedIntervalFirstRelationAtSource
+    (sourceLower := sourceLower) (sourceUpper := sourceUpper) firstRelation
+  let sourceInterface := intervalSourceFirstInterface base sourceFirst
+    sourceLower sourceUpper
+  let continuation := genericIntervalFirstContinuation environments
+    firstRelation sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+    compiler
+  {
+    expression := relationAt.interfaceMap.run sourceInterface
+      (targetIntervalRepresentationAtSource sourceFirst sourceLower sourceUpper
+        targetFirst targetLower targetUpper).existsTy continuation
+    typing := relationAt.interfaceMap.run_hasType sourceInterface
+      (targetIntervalRepresentationAtSource sourceFirst sourceLower sourceUpper
+        targetFirst targetLower targetUpper).existsTy continuation
+  }
+
+private noncomputable def genericIntervalOpenedBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler environments firstRelation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+      memberDerivation) :
+    Exp (intervalRepresentationAtBinder sourceFirst sourceLower
+      sourceUpper).scope :=
+  Pair.fromSuffixExp (sourceFirstAtBinder sourceFirst).binders
+    (intervalMemberAtBinder sourceFirst sourceLower sourceUpper)
+    (genericIntervalNestedBody environments firstRelation sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep compiler).expression
+
+private noncomputable def genericIntervalOpenedBody_hasType
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler environments firstRelation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+      memberDerivation) :
+    Exp.HasType
+      ((intervalRepresentationAtBinder sourceFirst sourceLower
+        sourceUpper).context
+          (base.bindVar
+            (Pair.Interval.representation sourceFirst sourceLower
+              sourceUpper).existsTy))
+      (genericIntervalOpenedBody environments firstRelation sourceLowerRep
+        sourceUpperRep targetLowerRep targetUpperRep compiler)
+      ((intervalRepresentationAtBinder targetFirst targetLower
+        targetUpper).existsTy.rename
+          (intervalRepresentationAtBinder sourceFirst sourceLower
+            sourceUpper).weaken) := by
+  let firstTele := (sourceFirstAtBinder sourceFirst).binders
+  let memberTele := intervalMemberAtBinder sourceFirst sourceLower sourceUpper
+  have nested := (genericIntervalNestedBody environments firstRelation
+    sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep compiler).typing
+  have transported := fromSuffixExp_hasType firstTele memberTele nested
+  have targetEq :
+      (targetIntervalRepresentationAtSource sourceFirst sourceLower sourceUpper
+        targetFirst targetLower targetUpper).existsTy =
+      (((intervalRepresentationAtBinder targetFirst targetLower
+        targetUpper).existsTy.rename firstTele.weaken).rename
+          memberTele.weaken) := by
+    rw [← targetIntervalRepresentationAtSource_eq]
+    rw [← Package.existsTy_rename]
+    unfold intervalSourceOpening
+    rw [Ty.rename_comp]
+  have finalTypeEq :
+      Pair.fromSuffixTy firstTele memberTele
+        (targetIntervalRepresentationAtSource sourceFirst sourceLower
+          sourceUpper targetFirst targetLower targetUpper).existsTy =
+      (intervalRepresentationAtBinder targetFirst targetLower
+        targetUpper).existsTy.rename
+          (intervalRepresentationAtBinder sourceFirst sourceLower
+            sourceUpper).weaken := by
+    calc
+      Pair.fromSuffixTy firstTele memberTele
+          (targetIntervalRepresentationAtSource sourceFirst sourceLower
+            sourceUpper targetFirst targetLower targetUpper).existsTy =
+        Pair.fromSuffixTy firstTele memberTele
+          (((intervalRepresentationAtBinder targetFirst targetLower
+            targetUpper).existsTy.rename firstTele.weaken).rename
+              memberTele.weaken) :=
+        congrArg (Pair.fromSuffixTy firstTele memberTele) targetEq
+      _ = (intervalRepresentationAtBinder targetFirst targetLower
+          targetUpper).existsTy.rename
+            (firstTele.append memberTele).weaken :=
+        fromSuffixTy_weaken firstTele memberTele _
+      _ = _ := rfl
+  exact finalTypeEq ▸ transported
+
+private noncomputable def genericIntervalRepresentationBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler environments firstRelation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+      memberDerivation) : Exp (sig ,, .var) :=
+  (intervalRepresentationAtBinder sourceFirst sourceLower sourceUpper).unpack
+    (.var .here)
+    (intervalRepresentationAtBinder targetFirst targetLower
+      targetUpper).existsTy
+    (genericIntervalOpenedBody environments firstRelation sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep compiler)
+
+private noncomputable def genericIntervalRepresentationBody_hasType
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler environments firstRelation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+      memberDerivation) :
+    Exp.HasType
+      (base.bindVar
+        (Pair.Interval.representation sourceFirst sourceLower
+          sourceUpper).existsTy)
+      (genericIntervalRepresentationBody environments firstRelation
+        sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep compiler)
+      ((Pair.Interval.representation targetFirst targetLower
+        targetUpper).existsTy.weaken .var) := by
+  have result :=
+    (intervalRepresentationAtBinder sourceFirst sourceLower sourceUpper).unpack_hasType
+      (intervalRepresentationVariable_hasType base sourceFirst sourceLower
+        sourceUpper)
+      (genericIntervalOpenedBody_hasType environments firstRelation
+        sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep compiler)
+  rw [Ty.weaken, Package.existsTy_rename,
+    intervalRepresentationAtBinder_eq]
+  exact result
+
+private noncomputable def genericIntervalRepresentationConversion
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {base : Ctx sig}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    (firstRelation : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler environments firstRelation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+      memberDerivation) :
+    Conversion base
+      (Pair.Interval.representation sourceFirst sourceLower sourceUpper).existsTy
+      (Pair.Interval.representation targetFirst targetLower
+        targetUpper).existsTy :=
+  Conversion.ofFunction
+    (Adapter.ofBody
+      (Pair.Interval.representation sourceFirst sourceLower sourceUpper).existsTy
+      (genericIntervalRepresentationBody environments firstRelation
+        sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep compiler))
+    (Adapter.ofBody_hasType
+      (genericIntervalRepresentationBody_hasType environments firstRelation
+        sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep compiler))
+
+/-- Compile the literal interval-member dependent-pair covariance rule. -/
+noncomputable def interval
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {label : LambdaPFC.Name}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (environments : EndpointEnvs sourceContext targetContext base)
+    {firstDerivation : LambdaPFC.Tau.Sub sourceContext
+      (.ty sourceFirstType) (.ty targetFirstType)}
+    (first : FirstCompilation base firstDerivation sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {memberDerivation : LambdaPFC.Tau.Sub
+      (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (member : IntervalMemberCompiler environments first.relation
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+      memberDerivation) :
+    Relation base
+      (.Pair sourceFirstType label
+        (.intv sourceLowerType sourceUpperType))
+      (.Pair targetFirstType label
+        (.intv targetLowerType targetUpperType))
+      (.stable (Pair.Interval.plan sourceFirst sourceLower sourceUpper))
+      (.stable (Pair.Interval.plan targetFirst targetLower targetUpper)) :=
+  let sourceRepresentation := Pair.Interval.representation sourceFirst
+    sourceLower sourceUpper
+  let targetRepresentation := Pair.Interval.representation targetFirst
+    targetLower targetUpper
+  let representation := genericIntervalRepresentationConversion environments
+    first.relation sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
+    member
+  let conversion := Conversion.Pair.retarget base sourceRepresentation
+    targetRepresentation representation
+  Relation.ofConversion
+    (.intervalPair first.relation.sourceRep sourceLowerRep sourceUpperRep)
+    (.intervalPair first.relation.targetRep targetLowerRep targetUpperRep)
+    conversion
+
 
 
 end LambdaPToFCo.Direct.Internal.PairSubtyping
