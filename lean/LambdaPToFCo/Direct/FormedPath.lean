@@ -192,7 +192,52 @@ private noncomputable def slotFromNested
     (fun located : Sigma Ctx =>
       Slot sourceContext located.2 sourceType) equal.symm) slot
 
-/-- Focus materializer for both type formation and exact runtime Slots. -/
+private theorem slotFromNested_shape
+    {sourceContext : LambdaPFC.Ctx n} {targetContext : Ctx sig}
+    {sourceType : LambdaPFC.Ty n}
+    (first : Telescope sig) (suffix : Telescope first.scope)
+    (slot : Slot sourceContext
+      (suffix.context (first.context targetContext)) sourceType) :
+    (slotFromNested first suffix slot).shape =
+      (properFromNested first suffix {
+        shape := slot.shape
+        formation := slot.formation
+      }).shape := by
+  induction first with
+  | nil => rfl
+  | var type tail ih => exact ih suffix slot
+  | tvar tail ih => exact ih suffix slot
+  | cvar source target tail ih => exact ih suffix slot
+
+private theorem closeTelescope_slotFromNested_shape
+    {sourceContext : LambdaPFC.Ctx n} {targetContext : Ctx sig}
+    {sourceType : LambdaPFC.Ty n}
+    (first : Telescope sig) (suffix : Telescope first.scope)
+    (package : Exp sig)
+    (packageTyping : Exp.HasType targetContext package
+      (first.append suffix).existsTy)
+    (slot : Slot sourceContext
+      (suffix.context (first.context targetContext)) sourceType) :
+    (SlotMaterializer.closeTelescope (first.append suffix) package
+      packageTyping (slotFromNested first suffix slot)).shape =
+      (Proper.close (first.append suffix)
+        (properFromNested first suffix {
+          shape := slot.shape
+          formation := slot.formation
+        }).formation).shape := by
+  change
+    Shape.opaque ((first.append suffix).append
+      (.var (slotFromNested first suffix slot).shape.inputTy .nil)).existsTy =
+    Shape.opaque ((first.append suffix).append
+      (.var (properFromNested first suffix {
+        shape := slot.shape
+        formation := slot.formation
+      }).shape.inputTy .nil)).existsTy
+  rw [slotFromNested_shape first suffix slot]
+
+/-- Focus materializer for both type formation and exact runtime interfaces.
+The interface result is indexed by the very same closed formation result, so
+runtime materialization cannot drift to a merely propositionally equal Shape. -/
 structure Focus
     (sourceContext : LambdaPFC.Ctx n)
     {root current : Sig}
@@ -203,12 +248,31 @@ structure Focus
     {sourceType : LambdaPFC.Ty n} -> {shape : Shape current} ->
     Formation sourceContext currentContext sourceType shape ->
     Proper sourceContext rootContext sourceType
-  closeSlot :
-    {sourceType : LambdaPFC.Ty n} ->
-    Slot sourceContext currentContext sourceType ->
-    Slot sourceContext rootContext sourceType
+  closeInterface :
+    {sourceType : LambdaPFC.Ty n} -> {shape : Shape current} ->
+    (formation : Formation sourceContext currentContext sourceType shape) ->
+    Shape.Interface currentContext shape ->
+    Shape.Interface rootContext (closeFormation formation).shape
 
 namespace Focus
+
+/-- Close an exact current Slot.  Its root Shape is definitionally the Shape
+chosen by `closeFormation`; no caller equality or independent closer is
+involved. -/
+noncomputable def closeSlot
+    {sourceContext : LambdaPFC.Ctx n}
+    {root current : Sig}
+    {rootContext : Ctx root} {currentContext : Ctx current}
+    (focus : Focus sourceContext rootContext currentContext)
+    {sourceType : LambdaPFC.Ty n}
+    (slot : Slot sourceContext currentContext sourceType) :
+    Slot sourceContext rootContext sourceType :=
+  let result := focus.closeFormation slot.formation
+  {
+    shape := result.shape
+    interface := focus.closeInterface slot.formation slot.interface
+    formation := result.formation
+  }
 
 noncomputable def root
     (sourceContext : LambdaPFC.Ctx n) (targetContext : Ctx sig) :
@@ -219,7 +283,7 @@ noncomputable def root
     shape := _
     formation := formation
   }
-  closeSlot := id
+  closeInterface := fun _ interface => interface
 
 noncomputable def openTelescope
     {sourceContext : LambdaPFC.Ctx n}
@@ -235,9 +299,16 @@ noncomputable def openTelescope
     (fields.weaken_typed currentContext)
   closeFormation := fun formation =>
     focus.closeFormation (Proper.close fields formation).formation
-  closeSlot := fun slot =>
-    focus.closeSlot
-      (SlotMaterializer.closeTelescope fields package packageTyping slot)
+  closeInterface := fun formation interface =>
+    let slot : Slot sourceContext (fields.context currentContext) _ := {
+      shape := _
+      interface := interface
+      formation := formation
+    }
+    let closed := SlotMaterializer.closeTelescope fields package
+      packageTyping slot
+    focus.closeInterface (Proper.close fields formation).formation
+      closed.interface
 
 noncomputable def openShape
     {sourceContext : LambdaPFC.Ctx n}
@@ -252,9 +323,15 @@ noncomputable def openShape
     (shape.binders.weaken_typed currentContext)
   closeFormation := fun formation =>
     focus.closeFormation (Proper.close shape.binders formation).formation
-  closeSlot := fun slot =>
-    focus.closeSlot
-      (SlotMaterializer.closeShape shape package packageTyping slot)
+  closeInterface := fun formation interface =>
+    let slot : Slot sourceContext (shape.context currentContext) _ := {
+      shape := _
+      interface := interface
+      formation := formation
+    }
+    let closed := SlotMaterializer.closeShape shape package packageTyping slot
+    focus.closeInterface (Proper.close shape.binders formation).formation
+      closed.interface
 
 /-- Open both pieces of an appended representation telescope. -/
 noncomputable def openAppend
@@ -281,11 +358,31 @@ noncomputable def openAppend
     let combined := properFromNested first suffix nested
     focus.closeFormation
       (Proper.close (first.append suffix) combined.formation).formation
-  closeSlot := fun slot =>
+  closeInterface := fun formation interface =>
+    let slot : Slot sourceContext
+        (suffix.context (first.context currentContext)) _ := {
+      shape := _
+      interface := interface
+      formation := formation
+    }
     let combined := slotFromNested first suffix slot
-    focus.closeSlot
-      (SlotMaterializer.closeTelescope (first.append suffix) package
-        packageTyping combined)
+    let closed := SlotMaterializer.closeTelescope (first.append suffix)
+      package packageTyping combined
+    let nested : Proper sourceContext
+        (suffix.context (first.context currentContext)) _ := {
+      shape := _
+      formation := formation
+    }
+    let combinedFormation := properFromNested first suffix nested
+    let closedInterface : Shape.Interface currentContext
+        (Proper.close (first.append suffix)
+          combinedFormation.formation).shape := by
+      exact (closeTelescope_slotFromNested_shape first suffix package
+        packageTyping slot) ▸ closed.interface
+    focus.closeInterface
+      (Proper.close (first.append suffix)
+        combinedFormation.formation).formation
+      closedInterface
 
 /-- Open the first interface while keeping the dependent suffix sealed inside
 the exact receiver representation package. -/
@@ -313,13 +410,32 @@ noncomputable def openAppendPrefix
     let combined := properFromNested first suffix nested
     focus.closeFormation
       (Proper.close (first.append suffix) combined.formation).formation
-  closeSlot := fun slot =>
+  closeInterface := fun formation interface =>
+    let slot : Slot sourceContext (first.context currentContext) _ := {
+      shape := _
+      interface := interface
+      formation := formation
+    }
     let suffixTyped := suffix.weaken_typed (first.context currentContext)
     let atSuffix := slot.targetRename suffix.weaken suffixTyped
     let combined := slotFromNested first suffix atSuffix
-    focus.closeSlot
-      (SlotMaterializer.closeTelescope (first.append suffix) package
-        packageTyping combined)
+    let closed := SlotMaterializer.closeTelescope (first.append suffix)
+      package packageTyping combined
+    let nested : Proper sourceContext
+        (suffix.context (first.context currentContext)) _ := {
+      shape := atSuffix.shape
+      formation := atSuffix.formation
+    }
+    let combinedFormation := properFromNested first suffix nested
+    let closedInterface : Shape.Interface currentContext
+        (Proper.close (first.append suffix)
+          combinedFormation.formation).shape := by
+      exact (closeTelescope_slotFromNested_shape first suffix package
+        packageTyping atSuffix) ▸ closed.interface
+    focus.closeInterface
+      (Proper.close (first.append suffix)
+        combinedFormation.formation).formation
+      closedInterface
 
 end Focus
 
