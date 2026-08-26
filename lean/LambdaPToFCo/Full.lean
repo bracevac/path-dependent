@@ -22,6 +22,7 @@ import LambdaPToFCo.Full.InterfaceArgumentCancellation
 import LambdaPToFCo.Full.InterfacePackageBridge
 import LambdaPToFCo.Full.FunctionInterface
 import LambdaPToFCo.Full.PairInterface
+import LambdaPToFCo.Full.TelescopeArgumentSplit
 import LambdaPToFCo.Full.PathPackageZipper
 import LambdaPToFCo.Full.PathPackageClosure
 import LambdaPToFCo.Full.StableIdentity
@@ -39,6 +40,7 @@ import LambdaPToFCo.Full.ProducerPairHead
 import LambdaPToFCo.Full.ModelInstantiationCoherence
 import LambdaPToFCo.Full.ProducerPairProjection
 import LambdaPToFCo.Full.ProperMemberOpening
+import LambdaPToFCo.Full.ProperPairMemberPackage
 import LambdaPToFCo.Full.ScopedPathResolution
 import LambdaPToFCo.Full.FocusedPathTranslationCore
 import LambdaPToFCo.Full.WfPlan
