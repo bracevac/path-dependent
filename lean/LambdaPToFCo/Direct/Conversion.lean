@@ -302,6 +302,18 @@ structure Witness (base : Ctx sig) (lower upper : Shape sig) : Type where
   upperTyping : Exp.HasType base upperFunction
     (.arrow selected.inputTy upper.inputTy)
 
+/-- The stored lower-bound function as a sealed ordinary conversion. -/
+noncomputable def lower {base : Ctx sig} {lower upper : Shape sig}
+    (witness : Witness base lower upper) :
+    Conversion base lower.inputTy witness.selected.inputTy :=
+  .mk witness.lowerFunction witness.lowerTyping
+
+/-- The stored upper-bound function as a sealed ordinary conversion. -/
+noncomputable def upper {base : Ctx sig} {lower upper : Shape sig}
+    (witness : Witness base lower upper) :
+    Conversion base witness.selected.inputTy upper.inputTy :=
+  .mk witness.upperFunction witness.upperTyping
+
 /-- Contravariantly precompose the lower field and covariantly postcompose
 the upper field.  The selected witness is preserved exactly. -/
 noncomputable def map {base : Ctx sig}
