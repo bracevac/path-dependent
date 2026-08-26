@@ -84,6 +84,30 @@ structure IntervalAdaptationInput
   adapter_eq : adapter = IntervalPairSubtypingRuleConstruction.adapter
     firstSubtyping memberSubtyping endpoints first member
 
+/-- Exact cached input for the literal pair rule
+`.pair (.widen precise) .refl`.  Its adapter is forced to the dedicated
+rank-2 reflexive-under-widen bridge; no unrelated adapter can inhabit the
+cache. -/
+structure IntervalReflexiveUnderWidenInput
+    {sourceScope demandScope : ScopeModel sourceContext targetContext}
+    {path : LambdaPFC.Path n} {referent : LambdaPFC.Ty n}
+    {endpoint : LambdaPFC.Ty (n + 1)} {label : LambdaPFC.Name}
+    (precise : Path.Ty sourceContext path (.ty referent))
+    (source : OrdinaryProducer sourceContext targetContext sourceScope
+      (.Pair (.Single path) label (.intv endpoint endpoint)))
+    (demand : ProperDemand sourceContext targetContext demandScope
+      (.Pair referent label (.intv endpoint endpoint))) : Type where
+  endpoints : IntervalPairSubtypingRuleConstruction.EndpointModels source
+    demand
+  first : IntervalPairSubtypingRuleConstruction.FirstAdaptation endpoints
+    (.widen precise)
+  member : IntervalPairSubtypingRuleConstruction.ReflexiveUnderWidenEndpointInput
+    endpoints precise
+  adapter : StableIdentity.Adapter targetContext source.plan demand.plan
+  adapter_eq : adapter =
+    IntervalPairSubtypingRuleConstruction.reflexiveUnderWidenAdapter precise
+      endpoints first member
+
 /-! ## Sealed pair-fused result -/
 
 /-- Closed evidence for a demand-directed structural pair adapter. The outer
@@ -125,6 +149,18 @@ inductive PairFusedAdaptationEvidence
         demand) :
       PairFusedAdaptationEvidence alignment
         (.pair firstSubtyping memberSubtyping) source demand input.adapter
+  | intervalReflexiveUnderWiden
+      {path : LambdaPFC.Path n} {referent : LambdaPFC.Ty n}
+      {endpoint : LambdaPFC.Ty (n + 1)}
+      (precise : Path.Ty sourceContext path (.ty referent))
+      (source : OrdinaryProducer sourceContext targetContext sourceScope
+        (.Pair (.Single path) label (.intv endpoint endpoint)))
+      (demand : ProperDemand sourceContext targetContext demandScope
+        (.Pair referent label (.intv endpoint endpoint)))
+      (input : IntervalReflexiveUnderWidenInput precise source demand) :
+      PairFusedAdaptationEvidence alignment
+        (.pair (.widen precise) (.refl (τ := .intv endpoint endpoint)))
+        source demand input.adapter
 
 /-- Reusable demand-directed result for either structural source pair rule.
 It intentionally starts after contextual first/member evidence has been
@@ -215,6 +251,42 @@ noncomputable def ofInterval
   exact
     { adapter := input.adapter
       evidence := .interval firstSubtyping memberSubtyping source demand input }
+
+/-- Seal the literal source rule `.pair (.widen precise) .refl`.  Endpoint
+reflexivity is decomposed only inside the dedicated rank-2 member evidence;
+the retained source derivation and final producer origin keep the exact
+`.refl` proof rather than replacing it with a bounds derivation. -/
+noncomputable def ofIntervalReflexiveUnderWiden
+    {sourceScope demandScope : ScopeModel sourceContext targetContext}
+    (alignment : ScopeAlignment sourceScope.view demandScope.view)
+    {path : LambdaPFC.Path n} {referent : LambdaPFC.Ty n}
+    {endpoint : LambdaPFC.Ty (n + 1)}
+    {label : LambdaPFC.Name}
+    (precise : Path.Ty sourceContext path (.ty referent))
+    (source : OrdinaryProducer sourceContext targetContext sourceScope
+      (.Pair (.Single path) label (.intv endpoint endpoint)))
+    (demand : ProperDemand sourceContext targetContext demandScope
+      (.Pair referent label (.intv endpoint endpoint)))
+    (endpoints : IntervalPairSubtypingRuleConstruction.EndpointModels source
+      demand)
+    (first : IntervalPairSubtypingRuleConstruction.FirstAdaptation endpoints
+      (.widen precise))
+    (member : IntervalPairSubtypingRuleConstruction.ReflexiveUnderWidenEndpointInput
+      endpoints precise) :
+    PairFusedAdaptation alignment
+      (.pair (.widen precise) (.refl (τ := .intv endpoint endpoint)))
+      source demand := by
+  let input : IntervalReflexiveUnderWidenInput precise source demand :=
+    { endpoints := endpoints
+      first := first
+      member := member
+      adapter :=
+        IntervalPairSubtypingRuleConstruction.reflexiveUnderWidenAdapter
+          precise endpoints first member
+      adapter_eq := rfl }
+  exact
+    { adapter := input.adapter
+      evidence := .intervalReflexiveUnderWiden precise source demand input }
 
 /-- Apply the adapter fixed by the sealed structural rule input. -/
 noncomputable def package

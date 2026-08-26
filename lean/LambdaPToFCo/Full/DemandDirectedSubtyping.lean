@@ -198,6 +198,19 @@ inductive FusedAdaptationEvidence
       FusedAdaptationEvidence alignment subtyping source
         (opaqueDemand demandScope trace)
         (StableIdentity.Adapter.toTop targetContext source.plan)
+  | widenResolved
+      {path : LambdaPFC.Path n} {referent : LambdaPFC.Ty n}
+      (precise : Path.Ty sourceContext path (.ty referent))
+      (translated : ProperPathPackage sourceContext targetContext sourceScope
+        precise)
+      (trace : DemandTrace sourceContext referent)
+      (demandModel : DemandPlanModel sourceContext targetContext
+        demandScope.view referent translated.plan) :
+      FusedAdaptationEvidence alignment (.widen precise)
+        (.ordinary translated.singletonProducer)
+        { trace := trace
+          model := ⟨translated.plan, demandModel⟩ }
+        (StableIdentity.Adapter.identity targetContext translated.plan)
   | function
       (domain : Tau.Sub sourceContext (.ty targetDomain) (.ty sourceDomain))
       (codomain : Tau.Sub (sourceContext.snoc targetDomain)
@@ -253,6 +266,32 @@ noncomputable def toOpaque
       (opaqueDemand demandScope trace) where
   adapter := StableIdentity.Adapter.toTop targetContext source.plan
   evidence := .toOpaque subtyping source trace
+
+/-- Fuse the exact singleton package synthesized for a translated path with
+a demand for that path's precise referent at the very same resolved plan.
+
+The source is not merely plan-equal to the translated singleton: it is
+definitionally `translated.singletonProducer`.  Likewise, the demand model is
+indexed directly by `translated.plan`.  This makes the only possible adapter
+stable identity and, for a translated selection, preserves the selected
+representation already sealed inside `translated` rather than admitting a
+new witness choice. -/
+noncomputable def widenResolved
+    {sourceScope demandScope : ScopeModel sourceContext targetContext}
+    (alignment : ScopeAlignment sourceScope.view demandScope.view)
+    {path : LambdaPFC.Path n} {referent : LambdaPFC.Ty n}
+    (precise : Path.Ty sourceContext path (.ty referent))
+    (translated : ProperPathPackage sourceContext targetContext sourceScope
+      precise)
+    (trace : DemandTrace sourceContext referent)
+    (demandModel : DemandPlanModel sourceContext targetContext
+      demandScope.view referent translated.plan) :
+    FusedAdaptation alignment (.widen precise)
+      (.ordinary translated.singletonProducer)
+      { trace := trace
+        model := ⟨translated.plan, demandModel⟩ } where
+  adapter := StableIdentity.Adapter.identity targetContext translated.plan
+  evidence := .widenResolved precise translated trace demandModel
 
 /-- Consume the exact typed bridge for one structural function rule.  This
 does not derive the bridge from the two recursive subtyping premises. -/
