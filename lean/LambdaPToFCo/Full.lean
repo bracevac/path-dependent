@@ -39,6 +39,7 @@ import LambdaPToFCo.Full.ConstructedScopeInstantiation
 import LambdaPToFCo.Full.ProducerPairHead
 import LambdaPToFCo.Full.ModelInstantiationCoherence
 import LambdaPToFCo.Full.ProducerPairProjection
+import LambdaPToFCo.Full.IntervalSelectionCapability
 import LambdaPToFCo.Full.ProperMemberOpening
 import LambdaPToFCo.Full.ProperPairMemberPackage
 import LambdaPToFCo.Full.ScopedPathResolution
