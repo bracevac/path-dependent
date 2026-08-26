@@ -103,6 +103,82 @@ end Bridge
 
 namespace Singleton
 
+/-! A source singleton refers to the complete package type of its path.
+`wrap` and `unwrap` are therefore the exact ordinary-function dictionary
+between a represented value and the singleton package that names it.  This
+keeps widening honest: it opens the package carried by the singleton instead
+of reconstructing or guessing the path's hidden identity. -/
+
+private noncomputable def wrapBody (base : Ctx sig)
+    (referent : Ty sig) : Exp (sig ,, .var) :=
+  let mapping : Rename sig (sig ,, .var) := Rename.weaken .var
+  Direct.Single.exactPackage (referent.rename mapping) (.var .here)
+    (by
+      have raw : Exp.HasType (base.bindVar referent) (.var .here)
+          (referent.weaken .var) := .var Ctx.Lookup.here
+      simpa only [Ty.weaken] using raw)
+
+private noncomputable def wrapBody_hasType (base : Ctx sig)
+    (referent : Ty sig) :
+    Exp.HasType (base.bindVar referent) (wrapBody base referent)
+      ((Direct.Single.plan referent).inputTy.rename
+        (Rename.weaken .var)) := by
+  let mapping : Rename sig (sig ,, .var) := Rename.weaken .var
+  rw [Direct.Single.inputTy_rename]
+  simpa only [wrapBody] using Direct.Single.exactPackage_hasType
+    (referent.rename mapping) (.var .here)
+    (by
+      have raw : Exp.HasType (base.bindVar referent) (.var .here)
+          (referent.weaken .var) := .var Ctx.Lookup.here
+      simpa only [Ty.weaken] using raw)
+
+/-- Package one represented value as its exact self-singleton. -/
+noncomputable def wrap (base : Ctx sig) (referent : Ty sig) :
+    Conversion base referent (Direct.Single.plan referent).inputTy :=
+  .mk (Direct.Adapter.ofBody referent (wrapBody base referent))
+    (Direct.Adapter.ofBody_hasType (wrapBody_hasType base referent))
+
+private noncomputable def unwrapBody (referent : Ty sig) : Exp (sig ,, .var) :=
+  let sourceAt := Direct.Single.plan
+    (referent.rename (Rename.weaken .var))
+  sourceAt.unpack (.var .here) (referent.rename (Rename.weaken .var))
+    (Direct.Single.payloadAsReferent
+      (referent.rename (Rename.weaken .var)))
+
+private noncomputable def unwrapBody_hasType (base : Ctx sig)
+    (referent : Ty sig) :
+    Exp.HasType
+      (base.bindVar (Direct.Single.plan referent).inputTy)
+      (unwrapBody referent) (referent.rename (Rename.weaken .var)) := by
+  let mapping : Rename sig (sig ,, .var) := Rename.weaken .var
+  let sourceAt := Direct.Single.plan (referent.rename mapping)
+  have variableTyping : Exp.HasType
+      (base.bindVar (Direct.Single.plan referent).inputTy) (.var .here)
+      sourceAt.inputTy := by
+    have raw : Exp.HasType
+        (base.bindVar (Direct.Single.plan referent).inputTy) (.var .here)
+        ((Direct.Single.plan referent).inputTy.rename mapping) :=
+      .var Ctx.Lookup.here
+    rwa [Direct.Single.inputTy_rename] at raw
+  exact sourceAt.unpack_hasType variableTyping
+    (Direct.Single.payloadAsReferent_hasType
+      (base.bindVar (Direct.Single.plan referent).inputTy)
+      (referent.rename mapping))
+
+/-- Open a singleton and recover the complete package of its referent. -/
+noncomputable def unwrap (base : Ctx sig) (referent : Ty sig) :
+    Conversion base (Direct.Single.plan referent).inputTy referent :=
+  .mk (Direct.Adapter.ofBody (Direct.Single.plan referent).inputTy
+      (unwrapBody referent))
+    (Direct.Adapter.ofBody_hasType (unwrapBody_hasType base referent))
+
+/-- The package type of a value and its exact self-singleton package are
+connected by ordinary target functions in both directions. -/
+noncomputable def selfBridge (base : Ctx sig) (referent : Ty sig) :
+    Bridge base referent (Direct.Single.plan referent).inputTy where
+  leftToRight := wrap base referent
+  rightToLeft := unwrap base referent
+
 /-- Retarget one singleton package in place.  The input package is opened,
 its actual hidden identity and payload are retained, and its referent fields
 are pre/postcomposed with the supplied bridge. -/
