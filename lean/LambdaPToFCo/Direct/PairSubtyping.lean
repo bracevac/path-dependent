@@ -1,6 +1,7 @@
 import LambdaPToFCo.Direct.AtomicSubtyping
 import LambdaPToFCo.Direct.ArgumentCancellation
 import LambdaPToFCo.Direct.TermIntroduction
+import LambdaPToFCo.Direct.ContextRelation
 
 /-!
 # Direct dependent-pair subtyping
@@ -2121,6 +2122,47 @@ noncomputable def properMemberScopeAt
     }
   }
 
+/-- The exact contextual scope present at a delayed proper-member callback.
+
+This is the target analogue of instantiating a semantic pair-member closure
+at its concrete first value.  All package-opening maps remain private; the
+only exported observation is the already-computed scope containing the two
+actual first interfaces and their frozen relation. -/
+noncomputable def properActionScopeAt
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig} {finalContext : Ctx final}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    (root : ContextRelation.Scope sourceContext targetContext .source base)
+    (first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
+      final)
+    (typed : Rename.Typed (sourceOpenedContext base sourceFirst sourceMember)
+      finalContext mapping)
+    (sourceFirstInterface : Shape.Interface finalContext
+      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
+        mapping))
+    (targetFirstInterface : Shape.Interface finalContext
+      ((genericTargetFirstAtSource sourceFirst sourceMember
+        targetFirst).rename mapping)) :
+    ContextRelation.Scope (sourceContext.snoc sourceFirstType)
+      (targetContext.snoc targetFirstType) .source finalContext := by
+  let opening := properOpening sourceFirst sourceMember
+  let openingTyped := properOpening_typed base sourceFirst sourceMember
+  let rootAt := (root.targetRename opening openingTyped).targetRename
+    mapping typed
+  let firstAt := (first.targetRename opening openingTyped).targetRename
+    mapping typed
+  let adjustedTargetInterface : Shape.Interface finalContext
+      ((targetFirst.rename opening).rename mapping) := by
+    simpa only [genericTargetFirstAtSource, targetFirstAtSource,
+      sourceFirstAtBinder, properOpening, Shape.rename_comp] using
+      targetFirstInterface
+  exact rootAt.extendPair sourceFirstInterface firstAt.sourceRep
+    adjustedTargetInterface firstAt.targetRep firstAt
+
 /-- Recursive compilation of the literal proper-member premise.  Its only
 higher-order field is indexed by that premise and receives the two exact
 first interfaces in the continuation scope chosen by the first relation. -/
@@ -2158,6 +2200,87 @@ structure ProperMemberCompiler
       targetFirstInterface
     Relation finalContext sourceMemberType targetMemberType
       scope.source.memberShape scope.target.memberShape
+
+/-- A delayed proper-member compiler with one proof-only payload retained at
+the exact relation returned by each callback.  `PairSubtyping` remains
+independent of the payload (in production it is the recursive `Action`) and
+erases it definitionally before generating target code. -/
+structure ProperMemberCompiler.Enriched
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    (root : ContextRelation.Scope sourceContext targetContext .source base)
+    (first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember)
+    (targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember)
+    (_derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)) : Type 1 where
+  Retained : {final : Sig} -> {finalContext : Ctx final} ->
+    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
+      final) ->
+    (typed : Rename.Typed (sourceOpenedContext base sourceFirst sourceMember)
+      finalContext mapping) ->
+    (sourceFirstInterface : Shape.Interface finalContext
+      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
+        mapping)) ->
+    (targetFirstInterface : Shape.Interface finalContext
+      ((genericTargetFirstAtSource sourceFirst sourceMember
+        targetFirst).rename mapping)) ->
+    let scope := properMemberScopeAt root.endpointEnvs first sourceMemberRep
+      targetMemberRep mapping typed sourceFirstInterface targetFirstInterface
+    Relation finalContext sourceMemberType targetMemberType
+      scope.source.memberShape scope.target.memberShape -> Type
+  compile : {final : Sig} -> {finalContext : Ctx final} ->
+    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
+      final) ->
+    (typed : Rename.Typed (sourceOpenedContext base sourceFirst sourceMember)
+      finalContext mapping) ->
+    (sourceFirstInterface : Shape.Interface finalContext
+      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
+        mapping)) ->
+    (targetFirstInterface : Shape.Interface finalContext
+      ((genericTargetFirstAtSource sourceFirst sourceMember
+        targetFirst).rename mapping)) ->
+    let scope := properMemberScopeAt root.endpointEnvs first sourceMemberRep
+      targetMemberRep mapping typed sourceFirstInterface targetFirstInterface
+    Sigma fun relation : Relation finalContext sourceMemberType
+        targetMemberType scope.source.memberShape scope.target.memberShape =>
+      Retained mapping typed sourceFirstInterface targetFirstInterface relation
+
+/-- Forget only the proof payload.  The generated pair program consumes the
+same relation at projection `.1`; no conversion, interface map, or endpoint
+equality is supplied independently. -/
+noncomputable def ProperMemberCompiler.Enriched.erase
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember}
+    {targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep derivation) :
+    ProperMemberCompiler root.endpointEnvs first sourceMemberRep
+      targetMemberRep derivation where
+  compile mapping typed sourceFirstInterface targetFirstInterface :=
+    (compiler.compile mapping typed sourceFirstInterface
+      targetFirstInterface).1
 
 private noncomputable def properMemberArguments
     {base : Ctx sig} {first : Shape sig} {member : Shape first.scope}
@@ -2707,6 +2830,44 @@ noncomputable def intervalMemberScopeAt
     }
   }
 
+/-- The exact contextual scope present at a delayed interval-member callback.
+The source interval's hidden selected witness remains target-only; this scope
+contains only the concrete first values needed to instantiate the literal
+member derivation. -/
+noncomputable def intervalActionScopeAt
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig} {finalContext : Ctx final}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    (root : ContextRelation.Scope sourceContext targetContext .source base)
+    (first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+    (typed : Rename.Typed
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      finalContext mapping)
+    (sourceFirstInterface : Shape.Interface finalContext
+      (((sourceFirstAtBinder sourceFirst).rename
+        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
+          mapping))
+    (targetFirstInterface : Shape.Interface finalContext
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).rename mapping)) :
+    ContextRelation.Scope (sourceContext.snoc sourceFirstType)
+      (targetContext.snoc targetFirstType) .source finalContext := by
+  let opening := intervalOpening sourceFirst sourceLower sourceUpper
+  let openingTyped := intervalOpening_typed base sourceFirst sourceLower
+    sourceUpper
+  let rootAt := (root.targetRename opening openingTyped).targetRename
+    mapping typed
+  let firstAt := (adjustedIntervalFirstRelationAtSource
+    (sourceLower := sourceLower) (sourceUpper := sourceUpper)
+    first).targetRename mapping typed
+  exact rootAt.extendPair sourceFirstInterface firstAt.sourceRep
+    targetFirstInterface firstAt.targetRep firstAt
+
 /-- Recursive compilation of the literal interval-member premise.  The
 compiler receives both exact first interfaces and the computed two-endpoint
 scope; it returns only the contravariant-lower/covariant-upper relations. -/
@@ -2750,6 +2911,211 @@ structure IntervalMemberCompiler
       sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep mapping typed
       sourceFirstInterface targetFirstInterface
     AtomicSubtyping.IntervalRelation scope.source scope.target
+
+/-- An interval-member compiler retaining one proof-only payload at the exact
+contravariant-lower/covariant-upper relation returned by its callback. -/
+structure IntervalMemberCompiler.Enriched
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (root : ContextRelation.Scope sourceContext targetContext .source base)
+    (first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    (_derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)) : Type 1 where
+  Retained : {final : Sig} -> {finalContext : Ctx final} ->
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope
+      final) ->
+    (typed : Rename.Typed
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      finalContext mapping) ->
+    (sourceFirstInterface : Shape.Interface finalContext
+      (((sourceFirstAtBinder sourceFirst).rename
+        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
+          mapping)) ->
+    (targetFirstInterface : Shape.Interface finalContext
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).rename mapping)) ->
+    let scope := intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep mapping typed
+      sourceFirstInterface targetFirstInterface
+    AtomicSubtyping.IntervalRelation scope.source scope.target -> Type
+  compile : {final : Sig} -> {finalContext : Ctx final} ->
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope
+      final) ->
+    (typed : Rename.Typed
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      finalContext mapping) ->
+    (sourceFirstInterface : Shape.Interface finalContext
+      (((sourceFirstAtBinder sourceFirst).rename
+        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
+          mapping)) ->
+    (targetFirstInterface : Shape.Interface finalContext
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).rename mapping)) ->
+    let scope := intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep mapping typed
+      sourceFirstInterface targetFirstInterface
+    Sigma fun relation : AtomicSubtyping.IntervalRelation scope.source
+        scope.target =>
+      Retained mapping typed sourceFirstInterface targetFirstInterface relation
+
+/-- Erase only the retained proof payload. -/
+noncomputable def IntervalMemberCompiler.Enriched.erase
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler.Enriched root first sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep derivation) :
+    IntervalMemberCompiler root.endpointEnvs first sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep derivation where
+  compile mapping typed sourceFirstInterface targetFirstInterface :=
+    (compiler.compile mapping typed sourceFirstInterface
+      targetFirstInterface).1
+
+/-- Instantiate the enriched interval callback at one actual source witness.
+The returned witness is mapped by the very relation whose proof payload is
+retained in the same dependent pair. -/
+noncomputable def IntervalMemberCompiler.Enriched.mapAt
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler.Enriched root first sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep derivation)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+    (typed : Rename.Typed
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      finalContext mapping)
+    (sourceFirstInterface : Shape.Interface finalContext
+      (((sourceFirstAtBinder sourceFirst).rename
+        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
+          mapping))
+    (targetFirstInterface : Shape.Interface finalContext
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).rename mapping))
+    (sourceWitness :
+      let scope := intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
+        sourceUpperRep targetLowerRep targetUpperRep mapping typed
+        sourceFirstInterface targetFirstInterface
+      Conversion.Interval.Witness finalContext scope.source.lower
+        scope.source.upper) :
+    let scope := intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep mapping typed
+      sourceFirstInterface targetFirstInterface
+    Sigma fun relation : AtomicSubtyping.IntervalRelation scope.source
+        scope.target =>
+      compiler.Retained mapping typed sourceFirstInterface
+          targetFirstInterface relation ×
+        Conversion.Interval.Witness finalContext scope.target.lower
+          scope.target.upper :=
+  let compiled := compiler.compile mapping typed sourceFirstInterface
+    targetFirstInterface
+  ⟨compiled.1, compiled.2, compiled.1.mapWitness sourceWitness⟩
+
+/-- Mapping interval bounds preserves the exact selected identity. -/
+@[simp] theorem IntervalMemberCompiler.Enriched.mapAt_selected
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler.Enriched root first sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep derivation)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+    (typed : Rename.Typed
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      finalContext mapping)
+    (sourceFirstInterface : Shape.Interface finalContext
+      (((sourceFirstAtBinder sourceFirst).rename
+        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
+          mapping))
+    (targetFirstInterface : Shape.Interface finalContext
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).rename mapping))
+    (sourceWitness :
+      let scope := intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
+        sourceUpperRep targetLowerRep targetUpperRep mapping typed
+        sourceFirstInterface targetFirstInterface
+      Conversion.Interval.Witness finalContext scope.source.lower
+        scope.source.upper) :
+    (compiler.mapAt mapping typed sourceFirstInterface targetFirstInterface
+      sourceWitness).2.2.selected = sourceWitness.selected := by
+  rfl
 
 private theorem targetIntervalRepresentationAtSource_rename
     (sourceFirst : Shape sig)
