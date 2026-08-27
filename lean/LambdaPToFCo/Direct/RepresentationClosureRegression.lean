@@ -40,6 +40,21 @@ noncomputable def topInterface (base : Ctx sig) :
     Shape.Interface base (.stable (Top.plan sig)) where
   arguments := Top.arguments .top topPayload (topPayload_hasType base)
 
+noncomputable def topPackage : Exp [] :=
+  Top.package .top topPayload (topPayload_hasType RootContext)
+
+noncomputable def topPackage_hasType :
+    Exp.HasType RootContext topPackage (Top.plan []).inputTy :=
+  Top.package_hasType .top topPayload (topPayload_hasType RootContext)
+
+/-- Arbitrary exact result packages can be materialized without source Wf. -/
+noncomputable def sealed : Slot RootContext (.Top : LambdaPFC.Ty 0) :=
+  Slot.sealPackage (.top RootContext) topPackage topPackage_hasType
+
+noncomputable def sealed_package_hasType :
+    Exp.HasType RootContext sealed.interface.package sealed.shape.inputTy :=
+  sealed.interface.package_hasType
+
 /-- A genuinely non-renaming opening instantiates the focus prefix. -/
 noncomputable def opening : Subst Focus.scope [] :=
   Subst.openVar topPayload

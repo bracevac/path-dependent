@@ -293,6 +293,28 @@ end Rep
 
 namespace Slot
 
+/-- Seal any exact typed representation package as a material raw Slot.
+This works for source results which have no `Tau.Wf` derivation. -/
+noncomputable def sealPackage
+    {base : Ctx sig} {sourceType : LambdaPFC.Ty n}
+    {shape : Shape sig}
+    (rep : Rep base sourceType shape)
+    (package : Exp sig)
+    (typing : Exp.HasType base package shape.inputTy) :
+    Slot base sourceType := by
+  let focus : Telescope sig := .nil
+  let fields : Telescope sig := .var shape.inputTy .nil
+  let arguments : Telescope.Args base fields :=
+    .var package typing .nil
+  let carrier := Telescope.pack arguments
+  have carrierTyping : Exp.HasType base carrier fields.existsTy :=
+    Telescope.pack_hasType arguments
+  exact {
+    shape := Reclosure.outerShape focus shape
+    interface := { arguments := .var carrier carrierTyping .nil }
+    rep := Rep.close (base := base) focus rep
+  }
+
 /-- Reindex a raw exact slot through any typed target substitution. -/
 noncomputable def targetSubst
     {source target : Sig} {sourceType : LambdaPFC.Ty n}
