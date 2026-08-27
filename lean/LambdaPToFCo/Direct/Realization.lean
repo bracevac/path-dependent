@@ -704,6 +704,24 @@ inductive Realizes :
         focus focusPackage focusTyping inner).rep
       (.value (MaterialTermPath.SlotMaterializer.closeTelescope
         focus focusPackage focusTyping inner).interface)
+| closeShapeValue
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    (environment : Env sourceContext base)
+    {sourceType : LambdaPFC.Ty n}
+    (owner : Shape sig)
+    (ownerPackage : Exp sig)
+    (ownerTyping : Exp.HasType base ownerPackage owner.inputTy)
+    (inner : Slot (owner.context base) sourceType)
+    (innerRealizes : Realizes
+      (environment.targetRename owner.binders.weaken
+        (owner.binders.weaken_typed base))
+      inner.rep (.value inner.interface)) :
+    Realizes environment
+      (MaterialTermPath.SlotMaterializer.closeShape
+        owner ownerPackage ownerTyping inner).rep
+      (.value (MaterialTermPath.SlotMaterializer.closeShape
+        owner ownerPackage ownerTyping inner).interface)
 | sourceExtendHead
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {base : Ctx sig}
