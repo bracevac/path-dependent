@@ -777,6 +777,37 @@ private def targetIntervalUpperAtSource
     ((sourceFirstAtBinder targetFirst).liftRename
       (intervalSourceOpening sourceFirst sourceLower sourceUpper))
 
+/-! Public callback indices for delayed interval members.  As above, only
+the callback's already-computed types are named. -/
+
+namespace IntervalMemberCompiler
+
+abbrev CallbackSig (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope) : Sig :=
+  (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope
+
+abbrev CallbackContext (base : Ctx sig) (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope) :
+    Ctx (CallbackSig sourceFirst sourceLower sourceUpper) :=
+  intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper
+
+abbrev SourceFirstAt (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope) {final : Sig}
+    (mapping : Rename
+      (CallbackSig sourceFirst sourceLower sourceUpper) final) : Shape final :=
+  ((sourceFirstAtBinder sourceFirst).rename
+    (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename mapping
+
+abbrev TargetFirstAt (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope)
+    (targetFirst : Shape sig) {final : Sig}
+    (mapping : Rename
+      (CallbackSig sourceFirst sourceLower sourceUpper) final) : Shape final :=
+  (targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+    targetFirst).rename mapping
+
+end IntervalMemberCompiler
+
 private def targetIntervalRepresentationAtSource
     (sourceFirst : Shape sig) (sourceLower sourceUpper : Shape sourceFirst.scope)
     (targetFirst : Shape sig)
@@ -2034,6 +2065,37 @@ private def genericTargetMemberAtSource
   Pair.Proper.renameMember targetFirst targetMember
     (properOpening sourceFirst sourceMember)
 
+/-! Public callback indices.  These aliases expose only the types already
+present at the delayed proper-member boundary; the target-program opening
+maps and their implementations remain private. -/
+
+namespace ProperMemberCompiler
+
+abbrev CallbackSig (sourceFirst : Shape sig)
+    (sourceMember : Shape sourceFirst.scope) : Sig :=
+  (sourceMemberAtBinder sourceFirst sourceMember).scope
+
+abbrev CallbackContext (base : Ctx sig) (sourceFirst : Shape sig)
+    (sourceMember : Shape sourceFirst.scope) :
+    Ctx (CallbackSig sourceFirst sourceMember) :=
+  sourceOpenedContext base sourceFirst sourceMember
+
+abbrev SourceFirstAt (sourceFirst : Shape sig)
+    (sourceMember : Shape sourceFirst.scope) {final : Sig}
+    (mapping : Rename (CallbackSig sourceFirst sourceMember) final) :
+    Shape final :=
+  (sourceFirst.rename (properOpening sourceFirst sourceMember)).rename mapping
+
+abbrev TargetFirstAt (sourceFirst : Shape sig)
+    (sourceMember : Shape sourceFirst.scope) (targetFirst : Shape sig)
+    {final : Sig}
+    (mapping : Rename (CallbackSig sourceFirst sourceMember) final) :
+    Shape final :=
+  (genericTargetFirstAtSource sourceFirst sourceMember targetFirst).rename
+    mapping
+
+end ProperMemberCompiler
+
 private def genericTargetProperRepresentationAtSource
     (sourceFirst : Shape sig) (sourceMember : Shape sourceFirst.scope)
     (targetFirst : Shape sig) (targetMember : Shape targetFirst.scope) :
@@ -2062,16 +2124,16 @@ noncomputable def properMemberScopeAt
       sourceMemberType sourceMember)
     (targetMemberRep : Rep (targetFirst.context base)
       targetMemberType targetMember)
-    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
-      final)
-    (typed : Rename.Typed (sourceOpenedContext base sourceFirst sourceMember)
+    (mapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) final)
+    (typed : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
       finalContext mapping)
     (sourceFirstInterface : Shape.Interface finalContext
-      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
-        mapping))
+      (ProperMemberCompiler.SourceFirstAt sourceFirst sourceMember mapping))
     (targetFirstInterface : Shape.Interface finalContext
-      ((genericTargetFirstAtSource sourceFirst sourceMember
-        targetFirst).rename mapping)) :
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        mapping)) :
     MemberScope sourceContext targetContext sourceFirstType targetFirstType
       sourceMemberType targetMemberType finalContext :=
   let openedMapping := properOpening sourceFirst sourceMember
@@ -2137,16 +2199,16 @@ noncomputable def properActionScopeAt
     (root : ContextRelation.Scope sourceContext targetContext .source base)
     (first : Relation base sourceFirstType targetFirstType
       sourceFirst targetFirst)
-    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
-      final)
-    (typed : Rename.Typed (sourceOpenedContext base sourceFirst sourceMember)
+    (mapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) final)
+    (typed : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
       finalContext mapping)
     (sourceFirstInterface : Shape.Interface finalContext
-      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
-        mapping))
+      (ProperMemberCompiler.SourceFirstAt sourceFirst sourceMember mapping))
     (targetFirstInterface : Shape.Interface finalContext
-      ((genericTargetFirstAtSource sourceFirst sourceMember
-        targetFirst).rename mapping)) :
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        mapping)) :
     ContextRelation.Scope (sourceContext.snoc sourceFirstType)
       (targetContext.snoc targetFirstType) .source finalContext := by
   let opening := properOpening sourceFirst sourceMember
@@ -2157,7 +2219,8 @@ noncomputable def properActionScopeAt
     mapping typed
   let adjustedTargetInterface : Shape.Interface finalContext
       ((targetFirst.rename opening).rename mapping) := by
-    simpa only [genericTargetFirstAtSource, targetFirstAtSource,
+    simpa only [ProperMemberCompiler.TargetFirstAt,
+      genericTargetFirstAtSource, targetFirstAtSource,
       sourceFirstAtBinder, properOpening, Shape.rename_comp] using
       targetFirstInterface
   exact rootAt.extendPair sourceFirstInterface firstAt.sourceRep
@@ -2184,17 +2247,16 @@ structure ProperMemberCompiler
     (_derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
       (.ty sourceMemberType) (.ty targetMemberType)) : Type where
   compile : {final : Sig} -> {finalContext : Ctx final} ->
-    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
-      final) ->
+    (mapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) final) ->
     (typed : Rename.Typed
-      (sourceOpenedContext base sourceFirst sourceMember)
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
       finalContext mapping) ->
     (sourceFirstInterface : Shape.Interface finalContext
-      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
-        mapping)) ->
+      (ProperMemberCompiler.SourceFirstAt sourceFirst sourceMember mapping)) ->
     (targetFirstInterface : Shape.Interface finalContext
-      ((genericTargetFirstAtSource sourceFirst sourceMember
-        targetFirst).rename mapping)) ->
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        mapping)) ->
     let scope := properMemberScopeAt environments firstRelation
       sourceMemberRep targetMemberRep mapping typed sourceFirstInterface
       targetFirstInterface
@@ -2223,31 +2285,31 @@ structure ProperMemberCompiler.Enriched
     (_derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
       (.ty sourceMemberType) (.ty targetMemberType)) : Type 1 where
   Retained : {final : Sig} -> {finalContext : Ctx final} ->
-    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
-      final) ->
-    (typed : Rename.Typed (sourceOpenedContext base sourceFirst sourceMember)
+    (mapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) final) ->
+    (typed : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
       finalContext mapping) ->
     (sourceFirstInterface : Shape.Interface finalContext
-      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
-        mapping)) ->
+      (ProperMemberCompiler.SourceFirstAt sourceFirst sourceMember mapping)) ->
     (targetFirstInterface : Shape.Interface finalContext
-      ((genericTargetFirstAtSource sourceFirst sourceMember
-        targetFirst).rename mapping)) ->
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        mapping)) ->
     let scope := properMemberScopeAt root.endpointEnvs first sourceMemberRep
       targetMemberRep mapping typed sourceFirstInterface targetFirstInterface
     Relation finalContext sourceMemberType targetMemberType
       scope.source.memberShape scope.target.memberShape -> Type
   compile : {final : Sig} -> {finalContext : Ctx final} ->
-    (mapping : Rename (sourceMemberAtBinder sourceFirst sourceMember).scope
-      final) ->
-    (typed : Rename.Typed (sourceOpenedContext base sourceFirst sourceMember)
+    (mapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) final) ->
+    (typed : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
       finalContext mapping) ->
     (sourceFirstInterface : Shape.Interface finalContext
-      ((sourceFirst.rename (properOpening sourceFirst sourceMember)).rename
-        mapping)) ->
+      (ProperMemberCompiler.SourceFirstAt sourceFirst sourceMember mapping)) ->
     (targetFirstInterface : Shape.Interface finalContext
-      ((genericTargetFirstAtSource sourceFirst sourceMember
-        targetFirst).rename mapping)) ->
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        mapping)) ->
     let scope := properMemberScopeAt root.endpointEnvs first sourceMemberRep
       targetMemberRep mapping typed sourceFirstInterface targetFirstInterface
     Sigma fun relation : Relation finalContext sourceMemberType
@@ -2785,17 +2847,18 @@ noncomputable def intervalMemberScopeAt
     (targetUpperRep : Rep (targetFirst.context base)
       targetUpperType targetUpper)
     (mapping : Rename
-      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+      (IntervalMemberCompiler.CallbackSig sourceFirst sourceLower sourceUpper)
+      final)
     (typed : Rename.Typed
-      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (IntervalMemberCompiler.CallbackContext base sourceFirst sourceLower
+        sourceUpper)
       finalContext mapping)
     (sourceFirstInterface : Shape.Interface finalContext
-      (((sourceFirstAtBinder sourceFirst).rename
-        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
-          mapping))
+      (IntervalMemberCompiler.SourceFirstAt sourceFirst sourceLower sourceUpper
+        mapping))
     (targetFirstInterface : Shape.Interface finalContext
-      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
-        targetFirst).rename mapping)) :
+      (IntervalMemberCompiler.TargetFirstAt sourceFirst sourceLower sourceUpper
+        targetFirst mapping)) :
     IntervalMemberScope sourceContext targetContext sourceFirstType
       targetFirstType sourceLowerType sourceUpperType targetLowerType
       targetUpperType finalContext :=
@@ -2844,17 +2907,18 @@ noncomputable def intervalActionScopeAt
     (first : Relation base sourceFirstType targetFirstType
       sourceFirst targetFirst)
     (mapping : Rename
-      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+      (IntervalMemberCompiler.CallbackSig sourceFirst sourceLower sourceUpper)
+      final)
     (typed : Rename.Typed
-      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (IntervalMemberCompiler.CallbackContext base sourceFirst sourceLower
+        sourceUpper)
       finalContext mapping)
     (sourceFirstInterface : Shape.Interface finalContext
-      (((sourceFirstAtBinder sourceFirst).rename
-        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
-          mapping))
+      (IntervalMemberCompiler.SourceFirstAt sourceFirst sourceLower sourceUpper
+        mapping))
     (targetFirstInterface : Shape.Interface finalContext
-      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
-        targetFirst).rename mapping)) :
+      (IntervalMemberCompiler.TargetFirstAt sourceFirst sourceLower sourceUpper
+        targetFirst mapping)) :
     ContextRelation.Scope (sourceContext.snoc sourceFirstType)
       (targetContext.snoc targetFirstType) .source finalContext := by
   let opening := intervalOpening sourceFirst sourceLower sourceUpper
@@ -2896,17 +2960,18 @@ structure IntervalMemberCompiler
       (.intv targetLowerType targetUpperType)) : Type where
   compile : {final : Sig} -> {finalContext : Ctx final} ->
     (mapping : Rename
-      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final) ->
+      (IntervalMemberCompiler.CallbackSig sourceFirst sourceLower sourceUpper)
+      final) ->
     (typed : Rename.Typed
-      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (IntervalMemberCompiler.CallbackContext base sourceFirst sourceLower
+        sourceUpper)
       finalContext mapping) ->
     (sourceFirstInterface : Shape.Interface finalContext
-      (((sourceFirstAtBinder sourceFirst).rename
-        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
-          mapping)) ->
+      (IntervalMemberCompiler.SourceFirstAt sourceFirst sourceLower sourceUpper
+        mapping)) ->
     (targetFirstInterface : Shape.Interface finalContext
-      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
-        targetFirst).rename mapping)) ->
+      (IntervalMemberCompiler.TargetFirstAt sourceFirst sourceLower sourceUpper
+        targetFirst mapping)) ->
     let scope := intervalMemberScopeAt environments firstRelation
       sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep mapping typed
       sourceFirstInterface targetFirstInterface
@@ -2939,36 +3004,36 @@ structure IntervalMemberCompiler.Enriched
       (.intv targetLowerType targetUpperType)) : Type 1 where
   Retained : {final : Sig} -> {finalContext : Ctx final} ->
     (mapping : Rename
-      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope
+      (IntervalMemberCompiler.CallbackSig sourceFirst sourceLower sourceUpper)
       final) ->
     (typed : Rename.Typed
-      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (IntervalMemberCompiler.CallbackContext base sourceFirst sourceLower
+        sourceUpper)
       finalContext mapping) ->
     (sourceFirstInterface : Shape.Interface finalContext
-      (((sourceFirstAtBinder sourceFirst).rename
-        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
-          mapping)) ->
+      (IntervalMemberCompiler.SourceFirstAt sourceFirst sourceLower sourceUpper
+        mapping)) ->
     (targetFirstInterface : Shape.Interface finalContext
-      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
-        targetFirst).rename mapping)) ->
+      (IntervalMemberCompiler.TargetFirstAt sourceFirst sourceLower sourceUpper
+        targetFirst mapping)) ->
     let scope := intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
       sourceUpperRep targetLowerRep targetUpperRep mapping typed
       sourceFirstInterface targetFirstInterface
     AtomicSubtyping.IntervalRelation scope.source scope.target -> Type
   compile : {final : Sig} -> {finalContext : Ctx final} ->
     (mapping : Rename
-      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope
+      (IntervalMemberCompiler.CallbackSig sourceFirst sourceLower sourceUpper)
       final) ->
     (typed : Rename.Typed
-      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (IntervalMemberCompiler.CallbackContext base sourceFirst sourceLower
+        sourceUpper)
       finalContext mapping) ->
     (sourceFirstInterface : Shape.Interface finalContext
-      (((sourceFirstAtBinder sourceFirst).rename
-        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
-          mapping)) ->
+      (IntervalMemberCompiler.SourceFirstAt sourceFirst sourceLower sourceUpper
+        mapping)) ->
     (targetFirstInterface : Shape.Interface finalContext
-      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
-        targetFirst).rename mapping)) ->
+      (IntervalMemberCompiler.TargetFirstAt sourceFirst sourceLower sourceUpper
+        targetFirst mapping)) ->
     let scope := intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
       sourceUpperRep targetLowerRep targetUpperRep mapping typed
       sourceFirstInterface targetFirstInterface
@@ -3038,17 +3103,18 @@ noncomputable def IntervalMemberCompiler.Enriched.mapAt
       sourceUpperRep targetLowerRep targetUpperRep derivation)
     {final : Sig} {finalContext : Ctx final}
     (mapping : Rename
-      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+      (IntervalMemberCompiler.CallbackSig sourceFirst sourceLower sourceUpper)
+      final)
     (typed : Rename.Typed
-      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (IntervalMemberCompiler.CallbackContext base sourceFirst sourceLower
+        sourceUpper)
       finalContext mapping)
     (sourceFirstInterface : Shape.Interface finalContext
-      (((sourceFirstAtBinder sourceFirst).rename
-        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
-          mapping))
+      (IntervalMemberCompiler.SourceFirstAt sourceFirst sourceLower sourceUpper
+        mapping))
     (targetFirstInterface : Shape.Interface finalContext
-      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
-        targetFirst).rename mapping))
+      (IntervalMemberCompiler.TargetFirstAt sourceFirst sourceLower sourceUpper
+        targetFirst mapping))
     (sourceWitness :
       let scope := intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
         sourceUpperRep targetLowerRep targetUpperRep mapping typed
@@ -3096,17 +3162,18 @@ noncomputable def IntervalMemberCompiler.Enriched.mapAt
       sourceUpperRep targetLowerRep targetUpperRep derivation)
     {final : Sig} {finalContext : Ctx final}
     (mapping : Rename
-      (intervalMemberAtBinder sourceFirst sourceLower sourceUpper).scope final)
+      (IntervalMemberCompiler.CallbackSig sourceFirst sourceLower sourceUpper)
+      final)
     (typed : Rename.Typed
-      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (IntervalMemberCompiler.CallbackContext base sourceFirst sourceLower
+        sourceUpper)
       finalContext mapping)
     (sourceFirstInterface : Shape.Interface finalContext
-      (((sourceFirstAtBinder sourceFirst).rename
-        (intervalSourceOpening sourceFirst sourceLower sourceUpper)).rename
-          mapping))
+      (IntervalMemberCompiler.SourceFirstAt sourceFirst sourceLower sourceUpper
+        mapping))
     (targetFirstInterface : Shape.Interface finalContext
-      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
-        targetFirst).rename mapping))
+      (IntervalMemberCompiler.TargetFirstAt sourceFirst sourceLower sourceUpper
+        targetFirst mapping))
     (sourceWitness :
       let scope := intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
         sourceUpperRep targetLowerRep targetUpperRep mapping typed

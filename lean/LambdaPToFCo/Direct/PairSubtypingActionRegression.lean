@@ -69,6 +69,40 @@ theorem retainProperUnit_erase
   cases compiler
   rfl
 
+/-- The public callback aliases are sufficient to invoke an enriched proper
+compiler without naming any private opening helper. -/
+private noncomputable def compileProperViaAliases
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceMember : Shape sourceFirst.scope}
+    {targetMember : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceMemberRep : Rep (sourceFirst.context base)
+      sourceMemberType sourceMember}
+    {targetMemberRep : Rep (targetFirst.context base)
+      targetMemberType targetMember}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.ty sourceMemberType) (.ty targetMemberType)}
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep derivation)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) final)
+    (typed : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      finalContext mapping)
+    (sourceInterface : Shape.Interface finalContext
+      (ProperMemberCompiler.SourceFirstAt sourceFirst sourceMember mapping))
+    (targetInterface : Shape.Interface finalContext
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        mapping)) :=
+  compiler.compile mapping typed sourceInterface targetInterface
+
 noncomputable def retainIntervalUnit
     {sourceContext targetContext : LambdaPFC.Ctx n}
     {base : Ctx sig}
@@ -131,6 +165,49 @@ theorem retainIntervalUnit_erase
     (retainIntervalUnit compiler).erase = compiler := by
   cases compiler
   rfl
+
+/-- The four interval aliases likewise expose the complete `mapAt` callback
+index without exposing its private opening program. -/
+private noncomputable def compileIntervalViaAliases
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : IntervalMemberCompiler.Enriched root first sourceLowerRep
+      sourceUpperRep targetLowerRep targetUpperRep derivation)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (IntervalMemberCompiler.CallbackSig sourceFirst sourceLower sourceUpper)
+      final)
+    (typed : Rename.Typed
+      (IntervalMemberCompiler.CallbackContext base sourceFirst sourceLower
+        sourceUpper)
+      finalContext mapping)
+    (sourceInterface : Shape.Interface finalContext
+      (IntervalMemberCompiler.SourceFirstAt sourceFirst sourceLower sourceUpper
+        mapping))
+    (targetInterface : Shape.Interface finalContext
+      (IntervalMemberCompiler.TargetFirstAt sourceFirst sourceLower sourceUpper
+        targetFirst mapping)) :=
+  compiler.compile mapping typed sourceInterface targetInterface
 
 end
 
