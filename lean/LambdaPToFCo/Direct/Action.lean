@@ -270,6 +270,26 @@ inductive Action :
         (LambdaPFC.Tau.Sub.top
           (Γ := side.choose sourceContext targetContext) (T := sourceType))
         (.proper (AtomicSubtyping.top source).relation)
+  | symmAt
+      {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
+      {side : ProofSide} {sig : Sig} {base : Ctx sig}
+      (scope : ContextRelation.Scope sourceContext targetContext side base)
+      {path referent : LambdaPFC.Path n}
+      (typing : LambdaPFC.Path.Ty
+        (side.choose sourceContext targetContext) path
+        (.ty (.Single referent)))
+      (source : Slot base (.Single referent)) :
+      Action scope (.symm typing)
+        (.proper (let target := TermIntroduction.singletonSlot path source
+          Relation.ofConversion source.rep target.rep
+            (Conversion.ofFunction
+              (Adapter.ofBody source.shape.inputTy
+                (target.interface.package.rename (Rename.weaken .var)))
+              (Adapter.ofBody_hasType (by
+                simpa only [Ty.weaken, Shape.inputTy_rename] using
+                  target.interface.package_hasType.rename
+                    (Rename.Typed.weaken base
+                      (.var source.shape.inputTy)))))))
   | widenAt
       {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
       {side : ProofSide} {sig : Sig} {base : Ctx sig}
@@ -603,6 +623,7 @@ noncomputable def treeSize
   | targetRename _ _ _ size => exact size + 1
   | bot => exact 1
   | top => exact 1
+  | symmAt => exact 1
   | widenAt => exact 1
   | selHiAt => exact 1
   | selLoAt => exact 1
