@@ -119,28 +119,21 @@ noncomputable def extendPair
     (head : Relation base sourceType targetType sourceShape targetShape) :
     Scope (sourceContext.snoc sourceType)
       (targetContext.snoc targetType) .source base := by
-  let sourceEnvironment := scope.source.extend Rename.id
-    (TypedRename.id base) sourceType sourceInterface
-    (sourceRep.sourceRename LambdaPFC.FinFun.weaken)
-  let targetEnvironment := scope.target.extend Rename.id
-    (TypedRename.id base) targetType targetInterface
-    (targetRep.sourceRename LambdaPFC.FinFun.weaken)
+  let sourceEnvironment := extendAtInterface scope.source sourceType
+    sourceInterface sourceRep
+  let targetEnvironment := extendAtInterface scope.target targetType
+    targetInterface targetRep
   apply Scope.mk sourceEnvironment targetEnvironment
   intro index
   refine Fin.cases ?_ (fun older => ?_) index
   · simpa only [LambdaPFC.Ctx.lookup, sourceEnvironment, targetEnvironment,
-      Env.extend_here] using
+      extendAtInterface_here] using
       relationSourceRename head LambdaPFC.FinFun.weaken
         LambdaPFC.FinFun.weaken
-  · simp only [LambdaPFC.Ctx.lookup, sourceEnvironment, targetEnvironment,
-      Env.extend_there, LambdaPFC.Ty.weaken, Fin.cases_succ,
-      Slot.targetRename, Slot.sourceRename, Shape.rename_id]
-    change Relation base
-      ((sourceContext.lookup older).rename LambdaPFC.FinFun.weaken)
-      ((targetContext.lookup older).rename LambdaPFC.FinFun.weaken)
-      (scope.source.lookup older).shape (scope.target.lookup older).shape
-    exact relationSourceRename (scope.aligned older)
-      LambdaPFC.FinFun.weaken LambdaPFC.FinFun.weaken
+  · simpa only [LambdaPFC.Ctx.lookup, sourceEnvironment, targetEnvironment,
+      extendAtInterface_there, Slot.sourceRename] using
+      relationSourceRename (scope.aligned older)
+        LambdaPFC.FinFun.weaken LambdaPFC.FinFun.weaken
 
 /-- Extend a target-oriented scope in the exact common continuation of a
 dependent function's reversed-domain interface map. -/
@@ -157,28 +150,21 @@ noncomputable def extendFunction
     (head : Relation base targetType sourceType targetShape sourceShape) :
     Scope (sourceContext.snoc sourceType)
       (targetContext.snoc targetType) .target base := by
-  let sourceEnvironment := scope.source.extend Rename.id
-    (TypedRename.id base) sourceType sourceInterface
-    (sourceRep.sourceRename LambdaPFC.FinFun.weaken)
-  let targetEnvironment := scope.target.extend Rename.id
-    (TypedRename.id base) targetType targetInterface
-    (targetRep.sourceRename LambdaPFC.FinFun.weaken)
+  let sourceEnvironment := extendAtInterface scope.source sourceType
+    sourceInterface sourceRep
+  let targetEnvironment := extendAtInterface scope.target targetType
+    targetInterface targetRep
   apply Scope.mk sourceEnvironment targetEnvironment
   intro index
   refine Fin.cases ?_ (fun older => ?_) index
   · simpa only [LambdaPFC.Ctx.lookup, sourceEnvironment, targetEnvironment,
-      Env.extend_here] using
+      extendAtInterface_here] using
       relationSourceRename head LambdaPFC.FinFun.weaken
         LambdaPFC.FinFun.weaken
-  · simp only [LambdaPFC.Ctx.lookup, sourceEnvironment, targetEnvironment,
-      Env.extend_there, LambdaPFC.Ty.weaken, Fin.cases_succ,
-      Slot.targetRename, Slot.sourceRename, Shape.rename_id]
-    change Relation base
-      ((targetContext.lookup older).rename LambdaPFC.FinFun.weaken)
-      ((sourceContext.lookup older).rename LambdaPFC.FinFun.weaken)
-      (scope.target.lookup older).shape (scope.source.lookup older).shape
-    exact relationSourceRename (scope.aligned older)
-      LambdaPFC.FinFun.weaken LambdaPFC.FinFun.weaken
+  · simpa only [LambdaPFC.Ctx.lookup, sourceEnvironment, targetEnvironment,
+      extendAtInterface_there, Slot.sourceRename] using
+      relationSourceRename (scope.aligned older)
+        LambdaPFC.FinFun.weaken LambdaPFC.FinFun.weaken
 
 end Scope
 

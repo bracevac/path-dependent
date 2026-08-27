@@ -49,7 +49,7 @@ noncomputable def changedBinderAlignment
       (.stable (Bot.plan sig)) (.stable (Top.plan sig)) := by
   let extended := changedBinderScope prior sourceInterface targetInterface
   simpa only [extended, changedBinderScope, LambdaPFC.Ctx.lookup,
-    Env.extend_here, Fin.cases_zero] using
+    extendAtInterface_here, Fin.cases_zero] using
     extended.aligned (0 : Fin (n + 1))
 
 /-- The changed alignment remains exact after an arbitrary typed target
@@ -72,7 +72,7 @@ noncomputable def renamedChangedBinderAlignment
   let extended := changedBinderScope prior sourceInterface targetInterface
   let renamed := extended.targetRename mapping typed
   simpa only [renamed, LambdaPFC.Ctx.lookup, Env.targetRename,
-    Env.extend_here, Slot.targetRename, Fin.cases_zero] using
+    extendAtInterface_here, Slot.targetRename, Fin.cases_zero] using
     renamed.aligned (0 : Fin (n + 1))
 
 end LambdaPToFCo.Direct.ContextRelationRegression

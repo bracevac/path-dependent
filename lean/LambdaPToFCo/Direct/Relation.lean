@@ -210,16 +210,45 @@ noncomputable def trans
 end Relation
 
 /-- Extend one environment with an interface already present in the current
-target context.  The newest slot retains that exact interface. -/
+target context.  The newest slot retains that exact interface, while every
+older slot is weakened only in the source context. -/
 noncomputable def extendAtInterface
     {sourceContext : LambdaPFC.Ctx n} {base : Ctx sig}
     (environment : Env sourceContext base)
     (sourceType : LambdaPFC.Ty n) {shape : Shape sig}
     (interface : Shape.Interface base shape)
     (rep : Rep base sourceType shape) :
-    Env (sourceContext.snoc sourceType) base :=
-  environment.extend Rename.id (TypedRename.id base) sourceType interface
-    (rep.sourceRename LambdaPFC.FinFun.weaken)
+    Env (sourceContext.snoc sourceType) base where
+  lookup := Fin.cases
+    { shape := shape
+      interface := interface
+      rep := rep.sourceRename LambdaPFC.FinFun.weaken }
+    (fun older =>
+      (environment.lookup older).sourceRename LambdaPFC.FinFun.weaken)
+
+@[simp] theorem extendAtInterface_here
+    {sourceContext : LambdaPFC.Ctx n} {base : Ctx sig}
+    (environment : Env sourceContext base)
+    (sourceType : LambdaPFC.Ty n) {shape : Shape sig}
+    (interface : Shape.Interface base shape)
+    (rep : Rep base sourceType shape) :
+    (extendAtInterface environment sourceType interface rep).lookup 0 =
+      { shape := shape
+        interface := interface
+        rep := rep.sourceRename LambdaPFC.FinFun.weaken } :=
+  rfl
+
+@[simp] theorem extendAtInterface_there
+    {sourceContext : LambdaPFC.Ctx n} {base : Ctx sig}
+    (environment : Env sourceContext base)
+    (sourceType : LambdaPFC.Ty n) {shape : Shape sig}
+    (interface : Shape.Interface base shape)
+    (rep : Rep base sourceType shape) (older : Fin n) :
+    (extendAtInterface environment sourceType interface rep).lookup
+        older.succ =
+      (environment.lookup older).sourceRename
+        LambdaPFC.FinFun.weaken :=
+  rfl
 
 /-- One dependent endpoint in the common continuation scope.  The newest
 environment slot already retains the exact first interface and first

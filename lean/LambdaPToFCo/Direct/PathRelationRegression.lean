@@ -32,7 +32,7 @@ noncomputable def changedBinderSingleton
     ContextRelationRegression.changedBinderScope prior sourceInterface
       targetInterface
   simpa only [scope, ContextRelationRegression.changedBinderScope,
-    Env.extend_here, Fin.cases_zero] using
+    extendAtInterface_here, Fin.cases_zero] using
     singletonVariable scope (0 : Fin (n + 1))
 
 /-- The generated target term is an ordinary conversion between the two

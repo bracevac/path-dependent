@@ -643,23 +643,6 @@ inductive Realizes :
       (extendAtInterface environment boundSource boundInterface boundRep)
       (boundRep.sourceRename LambdaPFC.FinFun.weaken)
       (.value boundInterface)
-| sourceExtendOlder
-    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
-    {sig : Sig} {base : Ctx sig}
-    {environment : Env sourceContext base}
-    {sourceType : LambdaPFC.Ty n} {shape : Shape sig}
-    {rep : Rep base sourceType shape}
-    {mode : Mode} {availability : Availability base shape mode}
-    (realizes : Realizes environment rep availability)
-    (boundSource : LambdaPFC.Ty n)
-    {boundShape : Shape sig}
-    (boundInterface : Shape.Interface base boundShape)
-    (boundRep : Rep base boundSource boundShape) :
-    Realizes
-      (extendAtInterface environment boundSource boundInterface boundRep)
-      ((rep.targetRename Rename.id (TypedRename.id base)).sourceRename
-        LambdaPFC.FinFun.weaken)
-      (availability.targetRename Rename.id (TypedRename.id base))
 | sourceExtendAligned
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {base : Ctx sig}
@@ -871,25 +854,14 @@ noncomputable def extendAtInterface
     sourceType interface rep
   valid index := by
     refine Fin.cases ?_ (fun older => ?_) index
-    · simpa only [LambdaPFC.Ctx.lookup, Env.extend_here] using
+    · simpa only [LambdaPFC.Ctx.lookup,
+        LambdaPToFCo.Direct.Internal.extendAtInterface_here] using
         Realizes.sourceExtendHead sourceType interface rep realizes
-    · have lookupEq := Env.extend_there environment.raw Rename.id
-        (TypedRename.id base) sourceType interface
-        (rep.sourceRename LambdaPFC.FinFun.weaken) older
-      change Realizes
-        (environment.raw.extend Rename.id (TypedRename.id base) sourceType
-          interface (rep.sourceRename LambdaPFC.FinFun.weaken))
-        ((environment.raw.extend Rename.id (TypedRename.id base) sourceType
-          interface (rep.sourceRename LambdaPFC.FinFun.weaken)).lookup
-            older.succ).rep
-        (.value
-          ((environment.raw.extend Rename.id (TypedRename.id base) sourceType
-            interface (rep.sourceRename LambdaPFC.FinFun.weaken)).lookup
-              older.succ).interface)
-      rw [lookupEq]
-      simp only [Slot.targetRename, Slot.sourceRename]
-      exact Realizes.sourceExtendOlder (environment.valid older) sourceType
-        interface rep
+    · simpa only [LambdaPFC.Ctx.lookup,
+        LambdaPToFCo.Direct.Internal.extendAtInterface_there,
+        Slot.sourceRename] using
+        Realizes.sourceExtendAligned (environment.valid older) sourceType
+          interface rep
 
 end ValidEnv
 
