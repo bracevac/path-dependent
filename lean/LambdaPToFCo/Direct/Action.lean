@@ -196,43 +196,78 @@ inductive Action :
         (LambdaPFC.Tau.Sub.refl (Γ := side.choose sourceContext targetContext)
           (τ := .intv lower upper))
         (.interval (AtomicSubtyping.IntervalRelation.refl interval))
-  | transProper
+  | sourceProper
       {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
-      {side : ProofSide} {sig : Sig} {base : Ctx sig}
-      {scope : ContextRelation.Scope sourceContext targetContext side base}
+      {sig : Sig} {base : Ctx sig}
+      (scope : ContextRelation.Scope sourceContext targetContext .source base)
       {sourceType middleType targetType : LambdaPFC.Ty n}
       {source middle target : Shape sig}
-      {firstSubtyping : LambdaPFC.Tau.Sub
-        (side.choose sourceContext targetContext)
+      {firstSubtyping : LambdaPFC.Tau.Sub sourceContext
         (.ty sourceType) (.ty middleType)}
-      {secondSubtyping : LambdaPFC.Tau.Sub
-        (side.choose sourceContext targetContext)
+      {secondSubtyping : LambdaPFC.Tau.Sub sourceContext
+        (.ty middleType) (.ty targetType)}
+      {firstRelation : Relation base sourceType middleType source middle}
+      {secondRelation : Relation base middleType targetType middle target}
+      (first : Action (ContextRelation.Scope.root scope.source .source)
+        firstSubtyping (.proper firstRelation))
+      (second : Action scope secondSubtyping (.proper secondRelation)) :
+      Action scope (.trans firstSubtyping secondSubtyping)
+        (.proper (firstRelation.trans secondRelation))
+  | targetProper
+      {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
+      {sig : Sig} {base : Ctx sig}
+      (scope : ContextRelation.Scope sourceContext targetContext .target base)
+      {sourceType middleType targetType : LambdaPFC.Ty n}
+      {source middle target : Shape sig}
+      {firstSubtyping : LambdaPFC.Tau.Sub targetContext
+        (.ty sourceType) (.ty middleType)}
+      {secondSubtyping : LambdaPFC.Tau.Sub targetContext
         (.ty middleType) (.ty targetType)}
       {firstRelation : Relation base sourceType middleType source middle}
       {secondRelation : Relation base middleType targetType middle target}
       (first : Action scope firstSubtyping (.proper firstRelation))
-      (second : Action scope secondSubtyping (.proper secondRelation)) :
+      (second : Action (ContextRelation.Scope.root scope.target .target)
+        secondSubtyping (.proper secondRelation)) :
       Action scope (.trans firstSubtyping secondSubtyping)
         (.proper (firstRelation.trans secondRelation))
-  | transInterval
+  | sourceInterval
       {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
-      {side : ProofSide} {sig : Sig} {base : Ctx sig}
-      {scope : ContextRelation.Scope sourceContext targetContext side base}
+      {sig : Sig} {base : Ctx sig}
+      (scope : ContextRelation.Scope sourceContext targetContext .source base)
       {sourceLower sourceUpper middleLower middleUpper targetLower targetUpper :
         LambdaPFC.Ty n}
       {source : Wf.Interval base sourceLower sourceUpper}
       {middle : Wf.Interval base middleLower middleUpper}
       {target : Wf.Interval base targetLower targetUpper}
-      {firstSubtyping : LambdaPFC.Tau.Sub
-        (side.choose sourceContext targetContext)
+      {firstSubtyping : LambdaPFC.Tau.Sub sourceContext
         (.intv sourceLower sourceUpper) (.intv middleLower middleUpper)}
-      {secondSubtyping : LambdaPFC.Tau.Sub
-        (side.choose sourceContext targetContext)
+      {secondSubtyping : LambdaPFC.Tau.Sub sourceContext
+        (.intv middleLower middleUpper) (.intv targetLower targetUpper)}
+      {firstRelation : AtomicSubtyping.IntervalRelation source middle}
+      {secondRelation : AtomicSubtyping.IntervalRelation middle target}
+      (first : Action (ContextRelation.Scope.root scope.source .source)
+        firstSubtyping (.interval firstRelation))
+      (second : Action scope secondSubtyping (.interval secondRelation)) :
+      Action scope (.trans firstSubtyping secondSubtyping)
+        (.interval (firstRelation.trans secondRelation))
+  | targetInterval
+      {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
+      {sig : Sig} {base : Ctx sig}
+      (scope : ContextRelation.Scope sourceContext targetContext .target base)
+      {sourceLower sourceUpper middleLower middleUpper targetLower targetUpper :
+        LambdaPFC.Ty n}
+      {source : Wf.Interval base sourceLower sourceUpper}
+      {middle : Wf.Interval base middleLower middleUpper}
+      {target : Wf.Interval base targetLower targetUpper}
+      {firstSubtyping : LambdaPFC.Tau.Sub targetContext
+        (.intv sourceLower sourceUpper) (.intv middleLower middleUpper)}
+      {secondSubtyping : LambdaPFC.Tau.Sub targetContext
         (.intv middleLower middleUpper) (.intv targetLower targetUpper)}
       {firstRelation : AtomicSubtyping.IntervalRelation source middle}
       {secondRelation : AtomicSubtyping.IntervalRelation middle target}
       (first : Action scope firstSubtyping (.interval firstRelation))
-      (second : Action scope secondSubtyping (.interval secondRelation)) :
+      (second : Action (ContextRelation.Scope.root scope.target .target)
+        secondSubtyping (.interval secondRelation)) :
       Action scope (.trans firstSubtyping secondSubtyping)
         (.interval (firstRelation.trans secondRelation))
   | targetRename
@@ -616,9 +651,13 @@ noncomputable def treeSize
   induction action with
   | reflProper => exact 1
   | reflInterval => exact 1
-  | transProper _ _ firstSize secondSize =>
+  | sourceProper _ _ _ firstSize secondSize =>
       exact firstSize + secondSize + 1
-  | transInterval _ _ firstSize secondSize =>
+  | targetProper _ _ _ firstSize secondSize =>
+      exact firstSize + secondSize + 1
+  | sourceInterval _ _ _ firstSize secondSize =>
+      exact firstSize + secondSize + 1
+  | targetInterval _ _ _ firstSize secondSize =>
       exact firstSize + secondSize + 1
   | targetRename _ _ _ size => exact size + 1
   | bot => exact 1

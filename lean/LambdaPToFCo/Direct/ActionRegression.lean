@@ -35,10 +35,12 @@ private def properFstGate
   first.properFst
 
 /-- The selected-child operation typechecks alongside the concrete reachable
-action shape `widen q sourcePair ; intervalPair`. The returned first component
-is that whole action; the second is produced separately from the exact
-delayed-member callback retained by its pair child. This deliberately does
-not claim an eliminator through the outer transitivity node. -/
+action shape `widen q sourcePair ; intervalPair`. The widen premise runs under
+the exact source endpoint root and is spliced into the outer pair Action. The
+returned first component is that whole action; the second is produced
+separately from the exact delayed-member callback retained by its pair child.
+This deliberately does not claim an eliminator through the outer transitivity
+node. -/
 private noncomputable def intervalSelectedAlongsideWidenGate
     {sourceContext targetContext : LambdaPFC.Ctx n}
     {base : Ctx sig}
@@ -125,11 +127,12 @@ private noncomputable def intervalSelectedAlongsideWidenGate
     interface := sourcePairInterface
     rep := sourcePairRep
   }
-  let widenAction := Action.widenAt scope typing sourceSlot
+  let sourceRoot := ContextRelation.Scope.root scope.source .source
+  let widenAction := Action.widenAt sourceRoot typing sourceSlot
   let pairAction := Action.intervalPair (label := label) scope first
     sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep memberRelation
     memberAction
-  let wholeAction := Action.transProper widenAction pairAction
+  let wholeAction := Action.sourceProper scope widenAction pairAction
   let selected := Action.intervalSelected memberRelation memberAction mapping
     typed sourceInterface targetInterface sourceWitness
   exact (wholeAction, selected)
