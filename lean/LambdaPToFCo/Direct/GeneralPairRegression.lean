@@ -204,6 +204,13 @@ private noncomputable def finalConsumer :
           (.intv (.Bot : LambdaPFC.Ty 1) (.Top : LambdaPFC.Ty 1)))
         _ at nextRep
       cases nextRep with
+      | absurd bottomValue bottomTyping =>
+          exact {
+            expression := Adapter.eliminateBottom bottomValue
+              ((WfRegression.intervalTarget.shape.inputTy.rename mapping).rename
+                _nextMapping)
+            typing := Adapter.eliminateBottom_hasType bottomTyping
+          }
       | intervalPair firstRep lowerRep upperRep =>
           let first : Wf.Proper _ (.Top : LambdaPFC.Ty 0) := {
             shape := _

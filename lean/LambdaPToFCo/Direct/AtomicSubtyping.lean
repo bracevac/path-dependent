@@ -181,6 +181,22 @@ private noncomputable def symmResult
       (.singleton base sourcePath referent) targetRep conversion
   }
 
+/-- Singleton symmetry of an unreachable value changes only the source path
+index.  The same retained Bottom represents both endpoints, and the target
+conversion is ordinary identity at `forall X. X`. -/
+private noncomputable def symmAbsurdResult
+    {base : Ctx sig} {sourcePath : LambdaPFC.Path n}
+    (targetPath : LambdaPFC.Path n)
+    (bottomValue : Exp sig)
+    (bottomTyping : Exp.HasType base bottomValue Adapter.bottomTy) :
+    Result base (.Single sourcePath) (.Single targetPath) where
+  source := .opaque Adapter.bottomTy
+  target := .opaque Adapter.bottomTy
+  relation := Relation.ofConversion
+    (.absurd bottomValue bottomTyping)
+    (.absurd bottomValue bottomTyping)
+    (Conversion.refl base Adapter.bottomTy)
+
 /-- Expose a possibly closed singleton slot and consume its exact symmetry
 result under every carrier elimination scope. -/
 noncomputable def symmAt
@@ -199,6 +215,13 @@ noncomputable def symmAt
       let exposed := rep.expose interface answer
         (fun mapping typed _ exposedRep => by
           cases exposedRep with
+          | absurd bottomValue bottomTyping =>
+              let body := consumer mapping typed
+                (symmAbsurdResult targetPath bottomValue bottomTyping)
+              exact {
+                expression := body.expression
+                typing := body.typing
+              }
           | singleton _ _ referent =>
               let body := consumer mapping typed
                 (symmResult targetPath referent)

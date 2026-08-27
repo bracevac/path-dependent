@@ -26,6 +26,12 @@ open SystemFCo
 
 inductive Rep : {n : Nat} -> {sig : Sig} ->
     SystemFCo.Ctx sig -> LambdaPFC.Ty n -> Shape sig -> Type where
+| absurd
+    {targetContext : SystemFCo.Ctx sig}
+    {sourceType : LambdaPFC.Ty n}
+    (bottom : Exp sig)
+    (bottomTyping : Exp.HasType targetContext bottom Adapter.bottomTy) :
+    Rep targetContext sourceType (.opaque Adapter.bottomTy)
 | top (targetContext : SystemFCo.Ctx sig) :
     Rep targetContext .Top (.stable (Top.plan sig))
 | bottom (targetContext : SystemFCo.Ctx sig) :
@@ -100,6 +106,12 @@ constructor, so consumers may inspect source structure without an impossible
 or recursively duplicated closure branch. -/
 inductive Rep.Exposed : {n : Nat} -> {sig : Sig} ->
     SystemFCo.Ctx sig -> LambdaPFC.Ty n -> Shape sig -> Type where
+| absurd
+    {targetContext : SystemFCo.Ctx sig}
+    {sourceType : LambdaPFC.Ty n}
+    (bottom : Exp sig)
+    (bottomTyping : Exp.HasType targetContext bottom Adapter.bottomTy) :
+    Rep.Exposed targetContext sourceType (.opaque Adapter.bottomTy)
 | top (targetContext : SystemFCo.Ctx sig) :
     Rep.Exposed targetContext .Top (.stable (Top.plan sig))
 | bottom (targetContext : SystemFCo.Ctx sig) :
@@ -166,6 +178,7 @@ def toRep
     (exposed : Rep.Exposed targetContext sourceType shape) :
     Rep targetContext sourceType shape :=
   match exposed with
+  | .absurd bottomValue bottomTyping => .absurd bottomValue bottomTyping
   | .top context => .top context
   | .bottom context => .bottom context
   | .singleton context path referent => .singleton context path referent
@@ -251,6 +264,8 @@ noncomputable def Rep.sourceRename
     (mapping : LambdaPFC.FinFun n m) :
     Rep targetContext (sourceType.rename mapping) shape := by
   induction rep generalizing m with
+  | absurd bottomValue bottomTyping =>
+      exact .absurd bottomValue bottomTyping
   | top => exact .top _
   | bottom => exact .bottom _
   | singleton _ path referentIdentity =>
@@ -279,6 +294,8 @@ noncomputable def Rep.sourceSubst
     (substitution : LambdaPFC.PathSubst n m) :
     Rep targetContext (sourceType.subst substitution) shape := by
   induction rep generalizing m with
+  | absurd bottomValue bottomTyping =>
+      exact .absurd bottomValue bottomTyping
   | top => exact .top _
   | bottom => exact .bottom _
   | singleton _ path referentIdentity =>
@@ -310,6 +327,10 @@ noncomputable def Rep.targetRename
     (typed : Rename.Typed sourceContext targetContext mapping) :
     Rep targetContext sourceType (shape.rename mapping) := by
   induction rep generalizing target with
+  | absurd bottomValue bottomTyping =>
+      refine .absurd (bottomValue.rename mapping) ?_
+      simpa only [Bot.bottomTy_rename] using
+        Exp.HasType.rename bottomTyping typed
   | top =>
       simpa only [Shape.rename, Top.plan_rename] using Rep.top targetContext
   | bottom =>
@@ -385,6 +406,10 @@ noncomputable def Rep.targetSubst
     (typed : Subst.Typed sourceContext targetContext substitution) :
     Rep targetContext sourceType (shape.subst substitution) := by
   induction rep generalizing target with
+  | absurd bottomValue bottomTyping =>
+      refine .absurd (bottomValue.subst substitution) ?_
+      simpa only [Bot.bottomTy_subst] using
+        Exp.HasType.subst bottomTyping typed
   | top =>
       simpa only [Shape.subst, Top.plan_subst] using Rep.top targetContext
   | bottom =>
@@ -484,6 +509,9 @@ private noncomputable def Rep.exposeAt
     (consumer : Rep.ExposeConsumer rootContext sourceType answer) :
     Rep.ExposeBody currentContext (answer.rename mapping) := by
   induction rep generalizing root with
+  | absurd bottomValue bottomTyping =>
+      exact consumer mapping typed interface
+        (.absurd bottomValue bottomTyping)
   | top => exact consumer mapping typed interface (.top _)
   | bottom => exact consumer mapping typed interface (.bottom _)
   | singleton targetContext path referentIdentity =>
@@ -588,6 +616,24 @@ structure IntervalRep
     (.arrow selectedType upper.inputTy)
 
 namespace IntervalRep
+
+/-- An unreachable interval retains one actual Bottom term.  Both endpoint
+representations and the selected identity are the same impredicative Bottom,
+so structural path recursion can continue without manufacturing a value. -/
+noncomputable def absurd
+    {targetContext : SystemFCo.Ctx sig}
+    {lowerSource upperSource : LambdaPFC.Ty n}
+    (bottom : Exp sig)
+    (bottomTyping : Exp.HasType targetContext bottom Adapter.bottomTy) :
+    IntervalRep (targetContext := targetContext) lowerSource upperSource
+      (.opaque Adapter.bottomTy) Adapter.bottomTy
+      (.opaque Adapter.bottomTy) where
+  lowerRep := .absurd bottom bottomTyping
+  upperRep := .absurd bottom bottomTyping
+  lowerFunction := Adapter.identity Adapter.bottomTy
+  lowerTyping := Adapter.identity_hasType targetContext Adapter.bottomTy
+  upperFunction := Adapter.identity Adapter.bottomTy
+  upperTyping := Adapter.identity_hasType targetContext Adapter.bottomTy
 
 def selection {n : Nat} {sig : Sig}
     {targetContext : SystemFCo.Ctx sig}
@@ -735,6 +781,19 @@ structure Slot (targetContext : SystemFCo.Ctx sig)
   rep : Rep targetContext sourceType shape
 
 namespace Slot
+
+/-- Present one retained Bottom term as an unreachable value at any source
+type.  The public target shape is exactly the ordinary impredicative Bottom;
+no source well-formedness evidence or fabricated structural package is used. -/
+noncomputable def absurd
+    {targetContext : SystemFCo.Ctx sig}
+    {sourceType : LambdaPFC.Ty n}
+    (bottom : Exp sig)
+    (bottomTyping : Exp.HasType targetContext bottom Adapter.bottomTy) :
+    Slot targetContext sourceType where
+  shape := .opaque Adapter.bottomTy
+  interface := { arguments := .var bottom bottomTyping .nil }
+  rep := .absurd bottom bottomTyping
 
 noncomputable def expression {sig : Sig} {n : Nat}
     {targetContext : SystemFCo.Ctx sig}

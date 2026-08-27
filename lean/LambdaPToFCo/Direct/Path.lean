@@ -337,6 +337,10 @@ private noncomputable def resolveFirstRep
   generalize sourceEq :
     LambdaPFC.Ty.Pair firstSource label dependent = sourceType at rep
   induction rep generalizing root with
+  | absurd bottomValue bottomTyping =>
+      cases sourceEq
+      exact continuation zipper environment
+        (.proper (Slot.absurd bottomValue bottomTyping))
   | top => cases sourceEq
   | bottom => cases sourceEq
   | singleton => cases sourceEq
@@ -411,6 +415,15 @@ private noncomputable def resolveRightRep
   generalize sourceEq :
     LambdaPFC.Ty.Pair firstSource label dependent = sourceType at rep
   induction rep generalizing root with
+  | absurd bottomValue bottomTyping =>
+      cases sourceEq
+      cases dependent with
+      | ty member =>
+          exact continuation zipper environment
+            (.proper (Slot.absurd bottomValue bottomTyping))
+      | intv lower upper =>
+          exact continuation zipper environment
+            (.interval (IntervalRep.absurd bottomValue bottomTyping))
   | top => cases sourceEq
   | bottom => cases sourceEq
   | singleton => cases sourceEq

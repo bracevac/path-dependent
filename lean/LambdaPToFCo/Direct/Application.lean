@@ -188,6 +188,19 @@ noncomputable def compile
             (answer.rename mapping)
             (fun next nextTyped exposedInterface exposedRep => by
               cases exposedRep with
+              | absurd bottomValue bottomTyping =>
+                  let combined := mapping.comp next
+                  let combinedTyped := TypedRename.comp typed nextTyped
+                  let exposedEnvironment := environment.targetRename
+                    next nextTyped
+                  let body := consumer combined combinedTyped
+                    exposedEnvironment
+                    (Slot.absurd bottomValue bottomTyping)
+                  exact {
+                    expression := body.expression
+                    typing := by
+                      simpa only [combined, Ty.rename_comp] using body.typing
+                  }
               | @function _ _ _ _ _ domain codomain domainRep codomainRep =>
                   let combined := mapping.comp next
                   let combinedTyped := TypedRename.comp typed nextTyped

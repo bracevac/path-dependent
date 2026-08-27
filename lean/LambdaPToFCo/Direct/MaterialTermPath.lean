@@ -227,6 +227,8 @@ private noncomputable def exposeAt
     (focus : Focus rootContext currentContext)
     (consumer : ExposeConsumer rootContext sourceType answer) : answer := by
   induction rep generalizing root with
+  | absurd bottomValue bottomTyping =>
+      exact consumer focus interface (.absurd bottomValue bottomTyping)
   | top => exact consumer focus interface (.top _)
   | bottom => exact consumer focus interface (.bottom _)
   | singleton targetContext path referentIdentity =>
@@ -374,6 +376,10 @@ private noncomputable def resolveFirst
   generalize sourceEq :
     LambdaPFC.Ty.Pair firstSource label dependent = sourceType at rep
   induction rep generalizing root with
+  | absurd bottomValue bottomTyping =>
+      cases sourceEq
+      exact continuation focus environment
+        (.proper (Slot.absurd bottomValue bottomTyping))
   | top => cases sourceEq
   | bottom => cases sourceEq
   | singleton => cases sourceEq
@@ -445,6 +451,15 @@ private noncomputable def resolveRight
   generalize sourceEq :
     LambdaPFC.Ty.Pair firstSource label dependent = sourceType at rep
   induction rep generalizing root with
+  | absurd bottomValue bottomTyping =>
+      cases sourceEq
+      cases dependent with
+      | ty member =>
+          exact continuation focus environment
+            (.proper (Slot.absurd bottomValue bottomTyping))
+      | intv lower upper =>
+          exact continuation focus environment
+            (.interval (IntervalRep.absurd bottomValue bottomTyping))
   | top => cases sourceEq
   | bottom => cases sourceEq
   | singleton => cases sourceEq
