@@ -3184,6 +3184,700 @@ noncomputable def IntervalMemberCompiler.Enriched.mapAt
       sourceWitness).2.2.selected = sourceWitness.selected := by
   rfl
 
+private noncomputable def intervalRepresentationPackage
+    {targetContext : Ctx sig}
+    {first : Shape sig} {lower upper : Shape first.scope}
+    (interface : Shape.Interface targetContext
+      (.stable (Pair.Interval.plan first lower upper))) : Exp sig :=
+  (Pair.asRepresentation
+    (Pair.Interval.representation first lower upper)).subst
+      interface.substitution
+
+private noncomputable def intervalRepresentationPackage_hasType
+    {targetContext : Ctx sig}
+    {first : Shape sig} {lower upper : Shape first.scope}
+    (interface : Shape.Interface targetContext
+      (.stable (Pair.Interval.plan first lower upper))) :
+    Exp.HasType targetContext (intervalRepresentationPackage interface)
+      (Pair.Interval.representation first lower upper).existsTy := by
+  let representation := Pair.Interval.representation first lower upper
+  have opened :=
+    (Pair.asRepresentation_hasType targetContext representation).subst
+      interface.arguments.substitution_typed
+  have resultType :
+      (Pair.finalRepresentationTy representation).subst
+          interface.arguments.substitution =
+        representation.existsTy := by
+    calc
+      _ = interface.arguments.instantiate
+          (representation.existsTy.rename
+            (Pair.Interval.plan first lower upper).telescope.weaken) :=
+        (interface.arguments.instantiate_eq_subst _).symm
+      _ = representation.existsTy :=
+        interface.arguments.instantiate_weaken representation.existsTy
+  rw [resultType] at opened
+  exact opened
+
+/-- Exact root-to-callback mapping.  This names only the already-computed
+public callback index; the representation-opening implementation remains
+private. -/
+abbrev MaterialRootAt
+    (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope)
+    {final : Sig}
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final) : Rename sig final :=
+  (intervalOpening sourceFirst sourceLower sourceUpper).comp mapping
+
+noncomputable def materialRootAt_typed
+    {base : Ctx sig}
+    (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final)
+    (typed : Rename.Typed
+      (PairSubtyping.IntervalMemberCompiler.CallbackContext base sourceFirst
+        sourceLower sourceUpper) finalContext mapping) :
+    Rename.Typed base finalContext
+      (MaterialRootAt sourceFirst sourceLower sourceUpper mapping) :=
+  TypedRename.comp
+    (intervalOpening_typed base sourceFirst sourceLower sourceUpper) typed
+
+/-- The unique source-first interface opened from the actual source
+representation package.  It is a definition, not a caller-supplied witness. -/
+noncomputable def materialSourceFirstInterface
+    {base : Ctx sig}
+    (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final)
+    (typed : Rename.Typed
+      (PairSubtyping.IntervalMemberCompiler.CallbackContext base sourceFirst
+        sourceLower sourceUpper) finalContext mapping) :
+    Shape.Interface finalContext
+      (PairSubtyping.IntervalMemberCompiler.SourceFirstAt sourceFirst
+        sourceLower sourceUpper mapping) :=
+  (intervalSourceFirstInterface base sourceFirst sourceLower sourceUpper).rename
+    mapping typed
+
+/-- Pre-extension target environment in the literal staged callback. -/
+noncomputable def materialTargetEnvironment
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    (root : ContextRelation.Scope sourceContext targetContext .source base)
+    (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final)
+    (typed : Rename.Typed
+      (PairSubtyping.IntervalMemberCompiler.CallbackContext base sourceFirst
+        sourceLower sourceUpper) finalContext mapping) :
+    Env targetContext finalContext :=
+  (((root.endpointEnvs.targetRename
+      (intervalOpening sourceFirst sourceLower sourceUpper)
+      (intervalOpening_typed base sourceFirst sourceLower sourceUpper))
+    ).targetRename mapping typed).target
+
+/-- First target representation before extending the callback environment. -/
+noncomputable def materialTargetFirstRep
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    (_root : ContextRelation.Scope sourceContext targetContext .source base)
+    (first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final)
+    (typed : Rename.Typed
+      (PairSubtyping.IntervalMemberCompiler.CallbackContext base sourceFirst
+        sourceLower sourceUpper) finalContext mapping) :
+    Rep finalContext targetFirstType
+      (PairSubtyping.IntervalMemberCompiler.TargetFirstAt sourceFirst
+        sourceLower sourceUpper targetFirst mapping) :=
+  ((adjustedIntervalFirstRelationAtSource
+      (sourceLower := sourceLower) (sourceUpper := sourceUpper) first
+    ).targetRename mapping typed).targetRep
+
+/-- Target endpoint family before substitution by the actual first
+interface. -/
+abbrev MaterialTargetEndpointAt
+    (sourceFirst : Shape sig)
+    (sourceLower sourceUpper : Shape sourceFirst.scope)
+    (targetFirst : Shape sig)
+    (targetEndpoint : Shape targetFirst.scope)
+    {final : Sig}
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final) :
+    Shape
+      (PairSubtyping.IntervalMemberCompiler.TargetFirstAt sourceFirst
+        sourceLower sourceUpper targetFirst mapping).scope :=
+  (targetIntervalLowerAtSource sourceFirst sourceLower sourceUpper targetFirst
+    targetEndpoint).rename
+      ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst).liftRename mapping)
+
+/-- Target endpoint representation at the callback first scope, before the
+actual first-interface target substitution. -/
+noncomputable def materialTargetEndpointRep
+    {base : Ctx sig}
+    {endpointType : LambdaPFC.Ty (n + 1)}
+    {sourceFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetFirst : Shape sig}
+    {targetEndpoint : Shape targetFirst.scope}
+    (endpointRep : Rep (targetFirst.context base)
+      endpointType targetEndpoint)
+    {final : Sig}
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final)
+    {finalContext : Ctx final}
+    (typed : Rename.Typed
+      (PairSubtyping.IntervalMemberCompiler.CallbackContext base sourceFirst
+        sourceLower sourceUpper) finalContext mapping) :
+    Rep
+      ((PairSubtyping.IntervalMemberCompiler.TargetFirstAt sourceFirst
+        sourceLower sourceUpper targetFirst mapping).context finalContext)
+      endpointType
+      (MaterialTargetEndpointAt sourceFirst sourceLower sourceUpper targetFirst
+        targetEndpoint mapping) := by
+  let atBinder := endpointRep.targetRename
+    (targetFirst.liftRename (Rename.weaken .var))
+    (targetFirst.liftRename_typed
+      (Rename.Typed.weaken base
+        (.var (Pair.Interval.representation sourceFirst sourceLower
+          sourceUpper).existsTy)))
+  let atSource := atBinder.targetRename
+    ((sourceFirstAtBinder targetFirst).liftRename
+      (intervalSourceOpening sourceFirst sourceLower sourceUpper))
+    ((sourceFirstAtBinder targetFirst).liftRename_typed
+      (intervalSourceOpening_typed base sourceFirst sourceLower sourceUpper))
+  exact atSource.targetRename
+    ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+      targetFirst).liftRename mapping)
+    ((targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+      targetFirst).liftRename_typed typed)
+
+/-- The exact member scope selected by the manufactured source-first
+interface and the actual target-first interface returned by the first map. -/
+noncomputable abbrev MaterialMembersAt
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    (root : ContextRelation.Scope sourceContext targetContext .source base)
+    (first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst)
+    (sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower)
+    (sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper)
+    (targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower)
+    (targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final)
+    (typed : Rename.Typed
+      (PairSubtyping.IntervalMemberCompiler.CallbackContext base sourceFirst
+        sourceLower sourceUpper) finalContext mapping)
+    (targetFirstInterface : Shape.Interface finalContext
+      (PairSubtyping.IntervalMemberCompiler.TargetFirstAt sourceFirst
+        sourceLower sourceUpper targetFirst mapping)) :=
+  PairSubtyping.intervalMemberScopeAt root.endpointEnvs first sourceLowerRep
+    sourceUpperRep targetLowerRep targetUpperRep mapping typed
+    (materialSourceFirstInterface sourceFirst sourceLower sourceUpper mapping
+      typed)
+    targetFirstInterface
+
+/-- One ephemeral same-callback result.  Its source interface is not a field:
+all indices mention the unique interface manufactured by `runMaterial`. -/
+structure MaterialView
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    {final : Sig} {finalContext : Ctx final}
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final)
+    (typed : Rename.Typed
+      (PairSubtyping.IntervalMemberCompiler.CallbackContext base sourceFirst
+        sourceLower sourceUpper) finalContext mapping)
+    (targetFirstInterface : Shape.Interface finalContext
+      (PairSubtyping.IntervalMemberCompiler.TargetFirstAt sourceFirst
+        sourceLower sourceUpper targetFirst mapping)) where
+  sourceWitness :
+    let members := MaterialMembersAt root first sourceLowerRep sourceUpperRep
+      targetLowerRep targetUpperRep mapping typed targetFirstInterface
+    Conversion.Interval.Witness finalContext members.source.lower
+      members.source.upper
+  relation :
+    let members := MaterialMembersAt root first sourceLowerRep sourceUpperRep
+      targetLowerRep targetUpperRep mapping typed targetFirstInterface
+    AtomicSubtyping.IntervalRelation members.source members.target
+  retained : compiler.Retained mapping typed
+    (materialSourceFirstInterface sourceFirst sourceLower sourceUpper mapping
+      typed)
+    targetFirstInterface relation
+  targetWitness :
+    let members := MaterialMembersAt root first sourceLowerRep sourceUpperRep
+      targetLowerRep targetUpperRep mapping typed targetFirstInterface
+    Conversion.Interval.Witness finalContext members.target.lower
+      members.target.upper
+  selectedBridge : Conversion.Bridge finalContext
+    sourceWitness.selected.inputTy targetWitness.selected.inputTy
+
+/-- A result-polymorphic consumer invoked at the one callback scope produced
+by the actual interval-pair opening and first-component interface map. -/
+structure MaterialContinuation
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    (answer : Ty sig) : Type 1 where
+  body : {final : Sig} -> {finalContext : Ctx final} ->
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final) ->
+    (typed : Rename.Typed
+      (PairSubtyping.IntervalMemberCompiler.CallbackContext base sourceFirst
+        sourceLower sourceUpper) finalContext mapping) ->
+    Rename.Typed base finalContext
+      (MaterialRootAt sourceFirst sourceLower sourceUpper mapping) ->
+    (targetFirstInterface : Shape.Interface finalContext
+      (PairSubtyping.IntervalMemberCompiler.TargetFirstAt sourceFirst
+        sourceLower sourceUpper targetFirst mapping)) ->
+    MaterialView compiler mapping typed targetFirstInterface ->
+    Path.Body finalContext
+      (answer.rename
+        (MaterialRootAt sourceFirst sourceLower sourceUpper mapping))
+
+private noncomputable def materialMemberBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig} {finalContext : Ctx final}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    (answer : Ty sig)
+    (continuation : MaterialContinuation compiler answer)
+    (mapping : Rename
+      (PairSubtyping.IntervalMemberCompiler.CallbackSig sourceFirst
+        sourceLower sourceUpper) final)
+    (typed : Rename.Typed
+      (PairSubtyping.IntervalMemberCompiler.CallbackContext base sourceFirst
+        sourceLower sourceUpper) finalContext mapping)
+    (targetFirstInterface : Shape.Interface finalContext
+      (PairSubtyping.IntervalMemberCompiler.TargetFirstAt sourceFirst
+        sourceLower sourceUpper targetFirst mapping)) :
+    Path.Body finalContext
+      (answer.rename (intervalOpening sourceFirst sourceLower sourceUpper |>.comp
+        mapping)) := by
+  let sourceFirstInterface : Shape.Interface finalContext
+      (PairSubtyping.IntervalMemberCompiler.SourceFirstAt sourceFirst
+        sourceLower sourceUpper mapping) := by
+    exact materialSourceFirstInterface sourceFirst sourceLower sourceUpper
+      mapping typed
+  let scope := MaterialMembersAt root first sourceLowerRep sourceUpperRep
+    targetLowerRep targetUpperRep mapping typed targetFirstInterface
+  let sourceWitnessRaw := renameIntervalWitness
+    (openedIntervalWitness base sourceFirst sourceLower sourceUpper)
+    mapping typed
+  let sourceWitness : Conversion.Interval.Witness finalContext
+      scope.source.lower scope.source.upper := by
+    exact sourceWitnessRaw
+  let mapped := compiler.mapAt mapping typed sourceFirstInterface
+    targetFirstInterface sourceWitness
+  let selectedBridge : Conversion.Bridge finalContext
+      sourceWitness.selected.inputTy mapped.2.2.selected.inputTy := {
+    leftToRight := Conversion.refl finalContext sourceWitness.selected.inputTy
+    rightToLeft := Conversion.refl finalContext sourceWitness.selected.inputTy
+  }
+  let view : MaterialView compiler mapping typed targetFirstInterface := {
+    sourceWitness := sourceWitness
+    relation := mapped.1
+    retained := mapped.2.1
+    targetWitness := mapped.2.2
+    selectedBridge := selectedBridge
+  }
+  exact continuation.body mapping typed
+    (materialRootAt_typed sourceFirst sourceLower sourceUpper mapping typed)
+    targetFirstInterface view
+
+private noncomputable def materialFirstContinuation
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    (answer : Ty sig)
+    (continuation : MaterialContinuation compiler answer) :
+    InterfaceMap.Continuation
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (targetIntervalFirstAtSource sourceFirst sourceLower sourceUpper
+        targetFirst)
+      (answer.rename (intervalOpening sourceFirst sourceLower sourceUpper)) where
+  body mapping _finalContext typed targetFirstInterface :=
+    (materialMemberBody compiler answer continuation mapping typed
+      targetFirstInterface).expression
+  body_hasType mapping _finalContext typed targetFirstInterface := by
+    simpa only [Ty.rename_comp] using
+      (materialMemberBody compiler answer continuation mapping typed
+        targetFirstInterface).typing
+
+private noncomputable def materialNestedBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    (answer : Ty sig)
+    (continuation : MaterialContinuation compiler answer) :
+    Path.Body
+      (intervalSourceOpenedContext base sourceFirst sourceLower sourceUpper)
+      (answer.rename (intervalOpening sourceFirst sourceLower sourceUpper)) :=
+  let relationAt := adjustedIntervalFirstRelationAtSource
+    (sourceLower := sourceLower) (sourceUpper := sourceUpper) first
+  let sourceInterface := intervalSourceFirstInterface base sourceFirst
+    sourceLower sourceUpper
+  let next := materialFirstContinuation compiler answer continuation
+  {
+    expression := relationAt.interfaceMap.run sourceInterface
+      (answer.rename (intervalOpening sourceFirst sourceLower sourceUpper)) next
+    typing := relationAt.interfaceMap.run_hasType sourceInterface
+      (answer.rename (intervalOpening sourceFirst sourceLower sourceUpper)) next
+  }
+
+private noncomputable def materialOpenedBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    (answer : Ty sig)
+    (continuation : MaterialContinuation compiler answer) :
+    Exp (intervalRepresentationAtBinder sourceFirst sourceLower
+      sourceUpper).scope :=
+  Pair.fromSuffixExp (sourceFirstAtBinder sourceFirst).binders
+    (intervalMemberAtBinder sourceFirst sourceLower sourceUpper)
+    (materialNestedBody compiler answer continuation).expression
+
+private noncomputable def materialOpenedBody_hasType
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    (answer : Ty sig)
+    (continuation : MaterialContinuation compiler answer) :
+    Exp.HasType
+      ((intervalRepresentationAtBinder sourceFirst sourceLower
+        sourceUpper).context
+          (base.bindVar
+            (Pair.Interval.representation sourceFirst sourceLower
+              sourceUpper).existsTy))
+      (materialOpenedBody compiler answer continuation)
+      ((answer.weaken .var).rename
+        (intervalRepresentationAtBinder sourceFirst sourceLower
+          sourceUpper).weaken) := by
+  let firstTele := (sourceFirstAtBinder sourceFirst).binders
+  let memberTele := intervalMemberAtBinder sourceFirst sourceLower sourceUpper
+  have nested := (materialNestedBody compiler answer continuation).typing
+  have transported := fromSuffixExp_hasType firstTele memberTele nested
+  have openingTypeEq :
+      answer.rename (intervalOpening sourceFirst sourceLower sourceUpper) =
+      (((answer.rename (Rename.weaken .var)).rename firstTele.weaken).rename
+        memberTele.weaken) := by
+    unfold intervalOpening intervalSourceOpening firstTele memberTele
+    rw [Ty.rename_comp, Ty.rename_comp]
+  have finalTypeEq :
+      Pair.fromSuffixTy firstTele memberTele
+          (answer.rename
+            (intervalOpening sourceFirst sourceLower sourceUpper)) =
+      (answer.weaken .var).rename
+        (intervalRepresentationAtBinder sourceFirst sourceLower
+          sourceUpper).weaken := by
+    calc
+      _ = Pair.fromSuffixTy firstTele memberTele
+          (((answer.rename (Rename.weaken .var)).rename firstTele.weaken).rename
+            memberTele.weaken) :=
+        congrArg (Pair.fromSuffixTy firstTele memberTele) openingTypeEq
+      _ = (answer.rename (Rename.weaken .var)).rename
+          (firstTele.append memberTele).weaken :=
+        fromSuffixTy_weaken firstTele memberTele _
+      _ = _ := rfl
+  exact finalTypeEq ▸ transported
+
+private noncomputable def materialRepresentationBody
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    (answer : Ty sig)
+    (continuation : MaterialContinuation compiler answer) : Exp (sig ,, .var) :=
+  (intervalRepresentationAtBinder sourceFirst sourceLower sourceUpper).unpack
+    (.var .here) (answer.weaken .var)
+    (materialOpenedBody compiler answer continuation)
+
+private noncomputable def materialRepresentationBody_hasType
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    (answer : Ty sig)
+    (continuation : MaterialContinuation compiler answer) :
+    Exp.HasType
+      (base.bindVar
+        (Pair.Interval.representation sourceFirst sourceLower
+          sourceUpper).existsTy)
+      (materialRepresentationBody compiler answer continuation)
+      (answer.weaken .var) :=
+  (intervalRepresentationAtBinder sourceFirst sourceLower sourceUpper).unpack_hasType
+    (intervalRepresentationVariable_hasType base sourceFirst sourceLower
+      sourceUpper)
+    (materialOpenedBody_hasType compiler answer continuation)
+
+/-- Open one actual interval-pair interface, map its actual first interface,
+instantiate one enriched member callback at the opened source witness, and
+reclose a typed result-polymorphic consumer. -/
+noncomputable def runMaterial
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx sig}
+    {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+    {sourceLowerType sourceUpperType targetLowerType targetUpperType :
+      LambdaPFC.Ty (n + 1)}
+    {sourceFirst targetFirst : Shape sig}
+    {sourceLower sourceUpper : Shape sourceFirst.scope}
+    {targetLower targetUpper : Shape targetFirst.scope}
+    {root : ContextRelation.Scope sourceContext targetContext .source base}
+    {first : Relation base sourceFirstType targetFirstType
+      sourceFirst targetFirst}
+    {sourceLowerRep : Rep (sourceFirst.context base)
+      sourceLowerType sourceLower}
+    {sourceUpperRep : Rep (sourceFirst.context base)
+      sourceUpperType sourceUpper}
+    {targetLowerRep : Rep (targetFirst.context base)
+      targetLowerType targetLower}
+    {targetUpperRep : Rep (targetFirst.context base)
+      targetUpperType targetUpper}
+    {derivation : LambdaPFC.Tau.Sub (sourceContext.snoc sourceFirstType)
+      (.intv sourceLowerType sourceUpperType)
+      (.intv targetLowerType targetUpperType)}
+    (compiler : PairSubtyping.IntervalMemberCompiler.Enriched root first
+      sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep derivation)
+    (sourceInterface : Shape.Interface base
+      (.stable (Pair.Interval.plan sourceFirst sourceLower sourceUpper)))
+    (answer : Ty sig)
+    (continuation : MaterialContinuation compiler answer) :
+    Path.Body base answer :=
+  let package := intervalRepresentationPackage sourceInterface
+  let packageTyping := intervalRepresentationPackage_hasType sourceInterface
+  let body := materialRepresentationBody compiler answer continuation
+  let bodyTyping := materialRepresentationBody_hasType compiler answer
+    continuation
+  {
+    expression := Adapter.apply
+      (Adapter.ofBody
+        (Pair.Interval.representation sourceFirst sourceLower
+          sourceUpper).existsTy body)
+      package
+    typing := Adapter.apply_hasType (Adapter.ofBody_hasType bodyTyping)
+      packageTyping
+  }
+
 private theorem targetIntervalRepresentationAtSource_rename
     (sourceFirst : Shape sig)
     (sourceLower sourceUpper : Shape sourceFirst.scope)
