@@ -1,3 +1,4 @@
+import LambdaPToFCo.Direct.SourceRenaming
 import LambdaPToFCo.Direct.PairSubtyping
 
 /-!
@@ -432,27 +433,82 @@ inductive Action :
               base firstSubtyping sourceFirst targetFirst)
             sourceLowerRep sourceUpperRep targetLowerRep targetUpperRep
             enriched.erase))
+  /-- Retain an older source-oriented action through the exact lexical
+  extension used by a dependent pair callback. -/
+  | extendPairOlder
+      {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
+      {sig : Sig} {base : Ctx sig}
+      (scope : ContextRelation.Scope sourceContext targetContext .source base)
+      {sourceType targetType : LambdaPFC.Ty n}
+      {sourceShape targetShape : Shape sig}
+      (sourceInterface : Shape.Interface base sourceShape)
+      (sourceRep : Rep base sourceType sourceShape)
+      (targetInterface : Shape.Interface base targetShape)
+      (targetRep : Rep base targetType targetShape)
+      (head : Relation base sourceType targetType sourceShape targetShape)
+      (older : Fin n)
+      {subtyping : LambdaPFC.Tau.Sub sourceContext
+        (.ty (sourceContext.lookup older))
+        (.ty (targetContext.lookup older))}
+      (action : Action scope subtyping (.proper (scope.aligned older))) :
+      Action
+        (scope.extendPair sourceInterface sourceRep targetInterface targetRep
+          head)
+        (subtyping.weaken (bound := sourceType))
+        (.proper ((scope.extendPair sourceInterface sourceRep targetInterface
+          targetRep head).aligned older.succ))
+  /-- Target-oriented dual for the exact lexical extension used by a
+  dependent function callback. -/
+  | extendFunctionOlder
+      {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
+      {sig : Sig} {base : Ctx sig}
+      (scope : ContextRelation.Scope sourceContext targetContext .target base)
+      {sourceType targetType : LambdaPFC.Ty n}
+      {sourceShape targetShape : Shape sig}
+      (sourceInterface : Shape.Interface base sourceShape)
+      (sourceRep : Rep base sourceType sourceShape)
+      (targetInterface : Shape.Interface base targetShape)
+      (targetRep : Rep base targetType targetShape)
+      (head : Relation base targetType sourceType targetShape sourceShape)
+      (older : Fin n)
+      {subtyping : LambdaPFC.Tau.Sub targetContext
+        (.ty (targetContext.lookup older))
+        (.ty (sourceContext.lookup older))}
+      (action : Action scope subtyping (.proper (scope.aligned older))) :
+      Action
+        (scope.extendFunction sourceInterface sourceRep targetInterface
+          targetRep head)
+        (subtyping.weaken (bound := targetType))
+        (.proper ((scope.extendFunction sourceInterface sourceRep
+          targetInterface targetRep head).aligned older.succ))
 
 namespace Action
 
 /-- Structural size used as the secondary component of future action
 eliminators' well-founded measures. Delayed pair-member closures are omitted,
 as in semantic coercion size: entering one also descends through the concrete
-pair value, which supplies the primary measure decrease. -/
-def treeSize : Action scope subtyping erasure -> Nat
-  | .reflProper _ _ => 1
-  | .reflInterval _ _ => 1
-  | .transProper first second => first.treeSize + second.treeSize + 1
-  | .transInterval first second => first.treeSize + second.treeSize + 1
-  | .targetRename action _ _ => action.treeSize + 1
-  | .bot _ _ => 1
-  | .top _ _ => 1
-  | .widenAt _ _ _ => 1
-  | .selHiAt _ _ _ _ => 1
-  | .selLoAt _ _ _ _ => 1
-  | .bounds lower upper => lower.treeSize + upper.treeSize + 1
-  | .properPair _ first _ _ _ _ => first.treeSize + 1
-  | .intervalPair _ first _ _ _ _ _ _ => first.treeSize + 1
+pair value, which supplies the primary measure decrease. Lexical wrappers add
+one node and delegate to their retained older action. -/
+noncomputable def treeSize
+    (action : Action scope subtyping erasure) : Nat := by
+  induction action with
+  | reflProper => exact 1
+  | reflInterval => exact 1
+  | transProper _ _ firstSize secondSize =>
+      exact firstSize + secondSize + 1
+  | transInterval _ _ firstSize secondSize =>
+      exact firstSize + secondSize + 1
+  | targetRename _ _ _ size => exact size + 1
+  | bot => exact 1
+  | top => exact 1
+  | widenAt => exact 1
+  | selHiAt => exact 1
+  | selLoAt => exact 1
+  | bounds _ _ lowerSize upperSize => exact lowerSize + upperSize + 1
+  | properPair _ _ _ _ _ _ firstSize _ => exact firstSize + 1
+  | intervalPair _ _ _ _ _ _ _ _ firstSize _ => exact firstSize + 1
+  | extendPairOlder _ _ _ _ _ _ _ _ size => exact size + 1
+  | extendFunctionOlder _ _ _ _ _ _ _ _ size => exact size + 1
 
 /-- Rebuild the proof-enriched proper callback from the two fields retained
 by `Action.properPair`.  Its erasure is definitionally the same relation
