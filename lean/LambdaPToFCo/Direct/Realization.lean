@@ -676,6 +676,62 @@ inductive Realizes :
       (extendAtInterface environment boundSource boundInterface boundRep)
       (rep.sourceRename LambdaPFC.FinFun.weaken)
       availability
+/-- Positive target renaming through one literal retained environment
+extension.  The result is fixed to extend the renamed environment with the
+renamed retained package; this is not an arbitrary environment rebase. -/
+| targetRenameExtended
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sourceSig targetSig : Sig}
+    {sourceBase : Ctx sourceSig} {targetBase : Ctx targetSig}
+    (environment : Env sourceContext sourceBase)
+    {firstSource : LambdaPFC.Ty n}
+    {firstShape : Shape sourceSig}
+    (firstInterface : Shape.Interface sourceBase firstShape)
+    (firstRep : Rep sourceBase firstSource firstShape)
+    {endpointSource : LambdaPFC.Ty (n + 1)}
+    {endpointShape : Shape sourceSig}
+    {endpointRep : Rep sourceBase endpointSource endpointShape}
+    {mode : Mode}
+    {availability : Availability sourceBase endpointShape mode}
+    (realizes : Realizes
+      (extendAtInterface environment firstSource firstInterface firstRep)
+      endpointRep availability)
+    (mapping : Rename sourceSig targetSig)
+    (typed : Rename.Typed sourceBase targetBase mapping) :
+    Realizes
+      (extendAtInterface (environment.targetRename mapping typed) firstSource
+        (firstInterface.rename mapping typed)
+        (firstRep.targetRename mapping typed))
+      (endpointRep.targetRename mapping typed)
+      (availability.targetRename mapping typed)
+/-- Exact target-substitution dual of `targetRenameExtended`.  The retained
+extension is transported as one positive realization constructor, without
+an equality or a general reindexing law. -/
+| targetSubstExtended
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sourceSig targetSig : Sig}
+    {sourceBase : Ctx sourceSig} {targetBase : Ctx targetSig}
+    (environment : Env sourceContext sourceBase)
+    {firstSource : LambdaPFC.Ty n}
+    {firstShape : Shape sourceSig}
+    (firstInterface : Shape.Interface sourceBase firstShape)
+    (firstRep : Rep sourceBase firstSource firstShape)
+    {endpointSource : LambdaPFC.Ty (n + 1)}
+    {endpointShape : Shape sourceSig}
+    {endpointRep : Rep sourceBase endpointSource endpointShape}
+    {mode : Mode}
+    {availability : Availability sourceBase endpointShape mode}
+    (realizes : Realizes
+      (extendAtInterface environment firstSource firstInterface firstRep)
+      endpointRep availability)
+    (substitution : Subst sourceSig targetSig)
+    (typed : Subst.Typed sourceBase targetBase substitution) :
+    Realizes
+      (extendAtInterface (environment.targetSubst substitution typed)
+        firstSource (firstInterface.targetSubst substitution typed)
+        (firstRep.targetSubst substitution typed))
+      (endpointRep.targetSubst substitution typed)
+      (availability.targetSubst substitution typed)
 | targetRename
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sourceSig targetSig : Sig}

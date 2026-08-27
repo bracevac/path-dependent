@@ -164,6 +164,133 @@ noncomputable def targetPairValue
 end CallbackView
 
 
+/-! ## Literal target transport after retained extension -/
+
+private abbrev TransportBaseSig : Sig := ([] : Sig) ,, .var
+
+private abbrev TransportBaseContext : Ctx TransportBaseSig :=
+  Ctx.empty.bindVar Adapter.bottomTy
+
+private abbrev TransportExtendedSig : Sig := TransportBaseSig ,, .var
+
+private abbrev TransportExtendedContext : Ctx TransportExtendedSig :=
+  TransportBaseContext.bindVar .top
+
+private def transportTopPayload {sig : Sig} : Exp sig :=
+  .cast (.abs .top (.var .here)) (.top (.arrow .top .top))
+
+private noncomputable def transportTopPayload_hasType (base : Ctx sig) :
+    Exp.HasType base (transportTopPayload : Exp sig) .top :=
+  .cast (.abs (.var Ctx.Lookup.here)) .top
+
+private noncomputable def transportTopInterface (base : Ctx sig) :
+    Shape.Interface base (.stable (Top.plan sig)) where
+  arguments := Top.arguments .top transportTopPayload
+    (transportTopPayload_hasType base)
+
+private noncomputable def transportBaseEnvironment :
+    Env (LambdaPFC.Ctx.nil : LambdaPFC.Ctx 0) TransportBaseContext :=
+  Env.empty TransportBaseContext
+
+private def transportWeakening :
+    Rename TransportBaseSig TransportExtendedSig :=
+  Rename.weaken .var
+
+private def transportWeakening_typed :
+    Rename.Typed TransportBaseContext TransportExtendedContext
+      transportWeakening :=
+  Rename.Typed.weaken TransportBaseContext (.var .top)
+
+private noncomputable def transportBaseEndpointDemand :
+    Realizes
+      (extendAtInterface transportBaseEnvironment (.Top : LambdaPFC.Ty 0)
+        (transportTopInterface TransportBaseContext)
+        (@Rep.top 0 TransportBaseSig TransportBaseContext))
+      (@Rep.bottom 1 TransportBaseSig TransportBaseContext) .demand :=
+  Realizes.bottomDemand _
+
+/-- A genuine target weakening transports an endpoint demand through the
+literal retained extension, with no environment equality or rebase. -/
+noncomputable def targetRenameExtendedDemand :
+    Realizes
+      (extendAtInterface
+        (transportBaseEnvironment.targetRename transportWeakening
+          transportWeakening_typed)
+        (.Top : LambdaPFC.Ty 0)
+        ((transportTopInterface TransportBaseContext).rename
+          transportWeakening transportWeakening_typed)
+        ((@Rep.top 0 TransportBaseSig TransportBaseContext).targetRename
+          transportWeakening transportWeakening_typed))
+      ((@Rep.bottom 1 TransportBaseSig TransportBaseContext).targetRename
+        transportWeakening transportWeakening_typed)
+      .demand :=
+  Realizes.targetRenameExtended transportBaseEnvironment
+    (transportTopInterface TransportBaseContext)
+    (@Rep.top 0 TransportBaseSig TransportBaseContext)
+    transportBaseEndpointDemand transportWeakening transportWeakening_typed
+
+private def transportOpening :
+    Subst TransportExtendedSig TransportBaseSig :=
+  Subst.openVar transportTopPayload
+
+private noncomputable def transportOpening_typed :
+    Subst.Typed TransportExtendedContext TransportBaseContext
+      transportOpening :=
+  Subst.Typed.openVar (transportTopPayload_hasType TransportBaseContext)
+
+private noncomputable def transportExtendedEnvironment :
+    Env (LambdaPFC.Ctx.nil : LambdaPFC.Ctx 0) TransportExtendedContext :=
+  transportBaseEnvironment.targetRename transportWeakening
+    transportWeakening_typed
+
+private noncomputable def transportExtendedFirstInterface :
+    Shape.Interface TransportExtendedContext
+      ((Shape.stable (Top.plan TransportBaseSig)).rename
+        transportWeakening) :=
+  (transportTopInterface TransportBaseContext).rename transportWeakening
+    transportWeakening_typed
+
+private noncomputable def transportExtendedFirstRep :
+    Rep TransportExtendedContext (.Top : LambdaPFC.Ty 0)
+      ((Shape.stable (Top.plan TransportBaseSig)).rename
+        transportWeakening) :=
+  (@Rep.top 0 TransportBaseSig TransportBaseContext).targetRename
+    transportWeakening transportWeakening_typed
+
+private noncomputable def transportExtendedEndpointRep :
+    Rep TransportExtendedContext (.Bot : LambdaPFC.Ty 1)
+      ((Shape.stable (Bot.plan TransportBaseSig)).rename
+        transportWeakening) :=
+  (@Rep.bottom 1 TransportBaseSig TransportBaseContext).targetRename
+    transportWeakening transportWeakening_typed
+
+private noncomputable def transportExtendedEndpointDemand :
+    Realizes
+      (extendAtInterface transportExtendedEnvironment (.Top : LambdaPFC.Ty 0)
+        transportExtendedFirstInterface transportExtendedFirstRep)
+      transportExtendedEndpointRep .demand :=
+  Realizes.bottomDemand _
+
+/-- A genuine `openVar` target substitution transports the same endpoint
+demand through the literal retained extension. -/
+noncomputable def targetSubstExtendedDemand :
+    Realizes
+      (extendAtInterface
+        (transportExtendedEnvironment.targetSubst transportOpening
+          transportOpening_typed)
+        (.Top : LambdaPFC.Ty 0)
+        (transportExtendedFirstInterface.targetSubst transportOpening
+          transportOpening_typed)
+        (transportExtendedFirstRep.targetSubst transportOpening
+          transportOpening_typed))
+      (transportExtendedEndpointRep.targetSubst transportOpening
+        transportOpening_typed)
+      .demand :=
+  Realizes.targetSubstExtended transportExtendedEnvironment
+    transportExtendedFirstInterface transportExtendedFirstRep
+    transportExtendedEndpointDemand transportOpening transportOpening_typed
+
+
 /-! ## Proper-path retained-value bootstrap -/
 
 /-- A nested non-variable proper path uses the public retained-value route;
