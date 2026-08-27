@@ -324,6 +324,81 @@ noncomputable def intervalPairSlot
   }
   rep := .intervalPair firstRep lowerRep upperRep
 
+/-! ## Exact source-path values -/
+
+/-- Sealed evidence that this exact source path currently denotes this exact
+source-typed raw Slot.  The capability deliberately carries no
+`Path.Ty`: checked application arguments can reach their demanded source
+type only through subsumption, including ill-Wf instantiated results.
+
+The constructor is private and fieldless.  Public operations below can only
+mint lookup values or preserve an existing value through exact singleton and
+target transports. -/
+inductive PathValue
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    (environment : Env sourceContext base)
+    (path : LambdaPFC.Path n) (sourceType : LambdaPFC.Ty n)
+    (slot : Slot base sourceType) : Type where
+| private seal : PathValue environment path sourceType slot
+
+namespace PathValue
+
+/-- A source variable denotes exactly the Slot retained at its environment
+index. -/
+def lookup
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    (environment : Env sourceContext base) (index : Fin n) :
+    PathValue environment (.var index) (sourceContext.lookup index)
+      (environment.lookup index) :=
+  .seal
+
+/-- Preserve one exact path value through a typed target renaming. -/
+noncomputable def targetRename
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sourceSig targetSig : Sig}
+    {sourceBase : Ctx sourceSig} {targetBase : Ctx targetSig}
+    {environment : Env sourceContext sourceBase}
+    {path : LambdaPFC.Path n} {sourceType : LambdaPFC.Ty n}
+    {slot : Slot sourceBase sourceType}
+    (_value : PathValue environment path sourceType slot)
+    (mapping : Rename sourceSig targetSig)
+    (typed : Rename.Typed sourceBase targetBase mapping) :
+    PathValue (environment.targetRename mapping typed) path sourceType
+      (slot.targetRename mapping typed) :=
+  .seal
+
+/-- Preserve one exact path value through a typed target substitution. -/
+noncomputable def targetSubst
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sourceSig targetSig : Sig}
+    {sourceBase : Ctx sourceSig} {targetBase : Ctx targetSig}
+    {environment : Env sourceContext sourceBase}
+    {path : LambdaPFC.Path n} {sourceType : LambdaPFC.Ty n}
+    {slot : Slot sourceBase sourceType}
+    (_value : PathValue environment path sourceType slot)
+    (substitution : Subst sourceSig targetSig)
+    (typed : Subst.Typed sourceBase targetBase substitution) :
+    PathValue (environment.targetSubst substitution typed) path sourceType
+      (slot.targetSubst substitution typed) :=
+  .seal
+
+/-- Retag the same precise path at the exact singleton Slot compiled from
+its retained value. -/
+noncomputable def singleton
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    {environment : Env sourceContext base}
+    {path : LambdaPFC.Path n} {selectedSource : LambdaPFC.Ty n}
+    {selected : Slot base selectedSource}
+    (_value : PathValue environment path selectedSource selected) :
+    PathValue environment path (.Single path)
+      (singletonSlot path selected) :=
+  .seal
+
+end PathValue
+
 /-! ## One mode-indexed invariant -/
 
 inductive Realizes :
@@ -658,6 +733,102 @@ inductive Realizes :
     Realizes
       (extendAtInterface environment boundSource boundInterface boundRep)
       (rep.sourceRename LambdaPFC.FinFun.weaken)
+      availability
+/-- Contract one exact newest source binding along the path value which
+actually denotes its retained Slot.  This is intentionally not a generic
+source-substitution constructor. -/
+| sourceOpenAt
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    {path : LambdaPFC.Path n} {firstSource : LambdaPFC.Ty n}
+    {firstShape : Shape sig}
+    {firstRep : Rep base firstSource firstShape}
+    {firstInterface : Shape.Interface base firstShape}
+    (environment : Env sourceContext base)
+    (pathValue : PathValue environment path firstSource
+      { shape := firstShape, interface := firstInterface, rep := firstRep })
+    (firstRealizes : Realizes environment firstRep
+      (.value firstInterface))
+    {dependentSource : LambdaPFC.Ty (n + 1)}
+    {dependentShape : Shape sig}
+    {dependentRep : Rep base dependentSource dependentShape}
+    {mode : Mode}
+    {availability : Availability base dependentShape mode}
+    (dependentRealizes : Realizes
+      (extendAtInterface environment firstSource firstInterface firstRep)
+      dependentRep availability) :
+    Realizes environment
+      (dependentRep.sourceSubst (LambdaPFC.PathSubst.openAt path))
+      availability
+/-- Lift one exact path-value contraction beneath a retained dependent-pair
+first component.  The source opening is literally lifted; no environment or
+representation equality is accepted. -/
+| sourceOpenUnderFirst
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    {path : LambdaPFC.Path n} {boundSource : LambdaPFC.Ty n}
+    {boundShape : Shape sig}
+    {boundRep : Rep base boundSource boundShape}
+    {boundInterface : Shape.Interface base boundShape}
+    (environment : Env sourceContext base)
+    (pathValue : PathValue environment path boundSource
+      { shape := boundShape, interface := boundInterface, rep := boundRep })
+    (boundRealizes : Realizes environment boundRep
+      (.value boundInterface))
+    {firstSource : LambdaPFC.Ty (n + 1)}
+    {firstShape : Shape sig}
+    {firstRep : Rep base firstSource firstShape}
+    (firstInterface : Shape.Interface base firstShape)
+    {dependentSource : LambdaPFC.Ty (n + 2)}
+    {dependentShape : Shape sig}
+    {dependentRep : Rep base dependentSource dependentShape}
+    {mode : Mode}
+    {availability : Availability base dependentShape mode}
+    (dependentRealizes : Realizes
+      (extendAtInterface
+        (extendAtInterface environment boundSource boundInterface boundRep)
+        firstSource firstInterface firstRep)
+      dependentRep availability) :
+    Realizes
+      (extendAtInterface environment
+        (firstSource.subst (LambdaPFC.PathSubst.openAt path))
+        firstInterface
+        (firstRep.sourceSubst (LambdaPFC.PathSubst.openAt path)))
+      (dependentRep.sourceSubst
+        (LambdaPFC.PathSubst.openAt path).lift)
+      availability
+/-- Commute one lexical source extension beneath a retained dependent-pair
+first component.  The family uses the literal `weaken.ext` source rename and
+then the actual first-interface target substitution. -/
+| sourceExtendUnderFirst
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    {firstSource outerSource : LambdaPFC.Ty n}
+    {firstShape outerShape : Shape sig}
+    {firstRep : Rep base firstSource firstShape}
+    {outerRep : Rep base outerSource outerShape}
+    {firstInterface : Shape.Interface base firstShape}
+    {outerInterface : Shape.Interface base outerShape}
+    (environment : Env sourceContext base)
+    {endpointSource : LambdaPFC.Ty (n + 1)}
+    {endpointShape : Shape firstShape.scope}
+    {endpointRep : Rep (firstShape.context base) endpointSource endpointShape}
+    {mode : Mode}
+    {availability : Availability base
+      (endpointShape.subst firstInterface.substitution) mode}
+    (endpointRealizes : Realizes
+      (extendAtInterface environment firstSource firstInterface firstRep)
+      (endpointRep.targetSubst firstInterface.substitution
+        firstInterface.arguments.substitution_typed)
+      availability) :
+    Realizes
+      (extendAtInterface
+        (extendAtInterface environment outerSource outerInterface outerRep)
+        firstSource.weaken firstInterface
+        (firstRep.sourceRename LambdaPFC.FinFun.weaken))
+      ((endpointRep.sourceRename LambdaPFC.FinFun.weaken.ext).targetSubst
+        firstInterface.substitution
+        firstInterface.arguments.substitution_typed)
       availability
 /-- Positive target renaming through one literal retained environment
 extension.  The result is fixed to extend the renamed environment with the
