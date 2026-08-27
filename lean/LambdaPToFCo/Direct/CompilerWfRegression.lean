@@ -1,4 +1,5 @@
 import LambdaPToFCo.Direct.CompilerWf
+import LambdaPToFCo.Direct.MaterialTermPath
 
 /-!
 # Raw total-Wf compiler regressions
@@ -14,6 +15,7 @@ open SystemFCo
 open LambdaPToFCo.Direct.Internal.Representation
 open LambdaPToFCo.Direct.Internal.Wf
 open LambdaPToFCo.Direct.Internal.CompilerWf
+open LambdaPToFCo.Direct.Internal.MaterialTermPath
 
 /-! ## Literal constructor coverage -/
 
@@ -141,6 +143,35 @@ private def nestedSelectionTyping :
     LambdaPFC.Path.Ty SourceContext
       (.sel (.fst (.var 0)) InnerLabel) (.intv .Bot .Top) := by
   simpa only [LambdaPFC.Tau.open] using innerTyping.sel_r
+
+private def nestedLeftPredicate :
+    Consumer (sourceContext := SourceContext) TargetContext
+      (.intv .Bot .Top) Prop :=
+  fun _ _ _ => True
+
+private def nestedRightPredicate :
+    Consumer (sourceContext := SourceContext) TargetContext
+      (.intv .Bot .Top) Prop :=
+  fun _ _ _ => True
+
+private def nestedCombinedPredicate :
+    Consumer (sourceContext := SourceContext) TargetContext
+      (.intv .Bot .Top) Prop :=
+  fun _ _ _ => True ∧ True
+
+/-- Independent proof predicates over the same nested interval selection are
+combined at one actual `sel_r` focus. -/
+theorem nested_interval_sel_r_predicates_fuse
+    (left : compileWith nestedSelectionTyping environment
+      nestedLeftPredicate)
+    (right : compileWith nestedSelectionTyping environment
+      nestedRightPredicate) :
+    compileWith nestedSelectionTyping environment
+      nestedCombinedPredicate :=
+  compileWith_fuse nestedSelectionTyping environment
+    nestedLeftPredicate nestedRightPredicate nestedCombinedPredicate
+    (fun _ _ _ leftProof rightProof => ⟨leftProof, rightProof⟩)
+    left right
 
 private abbrev NestedProperPath : LambdaPFC.Path 1 :=
   .fst (.fst (.var 0))
