@@ -1,4 +1,5 @@
 import LambdaPToFCo.Direct.Relation
+import LambdaPToFCo.Direct.ContextRelation
 
 /-!
 # Direct dependent-function subtyping
@@ -193,6 +194,208 @@ structure ExactCodomainCompiler
         sourceInterface)
       (targetCodomainAt sourceDomain targetDomain sourceCodomain
         targetCodomain next)
+
+namespace ExactCodomainCompiler
+
+/-- Target signature at an exact codomain callback opening. -/
+abbrev CallbackSig (sourceDomain : Shape root)
+    (sourceCodomain : Shape sourceDomain.scope)
+    (targetDomain : Shape root) : Sig :=
+  (observedDomain sourceDomain sourceCodomain targetDomain).scope
+
+/-- Target context at the start of an exact codomain callback. -/
+abbrev CallbackContext (rootContext : Ctx root)
+    (sourceDomain : Shape root)
+    (sourceCodomain : Shape sourceDomain.scope)
+    (targetDomain : Shape root) :
+    Ctx (CallbackSig sourceDomain sourceCodomain targetDomain) :=
+  (observedDomain sourceDomain sourceCodomain targetDomain).context
+    (exactContext rootContext sourceDomain sourceCodomain)
+
+/-- Source domain shape supplied to an exact codomain callback. -/
+abbrev SourceDomainAt (sourceDomain targetDomain : Shape root)
+    (sourceCodomain : Shape sourceDomain.scope)
+    (next : Rename
+      (CallbackSig sourceDomain sourceCodomain targetDomain) final) :
+    Shape final :=
+  sourceDomainAt sourceDomain targetDomain sourceCodomain next
+
+/-- Target domain shape supplied to an exact codomain callback. -/
+abbrev TargetDomainAt (sourceDomain targetDomain : Shape root)
+    (sourceCodomain : Shape sourceDomain.scope)
+    (next : Rename
+      (CallbackSig sourceDomain sourceCodomain targetDomain) final) :
+    Shape final :=
+  targetDomainAt sourceDomain targetDomain sourceCodomain next
+
+/-- Source codomain shape after installing the supplied source interface. -/
+abbrev SourceCodomainAt (sourceDomain targetDomain : Shape root)
+    (sourceCodomain : Shape sourceDomain.scope)
+    (next : Rename
+      (CallbackSig sourceDomain sourceCodomain targetDomain) final)
+    {finalContext : Ctx final}
+    (sourceInterface : Shape.Interface finalContext
+      (SourceDomainAt sourceDomain targetDomain sourceCodomain next)) :
+    Shape final :=
+  sourceCodomainAt sourceDomain targetDomain sourceCodomain next
+    sourceInterface
+
+/-- Target codomain shape at an exact codomain callback opening. -/
+abbrev TargetCodomainAt (sourceDomain targetDomain : Shape root)
+    (sourceCodomain : Shape sourceDomain.scope)
+    (targetCodomain : Shape targetDomain.scope)
+    (next : Rename
+      (CallbackSig sourceDomain sourceCodomain targetDomain) final) :
+    Shape final :=
+  targetCodomainAt sourceDomain targetDomain sourceCodomain targetCodomain
+    next
+
+/-- An exact codomain compiler with one proof-only payload retained at the
+same Relation returned by each callback. -/
+structure Enriched
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceDomainType targetDomainType : LambdaPFC.Ty n}
+    {sourceCodomainType targetCodomainType : LambdaPFC.Ty (n + 1)}
+    {root : Sig} {rootContext : Ctx root}
+    {sourceDomain targetDomain : Shape root}
+    {sourceCodomain : Shape sourceDomain.scope}
+    {targetCodomain : Shape targetDomain.scope}
+    (_derivation : LambdaPFC.Tau.Sub
+      (targetContext.snoc targetDomainType)
+      (.ty sourceCodomainType) (.ty targetCodomainType)) : Type 1 where
+  Retained : {final : Sig} -> {finalContext : Ctx final} ->
+    (next : Rename
+      (CallbackSig sourceDomain sourceCodomain targetDomain) final) ->
+    (nextTyped : Rename.Typed
+      (CallbackContext rootContext sourceDomain sourceCodomain targetDomain)
+      finalContext next) ->
+    (sourceInterface : Shape.Interface finalContext
+      (SourceDomainAt sourceDomain targetDomain sourceCodomain next)) ->
+    (targetInterface : Shape.Interface finalContext
+      (TargetDomainAt sourceDomain targetDomain sourceCodomain next)) ->
+    Relation finalContext sourceCodomainType targetCodomainType
+      (SourceCodomainAt sourceDomain targetDomain sourceCodomain next
+        sourceInterface)
+      (TargetCodomainAt sourceDomain targetDomain sourceCodomain
+        targetCodomain next) -> Type
+  compile : {final : Sig} -> {finalContext : Ctx final} ->
+    (next : Rename
+      (CallbackSig sourceDomain sourceCodomain targetDomain) final) ->
+    (nextTyped : Rename.Typed
+      (CallbackContext rootContext sourceDomain sourceCodomain targetDomain)
+      finalContext next) ->
+    (sourceInterface : Shape.Interface finalContext
+      (SourceDomainAt sourceDomain targetDomain sourceCodomain next)) ->
+    (targetInterface : Shape.Interface finalContext
+      (TargetDomainAt sourceDomain targetDomain sourceCodomain next)) ->
+    Sigma fun relation : Relation finalContext sourceCodomainType
+        targetCodomainType
+        (SourceCodomainAt sourceDomain targetDomain sourceCodomain next
+          sourceInterface)
+        (TargetCodomainAt sourceDomain targetDomain sourceCodomain
+          targetCodomain next) =>
+      Retained next nextTyped sourceInterface targetInterface relation
+
+/-- Forget only the proof payload; generated function code consumes the exact
+Relation at the first projection of the enriched callback result. -/
+noncomputable def Enriched.erase
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceDomainType targetDomainType : LambdaPFC.Ty n}
+    {sourceCodomainType targetCodomainType : LambdaPFC.Ty (n + 1)}
+    {root : Sig} {rootContext : Ctx root}
+    {sourceDomain targetDomain : Shape root}
+    {sourceCodomain : Shape sourceDomain.scope}
+    {targetCodomain : Shape targetDomain.scope}
+    {derivation : LambdaPFC.Tau.Sub
+      (targetContext.snoc targetDomainType)
+      (.ty sourceCodomainType) (.ty targetCodomainType)}
+    (compiler : Enriched
+      (sourceContext := sourceContext)
+      (targetContext := targetContext)
+      (sourceDomainType := sourceDomainType)
+      (targetDomainType := targetDomainType)
+      (sourceCodomainType := sourceCodomainType)
+      (targetCodomainType := targetCodomainType)
+      (rootContext := rootContext)
+      (sourceDomain := sourceDomain)
+      (targetDomain := targetDomain)
+      (sourceCodomain := sourceCodomain)
+      (targetCodomain := targetCodomain)
+      derivation) :
+    ExactCodomainCompiler
+      (sourceContext := sourceContext)
+      (targetContext := targetContext)
+      (sourceDomainType := sourceDomainType)
+      (targetDomainType := targetDomainType)
+      (sourceCodomainType := sourceCodomainType)
+      (targetCodomainType := targetCodomainType)
+      (rootContext := rootContext)
+      (sourceDomain := sourceDomain)
+      (targetDomain := targetDomain)
+      (sourceCodomain := sourceCodomain)
+      (targetCodomain := targetCodomain)
+      derivation where
+  compile next nextTyped sourceInterface targetInterface :=
+    (compiler.compile next nextTyped sourceInterface targetInterface).1
+
+end ExactCodomainCompiler
+
+/-- Literal target-oriented Action scope at one exact codomain callback
+opening. -/
+noncomputable def codomainActionScopeAt
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {sourceDomainType targetDomainType : LambdaPFC.Ty n}
+    {base : Ctx root} {finalContext : Ctx final}
+    {sourceDomain targetDomain : Shape root}
+    {sourceCodomain : Shape sourceDomain.scope}
+    (rootScope : ContextRelation.Scope sourceContext targetContext .target
+      base)
+    (domainRelation : Relation base targetDomainType sourceDomainType
+      targetDomain sourceDomain)
+    (next : Rename
+      (ExactCodomainCompiler.CallbackSig sourceDomain sourceCodomain
+        targetDomain) final)
+    (nextTyped : Rename.Typed
+      (ExactCodomainCompiler.CallbackContext base sourceDomain
+        sourceCodomain targetDomain) finalContext next)
+    (sourceInterface : Shape.Interface finalContext
+      (ExactCodomainCompiler.SourceDomainAt sourceDomain targetDomain
+        sourceCodomain next))
+    (targetInterface : Shape.Interface finalContext
+      (ExactCodomainCompiler.TargetDomainAt sourceDomain targetDomain
+        sourceCodomain next)) :
+    ContextRelation.Scope (sourceContext.snoc sourceDomainType)
+      (targetContext.snoc targetDomainType) .target finalContext := by
+  let sourcePlan := Function.plan sourceDomain sourceCodomain
+  let sourceAt := Stable.sourceAtBinder sourcePlan
+  let packageMap := packageMapping root
+  let packageTyped := Rename.Typed.weaken base (.var sourcePlan.inputTy)
+  let packageContext := base.bindVar sourcePlan.inputTy
+  let observationMap := observationMapping sourceDomain sourceCodomain
+  let observationTyped := sourceAt.telescope.weaken_typed packageContext
+  let openContext := Stable.openedContext base sourcePlan
+  let identityMap := identityMapping sourceDomain sourceCodomain
+  let identityTyped := Rename.Typed.weaken openContext
+    (.var sourceAt.identityTy)
+  let currentContext := exactContext base sourceDomain sourceCodomain
+  let targetCurrent := observedDomain sourceDomain sourceCodomain targetDomain
+  let opening := targetCurrent.binders.weaken
+  let openingTyped := targetCurrent.binders.weaken_typed currentContext
+  let scopePackage := rootScope.targetRename packageMap packageTyped
+  let scopeObserved := scopePackage.targetRename observationMap
+    observationTyped
+  let scopeCurrent := scopeObserved.targetRename identityMap identityTyped
+  let scopeOpened := scopeCurrent.targetRename opening openingTyped
+  let scopeFinal := scopeOpened.targetRename next nextTyped
+  let relationPackage := domainRelation.targetRename packageMap packageTyped
+  let relationObserved := relationPackage.targetRename observationMap
+    observationTyped
+  let relationCurrent := relationObserved.targetRename identityMap
+    identityTyped
+  let relationOpened := relationCurrent.targetRename opening openingTyped
+  let relationFinal := relationOpened.targetRename next nextTyped
+  exact scopeFinal.extendFunction sourceInterface relationFinal.targetRep
+    targetInterface relationFinal.sourceRep relationFinal
 
 /-- Function-specific continuation that retains the statically known source
 domain shape.  `MemberScope` intentionally stays compact; the exact interface

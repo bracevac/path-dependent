@@ -1,13 +1,14 @@
 import LambdaPToFCo.Direct.SourceRenaming
 import LambdaPToFCo.Direct.PairSubtyping
+import LambdaPToFCo.Direct.FunctionSubtyping
 
 /-!
 # Structural direct-subtyping actions
 
 `Action` is proof-only. Its erasure is the exact proper or interval relation
-emitted by a frozen direct compiler kernel. Pair nodes retain the recursive
-payload returned by the enriched delayed-member callback; they never accept
-an independently supplied whole-pair conversion or interface map.
+emitted by a frozen direct compiler kernel. Pair and function nodes retain
+the recursive payload returned by their enriched delayed callbacks; they
+never accept an independently supplied whole conversion or interface map.
 
 This module intentionally contains no value action, path replay, or generic
 adaptation API. Those consumers must preserve the concrete pair callback
@@ -18,6 +19,33 @@ namespace LambdaPToFCo.Direct.Internal
 
 open SystemFCo
 open Representation
+
+/-- Exact Relation callback accepted by the frozen dependent-function
+kernel. -/
+abbrev Action.FunctionCodomainRelations
+    {base : Ctx root}
+    {sourceCodomainType targetCodomainType : LambdaPFC.Ty (n + 1)}
+    {sourceDomain targetDomain : Shape root}
+    {sourceCodomain : Shape sourceDomain.scope}
+    {targetCodomain : Shape targetDomain.scope} : Type :=
+  {final : Sig} -> {finalContext : Ctx final} ->
+  (next : Rename
+    (FunctionSubtyping.ExactCodomainCompiler.CallbackSig sourceDomain
+      sourceCodomain targetDomain) final) ->
+  (nextTyped : Rename.Typed
+    (FunctionSubtyping.ExactCodomainCompiler.CallbackContext base sourceDomain
+      sourceCodomain targetDomain) finalContext next) ->
+  (sourceInterface : Shape.Interface finalContext
+    (FunctionSubtyping.ExactCodomainCompiler.SourceDomainAt sourceDomain
+      targetDomain sourceCodomain next)) ->
+  (targetInterface : Shape.Interface finalContext
+    (FunctionSubtyping.ExactCodomainCompiler.TargetDomainAt sourceDomain
+      targetDomain sourceCodomain next)) ->
+  Relation finalContext sourceCodomainType targetCodomainType
+    (FunctionSubtyping.ExactCodomainCompiler.SourceCodomainAt sourceDomain
+      targetDomain sourceCodomain next sourceInterface)
+    (FunctionSubtyping.ExactCodomainCompiler.TargetCodomainAt sourceDomain
+      targetDomain sourceCodomain targetCodomain next)
 
 /-- Exact relation callback accepted by the frozen proper-pair kernel. -/
 abbrev Action.ProperMemberRelations
@@ -136,8 +164,8 @@ end Action.Erasure
 /-- A literal source-subtyping derivation together with its exact compiled
 target erasure and all structural recursive children.
 
-The only higher-order recursive occurrences are delayed pair children. They
-occur positively as callback results. -/
+The only higher-order recursive occurrences are delayed pair and function
+children. They occur positively as callback results. -/
 inductive Action :
     {n : Nat} ->
     {sourceContext targetContext : LambdaPFC.Ctx n} ->
@@ -311,6 +339,80 @@ inductive Action :
       Action scope (.bounds lowerSubtyping upperSubtyping nonemptySubtyping)
         (.interval (AtomicSubtyping.IntervalResult.bounds
           lowerRelation upperRelation).relation)
+  | function
+      {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
+      {sig : Sig} {base : Ctx sig}
+      (scope : ContextRelation.Scope sourceContext targetContext .target base)
+      {sourceDomainType targetDomainType : LambdaPFC.Ty n}
+      {sourceCodomainType targetCodomainType : LambdaPFC.Ty (n + 1)}
+      {sourceDomain targetDomain : Shape sig}
+      {sourceCodomain : Shape sourceDomain.scope}
+      {targetCodomain : Shape targetDomain.scope}
+      {domainSubtyping : LambdaPFC.Tau.Sub targetContext
+        (.ty targetDomainType) (.ty sourceDomainType)}
+      {codomainSubtyping : LambdaPFC.Tau.Sub
+        (targetContext.snoc targetDomainType)
+        (.ty sourceCodomainType) (.ty targetCodomainType)}
+      {domainRelation : Relation base targetDomainType sourceDomainType
+        targetDomain sourceDomain}
+      (domain : Action scope domainSubtyping (.proper domainRelation))
+      (sourceCodomainRep : Rep (sourceDomain.context base)
+        sourceCodomainType sourceCodomain)
+      (targetCodomainRep : Rep (targetDomain.context base)
+        targetCodomainType targetCodomain)
+      (codomainRelation : Action.FunctionCodomainRelations
+        (base := base)
+        (sourceCodomainType := sourceCodomainType)
+        (targetCodomainType := targetCodomainType)
+        (sourceDomain := sourceDomain)
+        (targetDomain := targetDomain)
+        (sourceCodomain := sourceCodomain)
+        (targetCodomain := targetCodomain))
+      (codomainAction : {final : Sig} -> {finalContext : Ctx final} ->
+        (next : Rename
+          (FunctionSubtyping.ExactCodomainCompiler.CallbackSig sourceDomain
+            sourceCodomain targetDomain) final) ->
+        (nextTyped : Rename.Typed
+          (FunctionSubtyping.ExactCodomainCompiler.CallbackContext base
+            sourceDomain sourceCodomain targetDomain) finalContext next) ->
+        (sourceInterface : Shape.Interface finalContext
+          (FunctionSubtyping.ExactCodomainCompiler.SourceDomainAt sourceDomain
+            targetDomain sourceCodomain next)) ->
+        (targetInterface : Shape.Interface finalContext
+          (FunctionSubtyping.ExactCodomainCompiler.TargetDomainAt sourceDomain
+            targetDomain sourceCodomain next)) ->
+        Action
+          (FunctionSubtyping.codomainActionScopeAt scope domainRelation next
+            nextTyped sourceInterface targetInterface)
+          codomainSubtyping
+          (.proper (codomainRelation next nextTyped sourceInterface
+            targetInterface))) :
+      Action scope
+        (LambdaPFC.Tau.Sub.fun domainSubtyping codomainSubtyping)
+        (.proper (let enriched := ({
+            Retained := fun _next _nextTyped _sourceInterface
+              _targetInterface _relation => PUnit
+            compile := fun next nextTyped sourceInterface targetInterface =>
+              ⟨codomainRelation next nextTyped sourceInterface
+                targetInterface, PUnit.unit⟩
+          } : FunctionSubtyping.ExactCodomainCompiler.Enriched
+              (sourceContext := sourceContext)
+              (targetContext := targetContext)
+              (sourceDomainType := sourceDomainType)
+              (targetDomainType := targetDomainType)
+              (sourceCodomainType := sourceCodomainType)
+              (targetCodomainType := targetCodomainType)
+              (rootContext := base)
+              (sourceDomain := sourceDomain)
+              (targetDomain := targetDomain)
+              (sourceCodomain := sourceCodomain)
+              (targetCodomain := targetCodomain)
+              codomainSubtyping)
+          FunctionSubtyping.compileExact
+            ({ relation := domainRelation } :
+              FunctionSubtyping.DomainCompilation base domainSubtyping
+                targetDomain sourceDomain)
+            sourceCodomainRep targetCodomainRep enriched.erase))
   | properPair
       {n : Nat} {sourceContext targetContext : LambdaPFC.Ctx n}
       {sig : Sig} {base : Ctx sig}
@@ -485,10 +587,10 @@ inductive Action :
 namespace Action
 
 /-- Structural size used as the secondary component of future action
-eliminators' well-founded measures. Delayed pair-member closures are omitted,
-as in semantic coercion size: entering one also descends through the concrete
-pair value, which supplies the primary measure decrease. Lexical wrappers add
-one node and delegate to their retained older action. -/
+eliminators' well-founded measures. Delayed pair-member and function-codomain
+closures are omitted, as in semantic coercion size: entering one also descends
+through the concrete value, which supplies the primary measure decrease.
+Lexical wrappers add one node and delegate to their retained older action. -/
 noncomputable def treeSize
     (action : Action scope subtyping erasure) : Nat := by
   induction action with
@@ -505,10 +607,77 @@ noncomputable def treeSize
   | selHiAt => exact 1
   | selLoAt => exact 1
   | bounds _ _ lowerSize upperSize => exact lowerSize + upperSize + 1
+  | function _ _ _ _ _ _ domainSize _ => exact domainSize + 1
   | properPair _ _ _ _ _ _ firstSize _ => exact firstSize + 1
   | intervalPair _ _ _ _ _ _ _ _ firstSize _ => exact firstSize + 1
   | extendPairOlder _ _ _ _ _ _ _ _ size => exact size + 1
   | extendFunctionOlder _ _ _ _ _ _ _ _ size => exact size + 1
+
+/-- Rebuild the proof-enriched exact codomain callback from the two fields
+retained by `Action.function`. One invocation returns its Relation and
+recursive Action from the same runtime domain-interface opening. -/
+noncomputable def functionEnriched
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {base : Ctx root}
+    {sourceDomainType targetDomainType : LambdaPFC.Ty n}
+    {sourceCodomainType targetCodomainType : LambdaPFC.Ty (n + 1)}
+    {sourceDomain targetDomain : Shape root}
+    {sourceCodomain : Shape sourceDomain.scope}
+    {targetCodomain : Shape targetDomain.scope}
+    {scope : ContextRelation.Scope sourceContext targetContext .target base}
+    {domainRelation : Relation base targetDomainType sourceDomainType
+      targetDomain sourceDomain}
+    {codomainSubtyping : LambdaPFC.Tau.Sub
+      (targetContext.snoc targetDomainType)
+      (.ty sourceCodomainType) (.ty targetCodomainType)}
+    (codomainRelation : Action.FunctionCodomainRelations
+      (base := base)
+      (sourceCodomainType := sourceCodomainType)
+      (targetCodomainType := targetCodomainType)
+      (sourceDomain := sourceDomain)
+      (targetDomain := targetDomain)
+      (sourceCodomain := sourceCodomain)
+      (targetCodomain := targetCodomain))
+    (codomainAction : {final : Sig} -> {finalContext : Ctx final} ->
+      (next : Rename
+        (FunctionSubtyping.ExactCodomainCompiler.CallbackSig sourceDomain
+          sourceCodomain targetDomain) final) ->
+      (nextTyped : Rename.Typed
+        (FunctionSubtyping.ExactCodomainCompiler.CallbackContext base
+          sourceDomain sourceCodomain targetDomain) finalContext next) ->
+      (sourceInterface : Shape.Interface finalContext
+        (FunctionSubtyping.ExactCodomainCompiler.SourceDomainAt sourceDomain
+          targetDomain sourceCodomain next)) ->
+      (targetInterface : Shape.Interface finalContext
+        (FunctionSubtyping.ExactCodomainCompiler.TargetDomainAt sourceDomain
+          targetDomain sourceCodomain next)) ->
+      Action
+        (FunctionSubtyping.codomainActionScopeAt scope domainRelation next
+          nextTyped sourceInterface targetInterface)
+        codomainSubtyping
+        (.proper (codomainRelation next nextTyped sourceInterface
+          targetInterface))) :
+    FunctionSubtyping.ExactCodomainCompiler.Enriched
+      (sourceContext := sourceContext)
+      (targetContext := targetContext)
+      (sourceDomainType := sourceDomainType)
+      (targetDomainType := targetDomainType)
+      (sourceCodomainType := sourceCodomainType)
+      (targetCodomainType := targetCodomainType)
+      (rootContext := base)
+      (sourceDomain := sourceDomain)
+      (targetDomain := targetDomain)
+      (sourceCodomain := sourceCodomain)
+      (targetCodomain := targetCodomain)
+      codomainSubtyping where
+  Retained := fun next nextTyped sourceInterface targetInterface relation =>
+    Action
+      (FunctionSubtyping.codomainActionScopeAt scope domainRelation next
+        nextTyped sourceInterface targetInterface)
+      codomainSubtyping (.proper relation)
+  compile next nextTyped sourceInterface targetInterface :=
+    ⟨codomainRelation next nextTyped sourceInterface targetInterface,
+      codomainAction next nextTyped sourceInterface targetInterface⟩
 
 /-- Rebuild the proof-enriched proper callback from the two fields retained
 by `Action.properPair`.  Its erasure is definitionally the same relation
