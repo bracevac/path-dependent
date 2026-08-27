@@ -525,11 +525,11 @@ private noncomputable def resolveRight
 
 /-! ## Literal path recursion -/
 
-/-- One privately retained result of literal path evaluation.  The dependent
-focus is packaged once so proof consumers can compare predicates at exactly
-the same material selection without learning how structural receivers were
-resolved. -/
-private inductive Outcome
+/-- One dependent result of literal path evaluation.  The current target
+scope, actual-package focus, exact raw environment, and proper/interval view
+remain existentially packaged and are revealed only by ordinary pattern
+matching. -/
+inductive Resolved
     {n : Nat} {kind : LambdaPFC.Kind}
     {sourceContext : LambdaPFC.Ctx n}
     {root : Sig} (rootContext : Ctx root)
@@ -539,22 +539,22 @@ private inductive Outcome
     (focus : Focus rootContext currentContext)
     (environment : Env sourceContext currentContext)
     (view : LambdaPToFCo.Direct.Internal.Path.View currentContext result) :
-    Outcome rootContext result
+    Resolved rootContext result
 
-private def Outcome.consume
+private def Resolved.consume
     {n : Nat} {kind : LambdaPFC.Kind}
     {sourceContext : LambdaPFC.Ctx n}
     {root : Sig} {rootContext : Ctx root}
     {result : LambdaPFC.Tau n kind}
-    (outcome : Outcome (sourceContext := sourceContext) rootContext result)
+    (resolved : Resolved (sourceContext := sourceContext) rootContext result)
     {answer : Type}
     (continuation : Consumer (sourceContext := sourceContext)
       rootContext result answer) : answer := by
-  cases outcome with
+  cases resolved with
   | focused focus environment view =>
       exact continuation focus environment view
 
-private noncomputable def compileOutcome
+private noncomputable def resolveAt
     {n : Nat} {kind : LambdaPFC.Kind}
     {sourceContext : LambdaPFC.Ctx n}
     {path : LambdaPFC.Path n} {result : LambdaPFC.Tau n kind}
@@ -563,7 +563,7 @@ private noncomputable def compileOutcome
     {rootContext : Ctx root} {currentContext : Ctx current}
     (focus : Focus rootContext currentContext)
     (environment : Env sourceContext currentContext) :
-    Outcome (sourceContext := sourceContext) rootContext result := by
+    Resolved (sourceContext := sourceContext) rootContext result := by
   induction typing generalizing root current with
   | @var context index =>
       exact .focused focus environment
@@ -587,19 +587,18 @@ private noncomputable def compileOutcome
   | sel_l receiver inner unequal receiverIH innerIH =>
       exact innerIH focus environment
 
-private noncomputable def compileK
+/-- Follow one literal source path and return its dependent material result
+as an ordinary existential package.  Hidden target types remain scoped by
+the stored `Focus`; no callback, replay token, or target plan is retained. -/
+noncomputable def resolve
     {n : Nat} {kind : LambdaPFC.Kind}
     {sourceContext : LambdaPFC.Ctx n}
     {path : LambdaPFC.Path n} {result : LambdaPFC.Tau n kind}
     (typing : LambdaPFC.Path.Ty sourceContext path result)
-    {root current : Sig}
-    {rootContext : Ctx root} {currentContext : Ctx current}
-    {answer : Type}
-    (focus : Focus rootContext currentContext)
-    (environment : Env sourceContext currentContext)
-    (continuation : Consumer (sourceContext := sourceContext)
-      rootContext result answer) : answer :=
-  (compileOutcome typing focus environment).consume continuation
+    {sig : Sig} {targetContext : Ctx sig}
+    (environment : Env sourceContext targetContext) :
+    Resolved (sourceContext := sourceContext) targetContext result :=
+  resolveAt typing (Focus.root targetContext) environment
 
 /-- Follow a precise path while retaining every actual receiver package. -/
 noncomputable def compileWith
@@ -612,7 +611,7 @@ noncomputable def compileWith
     {answer : Type}
     (continuation : Consumer (sourceContext := sourceContext)
       targetContext result answer) : answer :=
-  compileK typing (Focus.root targetContext) environment continuation
+  (resolve typing environment).consume continuation
 
 /-- A literal variable exposes exactly the Slot stored in the environment. -/
 @[simp] theorem compileWith_var
@@ -650,10 +649,10 @@ theorem compileWith_fuse
     compileWith typing environment left ->
     compileWith typing environment right ->
     compileWith typing environment combined := by
-  unfold compileWith compileK
-  generalize outcomeEq :
-    compileOutcome typing (Focus.root targetContext) environment = outcome
-  cases outcome with
+  unfold compileWith resolve
+  generalize resolvedEq :
+    resolveAt typing (Focus.root targetContext) environment = resolved
+  cases resolved with
   | focused focus currentEnvironment view =>
       exact fusion focus currentEnvironment view
 
