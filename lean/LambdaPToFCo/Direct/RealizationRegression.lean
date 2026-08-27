@@ -327,5 +327,114 @@ noncomputable def lookupSingletonValue
     (LambdaPFC.Path.Ty.var (Γ := sourceContext) (x := index))
     (environment.lookup index) (PathIdentity.lookup environment index)
 
+/-! ## Same-run nested path demand bootstrap -/
+
+private abbrev NestedInnerLabel : LambdaPFC.Name := 3
+private abbrev NestedOuterLabel : LambdaPFC.Name := 7
+
+private abbrev NestedInnerSource (n : Nat) : LambdaPFC.Ty n :=
+  .Pair .Top NestedInnerLabel (.intv .Bot .Top)
+
+private abbrev NestedOuterSource : LambdaPFC.Ty 0 :=
+  .Pair (NestedInnerSource 0) NestedOuterLabel (.ty .Top)
+
+private abbrev NestedSourceContext : LambdaPFC.Ctx 1 :=
+  LambdaPFC.Ctx.nil.snoc NestedOuterSource
+
+private def nestedInnerFirst : Shape [] := .stable (Top.plan [])
+private def nestedInnerLower : Shape nestedInnerFirst.scope :=
+  .stable (Bot.plan nestedInnerFirst.scope)
+private def nestedInnerUpper : Shape nestedInnerFirst.scope :=
+  .stable (Top.plan nestedInnerFirst.scope)
+private def nestedInnerShape : Shape [] :=
+  .stable (Pair.Interval.plan nestedInnerFirst nestedInnerLower
+    nestedInnerUpper)
+private def nestedOuterMember : Shape nestedInnerShape.scope :=
+  .stable (Top.plan nestedInnerShape.scope)
+private def nestedOuterShape : Shape [] :=
+  .stable (Pair.Proper.plan nestedInnerShape nestedOuterMember)
+
+private def nestedInnerRep :
+    Rep Ctx.empty (NestedInnerSource 1) nestedInnerShape :=
+  .intervalPair (.top _) (.bottom _) (.top _)
+
+private def nestedOuterRep :
+    Rep Ctx.empty (NestedSourceContext.lookup 0) nestedOuterShape := by
+  change Rep Ctx.empty
+    (.Pair (NestedInnerSource 1) NestedOuterLabel (.ty .Top))
+      nestedOuterShape
+  exact .properPair nestedInnerRep (.top _)
+
+private abbrev NestedTargetContext : Ctx nestedOuterShape.scope :=
+  nestedOuterShape.context Ctx.empty
+
+private noncomputable def nestedReceiver :
+    Slot NestedTargetContext (NestedSourceContext.lookup 0) where
+  shape := nestedOuterShape.rename nestedOuterShape.binders.weaken
+  interface := Shape.Interface.canonical Ctx.empty nestedOuterShape
+  rep := nestedOuterRep.targetRename nestedOuterShape.binders.weaken
+    (nestedOuterShape.binders.weaken_typed Ctx.empty)
+
+private noncomputable def nestedEnvironment :
+    Env NestedSourceContext NestedTargetContext where
+  lookup index :=
+    Fin.cases nestedReceiver (fun older => Fin.elim0 older) index
+
+private def nestedReceiverTyping :
+    LambdaPFC.Path.Ty NestedSourceContext (.var 0)
+      (.ty (NestedSourceContext.lookup 0)) :=
+  .var
+
+private def nestedInnerTyping :
+    LambdaPFC.Path.Ty NestedSourceContext (.fst (.var 0))
+      (.ty (NestedInnerSource 1)) :=
+  nestedReceiverTyping.fst
+
+private def nestedFirstTyping :
+    LambdaPFC.Path.Ty NestedSourceContext (.fst (.fst (.var 0)))
+      (.ty .Top) :=
+  nestedInnerTyping.fst
+
+private def nestedSelectionTyping :
+    LambdaPFC.Path.Ty NestedSourceContext
+      (.sel (.fst (.var 0)) NestedInnerLabel) (.intv .Bot .Top) := by
+  simpa only [LambdaPFC.Tau.open] using nestedInnerTyping.sel_r
+
+private def nestedSelectionWf :
+    LambdaPFC.Tau.Wf NestedSourceContext
+      (.ty (.TSel (.fst (.var 0)) NestedInnerLabel)) :=
+  .sel nestedSelectionTyping .bot
+
+private noncomputable def compileNestedSelectionDemand
+    (typing : LambdaPFC.Tau.Wf NestedSourceContext
+      (.ty (.TSel (.fst (.var 0)) NestedInnerLabel))) : PUnit := by
+  cases typing with
+  | sel pathTyping _nonempty =>
+      exact Realizes.withSelectionDemand pathTyping nestedEnvironment
+        (fun {_current} {_currentContext} _focus _currentEnvironment
+          {_lower} {_upper} {_selected} _interval
+          (_demand : Realizes _currentEnvironment
+            (_interval.selection (.fst (.var 0)) NestedInnerLabel) .demand) =>
+            PUnit.unit)
+
+/-- The literal `Wf.sel` branch follows nested `fst ; sel_r`, opens its hidden
+interval once, and constructs its first selected demand in that callback. -/
+noncomputable def nestedSelectionDemandCps : PUnit :=
+  compileNestedSelectionDemand nestedSelectionWf
+
+/-- The same enriched runner handles a nested proper path and supplies its
+exact singleton identity without changing consumer result type. -/
+noncomputable def nestedProperDemandCps : PUnit :=
+  PathIdentity.resolveWith nestedFirstTyping nestedEnvironment
+    (fun _focus currentEnvironment view resolution => by
+      cases view with
+      | proper slot =>
+          let _demand : Realizes currentEnvironment
+              (.singleton _ (.fst (.fst (.var 0))) slot.shape.inputTy)
+              .demand :=
+            Realizes.singletonDemand currentEnvironment nestedFirstTyping
+              resolution
+          exact PUnit.unit)
+
 
 end LambdaPToFCo.Direct.Internal.RealizationRegression

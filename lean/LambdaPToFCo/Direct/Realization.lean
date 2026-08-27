@@ -84,26 +84,49 @@ def IdentityAlignment
   | @interval _ _ _ _ selected _ =>
       exact Nonempty (Conversion.Bridge base selected expected)
 
-private noncomputable def IdentityAlignment.across
+private def identityOfView
     {n : Nat} {sig : Sig} {base : Ctx sig}
     {kind : LambdaPFC.Kind} {result : LambdaPFC.Tau n kind}
-    (view : Path.View base result) (left right : Ty sig)
-    (aligned : IdentityAlignment view left)
-    (bridge : Conversion.Bridge base left right) :
-    IdentityAlignment view right := by
+    (view : Path.View base result) : Ty sig := by
   cases view with
-  | proper slot =>
-      exact ⟨(Classical.choice aligned).compose bridge.leftToRight⟩
-  | interval interval =>
-      let current := Classical.choice aligned
-      exact ⟨{
-        leftToRight := current.leftToRight.compose bridge.leftToRight
-        rightToLeft := bridge.rightToLeft.compose current.rightToLeft
-      }⟩
+  | proper slot => exact slot.shape.inputTy
+  | @interval _ _ _ _ selected _ => exact selected
 
-/-- Proof-only target analogue of one precise source path resolution.  The
-constructor must ultimately be fed by the sealed same-run resolver; no
-arbitrary `IntervalRep` is accepted by `Realizes` below. -/
+private inductive Origin
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    (environment : Env sourceContext base) :
+    {kind : LambdaPFC.Kind} ->
+    {path : LambdaPFC.Path n} ->
+    {result : LambdaPFC.Tau n kind} ->
+    (typing : LambdaPFC.Path.Ty sourceContext path result) ->
+    Ty sig -> Type where
+| aligned
+    {path : LambdaPFC.Path n} {referent : LambdaPFC.Ty n}
+    (typing : LambdaPFC.Path.Ty sourceContext path (.ty referent))
+    {identity : Ty sig}
+    (alignment : MaterialTermPath.compileWith typing environment
+      (fun focus _ view =>
+        IdentityAlignment view (identity.rename focus.mapping))) :
+    Origin environment typing identity
+| exact
+    {kind : LambdaPFC.Kind} {path : LambdaPFC.Path n}
+    {result : LambdaPFC.Tau n kind}
+    (typing : LambdaPFC.Path.Ty sourceContext path result)
+    (view : Path.View base result) :
+    Origin environment typing (identityOfView view)
+| across
+    {kind : LambdaPFC.Kind} {path : LambdaPFC.Path n}
+    {result : LambdaPFC.Tau n kind}
+    {typing : LambdaPFC.Path.Ty sourceContext path result}
+    {left right : Ty sig}
+    (origin : Origin environment typing left)
+    (bridge : Conversion.Bridge base left right) :
+    Origin environment typing right
+
+/-- Sealed provenance for the hidden target identity chosen by one source
+path.  The representation may be retargeted only through an explicit
+bidirectional conversion; arbitrary interval identities cannot be minted. -/
 structure PathIdentity
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {base : Ctx sig}
@@ -113,13 +136,41 @@ structure PathIdentity
     (typing : LambdaPFC.Path.Ty sourceContext path result)
     (identity : Ty sig) : Type where
   private mk ::
-  alignment : MaterialTermPath.compileWith typing environment
-    (fun focus _ view =>
-      IdentityAlignment view (identity.rename focus.mapping))
+  origin : Origin environment typing identity
 
 namespace PathIdentity
 
-/-- Ignore an input and return one exact retained path package. -/
+abbrev Consumer
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {root : Sig} (rootContext : Ctx root)
+    {kind : LambdaPFC.Kind} {path : LambdaPFC.Path n}
+    {result : LambdaPFC.Tau n kind}
+    (typing : LambdaPFC.Path.Ty sourceContext path result)
+    (answer : Type) : Type :=
+  forall {current : Sig} {currentContext : Ctx current},
+    (focus : MaterialTermPath.Focus rootContext currentContext) ->
+    (currentEnvironment : Env sourceContext currentContext) ->
+    (view : Path.View currentContext result) ->
+    PathIdentity currentEnvironment typing (identityOfView view) -> answer
+
+/-- Run one literal material path and seal its exact proper/interval identity
+inside the rank-2 continuation. This carries provenance only: the current
+raw environment is not claimed to be a `ValidEnv`; view realization belongs
+to the later `RealizedPath` layer. -/
+noncomputable def resolveWith
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    {kind : LambdaPFC.Kind} {path : LambdaPFC.Path n}
+    {result : LambdaPFC.Tau n kind}
+    (typing : LambdaPFC.Path.Ty sourceContext path result)
+    (environment : Env sourceContext base)
+    {answer : Type}
+    (continuation : Consumer base typing answer) : answer :=
+  MaterialTermPath.compileWith typing environment
+    (fun focus currentEnvironment view =>
+      continuation focus currentEnvironment view
+        (PathIdentity.mk (.exact typing view)))
+
 private noncomputable def constantToInterface
     {base : Ctx sig} {shape : Shape sig}
     (interface : Shape.Interface base shape) (source : Ty sig) :
@@ -131,11 +182,8 @@ private noncomputable def constantToInterface
       simpa only [Ty.weaken] using
         interface.package_hasType.weaken (.var source)))
 
-/-- Tie an arbitrary proper path to one exact retained value without replay.
-This is value-specific evidence, not a claim that the retained value is the
-path's canonical identity. Each outcome of the one literal `compileWith` run
-receives a constant conversion returning that value's package, renamed
-through the same focus. Interval paths are intentionally excluded. -/
+/-- Tie a proper path to one exact retained value without replay.  The
+reverse direction is value-specific: it returns that retained package. -/
 noncomputable def retained
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {base : Ctx sig}
@@ -145,7 +193,7 @@ noncomputable def retained
     {selectedSource : LambdaPFC.Ty n}
     (selected : Slot base selectedSource) :
     PathIdentity environment typing selected.shape.inputTy := by
-  refine PathIdentity.mk ?_
+  refine PathIdentity.mk (.aligned typing ?_)
   exact MaterialTermPath.compileWith_fuse typing environment
     (fun _ _ _ => True)
     (fun _ _ _ => True)
@@ -162,8 +210,8 @@ noncomputable def retained
     (by exact True.intro)
     (by exact True.intro)
 
-/-- Literal variable resolution is definitionally stable under every typed
-target substitution. -/
+/-- The newest/older variable path resolves to the exact slot stored in the
+raw environment. -/
 noncomputable def lookup
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {base : Ctx sig}
@@ -171,14 +219,13 @@ noncomputable def lookup
     PathIdentity environment
       (LambdaPFC.Path.Ty.var (Γ := sourceContext) (x := index))
       (environment.lookup index).shape.inputTy := by
-  refine PathIdentity.mk ?_
+  refine PathIdentity.mk (.aligned _ ?_)
   rw [MaterialTermPath.compileWith_var]
   refine ⟨?_⟩
   simpa only [MaterialTermPath.Focus.root, Ty.rename_id] using
     (Conversion.refl base (environment.lookup index).shape.inputTy)
 
-/-- Structural action transports path provenance along its explicit selected
-bridge.  This is the closure fact needed by both `Single q` and `q.A`. -/
+/-- Transport sealed path provenance through one explicit identity bridge. -/
 noncomputable def across
     {n : Nat} {sourceContext : LambdaPFC.Ctx n}
     {sig : Sig} {base : Ctx sig}
@@ -189,21 +236,8 @@ noncomputable def across
     {left right : Ty sig}
     (resolution : PathIdentity environment typing left)
     (bridge : Conversion.Bridge base left right) :
-    PathIdentity environment typing right := by
-  refine PathIdentity.mk ?_
-  exact MaterialTermPath.compileWith_fuse typing
-    environment
-    (fun focus _ view => IdentityAlignment view
-      (left.rename focus.mapping))
-    (fun focus _ view => IdentityAlignment view
-      (left.rename focus.mapping))
-    (fun focus _ view => IdentityAlignment view
-      (right.rename focus.mapping))
-    (fun focus _ view first _ =>
-      IdentityAlignment.across view
-        (left.rename focus.mapping) (right.rename focus.mapping)
-        first (bridge.rename focus.mapping focus.typed))
-    resolution.alignment resolution.alignment
+    PathIdentity environment typing right :=
+  PathIdentity.mk (.across resolution.origin bridge)
 
 end PathIdentity
 
@@ -670,6 +704,51 @@ inductive Realizes :
     Realizes (environment.targetSubst substitution typed)
       (rep.targetSubst substitution typed)
       (availability.targetSubst substitution typed)
+
+namespace Realizes
+
+/-- A same-run consumer for the selected demand opened by one literal
+interval path.  The interval and its sealed identity are created together in
+the one material callback, rather than by replaying the path. -/
+abbrev SelectionConsumer
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {root : Sig} (rootContext : Ctx root)
+    {receiver : LambdaPFC.Path n} {label : LambdaPFC.Name}
+    {lowerSource upperSource : LambdaPFC.Ty n}
+    (_typing : LambdaPFC.Path.Ty sourceContext (.sel receiver label)
+      (.intv lowerSource upperSource))
+    (answer : Type) : Type :=
+  forall {current : Sig} {currentContext : Ctx current},
+    (focus : MaterialTermPath.Focus rootContext currentContext) ->
+    (currentEnvironment : Env sourceContext currentContext) ->
+    {lower upper : Shape current} -> {selected : Ty current} ->
+    (interval : IntervalRep (targetContext := currentContext)
+      lowerSource upperSource lower selected upper) ->
+    Realizes currentEnvironment
+      (interval.selection receiver label) .demand ->
+    answer
+
+/-- Run the literal interval path once and give the resulting exact selected
+demand to that same callback.  The API accepts no independently chosen
+interval or selected identity. -/
+noncomputable def withSelectionDemand
+    {n : Nat} {sourceContext : LambdaPFC.Ctx n}
+    {sig : Sig} {base : Ctx sig}
+    {receiver : LambdaPFC.Path n} {label : LambdaPFC.Name}
+    {lowerSource upperSource : LambdaPFC.Ty n}
+    (typing : LambdaPFC.Path.Ty sourceContext (.sel receiver label)
+      (.intv lowerSource upperSource))
+    (environment : Env sourceContext base)
+    {answer : Type}
+    (continuation : SelectionConsumer base typing answer) : answer :=
+  PathIdentity.resolveWith typing environment
+    (fun focus currentEnvironment view resolution => by
+      cases view with
+      | interval interval =>
+          exact continuation focus currentEnvironment interval
+            (Realizes.selectionDemand currentEnvironment typing resolution))
+
+end Realizes
 
 /-! ## Pointwise environments contain values, never bare demands -/
 
