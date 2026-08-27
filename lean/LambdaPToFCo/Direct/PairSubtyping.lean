@@ -2344,6 +2344,640 @@ noncomputable def ProperMemberCompiler.Enriched.erase
     (compiler.compile mapping typed sourceFirstInterface
       targetFirstInterface).1
 
+/-! ## Same-run material proper-pair callbacks -/
+
+section ProperMaterial
+
+variable {sourceContext targetContext : LambdaPFC.Ctx n}
+variable {base : Ctx sig}
+variable {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+variable {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+variable {sourceFirst targetFirst : Shape sig}
+variable {sourceMember : Shape sourceFirst.scope}
+variable {targetMember : Shape targetFirst.scope}
+variable {root : ContextRelation.Scope sourceContext targetContext .source base}
+variable {first : Relation base sourceFirstType targetFirstType
+  sourceFirst targetFirst}
+variable {sourceMemberRep : Rep (sourceFirst.context base)
+  sourceMemberType sourceMember}
+variable {targetMemberRep : Rep (targetFirst.context base)
+  targetMemberType targetMember}
+variable {memberDerivation : LambdaPFC.Tau.Sub
+  (sourceContext.snoc sourceFirstType)
+  (.ty sourceMemberType) (.ty targetMemberType)}
+
+/-- Root mapping after opening the source proper representation and running
+the first and member interface maps exactly once. -/
+abbrev ProperMaterialRootAt
+    {firstFinal final : Sig}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (memberMapping : Rename firstFinal final) : Rename sig final :=
+  ((properOpening sourceFirst sourceMember).comp firstMapping).comp
+    memberMapping
+
+noncomputable def properMaterialRootAt_typed
+    {firstFinal final : Sig}
+    {firstContext : Ctx firstFinal} {finalContext : Ctx final}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping)
+    (memberMapping : Rename firstFinal final)
+    (memberTyped : Rename.Typed firstContext finalContext memberMapping) :
+    Rename.Typed base finalContext
+      (ProperMaterialRootAt firstMapping memberMapping) :=
+  TypedRename.comp
+    (TypedRename.comp
+      (properOpening_typed base sourceFirst sourceMember) firstTyped)
+    memberTyped
+
+/-- Canonical source-first interface manufactured by the one representation
+opening.  Callers cannot replace it with an unrelated package. -/
+noncomputable def properMaterialSourceFirstInterface
+    {firstFinal : Sig} {firstContext : Ctx firstFinal}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping) :
+    Shape.Interface firstContext
+      (ProperMemberCompiler.SourceFirstAt sourceFirst sourceMember
+        firstMapping) :=
+  (openedSourceFirstInterface base sourceFirst sourceMember).rename
+    firstMapping firstTyped
+
+/-- Canonical source-member interface opened beside the source first value. -/
+noncomputable def properMaterialSourceMemberInterface
+    {firstFinal : Sig} {firstContext : Ctx firstFinal}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping) :
+    Shape.Interface firstContext
+      ((sourceMemberActual sourceFirst sourceMember).rename firstMapping) :=
+  (openedSourceMemberInterface base sourceFirst sourceMember).rename
+    firstMapping firstTyped
+
+abbrev ProperMaterialSourceMemberAt
+    {firstFinal : Sig}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal) :
+    Shape firstFinal :=
+  (sourceMemberActual sourceFirst sourceMember).rename firstMapping
+
+/-- Target environment before extending it with either mapped pair field. -/
+noncomputable def properMaterialTargetEnvironment
+    {firstFinal final : Sig}
+    {firstContext : Ctx firstFinal} {finalContext : Ctx final}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping)
+    (memberMapping : Rename firstFinal final)
+    (memberTyped : Rename.Typed firstContext finalContext memberMapping) :
+    Env targetContext finalContext :=
+  ((((root.endpointEnvs.targetRename
+      (properOpening sourceFirst sourceMember)
+      (properOpening_typed base sourceFirst sourceMember)).targetRename
+        firstMapping firstTyped).target).targetRename memberMapping
+          memberTyped)
+
+/-- Target first representation at the final member-map callback scope. -/
+noncomputable def properMaterialTargetFirstRep
+    {firstFinal final : Sig}
+    {firstContext : Ctx firstFinal} {finalContext : Ctx final}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping)
+    (memberMapping : Rename firstFinal final)
+    (memberTyped : Rename.Typed firstContext finalContext memberMapping) :
+    Rep finalContext targetFirstType
+      ((ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping).rename memberMapping) :=
+  (((first.targetRep.targetRename
+      (properOpening sourceFirst sourceMember)
+      (properOpening_typed base sourceFirst sourceMember)).targetRename
+        firstMapping firstTyped).targetRename memberMapping memberTyped)
+
+/-- Target member family at the final target-first scope, before substituting
+the actual target-first interface. -/
+abbrev ProperMaterialTargetMemberAt
+    {firstFinal final : Sig}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (memberMapping : Rename firstFinal final) :
+    Shape
+      ((ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping).rename memberMapping).scope :=
+  Pair.Proper.renameMember
+    (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+      firstMapping)
+    (Pair.Proper.renameMember
+      (genericTargetFirstAtSource sourceFirst sourceMember targetFirst)
+      (genericTargetMemberAtSource sourceFirst sourceMember targetFirst
+        targetMember)
+      firstMapping)
+    memberMapping
+
+abbrev ProperMaterialTargetMemberAtFirst
+    {firstFinal : Sig}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal) :
+    Shape
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping).scope :=
+  Pair.Proper.renameMember
+    (genericTargetFirstAtSource sourceFirst sourceMember targetFirst)
+    (genericTargetMemberAtSource sourceFirst sourceMember targetFirst
+      targetMember)
+    firstMapping
+
+abbrev ProperMaterialTargetMemberInstantiatedAt
+    {firstFinal : Sig} {firstContext : Ctx firstFinal}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (targetFirstInterface : Shape.Interface firstContext
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping)) : Shape firstFinal :=
+  (ProperMaterialTargetMemberAtFirst (targetMember := targetMember)
+    firstMapping).subst targetFirstInterface.substitution
+
+noncomputable def properMaterialTargetFirstInterface
+    {firstFinal final : Sig}
+    {firstContext : Ctx firstFinal} {finalContext : Ctx final}
+    {firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal}
+    (targetFirstInterface : Shape.Interface firstContext
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping))
+    (memberMapping : Rename firstFinal final)
+    (memberTyped : Rename.Typed firstContext finalContext memberMapping) :
+    Shape.Interface finalContext
+      ((ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping).rename memberMapping) :=
+  targetFirstInterface.rename memberMapping memberTyped
+
+theorem properMaterialTargetMemberInstantiatedAt_rename
+    {firstFinal final : Sig}
+    {firstContext : Ctx firstFinal} {finalContext : Ctx final}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (targetFirstInterface : Shape.Interface firstContext
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping))
+    (memberMapping : Rename firstFinal final)
+    (memberTyped : Rename.Typed firstContext finalContext memberMapping) :
+    (ProperMaterialTargetMemberInstantiatedAt
+      (targetMember := targetMember) firstMapping
+        targetFirstInterface).rename memberMapping =
+      (ProperMaterialTargetMemberAt (targetMember := targetMember)
+        firstMapping memberMapping).subst
+        (properMaterialTargetFirstInterface targetFirstInterface memberMapping
+          memberTyped).substitution := by
+  simpa only [ProperMaterialTargetMemberInstantiatedAt,
+    ProperMaterialTargetMemberAt, ProperMaterialTargetMemberAtFirst,
+    properMaterialTargetFirstInterface, Pair.Proper.renameMember] using
+    Shape.subst_interface_rename
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping)
+      (ProperMaterialTargetMemberAtFirst (targetMember := targetMember)
+        firstMapping)
+      targetFirstInterface memberMapping memberTyped
+
+/-- Target member representation at the final target-first scope, before the
+actual target-first substitution. -/
+noncomputable def properMaterialTargetMemberRep
+    {firstFinal final : Sig}
+    {firstContext : Ctx firstFinal} {finalContext : Ctx final}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping)
+    (memberMapping : Rename firstFinal final)
+    (memberTyped : Rename.Typed firstContext finalContext memberMapping) :
+    Rep
+      (((ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping).rename memberMapping).context finalContext)
+      targetMemberType
+      (ProperMaterialTargetMemberAt (targetMember := targetMember)
+        firstMapping memberMapping) := by
+  let opened := targetMemberRep.targetRename
+    (targetFirst.liftRename (properOpening sourceFirst sourceMember))
+    (targetFirst.liftRename_typed
+      (properOpening_typed base sourceFirst sourceMember))
+  let atFirst := opened.targetRename
+    ((targetFirst.rename (properOpening sourceFirst sourceMember)).liftRename
+      firstMapping)
+    ((targetFirst.rename (properOpening sourceFirst sourceMember)).liftRename_typed
+      firstTyped)
+  exact atFirst.targetRename
+    ((ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+      firstMapping).liftRename memberMapping)
+    ((ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+      firstMapping).liftRename_typed memberTyped)
+
+/-- Exact member scope selected by the canonical source-first interface and
+the target-first interface returned by the first map. -/
+noncomputable abbrev ProperMaterialMembersAt
+    {firstFinal : Sig} {firstContext : Ctx firstFinal}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping)
+    (targetFirstInterface : Shape.Interface firstContext
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping)) :=
+  properMemberScopeAt root.endpointEnvs first sourceMemberRep targetMemberRep
+    firstMapping firstTyped
+    (properMaterialSourceFirstInterface firstMapping firstTyped)
+    targetFirstInterface
+
+/-- Ephemeral output of the one member-interface map.  The retained payload
+is still indexed at the first callback, while both actual member interfaces
+are available at the final callback chosen by that relation. -/
+structure ProperMaterialView
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    {firstFinal : Sig} {firstContext : Ctx firstFinal}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping)
+    (targetFirstInterface : Shape.Interface firstContext
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping))
+    (relation : Relation firstContext sourceMemberType targetMemberType
+      (ProperMaterialSourceMemberAt firstMapping)
+      (ProperMaterialTargetMemberInstantiatedAt
+        (targetMember := targetMember) firstMapping targetFirstInterface))
+    {final : Sig} {finalContext : Ctx final}
+    (memberMapping : Rename firstFinal final)
+    (memberTyped : Rename.Typed firstContext finalContext memberMapping) where
+  retained : compiler.Retained firstMapping firstTyped
+    (properMaterialSourceFirstInterface firstMapping firstTyped)
+    targetFirstInterface relation
+  sourceMemberInterface : Shape.Interface finalContext
+    ((ProperMaterialSourceMemberAt firstMapping).rename memberMapping)
+  targetMemberInterface : Shape.Interface finalContext
+    ((ProperMaterialTargetMemberAt (targetMember := targetMember)
+      firstMapping memberMapping).subst
+        (properMaterialTargetFirstInterface targetFirstInterface memberMapping
+          memberTyped).substitution)
+
+/-- Result-polymorphic consumer invoked after the actual first and member
+interface maps, while their exact relation and retained proof payload remain
+in scope. -/
+structure ProperMaterialContinuation
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (answer : Ty sig) : Type 1 where
+  body : {firstFinal final : Sig} ->
+    {firstContext : Ctx firstFinal} -> {finalContext : Ctx final} ->
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal) ->
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping) ->
+    (targetFirstInterface : Shape.Interface firstContext
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping)) ->
+    (relation : Relation firstContext sourceMemberType targetMemberType
+      (ProperMaterialSourceMemberAt firstMapping)
+      (ProperMaterialTargetMemberInstantiatedAt
+        (targetMember := targetMember) firstMapping targetFirstInterface)) ->
+    (memberMapping : Rename firstFinal final) ->
+    (memberTyped : Rename.Typed firstContext finalContext memberMapping) ->
+    Rename.Typed base finalContext
+      (ProperMaterialRootAt firstMapping memberMapping) ->
+    ProperMaterialView compiler firstMapping firstTyped targetFirstInterface
+      relation memberMapping memberTyped ->
+    Path.Body finalContext
+      (answer.rename (ProperMaterialRootAt firstMapping memberMapping))
+
+end ProperMaterial
+
+private noncomputable def properRepresentationPackage
+    {targetContext : Ctx sig}
+    {first : Shape sig} {member : Shape first.scope}
+    (interface : Shape.Interface targetContext
+      (.stable (Pair.Proper.plan first member))) : Exp sig :=
+  (Pair.asRepresentation
+    (Pair.Proper.representation first member)).subst interface.substitution
+
+private noncomputable def properRepresentationPackage_hasType
+    {targetContext : Ctx sig}
+    {first : Shape sig} {member : Shape first.scope}
+    (interface : Shape.Interface targetContext
+      (.stable (Pair.Proper.plan first member))) :
+    Exp.HasType targetContext (properRepresentationPackage interface)
+      (Pair.Proper.representation first member).existsTy := by
+  let representation := Pair.Proper.representation first member
+  have opened :=
+    (Pair.asRepresentation_hasType targetContext representation).subst
+      interface.arguments.substitution_typed
+  have resultType :
+      (Pair.finalRepresentationTy representation).subst
+          interface.arguments.substitution =
+        representation.existsTy := by
+    calc
+      _ = interface.arguments.instantiate
+          (representation.existsTy.rename
+            (Pair.Proper.plan first member).telescope.weaken) :=
+        (interface.arguments.instantiate_eq_subst _).symm
+      _ = representation.existsTy :=
+        interface.arguments.instantiate_weaken representation.existsTy
+  rw [resultType] at opened
+  exact opened
+
+section ProperMaterialRun
+
+variable {sourceContext targetContext : LambdaPFC.Ctx n}
+variable {base : Ctx sig}
+variable {sourceFirstType targetFirstType : LambdaPFC.Ty n}
+variable {sourceMemberType targetMemberType : LambdaPFC.Ty (n + 1)}
+variable {sourceFirst targetFirst : Shape sig}
+variable {sourceMember : Shape sourceFirst.scope}
+variable {targetMember : Shape targetFirst.scope}
+variable {root : ContextRelation.Scope sourceContext targetContext .source base}
+variable {first : Relation base sourceFirstType targetFirstType
+  sourceFirst targetFirst}
+variable {sourceMemberRep : Rep (sourceFirst.context base)
+  sourceMemberType sourceMember}
+variable {targetMemberRep : Rep (targetFirst.context base)
+  targetMemberType targetMember}
+variable {memberDerivation : LambdaPFC.Tau.Sub
+  (sourceContext.snoc sourceFirstType)
+  (.ty sourceMemberType) (.ty targetMemberType)}
+
+private noncomputable def properMaterialMemberContinuation
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (answer : Ty sig)
+    (continuation : ProperMaterialContinuation compiler answer)
+    {firstFinal : Sig} {firstContext : Ctx firstFinal}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping)
+    (targetFirstInterface : Shape.Interface firstContext
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping))
+    (relation : Relation firstContext sourceMemberType targetMemberType
+      (ProperMaterialSourceMemberAt firstMapping)
+      (ProperMaterialTargetMemberInstantiatedAt
+        (targetMember := targetMember) firstMapping targetFirstInterface))
+    (retained : compiler.Retained firstMapping firstTyped
+      (properMaterialSourceFirstInterface firstMapping firstTyped)
+      targetFirstInterface relation) :
+    InterfaceMap.Continuation firstContext
+      (ProperMaterialTargetMemberInstantiatedAt
+        (targetMember := targetMember) firstMapping targetFirstInterface)
+      (answer.rename
+        ((properOpening sourceFirst sourceMember).comp firstMapping)) where
+  body memberMapping _finalContext memberTyped targetMemberInterface :=
+    let sourceMemberInterface :=
+      (properMaterialSourceMemberInterface firstMapping firstTyped).rename
+        memberMapping memberTyped
+    let normalizedTargetMemberInterface : Shape.Interface _
+        ((ProperMaterialTargetMemberAt (targetMember := targetMember)
+          firstMapping memberMapping).subst
+          (properMaterialTargetFirstInterface targetFirstInterface
+            memberMapping memberTyped).substitution) := by
+      rw [← properMaterialTargetMemberInstantiatedAt_rename firstMapping
+        targetFirstInterface memberMapping memberTyped]
+      exact targetMemberInterface
+    let view : ProperMaterialView compiler firstMapping firstTyped
+        targetFirstInterface relation memberMapping memberTyped := {
+      retained := retained
+      sourceMemberInterface := sourceMemberInterface
+      targetMemberInterface := normalizedTargetMemberInterface
+    }
+    (continuation.body firstMapping firstTyped targetFirstInterface relation
+      memberMapping memberTyped
+      (properMaterialRootAt_typed firstMapping firstTyped memberMapping
+        memberTyped)
+      view).expression
+  body_hasType memberMapping _finalContext memberTyped
+      targetMemberInterface := by
+    let sourceMemberInterface :=
+      (properMaterialSourceMemberInterface firstMapping firstTyped).rename
+        memberMapping memberTyped
+    let normalizedTargetMemberInterface : Shape.Interface _
+        ((ProperMaterialTargetMemberAt (targetMember := targetMember)
+          firstMapping memberMapping).subst
+          (properMaterialTargetFirstInterface targetFirstInterface
+            memberMapping memberTyped).substitution) := by
+      rw [← properMaterialTargetMemberInstantiatedAt_rename firstMapping
+        targetFirstInterface memberMapping memberTyped]
+      exact targetMemberInterface
+    let view : ProperMaterialView compiler firstMapping firstTyped
+        targetFirstInterface relation memberMapping memberTyped := {
+      retained := retained
+      sourceMemberInterface := sourceMemberInterface
+      targetMemberInterface := normalizedTargetMemberInterface
+    }
+    simpa only [Ty.rename_comp] using
+      (continuation.body firstMapping firstTyped targetFirstInterface relation
+        memberMapping memberTyped
+        (properMaterialRootAt_typed firstMapping firstTyped memberMapping
+          memberTyped)
+        view).typing
+
+private noncomputable def properMaterialFirstBody
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (answer : Ty sig)
+    (continuation : ProperMaterialContinuation compiler answer)
+    {firstFinal : Sig} {firstContext : Ctx firstFinal}
+    (firstMapping : Rename
+      (ProperMemberCompiler.CallbackSig sourceFirst sourceMember) firstFinal)
+    (firstTyped : Rename.Typed
+      (ProperMemberCompiler.CallbackContext base sourceFirst sourceMember)
+      firstContext firstMapping)
+    (targetFirstInterfaceAtSource : Shape.Interface firstContext
+      ((targetFirstAtSource sourceFirst sourceMember targetFirst).rename
+        firstMapping)) :
+    Path.Body firstContext
+      (answer.rename
+        ((properOpening sourceFirst sourceMember).comp firstMapping)) := by
+  let sourceFirstInterface :=
+    properMaterialSourceFirstInterface firstMapping firstTyped
+  let targetFirstInterface : Shape.Interface firstContext
+      (ProperMemberCompiler.TargetFirstAt sourceFirst sourceMember targetFirst
+        firstMapping) := by
+    simpa only [ProperMemberCompiler.TargetFirstAt,
+      genericTargetFirstAtSource, properOpening, targetFirstAtSource,
+      sourceFirstAtBinder, Shape.rename_comp] using
+        targetFirstInterfaceAtSource
+  let compiled := compiler.compile firstMapping firstTyped
+    sourceFirstInterface targetFirstInterface
+  let relation := compiled.1
+  let retained := compiled.2
+  let sourceMemberInterface :=
+    properMaterialSourceMemberInterface firstMapping firstTyped
+  let next := properMaterialMemberContinuation compiler answer continuation
+    firstMapping firstTyped targetFirstInterface relation retained
+  exact {
+    expression := relation.interfaceMap.run sourceMemberInterface
+      (answer.rename
+        ((properOpening sourceFirst sourceMember).comp firstMapping)) next
+    typing := relation.interfaceMap.run_hasType sourceMemberInterface
+      (answer.rename
+        ((properOpening sourceFirst sourceMember).comp firstMapping)) next
+  }
+
+private noncomputable def properMaterialFirstContinuation
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (answer : Ty sig)
+    (continuation : ProperMaterialContinuation compiler answer) :
+    InterfaceMap.Continuation
+      (sourceOpenedContext base sourceFirst sourceMember)
+      (targetFirstAtSource sourceFirst sourceMember targetFirst)
+      (answer.rename (properOpening sourceFirst sourceMember)) where
+  body firstMapping _firstContext firstTyped targetFirstInterface :=
+    (properMaterialFirstBody compiler answer continuation firstMapping
+      firstTyped targetFirstInterface).expression
+  body_hasType firstMapping _firstContext firstTyped
+      targetFirstInterface := by
+    simpa only [Ty.rename_comp] using
+      (properMaterialFirstBody compiler answer continuation firstMapping
+        firstTyped targetFirstInterface).typing
+
+private noncomputable def properMaterialNestedBody
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (answer : Ty sig)
+    (continuation : ProperMaterialContinuation compiler answer) :
+    Path.Body (sourceOpenedContext base sourceFirst sourceMember)
+      (answer.rename (properOpening sourceFirst sourceMember)) :=
+  let relationAt := adjustedFirstRelationAtSource
+    (sourceMember := sourceMember) first
+  let sourceInterface : Shape.Interface
+      (sourceOpenedContext base sourceFirst sourceMember)
+      ((sourceFirstAtBinder sourceFirst).rename
+        (sourceOpening sourceFirst sourceMember)) := by
+    simpa only [properOpening, sourceFirstAtBinder,
+      Shape.rename_comp] using
+        openedSourceFirstInterface base sourceFirst sourceMember
+  let next := properMaterialFirstContinuation compiler answer continuation
+  {
+    expression := relationAt.interfaceMap.run sourceInterface
+      (answer.rename (properOpening sourceFirst sourceMember)) next
+    typing := relationAt.interfaceMap.run_hasType sourceInterface
+      (answer.rename (properOpening sourceFirst sourceMember)) next
+  }
+
+private noncomputable def properMaterialOpenedBody
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (answer : Ty sig)
+    (continuation : ProperMaterialContinuation compiler answer) :
+    Exp (properRepresentationAtBinder sourceFirst sourceMember).scope :=
+  Pair.fromSuffixExp (sourceFirstAtBinder sourceFirst).binders
+    (sourceMemberAtBinder sourceFirst sourceMember).binders
+    (properMaterialNestedBody compiler answer continuation).expression
+
+private noncomputable def properMaterialOpenedBody_hasType
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (answer : Ty sig)
+    (continuation : ProperMaterialContinuation compiler answer) :
+    Exp.HasType
+      ((properRepresentationAtBinder sourceFirst sourceMember).context
+        (base.bindVar
+          (Pair.Proper.representation sourceFirst sourceMember).existsTy))
+      (properMaterialOpenedBody compiler answer continuation)
+      ((answer.weaken .var).rename
+        (properRepresentationAtBinder sourceFirst sourceMember).weaken) := by
+  let firstTele := (sourceFirstAtBinder sourceFirst).binders
+  let memberTele := (sourceMemberAtBinder sourceFirst sourceMember).binders
+  have nested := (properMaterialNestedBody compiler answer continuation).typing
+  have transported := fromSuffixExp_hasType firstTele memberTele nested
+  have openingTypeEq :
+      answer.rename (properOpening sourceFirst sourceMember) =
+      (((answer.rename (Rename.weaken .var)).rename firstTele.weaken).rename
+        memberTele.weaken) := by
+    unfold properOpening sourceOpening firstTele memberTele
+    rw [Ty.rename_comp, Ty.rename_comp]
+    rfl
+  have finalTypeEq :
+      Pair.fromSuffixTy firstTele memberTele
+          (answer.rename (properOpening sourceFirst sourceMember)) =
+      (answer.weaken .var).rename
+        (properRepresentationAtBinder sourceFirst sourceMember).weaken := by
+    calc
+      _ = Pair.fromSuffixTy firstTele memberTele
+          (((answer.rename (Rename.weaken .var)).rename firstTele.weaken).rename
+            memberTele.weaken) :=
+        congrArg (Pair.fromSuffixTy firstTele memberTele) openingTypeEq
+      _ = (answer.rename (Rename.weaken .var)).rename
+          (firstTele.append memberTele).weaken :=
+        fromSuffixTy_weaken firstTele memberTele _
+      _ = _ := rfl
+  exact finalTypeEq ▸ transported
+
+private noncomputable def properMaterialRepresentationBody
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (answer : Ty sig)
+    (continuation : ProperMaterialContinuation compiler answer) :
+    Exp (sig ,, .var) :=
+  (properRepresentationAtBinder sourceFirst sourceMember).unpack (.var .here)
+    (answer.weaken .var)
+    (properMaterialOpenedBody compiler answer continuation)
+
+private noncomputable def properMaterialRepresentationBody_hasType
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (answer : Ty sig)
+    (continuation : ProperMaterialContinuation compiler answer) :
+    Exp.HasType
+      (base.bindVar
+        (Pair.Proper.representation sourceFirst sourceMember).existsTy)
+      (properMaterialRepresentationBody compiler answer continuation)
+      (answer.weaken .var) :=
+  (properRepresentationAtBinder sourceFirst sourceMember).unpack_hasType
+    (properRepresentationVariable_hasType base sourceFirst sourceMember)
+    (properMaterialOpenedBody_hasType compiler answer continuation)
+
+/-- Open one actual proper-pair interface, run its first and member maps once,
+and immediately reclose a result-polymorphic continuation carrying the exact
+retained child payload and both actual member interfaces. -/
+noncomputable def runProperMaterial
+    (compiler : ProperMemberCompiler.Enriched root first sourceMemberRep
+      targetMemberRep memberDerivation)
+    (sourceInterface : Shape.Interface base
+      (.stable (Pair.Proper.plan sourceFirst sourceMember)))
+    (answer : Ty sig)
+    (continuation : ProperMaterialContinuation compiler answer) :
+    Path.Body base answer :=
+  let package := properRepresentationPackage sourceInterface
+  let packageTyping := properRepresentationPackage_hasType sourceInterface
+  let body := properMaterialRepresentationBody compiler answer continuation
+  let bodyTyping := properMaterialRepresentationBody_hasType compiler answer
+    continuation
+  {
+    expression := Adapter.apply
+      (Adapter.ofBody
+        (Pair.Proper.representation sourceFirst sourceMember).existsTy body)
+      package
+    typing := Adapter.apply_hasType (Adapter.ofBody_hasType bodyTyping)
+      packageTyping
+  }
+
+end ProperMaterialRun
+
 private noncomputable def properMemberArguments
     {base : Ctx sig} {first : Shape sig} {member : Shape first.scope}
     (firstInterface : Shape.Interface base first)
