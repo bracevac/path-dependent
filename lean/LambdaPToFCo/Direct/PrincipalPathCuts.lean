@@ -48,6 +48,24 @@ private noncomputable def widenSelectionLowAt
     ((Conversion.Singleton.unwrap base lower.inputTy).compose
       (Conversion.Interval.lower witness))
 
+/-- Retarget one exact selected representation between two source paths.
+The target program is ordinary identity because both paths reached the same
+stored interval witness in this continuation. -/
+private noncomputable def selectionAliasAt
+    {base : Ctx sig}
+    {sourceReceiver targetReceiver : LambdaPFC.Path n}
+    {label : LambdaPFC.Name} {middle : LambdaPFC.Ty n}
+    {lower upper : Shape sig} {selectedType : Ty sig}
+    (interval : IntervalRep (targetContext := base)
+      middle middle lower selectedType upper) :
+    Relation base (.TSel sourceReceiver label)
+      (.TSel targetReceiver label)
+      (.opaque selectedType) (.opaque selectedType) :=
+  Relation.ofConversion
+    (interval.selection sourceReceiver label)
+    (interval.selection targetReceiver label)
+    (Conversion.refl base selectedType)
+
 /-- Fuse the literal principal cut `widen ; sel_lo`.
 
 Only the selection path is followed here.  Its exact lower representation
@@ -117,6 +135,53 @@ noncomputable def selectionHighLowSame
       | interval interval =>
           exact consumer mapping typed
             (Relation.refl (interval.selection receiver label)))
+
+/-- Fuse the Record alias cut
+`sel_hi (receiver.fst.A) ; sel_lo (receiver.A)`.
+
+The second path typing is required literally to be the `sel_l` view built
+from `receiverTyping`, `innerTyping`, and `distinct`.  Compilation follows
+`innerTyping` once, through the actual nested pair packages, then retargets
+the one selected representation from `receiver.fst.A` to `receiver.A`.
+There is no generic projection from an already compact pair Relation. -/
+noncomputable def selectionHighLowAlias
+    {sourceContext targetContext : LambdaPFC.Ctx n}
+    {side : ProofSide} {sig : Sig} {base : Ctx sig}
+    (scope : Scope sourceContext targetContext side base)
+    {receiver : LambdaPFC.Path n}
+    {firstSource : LambdaPFC.Ty n} {skippedLabel selectedLabel : LambdaPFC.Name}
+    {kind : LambdaPFC.Kind} {dependent : LambdaPFC.Tau (n + 1) kind}
+    {middle : LambdaPFC.Ty n}
+    (receiverTyping : LambdaPFC.Path.Ty
+      (side.choose sourceContext targetContext) receiver
+      (.ty (.Pair firstSource skippedLabel dependent)))
+    (innerTyping : LambdaPFC.Path.Ty
+      (side.choose sourceContext targetContext)
+      (.sel receiver.fst selectedLabel) (.intv middle middle))
+    (distinct : selectedLabel ≠ skippedLabel)
+    (_firstNonempty _secondNonempty : LambdaPFC.Tau.Sub
+      (side.choose sourceContext targetContext)
+      (.ty middle) (.ty middle))
+    (answer : Ty sig)
+    (consumer : forall {current : Sig} {currentContext : Ctx current},
+      (mapping : Rename sig current) ->
+      Rename.Typed base currentContext mapping ->
+      {source target : Shape current} ->
+      Relation currentContext (.TSel receiver.fst selectedLabel)
+        (.TSel receiver selectedLabel) source target ->
+      Path.Body currentContext (answer.rename mapping)) :
+    Path.Body base answer := by
+  let _targetTyping := receiverTyping.sel_l innerTyping distinct
+  exact Path.compile innerTyping
+    (scope.endpointEnvs.environment side) answer
+    (fun mapping typed _focused view => by
+      cases view with
+      | interval interval =>
+          exact consumer mapping typed
+            (selectionAliasAt
+              (sourceReceiver := receiver.fst)
+              (targetReceiver := receiver)
+              (label := selectedLabel) interval))
 
 end
 
