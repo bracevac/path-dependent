@@ -1,4 +1,4 @@
-import DotToFCsub.ElaborationErasure
+import DotToFCsub.OperationalCorrespondence
 import DotFC.Source.Examples
 
 /-!
@@ -187,7 +187,26 @@ theorem member_let_is_checked : BReady memberLet := by
   · rfl
   · native_decide
 
-/-! ## Noncanonical direct interface rejection -/
+/-- The source member let takes one ordinary erased zeta step. -/
+theorem member_let_source_step :
+    DotFC.Source.Runtime.Step
+      (DotFC.Source.Tm.let' (.obj A .bot) (.var .here)).erase
+      (.obj : DotFC.Source.Runtime.Tm []) := by
+  exact .zeta .obj
+
+/-- The checked Stage-B compilation maps that source step to exactly one
+FCsub runtime step; all generated names and bound evidence remain static. -/
+theorem member_let_runtime_correspondence :
+    FCsub.Runtime.Step memberLetTarget.erase
+      (.unit : FCsub.Runtime.Tm []) := by
+  obtain ⟨target, compilation, step⟩ :=
+    member_let_is_checked.sourceStep member_let_source_step
+  have targetEq : target = memberLetTarget :=
+    TermTranslates.functional compilation member_let_opens_exactly_once
+  subst target
+  simpa [RuntimeEmbedding.embed, RuntimeEmbedding.embedWith] using step
+
+/-! ## Stable-root interface adaptation -/
 
 def noncanonicalAppContext : DotFC.Source.Ctx (([] ▹ .term) ▹ .term) :=
   (DotFC.Source.Ctx.nil.snoc memberFunctionSource).snoc
@@ -231,40 +250,33 @@ def noncanonicalAppTargetContext :
   (FCsub.Ctx.nil.extendTerm memberFunctionTarget).extendPayload
     (MemberEncoding.telescope .bot .bot) .one
 
-theorem noncanonical_member_app_still_generates_syntax :
-    term? noncanonicalMemberApp = some abstractMemberAppTarget := by
+def noncanonicalMemberAppTarget :
+    FCsub.Tm (MemberEncoding.Payload ([] ▹ .term)) :=
+  MemberEncoding.app .bot .top
+    (.var (.there (.there (.there (.there .here)))))
+    (.tvar MemberEncoding.name)
+    (.trans (.refl .bot) (.var MemberEncoding.lower))
+    (.trans (.var MemberEncoding.upper) (.top .bot))
+    (.var MemberEncoding.payload)
+
+theorem noncanonical_member_app_adapts_root_evidence :
+    term? noncanonicalMemberApp = some noncanonicalMemberAppTarget := by
   native_decide
 
 theorem noncanonical_context_translation :
     SourceContext.Translates noncanonicalAppContext
       noncanonicalAppTargetContext := rfl
 
-theorem noncanonical_member_app_checker_rejects :
-    FCsub.synthTm noncanonicalAppTargetContext abstractMemberAppTarget = none := by
+theorem noncanonical_member_app_checker_accepts :
+    FCsub.synthTm noncanonicalAppTargetContext noncanonicalMemberAppTarget =
+      some .top := by
   native_decide
 
-theorem noncanonical_member_app_not_ready :
-    ¬ BReady noncanonicalMemberApp := by
-  intro ready
-  obtain ⟨targetContext, type', target, contextTranslation, typeTranslation,
-    elaboration, checked⟩ := ready
-  have contextEq : targetContext = noncanonicalAppTargetContext :=
-    SourceContext.Translates.functional contextTranslation
-      noncanonical_context_translation
-  have typeEq : type' =
-      (.top : FCsub.Ty (MemberEncoding.Payload ([] ▹ .term))) :=
-    Layout.Translates.functional typeTranslation rfl
-  have termEq : target = abstractMemberAppTarget :=
-    TermTranslates.functional elaboration
-      noncanonical_member_app_still_generates_syntax
-  subst targetContext
-  subst type'
-  subst target
-  have impossible :
-      (none : Option (FCsub.Ty (MemberEncoding.Payload ([] ▹ .term)))) =
-        some .top :=
-    noncanonical_member_app_checker_rejects.symm.trans checked
-  contradiction
+theorem noncanonical_member_app_ready : BReady noncanonicalMemberApp := by
+  exact ⟨noncanonicalAppTargetContext, .top, noncanonicalMemberAppTarget,
+    noncanonical_context_translation, rfl,
+    noncanonical_member_app_adapts_root_evidence,
+    noncanonical_member_app_checker_accepts⟩
 
 /-! ## Bad bounds retain directed evidence provenance -/
 
