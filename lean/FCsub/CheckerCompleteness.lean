@@ -37,6 +37,9 @@ private theorem checkEqCore_complete {scope : Sig} {context : Ctx scope}
         secondInduction
       simp [checkEqCore, firstCore, secondCore, firstSource, firstTarget,
         secondSource, secondTarget]
+  | unfoldRec guarded =>
+      exact ⟨⟨_, _, .unfoldRec guarded⟩, by simp [checkEqCore, guarded],
+        rfl, rfl⟩
 
 /-! ## Directed evidence, argument lists, and telescope morphisms
 
@@ -289,6 +292,9 @@ private theorem checkValueCore_complete {scope : Sig} {term : Tm scope}
   | slam _ induction =>
       obtain ⟨checked, core⟩ := induction
       exact ⟨⟨.slam checked.typing⟩, by simp [checkValueCore, core]⟩
+  | foldRec _ induction =>
+      obtain ⟨checked, core⟩ := induction
+      exact ⟨⟨.foldRec checked.typing⟩, by simp [checkValueCore, core]⟩
 
 private theorem checkTmCore_complete {scope : Sig} {context : Ctx scope}
     {term : Tm scope} {type : Ty scope}
@@ -392,6 +398,12 @@ private theorem checkTmCore_complete {scope : Sig} {context : Ctx scope}
       dsimp at nonescapeCore nonescapeOutput
       subst actualResult
       simp [checkTmCore, bodyCore, nonescapeCore]
+  | foldRec guarded innerTyping innerInduction =>
+      obtain ⟨innerChecked, innerCore, innerType⟩ := innerInduction
+      simp [checkTmCore, guarded, innerCore, innerType]
+  | unfoldRec guarded innerTyping innerInduction =>
+      obtain ⟨innerChecked, innerCore, innerType⟩ := innerInduction
+      simp [checkTmCore, guarded, innerCore, innerType]
 
 /-! ## Public completeness -/
 

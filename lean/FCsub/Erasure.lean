@@ -30,6 +30,8 @@ def erase {scope : Sig} (term : Tm scope) : Runtime.Tm scope :=
       body.erase.subst (Runtime.Subst.dropStatic names constraints)
   | .sapp _ function _ _ => function.erase
   | .newtype _ body => body.erase.subst Runtime.Subst.dropNewtype
+  | .foldRec _ _ inner => inner.erase
+  | .unfoldRec _ _ inner => inner.erase
 
 @[simp]
 theorem erase_unit {scope : Sig} :
@@ -96,6 +98,18 @@ theorem erase_newtype {scope : Sig} (witness : Ty scope)
     (body : Tm (NewtypeScope scope)) :
     (Tm.newtype witness body).erase =
       body.erase.subst Runtime.Subst.dropNewtype := rfl
+
+@[simp]
+theorem erase_foldRec {scope : Sig} {names : Nat}
+    (bodies : RecBodies scope names names) (index : Fin names)
+    (term : Tm scope) :
+    (Tm.foldRec bodies index term).erase = term.erase := rfl
+
+@[simp]
+theorem erase_unfoldRec {scope : Sig} {names : Nat}
+    (bodies : RecBodies scope names names) (index : Fin names)
+    (term : Tm scope) :
+    (Tm.unfoldRec bodies index term).erase = term.erase := rfl
 
 end Tm
 

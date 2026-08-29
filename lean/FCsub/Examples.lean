@@ -1,5 +1,7 @@
 import FCsub.Checker
-import FCsub.Erasure
+import FCsub.Preservation
+import FCsub.Progress
+import FCsub.Simulation
 
 /-!
 # Standalone FCsub kernel examples
@@ -177,5 +179,110 @@ theorem composed_morphism_is_well_typed :
     Nonempty (TelMor.HasType Ctx.nil permutationRoundTrip
       multiTelescope multiTelescope) :=
   synthMor_sound composed_morphism_is_checked
+
+/-! ## Guarded simultaneous recursion -/
+
+def recursiveIndex : Fin 1 := ⟨0, by omega⟩
+
+/-- A one-component recursive block whose unfolding is
+`recursiveFunctionType`.  The recursive occurrence is guarded by its arrow
+head. -/
+def recursiveBodies : RecBodies [] 1 1 :=
+  .snoc .nil (.arr (.tvar .here) .one)
+
+def recursiveFunctionType : Ty [] :=
+  .arr (.recProj recursiveBodies recursiveIndex) .one
+
+theorem recursive_bodies_are_guarded :
+    recursiveBodies.headGuarded = true := by
+  native_decide
+
+theorem recursive_projection_unfolds_to_arrow :
+    recursiveBodies.unfoldAt recursiveIndex = recursiveFunctionType := by
+  native_decide
+
+/-- A finite inhabitant of the unfolded arrow: it ignores its recursively
+typed argument and returns unit. -/
+def recursiveFunction : Tm [] :=
+  .lam (.recProj recursiveBodies recursiveIndex) .unit
+
+def foldedRecursiveFunction : Tm [] :=
+  .foldRec recursiveBodies recursiveIndex recursiveFunction
+
+def unfoldedRecursiveFunction : Tm [] :=
+  .unfoldRec recursiveBodies recursiveIndex foldedRecursiveFunction
+
+theorem recursive_fold_is_checked :
+    synthTm Ctx.nil foldedRecursiveFunction =
+      some (.recProj recursiveBodies recursiveIndex) := by
+  native_decide
+
+theorem recursive_unfold_is_checked :
+    synthTm Ctx.nil unfoldedRecursiveFunction =
+      some recursiveFunctionType := by
+  native_decide
+
+theorem recursive_unfold_fold_step :
+    Tm.Step unfoldedRecursiveFunction recursiveFunction :=
+  .unfoldFold .lam
+
+theorem recursive_unfold_fold_preserves_type :
+    Nonempty (Tm.HasType Ctx.nil recursiveFunction recursiveFunctionType) := by
+  obtain ⟨typing⟩ := synthTm_sound recursive_unfold_is_checked
+  exact Tm.Step.preservation recursive_unfold_fold_step typing
+
+theorem recursive_unfold_has_progress :
+    Tm.Progress unfoldedRecursiveFunction := by
+  obtain ⟨typing⟩ := synthTm_sound recursive_unfold_is_checked
+  exact Tm.progress typing
+
+theorem recursive_wrappers_erase :
+    unfoldedRecursiveFunction.erase = recursiveFunction.erase := rfl
+
+theorem recursive_unfold_fold_is_simulated :
+    Runtime.Steps unfoldedRecursiveFunction.erase recursiveFunction.erase :=
+  recursive_unfold_fold_step.erase_simulates
+
+/-! Canonical equality casts expose the corresponding explicit runtime
+wrapper before the fold/unfold cancellation rule fires. -/
+
+def recursiveUnfoldCast : Tm [] :=
+  .cast foldedRecursiveFunction
+    (.eqToLe (.unfoldRec recursiveBodies recursiveIndex))
+
+def recursiveFoldCast : Tm [] :=
+  .cast recursiveFunction
+    (.eqToLe (.symm (.unfoldRec recursiveBodies recursiveIndex)))
+
+theorem recursive_unfold_cast_is_checked :
+    synthTm Ctx.nil recursiveUnfoldCast = some recursiveFunctionType := by
+  native_decide
+
+theorem recursive_fold_cast_is_checked :
+    synthTm Ctx.nil recursiveFoldCast =
+      some (.recProj recursiveBodies recursiveIndex) := by
+  native_decide
+
+theorem recursive_unfold_cast_exposes_wrapper :
+    Tm.Step recursiveUnfoldCast unfoldedRecursiveFunction :=
+  .castEqUnfoldRec (.foldRec .lam)
+
+theorem recursive_fold_cast_exposes_wrapper :
+    Tm.Step recursiveFoldCast foldedRecursiveFunction :=
+  .castEqSymmUnfoldRec .lam
+
+/-! A recursive name cannot be its own unguarded head.  The syntax remains
+representable for diagnostics, but the equality checker rejects it. -/
+
+def unguardedBodies : RecBodies [] 1 1 :=
+  .snoc .nil (.tvar .here)
+
+theorem unguarded_bodies_fail_guard :
+    unguardedBodies.headGuarded = false := by
+  native_decide
+
+theorem unguarded_unfold_equality_is_rejected :
+    synthEq Ctx.nil (.unfoldRec unguardedBodies recursiveIndex) = none := by
+  native_decide
 
 end FCsub.Examples

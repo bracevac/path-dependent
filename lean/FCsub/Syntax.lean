@@ -33,6 +33,19 @@ inductive Ty : Sig → Type where
   | forallT {scope : Sig} {names constraints : Nat}
       (telescope : Telescope scope names constraints)
       (body : Ty (StaticScope scope names constraints)) : Ty scope
+  | recProj {scope : Sig} {names : Nat}
+      (bodies : RecBodies scope names names) (index : Fin names) : Ty scope
+
+/-- A simultaneous recursive block under construction.
+
+Every body sees the same `bound` self names.  The independent `count` index
+records how many bodies have been supplied; a closed recursive block has type
+`RecBodies scope names names`. -/
+inductive RecBodies : (scope : Sig) → (bound count : Nat) → Type where
+  | nil {scope : Sig} {bound : Nat} : RecBodies scope bound 0
+  | snoc {scope : Sig} {bound count : Nat}
+      (initial : RecBodies scope bound count)
+      (body : Ty (TypeScope scope bound)) : RecBodies scope bound (count + 1)
 
 /-- The uniform proposition category of FCsub constraint telescopes.
 Milestone 3.5 intentionally has only directed type inclusion. -/
@@ -53,7 +66,7 @@ inductive Telescope : (scope : Sig) → (names constraints : Nat) → Type where
 
 end
 
-deriving instance DecidableEq for Ty, Proposition, Telescope
+deriving instance DecidableEq for Ty, RecBodies, Proposition, Telescope
 
 mutual
 
@@ -74,6 +87,17 @@ def Ty.rename {source target : Sig} (type : Ty source)
   | .forallT telescope body =>
       .forallT (telescope.rename rho)
         (body.rename (rho.liftStatic _ _))
+  | .recProj bodies index => .recProj (bodies.rename rho) index
+
+/-- Rename the ambient scope of every body while preserving its shared block
+of recursive self names. -/
+def RecBodies.rename {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count) (rho : Rename source target) :
+    RecBodies target bound count :=
+  match bodies with
+  | .nil => .nil
+  | .snoc initial body =>
+      .snoc (initial.rename rho) (body.rename (rho.liftTypes bound))
 
 /-- Rename a telescope proposition. -/
 def Proposition.rename {source target : Sig}
@@ -103,6 +127,16 @@ def weaken {scope : Sig} {kind : BinderKind} (type : Ty scope) :
   type.rename Rename.succ
 
 end Ty
+
+namespace RecBodies
+
+/-- Weaken the ambient scope of a recursive block. -/
+def weaken {scope : Sig} {kind : BinderKind} {bound count : Nat}
+    (bodies : RecBodies scope bound count) :
+    RecBodies (scope ▹ kind) bound count :=
+  bodies.rename Rename.succ
+
+end RecBodies
 
 namespace Proposition
 
@@ -142,6 +176,18 @@ def Ty.rename_id {scope : Sig} (type : Ty scope) :
   | .forallT telescope body => by
       simp only [Ty.rename, Rename.liftStatic_id,
         Telescope.rename_id telescope, Ty.rename_id body]
+  | .recProj bodies index => by
+      simp only [Ty.rename, RecBodies.rename_id bodies]
+
+@[simp]
+def RecBodies.rename_id {scope : Sig} {bound count : Nat}
+    (bodies : RecBodies scope bound count) :
+    bodies.rename Rename.id = bodies :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.rename, RecBodies.rename_id initial,
+        Rename.liftTypes_id, Ty.rename_id body]
 
 @[simp]
 def Proposition.rename_id {scope : Sig}
@@ -183,6 +229,20 @@ def Ty.rename_comp {first second third : Sig} (type : Ty first)
   | .forallT telescope body => by
       simp only [Ty.rename, Telescope.rename_comp telescope,
         Ty.rename_comp body, Rename.liftStatic_comp]
+  | .recProj bodies index => by
+      simp only [Ty.rename, RecBodies.rename_comp bodies]
+
+@[simp]
+def RecBodies.rename_comp {first second third : Sig} {bound count : Nat}
+    (bodies : RecBodies first bound count)
+    (rho₁ : Rename first second) (rho₂ : Rename second third) :
+    (bodies.rename rho₁).rename rho₂ =
+      bodies.rename (rho₁.comp rho₂) :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.rename, RecBodies.rename_comp initial,
+        Ty.rename_comp body, Rename.liftTypes_comp]
 
 @[simp]
 def Proposition.rename_comp {first second third : Sig}
@@ -261,6 +321,8 @@ inductive EqCo : Sig → Type where
   | refl {scope : Sig} (type : Ty scope) : EqCo scope
   | symm {scope : Sig} (evidence : EqCo scope) : EqCo scope
   | trans {scope : Sig} (first second : EqCo scope) : EqCo scope
+  | unfoldRec {scope : Sig} {names : Nat}
+      (bodies : RecBodies scope names names) (index : Fin names) : EqCo scope
 deriving DecidableEq
 
 mutual
@@ -349,6 +411,7 @@ def rename {source target : Sig} (evidence : EqCo source)
   | .refl type => .refl (type.rename rho)
   | .symm inner => .symm (inner.rename rho)
   | .trans first second => .trans (first.rename rho) (second.rename rho)
+  | .unfoldRec bodies index => .unfoldRec (bodies.rename rho) index
 
 def weaken {scope : Sig} {kind : BinderKind} (evidence : EqCo scope) :
     EqCo (scope ▹ kind) :=
@@ -363,6 +426,7 @@ theorem rename_id {scope : Sig} (evidence : EqCo scope) :
   | symm inner induction => simp [rename, induction]
   | trans first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
+  | unfoldRec bodies index => simp [rename]
 
 @[simp]
 theorem rename_comp {first second third : Sig} (evidence : EqCo first)
@@ -375,6 +439,7 @@ theorem rename_comp {first second third : Sig} (evidence : EqCo first)
   | symm inner induction => simp [rename, induction]
   | trans firstEvidence secondEvidence firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
+  | unfoldRec bodies index => simp [rename]
 
 end EqCo
 
@@ -601,6 +666,12 @@ inductive Tm : Sig → Type where
       (evidence : LeArgs scope constraints) : Tm scope
   | newtype {scope : Sig} (witness : Ty scope)
       (body : Tm (NewtypeScope scope)) : Tm scope
+  | foldRec {scope : Sig} {names : Nat}
+      (bodies : RecBodies scope names names) (index : Fin names)
+      (term : Tm scope) : Tm scope
+  | unfoldRec {scope : Sig} {names : Nat}
+      (bodies : RecBodies scope names names) (index : Fin names)
+      (term : Tm scope) : Tm scope
 deriving DecidableEq
 
 namespace Tm
@@ -632,6 +703,10 @@ def rename {source target : Sig} (term : Tm source)
         (witnesses.rename rho) (evidence.rename rho)
   | .newtype witness body =>
       .newtype (witness.rename rho) (body.rename rho.liftNewtype)
+  | .foldRec bodies index term =>
+      .foldRec (bodies.rename rho) index (term.rename rho)
+  | .unfoldRec bodies index term =>
+      .unfoldRec (bodies.rename rho) index (term.rename rho)
 
 def weaken {scope : Sig} {kind : BinderKind} (term : Tm scope) :
     Tm (scope ▹ kind) :=
@@ -657,6 +732,8 @@ theorem rename_id {scope : Sig} (term : Tm scope) :
   | sapp telescope function witnesses evidence induction =>
       simp [rename, induction]
   | newtype witness body induction => simp [rename, induction]
+  | foldRec bodies index term induction => simp [rename, induction]
+  | unfoldRec bodies index term induction => simp [rename, induction]
 
 @[simp]
 theorem rename_comp {first second third : Sig} (term : Tm first)
@@ -689,6 +766,10 @@ theorem rename_comp {first second third : Sig} (term : Tm first)
         TypeArgs.rename_comp, LeArgs.rename_comp]
   | newtype witness body induction =>
       simp [rename, induction, Ty.rename_comp, Rename.liftNewtype_comp]
+  | foldRec bodies index term induction =>
+      simp [rename, induction, RecBodies.rename_comp]
+  | unfoldRec bodies index term induction =>
+      simp [rename, induction, RecBodies.rename_comp]
 
 end Tm
 

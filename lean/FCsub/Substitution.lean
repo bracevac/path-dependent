@@ -1,4 +1,4 @@
-import FCsub.Telescope
+import FCsub.Recursion
 
 /-!
 # Four-sort substitution for standalone FCsub
@@ -273,6 +273,16 @@ def Ty.substitute {source target : Sig} (type : Ty source)
   | .forallT telescope body =>
       .forallT (telescope.substitute substitution)
         (body.substitute (substitution.liftStatic _ _))
+  | .recProj bodies index => .recProj (bodies.substitute substitution) index
+
+def RecBodies.substitute {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (substitution : Subst source target) : RecBodies target bound count :=
+  match bodies with
+  | .nil => .nil
+  | .snoc initial body =>
+      .snoc (initial.substitute substitution)
+        (body.substitute (substitution.liftTypes bound))
 
 def Proposition.substitute {source target : Sig}
     (proposition : Proposition source) (substitution : Subst source target) :
@@ -309,6 +319,8 @@ def EqCo.substitute {source target : Sig} (evidence : EqCo source)
   | .symm inner => .symm (inner.substitute substitution)
   | .trans first second =>
       .trans (first.substitute substitution) (second.substitute substitution)
+  | .unfoldRec bodies index =>
+      .unfoldRec (bodies.substitute substitution) index
 
 mutual
 
@@ -403,6 +415,12 @@ def Tm.substitute {source target : Sig} (term : Tm source)
   | .newtype witness body =>
       .newtype (witness.substitute substitution)
         (body.substitute substitution.liftNewtype)
+  | .foldRec bodies index inner =>
+      .foldRec (bodies.substitute substitution) index
+        (inner.substitute substitution)
+  | .unfoldRec bodies index inner =>
+      .unfoldRec (bodies.substitute substitution) index
+        (inner.substitute substitution)
 
 /-! ## Operational instantiation forms -/
 

@@ -679,6 +679,28 @@ def Ty.substitute_rename_square {source middle source' target : Sig}
       rw [Telescope.substitute_rename_square telescope _ _ _ _ square,
         Ty.substitute_rename_square body _ _ _ _
           (square.liftStatic _ _)]
+  | .recProj bodies index => by
+      simp only [Ty.substitute, Ty.rename]
+      rw [RecBodies.substitute_rename_square bodies _ _ _ _ square]
+
+def RecBodies.substitute_rename_square
+    {source middle source' target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (sourceSubst : Subst source middle)
+    (sourceRename : Rename source source')
+    (targetRename : Rename middle target)
+    (targetSubst : Subst source' target)
+    (square : Subst.TypeSquare sourceSubst sourceRename targetRename
+      targetSubst) :
+    (bodies.substitute sourceSubst).rename targetRename =
+      (bodies.rename sourceRename).substitute targetSubst :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute, RecBodies.rename]
+      rw [RecBodies.substitute_rename_square initial _ _ _ _ square,
+        Ty.substitute_rename_square body _ _ _ _
+          (square.liftTypes bound)]
 
 def Proposition.substitute_rename_square
     {source middle source' target : Sig}
@@ -735,6 +757,18 @@ def Ty.substitute_id {scope : Sig} (type : Ty scope) :
   | .forallT telescope body => by
       simp only [Ty.substitute, Subst.liftStatic_id,
         Telescope.substitute_id telescope, Ty.substitute_id body]
+  | .recProj bodies index => by
+      simp only [Ty.substitute, RecBodies.substitute_id bodies]
+
+@[simp]
+def RecBodies.substitute_id {scope : Sig} {bound count : Nat}
+    (bodies : RecBodies scope bound count) :
+    bodies.substitute Subst.id = bodies :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute, Subst.liftTypes_id,
+        RecBodies.substitute_id initial, Ty.substitute_id body]
 
 @[simp]
 def Proposition.substitute_id {scope : Sig}
@@ -1041,6 +1075,18 @@ def Ty.rename?_id {scope : Sig} (type : Ty scope) :
   | .forallT telescope body => by
       simp [Ty.rename?, Telescope.rename?_id telescope,
         Ty.rename?_id body]
+  | .recProj bodies index => by
+      simp [Ty.rename?, RecBodies.rename?_id bodies]
+
+@[simp]
+def RecBodies.rename?_id {scope : Sig} {bound count : Nat}
+    (bodies : RecBodies scope bound count) :
+    bodies.rename? PartialTypeRename.id = some bodies :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp [RecBodies.rename?, RecBodies.rename?_id initial,
+        Ty.rename?_id body]
 
 @[simp]
 def Proposition.rename?_id {scope : Sig}
@@ -1098,6 +1144,26 @@ def Ty.rename?_comp {first middle target : Sig} (type : Ty first)
           (after.liftStatic _ _)]
       cases telescope.rename? before <;>
         cases body.rename? (before.liftStatic _ _) <;> simp [Ty.rename?]
+  | .recProj bodies index => by
+      simp only [Ty.rename?, RecBodies.rename?_comp bodies before after]
+      cases bodies.rename? before <;> simp [Ty.rename?]
+
+def RecBodies.rename?_comp {first middle target : Sig} {bound count : Nat}
+    (bodies : RecBodies first bound count)
+    (before : PartialTypeRename first middle)
+    (after : PartialTypeRename middle target) :
+    bodies.rename? (before.comp after) =
+      (bodies.rename? before).bind (fun result => result.rename? after) :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.rename?, PartialTypeRename.liftTypes_comp,
+        RecBodies.rename?_comp initial before after,
+        Ty.rename?_comp body (before.liftTypes bound)
+          (after.liftTypes bound)]
+      cases initial.rename? before <;>
+        cases body.rename? (before.liftTypes bound) <;>
+          simp [RecBodies.rename?]
 
 def Proposition.rename?_comp {first middle target : Sig}
     (proposition : Proposition first)
@@ -1518,6 +1584,36 @@ def Ty.rename?_substitute_square {source middle source' target : Sig}
         (Ty.rename?_substitute_square body _ _ _ _
           (square.liftStatic _ _))
         (fun _ _ => rfl)
+  | .recProj bodies index => by
+      simpa [Ty.rename?_recProj, Option.map_map, Function.comp_def,
+        Ty.substitute] using
+        congrArg (Option.map (fun renamed => Ty.recProj renamed index))
+          (RecBodies.rename?_substitute_square bodies _ _ _ _ square)
+
+def RecBodies.rename?_substitute_square
+    {source middle source' target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (partialSource : PartialTypeRename source middle)
+    (sourceSubst : Subst source source')
+    (targetSubst : Subst middle target)
+    (partialTarget : PartialTypeRename source' target)
+    (square : PartialTypeRename.SubstSquare partialSource sourceSubst
+      targetSubst partialTarget) :
+    Option.map (fun result => result.substitute targetSubst)
+        (bodies.rename? partialSource) =
+      (bodies.substitute sourceSubst).rename? partialTarget :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      exact Option.map_bind₂ _ _ _ _
+        (fun result => result.substitute targetSubst)
+        (fun result => result.substitute (targetSubst.liftTypes bound))
+        (fun result => result.substitute targetSubst)
+        RecBodies.snoc RecBodies.snoc
+        (RecBodies.rename?_substitute_square initial _ _ _ _ square)
+        (Ty.rename?_substitute_square body _ _ _ _
+          (square.liftTypes bound))
+        (fun _ _ => rfl)
 
 def Proposition.rename?_substitute_square {source middle source' target : Sig}
     (proposition : Proposition source)
@@ -1669,6 +1765,20 @@ def Ty.substitute_congr {source target : Sig} (type : Ty source)
       simp only [Ty.substitute]
       rw [Telescope.substitute_congr telescope equal,
         Ty.substitute_congr body (equal.liftStatic _ _)]
+  | .recProj bodies index => by
+      simp only [Ty.substitute]
+      rw [RecBodies.substitute_congr bodies equal]
+
+def RecBodies.substitute_congr {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    {first second : Subst source target} (equal : Subst.TypeEq first second) :
+    bodies.substitute first = bodies.substitute second :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute]
+      rw [RecBodies.substitute_congr initial equal,
+        Ty.substitute_congr body (equal.liftTypes bound)]
 
 def Proposition.substitute_congr {source target : Sig}
     (proposition : Proposition source) {first second : Subst source target}
@@ -1717,6 +1827,21 @@ def Ty.substitute_eq_subst {source target : Sig} (type : Ty source)
       simp only [Ty.substitute, Ty.subst]
       rw [Telescope.substitute_eq_subst telescope _ _ agrees,
         Ty.substitute_eq_subst body _ _ (agrees.liftStatic _ _)]
+  | .recProj bodies index => by
+      simp only [Ty.substitute, Ty.subst]
+      rw [RecBodies.substitute_eq_subst bodies _ _ agrees]
+
+def RecBodies.substitute_eq_subst {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (full : Subst source target) (types : TySubst source target)
+    (agrees : Subst.TypeAgrees full types) :
+    bodies.substitute full = bodies.subst types :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute, RecBodies.subst]
+      rw [RecBodies.substitute_eq_subst initial _ _ agrees,
+        Ty.substitute_eq_subst body _ _ (agrees.liftTypes bound)]
 
 def Proposition.substitute_eq_subst {source target : Sig}
     (proposition : Proposition source) (full : Subst source target)
@@ -2098,6 +2223,22 @@ def Ty.substitute_comp {first middle target : Sig} (type : Ty first)
         Ty.substitute_comp body]
       rw [Ty.substitute_congr body
         (Subst.TypeEq.liftStatic_comp before after _ _)]
+  | .recProj bodies index => by
+      simp only [Ty.substitute, RecBodies.substitute_comp bodies before after]
+
+@[simp]
+def RecBodies.substitute_comp {first middle target : Sig} {bound count : Nat}
+    (bodies : RecBodies first bound count)
+    (before : Subst first middle) (after : Subst middle target) :
+    (bodies.substitute before).substitute after =
+      bodies.substitute (before.comp after) :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute, RecBodies.substitute_comp initial,
+        Ty.substitute_comp body]
+      rw [Ty.substitute_congr body
+        (Subst.TypeEq.liftTypes_comp before after bound)]
 
 def Proposition.substitute_comp {first middle target : Sig}
     (proposition : Proposition first) (before : Subst first middle)
@@ -2123,6 +2264,121 @@ def Telescope.substitute_comp {first middle target : Sig}
         (Subst.TypeEq.liftTypes_comp before after names)]
 
 end
+
+namespace Ty
+
+@[simp]
+private theorem headGuarded_zero {scope : Sig} (type : Ty scope) :
+    headGuarded (scope := scope) (bound := 0) type = true := by
+  cases type <;> rfl
+
+@[simp]
+private theorem headGuarded_weakenType {scope : Sig} {bound : Nat}
+    (type : Ty (TypeScope scope bound)) :
+    headGuarded (scope := scope) (bound := bound + 1)
+        (type.weaken (kind := .type)) =
+      headGuarded type := by
+  cases type <;> simp [headGuarded, Ty.weaken, Ty.rename, BVar.inTypeSuffix]
+
+private theorem headGuarded_tvar_substitute_liftTypes
+    {source target : Sig} (substitution : Subst source target)
+    (bound : Nat) (name : BVar (TypeScope source bound) .type) :
+    headGuarded ((Ty.tvar name).substitute (substitution.liftTypes bound)) =
+      headGuarded (.tvar name) := by
+  induction bound with
+  | zero =>
+      simp [Subst.liftTypes, Subst.liftN, Ty.substitute]
+  | succ bound induction =>
+      cases name with
+      | here => rfl
+      | there name =>
+          change @headGuarded target (bound + 1)
+              (((Ty.tvar name).substitute
+                (substitution.liftTypes bound)).weaken (kind := .type)) =
+            @headGuarded source (bound + 1)
+              ((Ty.tvar name).weaken (kind := .type))
+          rw [headGuarded_weakenType, headGuarded_weakenType]
+          exact induction name
+
+/-- Head contractiveness is stable under arbitrary ambient substitution. -/
+@[simp]
+theorem headGuarded_substitute {source target : Sig} {bound : Nat}
+    (type : Ty (TypeScope source bound))
+    (substitution : Subst source target) :
+    headGuarded (type.substitute (substitution.liftTypes bound)) =
+      headGuarded type := by
+  cases type with
+  | tvar name => exact headGuarded_tvar_substitute_liftTypes substitution bound name
+  | top | bot | one | arr | existsT | forallT | recProj => rfl
+
+end Ty
+
+namespace RecBodies
+
+/-- Full substitution preserves the Boolean guardedness check. -/
+@[simp]
+def headGuarded_substitute {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (substitution : Subst source target) :
+    (bodies.substitute substitution).headGuarded = bodies.headGuarded :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute, RecBodies.headGuarded,
+        headGuarded_substitute initial substitution,
+        Ty.headGuarded_substitute body substitution]
+
+/-- Lookup commutes with full substitution. -/
+@[simp]
+theorem get_substitute {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (substitution : Subst source target) (index : Fin count) :
+    (bodies.substitute substitution).get index =
+      (bodies.get index).substitute (substitution.liftTypes bound) := by
+  induction count with
+  | zero => exact Fin.elim0 index
+  | succ count induction =>
+      cases bodies with
+      | snoc initial newest =>
+          cases index with
+          | mk value smaller =>
+              cases value with
+              | zero => rfl
+              | succ value =>
+                  exact induction initial
+                    ⟨value, Nat.lt_of_succ_lt_succ smaller⟩
+
+end RecBodies
+
+namespace TypeArgs
+
+/-- Full substitution distributes over tabulation. -/
+@[simp]
+theorem substitute_tabulate {source target : Sig} {count : Nat}
+    (elements : Fin count → Ty source)
+    (substitution : Subst source target) :
+    (tabulate elements).substitute substitution =
+      tabulate (fun index => (elements index).substitute substitution) := by
+  induction count with
+  | zero => rfl
+  | succ count induction =>
+      simp only [tabulate, TypeArgs.substitute]
+      rw [induction]
+
+end TypeArgs
+
+namespace RecBodies
+
+/-- The vector of self projections is natural under full substitution. -/
+@[simp]
+theorem selfArgs_substitute {source target : Sig} {names : Nat}
+    (bodies : RecBodies source names names)
+    (substitution : Subst source target) :
+    bodies.selfArgs.substitute substitution =
+      (bodies.substitute substitution).selfArgs := by
+  simp [selfArgs, TypeArgs.substitute_tabulate, Ty.substitute]
+
+end RecBodies
 
 namespace Ty
 
@@ -2163,6 +2419,29 @@ theorem instantiateNames_substitute {source target : Sig} {names : Nat}
     instantiateNames_as_substitute, Ty.substitute_comp]
   exact Ty.substitute_congr type
     (Subst.TypeEq.instantiateNames_naturality substitution arguments)
+
+end Ty
+
+namespace RecBodies
+
+/-- Unfolding a recursive projection commutes with every four-sort
+substitution. -/
+@[simp]
+theorem unfoldAt_substitute {source target : Sig} {names : Nat}
+    (bodies : RecBodies source names names) (index : Fin names)
+    (substitution : Subst source target) :
+    (bodies.unfoldAt index).substitute substitution =
+      (bodies.substitute substitution).unfoldAt index := by
+  change ((bodies.get index).instantiateNames bodies.selfArgs).substitute
+      substitution =
+    ((bodies.substitute substitution).get index).instantiateNames
+      (bodies.substitute substitution).selfArgs
+  rw [Ty.instantiateNames_substitute, RecBodies.get_substitute,
+    RecBodies.selfArgs_substitute]
+
+end RecBodies
+
+namespace Ty
 
 /-- Complete static instantiation is natural under arbitrary four-sort
 substitution. -/
@@ -2793,6 +3072,11 @@ noncomputable def substitute {sourceScope targetScope : Sig}
       EqCo.HasType.trans
         (firstTyping.substitute contexts)
         (secondTyping.substitute contexts)
+  | .unfoldRec guarded => by
+      simpa only [EqCo.substitute, Ty.substitute,
+        RecBodies.unfoldAt_substitute] using
+        EqCo.HasType.unfoldRec
+          (by simpa only [RecBodies.headGuarded_substitute] using guarded)
 
 end EqCo.HasType
 
@@ -2942,6 +3226,8 @@ def substitute {source target : Sig} {term : Tm source}
   | .slam bodyValue =>
       Tm.IsValue.slam
         (bodyValue.substitute (substitution.liftStatic _ _))
+  | .foldRec termValue =>
+      Tm.IsValue.foldRec (termValue.substitute substitution)
 
 end Tm.IsValue
 
@@ -3009,6 +3295,17 @@ noncomputable def substitute {sourceScope targetScope : Sig}
       apply Tm.HasType.newtype
         (bodyTyping.substitute (contexts.liftNewtype _))
       exact Ty.strengthenNewtype_substitute_eq_some nonescape substitution
+  | .foldRec guarded termTyping => by
+      simpa only [Tm.substitute, Ty.substitute] using
+        Tm.HasType.foldRec
+          (by simpa only [RecBodies.headGuarded_substitute] using guarded)
+          (by simpa only [RecBodies.unfoldAt_substitute] using
+            termTyping.substitute contexts)
+  | .unfoldRec guarded termTyping => by
+      simpa only [Tm.substitute, RecBodies.unfoldAt_substitute] using
+        Tm.HasType.unfoldRec
+          (by simpa only [RecBodies.headGuarded_substitute] using guarded)
+          (termTyping.substitute contexts)
 
 end Tm.HasType
 

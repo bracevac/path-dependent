@@ -80,6 +80,10 @@ theorem erase_simulates {scope : Sig} {term next : Tm scope}
       exact .refl
   | castEqTrans termValue =>
       exact .refl
+  | castEqUnfoldRec termValue =>
+      exact .refl
+  | castEqSymmUnfoldRec termValue =>
+      exact .refl
   | packPayload step induction =>
       exact induction
   | openScrutinee step induction =>
@@ -104,6 +108,12 @@ theorem erase_simulates {scope : Sig} {term next : Tm scope}
   | newtype =>
       simpa only [Tm.erase_newtype, Tm.erase_instantiateNewtype] using
         (Runtime.Steps.refl : Runtime.Steps _ _)
+  | foldRecInner step induction =>
+      exact induction
+  | unfoldRecInner step induction =>
+      exact induction
+  | unfoldFold termValue =>
+      exact .refl
 
 end Tm.Step
 

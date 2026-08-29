@@ -52,6 +52,10 @@ theorem erase_rename {source target : Sig} (term : Tm source)
       simp only [Tm.rename, erase, induction, Runtime.Tm.rename_subst,
         Runtime.Tm.subst_rename,
         Runtime.Subst.preRename_liftNewtype_dropNewtype]
+  | foldRec bodies index term induction =>
+      simp only [Tm.rename, erase, induction]
+  | unfoldRec bodies index term induction =>
+      simp only [Tm.rename, erase, induction]
 
 @[simp]
 theorem erase_weaken {scope : Sig} {kind : BinderKind} (term : Tm scope) :
@@ -359,6 +363,10 @@ theorem erase_substitute {source target : Sig} (term : Tm source)
       simp only [Tm.substitute, erase, induction,
         Subst.eraseRuntime_liftNewtype, Runtime.Tm.subst_comp,
         Runtime.Subst.liftNewtype_comp_dropNewtype]
+  | foldRec bodies index term induction =>
+      simp only [Tm.substitute, erase, induction]
+  | unfoldRec bodies index term induction =>
+      simp only [Tm.substitute, erase, induction]
 
 /-! ## Operational instantiation corollaries -/
 
@@ -421,6 +429,7 @@ theorem erase {scope : Sig} {term : Tm scope} (value : Tm.IsValue term) :
   | pack payloadValue induction => exact induction
   | slam bodyValue induction =>
       exact induction.substitute (Runtime.Subst.dropStatic _ _)
+  | foldRec termValue induction => exact induction
 
 end Tm.IsValue
 
@@ -436,6 +445,7 @@ theorem erase {scope : Sig} {term : Tm scope}
   | pack payloadValue induction => exact induction
   | slam bodyValue =>
       exact bodyValue.erase.substitute (Runtime.Subst.dropStatic _ _)
+  | foldRec termValue induction => exact induction
 
 end Tm.IsRuntimeValue
 

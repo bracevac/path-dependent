@@ -47,6 +47,7 @@ theorem noValueOfBot {term : Tm []}
               cases evidenceTyping
   | pack => cases typing
   | slam => cases typing
+  | foldRec => cases typing
 
 /-- A closed value at arrow type is an ordinary lambda or an arrow cast, so
 application can step once its argument is a value. -/
@@ -80,6 +81,7 @@ theorem valueArrowEliminates {function argument : Tm []}
               cases evidenceTyping
   | pack => cases functionTyping
   | slam => cases functionTyping
+  | foldRec => cases functionTyping
 
 /-- A closed value at existential type is a package or an existential cast,
 so opening it can step. -/
@@ -121,6 +123,7 @@ theorem valueExistsEliminates {names constraints : Nat}
       cases packageTyping
       exact ⟨_, .openPack payloadValue⟩
   | slam => cases packageTyping
+  | foldRec => cases packageTyping
 
 /-- A closed value at universal telescope type is a static abstraction or a
 universal cast, so static application can step. -/
@@ -164,6 +167,41 @@ theorem valueForallEliminates {names constraints : Nat}
   | slam bodyValue =>
       cases functionTyping
       exact ⟨_, .sappSlam bodyValue⟩
+  | foldRec => cases functionTyping
+
+/-- A closed value at a recursive projection is its explicit fold wrapper.
+Consequently, the matching explicit unfold always takes a step. -/
+theorem valueRecProjEliminates {names : Nat}
+    {bodies : RecBodies [] names names} {index : Fin names}
+    {term : Tm []} (termValue : IsRuntimeValue term)
+    (termTyping : HasType Ctx.nil term (.recProj bodies index)) :
+    ∃ next, Step (.unfoldRec bodies index term) next := by
+  cases termValue with
+  | unit => cases termTyping
+  | lam => cases termTyping
+  | cast innerValue inert =>
+      cases termTyping with
+      | cast innerTyping evidenceTyping =>
+          cases inert with
+          | var evidenceIndex => cases evidenceIndex
+          | top source => cases evidenceTyping
+          | bot target =>
+              cases evidenceTyping
+              exact False.elim (noValueOfBot innerValue innerTyping)
+          | equality atom =>
+              cases atom with
+              | var evidenceIndex => cases evidenceIndex
+              | symmVar evidenceIndex => cases evidenceIndex
+          | arr domain codomain => cases evidenceTyping
+          | existsT adaptation sourcePayload targetPayload payload =>
+              cases evidenceTyping
+          | forallT adaptation sourceBody targetBody bodyEvidence =>
+              cases evidenceTyping
+  | pack => cases termTyping
+  | slam => cases termTyping
+  | foldRec innerValue =>
+      cases termTyping
+      exact ⟨_, .unfoldFold innerValue⟩
 
 /-- Conventional progress for closed, well-typed FCsub programs. -/
 theorem progress {term : Tm []} {type : Ty []}
@@ -222,8 +260,12 @@ theorem progress {term : Tm []} {type : Ty []}
                   | symm typing => exact .inr ⟨_, .castEqSymmSymm termValue⟩
                   | trans first second =>
                       exact .inr ⟨_, .castEqSymmTrans termValue⟩
+                  | unfoldRec guarded =>
+                      exact .inr ⟨_, .castEqSymmUnfoldRec termValue⟩
               | trans firstTyping secondTyping =>
                   exact .inr ⟨_, .castEqTrans termValue⟩
+              | unfoldRec guarded =>
+                  exact .inr ⟨_, .castEqUnfoldRec termValue⟩
           | arr domainTyping codomainTyping =>
               exact .inl (.cast termValue (.arr _ _))
           | existsT adaptationTyping payloadTyping =>
@@ -255,6 +297,19 @@ theorem progress {term : Tm []} {type : Ty []}
       | inl functionValue =>
           exact .inr (valueForallEliminates functionValue functionTyping)
   | newtype bodyTyping nonescape => exact .inr ⟨_, .newtype⟩
+  | foldRec guarded termTyping =>
+      cases progress termTyping with
+      | inl termValue => exact .inl (.foldRec termValue)
+      | inr termSteps =>
+          obtain ⟨next, step⟩ := termSteps
+          exact .inr ⟨_, .foldRecInner step⟩
+  | unfoldRec guarded termTyping =>
+      cases progress termTyping with
+      | inl termValue =>
+          exact .inr (valueRecProjEliminates termValue termTyping)
+      | inr termSteps =>
+          obtain ⟨next, step⟩ := termSteps
+          exact .inr ⟨_, .unfoldRecInner step⟩
 termination_by sizeOf term
 decreasing_by
   all_goals
