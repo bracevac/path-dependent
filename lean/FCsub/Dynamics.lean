@@ -84,6 +84,10 @@ inductive IsRuntimeValue : {scope : Sig} → Tm scope → Prop where
       {body : Tm (StaticScope scope names constraints)}
       (bodyValue : Tm.IsValue body) :
       IsRuntimeValue (.slam telescope body)
+  | foldRec {scope : Sig} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      {term : Tm scope} (termValue : IsRuntimeValue term) :
+      IsRuntimeValue (.foldRec bodies index term)
 
 /-- Deterministic, left-to-right annotated reduction.  Proof-only cast
 normalization and static beta steps stutter under erasure. -/
@@ -142,6 +146,16 @@ inductive Step : {scope : Sig} → Tm scope → Tm scope → Prop where
       {first second : EqCo scope} (termValue : IsRuntimeValue term) :
       Step (.cast term (.eqToLe (.trans first second)))
         (.cast term (.trans (.eqToLe first) (.eqToLe second)))
+  | castEqUnfoldRec {scope : Sig} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      {term : Tm scope} (termValue : IsRuntimeValue term) :
+      Step (.cast term (.eqToLe (.unfoldRec bodies index)))
+        (.unfoldRec bodies index term)
+  | castEqSymmUnfoldRec {scope : Sig} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      {term : Tm scope} (termValue : IsRuntimeValue term) :
+      Step (.cast term (.eqToLe (.symm (.unfoldRec bodies index))))
+        (.foldRec bodies index term)
   | packPayload {scope : Sig} {names constraints : Nat}
       {telescope : Telescope scope names constraints}
       {payloadType : Ty (StaticScope scope names constraints)}
@@ -227,6 +241,18 @@ inductive Step : {scope : Sig} → Tm scope → Tm scope → Prop where
   | newtype {scope : Sig} {witness : Ty scope}
       {body : Tm (NewtypeScope scope)} :
       Step (.newtype witness body) (body.instantiateNewtype witness)
+  | foldRecInner {scope : Sig} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      {term term' : Tm scope} (step : Step term term') :
+      Step (.foldRec bodies index term) (.foldRec bodies index term')
+  | unfoldRecInner {scope : Sig} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      {term term' : Tm scope} (step : Step term term') :
+      Step (.unfoldRec bodies index term) (.unfoldRec bodies index term')
+  | unfoldFold {scope : Sig} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      {term : Tm scope} (termValue : IsRuntimeValue term) :
+      Step (.unfoldRec bodies index (.foldRec bodies index term)) term
 
 /-- Reflexive-transitive closure of annotated reduction. -/
 inductive Steps : {scope : Sig} → Tm scope → Tm scope → Prop where

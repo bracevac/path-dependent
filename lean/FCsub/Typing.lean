@@ -1,5 +1,5 @@
 import FCsub.Context
-import FCsub.Telescope
+import FCsub.Recursion
 
 /-!
 # Declarative typing for standalone FCsub
@@ -46,6 +46,10 @@ inductive Tm.IsValue : {scope : Sig} → Tm scope → Prop where
       {telescope : Telescope scope names constraints}
       {body : Tm (StaticScope scope names constraints)}
       (bodyValue : IsValue body) : IsValue (.slam telescope body)
+  | foldRec {scope : Sig} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      {term : Tm scope} (termValue : IsValue term) :
+      IsValue (.foldRec bodies index term)
 
 /-! ## Instantiated telescope interfaces -/
 
@@ -81,6 +85,11 @@ inductive HasType : {scope : Sig} → Ctx scope → EqCo scope →
       (firstTyping : HasType context first left middle)
       (secondTyping : HasType context second middle right) :
       HasType context (.trans first second) left right
+  | unfoldRec {scope : Sig} {context : Ctx scope} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      (guarded : bodies.headGuarded = true) :
+      HasType context (.unfoldRec bodies index) (.recProj bodies index)
+        (bodies.unfoldAt index)
 
 end EqCo
 
@@ -299,6 +308,18 @@ inductive HasType : {scope : Sig} → Ctx scope → Tm scope →
       (bodyTyping : HasType (context.extendNewtype witness) body bodyType)
       (nonescape : bodyType.strengthenNewtype = some result) :
       HasType context (.newtype witness body) result
+  | foldRec {scope : Sig} {context : Ctx scope} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      {term : Tm scope}
+      (guarded : bodies.headGuarded = true)
+      (termTyping : HasType context term (bodies.unfoldAt index)) :
+      HasType context (.foldRec bodies index term) (.recProj bodies index)
+  | unfoldRec {scope : Sig} {context : Ctx scope} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      {term : Tm scope}
+      (guarded : bodies.headGuarded = true)
+      (termTyping : HasType context term (.recProj bodies index)) :
+      HasType context (.unfoldRec bodies index term) (bodies.unfoldAt index)
 
 end Tm
 

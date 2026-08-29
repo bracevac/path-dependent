@@ -430,6 +430,18 @@ def Ty.subst {source target : Sig} (type : Ty source)
   | .forallT telescope body =>
       .forallT (telescope.subst substitution)
         (body.subst (substitution.liftStatic _ _))
+  | .recProj bodies index => .recProj (bodies.subst substitution) index
+
+/-- Substitute ambient type variables in every recursive body, preserving the
+simultaneous block of self names. -/
+def RecBodies.subst {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (substitution : TySubst source target) : RecBodies target bound count :=
+  match bodies with
+  | .nil => .nil
+  | .snoc initial body =>
+      .snoc (initial.subst substitution)
+        (body.subst (substitution.liftTypes bound))
 
 /-- Substitute through a directed proposition. -/
 def Proposition.subst {source target : Sig}
@@ -452,6 +464,13 @@ def Telescope.subst {source target : Sig} {names constraints : Nat}
         (proposition.subst (substitution.liftTypes names))
 
 end
+
+@[simp]
+theorem Ty.subst_recProj {source target : Sig} {names : Nat}
+    (bodies : RecBodies source names names) (index : Fin names)
+    (substitution : TySubst source target) :
+    (Ty.recProj bodies index).subst substitution =
+      .recProj (bodies.subst substitution) index := rfl
 
 /-! ### Substitution agrees with renaming -/
 
@@ -478,6 +497,19 @@ def Ty.subst_ofRename {source target : Sig} (type : Ty source)
       simp only [Ty.subst, Ty.rename, Telescope.subst_ofRename telescope rho,
         TySubst.liftStatic_ofRename,
         Ty.subst_ofRename body (rho.liftStatic _ _)]
+  | .recProj bodies index => by
+      simp only [Ty.subst, Ty.rename, RecBodies.subst_ofRename bodies rho]
+
+@[simp]
+def RecBodies.subst_ofRename {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count) (rho : Rename source target) :
+    bodies.subst (TySubst.ofRename rho) = bodies.rename rho :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.subst, RecBodies.rename,
+        RecBodies.subst_ofRename initial rho, TySubst.liftTypes_ofRename,
+        Ty.subst_ofRename body (rho.liftTypes bound)]
 
 @[simp]
 def Proposition.subst_ofRename {source target : Sig}
@@ -513,6 +545,16 @@ theorem Ty.subst_id {scope : Sig} (type : Ty scope) :
       simpa [TySubst.id, TySubst.ofRename] using
         Ty.subst_ofRename type Rename.id
     _ = type := type.rename_id
+
+@[simp]
+theorem RecBodies.subst_id {scope : Sig} {bound count : Nat}
+    (bodies : RecBodies scope bound count) :
+    bodies.subst TySubst.id = bodies := by
+  calc
+    bodies.subst TySubst.id = bodies.rename Rename.id := by
+      simpa [TySubst.id, TySubst.ofRename] using
+        RecBodies.subst_ofRename bodies Rename.id
+    _ = bodies := bodies.rename_id
 
 @[simp]
 theorem Proposition.subst_id {scope : Sig}
@@ -658,6 +700,22 @@ def Ty.rename_subst {first second third : Sig} (type : Ty first)
       simp only [Ty.rename, Ty.subst, Telescope.rename_subst telescope,
         Ty.rename_subst body,
         TySubst.liftStatic_comp_ofRename_left]
+  | .recProj bodies index => by
+      simp only [Ty.rename, Ty.subst, RecBodies.rename_subst bodies]
+
+@[simp]
+def RecBodies.rename_subst {first second third : Sig} {bound count : Nat}
+    (bodies : RecBodies first bound count) (rho : Rename first second)
+    (substitution : TySubst second third) :
+    (bodies.rename rho).subst substitution =
+      bodies.subst ((TySubst.ofRename rho).comp substitution) :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.rename, RecBodies.subst,
+        RecBodies.rename_subst initial,
+        Ty.rename_subst body,
+        TySubst.liftTypes_comp_ofRename_left]
 
 @[simp]
 def Proposition.rename_subst {first second third : Sig}
@@ -801,6 +859,22 @@ def Ty.subst_rename {first second third : Sig} (type : Ty first)
       simp only [Ty.subst, Ty.rename, Telescope.subst_rename telescope,
         Ty.subst_rename body,
         TySubst.liftStatic_comp_ofRename_right]
+  | .recProj bodies index => by
+      simp only [Ty.subst, Ty.rename, RecBodies.subst_rename bodies]
+
+@[simp]
+def RecBodies.subst_rename {first second third : Sig} {bound count : Nat}
+    (bodies : RecBodies first bound count)
+    (substitution : TySubst first second) (rho : Rename second third) :
+    (bodies.subst substitution).rename rho =
+      bodies.subst (substitution.comp (TySubst.ofRename rho)) :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.subst, RecBodies.rename,
+        RecBodies.subst_rename initial,
+        Ty.subst_rename body,
+        TySubst.liftTypes_comp_ofRename_right]
 
 @[simp]
 def Proposition.subst_rename {first second third : Sig}
@@ -974,6 +1048,21 @@ def Ty.subst_comp {first second third : Sig} (type : Ty first)
       simp only [Ty.subst, Telescope.subst_comp telescope,
         Ty.subst_comp body,
         TySubst.liftStatic_comp]
+  | .recProj bodies index => by
+      simp only [Ty.subst, RecBodies.subst_comp bodies]
+
+@[simp]
+def RecBodies.subst_comp {first second third : Sig} {bound count : Nat}
+    (bodies : RecBodies first bound count)
+    (firstSubst : TySubst first second)
+    (secondSubst : TySubst second third) :
+    (bodies.subst firstSubst).subst secondSubst =
+      bodies.subst (firstSubst.comp secondSubst) :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.subst, RecBodies.subst_comp initial,
+        Ty.subst_comp body, TySubst.liftTypes_comp]
 
 @[simp]
 def Proposition.subst_comp {first second third : Sig}
@@ -1247,6 +1336,22 @@ def Ty.rename? {source target : Sig} (type : Ty source)
       let telescope' ← telescope.rename? rho
       let body' ← body.rename? (rho.liftStatic _ _)
       pure (.forallT telescope' body')
+  | .recProj bodies index => do
+      let bodies' ← bodies.rename? rho
+      pure (.recProj bodies' index)
+
+/-- Apply a partial ambient type-name map to all recursive bodies.  The
+block-local self names are always preserved. -/
+def RecBodies.rename? {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (rho : PartialTypeRename source target) :
+    Option (RecBodies target bound count) :=
+  match bodies with
+  | .nil => some .nil
+  | .snoc initial body => do
+      let initial' ← initial.rename? rho
+      let body' ← body.rename? (rho.liftTypes bound)
+      pure (.snoc initial' body')
 
 def Proposition.rename? {source target : Sig}
     (proposition : Proposition source)
@@ -1269,6 +1374,15 @@ def Telescope.rename? {source target : Sig} {names constraints : Nat}
       pure (.snoc initial' proposition')
 
 end
+
+@[simp]
+theorem Ty.rename?_recProj {source target : Sig} {names : Nat}
+    (bodies : RecBodies source names names) (index : Fin names)
+    (rho : PartialTypeRename source target) :
+    (Ty.recProj bodies index).rename? rho =
+      (bodies.rename? rho).map (fun renamed => Ty.recProj renamed index) := by
+  unfold Ty.rename?
+  cases bodies.rename? rho <;> rfl
 
 namespace Ty
 

@@ -74,6 +74,12 @@ def checkEqCore {scope : Sig} (context : Ctx scope)
           .trans firstChecked.typing secondTyping⟩
       else
         none
+  | .unfoldRec bodies index =>
+      if guarded : bodies.headGuarded then
+        some ⟨.recProj bodies index, bodies.unfoldAt index,
+          EqCo.HasType.unfoldRec guarded⟩
+      else
+        none
 
 mutual
 
@@ -207,6 +213,10 @@ def checkValueCore {scope : Sig} : (term : Tm scope) →
       pure ⟨.slam value.typing⟩
   | .sapp _ _ _ _ => none
   | .newtype _ _ => none
+  | .foldRec _ _ term => do
+      let value ← checkValueCore term
+      pure ⟨Tm.IsValue.foldRec value.typing⟩
+  | .unfoldRec _ _ _ => none
 
 def checkTmCore {scope : Sig} (context : Ctx scope)
     (term : Tm scope) : Option (TmChecked context term) :=
@@ -306,6 +316,28 @@ def checkTmCore {scope : Sig} (context : Ctx scope)
       let nonescape ← checkSomeCore bodyChecked.type.strengthenNewtype
       pure ⟨nonescape.output,
         .newtype bodyChecked.typing nonescape.equation⟩
+  | .foldRec bodies index inner =>
+      if guarded : bodies.headGuarded then do
+        let innerChecked ← checkTmCore context inner
+        if sameType : innerChecked.type = bodies.unfoldAt index then
+          let innerTyping : Tm.HasType context inner (bodies.unfoldAt index) := by
+            simpa [sameType] using innerChecked.typing
+          pure ⟨.recProj bodies index, .foldRec guarded innerTyping⟩
+        else
+          none
+      else
+        none
+  | .unfoldRec bodies index inner =>
+      if guarded : bodies.headGuarded then do
+        let innerChecked ← checkTmCore context inner
+        if sameType : innerChecked.type = .recProj bodies index then
+          let innerTyping : Tm.HasType context inner (.recProj bodies index) := by
+            simpa [sameType] using innerChecked.typing
+          pure ⟨bodies.unfoldAt index, .unfoldRec guarded innerTyping⟩
+        else
+          none
+      else
+        none
 
 /-! ## Public executable interface -/
 

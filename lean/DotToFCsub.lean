@@ -19,6 +19,7 @@ import DotToFCsub.Examples
 import DotToFCsub.StableExamples
 import DotToFCsub.StableTotalityExamples
 import DotToFCsub.M4
+import DotToFCsub.M5
 
 /-!
 Integration root for the DOT-to-FCsub bridge.  Bridge modules are imported

@@ -725,6 +725,35 @@ def Ty.rename?_square {source middle source' target : Sig}
         (Telescope.rename?_square telescope _ _ _ _ square)
         (Ty.rename?_square body _ _ _ _ (square.liftStatic _ _))
         (fun _ _ => rfl)
+  | .recProj bodies index => by
+      simpa [Ty.rename?_recProj, Option.map_map, Function.comp_def, Ty.rename]
+        using congrArg (Option.map (fun renamed => Ty.recProj renamed index))
+          (RecBodies.rename?_square bodies _ _ _ _ square)
+
+/-- The partial action on simultaneous recursive bodies is natural with
+respect to a commuting ambient partial-renaming square. -/
+def RecBodies.rename?_square {source middle source' target : Sig}
+    {bound count : Nat} (bodies : RecBodies source bound count)
+    (partialSource : PartialTypeRename source middle)
+    (sourceRename : Rename source source')
+    (targetRename : Rename middle target)
+    (partialTarget : PartialTypeRename source' target)
+    (square : PartialTypeRename.Square partialSource sourceRename
+      targetRename partialTarget) :
+    Option.map (fun result => result.rename targetRename)
+        (bodies.rename? partialSource) =
+      (bodies.rename sourceRename).rename? partialTarget :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      exact Option.map_bind₂ _ _ _ _
+        (fun result => result.rename targetRename)
+        (fun result => result.rename (targetRename.liftTypes bound))
+        (fun result => result.rename targetRename)
+        RecBodies.snoc RecBodies.snoc
+        (RecBodies.rename?_square initial _ _ _ _ square)
+        (Ty.rename?_square body _ _ _ _ (square.liftTypes bound))
+        (fun _ _ => rfl)
 
 def Proposition.rename?_square {source middle source' target : Sig}
     (proposition : Proposition source)
@@ -824,6 +853,10 @@ noncomputable def rename {sourceScope targetScope : Sig}
   | symm typing induction => exact EqCo.HasType.symm induction
   | trans firstTyping secondTyping firstInduction secondInduction =>
       exact EqCo.HasType.trans firstInduction secondInduction
+  | unfoldRec guarded =>
+      simpa only [EqCo.rename, Ty.rename, RecBodies.unfoldAt_rename] using
+        EqCo.HasType.unfoldRec
+          (by simpa only [RecBodies.headGuarded_rename] using guarded)
 
 /-- One-binding weakening for equality-certificate typing. -/
 noncomputable def weaken {scope : Sig} {context : Ctx scope}
@@ -987,6 +1020,7 @@ def rename {source target : Sig} {term : Tm source}
   | .pack payloadValue => Tm.IsValue.pack (payloadValue.rename rho)
   | .slam bodyValue =>
       Tm.IsValue.slam (bodyValue.rename (rho.liftStatic _ _))
+  | .foldRec termValue => Tm.IsValue.foldRec (termValue.rename rho)
 
 end Tm.IsValue
 
@@ -1050,6 +1084,17 @@ noncomputable def rename {sourceScope targetScope : Sig}
         (Tm.HasType.rename bodyTyping (contexts.extendNewtype _))
       rw [← Ty.strengthenNewtype_rename, nonescape]
       rfl
+  | .foldRec guarded termTyping => by
+      simpa only [Tm.rename, Ty.rename] using
+        Tm.HasType.foldRec
+          (by simpa only [RecBodies.headGuarded_rename] using guarded)
+          (by simpa only [RecBodies.unfoldAt_rename] using
+            Tm.HasType.rename termTyping contexts)
+  | .unfoldRec guarded termTyping => by
+      simpa only [Tm.rename, RecBodies.unfoldAt_rename] using
+        Tm.HasType.unfoldRec
+          (by simpa only [RecBodies.headGuarded_rename] using guarded)
+          (Tm.HasType.rename termTyping contexts)
 
 /-- One-binding weakening for term typing. -/
 noncomputable def weaken {scope : Sig} {context : Ctx scope}

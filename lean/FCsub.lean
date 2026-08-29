@@ -1,6 +1,7 @@
 import FCsub.Scope
 import FCsub.Syntax
 import FCsub.Telescope
+import FCsub.Recursion
 import FCsub.Context
 import FCsub.Typing
 import FCsub.Checker

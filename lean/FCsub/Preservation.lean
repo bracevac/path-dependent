@@ -238,6 +238,50 @@ private def Ty.substitute_eq_of_partial_success {source target : Sig}
               rw [Ty.substitute_eq_of_partial_success body
                 (removal.liftStatic _ _) (substitution.liftStatic _ _)
                 (compatible.liftStatic _ _) bodyEq]
+  | .recProj bodies index => by
+      cases bodiesEq : bodies.rename? removal with
+      | none => simp [Ty.rename?, bodiesEq] at success
+      | some bodiesResult =>
+          have resultEq : Ty.recProj bodiesResult index = result := by
+            exact Option.some.inj (by
+              simpa [Ty.rename?, bodiesEq] using success)
+          rw [← resultEq]
+          simp only [Ty.substitute]
+          rw [RecBodies.substitute_eq_of_partial_success bodies removal
+            substitution compatible bodiesEq]
+termination_by sizeOf type
+
+private def RecBodies.substitute_eq_of_partial_success
+    {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (removal : PartialTypeRename source target)
+    (substitution : Subst source target)
+    (compatible : PartialCompatible removal substitution)
+    {result : RecBodies target bound count}
+    (success : bodies.rename? removal = some result) :
+    bodies.substitute substitution = result :=
+  match count, bodies with
+  | 0, .nil => Option.some.inj success
+  | _ + 1, .snoc initial body => by
+      cases initialEq : initial.rename? removal with
+      | none => simp [RecBodies.rename?, initialEq] at success
+      | some initialResult =>
+          cases bodyEq : body.rename? (removal.liftTypes bound) with
+          | none =>
+              simp [RecBodies.rename?, initialEq, bodyEq] at success
+          | some bodyResult =>
+              have resultEq : RecBodies.snoc initialResult bodyResult =
+                  result := by
+                exact Option.some.inj (by
+                  simpa [RecBodies.rename?, initialEq, bodyEq] using success)
+              rw [← resultEq]
+              simp only [RecBodies.substitute]
+              rw [RecBodies.substitute_eq_of_partial_success initial removal
+                substitution compatible initialEq]
+              rw [Ty.substitute_eq_of_partial_success body
+                (removal.liftTypes bound) (substitution.liftTypes bound)
+                (compatible.liftTypes bound) bodyEq]
+termination_by sizeOf bodies
 
 private def Proposition.substitute_eq_of_partial_success
     {source target : Sig} (proposition : Proposition source)
@@ -265,6 +309,7 @@ private def Proposition.substitute_eq_of_partial_success
                 substitution compatible lowerEq]
               rw [Ty.substitute_eq_of_partial_success upper removal
                 substitution compatible upperEq]
+termination_by sizeOf proposition
 
 private def Telescope.substitute_eq_of_partial_success
     {source target : Sig} {names : Nat} (constraints : Nat)
@@ -299,6 +344,9 @@ private def Telescope.substitute_eq_of_partial_success
               rw [Proposition.substitute_eq_of_partial_success proposition
                 (removal.liftTypes names) (substitution.liftTypes names)
                 (compatible.liftTypes names) propositionEq]
+termination_by sizeOf telescope
+decreasing_by
+  all_goals simp_wf <;> omega
 
 end
 
@@ -770,6 +818,36 @@ private theorem preserveCastEqTrans {scope : Sig} {context : Ctx scope}
               exact ⟨.cast termTyping
                 (.trans (.eqToLe firstTyping) (.eqToLe secondTyping))⟩
 
+private theorem preserveCastEqUnfoldRec {scope : Sig}
+    {context : Ctx scope} {names : Nat}
+    {bodies : RecBodies scope names names} {index : Fin names}
+    {term : Tm scope} {result : Ty scope}
+    (typing : Tm.HasType context
+      (.cast term (.eqToLe (.unfoldRec bodies index))) result) :
+    Nonempty (Tm.HasType context (.unfoldRec bodies index term) result) := by
+  cases typing with
+  | cast termTyping evidenceTyping =>
+      cases evidenceTyping with
+      | eqToLe equalityTyping =>
+          cases equalityTyping with
+          | unfoldRec guarded => exact ⟨.unfoldRec guarded termTyping⟩
+
+private theorem preserveCastEqSymmUnfoldRec {scope : Sig}
+    {context : Ctx scope} {names : Nat}
+    {bodies : RecBodies scope names names} {index : Fin names}
+    {term : Tm scope} {result : Ty scope}
+    (typing : Tm.HasType context
+      (.cast term (.eqToLe (.symm (.unfoldRec bodies index)))) result) :
+    Nonempty (Tm.HasType context (.foldRec bodies index term) result) := by
+  cases typing with
+  | cast termTyping evidenceTyping =>
+      cases evidenceTyping with
+      | eqToLe equalityTyping =>
+          cases equalityTyping with
+          | symm unfoldedTyping =>
+              cases unfoldedTyping with
+              | unfoldRec guarded => exact ⟨.foldRec guarded termTyping⟩
+
 /-! ## Computational ordinary-binder cases -/
 
 private theorem preserveBeta {scope : Sig} {context : Ctx scope}
@@ -1088,6 +1166,10 @@ theorem preservation {scope : Sig} {context : Ctx scope}
       exact preserveCastEqSymmTrans typing
   | castEqTrans _ =>
       exact preserveCastEqTrans typing
+  | castEqUnfoldRec _ =>
+      exact preserveCastEqUnfoldRec typing
+  | castEqSymmUnfoldRec _ =>
+      exact preserveCastEqSymmUnfoldRec typing
   | packPayload step induction =>
       cases typing with
       | pack argumentsTyping payloadTyping =>
@@ -1113,6 +1195,21 @@ theorem preservation {scope : Sig} {context : Ctx scope}
       exact preserveSappCastForall typing
   | newtype =>
       exact preserveNewtype typing
+  | foldRecInner step induction =>
+      cases typing with
+      | foldRec guarded termTyping =>
+          obtain ⟨termTyping'⟩ := induction termTyping
+          exact ⟨.foldRec guarded termTyping'⟩
+  | unfoldRecInner step induction =>
+      cases typing with
+      | unfoldRec guarded termTyping =>
+          obtain ⟨termTyping'⟩ := induction termTyping
+          exact ⟨.unfoldRec guarded termTyping'⟩
+  | unfoldFold _ =>
+      cases typing with
+      | unfoldRec outerGuard innerTyping =>
+          cases innerTyping with
+          | foldRec innerGuard termTyping => exact ⟨termTyping⟩
 
 end Tm.Step
 
