@@ -244,17 +244,12 @@ theorem term_erasure {source : DotFC.Sig}
             Option.bind_eq_some_iff.mp compiled
           obtain ⟨upperTarget, upperCompiled, compiled⟩ :=
             Option.bind_eq_some_iff.mp compiled
-          obtain ⟨slot, lookup, compiled⟩ :=
+          obtain ⟨use, useCompiled, compiled⟩ :=
             Option.bind_eq_some_iff.mp compiled
           simp at compiled
           rw [← compiled]
           simp only [MemberEncoding.app, FCsub.Tm.erase, sourceRuntime]
           rw [functionInduction functionCompiled]
-          exact congrArg
-            (fun runtime => FCsub.Runtime.Tm.app
-              (sourceRuntime functionTyping) runtime)
-            (congrArg FCsub.Runtime.Tm.var
-              (Layout.fullSlot_payload lookup))
   | @let' source context rhs body bound result rhsTyping bodyTyping resultWf
       rhsInduction bodyInduction =>
       cases bound with
