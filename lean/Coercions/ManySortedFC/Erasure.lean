@@ -295,6 +295,7 @@ def erase {scope : Sig} (adapter : Adapter scope) {runtimeScope : Nat}
   match adapter with
   | .identity _ => term
   | .cast _ => term
+  | .retagCapture _ _ _ _ _ => term
   | .compose first second => second.erase (first.erase term)
   | .function domain codomain =>
       .lam (.let'
@@ -313,6 +314,15 @@ theorem erase_cast {scope : Sig}
     (evidence : Evidence (.inclusion .type) scope)
     {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
     (Adapter.cast evidence).erase term = term := rfl
+
+@[simp]
+theorem erase_retagCapture {scope : Sig} (source : Ty scope)
+    (targetCapture : Capture scope) (targetShape : Ty scope)
+    (captures : Evidence (.inclusion .capture) scope)
+    (shape : Evidence (.inclusion .type) scope)
+    {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
+    (Adapter.retagCapture source targetCapture targetShape captures shape).erase
+      term = term := rfl
 
 @[simp]
 theorem erase_compose {scope : Sig} (first second : Adapter scope)
@@ -352,6 +362,7 @@ theorem erase_rename {source target : Sig} (adapter : Adapter source)
   induction adapter generalizing target runtimeScope with
   | identity => rfl
   | cast => rfl
+  | retagCapture => rfl
   | compose first second firstInduction secondInduction =>
       simp [Adapter.rename, erase, firstInduction, secondInduction]
   | function domain codomain domainInduction codomainInduction =>
@@ -369,6 +380,7 @@ theorem erase_runtimeRename {scope : Sig} (adapter : Adapter scope)
   induction adapter generalizing source target with
   | identity => rfl
   | cast => rfl
+  | retagCapture => rfl
   | compose first second firstInduction secondInduction =>
       simp only [erase, secondInduction, firstInduction]
   | function domain codomain domainInduction codomainInduction =>
@@ -391,6 +403,7 @@ theorem erase_value {scope : Sig} (adapter : Adapter scope)
   induction adapter generalizing runtimeScope with
   | identity => exact termValue
   | cast => exact termValue
+  | retagCapture => exact termValue
   | compose first second firstInduction secondInduction =>
       exact secondInduction (firstInduction termValue)
   | function => exact .lam

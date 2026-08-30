@@ -25,6 +25,61 @@ theorem unit_identity_is_accepted :
       some (.empty, .capturing .empty (.arr .one .one)) := by
   native_decide
 
+/-! ## Explicit capture introduction -/
+
+/-- Ordinary unit typing remains bare.  Capture introduction is an explicit
+adapter boundary rather than an implicit change to the `unit` rule. -/
+theorem ordinary_unit_remains_bare :
+    Tm.synth Ctx.nil (.unit : Tm []) = some (.empty, .one) := by
+  native_decide
+
+/-- Retag a syntactic `One` payload with an explicit empty capture.  The two
+certificates separately cover its actual outer capture and stripped shape. -/
+def oneWithEmptyCaptureAdapter : Adapter [] :=
+  .retagCapture .one .empty .one
+    (.captureEmpty .empty)
+    (.inclusionRefl (.type .one))
+
+theorem empty_capture_retag_is_accepted :
+    Adapter.synth Ctx.nil oneWithEmptyCaptureAdapter =
+      some (.one, .capturing .empty .one) := by
+  native_decide
+
+/-- The checker compares the certificate's source capture with the recorded
+source projection; a proof about `∅ ∪ ∅` cannot stand in for `One`'s exact
+outer capture `∅`. -/
+def wrongRetagSourceCapture : Adapter [] :=
+  .retagCapture .one .empty .one
+    (.captureUnionElim
+      (.captureEmpty .empty)
+      (.captureEmpty .empty))
+    (.inclusionRefl (.type .one))
+
+theorem retag_source_capture_mismatch_is_rejected :
+    (Adapter.check Ctx.nil wrongRetagSourceCapture).isNone = true := by
+  native_decide
+
+/-- The stripped source shape is checked just as exactly. -/
+def wrongRetagSourceShape : Adapter [] :=
+  .retagCapture .one .empty .one
+    (.captureEmpty .empty)
+    (.typeBottom .one)
+
+theorem retag_source_shape_mismatch_is_rejected :
+    (Adapter.check Ctx.nil wrongRetagSourceShape).isNone = true := by
+  native_decide
+
+def unitWithEmptyCapture : Tm [] :=
+  .adapt .unit oneWithEmptyCaptureAdapter
+
+theorem syntactic_unit_can_enter_captured_payload_type :
+    Tm.synth Ctx.nil unitWithEmptyCapture =
+      some (.empty, .capturing .empty .one) := by
+  native_decide
+
+theorem capture_retag_erases_to_unit :
+    unitWithEmptyCapture.erase = Runtime.Tm.unit := rfl
+
 /-- A logical cast transports `unit` along the primitive `One <= Top`
 certificate. -/
 def unitAsTop : Tm [] :=
@@ -121,6 +176,13 @@ theorem captured_binding_exports_capture_variable_evidence :
 type is pure/untracked: projecting `Ty.outerCapture = ∅` does not
 manufacture a `{x} ⊆ ∅` certificate. -/
 theorem bare_binding_rejects_capture_variable_evidence :
+    (Evidence.check (Ctx.nil.extendTerm .one)
+      (.captureVariable (.here : BVar ([] ▹ .term) .term))).isNone = true := by
+  native_decide
+
+/-- Capture introduction adapts a value; it does not add evidence to a bare
+context binding or weaken the `captureVariable` checker. -/
+theorem capture_retag_does_not_enable_bare_root_contraction :
     (Evidence.check (Ctx.nil.extendTerm .one)
       (.captureVariable (.here : BVar ([] ▹ .term) .term))).isNone = true := by
   native_decide
