@@ -6,6 +6,7 @@ import Coercions.Translation.ManySorted.BinderOnly.LayoutMetatheory
 import Coercions.Translation.ManySorted.BinderOnly.ContextEvidence
 import Coercions.Translation.ManySorted.BinderOnly.EvidenceExamples
 import Coercions.Translation.ManySorted.BinderOnly.ModelElaboration
+import Coercions.Translation.ManySorted.BinderOnly.StaticSubstitutionMetatheory
 import Coercions.Translation.ManySorted.BinderOnly.ModelExamples
 import Coercions.Translation.ManySorted.BinderOnly.AdapterElaboration
 import Coercions.Translation.ManySorted.BinderOnly.SourceErasure
