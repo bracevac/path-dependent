@@ -412,19 +412,20 @@ def eraseWith {scope : Sig} (term : Tm scope) {runtimeScope : Nat}
   match term with
   | .var index => .var (rho index)
   | .unit => .unit
-  | .lam _ _ body => .lam (body.eraseWith rho.liftTerm)
+  | .lam _ _ _ body _ => .lam (body.eraseWith rho.liftTerm)
   | .app function argument =>
       .app (function.eraseWith rho) (argument.eraseWith rho)
-  | .let' _ rhs body =>
+  | .let' _ _ rhs body _ =>
       .let' (rhs.eraseWith rho) (body.eraseWith rho.liftTerm)
   | .adapt inner adapter => adapter.erase (inner.eraseWith rho)
-  | @Tm.slam _ symbols relations _ body =>
+  | @Tm.slam _ symbols relations _ _ body _ =>
       body.eraseWith (rho.liftStatic symbols relations)
   | .sapp _ function _ _ => function.eraseWith rho
-  | .pack _ _ _ _ payload => payload.eraseWith rho
-  | @Tm.«open» _ symbols relations _ _ _ package body =>
+  | .pack _ _ _ _ _ payload _ => payload.eraseWith rho
+  | @Tm.«open» _ symbols relations _ _ _ _ package body _ =>
       .let' (package.eraseWith rho)
         (body.eraseWith (rho.liftPayload symbols relations))
+  | .use inner _ => inner.eraseWith rho
 
 /-- Canonical erasure into the runtime scope containing exactly the ordinary
 binders of the annotated term. -/
@@ -443,8 +444,9 @@ theorem erase_unit {scope : Sig} :
 
 @[simp]
 theorem erase_lam {scope : Sig} (domain codomain : Ty scope)
-    (body : Tm (scope ▹ .term)) :
-    (Tm.lam domain codomain body).erase = .lam body.erase := by
+    (closure : Capture scope) (body : Tm (scope ▹ .term))
+    (captures : Evidence (.inclusion .capture) (scope ▹ .term)) :
+    (Tm.lam domain codomain closure body captures).erase = .lam body.erase := by
   simp [erase, eraseWith]
 
 @[simp]
@@ -453,9 +455,12 @@ theorem erase_app {scope : Sig} (function argument : Tm scope) :
       .app function.erase argument.erase := rfl
 
 @[simp]
-theorem erase_let {scope : Sig} (result : Ty scope) (rhs : Tm scope)
-    (body : Tm (scope ▹ .term)) :
-    (Tm.let' result rhs body).erase = .let' rhs.erase body.erase := by
+theorem erase_let {scope : Sig} (result : Ty scope)
+    (bodyOuterUse : Capture scope) (rhs : Tm scope)
+    (body : Tm (scope ▹ .term))
+    (discharge : Evidence (.inclusion .capture) (scope ▹ .term)) :
+    (Tm.let' result bodyOuterUse rhs body discharge).erase =
+      .let' rhs.erase body.erase := by
   simp [erase, eraseWith]
 
 @[simp]
@@ -466,8 +471,11 @@ theorem erase_adapt {scope : Sig} (term : Tm scope)
 @[simp]
 theorem erase_slam {scope : Sig} {symbols : List StaticSort}
     {relations : List Relation} (theory : Theory scope symbols relations)
-    (body : Tm (StaticScope scope symbols relations)) :
-    (Tm.slam theory body).erase =
+    (closure : Capture scope)
+    (body : Tm (StaticScope scope symbols relations))
+    (captures : Evidence (.inclusion .capture)
+      (StaticScope scope symbols relations)) :
+    (Tm.slam theory closure body captures).erase =
       body.eraseWith
         ((Erasure.Renaming.identity scope).liftStatic symbols relations) :=
   rfl
@@ -484,23 +492,33 @@ theorem erase_sapp {scope : Sig} {symbols : List StaticSort}
 theorem erase_pack {scope : Sig} {symbols : List StaticSort}
     {relations : List Relation} (theory : Theory scope symbols relations)
     (payloadType : Ty (StaticScope scope symbols relations))
+    (closure : Capture scope)
     (symbolArguments : SymbolArgs scope symbols)
     (evidenceArguments : EvidenceArgs scope relations)
-    (payload : Tm scope) :
-    (Tm.pack theory payloadType symbolArguments evidenceArguments payload).erase =
-      payload.erase := rfl
+    (payload : Tm scope)
+    (captures : Evidence (.inclusion .capture) scope) :
+    (Tm.pack theory payloadType closure symbolArguments evidenceArguments
+      payload captures).erase = payload.erase := rfl
 
 @[simp]
 theorem erase_open {scope : Sig} {symbols : List StaticSort}
     {relations : List Relation} (theory : Theory scope symbols relations)
     (payloadType : Ty (StaticScope scope symbols relations))
-    (result : Ty scope) (package : Tm scope)
-    (body : Tm (PayloadScope scope symbols relations)) :
-    (Tm.open theory payloadType result package body).erase =
+    (result : Ty scope) (bodyOuterUse : Capture scope)
+    (package : Tm scope)
+    (body : Tm (PayloadScope scope symbols relations))
+    (discharge : Evidence (.inclusion .capture)
+      (PayloadScope scope symbols relations)) :
+    (Tm.open theory payloadType result bodyOuterUse package body discharge).erase =
       .let' package.erase
         (body.eraseWith
           ((Erasure.Renaming.identity scope).liftPayload
             symbols relations)) := rfl
+
+@[simp]
+theorem erase_use {scope : Sig} (term : Tm scope)
+    (inclusion : Evidence (.inclusion .capture) scope) :
+    (Tm.use term inclusion).erase = term.erase := rfl
 
 /-! ### Compatibility -/
 
@@ -514,23 +532,26 @@ theorem eraseWith_rename {source target : Sig} (term : Tm source)
   induction term generalizing target runtimeScope with
   | var => rfl
   | unit => rfl
-  | lam domain codomain body induction =>
+  | lam domain codomain closure body captures induction =>
       simp [rename, eraseWith, induction]
   | app function argument functionInduction argumentInduction =>
       simp [rename, eraseWith, functionInduction, argumentInduction]
-  | let' result rhs body rhsInduction bodyInduction =>
+  | let' result bodyOuterUse rhs body discharge rhsInduction bodyInduction =>
       simp [rename, eraseWith, rhsInduction, bodyInduction]
   | adapt inner adapter induction =>
       simp [rename, eraseWith, induction]
-  | slam theory body induction =>
+  | slam theory closure body captures induction =>
       simp [rename, eraseWith, induction]
   | sapp theory function symbolArguments evidenceArguments induction =>
       simp [rename, eraseWith, induction]
-  | pack theory payloadType symbolArguments evidenceArguments payload induction =>
+  | pack theory payloadType closure symbolArguments evidenceArguments payload
+      captures induction =>
       simp [rename, eraseWith, induction]
-  | «open» theory payloadType result package body packageInduction
-      bodyInduction =>
+  | «open» theory payloadType result bodyOuterUse package body discharge
+      packageInduction bodyInduction =>
       simp [rename, eraseWith, packageInduction, bodyInduction]
+  | use inner inclusion induction =>
+      simp [rename, eraseWith, induction]
 
 /-- Erasure is natural in an additional runtime renaming. -/
 theorem eraseWith_runtimeRename {scope : Sig} (term : Tm scope)
@@ -541,24 +562,27 @@ theorem eraseWith_runtimeRename {scope : Sig} (term : Tm scope)
   induction term generalizing source target with
   | var => rfl
   | unit => rfl
-  | lam domain codomain body induction =>
+  | lam domain codomain closure body captures induction =>
       simp [eraseWith, Runtime.Tm.rename, induction]
   | app function argument functionInduction argumentInduction =>
       simp [eraseWith, Runtime.Tm.rename, functionInduction,
         argumentInduction]
-  | let' result rhs body rhsInduction bodyInduction =>
+  | let' result bodyOuterUse rhs body discharge rhsInduction bodyInduction =>
       simp [eraseWith, Runtime.Tm.rename, rhsInduction, bodyInduction]
   | adapt inner adapter induction =>
       simp [eraseWith, Adapter.erase_runtimeRename, induction]
-  | slam theory body induction =>
+  | slam theory closure body captures induction =>
       simp [eraseWith, induction]
   | sapp theory function symbolArguments evidenceArguments induction =>
       simp [eraseWith, induction]
-  | pack theory payloadType symbolArguments evidenceArguments payload induction =>
+  | pack theory payloadType closure symbolArguments evidenceArguments payload
+      captures induction =>
       simp [eraseWith, induction]
-  | «open» theory payloadType result package body packageInduction
-      bodyInduction =>
+  | «open» theory payloadType result bodyOuterUse package body discharge
+      packageInduction bodyInduction =>
       simp [eraseWith, Runtime.Tm.rename, packageInduction, bodyInduction]
+  | use inner inclusion induction =>
+      simp [eraseWith, induction]
 
 /-- Canonical erasure commutes with heterogeneous renaming after projecting
 that renaming to the runtime term scope. -/

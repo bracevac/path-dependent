@@ -56,9 +56,16 @@ end Rename
 
 /-- Explicitly annotated target terms.
 
-`lam` records an ambient, nondependent codomain.  `let'` and `open` likewise
-record their ambient result type, so their bodies can later be checked against
-the corresponding weakened annotation without synthesizing an escaping type.
+`lam` records an ambient, nondependent codomain and a closure capture.  Its
+logical certificate covers the body's predicted use by that closure.  `let'`
+and `open` likewise record their ambient result type and the capture exported
+by their body, together with a certificate discharging the locally scoped
+prediction.  `slam` and `pack` retain an explicit closure because those
+markers erase and therefore cannot hide capabilities retained by their value
+body or payload.
+
+`use` is the sole capture-subsumption node.  Keeping it distinct from `adapt`
+prevents immediate-use widening from being confused with type transport.
 All witnesses used to eliminate a static abstraction or construct a package
 remain in the ambient scope; assumptions exported by the theory are therefore
 unavailable while those witnesses and certificates are formed. -/
@@ -66,16 +73,22 @@ inductive Tm : Sig → Type where
   | var {scope : Sig} (index : BVar scope .term) : Tm scope
   | unit {scope : Sig} : Tm scope
   | lam {scope : Sig} (domain codomain : Ty scope)
-      (body : Tm (scope ▹ .term)) : Tm scope
+      (closure : Capture scope) (body : Tm (scope ▹ .term))
+      (captures : Evidence (.inclusion .capture) (scope ▹ .term)) :
+      Tm scope
   | app {scope : Sig} (function argument : Tm scope) : Tm scope
-  | let' {scope : Sig} (result : Ty scope) (rhs : Tm scope)
-      (body : Tm (scope ▹ .term)) : Tm scope
+  | let' {scope : Sig} (result : Ty scope) (bodyOuterUse : Capture scope)
+      (rhs : Tm scope) (body : Tm (scope ▹ .term))
+      (discharge : Evidence (.inclusion .capture) (scope ▹ .term)) :
+      Tm scope
   | adapt {scope : Sig} (term : Tm scope)
       (adapter : Adapter scope) : Tm scope
   | slam {scope : Sig} {symbols : List StaticSort}
       {relations : List Relation}
-      (theory : Theory scope symbols relations)
-      (body : Tm (StaticScope scope symbols relations)) : Tm scope
+      (theory : Theory scope symbols relations) (closure : Capture scope)
+      (body : Tm (StaticScope scope symbols relations))
+      (captures : Evidence (.inclusion .capture)
+        (StaticScope scope symbols relations)) : Tm scope
   | sapp {scope : Sig} {symbols : List StaticSort}
       {relations : List Relation}
       (theory : Theory scope symbols relations)
@@ -86,15 +99,22 @@ inductive Tm : Sig → Type where
       {relations : List Relation}
       (theory : Theory scope symbols relations)
       (payloadType : Ty (StaticScope scope symbols relations))
+      (closure : Capture scope)
       (symbolArguments : SymbolArgs scope symbols)
       (evidenceArguments : EvidenceArgs scope relations)
-      (payload : Tm scope) : Tm scope
+      (payload : Tm scope)
+      (captures : Evidence (.inclusion .capture) scope) : Tm scope
   | «open» {scope : Sig} {symbols : List StaticSort}
       {relations : List Relation}
       (theory : Theory scope symbols relations)
       (payloadType : Ty (StaticScope scope symbols relations))
-      (result : Ty scope) (package : Tm scope)
-      (body : Tm (PayloadScope scope symbols relations)) : Tm scope
+      (result : Ty scope) (bodyOuterUse : Capture scope)
+      (package : Tm scope)
+      (body : Tm (PayloadScope scope symbols relations))
+      (discharge : Evidence (.inclusion .capture)
+        (PayloadScope scope symbols relations)) : Tm scope
+  | use {scope : Sig} (term : Tm scope)
+      (inclusion : Evidence (.inclusion .capture) scope) : Tm scope
 deriving DecidableEq
 
 namespace Tm
@@ -102,8 +122,11 @@ namespace Tm
 /-- Discoverable name for constrained static abstraction. -/
 def staticLam {scope : Sig} {symbols : List StaticSort}
     {relations : List Relation} (theory : Theory scope symbols relations)
-    (body : Tm (StaticScope scope symbols relations)) : Tm scope :=
-  .slam theory body
+    (closure : Capture scope)
+    (body : Tm (StaticScope scope symbols relations))
+    (captures : Evidence (.inclusion .capture)
+      (StaticScope scope symbols relations)) : Tm scope :=
+  .slam theory closure body captures
 
 /-- Discoverable name for constrained static application. -/
 def staticApp {scope : Sig} {symbols : List StaticSort}
@@ -121,33 +144,42 @@ def rename {source target : Sig} (term : Tm source)
   match term with
   | .var index => .var (rho.var index)
   | .unit => .unit
-  | .lam domain codomain body =>
+  | .lam domain codomain closure body captures =>
       .lam (domain.rename rho) (codomain.rename rho)
+        (closure.rename rho)
         (body.rename (rho.lift (kind := .term)))
+        (captures.rename (rho.lift (kind := .term)))
   | .app function argument =>
       .app (function.rename rho) (argument.rename rho)
-  | .let' result rhs body =>
-      .let' (result.rename rho) (rhs.rename rho)
+  | .let' result bodyOuterUse rhs body discharge =>
+      .let' (result.rename rho) (bodyOuterUse.rename rho) (rhs.rename rho)
         (body.rename (rho.lift (kind := .term)))
+        (discharge.rename (rho.lift (kind := .term)))
   | .adapt inner adapter =>
       .adapt (inner.rename rho) (adapter.rename rho)
-  | @Tm.slam _ symbols relations theory body =>
-      .slam (theory.rename rho)
+  | @Tm.slam _ symbols relations theory closure body captures =>
+      .slam (theory.rename rho) (closure.rename rho)
         (body.rename (rho.liftStatic symbols relations))
+        (captures.rename (rho.liftStatic symbols relations))
   | @Tm.sapp _ _ _ theory function symbolArguments evidenceArguments =>
       .sapp (theory.rename rho) (function.rename rho)
         (symbolArguments.rename rho) (evidenceArguments.rename rho)
-  | @Tm.pack _ symbols relations theory payloadType symbolArguments
-      evidenceArguments payload =>
+  | @Tm.pack _ symbols relations theory payloadType closure symbolArguments
+      evidenceArguments payload captures =>
       .pack (theory.rename rho)
         (payloadType.rename (rho.liftStatic symbols relations))
+        (closure.rename rho)
         (symbolArguments.rename rho) (evidenceArguments.rename rho)
-        (payload.rename rho)
-  | @Tm.«open» _ symbols relations theory payloadType result package body =>
+        (payload.rename rho) (captures.rename rho)
+  | @Tm.«open» _ symbols relations theory payloadType result bodyOuterUse
+      package body discharge =>
       .«open» (theory.rename rho)
         (payloadType.rename (rho.liftStatic symbols relations))
-        (result.rename rho) (package.rename rho)
+        (result.rename rho) (bodyOuterUse.rename rho) (package.rename rho)
         (body.rename (rho.liftPayload symbols relations))
+        (discharge.rename (rho.liftPayload symbols relations))
+  | .use inner inclusion =>
+      .use (inner.rename rho) (inclusion.rename rho)
 
 /-- Weaken a term below one heterogeneous binder. -/
 def weaken {scope : Sig} {kind : BinderKind} (term : Tm scope) :
@@ -160,23 +192,26 @@ theorem rename_id {scope : Sig} (term : Tm scope) :
   induction term with
   | var => rfl
   | unit => rfl
-  | lam domain codomain body induction =>
+  | lam domain codomain closure body captures induction =>
       simp [rename, induction]
   | app function argument functionInduction argumentInduction =>
       simp [rename, functionInduction, argumentInduction]
-  | let' result rhs body rhsInduction bodyInduction =>
+  | let' result bodyOuterUse rhs body discharge rhsInduction bodyInduction =>
       simp [rename, rhsInduction, bodyInduction]
   | adapt inner adapter induction =>
       simp [rename, induction]
-  | slam theory body induction =>
+  | slam theory closure body captures induction =>
       simp [rename, induction]
   | sapp theory function symbolArguments evidenceArguments induction =>
       simp [rename, induction]
-  | pack theory payloadType symbolArguments evidenceArguments payload induction =>
+  | pack theory payloadType closure symbolArguments evidenceArguments payload
+      captures induction =>
       simp [rename, induction]
-  | «open» theory payloadType result package body packageInduction
-      bodyInduction =>
+  | «open» theory payloadType result bodyOuterUse package body discharge
+      packageInduction bodyInduction =>
       simp [rename, packageInduction, bodyInduction]
+  | use inner inclusion induction =>
+      simp [rename, induction]
 
 @[simp]
 theorem rename_comp {first second third : Sig} (term : Tm first)
@@ -185,28 +220,31 @@ theorem rename_comp {first second third : Sig} (term : Tm first)
   induction term generalizing second third with
   | var => rfl
   | unit => rfl
-  | lam domain codomain body induction =>
+  | lam domain codomain closure body captures induction =>
       simp [rename, induction, Ty.rename_comp, Rename.lift_comp]
   | app function argument functionInduction argumentInduction =>
       simp [rename, functionInduction, argumentInduction]
-  | let' result rhs body rhsInduction bodyInduction =>
+  | let' result bodyOuterUse rhs body discharge rhsInduction bodyInduction =>
       simp [rename, rhsInduction, bodyInduction, Rename.lift_comp]
   | adapt inner adapter induction =>
       simp [rename, induction, Adapter.rename_comp]
-  | slam theory body induction =>
+  | slam theory closure body captures induction =>
       simp [rename, induction, Theory.rename_comp,
         Rename.liftStatic_comp]
   | sapp theory function symbolArguments evidenceArguments induction =>
       simp [rename, induction, Theory.rename_comp,
         SymbolArgs.rename_comp, EvidenceArgs.rename_comp]
-  | pack theory payloadType symbolArguments evidenceArguments payload induction =>
+  | pack theory payloadType closure symbolArguments evidenceArguments payload
+      captures induction =>
       simp [rename, induction, Theory.rename_comp, Ty.rename_comp,
         SymbolArgs.rename_comp, EvidenceArgs.rename_comp,
         Rename.liftStatic_comp]
-  | «open» theory payloadType result package body packageInduction
-      bodyInduction =>
+  | «open» theory payloadType result bodyOuterUse package body discharge
+      packageInduction bodyInduction =>
       simp [rename, packageInduction, bodyInduction, Theory.rename_comp,
         Ty.rename_comp, Rename.liftStatic_comp, Rename.liftPayload_comp]
+  | use inner inclusion induction =>
+      simp [rename, induction, Evidence.rename_comp]
 
 /-! ## Call-by-value values before erasure -/
 
@@ -221,24 +259,31 @@ inductive IsValue : {scope : Sig} → Tm scope → Prop where
       IsValue (.var index)
   | unit {scope : Sig} : IsValue (.unit : Tm scope)
   | lam {scope : Sig} {domain codomain : Ty scope}
-      {body : Tm (scope ▹ .term)} :
-      IsValue (.lam domain codomain body)
+      {closure : Capture scope} {body : Tm (scope ▹ .term)}
+      {captures : Evidence (.inclusion .capture) (scope ▹ .term)} :
+      IsValue (.lam domain codomain closure body captures)
   | adapt {scope : Sig} {term : Tm scope} {adapter : Adapter scope}
       (termValue : IsValue term) : IsValue (.adapt term adapter)
   | slam {scope : Sig} {symbols : List StaticSort}
       {relations : List Relation}
-      {theory : Theory scope symbols relations}
+      {theory : Theory scope symbols relations} {closure : Capture scope}
       {body : Tm (StaticScope scope symbols relations)}
-      (bodyValue : IsValue body) : IsValue (.slam theory body)
+      {captures : Evidence (.inclusion .capture)
+        (StaticScope scope symbols relations)}
+      (bodyValue : IsValue body) :
+      IsValue (.slam theory closure body captures)
   | pack {scope : Sig} {symbols : List StaticSort}
       {relations : List Relation}
       {theory : Theory scope symbols relations}
       {payloadType : Ty (StaticScope scope symbols relations)}
+      {closure : Capture scope}
       {symbolArguments : SymbolArgs scope symbols}
       {evidenceArguments : EvidenceArgs scope relations}
-      {payload : Tm scope} (payloadValue : IsValue payload) :
-      IsValue (.pack theory payloadType symbolArguments evidenceArguments
-        payload)
+      {payload : Tm scope}
+      {captures : Evidence (.inclusion .capture) scope}
+      (payloadValue : IsValue payload) :
+      IsValue (.pack theory payloadType closure symbolArguments
+        evidenceArguments payload captures)
 
 end Tm
 
