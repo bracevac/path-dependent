@@ -1,14 +1,18 @@
 import Coercions.Translation.ManySorted.Acyclic.TermTranslation
 import Coercions.Translation.ManySorted.Acyclic.ValueTranslationErasure
 import Coercions.Translation.ManySorted.Acyclic.SourceErasure
+import Coercions.Translation.ManySorted.Acyclic.ComputationalRuntime
 
 /-!
 # Erasure of certified acyclic term translation
 
-Returns reuse value translation, primitive `x.v` selection is a read of the
-receiver's separated payload variable, and every source/target capture-use
-annotation erases.  Successful compilation therefore preserves the direct
-captured-DOT runtime term exactly.
+Returns reuse value translation, primitive `x.v` selection reads the
+receiver's separated payload, applications preserve both operands, plain
+lets remain runtime lets, and object lets erase target `open` to one runtime
+let.  Capture-use annotations erase.  Successful compilation therefore
+preserves the independently defined captured-DOT runtime term exactly.  This
+is exact erasure preservation into the shared runtime, not a claim of an
+independent source small-step semantics or a full source-to-target simulation.
 -/
 
 namespace DOTCaptureToManySortedFC.Acyclic.TermTranslationErasure
@@ -25,8 +29,11 @@ end Source
 
 namespace Translation
 
+export DOTCaptureToManySortedFC.Acyclic.ValueTranslation
+  (CompiledTerm compileTerm?)
+
 export DOTCaptureToManySortedFC.Acyclic.TermTranslation
-  (CompiledTerm compileTerm? compileUse? compileSelect)
+  (compileUse? compileSelect)
 
 end Translation
 
@@ -72,42 +79,7 @@ private theorem compileTerm?_erase
       Translation.compileTerm? ready typing = some compiled →
         compiled.term.erase =
           SourceErasure.eraseTerm context sourceTerm := by
-  induction typing with
-  | ret valueTyping =>
-      intro compiled success
-      change Option.map _
-        (ValueTranslation.compileValue? ready valueTyping) =
-          some compiled at success
-      generalize valueEquation :
-        ValueTranslation.compileValue? ready valueTyping = valueResult
-      cases valueResult with
-      | none => simp [valueEquation] at success
-      | some valueCompiled =>
-          rw [valueEquation] at success
-          cases Option.some.inj success
-          exact ValueTranslationErasure.compileValue_erase valueEquation
-  | select exposes =>
-      intro compiled success
-      change some (TermTranslation.compileSelect ready exposes) =
-        some compiled at success
-      cases Option.some.inj success
-      let selected := SelectionTranslation.compile ready.translated exposes
-      simpa [TermTranslation.compileSelect, selected] using
-        SourceErasure.generatedSelection_erase selected.resolved
-  | use termTyping inclusion induction =>
-      intro compiled success
-      change Option.bind
-        (TermTranslation.compileTerm? ready termTyping)
-        (fun inner => TermTranslation.compileUse? inner inclusion) =
-          some compiled at success
-      generalize innerEquation :
-        TermTranslation.compileTerm? ready termTyping = innerResult
-      cases innerResult with
-      | none => simp [innerEquation] at success
-      | some inner =>
-          rw [innerEquation] at success
-          have outerErase := compileUse?_erase inner inclusion success
-          exact outerErase.trans (induction inner innerEquation)
+  exact ValueTranslationErasure.compileTerm_eraseCore typing ready
 
 /-- Every successful certified captured-DOT term compilation commutes
 exactly with canonical runtime erasure. -/
@@ -145,10 +117,53 @@ theorem compileTerm?_map_erase
       simp only [Option.map_some]
       exact congrArg some (compileTerm_erase resultEquation)
 
+/-! ## Operational correspondence through exact erasure -/
+
+/-- A compiled term takes exactly the runtime steps taken by the direct
+source erasure.  This is transport along exact compiler erasure, not a
+second source semantics with unrelated transitions. -/
+theorem compileTerm_step_iff
+    {scope : Source.Scope} {context : Source.Ctx scope}
+    {ready : Runtime.Ready context}
+    {sourceTerm : Source.Term scope} {sourceUse : Source.Capture scope}
+    {sourceType : Source.Ty scope}
+    {typing : Source.Term.HasType
+      context sourceTerm sourceUse sourceType}
+    {compiled : Translation.CompiledTerm
+      ready sourceTerm sourceUse sourceType}
+    (success : Translation.compileTerm? ready typing = some compiled)
+    {next : ManySortedFC.Runtime.Tm (Layout.sig context).termCount} :
+    ManySortedFC.Runtime.Step compiled.term.erase next ↔
+      ManySortedFC.Runtime.Step
+        (SourceErasure.eraseTerm context sourceTerm) next := by
+  rw [compileTerm_erase success]
+
+/-- The same exact transport holds for any finite runtime reduction trace. -/
+theorem compileTerm_steps_iff
+    {scope : Source.Scope} {context : Source.Ctx scope}
+    {ready : Runtime.Ready context}
+    {sourceTerm : Source.Term scope} {sourceUse : Source.Capture scope}
+    {sourceType : Source.Ty scope}
+    {typing : Source.Term.HasType
+      context sourceTerm sourceUse sourceType}
+    {compiled : Translation.CompiledTerm
+      ready sourceTerm sourceUse sourceType}
+    (success : Translation.compileTerm? ready typing = some compiled)
+    {result : ManySortedFC.Runtime.Tm (Layout.sig context).termCount} :
+    ManySortedFC.Runtime.Steps compiled.term.erase result ↔
+      ManySortedFC.Runtime.Steps
+        (SourceErasure.eraseTerm context sourceTerm) result := by
+  rw [compileTerm_erase success]
+
 private theorem option_map_constant_of_isSome {alpha beta : Type}
     (option : Option alpha) (constant : beta)
     (present : option.isSome = true) :
     option.map (fun _ => constant) = some constant := by
+  cases option <;> simp_all
+
+private theorem option_eq_some_get {alpha : Type} (option : Option alpha)
+    (present : option.isSome = true) :
+    option = some (option.get present) := by
   cases option <;> simp_all
 
 /-! ## Runtime-variable regressions -/
@@ -243,6 +258,86 @@ theorem older_open_selection_erases_to_payload_variable :
       rw [option_map_constant_of_isSome _ _
         older_open_selection_compiles]
       rfl
+
+/-! ### Closed higher-order programs -/
+
+namespace ComputationalRegression
+
+export DOTCaptureToManySortedFC.Acyclic.TermTranslation.ComputationalRegression
+  (emptyReady returnSelectedTyping applySelectedTyping
+    returnSelected_compiles applySelected_compiles
+    returnSelectedCompiled applySelectedCompiled)
+
+theorem returnSelected_compile_success :
+    Translation.compileTerm? emptyReady returnSelectedTyping =
+      some returnSelectedCompiled := by
+  simpa [returnSelectedCompiled] using
+    option_eq_some_get
+      (Translation.compileTerm? emptyReady returnSelectedTyping)
+      returnSelected_compiles
+
+theorem applySelected_compile_success :
+    Translation.compileTerm? emptyReady applySelectedTyping =
+      some applySelectedCompiled := by
+  simpa [applySelectedCompiled] using
+    option_eq_some_get
+      (Translation.compileTerm? emptyReady applySelectedTyping)
+      applySelected_compiles
+
+/-- The generated target retains the complete two-let program and identity
+payload after erasure. -/
+theorem returnSelected_compiled_erases_exactly :
+    returnSelectedCompiled.term.erase =
+      ComputationalRuntime.returnSelectedRuntime := by
+  calc
+    _ = SourceErasure.eraseTerm DOTCapture.Acyclic.Ctx.nil
+          DOTCapture.Acyclic.ComputationalExamples.returnSelected :=
+      compileTerm_erase returnSelected_compile_success
+    _ = _ := ComputationalRuntime.returnSelected_erases_exactly
+
+/-- The generated application likewise retains both lets and the payload
+application after erasure. -/
+theorem applySelected_compiled_erases_exactly :
+    applySelectedCompiled.term.erase =
+      ComputationalRuntime.applySelectedRuntime := by
+  calc
+    _ = SourceErasure.eraseTerm DOTCapture.Acyclic.Ctx.nil
+          DOTCapture.Acyclic.ComputationalExamples.applySelected :=
+      compileTerm_erase applySelected_compile_success
+    _ = _ := ComputationalRuntime.applySelected_erases_exactly
+
+/-- Exact compiler erasure transports the source runtime's two zeta steps:
+the compiled program returns the identity function, not unit. -/
+theorem returnSelected_compiled_steps_to_identity :
+    ManySortedFC.Runtime.Steps returnSelectedCompiled.term.erase
+      ComputationalRuntime.identity := by
+  apply (compileTerm_steps_iff returnSelected_compile_success).2
+  simpa only [ComputationalRuntime.returnSelected_erases_exactly] using
+    ComputationalRuntime.returnSelected_steps_to_identity
+
+/-- Exact compiler erasure transports the two zeta steps and final beta step
+of the selected-function application. -/
+theorem applySelected_compiled_steps_to_unit :
+    ManySortedFC.Runtime.Steps applySelectedCompiled.term.erase .unit := by
+  apply (compileTerm_steps_iff applySelected_compile_success).2
+  simpa only [ComputationalRuntime.applySelected_erases_exactly] using
+    ComputationalRuntime.applySelected_steps_to_unit
+
+/-- A direct syntactic guard against the former unit-producing stub. -/
+theorem returnSelected_compiled_erasure_is_not_unit :
+    returnSelectedCompiled.term.erase ≠
+      (.unit : ManySortedFC.Runtime.Tm 0) := by
+  rw [returnSelected_compiled_erases_exactly]
+  intro equality
+  cases equality
+
+/-- The value reached by the return program is itself observably non-unit. -/
+theorem returnSelected_compiled_result_is_not_unit :
+    ComputationalRuntime.identity ≠
+      (.unit : ManySortedFC.Runtime.Tm 0) :=
+  ComputationalRuntime.identity_is_not_unit
+
+end ComputationalRegression
 
 end Regression
 
