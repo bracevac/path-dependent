@@ -1,6 +1,8 @@
 import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.SourceErasure
 import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.Compiler
+import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.CompilerConservativity
 import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.CompilerChecker
+import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.BoundaryRegressions
 import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.CompilerErasure
 import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.ComputationalExample
 
