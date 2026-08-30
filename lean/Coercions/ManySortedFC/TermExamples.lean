@@ -15,12 +15,14 @@ namespace ManySortedFC.TermExamples
 
 /-! ## Ordinary terms and explicit adaptation -/
 
-/-- The identity function at `One`, with its ambient codomain annotation. -/
+/-- The identity function at `One`, with an empty retained closure. -/
 def unitIdentity : Tm [] :=
-  .lam .one .one (.var .here)
+  .lam .one .one .empty (.var .here)
+    (.inclusionRefl (.capture .empty))
 
 theorem unit_identity_is_accepted :
-    Tm.synth Ctx.nil unitIdentity = some (.arr .one .one) := by
+    Tm.synth Ctx.nil unitIdentity =
+      some (.empty, .capturing .empty (.arr .one .one)) := by
   native_decide
 
 /-- A logical cast transports `unit` along the primitive `One <= Top`
@@ -29,7 +31,7 @@ def unitAsTop : Tm [] :=
   .adapt .unit (.cast (.typeTop .one))
 
 theorem logical_unit_adaptation_is_accepted :
-    Tm.synth Ctx.nil unitAsTop = some .top := by
+    Tm.synth Ctx.nil unitAsTop = some (.empty, .top) := by
   native_decide
 
 /-- This adapter expects a function as its source, so applying it to `unit`
@@ -52,11 +54,81 @@ theorem nonvalue_adapter_application_is_rejected :
     (Tm.check Ctx.nil nonValueUnitAdaptation).isNone = true := by
   native_decide
 
+/-! ## Capture prediction and local discharge -/
+
+/-- A closed unary function type whose explicit outer annotation allows a
+variable occurrence to receive its precise singleton root. -/
+def closedUnaryType : Ty [] :=
+  .capturing .empty (.arr .one .one)
+
+def freeFunctionContext : Ctx ([] ▹ .term) :=
+  Ctx.nil.extendTerm closedUnaryType
+
+/-- Invoking a free function charges its precise root, even though the value
+stored in the context was declared with an empty retained capture. -/
+def callFreeFunction : Tm ([] ▹ .term) :=
+  .app (.var .here) .unit
+
+theorem free_function_call_predicts_its_root :
+    Tm.synth freeFunctionContext callFreeFunction =
+      some (.union (.singleton .here) .empty, .one) := by
+  native_decide
+
+/-- A lambda may export that prediction as its ambient closure. -/
+def capturesFreeFunction : Tm ([] ▹ .term) :=
+  .lam .one .one (.singleton .here)
+    (.app (.var (.there .here)) .unit)
+    (.captureUnionElim
+      (.inclusionRefl (.capture (.singleton (.there .here))))
+      (.captureEmpty (.singleton (.there .here))))
+
+theorem lambda_retains_its_free_function :
+    Tm.synth freeFunctionContext capturesFreeFunction =
+      some (.empty,
+        .capturing (.singleton .here) (.arr .one .one)) := by
+  native_decide
+
+/-- Binding the free function to a local variable and invoking that variable
+uses `captureVariable` to discharge the local root to the capture retained by
+the bound value. -/
+def letBoundCallRaw : Tm ([] ▹ .term) :=
+  .let' .one (.singleton .here) (.var .here)
+    (.app (.var .here) .unit)
+    (.captureUnionElim
+      (.captureVariable .here)
+      (.captureEmpty (.singleton (.there .here))))
+
+/-- The raw `let` prediction is `∅ ∪ {f}`; the explicit `use` certificate
+normalizes that upper bound to `{f}` without changing its returned type. -/
+def letBoundCall : Tm ([] ▹ .term) :=
+  .use letBoundCallRaw
+    (.captureUnionElim
+      (.captureEmpty (.singleton .here))
+      (.inclusionRefl (.capture (.singleton .here))))
+
+theorem let_discharge_exports_only_the_outer_root :
+    Tm.synth freeFunctionContext letBoundCall =
+      some (.singleton .here, .one) := by
+  native_decide
+
+theorem captured_binding_exports_capture_variable_evidence :
+    (Evidence.check freeFunctionContext
+      (.captureVariable (.here : BVar ([] ▹ .term) .term))).isSome = true := by
+  native_decide
+
+/-- A bare binding remains a capability root: projecting
+`Ty.outerCapture = ∅` does not manufacture a `{x} ⊆ ∅` certificate. -/
+theorem bare_binding_rejects_capture_variable_evidence :
+    (Evidence.check (Ctx.nil.extendTerm .one)
+      (.captureVariable (.here : BVar ([] ▹ .term) .term))).isNone = true := by
+  native_decide
+
 /-! ## A realizable static abstraction and application -/
 
 /-- A value body abstracted over the realizable mixed type/capture theory. -/
 def mixedStaticUnit : Tm [] :=
-  .slam StaticExamples.exactMixedTheory .unit
+  .slam StaticExamples.exactMixedTheory .empty .unit
+    (.inclusionRefl (.capture .empty))
 
 theorem mixed_static_abstraction_is_accepted :
     (Tm.check Ctx.nil mixedStaticUnit).isSome = true := by
@@ -70,7 +142,7 @@ def appliedMixedStaticUnit : Tm [] :=
     StaticExamples.exactMixedEvidence
 
 theorem realizable_static_application_is_accepted :
-    Tm.synth Ctx.nil appliedMixedStaticUnit = some .one := by
+    Tm.synth Ctx.nil appliedMixedStaticUnit = some (.empty, .one) := by
   native_decide
 
 /-! ## Existential packages -/
@@ -86,23 +158,29 @@ def mixedUnitPayloadType : Ty MixedStaticScope := .one
 /-- Package formation checks the mixed theory model in the empty ambient
 context, then checks the payload against its instantiated type. -/
 def mixedUnitPackage : Tm [] :=
-  .pack StaticExamples.exactMixedTheory mixedUnitPayloadType
+  .pack StaticExamples.exactMixedTheory mixedUnitPayloadType .empty
     StaticExamples.exactMixedWitnesses
     StaticExamples.exactMixedEvidence .unit
+    (.inclusionRefl (.capture .empty))
 
 theorem realizable_existential_package_is_accepted :
     Tm.synth Ctx.nil mixedUnitPackage =
-      some (.existsT StaticExamples.exactMixedTheory mixedUnitPayloadType) := by
+      some (.empty,
+        .capturing .empty
+          (.existsT StaticExamples.exactMixedTheory mixedUnitPayloadType)) := by
   native_decide
 
 /-- Opening exposes the theory and its payload variable only inside the body;
 the explicit result remains the ambient type `One`. -/
 def openedMixedUnitPackage : Tm [] :=
-  .«open» StaticExamples.exactMixedTheory mixedUnitPayloadType .one
-    mixedUnitPackage (.var .here)
+  .use
+    (.«open» StaticExamples.exactMixedTheory mixedUnitPayloadType .one
+      .empty mixedUnitPackage (.var .here)
+      (.inclusionRefl (.capture .empty)))
+    (.captureUnionElim (.captureEmpty .empty) (.captureEmpty .empty))
 
 theorem realizable_existential_open_is_accepted :
-    Tm.synth Ctx.nil openedMixedUnitPackage = some .one := by
+    Tm.synth Ctx.nil openedMixedUnitPackage = some (.empty, .one) := by
   native_decide
 
 /-- The impossible interval's reflexive evidence is not a model in the empty
@@ -111,8 +189,10 @@ can become available. -/
 def impossibleIntervalPackage : Tm [] :=
   .pack StaticExamples.impossibleTypeInterval
     (.one : Ty StaticExamples.ImpossibleTypeOpenScope)
+    .empty
     StaticExamples.impossibleTypeWitness
     StaticExamples.reflexiveTypeEvidence .unit
+    (.inclusionRefl (.capture .empty))
 
 theorem impossible_interval_package_is_rejected :
     (Tm.check Ctx.nil impossibleIntervalPackage).isNone = true := by
