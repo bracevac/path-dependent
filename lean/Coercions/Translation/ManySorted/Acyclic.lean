@@ -12,6 +12,7 @@ import Coercions.Translation.ManySorted.Acyclic.SourceErasure
 import Coercions.Translation.ManySorted.Acyclic.ValueTranslation
 import Coercions.Translation.ManySorted.Acyclic.TermTranslation
 import Coercions.Translation.ManySorted.Acyclic.ValueTranslationErasure
+import Coercions.Translation.ManySorted.Acyclic.TermTranslationErasure
 
 /-!
 # Acyclic DOT with captures to many-sorted FC

@@ -150,17 +150,33 @@ noncomputable def compileSelect {scope : Source.Scope}
       term := Selection.term selected.resolved
       typing := selected.targetTyping }
 
-/-- Add exactly one target `Tm.use` for one source capture-use rule.  Failure
-can only come from translating or resolving one of the raw source inclusion
-endpoints. -/
-noncomputable def compileUse? {scope : Source.Scope}
+/-- The logical certificate and translated endpoint needed to add one target
+`Tm.use`.  Separating this payload from the final `CompiledTerm` makes the
+generated term constructor available through an ordinary `Option.map` law. -/
+structure CompiledUse {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Context.Ready context}
+    {sourceTerm : Source.Term scope}
+    {sourceUse sourceTargetUse : Source.Capture scope}
+    {sourceType : Source.Ty scope}
+    (inner : CompiledTerm ready sourceTerm sourceUse sourceType)
+    (inclusion : Source.CaptureIncludes context sourceUse sourceTargetUse) where
+  targetUse : Target.Capture (Layout.sig context)
+  useTranslated :
+    Static.translateCapture? context sourceTargetUse = some targetUse
+  evidence : Target.Evidence (.inclusion .capture) (Layout.sig context)
+  evidenceTyping : Target.Evidence.Proves ready.target evidence
+    (.inclusion (.capture inner.targetUse) (.capture targetUse))
+
+/-- Compile the logical payload for one source capture-use rule.  Failure can
+only come from translating or resolving one of the raw source endpoints. -/
+noncomputable def compileUseEvidence? {scope : Source.Scope}
     {context : Source.Ctx scope} {ready : Context.Ready context}
     {sourceTerm : Source.Term scope}
     {sourceUse targetUse : Source.Capture scope}
     {sourceType : Source.Ty scope}
     (inner : CompiledTerm ready sourceTerm sourceUse sourceType)
     (inclusion : Source.CaptureIncludes context sourceUse targetUse) :
-    Option (CompiledTerm ready sourceTerm targetUse sourceType) := by
+    Option (CompiledUse inner inclusion) := by
   generalize compiledEquation :
     Logical.compileIncludes? ready.translated inclusion = compiledResult
   cases compiledResult with
@@ -181,13 +197,47 @@ noncomputable def compileUse? {scope : Source.Scope}
               have targetUseTranslated :=
                 ofTranslateCaptureExpression targetTranslated
               exact some
-                { sourceTyping := .use inner.sourceTyping inclusion
-                  targetUse := compiledTarget
-                  targetType := inner.targetType
+                { targetUse := compiledTarget
                   useTranslated := targetUseTranslated
-                  typeTranslated := inner.typeTranslated
-                  term := .use inner.term evidence
-                  typing := .use inner.typing evidenceTyping }
+                  evidence := evidence
+                  evidenceTyping := evidenceTyping }
+
+/-- Add exactly one target `Tm.use` for one source capture-use rule. -/
+noncomputable def compileUse? {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Context.Ready context}
+    {sourceTerm : Source.Term scope}
+    {sourceUse targetUse : Source.Capture scope}
+    {sourceType : Source.Ty scope}
+    (inner : CompiledTerm ready sourceTerm sourceUse sourceType)
+    (inclusion : Source.CaptureIncludes context sourceUse targetUse) :
+    Option (CompiledTerm ready sourceTerm targetUse sourceType) :=
+  (compileUseEvidence? inner inclusion).map fun compiled =>
+    { sourceTyping := .use inner.sourceTyping inclusion
+      targetUse := compiled.targetUse
+      targetType := inner.targetType
+      useTranslated := compiled.useTranslated
+      typeTranslated := inner.typeTranslated
+      term := .use inner.term compiled.evidence
+      typing := .use inner.typing compiled.evidenceTyping }
+
+/-- A successful source-use compilation adds exactly one target `Tm.use`
+node.  This projection keeps downstream erasure proofs independent of the
+dependent endpoint-alignment implementation above. -/
+theorem compileUse?_term {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Context.Ready context}
+    {sourceTerm : Source.Term scope}
+    {sourceUse targetUse : Source.Capture scope}
+    {sourceType : Source.Ty scope}
+    (inner : CompiledTerm ready sourceTerm sourceUse sourceType)
+    (inclusion : Source.CaptureIncludes context sourceUse targetUse)
+    {compiled : CompiledTerm ready sourceTerm targetUse sourceType}
+    (success : compileUse? inner inclusion = some compiled) :
+    ∃ evidence, compiled.term = .use inner.term evidence := by
+  unfold compileUse? at success
+  obtain ⟨generated, generatedCompiled, generatedEquality⟩ :=
+    Option.map_eq_some_iff.mp success
+  cases generatedEquality
+  exact ⟨generated.evidence, rfl⟩
 
 /-! ## Derivation-directed compiler -/
 
