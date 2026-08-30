@@ -26,7 +26,7 @@ def exactOneSourceModel :
 def compiledExactOneModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.type .one)
       exactOneInterval :=
-  compileModelTotal emptyBoundCompiler exactOneSourceModel
+  compileModelTotal exactOneSourceModel
 
 @[simp]
 theorem exact_one_model_evidence_shape :
@@ -53,7 +53,7 @@ def wideOneSourceModel :
 def compiledWideOneModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.type .one)
       wideOneInterval :=
-  compileModelTotal emptyBoundCompiler wideOneSourceModel
+  compileModelTotal wideOneSourceModel
 
 @[simp]
 theorem wide_one_model_distinguishes_bound_order :
@@ -67,7 +67,7 @@ def lowerOneInterval : DOTCapture.BinderOnly.Interval .type [] :=
 def compiledLowerOneModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.type .one)
       lowerOneInterval :=
-  compileModelTotal emptyBoundCompiler (.lower .typeBottom)
+  compileModelTotal (.lower .typeBottom)
 
 @[simp]
 theorem lower_one_model_evidence_shape :
@@ -79,7 +79,7 @@ def upperOneInterval : DOTCapture.BinderOnly.Interval .type [] :=
 def compiledUpperOneModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.type .one)
       upperOneInterval :=
-  compileModelTotal emptyBoundCompiler (.upper .typeTop)
+  compileModelTotal (.upper .typeTop)
 
 @[simp]
 theorem upper_one_model_evidence_shape :
@@ -104,7 +104,7 @@ def exactEmptyCaptureSourceModel :
 def compiledExactEmptyCaptureModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.capture .empty)
       exactEmptyCaptureInterval :=
-  compileModelTotal emptyBoundCompiler exactEmptyCaptureSourceModel
+  compileModelTotal exactEmptyCaptureSourceModel
 
 def unboundedCaptureInterval :
     DOTCapture.BinderOnly.Interval .capture [] :=
@@ -125,7 +125,7 @@ def unboundedCaptureInstantiation :
 def compiledUnboundedCaptureModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.capture .empty)
       unboundedCaptureInterval :=
-  compileModelTotal emptyBoundCompiler unboundedCaptureSourceModel
+  compileModelTotal unboundedCaptureSourceModel
 
 @[simp]
 theorem unbounded_capture_model_has_no_evidence :
