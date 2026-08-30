@@ -1,5 +1,6 @@
 import Coercions.Translation.ManySorted.Acyclic.ObjectEncoding
 import Coercions.Translation.ManySorted.Acyclic.Layout
+import Coercions.Translation.ManySorted.Acyclic.StaticTranslation
 
 /-!
 # Acyclic DOT with captures to many-sorted FC
