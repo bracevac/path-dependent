@@ -99,7 +99,7 @@ theorem adapter_source_mismatch_is_rejected :
     (Tm.check Ctx.nil mismatchedUnitAdaptation).isNone = true := by
   native_decide
 
-/-- Structural adapters consume ANF values at one uniform boundary.  Although
+/-- Structural adapters consume values at one uniform boundary.  Although
 this application has type `One`, adapting it directly could become unsafe
 after adapter composition, so the checker requires it to be let-bound first. -/
 def nonValueUnitAdaptation : Tm [] :=
@@ -115,6 +115,41 @@ theorem nonvalue_adapter_application_is_rejected :
 variable occurrence to receive its precise singleton root. -/
 def closedUnaryType : Ty [] :=
   .capturing .empty (.arr .one .one)
+
+/-! ### General computation operands -/
+
+/-- A genuine computation returning the closed identity function.  Its
+right-hand side and body are values, but the enclosing ordinary let is not. -/
+def computedUnitIdentity : Tm [] :=
+  .let' closedUnaryType .empty .unit unitIdentity.weaken
+    (.captureEmpty .empty)
+
+/-- A genuine computation returning unit. -/
+def computedUnit : Tm [] :=
+  .let' .one .empty .unit .unit
+    (.captureEmpty .empty)
+
+/-- Both operands of this application are computations rather than annotated
+target values. -/
+def applicationOfComputations : Tm [] :=
+  .app computedUnitIdentity computedUnit
+
+theorem computation_application_is_accepted :
+    Tm.synth Ctx.nil applicationOfComputations =
+      some
+        (.union (.union .empty .empty)
+          (.union (.union .empty .empty) (.union .empty .empty)),
+          .one) := by
+  native_decide
+
+/-- The generalized rule still checks the argument type after independently
+synthesizing both computation operands. -/
+def computationApplicationWithWrongArgument : Tm [] :=
+  .app computedUnitIdentity computedUnitIdentity
+
+theorem computation_application_type_mismatch_is_rejected :
+    (Tm.check Ctx.nil computationApplicationWithWrongArgument).isNone = true := by
+  native_decide
 
 def freeFunctionContext : Ctx ([] ▹ .term) :=
   Ctx.nil.extendTerm closedUnaryType
@@ -305,6 +340,39 @@ theorem realizable_existential_open_is_accepted :
     Tm.synth Ctx.nil openedMixedUnitPackage = some (.empty, .one) := by
   native_decide
 
+/-! ### Opening a package computation -/
+
+/-- A non-value computation whose result is the realizable mixed package. -/
+def computedMixedUnitPackage : Tm [] :=
+  .let'
+    (.capturing .empty
+      (.existsT StaticExamples.exactMixedTheory mixedUnitPayloadType))
+    .empty .unit mixedUnitPackage.weaken
+    (.captureEmpty .empty)
+
+/-- Existential opening directly sequences the package computation.  It does
+not require an administrative target let merely to make the package a value. -/
+def openedComputedMixedUnitPackage : Tm [] :=
+  .«open» StaticExamples.exactMixedTheory mixedUnitPayloadType .one
+    .empty computedMixedUnitPackage (.var .here)
+    (.captureEmpty (.union .empty (.singleton .here)))
+
+theorem computed_existential_open_is_accepted :
+    Tm.synth Ctx.nil openedComputedMixedUnitPackage =
+      some
+        (.union (.union .empty .empty) (.union .empty .empty), .one) := by
+  native_decide
+
+/-- General opening does not weaken the existential-shape check. -/
+def opensComputedNonPackage : Tm [] :=
+  .«open» StaticExamples.exactMixedTheory mixedUnitPayloadType .one
+    .empty computedUnit (.var .here)
+    (.captureEmpty (.union .empty (.singleton .here)))
+
+theorem computed_nonpackage_open_is_rejected :
+    (Tm.check Ctx.nil opensComputedNonPackage).isNone = true := by
+  native_decide
+
 /-- The impossible interval's reflexive evidence is not a model in the empty
 ambient context, so the enclosing package is rejected before its assumptions
 can become available. -/
@@ -339,8 +407,14 @@ theorem package_open_erases_to_payload_let :
     openedMixedUnitPackage.erase =
       Runtime.Tm.let' .unit (.var 0) := rfl
 
+/-- Opening a package computation retains exactly that computation followed
+by the existential payload-binding let. -/
+theorem computed_package_open_erases_exactly :
+    openedComputedMixedUnitPackage.erase =
+      Runtime.Tm.let' (.let' .unit .unit) (.var 0) := rfl
+
 /-- Unlike logical casts, a function adapter has an explicit eta-expansion at
-runtime, with an ANF let around the original call. -/
+runtime, with an administrative let around the original call. -/
 def identityFunctionAdapter : Adapter [] :=
   .function (.identity .one) (.identity .one)
 

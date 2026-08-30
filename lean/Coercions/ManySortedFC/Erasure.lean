@@ -288,8 +288,8 @@ namespace Adapter
 The runtime scope is independent of the adapter's annotated scope because
 types, captures, and evidence are all erased.  This generality lets quantified
 adapters recurse directly through static binders. A function adapter uses an
-ANF let so call-by-value evaluates the original application before a nested
-codomain adapter can eta-wrap its result. -/
+administrative let so call-by-value evaluates the original application before
+a nested codomain adapter can eta-wrap its result. -/
 def erase {scope : Sig} (adapter : Adapter scope) {runtimeScope : Nat}
     (term : Runtime.Tm runtimeScope) : Runtime.Tm runtimeScope :=
   match adapter with

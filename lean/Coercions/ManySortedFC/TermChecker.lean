@@ -10,10 +10,11 @@ independently synthesized type, capture, and certificate endpoint is compared
 by decidable equality.  Logical certificates, structural adapters, and local
 theory models are delegated to their proof-producing structural checkers.
 
-Applications, static applications, existential opening, and adaptation have
-explicit ANF value boundaries.  This makes their capture equations local:
-invocation charges retained outer captures, while sequencing combines the
-right-hand side prediction with the discharged body prediction.
+Ordinary applications and existential opening accept computations and
+sequence their immediate-use predictions explicitly.  Static abstractions
+and applications, existential package payloads, and adaptation retain
+explicit value boundaries where erasing static markers or structural
+adapters could otherwise change call-by-value behavior.
 -/
 
 namespace ManySortedFC
@@ -23,7 +24,8 @@ namespace Tm
 structure ValueChecked {scope : Sig} (term : Tm scope) : Type where
   typing : IsValue term
 
-/-- Check the call-by-value side conditions used by the ANF typing rules.
+/-- Check the call-by-value side conditions used by the remaining value-only
+typing rules.
 
 Static abstractions and packages disappear or expose their payload at runtime,
 so their contained term must itself already be a value.  Capture-use widening
@@ -101,35 +103,24 @@ def check {scope : Sig} (context : Ctx scope) :
         none
 
   | .app function argument => do
-      let functionValue ← checkValue function
-      let argumentValue ← checkValue argument
       let functionChecked ← check context function
-      if functionPure : functionChecked.use = .empty then
-        let functionTyping : HasType context function .empty
-            functionChecked.type := by
-          simpa [functionPure] using functionChecked.typing
-        match functionShape : functionChecked.type.stripCapture with
-        | .arr domain codomain => do
-            let argumentChecked ← check context argument
-            if argumentPure : argumentChecked.use = .empty then
-              if argumentMatches : argumentChecked.type = domain then
-                let argumentTyping : HasType context argument .empty
-                    domain := by
-                  simpa [argumentPure, argumentMatches] using
-                    argumentChecked.typing
-                pure ⟨
-                  .union functionChecked.type.outerCapture
-                    domain.outerCapture,
-                  codomain,
-                  .app functionValue.typing argumentValue.typing
-                    functionTyping functionShape argumentTyping⟩
-              else
-                none
-            else
-              none
-        | _ => none
-      else
-        none
+      match functionShape : functionChecked.type.stripCapture with
+      | .arr domain codomain => do
+          let argumentChecked ← check context argument
+          if argumentMatches : argumentChecked.type = domain then
+            let argumentTyping : HasType context argument
+                argumentChecked.use domain := by
+              simpa [argumentMatches] using argumentChecked.typing
+            pure ⟨
+              functionChecked.use.sequence
+                (argumentChecked.use.sequence
+                  (.union functionChecked.type.outerCapture
+                    domain.outerCapture)),
+              codomain,
+              .app functionChecked.typing functionShape argumentTyping⟩
+          else
+            none
+      | _ => none
 
   | .let' result bodyOuterUse rhs body discharge => do
       let rhsChecked ← check context rhs
@@ -233,37 +224,32 @@ def check {scope : Sig} (context : Ctx scope) :
 
   | @Tm.«open» _ symbols relations theory payloadType result bodyOuterUse
       package body discharge => do
-      let packageValue ← checkValue package
       let packageChecked ← check context package
-      if packagePure : packageChecked.use = .empty then
-        let packageTyping : HasType context package .empty
-            packageChecked.type := by
-          simpa [packagePure] using packageChecked.typing
-        let expectedPackage : Ty scope := .existsT theory payloadType
-        if packageMatches : packageChecked.type.stripCapture =
-            expectedPackage then
-          let bodyContext :=
-            (context.extendTheory theory).extendTerm payloadType
-          let bodyChecked ← check bodyContext body
-          let expectedBody :=
-            (result.rename (Rename.weakenStatic symbols relations)).weaken
-          if bodyMatches : bodyChecked.type = expectedBody then
-            let bodyTyping : HasType bodyContext body bodyChecked.use
-                expectedBody := by
-              simpa [bodyMatches] using bodyChecked.typing
-            let weakenedOuter :=
-              (bodyOuterUse.rename
-                (Rename.weakenStatic symbols relations)).weaken
-            let dischargeBound :=
-              Capture.union weakenedOuter (.singleton .here)
-            let dischargeTyping ← checkCaptureInclusion bodyContext
-              discharge bodyChecked.use dischargeBound
-            pure ⟨.union packageChecked.type.outerCapture bodyOuterUse,
-              result,
-              .«open» packageValue.typing packageTyping packageMatches
-                bodyTyping dischargeTyping⟩
-          else
-            none
+      let expectedPackage : Ty scope := .existsT theory payloadType
+      if packageMatches : packageChecked.type.stripCapture =
+          expectedPackage then
+        let bodyContext :=
+          (context.extendTheory theory).extendTerm payloadType
+        let bodyChecked ← check bodyContext body
+        let expectedBody :=
+          (result.rename (Rename.weakenStatic symbols relations)).weaken
+        if bodyMatches : bodyChecked.type = expectedBody then
+          let bodyTyping : HasType bodyContext body bodyChecked.use
+              expectedBody := by
+            simpa [bodyMatches] using bodyChecked.typing
+          let weakenedOuter :=
+            (bodyOuterUse.rename
+              (Rename.weakenStatic symbols relations)).weaken
+          let dischargeBound :=
+            Capture.union weakenedOuter (.singleton .here)
+          let dischargeTyping ← checkCaptureInclusion bodyContext
+            discharge bodyChecked.use dischargeBound
+          pure ⟨
+            packageChecked.use.sequence
+              (.union packageChecked.type.outerCapture bodyOuterUse),
+            result,
+            .«open» packageChecked.typing packageMatches bodyTyping
+              dischargeTyping⟩
         else
           none
       else

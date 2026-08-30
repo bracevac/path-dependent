@@ -3,11 +3,11 @@ import Coercions.ManySortedFC.Erasure
 /-!
 # Administrative equivalence after erasure
 
-Structural adapters may expose function eta-expansions and ANF identity lets
-even though their source and target annotations disappear. `AdministrativeEq`
-is the least equivalence and term congruence containing value eta and monadic
-let identity. It does not identify arbitrary runtime reductions or make an
-observational-equivalence claim.
+Structural adapters may expose function eta-expansions and administrative
+identity lets even though their source and target annotations disappear.
+`AdministrativeEq` is the least equivalence and term congruence containing
+value eta and monadic let identity. It does not identify arbitrary runtime
+reductions or make an observational-equivalence claim.
 -/
 
 namespace ManySortedFC.Runtime
@@ -93,7 +93,7 @@ equivalence.
 
 Logical casts and identities are literally transparent.  Composition uses
 transitivity, quantified adapters use the induction hypothesis directly, and
-the function case evaluates the original call into an ANF let, reduces its
+the function case evaluates the original call into an administrative let, reduces its
 domain and codomain adapters under congruence, removes the identity let, and
 then applies value eta. -/
 theorem erase_admin {scope : Sig} (adapter : Adapter scope)

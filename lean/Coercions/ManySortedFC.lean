@@ -12,6 +12,7 @@ import Coercions.ManySortedFC.Adapter
 import Coercions.ManySortedFC.Term
 import Coercions.ManySortedFC.TermTyping
 import Coercions.ManySortedFC.TermChecker
+import Coercions.ManySortedFC.TermCheckerCompleteness
 import Coercions.ManySortedFC.Runtime
 import Coercions.ManySortedFC.TermProjection
 import Coercions.ManySortedFC.Erasure
@@ -23,6 +24,8 @@ import Coercions.ManySortedFC.TermExamples
 
 /-!
 Independent import root for the many-sorted FC target. This development is a
-sibling of the type-only `FCsub` kernel and has no DOT dependency. Its initial
-source-facing layer is limited to binder-only interval elaboration.
+sibling of the type-only `FCsub` kernel and has no DOT dependency. Ordinary
+application and existential opening accept typed computations, while static
+elimination, package payloads, and structural adaptation retain their explicit
+value boundaries.
 -/

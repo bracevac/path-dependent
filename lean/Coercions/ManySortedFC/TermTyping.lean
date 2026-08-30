@@ -54,15 +54,19 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
       HasType context (.lam domain codomain closure body captures) .empty
         (.capturing closure (.arr domain codomain))
 
+  /-- General call-by-value application.  The two operands may themselves be
+  computations.  Their immediate-use predictions are sequenced before the
+  retained captures of the function and argument are charged by invocation. -/
   | app {scope : Sig} {context : Ctx scope}
       {function argument : Tm scope} {functionType domain codomain : Ty scope}
-      (functionValue : IsValue function)
-      (argumentValue : IsValue argument)
-      (functionTyping : HasType context function .empty functionType)
+      {functionUse argumentUse : Capture scope}
+      (functionTyping : HasType context function functionUse functionType)
       (functionShape : functionType.stripCapture = .arr domain codomain)
-      (argumentTyping : HasType context argument .empty domain) :
+      (argumentTyping : HasType context argument argumentUse domain) :
       HasType context (.app function argument)
-        (.union functionType.outerCapture domain.outerCapture) codomain
+        (functionUse.sequence
+          (argumentUse.sequence
+            (.union functionType.outerCapture domain.outerCapture))) codomain
 
   /-- The explicit result annotation prevents the body type from escaping its
   ordinary binder.  The discharge certificate removes the local binder from
@@ -83,7 +87,7 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
         (.let' result bodyOuterUse rhs body discharge)
         (.union rhsUse bodyOuterUse) result
 
-  /-- Structural adaptation is explicit, consumes an ANF value, and must have
+  /-- Structural adaptation is explicit, consumes a value, and must have
   the same source type as its argument.  The value premise prevents a function
   eta-adapter from delaying an unevaluated call-by-value computation.  Type
   transport does not change the immediate-use prediction. -/
@@ -167,21 +171,22 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
 
   /-- Opening exposes the complete local theory and then the package payload.
   The recorded ambient result is weakened through both scopes.  The package
-  is an ANF value; opening charges its retained outer capture and the exported
-  body prediction.  The newest payload singleton is available only to the
+  may itself be a computation: its immediate use is sequenced before opening
+  charges the package's retained outer capture and the exported body
+  prediction.  The newest payload singleton is available only to the
   discharge certificate and is covered by the package closure. -/
   | «open» {scope : Sig} {context : Ctx scope}
       {symbols : List StaticSort} {relations : List Relation}
       {theory : Theory scope symbols relations}
       {payloadType : Ty (StaticScope scope symbols relations)}
       {result : Ty scope} {bodyOuterUse : Capture scope}
-      {packageType : Ty scope} {package : Tm scope}
+      {packageUse : Capture scope} {packageType : Ty scope}
+      {package : Tm scope}
       {body : Tm (PayloadScope scope symbols relations)}
       {bodyUse : Capture (PayloadScope scope symbols relations)}
       {discharge : Evidence (.inclusion .capture)
         (PayloadScope scope symbols relations)}
-      (packageValue : IsValue package)
-      (packageTyping : HasType context package .empty packageType)
+      (packageTyping : HasType context package packageUse packageType)
       (packageShape : packageType.stripCapture =
         .existsT theory payloadType)
       (bodyTyping : HasType
@@ -198,7 +203,8 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
       HasType context
         (.«open» theory payloadType result bodyOuterUse package body
           discharge)
-        (.union packageType.outerCapture bodyOuterUse) result
+        (packageUse.sequence
+          (.union packageType.outerCapture bodyOuterUse)) result
 
   /-- Explicit immediate-use widening.  Unlike `adapt`, this node does not
   change the returned type and has no runtime behavior. -/

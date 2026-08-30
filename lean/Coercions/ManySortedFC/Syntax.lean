@@ -279,10 +279,31 @@ end
 
 namespace Capture
 
+/-- Sequence an immediate-use prediction before the uses that follow it.
+
+The syntactic empty prediction is omitted, so admitting a computation where a
+value was previously required does not perturb existing indices when that
+computation has no immediate use.  A nonempty prediction remains explicit as
+the left branch of a union. -/
+def sequence {scope : Sig} : Capture scope → Capture scope → Capture scope
+  | .empty, following => following
+  | immediate, following => .union immediate following
+
 /-- Weaken a capture expression below one binder. -/
 def weaken {scope : Sig} {kind : BinderKind} (capture : Capture scope) :
     Capture (scope ▹ kind) :=
   capture.rename Rename.succ
+
+@[simp]
+theorem sequence_empty {scope : Sig} (following : Capture scope) :
+    sequence .empty following = following := rfl
+
+@[simp]
+theorem sequence_rename {source target : Sig}
+    (immediate following : Capture source) (rho : Rename source target) :
+    (sequence immediate following).rename rho =
+      sequence (immediate.rename rho) (following.rename rho) := by
+  cases immediate <;> rfl
 
 end Capture
 

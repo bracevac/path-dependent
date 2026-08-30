@@ -274,8 +274,7 @@ def compileTerm
           (.union (translateTy context functionType).outerCapture
             (translateTy context domain).outerCapture)
           (translateTy context codomain) :=
-        .app compiledFunction.isValue compiledArgument.isValue
-          compiledFunction.typing targetShape compiledArgument.typing
+        .app compiledFunction.typing targetShape compiledArgument.typing
       exact
         { term := .app compiledFunction.term compiledArgument.term
           typing := by
@@ -399,9 +398,8 @@ def compileTerm
             compiledPackage.term compiledBody.term compiledDischarge.evidence
           typing := by
             have targetTyping :=
-              ManySortedFC.Tm.HasType.«open» compiledPackage.isValue
-              compiledPackage.typing targetShape targetBodyTyping
-              targetDischargeTyping
+              ManySortedFC.Tm.HasType.«open» compiledPackage.typing
+                targetShape targetBodyTyping targetDischargeTyping
             simpa only [translateCapture, translateTy_outerCapture] using
               targetTyping }
 

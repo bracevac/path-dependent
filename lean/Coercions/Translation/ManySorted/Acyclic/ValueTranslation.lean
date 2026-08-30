@@ -1424,8 +1424,8 @@ noncomputable def finishObjectLet? {scope : Source.Scope}
         rhsCompiled.term bodyCompiled.term dischargeCompiled.evidence
       typing := by
         unfold ObjectEncoding.openOnce
-        exact .«open» rhsCompiled.isValue rhsTargetTyping packageShape
-          bodyTargetTyping dischargeCompiled.typing }
+        exact .«open» rhsTargetTyping packageShape bodyTargetTyping
+          dischargeCompiled.typing }
   pure
     { compiled := compiled
       erasedBody := eraseObjectBody bodyCompiled.term
@@ -1641,9 +1641,8 @@ noncomputable def compileTerm? {scope : Source.Scope}
                   functionOuterTranslated, argumentOuterTranslated]
               typeTranslated := codomainTranslated
               term := .app functionCompiled.term argumentCompiled.term
-              typing := .app functionCompiled.isValue
-                argumentCompiled.isValue functionCompiled.typing
-                functionShapeTarget argumentCompiled.typing }
+              typing := .app functionCompiled.typing functionShapeTarget
+                argumentCompiled.typing }
   | _, _, _, @DOTCapture.Acyclic.Term.HasType.letPlain _ _ result bound rhs
       body rhsUse bodyUse bodyOuterUse boundPlain rhsTyping bodyTyping
       discharge =>
