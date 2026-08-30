@@ -105,6 +105,8 @@ theorem erase_admin {scope : Sig} (adapter : Adapter scope)
       exact .refl
   | cast =>
       exact .refl
+  | retagCapture =>
+      exact .refl
   | compose first second firstInduction secondInduction =>
       exact
         (secondInduction (first.erase term)

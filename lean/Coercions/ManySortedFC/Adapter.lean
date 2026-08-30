@@ -7,8 +7,9 @@ import Coercions.ManySortedFC.EvidenceChecker
 
 Logical `Evidence` proves a static proposition.  An `Adapter`, by contrast,
 describes the administrative term structure required to transport a value
-between two types.  The only bridge is `Adapter.cast`, which embeds explicit
-type-inclusion evidence as a logical cast.
+between two types.  `Adapter.cast` embeds one whole-type inclusion, while
+`Adapter.retagCapture` is the explicit introduction boundary that combines
+separate evidence for a value's actual outer capture and underlying shape.
 
 Function adapters stand for eta-expansion with a contravariant domain adapter
 and a covariant codomain adapter.  Universal adapters stand for static
@@ -28,6 +29,15 @@ inductive Adapter : Sig → Type where
   /-- The adapter induced by one logical type-inclusion certificate. -/
   | cast {scope : Sig}
       (evidence : Evidence (.inclusion .type) scope) : Adapter scope
+
+  /-- Introduce or replace an outer capture annotation on an actual source
+  type.  The checker requires separate exact certificates for the source's
+  outer capture and stripped shape; no variable-root contraction or adapter
+  search is implicit in this boundary. -/
+  | retagCapture {scope : Sig} (source : Ty scope)
+      (targetCapture : Capture scope) (targetShape : Ty scope)
+      (captures : Evidence (.inclusion .capture) scope)
+      (shape : Evidence (.inclusion .type) scope) : Adapter scope
 
   /-- Sequential administrative transport. -/
   | compose {scope : Sig} (first second : Adapter scope) : Adapter scope
@@ -62,6 +72,9 @@ def rename {source target : Sig} (adapter : Adapter source)
   match adapter with
   | .identity type => .identity (type.rename rho)
   | .cast evidence => .cast (evidence.rename rho)
+  | .retagCapture sourceType targetCapture targetShape captures shape =>
+      .retagCapture (sourceType.rename rho) (targetCapture.rename rho)
+        (targetShape.rename rho) (captures.rename rho) (shape.rename rho)
   | .compose first second =>
       .compose (first.rename rho) (second.rename rho)
   | .function domain codomain =>
@@ -84,6 +97,8 @@ theorem rename_id {scope : Sig} (adapter : Adapter scope) :
   induction adapter with
   | identity type => simp [rename]
   | cast evidence => simp [rename]
+  | retagCapture sourceType targetCapture targetShape captures shape =>
+      simp [rename]
   | compose first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
   | function domain codomain domainInduction codomainInduction =>
@@ -101,6 +116,9 @@ theorem rename_comp {first second third : Sig} (adapter : Adapter first)
   induction adapter generalizing second third with
   | identity type => simp [rename, Ty.rename_comp]
   | cast evidence => simp [rename, Evidence.rename_comp]
+  | retagCapture sourceType targetCapture targetShape captures shape =>
+      simp [rename, Ty.rename_comp, Capture.rename_comp,
+        Evidence.rename_comp]
   | compose first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
   | function domain codomain domainInduction codomainInduction =>
@@ -124,6 +142,20 @@ inductive HasType : {scope : Sig} → Ctx scope → Adapter scope →
       (typing : Evidence.Proves context evidence
         (.inclusion (.type source) (.type target))) :
       HasType context (.cast evidence) source target
+
+  | retagCapture {scope : Sig} {context : Ctx scope}
+      {source : Ty scope} {targetCapture : Capture scope}
+      {targetShape : Ty scope}
+      {captures : Evidence (.inclusion .capture) scope}
+      {shape : Evidence (.inclusion .type) scope}
+      (capturesTyping : Evidence.Proves context captures
+        (.inclusion (.capture source.outerCapture)
+          (.capture targetCapture)))
+      (shapeTyping : Evidence.Proves context shape
+        (.inclusion (.type source.stripCapture) (.type targetShape))) :
+      HasType context
+        (.retagCapture source targetCapture targetShape captures shape)
+        source (.capturing targetCapture targetShape)
 
   | compose {scope : Sig} {context : Ctx scope}
       {first second : Adapter scope} {source middle target : Ty scope}
@@ -187,6 +219,43 @@ def check {scope : Sig} (context : Ctx scope) (adapter : Adapter scope) :
       match proposition with
       | .inclusion (.type source) (.type target) =>
           pure ⟨source, target, .cast typing⟩
+  | .retagCapture source targetCapture targetShape captures shape => do
+      let capturesChecked ← Evidence.check context captures
+      let ⟨capturesProposition, capturesTyping⟩ := capturesChecked
+      match capturesProposition with
+      | .inclusion (.capture actualSourceCapture)
+          (.capture actualTargetCapture) =>
+          if sourceCaptureMatches : actualSourceCapture =
+              source.outerCapture then
+            if targetCaptureMatches : actualTargetCapture = targetCapture then
+              let exactCapturesTyping : Evidence.Proves context captures
+                  (.inclusion (.capture source.outerCapture)
+                    (.capture targetCapture)) := by
+                simpa [sourceCaptureMatches, targetCaptureMatches] using
+                  capturesTyping
+              let shapeChecked ← Evidence.check context shape
+              let ⟨shapeProposition, shapeTyping⟩ := shapeChecked
+              match shapeProposition with
+              | .inclusion (.type actualSourceShape)
+                  (.type actualTargetShape) =>
+                  if sourceShapeMatches : actualSourceShape =
+                      source.stripCapture then
+                    if targetShapeMatches : actualTargetShape = targetShape then
+                      let exactShapeTyping : Evidence.Proves context shape
+                          (.inclusion (.type source.stripCapture)
+                            (.type targetShape)) := by
+                        simpa [sourceShapeMatches, targetShapeMatches] using
+                          shapeTyping
+                      pure ⟨source, .capturing targetCapture targetShape,
+                        .retagCapture exactCapturesTyping exactShapeTyping⟩
+                    else
+                      none
+                  else
+                    none
+            else
+              none
+          else
+            none
   | .compose first second => do
       let firstChecked ← check context first
       let secondChecked ← check context second
