@@ -166,6 +166,13 @@ def check {scope : Sig} (context : Ctx scope) :
               .captureUnionElim leftTyping alignedRightTyping⟩
           else
             none
+  | _, .captureVariable index =>
+      match binding : context.lookup index with
+      | .term (.capturing captures shape) =>
+          some ⟨.inclusion (.capture (.singleton index))
+              (.capture captures),
+            .captureVariable binding⟩
+      | .term _ => none
 
 /-- Soundness is carried by every successful checker result. -/
 theorem check_sound {scope : Sig} {context : Ctx scope}
@@ -174,5 +181,27 @@ theorem check_sound {scope : Sig} {context : Ctx scope}
     (_accepted : check context evidence = some checked) :
     Nonempty (Proves context evidence checked.proposition) :=
   ⟨checked.typing⟩
+
+namespace CaptureVariableExamples
+
+/-- An explicitly captured term binding exposes its declared outer capture
+to the structural evidence checker. -/
+example :
+    (check (Ctx.nil.extendTerm (.capturing .empty .one))
+      (.captureVariable (.here : BVar ([] ▹ .term) .term))).map
+        Checked.proposition =
+      some (.inclusion
+        (.capture (.singleton (.here : BVar ([] ▹ .term) .term)))
+        (.capture .empty)) := by
+  rfl
+
+/-- A bare term binding remains a capture root; the checker cannot synthesize
+the corresponding contraction to the accounting default `empty`. -/
+example :
+    check (Ctx.nil.extendTerm .one)
+      (.captureVariable (.here : BVar ([] ▹ .term) .term)) = none := by
+  rfl
+
+end CaptureVariableExamples
 
 end ManySortedFC.Evidence

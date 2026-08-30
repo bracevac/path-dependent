@@ -77,6 +77,10 @@ inductive Evidence : Relation -> Sig -> Type where
   | captureUnionElim {scope : Sig}
       (left right : Evidence (.inclusion .capture) scope) :
       Evidence (.inclusion .capture) scope
+  /-- A term variable is a precise capability whose singleton capture is
+  bounded by the outer capture recorded in its context type. -/
+  | captureVariable {scope : Sig}
+      (index : BVar scope .term) : Evidence (.inclusion .capture) scope
 
 deriving instance DecidableEq for Evidence
 
@@ -119,6 +123,7 @@ def rename {relation : Relation} {source target : Sig}
       .captureUnionRight (left.rename rho) (right.rename rho)
   | .captureUnionElim left right =>
       .captureUnionElim (left.rename rho) (right.rename rho)
+  | .captureVariable index => .captureVariable (rho.var index)
 
 /-- Weaken a logical certificate below one heterogeneous binder. -/
 def weaken {scope : Sig} {relation : Relation} {kind : BinderKind}
@@ -157,6 +162,7 @@ theorem rename_id {scope : Sig} {relation : Relation}
   | captureUnionRight left right => simp [rename]
   | captureUnionElim left right leftInduction rightInduction =>
       simp [rename, leftInduction, rightInduction]
+  | captureVariable => rfl
 
 @[simp]
 theorem rename_comp {relation : Relation} {first second third : Sig}
@@ -191,6 +197,7 @@ theorem rename_comp {relation : Relation} {first second third : Sig}
   | captureUnionRight left right => simp [rename, Capture.rename_comp]
   | captureUnionElim left right leftInduction rightInduction =>
       simp [rename, leftInduction, rightInduction]
+  | captureVariable => rfl
 
 /-! ## Declarative certificate typing -/
 
@@ -322,6 +329,14 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
       Proves context (.captureUnionElim left right)
         (.inclusion (.capture (.union leftCapture rightCapture))
           (.capture target))
+  | captureVariable {scope : Sig} {context : Ctx scope}
+      {index : BVar scope .term} {captures : Capture scope}
+      {shape : Ty scope}
+      (binding : context.lookup index =
+        Binding.term (.capturing captures shape)) :
+      Proves context (.captureVariable index)
+        (.inclusion (.capture (.singleton index))
+          (.capture captures))
 
 /-- Alternate name emphasizing that `Proves` is the typing judgment for
 logical certificates. -/

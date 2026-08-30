@@ -186,6 +186,38 @@ end
 
 deriving instance DecidableEq for Capture, Ty, StaticExpr, Proposition, Theory
 
+namespace Ty
+
+/-- Capabilities retained by the outermost capturing annotation.
+
+For a bare type this projection returns the empty capture as the neutral
+accounting default. That projection alone does not justify contracting a
+variable singleton to empty: `Evidence.captureVariable` requires an explicit
+`capturing` binding. -/
+def outerCapture {scope : Sig} : Ty scope → Capture scope
+  | .capturing captures _ => captures
+  | _ => .empty
+
+/-- Remove one outer capturing annotation, if present. -/
+def stripCapture {scope : Sig} : Ty scope → Ty scope
+  | .capturing _ shape => shape
+  | type => type
+
+/-- Install one canonical outer capture, replacing any previous outer
+annotation instead of constructing nested capturing types. -/
+def withCapture {scope : Sig} (captures : Capture scope)
+    (type : Ty scope) : Ty scope :=
+  .capturing captures type.stripCapture
+
+/-- Give a variable of capturing type its precise singleton capture. Bare
+types remain bare and export no variable-root contraction evidence. -/
+def precise {scope : Sig} (capability : BVar scope .term) :
+    Ty scope → Ty scope
+  | .capturing _ shape => .capturing (.singleton capability) shape
+  | type => type
+
+end Ty
+
 mutual
 
 /-- Rename a capture expression through a heterogeneous scope map. -/
@@ -334,6 +366,34 @@ def Theory.rename_id {scope : Sig} {symbols : List StaticSort}
         Proposition.rename_id proposition, Theory.rename_id rest]
 
 end
+
+@[simp]
+theorem Ty.outerCapture_rename {source target : Sig} (type : Ty source)
+    (rho : Rename source target) :
+    (type.rename rho).outerCapture = type.outerCapture.rename rho := by
+  cases type <;> rfl
+
+@[simp]
+theorem Ty.stripCapture_rename {source target : Sig} (type : Ty source)
+    (rho : Rename source target) :
+    (type.rename rho).stripCapture = type.stripCapture.rename rho := by
+  cases type <;> rfl
+
+@[simp]
+theorem Ty.withCapture_rename {source target : Sig}
+    (captures : Capture source) (type : Ty source)
+    (rho : Rename source target) :
+    (type.withCapture captures).rename rho =
+      (type.rename rho).withCapture (captures.rename rho) := by
+  simp [Ty.withCapture, Ty.rename]
+
+@[simp]
+theorem Ty.precise_rename {source target : Sig}
+    (capability : BVar source .term) (type : Ty source)
+    (rho : Rename source target) :
+    (type.precise capability).rename rho =
+      (type.rename rho).precise (rho.var capability) := by
+  cases type <;> rfl
 
 mutual
 

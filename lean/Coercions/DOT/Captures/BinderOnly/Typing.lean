@@ -5,15 +5,22 @@ import Coercions.DOT.Captures.BinderOnly.Subtyping
 /-!
 # Typing for the binder-only DOT-with-captures source
 
-The mutually defined judgments follow the source's ANF split: value
-eliminations consume `Value`s, computations are sequenced only by `let'`, and
-implicit adaptation is available only for values.  This keeps structural
-function adaptation from duplicating or delaying arbitrary computation.
+The mutually defined judgments follow the source's capture-predictive ANF
+split.  Values retain capabilities in the outer annotation of their type;
+computations separately report the capabilities used immediately when they
+run.  Value return is therefore pure, while application charges the outer
+captures of both typed operands.
+
+Computations are sequenced only by `let'`, and implicit type adaptation is
+available only for values.  Immediate-use widening has its own constructor,
+so capture subsumption cannot be confused with a type-changing adapter.
 
 Static introduction and elimination also expose the no-self-discharge
 boundary.  A concrete witness realizes its interval in the ambient context;
 hypothetical interval assumptions enter the context only inside a static
-abstraction or existential open body.
+abstraction or existential open body.  Since static abstraction and package
+markers erase at runtime, their value rules carry an explicit ambient closure
+capture together with inclusion evidence covering the erased body or payload.
 -/
 
 namespace DOTCapture.BinderOnly
@@ -25,77 +32,113 @@ inductive Value.HasType : {scope : Sig} -> Ctx scope ->
     Value scope -> Ty scope -> Type where
   | var {scope : Sig} {context : Ctx scope}
       {name : BVar scope .term} :
-      Value.HasType context (.var name) (context.lookupTerm name)
+      Value.HasType context (.var name)
+        ((context.lookupTerm name).precise (.var name))
   | unit {scope : Sig} {context : Ctx scope} :
       Value.HasType context .unit .one
   | lam {scope : Sig} {context : Ctx scope} {domain codomain : Ty scope}
-      {body : Term (scope ▹ .term)}
+      {body : Term (scope ▹ .term)} {bodyUse : Capture (scope ▹ .term)}
+      {closure : Capture scope}
       (bodyTyping : Term.HasType (context.extendTerm domain) body
-        (codomain.weaken (kind := .term))) :
+        bodyUse (codomain.weaken (kind := .term)))
+      (captures : CaptureIncludes (context.extendTerm domain) bodyUse
+        (closure.weaken (kind := .term))) :
       Value.HasType context (.lam domain codomain body)
-        (.arr domain codomain)
+        (.capturing closure (.arr domain codomain))
   | staticLam {scope : Sig} {context : Ctx scope} {sort : StaticSort}
       {interval : Interval sort scope}
       {body : Value (scope ▹ .static sort)}
       {bodyType : Ty (scope ▹ .static sort)}
+      {closure : Capture scope}
       (bodyTyping : Value.HasType (context.extendStatic interval)
-        body bodyType) :
+        body bodyType)
+      (captures : CaptureIncludes (context.extendStatic interval)
+        bodyType.outerCapture (closure.weaken (kind := .static sort))) :
       Value.HasType context (.staticLam interval body)
-        (.forallI interval bodyType)
+        (.capturing closure (.forallI interval bodyType))
   | pack {scope : Sig} {context : Ctx scope} {sort : StaticSort}
       {interval : Interval sort scope}
       {payloadType : Ty (scope ▹ .static sort)}
       {witness : StaticExpr sort scope} {payload : Value scope}
+      {closure : Capture scope}
       (satisfaction : Interval.SatisfiedBy context witness interval)
       (payloadTyping : Value.HasType context payload
-        (payloadType.instantiateStatic witness)) :
+        (payloadType.instantiateStatic witness))
+      (captures : CaptureIncludes context
+        (payloadType.instantiateStatic witness).outerCapture closure) :
       Value.HasType context
         (.pack interval payloadType witness payload)
-        (.existsI interval payloadType)
+        (.capturing closure (.existsI interval payloadType))
   | adapt {scope : Sig} {context : Ctx scope} {value : Value scope}
       {source target : Ty scope}
       (valueTyping : Value.HasType context value source)
       (adapter : Adapts context source target) :
       Value.HasType context value target
 
-/-- Declarative typing of source ANF computations. -/
+/-- Declarative typing of source ANF computations.
+
+The capture index is an upper bound on capabilities used immediately by the
+computation.  It is deliberately distinct from the outer capture on the
+result type, which describes capabilities retained by the returned value. -/
 inductive Term.HasType : {scope : Sig} -> Ctx scope ->
-    Term scope -> Ty scope -> Type where
+    Term scope -> Capture scope -> Ty scope -> Type where
   | ret {scope : Sig} {context : Ctx scope} {value : Value scope}
       {type : Ty scope} (valueTyping : Value.HasType context value type) :
-      Term.HasType context (.ret value) type
+      Term.HasType context (.ret value) .empty type
   | app {scope : Sig} {context : Ctx scope}
-      {function argument : Value scope} {domain codomain : Ty scope}
-      (functionTyping : Value.HasType context function
-        (.arr domain codomain))
+      {function argument : Value scope}
+      {functionType domain codomain : Ty scope}
+      (functionTyping : Value.HasType context function functionType)
+      (functionShape : functionType.stripCapture = .arr domain codomain)
       (argumentTyping : Value.HasType context argument domain) :
-      Term.HasType context (.app function argument) codomain
+      Term.HasType context (.app function argument)
+        (.union functionType.outerCapture domain.outerCapture) codomain
   | let' {scope : Sig} {context : Ctx scope} {result bound : Ty scope}
       {rhs : Term scope} {body : Term (scope ▹ .term)}
-      (rhsTyping : Term.HasType context rhs bound)
+      {rhsUse : Capture scope} {bodyUse : Capture (scope ▹ .term)}
+      {bodyOuterUse : Capture scope}
+      (rhsTyping : Term.HasType context rhs rhsUse bound)
       (bodyTyping : Term.HasType (context.extendTerm bound) body
-        (result.weaken (kind := .term))) :
-      Term.HasType context (.let' result rhs body) result
+        bodyUse (result.weaken (kind := .term)))
+      (discharge : CaptureIncludes (context.extendTerm bound) bodyUse
+        (bodyOuterUse.weaken (kind := .term))) :
+      Term.HasType context (.let' result rhs body)
+        (.union rhsUse bodyOuterUse) result
   | staticApp {scope : Sig} {context : Ctx scope} {sort : StaticSort}
       {interval : Interval sort scope} {function : Value scope}
       {argument : StaticExpr sort scope}
-      {bodyType : Ty (scope ▹ .static sort)}
-      (functionTyping : Value.HasType context function
-        (.forallI interval bodyType))
+      {functionType : Ty scope} {bodyType : Ty (scope ▹ .static sort)}
+      (functionTyping : Value.HasType context function functionType)
+      (functionShape : functionType.stripCapture =
+        .forallI interval bodyType)
       (satisfaction : Interval.SatisfiedBy context argument interval) :
       Term.HasType context (.staticApp interval function argument)
-        (bodyType.instantiateStatic argument)
+        functionType.outerCapture (bodyType.instantiateStatic argument)
   | «open» {scope : Sig} {context : Ctx scope} {sort : StaticSort}
       {interval : Interval sort scope}
       {payloadType : Ty (scope ▹ .static sort)} {result : Ty scope}
       {package : Value scope} {body : Term (PayloadScope scope sort)}
-      (packageTyping : Value.HasType context package
-        (.existsI interval payloadType))
+      {packageType : Ty scope}
+      {bodyUse : Capture (PayloadScope scope sort)}
+      {bodyOuterUse : Capture scope}
+      (packageTyping : Value.HasType context package packageType)
+      (packageShape : packageType.stripCapture =
+        .existsI interval payloadType)
       (bodyTyping : Term.HasType
-        ((context.extendStatic interval).extendTerm payloadType) body
-        ((result.weaken (kind := .static sort)).weaken (kind := .term))) :
+        ((context.extendStatic interval).extendTerm payloadType) body bodyUse
+        ((result.weaken (kind := .static sort)).weaken (kind := .term)))
+      (discharge : CaptureIncludes
+        ((context.extendStatic interval).extendTerm payloadType) bodyUse
+        ((bodyOuterUse.weaken (kind := .static sort)).weaken
+          (kind := .term))) :
       Term.HasType context
-        (.«open» interval payloadType result package body) result
+        (.«open» interval payloadType result package body)
+        (.union packageType.outerCapture bodyOuterUse) result
+  | use {scope : Sig} {context : Ctx scope} {term : Term scope}
+      {sourceUse targetUse : Capture scope} {type : Ty scope}
+      (termTyping : Term.HasType context term sourceUse type)
+      (inclusion : CaptureIncludes context sourceUse targetUse) :
+      Term.HasType context term targetUse type
 
 end
 
@@ -134,10 +177,48 @@ def abstractAdaptsToOne :
 def identity : Value [] :=
   .lam .one .one (.ret (.var .here))
 
-/-- The identity body observes the exact type of its newest term binder. -/
+/-- Returning the argument has no immediate use, so the closed identity
+retains the empty closure capture. -/
 def identityTyping :
-    Value.HasType Ctx.nil identity (.arr .one .one) :=
-  .lam (.ret .var)
+    Value.HasType Ctx.nil identity
+      (.capturing .empty (.arr .one .one)) :=
+  .lam (.ret .var) .refl
+
+/-- The type of a closed unary function used as a free variable below. -/
+def closedUnaryType : Ty [] :=
+  .capturing .empty (.arr .one .one)
+
+/-- A lambda in a context containing a free function `f`; its body invokes
+`f` and ignores its own argument. -/
+def callsFreeFunction : Value ([] ▹ .term) :=
+  .lam .one .one
+    (.app (.var (.there .here)) .unit)
+
+/-- Variable precision turns `f`'s declared empty capture into `{f}` at its
+occurrence.  Application charges `{f} ∪ {}`, and the lambda's inclusion
+premise contracts that syntactic union to the exact `{f}` closure capture. -/
+def callsFreeFunctionTyping :
+    Value.HasType (Ctx.nil.extendTerm closedUnaryType) callsFreeFunction
+      (.capturing (.singleton (.var .here)) (.arr .one .one)) :=
+  .lam
+    (.app .var rfl .unit)
+    (.captureUnionElim .refl .captureEmpty)
+
+/-- Bind the free function to a local name and invoke that local name. -/
+def letBoundCall : Term ([] ▹ .term) :=
+  .let' .one (.ret (.var .here))
+    (.app (.var .here) .unit)
+
+/-- The body's immediate `{local}` use is discharged to the retained `{f}`
+capture of the local binding via `captureVariable`. -/
+def letBoundCallTyping :
+    Term.HasType (Ctx.nil.extendTerm closedUnaryType) letBoundCall
+      (.singleton (.var .here)) .one :=
+  .use
+    (.let' (.ret .var)
+      (.app .var rfl .unit)
+      (.captureUnionElim (.captureVariable rfl) .captureEmpty))
+    (.captureUnionElim .captureEmpty .refl)
 
 /-- A closed static value whose interval is exact `One`. -/
 def staticOne : Value [] :=
@@ -147,16 +228,16 @@ def staticOne : Value [] :=
 it does not construct a model at introduction time. -/
 def staticOneTyping :
     Value.HasType Ctx.nil staticOne
-      (.forallI exactOneInterval .one) :=
-  .staticLam .unit
+      (.capturing .empty (.forallI exactOneInterval .one)) :=
+  .staticLam .unit .refl
 
 /-- Applying the closed static value requires ambient realization of its exact
 interval and instantiates the result type with the supplied witness. -/
 def applyStaticOneTyping :
     Term.HasType Ctx.nil
       (.staticApp exactOneInterval staticOne (.type .one))
-      .one :=
-  .staticApp staticOneTyping Interval.Examples.exactOne
+      .empty .one :=
+  .staticApp staticOneTyping rfl Interval.Examples.exactOne
 
 /-- A non-vacuous static abstraction: its result type is the bound abstract
 type, and the body uses the lower endpoint to inhabit it. -/
@@ -165,15 +246,17 @@ def staticAbstractOne : Value [] :=
 
 def staticAbstractOneTyping :
     Value.HasType Ctx.nil staticAbstractOne
-      (.forallI exactOneInterval abstractOneBodyType) :=
-  .staticLam (.adapt .unit oneAdaptsToAbstract)
+      (.capturing .empty
+        (.forallI exactOneInterval abstractOneBodyType)) :=
+  .staticLam (.adapt .unit oneAdaptsToAbstract) .refl
 
 /-- Static application really substitutes its witness in the result type;
 the abstract reference becomes `One`. -/
 def applyStaticAbstractOneTyping :
     Term.HasType Ctx.nil
-      (.staticApp exactOneInterval staticAbstractOne (.type .one)) .one :=
-  .staticApp staticAbstractOneTyping Interval.Examples.exactOne
+      (.staticApp exactOneInterval staticAbstractOne (.type .one))
+      .empty .one :=
+  .staticApp staticAbstractOneTyping rfl Interval.Examples.exactOne
 
 /-- A closed existential package. -/
 def packedOne : Value [] :=
@@ -184,8 +267,8 @@ def packedOne : Value [] :=
 checks the payload at the instantiated payload type. -/
 def packedOneTyping :
     Value.HasType Ctx.nil packedOne
-      (.existsI exactOneInterval .one) :=
-  .pack Interval.Examples.exactOne .unit
+      (.capturing .empty (.existsI exactOneInterval .one)) :=
+  .pack Interval.Examples.exactOne .unit .refl
 
 /-- A package whose payload type genuinely mentions its hidden type witness. -/
 def packedAbstractOne : Value [] :=
@@ -193,8 +276,9 @@ def packedAbstractOne : Value [] :=
 
 def packedAbstractOneTyping :
     Value.HasType Ctx.nil packedAbstractOne
-      (.existsI exactOneInterval abstractOneBodyType) :=
-  .pack Interval.Examples.exactOne .unit
+      (.capturing .empty
+        (.existsI exactOneInterval abstractOneBodyType)) :=
+  .pack Interval.Examples.exactOne .unit .refl
 
 /-- Opening the package exposes the hidden exact interval and its payload.
 The upper endpoint converts the abstract payload back to the nonescaping
@@ -204,14 +288,17 @@ def openPackedAbstractOne : Term [] :=
     (.ret (.var .here))
 
 def openPackedAbstractOneTyping :
-    Term.HasType Ctx.nil openPackedAbstractOne .one :=
-  .«open» packedAbstractOneTyping
-    (.ret (.adapt .var (.cast (by
-      change Includes
-        ((Ctx.nil.extendStatic exactOneInterval).extendTerm
-          abstractOneBodyType)
-        (StaticRef.bound (.there .here)).expression (.type .one)
-      exact .upper (.bound rfl)))))
+    Term.HasType Ctx.nil openPackedAbstractOne .empty .one :=
+  .use
+    (.«open» packedAbstractOneTyping rfl
+      (.ret (.adapt .var (.cast (by
+        change Includes
+          ((Ctx.nil.extendStatic exactOneInterval).extendTerm
+            abstractOneBodyType)
+          (StaticRef.bound (.there .here)).expression (.type .one)
+        exact .upper (.bound rfl)))))
+      .refl)
+    (.captureUnionElim .refl .refl)
 
 /-- An unbounded abstract capture appears non-vacuously in a capturing
 function type.  This is the binder-only capture-polymorphic identity. -/
@@ -225,9 +312,16 @@ def captureIdentity : Value [] :=
 
 def captureIdentityTyping :
     Value.HasType Ctx.nil captureIdentity
-      (.forallI (Interval.unbounded (sort := .capture))
-        (.arr captureIdentityBodyType captureIdentityBodyType)) :=
-  .staticLam (.lam (.ret .var))
+      (.capturing .empty
+        (.forallI (Interval.unbounded (sort := .capture))
+          (.capturing .empty
+            (.arr captureIdentityBodyType captureIdentityBodyType)))) :=
+  .staticLam
+    (.lam
+      (.ret (.adapt .var
+        (.cast (.typeCapturing (.captureVariable rfl) .refl))))
+      .refl)
+    .refl
 
 /-- Instantiating the capture-polymorphic identity with the empty capture
 substitutes through both capturing annotations. -/
@@ -235,8 +329,10 @@ def applyCaptureIdentityTyping :
     Term.HasType Ctx.nil
       (.staticApp (Interval.unbounded (sort := .capture)) captureIdentity
         (.capture .empty))
-      (.arr (.capturing .empty .one) (.capturing .empty .one)) :=
-  .staticApp captureIdentityTyping (.unbounded)
+      .empty
+      (.capturing .empty
+        (.arr (.capturing .empty .one) (.capturing .empty .one))) :=
+  .staticApp captureIdentityTyping rfl (.unbounded)
 
 end TypingExamples
 

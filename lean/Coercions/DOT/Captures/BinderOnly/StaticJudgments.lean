@@ -102,6 +102,14 @@ inductive Includes {scope : Sig} (context : Ctx scope) :
       (fromLeft : Includes context (.capture left) (.capture target))
       (fromRight : Includes context (.capture right) (.capture target)) :
       Includes context (.capture (.union left right)) (.capture target)
+  /-- Contract a variable root only through an explicit outer capture on its
+  context binding.  Bare bindings intentionally cannot use this rule. -/
+  | captureVariable {name : BVar scope .term}
+      {captures : Capture scope} {shape : Ty scope}
+      (found : context.lookupTerm name = .capturing captures shape) :
+      Includes context
+        (.capture (.singleton (.var name)))
+        (.capture captures)
 
 /-- The type-specialized view of sorted inclusion. -/
 abbrev TypeIncludes {scope : Sig} (context : Ctx scope)
@@ -112,6 +120,33 @@ abbrev TypeIncludes {scope : Sig} (context : Ctx scope)
 abbrev CaptureIncludes {scope : Sig} (context : Ctx scope)
     (source target : Capture scope) : Type :=
   Includes context (.capture source) (.capture target)
+
+namespace CaptureVariableExamples
+
+/-- An explicitly captured binding exports the contraction promised by its
+outer capture annotation. -/
+def capturedContext : Ctx ([] ▹ .term) :=
+  Ctx.nil.extendTerm (.capturing .empty .one)
+
+def capturedVariableContracts :
+    CaptureIncludes capturedContext
+      (.singleton (.var .here)) .empty :=
+  .captureVariable rfl
+
+/-- A bare binding has no outer annotation with which to satisfy the
+`captureVariable` premise.  In particular, projecting `outerCapture = empty`
+does not manufacture a lookup equality to a captured type. -/
+def bareContext : Ctx ([] ▹ .term) :=
+  Ctx.nil.extendTerm .one
+
+theorem bareVariableHasNoCapturedLookup :
+    ¬ ∃ (captures : Capture ([] ▹ .term)) (shape : Ty ([] ▹ .term)),
+      bareContext.lookupTerm
+        (.here : BVar ([] ▹ .term) .term) = .capturing captures shape := by
+  rintro ⟨captures, shape, found⟩
+  cases found
+
+end CaptureVariableExamples
 
 namespace BadBoundsExamples
 

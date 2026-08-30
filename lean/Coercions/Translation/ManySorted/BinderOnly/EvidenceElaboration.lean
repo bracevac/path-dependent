@@ -1,5 +1,5 @@
 import Coercions.DOT.Captures.BinderOnly.StaticJudgments
-import Coercions.Translation.ManySorted.BinderOnly.Layout
+import Coercions.Translation.ManySorted.BinderOnly.LayoutMetatheory
 
 /-!
 # Evidence elaboration for binder-only DOT captures
@@ -95,6 +95,17 @@ def compileIncludes {scope : DOTCapture.BinderOnly.Sig}
       let rightCompiled := compileIncludes bounds fromRight
       ⟨.captureUnionElim leftCompiled.evidence rightCompiled.evidence,
         .captureUnionElim leftCompiled.typing rightCompiled.typing⟩
+  | _, _, _, @DOTCapture.BinderOnly.Includes.captureVariable _ context
+      name captures shape found =>
+      let binding :
+          (translateContext context).lookup (termVar context name) =
+            ManySortedFC.Binding.term
+              (.capturing (translateCapture context captures)
+                (translateTy context shape)) := by
+        rw [translate_lookupTerm, found]
+        rfl
+      ⟨.captureVariable (termVar context name),
+        ManySortedFC.Evidence.Proves.captureVariable binding⟩
 
 /-- Empty source contexts have no static lookup cases, yielding the base
 layout invariant without assumptions. -/

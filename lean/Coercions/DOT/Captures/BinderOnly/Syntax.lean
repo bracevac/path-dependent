@@ -237,6 +237,53 @@ def weaken {scope : Sig} {kind : BinderKind} (type : Ty scope) :
     Ty (scope ▹ kind) :=
   type.rename Rename.succ
 
+/-- The capabilities retained by the outermost capture annotation.
+
+For a bare type this projection returns the empty capture as the neutral
+accounting default.  That default is descriptive, not evidence that a term
+variable bound at a bare type contracts to empty: `captureVariable` requires
+an explicit `capturing` binding. -/
+def outerCapture {scope : Sig} : Ty scope → Capture scope
+  | .capturing captures _ => captures
+  | _ => .empty
+
+/-- Remove one outer capture annotation and expose the underlying shape.
+Bare types are already shapes and are returned unchanged. -/
+def stripCapture {scope : Sig} : Ty scope → Ty scope
+  | .capturing _ shape => shape
+  | type => type
+
+/-- Give a variable its precise singleton capture when its declared type has
+an outer capture annotation.  A variable at a bare type remains bare and,
+in particular, its binding exports no capture-contraction evidence.
+
+This is the source-level capture-prediction rule: the declaration records an
+upper approximation of the value's retained capabilities, while a variable
+occurrence names the value itself. -/
+def precise {scope : Sig} (type : Ty scope) (path : Path scope) : Ty scope :=
+  match type with
+  | .capturing _ shape => .capturing (.singleton path) shape
+  | bare => bare
+
+@[simp]
+theorem outerCapture_rename {source target : Sig} (type : Ty source)
+    (rho : Rename source target) :
+    (type.rename rho).outerCapture = type.outerCapture.rename rho := by
+  cases type <;> rfl
+
+@[simp]
+theorem stripCapture_rename {source target : Sig} (type : Ty source)
+    (rho : Rename source target) :
+    (type.rename rho).stripCapture = type.stripCapture.rename rho := by
+  cases type <;> rfl
+
+@[simp]
+theorem precise_rename {source target : Sig} (type : Ty source)
+    (path : Path source) (rho : Rename source target) :
+    (type.precise path).rename rho =
+      (type.rename rho).precise (path.rename rho) := by
+  cases type <;> rfl
+
 end Ty
 
 namespace StaticExpr
