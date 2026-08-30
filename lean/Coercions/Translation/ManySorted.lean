@@ -11,6 +11,7 @@ import Coercions.Translation.ManySorted.BinderOnly.ModelExamples
 import Coercions.Translation.ManySorted.BinderOnly.AdapterElaboration
 import Coercions.Translation.ManySorted.BinderOnly.TermElaboration
 import Coercions.Translation.ManySorted.BinderOnly.SourceErasure
+import Coercions.Translation.ManySorted.BinderOnly.TermElaborationErasure
 
 /-!
 # Shared bridge infrastructure for translations into many-sorted FC
