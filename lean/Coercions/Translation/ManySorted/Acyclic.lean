@@ -5,6 +5,7 @@ import Coercions.Translation.ManySorted.Acyclic.StaticTranslation
 import Coercions.Translation.ManySorted.Acyclic.StaticTranslationMetatheory
 import Coercions.Translation.ManySorted.Acyclic.ExposureTranslation
 import Coercions.Translation.ManySorted.Acyclic.EvidenceTranslation
+import Coercions.Translation.ManySorted.Acyclic.RuntimeContext
 
 /-!
 # Acyclic DOT with captures to many-sorted FC
