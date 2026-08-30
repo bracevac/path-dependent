@@ -14,6 +14,10 @@ captures of both typed operands.
 Computations are sequenced only by `let'`, and implicit type adaptation is
 available only for values.  Immediate-use widening has its own constructor,
 so capture subsumption cannot be confused with a type-changing adapter.
+Lambda checking may discharge body use to the newest parameter singleton;
+that singleton is not retained in the function closure.  Existential opening
+likewise discharges the newest payload singleton, whose capabilities are
+already covered by the package closure.
 
 Static introduction and elimination also expose the no-self-discharge
 boundary.  A concrete witness realizes its interval in the ambient context;
@@ -42,7 +46,8 @@ inductive Value.HasType : {scope : Sig} -> Ctx scope ->
       (bodyTyping : Term.HasType (context.extendTerm domain) body
         bodyUse (codomain.weaken (kind := .term)))
       (captures : CaptureIncludes (context.extendTerm domain) bodyUse
-        (closure.weaken (kind := .term))) :
+        (.union (closure.weaken (kind := .term))
+          (.singleton (.var .here)))) :
       Value.HasType context (.lam domain codomain body)
         (.capturing closure (.arr domain codomain))
   | staticLam {scope : Sig} {context : Ctx scope} {sort : StaticSort}
@@ -129,8 +134,10 @@ inductive Term.HasType : {scope : Sig} -> Ctx scope ->
         ((result.weaken (kind := .static sort)).weaken (kind := .term)))
       (discharge : CaptureIncludes
         ((context.extendStatic interval).extendTerm payloadType) bodyUse
-        ((bodyOuterUse.weaken (kind := .static sort)).weaken
-          (kind := .term))) :
+        (.union
+          ((bodyOuterUse.weaken (kind := .static sort)).weaken
+            (kind := .term))
+          (.singleton (.var .here)))) :
       Term.HasType context
         (.«open» interval payloadType result package body)
         (.union packageType.outerCapture bodyOuterUse) result
@@ -182,7 +189,7 @@ retains the empty closure capture. -/
 def identityTyping :
     Value.HasType Ctx.nil identity
       (.capturing .empty (.arr .one .one)) :=
-  .lam (.ret .var) .refl
+  .lam (.ret .var) .captureEmpty
 
 /-- The type of a closed unary function used as a free variable below. -/
 def closedUnaryType : Ty [] :=
@@ -202,7 +209,63 @@ def callsFreeFunctionTyping :
       (.capturing (.singleton (.var .here)) (.arr .one .one)) :=
   .lam
     (.app .var rfl .unit)
-    (.captureUnionElim .refl .captureEmpty)
+    (.captureUnionElim .captureUnionLeft .captureEmpty)
+
+/-! The parameter singleton is a discharge boundary, not a retained closure. -/
+
+/-- A bare outer variable supplies the capability name `a`.  Its bare type is
+pure/untracked for capture prediction, and exports no singleton-contraction
+rule; it may nevertheless occur explicitly in another value's capture. -/
+def outerCapabilityContext : Ctx ([] ▹ .term) :=
+  Ctx.nil.extendTerm .one
+
+/-- The function parameter may retain the outer capability `a`. -/
+def parameterCallableType : Ty ([] ▹ .term) :=
+  .capturing (.singleton (.var .here)) (.arr .one .one)
+
+/-- `λ(f : {a}(One → One)). f unit` in the outer `a` context. -/
+def callsParameter : Value ([] ▹ .term) :=
+  .lam parameterCallableType .one
+    (.app (.var .here) .unit)
+
+/-- The call predicts `{f} ∪ ∅`; both parts fit beneath `∅ ∪ {f}`.
+Consequently the parameter invocation does not become a retained closure. -/
+def callsParameterTyping :
+    Value.HasType outerCapabilityContext callsParameter
+      (.capturing .empty (.arr parameterCallableType .one)) :=
+  .lam
+    (.app .var rfl .unit)
+    (.captureUnionElim .captureUnionRight .captureEmpty)
+
+/-- A closed identity can be widened to the parameter type, retaining `a` in
+its declared outer capture. -/
+def parameterArgument : Value ([] ▹ .term) :=
+  .lam .one .one (.ret (.var .here))
+
+def parameterArgumentTyping :
+    Value.HasType outerCapabilityContext parameterArgument
+      parameterCallableType :=
+  .adapt
+    (.lam (.ret .var) .captureEmpty)
+    (.cast (.typeCapturing .captureEmpty .refl))
+
+/-- Applying the closure-empty function still charges the capture retained by
+its domain.  The direct application index exposes that charge structurally. -/
+def callsParameterApplication : Term ([] ▹ .term) :=
+  .app callsParameter parameterArgument
+
+def callsParameterApplicationTyping :
+    Term.HasType outerCapabilityContext callsParameterApplication
+      (.union .empty (.singleton (.var .here))) .one :=
+  .app callsParameterTyping rfl parameterArgumentTyping
+
+/-- Capture subsumption normalizes `∅ ∪ {a}` to the exact observable
+prediction `{a}`. -/
+def callsParameterApplicationChargesDomain :
+    Term.HasType outerCapabilityContext callsParameterApplication
+      (.singleton (.var .here)) .one :=
+  .use callsParameterApplicationTyping
+    (.captureUnionElim .captureEmpty .refl)
 
 /-- Bind the free function to a local name and invoke that local name. -/
 def letBoundCall : Term ([] ▹ .term) :=
@@ -297,7 +360,7 @@ def openPackedAbstractOneTyping :
             abstractOneBodyType)
           (StaticRef.bound (.there .here)).expression (.type .one)
         exact .upper (.bound rfl)))))
-      .refl)
+      .captureEmpty)
     (.captureUnionElim .refl .refl)
 
 /-- An unbounded abstract capture appears non-vacuously in a capturing
@@ -320,7 +383,7 @@ def captureIdentityTyping :
     (.lam
       (.ret (.adapt .var
         (.cast (.typeCapturing (.captureVariable rfl) .refl))))
-      .refl)
+      .captureEmpty)
     .refl
 
 /-- Instantiating the capture-polymorphic identity with the empty capture
