@@ -216,6 +216,7 @@ end Tm
 
 /-- Runtime values. -/
 inductive IsValue : {scope : Nat} -> Tm scope -> Prop where
+  | var {scope : Nat} {index : Fin scope} : IsValue (.var index)
   | unit {scope : Nat} : IsValue (.unit : Tm scope)
   | lam {scope : Nat} {body : Tm (Nat.succ scope)} :
       IsValue (.lam body)

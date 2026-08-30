@@ -217,6 +217,8 @@ value.  A static abstraction is a value only when its erased body already is
 one: because the abstraction itself disappears, it cannot delay evaluation of
 a non-value body. -/
 inductive IsValue : {scope : Sig} → Tm scope → Prop where
+  | var {scope : Sig} {index : BVar scope .term} :
+      IsValue (.var index)
   | unit {scope : Sig} : IsValue (.unit : Tm scope)
   | lam {scope : Sig} {domain codomain : Ty scope}
       {body : Tm (scope ▹ .term)} :

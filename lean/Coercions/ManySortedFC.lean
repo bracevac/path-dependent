@@ -15,6 +15,7 @@ import Coercions.ManySortedFC.TermChecker
 import Coercions.ManySortedFC.Runtime
 import Coercions.ManySortedFC.TermProjection
 import Coercions.ManySortedFC.Erasure
+import Coercions.ManySortedFC.Administrative
 import Coercions.ManySortedFC.Consistency
 import Coercions.ManySortedFC.StaticExamples
 import Coercions.ManySortedFC.ModelConsistency

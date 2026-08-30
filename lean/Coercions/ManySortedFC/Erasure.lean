@@ -10,10 +10,11 @@ binders have no runtime representation.  Existential packages erase to their
 payload; opening a package remains an ordinary runtime `let` because the
 payload binder is computational.
 
-Structural adapters have an explicit runtime interpretation.  Logical casts
+Structural adapters have an explicit runtime interpretation. Logical casts
 and identities are transparent, while a function adapter performs genuine
-eta-expansion.  The results below state exact syntax equations only; they do
-not assert an unproved beta-eta equivalence.
+eta-expansion and binds the original call before adapting its result. The
+results below state exact syntax equations only; they do not assert an
+unproved beta-eta equivalence.
 -/
 
 namespace ManySortedFC
@@ -286,7 +287,9 @@ namespace Adapter
 
 The runtime scope is independent of the adapter's annotated scope because
 types, captures, and evidence are all erased.  This generality lets quantified
-adapters recurse directly through static binders. -/
+adapters recurse directly through static binders. A function adapter uses an
+ANF let so call-by-value evaluates the original application before a nested
+codomain adapter can eta-wrap its result. -/
 def erase {scope : Sig} (adapter : Adapter scope) {runtimeScope : Nat}
     (term : Runtime.Tm runtimeScope) : Runtime.Tm runtimeScope :=
   match adapter with
@@ -294,8 +297,9 @@ def erase {scope : Sig} (adapter : Adapter scope) {runtimeScope : Nat}
   | .cast _ => term
   | .compose first second => second.erase (first.erase term)
   | .function domain codomain =>
-      .lam (codomain.erase
-        (.app term.weaken (domain.erase (.var 0))))
+      .lam (.let'
+        (.app term.weaken (domain.erase (.var 0)))
+        (codomain.erase (.var 0)))
   | .forallT _ body => body.erase term
   | .existsT _ payload => payload.erase term
 
@@ -320,8 +324,9 @@ theorem erase_compose {scope : Sig} (first second : Adapter scope)
 theorem erase_function {scope : Sig} (domain codomain : Adapter scope)
     {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
     (Adapter.function domain codomain).erase term =
-      .lam (codomain.erase
-        (.app term.weaken (domain.erase (.var 0)))) := rfl
+      .lam (.let'
+        (.app term.weaken (domain.erase (.var 0)))
+        (codomain.erase (.var 0))) := rfl
 
 @[simp]
 theorem erase_forall {scope : Sig} {symbols : List StaticSort}
@@ -574,6 +579,7 @@ theorem IsValue.eraseWith {scope : Sig} {term : Tm scope}
     (rho : Erasure.Renaming scope runtimeScope) :
     Runtime.IsValue (term.eraseWith rho) := by
   induction termValue with
+  | var => exact .var
   | unit => exact .unit
   | lam => exact .lam
   | adapt innerValue induction =>

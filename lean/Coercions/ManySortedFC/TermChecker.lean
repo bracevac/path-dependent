@@ -25,7 +25,7 @@ Static abstractions and packages disappear or expose their payload at runtime,
 so their contained term must itself already be a value. -/
 def checkValue {scope : Sig} : (term : Tm scope) ->
     Option (ValueChecked term)
-  | .var _ => none
+  | .var _ => some ⟨.var⟩
   | .unit => some ⟨.unit⟩
   | .lam _ _ _ => some ⟨.lam⟩
   | .app _ _ => none
