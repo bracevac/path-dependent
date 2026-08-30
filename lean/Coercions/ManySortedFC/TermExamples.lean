@@ -18,7 +18,7 @@ namespace ManySortedFC.TermExamples
 /-- The identity function at `One`, with an empty retained closure. -/
 def unitIdentity : Tm [] :=
   .lam .one .one .empty (.var .here)
-    (.inclusionRefl (.capture .empty))
+    (.captureEmpty (.union .empty (.singleton .here)))
 
 theorem unit_identity_is_accepted :
     Tm.synth Ctx.nil unitIdentity =
@@ -79,8 +79,9 @@ def capturesFreeFunction : Tm ([] ▹ .term) :=
   .lam .one .one (.singleton .here)
     (.app (.var (.there .here)) .unit)
     (.captureUnionElim
-      (.inclusionRefl (.capture (.singleton (.there .here))))
-      (.captureEmpty (.singleton (.there .here))))
+      (.captureUnionLeft (.singleton (.there .here)) (.singleton .here))
+      (.captureEmpty
+        (.union (.singleton (.there .here)) (.singleton .here))))
 
 theorem lambda_retains_its_free_function :
     Tm.synth freeFunctionContext capturesFreeFunction =
@@ -116,11 +117,70 @@ theorem captured_binding_exports_capture_variable_evidence :
       (.captureVariable (.here : BVar ([] ▹ .term) .term))).isSome = true := by
   native_decide
 
-/-- A bare binding remains a capability root: projecting
-`Ty.outerCapture = ∅` does not manufacture a `{x} ⊆ ∅` certificate. -/
+/-- A bare binding can still be named explicitly as a capability, but its
+type is pure/untracked: projecting `Ty.outerCapture = ∅` does not
+manufacture a `{x} ⊆ ∅` certificate. -/
 theorem bare_binding_rejects_capture_variable_evidence :
     (Evidence.check (Ctx.nil.extendTerm .one)
       (.captureVariable (.here : BVar ([] ▹ .term) .term))).isNone = true := by
+  native_decide
+
+/-! The parameter singleton is a discharge boundary, not a retained closure. -/
+
+/-- A bare outer variable supplies the capability name `a`.  Bare callable
+and non-callable types alike are pure/untracked for prediction and export no
+logical singleton contraction; the name may still occur explicitly in a
+capturing type. -/
+def outerCapabilityContext : Ctx ([] ▹ .term) :=
+  Ctx.nil.extendTerm .one
+
+def parameterCallableType : Ty ([] ▹ .term) :=
+  .capturing (.singleton .here) (.arr .one .one)
+
+/-- `λ(f : {a}(One → One)). f unit` retains no ambient closure.  The body
+use `{f} ∪ ∅` is discharged through the parameter side of `∅ ∪ {f}`. -/
+def callsParameter : Tm ([] ▹ .term) :=
+  .lam parameterCallableType .one .empty
+    (.app (.var .here) .unit)
+    (.captureUnionElim
+      (.captureUnionRight .empty (.singleton .here))
+      (.captureEmpty (.union .empty (.singleton .here))))
+
+theorem parameter_call_does_not_enter_lambda_closure :
+    Tm.synth outerCapabilityContext callsParameter =
+      some (.empty,
+        .capturing .empty (.arr parameterCallableType .one)) := by
+  native_decide
+
+/-- A closed identity value widened to the parameter type. -/
+def parameterArgument : Tm ([] ▹ .term) :=
+  .adapt
+    (.lam .one .one .empty (.var .here)
+      (.captureEmpty (.union .empty (.singleton .here))))
+    (.cast
+      (.typeCapturing
+        (.captureEmpty (.singleton .here))
+        (.inclusionRefl (.type (.arr .one .one)))))
+
+/-- Although the function closure is empty, application charges the domain's
+retained `{a}` capture. -/
+def callsParameterApplicationRaw : Tm ([] ▹ .term) :=
+  .app callsParameter parameterArgument
+
+theorem outer_application_charges_domain_capture_raw :
+    Tm.synth outerCapabilityContext callsParameterApplicationRaw =
+      some (.union .empty (.singleton .here), .one) := by
+  native_decide
+
+def callsParameterApplication : Tm ([] ▹ .term) :=
+  .use callsParameterApplicationRaw
+    (.captureUnionElim
+      (.captureEmpty (.singleton .here))
+      (.inclusionRefl (.capture (.singleton .here))))
+
+theorem outer_application_predicts_exact_domain_capture :
+    Tm.synth outerCapabilityContext callsParameterApplication =
+      some (.singleton .here, .one) := by
   native_decide
 
 /-! ## A realizable static abstraction and application -/
@@ -176,7 +236,7 @@ def openedMixedUnitPackage : Tm [] :=
   .use
     (.«open» StaticExamples.exactMixedTheory mixedUnitPayloadType .one
       .empty mixedUnitPackage (.var .here)
-      (.inclusionRefl (.capture .empty)))
+      (.captureEmpty (.union .empty (.singleton .here))))
     (.captureUnionElim (.captureEmpty .empty) (.captureEmpty .empty))
 
 theorem realizable_existential_open_is_accepted :

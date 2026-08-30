@@ -191,9 +191,11 @@ namespace Ty
 /-- Capabilities retained by the outermost capturing annotation.
 
 For a bare type this projection returns the empty capture as the neutral
-accounting default. That projection alone does not justify contracting a
-variable singleton to empty: `Evidence.captureVariable` requires an explicit
-`capturing` binding. -/
+accounting default; in particular, a bare callable type is treated as
+pure/untracked by application prediction. That projection alone does not
+justify contracting a variable singleton to empty: bare bindings still export
+no logical root contraction, and `Evidence.captureVariable` requires an
+explicit `capturing` binding. -/
 def outerCapture {scope : Sig} : Ty scope → Capture scope
   | .capturing captures _ => captures
   | _ => .empty
@@ -210,7 +212,8 @@ def withCapture {scope : Sig} (captures : Capture scope)
   .capturing captures type.stripCapture
 
 /-- Give a variable of capturing type its precise singleton capture. Bare
-types remain bare and export no variable-root contraction evidence. -/
+types, including callable shapes, remain pure/untracked and export no logical
+variable-root contraction evidence. -/
 def precise {scope : Sig} (capability : BVar scope .term) :
     Ty scope → Ty scope
   | .capturing _ shape => .capturing (.singleton capability) shape

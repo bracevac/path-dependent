@@ -39,7 +39,8 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
 
   /-- The recorded codomain is ambient and is weakened below the parameter.
   The explicit certificate bounds the body's immediate use by the retained
-  closure capture. -/
+  closure capture together with the parameter singleton.  Uses discharged to
+  that singleton therefore do not leak into the function's closure. -/
   | lam {scope : Sig} {context : Ctx scope}
       {domain codomain : Ty scope} {closure : Capture scope}
       {body : Tm (scope ▹ .term)}
@@ -49,7 +50,7 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
         bodyUse codomain.weaken)
       (capturesTyping : Evidence.Proves (context.extendTerm domain)
         captures (.inclusion (.capture bodyUse)
-          (.capture closure.weaken))) :
+          (.capture (.union closure.weaken (.singleton .here))))) :
       HasType context (.lam domain codomain closure body captures) .empty
         (.capturing closure (.arr domain codomain))
 
@@ -167,7 +168,8 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
   /-- Opening exposes the complete local theory and then the package payload.
   The recorded ambient result is weakened through both scopes.  The package
   is an ANF value; opening charges its retained outer capture and the exported
-  body prediction. -/
+  body prediction.  The newest payload singleton is available only to the
+  discharge certificate and is covered by the package closure. -/
   | «open» {scope : Sig} {context : Ctx scope}
       {symbols : List StaticSort} {relations : List Relation}
       {theory : Theory scope symbols relations}
@@ -189,8 +191,10 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
       (dischargeTyping : Evidence.Proves
         ((context.extendTheory theory).extendTerm payloadType)
         discharge (.inclusion (.capture bodyUse)
-          (.capture ((bodyOuterUse.rename
-            (Rename.weakenStatic symbols relations)).weaken)))) :
+          (.capture (.union
+            ((bodyOuterUse.rename
+              (Rename.weakenStatic symbols relations)).weaken)
+            (.singleton .here))))) :
       HasType context
         (.«open» theory payloadType result bodyOuterUse package body
           discharge)

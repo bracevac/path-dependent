@@ -94,7 +94,7 @@ def check {scope : Sig} (context : Ctx scope) :
             codomain.weaken := by
           simpa [bodyMatches] using bodyChecked.typing
         let capturesTyping ← checkCaptureInclusion bodyContext captures
-          bodyChecked.use closure.weaken
+          bodyChecked.use (.union closure.weaken (.singleton .here))
         pure ⟨.empty, .capturing closure (.arr domain codomain),
           .lam bodyTyping capturesTyping⟩
       else
@@ -254,8 +254,10 @@ def check {scope : Sig} (context : Ctx scope) :
             let weakenedOuter :=
               (bodyOuterUse.rename
                 (Rename.weakenStatic symbols relations)).weaken
+            let dischargeBound :=
+              Capture.union weakenedOuter (.singleton .here)
             let dischargeTyping ← checkCaptureInclusion bodyContext
-              discharge bodyChecked.use weakenedOuter
+              discharge bodyChecked.use dischargeBound
             pure ⟨.union packageChecked.type.outerCapture bodyOuterUse,
               result,
               .«open» packageValue.typing packageTyping packageMatches

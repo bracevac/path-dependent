@@ -240,9 +240,10 @@ def weaken {scope : Sig} {kind : BinderKind} (type : Ty scope) :
 /-- The capabilities retained by the outermost capture annotation.
 
 For a bare type this projection returns the empty capture as the neutral
-accounting default.  That default is descriptive, not evidence that a term
-variable bound at a bare type contracts to empty: `captureVariable` requires
-an explicit `capturing` binding. -/
+accounting default; in particular, a bare callable type is treated as
+pure/untracked by application prediction.  That default is descriptive, not
+evidence that a term variable bound at a bare type contracts to empty:
+`captureVariable` requires an explicit `capturing` binding. -/
 def outerCapture {scope : Sig} : Ty scope → Capture scope
   | .capturing captures _ => captures
   | _ => .empty
@@ -254,8 +255,9 @@ def stripCapture {scope : Sig} : Ty scope → Ty scope
   | type => type
 
 /-- Give a variable its precise singleton capture when its declared type has
-an outer capture annotation.  A variable at a bare type remains bare and,
-in particular, its binding exports no capture-contraction evidence.
+an outer capture annotation.  A variable at a bare type, including a callable
+shape, remains pure/untracked and, in particular, its binding exports no
+logical capture-contraction evidence.
 
 This is the source-level capture-prediction rule: the declaration records an
 upper approximation of the value's retained capabilities, while a variable
