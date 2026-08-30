@@ -9,6 +9,7 @@ import Coercions.Translation.ManySorted.BinderOnly.ModelElaboration
 import Coercions.Translation.ManySorted.BinderOnly.StaticSubstitutionMetatheory
 import Coercions.Translation.ManySorted.BinderOnly.ModelExamples
 import Coercions.Translation.ManySorted.BinderOnly.AdapterElaboration
+import Coercions.Translation.ManySorted.BinderOnly.TermElaboration
 import Coercions.Translation.ManySorted.BinderOnly.SourceErasure
 
 /-!
