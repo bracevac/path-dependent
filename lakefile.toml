@@ -25,21 +25,28 @@ name = "LambdaPCCI"
 
 [[lean_lib]]
 name = "DotFC"
+roots = ["Coercions.All"]
 
 [[lean_lib]]
 name = "DOT"
+roots = ["Coercions.DOT.Acyclic"]
 
 [[lean_lib]]
 name = "FCsub"
+roots = ["Coercions.FCsub"]
 
 [[lean_lib]]
 name = "DotToFCsub"
+roots = ["Coercions.Translation"]
 
 [[lean_lib]]
 name = "DotFCI"
+roots = ["Coercions.DOT.Intersections"]
 
 [[lean_lib]]
 name = "DotFCR"
+roots = ["Coercions.DOT.Recursive"]
 
 [[lean_lib]]
 name = "DotFCRP"
+roots = ["Coercions.DOT.TraceablePaths"]
