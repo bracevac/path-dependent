@@ -2,6 +2,7 @@ import Coercions.Translation.ManySorted.Acyclic.ObjectEncoding
 import Coercions.Translation.ManySorted.Acyclic.ObjectEncodingMetatheory
 import Coercions.Translation.ManySorted.Acyclic.Layout
 import Coercions.Translation.ManySorted.Acyclic.StaticTranslation
+import Coercions.Translation.ManySorted.Acyclic.StaticTranslationMetatheory
 
 /-!
 # Acyclic DOT with captures to many-sorted FC
