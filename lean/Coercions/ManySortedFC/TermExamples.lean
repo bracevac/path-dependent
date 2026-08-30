@@ -138,12 +138,12 @@ theorem package_open_erases_to_payload_let :
       Runtime.Tm.let' .unit (.var 0) := rfl
 
 /-- Unlike logical casts, a function adapter has an explicit eta-expansion at
-runtime. -/
+runtime, with an ANF let around the original call. -/
 def identityFunctionAdapter : Adapter [] :=
   .function (.identity .one) (.identity .one)
 
 theorem function_adapter_exposes_eta_shape (term : Runtime.Tm 0) :
     identityFunctionAdapter.erase term =
-      .lam (.app term.weaken (.var 0)) := rfl
+      .lam (.let' (.app term.weaken (.var 0)) (.var 0)) := rfl
 
 end ManySortedFC.TermExamples
