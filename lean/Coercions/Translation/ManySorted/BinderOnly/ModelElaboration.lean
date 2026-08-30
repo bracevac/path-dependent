@@ -1,16 +1,15 @@
 import Coercions.DOT.Captures.BinderOnly.IntervalModel
 import Coercions.ManySortedFC.TheoryModel
 import Coercions.Translation.ManySorted.BinderOnly.EvidenceElaboration
+import Coercions.Translation.ManySorted.BinderOnly.StaticInstantiation
 
 /-!
 # Ambient interval-model elaboration
 
 Source static application and package formation choose a witness and prove
 each present endpoint in the outer context. Translating those derivations is
-logical; relating a names-first target proposition after symbol substitution
-to the translated source proposition is a separate substitution invariant.
-This module keeps the two obligations explicit instead of hiding the target's
-still-incomplete static-substitution metatheory.
+logical. The target's one-symbol instantiation law then canonically identifies
+the instantiated names-first propositions with those translated endpoints.
 -/
 
 namespace DOTCaptureToManySortedFC.BinderOnly
@@ -42,6 +41,36 @@ def upperInstance {scope : ManySortedFC.Sig}
   (ManySortedFC.Proposition.inclusion
     (ManySortedFC.Interval.name (scope := scope) (sort := sort))
     upper.weaken).instantiateSymbols (symbols witness)
+
+/-- Weakening an ambient lower endpoint below the generated symbol and then
+instantiating that symbol recovers the original endpoint. -/
+@[simp]
+theorem lowerInstance_eq {scope : ManySortedFC.Sig}
+    {sort : ManySortedFC.StaticSort}
+    (lower witness : ManySortedFC.StaticExpr sort scope) :
+    lowerInstance lower witness = .inclusion lower witness := by
+  unfold lowerInstance symbols ManySortedFC.Interval.name
+    ManySortedFC.Proposition.instantiateSymbols
+  simp only [ManySortedFC.Proposition.substitute]
+  congr 1
+  · exact TargetStaticInstantiation.instantiate_weakened
+      (boundSort := sort) lower witness
+  · cases witness <;> rfl
+
+/-- Weakening an ambient upper endpoint below the generated symbol and then
+instantiating that symbol recovers the original endpoint. -/
+@[simp]
+theorem upperInstance_eq {scope : ManySortedFC.Sig}
+    {sort : ManySortedFC.StaticSort}
+    (upper witness : ManySortedFC.StaticExpr sort scope) :
+    upperInstance upper witness = .inclusion witness upper := by
+  unfold upperInstance symbols ManySortedFC.Interval.name
+    ManySortedFC.Proposition.instantiateSymbols
+  simp only [ManySortedFC.Proposition.substitute]
+  congr 1
+  · cases witness <;> rfl
+  · exact TargetStaticInstantiation.instantiate_weakened
+      (boundSort := sort) upper witness
 
 /-- A model of an unconstrained one-name theory needs only its witness. -/
 def unconstrained {scope : ManySortedFC.Sig}
@@ -159,6 +188,23 @@ inductive Instantiation {scope : DOTCapture.BinderOnly.Sig}
       Instantiation context witness
         (.bounds (.some lower) (.some upper))
 
+/-- Every translated source interval has its canonical one-symbol target
+instantiation. No client-supplied substitution equation is required. -/
+def canonicalInstantiation {scope : DOTCapture.BinderOnly.Sig}
+    (context : DOTCapture.BinderOnly.Ctx scope)
+    {sort : DOTCapture.BinderOnly.StaticSort}
+    (witness : DOTCapture.BinderOnly.StaticExpr sort scope) :
+    (interval : DOTCapture.BinderOnly.Interval sort scope) →
+      Instantiation context witness interval
+  | .bounds .none .none => .unbounded
+  | .bounds (.some _) .none =>
+      .lower (TargetIntervalModel.lowerInstance_eq _ _)
+  | .bounds .none (.some _) =>
+      .upper (TargetIntervalModel.upperInstance_eq _ _)
+  | .bounds (.some _) (.some _) =>
+      .between (TargetIntervalModel.lowerInstance_eq _ _)
+        (TargetIntervalModel.upperInstance_eq _ _)
+
 /-- A proof-carrying elaboration of one source ambient realization. -/
 structure CompiledModel {scope : DOTCapture.BinderOnly.Sig}
     (context : DOTCapture.BinderOnly.Ctx scope)
@@ -203,5 +249,19 @@ def compileModel {scope : DOTCapture.BinderOnly.Sig}
       ⟨.cons lowerCompiled.evidence (.cons upperCompiled.evidence .nil),
         TargetIntervalModel.between lowerCompiled.typing
           upperCompiled.typing lowerEquation upperEquation⟩
+
+/-- Total model elaboration: the source realization supplies the logical
+certificates, while static instantiation is discharged canonically. -/
+def compileModelTotal {scope : DOTCapture.BinderOnly.Sig}
+    {context : DOTCapture.BinderOnly.Ctx scope}
+    {sort : DOTCapture.BinderOnly.StaticSort}
+    {witness : DOTCapture.BinderOnly.StaticExpr sort scope}
+    {interval : DOTCapture.BinderOnly.Interval sort scope}
+    (bounds : BoundCompiler context)
+    (satisfaction : DOTCapture.BinderOnly.Interval.SatisfiedBy
+      context witness interval) :
+    CompiledModel context witness interval :=
+  compileModel bounds satisfaction
+    (canonicalInstantiation context witness interval)
 
 end DOTCaptureToManySortedFC.BinderOnly

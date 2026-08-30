@@ -3,8 +3,7 @@ import Coercions.Translation.ManySorted.BinderOnly.ModelElaboration
 /-!
 # Ambient model-elaboration examples
 
-Concrete first-order witnesses discharge the names-first substitution
-invariant by computation.  These examples exercise realizable type/capture
+These examples exercise total model compilation for realizable type/capture
 intervals and the zero-evidence unbounded capture case.
 -/
 
@@ -16,7 +15,8 @@ def exactOneInterval : DOTCapture.BinderOnly.Interval .type [] :=
 def exactOneInstantiation :
     Instantiation DOTCapture.BinderOnly.Ctx.nil (.type .one)
       exactOneInterval :=
-  .between rfl rfl
+  canonicalInstantiation DOTCapture.BinderOnly.Ctx.nil (.type .one)
+    exactOneInterval
 
 def exactOneSourceModel :
     DOTCapture.BinderOnly.Interval.SatisfiedBy
@@ -26,7 +26,7 @@ def exactOneSourceModel :
 def compiledExactOneModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.type .one)
       exactOneInterval :=
-  compileModel emptyBoundCompiler exactOneSourceModel exactOneInstantiation
+  compileModelTotal emptyBoundCompiler exactOneSourceModel
 
 @[simp]
 theorem exact_one_model_evidence_shape :
@@ -42,7 +42,8 @@ def wideOneInterval : DOTCapture.BinderOnly.Interval .type [] :=
 def wideOneInstantiation :
     Instantiation DOTCapture.BinderOnly.Ctx.nil (.type .one)
       wideOneInterval :=
-  .between rfl rfl
+  canonicalInstantiation DOTCapture.BinderOnly.Ctx.nil (.type .one)
+    wideOneInterval
 
 def wideOneSourceModel :
     DOTCapture.BinderOnly.Interval.SatisfiedBy
@@ -52,7 +53,7 @@ def wideOneSourceModel :
 def compiledWideOneModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.type .one)
       wideOneInterval :=
-  compileModel emptyBoundCompiler wideOneSourceModel wideOneInstantiation
+  compileModelTotal emptyBoundCompiler wideOneSourceModel
 
 @[simp]
 theorem wide_one_model_distinguishes_bound_order :
@@ -66,7 +67,7 @@ def lowerOneInterval : DOTCapture.BinderOnly.Interval .type [] :=
 def compiledLowerOneModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.type .one)
       lowerOneInterval :=
-  compileModel emptyBoundCompiler (.lower .typeBottom) (.lower rfl)
+  compileModelTotal emptyBoundCompiler (.lower .typeBottom)
 
 @[simp]
 theorem lower_one_model_evidence_shape :
@@ -78,7 +79,7 @@ def upperOneInterval : DOTCapture.BinderOnly.Interval .type [] :=
 def compiledUpperOneModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.type .one)
       upperOneInterval :=
-  compileModel emptyBoundCompiler (.upper .typeTop) (.upper rfl)
+  compileModelTotal emptyBoundCompiler (.upper .typeTop)
 
 @[simp]
 theorem upper_one_model_evidence_shape :
@@ -91,7 +92,8 @@ def exactEmptyCaptureInterval :
 def exactEmptyCaptureInstantiation :
     Instantiation DOTCapture.BinderOnly.Ctx.nil (.capture .empty)
       exactEmptyCaptureInterval :=
-  .between rfl rfl
+  canonicalInstantiation DOTCapture.BinderOnly.Ctx.nil (.capture .empty)
+    exactEmptyCaptureInterval
 
 def exactEmptyCaptureSourceModel :
     DOTCapture.BinderOnly.Interval.SatisfiedBy
@@ -102,8 +104,7 @@ def exactEmptyCaptureSourceModel :
 def compiledExactEmptyCaptureModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.capture .empty)
       exactEmptyCaptureInterval :=
-  compileModel emptyBoundCompiler exactEmptyCaptureSourceModel
-    exactEmptyCaptureInstantiation
+  compileModelTotal emptyBoundCompiler exactEmptyCaptureSourceModel
 
 def unboundedCaptureInterval :
     DOTCapture.BinderOnly.Interval .capture [] :=
@@ -118,13 +119,13 @@ def unboundedCaptureSourceModel :
 def unboundedCaptureInstantiation :
     Instantiation DOTCapture.BinderOnly.Ctx.nil (.capture .empty)
       unboundedCaptureInterval :=
-  .unbounded
+  canonicalInstantiation DOTCapture.BinderOnly.Ctx.nil (.capture .empty)
+    unboundedCaptureInterval
 
 def compiledUnboundedCaptureModel :
     CompiledModel DOTCapture.BinderOnly.Ctx.nil (.capture .empty)
       unboundedCaptureInterval :=
-  compileModel emptyBoundCompiler unboundedCaptureSourceModel
-    unboundedCaptureInstantiation
+  compileModelTotal emptyBoundCompiler unboundedCaptureSourceModel
 
 @[simp]
 theorem unbounded_capture_model_has_no_evidence :

@@ -2,6 +2,7 @@ import Coercions.Translation.ManySorted.StaticSlot
 import Coercions.Translation.ManySorted.BinderOnly.Layout
 import Coercions.Translation.ManySorted.BinderOnly.LayoutExamples
 import Coercions.Translation.ManySorted.BinderOnly.EvidenceElaboration
+import Coercions.Translation.ManySorted.BinderOnly.LayoutMetatheory
 import Coercions.Translation.ManySorted.BinderOnly.EvidenceExamples
 import Coercions.Translation.ManySorted.BinderOnly.ModelElaboration
 import Coercions.Translation.ManySorted.BinderOnly.ModelExamples
