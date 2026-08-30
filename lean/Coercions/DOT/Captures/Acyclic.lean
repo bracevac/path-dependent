@@ -5,6 +5,7 @@ import Coercions.DOT.Captures.Acyclic.MemberTyping
 import Coercions.DOT.Captures.Acyclic.ObjectTyping
 import Coercions.DOT.Captures.Acyclic.Structural
 import Coercions.DOT.Captures.Acyclic.Examples
+import Coercions.DOT.Captures.Acyclic.ComputationalExamples
 
 /-!
 Standalone source root for the first actual acyclic DOT layer with captures.
