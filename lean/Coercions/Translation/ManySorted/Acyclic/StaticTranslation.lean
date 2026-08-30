@@ -94,6 +94,10 @@ def translateTy? {scope : Source.Scope} (context : Source.Ctx scope) :
       match translateRef? context reference with
       | some (.type type) => some type
       | none => none
+  | .arr domain codomain => do
+      let domain' ← translateTy? context domain
+      let codomain' ← translateTy? context codomain
+      pure (.arr domain' codomain')
   | .capturing captures shape => do
       let captures' ← translateCapture? context captures
       let shape' ← translateTy? context shape
@@ -167,6 +171,9 @@ def translateContext? : {scope : Source.Scope} →
   | _, .extend outer (.ref reference) => do
       let targetOuter ← translateContext? outer
       extendPlain? outer targetOuter (.ref reference)
+  | _, .extend outer (.arr domain codomain) => do
+      let targetOuter ← translateContext? outer
+      extendPlain? outer targetOuter (.arr domain codomain)
   | _, .extend outer (.object signature) => do
       let targetOuter ← translateContext? outer
       extendObject? outer targetOuter signature
@@ -186,6 +193,10 @@ def translateContext? : {scope : Source.Scope} →
   | _, .extend outer (.capturing captures (.ref reference)) => do
       let targetOuter ← translateContext? outer
       extendPlain? outer targetOuter (.capturing captures (.ref reference))
+  | _, .extend outer (.capturing captures (.arr domain codomain)) => do
+      let targetOuter ← translateContext? outer
+      extendPlain? outer targetOuter
+        (.capturing captures (.arr domain codomain))
   | _, .extend outer (.capturing captures (.capturing retained shape)) => do
       let targetOuter ← translateContext? outer
       extendPlain? outer targetOuter
@@ -202,6 +213,13 @@ theorem translateContext?_extend_one {scope : Source.Scope}
     translateContext? (outer.extendTerm .one) = (do
       let targetOuter ← translateContext? outer
       extendPlain? outer targetOuter .one) := rfl
+
+@[simp]
+theorem translateContext?_extend_arr {scope : Source.Scope}
+    (outer : Source.Ctx scope) (domain codomain : Source.Ty scope) :
+    translateContext? (outer.extendTerm (.arr domain codomain)) = (do
+      let targetOuter ← translateContext? outer
+      extendPlain? outer targetOuter (.arr domain codomain)) := rfl
 
 @[simp]
 theorem translateContext?_extend_object {scope : Source.Scope}
