@@ -1,5 +1,5 @@
 import Coercions.DOT.Captures.BinderOnly.Subtyping
-import Coercions.Translation.ManySorted.BinderOnly.EvidenceElaboration
+import Coercions.Translation.ManySorted.BinderOnly.ContextEvidence
 import Coercions.ManySortedFC.Administrative
 
 /-!
@@ -10,11 +10,9 @@ only `compileIncludes`; structural composition and function adaptation remain
 explicit target adapters.  In particular, the function case cannot collapse
 to logical type-inclusion evidence.
 
-Quantified source adaptations recurse under an extended source context.  A
-single `BoundCompiler` for the outer context does not justify lookup in that
-extended context, so this initial compiler reports those two cases as
-unsupported.  They can become total once layout extension supplies the
-corresponding recursive bound compiler.
+Quantified source adaptations recurse under the translated names-first theory
+scope. The canonical context-bound compiler follows `staticSlot` at every
+recursive context, so both quantified constructors elaborate totally.
 -/
 
 namespace DOTCaptureToManySortedFC.BinderOnly
@@ -28,35 +26,38 @@ structure CompiledAdapter
   typing : ManySortedFC.Adapter.HasType (translateContext context) adapter
     (translateTy context source) (translateTy context target)
 
-/-- Compile the source adapter fragment supported by one context-local bound
-compiler.
-
-Every successful result carries its target typing derivation.  Failure is
-confined to the quantified constructors, whose bodies require a
-`BoundCompiler` for the extended source context. -/
+/-- Compile every source adaptation to an explicit, typed target adapter. -/
 def compileAdapts {scope : DOTCapture.BinderOnly.Sig}
     {context : DOTCapture.BinderOnly.Ctx scope}
-    (bounds : BoundCompiler context) :
-    {source target : DOTCapture.BinderOnly.Ty scope} →
-    DOTCapture.BinderOnly.Adapts context source target →
-      Option (CompiledAdapter context source target)
-  | source, _, .identity =>
-      some ⟨.identity (translateTy context source), .identity _⟩
-  | _, _, .cast inclusion =>
-      let compiled := compileIncludes bounds inclusion
-      some ⟨.cast compiled.evidence, .cast compiled.typing⟩
-  | _, _, .compose first second => do
-      let firstCompiled ← compileAdapts bounds first
-      let secondCompiled ← compileAdapts bounds second
-      pure ⟨.compose firstCompiled.adapter secondCompiled.adapter,
+    {source target : DOTCapture.BinderOnly.Ty scope}
+    (adaptation : DOTCapture.BinderOnly.Adapts context source target) :
+    CompiledAdapter context source target :=
+  match adaptation with
+  | .identity =>
+      ⟨.identity (translateTy context source), .identity _⟩
+  | .cast inclusion =>
+      let compiled := compileIncludes (contextBoundCompiler context) inclusion
+      ⟨.cast compiled.evidence, .cast compiled.typing⟩
+  | .compose first second =>
+      let firstCompiled := compileAdapts first
+      let secondCompiled := compileAdapts second
+      ⟨.compose firstCompiled.adapter secondCompiled.adapter,
         .compose firstCompiled.typing secondCompiled.typing⟩
-  | _, _, .function domain codomain => do
-      let domainCompiled ← compileAdapts bounds domain
-      let codomainCompiled ← compileAdapts bounds codomain
-      pure ⟨.function domainCompiled.adapter codomainCompiled.adapter,
+  | .function domain codomain =>
+      let domainCompiled := compileAdapts domain
+      let codomainCompiled := compileAdapts codomain
+      ⟨.function domainCompiled.adapter codomainCompiled.adapter,
         .function domainCompiled.typing codomainCompiled.typing⟩
-  | _, _, .forallI _ => none
-  | _, _, .existsI _ => none
+  | @DOTCapture.BinderOnly.Adapts.forallI _ context sort interval
+      _ _ body =>
+      let bodyCompiled := compileAdapts body
+      ⟨.forallT (translateInterval context interval) bodyCompiled.adapter,
+        .forallT bodyCompiled.typing⟩
+  | @DOTCapture.BinderOnly.Adapts.existsI _ context sort interval
+      _ _ body =>
+      let bodyCompiled := compileAdapts body
+      ⟨.existsT (translateInterval context interval) bodyCompiled.adapter,
+        .existsT bodyCompiled.typing⟩
 
 namespace AdapterExamples
 
@@ -81,8 +82,7 @@ def compiledFunction :
 
 @[simp]
 theorem source_function_compiles :
-    compileAdapts emptyBoundCompiler sourceFunction =
-      some compiledFunction := rfl
+    compileAdapts sourceFunction = compiledFunction := rfl
 
 @[simp]
 theorem compiled_function_shape :
@@ -117,8 +117,74 @@ def compiledVariantFunction :
 
 @[simp]
 theorem variant_function_compiles_contravariantly :
-    compileAdapts emptyBoundCompiler variantSourceFunction =
-      some compiledVariantFunction := rfl
+    compileAdapts variantSourceFunction = compiledVariantFunction := rfl
+
+/-! ## Quantified adapters recurse with canonical context evidence -/
+
+def upperTypeInterval : DOTCapture.BinderOnly.Interval .type [] :=
+  .bounds .none (.some (.type .top))
+
+def upperTypeContext :
+    DOTCapture.BinderOnly.Ctx ([] ▹ .static .type) :=
+  DOTCapture.BinderOnly.Ctx.nil.extendStatic upperTypeInterval
+
+def upperReferenceHasTop :
+    DOTCapture.BinderOnly.HasUpper upperTypeContext
+      (.bound .here) (.type .top) :=
+  .bound (lower := .none) rfl
+
+def upperReferenceAdaptsTop :
+    DOTCapture.BinderOnly.Adapts upperTypeContext
+      (.ref (.bound .here)) .top :=
+  .cast (.upper upperReferenceHasTop)
+
+/-- The body cast cites the upper evidence exported by the quantified
+interval, so this regression exercises recursive bound compilation rather
+than only quantified identity. -/
+def quantifiedForallSource :
+    DOTCapture.BinderOnly.Adapts DOTCapture.BinderOnly.Ctx.nil
+      (.forallI upperTypeInterval (.ref (.bound .here)))
+      (.forallI upperTypeInterval .top) :=
+  .forallI upperReferenceAdaptsTop
+
+@[simp]
+theorem quantified_forall_compiles_upper_slot :
+    (compileAdapts quantifiedForallSource).adapter =
+      ManySortedFC.Adapter.forallT
+        (translateInterval DOTCapture.BinderOnly.Ctx.nil upperTypeInterval)
+        (.cast (.var .here)) := rfl
+
+def lowerTypeInterval : DOTCapture.BinderOnly.Interval .type [] :=
+  .bounds (.some (.type .bot)) .none
+
+def lowerTypeContext :
+    DOTCapture.BinderOnly.Ctx ([] ▹ .static .type) :=
+  DOTCapture.BinderOnly.Ctx.nil.extendStatic lowerTypeInterval
+
+def lowerReferenceHasBottom :
+    DOTCapture.BinderOnly.HasLower lowerTypeContext
+      (.bound .here) (.type .bot) :=
+  .bound (upper := .none) rfl
+
+def bottomAdaptsLowerReference :
+    DOTCapture.BinderOnly.Adapts lowerTypeContext
+      .bot (.ref (.bound .here)) :=
+  .cast (.lower lowerReferenceHasBottom)
+
+/-- Existential congruence uses the independently present lower evidence in
+its translated payload scope. -/
+def quantifiedExistsSource :
+    DOTCapture.BinderOnly.Adapts DOTCapture.BinderOnly.Ctx.nil
+      (.existsI lowerTypeInterval .bot)
+      (.existsI lowerTypeInterval (.ref (.bound .here))) :=
+  .existsI bottomAdaptsLowerReference
+
+@[simp]
+theorem quantified_exists_compiles_lower_slot :
+    (compileAdapts quantifiedExistsSource).adapter =
+      ManySortedFC.Adapter.existsT
+        (translateInterval DOTCapture.BinderOnly.Ctx.nil lowerTypeInterval)
+        (.cast (.var .here)) := rfl
 
 end AdapterExamples
 
