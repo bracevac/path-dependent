@@ -59,6 +59,8 @@ def Ty.rename_id {scope : Scope} (type : Ty scope) :
   | .one => rfl
   | .ref reference => by
       simp only [Ty.rename, StaticRef.rename_id reference]
+  | .arr domain codomain => by
+      simp only [Ty.rename, Ty.rename_id domain, Ty.rename_id codomain]
   | .capturing captures shape => by
       simp only [Ty.rename, Capture.rename_id captures, Ty.rename_id shape]
   | .object signature => by
@@ -104,6 +106,8 @@ def Ty.rename_comp {first second third : Scope} (type : Ty first)
   | .one => rfl
   | .ref reference => by
       simp only [Ty.rename, StaticRef.rename_comp reference]
+  | .arr domain codomain => by
+      simp only [Ty.rename, Ty.rename_comp domain, Ty.rename_comp codomain]
   | .capturing captures shape => by
       simp only [Ty.rename, Capture.rename_comp captures,
         Ty.rename_comp shape]
@@ -150,55 +154,75 @@ def rename_comp {sort : StaticSort} {first second third : Scope}
 
 end StaticExpr
 
-namespace Value
+mutual
 
 @[simp]
-def rename_id {scope : Scope} (value : Value scope) :
+def Value.rename_id {scope : Scope} (value : Value scope) :
     value.rename Rename.id = value :=
   match value with
   | .var _ => rfl
   | .unit => rfl
+  | .lam domain codomain body => by
+      simp only [Value.rename, Ty.rename_id domain, Ty.rename_id codomain,
+        Rename.lift_id, Term.rename_id body]
   | .object signature typeWitness captureWitness payload => by
       simp only [Value.rename, ObjectSig.rename_id signature,
         Ty.rename_id typeWitness, Capture.rename_id captureWitness,
         Value.rename_id payload]
 
 @[simp]
-def rename_comp {first second third : Scope} (value : Value first)
+def Term.rename_id {scope : Scope} (term : Term scope) :
+    term.rename Rename.id = term :=
+  match term with
+  | .ret value => by
+      simp only [Term.rename, Value.rename_id value]
+  | .select receiver label => by
+      simp only [Term.rename, Path.rename_id receiver]
+  | .app function argument => by
+      simp only [Term.rename, Value.rename_id function,
+        Value.rename_id argument]
+  | .let' result rhs body => by
+      simp only [Term.rename, Ty.rename_id result, Term.rename_id rhs,
+        Rename.lift_id, Term.rename_id body]
+
+end
+
+mutual
+
+@[simp]
+def Value.rename_comp {first second third : Scope} (value : Value first)
     (rho₁ : Rename first second) (rho₂ : Rename second third) :
     (value.rename rho₁).rename rho₂ =
       value.rename (rho₁.comp rho₂) :=
   match value with
   | .var _ => rfl
   | .unit => rfl
+  | .lam domain codomain body => by
+      simp only [Value.rename, Ty.rename_comp domain,
+        Ty.rename_comp codomain, Term.rename_comp body, Rename.lift_comp]
   | .object signature typeWitness captureWitness payload => by
       simp only [Value.rename, ObjectSig.rename_comp signature,
         Ty.rename_comp typeWitness, Capture.rename_comp captureWitness,
         Value.rename_comp payload]
 
-end Value
-
-namespace Term
-
 @[simp]
-def rename_id {scope : Scope} (term : Term scope) :
-    term.rename Rename.id = term :=
-  match term with
-  | .ret value => by simp only [Term.rename, Value.rename_id value]
-  | .select receiver label => by
-      simp only [Term.rename, Path.rename_id receiver]
-
-@[simp]
-def rename_comp {first second third : Scope} (term : Term first)
+def Term.rename_comp {first second third : Scope} (term : Term first)
     (rho₁ : Rename first second) (rho₂ : Rename second third) :
     (term.rename rho₁).rename rho₂ =
       term.rename (rho₁.comp rho₂) :=
   match term with
-  | .ret value => by simp only [Term.rename, Value.rename_comp value]
+  | .ret value => by
+      simp only [Term.rename, Value.rename_comp value]
   | .select receiver label => by
       simp only [Term.rename, Path.rename_comp receiver]
+  | .app function argument => by
+      simp only [Term.rename, Value.rename_comp function,
+        Value.rename_comp argument]
+  | .let' result rhs body => by
+      simp only [Term.rename, Ty.rename_comp result, Term.rename_comp rhs,
+        Term.rename_comp body, Rename.lift_comp]
 
-end Term
+end
 
 namespace ObjectSig
 
@@ -257,6 +281,51 @@ theorem captureUpper_weaken {scope : Scope} (signature : ObjectSig scope) :
   rfl
 
 end ObjectSig
+
+namespace Ty
+
+/-- Object-binding classification commutes with every source renaming. -/
+@[simp]
+theorem objectSignature?_rename {source target : Scope} (type : Ty source)
+    (rho : Rename source target) :
+    (type.rename rho).objectSignature? =
+      type.objectSignature?.map (fun signature => signature.rename rho) := by
+  cases type with
+  | top => rfl
+  | bot => rfl
+  | one => rfl
+  | ref => rfl
+  | arr => rfl
+  | object => rfl
+  | capturing captures shape =>
+      cases shape <;> rfl
+
+/-- Object-binding classification commutes with ordinary weakening. -/
+@[simp]
+theorem objectSignature?_weaken {scope : Scope} (type : Ty scope) :
+    type.weaken.objectSignature? =
+      type.objectSignature?.map ObjectSig.weaken := by
+  simpa only [Ty.weaken] using
+    objectSignature?_rename type Rename.succ
+
+namespace IsPlain
+
+/-- A plain binding remains plain after any source renaming. -/
+theorem rename {source target : Scope} {type : Ty source}
+    (plain : type.IsPlain) (rho : Rename source target) :
+    (type.rename rho).IsPlain := by
+  unfold Ty.IsPlain at plain ⊢
+  rw [objectSignature?_rename, plain]
+  rfl
+
+/-- A plain binding remains plain after ordinary weakening. -/
+theorem weaken {scope : Scope} {type : Ty scope}
+    (plain : type.IsPlain) : type.weaken.IsPlain :=
+  plain.rename Rename.succ
+
+end IsPlain
+
+end Ty
 
 namespace Path
 

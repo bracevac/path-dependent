@@ -45,12 +45,14 @@ deriving DecidableEq
 mutual
 
 /-- Source types.  Object types carry the fixed `A`, `C`, `v` signature;
-capturing types retain a capture independently of their shape. -/
+capturing types retain a capture independently of their shape, and ordinary
+arrows provide the computational payload language. -/
 inductive Ty : Scope → Type where
   | top {scope : Scope} : Ty scope
   | bot {scope : Scope} : Ty scope
   | one {scope : Scope} : Ty scope
   | ref {scope : Scope} (reference : StaticRef .type scope) : Ty scope
+  | arr {scope : Scope} (domain codomain : Ty scope) : Ty scope
   | capturing {scope : Scope} (captures : Capture scope) (shape : Ty scope) :
       Ty scope
   | object {scope : Scope} (signature : ObjectSig scope) : Ty scope
@@ -83,22 +85,35 @@ inductive ValueLabel : Type where
   | v
 deriving DecidableEq, Repr
 
-/-- Values include explicit object packages.  A package records its concrete
-type witness, concrete capture witness, and value-member payload. -/
+mutual
+
+/-- Source values.  Objects remain representation-transparent packages whose
+payload is itself a value.  Lambdas contain an ANF computation body and record
+ambient, nondependent domain and codomain annotations. -/
 inductive Value : Scope → Type where
   | var {scope : Scope} (name : Var scope) : Value scope
   | unit {scope : Scope} : Value scope
+  | lam {scope : Scope} (domain codomain : Ty scope)
+      (body : Term (scope + 1)) : Value scope
   | object {scope : Scope} (signature : ObjectSig scope)
       (typeWitness : Ty scope) (captureWitness : Capture scope)
       (payload : Value scope) : Value scope
-deriving DecidableEq
 
-/-- ANF computations needed by the first member layer. -/
+/-- ANF computations.  Applications consume values.  A let records an
+ambient result type, making the nonescape boundary for its newest binder
+structural in the syntax. -/
 inductive Term : Scope → Type where
   | ret {scope : Scope} (value : Value scope) : Term scope
   | select {scope : Scope} (receiver : Path scope) (label : ValueLabel) :
       Term scope
-deriving DecidableEq
+  | app {scope : Scope} (function argument : Value scope) : Term scope
+  | let' {scope : Scope} (result : Ty scope) (rhs : Term scope)
+      (body : Term (scope + 1)) : Term scope
+
+end
+
+deriving instance DecidableEq for Value
+deriving instance DecidableEq for Term
 
 namespace Path
 
@@ -187,6 +202,7 @@ def Ty.rename {source target : Scope} (type : Ty source)
   | .bot => .bot
   | .one => .one
   | .ref reference => .ref (reference.rename rho)
+  | .arr domain codomain => .arr (domain.rename rho) (codomain.rename rho)
   | .capturing captures shape =>
       .capturing (captures.rename rho) (shape.rename rho)
   | .object signature => .object (signature.rename rho)
@@ -224,6 +240,20 @@ def stripCapture {scope : Scope} : Ty scope → Ty scope
 def outerCapture {scope : Scope} : Ty scope → Capture scope
   | .capturing captures _ => captures
   | _ => .empty
+
+/-- Recognize the one object shape whose binding receives the expanded
+member layout.  Exactly one outer capture annotation is ignored; nested
+capture annotations are not recursively stripped. -/
+def objectSignature? {scope : Scope} (type : Ty scope) :
+    Option (ObjectSig scope) :=
+  match type.stripCapture with
+  | .object signature => some signature
+  | _ => none
+
+/-- A source type whose term binding occupies one ordinary runtime slot and
+does not expose object members. -/
+def IsPlain {scope : Scope} (type : Ty scope) : Prop :=
+  type.objectSignature? = none
 
 end Ty
 
@@ -264,28 +294,48 @@ def rename {sort : StaticSort} {source target : Scope}
 
 end StaticExpr
 
-namespace Value
+mutual
 
-/-- Rename a value and every witness stored in an object package. -/
-def rename {source target : Scope} (value : Value source)
+/-- Rename a value and every annotation, body, and witness it contains. -/
+def Value.rename {source target : Scope} (value : Value source)
     (rho : Rename source target) : Value target :=
   match value with
   | .var name => .var (rho.var name)
   | .unit => .unit
+  | .lam domain codomain body =>
+      .lam (domain.rename rho) (codomain.rename rho)
+        (body.rename rho.lift)
   | .object signature typeWitness captureWitness payload =>
       .object (signature.rename rho) (typeWitness.rename rho)
         (captureWitness.rename rho) (payload.rename rho)
+
+/-- Rename an ANF computation, lifting below each ordinary let binder. -/
+def Term.rename {source target : Scope} (term : Term source)
+    (rho : Rename source target) : Term target :=
+  match term with
+  | .ret value => .ret (value.rename rho)
+  | .select receiver label => .select (receiver.rename rho) label
+  | .app function argument =>
+      .app (function.rename rho) (argument.rename rho)
+  | .let' result rhs body =>
+      .let' (result.rename rho) (rhs.rename rho) (body.rename rho.lift)
+
+end
+
+
+namespace Value
+
+/-- Weaken a value below one newer ordinary source variable. -/
+def weaken {scope : Scope} (value : Value scope) : Value (scope + 1) :=
+  value.rename Rename.succ
 
 end Value
 
 namespace Term
 
-/-- Rename an ANF computation. -/
-def rename {source target : Scope} (term : Term source)
-    (rho : Rename source target) : Term target :=
-  match term with
-  | .ret value => .ret (value.rename rho)
-  | .select receiver label => .select (receiver.rename rho) label
+/-- Weaken a computation below one newer ordinary source variable. -/
+def weaken {scope : Scope} (term : Term scope) : Term (scope + 1) :=
+  term.rename Rename.succ
 
 end Term
 
