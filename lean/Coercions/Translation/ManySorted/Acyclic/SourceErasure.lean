@@ -1,5 +1,6 @@
 import Coercions.Translation.ManySorted.Acyclic.SelectionTranslation
 import Coercions.ManySortedFC.Erasure
+import Coercions.DOT.Captures.Acyclic.ComputationalExamples
 
 /-!
 # Direct runtime erasure of acyclic DOT with captures
@@ -39,6 +40,14 @@ abbrev Renaming (source target : Nat) : Type :=
   Source.Var source -> Fin target
 
 namespace Renaming
+
+/-- Preserve the newest source/runtime variable while projecting every
+older source variable through the existing runtime map. -/
+def lift {source target : Nat} (rho : Renaming source target) :
+    Renaming (source + 1) (target + 1) :=
+  fun
+  | .here => 0
+  | .there index => (rho index).succ
 
 /-- Precompose a runtime projection with a source renaming. -/
 def precomp {source middle target : Nat}
@@ -93,6 +102,21 @@ theorem precomp_postcomp {source middle : Nat} {first second : Nat}
   funext index
   rfl
 
+@[simp]
+theorem precomp_lift {source middle target : Nat}
+    (rho : Source.Rename source middle) (sigma : Renaming middle target) :
+    precomp rho.lift sigma.lift = (precomp rho sigma).lift := by
+  funext index
+  cases index <;> rfl
+
+@[simp]
+theorem postcomp_lift {source middle target : Nat}
+    (rho : Renaming source middle)
+    (sigma : ManySortedFC.Runtime.Renaming middle target) :
+    postcomp rho.lift sigma.lift = (postcomp rho sigma).lift := by
+  funext index
+  cases index <;> rfl
+
 end Renaming
 
 /-! ## Generalized direct erasure -/
@@ -103,23 +127,35 @@ def erasePathWith {scope runtimeScope : Nat}
     Source.Path scope -> Fin runtimeScope
   | .var name => rho name
 
-/-- Erase a source value.  An object package has no runtime wrapper: it is
-represented by the erasure of its value-member payload. -/
+mutual
+
+/-- Erase a source value.  Lambdas retain their computational body.  An
+object package has no runtime wrapper and is represented by its actual
+value-member payload. -/
 def eraseValueWith {scope runtimeScope : Nat}
     (rho : Renaming scope runtimeScope) :
     Source.Value scope -> ManySortedFC.Runtime.Tm runtimeScope
   | .var name => .var (rho name)
   | .unit => .unit
+  | .lam _domain _codomain body =>
+      .lam (eraseTermWith rho.lift body)
   | .object _signature _typeWitness _captureWitness payload =>
       eraseValueWith rho payload
 
-/-- Erase an acyclic source computation.  A primitive value-member selection
-is just a read of the receiver's already-separated payload coordinate. -/
+/-- Erase an acyclic source computation.  Application and let retain their
+call-by-value runtime spine.  Primitive value-member selection reads the
+receiver's already-separated payload coordinate. -/
 def eraseTermWith {scope runtimeScope : Nat}
     (rho : Renaming scope runtimeScope) :
     Source.Term scope -> ManySortedFC.Runtime.Tm runtimeScope
   | .ret value => eraseValueWith rho value
   | .select receiver .v => .var (erasePathWith rho receiver)
+  | .app function argument =>
+      .app (eraseValueWith rho function) (eraseValueWith rho argument)
+  | .let' _result rhs body =>
+      .let' (eraseTermWith rho rhs) (eraseTermWith rho.lift body)
+
+end
 
 /-! ## Exact generalized equations -/
 
@@ -137,6 +173,13 @@ theorem eraseValueWith_var {scope runtimeScope : Nat}
 theorem eraseValueWith_unit {scope runtimeScope : Nat}
     (rho : Renaming scope runtimeScope) :
     eraseValueWith rho (.unit : Source.Value scope) = .unit := rfl
+
+@[simp]
+theorem eraseValueWith_lam {scope runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope) (domain codomain : Source.Ty scope)
+    (body : Source.Term (scope + 1)) :
+    eraseValueWith rho (.lam domain codomain body) =
+      .lam (eraseTermWith rho.lift body) := rfl
 
 @[simp]
 theorem eraseValueWith_object {scope runtimeScope : Nat}
@@ -159,6 +202,20 @@ theorem eraseTermWith_select {scope runtimeScope : Nat}
     eraseTermWith rho (.select receiver .v) =
       .var (erasePathWith rho receiver) := rfl
 
+@[simp]
+theorem eraseTermWith_app {scope runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope)
+    (function argument : Source.Value scope) :
+    eraseTermWith rho (.app function argument) =
+      .app (eraseValueWith rho function) (eraseValueWith rho argument) := rfl
+
+@[simp]
+theorem eraseTermWith_let {scope runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope) (result : Source.Ty scope)
+    (rhs : Source.Term scope) (body : Source.Term (scope + 1)) :
+    eraseTermWith rho (.let' result rhs body) =
+      .let' (eraseTermWith rho rhs) (eraseTermWith rho.lift body) := rfl
+
 /-! ## Naturality -/
 
 @[simp]
@@ -170,32 +227,50 @@ theorem erasePathWith_sourceRename {source middle runtimeScope : Nat}
   cases path
   rfl
 
+mutual
+
 @[simp]
-theorem eraseValueWith_sourceRename {source middle runtimeScope : Nat}
+def eraseValueWith_sourceRename {source middle runtimeScope : Nat}
     (sigma : Renaming middle runtimeScope)
     (rho : Source.Rename source middle) (value : Source.Value source) :
     eraseValueWith sigma (value.rename rho) =
-      eraseValueWith (Renaming.precomp rho sigma) value := by
-  induction value with
-  | var => rfl
-  | unit => rfl
-  | object signature typeWitness captureWitness payload induction =>
-      simpa [DOTCapture.Acyclic.Value.rename, eraseValueWith] using induction
+      eraseValueWith (Renaming.precomp rho sigma) value :=
+  match value with
+  | .var _ => rfl
+  | .unit => rfl
+  | .lam _domain _codomain body => by
+      simp only [DOTCapture.Acyclic.Value.rename, eraseValueWith,
+        eraseTermWith_sourceRename sigma.lift rho.lift body,
+        Renaming.precomp_lift]
+  | .object _signature _typeWitness _captureWitness payload => by
+      simp only [DOTCapture.Acyclic.Value.rename, eraseValueWith,
+        eraseValueWith_sourceRename sigma rho payload]
 
 @[simp]
-theorem eraseTermWith_sourceRename {source middle runtimeScope : Nat}
+def eraseTermWith_sourceRename {source middle runtimeScope : Nat}
     (sigma : Renaming middle runtimeScope)
     (rho : Source.Rename source middle) (sourceTerm : Source.Term source) :
     eraseTermWith sigma (sourceTerm.rename rho) =
-      eraseTermWith (Renaming.precomp rho sigma) sourceTerm := by
-  cases sourceTerm with
-  | ret value =>
-      simp [DOTCapture.Acyclic.Term.rename, eraseTermWith,
-        eraseValueWith_sourceRename]
-  | select receiver label =>
+      eraseTermWith (Renaming.precomp rho sigma) sourceTerm :=
+  match sourceTerm with
+  | .ret value => by
+      simp only [DOTCapture.Acyclic.Term.rename, eraseTermWith,
+        eraseValueWith_sourceRename sigma rho value]
+  | .select receiver label => by
       cases label
-      simp [DOTCapture.Acyclic.Term.rename, eraseTermWith,
+      simp only [DOTCapture.Acyclic.Term.rename, eraseTermWith,
         erasePathWith_sourceRename]
+  | .app function argument => by
+      simp only [DOTCapture.Acyclic.Term.rename, eraseTermWith,
+        eraseValueWith_sourceRename sigma rho function,
+        eraseValueWith_sourceRename sigma rho argument]
+  | .let' _result rhs body => by
+      simp only [DOTCapture.Acyclic.Term.rename, eraseTermWith,
+        eraseTermWith_sourceRename sigma rho rhs,
+        eraseTermWith_sourceRename sigma.lift rho.lift body,
+        Renaming.precomp_lift]
+
+end
 
 @[simp]
 theorem erasePathWith_runtimeRename {scope source target : Nat}
@@ -207,33 +282,52 @@ theorem erasePathWith_runtimeRename {scope source target : Nat}
   cases path
   rfl
 
+mutual
+
 @[simp]
-theorem eraseValueWith_runtimeRename {scope source target : Nat}
+def eraseValueWith_runtimeRename {scope source target : Nat}
     (rho : Renaming scope source)
     (sigma : ManySortedFC.Runtime.Renaming source target)
     (value : Source.Value scope) :
     (eraseValueWith rho value).rename sigma =
-      eraseValueWith (Renaming.postcomp rho sigma) value := by
-  induction value with
-  | var => rfl
-  | unit => rfl
-  | object signature typeWitness captureWitness payload induction =>
-      simpa [eraseValueWith] using induction
+      eraseValueWith (Renaming.postcomp rho sigma) value :=
+  match value with
+  | .var _ => rfl
+  | .unit => rfl
+  | .lam _domain _codomain body => by
+      simp only [eraseValueWith, ManySortedFC.Runtime.Tm.rename,
+        eraseTermWith_runtimeRename rho.lift sigma.lift body,
+        Renaming.postcomp_lift]
+  | .object _signature _typeWitness _captureWitness payload => by
+      simp only [eraseValueWith,
+        eraseValueWith_runtimeRename rho sigma payload]
 
 @[simp]
-theorem eraseTermWith_runtimeRename {scope source target : Nat}
+def eraseTermWith_runtimeRename {scope source target : Nat}
     (rho : Renaming scope source)
     (sigma : ManySortedFC.Runtime.Renaming source target)
     (sourceTerm : Source.Term scope) :
     (eraseTermWith rho sourceTerm).rename sigma =
-      eraseTermWith (Renaming.postcomp rho sigma) sourceTerm := by
-  cases sourceTerm with
-  | ret value =>
-      simp [eraseTermWith, eraseValueWith_runtimeRename]
-  | select receiver label =>
+      eraseTermWith (Renaming.postcomp rho sigma) sourceTerm :=
+  match sourceTerm with
+  | .ret value => by
+      simp only [eraseTermWith,
+        eraseValueWith_runtimeRename rho sigma value]
+  | .select receiver label => by
       cases label
-      simp [eraseTermWith, ManySortedFC.Runtime.Tm.rename,
+      simp only [eraseTermWith, ManySortedFC.Runtime.Tm.rename,
         erasePathWith_runtimeRename]
+  | .app function argument => by
+      simp only [eraseTermWith, ManySortedFC.Runtime.Tm.rename,
+        eraseValueWith_runtimeRename rho sigma function,
+        eraseValueWith_runtimeRename rho sigma argument]
+  | .let' _result rhs body => by
+      simp only [eraseTermWith, ManySortedFC.Runtime.Tm.rename,
+        eraseTermWith_runtimeRename rho sigma rhs,
+        eraseTermWith_runtimeRename rho.lift sigma.lift body,
+        Renaming.postcomp_lift]
+
+end
 
 /-! ## Canonical context erasure -/
 
@@ -251,6 +345,7 @@ theorem targetTermCount {scope : Source.Scope} (context : Source.Ctx scope) :
       | bot => simp [Layout.sig, induction]
       | one => simp [Layout.sig, induction]
       | ref => simp [Layout.sig, induction]
+      | arr => simp [Layout.sig, induction]
       | object => simp [Layout.sig, ObjectEncoding.PayloadScope, induction]
       | capturing captures shape =>
           cases shape <;>
@@ -295,6 +390,13 @@ theorem eraseValue_unit {scope : Source.Scope} (context : Source.Ctx scope) :
     eraseValue context (.unit : Source.Value scope) = .unit := rfl
 
 @[simp]
+theorem eraseValue_lam {scope : Source.Scope} (context : Source.Ctx scope)
+    (domain codomain : Source.Ty scope)
+    (body : Source.Term (scope + 1)) :
+    eraseValue context (.lam domain codomain body) =
+      .lam (eraseTermWith (compiledRenaming context).lift body) := rfl
+
+@[simp]
 theorem eraseValue_object {scope : Source.Scope} (context : Source.Ctx scope)
     (signature : Source.ObjectSig scope) (typeWitness : Source.Ty scope)
     (captureWitness : Source.Capture scope)
@@ -316,6 +418,20 @@ theorem eraseTerm_select {scope : Source.Scope} (context : Source.Ctx scope)
         (Layout.translatePath context receiver)) := by
   cases receiver
   rfl
+
+@[simp]
+theorem eraseTerm_app {scope : Source.Scope} (context : Source.Ctx scope)
+    (function argument : Source.Value scope) :
+    eraseTerm context (.app function argument) =
+      .app (eraseValue context function) (eraseValue context argument) := rfl
+
+@[simp]
+theorem eraseTerm_let {scope : Source.Scope} (context : Source.Ctx scope)
+    (result : Source.Ty scope) (rhs : Source.Term scope)
+    (body : Source.Term (scope + 1)) :
+    eraseTerm context (.let' result rhs body) =
+      .let' (eraseTerm context rhs)
+        (eraseTermWith (compiledRenaming context).lift body) := rfl
 
 /-! ## Agreement with primitive selection translation -/
 
@@ -380,6 +496,49 @@ export DOTCaptureToManySortedFC.Acyclic.ExposureTranslation.Regression
     olderExpandedContext olderExpandedReceiver olderExpandedResolved)
 
 end ExposureRegression
+
+/-! ### Higher-order computational spine -/
+
+namespace ComputationalExamples
+
+export DOTCapture.Acyclic.ComputationalExamples
+  (identity identityTyping functionObject functionObjectTyping
+    returnSelected returnSelectedTyping applySelected applySelectedTyping)
+
+end ComputationalExamples
+
+/-- The well-typed closed identity function is observably a runtime lambda,
+not unit. -/
+theorem identity_value_erases_to_lambda :
+    eraseValue (.nil : Source.Ctx 0) ComputationalExamples.identity =
+      .lam (.var 0) := by
+  rfl
+
+/-- The typed captured-DOT object package erases to its actual function
+payload rather than to a fixed unit. -/
+theorem function_object_erases_to_actual_payload :
+    eraseValue (.nil : Source.Ctx 0)
+        ComputationalExamples.functionObject =
+      .lam (.var 0) := by
+  rfl
+
+/-- Object-expanding and plain lets retain the full computation.  The first
+let opens the function-valued object, the second binds `x.v`, and the closed
+result is the selected function variable rather than unit. -/
+theorem return_selected_erases_exactly :
+    eraseTerm (.nil : Source.Ctx 0)
+        ComputationalExamples.returnSelected =
+      .let' (.lam (.var 0)) (.let' (.var 0) (.var 0)) := by
+  rfl
+
+/-- The well-typed object-let/select-let/application program exposes both
+runtime lets and the final application of the selected payload. -/
+theorem apply_selected_erases_exactly :
+    eraseTerm (.nil : Source.Ctx 0)
+        ComputationalExamples.applySelected =
+      .let' (.lam (.var 0))
+        (.let' (.var 0) (.app (.var 0) .unit)) := by
+  rfl
 
 /-- Captured-DOT object packages have no runtime wrapper of their own. -/
 def exactObjectValue : Source.Value 0 :=
