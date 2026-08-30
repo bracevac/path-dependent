@@ -1,16 +1,29 @@
 import Coercions.Translation.ManySorted.Acyclic.RuntimeContext
 import Coercions.Translation.ManySorted.Acyclic.EvidenceTranslation
+import Coercions.Translation.ManySorted.Acyclic.SelectionTranslation
 import Coercions.Translation.ManySorted.BinderOnly.StaticInstantiation
+import Coercions.ManySortedFC.Erasure
 
 /-!
-# Certified translation of acyclic DOT values
+# Certified compiler core for acyclic captured DOT
 
-Executable source contexts contain only ordinary bindings and canonically
-formed object bindings.  Ordinary variables translate to their target term
-coordinate, with an explicit capture retag when their stored type is
-capturing.  An object variable denotes an already-open payload in the target
-context, so returning it as a first-class value repackages that same payload
-with the two shared witnesses and exactly four stored assumptions.
+The end-to-end source language is the **closed, acyclic, value-MNF
+captured-DOT compiler case-study core**.  Its acceptance regressions are
+closed, while the underlying compiler API is parameterized by an arbitrary
+executable `Ready` context.
+Applications take values.  Object-opening lets require a canonical object
+value RHS, and object bindings compile through the many-sorted FC target's
+FCsub-style existential opening (`ManySortedFC.Tm.open`).
+Lambda domains are classified by `Ty.IsPlain`, so object-typed parameters are
+not part of this compiler slice.
+
+Executable contexts contain ordinary bindings and canonically formed object
+bindings.  Ordinary variables translate to their target term coordinate, with
+an explicit capture retag when needed.  An already-open object variable is
+repackaged with two witnesses and four interval assumptions when returned as a
+first-class value.  Recursive objects, full DOT, general non-MNF terms,
+intersections, arbitrary member labels, structural arrow adaptation, and the
+negative/universal object interface are outside this fragment.
 -/
 
 namespace DOTCaptureToManySortedFC.Acyclic.ValueTranslation
@@ -19,11 +32,15 @@ namespace Source
 
 export DOTCapture.Acyclic
   (Scope StaticSort Var Path Capture Ty ObjectSig StaticExpr Ctx Value Term
-    TypeIncludes CaptureIncludes)
+    ExposesObject TypeIncludes CaptureIncludes)
 
 namespace Value
 export DOTCapture.Acyclic.Value (HasType)
 end Value
+
+namespace Term
+export DOTCapture.Acyclic.Term (HasType)
+end Term
 
 namespace ObjectSig
 export DOTCapture.Acyclic.ObjectSig
@@ -46,7 +63,7 @@ export ManySortedFC
   (StaticExpr Capture Ty Binding Ctx Evidence Adapter Theory Tm)
 
 namespace Tm
-export ManySortedFC.Tm (HasType IsValue synth)
+export ManySortedFC.Tm (HasType IsValue check synth)
 end Tm
 
 namespace Evidence
@@ -73,12 +90,19 @@ export DOTCaptureToManySortedFC.Acyclic.RuntimeContext
 
 end Runtime
 
+namespace Selection
+
+export DOTCaptureToManySortedFC.Acyclic.SelectionTranslation
+  (Result selectedPayloadType term compile)
+
+end Selection
+
 namespace Object
 
 export ObjectEncoding
   (Bounds symbols relations theory payloadType existentialShape objectType
     symbolWeakening alphaSymbol chiSymbol symbolArguments evidenceArguments
-    retagPayload pack payloadTypeOpened exactBounds)
+    retagPayload pack openOnce payloadTypeOpened exactBounds staticWeakening)
 
 end Object
 
@@ -94,6 +118,22 @@ structure CompiledValue {scope : Source.Scope} {context : Source.Ctx scope}
   term : Target.Tm (Layout.sig context)
   isValue : Target.Tm.IsValue term
   typing : Target.Tm.HasType ready.target term .empty targetType
+
+/-- A target computation with exact translations of both source typing
+indices.  It lives beside `CompiledValue` so the two derivation-directed
+compilers can recurse mutually without introducing a module cycle. -/
+structure CompiledTerm {scope : Source.Scope} {context : Source.Ctx scope}
+    (ready : Runtime.Ready context) (sourceTerm : Source.Term scope)
+    (sourceUse : Source.Capture scope) (sourceType : Source.Ty scope) where
+  sourceTyping : Source.Term.HasType context sourceTerm sourceUse sourceType
+  targetUse : Target.Capture (Layout.sig context)
+  targetType : Target.Ty (Layout.sig context)
+  useTranslated :
+    Translation.translateCapture? context sourceUse = some targetUse
+  typeTranslated :
+    Translation.translateTy? context sourceType = some targetType
+  term : Target.Tm (Layout.sig context)
+  typing : Target.Tm.HasType ready.target term targetUse targetType
 
 /-! ## Translation projections and exact evidence alignment -/
 
@@ -281,6 +321,21 @@ private theorem translateTy?_outerCapture {scope : Source.Scope}
               change Translation.translateCapture? context .empty =
                 some (ManySortedFC.Ty.tvar slot.name).outerCapture
               rfl
+  | arr domain codomain =>
+      unfold StaticTranslation.translateTy? at translated
+      generalize domainEquation :
+        Translation.translateTy? context domain = domainResult at translated
+      cases domainResult with
+      | none => contradiction
+      | some domainTarget =>
+          generalize codomainEquation :
+            Translation.translateTy? context codomain = codomainResult
+              at translated
+          cases codomainResult with
+          | none => contradiction
+          | some codomainTarget =>
+              cases translated
+              rfl
   | capturing captures shape =>
       unfold StaticTranslation.translateTy? at translated
       generalize captureEquation :
@@ -346,6 +401,24 @@ private theorem translateTy?_stripCapture {scope : Source.Scope}
               change Translation.translateTy? context
                 (.ref (.typeMember receiver)) = some (.tvar slot.name)
               simp [StaticTranslation.translateTy?, refSome]
+  | arr domain codomain =>
+      unfold StaticTranslation.translateTy? at translated
+      generalize domainEquation :
+        Translation.translateTy? context domain = domainResult at translated
+      cases domainResult with
+      | none => contradiction
+      | some domainTarget =>
+          generalize codomainEquation :
+            Translation.translateTy? context codomain = codomainResult
+              at translated
+          cases codomainResult with
+          | none => contradiction
+          | some codomainTarget =>
+              cases translated
+              simp [DOTCapture.Acyclic.Ty.stripCapture,
+                ManySortedFC.Ty.stripCapture,
+                StaticTranslation.translateTy?, domainEquation,
+                codomainEquation]
   | capturing captures shape =>
       unfold StaticTranslation.translateTy? at translated
       generalize captureEquation :
@@ -713,7 +786,660 @@ private noncomputable def compileObjectVariable {scope : Source.Scope}
         exact .pack (.adapt .var)
       typing := termTyping }
 
-/-! ## Derivation-directed value compiler -/
+/-! ## Computational translation helpers -/
+
+private theorem plainSig {scope : Source.Scope}
+    (context : Source.Ctx scope) (type : Source.Ty scope)
+    (plain : type.IsPlain) :
+    Layout.sig (context.extendTerm type) =
+      (Layout.sig context) ▹ .term := by
+  cases type with
+  | top | bot | one | ref | arr => rfl
+  | object signature =>
+      simp [DOTCapture.Acyclic.Ty.IsPlain,
+        DOTCapture.Acyclic.Ty.objectSignature?,
+        DOTCapture.Acyclic.Ty.stripCapture] at plain
+  | capturing captures shape =>
+      cases shape with
+      | object signature =>
+          simp [DOTCapture.Acyclic.Ty.IsPlain,
+            DOTCapture.Acyclic.Ty.objectSignature?,
+            DOTCapture.Acyclic.Ty.stripCapture] at plain
+      | top | bot | one | ref | arr | capturing => rfl
+
+/-- View the erased body of a plain source binder at the canonical one-term
+runtime extension of the ambient target scope. -/
+private def erasePlainBody {scope : Source.Scope}
+    {context : Source.Ctx scope} {domain : Source.Ty scope}
+    (domainPlain : domain.IsPlain)
+    (body : Target.Tm (Layout.sig (context.extendTerm domain))) :
+    ManySortedFC.Runtime.Tm ((Layout.sig context).termCount + 1) :=
+  cast (congrArg ManySortedFC.Runtime.Tm
+    (congrArg ManySortedFC.Sig.termCount
+      (plainSig context domain domainPlain))) body.erase
+
+private theorem erasePlainBody_heq {scope : Source.Scope}
+    {context : Source.Ctx scope} {domain : Source.Ty scope}
+    (domainPlain : domain.IsPlain)
+    (body : Target.Tm (Layout.sig (context.extendTerm domain))) :
+    HEq body.erase (erasePlainBody domainPlain body) := by
+  exact (cast_heq _ _).symm
+
+private theorem payloadRenamingIdentity (scope : ManySortedFC.Sig) :
+    (ManySortedFC.Erasure.Renaming.identity scope).liftPayload
+        ObjectEncoding.symbols ObjectEncoding.relations =
+      ManySortedFC.Erasure.Renaming.identity
+        (ObjectEncoding.PayloadScope scope) := by
+  funext index
+  cases index with
+  | here => rfl
+  | there index =>
+      cases index with
+      | there index =>
+        cases index with
+        | there index =>
+          cases index with
+          | there index =>
+            cases index with
+            | there index =>
+              cases index with
+              | there index =>
+                cases index with
+                | there index => rfl
+
+private theorem payloadEraseCanonical (scope : ManySortedFC.Sig)
+    (body : ManySortedFC.Tm (ObjectEncoding.PayloadScope scope)) :
+    body.eraseWith
+        ((ManySortedFC.Erasure.Renaming.identity scope).liftPayload
+          ObjectEncoding.symbols ObjectEncoding.relations) =
+      body.erase := by
+  unfold ManySortedFC.Tm.erase
+  rw [payloadRenamingIdentity]
+  rfl
+
+private theorem objectSig {scope : Source.Scope}
+    (context : Source.Ctx scope) (signature : Source.ObjectSig scope) :
+    Layout.sig (context.extendTerm
+      (.capturing signature.captureUpper (.object signature))) =
+        ObjectEncoding.PayloadScope (Layout.sig context) := rfl
+
+private def eraseObjectBody {scope : Source.Scope}
+    {context : Source.Ctx scope} {signature : Source.ObjectSig scope}
+    (body : Target.Tm (Layout.sig (context.extendTerm
+      (.capturing signature.captureUpper (.object signature))))) :
+    ManySortedFC.Runtime.Tm ((Layout.sig context).termCount + 1) :=
+  cast (congrArg ManySortedFC.Runtime.Tm
+    (congrArg ManySortedFC.Sig.termCount
+      (objectSig context signature))) body.erase
+
+private theorem eraseObjectBody_heq {scope : Source.Scope}
+    {context : Source.Ctx scope} {signature : Source.ObjectSig scope}
+    (body : Target.Tm (Layout.sig (context.extendTerm
+      (.capturing signature.captureUpper (.object signature))))) :
+    HEq body.erase (eraseObjectBody body) := by
+  exact (cast_heq _ _).symm
+
+/-- Primitive member selection is total in a ready runtime context. -/
+private noncomputable def compileSelect {scope : Source.Scope}
+    {context : Source.Ctx scope} (ready : Runtime.Ready context)
+    {receiver : Source.Path scope} {signature : Source.ObjectSig scope}
+    (exposes : Source.ExposesObject context receiver signature) :
+    CompiledTerm ready (.select receiver .v) (.singleton receiver)
+      receiver.valueMemberType := by
+  let selected := Selection.compile ready.translated exposes
+  exact
+    { sourceTyping := selected.sourceTyping
+      targetUse := .singleton selected.resolved.slot.payload
+      targetType := Selection.selectedPayloadType selected.resolved
+      useTranslated := selected.useTranslated
+      typeTranslated := selected.typeTranslated
+      term := Selection.term selected.resolved
+      typing := selected.targetTyping }
+
+/-- Compile one immediate-use widening after its inner computation has
+already been translated. -/
+private noncomputable def compileUseTerm? {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {term : Source.Term scope} {sourceUse targetUse : Source.Capture scope}
+    {type : Source.Ty scope}
+    (inner : CompiledTerm ready term sourceUse type)
+    (inclusion : Source.CaptureIncludes context sourceUse targetUse) :
+    Option (CompiledTerm ready term targetUse type) :=
+  match targetTranslated : Translation.translateCapture? context targetUse with
+  | none => none
+  | some target => do
+      let compiled ← compileCaptureInclusion? ready.translated inclusion
+        inner.useTranslated targetTranslated
+      pure
+        { sourceTyping := .use inner.sourceTyping inclusion
+          targetUse := target
+          targetType := inner.targetType
+          useTranslated := targetTranslated
+          typeTranslated := inner.typeTranslated
+          term := .use inner.term compiled.evidence
+          typing := .use inner.typing compiled.typing }
+
+/-- Finish one logical source adaptation after compiling its value child. -/
+noncomputable def compileAdapt? {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {value : Source.Value scope} {source target : Source.Ty scope}
+    (inner : CompiledValue ready value source)
+    (inclusion : Source.TypeIncludes context source target)
+    {targetType : Target.Ty (Layout.sig context)}
+    (targetTranslated : Translation.translateTy? context target =
+      some targetType) : Option (CompiledValue ready value target) := do
+  let inclusionCompiled ← compileTypeInclusion? ready.translated inclusion
+    inner.typeTranslated targetTranslated
+  pure
+    { targetType := targetType
+      typeTranslated := targetTranslated
+      term := .adapt inner.term (.cast inclusionCompiled.evidence)
+      isValue := .adapt inner.isValue
+      typing := .adapt inner.isValue inner.typing
+        (.cast inclusionCompiled.typing) }
+
+/-- A finished lambda packages the compiled target value together with the
+runtime constructor equation that downstream erasure proofs consume. -/
+structure FinishedLambda {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {domain codomain : Source.Ty scope} {body : Source.Term (scope + 1)}
+    {bodyUse : Source.Capture (scope + 1)} {closure : Source.Capture scope}
+    {domainPlain : domain.IsPlain}
+    {domainTarget : Target.Ty (Layout.sig context)}
+    {domainTranslated : Translation.translateTy? context domain =
+      some domainTarget}
+    (bodyCompiled : CompiledTerm
+      (ready.extendPlain domainPlain domainTranslated) body bodyUse
+        codomain.weaken) where
+  compiled : CompiledValue ready (.lam domain codomain body)
+    (.capturing closure (.arr domain codomain))
+  erasedBody : ManySortedFC.Runtime.Tm
+    ((Layout.sig context).termCount + 1)
+  bodyErases : HEq bodyCompiled.term.erase erasedBody
+  compiledErases : compiled.term.erase =
+    ManySortedFC.Runtime.Tm.lam erasedBody
+
+/-- Finish a source lambda after its body has already been compiled.  Keeping
+the dependent `IsPlain` case split here makes recursive compilation visible to
+clients while containing the target-scope alignment in one semantic helper. -/
+noncomputable def finishLambda? {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {domain codomain : Source.Ty scope} {body : Source.Term (scope + 1)}
+    {bodyUse : Source.Capture (scope + 1)} {closure : Source.Capture scope}
+    (domainPlain : domain.IsPlain)
+    (captures : Source.CaptureIncludes (context.extendTerm domain) bodyUse
+      (.union closure.weaken (.singleton (.var .here))))
+    {domainTarget codomainTarget : Target.Ty (Layout.sig context)}
+    {closureTarget : Target.Capture (Layout.sig context)}
+    (domainTranslated : Translation.translateTy? context domain =
+      some domainTarget)
+    (codomainTranslated : Translation.translateTy? context codomain =
+      some codomainTarget)
+    (closureTranslated : Translation.translateCapture? context closure =
+      some closureTarget)
+    (bodyCompiled : CompiledTerm
+      (ready.extendPlain domainPlain domainTranslated) body bodyUse
+        codomain.weaken) :
+    Option (@FinishedLambda scope context ready domain codomain body bodyUse
+      closure domainPlain domainTarget domainTranslated bodyCompiled) := by
+  let binding := domain
+  cases domain with
+  | object signature =>
+      simp [DOTCapture.Acyclic.Ty.IsPlain,
+        DOTCapture.Acyclic.Ty.objectSignature?,
+        DOTCapture.Acyclic.Ty.stripCapture] at domainPlain
+  | capturing domainCapture shape =>
+      cases shape with
+      | object signature =>
+          simp [DOTCapture.Acyclic.Ty.IsPlain,
+            DOTCapture.Acyclic.Ty.objectSignature?,
+            DOTCapture.Acyclic.Ty.stripCapture] at domainPlain
+      | top | bot | one | ref | arr | capturing =>
+          let bodyReady := ready.extendPlain domainPlain domainTranslated
+          have codomainWeakenTranslated :
+              Translation.translateTy? (context.extendTerm binding)
+                  codomain.weaken =
+                some (codomainTarget.rename
+                  (ManySortedFC.Rename.succ (kind := .term))) := by
+            rw [StaticTranslationMetatheory.translateTy?_weaken,
+              codomainTranslated]
+            rfl
+          have codomainEquality :=
+            StaticTranslation.TranslatesTy.functional
+              bodyCompiled.typeTranslated codomainWeakenTranslated
+          have upperTranslated :
+              Translation.translateCapture? (context.extendTerm binding)
+                  (.union closure.weaken (.singleton (.var .here))) =
+                some (.union
+                  (closureTarget.rename
+                    (ManySortedFC.Rename.succ (kind := .term)))
+                  (.singleton
+                    (.here : ManySortedFC.BVar
+                      (Layout.sig context ▹ .term) .term))) := by
+            simp only [Translation.translateCapture?]
+            rw [StaticTranslationMetatheory.translateCapture?_weaken,
+              closureTranslated]
+            simp [binding, Layout.extendRename, StaticTranslation.translatePath,
+              Layout.translatePath, Layout.termVar,
+              DOTCapture.Acyclic.Ctx.extendTerm]
+          exact do
+            let capturesCompiled ←
+              compileCaptureInclusion? bodyReady.translated captures
+                bodyCompiled.useTranslated upperTranslated
+            have bodyTargetTyping : Target.Tm.HasType
+                (ready.target.extendTerm domainTarget) bodyCompiled.term
+                bodyCompiled.targetUse
+                (codomainTarget.rename
+                  (ManySortedFC.Rename.succ (kind := .term))) := by
+              simpa [bodyReady, codomainEquality] using bodyCompiled.typing
+            let compiled : CompiledValue ready (.lam binding codomain body)
+                (.capturing closure (.arr binding codomain)) :=
+              { targetType := .capturing closureTarget
+                  (.arr domainTarget codomainTarget)
+                typeTranslated := by
+                  have arrowTranslated :
+                      Translation.translateTy? context
+                          (.arr binding codomain) =
+                        some (.arr domainTarget codomainTarget) := by
+                    unfold Translation.translateTy?
+                    have bindingTranslated :
+                        Translation.translateTy? context binding =
+                          some domainTarget := by
+                      simpa [binding] using domainTranslated
+                    rw [bindingTranslated, codomainTranslated]
+                    rfl
+                  change (do
+                    let closure' ← Translation.translateCapture? context
+                      closure
+                    let shape' ← Translation.translateTy? context
+                      (.arr binding codomain)
+                    pure (ManySortedFC.Ty.capturing closure' shape')) = _
+                  rw [closureTranslated, arrowTranslated]
+                  rfl
+                term := .lam domainTarget codomainTarget closureTarget
+                  bodyCompiled.term capturesCompiled.evidence
+                isValue := .lam
+                typing := .lam bodyTargetTyping capturesCompiled.typing }
+            pure
+              { compiled := compiled
+                erasedBody := erasePlainBody domainPlain bodyCompiled.term
+                bodyErases := erasePlainBody_heq domainPlain bodyCompiled.term
+                compiledErases := by
+                  dsimp only [compiled]
+                  rw [ManySortedFC.Tm.erase_lam]
+                  congr 1 }
+  | top | bot | one | ref | arr =>
+      let bodyReady := ready.extendPlain domainPlain domainTranslated
+      have codomainWeakenTranslated :
+          Translation.translateTy? (context.extendTerm binding) codomain.weaken =
+            some (codomainTarget.rename
+              (ManySortedFC.Rename.succ (kind := .term))) := by
+        rw [StaticTranslationMetatheory.translateTy?_weaken,
+          codomainTranslated]
+        rfl
+      have codomainEquality :=
+        StaticTranslation.TranslatesTy.functional
+          bodyCompiled.typeTranslated codomainWeakenTranslated
+      have upperTranslated :
+          Translation.translateCapture? (context.extendTerm binding)
+              (.union closure.weaken (.singleton (.var .here))) =
+            some (.union
+              (closureTarget.rename
+                (ManySortedFC.Rename.succ (kind := .term)))
+              (.singleton
+                (.here : ManySortedFC.BVar
+                  (Layout.sig context ▹ .term) .term))) := by
+        simp only [Translation.translateCapture?]
+        rw [StaticTranslationMetatheory.translateCapture?_weaken,
+          closureTranslated]
+        simp [binding, Layout.extendRename, StaticTranslation.translatePath,
+          Layout.translatePath, Layout.termVar,
+          DOTCapture.Acyclic.Ctx.extendTerm]
+      exact do
+        let capturesCompiled ←
+          compileCaptureInclusion? bodyReady.translated captures
+            bodyCompiled.useTranslated upperTranslated
+        have bodyTargetTyping : Target.Tm.HasType
+            (ready.target.extendTerm domainTarget) bodyCompiled.term
+            bodyCompiled.targetUse
+            (codomainTarget.rename
+              (ManySortedFC.Rename.succ (kind := .term))) := by
+          simpa [bodyReady, codomainEquality] using bodyCompiled.typing
+        let compiled : CompiledValue ready (.lam binding codomain body)
+            (.capturing closure (.arr binding codomain)) :=
+          { targetType := .capturing closureTarget
+              (.arr domainTarget codomainTarget)
+            typeTranslated := by
+              have arrowTranslated :
+                  Translation.translateTy? context (.arr binding codomain) =
+                    some (.arr domainTarget codomainTarget) := by
+                unfold Translation.translateTy?
+                have bindingTranslated :
+                    Translation.translateTy? context binding =
+                      some domainTarget := by
+                  simpa [binding] using domainTranslated
+                rw [bindingTranslated, codomainTranslated]
+                rfl
+              change (do
+                let closure' ← Translation.translateCapture? context closure
+                let shape' ← Translation.translateTy? context
+                  (.arr binding codomain)
+                pure (ManySortedFC.Ty.capturing closure' shape')) = _
+              rw [closureTranslated, arrowTranslated]
+              rfl
+            term := .lam domainTarget codomainTarget closureTarget
+              bodyCompiled.term capturesCompiled.evidence
+            isValue := .lam
+            typing := .lam bodyTargetTyping capturesCompiled.typing }
+        pure
+          { compiled := compiled
+            erasedBody := erasePlainBody domainPlain bodyCompiled.term
+            bodyErases := erasePlainBody_heq domainPlain bodyCompiled.term
+            compiledErases := by
+              dsimp only [compiled]
+              rw [ManySortedFC.Tm.erase_lam]
+              congr 1 }
+
+/-- A finished plain let packages its proof-carrying target term and exact
+runtime let spine. -/
+structure FinishedPlainLet {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {result bound : Source.Ty scope} {rhs : Source.Term scope}
+    {body : Source.Term (scope + 1)} {rhsUse : Source.Capture scope}
+    {bodyUse : Source.Capture (scope + 1)}
+    {bodyOuterUse : Source.Capture scope} {boundPlain : bound.IsPlain}
+    (rhsCompiled : CompiledTerm ready rhs rhsUse bound)
+    (bodyCompiled : CompiledTerm
+      (ready.extendPlain boundPlain rhsCompiled.typeTranslated) body bodyUse
+        result.weaken) where
+  compiled : CompiledTerm ready (.let' result rhs body)
+    (.union rhsUse bodyOuterUse) result
+  erasedBody : ManySortedFC.Runtime.Tm
+    ((Layout.sig context).termCount + 1)
+  bodyErases : HEq bodyCompiled.term.erase erasedBody
+  compiledErases : compiled.term.erase =
+    ManySortedFC.Runtime.Tm.let' rhsCompiled.term.erase erasedBody
+
+/-- Finish a plain let after compiling both recursive computations. -/
+noncomputable def finishPlainLet? {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {result bound : Source.Ty scope} {rhs : Source.Term scope}
+    {body : Source.Term (scope + 1)} {rhsUse : Source.Capture scope}
+    {bodyUse : Source.Capture (scope + 1)}
+    {bodyOuterUse : Source.Capture scope}
+    (boundPlain : bound.IsPlain)
+    (discharge : Source.CaptureIncludes (context.extendTerm bound) bodyUse
+      bodyOuterUse.weaken)
+    {resultTarget : Target.Ty (Layout.sig context)}
+    {bodyOuterTarget : Target.Capture (Layout.sig context)}
+    (resultTranslated : Translation.translateTy? context result =
+      some resultTarget)
+    (bodyOuterTranslated : Translation.translateCapture? context bodyOuterUse =
+      some bodyOuterTarget)
+    (rhsCompiled : CompiledTerm ready rhs rhsUse bound)
+    (bodyCompiled : CompiledTerm
+      (ready.extendPlain boundPlain rhsCompiled.typeTranslated) body bodyUse
+        result.weaken) : Option (@FinishedPlainLet scope context ready result
+          bound rhs body rhsUse bodyUse bodyOuterUse boundPlain rhsCompiled
+          bodyCompiled) := by
+  let binding := bound
+  cases bound with
+  | object signature =>
+      simp [DOTCapture.Acyclic.Ty.IsPlain,
+        DOTCapture.Acyclic.Ty.objectSignature?,
+        DOTCapture.Acyclic.Ty.stripCapture] at boundPlain
+  | capturing boundCapture shape =>
+      cases shape with
+      | object signature =>
+          simp [DOTCapture.Acyclic.Ty.IsPlain,
+            DOTCapture.Acyclic.Ty.objectSignature?,
+            DOTCapture.Acyclic.Ty.stripCapture] at boundPlain
+      | top | bot | one | ref | arr | capturing =>
+          let bodyReady := ready.extendPlain boundPlain
+            rhsCompiled.typeTranslated
+          have resultWeakenTranslated :
+              Translation.translateTy? (context.extendTerm binding)
+                  result.weaken =
+                some (resultTarget.rename
+                  (ManySortedFC.Rename.succ (kind := .term))) := by
+            rw [StaticTranslationMetatheory.translateTy?_weaken,
+              resultTranslated]
+            rfl
+          have resultEquality :=
+            StaticTranslation.TranslatesTy.functional
+              bodyCompiled.typeTranslated resultWeakenTranslated
+          have bodyOuterWeakenTranslated :
+              Translation.translateCapture? (context.extendTerm binding)
+                  bodyOuterUse.weaken =
+                some (bodyOuterTarget.rename
+                  (ManySortedFC.Rename.succ (kind := .term))) := by
+            rw [StaticTranslationMetatheory.translateCapture?_weaken,
+              bodyOuterTranslated]
+            rfl
+          exact do
+            let dischargeCompiled ←
+              compileCaptureInclusion? bodyReady.translated discharge
+                bodyCompiled.useTranslated bodyOuterWeakenTranslated
+            have bodyTargetTyping : Target.Tm.HasType
+                (ready.target.extendTerm rhsCompiled.targetType)
+                bodyCompiled.term bodyCompiled.targetUse
+                (resultTarget.rename
+                  (ManySortedFC.Rename.succ (kind := .term))) := by
+              simpa [bodyReady, resultEquality] using bodyCompiled.typing
+            let compiled : CompiledTerm ready (.let' result rhs body)
+                (.union rhsUse bodyOuterUse) result :=
+              { sourceTyping := .letPlain boundPlain rhsCompiled.sourceTyping
+                  bodyCompiled.sourceTyping discharge
+                targetUse := .union rhsCompiled.targetUse bodyOuterTarget
+                targetType := resultTarget
+                useTranslated := by
+                  simp [Translation.translateCapture?,
+                    rhsCompiled.useTranslated, bodyOuterTranslated]
+                typeTranslated := resultTranslated
+                term := .let' resultTarget bodyOuterTarget rhsCompiled.term
+                  bodyCompiled.term dischargeCompiled.evidence
+                typing := .let' rhsCompiled.typing bodyTargetTyping
+                  dischargeCompiled.typing }
+            pure
+              { compiled := compiled
+                erasedBody := erasePlainBody boundPlain bodyCompiled.term
+                bodyErases := erasePlainBody_heq boundPlain bodyCompiled.term
+                compiledErases := by
+                  dsimp only [compiled]
+                  rw [ManySortedFC.Tm.erase_let]
+                  congr 1 }
+  | top | bot | one | ref | arr =>
+      let bodyReady := ready.extendPlain boundPlain
+        rhsCompiled.typeTranslated
+      have resultWeakenTranslated :
+          Translation.translateTy? (context.extendTerm binding) result.weaken =
+            some (resultTarget.rename
+              (ManySortedFC.Rename.succ (kind := .term))) := by
+        rw [StaticTranslationMetatheory.translateTy?_weaken,
+          resultTranslated]
+        rfl
+      have resultEquality :=
+        StaticTranslation.TranslatesTy.functional
+          bodyCompiled.typeTranslated resultWeakenTranslated
+      have bodyOuterWeakenTranslated :
+          Translation.translateCapture? (context.extendTerm binding)
+              bodyOuterUse.weaken =
+            some (bodyOuterTarget.rename
+              (ManySortedFC.Rename.succ (kind := .term))) := by
+        rw [StaticTranslationMetatheory.translateCapture?_weaken,
+          bodyOuterTranslated]
+        rfl
+      exact do
+        let dischargeCompiled ←
+          compileCaptureInclusion? bodyReady.translated discharge
+            bodyCompiled.useTranslated bodyOuterWeakenTranslated
+        have bodyTargetTyping : Target.Tm.HasType
+            (ready.target.extendTerm rhsCompiled.targetType)
+            bodyCompiled.term bodyCompiled.targetUse
+            (resultTarget.rename
+              (ManySortedFC.Rename.succ (kind := .term))) := by
+          simpa [bodyReady, resultEquality] using bodyCompiled.typing
+        let compiled : CompiledTerm ready (.let' result rhs body)
+            (.union rhsUse bodyOuterUse) result :=
+          { sourceTyping := .letPlain boundPlain rhsCompiled.sourceTyping
+              bodyCompiled.sourceTyping discharge
+            targetUse := .union rhsCompiled.targetUse bodyOuterTarget
+            targetType := resultTarget
+            useTranslated := by
+              simp [Translation.translateCapture?, rhsCompiled.useTranslated,
+                bodyOuterTranslated]
+            typeTranslated := resultTranslated
+            term := .let' resultTarget bodyOuterTarget rhsCompiled.term
+              bodyCompiled.term dischargeCompiled.evidence
+            typing := .let' rhsCompiled.typing bodyTargetTyping
+              dischargeCompiled.typing }
+        pure
+          { compiled := compiled
+            erasedBody := erasePlainBody boundPlain bodyCompiled.term
+            bodyErases := erasePlainBody_heq boundPlain bodyCompiled.term
+            compiledErases := by
+              dsimp only [compiled]
+              rw [ManySortedFC.Tm.erase_let]
+              congr 1 }
+
+/-- A finished object let retains the target `open` statically and exposes
+its single runtime let after the fixed object telescope is erased. -/
+structure FinishedObjectLet {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {signature : Source.ObjectSig scope} {result : Source.Ty scope}
+    {rhs : Source.Value scope} {body : Source.Term (scope + 1)}
+    {bodyUse : Source.Capture (scope + 1)}
+    {bodyOuterUse : Source.Capture scope}
+    {bounds : Object.Bounds (Layout.sig context)}
+    {signatureTranslated : Translation.translateObjectSig? context signature =
+      some bounds}
+    (rhsCompiled : CompiledValue ready rhs
+      (.capturing signature.captureUpper (.object signature)))
+    (bodyCompiled : CompiledTerm
+      (ready.extendObject signature signatureTranslated) body bodyUse
+        result.weaken) where
+  compiled : CompiledTerm ready (.let' result (.ret rhs) body)
+    (.union signature.captureUpper bodyOuterUse) result
+  erasedBody : ManySortedFC.Runtime.Tm
+    ((Layout.sig context).termCount + 1)
+  bodyErases : HEq bodyCompiled.term.erase erasedBody
+  compiledErases : compiled.term.erase =
+    ManySortedFC.Runtime.Tm.let' rhsCompiled.term.erase erasedBody
+
+/-- Finish an object let as one target `open`, never as an ordinary target
+let over the expanded static telescope. -/
+noncomputable def finishObjectLet? {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {signature : Source.ObjectSig scope} {result : Source.Ty scope}
+    {rhs : Source.Value scope} {body : Source.Term (scope + 1)}
+    {bodyUse : Source.Capture (scope + 1)}
+    {bodyOuterUse : Source.Capture scope}
+    (discharge : Source.CaptureIncludes
+      (context.extendTerm
+        (.capturing signature.captureUpper (.object signature))) bodyUse
+      (.union bodyOuterUse.weaken (.singleton (.var .here))))
+    {bounds : Object.Bounds (Layout.sig context)}
+    {resultTarget : Target.Ty (Layout.sig context)}
+    {bodyOuterTarget : Target.Capture (Layout.sig context)}
+    (signatureTranslated : Translation.translateObjectSig? context signature =
+      some bounds)
+    (resultTranslated : Translation.translateTy? context result =
+      some resultTarget)
+    (bodyOuterTranslated : Translation.translateCapture? context bodyOuterUse =
+      some bodyOuterTarget)
+    (rhsTyping : Source.Value.HasType context rhs
+      (.capturing signature.captureUpper (.object signature)))
+    (rhsCompiled : CompiledValue ready rhs
+      (.capturing signature.captureUpper (.object signature)))
+    (bodyCompiled : CompiledTerm
+      (ready.extendObject signature signatureTranslated) body bodyUse
+        result.weaken) : Option (@FinishedObjectLet scope context ready
+          signature result rhs body bodyUse bodyOuterUse bounds
+          signatureTranslated rhsCompiled bodyCompiled) := do
+  have resultWeakenTranslated :
+      Translation.translateTy?
+          (context.extendTerm
+            (.capturing signature.captureUpper (.object signature)))
+          result.weaken =
+        some ((resultTarget.rename Object.staticWeakening).weaken) := by
+    rw [StaticTranslationMetatheory.translateTy?_weaken, resultTranslated]
+    simp [Layout.extendRename, ManySortedFC.Ty.weaken,
+      ManySortedFC.Ty.rename_comp]
+    rfl
+  have resultEquality :=
+    StaticTranslation.TranslatesTy.functional bodyCompiled.typeTranslated
+      resultWeakenTranslated
+  have dischargeTargetTranslated :
+      Translation.translateCapture?
+          (context.extendTerm
+            (.capturing signature.captureUpper (.object signature)))
+          (.union bodyOuterUse.weaken (.singleton (.var .here))) =
+        some (.union
+          ((bodyOuterTarget.rename Object.staticWeakening).weaken)
+          (.singleton .here)) := by
+    simp only [Translation.translateCapture?]
+    rw [StaticTranslationMetatheory.translateCapture?_weaken,
+      bodyOuterTranslated]
+    simp [Layout.extendRename, ManySortedFC.Capture.weaken,
+      ManySortedFC.Capture.rename_comp, StaticTranslation.translatePath,
+      Layout.translatePath, Layout.termVar,
+      DOTCapture.Acyclic.Ctx.extendTerm]
+    constructor <;> rfl
+  let dischargeCompiled ← compileCaptureInclusion?
+    (ready.extendObject signature signatureTranslated).translated discharge
+      bodyCompiled.useTranslated dischargeTargetTranslated
+  have bodyTargetTyping : Target.Tm.HasType
+      ((ready.target.extendTheory (Object.theory bounds)).extendTerm
+        Object.payloadType)
+      bodyCompiled.term bodyCompiled.targetUse
+      ((resultTarget.rename Object.staticWeakening).weaken) := by
+    simpa [resultEquality] using bodyCompiled.typing
+  have expectedPackageTranslated :
+      Translation.translateTy? context
+          (.capturing signature.captureUpper (.object signature)) =
+        some (Object.objectType bounds) :=
+    StaticTranslation.translateTy?_formedObject signature bounds
+      signatureTranslated
+  have rhsTypeEquality :=
+    StaticTranslation.TranslatesTy.functional rhsCompiled.typeTranslated
+      expectedPackageTranslated
+  have rhsTargetTyping : Target.Tm.HasType ready.target rhsCompiled.term .empty
+      (Object.objectType bounds) := by
+    simpa [rhsTypeEquality] using rhsCompiled.typing
+  have packageShape : (Object.objectType bounds).stripCapture =
+      Object.existentialShape bounds := rfl
+  let compiled : CompiledTerm ready (.let' result (.ret rhs) body)
+      (.union signature.captureUpper bodyOuterUse) result :=
+    { sourceTyping := .letObject rhsTyping
+        bodyCompiled.sourceTyping discharge
+      targetUse := .union bounds.captureUpper bodyOuterTarget
+      targetType := resultTarget
+      useTranslated := by
+        have boundsTranslation :=
+          BoundsTranslation.ofTranslated signatureTranslated
+        simp [Translation.translateCapture?, boundsTranslation.captureUpper,
+          bodyOuterTranslated]
+      typeTranslated := resultTranslated
+      term := Object.openOnce bounds resultTarget bodyOuterTarget
+        rhsCompiled.term bodyCompiled.term dischargeCompiled.evidence
+      typing := by
+        unfold ObjectEncoding.openOnce
+        exact .«open» rhsCompiled.isValue rhsTargetTyping packageShape
+          bodyTargetTyping dischargeCompiled.typing }
+  pure
+    { compiled := compiled
+      erasedBody := eraseObjectBody bodyCompiled.term
+      bodyErases := eraseObjectBody_heq bodyCompiled.term
+      compiledErases := by
+        dsimp only [compiled]
+        unfold ObjectEncoding.openOnce
+        rw [ManySortedFC.Tm.erase_open]
+        rw [payloadEraseCanonical]
+        congr 1 }
+
+/-! ## Mutually derivation-directed compiler -/
+
+mutual
 
 /-- Compile a source value derivation.  The compiler is total on variable
 and unit rules under `Runtime.Ready`; object construction remains partial
@@ -721,6 +1447,8 @@ exactly where one of its ambient source endpoints cannot be translated.
 Every successful object result contains two witnesses and four interval
 certificates, with the declared capture upper bound reused as its package
 closure rather than represented by a fifth premise. -/
+
+@[simp]
 noncomputable def compileValue? {scope : Source.Scope}
     {context : Source.Ctx scope} (ready : Runtime.Ready context) :
     {value : Source.Value scope} → {type : Source.Ty scope} →
@@ -737,6 +1465,27 @@ noncomputable def compileValue? {scope : Source.Scope}
           term := .unit
           isValue := .unit
           typing := .unit }
+  | _, _, @DOTCapture.Acyclic.Value.HasType.lam _ _ domain codomain body
+      bodyUse closure domainPlain bodyTyping captures =>
+      match domainTranslated :
+          Translation.translateTy? context domain with
+      | none => none
+      | some domainTarget =>
+          match codomainTranslated :
+              Translation.translateTy? context codomain with
+          | none => none
+          | some codomainTarget =>
+              match closureTranslated :
+                  Translation.translateCapture? context closure with
+              | none => none
+              | some closureTarget => do
+                  let bodyReady := ready.extendPlain domainPlain
+                    domainTranslated
+                  let bodyCompiled ← compileTerm? bodyReady bodyTyping
+                  let finished ← finishLambda? domainPlain captures
+                    domainTranslated codomainTranslated closureTranslated
+                    bodyCompiled
+                  pure finished.compiled
   | _, _, @DOTCapture.Acyclic.Value.HasType.object _ _ signature
       typeWitness captureWitness payload payloadType typeLower typeUpper
       captureLower captureUpper payloadTyping payloadShape payloadCapture =>
@@ -826,6 +1575,552 @@ noncomputable def compileValue? {scope : Source.Scope}
                         unfold term ObjectEncoding.pack
                         exact .pack (.adapt payloadCompiled.isValue)
                       typing := termTyping }
+  | _, _, @DOTCapture.Acyclic.Value.HasType.adapt _ _ value source target
+      valueTyping inclusion =>
+      match targetTranslated : Translation.translateTy? context target with
+      | none => none
+      | some targetType => do
+          let valueCompiled ← compileValue? ready valueTyping
+          compileAdapt? valueCompiled inclusion targetTranslated
+
+@[simp]
+noncomputable def compileTerm? {scope : Source.Scope}
+    {context : Source.Ctx scope} (ready : Runtime.Ready context) :
+    {term : Source.Term scope} → {use : Source.Capture scope} →
+      {type : Source.Ty scope} →
+      Source.Term.HasType context term use type →
+        Option (CompiledTerm ready term use type)
+  | _, _, _, @DOTCapture.Acyclic.Term.HasType.ret _ _ value type
+      valueTyping => do
+      let valueCompiled ← compileValue? ready valueTyping
+      pure
+        { sourceTyping := .ret valueTyping
+          targetUse := .empty
+          targetType := valueCompiled.targetType
+          useTranslated := rfl
+          typeTranslated := valueCompiled.typeTranslated
+          term := valueCompiled.term
+          typing := valueCompiled.typing }
+  | _, _, _, @DOTCapture.Acyclic.Term.HasType.select _ _ receiver signature
+      exposes =>
+      some (compileSelect ready exposes)
+  | _, _, _, @DOTCapture.Acyclic.Term.HasType.app _ _ function argument
+      functionType domain codomain functionTyping functionShape
+      argumentTyping =>
+      match codomainTranslated : Translation.translateTy? context codomain with
+      | none => none
+      | some codomainTarget => do
+          let functionCompiled ← compileValue? ready functionTyping
+          let argumentCompiled ← compileValue? ready argumentTyping
+          have translatedShape :
+              Translation.translateTy? context (.arr domain codomain) =
+                some functionCompiled.targetType.stripCapture := by
+            have translatedShape := translateTy?_stripCapture
+              functionCompiled.typeTranslated
+            rw [functionShape] at translatedShape
+            exact translatedShape
+          have arrowTranslated :
+              Translation.translateTy? context (.arr domain codomain) =
+                some (.arr argumentCompiled.targetType codomainTarget) := by
+            simp [Translation.translateTy?, argumentCompiled.typeTranslated,
+              codomainTranslated]
+          have functionShapeTarget :=
+            StaticTranslation.TranslatesTy.functional translatedShape
+              arrowTranslated
+          have functionOuterTranslated := translateTy?_outerCapture
+            functionCompiled.typeTranslated
+          have argumentOuterTranslated := translateTy?_outerCapture
+            argumentCompiled.typeTranslated
+          pure
+            { sourceTyping := .app functionTyping functionShape argumentTyping
+              targetUse := .union functionCompiled.targetType.outerCapture
+                argumentCompiled.targetType.outerCapture
+              targetType := codomainTarget
+              useTranslated := by
+                simp [Translation.translateCapture?,
+                  functionOuterTranslated, argumentOuterTranslated]
+              typeTranslated := codomainTranslated
+              term := .app functionCompiled.term argumentCompiled.term
+              typing := .app functionCompiled.isValue
+                argumentCompiled.isValue functionCompiled.typing
+                functionShapeTarget argumentCompiled.typing }
+  | _, _, _, @DOTCapture.Acyclic.Term.HasType.letPlain _ _ result bound rhs
+      body rhsUse bodyUse bodyOuterUse boundPlain rhsTyping bodyTyping
+      discharge =>
+      match resultTranslated : Translation.translateTy? context result with
+      | none => none
+      | some resultTarget =>
+          match bodyOuterTranslated :
+              Translation.translateCapture? context bodyOuterUse with
+          | none => none
+          | some bodyOuterTarget => do
+              let rhsCompiled ← compileTerm? ready rhsTyping
+              let bodyReady := ready.extendPlain boundPlain
+                rhsCompiled.typeTranslated
+              let bodyCompiled ← compileTerm? bodyReady bodyTyping
+              let finished ← finishPlainLet? boundPlain discharge
+                resultTranslated bodyOuterTranslated rhsCompiled bodyCompiled
+              pure finished.compiled
+  | _, _, _, @DOTCapture.Acyclic.Term.HasType.letObject _ _ signature result
+      rhs body bodyUse bodyOuterUse rhsTyping bodyTyping discharge =>
+      match signatureTranslated :
+          Translation.translateObjectSig? context signature with
+      | none => none
+      | some bounds =>
+          match resultTranslated : Translation.translateTy? context result with
+          | none => none
+          | some resultTarget =>
+              match bodyOuterTranslated :
+                  Translation.translateCapture? context bodyOuterUse with
+              | none => none
+              | some bodyOuterTarget => do
+                  let rhsCompiled ← compileValue? ready rhsTyping
+                  let bodyReady := ready.extendObject signature
+                    signatureTranslated
+                  let bodyCompiled ← compileTerm? bodyReady bodyTyping
+                  let finished ← finishObjectLet? discharge
+                    signatureTranslated resultTranslated bodyOuterTranslated
+                    rhsTyping rhsCompiled bodyCompiled
+                  pure finished.compiled
+  | _, _, _, @DOTCapture.Acyclic.Term.HasType.use _ _ term sourceUse
+      targetUse type termTyping inclusion => do
+      let inner ← compileTerm? ready termTyping
+      compileUseTerm? inner inclusion
+
+end
+
+/-! ## Erasure-facing successful constructor shapes -/
+
+/-- Successful application compilation exposes an actual target application,
+independently of the endpoint-alignment proofs stored in the result. -/
+theorem compileTerm?_app_term {scope : Source.Scope}
+    {context : Source.Ctx scope} (ready : Runtime.Ready context)
+    {function argument : Source.Value scope}
+    {functionType domain codomain : Source.Ty scope}
+    (functionTyping : Source.Value.HasType context function functionType)
+    (functionShape : functionType.stripCapture = .arr domain codomain)
+    (argumentTyping : Source.Value.HasType context argument domain)
+    {compiled : CompiledTerm ready (.app function argument)
+      (.union functionType.outerCapture domain.outerCapture) codomain}
+    (success : compileTerm? ready
+      (.app functionTyping functionShape argumentTyping) = some compiled) :
+    ∃ targetFunction targetArgument,
+      compiled.term = .app targetFunction targetArgument := by
+  unfold compileTerm? at success
+  split at success
+  · contradiction
+  · generalize functionEquation :
+      compileValue? ready functionTyping = functionResult at success
+    cases functionResult with
+    | none => contradiction
+    | some functionCompiled =>
+        generalize argumentEquation :
+          compileValue? ready argumentTyping = argumentResult at success
+        cases argumentResult with
+        | none => contradiction
+        | some argumentCompiled =>
+            cases success
+            exact ⟨functionCompiled.term, argumentCompiled.term, rfl⟩
+
+/-- Logical source adaptation compiles to a runtime-transparent target cast,
+never to a structural function adapter. -/
+theorem compileValue?_adapt_term {scope : Source.Scope}
+    {context : Source.Ctx scope} (ready : Runtime.Ready context)
+    {value : Source.Value scope} {source target : Source.Ty scope}
+    (valueTyping : Source.Value.HasType context value source)
+    (inclusion : Source.TypeIncludes context source target)
+    {compiled : CompiledValue ready value target}
+    (success : compileValue? ready (.adapt valueTyping inclusion) =
+      some compiled) :
+    ∃ inner evidence,
+      compileValue? ready valueTyping = some inner ∧
+      compiled.term = .adapt inner.term (.cast evidence) := by
+  unfold compileValue? at success
+  split at success
+  · contradiction
+  · generalize innerEquation :
+      compileValue? ready valueTyping = innerResult at success
+    cases innerResult with
+    | none => contradiction
+    | some inner =>
+        change compileAdapt? inner inclusion (by assumption) =
+          some compiled at success
+        unfold compileAdapt? at success
+        generalize evidenceEquation :
+          compileTypeInclusion? ready.translated inclusion
+            inner.typeTranslated (by assumption) = evidenceResult at success
+        cases evidenceResult with
+        | none => contradiction
+        | some generated =>
+            cases success
+            exact ⟨inner, generated.evidence, rfl, rfl⟩
+
+/-- The lambda finisher changes no runtime structure beyond adding one
+lambda node.  `HEq` records the harmless scope identification justified by
+the source `IsPlain` premise. -/
+theorem finishLambda?_erase {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {domain codomain : Source.Ty scope} {body : Source.Term (scope + 1)}
+    {bodyUse : Source.Capture (scope + 1)} {closure : Source.Capture scope}
+    (domainPlain : domain.IsPlain)
+    (captures : Source.CaptureIncludes (context.extendTerm domain) bodyUse
+      (.union closure.weaken (.singleton (.var .here))))
+    {domainTarget codomainTarget : Target.Ty (Layout.sig context)}
+    {closureTarget : Target.Capture (Layout.sig context)}
+    (domainTranslated : Translation.translateTy? context domain =
+      some domainTarget)
+    (codomainTranslated : Translation.translateTy? context codomain =
+      some codomainTarget)
+    (closureTranslated : Translation.translateCapture? context closure =
+      some closureTarget)
+    (bodyCompiled : CompiledTerm
+      (ready.extendPlain domainPlain domainTranslated) body bodyUse
+        codomain.weaken)
+    {finished : FinishedLambda bodyCompiled}
+    (_success : finishLambda? domainPlain captures domainTranslated
+      codomainTranslated closureTranslated bodyCompiled = some finished) :
+    ∃ erasedBody : ManySortedFC.Runtime.Tm
+        ((Layout.sig context).termCount + 1),
+      HEq bodyCompiled.term.erase erasedBody ∧
+      finished.compiled.term.erase =
+        ManySortedFC.Runtime.Tm.lam erasedBody := by
+  exact ⟨finished.erasedBody, finished.bodyErases,
+    finished.compiledErases⟩
+
+/-- Successful lambda compilation exposes the recursively compiled body and
+its exact runtime lambda spine. -/
+theorem compileValue?_lam_erase {scope : Source.Scope}
+    {context : Source.Ctx scope} (ready : Runtime.Ready context)
+    {domain codomain : Source.Ty scope} {body : Source.Term (scope + 1)}
+    {bodyUse : Source.Capture (scope + 1)} {closure : Source.Capture scope}
+    (domainPlain : domain.IsPlain)
+    (bodyTyping : Source.Term.HasType (context.extendTerm domain) body
+      bodyUse codomain.weaken)
+    (captures : Source.CaptureIncludes (context.extendTerm domain) bodyUse
+      (.union closure.weaken (.singleton (.var .here))))
+    {compiled : CompiledValue ready (.lam domain codomain body)
+      (.capturing closure (.arr domain codomain))}
+    (success : compileValue? ready
+      (.lam domainPlain bodyTyping captures) = some compiled) :
+    ∃ (bodyReady : Runtime.Ready (context.extendTerm domain))
+      (bodyCompiled : CompiledTerm bodyReady body bodyUse codomain.weaken)
+      (erasedBody : ManySortedFC.Runtime.Tm
+        ((Layout.sig context).termCount + 1)),
+      compileTerm? bodyReady bodyTyping = some bodyCompiled ∧
+      HEq bodyCompiled.term.erase erasedBody ∧
+      compiled.term.erase = ManySortedFC.Runtime.Tm.lam erasedBody := by
+  unfold compileValue? at success
+  split at success
+  · contradiction
+  · rename_i domainTarget domainTranslated
+    split at success
+    · contradiction
+    · rename_i codomainTarget codomainTranslated
+      split at success
+      · contradiction
+      · rename_i closureTarget closureTranslated
+        let bodyReady := ready.extendPlain domainPlain domainTranslated
+        change (do
+          let bodyCompiled ← compileTerm? bodyReady bodyTyping
+          let finished ← finishLambda? domainPlain captures
+            domainTranslated codomainTranslated closureTranslated bodyCompiled
+          pure finished.compiled) =
+              some compiled at success
+        generalize bodyEquation :
+          compileTerm? bodyReady bodyTyping = bodyResult at success
+        cases bodyResult with
+        | none => simp at success
+        | some bodyCompiled =>
+            change (do
+              let finished ← finishLambda? domainPlain captures
+                domainTranslated codomainTranslated closureTranslated
+                bodyCompiled
+              pure finished.compiled) = some compiled at success
+            generalize finishEquation : finishLambda? domainPlain captures
+              domainTranslated codomainTranslated closureTranslated
+              bodyCompiled = finishResult at success
+            cases finishResult with
+            | none => simp at success
+            | some finished =>
+                have erased := finishLambda?_erase domainPlain captures
+                  domainTranslated codomainTranslated closureTranslated
+                  bodyCompiled finishEquation
+                cases success
+                obtain ⟨erasedBody, bodyErases, resultErases⟩ := erased
+                exact ⟨bodyReady, bodyCompiled, erasedBody, bodyEquation,
+                  bodyErases, resultErases⟩
+
+/-- Successful plain-let finishing exposes its exact runtime let spine. -/
+theorem finishPlainLet?_erase {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {result bound : Source.Ty scope} {rhs : Source.Term scope}
+    {body : Source.Term (scope + 1)} {rhsUse : Source.Capture scope}
+    {bodyUse : Source.Capture (scope + 1)}
+    {bodyOuterUse : Source.Capture scope}
+    (boundPlain : bound.IsPlain)
+    (discharge : Source.CaptureIncludes (context.extendTerm bound) bodyUse
+      bodyOuterUse.weaken)
+    {resultTarget : Target.Ty (Layout.sig context)}
+    {bodyOuterTarget : Target.Capture (Layout.sig context)}
+    (resultTranslated : Translation.translateTy? context result =
+      some resultTarget)
+    (bodyOuterTranslated : Translation.translateCapture? context bodyOuterUse =
+      some bodyOuterTarget)
+    (rhsCompiled : CompiledTerm ready rhs rhsUse bound)
+    (bodyCompiled : CompiledTerm
+      (ready.extendPlain boundPlain rhsCompiled.typeTranslated) body bodyUse
+        result.weaken)
+    {finished : FinishedPlainLet rhsCompiled bodyCompiled}
+    (_success : finishPlainLet? boundPlain discharge resultTranslated
+      bodyOuterTranslated rhsCompiled bodyCompiled = some finished) :
+    ∃ erasedBody : ManySortedFC.Runtime.Tm
+        ((Layout.sig context).termCount + 1),
+      HEq bodyCompiled.term.erase erasedBody ∧
+      finished.compiled.term.erase =
+        ManySortedFC.Runtime.Tm.let' rhsCompiled.term.erase erasedBody := by
+  exact ⟨finished.erasedBody, finished.bodyErases,
+    finished.compiledErases⟩
+
+/-- Successful plain-let compilation exposes both recursive compilations and
+one runtime let. -/
+theorem compileTerm?_letPlain_erase {scope : Source.Scope}
+    {context : Source.Ctx scope} (ready : Runtime.Ready context)
+    {result bound : Source.Ty scope} {rhs : Source.Term scope}
+    {body : Source.Term (scope + 1)} {rhsUse : Source.Capture scope}
+    {bodyUse : Source.Capture (scope + 1)}
+    {bodyOuterUse : Source.Capture scope}
+    (boundPlain : bound.IsPlain)
+    (rhsTyping : Source.Term.HasType context rhs rhsUse bound)
+    (bodyTyping : Source.Term.HasType (context.extendTerm bound) body bodyUse
+      result.weaken)
+    (discharge : Source.CaptureIncludes (context.extendTerm bound) bodyUse
+      bodyOuterUse.weaken)
+    {compiled : CompiledTerm ready (.let' result rhs body)
+      (.union rhsUse bodyOuterUse) result}
+    (success : compileTerm? ready
+      (.letPlain boundPlain rhsTyping bodyTyping discharge) = some compiled) :
+    ∃ (rhsCompiled : CompiledTerm ready rhs rhsUse bound)
+      (bodyReady : Runtime.Ready (context.extendTerm bound))
+      (bodyCompiled : CompiledTerm bodyReady body bodyUse result.weaken)
+      (erasedBody : ManySortedFC.Runtime.Tm
+        ((Layout.sig context).termCount + 1)),
+      compileTerm? ready rhsTyping = some rhsCompiled ∧
+      compileTerm? bodyReady bodyTyping = some bodyCompiled ∧
+      HEq bodyCompiled.term.erase erasedBody ∧
+      compiled.term.erase = ManySortedFC.Runtime.Tm.let'
+        rhsCompiled.term.erase erasedBody := by
+  unfold compileTerm? at success
+  split at success
+  · contradiction
+  · rename_i resultTarget resultTranslated
+    split at success
+    · contradiction
+    · rename_i bodyOuterTarget bodyOuterTranslated
+      change (do
+        let rhsCompiled ← compileTerm? ready rhsTyping
+        let bodyReady := ready.extendPlain boundPlain
+          rhsCompiled.typeTranslated
+        let bodyCompiled ← compileTerm? bodyReady bodyTyping
+        let finished ← finishPlainLet? boundPlain discharge
+          resultTranslated bodyOuterTranslated rhsCompiled bodyCompiled
+        pure finished.compiled) = some compiled at success
+      generalize rhsEquation :
+        compileTerm? ready rhsTyping = rhsResult at success
+      cases rhsResult with
+      | none => simp at success
+      | some rhsCompiled =>
+          let bodyReady := ready.extendPlain boundPlain
+            rhsCompiled.typeTranslated
+          change (do
+            let bodyCompiled ← compileTerm? bodyReady bodyTyping
+            let finished ← finishPlainLet? boundPlain discharge
+              resultTranslated bodyOuterTranslated rhsCompiled bodyCompiled
+            pure finished.compiled) = some compiled at success
+          generalize bodyEquation :
+            compileTerm? bodyReady bodyTyping = bodyResult at success
+          cases bodyResult with
+          | none => simp at success
+          | some bodyCompiled =>
+              change (do
+                let finished ← finishPlainLet? boundPlain discharge
+                  resultTranslated bodyOuterTranslated rhsCompiled
+                  bodyCompiled
+                pure finished.compiled) = some compiled at success
+              generalize finishEquation : finishPlainLet? boundPlain discharge
+                resultTranslated bodyOuterTranslated rhsCompiled bodyCompiled =
+                  finishResult at success
+              cases finishResult with
+              | none => simp at success
+              | some finished =>
+                  have erased := finishPlainLet?_erase boundPlain discharge
+                    resultTranslated bodyOuterTranslated rhsCompiled
+                    bodyCompiled finishEquation
+                  cases success
+                  obtain ⟨erasedBody, bodyErases, resultErases⟩ := erased
+                  exact ⟨rhsCompiled, bodyReady, bodyCompiled, erasedBody,
+                    rfl, bodyEquation, bodyErases, resultErases⟩
+
+/-- Successful object-let finishing exposes the exact runtime let obtained by
+erasing one target `open`. -/
+theorem finishObjectLet?_erase {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {signature : Source.ObjectSig scope} {result : Source.Ty scope}
+    {rhs : Source.Value scope} {body : Source.Term (scope + 1)}
+    {bodyUse : Source.Capture (scope + 1)}
+    {bodyOuterUse : Source.Capture scope}
+    (discharge : Source.CaptureIncludes
+      (context.extendTerm
+        (.capturing signature.captureUpper (.object signature))) bodyUse
+      (.union bodyOuterUse.weaken (.singleton (.var .here))))
+    {bounds : Object.Bounds (Layout.sig context)}
+    {resultTarget : Target.Ty (Layout.sig context)}
+    {bodyOuterTarget : Target.Capture (Layout.sig context)}
+    (signatureTranslated : Translation.translateObjectSig? context signature =
+      some bounds)
+    (resultTranslated : Translation.translateTy? context result =
+      some resultTarget)
+    (bodyOuterTranslated : Translation.translateCapture? context bodyOuterUse =
+      some bodyOuterTarget)
+    (rhsTyping : Source.Value.HasType context rhs
+      (.capturing signature.captureUpper (.object signature)))
+    (rhsCompiled : CompiledValue ready rhs
+      (.capturing signature.captureUpper (.object signature)))
+    (bodyCompiled : CompiledTerm
+      (ready.extendObject signature signatureTranslated) body bodyUse
+        result.weaken)
+    {finished : FinishedObjectLet rhsCompiled bodyCompiled}
+    (_success : finishObjectLet? discharge signatureTranslated
+      resultTranslated bodyOuterTranslated rhsTyping rhsCompiled bodyCompiled =
+        some finished) :
+    ∃ erasedBody : ManySortedFC.Runtime.Tm
+        ((Layout.sig context).termCount + 1),
+      HEq bodyCompiled.term.erase erasedBody ∧
+      finished.compiled.term.erase = ManySortedFC.Runtime.Tm.let'
+        rhsCompiled.term.erase erasedBody := by
+  exact ⟨finished.erasedBody, finished.bodyErases,
+    finished.compiledErases⟩
+
+/-- Successful object-let compilation exposes the compiled package and body,
+and erases the mandatory target `open` to one runtime let. -/
+theorem compileTerm?_letObject_erase {scope : Source.Scope}
+    {context : Source.Ctx scope} (ready : Runtime.Ready context)
+    {signature : Source.ObjectSig scope} {result : Source.Ty scope}
+    {rhs : Source.Value scope} {body : Source.Term (scope + 1)}
+    {bodyUse : Source.Capture (scope + 1)}
+    {bodyOuterUse : Source.Capture scope}
+    (rhsTyping : Source.Value.HasType context rhs
+      (.capturing signature.captureUpper (.object signature)))
+    (bodyTyping : Source.Term.HasType
+      (context.extendTerm
+        (.capturing signature.captureUpper (.object signature))) body bodyUse
+      result.weaken)
+    (discharge : Source.CaptureIncludes
+      (context.extendTerm
+        (.capturing signature.captureUpper (.object signature))) bodyUse
+      (.union bodyOuterUse.weaken (.singleton (.var .here))))
+    {compiled : CompiledTerm ready (.let' result (.ret rhs) body)
+      (.union signature.captureUpper bodyOuterUse) result}
+    (success : compileTerm? ready
+      (.letObject rhsTyping bodyTyping discharge) = some compiled) :
+    ∃ (rhsCompiled : CompiledValue ready rhs
+        (.capturing signature.captureUpper (.object signature)))
+      (bodyReady : Runtime.Ready (context.extendTerm
+        (.capturing signature.captureUpper (.object signature))))
+      (bodyCompiled : CompiledTerm bodyReady body bodyUse result.weaken)
+      (erasedBody : ManySortedFC.Runtime.Tm
+        ((Layout.sig context).termCount + 1)),
+      compileValue? ready rhsTyping = some rhsCompiled ∧
+      compileTerm? bodyReady bodyTyping = some bodyCompiled ∧
+      HEq bodyCompiled.term.erase erasedBody ∧
+      compiled.term.erase = ManySortedFC.Runtime.Tm.let'
+        rhsCompiled.term.erase erasedBody := by
+  unfold compileTerm? at success
+  split at success
+  · contradiction
+  · rename_i bounds signatureTranslated
+    split at success
+    · contradiction
+    · rename_i resultTarget resultTranslated
+      split at success
+      · contradiction
+      · rename_i bodyOuterTarget bodyOuterTranslated
+        change (do
+          let rhsCompiled ← compileValue? ready rhsTyping
+          let bodyReady := ready.extendObject signature signatureTranslated
+          let bodyCompiled ← compileTerm? bodyReady bodyTyping
+          let finished ← finishObjectLet? discharge signatureTranslated
+            resultTranslated bodyOuterTranslated rhsTyping rhsCompiled
+            bodyCompiled
+          pure finished.compiled) = some compiled at success
+        generalize rhsEquation :
+          compileValue? ready rhsTyping = rhsResult at success
+        cases rhsResult with
+        | none => simp at success
+        | some rhsCompiled =>
+            let bodyReady := ready.extendObject signature signatureTranslated
+            change (do
+              let bodyCompiled ← compileTerm? bodyReady bodyTyping
+              let finished ← finishObjectLet? discharge
+                signatureTranslated resultTranslated bodyOuterTranslated
+                rhsTyping rhsCompiled bodyCompiled
+              pure finished.compiled) = some compiled at success
+            generalize bodyEquation :
+              compileTerm? bodyReady bodyTyping = bodyResult at success
+            cases bodyResult with
+            | none => simp at success
+            | some bodyCompiled =>
+                change (do
+                  let finished ← finishObjectLet? discharge
+                    signatureTranslated resultTranslated bodyOuterTranslated
+                    rhsTyping rhsCompiled bodyCompiled
+                  pure finished.compiled) = some compiled at success
+                generalize finishEquation : finishObjectLet? discharge
+                  signatureTranslated resultTranslated bodyOuterTranslated
+                  rhsTyping rhsCompiled bodyCompiled = finishResult at success
+                cases finishResult with
+                | none => simp at success
+                | some finished =>
+                    have erased := finishObjectLet?_erase discharge
+                      signatureTranslated resultTranslated bodyOuterTranslated
+                      rhsTyping rhsCompiled bodyCompiled finishEquation
+                    cases success
+                    obtain ⟨erasedBody, bodyErases, resultErases⟩ := erased
+                    exact ⟨rhsCompiled, bodyReady, bodyCompiled, erasedBody,
+                      rfl, bodyEquation, bodyErases, resultErases⟩
+
+/-- A successfully compiled source `use` contains the successfully compiled
+inner computation under exactly one target `Tm.use` node. -/
+theorem compileTerm?_use_term {scope : Source.Scope}
+    {context : Source.Ctx scope} (ready : Runtime.Ready context)
+    {term : Source.Term scope} {sourceUse targetUse : Source.Capture scope}
+    {type : Source.Ty scope}
+    (termTyping : Source.Term.HasType context term sourceUse type)
+    (inclusion : Source.CaptureIncludes context sourceUse targetUse)
+    {compiled : CompiledTerm ready term targetUse type}
+    (success : compileTerm? ready (.use termTyping inclusion) =
+      some compiled) :
+    ∃ inner evidence,
+      compileTerm? ready termTyping = some inner ∧
+      compiled.term = .use inner.term evidence := by
+  unfold compileTerm? at success
+  generalize innerEquation : compileTerm? ready termTyping = innerResult
+    at success
+  cases innerResult with
+  | none => simp at success
+  | some inner =>
+      change compileUseTerm? inner inclusion = some compiled at success
+      unfold compileUseTerm? at success
+      split at success
+      · contradiction
+      · rename_i target
+        generalize compiledEvidenceEquation :
+          compileCaptureInclusion? ready.translated inclusion
+            inner.useTranslated (by assumption) = evidenceResult at success
+        cases evidenceResult with
+        | none => contradiction
+        | some generated =>
+            cases success
+            exact ⟨inner, generated.evidence, rfl, rfl⟩
 
 /-! ## Decisive executable regressions -/
 
@@ -860,11 +2155,21 @@ def exactCompiledPackage : Target.Tm [] :=
 theorem exact_object_compiles_to_expected_package :
     exactObjectCompiled?.map (fun compiled => compiled.term) =
       some exactCompiledPackage := by
+  unfold exactObjectCompiled?
+  unfold SourceExamples.exactObjectTyping SourceExamples.exactObject
+    DOTCapture.Acyclic.Examples.exactSignature
+  unfold compileValue?
+  unfold compileValue?
   rfl
 
 theorem exact_object_compiles_to_exact_type :
     exactObjectCompiled?.map (fun compiled => compiled.targetType) =
       some (Object.objectType ObjectEncoding.exactBounds) := by
+  unfold exactObjectCompiled?
+  unfold SourceExamples.exactObjectTyping SourceExamples.exactObject
+    DOTCapture.Acyclic.Examples.exactSignature
+  unfold compileValue?
+  unfold compileValue?
   rfl
 
 theorem exact_object_compiled_package_is_accepted :
@@ -896,6 +2201,8 @@ noncomputable def returnedObjectCompiled? :=
 
 theorem returned_object_variable_compiles :
     returnedObjectCompiled?.isSome = true := by
+  unfold returnedObjectCompiled? returnedObjectTyping
+  unfold compileValue?
   rfl
 
 /-! The next executable context makes the selected value-member type itself
@@ -958,6 +2265,8 @@ noncomputable def selectedPayloadCompiled? :=
 
 theorem selected_xA_xC_variable_compiles :
     selectedPayloadCompiled?.isSome = true := by
+  unfold selectedPayloadCompiled? selectedPayloadTyping
+  unfold compileValue?
   rfl
 
 /-- `x.v` belongs to the source computation layer, but its returned source
