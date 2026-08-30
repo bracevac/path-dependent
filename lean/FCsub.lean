@@ -6,6 +6,7 @@ import FCsub.Context
 import FCsub.Typing
 import FCsub.Checker
 import FCsub.CheckerCompleteness
+import FCsub.Normalization
 import FCsub.Structural
 import FCsub.Substitution
 import FCsub.SubstitutionMetatheory
@@ -19,6 +20,7 @@ import FCsub.RuntimeMetatheory
 import FCsub.Erasure
 import FCsub.ErasureMetatheory
 import FCsub.Simulation
+import FCsub.ClosedArtifact
 import FCsub.Examples
 
 /-!
