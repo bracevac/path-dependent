@@ -4,6 +4,7 @@ import Coercions.Translation.ManySorted.Acyclic.Layout
 import Coercions.Translation.ManySorted.Acyclic.StaticTranslation
 import Coercions.Translation.ManySorted.Acyclic.StaticTranslationMetatheory
 import Coercions.Translation.ManySorted.Acyclic.ExposureTranslation
+import Coercions.Translation.ManySorted.Acyclic.EvidenceTranslation
 
 /-!
 # Acyclic DOT with captures to many-sorted FC
