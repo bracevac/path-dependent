@@ -584,6 +584,51 @@ def translateExpr_rename
 
 end
 
+/-! ## Capture-prediction projections -/
+
+/-- Translation preserves the capture retained by the outermost type
+annotation. -/
+@[simp]
+theorem translateTy_outerCapture
+    {scope : DOTCapture.BinderOnly.Sig}
+    (context : DOTCapture.BinderOnly.Ctx scope)
+    (type : DOTCapture.BinderOnly.Ty scope) :
+    (translateTy context type).outerCapture =
+      translateCapture context type.outerCapture := by
+  cases type <;> try rfl
+  case ref reference =>
+    cases reference
+    rfl
+
+/-- Translation preserves the shape exposed below one outer capture. -/
+@[simp]
+theorem translateTy_stripCapture
+    {scope : DOTCapture.BinderOnly.Sig}
+    (context : DOTCapture.BinderOnly.Ctx scope)
+    (type : DOTCapture.BinderOnly.Ty scope) :
+    (translateTy context type).stripCapture =
+      translateTy context type.stripCapture := by
+  cases type <;> try rfl
+  case ref reference =>
+    cases reference
+    rfl
+
+/-- Precise variable typing selects the same runtime coordinate on both
+sides of the translation. -/
+@[simp]
+theorem translateTy_precise
+    {scope : DOTCapture.BinderOnly.Sig}
+    (context : DOTCapture.BinderOnly.Ctx scope)
+    (type : DOTCapture.BinderOnly.Ty scope)
+    (path : DOTCapture.BinderOnly.Path scope) :
+    translateTy context (type.precise path) =
+      ManySortedFC.Ty.precise (translatePath context path)
+        (translateTy context type) := by
+  cases type <;> try rfl
+  case ref reference =>
+    cases reference
+    rfl
+
 /-! ## Canonical one-step weakening -/
 
 namespace RenameAgreement
