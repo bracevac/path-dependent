@@ -139,6 +139,19 @@ variable of any relation. -/
 def HasNoEvidenceBinders (scope : Sig) : Prop :=
   forall (relation : Relation), BVar scope (.evidence relation) -> False
 
+namespace BoolValuation
+
+/-- A valuation respects the capture summaries stored in term bindings.
+Whenever a variable has capturing type `C ▷ S`, selecting that variable in
+the Boolean model implies the interpretation of `C`. -/
+def Respects {scope : Sig} (valuation : BoolValuation scope)
+    (context : Ctx scope) : Prop :=
+  ∀ (index : BVar scope .term) (captures : Capture scope) (shape : Ty scope),
+    context.lookup index = Binding.term (.capturing captures shape) →
+      BoolSemantics.LE (valuation.term index) (captures.eval valuation)
+
+end BoolValuation
+
 namespace Evidence.Proves
 
 /-- Every declarative evidence derivation in an assumption-free scope is
@@ -148,8 +161,10 @@ theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
     {proposition : Proposition relation scope}
     (noEvidence : HasNoEvidenceBinders scope)
     (typing : Evidence.Proves context evidence proposition) :
-    proposition.Valid := by
+    ∀ valuation : BoolValuation scope,
+      valuation.Respects context → proposition.Holds valuation := by
   intro valuation
+  intro respects
   induction typing with
   | @var relation index proposition binding =>
       exact (noEvidence relation index).elim
@@ -195,6 +210,8 @@ theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
       exact BoolSemantics.or_right _ _
   | captureUnionElim leftTyping rightTyping leftInduction rightInduction =>
       exact BoolSemantics.or_elim leftInduction rightInduction
+  | captureVariable binding =>
+      exact respects _ _ _ binding
 
 end Evidence.Proves
 
@@ -236,16 +253,17 @@ theorem no_closed_top_included_in_bottom
     False := by
   have validity := Evidence.Proves.sound_of_no_evidence
     noEvidenceBinders_empty typing
-  have holds := validity BoolValuation.empty
+  have holds := validity BoolValuation.empty (by
+    intro index
+    nomatch index)
   have impossible : false = true := holds rfl
   cases impossible
 
 /-- With one available term capability and no evidence assumptions, its
 singleton capture cannot be included in the empty capture. -/
 theorem no_singleton_included_in_empty
-    {context : Ctx ([] ▹ .term)}
     {evidence : Evidence (.inclusion .capture) ([] ▹ .term)}
-    (typing : Evidence.Proves context evidence
+    (typing : Evidence.Proves (Ctx.nil.extendTerm .one) evidence
       (.inclusion
         (.capture (.singleton
           (.here : BVar ([] ▹ .term) .term)))
@@ -253,7 +271,11 @@ theorem no_singleton_included_in_empty
     False := by
   have validity := Evidence.Proves.sound_of_no_evidence
     noEvidenceBinders_oneTerm typing
-  have holds := validity BoolValuation.oneTermTrue
+  have holds := validity BoolValuation.oneTermTrue (by
+    intro index captures shape binding
+    cases index with
+    | here => cases binding
+    | there older => nomatch older)
   have impossible : false = true := holds rfl
   cases impossible
 
