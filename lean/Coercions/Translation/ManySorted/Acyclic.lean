@@ -1,4 +1,5 @@
 import Coercions.Translation.ManySorted.Acyclic.ObjectEncoding
+import Coercions.Translation.ManySorted.Acyclic.ObjectEncodingMetatheory
 import Coercions.Translation.ManySorted.Acyclic.Layout
 import Coercions.Translation.ManySorted.Acyclic.StaticTranslation
 
