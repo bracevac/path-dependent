@@ -237,6 +237,11 @@ theorem translateTy?_rename_succ {scope : Source.Scope}
       | some expression =>
           cases expression
           rfl
+  | .arr domain codomain => by
+      simp only [Source.Ty.rename, Translation.translateTy?]
+      rw [translateTy?_rename_succ, translateTy?_rename_succ]
+      cases Translation.translateTy? outer domain <;>
+        cases Translation.translateTy? outer codomain <;> rfl
   | .capturing captures shape => by
       simp only [Source.Ty.rename, Translation.translateTy?]
       rw [translateCapture?_rename_succ, translateTy?_rename_succ]

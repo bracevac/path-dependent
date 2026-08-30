@@ -44,7 +44,7 @@ end Target
 namespace Translation
 
 export StaticTranslation
-  (translateTy? translateObjectSig? translateContext?)
+  (translateCapture? translateTy? translateObjectSig? translateContext?)
 
 export StaticTranslationMetatheory (translateTy?_weaken)
 
@@ -100,6 +100,238 @@ def Ready.target {scope : Source.Scope} {source : Source.Ctx scope}
     (ready : Ready source) : Target.Ctx (Layout.sig source) :=
   ready.translated.target
 
+/-! ## Executable context extensions -/
+
+/-- Extend runtime readiness by one source binding classified as plain.
+The successful type translation is reused as the exact newest target term
+binding. -/
+noncomputable def Ready.extendPlain {scope : Source.Scope}
+    {source : Source.Ctx scope} (ready : Ready source)
+    {binding : Source.Ty scope} (plain : binding.IsPlain)
+    {targetType : Target.Ty (Layout.sig source)}
+    (typeTranslated : Translation.translateTy? source binding =
+      some targetType) : Ready (source.extendTerm binding) := by
+  cases binding
+  case top =>
+    refine
+      { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+        executable := .plain ready.executable _ (by rfl) }
+    change (do
+      let targetOuter ← Translation.translateContext? source
+      StaticTranslation.extendPlain? source targetOuter .top) =
+        some (ready.target.extendTerm targetType)
+    simp only [ready.translated.translated,
+      StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+    rfl
+  case bot =>
+    refine
+      { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+        executable := .plain ready.executable _ (by rfl) }
+    change (do
+      let targetOuter ← Translation.translateContext? source
+      StaticTranslation.extendPlain? source targetOuter .bot) =
+        some (ready.target.extendTerm targetType)
+    simp only [ready.translated.translated,
+      StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+    rfl
+  case one =>
+    refine
+      { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+        executable := .plain ready.executable _ (by rfl) }
+    change (do
+      let targetOuter ← Translation.translateContext? source
+      StaticTranslation.extendPlain? source targetOuter .one) =
+        some (ready.target.extendTerm targetType)
+    simp only [ready.translated.translated,
+      StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+    rfl
+  case ref reference =>
+    refine
+      { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+        executable := .plain ready.executable _ (by rfl) }
+    change (do
+      let targetOuter ← Translation.translateContext? source
+      StaticTranslation.extendPlain? source targetOuter (.ref reference)) =
+        some (ready.target.extendTerm targetType)
+    simp only [ready.translated.translated,
+      StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+    rfl
+  case arr domain codomain =>
+    refine
+      { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+        executable := .plain ready.executable _ (by rfl) }
+    change (do
+      let targetOuter ← Translation.translateContext? source
+      StaticTranslation.extendPlain? source targetOuter
+        (.arr domain codomain)) =
+        some (ready.target.extendTerm targetType)
+    simp only [ready.translated.translated,
+      StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+    rfl
+  case object signature =>
+    simp [DOTCapture.Acyclic.Ty.IsPlain,
+      DOTCapture.Acyclic.Ty.objectSignature?,
+      DOTCapture.Acyclic.Ty.stripCapture] at plain
+  case capturing captures shape =>
+    cases shape
+    case top =>
+      refine
+        { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+          executable := .plain ready.executable _ (by rfl) }
+      change (do
+        let targetOuter ← Translation.translateContext? source
+        StaticTranslation.extendPlain? source targetOuter
+          (.capturing captures .top)) =
+          some (ready.target.extendTerm targetType)
+      simp only [ready.translated.translated,
+        StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+      rfl
+    case bot =>
+      refine
+        { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+          executable := .plain ready.executable _ (by rfl) }
+      change (do
+        let targetOuter ← Translation.translateContext? source
+        StaticTranslation.extendPlain? source targetOuter
+          (.capturing captures .bot)) =
+          some (ready.target.extendTerm targetType)
+      simp only [ready.translated.translated,
+        StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+      rfl
+    case one =>
+      refine
+        { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+          executable := .plain ready.executable _ (by rfl) }
+      change (do
+        let targetOuter ← Translation.translateContext? source
+        StaticTranslation.extendPlain? source targetOuter
+          (.capturing captures .one)) =
+          some (ready.target.extendTerm targetType)
+      simp only [ready.translated.translated,
+        StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+      rfl
+    case ref reference =>
+      refine
+        { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+          executable := .plain ready.executable _ (by rfl) }
+      change (do
+        let targetOuter ← Translation.translateContext? source
+        StaticTranslation.extendPlain? source targetOuter
+          (.capturing captures (.ref reference))) =
+          some (ready.target.extendTerm targetType)
+      simp only [ready.translated.translated,
+        StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+      rfl
+    case arr domain codomain =>
+      refine
+        { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+          executable := .plain ready.executable _ (by rfl) }
+      change (do
+        let targetOuter ← Translation.translateContext? source
+        StaticTranslation.extendPlain? source targetOuter
+          (.capturing captures (.arr domain codomain))) =
+          some (ready.target.extendTerm targetType)
+      simp only [ready.translated.translated,
+        StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+      rfl
+    case capturing retained nestedShape =>
+      refine
+        { translated := ⟨ready.target.extendTerm targetType, ?_⟩
+          executable := .plain ready.executable _ (by rfl) }
+      change (do
+        let targetOuter ← Translation.translateContext? source
+        StaticTranslation.extendPlain? source targetOuter
+          (.capturing captures (.capturing retained nestedShape))) =
+          some (ready.target.extendTerm targetType)
+      simp only [ready.translated.translated,
+        StaticTranslation.extendPlain?, typeTranslated, Ready.target]
+      rfl
+    case object signature =>
+      simp [DOTCapture.Acyclic.Ty.IsPlain,
+        DOTCapture.Acyclic.Ty.objectSignature?,
+        DOTCapture.Acyclic.Ty.stripCapture] at plain
+
+/-- The capture-upper coordinate is already present in a successful
+translation of all four object bounds. -/
+private theorem captureUpperTranslatedOfBounds {scope : Source.Scope}
+    {source : Source.Ctx scope} {signature : Source.ObjectSig scope}
+    {bounds : Object.Bounds (Layout.sig source)}
+    (translated : Translation.translateObjectSig? source signature =
+      some bounds) :
+    Translation.translateCapture? source signature.captureUpper =
+      some bounds.captureUpper := by
+  cases signature with
+  | bounds typeLower typeUpper captureLower captureUpper =>
+      unfold StaticTranslation.translateObjectSig? at translated
+      generalize typeLowerEquation :
+        Translation.translateTy? source typeLower = typeLowerResult
+          at translated
+      cases typeLowerResult with
+      | none => simp at translated
+      | some translatedTypeLower =>
+          generalize typeUpperEquation :
+            Translation.translateTy? source typeUpper = typeUpperResult
+              at translated
+          cases typeUpperResult with
+          | none => simp at translated
+          | some translatedTypeUpper =>
+              generalize captureLowerEquation :
+                Translation.translateCapture? source captureLower =
+                  captureLowerResult at translated
+              cases captureLowerResult with
+              | none => simp at translated
+              | some translatedCaptureLower =>
+                  generalize captureUpperEquation :
+                    Translation.translateCapture? source captureUpper =
+                      captureUpperResult at translated
+                  cases captureUpperResult with
+                  | none => simp at translated
+                  | some translatedCaptureUpper =>
+                      simp only [Option.bind_eq_bind,
+                        Option.bind_some] at translated
+                      cases Option.some.inj translated
+                      exact captureUpperEquation
+
+/-- Extend runtime readiness by one canonical formed-object binding.  Its
+target is exactly the installed object theory followed by the payload term
+binder; no arbitrary captured object binding is admitted. -/
+noncomputable def Ready.extendObject {scope : Source.Scope}
+    {source : Source.Ctx scope} (ready : Ready source)
+    (signature : Source.ObjectSig scope)
+    {bounds : Object.Bounds (Layout.sig source)}
+    (boundsTranslated : Translation.translateObjectSig? source signature =
+      some bounds) :
+    Ready (source.extendTerm
+      (.capturing signature.captureUpper (.object signature))) where
+  translated :=
+    ⟨(ready.target.extendTheory (ObjectEncoding.theory bounds)).extendTerm
+        ObjectEncoding.payloadType,
+      by
+        change (do
+          let targetOuter ← Translation.translateContext? source
+          let _ ← Translation.translateCapture? source
+            signature.captureUpper
+          StaticTranslation.extendObject? source targetOuter signature) =
+            some
+              ((ready.target.extendTheory (ObjectEncoding.theory bounds)).extendTerm
+                ObjectEncoding.payloadType)
+        rw [ready.translated.translated,
+          captureUpperTranslatedOfBounds boundsTranslated]
+        simp [StaticTranslation.extendObject?, boundsTranslated,
+          Ready.target]⟩
+  executable := .object ready.executable signature
+
+@[simp]
+theorem Ready.extendObject_target {scope : Source.Scope}
+    {source : Source.Ctx scope} (ready : Ready source)
+    (signature : Source.ObjectSig scope)
+    {bounds : Object.Bounds (Layout.sig source)}
+    (boundsTranslated : Translation.translateObjectSig? source signature =
+      some bounds) :
+    (ready.extendObject signature boundsTranslated).target =
+      (ready.target.extendTheory (ObjectEncoding.theory bounds)).extendTerm
+        ObjectEncoding.payloadType := rfl
+
 /-! ## Variable classifications -/
 
 /-- Exact target facts for an ordinary source variable. -/
@@ -140,14 +372,8 @@ theorem objectSignature?_weaken {scope : Source.Scope}
     (type : Source.Ty scope) :
     Layout.objectSignature? type.weaken =
       (Layout.objectSignature? type).map Source.ObjectSig.weaken := by
-  cases type with
-  | top => rfl
-  | bot => rfl
-  | one => rfl
-  | ref => rfl
-  | object => rfl
-  | capturing captures shape =>
-      cases shape <;> rfl
+  simpa only [Layout.objectSignature?] using
+    DOTCapture.Acyclic.Ty.objectSignature?_weaken type
 
 @[simp]
 theorem formedObject_weaken {scope : Source.Scope}
@@ -168,13 +394,15 @@ private noncomputable def newestPlain {scope : Source.Scope}
     PlainVariable context (.here : Source.Var (scope + 1)) := by
   cases binding with
   | object signature =>
-      simp [Layout.objectSignature?, DOTCapture.Acyclic.Ty.stripCapture]
-        at notObject
+      simp [Layout.objectSignature?,
+        DOTCapture.Acyclic.Ty.objectSignature?,
+        DOTCapture.Acyclic.Ty.stripCapture] at notObject
   | capturing captures shape =>
       cases shape with
       | object signature =>
-          simp [Layout.objectSignature?, DOTCapture.Acyclic.Ty.stripCapture]
-            at notObject
+          simp [Layout.objectSignature?,
+            DOTCapture.Acyclic.Ty.objectSignature?,
+            DOTCapture.Acyclic.Ty.stripCapture] at notObject
       | top =>
           have translated := context.translated
           change (do
@@ -330,6 +558,49 @@ private noncomputable def newestPlain {scope : Source.Scope}
               (outer.extendTerm (.capturing captures (.ref reference)))
               (DOTCapture.Acyclic.Ty.capturing captures
                 (.ref reference)).weaken = _
+            rw [Translation.translateTy?_weaken, typeTranslated]
+            rfl
+          · rw [← currentEqual]
+            rfl
+      | arr domain codomain =>
+          have translated := context.translated
+          change (do
+            let targetOuter ← Translation.translateContext? outer
+            StaticTranslation.extendPlain? outer targetOuter
+              (.capturing captures (.arr domain codomain))) =
+                some context.target at translated
+          change Option.bind (Translation.translateContext? outer)
+            (fun targetOuter =>
+              StaticTranslation.extendPlain? outer targetOuter
+                (.capturing captures (.arr domain codomain))) =
+                  some context.target at translated
+          have outerExists := Option.bind_eq_some_iff.mp translated
+          let targetOuter := Classical.choose outerExists
+          have outerSpec := Classical.choose_spec outerExists
+          have outerTranslated := outerSpec.1
+          have translated := outerSpec.2
+          unfold StaticTranslation.extendPlain? at translated
+          change Option.bind
+            (Translation.translateTy? outer
+              (.capturing captures (.arr domain codomain)))
+            (fun targetType => some (targetOuter.extendTerm targetType)) =
+              some context.target at translated
+          have typeExists := Option.bind_eq_some_iff.mp translated
+          let targetType := Classical.choose typeExists
+          have typeSpec := Classical.choose_spec typeExists
+          have typeTranslated := typeSpec.1
+          have targetEqual := typeSpec.2
+          have currentEqual := Option.some.inj targetEqual
+          refine
+            { targetType := targetType.rename ManySortedFC.Rename.succ
+              notObject := by rfl
+              typeTranslated := ?_
+              targetLookup := ?_ }
+          · change Translation.translateTy?
+              (outer.extendTerm
+                (.capturing captures (.arr domain codomain)))
+              (DOTCapture.Acyclic.Ty.capturing captures
+                (.arr domain codomain)).weaken = _
             rw [Translation.translateTy?_weaken, typeTranslated]
             rfl
           · rw [← currentEqual]
@@ -522,6 +793,44 @@ private noncomputable def newestPlain {scope : Source.Scope}
         rfl
       · rw [← currentEqual]
         rfl
+  | arr domain codomain =>
+      have translated := context.translated
+      change (do
+        let targetOuter ← Translation.translateContext? outer
+        StaticTranslation.extendPlain? outer targetOuter
+          (.arr domain codomain)) = some context.target at translated
+      change Option.bind (Translation.translateContext? outer)
+        (fun targetOuter =>
+          StaticTranslation.extendPlain? outer targetOuter
+            (.arr domain codomain)) = some context.target at translated
+      have outerExists := Option.bind_eq_some_iff.mp translated
+      let targetOuter := Classical.choose outerExists
+      have outerSpec := Classical.choose_spec outerExists
+      have outerTranslated := outerSpec.1
+      have translated := outerSpec.2
+      unfold StaticTranslation.extendPlain? at translated
+      change Option.bind
+        (Translation.translateTy? outer (.arr domain codomain))
+        (fun targetType => some (targetOuter.extendTerm targetType)) =
+          some context.target at translated
+      have typeExists := Option.bind_eq_some_iff.mp translated
+      let targetType := Classical.choose typeExists
+      have typeSpec := Classical.choose_spec typeExists
+      have typeTranslated := typeSpec.1
+      have targetEqual := typeSpec.2
+      have currentEqual := Option.some.inj targetEqual
+      refine
+        { targetType := targetType.rename ManySortedFC.Rename.succ
+          notObject := by rfl
+          typeTranslated := ?_
+          targetLookup := ?_ }
+      · change Translation.translateTy?
+          (outer.extendTerm (.arr domain codomain))
+          (DOTCapture.Acyclic.Ty.arr domain codomain).weaken = _
+        rw [Translation.translateTy?_weaken, typeTranslated]
+        rfl
+      · rw [← currentEqual]
+        rfl
 
 /-! ## Transport through one source extension -/
 
@@ -657,7 +966,8 @@ theorem exact_object_resolves_canonically :
   | plain facts =>
       have impossible := facts.notObject
       simp [StaticTranslation.exactSourceContext,
-        Layout.objectSignature?, DOTCapture.Acyclic.Ty.stripCapture,
+        Layout.objectSignature?, DOTCapture.Acyclic.Ty.objectSignature?,
+        DOTCapture.Acyclic.Ty.stripCapture,
         DOTCapture.Acyclic.Ty.weaken, DOTCapture.Acyclic.Ty.rename]
         at impossible
   | object facts => exact ⟨facts, rfl⟩
@@ -727,7 +1037,8 @@ theorem older_object_survives_plain_extension :
   | plain facts =>
       have impossible := facts.notObject
       simp [olderObjectSource, StaticTranslation.exactSourceContext,
-        Layout.objectSignature?, DOTCapture.Acyclic.Ty.stripCapture,
+        Layout.objectSignature?, DOTCapture.Acyclic.Ty.objectSignature?,
+        DOTCapture.Acyclic.Ty.stripCapture,
         DOTCapture.Acyclic.Ty.weaken, DOTCapture.Acyclic.Ty.rename]
         at impossible
   | object facts => exact ⟨facts, rfl⟩

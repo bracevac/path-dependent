@@ -653,6 +653,30 @@ def TranslatedContext.previous {scope : Source.Scope}
               change LookupTransport targetOuter target Target.Rename.succ
               rw [← targetEquality]
               exact LookupTransport.step targetOuter (.term targetType)
+  | arr domain codomain =>
+      change (do
+        let targetOuter ← Translation.translateContext? outer
+        StaticTranslation.extendPlain? outer targetOuter
+          (.arr domain codomain)) = some target at translated
+      generalize outerEquation : Translation.translateContext? outer =
+        outerResult at translated
+      cases outerResult with
+      | none => simp at translated
+      | some targetOuter =>
+          unfold StaticTranslation.extendPlain? at translated
+          generalize typeEquation :
+            Translation.translateTy? outer (.arr domain codomain) =
+              typeResult at translated
+          cases typeResult with
+          | none => simp at translated
+          | some targetType =>
+              change some (targetOuter.extendTerm targetType) =
+                some target at translated
+              have targetEquality := Option.some.inj translated
+              refine ⟨⟨targetOuter, outerEquation⟩, ?_⟩
+              change LookupTransport targetOuter target Target.Rename.succ
+              rw [← targetEquality]
+              exact LookupTransport.step targetOuter (.term targetType)
   | object signature =>
       change (do
         let targetOuter ← Translation.translateContext? outer
@@ -762,6 +786,31 @@ def TranslatedContext.previous {scope : Source.Scope}
               unfold StaticTranslation.extendPlain? at translated
               generalize typeEquation : Translation.translateTy? outer
                 (.capturing captures (.ref reference)) =
+                  typeResult at translated
+              cases typeResult with
+              | none => simp at translated
+              | some targetType =>
+                  change some (targetOuter.extendTerm targetType) =
+                    some target at translated
+                  have targetEquality := Option.some.inj translated
+                  refine ⟨⟨targetOuter, outerEquation⟩, ?_⟩
+                  change LookupTransport targetOuter target Target.Rename.succ
+                  rw [← targetEquality]
+                  exact LookupTransport.step targetOuter (.term targetType)
+      | arr domain codomain =>
+          change (do
+            let targetOuter ← Translation.translateContext? outer
+            StaticTranslation.extendPlain? outer targetOuter
+              (.capturing captures (.arr domain codomain))) =
+                some target at translated
+          generalize outerEquation : Translation.translateContext? outer =
+            outerResult at translated
+          cases outerResult with
+          | none => simp at translated
+          | some targetOuter =>
+              unfold StaticTranslation.extendPlain? at translated
+              generalize typeEquation : Translation.translateTy? outer
+                (.capturing captures (.arr domain codomain)) =
                   typeResult at translated
               cases typeResult with
               | none => simp at translated
@@ -941,6 +990,7 @@ noncomputable def resolve {scope : Source.Scope}
               | bot => contradiction
               | one => contradiction
               | ref => contradiction
+              | arr => contradiction
               | object storedSignature =>
                   have signatureEquality :
                       storedSignature.weaken = signature := by
@@ -953,6 +1003,7 @@ noncomputable def resolve {scope : Source.Scope}
                   | bot => contradiction
                   | one => contradiction
                   | ref => contradiction
+                  | arr => contradiction
                   | object storedSignature =>
                       have signatureEquality :
                           storedSignature.weaken = signature := by
@@ -978,6 +1029,9 @@ noncomputable def resolve {scope : Source.Scope}
                   simp [DOTCapture.Acyclic.Ty.weaken,
                     DOTCapture.Acyclic.Ty.rename] at found
               | ref =>
+                  simp [DOTCapture.Acyclic.Ty.weaken,
+                    DOTCapture.Acyclic.Ty.rename] at found
+              | arr =>
                   simp [DOTCapture.Acyclic.Ty.weaken,
                     DOTCapture.Acyclic.Ty.rename] at found
               | capturing =>

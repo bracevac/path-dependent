@@ -1,5 +1,6 @@
 import Coercions.DOT.Captures.Acyclic.Context
 import Coercions.DOT.Captures.Acyclic.MemberTyping
+import Coercions.DOT.Captures.Acyclic.Structural
 import Coercions.Translation.ManySorted.Acyclic.ObjectEncoding
 
 /-!
@@ -26,7 +27,8 @@ export DOTCapture.Acyclic
   (Scope StaticSort Var Path StaticRef Capture Ty ObjectSig Ctx ExposesObject)
 
 namespace Ty
-export DOTCapture.Acyclic.Ty (rename weaken stripCapture)
+export DOTCapture.Acyclic.Ty
+  (rename weaken stripCapture objectSignature? IsPlain)
 end Ty
 
 namespace Ctx
@@ -57,13 +59,10 @@ def translateSort : Source.StaticSort → Target.StaticSort
   | .type => .type
   | .capture => .capture
 
-/-- Recognize exactly one stripped object shape.  In particular, this does
-not recursively remove nested capture annotations. -/
-def objectSignature? {scope : Source.Scope} (type : Source.Ty scope) :
+/-- Compatibility-facing name for the source-owned binding classifier. -/
+abbrev objectSignature? {scope : Source.Scope} (type : Source.Ty scope) :
     Option (Source.ObjectSig scope) :=
-  match type.stripCapture with
-  | .object signature => some signature
-  | _ => none
+  type.objectSignature?
 
 @[simp]
 theorem stripCapture_weaken {scope : Source.Scope} (type : Source.Ty scope) :
@@ -111,6 +110,7 @@ def sig : {scope : Source.Scope} → Source.Ctx scope → Target.Sig
   | _, .extend outer .bot => (sig outer) ▹ .term
   | _, .extend outer .one => (sig outer) ▹ .term
   | _, .extend outer (.ref _) => (sig outer) ▹ .term
+  | _, .extend outer (.arr _ _) => (sig outer) ▹ .term
   | _, .extend outer (.object _) =>
       Object.PayloadScope (sig outer)
   | _, .extend outer (.capturing _ (.object _)) =>
@@ -119,6 +119,7 @@ def sig : {scope : Source.Scope} → Source.Ctx scope → Target.Sig
   | _, .extend outer (.capturing _ .bot) => (sig outer) ▹ .term
   | _, .extend outer (.capturing _ .one) => (sig outer) ▹ .term
   | _, .extend outer (.capturing _ (.ref _)) => (sig outer) ▹ .term
+  | _, .extend outer (.capturing _ (.arr _ _)) => (sig outer) ▹ .term
   | _, .extend outer (.capturing _ (.capturing _ _)) =>
       (sig outer) ▹ .term
 
@@ -131,6 +132,7 @@ def extendRename {scope : Source.Scope} (outer : Source.Ctx scope)
   | .bot => Target.Rename.succ
   | .one => Target.Rename.succ
   | .ref _ => Target.Rename.succ
+  | .arr _ _ => Target.Rename.succ
   | .object _ =>
       Object.staticWeakening.comp
         (Target.Rename.succ (kind := .term))
@@ -141,6 +143,7 @@ def extendRename {scope : Source.Scope} (outer : Source.Ctx scope)
   | .capturing _ .bot => Target.Rename.succ
   | .capturing _ .one => Target.Rename.succ
   | .capturing _ (.ref _) => Target.Rename.succ
+  | .capturing _ (.arr _ _) => Target.Rename.succ
   | .capturing _ (.capturing _ _) => Target.Rename.succ
 
 /-- Canonical resources contributed by a newest object binding.  The two
@@ -162,6 +165,7 @@ def termVar : {scope : Source.Scope} →
   | _, .extend _ .bot, .here => .here
   | _, .extend _ .one, .here => .here
   | _, .extend _ (.ref _), .here => .here
+  | _, .extend _ (.arr _ _), .here => .here
   | _, .extend _ (.object _), .here =>
       Object.payloadTerm
   | _, .extend _ (.capturing _ (.object _)), .here =>
@@ -170,6 +174,7 @@ def termVar : {scope : Source.Scope} →
   | _, .extend _ (.capturing _ .bot), .here => .here
   | _, .extend _ (.capturing _ .one), .here => .here
   | _, .extend _ (.capturing _ (.ref _)), .here => .here
+  | _, .extend _ (.capturing _ (.arr _ _)), .here => .here
   | _, .extend _ (.capturing _ (.capturing _ _)), .here => .here
 
 /-- Total translation of the variable-only stable source paths. -/
@@ -190,6 +195,7 @@ def receiverVarSlot? : {scope : Source.Scope} →
   | _, .extend _ .bot, .here => none
   | _, .extend _ .one, .here => none
   | _, .extend _ (.ref _), .here => none
+  | _, .extend _ (.arr _ _), .here => none
   | _, .extend outer (.object _), .here =>
       some (newestReceiverSlot (sig outer))
   | _, .extend outer (.capturing _ (.object _)), .here =>
@@ -198,6 +204,7 @@ def receiverVarSlot? : {scope : Source.Scope} →
   | _, .extend _ (.capturing _ .bot), .here => none
   | _, .extend _ (.capturing _ .one), .here => none
   | _, .extend _ (.capturing _ (.ref _)), .here => none
+  | _, .extend _ (.capturing _ (.arr _ _)), .here => none
   | _, .extend _ (.capturing _ (.capturing _ _)), .here => none
 
 /-- Path-facing form of `receiverVarSlot?`. -/
@@ -251,6 +258,7 @@ theorem receiverSlot_exists_of_lookup_object
           | bot => contradiction
           | one => contradiction
           | ref => contradiction
+          | arr => contradiction
           | object =>
               exact ⟨newestReceiverSlot (sig outer), rfl⟩
           | capturing captures shape =>
@@ -259,6 +267,7 @@ theorem receiverSlot_exists_of_lookup_object
               | bot => contradiction
               | one => contradiction
               | ref => contradiction
+              | arr => contradiction
               | capturing => contradiction
               | object =>
                   exact ⟨newestReceiverSlot (sig outer), rfl⟩
@@ -279,6 +288,9 @@ theorem receiverSlot_exists_of_lookup_object
               rw [shapeEquation] at found
               simp [Source.Ty.weaken, Source.Ty.rename] at found
           | ref =>
+              rw [shapeEquation] at found
+              simp [Source.Ty.weaken, Source.Ty.rename] at found
+          | arr =>
               rw [shapeEquation] at found
               simp [Source.Ty.weaken, Source.Ty.rename] at found
           | capturing =>
@@ -351,6 +363,7 @@ theorem receiverSlot_payload {scope : Source.Scope}
               | bot => simp [receiverSlot?, receiverVarSlot?] at lookup
               | one => simp [receiverSlot?, receiverVarSlot?] at lookup
               | ref => simp [receiverSlot?, receiverVarSlot?] at lookup
+              | arr => simp [receiverSlot?, receiverVarSlot?] at lookup
               | object =>
                   simp only [receiverSlot?, receiverVarSlot?, translatePath,
                     termVar, Option.some.injEq] at lookup ⊢
@@ -362,6 +375,7 @@ theorem receiverSlot_payload {scope : Source.Scope}
                   | bot => simp [receiverSlot?, receiverVarSlot?] at lookup
                   | one => simp [receiverSlot?, receiverVarSlot?] at lookup
                   | ref => simp [receiverSlot?, receiverVarSlot?] at lookup
+                  | arr => simp [receiverSlot?, receiverVarSlot?] at lookup
                   | capturing =>
                       simp [receiverSlot?, receiverVarSlot?] at lookup
                   | object =>
@@ -423,18 +437,21 @@ theorem receiverSlot?_here_nonobject {scope : Source.Scope}
   | bot => rfl
   | one => rfl
   | ref => rfl
+  | arr => rfl
   | object =>
-      simp [objectSignature?, Source.Ty.stripCapture] at notObject
+      simp [objectSignature?, DOTCapture.Acyclic.Ty.objectSignature?,
+        DOTCapture.Acyclic.Ty.stripCapture] at notObject
   | capturing captures shape =>
       cases shape with
       | top => rfl
       | bot => rfl
       | one => rfl
       | ref => rfl
+      | arr => rfl
       | capturing => rfl
       | object =>
-          simp [objectSignature?, Source.Ty.stripCapture]
-            at notObject
+          simp [objectSignature?, DOTCapture.Acyclic.Ty.objectSignature?,
+            DOTCapture.Acyclic.Ty.stripCapture] at notObject
 
 /-! ## Decisive layout regressions -/
 
