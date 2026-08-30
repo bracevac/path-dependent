@@ -1,6 +1,6 @@
 import Coercions.DOT.Captures.BinderOnly.IntervalModel
 import Coercions.ManySortedFC.TheoryModel
-import Coercions.Translation.ManySorted.BinderOnly.EvidenceElaboration
+import Coercions.Translation.ManySorted.BinderOnly.ContextEvidence
 import Coercions.Translation.ManySorted.BinderOnly.StaticInstantiation
 
 /-!
@@ -257,11 +257,10 @@ def compileModelTotal {scope : DOTCapture.BinderOnly.Sig}
     {sort : DOTCapture.BinderOnly.StaticSort}
     {witness : DOTCapture.BinderOnly.StaticExpr sort scope}
     {interval : DOTCapture.BinderOnly.Interval sort scope}
-    (bounds : BoundCompiler context)
     (satisfaction : DOTCapture.BinderOnly.Interval.SatisfiedBy
       context witness interval) :
     CompiledModel context witness interval :=
-  compileModel bounds satisfaction
+  compileModel (contextBoundCompiler context) satisfaction
     (canonicalInstantiation context witness interval)
 
 end DOTCaptureToManySortedFC.BinderOnly

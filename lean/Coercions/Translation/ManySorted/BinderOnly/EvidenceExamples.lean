@@ -16,7 +16,7 @@ open LayoutExamples
 /-- Compiling the source's explicit lower-then-upper derivation produces the
 target's explicit transitivity certificate over the two interval slots. -/
 def compiledBadTypeCollapse :=
-  compileIncludes (contextBoundCompiler badTypeContext)
+  compileIncludesTotal
     DOTCapture.BinderOnly.BadBoundsExamples.topIncludesBottom
 
 @[simp]
@@ -49,8 +49,7 @@ def olderBadTypeInclusion :
   .upper olderBadTypeUpper
 
 def compiledOlderBadTypeUpper :=
-  compileIncludes (contextBoundCompiler badTypeThenTermContext)
-    olderBadTypeInclusion
+  compileIncludesTotal olderBadTypeInclusion
 
 @[simp]
 theorem compiled_older_bound_is_weakened_exactly_once :
@@ -60,7 +59,7 @@ theorem compiled_older_bound_is_weakened_exactly_once :
 /-! ## Capture intervals use the same compiler -/
 
 def compiledBadCaptureCollapse :=
-  compileIncludes (contextBoundCompiler badCaptureContext)
+  compileIncludesTotal
     DOTCapture.BinderOnly.BadBoundsExamples.singletonIncludesEmpty
 
 @[simp]

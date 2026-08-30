@@ -434,4 +434,15 @@ def contextBoundCompiler {scope : DOTCapture.BinderOnly.Sig}
             cases sort <;>
               exact ⟨.var lookup.evidence, .var lookup.binding⟩
 
+/-- Compile any source inclusion using the evidence coordinates determined by
+its translated context. Clients no longer need to construct or pass a layout
+dictionary. -/
+def compileIncludesTotal {scope : DOTCapture.BinderOnly.Sig}
+    {context : DOTCapture.BinderOnly.Ctx scope}
+    {sort : DOTCapture.BinderOnly.StaticSort}
+    {source target : DOTCapture.BinderOnly.StaticExpr sort scope}
+    (inclusion : DOTCapture.BinderOnly.Includes context source target) :
+    CompiledInclusion context source target :=
+  compileIncludes (contextBoundCompiler context) inclusion
+
 end DOTCaptureToManySortedFC.BinderOnly

@@ -36,7 +36,7 @@ def compileAdapts {scope : DOTCapture.BinderOnly.Sig}
   | .identity =>
       ⟨.identity (translateTy context source), .identity _⟩
   | .cast inclusion =>
-      let compiled := compileIncludes (contextBoundCompiler context) inclusion
+      let compiled := compileIncludesTotal inclusion
       ⟨.cast compiled.evidence, .cast compiled.typing⟩
   | .compose first second =>
       let firstCompiled := compileAdapts first
