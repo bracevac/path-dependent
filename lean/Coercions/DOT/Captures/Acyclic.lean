@@ -3,6 +3,7 @@ import Coercions.DOT.Captures.Acyclic.Syntax
 import Coercions.DOT.Captures.Acyclic.Context
 import Coercions.DOT.Captures.Acyclic.MemberTyping
 import Coercions.DOT.Captures.Acyclic.ObjectTyping
+import Coercions.DOT.Captures.Acyclic.Structural
 import Coercions.DOT.Captures.Acyclic.Examples
 
 /-!
