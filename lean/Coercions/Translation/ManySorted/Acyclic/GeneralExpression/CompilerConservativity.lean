@@ -54,7 +54,8 @@ end CoreCompiler
 namespace SurfaceCompiler
 
 export DOTCaptureToManySortedFC.Acyclic.GeneralExpression.Compiler
-  (CompiledValue CompiledTerm compileValue? compileTerm?)
+  (CompiledValue CompiledTerm compileValue? compileTerm?
+    compilePolarizedTerm?)
 
 end SurfaceCompiler
 
@@ -316,5 +317,49 @@ theorem successfulTerm_artifactsAgree {scope : Source.Scope}
     _ = surface.term.erase :=
       (DOTCaptureToManySortedFC.Acyclic.GeneralExpression.CompilerErasure.compileTerm_erase
         surfaceSuccess).symm
+
+/-! ## Agreement with the polarized extension -/
+
+/-- The original general-expression compiler and its polarized extension
+agree on all public target indices and on the complete runtime program
+whenever both accept the same source derivation.  The statement deliberately
+does not identify proof syntax hidden by their dependent result types. -/
+structure DirectPolarizedTermArtifactsAgree {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {term : DOTCapture.Acyclic.GeneralExpression.Term scope}
+    {use : Source.Capture scope} {type : Source.Ty scope}
+    (direct : SurfaceCompiler.CompiledTerm ready term use type)
+    (polarized : SurfaceCompiler.CompiledTerm ready term use type) : Prop where
+  targetUse : direct.targetUse = polarized.targetUse
+  targetType : direct.targetType = polarized.targetType
+  erasedTerm : direct.term.erase = polarized.term.erase
+
+/-- Conditional conservativity over the pre-existing direct compiler.  A
+program accepted by both entry points keeps its translated capture,
+translated type, and exact erased runtime code. -/
+theorem successfulDirectPolarizedTerm_artifactsAgree {scope : Source.Scope}
+    {context : Source.Ctx scope} {ready : Runtime.Ready context}
+    {term : DOTCapture.Acyclic.GeneralExpression.Term scope}
+    {use : Source.Capture scope} {type : Source.Ty scope}
+    {typing : DOTCapture.Acyclic.GeneralExpression.Term.HasType context term
+      use type}
+    {direct polarized : SurfaceCompiler.CompiledTerm ready term use type}
+    (directSuccess : SurfaceCompiler.compileTerm? ready typing = some direct)
+    (polarizedSuccess : SurfaceCompiler.compilePolarizedTerm? ready typing =
+      some polarized) :
+    DirectPolarizedTermArtifactsAgree direct polarized := by
+  refine
+    { targetUse := StaticTranslation.TranslatesCapture.functional
+        direct.useTranslated polarized.useTranslated
+      targetType := StaticTranslation.TranslatesTy.functional
+        direct.typeTranslated polarized.typeTranslated
+      erasedTerm := ?_ }
+  calc
+    direct.term.erase = SurfaceErasure.eraseTerm context term :=
+      DOTCaptureToManySortedFC.Acyclic.GeneralExpression.CompilerErasure.compileTerm_erase
+        directSuccess
+    _ = polarized.term.erase :=
+      (DOTCaptureToManySortedFC.Acyclic.GeneralExpression.CompilerErasure.compilePolarizedTerm_erase
+        polarizedSuccess).symm
 
 end DOTCaptureToManySortedFC.Acyclic.GeneralExpression.CompilerConservativity

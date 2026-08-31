@@ -5,6 +5,7 @@ import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.CompilerChecke
 import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.BoundaryRegressions
 import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.CompilerErasure
 import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.ComputationalExample
+import Coercions.Translation.ManySorted.Acyclic.GeneralExpression.ObjectConsumerCompilation
 
 /-!
 # General captured-DOT expressions to many-sorted FC
@@ -18,6 +19,12 @@ computation producing an object package compiles directly as the scrutinee of
 existential opening.  Selection remains restricted to stable paths.  The
 compiler preserves the independently defined source runtime term by literal
 equality after erasure; it does not insert an ANF normalization pass.
+
+Object consumers use a polarized boundary: positive objects remain packages,
+while a negative object parameter becomes static model abstraction followed
+by a runtime payload function.  Only canonical literals and already-open
+stable roots can be supplied directly.  Other object-producing computations
+must first cross an explicit source object let/open.
 
 The compiler is derivation-directed for this acyclic fixed-member surface. It
 is not presented as a compiler for full DOT.
