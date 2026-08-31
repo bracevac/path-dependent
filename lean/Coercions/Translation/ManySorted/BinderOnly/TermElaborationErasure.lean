@@ -242,6 +242,38 @@ theorem compileTerm_erase_admin
     (SourceErasure.compiledRenaming context)
     (canonicalErasureMapsAgree context)
 
+/-! ## Derivation coherence -/
+
+/-- Alternative typing derivations for the same source value may select
+different evidence or adapters, but their compiled runtime terms are
+administratively equivalent. -/
+theorem compileValue_derivation_erasure_coherent
+    {scope : DOTCapture.BinderOnly.Sig}
+    {context : DOTCapture.BinderOnly.Ctx scope}
+    {value : DOTCapture.BinderOnly.Value scope}
+    {type : DOTCapture.BinderOnly.Ty scope}
+    (first second : DOTCapture.BinderOnly.Value.HasType context value type) :
+    ManySortedFC.Runtime.AdministrativeEq
+      (compileValue first).term.erase
+      (compileValue second).term.erase :=
+  (compileValue_erase_admin first).trans
+    (compileValue_erase_admin second).symm
+
+/-- Computation compilation is coherent for the same reason: both artifacts
+are related to the independently defined source erasure. -/
+theorem compileTerm_derivation_erasure_coherent
+    {scope : DOTCapture.BinderOnly.Sig}
+    {context : DOTCapture.BinderOnly.Ctx scope}
+    {term : DOTCapture.BinderOnly.Term scope}
+    {use : DOTCapture.BinderOnly.Capture scope}
+    {type : DOTCapture.BinderOnly.Ty scope}
+    (first second : DOTCapture.BinderOnly.Term.HasType context term use type) :
+    ManySortedFC.Runtime.AdministrativeEq
+      (compileTerm first).term.erase
+      (compileTerm second).term.erase :=
+  (compileTerm_erase_admin first).trans
+    (compileTerm_erase_admin second).symm
+
 namespace TermElaborationErasureExamples
 
 open DOTCapture.BinderOnly.TypingExamples

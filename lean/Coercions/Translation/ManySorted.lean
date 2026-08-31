@@ -12,6 +12,7 @@ import Coercions.Translation.ManySorted.BinderOnly.IntervalMorphismElaboration
 import Coercions.Translation.ManySorted.BinderOnly.AdapterElaboration
 import Coercions.Translation.ManySorted.BinderOnly.QuantifiedCoercionExamples
 import Coercions.Translation.ManySorted.BinderOnly.TermElaboration
+import Coercions.Translation.ManySorted.BinderOnly.DecisiveExamples
 import Coercions.Translation.ManySorted.BinderOnly.SourceErasure
 import Coercions.Translation.ManySorted.BinderOnly.TermElaborationErasure
 import Coercions.Translation.ManySorted.Acyclic

@@ -1,8 +1,12 @@
 import Coercions.Translation.ManySorted.Intersections.GeneralExpression.Compiler
 import Coercions.Translation.ManySorted.Intersections.GeneralExpression.Recursive
 import Coercions.Translation.ManySorted.Intersections.GeneralExpression.RecursiveExamples
+import Coercions.Translation.ManySorted.Intersections.GeneralExpression.MixedRepackExamples
+import Coercions.Translation.ManySorted.Intersections.GeneralExpression.OpenedApplicationShapeExamples
 import Coercions.Translation.ManySorted.Intersections.GeneralExpression.CompilerConservativity
+import Coercions.Translation.ManySorted.Intersections.GeneralExpression.CompilerSuccessConservativity
 import Coercions.Translation.ManySorted.Intersections.GeneralExpression.CompilerConservativityExamples
+import Coercions.Translation.ManySorted.Intersections.GeneralExpression.ExactViewFactorizationExamples
 import Coercions.Translation.ManySorted.Intersections.GeneralExpression.BoundaryRegressions
 
 /-!
