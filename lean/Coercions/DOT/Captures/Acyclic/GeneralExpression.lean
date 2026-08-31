@@ -15,7 +15,8 @@ has no dependency on either an FC target or a translation.
 
 This remains the acyclic fixed-member case-study language: paths are
 variables, objects have the fixed `{A, C, v}` signature and value payloads,
-lambda parameters are plain, and an object-opening let requires the exact
-formed-object type.  Recursive objects, intersections, arbitrary members, and
-full DOT are outside this surface.
+ordinary lambda parameters are plain, negative object consumers receive a
+canonical literal or an already-open stable root, and an object-opening let
+requires the exact formed-object type.  Recursive objects, intersections,
+arbitrary members, and full DOT are outside this surface.
 -/

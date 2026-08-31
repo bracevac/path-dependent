@@ -112,4 +112,45 @@ def weaken {scope : Scope} (term : Term scope) : Term (scope + 1) :=
 
 end Term
 
+namespace ObjectSig
+
+/-- The positive object type exported by a value realizing `signature`.
+
+The outer capture is the signature's upper capture bound.  The name is used
+by the general-expression typing layer to state the positive/negative object
+boundary without adding a second source object type. -/
+def formedType {scope : Scope} (signature : ObjectSig scope) : Ty scope :=
+  .capturing signature.captureUpper (.object signature)
+
+end ObjectSig
+
+/-- Why a term cannot be supplied directly to a negative object consumer.
+
+This is a compiler boundary, not a source type error: the same computation
+may have a positive existential object type.  Naming it with an object let
+turns its result into a stable root and makes it a direct argument. -/
+inductive ObjectArgument.Issue : Type where
+  | requiresExplicitOpen
+deriving DecidableEq, Repr
+
+/-- Syntactic forms admitted by the dedicated negative-use object-argument
+judgment. -/
+inductive ObjectArgument.Form : Type where
+  | canonicalLiteral
+  | stableVariable
+  | unsupported (issue : ObjectArgument.Issue)
+deriving DecidableEq, Repr
+
+namespace ObjectArgument
+
+/-- Classify a would-be object argument without making a claim about its
+ordinary source typing.  The compiler calls this only after the expected
+domain has been identified as an object signature. -/
+def classify {scope : Scope} : Term scope → Form
+  | .ret (.object _ _ _ _) => .canonicalLiteral
+  | .ret (.var _) => .stableVariable
+  | _ => .unsupported .requiresExplicitOpen
+
+end ObjectArgument
+
 end DOTCapture.Acyclic.GeneralExpression

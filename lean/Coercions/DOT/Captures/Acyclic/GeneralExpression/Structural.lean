@@ -7,6 +7,22 @@ import Coercions.DOT.Captures.Acyclic.Structural
 
 namespace DOTCapture.Acyclic.GeneralExpression
 
+namespace ObjectSig
+
+@[simp]
+theorem formedType_rename {source target : Scope}
+    (signature : ObjectSig source) (rho : Rename source target) :
+    formedType (signature.rename rho) = (formedType signature).rename rho := by
+  cases signature
+  rfl
+
+@[simp]
+theorem formedType_weaken {scope : Scope} (signature : ObjectSig scope) :
+    formedType signature.weaken = (formedType signature).weaken := by
+  exact formedType_rename signature Rename.succ
+
+end ObjectSig
+
 namespace Capture
 
 @[simp]
@@ -17,6 +33,20 @@ theorem seq_rename {source target : Scope} (first second : Capture source)
   cases first <;> rfl
 
 end Capture
+
+namespace ObjectArgument
+
+@[simp]
+theorem classify_rename {source target : Scope} (term : Term source)
+    (rho : Rename source target) :
+    classify (term.rename rho) = classify term := by
+  cases term with
+  | ret value => cases value <;> rfl
+  | select => rfl
+  | app => rfl
+  | let' => rfl
+
+end ObjectArgument
 
 mutual
 
