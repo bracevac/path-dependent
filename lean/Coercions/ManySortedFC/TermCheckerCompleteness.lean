@@ -154,6 +154,40 @@ private theorem check_complete_projection {scope : Sig}
 
 end Evidence
 
+namespace TheoryMorphism
+
+private theorem checkValidates_complete {scope : Sig}
+    {symbols : List StaticSort} {allRelations relations : List Relation}
+    {context : Ctx (StaticScope scope symbols allRelations)}
+    {target : Theory scope symbols relations}
+    {evidence : EvidenceArgs
+      (StaticScope scope symbols allRelations) relations}
+    (typing : Validates context target evidence) :
+    ∃ checked, checkValidates context target evidence = some checked := by
+  induction typing with
+  | nil => exact ⟨.nil, rfl⟩
+  | cons head tail tailIH =>
+      have headIH := Evidence.check_complete_projection head
+      obtain ⟨headChecked, headEq, headPropositionEq⟩ :=
+        Option.map_eq_some_iff.mp headIH
+      obtain ⟨tailChecked, tailEq⟩ := tailIH
+      cases headChecked with
+      | mk headProposition headCheckedTyping =>
+          dsimp at headPropositionEq
+          subst headProposition
+          simp [checkValidates, headEq, tailEq]
+
+private theorem check_complete {scope : Sig}
+    {symbols : List StaticSort} {relations : List Relation}
+    {context : Ctx scope}
+    {source target : Theory scope symbols relations}
+    {morphism : TheoryMorphism source target}
+    (typing : HasType context morphism) :
+    ∃ checked, check context morphism = some checked :=
+  checkValidates_complete typing
+
+end TheoryMorphism
+
 namespace Adapter
 
 private theorem check_complete_projection {scope : Sig}
@@ -187,6 +221,23 @@ private theorem check_complete_projection {scope : Sig}
           subst capturesProp
           subst shapeProp
           simp [synth, check, capturesEq, shapeEq]
+  | captured capturesTyping shapeTyping shapeIH =>
+      have capturesIH := Evidence.check_complete_projection capturesTyping
+      obtain ⟨capturesChecked, capturesEq, capturesPropEq⟩ :=
+        Option.map_eq_some_iff.mp capturesIH
+      obtain ⟨shapeChecked, shapeEq, shapeEndpointsEq⟩ :=
+        Option.map_eq_some_iff.mp shapeIH
+      cases capturesChecked with
+      | mk capturesProp checkedCapturesTyping =>
+        cases shapeChecked with
+        | mk shapeSource shapeTarget checkedShapeTyping =>
+          dsimp at capturesPropEq shapeEndpointsEq
+          subst capturesProp
+          cases Prod.mk.inj shapeEndpointsEq with
+          | intro shapeSourceEq shapeTargetEq =>
+            subst shapeSource
+            subst shapeTarget
+            simp [synth, check, capturesEq, shapeEq]
   | compose firstTyping secondTyping firstIH secondIH =>
       obtain ⟨firstChecked, firstEq, endpointsEq⟩ :=
         Option.map_eq_some_iff.mp firstIH
@@ -247,6 +298,32 @@ private theorem check_complete_projection {scope : Sig}
           subst payloadSource
           subst payloadTarget
           simp [synth, check, payloadEq]
+  | forallMorphism constraintsTyping bodyTyping bodyIH =>
+      obtain ⟨checkedConstraints, constraintsEq⟩ :=
+        TheoryMorphism.check_complete constraintsTyping
+      obtain ⟨bodyChecked, bodyEq, endpointsEq⟩ :=
+        Option.map_eq_some_iff.mp bodyIH
+      cases bodyChecked with
+      | mk bodySource bodyTarget checkedBodyTyping =>
+        dsimp at endpointsEq
+        cases Prod.mk.inj endpointsEq with
+        | intro bodySourceEq bodyTargetEq =>
+          subst bodySource
+          subst bodyTarget
+          simp [synth, check, constraintsEq, bodyEq]
+  | existsMorphism constraintsTyping payloadTyping payloadIH =>
+      obtain ⟨checkedConstraints, constraintsEq⟩ :=
+        TheoryMorphism.check_complete constraintsTyping
+      obtain ⟨payloadChecked, payloadEq, endpointsEq⟩ :=
+        Option.map_eq_some_iff.mp payloadIH
+      cases payloadChecked with
+      | mk payloadSource payloadTarget checkedPayloadTyping =>
+        dsimp at endpointsEq
+        cases Prod.mk.inj endpointsEq with
+        | intro payloadSourceEq payloadTargetEq =>
+          subst payloadSource
+          subst payloadTarget
+          simp [synth, check, constraintsEq, payloadEq]
 
 end Adapter
 

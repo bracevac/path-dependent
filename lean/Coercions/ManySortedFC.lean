@@ -8,6 +8,8 @@ import Coercions.ManySortedFC.Evidence
 import Coercions.ManySortedFC.EvidenceChecker
 import Coercions.ManySortedFC.TheoryModel
 import Coercions.ManySortedFC.TheoryModelChecker
+import Coercions.ManySortedFC.TheoryMorphism
+import Coercions.ManySortedFC.TheoryMorphismChecker
 import Coercions.ManySortedFC.Adapter
 import Coercions.ManySortedFC.Term
 import Coercions.ManySortedFC.TermTyping
@@ -21,6 +23,7 @@ import Coercions.ManySortedFC.Consistency
 import Coercions.ManySortedFC.StaticExamples
 import Coercions.ManySortedFC.ModelConsistency
 import Coercions.ManySortedFC.TermExamples
+import Coercions.ManySortedFC.TheoryMorphismExamples
 
 /-!
 Independent import root for the many-sorted FC target. This development is a

@@ -107,6 +107,8 @@ theorem erase_admin {scope : Sig} (adapter : Adapter scope)
       exact .refl
   | retagCapture =>
       exact .refl
+  | captured captures shape induction =>
+      exact induction term termValue
   | compose first second firstInduction secondInduction =>
       exact
         (secondInduction (first.erase term)
@@ -128,6 +130,10 @@ theorem erase_admin {scope : Sig} (adapter : Adapter scope)
   | forallT theory body induction =>
       exact induction term termValue
   | existsT theory payload induction =>
+      exact induction term termValue
+  | forallMorphism sourceTheory targetTheory constraints body induction =>
+      exact induction term termValue
+  | existsMorphism sourceTheory targetTheory constraints payload induction =>
       exact induction term termValue
 
 end ManySortedFC.Adapter

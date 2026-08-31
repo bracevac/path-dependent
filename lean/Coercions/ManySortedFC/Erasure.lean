@@ -296,6 +296,7 @@ def erase {scope : Sig} (adapter : Adapter scope) {runtimeScope : Nat}
   | .identity _ => term
   | .cast _ => term
   | .retagCapture _ _ _ _ _ => term
+  | .captured _ shape => shape.erase term
   | .compose first second => second.erase (first.erase term)
   | .function domain codomain =>
       .lam (.let'
@@ -303,6 +304,8 @@ def erase {scope : Sig} (adapter : Adapter scope) {runtimeScope : Nat}
         (codomain.erase (.var 0)))
   | .forallT _ body => body.erase term
   | .existsT _ payload => payload.erase term
+  | .forallMorphism _ _ _ body => body.erase term
+  | .existsMorphism _ _ _ payload => payload.erase term
 
 @[simp]
 theorem erase_identity {scope : Sig} (type : Ty scope)
@@ -323,6 +326,34 @@ theorem erase_retagCapture {scope : Sig} (source : Ty scope)
     {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
     (Adapter.retagCapture source targetCapture targetShape captures shape).erase
       term = term := rfl
+
+@[simp]
+theorem erase_captured {scope : Sig}
+    (captures : Evidence (.inclusion .capture) scope)
+    (shape : Adapter scope) {runtimeScope : Nat}
+    (term : Runtime.Tm runtimeScope) :
+    (Adapter.captured captures shape).erase term = shape.erase term := rfl
+
+/-- Combining two captured adapters before or after structural composition has
+the same runtime interpretation. -/
+theorem erase_compose_captured {scope : Sig}
+    (firstCapture secondCapture :
+      Evidence (.inclusion .capture) scope)
+    (firstShape secondShape : Adapter scope)
+    {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
+    (Adapter.compose
+      (.captured firstCapture firstShape)
+      (.captured secondCapture secondShape)).erase term =
+    (Adapter.captured
+      (.inclusionTrans firstCapture secondCapture)
+      (.compose firstShape secondShape)).erase term := rfl
+
+@[simp]
+theorem erase_captured_identity {scope : Sig}
+    (captures : Evidence (.inclusion .capture) scope)
+    (shape : Ty scope) {runtimeScope : Nat}
+    (term : Runtime.Tm runtimeScope) :
+    (Adapter.captured captures (.identity shape)).erase term = term := rfl
 
 @[simp]
 theorem erase_compose {scope : Sig} (first second : Adapter scope)
@@ -352,6 +383,26 @@ theorem erase_exists {scope : Sig} {symbols : List StaticSort}
     {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
     (Adapter.existsT theory payload).erase term = payload.erase term := rfl
 
+@[simp]
+theorem erase_forallMorphism {scope : Sig} {symbols : List StaticSort}
+    {relations : List Relation}
+    (sourceTheory targetTheory : Theory scope symbols relations)
+    (constraints : TheoryMorphism targetTheory sourceTheory)
+    (body : Adapter (StaticScope scope symbols relations))
+    {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
+    (Adapter.forallMorphism sourceTheory targetTheory constraints body).erase
+      term = body.erase term := rfl
+
+@[simp]
+theorem erase_existsMorphism {scope : Sig} {symbols : List StaticSort}
+    {relations : List Relation}
+    (sourceTheory targetTheory : Theory scope symbols relations)
+    (constraints : TheoryMorphism sourceTheory targetTheory)
+    (payload : Adapter (StaticScope scope symbols relations))
+    {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
+    (Adapter.existsMorphism sourceTheory targetTheory constraints payload).erase
+      term = payload.erase term := rfl
+
 /-- Renaming annotations or logical evidence cannot affect an adapter's
 runtime interpretation. -/
 @[simp]
@@ -363,6 +414,8 @@ theorem erase_rename {source target : Sig} (adapter : Adapter source)
   | identity => rfl
   | cast => rfl
   | retagCapture => rfl
+  | captured captures shape induction =>
+      simp [Adapter.rename, erase, induction]
   | compose first second firstInduction secondInduction =>
       simp [Adapter.rename, erase, firstInduction, secondInduction]
   | function domain codomain domainInduction codomainInduction =>
@@ -370,6 +423,10 @@ theorem erase_rename {source target : Sig} (adapter : Adapter source)
   | forallT theory body induction =>
       simp [Adapter.rename, erase, induction]
   | existsT theory payload induction =>
+      simp [Adapter.rename, erase, induction]
+  | forallMorphism sourceTheory targetTheory constraints body induction =>
+      simp [Adapter.rename, erase, induction]
+  | existsMorphism sourceTheory targetTheory constraints payload induction =>
       simp [Adapter.rename, erase, induction]
 
 /-- Adapter interpretation is natural in the surrounding runtime scope. -/
@@ -381,6 +438,8 @@ theorem erase_runtimeRename {scope : Sig} (adapter : Adapter scope)
   | identity => rfl
   | cast => rfl
   | retagCapture => rfl
+  | captured captures shape induction =>
+      simpa only [erase] using induction term rho
   | compose first second firstInduction secondInduction =>
       simp only [erase, secondInduction, firstInduction]
   | function domain codomain domainInduction codomainInduction =>
@@ -394,6 +453,10 @@ theorem erase_runtimeRename {scope : Sig} (adapter : Adapter scope)
       simpa only [erase] using induction term rho
   | existsT theory payload induction =>
       simpa only [erase] using induction term rho
+  | forallMorphism sourceTheory targetTheory constraints body induction =>
+      simpa only [erase] using induction term rho
+  | existsMorphism sourceTheory targetTheory constraints payload induction =>
+      simpa only [erase] using induction term rho
 
 /-- Every adapter sends an erased runtime value to a runtime value. -/
 theorem erase_value {scope : Sig} (adapter : Adapter scope)
@@ -404,11 +467,16 @@ theorem erase_value {scope : Sig} (adapter : Adapter scope)
   | identity => exact termValue
   | cast => exact termValue
   | retagCapture => exact termValue
+  | captured captures shape induction => exact induction termValue
   | compose first second firstInduction secondInduction =>
       exact secondInduction (firstInduction termValue)
   | function => exact .lam
   | forallT theory body induction => exact induction termValue
   | existsT theory payload induction => exact induction termValue
+  | forallMorphism sourceTheory targetTheory constraints body induction =>
+      exact induction termValue
+  | existsMorphism sourceTheory targetTheory constraints payload induction =>
+      exact induction termValue
 
 end Adapter
 
