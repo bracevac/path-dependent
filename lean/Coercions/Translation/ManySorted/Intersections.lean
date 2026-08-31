@@ -1,5 +1,6 @@
 import Coercions.Translation.ManySorted.Intersections.Encoding
 import Coercions.Translation.ManySorted.Intersections.EncodingMetatheory
+import Coercions.Translation.ManySorted.Intersections.EncodingConsistencyExamples
 import Coercions.Translation.ManySorted.Intersections.ConstraintRetention
 import Coercions.Translation.ManySorted.Intersections.ConstraintRetentionExamples
 import Coercions.Translation.ManySorted.Intersections.Preparation
@@ -9,6 +10,7 @@ import Coercions.Translation.ManySorted.Intersections.Coherence
 import Coercions.Translation.ManySorted.Intersections.CoherenceExamples
 import Coercions.Translation.ManySorted.Intersections.ConstraintOrderCoherenceExamples
 import Coercions.Translation.ManySorted.Intersections.TheoryPermutationCoherence
+import Coercions.Translation.ManySorted.Intersections.ConstraintPermutationCoherence
 import Coercions.Translation.ManySorted.Intersections.StableLayout
 import Coercions.Translation.ManySorted.Intersections.Projection
 import Coercions.Translation.ManySorted.Intersections.ProjectionExamples

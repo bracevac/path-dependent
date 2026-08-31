@@ -15,13 +15,11 @@ target-side coherence boundary needed after source preparation has established
 that two normalized signatures allocate the same member identities and differ
 only by retained-constraint order.
 
-The source-to-target bridge is deliberately separate.  The existing source
-`Signature.ConstraintEquivalent` is a flat proposition-valued `List.Perm`;
-preparation instead needs a sort-indexed permutation for each normalized label
-and a theorem that partial interval translation preserves that permutation.
-Adding that dependent bridge is follow-on work.  This module proves the
-strongest generic target statement without replacing the derivation-directed
-preparation API.
+The source-to-target bridge remains a separate layer: importing
+`ConstraintPermutationCoherence` carries source
+`Signature.ConstraintEquivalent` through normalized preparation to the packed
+proposition permutation consumed here.  This module keeps the target statement
+independent of the derivation-directed preparation API.
 -/
 
 namespace DOTCaptureToManySortedFC.Intersections.TheoryPermutationCoherence
