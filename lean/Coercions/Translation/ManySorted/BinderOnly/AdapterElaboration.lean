@@ -1,5 +1,5 @@
 import Coercions.DOT.Captures.BinderOnly.Subtyping
-import Coercions.Translation.ManySorted.BinderOnly.ContextEvidence
+import Coercions.Translation.ManySorted.BinderOnly.IntervalMorphismElaboration
 import Coercions.ManySortedFC.Administrative
 
 /-!
@@ -48,16 +48,185 @@ def compileAdapts {scope : DOTCapture.BinderOnly.Sig}
       let codomainCompiled := compileAdapts codomain
       ⟨.function domainCompiled.adapter codomainCompiled.adapter,
         .function domainCompiled.typing codomainCompiled.typing⟩
+  | .captured subcapture innerAdapter =>
+      let compiledSubcapture := compileIncludesTotal subcapture
+      let compiledInner := compileAdapts innerAdapter
+      ⟨.captured compiledSubcapture.evidence compiledInner.adapter,
+        .captured compiledSubcapture.typing compiledInner.typing⟩
   | @DOTCapture.BinderOnly.Adapts.forallI _ context sort interval
       _ _ body =>
       let bodyCompiled := compileAdapts body
       ⟨.forallT (translateInterval context interval) bodyCompiled.adapter,
         .forallT bodyCompiled.typing⟩
+  | @DOTCapture.BinderOnly.Adapts.forallBounds _ context sort
+      sourceInterval targetInterval sourceBody targetBody bounds body =>
+      match bounds with
+      | @DOTCapture.BinderOnly.Interval.Entails.unbounded _ _ sort =>
+          let interval :=
+            DOTCapture.BinderOnly.Interval.unbounded (sort := sort)
+          let constraintsCompiled := compileEntails
+            (@DOTCapture.BinderOnly.Interval.Entails.unbounded
+              _ context sort)
+          let bodyCompiled := compileAdapts body
+          ⟨.forallMorphism (translateInterval context interval)
+              (translateInterval context interval)
+              constraintsCompiled.morphism bodyCompiled.adapter,
+            .forallMorphism constraintsCompiled.typing bodyCompiled.typing⟩
+      | @DOTCapture.BinderOnly.Interval.Entails.lower _ _ _
+          availableLower requiredLower lowerEvidence =>
+          let sourceInterval := DOTCapture.BinderOnly.Interval.bounds
+            (.some requiredLower) .none
+          let targetInterval := DOTCapture.BinderOnly.Interval.bounds
+            (.some availableLower) .none
+          let constraintsCompiled := compileEntails
+            (DOTCapture.BinderOnly.Interval.Entails.lower lowerEvidence)
+          let bodyCompiled := compileAdapts body
+          have bodyTyping : ManySortedFC.Adapter.HasType
+              (translateContext (context.extendStatic targetInterval))
+              bodyCompiled.adapter
+              (translateTy (context.extendStatic sourceInterval) sourceBody)
+              (translateTy (context.extendStatic targetInterval)
+                targetBody) := by
+            rw [translateTy_lower_required_eq_available lowerEvidence
+              sourceBody]
+            exact bodyCompiled.typing
+          ⟨.forallMorphism (translateInterval context sourceInterval)
+              (translateInterval context targetInterval)
+              constraintsCompiled.morphism bodyCompiled.adapter,
+            .forallMorphism constraintsCompiled.typing bodyTyping⟩
+      | @DOTCapture.BinderOnly.Interval.Entails.upper _ _ _
+          availableUpper requiredUpper upperEvidence =>
+          let sourceInterval := DOTCapture.BinderOnly.Interval.bounds
+            .none (.some requiredUpper)
+          let targetInterval := DOTCapture.BinderOnly.Interval.bounds
+            .none (.some availableUpper)
+          let constraintsCompiled := compileEntails
+            (DOTCapture.BinderOnly.Interval.Entails.upper upperEvidence)
+          let bodyCompiled := compileAdapts body
+          have bodyTyping : ManySortedFC.Adapter.HasType
+              (translateContext (context.extendStatic targetInterval))
+              bodyCompiled.adapter
+              (translateTy (context.extendStatic sourceInterval) sourceBody)
+              (translateTy (context.extendStatic targetInterval)
+                targetBody) := by
+            rw [translateTy_upper_required_eq_available upperEvidence
+              sourceBody]
+            exact bodyCompiled.typing
+          ⟨.forallMorphism (translateInterval context sourceInterval)
+              (translateInterval context targetInterval)
+              constraintsCompiled.morphism bodyCompiled.adapter,
+            .forallMorphism constraintsCompiled.typing bodyTyping⟩
+      | @DOTCapture.BinderOnly.Interval.Entails.between _ _ _
+          availableLower availableUpper requiredLower requiredUpper
+          lowerEvidence upperEvidence =>
+          let sourceInterval := DOTCapture.BinderOnly.Interval.bounds
+            (.some requiredLower) (.some requiredUpper)
+          let targetInterval := DOTCapture.BinderOnly.Interval.bounds
+            (.some availableLower) (.some availableUpper)
+          let constraintsCompiled := compileEntails
+            (DOTCapture.BinderOnly.Interval.Entails.between
+              lowerEvidence upperEvidence)
+          let bodyCompiled := compileAdapts body
+          have bodyTyping : ManySortedFC.Adapter.HasType
+              (translateContext (context.extendStatic targetInterval))
+              bodyCompiled.adapter
+              (translateTy (context.extendStatic sourceInterval) sourceBody)
+              (translateTy (context.extendStatic targetInterval)
+                targetBody) := by
+            rw [translateTy_between_required_eq_available lowerEvidence
+              upperEvidence sourceBody]
+            exact bodyCompiled.typing
+          ⟨.forallMorphism (translateInterval context sourceInterval)
+              (translateInterval context targetInterval)
+              constraintsCompiled.morphism bodyCompiled.adapter,
+            .forallMorphism constraintsCompiled.typing bodyTyping⟩
   | @DOTCapture.BinderOnly.Adapts.existsI _ context sort interval
       _ _ body =>
       let bodyCompiled := compileAdapts body
       ⟨.existsT (translateInterval context interval) bodyCompiled.adapter,
         .existsT bodyCompiled.typing⟩
+  | @DOTCapture.BinderOnly.Adapts.existsBounds _ context sort
+      sourceInterval targetInterval sourceBody targetBody bounds payload =>
+      match bounds with
+      | @DOTCapture.BinderOnly.Interval.Entails.unbounded _ _ sort =>
+          let interval :=
+            DOTCapture.BinderOnly.Interval.unbounded (sort := sort)
+          let constraintsCompiled := compileEntails
+            (@DOTCapture.BinderOnly.Interval.Entails.unbounded
+              _ context sort)
+          let payloadCompiled := compileAdapts payload
+          ⟨.existsMorphism (translateInterval context interval)
+              (translateInterval context interval)
+              constraintsCompiled.morphism payloadCompiled.adapter,
+            .existsMorphism constraintsCompiled.typing payloadCompiled.typing⟩
+      | @DOTCapture.BinderOnly.Interval.Entails.lower _ _ _
+          availableLower requiredLower lowerEvidence =>
+          let sourceInterval := DOTCapture.BinderOnly.Interval.bounds
+            (.some availableLower) .none
+          let targetInterval := DOTCapture.BinderOnly.Interval.bounds
+            (.some requiredLower) .none
+          let constraintsCompiled := compileEntails
+            (DOTCapture.BinderOnly.Interval.Entails.lower lowerEvidence)
+          let payloadCompiled := compileAdapts payload
+          have payloadTyping : ManySortedFC.Adapter.HasType
+              (translateContext (context.extendStatic sourceInterval))
+              payloadCompiled.adapter
+              (translateTy (context.extendStatic sourceInterval) sourceBody)
+              (translateTy (context.extendStatic targetInterval)
+                targetBody) := by
+            rw [translateTy_lower_required_eq_available lowerEvidence
+              targetBody]
+            exact payloadCompiled.typing
+          ⟨.existsMorphism (translateInterval context sourceInterval)
+              (translateInterval context targetInterval)
+              constraintsCompiled.morphism payloadCompiled.adapter,
+            .existsMorphism constraintsCompiled.typing payloadTyping⟩
+      | @DOTCapture.BinderOnly.Interval.Entails.upper _ _ _
+          availableUpper requiredUpper upperEvidence =>
+          let sourceInterval := DOTCapture.BinderOnly.Interval.bounds
+            .none (.some availableUpper)
+          let targetInterval := DOTCapture.BinderOnly.Interval.bounds
+            .none (.some requiredUpper)
+          let constraintsCompiled := compileEntails
+            (DOTCapture.BinderOnly.Interval.Entails.upper upperEvidence)
+          let payloadCompiled := compileAdapts payload
+          have payloadTyping : ManySortedFC.Adapter.HasType
+              (translateContext (context.extendStatic sourceInterval))
+              payloadCompiled.adapter
+              (translateTy (context.extendStatic sourceInterval) sourceBody)
+              (translateTy (context.extendStatic targetInterval)
+                targetBody) := by
+            rw [translateTy_upper_required_eq_available upperEvidence
+              targetBody]
+            exact payloadCompiled.typing
+          ⟨.existsMorphism (translateInterval context sourceInterval)
+              (translateInterval context targetInterval)
+              constraintsCompiled.morphism payloadCompiled.adapter,
+            .existsMorphism constraintsCompiled.typing payloadTyping⟩
+      | @DOTCapture.BinderOnly.Interval.Entails.between _ _ _
+          availableLower availableUpper requiredLower requiredUpper
+          lowerEvidence upperEvidence =>
+          let sourceInterval := DOTCapture.BinderOnly.Interval.bounds
+            (.some availableLower) (.some availableUpper)
+          let targetInterval := DOTCapture.BinderOnly.Interval.bounds
+            (.some requiredLower) (.some requiredUpper)
+          let constraintsCompiled := compileEntails
+            (DOTCapture.BinderOnly.Interval.Entails.between
+              lowerEvidence upperEvidence)
+          let payloadCompiled := compileAdapts payload
+          have payloadTyping : ManySortedFC.Adapter.HasType
+              (translateContext (context.extendStatic sourceInterval))
+              payloadCompiled.adapter
+              (translateTy (context.extendStatic sourceInterval) sourceBody)
+              (translateTy (context.extendStatic targetInterval)
+                targetBody) := by
+            rw [translateTy_between_required_eq_available lowerEvidence
+              upperEvidence targetBody]
+            exact payloadCompiled.typing
+          ⟨.existsMorphism (translateInterval context sourceInterval)
+              (translateInterval context targetInterval)
+              constraintsCompiled.morphism payloadCompiled.adapter,
+            .existsMorphism constraintsCompiled.typing payloadTyping⟩
 
 namespace AdapterExamples
 
