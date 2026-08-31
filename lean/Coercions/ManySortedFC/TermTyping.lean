@@ -120,25 +120,26 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
         (.capturing closure (.forallT theory bodyType))
 
   /-- Static arguments and their evidence form a model in the ambient context;
-  the instantiated body type is the application result.  Invoking the value
-  charges its retained outer capture. -/
+  the instantiated body type is the application result.  The function may be
+  a computation: its immediate use is sequenced before invocation charges the
+  retained outer capture. -/
   | sapp {scope : Sig} {context : Ctx scope}
       {symbols : List StaticSort} {relations : List Relation}
       {theory : Theory scope symbols relations}
       {function : Tm scope}
       {functionType : Ty scope}
+      {functionUse : Capture scope}
       {bodyType : Ty (StaticScope scope symbols relations)}
       {symbolArguments : SymbolArgs scope symbols}
       {evidenceArguments : EvidenceArgs scope relations}
-      (functionValue : IsValue function)
-      (functionTyping : HasType context function .empty functionType)
+      (functionTyping : HasType context function functionUse functionType)
       (functionShape : functionType.stripCapture =
         .forallT theory bodyType)
       (satisfaction : Theory.SatisfiedBy context symbolArguments theory
         evidenceArguments) :
       HasType context
         (.sapp theory function symbolArguments evidenceArguments)
-        functionType.outerCapture
+        (functionUse.sequence functionType.outerCapture)
         (bodyType.instantiateStatic symbolArguments)
 
   /-- Package witnesses, certificates, and payload are all formed in the

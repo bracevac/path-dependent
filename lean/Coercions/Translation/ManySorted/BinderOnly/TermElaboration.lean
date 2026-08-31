@@ -332,8 +332,7 @@ def compileTerm
           (translateTy context functionType).outerCapture
           ((translateTy (context.extendStatic interval) bodyType).instantiateStatic
             targetSymbols) :=
-        .sapp compiledFunction.isValue compiledFunction.typing targetShape
-          compiledModel.satisfies
+        .sapp compiledFunction.typing targetShape compiledModel.satisfies
       exact
         { term := .sapp (translateInterval context interval)
             compiledFunction.term targetSymbols compiledModel.evidence

@@ -489,14 +489,12 @@ theorem synth_complete {scope : Sig} {context : Ctx scope}
       obtain ⟨checkedCapturesTyping, capturesEq⟩ :=
         checkCaptureInclusion_complete capturesTyping
       simp [synth, check, bodyValueEq, bodyEq, capturesEq]
-  | sapp functionValue functionTyping functionShape satisfaction functionIH =>
-      obtain ⟨checkedFunctionValue, functionValueEq⟩ :=
-        checkValue_complete functionValue
+  | sapp functionTyping functionShape satisfaction functionIH =>
       obtain ⟨checkedFunctionTyping, functionEq⟩ :=
         check_complete_of_synth functionIH
       obtain ⟨checkedSatisfaction, satisfactionEq⟩ :=
         Theory.checkSatisfaction_complete satisfaction
-      rename_i _ _ _ _ _ _ functionType _ _ _
+      rename_i _ _ _ _ _ functionType _ _ _ _
       cases functionType with
       | top => simp [Ty.stripCapture] at functionShape
       | bot => simp [Ty.stripCapture] at functionShape
@@ -508,14 +506,14 @@ theorem synth_complete {scope : Sig} {context : Ctx scope}
           change shape = Ty.forallT _ _ at functionShape
           subst shape
           simp [synth, check, Ty.stripCapture, Ty.outerCapture,
-            functionValueEq, functionEq, satisfactionEq]
+            functionEq, satisfactionEq]
       | forallT actualTheory actualBody =>
           simp [Ty.stripCapture] at functionShape
           rcases functionShape with ⟨rfl, rfl, theoryEq, bodyEq⟩
           cases theoryEq
           cases bodyEq
           simp [synth, check, Ty.stripCapture, Ty.outerCapture,
-            functionValueEq, functionEq, satisfactionEq]
+            functionEq, satisfactionEq]
   | pack satisfaction payloadValue payloadTyping capturesTyping payloadIH =>
       obtain ⟨checkedSatisfaction, satisfactionEq⟩ :=
         Theory.checkSatisfaction_complete satisfaction

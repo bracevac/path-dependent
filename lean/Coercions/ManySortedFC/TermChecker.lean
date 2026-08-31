@@ -10,11 +10,11 @@ independently synthesized type, capture, and certificate endpoint is compared
 by decidable equality.  Logical certificates, structural adapters, and local
 theory models are delegated to their proof-producing structural checkers.
 
-Ordinary applications and existential opening accept computations and
-sequence their immediate-use predictions explicitly.  Static abstractions
-and applications, existential package payloads, and adaptation retain
-explicit value boundaries where erasing static markers or structural
-adapters could otherwise change call-by-value behavior.
+Ordinary applications, static applications, and existential opening accept
+computations and sequence their immediate-use predictions explicitly. Static
+abstractions, existential package payloads, and adaptation retain explicit
+value boundaries where erasing static markers or structural adapters could
+otherwise change call-by-value behavior.
 -/
 
 namespace ManySortedFC
@@ -169,36 +169,30 @@ def check {scope : Sig} (context : Ctx scope) :
 
   | @Tm.sapp _ symbols relations theory function symbolArguments
       evidenceArguments => do
-      let functionValue ← checkValue function
       let functionChecked ← check context function
-      if functionPure : functionChecked.use = .empty then
-        let functionTyping : HasType context function .empty
-            functionChecked.type := by
-          simpa [functionPure] using functionChecked.typing
-        match functionShape : functionChecked.type.stripCapture with
-        | @Ty.forallT _ actualSymbols actualRelations actualTheory bodyType =>
-            let actual : Σ symbols, Σ relations,
-                Theory scope symbols relations :=
-              ⟨actualSymbols, actualRelations, actualTheory⟩
-            let expected : Σ symbols, Σ relations,
-                Theory scope symbols relations :=
-              ⟨symbols, relations, theory⟩
-            if interfaceMatches : actual = expected then
-              by
-                dsimp [actual, expected] at interfaceMatches
-                cases interfaceMatches
-                exact do
-                  let satisfaction ← Theory.checkSatisfaction context
-                    symbolArguments theory evidenceArguments
-                  pure ⟨functionChecked.type.outerCapture,
-                    bodyType.instantiateStatic symbolArguments,
-                    .sapp functionValue.typing functionTyping functionShape
-                      satisfaction⟩
-            else
-              none
-        | _ => none
-      else
-        none
+      match functionShape : functionChecked.type.stripCapture with
+      | @Ty.forallT _ actualSymbols actualRelations actualTheory bodyType =>
+          let actual : Σ symbols, Σ relations,
+              Theory scope symbols relations :=
+            ⟨actualSymbols, actualRelations, actualTheory⟩
+          let expected : Σ symbols, Σ relations,
+              Theory scope symbols relations :=
+            ⟨symbols, relations, theory⟩
+          if interfaceMatches : actual = expected then
+            by
+              dsimp [actual, expected] at interfaceMatches
+              cases interfaceMatches
+              exact do
+                let satisfaction ← Theory.checkSatisfaction context
+                  symbolArguments theory evidenceArguments
+                pure ⟨
+                  functionChecked.use.sequence
+                    functionChecked.type.outerCapture,
+                  bodyType.instantiateStatic symbolArguments,
+                  .sapp functionChecked.typing functionShape satisfaction⟩
+          else
+            none
+      | _ => none
 
   | .pack theory payloadType closure symbolArguments evidenceArguments
       payload captures => do
