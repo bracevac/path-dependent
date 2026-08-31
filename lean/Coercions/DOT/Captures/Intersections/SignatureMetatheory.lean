@@ -675,7 +675,9 @@ private theorem entry_of_occurrence_mem
     ∃ entry ∈ signature.entries, occurrence ∈ entry.occurrences := by
   simpa [occurrences, List.mem_flatMap] using membership
 
-private theorem entries_eq_of_same_label
+/-- A normalized signature has one entry per label.  In particular, two
+entries found at the same label are the same intrinsically sorted entry. -/
+theorem entries_eq_of_same_label
     {Expr : StaticSort -> Type u} {signature : Signature Expr}
     (normalized : signature.Normalized)
     {first second : Entry Expr}

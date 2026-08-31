@@ -120,6 +120,16 @@ private def weakenOuter {sourceScope : Source.Scope}
     (layout.member? path label).map fun member =>
       member.rename (ManySortedFC.Rename.weakenSymbols symbols)
 
+/-- Weaken an ambient source/target layout below a complete local symbol
+allocation.  Preparation exposes this operation so its occurrence theorem
+can state endpoint translation in the exact names-only scope it uses. -/
+def weakenLayout {sourceScope : Source.Scope}
+    {targetScope : Target.Sig}
+    (layout : OuterLayout sourceScope targetScope)
+    (symbols : List ManySortedFC.StaticSort) :
+    OuterLayout sourceScope (Target.SymbolScope targetScope symbols) :=
+  weakenOuter layout symbols
+
 private def expectType {scope : Target.Sig} (label : Nat) :
     MemberName scope -> Except Error
       (Target.BVar scope (.symbol .type))
@@ -219,7 +229,23 @@ private def expression {sort : Source.StaticSort}
   | type value => exact (type layout members value).map .type
   | capture value => exact (capture layout members value).map .capture
 
-private def interval {sort : Source.StaticSort}
+/-- Sort-preserving wrapper for translating either kind of static bound. -/
+def translateStaticExpr {sort : Source.StaticSort}
+    {sourceScope : Source.Scope} {targetScope : Target.Sig}
+    (layout : OuterLayout sourceScope targetScope)
+    (members : List (MemberName targetScope))
+    (source : Source.StaticExpr sort sourceScope) :
+    Except Error
+      (ManySortedFC.StaticExpr (targetSort sort) targetScope) :=
+  expression layout members source
+
+/-! The public wrappers below expose the two computations that preparation
+uses for one retained interval and for an interval list.  They are kept
+separate from the bound-translation API because their result retains the
+source interval boundary needed by the occurrence-retention metatheory. -/
+
+/-- Translate both endpoints of one retained source interval. -/
+def translateInterval {sort : Source.StaticSort}
     {sourceScope : Source.Scope} {targetScope : Target.Sig}
     (layout : OuterLayout sourceScope targetScope)
     (members : List (MemberName targetScope))
@@ -228,10 +254,11 @@ private def interval {sort : Source.StaticSort}
       (Source.Interval
         (ManySortedFC.StaticExpr (targetSort sort) targetScope)) := do
   pure
-    { lower := ← expression layout members source.lower
-      upper := ← expression layout members source.upper }
+    { lower := ← translateStaticExpr layout members source.lower
+      upper := ← translateStaticExpr layout members source.upper }
 
-private def intervals {sort : Source.StaticSort}
+/-- Translate an interval list without changing its order or cardinality. -/
+def translateIntervals {sort : Source.StaticSort}
     {sourceScope : Source.Scope} {targetScope : Target.Sig}
     (layout : OuterLayout sourceScope targetScope)
     (members : List (MemberName targetScope)) :
@@ -241,10 +268,10 @@ private def intervals {sort : Source.StaticSort}
           (ManySortedFC.StaticExpr (targetSort sort) targetScope)))
   | [] => .ok []
   | current :: remaining => do
-      pure ((← interval layout members current) ::
-        (← intervals layout members remaining))
+      pure ((← translateInterval layout members current) ::
+        (← translateIntervals layout members remaining))
 
-private def entries {sourceScope : Source.Scope}
+def entries {sourceScope : Source.Scope}
     {targetScope : Target.Sig}
     (layout : OuterLayout sourceScope targetScope)
     (allMembers : List (MemberName targetScope)) :
@@ -256,7 +283,7 @@ private def entries {sourceScope : Source.Scope}
       .type allocatedLabel name :: allocatedRemaining => do
       if _labelsMatch : label = allocatedLabel then
         pure (.type label name
-          (← intervals layout allMembers sourceIntervals) ::
+          (← translateIntervals layout allMembers sourceIntervals) ::
           (← entries layout allMembers remaining allocatedRemaining))
       else
         .error (.allocationMismatch label)
@@ -264,12 +291,33 @@ private def entries {sourceScope : Source.Scope}
       .capture allocatedLabel name :: allocatedRemaining => do
       if _labelsMatch : label = allocatedLabel then
         pure (.capture label name
-          (← intervals layout allMembers sourceIntervals) ::
+          (← translateIntervals layout allMembers sourceIntervals) ::
           (← entries layout allMembers remaining allocatedRemaining))
       else
         .error (.allocationMismatch label)
   | entry :: _, _ => .error (.allocationMismatch entry.label)
   | [], _ :: _ => .error (.allocationMismatch 0)
+
+/-! ## Public bound-translation boundary -/
+
+/-- Translate one capture bound after the complete local member allocation is
+available. -/
+def translateCapture {sourceScope : Source.Scope}
+    {targetScope : Target.Sig}
+    (layout : OuterLayout sourceScope targetScope)
+    (members : List (MemberName targetScope))
+    (source : Source.Capture sourceScope) :
+    Except Error (Target.Capture targetScope) :=
+  capture layout members source
+
+/-- Translate one type bound after the complete local member allocation is
+available.  Local references may point anywhere in `members`. -/
+def translateType {sourceScope : Source.Scope}
+    {targetScope : Target.Sig}
+    (layout : OuterLayout sourceScope targetScope)
+    (members : List (MemberName targetScope))
+    (source : Source.Ty sourceScope) : Except Error (Target.Ty targetScope) :=
+  type layout members source
 
 end Compile
 
@@ -281,7 +329,7 @@ def prepare {sourceScope : Source.Scope} {targetScope : Target.Sig}
     Except Error (PreparedSignature targetScope) := do
   let symbols := Allocation.symbols signature.entries
   let allocated := Allocation.members targetScope signature.entries
-  let namesLayout := Compile.weakenOuter layout symbols
+  let namesLayout := Compile.weakenLayout layout symbols
   let preparedEntries ← Compile.entries namesLayout allocated
     signature.entries allocated
   pure { symbols := symbols, entries := preparedEntries }

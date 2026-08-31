@@ -54,8 +54,8 @@ theorem Ty.rename_id {scope : Scope} (type : Ty scope) :
       simp [Ty.rename, Ty.rename_id domain, Ty.rename_id codomain]
   | capturing captures shape =>
       simp [Ty.rename, Capture.rename_id, Ty.rename_id shape]
-  | object interface =>
-      simp [Ty.rename, Interface.rename_id interface]
+  | object object =>
+      simp [Ty.rename, ObjectType.rename_id object]
 
 @[simp]
 theorem Interface.rename_id {scope : Scope} (interface : Interface scope) :
@@ -69,6 +69,14 @@ theorem Interface.rename_id {scope : Scope} (interface : Interface scope) :
   | inter left right =>
       simp [Interface.rename, Interface.rename_id left,
         Interface.rename_id right]
+
+@[simp]
+theorem ObjectType.rename_id {scope : Scope} (object : ObjectType scope) :
+    object.rename DOTCapture.Acyclic.Rename.id = object := by
+  cases object with
+  | mk interface representation outerCapture =>
+      simp [ObjectType.rename, Interface.rename_id interface,
+        Ty.rename_id representation, Capture.rename_id outerCapture]
 
 end
 
@@ -102,8 +110,8 @@ theorem Ty.rename_comp {first second third : Scope} (type : Ty first)
         Ty.rename_comp codomain rho₁ rho₂]
   | capturing captures shape =>
       simp [Ty.rename, Capture.rename_comp, Ty.rename_comp shape rho₁ rho₂]
-  | object interface =>
-      simp [Ty.rename, Interface.rename_comp interface rho₁ rho₂]
+  | object object =>
+      simp [Ty.rename, ObjectType.rename_comp object rho₁ rho₂]
 
 @[simp]
 theorem Interface.rename_comp {first second third : Scope}
@@ -121,6 +129,18 @@ theorem Interface.rename_comp {first second third : Scope}
   | inter left right =>
       simp [Interface.rename, Interface.rename_comp left rho₁ rho₂,
         Interface.rename_comp right rho₁ rho₂]
+
+@[simp]
+theorem ObjectType.rename_comp {first second third : Scope}
+    (object : ObjectType first) (rho₁ : Rename first second)
+    (rho₂ : Rename second third) :
+    (object.rename rho₁).rename rho₂ =
+      object.rename (rho₁.comp rho₂) := by
+  cases object with
+  | mk interface representation outerCapture =>
+      simp [ObjectType.rename, Interface.rename_comp interface rho₁ rho₂,
+        Ty.rename_comp representation rho₁ rho₂,
+        Capture.rename_comp outerCapture rho₁ rho₂]
 
 end
 
@@ -219,7 +239,14 @@ theorem collect_embedM10ObjectSig {scope : Scope}
     (embedM10ObjectSig signature).collect =
       .ok (embeddedM10Signature signature) := by
   cases signature
-  rfl
+  simp [embedM10ObjectSig, Interface.collect, embeddedM10Signature, bind,
+    Except.bind,
+    DOTCapture.Intersections.Signature.merge?,
+    DOTCapture.Intersections.Signature.singletonType,
+    DOTCapture.Intersections.Signature.singletonCapture,
+    DOTCapture.Intersections.Signature.mergeEntries?,
+    DOTCapture.Intersections.Signature.insertEntry?, m10TypeLabel,
+    m10CaptureLabel, DOTCapture.Intersections.Entry.label]
 
 theorem embeddedM10Signature_has_two_entries {scope : Scope}
     (signature : DOTCapture.Acyclic.ObjectSig scope) :

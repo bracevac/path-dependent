@@ -53,8 +53,9 @@ inductive Capture : Scope -> Type where
   | singleton {scope : Scope} (path : Path scope) : Capture scope
   | ref {scope : Scope} (reference : StaticRef .capture scope) : Capture scope
 
-/-- Types may select any labeled type member.  Object types contain a raw
-intersection tree; normalization and sort-conflict checking are separate. -/
+/-- Types may select any labeled type member.  Object types carry a local
+static theory, one representation type over that theory, and an ambient
+capture. -/
 inductive Ty : Scope -> Type where
   | top {scope : Scope} : Ty scope
   | bot {scope : Scope} : Ty scope
@@ -63,7 +64,7 @@ inductive Ty : Scope -> Type where
   | arr {scope : Scope} (domain codomain : Ty scope) : Ty scope
   | capturing {scope : Scope} (captures : Capture scope) (shape : Ty scope) :
       Ty scope
-  | object {scope : Scope} (interface : Interface scope) : Ty scope
+  | object {scope : Scope} (object : ObjectType scope) : Ty scope
 
 /-- Raw member-interface trees.  Repeated labels are intentional: collection
 identifies their member identity and retains all interval occurrences. -/
@@ -75,11 +76,21 @@ inductive Interface : Scope -> Type where
       (lower upper : Capture scope) : Interface scope
   | inter {scope : Scope} (left right : Interface scope) : Interface scope
 
+/-- One positive object interface.  `representation` may mention local
+members declared by `interface`; `outerCapture` is separate because a merged
+capture member can have several upper constraints and hence no canonical
+single upper endpoint. -/
+inductive ObjectType : Scope -> Type where
+  | mk {scope : Scope} (interface : Interface scope)
+      (representation : Ty scope) (outerCapture : Capture scope) :
+      ObjectType scope
+
 end
 
 deriving instance DecidableEq for Capture
 deriving instance DecidableEq for Ty
 deriving instance DecidableEq for Interface
+deriving instance DecidableEq for ObjectType
 
 /-- The sort-indexed expression family consumed by normalized signatures. -/
 inductive StaticExpr : StaticSort -> Scope -> Type where
@@ -146,7 +157,7 @@ def Ty.rename {source target : Scope} (type : Ty source)
   | .arr domain codomain => .arr (domain.rename rho) (codomain.rename rho)
   | .capturing captures shape =>
       .capturing (captures.rename rho) (shape.rename rho)
-  | .object interface => .object (interface.rename rho)
+  | .object object => .object (object.rename rho)
 
 def Interface.rename {source target : Scope} (interface : Interface source)
     (rho : Rename source target) : Interface target :=
@@ -157,6 +168,13 @@ def Interface.rename {source target : Scope} (interface : Interface source)
   | .captureMember label lower upper =>
       .captureMember label (lower.rename rho) (upper.rename rho)
   | .inter left right => .inter (left.rename rho) (right.rename rho)
+
+def ObjectType.rename {source target : Scope} (object : ObjectType source)
+    (rho : Rename source target) : ObjectType target :=
+  match object with
+  | .mk interface representation outerCapture =>
+      .mk (interface.rename rho) (representation.rename rho)
+        (outerCapture.rename rho)
 
 end
 
@@ -228,7 +246,7 @@ def embedM10Ty {scope : Scope} : DOTCapture.Acyclic.Ty scope -> Ty scope
   | .arr domain codomain => .arr (embedM10Ty domain) (embedM10Ty codomain)
   | .capturing captures shape =>
       .capturing (embedM10Capture captures) (embedM10Ty shape)
-  | .object signature => .object (embedM10ObjectSig signature)
+  | .object signature => .object (embedM10ObjectType signature)
 
 def embedM10ObjectSig {scope : Scope} :
     DOTCapture.Acyclic.ObjectSig scope -> Interface scope
@@ -238,6 +256,15 @@ def embedM10ObjectSig {scope : Scope} :
           (embedM10Ty typeUpper))
         (.captureMember m10CaptureLabel (embedM10Capture captureLower)
           (embedM10Capture captureUpper))
+
+def embedM10ObjectType {scope : Scope} :
+    DOTCapture.Acyclic.ObjectSig scope -> ObjectType scope
+  | signature =>
+      .mk (embedM10ObjectSig signature)
+        (.capturing
+          (.ref (.localCaptureMember m10CaptureLabel))
+          (.ref (.localTypeMember m10TypeLabel)))
+        (embedM10Capture signature.captureUpper)
 
 end
 

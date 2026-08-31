@@ -15,11 +15,12 @@ import Coercions.Translation.ManySorted.BinderOnly.TermElaboration
 import Coercions.Translation.ManySorted.BinderOnly.SourceErasure
 import Coercions.Translation.ManySorted.BinderOnly.TermElaborationErasure
 import Coercions.Translation.ManySorted.Acyclic
+import Coercions.Translation.ManySorted.Intersections
 
 /-!
 # Shared bridge infrastructure for translations into many-sorted FC
 
-This local root collects source-independent translation infrastructure.  It
-is separate from the target library: binder-only source syntax and future DOT
-path/member layouts both reuse the sort-indexed static-slot abstraction.
+This root collects the binder-only bridge, the acyclic compiler case study,
+and the cumulative captured-intersection compiler. It remains separate from
+the independently buildable target library.
 -/

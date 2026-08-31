@@ -111,7 +111,7 @@ theorem m10_embedding_has_type_then_capture_entry :
           [⟨StaticExpr.type .bot, StaticExpr.type .top⟩],
         DOTCapture.Intersections.Entry.capture m10CaptureLabel
           [⟨StaticExpr.capture .empty, StaticExpr.capture .empty⟩]] := by
-  rfl
+  simp [embeddedM10Signature, m10Signature, embedM10Ty, embedM10Capture]
 
 end Examples
 end DOTCapture.Intersections.Source

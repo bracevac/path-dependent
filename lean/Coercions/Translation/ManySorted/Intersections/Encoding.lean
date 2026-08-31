@@ -95,6 +95,17 @@ deriving DecidableEq
 
 namespace PreparedEntry
 
+/-- Two directed inclusion slots for each retained interval.  This recursive
+form keeps the relation index definitionally aligned with the theory and
+opened-occurrence recursors. -/
+@[reducible]
+def intervalRelations {alpha : Type} (sort : Target.StaticSort) :
+    List alpha -> List Target.Relation
+  | [] => []
+  | _ :: remaining =>
+      .inclusion sort :: .inclusion sort ::
+        intervalRelations sort remaining
+
 def label {scope : Target.Sig} : PreparedEntry scope -> Nat
   | .type label _ _ => label
   | .capture label _ _ => label
@@ -110,9 +121,9 @@ def member {scope : Target.Sig} : PreparedEntry scope -> MemberName scope
 /-- Two directed propositions are retained for every interval occurrence. -/
 def relations {scope : Target.Sig} : PreparedEntry scope -> List Target.Relation
   | .type _ _ intervals =>
-      intervals.flatMap fun _ => [.inclusion .type, .inclusion .type]
+      intervalRelations .type intervals
   | .capture _ _ intervals =>
-      intervals.flatMap fun _ => [.inclusion .capture, .inclusion .capture]
+      intervalRelations .capture intervals
 
 @[simp]
 theorem member_label {scope : Target.Sig} (entry : PreparedEntry scope) :
@@ -136,9 +147,17 @@ deriving DecidableEq
 
 namespace PreparedSignature
 
+/-- Concatenate the relation spines of prepared entries in source order. -/
+@[reducible]
+def entriesRelations {scope : Target.Sig} :
+    List (PreparedEntry scope) -> List Target.Relation
+  | [] => []
+  | entry :: remaining =>
+      entry.relations ++ entriesRelations remaining
+
 def relations {scope : Target.Sig} (prepared : PreparedSignature scope) :
     List Target.Relation :=
-  prepared.entries.flatMap PreparedEntry.relations
+  entriesRelations prepared.entries
 
 def members {scope : Target.Sig} (prepared : PreparedSignature scope) :
     List (MemberName (Target.SymbolScope scope prepared.symbols)) :=
@@ -148,7 +167,7 @@ end PreparedSignature
 
 /-! ## Emitting a target theory after allocation -/
 
-private def appendTheory {scope : Target.Sig}
+def appendTheory {scope : Target.Sig}
     {symbols : List Target.StaticSort}
     {leftRelations rightRelations : List Target.Relation}
     (left : Target.Theory scope symbols leftRelations)
@@ -159,36 +178,34 @@ private def appendTheory {scope : Target.Sig}
   | .cons proposition rest =>
       .cons proposition (appendTheory rest right)
 
-private def typeIntervalsTheory {scope : Target.Sig}
+def typeIntervalsTheory {scope : Target.Sig}
     {symbols : List Target.StaticSort}
     (name : Target.BVar (Target.SymbolScope scope symbols) (.symbol .type)) :
     (intervals : List (Source.Interval
       (Target.StaticExpr .type (Target.SymbolScope scope symbols)))) ->
       Target.Theory scope symbols
-        (intervals.flatMap fun _ =>
-          [.inclusion .type, .inclusion .type])
+        (PreparedEntry.intervalRelations .type intervals)
   | [] => .nil
   | interval :: remaining =>
       .cons (.inclusion interval.lower (.type (.tvar name)))
         (.cons (.inclusion (.type (.tvar name)) interval.upper)
           (typeIntervalsTheory name remaining))
 
-private def captureIntervalsTheory {scope : Target.Sig}
+def captureIntervalsTheory {scope : Target.Sig}
     {symbols : List Target.StaticSort}
     (name : Target.BVar (Target.SymbolScope scope symbols)
       (.symbol .capture)) :
     (intervals : List (Source.Interval
       (Target.StaticExpr .capture (Target.SymbolScope scope symbols)))) ->
       Target.Theory scope symbols
-        (intervals.flatMap fun _ =>
-          [.inclusion .capture, .inclusion .capture])
+        (PreparedEntry.intervalRelations .capture intervals)
   | [] => .nil
   | interval :: remaining =>
       .cons (.inclusion interval.lower (.capture (.cvar name)))
         (.cons (.inclusion (.capture (.cvar name)) interval.upper)
           (captureIntervalsTheory name remaining))
 
-private def entryTheory {scope : Target.Sig}
+def entryTheory {scope : Target.Sig}
     {symbols : List Target.StaticSort}
     (entry : PreparedEntry (Target.SymbolScope scope symbols)) :
     Target.Theory scope symbols entry.relations :=
@@ -196,27 +213,346 @@ private def entryTheory {scope : Target.Sig}
   | .type _ name intervals => typeIntervalsTheory name intervals
   | .capture _ name intervals => captureIntervalsTheory name intervals
 
-private def entriesTheory {scope : Target.Sig}
+def entriesTheory {scope : Target.Sig}
     {symbols : List Target.StaticSort} :
     (entries : List (PreparedEntry (Target.SymbolScope scope symbols))) ->
       Target.Theory scope symbols
-        (entries.flatMap PreparedEntry.relations)
+        (PreparedSignature.entriesRelations entries)
   | [] => .nil
   | entry :: remaining =>
       appendTheory (entryTheory entry) (entriesTheory remaining)
 
-/-- A generated names-first target theory together with the allocation table
-from which it was produced. -/
+/-- A generated names-first target theory is determined by its allocation
+table.  Keeping the theory derived prevents constructing an `Encoding` whose
+occurrence coordinates describe different propositions from its theory. -/
 structure Encoding (scope : Target.Sig) where
   prepared : PreparedSignature scope
-  theory : Target.Theory scope prepared.symbols prepared.relations
 deriving DecidableEq
+
+namespace Encoding
+
+/-- The target theory emitted by this encoding's prepared signature. -/
+def theory {scope : Target.Sig} (encoding : Encoding scope) :
+    Target.Theory scope encoding.prepared.symbols
+      encoding.prepared.relations :=
+  entriesTheory encoding.prepared.entries
+
+end Encoding
 
 /-- Emit all propositions without allocating or inspecting another name. -/
 def encode {scope : Target.Sig} (prepared : PreparedSignature scope) :
     Encoding scope where
   prepared := prepared
-  theory := entriesTheory prepared.entries
+
+/-! ## Occurrence coordinates in the fully opened theory -/
+
+/-- One retained interval after the generated theory has been fully opened.
+The constructor records the shared member name, both translated bounds, and
+the two exact evidence coordinates exported for that interval. -/
+inductive OpenedOccurrence (scope : Target.Sig)
+    (symbols : List Target.StaticSort) (relations : List Target.Relation) where
+  | type (label : Nat)
+      (name : Target.BVar (Target.StaticScope scope symbols relations)
+        (.symbol .type))
+      (lower upper : Target.StaticExpr .type
+        (Target.StaticScope scope symbols relations))
+      (lowerEvidence upperEvidence : Target.BVar
+        (Target.StaticScope scope symbols relations)
+        (.evidence (.inclusion .type))) :
+      OpenedOccurrence scope symbols relations
+  | capture (label : Nat)
+      (name : Target.BVar (Target.StaticScope scope symbols relations)
+        (.symbol .capture))
+      (lower upper : Target.StaticExpr .capture
+        (Target.StaticScope scope symbols relations))
+      (lowerEvidence upperEvidence : Target.BVar
+        (Target.StaticScope scope symbols relations)
+        (.evidence (.inclusion .capture))) :
+      OpenedOccurrence scope symbols relations
+deriving DecidableEq
+
+namespace OpenedOccurrence
+
+def label {scope : Target.Sig} {symbols : List Target.StaticSort}
+    {relations : List Target.Relation} :
+    OpenedOccurrence scope symbols relations -> Nat
+  | .type label _ _ _ _ _ => label
+  | .capture label _ _ _ _ _ => label
+
+def sort {scope : Target.Sig} {symbols : List Target.StaticSort}
+    {relations : List Target.Relation} :
+    OpenedOccurrence scope symbols relations -> Target.StaticSort
+  | .type _ _ _ _ _ _ => .type
+  | .capture _ _ _ _ _ _ => .capture
+
+def member {scope : Target.Sig} {symbols : List Target.StaticSort}
+    {relations : List Target.Relation} :
+    OpenedOccurrence scope symbols relations ->
+      MemberName (Target.StaticScope scope symbols relations)
+  | .type label name _ _ _ _ => .type label name
+  | .capture label name _ _ _ _ => .capture label name
+
+def lowerProposition {scope : Target.Sig}
+    {symbols : List Target.StaticSort} {relations : List Target.Relation} :
+    (occurrence : OpenedOccurrence scope symbols relations) ->
+      Target.Proposition (.inclusion occurrence.sort)
+        (Target.StaticScope scope symbols relations)
+  | .type _ name lower _ _ _ =>
+      .inclusion lower (.type (.tvar name))
+  | .capture _ name lower _ _ _ =>
+      .inclusion lower (.capture (.cvar name))
+
+def upperProposition {scope : Target.Sig}
+    {symbols : List Target.StaticSort} {relations : List Target.Relation} :
+    (occurrence : OpenedOccurrence scope symbols relations) ->
+      Target.Proposition (.inclusion occurrence.sort)
+        (Target.StaticScope scope symbols relations)
+  | .type _ name _ upper _ _ =>
+      .inclusion (.type (.tvar name)) upper
+  | .capture _ name _ upper _ _ =>
+      .inclusion (.capture (.cvar name)) upper
+
+def lowerEvidence {scope : Target.Sig}
+    {symbols : List Target.StaticSort} {relations : List Target.Relation} :
+    (occurrence : OpenedOccurrence scope symbols relations) ->
+      Target.BVar (Target.StaticScope scope symbols relations)
+        (.evidence (.inclusion occurrence.sort))
+  | .type _ _ _ _ evidence _ => evidence
+  | .capture _ _ _ _ evidence _ => evidence
+
+def upperEvidence {scope : Target.Sig}
+    {symbols : List Target.StaticSort} {relations : List Target.Relation} :
+    (occurrence : OpenedOccurrence scope symbols relations) ->
+      Target.BVar (Target.StaticScope scope symbols relations)
+        (.evidence (.inclusion occurrence.sort))
+  | .type _ _ _ _ _ evidence => evidence
+  | .capture _ _ _ _ _ evidence => evidence
+
+/-- Both evidence coordinates look up the exact propositions carried by this
+opened interval. -/
+def EvidenceMatches {scope : Target.Sig}
+    {symbols : List Target.StaticSort} {relations : List Target.Relation}
+    (context : ManySortedFC.Ctx
+      (Target.StaticScope scope symbols relations))
+    (occurrence : OpenedOccurrence scope symbols relations) : Prop :=
+  context.lookup occurrence.lowerEvidence =
+      .evidence occurrence.lowerProposition ∧
+    context.lookup occurrence.upperEvidence =
+      .evidence occurrence.upperProposition
+
+@[simp]
+theorem member_label {scope : Target.Sig}
+    {symbols : List Target.StaticSort} {relations : List Target.Relation}
+    (occurrence : OpenedOccurrence scope symbols relations) :
+    occurrence.member.label = occurrence.label := by
+  cases occurrence <;> rfl
+
+@[simp]
+theorem member_sort {scope : Target.Sig}
+    {symbols : List Target.StaticSort} {relations : List Target.Relation}
+    (occurrence : OpenedOccurrence scope symbols relations) :
+    occurrence.member.sort = occurrence.sort := by
+  cases occurrence <;> rfl
+
+/-- Install two newer evidence binders while retaining every coordinate of an
+already-opened older occurrence. -/
+def weakenTwo {scope : Target.Sig}
+    {symbols : List Target.StaticSort} {relations : List Target.Relation}
+    (newest older : Target.Relation)
+    (occurrence : OpenedOccurrence scope symbols relations) :
+    OpenedOccurrence scope symbols (newest :: older :: relations) :=
+  let rho := ManySortedFC.Rename.weakenMany
+    (Target.StaticScope scope symbols relations)
+    [.evidence newest, .evidence older]
+  match occurrence with
+  | .type label name lower upper lowerEvidence upperEvidence =>
+      .type label (rho.var name) (lower.rename rho) (upper.rename rho)
+        (rho.var lowerEvidence) (rho.var upperEvidence)
+  | .capture label name lower upper lowerEvidence upperEvidence =>
+      .capture label (rho.var name) (lower.rename rho) (upper.rename rho)
+        (rho.var lowerEvidence) (rho.var upperEvidence)
+
+/-- Opening two newer assumptions preserves the exact evidence lookups of an
+older retained occurrence. -/
+theorem weakenTwo_evidenceMatches {scope : Target.Sig}
+    {symbols : List Target.StaticSort} {relations : List Target.Relation}
+    {newest older : Target.Relation}
+    (context : ManySortedFC.Ctx
+      (Target.StaticScope scope symbols relations))
+    (olderProposition : Target.Proposition older
+      (Target.StaticScope scope symbols relations))
+    (newestProposition : Target.Proposition newest
+      ((Target.StaticScope scope symbols relations) ▹ .evidence older))
+    (occurrence : OpenedOccurrence scope symbols relations)
+    (validity : occurrence.EvidenceMatches context) :
+    (occurrence.weakenTwo newest older).EvidenceMatches
+      (show ManySortedFC.Ctx
+          (Target.StaticScope scope symbols (newest :: older :: relations))
+        from (context.extendEvidence olderProposition).extendEvidence
+          newestProposition) := by
+  cases occurrence with
+  | type label name lower upper lowerEvidence upperEvidence =>
+      rcases validity with ⟨lowerValid, upperValid⟩
+      simp only [OpenedOccurrence.lowerEvidence,
+        OpenedOccurrence.upperEvidence, OpenedOccurrence.lowerProposition,
+        OpenedOccurrence.upperProposition] at lowerValid upperValid
+      constructor
+      · change
+          ((context.extendEvidence olderProposition).extendEvidence
+            newestProposition).lookup
+              (.there (.there lowerEvidence)) = _
+        simp only [ManySortedFC.Ctx.extendEvidence]
+        rw [ManySortedFC.Ctx.lookup_there,
+          ManySortedFC.Ctx.lookup_there]
+        have transported := congrArg
+          (fun binding =>
+            (binding.weaken (newest := .evidence older)).weaken
+              (newest := .evidence newest)) lowerValid
+        exact transported.trans (by
+          simp [weakenTwo, lowerProposition, ManySortedFC.Binding.weaken,
+            ManySortedFC.Binding.rename,
+            ManySortedFC.Proposition.rename, ManySortedFC.StaticExpr.rename,
+            ManySortedFC.Ty.rename,
+            ManySortedFC.Rename.weakenMany, ManySortedFC.Rename.comp,
+            ManySortedFC.Rename.succ]
+          rfl)
+      · change
+          ((context.extendEvidence olderProposition).extendEvidence
+            newestProposition).lookup
+              (.there (.there upperEvidence)) = _
+        simp only [ManySortedFC.Ctx.extendEvidence]
+        rw [ManySortedFC.Ctx.lookup_there,
+          ManySortedFC.Ctx.lookup_there]
+        have transported := congrArg
+          (fun binding =>
+            (binding.weaken (newest := .evidence older)).weaken
+              (newest := .evidence newest)) upperValid
+        exact transported.trans (by
+          simp [weakenTwo, upperProposition, ManySortedFC.Binding.weaken,
+            ManySortedFC.Binding.rename,
+            ManySortedFC.Proposition.rename, ManySortedFC.StaticExpr.rename,
+            ManySortedFC.Ty.rename,
+            ManySortedFC.Rename.weakenMany, ManySortedFC.Rename.comp,
+            ManySortedFC.Rename.succ]
+          rfl)
+  | capture label name lower upper lowerEvidence upperEvidence =>
+      rcases validity with ⟨lowerValid, upperValid⟩
+      simp only [OpenedOccurrence.lowerEvidence,
+        OpenedOccurrence.upperEvidence, OpenedOccurrence.lowerProposition,
+        OpenedOccurrence.upperProposition] at lowerValid upperValid
+      constructor
+      · change
+          ((context.extendEvidence olderProposition).extendEvidence
+            newestProposition).lookup
+              (.there (.there lowerEvidence)) = _
+        simp only [ManySortedFC.Ctx.extendEvidence]
+        rw [ManySortedFC.Ctx.lookup_there,
+          ManySortedFC.Ctx.lookup_there]
+        have transported := congrArg
+          (fun binding =>
+            (binding.weaken (newest := .evidence older)).weaken
+              (newest := .evidence newest)) lowerValid
+        exact transported.trans (by
+          simp [weakenTwo, lowerProposition, ManySortedFC.Binding.weaken,
+            ManySortedFC.Binding.rename,
+            ManySortedFC.Proposition.rename, ManySortedFC.StaticExpr.rename,
+            ManySortedFC.Capture.rename,
+            ManySortedFC.Rename.weakenMany, ManySortedFC.Rename.comp,
+            ManySortedFC.Rename.succ]
+          rfl)
+      · change
+          ((context.extendEvidence olderProposition).extendEvidence
+            newestProposition).lookup
+              (.there (.there upperEvidence)) = _
+        simp only [ManySortedFC.Ctx.extendEvidence]
+        rw [ManySortedFC.Ctx.lookup_there,
+          ManySortedFC.Ctx.lookup_there]
+        have transported := congrArg
+          (fun binding =>
+            (binding.weaken (newest := .evidence older)).weaken
+              (newest := .evidence newest)) upperValid
+        exact transported.trans (by
+          simp [weakenTwo, upperProposition, ManySortedFC.Binding.weaken,
+            ManySortedFC.Binding.rename,
+            ManySortedFC.Proposition.rename, ManySortedFC.StaticExpr.rename,
+            ManySortedFC.Capture.rename,
+            ManySortedFC.Rename.weakenMany, ManySortedFC.Rename.comp,
+            ManySortedFC.Rename.succ]
+          rfl)
+
+end OpenedOccurrence
+
+def openTypeIntervals {scope : Target.Sig}
+    {symbols : List Target.StaticSort} (label : Nat)
+    (name : Target.BVar (Target.SymbolScope scope symbols) (.symbol .type)) :
+    (intervals : List (Source.Interval
+      (Target.StaticExpr .type (Target.SymbolScope scope symbols)))) ->
+    (tailRelations : List Target.Relation) ->
+    List (OpenedOccurrence scope symbols tailRelations) ->
+    List (OpenedOccurrence scope symbols
+      (PreparedEntry.intervalRelations .type intervals ++ tailRelations))
+  | [], _, tail => tail
+  | interval :: remaining, tailRelations, tail =>
+      let older := openTypeIntervals label name remaining tailRelations tail
+      let remainingRelations : List Target.Relation :=
+        PreparedEntry.intervalRelations .type remaining
+      let fullRelations : List Target.Relation :=
+        ManySortedFC.Relation.inclusion .type ::
+          ManySortedFC.Relation.inclusion .type ::
+          (remainingRelations ++ tailRelations)
+      let rho := ManySortedFC.Rename.weakenMany
+        (Target.SymbolScope scope symbols)
+        (ManySortedFC.evidenceKinds fullRelations)
+      let current : OpenedOccurrence scope symbols fullRelations :=
+        .type label (rho.var name) (interval.lower.rename rho)
+          (interval.upper.rename rho) .here (.there .here)
+      current :: older.map fun occurrence =>
+        occurrence.weakenTwo
+          (ManySortedFC.Relation.inclusion .type)
+          (ManySortedFC.Relation.inclusion .type)
+
+def openCaptureIntervals {scope : Target.Sig}
+    {symbols : List Target.StaticSort} (label : Nat)
+    (name : Target.BVar (Target.SymbolScope scope symbols)
+      (.symbol .capture)) :
+    (intervals : List (Source.Interval
+      (Target.StaticExpr .capture (Target.SymbolScope scope symbols)))) ->
+    (tailRelations : List Target.Relation) ->
+    List (OpenedOccurrence scope symbols tailRelations) ->
+    List (OpenedOccurrence scope symbols
+      (PreparedEntry.intervalRelations .capture intervals ++ tailRelations))
+  | [], _, tail => tail
+  | interval :: remaining, tailRelations, tail =>
+      let older := openCaptureIntervals label name remaining tailRelations tail
+      let remainingRelations : List Target.Relation :=
+        PreparedEntry.intervalRelations .capture remaining
+      let fullRelations : List Target.Relation :=
+        ManySortedFC.Relation.inclusion .capture ::
+          ManySortedFC.Relation.inclusion .capture ::
+          (remainingRelations ++ tailRelations)
+      let rho := ManySortedFC.Rename.weakenMany
+        (Target.SymbolScope scope symbols)
+        (ManySortedFC.evidenceKinds fullRelations)
+      let current : OpenedOccurrence scope symbols fullRelations :=
+        .capture label (rho.var name) (interval.lower.rename rho)
+          (interval.upper.rename rho) .here (.there .here)
+      current :: older.map fun occurrence =>
+        occurrence.weakenTwo
+          (ManySortedFC.Relation.inclusion .capture)
+          (ManySortedFC.Relation.inclusion .capture)
+
+def openEntries {scope : Target.Sig}
+    {symbols : List Target.StaticSort} :
+    (entries : List (PreparedEntry (Target.SymbolScope scope symbols))) ->
+    List (OpenedOccurrence scope symbols
+      (PreparedSignature.entriesRelations entries))
+  | [] => []
+  | .type label name intervals :: remaining =>
+      openTypeIntervals label name intervals
+        (PreparedSignature.entriesRelations remaining) (openEntries remaining)
+  | .capture label name intervals :: remaining =>
+      openCaptureIntervals label name intervals
+        (PreparedSignature.entriesRelations remaining) (openEntries remaining)
 
 namespace Encoding
 
@@ -238,6 +574,12 @@ def openedMembers {scope : Target.Sig} (encoding : Encoding scope) :
       (ManySortedFC.Rename.weakenMany
         (Target.SymbolScope scope encoding.symbols)
         (ManySortedFC.evidenceKinds encoding.relations))
+
+/-- One coordinate record per retained interval occurrence, in source
+occurrence order.  Repeated intervals remain repeated records. -/
+def openedOccurrences {scope : Target.Sig} (encoding : Encoding scope) :
+    List (OpenedOccurrence scope encoding.symbols encoding.relations) :=
+  openEntries encoding.prepared.entries
 
 end Encoding
 
