@@ -21,19 +21,19 @@ end M10Examples
 open Embedding
 
 /-- Canonical literal arguments embed through the direct negative rule. -/
-noncomputable def literalApplicationTyping :=
+def literalApplicationTyping :=
   embedTermTyping M10Examples.literalApplicationTyping
 
 /-- Stable variable arguments embed through the opened-model rule. -/
-noncomputable def stableApplicationTyping :=
+def stableApplicationTyping :=
   embedTermTyping M10Examples.stableApplicationTyping
 
 /-- Administrative computation of a negative consumer remains typable. -/
-noncomputable def computedConsumerApplicationTyping :=
+def computedConsumerApplicationTyping :=
   embedTermTyping M10Examples.computedConsumerApplicationTyping
 
 /-- A computed positive object retains its explicit source opening boundary. -/
-noncomputable def openedApplicationTyping :=
+def openedApplicationTyping :=
   embedTermTyping M10Examples.openedApplicationTyping
 
 end DOTCapture.Intersections.GeneralExpression.TypingEmbeddingExamples

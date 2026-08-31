@@ -424,34 +424,37 @@ def embedHasUpper {scope : Scope} {context : M10.Ctx scope}
 
 /-- Every proof-relevant M10 inclusion has the same proof tree after
 embedding. The payload-root case uses the opened M11 representation. -/
-noncomputable def embedIncludes {scope : Scope} {context : M10.Ctx scope}
+def embedIncludes {scope : Scope} {context : M10.Ctx scope}
     {sort : StaticSort} {source target : M10.StaticExpr sort scope}
     (proof : DOTCapture.Acyclic.Includes context source target) :
     Includes (embedCtx context) (embedStaticExpr source)
-      (embedStaticExpr target) := by
-  induction proof with
-  | refl => exact .refl
-  | trans first second firstIH secondIH => exact .trans firstIH secondIH
-  | lower bound => simpa using Includes.source (.lower (embedHasLower bound))
-  | upper bound => simpa using Includes.source (.upper (embedHasUpper bound))
-  | typeTop => simpa [embedStaticExpr, Source.embedM10Ty] using Includes.typeTop
-  | typeBottom =>
+      (embedStaticExpr target) :=
+  match proof with
+  | .refl => .refl
+  | .trans first second => .trans (embedIncludes first) (embedIncludes second)
+  | .lower bound => by
+      simpa using Includes.source (.lower (embedHasLower bound))
+  | .upper bound => by
+      simpa using Includes.source (.upper (embedHasUpper bound))
+  | .typeTop => by
+      simpa [embedStaticExpr, Source.embedM10Ty] using Includes.typeTop
+  | .typeBottom => by
       simpa [embedStaticExpr, Source.embedM10Ty] using Includes.typeBottom
-  | typeCapturing captures shape capturesIH shapeIH =>
+  | .typeCapturing captures shape => by
       simpa [embedStaticExpr, Source.embedM10Ty] using
-        Includes.typeCapturing capturesIH shapeIH
-  | captureEmpty =>
+        Includes.typeCapturing (embedIncludes captures) (embedIncludes shape)
+  | .captureEmpty => by
       simpa [embedStaticExpr, Source.embedM10Capture] using
         Includes.captureEmpty
-  | captureUnionLeft =>
+  | .captureUnionLeft => by
       simpa [embedStaticExpr, Source.embedM10Capture] using
         Includes.captureUnionLeft
-  | captureUnionRight =>
+  | .captureUnionRight => by
       simpa [embedStaticExpr, Source.embedM10Capture] using
         Includes.captureUnionRight
-  | captureUnionElim left right leftIH rightIH =>
-      exact .captureUnionElim leftIH rightIH
-  | @payloadRoot receiver signature exposes =>
+  | .captureUnionElim left right =>
+      .captureUnionElim (embedIncludes left) (embedIncludes right)
+  | @DOTCapture.Acyclic.Includes.payloadRoot _ _ receiver signature exposes => by
       have mapped := Includes.payloadRoot (embedExposes exposes)
       rw [embedRepresentationAt] at mapped
       have endpoint := embedTy_outerCapture receiver.valueMemberType
@@ -531,7 +534,7 @@ theorem embedRealizedRepresentation {scope : Scope}
 
 /-- The four M10 construction constraints form exactly the realization of
 the embedded two-member interface. -/
-noncomputable def embedRealization {scope : Scope}
+def embedRealization {scope : Scope}
     {context : M10.Ctx scope} {signature : M10.ObjectSig scope}
     {typeWitness : DOTCapture.Acyclic.Ty scope}
     {captureWitness : DOTCapture.Acyclic.Capture scope}
@@ -577,7 +580,7 @@ theorem embedRealization_model {scope : Scope}
 
 /-- M10 signature weakening is the fixed two-member instance of M11's
 model-transforming, cross-shape object adaptation. -/
-noncomputable def embedAdapts {scope : Scope} {context : M10.Ctx scope}
+def embedAdapts {scope : Scope} {context : M10.Ctx scope}
     {available expected : M10.ObjectSig scope}
     (adaptation :
       DOTCapture.Acyclic.GeneralExpression.ObjectSig.Adapts context
@@ -674,7 +677,7 @@ theorem embedCtx_extend {scope : Scope} (context : M10.Ctx scope)
 
 /-- The M10 positive-object rule is exactly M11 realization plus the same
 payload shape and capture obligations. -/
-noncomputable def embedObjectValueTyping {scope : Scope}
+def embedObjectValueTyping {scope : Scope}
     {context : M10.Ctx scope} {signature : M10.ObjectSig scope}
     {typeWitness payloadType : DOTCapture.Acyclic.Ty scope}
     {captureWitness : DOTCapture.Acyclic.Capture scope}
@@ -710,7 +713,7 @@ noncomputable def embedObjectValueTyping {scope : Scope}
 
 /-- Stable M10 payload selection is the reserved-label instance of M11
 stable selection. -/
-noncomputable def embedSelectionTyping {scope : Scope}
+def embedSelectionTyping {scope : Scope}
     {context : M10.Ctx scope} {receiver : DOTCapture.Acyclic.Path scope}
     {signature : M10.ObjectSig scope}
     (exposes : DOTCapture.Acyclic.ExposesObject context receiver signature) :
@@ -722,7 +725,7 @@ noncomputable def embedSelectionTyping {scope : Scope}
     (Term.HasType.select (embedExposes exposes))
 
 /-- A canonical M10 literal remains a canonical direct negative argument. -/
-noncomputable def embedLiteralArgumentTyping {scope : Scope}
+def embedLiteralArgumentTyping {scope : Scope}
     {context : M10.Ctx scope} {available expected : M10.ObjectSig scope}
     {typeWitness payloadType : DOTCapture.Acyclic.Ty scope}
     {captureWitness : DOTCapture.Acyclic.Capture scope}
@@ -763,7 +766,7 @@ noncomputable def embedLiteralArgumentTyping {scope : Scope}
       embedIncludes (.trans captureUpper adaptation.captureUpper)
 
 /-- An M10 stable variable remains a stable direct negative argument. -/
-noncomputable def embedStableArgumentTyping {scope : Scope}
+def embedStableArgumentTyping {scope : Scope}
     {context : M10.Ctx scope} {name : DOTCapture.Acyclic.Var scope}
     {available expected : M10.ObjectSig scope}
     (canonical : context.lookup name =
@@ -803,7 +806,7 @@ mutual
 
 /-- Every M10 value derivation embeds at the pointwise-translated context and
 type. Legacy negative object lambdas use the compile-neutral M11 constructor. -/
-noncomputable def embedValueTyping {scope : Scope}
+def embedValueTyping {scope : Scope}
     {context : M10.Ctx scope}
     {value : DOTCapture.Acyclic.GeneralExpression.Value scope}
     {type : DOTCapture.Acyclic.Ty scope}
@@ -867,7 +870,7 @@ noncomputable def embedValueTyping {scope : Scope}
 
 /-- Canonical and stable M10 negative arguments remain canonical and stable
 after embedding. -/
-noncomputable def embedObjectArgumentTyping {scope : Scope}
+def embedObjectArgumentTyping {scope : Scope}
     {context : M10.Ctx scope}
     {argument : DOTCapture.Acyclic.GeneralExpression.Term scope}
     {expected : M10.ObjectSig scope}
@@ -885,7 +888,7 @@ noncomputable def embedObjectArgumentTyping {scope : Scope}
 
 /-- Every M10 negative-function derivation embeds without inserting source
 syntax. Administrative lets retain their original computational spine. -/
-noncomputable def embedObjectFunctionTyping {scope : Scope}
+def embedObjectFunctionTyping {scope : Scope}
     {context : M10.Ctx scope}
     {function : DOTCapture.Acyclic.GeneralExpression.Term scope}
     {use : DOTCapture.Acyclic.Capture scope}
@@ -953,7 +956,7 @@ noncomputable def embedObjectFunctionTyping {scope : Scope}
 /-- Every M10 term derivation embeds with pointwise-translated use and result
 indices. The legacy constructors keep direct object application and object
 opening compile-neutral at the M11 source boundary. -/
-noncomputable def embedTermTyping {scope : Scope}
+def embedTermTyping {scope : Scope}
     {context : M10.Ctx scope}
     {term : DOTCapture.Acyclic.GeneralExpression.Term scope}
     {use : DOTCapture.Acyclic.Capture scope}

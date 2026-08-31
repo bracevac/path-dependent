@@ -27,13 +27,12 @@ open DOTCapture.Intersections.GeneralExpression
 
 abbrev emptyReady := CompilerConservativity.emptyReady
 
-/-! ## Computable witnesses for the embedded programs
+/-! ## Explicit witnesses for the embedded programs
 
-`embedTermTyping` proves the general M10 embedding but is intentionally
-noncomputable: it eliminates arbitrary derivations.  Since this file runs the
-derivation-directed compiler, the three closed regressions spell out the same
-embedded derivations as computable data.  Their term indices remain exactly
-`Embedding.embedTerm` of the M10 programs.
+These three closed regressions spell out the embedded derivations to keep
+their target construction visible. Their term indices remain exactly
+`Embedding.embedTerm` of the M10 programs. The executable embedding itself is
+tested directly in `CompilerSuccessConservativity`.
 -/
 
 namespace Embedded
