@@ -1,6 +1,7 @@
 import Coercions.ManySortedFC.Context
 import Coercions.ManySortedFC.Evidence
 import Coercions.ManySortedFC.EvidenceChecker
+import Coercions.ManySortedFC.ModalTheoryMap
 import Coercions.ManySortedFC.TheoryMorphismChecker
 
 /-!
@@ -52,6 +53,22 @@ inductive Adapter : Sig → Type where
   the codomain covariantly. -/
   | function {scope : Sig} (domain codomain : Adapter scope) : Adapter scope
 
+  /-- Modal adaptation is contravariant in the requirements and covariant in
+  the suspended result.  The theory map interprets every source requirement
+  using the assumptions available under the target lock; the inner adapter is
+  checked in that target modal context. -/
+  | modal {scope : Sig}
+      {sourceSeparationCount targetSeparationCount : Nat}
+      {sourceModes targetModes : List CaptureMode}
+      (sourceRequirements : ModalContext sourceSeparationCount sourceModes
+        scope)
+      (targetRequirements : ModalContext targetSeparationCount targetModes
+        scope)
+      (requirements : ModalTheoryMap scope targetSeparationCount targetModes
+        sourceSeparationCount sourceModes)
+      (result : Adapter
+        (ModalScope scope targetSeparationCount targetModes)) : Adapter scope
+
   /-- Same-theory universal congruence.  Operationally this represents static
   abstraction/application around the adapted body. -/
   | forallT {scope : Sig} {symbols : List StaticSort}
@@ -82,6 +99,20 @@ inductive Adapter : Sig → Type where
 
 deriving DecidableEq
 
+namespace Ty
+
+/-- Close a type formed under a modal context by dropping its proof-only
+binders.  Modal contexts bind no term or static-symbol variables, so this
+operation only removes scope bookkeeping. -/
+def closeModal {scope : Sig} {separationCount : Nat}
+    {modes : List CaptureMode}
+    (type : Ty (ModalScope scope separationCount modes)) : Ty scope :=
+  type.substitute
+    (StaticSubst.id.dropEvidenceBlock
+      (modalRelations separationCount modes))
+
+end Ty
+
 namespace Adapter
 
 /-! ## Structural renaming -/
@@ -101,6 +132,11 @@ def rename {source target : Sig} (adapter : Adapter source)
       .compose (first.rename rho) (second.rename rho)
   | .function domain codomain =>
       .function (domain.rename rho) (codomain.rename rho)
+  | @Adapter.modal _ _sourceCount targetCount _sourceModes targetModes
+      sourceRequirements targetRequirements requirements result =>
+      .modal (sourceRequirements.rename rho) (targetRequirements.rename rho)
+        (requirements.rename rho)
+        (result.rename (rho.liftModal targetCount targetModes))
   | @Adapter.forallT _ symbols relations theory body =>
       .forallT (theory.rename rho)
         (body.rename (rho.liftStatic symbols relations))
@@ -148,6 +184,9 @@ theorem rename_id {scope : Sig} (adapter : Adapter scope) :
       simp [rename, firstInduction, secondInduction]
   | function domain codomain domainInduction codomainInduction =>
       simp [rename, domainInduction, codomainInduction]
+  | modal sourceRequirements targetRequirements requirements result
+      induction =>
+      simp [rename, induction]
   | @forallT scope symbols relations theory body induction =>
       simp [rename, induction]
   | @existsT scope symbols relations theory payload induction =>
@@ -176,6 +215,10 @@ theorem rename_comp {first second third : Sig} (adapter : Adapter first)
       simp [rename, firstInduction, secondInduction]
   | function domain codomain domainInduction codomainInduction =>
       simp [rename, domainInduction, codomainInduction]
+  | @modal scope sourceCount targetCount sourceModes targetModes
+      sourceRequirements targetRequirements requirements result induction =>
+      simp [rename, induction, ModalTheoryMap.rename_comp,
+        Rename.liftModal_comp]
   | @forallT scope symbols relations theory body induction =>
       simp [rename, induction, Theory.rename_comp, Rename.liftStatic_comp]
   | @existsT scope symbols relations theory payload induction =>
@@ -244,6 +287,28 @@ inductive HasType : {scope : Sig} → Ctx scope → Adapter scope →
       HasType context (.function domain codomain)
         (.arr sourceDomain sourceCodomain)
         (.arr targetDomain targetCodomain)
+
+  | modal {scope : Sig} {context : Ctx scope}
+      {sourceSeparationCount targetSeparationCount : Nat}
+      {sourceModes targetModes : List CaptureMode}
+      {sourceRequirements : ModalContext sourceSeparationCount sourceModes
+        scope}
+      {targetRequirements : ModalContext targetSeparationCount targetModes
+        scope}
+      {requirements : ModalTheoryMap scope targetSeparationCount targetModes
+        sourceSeparationCount sourceModes}
+      {result : Adapter
+        (ModalScope scope targetSeparationCount targetModes)}
+      {sourceResult targetResult : Ty
+        (ModalScope scope targetSeparationCount targetModes)}
+      (requirementsTyping : ModalTheoryMap.HasType context targetRequirements
+        sourceRequirements requirements)
+      (resultTyping : HasType (context.extendModal targetRequirements) result
+        sourceResult targetResult) :
+      HasType context
+        (.modal sourceRequirements targetRequirements requirements result)
+        (.modal sourceRequirements sourceResult.closeModal)
+        (.modal targetRequirements targetResult.closeModal)
 
   | forallT {scope : Sig} {context : Ctx scope}
       {symbols : List StaticSort} {relations : List Relation}
@@ -384,6 +449,15 @@ def check {scope : Sig} (context : Ctx scope) (adapter : Adapter scope) :
       pure ⟨.arr domainChecked.target codomainChecked.source,
         .arr domainChecked.source codomainChecked.target,
         .function domainChecked.typing codomainChecked.typing⟩
+  | @Adapter.modal _ sourceCount targetCount sourceModes targetModes
+      sourceRequirements targetRequirements requirements result => do
+      let requirementsTyping ← ModalTheoryMap.check context
+        targetRequirements sourceRequirements requirements
+      let resultChecked ← check (context.extendModal targetRequirements)
+        result
+      pure ⟨.modal sourceRequirements resultChecked.source.closeModal,
+        .modal targetRequirements resultChecked.target.closeModal,
+        .modal requirementsTyping resultChecked.typing⟩
   | .forallT theory body => do
       let bodyChecked ← check (context.extendTheory theory) body
       pure ⟨.forallT theory bodyChecked.source,

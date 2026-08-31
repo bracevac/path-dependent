@@ -80,6 +80,15 @@ def liftStatic {source target : Sig}
   (substitution.liftMany (symbolKinds symbols)).liftMany
     (evidenceKinds relations)
 
+/-- Preserve every proof binder introduced by a modal lock. -/
+def liftModal {source target : Sig}
+    (substitution : TermStaticSubst source target)
+    (separationCount : Nat) (modes : List CaptureMode) :
+    TermStaticSubst (ModalScope source separationCount modes)
+      (ModalScope target separationCount modes) :=
+  substitution.liftMany
+    (evidenceKinds (modalRelations separationCount modes))
+
 /-- Replace the newest symbol binder. -/
 def instantiateSymbol {source target : Sig}
     (substitution : TermStaticSubst source target) {sort : StaticSort}
@@ -259,6 +268,22 @@ def substitute {source target : Sig} {relations : List Relation}
 
 end EvidenceArgs
 
+namespace ModalTheoryMap
+
+/-- Substitute ambient static names throughout a modal requirement map. -/
+def substitute {source target : Sig}
+    {requiredSeparationCount availableSeparationCount : Nat}
+    {requiredModes availableModes : List CaptureMode}
+    (mapping : ModalTheoryMap source availableSeparationCount availableModes
+      requiredSeparationCount requiredModes)
+    (substitution : TermStaticSubst source target) :
+    ModalTheoryMap target availableSeparationCount availableModes
+      requiredSeparationCount requiredModes where
+  evidence := mapping.evidence.substitute
+    (substitution.liftModal availableSeparationCount availableModes)
+
+end ModalTheoryMap
+
 namespace TheoryMorphism
 
 /-- Substitute both endpoint theories and the morphism's proof block. -/
@@ -296,6 +321,13 @@ def substitute {source target : Sig} (adapter : Adapter source)
   | .function domain codomain =>
       .function (domain.substitute substitution)
         (codomain.substitute substitution)
+  | @Adapter.modal _ _sourceCount targetCount _sourceModes targetModes
+      sourceRequirements targetRequirements requirements result =>
+      .modal (sourceRequirements.substitute substitution.static)
+        (targetRequirements.substitute substitution.static)
+        (requirements.substitute substitution)
+        (result.substitute
+          (substitution.liftModal targetCount targetModes))
   | @Adapter.forallT _ symbols relations theory body =>
       .forallT (theory.substitute substitution.static)
         (body.substitute (substitution.liftStatic symbols relations))
@@ -343,6 +375,19 @@ def substituteStatic {source target : Sig} (term : Tm source)
   | .adapt inner adapter =>
       .adapt (inner.substituteStatic substitution)
         (adapter.substitute substitution)
+  | @Tm.lock _ separationCount modes requirements result closure body
+      captures =>
+      .lock (requirements.substitute substitution.static)
+        (result.substitute substitution.static)
+        (closure.substitute substitution.static)
+        (body.substituteStatic
+          (substitution.liftModal separationCount modes))
+        (captures.substitute
+          (substitution.liftModal separationCount modes))
+  | .unlock requirements inner evidenceArguments =>
+      .unlock (requirements.substitute substitution.static)
+        (inner.substituteStatic substitution)
+        (evidenceArguments.substitute substitution)
   | @Tm.slam _ symbols relations theory closure body captures =>
       .slam (theory.substitute substitution.static)
         (closure.substitute substitution.static)
@@ -390,6 +435,16 @@ def instantiateStatic {scope : Sig} {symbols : List StaticSort}
   body.substituteStatic
     (TermStaticSubst.fromStaticArgs TermStaticSubst.id
       symbolArguments evidenceArguments)
+
+/-- Replace the assumptions of a modal lock by externally checked evidence. -/
+def instantiateModal {scope : Sig} {separationCount : Nat}
+    {modes : List CaptureMode}
+    (body : Tm (ModalScope scope separationCount modes))
+    (evidenceArguments : EvidenceArgs scope
+      (modalRelations separationCount modes)) : Tm scope :=
+  body.substituteStatic
+    (TermStaticSubst.fromEvidenceArgs TermStaticSubst.id
+      evidenceArguments)
 
 end Tm
 

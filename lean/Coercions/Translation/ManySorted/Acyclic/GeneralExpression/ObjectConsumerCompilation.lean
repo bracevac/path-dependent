@@ -63,6 +63,8 @@ def hasExistentialBoundary {scope : ManySortedFC.Sig} : Target.Tm scope → Bool
   | .let' _ _ rhs body _ =>
       hasExistentialBoundary rhs || hasExistentialBoundary body
   | .adapt term _ => hasExistentialBoundary term
+  | .lock _ _ _ body _ => hasExistentialBoundary body
+  | .unlock _ term _ => hasExistentialBoundary term
   | .slam _ _ body _ => hasExistentialBoundary body
   | .sapp _ function _ _ => hasExistentialBoundary function
   | .pack _ _ _ _ _ _ _ => true

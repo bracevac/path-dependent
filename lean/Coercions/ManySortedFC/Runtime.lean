@@ -1,9 +1,10 @@
 /-!
 # Erased runtime for the many-sorted coercion calculus
 
-The runtime retains only ordinary term variables, unit, functions,
-application, and let. Static names, constraints, evidence, and adapters are
-absent by construction.
+The runtime retains ordinary term variables, unit, functions, application,
+let, and primitive suspension. Static names, constraints, evidence, and
+adapters are absent by construction. A suspension is a value regardless of
+its body; forcing it is the only operation that starts evaluating that body.
 
 Runtime scopes count term binders directly. This keeps the runtime independent
 of the source calculus and of the target's heterogeneous static scope while
@@ -80,6 +81,10 @@ inductive Tm : Nat -> Type where
   | app {scope : Nat} (function argument : Tm scope) : Tm scope
   | let' {scope : Nat} (rhs : Tm scope)
       (body : Tm (Nat.succ scope)) : Tm scope
+  /-- Delay a computation without evaluating its body. -/
+  | suspend {scope : Nat} (body : Tm scope) : Tm scope
+  /-- Evaluate a suspension-producing computation and then run its body. -/
+  | force {scope : Nat} (suspension : Tm scope) : Tm scope
 deriving DecidableEq
 
 namespace Tm
@@ -95,6 +100,8 @@ def rename {source target : Nat} (term : Tm source)
       .app (function.rename rho) (argument.rename rho)
   | .let' rhs body =>
       .let' (rhs.rename rho) (body.rename rho.lift)
+  | .suspend body => .suspend (body.rename rho)
+  | .force suspension => .force (suspension.rename rho)
 
 /-- Weaken a runtime term below one fresh term binder. -/
 def weaken {scope : Nat} (term : Tm scope) : Tm (Nat.succ scope) :=
@@ -112,6 +119,10 @@ theorem rename_id {scope : Nat} (term : Tm scope) :
       simp only [rename, functionInduction, argumentInduction]
   | let' rhs body rhsInduction bodyInduction =>
       simp only [rename, Renaming.lift_id, rhsInduction, bodyInduction]
+  | suspend body induction =>
+      simp only [rename, induction]
+  | force suspension induction =>
+      simp only [rename, induction]
 
 @[simp]
 theorem rename_comp {first middle last : Nat} (term : Tm first)
@@ -128,6 +139,10 @@ theorem rename_comp {first middle last : Nat} (term : Tm first)
       simp only [rename, functionInduction, argumentInduction]
   | let' rhs body rhsInduction bodyInduction =>
       simp only [rename, rhsInduction, bodyInduction, Renaming.lift_comp]
+  | suspend body induction =>
+      simp only [rename, induction]
+  | force suspension induction =>
+      simp only [rename, induction]
 
 end Tm
 
@@ -181,6 +196,8 @@ def subst {source target : Nat} (term : Tm source)
       .app (function.subst substitution) (argument.subst substitution)
   | .let' rhs body =>
       .let' (rhs.subst substitution) (body.subst substitution.lift)
+  | .suspend body => .suspend (body.subst substitution)
+  | .force suspension => .force (suspension.subst substitution)
 
 /-- Instantiate the newest binder in a runtime term. -/
 def instantiate {scope : Nat} (body : Tm (Nat.succ scope))
@@ -204,6 +221,10 @@ theorem subst_id {scope : Nat} (term : Tm scope) :
       simp only [subst, functionInduction, argumentInduction]
   | let' rhs body rhsInduction bodyInduction =>
       simp only [subst, Substitution.lift_id, rhsInduction, bodyInduction]
+  | suspend body induction =>
+      simp only [subst, induction]
+  | force suspension induction =>
+      simp only [subst, induction]
 
 @[simp]
 theorem open_eq_instantiate {scope : Nat}
@@ -220,6 +241,7 @@ inductive IsValue : {scope : Nat} -> Tm scope -> Prop where
   | unit {scope : Nat} : IsValue (.unit : Tm scope)
   | lam {scope : Nat} {body : Tm (Nat.succ scope)} :
       IsValue (.lam body)
+  | suspend {scope : Nat} {body : Tm scope} : IsValue (.suspend body)
 
 /-- Deterministic, left-to-right call-by-value reduction. -/
 inductive Step : {scope : Nat} -> Tm scope -> Tm scope -> Prop where
@@ -238,6 +260,14 @@ inductive Step : {scope : Nat} -> Tm scope -> Tm scope -> Prop where
   | zeta {scope : Nat} {rhs : Tm scope} {body : Tm (Nat.succ scope)}
       (rhsValue : IsValue rhs) :
       Step (.let' rhs body) (body.open rhs)
+  /-- The suspension-producing operand is evaluated exactly once. -/
+  | forceSuspension {scope : Nat}
+      {suspension suspension' : Tm scope}
+      (step : Step suspension suspension') :
+      Step (.force suspension) (.force suspension')
+  /-- Forcing a suspension starts its delayed computation. -/
+  | forceBeta {scope : Nat} {body : Tm scope} :
+      Step (.force (.suspend body)) body
 
 /-- Reflexive-transitive closure of runtime reduction. -/
 inductive Steps : {scope : Nat} -> Tm scope -> Tm scope -> Prop where
@@ -287,6 +317,16 @@ theorem letRhs {scope : Nat} {rhs rhs' : Tm scope}
   induction steps with
   | refl => exact .refl
   | tail _ step induction => exact .tail induction (.letRhs step)
+
+/-- Multi-step closure under the operand of `force`. -/
+theorem forceSuspension {scope : Nat}
+    {suspension suspension' : Tm scope}
+    (steps : Steps suspension suspension') :
+    Steps (.force suspension) (.force suspension') := by
+  induction steps with
+  | refl => exact .refl
+  | tail _ step induction =>
+      exact .tail induction (.forceSuspension step)
 
 end Steps
 

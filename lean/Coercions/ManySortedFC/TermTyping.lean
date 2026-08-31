@@ -12,9 +12,10 @@ immediate use, while a variable occurrence at an explicitly captured binding
 receives a precise singleton outer capture.
 
 Logical models supplied to static application and package formation are
-checked in the ambient context.  Only static abstraction and existential
-opening extend the context with a theory, preserving the no-self-discharge
-boundary of `Theory.SatisfiedBy`.
+checked in the ambient context. Static abstraction, existential opening, and
+modal lock bodies extend the context with explicit theories. Modal unlock
+satisfaction is instead checked in the unchanged outer context, preserving
+the no-self-discharge boundary of `Theory.SatisfiedBy`.
 
 Function codomains and elimination results are nondependent.  Under a term or
 static binder they are therefore weakened from their recorded ambient scope.
@@ -98,6 +99,48 @@ inductive HasType : {scope : Sig} -> Ctx scope -> Tm scope ->
       (termTyping : HasType context term use source)
       (adapterTyping : Adapter.HasType context adapter source target) :
       HasType context (.adapt term adapter) use target
+
+  /-- A primitive lock suspends its body, so formation has no immediate use
+  and does not require ambient satisfaction.  The body is checked under the
+  generated Mode/Separate assumptions and its latent use is bounded by the
+  recorded closure. -/
+  | lock {scope : Sig} {context : Ctx scope}
+      {separationCount : Nat} {modes : List CaptureMode}
+      {requirements : ModalContext separationCount modes scope}
+      {result : Ty scope} {closure : Capture scope}
+      {body : Tm (ModalScope scope separationCount modes)}
+      {captures : Evidence (.inclusion .capture)
+        (ModalScope scope separationCount modes)}
+      {bodyUse : Capture (ModalScope scope separationCount modes)}
+      (bodyTyping : HasType (context.extendModal requirements) body bodyUse
+        (result.rename
+          (Rename.weakenModal scope separationCount modes)))
+      (capturesTyping : Evidence.Proves
+        (context.extendModal requirements) captures
+        (.inclusion (.capture bodyUse)
+          (.capture (closure.rename
+            (Rename.weakenModal scope separationCount modes))))) :
+      HasType context
+        (.lock requirements result closure body captures) .empty
+        (.capturing closure (.modal requirements result))
+
+  /-- Modal elimination checks its explicit evidence in the unchanged outer
+  context.  A computed scrutinee runs once before its retained closure is
+  charged and the suspended body is released. -/
+  | unlock {scope : Sig} {context : Ctx scope}
+      {separationCount : Nat} {modes : List CaptureMode}
+      {requirements : ModalContext separationCount modes scope}
+      {term : Tm scope}
+      {evidenceArguments : EvidenceArgs scope
+        (modalRelations separationCount modes)}
+      {termUse : Capture scope} {termType result : Ty scope}
+      (termTyping : HasType context term termUse termType)
+      (termShape : termType.stripCapture = .modal requirements result)
+      (satisfaction : Theory.SatisfiedBy context
+        (.nil : SymbolArgs scope []) requirements.toTheory
+        evidenceArguments) :
+      HasType context (.unlock requirements term evidenceArguments)
+        (termUse.sequence termType.outerCapture) result
 
   /-- A static abstraction may use all symbols and assumptions exported by its
   theory.  Since the abstraction marker erases, the outer captures retained by
@@ -236,6 +279,22 @@ def pack_satisfaction {scope : Sig} {context : Ctx scope}
     Theory.SatisfiedBy context symbolArguments theory evidenceArguments := by
   cases typing with
   | pack satisfaction _ _ _ => exact satisfaction
+
+/-- Inversion exposes the external satisfaction derivation of every typed
+modal elimination.  Its context is exactly the eliminator's outer context. -/
+def unlock_satisfaction {scope : Sig} {context : Ctx scope}
+    {separationCount : Nat} {modes : List CaptureMode}
+    {requirements : ModalContext separationCount modes scope}
+    {term : Tm scope}
+    {evidenceArguments : EvidenceArgs scope
+      (modalRelations separationCount modes)}
+    {use : Capture scope} {result : Ty scope}
+    (typing : HasType context
+      (.unlock requirements term evidenceArguments) use result) :
+    Theory.SatisfiedBy context (.nil : SymbolArgs scope [])
+      requirements.toTheory evidenceArguments := by
+  cases typing with
+  | unlock _ _ satisfaction => exact satisfaction
 
 end Tm
 

@@ -7,8 +7,8 @@ This module interprets every term capability and every static symbol as a
 Boolean.  It is intentionally only a small model for equality and inclusion:
 mode, separation, and disjointness propositions are interpreted trivially
 here and receive a dedicated access-view model in `SeparationConsistency`.
-Quantified types receive a constant interpretation because the evidence
-language has no congruence rule that crosses a quantifier.
+Modal and quantified types receive a constant interpretation because the
+evidence language has no congruence rule that crosses either boundary.
 -/
 
 namespace ManySortedFC
@@ -104,6 +104,7 @@ def eval {scope : Sig} (valuation : BoolValuation scope) : Ty scope -> Bool
   | .capturing captures shape =>
       captures.eval valuation && shape.eval valuation
   | .arr domain codomain => (!domain.eval valuation) || codomain.eval valuation
+  | .modal _ _ => true
   | .forallT _ _ => true
   | .existsT _ _ => true
 

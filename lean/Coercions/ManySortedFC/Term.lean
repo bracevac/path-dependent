@@ -84,6 +84,21 @@ inductive Tm : Sig → Type where
       Tm scope
   | adapt {scope : Sig} (term : Tm scope)
       (adapter : Adapter scope) : Tm scope
+  /-- Suspend an arbitrary computation under a primitive modal lock. -/
+  | lock {scope : Sig} {separationCount : Nat}
+      {modes : List CaptureMode}
+      (requirements : ModalContext separationCount modes scope)
+      (result : Ty scope) (closure : Capture scope)
+      (body : Tm (ModalScope scope separationCount modes))
+      (captures : Evidence (.inclusion .capture)
+        (ModalScope scope separationCount modes)) : Tm scope
+  /-- Release a modal computation using evidence checked outside its lock. -/
+  | unlock {scope : Sig} {separationCount : Nat}
+      {modes : List CaptureMode}
+      (requirements : ModalContext separationCount modes scope)
+      (term : Tm scope)
+      (evidenceArguments : EvidenceArgs scope
+        (modalRelations separationCount modes)) : Tm scope
   | slam {scope : Sig} {symbols : List StaticSort}
       {relations : List Relation}
       (theory : Theory scope symbols relations) (closure : Capture scope)
@@ -158,6 +173,15 @@ def rename {source target : Sig} (term : Tm source)
         (discharge.rename (rho.lift (kind := .term)))
   | .adapt inner adapter =>
       .adapt (inner.rename rho) (adapter.rename rho)
+  | @Tm.lock _ separationCount modes requirements result closure body
+      captures =>
+      .lock (requirements.rename rho) (result.rename rho)
+        (closure.rename rho)
+        (body.rename (rho.liftModal separationCount modes))
+        (captures.rename (rho.liftModal separationCount modes))
+  | .unlock requirements inner evidenceArguments =>
+      .unlock (requirements.rename rho) (inner.rename rho)
+        (evidenceArguments.rename rho)
   | @Tm.slam _ symbols relations theory closure body captures =>
       .slam (theory.rename rho) (closure.rename rho)
         (body.rename (rho.liftStatic symbols relations))
@@ -201,6 +225,10 @@ theorem rename_id {scope : Sig} (term : Tm scope) :
       simp [rename, rhsInduction, bodyInduction]
   | adapt inner adapter induction =>
       simp [rename, induction]
+  | lock requirements result closure body captures induction =>
+      simp [rename, induction]
+  | unlock requirements inner evidenceArguments induction =>
+      simp [rename, induction]
   | slam theory closure body captures induction =>
       simp [rename, induction]
   | sapp theory function symbolArguments evidenceArguments induction =>
@@ -229,6 +257,10 @@ theorem rename_comp {first second third : Sig} (term : Tm first)
       simp [rename, rhsInduction, bodyInduction, Rename.lift_comp]
   | adapt inner adapter induction =>
       simp [rename, induction, Adapter.rename_comp]
+  | lock requirements result closure body captures induction =>
+      simp [rename, induction, Rename.liftModal_comp]
+  | unlock requirements inner evidenceArguments induction =>
+      simp [rename, induction, EvidenceArgs.rename_comp]
   | slam theory closure body captures induction =>
       simp [rename, induction, Theory.rename_comp,
         Rename.liftStatic_comp]
@@ -265,6 +297,14 @@ inductive IsValue : {scope : Sig} → Tm scope → Prop where
       IsValue (.lam domain codomain closure body captures)
   | adapt {scope : Sig} {term : Tm scope} {adapter : Adapter scope}
       (termValue : IsValue term) : IsValue (.adapt term adapter)
+  | lock {scope : Sig} {separationCount : Nat}
+      {modes : List CaptureMode}
+      {requirements : ModalContext separationCount modes scope}
+      {result : Ty scope} {closure : Capture scope}
+      {body : Tm (ModalScope scope separationCount modes)}
+      {captures : Evidence (.inclusion .capture)
+        (ModalScope scope separationCount modes)} :
+      IsValue (.lock requirements result closure body captures)
   | slam {scope : Sig} {symbols : List StaticSort}
       {relations : List Relation}
       {theory : Theory scope symbols relations} {closure : Capture scope}
