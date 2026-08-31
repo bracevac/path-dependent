@@ -18,15 +18,39 @@ inductive StaticSort : Type where
   | capture
 deriving DecidableEq, Repr
 
+/-- Access modes used by capture propositions.  This is deliberately smaller
+than CoreCapybara's ownership vocabulary: consumption and killing are not
+capture modes. -/
+inductive CaptureMode : Type where
+  | writable
+  | readOnly
+deriving DecidableEq, Repr
+
 /-- The proof-only logical relations tracked by erased evidence binders.
 
-Both relations retain their static sort.  Additional predicates such as
-separation and modes can later extend the relation vocabulary without
-identifying them with either ordered sort. -/
+Equality and inclusion retain their static sort.  Separation, disjointness,
+and mode propositions are capture-specific predicates; they do not add new
+bindable static sorts. -/
 inductive Relation : Type where
   | equality (sort : StaticSort)
   | inclusion (sort : StaticSort)
+  | separate
+  | disjoint
+  | mode (mode : CaptureMode)
 deriving DecidableEq, Repr
+
+namespace Relation
+
+/-- The intrinsic argument sorts of a relation.  Unlike equality and
+inclusion, mode is unary. -/
+def argumentSorts : Relation -> List StaticSort
+  | .equality sort => [sort, sort]
+  | .inclusion sort => [sort, sort]
+  | .separate => [.capture, .capture]
+  | .disjoint => [.capture, .capture]
+  | .mode _ => [.capture]
+
+end Relation
 
 /-- The complete binder vocabulary of the many-sorted target core. -/
 inductive BinderKind : Type where

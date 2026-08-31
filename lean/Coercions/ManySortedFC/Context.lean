@@ -130,6 +130,24 @@ def extendInclusion {scope : Sig} {sort : StaticSort}
     Ctx (scope ▹ .evidence (.inclusion sort)) :=
   context.extendEvidence (.inclusion lower upper)
 
+/-- Add an assumed separation proposition. -/
+def extendSeparate {scope : Sig} (context : Ctx scope)
+    (left right : Capture scope) :
+    Ctx (scope ▹ .evidence .separate) :=
+  context.extendEvidence (.separate left right)
+
+/-- Add an assumed disjointness proposition. -/
+def extendDisjoint {scope : Sig} (context : Ctx scope)
+    (left right : Capture scope) :
+    Ctx (scope ▹ .evidence .disjoint) :=
+  context.extendEvidence (.disjoint left right)
+
+/-- Add an assumed access-mode proposition. -/
+def extendMode {scope : Sig} (context : Ctx scope)
+    (mode : CaptureMode) (capture : Capture scope) :
+    Ctx (scope ▹ .evidence (.mode mode)) :=
+  context.extendEvidence (.mode capture)
+
 /-- Allocate a heterogeneous names-first block of generative symbols. -/
 def extendSymbols {scope : Sig} (context : Ctx scope) :
     (symbols : List StaticSort) -> Ctx (SymbolScope scope symbols)

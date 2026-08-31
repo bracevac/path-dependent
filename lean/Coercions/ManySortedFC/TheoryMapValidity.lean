@@ -91,6 +91,9 @@ def Capture.substitute_ofRename {source target : Sig}
   | .union left right => by
       simp only [Capture.substitute, Capture.rename,
         Capture.substitute_ofRename left, Capture.substitute_ofRename right]
+  | .readOnly capture => by
+      simp only [Capture.substitute, Capture.rename,
+        Capture.substitute_ofRename capture]
   | .singleton _ => rfl
   | .cvar _ => rfl
 
@@ -138,6 +141,12 @@ def Proposition.substitute_ofRename {source target : Sig}
       Proposition.rename, StaticExpr.substitute_ofRename]
   | .inclusion lower upper => by simp only [Proposition.substitute,
       Proposition.rename, StaticExpr.substitute_ofRename]
+  | .separate left right => by simp only [Proposition.substitute,
+      Proposition.rename, Capture.substitute_ofRename]
+  | .disjoint left right => by simp only [Proposition.substitute,
+      Proposition.rename, Capture.substitute_ofRename]
+  | .mode capture => by simp only [Proposition.substitute,
+      Proposition.rename, Capture.substitute_ofRename]
 
 @[simp]
 def Theory.substitute_ofRename {source target : Sig}
@@ -248,6 +257,8 @@ def Capture.substitute_postRename {source middle target : Sig}
   | .union left right => by simp only [Capture.substitute,
       Capture.rename, Capture.substitute_postRename left,
       Capture.substitute_postRename right]
+  | .readOnly capture => by simp only [Capture.substitute,
+      Capture.rename, Capture.substitute_postRename capture]
   | .singleton _ => rfl
   | .cvar name => by
       generalize equality : substitution.symbolVar name = expression
@@ -308,6 +319,12 @@ def Proposition.substitute_postRename {source middle target : Sig}
       Proposition.rename, StaticExpr.substitute_postRename]
   | .inclusion lower upper => by simp only [Proposition.substitute,
       Proposition.rename, StaticExpr.substitute_postRename]
+  | .separate left right => by simp only [Proposition.substitute,
+      Proposition.rename, Capture.substitute_postRename]
+  | .disjoint left right => by simp only [Proposition.substitute,
+      Proposition.rename, Capture.substitute_postRename]
+  | .mode capture => by simp only [Proposition.substitute,
+      Proposition.rename, Capture.substitute_postRename]
 
 @[simp]
 def Theory.substitute_postRename {source middle target : Sig}
@@ -499,6 +516,8 @@ def Capture.rename_substitute {source middle target : Sig}
   | .union left right => by simp only [Capture.rename, Capture.substitute,
       Capture.rename_substitute left before after result follows,
       Capture.rename_substitute right before after result follows]
+  | .readOnly capture => by simp only [Capture.rename, Capture.substitute,
+      Capture.rename_substitute capture before after result follows]
   | .singleton index => by simp [Capture.rename, Capture.substitute,
       follows.term]
   | .cvar index => by
@@ -562,6 +581,17 @@ def Proposition.rename_substitute {source middle target : Sig}
       Proposition.substitute,
       StaticExpr.rename_substitute lower before after result follows,
       StaticExpr.rename_substitute upper before after result follows]
+  | .separate left right => by simp only [Proposition.rename,
+      Proposition.substitute,
+      Capture.rename_substitute left before after result follows,
+      Capture.rename_substitute right before after result follows]
+  | .disjoint left right => by simp only [Proposition.rename,
+      Proposition.substitute,
+      Capture.rename_substitute left before after result follows,
+      Capture.rename_substitute right before after result follows]
+  | .mode capture => by simp only [Proposition.rename,
+      Proposition.substitute,
+      Capture.rename_substitute capture before after result follows]
 
 def Theory.rename_substitute {source middle target : Sig}
     {symbols : List StaticSort} {relations : List Relation}
@@ -694,6 +724,8 @@ def Capture.substitute_comp {source middle target : Sig}
   | .empty => rfl
   | .union left right => by simp only [Capture.substitute,
       Capture.substitute_comp left, Capture.substitute_comp right]
+  | .readOnly capture => by simp only [Capture.substitute,
+      Capture.substitute_comp capture]
   | .singleton _ => rfl
   | .cvar name => by
       generalize equality : before.symbolVar name = expression
@@ -753,6 +785,12 @@ def Proposition.substitute_comp {source middle target : Sig}
       StaticExpr.substitute_comp]
   | .inclusion lower upper => by simp only [Proposition.substitute,
       StaticExpr.substitute_comp]
+  | .separate left right => by simp only [Proposition.substitute,
+      Capture.substitute_comp]
+  | .disjoint left right => by simp only [Proposition.substitute,
+      Capture.substitute_comp]
+  | .mode capture => by simp only [Proposition.substitute,
+      Capture.substitute_comp]
 
 @[simp]
 def Theory.substitute_comp {source middle target : Sig}
@@ -1407,6 +1445,8 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
       exact .equalityCapturing captureInduction shapeInduction
   | equalityCaptureUnion _ _ leftInduction rightInduction =>
       exact .equalityCaptureUnion leftInduction rightInduction
+  | equalityCaptureReadOnly _ induction =>
+      exact .equalityCaptureReadOnly induction
   | inclusionRefl => exact .inclusionRefl _
   | inclusionTrans _ _ firstInduction secondInduction =>
       exact .inclusionTrans firstInduction secondInduction
@@ -1430,6 +1470,31 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
         (shape := shape.substitute substitution.static) (by
           rw [preserves.term]
           simp [binding, Binding.substitute, Ty.substitute])
+  | captureReadOnly => exact .captureReadOnly _
+  | captureReadOnlyMono _ induction =>
+      exact .captureReadOnlyMono induction
+  | modeEmpty => exact .modeEmpty _
+  | modeUnion _ _ leftInduction rightInduction =>
+      exact .modeUnion leftInduction rightInduction
+  | modeSubcapture _ _ subcaptureInduction modeInduction =>
+      exact .modeSubcapture subcaptureInduction modeInduction
+  | modeWritable => exact .modeWritable _
+  | modeReadOnly => exact .modeReadOnly _
+  | separateSymm _ induction => exact .separateSymm induction
+  | separateUnion _ _ leftInduction rightInduction =>
+      exact .separateUnion leftInduction rightInduction
+  | separateEmpty => exact .separateEmpty _
+  | separateReadOnly _ _ leftInduction rightInduction =>
+      exact .separateReadOnly leftInduction rightInduction
+  | separateSubcapture _ _ subcaptureInduction separationInduction =>
+      exact .separateSubcapture subcaptureInduction separationInduction
+  | separateOfDisjoint _ induction => exact .separateOfDisjoint induction
+  | disjointSymm _ induction => exact .disjointSymm induction
+  | disjointUnion _ _ leftInduction rightInduction =>
+      exact .disjointUnion leftInduction rightInduction
+  | disjointEmpty => exact .disjointEmpty _
+  | disjointEquality _ _ equalityInduction disjointInduction =>
+      exact .disjointEquality equalityInduction disjointInduction
 
 end Evidence.Proves
 

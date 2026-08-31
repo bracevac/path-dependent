@@ -128,6 +128,9 @@ def capture_rename_substitute {source target : Sig}
       simp only [Capture.rename, Capture.substitute,
         capture_rename_substitute left cancellation,
         capture_rename_substitute right cancellation]
+  | .readOnly capture => by
+      simp only [Capture.rename, Capture.substitute,
+        capture_rename_substitute capture cancellation]
   | .singleton capability => by
       simp only [Capture.rename, Capture.substitute]
       rw [cancellation.termVar capability]
@@ -201,6 +204,17 @@ def proposition_rename_substitute {source target : Sig}
       simp only [Proposition.rename, Proposition.substitute,
         expression_rename_substitute lower cancellation,
         expression_rename_substitute upper cancellation]
+  | .separate left right => by
+      simp only [Proposition.rename, Proposition.substitute,
+        capture_rename_substitute left cancellation,
+        capture_rename_substitute right cancellation]
+  | .disjoint left right => by
+      simp only [Proposition.rename, Proposition.substitute,
+        capture_rename_substitute left cancellation,
+        capture_rename_substitute right cancellation]
+  | .mode capture => by
+      simp only [Proposition.rename, Proposition.substitute,
+        capture_rename_substitute capture cancellation]
 
 /-- Substitution after a cancelled renaming is the identity on theories. -/
 def theory_rename_substitute {source target : Sig}
