@@ -1,6 +1,7 @@
 import Coercions.ManySortedFC.Context
 import Coercions.ManySortedFC.Evidence
 import Coercions.ManySortedFC.EvidenceChecker
+import Coercions.ManySortedFC.TheoryMorphismChecker
 
 /-!
 # Structural adapters for many-sorted FC
@@ -12,11 +13,11 @@ between two types.  `Adapter.cast` embeds one whole-type inclusion, while
 separate evidence for a value's actual outer capture and underlying shape.
 
 Function adapters stand for eta-expansion with a contravariant domain adapter
-and a covariant codomain adapter.  Universal adapters stand for static
+and a covariant codomain adapter. Universal adapters stand for static
 abstraction/application, while existential adapters stand for opening and
-repacking.  The quantified forms currently preserve one exact theory on both
-sides.  Adapters between different theories require explicit theory
-morphisms and are intentionally left for future work.
+repacking. Their morphism forms may change the propositions of a same-shape
+local theory. Captured-type lifting combines a subcapture proof with structural
+adaptation of the inner type.
 -/
 
 namespace ManySortedFC
@@ -39,6 +40,11 @@ inductive Adapter : Sig → Type where
       (captures : Evidence (.inclusion .capture) scope)
       (shape : Evidence (.inclusion .type) scope) : Adapter scope
 
+  /-- Lift a structural adapter through an existing capture annotation. -/
+  | captured {scope : Sig}
+      (captures : Evidence (.inclusion .capture) scope)
+      (shape : Adapter scope) : Adapter scope
+
   /-- Sequential administrative transport. -/
   | compose {scope : Sig} (first second : Adapter scope) : Adapter scope
 
@@ -60,6 +66,20 @@ inductive Adapter : Sig → Type where
       (theory : Theory scope symbols relations)
       (payload : Adapter (StaticScope scope symbols relations)) : Adapter scope
 
+  /-- Universal adaptation is contravariant in its local theory. -/
+  | forallMorphism {scope : Sig} {symbols : List StaticSort}
+      {relations : List Relation}
+      (sourceTheory targetTheory : Theory scope symbols relations)
+      (constraints : TheoryMorphism targetTheory sourceTheory)
+      (body : Adapter (StaticScope scope symbols relations)) : Adapter scope
+
+  /-- Existential adaptation is covariant in its local theory. -/
+  | existsMorphism {scope : Sig} {symbols : List StaticSort}
+      {relations : List Relation}
+      (sourceTheory targetTheory : Theory scope symbols relations)
+      (constraints : TheoryMorphism sourceTheory targetTheory)
+      (payload : Adapter (StaticScope scope symbols relations)) : Adapter scope
+
 deriving DecidableEq
 
 namespace Adapter
@@ -75,6 +95,8 @@ def rename {source target : Sig} (adapter : Adapter source)
   | .retagCapture sourceType targetCapture targetShape captures shape =>
       .retagCapture (sourceType.rename rho) (targetCapture.rename rho)
         (targetShape.rename rho) (captures.rename rho) (shape.rename rho)
+  | .captured captures shape =>
+      .captured (captures.rename rho) (shape.rename rho)
   | .compose first second =>
       .compose (first.rename rho) (second.rename rho)
   | .function domain codomain =>
@@ -85,11 +107,32 @@ def rename {source target : Sig} (adapter : Adapter source)
   | @Adapter.existsT _ symbols relations theory payload =>
       .existsT (theory.rename rho)
         (payload.rename (rho.liftStatic symbols relations))
+  | @Adapter.forallMorphism _ symbols relations sourceTheory targetTheory
+      constraints body =>
+      .forallMorphism (sourceTheory.rename rho) (targetTheory.rename rho)
+        (constraints.rename rho)
+        (body.rename (rho.liftStatic symbols relations))
+  | @Adapter.existsMorphism _ symbols relations sourceTheory targetTheory
+      constraints payload =>
+      .existsMorphism (sourceTheory.rename rho) (targetTheory.rename rho)
+        (constraints.rename rho)
+        (payload.rename (rho.liftStatic symbols relations))
 
 /-- Weaken an adapter below one heterogeneous binder. -/
 def weaken {scope : Sig} {kind : BinderKind} (adapter : Adapter scope) :
     Adapter (scope ▹ kind) :=
   adapter.rename Rename.succ
+
+/-- Change only the inner type of a captured type. -/
+def captureMap {scope : Sig} (capture : Capture scope)
+    (shape : Adapter scope) : Adapter scope :=
+  .captured (.inclusionRefl (.capture capture)) shape
+
+/-- Change only the outer capture of a captured type. -/
+def captureWiden {scope : Sig}
+    (captures : Evidence (.inclusion .capture) scope)
+    (shape : Ty scope) : Adapter scope :=
+  .captured captures (.identity shape)
 
 @[simp]
 theorem rename_id {scope : Sig} (adapter : Adapter scope) :
@@ -99,6 +142,8 @@ theorem rename_id {scope : Sig} (adapter : Adapter scope) :
   | cast evidence => simp [rename]
   | retagCapture sourceType targetCapture targetShape captures shape =>
       simp [rename]
+  | captured captures shape induction =>
+      simp [rename, induction]
   | compose first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
   | function domain codomain domainInduction codomainInduction =>
@@ -107,6 +152,12 @@ theorem rename_id {scope : Sig} (adapter : Adapter scope) :
       simp [rename, induction]
   | @existsT scope symbols relations theory payload induction =>
       simp [rename, induction]
+  | @forallMorphism scope symbols relations sourceTheory targetTheory
+      constraints body induction =>
+      simp [rename, induction, TheoryMorphism.rename_id_heq]
+  | @existsMorphism scope symbols relations sourceTheory targetTheory
+      constraints payload induction =>
+      simp [rename, induction, TheoryMorphism.rename_id_heq]
 
 @[simp]
 theorem rename_comp {first second third : Sig} (adapter : Adapter first)
@@ -119,6 +170,8 @@ theorem rename_comp {first second third : Sig} (adapter : Adapter first)
   | retagCapture sourceType targetCapture targetShape captures shape =>
       simp [rename, Ty.rename_comp, Capture.rename_comp,
         Evidence.rename_comp]
+  | captured captures shape induction =>
+      simp [rename, Evidence.rename_comp, induction]
   | compose first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
   | function domain codomain domainInduction codomainInduction =>
@@ -127,6 +180,14 @@ theorem rename_comp {first second third : Sig} (adapter : Adapter first)
       simp [rename, induction, Theory.rename_comp, Rename.liftStatic_comp]
   | @existsT scope symbols relations theory payload induction =>
       simp [rename, induction, Theory.rename_comp, Rename.liftStatic_comp]
+  | @forallMorphism scope symbols relations sourceTheory targetTheory
+      constraints body induction =>
+      simp [rename, induction, TheoryMorphism.rename_comp_heq,
+        Theory.rename_comp, Rename.liftStatic_comp]
+  | @existsMorphism scope symbols relations sourceTheory targetTheory
+      constraints payload induction =>
+      simp [rename, induction, TheoryMorphism.rename_comp_heq,
+        Theory.rename_comp, Rename.liftStatic_comp]
 
 /-! ## Declarative adapter typing -/
 
@@ -156,6 +217,18 @@ inductive HasType : {scope : Sig} → Ctx scope → Adapter scope →
       HasType context
         (.retagCapture source targetCapture targetShape captures shape)
         source (.capturing targetCapture targetShape)
+
+  | captured {scope : Sig} {context : Ctx scope}
+      {captures : Evidence (.inclusion .capture) scope}
+      {shape : Adapter scope}
+      {sourceCapture targetCapture : Capture scope}
+      {sourceShape targetShape : Ty scope}
+      (capturesTyping : Evidence.Proves context captures
+        (.inclusion (.capture sourceCapture) (.capture targetCapture)))
+      (shapeTyping : HasType context shape sourceShape targetShape) :
+      HasType context (.captured captures shape)
+        (.capturing sourceCapture sourceShape)
+        (.capturing targetCapture targetShape)
 
   | compose {scope : Sig} {context : Ctx scope}
       {first second : Adapter scope} {source middle target : Ty scope}
@@ -192,6 +265,35 @@ inductive HasType : {scope : Sig} → Ctx scope → Adapter scope →
         sourcePayload targetPayload) :
       HasType context (.existsT theory payload)
         (.existsT theory sourcePayload) (.existsT theory targetPayload)
+
+  | forallMorphism {scope : Sig} {context : Ctx scope}
+      {symbols : List StaticSort} {relations : List Relation}
+      {sourceTheory targetTheory : Theory scope symbols relations}
+      {constraints : TheoryMorphism targetTheory sourceTheory}
+      {body : Adapter (StaticScope scope symbols relations)}
+      {sourceBody targetBody : Ty (StaticScope scope symbols relations)}
+      (constraintsTyping : TheoryMorphism.HasType context constraints)
+      (bodyTyping : HasType (context.extendTheory targetTheory) body
+        sourceBody targetBody) :
+      HasType context
+        (.forallMorphism sourceTheory targetTheory constraints body)
+        (.forallT sourceTheory sourceBody)
+        (.forallT targetTheory targetBody)
+
+  | existsMorphism {scope : Sig} {context : Ctx scope}
+      {symbols : List StaticSort} {relations : List Relation}
+      {sourceTheory targetTheory : Theory scope symbols relations}
+      {constraints : TheoryMorphism sourceTheory targetTheory}
+      {payload : Adapter (StaticScope scope symbols relations)}
+      {sourcePayload targetPayload : Ty
+        (StaticScope scope symbols relations)}
+      (constraintsTyping : TheoryMorphism.HasType context constraints)
+      (payloadTyping : HasType (context.extendTheory sourceTheory) payload
+        sourcePayload targetPayload) :
+      HasType context
+        (.existsMorphism sourceTheory targetTheory constraints payload)
+        (.existsT sourceTheory sourcePayload)
+        (.existsT targetTheory targetPayload)
 
 /-- The source and target synthesized for an adapter, together with the
 declarative derivation justifying those endpoints. -/
@@ -256,6 +358,15 @@ def check {scope : Sig} (context : Ctx scope) (adapter : Adapter scope) :
               none
           else
             none
+  | .captured captures shape => do
+      let capturesChecked ← Evidence.check context captures
+      let ⟨capturesProposition, capturesTyping⟩ := capturesChecked
+      match capturesProposition with
+      | .inclusion (.capture sourceCapture) (.capture targetCapture) =>
+          let shapeChecked ← check context shape
+          pure ⟨.capturing sourceCapture shapeChecked.source,
+            .capturing targetCapture shapeChecked.target,
+            .captured capturesTyping shapeChecked.typing⟩
   | .compose first second => do
       let firstChecked ← check context first
       let secondChecked ← check context second
@@ -283,6 +394,18 @@ def check {scope : Sig} (context : Ctx scope) (adapter : Adapter scope) :
       pure ⟨.existsT theory payloadChecked.source,
         .existsT theory payloadChecked.target,
         .existsT payloadChecked.typing⟩
+  | .forallMorphism sourceTheory targetTheory constraints body => do
+      let constraintsTyping ← TheoryMorphism.check context constraints
+      let bodyChecked ← check (context.extendTheory targetTheory) body
+      pure ⟨.forallT sourceTheory bodyChecked.source,
+        .forallT targetTheory bodyChecked.target,
+        .forallMorphism constraintsTyping bodyChecked.typing⟩
+  | .existsMorphism sourceTheory targetTheory constraints payload => do
+      let constraintsTyping ← TheoryMorphism.check context constraints
+      let payloadChecked ← check (context.extendTheory sourceTheory) payload
+      pure ⟨.existsT sourceTheory payloadChecked.source,
+        .existsT targetTheory payloadChecked.target,
+        .existsMorphism constraintsTyping payloadChecked.typing⟩
 
 /-- The endpoint-only public view of the proof-producing checker. -/
 def synth {scope : Sig} (context : Ctx scope) (adapter : Adapter scope) :

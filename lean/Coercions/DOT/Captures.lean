@@ -1,5 +1,6 @@
 import Coercions.DOT.Captures.BinderOnly
 import Coercions.DOT.Captures.Acyclic
+import Coercions.DOT.Captures.Acyclic.GeneralExpression
 
 /-!
 Standalone import root for DOT with captures.  It exposes both the

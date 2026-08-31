@@ -1,5 +1,7 @@
 import Coercions.Translation.ManySorted.Acyclic.ObjectEncoding
 import Coercions.Translation.ManySorted.Acyclic.ObjectEncodingMetatheory
+import Coercions.Translation.ManySorted.Acyclic.NegativeObjectInterface
+import Coercions.Translation.ManySorted.Acyclic.NegativeObjectInterfaceExamples
 import Coercions.Translation.ManySorted.Acyclic.Layout
 import Coercions.Translation.ManySorted.Acyclic.StaticTranslation
 import Coercions.Translation.ManySorted.Acyclic.StaticTranslationMetatheory
@@ -14,11 +16,16 @@ import Coercions.Translation.ManySorted.Acyclic.ValueTranslation
 import Coercions.Translation.ManySorted.Acyclic.TermTranslation
 import Coercions.Translation.ManySorted.Acyclic.ValueTranslationErasure
 import Coercions.Translation.ManySorted.Acyclic.TermTranslationErasure
+import Coercions.Translation.ManySorted.Acyclic.GeneralExpression
 
 /-!
 # Acyclic DOT with captures to many-sorted FC
 
 This root collects the target representation and shared context layout for
 the first DOT layer with genuine type selections `x.A`, capture selections
-`x.C`, and value selections `x.v : (x.A)^{x.C}`.
+`x.C`, and value selections `x.v : (x.A)^{x.C}`.  It exposes both the stable
+value-MNF compiler core and the distinct direct compiler for general
+applications and object-producing computations.  Negative object consumers
+abstract a complete model telescope and then receive its runtime payload;
+positive object values remain existential packages.
 -/

@@ -5,6 +5,7 @@ import Coercions.DOT.Captures.BinderOnly.StaticJudgments
 import Coercions.DOT.Captures.BinderOnly.Term
 import Coercions.DOT.Captures.BinderOnly.Substitution
 import Coercions.DOT.Captures.BinderOnly.IntervalModel
+import Coercions.DOT.Captures.BinderOnly.IntervalEntailment
 import Coercions.DOT.Captures.BinderOnly.Subtyping
 import Coercions.DOT.Captures.BinderOnly.Typing
 

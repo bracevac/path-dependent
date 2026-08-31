@@ -5,10 +5,11 @@ import Coercions.ManySortedFC.TheoryModel
 # Annotated terms for many-sorted FC
 
 The term language makes every static boundary explicit.  Static abstractions
-bind a complete local theory, while applications and existential packages
-supply simultaneous symbol witnesses and logical evidence in the ambient
-scope.  Existential opening exposes the theory's complete static scope and
-then one ordinary payload binder.
+bind a complete local theory, while static applications and existential
+packages supply simultaneous symbol witnesses and logical evidence in the
+ambient scope.  Ordinary application accepts computation operands, and
+existential opening accepts a package computation before exposing the
+theory's complete static scope and one ordinary payload binder.
 
 Function codomains and elimination results are recorded in the ambient scope.
 This reflects the nondependent `Ty.arr` constructor and gives later typing and
