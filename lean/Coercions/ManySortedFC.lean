@@ -30,7 +30,9 @@ import Coercions.ManySortedFC.Erasure
 import Coercions.ManySortedFC.Dynamics
 import Coercions.ManySortedFC.Administrative
 import Coercions.ManySortedFC.Consistency
+import Coercions.ManySortedFC.SeparationConsistency
 import Coercions.ManySortedFC.StaticExamples
+import Coercions.ManySortedFC.SeparationExamples
 import Coercions.ManySortedFC.ModelConsistency
 import Coercions.ManySortedFC.TermExamples
 import Coercions.ManySortedFC.StaticApplicationExamples
