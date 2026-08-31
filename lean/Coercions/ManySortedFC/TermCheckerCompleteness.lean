@@ -320,6 +320,46 @@ private theorem check_complete {scope : Sig}
 
 end TheoryMorphism
 
+namespace ModalTheoryMap
+
+private theorem satisfaction_complete {scope : Sig}
+    {context : Ctx scope}
+    {symbols : List StaticSort} {arguments : SymbolArgs scope symbols}
+    {relations : List Relation} {theory : Theory scope symbols relations}
+    {evidence : EvidenceArgs scope relations}
+    (typing : Theory.SatisfiedBy context arguments theory evidence) :
+    ∃ checked,
+      Theory.checkSatisfaction context arguments theory evidence =
+        some checked := by
+  induction typing with
+  | nil => exact ⟨.nil, rfl⟩
+  | cons head tail tailIH =>
+      have headIH := Evidence.check_complete_projection head
+      obtain ⟨headChecked, headEq, headPropositionEq⟩ :=
+        Option.map_eq_some_iff.mp headIH
+      obtain ⟨tailChecked, tailEq⟩ := tailIH
+      cases headChecked with
+      | mk headProposition headCheckedTyping =>
+          dsimp at headPropositionEq
+          subst headProposition
+          simp [Theory.checkSatisfaction, headEq, tailEq]
+
+private theorem check_complete {scope : Sig}
+    {requiredSeparationCount availableSeparationCount : Nat}
+    {requiredModes availableModes : List CaptureMode}
+    {context : Ctx scope}
+    {available : ModalContext availableSeparationCount availableModes scope}
+    {required : ModalContext requiredSeparationCount requiredModes scope}
+    {mapping : ModalTheoryMap scope availableSeparationCount availableModes
+      requiredSeparationCount requiredModes}
+    (typing : HasType context available required mapping) :
+    ∃ checked, check context available required mapping = some checked := by
+  unfold HasType at typing
+  unfold check TheoryMap.check
+  exact satisfaction_complete typing
+
+end ModalTheoryMap
+
 namespace Adapter
 
 private theorem check_complete_projection {scope : Sig}
@@ -408,6 +448,19 @@ private theorem check_complete_projection {scope : Sig}
               subst codomainSource
               subst codomainTarget
               simp [synth, check, domainEq, codomainEq]
+  | modal requirementsTyping resultTyping resultIH =>
+      obtain ⟨checkedRequirements, requirementsEq⟩ :=
+        ModalTheoryMap.check_complete requirementsTyping
+      obtain ⟨resultChecked, resultEq, endpointsEq⟩ :=
+        Option.map_eq_some_iff.mp resultIH
+      cases resultChecked with
+      | mk resultSource resultTarget checkedResultTyping =>
+          dsimp at endpointsEq
+          cases Prod.mk.inj endpointsEq with
+          | intro resultSourceEq resultTargetEq =>
+            subst resultSource
+            subst resultTarget
+            simp [synth, check, requirementsEq, resultEq]
   | forallT bodyTyping bodyIH =>
       obtain ⟨bodyChecked, bodyEq, endpointsEq⟩ :=
         Option.map_eq_some_iff.mp bodyIH
@@ -513,6 +566,7 @@ private theorem checkValue_complete {scope : Sig} {term : Tm scope}
   | adapt termValue termIH =>
       obtain ⟨termChecked, termEq⟩ := termIH
       exact ⟨⟨.adapt termChecked.typing⟩, by simp [checkValue, termEq]⟩
+  | lock => exact ⟨⟨.lock⟩, rfl⟩
   | slam bodyValue bodyIH =>
       obtain ⟨bodyChecked, bodyEq⟩ := bodyIH
       exact ⟨⟨.slam bodyChecked.typing⟩, by simp [checkValue, bodyEq]⟩
@@ -613,6 +667,38 @@ theorem synth_complete {scope : Sig} {context : Ctx scope}
       obtain ⟨checkedAdapterTyping, adapterEq⟩ :=
         adapter_check_complete adapterTyping
       simp [synth, check, termValueEq, termEq, adapterEq]
+  | lock bodyTyping capturesTyping bodyIH =>
+      obtain ⟨checkedBodyTyping, bodyEq⟩ :=
+        check_complete_of_synth bodyIH
+      obtain ⟨checkedCapturesTyping, capturesEq⟩ :=
+        checkCaptureInclusion_complete capturesTyping
+      simp [synth, check, bodyEq, capturesEq]
+  | unlock termTyping termShape satisfaction termIH =>
+      obtain ⟨checkedTermTyping, termEq⟩ :=
+        check_complete_of_synth termIH
+      obtain ⟨checkedSatisfaction, satisfactionEq⟩ :=
+        Theory.checkSatisfaction_complete satisfaction
+      rename_i _ _ _ _ _ _ _ _ termType _
+      cases termType with
+      | top => simp [Ty.stripCapture] at termShape
+      | bot => simp [Ty.stripCapture] at termShape
+      | one => simp [Ty.stripCapture] at termShape
+      | tvar => simp [Ty.stripCapture] at termShape
+      | arr => simp [Ty.stripCapture] at termShape
+      | forallT => simp [Ty.stripCapture] at termShape
+      | existsT => simp [Ty.stripCapture] at termShape
+      | capturing captures shape =>
+          change shape = Ty.modal _ _ at termShape
+          subst shape
+          simp [synth, check, Ty.stripCapture, Ty.outerCapture,
+            termEq, satisfactionEq]
+      | modal actualRequirements actualResult =>
+          simp [Ty.stripCapture] at termShape
+          rcases termShape with ⟨rfl, rfl, requirementsEq, resultEq⟩
+          cases requirementsEq
+          cases resultEq
+          simp [synth, check, Ty.stripCapture, Ty.outerCapture,
+            termEq, satisfactionEq]
   | slam bodyValue bodyTyping capturesTyping bodyIH =>
       obtain ⟨checkedBodyValue, bodyValueEq⟩ :=
         checkValue_complete bodyValue
@@ -633,6 +719,7 @@ theorem synth_complete {scope : Sig} {context : Ctx scope}
       | one => simp [Ty.stripCapture] at functionShape
       | tvar => simp [Ty.stripCapture] at functionShape
       | arr => simp [Ty.stripCapture] at functionShape
+      | modal => simp [Ty.stripCapture] at functionShape
       | existsT => simp [Ty.stripCapture] at functionShape
       | capturing captures shape =>
           change shape = Ty.forallT _ _ at functionShape

@@ -139,6 +139,46 @@ def capture_rename_substitute {source target : Sig}
       rw [cancellation.symbolVar name]
       rfl
 
+/-- Cancellation acts pointwise on the captures that generate modal
+separation assumptions. -/
+def separationContext_rename_substitute {count : Nat} {source target : Sig}
+    (context : SeparationContext count source) {rho : Rename source target}
+    {substitution : StaticSubst target source}
+    (cancellation : Cancels rho substitution) :
+    (context.rename rho).substitute substitution = context :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [SeparationContext.rename, SeparationContext.substitute,
+        separationContext_rename_substitute rest cancellation,
+        capture_rename_substitute capture cancellation]
+
+/-- Cancellation acts pointwise on modal capture-mode requirements. -/
+def modeContext_rename_substitute {modes : List CaptureMode}
+    {source target : Sig} (context : ModeContext modes source)
+    {rho : Rename source target} {substitution : StaticSubst target source}
+    (cancellation : Cancels rho substitution) :
+    (context.rename rho).substitute substitution = context :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [ModeContext.rename, ModeContext.substitute,
+        modeContext_rename_substitute rest cancellation,
+        capture_rename_substitute capture cancellation]
+
+/-- Cancellation preserves both components of a structured modal context. -/
+def modalContext_rename_substitute {separationCount : Nat}
+    {modes : List CaptureMode} {source target : Sig}
+    (context : ModalContext separationCount modes source)
+    {rho : Rename source target} {substitution : StaticSubst target source}
+    (cancellation : Cancels rho substitution) :
+    (context.rename rho).substitute substitution = context :=
+  match context with
+  | .mk separation mode => by
+      simp only [ModalContext.rename, ModalContext.substitute,
+        separationContext_rename_substitute separation cancellation,
+        modeContext_rename_substitute mode cancellation]
+
 /-- Substitution after a cancelled renaming is the identity on types. -/
 def ty_rename_substitute {source target : Sig} (type : Ty source)
     {rho : Rename source target}
@@ -161,6 +201,10 @@ def ty_rename_substitute {source target : Sig} (type : Ty source)
       simp only [Ty.rename, Ty.substitute,
         ty_rename_substitute domain cancellation,
         ty_rename_substitute codomain cancellation]
+  | .modal requirements body => by
+      simp only [Ty.rename, Ty.substitute,
+        modalContext_rename_substitute requirements cancellation,
+        ty_rename_substitute body cancellation]
   | @Ty.forallT _ symbols relations theory body => by
       simp only [Ty.rename, Ty.substitute,
         theory_rename_substitute theory cancellation,

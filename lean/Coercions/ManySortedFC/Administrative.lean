@@ -3,11 +3,16 @@ import Coercions.ManySortedFC.Erasure
 /-!
 # Administrative equivalence after erasure
 
-Structural adapters may expose function eta-expansions and administrative
-identity lets even though their source and target annotations disappear.
-`AdministrativeEq` is the least equivalence and term congruence containing
-value eta and monadic let identity. It does not identify arbitrary runtime
-reductions or make an observational-equivalence claim.
+Structural adapters may expose function eta-expansions, modal suspension
+wrappers, and administrative identity lets even though their source and
+target annotations disappear. `AdministrativeEq` is a typed-shape proof
+relation: adapter typing supplies the function or modal boundary at which an
+eta constructor is used, while the erased runtime value premise preserves
+call-by-value timing. That premise alone does not characterize runtime shape;
+in particular, `modalEta` must not be read as an untyped contextual-equivalence
+law for every runtime value. The relation also contains monadic let identity.
+It does not identify arbitrary runtime reductions or make an
+observational-equivalence claim.
 -/
 
 namespace ManySortedFC.Runtime
@@ -42,11 +47,24 @@ inductive AdministrativeEq : {scope : Nat} -> Tm scope -> Tm scope -> Prop where
       (body : AdministrativeEq firstBody secondBody) :
       AdministrativeEq (.let' firstRhs firstBody)
         (.let' secondRhs secondBody)
+  | suspend {scope : Nat} {first second : Tm scope}
+      (body : AdministrativeEq first second) :
+      AdministrativeEq (.suspend first) (.suspend second)
+  | force {scope : Nat} {first second : Tm scope}
+      (suspension : AdministrativeEq first second) :
+      AdministrativeEq (.force first) (.force second)
   | letId {scope : Nat} (term : Tm scope) :
       AdministrativeEq (.let' term (.var 0)) term
   | eta {scope : Nat} {term : Tm scope} (termValue : IsValue term) :
       AdministrativeEq
         (.lam (.app term.weaken (.var 0))) term
+  /-- Typed modal eta.  Like function `eta`, this erased-only rule is used
+  through a statically typed adapter: its value premise represents a source
+  modal value at that boundary, not an untyped claim that every runtime value
+  can be forced. -/
+  | modalEta {scope : Nat} {term : Tm scope} (termValue : IsValue term) :
+      AdministrativeEq
+        (.suspend (.let' (.force term) (.var 0))) term
 
 namespace AdministrativeEq
 
@@ -81,6 +99,18 @@ theorem letBody {scope : Nat} {rhs : Tm scope}
     (body : AdministrativeEq first second) :
     AdministrativeEq (.let' rhs first) (.let' rhs second) :=
   .let' .refl body
+
+/-- Congruence under a runtime suspension. -/
+theorem suspendBody {scope : Nat} {first second : Tm scope}
+    (body : AdministrativeEq first second) :
+    AdministrativeEq (.suspend first) (.suspend second) :=
+  .suspend body
+
+/-- Congruence in the suspension-producing operand of `force`. -/
+theorem forceSuspension {scope : Nat} {first second : Tm scope}
+    (suspension : AdministrativeEq first second) :
+    AdministrativeEq (.force first) (.force second) :=
+  .force suspension
 
 end AdministrativeEq
 
@@ -127,6 +157,13 @@ theorem erase_admin {scope : Sig} (adapter : Adapter scope)
             exact Runtime.AdministrativeEq.appArgument
               (domainInduction (.var 0) .var)
           · exact .eta termValue
+  | modal sourceRequirements targetRequirements requirements result
+      induction =>
+      apply Runtime.AdministrativeEq.trans
+      · apply Runtime.AdministrativeEq.suspend
+        exact Runtime.AdministrativeEq.let' .refl
+          (induction (.var 0) .var)
+      · exact .modalEta termValue
   | forallT theory body induction =>
       exact induction term termValue
   | existsT theory payload induction =>

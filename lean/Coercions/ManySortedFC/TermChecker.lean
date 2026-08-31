@@ -40,6 +40,8 @@ def checkValue {scope : Sig} : (term : Tm scope) ->
   | .adapt term _ => do
       let checked ← checkValue term
       pure ⟨.adapt checked.typing⟩
+  | .lock _ _ _ _ _ => some ⟨.lock⟩
+  | .unlock _ _ _ => none
   | .slam _ _ body _ => do
       let checked ← checkValue body
       pure ⟨.slam checked.typing⟩
@@ -149,6 +151,53 @@ def check {scope : Sig} (context : Ctx scope) :
           .adapt termValue.typing termChecked.typing adapterTyping⟩
       else
         none
+
+  | @Tm.lock _ separationCount modes requirements result closure body
+      captures => do
+      let bodyContext := context.extendModal requirements
+      let bodyChecked ← check bodyContext body
+      let expectedBody := result.rename
+        (Rename.weakenModal scope separationCount modes)
+      if bodyMatches : bodyChecked.type = expectedBody then
+        let bodyTyping : HasType bodyContext body bodyChecked.use
+            expectedBody := by
+          simpa [bodyMatches] using bodyChecked.typing
+        let capturesTyping ← checkCaptureInclusion bodyContext captures
+          bodyChecked.use
+          (closure.rename
+            (Rename.weakenModal scope separationCount modes))
+        pure ⟨.empty, .capturing closure (.modal requirements result),
+          .lock bodyTyping capturesTyping⟩
+      else
+        none
+
+  | @Tm.unlock _ separationCount modes requirements inner
+      evidenceArguments => do
+      let innerChecked ← check context inner
+      match innerShape : innerChecked.type.stripCapture with
+      | @Ty.modal _ actualCount actualModes actualRequirements result =>
+          let actual : Σ count, Σ modes,
+              ModalContext count modes scope :=
+            ⟨actualCount, actualModes, actualRequirements⟩
+          let expected : Σ count, Σ modes,
+              ModalContext count modes scope :=
+            ⟨separationCount, modes, requirements⟩
+          if interfaceMatches : actual = expected then
+            by
+              dsimp [actual, expected] at interfaceMatches
+              cases interfaceMatches
+              exact do
+                let satisfaction ← Theory.checkSatisfaction context
+                  (.nil : SymbolArgs scope []) requirements.toTheory
+                  evidenceArguments
+                pure ⟨
+                  innerChecked.use.sequence
+                    innerChecked.type.outerCapture,
+                  result,
+                  .unlock innerChecked.typing innerShape satisfaction⟩
+          else
+            none
+      | _ => none
 
   | @Tm.slam _ symbols relations theory closure body captures => do
       let bodyValue ← checkValue body

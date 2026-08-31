@@ -78,6 +78,15 @@ theorem ofRename_liftStatic {source target : Sig} (rho : Rename source target)
     StaticSubst.liftEvidenceBlock Rename.liftSymbols Rename.liftEvidence
   simp
 
+@[simp]
+theorem ofRename_liftModal {source target : Sig} (rho : Rename source target)
+    (separationCount : Nat) (modes : List CaptureMode) :
+    (ofRename rho).liftModal separationCount modes =
+      ofRename (rho.liftModal separationCount modes) := by
+  unfold StaticSubst.liftModal Rename.liftModal
+    StaticSubst.liftEvidenceBlock Rename.liftEvidence
+  exact ofRename_liftMany _ _
+
 end StaticSubst
 
 mutual
@@ -98,6 +107,42 @@ def Capture.substitute_ofRename {source target : Sig}
   | .cvar _ => rfl
 
 @[simp]
+def SeparationContext.substitute_ofRename {count : Nat}
+    {source target : Sig} (context : SeparationContext count source)
+    (rho : Rename source target) :
+    context.substitute (StaticSubst.ofRename rho) = context.rename rho :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [SeparationContext.substitute, SeparationContext.rename,
+        SeparationContext.substitute_ofRename rest,
+        Capture.substitute_ofRename capture]
+
+@[simp]
+def ModeContext.substitute_ofRename {modes : List CaptureMode}
+    {source target : Sig} (context : ModeContext modes source)
+    (rho : Rename source target) :
+    context.substitute (StaticSubst.ofRename rho) = context.rename rho :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [ModeContext.substitute, ModeContext.rename,
+        ModeContext.substitute_ofRename rest,
+        Capture.substitute_ofRename capture]
+
+@[simp]
+def ModalContext.substitute_ofRename {separationCount : Nat}
+    {modes : List CaptureMode} {source target : Sig}
+    (context : ModalContext separationCount modes source)
+    (rho : Rename source target) :
+    context.substitute (StaticSubst.ofRename rho) = context.rename rho :=
+  match context with
+  | .mk separation mode => by
+      simp only [ModalContext.substitute, ModalContext.rename,
+        SeparationContext.substitute_ofRename separation,
+        ModeContext.substitute_ofRename mode]
+
+@[simp]
 def Ty.substitute_ofRename {source target : Sig}
     (type : Ty source) (rho : Rename source target) :
     type.substitute (StaticSubst.ofRename rho) = type.rename rho :=
@@ -111,6 +156,10 @@ def Ty.substitute_ofRename {source target : Sig}
         Ty.substitute_ofRename]
   | .arr domain codomain => by
       simp only [Ty.substitute, Ty.rename, Ty.substitute_ofRename]
+  | .modal requirements body => by
+      simp only [Ty.substitute, Ty.rename,
+        ModalContext.substitute_ofRename requirements,
+        Ty.substitute_ofRename body]
   | @Ty.forallT _ symbols relations theory body => by
       simp only [Ty.substitute, Ty.rename, Theory.substitute_ofRename,
         StaticSubst.ofRename_liftStatic, Ty.substitute_ofRename]
@@ -242,6 +291,17 @@ theorem postRename_liftStatic {source middle target : Sig}
     StaticSubst.liftEvidenceBlock Rename.liftEvidence
   simp
 
+@[simp]
+theorem postRename_liftModal {source middle target : Sig}
+    (substitution : StaticSubst source middle) (rho : Rename middle target)
+    (separationCount : Nat) (modes : List CaptureMode) :
+    (substitution.postRename rho).liftModal separationCount modes =
+      (substitution.liftModal separationCount modes).postRename
+        (rho.liftModal separationCount modes) := by
+  unfold StaticSubst.liftModal Rename.liftModal
+    StaticSubst.liftEvidenceBlock Rename.liftEvidence
+  exact postRename_liftMany _ _ _
+
 end StaticSubst
 
 mutual
@@ -269,6 +329,45 @@ def Capture.substitute_postRename {source middle target : Sig}
           rfl
 
 @[simp]
+def SeparationContext.substitute_postRename {count : Nat}
+    {source middle target : Sig} (context : SeparationContext count source)
+    (substitution : StaticSubst source middle) (rho : Rename middle target) :
+    (context.substitute substitution).rename rho =
+      context.substitute (substitution.postRename rho) :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [SeparationContext.substitute, SeparationContext.rename,
+        SeparationContext.substitute_postRename rest,
+        Capture.substitute_postRename capture]
+
+@[simp]
+def ModeContext.substitute_postRename {modes : List CaptureMode}
+    {source middle target : Sig} (context : ModeContext modes source)
+    (substitution : StaticSubst source middle) (rho : Rename middle target) :
+    (context.substitute substitution).rename rho =
+      context.substitute (substitution.postRename rho) :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [ModeContext.substitute, ModeContext.rename,
+        ModeContext.substitute_postRename rest,
+        Capture.substitute_postRename capture]
+
+@[simp]
+def ModalContext.substitute_postRename {separationCount : Nat}
+    {modes : List CaptureMode} {source middle target : Sig}
+    (context : ModalContext separationCount modes source)
+    (substitution : StaticSubst source middle) (rho : Rename middle target) :
+    (context.substitute substitution).rename rho =
+      context.substitute (substitution.postRename rho) :=
+  match context with
+  | .mk separation mode => by
+      simp only [ModalContext.substitute, ModalContext.rename,
+        SeparationContext.substitute_postRename separation,
+        ModeContext.substitute_postRename mode]
+
+@[simp]
 def Ty.substitute_postRename {source middle target : Sig}
     (type : Ty source) (substitution : StaticSubst source middle)
     (rho : Rename middle target) :
@@ -289,6 +388,10 @@ def Ty.substitute_postRename {source middle target : Sig}
       Capture.substitute_postRename, Ty.substitute_postRename]
   | .arr domain codomain => by simp only [Ty.substitute, Ty.rename,
       Ty.substitute_postRename]
+  | .modal requirements body => by
+      simp only [Ty.substitute, Ty.rename,
+        ModalContext.substitute_postRename requirements,
+        Ty.substitute_postRename body]
   | @Ty.forallT _ symbols relations theory body => by
       simp only [Ty.substitute, Ty.rename, Theory.substitute_postRename,
         Ty.substitute_postRename, StaticSubst.postRename_liftStatic]
@@ -501,6 +604,17 @@ def liftStatic {source middle target : Sig} {before : Rename source middle}
       (result.liftStatic symbols relations) :=
   (follows.liftSymbols symbols).liftMany (evidenceKinds relations)
 
+def liftModal {source middle target : Sig} {before : Rename source middle}
+    {after : StaticSubst middle target} {result : StaticSubst source target}
+    (follows : Follows before after result) (separationCount : Nat)
+    (modes : List CaptureMode) :
+    Follows (before.liftModal separationCount modes)
+      (after.liftModal separationCount modes)
+      (result.liftModal separationCount modes) := by
+  unfold Rename.liftModal StaticSubst.liftModal
+    StaticSubst.liftEvidenceBlock Rename.liftEvidence
+  exact follows.liftMany (evidenceKinds (modalRelations separationCount modes))
+
 end Follows
 end StaticSubst
 
@@ -523,6 +637,46 @@ def Capture.rename_substitute {source middle target : Sig}
   | .cvar index => by
       simp [Capture.rename, Capture.substitute, follows.symbol]
 
+def SeparationContext.rename_substitute {count : Nat}
+    {source middle target : Sig} (context : SeparationContext count source)
+    (before : Rename source middle) (after : StaticSubst middle target)
+    (result : StaticSubst source target)
+    (follows : StaticSubst.Follows before after result) :
+    (context.rename before).substitute after = context.substitute result :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [SeparationContext.rename, SeparationContext.substitute,
+        SeparationContext.rename_substitute rest before after result follows,
+        Capture.rename_substitute capture before after result follows]
+
+def ModeContext.rename_substitute {modes : List CaptureMode}
+    {source middle target : Sig} (context : ModeContext modes source)
+    (before : Rename source middle) (after : StaticSubst middle target)
+    (result : StaticSubst source target)
+    (follows : StaticSubst.Follows before after result) :
+    (context.rename before).substitute after = context.substitute result :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [ModeContext.rename, ModeContext.substitute,
+        ModeContext.rename_substitute rest before after result follows,
+        Capture.rename_substitute capture before after result follows]
+
+def ModalContext.rename_substitute {separationCount : Nat}
+    {modes : List CaptureMode} {source middle target : Sig}
+    (context : ModalContext separationCount modes source)
+    (before : Rename source middle) (after : StaticSubst middle target)
+    (result : StaticSubst source target)
+    (follows : StaticSubst.Follows before after result) :
+    (context.rename before).substitute after = context.substitute result :=
+  match context with
+  | .mk separation mode => by
+      simp only [ModalContext.rename, ModalContext.substitute,
+        SeparationContext.rename_substitute separation before after result
+          follows,
+        ModeContext.rename_substitute mode before after result follows]
+
 def Ty.rename_substitute {source middle target : Sig}
     (type : Ty source) (before : Rename source middle)
     (after : StaticSubst middle target) (result : StaticSubst source target)
@@ -540,6 +694,10 @@ def Ty.rename_substitute {source middle target : Sig}
   | .arr domain codomain => by simp only [Ty.rename, Ty.substitute,
       Ty.rename_substitute domain before after result follows,
       Ty.rename_substitute codomain before after result follows]
+  | .modal requirements body => by
+      simp only [Ty.rename, Ty.substitute,
+        ModalContext.rename_substitute requirements before after result follows,
+        Ty.rename_substitute body before after result follows]
   | @Ty.forallT _ symbols relations theory body => by
       simp only [Ty.rename, Ty.substitute,
         Theory.rename_substitute theory before after result follows,
@@ -710,6 +868,16 @@ theorem liftStatic_comp {source middle target : Sig}
   unfold StaticSubst.liftStatic StaticSubst.liftEvidenceBlock
   simp
 
+@[simp]
+theorem liftModal_comp {source middle target : Sig}
+    (before : StaticSubst source middle) (after : StaticSubst middle target)
+    (separationCount : Nat) (modes : List CaptureMode) :
+    (before.comp after).liftModal separationCount modes =
+      (before.liftModal separationCount modes).comp
+        (after.liftModal separationCount modes) := by
+  unfold StaticSubst.liftModal StaticSubst.liftEvidenceBlock
+  exact liftMany_comp _ _ _
+
 end StaticSubst
 
 mutual
@@ -736,6 +904,44 @@ def Capture.substitute_comp {source middle target : Sig}
           rfl
 
 @[simp]
+def SeparationContext.substitute_comp {count : Nat}
+    {source middle target : Sig} (context : SeparationContext count source)
+    (before : StaticSubst source middle) (after : StaticSubst middle target) :
+    (context.substitute before).substitute after =
+      context.substitute (before.comp after) :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [SeparationContext.substitute,
+        SeparationContext.substitute_comp rest,
+        Capture.substitute_comp capture]
+
+@[simp]
+def ModeContext.substitute_comp {modes : List CaptureMode}
+    {source middle target : Sig} (context : ModeContext modes source)
+    (before : StaticSubst source middle) (after : StaticSubst middle target) :
+    (context.substitute before).substitute after =
+      context.substitute (before.comp after) :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [ModeContext.substitute, ModeContext.substitute_comp rest,
+        Capture.substitute_comp capture]
+
+@[simp]
+def ModalContext.substitute_comp {separationCount : Nat}
+    {modes : List CaptureMode} {source middle target : Sig}
+    (context : ModalContext separationCount modes source)
+    (before : StaticSubst source middle) (after : StaticSubst middle target) :
+    (context.substitute before).substitute after =
+      context.substitute (before.comp after) :=
+  match context with
+  | .mk separation mode => by
+      simp only [ModalContext.substitute,
+        SeparationContext.substitute_comp separation,
+        ModeContext.substitute_comp mode]
+
+@[simp]
 def Ty.substitute_comp {source middle target : Sig}
     (type : Ty source) (before : StaticSubst source middle)
     (after : StaticSubst middle target) :
@@ -756,6 +962,9 @@ def Ty.substitute_comp {source middle target : Sig}
       Capture.substitute_comp, Ty.substitute_comp]
   | .arr domain codomain => by simp only [Ty.substitute,
       Ty.substitute_comp]
+  | .modal requirements body => by
+      simp only [Ty.substitute, ModalContext.substitute_comp requirements,
+        Ty.substitute_comp body]
   | @Ty.forallT _ symbols relations theory body => by
       simp only [Ty.substitute, Theory.substitute_comp, Ty.substitute_comp,
         StaticSubst.liftStatic_comp]

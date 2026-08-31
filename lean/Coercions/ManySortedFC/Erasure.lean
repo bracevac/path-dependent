@@ -91,6 +91,13 @@ def liftStatic {source : Sig} {target : Nat}
     Renaming (StaticScope source symbols relations) target :=
   (rho.liftSymbols symbols).liftEvidenceBlock relations
 
+/-- Forget the proof binders introduced by a primitive modal lock. -/
+def liftModal {source : Sig} {target : Nat}
+    (rho : Renaming source target) (separationCount : Nat)
+    (modes : List CaptureMode) :
+    Renaming (ModalScope source separationCount modes) target :=
+  rho.liftEvidenceBlock (modalRelations separationCount modes)
+
 /-- Forget a complete static scope while retaining its newest payload term
 binder. -/
 def liftPayload {source : Sig} {target : Nat}
@@ -173,6 +180,16 @@ theorem precomp_liftStatic {source middle : Sig} {target : Nat}
   rw [precomp_liftEvidenceBlock, precomp_liftSymbols]
 
 @[simp]
+theorem precomp_liftModal {source middle : Sig} {target : Nat}
+    (rho : Rename source middle) (sigma : Renaming middle target)
+    (separationCount : Nat) (modes : List CaptureMode) :
+    precomp (rho.liftModal separationCount modes)
+        (sigma.liftModal separationCount modes) =
+      (precomp rho sigma).liftModal separationCount modes := by
+  unfold Rename.liftModal liftModal
+  rw [precomp_liftEvidenceBlock]
+
+@[simp]
 theorem precomp_liftPayload {source middle : Sig} {target : Nat}
     (rho : Rename source middle) (sigma : Renaming middle target)
     (symbols : List StaticSort) (relations : List Relation) :
@@ -246,6 +263,16 @@ theorem postcomp_liftStatic {source : Sig} {middle target : Nat}
   rw [postcomp_liftEvidenceBlock, postcomp_liftSymbols]
 
 @[simp]
+theorem postcomp_liftModal {source : Sig} {middle target : Nat}
+    (rho : Renaming source middle)
+    (sigma : Runtime.Renaming middle target)
+    (separationCount : Nat) (modes : List CaptureMode) :
+    postcomp (rho.liftModal separationCount modes) sigma =
+      (postcomp rho sigma).liftModal separationCount modes := by
+  unfold liftModal
+  rw [postcomp_liftEvidenceBlock]
+
+@[simp]
 theorem postcomp_liftPayload {source : Sig} {middle target : Nat}
     (rho : Renaming source middle)
     (sigma : Runtime.Renaming middle target)
@@ -302,6 +329,8 @@ def erase {scope : Sig} (adapter : Adapter scope) {runtimeScope : Nat}
       .lam (.let'
         (.app term.weaken (domain.erase (.var 0)))
         (codomain.erase (.var 0)))
+  | .modal _ _ _ result =>
+      .suspend (.let' (.force term) (result.erase (.var 0)))
   | .forallT _ body => body.erase term
   | .existsT _ payload => payload.erase term
   | .forallMorphism _ _ _ body => body.erase term
@@ -370,6 +399,21 @@ theorem erase_function {scope : Sig} (domain codomain : Adapter scope)
         (codomain.erase (.var 0))) := rfl
 
 @[simp]
+theorem erase_modal {scope : Sig}
+    {sourceSeparationCount targetSeparationCount : Nat}
+    {sourceModes targetModes : List CaptureMode}
+    (sourceRequirements : ModalContext sourceSeparationCount sourceModes scope)
+    (targetRequirements : ModalContext targetSeparationCount targetModes scope)
+    (requirements : ModalTheoryMap scope targetSeparationCount targetModes
+      sourceSeparationCount sourceModes)
+    (result : Adapter
+      (ModalScope scope targetSeparationCount targetModes))
+    {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
+    (Adapter.modal sourceRequirements targetRequirements requirements
+      result).erase term =
+      .suspend (.let' (.force term) (result.erase (.var 0))) := rfl
+
+@[simp]
 theorem erase_forall {scope : Sig} {symbols : List StaticSort}
     {relations : List Relation} (theory : Theory scope symbols relations)
     (body : Adapter (StaticScope scope symbols relations))
@@ -420,6 +464,9 @@ theorem erase_rename {source target : Sig} (adapter : Adapter source)
       simp [Adapter.rename, erase, firstInduction, secondInduction]
   | function domain codomain domainInduction codomainInduction =>
       simp [Adapter.rename, erase, domainInduction, codomainInduction]
+  | modal sourceRequirements targetRequirements requirements result
+      induction =>
+      simp [Adapter.rename, erase, induction]
   | forallT theory body induction =>
       simp [Adapter.rename, erase, induction]
   | existsT theory payload induction =>
@@ -449,6 +496,11 @@ theorem erase_runtimeRename {scope : Sig} (adapter : Adapter scope)
       unfold Runtime.Tm.weaken
       rw [Runtime.Tm.rename_comp, Runtime.Tm.rename_comp,
         Runtime.Renaming.weaken_lift_comm]
+  | modal sourceRequirements targetRequirements requirements result
+      induction =>
+      simp only [erase, Runtime.Tm.rename]
+      rw [induction (.var 0) rho.lift]
+      rfl
   | forallT theory body induction =>
       simpa only [erase] using induction term rho
   | existsT theory payload induction =>
@@ -471,6 +523,7 @@ theorem erase_value {scope : Sig} (adapter : Adapter scope)
   | compose first second firstInduction secondInduction =>
       exact secondInduction (firstInduction termValue)
   | function => exact .lam
+  | modal => exact .suspend
   | forallT theory body induction => exact induction termValue
   | existsT theory payload induction => exact induction termValue
   | forallMorphism sourceTheory targetTheory constraints body induction =>
@@ -499,6 +552,10 @@ def eraseWith {scope : Sig} (term : Tm scope) {runtimeScope : Nat}
   | .let' _ _ rhs body _ =>
       .let' (rhs.eraseWith rho) (body.eraseWith rho.liftTerm)
   | .adapt inner adapter => adapter.erase (inner.eraseWith rho)
+  | @Tm.lock _ separationCount modes _ _ _ body _ =>
+      .suspend (body.eraseWith
+        (rho.liftModal separationCount modes))
+  | .unlock _ inner _ => .force (inner.eraseWith rho)
   | @Tm.slam _ symbols relations _ _ body _ =>
       body.eraseWith (rho.liftStatic symbols relations)
   | .sapp _ function _ _ => function.eraseWith rho
@@ -548,6 +605,29 @@ theorem erase_let {scope : Sig} (result : Ty scope)
 theorem erase_adapt {scope : Sig} (term : Tm scope)
     (adapter : Adapter scope) :
     (Tm.adapt term adapter).erase = adapter.erase term.erase := rfl
+
+@[simp]
+theorem erase_lock {scope : Sig} {separationCount : Nat}
+    {modes : List CaptureMode}
+    (requirements : ModalContext separationCount modes scope)
+    (result : Ty scope) (closure : Capture scope)
+    (body : Tm (ModalScope scope separationCount modes))
+    (captures : Evidence (.inclusion .capture)
+      (ModalScope scope separationCount modes)) :
+    (Tm.lock requirements result closure body captures).erase =
+      .suspend (body.eraseWith
+        ((Erasure.Renaming.identity scope).liftModal
+          separationCount modes)) := rfl
+
+@[simp]
+theorem erase_unlock {scope : Sig} {separationCount : Nat}
+    {modes : List CaptureMode}
+    (requirements : ModalContext separationCount modes scope)
+    (inner : Tm scope)
+    (evidenceArguments : EvidenceArgs scope
+      (modalRelations separationCount modes)) :
+    (Tm.unlock requirements inner evidenceArguments).erase =
+      .force inner.erase := rfl
 
 @[simp]
 theorem erase_slam {scope : Sig} {symbols : List StaticSort}
@@ -621,6 +701,10 @@ theorem eraseWith_rename {source target : Sig} (term : Tm source)
       simp [rename, eraseWith, rhsInduction, bodyInduction]
   | adapt inner adapter induction =>
       simp [rename, eraseWith, induction]
+  | lock requirements result closure body captures induction =>
+      simp [rename, eraseWith, induction]
+  | unlock requirements inner evidenceArguments induction =>
+      simp [rename, eraseWith, induction]
   | slam theory closure body captures induction =>
       simp [rename, eraseWith, induction]
   | sapp theory function symbolArguments evidenceArguments induction =>
@@ -652,6 +736,10 @@ theorem eraseWith_runtimeRename {scope : Sig} (term : Tm scope)
       simp [eraseWith, Runtime.Tm.rename, rhsInduction, bodyInduction]
   | adapt inner adapter induction =>
       simp [eraseWith, Adapter.erase_runtimeRename, induction]
+  | lock requirements result closure body captures induction =>
+      simp [eraseWith, Runtime.Tm.rename, induction]
+  | unlock requirements inner evidenceArguments induction =>
+      simp [eraseWith, Runtime.Tm.rename, induction]
   | slam theory closure body captures induction =>
       simp [eraseWith, induction]
   | sapp theory function symbolArguments evidenceArguments induction =>
@@ -689,6 +777,7 @@ theorem IsValue.eraseWith {scope : Sig} {term : Tm scope}
   | lam => exact .lam
   | adapt innerValue induction =>
       exact Adapter.erase_value _ (induction rho)
+  | lock => exact .suspend
   | slam bodyValue induction =>
       exact induction (rho.liftStatic _ _)
   | pack payloadValue induction =>

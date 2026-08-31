@@ -240,6 +240,8 @@ def lambdaCount : {scope : Nat} → Tm scope → Nat
   | _, .lam body => 1 + lambdaCount body
   | _, .app function argument => lambdaCount function + lambdaCount argument
   | _, .let' rhs body => lambdaCount rhs + lambdaCount body
+  | _, .suspend body => lambdaCount body
+  | _, .force suspension => lambdaCount suspension
 
 /-- Count genuine runtime applications. -/
 def applicationCount : {scope : Nat} → Tm scope → Nat
@@ -249,6 +251,8 @@ def applicationCount : {scope : Nat} → Tm scope → Nat
   | _, .app function argument =>
       1 + applicationCount function + applicationCount argument
   | _, .let' rhs body => applicationCount rhs + applicationCount body
+  | _, .suspend body => applicationCount body
+  | _, .force suspension => applicationCount suspension
 
 /-- Count genuine runtime sequencing nodes. -/
 def letCount : {scope : Nat} → Tm scope → Nat
@@ -257,6 +261,8 @@ def letCount : {scope : Nat} → Tm scope → Nat
   | _, .lam body => letCount body
   | _, .app function argument => letCount function + letCount argument
   | _, .let' rhs body => 1 + letCount rhs + letCount body
+  | _, .suspend body => letCount body
+  | _, .force suspension => letCount suspension
 
 end Runtime
 

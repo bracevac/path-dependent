@@ -188,6 +188,15 @@ def liftStatic {source target : Sig}
       (StaticScope target symbols relations) :=
   (substitution.liftSymbols symbols).liftEvidenceBlock relations
 
+/-- Preserve the proof-only assumptions introduced by a modal lock. -/
+def liftModal {source target : Sig}
+    (substitution : StaticSubst source target)
+    (separationCount : Nat) (modes : List CaptureMode) :
+    StaticSubst (ModalScope source separationCount modes)
+      (ModalScope target separationCount modes) :=
+  substitution.liftEvidenceBlock
+    (modalRelations separationCount modes)
+
 /-- Eliminate the newest static symbol. -/
 def instantiateSymbol {source target : Sig}
     (substitution : StaticSubst source target) {sort : StaticSort}
@@ -263,6 +272,39 @@ def Capture.substitute {source target : Sig} (capture : Capture source)
       match substitution.symbolVar name with
       | .capture replacement => replacement
 
+/-- Substitute every capture in a separation context. -/
+def SeparationContext.substitute {count : Nat} {source target : Sig}
+    (context : SeparationContext count source)
+    (substitution : StaticSubst source target) :
+    SeparationContext count target :=
+  match context with
+  | .nil => .nil
+  | .cons rest capture =>
+      .cons (rest.substitute substitution)
+        (capture.substitute substitution)
+
+/-- Substitute every capture in a mode context. -/
+def ModeContext.substitute {modes : List CaptureMode}
+    {source target : Sig} (context : ModeContext modes source)
+    (substitution : StaticSubst source target) :
+    ModeContext modes target :=
+  match context with
+  | .nil => .nil
+  | .cons rest capture =>
+      .cons (rest.substitute substitution)
+        (capture.substitute substitution)
+
+/-- Substitute both components of a modal context. -/
+def ModalContext.substitute {separationCount : Nat}
+    {modes : List CaptureMode} {source target : Sig}
+    (context : ModalContext separationCount modes source)
+    (substitution : StaticSubst source target) :
+    ModalContext separationCount modes target :=
+  match context with
+  | .mk separation mode =>
+      .mk (separation.substitute substitution)
+        (mode.substitute substitution)
+
 /-- Apply a simultaneous static substitution to a type. -/
 def Ty.substitute {source target : Sig} (type : Ty source)
     (substitution : StaticSubst source target) : Ty target :=
@@ -278,6 +320,9 @@ def Ty.substitute {source target : Sig} (type : Ty source)
         (shape.substitute substitution)
   | .arr domain codomain =>
       .arr (domain.substitute substitution) (codomain.substitute substitution)
+  | .modal requirements body =>
+      .modal (requirements.substitute substitution)
+        (body.substitute substitution)
   | @Ty.forallT _ symbols relations theory body =>
       .forallT (theory.substitute substitution)
         (body.substitute (substitution.liftStatic symbols relations))

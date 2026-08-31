@@ -678,6 +678,13 @@ private noncomputable def compilePlainVariable {scope : Source.Scope}
           term := .var coordinate
           isValue := .var
           typing := by simpa [coordinate, targetEquation] using rawTyping }
+  | modal requirements body =>
+      exact
+        { targetType := .modal requirements body
+          typeTranslated := by simpa [targetEquation] using facts.typeTranslated
+          term := .var coordinate
+          isValue := .var
+          typing := by simpa [coordinate, targetEquation] using rawTyping }
   | forallT theory body =>
       exact
         { targetType := .forallT theory body

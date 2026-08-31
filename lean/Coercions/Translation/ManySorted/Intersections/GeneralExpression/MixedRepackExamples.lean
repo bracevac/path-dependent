@@ -149,6 +149,8 @@ def artifactShape {scope : ManySortedFC.Sig} :
   | .let' _ _ rhs body _ =>
       ArtifactShape.add (artifactShape rhs) (artifactShape body)
   | .adapt term _ => artifactShape term
+  | .lock _ _ _ body _ => artifactShape body
+  | .unlock _ term _ => artifactShape term
   | .slam _ _ body _ => artifactShape body
   | .sapp _ function _ _ =>
       { (artifactShape function) with

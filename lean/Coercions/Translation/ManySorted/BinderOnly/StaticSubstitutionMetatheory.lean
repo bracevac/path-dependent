@@ -304,6 +304,60 @@ def capture_square {upperLeft upperRight lowerLeft lowerRight : Sig}
                 StaticExpr.rename, upperResult, lowerResult] using
                 symbolEquality
 
+/-- A commuting variable square extends pointwise to the captures that
+generate a modal separation context. -/
+def separationContext_square {count : Nat}
+    {upperLeft upperRight lowerLeft lowerRight : Sig}
+    (context : SeparationContext count upperLeft)
+    {upper : StaticSubst upperLeft upperRight}
+    {left : Rename upperLeft lowerLeft}
+    {right : Rename upperRight lowerRight}
+    {lower : StaticSubst lowerLeft lowerRight}
+    (square : Square upper left right lower) :
+    (context.substitute upper).rename right =
+      (context.rename left).substitute lower :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [SeparationContext.substitute, SeparationContext.rename,
+        separationContext_square rest square, capture_square capture square]
+
+/-- A commuting variable square extends pointwise to modal mode
+requirements. -/
+def modeContext_square {modes : List CaptureMode}
+    {upperLeft upperRight lowerLeft lowerRight : Sig}
+    (context : ModeContext modes upperLeft)
+    {upper : StaticSubst upperLeft upperRight}
+    {left : Rename upperLeft lowerLeft}
+    {right : Rename upperRight lowerRight}
+    {lower : StaticSubst lowerLeft lowerRight}
+    (square : Square upper left right lower) :
+    (context.substitute upper).rename right =
+      (context.rename left).substitute lower :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [ModeContext.substitute, ModeContext.rename,
+        modeContext_square rest square, capture_square capture square]
+
+/-- A commuting variable square extends to a structured modal context. -/
+def modalContext_square {separationCount : Nat}
+    {modes : List CaptureMode}
+    {upperLeft upperRight lowerLeft lowerRight : Sig}
+    (context : ModalContext separationCount modes upperLeft)
+    {upper : StaticSubst upperLeft upperRight}
+    {left : Rename upperLeft lowerLeft}
+    {right : Rename upperRight lowerRight}
+    {lower : StaticSubst lowerLeft lowerRight}
+    (square : Square upper left right lower) :
+    (context.substitute upper).rename right =
+      (context.rename left).substitute lower :=
+  match context with
+  | .mk separation mode => by
+      simp only [ModalContext.substitute, ModalContext.rename,
+        separationContext_square separation square,
+        modeContext_square mode square]
+
 /-- A commuting variable square extends to every target type. -/
 def ty_square {upperLeft upperRight lowerLeft lowerRight : Sig}
     (type : Ty upperLeft)
@@ -332,6 +386,9 @@ def ty_square {upperLeft upperRight lowerLeft lowerRight : Sig}
   | .arr domain codomain => by
       simp only [Ty.substitute, Ty.rename, ty_square domain square,
         ty_square codomain square]
+  | .modal requirements body => by
+      simp only [Ty.substitute, Ty.rename,
+        modalContext_square requirements square, ty_square body square]
   | @Ty.forallT _ symbols relations theory body => by
       simp only [Ty.substitute, Ty.rename,
         theory_square theory square,

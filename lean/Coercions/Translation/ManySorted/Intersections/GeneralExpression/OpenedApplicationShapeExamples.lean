@@ -78,6 +78,8 @@ def termShape {scope : Sig} : Tm scope -> TermShape
       { children with runtimeApplications := children.runtimeApplications + 1 }
   | .let' _ _ rhs body _ => (termShape rhs).combine (termShape body)
   | .adapt term _ => termShape term
+  | .lock _ _ _ body _ => termShape body
+  | .unlock _ term _ => termShape term
   | .slam _ _ body _ => termShape body
   | .sapp _ function _ _ =>
       let child := termShape function

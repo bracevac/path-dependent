@@ -2,12 +2,12 @@ import Coercions.ManySortedFC.StaticInstantiation
 import Coercions.ManySortedFC.Erasure
 
 /-!
-# Static-application dynamics
+# Static-application and primitive modal dynamics
 
 ManySortedFC currently gives execution through its independently defined
-erased runtime.  This module isolates the two annotated rules needed for a
-computation-capable static application without pretending to supply a full
-annotated dynamics.
+erased runtime.  This module isolates the annotated rules needed for a
+computation-capable static application and primitive modal lock/unlock without
+pretending to supply a full annotated dynamics.
 
 `StaticAppStep computationStep` lifts exactly one step of an ambient
 computation relation in the scrutinee position, or performs static beta once
@@ -101,6 +101,18 @@ theorem eraseRenaming_liftStatic {source target : Sig}
       (eraseRenaming substitution rho).liftStatic symbols relations := by
   unfold TermStaticSubst.liftStatic Erasure.Renaming.liftStatic
   rw [eraseRenaming_liftEvidenceBlock, eraseRenaming_liftSymbols]
+
+@[simp]
+theorem eraseRenaming_liftModal {source target : Sig}
+    (substitution : TermStaticSubst source target) {runtimeScope : Nat}
+    (rho : Erasure.Renaming target runtimeScope)
+    (separationCount : Nat) (modes : List CaptureMode) :
+    eraseRenaming (substitution.liftModal separationCount modes)
+        (rho.liftModal separationCount modes) =
+      (eraseRenaming substitution rho).liftModal
+        separationCount modes := by
+  unfold TermStaticSubst.liftModal Erasure.Renaming.liftModal
+  rw [eraseRenaming_liftEvidenceBlock]
 
 @[simp]
 theorem eraseRenaming_instantiateSymbol {source target : Sig}
@@ -198,6 +210,9 @@ theorem erase_substituteStatic {source target : Sig}
   | function domain codomain domainInduction codomainInduction =>
       simp [Adapter.substitute, Adapter.erase, domainInduction,
         codomainInduction]
+  | modal sourceRequirements targetRequirements requirements result
+      induction =>
+      simp [Adapter.substitute, Adapter.erase, induction]
   | forallT theory body induction =>
       simp [Adapter.substitute, Adapter.erase, induction]
   | existsT theory payload induction =>
@@ -229,6 +244,10 @@ theorem eraseWith_substituteStatic {source target : Sig}
       simp [substituteStatic, eraseWith, rhsInduction, bodyInduction]
   | adapt inner adapter induction =>
       simp [substituteStatic, eraseWith, induction]
+  | lock requirements result closure body captures induction =>
+      simp [substituteStatic, eraseWith, induction]
+  | unlock requirements inner evidenceArguments induction =>
+      simp [substituteStatic, eraseWith, induction]
   | slam theory closure body captures induction =>
       simp [substituteStatic, eraseWith, induction]
   | sapp theory function symbolArguments evidenceArguments induction =>
@@ -256,6 +275,22 @@ theorem erase_instantiateStatic {scope : Sig}
   unfold instantiateStatic erase
   rw [eraseWith_substituteStatic]
   simp
+
+/-- Replacing a lock's proof variables by external evidence does not change
+the suspended runtime program. -/
+@[simp]
+theorem erase_instantiateModal {scope : Sig}
+    {separationCount : Nat} {modes : List CaptureMode}
+    (body : Tm (ModalScope scope separationCount modes))
+    (evidenceArguments : EvidenceArgs scope
+      (modalRelations separationCount modes)) :
+    (body.instantiateModal evidenceArguments).erase =
+      body.eraseWith
+        ((Erasure.Renaming.identity scope).liftModal
+          separationCount modes) := by
+  unfold instantiateModal erase
+  rw [eraseWith_substituteStatic]
+  simp [Erasure.Renaming.liftModal]
 
 /-! ## The narrow static-application relation -/
 
@@ -349,6 +384,104 @@ theorem StaticAppStep.erase_behavior
   | beta bodyValue =>
       rw [StaticAppStep.erase_beta bodyValue]
       exact .stutter
+
+/-! ## Primitive modal dynamics -/
+
+/-- The primitive lock/unlock administrative relation.  This deliberately is
+not a progress relation for every annotated term form: for example, adapted
+modal values execute through erasure and lie outside this narrow relation.
+Evidence is substituted only at modal beta, whose runtime image is a genuine
+force step rather than an erased stutter. -/
+inductive ModalStep
+    (computationStep : {scope : Sig} → Tm scope → Tm scope → Prop) :
+    {scope : Sig} → Tm scope → Tm scope → Prop where
+  | scrutinee {scope : Sig} {separationCount : Nat}
+      {modes : List CaptureMode}
+      {requirements : ModalContext separationCount modes scope}
+      {first second : Tm scope}
+      {evidenceArguments : EvidenceArgs scope
+        (modalRelations separationCount modes)}
+      (firstNotValue : ¬ IsValue first)
+      (step : computationStep first second) :
+      ModalStep computationStep
+        (.unlock requirements first evidenceArguments)
+        (.unlock requirements second evidenceArguments)
+  | beta {scope : Sig} {separationCount : Nat}
+      {modes : List CaptureMode}
+      {requirements : ModalContext separationCount modes scope}
+      {result : Ty scope} {closure : Capture scope}
+      {body : Tm (ModalScope scope separationCount modes)}
+      {captures : Evidence (.inclusion .capture)
+        (ModalScope scope separationCount modes)}
+      {evidenceArguments : EvidenceArgs scope
+        (modalRelations separationCount modes)} :
+      ModalStep computationStep
+        (.unlock requirements
+          (.lock requirements result closure body captures)
+          evidenceArguments)
+        (.use (body.instantiateModal evidenceArguments)
+          (captures.substitute
+            (TermStaticSubst.fromEvidenceArgs TermStaticSubst.id
+              evidenceArguments)))
+
+/-- A modal scrutinee step becomes exactly one runtime force-operand step. -/
+theorem ModalStep.erase_scrutinee
+    {computationStep : {scope : Sig} → Tm scope → Tm scope → Prop}
+    (simulation : ∀ {scope : Sig} {first second : Tm scope},
+      computationStep first second → Runtime.Step first.erase second.erase)
+    {scope : Sig} {separationCount : Nat}
+    {modes : List CaptureMode}
+    {requirements : ModalContext separationCount modes scope}
+    {first second : Tm scope}
+    {evidenceArguments : EvidenceArgs scope
+      (modalRelations separationCount modes)}
+    (_firstNotValue : ¬ IsValue first)
+    (step : computationStep first second) :
+    Runtime.Step
+      (Tm.unlock requirements first evidenceArguments).erase
+      (Tm.unlock requirements second evidenceArguments).erase := by
+  exact .forceSuspension (simulation step)
+
+/-- Annotated modal beta erases to primitive runtime force beta. -/
+theorem ModalStep.erase_beta
+    {scope : Sig} {separationCount : Nat}
+    {modes : List CaptureMode}
+    {requirements : ModalContext separationCount modes scope}
+    {result : Ty scope} {closure : Capture scope}
+    {body : Tm (ModalScope scope separationCount modes)}
+    {captures : Evidence (.inclusion .capture)
+      (ModalScope scope separationCount modes)}
+    {evidenceArguments : EvidenceArgs scope
+      (modalRelations separationCount modes)} :
+    Runtime.Step
+      (Tm.unlock requirements
+        (.lock requirements result closure body captures)
+        evidenceArguments).erase
+      (Tm.use (body.instantiateModal evidenceArguments)
+        (captures.substitute
+          (TermStaticSubst.fromEvidenceArgs TermStaticSubst.id
+            evidenceArguments))).erase := by
+  simpa using
+    (Runtime.Step.forceBeta : Runtime.Step
+      (.force (.suspend (body.eraseWith
+        ((Erasure.Renaming.identity scope).liftModal
+          separationCount modes))))
+      (body.eraseWith
+        ((Erasure.Renaming.identity scope).liftModal
+          separationCount modes)))
+
+/-- Every annotated modal step is one genuine runtime step. -/
+theorem ModalStep.erase
+    {computationStep : {scope : Sig} → Tm scope → Tm scope → Prop}
+    (simulation : ∀ {scope : Sig} {first second : Tm scope},
+      computationStep first second → Runtime.Step first.erase second.erase)
+    {scope : Sig} {first second : Tm scope}
+    (step : ModalStep computationStep first second) :
+    Runtime.Step first.erase second.erase := by
+  cases step with
+  | scrutinee firstNotValue inner =>
+      exact ModalStep.erase_scrutinee simulation firstNotValue inner
+  | beta => exact ModalStep.erase_beta
 
 end Tm
 
