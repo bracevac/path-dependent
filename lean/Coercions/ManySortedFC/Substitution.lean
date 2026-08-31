@@ -256,6 +256,7 @@ def Capture.substitute {source target : Sig} (capture : Capture source)
   | .empty => .empty
   | .union left right =>
       .union (left.substitute substitution) (right.substitute substitution)
+  | .readOnly capture => .readOnly (capture.substitute substitution)
   | .singleton capability =>
       .singleton (substitution.termVar capability)
   | .cvar name =>
@@ -292,7 +293,7 @@ def StaticExpr.substitute {sort : StaticSort} {source target : Sig}
   | .type type => .type (type.substitute substitution)
   | .capture capture => .capture (capture.substitute substitution)
 
-/-- Substitute both endpoints of a proposition. -/
+/-- Substitute every static expression in a proposition. -/
 def Proposition.substitute {relation : Relation} {source target : Sig}
     (proposition : Proposition relation source)
     (substitution : StaticSubst source target) :
@@ -304,6 +305,11 @@ def Proposition.substitute {relation : Relation} {source target : Sig}
   | .inclusion lower upper =>
       .inclusion (lower.substitute substitution)
         (upper.substitute substitution)
+  | .separate left right =>
+      .separate (left.substitute substitution) (right.substitute substitution)
+  | .disjoint left right =>
+      .disjoint (left.substitute substitution) (right.substitute substitution)
+  | .mode capture => .mode (capture.substitute substitution)
 
 /-- Substitute the ambient scope of a names-first theory. -/
 def Theory.substitute {source target : Sig}

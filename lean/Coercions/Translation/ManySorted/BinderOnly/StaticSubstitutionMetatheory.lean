@@ -288,6 +288,9 @@ def capture_square {upperLeft upperRight lowerLeft lowerRight : Sig}
   | .union first second => by
       simp only [Capture.substitute, Capture.rename,
         capture_square first square, capture_square second square]
+  | .readOnly capture => by
+      simp only [Capture.substitute, Capture.rename,
+        capture_square capture square]
   | .singleton capability => by
       simp only [Capture.substitute, Capture.rename]
       exact congrArg Capture.singleton (square.term capability)
@@ -373,6 +376,15 @@ def proposition_square {upperLeft upperRight lowerLeft lowerRight : Sig}
   | .inclusion first second => by
       simp only [Proposition.substitute, Proposition.rename,
         expression_square first square, expression_square second square]
+  | .separate first second => by
+      simp only [Proposition.substitute, Proposition.rename,
+        capture_square first square, capture_square second square]
+  | .disjoint first second => by
+      simp only [Proposition.substitute, Proposition.rename,
+        capture_square first square, capture_square second square]
+  | .mode capture => by
+      simp only [Proposition.substitute, Proposition.rename,
+        capture_square capture square]
 
 /-- A commuting variable square extends to target theories, including their
 names-first proposition scopes. -/

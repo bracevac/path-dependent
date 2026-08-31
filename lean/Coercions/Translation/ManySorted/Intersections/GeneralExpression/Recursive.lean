@@ -626,7 +626,7 @@ private def findModelEvidence? {scope : Target.Sig}
           else findModelEvidence? context proposition remaining
   | .inclusion .capture, proposition, .type _ :: remaining =>
       findModelEvidence? context proposition remaining
-  | .equality _, _, _ => none
+  | _, _, _ => none
 
 /-- Reorder checked source certificates into the exact relation spine emitted
 by the normalized target theory. -/

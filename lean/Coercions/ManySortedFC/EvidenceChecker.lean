@@ -5,8 +5,7 @@ import Coercions.ManySortedFC.Evidence
 
 The checker synthesizes the exact proposition proved by an explicit logical
 certificate. It follows certificate syntax recursively and performs equality
-tests only where two independently synthesized endpoints must meet:
-transitivity and capture-union elimination.
+tests only where independently synthesized endpoints must meet.
 
 No branch invokes subtyping, subcapturing, constraint solving, or a structural
 adapter. A successful result contains its declarative `Evidence.Proves`
@@ -83,6 +82,15 @@ def check {scope : Sig} (context : Ctx scope) :
             .equality (.capture (.union sourceLeft sourceRight))
               (.capture (.union targetLeft targetRight)),
             .equalityCaptureUnion leftTyping rightTyping⟩
+  | _, .equalityCaptureReadOnly capture => do
+      let checked ← check context capture
+      let ⟨proposition, typing⟩ := checked
+      match proposition with
+      | .equality (.capture source) (.capture target) =>
+          pure ⟨
+            .equality (.capture (.readOnly source))
+              (.capture (.readOnly target)),
+            .equalityCaptureReadOnly typing⟩
 
   | _, .inclusionRefl expression =>
       some ⟨.inclusion expression expression, .inclusionRefl expression⟩
@@ -173,6 +181,148 @@ def check {scope : Sig} (context : Ctx scope) :
               (.capture captures),
             .captureVariable binding⟩
       | .term _ => none
+  | _, .captureReadOnly capture =>
+      some ⟨.inclusion (.capture (.readOnly capture)) (.capture capture),
+        .captureReadOnly capture⟩
+  | _, .captureReadOnlyMono subcapture => do
+      let checked ← check context subcapture
+      let ⟨proposition, typing⟩ := checked
+      match proposition with
+      | .inclusion (.capture lower) (.capture upper) =>
+          pure ⟨
+            .inclusion (.capture (.readOnly lower))
+              (.capture (.readOnly upper)),
+            .captureReadOnlyMono typing⟩
+
+  | _, .modeEmpty mode =>
+      some ⟨.mode (mode := mode) .empty, .modeEmpty mode⟩
+  | _, .modeUnion left right => do
+      let leftChecked ← check context left
+      let rightChecked ← check context right
+      let ⟨leftProposition, leftTyping⟩ := leftChecked
+      let ⟨rightProposition, rightTyping⟩ := rightChecked
+      match leftProposition, rightProposition with
+      | .mode leftCapture, .mode rightCapture =>
+          pure ⟨.mode (.union leftCapture rightCapture),
+            .modeUnion leftTyping rightTyping⟩
+  | _, .modeSubcapture subcapture upperMode => do
+      let subcaptureChecked ← check context subcapture
+      let modeChecked ← check context upperMode
+      let ⟨subcaptureProposition, subcaptureTyping⟩ := subcaptureChecked
+      let ⟨modeProposition, modeTyping⟩ := modeChecked
+      match subcaptureProposition, modeProposition with
+      | .inclusion (.capture lower) (.capture inclusionUpper),
+          .mode modeUpper =>
+          if upperMatches : inclusionUpper = modeUpper then
+            let alignedModeTyping : Proves context upperMode
+                (.mode inclusionUpper) := by
+              simpa [upperMatches] using modeTyping
+            pure ⟨.mode lower,
+              .modeSubcapture subcaptureTyping alignedModeTyping⟩
+          else
+            none
+  | _, .modeWritable capture =>
+      some ⟨.mode (mode := .writable) capture, .modeWritable capture⟩
+  | _, .modeReadOnly capture =>
+      some ⟨.mode (mode := .readOnly) (.readOnly capture),
+        .modeReadOnly capture⟩
+
+  | _, .separateSymm evidence => do
+      let checked ← check context evidence
+      let ⟨proposition, typing⟩ := checked
+      match proposition with
+      | .separate left right =>
+          pure ⟨.separate right left, .separateSymm typing⟩
+  | _, .separateUnion left right => do
+      let leftChecked ← check context left
+      let rightChecked ← check context right
+      let ⟨leftProposition, leftTyping⟩ := leftChecked
+      let ⟨rightProposition, rightTyping⟩ := rightChecked
+      match leftProposition, rightProposition with
+      | .separate leftCapture leftOther,
+          .separate rightCapture rightOther =>
+          if otherMatches : leftOther = rightOther then
+            let alignedRightTyping : Proves context right
+                (.separate rightCapture leftOther) := by
+              simpa [otherMatches] using rightTyping
+            pure ⟨.separate (.union leftCapture rightCapture) leftOther,
+              .separateUnion leftTyping alignedRightTyping⟩
+          else
+            none
+  | _, .separateEmpty capture =>
+      some ⟨.separate .empty capture, .separateEmpty capture⟩
+  | _, .separateReadOnly left right => do
+      let leftChecked ← check context left
+      let rightChecked ← check context right
+      let ⟨leftProposition, leftTyping⟩ := leftChecked
+      let ⟨rightProposition, rightTyping⟩ := rightChecked
+      match leftProposition, rightProposition with
+      | .mode leftCapture, .mode rightCapture =>
+          pure ⟨.separate leftCapture rightCapture,
+            .separateReadOnly leftTyping rightTyping⟩
+  | _, .separateSubcapture subcapture separation => do
+      let subcaptureChecked ← check context subcapture
+      let separationChecked ← check context separation
+      let ⟨subcaptureProposition, subcaptureTyping⟩ := subcaptureChecked
+      let ⟨separationProposition, separationTyping⟩ := separationChecked
+      match subcaptureProposition, separationProposition with
+      | .inclusion (.capture lower) (.capture inclusionUpper),
+          .separate separationUpper other =>
+          if upperMatches : inclusionUpper = separationUpper then
+            let alignedSeparationTyping : Proves context separation
+                (.separate inclusionUpper other) := by
+              simpa [upperMatches] using separationTyping
+            pure ⟨.separate lower other,
+              .separateSubcapture subcaptureTyping alignedSeparationTyping⟩
+          else
+            none
+  | _, .separateOfDisjoint disjoint => do
+      let checked ← check context disjoint
+      let ⟨proposition, typing⟩ := checked
+      match proposition with
+      | .disjoint left right =>
+          pure ⟨.separate left right, .separateOfDisjoint typing⟩
+
+  | _, .disjointSymm evidence => do
+      let checked ← check context evidence
+      let ⟨proposition, typing⟩ := checked
+      match proposition with
+      | .disjoint left right =>
+          pure ⟨.disjoint right left, .disjointSymm typing⟩
+  | _, .disjointUnion left right => do
+      let leftChecked ← check context left
+      let rightChecked ← check context right
+      let ⟨leftProposition, leftTyping⟩ := leftChecked
+      let ⟨rightProposition, rightTyping⟩ := rightChecked
+      match leftProposition, rightProposition with
+      | .disjoint leftCapture leftOther,
+          .disjoint rightCapture rightOther =>
+          if otherMatches : leftOther = rightOther then
+            let alignedRightTyping : Proves context right
+                (.disjoint rightCapture leftOther) := by
+              simpa [otherMatches] using rightTyping
+            pure ⟨.disjoint (.union leftCapture rightCapture) leftOther,
+              .disjointUnion leftTyping alignedRightTyping⟩
+          else
+            none
+  | _, .disjointEmpty capture =>
+      some ⟨.disjoint .empty capture, .disjointEmpty capture⟩
+  | _, .disjointEquality equality disjoint => do
+      let equalityChecked ← check context equality
+      let disjointChecked ← check context disjoint
+      let ⟨equalityProposition, equalityTyping⟩ := equalityChecked
+      let ⟨disjointProposition, disjointTyping⟩ := disjointChecked
+      match equalityProposition, disjointProposition with
+      | .equality (.capture replacement) (.capture equalityOriginal),
+          .disjoint disjointOriginal other =>
+          if originalMatches : equalityOriginal = disjointOriginal then
+            let alignedDisjointTyping : Proves context disjoint
+                (.disjoint equalityOriginal other) := by
+              simpa [originalMatches] using disjointTyping
+            pure ⟨.disjoint replacement other,
+              .disjointEquality equalityTyping alignedDisjointTyping⟩
+          else
+            none
 
 /-- Soundness is carried by every successful checker result. -/
 theorem check_sound {scope : Sig} {context : Ctx scope}

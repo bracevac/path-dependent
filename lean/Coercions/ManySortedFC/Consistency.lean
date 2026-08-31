@@ -4,10 +4,11 @@ import Coercions.ManySortedFC.Evidence
 # A Boolean consistency model for logical evidence
 
 This module interprets every term capability and every static symbol as a
-Boolean.  It is intentionally only a separating model: enough structure is
-retained to validate the logical evidence rules and refute characteristic bad
-closed judgments.  Quantified types receive a constant interpretation because
-the evidence language has no congruence rule that crosses a quantifier.
+Boolean.  It is intentionally only a small model for equality and inclusion:
+mode, separation, and disjointness propositions are interpreted trivially
+here and receive a dedicated access-view model in `SeparationConsistency`.
+Quantified types receive a constant interpretation because the evidence
+language has no congruence rule that crosses a quantifier.
 -/
 
 namespace ManySortedFC
@@ -83,6 +84,7 @@ def eval {scope : Sig} (valuation : BoolValuation scope) :
     Capture scope -> Bool
   | .empty => false
   | .union left right => left.eval valuation || right.eval valuation
+  | .readOnly capture => capture.eval valuation
   | .singleton capability => valuation.term capability
   | .cvar name => valuation.captureSymbol name
 
@@ -126,6 +128,9 @@ def Holds {scope : Sig} {relation : Relation}
   | .equality left right => left.eval valuation = right.eval valuation
   | .inclusion lower upper => BoolSemantics.LE
       (lower.eval valuation) (upper.eval valuation)
+  | .separate _ _ => True
+  | .disjoint _ _ => True
+  | .mode _ => True
 
 /-- Semantic validity means satisfaction by every heterogeneous valuation. -/
 def Valid {scope : Sig} {relation : Relation}
@@ -186,6 +191,8 @@ theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
       rightInduction =>
       simp only [Proposition.Holds, StaticExpr.eval, Capture.eval] at leftInduction rightInduction ⊢
       rw [leftInduction, rightInduction]
+  | equalityCaptureReadOnly typing induction =>
+      simpa [Proposition.Holds, StaticExpr.eval, Capture.eval] using induction
   | inclusionRefl expression =>
       exact BoolSemantics.refl _
   | inclusionTrans firstTyping secondTyping firstInduction secondInduction =>
@@ -212,6 +219,25 @@ theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
       exact BoolSemantics.or_elim leftInduction rightInduction
   | captureVariable binding =>
       exact respects _ _ _ binding
+  | captureReadOnly capture =>
+      exact BoolSemantics.refl _
+  | captureReadOnlyMono typing induction =>
+      simpa [Proposition.Holds, StaticExpr.eval, Capture.eval] using induction
+  | modeEmpty => trivial
+  | modeUnion => trivial
+  | modeSubcapture => trivial
+  | modeWritable => trivial
+  | modeReadOnly => trivial
+  | separateSymm => trivial
+  | separateUnion => trivial
+  | separateEmpty => trivial
+  | separateReadOnly => trivial
+  | separateSubcapture => trivial
+  | separateOfDisjoint => trivial
+  | disjointSymm => trivial
+  | disjointUnion => trivial
+  | disjointEmpty => trivial
+  | disjointEquality => trivial
 
 end Evidence.Proves
 

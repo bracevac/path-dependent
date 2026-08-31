@@ -83,6 +83,13 @@ private theorem check_complete_projection {scope : Sig}
           subst leftProp
           subst rightProp
           simp [check, leftEq, rightEq]
+  | equalityCaptureReadOnly capture ih =>
+      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
+      cases checked with
+      | mk checkedProp checkedTyping =>
+        dsimp at propEq
+        subst checkedProp
+        simp [check, checkedEq]
   | inclusionRefl => rfl
   | inclusionTrans first second firstIH secondIH =>
       obtain ⟨firstChecked, firstEq, firstPropEq⟩ :=
@@ -151,6 +158,131 @@ private theorem check_complete_projection {scope : Sig}
   | captureVariable binding =>
       simp only [check]
       split <;> simp_all
+  | captureReadOnly => rfl
+  | captureReadOnlyMono subcapture ih =>
+      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
+      cases checked with
+      | mk checkedProp checkedTyping =>
+        dsimp at propEq
+        subst checkedProp
+        simp [check, checkedEq]
+  | modeEmpty => rfl
+  | modeUnion left right leftIH rightIH =>
+      obtain ⟨leftChecked, leftEq, leftPropEq⟩ :=
+        Option.map_eq_some_iff.mp leftIH
+      obtain ⟨rightChecked, rightEq, rightPropEq⟩ :=
+        Option.map_eq_some_iff.mp rightIH
+      cases leftChecked with
+      | mk leftProp leftTyping =>
+        cases rightChecked with
+        | mk rightProp rightTyping =>
+          dsimp at leftPropEq rightPropEq
+          subst leftProp
+          subst rightProp
+          simp [check, leftEq, rightEq]
+  | modeSubcapture subcapture upperMode subcaptureIH modeIH =>
+      obtain ⟨subcaptureChecked, subcaptureEq, subcapturePropEq⟩ :=
+        Option.map_eq_some_iff.mp subcaptureIH
+      obtain ⟨modeChecked, modeEq, modePropEq⟩ :=
+        Option.map_eq_some_iff.mp modeIH
+      cases subcaptureChecked with
+      | mk subcaptureProp subcaptureTyping =>
+        cases modeChecked with
+        | mk modeProp modeTyping =>
+          dsimp at subcapturePropEq modePropEq
+          subst subcaptureProp
+          subst modeProp
+          simp [check, subcaptureEq, modeEq]
+  | modeWritable => rfl
+  | modeReadOnly => rfl
+  | separateSymm evidence ih =>
+      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
+      cases checked with
+      | mk checkedProp checkedTyping =>
+        dsimp at propEq
+        subst checkedProp
+        simp [check, checkedEq]
+  | separateUnion left right leftIH rightIH =>
+      obtain ⟨leftChecked, leftEq, leftPropEq⟩ :=
+        Option.map_eq_some_iff.mp leftIH
+      obtain ⟨rightChecked, rightEq, rightPropEq⟩ :=
+        Option.map_eq_some_iff.mp rightIH
+      cases leftChecked with
+      | mk leftProp leftTyping =>
+        cases rightChecked with
+        | mk rightProp rightTyping =>
+          dsimp at leftPropEq rightPropEq
+          subst leftProp
+          subst rightProp
+          simp [check, leftEq, rightEq]
+  | separateEmpty => rfl
+  | separateReadOnly left right leftIH rightIH =>
+      obtain ⟨leftChecked, leftEq, leftPropEq⟩ :=
+        Option.map_eq_some_iff.mp leftIH
+      obtain ⟨rightChecked, rightEq, rightPropEq⟩ :=
+        Option.map_eq_some_iff.mp rightIH
+      cases leftChecked with
+      | mk leftProp leftTyping =>
+        cases rightChecked with
+        | mk rightProp rightTyping =>
+          dsimp at leftPropEq rightPropEq
+          subst leftProp
+          subst rightProp
+          simp [check, leftEq, rightEq]
+  | separateSubcapture subcapture separation subcaptureIH separationIH =>
+      obtain ⟨subcaptureChecked, subcaptureEq, subcapturePropEq⟩ :=
+        Option.map_eq_some_iff.mp subcaptureIH
+      obtain ⟨separationChecked, separationEq, separationPropEq⟩ :=
+        Option.map_eq_some_iff.mp separationIH
+      cases subcaptureChecked with
+      | mk subcaptureProp subcaptureTyping =>
+        cases separationChecked with
+        | mk separationProp separationTyping =>
+          dsimp at subcapturePropEq separationPropEq
+          subst subcaptureProp
+          subst separationProp
+          simp [check, subcaptureEq, separationEq]
+  | separateOfDisjoint disjoint ih =>
+      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
+      cases checked with
+      | mk checkedProp checkedTyping =>
+        dsimp at propEq
+        subst checkedProp
+        simp [check, checkedEq]
+  | disjointSymm evidence ih =>
+      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
+      cases checked with
+      | mk checkedProp checkedTyping =>
+        dsimp at propEq
+        subst checkedProp
+        simp [check, checkedEq]
+  | disjointUnion left right leftIH rightIH =>
+      obtain ⟨leftChecked, leftEq, leftPropEq⟩ :=
+        Option.map_eq_some_iff.mp leftIH
+      obtain ⟨rightChecked, rightEq, rightPropEq⟩ :=
+        Option.map_eq_some_iff.mp rightIH
+      cases leftChecked with
+      | mk leftProp leftTyping =>
+        cases rightChecked with
+        | mk rightProp rightTyping =>
+          dsimp at leftPropEq rightPropEq
+          subst leftProp
+          subst rightProp
+          simp [check, leftEq, rightEq]
+  | disjointEmpty => rfl
+  | disjointEquality equality disjoint equalityIH disjointIH =>
+      obtain ⟨equalityChecked, equalityEq, equalityPropEq⟩ :=
+        Option.map_eq_some_iff.mp equalityIH
+      obtain ⟨disjointChecked, disjointEq, disjointPropEq⟩ :=
+        Option.map_eq_some_iff.mp disjointIH
+      cases equalityChecked with
+      | mk equalityProp equalityTyping =>
+        cases disjointChecked with
+        | mk disjointProp disjointTyping =>
+          dsimp at equalityPropEq disjointPropEq
+          subst equalityProp
+          subst disjointProp
+          simp [check, equalityEq, disjointEq]
 
 end Evidence
 

@@ -3,7 +3,8 @@ import Coercions.ManySortedFC.Context
 /-!
 # Logical evidence for many-sorted FC
 
-Logical evidence proves equality or directed inclusion at one static sort.
+Logical evidence proves equality or directed inclusion at one static sort, or
+capture-specific mode, separation, and disjointness propositions.
 The syntax contains only proof constructors: it cannot insert term lambdas,
 packages, static applications, or other administrative structure. Those
 operations belong to the separate structural-adapter layer.
@@ -41,6 +42,9 @@ inductive Evidence : Relation -> Sig -> Type where
       Evidence (.equality .type) scope
   | equalityCaptureUnion {scope : Sig}
       (left right : Evidence (.equality .capture) scope) :
+      Evidence (.equality .capture) scope
+  | equalityCaptureReadOnly {scope : Sig}
+      (capture : Evidence (.equality .capture) scope) :
       Evidence (.equality .capture) scope
 
   /- Directed-inclusion laws common to both ordered sorts. -/
@@ -81,6 +85,56 @@ inductive Evidence : Relation -> Sig -> Type where
   bounded by the outer capture recorded in its context type. -/
   | captureVariable {scope : Sig}
       (index : BVar scope .term) : Evidence (.inclusion .capture) scope
+  /-- Taking a read-only view forgets write permission but preserves the
+  underlying capabilities. -/
+  | captureReadOnly {scope : Sig} (capture : Capture scope) :
+      Evidence (.inclusion .capture) scope
+  | captureReadOnlyMono {scope : Sig}
+      (subcapture : Evidence (.inclusion .capture) scope) :
+      Evidence (.inclusion .capture) scope
+
+  /- Capture-mode formation and downward closure. -/
+  | modeEmpty {scope : Sig} (mode : CaptureMode) :
+      Evidence (.mode mode) scope
+  | modeUnion {scope : Sig} {mode : CaptureMode}
+      (left right : Evidence (.mode mode) scope) :
+      Evidence (.mode mode) scope
+  | modeSubcapture {scope : Sig} {mode : CaptureMode}
+      (subcapture : Evidence (.inclusion .capture) scope)
+      (upperMode : Evidence (.mode mode) scope) :
+      Evidence (.mode mode) scope
+  | modeWritable {scope : Sig} (capture : Capture scope) :
+      Evidence (.mode .writable) scope
+  | modeReadOnly {scope : Sig} (capture : Capture scope) :
+      Evidence (.mode .readOnly) scope
+
+  /- Separation permits shared read-only access. -/
+  | separateSymm {scope : Sig} (evidence : Evidence .separate scope) :
+      Evidence .separate scope
+  | separateUnion {scope : Sig}
+      (left right : Evidence .separate scope) : Evidence .separate scope
+  | separateEmpty {scope : Sig} (capture : Capture scope) :
+      Evidence .separate scope
+  | separateReadOnly {scope : Sig}
+      (left right : Evidence (.mode .readOnly) scope) :
+      Evidence .separate scope
+  | separateSubcapture {scope : Sig}
+      (subcapture : Evidence (.inclusion .capture) scope)
+      (separation : Evidence .separate scope) : Evidence .separate scope
+  | separateOfDisjoint {scope : Sig}
+      (disjoint : Evidence .disjoint scope) : Evidence .separate scope
+
+  /- Disjointness has no read-only or general monotonicity rule.  Primitive
+  facts enter through `var`; transport is restricted to checked equality. -/
+  | disjointSymm {scope : Sig} (evidence : Evidence .disjoint scope) :
+      Evidence .disjoint scope
+  | disjointUnion {scope : Sig}
+      (left right : Evidence .disjoint scope) : Evidence .disjoint scope
+  | disjointEmpty {scope : Sig} (capture : Capture scope) :
+      Evidence .disjoint scope
+  | disjointEquality {scope : Sig}
+      (equality : Evidence (.equality .capture) scope)
+      (disjoint : Evidence .disjoint scope) : Evidence .disjoint scope
 
 deriving instance DecidableEq for Evidence
 
@@ -104,6 +158,8 @@ def rename {relation : Relation} {source target : Sig}
       .equalityCapturing (captures.rename rho) (shape.rename rho)
   | .equalityCaptureUnion left right =>
       .equalityCaptureUnion (left.rename rho) (right.rename rho)
+  | .equalityCaptureReadOnly capture =>
+      .equalityCaptureReadOnly (capture.rename rho)
   | .inclusionRefl expression => .inclusionRefl (expression.rename rho)
   | .inclusionTrans first second =>
       .inclusionTrans (first.rename rho) (second.rename rho)
@@ -124,6 +180,31 @@ def rename {relation : Relation} {source target : Sig}
   | .captureUnionElim left right =>
       .captureUnionElim (left.rename rho) (right.rename rho)
   | .captureVariable index => .captureVariable (rho.var index)
+  | .captureReadOnly capture => .captureReadOnly (capture.rename rho)
+  | .captureReadOnlyMono subcapture =>
+      .captureReadOnlyMono (subcapture.rename rho)
+  | .modeEmpty mode => .modeEmpty mode
+  | .modeUnion left right => .modeUnion (left.rename rho) (right.rename rho)
+  | .modeSubcapture subcapture upperMode =>
+      .modeSubcapture (subcapture.rename rho) (upperMode.rename rho)
+  | .modeWritable capture => .modeWritable (capture.rename rho)
+  | .modeReadOnly capture => .modeReadOnly (capture.rename rho)
+  | .separateSymm evidence => .separateSymm (evidence.rename rho)
+  | .separateUnion left right =>
+      .separateUnion (left.rename rho) (right.rename rho)
+  | .separateEmpty capture => .separateEmpty (capture.rename rho)
+  | .separateReadOnly left right =>
+      .separateReadOnly (left.rename rho) (right.rename rho)
+  | .separateSubcapture subcapture separation =>
+      .separateSubcapture (subcapture.rename rho) (separation.rename rho)
+  | .separateOfDisjoint disjoint =>
+      .separateOfDisjoint (disjoint.rename rho)
+  | .disjointSymm evidence => .disjointSymm (evidence.rename rho)
+  | .disjointUnion left right =>
+      .disjointUnion (left.rename rho) (right.rename rho)
+  | .disjointEmpty capture => .disjointEmpty (capture.rename rho)
+  | .disjointEquality equality disjoint =>
+      .disjointEquality (equality.rename rho) (disjoint.rename rho)
 
 /-- Weaken a logical certificate below one heterogeneous binder. -/
 def weaken {scope : Sig} {relation : Relation} {kind : BinderKind}
@@ -147,6 +228,7 @@ theorem rename_id {scope : Sig} {relation : Relation}
       simp [rename, capturesInduction, shapeInduction]
   | equalityCaptureUnion left right leftInduction rightInduction =>
       simp [rename, leftInduction, rightInduction]
+  | equalityCaptureReadOnly capture induction => simp [rename, induction]
   | inclusionRefl expression => simp [rename]
   | inclusionTrans first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
@@ -163,6 +245,30 @@ theorem rename_id {scope : Sig} {relation : Relation}
   | captureUnionElim left right leftInduction rightInduction =>
       simp [rename, leftInduction, rightInduction]
   | captureVariable => rfl
+  | captureReadOnly capture => simp [rename]
+  | captureReadOnlyMono subcapture induction => simp [rename, induction]
+  | modeEmpty => rfl
+  | modeUnion left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | modeSubcapture subcapture upperMode subcaptureInduction modeInduction =>
+      simp [rename, subcaptureInduction, modeInduction]
+  | modeWritable capture => simp [rename]
+  | modeReadOnly capture => simp [rename]
+  | separateSymm evidence induction => simp [rename, induction]
+  | separateUnion left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | separateEmpty capture => simp [rename]
+  | separateReadOnly left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | separateSubcapture subcapture separation subcaptureInduction separationInduction =>
+      simp [rename, subcaptureInduction, separationInduction]
+  | separateOfDisjoint disjoint induction => simp [rename, induction]
+  | disjointSymm evidence induction => simp [rename, induction]
+  | disjointUnion left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | disjointEmpty capture => simp [rename]
+  | disjointEquality equality disjoint equalityInduction disjointInduction =>
+      simp [rename, equalityInduction, disjointInduction]
 
 @[simp]
 theorem rename_comp {relation : Relation} {first second third : Sig}
@@ -182,6 +288,7 @@ theorem rename_comp {relation : Relation} {first second third : Sig}
       simp [rename, capturesInduction, shapeInduction]
   | equalityCaptureUnion left right leftInduction rightInduction =>
       simp [rename, leftInduction, rightInduction]
+  | equalityCaptureReadOnly capture induction => simp [rename, induction]
   | inclusionRefl expression => simp [rename, StaticExpr.rename_comp]
   | inclusionTrans first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
@@ -198,6 +305,30 @@ theorem rename_comp {relation : Relation} {first second third : Sig}
   | captureUnionElim left right leftInduction rightInduction =>
       simp [rename, leftInduction, rightInduction]
   | captureVariable => rfl
+  | captureReadOnly capture => simp [rename, Capture.rename_comp]
+  | captureReadOnlyMono subcapture induction => simp [rename, induction]
+  | modeEmpty => rfl
+  | modeUnion left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | modeSubcapture subcapture upperMode subcaptureInduction modeInduction =>
+      simp [rename, subcaptureInduction, modeInduction]
+  | modeWritable capture => simp [rename, Capture.rename_comp]
+  | modeReadOnly capture => simp [rename, Capture.rename_comp]
+  | separateSymm evidence induction => simp [rename, induction]
+  | separateUnion left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | separateEmpty capture => simp [rename, Capture.rename_comp]
+  | separateReadOnly left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | separateSubcapture subcapture separation subcaptureInduction separationInduction =>
+      simp [rename, subcaptureInduction, separationInduction]
+  | separateOfDisjoint disjoint induction => simp [rename, induction]
+  | disjointSymm evidence induction => simp [rename, induction]
+  | disjointUnion left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | disjointEmpty capture => simp [rename, Capture.rename_comp]
+  | disjointEquality equality disjoint equalityInduction disjointInduction =>
+      simp [rename, equalityInduction, disjointInduction]
 
 /-! ## Declarative certificate typing -/
 
@@ -259,6 +390,14 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
       Proves context (.equalityCaptureUnion left right)
         (.equality (.capture (.union sourceLeft sourceRight))
           (.capture (.union targetLeft targetRight)))
+  | equalityCaptureReadOnly {scope : Sig} {context : Ctx scope}
+      {capture : Evidence (.equality .capture) scope}
+      {source target : Capture scope}
+      (typing : Proves context capture
+        (.equality (.capture source) (.capture target))) :
+      Proves context (.equalityCaptureReadOnly capture)
+        (.equality (.capture (.readOnly source))
+          (.capture (.readOnly target)))
 
   | inclusionRefl {scope : Sig} {context : Ctx scope}
       {sort : StaticSort} (expression : StaticExpr sort scope) :
@@ -337,6 +476,106 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
       Proves context (.captureVariable index)
         (.inclusion (.capture (.singleton index))
           (.capture captures))
+  | captureReadOnly {scope : Sig} {context : Ctx scope}
+      (capture : Capture scope) :
+      Proves context (.captureReadOnly capture)
+        (.inclusion (.capture (.readOnly capture)) (.capture capture))
+  | captureReadOnlyMono {scope : Sig} {context : Ctx scope}
+      {subcapture : Evidence (.inclusion .capture) scope}
+      {lower upper : Capture scope}
+      (typing : Proves context subcapture
+        (.inclusion (.capture lower) (.capture upper))) :
+      Proves context (.captureReadOnlyMono subcapture)
+        (.inclusion (.capture (.readOnly lower))
+          (.capture (.readOnly upper)))
+
+  | modeEmpty {scope : Sig} {context : Ctx scope} (mode : CaptureMode) :
+      Proves context (.modeEmpty mode) (.mode (mode := mode) .empty)
+  | modeUnion {scope : Sig} {context : Ctx scope} {mode : CaptureMode}
+      {left right : Evidence (.mode mode) scope}
+      {leftCapture rightCapture : Capture scope}
+      (leftTyping : Proves context left (.mode leftCapture))
+      (rightTyping : Proves context right (.mode rightCapture)) :
+      Proves context (.modeUnion left right)
+        (.mode (.union leftCapture rightCapture))
+  | modeSubcapture {scope : Sig} {context : Ctx scope}
+      {mode : CaptureMode}
+      {subcapture : Evidence (.inclusion .capture) scope}
+      {upperMode : Evidence (.mode mode) scope}
+      {lower upper : Capture scope}
+      (subcaptureTyping : Proves context subcapture
+        (.inclusion (.capture lower) (.capture upper)))
+      (modeTyping : Proves context upperMode (.mode upper)) :
+      Proves context (.modeSubcapture subcapture upperMode) (.mode lower)
+  | modeWritable {scope : Sig} {context : Ctx scope}
+      (capture : Capture scope) :
+      Proves context (.modeWritable capture)
+        (.mode (mode := .writable) capture)
+  | modeReadOnly {scope : Sig} {context : Ctx scope}
+      (capture : Capture scope) :
+      Proves context (.modeReadOnly capture)
+        (.mode (mode := .readOnly) (.readOnly capture))
+
+  | separateSymm {scope : Sig} {context : Ctx scope}
+      {evidence : Evidence .separate scope} {left right : Capture scope}
+      (typing : Proves context evidence (.separate left right)) :
+      Proves context (.separateSymm evidence) (.separate right left)
+  | separateUnion {scope : Sig} {context : Ctx scope}
+      {left right : Evidence .separate scope}
+      {leftCapture rightCapture other : Capture scope}
+      (leftTyping : Proves context left (.separate leftCapture other))
+      (rightTyping : Proves context right (.separate rightCapture other)) :
+      Proves context (.separateUnion left right)
+        (.separate (.union leftCapture rightCapture) other)
+  | separateEmpty {scope : Sig} {context : Ctx scope}
+      (capture : Capture scope) :
+      Proves context (.separateEmpty capture) (.separate .empty capture)
+  | separateReadOnly {scope : Sig} {context : Ctx scope}
+      {left right : Evidence (.mode .readOnly) scope}
+      {leftCapture rightCapture : Capture scope}
+      (leftTyping : Proves context left (.mode leftCapture))
+      (rightTyping : Proves context right (.mode rightCapture)) :
+      Proves context (.separateReadOnly left right)
+        (.separate leftCapture rightCapture)
+  | separateSubcapture {scope : Sig} {context : Ctx scope}
+      {subcapture : Evidence (.inclusion .capture) scope}
+      {separation : Evidence .separate scope}
+      {lower upper other : Capture scope}
+      (subcaptureTyping : Proves context subcapture
+        (.inclusion (.capture lower) (.capture upper)))
+      (separationTyping : Proves context separation
+        (.separate upper other)) :
+      Proves context (.separateSubcapture subcapture separation)
+        (.separate lower other)
+  | separateOfDisjoint {scope : Sig} {context : Ctx scope}
+      {disjoint : Evidence .disjoint scope} {left right : Capture scope}
+      (typing : Proves context disjoint (.disjoint left right)) :
+      Proves context (.separateOfDisjoint disjoint) (.separate left right)
+
+  | disjointSymm {scope : Sig} {context : Ctx scope}
+      {evidence : Evidence .disjoint scope} {left right : Capture scope}
+      (typing : Proves context evidence (.disjoint left right)) :
+      Proves context (.disjointSymm evidence) (.disjoint right left)
+  | disjointUnion {scope : Sig} {context : Ctx scope}
+      {left right : Evidence .disjoint scope}
+      {leftCapture rightCapture other : Capture scope}
+      (leftTyping : Proves context left (.disjoint leftCapture other))
+      (rightTyping : Proves context right (.disjoint rightCapture other)) :
+      Proves context (.disjointUnion left right)
+        (.disjoint (.union leftCapture rightCapture) other)
+  | disjointEmpty {scope : Sig} {context : Ctx scope}
+      (capture : Capture scope) :
+      Proves context (.disjointEmpty capture) (.disjoint .empty capture)
+  | disjointEquality {scope : Sig} {context : Ctx scope}
+      {equality : Evidence (.equality .capture) scope}
+      {disjoint : Evidence .disjoint scope}
+      {replacement original other : Capture scope}
+      (equalityTyping : Proves context equality
+        (.equality (.capture replacement) (.capture original)))
+      (disjointTyping : Proves context disjoint
+        (.disjoint original other)) :
+      Proves context (.disjointEquality equality disjoint)
+        (.disjoint replacement other)
 
 /-- Alternate name emphasizing that `Proves` is the typing judgment for
 logical certificates. -/

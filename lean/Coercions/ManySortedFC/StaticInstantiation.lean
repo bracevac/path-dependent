@@ -155,6 +155,8 @@ def substitute {source target : Sig} {relation : Relation}
   | .equalityCaptureUnion left right =>
       .equalityCaptureUnion (left.substitute substitution)
         (right.substitute substitution)
+  | .equalityCaptureReadOnly capture =>
+      .equalityCaptureReadOnly (capture.substitute substitution)
   | .inclusionRefl expression =>
       .inclusionRefl (expression.substitute substitution.static)
   | .inclusionTrans first second =>
@@ -185,6 +187,45 @@ def substitute {source target : Sig} {relation : Relation}
         (right.substitute substitution)
   | .captureVariable index =>
       .captureVariable (substitution.static.termVar index)
+  | .captureReadOnly capture =>
+      .captureReadOnly (capture.substitute substitution.static)
+  | .captureReadOnlyMono subcapture =>
+      .captureReadOnlyMono (subcapture.substitute substitution)
+  | .modeEmpty mode => .modeEmpty mode
+  | .modeUnion left right =>
+      .modeUnion (left.substitute substitution) (right.substitute substitution)
+  | .modeSubcapture subcapture upperMode =>
+      .modeSubcapture (subcapture.substitute substitution)
+        (upperMode.substitute substitution)
+  | .modeWritable capture =>
+      .modeWritable (capture.substitute substitution.static)
+  | .modeReadOnly capture =>
+      .modeReadOnly (capture.substitute substitution.static)
+  | .separateSymm evidence =>
+      .separateSymm (evidence.substitute substitution)
+  | .separateUnion left right =>
+      .separateUnion (left.substitute substitution)
+        (right.substitute substitution)
+  | .separateEmpty capture =>
+      .separateEmpty (capture.substitute substitution.static)
+  | .separateReadOnly left right =>
+      .separateReadOnly (left.substitute substitution)
+        (right.substitute substitution)
+  | .separateSubcapture subcapture separation =>
+      .separateSubcapture (subcapture.substitute substitution)
+        (separation.substitute substitution)
+  | .separateOfDisjoint disjoint =>
+      .separateOfDisjoint (disjoint.substitute substitution)
+  | .disjointSymm evidence =>
+      .disjointSymm (evidence.substitute substitution)
+  | .disjointUnion left right =>
+      .disjointUnion (left.substitute substitution)
+        (right.substitute substitution)
+  | .disjointEmpty capture =>
+      .disjointEmpty (capture.substitute substitution.static)
+  | .disjointEquality equality disjoint =>
+      .disjointEquality (equality.substitute substitution)
+        (disjoint.substitute substitution)
 
 end Evidence
 

@@ -131,6 +131,9 @@ mutual
 inductive Capture : Sig → Type where
   | empty {scope : Sig} : Capture scope
   | union {scope : Sig} (left right : Capture scope) : Capture scope
+  /-- A read-only view of the same capabilities.  It changes access mode, not
+  capability identity. -/
+  | readOnly {scope : Sig} (capture : Capture scope) : Capture scope
   | singleton {scope : Sig} (capability : BVar scope .term) : Capture scope
   | cvar {scope : Sig}
       (name : BVar scope (.symbol .capture)) : Capture scope
@@ -160,8 +163,7 @@ inductive StaticExpr : StaticSort → Sig → Type where
   | capture {scope : Sig} (capture : Capture scope) :
       StaticExpr .capture scope
 
-/-- A relation proposition whose endpoints are intrinsically of the relation's
-sort.  Cross-sort equalities and inclusions are therefore unrepresentable. -/
+/-- An intrinsically sorted static proposition. -/
 inductive Proposition : Relation → Sig → Type where
   | equality {scope : Sig} {sort : StaticSort}
       (left right : StaticExpr sort scope) :
@@ -169,6 +171,12 @@ inductive Proposition : Relation → Sig → Type where
   | inclusion {scope : Sig} {sort : StaticSort}
       (lower upper : StaticExpr sort scope) :
       Proposition (.inclusion sort) scope
+  | separate {scope : Sig} (left right : Capture scope) :
+      Proposition .separate scope
+  | disjoint {scope : Sig} (left right : Capture scope) :
+      Proposition .disjoint scope
+  | mode {scope : Sig} {mode : CaptureMode} (capture : Capture scope) :
+      Proposition (.mode mode) scope
 
 /-- A names-first local theory.  Every proposition is scoped after all symbols
 but before every evidence binder, preventing a theory from citing its own
@@ -229,6 +237,7 @@ def Capture.rename {source target : Sig} (capture : Capture source)
   match capture with
   | .empty => .empty
   | .union left right => .union (left.rename rho) (right.rename rho)
+  | .readOnly capture => .readOnly (capture.rename rho)
   | .singleton capability => .singleton (rho.var capability)
   | .cvar name => .cvar (rho.var name)
 
@@ -258,13 +267,16 @@ def StaticExpr.rename {sort : StaticSort} {source target : Sig}
   | .type type => .type (type.rename rho)
   | .capture capture => .capture (capture.rename rho)
 
-/-- Rename both endpoints of a proposition. -/
+/-- Rename every static expression in a proposition. -/
 def Proposition.rename {relation : Relation} {source target : Sig}
     (proposition : Proposition relation source) (rho : Rename source target) :
     Proposition relation target :=
   match proposition with
   | .equality left right => .equality (left.rename rho) (right.rename rho)
   | .inclusion lower upper => .inclusion (lower.rename rho) (upper.rename rho)
+  | .separate left right => .separate (left.rename rho) (right.rename rho)
+  | .disjoint left right => .disjoint (left.rename rho) (right.rename rho)
+  | .mode capture => .mode (capture.rename rho)
 
 /-- Rename the ambient scope of a theory without changing its interface. -/
 def Theory.rename {source target : Sig} {symbols : List StaticSort}
@@ -335,6 +347,8 @@ def Capture.rename_id {scope : Sig} (capture : Capture scope) :
   | .union left right => by
       simp only [Capture.rename, Capture.rename_id left,
         Capture.rename_id right]
+  | .readOnly capture => by
+      simp only [Capture.rename, Capture.rename_id capture]
   | .singleton _ => rfl
   | .cvar _ => rfl
 
@@ -378,6 +392,14 @@ def Proposition.rename_id {scope : Sig} {relation : Relation}
   | .inclusion lower upper => by
       simp only [Proposition.rename, StaticExpr.rename_id lower,
         StaticExpr.rename_id upper]
+  | .separate left right => by
+      simp only [Proposition.rename, Capture.rename_id left,
+        Capture.rename_id right]
+  | .disjoint left right => by
+      simp only [Proposition.rename, Capture.rename_id left,
+        Capture.rename_id right]
+  | .mode capture => by
+      simp only [Proposition.rename, Capture.rename_id capture]
 
 @[simp]
 def Theory.rename_id {scope : Sig} {symbols : List StaticSort}
@@ -431,6 +453,8 @@ def Capture.rename_comp {first second third : Sig}
   | .union left right => by
       simp only [Capture.rename, Capture.rename_comp left,
         Capture.rename_comp right]
+  | .readOnly capture => by
+      simp only [Capture.rename, Capture.rename_comp capture]
   | .singleton _ => rfl
   | .cvar _ => rfl
 
@@ -480,6 +504,14 @@ def Proposition.rename_comp {relation : Relation}
   | .inclusion lower upper => by
       simp only [Proposition.rename, StaticExpr.rename_comp lower,
         StaticExpr.rename_comp upper]
+  | .separate left right => by
+      simp only [Proposition.rename, Capture.rename_comp left,
+        Capture.rename_comp right]
+  | .disjoint left right => by
+      simp only [Proposition.rename, Capture.rename_comp left,
+        Capture.rename_comp right]
+  | .mode capture => by
+      simp only [Proposition.rename, Capture.rename_comp capture]
 
 @[simp]
 def Theory.rename_comp {first second third : Sig}

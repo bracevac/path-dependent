@@ -75,6 +75,12 @@ def exactEvidence : (relations : List Relation) -> EvidenceArgs [] relations
       .cons (.equalityRefl (.type .one)) (exactEvidence remaining)
   | .equality .capture :: remaining =>
       .cons (.equalityRefl (.capture .empty)) (exactEvidence remaining)
+  | .mode mode :: remaining =>
+      .cons (.modeEmpty mode) (exactEvidence remaining)
+  | .separate :: remaining =>
+      .cons (.separateEmpty .empty) (exactEvidence remaining)
+  | .disjoint :: remaining =>
+      .cons (.disjointEmpty .empty) (exactEvidence remaining)
 
 structure CheckedMulti where
   object : ObjectPreparation.PreparedObject ([] : ManySortedFC.Sig)

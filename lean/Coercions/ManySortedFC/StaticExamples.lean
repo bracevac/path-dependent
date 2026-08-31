@@ -179,21 +179,32 @@ theorem exact_mixed_model_is_accepted :
       exactMixedWitnesses exactMixedEvidence).isSome = true := by
   native_decide
 
-/-! ## Cross-sort propositions are absent by construction -/
+/-! ## Ordered cross-sort propositions are absent by construction -/
 
-/-- Every proposition exposes two endpoints at one existentially packaged
-sort.  There is no branch returning one type endpoint and one capture endpoint,
-which is the compile-time form of cross-sort unrepresentability. -/
-def propositionEndpointsHaveOneSort {scope : Sig} {relation : Relation}
-    (proposition : Proposition relation scope) :
-    Σ sort : StaticSort,
-      StaticExpr sort scope × StaticExpr sort scope :=
+/-- Equality exposes two endpoints at its one statically fixed sort. -/
+def equalityEndpointsHaveOneSort {scope : Sig} {sort : StaticSort}
+    (proposition : Proposition (.equality sort) scope) :
+    StaticExpr sort scope × StaticExpr sort scope :=
   match proposition with
-  | .equality left right => ⟨_, left, right⟩
-  | .inclusion lower upper => ⟨_, lower, upper⟩
+  | .equality left right => ⟨left, right⟩
+
+/-- Inclusion exposes two endpoints at its one statically fixed sort.  The new
+capture predicates have their own fixed arities and cannot be mistaken for an
+ordered cross-sort proposition. -/
+def inclusionEndpointsHaveOneSort {scope : Sig} {sort : StaticSort}
+    (proposition : Proposition (.inclusion sort) scope) :
+    StaticExpr sort scope × StaticExpr sort scope :=
+  match proposition with
+  | .inclusion lower upper => ⟨lower, upper⟩
 
 theorem type_and_capture_sorts_are_distinct :
     StaticSort.type ≠ StaticSort.capture := by
+  decide
+
+theorem capture_relation_arities_are_explicit :
+    Relation.separate.argumentSorts = [.capture, .capture] ∧
+      Relation.disjoint.argumentSorts = [.capture, .capture] ∧
+      (Relation.mode .readOnly).argumentSorts = [.capture] := by
   decide
 
 end ManySortedFC.StaticExamples
