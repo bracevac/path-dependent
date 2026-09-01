@@ -10,14 +10,13 @@ explicit-coercion calculi.
 - `DOT` contains the source calculi.
 - `Translation` contains derivation-directed compiler case studies.
 
-The cumulative compiler in `Translation/ManySorted/ModalIntersections` covers
-a closed, acyclic, captured-intersection general-expression fragment. Ordinary
-applications may contain computations. Object-producing computations must be
-opened explicitly before member selection or negative object application;
-only canonical object literals and already-open stable roots are direct object
-arguments. That general-expression compiler does not include recursive
-objects, objects nested inside member bounds or runtime representations, or
-dependent object-consumer results.
+The cumulative compiler's M10/M11 core covers a closed, acyclic,
+captured-intersection general-expression fragment. Ordinary applications may
+contain computations. Object-producing computations must be opened explicitly
+before member selection or negative object application; only canonical object
+literals and already-open stable roots are direct object arguments. That
+nonrecursive core does not include objects nested inside member bounds or
+runtime representations, or dependent object-consumer results.
 
 Positive objects compile to existential models and one runtime payload.
 Negative object parameters compile to static model abstraction followed by an
@@ -29,17 +28,44 @@ application introduces no package/open redex. The tested identity-like direct
 paths preserve erasure literally; the general statement is administrative
 equality because structural function and modal adapters can eta-expand values.
 
-`Translation/ManySorted/RecursiveObjects` is a separate Stage 6A
-object-literal case study. It compiles simultaneous guarded exact type-member
-definitions to recursive projections and explicit unfold evidence. Normalized
-public labels are checked against their recursive slots, and the generated
-model and package cross the standalone target checkers. The source erasure is
-defined independently and is literally equal to the package erasure.
+`Translation/ManySorted/RecursiveObjects` extends that cumulative compiler
+with guarded recursive object signatures. Recursive type members compile to
+recursive projections and checked fold/unfold evidence. Recursive capture
+members are interpreted as simultaneous equations: construction chooses
+finite capture expressions from the ambient context and independently proves
+every instantiated equation before packaging. This gives existential model
+semantics; the target does not manufacture a least, greatest, or generative
+capture fixed point.
 
-Stage 6A keeps capture members and the single `C_rep` acyclic and uses one
-`Unit` runtime payload. It does not provide recursive capture equations,
-recursive runtime records, a full recursive-object compiler, a semantic model
-for arbitrary recursive equations, or a full DOT tight-typing theorem.
+Recursive payloads may be ordinary values, including functions whose types
+refer to the chosen recursive model. Their actual capture is represented by
+the existing unique `C_rep` name. The object theory checks `C_rep` against the
+advertised capture, which may itself be a recursive member. Positive packaging
+separately checks `C_rep` against an ambient package envelope; this envelope
+controls evaluation of the existential package but is not the capture exposed
+to negative consumers. A recursive literal is introduced positively as one
+existential model and one payload. Negative or path-dependent use requires a
+source `objectLet`, whose target open establishes one stable identity for every
+member. Packaging, evidence, and opening add no runtime computation beyond
+that source binding, and emitted artifacts are checked by ManySortedFC.
+Member references take source paths, so selecting from an unbound recursive
+literal is not representable in the typed source AST.
+Recursive finalization erases literally to the already compiled payload, so
+an exact payload compilation gives exact recursive-object erasure. The
+representative package/open programs satisfy literal source-to-target
+erasure; the unrestricted cumulative compiler still states administrative
+equality because older function and modal adapters may eta-expand values.
+The recursive exactness layer proves packaging and explicit opening preserve
+literal equality compositionally, and includes a checked adapter
+counterexample showing why no unconditional theorem can cover every inherited
+typing derivation. Artifact-level conservativity relates exact cumulative
+results to independently accepted M10 and M11 results by literal erasure.
+
+This stage does not add recursive runtime records, a runtime self/letrec
+binder, projections from unstable expressions, or a generative capture
+fixed-point primitive. It also does not prove semantic consistency of every
+recursive type equation or a full DOT tight-typing theorem: only supplied,
+independently checkable models can be packaged.
 
 The classifier-projection extension adds a closed classifier tree, ground
 kind intersection and subtraction, and `Capture.project` to ManySortedFC.

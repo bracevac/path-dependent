@@ -321,7 +321,7 @@ def exactTypeLiteralArgument :
     ObjectArgument.HasType TypingEnv.nil (.ret exactTypeLiteral)
       exactTypeObject exactTypeModel := by
   simpa using
-    (ObjectArgument.HasType.literal exactTypeRealization .unit
+    (ObjectArgument.HasType.literal rfl exactTypeRealization .unit
       .refl .refl .refl (ObjectType.Adapts.refl exactTypeObject)
       .refl .refl)
 

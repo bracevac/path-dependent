@@ -72,6 +72,7 @@ def eraseValueWith {scope : Sig} {runtimeScope : Nat}
   | .pack _ _ _ payload => eraseValueWith rho payload
   | .lock _ _ _ body => .suspend (eraseTermWith rho body)
   | .object _ payload => eraseValueWith rho payload
+  | .recursiveObject _ payload => eraseValueWith rho payload
   | .objectConsumer _ _ body => .lam (eraseTermWith rho.liftTerm body)
 
 def eraseTermWith {scope : Sig} {runtimeScope : Nat}
@@ -126,6 +127,15 @@ theorem eraseValueWith_lock {scope : Sig} {runtimeScope : Nat}
     (result : Ty scope) (closure : Capture scope) (body : Term scope) :
     eraseValueWith rho (.lock requirements result closure body) =
       .suspend (eraseTermWith rho body) := rfl
+
+/-- A recursive object tag records the positive/open-only source discipline;
+it has no runtime representation. -/
+@[simp]
+theorem eraseValueWith_recursiveObject {scope : Sig} {runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope) (objectType : ObjectType scope)
+    (payload : Value scope) :
+    eraseValueWith rho (.recursiveObject objectType payload) =
+      eraseValueWith rho payload := rfl
 
 /-- Static application erases its interval and static argument without
 changing or reordering the function computation. -/
@@ -198,6 +208,12 @@ theorem eraseValue_lock {scope : Nat} {separationCount : Nat}
     (body : Term (termScope scope)) :
     eraseValue (.lock requirements result closure body) =
       .suspend (eraseTerm body) := rfl
+
+@[simp]
+theorem eraseValue_recursiveObject {scope : Nat}
+    (objectType : ObjectType (termScope scope))
+    (payload : Value (termScope scope)) :
+    eraseValue (.recursiveObject objectType payload) = eraseValue payload := rfl
 
 @[simp]
 theorem eraseTerm_staticApp {scope : Nat} {sort : StaticSort}

@@ -320,6 +320,14 @@ def compileLocalIncludes? {sourceScope : Source.Sig}
         (ManySortedFC.StaticScope targetScope
           prepared.object.encoding.symbols
           prepared.object.encoding.relations))
+  | _, expression, _, .ambient (.refl) => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.encoding.symbols
+          prepared.object.encoding.relations)
+      let targetExpression <-
+        (Preparation.Compile.translateStaticExpr openedLayout
+          prepared.object.encoding.openedMembers expression).toOption
+      pure (.inclusionRefl targetExpression)
   | _, _, _, .ambient proof => ambient.compile proof
   | .type, _, _, .typeLower occurrence => do
       let selected <- selectPreparedTypeOccurrence? prepared occurrence
@@ -431,6 +439,14 @@ def compileContractedLocalIncludes? {sourceScope : Source.Sig}
       Option (Target.Evidence (.inclusion (translateSort sort))
         (ManySortedFC.StaticScope targetScope prepared.object.symbols
           prepared.object.relations))
+  | _, expression, _, .ambient (.refl) => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.symbols
+          prepared.object.relations)
+      let targetExpression <-
+        (Preparation.Compile.translateStaticExpr openedLayout
+          prepared.object.openedMembers expression).toOption
+      pure (.inclusionRefl targetExpression)
   | _, _, _, .ambient proof => ambient.compile proof
   | .type, _, _, .typeLower occurrence => do
       let evidence <- contractedTypeOccurrenceEvidence? prepared occurrence

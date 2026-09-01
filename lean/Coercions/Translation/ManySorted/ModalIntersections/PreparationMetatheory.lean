@@ -114,7 +114,42 @@ private theorem translateCapture_ref {sourceScope : Source.Sig}
     (reference : Source.StaticRef .capture sourceScope) :
     Compile.translateCapture layout members (.ref reference) = (do
       pure (.cvar (← compileCaptureReference layout members reference))) := by
-  rfl
+  cases reference with
+  | bound sourceVar =>
+      simp [Compile.translateCapture, Compile.captureCore,
+        Compile.captureReference, compileCaptureReference, bind, Except.bind,
+        pure, Except.pure]
+  | captureMember path label =>
+      cases found : layout.member? path label with
+      | none =>
+          simp [Compile.translateCapture, Compile.captureCore,
+            Compile.captureReference, Compile.pathMember,
+            compileCaptureReference, compilePathMember, found, bind,
+            Except.bind]
+      | some member =>
+          cases member <;>
+            simp [Compile.translateCapture, Compile.captureCore,
+              Compile.captureReference, Compile.pathMember,
+              Compile.expectCapture, compileCaptureReference,
+              compilePathMember, compileExpectCapture, found, bind,
+              Except.bind, pure, Except.pure]
+  | localCaptureMember label =>
+      cases found : MemberNames.find? members label with
+      | none =>
+          simp [Compile.translateCapture, Compile.captureCore,
+            Compile.captureReference,
+            Compile.LocalResolution.captureExpression,
+            Compile.localMember, compileCaptureReference,
+            compileLocalMember, found, bind, Except.bind]
+      | some member =>
+          cases member <;>
+            simp [Compile.translateCapture, Compile.captureCore,
+              Compile.captureReference,
+              Compile.LocalResolution.captureExpression,
+              Compile.localMember, Compile.expectCapture,
+              compileCaptureReference, compileLocalMember,
+              compileExpectCapture, found, bind, Except.bind, pure,
+              Except.pure]
 
 private def compileExpectType {scope : Target.Sig} (label : Nat) :
     MemberName scope -> Except Error (Target.BVar scope (.symbol .type))
@@ -138,7 +173,36 @@ private theorem translateType_ref {sourceScope : Source.Sig}
     (reference : Source.StaticRef .type sourceScope) :
     Compile.translateType layout members (.ref reference) = (do
       pure (.tvar (← compileTypeReference layout members reference))) := by
-  rfl
+  cases reference with
+  | bound sourceVar =>
+      simp [Compile.translateType, Compile.typeCore, Compile.typeReference,
+        compileTypeReference, bind, Except.bind, pure, Except.pure]
+  | typeMember path label =>
+      cases found : layout.member? path label with
+      | none =>
+          simp [Compile.translateType, Compile.typeCore,
+            Compile.typeReference, Compile.pathMember, compileTypeReference,
+            compilePathMember, found, bind, Except.bind]
+      | some member =>
+          cases member <;>
+            simp [Compile.translateType, Compile.typeCore,
+              Compile.typeReference, Compile.pathMember, Compile.expectType,
+              compileTypeReference, compilePathMember, compileExpectType,
+              found, bind, Except.bind, pure, Except.pure]
+  | localTypeMember label =>
+      cases found : MemberNames.find? members label with
+      | none =>
+          simp [Compile.translateType, Compile.typeCore,
+            Compile.typeReference, Compile.LocalResolution.typeExpression,
+            Compile.localMember, compileTypeReference, compileLocalMember,
+            found, bind, Except.bind]
+      | some member =>
+          cases member <;>
+            simp [Compile.translateType, Compile.typeCore,
+              Compile.typeReference, Compile.LocalResolution.typeExpression,
+              Compile.localMember, Compile.expectType, compileTypeReference,
+              compileLocalMember, compileExpectType, found, bind,
+              Except.bind, pure, Except.pure]
 
 namespace Compile
 
@@ -380,8 +444,9 @@ end Compile
 
 /-! ## Ambient modal preparation
 
-The member list is empty outside an object names block, so the general
-member-aware theorems specialize directly to compiler layouts.
+Ambient translation uses the layout's expression-valued local-member model,
+whereas object preparation uses an allocated member-name list.  The modal
+renaming laws below therefore follow the ambient interpreter directly.
 -/
 
 theorem translateCapture_follows {firstSource secondSource : Source.Sig}
@@ -396,8 +461,78 @@ theorem translateCapture_follows {firstSource secondSource : Source.Sig}
     translateCapture second (capture.rename sourceRename) =
       (translateCapture first capture).map fun target =>
         target.rename targetRename := by
-  simpa [translateCapture, renameMembers] using
-    Compile.translateCapture_follows follows [] capture
+  induction capture with
+  | empty => rfl
+  | union left right leftInduction rightInduction =>
+      simp only [DOTCapture.ModalIntersections.Capture.rename]
+      change (do
+          pure (ManySortedFC.Capture.union
+            (← translateCapture second (left.rename sourceRename))
+            (← translateCapture second (right.rename sourceRename)))) =
+        (do
+          pure (ManySortedFC.Capture.union
+            (← translateCapture first left)
+            (← translateCapture first right))).map fun target =>
+              ManySortedFC.Capture.rename target targetRename
+      rw [leftInduction, rightInduction]
+      cases translateCapture first left <;>
+        cases translateCapture first right <;> rfl
+  | readOnly capture induction =>
+      simp only [DOTCapture.ModalIntersections.Capture.rename]
+      change (do
+          pure (ManySortedFC.Capture.readOnly
+            (← translateCapture second (capture.rename sourceRename)))) =
+        (do
+          pure (ManySortedFC.Capture.readOnly
+            (← translateCapture first capture))).map fun target =>
+              ManySortedFC.Capture.rename target targetRename
+      rw [induction]
+      cases translateCapture first capture <;> rfl
+  | singleton path =>
+      cases path with
+      | var sourceVar =>
+          simp only [DOTCapture.ModalIntersections.Capture.rename,
+            DOTCapture.ModalIntersections.Path.rename]
+          change .ok (ManySortedFC.Capture.singleton
+              (second.termVar (sourceRename.var sourceVar))) =
+            Except.map (fun target =>
+              ManySortedFC.Capture.rename target targetRename)
+              (.ok (ManySortedFC.Capture.singleton (first.termVar sourceVar)))
+          rw [follows.termVar]
+          rfl
+  | ref reference =>
+      cases reference with
+      | bound sourceVar =>
+          simp only [DOTCapture.ModalIntersections.Capture.rename,
+            DOTCapture.ModalIntersections.StaticRef.rename]
+          change .ok (ManySortedFC.Capture.cvar
+              (second.staticSlot (sourceRename.var sourceVar)).name) =
+            Except.map (fun target =>
+              ManySortedFC.Capture.rename target targetRename)
+              (.ok (ManySortedFC.Capture.cvar
+                (first.staticSlot sourceVar).name))
+          rw [follows.staticSlot]
+          rfl
+      | captureMember path label =>
+          simp only [DOTCapture.ModalIntersections.Capture.rename,
+            DOTCapture.ModalIntersections.StaticRef.rename]
+          simp only [translateCapture, Compile.captureCore,
+            Compile.captureReference, Compile.pathMember,
+            Compile.expectCapture]
+          rw [follows.member]
+          cases found : first.member? path label with
+          | none => rfl
+          | some member => cases member <;> rfl
+      | localCaptureMember label =>
+          simp only [DOTCapture.ModalIntersections.Capture.rename,
+            DOTCapture.ModalIntersections.StaticRef.rename]
+          simp only [translateCapture, Compile.captureCore,
+            Compile.captureReference,
+            Compile.LocalResolution.captureExpression]
+          rw [follows.localCapture]
+          cases found : first.localModel.captureMember? label with
+          | none => rfl
+          | some capture => rfl
 
 theorem translateSeparationContext_follows
     {count : Nat} {firstSource secondSource : Source.Sig}
@@ -412,8 +547,24 @@ theorem translateSeparationContext_follows
     translateSeparationContext second (context.rename sourceRename) =
       (translateSeparationContext first context).map fun target =>
         target.rename targetRename := by
-  simpa [translateSeparationContext, renameMembers] using
-    Compile.translateSeparationContext_follows follows [] context
+  induction context with
+  | nil => rfl
+  | cons rest capture induction =>
+      simp only [DOTCapture.ModalIntersections.SeparationContext.rename]
+      change (do
+          pure (ManySortedFC.SeparationContext.cons
+            (← translateSeparationContext second
+              (rest.rename sourceRename))
+            (← translateCapture second
+              (capture.rename sourceRename)))) =
+        (do
+          pure (ManySortedFC.SeparationContext.cons
+            (← translateSeparationContext first rest)
+            (← translateCapture first capture))).map fun target =>
+              ManySortedFC.SeparationContext.rename target targetRename
+      rw [induction follows, translateCapture_follows follows]
+      cases translateSeparationContext first rest <;>
+        cases translateCapture first capture <;> rfl
 
 theorem translateModeContext_follows
     {modes : List Source.CaptureMode}
@@ -429,8 +580,23 @@ theorem translateModeContext_follows
     translateModeContext second (context.rename sourceRename) =
       (translateModeContext first context).map fun target =>
         target.rename targetRename := by
-  simpa [translateModeContext, renameMembers] using
-    Compile.translateModeContext_follows follows [] context
+  induction context with
+  | nil => rfl
+  | cons rest capture induction =>
+      simp only [DOTCapture.ModalIntersections.ModeContext.rename]
+      change (do
+          pure (ManySortedFC.ModeContext.cons
+            (← translateModeContext second (rest.rename sourceRename))
+            (← translateCapture second
+              (capture.rename sourceRename)))) =
+        (do
+          pure (ManySortedFC.ModeContext.cons
+            (← translateModeContext first rest)
+            (← translateCapture first capture))).map fun target =>
+              ManySortedFC.ModeContext.rename target targetRename
+      rw [induction follows, translateCapture_follows follows]
+      cases translateModeContext first rest <;>
+        cases translateCapture first capture <;> rfl
 
 theorem translateRequirements_follows
     {count : Nat} {modes : List Source.CaptureMode}
@@ -446,8 +612,23 @@ theorem translateRequirements_follows
     translateRequirements second (requirements.rename sourceRename) =
       (translateRequirements first requirements).map fun target =>
         target.rename targetRename := by
-  simpa [translateRequirements, renameMembers] using
-    Compile.translateRequirements_follows follows [] requirements
+  cases requirements with
+  | mk separation mode =>
+      simp only [DOTCapture.ModalIntersections.ModalRequirements.rename]
+      change (do
+          pure (ManySortedFC.ModalContext.mk
+            (← translateSeparationContext second
+              (separation.rename sourceRename))
+            (← translateModeContext second (mode.rename sourceRename)))) =
+        (do
+          pure (ManySortedFC.ModalContext.mk
+            (← translateSeparationContext first separation)
+            (← translateModeContext first mode))).map fun target =>
+              ManySortedFC.ModalContext.rename target targetRename
+      rw [translateSeparationContext_follows follows,
+        translateModeContext_follows follows]
+      cases translateSeparationContext first separation <;>
+        cases translateModeContext first mode <;> rfl
 
 namespace Layout.Follows
 
@@ -520,6 +701,20 @@ def comp {firstSource middleSource lastSource : Source.Sig}
     cases found : first.member? path label with
     | none => rfl
     | some member => cases member <;> rfl
+  localType := by
+    intro label
+    rw [secondFollows.localType, firstFollows.localType]
+    cases found : first.localModel.typeMember? label with
+    | none => rfl
+    | some type =>
+        simp only [Option.map_some, ManySortedFC.Ty.rename_comp]
+  localCapture := by
+    intro label
+    rw [secondFollows.localCapture, firstFollows.localCapture]
+    cases found : first.localModel.captureMember? label with
+    | none => rfl
+    | some capture =>
+        simp only [Option.map_some, ManySortedFC.Capture.rename_comp]
 
 /-- Coordinated renaming remains coherent below one same-shape lexical
 interval.  Endpoint syntax is renamed, but the emitted symbol/evidence spine
@@ -544,7 +739,9 @@ def extendStaticCongr {firstSource secondSource : Source.Sig}
         refine
           { termVar := ?_
             staticSlot := ?_
-            member := ?_ }
+            member := ?_
+            localType := ?_
+            localCapture := ?_ }
         · intro sourceVar
           cases sourceVar with
           | there older =>
@@ -604,6 +801,28 @@ def extendStaticCongr {firstSource secondSource : Source.Sig}
                         simp only [Option.map_some, MemberName.rename]
                       all_goals
                         rw [DOTCaptureToManySortedFC.BinderOnly.ManySortedRename.weakenStatic_liftStatic_var]
+        · intro label
+          simp only [DOTCapture.ModalIntersections.Interval.rename,
+            DOTCapture.ModalIntersections.Endpoint.rename,
+            Layout.extendStatic, TargetLocalModel.rename,
+            Layout.staticRename, liftStaticFor, intervalRelations]
+          rw [follows.localType]
+          cases found : first.localModel.typeMember? label with
+          | none => rfl
+          | some type =>
+              simp only [Option.map_some, ManySortedFC.Ty.rename_comp]
+              rw [DOTCaptureToManySortedFC.BinderOnly.ManySortedRename.comp_weakenStatic]
+        · intro label
+          simp only [DOTCapture.ModalIntersections.Interval.rename,
+            DOTCapture.ModalIntersections.Endpoint.rename,
+            Layout.extendStatic, TargetLocalModel.rename,
+            Layout.staticRename, liftStaticFor, intervalRelations]
+          rw [follows.localCapture]
+          cases found : first.localModel.captureMember? label with
+          | none => rfl
+          | some capture =>
+              simp only [Option.map_some, ManySortedFC.Capture.rename_comp]
+              rw [DOTCaptureToManySortedFC.BinderOnly.ManySortedRename.comp_weakenStatic]
 
 /-- The auxiliary local-member table follows the same static weakening
 square as the layout.  This is the list-level fact needed by nested interval
@@ -1255,6 +1474,7 @@ theorem extendStatic_lower_eq {sourceScope : Source.Sig}
   · intro path label
     cases path with
     | var sourceVar => cases sourceVar <;> rfl
+  · rfl
 
 theorem extendStatic_upper_eq {sourceScope : Source.Sig}
     {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
@@ -1270,6 +1490,7 @@ theorem extendStatic_upper_eq {sourceScope : Source.Sig}
   · intro path label
     cases path with
     | var sourceVar => cases sourceVar <;> rfl
+  · rfl
 
 theorem extendStatic_between_eq {sourceScope : Source.Sig}
     {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
@@ -1286,6 +1507,7 @@ theorem extendStatic_between_eq {sourceScope : Source.Sig}
   · intro path label
     cases path with
     | var sourceVar => cases sourceVar <;> rfl
+  · rfl
 
 end Layout
 

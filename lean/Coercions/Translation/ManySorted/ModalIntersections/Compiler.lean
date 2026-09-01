@@ -1,6 +1,7 @@
 import Coercions.Translation.ManySorted.ModalIntersections.AdapterElaboration
 import Coercions.Translation.ManySorted.ModalIntersections.IntervalModel
 import Coercions.Translation.ManySorted.ModalIntersections.PositiveObjectCompilation
+import Coercions.Translation.ManySorted.RecursiveObjects.PositiveObjectCompilation
 
 /-!
 # Cumulative captured-intersection compiler
@@ -62,6 +63,7 @@ private instance sourcePlainDecidable {scope : Source.Sig}
 
 /-- The phase at which an otherwise supported derivation was rejected. -/
 inductive Phase : Type where
+  | sourceTyping
   | binding
   | type
   | capture
@@ -87,6 +89,7 @@ unrelated target-checker failure. -/
 inductive Unsupported : Type where
   | rawPreciseObjectValue
   | objectArgumentRequiresExplicitOpen
+  | recursiveObjectArgumentRequiresExplicitOpen
   | objectPayloadRequiresObjectLet
   | nestedObjectMemberBound
   | nestedObjectRepresentation
@@ -104,6 +107,11 @@ private def require {alpha : Type} (phase : Phase) :
     Option alpha -> Except Error alpha
   | none => .error (.failed phase)
   | some value => .ok value
+
+private def requirePrepared {alpha error : Type} (phase : Phase) :
+    Except error alpha -> Except Error alpha
+  | .error _ => .error (.failed phase)
+  | .ok value => .ok value
 
 /-- Preserve the nested-object boundary when cumulative translation of a
 lexical quantifier interval reaches an unsupported object-contract position.
@@ -129,9 +137,71 @@ def checkObjectArgumentForm {scope : Source.Sig}
     (argument : Source.Term scope) : Except Error Unit :=
   match DOTCapture.ModalIntersections.ObjectArgument.classify argument with
   | .canonicalLiteral => .ok ()
+  | .recursiveLiteral =>
+      .error (.unsupported .recursiveObjectArgumentRequiresExplicitOpen)
   | .stableVariable => .ok ()
   | .requiresExplicitOpen =>
       .error (.unsupported .objectArgumentRequiresExplicitOpen)
+
+/-- A tagged recursive literal cannot be passed directly through either the
+native object-application syntax or its legacy ordinary-application spelling.
+Unlike the complete object-argument check, this test is sound without knowing
+the function's type. -/
+private def checkRecursiveObjectArgument {scope : Source.Sig}
+    (argument : Source.Term scope) : Except Error Unit :=
+  match DOTCapture.ModalIntersections.ObjectArgument.classify argument with
+  | .recursiveLiteral =>
+      .error (.unsupported .recursiveObjectArgumentRequiresExplicitOpen)
+  | _ => .ok ()
+
+/- Source-syntax pass run by the public raw-term compiler boundary.  It
+checks negative object uses before source elaboration is demanded.  Positive
+recursive literals, including an `objectLet` right-hand side, remain valid.
+
+The intrinsically typed compiler below stays unchanged: its object-argument
+judgment can only be constructed for canonical ordinary literals and stable
+variables. -/
+mutual
+
+def checkValueCompilerForm {scope : Source.Sig}
+    (value : Source.Value scope) : Except Error Unit :=
+  match value with
+  | .var _ => .ok ()
+  | .unit => .ok ()
+  | .lam _ _ body => checkTermCompilerForm body
+  | .staticLam _ body => checkValueCompilerForm body
+  | .pack _ _ _ payload => checkValueCompilerForm payload
+  | .lock _ _ _ body => checkTermCompilerForm body
+  | .object _ payload => checkValueCompilerForm payload
+  | .recursiveObject _ payload => checkValueCompilerForm payload
+  | .objectConsumer _ _ body => checkTermCompilerForm body
+
+def checkTermCompilerForm {scope : Source.Sig}
+    (term : Source.Term scope) : Except Error Unit :=
+  match term with
+  | .ret value => checkValueCompilerForm value
+  | .select _ _ => .ok ()
+  | .app function argument => do
+      checkRecursiveObjectArgument argument
+      checkTermCompilerForm function
+      checkTermCompilerForm argument
+  | .let' _ rhs body => do
+      checkTermCompilerForm rhs
+      checkTermCompilerForm body
+  | .staticApp _ function _ => checkTermCompilerForm function
+  | .«open» _ _ _ package body => do
+      checkTermCompilerForm package
+      checkTermCompilerForm body
+  | .unlock _ scrutinee => checkTermCompilerForm scrutinee
+  | .objectApp _ function argument => do
+      checkObjectArgumentForm argument
+      checkTermCompilerForm function
+      checkTermCompilerForm argument
+  | .objectLet _ _ rhs body => do
+      checkTermCompilerForm rhs
+      checkTermCompilerForm body
+
+end
 
 /-- Prepare a contracted cumulative object in the current layout. -/
 def prepareObject? {sourceScope : Source.Sig}
@@ -404,6 +474,9 @@ private def sourceValueRuntimeRename {sourceScope : Source.Sig}
         ManySortedFC.Runtime.Tm.rename,
         sourceTermRuntimeRename rho sigma body]
   | .object _ payload => by
+      simp only [DOTCapture.ModalIntersections.Erasure.eraseValueWith,
+        sourceValueRuntimeRename rho sigma payload]
+  | .recursiveObject _ payload => by
       simp only [DOTCapture.ModalIntersections.Erasure.eraseValueWith,
         sourceValueRuntimeRename rho sigma payload]
   | .objectConsumer _ _ body => by
@@ -800,6 +873,28 @@ private def modelRepresentationCapture {scope : Target.Sig}
   match model.symbols with
   | .cons (.capture capture) _ => capture
 
+/-- Drop the distinguished `C_rep` witness and retain the concrete public
+member model selected for this argument. -/
+private def modelMemberSymbols {scope : Target.Sig}
+    (object : ObjectContract.PreparedObject scope)
+    {context : ManySortedFC.Ctx scope}
+    (model : ManySortedFC.Theory.CheckedModel context object.theory) :
+    ManySortedFC.SymbolArgs scope object.memberSymbols :=
+  match model.symbols with
+  | .cons _ members => members
+
+/-- Instantiate the advertised capture against the argument's actual public
+member model.  The package envelope is intentionally irrelevant to direct
+negative use: no existential package is constructed or opened here. -/
+private def modelAdvertisedCapture {scope : Target.Sig}
+    (object : ObjectContract.PreparedObject scope)
+    {context : ManySortedFC.Ctx scope}
+    (model : ManySortedFC.Theory.CheckedModel context object.theory) :
+    Target.Capture scope :=
+  object.advertisedCaptureAtNames.substitute
+    (ManySortedFC.StaticSubst.ofSymbolArgs ManySortedFC.Rename.id
+      (modelMemberSymbols object model))
+
 /-- The independently checked exactness certificate exported by a concrete
 contracted model. -/
 private def modelRepresentationExact {scope : Target.Sig}
@@ -864,7 +959,7 @@ private def finishObjectApplicationUse {sourceScope : Source.Sig}
         argument.model.symbols argument.model.evidence)
       argument.payload
   let closure := functionCompiled.targetType.outerCapture
-  let parameterCapture := expected.object.outerCapture
+  let parameterCapture := modelAdvertisedCapture expected.object argument.model
   let evidence : Target.Evidence (.inclusion .capture) targetScope :=
     match functionCompiled.targetUse with
     | .empty =>
@@ -1335,10 +1430,12 @@ def compileValue {sourceScope : Source.Sig}
           (finishObjectConsumer? context prepared resultTarget
             bodyCompiled closurePrepared.targetCapture
             capturesCompiled.evidence sourceTyping rfl)
-  | _, _, @DOTCapture.ModalIntersections.Value.HasType.object _ _ object
-      payload payloadType realization payloadTyping payloadShape
+  | _, _, @DOTCapture.ModalIntersections.Value.HasType.object _ _ interface
+      representation outerCapture payload payloadType realization payloadTyping payloadShape
       payloadCapture objectCapture =>
       do
+        let object : Source.ObjectType sourceScope :=
+          .mk interface representation outerCapture
         let prepared <- prepareObject context.core object
         let ambient := ambientCompiler context
         let checkedRealization <- require .objectModel
@@ -1349,6 +1446,26 @@ def compileValue {sourceScope : Source.Sig}
           (PositiveObjectCompilation.compile? context prepared ambient
             realization payloadShape payloadCapture objectCapture
             checkedRealization payloadCompiled)
+        pure finalized.result
+  | _, _, @DOTCapture.ModalIntersections.Value.HasType.recursiveObject _ _
+      signature payload payloadType valid realization payloadTyping
+      payloadShape payloadCapture =>
+      do
+        let prepared <- requirePrepared .objectPreparation
+          (DOTCaptureToManySortedFC.RecursiveObjects.Encoding.prepare
+            context.core.layout signature valid realization)
+        let ambient := ambientCompiler context
+        let checkedModel <- require .objectModel
+          (DOTCaptureToManySortedFC.RecursiveObjects.Model.check? prepared
+            ambient)
+        let payloadContext :=
+          DOTCaptureToManySortedFC.RecursiveObjects.PositiveObjectCompilation.payloadContext
+            context prepared
+        let payloadCompiled <- compileValue payloadContext payloadTyping
+        let finalized <- require .objectFinalization
+          (DOTCaptureToManySortedFC.RecursiveObjects.PositiveObjectCompilation.compile?
+            context prepared ambient checkedModel payloadShape payloadCapture
+              payloadCompiled)
         pure finalized.result
   | _, _, sourceTyping@(@DOTCapture.ModalIntersections.Value.HasType.adapt
       _ _ (.var _) _ (.capturing _ (.objectArrow _ _)) _ _) =>
@@ -1362,7 +1479,8 @@ def compileValue {sourceScope : Source.Sig}
   | _, _, @DOTCapture.ModalIntersections.Value.HasType.adapt _ _ (.var name)
       source (.capturing advertisedCapture (.object object)) valueTyping
       adapter =>
-      if advertised : advertisedCapture = object.outerCapture then
+      if repackaging : advertisedCapture = object.packageCapture ∧
+          object.packageCapture = object.outerCapture then
         do
           let exposure : DOTCapture.ModalIntersections.ExposesObject
               environment.bindings (.var name) object <-
@@ -1708,7 +1826,8 @@ def compileTerm {sourceScope : Source.Sig}
         let sourceTyping : DOTCapture.ModalIntersections.Term.HasType
             environment (.objectApp parameter function argument)
               (functionUse.seq
-                (.union functionType.outerCapture parameter.outerCapture))
+                (.union functionType.outerCapture
+                  (parameter.realizedOuterCapture argumentModel)))
               (resultTemplate.realizeLocals argumentModel) :=
           .objectApp functionTyping functionShape argumentTyping
         let administrative : ManySortedFC.Runtime.AdministrativeEq
@@ -1734,7 +1853,8 @@ def compileTerm {sourceScope : Source.Sig}
           argumentCompiled
         let sourceTyping : DOTCapture.ModalIntersections.Term.HasType
             environment (.objectApp parameter function argument)
-              (functionUse.seq (.union closure parameter.outerCapture)) result :=
+              (functionUse.seq (.union closure
+                (parameter.realizedOuterCapture argumentModel))) result :=
           .legacyObjectApp functionTyping argumentTyping
         let administrative : ManySortedFC.Runtime.AdministrativeEq
             candidate.erase
@@ -1759,7 +1879,8 @@ def compileTerm {sourceScope : Source.Sig}
           argumentCompiled
         let sourceTyping : DOTCapture.ModalIntersections.Term.HasType
             environment (.app function argument)
-              (functionUse.seq (.union closure parameter.outerCapture)) result :=
+              (functionUse.seq (.union closure
+                (parameter.realizedOuterCapture argumentModel))) result :=
           .embeddedObjectApp functionTyping argumentTyping
         let administrative : ManySortedFC.Runtime.AdministrativeEq
             candidate.erase
@@ -1831,7 +1952,7 @@ def compileTerm {sourceScope : Source.Sig}
             rhsCompiled.term bodyCompiled.term dischargeCompiled.evidence
         let sourceTyping : DOTCapture.ModalIntersections.Term.HasType
             environment (.objectLet object result rhs body)
-              (rhsUse.seq (.union object.outerCapture bodyOuterUse)) result :=
+              (rhsUse.seq (.union object.packageCapture bodyOuterUse)) result :=
           .objectLet rhsTyping bodyTyping discharge
         let administrative : ManySortedFC.Runtime.AdministrativeEq
             candidate.erase
@@ -1864,7 +1985,7 @@ def compileTerm {sourceScope : Source.Sig}
             rhsCompiled.term bodyCompiled.term dischargeCompiled.evidence
         let sourceTyping : DOTCapture.ModalIntersections.Term.HasType
             environment (.let' result rhs body)
-              (rhsUse.seq (.union object.outerCapture bodyOuterUse)) result :=
+              (rhsUse.seq (.union object.packageCapture bodyOuterUse)) result :=
           .embeddedObjectLet rhsTyping bodyTyping discharge
         let administrative : ManySortedFC.Runtime.AdministrativeEq
             candidate.erase
@@ -2050,10 +2171,14 @@ def compileObjectArgument {sourceScope : Source.Sig}
   | _, _, typing => do
       match typing with
       | @DOTCapture.ModalIntersections.ObjectArgument.HasType.literal _ _
-          available _ payload payloadType realization payloadTyping
+          interface representationType outerCapture _ expectedInterface
+          expectedRepresentation expectedOuterCapture payload payloadType
+          expectedOrdinary realization payloadTyping
           payloadShape payloadCapture objectCapture adaptation
           representation expectedCapture =>
         do
+          let available : Source.ObjectType sourceScope :=
+            .mk interface representationType outerCapture
           let actual <- prepareObject context.core available
           let ambient := ambientCompiler context
           let openedAmbient := contractedOpenedAmbientCompiler context actual
@@ -2070,7 +2195,8 @@ def compileObjectArgument {sourceScope : Source.Sig}
                 actual.object.relations) :=
             .var actual.object.repExactEvidence
           let outerCandidate <- require .sourceEvidence
-            (openedAmbient.compile adaptation.outerCapture)
+            (ObjectEvidence.compileContractedLocalIncludes? actual
+              openedAmbient adaptation.outerCapture)
           let containmentCandidate := ManySortedFC.Evidence.inclusionTrans
             (.var actual.object.repCaptureEvidence) outerCandidate
           let checkedView <- match ObjectEvidence.compileContractedView?
@@ -2136,8 +2262,7 @@ def compileObjectArgument {sourceScope : Source.Sig}
               environment.bindings (.var name) available :=
             .variable (by
               rw [canonical]
-              cases available
-              rfl)
+              cases available <;> rfl)
           let root <- require .objectRoot (context.roots.root exposure)
           let actual <- prepareObject context.core available
           let ambient := ambientCompiler context
@@ -2165,7 +2290,8 @@ def compileObjectArgument {sourceScope : Source.Sig}
                 actual.object.relations) :=
             .var actual.object.repExactEvidence
           let outerCandidate <- require .sourceEvidence
-            (openedAmbient.compile adaptation.outerCapture)
+            (ObjectEvidence.compileContractedLocalIncludes? actual
+              openedAmbient adaptation.outerCapture)
           let containmentCandidate := ManySortedFC.Evidence.inclusionTrans
             (.var actual.object.repCaptureEvidence) outerCandidate
           let checkedView <- match ObjectEvidence.compileContractedView?
@@ -2224,5 +2350,48 @@ def compileObjectArgument {sourceScope : Source.Sig}
               (modelRepresentationContained expected.object mappedModel))
 
 end
+
+/-- The result of source elaboration for one fixed raw term.  The cumulative
+development does not contain an algorithmic source type checker, so the
+front end supplies this intrinsically checked payload when elaboration
+succeeds. -/
+structure ElaboratedTerm {sourceScope : Source.Sig}
+    (environment : Source.TypingEnv sourceScope)
+    (term : Source.Term sourceScope) where
+  use : Source.Capture sourceScope
+  type : Source.Ty sourceScope
+  typing : DOTCapture.ModalIntersections.Term.HasType environment term use type
+
+/-- Existentially indexed output of the raw-term compiler boundary. -/
+structure CompiledSourceTerm {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (context : EvidenceContext.Context environment targetScope)
+    (term : Source.Term sourceScope) where
+  use : Source.Capture sourceScope
+  type : Source.Ty sourceScope
+  compiled : CompilerArtifacts.CompiledTerm context.core term use type
+
+/-- Public source/compiler boundary.
+
+The raw syntax pass runs before the supplied elaboration result is inspected.
+Consequently an intrinsically untypable direct application of a tagged
+recursive literal receives the intended explicit-open diagnostic instead of
+an undifferentiated source-typing failure.  A successfully elaborated term is
+then compiled by the existing derivation-directed core. -/
+def compileSourceTerm {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (context : EvidenceContext.Context environment targetScope)
+    (term : Source.Term sourceScope)
+    (elaborated : Option (ElaboratedTerm environment term)) :
+    Except Error (CompiledSourceTerm context term) := do
+  checkTermCompilerForm term
+  let checked <- require .sourceTyping elaborated
+  let compiled <- compileTerm context checked.typing
+  pure {
+    use := checked.use
+    type := checked.type
+    compiled }
 
 end DOTCaptureToManySortedFC.ModalIntersections.Compiler

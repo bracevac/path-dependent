@@ -73,6 +73,14 @@ structure Follows {firstSource secondSource : Source.Sig}
   member : forall path label,
     second.member? (path.rename sourceRename) label =
       (first.member? path label).map fun name => name.rename targetRename
+  localType : forall label,
+    second.localModel.typeMember? label =
+      (first.localModel.typeMember? label).map fun type =>
+        type.rename targetRename
+  localCapture : forall label,
+    second.localModel.captureMember? label =
+      (first.localModel.captureMember? label).map fun capture =>
+        capture.rename targetRename
 
 namespace Follows
 
@@ -87,6 +95,8 @@ def renameTarget {sourceScope : Source.Sig}
   member := by
     intro path label
     simp
+  localType := by intro label; rfl
+  localCapture := by intro label; rfl
 
 def extendPlain {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope) :
@@ -95,6 +105,8 @@ def extendPlain {sourceScope : Source.Sig} {targetScope : Target.Sig}
   termVar := by intro sourceVar; rfl
   staticSlot := by intro sort sourceVar; rfl
   member := by intro path label; cases path; rfl
+  localType := by intro label; rfl
+  localCapture := by intro label; rfl
 
 def extendStatic {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope) {sort : Source.StaticSort}
@@ -105,6 +117,8 @@ def extendStatic {sourceScope : Source.Sig} {targetScope : Target.Sig}
   termVar := by intro sourceVar; rfl
   staticSlot := by intro olderSort sourceVar; rfl
   member := by intro path label; cases path; rfl
+  localType := by intro label; rfl
+  localCapture := by intro label; rfl
 
 def extendObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
@@ -115,6 +129,8 @@ def extendObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
   termVar := by intro sourceVar; rfl
   staticSlot := by intro sort sourceVar; rfl
   member := by intro path label; cases path; rfl
+  localType := by intro label; rfl
+  localCapture := by intro label; rfl
 
 def extendObjectWith {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
@@ -128,6 +144,8 @@ def extendObjectWith {sourceScope : Source.Sig} {targetScope : Target.Sig}
   termVar := by intro sourceVar; rfl
   staticSlot := by intro sort sourceVar; rfl
   member := by intro path label; cases path; rfl
+  localType := by intro label; rfl
+  localCapture := by intro label; rfl
 
 end Follows
 
@@ -182,7 +200,13 @@ theorem totalCapture_follows {firstSource secondSource : Source.Sig}
           | none => rfl
           | some member =>
               cases member <;> rfl
-      | localCaptureMember label => rfl
+      | localCaptureMember label =>
+          simp only [DOTCapture.ModalIntersections.Capture.rename,
+            DOTCapture.ModalIntersections.StaticRef.rename, totalCapture]
+          rw [follows.localCapture]
+          cases found : first.localModel.captureMember? label with
+          | none => rfl
+          | some capture => rfl
 
 @[simp]
 theorem totalCapture_renameTarget {sourceScope : Source.Sig}

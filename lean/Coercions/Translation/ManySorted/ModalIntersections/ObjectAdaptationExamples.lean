@@ -75,6 +75,7 @@ def adaptation : DOTCapture.ModalIntersections.ObjectType.Adapts
   mapping := ObjectEvidenceExamples.Projection.mapping
   theory := ObjectEvidenceExamples.Projection.derivation
   outerCapture := .refl
+  packageCapture := .refl
 
 /-- The mixed actual theory is opened once.  The projected expected member is
 interpreted through the checked map, while the single runtime representation

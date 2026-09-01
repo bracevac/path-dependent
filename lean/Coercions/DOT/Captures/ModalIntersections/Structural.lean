@@ -184,6 +184,10 @@ def ObjectType.rename_id {scope : Sig} (object : ObjectType scope) :
   | .mk interface representation outerCapture => by
       simp only [ObjectType.rename, Interface.rename_id interface,
         Ty.rename_id representation, Capture.rename_id outerCapture]
+  | .mkContracted interface representation outerCapture packageCapture => by
+      simp only [ObjectType.rename, Interface.rename_id interface,
+        Ty.rename_id representation, Capture.rename_id outerCapture,
+        Capture.rename_id packageCapture]
 
 end
 
@@ -336,6 +340,10 @@ def ObjectType.rename_comp {first second third : Sig}
   | .mk interface representation outerCapture => by
       simp only [ObjectType.rename, Interface.rename_comp interface,
         Ty.rename_comp representation, Capture.rename_comp outerCapture]
+  | .mkContracted interface representation outerCapture packageCapture => by
+      simp only [ObjectType.rename, Interface.rename_comp interface,
+        Ty.rename_comp representation, Capture.rename_comp outerCapture,
+        Capture.rename_comp packageCapture]
 
 end
 
@@ -487,8 +495,7 @@ namespace ObjectType
 theorem formedType_rename {source target : Sig} (object : ObjectType source)
     (rho : Rename source target) :
     (object.rename rho).formedType = object.formedType.rename rho := by
-  cases object
-  rfl
+  cases object <;> rfl
 
 @[simp]
 theorem weaken_rename {source target : Sig} {kind : BinderKind}

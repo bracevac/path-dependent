@@ -3652,11 +3652,8 @@ theorem prepareObject_interface
     (success : Preparation.prepareObject layout source = .ok object) :
     Preparation.collectAndPrepare layout source.interface =
       .ok object.encoding.prepared := by
-  rcases source with ⟨interface, representation, outerCapture⟩
   simp only [Preparation.prepareObject] at success
-  change Preparation.collectAndPrepare layout interface =
-    .ok object.encoding.prepared
-  cases preparedResult : Preparation.collectAndPrepare layout interface with
+  cases preparedResult : Preparation.collectAndPrepare layout source.interface with
   | error failure =>
       rw [preparedResult] at success
       nomatch success
@@ -3670,18 +3667,20 @@ theorem prepareObject_interface
       cases representationResult : Preparation.Compile.translateType
           (layout.renameTarget
             (ManySortedFC.Rename.weakenSymbols prepared.symbols))
-          prepared.members representation with
+          prepared.members source.representation with
       | error failure =>
           rw [representationResult] at success
           nomatch success
       | ok targetRepresentation =>
           rw [representationResult] at success
-          cases captureResult : Preparation.Compile.translateCapture layout []
-              outerCapture with
+          cases captureResult : Preparation.translateCapture layout
+              source.packageCapture with
           | error failure =>
+              simp only [Preparation.translateCapture] at captureResult
               rw [captureResult] at success
               nomatch success
           | ok targetCapture =>
+              simp only [Preparation.translateCapture] at captureResult
               rw [captureResult] at success
               injection success with objectEq
               subst object

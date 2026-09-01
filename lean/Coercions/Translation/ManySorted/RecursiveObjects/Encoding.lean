@@ -4,14 +4,17 @@ import Coercions.Translation.ManySorted.ModalIntersections.ObjectContract
 /-!
 # Source-indexed encoding of guarded recursive type members
 
-All source type-member labels are allocated before any recursive body is
-translated.  A local type reference becomes a homogeneous recursive self
-slot; a local capture reference is first replaced by the explicitly supplied
-ambient capture model.  The completed recursive projections are then used as
-the type witnesses of the ordinary cumulative `ObjectContract` model.
+All source member labels are allocated before any recursive body or retained
+constraint is translated.  A local type reference becomes a homogeneous
+recursive self slot; a local capture reference is simultaneously replaced by
+the explicitly supplied concrete capture model.  The completed recursive
+projections and concrete capture witnesses then instantiate the ordinary
+cumulative `ObjectContract` model.
 
-This is the type-recursive Stage 6A boundary.  Capture members and the unique
-representation-capture symbol `C_rep` remain outside the recursive block.
+Only types use the target recursive block.  Capture constraints may be
+self- or mutually referential in source syntax, but package construction must
+realize all of them at once with ordinary acyclic target captures.  The unique
+representation-capture symbol `C_rep` remains outside the recursive block.
 -/
 
 namespace DOTCaptureToManySortedFC.RecursiveObjects.Encoding
@@ -29,13 +32,16 @@ abbrev Rename := ManySortedFC.Rename
 abbrev Ty := ManySortedFC.Ty
 abbrev Capture := ManySortedFC.Capture
 abbrev RecBodies := ManySortedFC.RecBodies
+abbrev StaticExpr := ManySortedFC.StaticExpr
 abbrev SymbolArgs := ManySortedFC.SymbolArgs
 abbrev Evidence := ManySortedFC.Evidence
 abbrev Ctx := ManySortedFC.Ctx
 
 end Target
 
-/-- Failures specific to the recursive source/target boundary. -/
+/-- Failures specific to the recursive source/target boundary.  The
+`recursiveCaptureMember` case is retained for compatibility with Stage 6A
+clients; the cumulative path no longer produces it. -/
 inductive Error : Type where
   | preparation (error : ModalIntersections.Preparation.Error)
   | recursiveCaptureMember (label : Source.Label)
@@ -203,6 +209,56 @@ def compileMemberSymbols {sourceScope : Source.Sig}
     object.encoding.prepared.entries object.memberSymbols
     ManySortedFC.Rename.id
 
+/-! ## Realized representation translation -/
+
+/-- Translate a source static expression after simultaneous capture-model
+realization, using the object's complete names-first allocation to resolve
+local type references.  The abstract result is then instantiated by the
+checked recursive type and concrete capture witnesses.
+
+This is also the endpoint compiler for source inclusion derivations whose
+types mention the recursive object's local members. -/
+def compileRealizedStaticExpr {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : ModalIntersections.Layout sourceScope targetScope)
+    (captureModel : Source.AmbientCaptureModel sourceScope)
+    (object : ObjectContract.PreparedObject targetScope)
+    (memberSymbols : Target.SymbolArgs targetScope object.memberSymbols)
+    {sort : DOTCapture.ModalIntersections.StaticSort}
+    (source : DOTCapture.ModalIntersections.StaticExpr sort sourceScope) :
+    Except Error
+      (Target.StaticExpr
+        (DOTCaptureToManySortedFC.ModalIntersections.translateSort sort)
+        targetScope) := do
+  let namesLayout := layout.renameTarget
+    (ManySortedFC.Rename.weakenSymbols object.memberSymbols)
+  let realized := source.realizeLocals captureModel.asLocalModel
+  let atNames <-
+    (ModalIntersections.Preparation.Compile.translateStaticExpr namesLayout
+      object.encoding.prepared.members realized).mapError Error.preparation
+  pure (atNames.substitute
+    (ManySortedFC.StaticSubst.ofSymbolArgs ManySortedFC.Rename.id
+      memberSymbols))
+
+/-- Translate the source representation after simultaneous capture-model
+realization, then instantiate the complete abstract member allocation with
+the recursive type witnesses and concrete capture witnesses selected above.
+
+The intermediate names-only translation is essential: ambient translation
+cannot resolve local type-member references, while those references must
+ultimately become arbitrary `recProj` types rather than fresh target names. -/
+def compileRealizedRepresentation {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : ModalIntersections.Layout sourceScope targetScope)
+    (signature : Source.Signature sourceScope)
+    (captureModel : Source.AmbientCaptureModel sourceScope)
+    (object : ObjectContract.PreparedObject targetScope)
+    (memberSymbols : Target.SymbolArgs targetScope object.memberSymbols) :
+    Except Error (Target.Ty targetScope) := do
+  let .type target <- compileRealizedStaticExpr layout captureModel object
+    memberSymbols (.type signature.representation)
+  pure target
+
 /-! ## Public-label alignment -/
 
 private def findTypeNameByLabel? {scope : Target.Sig}
@@ -214,6 +270,15 @@ private def findTypeNameByLabel? {scope : Target.Sig}
       else findTypeNameByLabel? label remaining
   | .capture _ _ _ :: remaining => findTypeNameByLabel? label remaining
 
+private def findCaptureNameByLabel? {scope : Target.Sig}
+    (label : Source.Label) : List (PreparedEntry scope) ->
+      Option (Target.BVar scope (.symbol .capture))
+  | [] => none
+  | .capture candidate candidateName _ :: remaining =>
+      if candidate = label then some candidateName
+      else findCaptureNameByLabel? label remaining
+  | .type _ _ _ :: remaining => findCaptureNameByLabel? label remaining
+
 /-- Witness assigned to one normalized public type label after instantiating
 the member-only model. -/
 def publicTypeWitness? {targetScope : Target.Sig}
@@ -224,6 +289,17 @@ def publicTypeWitness? {targetScope : Target.Sig}
   match (ManySortedFC.StaticSubst.ofSymbolArgs ManySortedFC.Rename.id
       memberSymbols).symbolVar name with
   | .type witness => some witness
+
+/-- Concrete capture witness assigned to one normalized public label after
+instantiating the member-only model. -/
+def publicCaptureWitness? {targetScope : Target.Sig}
+    (object : ObjectContract.PreparedObject targetScope)
+    (memberSymbols : Target.SymbolArgs targetScope object.memberSymbols)
+    (label : Source.Label) : Option (Target.Capture targetScope) := do
+  let name <- findCaptureNameByLabel? label object.encoding.prepared.entries
+  match (ManySortedFC.StaticSubst.ofSymbolArgs ManySortedFC.Rename.id
+      memberSymbols).symbolVar name with
+  | .capture witness => some witness
 
 /-- Every source definition label is interpreted by its own recursive slot,
 independently of canonical public-label order. -/
@@ -276,8 +352,68 @@ structure Prepared {sourceScope : Source.Sig}
     realization.captures bodies object = .ok memberSymbols
   publicWitnessesAligned : PublicWitnessesAligned signature.typeDefinitions
     bodies object memberSymbols
+  realizedRepresentation : Target.Ty targetScope
+  realizedRepresentationCompiled : compileRealizedRepresentation layout
+    signature realization.captures object memberSymbols =
+      .ok realizedRepresentation
 
 namespace Prepared
+
+/-- Canonical target interpretation of local source labels.  Type labels map
+to their exact `recProj` witnesses and capture labels map to the concrete
+witnesses supplied by the simultaneous model.  Consumers install this model
+in a compiler layout rather than accepting a caller-chosen resolver. -/
+def targetLocalModel {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    {layout : ModalIntersections.Layout sourceScope targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {context : Source.Ctx sourceScope}
+    {realization : Source.Realization context signature}
+    (prepared : Prepared layout signature valid realization) :
+    ModalIntersections.TargetLocalModel targetScope where
+  typeMember? := publicTypeWitness? prepared.object prepared.memberSymbols
+  captureMember? := publicCaptureWitness? prepared.object
+    prepared.memberSymbols
+
+/-- Short compatibility spelling for clients prototyped against the initial
+Stage 6B helper name. -/
+abbrev localModel {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    {layout : ModalIntersections.Layout sourceScope targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {context : Source.Ctx sourceScope}
+    {realization : Source.Realization context signature}
+    (prepared : Prepared layout signature valid realization) :
+    ModalIntersections.TargetLocalModel targetScope :=
+  prepared.targetLocalModel
+
+/-- Every recursive definition is resolved by the local compiler model to
+the same projection certified by public-model alignment. -/
+theorem localModel_typeMember {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    {layout : ModalIntersections.Layout sourceScope targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {context : Source.Ctx sourceScope}
+    {realization : Source.Realization context signature}
+    (prepared : Prepared layout signature valid realization)
+    (index : Fin signature.typeDefinitions.length) :
+    prepared.targetLocalModel.typeMember?
+        (signature.typeDefinitions.get index).label =
+      some (.recProj prepared.bodies index) :=
+  prepared.publicWitnessesAligned index
+
+@[simp]
+theorem localModel_captureMember {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    {layout : ModalIntersections.Layout sourceScope targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {context : Source.Ctx sourceScope}
+    {realization : Source.Realization context signature}
+    (prepared : Prepared layout signature valid realization)
+    (label : Source.Label) :
+    prepared.targetLocalModel.captureMember? label =
+      publicCaptureWitness? prepared.object prepared.memberSymbols label :=
+  rfl
 
 /-- Complete ambient model, including the one representation-capture
 witness owned by `ObjectContract`. -/
@@ -315,14 +451,13 @@ def unfolding {sourceScope : Source.Sig}
 
 end Prepared
 
-/-- Validate the explicit Stage 6A recursion boundary before delegating to
-ordinary cumulative preparation. -/
+/-- Validate the ambient package boundary before delegating to cumulative
+preparation. Local bounds and the advertised object capture may refer to the
+complete recursive member allocation; only the existential package envelope
+must be ambient. -/
 def checkBoundary {scope : Source.Sig} (signature : Source.Signature scope) :
     Except Error Unit := do
-  match signature.captureDeclarations.firstRecursiveMember? with
-  | some label => .error (.recursiveCaptureMember label)
-  | none => pure ()
-  if Source.captureAmbientOnly signature.outerCapture then pure ()
+  if Source.captureAmbientOnly signature.packageCapture then pure ()
   else .error .recursiveOuterCapture
 
 /-- Prepare all source-indexed names and retain target guardedness as an
@@ -351,15 +486,22 @@ def prepare {sourceScope : Source.Sig}
             | .ok memberSymbols =>
                 if publicWitnessesAligned : PublicWitnessesAligned
                     signature.typeDefinitions bodies object memberSymbols then
-                  .ok
-                    { object
-                      objectPrepared
-                      bodies
-                      bodiesCompiled
-                      guarded
-                      memberSymbols
-                      memberSymbolsCompiled
-                      publicWitnessesAligned }
+                  match realizedRepresentationCompiled :
+                      compileRealizedRepresentation layout signature
+                        realization.captures object memberSymbols with
+                  | .error error => .error error
+                  | .ok realizedRepresentation =>
+                      .ok
+                        { object
+                          objectPrepared
+                          bodies
+                          bodiesCompiled
+                          guarded
+                          memberSymbols
+                          memberSymbolsCompiled
+                          publicWitnessesAligned
+                          realizedRepresentation
+                          realizedRepresentationCompiled }
                 else
                   .error .publicWitnessMisalignment
           else

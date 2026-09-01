@@ -116,31 +116,35 @@ structure CompiledObject {sourceScope : Source.Sig}
     {environment : Source.TypingEnv sourceScope}
     {targetScope : Target.Sig}
     (context : EvidenceContext.Context environment targetScope)
-    {object : Source.ObjectType sourceScope}
+    {interface : DOTCapture.ModalIntersections.Interface sourceScope}
+    {representation : Source.Ty sourceScope}
+    {outerCapture : DOTCapture.ModalIntersections.Capture sourceScope}
     {payload : Source.Value sourceScope} {payloadType : Source.Ty sourceScope}
-    (prepared : PreparedContractedObject context.core object)
+    (prepared : PreparedContractedObject context.core
+      (.mk interface representation outerCapture))
     (ambient : AmbientCompiler context.core)
     (realization : DOTCapture.ModalIntersections.ObjectType.Realization
-      environment.bindings object)
+      environment.bindings (.mk interface representation outerCapture))
     (payloadShape : DOTCapture.ModalIntersections.TypeIncludes
       environment.bindings payloadType.stripCapture
-      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation object
-        realization.model).stripCapture)
+      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
+        (.mk interface representation outerCapture) realization.model).stripCapture)
     (payloadCapture : DOTCapture.ModalIntersections.CaptureIncludes
       environment.bindings payloadType.outerCapture
-      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation object
-        realization.model).outerCapture)
+      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
+        (.mk interface representation outerCapture) realization.model).outerCapture)
     (objectCapture : DOTCapture.ModalIntersections.CaptureIncludes
       environment.bindings
-      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation object
-        realization.model).outerCapture object.outerCapture)
+      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
+        (.mk interface representation outerCapture) realization.model).outerCapture
+        outerCapture)
     (compiledRealization : CompiledContractedRealization context.core prepared
       ambient realization objectCapture)
     (payloadCompiled : CompilerArtifacts.CompiledValue context.core payload
       payloadType) where
   realizedPrepared : PreparedTerm context.core
-    (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation object
-      realization.model)
+    (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
+      (.mk interface representation outerCapture) realization.model)
   realizationAgreement : TargetAgreement
     (explicitRealizedTarget realizedPrepared)
     (realizedTarget compiledRealization)
@@ -150,13 +154,13 @@ structure CompiledObject {sourceScope : Source.Sig}
   shape : CompiledInclusion context.core
     (.type payloadType.stripCapture)
     (.type (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
-      object realization.model).stripCapture)
+      (.mk interface representation outerCapture) realization.model).stripCapture)
   shapeCompiled : compileIncludes? context.compiler.leaves payloadShape =
     some shape
   payloadCaptureEvidence : CompiledInclusion context.core
     (.capture payloadType.outerCapture)
     (.capture (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
-      object realization.model).outerCapture)
+      (.mk interface representation outerCapture) realization.model).outerCapture)
   payloadCaptureCompiled :
     compileIncludes? context.compiler.leaves payloadCapture =
       some payloadCaptureEvidence
@@ -173,9 +177,12 @@ structure CompiledObject {sourceScope : Source.Sig}
       compiledRealization.model.evidence adaptedPayload
       compiledRealization.containmentEvidence
   administrative : ManySortedFC.Runtime.AdministrativeEq package.erase
-    (context.core.eraseValue (.object object payload))
+    (context.core.eraseValue
+      (.object (.mk interface representation outerCapture) payload))
   result : CompilerArtifacts.CompiledValue context.core
-    (.object object payload) object.formedType
+    (.object (.mk interface representation outerCapture) payload)
+      (DOTCapture.ModalIntersections.ObjectType.mk interface representation
+        outerCapture).formedType
   finalized : CompilerArtifacts.finishValue? context.core
     (.object realization payloadCompiled.sourceTyping payloadShape
       payloadCapture objectCapture)
@@ -187,24 +194,28 @@ def compile? {sourceScope : Source.Sig}
     {environment : Source.TypingEnv sourceScope}
     {targetScope : Target.Sig}
     (context : EvidenceContext.Context environment targetScope)
-    {object : Source.ObjectType sourceScope}
+    {interface : DOTCapture.ModalIntersections.Interface sourceScope}
+    {representation : Source.Ty sourceScope}
+    {outerCapture : DOTCapture.ModalIntersections.Capture sourceScope}
     {payload : Source.Value sourceScope} {payloadType : Source.Ty sourceScope}
-    (prepared : PreparedContractedObject context.core object)
+    (prepared : PreparedContractedObject context.core
+      (.mk interface representation outerCapture))
     (ambient : AmbientCompiler context.core)
     (realization : DOTCapture.ModalIntersections.ObjectType.Realization
-      environment.bindings object)
+      environment.bindings (.mk interface representation outerCapture))
     (payloadShape : DOTCapture.ModalIntersections.TypeIncludes
       environment.bindings payloadType.stripCapture
-      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation object
-        realization.model).stripCapture)
+      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
+        (.mk interface representation outerCapture) realization.model).stripCapture)
     (payloadCapture : DOTCapture.ModalIntersections.CaptureIncludes
       environment.bindings payloadType.outerCapture
-      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation object
-        realization.model).outerCapture)
+      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
+        (.mk interface representation outerCapture) realization.model).outerCapture)
     (objectCapture : DOTCapture.ModalIntersections.CaptureIncludes
       environment.bindings
-      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation object
-        realization.model).outerCapture object.outerCapture)
+      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
+        (.mk interface representation outerCapture) realization.model).outerCapture
+        outerCapture)
     (compiledRealization : CompiledContractedRealization context.core prepared
       ambient realization objectCapture)
     (payloadCompiled : CompilerArtifacts.CompiledValue context.core payload
@@ -219,7 +230,8 @@ def compile? {sourceScope : Source.Sig}
           payloadCapture with
       | none => none
       | some payloadCaptureEvidence =>
-          match prepareRealizedRepresentation? context.core object
+          match prepareRealizedRepresentation? context.core
+              (.mk interface representation outerCapture)
               realization.model with
           | none => none
           | some realizedPrepared =>
@@ -245,8 +257,12 @@ def compile? {sourceScope : Source.Sig}
                           compiledRealization.containmentEvidence
                       let sourceTyping :
                           DOTCapture.ModalIntersections.Value.HasType
-                            environment (.object object payload)
-                              object.formedType :=
+                            environment
+                              (.object (.mk interface representation outerCapture)
+                                payload)
+                              (DOTCapture.ModalIntersections.ObjectType.mk
+                                interface representation
+                                outerCapture).formedType :=
                         .object realization payloadCompiled.sourceTyping
                           payloadShape payloadCapture objectCapture
                       let adapterAdministrative := adapter.erase_admin
@@ -254,7 +270,8 @@ def compile? {sourceScope : Source.Sig}
                       let packageAdministrative :
                           ManySortedFC.Runtime.AdministrativeEq package.erase
                             (context.core.eraseValue
-                              (.object object payload)) := by
+                              (.object (.mk interface representation outerCapture)
+                                payload)) := by
                         change ManySortedFC.Runtime.AdministrativeEq
                           (adapter.erase payloadCompiled.term.erase)
                           (context.core.eraseValue payload)

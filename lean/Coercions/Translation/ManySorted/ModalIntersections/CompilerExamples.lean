@@ -950,7 +950,7 @@ def payloadTyping : DOTCapture.ModalIntersections.Value.HasType environment
 def argumentTyping : DOTCapture.ModalIntersections.ObjectArgument.HasType
     environment (.ret (.object object (.var .here))) object model := by
   simpa using
-    (DOTCapture.ModalIntersections.ObjectArgument.HasType.literal realization
+    (DOTCapture.ModalIntersections.ObjectArgument.HasType.literal rfl realization
       payloadTyping .refl .refl .refl
       (DOTCapture.ModalIntersections.ObjectType.Adapts.refl object)
       .refl .refl)

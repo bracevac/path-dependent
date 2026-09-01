@@ -2,17 +2,17 @@ import Coercions.Translation.ManySorted.RecursiveObjects.Source
 import Coercions.ManySortedFC.Runtime
 
 /-!
-# Independent erasure for the Stage 6A recursive object literal
+# Compatibility erasure for the original unit recursive-object example
 
-The case-study representation is `Unit`, so a recursive object literal has
-one runtime payload and all type names, capture names, bounds, recursive
-equations, and package evidence disappear.  This definition mentions no
-target encoding or compiler.
+The cumulative compiler uses the independently defined source erasure from
+`DOT.Captures.ModalIntersections`. This older helper remains for the original
+closed `Unit` example: all static names, equations, bounds, and evidence erase,
+leaving its single runtime payload. It mentions no target encoding or compiler.
 -/
 
 namespace DOTCaptureToManySortedFC.RecursiveObjects.Source
 
-/-- Independent shared-runtime meaning of one closed Stage 6A object literal. -/
+/-- Independent shared-runtime meaning of the original closed unit literal. -/
 def eraseObject {scope : Sig} {runtimeScope : Nat}
     (_signature : Signature scope) : ManySortedFC.Runtime.Tm runtimeScope :=
   .unit

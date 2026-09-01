@@ -61,6 +61,78 @@ def intervalRelations {scope : Source.Sig} {sort : Source.StaticSort} :
   | .bounds (.some _) (.some _) =>
       [.inclusion (translateSort sort), .inclusion (translateSort sort)]
 
+/-- Target interpretations of the source language's distinguished local
+member references.  Unlike opened object-member coordinates, recursive
+members need not denote freshly bound target names: a type member may be a
+recursive projection and a capture member may be any checked ambient capture
+expression. -/
+structure TargetLocalModel (targetScope : Target.Sig) where
+  typeMember? : Nat -> Option (ManySortedFC.Ty targetScope)
+  captureMember? : Nat -> Option (ManySortedFC.Capture targetScope)
+
+namespace TargetLocalModel
+
+/-- No ambient interpretation for local member syntax. -/
+def empty {targetScope : Target.Sig} : TargetLocalModel targetScope where
+  typeMember? := fun _ => none
+  captureMember? := fun _ => none
+
+/-- Rename every expression in a local-member interpretation. -/
+def rename {first second : Target.Sig} (model : TargetLocalModel first)
+    (rho : Target.Rename first second) : TargetLocalModel second where
+  typeMember? := fun label =>
+    (model.typeMember? label).map fun type => type.rename rho
+  captureMember? := fun label =>
+    (model.captureMember? label).map fun capture => capture.rename rho
+
+@[ext (iff := false)]
+theorem ext {targetScope : Target.Sig}
+    {first second : TargetLocalModel targetScope}
+    (types : forall label, first.typeMember? label = second.typeMember? label)
+    (captures : forall label,
+      first.captureMember? label = second.captureMember? label) :
+    first = second := by
+  cases first
+  cases second
+  congr
+  · funext label
+    exact types label
+  · funext label
+    exact captures label
+
+@[simp]
+theorem rename_id {targetScope : Target.Sig}
+    (model : TargetLocalModel targetScope) :
+    model.rename ManySortedFC.Rename.id = model := by
+  apply TargetLocalModel.ext
+  · intro label
+    cases found : model.typeMember? label with
+    | none => simp [rename, found]
+    | some type => simp [rename, found, ManySortedFC.Ty.rename_id]
+  · intro label
+    cases found : model.captureMember? label with
+    | none => simp [rename, found]
+    | some capture => simp [rename, found, ManySortedFC.Capture.rename_id]
+
+@[simp]
+theorem rename_comp {first second third : Target.Sig}
+    (model : TargetLocalModel first) (rho₁ : Target.Rename first second)
+    (rho₂ : Target.Rename second third) :
+    (model.rename rho₁).rename rho₂ =
+      model.rename (rho₁.comp rho₂) := by
+  apply TargetLocalModel.ext
+  · intro label
+    cases found : model.typeMember? label with
+    | none => simp [rename, found]
+    | some type => simp [rename, found, ManySortedFC.Ty.rename_comp]
+  · intro label
+    cases found : model.captureMember? label with
+    | none => simp [rename, found]
+    | some capture =>
+        simp [rename, found, ManySortedFC.Capture.rename_comp]
+
+end TargetLocalModel
+
 /-- One cumulative source layout in an independently chosen target scope.
 
 Lexical static references and stable object members deliberately have
@@ -73,10 +145,16 @@ structure Layout (sourceScope : Source.Sig) (targetScope : Target.Sig) where
     Source.BVar sourceScope (.static sort) ->
       ManySortedTranslation.StaticSlot targetScope (translateSort sort)
   member? : Source.Path sourceScope -> Nat -> Option (MemberName targetScope)
+  localModel : TargetLocalModel targetScope
 
 namespace Layout
 
-/-- Two layouts with the same three coordinate maps are equal. -/
+/-- Namespaced spelling used by object encodings that produce a local model
+for a particular cumulative layout. -/
+abbrev TargetLocalModel :=
+  DOTCaptureToManySortedFC.ModalIntersections.TargetLocalModel
+
+/-- Two layouts with the same coordinate maps are equal. -/
 @[ext (iff := false)]
 theorem ext {sourceScope : Source.Sig} {targetScope : Target.Sig}
     {first second : Layout sourceScope targetScope}
@@ -86,12 +164,13 @@ theorem ext {sourceScope : Source.Sig} {targetScope : Target.Sig}
       first.staticSlot (sort := sort) sourceVar =
         second.staticSlot (sort := sort) sourceVar)
     (member : forall path label,
-      first.member? path label = second.member? path label) :
+      first.member? path label = second.member? path label)
+    (localModel : first.localModel = second.localModel) :
     first = second := by
   cases first with
-  | mk firstTerm firstStatic firstMember =>
+  | mk firstTerm firstStatic firstMember firstLocal =>
       cases second with
-      | mk secondTerm secondStatic secondMember =>
+      | mk secondTerm secondStatic secondMember secondLocal =>
           congr
           · funext sourceVar
             exact termVar sourceVar
@@ -108,6 +187,18 @@ def renameTarget {sourceScope : Source.Sig} {first second : Target.Sig}
   staticSlot := fun sourceVar => (layout.staticSlot sourceVar).rename rho
   member? := fun path label =>
     (layout.member? path label).map fun member => member.rename rho
+  localModel := layout.localModel.rename rho
+
+/-- Replace only the interpretation of local member references.  All runtime,
+lexical-static, and stable-root coordinates remain unchanged. -/
+def withLocalModel {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (model : TargetLocalModel targetScope) :
+    Layout sourceScope targetScope where
+  termVar := layout.termVar
+  staticSlot := layout.staticSlot
+  member? := layout.member?
+  localModel := model
 
 @[simp]
 theorem renameTarget_termVar {sourceScope : Source.Sig}
@@ -149,6 +240,7 @@ theorem renameTarget_id {sourceScope : Source.Sig}
     | some targetMember =>
         simp only [renameTarget_member, found, Option.map_some]
         cases targetMember <;> rfl
+  · exact TargetLocalModel.rename_id layout.localModel
 
 @[simp]
 theorem renameTarget_comp {sourceScope : Source.Sig}
@@ -168,6 +260,7 @@ theorem renameTarget_comp {sourceScope : Source.Sig}
     | some targetMember =>
         simp only [renameTarget_member, found, Option.map_some]
         cases targetMember <;> rfl
+  · exact TargetLocalModel.rename_comp layout.localModel rho₁ rho₂
 
 /-! ## Ordinary term extension -/
 
@@ -187,6 +280,7 @@ def extendPlain {sourceScope : Source.Sig} {targetScope : Target.Sig}
     | .var (.there older) =>
         (layout.member? (.var older) label).map fun member =>
           member.rename ManySortedFC.Rename.succ
+  localModel := layout.localModel.rename ManySortedFC.Rename.succ
 
 @[simp]
 theorem extendPlain_term_here {sourceScope : Source.Sig}
@@ -273,6 +367,7 @@ def extendStatic {sourceScope : Source.Sig} {targetScope : Target.Sig}
     | .var (.there older) =>
         (layout.member? (.var older) label).map fun member =>
           member.rename (staticRename targetScope interval)
+  localModel := layout.localModel.rename (staticRename targetScope interval)
 
 @[simp]
 theorem extendStatic_term_there {sourceScope : Source.Sig}
@@ -370,6 +465,7 @@ def extendObjectWith {sourceScope : Source.Sig} {targetScope : Target.Sig}
     | .var (.there older) =>
         (layout.member? (.var older) label).map fun member =>
           member.rename (objectRename targetScope)
+  localModel := layout.localModel.rename (objectRename targetScope)
 
 /-- Historical encoded-object specialization of `extendObjectWith`. -/
 def extendObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
@@ -504,6 +600,7 @@ def empty : Layout [] [] where
   member? := fun path _ =>
     match path with
     | .var sourceVar => nomatch sourceVar
+  localModel := .empty
 
 end Layout
 
