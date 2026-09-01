@@ -15,6 +15,7 @@ import Coercions.Translation.ManySorted.BinderOnly.TermElaboration
 import Coercions.Translation.ManySorted.BinderOnly.DecisiveExamples
 import Coercions.Translation.ManySorted.BinderOnly.SourceErasure
 import Coercions.Translation.ManySorted.BinderOnly.TermElaborationErasure
+import Coercions.DOT.Captures.ModalIntersections.BinderEmbeddingErasure
 import Coercions.Translation.ManySorted.Acyclic
 import Coercions.Translation.ManySorted.Intersections
 

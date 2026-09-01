@@ -37,6 +37,7 @@ import Coercions.ManySortedFC.Administrative
 import Coercions.ManySortedFC.Consistency
 import Coercions.ManySortedFC.SeparationConsistency
 import Coercions.ManySortedFC.ModalConfinement
+import Coercions.ManySortedFC.DisjointCaptureTheory
 import Coercions.ManySortedFC.StaticExamples
 import Coercions.ManySortedFC.SeparationExamples
 import Coercions.ManySortedFC.ModelConsistency
@@ -49,6 +50,7 @@ import Coercions.ManySortedFC.TheoryMapMorphismExamples
 import Coercions.ManySortedFC.ModalExamples
 import Coercions.ManySortedFC.ModalAdapterExamples
 import Coercions.ManySortedFC.ModalPreservationExamples
+import Coercions.ManySortedFC.DisjointCaptureTheoryExamples
 
 /-!
 Independent import root for the many-sorted FC target. This development is a
