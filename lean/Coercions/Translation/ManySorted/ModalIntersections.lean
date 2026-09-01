@@ -18,6 +18,8 @@ import Coercions.Translation.ManySorted.ModalIntersections.ObjectEvidence
 import Coercions.Translation.ManySorted.ModalIntersections.ObjectEvidenceExamples
 import Coercions.Translation.ManySorted.ModalIntersections.ObjectAdaptation
 import Coercions.Translation.ManySorted.ModalIntersections.ObjectAdaptationExamples
+import Coercions.Translation.ManySorted.ModalIntersections.IntervalModel
+import Coercions.Translation.ManySorted.ModalIntersections.IntervalModelExamples
 
 /-!
 # Cumulative captured-DOT compiler foundation
