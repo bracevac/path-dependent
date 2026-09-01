@@ -700,7 +700,7 @@ abbrev regressionSelectedFunctionTyping : Source.Value.HasType
 
 abbrev regressionSelectedApplication : Source.Term.HasType
     regressionSelectedContext (.app (.var .here) .unit) .empty .one :=
-  .use (.app regressionSelectedFunctionTyping (Eq.refl _) .unit)
+  .use (.app regressionSelectedFunctionTyping (Eq.refl _) rfl .unit)
     (.captureUnionElim .captureEmpty .captureEmpty)
 
 abbrev returnSelectedTyping : Source.Term.HasType (.nil : Source.Ctx 0)

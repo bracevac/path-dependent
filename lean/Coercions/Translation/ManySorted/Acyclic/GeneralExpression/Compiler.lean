@@ -1751,7 +1751,7 @@ noncomputable def compileTerm? {scope : Source.Scope}
       some (compileSelect ready exposes)
   | _, _, _, @DOTCapture.Acyclic.GeneralExpression.Term.HasType.app _ _
       function argument functionUse argumentUse functionType domain codomain
-      functionTyping functionShape argumentTyping =>
+      functionTyping functionShape domainPlain argumentTyping =>
       match codomainTranslated :
           Translation.translateTy? context codomain with
       | none => none
@@ -1790,7 +1790,7 @@ noncomputable def compileTerm? {scope : Source.Scope}
             functionCompiled.useTranslated argumentSequenceTranslated
           pure
             { sourceTyping := .app functionCompiled.sourceTyping functionShape
-                argumentCompiled.sourceTyping
+                domainPlain argumentCompiled.sourceTyping
               targetUse := functionCompiled.targetUse.sequence
                 (argumentCompiled.targetUse.sequence
                   (.union functionCompiled.targetType.outerCapture
@@ -2714,13 +2714,15 @@ theorem compileTerm?_app_term {scope : Source.Scope}
     (functionTyping : Source.Term.HasType context function functionUse
       functionType)
     (functionShape : functionType.stripCapture = .arr domain codomain)
+    (domainPlain : domain.IsPlain)
     (argumentTyping : Source.Term.HasType context argument argumentUse domain)
     {compiled : CompiledTerm ready (.app function argument)
       (DOTCapture.Acyclic.GeneralExpression.Capture.seq functionUse
         (DOTCapture.Acyclic.GeneralExpression.Capture.seq argumentUse
           (.union functionType.outerCapture domain.outerCapture))) codomain}
     (success : compileTerm? ready
-      (.app functionTyping functionShape argumentTyping) = some compiled) :
+      (.app functionTyping functionShape domainPlain argumentTyping) =
+        some compiled) :
     ∃ functionCompiled argumentCompiled,
       compileTerm? ready functionTyping = some functionCompiled ∧
       compileTerm? ready argumentTyping = some argumentCompiled ∧
@@ -3373,7 +3375,7 @@ noncomputable def compilePolarizedTerm? {scope : Source.Scope}
       some (compileSelect ready exposes)
   | _, _, _, @DOTCapture.Acyclic.GeneralExpression.Term.HasType.app _ _
       function argument functionUse argumentUse functionType domain codomain
-      functionTyping functionShape argumentTyping =>
+      functionTyping functionShape domainPlain argumentTyping =>
       match codomainTranslated : Translation.translateTy? context codomain with
       | none => none
       | some codomainTarget => do
@@ -3408,7 +3410,7 @@ noncomputable def compilePolarizedTerm? {scope : Source.Scope}
               invocationTranslated)
           pure
             { sourceTyping := .app functionCompiled.sourceTyping functionShape
-                argumentCompiled.sourceTyping
+                domainPlain argumentCompiled.sourceTyping
               targetUse := functionCompiled.targetUse.sequence
                 (argumentCompiled.targetUse.sequence
                   (.union functionCompiled.targetType.outerCapture

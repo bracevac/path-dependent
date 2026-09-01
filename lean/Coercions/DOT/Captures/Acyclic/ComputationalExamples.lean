@@ -91,7 +91,7 @@ def selectedFunctionTyping :
 def selectedApplicationRaw :
     Term.HasType selectedContext (.app (.var .here) .unit)
       (.union .empty .empty) .one :=
-  .app selectedFunctionTyping rfl .unit
+  .app selectedFunctionTyping rfl rfl .unit
 
 def selectedApplication :
     Term.HasType selectedContext (.app (.var .here) .unit)

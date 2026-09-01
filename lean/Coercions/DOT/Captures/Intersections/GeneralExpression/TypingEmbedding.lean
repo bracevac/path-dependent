@@ -968,12 +968,13 @@ def embedTermTyping {scope : Scope}
   match typing with
   | .ret valueTyping => .ret (embedValueTyping valueTyping)
   | .select exposes => embedSelectionTyping exposes
-  | .app functionTyping functionShape argumentTyping => by
+  | .app functionTyping functionShape domainPlain argumentTyping => by
       simpa [embedTerm, embedCapture_seq, embedTy_outerCapture,
         Source.embedM10Capture] using
         (Term.HasType.app (embedTermTyping functionTyping)
           (by simpa [embedTy_stripCapture, Source.embedM10Ty] using
             congrArg Source.embedM10Ty functionShape)
+          (embedPlain domainPlain)
           (embedTermTyping argumentTyping))
   | .objectApp functionTyping argumentTyping => by
       simpa [embedTerm, embedCapture_seq, embedObjectOuterCapture,

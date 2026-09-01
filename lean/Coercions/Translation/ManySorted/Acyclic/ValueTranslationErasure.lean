@@ -310,7 +310,7 @@ theorem compileTerm_eraseCore {scope : Source.Scope}
       SourceErasure.generatedSelection_erase selected.resolved
   case app =>
     intro scope context function argument functionType domain codomain
-      functionTyping functionShape argumentTyping functionInduction
+      functionTyping functionShape domainPlain argumentTyping functionInduction
       argumentInduction
     unfold ValueErases at functionInduction argumentInduction
     unfold TermErases

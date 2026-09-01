@@ -1613,7 +1613,7 @@ noncomputable def compileTerm? {scope : Source.Scope}
       some (compileSelect ready exposes)
   | _, _, _, @DOTCapture.Acyclic.Term.HasType.app _ _ function argument
       functionType domain codomain functionTyping functionShape
-      argumentTyping =>
+      domainPlain argumentTyping =>
       match codomainTranslated : Translation.translateTy? context codomain with
       | none => none
       | some codomainTarget => do
@@ -1639,7 +1639,8 @@ noncomputable def compileTerm? {scope : Source.Scope}
           have argumentOuterTranslated := translateTy?_outerCapture
             argumentCompiled.typeTranslated
           pure
-            { sourceTyping := .app functionTyping functionShape argumentTyping
+            { sourceTyping := .app functionTyping functionShape domainPlain
+                argumentTyping
               targetUse := .union functionCompiled.targetType.outerCapture
                 argumentCompiled.targetType.outerCapture
               targetType := codomainTarget
@@ -1705,11 +1706,13 @@ theorem compileTerm?_app_term {scope : Source.Scope}
     {functionType domain codomain : Source.Ty scope}
     (functionTyping : Source.Value.HasType context function functionType)
     (functionShape : functionType.stripCapture = .arr domain codomain)
+    (domainPlain : domain.IsPlain)
     (argumentTyping : Source.Value.HasType context argument domain)
     {compiled : CompiledTerm ready (.app function argument)
       (.union functionType.outerCapture domain.outerCapture) codomain}
     (success : compileTerm? ready
-      (.app functionTyping functionShape argumentTyping) = some compiled) :
+      (.app functionTyping functionShape domainPlain argumentTyping) =
+        some compiled) :
     ∃ targetFunction targetArgument,
       compiled.term = .app targetFunction targetArgument := by
   unfold compileTerm? at success

@@ -657,6 +657,7 @@ inductive Term.HasType : {scope : Scope} -> Ctx scope -> Term scope ->
       {functionType domain codomain : Ty scope}
       (functionTyping : Term.HasType context function functionUse functionType)
       (functionShape : functionType.stripCapture = .arr domain codomain)
+      (domainPlain : Plain domain)
       (argumentTyping : Term.HasType context argument argumentUse domain) :
       Term.HasType context (.app function argument)
         (Source.Capture.seq functionUse
