@@ -147,6 +147,9 @@ def capture_rename_substitute {source target : Sig}
       simp only [Capture.rename, Capture.substitute]
       rw [cancellation.symbolVar name]
       rfl
+  | .project capture _ => by
+      simp only [Capture.rename, Capture.substitute,
+        capture_rename_substitute capture cancellation]
 
 /-- Cancellation acts pointwise on the captures that generate modal
 separation assumptions. -/

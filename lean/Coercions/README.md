@@ -41,4 +41,15 @@ Stage 6A keeps capture members and the single `C_rep` acyclic and uses one
 recursive runtime records, a full recursive-object compiler, a semantic model
 for arbitrary recursive equations, or a full DOT tight-typing theorem.
 
+The classifier-projection extension adds a closed classifier tree, ground
+kind intersection and subtraction, and `Capture.project` to ManySortedFC.
+The standalone checker recomputes equivalence, subkind, emptiness, and
+disjointness conditions for projection evidence. A small source layer lowers
+each `.only`/`.except` chain to one projection. Its target witness is checked
+independently; the paired source and target programs have literally equal
+erasures and perform beta and zeta steps.
+This layer is not a general source-term compiler and does not include
+kind-bounded capture variables, classifier inference, handlers or intercepts,
+or full Capless(K) typing.
+
 `All.lean` imports the complete development.

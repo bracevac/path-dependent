@@ -301,6 +301,8 @@ def Capture.substitute {source target : Sig} (capture : Capture source)
   | .cvar name =>
       match substitution.symbolVar name with
       | .capture replacement => replacement
+  | .project capture kind =>
+      .project (capture.substitute substitution) kind
 
 /-- Substitute every capture in a separation context. -/
 def SeparationContext.substitute {count : Nat} {source target : Sig}

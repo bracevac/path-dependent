@@ -1,4 +1,5 @@
 import Coercions.ManySortedFC.Evidence
+import Coercions.ManySortedFC.Classifier.Disjoint
 
 /-!
 # Access-view semantics for capture separation
@@ -187,6 +188,10 @@ variables in the current scope. -/
 structure AccessValuation (scope : Sig) (Capability : Type) where
   term : BVar scope .term -> Capability -> AccessView
   captureSymbol : BVar scope (.symbol .capture) -> Capability -> AccessView
+  /-- Every semantic capability has one classifier.  This functional
+  assignment is what turns disjoint classifier kinds into disjoint projected
+  captures. -/
+  classOf : Capability -> Classifier
 
 namespace Capture
 
@@ -202,6 +207,11 @@ def access {scope : Sig} {Capability : Type}
       AccessView.restrictReadOnly (capture.access valuation capability)
   | .singleton term, capability => valuation.term term capability
   | .cvar name, capability => valuation.captureSymbol name capability
+  | .project capture kind, capability =>
+      if Classifier.Kind.Contains kind (valuation.classOf capability) then
+        capture.access valuation capability
+      else
+        .absent
 
 end Capture
 
@@ -285,6 +295,72 @@ theorem equivalent_readOnly {scope : Sig} {Capability : Type}
   simp only [Capture.access]
   rw [equivalent capability]
 
+/-- Projection is congruent in both its capture and the denotation of its
+closed classifier kind. -/
+theorem equivalent_project {scope : Sig} {Capability : Type}
+    {valuation : AccessValuation scope Capability}
+    {left right : Capture scope} {leftKind rightKind : Classifier.Kind}
+    (captureEquivalent : Equivalent valuation left right)
+    (kindEquivalent : Classifier.Kind.Equivalent leftKind rightKind) :
+    Equivalent valuation (.project left leftKind) (.project right rightKind) := by
+  intro capability
+  by_cases inLeft : Classifier.Kind.Contains leftKind
+      (valuation.classOf capability)
+  · have inRight := kindEquivalent.1.contains inLeft
+    simp only [Capture.access, if_pos inLeft, if_pos inRight]
+    exact captureEquivalent capability
+  · have notInRight : ¬ Classifier.Kind.Contains rightKind
+        (valuation.classOf capability) := by
+      intro inRight
+      exact inLeft (kindEquivalent.2.contains inRight)
+    simp only [Capture.access, if_neg inLeft, if_neg notInRight]
+
+/-- The universal kind leaves a capture unchanged. -/
+theorem equivalent_project_top {scope : Sig} {Capability : Type}
+    (valuation : AccessValuation scope Capability) (capture : Capture scope) :
+    Equivalent valuation (.project capture Classifier.Kind.top) capture := by
+  intro capability
+  simp only [Capture.access,
+    if_pos (Classifier.Kind.Contains.top (item := valuation.classOf capability))]
+
+/-- Nested filters compose as intersection, in outer-then-inner order. -/
+theorem equivalent_project_compose {scope : Sig} {Capability : Type}
+    (valuation : AccessValuation scope Capability) (capture : Capture scope)
+    (innerKind outerKind : Classifier.Kind) :
+    Equivalent valuation (.project (.project capture innerKind) outerKind)
+      (.project capture (outerKind.intersect innerKind)) := by
+  intro capability
+  by_cases inOuter : Classifier.Kind.Contains outerKind
+      (valuation.classOf capability)
+  · by_cases inInner : Classifier.Kind.Contains innerKind
+        (valuation.classOf capability)
+    · have inBoth : Classifier.Kind.Contains
+          (outerKind.intersect innerKind) (valuation.classOf capability) :=
+        Classifier.Kind.Contains.intersect.mpr ⟨inOuter, inInner⟩
+      simp only [Capture.access, if_pos inOuter, if_pos inInner,
+        if_pos inBoth]
+    · have notInBoth : ¬ Classifier.Kind.Contains
+          (outerKind.intersect innerKind) (valuation.classOf capability) := by
+        intro inBoth
+        exact inInner (Classifier.Kind.Contains.intersect.mp inBoth).2
+      simp only [Capture.access, if_pos inOuter, if_neg inInner,
+        if_neg notInBoth]
+  · have notInBoth : ¬ Classifier.Kind.Contains
+        (outerKind.intersect innerKind) (valuation.classOf capability) := by
+      intro inBoth
+      exact inOuter (Classifier.Kind.Contains.intersect.mp inBoth).1
+    simp only [Capture.access, if_neg inOuter, if_neg notInBoth]
+
+/-- An empty classifier filter denotes the empty capture. -/
+theorem equivalent_project_empty {scope : Sig} {Capability : Type}
+    (valuation : AccessValuation scope Capability) (capture : Capture scope)
+    {kind : Classifier.Kind} (emptyKind : Classifier.Kind.IsEmpty kind) :
+    Equivalent valuation (.project capture kind) .empty := by
+  intro capability
+  have absent : ¬ Classifier.Kind.Contains kind (valuation.classOf capability) :=
+    fun contained => emptyKind.not_contains contained
+  simp only [Capture.access, if_neg absent]
+
 theorem subcapture_refl {scope : Sig} {Capability : Type}
     (valuation : AccessValuation scope Capability) (capture : Capture scope) :
     Subcapture valuation capture capture := by
@@ -347,6 +423,69 @@ theorem readOnly_mono {scope : Sig} {Capability : Type}
     Subcapture valuation (.readOnly lower) (.readOnly upper) := by
   intro capability
   exact AccessView.restrict_mono (ordering capability)
+
+/-- Filtering can only remove capabilities. -/
+theorem project_source {scope : Sig} {Capability : Type}
+    (valuation : AccessValuation scope Capability) (capture : Capture scope)
+    (kind : Classifier.Kind) :
+    Subcapture valuation (.project capture kind) capture := by
+  intro capability
+  by_cases contained : Classifier.Kind.Contains kind
+      (valuation.classOf capability)
+  · simp only [Capture.access, if_pos contained]
+    exact AccessView.le_refl _
+  · simp only [Capture.access, if_neg contained]
+    exact AccessView.absent_le _
+
+/-- Projected captures are covariant in the underlying capture and kind. -/
+theorem project_mono {scope : Sig} {Capability : Type}
+    {valuation : AccessValuation scope Capability}
+    {lower upper : Capture scope} {lowerKind upperKind : Classifier.Kind}
+    (captureOrder : Subcapture valuation lower upper)
+    (kindOrder : Classifier.Kind.Subkind lowerKind upperKind) :
+    Subcapture valuation (.project lower lowerKind)
+      (.project upper upperKind) := by
+  intro capability
+  by_cases inLower : Classifier.Kind.Contains lowerKind
+      (valuation.classOf capability)
+  · have inUpper := kindOrder.contains inLower
+    simp only [Capture.access, if_pos inLower, if_pos inUpper]
+    exact captureOrder capability
+  · simp only [Capture.access, if_neg inLower]
+    exact AccessView.absent_le _
+
+/-- Projection through a kind union is covered by the two component
+projections of the same capture. -/
+theorem project_merge {scope : Sig} {Capability : Type}
+    (valuation : AccessValuation scope Capability) (capture : Capture scope)
+    (leftKind rightKind : Classifier.Kind) :
+    Subcapture valuation (.project capture (leftKind ++ rightKind))
+      (.union (.project capture leftKind) (.project capture rightKind)) := by
+  intro capability
+  by_cases inLeft : Classifier.Kind.Contains leftKind
+      (valuation.classOf capability)
+  · have inUnion : Classifier.Kind.Contains (leftKind ++ rightKind)
+        (valuation.classOf capability) :=
+      Classifier.Kind.Contains.append (Or.inl inLeft)
+    simp only [Capture.access, if_pos inUnion, if_pos inLeft]
+    exact AccessView.le_join_left _ _
+  · by_cases inRight : Classifier.Kind.Contains rightKind
+        (valuation.classOf capability)
+    · have inUnion : Classifier.Kind.Contains (leftKind ++ rightKind)
+          (valuation.classOf capability) :=
+        Classifier.Kind.Contains.append (Or.inr inRight)
+      simp only [Capture.access, if_pos inUnion, if_neg inLeft,
+        if_pos inRight, AccessView.join_absent_left]
+      exact AccessView.le_refl _
+    · have notInUnion : ¬ Classifier.Kind.Contains
+          (leftKind ++ rightKind) (valuation.classOf capability) := by
+        intro inUnion
+        cases Classifier.Kind.Contains.of_append inUnion with
+        | inl contradiction => exact inLeft contradiction
+        | inr contradiction => exact inRight contradiction
+      simp only [Capture.access, if_neg notInUnion, if_neg inLeft,
+        if_neg inRight, AccessView.join_absent_left]
+      exact AccessView.absent_le _
 
 theorem mode_writable {scope : Sig} {Capability : Type}
     (valuation : AccessValuation scope Capability) (capture : Capture scope) :
@@ -472,6 +611,23 @@ theorem disjoint_equivalent_left {scope : Sig} {Capability : Type}
   intro capability
   rw [equivalent capability]
   exact targetOther capability
+
+/-- One total classifier assignment makes projections through disjoint kinds
+disjoint even when their source captures overlap. -/
+theorem disjoint_project {scope : Sig} {Capability : Type}
+    {valuation : AccessValuation scope Capability}
+    (left right : Capture scope) {leftKind rightKind : Classifier.Kind}
+    (kindDisjoint : Classifier.Kind.Disjoint leftKind rightKind) :
+    Disjoint valuation (.project left leftKind) (.project right rightKind) := by
+  intro capability
+  by_cases inLeft : Classifier.Kind.Contains leftKind
+      (valuation.classOf capability)
+  · have notInRight : ¬ Classifier.Kind.Contains rightKind
+        (valuation.classOf capability) := by
+      intro inRight
+      exact kindDisjoint.not_both inLeft inRight
+    exact Or.inr (by simp only [Capture.access, if_neg notInRight])
+  · exact Or.inl (by simp only [Capture.access, if_neg inLeft])
 
 end SeparationSemantics
 
@@ -630,6 +786,16 @@ theorem access_sound {scope : Sig} {context : Ctx scope}
       exact SeparationSemantics.equivalent_union leftInduction rightInduction
   | equalityCaptureReadOnly typing induction =>
       exact SeparationSemantics.equivalent_readOnly induction
+  | equalityCaptureProject typing kindEquivalent induction =>
+      exact SeparationSemantics.equivalent_project induction kindEquivalent
+  | equalityCaptureProjectTop capture =>
+      exact SeparationSemantics.equivalent_project_top valuation capture
+  | equalityCaptureProjectCompose capture innerKind outerKind =>
+      exact SeparationSemantics.equivalent_project_compose valuation capture
+        innerKind outerKind
+  | equalityCaptureProjectEmpty capture kind emptyKind =>
+      exact SeparationSemantics.equivalent_project_empty valuation capture
+        emptyKind
   | inclusionRefl expression =>
       exact Proposition.accessHolds_inclusion_refl valuation expression
   | inclusionTrans firstTyping secondTyping firstInduction secondInduction =>
@@ -656,6 +822,13 @@ theorem access_sound {scope : Sig} {context : Ctx scope}
       exact SeparationSemantics.readOnly_subcapture valuation capture
   | captureReadOnlyMono typing induction =>
       exact SeparationSemantics.readOnly_mono induction
+  | captureProjectSource capture kind =>
+      exact SeparationSemantics.project_source valuation capture kind
+  | captureProjectMono typing kindSubtyping induction =>
+      exact SeparationSemantics.project_mono induction kindSubtyping
+  | captureProjectMerge capture leftKind rightKind =>
+      exact SeparationSemantics.project_merge valuation capture leftKind
+        rightKind
   | modeEmpty mode =>
       exact SeparationSemantics.mode_empty valuation mode
   | modeUnion leftTyping rightTyping leftInduction rightInduction =>
@@ -693,6 +866,10 @@ theorem access_sound {scope : Sig} {context : Ctx scope}
       disjointInduction =>
       exact SeparationSemantics.disjoint_equivalent_left equalityInduction
         disjointInduction
+  | disjointCaptureProject leftCapture leftKind rightCapture rightKind
+      kindDisjoint =>
+      exact SeparationSemantics.disjoint_project leftCapture rightCapture
+        kindDisjoint
 
 end Evidence.Proves
 
@@ -712,6 +889,7 @@ def oneWritable : AccessValuation OneCapabilityScope Unit where
     | .there older => nomatch older
   captureSymbol := fun
     | .there older => nomatch older
+  classOf := fun _ => .top
 
 /-- A read-only view of the sole, nonempty capability. -/
 def sharedReadOnly : Capture OneCapabilityScope :=

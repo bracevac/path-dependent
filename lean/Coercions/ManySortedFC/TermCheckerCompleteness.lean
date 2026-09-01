@@ -92,6 +92,17 @@ private theorem check_complete_projection {scope : Sig}
         dsimp at propEq
         subst checkedProp
         simp [check, checkedEq]
+  | equalityCaptureProject captureTyping kindEquivalent ih =>
+      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
+      cases checked with
+      | mk checkedProp checkedTyping =>
+        dsimp at propEq
+        subst checkedProp
+        simp [check, checkedEq, kindEquivalent]
+  | equalityCaptureProjectTop => rfl
+  | equalityCaptureProjectCompose => rfl
+  | equalityCaptureProjectEmpty capture kind emptyKind =>
+      simp [check, emptyKind]
   | inclusionRefl => rfl
   | inclusionTrans first second firstIH secondIH =>
       obtain ⟨firstChecked, firstEq, firstPropEq⟩ :=
@@ -168,6 +179,15 @@ private theorem check_complete_projection {scope : Sig}
         dsimp at propEq
         subst checkedProp
         simp [check, checkedEq]
+  | captureProjectSource => rfl
+  | captureProjectMono captureTyping kindSubtyping ih =>
+      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
+      cases checked with
+      | mk checkedProp checkedTyping =>
+        dsimp at propEq
+        subst checkedProp
+        simp [check, checkedEq, kindSubtyping]
+  | captureProjectMerge => rfl
   | modeEmpty => rfl
   | modeUnion left right leftIH rightIH =>
       obtain ⟨leftChecked, leftEq, leftPropEq⟩ :=
@@ -285,6 +305,9 @@ private theorem check_complete_projection {scope : Sig}
           subst equalityProp
           subst disjointProp
           simp [check, equalityEq, disjointEq]
+  | disjointCaptureProject leftCapture leftKind rightCapture rightKind
+      kindDisjoint =>
+      simp [check, kindDisjoint]
 
 end Evidence
 

@@ -1,4 +1,5 @@
 import Coercions.ManySortedFC.Scope
+import Coercions.ManySortedFC.Classifier.Kind
 
 /-!
 # Static syntax for many-sorted FC
@@ -196,6 +197,11 @@ inductive Capture : Sig → Type where
   | singleton {scope : Sig} (capability : BVar scope .term) : Capture scope
   | cvar {scope : Sig}
       (name : BVar scope (.symbol .capture)) : Capture scope
+  /-- Restrict a capture to capabilities whose closed classifier belongs to
+  `kind`.  Classifier kinds are ground filters, not a third bindable static
+  sort. -/
+  | project {scope : Sig} (capture : Capture scope)
+      (kind : Classifier.Kind) : Capture scope
 
 /-- Captures whose distinct list positions must be separated while a modal
 body is checked.  Repeated captures remain distinct entries. -/
@@ -349,6 +355,7 @@ def Capture.rename {source target : Sig} (capture : Capture source)
   | .readOnly capture => .readOnly (capture.rename rho)
   | .singleton capability => .singleton (rho.var capability)
   | .cvar name => .cvar (rho.var name)
+  | .project capture kind => .project (capture.rename rho) kind
 
 /-- Rename every capture in a separation context. -/
 def SeparationContext.rename {count : Nat} {source target : Sig}
@@ -566,6 +573,8 @@ def Capture.rename_id {scope : Sig} (capture : Capture scope) :
       simp only [Capture.rename, Capture.rename_id capture]
   | .singleton _ => rfl
   | .cvar _ => rfl
+  | .project capture _ => by
+      simp only [Capture.rename, Capture.rename_id capture]
 
 @[simp]
 def SeparationContext.rename_id {scope : Sig} {count : Nat}
@@ -717,6 +726,8 @@ def Capture.rename_comp {first second third : Sig}
       simp only [Capture.rename, Capture.rename_comp capture]
   | .singleton _ => rfl
   | .cvar _ => rfl
+  | .project capture _ => by
+      simp only [Capture.rename, Capture.rename_comp capture]
 
 @[simp]
 def SeparationContext.rename_comp {count : Nat}

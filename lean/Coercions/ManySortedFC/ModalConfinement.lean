@@ -233,6 +233,19 @@ def lowerModalEquality {scope : Sig} {sort : StaticSort}
         right.lowerModalEquality
   | .equalityCaptureReadOnly capture =>
       .equalityCaptureReadOnly capture.lowerModalEquality
+  | .equalityCaptureProject equality sourceKind targetKind =>
+      .equalityCaptureProject equality.lowerModalEquality
+        sourceKind targetKind
+  | .equalityCaptureProjectTop capture =>
+      .equalityCaptureProjectTop (capture.substitute
+        (StaticSubst.dropModal scope separationCount modes))
+  | .equalityCaptureProjectCompose capture innerKind outerKind =>
+      .equalityCaptureProjectCompose (capture.substitute
+        (StaticSubst.dropModal scope separationCount modes))
+        innerKind outerKind
+  | .equalityCaptureProjectEmpty capture kind =>
+      .equalityCaptureProjectEmpty (capture.substitute
+        (StaticSubst.dropModal scope separationCount modes)) kind
 
 /-- Lower an inclusion certificate and every equality subcertificate it may
 contain through a modal proof block. -/
@@ -276,6 +289,16 @@ def lowerModalInclusion {scope : Sig} {sort : StaticSort}
       (StaticSubst.dropModal scope separationCount modes))
   | .captureReadOnlyMono subcapture =>
       .captureReadOnlyMono subcapture.lowerModalInclusion
+  | .captureProjectSource capture kind =>
+      .captureProjectSource (capture.substitute
+        (StaticSubst.dropModal scope separationCount modes)) kind
+  | .captureProjectMono subcapture sourceKind targetKind =>
+      .captureProjectMono subcapture.lowerModalInclusion
+        sourceKind targetKind
+  | .captureProjectMerge capture leftKind rightKind =>
+      .captureProjectMerge (capture.substitute
+        (StaticSubst.dropModal scope separationCount modes))
+        leftKind rightKind
 
 /-- Lower a disjointness certificate and every equality subcertificate it
 uses through a modal proof block. -/
@@ -293,6 +316,11 @@ def lowerModalDisjoint {scope : Sig}
   | .disjointEquality equality disjoint =>
       .disjointEquality equality.lowerModalEquality
         disjoint.lowerModalDisjoint
+  | .disjointCaptureProject leftCapture leftKind rightCapture rightKind =>
+      .disjointCaptureProject (leftCapture.substitute
+        (StaticSubst.dropModal scope separationCount modes)) leftKind
+        (rightCapture.substitute
+          (StaticSubst.dropModal scope separationCount modes)) rightKind
 
 @[simp]
 def lowerModalEquality_rename {scope : Sig} {sort : StaticSort}
@@ -333,6 +361,18 @@ def lowerModalEquality_rename {scope : Sig} {sort : StaticSort}
   | .equalityCaptureReadOnly capture => by
       simp only [lowerModalEquality, Evidence.rename,
         lowerModalEquality_rename capture]
+  | .equalityCaptureProject equality sourceKind targetKind => by
+      simp only [lowerModalEquality, Evidence.rename,
+        lowerModalEquality_rename equality]
+  | .equalityCaptureProjectTop capture => by
+      simp only [lowerModalEquality, Evidence.rename,
+        Capture.substitute_dropModal_rename]
+  | .equalityCaptureProjectCompose capture innerKind outerKind => by
+      simp only [lowerModalEquality, Evidence.rename,
+        Capture.substitute_dropModal_rename]
+  | .equalityCaptureProjectEmpty capture kind => by
+      simp only [lowerModalEquality, Evidence.rename,
+        Capture.substitute_dropModal_rename]
 
 @[simp]
 def lowerModalInclusion_rename {scope : Sig} {sort : StaticSort}
@@ -394,6 +434,15 @@ def lowerModalInclusion_rename {scope : Sig} {sort : StaticSort}
   | .captureReadOnlyMono subcapture => by
       simp only [lowerModalInclusion, Evidence.rename,
         lowerModalInclusion_rename subcapture]
+  | .captureProjectSource capture kind => by
+      simp only [lowerModalInclusion, Evidence.rename,
+        Capture.substitute_dropModal_rename]
+  | .captureProjectMono subcapture sourceKind targetKind => by
+      simp only [lowerModalInclusion, Evidence.rename,
+        lowerModalInclusion_rename subcapture]
+  | .captureProjectMerge capture leftKind rightKind => by
+      simp only [lowerModalInclusion, Evidence.rename,
+        Capture.substitute_dropModal_rename]
 
 @[simp]
 def lowerModalDisjoint_rename {scope : Sig}
@@ -420,6 +469,9 @@ def lowerModalDisjoint_rename {scope : Sig}
   | .disjointEquality equality disjoint => by
       simp only [lowerModalDisjoint, Evidence.rename,
         lowerModalEquality_rename, lowerModalDisjoint_rename disjoint]
+  | .disjointCaptureProject leftCapture leftKind rightCapture rightKind => by
+      simp only [lowerModalDisjoint, Evidence.rename,
+        Capture.substitute_dropModal_rename]
 
 end Evidence
 
@@ -598,6 +650,31 @@ noncomputable def lowerModalEquality {scope : Sig} {context : Ctx scope}
       simpa [Evidence.lowerModalEquality, Proposition.substitute,
         StaticExpr.substitute, Capture.substitute] using
         Evidence.Proves.equalityCaptureReadOnly (lowerModalEquality capture)
+  | .equalityCaptureProject equality kindEquivalent => by
+      simpa [Evidence.lowerModalEquality, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute] using
+        Evidence.Proves.equalityCaptureProject
+          (lowerModalEquality equality) kindEquivalent
+  | .equalityCaptureProjectTop capture => by
+      simpa [Evidence.lowerModalEquality, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute] using
+        (Evidence.Proves.equalityCaptureProjectTop (context := context)
+          (capture.substitute
+            (StaticSubst.dropModal scope separationCount modes)))
+  | .equalityCaptureProjectCompose capture innerKind outerKind => by
+      simpa [Evidence.lowerModalEquality, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute] using
+        (Evidence.Proves.equalityCaptureProjectCompose (context := context)
+          (capture.substitute
+            (StaticSubst.dropModal scope separationCount modes))
+          innerKind outerKind)
+  | .equalityCaptureProjectEmpty capture kind emptyKind => by
+      simpa [Evidence.lowerModalEquality, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute] using
+        (Evidence.Proves.equalityCaptureProjectEmpty (context := context)
+          (capture.substitute
+            (StaticSubst.dropModal scope separationCount modes))
+          kind emptyKind)
 
 /-- Checked inclusion derivations under a lock lower to checked derivations in
 the unchanged outer context.  Equality premises are lowered recursively. -/
@@ -697,6 +774,24 @@ noncomputable def lowerModalInclusion {scope : Sig} {context : Ctx scope}
         StaticExpr.substitute, Capture.substitute] using
         Evidence.Proves.captureReadOnlyMono
           (lowerModalInclusion subcapture)
+  | .captureProjectSource capture kind => by
+      simpa [Evidence.lowerModalInclusion, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute] using
+        (Evidence.Proves.captureProjectSource (context := context)
+          (capture.substitute
+            (StaticSubst.dropModal scope separationCount modes)) kind)
+  | .captureProjectMono subcapture kindSubtyping => by
+      simpa [Evidence.lowerModalInclusion, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute] using
+        Evidence.Proves.captureProjectMono
+          (lowerModalInclusion subcapture) kindSubtyping
+  | .captureProjectMerge capture leftKind rightKind => by
+      simpa [Evidence.lowerModalInclusion, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute] using
+        (Evidence.Proves.captureProjectMerge (context := context)
+          (capture.substitute
+            (StaticSubst.dropModal scope separationCount modes))
+          leftKind rightKind)
 
 /-- Checked disjointness derivations under a lock lower to checked
 derivations in the unchanged outer context. -/
@@ -734,6 +829,16 @@ noncomputable def lowerModalDisjoint {scope : Sig} {context : Ctx scope}
       simpa [Evidence.lowerModalDisjoint, Proposition.substitute] using
         Evidence.Proves.disjointEquality (lowerModalEquality equality)
           (lowerModalDisjoint disjoint)
+  | .disjointCaptureProject leftCapture leftKind rightCapture rightKind
+      kindDisjoint => by
+      simpa [Evidence.lowerModalDisjoint, Proposition.substitute,
+        Capture.substitute] using
+        (Evidence.Proves.disjointCaptureProject (context := context)
+          (leftCapture.substitute
+            (StaticSubst.dropModal scope separationCount modes)) leftKind
+          (rightCapture.substitute
+            (StaticSubst.dropModal scope separationCount modes)) rightKind
+          kindDisjoint)
 
 end Evidence.Proves
 

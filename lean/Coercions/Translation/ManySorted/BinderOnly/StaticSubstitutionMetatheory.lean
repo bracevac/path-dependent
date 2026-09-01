@@ -328,6 +328,9 @@ def capture_square {upperLeft upperRight lowerLeft lowerRight : Sig}
               simpa [Capture.substitute, Capture.rename,
                 StaticExpr.rename, upperResult, lowerResult] using
                 symbolEquality
+  | .project capture _ => by
+      simp only [Capture.substitute, Capture.rename,
+        capture_square capture square]
 
 /-- A commuting variable square extends pointwise to the captures that
 generate a modal separation context. -/

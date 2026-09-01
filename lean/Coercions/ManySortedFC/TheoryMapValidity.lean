@@ -122,6 +122,9 @@ def Capture.substitute_ofRename {source target : Sig}
         Capture.substitute_ofRename capture]
   | .singleton _ => rfl
   | .cvar _ => rfl
+  | .project capture _ => by
+      simp only [Capture.substitute, Capture.rename,
+        Capture.substitute_ofRename capture]
 
 @[simp]
 def SeparationContext.substitute_ofRename {count : Nat}
@@ -380,6 +383,9 @@ def Capture.substitute_postRename {source middle target : Sig}
           simp only [Capture.substitute, StaticSubst.postRename]
           rw [equality]
           rfl
+  | .project capture _ => by
+      simp only [Capture.substitute, Capture.rename,
+        Capture.substitute_postRename capture]
 
 @[simp]
 def SeparationContext.substitute_postRename {count : Nat}
@@ -723,6 +729,9 @@ def Capture.rename_substitute {source middle target : Sig}
       follows.term]
   | .cvar index => by
       simp [Capture.rename, Capture.substitute, follows.symbol]
+  | .project capture _ => by
+      simp only [Capture.rename, Capture.substitute,
+        Capture.rename_substitute capture before after result follows]
 
 def SeparationContext.rename_substitute {count : Nat}
     {source middle target : Sig} (context : SeparationContext count source)
@@ -1138,6 +1147,8 @@ def Capture.substitute_comp {source middle target : Sig}
           simp only [Capture.substitute, StaticSubst.comp]
           rw [equality]
           rfl
+  | .project capture _ => by
+      simp only [Capture.substitute, Capture.substitute_comp capture]
 
 @[simp]
 def SeparationContext.substitute_comp {count : Nat}
@@ -1931,6 +1942,14 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
       exact .equalityCaptureUnion leftInduction rightInduction
   | equalityCaptureReadOnly _ induction =>
       exact .equalityCaptureReadOnly induction
+  | equalityCaptureProject _ kindEquivalent induction =>
+      exact .equalityCaptureProject induction kindEquivalent
+  | equalityCaptureProjectTop =>
+      exact .equalityCaptureProjectTop _
+  | equalityCaptureProjectCompose =>
+      exact .equalityCaptureProjectCompose _ _ _
+  | equalityCaptureProjectEmpty _ _ emptyKind =>
+      exact .equalityCaptureProjectEmpty _ _ emptyKind
   | inclusionRefl => exact .inclusionRefl _
   | inclusionTrans _ _ firstInduction secondInduction =>
       exact .inclusionTrans firstInduction secondInduction
@@ -1957,6 +1976,10 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
   | captureReadOnly => exact .captureReadOnly _
   | captureReadOnlyMono _ induction =>
       exact .captureReadOnlyMono induction
+  | captureProjectSource => exact .captureProjectSource _ _
+  | captureProjectMono _ kindSubtyping induction =>
+      exact .captureProjectMono induction kindSubtyping
+  | captureProjectMerge => exact .captureProjectMerge _ _ _
   | modeEmpty => exact .modeEmpty _
   | modeUnion _ _ leftInduction rightInduction =>
       exact .modeUnion leftInduction rightInduction
@@ -1979,6 +2002,8 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
   | disjointEmpty => exact .disjointEmpty _
   | disjointEquality _ _ equalityInduction disjointInduction =>
       exact .disjointEquality equalityInduction disjointInduction
+  | disjointCaptureProject _ _ _ _ kindDisjoint =>
+      exact .disjointCaptureProject _ _ _ _ kindDisjoint
 
 end Evidence.Proves
 

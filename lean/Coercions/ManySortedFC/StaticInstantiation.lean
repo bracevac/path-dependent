@@ -168,6 +168,17 @@ def substitute {source target : Sig} {relation : Relation}
         (right.substitute substitution)
   | .equalityCaptureReadOnly capture =>
       .equalityCaptureReadOnly (capture.substitute substitution)
+  | .equalityCaptureProject equality sourceKind targetKind =>
+      .equalityCaptureProject (equality.substitute substitution)
+        sourceKind targetKind
+  | .equalityCaptureProjectTop capture =>
+      .equalityCaptureProjectTop (capture.substitute substitution.static)
+  | .equalityCaptureProjectCompose capture innerKind outerKind =>
+      .equalityCaptureProjectCompose
+        (capture.substitute substitution.static) innerKind outerKind
+  | .equalityCaptureProjectEmpty capture kind =>
+      .equalityCaptureProjectEmpty
+        (capture.substitute substitution.static) kind
   | .inclusionRefl expression =>
       .inclusionRefl (expression.substitute substitution.static)
   | .inclusionTrans first second =>
@@ -202,6 +213,14 @@ def substitute {source target : Sig} {relation : Relation}
       .captureReadOnly (capture.substitute substitution.static)
   | .captureReadOnlyMono subcapture =>
       .captureReadOnlyMono (subcapture.substitute substitution)
+  | .captureProjectSource capture kind =>
+      .captureProjectSource (capture.substitute substitution.static) kind
+  | .captureProjectMono subcapture sourceKind targetKind =>
+      .captureProjectMono (subcapture.substitute substitution)
+        sourceKind targetKind
+  | .captureProjectMerge capture leftKind rightKind =>
+      .captureProjectMerge (capture.substitute substitution.static)
+        leftKind rightKind
   | .modeEmpty mode => .modeEmpty mode
   | .modeUnion left right =>
       .modeUnion (left.substitute substitution) (right.substitute substitution)
@@ -237,6 +256,10 @@ def substitute {source target : Sig} {relation : Relation}
   | .disjointEquality equality disjoint =>
       .disjointEquality (equality.substitute substitution)
         (disjoint.substitute substitution)
+  | .disjointCaptureProject leftCapture leftKind rightCapture rightKind =>
+      .disjointCaptureProject
+        (leftCapture.substitute substitution.static) leftKind
+        (rightCapture.substitute substitution.static) rightKind
 
 end Evidence
 

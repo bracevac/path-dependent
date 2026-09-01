@@ -1,3 +1,4 @@
+import Coercions.ManySortedFC.Classifier
 import Coercions.ManySortedFC.Scope
 import Coercions.ManySortedFC.Syntax
 import Coercions.ManySortedFC.Context
@@ -53,6 +54,7 @@ import Coercions.ManySortedFC.ModalExamples
 import Coercions.ManySortedFC.ModalAdapterExamples
 import Coercions.ManySortedFC.ModalPreservationExamples
 import Coercions.ManySortedFC.DisjointCaptureTheoryExamples
+import Coercions.ManySortedFC.ClassifierProjectionExamples
 
 /-!
 Independent import root for the many-sorted FC target. This development is a
@@ -66,4 +68,11 @@ context and erases to runtime `force`. Head-guarded simultaneous recursive
 type projections have checked unfold equality. Capture terms remain acyclic,
 and this syntactic facility does not claim a global semantic consistency
 theorem for arbitrary recursive type equations.
+
+Classifier projection is a closed ground extension: concrete classifier
+paths and kind filters are executable data inside capture syntax, not a third
+bindable static sort. The target checker recomputes subkind, equivalence,
+emptiness, and disjointness side conditions. This extension does not add
+kind-bounded capture variables, capture-kind inference, handlers or
+intercepts, or the full Capless(K) type system.
 -/
