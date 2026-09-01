@@ -24,7 +24,11 @@ theorem expression_eq_asExpression {scope : Sig} {sort : StaticSort}
 
 end StaticRef
 
-/-! ## Stable opening of local interface references -/
+/-! ## Stable opening of local interface references
+
+Nested objects and negative object arrows delimit their own local-member
+namespaces, so opening an enclosing object does not traverse either boundary.
+-/
 
 def Capture.openAt {scope : Sig} (capture : Capture scope)
     (receiver : Path scope) : Capture scope :=
@@ -74,6 +78,8 @@ def Ty.openAt {scope : Sig} (type : Ty scope)
   | .ref reference => .ref reference
   | .arr domain codomain =>
       .arr (domain.openAt receiver) (codomain.openAt receiver)
+  | .objectArrow parameter resultTemplate =>
+      .objectArrow parameter resultTemplate
   | .capturing capture shape =>
       .capturing (capture.openAt receiver) (shape.openAt receiver)
   | @Ty.forallI _ sort interval body =>

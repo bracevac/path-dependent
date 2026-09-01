@@ -189,9 +189,10 @@ theorem compileTerm_eraseCore {scope : Source.Scope}
     cases Option.some.inj success
     exact SourceErasure.generatedSelection_erase
       (SelectionTranslation.compile ready.translated exposes).resolved
-  case app scope context f a fu au ft d c fty shape aty fih aih ready compiled success =>
+  case app scope context f a fu au ft d c fty shape domainPlain aty fih aih
+      ready compiled success =>
     obtain ⟨fc, ac, hf, ha, termEq⟩ :=
-      Compiler.compileTerm?_app_term ready fty shape aty success
+      Compiler.compileTerm?_app_term ready fty shape domainPlain aty success
     rw [termEq, ManySortedFC.Tm.erase_app, SourceErasure.eraseTerm_app,
       fih ready fc hf, aih ready ac ha]
   case objectApp =>
@@ -552,8 +553,8 @@ theorem compilePolarizedTerm_eraseCore {scope : Source.Scope}
     exact SourceErasure.generatedSelection_erase
       (SelectionTranslation.compile ready.translated exposes).resolved
   case app scope context function argument functionUse argumentUse functionType
-      domain codomain functionTyping functionShape argumentTyping functionIH
-      argumentIH ready compiled success =>
+      domain codomain functionTyping functionShape domainPlain argumentTyping
+      functionIH argumentIH ready compiled success =>
     unfold Compiler.compilePolarizedTerm? at success
     split at success <;> try contradiction
     generalize functionEquation :

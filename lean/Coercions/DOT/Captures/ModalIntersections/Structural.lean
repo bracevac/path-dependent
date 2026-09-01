@@ -118,6 +118,9 @@ def Ty.rename_id {scope : Sig} (type : Ty scope) :
       simp only [Ty.rename, StaticRef.rename_id reference]
   | .arr domain codomain => by
       simp only [Ty.rename, Ty.rename_id domain, Ty.rename_id codomain]
+  | .objectArrow parameter resultTemplate => by
+      simp only [Ty.rename, ObjectType.rename_id parameter,
+        Ty.rename_id resultTemplate]
   | .capturing captures shape => by
       simp only [Ty.rename, Capture.rename_id captures, Ty.rename_id shape]
   | .forallI interval body => by
@@ -253,6 +256,9 @@ def Ty.rename_comp {first second third : Sig} (type : Ty first)
       simp only [Ty.rename, StaticRef.rename_comp reference]
   | .arr domain codomain => by
       simp only [Ty.rename, Ty.rename_comp domain, Ty.rename_comp codomain]
+  | .objectArrow parameter resultTemplate => by
+      simp only [Ty.rename, ObjectType.rename_comp parameter,
+        Ty.rename_comp resultTemplate]
   | .capturing captures shape => by
       simp only [Ty.rename, Capture.rename_comp captures,
         Ty.rename_comp shape]
@@ -476,6 +482,13 @@ theorem weaken_rename {source target : Sig} {kind : BinderKind}
 end Interface
 
 namespace ObjectType
+
+@[simp]
+theorem formedType_rename {source target : Sig} (object : ObjectType source)
+    (rho : Rename source target) :
+    (object.rename rho).formedType = object.formedType.rename rho := by
+  cases object
+  rfl
 
 @[simp]
 theorem weaken_rename {source target : Sig} {kind : BinderKind}

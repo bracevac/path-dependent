@@ -83,6 +83,11 @@ inductive Ty : Sig → Type where
   | one {scope : Sig} : Ty scope
   | ref {scope : Sig} (reference : StaticRef .type scope) : Ty scope
   | arr {scope : Sig} (domain codomain : Ty scope) : Ty scope
+  /-- A negative object consumer binds the parameter interface's local-member
+  namespace in its result template.  This is distinct from an ordinary
+  runtime arrow whose codomain is interpreted in the ambient namespace. -/
+  | objectArrow {scope : Sig} (parameter : ObjectType scope)
+      (resultTemplate : Ty scope) : Ty scope
   | capturing {scope : Sig} (captures : Capture scope) (shape : Ty scope) :
       Ty scope
   | forallI {scope : Sig} {sort : StaticSort}
@@ -235,6 +240,8 @@ def Ty.rename {source target : Sig} (type : Ty source)
   | .one => .one
   | .ref reference => .ref (reference.rename rho)
   | .arr domain codomain => .arr (domain.rename rho) (codomain.rename rho)
+  | .objectArrow parameter resultTemplate =>
+      .objectArrow (parameter.rename rho) (resultTemplate.rename rho)
   | .capturing captures shape =>
       .capturing (captures.rename rho) (shape.rename rho)
   | @Ty.forallI _ sort interval body =>

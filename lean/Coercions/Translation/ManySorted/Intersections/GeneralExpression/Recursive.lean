@@ -1533,11 +1533,11 @@ private def compileOrdinaryTerm? {sourceScope : Source.Scope}
         (by rfl)
   | _, _, _, @DOTCapture.Intersections.GeneralExpression.Term.HasType.app
       _ _ function argument functionUse argumentUse functionType domain
-      codomain functionTyping functionShape argumentTyping => do
+      codomain functionTyping functionShape domainPlain argumentTyping => do
       let functionCompiled <- compileOrdinaryTerm? ready functionTyping
       let argumentCompiled <- compileOrdinaryTerm? ready argumentTyping
       finishTerm? ready
-        (.app functionTyping functionShape argumentTyping)
+        (.app functionTyping functionShape domainPlain argumentTyping)
         (.app functionCompiled.term argumentCompiled.term)
         (by
           rw [ManySortedFC.Tm.erase_app, functionCompiled.exactErasure,
@@ -2619,11 +2619,11 @@ def compileTerm? {sourceScope : Source.Scope}
         (by rfl)
   | _, _, _, @DOTCapture.Intersections.GeneralExpression.Term.HasType.app
       _ _ function argument functionUse argumentUse functionType domain
-      codomain functionTyping functionShape argumentTyping => do
+      codomain functionTyping functionShape domainPlain argumentTyping => do
       let functionCompiled <- compileTerm? ready functionTyping
       let argumentCompiled <- compileTerm? ready argumentTyping
       finishTerm? ready
-        (.app functionTyping functionShape argumentTyping)
+        (.app functionTyping functionShape domainPlain argumentTyping)
         (.app functionCompiled.term argumentCompiled.term)
         (by
           rw [ManySortedFC.Tm.erase_app, functionCompiled.exactErasure,

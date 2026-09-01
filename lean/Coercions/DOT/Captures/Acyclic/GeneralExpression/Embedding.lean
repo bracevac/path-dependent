@@ -97,8 +97,8 @@ def embedTermTyping {scope : Core.Scope} {context : Core.Ctx scope}
   match typing with
   | .ret valueTyping => .ret (embedValueTyping valueTyping)
   | .select exposes => .select exposes
-  | .app functionTyping functionShape argumentTyping =>
-      .app (.ret (embedValueTyping functionTyping)) functionShape
+  | .app functionTyping functionShape domainPlain argumentTyping =>
+      .app (.ret (embedValueTyping functionTyping)) functionShape domainPlain
         (.ret (embedValueTyping argumentTyping))
   | .letPlain boundPlain rhsTyping bodyTyping discharge =>
       .letPlain boundPlain (embedTermTyping rhsTyping)

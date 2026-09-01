@@ -80,7 +80,7 @@ def computedObject : Term 0 :=
 private def computedObjectRaw :
     Term.HasType Ctx.nil computedObject (.union .empty .empty)
       formedObjectType :=
-  .app computedProducerTyping rfl (.ret .unit)
+  .app computedProducerTyping rfl rfl (.ret .unit)
 
 def computedObjectTyping :
     Term.HasType Ctx.nil computedObject .empty formedObjectType :=
@@ -150,7 +150,7 @@ def selectedApplication : Term 2 :=
 private def selectedApplicationRaw :
     Term.HasType selectedContext selectedApplication
       (.union .empty .empty) .one :=
-  .app (.ret selectedFunctionTyping) rfl delayedUnitTyping
+  .app (.ret selectedFunctionTyping) rfl rfl delayedUnitTyping
 
 def selectedApplicationTyping :
     Term.HasType selectedContext selectedApplication .empty .one :=
