@@ -116,6 +116,11 @@ def sourceValueStats {scope : Source.Sig} : Source.Value scope -> SourceStats
       { payloadStats with
         valueNodes := payloadStats.valueNodes + 1
         objects := payloadStats.objects + 1 }
+  | .recursiveObject _ payload =>
+      let payloadStats := sourceValueStats payload
+      { payloadStats with
+        valueNodes := payloadStats.valueNodes + 1
+        objects := payloadStats.objects + 1 }
   | .objectConsumer _ _ body =>
       let bodyStats := sourceTermStats body
       { bodyStats with

@@ -103,7 +103,14 @@ structure PreparedObject (scope : Target.Sig) where
   encoding : Encoding scope
   sourceRepresentationAtNames : Target.Ty
     (Target.SymbolScope scope encoding.symbols)
+  /-- Ambient envelope carried by the existential package. -/
   outerCapture : Target.Capture scope
+  /-- Capture named by the generated representation-containment proposition.
+  It lives under the complete member allocation and may therefore be one of
+  the object's own abstract capture members. -/
+  advertisedCaptureAtNames : Target.Capture
+    (Target.SymbolScope scope encoding.symbols) :=
+      outerCapture.rename (ManySortedFC.Rename.weakenSymbols encoding.symbols)
 
 namespace PreparedObject
 
@@ -158,8 +165,27 @@ def containmentAtNames {scope : Target.Sig} (object : PreparedObject scope) :
       (Target.SymbolScope scope object.symbols) :=
   .inclusion
     (.capture (.cvar object.repCaptureNameAtNames))
-    (.capture (object.outerCapture.rename
-      (ManySortedFC.Rename.weakenSymbols object.symbols)))
+    (.capture (object.advertisedCaptureAtNames.rename
+      (namesRename scope object.memberSymbols)))
+
+/-- The advertised capture after the complete object theory has opened.  In
+the contracted case this may be one of the object's own abstract capture
+members, so it cannot in general be prepared in the ambient layout. -/
+def advertisedCapture {scope : Target.Sig} (object : PreparedObject scope) :
+    Target.Capture (Target.StaticScope scope object.symbols object.relations) :=
+  (object.advertisedCaptureAtNames.rename
+    (namesRename scope object.memberSymbols)).rename
+      (ManySortedFC.Rename.weakenMany
+        (Target.SymbolScope scope object.symbols)
+        (ManySortedFC.evidenceKinds object.relations))
+
+/-- The advertised capture in the payload scope established by existential
+opening. -/
+def openedAdvertisedCapture {scope : Target.Sig}
+    (object : PreparedObject scope) :
+    Target.Capture
+      (ManySortedFC.PayloadScope scope object.symbols object.relations) :=
+  object.advertisedCapture.rename ManySortedFC.Rename.succ
 
 /-- The checked local theory: one internal capture name, all member names,
 its exact interpretation, its advertised containment, then every retained
@@ -307,16 +333,21 @@ def prepare {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
     (source : Source.ObjectType sourceScope) :
     Except Preparation.Error (PreparedObject targetScope) := do
-  let .mk interface sourceRepresentation sourceOuterCapture := source
-  let prepared <- Preparation.collectAndPrepare layout interface
+  let prepared <- Preparation.collectAndPrepare layout source.interface
   let encoding := encode prepared
   let namesLayout := layout.renameTarget
     (ManySortedFC.Rename.weakenSymbols encoding.symbols)
   let sourceRepresentationAtNames <- Preparation.Compile.translateType
-    namesLayout encoding.prepared.members sourceRepresentation
+    namesLayout encoding.prepared.members source.representation
+  let advertisedCaptureAtNames <- Preparation.Compile.translateCapture
+    namesLayout encoding.prepared.members source.outerCapture
   let outerCapture <- Preparation.Compile.translateCapture layout []
-    sourceOuterCapture
-  pure { encoding, sourceRepresentationAtNames, outerCapture }
+    source.packageCapture
+  pure
+    { encoding
+      sourceRepresentationAtNames
+      advertisedCaptureAtNames
+      outerCapture }
 
 /-- Negative consumers use the same contracted object theory and explicit
 captured payload as positive objects. -/
@@ -371,17 +402,15 @@ private def translateTypeCore {sourceScope : Source.Sig} {targetScope : Target.S
   | .top => .ok .top
   | .bot => .ok .bot
   | .one => .ok .one
-  | .ref reference => Preparation.Compile.translateType layout [] (.ref reference)
-  | .arr (.capturing domainCapture
-      (.object (.mk interface representation objectCapture))) codomain =>
-      if _formed : domainCapture = objectCapture then do
-        let prepared <- prepareArrow layout
-          (.mk interface representation objectCapture) codomain
+  | .ref reference => Preparation.translateType layout (.ref reference)
+  | .arr (.capturing domainCapture (.object object)) codomain =>
+      if _formed : domainCapture = object.packageCapture then do
+        let prepared <- prepareArrow layout object codomain
         pure (prepared.targetType .empty)
       else do
         pure (.arr
           (← translateTypeCore layout (.capturing domainCapture
-            (.object (.mk interface representation objectCapture))))
+            (.object object)))
           (← translateTypeCore layout codomain))
   | .arr domain codomain => do
       pure (.arr (← translateTypeCore layout domain)
@@ -394,18 +423,16 @@ private def translateTypeCore {sourceScope : Source.Sig} {targetScope : Target.S
       let prepared <- prepareArrow layout parameter resultTemplate
       pure (prepared.targetType closure)
   | .capturing closure
-      (.arr (.capturing domainCapture
-        (.object (.mk interface representation objectCapture))) codomain) =>
-      if _formed : domainCapture = objectCapture then do
+      (.arr (.capturing domainCapture (.object object)) codomain) =>
+      if _formed : domainCapture = object.packageCapture then do
         let targetClosure <- Preparation.translateCapture layout closure
-        let prepared <- prepareArrow layout
-          (.mk interface representation objectCapture) codomain
+        let prepared <- prepareArrow layout object codomain
         pure (prepared.targetType targetClosure)
       else do
         pure (.capturing (← Preparation.translateCapture layout closure)
           (← translateTypeCore layout
             (.arr (.capturing domainCapture
-              (.object (.mk interface representation objectCapture))) codomain)))
+              (.object object)) codomain)))
   | .capturing captures shape => do
       pure (.capturing (← Preparation.translateCapture layout captures)
         (← translateTypeCore layout shape))
@@ -488,7 +515,7 @@ def translateType {sourceScope : Source.Sig} {targetScope : Target.Sig}
   | .top => .ok .top
   | .bot => .ok .bot
   | .one => .ok .one
-  | .ref reference => Preparation.Compile.translateType layout [] (.ref reference)
+  | .ref reference => Preparation.translateType layout (.ref reference)
   | .capturing captures .top => do
       pure (.capturing (← Preparation.translateCapture layout captures) .top)
   | .capturing captures .bot => do

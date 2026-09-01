@@ -69,6 +69,52 @@ theorem generalObjectType_formedType {scope : Nat}
   cases sourceObject
   rfl
 
+/-- The historical captured-intersection object embeds as an ordinary
+object, whose existential package and advertised representation use the same
+ambient capture annotation. -/
+@[simp]
+theorem objectType_packageCapture {scope : Nat}
+    (sourceObject : DOTCapture.Intersections.Source.ObjectType scope) :
+    capture sourceObject.outerCapture =
+      (objectType sourceObject).packageCapture := by
+  cases sourceObject
+  rfl
+
+/-- Embedded M11 object types inhabit the ordinary (non-contracted)
+constructor of the cumulative language. -/
+@[simp]
+theorem objectType_eq_mk {scope : Nat}
+    (sourceObject : DOTCapture.Intersections.Source.ObjectType scope) :
+    objectType sourceObject =
+      .mk (interface sourceObject.interface)
+        (type sourceObject.representation)
+        (capture sourceObject.outerCapture) := by
+  cases sourceObject
+  rfl
+
+/-- Realizing the advertised capture of an embedded historical object is an
+identity: its sole capture annotation is ambient, not a local member
+contract. -/
+@[simp]
+theorem objectType_realizedOuterCapture {scope : Nat}
+    (sourceObject : DOTCapture.Intersections.Source.ObjectType scope)
+    (model : LocalModel.Model (termScope scope)) :
+    (objectType sourceObject).realizedOuterCapture model =
+      (objectType sourceObject).outerCapture := by
+  cases sourceObject
+  rfl
+
+/-- Structural mappings likewise leave the ambient advertised capture of an
+embedded ordinary object unchanged. -/
+@[simp]
+theorem objectType_mappedOuterCapture {scope : Nat}
+    (sourceObject : DOTCapture.Intersections.Source.ObjectType scope)
+    (mapping : LocalModel.Mapping (termScope scope)) :
+    (objectType sourceObject).mappedOuterCapture mapping =
+      (objectType sourceObject).outerCapture := by
+  cases sourceObject
+  rfl
+
 @[simp]
 theorem capture_seq {scope : Nat}
     (first second : DOTCapture.Intersections.Source.Capture scope) :
@@ -391,8 +437,16 @@ def objectAdapts {scope : Nat}
     simpa only [objectType_interface] using
       interfaceDerives adaptation.theory
   outerCapture := by
-    simpa only [staticExpr, objectType_outerCapture] using
-      generalIncludes adaptation.outerCapture
+    simpa only [staticExpr, objectType_outerCapture,
+      objectType_mappedOuterCapture] using
+      (LocalTheory.Includes.ambient
+        (generalIncludes adaptation.outerCapture))
+  packageCapture := by
+    have translated := generalIncludes adaptation.outerCapture
+    simp only [staticExpr] at translated
+    rw [objectType_packageCapture available,
+      objectType_packageCapture expected] at translated
+    exact translated
 
 @[simp]
 theorem objectAdapts_mapping {scope : Nat}
@@ -534,8 +588,11 @@ def valueTyping {scope : Nat}
       simpa only [value, type, generalObjectType_formedType] using
         (Value.HasType.embeddedObjectConsumer embeddedBody embeddedCaptures)
   | @DOTCapture.Intersections.GeneralExpression.Value.HasType.object _ _
-      sourceObject payload payloadType realization payloadTyping payloadShape
+      (.mk sourceInterface sourceRepresentation sourceOuterCapture)
+      payload payloadType realization payloadTyping payloadShape
       payloadCapture objectCapture => by
+      let sourceObject : DOTCapture.Intersections.Source.ObjectType scope :=
+        .mk sourceInterface sourceRepresentation sourceOuterCapture
       have embeddedShape : TypeIncludes (context sourceContext)
           (type payloadType).stripCapture
           (ObjectType.realizedRepresentation (objectType sourceObject)
@@ -560,10 +617,13 @@ def valueTyping {scope : Nat}
           objectType_outerCapture] at translated
         exact translated
       simpa only [value, generalObjectType_formedType,
-        typingEnvironment_bindings,
+        typingEnvironment_bindings, objectType_eq_mk,
         objectRealization_model] using
         (Value.HasType.object (environment := typingEnvironment sourceContext)
-          (object := objectType sourceObject) (objectRealization realization)
+          (interface := interface sourceObject.interface)
+          (representation := type sourceObject.representation)
+          (outerCapture := capture sourceObject.outerCapture)
+          (objectRealization realization)
           (payloadType := type payloadType)
           (valueTyping payloadTyping) embeddedShape embeddedPayloadCapture
           embeddedObjectCapture)
@@ -584,8 +644,14 @@ def objectArgumentTyping {scope : Nat}
       (objectArgumentModel typing) :=
   match typing with
   | @DOTCapture.Intersections.GeneralExpression.ObjectArgument.HasType.literal
-      _ _ available expected payload payloadType realization payloadTyping
+      _ _ (.mk availableInterface availableRepresentation availableOuterCapture)
+      (.mk expectedInterface expectedRepresentation expectedOuterCapture)
+      payload payloadType realization payloadTyping
       payloadShape payloadCapture objectCapture adaptation expectedCapture => by
+      let available : DOTCapture.Intersections.Source.ObjectType scope :=
+        .mk availableInterface availableRepresentation availableOuterCapture
+      let expected : DOTCapture.Intersections.Source.ObjectType scope :=
+        .mk expectedInterface expectedRepresentation expectedOuterCapture
       have embeddedShape : TypeIncludes (context sourceContext)
           (type payloadType).stripCapture
           (ObjectType.realizedRepresentation (objectType available)
@@ -622,8 +688,15 @@ def objectArgumentTyping {scope : Nat}
       simpa only [term, value, objectArgumentModel] using
         (ObjectArgument.HasType.literal
           (environment := typingEnvironment sourceContext)
-          (available := objectType available) (expected := objectType expected)
+          (interface := interface available.interface)
+          (representationType := type available.representation)
+          (outerCapture := capture available.outerCapture)
+          (expected := objectType expected)
+          (expectedInterface := interface expected.interface)
+          (expectedRepresentation := type expected.representation)
+          (expectedOuterCapture := capture expected.outerCapture)
           (payload := value payload) (payloadType := type payloadType)
+          (objectType_eq_mk expected)
           (objectRealization realization) (valueTyping payloadTyping)
           embeddedShape embeddedPayloadCapture embeddedObjectCapture
           (objectAdapts adaptation)
@@ -661,8 +734,19 @@ def objectArgumentTyping {scope : Nat}
           localMapping_apply, localModel_atPath,
           objectType_outerCapture] at translated
         simpa only [objectAdapts_mapping, path] using translated
+      have embeddedRealizedExpectedCapture : CaptureIncludes
+          (context sourceContext)
+          (ObjectType.realizedRepresentation (objectType expected)
+            ((objectAdapts adaptation).mapping.apply
+              (LocalModel.atPath (.var (embedVar name))))).outerCapture
+          ((objectType expected).realizedOuterCapture
+            ((objectAdapts adaptation).mapping.apply
+              (LocalModel.atPath (.var (embedVar name))))) := by
+        simpa only [objectType_realizedOuterCapture] using
+          embeddedExpectedCapture
       simpa only [term, value, typingEnvironment, context_lookup,
         generalObjectType_formedType, objectType_realizedRepresentation,
+        objectType_realizedOuterCapture,
         objectAdapts_mapping, localMapping_apply, localModel_atPath,
         staticExpr, objectArgumentModel] using
         (ObjectArgument.HasType.stable
@@ -670,7 +754,7 @@ def objectArgumentTyping {scope : Nat}
           (name := embedVar name) (available := objectType available)
           (expected := objectType expected)
           embeddedCanonical (objectAdapts adaptation)
-          embeddedRepresentation embeddedExpectedCapture)
+          embeddedRepresentation embeddedRealizedExpectedCapture)
 
 /-- Every M11 negative-function derivation embeds without changing its
 administrative computation spine. -/
@@ -786,12 +870,12 @@ def termTyping {scope : Nat}
           (termTyping argumentTyping))
   | .objectApp functionTyping argumentTyping => by
       simpa only [term, capture_seq, objectType_outerCapture,
-        capture] using
+        objectType_realizedOuterCapture, capture] using
         (Term.HasType.legacyObjectApp (objectFunctionTyping functionTyping)
           (objectArgumentTyping argumentTyping))
   | .embeddedObjectApp functionTyping argumentTyping => by
       simpa only [term, capture_seq, objectType_outerCapture,
-        capture] using
+        objectType_realizedOuterCapture, capture] using
         (Term.HasType.embeddedObjectApp
           (objectFunctionTyping functionTyping)
           (objectArgumentTyping argumentTyping))
@@ -838,7 +922,7 @@ def termTyping {scope : Nat}
           generalObjectType_formedType, staticExpr, capture_rename,
           embedRename_succ, Capture.weaken, capture, path, embedVar] using
             generalIncludes discharge
-      simpa only [term, capture_seq, objectType_outerCapture, capture] using
+      simpa only [term, capture_seq, objectType_packageCapture, capture] using
         (Term.HasType.objectLet embeddedRhs embeddedBody embeddedDischarge)
   | @DOTCapture.Intersections.GeneralExpression.Term.HasType.embeddedObjectLet
       _ _ sourceObject result rhs rhsUse body bodyUse bodyOuterUse rhsTyping
@@ -864,7 +948,7 @@ def termTyping {scope : Nat}
           generalObjectType_formedType, staticExpr, capture_rename,
           embedRename_succ, Capture.weaken, capture, path, embedVar] using
             generalIncludes discharge
-      simpa only [term, capture_seq, objectType_outerCapture, capture] using
+      simpa only [term, capture_seq, objectType_packageCapture, capture] using
         (Term.HasType.embeddedObjectLet embeddedRhs embeddedBody
           embeddedDischarge)
   | .use inner inclusion =>

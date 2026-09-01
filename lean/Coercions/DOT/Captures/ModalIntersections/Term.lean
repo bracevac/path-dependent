@@ -75,6 +75,11 @@ inductive Value : Sig → Type where
       Value scope
   | object {scope : Sig} (objectType : ObjectType scope)
       (payload : Value scope) : Value scope
+  /-- A recursive object literal is syntactically distinct from an ordinary
+  canonical object literal.  Both erase to their payload, but recursive
+  literals must be opened before they may be consumed negatively. -/
+  | recursiveObject {scope : Sig} (objectType : ObjectType scope)
+      (payload : Value scope) : Value scope
   | objectConsumer {scope : Sig} (parameter : ObjectType scope)
       (result : Ty scope) (body : Term (scope ▹ .term)) : Value scope
 
@@ -132,6 +137,8 @@ def Value.rename {source target : Sig} (value : Value source)
         (closure.rename rho) (body.rename rho)
   | .object objectType payload =>
       .object (objectType.rename rho) (payload.rename rho)
+  | .recursiveObject objectType payload =>
+      .recursiveObject (objectType.rename rho) (payload.rename rho)
   | .objectConsumer parameter result body =>
       .objectConsumer (parameter.rename rho) (result.rename rho)
         (body.rename (rho.lift (kind := .term)))
@@ -205,6 +212,9 @@ def Value.rename_id {scope : Sig} (value : Value scope) :
   | .object objectType payload => by
       simp only [Value.rename, ObjectType.rename_id objectType,
         Value.rename_id payload]
+  | .recursiveObject objectType payload => by
+      simp only [Value.rename, ObjectType.rename_id objectType,
+        Value.rename_id payload]
   | .objectConsumer parameter result body => by
       simp only [Value.rename, ObjectType.rename_id parameter,
         Ty.rename_id result, DOTCapture.BinderOnly.Rename.lift_id,
@@ -268,6 +278,9 @@ def Value.rename_comp {first second third : Sig} (value : Value first)
         Ty.rename_comp result, Capture.rename_comp closure,
         Term.rename_comp body]
   | .object objectType payload => by
+      simp only [Value.rename, ObjectType.rename_comp objectType,
+        Value.rename_comp payload]
+  | .recursiveObject objectType payload => by
       simp only [Value.rename, ObjectType.rename_comp objectType,
         Value.rename_comp payload]
   | .objectConsumer parameter result body => by
@@ -339,6 +352,7 @@ end Term
 other object computations still require an explicit `objectLet`. -/
 inductive ObjectArgument.Form : Type where
   | canonicalLiteral
+  | recursiveLiteral
   | stableVariable
   | requiresExplicitOpen
 deriving DecidableEq, Repr
@@ -347,6 +361,7 @@ namespace ObjectArgument
 
 def classify {scope : Sig} : Term scope → Form
   | .ret (.object _ _) => .canonicalLiteral
+  | .ret (.recursiveObject _ _) => .recursiveLiteral
   | .ret (.var _) => .stableVariable
   | _ => .requiresExplicitOpen
 

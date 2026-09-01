@@ -117,15 +117,6 @@ end
 
 namespace ObjectType
 
-def interface {scope : Sig} : ObjectType scope → Interface scope
-  | .mk interface _ _ => interface
-
-def representation {scope : Sig} : ObjectType scope → Ty scope
-  | .mk _ representation _ => representation
-
-def outerCapture {scope : Sig} : ObjectType scope → Capture scope
-  | .mk _ _ outerCapture => outerCapture
-
 def representationAt {scope : Sig} (object : ObjectType scope)
     (receiver : Path scope) : Ty scope :=
   object.representation.openAt receiver

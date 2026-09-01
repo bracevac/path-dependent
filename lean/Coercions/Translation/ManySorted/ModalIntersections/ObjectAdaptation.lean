@@ -131,7 +131,7 @@ structure CompiledAdaptation {sourceScope : Source.Sig}
     (mappedExpectedRepresentation view) representationCandidate =
       some representation
   outerCandidate : Target.Evidence (.inclusion .capture) targetScope
-  outerCandidateCompiled : ambient.compile adaptation.outerCapture =
+  outerCandidateCompiled : ambient.compile adaptation.packageCapture =
     some outerCandidate
   outerCapture : CaptureEvidence core.target
     actualPrepared.object.outerCapture expectedPrepared.object.outerCapture
@@ -192,7 +192,7 @@ def compile? {sourceScope : Source.Sig}
                   | none => none
                   | some representation =>
                       match outerCandidateCompiled :
-                          ambient.compile adaptation.outerCapture with
+                          ambient.compile adaptation.packageCapture with
                       | none => none
                       | some outerCandidate =>
                           match outerCaptureChecked : checkCaptureEvidence?
@@ -282,8 +282,8 @@ structure CompiledContractedAdaptation {sourceScope : Source.Sig}
   outerCandidate : Target.Evidence (.inclusion .capture)
     (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
       actualPrepared.object.relations)
-  outerCandidateCompiled : openedAmbient.compile adaptation.outerCapture =
-    some outerCandidate
+  outerCandidateCompiled : compileContractedLocalIncludes? actualPrepared
+    openedAmbient adaptation.outerCapture = some outerCandidate
   containmentCandidate : Target.Evidence (.inclusion .capture)
     (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
       actualPrepared.object.relations)
@@ -337,7 +337,8 @@ def compileContracted? {sourceScope : Source.Sig}
       actualPrepared.object.symbols actualPrepared.object.relations)) :
     Option (CompiledContractedAdaptation core actualPrepared expectedPrepared
       openedAmbient adaptation exactCandidate) :=
-  match outerCompiled : openedAmbient.compile adaptation.outerCapture with
+  match outerCompiled : compileContractedLocalIncludes? actualPrepared
+      openedAmbient adaptation.outerCapture with
   | none => none
   | some outerCandidate =>
       let containmentCandidate :=

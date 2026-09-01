@@ -133,6 +133,11 @@ inductive ObjectType : Sig → Type where
   | mk {scope : Sig} (interface : Interface scope)
       (representation : Ty scope) (outerCapture : Capture scope) :
       ObjectType scope
+  /-- An object whose opened representation contract advertises one capture
+  while its existential package uses a separately checked ambient envelope. -/
+  | mkContracted {scope : Sig} (interface : Interface scope)
+      (representation : Ty scope) (outerCapture packageCapture : Capture scope) :
+      ObjectType scope
 
 end
 
@@ -291,6 +296,9 @@ def ObjectType.rename {source target : Sig} (object : ObjectType source)
   | .mk interface representation outerCapture =>
       .mk (interface.rename rho) (representation.rename rho)
         (outerCapture.rename rho)
+  | .mkContracted interface representation outerCapture packageCapture =>
+      .mkContracted (interface.rename rho) (representation.rename rho)
+        (outerCapture.rename rho) (packageCapture.rename rho)
 
 end
 
@@ -438,6 +446,24 @@ end Interface
 
 namespace ObjectType
 
+def interface {scope : Sig} : ObjectType scope → Interface scope
+  | .mk interface _ _ => interface
+  | .mkContracted interface _ _ _ => interface
+
+def representation {scope : Sig} : ObjectType scope → Ty scope
+  | .mk _ representation _ => representation
+  | .mkContracted _ representation _ _ => representation
+
+/-- Capture advertised by the opened object's representation contract. -/
+def outerCapture {scope : Sig} : ObjectType scope → Capture scope
+  | .mk _ _ outerCapture => outerCapture
+  | .mkContracted _ _ outerCapture _ => outerCapture
+
+/-- Ambient envelope carried by the existential package. -/
+def packageCapture {scope : Sig} : ObjectType scope → Capture scope
+  | .mk _ _ outerCapture => outerCapture
+  | .mkContracted _ _ _ packageCapture => packageCapture
+
 def weaken {scope : Sig} {kind : BinderKind} (object : ObjectType scope) :
     ObjectType (scope ▹ kind) :=
   object.rename DOTCapture.BinderOnly.Rename.succ
@@ -446,6 +472,8 @@ def weaken {scope : Sig} {kind : BinderKind} (object : ObjectType scope) :
 def formedType {scope : Sig} : ObjectType scope → Ty scope
   | object@(.mk _ _ outerCapture) =>
       .capturing outerCapture (.object object)
+  | object@(.mkContracted _ _ _ packageCapture) =>
+      .capturing packageCapture (.object object)
 
 end ObjectType
 

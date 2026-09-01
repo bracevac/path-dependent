@@ -1,6 +1,7 @@
 import Coercions.DOT.Captures.ModalIntersections.Substitution
 import Coercions.DOT.Captures.ModalIntersections.StaticTyping
 import Coercions.DOT.Captures.ModalIntersections.ObjectJudgments
+import Coercions.DOT.Captures.ModalIntersections.RecursiveSignature
 
 /-!
 # Computational typing for modal captured intersections
@@ -129,22 +130,52 @@ inductive Value.HasType : {scope : Sig} -> TypingEnv scope ->
       Value.HasType environment (.lam parameter.formedType result body)
         (.capturing closure (.arr parameter.formedType result))
   | object {scope : Sig} {environment : TypingEnv scope}
-      {object : ObjectType scope} {payload : Value scope}
+      {interface : Interface scope} {representation : Ty scope}
+      {outerCapture : Capture scope} {payload : Value scope}
       {payloadType : Ty scope}
-      (realization : ObjectType.Realization environment.bindings object)
+      (realization : ObjectType.Realization environment.bindings
+        (.mk interface representation outerCapture))
       (payloadTyping : Value.HasType environment payload payloadType)
       (payloadShape : TypeIncludes environment.bindings
         payloadType.stripCapture
-        (ObjectType.realizedRepresentation object
+        (ObjectType.realizedRepresentation
+          (.mk interface representation outerCapture)
           realization.model).stripCapture)
       (payloadCapture : CaptureIncludes environment.bindings
         payloadType.outerCapture
-        (ObjectType.realizedRepresentation object
+        (ObjectType.realizedRepresentation
+          (.mk interface representation outerCapture)
           realization.model).outerCapture)
       (objectCapture : CaptureIncludes environment.bindings
-        (ObjectType.realizedRepresentation object
-          realization.model).outerCapture object.outerCapture) :
-      Value.HasType environment (.object object payload) object.formedType
+        (ObjectType.realizedRepresentation
+          (.mk interface representation outerCapture)
+          realization.model).outerCapture outerCapture) :
+      Value.HasType environment
+        (.object (.mk interface representation outerCapture) payload)
+        (ObjectType.mk interface representation outerCapture).formedType
+  /-- A guarded recursive realization of the tagged recursive-literal syntax.
+  Capture members are replaced by an explicit ambient model, while local
+  type members remain simultaneous recursive slots. The payload is checked
+  against that source-level realized representation before the target model
+  and term checkers repeat the complete artifact check. -/
+  | recursiveObject {scope : Sig} {environment : TypingEnv scope}
+      {signature : RecursiveSignature.Signature scope}
+      {payload : Value scope} {payloadType : Ty scope}
+      (valid : signature.Valid)
+      (realization : RecursiveSignature.Realization environment.bindings
+        signature)
+      (payloadTyping : Value.HasType environment payload payloadType)
+      (payloadShape : TypeIncludes environment.bindings
+        payloadType.stripCapture
+        (signature.realizedRepresentation
+          realization.captures).stripCapture)
+      (payloadCapture : CaptureIncludes environment.bindings
+        payloadType.outerCapture
+        (signature.realizedRepresentation
+          realization.captures).outerCapture) :
+      Value.HasType environment
+        (.recursiveObject signature.objectType payload)
+        signature.objectType.formedType
   | adapt {scope : Sig} {environment : TypingEnv scope}
       {value : Value scope} {source target : Ty scope}
       (valueTyping : Value.HasType environment value source)
@@ -156,32 +187,48 @@ must first be opened by an explicit `objectLet`. -/
 inductive ObjectArgument.HasType : {scope : Sig} -> TypingEnv scope ->
     Term scope -> ObjectType scope -> LocalModel.Model scope -> Type where
   | literal {scope : Sig} {environment : TypingEnv scope}
-      {available expected : ObjectType scope} {payload : Value scope}
+      {interface : Interface scope} {representationType : Ty scope}
+      {outerCapture : Capture scope} {expected : ObjectType scope}
+      {expectedInterface : Interface scope}
+      {expectedRepresentation : Ty scope}
+      {expectedOuterCapture : Capture scope}
+      {payload : Value scope}
       {payloadType : Ty scope}
-      (realization : ObjectType.Realization environment.bindings available)
+      (expectedOrdinary : expected =
+        .mk expectedInterface expectedRepresentation expectedOuterCapture)
+      (realization : ObjectType.Realization environment.bindings
+        (.mk interface representationType outerCapture))
       (payloadTyping : Value.HasType environment payload payloadType)
       (payloadShape : TypeIncludes environment.bindings
         payloadType.stripCapture
-        (ObjectType.realizedRepresentation available
+        (ObjectType.realizedRepresentation
+          (.mk interface representationType outerCapture)
           realization.model).stripCapture)
       (payloadCapture : CaptureIncludes environment.bindings
         payloadType.outerCapture
-        (ObjectType.realizedRepresentation available
+        (ObjectType.realizedRepresentation
+          (.mk interface representationType outerCapture)
           realization.model).outerCapture)
       (objectCapture : CaptureIncludes environment.bindings
-        (ObjectType.realizedRepresentation available
-          realization.model).outerCapture available.outerCapture)
-      (adaptation : ObjectType.Adapts environment.bindings available expected)
+        (ObjectType.realizedRepresentation
+          (.mk interface representationType outerCapture)
+          realization.model).outerCapture outerCapture)
+      (adaptation : ObjectType.Adapts environment.bindings
+        (.mk interface representationType outerCapture)
+        expected)
       (representation : TypeIncludes environment.bindings
-        (ObjectType.realizedRepresentation available realization.model)
+        (ObjectType.realizedRepresentation
+          (.mk interface representationType outerCapture) realization.model)
         (ObjectType.realizedRepresentation expected
           (adaptation.mapping.apply realization.model)))
       (expectedCapture : CaptureIncludes environment.bindings
         (ObjectType.realizedRepresentation expected
           (adaptation.mapping.apply realization.model)).outerCapture
-        expected.outerCapture) :
+        (expected.realizedOuterCapture
+          (adaptation.mapping.apply realization.model))) :
       ObjectArgument.HasType environment
-        (.ret (.object available payload)) expected
+        (.ret (.object (.mk interface representationType outerCapture) payload))
+        expected
         (adaptation.mapping.apply realization.model)
   | stable {scope : Sig} {environment : TypingEnv scope}
       {name : BVar scope .term} {available expected : ObjectType scope}
@@ -196,7 +243,8 @@ inductive ObjectArgument.HasType : {scope : Sig} -> TypingEnv scope ->
       (expectedCapture : CaptureIncludes environment.bindings
         (ObjectType.realizedRepresentation expected
           (adaptation.mapping.apply (LocalModel.atPath (.var name)))).outerCapture
-        expected.outerCapture) :
+        (expected.realizedOuterCapture
+          (adaptation.mapping.apply (LocalModel.atPath (.var name))))) :
       ObjectArgument.HasType environment (.ret (.var name)) expected
         (adaptation.mapping.apply (LocalModel.atPath (.var name)))
 
@@ -352,7 +400,8 @@ inductive Term.HasType : {scope : Sig} -> TypingEnv scope -> Term scope ->
         argumentModel) :
       Term.HasType environment (.objectApp parameter function argument)
         (functionUse.seq
-          (.union functionType.outerCapture parameter.outerCapture))
+          (.union functionType.outerCapture
+            (parameter.realizedOuterCapture argumentModel)))
         (resultTemplate.realizeLocals argumentModel)
   /-- Legacy object application at an ambient ordinary arrow, retained by the
   native-syntax M11 embedding. -/
@@ -365,7 +414,8 @@ inductive Term.HasType : {scope : Sig} -> TypingEnv scope -> Term scope ->
       (argumentTyping : ObjectArgument.HasType environment argument parameter
         argumentModel) :
       Term.HasType environment (.objectApp parameter function argument)
-        (functionUse.seq (.union closure parameter.outerCapture)) result
+        (functionUse.seq (.union closure
+          (parameter.realizedOuterCapture argumentModel))) result
   /-- Legacy ordinary application retained by the M10 embedding. -/
   | embeddedObjectApp {scope : Sig} {environment : TypingEnv scope}
       {parameter : ObjectType scope} {function argument : Term scope}
@@ -376,7 +426,8 @@ inductive Term.HasType : {scope : Sig} -> TypingEnv scope -> Term scope ->
       (argumentTyping : ObjectArgument.HasType environment argument parameter
         argumentModel) :
       Term.HasType environment (.app function argument)
-        (functionUse.seq (.union closure parameter.outerCapture)) result
+        (functionUse.seq (.union closure
+          (parameter.realizedOuterCapture argumentModel))) result
   | letPlain {scope : Sig} {environment : TypingEnv scope}
       {result bound : Ty scope} {rhs : Term scope}
       {body : Term (scope ▹ .term)} {rhsUse : Capture scope}
@@ -404,7 +455,7 @@ inductive Term.HasType : {scope : Sig} -> TypingEnv scope -> Term scope ->
         (.union (bodyOuterUse.weaken (kind := .term))
           (.singleton (.var .here)))) :
       Term.HasType environment (.objectLet object result rhs body)
-        (rhsUse.seq (.union object.outerCapture bodyOuterUse)) result
+        (rhsUse.seq (.union object.packageCapture bodyOuterUse)) result
   /-- Legacy source let retained by the structural M10/M11 embeddings. -/
   | embeddedObjectLet {scope : Sig} {environment : TypingEnv scope}
       {object : ObjectType scope} {result : Ty scope}
@@ -420,7 +471,7 @@ inductive Term.HasType : {scope : Sig} -> TypingEnv scope -> Term scope ->
         (.union (bodyOuterUse.weaken (kind := .term))
           (.singleton (.var .here)))) :
       Term.HasType environment (.let' result rhs body)
-        (rhsUse.seq (.union object.outerCapture bodyOuterUse)) result
+        (rhsUse.seq (.union object.packageCapture bodyOuterUse)) result
   | use {scope : Sig} {environment : TypingEnv scope}
       {term : Term scope} {sourceUse targetUse : Capture scope}
       {type : Ty scope}
@@ -483,22 +534,29 @@ def realizeResult {scope : Sig} {environment : TypingEnv scope}
 
 /-- Recover the ordinary positive typing of a canonical literal argument. -/
 def literalValueTyping {scope : Sig} {environment : TypingEnv scope}
-    {available : ObjectType scope} {payload : Value scope}
+    {interface : Interface scope} {representation : Ty scope}
+    {outerCapture : Capture scope} {payload : Value scope}
     {payloadType : Ty scope}
-    (realization : ObjectType.Realization environment.bindings available)
+    (realization : ObjectType.Realization environment.bindings
+      (.mk interface representation outerCapture))
     (payloadTyping : Value.HasType environment payload payloadType)
     (payloadShape : TypeIncludes environment.bindings
       payloadType.stripCapture
-      (ObjectType.realizedRepresentation available
+      (ObjectType.realizedRepresentation
+        (.mk interface representation outerCapture)
         realization.model).stripCapture)
     (payloadCapture : CaptureIncludes environment.bindings
       payloadType.outerCapture
-      (ObjectType.realizedRepresentation available
+      (ObjectType.realizedRepresentation
+        (.mk interface representation outerCapture)
         realization.model).outerCapture)
     (objectCapture : CaptureIncludes environment.bindings
-      (ObjectType.realizedRepresentation available
-        realization.model).outerCapture available.outerCapture) :
-    Value.HasType environment (.object available payload) available.formedType :=
+      (ObjectType.realizedRepresentation
+        (.mk interface representation outerCapture)
+        realization.model).outerCapture outerCapture) :
+    Value.HasType environment
+      (.object (.mk interface representation outerCapture) payload)
+      (ObjectType.mk interface representation outerCapture).formedType :=
   .object realization payloadTyping payloadShape payloadCapture objectCapture
 
 end ObjectArgument.HasType

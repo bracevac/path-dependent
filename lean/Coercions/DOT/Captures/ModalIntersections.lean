@@ -16,6 +16,7 @@ import Coercions.DOT.Captures.ModalIntersections.Substitution
 import Coercions.DOT.Captures.ModalIntersections.TypingContext
 import Coercions.DOT.Captures.ModalIntersections.StaticTyping
 import Coercions.DOT.Captures.ModalIntersections.ObjectJudgments
+import Coercions.DOT.Captures.ModalIntersections.RecursiveSignature
 import Coercions.DOT.Captures.ModalIntersections.Typing
 import Coercions.DOT.Captures.ModalIntersections.BinderTypingEmbedding
 import Coercions.DOT.Captures.ModalIntersections.CapturedTypingEmbedding

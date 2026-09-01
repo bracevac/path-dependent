@@ -411,6 +411,25 @@ def realizedRepresentation {scope : Sig} (object : ObjectType scope)
     (model : LocalModel.Model scope) : Ty scope :=
   object.representation.realizeLocals model
 
+/-- Capture charged by direct negative use under one model.  Historical
+ordinary objects carry an ambient outer capture and remain definitionally
+unchanged.  Contracted objects may advertise a local member, which is
+resolved only after their model has been selected or opened. -/
+def realizedOuterCapture {scope : Sig} (object : ObjectType scope)
+    (model : LocalModel.Model scope) : Capture scope :=
+  match object with
+  | .mk _ _ outerCapture => outerCapture
+  | .mkContracted _ _ outerCapture _ => outerCapture.realizeLocals model
+
+/-- Advertised capture of a projected signature.  Historical `.mk` objects
+store an ambient capture and therefore ignore the local-member mapping;
+contracted objects interpret their advertised capture through it. -/
+def mappedOuterCapture {scope : Sig} (object : ObjectType scope)
+    (mapping : LocalModel.Mapping scope) : Capture scope :=
+  match object with
+  | .mk _ _ outerCapture => outerCapture
+  | .mkContracted _ _ outerCapture _ => mapping.mapCapture outerCapture
+
 @[simp]
 theorem realizedRepresentation_atPath {scope : Sig}
     (object : ObjectType scope) (receiver : Path scope) :
@@ -529,8 +548,14 @@ structure Adapts {scope : Sig} (context : Ctx scope)
   mapping : LocalModel.Mapping scope
   theory : Interface.Derives context available.interface mapping
     expected.interface
-  outerCapture : CaptureIncludes context available.outerCapture
-    expected.outerCapture
+  /-- Advertised captures live in the available object's local theory.  The
+  expected endpoint is interpreted by the same checked member mapping used
+  for the rest of the projected signature. -/
+  outerCapture : LocalTheory.Includes context available.interface
+    (.capture available.outerCapture)
+    (.capture (expected.mappedOuterCapture mapping))
+  packageCapture : CaptureIncludes context available.packageCapture
+    expected.packageCapture
 
 namespace Adapts
 
@@ -585,7 +610,12 @@ def refl {scope : Sig} {context : Ctx scope} (object : ObjectType scope) :
     ObjectType.Adapts context object object where
   mapping := LocalModel.Mapping.identity
   theory := identityTheory object.interface
-  outerCapture := .refl
+  outerCapture := by
+    cases object <;>
+      simp [ObjectType.mappedOuterCapture,
+        LocalModel.Mapping.mapCapture_identity]
+      <;> exact .ambient .refl
+  packageCapture := .refl
 
 end Adapts
 

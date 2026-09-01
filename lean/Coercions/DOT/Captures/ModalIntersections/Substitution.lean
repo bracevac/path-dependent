@@ -291,6 +291,11 @@ def ObjectType.substitute {source target : Sig} (object : ObjectType source)
       .mk (interface.substitute substitution)
         (representation.substitute substitution)
         (outerCapture.substitute substitution)
+  | .mkContracted interface representation outerCapture packageCapture =>
+      .mkContracted (interface.substitute substitution)
+        (representation.substitute substitution)
+        (outerCapture.substitute substitution)
+        (packageCapture.substitute substitution)
 
 end
 
@@ -319,6 +324,9 @@ def Value.substitute {source target : Sig} (value : Value source)
         (body.substitute substitution)
   | .object objectType payload =>
       .object (objectType.substitute substitution)
+        (payload.substitute substitution)
+  | .recursiveObject objectType payload =>
+      .recursiveObject (objectType.substitute substitution)
         (payload.substitute substitution)
   | .objectConsumer parameter result body =>
       .objectConsumer (parameter.substitute substitution)
@@ -653,6 +661,10 @@ def ObjectType.substitute_id {scope : Sig} (object : ObjectType scope) :
   | .mk interface representation outerCapture => by
       simp only [ObjectType.substitute, Interface.substitute_id interface,
         Ty.substitute_id representation, Capture.substitute_id outerCapture]
+  | .mkContracted interface representation outerCapture packageCapture => by
+      simp only [ObjectType.substitute, Interface.substitute_id interface,
+        Ty.substitute_id representation, Capture.substitute_id outerCapture,
+        Capture.substitute_id packageCapture]
 
 end
 
@@ -661,8 +673,7 @@ theorem ObjectType.formedType_substitute {source target : Sig}
     (object : ObjectType source) (substitution : StaticSubst source target) :
     object.formedType.substitute substitution =
       (object.substitute substitution).formedType := by
-  cases object
-  rfl
+  cases object <;> rfl
 
 
 mutual
@@ -689,6 +700,9 @@ def Value.substitute_id {scope : Sig} (value : Value scope) :
         ModalRequirements.substitute_id requirements, Ty.substitute_id result,
         Capture.substitute_id closure, Term.substitute_id body]
   | .object objectType payload => by
+      simp only [Value.substitute, ObjectType.substitute_id objectType,
+        Value.substitute_id payload]
+  | .recursiveObject objectType payload => by
       simp only [Value.substitute, ObjectType.substitute_id objectType,
         Value.substitute_id payload]
   | .objectConsumer parameter result body => by

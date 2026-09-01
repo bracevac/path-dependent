@@ -1,18 +1,21 @@
-import Coercions.Translation.ManySorted.RecursiveObjects.Encoding
+import Coercions.Translation.ManySorted.RecursiveObjects.Model
 import Coercions.Translation.ManySorted.ModalIntersections.ConstraintRetention
 import Coercions.ManySortedFC.EvidenceChecker
 
 /-!
 # Exact recursive witnesses and structural type projection
 
-The theorem here is deliberately structural.  Each guarded recursive type
+The compatibility theorem here is structural.  Each guarded recursive type
 slot has one witness `W`, one simultaneous unfolding `B`, checked equality
 `W = B`, and the two directed exact-member views `B <: W` and `W <: B`.
-The source bridge below is deliberately proof-only: for every source-list
-index it retains the exact M11 theory coordinates for that declaration and
-the public witness selected for the same label.  It does not identify the
-coordinate name with the recursive projection, because the cumulative M11
-API does not currently expose that instantiation theorem.
+
+The realized theorem strengthens that endpoint with one independently
+accepted cumulative model.  For every source-list index it retains the exact
+M11 coordinates, identifies the same-label target interpretation with the
+corresponding `recProj`, projects the checked model evidence at both interval
+coordinates, and retains the fold/unfold factorization.  It also records the
+simultaneously realized capture theory and the checked `C_rep` exactness and
+containment constraints.
 
 This does not claim semantic consistency of arbitrary negative recursive
 equations, nor a full DOT tight-typing theorem.  Those require a semantic
@@ -23,6 +26,9 @@ namespace DOTCaptureToManySortedFC.RecursiveObjects.Inertness
 
 open DOTCaptureToManySortedFC.RecursiveObjects
 open DOTCaptureToManySortedFC.RecursiveObjects.Encoding
+open DOTCaptureToManySortedFC.ModalIntersections
+open DOTCaptureToManySortedFC.ModalIntersections.CompilerContext
+open DOTCaptureToManySortedFC.ModalIntersections.ObjectEvidence
 
 namespace Target
 
@@ -122,7 +128,7 @@ def typeOccurrenceAt {scope : Source.Sig} :
         ⟨index, Nat.lt_of_succ_lt_succ smaller⟩)
 
 /-- The indexed recursive definition also occurs in the complete object
-interface, to the left of the acyclic capture declarations. -/
+interface, to the left of the capture declarations. -/
 def signatureTypeOccurrence {scope : Source.Sig}
     (signature : Source.Signature scope)
     (index : Fin signature.typeDefinitions.length) :
@@ -146,13 +152,12 @@ theorem objectContract_prepare_interface {sourceScope : Source.Sig}
         layout source = .ok object) :
     DOTCaptureToManySortedFC.ModalIntersections.Preparation.collectAndPrepare
         layout source.interface = .ok object.encoding.prepared := by
-  rcases source with ⟨interface, representation, outerCapture⟩
   simp only [
     DOTCaptureToManySortedFC.ModalIntersections.ObjectContract.prepare]
     at success
   cases preparedResult :
       DOTCaptureToManySortedFC.ModalIntersections.Preparation.collectAndPrepare
-        layout interface with
+        layout source.interface with
   | error failure =>
       rw [preparedResult] at success
       nomatch success
@@ -166,26 +171,33 @@ theorem objectContract_prepare_interface {sourceScope : Source.Sig}
           DOTCaptureToManySortedFC.ModalIntersections.Preparation.Compile.translateType
             (layout.renameTarget
               (ManySortedFC.Rename.weakenSymbols prepared.symbols))
-            prepared.members representation with
+            prepared.members source.representation with
       | error failure =>
           rw [representationResult] at success
           nomatch success
       | ok targetRepresentation =>
           rw [representationResult] at success
-          cases captureResult :
+          cases advertisedResult :
               DOTCaptureToManySortedFC.ModalIntersections.Preparation.Compile.translateCapture
-                layout [] outerCapture with
+                (layout.renameTarget
+                  (ManySortedFC.Rename.weakenSymbols prepared.symbols))
+                prepared.members source.outerCapture with
           | error failure =>
-              rw [captureResult] at success
+              rw [advertisedResult] at success
               nomatch success
-          | ok targetCapture =>
-              rw [captureResult] at success
-              injection success with objectEq
-              subst object
-              change
-                DOTCaptureToManySortedFC.ModalIntersections.Preparation.collectAndPrepare
-                    layout interface = .ok prepared
-              exact preparedResult
+          | ok targetAdvertised =>
+              rw [advertisedResult] at success
+              cases packageResult :
+                  DOTCaptureToManySortedFC.ModalIntersections.Preparation.Compile.translateCapture
+                    layout [] source.packageCapture with
+              | error failure =>
+                  rw [packageResult] at success
+                  nomatch success
+              | ok targetPackage =>
+                  rw [packageResult] at success
+                  injection success with objectEq
+                  subst object
+                  rfl
 
 /-- Proof-only bridge for one source definition.  `coordinates` identifies
 the exact retained lower and upper propositions in the M11 theory;
@@ -235,11 +247,12 @@ noncomputable def structuralOccurrenceAlignment {sourceScope : Source.Sig}
         prepared.objectPrepared)
       occurrence
 
-/-- Structural projection of a prepared Stage 6A object.  Capture members
-stay in the full object theory but are certified acyclic; `C_rep` is the one
-distinguished ambient capture symbol.  Each source definition has exact M11
-coordinates and a same-label public recursive witness, while fold/unfold
-factorization is proved independently for every recursive slot. -/
+/-- Structural projection of a prepared recursive object. Capture bounds may
+refer to other local capture members, but their whole theory is realized by
+one simultaneous model of ambient witnesses. `C_rep` is the one distinguished
+ambient capture symbol. Each source definition has exact M11 coordinates and
+a same-label public recursive witness, while fold/unfold factorization is
+proved independently for every recursive slot. -/
 structure StructuralTypeProjection {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
     {layout : DOTCaptureToManySortedFC.ModalIntersections.Layout sourceScope
@@ -252,8 +265,12 @@ structure StructuralTypeProjection {sourceScope : Source.Sig}
   sourceLabelsUnique : signature.typeLabels.Nodup
   sourceDefinitionsGuarded :
     Source.TypeDefinitions.allHeadGuarded signature.typeDefinitions
-  captureTheoryAcyclic : signature.captureDeclarations.ambientOnly
-  outerCaptureAcyclic : Source.captureAmbientOnly signature.outerCapture = true
+  captureWitnessesAmbient : forall label,
+    Source.captureAmbientOnly (realization.captures.witness label) = true
+  captureTheoryRealized : signature.captureDeclarations.Realizes
+    sourceContext realization.captures
+  packageCaptureAmbient :
+    Source.captureAmbientOnly signature.packageCapture = true
   singleRepresentationCapture : prepared.object.symbols =
     .capture :: prepared.object.memberSymbols
   publicAligned : forall index : Fin signature.typeDefinitions.length,
@@ -278,8 +295,9 @@ noncomputable def structuralTypeProjection {sourceScope : Source.Sig}
   refine
     { sourceLabelsUnique := valid.typeLabelsNodup
       sourceDefinitionsGuarded := valid.guarded
-      captureTheoryAcyclic := valid.capturesAmbient
-      outerCaptureAcyclic := valid.outerCaptureAmbient
+      captureWitnessesAmbient := realization.captures.ambient
+      captureTheoryRealized := realization.captureConstraints
+      packageCaptureAmbient := valid.packageCaptureAmbient
       singleRepresentationCapture := rfl
       publicAligned := fun index => publicWitnessAlignment prepared index
       sourceOccurrences := fun index =>
@@ -300,5 +318,230 @@ theorem structuralTypeProjection_exists {sourceScope : Source.Sig}
     (prepared : Encoding.Prepared layout signature valid realization) :
     Nonempty (StructuralTypeProjection context prepared) :=
   ⟨structuralTypeProjection context prepared⟩
+
+/-! ## Realized projection through an accepted cumulative model -/
+
+/-- Shift one M11 member-constraint coordinate below the cumulative object's
+generated `C_rep` exactness and containment constraints. -/
+def memberConstraintRef {relations : List ManySortedFC.Relation}
+    {relation : ManySortedFC.Relation}
+    (reference : ManySortedFC.ConstraintRef relations relation) :
+    ManySortedFC.ConstraintRef
+      (DOTCaptureToManySortedFC.ModalIntersections.ObjectContract.relations
+        relations) relation :=
+  .there (.there reference)
+
+/-- One exact source type member as seen through a checked recursive model.
+The two `model*` fields are the actual certificates stored at the retained
+M11 coordinates; `exact` is the independently checked recursive
+fold/unfold factorization for the same `recProj`. -/
+structure RealizedTypeMemberProjection {sourceScope : Source.Sig}
+    {environment : DOTCapture.ModalIntersections.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {realization : Source.Realization environment.bindings signature}
+    (prepared : Encoding.Prepared core.layout signature valid realization)
+    {ambient : AmbientCompiler core}
+    (checkedModel : Model.CheckedModel core prepared ambient)
+    (index : Fin signature.typeDefinitions.length) : Type where
+  structural : StructuralOccurrenceAlignment prepared index
+  targetInterpretation :
+    prepared.targetLocalModel.typeMember?
+        (signature.typeDefinitions.get index).label =
+      some (.recProj prepared.bodies index)
+  exact : ExactWitnessFactorization core.target prepared.bodies
+    prepared.guarded index
+  modelLower : ManySortedFC.Evidence.Proves core.target
+    (checkedModel.model.checked.evidence.lookup
+      (memberConstraintRef structural.coordinates.lower))
+    ((prepared.object.theory.propositionAt
+      (memberConstraintRef structural.coordinates.lower)).instantiateSymbols
+        checkedModel.model.checked.symbols)
+  modelUpper : ManySortedFC.Evidence.Proves core.target
+    (checkedModel.model.checked.evidence.lookup
+      (memberConstraintRef structural.coordinates.upper))
+    ((prepared.object.theory.propositionAt
+      (memberConstraintRef structural.coordinates.upper)).instantiateSymbols
+        checkedModel.model.checked.symbols)
+
+/-- Construct the checked projection for one source definition. -/
+noncomputable def realizedTypeMemberProjection {sourceScope : Source.Sig}
+    {environment : DOTCapture.ModalIntersections.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {realization : Source.Realization environment.bindings signature}
+    (prepared : Encoding.Prepared core.layout signature valid realization)
+    {ambient : AmbientCompiler core}
+    (checkedModel : Model.CheckedModel core prepared ambient)
+    (index : Fin signature.typeDefinitions.length) :
+    RealizedTypeMemberProjection prepared checkedModel index := by
+  let structural := structuralOccurrenceAlignment prepared index
+  refine
+    { structural
+      targetInterpretation := prepared.localModel_typeMember index
+      exact := exactWitnessFactorization core.target prepared.bodies
+        prepared.guarded index
+      modelLower := ?_
+      modelUpper := ?_ }
+  · exact checkedModel.model.checked.satisfies.constraintAt
+      (memberConstraintRef structural.coordinates.lower)
+  · exact checkedModel.model.checked.satisfies.constraintAt
+      (memberConstraintRef structural.coordinates.upper)
+
+/-- A prepared recursive signature together with the concrete model accepted
+by the standalone target checker.  All exported constraints are satisfied in
+`core.target`; the modeled theory is never opened while its certificates are
+constructed. -/
+structure RealizedTypeProjection {sourceScope : Source.Sig}
+    {environment : DOTCapture.ModalIntersections.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {realization : Source.Realization environment.bindings signature}
+    (prepared : Encoding.Prepared core.layout signature valid realization)
+    (ambient : AmbientCompiler core)
+    (checkedModel : Model.CheckedModel core prepared ambient) : Type where
+  structural : StructuralTypeProjection core.target prepared
+  contractedModelProvenance : checkContractedModel? core prepared.object
+    prepared.symbols checkedModel.candidates = some checkedModel.model
+  members : forall index : Fin signature.typeDefinitions.length,
+    RealizedTypeMemberProjection prepared checkedModel index
+  simultaneousCaptureRealization :
+    signature.captureDeclarations.Realizes environment.bindings
+      realization.captures
+  captureWitnessesAmbient : forall label,
+    Source.captureAmbientOnly (realization.captures.witness label) = true
+  representationContainmentSource :
+    DOTCapture.ModalIntersections.CaptureIncludes environment.bindings
+      (signature.realizedRepresentation
+        realization.captures).outerCapture
+      (signature.realizedOuterCapture realization.captures)
+  representationContainmentCompiled : ambient.compile
+      realization.representationContainment =
+    some checkedModel.containmentEvidence
+  packageContainmentSource :
+    DOTCapture.ModalIntersections.CaptureIncludes environment.bindings
+      (signature.realizedRepresentation
+        realization.captures).outerCapture signature.packageCapture
+  packageContainmentCompiled : ambient.compile
+      realization.packageContainment =
+    some checkedModel.packageContainmentEvidence
+  representationCaptureExactChecked : ManySortedFC.Evidence.Proves core.target
+    (checkedModel.model.checked.evidence.lookup ManySortedFC.ConstraintRef.here)
+    ((prepared.object.theory.propositionAt
+      ManySortedFC.ConstraintRef.here).instantiateSymbols
+        checkedModel.model.checked.symbols)
+  representationContainmentChecked : ManySortedFC.Evidence.Proves core.target
+    (checkedModel.model.checked.evidence.lookup
+      (.there ManySortedFC.ConstraintRef.here))
+    ((prepared.object.theory.propositionAt
+      (.there ManySortedFC.ConstraintRef.here)).instantiateSymbols
+        checkedModel.model.checked.symbols)
+  standaloneModelAcceptance : ManySortedFC.Theory.checkModel core.target
+      prepared.object.theory checkedModel.model.symbols
+        checkedModel.model.evidence = some checkedModel.model.checked
+
+/-- Build the realized inertness certificate from the accepted model. -/
+noncomputable def realizedTypeProjection {sourceScope : Source.Sig}
+    {environment : DOTCapture.ModalIntersections.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {realization : Source.Realization environment.bindings signature}
+    (prepared : Encoding.Prepared core.layout signature valid realization)
+    (ambient : AmbientCompiler core)
+    (checkedModel : Model.CheckedModel core prepared ambient) :
+    RealizedTypeProjection core prepared ambient checkedModel := by
+  refine
+    { structural := structuralTypeProjection core.target prepared
+      contractedModelProvenance := checkedModel.modelChecked
+      members := fun index =>
+        realizedTypeMemberProjection prepared checkedModel index
+      simultaneousCaptureRealization := realization.captureConstraints
+      captureWitnessesAmbient := realization.captures.ambient
+      representationContainmentSource :=
+        realization.representationContainment
+      representationContainmentCompiled := checkedModel.containmentCompiled
+      packageContainmentSource := realization.packageContainment
+      packageContainmentCompiled := checkedModel.packageContainmentCompiled
+      representationCaptureExactChecked := ?_
+      representationContainmentChecked := ?_
+      standaloneModelAcceptance :=
+        checkedModel.model.checkerAcceptance }
+  · exact checkedModel.model.checked.satisfies.constraintAt .here
+  · exact checkedModel.model.checked.satisfies.constraintAt (.there .here)
+
+/-! ## Ordinary exact-member inertness as a projection -/
+
+/-- The usual exact DOT type-member inertness data, now obtained by forgetting
+the capture/model components of a realized recursive signature. -/
+structure OrdinaryExactTypeMemberInertness {sourceScope : Source.Sig}
+    {environment : DOTCapture.ModalIntersections.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {realization : Source.Realization environment.bindings signature}
+    (prepared : Encoding.Prepared core.layout signature valid realization)
+    (index : Fin signature.typeDefinitions.length) : Type where
+  occurrence : signature.objectType.interface.HasTypeOccurrence
+    (signature.typeDefinitions.get index).label
+    (signature.typeDefinitions.get index).body
+    (signature.typeDefinitions.get index).body
+  targetInterpretation :
+    prepared.targetLocalModel.typeMember?
+        (signature.typeDefinitions.get index).label =
+      some (.recProj prepared.bodies index)
+  checkedFoldUnfold : ExactWitnessFactorization core.target prepared.bodies
+    prepared.guarded index
+
+/-- Forget the model-wide components while retaining the exact member. -/
+def RealizedTypeMemberProjection.toOrdinary {sourceScope : Source.Sig}
+    {environment : DOTCapture.ModalIntersections.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {realization : Source.Realization environment.bindings signature}
+    {prepared : Encoding.Prepared core.layout signature valid realization}
+    {ambient : AmbientCompiler core}
+    {checkedModel : Model.CheckedModel core prepared ambient}
+    {index : Fin signature.typeDefinitions.length}
+    (member : RealizedTypeMemberProjection prepared checkedModel index) :
+    OrdinaryExactTypeMemberInertness prepared index where
+  occurrence := member.structural.occurrence
+  targetInterpretation := member.targetInterpretation
+  checkedFoldUnfold := member.exact
+
+/-- Ordinary exact DOT type-member inertness is precisely the type projection
+of the accepted realized recursive signature. -/
+def RealizedTypeProjection.typeProjection {sourceScope : Source.Sig}
+    {environment : DOTCapture.ModalIntersections.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {realization : Source.Realization environment.bindings signature}
+    {prepared : Encoding.Prepared core.layout signature valid realization}
+    {ambient : AmbientCompiler core}
+    {checkedModel : Model.CheckedModel core prepared ambient}
+    (projection : RealizedTypeProjection core prepared ambient checkedModel)
+    (index : Fin signature.typeDefinitions.length) :
+    OrdinaryExactTypeMemberInertness prepared index :=
+  (projection.members index).toOrdinary
+
+theorem ordinaryExactTypeMemberInertness_is_typeProjection
+    {sourceScope : Source.Sig}
+    {environment : DOTCapture.ModalIntersections.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {signature : Source.Signature sourceScope} {valid : signature.Valid}
+    {realization : Source.Realization environment.bindings signature}
+    {prepared : Encoding.Prepared core.layout signature valid realization}
+    {ambient : AmbientCompiler core}
+    {checkedModel : Model.CheckedModel core prepared ambient}
+    (projection : RealizedTypeProjection core prepared ambient checkedModel)
+    (index : Fin signature.typeDefinitions.length) :
+    Nonempty (OrdinaryExactTypeMemberInertness prepared index) :=
+  ⟨projection.typeProjection index⟩
 
 end DOTCaptureToManySortedFC.RecursiveObjects.Inertness

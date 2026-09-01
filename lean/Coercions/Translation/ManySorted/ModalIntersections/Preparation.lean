@@ -124,21 +124,21 @@ end Allocation
 
 namespace Compile
 
-private def expectType {scope : Target.Sig} (label : Nat) :
+def expectType {scope : Target.Sig} (label : Nat) :
     MemberName scope -> Except Error
       (Target.BVar scope (.symbol .type))
   | .type _ name => .ok name
   | .capture _ _ =>
       .error (.memberSortMismatch label .type .capture)
 
-private def expectCapture {scope : Target.Sig} (label : Nat) :
+def expectCapture {scope : Target.Sig} (label : Nat) :
     MemberName scope -> Except Error
       (Target.BVar scope (.symbol .capture))
   | .capture _ name => .ok name
   | .type _ _ =>
       .error (.memberSortMismatch label .capture .type)
 
-private def pathMember {sourceScope : Source.Sig}
+def pathMember {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
     (path : Source.Path sourceScope) (label : Nat) :
@@ -147,141 +147,174 @@ private def pathMember {sourceScope : Source.Sig}
   | some member => .ok member
   | none => .error (.unknownPathMember label)
 
-private def localMember {scope : Target.Sig}
+def localMember {scope : Target.Sig}
     (members : List (MemberName scope)) (label : Nat) :
     Except Error (MemberName scope) :=
   match MemberNames.find? members label with
   | some member => .ok member
   | none => .error (.unknownLocalMember label)
 
-private def typeReference {sourceScope : Source.Sig}
+/-- Object preparation resolves local references through its freshly
+allocated member-name list.  Ambient compilation instead resolves them
+through the layout's expression-valued recursive-member model.  Keeping the
+two cases explicit prevents a nested object interface from accidentally
+capturing an outer recursive namespace. -/
+inductive LocalResolution (scope : Target.Sig) where
+  | allocated (members : List (MemberName scope))
+  | interpreted (model : TargetLocalModel scope)
+
+namespace LocalResolution
+
+def rename {first second : Target.Sig}
+    (resolution : LocalResolution first) (rho : Target.Rename first second) :
+    LocalResolution second :=
+  match resolution with
+  | .allocated members =>
+      .allocated (members.map fun member => member.rename rho)
+  | .interpreted model => .interpreted (model.rename rho)
+
+def typeExpression {scope : Target.Sig}
+    (resolution : LocalResolution scope) (label : Nat) :
+    Except Error (Target.Ty scope) :=
+  match resolution with
+  | .allocated members => do
+      pure (.tvar (← expectType label (← localMember members label)))
+  | .interpreted model =>
+      match model.typeMember? label with
+      | some type => .ok type
+      | none => .error (.unknownLocalMember label)
+
+def captureExpression {scope : Target.Sig}
+    (resolution : LocalResolution scope) (label : Nat) :
+    Except Error (Target.Capture scope) :=
+  match resolution with
+  | .allocated members => do
+      pure (.cvar (← expectCapture label (← localMember members label)))
+  | .interpreted model =>
+      match model.captureMember? label with
+      | some capture => .ok capture
+      | none => .error (.unknownLocalMember label)
+
+end LocalResolution
+
+def typeReference {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
+    (locals : LocalResolution targetScope) :
     Source.StaticRef .type sourceScope ->
-      Except Error (Target.BVar targetScope (.symbol .type))
-  | .bound name => .ok (layout.staticSlot name).name
+      Except Error (Target.Ty targetScope)
+  | .bound name => .ok (.tvar (layout.staticSlot name).name)
   | .typeMember path label => do
-      expectType label (← pathMember layout path label)
-  | .localTypeMember label => do
-      expectType label (← localMember members label)
+      pure (.tvar (← expectType label (← pathMember layout path label)))
+  | .localTypeMember label => locals.typeExpression label
 
-private def captureReference {sourceScope : Source.Sig}
+def captureReference {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
+    (locals : LocalResolution targetScope) :
     Source.StaticRef .capture sourceScope ->
-      Except Error (Target.BVar targetScope (.symbol .capture))
-  | .bound name => .ok (layout.staticSlot name).name
+      Except Error (Target.Capture targetScope)
+  | .bound name => .ok (.cvar (layout.staticSlot name).name)
   | .captureMember path label => do
-      expectCapture label (← pathMember layout path label)
-  | .localCaptureMember label => do
-      expectCapture label (← localMember members label)
+      pure (.cvar (← expectCapture label (← pathMember layout path label)))
+  | .localCaptureMember label => locals.captureExpression label
 
-private def captureCore {sourceScope : Source.Sig}
+def captureCore {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
+    (locals : LocalResolution targetScope) :
     Source.Capture sourceScope -> Except Error (Target.Capture targetScope)
   | .empty => .ok .empty
   | .union left right => do
-      pure (.union (← captureCore layout members left)
-        (← captureCore layout members right))
+      pure (.union (← captureCore layout locals left)
+        (← captureCore layout locals right))
   | .readOnly capture => do
-      pure (.readOnly (← captureCore layout members capture))
+      pure (.readOnly (← captureCore layout locals capture))
   | .singleton (.var sourceVar) =>
       .ok (.singleton (layout.termVar sourceVar))
   | .ref reference => do
-      pure (.cvar (← captureReference layout members reference))
+      captureReference layout locals reference
 
-private def separationContextCore {count : Nat}
+def separationContextCore {count : Nat}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
+    (locals : LocalResolution targetScope) :
     Source.SeparationContext count sourceScope ->
       Except Error (Target.SeparationContext count targetScope)
   | .nil => .ok .nil
   | .cons rest capture => do
-      pure (.cons (← separationContextCore layout members rest)
-        (← captureCore layout members capture))
+      pure (.cons (← separationContextCore layout locals rest)
+        (← captureCore layout locals capture))
 
-private def modeContextCore {modes : List Source.CaptureMode}
+def modeContextCore {modes : List Source.CaptureMode}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
+    (locals : LocalResolution targetScope) :
     Source.ModeContext modes sourceScope ->
       Except Error (Target.ModeContext (translateModes modes) targetScope)
   | .nil => .ok .nil
   | .cons rest capture => do
-      pure (.cons (← modeContextCore layout members rest)
-        (← captureCore layout members capture))
+      pure (.cons (← modeContextCore layout locals rest)
+        (← captureCore layout locals capture))
 
-private def requirementsCore {count : Nat}
+def requirementsCore {count : Nat}
     {modes : List Source.CaptureMode}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
+    (locals : LocalResolution targetScope) :
     Source.ModalRequirements count modes sourceScope ->
       Except Error
         (Target.ModalContext count (translateModes modes) targetScope)
   | .mk separation mode => do
-      pure (.mk (← separationContextCore layout members separation)
-        (← modeContextCore layout members mode))
-
-private def renameMembers {first second : Target.Sig}
-    (members : List (MemberName first)) (rho : Target.Rename first second) :
-    List (MemberName second) :=
-  members.map fun member => member.rename rho
+      pure (.mk (← separationContextCore layout locals separation)
+        (← modeContextCore layout locals mode))
 
 mutual
 
-private def typeCore {sourceScope : Source.Sig}
+def typeCore {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
+    (locals : LocalResolution targetScope) :
     Source.Ty sourceScope -> Except Error (Target.Ty targetScope)
   | .top => .ok .top
   | .bot => .ok .bot
   | .one => .ok .one
-  | .ref reference => do
-      pure (.tvar (← typeReference layout members reference))
+  | .ref reference => typeReference layout locals reference
   | .arr domain codomain => do
-      pure (.arr (← typeCore layout members domain)
-        (← typeCore layout members codomain))
+      pure (.arr (← typeCore layout locals domain)
+        (← typeCore layout locals codomain))
   | .objectArrow _ _ => .error .nestedObjectArrowBound
   | .capturing captures shape => do
-      pure (.capturing (← captureCore layout members captures)
-        (← typeCore layout members shape))
+      pure (.capturing (← captureCore layout locals captures)
+        (← typeCore layout locals shape))
   | .forallI interval body => do
-      let theory ← intervalCore layout members interval
-      let bodyMembers := renameMembers members
-        (Layout.staticRename targetScope interval)
-      let targetBody ← typeCore (layout.extendStatic interval) bodyMembers body
+      let theory ← intervalCore layout locals interval
+      let bodyLocals := locals.rename (Layout.staticRename targetScope interval)
+      let targetBody ← typeCore (layout.extendStatic interval) bodyLocals body
       pure (.forallT theory targetBody)
   | .existsI interval body => do
-      let theory ← intervalCore layout members interval
-      let bodyMembers := renameMembers members
-        (Layout.staticRename targetScope interval)
-      let targetBody ← typeCore (layout.extendStatic interval) bodyMembers body
+      let theory ← intervalCore layout locals interval
+      let bodyLocals := locals.rename (Layout.staticRename targetScope interval)
+      let targetBody ← typeCore (layout.extendStatic interval) bodyLocals body
       pure (.existsT theory targetBody)
   | .modal requirements body => do
-      pure (.modal (← requirementsCore layout members requirements)
-        (← typeCore layout members body))
+      pure (.modal (← requirementsCore layout locals requirements)
+        (← typeCore layout locals body))
   | .object _ => .error .nestedObjectBound
 
-private def staticExpressionCore {sort : Source.StaticSort}
+def staticExpressionCore {sort : Source.StaticSort}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
+    (locals : LocalResolution targetScope) :
     Source.StaticExpr sort sourceScope ->
       Except Error (Target.StaticExpr (translateSort sort) targetScope)
-  | .type type => (typeCore layout members type).map .type
-  | .capture capture => (captureCore layout members capture).map .capture
+  | .type type => (typeCore layout locals type).map .type
+  | .capture capture => (captureCore layout locals capture).map .capture
 
-private def intervalCore {sort : Source.StaticSort}
+def intervalCore {sort : Source.StaticSort}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
-    (members : List (MemberName targetScope))
+    (locals : LocalResolution targetScope)
     (interval : Source.Interval sort sourceScope) :
     Except Error
       (Target.Theory targetScope [translateSort sort]
@@ -291,14 +324,14 @@ private def intervalCore {sort : Source.StaticSort}
       .ok (ManySortedFC.Interval.unconstrained (translateSort sort))
   | .bounds (.some lower) .none => do
       pure (ManySortedFC.Interval.lowerBounded
-        (← staticExpressionCore layout members lower))
+        (← staticExpressionCore layout locals lower))
   | .bounds .none (.some upper) => do
       pure (ManySortedFC.Interval.upperBounded
-        (← staticExpressionCore layout members upper))
+        (← staticExpressionCore layout locals upper))
   | .bounds (.some lower) (.some upper) => do
       pure (ManySortedFC.Interval.between
-        (← staticExpressionCore layout members lower)
-        (← staticExpressionCore layout members upper))
+        (← staticExpressionCore layout locals lower)
+        (← staticExpressionCore layout locals upper))
 
 end
 
@@ -310,7 +343,7 @@ def translateCapture {sourceScope : Source.Sig}
     (members : List (MemberName targetScope))
     (source : Source.Capture sourceScope) :
     Except Error (Target.Capture targetScope) :=
-  captureCore layout members source
+  captureCore layout (.allocated members) source
 
 def translateSeparationContext {count : Nat}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
@@ -318,7 +351,7 @@ def translateSeparationContext {count : Nat}
     (members : List (MemberName targetScope))
     (source : Source.SeparationContext count sourceScope) :
     Except Error (Target.SeparationContext count targetScope) :=
-  separationContextCore layout members source
+  separationContextCore layout (.allocated members) source
 
 def translateModeContext {modes : List Source.CaptureMode}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
@@ -326,7 +359,7 @@ def translateModeContext {modes : List Source.CaptureMode}
     (members : List (MemberName targetScope))
     (source : Source.ModeContext modes sourceScope) :
     Except Error (Target.ModeContext (translateModes modes) targetScope) :=
-  modeContextCore layout members source
+  modeContextCore layout (.allocated members) source
 
 def translateRequirements {count : Nat}
     {modes : List Source.CaptureMode}
@@ -336,14 +369,14 @@ def translateRequirements {count : Nat}
     (source : Source.ModalRequirements count modes sourceScope) :
     Except Error
       (Target.ModalContext count (translateModes modes) targetScope) :=
-  requirementsCore layout members source
+  requirementsCore layout (.allocated members) source
 
 def translateType {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
     (members : List (MemberName targetScope))
     (source : Source.Ty sourceScope) : Except Error (Target.Ty targetScope) :=
-  typeCore layout members source
+  typeCore layout (.allocated members) source
 
 def translateStaticExpr {sort : Source.StaticSort}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
@@ -351,7 +384,7 @@ def translateStaticExpr {sort : Source.StaticSort}
     (members : List (MemberName targetScope))
     (source : Source.StaticExpr sort sourceScope) :
     Except Error (Target.StaticExpr (translateSort sort) targetScope) :=
-  staticExpressionCore layout members source
+  staticExpressionCore layout (.allocated members) source
 
 def translateInterval {sort : Source.StaticSort}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
@@ -361,7 +394,7 @@ def translateInterval {sort : Source.StaticSort}
     Except Error
       (Target.Theory targetScope [translateSort sort]
         (intervalRelations source)) :=
-  intervalCore layout members source
+  intervalCore layout (.allocated members) source
 
 private def translateTypeMemberIntervals {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
@@ -373,8 +406,10 @@ private def translateTypeMemberIntervals {sourceScope : Source.Sig}
         (List (Source.MemberInterval (Target.StaticExpr .type targetScope)))
   | [] => .ok []
   | interval :: remaining => do
-      let lower ← staticExpressionCore layout members interval.lower
-      let upper ← staticExpressionCore layout members interval.upper
+      let lower ← staticExpressionCore layout (.allocated members)
+        interval.lower
+      let upper ← staticExpressionCore layout (.allocated members)
+        interval.upper
       pure (⟨lower, upper⟩ ::
         (← translateTypeMemberIntervals layout members remaining))
 
@@ -388,8 +423,10 @@ private def translateCaptureMemberIntervals {sourceScope : Source.Sig}
         (List (Source.MemberInterval (Target.StaticExpr .capture targetScope)))
   | [] => .ok []
   | interval :: remaining => do
-      let lower ← staticExpressionCore layout members interval.lower
-      let upper ← staticExpressionCore layout members interval.upper
+      let lower ← staticExpressionCore layout (.allocated members)
+        interval.lower
+      let upper ← staticExpressionCore layout (.allocated members)
+        interval.upper
       pure (⟨lower, upper⟩ ::
         (← translateCaptureMemberIntervals layout members remaining))
 
@@ -532,18 +569,18 @@ def prepareObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
     (source : Source.ObjectType sourceScope) :
     Except Error (PreparedObject targetScope) := do
-  let .mk interface sourceRepresentation sourceOuterCapture := source
-  let prepared ← collectAndPrepare layout interface
+  let prepared ← collectAndPrepare layout source.interface
   let encoding := encode prepared
   let namesLayout := layout.renameTarget
     (ManySortedFC.Rename.weakenSymbols encoding.symbols)
   let representationAtNames ← Compile.translateType namesLayout
-    encoding.prepared.members sourceRepresentation
+    encoding.prepared.members source.representation
   let representation := representationAtNames.rename
     (ManySortedFC.Rename.weakenMany
       (ManySortedFC.SymbolScope targetScope encoding.symbols)
       (ManySortedFC.evidenceKinds encoding.relations))
-  let outerCapture ← Compile.translateCapture layout [] sourceOuterCapture
+  let outerCapture ← Compile.captureCore layout
+    (.interpreted layout.localModel) source.packageCapture
   pure { encoding, representation, outerCapture }
 
 /-- A negative object type additionally carries its dependent result in the
@@ -592,7 +629,7 @@ def translateCapture {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
     (source : Source.Capture sourceScope) :
     Except Error (Target.Capture targetScope) :=
-  Compile.translateCapture layout [] source
+  Compile.captureCore layout (.interpreted layout.localModel) source
 
 /-- A total capture interpretation for proof-only compiler bookkeeping.
 Malformed member selections fall back to the empty target capture; every
@@ -610,7 +647,8 @@ def totalCapture {sourceScope : Source.Sig} {targetScope : Target.Sig}
       match layout.member? path label with
       | some (.capture _ targetVar) => .cvar targetVar
       | _ => .empty
-  | .ref (.localCaptureMember _) => .empty
+  | .ref (.localCaptureMember label) =>
+      (layout.localModel.captureMember? label).getD .empty
 
 /-- Successful partial capture preparation agrees with the total map. -/
 theorem totalCapture_of_prepared {sourceScope : Source.Sig}
@@ -620,67 +658,65 @@ theorem totalCapture_of_prepared {sourceScope : Source.Sig}
     (prepared : translateCapture layout sourceCapture = .ok targetCapture) :
     totalCapture layout sourceCapture = targetCapture := by
   induction sourceCapture generalizing targetCapture with
-  | empty => simpa [translateCapture, Compile.translateCapture,
+  | empty => simpa [translateCapture,
       Compile.captureCore, totalCapture] using prepared
   | union left right leftInduction rightInduction =>
-      cases leftPrepared : Compile.captureCore layout [] left with
+      cases leftPrepared : Compile.captureCore layout
+          (.interpreted layout.localModel) left with
       | error error =>
-          unfold translateCapture Compile.translateCapture
-            Compile.captureCore at prepared
+          unfold translateCapture Compile.captureCore at prepared
           rw [leftPrepared] at prepared
           cases prepared
       | ok targetLeft =>
-          cases rightPrepared : Compile.captureCore layout [] right with
+          cases rightPrepared : Compile.captureCore layout
+              (.interpreted layout.localModel) right with
           | error error =>
-              unfold translateCapture Compile.translateCapture
-                Compile.captureCore at prepared
+              unfold translateCapture Compile.captureCore at prepared
               rw [leftPrepared, rightPrepared] at prepared
               cases prepared
           | ok targetRight =>
-              unfold translateCapture Compile.translateCapture
-                Compile.captureCore at prepared
+              unfold translateCapture Compile.captureCore at prepared
               rw [leftPrepared, rightPrepared] at prepared
               cases prepared
               have leftEquality : totalCapture layout left = targetLeft :=
                 leftInduction targetLeft (by
-                  simpa [translateCapture, Compile.translateCapture] using
+                  simpa [translateCapture] using
                     leftPrepared)
               have rightEquality : totalCapture layout right = targetRight :=
                 rightInduction targetRight (by
-                  simpa [translateCapture, Compile.translateCapture] using
+                  simpa [translateCapture] using
                     rightPrepared)
               simp [totalCapture, leftEquality, rightEquality]
   | readOnly capture induction =>
-      cases innerPrepared : Compile.captureCore layout [] capture with
+      cases innerPrepared : Compile.captureCore layout
+          (.interpreted layout.localModel) capture with
       | error error =>
-          unfold translateCapture Compile.translateCapture
-            Compile.captureCore at prepared
+          unfold translateCapture Compile.captureCore at prepared
           rw [innerPrepared] at prepared
           cases prepared
       | ok targetInner =>
-          unfold translateCapture Compile.translateCapture
-            Compile.captureCore at prepared
+          unfold translateCapture Compile.captureCore at prepared
           rw [innerPrepared] at prepared
           cases prepared
           simp only [totalCapture]
           rw [induction targetInner]
-          simpa [translateCapture, Compile.translateCapture] using
+          simpa [translateCapture] using
             innerPrepared
   | singleton path =>
       cases path
-      simpa [translateCapture, Compile.translateCapture,
+      simpa [translateCapture,
         Compile.captureCore, totalCapture] using prepared
   | ref reference =>
       cases reference with
       | bound sourceVar =>
-          unfold translateCapture Compile.translateCapture
+          unfold translateCapture
             Compile.captureCore Compile.captureReference at prepared
           cases prepared
           rfl
       | captureMember path label =>
           cases found : layout.member? path label with
           | none =>
-              unfold translateCapture Compile.translateCapture
+              unfold translateCapture
                 Compile.captureCore Compile.captureReference
                 Compile.pathMember at prepared
               simp [found] at prepared
@@ -688,37 +724,47 @@ theorem totalCapture_of_prepared {sourceScope : Source.Sig}
           | some member =>
               cases member with
               | type memberLabel memberName =>
-                  unfold translateCapture Compile.translateCapture
+                  unfold translateCapture
                     Compile.captureCore Compile.captureReference
                     Compile.pathMember Compile.expectCapture at prepared
                   simp [found] at prepared
                   cases prepared
               | capture memberLabel memberName =>
-                  unfold translateCapture Compile.translateCapture
+                  unfold translateCapture
                     Compile.captureCore Compile.captureReference
                     Compile.pathMember Compile.expectCapture at prepared
                   simp [found] at prepared
                   cases prepared
                   simp [totalCapture, found]
       | localCaptureMember label =>
-          unfold translateCapture Compile.translateCapture
-            Compile.captureCore Compile.captureReference
-            Compile.localMember MemberNames.find? Compile.expectCapture at prepared
-          cases prepared
+          cases found : layout.localModel.captureMember? label with
+          | none =>
+              simp only [translateCapture, Compile.captureCore,
+                Compile.captureReference,
+                Compile.LocalResolution.captureExpression] at prepared
+              rw [found] at prepared
+              cases prepared
+          | some targetCapture =>
+              simp only [translateCapture, Compile.captureCore,
+                Compile.captureReference,
+                Compile.LocalResolution.captureExpression] at prepared
+              rw [found] at prepared
+              cases prepared
+              simp [totalCapture, found]
 
 def translateSeparationContext {count : Nat}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
     (source : Source.SeparationContext count sourceScope) :
     Except Error (Target.SeparationContext count targetScope) :=
-  Compile.translateSeparationContext layout [] source
+  Compile.separationContextCore layout (.interpreted layout.localModel) source
 
 def translateModeContext {modes : List Source.CaptureMode}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
     (source : Source.ModeContext modes sourceScope) :
     Except Error (Target.ModeContext (translateModes modes) targetScope) :=
-  Compile.translateModeContext layout [] source
+  Compile.modeContextCore layout (.interpreted layout.localModel) source
 
 def translateRequirements {count : Nat}
     {modes : List Source.CaptureMode}
@@ -727,7 +773,7 @@ def translateRequirements {count : Nat}
     (source : Source.ModalRequirements count modes sourceScope) :
     Except Error
       (Target.ModalContext count (translateModes modes) targetScope) :=
-  Compile.translateRequirements layout [] source
+  Compile.requirementsCore layout (.interpreted layout.localModel) source
 
 /-- Total separation-context translation induced pointwise by `totalCapture`. -/
 def totalSeparationContext {count : Nat} {sourceScope : Source.Sig}
@@ -767,35 +813,33 @@ theorem totalSeparationContext_of_prepared {count : Nat}
     totalSeparationContext layout source = target := by
   induction source with
   | nil =>
-      simpa [translateSeparationContext, Compile.translateSeparationContext,
+      simpa [translateSeparationContext,
         Compile.separationContextCore, totalSeparationContext] using prepared
   | cons rest capture induction =>
-      cases restPrepared : Compile.separationContextCore layout [] rest with
+      cases restPrepared : Compile.separationContextCore layout
+          (.interpreted layout.localModel) rest with
       | error error =>
-          unfold translateSeparationContext Compile.translateSeparationContext
-            Compile.separationContextCore at prepared
+          unfold translateSeparationContext Compile.separationContextCore at prepared
           rw [restPrepared] at prepared
           cases prepared
       | ok targetRest =>
-          cases capturePrepared : Compile.captureCore layout [] capture with
+          cases capturePrepared : Compile.captureCore layout
+              (.interpreted layout.localModel) capture with
           | error error =>
               unfold translateSeparationContext
-                Compile.translateSeparationContext
                 Compile.separationContextCore at prepared
               rw [restPrepared, capturePrepared] at prepared
               cases prepared
           | ok targetCapture =>
               unfold translateSeparationContext
-                Compile.translateSeparationContext
                 Compile.separationContextCore at prepared
               rw [restPrepared, capturePrepared] at prepared
               cases prepared
               have restEquality := induction layout targetRest (by
-                simpa [translateSeparationContext,
-                  Compile.translateSeparationContext] using restPrepared)
+                  simpa [translateSeparationContext] using restPrepared)
               have captureEquality := totalCapture_of_prepared layout capture
                 targetCapture (by
-                  simpa [translateCapture, Compile.translateCapture] using
+                  simpa [translateCapture] using
                     capturePrepared)
               simp [totalSeparationContext, restEquality, captureEquality]
 
@@ -808,33 +852,32 @@ theorem totalModeContext_of_prepared {modes : List Source.CaptureMode}
     totalModeContext layout source = target := by
   induction source with
   | nil =>
-      simpa [translateModeContext, Compile.translateModeContext,
+      simpa [translateModeContext,
         Compile.modeContextCore, totalModeContext] using prepared
   | cons rest capture induction =>
-      cases restPrepared : Compile.modeContextCore layout [] rest with
+      cases restPrepared : Compile.modeContextCore layout
+          (.interpreted layout.localModel) rest with
       | error error =>
-          unfold translateModeContext Compile.translateModeContext
-            Compile.modeContextCore at prepared
+          unfold translateModeContext Compile.modeContextCore at prepared
           rw [restPrepared] at prepared
           cases prepared
       | ok targetRest =>
-          cases capturePrepared : Compile.captureCore layout [] capture with
+          cases capturePrepared : Compile.captureCore layout
+              (.interpreted layout.localModel) capture with
           | error error =>
-              unfold translateModeContext Compile.translateModeContext
-                Compile.modeContextCore at prepared
+              unfold translateModeContext Compile.modeContextCore at prepared
               rw [restPrepared, capturePrepared] at prepared
               cases prepared
           | ok targetCapture =>
-              unfold translateModeContext Compile.translateModeContext
-                Compile.modeContextCore at prepared
+              unfold translateModeContext Compile.modeContextCore at prepared
               rw [restPrepared, capturePrepared] at prepared
               cases prepared
               have restEquality := induction layout targetRest (by
-                simpa [translateModeContext, Compile.translateModeContext]
-                  using restPrepared)
+                  simpa [translateModeContext]
+                    using restPrepared)
               have captureEquality := totalCapture_of_prepared layout capture
                 targetCapture (by
-                  simpa [translateCapture, Compile.translateCapture] using
+                  simpa [translateCapture] using
                     capturePrepared)
               simp [totalModeContext, restEquality, captureEquality]
 
@@ -849,15 +892,17 @@ theorem totalRequirements_of_prepared {count : Nat}
     totalRequirements layout source = target := by
   cases source with
   | mk separation mode =>
-      unfold translateRequirements Compile.translateRequirements at prepared
+      unfold translateRequirements at prepared
       simp only [Compile.requirementsCore] at prepared
       cases separationPrepared :
-          Compile.separationContextCore layout [] separation with
+          Compile.separationContextCore layout
+            (.interpreted layout.localModel) separation with
       | error error =>
           rw [separationPrepared] at prepared
           cases prepared
       | ok targetSeparation =>
-          cases modePrepared : Compile.modeContextCore layout [] mode with
+          cases modePrepared : Compile.modeContextCore layout
+              (.interpreted layout.localModel) mode with
           | error error =>
               rw [separationPrepared, modePrepared] at prepared
               cases prepared
@@ -867,12 +912,11 @@ theorem totalRequirements_of_prepared {count : Nat}
               have separationEquality :=
                 totalSeparationContext_of_prepared layout separation
                   targetSeparation (by
-                    simpa [translateSeparationContext,
-                      Compile.translateSeparationContext] using
+                    simpa [translateSeparationContext] using
                         separationPrepared)
               have modeEquality := totalModeContext_of_prepared layout mode
                 targetMode (by
-                  simpa [translateModeContext, Compile.translateModeContext]
+                  simpa [translateModeContext]
                     using modePrepared)
               simp [totalRequirements, separationEquality, modeEquality]
 
@@ -887,7 +931,8 @@ def translateType {sourceScope : Source.Sig} {targetScope : Target.Sig}
   | .top => .ok .top
   | .bot => .ok .bot
   | .one => .ok .one
-  | .ref reference => Compile.translateType layout [] (.ref reference)
+  | .ref reference =>
+      Compile.typeReference layout (.interpreted layout.localModel) reference
   | .arr domain codomain => do
       pure (.arr (← translateType layout domain)
         (← translateType layout codomain))
