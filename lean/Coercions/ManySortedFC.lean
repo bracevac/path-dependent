@@ -1,4 +1,6 @@
 import Coercions.ManySortedFC.Classifier
+import Coercions.ManySortedFC.StaticDomain
+import Coercions.ManySortedFC.StaticDomainClassifier
 import Coercions.ManySortedFC.Scope
 import Coercions.ManySortedFC.Syntax
 import Coercions.ManySortedFC.Context
@@ -56,6 +58,9 @@ import Coercions.ManySortedFC.ModalAdapterExamples
 import Coercions.ManySortedFC.ModalPreservationExamples
 import Coercions.ManySortedFC.DisjointCaptureTheoryExamples
 import Coercions.ManySortedFC.ClassifierProjectionExamples
+import Coercions.ManySortedFC.StaticDomainExamples
+import Coercions.ManySortedFC.BindableClassifierExamples
+import Coercions.ManySortedFC.BindableClassifierSemanticsExamples
 import Coercions.ManySortedFC.EvidenceNormalizationExamples
 
 /-!
@@ -71,10 +76,12 @@ type projections have checked unfold equality. Capture terms remain acyclic,
 and this syntactic facility does not claim a global semantic consistency
 theorem for arbitrary recursive type equations.
 
-Classifier projection is a closed ground extension: concrete classifier
-paths and kind filters are executable data inside capture syntax, not a third
-bindable static sort. The target checker recomputes subkind, equivalence,
-emptiness, and disjointness side conditions. This extension does not add
-kind-bounded capture variables, capture-kind inference, handlers or
-intercepts, or the full Capless(K) type system.
+Classifier kinds form a third static sort. Static theories may bind classifier
+names and constrain them by equality, inclusion, disjointness, and capture-kind
+membership. Capture projection accepts either a ground kind or a bound
+classifier name. Ground checks are recomputed by the standalone checker;
+variable claims require scoped evidence. Ground kind intersection and
+subtraction are executable; source `.only`/`.except` chains lower before
+cumulative compilation. Symbolic subtraction, handlers, intercepts, and the
+full Capless(K) type system are outside this calculus.
 -/

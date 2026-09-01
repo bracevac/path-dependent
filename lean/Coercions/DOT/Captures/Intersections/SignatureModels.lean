@@ -30,6 +30,11 @@ def SatisfiesOccurrence {Expr : StaticSort -> Type u}
   | .capture label interval =>
       model.includes .capture interval.lower (model.symbol .capture label) ∧
         model.includes .capture (model.symbol .capture label) interval.upper
+  | .classifier label interval =>
+      model.includes .classifier interval.lower
+          (model.symbol .classifier label) ∧
+        model.includes .classifier (model.symbol .classifier label)
+          interval.upper
 
 /-- Every primitive constraint in a signature holds under one shared member
 assignment. -/
@@ -72,6 +77,7 @@ realizable exact views whose conjunction has no shared model. -/
 def BoolExpr : StaticSort -> Type
   | .type => Bool
   | .capture => Unit
+  | .classifier => Unit
 
 def exactTrue : Signature BoolExpr :=
   Signature.singletonType 0 true true
@@ -81,7 +87,8 @@ def exactFalse : Signature BoolExpr :=
 
 def incompatibleMerge : Signature BoolExpr :=
   { entries := [.type 0
-      [⟨true, true⟩, ⟨false, false⟩]] }
+      [⟨true, true⟩, ⟨false, false⟩]]
+    constraints := [] }
 
 theorem exact_views_merge :
     exactTrue.merge? exactFalse = .ok incompatibleMerge := by
@@ -91,9 +98,11 @@ def equalityModel (chosen : Bool) : Interpretation BoolExpr where
   symbol := fun
     | .type => fun _ => chosen
     | .capture => fun _ => ()
+    | .classifier => fun _ => ()
   includes := fun
     | .type => Eq
     | .capture => Eq
+    | .classifier => Eq
 
 theorem exactTrue_realizable : (equalityModel true).Models exactTrue := by
   intro occurrence membership

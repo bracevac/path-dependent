@@ -6,9 +6,10 @@ import Coercions.Translation.ManySorted.Intersections.TheoryPermutationCoherence
 
 Normalized source signatures that are `ConstraintEquivalent` have the same
 canonical label/sort allocation and differ only by a sort-indexed permutation
-of retained intervals at each label. Successful partial bound translation
-preserves those permutations. Consequently their prepared encodings share a
-symbol telescope and their generated target theories differ only by a packed
+of retained intervals at each label.  When their separately stored mixed
+constraints are also permutations, successful partial translation preserves
+both permutations. Consequently their prepared encodings share a symbol
+telescope and their generated target theories differ only by a packed
 proposition permutation.
 
 This is the source/preparation bridge consumed by the generic checked theory
@@ -29,6 +30,11 @@ inductive ConstraintEquivalent {Expr : StaticSort -> Type u} :
   | capture (label : Nat) {first second : List (Interval (Expr .capture))}
       (intervals : first.Perm second) :
       ConstraintEquivalent (.capture label first) (.capture label second)
+  | classifier (label : Nat)
+      {first second : List (Interval (Expr .classifier))}
+      (intervals : first.Perm second) :
+      ConstraintEquivalent (.classifier label first)
+        (.classifier label second)
 
 end Entry
 
@@ -158,11 +164,19 @@ private def typeInterval? {Expr : StaticSort -> Type u} :
     Occurrence Expr -> Option (Interval (Expr .type))
   | .type _ interval => some interval
   | .capture _ _ => none
+  | .classifier _ _ => none
 
 private def captureInterval? {Expr : StaticSort -> Type u} :
     Occurrence Expr -> Option (Interval (Expr .capture))
   | .type _ _ => none
   | .capture _ interval => some interval
+  | .classifier _ _ => none
+
+private def classifierInterval? {Expr : StaticSort -> Type u} :
+    Occurrence Expr -> Option (Interval (Expr .classifier))
+  | .type _ _ => none
+  | .capture _ _ => none
+  | .classifier _ interval => some interval
 
 private theorem entry_equivalent_of_occurrences
     {Expr : StaticSort -> Type u} (first second : Entry Expr)
@@ -181,6 +195,17 @@ private theorem entry_equivalent_of_occurrences
           simpa [Entry.occurrences, typeInterval?, Function.comp_def] using
             equivalent.filterMap typeInterval?
       | capture secondLabel secondIntervals =>
+          simp only [Entry.IsNonempty] at firstNonempty secondNonempty
+          cases firstIntervals with
+          | nil => exact (firstNonempty rfl).elim
+          | cons firstInterval firstTail =>
+              have sourceMem :
+                  Occurrence.type firstLabel firstInterval ∈
+                    (Entry.type firstLabel (firstInterval :: firstTail) :
+                      Entry Expr).occurrences := by simp [Entry.occurrences]
+              have targetMem := equivalent.mem_iff.mp sourceMem
+              simp [Entry.occurrences] at targetMem
+      | classifier secondLabel secondIntervals =>
           simp only [Entry.IsNonempty] at firstNonempty secondNonempty
           cases firstIntervals with
           | nil => exact (firstNonempty rfl).elim
@@ -210,6 +235,49 @@ private theorem entry_equivalent_of_occurrences
           apply Entry.ConstraintEquivalent.capture firstLabel
           simpa [Entry.occurrences, captureInterval?, Function.comp_def] using
             equivalent.filterMap captureInterval?
+      | classifier secondLabel secondIntervals =>
+          simp only [Entry.IsNonempty] at firstNonempty secondNonempty
+          cases firstIntervals with
+          | nil => exact (firstNonempty rfl).elim
+          | cons firstInterval firstTail =>
+              have sourceMem :
+                  Occurrence.capture firstLabel firstInterval ∈
+                    (Entry.capture firstLabel (firstInterval :: firstTail) :
+                      Entry Expr).occurrences := by simp [Entry.occurrences]
+              have targetMem := equivalent.mem_iff.mp sourceMem
+              simp [Entry.occurrences] at targetMem
+  | classifier firstLabel firstIntervals =>
+      cases second with
+      | type secondLabel secondIntervals =>
+          simp only [Entry.IsNonempty] at firstNonempty secondNonempty
+          cases firstIntervals with
+          | nil => exact (firstNonempty rfl).elim
+          | cons firstInterval firstTail =>
+              have sourceMem :
+                  Occurrence.classifier firstLabel firstInterval ∈
+                    (Entry.classifier firstLabel
+                      (firstInterval :: firstTail) : Entry Expr).occurrences := by
+                simp [Entry.occurrences]
+              have targetMem := equivalent.mem_iff.mp sourceMem
+              simp [Entry.occurrences] at targetMem
+      | capture secondLabel secondIntervals =>
+          simp only [Entry.IsNonempty] at firstNonempty secondNonempty
+          cases firstIntervals with
+          | nil => exact (firstNonempty rfl).elim
+          | cons firstInterval firstTail =>
+              have sourceMem :
+                  Occurrence.classifier firstLabel firstInterval ∈
+                    (Entry.classifier firstLabel
+                      (firstInterval :: firstTail) : Entry Expr).occurrences := by
+                simp [Entry.occurrences]
+              have targetMem := equivalent.mem_iff.mp sourceMem
+              simp [Entry.occurrences] at targetMem
+      | classifier secondLabel secondIntervals =>
+          simp only [Entry.label] at sameLabel
+          subst secondLabel
+          apply Entry.ConstraintEquivalent.classifier firstLabel
+          simpa [Entry.occurrences, classifierInterval?, Function.comp_def]
+            using equivalent.filterMap classifierInterval?
 
 private theorem entries_equivalent_of_normalized
     {Expr : StaticSort -> Type u}
@@ -410,6 +478,22 @@ private theorem castMembers_capture_cons
   cases equality
   rfl
 
+private theorem castMembers_classifier_cons
+    (targetScope : Preparation.Target.Sig) (label : Nat)
+    {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
+    (equality : firstSymbols = secondSymbols)
+    (members : List
+      (MemberName (Preparation.Target.SymbolScope targetScope firstSymbols))) :
+    castMembers targetScope
+        (congrArg (List.cons ManySortedFC.StaticSort.classifier) equality)
+        (MemberName.classifier label .here ::
+          weakenMembers targetScope .classifier members) =
+      MemberName.classifier label .here ::
+        weakenMembers targetScope .classifier
+          (castMembers targetScope equality members) := by
+  cases equality
+  rfl
+
 private theorem members_eq {sourceScope : Preparation.Source.Scope}
     (targetScope : Preparation.Target.Sig)
     {first second : List
@@ -447,6 +531,18 @@ private theorem members_eq {sourceScope : Preparation.Source.Scope}
                 (Preparation.Allocation.members targetScope secondTail)
           rw [castMembers_capture_cons, induction]
           exact SourceEntries.symbols_eq tail
+      | classifier label intervals =>
+          change castMembers targetScope
+              (congrArg (List.cons ManySortedFC.StaticSort.classifier)
+                (SourceEntries.symbols_eq tail))
+              (MemberName.classifier label .here ::
+                weakenMembers targetScope .classifier
+                  (Preparation.Allocation.members targetScope firstTail)) =
+            MemberName.classifier label .here ::
+              weakenMembers targetScope .classifier
+                (Preparation.Allocation.members targetScope secondTail)
+          rw [castMembers_classifier_cons, induction]
+          exact SourceEntries.symbols_eq tail
 
 private theorem castMembers_symm (targetScope : Preparation.Target.Sig)
     {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
@@ -481,12 +577,30 @@ private def preparedEntries (targetScope : Preparation.Target.Sig)
       (ManySortedFC.SymbolScope targetScope secondSymbols)) :=
   equality ▸ entries
 
+private def preparedConstraints (targetScope : Preparation.Target.Sig)
+    {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
+    (equality : firstSymbols = secondSymbols)
+    (constraints : List (PreparedConstraint
+      (ManySortedFC.SymbolScope targetScope firstSymbols))) :
+    List (PreparedConstraint
+      (ManySortedFC.SymbolScope targetScope secondSymbols)) :=
+  equality ▸ constraints
+
 private def preparedResult (targetScope : Preparation.Target.Sig)
     {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
     (equality : firstSymbols = secondSymbols)
     (result : Except Preparation.Error (List (PreparedEntry
       (ManySortedFC.SymbolScope targetScope firstSymbols)))) :
     Except Preparation.Error (List (PreparedEntry
+      (ManySortedFC.SymbolScope targetScope secondSymbols))) :=
+  equality ▸ result
+
+private def preparedConstraintsResult (targetScope : Preparation.Target.Sig)
+    {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
+    (equality : firstSymbols = secondSymbols)
+    (result : Except Preparation.Error (List (PreparedConstraint
+      (ManySortedFC.SymbolScope targetScope firstSymbols)))) :
+    Except Preparation.Error (List (PreparedConstraint
       (ManySortedFC.SymbolScope targetScope secondSymbols))) :=
   equality ▸ result
 
@@ -520,6 +634,17 @@ private theorem preparedResult_ok (targetScope : Preparation.Target.Sig)
   cases equality
   rfl
 
+private theorem preparedConstraintsResult_ok
+    (targetScope : Preparation.Target.Sig)
+    {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
+    (equality : firstSymbols = secondSymbols)
+    (constraints : List (PreparedConstraint
+      (ManySortedFC.SymbolScope targetScope firstSymbols))) :
+    preparedConstraintsResult targetScope equality (.ok constraints) =
+      .ok (preparedConstraints targetScope equality constraints) := by
+  cases equality
+  rfl
+
 private theorem entries_result {sourceScope : Preparation.Source.Scope}
     (targetScope : Preparation.Target.Sig)
     {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
@@ -541,6 +666,27 @@ private theorem entries_result {sourceScope : Preparation.Source.Scope}
   cases equality
   rfl
 
+private theorem constraints_result {sourceScope : Preparation.Source.Scope}
+    (targetScope : Preparation.Target.Sig)
+    {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
+    (equality : firstSymbols = secondSymbols)
+    (sourceLayout : Preparation.OuterLayout sourceScope
+      (ManySortedFC.SymbolScope targetScope firstSymbols))
+    (members : List (MemberName
+      (ManySortedFC.SymbolScope targetScope firstSymbols)))
+    (sourceConstraints : List
+      (DOTCapture.Intersections.Constraint
+        (Preparation.Source.Expr sourceScope))) :
+    preparedConstraintsResult targetScope equality
+        (Preparation.Compile.translateConstraints sourceLayout members
+          sourceConstraints) =
+      Preparation.Compile.translateConstraints
+        (layout targetScope equality sourceLayout)
+        (SourceEntries.castMembers targetScope equality members)
+        sourceConstraints := by
+  cases equality
+  rfl
+
 private theorem preparedEntries_eq_of_heq
     (targetScope : Preparation.Target.Sig)
     {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
@@ -553,6 +699,33 @@ private theorem preparedEntries_eq_of_heq
     preparedEntries targetScope equality firstEntries = secondEntries := by
   cases equality
   exact eq_of_heq same
+
+private theorem preparedConstraints_eq_of_heq
+    (targetScope : Preparation.Target.Sig)
+    {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
+    (equality : firstSymbols = secondSymbols)
+    {firstConstraints : List (PreparedConstraint
+      (ManySortedFC.SymbolScope targetScope firstSymbols))}
+    {secondConstraints : List (PreparedConstraint
+      (ManySortedFC.SymbolScope targetScope secondSymbols))}
+    (same : HEq firstConstraints secondConstraints) :
+    preparedConstraints targetScope equality firstConstraints =
+      secondConstraints := by
+  cases equality
+  exact eq_of_heq same
+
+private theorem preparedConstraints_packed
+    (targetScope : Preparation.Target.Sig)
+    {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
+    (equality : firstSymbols = secondSymbols)
+    (constraints : List (PreparedConstraint
+      (ManySortedFC.SymbolScope targetScope firstSymbols))) :
+    (preparedConstraints targetScope equality constraints).map
+        PreparedConstraint.packed =
+      packedPropositions targetScope equality
+        (constraints.map PreparedConstraint.packed) := by
+  cases equality
+  rfl
 
 private theorem preparedEntries_propositions
     (targetScope : Preparation.Target.Sig)
@@ -592,6 +765,18 @@ private theorem packedPropositions_trans
         propositions := by
   cases firstEquality
   cases secondEquality
+  rfl
+
+private theorem packedPropositions_append
+    (targetScope : Preparation.Target.Sig)
+    {firstSymbols secondSymbols : List ManySortedFC.StaticSort}
+    (equality : firstSymbols = secondSymbols)
+    (first second : List (Encoding.Target.PackedProposition
+      (ManySortedFC.SymbolScope targetScope firstSymbols))) :
+    packedPropositions targetScope equality (first ++ second) =
+      packedPropositions targetScope equality first ++
+        packedPropositions targetScope equality second := by
+  cases equality
   rfl
 
 end SymbolCast
@@ -682,6 +867,84 @@ theorem translateIntervals_perm
   subst found
   exact foundPermutation
 
+private theorem translateConstraints_success_of_perm
+    {sourceScope : Preparation.Source.Scope}
+    {targetScope : Preparation.Target.Sig}
+    (layout : Preparation.OuterLayout sourceScope targetScope)
+    (members : List (MemberName targetScope))
+    {first second : List
+      (DOTCapture.Intersections.Constraint
+        (Preparation.Source.Expr sourceScope))}
+    (permutation : first.Perm second)
+    {firstTranslated : List (PreparedConstraint targetScope)}
+    (firstSuccess :
+      Preparation.Compile.translateConstraints layout members first =
+        .ok firstTranslated) :
+    ∃ secondTranslated,
+      Preparation.Compile.translateConstraints layout members second =
+          .ok secondTranslated ∧
+        firstTranslated.Perm secondTranslated := by
+  induction permutation generalizing firstTranslated with
+  | nil =>
+      simp [Preparation.Compile.translateConstraints] at firstSuccess
+      subst firstTranslated
+      exact ⟨[], rfl, .nil⟩
+  | @cons current firstTail secondTail tailPermutation induction =>
+      obtain ⟨translated, translatedTail, currentSuccess, tailSuccess,
+          firstTranslatedEq⟩ := except_cons_success firstSuccess
+      subst firstTranslated
+      obtain ⟨secondTranslated, secondSuccess, translatedPermutation⟩ :=
+        induction tailSuccess
+      exact ⟨translated :: secondTranslated, by
+        simp [Preparation.Compile.translateConstraints, currentSuccess,
+          secondSuccess, bind, Except.bind, pure, Except.pure],
+        translatedPermutation.cons translated⟩
+  | @swap firstHead secondHead tail =>
+      obtain ⟨secondTranslatedHead, firstTranslatedTail, secondHeadSuccess,
+          firstTailSuccess, firstTranslatedEq⟩ :=
+        except_cons_success firstSuccess
+      obtain ⟨firstTranslatedHead, translatedTail, firstHeadSuccess,
+          tailSuccess, firstTranslatedTailEq⟩ :=
+        except_cons_success firstTailSuccess
+      subst firstTranslated
+      subst firstTranslatedTail
+      exact ⟨firstTranslatedHead :: secondTranslatedHead :: translatedTail, by
+        simp [Preparation.Compile.translateConstraints, firstHeadSuccess,
+          secondHeadSuccess, tailSuccess, bind, Except.bind, pure,
+          Except.pure], .swap _ _ _⟩
+  | @trans first middle second firstPermutation secondPermutation
+      firstInduction secondInduction =>
+      obtain ⟨middleTranslated, middleSuccess, firstToMiddle⟩ :=
+        firstInduction firstSuccess
+      obtain ⟨secondTranslated, secondSuccess, middleToSecond⟩ :=
+        secondInduction middleSuccess
+      exact ⟨secondTranslated, secondSuccess,
+        firstToMiddle.trans middleToSecond⟩
+
+theorem translateConstraints_perm
+    {sourceScope : Preparation.Source.Scope}
+    {targetScope : Preparation.Target.Sig}
+    (layout : Preparation.OuterLayout sourceScope targetScope)
+    (members : List (MemberName targetScope))
+    {first second : List
+      (DOTCapture.Intersections.Constraint
+        (Preparation.Source.Expr sourceScope))}
+    (permutation : first.Perm second)
+    {firstTranslated secondTranslated : List (PreparedConstraint targetScope)}
+    (firstSuccess :
+      Preparation.Compile.translateConstraints layout members first =
+        .ok firstTranslated)
+    (secondSuccess :
+      Preparation.Compile.translateConstraints layout members second =
+        .ok secondTranslated) :
+    firstTranslated.Perm secondTranslated := by
+  obtain ⟨found, foundSuccess, foundPermutation⟩ :=
+    translateConstraints_success_of_perm layout members permutation firstSuccess
+  rw [secondSuccess] at foundSuccess
+  injection foundSuccess with foundEq
+  subst found
+  exact foundPermutation
+
 end PartialTranslation
 
 namespace PreparedEntries
@@ -715,6 +978,22 @@ private theorem capture_propositions_perm {scope : Preparation.Target.Sig}
           (.inclusion interval.lower (.capture (.cvar name))),
        Encoding.Target.PackedProposition.pack
           (.inclusion (.capture (.cvar name)) interval.upper)]).flatten
+
+private theorem classifier_propositions_perm {scope : Preparation.Target.Sig}
+    (label : Nat)
+    (name : ManySortedFC.BVar scope (.symbol .classifier))
+    {first second : List
+      (Preparation.Source.Interval
+        (ManySortedFC.StaticExpr .classifier scope))}
+    (permutation : first.Perm second) :
+    (PreparedEntry.classifier label name first).propositions.Perm
+      (PreparedEntry.classifier label name second).propositions := by
+  simpa [PreparedEntry.propositions] using
+    (permutation.map fun interval =>
+      [Encoding.Target.PackedProposition.pack
+          (.inclusion interval.lower (.classifier (.var name))),
+       Encoding.Target.PackedProposition.pack
+          (.inclusion (.classifier (.var name)) interval.upper)]).flatten
 
 theorem propositions_perm {sourceScope : Preparation.Source.Scope}
     {targetScope : Preparation.Target.Sig}
@@ -754,6 +1033,8 @@ theorem propositions_perm {sourceScope : Preparation.Source.Scope}
               cases allocatedHead with
               | capture allocatedLabel name =>
                   simp [Preparation.Compile.entries] at firstSuccess
+              | classifier allocatedLabel name =>
+                  simp [Preparation.Compile.entries] at firstSuccess
               | type allocatedLabel name =>
                   by_cases labelsMatch : label = allocatedLabel
                   · subst allocatedLabel
@@ -782,6 +1063,8 @@ theorem propositions_perm {sourceScope : Preparation.Source.Scope}
               cases allocatedHead with
               | type allocatedLabel name =>
                   simp [Preparation.Compile.entries] at firstSuccess
+              | classifier allocatedLabel name =>
+                  simp [Preparation.Compile.entries] at firstSuccess
               | capture allocatedLabel name =>
                   by_cases labelsMatch : label = allocatedLabel
                   · subst allocatedLabel
@@ -803,6 +1086,36 @@ theorem propositions_perm {sourceScope : Preparation.Source.Scope}
                     · exact induction allocatedTail firstTailSuccess
                         secondTailSuccess
                   · simp [Preparation.Compile.entries, labelsMatch] at firstSuccess
+      | @classifier label firstIntervals secondIntervals intervalPermutation =>
+          cases allocated with
+          | nil => simp [Preparation.Compile.entries] at firstSuccess
+          | cons allocatedHead allocatedTail =>
+              cases allocatedHead with
+              | type allocatedLabel name =>
+                  simp [Preparation.Compile.entries] at firstSuccess
+              | capture allocatedLabel name =>
+                  simp [Preparation.Compile.entries] at firstSuccess
+              | classifier allocatedLabel name =>
+                  by_cases labelsMatch : label = allocatedLabel
+                  · subst allocatedLabel
+                    simp [Preparation.Compile.entries]
+                      at firstSuccess secondSuccess
+                    obtain ⟨firstTranslated, firstPreparedTail,
+                        firstIntervalSuccess, firstTailSuccess,
+                        firstPreparedEq⟩ := except_cons_success firstSuccess
+                    obtain ⟨secondTranslated, secondPreparedTail,
+                        secondIntervalSuccess, secondTailSuccess,
+                        secondPreparedEq⟩ := except_cons_success secondSuccess
+                    subst firstPrepared
+                    subst secondPrepared
+                    apply List.Perm.append
+                    · exact classifier_propositions_perm label name
+                        (PartialTranslation.translateIntervals_perm
+                          layout allMembers intervalPermutation
+                          firstIntervalSuccess secondIntervalSuccess)
+                    · exact induction allocatedTail firstTailSuccess
+                        secondTailSuccess
+                  · simp [Preparation.Compile.entries, labelsMatch] at firstSuccess
 
 end PreparedEntries
 
@@ -814,18 +1127,24 @@ inductive PreparedTheoryPermutation {scope : Preparation.Target.Sig} :
   | intro {symbols : List ManySortedFC.StaticSort}
       {firstEntries secondEntries : List
         (PreparedEntry (ManySortedFC.SymbolScope scope symbols))}
+      {firstConstraints secondConstraints : List
+        (PreparedConstraint (ManySortedFC.SymbolScope scope symbols))}
       (permutation :
         (Encoding.Target.Theory.propositions
             (Encoding.encode
-              ({ symbols := symbols, entries := firstEntries } :
+              ({ symbols := symbols, entries := firstEntries,
+                 constraints := firstConstraints } :
                 PreparedSignature scope)).theory).Perm
           (Encoding.Target.Theory.propositions
             (Encoding.encode
-              ({ symbols := symbols, entries := secondEntries } :
+              ({ symbols := symbols, entries := secondEntries,
+                 constraints := secondConstraints } :
                 PreparedSignature scope)).theory)) :
       PreparedTheoryPermutation
-        { symbols := symbols, entries := firstEntries }
-        { symbols := symbols, entries := secondEntries }
+        { symbols := symbols, entries := firstEntries,
+          constraints := firstConstraints }
+        { symbols := symbols, entries := secondEntries,
+          constraints := secondConstraints }
 
 /-- Concrete theory maps in both directions between two prepared encodings,
 together with acceptance by the independent target checker.  As with
@@ -837,37 +1156,47 @@ inductive PreparedBidirectionalCheckedMaps
   | intro {symbols : List ManySortedFC.StaticSort}
       {firstEntries secondEntries : List
         (PreparedEntry (ManySortedFC.SymbolScope scope symbols))}
+      {firstConstraints secondConstraints : List
+        (PreparedConstraint (ManySortedFC.SymbolScope scope symbols))}
       (forward : ManySortedFC.TheoryMap
         (Encoding.encode
-          ({ symbols := symbols, entries := firstEntries } :
+          ({ symbols := symbols, entries := firstEntries,
+             constraints := firstConstraints } :
             PreparedSignature scope)).theory
         (Encoding.encode
-          ({ symbols := symbols, entries := secondEntries } :
+          ({ symbols := symbols, entries := secondEntries,
+             constraints := secondConstraints } :
             PreparedSignature scope)).theory)
       (backward : ManySortedFC.TheoryMap
         (Encoding.encode
-          ({ symbols := symbols, entries := secondEntries } :
+          ({ symbols := symbols, entries := secondEntries,
+             constraints := secondConstraints } :
             PreparedSignature scope)).theory
         (Encoding.encode
-          ({ symbols := symbols, entries := firstEntries } :
+          ({ symbols := symbols, entries := firstEntries,
+             constraints := firstConstraints } :
             PreparedSignature scope)).theory)
       (forwardReusesOpenedSymbols :
         forward.symbols = ManySortedFC.TheoryMap.openedSymbols
           scope symbols
-          ({ symbols := symbols, entries := firstEntries } :
+          ({ symbols := symbols, entries := firstEntries,
+             constraints := firstConstraints } :
             PreparedSignature scope).relations)
       (backwardReusesOpenedSymbols :
         backward.symbols = ManySortedFC.TheoryMap.openedSymbols
           scope symbols
-          ({ symbols := symbols, entries := secondEntries } :
+          ({ symbols := symbols, entries := secondEntries,
+             constraints := secondConstraints } :
             PreparedSignature scope).relations)
       (forwardAccepted :
         (ManySortedFC.TheoryMap.check context forward).isSome = true)
       (backwardAccepted :
         (ManySortedFC.TheoryMap.check context backward).isSome = true) :
       PreparedBidirectionalCheckedMaps context
-        { symbols := symbols, entries := firstEntries }
-        { symbols := symbols, entries := secondEntries }
+        { symbols := symbols, entries := firstEntries,
+          constraints := firstConstraints }
+        { symbols := symbols, entries := secondEntries,
+          constraints := secondConstraints }
 
 /-- Consume a prepared-theory permutation with the generic target-side map
 construction.  Both maps reuse the opened symbol block and reuse matching
@@ -878,12 +1207,15 @@ theorem PreparedTheoryPermutation.checked_maps
     (permutation : PreparedTheoryPermutation first second) :
     PreparedBidirectionalCheckedMaps context first second := by
   cases permutation with
-  | @intro symbols firstEntries secondEntries propositionPermutation =>
+  | @intro symbols firstEntries secondEntries firstConstraints
+      secondConstraints propositionPermutation =>
       let firstTheory := (Encoding.encode
-        ({ symbols := symbols, entries := firstEntries } :
+        ({ symbols := symbols, entries := firstEntries,
+           constraints := firstConstraints } :
           PreparedSignature scope)).theory
       let secondTheory := (Encoding.encode
-        ({ symbols := symbols, entries := secondEntries } :
+        ({ symbols := symbols, entries := secondEntries,
+           constraints := secondConstraints } :
           PreparedSignature scope)).theory
       let accepted :=
         TheoryPermutationCoherence.bidirectional_checked_maps_of_permutation
@@ -907,6 +1239,7 @@ theorem encoded_theory_permutation_of_constraintEquivalent
       (Preparation.Source.Expr sourceScope))
     (equivalent :
       DOTCapture.Intersections.Signature.ConstraintEquivalent first second)
+    (mixedEquivalent : first.constraints.Perm second.constraints)
     (firstNormalized : first.Normalized)
     (secondNormalized : second.Normalized)
     {firstPrepared secondPrepared : PreparedSignature targetScope}
@@ -915,9 +1248,9 @@ theorem encoded_theory_permutation_of_constraintEquivalent
     PreparedTheoryPermutation firstPrepared secondPrepared := by
   let entriesEquivalent := equivalent.entries firstNormalized secondNormalized
   cases firstPrepared with
-  | mk firstSymbols firstPreparedEntries =>
+  | mk firstSymbols firstPreparedEntries firstPreparedConstraints =>
       cases secondPrepared with
-      | mk secondSymbols secondPreparedEntries =>
+      | mk secondSymbols secondPreparedEntries secondPreparedConstraints =>
           have firstSymbolsEq :=
             Preparation.prepare_preserves_allocated_symbols layout first
               firstSuccess
@@ -950,161 +1283,284 @@ theorem encoded_theory_permutation_of_constraintEquivalent
                   simp [secondResult, bind, Except.bind]
                     at secondSuccess
               | ok secondGenerated =>
-                  simp [firstResult, bind, Except.bind, pure, Except.pure]
-                    at firstSuccess
-                  simp [secondResult, bind, Except.bind, pure, Except.pure]
-                    at secondSuccess
-                  obtain ⟨firstSymbolsResult, firstGeneratedHEq⟩ := firstSuccess
-                  obtain ⟨secondSymbolsResult, secondGeneratedHEq⟩ := secondSuccess
-                  have firstAllocationEq :
-                      Preparation.Allocation.symbols first.entries =
-                        firstSymbols := by
-                    rw [Preparation.Allocation.symbols_eq_entry_sorts]
-                    exact firstSymbolsResult
-                  have secondAllocationEq :
-                      Preparation.Allocation.symbols second.entries =
-                        firstSymbols := by
-                    rw [Preparation.Allocation.symbols_eq_entry_sorts]
-                    exact secondSymbolsResult
-                  have sourceSymbolsEq :=
-                    SourceEntries.symbols_eq entriesEquivalent
-                  have membersForward :=
-                    SourceEntries.members_eq targetScope entriesEquivalent
-                  have membersBackward :
-                      SourceEntries.castMembers targetScope sourceSymbolsEq.symm
+                  cases firstConstraintsResult :
+                      Preparation.Compile.translateConstraints
+                        (Preparation.Compile.weakenLayout layout
+                          (Preparation.Allocation.symbols first.entries))
+                        (Preparation.Allocation.members targetScope first.entries)
+                        first.constraints with
+                  | error failure =>
+                      simp [firstResult, firstConstraintsResult, bind,
+                        Except.bind] at firstSuccess
+                  | ok firstGeneratedConstraints =>
+                    cases secondConstraintsResult :
+                        Preparation.Compile.translateConstraints
+                          (Preparation.Compile.weakenLayout layout
+                            (Preparation.Allocation.symbols second.entries))
                           (Preparation.Allocation.members targetScope
-                            second.entries) =
-                        Preparation.Allocation.members targetScope
-                          first.entries := by
-                    rw [← membersForward]
-                    exact SourceEntries.castMembers_symm targetScope
-                      sourceSymbolsEq
-                      (Preparation.Allocation.members targetScope first.entries)
-                  have castSecondResult :
-                      Preparation.Compile.entries
+                            second.entries)
+                          second.constraints with
+                    | error failure =>
+                        simp [secondResult, secondConstraintsResult, bind,
+                          Except.bind] at secondSuccess
+                    | ok secondGeneratedConstraints =>
+                      simp [firstResult, firstConstraintsResult, bind,
+                        Except.bind, pure, Except.pure] at firstSuccess
+                      simp [secondResult, secondConstraintsResult, bind,
+                        Except.bind, pure, Except.pure] at secondSuccess
+                      obtain ⟨firstSymbolsResult, firstGeneratedHEq,
+                        firstConstraintsHEq⟩ := firstSuccess
+                      obtain ⟨secondSymbolsResult, secondGeneratedHEq,
+                        secondConstraintsHEq⟩ := secondSuccess
+                      have firstAllocationEq :
+                          Preparation.Allocation.symbols first.entries =
+                            firstSymbols := by
+                        rw [Preparation.Allocation.symbols_eq_entry_sorts]
+                        exact firstSymbolsResult
+                      have secondAllocationEq :
+                          Preparation.Allocation.symbols second.entries =
+                            firstSymbols := by
+                        rw [Preparation.Allocation.symbols_eq_entry_sorts]
+                        exact secondSymbolsResult
+                      have sourceSymbolsEq :=
+                        SourceEntries.symbols_eq entriesEquivalent
+                      have membersForward :=
+                        SourceEntries.members_eq targetScope entriesEquivalent
+                      have membersBackward :
+                          SourceEntries.castMembers targetScope
+                              sourceSymbolsEq.symm
+                              (Preparation.Allocation.members targetScope
+                                second.entries) =
+                            Preparation.Allocation.members targetScope
+                              first.entries := by
+                        rw [← membersForward]
+                        exact SourceEntries.castMembers_symm targetScope
+                          sourceSymbolsEq
+                          (Preparation.Allocation.members targetScope
+                            first.entries)
+                      have castSecondResult :
+                          Preparation.Compile.entries
+                              (Preparation.Compile.weakenLayout layout
+                                (Preparation.Allocation.symbols first.entries))
+                              (Preparation.Allocation.members targetScope
+                                first.entries)
+                              second.entries
+                              (Preparation.Allocation.members targetScope
+                                first.entries) =
+                            .ok (SymbolCast.preparedEntries targetScope
+                              sourceSymbolsEq.symm secondGenerated) := by
+                        calc
+                          _ = Preparation.Compile.entries
+                              (SymbolCast.layout targetScope
+                                sourceSymbolsEq.symm
+                                (Preparation.Compile.weakenLayout layout
+                                  (Preparation.Allocation.symbols
+                                    second.entries)))
+                              (SourceEntries.castMembers targetScope
+                                sourceSymbolsEq.symm
+                                (Preparation.Allocation.members targetScope
+                                  second.entries))
+                              second.entries
+                              (SourceEntries.castMembers targetScope
+                                sourceSymbolsEq.symm
+                                (Preparation.Allocation.members targetScope
+                                  second.entries)) := by
+                                rw [SymbolCast.layout_weaken, membersBackward]
+                          _ = SymbolCast.preparedResult targetScope
+                              sourceSymbolsEq.symm
+                              (Preparation.Compile.entries
+                                (Preparation.Compile.weakenLayout layout
+                                  (Preparation.Allocation.symbols
+                                    second.entries))
+                                (Preparation.Allocation.members targetScope
+                                  second.entries)
+                                second.entries
+                                (Preparation.Allocation.members targetScope
+                                  second.entries)) := by
+                                exact (SymbolCast.entries_result targetScope
+                                  sourceSymbolsEq.symm _ _ _ _).symm
+                          _ = SymbolCast.preparedResult targetScope
+                              sourceSymbolsEq.symm (.ok secondGenerated) := by
+                                exact congrArg
+                                  (SymbolCast.preparedResult targetScope
+                                    sourceSymbolsEq.symm) secondResult
+                          _ = .ok (SymbolCast.preparedEntries targetScope
+                              sourceSymbolsEq.symm secondGenerated) :=
+                                SymbolCast.preparedResult_ok targetScope
+                                  sourceSymbolsEq.symm secondGenerated
+                      have castSecondConstraintsResult :
+                          Preparation.Compile.translateConstraints
+                              (Preparation.Compile.weakenLayout layout
+                                (Preparation.Allocation.symbols first.entries))
+                              (Preparation.Allocation.members targetScope
+                                first.entries)
+                              second.constraints =
+                            .ok (SymbolCast.preparedConstraints targetScope
+                              sourceSymbolsEq.symm
+                              secondGeneratedConstraints) := by
+                        calc
+                          _ = Preparation.Compile.translateConstraints
+                              (SymbolCast.layout targetScope
+                                sourceSymbolsEq.symm
+                                (Preparation.Compile.weakenLayout layout
+                                  (Preparation.Allocation.symbols
+                                    second.entries)))
+                              (SourceEntries.castMembers targetScope
+                                sourceSymbolsEq.symm
+                                (Preparation.Allocation.members targetScope
+                                  second.entries))
+                              second.constraints := by
+                                rw [SymbolCast.layout_weaken, membersBackward]
+                          _ = SymbolCast.preparedConstraintsResult targetScope
+                              sourceSymbolsEq.symm
+                              (Preparation.Compile.translateConstraints
+                                (Preparation.Compile.weakenLayout layout
+                                  (Preparation.Allocation.symbols
+                                    second.entries))
+                                (Preparation.Allocation.members targetScope
+                                  second.entries)
+                                second.constraints) := by
+                                exact
+                                  (SymbolCast.constraints_result targetScope
+                                    sourceSymbolsEq.symm _ _ _).symm
+                          _ = SymbolCast.preparedConstraintsResult targetScope
+                              sourceSymbolsEq.symm
+                              (.ok secondGeneratedConstraints) := by
+                                exact congrArg
+                                  (SymbolCast.preparedConstraintsResult
+                                    targetScope sourceSymbolsEq.symm)
+                                  secondConstraintsResult
+                          _ = .ok (SymbolCast.preparedConstraints targetScope
+                              sourceSymbolsEq.symm
+                              secondGeneratedConstraints) :=
+                                SymbolCast.preparedConstraintsResult_ok
+                                  targetScope sourceSymbolsEq.symm
+                                  secondGeneratedConstraints
+                      have generatedEntryPermutation :=
+                        PreparedEntries.propositions_perm
                           (Preparation.Compile.weakenLayout layout
                             (Preparation.Allocation.symbols first.entries))
                           (Preparation.Allocation.members targetScope
                             first.entries)
-                          second.entries
+                          entriesEquivalent
                           (Preparation.Allocation.members targetScope
-                            first.entries) =
-                        .ok (SymbolCast.preparedEntries targetScope
-                          sourceSymbolsEq.symm secondGenerated) := by
-                    calc
-                      _ = Preparation.Compile.entries
-                          (SymbolCast.layout targetScope sourceSymbolsEq.symm
-                            (Preparation.Compile.weakenLayout layout
-                              (Preparation.Allocation.symbols second.entries)))
-                          (SourceEntries.castMembers targetScope
-                            sourceSymbolsEq.symm
-                            (Preparation.Allocation.members targetScope
-                              second.entries))
-                          second.entries
-                          (SourceEntries.castMembers targetScope
-                            sourceSymbolsEq.symm
-                            (Preparation.Allocation.members targetScope
-                              second.entries)) := by
-                            rw [SymbolCast.layout_weaken, membersBackward]
-                      _ = SymbolCast.preparedResult targetScope
-                          sourceSymbolsEq.symm
-                          (Preparation.Compile.entries
-                            (Preparation.Compile.weakenLayout layout
-                              (Preparation.Allocation.symbols second.entries))
-                            (Preparation.Allocation.members targetScope
-                              second.entries)
-                            second.entries
-                            (Preparation.Allocation.members targetScope
-                              second.entries)) := by
-                            exact (SymbolCast.entries_result targetScope
-                              sourceSymbolsEq.symm _ _ _ _).symm
-                      _ = SymbolCast.preparedResult targetScope
-                          sourceSymbolsEq.symm (.ok secondGenerated) := by
-                            exact congrArg
-                              (SymbolCast.preparedResult targetScope
-                                sourceSymbolsEq.symm) secondResult
-                      _ = .ok (SymbolCast.preparedEntries targetScope
-                          sourceSymbolsEq.symm secondGenerated) :=
-                            SymbolCast.preparedResult_ok targetScope
-                              sourceSymbolsEq.symm secondGenerated
-                  have generatedPermutation :=
-                    PreparedEntries.propositions_perm
-                      (Preparation.Compile.weakenLayout layout
-                        (Preparation.Allocation.symbols first.entries))
-                      (Preparation.Allocation.members targetScope first.entries)
-                      entriesEquivalent
-                      (Preparation.Allocation.members targetScope first.entries)
-                      firstResult castSecondResult
-                  have firstEntriesEq :=
-                    SymbolCast.preparedEntries_eq_of_heq targetScope
-                      firstAllocationEq firstGeneratedHEq
-                  have secondEntriesEq :=
-                    SymbolCast.preparedEntries_eq_of_heq targetScope
-                      secondAllocationEq secondGeneratedHEq
-                  have firstPropositionsEq :
-                      SymbolCast.packedPropositions targetScope
-                          firstAllocationEq
-                          (firstGenerated.flatMap
-                            PreparedEntry.propositions) =
-                        firstPreparedEntries.flatMap
-                          PreparedEntry.propositions := by
-                    rw [← SymbolCast.preparedEntries_propositions,
-                      firstEntriesEq]
-                  have secondPropositionsEq :
-                      SymbolCast.packedPropositions targetScope
-                          firstAllocationEq
-                          ((SymbolCast.preparedEntries targetScope
-                            sourceSymbolsEq.symm secondGenerated).flatMap
-                              PreparedEntry.propositions) =
-                        secondPreparedEntries.flatMap
-                          PreparedEntry.propositions := by
-                    rw [SymbolCast.preparedEntries_propositions,
-                      SymbolCast.packedPropositions_trans]
-                    have proofEq :
-                        sourceSymbolsEq.symm.trans firstAllocationEq =
-                          secondAllocationEq := Subsingleton.elim _ _
-                    rw [proofEq,
-                      ← SymbolCast.preparedEntries_propositions,
-                      secondEntriesEq]
-                  have outputPermutation :=
-                    SymbolCast.packedPropositions_perm targetScope
-                      firstAllocationEq generatedPermutation
-                  rw [firstPropositionsEq, secondPropositionsEq]
-                    at outputPermutation
-                  have firstEncodingEq := Encoding.propositions_eq
-                    ({ symbols := firstSymbols,
-                       entries := firstPreparedEntries } :
-                      PreparedSignature targetScope)
-                  have secondEncodingEq := Encoding.propositions_eq
-                    ({ symbols := firstSymbols,
-                       entries := secondPreparedEntries } :
-                      PreparedSignature targetScope)
-                  have firstEncodingEq' :
-                      Encoding.Target.Theory.propositions
-                          (Encoding.encode
-                            ({ symbols := firstSymbols,
-                               entries := firstPreparedEntries } :
-                              PreparedSignature targetScope)).theory =
-                        firstPreparedEntries.flatMap
-                          PreparedEntry.propositions := by
-                    simpa [PreparedSignature.propositions] using firstEncodingEq
-                  have secondEncodingEq' :
-                      Encoding.Target.Theory.propositions
-                          (Encoding.encode
-                            ({ symbols := firstSymbols,
-                               entries := secondPreparedEntries } :
-                              PreparedSignature targetScope)).theory =
-                        secondPreparedEntries.flatMap
-                          PreparedEntry.propositions := by
-                    simpa [PreparedSignature.propositions] using secondEncodingEq
-                  rw [← firstEncodingEq', ← secondEncodingEq']
-                    at outputPermutation
-                  apply PreparedTheoryPermutation.intro
-                  exact outputPermutation
+                            first.entries)
+                          firstResult castSecondResult
+                      have generatedConstraintPermutation :=
+                        PartialTranslation.translateConstraints_perm
+                          (Preparation.Compile.weakenLayout layout
+                            (Preparation.Allocation.symbols first.entries))
+                          (Preparation.Allocation.members targetScope
+                            first.entries)
+                          mixedEquivalent firstConstraintsResult
+                          castSecondConstraintsResult
+                      have generatedPermutation :=
+                        generatedEntryPermutation.append
+                          (generatedConstraintPermutation.map
+                            PreparedConstraint.packed)
+                      have firstEntriesEq :=
+                        SymbolCast.preparedEntries_eq_of_heq targetScope
+                          firstAllocationEq firstGeneratedHEq
+                      have secondEntriesEq :=
+                        SymbolCast.preparedEntries_eq_of_heq targetScope
+                          secondAllocationEq secondGeneratedHEq
+                      have firstConstraintsEq :=
+                        SymbolCast.preparedConstraints_eq_of_heq targetScope
+                          firstAllocationEq firstConstraintsHEq
+                      have secondConstraintsEq :=
+                        SymbolCast.preparedConstraints_eq_of_heq targetScope
+                          secondAllocationEq secondConstraintsHEq
+                      have firstPropositionsEq :
+                          SymbolCast.packedPropositions targetScope
+                              firstAllocationEq
+                              (firstGenerated.flatMap
+                                  PreparedEntry.propositions ++
+                                firstGeneratedConstraints.map
+                                  PreparedConstraint.packed) =
+                            firstPreparedEntries.flatMap
+                                PreparedEntry.propositions ++
+                              firstPreparedConstraints.map
+                                PreparedConstraint.packed := by
+                        rw [SymbolCast.packedPropositions_append,
+                          ← SymbolCast.preparedEntries_propositions,
+                          ← SymbolCast.preparedConstraints_packed,
+                          firstEntriesEq, firstConstraintsEq]
+                      have secondPropositionsEq :
+                          SymbolCast.packedPropositions targetScope
+                              firstAllocationEq
+                              ((SymbolCast.preparedEntries targetScope
+                                  sourceSymbolsEq.symm
+                                  secondGenerated).flatMap
+                                    PreparedEntry.propositions ++
+                                (SymbolCast.preparedConstraints targetScope
+                                  sourceSymbolsEq.symm
+                                  secondGeneratedConstraints).map
+                                    PreparedConstraint.packed) =
+                            secondPreparedEntries.flatMap
+                                PreparedEntry.propositions ++
+                              secondPreparedConstraints.map
+                                PreparedConstraint.packed := by
+                        rw [SymbolCast.packedPropositions_append,
+                          SymbolCast.preparedEntries_propositions,
+                          SymbolCast.preparedConstraints_packed,
+                          SymbolCast.packedPropositions_trans,
+                          SymbolCast.packedPropositions_trans]
+                        have proofEq :
+                            sourceSymbolsEq.symm.trans firstAllocationEq =
+                              secondAllocationEq := Subsingleton.elim _ _
+                        rw [proofEq,
+                          ← SymbolCast.preparedEntries_propositions,
+                          ← SymbolCast.preparedConstraints_packed,
+                          secondEntriesEq, secondConstraintsEq]
+                      have outputPermutation :=
+                        SymbolCast.packedPropositions_perm targetScope
+                          firstAllocationEq generatedPermutation
+                      rw [firstPropositionsEq, secondPropositionsEq]
+                        at outputPermutation
+                      have firstEncodingEq := Encoding.propositions_eq
+                        ({ symbols := firstSymbols,
+                           entries := firstPreparedEntries,
+                           constraints := firstPreparedConstraints } :
+                          PreparedSignature targetScope)
+                      have secondEncodingEq := Encoding.propositions_eq
+                        ({ symbols := firstSymbols,
+                           entries := secondPreparedEntries,
+                           constraints := secondPreparedConstraints } :
+                          PreparedSignature targetScope)
+                      have firstEncodingEq' :
+                          Encoding.Target.Theory.propositions
+                              (Encoding.encode
+                                ({ symbols := firstSymbols,
+                                   entries := firstPreparedEntries,
+                                   constraints := firstPreparedConstraints } :
+                                  PreparedSignature targetScope)).theory =
+                            firstPreparedEntries.flatMap
+                                PreparedEntry.propositions ++
+                              firstPreparedConstraints.map
+                                PreparedConstraint.packed := by
+                        simpa [PreparedSignature.propositions] using
+                          firstEncodingEq
+                      have secondEncodingEq' :
+                          Encoding.Target.Theory.propositions
+                              (Encoding.encode
+                                ({ symbols := firstSymbols,
+                                   entries := secondPreparedEntries,
+                                   constraints := secondPreparedConstraints } :
+                                  PreparedSignature targetScope)).theory =
+                            secondPreparedEntries.flatMap
+                                PreparedEntry.propositions ++
+                              secondPreparedConstraints.map
+                                PreparedConstraint.packed := by
+                        simpa [PreparedSignature.propositions] using
+                          secondEncodingEq
+                      rw [← firstEncodingEq', ← secondEncodingEq']
+                        at outputPermutation
+                      apply PreparedTheoryPermutation.intro
+                      exact outputPermutation
 
-/-- Full source-facing coherence package: normalized constraint-equivalent
-signatures that both prepare successfully induce checked target theory maps in
-both directions. -/
+/-- Full source-facing coherence package: normalized member-equivalent
+signatures with permutation-equivalent mixed constraints that both prepare
+successfully induce checked target theory maps in both directions. -/
 theorem bidirectional_checked_maps_of_constraintEquivalent
     {sourceScope : Preparation.Source.Scope}
     {targetScope : Preparation.Target.Sig}
@@ -1114,6 +1570,7 @@ theorem bidirectional_checked_maps_of_constraintEquivalent
       (Preparation.Source.Expr sourceScope))
     (equivalent :
       DOTCapture.Intersections.Signature.ConstraintEquivalent first second)
+    (mixedEquivalent : first.constraints.Perm second.constraints)
     (firstNormalized : first.Normalized)
     (secondNormalized : second.Normalized)
     {firstPrepared secondPrepared : PreparedSignature targetScope}
@@ -1121,7 +1578,8 @@ theorem bidirectional_checked_maps_of_constraintEquivalent
     (secondSuccess : Preparation.prepare layout second = .ok secondPrepared) :
     PreparedBidirectionalCheckedMaps context firstPrepared secondPrepared :=
   (encoded_theory_permutation_of_constraintEquivalent layout first second
-    equivalent firstNormalized secondNormalized firstSuccess secondSuccess
+    equivalent mixedEquivalent firstNormalized secondNormalized firstSuccess
+    secondSuccess
   ).checked_maps context
 
 end DOTCaptureToManySortedFC.Intersections.ConstraintPermutationCoherence

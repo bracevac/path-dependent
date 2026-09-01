@@ -161,6 +161,29 @@ def substitute {source target : Sig} (path : Path source)
 
 end Path
 
+namespace ClassifierRef
+
+/-- Substitute the stable term root of a classifier reference.  Local
+classifier names remain local to their enclosing interface. -/
+def substitute {source target : Sig} (reference : ClassifierRef source)
+    (substitution : StaticSubst source target) : ClassifierRef target :=
+  match reference with
+  | .member receiver label =>
+      .member (receiver.substitute substitution) label
+  | .localMember label => .localMember label
+
+end ClassifierRef
+
+namespace ClassifierExpr
+
+def substitute {source target : Sig} (classifier : ClassifierExpr source)
+    (substitution : StaticSubst source target) : ClassifierExpr target :=
+  match classifier with
+  | .ground kind => .ground kind
+  | .ref reference => .ref (reference.substitute substitution)
+
+end ClassifierExpr
+
 namespace StaticRef
 
 /-- Substitute a static reference.  Selected references keep their stable
@@ -185,6 +208,9 @@ def Capture.substitute {source target : Sig} (capture : Capture source)
   | .empty => .empty
   | .union left right =>
       .union (left.substitute substitution) (right.substitute substitution)
+  | .project inner classifier =>
+      .project (inner.substitute substitution)
+        (classifier.substitute substitution)
   | .readOnly inner => .readOnly (inner.substitute substitution)
   | .singleton path => .singleton (path.substitute substitution)
   | .ref reference =>
@@ -281,6 +307,15 @@ def Interface.substitute {source target : Sig} (interface : Interface source)
   | .captureMember label lower upper =>
       .captureMember label (lower.substitute substitution)
         (upper.substitute substitution)
+  | .classifierMember label lower upper =>
+      .classifierMember label (lower.substitute substitution)
+        (upper.substitute substitution)
+  | .classifierDisjoint left right =>
+      .classifierDisjoint (left.substitute substitution)
+        (right.substitute substitution)
+  | .captureHasKind capture classifier =>
+      .captureHasKind (capture.substitute substitution)
+        (classifier.substitute substitution)
   | .inter left right =>
       .inter (left.substitute substitution) (right.substitute substitution)
 
@@ -507,6 +542,18 @@ theorem Path.substitute_id {scope : Sig} (path : Path scope) :
   rfl
 
 @[simp]
+theorem ClassifierRef.substitute_id {scope : Sig}
+    (reference : ClassifierRef scope) :
+    reference.substitute StaticSubst.id = reference := by
+  cases reference <;> simp [ClassifierRef.substitute]
+
+@[simp]
+theorem ClassifierExpr.substitute_id {scope : Sig}
+    (classifier : ClassifierExpr scope) :
+    classifier.substitute StaticSubst.id = classifier := by
+  cases classifier <;> simp [ClassifierExpr.substitute]
+
+@[simp]
 theorem StaticRef.substitute_id {scope : Sig} {sort : StaticSort}
     (reference : StaticRef sort scope) :
     reference.substitute StaticSubst.id = reference.asExpression := by
@@ -539,6 +586,9 @@ def Capture.substitute_id {scope : Sig} (capture : Capture scope) :
   | .union left right => by
       simp only [Capture.substitute, Capture.substitute_id left,
         Capture.substitute_id right]
+  | .project inner classifier => by
+      simp only [Capture.substitute, Capture.substitute_id inner,
+        ClassifierExpr.substitute_id classifier]
   | .readOnly inner => by
       simp only [Capture.substitute, Capture.substitute_id inner]
   | .singleton path => by
@@ -650,6 +700,15 @@ def Interface.substitute_id {scope : Sig} (interface : Interface scope) :
   | .captureMember _ lower upper => by
       simp only [Interface.substitute, Capture.substitute_id lower,
         Capture.substitute_id upper]
+  | .classifierMember _ lower upper => by
+      simp only [Interface.substitute, ClassifierExpr.substitute_id lower,
+        ClassifierExpr.substitute_id upper]
+  | .classifierDisjoint left right => by
+      simp only [Interface.substitute, ClassifierExpr.substitute_id left,
+        ClassifierExpr.substitute_id right]
+  | .captureHasKind capture classifier => by
+      simp only [Interface.substitute, Capture.substitute_id capture,
+        ClassifierExpr.substitute_id classifier]
   | .inter left right => by
       simp only [Interface.substitute, Interface.substitute_id left,
         Interface.substitute_id right]

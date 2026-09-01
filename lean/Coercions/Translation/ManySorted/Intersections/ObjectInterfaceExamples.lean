@@ -36,22 +36,26 @@ def preparedMulti? : Option
     (Preparation.emptyLayout []) multiObject).toOption
 
 theorem preparedMulti_isSome : preparedMulti?.isSome = true := by
-  native_decide
+  rfl
 
 theorem preparedMulti_has_four_names :
     preparedMulti?.map (fun object => object.encoding.symbols.length) =
       some 4 := by
-  native_decide
+  rfl
 
 theorem preparedMulti_retains_six_occurrences :
     preparedMulti?.map
       (fun object => object.encoding.openedOccurrences.length) = some 6 := by
-  native_decide
+  rfl
 
 theorem preparedMulti_has_twelve_constraints :
     preparedMulti?.map (fun object => object.encoding.relations.length) =
       some 12 := by
-  native_decide
+  rfl
+
+noncomputable abbrev preparedMulti :
+    ObjectPreparation.PreparedObject ([] : ManySortedFC.Sig) :=
+  preparedMulti?.get preparedMulti_isSome
 
 /-! ## A closed exact model -/
 
@@ -62,6 +66,8 @@ def exactSymbols : (symbols : List ManySortedFC.StaticSort) ->
   | .type :: remaining => .cons (.type .one) (exactSymbols remaining)
   | .capture :: remaining =>
       .cons (.capture .empty) (exactSymbols remaining)
+  | .classifier :: remaining =>
+      .cons (.classifier (.ground .empty)) (exactSymbols remaining)
 
 /-- Reflexivity evidence at the same canonical witnesses.  Generated M11
 theories contain inclusions only. -/
@@ -71,63 +77,61 @@ def exactEvidence : (relations : List Relation) -> EvidenceArgs [] relations
       .cons (.inclusionRefl (.type .one)) (exactEvidence remaining)
   | .inclusion .capture :: remaining =>
       .cons (.inclusionRefl (.capture .empty)) (exactEvidence remaining)
+  | .inclusion .classifier :: remaining =>
+      .cons (.classifierGroundInclusion .empty .empty)
+        (exactEvidence remaining)
   | .equality .type :: remaining =>
       .cons (.equalityRefl (.type .one)) (exactEvidence remaining)
   | .equality .capture :: remaining =>
       .cons (.equalityRefl (.capture .empty)) (exactEvidence remaining)
+  | .equality .classifier :: remaining =>
+      .cons (.classifierGroundEquality .empty .empty)
+        (exactEvidence remaining)
   | .mode mode :: remaining =>
       .cons (.modeEmpty mode) (exactEvidence remaining)
   | .separate :: remaining =>
       .cons (.separateEmpty .empty) (exactEvidence remaining)
   | .disjoint :: remaining =>
       .cons (.disjointEmpty .empty) (exactEvidence remaining)
+  | .classifierDisjoint :: remaining =>
+      .cons (.classifierGroundDisjoint .empty .empty)
+        (exactEvidence remaining)
+  | .captureHasKind :: remaining =>
+      .cons (.captureHasKindEmpty (.ground .empty))
+        (exactEvidence remaining)
+
+/-- The exact witnesses satisfy every retained interval directly.  Building
+this derivation structurally avoids re-evaluating the complete source
+preparation pipeline inside a native decision procedure. -/
+noncomputable def exactModel :
+    Theory.Model Ctx.nil preparedMulti.encoding.theory where
+  symbols := exactSymbols preparedMulti.encoding.symbols
+  evidence := exactEvidence preparedMulti.encoding.relations
+  satisfies := by
+    repeat' constructor
 
 structure CheckedMulti where
   object : ObjectPreparation.PreparedObject ([] : ManySortedFC.Sig)
-  model : Theory.CheckedModel Ctx.nil object.encoding.theory
+  model : Theory.Model Ctx.nil object.encoding.theory
   payloadTyping : Tm.HasType Ctx.nil .unit .empty
-    (object.representation.instantiateStatic model.toModel.symbols)
+    (object.representation.instantiateStatic model.symbols)
   capturesTyping : Evidence.Proves Ctx.nil
     (.inclusionRefl (.capture .empty))
     (.inclusion (.capture .empty) (.capture object.outerCapture))
 
-def checkedMulti? : Option CheckedMulti := do
-  let object <- preparedMulti?
-  let model <- Theory.checkModel Ctx.nil object.encoding.theory
-    (exactSymbols object.encoding.symbols)
-    (exactEvidence object.encoding.relations)
-  if representationIsOne :
-      object.representation.instantiateStatic model.symbols = .one then
-    if outerCaptureIsEmpty : object.outerCapture = .empty then
-      let payloadTyping : Tm.HasType Ctx.nil .unit .empty
-          (object.representation.instantiateStatic model.toModel.symbols) := by
-        change Tm.HasType Ctx.nil .unit .empty
-          (object.representation.instantiateStatic model.symbols)
-        rw [representationIsOne]
-        exact .unit
-      let capturesTyping : Evidence.Proves Ctx.nil
-          (.inclusionRefl (.capture .empty))
-          (.inclusion (.capture .empty) (.capture object.outerCapture)) := by
-        rw [outerCaptureIsEmpty]
-        exact .inclusionRefl (.capture .empty)
-      pure { object, model, payloadTyping, capturesTyping }
-    else
-      none
-  else
-    none
-
-theorem checkedMulti_isSome : checkedMulti?.isSome = true := by
-  native_decide
-
-noncomputable abbrev checkedMulti : CheckedMulti :=
-  checkedMulti?.get checkedMulti_isSome
+noncomputable def checkedMulti : CheckedMulti where
+  object := preparedMulti
+  model := exactModel
+  payloadTyping := by
+    exact .unit
+  capturesTyping := .inclusionRefl (.capture .empty)
 
 set_option maxHeartbeats 4000000 in
 set_option maxRecDepth 10000 in
 noncomputable abbrev multiLiteral :
     ObjectInterface.Literal Ctx.nil checkedMulti.object.encoding.theory
       checkedMulti.object.representation checkedMulti.object.outerCapture where
-  model := checkedMulti.model.toModel
+  model := checkedMulti.model
   payload := .unit
   payloadValue := .unit
   payloadTyping := checkedMulti.payloadTyping

@@ -53,6 +53,7 @@ def member {scope : Sig} {sort : StaticSort}
   match sort with
   | .type => .type component.label .here
   | .capture => .capture component.label .here
+  | .classifier => .classifier component.label .here
 
 end Component
 
@@ -76,6 +77,7 @@ private def occurrenceSymbol {scope : Sig} {symbols : List StaticSort}
       StaticExpr occurrence.sort (StaticScope scope symbols relations)
   | .type _ name _ _ _ _ => .type (.tvar name)
   | .capture _ name _ _ _ _ => .capture (.cvar name)
+  | .classifier _ name _ _ _ _ => .classifier (.var name)
 
 def symbol {scope : Sig} {encoding : Encoding scope}
     (selected : SelectedOccurrence encoding) :

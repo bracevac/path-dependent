@@ -50,6 +50,11 @@ theorem symbol_substitute {source target : Sig} {sort : StaticSort}
       | capture capture =>
           simp [StaticExpr.symbol, StaticExpr.substitute,
             Capture.substitute, result]
+  | classifier =>
+      cases result : substitution.symbolVar index with
+      | classifier classifier =>
+          simp [StaticExpr.symbol, StaticExpr.substitute,
+            ClassifierExpr.substitute, result]
 
 def capturePart {scope : Sig} (expression : StaticExpr .capture scope) :
     Capture scope :=
@@ -328,9 +333,31 @@ def capture_square {upperLeft upperRight lowerLeft lowerRight : Sig}
               simpa [Capture.substitute, Capture.rename,
                 StaticExpr.rename, upperResult, lowerResult] using
                 symbolEquality
-  | .project capture _ => by
+  | .project capture kind => by
       simp only [Capture.substitute, Capture.rename,
-        capture_square capture square]
+        capture_square capture square, classifier_square kind square]
+
+/-- A commuting variable square extends to scoped classifier expressions. -/
+def classifier_square {upperLeft upperRight lowerLeft lowerRight : Sig}
+    (classifier : ClassifierExpr upperLeft)
+    {upper : StaticSubst upperLeft upperRight}
+    {left : Rename upperLeft lowerLeft}
+    {right : Rename upperRight lowerRight}
+    {lower : StaticSubst lowerLeft lowerRight}
+    (square : Square upper left right lower) :
+    (classifier.substitute upper).rename right =
+      (classifier.rename left).substitute lower :=
+  match classifier with
+  | .ground kind => rfl
+  | .var name => by
+      have symbolEquality := square.symbol name
+      cases upperResult : upper.symbolVar name with
+      | classifier upperClassifier =>
+          cases lowerResult : lower.symbolVar (left.var name) with
+          | classifier lowerClassifier =>
+              simpa [ClassifierExpr.substitute, ClassifierExpr.rename,
+                StaticExpr.rename, upperResult, lowerResult] using
+                  symbolEquality
 
 /-- A commuting variable square extends pointwise to the captures that
 generate a modal separation context. -/
@@ -463,6 +490,9 @@ def expression_square {upperLeft upperRight lowerLeft lowerRight : Sig}
   | .capture capture => by
       simp only [StaticExpr.substitute, StaticExpr.rename,
         capture_square capture square]
+  | .classifier classifier => by
+      simp only [StaticExpr.substitute, StaticExpr.rename,
+        classifier_square classifier square]
 
 /-- A commuting variable square extends to target propositions. -/
 def proposition_square {upperLeft upperRight lowerLeft lowerRight : Sig}
@@ -490,6 +520,12 @@ def proposition_square {upperLeft upperRight lowerLeft lowerRight : Sig}
   | .mode capture => by
       simp only [Proposition.substitute, Proposition.rename,
         capture_square capture square]
+  | .classifierDisjoint first second => by
+      simp only [Proposition.substitute, Proposition.rename,
+        classifier_square first square, classifier_square second square]
+  | .captureHasKind capture classifier => by
+      simp only [Proposition.substitute, Proposition.rename,
+        capture_square capture square, classifier_square classifier square]
 
 /-- A commuting variable square extends to target theories, including their
 names-first proposition scopes. -/

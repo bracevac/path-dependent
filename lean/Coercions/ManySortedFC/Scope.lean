@@ -1,7 +1,7 @@
 /-!
 # Intrinsically scoped variables for the many-sorted coercion calculus
 
-The static language starts with two sorts: types and captures.  Equality and
+The static language has three sorts: types, captures, and classifier kinds.  Equality and
 directed inclusion evidence retain the sort of the proposition they witness,
 so a type constraint can never be confused with a capture constraint.
 
@@ -12,10 +12,15 @@ it has no dependency on FCsub, DOT, or a source-language translation.
 
 namespace ManySortedFC
 
-/-- The static sorts supported by the initial many-sorted calculus. -/
+/-- The static sorts supported by the many-sorted calculus.
+
+The classifier sort ranges over `Classifier.Kind` once the static syntax is
+installed.  Keeping the sort tag here independent of that carrier preserves
+the standalone heterogeneous-scope layer. -/
 inductive StaticSort : Type where
   | type
   | capture
+  | classifier
 deriving DecidableEq, Repr
 
 /-- Access modes used by capture propositions.  This is deliberately smaller
@@ -29,14 +34,17 @@ deriving DecidableEq, Repr
 /-- The proof-only logical relations tracked by erased evidence binders.
 
 Equality and inclusion retain their static sort.  Separation, disjointness,
-and mode propositions are capture-specific predicates; they do not add new
-bindable static sorts. -/
+and mode propositions are capture-specific predicates.  Classifier
+disjointness and capture-kind membership are kept distinct from capture
+disjointness and the homogeneous ordered relations. -/
 inductive Relation : Type where
   | equality (sort : StaticSort)
   | inclusion (sort : StaticSort)
   | separate
   | disjoint
   | mode (mode : CaptureMode)
+  | classifierDisjoint
+  | captureHasKind
 deriving DecidableEq, Repr
 
 namespace Relation
@@ -49,6 +57,8 @@ def argumentSorts : Relation -> List StaticSort
   | .separate => [.capture, .capture]
   | .disjoint => [.capture, .capture]
   | .mode _ => [.capture]
+  | .classifierDisjoint => [.classifier, .classifier]
+  | .captureHasKind => [.capture, .classifier]
 
 end Relation
 

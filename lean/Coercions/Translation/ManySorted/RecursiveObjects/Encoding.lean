@@ -131,6 +131,7 @@ private def findTypeLabel? {scope : Target.Sig}
   | .type label candidate _ :: remaining =>
       if candidate = name then some label else findTypeLabel? name remaining
   | .capture _ _ _ :: remaining => findTypeLabel? name remaining
+  | .classifier _ _ _ :: remaining => findTypeLabel? name remaining
 
 private def findCaptureLabel? {scope : Target.Sig}
     (name : Target.BVar scope (.symbol .capture)) :
@@ -140,10 +141,23 @@ private def findCaptureLabel? {scope : Target.Sig}
       if candidate = name then some label
       else findCaptureLabel? name remaining
   | .type _ _ _ :: remaining => findCaptureLabel? name remaining
+  | .classifier _ _ _ :: remaining => findCaptureLabel? name remaining
+
+private def findClassifierLabel? {scope : Target.Sig}
+    (name : Target.BVar scope (.symbol .classifier)) :
+    List (PreparedEntry scope) -> Option Source.Label
+  | [] => none
+  | .classifier label candidate _ :: remaining =>
+      if candidate = name then some label
+      else findClassifierLabel? name remaining
+  | .type _ _ _ :: remaining => findClassifierLabel? name remaining
+  | .capture _ _ _ :: remaining => findClassifierLabel? name remaining
 
 /-- Walk the normalized public symbol spine.  Type entries select the
 recursive projection assigned to their source label; capture entries compile
-the corresponding explicit ambient witness. -/
+the corresponding explicit ambient witness.  The historical recursive source
+has no classifier model, so an unexpected classifier allocation is rejected
+after its renamed label is resolved. -/
 def compileMemberSymbolsFrom {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
     (layout : ModalIntersections.Layout sourceScope targetScope)
@@ -194,6 +208,15 @@ def compileMemberSymbolsFrom {sourceScope : Source.Sig}
           (scope := ManySortedFC.SymbolScope targetScope remaining)
           (kind := .symbol .capture)).comp rho)
       pure (.cons (.capture witness) older)
+  | .classifier :: remaining, rho => do
+      let name := rho.var
+        (.here : Target.BVar
+          (ManySortedFC.SymbolScope targetScope (.classifier :: remaining))
+          (.symbol .classifier))
+      let label <- match findClassifierLabel? name entries with
+        | some label => .ok label
+        | none => .error (.memberAllocationMismatch 0)
+      .error (.memberAllocationMismatch label)
 
 /-- Compile the public member portion of one cumulative object model. -/
 def compileMemberSymbols {sourceScope : Source.Sig}
@@ -269,6 +292,7 @@ private def findTypeNameByLabel? {scope : Target.Sig}
       if candidate = label then some candidateName
       else findTypeNameByLabel? label remaining
   | .capture _ _ _ :: remaining => findTypeNameByLabel? label remaining
+  | .classifier _ _ _ :: remaining => findTypeNameByLabel? label remaining
 
 private def findCaptureNameByLabel? {scope : Target.Sig}
     (label : Source.Label) : List (PreparedEntry scope) ->
@@ -278,6 +302,7 @@ private def findCaptureNameByLabel? {scope : Target.Sig}
       if candidate = label then some candidateName
       else findCaptureNameByLabel? label remaining
   | .type _ _ _ :: remaining => findCaptureNameByLabel? label remaining
+  | .classifier _ _ _ :: remaining => findCaptureNameByLabel? label remaining
 
 /-- Witness assigned to one normalized public type label after instantiating
 the member-only model. -/

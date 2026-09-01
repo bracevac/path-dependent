@@ -31,6 +31,40 @@ theorem weaken_rename {source target : Sig} {kind : BinderKind}
 
 end Path
 
+namespace ClassifierRef
+
+@[simp]
+theorem rename_id {scope : Sig} (reference : ClassifierRef scope) :
+    reference.rename DOTCapture.BinderOnly.Rename.id = reference := by
+  cases reference <;> simp [rename]
+
+@[simp]
+theorem rename_comp {first second third : Sig}
+    (reference : ClassifierRef first) (rho₁ : Rename first second)
+    (rho₂ : Rename second third) :
+    (reference.rename rho₁).rename rho₂ =
+      reference.rename (rho₁.comp rho₂) := by
+  cases reference <;> simp [rename]
+
+end ClassifierRef
+
+namespace ClassifierExpr
+
+@[simp]
+theorem rename_id {scope : Sig} (classifier : ClassifierExpr scope) :
+    classifier.rename DOTCapture.BinderOnly.Rename.id = classifier := by
+  cases classifier <;> simp [rename]
+
+@[simp]
+theorem rename_comp {first second third : Sig}
+    (classifier : ClassifierExpr first) (rho₁ : Rename first second)
+    (rho₂ : Rename second third) :
+    (classifier.rename rho₁).rename rho₂ =
+      classifier.rename (rho₁.comp rho₂) := by
+  cases classifier <;> simp [rename]
+
+end ClassifierExpr
+
 namespace StaticRef
 
 @[simp]
@@ -70,6 +104,9 @@ def Capture.rename_id {scope : Sig} (capture : Capture scope) :
   | .union left right => by
       simp only [Capture.rename, Capture.rename_id left,
         Capture.rename_id right]
+  | .project capture classifier => by
+      simp only [Capture.rename, Capture.rename_id capture,
+        ClassifierExpr.rename_id classifier]
   | .readOnly captures => by
       simp only [Capture.rename, Capture.rename_id captures]
   | .singleton path => by
@@ -173,6 +210,15 @@ def Interface.rename_id {scope : Sig} (interface : Interface scope) :
   | .captureMember _ lower upper => by
       simp only [Interface.rename, Capture.rename_id lower,
         Capture.rename_id upper]
+  | .classifierMember _ lower upper => by
+      simp only [Interface.rename, ClassifierExpr.rename_id lower,
+        ClassifierExpr.rename_id upper]
+  | .classifierDisjoint left right => by
+      simp only [Interface.rename, ClassifierExpr.rename_id left,
+        ClassifierExpr.rename_id right]
+  | .captureHasKind capture classifier => by
+      simp only [Interface.rename, Capture.rename_id capture,
+        ClassifierExpr.rename_id classifier]
   | .inter left right => by
       simp only [Interface.rename, Interface.rename_id left,
         Interface.rename_id right]
@@ -204,6 +250,9 @@ def Capture.rename_comp {first second third : Sig}
   | .union left right => by
       simp only [Capture.rename, Capture.rename_comp left,
         Capture.rename_comp right]
+  | .project capture classifier => by
+      simp only [Capture.rename, Capture.rename_comp capture,
+        ClassifierExpr.rename_comp classifier]
   | .readOnly captures => by
       simp only [Capture.rename, Capture.rename_comp captures]
   | .singleton path => by
@@ -326,6 +375,15 @@ def Interface.rename_comp {first second third : Sig}
   | .captureMember _ lower upper => by
       simp only [Interface.rename, Capture.rename_comp lower,
         Capture.rename_comp upper]
+  | .classifierMember _ lower upper => by
+      simp only [Interface.rename, ClassifierExpr.rename_comp lower,
+        ClassifierExpr.rename_comp upper]
+  | .classifierDisjoint left right => by
+      simp only [Interface.rename, ClassifierExpr.rename_comp left,
+        ClassifierExpr.rename_comp right]
+  | .captureHasKind capture classifier => by
+      simp only [Interface.rename, Capture.rename_comp capture,
+        ClassifierExpr.rename_comp classifier]
   | .inter left right => by
       simp only [Interface.rename, Interface.rename_comp left,
         Interface.rename_comp right]

@@ -19,17 +19,56 @@ export DOTCaptureToManySortedFC.Classifiers.Source
 
 end Source
 
+/-- Collapse a surface filter chain through caller-supplied base and
+projection constructors.  An unfiltered base is translated directly; every
+nonempty `.only`/`.except` chain invokes `project` exactly once with the
+chain's root and computed ground kind. -/
+def lowerWith {Base Target : Type} (translateBase : Base -> Target)
+    (project : Target -> ManySortedFC.Classifier.Kind -> Target) :
+    Source.ProjectedCapture Base -> Target
+  | .base source => translateBase source
+  | projected@(.only preceding _) =>
+      project (translateBase preceding.root) projected.kind
+  | projected@(.except preceding _) =>
+      project (translateBase preceding.root) projected.kind
+
+@[simp]
+theorem lowerWith_base {Base Target : Type} (translateBase : Base -> Target)
+    (project : Target -> ManySortedFC.Classifier.Kind -> Target)
+    (source : Base) :
+    lowerWith translateBase project (.base source) = translateBase source :=
+  rfl
+
+@[simp]
+theorem lowerWith_only {Base Target : Type} (translateBase : Base -> Target)
+    (project : Target -> ManySortedFC.Classifier.Kind -> Target)
+    (preceding : Source.ProjectedCapture Base)
+    (classifier : Source.Classifier) :
+    lowerWith translateBase project (preceding.only classifier) =
+      project (translateBase preceding.root)
+        (ManySortedFC.Classifier.Kind.intersect preceding.kind
+          (ManySortedFC.Classifier.Kind.classifier classifier)) := by
+  simp [lowerWith]
+
+@[simp]
+theorem lowerWith_except {Base Target : Type}
+    (translateBase : Base -> Target)
+    (project : Target -> ManySortedFC.Classifier.Kind -> Target)
+    (preceding : Source.ProjectedCapture Base)
+    (classifier : Source.Classifier) :
+    lowerWith translateBase project (preceding.except classifier) =
+      project (translateBase preceding.root)
+        (ManySortedFC.Classifier.Kind.subtract preceding.kind
+          (ManySortedFC.Classifier.Kind.classifier classifier)) := by
+  simp [lowerWith]
+
 /-- Lower a source capture chain using the caller's translation for its
 unfiltered base.  A plain capture remains plain; every actual filter chain is
 collapsed to exactly one target projection. -/
 def capture {Base : Type} {targetScope : ManySortedFC.Sig}
     (translateBase : Base -> ManySortedFC.Capture targetScope) :
-    Source.ProjectedCapture Base -> ManySortedFC.Capture targetScope
-  | .base source => translateBase source
-  | projected@(.only preceding _) =>
-      .project (translateBase preceding.root) projected.kind
-  | projected@(.except preceding _) =>
-      .project (translateBase preceding.root) projected.kind
+    Source.ProjectedCapture Base -> ManySortedFC.Capture targetScope :=
+  lowerWith translateBase fun base kind => .project base (.ground kind)
 
 @[simp]
 theorem capture_base {Base : Type} {targetScope : ManySortedFC.Sig}

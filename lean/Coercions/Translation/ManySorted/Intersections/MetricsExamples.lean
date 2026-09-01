@@ -17,6 +17,7 @@ def expectedMultiMemberReport : Metrics.StaticMetrics :=
   { rawDeclarationOccurrences := 6
     normalizedAllocatedNames := 4
     retainedIntervals := 6
+    retainedMixedConstraints := 0
     emittedConstraints := 12
     runtimePayloads := 1 }
 
@@ -40,7 +41,8 @@ theorem multi_member_has_four_names_six_occurrences_twelve_constraints_one_paylo
 
 theorem multi_member_constraint_formula :
     expectedMultiMemberReport.emittedConstraints =
-      2 * expectedMultiMemberReport.retainedIntervals := by
+      2 * expectedMultiMemberReport.retainedIntervals +
+        expectedMultiMemberReport.retainedMixedConstraints := by
   decide
 
 end DOTCaptureToManySortedFC.Intersections.MetricsExamples

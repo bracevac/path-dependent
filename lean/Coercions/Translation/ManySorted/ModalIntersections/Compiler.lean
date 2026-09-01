@@ -345,6 +345,15 @@ def ambientCompiler {sourceScope : Source.Sig}
   compile := fun proof =>
     (compileIncludes? context.compiler.leaves proof).map
       (fun compiled => compiled.evidence)
+  compileClassifier := fun proof =>
+    (compileClassifierIncludes? context.core proof).map
+      (fun compiled => compiled.evidence)
+  compileClassifierDisjoint := fun proof =>
+    (compileClassifiersDisjoint? context.core proof).map
+      (fun compiled => compiled.evidence)
+  compileCaptureHasKind := fun proof =>
+    (compileCaptureHasKind? context.core proof).map
+      (fun compiled => compiled.evidence)
 
 /-- Weaken the cumulative ambient source evidence below one complete
 contracted object theory.  The object relations are not added to the source
@@ -358,6 +367,21 @@ def contractedOpenedAmbientCompiler {sourceScope : Source.Sig}
     ContractedOpenedAmbientCompiler context.core prepared.object where
   compile := fun proof =>
     (compileIncludes? context.compiler.leaves proof).map fun compiled =>
+      compiled.evidence.rename
+        (ManySortedFC.Rename.weakenStatic prepared.object.symbols
+          prepared.object.relations)
+  compileClassifier := fun proof =>
+    (compileClassifierIncludes? context.core proof).map fun compiled =>
+      compiled.evidence.rename
+        (ManySortedFC.Rename.weakenStatic prepared.object.symbols
+          prepared.object.relations)
+  compileClassifierDisjoint := fun proof =>
+    (compileClassifiersDisjoint? context.core proof).map fun compiled =>
+      compiled.evidence.rename
+        (ManySortedFC.Rename.weakenStatic prepared.object.symbols
+          prepared.object.relations)
+  compileCaptureHasKind := fun proof =>
+    (compileCaptureHasKind? context.core proof).map fun compiled =>
       compiled.evidence.rename
         (ManySortedFC.Rename.weakenStatic prepared.object.symbols
           prepared.object.relations)
@@ -1031,7 +1055,16 @@ private def realizesAtPathWithin {scope : Source.Sig}
         object.interface.HasTypeOccurrence label lower upper)
     (captureInObject : forall {label lower upper},
       current.HasCaptureOccurrence label lower upper ->
-        object.interface.HasCaptureOccurrence label lower upper) :
+        object.interface.HasCaptureOccurrence label lower upper)
+    (classifierInObject : forall {label lower upper},
+      current.HasClassifierOccurrence label lower upper ->
+        object.interface.HasClassifierOccurrence label lower upper)
+    (classifierDisjointInObject : forall {left right},
+      current.HasClassifierDisjointOccurrence left right ->
+        object.interface.HasClassifierDisjointOccurrence left right)
+    (captureKindInObject : forall {capture classifier},
+      current.HasCaptureKindOccurrence capture classifier ->
+        object.interface.HasCaptureKindOccurrence capture classifier) :
     DOTCapture.ModalIntersections.Interface.Realizes context
       (DOTCapture.ModalIntersections.LocalModel.atPath receiver) current := by
   cases current with
@@ -1060,14 +1093,46 @@ private def realizesAtPathWithin {scope : Source.Sig}
             (DOTCapture.ModalIntersections.HasUpper.captureMember exposes
               (captureInObject
                 DOTCapture.ModalIntersections.Interface.HasCaptureOccurrence.here)))
+  | classifierMember label lower upper =>
+      exact .classifierMember
+        (by
+          simpa using DOTCapture.ModalIntersections.ClassifierIncludes.lower
+            exposes
+            (classifierInObject
+              DOTCapture.ModalIntersections.Interface.HasClassifierOccurrence.here))
+        (by
+          simpa using DOTCapture.ModalIntersections.ClassifierIncludes.upper
+            exposes
+            (classifierInObject
+              DOTCapture.ModalIntersections.Interface.HasClassifierOccurrence.here))
+  | classifierDisjoint left right =>
+      exact .classifierDisjoint
+        (by
+          simpa using DOTCapture.ModalIntersections.ClassifiersDisjoint.member
+            exposes
+            (classifierDisjointInObject
+              DOTCapture.ModalIntersections.Interface.HasClassifierDisjointOccurrence.here))
+  | captureHasKind capture classifier =>
+      exact .captureHasKind
+        (by
+          simpa using DOTCapture.ModalIntersections.CaptureHasKind.member
+            exposes
+            (captureKindInObject
+              DOTCapture.ModalIntersections.Interface.HasCaptureKindOccurrence.here))
   | inter left right =>
       exact .inter
         (realizesAtPathWithin exposes left
           (fun occurrence => typeInObject (.left occurrence))
-          (fun occurrence => captureInObject (.left occurrence)))
+          (fun occurrence => captureInObject (.left occurrence))
+          (fun occurrence => classifierInObject (.left occurrence))
+          (fun occurrence => classifierDisjointInObject (.left occurrence))
+          (fun occurrence => captureKindInObject (.left occurrence)))
         (realizesAtPathWithin exposes right
           (fun occurrence => typeInObject (.right occurrence))
-          (fun occurrence => captureInObject (.right occurrence)))
+          (fun occurrence => captureInObject (.right occurrence))
+          (fun occurrence => classifierInObject (.right occurrence))
+          (fun occurrence => classifierDisjointInObject (.right occurrence))
+          (fun occurrence => captureKindInObject (.right occurrence)))
 
 /-- Reify the source local theory already exported by a stable path. -/
 private def realizationAtPath {scope : Source.Sig}
@@ -1080,6 +1145,8 @@ private def realizationAtPath {scope : Source.Sig}
   model := DOTCapture.ModalIntersections.LocalModel.atPath receiver
   constraints := realizesAtPathWithin exposes object.interface
     (fun occurrence => occurrence) (fun occurrence => occurrence)
+    (fun occurrence => occurrence) (fun occurrence => occurrence)
+    (fun occurrence => occurrence)
 
 /-- A declared captured negative-consumer variable is already stored at its
 contracted target type.  Reconstruct its declared view directly from the

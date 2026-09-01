@@ -39,10 +39,15 @@ def evidenceDepth {scope : Sig} {relation : Relation} :
   | .equalityCaptureUnion left right =>
       1 + max (evidenceDepth left) (evidenceDepth right)
   | .equalityCaptureReadOnly inner => 1 + evidenceDepth inner
+  | .classifierGroundEquality _ _ => 1
+  | .equalityCaptureProjectScoped capture classifier =>
+      1 + max (evidenceDepth capture) (evidenceDepth classifier)
   | .equalityCaptureProject inner _ _ => 1 + evidenceDepth inner
   | .equalityCaptureProjectTop _ => 1
   | .equalityCaptureProjectCompose _ _ _ => 1
   | .equalityCaptureProjectEmpty _ _ => 1
+  | .equalityCaptureProjectComplete membership =>
+      1 + evidenceDepth membership
   | .inclusionRefl _ => 1
   | .inclusionTrans first second =>
       1 + max (evidenceDepth first) (evidenceDepth second)
@@ -53,6 +58,9 @@ def evidenceDepth {scope : Sig} {relation : Relation} :
       1 + max (evidenceDepth domain) (evidenceDepth codomain)
   | .typeCapturing captures shape =>
       1 + max (evidenceDepth captures) (evidenceDepth shape)
+  | .classifierGroundInclusion _ _ => 1
+  | .classifierExclude _ _ _ allowed excluded =>
+      1 + max (evidenceDepth allowed) (evidenceDepth excluded)
   | .captureEmpty _ => 1
   | .captureUnionLeft _ _ => 1
   | .captureUnionRight _ _ => 1
@@ -62,7 +70,10 @@ def evidenceDepth {scope : Sig} {relation : Relation} :
   | .captureReadOnly _ => 1
   | .captureReadOnlyMono subcapture => 1 + evidenceDepth subcapture
   | .captureProjectSource _ _ => 1
+  | .captureProjectSourceScoped _ _ => 1
   | .captureProjectMono subcapture _ _ => 1 + evidenceDepth subcapture
+  | .captureProjectMonoScoped subcapture classifier =>
+      1 + max (evidenceDepth subcapture) (evidenceDepth classifier)
   | .captureProjectMerge _ _ _ => 1
   | .modeEmpty _ => 1
   | .modeUnion left right =>
@@ -87,6 +98,18 @@ def evidenceDepth {scope : Sig} {relation : Relation} :
   | .disjointEquality equality disjoint =>
       1 + max (evidenceDepth equality) (evidenceDepth disjoint)
   | .disjointCaptureProject _ _ _ _ => 1
+  | .classifierGroundDisjoint _ _ => 1
+  | .classifierDisjointSymm inner => 1 + evidenceDepth inner
+  | .disjointCaptureProjectScoped _ _ classifiers =>
+      1 + evidenceDepth classifiers
+  | .captureHasKindEmpty _ => 1
+  | .captureHasKindUnion left right =>
+      1 + max (evidenceDepth left) (evidenceDepth right)
+  | .captureHasKindProject _ _ => 1
+  | .captureHasKindSubcapture subcapture membership =>
+      1 + max (evidenceDepth subcapture) (evidenceDepth membership)
+  | .captureHasKindWiden membership classifier =>
+      1 + max (evidenceDepth membership) (evidenceDepth classifier)
 
 /-- Before/after measurements for one certificate that crossed both evidence
 checker boundaries.  Existence of this record is itself the acceptance flag. -/

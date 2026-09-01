@@ -168,6 +168,11 @@ def substitute {source target : Sig} {relation : Relation}
         (right.substitute substitution)
   | .equalityCaptureReadOnly capture =>
       .equalityCaptureReadOnly (capture.substitute substitution)
+  | .classifierGroundEquality left right =>
+      .classifierGroundEquality left right
+  | .equalityCaptureProjectScoped capture classifier =>
+      .equalityCaptureProjectScoped (capture.substitute substitution)
+        (classifier.substitute substitution)
   | .equalityCaptureProject equality sourceKind targetKind =>
       .equalityCaptureProject (equality.substitute substitution)
         sourceKind targetKind
@@ -179,6 +184,8 @@ def substitute {source target : Sig} {relation : Relation}
   | .equalityCaptureProjectEmpty capture kind =>
       .equalityCaptureProjectEmpty
         (capture.substitute substitution.static) kind
+  | .equalityCaptureProjectComplete membership =>
+      .equalityCaptureProjectComplete (membership.substitute substitution)
   | .inclusionRefl expression =>
       .inclusionRefl (expression.substitute substitution.static)
   | .inclusionTrans first second =>
@@ -196,6 +203,12 @@ def substitute {source target : Sig} {relation : Relation}
   | .typeCapturing captures shape =>
       .typeCapturing (captures.substitute substitution)
         (shape.substitute substitution)
+  | .classifierGroundInclusion lower upper =>
+      .classifierGroundInclusion lower upper
+  | .classifierExclude kind allowedKind excludedKind allowed excluded =>
+      .classifierExclude (kind.substitute substitution.static)
+        allowedKind excludedKind (allowed.substitute substitution)
+        (excluded.substitute substitution)
   | .captureEmpty targetCapture =>
       .captureEmpty (targetCapture.substitute substitution.static)
   | .captureUnionLeft left right =>
@@ -215,9 +228,15 @@ def substitute {source target : Sig} {relation : Relation}
       .captureReadOnlyMono (subcapture.substitute substitution)
   | .captureProjectSource capture kind =>
       .captureProjectSource (capture.substitute substitution.static) kind
+  | .captureProjectSourceScoped capture kind =>
+      .captureProjectSourceScoped (capture.substitute substitution.static)
+        (kind.substitute substitution.static)
   | .captureProjectMono subcapture sourceKind targetKind =>
       .captureProjectMono (subcapture.substitute substitution)
         sourceKind targetKind
+  | .captureProjectMonoScoped subcapture subclassifier =>
+      .captureProjectMonoScoped (subcapture.substitute substitution)
+        (subclassifier.substitute substitution)
   | .captureProjectMerge capture leftKind rightKind =>
       .captureProjectMerge (capture.substitute substitution.static)
         leftKind rightKind
@@ -260,6 +279,29 @@ def substitute {source target : Sig} {relation : Relation}
       .disjointCaptureProject
         (leftCapture.substitute substitution.static) leftKind
         (rightCapture.substitute substitution.static) rightKind
+  | .classifierGroundDisjoint left right =>
+      .classifierGroundDisjoint left right
+  | .classifierDisjointSymm evidence =>
+      .classifierDisjointSymm (evidence.substitute substitution)
+  | .disjointCaptureProjectScoped leftCapture rightCapture classifiers =>
+      .disjointCaptureProjectScoped
+        (leftCapture.substitute substitution.static)
+        (rightCapture.substitute substitution.static)
+        (classifiers.substitute substitution)
+  | .captureHasKindEmpty kind =>
+      .captureHasKindEmpty (kind.substitute substitution.static)
+  | .captureHasKindUnion left right =>
+      .captureHasKindUnion (left.substitute substitution)
+        (right.substitute substitution)
+  | .captureHasKindProject capture kind =>
+      .captureHasKindProject (capture.substitute substitution.static)
+        (kind.substitute substitution.static)
+  | .captureHasKindSubcapture subcapture upper =>
+      .captureHasKindSubcapture (subcapture.substitute substitution)
+        (upper.substitute substitution)
+  | .captureHasKindWiden membership subclassifier =>
+      .captureHasKindWiden (membership.substitute substitution)
+        (subclassifier.substitute substitution)
 
 end Evidence
 
