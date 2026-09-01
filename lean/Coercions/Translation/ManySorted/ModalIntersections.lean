@@ -1,5 +1,6 @@
 import Coercions.Translation.ManySorted.ModalIntersections.Layout
 import Coercions.Translation.ManySorted.ModalIntersections.Preparation
+import Coercions.Translation.ManySorted.ModalIntersections.PreparationMetatheory
 import Coercions.Translation.ManySorted.ModalIntersections.PreparationExamples
 import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenance
 import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenanceExamples
