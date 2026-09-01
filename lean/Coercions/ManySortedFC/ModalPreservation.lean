@@ -779,7 +779,7 @@ theorem sequence_substitute_structural {source target : Sig}
       obtain ⟨targetIndex, equality⟩ := structural.symbolVar index
       simp [Capture.sequence, Capture.substitute, equality,
         StaticExpr.symbol]
-  | empty | union | readOnly | singleton => rfl
+  | empty | union | readOnly | singleton | project => rfl
 
 end Capture
 

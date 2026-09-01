@@ -1,4 +1,5 @@
 import Coercions.ManySortedFC.Evidence
+import Coercions.ManySortedFC.Classifier.Semantics
 
 /-!
 # A Boolean consistency model for logical evidence
@@ -19,6 +20,9 @@ structure BoolValuation (scope : Sig) where
   term : BVar scope .term -> Bool
   typeSymbol : BVar scope (.symbol .type) -> Bool
   captureSymbol : BVar scope (.symbol .capture) -> Bool
+  /-- Classifier of the single semantic capability observed by this
+  two-point valuation. -/
+  classifier : Classifier
 
 namespace BoolSemantics
 
@@ -87,6 +91,123 @@ def eval {scope : Sig} (valuation : BoolValuation scope) :
   | .readOnly capture => capture.eval valuation
   | .singleton capability => valuation.term capability
   | .cvar name => valuation.captureSymbol name
+  | .project capture kind =>
+      if Classifier.Kind.Contains kind valuation.classifier then
+        capture.eval valuation
+      else
+        false
+
+theorem eval_project_equivalent {scope : Sig}
+    (valuation : BoolValuation scope) {left right : Capture scope}
+    {leftKind rightKind : Classifier.Kind}
+    (captureEquality : left.eval valuation = right.eval valuation)
+    (kindEquivalent : Classifier.Kind.Equivalent leftKind rightKind) :
+    (Capture.project left leftKind).eval valuation =
+      (Capture.project right rightKind).eval valuation := by
+  by_cases inLeft : Classifier.Kind.Contains leftKind valuation.classifier
+  · have inRight := kindEquivalent.1.contains inLeft
+    simp only [eval, if_pos inLeft, if_pos inRight]
+    exact captureEquality
+  · have notInRight : ¬ Classifier.Kind.Contains rightKind
+        valuation.classifier := by
+      intro inRight
+      exact inLeft (kindEquivalent.2.contains inRight)
+    simp only [eval, if_neg inLeft, if_neg notInRight]
+
+theorem eval_project_top {scope : Sig} (valuation : BoolValuation scope)
+    (capture : Capture scope) :
+    (Capture.project capture Classifier.Kind.top).eval valuation =
+      capture.eval valuation := by
+  simp only [eval, if_pos (Classifier.Kind.Contains.top
+    (item := valuation.classifier))]
+
+theorem eval_project_compose {scope : Sig} (valuation : BoolValuation scope)
+    (capture : Capture scope) (innerKind outerKind : Classifier.Kind) :
+    (Capture.project (Capture.project capture innerKind) outerKind).eval
+        valuation =
+      (Capture.project capture (outerKind.intersect innerKind)).eval
+        valuation := by
+  by_cases inOuter : Classifier.Kind.Contains outerKind valuation.classifier
+  · by_cases inInner : Classifier.Kind.Contains innerKind
+        valuation.classifier
+    · have inBoth : Classifier.Kind.Contains
+          (outerKind.intersect innerKind) valuation.classifier :=
+        Classifier.Kind.Contains.intersect.mpr ⟨inOuter, inInner⟩
+      simp only [eval, if_pos inOuter, if_pos inInner, if_pos inBoth]
+    · have notInBoth : ¬ Classifier.Kind.Contains
+          (outerKind.intersect innerKind) valuation.classifier := by
+        intro inBoth
+        exact inInner (Classifier.Kind.Contains.intersect.mp inBoth).2
+      simp only [eval, if_pos inOuter, if_neg inInner, if_neg notInBoth]
+  · have notInBoth : ¬ Classifier.Kind.Contains
+        (outerKind.intersect innerKind) valuation.classifier := by
+      intro inBoth
+      exact inOuter (Classifier.Kind.Contains.intersect.mp inBoth).1
+    simp only [eval, if_neg inOuter, if_neg notInBoth]
+
+theorem eval_project_empty {scope : Sig} (valuation : BoolValuation scope)
+    (capture : Capture scope) {kind : Classifier.Kind}
+    (emptyKind : Classifier.Kind.IsEmpty kind) :
+    (Capture.project capture kind).eval valuation =
+      (Capture.empty : Capture scope).eval valuation := by
+  have absent : ¬ Classifier.Kind.Contains kind valuation.classifier :=
+    fun contained => emptyKind.not_contains contained
+  simp only [eval, if_neg absent]
+
+theorem eval_project_source_le {scope : Sig}
+    (valuation : BoolValuation scope) (capture : Capture scope)
+    (kind : Classifier.Kind) :
+    BoolSemantics.LE (Capture.eval valuation (.project capture kind))
+      (capture.eval valuation) := by
+  by_cases contained : Classifier.Kind.Contains kind valuation.classifier
+  · simp only [eval, if_pos contained]
+    exact BoolSemantics.refl _
+  · simp only [eval, if_neg contained]
+    exact BoolSemantics.bottom _
+
+theorem eval_project_mono {scope : Sig} (valuation : BoolValuation scope)
+    {lower upper : Capture scope} {lowerKind upperKind : Classifier.Kind}
+    (captureOrder : BoolSemantics.LE (lower.eval valuation)
+      (upper.eval valuation))
+    (kindOrder : Classifier.Kind.Subkind lowerKind upperKind) :
+    BoolSemantics.LE ((Capture.project lower lowerKind).eval valuation)
+      ((Capture.project upper upperKind).eval valuation) := by
+  by_cases inLower : Classifier.Kind.Contains lowerKind valuation.classifier
+  · have inUpper := kindOrder.contains inLower
+    simp only [eval, if_pos inLower, if_pos inUpper]
+    exact captureOrder
+  · simp only [eval, if_neg inLower]
+    exact BoolSemantics.bottom _
+
+theorem eval_project_merge {scope : Sig} (valuation : BoolValuation scope)
+    (capture : Capture scope) (leftKind rightKind : Classifier.Kind) :
+    BoolSemantics.LE
+      ((Capture.project capture (leftKind ++ rightKind)).eval valuation)
+      ((Capture.union (Capture.project capture leftKind)
+        (Capture.project capture rightKind)).eval valuation) := by
+  by_cases inLeft : Classifier.Kind.Contains leftKind valuation.classifier
+  · have inUnion : Classifier.Kind.Contains (leftKind ++ rightKind)
+        valuation.classifier :=
+      Classifier.Kind.Contains.append (Or.inl inLeft)
+    simp only [eval, if_pos inUnion, if_pos inLeft]
+    exact BoolSemantics.or_left _ _
+  · by_cases inRight : Classifier.Kind.Contains rightKind
+        valuation.classifier
+    · have inUnion : Classifier.Kind.Contains (leftKind ++ rightKind)
+          valuation.classifier :=
+        Classifier.Kind.Contains.append (Or.inr inRight)
+      simp only [eval, if_pos inUnion, if_neg inLeft, if_pos inRight,
+        Bool.false_or]
+      exact BoolSemantics.refl _
+    · have notInUnion : ¬ Classifier.Kind.Contains
+          (leftKind ++ rightKind) valuation.classifier := by
+        intro inUnion
+        cases Classifier.Kind.Contains.of_append inUnion with
+        | inl contradiction => exact inLeft contradiction
+        | inr contradiction => exact inRight contradiction
+      simp only [eval, if_neg notInUnion, if_neg inLeft, if_neg inRight,
+        Bool.false_or]
+      exact BoolSemantics.bottom _
 
 end Capture
 
@@ -139,6 +260,10 @@ def recursionFree {scope : Sig} {relation : Relation} :
   | .equalityCaptureUnion left right =>
       left.recursionFree && right.recursionFree
   | .equalityCaptureReadOnly capture => capture.recursionFree
+  | .equalityCaptureProject equality _ _ => equality.recursionFree
+  | .equalityCaptureProjectTop _ => true
+  | .equalityCaptureProjectCompose _ _ _ => true
+  | .equalityCaptureProjectEmpty _ _ => true
   | .inclusionRefl _ => true
   | .inclusionTrans first second =>
       first.recursionFree && second.recursionFree
@@ -157,6 +282,9 @@ def recursionFree {scope : Sig} {relation : Relation} :
   | .captureVariable _ => true
   | .captureReadOnly _ => true
   | .captureReadOnlyMono subcapture => subcapture.recursionFree
+  | .captureProjectSource _ _ => true
+  | .captureProjectMono subcapture _ _ => subcapture.recursionFree
+  | .captureProjectMerge _ _ _ => true
   | .modeEmpty _ => true
   | .modeUnion left right => left.recursionFree && right.recursionFree
   | .modeSubcapture subcapture upperMode =>
@@ -178,6 +306,7 @@ def recursionFree {scope : Sig} {relation : Relation} :
   | .disjointEmpty _ => true
   | .disjointEquality equality disjoint =>
       equality.recursionFree && disjoint.recursionFree
+  | .disjointCaptureProject _ _ _ _ => true
 
 /-- Certificates outside type equality and type inclusion cannot contain the
 type-only recursive unfold constructor. -/
@@ -288,6 +417,15 @@ theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
   | equalityCaptureReadOnly typing induction =>
       simpa [Proposition.Holds, StaticExpr.eval, Capture.eval] using
         induction noRecursion
+  | equalityCaptureProject typing kindEquivalent induction =>
+      exact Capture.eval_project_equivalent valuation
+        (induction noRecursion) kindEquivalent
+  | equalityCaptureProjectTop capture =>
+      exact Capture.eval_project_top valuation capture
+  | equalityCaptureProjectCompose capture innerKind outerKind =>
+      exact Capture.eval_project_compose valuation capture innerKind outerKind
+  | equalityCaptureProjectEmpty capture kind emptyKind =>
+      exact Capture.eval_project_empty valuation capture emptyKind
   | inclusionRefl expression =>
       exact BoolSemantics.refl _
   | inclusionTrans firstTyping secondTyping firstInduction secondInduction =>
@@ -327,6 +465,13 @@ theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
   | captureReadOnlyMono typing induction =>
       simpa [Proposition.Holds, StaticExpr.eval, Capture.eval] using
         induction noRecursion
+  | captureProjectSource capture kind =>
+      exact Capture.eval_project_source_le valuation capture kind
+  | captureProjectMono typing kindSubtyping induction =>
+      exact Capture.eval_project_mono valuation (induction noRecursion)
+        kindSubtyping
+  | captureProjectMerge capture leftKind rightKind =>
+      exact Capture.eval_project_merge valuation capture leftKind rightKind
   | modeEmpty => trivial
   | modeUnion => trivial
   | modeSubcapture => trivial
@@ -342,6 +487,7 @@ theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
   | disjointUnion => trivial
   | disjointEmpty => trivial
   | disjointEquality => trivial
+  | disjointCaptureProject => trivial
 
 end Evidence.Proves
 
@@ -352,6 +498,7 @@ def empty : BoolValuation [] where
   term := fun index => nomatch index
   typeSymbol := fun index => nomatch index
   captureSymbol := fun index => nomatch index
+  classifier := .top
 
 /-- A valuation distinguishing the sole term capability in a one-term scope. -/
 def oneTermTrue : BoolValuation ([] ▹ .term) where
@@ -362,6 +509,7 @@ def oneTermTrue : BoolValuation ([] ▹ .term) where
     | .there index => nomatch index
   captureSymbol := fun
     | .there index => nomatch index
+  classifier := .top
 
 end BoolValuation
 

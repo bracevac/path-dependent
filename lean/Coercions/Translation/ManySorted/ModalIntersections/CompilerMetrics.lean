@@ -330,6 +330,10 @@ def evidenceNodeCount {scope : Target.Sig} {relation : ManySortedFC.Relation} :
   | .equalityCaptureUnion left right =>
       1 + evidenceNodeCount left + evidenceNodeCount right
   | .equalityCaptureReadOnly inner => 1 + evidenceNodeCount inner
+  | .equalityCaptureProject inner _ _ => 1 + evidenceNodeCount inner
+  | .equalityCaptureProjectTop _ => 1
+  | .equalityCaptureProjectCompose _ _ _ => 1
+  | .equalityCaptureProjectEmpty _ _ => 1
   | .inclusionRefl _ => 1
   | .inclusionTrans first second =>
       1 + evidenceNodeCount first + evidenceNodeCount second
@@ -348,6 +352,9 @@ def evidenceNodeCount {scope : Target.Sig} {relation : ManySortedFC.Relation} :
   | .captureVariable _ => 1
   | .captureReadOnly _ => 1
   | .captureReadOnlyMono subcapture => 1 + evidenceNodeCount subcapture
+  | .captureProjectSource _ _ => 1
+  | .captureProjectMono subcapture _ _ => 1 + evidenceNodeCount subcapture
+  | .captureProjectMerge _ _ _ => 1
   | .modeEmpty _ => 1
   | .modeUnion left right =>
       1 + evidenceNodeCount left + evidenceNodeCount right
@@ -370,6 +377,7 @@ def evidenceNodeCount {scope : Target.Sig} {relation : ManySortedFC.Relation} :
   | .disjointEmpty _ => 1
   | .disjointEquality equality disjoint =>
       1 + evidenceNodeCount equality + evidenceNodeCount disjoint
+  | .disjointCaptureProject _ _ _ _ => 1
 
 def evidenceArgumentCount {scope : Target.Sig}
     {relations : List ManySortedFC.Relation} :

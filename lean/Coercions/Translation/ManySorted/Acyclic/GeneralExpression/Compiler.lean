@@ -2346,10 +2346,15 @@ private def widenInvocationUse {scope : ManySortedFC.Sig}
           exact
             { evidence := .captureUnionElim outerInto.evidence tail.evidence
               typing := .captureUnionElim outerInto.typing tail.typing }
+      | project capture kind =>
+          exact
+            { evidence := .captureUnionElim outerInto.evidence tail.evidence
+              typing := .captureUnionElim outerInto.typing tail.typing }
   | union left right => exact nonempty (.union left right)
   | singleton path => exact nonempty (.singleton path)
   | cvar name => exact nonempty (.cvar name)
   | readOnly capture => exact nonempty (.readOnly capture)
+  | project capture kind => exact nonempty (.project capture kind)
 
 private def staticInstantiationCancels {scope : ManySortedFC.Sig}
     (typeWitness : Target.Ty scope)

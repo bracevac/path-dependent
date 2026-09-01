@@ -7,9 +7,10 @@ The checker synthesizes the exact proposition proved by an explicit logical
 certificate. It follows certificate syntax recursively and performs equality
 tests only where independently synthesized endpoints must meet.
 
-No branch invokes subtyping, subcapturing, constraint solving, or a structural
-adapter. A successful result contains its declarative `Evidence.Proves`
-derivation by construction.
+No branch invokes ambient subtyping, subcapturing, constraint solving, or a
+structural adapter.  The classifier-projection branches recompute only the
+decidable ground relations on closed classifier kinds.  A successful result
+contains its declarative `Evidence.Proves` derivation by construction.
 -/
 
 namespace ManySortedFC.Evidence
@@ -99,6 +100,35 @@ def check {scope : Sig} (context : Ctx scope) :
             .equality (.capture (.readOnly source))
               (.capture (.readOnly target)),
             .equalityCaptureReadOnly typing⟩
+  | _, .equalityCaptureProject equality sourceKind targetKind => do
+      let checked ← check context equality
+      let ⟨proposition, typing⟩ := checked
+      match proposition with
+      | .equality (.capture source) (.capture target) =>
+          if equivalent : Classifier.Kind.Equivalent sourceKind targetKind then
+            pure ⟨
+              .equality (.capture (.project source sourceKind))
+                (.capture (.project target targetKind)),
+              .equalityCaptureProject typing equivalent⟩
+          else
+            none
+  | _, .equalityCaptureProjectTop capture =>
+      some ⟨
+        .equality (.capture (.project capture .top)) (.capture capture),
+        .equalityCaptureProjectTop capture⟩
+  | _, .equalityCaptureProjectCompose capture innerKind outerKind =>
+      some ⟨
+        .equality
+          (.capture (.project (.project capture innerKind) outerKind))
+          (.capture (.project capture (outerKind.intersect innerKind))),
+        .equalityCaptureProjectCompose capture innerKind outerKind⟩
+  | _, .equalityCaptureProjectEmpty capture kind =>
+      if emptyKind : Classifier.Kind.IsEmpty kind then
+        some ⟨
+          .equality (.capture (.project capture kind)) (.capture .empty),
+          .equalityCaptureProjectEmpty capture kind emptyKind⟩
+      else
+        none
 
   | _, .inclusionRefl expression =>
       some ⟨.inclusion expression expression, .inclusionRefl expression⟩
@@ -201,6 +231,29 @@ def check {scope : Sig} (context : Ctx scope) :
             .inclusion (.capture (.readOnly lower))
               (.capture (.readOnly upper)),
             .captureReadOnlyMono typing⟩
+  | _, .captureProjectSource capture kind =>
+      some ⟨
+        .inclusion (.capture (.project capture kind)) (.capture capture),
+        .captureProjectSource capture kind⟩
+  | _, .captureProjectMono subcapture sourceKind targetKind => do
+      let checked ← check context subcapture
+      let ⟨proposition, typing⟩ := checked
+      match proposition with
+      | .inclusion (.capture source) (.capture target) =>
+          if kindSubtyping :
+              Classifier.Kind.Subkind sourceKind targetKind then
+            pure ⟨
+              .inclusion (.capture (.project source sourceKind))
+                (.capture (.project target targetKind)),
+              .captureProjectMono typing kindSubtyping⟩
+          else
+            none
+  | _, .captureProjectMerge capture leftKind rightKind =>
+      some ⟨
+        .inclusion (.capture (.project capture (leftKind ++ rightKind)))
+          (.capture (.union (.project capture leftKind)
+            (.project capture rightKind))),
+        .captureProjectMerge capture leftKind rightKind⟩
 
   | _, .modeEmpty mode =>
       some ⟨.mode (mode := mode) .empty, .modeEmpty mode⟩
@@ -331,6 +384,15 @@ def check {scope : Sig} (context : Ctx scope) :
               .disjointEquality equalityTyping alignedDisjointTyping⟩
           else
             none
+  | _, .disjointCaptureProject leftCapture leftKind rightCapture rightKind =>
+      if kindDisjoint : Classifier.Kind.Disjoint leftKind rightKind then
+        some ⟨
+          .disjoint (.project leftCapture leftKind)
+            (.project rightCapture rightKind),
+          .disjointCaptureProject leftCapture leftKind rightCapture rightKind
+            kindDisjoint⟩
+      else
+        none
 
 /-- Soundness is carried by every successful checker result. -/
 theorem check_sound {scope : Sig} {context : Ctx scope}
