@@ -8,6 +8,8 @@ import Coercions.Translation.ManySorted.ModalIntersections.CompilerContext
 import Coercions.Translation.ManySorted.ModalIntersections.CompilerContextExamples
 import Coercions.Translation.ManySorted.ModalIntersections.EvidenceElaboration
 import Coercions.Translation.ManySorted.ModalIntersections.EvidenceElaborationExamples
+import Coercions.Translation.ManySorted.ModalIntersections.EvidenceContext
+import Coercions.Translation.ManySorted.ModalIntersections.EvidenceContextExamples
 
 /-!
 # Cumulative captured-DOT compiler foundation
