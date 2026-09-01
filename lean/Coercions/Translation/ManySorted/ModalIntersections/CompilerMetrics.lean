@@ -322,6 +322,7 @@ def evidenceNodeCount {scope : Target.Sig} {relation : ManySortedFC.Relation} :
   | .equalitySymm inner => 1 + evidenceNodeCount inner
   | .equalityTrans first second =>
       1 + evidenceNodeCount first + evidenceNodeCount second
+  | .unfoldRec _ _ => 1
   | .equalityArrow domain codomain =>
       1 + evidenceNodeCount domain + evidenceNodeCount codomain
   | .equalityCapturing captures shape =>

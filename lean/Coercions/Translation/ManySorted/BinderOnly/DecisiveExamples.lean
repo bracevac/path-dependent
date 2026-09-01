@@ -10,13 +10,63 @@ example deliberately retains one ambient capability so its body has a real
 runtime dependency.  Both bodies may use the hypothetical interval assumptions,
 and the generated abstractions are accepted by the independent target checker.
 Elimination remains confined: the corresponding target theory has no ambient
-model.
+model in the recursion-free evidence fragment.
 -/
 
 namespace DOTCaptureToManySortedFC.BinderOnly.DecisiveExamples
 
 open DOTCapture.BinderOnly
 open DOTCaptureToManySortedFC.BinderOnly.LayoutExamples
+
+private theorem context_lower_recursionFree
+    {scope : Sig} {context : Ctx scope} {sort : StaticSort}
+    {reference : StaticRef sort scope} {endpoint : StaticExpr sort scope}
+    (bound : HasLower context reference endpoint) :
+    ((contextBoundCompiler context).lower bound).evidence.recursionFree =
+      true := by
+  cases reference with
+  | bound index =>
+      cases bound with
+      | bound found => cases sort <;> rfl
+
+private theorem context_upper_recursionFree
+    {scope : Sig} {context : Ctx scope} {sort : StaticSort}
+    {reference : StaticRef sort scope} {endpoint : StaticExpr sort scope}
+    (bound : HasUpper context reference endpoint) :
+    ((contextBoundCompiler context).upper bound).evidence.recursionFree =
+      true := by
+  cases reference with
+  | bound index =>
+      cases bound with
+      | bound found => cases sort <;> rfl
+
+private theorem compile_inclusion_recursionFree
+    {scope : Sig} {context : Ctx scope} {sort : StaticSort}
+    {source target : StaticExpr sort scope}
+    (bounds : BoundCompiler context)
+    (lowerRecursionFree :
+      ∀ {sort} {reference : StaticRef sort scope}
+        {endpoint : StaticExpr sort scope}
+        (bound : HasLower context reference endpoint),
+        (bounds.lower bound).evidence.recursionFree = true)
+    (upperRecursionFree :
+      ∀ {sort} {reference : StaticRef sort scope}
+        {endpoint : StaticExpr sort scope}
+        (bound : HasUpper context reference endpoint),
+        (bounds.upper bound).evidence.recursionFree = true)
+    (inclusion : Includes context source target) :
+    (compileIncludes bounds inclusion).evidence.recursionFree = true := by
+  induction inclusion <;>
+    simp_all [compileIncludes, ManySortedFC.Evidence.recursionFree]
+  all_goals constructor <;> assumption
+
+private theorem compiled_inclusion_recursionFree
+    {scope : Sig} {context : Ctx scope} {sort : StaticSort}
+    {source target : StaticExpr sort scope}
+    (inclusion : Includes context source target) :
+    (compileIncludesTotal inclusion).evidence.recursionFree = true :=
+  compile_inclusion_recursionFree (contextBoundCompiler context)
+    context_lower_recursionFree context_upper_recursionFree inclusion
 
 /-! ## Type bad bounds -/
 
@@ -44,12 +94,13 @@ theorem bad_type_function_checker_accepts :
           (.capturing .empty (.forallI badTypeInterval .bot))) := by
   rfl
 
-/-- The body can use bad bounds, but no closed target caller can supply the
-model required by static application. -/
+/-- The body can use bad bounds, but no recursion-free closed target caller
+can supply the model required by static application. -/
 theorem bad_type_function_has_no_closed_static_argument
     (model : ManySortedFC.Theory.Model ManySortedFC.Ctx.nil
-      (translateInterval Ctx.nil badTypeInterval)) : False :=
-  bad_type_interval_has_no_closed_target_model model
+      (translateInterval Ctx.nil badTypeInterval))
+    (modelRecursionFree : model.RecursionFree) : False :=
+  bad_type_interval_has_no_closed_target_model model modelRecursionFree
 
 /-- No source witness can realize the interval needed to call the function.
 Translating any alleged realization would construct the impossible target
@@ -59,10 +110,23 @@ theorem bad_type_function_has_no_source_static_argument
     (satisfaction : Interval.SatisfiedBy Ctx.nil witness badTypeInterval) :
     False := by
   let compiled := compileModelTotal satisfaction
-  exact bad_type_function_has_no_closed_static_argument
+  let model : ManySortedFC.Theory.Model ManySortedFC.Ctx.nil
+      (translateInterval Ctx.nil badTypeInterval) :=
     { symbols := TargetIntervalModel.symbols (translateExpr Ctx.nil witness)
       evidence := compiled.evidence
       satisfies := compiled.satisfies }
+  apply bad_type_function_has_no_closed_static_argument model
+  unfold ManySortedFC.Theory.Model.RecursionFree
+  change compiled.evidence.recursionFree = true
+  cases satisfaction with
+  | between lower upper =>
+      change
+        ((compileIncludesTotal lower).evidence.recursionFree &&
+          ((compileIncludesTotal upper).evidence.recursionFree && true)) =
+            true
+      rw [compiled_inclusion_recursionFree lower,
+        compiled_inclusion_recursionFree upper]
+      rfl
 
 /-! ## Capture bad bounds -/
 

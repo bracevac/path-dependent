@@ -218,6 +218,11 @@ def lowerModalEquality {scope : Sig} {sort : StaticSort}
   | .equalitySymm evidence => .equalitySymm evidence.lowerModalEquality
   | .equalityTrans first second =>
       .equalityTrans first.lowerModalEquality second.lowerModalEquality
+  | .unfoldRec bodies index =>
+      .unfoldRec
+        (bodies.substitute
+          (StaticSubst.dropModal scope separationCount modes))
+        index
   | .equalityArrow domain codomain =>
       .equalityArrow domain.lowerModalEquality codomain.lowerModalEquality
   | .equalityCapturing captures shape =>
@@ -311,6 +316,11 @@ def lowerModalEquality_rename {scope : Sig} {sort : StaticSort}
   | .equalityTrans first second => by
       simp only [lowerModalEquality, Evidence.rename,
         lowerModalEquality_rename first, lowerModalEquality_rename second]
+  | .unfoldRec bodies index => by
+      simp only [lowerModalEquality, Evidence.rename,
+        RecBodies.substitute_postRename,
+        StaticSubst.dropModal_postRename,
+        RecBodies.substitute_ofRename, RecBodies.rename_id]
   | .equalityArrow domain codomain => by
       simp only [lowerModalEquality, Evidence.rename,
         lowerModalEquality_rename domain, lowerModalEquality_rename codomain]
@@ -563,6 +573,12 @@ noncomputable def lowerModalEquality {scope : Sig} {context : Ctx scope}
       simpa [Evidence.lowerModalEquality, Proposition.substitute] using
         Evidence.Proves.equalityTrans (lowerModalEquality first)
           (lowerModalEquality second)
+  | .unfoldRec guarded => by
+      simpa [Evidence.lowerModalEquality, Proposition.substitute,
+        StaticExpr.substitute, Ty.substitute,
+        RecBodies.unfoldAt_substitute] using
+        (Evidence.Proves.unfoldRec (context := context)
+          (by simpa using guarded))
   | .equalityArrow domain codomain => by
       simpa [Evidence.lowerModalEquality, Proposition.substitute,
         StaticExpr.substitute, Ty.substitute] using

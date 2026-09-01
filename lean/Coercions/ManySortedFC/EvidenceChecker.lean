@@ -46,6 +46,14 @@ def check {scope : Sig} (context : Ctx scope) :
               .equalityTrans firstTyping alignedSecondTyping⟩
           else
             none
+  | _, .unfoldRec bodies index =>
+      if guarded : bodies.headGuarded then
+        some ⟨
+          .equality (.type (.recProj bodies index))
+            (.type (bodies.unfoldAt index)),
+          .unfoldRec guarded⟩
+      else
+        none
   | _, .equalityArrow domain codomain => do
       let domainChecked ← check context domain
       let codomainChecked ← check context codomain

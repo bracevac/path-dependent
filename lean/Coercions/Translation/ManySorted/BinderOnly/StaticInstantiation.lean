@@ -103,6 +103,15 @@ def liftSymbols {source target : Sig} {rho : Rename source target}
       (substitution.liftSymbols symbols) :=
   cancellation.liftMany (symbolKinds symbols)
 
+/-- Cancellation is stable below the homogeneous type-name suffix of a
+recursive block. -/
+def liftTypes {source target : Sig} {rho : Rename source target}
+    {substitution : StaticSubst target source}
+    (cancellation : Cancels rho substitution) : (names : Nat) →
+    Cancels (rho.liftTypes names) (substitution.liftTypes names)
+  | 0 => cancellation
+  | names + 1 => (cancellation.liftTypes names).liftSymbol .type
+
 /-- Cancellation is stable below a complete static theory scope. -/
 def liftStatic {source target : Sig} {rho : Rename source target}
     {substitution : StaticSubst target source}
@@ -215,6 +224,22 @@ def ty_rename_substitute {source target : Sig} (type : Ty source)
         theory_rename_substitute theory cancellation,
         ty_rename_substitute payload
           (cancellation.liftStatic symbols relations)]
+  | .recProj bodies index => by
+      simp only [Ty.rename, Ty.substitute,
+        recBodies_rename_substitute bodies cancellation]
+
+/-- Cancellation acts pointwise on the bodies of a recursive type block. -/
+def recBodies_rename_substitute {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count) {rho : Rename source target}
+    {substitution : StaticSubst target source}
+    (cancellation : Cancels rho substitution) :
+    (bodies.rename rho).substitute substitution = bodies :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.rename, RecBodies.substitute,
+        recBodies_rename_substitute initial cancellation,
+        ty_rename_substitute body (cancellation.liftTypes bound)]
 
 /-- Substitution after a cancelled renaming is the identity on sorted static
 expressions. -/

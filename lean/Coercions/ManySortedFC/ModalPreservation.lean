@@ -303,7 +303,7 @@ theorem Evidence.substitute_ofRename {source target : Sig}
     simp_all only [Evidence.substitute, Evidence.rename,
       TermStaticSubst.ofRename,
       Ty.substitute_ofRename, StaticExpr.substitute_ofRename,
-      Capture.substitute_ofRename]
+      Capture.substitute_ofRename, RecBodies.substitute_ofRename]
   all_goals rfl
 
 namespace TermStaticSubst.Preserves
@@ -720,7 +720,7 @@ theorem outerCapture_substitute_structural {source target : Sig}
       simp [Ty.substitute, equality, StaticExpr.symbol, Ty.outerCapture,
         Capture.substitute]
   | capturing captures shape => rfl
-  | top | bot | one | arr | modal | forallT | existsT => rfl
+  | top | bot | one | arr | modal | forallT | existsT | recProj => rfl
 
 @[simp]
 theorem stripCapture_substitute_structural {source target : Sig}
@@ -733,7 +733,7 @@ theorem stripCapture_substitute_structural {source target : Sig}
       obtain ⟨targetIndex, equality⟩ := structural.symbolVar index
       simp [Ty.substitute, equality, StaticExpr.symbol, Ty.stripCapture]
   | capturing captures shape => rfl
-  | top | bot | one | arr | modal | forallT | existsT => rfl
+  | top | bot | one | arr | modal | forallT | existsT | recProj => rfl
 
 @[simp]
 theorem precise_substitute_structural {source target : Sig}
@@ -748,7 +748,7 @@ theorem precise_substitute_structural {source target : Sig}
       obtain ⟨targetIndex, equality⟩ := structural.symbolVar index
       simp [Ty.precise, Ty.substitute, equality, StaticExpr.symbol]
   | capturing captures shape => rfl
-  | top | bot | one | arr | modal | forallT | existsT => rfl
+  | top | bot | one | arr | modal | forallT | existsT | recProj => rfl
 
 @[simp]
 theorem closeModal_substitute {source target : Sig}

@@ -699,6 +699,13 @@ private noncomputable def compilePlainVariable {scope : Source.Scope}
           term := .var coordinate
           isValue := .var
           typing := by simpa [coordinate, targetEquation] using rawTyping }
+  | recProj bodies index =>
+      exact
+        { targetType := .recProj bodies index
+          typeTranslated := by simpa [targetEquation] using facts.typeTranslated
+          term := .var coordinate
+          isValue := .var
+          typing := by simpa [coordinate, targetEquation] using rawTyping }
 
 private noncomputable def compileObjectVariable {scope : Source.Scope}
     {context : Source.Ctx scope} (ready : Runtime.Ready context)

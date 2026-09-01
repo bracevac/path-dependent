@@ -42,6 +42,8 @@ theorem check_complete_projection {scope : Sig}
             subst firstProp
             subst secondProp
             simp [check, firstEq, secondEq]
+  | unfoldRec guarded =>
+      simp [check, guarded]
   | equalityArrow domain codomain domainIH codomainIH =>
       obtain ⟨domainChecked, domainEq, domainPropEq⟩ :=
         Option.map_eq_some_iff.mp domainIH

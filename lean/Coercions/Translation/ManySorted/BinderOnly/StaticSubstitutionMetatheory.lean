@@ -255,6 +255,31 @@ def liftMany {upperLeft upperRight lowerLeft lowerRight : Sig}
   | [] => square
   | kind :: rest => (square.liftMany rest).lift kind
 
+/-- A commuting square remains commuting below a homogeneous binder block. -/
+def liftN {upperLeft upperRight lowerLeft lowerRight : Sig}
+    {upper : StaticSubst upperLeft upperRight}
+    {left : Rename upperLeft lowerLeft}
+    {right : Rename upperRight lowerRight}
+    {lower : StaticSubst lowerLeft lowerRight}
+    (square : Square upper left right lower) (kind : BinderKind) :
+    (count : Nat) →
+      Square (upper.liftN kind count) (left.liftN kind count)
+        (right.liftN kind count) (lower.liftN kind count)
+  | 0 => square
+  | count + 1 => (square.liftN kind count).lift kind
+
+/-- The homogeneous type-name suffix of a recursive block preserves a
+commuting square. -/
+def liftTypes {upperLeft upperRight lowerLeft lowerRight : Sig}
+    {upper : StaticSubst upperLeft upperRight}
+    {left : Rename upperLeft lowerLeft}
+    {right : Rename upperRight lowerRight}
+    {lower : StaticSubst lowerLeft lowerRight}
+    (square : Square upper left right lower) (names : Nat) :
+    Square (upper.liftTypes names) (left.liftTypes names)
+      (right.liftTypes names) (lower.liftTypes names) :=
+  square.liftN (.symbol .type) names
+
 def liftStatic {upperLeft upperRight lowerLeft lowerRight : Sig}
     {upper : StaticSubst upperLeft upperRight}
     {left : Rename upperLeft lowerLeft}
@@ -397,6 +422,26 @@ def ty_square {upperLeft upperRight lowerLeft lowerRight : Sig}
       simp only [Ty.substitute, Ty.rename,
         theory_square theory square,
         ty_square payload (square.liftStatic symbols relations)]
+  | .recProj bodies index => by
+      simp only [Ty.substitute, Ty.rename, recBodies_square bodies square]
+
+/-- A commuting variable square extends pointwise to the bodies of a
+recursive type block. -/
+def recBodies_square {upperLeft upperRight lowerLeft lowerRight : Sig}
+    {bound count : Nat} (bodies : RecBodies upperLeft bound count)
+    {upper : StaticSubst upperLeft upperRight}
+    {left : Rename upperLeft lowerLeft}
+    {right : Rename upperRight lowerRight}
+    {lower : StaticSubst lowerLeft lowerRight}
+    (square : Square upper left right lower) :
+    (bodies.substitute upper).rename right =
+      (bodies.rename left).substitute lower :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute, RecBodies.rename,
+        recBodies_square initial square,
+        ty_square body (square.liftTypes bound)]
 
 /-- A commuting variable square extends to sorted target expressions. -/
 def expression_square {upperLeft upperRight lowerLeft lowerRight : Sig}

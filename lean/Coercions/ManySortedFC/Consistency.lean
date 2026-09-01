@@ -107,8 +107,93 @@ def eval {scope : Sig} (valuation : BoolValuation scope) : Ty scope -> Bool
   | .modal _ _ => true
   | .forallT _ _ => true
   | .existsT _ _ => true
+  /- Recursive projections are opaque to this deliberately finite model.
+  The soundness theorem below is consequently scoped to certificates that do
+  not use recursive unfolding.  A semantic account of guarded recursive
+  equality requires regular trees or a step-indexed model, not an arbitrary
+  Boolean equation. -/
+  | .recProj _ _ => false
 
 end Ty
+
+namespace Evidence
+
+/-- The fragment covered by the original Boolean consistency model.
+
+Guarded recursive equality is independently checked, but negative recursive
+types need not have a fixed point in `Bool`.  Recording this syntactic support
+condition keeps the old theorem honest until the recursive target receives a
+regular-tree or step-indexed semantics. -/
+def recursionFree {scope : Sig} {relation : Relation} :
+    Evidence relation scope -> Bool
+  | .var _ => true
+  | .equalityRefl _ => true
+  | .equalitySymm inner => inner.recursionFree
+  | .equalityTrans first second =>
+      first.recursionFree && second.recursionFree
+  | .unfoldRec _ _ => false
+  | .equalityArrow domain codomain =>
+      domain.recursionFree && codomain.recursionFree
+  | .equalityCapturing captures shape =>
+      captures.recursionFree && shape.recursionFree
+  | .equalityCaptureUnion left right =>
+      left.recursionFree && right.recursionFree
+  | .equalityCaptureReadOnly capture => capture.recursionFree
+  | .inclusionRefl _ => true
+  | .inclusionTrans first second =>
+      first.recursionFree && second.recursionFree
+  | .equalityToInclusion equality => equality.recursionFree
+  | .typeTop _ => true
+  | .typeBottom _ => true
+  | .typeArrow domain codomain =>
+      domain.recursionFree && codomain.recursionFree
+  | .typeCapturing captures shape =>
+      captures.recursionFree && shape.recursionFree
+  | .captureEmpty _ => true
+  | .captureUnionLeft _ _ => true
+  | .captureUnionRight _ _ => true
+  | .captureUnionElim left right =>
+      left.recursionFree && right.recursionFree
+  | .captureVariable _ => true
+  | .captureReadOnly _ => true
+  | .captureReadOnlyMono subcapture => subcapture.recursionFree
+  | .modeEmpty _ => true
+  | .modeUnion left right => left.recursionFree && right.recursionFree
+  | .modeSubcapture subcapture upperMode =>
+      subcapture.recursionFree && upperMode.recursionFree
+  | .modeWritable _ => true
+  | .modeReadOnly _ => true
+  | .separateSymm evidence => evidence.recursionFree
+  | .separateUnion left right =>
+      left.recursionFree && right.recursionFree
+  | .separateEmpty _ => true
+  | .separateReadOnly left right =>
+      left.recursionFree && right.recursionFree
+  | .separateSubcapture subcapture separation =>
+      subcapture.recursionFree && separation.recursionFree
+  | .separateOfDisjoint disjoint => disjoint.recursionFree
+  | .disjointSymm evidence => evidence.recursionFree
+  | .disjointUnion left right =>
+      left.recursionFree && right.recursionFree
+  | .disjointEmpty _ => true
+  | .disjointEquality equality disjoint =>
+      equality.recursionFree && disjoint.recursionFree
+
+/-- Certificates outside type equality and type inclusion cannot contain the
+type-only recursive unfold constructor. -/
+theorem recursionFree_of_nonTypeRelation {scope : Sig}
+    {relation : Relation} (evidence : Evidence relation scope)
+    (notEquality : relation ≠ .equality .type)
+    (notInclusion : relation ≠ .inclusion .type) :
+    evidence.recursionFree = true := by
+  induction evidence <;> simp_all [recursionFree]
+
+theorem captureInclusion_recursionFree {scope : Sig}
+    (evidence : Evidence (.inclusion .capture) scope) :
+    evidence.recursionFree = true :=
+  recursionFree_of_nonTypeRelation evidence (by decide) (by decide)
+
+end Evidence
 
 namespace StaticExpr
 
@@ -160,13 +245,14 @@ end BoolValuation
 
 namespace Evidence.Proves
 
-/-- Every declarative evidence derivation in an assumption-free scope is
-valid in the Boolean model. -/
+/-- Every recursion-free declarative evidence derivation in an
+assumption-free scope is valid in the Boolean model. -/
 theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
     {relation : Relation} {evidence : Evidence relation scope}
     {proposition : Proposition relation scope}
     (noEvidence : HasNoEvidenceBinders scope)
-    (typing : Evidence.Proves context evidence proposition) :
+    (typing : Evidence.Proves context evidence proposition)
+    (noRecursion : evidence.recursionFree = true) :
     ∀ valuation : BoolValuation scope,
       valuation.Respects context → proposition.Holds valuation := by
   intro valuation
@@ -177,39 +263,53 @@ theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
   | equalityRefl expression =>
       rfl
   | equalitySymm typing induction =>
-      exact induction.symm
+      exact (induction noRecursion).symm
   | equalityTrans firstTyping secondTyping firstInduction secondInduction =>
-      exact firstInduction.trans secondInduction
+      simp only [Evidence.recursionFree, Bool.and_eq_true] at noRecursion
+      exact (firstInduction noRecursion.1).trans
+        (secondInduction noRecursion.2)
+  | unfoldRec guarded =>
+      simp [Evidence.recursionFree] at noRecursion
   | equalityArrow domainTyping codomainTyping domainInduction
       codomainInduction =>
+      simp only [Evidence.recursionFree, Bool.and_eq_true] at noRecursion
       simp only [Proposition.Holds, StaticExpr.eval, Ty.eval] at domainInduction codomainInduction ⊢
-      rw [domainInduction, codomainInduction]
+      rw [domainInduction noRecursion.1, codomainInduction noRecursion.2]
   | equalityCapturing captureTyping shapeTyping captureInduction
       shapeInduction =>
+      simp only [Evidence.recursionFree, Bool.and_eq_true] at noRecursion
       simp only [Proposition.Holds, StaticExpr.eval, Ty.eval] at captureInduction shapeInduction ⊢
-      rw [captureInduction, shapeInduction]
+      rw [captureInduction noRecursion.1, shapeInduction noRecursion.2]
   | equalityCaptureUnion leftTyping rightTyping leftInduction
       rightInduction =>
+      simp only [Evidence.recursionFree, Bool.and_eq_true] at noRecursion
       simp only [Proposition.Holds, StaticExpr.eval, Capture.eval] at leftInduction rightInduction ⊢
-      rw [leftInduction, rightInduction]
+      rw [leftInduction noRecursion.1, rightInduction noRecursion.2]
   | equalityCaptureReadOnly typing induction =>
-      simpa [Proposition.Holds, StaticExpr.eval, Capture.eval] using induction
+      simpa [Proposition.Holds, StaticExpr.eval, Capture.eval] using
+        induction noRecursion
   | inclusionRefl expression =>
       exact BoolSemantics.refl _
   | inclusionTrans firstTyping secondTyping firstInduction secondInduction =>
-      exact BoolSemantics.trans firstInduction secondInduction
+      simp only [Evidence.recursionFree, Bool.and_eq_true] at noRecursion
+      exact BoolSemantics.trans (firstInduction noRecursion.1)
+        (secondInduction noRecursion.2)
   | equalityToInclusion typing induction =>
-      exact BoolSemantics.equality_le induction
+      exact BoolSemantics.equality_le (induction noRecursion)
   | typeTop source =>
       exact BoolSemantics.top _
   | typeBottom target =>
       exact BoolSemantics.bottom _
   | typeArrow domainTyping codomainTyping domainInduction
       codomainInduction =>
-      exact BoolSemantics.implication_mono domainInduction codomainInduction
+      simp only [Evidence.recursionFree, Bool.and_eq_true] at noRecursion
+      exact BoolSemantics.implication_mono
+        (domainInduction noRecursion.1) (codomainInduction noRecursion.2)
   | typeCapturing captureTyping shapeTyping captureInduction
       shapeInduction =>
-      exact BoolSemantics.and_mono captureInduction shapeInduction
+      simp only [Evidence.recursionFree, Bool.and_eq_true] at noRecursion
+      exact BoolSemantics.and_mono
+        (captureInduction noRecursion.1) (shapeInduction noRecursion.2)
   | captureEmpty target =>
       exact BoolSemantics.bottom _
   | captureUnionLeft left right =>
@@ -217,13 +317,16 @@ theorem sound_of_no_evidence {scope : Sig} {context : Ctx scope}
   | captureUnionRight left right =>
       exact BoolSemantics.or_right _ _
   | captureUnionElim leftTyping rightTyping leftInduction rightInduction =>
-      exact BoolSemantics.or_elim leftInduction rightInduction
+      simp only [Evidence.recursionFree, Bool.and_eq_true] at noRecursion
+      exact BoolSemantics.or_elim (leftInduction noRecursion.1)
+        (rightInduction noRecursion.2)
   | captureVariable binding =>
       exact respects _ _ _ binding
   | captureReadOnly capture =>
       exact BoolSemantics.refl _
   | captureReadOnlyMono typing induction =>
-      simpa [Proposition.Holds, StaticExpr.eval, Capture.eval] using induction
+      simpa [Proposition.Holds, StaticExpr.eval, Capture.eval] using
+        induction noRecursion
   | modeEmpty => trivial
   | modeUnion => trivial
   | modeSubcapture => trivial
@@ -276,11 +379,12 @@ theorem noEvidenceBinders_oneTerm : HasNoEvidenceBinders ([] ▹ .term) := by
 theorem no_closed_top_included_in_bottom
     {evidence : Evidence (.inclusion .type) []}
     (typing : Evidence.Proves .nil evidence
-      (.inclusion (.type (.top : Ty [])) (.type (.bot : Ty [])))) :
+      (.inclusion (.type (.top : Ty [])) (.type (.bot : Ty []))))
+    (noRecursion : evidence.recursionFree = true) :
     False := by
   have validity := Evidence.Proves.sound_of_no_evidence
     noEvidenceBinders_empty typing
-  have holds := validity BoolValuation.empty (by
+  have holds := validity noRecursion BoolValuation.empty (by
     intro index
     nomatch index)
   have impossible : false = true := holds rfl
@@ -298,7 +402,8 @@ theorem no_singleton_included_in_empty
     False := by
   have validity := Evidence.Proves.sound_of_no_evidence
     noEvidenceBinders_oneTerm typing
-  have holds := validity BoolValuation.oneTermTrue (by
+  have holds := validity (Evidence.captureInclusion_recursionFree evidence)
+    BoolValuation.oneTermTrue (by
     intro index captures shape binding
     cases index with
     | here => cases binding

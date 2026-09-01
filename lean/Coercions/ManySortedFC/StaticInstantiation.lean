@@ -155,6 +155,8 @@ def substitute {source target : Sig} {relation : Relation}
   | .equalityTrans first second =>
       .equalityTrans (first.substitute substitution)
         (second.substitute substitution)
+  | .unfoldRec bodies index =>
+      .unfoldRec (bodies.substitute substitution.static) index
   | .equalityArrow domain codomain =>
       .equalityArrow (domain.substitute substitution)
         (codomain.substitute substitution)

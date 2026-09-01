@@ -63,6 +63,23 @@ theorem ofRename_liftMany {source target : Sig} (rho : Rename source target) :
       exact ofRename_lift _ _
 
 @[simp]
+theorem ofRename_liftN {source target : Sig} (rho : Rename source target)
+    (kind : BinderKind) : ∀ count : Nat,
+    (ofRename rho).liftN kind count = ofRename (rho.liftN kind count)
+  | 0 => rfl
+  | count + 1 => by
+      simp only [StaticSubst.liftN, Rename.liftN,
+        ofRename_liftN rho kind count, ofRename_lift]
+      rfl
+
+@[simp]
+theorem ofRename_liftTypes {source target : Sig}
+    (rho : Rename source target) (names : Nat) :
+    (ofRename rho).liftTypes names = ofRename (rho.liftTypes names) := by
+  unfold StaticSubst.liftTypes Rename.liftTypes
+  exact ofRename_liftN _ _ _
+
+@[simp]
 theorem ofRename_liftSymbols {source target : Sig}
     (rho : Rename source target) (symbols : List StaticSort) :
     (ofRename rho).liftSymbols symbols = ofRename (rho.liftSymbols symbols) := by
@@ -166,6 +183,21 @@ def Ty.substitute_ofRename {source target : Sig}
   | @Ty.existsT _ symbols relations theory payload => by
       simp only [Ty.substitute, Ty.rename, Theory.substitute_ofRename,
         StaticSubst.ofRename_liftStatic, Ty.substitute_ofRename]
+  | .recProj bodies index => by
+      simp only [Ty.substitute, Ty.rename,
+        RecBodies.substitute_ofRename bodies rho]
+
+@[simp]
+def RecBodies.substitute_ofRename {source target : Sig}
+    {bound count : Nat} (bodies : RecBodies source bound count)
+    (rho : Rename source target) :
+    bodies.substitute (StaticSubst.ofRename rho) = bodies.rename rho :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute, RecBodies.rename,
+        RecBodies.substitute_ofRename initial rho,
+        StaticSubst.ofRename_liftTypes, Ty.substitute_ofRename body]
 
 @[simp]
 def StaticExpr.substitute_ofRename {source target : Sig}
@@ -269,6 +301,27 @@ theorem postRename_liftMany {source middle target : Sig}
       simp only [StaticSubst.liftMany, Rename.liftMany,
         postRename_liftMany substitution rho rest, postRename_lift]
       rfl
+
+@[simp]
+theorem postRename_liftN {source middle target : Sig}
+    (substitution : StaticSubst source middle)
+    (rho : Rename middle target) (kind : BinderKind) : ∀ count : Nat,
+    (substitution.postRename rho).liftN kind count =
+      (substitution.liftN kind count).postRename (rho.liftN kind count)
+  | 0 => rfl
+  | count + 1 => by
+      simp only [StaticSubst.liftN, Rename.liftN,
+        postRename_liftN substitution rho kind count, postRename_lift]
+      rfl
+
+@[simp]
+theorem postRename_liftTypes {source middle target : Sig}
+    (substitution : StaticSubst source middle)
+    (rho : Rename middle target) (names : Nat) :
+    (substitution.postRename rho).liftTypes names =
+      (substitution.liftTypes names).postRename (rho.liftTypes names) := by
+  unfold StaticSubst.liftTypes Rename.liftTypes
+  exact postRename_liftN _ _ _ _
 
 @[simp]
 theorem postRename_liftSymbols {source middle target : Sig}
@@ -398,6 +451,24 @@ def Ty.substitute_postRename {source middle target : Sig}
   | @Ty.existsT _ symbols relations theory payload => by
       simp only [Ty.substitute, Ty.rename, Theory.substitute_postRename,
         Ty.substitute_postRename, StaticSubst.postRename_liftStatic]
+  | .recProj bodies index => by
+      simp only [Ty.substitute, Ty.rename,
+        RecBodies.substitute_postRename bodies substitution rho]
+
+@[simp]
+def RecBodies.substitute_postRename {source middle target : Sig}
+    {bound count : Nat} (bodies : RecBodies source bound count)
+    (substitution : StaticSubst source middle)
+    (rho : Rename middle target) :
+    (bodies.substitute substitution).rename rho =
+      bodies.substitute (substitution.postRename rho) :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute, RecBodies.rename,
+        RecBodies.substitute_postRename initial substitution rho,
+        Ty.substitute_postRename body,
+        StaticSubst.postRename_liftTypes]
 
 @[simp]
 def StaticExpr.substitute_postRename {source middle target : Sig}
@@ -588,6 +659,22 @@ def liftMany {source middle target : Sig} {before : Rename source middle}
   | [] => follows
   | kind :: rest => (follows.liftMany rest).lift kind
 
+def liftN {source middle target : Sig} {before : Rename source middle}
+    {after : StaticSubst middle target} {result : StaticSubst source target}
+    (follows : Follows before after result) (kind : BinderKind) :
+    ∀ count : Nat,
+      Follows (before.liftN kind count) (after.liftN kind count)
+        (result.liftN kind count)
+  | 0 => follows
+  | count + 1 => (follows.liftN kind count).lift kind
+
+def liftTypes {source middle target : Sig} {before : Rename source middle}
+    {after : StaticSubst middle target} {result : StaticSubst source target}
+    (follows : Follows before after result) (names : Nat) :
+    Follows (before.liftTypes names) (after.liftTypes names)
+      (result.liftTypes names) :=
+  follows.liftN (.symbol .type) names
+
 def liftSymbols {source middle target : Sig} {before : Rename source middle}
     {after : StaticSubst middle target} {result : StaticSubst source target}
     (follows : Follows before after result) (symbols : List StaticSort) :
@@ -708,6 +795,22 @@ def Ty.rename_substitute {source middle target : Sig}
         Theory.rename_substitute theory before after result follows,
         Ty.rename_substitute payload _ _ _
           (follows.liftStatic symbols relations)]
+  | .recProj bodies index => by
+      simp only [Ty.rename, Ty.substitute,
+        RecBodies.rename_substitute bodies before after result follows]
+
+def RecBodies.rename_substitute {source middle target : Sig}
+    {bound count : Nat} (bodies : RecBodies source bound count)
+    (before : Rename source middle) (after : StaticSubst middle target)
+    (result : StaticSubst source target)
+    (follows : StaticSubst.Follows before after result) :
+    (bodies.rename before).substitute after = bodies.substitute result :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.rename, RecBodies.substitute,
+        RecBodies.rename_substitute initial before after result follows,
+        Ty.rename_substitute body _ _ _ (follows.liftTypes bound)]
 
 def StaticExpr.rename_substitute {source middle target : Sig}
     {sort : StaticSort} (expression : StaticExpr sort source)
@@ -850,6 +953,27 @@ theorem liftMany_comp {source middle target : Sig}
       rfl
 
 @[simp]
+theorem liftN_comp {source middle target : Sig}
+    (before : StaticSubst source middle) (after : StaticSubst middle target)
+    (kind : BinderKind) : ∀ count : Nat,
+    (before.comp after).liftN kind count =
+      (before.liftN kind count).comp (after.liftN kind count)
+  | 0 => rfl
+  | count + 1 => by
+      simp only [StaticSubst.liftN, liftN_comp before after kind count,
+        lift_comp]
+      rfl
+
+@[simp]
+theorem liftTypes_comp {source middle target : Sig}
+    (before : StaticSubst source middle) (after : StaticSubst middle target)
+    (names : Nat) :
+    (before.comp after).liftTypes names =
+      (before.liftTypes names).comp (after.liftTypes names) := by
+  unfold StaticSubst.liftTypes
+  exact liftN_comp _ _ _ _
+
+@[simp]
 theorem liftSymbols_comp {source middle target : Sig}
     (before : StaticSubst source middle) (after : StaticSubst middle target)
     (symbols : List StaticSort) :
@@ -877,6 +1001,118 @@ theorem liftModal_comp {source middle target : Sig}
         (after.liftModal separationCount modes) := by
   unfold StaticSubst.liftModal StaticSubst.liftEvidenceBlock
   exact liftMany_comp _ _ _
+
+@[simp]
+theorem ofRename_id_comp {source target : Sig}
+    (substitution : StaticSubst source target) :
+    (StaticSubst.ofRename Rename.id).comp substitution = substitution := by
+  apply StaticSubst.ext
+  · intro index
+    rfl
+  · intro sort index
+    generalize expressionEq : substitution.symbolVar index = expression
+    cases expression <;>
+      simp [StaticSubst.comp, StaticSubst.ofRename, Rename.id,
+        StaticExpr.symbol, StaticExpr.substitute, Ty.substitute,
+        Capture.substitute, expressionEq]
+
+@[simp]
+theorem comp_ofRename_id {source target : Sig}
+    (substitution : StaticSubst source target) :
+    substitution.comp (StaticSubst.ofRename Rename.id) = substitution := by
+  apply StaticSubst.ext
+  · intro index
+    rfl
+  · intro sort index
+    generalize expressionEq : substitution.symbolVar index = expression
+    cases expression <;> simp [StaticSubst.comp, expressionEq,
+      StaticExpr.substitute_ofRename]
+
+private theorem instantiateType_comp {source middle target : Sig}
+    (before : StaticSubst source middle) (witness : Ty middle)
+    (after : StaticSubst middle target) :
+    (before.instantiateSymbol (.type witness)).comp after =
+      (before.comp after).instantiateSymbol
+        (.type (witness.substitute after)) := by
+  apply StaticSubst.ext
+  · intro index
+    cases index with
+    | there index => rfl
+  · intro sort index
+    cases index with
+    | here => rfl
+    | there index => rfl
+
+private theorem fromTypeArgs_comp {source middle target : Sig}
+    (base : StaticSubst source middle) :
+    {names : Nat} → (arguments : TypeArgs middle names) →
+      (after : StaticSubst middle target) →
+      (StaticSubst.fromTypeArgs base arguments).comp after =
+        StaticSubst.fromTypeArgs (base.comp after)
+          (arguments.substitute after)
+  | 0, .nil, after => rfl
+  | _ + 1, .snoc initial witness, after => by
+      simp only [StaticSubst.fromTypeArgs, TypeArgs.substitute]
+      calc
+        _ = ((StaticSubst.fromTypeArgs base initial).comp after).instantiateSymbol
+              (.type (witness.substitute after)) :=
+            instantiateType_comp _ _ _
+        _ = _ := congrArg
+          (fun result => result.instantiateSymbol
+            (.type (witness.substitute after)))
+          (fromTypeArgs_comp base initial after)
+
+private theorem ofTypeArgs_comp {source target : Sig} {names : Nat}
+    (arguments : TypeArgs source names)
+    (substitution : StaticSubst source target) :
+    (StaticSubst.ofTypeArgs Rename.id arguments).comp substitution =
+      StaticSubst.fromTypeArgs substitution
+        (arguments.substitute substitution) := by
+  unfold StaticSubst.ofTypeArgs
+  rw [fromTypeArgs_comp, StaticSubst.ofRename_id_comp]
+
+private theorem liftSymbol_comp_instantiateType
+    {source middle target : Sig} (before : StaticSubst source middle)
+    (after : StaticSubst middle target) (witness : Ty target) :
+    (before.liftSymbol .type).comp
+        (after.instantiateSymbol (.type witness)) =
+      (before.comp after).instantiateSymbol (.type witness) := by
+  apply StaticSubst.ext
+  · intro index
+    cases index with
+    | there index => rfl
+  · intro sort index
+    cases index with
+    | here => rfl
+    | there index =>
+        exact StaticExpr.rename_substitute (before.symbolVar index)
+          Rename.succ (after.instantiateSymbol (.type witness)) after
+          (StaticSubst.Follows.instantiateSymbol after (.type witness))
+
+private theorem liftTypes_comp_ofTypeArgs {source target : Sig}
+    (substitution : StaticSubst source target) :
+    {names : Nat} → (arguments : TypeArgs target names) →
+      (substitution.liftTypes names).comp
+          (StaticSubst.ofTypeArgs Rename.id arguments) =
+        StaticSubst.fromTypeArgs substitution arguments
+  | 0, .nil => by
+      simp [StaticSubst.liftTypes, StaticSubst.liftN,
+        StaticSubst.ofTypeArgs, StaticSubst.fromTypeArgs]
+  | _ + 1, .snoc initial witness => by
+      change ((substitution.liftTypes _).liftSymbol .type).comp
+          ((StaticSubst.fromTypeArgs (StaticSubst.ofRename Rename.id)
+            initial).instantiateSymbol (.type witness)) =
+        (StaticSubst.fromTypeArgs substitution initial).instantiateSymbol
+          (.type witness)
+      calc
+        _ = ((substitution.liftTypes _).comp
+              (StaticSubst.fromTypeArgs
+                (StaticSubst.ofRename Rename.id) initial)).instantiateSymbol
+              (.type witness) :=
+            liftSymbol_comp_instantiateType _ _ _
+        _ = _ := congrArg
+          (fun result => result.instantiateSymbol (.type witness))
+          (liftTypes_comp_ofTypeArgs substitution initial)
 
 end StaticSubst
 
@@ -971,6 +1207,22 @@ def Ty.substitute_comp {source middle target : Sig}
   | @Ty.existsT _ symbols relations theory payload => by
       simp only [Ty.substitute, Theory.substitute_comp, Ty.substitute_comp,
         StaticSubst.liftStatic_comp]
+  | .recProj bodies index => by
+      simp only [Ty.substitute,
+        RecBodies.substitute_comp bodies before after]
+
+@[simp]
+def RecBodies.substitute_comp {source middle target : Sig}
+    {bound count : Nat} (bodies : RecBodies source bound count)
+    (before : StaticSubst source middle) (after : StaticSubst middle target) :
+    (bodies.substitute before).substitute after =
+      bodies.substitute (before.comp after) :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.substitute,
+        RecBodies.substitute_comp initial before after,
+        Ty.substitute_comp body, StaticSubst.liftTypes_comp]
 
 @[simp]
 def StaticExpr.substitute_comp {source middle target : Sig}
@@ -1015,6 +1267,23 @@ def Theory.substitute_comp {source middle target : Sig}
       StaticSubst.liftSymbols_comp]
 
 end
+
+namespace RecBodies
+
+/-- Simultaneous unfolding is natural in ambient static substitution. -/
+@[simp]
+theorem unfoldAt_substitute {source target : Sig} {names : Nat}
+    (bodies : RecBodies source names names) (index : Fin names)
+    (substitution : StaticSubst source target) :
+    (bodies.unfoldAt index).substitute substitution =
+      (bodies.substitute substitution).unfoldAt index := by
+  unfold RecBodies.unfoldAt
+  rw [Ty.substitute_comp, RecBodies.get_substitute,
+    Ty.substitute_comp, StaticSubst.ofTypeArgs_comp,
+    RecBodies.selfArgs_substitute,
+    StaticSubst.liftTypes_comp_ofTypeArgs]
+
+end RecBodies
 
 namespace StaticSubst.Follows
 
@@ -1648,6 +1917,12 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
   | equalitySymm _ induction => exact .equalitySymm induction
   | equalityTrans _ _ firstInduction secondInduction =>
       exact .equalityTrans firstInduction secondInduction
+  | unfoldRec guarded =>
+      simpa [Evidence.substitute, Proposition.substitute,
+        StaticExpr.substitute, Ty.substitute,
+        RecBodies.unfoldAt_substitute] using
+        (Evidence.Proves.unfoldRec (context := targetContext)
+          (by simpa using guarded))
   | equalityArrow _ _ domainInduction codomainInduction =>
       exact .equalityArrow domainInduction codomainInduction
   | equalityCapturing _ _ captureInduction shapeInduction =>

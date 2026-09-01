@@ -19,11 +19,13 @@ import Coercions.DOT.Captures.ModalIntersections.BinderEmbeddingErasure
 import Coercions.Translation.ManySorted.Acyclic
 import Coercions.Translation.ManySorted.Intersections
 import Coercions.Translation.ManySorted.ModalIntersections
+import Coercions.Translation.ManySorted.RecursiveObjects
 
 /-!
 # Shared bridge infrastructure for translations into many-sorted FC
 
 This root collects the binder-only bridge, the acyclic compiler case study,
-and the cumulative captured-intersection compiler. It remains separate from
-the independently buildable target library.
+the cumulative captured-intersection compiler, and a separate guarded
+recursive type-member object-literal case study. It remains separate from the
+independently buildable target library.
 -/
