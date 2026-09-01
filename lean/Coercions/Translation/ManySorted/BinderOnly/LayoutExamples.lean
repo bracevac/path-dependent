@@ -24,12 +24,14 @@ theorem bad_type_theory_is_the_target_bad_interval :
       ManySortedFC.StaticExamples.impossibleTypeInterval := rfl
 
 /-- The source admits the interval hypothetically, but translating it does
-not manufacture a closed realization. -/
+not manufacture a recursion-free closed realization. -/
 theorem bad_type_interval_has_no_closed_target_model
     (model : ManySortedFC.Theory.Model
       (translateContext (DOTCapture.BinderOnly.Ctx.nil : DOTCapture.BinderOnly.Ctx []))
-      (translateInterval DOTCapture.BinderOnly.Ctx.nil badTypeInterval)) : False :=
+      (translateInterval DOTCapture.BinderOnly.Ctx.nil badTypeInterval))
+    (modelRecursionFree : model.RecursionFree) : False :=
   ManySortedFC.no_closed_model_of_impossible_type_interval model
+    modelRecursionFree
 
 def badTypeContext : DOTCapture.BinderOnly.Ctx ([] ▹ .static .type) :=
   DOTCapture.BinderOnly.Ctx.nil.extendStatic badTypeInterval

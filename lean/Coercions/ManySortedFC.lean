@@ -2,6 +2,7 @@ import Coercions.ManySortedFC.Scope
 import Coercions.ManySortedFC.Syntax
 import Coercions.ManySortedFC.Context
 import Coercions.ManySortedFC.Substitution
+import Coercions.ManySortedFC.Recursion
 import Coercions.ManySortedFC.Intervals
 import Coercions.ManySortedFC.IntervalElaboration
 import Coercions.ManySortedFC.Evidence
@@ -39,6 +40,7 @@ import Coercions.ManySortedFC.SeparationConsistency
 import Coercions.ManySortedFC.ModalConfinement
 import Coercions.ManySortedFC.DisjointCaptureTheory
 import Coercions.ManySortedFC.StaticExamples
+import Coercions.ManySortedFC.RecursiveExamples
 import Coercions.ManySortedFC.SeparationExamples
 import Coercions.ManySortedFC.ModelConsistency
 import Coercions.ManySortedFC.TermExamples
@@ -60,5 +62,8 @@ computations, while static abstraction, package payloads, and structural
 adaptation retain their explicit value boundaries. Primitive modal locks
 suspend arbitrary typed computations under explicit `Mode` and `Separate`
 assumptions; unlocking requires evidence checked in the unchanged outer
-context and erases to runtime `force`.
+context and erases to runtime `force`. Head-guarded simultaneous recursive
+type projections have checked unfold equality. Capture terms remain acyclic,
+and this syntactic facility does not claim a global semantic consistency
+theorem for arbitrary recursive type equations.
 -/

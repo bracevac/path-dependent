@@ -1,5 +1,5 @@
 import Coercions.DOT.Captures.Intersections.SourceExamples
-import Coercions.ManySortedFC.Consistency
+import Coercions.ManySortedFC.ModelConsistency
 import Coercions.Translation.ManySorted.Intersections.EncodingExamples
 
 /-!
@@ -63,10 +63,11 @@ theorem exact_top_bottom_occurrences_use_the_shared_name :
     | _ => False := by
   rfl
 
-/-- The generated target theory has no closed model, irrespective of the
-chosen witness or evidence terms. -/
+/-- The generated target theory has no recursion-free closed model,
+irrespective of the chosen witness or recursion-free evidence terms. -/
 theorem no_closed_model_of_exact_top_bottom_intersection
-    (model : Theory.Model Ctx.nil exactTopBottomEncoding.theory) : False := by
+    (model : Theory.Model Ctx.nil exactTopBottomEncoding.theory)
+    (modelRecursionFree : model.RecursionFree) : False := by
   rcases model with ⟨symbols, evidence, satisfaction⟩
   cases symbols with
   | cons witness remainingSymbols =>
@@ -85,6 +86,13 @@ theorem no_closed_model_of_exact_top_bottom_intersection
                           have topLowerTyping := satisfaction.head
                           have bottomUpperTyping :=
                             satisfaction.tail.tail.tail.head
+                          change
+                            (topLower.recursionFree &&
+                              (_topUpper.recursionFree &&
+                                (_bottomLower.recursionFree &&
+                                  (bottomUpper.recursionFree && true)))) = true
+                            at modelRecursionFree
+                          simp only [Bool.and_eq_true] at modelRecursionFree
                           have collapse : Evidence.Proves Ctx.nil
                               (.inclusionTrans topLower bottomUpper)
                               (.inclusion (.type (.top : Ty []))
@@ -110,6 +118,10 @@ theorem no_closed_model_of_exact_top_bottom_intersection
                                 StaticSubst.instantiateSymbol,
                                 StaticExpr.substitute, Ty.substitute] using
                                 bottomUpperTyping
-                          exact no_closed_top_included_in_bottom collapse
+                          exact no_closed_top_included_in_bottom collapse (by
+                            simp only [Evidence.recursionFree,
+                              Bool.and_eq_true]
+                            exact ⟨modelRecursionFree.1,
+                              modelRecursionFree.2.2.2.1⟩)
 
 end DOTCaptureToManySortedFC.Intersections.EncodingConsistencyExamples

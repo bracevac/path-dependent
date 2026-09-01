@@ -165,6 +165,21 @@ def liftMany {source target : Sig}
   | [] => substitution
   | kind :: rest => (substitution.liftMany rest).lift kind
 
+/-- Preserve a homogeneous block of binders. -/
+def liftN {source target : Sig}
+    (substitution : StaticSubst source target) (kind : BinderKind) :
+    (count : Nat) →
+      StaticSubst (Sig.extendN source kind count)
+        (Sig.extendN target kind count)
+  | 0 => substitution
+  | count + 1 => (substitution.liftN kind count).lift kind
+
+/-- Preserve the homogeneous type self names of a recursive block. -/
+def liftTypes {source target : Sig}
+    (substitution : StaticSubst source target) (names : Nat) :
+    StaticSubst (TypeScope source names) (TypeScope target names) :=
+  substitution.liftN (.symbol .type) names
+
 /-- Preserve a heterogeneous symbol block. -/
 def liftSymbols {source target : Sig}
     (substitution : StaticSubst source target)
@@ -243,6 +258,21 @@ def ofSymbolArgs {source target : Sig} (ambient : Rename source target)
     {symbols : List StaticSort} (arguments : SymbolArgs target symbols) :
     StaticSubst (SymbolScope source symbols) target :=
   fromSymbolArgs (ofRename ambient) arguments
+
+/-- Extend an ambient substitution with homogeneous simultaneous type
+witnesses. -/
+def fromTypeArgs {source target : Sig} (base : StaticSubst source target) :
+    {names : Nat} → TypeArgs target names →
+      StaticSubst (TypeScope source names) target
+  | 0, .nil => base
+  | _ + 1, .snoc initial witness =>
+      (fromTypeArgs base initial).instantiateSymbol (.type witness)
+
+/-- Instantiate the self-name suffix of a recursive type block. -/
+def ofTypeArgs {source target : Sig} (ambient : Rename source target)
+    {names : Nat} (arguments : TypeArgs target names) :
+    StaticSubst (TypeScope source names) target :=
+  fromTypeArgs (ofRename ambient) arguments
 
 /-- Interpret a complete static scope: instantiate every symbol, then remove
 its proof-only evidence binders. -/
@@ -329,6 +359,20 @@ def Ty.substitute {source target : Sig} (type : Ty source)
   | @Ty.existsT _ symbols relations theory payload =>
       .existsT (theory.substitute substitution)
         (payload.substitute (substitution.liftStatic symbols relations))
+  | .recProj bodies index =>
+      .recProj (bodies.substitute substitution) index
+
+/-- Substitute the ambient scope of every recursive body while preserving
+its homogeneous suffix of self names. -/
+def RecBodies.substitute {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count)
+    (substitution : StaticSubst source target) :
+    RecBodies target bound count :=
+  match bodies with
+  | .nil => .nil
+  | .snoc initial body =>
+      .snoc (initial.substitute substitution)
+        (body.substitute (substitution.liftTypes bound))
 
 /-- Apply a simultaneous static substitution without changing the sort. -/
 def StaticExpr.substitute {sort : StaticSort} {source target : Sig}
@@ -369,6 +413,27 @@ def Theory.substitute {source target : Sig}
         (rest.substitute substitution)
 
 end
+
+@[simp]
+theorem Ty.substitute_recProj {source target : Sig} {names : Nat}
+    (bodies : RecBodies source names names) (index : Fin names)
+    (substitution : StaticSubst source target) :
+    (Ty.recProj bodies index).substitute substitution =
+      .recProj (bodies.substitute substitution) index := rfl
+
+namespace TypeArgs
+
+/-- Substitute every homogeneous type witness. -/
+def substitute {source target : Sig} {count : Nat}
+    (arguments : TypeArgs source count)
+    (substitution : StaticSubst source target) : TypeArgs target count :=
+  match arguments with
+  | .nil => .nil
+  | .snoc initial type =>
+      .snoc (initial.substitute substitution)
+        (type.substitute substitution)
+
+end TypeArgs
 
 /-! ## Instantiating names-first theories -/
 

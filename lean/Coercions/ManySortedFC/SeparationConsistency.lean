@@ -623,6 +623,7 @@ theorem access_sound {scope : Sig} {context : Ctx scope}
   | equalityTrans firstTyping secondTyping firstInduction secondInduction =>
       exact Proposition.accessHolds_equality_trans firstInduction
         secondInduction
+  | unfoldRec => trivial
   | equalityArrow => trivial
   | equalityCapturing => trivial
   | equalityCaptureUnion leftTyping rightTyping leftInduction rightInduction =>

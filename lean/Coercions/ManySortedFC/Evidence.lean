@@ -1,4 +1,5 @@
 import Coercions.ManySortedFC.Context
+import Coercions.ManySortedFC.Recursion
 
 /-!
 # Logical evidence for many-sorted FC
@@ -31,6 +32,11 @@ inductive Evidence : Relation -> Sig -> Type where
   | equalityTrans {scope : Sig} {sort : StaticSort}
       (first second : Evidence (.equality sort) scope) :
       Evidence (.equality sort) scope
+  /-- Primitive equality between a guarded recursive projection and its
+  simultaneous unfolding. -/
+  | unfoldRec {scope : Sig} {names : Nat}
+      (bodies : RecBodies scope names names) (index : Fin names) :
+      Evidence (.equality .type) scope
 
   /- Equality congruence for the compound constructors shared by this core. -/
   | equalityArrow {scope : Sig}
@@ -152,6 +158,7 @@ def rename {relation : Relation} {source target : Sig}
   | .equalitySymm inner => .equalitySymm (inner.rename rho)
   | .equalityTrans first second =>
       .equalityTrans (first.rename rho) (second.rename rho)
+  | .unfoldRec bodies index => .unfoldRec (bodies.rename rho) index
   | .equalityArrow domain codomain =>
       .equalityArrow (domain.rename rho) (codomain.rename rho)
   | .equalityCapturing captures shape =>
@@ -222,6 +229,7 @@ theorem rename_id {scope : Sig} {relation : Relation}
   | equalitySymm inner induction => simp [rename, induction]
   | equalityTrans first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
+  | unfoldRec bodies index => simp [rename]
   | equalityArrow domain codomain domainInduction codomainInduction =>
       simp [rename, domainInduction, codomainInduction]
   | equalityCapturing captures shape capturesInduction shapeInduction =>
@@ -282,6 +290,7 @@ theorem rename_comp {relation : Relation} {first second third : Sig}
   | equalitySymm inner induction => simp [rename, induction]
   | equalityTrans first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
+  | unfoldRec bodies index => simp [rename, RecBodies.rename_comp]
   | equalityArrow domain codomain domainInduction codomainInduction =>
       simp [rename, domainInduction, codomainInduction]
   | equalityCapturing captures shape capturesInduction shapeInduction =>
@@ -358,6 +367,12 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
       (firstTyping : Proves context first (.equality left middle))
       (secondTyping : Proves context second (.equality middle right)) :
       Proves context (.equalityTrans first second) (.equality left right)
+  | unfoldRec {scope : Sig} {context : Ctx scope} {names : Nat}
+      {bodies : RecBodies scope names names} {index : Fin names}
+      (guarded : bodies.headGuarded = true) :
+      Proves context (.unfoldRec bodies index)
+        (.equality (.type (.recProj bodies index))
+          (.type (bodies.unfoldAt index)))
   | equalityArrow {scope : Sig} {context : Ctx scope}
       {domain codomain : Evidence (.equality .type) scope}
       {sourceDomain targetDomain sourceCodomain targetCodomain : Ty scope}

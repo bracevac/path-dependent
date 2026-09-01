@@ -44,6 +44,8 @@ private theorem check_complete_projection {scope : Sig}
           subst firstProp
           subst secondProp
           simp [check, firstEq, secondEq]
+  | unfoldRec guarded =>
+      simp [check, guarded]
   | equalityArrow domain codomain domainIH codomainIH =>
       obtain ⟨domainChecked, domainEq, domainPropEq⟩ :=
         Option.map_eq_some_iff.mp domainIH
@@ -688,6 +690,7 @@ theorem synth_complete {scope : Sig} {context : Ctx scope}
       | arr => simp [Ty.stripCapture] at termShape
       | forallT => simp [Ty.stripCapture] at termShape
       | existsT => simp [Ty.stripCapture] at termShape
+      | recProj => simp [Ty.stripCapture] at termShape
       | capturing captures shape =>
           change shape = Ty.modal _ _ at termShape
           subst shape
@@ -722,6 +725,7 @@ theorem synth_complete {scope : Sig} {context : Ctx scope}
       | arr => simp [Ty.stripCapture] at functionShape
       | modal => simp [Ty.stripCapture] at functionShape
       | existsT => simp [Ty.stripCapture] at functionShape
+      | recProj => simp [Ty.stripCapture] at functionShape
       | capturing captures shape =>
           change shape = Ty.forallT _ _ at functionShape
           subst shape

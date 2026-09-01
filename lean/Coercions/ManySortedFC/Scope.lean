@@ -75,6 +75,12 @@ def extendMany (scope : Sig) : Sig → Sig
   | [] => scope
   | kind :: kinds => extend (extendMany scope kinds) kind
 
+/-- Add `count` newest binders of one kind.  Recursive type blocks use this
+homogeneous view inside the otherwise heterogeneous static scope. -/
+def extendN (scope : Sig) (kind : BinderKind) : Nat → Sig
+  | 0 => scope
+  | count + 1 => extend (extendN scope kind count) kind
+
 @[simp]
 theorem extendMany_nil (scope : Sig) : extendMany scope [] = scope := rfl
 
@@ -92,10 +98,24 @@ theorem extendMany_append (scope : Sig) (first second : Sig) :
   | cons kind rest induction =>
       simp only [List.cons_append, extendMany_cons, induction]
 
+@[simp]
+theorem extendN_zero (scope : Sig) (kind : BinderKind) :
+    extendN scope kind 0 = scope := rfl
+
+@[simp]
+theorem extendN_succ (scope : Sig) (kind : BinderKind) (count : Nat) :
+    extendN scope kind (count + 1) =
+      extend (extendN scope kind count) kind := rfl
+
 end Sig
 
 /-- Signature extension notation. -/
 infixl:65 " ▹ " => Sig.extend
+
+/-- Scope below a homogeneous suffix of recursive type symbols. -/
+@[reducible]
+def TypeScope (scope : Sig) (names : Nat) : Sig :=
+  Sig.extendN scope (.symbol .type) names
 
 /-- A variable can select only a binder of its requested kind. -/
 inductive BVar : Sig → BinderKind → Type where
@@ -134,6 +154,18 @@ def liftMany {source target : Sig} (rho : Rename source target)
   match kinds with
   | [] => rho
   | kind :: rest => (rho.liftMany rest).lift (kind := kind)
+
+/-- Lift a renaming below `count` binders of one kind. -/
+def liftN {source target : Sig} (rho : Rename source target)
+    (kind : BinderKind) : (count : Nat) →
+    Rename (Sig.extendN source kind count) (Sig.extendN target kind count)
+  | 0 => rho
+  | count + 1 => (rho.liftN kind count).lift (kind := kind)
+
+/-- Lift below the homogeneous self-name suffix of a recursive type block. -/
+def liftTypes {source target : Sig} (rho : Rename source target)
+    (names : Nat) : Rename (TypeScope source names) (TypeScope target names) :=
+  rho.liftN (.symbol .type) names
 
 /-- Weaken every existing variable below one new binder. -/
 def succ {scope : Sig} {kind : BinderKind} :
@@ -177,6 +209,16 @@ theorem liftMany_cons {source target : Sig} (rho : Rename source target)
     (kind : BinderKind) (rest : Sig) :
     rho.liftMany (kind :: rest) =
       (rho.liftMany rest).lift (kind := kind) := rfl
+
+@[simp]
+theorem liftN_zero {source target : Sig} (rho : Rename source target)
+    (kind : BinderKind) : rho.liftN kind 0 = rho := rfl
+
+@[simp]
+theorem liftN_succ {source target : Sig} (rho : Rename source target)
+    (kind : BinderKind) (count : Nat) :
+    rho.liftN kind (count + 1) =
+      (rho.liftN kind count).lift (kind := kind) := rfl
 
 @[ext]
 theorem ext {source target : Sig} {first second : Rename source target}
@@ -264,6 +306,38 @@ theorem liftMany_comp {first second third : Sig}
   | cons kind rest induction =>
       simp only [liftMany_cons, induction, lift_comp]
       rfl
+
+@[simp]
+theorem liftN_id {scope : Sig} (kind : BinderKind) (count : Nat) :
+    (id (scope := scope)).liftN kind count = id := by
+  induction count with
+  | zero => rfl
+  | succ count induction => simp [liftN, induction]
+
+@[simp]
+theorem liftN_comp {first second third : Sig}
+    (firstRename : Rename first second)
+    (secondRename : Rename second third) (kind : BinderKind)
+    (count : Nat) :
+    (firstRename.comp secondRename).liftN kind count =
+      (firstRename.liftN kind count).comp
+        (secondRename.liftN kind count) := by
+  induction count with
+  | zero => rfl
+  | succ count induction => simp [liftN, induction, lift_comp]
+
+@[simp]
+theorem liftTypes_id {scope : Sig} (names : Nat) :
+    (id (scope := scope)).liftTypes names = id := by
+  simp [liftTypes]
+
+theorem liftTypes_comp {first second third : Sig}
+    (firstRename : Rename first second)
+    (secondRename : Rename second third) (names : Nat) :
+    (firstRename.comp secondRename).liftTypes names =
+      (firstRename.liftTypes names).comp
+        (secondRename.liftTypes names) := by
+  simp [liftTypes]
 
 end Rename
 

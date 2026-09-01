@@ -13,11 +13,35 @@ the inclusions refuted by the Boolean consistency model.
 
 namespace ManySortedFC
 
+namespace EvidenceArgs
+
+/-- The evidence block covered by the finite Boolean model.  Recursive
+unfold certificates remain independently checkable, but require a richer
+semantic model than this file supplies. -/
+def recursionFree {scope : Sig} : {relations : List Relation} ->
+    EvidenceArgs scope relations -> Bool
+  | [], .nil => true
+  | _ :: _, .cons newest older =>
+      newest.recursionFree && older.recursionFree
+
+end EvidenceArgs
+
+namespace Theory.Model
+
+def RecursionFree {scope : Sig} {context : Ctx scope}
+    {symbols : List StaticSort} {relations : List Relation}
+    {theory : Theory scope symbols relations}
+    (model : Theory.Model context theory) : Prop :=
+  model.evidence.recursionFree = true
+
+end Theory.Model
+
 /-- No witness and ambient evidence supply can model `Top .. Bottom` in the
-empty context. -/
+empty context when its certificates lie in the recursion-free fragment of
+the Boolean model. -/
 theorem no_closed_model_of_impossible_type_interval
-    (model : Theory.Model Ctx.nil
-      StaticExamples.impossibleTypeInterval) : False := by
+    (model : Theory.Model Ctx.nil StaticExamples.impossibleTypeInterval)
+    (modelRecursionFree : model.RecursionFree) : False := by
   rcases model with ⟨symbols, evidence, satisfaction⟩
   cases symbols with
   | cons witness remainingSymbols =>
@@ -31,6 +55,8 @@ theorem no_closed_model_of_impossible_type_interval
                   cases noEvidence
                   have lowerTyping := satisfaction.head
                   have upperTyping := satisfaction.tail.head
+                  simp only [Theory.Model.RecursionFree,
+                    EvidenceArgs.recursionFree, Bool.and_eq_true] at modelRecursionFree
                   have collapse : Evidence.Proves Ctx.nil
                       (.inclusionTrans lowerEvidence upperEvidence)
                       (.inclusion (.type (.top : Ty []))
@@ -50,7 +76,8 @@ theorem no_closed_model_of_impossible_type_interval
                         StaticSubst.fromSymbolArgs,
                         StaticSubst.instantiateSymbol,
                         StaticExpr.substitute, Ty.substitute] using upperTyping
-                  exact no_closed_top_included_in_bottom collapse
+                  exact no_closed_top_included_in_bottom collapse (by
+                    simp [Evidence.recursionFree, modelRecursionFree])
 
 /-- In a context containing only the capability `x`, no witness and ambient
 evidence supply can model `{x} .. {}`. -/

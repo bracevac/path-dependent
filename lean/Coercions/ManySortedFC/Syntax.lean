@@ -245,6 +245,22 @@ inductive Ty : Sig → Type where
       {relations : List Relation}
       (theory : Theory scope symbols relations)
       (payload : Ty (StaticScope scope symbols relations)) : Ty scope
+  /-- One projection from a complete simultaneous recursive type block. -/
+  | recProj {scope : Sig} {names : Nat}
+      (bodies : RecBodies scope names names) (index : Fin names) : Ty scope
+
+/-- A simultaneous recursive type block under construction.
+
+Every body sees the same homogeneous suffix of `bound` type self names.
+`count` records the bodies supplied so far; only `RecBodies scope n n` may be
+projected as a closed recursive block.  Capture symbols remain ambient and
+acyclic in this first recursive target layer. -/
+inductive RecBodies : (scope : Sig) → (bound count : Nat) → Type where
+  | nil {scope : Sig} {bound : Nat} : RecBodies scope bound 0
+  | snoc {scope : Sig} {bound count : Nat}
+      (initial : RecBodies scope bound count)
+      (body : Ty (TypeScope scope bound)) :
+      RecBodies scope bound (count + 1)
 
 /-- A static expression indexed by its sort. -/
 inductive StaticExpr : StaticSort → Sig → Type where
@@ -285,7 +301,7 @@ deriving instance DecidableEq for Capture
 deriving instance DecidableEq for SeparationContext
 deriving instance DecidableEq for ModeContext
 deriving instance DecidableEq for ModalContext
-deriving instance DecidableEq for Ty, StaticExpr, Proposition, Theory
+deriving instance DecidableEq for Ty, RecBodies, StaticExpr, Proposition, Theory
 
 namespace Ty
 
@@ -378,6 +394,17 @@ def Ty.rename {source target : Sig} (type : Ty source)
   | @Ty.existsT _ symbols relations theory payload =>
       .existsT (theory.rename rho)
         (payload.rename (rho.liftStatic symbols relations))
+  | .recProj bodies index => .recProj (bodies.rename rho) index
+
+/-- Rename the ambient scope of every recursive body while preserving its
+shared homogeneous suffix of self names. -/
+def RecBodies.rename {source target : Sig} {bound count : Nat}
+    (bodies : RecBodies source bound count) (rho : Rename source target) :
+    RecBodies target bound count :=
+  match bodies with
+  | .nil => .nil
+  | .snoc initial body =>
+      .snoc (initial.rename rho) (body.rename (rho.liftTypes bound))
 
 /-- Rename a static expression without changing its sort. -/
 def StaticExpr.rename {sort : StaticSort} {source target : Sig}
@@ -506,6 +533,16 @@ def weaken {scope : Sig} {kind : BinderKind} (type : Ty scope) :
 
 end Ty
 
+namespace RecBodies
+
+/-- Weaken the ambient scope of a recursive block below one binder. -/
+def weaken {scope : Sig} {kind : BinderKind} {bound count : Nat}
+    (bodies : RecBodies scope bound count) :
+    RecBodies (scope ▹ kind) bound count :=
+  bodies.rename Rename.succ
+
+end RecBodies
+
 namespace StaticExpr
 
 /-- Weaken a static expression below one binder. -/
@@ -581,6 +618,18 @@ def Ty.rename_id {scope : Sig} (type : Ty scope) :
   | @Ty.existsT _ symbols relations theory payload => by
       simp only [Ty.rename, Theory.rename_id theory, Rename.liftStatic_id,
         Ty.rename_id payload]
+  | .recProj bodies index => by
+      simp only [Ty.rename, RecBodies.rename_id bodies]
+
+@[simp]
+def RecBodies.rename_id {scope : Sig} {bound count : Nat}
+    (bodies : RecBodies scope bound count) :
+    bodies.rename Rename.id = bodies :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.rename, RecBodies.rename_id initial,
+        Rename.liftTypes_id, Ty.rename_id body]
 
 @[simp]
 def StaticExpr.rename_id {scope : Sig} {sort : StaticSort}
@@ -729,6 +778,20 @@ def Ty.rename_comp {first second third : Sig} (type : Ty first)
   | @Ty.existsT _ symbols relations theory payload => by
       simp only [Ty.rename, Theory.rename_comp theory,
         Ty.rename_comp payload, Rename.liftStatic_comp]
+  | .recProj bodies index => by
+      simp only [Ty.rename, RecBodies.rename_comp bodies]
+
+@[simp]
+def RecBodies.rename_comp {first second third : Sig}
+    {bound count : Nat} (bodies : RecBodies first bound count)
+    (rho₁ : Rename first second) (rho₂ : Rename second third) :
+    (bodies.rename rho₁).rename rho₂ =
+      bodies.rename (rho₁.comp rho₂) :=
+  match bodies with
+  | .nil => rfl
+  | .snoc initial body => by
+      simp only [RecBodies.rename, RecBodies.rename_comp initial,
+        Ty.rename_comp body, Rename.liftTypes_comp]
 
 @[simp]
 def StaticExpr.rename_comp {sort : StaticSort} {first second third : Sig}
@@ -777,5 +840,46 @@ def Theory.rename_comp {first second third : Sig}
         Theory.rename_comp rest, Rename.liftSymbols_comp]
 
 end
+
+
+/-! ## Homogeneous recursive type arguments -/
+
+/-- Simultaneous type witnesses for the self names of a recursive block. -/
+inductive TypeArgs (scope : Sig) : Nat → Type where
+  | nil : TypeArgs scope 0
+  | snoc {count : Nat} (initial : TypeArgs scope count) (type : Ty scope) :
+      TypeArgs scope (count + 1)
+deriving DecidableEq
+
+namespace TypeArgs
+
+/-- Rename every type witness. -/
+def rename {source target : Sig} {count : Nat}
+    (arguments : TypeArgs source count) (rho : Rename source target) :
+    TypeArgs target count :=
+  match arguments with
+  | .nil => .nil
+  | .snoc initial type => .snoc (initial.rename rho) (type.rename rho)
+
+@[simp]
+theorem rename_id {scope : Sig} {count : Nat}
+    (arguments : TypeArgs scope count) :
+    arguments.rename Rename.id = arguments := by
+  induction arguments with
+  | nil => rfl
+  | snoc initial type induction => simp [rename, induction]
+
+@[simp]
+theorem rename_comp {first second third : Sig} {count : Nat}
+    (arguments : TypeArgs first count) (rho₁ : Rename first second)
+    (rho₂ : Rename second third) :
+    (arguments.rename rho₁).rename rho₂ =
+      arguments.rename (rho₁.comp rho₂) := by
+  induction arguments with
+  | nil => rfl
+  | snoc initial type induction =>
+      simp [rename, induction, Ty.rename_comp]
+
+end TypeArgs
 
 end ManySortedFC
