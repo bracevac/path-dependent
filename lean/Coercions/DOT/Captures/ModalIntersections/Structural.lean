@@ -78,6 +78,36 @@ def Capture.rename_id {scope : Sig} (capture : Capture scope) :
       simp only [Capture.rename, StaticRef.rename_id reference]
 
 @[simp]
+def SeparationContext.rename_id {scope : Sig} {count : Nat}
+    (context : SeparationContext count scope) :
+    context.rename DOTCapture.BinderOnly.Rename.id = context :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [SeparationContext.rename,
+        SeparationContext.rename_id rest, Capture.rename_id capture]
+
+@[simp]
+def ModeContext.rename_id {scope : Sig} {modes : List CaptureMode}
+    (context : ModeContext modes scope) :
+    context.rename DOTCapture.BinderOnly.Rename.id = context :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [ModeContext.rename, ModeContext.rename_id rest,
+        Capture.rename_id capture]
+
+@[simp]
+def ModalRequirements.rename_id {scope : Sig} {separationCount : Nat}
+    {modes : List CaptureMode}
+    (requirements : ModalRequirements separationCount modes scope) :
+    requirements.rename DOTCapture.BinderOnly.Rename.id = requirements :=
+  match requirements with
+  | .mk separation mode => by
+      simp only [ModalRequirements.rename,
+        SeparationContext.rename_id separation, ModeContext.rename_id mode]
+
+@[simp]
 def Ty.rename_id {scope : Sig} (type : Ty scope) :
     type.rename DOTCapture.BinderOnly.Rename.id = type :=
   match type with
@@ -96,6 +126,9 @@ def Ty.rename_id {scope : Sig} (type : Ty scope) :
   | .existsI interval body => by
       simp only [Ty.rename, Interval.rename_id interval,
         DOTCapture.BinderOnly.Rename.lift_id, Ty.rename_id body]
+  | .modal requirements body => by
+      simp only [Ty.rename, ModalRequirements.rename_id requirements,
+        Ty.rename_id body]
   | .object object => by
       simp only [Ty.rename, ObjectType.rename_id object]
 
@@ -172,6 +205,43 @@ def Capture.rename_comp {first second third : Sig}
       simp only [Capture.rename, StaticRef.rename_comp reference]
 
 @[simp]
+def SeparationContext.rename_comp {count : Nat}
+    {first second third : Sig} (context : SeparationContext count first)
+    (rho₁ : Rename first second) (rho₂ : Rename second third) :
+    (context.rename rho₁).rename rho₂ =
+      context.rename (rho₁.comp rho₂) :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [SeparationContext.rename,
+        SeparationContext.rename_comp rest, Capture.rename_comp capture]
+
+@[simp]
+def ModeContext.rename_comp {modes : List CaptureMode}
+    {first second third : Sig} (context : ModeContext modes first)
+    (rho₁ : Rename first second) (rho₂ : Rename second third) :
+    (context.rename rho₁).rename rho₂ =
+      context.rename (rho₁.comp rho₂) :=
+  match context with
+  | .nil => rfl
+  | .cons rest capture => by
+      simp only [ModeContext.rename, ModeContext.rename_comp rest,
+        Capture.rename_comp capture]
+
+@[simp]
+def ModalRequirements.rename_comp {separationCount : Nat}
+    {modes : List CaptureMode} {first second third : Sig}
+    (requirements : ModalRequirements separationCount modes first)
+    (rho₁ : Rename first second) (rho₂ : Rename second third) :
+    (requirements.rename rho₁).rename rho₂ =
+      requirements.rename (rho₁.comp rho₂) :=
+  match requirements with
+  | .mk separation mode => by
+      simp only [ModalRequirements.rename,
+        SeparationContext.rename_comp separation,
+        ModeContext.rename_comp mode]
+
+@[simp]
 def Ty.rename_comp {first second third : Sig} (type : Ty first)
     (rho₁ : Rename first second) (rho₂ : Rename second third) :
     (type.rename rho₁).rename rho₂ = type.rename (rho₁.comp rho₂) :=
@@ -192,6 +262,9 @@ def Ty.rename_comp {first second third : Sig} (type : Ty first)
   | .existsI interval body => by
       simp only [Ty.rename, Interval.rename_comp interval,
         Ty.rename_comp body, DOTCapture.BinderOnly.Rename.lift_comp]
+  | .modal requirements body => by
+      simp only [Ty.rename, ModalRequirements.rename_comp requirements,
+        Ty.rename_comp body]
   | .object object => by
       simp only [Ty.rename, ObjectType.rename_comp object]
 
@@ -278,6 +351,47 @@ theorem weaken_rename {source target : Sig} {kind : BinderKind}
     DOTCapture.BinderOnly.Rename.succ_lift_comm]
 
 end Capture
+
+namespace SeparationContext
+
+@[simp]
+theorem weaken_rename {source target : Sig} {count : Nat}
+    {kind : BinderKind} (context : SeparationContext count source)
+    (rho : Rename source target) :
+    (context.weaken (kind := kind)).rename (rho.lift (kind := kind)) =
+      (context.rename rho).weaken := by
+  simp only [weaken, rename_comp,
+    DOTCapture.BinderOnly.Rename.succ_lift_comm]
+
+end SeparationContext
+
+namespace ModeContext
+
+@[simp]
+theorem weaken_rename {source target : Sig} {modes : List CaptureMode}
+    {kind : BinderKind} (context : ModeContext modes source)
+    (rho : Rename source target) :
+    (context.weaken (kind := kind)).rename (rho.lift (kind := kind)) =
+      (context.rename rho).weaken := by
+  simp only [weaken, rename_comp,
+    DOTCapture.BinderOnly.Rename.succ_lift_comm]
+
+end ModeContext
+
+namespace ModalRequirements
+
+@[simp]
+theorem weaken_rename {source target : Sig} {separationCount : Nat}
+    {modes : List CaptureMode} {kind : BinderKind}
+    (requirements : ModalRequirements separationCount modes source)
+    (rho : Rename source target) :
+    (requirements.weaken (kind := kind)).rename
+        (rho.lift (kind := kind)) =
+      (requirements.rename rho).weaken := by
+  simp only [weaken, rename_comp,
+    DOTCapture.BinderOnly.Rename.succ_lift_comm]
+
+end ModalRequirements
 
 namespace Ty
 

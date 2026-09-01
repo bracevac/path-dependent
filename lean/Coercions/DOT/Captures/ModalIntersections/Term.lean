@@ -7,7 +7,9 @@ These are the cumulative captured-intersection term forms.  Lexical static
 abstraction and packaging remain value-only, so erasing a static wrapper
 cannot delay a computation.  Their eliminations accept computations, matching
 the general-expression discipline already used by application and object
-opening.  Guarded modal operations remain outside this foundation layer.
+opening.  A modal lock is likewise a value that suspends an arbitrary
+computation; modal unlocking accepts a computed scrutinee.  This is the
+access-only separation fragment and carries no consume or freshness claim.
 -/
 
 namespace DOTCapture.ModalIntersections
@@ -64,6 +66,13 @@ inductive Value : Sig → Type where
       (interval : Interval sort scope)
       (payloadType : Ty (scope ▹ .static sort))
       (witness : StaticExpr sort scope) (payload : Value scope) : Value scope
+  /-- Suspend a computation under positional separation and mode assumptions.
+  The assumptions affect typing, not the source variable scope. -/
+  | lock {scope : Sig} {separationCount : Nat}
+      {modes : List CaptureMode}
+      (requirements : ModalRequirements separationCount modes scope)
+      (result : Ty scope) (closure : Capture scope) (body : Term scope) :
+      Value scope
   | object {scope : Sig} (objectType : ObjectType scope)
       (payload : Value scope) : Value scope
   | objectConsumer {scope : Sig} (parameter : ObjectType scope)
@@ -84,6 +93,12 @@ inductive Term : Sig → Type where
       (payloadType : Ty (scope ▹ .static sort))
       (result : Ty scope) (package : Term scope)
       (body : Term (PayloadScope scope sort)) : Term scope
+  /-- Release a modal value after checking its requirements in the unchanged
+  outer context.  The scrutinee may be an arbitrary computation. -/
+  | unlock {scope : Sig} {separationCount : Nat}
+      {modes : List CaptureMode}
+      (requirements : ModalRequirements separationCount modes scope)
+      (scrutinee : Term scope) : Term scope
   | objectApp {scope : Sig} (parameter : ObjectType scope)
       (function argument : Term scope) : Term scope
   | objectLet {scope : Sig} (objectType : ObjectType scope)
@@ -112,6 +127,9 @@ def Value.rename {source target : Sig} (value : Value source)
       .pack (interval.rename rho)
         (payloadType.rename (rho.lift (kind := .static sort)))
         (witness.rename rho) (payload.rename rho)
+  | .lock requirements result closure body =>
+      .lock (requirements.rename rho) (result.rename rho)
+        (closure.rename rho) (body.rename rho)
   | .object objectType payload =>
       .object (objectType.rename rho) (payload.rename rho)
   | .objectConsumer parameter result body =>
@@ -136,6 +154,8 @@ def Term.rename {source target : Sig} (term : Term source)
         (payloadType.rename (rho.lift (kind := .static sort)))
         (result.rename rho) (package.rename rho)
         (body.rename (rho.liftPayload sort))
+  | .unlock requirements scrutinee =>
+      .unlock (requirements.rename rho) (scrutinee.rename rho)
   | .objectApp parameter function argument =>
       .objectApp (parameter.rename rho) (function.rename rho)
         (argument.rename rho)
@@ -179,6 +199,9 @@ def Value.rename_id {scope : Sig} (value : Value scope) :
       simp only [Value.rename, Interval.rename_id interval,
         DOTCapture.BinderOnly.Rename.lift_id, Ty.rename_id payloadType,
         StaticExpr.rename_id witness, Value.rename_id payload]
+  | .lock requirements result closure body => by
+      simp only [Value.rename, ModalRequirements.rename_id requirements,
+        Ty.rename_id result, Capture.rename_id closure, Term.rename_id body]
   | .object objectType payload => by
       simp only [Value.rename, ObjectType.rename_id objectType,
         Value.rename_id payload]
@@ -208,6 +231,9 @@ def Term.rename_id {scope : Sig} (term : Term scope) :
         DOTCapture.BinderOnly.Rename.lift_id, Ty.rename_id payloadType,
         Ty.rename_id result, Term.rename_id package, Rename.liftPayload_id,
         Term.rename_id body]
+  | .unlock requirements scrutinee => by
+      simp only [Term.rename, ModalRequirements.rename_id requirements,
+        Term.rename_id scrutinee]
   | .objectApp parameter function argument => by
       simp only [Term.rename, ObjectType.rename_id parameter,
         Term.rename_id function, Term.rename_id argument]
@@ -237,6 +263,10 @@ def Value.rename_comp {first second third : Sig} (value : Value first)
       simp only [Value.rename, Interval.rename_comp interval,
         Ty.rename_comp payloadType, StaticExpr.rename_comp witness,
         Value.rename_comp payload, DOTCapture.BinderOnly.Rename.lift_comp]
+  | .lock requirements result closure body => by
+      simp only [Value.rename, ModalRequirements.rename_comp requirements,
+        Ty.rename_comp result, Capture.rename_comp closure,
+        Term.rename_comp body]
   | .object objectType payload => by
       simp only [Value.rename, ObjectType.rename_comp objectType,
         Value.rename_comp payload]
@@ -268,6 +298,9 @@ def Term.rename_comp {first second third : Sig} (term : Term first)
         Ty.rename_comp payloadType, Ty.rename_comp result,
         Term.rename_comp package, Term.rename_comp body,
         DOTCapture.BinderOnly.Rename.lift_comp, Rename.liftPayload_comp]
+  | .unlock requirements scrutinee => by
+      simp only [Term.rename, ModalRequirements.rename_comp requirements,
+        Term.rename_comp scrutinee]
   | .objectApp parameter function argument => by
       simp only [Term.rename, ObjectType.rename_comp parameter,
         Term.rename_comp function, Term.rename_comp argument]

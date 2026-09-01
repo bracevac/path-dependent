@@ -26,19 +26,47 @@ end StaticRef
 
 /-! ## Stable opening of local interface references -/
 
-mutual
-
-def Capture.openAt {scope : Sig} (receiver : Path scope) :
-    Capture scope → Capture scope
+def Capture.openAt {scope : Sig} (capture : Capture scope)
+    (receiver : Path scope) : Capture scope :=
+  match capture with
   | .empty => .empty
   | .union left right => .union (left.openAt receiver) (right.openAt receiver)
-  | .readOnly capture => .readOnly (capture.openAt receiver)
+  | .readOnly inner => .readOnly (inner.openAt receiver)
   | .singleton path => .singleton path
   | .ref (.localCaptureMember label) =>
       .ref (.captureMember receiver label)
   | .ref reference => .ref reference
 
-def Ty.openAt {scope : Sig} (receiver : Path scope) : Ty scope → Ty scope
+def SeparationContext.openAt {scope : Sig} {count : Nat}
+    (context : SeparationContext count scope) (receiver : Path scope) :
+    SeparationContext count scope :=
+  match context with
+  | .nil => .nil
+  | .cons rest capture =>
+      .cons (rest.openAt receiver) (capture.openAt receiver)
+
+def ModeContext.openAt {scope : Sig} {modes : List CaptureMode}
+    (context : ModeContext modes scope) (receiver : Path scope) :
+    ModeContext modes scope :=
+  match context with
+  | .nil => .nil
+  | .cons rest capture =>
+      .cons (rest.openAt receiver) (capture.openAt receiver)
+
+def ModalRequirements.openAt {scope : Sig} {separationCount : Nat}
+    {modes : List CaptureMode}
+    (requirements : ModalRequirements separationCount modes scope)
+    (receiver : Path scope) :
+    ModalRequirements separationCount modes scope :=
+  match requirements with
+  | .mk separation mode =>
+      .mk (separation.openAt receiver) (mode.openAt receiver)
+
+mutual
+
+def Ty.openAt {scope : Sig} (type : Ty scope)
+    (receiver : Path scope) : Ty scope :=
+  match type with
   | .top => .top
   | .bot => .bot
   | .one => .one
@@ -54,6 +82,8 @@ def Ty.openAt {scope : Sig} (receiver : Path scope) : Ty scope → Ty scope
   | @Ty.existsI _ sort interval body =>
       .existsI (interval.openAt receiver)
         (body.openAt (receiver.weaken (kind := .static sort)))
+  | .modal requirements body =>
+      .modal (requirements.openAt receiver) (body.openAt receiver)
   | .object object => .object object
 
 def StaticExpr.openAt {scope : Sig} {sort : StaticSort}

@@ -2,11 +2,13 @@ import Coercions.DOT.Captures.Intersections.GeneralExpression.Erasure
 import Coercions.DOT.Captures.ModalIntersections.Embedding
 
 /-!
-# Independent plain erasure for modal captured intersections
+# Independent runtime erasure for modal captured intersections
 
 This erasure is defined directly on the cumulative source syntax. Static and
-object annotations disappear; the captured-intersection runtime structure is
-retained literally. It does not mention a target compiler or target evidence.
+object annotations disappear.  Modal locking and unlocking become runtime
+suspension and forcing, while the remaining captured-intersection runtime
+structure is retained literally. It does not mention a target compiler or
+target evidence.
 -/
 
 namespace DOTCapture.ModalIntersections.Erasure
@@ -68,6 +70,7 @@ def eraseValueWith {scope : Sig} {runtimeScope : Nat}
   | @Value.staticLam _ sort _ body =>
       eraseValueWith (rho.liftStatic sort) body
   | .pack _ _ _ payload => eraseValueWith rho payload
+  | .lock _ _ _ body => .suspend (eraseTermWith rho body)
   | .object _ payload => eraseValueWith rho payload
   | .objectConsumer _ _ body => .lam (eraseTermWith rho.liftTerm body)
 
@@ -83,6 +86,7 @@ def eraseTermWith {scope : Sig} {runtimeScope : Nat}
   | @Term.«open» _ sort _ _ _ package body =>
       .let' (eraseTermWith rho package)
         (eraseTermWith (rho.liftPayload sort) body)
+  | .unlock _ scrutinee => .force (eraseTermWith rho scrutinee)
   | .objectApp _ function argument =>
       .app (eraseTermWith rho function) (eraseTermWith rho argument)
   | .objectLet _ _ rhs body =>
@@ -112,6 +116,17 @@ theorem eraseValueWith_pack {scope : Sig} {runtimeScope : Nat}
     eraseValueWith rho (.pack interval payloadType witness payload) =
       eraseValueWith rho payload := rfl
 
+/-- A source modal lock is an independently defined runtime suspension.
+Its requirements and type annotations have no runtime representation. -/
+@[simp]
+theorem eraseValueWith_lock {scope : Sig} {runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope) {separationCount : Nat}
+    {modes : List CaptureMode}
+    (requirements : ModalRequirements separationCount modes scope)
+    (result : Ty scope) (closure : Capture scope) (body : Term scope) :
+    eraseValueWith rho (.lock requirements result closure body) =
+      .suspend (eraseTermWith rho body) := rfl
+
 /-- Static application erases its interval and static argument without
 changing or reordering the function computation. -/
 @[simp]
@@ -135,6 +150,17 @@ theorem eraseTermWith_open {scope : Sig} {runtimeScope : Nat}
         (.open interval payloadType result package body) =
       .let' (eraseTermWith rho package)
         (eraseTermWith (rho.liftPayload sort) body) := rfl
+
+/-- Modal unlocking forces its computed scrutinee exactly once; requirement
+evidence remains absent from source runtime syntax. -/
+@[simp]
+theorem eraseTermWith_unlock {scope : Sig} {runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope) {separationCount : Nat}
+    {modes : List CaptureMode}
+    (requirements : ModalRequirements separationCount modes scope)
+    (scrutinee : Term scope) :
+    eraseTermWith rho (.unlock requirements scrutinee) =
+      .force (eraseTermWith rho scrutinee) := rfl
 
 /-- Canonical erasure on the all-term fragment. -/
 def eraseValue {scope : Nat} (value : Value (termScope scope)) :
@@ -165,6 +191,15 @@ theorem eraseValue_pack {scope : Nat} {sort : StaticSort}
       eraseValue payload := rfl
 
 @[simp]
+theorem eraseValue_lock {scope : Nat} {separationCount : Nat}
+    {modes : List CaptureMode}
+    (requirements : ModalRequirements separationCount modes (termScope scope))
+    (result : Ty (termScope scope)) (closure : Capture (termScope scope))
+    (body : Term (termScope scope)) :
+    eraseValue (.lock requirements result closure body) =
+      .suspend (eraseTerm body) := rfl
+
+@[simp]
 theorem eraseTerm_staticApp {scope : Nat} {sort : StaticSort}
     (interval : Interval sort (termScope scope))
     (function : Term (termScope scope))
@@ -181,6 +216,14 @@ theorem eraseTerm_open {scope : Nat} {sort : StaticSort}
     eraseTerm (.open interval payloadType result package body) =
       .let' (eraseTerm package)
         (eraseTermWith (Renaming.allTermIdentity.liftPayload sort) body) := rfl
+
+@[simp]
+theorem eraseTerm_unlock {scope : Nat} {separationCount : Nat}
+    {modes : List CaptureMode}
+    (requirements : ModalRequirements separationCount modes (termScope scope))
+    (scrutinee : Term (termScope scope)) :
+    eraseTerm (.unlock requirements scrutinee) =
+      .force (eraseTerm scrutinee) := rfl
 
 namespace CapturedIntersections
 

@@ -34,16 +34,47 @@ inductive StaticRef : StaticSort → Sig → Type where
       StaticRef .capture scope
 deriving DecidableEq
 
-mutual
+/-- Access modes in the source separation fragment.  Consumption and killed
+bindings are intentionally absent from this access-only layer. -/
+inductive CaptureMode : Type where
+  | writable
+  | readOnly
+deriving DecidableEq, Repr
 
-/-- Capture expressions.  `readOnly` is static capture syntax; no term-level
-modal operation is introduced in this foundation layer. -/
+/-- Capture expressions.  `readOnly` restricts access without changing
+capability identity; it does not establish resource freshness. -/
 inductive Capture : Sig → Type where
   | empty {scope : Sig} : Capture scope
   | union {scope : Sig} (left right : Capture scope) : Capture scope
   | readOnly {scope : Sig} (capture : Capture scope) : Capture scope
   | singleton {scope : Sig} (path : Path scope) : Capture scope
   | ref {scope : Sig} (reference : StaticRef .capture scope) : Capture scope
+
+/-- Captures at distinct list positions are assumed pairwise separate while
+checking a modal body.  Equal capture expressions at distinct positions are
+still distinct requirements. -/
+inductive SeparationContext : Nat → Sig → Type where
+  | nil {scope : Sig} : SeparationContext 0 scope
+  | cons {scope : Sig} {count : Nat}
+      (rest : SeparationContext count scope) (capture : Capture scope) :
+      SeparationContext (count + 1) scope
+
+/-- Positional access-mode assumptions carried by a modal requirement. -/
+inductive ModeContext : List CaptureMode → Sig → Type where
+  | nil {scope : Sig} : ModeContext [] scope
+  | cons {scope : Sig} {modes : List CaptureMode} {mode : CaptureMode}
+      (rest : ModeContext modes scope) (capture : Capture scope) :
+      ModeContext (mode :: modes) scope
+
+/-- The access-only source modal interface: pairwise separation assumptions
+and access-mode assumptions. -/
+inductive ModalRequirements : Nat → List CaptureMode → Sig → Type where
+  | mk {scope : Sig} {separationCount : Nat} {modes : List CaptureMode}
+      (separation : SeparationContext separationCount scope)
+      (mode : ModeContext modes scope) :
+      ModalRequirements separationCount modes scope
+
+mutual
 
 /-- Types with lexical static intervals and labeled captured-DOT objects. -/
 inductive Ty : Sig → Type where
@@ -60,6 +91,10 @@ inductive Ty : Sig → Type where
   | existsI {scope : Sig} {sort : StaticSort}
       (interval : Interval sort scope)
       (body : Ty (scope ▹ .static sort)) : Ty scope
+  | modal {scope : Sig} {separationCount : Nat}
+      {modes : List CaptureMode}
+      (requirements : ModalRequirements separationCount modes scope)
+      (body : Ty scope) : Ty scope
   | object {scope : Sig} (object : ObjectType scope) : Ty scope
 
 /-- A static expression indexed by its sort. -/
@@ -97,12 +132,11 @@ inductive ObjectType : Sig → Type where
 end
 
 deriving instance DecidableEq for Capture
-deriving instance DecidableEq for Ty
-deriving instance DecidableEq for StaticExpr
-deriving instance DecidableEq for Endpoint
-deriving instance DecidableEq for Interval
-deriving instance DecidableEq for Interface
-deriving instance DecidableEq for ObjectType
+deriving instance DecidableEq for SeparationContext
+deriving instance DecidableEq for ModeContext
+deriving instance DecidableEq for ModalRequirements
+deriving instance DecidableEq for Ty, StaticExpr, Endpoint, Interval,
+  Interface, ObjectType
 
 namespace StaticExpr
 
@@ -171,6 +205,28 @@ def Capture.rename {source target : Sig} (capture : Capture source)
   | .singleton path => .singleton (path.rename rho)
   | .ref reference => .ref (reference.rename rho)
 
+def SeparationContext.rename {count : Nat} {source target : Sig}
+    (context : SeparationContext count source) (rho : Rename source target) :
+    SeparationContext count target :=
+  match context with
+  | .nil => .nil
+  | .cons rest capture => .cons (rest.rename rho) (capture.rename rho)
+
+def ModeContext.rename {modes : List CaptureMode} {source target : Sig}
+    (context : ModeContext modes source) (rho : Rename source target) :
+    ModeContext modes target :=
+  match context with
+  | .nil => .nil
+  | .cons rest capture => .cons (rest.rename rho) (capture.rename rho)
+
+def ModalRequirements.rename {separationCount : Nat}
+    {modes : List CaptureMode} {source target : Sig}
+    (requirements : ModalRequirements separationCount modes source)
+    (rho : Rename source target) :
+    ModalRequirements separationCount modes target :=
+  match requirements with
+  | .mk separation mode => .mk (separation.rename rho) (mode.rename rho)
+
 def Ty.rename {source target : Sig} (type : Ty source)
     (rho : Rename source target) : Ty target :=
   match type with
@@ -187,6 +243,8 @@ def Ty.rename {source target : Sig} (type : Ty source)
   | @Ty.existsI _ sort interval body =>
       .existsI (interval.rename rho)
         (body.rename (rho.lift (kind := .static sort)))
+  | .modal requirements body =>
+      .modal (requirements.rename rho) (body.rename rho)
   | .object object => .object (object.rename rho)
 
 def StaticExpr.rename {sort : StaticSort} {source target : Sig}
@@ -247,6 +305,33 @@ theorem seq_empty {scope : Sig} (continuation : Capture scope) :
     seq .empty continuation = continuation := rfl
 
 end Capture
+
+namespace SeparationContext
+
+def weaken {scope : Sig} {count : Nat} {kind : BinderKind}
+    (context : SeparationContext count scope) :
+    SeparationContext count (scope ▹ kind) :=
+  context.rename DOTCapture.BinderOnly.Rename.succ
+
+end SeparationContext
+
+namespace ModeContext
+
+def weaken {scope : Sig} {modes : List CaptureMode} {kind : BinderKind}
+    (context : ModeContext modes scope) : ModeContext modes (scope ▹ kind) :=
+  context.rename DOTCapture.BinderOnly.Rename.succ
+
+end ModeContext
+
+namespace ModalRequirements
+
+def weaken {scope : Sig} {separationCount : Nat}
+    {modes : List CaptureMode} {kind : BinderKind}
+    (requirements : ModalRequirements separationCount modes scope) :
+    ModalRequirements separationCount modes (scope ▹ kind) :=
+  requirements.rename DOTCapture.BinderOnly.Rename.succ
+
+end ModalRequirements
 
 namespace Ty
 
