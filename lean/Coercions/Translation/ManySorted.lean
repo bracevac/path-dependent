@@ -21,6 +21,7 @@ import Coercions.Translation.ManySorted.Intersections
 import Coercions.Translation.ManySorted.ModalIntersections
 import Coercions.Translation.ManySorted.RecursiveObjects
 import Coercions.Translation.ManySorted.Classifiers
+import Coercions.Translation.ManySorted.BindableClassifiers
 import Coercions.Translation.ManySorted.CheckedFrontend
 import Coercions.Translation.ManySorted.CertificateStudy
 
@@ -31,8 +32,9 @@ This root collects the binder-only bridge, the acyclic compiler case study,
 the cumulative captured-intersection compiler, and a separate guarded
 recursive type-member object-literal case study. It remains separate from the
 independently buildable target library.
-The classifier case study adds closed `.only`/`.except` capture filters and a
-real checked target term without kind polymorphism or runtime syntax.
+The bounded Stage 7 extensibility test adds ground `.only`/`.except` filters
+and bindable classifier names in cumulative object theories. Classifier
+evidence is static; the runtime language is unchanged.
 
 The Stage 8 front end checks an intrinsically scoped annotated source fragment
 from first-order certificates before invoking the cumulative compiler.  Its

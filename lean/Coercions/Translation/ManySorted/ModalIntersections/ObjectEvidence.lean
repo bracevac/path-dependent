@@ -1,6 +1,7 @@
 import Coercions.DOT.Captures.ModalIntersections.ObjectJudgments
 import Coercions.Translation.ManySorted.ModalIntersections.CompilerContext
 import Coercions.Translation.ManySorted.ModalIntersections.ObjectOccurrenceEvidence
+import Coercions.Translation.ManySorted.ModalIntersections.EvidenceElaboration
 import Coercions.ManySortedFC.TheoryMapCheckerCompleteness
 import Coercions.ManySortedFC.Adapter
 
@@ -29,6 +30,7 @@ abbrev Ctx := DOTCapture.ModalIntersections.Ctx
 abbrev TypingEnv := DOTCapture.ModalIntersections.TypingEnv
 abbrev Ty := DOTCapture.ModalIntersections.Ty
 abbrev Capture := DOTCapture.ModalIntersections.Capture
+abbrev ClassifierExpr := DOTCapture.ModalIntersections.ClassifierExpr
 abbrev StaticExpr := DOTCapture.ModalIntersections.StaticExpr
 abbrev Interface := DOTCapture.ModalIntersections.Interface
 abbrev ObjectType := DOTCapture.ModalIntersections.ObjectType
@@ -47,6 +49,7 @@ abbrev Rename := ManySortedFC.Rename
 abbrev Ctx := ManySortedFC.Ctx
 abbrev Ty := ManySortedFC.Ty
 abbrev Capture := ManySortedFC.Capture
+abbrev ClassifierExpr := ManySortedFC.ClassifierExpr
 abbrev StaticExpr := ManySortedFC.StaticExpr
 abbrev Proposition := ManySortedFC.Proposition
 abbrev Evidence := ManySortedFC.Evidence
@@ -60,6 +63,7 @@ end Target
 open DOTCaptureToManySortedFC.Intersections.Encoding
 open DOTCaptureToManySortedFC.ModalIntersections.CompilerContext
 open DOTCaptureToManySortedFC.ModalIntersections.ObjectOccurrenceEvidence
+open DOTCaptureToManySortedFC.ModalIntersections.EvidenceElaboration
 
 /-! ## Static-evidence dependencies
 
@@ -79,6 +83,21 @@ structure AmbientCompiler {sourceScope : Source.Sig}
     {lower upper : Source.StaticExpr sort sourceScope} ->
     DOTCapture.ModalIntersections.Includes environment.bindings lower upper ->
       Option (Target.Evidence (.inclusion (translateSort sort)) targetScope)
+  compileClassifier : {lower upper : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.ClassifierIncludes environment.bindings
+      lower upper ->
+      Option (Target.Evidence (.inclusion .classifier) targetScope) :=
+    fun _ => none
+  compileClassifierDisjoint :
+    {left right : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.ClassifiersDisjoint environment.bindings
+      left right -> Option (Target.Evidence .classifierDisjoint targetScope) :=
+    fun _ => none
+  compileCaptureHasKind : {capture : Source.Capture sourceScope} ->
+    {classifier : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.CaptureHasKind environment.bindings
+      capture classifier -> Option (Target.Evidence .captureHasKind targetScope) :=
+    fun _ => none
 
 /-- Ambient source inclusions translated in the scope where one actual
 object theory is open.  The callback may translate local member syntax using
@@ -95,6 +114,23 @@ structure OpenedAmbientCompiler {sourceScope : Source.Sig}
       Option (Target.Evidence (.inclusion (translateSort sort))
         (ManySortedFC.StaticScope targetScope actual.encoding.symbols
           actual.encoding.relations))
+  compileClassifier : {lower upper : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.ClassifierIncludes environment.bindings
+      lower upper -> Option (Target.Evidence (.inclusion .classifier)
+        (ManySortedFC.StaticScope targetScope actual.encoding.symbols
+          actual.encoding.relations)) := fun _ => none
+  compileClassifierDisjoint :
+    {left right : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.ClassifiersDisjoint environment.bindings
+      left right -> Option (Target.Evidence .classifierDisjoint
+        (ManySortedFC.StaticScope targetScope actual.encoding.symbols
+          actual.encoding.relations)) := fun _ => none
+  compileCaptureHasKind : {capture : Source.Capture sourceScope} ->
+    {classifier : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.CaptureHasKind environment.bindings
+      capture classifier -> Option (Target.Evidence .captureHasKind
+        (ManySortedFC.StaticScope targetScope actual.encoding.symbols
+          actual.encoding.relations)) := fun _ => none
 
 /-- Ambient inclusions translated below a contracted object's full static
 theory, including its unique representation-capture symbol and both contract
@@ -110,6 +146,23 @@ structure ContractedOpenedAmbientCompiler {sourceScope : Source.Sig}
       Option (Target.Evidence (.inclusion (translateSort sort))
         (ManySortedFC.StaticScope targetScope actual.symbols
           actual.relations))
+  compileClassifier : {lower upper : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.ClassifierIncludes environment.bindings
+      lower upper -> Option (Target.Evidence (.inclusion .classifier)
+        (ManySortedFC.StaticScope targetScope actual.symbols
+          actual.relations)) := fun _ => none
+  compileClassifierDisjoint :
+    {left right : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.ClassifiersDisjoint environment.bindings
+      left right -> Option (Target.Evidence .classifierDisjoint
+        (ManySortedFC.StaticScope targetScope actual.symbols
+          actual.relations)) := fun _ => none
+  compileCaptureHasKind : {capture : Source.Capture sourceScope} ->
+    {classifier : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.CaptureHasKind environment.bindings
+      capture classifier -> Option (Target.Evidence .captureHasKind
+        (ManySortedFC.StaticScope targetScope actual.symbols
+          actual.relations)) := fun _ => none
 
 /-! ## Reifying member witnesses -/
 
@@ -121,6 +174,7 @@ private def findTypeMemberLabel? {scope : Target.Sig}
       if candidate = name then some label
       else findTypeMemberLabel? name remaining
   | .capture _ _ _ :: remaining => findTypeMemberLabel? name remaining
+  | .classifier _ _ _ :: remaining => findTypeMemberLabel? name remaining
 
 private def findCaptureMemberLabel? {scope : Target.Sig}
     (name : Target.BVar scope (.symbol .capture)) :
@@ -130,6 +184,17 @@ private def findCaptureMemberLabel? {scope : Target.Sig}
       if candidate = name then some label
       else findCaptureMemberLabel? name remaining
   | .type _ _ _ :: remaining => findCaptureMemberLabel? name remaining
+  | .classifier _ _ _ :: remaining => findCaptureMemberLabel? name remaining
+
+private def findClassifierMemberLabel? {scope : Target.Sig}
+    (name : Target.BVar scope (.symbol .classifier)) :
+    List (PreparedEntry scope) -> Option Nat
+  | [] => none
+  | .classifier label candidate _ :: remaining =>
+      if candidate = name then some label
+      else findClassifierMemberLabel? name remaining
+  | .type _ _ _ :: remaining => findClassifierMemberLabel? name remaining
+  | .capture _ _ _ :: remaining => findClassifierMemberLabel? name remaining
 
 /-- Reify an ambient source model as one target witness per allocated label.
 Walking the intrinsic symbol list keeps the result definitionally aligned
@@ -177,6 +242,21 @@ private def compileSymbolArgsFrom? {sourceScope : Source.Sig}
           (scope := ManySortedFC.SymbolScope targetScope remaining)
           (kind := .symbol .capture)).comp rho)
       pure (.cons (.capture witness) older)
+  | .classifier :: remaining, rho => do
+      let name := rho.var
+        (.here : Target.BVar
+          (ManySortedFC.SymbolScope targetScope (.classifier :: remaining))
+          (.symbol .classifier))
+      let label <- findClassifierMemberLabel? name entries
+      let witness <-
+        (Preparation.Compile.classifierCore core.layout
+          (.interpreted core.layout.localModel)
+          (model.classifierMember label)).toOption
+      let older <- compileSymbolArgsFrom? core model entries remaining
+        ((ManySortedFC.Rename.succ
+          (scope := ManySortedFC.SymbolScope targetScope remaining)
+          (kind := .symbol .classifier)).comp rho)
+      pure (.cons (.classifier witness) older)
 
 /-- Compile every symbol of a positive object model. -/
 def compileSymbolArgs? {sourceScope : Source.Sig}
@@ -248,6 +328,25 @@ private def compileMappedSymbolArgsFrom? {sourceScope : Source.Sig}
           (scope := ManySortedFC.SymbolScope targetScope remaining)
           (kind := .symbol .capture)).comp rho)
       pure (.cons (.capture witness) older)
+  | .classifier :: remaining, rho => do
+      let name := rho.var
+        (.here : Target.BVar
+          (ManySortedFC.SymbolScope targetScope (.classifier :: remaining))
+          (.symbol .classifier))
+      let label <- findClassifierMemberLabel? name entries
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic actual.encoding.symbols
+          actual.encoding.relations)
+      let witness <-
+        (Preparation.Compile.classifierCore openedLayout
+          (.allocated actual.encoding.openedMembers)
+          (mapping.classifierMember label)).toOption
+      let older <- compileMappedSymbolArgsFrom? core actual mapping entries
+        remaining
+        ((ManySortedFC.Rename.succ
+          (scope := ManySortedFC.SymbolScope targetScope remaining)
+          (kind := .symbol .classifier)).comp rho)
+      pure (.cons (.classifier witness) older)
 
 /-- Compile the expected theory's symbol interpretation in the actual
 theory's complete static scope. -/
@@ -287,7 +386,10 @@ proposition requested by the normalized theory. -/
 inductive ModelEvidence (scope : Target.Sig) where
   | type (evidence : Target.Evidence (.inclusion .type) scope)
   | capture (evidence : Target.Evidence (.inclusion .capture) scope)
+  | classifier (evidence : Target.Evidence (.inclusion .classifier) scope)
   | captureEquality (evidence : Target.Evidence (.equality .capture) scope)
+  | classifierDisjoint (evidence : Target.Evidence .classifierDisjoint scope)
+  | captureHasKind (evidence : Target.Evidence .captureHasKind scope)
 
 namespace ModelEvidence
 
@@ -295,7 +397,11 @@ def rename {source target : Target.Sig} (rho : Target.Rename source target) :
     ModelEvidence source -> ModelEvidence target
   | .type evidence => .type (evidence.rename rho)
   | .capture evidence => .capture (evidence.rename rho)
+  | .classifier evidence => .classifier (evidence.rename rho)
   | .captureEquality evidence => .captureEquality (evidence.rename rho)
+  | .classifierDisjoint evidence =>
+      .classifierDisjoint (evidence.rename rho)
+  | .captureHasKind evidence => .captureHasKind (evidence.rename rho)
 
 end ModelEvidence
 
@@ -346,6 +452,119 @@ def compileLocalIncludes? {sourceScope : Source.Sig}
       let secondEvidence <- compileLocalIncludes? prepared ambient second
       pure (.inclusionTrans firstEvidence secondEvidence)
 
+/-- Compile classifier inclusion in the actual object's local theory. -/
+def compileLocalClassifierIncludes? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedObject core available)
+    (ambient : OpenedAmbientCompiler core prepared.object) :
+    {lower upper : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.LocalTheory.ClassifierIncludes
+      environment.bindings available.interface lower upper ->
+      Option (Target.Evidence (.inclusion .classifier)
+        (ManySortedFC.StaticScope targetScope
+          prepared.object.encoding.symbols
+          prepared.object.encoding.relations))
+  | _, _, .ambient proof => ambient.compileClassifier proof
+  | lower, .ref (.localMember label), .lower _ => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.encoding.symbols
+          prepared.object.encoding.relations)
+      let targetLower <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.encoding.openedMembers) lower).toOption
+      let targetUpper <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.encoding.openedMembers)
+        (.ref (.localMember label))).toOption
+      findEvidenceVariable?
+        (core.target.extendTheory prepared.object.encoding.theory)
+        (.inclusion (.classifier targetLower) (.classifier targetUpper))
+  | .ref (.localMember label), upper, .upper _ => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.encoding.symbols
+          prepared.object.encoding.relations)
+      let targetLower <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.encoding.openedMembers)
+        (.ref (.localMember label))).toOption
+      let targetUpper <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.encoding.openedMembers) upper).toOption
+      findEvidenceVariable?
+        (core.target.extendTheory prepared.object.encoding.theory)
+        (.inclusion (.classifier targetLower) (.classifier targetUpper))
+  | _, _, .trans first second => do
+      let firstEvidence <- compileLocalClassifierIncludes? prepared ambient first
+      let secondEvidence <- compileLocalClassifierIncludes? prepared ambient second
+      pure (.inclusionTrans firstEvidence secondEvidence)
+
+/-- Compile classifier disjointness from ambient evidence or an exact
+assumption exported by the actual object theory. -/
+def compileLocalClassifiersDisjoint? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedObject core available)
+    (ambient : OpenedAmbientCompiler core prepared.object) :
+    {left right : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.LocalTheory.ClassifiersDisjoint
+      environment.bindings available.interface left right ->
+      Option (Target.Evidence .classifierDisjoint
+        (ManySortedFC.StaticScope targetScope
+          prepared.object.encoding.symbols
+          prepared.object.encoding.relations))
+  | _, _, .ambient proof => ambient.compileClassifierDisjoint proof
+  | left, right, .assumption _ => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.encoding.symbols
+          prepared.object.encoding.relations)
+      let targetLeft <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.encoding.openedMembers) left).toOption
+      let targetRight <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.encoding.openedMembers) right).toOption
+      findEvidenceVariable?
+        (core.target.extendTheory prepared.object.encoding.theory)
+        (.classifierDisjoint targetLeft targetRight)
+  | _, _, .symm proof => do
+      let evidence <- compileLocalClassifiersDisjoint? prepared ambient proof
+      pure (.classifierDisjointSymm evidence)
+
+/-- Compile capture-kind membership from ambient evidence or one exact
+constraint exported by the actual object theory. -/
+def compileLocalCaptureHasKind? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedObject core available)
+    (ambient : OpenedAmbientCompiler core prepared.object) :
+    {capture : Source.Capture sourceScope} ->
+    {classifier : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.LocalTheory.CaptureHasKind
+      environment.bindings available.interface capture classifier ->
+      Option (Target.Evidence .captureHasKind
+        (ManySortedFC.StaticScope targetScope
+          prepared.object.encoding.symbols
+          prepared.object.encoding.relations))
+  | _, _, .ambient proof => ambient.compileCaptureHasKind proof
+  | capture, classifier, .assumption _ => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.encoding.symbols
+          prepared.object.encoding.relations)
+      let targetCapture <- (Preparation.Compile.captureCore openedLayout
+        (.allocated prepared.object.encoding.openedMembers) capture).toOption
+      let targetClassifier <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.encoding.openedMembers) classifier).toOption
+      findEvidenceVariable?
+        (core.target.extendTheory prepared.object.encoding.theory)
+        (.captureHasKind targetCapture targetClassifier)
+  | _, _, .widen membership included => do
+      let membershipEvidence <- compileLocalCaptureHasKind? prepared ambient
+        membership
+      let inclusionEvidence <- compileLocalClassifierIncludes? prepared ambient
+        included
+      pure (.captureHasKindWiden membershipEvidence inclusionEvidence)
+
 /-- Compile every obligation of a symbolic negative view. The target
 proposition sorter below still rechecks every candidate under only the
 available object's opened theory. -/
@@ -373,6 +592,16 @@ def compileDerivationEvidence? {sourceScope : Source.Sig}
       let lower <- compileLocalIncludes? prepared ambient lowerProof
       let upper <- compileLocalIncludes? prepared ambient upperProof
       pure [.capture lower, .capture upper]
+  | _, .classifierMember lowerProof upperProof => do
+      let lower <- compileLocalClassifierIncludes? prepared ambient lowerProof
+      let upper <- compileLocalClassifierIncludes? prepared ambient upperProof
+      pure [.classifier lower, .classifier upper]
+  | _, .classifierDisjoint proof => do
+      let evidence <- compileLocalClassifiersDisjoint? prepared ambient proof
+      pure [.classifierDisjoint evidence]
+  | _, .captureHasKind proof => do
+      let evidence <- compileLocalCaptureHasKind? prepared ambient proof
+      pure [.captureHasKind evidence]
   | _, .inter leftProof rightProof => do
       let left <- compileDerivationEvidence? prepared ambient leftProof
       let right <- compileDerivationEvidence? prepared ambient rightProof
@@ -467,6 +696,110 @@ def compileContractedLocalIncludes? {sourceScope : Source.Sig}
         second
       pure (.inclusionTrans firstEvidence secondEvidence)
 
+def compileContractedLocalClassifierIncludes? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedContractedObject core available)
+    (ambient : ContractedOpenedAmbientCompiler core prepared.object) :
+    {lower upper : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.LocalTheory.ClassifierIncludes
+      environment.bindings available.interface lower upper ->
+      Option (Target.Evidence (.inclusion .classifier)
+        (ManySortedFC.StaticScope targetScope prepared.object.symbols
+          prepared.object.relations))
+  | _, _, .ambient proof => ambient.compileClassifier proof
+  | lower, .ref (.localMember label), .lower _ => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.symbols
+          prepared.object.relations)
+      let targetLower <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.openedMembers) lower).toOption
+      let targetUpper <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.openedMembers)
+        (.ref (.localMember label))).toOption
+      findEvidenceVariable? (core.target.extendTheory prepared.object.theory)
+        (.inclusion (.classifier targetLower) (.classifier targetUpper))
+  | .ref (.localMember label), upper, .upper _ => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.symbols
+          prepared.object.relations)
+      let targetLower <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.openedMembers)
+        (.ref (.localMember label))).toOption
+      let targetUpper <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.openedMembers) upper).toOption
+      findEvidenceVariable? (core.target.extendTheory prepared.object.theory)
+        (.inclusion (.classifier targetLower) (.classifier targetUpper))
+  | _, _, .trans first second => do
+      let firstEvidence <- compileContractedLocalClassifierIncludes? prepared
+        ambient first
+      let secondEvidence <- compileContractedLocalClassifierIncludes? prepared
+        ambient second
+      pure (.inclusionTrans firstEvidence secondEvidence)
+
+def compileContractedLocalClassifiersDisjoint? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedContractedObject core available)
+    (ambient : ContractedOpenedAmbientCompiler core prepared.object) :
+    {left right : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.LocalTheory.ClassifiersDisjoint
+      environment.bindings available.interface left right ->
+      Option (Target.Evidence .classifierDisjoint
+        (ManySortedFC.StaticScope targetScope prepared.object.symbols
+          prepared.object.relations))
+  | _, _, .ambient proof => ambient.compileClassifierDisjoint proof
+  | left, right, .assumption _ => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.symbols
+          prepared.object.relations)
+      let targetLeft <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.openedMembers) left).toOption
+      let targetRight <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.openedMembers) right).toOption
+      findEvidenceVariable? (core.target.extendTheory prepared.object.theory)
+        (.classifierDisjoint targetLeft targetRight)
+  | _, _, .symm proof => do
+      let evidence <- compileContractedLocalClassifiersDisjoint? prepared
+        ambient proof
+      pure (.classifierDisjointSymm evidence)
+
+def compileContractedLocalCaptureHasKind? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedContractedObject core available)
+    (ambient : ContractedOpenedAmbientCompiler core prepared.object) :
+    {capture : Source.Capture sourceScope} ->
+    {classifier : Source.ClassifierExpr sourceScope} ->
+    DOTCapture.ModalIntersections.LocalTheory.CaptureHasKind
+      environment.bindings available.interface capture classifier ->
+      Option (Target.Evidence .captureHasKind
+        (ManySortedFC.StaticScope targetScope prepared.object.symbols
+          prepared.object.relations))
+  | _, _, .ambient proof => ambient.compileCaptureHasKind proof
+  | capture, classifier, .assumption _ => do
+      let openedLayout := core.layout.renameTarget
+        (ManySortedFC.Rename.weakenStatic prepared.object.symbols
+          prepared.object.relations)
+      let targetCapture <- (Preparation.Compile.captureCore openedLayout
+        (.allocated prepared.object.openedMembers) capture).toOption
+      let targetClassifier <- (Preparation.Compile.classifierCore openedLayout
+        (.allocated prepared.object.openedMembers) classifier).toOption
+      findEvidenceVariable? (core.target.extendTheory prepared.object.theory)
+        (.captureHasKind targetCapture targetClassifier)
+  | _, _, .widen membership included => do
+      let membershipEvidence <- compileContractedLocalCaptureHasKind? prepared
+        ambient membership
+      let inclusionEvidence <- compileContractedLocalClassifierIncludes?
+        prepared ambient included
+      pure (.captureHasKindWiden membershipEvidence inclusionEvidence)
+
 /-- Compile every expected member obligation below the actual contracted
 theory. Generated exactness and containment obligations are supplied
 separately, so this traversal remains purely source-interface directed. -/
@@ -493,6 +826,20 @@ def compileContractedDerivationEvidence? {sourceScope : Source.Sig}
       let lower <- compileContractedLocalIncludes? prepared ambient lowerProof
       let upper <- compileContractedLocalIncludes? prepared ambient upperProof
       pure [.capture lower, .capture upper]
+  | _, .classifierMember lowerProof upperProof => do
+      let lower <- compileContractedLocalClassifierIncludes? prepared ambient
+        lowerProof
+      let upper <- compileContractedLocalClassifierIncludes? prepared ambient
+        upperProof
+      pure [.classifier lower, .classifier upper]
+  | _, .classifierDisjoint proof => do
+      let evidence <- compileContractedLocalClassifiersDisjoint? prepared
+        ambient proof
+      pure [.classifierDisjoint evidence]
+  | _, .captureHasKind proof => do
+      let evidence <- compileContractedLocalCaptureHasKind? prepared ambient
+        proof
+      pure [.captureHasKind evidence]
   | _, .inter leftProof rightProof => do
       let left <- compileContractedDerivationEvidence? prepared ambient
         leftProof
@@ -522,6 +869,16 @@ def compileRealizationEvidence? {sourceScope : Source.Sig}
       let lower <- ambient.compile lowerProof
       let upper <- ambient.compile upperProof
       pure [.capture lower, .capture upper]
+  | _, .classifierMember lowerProof upperProof => do
+      let lower <- ambient.compileClassifier lowerProof
+      let upper <- ambient.compileClassifier upperProof
+      pure [.classifier lower, .classifier upper]
+  | _, .classifierDisjoint proof => do
+      let evidence <- ambient.compileClassifierDisjoint proof
+      pure [.classifierDisjoint evidence]
+  | _, .captureHasKind proof => do
+      let evidence <- ambient.compileCaptureHasKind proof
+      pure [.captureHasKind evidence]
   | _, .inter leftProof rightProof => do
       let left <- compileRealizationEvidence? ambient leftProof
       let right <- compileRealizationEvidence? ambient rightProof
@@ -563,6 +920,39 @@ private def findModelEvidence? {scope : Target.Sig}
   | .equality .capture, proposition, .type _ :: remaining =>
       findModelEvidence? context proposition remaining
   | .equality .capture, proposition, .capture _ :: remaining =>
+      findModelEvidence? context proposition remaining
+  | .inclusion .classifier, proposition,
+      .classifier candidate :: remaining =>
+      match ManySortedFC.Evidence.check context candidate with
+      | none => findModelEvidence? context proposition remaining
+      | some checked =>
+          if checked.proposition = proposition then some candidate
+          else findModelEvidence? context proposition remaining
+  | .classifierDisjoint, proposition,
+      .classifierDisjoint candidate :: remaining =>
+      match ManySortedFC.Evidence.check context candidate with
+      | none => findModelEvidence? context proposition remaining
+      | some checked =>
+          if checked.proposition = proposition then some candidate
+          else findModelEvidence? context proposition remaining
+  | .captureHasKind, proposition,
+      .captureHasKind candidate :: remaining =>
+      match ManySortedFC.Evidence.check context candidate with
+      | none => findModelEvidence? context proposition remaining
+      | some checked =>
+          if checked.proposition = proposition then some candidate
+          else findModelEvidence? context proposition remaining
+  | .inclusion .type, proposition, _ :: remaining =>
+      findModelEvidence? context proposition remaining
+  | .inclusion .capture, proposition, _ :: remaining =>
+      findModelEvidence? context proposition remaining
+  | .inclusion .classifier, proposition, _ :: remaining =>
+      findModelEvidence? context proposition remaining
+  | .equality .capture, proposition, _ :: remaining =>
+      findModelEvidence? context proposition remaining
+  | .classifierDisjoint, proposition, _ :: remaining =>
+      findModelEvidence? context proposition remaining
+  | .captureHasKind, proposition, _ :: remaining =>
       findModelEvidence? context proposition remaining
   | _, _, _ => none
 

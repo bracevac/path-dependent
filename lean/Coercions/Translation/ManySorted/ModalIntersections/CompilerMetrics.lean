@@ -335,10 +335,15 @@ def evidenceNodeCount {scope : Target.Sig} {relation : ManySortedFC.Relation} :
   | .equalityCaptureUnion left right =>
       1 + evidenceNodeCount left + evidenceNodeCount right
   | .equalityCaptureReadOnly inner => 1 + evidenceNodeCount inner
+  | .classifierGroundEquality _ _ => 1
+  | .equalityCaptureProjectScoped capture classifier =>
+      1 + evidenceNodeCount capture + evidenceNodeCount classifier
   | .equalityCaptureProject inner _ _ => 1 + evidenceNodeCount inner
   | .equalityCaptureProjectTop _ => 1
   | .equalityCaptureProjectCompose _ _ _ => 1
   | .equalityCaptureProjectEmpty _ _ => 1
+  | .equalityCaptureProjectComplete membership =>
+      1 + evidenceNodeCount membership
   | .inclusionRefl _ => 1
   | .inclusionTrans first second =>
       1 + evidenceNodeCount first + evidenceNodeCount second
@@ -349,6 +354,9 @@ def evidenceNodeCount {scope : Target.Sig} {relation : ManySortedFC.Relation} :
       1 + evidenceNodeCount domain + evidenceNodeCount codomain
   | .typeCapturing captures shape =>
       1 + evidenceNodeCount captures + evidenceNodeCount shape
+  | .classifierGroundInclusion _ _ => 1
+  | .classifierExclude _ _ _ allowed excluded =>
+      1 + evidenceNodeCount allowed + evidenceNodeCount excluded
   | .captureEmpty _ => 1
   | .captureUnionLeft _ _ => 1
   | .captureUnionRight _ _ => 1
@@ -358,7 +366,10 @@ def evidenceNodeCount {scope : Target.Sig} {relation : ManySortedFC.Relation} :
   | .captureReadOnly _ => 1
   | .captureReadOnlyMono subcapture => 1 + evidenceNodeCount subcapture
   | .captureProjectSource _ _ => 1
+  | .captureProjectSourceScoped _ _ => 1
   | .captureProjectMono subcapture _ _ => 1 + evidenceNodeCount subcapture
+  | .captureProjectMonoScoped subcapture classifier =>
+      1 + evidenceNodeCount subcapture + evidenceNodeCount classifier
   | .captureProjectMerge _ _ _ => 1
   | .modeEmpty _ => 1
   | .modeUnion left right =>
@@ -383,6 +394,18 @@ def evidenceNodeCount {scope : Target.Sig} {relation : ManySortedFC.Relation} :
   | .disjointEquality equality disjoint =>
       1 + evidenceNodeCount equality + evidenceNodeCount disjoint
   | .disjointCaptureProject _ _ _ _ => 1
+  | .classifierGroundDisjoint _ _ => 1
+  | .classifierDisjointSymm inner => 1 + evidenceNodeCount inner
+  | .disjointCaptureProjectScoped _ _ classifiers =>
+      1 + evidenceNodeCount classifiers
+  | .captureHasKindEmpty _ => 1
+  | .captureHasKindUnion left right =>
+      1 + evidenceNodeCount left + evidenceNodeCount right
+  | .captureHasKindProject _ _ => 1
+  | .captureHasKindSubcapture subcapture membership =>
+      1 + evidenceNodeCount subcapture + evidenceNodeCount membership
+  | .captureHasKindWiden membership classifier =>
+      1 + evidenceNodeCount membership + evidenceNodeCount classifier
 
 def evidenceArgumentCount {scope : Target.Sig}
     {relations : List ManySortedFC.Relation} :

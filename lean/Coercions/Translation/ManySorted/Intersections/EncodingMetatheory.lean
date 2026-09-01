@@ -155,6 +155,7 @@ private theorem intervalRelations_length {α : Type}
 def occurrenceCount {scope : Target.Sig} : PreparedEntry scope -> Nat
   | .type _ _ intervals => intervals.length
   | .capture _ _ intervals => intervals.length
+  | .classifier _ _ intervals => intervals.length
 
 /-- The exact target propositions specified by one prepared entry. -/
 def propositions {scope : Target.Sig} : PreparedEntry scope ->
@@ -167,6 +168,10 @@ def propositions {scope : Target.Sig} : PreparedEntry scope ->
       intervals.flatMap fun interval =>
         [.pack (.inclusion interval.lower (.capture (.cvar name))),
           .pack (.inclusion (.capture (.cvar name)) interval.upper)]
+  | .classifier _ name intervals =>
+      intervals.flatMap fun interval =>
+        [.pack (.inclusion interval.lower (.classifier (.var name))),
+          .pack (.inclusion (.classifier (.var name)) interval.upper)]
 
 @[simp]
 theorem relations_length {scope : Target.Sig} (entry : PreparedEntry scope) :
@@ -176,8 +181,19 @@ theorem relations_length {scope : Target.Sig} (entry : PreparedEntry scope) :
       exact intervalRelations_length .type intervals
   | capture label name intervals =>
       exact intervalRelations_length .capture intervals
+  | classifier label name intervals =>
+      exact intervalRelations_length .classifier intervals
 
 end PreparedEntry
+
+namespace PreparedConstraint
+
+/-- The packed proposition retained by one mixed-sort source constraint. -/
+def packed {scope : Target.Sig} (constraint : PreparedConstraint scope) :
+    Target.PackedProposition scope :=
+  .pack constraint.proposition
+
+end PreparedConstraint
 
 namespace OpenedOccurrence
 
@@ -232,6 +248,18 @@ end OpenedOccurrence
 
 namespace PreparedSignature
 
+private theorem entriesRelationsWithTail_length {scope : Target.Sig}
+    (entries : List (PreparedEntry scope)) (tail : List Target.Relation) :
+    (PreparedSignature.entriesRelationsWithTail entries tail).length =
+      2 * (entries.map PreparedEntry.occurrenceCount).sum + tail.length := by
+  induction entries with
+  | nil => simp [PreparedSignature.entriesRelationsWithTail]
+  | cons entry remaining induction =>
+      simp only [PreparedSignature.entriesRelationsWithTail,
+        List.length_append, PreparedEntry.relations_length, List.map_cons,
+        List.sum_cons, induction, Nat.mul_add]
+      omega
+
 /-- Total number of retained interval occurrences. -/
 def occurrenceCount {scope : Target.Sig} (prepared : PreparedSignature scope) :
     Nat :=
@@ -241,73 +269,122 @@ def occurrenceCount {scope : Target.Sig} (prepared : PreparedSignature scope) :
 def propositions {scope : Target.Sig} (prepared : PreparedSignature scope) :
     List (Target.PackedProposition
       (Target.SymbolScope scope prepared.symbols)) :=
-  prepared.entries.flatMap PreparedEntry.propositions
+  prepared.entries.flatMap PreparedEntry.propositions ++
+    prepared.constraints.map PreparedConstraint.packed
 
 @[simp]
 theorem relations_length {scope : Target.Sig}
     (prepared : PreparedSignature scope) :
-    prepared.relations.length = 2 * prepared.occurrenceCount := by
-  cases prepared with
-  | mk symbols entries =>
-      induction entries with
-      | nil => rfl
-      | cons entry remaining induction =>
-          change (entry.relations ++
-              ({ symbols := symbols, entries := remaining } :
-                PreparedSignature scope).relations).length =
-            2 * (entry.occurrenceCount +
-              ({ symbols := symbols, entries := remaining } :
-                PreparedSignature scope).occurrenceCount)
-          simp only [List.length_append, PreparedEntry.relations_length,
-            induction, Nat.mul_add]
+    prepared.relations.length =
+      2 * prepared.occurrenceCount + prepared.constraints.length := by
+  rw [show prepared.relations =
+      PreparedSignature.entriesRelationsWithTail prepared.entries
+        (prepared.constraints.map PreparedConstraint.relation) from rfl,
+    entriesRelationsWithTail_length]
+  simp only [List.length_map, occurrenceCount]
 
 end PreparedSignature
 
 namespace Encoding
+
+private theorem theoryPropositions_appendTheory {scope : Target.Sig}
+    {symbols : List Target.StaticSort}
+    {leftRelations rightRelations : List Target.Relation}
+    (left : Target.Theory scope symbols leftRelations)
+    (right : Target.Theory scope symbols rightRelations) :
+    Target.Theory.propositions (appendTheory left right) =
+      Target.Theory.propositions left ++
+        Target.Theory.propositions right := by
+  cases left with
+  | nil => rfl
+  | @cons _ _ relation relations proposition rest =>
+      change Target.PackedProposition.pack proposition ::
+          Target.Theory.propositions (appendTheory rest right) =
+        Target.PackedProposition.pack proposition ::
+          (Target.Theory.propositions rest ++
+            Target.Theory.propositions right)
+      exact congrArg (Target.PackedProposition.pack proposition :: ·)
+        (theoryPropositions_appendTheory rest right)
+termination_by leftRelations.length
 
 /-- Encoding emits exactly the structural proposition specification. -/
 theorem propositions_eq {scope : Target.Sig}
     (prepared : PreparedSignature scope) :
     Target.Theory.propositions (encode prepared).theory =
       prepared.propositions := by
-  cases prepared with
-  | mk symbols entries =>
-      induction entries with
-      | nil => rfl
-      | cons entry remaining entriesInduction =>
-          cases entry with
-          | type label name intervals =>
-              induction intervals with
-              | nil => exact entriesInduction
-              | cons interval remainingIntervals intervalsInduction =>
-                  simp only [encode,
-                    PreparedSignature.propositions,
-                    PreparedEntry.propositions, List.flatMap_cons,
-                    List.append_assoc]
-                  exact congrArg
-                    (fun tail =>
-                      Target.PackedProposition.pack
-                          (.inclusion interval.lower (.type (.tvar name))) ::
-                        Target.PackedProposition.pack
-                          (.inclusion (.type (.tvar name)) interval.upper) ::
-                        tail)
-                    intervalsInduction
-          | capture label name intervals =>
-              induction intervals with
-              | nil => exact entriesInduction
-              | cons interval remainingIntervals intervalsInduction =>
-                  simp only [encode,
-                    PreparedSignature.propositions,
-                    PreparedEntry.propositions, List.flatMap_cons,
-                    List.append_assoc]
-                  exact congrArg
-                    (fun tail =>
-                      Target.PackedProposition.pack
-                          (.inclusion interval.lower (.capture (.cvar name))) ::
-                        Target.PackedProposition.pack
-                          (.inclusion (.capture (.cvar name)) interval.upper) ::
-                        tail)
-                    intervalsInduction
+  have intervalPropositions : forall
+      (entry : PreparedEntry
+        (Target.SymbolScope scope prepared.symbols)),
+      Target.Theory.propositions (entryTheory entry) =
+        entry.propositions := by
+    intro entry
+    cases entry with
+    | type label name intervals =>
+        induction intervals with
+        | nil => rfl
+        | cons interval remaining induction =>
+            exact congrArg
+              (fun tail =>
+                Target.PackedProposition.pack
+                    (.inclusion interval.lower (.type (.tvar name))) ::
+                  Target.PackedProposition.pack
+                    (.inclusion (.type (.tvar name)) interval.upper) :: tail)
+              induction
+    | capture label name intervals =>
+        induction intervals with
+        | nil => rfl
+        | cons interval remaining induction =>
+            exact congrArg
+              (fun tail =>
+                Target.PackedProposition.pack
+                    (.inclusion interval.lower (.capture (.cvar name))) ::
+                  Target.PackedProposition.pack
+                    (.inclusion (.capture (.cvar name)) interval.upper) :: tail)
+              induction
+    | classifier label name intervals =>
+        induction intervals with
+        | nil => rfl
+        | cons interval remaining induction =>
+            exact congrArg
+              (fun tail =>
+                Target.PackedProposition.pack
+                    (.inclusion interval.lower (.classifier (.var name))) ::
+                  Target.PackedProposition.pack
+                    (.inclusion (.classifier (.var name)) interval.upper) ::
+                      tail)
+              induction
+  have constraintsPropositions : forall
+      (constraints : List (PreparedConstraint
+        (Target.SymbolScope scope prepared.symbols))),
+      Target.Theory.propositions (constraintsTheory constraints) =
+        constraints.map PreparedConstraint.packed := by
+    intro constraints
+    induction constraints with
+    | nil => rfl
+    | cons constraint remaining induction =>
+        exact congrArg
+          (Target.PackedProposition.pack constraint.proposition :: ·)
+          induction
+  have entriesPropositions : forall
+      (entries : List (PreparedEntry
+        (Target.SymbolScope scope prepared.symbols)))
+      {tailRelations : List Target.Relation}
+      (tail : Target.Theory scope prepared.symbols tailRelations),
+      Target.Theory.propositions
+          (entriesTheoryWithTail entries tail) =
+        entries.flatMap PreparedEntry.propositions ++
+          Target.Theory.propositions tail := by
+    intro entries tailRelations tail
+    induction entries with
+    | nil => rfl
+    | cons entry remaining induction =>
+        simp only [entriesTheoryWithTail, List.flatMap_cons,
+          theoryPropositions_appendTheory, intervalPropositions, induction,
+          List.append_assoc]
+  exact (entriesPropositions prepared.entries
+    (constraintsTheory prepared.constraints)).trans (by
+      rw [constraintsPropositions]
+      rfl)
 
 private theorem openTypeIntervals_evidenceMatches {scope : Target.Sig}
     {symbols : List Target.StaticSort}
@@ -421,27 +498,110 @@ private theorem openCaptureIntervals_evidenceMatches {scope : Target.Sig}
             (appendTheory (captureIntervalsTheory name remaining) tailTheory))
           _ _ older (induction older olderMember)
 
-private theorem openEntries_evidenceMatches {scope : Target.Sig}
+private theorem openClassifierIntervals_evidenceMatches {scope : Target.Sig}
+    {symbols : List Target.StaticSort}
+    (symbolContext : ManySortedFC.Ctx (Target.SymbolScope scope symbols))
+    (label : Nat)
+    (name : Target.BVar (Target.SymbolScope scope symbols)
+      (.symbol .classifier))
+    (intervals : List (Source.Interval
+      (Target.StaticExpr .classifier (Target.SymbolScope scope symbols))))
+    (tailRelations : List Target.Relation)
+    (tailTheory : Target.Theory scope symbols tailRelations)
+    (tail : List (OpenedOccurrence scope symbols tailRelations))
+    (tailValidity : ∀ occurrence, occurrence ∈ tail ->
+      occurrence.EvidenceMatches
+        (ManySortedFC.Ctx.extendTheoryEvidence symbolContext tailTheory)) :
+    ∀ occurrence,
+      occurrence ∈ openClassifierIntervals label name intervals
+        tailRelations tail ->
+      occurrence.EvidenceMatches
+        (ManySortedFC.Ctx.extendTheoryEvidence symbolContext
+          (appendTheory (classifierIntervalsTheory name intervals)
+            tailTheory)) := by
+  induction intervals with
+  | nil => exact tailValidity
+  | cons interval remaining induction =>
+      intro occurrence membership
+      simp only [openClassifierIntervals, List.mem_cons, List.mem_map]
+        at membership
+      rcases membership with rfl | ⟨older, olderMember, rfl⟩
+      · constructor
+        · change ManySortedFC.Binding.evidence
+            (((ManySortedFC.Proposition.inclusion interval.lower
+              (.classifier (.var name))).rename
+                (ManySortedFC.Rename.weakenMany
+                  (Target.SymbolScope scope symbols)
+                  (ManySortedFC.evidenceKinds
+                    (.inclusion .classifier ::
+                      PreparedEntry.intervalRelations .classifier remaining ++
+                        tailRelations)))).rename
+              ManySortedFC.Rename.succ) = _
+          rw [ManySortedFC.Proposition.rename_comp]
+          rfl
+        · change ManySortedFC.Binding.evidence
+            (((((ManySortedFC.Proposition.inclusion
+              (.classifier (.var name)) interval.upper).rename
+                (ManySortedFC.Rename.weakenMany
+                  (Target.SymbolScope scope symbols)
+                  (ManySortedFC.evidenceKinds
+                    (PreparedEntry.intervalRelations .classifier remaining ++
+                      tailRelations)))).rename
+                ManySortedFC.Rename.succ).rename
+              ManySortedFC.Rename.succ)) = _
+          rw [ManySortedFC.Proposition.rename_comp,
+            ManySortedFC.Proposition.rename_comp]
+          rfl
+      · exact OpenedOccurrence.weakenTwo_evidenceMatches
+          (ManySortedFC.Ctx.extendTheoryEvidence symbolContext
+            (appendTheory (classifierIntervalsTheory name remaining)
+              tailTheory))
+          _ _ older (induction older olderMember)
+
+private theorem openEntriesWithTail_evidenceMatches {scope : Target.Sig}
     {symbols : List Target.StaticSort}
     (symbolContext : ManySortedFC.Ctx (Target.SymbolScope scope symbols)) :
     (entries : List
       (PreparedEntry (Target.SymbolScope scope symbols))) ->
-    ∀ occurrence, occurrence ∈ openEntries entries ->
+    {tailRelations : List Target.Relation} ->
+    (tailTheory : Target.Theory scope symbols tailRelations) ->
+    (tail : List (OpenedOccurrence scope symbols tailRelations)) ->
+    (∀ occurrence, occurrence ∈ tail ->
+      occurrence.EvidenceMatches
+        (ManySortedFC.Ctx.extendTheoryEvidence symbolContext tailTheory)) ->
+    ∀ occurrence,
+      occurrence ∈ openEntriesWithTail entries tailRelations tail ->
       occurrence.EvidenceMatches
         (ManySortedFC.Ctx.extendTheoryEvidence symbolContext
-          (entriesTheory entries))
-  | [], _, membership => by cases membership
-  | .type label name intervals :: remaining, occurrence, membership =>
+          (entriesTheoryWithTail entries tailTheory))
+  | [], _, _, _, tailValidity, occurrence, membership =>
+      tailValidity occurrence membership
+  | .type label name intervals :: remaining, tailRelations, tailTheory,
+      tail, tailValidity, occurrence, membership =>
       openTypeIntervals_evidenceMatches symbolContext label name intervals
-        (PreparedSignature.entriesRelations remaining)
-        (entriesTheory remaining) (openEntries remaining)
-        (openEntries_evidenceMatches symbolContext remaining)
+        (PreparedSignature.entriesRelationsWithTail remaining tailRelations)
+        (entriesTheoryWithTail remaining tailTheory)
+        (openEntriesWithTail remaining tailRelations tail)
+        (openEntriesWithTail_evidenceMatches symbolContext remaining
+          tailTheory tail tailValidity)
         occurrence membership
-  | .capture label name intervals :: remaining, occurrence, membership =>
+  | .capture label name intervals :: remaining, tailRelations, tailTheory,
+      tail, tailValidity, occurrence, membership =>
       openCaptureIntervals_evidenceMatches symbolContext label name intervals
-        (PreparedSignature.entriesRelations remaining)
-        (entriesTheory remaining) (openEntries remaining)
-        (openEntries_evidenceMatches symbolContext remaining)
+        (PreparedSignature.entriesRelationsWithTail remaining tailRelations)
+        (entriesTheoryWithTail remaining tailTheory)
+        (openEntriesWithTail remaining tailRelations tail)
+        (openEntriesWithTail_evidenceMatches symbolContext remaining
+          tailTheory tail tailValidity)
+        occurrence membership
+  | .classifier label name intervals :: remaining, tailRelations, tailTheory,
+      tail, tailValidity, occurrence, membership =>
+      openClassifierIntervals_evidenceMatches symbolContext label name intervals
+        (PreparedSignature.entriesRelationsWithTail remaining tailRelations)
+        (entriesTheoryWithTail remaining tailTheory)
+        (openEntriesWithTail remaining tailRelations tail)
+        (openEntriesWithTail_evidenceMatches symbolContext remaining
+          tailTheory tail tailValidity)
         occurrence membership
 
 /-- Every retained occurrence points to the exact two assumptions installed
@@ -453,14 +613,19 @@ theorem opened_occurrence_evidence_matches {scope : Target.Sig}
     (occurrence : OpenedOccurrence scope encoding.symbols encoding.relations)
     (membership : occurrence ∈ encoding.openedOccurrences) :
     occurrence.EvidenceMatches (context.extendTheory encoding.theory) :=
-  openEntries_evidenceMatches
+  openEntriesWithTail_evidenceMatches
     (context.extendSymbols encoding.symbols)
-    encoding.prepared.entries occurrence membership
+    encoding.prepared.entries
+    (constraintsTheory encoding.prepared.constraints) []
+    (by intro occurrence impossible; cases impossible)
+    occurrence membership
 
-/-- An encoded theory has exactly two relation binders per retained interval. -/
+/-- An encoded theory has two inclusion binders per retained interval followed
+by one binder for each retained mixed-sort constraint. -/
 theorem relations_length {scope : Target.Sig} (encoding : Encoding scope) :
     encoding.relations.length =
-      2 * encoding.prepared.occurrenceCount :=
+      2 * encoding.prepared.occurrenceCount +
+        encoding.prepared.constraints.length :=
   PreparedSignature.relations_length encoding.prepared
 
 /-- Every retained type interval emits its precise lower-to-shared-name and
@@ -487,6 +652,7 @@ theorem contains_type_interval {scope : Target.Sig}
   rw [propositions_eq]
   constructor
   · simp only [PreparedSignature.propositions]
+    apply List.mem_append_left
     change Target.PackedProposition.pack
         (.inclusion interval.lower (.type (.tvar name))) ∈
       prepared.entries.flatMap PreparedEntry.propositions
@@ -496,6 +662,7 @@ theorem contains_type_interval {scope : Target.Sig}
     apply List.mem_flatMap.mpr
     exact ⟨interval, intervalMember, by simp⟩
   · simp only [PreparedSignature.propositions]
+    apply List.mem_append_left
     change Target.PackedProposition.pack
         (.inclusion (.type (.tvar name)) interval.upper) ∈
       prepared.entries.flatMap PreparedEntry.propositions
@@ -530,6 +697,7 @@ theorem contains_capture_interval {scope : Target.Sig}
   rw [propositions_eq]
   constructor
   · simp only [PreparedSignature.propositions]
+    apply List.mem_append_left
     change Target.PackedProposition.pack
         (.inclusion interval.lower (.capture (.cvar name))) ∈
       prepared.entries.flatMap PreparedEntry.propositions
@@ -539,6 +707,7 @@ theorem contains_capture_interval {scope : Target.Sig}
     apply List.mem_flatMap.mpr
     exact ⟨interval, intervalMember, by simp⟩
   · simp only [PreparedSignature.propositions]
+    apply List.mem_append_left
     change Target.PackedProposition.pack
         (.inclusion (.capture (.cvar name)) interval.upper) ∈
       prepared.entries.flatMap PreparedEntry.propositions
@@ -547,6 +716,59 @@ theorem contains_capture_interval {scope : Target.Sig}
     simp only [PreparedEntry.propositions]
     apply List.mem_flatMap.mpr
     exact ⟨interval, intervalMember, by simp⟩
+
+/-- Every retained classifier interval emits its precise lower-to-shared-name
+and shared-name-to-upper propositions. -/
+theorem contains_classifier_interval {scope : Target.Sig}
+    (prepared : PreparedSignature scope)
+    {label : Nat}
+    {name : Target.BVar
+      (Target.SymbolScope scope prepared.symbols) (.symbol .classifier)}
+    {intervals : List (Source.Interval
+      (Target.StaticExpr .classifier
+        (Target.SymbolScope scope prepared.symbols)))}
+    (entryMember : PreparedEntry.classifier label name intervals ∈
+      prepared.entries)
+    {interval : Source.Interval
+      (Target.StaticExpr .classifier
+        (Target.SymbolScope scope prepared.symbols))}
+    (intervalMember : interval ∈ intervals) :
+    Target.PackedProposition.pack
+        (.inclusion interval.lower (.classifier (.var name))) ∈
+      Target.Theory.propositions (encode prepared).theory ∧
+    Target.PackedProposition.pack
+        (.inclusion (.classifier (.var name)) interval.upper) ∈
+      Target.Theory.propositions (encode prepared).theory := by
+  rw [propositions_eq]
+  constructor
+  · simp only [PreparedSignature.propositions]
+    apply List.mem_append_left
+    apply List.mem_flatMap.mpr
+    refine ⟨PreparedEntry.classifier label name intervals, entryMember, ?_⟩
+    simp only [PreparedEntry.propositions]
+    apply List.mem_flatMap.mpr
+    exact ⟨interval, intervalMember, by simp⟩
+  · simp only [PreparedSignature.propositions]
+    apply List.mem_append_left
+    apply List.mem_flatMap.mpr
+    refine ⟨PreparedEntry.classifier label name intervals, entryMember, ?_⟩
+    simp only [PreparedEntry.propositions]
+    apply List.mem_flatMap.mpr
+    exact ⟨interval, intervalMember, by simp⟩
+
+/-- Every retained mixed-sort constraint occurs verbatim in the generated
+target theory after all member names have been allocated. -/
+theorem contains_constraint {scope : Target.Sig}
+    (prepared : PreparedSignature scope)
+    {constraint : PreparedConstraint
+      (Target.SymbolScope scope prepared.symbols)}
+    (membership : constraint ∈ prepared.constraints) :
+    constraint.packed ∈
+      Target.Theory.propositions (encode prepared).theory := by
+  rw [propositions_eq]
+  simp only [PreparedSignature.propositions]
+  apply List.mem_append_right
+  exact List.mem_map.mpr ⟨constraint, membership, rfl⟩
 
 /-- Two retained type intervals at one entry use the very same allocated
 de Bruijn name in all four emitted propositions. -/
@@ -608,6 +830,36 @@ theorem repeated_capture_intervals_share_name {scope : Target.Sig}
       Target.Theory.propositions (encode prepared).theory) :=
   ⟨contains_capture_interval prepared entryMember firstMember,
     contains_capture_interval prepared entryMember secondMember⟩
+
+/-- Repeated classifier intervals also reuse one allocated classifier name. -/
+theorem repeated_classifier_intervals_share_name {scope : Target.Sig}
+    (prepared : PreparedSignature scope)
+    {label : Nat}
+    {name : Target.BVar
+      (Target.SymbolScope scope prepared.symbols) (.symbol .classifier)}
+    {intervals : List (Source.Interval
+      (Target.StaticExpr .classifier
+        (Target.SymbolScope scope prepared.symbols)))}
+    (entryMember : PreparedEntry.classifier label name intervals ∈
+      prepared.entries)
+    {first second : Source.Interval
+      (Target.StaticExpr .classifier
+        (Target.SymbolScope scope prepared.symbols))}
+    (firstMember : first ∈ intervals) (secondMember : second ∈ intervals) :
+    (Target.PackedProposition.pack
+        (.inclusion first.lower (.classifier (.var name))) ∈
+      Target.Theory.propositions (encode prepared).theory ∧
+     Target.PackedProposition.pack
+        (.inclusion (.classifier (.var name)) first.upper) ∈
+      Target.Theory.propositions (encode prepared).theory) ∧
+    (Target.PackedProposition.pack
+        (.inclusion second.lower (.classifier (.var name))) ∈
+      Target.Theory.propositions (encode prepared).theory ∧
+     Target.PackedProposition.pack
+        (.inclusion (.classifier (.var name)) second.upper) ∈
+      Target.Theory.propositions (encode prepared).theory) :=
+  ⟨contains_classifier_interval prepared entryMember firstMember,
+    contains_classifier_interval prepared entryMember secondMember⟩
 
 /-- Evidence binders only weaken an allocated member; they preserve its exact
 label, sort, and de Bruijn coordinate under that weakening. -/

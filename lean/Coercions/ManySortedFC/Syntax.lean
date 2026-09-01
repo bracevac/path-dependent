@@ -4,7 +4,7 @@ import Coercions.ManySortedFC.Classifier.Kind
 /-!
 # Static syntax for many-sorted FC
 
-The initial target has two static sorts.  Type expressions and capture
+The target has three static sorts.  Type, capture, and classifier-kind
 expressions are intrinsically separated, while `StaticExpr` exposes the small
 uniform interface needed by heterogeneous theories.  A theory allocates all
 of its symbols before any evidence binder: its propositions therefore see the
@@ -186,6 +186,24 @@ theorem liftModal_comp {first second third : Sig}
 
 end Rename
 
+/-- Scoped classifier-kind expressions.
+
+Ground expressions embed the executable closed-kind algebra.  Variables are
+the generative classifier symbols allocated by static theories.  Compound
+operations on variables are deliberately absent from this first bindable
+classifier layer. -/
+inductive ClassifierExpr : Sig → Type where
+  | ground {scope : Sig} (kind : Classifier.Kind) : ClassifierExpr scope
+  | var {scope : Sig}
+      (name : BVar scope (.symbol .classifier)) : ClassifierExpr scope
+
+deriving instance DecidableEq for ClassifierExpr
+
+/-- Compatibility coercion for the pre-existing ground projection surface.
+New target artifacts should normally write `.ground kind` explicitly. -/
+instance {scope : Sig} : Coe Classifier.Kind (ClassifierExpr scope) where
+  coe := .ground
+
 /-- Capture expressions.  `singleton` denotes an ordinary term capability;
 `cvar` denotes an abstract capture symbol. -/
 inductive Capture : Sig → Type where
@@ -197,11 +215,10 @@ inductive Capture : Sig → Type where
   | singleton {scope : Sig} (capability : BVar scope .term) : Capture scope
   | cvar {scope : Sig}
       (name : BVar scope (.symbol .capture)) : Capture scope
-  /-- Restrict a capture to capabilities whose closed classifier belongs to
-  `kind`.  Classifier kinds are ground filters, not a third bindable static
-  sort. -/
+  /-- Restrict a capture to capabilities whose classifier belongs to the
+  supplied scoped classifier-kind expression. -/
   | project {scope : Sig} (capture : Capture scope)
-      (kind : Classifier.Kind) : Capture scope
+      (kind : ClassifierExpr scope) : Capture scope
 
 /-- Captures whose distinct list positions must be separated while a modal
 body is checked.  Repeated captures remain distinct entries. -/
@@ -273,6 +290,8 @@ inductive StaticExpr : StaticSort → Sig → Type where
   | type {scope : Sig} (type : Ty scope) : StaticExpr .type scope
   | capture {scope : Sig} (capture : Capture scope) :
       StaticExpr .capture scope
+  | classifier {scope : Sig} (classifier : ClassifierExpr scope) :
+      StaticExpr .classifier scope
 
 /-- An intrinsically sorted static proposition. -/
 inductive Proposition : Relation → Sig → Type where
@@ -288,6 +307,11 @@ inductive Proposition : Relation → Sig → Type where
       Proposition .disjoint scope
   | mode {scope : Sig} {mode : CaptureMode} (capture : Capture scope) :
       Proposition (.mode mode) scope
+  | classifierDisjoint {scope : Sig}
+      (left right : ClassifierExpr scope) :
+      Proposition .classifierDisjoint scope
+  | captureHasKind {scope : Sig} (capture : Capture scope)
+      (kind : ClassifierExpr scope) : Proposition .captureHasKind scope
 
 /-- A names-first local theory.  Every proposition is scoped after all symbols
 but before every evidence binder, preventing a theory from citing its own
@@ -344,6 +368,35 @@ def precise {scope : Sig} (capability : BVar scope .term) :
 
 end Ty
 
+namespace ClassifierExpr
+
+/-- Rename a classifier expression through a heterogeneous scope map. -/
+def rename {source target : Sig} (expression : ClassifierExpr source)
+    (rho : Rename source target) : ClassifierExpr target :=
+  match expression with
+  | .ground kind => .ground kind
+  | .var name => .var (rho.var name)
+
+/-- Weaken a classifier expression below one binder. -/
+def weaken {scope : Sig} {kind : BinderKind}
+    (expression : ClassifierExpr scope) : ClassifierExpr (scope ▹ kind) :=
+  expression.rename Rename.succ
+
+@[simp]
+theorem rename_id {scope : Sig} (expression : ClassifierExpr scope) :
+    expression.rename Rename.id = expression := by
+  cases expression <;> rfl
+
+@[simp]
+theorem rename_comp {first second third : Sig}
+    (expression : ClassifierExpr first) (rho₁ : Rename first second)
+    (rho₂ : Rename second third) :
+    (expression.rename rho₁).rename rho₂ =
+      expression.rename (rho₁.comp rho₂) := by
+  cases expression <;> rfl
+
+end ClassifierExpr
+
 mutual
 
 /-- Rename a capture expression through a heterogeneous scope map. -/
@@ -355,7 +408,8 @@ def Capture.rename {source target : Sig} (capture : Capture source)
   | .readOnly capture => .readOnly (capture.rename rho)
   | .singleton capability => .singleton (rho.var capability)
   | .cvar name => .cvar (rho.var name)
-  | .project capture kind => .project (capture.rename rho) kind
+  | .project capture kind =>
+      .project (capture.rename rho) (kind.rename rho)
 
 /-- Rename every capture in a separation context. -/
 def SeparationContext.rename {count : Nat} {source target : Sig}
@@ -420,6 +474,7 @@ def StaticExpr.rename {sort : StaticSort} {source target : Sig}
   match expression with
   | .type type => .type (type.rename rho)
   | .capture capture => .capture (capture.rename rho)
+  | .classifier classifier => .classifier (classifier.rename rho)
 
 /-- Rename every static expression in a proposition. -/
 def Proposition.rename {relation : Relation} {source target : Sig}
@@ -431,6 +486,10 @@ def Proposition.rename {relation : Relation} {source target : Sig}
   | .separate left right => .separate (left.rename rho) (right.rename rho)
   | .disjoint left right => .disjoint (left.rename rho) (right.rename rho)
   | .mode capture => .mode (capture.rename rho)
+  | .classifierDisjoint left right =>
+      .classifierDisjoint (left.rename rho) (right.rename rho)
+  | .captureHasKind capture kind =>
+      .captureHasKind (capture.rename rho) (kind.rename rho)
 
 /-- Rename the ambient scope of a theory without changing its interface. -/
 def Theory.rename {source target : Sig} {symbols : List StaticSort}
@@ -574,7 +633,8 @@ def Capture.rename_id {scope : Sig} (capture : Capture scope) :
   | .singleton _ => rfl
   | .cvar _ => rfl
   | .project capture _ => by
-      simp only [Capture.rename, Capture.rename_id capture]
+      simp only [Capture.rename, Capture.rename_id capture,
+        ClassifierExpr.rename_id]
 
 @[simp]
 def SeparationContext.rename_id {scope : Sig} {count : Nat}
@@ -649,6 +709,8 @@ def StaticExpr.rename_id {scope : Sig} {sort : StaticSort}
       simp only [StaticExpr.rename, Ty.rename_id type]
   | .capture capture => by
       simp only [StaticExpr.rename, Capture.rename_id capture]
+  | .classifier classifier => by
+      simp only [StaticExpr.rename, ClassifierExpr.rename_id classifier]
 
 @[simp]
 def Proposition.rename_id {scope : Sig} {relation : Relation}
@@ -669,6 +731,12 @@ def Proposition.rename_id {scope : Sig} {relation : Relation}
         Capture.rename_id right]
   | .mode capture => by
       simp only [Proposition.rename, Capture.rename_id capture]
+  | .classifierDisjoint left right => by
+      simp only [Proposition.rename, ClassifierExpr.rename_id left,
+        ClassifierExpr.rename_id right]
+  | .captureHasKind capture kind => by
+      simp only [Proposition.rename, Capture.rename_id capture,
+        ClassifierExpr.rename_id kind]
 
 @[simp]
 def Theory.rename_id {scope : Sig} {symbols : List StaticSort}
@@ -727,7 +795,8 @@ def Capture.rename_comp {first second third : Sig}
   | .singleton _ => rfl
   | .cvar _ => rfl
   | .project capture _ => by
-      simp only [Capture.rename, Capture.rename_comp capture]
+      simp only [Capture.rename, Capture.rename_comp capture,
+        ClassifierExpr.rename_comp]
 
 @[simp]
 def SeparationContext.rename_comp {count : Nat}
@@ -815,6 +884,8 @@ def StaticExpr.rename_comp {sort : StaticSort} {first second third : Sig}
       simp only [StaticExpr.rename, Ty.rename_comp type]
   | .capture capture => by
       simp only [StaticExpr.rename, Capture.rename_comp capture]
+  | .classifier classifier => by
+      simp only [StaticExpr.rename, ClassifierExpr.rename_comp classifier]
 
 @[simp]
 def Proposition.rename_comp {relation : Relation}
@@ -837,6 +908,12 @@ def Proposition.rename_comp {relation : Relation}
         Capture.rename_comp right]
   | .mode capture => by
       simp only [Proposition.rename, Capture.rename_comp capture]
+  | .classifierDisjoint left right => by
+      simp only [Proposition.rename, ClassifierExpr.rename_comp left,
+        ClassifierExpr.rename_comp right]
+  | .captureHasKind capture kind => by
+      simp only [Proposition.rename, Capture.rename_comp capture,
+        ClassifierExpr.rename_comp kind]
 
 @[simp]
 def Theory.rename_comp {first second third : Sig}

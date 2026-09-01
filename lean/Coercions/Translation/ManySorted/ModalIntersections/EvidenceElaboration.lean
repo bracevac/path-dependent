@@ -25,6 +25,7 @@ abbrev StaticSort := DOTCapture.ModalIntersections.StaticSort
 abbrev Sig := DOTCapture.ModalIntersections.Sig
 abbrev StaticExpr := DOTCapture.ModalIntersections.StaticExpr
 abbrev StaticRef := DOTCapture.ModalIntersections.StaticRef
+abbrev ClassifierExpr := DOTCapture.ModalIntersections.ClassifierExpr
 abbrev Capture := DOTCapture.ModalIntersections.Capture
 abbrev CaptureMode := DOTCapture.ModalIntersections.CaptureMode
 abbrev Ty := DOTCapture.ModalIntersections.Ty
@@ -37,6 +38,7 @@ namespace Target
 
 abbrev Sig := ManySortedFC.Sig
 abbrev StaticExpr := ManySortedFC.StaticExpr
+abbrev ClassifierExpr := ManySortedFC.ClassifierExpr
 abbrev Capture := ManySortedFC.Capture
 abbrev CaptureMode := ManySortedFC.CaptureMode
 abbrev Ctx := ManySortedFC.Ctx
@@ -46,6 +48,113 @@ abbrev Proposition := ManySortedFC.Proposition
 end Target
 
 open CompilerContext
+
+/-! ## Exact evidence-variable lookup
+
+The source derivation determines the proposition being requested.  This
+enumerator considers only binders at that proposition's intrinsic relation;
+the returned syntax is still checked at every public finishing boundary. -/
+
+private def evidenceVariables (relation : ManySortedFC.Relation) :
+    (scope : ManySortedFC.Sig) ->
+      List (ManySortedFC.BVar scope (.evidence relation))
+  | [] => []
+  | newest :: older =>
+      let olderVariables :=
+        (evidenceVariables relation older).map fun index =>
+          ManySortedFC.BVar.there (newest := newest) index
+      if same : newest = .evidence relation then
+        by
+          subst newest
+          exact (.here : ManySortedFC.BVar
+            (.evidence relation :: older) (.evidence relation)) ::
+              olderVariables
+      else
+        olderVariables
+
+private def findEvidenceVariableIn? {scope : ManySortedFC.Sig}
+    {relation : ManySortedFC.Relation} (context : ManySortedFC.Ctx scope)
+    (proposition : ManySortedFC.Proposition relation scope) :
+    List (ManySortedFC.BVar scope (.evidence relation)) ->
+      Option (ManySortedFC.Evidence relation scope)
+  | [] => none
+  | index :: remaining =>
+      let .evidence candidate := context.lookup index
+      if candidate = proposition then some (.var index)
+      else findEvidenceVariableIn? context proposition remaining
+
+/-- Select an exact already-open assumption at the requested relation.  The
+function cannot cross relation sorts and cannot introduce an assumption not
+present in the supplied target context. -/
+def findEvidenceVariable? {scope : ManySortedFC.Sig}
+    {relation : ManySortedFC.Relation} (context : ManySortedFC.Ctx scope)
+    (proposition : ManySortedFC.Proposition relation scope) :
+    Option (ManySortedFC.Evidence relation scope) :=
+  findEvidenceVariableIn? context proposition
+    (evidenceVariables relation scope)
+
+private theorem evidenceVariable_mem {scope : ManySortedFC.Sig}
+    {relation : ManySortedFC.Relation}
+    (index : ManySortedFC.BVar scope (.evidence relation)) :
+    index ∈ evidenceVariables relation scope := by
+  induction scope with
+  | nil => cases index
+  | cons newest older ih =>
+      cases index with
+      | here => simp [evidenceVariables]
+      | there olderIndex =>
+          simp only [evidenceVariables]
+          split
+          · rename_i same
+            subst newest
+            exact List.mem_cons_of_mem
+              (ManySortedFC.BVar.here : ManySortedFC.BVar
+                (.evidence relation :: older) (.evidence relation))
+              (List.mem_map.mpr ⟨olderIndex, ih olderIndex, rfl⟩)
+          · exact List.mem_map.mpr ⟨olderIndex, ih olderIndex, rfl⟩
+
+private theorem findEvidenceVariableIn?_isSome_of_mem_lookup
+    {scope : ManySortedFC.Sig} {relation : ManySortedFC.Relation}
+    (context : ManySortedFC.Ctx scope)
+    (proposition : ManySortedFC.Proposition relation scope)
+    (index : ManySortedFC.BVar scope (.evidence relation))
+    (indices : List (ManySortedFC.BVar scope (.evidence relation)))
+    (member : index ∈ indices)
+    (lookup : context.lookup index = .evidence proposition) :
+    (findEvidenceVariableIn? context proposition indices).isSome = true := by
+  induction indices with
+  | nil => simp at member
+  | cons current remaining ih =>
+      simp only [findEvidenceVariableIn?]
+      generalize found : context.lookup current = binding
+      cases binding with
+      | evidence candidate =>
+          by_cases equal : candidate = proposition
+          · simp [equal]
+          · simp only [equal, ↓reduceIte]
+            apply ih
+            rcases List.mem_cons.mp member with currentEq | inRemaining
+            · subst index
+              have candidateEq : candidate = proposition := by
+                simpa only [ManySortedFC.Binding.evidenceProposition] using
+                  congrArg ManySortedFC.Binding.evidenceProposition
+                    (found.symm.trans lookup)
+              exact False.elim (equal candidateEq)
+            · exact inRemaining
+
+/-- Completeness of the non-consuming exact-assumption search.  If one
+evidence variable in the supplied context has precisely the requested
+proposition after lookup weakening, the enumerator returns some evidence.
+No context entry is consumed or rearranged. -/
+theorem findEvidenceVariable?_isSome_of_lookup
+    {scope : ManySortedFC.Sig} {relation : ManySortedFC.Relation}
+    (context : ManySortedFC.Ctx scope)
+    (proposition : ManySortedFC.Proposition relation scope)
+    (index : ManySortedFC.BVar scope (.evidence relation))
+    (lookup : context.lookup index = .evidence proposition) :
+    (findEvidenceVariable? context proposition).isSome = true :=
+  findEvidenceVariableIn?_isSome_of_mem_lookup context proposition index
+    (evidenceVariables relation scope) (evidenceVariable_mem index) lookup
 
 /-! ## Successfully prepared endpoints -/
 
@@ -68,6 +177,87 @@ def prepareExpression? {sourceScope : Source.Sig}
   match prepared : ObjectContract.translateStaticExpr core.layout source with
   | .ok target => some { target, prepared }
   | .error _ => none
+
+/-- One successfully prepared cumulative classifier expression.  Classifier
+names arise only from object theories; lexical static binders remain the
+historical two-sort language. -/
+structure PreparedClassifier {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (source : Source.ClassifierExpr sourceScope) where
+  target : Target.ClassifierExpr targetScope
+  prepared : Preparation.Compile.classifierCore core.layout
+    (.interpreted core.layout.localModel) source = .ok target
+
+def prepareClassifier? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (source : Source.ClassifierExpr sourceScope) :
+    Option (PreparedClassifier core source) :=
+  match prepared : Preparation.Compile.classifierCore core.layout
+      (.interpreted core.layout.localModel) source with
+  | .ok target => some { target, prepared }
+  | .error _ => none
+
+/-- A checked classifier inclusion at independently prepared endpoints. -/
+structure CompiledClassifierInclusion {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (lower upper : Source.ClassifierExpr sourceScope) where
+  lowerPrepared : PreparedClassifier core lower
+  upperPrepared : PreparedClassifier core upper
+  evidence : Target.Evidence (.inclusion .classifier) targetScope
+  typing : ManySortedFC.Evidence.Proves core.target evidence
+    (.inclusion (.classifier lowerPrepared.target)
+      (.classifier upperPrepared.target))
+
+def finishClassifierInclusion? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (lower upper : Source.ClassifierExpr sourceScope)
+    (evidence : Target.Evidence (.inclusion .classifier) targetScope) :
+    Option (CompiledClassifierInclusion core lower upper) := do
+  let lowerPrepared <- prepareClassifier? core lower
+  let upperPrepared <- prepareClassifier? core upper
+  let checked <- ManySortedFC.Evidence.check core.target evidence
+  if propositionMatches : checked.proposition =
+      .inclusion (.classifier lowerPrepared.target)
+        (.classifier upperPrepared.target) then
+    pure
+      { lowerPrepared
+        upperPrepared
+        evidence
+        typing := by simpa only [propositionMatches] using checked.typing }
+  else none
+
+/-- Checked classifier disjointness at independently prepared endpoints. -/
+structure CompiledClassifierDisjoint {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (left right : Source.ClassifierExpr sourceScope) where
+  leftPrepared : PreparedClassifier core left
+  rightPrepared : PreparedClassifier core right
+  evidence : Target.Evidence .classifierDisjoint targetScope
+  typing : ManySortedFC.Evidence.Proves core.target evidence
+    (.classifierDisjoint leftPrepared.target rightPrepared.target)
+
+def finishClassifierDisjoint? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (left right : Source.ClassifierExpr sourceScope)
+    (evidence : Target.Evidence .classifierDisjoint targetScope) :
+    Option (CompiledClassifierDisjoint core left right) := do
+  let leftPrepared <- prepareClassifier? core left
+  let rightPrepared <- prepareClassifier? core right
+  let checked <- ManySortedFC.Evidence.check core.target evidence
+  if propositionMatches : checked.proposition =
+      .classifierDisjoint leftPrepared.target rightPrepared.target then
+    pure
+      { leftPrepared
+        rightPrepared
+        evidence
+        typing := by simpa only [propositionMatches] using checked.typing }
+  else none
 
 /-- A proof-carrying target inclusion whose endpoints are independently
 prepared from the two source endpoints. -/
@@ -260,6 +450,17 @@ theorem union {sourceScope : Source.Sig}
       .union (translation.target left) (translation.target right) := rfl
 
 @[simp]
+theorem project {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} {core : Core environment targetScope}
+    (translation : CaptureTranslation core)
+    (capture : Source.Capture sourceScope)
+    (classifier : Source.ClassifierExpr sourceScope) :
+    translation.target (.project capture classifier) =
+      .project (translation.target capture)
+        (Preparation.totalClassifier core.layout classifier) := rfl
+
+@[simp]
 theorem readOnly {sourceScope : Source.Sig}
     {environment : Source.TypingEnv sourceScope}
     {targetScope : Target.Sig} {core : Core environment targetScope}
@@ -281,6 +482,38 @@ def prepareCapture? {sourceScope : Source.Sig}
   match prepared : Preparation.translateCapture core.layout source with
   | .ok targetCapture => some { targetCapture, prepared }
   | .error _ => none
+
+/-- Checked membership of a prepared capture in a prepared classifier. -/
+structure CompiledCaptureHasKind {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (capture : Source.Capture sourceScope)
+    (classifier : Source.ClassifierExpr sourceScope) where
+  capturePrepared : PreparedCapture core capture
+  classifierPrepared : PreparedClassifier core classifier
+  evidence : Target.Evidence .captureHasKind targetScope
+  typing : ManySortedFC.Evidence.Proves core.target evidence
+    (.captureHasKind capturePrepared.targetCapture classifierPrepared.target)
+
+def finishCaptureHasKind? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (capture : Source.Capture sourceScope)
+    (classifier : Source.ClassifierExpr sourceScope)
+    (evidence : Target.Evidence .captureHasKind targetScope) :
+    Option (CompiledCaptureHasKind core capture classifier) := do
+  let capturePrepared <- prepareCapture? core capture
+  let classifierPrepared <- prepareClassifier? core classifier
+  let checked <- ManySortedFC.Evidence.check core.target evidence
+  if propositionMatches : checked.proposition =
+      .captureHasKind capturePrepared.targetCapture
+        classifierPrepared.target then
+    pure
+      { capturePrepared
+        classifierPrepared
+        evidence
+        typing := by simpa only [propositionMatches] using checked.typing }
+  else none
 
 /-- A checked capture inclusion whose source endpoints both prepared and
 whose target endpoints are the canonical capture map used by `Ready`. -/
@@ -438,6 +671,14 @@ def compileIncludes? {sourceScope : Source.Sig}
       let rightCompiled <- compileIncludes? leaves fromRight
       finishInclusion? core (.capture (.union left right)) (.capture target)
         (.captureUnionElim leftCompiled.evidence rightCompiled.evidence)
+  | .capture, .capture (.project capture classifier), .capture _,
+      .captureProjectSource => do
+      let capturePrepared <- prepareCapture? core capture
+      let classifierPrepared <- prepareClassifier? core classifier
+      finishInclusion? core (.capture (.project capture classifier))
+        (.capture capture)
+        (.captureProjectSourceScoped capturePrepared.targetCapture
+          classifierPrepared.target)
   | .capture, .capture (.readOnly capture), .capture _,
       .captureReadOnly => do
       let prepared <- prepareExpression? core (.capture capture)
@@ -452,6 +693,164 @@ def compileIncludes? {sourceScope : Source.Sig}
         (.captureReadOnlyMono compiled.evidence)
   | .capture, _, _, .captureVariable found => leaves.termVariable found
   | .capture, _, _, .payloadRoot exposes => leaves.payload exposes
+
+/-! ## Classifier and mixed-relation judgments -/
+
+private def compileClassifiersDisjointEvidenceCore? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    {left right : Source.ClassifierExpr sourceScope}
+    (proof : DOTCapture.ModalIntersections.ClassifiersDisjoint
+      environment.bindings left right) :
+    Option (Target.Evidence .classifierDisjoint targetScope) :=
+  match proof with
+  | .ground (left := source) (right := target) _ => do
+      let checked <- finishClassifierDisjoint? core left right
+        (.classifierGroundDisjoint source target)
+      pure checked.evidence
+  | .member _ _ => do
+      let leftPrepared <- prepareClassifier? core left
+      let rightPrepared <- prepareClassifier? core right
+      let evidence <- findEvidenceVariable? core.target
+        (.classifierDisjoint leftPrepared.target rightPrepared.target)
+      let checked <- finishClassifierDisjoint? core left right evidence
+      pure checked.evidence
+  | .symm disjoint => do
+      let evidence <- compileClassifiersDisjointEvidenceCore? core disjoint
+      let checked <- finishClassifierDisjoint? core left right
+        (.classifierDisjointSymm evidence)
+      pure checked.evidence
+
+private def compileClassifierIncludesEvidence? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    {lower upper : Source.ClassifierExpr sourceScope}
+    (proof : DOTCapture.ModalIntersections.ClassifierIncludes
+      environment.bindings lower upper) :
+    Option (Target.Evidence (.inclusion .classifier) targetScope) :=
+  match proof with
+  | .refl => do
+      let prepared <- prepareClassifier? core lower
+      let checked <- finishClassifierInclusion? core lower upper
+        (.inclusionRefl (.classifier prepared.target))
+      pure checked.evidence
+  | .trans first second => do
+      let firstEvidence <- compileClassifierIncludesEvidence? core first
+      let secondEvidence <- compileClassifierIncludesEvidence? core second
+      let checked <- finishClassifierInclusion? core lower upper
+        (.inclusionTrans firstEvidence secondEvidence)
+      pure checked.evidence
+  | .ground (lower := source) (upper := target) _ => do
+      let checked <- finishClassifierInclusion? core lower upper
+        (.classifierGroundInclusion source target)
+      pure checked.evidence
+  | .exclude (allowed := allowed) (excluded := excluded)
+      allowedProof excludedProof => do
+      let allowedEvidence <- compileClassifierIncludesEvidence? core
+        allowedProof
+      let excludedEvidence <- compileClassifiersDisjointEvidenceCore? core
+        excludedProof
+      let sourcePrepared <- prepareClassifier? core lower
+      let checked <- finishClassifierInclusion? core lower upper
+        (.classifierExclude sourcePrepared.target allowed excluded
+          allowedEvidence excludedEvidence)
+      pure checked.evidence
+  | .lower _ _ => do
+      let lowerPrepared <- prepareClassifier? core lower
+      let upperPrepared <- prepareClassifier? core upper
+      let evidence <- findEvidenceVariable? core.target
+        (.inclusion (.classifier lowerPrepared.target)
+          (.classifier upperPrepared.target))
+      let checked <- finishClassifierInclusion? core lower upper evidence
+      pure checked.evidence
+  | .upper _ _ => do
+      let lowerPrepared <- prepareClassifier? core lower
+      let upperPrepared <- prepareClassifier? core upper
+      let evidence <- findEvidenceVariable? core.target
+        (.inclusion (.classifier lowerPrepared.target)
+          (.classifier upperPrepared.target))
+      let checked <- finishClassifierInclusion? core lower upper evidence
+      pure checked.evidence
+
+/-- Derivation-directed classifier inclusion.  Stable member leaves are
+selected as exact evidence variables already present in the target context. -/
+def compileClassifierIncludes? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    {lower upper : Source.ClassifierExpr sourceScope}
+    (proof : DOTCapture.ModalIntersections.ClassifierIncludes
+      environment.bindings lower upper) :
+    Option (CompiledClassifierInclusion core lower upper) := do
+  let evidence <- compileClassifierIncludesEvidence? core proof
+  finishClassifierInclusion? core lower upper evidence
+
+/-- Derivation-directed classifier disjointness. -/
+def compileClassifiersDisjoint? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    {left right : Source.ClassifierExpr sourceScope}
+    (proof : DOTCapture.ModalIntersections.ClassifiersDisjoint
+      environment.bindings left right) :
+    Option (CompiledClassifierDisjoint core left right) := do
+  let evidence <- compileClassifiersDisjointEvidenceCore? core proof
+  finishClassifierDisjoint? core left right evidence
+
+private def compileCaptureHasKindEvidence? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    {capture : Source.Capture sourceScope}
+    {classifier : Source.ClassifierExpr sourceScope}
+    (proof : DOTCapture.ModalIntersections.CaptureHasKind
+      environment.bindings capture classifier) :
+    Option (Target.Evidence .captureHasKind targetScope) :=
+  match proof with
+  | .empty => do
+      let prepared <- prepareClassifier? core classifier
+      let checked <- finishCaptureHasKind? core capture classifier
+        (.captureHasKindEmpty prepared.target)
+      pure checked.evidence
+  | .union leftProof rightProof => do
+      let leftEvidence <- compileCaptureHasKindEvidence? core leftProof
+      let rightEvidence <- compileCaptureHasKindEvidence? core rightProof
+      let checked <- finishCaptureHasKind? core capture classifier
+        (.captureHasKindUnion leftEvidence rightEvidence)
+      pure checked.evidence
+  | .project => do
+      match capture with
+      | .project sourceCapture sourceClassifier => do
+          let capturePrepared <- prepareCapture? core sourceCapture
+          let classifierPrepared <- prepareClassifier? core sourceClassifier
+          let checked <- finishCaptureHasKind? core capture classifier
+            (.captureHasKindProject capturePrepared.targetCapture
+              classifierPrepared.target)
+          pure checked.evidence
+      | _ => none
+  | .member _ _ => do
+      let capturePrepared <- prepareCapture? core capture
+      let classifierPrepared <- prepareClassifier? core classifier
+      let evidence <- findEvidenceVariable? core.target
+        (.captureHasKind capturePrepared.targetCapture
+          classifierPrepared.target)
+      let checked <- finishCaptureHasKind? core capture classifier evidence
+      pure checked.evidence
+  | .widen membership included => do
+      let membershipEvidence <- compileCaptureHasKindEvidence? core membership
+      let inclusionEvidence <- compileClassifierIncludesEvidence? core included
+      let checked <- finishCaptureHasKind? core capture classifier
+        (.captureHasKindWiden membershipEvidence inclusionEvidence)
+      pure checked.evidence
+
+/-- Derivation-directed capture-kind membership. -/
+def compileCaptureHasKind? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    {capture : Source.Capture sourceScope}
+    {classifier : Source.ClassifierExpr sourceScope}
+    (proof : DOTCapture.ModalIntersections.CaptureHasKind
+      environment.bindings capture classifier) :
+    Option (CompiledCaptureHasKind core capture classifier) := do
+  let evidence <- compileCaptureHasKindEvidence? core proof
+  finishCaptureHasKind? core capture classifier evidence
 
 /-- Capture inclusion is the capture-sorted instance of the single partial
 inclusion compiler.  The second checker pass reindexes the exact prepared

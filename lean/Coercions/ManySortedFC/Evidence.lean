@@ -53,6 +53,16 @@ inductive Evidence : Relation -> Sig -> Type where
   | equalityCaptureReadOnly {scope : Sig}
       (capture : Evidence (.equality .capture) scope) :
       Evidence (.equality .capture) scope
+  /-- Ground extensional classifier equality, recomputed by the checker. -/
+  | classifierGroundEquality {scope : Sig}
+      (left right : Classifier.Kind) :
+      Evidence (.equality .classifier) scope
+  /-- Project equal captures through classifiers related by explicit scoped
+  classifier equality evidence. -/
+  | equalityCaptureProjectScoped {scope : Sig}
+      (capture : Evidence (.equality .capture) scope)
+      (classifier : Evidence (.equality .classifier) scope) :
+      Evidence (.equality .capture) scope
   /-- Project equal captures through extensionally equal closed classifier
   filters.  Kind equivalence is recomputed by the checker rather than stored
   in the certificate. -/
@@ -71,6 +81,11 @@ inductive Evidence : Relation -> Sig -> Type where
   /-- Projection through an algorithmically empty filter is empty. -/
   | equalityCaptureProjectEmpty {scope : Sig} (capture : Capture scope)
       (kind : Classifier.Kind) : Evidence (.equality .capture) scope
+  /-- A capture known to have kind `K` is unchanged by projection through
+  `K`. -/
+  | equalityCaptureProjectComplete {scope : Sig}
+      (membership : Evidence .captureHasKind scope) :
+      Evidence (.equality .capture) scope
 
   /- Directed-inclusion laws common to both ordered sorts. -/
   | inclusionRefl {scope : Sig} {sort : StaticSort}
@@ -96,6 +111,20 @@ inductive Evidence : Relation -> Sig -> Type where
       (shape : Evidence (.inclusion .type) scope) :
       Evidence (.inclusion .type) scope
 
+  /- Classifier inclusion.  Compound scoped reasoning is built from the
+  generic inclusion laws above and the explicit rules below. -/
+  | classifierGroundInclusion {scope : Sig}
+      (lower upper : Classifier.Kind) :
+      Evidence (.inclusion .classifier) scope
+  /-- If `K` is included in a ground allowed kind and disjoint from a ground
+  excluded kind, then `K` is included in their computed difference. -/
+  | classifierExclude {scope : Sig}
+      (kind : ClassifierExpr scope)
+      (allowedKind excludedKind : Classifier.Kind)
+      (allowed : Evidence (.inclusion .classifier) scope)
+      (excluded : Evidence .classifierDisjoint scope) :
+      Evidence (.inclusion .classifier) scope
+
   /- Capture inclusion. There is intentionally no capture-top rule. -/
   | captureEmpty {scope : Sig} (target : Capture scope) :
       Evidence (.inclusion .capture) scope
@@ -120,11 +149,21 @@ inductive Evidence : Relation -> Sig -> Type where
   /-- Filtering a capture can only remove capabilities. -/
   | captureProjectSource {scope : Sig} (capture : Capture scope)
       (kind : Classifier.Kind) : Evidence (.inclusion .capture) scope
+  /-- Filtering through an arbitrary scoped classifier expression can only
+  remove capabilities. -/
+  | captureProjectSourceScoped {scope : Sig} (capture : Capture scope)
+      (kind : ClassifierExpr scope) : Evidence (.inclusion .capture) scope
   /-- Projection is covariant in both its capture and closed kind.  The kind
   side condition is recomputed by the checker. -/
   | captureProjectMono {scope : Sig}
       (subcapture : Evidence (.inclusion .capture) scope)
       (sourceKind targetKind : Classifier.Kind) :
+      Evidence (.inclusion .capture) scope
+  /-- Scoped projection is covariant in both its capture and classifier
+  expression when both directed relations are supplied explicitly. -/
+  | captureProjectMonoScoped {scope : Sig}
+      (subcapture : Evidence (.inclusion .capture) scope)
+      (subclassifier : Evidence (.inclusion .classifier) scope) :
       Evidence (.inclusion .capture) scope
   /-- A projection through a kind union is bounded by the union of the two
   individual projections. -/
@@ -181,6 +220,37 @@ inductive Evidence : Relation -> Sig -> Type where
       (rightCapture : Capture scope) (rightKind : Classifier.Kind) :
       Evidence .disjoint scope
 
+  /- Classifier-kind disjointness. -/
+  | classifierGroundDisjoint {scope : Sig}
+      (left right : Classifier.Kind) : Evidence .classifierDisjoint scope
+  | classifierDisjointSymm {scope : Sig}
+      (evidence : Evidence .classifierDisjoint scope) :
+      Evidence .classifierDisjoint scope
+
+  /-- Scoped classifier disjointness makes the corresponding projected
+  captures disjoint independently of their source captures. -/
+  | disjointCaptureProjectScoped {scope : Sig}
+      (leftCapture rightCapture : Capture scope)
+      (classifiers : Evidence .classifierDisjoint scope) :
+      Evidence .disjoint scope
+
+  /- Capture-kind membership. -/
+  | captureHasKindEmpty {scope : Sig} (kind : ClassifierExpr scope) :
+      Evidence .captureHasKind scope
+  | captureHasKindUnion {scope : Sig}
+      (left right : Evidence .captureHasKind scope) :
+      Evidence .captureHasKind scope
+  | captureHasKindProject {scope : Sig} (capture : Capture scope)
+      (kind : ClassifierExpr scope) : Evidence .captureHasKind scope
+  | captureHasKindSubcapture {scope : Sig}
+      (subcapture : Evidence (.inclusion .capture) scope)
+      (upper : Evidence .captureHasKind scope) :
+      Evidence .captureHasKind scope
+  | captureHasKindWiden {scope : Sig}
+      (membership : Evidence .captureHasKind scope)
+      (subclassifier : Evidence (.inclusion .classifier) scope) :
+      Evidence .captureHasKind scope
+
 deriving instance DecidableEq for Evidence
 
 namespace Evidence
@@ -206,6 +276,11 @@ def rename {relation : Relation} {source target : Sig}
       .equalityCaptureUnion (left.rename rho) (right.rename rho)
   | .equalityCaptureReadOnly capture =>
       .equalityCaptureReadOnly (capture.rename rho)
+  | .classifierGroundEquality left right =>
+      .classifierGroundEquality left right
+  | .equalityCaptureProjectScoped capture classifier =>
+      .equalityCaptureProjectScoped (capture.rename rho)
+        (classifier.rename rho)
   | .equalityCaptureProject equality sourceKind targetKind =>
       .equalityCaptureProject (equality.rename rho) sourceKind targetKind
   | .equalityCaptureProjectTop capture =>
@@ -214,6 +289,8 @@ def rename {relation : Relation} {source target : Sig}
       .equalityCaptureProjectCompose (capture.rename rho) innerKind outerKind
   | .equalityCaptureProjectEmpty capture kind =>
       .equalityCaptureProjectEmpty (capture.rename rho) kind
+  | .equalityCaptureProjectComplete membership =>
+      .equalityCaptureProjectComplete (membership.rename rho)
   | .inclusionRefl expression => .inclusionRefl (expression.rename rho)
   | .inclusionTrans first second =>
       .inclusionTrans (first.rename rho) (second.rename rho)
@@ -225,6 +302,11 @@ def rename {relation : Relation} {source target : Sig}
       .typeArrow (domain.rename rho) (codomain.rename rho)
   | .typeCapturing captures shape =>
       .typeCapturing (captures.rename rho) (shape.rename rho)
+  | .classifierGroundInclusion lower upper =>
+      .classifierGroundInclusion lower upper
+  | .classifierExclude kind allowedKind excludedKind allowed excluded =>
+      .classifierExclude (kind.rename rho) allowedKind excludedKind
+        (allowed.rename rho) (excluded.rename rho)
   | .captureEmpty targetCapture =>
       .captureEmpty (targetCapture.rename rho)
   | .captureUnionLeft left right =>
@@ -239,8 +321,13 @@ def rename {relation : Relation} {source target : Sig}
       .captureReadOnlyMono (subcapture.rename rho)
   | .captureProjectSource capture kind =>
       .captureProjectSource (capture.rename rho) kind
+  | .captureProjectSourceScoped capture kind =>
+      .captureProjectSourceScoped (capture.rename rho) (kind.rename rho)
   | .captureProjectMono subcapture sourceKind targetKind =>
       .captureProjectMono (subcapture.rename rho) sourceKind targetKind
+  | .captureProjectMonoScoped subcapture subclassifier =>
+      .captureProjectMonoScoped (subcapture.rename rho)
+        (subclassifier.rename rho)
   | .captureProjectMerge capture leftKind rightKind =>
       .captureProjectMerge (capture.rename rho) leftKind rightKind
   | .modeEmpty mode => .modeEmpty mode
@@ -268,6 +355,23 @@ def rename {relation : Relation} {source target : Sig}
   | .disjointCaptureProject leftCapture leftKind rightCapture rightKind =>
       .disjointCaptureProject (leftCapture.rename rho) leftKind
         (rightCapture.rename rho) rightKind
+  | .classifierGroundDisjoint left right =>
+      .classifierGroundDisjoint left right
+  | .classifierDisjointSymm evidence =>
+      .classifierDisjointSymm (evidence.rename rho)
+  | .disjointCaptureProjectScoped leftCapture rightCapture classifiers =>
+      .disjointCaptureProjectScoped (leftCapture.rename rho)
+        (rightCapture.rename rho) (classifiers.rename rho)
+  | .captureHasKindEmpty kind => .captureHasKindEmpty (kind.rename rho)
+  | .captureHasKindUnion left right =>
+      .captureHasKindUnion (left.rename rho) (right.rename rho)
+  | .captureHasKindProject capture kind =>
+      .captureHasKindProject (capture.rename rho) (kind.rename rho)
+  | .captureHasKindSubcapture subcapture upper =>
+      .captureHasKindSubcapture (subcapture.rename rho) (upper.rename rho)
+  | .captureHasKindWiden membership subclassifier =>
+      .captureHasKindWiden (membership.rename rho)
+        (subclassifier.rename rho)
 
 /-- Weaken a logical certificate below one heterogeneous binder. -/
 def weaken {scope : Sig} {relation : Relation} {kind : BinderKind}
@@ -293,11 +397,17 @@ theorem rename_id {scope : Sig} {relation : Relation}
   | equalityCaptureUnion left right leftInduction rightInduction =>
       simp [rename, leftInduction, rightInduction]
   | equalityCaptureReadOnly capture induction => simp [rename, induction]
+  | classifierGroundEquality left right => rfl
+  | equalityCaptureProjectScoped capture classifier captureInduction
+      classifierInduction =>
+      simp [rename, captureInduction, classifierInduction]
   | equalityCaptureProject equality sourceKind targetKind induction =>
       simp [rename, induction]
   | equalityCaptureProjectTop capture => simp [rename]
   | equalityCaptureProjectCompose capture innerKind outerKind => simp [rename]
   | equalityCaptureProjectEmpty capture kind => simp [rename]
+  | equalityCaptureProjectComplete membership induction =>
+      simp [rename, induction]
   | inclusionRefl expression => simp [rename]
   | inclusionTrans first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
@@ -308,6 +418,10 @@ theorem rename_id {scope : Sig} {relation : Relation}
       simp [rename, domainInduction, codomainInduction]
   | typeCapturing captures shape capturesInduction shapeInduction =>
       simp [rename, capturesInduction, shapeInduction]
+  | classifierGroundInclusion lower upper => rfl
+  | classifierExclude kind allowedKind excludedKind allowed excluded
+      allowedInduction excludedInduction =>
+      simp [rename, allowedInduction, excludedInduction]
   | captureEmpty target => simp [rename]
   | captureUnionLeft left right => simp [rename]
   | captureUnionRight left right => simp [rename]
@@ -317,8 +431,12 @@ theorem rename_id {scope : Sig} {relation : Relation}
   | captureReadOnly capture => simp [rename]
   | captureReadOnlyMono subcapture induction => simp [rename, induction]
   | captureProjectSource capture kind => simp [rename]
+  | captureProjectSourceScoped capture kind => simp [rename]
   | captureProjectMono subcapture sourceKind targetKind induction =>
       simp [rename, induction]
+  | captureProjectMonoScoped subcapture subclassifier subcaptureInduction
+      classifierInduction =>
+      simp [rename, subcaptureInduction, classifierInduction]
   | captureProjectMerge capture leftKind rightKind => simp [rename]
   | modeEmpty => rfl
   | modeUnion left right leftInduction rightInduction =>
@@ -344,6 +462,19 @@ theorem rename_id {scope : Sig} {relation : Relation}
       simp [rename, equalityInduction, disjointInduction]
   | disjointCaptureProject leftCapture leftKind rightCapture rightKind =>
       simp [rename]
+  | classifierGroundDisjoint left right => rfl
+  | classifierDisjointSymm evidence induction => simp [rename, induction]
+  | disjointCaptureProjectScoped leftCapture rightCapture classifiers
+      induction => simp [rename, induction]
+  | captureHasKindEmpty kind => simp [rename]
+  | captureHasKindUnion left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | captureHasKindProject capture kind => simp [rename]
+  | captureHasKindSubcapture subcapture upper subcaptureInduction
+      upperInduction => simp [rename, subcaptureInduction, upperInduction]
+  | captureHasKindWiden membership subclassifier membershipInduction
+      classifierInduction =>
+      simp [rename, membershipInduction, classifierInduction]
 
 @[simp]
 theorem rename_comp {relation : Relation} {first second third : Sig}
@@ -365,6 +496,10 @@ theorem rename_comp {relation : Relation} {first second third : Sig}
   | equalityCaptureUnion left right leftInduction rightInduction =>
       simp [rename, leftInduction, rightInduction]
   | equalityCaptureReadOnly capture induction => simp [rename, induction]
+  | classifierGroundEquality left right => rfl
+  | equalityCaptureProjectScoped capture classifier captureInduction
+      classifierInduction =>
+      simp [rename, captureInduction, classifierInduction]
   | equalityCaptureProject equality sourceKind targetKind induction =>
       simp [rename, induction]
   | equalityCaptureProjectTop capture => simp [rename, Capture.rename_comp]
@@ -372,6 +507,8 @@ theorem rename_comp {relation : Relation} {first second third : Sig}
       simp [rename, Capture.rename_comp]
   | equalityCaptureProjectEmpty capture kind =>
       simp [rename, Capture.rename_comp]
+  | equalityCaptureProjectComplete membership induction =>
+      simp [rename, induction]
   | inclusionRefl expression => simp [rename, StaticExpr.rename_comp]
   | inclusionTrans first second firstInduction secondInduction =>
       simp [rename, firstInduction, secondInduction]
@@ -382,6 +519,11 @@ theorem rename_comp {relation : Relation} {first second third : Sig}
       simp [rename, domainInduction, codomainInduction]
   | typeCapturing captures shape capturesInduction shapeInduction =>
       simp [rename, capturesInduction, shapeInduction]
+  | classifierGroundInclusion lower upper => rfl
+  | classifierExclude kind allowedKind excludedKind allowed excluded
+      allowedInduction excludedInduction =>
+      simp [rename, ClassifierExpr.rename_comp, allowedInduction,
+        excludedInduction]
   | captureEmpty target => simp [rename, Capture.rename_comp]
   | captureUnionLeft left right => simp [rename, Capture.rename_comp]
   | captureUnionRight left right => simp [rename, Capture.rename_comp]
@@ -391,8 +533,13 @@ theorem rename_comp {relation : Relation} {first second third : Sig}
   | captureReadOnly capture => simp [rename, Capture.rename_comp]
   | captureReadOnlyMono subcapture induction => simp [rename, induction]
   | captureProjectSource capture kind => simp [rename, Capture.rename_comp]
+  | captureProjectSourceScoped capture kind =>
+      simp [rename, Capture.rename_comp, ClassifierExpr.rename_comp]
   | captureProjectMono subcapture sourceKind targetKind induction =>
       simp [rename, induction]
+  | captureProjectMonoScoped subcapture subclassifier subcaptureInduction
+      classifierInduction =>
+      simp [rename, subcaptureInduction, classifierInduction]
   | captureProjectMerge capture leftKind rightKind =>
       simp [rename, Capture.rename_comp]
   | modeEmpty => rfl
@@ -419,6 +566,21 @@ theorem rename_comp {relation : Relation} {first second third : Sig}
       simp [rename, equalityInduction, disjointInduction]
   | disjointCaptureProject leftCapture leftKind rightCapture rightKind =>
       simp [rename, Capture.rename_comp]
+  | classifierGroundDisjoint left right => rfl
+  | classifierDisjointSymm evidence induction => simp [rename, induction]
+  | disjointCaptureProjectScoped leftCapture rightCapture classifiers
+      induction => simp [rename, Capture.rename_comp, induction]
+  | captureHasKindEmpty kind =>
+      simp [rename, ClassifierExpr.rename_comp]
+  | captureHasKindUnion left right leftInduction rightInduction =>
+      simp [rename, leftInduction, rightInduction]
+  | captureHasKindProject capture kind =>
+      simp [rename, Capture.rename_comp, ClassifierExpr.rename_comp]
+  | captureHasKindSubcapture subcapture upper subcaptureInduction
+      upperInduction => simp [rename, subcaptureInduction, upperInduction]
+  | captureHasKindWiden membership subclassifier membershipInduction
+      classifierInduction =>
+      simp [rename, membershipInduction, classifierInduction]
 
 /-! ## Declarative certificate typing -/
 
@@ -494,6 +656,24 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
       Proves context (.equalityCaptureReadOnly capture)
         (.equality (.capture (.readOnly source))
           (.capture (.readOnly target)))
+  | classifierGroundEquality {scope : Sig} {context : Ctx scope}
+      (left right : Classifier.Kind)
+      (equivalent : Classifier.Kind.Equivalent left right) :
+      Proves context (.classifierGroundEquality left right)
+        (.equality (.classifier (.ground left))
+          (.classifier (.ground right)))
+  | equalityCaptureProjectScoped {scope : Sig} {context : Ctx scope}
+      {capture : Evidence (.equality .capture) scope}
+      {classifier : Evidence (.equality .classifier) scope}
+      {sourceCapture targetCapture : Capture scope}
+      {sourceKind targetKind : ClassifierExpr scope}
+      (captureTyping : Proves context capture
+        (.equality (.capture sourceCapture) (.capture targetCapture)))
+      (classifierTyping : Proves context classifier
+        (.equality (.classifier sourceKind) (.classifier targetKind))) :
+      Proves context (.equalityCaptureProjectScoped capture classifier)
+        (.equality (.capture (.project sourceCapture sourceKind))
+          (.capture (.project targetCapture targetKind)))
   | equalityCaptureProject {scope : Sig} {context : Ctx scope}
       {equality : Evidence (.equality .capture) scope}
       {source target : Capture scope}
@@ -508,7 +688,9 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
   | equalityCaptureProjectTop {scope : Sig} {context : Ctx scope}
       (capture : Capture scope) :
       Proves context (.equalityCaptureProjectTop capture)
-        (.equality (.capture (.project capture .top)) (.capture capture))
+        (.equality
+          (.capture (.project capture (.ground Classifier.Kind.top)))
+          (.capture capture))
   | equalityCaptureProjectCompose {scope : Sig} {context : Ctx scope}
       (capture : Capture scope) (innerKind outerKind : Classifier.Kind) :
       Proves context
@@ -521,6 +703,12 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
       (emptyKind : Classifier.Kind.IsEmpty kind) :
       Proves context (.equalityCaptureProjectEmpty capture kind)
         (.equality (.capture (.project capture kind)) (.capture .empty))
+  | equalityCaptureProjectComplete {scope : Sig} {context : Ctx scope}
+      {membership : Evidence .captureHasKind scope}
+      {capture : Capture scope} {kind : ClassifierExpr scope}
+      (typing : Proves context membership (.captureHasKind capture kind)) :
+      Proves context (.equalityCaptureProjectComplete membership)
+        (.equality (.capture (.project capture kind)) (.capture capture))
 
   | inclusionRefl {scope : Sig} {context : Ctx scope}
       {sort : StaticSort} (expression : StaticExpr sort scope) :
@@ -569,6 +757,26 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
         (.inclusion (.type (.capturing sourceCapture sourceShape))
           (.type (.capturing targetCapture targetShape)))
 
+  | classifierGroundInclusion {scope : Sig} {context : Ctx scope}
+      (lower upper : Classifier.Kind)
+      (included : Classifier.Kind.Subkind lower upper) :
+      Proves context (.classifierGroundInclusion lower upper)
+        (.inclusion (.classifier (.ground lower))
+          (.classifier (.ground upper)))
+  | classifierExclude {scope : Sig} {context : Ctx scope}
+      {allowedEvidence : Evidence (.inclusion .classifier) scope}
+      {excludedEvidence : Evidence .classifierDisjoint scope}
+      {kind : ClassifierExpr scope} {allowed excluded : Classifier.Kind}
+      (allowedTyping : Proves context allowedEvidence
+        (.inclusion (.classifier kind)
+          (.classifier (.ground allowed))))
+      (excludedTyping : Proves context excludedEvidence
+        (.classifierDisjoint kind (.ground excluded))) :
+      Proves context (.classifierExclude kind allowed excluded
+        allowedEvidence excludedEvidence)
+        (.inclusion (.classifier kind)
+          (.classifier (.ground (Classifier.Kind.subtract allowed excluded))))
+
   | captureEmpty {scope : Sig} {context : Ctx scope}
       (target : Capture scope) :
       Proves context (.captureEmpty target)
@@ -615,6 +823,10 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
       (capture : Capture scope) (kind : Classifier.Kind) :
       Proves context (.captureProjectSource capture kind)
         (.inclusion (.capture (.project capture kind)) (.capture capture))
+  | captureProjectSourceScoped {scope : Sig} {context : Ctx scope}
+      (capture : Capture scope) (kind : ClassifierExpr scope) :
+      Proves context (.captureProjectSourceScoped capture kind)
+        (.inclusion (.capture (.project capture kind)) (.capture capture))
   | captureProjectMono {scope : Sig} {context : Ctx scope}
       {subcapture : Evidence (.inclusion .capture) scope}
       {source target : Capture scope}
@@ -623,6 +835,18 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
         (.inclusion (.capture source) (.capture target)))
       (kindSubtyping : Classifier.Kind.Subkind sourceKind targetKind) :
       Proves context (.captureProjectMono subcapture sourceKind targetKind)
+        (.inclusion (.capture (.project source sourceKind))
+          (.capture (.project target targetKind)))
+  | captureProjectMonoScoped {scope : Sig} {context : Ctx scope}
+      {subcapture : Evidence (.inclusion .capture) scope}
+      {subclassifier : Evidence (.inclusion .classifier) scope}
+      {source target : Capture scope}
+      {sourceKind targetKind : ClassifierExpr scope}
+      (captureTyping : Proves context subcapture
+        (.inclusion (.capture source) (.capture target)))
+      (classifierTyping : Proves context subclassifier
+        (.inclusion (.classifier sourceKind) (.classifier targetKind))) :
+      Proves context (.captureProjectMonoScoped subcapture subclassifier)
         (.inclusion (.capture (.project source sourceKind))
           (.capture (.project target targetKind)))
   | captureProjectMerge {scope : Sig} {context : Ctx scope}
@@ -727,6 +951,63 @@ inductive Proves : {scope : Sig} -> Ctx scope ->
         (.disjointCaptureProject leftCapture leftKind rightCapture rightKind)
         (.disjoint (.project leftCapture leftKind)
           (.project rightCapture rightKind))
+  | classifierGroundDisjoint {scope : Sig} {context : Ctx scope}
+      (left right : Classifier.Kind)
+      (disjoint : Classifier.Kind.Disjoint left right) :
+      Proves context (.classifierGroundDisjoint left right)
+        (.classifierDisjoint (.ground left) (.ground right))
+  | classifierDisjointSymm {scope : Sig} {context : Ctx scope}
+      {evidence : Evidence .classifierDisjoint scope}
+      {left right : ClassifierExpr scope}
+      (typing : Proves context evidence (.classifierDisjoint left right)) :
+      Proves context (.classifierDisjointSymm evidence)
+        (.classifierDisjoint right left)
+  | disjointCaptureProjectScoped {scope : Sig} {context : Ctx scope}
+      (leftCapture rightCapture : Capture scope)
+      {classifiers : Evidence .classifierDisjoint scope}
+      {leftKind rightKind : ClassifierExpr scope}
+      (typing : Proves context classifiers
+        (.classifierDisjoint leftKind rightKind)) :
+      Proves context
+        (.disjointCaptureProjectScoped leftCapture rightCapture classifiers)
+        (.disjoint (.project leftCapture leftKind)
+          (.project rightCapture rightKind))
+  | captureHasKindEmpty {scope : Sig} {context : Ctx scope}
+      (kind : ClassifierExpr scope) :
+      Proves context (.captureHasKindEmpty kind) (.captureHasKind .empty kind)
+  | captureHasKindUnion {scope : Sig} {context : Ctx scope}
+      {left right : Evidence .captureHasKind scope}
+      {leftCapture rightCapture : Capture scope}
+      {kind : ClassifierExpr scope}
+      (leftTyping : Proves context left (.captureHasKind leftCapture kind))
+      (rightTyping : Proves context right (.captureHasKind rightCapture kind)) :
+      Proves context (.captureHasKindUnion left right)
+        (.captureHasKind (.union leftCapture rightCapture) kind)
+  | captureHasKindProject {scope : Sig} {context : Ctx scope}
+      (capture : Capture scope) (kind : ClassifierExpr scope) :
+      Proves context (.captureHasKindProject capture kind)
+        (.captureHasKind (.project capture kind) kind)
+  | captureHasKindSubcapture {scope : Sig} {context : Ctx scope}
+      {subcapture : Evidence (.inclusion .capture) scope}
+      {upper : Evidence .captureHasKind scope}
+      {lowerCapture upperCapture : Capture scope}
+      {kind : ClassifierExpr scope}
+      (subcaptureTyping : Proves context subcapture
+        (.inclusion (.capture lowerCapture) (.capture upperCapture)))
+      (upperTyping : Proves context upper
+        (.captureHasKind upperCapture kind)) :
+      Proves context (.captureHasKindSubcapture subcapture upper)
+        (.captureHasKind lowerCapture kind)
+  | captureHasKindWiden {scope : Sig} {context : Ctx scope}
+      {membership : Evidence .captureHasKind scope}
+      {subclassifier : Evidence (.inclusion .classifier) scope}
+      {capture : Capture scope} {sourceKind targetKind : ClassifierExpr scope}
+      (membershipTyping : Proves context membership
+        (.captureHasKind capture sourceKind))
+      (classifierTyping : Proves context subclassifier
+        (.inclusion (.classifier sourceKind) (.classifier targetKind))) :
+      Proves context (.captureHasKindWiden membership subclassifier)
+        (.captureHasKind capture targetKind)
 
 /-- Alternate name emphasizing that `Proves` is the typing judgment for
 logical certificates. -/

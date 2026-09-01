@@ -20,6 +20,37 @@ def captureModel : Source.AmbientCaptureModel [] where
   witness := fun _ => .empty
   ambient := by intro; rfl
 
+/-! Recursive signatures do not bind classifier witnesses. Realization must
+therefore preserve an unresolved local classifier reference, and recursive
+body compilation must reject it rather than silently interpreting it as the
+empty ground classifier. -/
+
+def undeclaredClassifierCapture : Source.Capture [] :=
+  .project .empty (.ref (.localMember 100))
+
+example :
+    ((DOTCapture.ModalIntersections.ClassifierExpr.ref
+      (.localMember 100)).realizeLocals captureModel.asLocalModel) =
+        .ref (.localMember 100) := by
+  simp [DOTCapture.ModalIntersections.ClassifierExpr.realizeLocals]
+
+example :
+    DOTCaptureToManySortedFC.ModalIntersections.Preparation.Compile.captureCore
+      DOTCaptureToManySortedFC.ModalIntersections.Layout.empty
+      (.allocated [])
+      (undeclaredClassifierCapture.realizeLocals captureModel.asLocalModel) =
+    .error (.unknownLocalMember 100) := by
+  simp [undeclaredClassifierCapture,
+    DOTCapture.ModalIntersections.Capture.realizeLocals,
+    DOTCapture.ModalIntersections.ClassifierExpr.realizeLocals,
+    DOTCaptureToManySortedFC.ModalIntersections.Preparation.Compile.captureCore,
+    DOTCaptureToManySortedFC.ModalIntersections.Preparation.Compile.classifierCore,
+    DOTCaptureToManySortedFC.ModalIntersections.Preparation.Compile.classifierReference,
+    DOTCaptureToManySortedFC.ModalIntersections.Preparation.Compile.LocalResolution.classifierExpression,
+    DOTCaptureToManySortedFC.ModalIntersections.Preparation.Compile.localMember,
+    DOTCaptureToManySortedFC.ModalIntersections.Preparation.MemberNames.find?]
+  rfl
+
 def realization : Source.Realization
     DOTCapture.ModalIntersections.Ctx.nil signature where
   captures := captureModel

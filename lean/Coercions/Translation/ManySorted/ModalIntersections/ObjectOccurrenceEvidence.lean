@@ -1,5 +1,6 @@
 import Coercions.Translation.ManySorted.ModalIntersections.ConstraintRetention
 import Coercions.Translation.ManySorted.ModalIntersections.CompilerContext
+import Coercions.Translation.ManySorted.ModalIntersections.EvidenceElaboration
 
 /-!
 # Proof-selected object occurrence evidence
@@ -22,6 +23,7 @@ abbrev Sig := DOTCapture.ModalIntersections.Sig
 abbrev TypingEnv := DOTCapture.ModalIntersections.TypingEnv
 abbrev Ty := DOTCapture.ModalIntersections.Ty
 abbrev Capture := DOTCapture.ModalIntersections.Capture
+abbrev ClassifierExpr := DOTCapture.ModalIntersections.ClassifierExpr
 abbrev StaticExpr := DOTCapture.ModalIntersections.StaticExpr
 abbrev Interface := DOTCapture.ModalIntersections.Interface
 abbrev ObjectType := DOTCapture.ModalIntersections.ObjectType
@@ -113,6 +115,12 @@ def findTypeOrdinalSelection? {scope : Target.Sig}
           selected :=
             { found.selected with
               membership := .tail _ found.selected.membership } }
+  | ordinal, .classifier _ _ _ _ _ _ :: remaining =>
+      (findTypeOrdinalSelection? label ordinal remaining).map fun found =>
+        { found with
+          selected :=
+            { found.selected with
+              membership := .tail _ found.selected.membership } }
   | ordinal, .type candidateLabel name lower upper lowerEvidence
         upperEvidence :: remaining =>
       if labelsMatch : candidateLabel = label then
@@ -145,6 +153,12 @@ def findCaptureOrdinalSelection? {scope : Target.Sig}
       Option (CaptureOrdinalSelection candidates label ordinal)
   | _, [] => none
   | ordinal, .type _ _ _ _ _ _ :: remaining =>
+      (findCaptureOrdinalSelection? label ordinal remaining).map fun found =>
+        { found with
+          selected :=
+            { found.selected with
+              membership := .tail _ found.selected.membership } }
+  | ordinal, .classifier _ _ _ _ _ _ :: remaining =>
       (findCaptureOrdinalSelection? label ordinal remaining).map fun found =>
         { found with
           selected :=
@@ -198,6 +212,21 @@ theorem findTypeOrdinalSelection?_of_getElem {scope : Target.Sig}
             induction atOrdinal
           let lifted : TypeOrdinalSelection
               (OpenedOccurrence.capture candidateLabel name candidateLower
+                candidateUpper lowerEvidence upperEvidence :: remaining)
+              label ordinal :=
+            { found with
+              selected :=
+                { found.selected with
+                  membership := .tail _ found.selected.membership } }
+          refine ⟨lifted, ?_, lowerEq, upperEq⟩
+          simp [findTypeOrdinalSelection?, foundResult, lifted]
+      | classifier candidateLabel name candidateLower candidateUpper
+          lowerEvidence upperEvidence =>
+          simp only [ConstraintRetention.openedTypeIntervalsAt] at atOrdinal
+          obtain ⟨found, foundResult, lowerEq, upperEq⟩ :=
+            induction atOrdinal
+          let lifted : TypeOrdinalSelection
+              (OpenedOccurrence.classifier candidateLabel name candidateLower
                 candidateUpper lowerEvidence upperEvidence :: remaining)
               label ordinal :=
             { found with
@@ -276,6 +305,21 @@ theorem findCaptureOrdinalSelection?_of_getElem {scope : Target.Sig}
             induction atOrdinal
           let lifted : CaptureOrdinalSelection
               (OpenedOccurrence.type candidateLabel name candidateLower
+                candidateUpper lowerEvidence upperEvidence :: remaining)
+              label ordinal :=
+            { found with
+              selected :=
+                { found.selected with
+                  membership := .tail _ found.selected.membership } }
+          refine ⟨lifted, ?_, lowerEq, upperEq⟩
+          simp [findCaptureOrdinalSelection?, foundResult, lifted]
+      | classifier candidateLabel name candidateLower candidateUpper
+          lowerEvidence upperEvidence =>
+          simp only [ConstraintRetention.openedCaptureIntervalsAt] at atOrdinal
+          obtain ⟨found, foundResult, lowerEq, upperEq⟩ :=
+            induction atOrdinal
+          let lifted : CaptureOrdinalSelection
+              (OpenedOccurrence.classifier candidateLabel name candidateLower
                 candidateUpper lowerEvidence upperEvidence :: remaining)
               label ordinal :=
             { found with
@@ -482,9 +526,12 @@ theorem selectPreparedTypeOccurrence?_isSome
   obtain ⟨retained⟩ := ConstraintRetention.preparedTypeIntervalAt_of_raw
     core.layout sourceObject.interface interfaceSuccess occurrence
   have openedAt :=
-    ConstraintRetention.openedTypeIntervalsAt_openEntries_getElem label
+    ConstraintRetention.openedTypeIntervalsAt_openEntriesWithTail_getElem label
       (ConstraintRetention.RawOccurrence.typeOrdinal occurrence)
-      prepared.object.encoding.prepared.entries retained.translated
+      prepared.object.encoding.prepared.entries
+      (prepared.object.encoding.prepared.constraints.map
+        PreparedConstraint.relation)
+      retained.translated
       retained.targetAt
   have encodingAt :
       (ConstraintRetention.openedTypeIntervalsAt label
@@ -534,9 +581,12 @@ theorem selectPreparedCaptureOccurrence?_isSome
   obtain ⟨retained⟩ := ConstraintRetention.preparedCaptureIntervalAt_of_raw
     core.layout sourceObject.interface interfaceSuccess occurrence
   have openedAt :=
-    ConstraintRetention.openedCaptureIntervalsAt_openEntries_getElem label
+    ConstraintRetention.openedCaptureIntervalsAt_openEntriesWithTail_getElem label
       (ConstraintRetention.RawOccurrence.captureOrdinal occurrence)
-      prepared.object.encoding.prepared.entries retained.translated
+      prepared.object.encoding.prepared.entries
+      (prepared.object.encoding.prepared.constraints.map
+        PreparedConstraint.relation)
+      retained.translated
       retained.targetAt
   have encodingAt :
       (ConstraintRetention.openedCaptureIntervalsAt label
@@ -608,6 +658,9 @@ def findTypeSelection? {scope : Target.Sig}
   | .capture _ _ _ _ _ _ :: remaining =>
       (findTypeSelection? label lower upper remaining).map fun found =>
         { found with membership := .tail _ found.membership }
+  | .classifier _ _ _ _ _ _ :: remaining =>
+      (findTypeSelection? label lower upper remaining).map fun found =>
+        { found with membership := .tail _ found.membership }
 
 def findCaptureSelection? {scope : Target.Sig}
     {symbols : List ManySortedFC.StaticSort}
@@ -644,6 +697,9 @@ def findCaptureSelection? {scope : Target.Sig}
   | .type _ _ _ _ _ _ :: remaining =>
       (findCaptureSelection? label lower upper remaining).map fun found =>
         { found with membership := .tail _ found.membership }
+  | .classifier _ _ _ _ _ _ :: remaining =>
+      (findCaptureSelection? label lower upper remaining).map fun found =>
+        { found with membership := .tail _ found.membership }
 
 theorem findTypeSelection_isSome_of_mem {scope : Target.Sig}
     {symbols : List ManySortedFC.StaticSort}
@@ -675,6 +731,8 @@ theorem findTypeSelection_isSome_of_mem {scope : Target.Sig}
               simp [findTypeSelection?, labelMatches, lowerMatches,
                 upperMatches, induction tailMembership]
         | capture =>
+            simp [findTypeSelection?, induction tailMembership]
+        | classifier =>
             simp [findTypeSelection?, induction tailMembership]
 
 theorem findCaptureSelection_isSome_of_mem {scope : Target.Sig}
@@ -708,6 +766,8 @@ theorem findCaptureSelection_isSome_of_mem {scope : Target.Sig}
               by_cases upperMatches : candidateUpper = upper <;>
               simp [findCaptureSelection?, labelMatches, lowerMatches,
                 upperMatches, induction tailMembership]
+        | classifier =>
+            simp [findCaptureSelection?, induction tailMembership]
 
 /-! ## Exact prepared-object lookup -/
 
@@ -826,5 +886,163 @@ def findPreparedCaptureSelection? {sourceScope : Source.Sig}
         prepared.object.encoding.openedOccurrences).map fun selected =>
           { translated, translation := translatedResult, selected }
   | _ => none
+
+/-! ## Retained classifier evidence is discoverable -/
+
+/-- A raw classifier-member occurrence contributes a lower-bound assumption
+that the compiler's non-consuming evidence search can find in every ambient
+context extended by the prepared object theory.  The chosen coordinate also
+retains the exact source-to-target interval translation equation. -/
+theorem findClassifierLowerEvidenceVariable?_isSome_of_raw
+    {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (interface : Source.Interface sourceScope)
+    {prepared : PreparedSignature targetScope}
+    (success : Preparation.collectAndPrepare layout interface = .ok prepared)
+    {label : Nat}
+    {lower upper : Source.ClassifierExpr sourceScope}
+    (occurrence : interface.HasClassifierOccurrence label lower upper)
+    (context : Target.Ctx targetScope) :
+    let coordinate := ConstraintRetention.classifierCoordinatesOfRaw
+      layout interface success occurrence
+    let rho := ManySortedFC.Rename.weakenMany
+      (ManySortedFC.SymbolScope targetScope prepared.symbols)
+      (ManySortedFC.evidenceKinds prepared.relations)
+    (EvidenceElaboration.findEvidenceVariable?
+      (context.extendTheory (encode prepared).theory)
+      ((ManySortedFC.Proposition.inclusion coordinate.translated.lower
+        (.classifier (.var coordinate.name))).rename rho)).isSome = true := by
+  dsimp only
+  exact EvidenceElaboration.findEvidenceVariable?_isSome_of_lookup
+    (context.extendTheory (encode prepared).theory)
+    ((ManySortedFC.Proposition.inclusion
+      (ConstraintRetention.classifierCoordinatesOfRaw
+        layout interface success occurrence).translated.lower
+      (.classifier (.var
+        (ConstraintRetention.classifierCoordinatesOfRaw
+          layout interface success occurrence).name))).rename
+      (ManySortedFC.Rename.weakenMany
+        (ManySortedFC.SymbolScope targetScope prepared.symbols)
+        (ManySortedFC.evidenceKinds prepared.relations)))
+    ((ConstraintRetention.classifierCoordinatesOfRaw
+      layout interface success occurrence).lower.toEvidenceBVar
+      (ManySortedFC.SymbolScope targetScope prepared.symbols))
+    (ConstraintRetention.ClassifierCoordinates.lowerLookup
+      (ConstraintRetention.classifierCoordinatesOfRaw
+        layout interface success occurrence) context)
+
+/-- Upper-bound counterpart of
+`findClassifierLowerEvidenceVariable?_isSome_of_raw`. -/
+theorem findClassifierUpperEvidenceVariable?_isSome_of_raw
+    {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (interface : Source.Interface sourceScope)
+    {prepared : PreparedSignature targetScope}
+    (success : Preparation.collectAndPrepare layout interface = .ok prepared)
+    {label : Nat}
+    {lower upper : Source.ClassifierExpr sourceScope}
+    (occurrence : interface.HasClassifierOccurrence label lower upper)
+    (context : Target.Ctx targetScope) :
+    let coordinate := ConstraintRetention.classifierCoordinatesOfRaw
+      layout interface success occurrence
+    let rho := ManySortedFC.Rename.weakenMany
+      (ManySortedFC.SymbolScope targetScope prepared.symbols)
+      (ManySortedFC.evidenceKinds prepared.relations)
+    (EvidenceElaboration.findEvidenceVariable?
+      (context.extendTheory (encode prepared).theory)
+      ((ManySortedFC.Proposition.inclusion
+        (.classifier (.var coordinate.name)) coordinate.translated.upper).rename
+        rho)).isSome = true := by
+  dsimp only
+  exact EvidenceElaboration.findEvidenceVariable?_isSome_of_lookup
+    (context.extendTheory (encode prepared).theory)
+    ((ManySortedFC.Proposition.inclusion
+      (.classifier (.var
+        (ConstraintRetention.classifierCoordinatesOfRaw
+          layout interface success occurrence).name))
+      (ConstraintRetention.classifierCoordinatesOfRaw
+        layout interface success occurrence).translated.upper).rename
+      (ManySortedFC.Rename.weakenMany
+        (ManySortedFC.SymbolScope targetScope prepared.symbols)
+        (ManySortedFC.evidenceKinds prepared.relations)))
+    ((ConstraintRetention.classifierCoordinatesOfRaw
+      layout interface success occurrence).upper.toEvidenceBVar
+      (ManySortedFC.SymbolScope targetScope prepared.symbols))
+    (ConstraintRetention.ClassifierCoordinates.upperLookup
+      (ConstraintRetention.classifierCoordinatesOfRaw
+        layout interface success occurrence) context)
+
+/-- A raw classifier-disjointness occurrence survives preparation as an exact
+opened-theory assumption, and exact evidence search therefore succeeds. -/
+theorem findClassifierDisjointEvidenceVariable?_isSome_of_raw
+    {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (interface : Source.Interface sourceScope)
+    {prepared : PreparedSignature targetScope}
+    (success : Preparation.collectAndPrepare layout interface = .ok prepared)
+    {left right : Source.ClassifierExpr sourceScope}
+    (occurrence : interface.HasClassifierDisjointOccurrence left right)
+    (context : Target.Ctx targetScope) :
+    let coordinate := ConstraintRetention.classifierDisjointCoordinatesOfRaw
+      layout interface success occurrence
+    let rho := ManySortedFC.Rename.weakenMany
+      (ManySortedFC.SymbolScope targetScope prepared.symbols)
+      (ManySortedFC.evidenceKinds prepared.relations)
+    (EvidenceElaboration.findEvidenceVariable?
+      (context.extendTheory (encode prepared).theory)
+      (coordinate.translated.proposition.rename rho)).isSome = true := by
+  dsimp only
+  exact EvidenceElaboration.findEvidenceVariable?_isSome_of_lookup
+    (context.extendTheory (encode prepared).theory)
+    ((ConstraintRetention.classifierDisjointCoordinatesOfRaw
+      layout interface success occurrence).translated.proposition.rename
+      (ManySortedFC.Rename.weakenMany
+        (ManySortedFC.SymbolScope targetScope prepared.symbols)
+        (ManySortedFC.evidenceKinds prepared.relations)))
+    ((ConstraintRetention.classifierDisjointCoordinatesOfRaw
+      layout interface success occurrence).reference.toEvidenceBVar
+      (ManySortedFC.SymbolScope targetScope prepared.symbols))
+    (ConstraintRetention.ConstraintCoordinates.lookup
+      (ConstraintRetention.classifierDisjointCoordinatesOfRaw
+        layout interface success occurrence) context)
+
+/-- A raw capture-has-kind occurrence survives preparation as an exact
+opened-theory assumption, and exact evidence search therefore succeeds. -/
+theorem findCaptureHasKindEvidenceVariable?_isSome_of_raw
+    {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (interface : Source.Interface sourceScope)
+    {prepared : PreparedSignature targetScope}
+    (success : Preparation.collectAndPrepare layout interface = .ok prepared)
+    {capture : Source.Capture sourceScope}
+    {classifier : Source.ClassifierExpr sourceScope}
+    (occurrence : interface.HasCaptureKindOccurrence capture classifier)
+    (context : Target.Ctx targetScope) :
+    let coordinate := ConstraintRetention.captureHasKindCoordinatesOfRaw
+      layout interface success occurrence
+    let rho := ManySortedFC.Rename.weakenMany
+      (ManySortedFC.SymbolScope targetScope prepared.symbols)
+      (ManySortedFC.evidenceKinds prepared.relations)
+    (EvidenceElaboration.findEvidenceVariable?
+      (context.extendTheory (encode prepared).theory)
+      (coordinate.translated.proposition.rename rho)).isSome = true := by
+  dsimp only
+  exact EvidenceElaboration.findEvidenceVariable?_isSome_of_lookup
+    (context.extendTheory (encode prepared).theory)
+    ((ConstraintRetention.captureHasKindCoordinatesOfRaw
+      layout interface success occurrence).translated.proposition.rename
+      (ManySortedFC.Rename.weakenMany
+        (ManySortedFC.SymbolScope targetScope prepared.symbols)
+        (ManySortedFC.evidenceKinds prepared.relations)))
+    ((ConstraintRetention.captureHasKindCoordinatesOfRaw
+      layout interface success occurrence).reference.toEvidenceBVar
+      (ManySortedFC.SymbolScope targetScope prepared.symbols))
+    (ConstraintRetention.ConstraintCoordinates.lookup
+      (ConstraintRetention.captureHasKindCoordinatesOfRaw
+        layout interface success occurrence) context)
 
 end DOTCaptureToManySortedFC.ModalIntersections.ObjectOccurrenceEvidence

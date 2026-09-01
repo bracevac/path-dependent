@@ -10,7 +10,8 @@ transitively exposes the independently buildable DOT and FCsub roots, while
 `Coercions.DOT.Captures` and `Coercions.Translation.ManySorted` expose the
 captured-DOT source layers, their cumulative compiler bridges, and the bounded
 guarded recursive type-member case study.
-Closed classifier projections provide a separate source-facing litmus test:
-surface `.only`/`.except` chains lower to checked ground capture filters and
-erase without runtime code.
+Classifier projections provide the third-sort extensibility test: surface
+`.only`/`.except` chains lower to checked ground filters, while cumulative
+object theories may bind classifier names and carry mixed classifier
+constraints. All classifier syntax and evidence erase without runtime code.
 -/

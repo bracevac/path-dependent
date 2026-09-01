@@ -120,6 +120,7 @@ private def rawExpressionMonotone {sort : StaticSort}
         match root with
         | .unionLeft left => rawExpressionMonotone fromLeft left
         | .unionRight right => rawExpressionMonotone fromRight right
+  | .captureProjectSource => fun root => nomatch root
   | .captureReadOnly => fun root => nomatch root
   | .captureReadOnlyMono _ => fun root => nomatch root
   | .captureVariable found =>

@@ -16,6 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: leanprover/lean-action@v1
+        env:
+          LEAN_NUM_THREADS: 1
         with:
           auto-config: false
           build: true

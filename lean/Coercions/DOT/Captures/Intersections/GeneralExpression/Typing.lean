@@ -1,6 +1,7 @@
 import Coercions.DOT.Captures.Intersections.GeneralExpression.Embedding
 import Coercions.DOT.Captures.Intersections.SourceTyping
 import Coercions.DOT.Captures.Acyclic.GeneralExpression.Typing
+import Coercions.ManySortedFC.Classifier.Disjoint
 
 /-!
 # Typing for cumulative intersection general expressions
@@ -16,6 +17,8 @@ map, without exposing target names or evidence syntax.
 namespace DOTCapture.Intersections.GeneralExpression
 
 abbrev Ctx := DOTCapture.Intersections.Source.Ctx
+abbrev ClassifierExpr := DOTCapture.Intersections.Source.ClassifierExpr
+abbrev ClassifierKind := DOTCapture.Intersections.Source.ClassifierKind
 
 namespace LocalModel
 
@@ -25,6 +28,8 @@ Only labels occurring in an interface are constrained by `Interface.Realizes`.
 structure Model (scope : Scope) where
   typeMember : Source.Label -> Ty scope
   captureMember : Source.Label -> Capture scope
+  classifierMember : Source.Label -> ClassifierExpr scope :=
+    fun _ => .ground ManySortedFC.Classifier.Kind.top
 
 /-- A source-syntactic description of a model projection.  Each destination
 member is described by an expression over the local members of the available
@@ -32,15 +37,28 @@ object; applying the mapping performs local-member realization. -/
 structure Mapping (scope : Scope) where
   typeMember : Source.Label -> Ty scope
   captureMember : Source.Label -> Capture scope
+  classifierMember : Source.Label -> ClassifierExpr scope :=
+    fun label => .ref (.localClassifierMember label)
 
 /-- The ambient local model exposed by one stable object root. -/
 def atPath {scope : Scope} (receiver : Path scope) : Model scope where
   typeMember := fun label => .ref (.typeMember receiver label)
   captureMember := fun label => .ref (.captureMember receiver label)
+  classifierMember := fun label => .ref (.classifierMember receiver label)
 
 end LocalModel
 
 mutual
+
+/-- Realize local classifier-member references through the chosen object
+model. -/
+def ClassifierExpr.realizeLocals {scope : Scope}
+    (model : LocalModel.Model scope) :
+    ClassifierExpr scope -> ClassifierExpr scope
+  | .ground kind => .ground kind
+  | .ref (.localClassifierMember label) => model.classifierMember label
+  | .ref (.classifierMember receiver label) =>
+      .ref (.classifierMember receiver label)
 
 /-- Replace references to the interface currently being realized by the
 chosen ambient witnesses. Stable path selections are left unchanged. -/
@@ -50,6 +68,9 @@ def Capture.realizeLocals {scope : Scope} (model : LocalModel.Model scope) :
   | .union left right =>
       .union (Capture.realizeLocals model left)
         (Capture.realizeLocals model right)
+  | .project capture classifier =>
+      .project (Capture.realizeLocals model capture)
+        (ClassifierExpr.realizeLocals model classifier)
   | .singleton path => .singleton path
   | .ref (.localCaptureMember label) => model.captureMember label
   | .ref (.captureMember receiver label) =>
@@ -87,6 +108,12 @@ theorem Capture.realizeLocals_atPath {scope : Scope} (receiver : Path scope)
       simp [Capture.realizeLocals, Source.Capture.openAt,
         Capture.realizeLocals_atPath receiver left,
         Capture.realizeLocals_atPath receiver right]
+  | project capture classifier =>
+      simp only [Capture.realizeLocals, Source.Capture.openAt]
+      rw [Capture.realizeLocals_atPath receiver capture]
+      cases classifier with
+      | ground kind => rfl
+      | ref reference => cases reference <;> rfl
   | singleton path => rfl
   | ref reference => cases reference <;> rfl
 
@@ -121,6 +148,7 @@ def asModel {scope : Scope} (mapping : LocalModel.Mapping scope) :
     LocalModel.Model scope where
   typeMember := mapping.typeMember
   captureMember := mapping.captureMember
+  classifierMember := mapping.classifierMember
 
 /-- Substitute the expected interface's local type members by their symbolic
 images in the available interface. -/
@@ -134,6 +162,11 @@ def mapCapture {scope : Scope} (mapping : LocalModel.Mapping scope)
     (capture : Capture scope) : Capture scope :=
   Capture.realizeLocals mapping.asModel capture
 
+/-- Substitute expected local classifier members by their symbolic images. -/
+def mapClassifier {scope : Scope} (mapping : LocalModel.Mapping scope)
+    (classifier : ClassifierExpr scope) : ClassifierExpr scope :=
+  ClassifierExpr.realizeLocals mapping.asModel classifier
+
 /-- Interpret a syntactic model mapping in one available ambient model. -/
 def apply {scope : Scope} (mapping : LocalModel.Mapping scope)
     (model : LocalModel.Model scope) : LocalModel.Model scope where
@@ -141,11 +174,14 @@ def apply {scope : Scope} (mapping : LocalModel.Mapping scope)
     Ty.realizeLocals model (mapping.typeMember label)
   captureMember := fun label =>
     Capture.realizeLocals model (mapping.captureMember label)
+  classifierMember := fun label =>
+    ClassifierExpr.realizeLocals model (mapping.classifierMember label)
 
 /-- The syntactic identity mapping names each same-labeled local member. -/
 def identity {scope : Scope} : LocalModel.Mapping scope where
   typeMember := fun label => .ref (.localTypeMember label)
   captureMember := fun label => .ref (.localCaptureMember label)
+  classifierMember := fun label => .ref (.localClassifierMember label)
 
 @[simp]
 theorem apply_identity {scope : Scope} (model : LocalModel.Model scope) :
@@ -154,6 +190,14 @@ theorem apply_identity {scope : Scope} (model : LocalModel.Model scope) :
   rfl
 
 mutual
+
+@[simp]
+theorem mapClassifier_identity {scope : Scope}
+    (classifier : ClassifierExpr scope) :
+    mapClassifier (identity (scope := scope)) classifier = classifier := by
+  cases classifier with
+  | ground kind => rfl
+  | ref reference => cases reference <;> rfl
 
 @[simp]
 theorem mapCapture_identity {scope : Scope} (capture : Capture scope) :
@@ -166,6 +210,13 @@ theorem mapCapture_identity {scope : Scope} (capture : Capture scope) :
             (mapCapture (identity (scope := scope)) right) =
           Source.Capture.union left right
       rw [mapCapture_identity left, mapCapture_identity right]
+  | project capture classifier =>
+      change Source.Capture.project
+          (mapCapture (identity (scope := scope)) capture)
+          (mapClassifier (identity (scope := scope)) classifier) =
+        Source.Capture.project capture classifier
+      rw [mapCapture_identity capture]
+      rw [mapClassifier_identity classifier]
   | singleton path => rfl
   | ref reference => cases reference <;> rfl
 
@@ -220,6 +271,53 @@ end ObjectType
 
 /-! ## Logical inclusion used by general-expression typing -/
 
+namespace Interface
+
+/-- One classifier-member occurrence in an unnormalized interface. -/
+inductive HasClassifierOccurrence {scope : Scope} : Interface scope ->
+    Source.Label -> ClassifierExpr scope -> ClassifierExpr scope -> Type where
+  | here {label : Source.Label} {lower upper : ClassifierExpr scope} :
+      HasClassifierOccurrence (.classifierMember label lower upper)
+        label lower upper
+  | left {first second : Interface scope} {label : Source.Label}
+      {lower upper : ClassifierExpr scope}
+      (occurrence : HasClassifierOccurrence first label lower upper) :
+      HasClassifierOccurrence (.inter first second) label lower upper
+  | right {first second : Interface scope} {label : Source.Label}
+      {lower upper : ClassifierExpr scope}
+      (occurrence : HasClassifierOccurrence second label lower upper) :
+      HasClassifierOccurrence (.inter first second) label lower upper
+
+/-- One explicit classifier-disjointness constraint. -/
+inductive HasClassifierDisjointOccurrence {scope : Scope} :
+    Interface scope -> ClassifierExpr scope -> ClassifierExpr scope -> Type where
+  | here {left right : ClassifierExpr scope} :
+      HasClassifierDisjointOccurrence (.classifierDisjoint left right)
+        left right
+  | left {first second : Interface scope} {left right : ClassifierExpr scope}
+      (occurrence : HasClassifierDisjointOccurrence first left right) :
+      HasClassifierDisjointOccurrence (.inter first second) left right
+  | right {first second : Interface scope} {left right : ClassifierExpr scope}
+      (occurrence : HasClassifierDisjointOccurrence second left right) :
+      HasClassifierDisjointOccurrence (.inter first second) left right
+
+/-- One explicit capture-classifier membership constraint. -/
+inductive HasCaptureKindOccurrence {scope : Scope} : Interface scope ->
+    Capture scope -> ClassifierExpr scope -> Type where
+  | here {capture : Capture scope} {classifier : ClassifierExpr scope} :
+      HasCaptureKindOccurrence (.captureHasKind capture classifier)
+        capture classifier
+  | left {first second : Interface scope} {capture : Capture scope}
+      {classifier : ClassifierExpr scope}
+      (occurrence : HasCaptureKindOccurrence first capture classifier) :
+      HasCaptureKindOccurrence (.inter first second) capture classifier
+  | right {first second : Interface scope} {capture : Capture scope}
+      {classifier : ClassifierExpr scope}
+      (occurrence : HasCaptureKindOccurrence second capture classifier) :
+      HasCaptureKindOccurrence (.inter first second) capture classifier
+
+end Interface
+
 /-- Source inclusion extended with the one negative-use rule that contracts a
 stable object root to the retained capture of its opened representation. -/
 inductive Includes {scope : Scope} (context : Ctx scope) :
@@ -242,6 +340,10 @@ inductive Includes {scope : Scope} (context : Ctx scope) :
       (fromLeft : Includes context (.capture left) (.capture target))
       (fromRight : Includes context (.capture right) (.capture target)) :
       Includes context (.capture (.union left right)) (.capture target)
+  | captureProjectSource {capture : Capture scope}
+      {classifier : ClassifierExpr scope} :
+      Includes context (.capture (.project capture classifier))
+        (.capture capture)
   | payloadRoot {receiver : Path scope} {object : ObjectType scope}
       (exposes : Source.ExposesObject context receiver object) :
       Includes context (.capture (.singleton receiver))
@@ -254,6 +356,73 @@ abbrev TypeIncludes {scope : Scope} (context : Ctx scope)
 abbrev CaptureIncludes {scope : Scope} (context : Ctx scope)
     (source target : Capture scope) : Type :=
   Includes context (.capture source) (.capture target)
+
+/-- Classifier disjointness from ground facts or one stable object theory. -/
+inductive ClassifiersDisjoint {scope : Scope} (context : Ctx scope) :
+    ClassifierExpr scope -> ClassifierExpr scope -> Type where
+  | ground {left right : ClassifierKind}
+      (disjoint : ManySortedFC.Classifier.Kind.Disjoint left right) :
+      ClassifiersDisjoint context (.ground left) (.ground right)
+  | member {receiver : Path scope} {object : ObjectType scope}
+      {left right : ClassifierExpr scope}
+      (exposes : Source.ExposesObject context receiver object)
+      (occurrence : Interface.HasClassifierDisjointOccurrence
+        object.interface left right) :
+      ClassifiersDisjoint context (Source.ClassifierExpr.openAt receiver left)
+        (Source.ClassifierExpr.openAt receiver right)
+  | symm {left right : ClassifierExpr scope}
+      (proof : ClassifiersDisjoint context left right) :
+      ClassifiersDisjoint context right left
+
+/-- Classifier inclusion from ground facts or stable member intervals. -/
+inductive ClassifierIncludes {scope : Scope} (context : Ctx scope) :
+    ClassifierExpr scope -> ClassifierExpr scope -> Type where
+  | refl {classifier : ClassifierExpr scope} :
+      ClassifierIncludes context classifier classifier
+  | trans {lower middle upper : ClassifierExpr scope}
+      (first : ClassifierIncludes context lower middle)
+      (second : ClassifierIncludes context middle upper) :
+      ClassifierIncludes context lower upper
+  | ground {lower upper : ClassifierKind}
+      (included : ManySortedFC.Classifier.Kind.Subkind lower upper) :
+      ClassifierIncludes context (.ground lower) (.ground upper)
+  | lower {receiver : Path scope} {object : ObjectType scope}
+      {label : Source.Label} {lower upper : ClassifierExpr scope}
+      (exposes : Source.ExposesObject context receiver object)
+      (occurrence : Interface.HasClassifierOccurrence object.interface
+        label lower upper) :
+      ClassifierIncludes context (Source.ClassifierExpr.openAt receiver lower)
+        (.ref (.classifierMember receiver label))
+  | upper {receiver : Path scope} {object : ObjectType scope}
+      {label : Source.Label} {lower upper : ClassifierExpr scope}
+      (exposes : Source.ExposesObject context receiver object)
+      (occurrence : Interface.HasClassifierOccurrence object.interface
+        label lower upper) :
+      ClassifierIncludes context (.ref (.classifierMember receiver label))
+        (Source.ClassifierExpr.openAt receiver upper)
+
+/-- Capture membership in a classifier. -/
+inductive CaptureHasKind {scope : Scope} (context : Ctx scope) :
+    Capture scope -> ClassifierExpr scope -> Type where
+  | empty {classifier : ClassifierExpr scope} :
+      CaptureHasKind context .empty classifier
+  | union {left right : Capture scope} {classifier : ClassifierExpr scope}
+      (leftProof : CaptureHasKind context left classifier)
+      (rightProof : CaptureHasKind context right classifier) :
+      CaptureHasKind context (.union left right) classifier
+  | project {capture : Capture scope} {classifier : ClassifierExpr scope} :
+      CaptureHasKind context (.project capture classifier) classifier
+  | member {receiver : Path scope} {object : ObjectType scope}
+      {capture : Capture scope} {classifier : ClassifierExpr scope}
+      (exposes : Source.ExposesObject context receiver object)
+      (occurrence : Interface.HasCaptureKindOccurrence object.interface
+        capture classifier) :
+      CaptureHasKind context (Source.Capture.openAt receiver capture)
+        (Source.ClassifierExpr.openAt receiver classifier)
+  | widen {capture : Capture scope} {lower upper : ClassifierExpr scope}
+      (membership : CaptureHasKind context capture lower)
+      (included : ClassifierIncludes context lower upper) :
+      CaptureHasKind context capture upper
 
 /-- Ordinary binders exclude exactly the object shape exposed by stable
 selection.  Like M10, one outer capture annotation is ignored. -/
@@ -337,6 +506,73 @@ def refl {scope : Scope} {context : Ctx scope}
 
 end LocalTheory.Includes
 
+/-- Classifier inclusion using ambient facts or an occurrence in the
+available local theory. -/
+inductive LocalTheory.ClassifierIncludes {scope : Scope}
+    (context : Ctx scope) (available : Interface scope) :
+    ClassifierExpr scope -> ClassifierExpr scope -> Type where
+  | ambient {lower upper : ClassifierExpr scope}
+      (proof : DOTCapture.Intersections.GeneralExpression.ClassifierIncludes
+        context lower upper) :
+      LocalTheory.ClassifierIncludes context available lower upper
+  | lower {label : Source.Label} {lower upper : ClassifierExpr scope}
+      (occurrence : Interface.HasClassifierOccurrence available label
+        lower upper) :
+      LocalTheory.ClassifierIncludes context available lower
+        (.ref (.localClassifierMember label))
+  | upper {label : Source.Label} {lower upper : ClassifierExpr scope}
+      (occurrence : Interface.HasClassifierOccurrence available label
+        lower upper) :
+      LocalTheory.ClassifierIncludes context available
+        (.ref (.localClassifierMember label)) upper
+  | trans {lower middle upper : ClassifierExpr scope}
+      (first : LocalTheory.ClassifierIncludes context available lower middle)
+      (second : LocalTheory.ClassifierIncludes context available middle upper) :
+      LocalTheory.ClassifierIncludes context available lower upper
+
+namespace LocalTheory.ClassifierIncludes
+
+def refl {scope : Scope} {context : Ctx scope}
+    {available : Interface scope} {classifier : ClassifierExpr scope} :
+    LocalTheory.ClassifierIncludes context available classifier classifier :=
+  .ambient .refl
+
+end LocalTheory.ClassifierIncludes
+
+/-- Classifier disjointness available ambiently or as an exact local
+constraint. -/
+inductive LocalTheory.ClassifiersDisjoint {scope : Scope}
+    (context : Ctx scope) (available : Interface scope) :
+    ClassifierExpr scope -> ClassifierExpr scope -> Type where
+  | ambient {left right : ClassifierExpr scope}
+      (proof : DOTCapture.Intersections.GeneralExpression.ClassifiersDisjoint
+        context left right) :
+      LocalTheory.ClassifiersDisjoint context available left right
+  | assumption {left right : ClassifierExpr scope}
+      (occurrence : Interface.HasClassifierDisjointOccurrence available
+        left right) :
+      LocalTheory.ClassifiersDisjoint context available left right
+  | symm {left right : ClassifierExpr scope}
+      (proof : LocalTheory.ClassifiersDisjoint context available left right) :
+      LocalTheory.ClassifiersDisjoint context available right left
+
+/-- Capture-kind membership available ambiently or from the local theory. -/
+inductive LocalTheory.CaptureHasKind {scope : Scope}
+    (context : Ctx scope) (available : Interface scope) :
+    Capture scope -> ClassifierExpr scope -> Type where
+  | ambient {capture : Capture scope} {classifier : ClassifierExpr scope}
+      (proof : DOTCapture.Intersections.GeneralExpression.CaptureHasKind
+        context capture classifier) :
+      LocalTheory.CaptureHasKind context available capture classifier
+  | assumption {capture : Capture scope} {classifier : ClassifierExpr scope}
+      (occurrence : Interface.HasCaptureKindOccurrence available capture
+        classifier) :
+      LocalTheory.CaptureHasKind context available capture classifier
+  | widen {capture : Capture scope} {lower upper : ClassifierExpr scope}
+      (membership : LocalTheory.CaptureHasKind context available capture lower)
+      (included : LocalTheory.ClassifierIncludes context available lower upper) :
+      LocalTheory.CaptureHasKind context available capture upper
+
 /-! ## Positive realizations and cross-shape negative projections -/
 
 namespace Interface
@@ -359,6 +595,25 @@ inductive Realizes {scope : Scope} (context : Ctx scope)
       (upperProof : CaptureIncludes context (model.captureMember label)
         (Capture.realizeLocals model upper)) :
       Realizes context model (.captureMember label lower upper)
+  | classifierMember {label : Source.Label}
+      {lower upper : ClassifierExpr scope}
+      (lowerProof : ClassifierIncludes context
+        (ClassifierExpr.realizeLocals model lower)
+        (model.classifierMember label))
+      (upperProof : ClassifierIncludes context
+        (model.classifierMember label)
+        (ClassifierExpr.realizeLocals model upper)) :
+      Realizes context model (.classifierMember label lower upper)
+  | classifierDisjoint {left right : ClassifierExpr scope}
+      (proof : ClassifiersDisjoint context
+        (ClassifierExpr.realizeLocals model left)
+        (ClassifierExpr.realizeLocals model right)) :
+      Realizes context model (.classifierDisjoint left right)
+  | captureHasKind {capture : Capture scope}
+      {classifier : ClassifierExpr scope}
+      (proof : CaptureHasKind context (Capture.realizeLocals model capture)
+        (ClassifierExpr.realizeLocals model classifier)) :
+      Realizes context model (.captureHasKind capture classifier)
   | inter {left right : Interface scope}
       (leftProof : Realizes context model left)
       (rightProof : Realizes context model right) :
@@ -385,6 +640,22 @@ inductive Derives {scope : Scope} (context : Ctx scope)
         (.capture (mapping.captureMember label))
         (.capture (mapping.mapCapture upper))) :
       Derives context available mapping (.captureMember label lower upper)
+  | classifierMember {label : Source.Label}
+      {lower upper : ClassifierExpr scope}
+      (lowerProof : LocalTheory.ClassifierIncludes context available
+        (mapping.mapClassifier lower) (mapping.classifierMember label))
+      (upperProof : LocalTheory.ClassifierIncludes context available
+        (mapping.classifierMember label) (mapping.mapClassifier upper)) :
+      Derives context available mapping (.classifierMember label lower upper)
+  | classifierDisjoint {left right : ClassifierExpr scope}
+      (proof : LocalTheory.ClassifiersDisjoint context available
+        (mapping.mapClassifier left) (mapping.mapClassifier right)) :
+      Derives context available mapping (.classifierDisjoint left right)
+  | captureHasKind {capture : Capture scope}
+      {classifier : ClassifierExpr scope}
+      (proof : LocalTheory.CaptureHasKind context available
+        (mapping.mapCapture capture) (mapping.mapClassifier classifier)) :
+      Derives context available mapping (.captureHasKind capture classifier)
   | inter {left right : Interface scope}
       (leftProof : Derives context available mapping left)
       (rightProof : Derives context available mapping right) :
@@ -431,7 +702,16 @@ private def identityTheoryWithin {scope : Scope} {context : Ctx scope}
         available.HasTypeOccurrence label lower upper)
     (captureInAvailable : forall {label lower upper},
       current.HasCaptureOccurrence label lower upper ->
-        available.HasCaptureOccurrence label lower upper) :
+        available.HasCaptureOccurrence label lower upper)
+    (classifierInAvailable : forall {label lower upper},
+      current.HasClassifierOccurrence label lower upper ->
+        available.HasClassifierOccurrence label lower upper)
+    (classifierDisjointInAvailable : forall {left right},
+      current.HasClassifierDisjointOccurrence left right ->
+        available.HasClassifierDisjointOccurrence left right)
+    (captureKindInAvailable : forall {capture classifier},
+      current.HasCaptureKindOccurrence capture classifier ->
+        available.HasCaptureKindOccurrence capture classifier) :
     Interface.Derives context available LocalModel.Mapping.identity current := by
   cases current with
   | empty => exact .empty
@@ -447,14 +727,40 @@ private def identityTheoryWithin {scope : Scope} {context : Ctx scope}
           (captureInAvailable Source.Interface.HasCaptureOccurrence.here)))
         (by simpa using (LocalTheory.Includes.captureUpper
           (captureInAvailable Source.Interface.HasCaptureOccurrence.here)))
+  | classifierMember label lower upper =>
+      exact .classifierMember
+        (by simpa only [LocalModel.Mapping.mapClassifier_identity] using
+          (LocalTheory.ClassifierIncludes.lower
+          (classifierInAvailable Interface.HasClassifierOccurrence.here)))
+        (by simpa only [LocalModel.Mapping.mapClassifier_identity] using
+          (LocalTheory.ClassifierIncludes.upper
+          (classifierInAvailable Interface.HasClassifierOccurrence.here)))
+  | classifierDisjoint left right =>
+      exact .classifierDisjoint
+        (by simpa only [LocalModel.Mapping.mapClassifier_identity] using
+          (LocalTheory.ClassifiersDisjoint.assumption
+          (classifierDisjointInAvailable
+            Interface.HasClassifierDisjointOccurrence.here)))
+  | captureHasKind capture classifier =>
+      exact .captureHasKind
+        (by simpa only [LocalModel.Mapping.mapCapture_identity,
+            LocalModel.Mapping.mapClassifier_identity] using
+          (LocalTheory.CaptureHasKind.assumption
+          (captureKindInAvailable Interface.HasCaptureKindOccurrence.here)))
   | inter left right =>
       exact .inter
         (identityTheoryWithin available left
           (fun occurrence => typeInAvailable (.left occurrence))
-          (fun occurrence => captureInAvailable (.left occurrence)))
+          (fun occurrence => captureInAvailable (.left occurrence))
+          (fun occurrence => classifierInAvailable (.left occurrence))
+          (fun occurrence => classifierDisjointInAvailable (.left occurrence))
+          (fun occurrence => captureKindInAvailable (.left occurrence)))
         (identityTheoryWithin available right
           (fun occurrence => typeInAvailable (.right occurrence))
-          (fun occurrence => captureInAvailable (.right occurrence)))
+          (fun occurrence => captureInAvailable (.right occurrence))
+          (fun occurrence => classifierInAvailable (.right occurrence))
+          (fun occurrence => classifierDisjointInAvailable (.right occurrence))
+          (fun occurrence => captureKindInAvailable (.right occurrence)))
 
 /-- The symbolic identity certificate for a complete interface. -/
 def identityTheory {scope : Scope} {context : Ctx scope}
@@ -462,7 +768,8 @@ def identityTheory {scope : Scope} {context : Ctx scope}
     Interface.Derives context interface LocalModel.Mapping.identity
       interface :=
   identityTheoryWithin interface interface (fun occurrence => occurrence)
-    (fun occurrence => occurrence)
+    (fun occurrence => occurrence) (fun occurrence => occurrence)
+    (fun occurrence => occurrence) (fun occurrence => occurrence)
 
 /-- The semantic projection induced by a source-syntactic mapping. -/
 def project {scope : Scope} {context : Ctx scope}

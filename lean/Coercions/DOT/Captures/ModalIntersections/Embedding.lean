@@ -29,20 +29,34 @@ end CapturedIntersections
 
 open DOTCapture.ModalIntersections
 
-def staticSort : CapturedIntersections.StaticSort → StaticSort
-  | .type => .type
-  | .capture => .capture
-
 def path {scope : Nat} : CapturedIntersections.Path scope → Path (termScope scope)
   | .var name => .var (embedVar name)
 
-def staticRef {scope : Nat} {sort : CapturedIntersections.StaticSort} :
-    CapturedIntersections.StaticRef sort scope →
-      StaticRef (staticSort sort) (termScope scope)
+def typeRef {scope : Nat} : CapturedIntersections.StaticRef .type scope →
+    StaticRef .type (termScope scope)
   | .typeMember receiver label => .typeMember (path receiver) label
-  | .captureMember receiver label => .captureMember (path receiver) label
   | .localTypeMember label => .localTypeMember label
+
+def captureRef {scope : Nat} :
+    CapturedIntersections.StaticRef .capture scope →
+      StaticRef .capture (termScope scope)
+  | .captureMember receiver label => .captureMember (path receiver) label
   | .localCaptureMember label => .localCaptureMember label
+
+/-- Classifier members are cumulative object members, not lexical static
+binders.  They therefore embed into the cumulative classifier-reference
+family rather than the historical two-sort `StaticRef`. -/
+def classifierRef {scope : Nat} :
+    CapturedIntersections.StaticRef .classifier scope →
+      ClassifierRef (termScope scope)
+  | .classifierMember receiver label => .member (path receiver) label
+  | .localClassifierMember label => .localMember label
+
+def classifier {scope : Nat} :
+    DOTCapture.Intersections.Source.ClassifierExpr scope →
+      ClassifierExpr (termScope scope)
+  | .ground kind => .ground kind
+  | .ref reference => .ref (classifierRef reference)
 
 mutual
 
@@ -50,23 +64,18 @@ def capture {scope : Nat} : CapturedIntersections.Capture scope →
     Capture (termScope scope)
   | .empty => .empty
   | .union left right => .union (capture left) (capture right)
+  | .project inner filter => .project (capture inner) (classifier filter)
   | .singleton receiver => .singleton (path receiver)
-  | .ref reference => .ref (staticRef reference)
+  | .ref reference => .ref (captureRef reference)
 
 def type {scope : Nat} : CapturedIntersections.Ty scope → Ty (termScope scope)
   | .top => .top
   | .bot => .bot
   | .one => .one
-  | .ref reference => .ref (staticRef reference)
+  | .ref reference => .ref (typeRef reference)
   | .arr domain codomain => .arr (type domain) (type codomain)
   | .capturing captures shape => .capturing (capture captures) (type shape)
   | .object object => .object (objectType object)
-
-def staticExpr {scope : Nat} {sort : CapturedIntersections.StaticSort} :
-    CapturedIntersections.StaticExpr sort scope →
-      StaticExpr (staticSort sort) (termScope scope)
-  | .type sourceType => .type (type sourceType)
-  | .capture sourceCapture => .capture (capture sourceCapture)
 
 def interface {scope : Nat} :
     CapturedIntersections.Interface scope → Interface (termScope scope)
@@ -75,6 +84,12 @@ def interface {scope : Nat} :
       .typeMember label (type lower) (type upper)
   | .captureMember label lower upper =>
       .captureMember label (capture lower) (capture upper)
+  | .classifierMember label lower upper =>
+      .classifierMember label (classifier lower) (classifier upper)
+  | .classifierDisjoint left right =>
+      .classifierDisjoint (classifier left) (classifier right)
+  | .captureHasKind sourceCapture filter =>
+      .captureHasKind (capture sourceCapture) (classifier filter)
   | .inter left right => .inter (interface left) (interface right)
 
 def objectType {scope : Nat} :
@@ -126,15 +141,46 @@ theorem path_rename {source target : Nat}
     Path.rename, embedRename_embedVar]
 
 @[simp]
-theorem staticRef_rename {source target : Nat}
-    {sort : CapturedIntersections.StaticSort}
-    (reference : CapturedIntersections.StaticRef sort source)
+theorem typeRef_rename {source target : Nat}
+    (reference : CapturedIntersections.StaticRef .type source)
     (rho : DOTCapture.Acyclic.Rename source target) :
-    staticRef (reference.rename rho) =
-      (staticRef reference).rename (embedRename rho) := by
+    typeRef (reference.rename rho) =
+      (typeRef reference).rename (embedRename rho) := by
   cases reference <;>
-    simp only [DOTCapture.Intersections.Source.StaticRef.rename, staticRef,
+    simp only [DOTCapture.Intersections.Source.StaticRef.rename, typeRef,
       StaticRef.rename, path_rename]
+
+@[simp]
+theorem captureRef_rename {source target : Nat}
+    (reference : CapturedIntersections.StaticRef .capture source)
+    (rho : DOTCapture.Acyclic.Rename source target) :
+    captureRef (reference.rename rho) =
+      (captureRef reference).rename (embedRename rho) := by
+  cases reference <;>
+    simp only [DOTCapture.Intersections.Source.StaticRef.rename, captureRef,
+      StaticRef.rename, path_rename]
+
+@[simp]
+theorem classifierRef_rename {source target : Nat}
+    (reference : CapturedIntersections.StaticRef .classifier source)
+    (rho : DOTCapture.Acyclic.Rename source target) :
+    classifierRef (reference.rename rho) =
+      (classifierRef reference).rename (embedRename rho) := by
+  cases reference <;>
+    simp only [DOTCapture.Intersections.Source.StaticRef.rename,
+      classifierRef, ClassifierRef.rename, path_rename]
+
+@[simp]
+theorem classifier_rename {source target : Nat}
+    (expression : DOTCapture.Intersections.Source.ClassifierExpr source)
+    (rho : DOTCapture.Acyclic.Rename source target) :
+    classifier (expression.rename rho) =
+      (classifier expression).rename (embedRename rho) := by
+  cases expression with
+  | ground kind => rfl
+  | ref reference =>
+      simp only [DOTCapture.Intersections.Source.ClassifierExpr.rename,
+        classifier, ClassifierExpr.rename, classifierRef_rename]
 
 mutual
 
@@ -149,13 +195,15 @@ def capture_rename {source target : Nat}
   | .union left right => by
       simp only [DOTCapture.Intersections.Source.Capture.rename, capture,
         Capture.rename, capture_rename left, capture_rename right]
+  | .project inner filter => by
+      simp only [DOTCapture.Intersections.Source.Capture.rename, capture,
+        Capture.rename, capture_rename inner, classifier_rename filter]
   | .singleton receiver => by
       simp only [DOTCapture.Intersections.Source.Capture.rename, capture,
         Capture.rename, path_rename]
   | .ref reference => by
       simp only [DOTCapture.Intersections.Source.Capture.rename, capture,
-        Capture.rename, staticRef_rename]
-      rfl
+        Capture.rename, captureRef_rename]
 
 @[simp]
 def type_rename {source target : Nat}
@@ -169,8 +217,7 @@ def type_rename {source target : Nat}
   | .one => rfl
   | .ref reference => by
       simp only [DOTCapture.Intersections.Source.Ty.rename, type, Ty.rename,
-        staticRef_rename]
-      rfl
+        typeRef_rename]
   | .arr domain codomain => by
       simp only [DOTCapture.Intersections.Source.Ty.rename, type, Ty.rename,
         type_rename domain, type_rename codomain]
@@ -180,21 +227,6 @@ def type_rename {source target : Nat}
   | .object object => by
       simp only [DOTCapture.Intersections.Source.Ty.rename, type, Ty.rename,
         objectType_rename object]
-
-@[simp]
-def staticExpr_rename {source target : Nat}
-    {sort : CapturedIntersections.StaticSort}
-    (expression : CapturedIntersections.StaticExpr sort source)
-    (rho : DOTCapture.Acyclic.Rename source target) :
-    staticExpr (expression.rename rho) =
-      (staticExpr expression).rename (embedRename rho) :=
-  match expression with
-  | .type sourceType => by
-      simp only [DOTCapture.Intersections.Source.StaticExpr.rename, staticExpr,
-        StaticExpr.rename, type_rename sourceType]
-  | .capture sourceCapture => by
-      simp only [DOTCapture.Intersections.Source.StaticExpr.rename, staticExpr,
-        StaticExpr.rename, capture_rename sourceCapture]
 
 @[simp]
 def interface_rename {source target : Nat}
@@ -210,6 +242,16 @@ def interface_rename {source target : Nat}
   | .captureMember _ lower upper => by
       simp only [DOTCapture.Intersections.Source.Interface.rename, interface,
         Interface.rename, capture_rename lower, capture_rename upper]
+  | .classifierMember _ lower upper => by
+      simp only [DOTCapture.Intersections.Source.Interface.rename, interface,
+        Interface.rename, classifier_rename lower, classifier_rename upper]
+  | .classifierDisjoint left right => by
+      simp only [DOTCapture.Intersections.Source.Interface.rename, interface,
+        Interface.rename, classifier_rename left, classifier_rename right]
+  | .captureHasKind sourceCapture filter => by
+      simp only [DOTCapture.Intersections.Source.Interface.rename, interface,
+        Interface.rename, capture_rename sourceCapture,
+        classifier_rename filter]
   | .inter left right => by
       simp only [DOTCapture.Intersections.Source.Interface.rename, interface,
         Interface.rename, interface_rename left, interface_rename right]

@@ -1,6 +1,7 @@
 import Coercions.ManySortedFC.ModalContext
 import Coercions.ManySortedFC.TermTyping
 import Coercions.ManySortedFC.TheoryMapValidity
+import Coercions.ManySortedFC.EvidenceNormalization
 
 /-!
 # Modal evidence confinement
@@ -150,6 +151,20 @@ theorem substitute_dropModal_rename {scope : Sig}
 
 end Capture
 
+namespace ClassifierExpr
+
+theorem substitute_dropModal_rename {scope : Sig}
+    (expression : ClassifierExpr
+      (ModalScope scope separationCount modes)) :
+    (expression.substitute
+        (StaticSubst.dropModal scope separationCount modes)).rename
+          (Rename.weakenModal scope separationCount modes) = expression := by
+  rw [ClassifierExpr.substitute_postRename,
+    StaticSubst.dropModal_postRename,
+    ClassifierExpr.substitute_ofRename, ClassifierExpr.rename_id]
+
+end ClassifierExpr
+
 namespace Ty
 
 theorem substitute_dropModal_rename {scope : Sig}
@@ -204,6 +219,8 @@ end Proposition
 
 namespace Evidence
 
+mutual
+
 /-- Lower an equality certificate through a modal proof block. -/
 def lowerModalEquality {scope : Sig} {sort : StaticSort}
     {separationCount : Nat} {modes : List CaptureMode} :
@@ -233,6 +250,11 @@ def lowerModalEquality {scope : Sig} {sort : StaticSort}
         right.lowerModalEquality
   | .equalityCaptureReadOnly capture =>
       .equalityCaptureReadOnly capture.lowerModalEquality
+  | .classifierGroundEquality left right =>
+      .classifierGroundEquality left right
+  | .equalityCaptureProjectScoped capture classifier =>
+      .equalityCaptureProjectScoped capture.lowerModalEquality
+        classifier.lowerModalEquality
   | .equalityCaptureProject equality sourceKind targetKind =>
       .equalityCaptureProject equality.lowerModalEquality
         sourceKind targetKind
@@ -246,6 +268,8 @@ def lowerModalEquality {scope : Sig} {sort : StaticSort}
   | .equalityCaptureProjectEmpty capture kind =>
       .equalityCaptureProjectEmpty (capture.substitute
         (StaticSubst.dropModal scope separationCount modes)) kind
+  | .equalityCaptureProjectComplete membership =>
+      .equalityCaptureProjectComplete membership.lowerModalCaptureHasKind
 
 /-- Lower an inclusion certificate and every equality subcertificate it may
 contain through a modal proof block. -/
@@ -271,6 +295,13 @@ def lowerModalInclusion {scope : Sig} {sort : StaticSort}
       .typeArrow domain.lowerModalInclusion codomain.lowerModalInclusion
   | .typeCapturing captures shape =>
       .typeCapturing captures.lowerModalInclusion shape.lowerModalInclusion
+  | .classifierGroundInclusion lower upper =>
+      .classifierGroundInclusion lower upper
+  | .classifierExclude kind allowedKind excludedKind allowed excluded =>
+      .classifierExclude
+        (kind.substitute (StaticSubst.dropModal scope separationCount modes))
+        allowedKind excludedKind allowed.lowerModalInclusion
+        excluded.lowerModalClassifierDisjoint
   | .captureEmpty target => .captureEmpty (target.substitute
       (StaticSubst.dropModal scope separationCount modes))
   | .captureUnionLeft left right =>
@@ -292,13 +323,58 @@ def lowerModalInclusion {scope : Sig} {sort : StaticSort}
   | .captureProjectSource capture kind =>
       .captureProjectSource (capture.substitute
         (StaticSubst.dropModal scope separationCount modes)) kind
+  | .captureProjectSourceScoped capture kind =>
+      .captureProjectSourceScoped
+        (capture.substitute
+          (StaticSubst.dropModal scope separationCount modes))
+        (kind.substitute (StaticSubst.dropModal scope separationCount modes))
   | .captureProjectMono subcapture sourceKind targetKind =>
       .captureProjectMono subcapture.lowerModalInclusion
         sourceKind targetKind
+  | .captureProjectMonoScoped subcapture subclassifier =>
+      .captureProjectMonoScoped subcapture.lowerModalInclusion
+        subclassifier.lowerModalInclusion
   | .captureProjectMerge capture leftKind rightKind =>
       .captureProjectMerge (capture.substitute
         (StaticSubst.dropModal scope separationCount modes))
         leftKind rightKind
+
+/-- Lower classifier-disjointness evidence through a modal proof block. -/
+def lowerModalClassifierDisjoint {scope : Sig}
+    {separationCount : Nat} {modes : List CaptureMode} :
+    Evidence .classifierDisjoint (ModalScope scope separationCount modes) →
+      Evidence .classifierDisjoint scope
+  | .var index => .var (index.lowerEvidenceBlock
+      (modalRelations_ne_classifierDisjoint separationCount modes))
+  | .classifierGroundDisjoint left right =>
+      .classifierGroundDisjoint left right
+  | .classifierDisjointSymm evidence =>
+      .classifierDisjointSymm evidence.lowerModalClassifierDisjoint
+
+/-- Lower capture-kind membership evidence through a modal proof block. -/
+def lowerModalCaptureHasKind {scope : Sig}
+    {separationCount : Nat} {modes : List CaptureMode} :
+    Evidence .captureHasKind (ModalScope scope separationCount modes) →
+      Evidence .captureHasKind scope
+  | .var index => .var (index.lowerEvidenceBlock
+      (modalRelations_ne_captureHasKind separationCount modes))
+  | .captureHasKindEmpty kind =>
+      .captureHasKindEmpty
+        (kind.substitute (StaticSubst.dropModal scope separationCount modes))
+  | .captureHasKindUnion left right =>
+      .captureHasKindUnion left.lowerModalCaptureHasKind
+        right.lowerModalCaptureHasKind
+  | .captureHasKindProject capture kind =>
+      .captureHasKindProject
+        (capture.substitute
+          (StaticSubst.dropModal scope separationCount modes))
+        (kind.substitute (StaticSubst.dropModal scope separationCount modes))
+  | .captureHasKindSubcapture subcapture upper =>
+      .captureHasKindSubcapture subcapture.lowerModalInclusion
+        upper.lowerModalCaptureHasKind
+  | .captureHasKindWiden membership subclassifier =>
+      .captureHasKindWiden membership.lowerModalCaptureHasKind
+        subclassifier.lowerModalInclusion
 
 /-- Lower a disjointness certificate and every equality subcertificate it
 uses through a modal proof block. -/
@@ -321,6 +397,17 @@ def lowerModalDisjoint {scope : Sig}
         (StaticSubst.dropModal scope separationCount modes)) leftKind
         (rightCapture.substitute
           (StaticSubst.dropModal scope separationCount modes)) rightKind
+  | .disjointCaptureProjectScoped leftCapture rightCapture classifiers =>
+      .disjointCaptureProjectScoped
+        (leftCapture.substitute
+          (StaticSubst.dropModal scope separationCount modes))
+        (rightCapture.substitute
+          (StaticSubst.dropModal scope separationCount modes))
+        classifiers.lowerModalClassifierDisjoint
+
+end
+
+mutual
 
 @[simp]
 def lowerModalEquality_rename {scope : Sig} {sort : StaticSort}
@@ -361,6 +448,12 @@ def lowerModalEquality_rename {scope : Sig} {sort : StaticSort}
   | .equalityCaptureReadOnly capture => by
       simp only [lowerModalEquality, Evidence.rename,
         lowerModalEquality_rename capture]
+  | .classifierGroundEquality left right => by
+      simp only [lowerModalEquality, Evidence.rename]
+  | .equalityCaptureProjectScoped capture classifier => by
+      simp only [lowerModalEquality, Evidence.rename,
+        lowerModalEquality_rename capture,
+        lowerModalEquality_rename classifier]
   | .equalityCaptureProject equality sourceKind targetKind => by
       simp only [lowerModalEquality, Evidence.rename,
         lowerModalEquality_rename equality]
@@ -373,6 +466,14 @@ def lowerModalEquality_rename {scope : Sig} {sort : StaticSort}
   | .equalityCaptureProjectEmpty capture kind => by
       simp only [lowerModalEquality, Evidence.rename,
         Capture.substitute_dropModal_rename]
+  | .equalityCaptureProjectComplete membership => by
+      simp only [lowerModalEquality, Evidence.rename,
+        lowerModalCaptureHasKind_rename membership]
+termination_by nodeCount evidence
+decreasing_by
+  all_goals subst_vars
+  all_goals dsimp only [nodeCount]
+  all_goals decreasing_tactic
 
 @[simp]
 def lowerModalInclusion_rename {scope : Sig} {sort : StaticSort}
@@ -395,7 +496,7 @@ def lowerModalInclusion_rename {scope : Sig} {sort : StaticSort}
         lowerModalInclusion_rename first, lowerModalInclusion_rename second]
   | .equalityToInclusion equality => by
       simp only [lowerModalInclusion, Evidence.rename,
-        lowerModalEquality_rename]
+        lowerModalEquality_rename equality]
   | .typeTop source => by
       simp only [lowerModalInclusion, Evidence.rename,
         Ty.substitute_dropModal_rename]
@@ -408,6 +509,13 @@ def lowerModalInclusion_rename {scope : Sig} {sort : StaticSort}
   | .typeCapturing captures shape => by
       simp only [lowerModalInclusion, Evidence.rename,
         lowerModalInclusion_rename captures, lowerModalInclusion_rename shape]
+  | .classifierGroundInclusion lower upper => by
+      simp only [lowerModalInclusion, Evidence.rename]
+  | .classifierExclude kind allowedKind excludedKind allowed excluded => by
+      simp only [lowerModalInclusion, Evidence.rename,
+        ClassifierExpr.substitute_dropModal_rename,
+        lowerModalInclusion_rename allowed,
+        lowerModalClassifierDisjoint_rename excluded]
   | .captureEmpty target => by
       simp only [lowerModalInclusion, Evidence.rename,
         Capture.substitute_dropModal_rename]
@@ -437,12 +545,87 @@ def lowerModalInclusion_rename {scope : Sig} {sort : StaticSort}
   | .captureProjectSource capture kind => by
       simp only [lowerModalInclusion, Evidence.rename,
         Capture.substitute_dropModal_rename]
+  | .captureProjectSourceScoped capture kind => by
+      simp only [lowerModalInclusion, Evidence.rename,
+        Capture.substitute_dropModal_rename,
+        ClassifierExpr.substitute_dropModal_rename]
   | .captureProjectMono subcapture sourceKind targetKind => by
       simp only [lowerModalInclusion, Evidence.rename,
         lowerModalInclusion_rename subcapture]
+  | .captureProjectMonoScoped subcapture subclassifier => by
+      simp only [lowerModalInclusion, Evidence.rename,
+        lowerModalInclusion_rename subcapture,
+        lowerModalInclusion_rename subclassifier]
   | .captureProjectMerge capture leftKind rightKind => by
       simp only [lowerModalInclusion, Evidence.rename,
         Capture.substitute_dropModal_rename]
+termination_by nodeCount evidence
+decreasing_by
+  all_goals subst_vars
+  all_goals dsimp only [nodeCount]
+  all_goals decreasing_tactic
+
+@[simp]
+def lowerModalClassifierDisjoint_rename {scope : Sig}
+    {separationCount : Nat} {modes : List CaptureMode}
+    (evidence : Evidence .classifierDisjoint
+      (ModalScope scope separationCount modes)) :
+    evidence.lowerModalClassifierDisjoint.rename
+        (Rename.weakenModal scope separationCount modes) = evidence :=
+  match evidence with
+  | .var index => by
+      simp only [lowerModalClassifierDisjoint, Evidence.rename]
+      congr 1
+      unfold Rename.weakenModal
+      exact BVar.weakenMany_lowerEvidenceBlock _ index
+  | .classifierGroundDisjoint left right => by
+      simp only [lowerModalClassifierDisjoint, Evidence.rename]
+  | .classifierDisjointSymm inner => by
+      simp only [lowerModalClassifierDisjoint, Evidence.rename,
+        lowerModalClassifierDisjoint_rename inner]
+termination_by nodeCount evidence
+decreasing_by
+  all_goals subst_vars
+  all_goals dsimp only [nodeCount]
+  all_goals decreasing_tactic
+
+@[simp]
+def lowerModalCaptureHasKind_rename {scope : Sig}
+    {separationCount : Nat} {modes : List CaptureMode}
+    (evidence : Evidence .captureHasKind
+      (ModalScope scope separationCount modes)) :
+    evidence.lowerModalCaptureHasKind.rename
+        (Rename.weakenModal scope separationCount modes) = evidence :=
+  match evidence with
+  | .var index => by
+      simp only [lowerModalCaptureHasKind, Evidence.rename]
+      congr 1
+      unfold Rename.weakenModal
+      exact BVar.weakenMany_lowerEvidenceBlock _ index
+  | .captureHasKindEmpty kind => by
+      simp only [lowerModalCaptureHasKind, Evidence.rename,
+        ClassifierExpr.substitute_dropModal_rename]
+  | .captureHasKindUnion left right => by
+      simp only [lowerModalCaptureHasKind, Evidence.rename,
+        lowerModalCaptureHasKind_rename left,
+        lowerModalCaptureHasKind_rename right]
+  | .captureHasKindProject capture kind => by
+      simp only [lowerModalCaptureHasKind, Evidence.rename,
+        Capture.substitute_dropModal_rename,
+        ClassifierExpr.substitute_dropModal_rename]
+  | .captureHasKindSubcapture subcapture upper => by
+      simp only [lowerModalCaptureHasKind, Evidence.rename,
+        lowerModalInclusion_rename subcapture,
+        lowerModalCaptureHasKind_rename upper]
+  | .captureHasKindWiden membership subclassifier => by
+      simp only [lowerModalCaptureHasKind, Evidence.rename,
+        lowerModalCaptureHasKind_rename membership,
+        lowerModalInclusion_rename subclassifier]
+termination_by nodeCount evidence
+decreasing_by
+  all_goals subst_vars
+  all_goals dsimp only [nodeCount]
+  all_goals decreasing_tactic
 
 @[simp]
 def lowerModalDisjoint_rename {scope : Sig}
@@ -468,10 +651,22 @@ def lowerModalDisjoint_rename {scope : Sig}
         Capture.substitute_dropModal_rename]
   | .disjointEquality equality disjoint => by
       simp only [lowerModalDisjoint, Evidence.rename,
-        lowerModalEquality_rename, lowerModalDisjoint_rename disjoint]
+        lowerModalEquality_rename equality,
+        lowerModalDisjoint_rename disjoint]
   | .disjointCaptureProject leftCapture leftKind rightCapture rightKind => by
       simp only [lowerModalDisjoint, Evidence.rename,
         Capture.substitute_dropModal_rename]
+  | .disjointCaptureProjectScoped leftCapture rightCapture classifiers => by
+      simp only [lowerModalDisjoint, Evidence.rename,
+        Capture.substitute_dropModal_rename,
+        lowerModalClassifierDisjoint_rename classifiers]
+termination_by nodeCount evidence
+decreasing_by
+  all_goals subst_vars
+  all_goals dsimp only [nodeCount]
+  all_goals decreasing_tactic
+
+end
 
 end Evidence
 
@@ -593,6 +788,8 @@ private def lowerModalVar {scope : Sig} {context : Ctx scope}
     _ = Binding.evidence (proposition.substitute
           (StaticSubst.dropModal scope separationCount modes)) := rfl
 
+mutual
+
 /-- Checked equality derivations under a lock lower to checked derivations in
 the unchanged outer context. -/
 noncomputable def lowerModalEquality {scope : Sig} {context : Ctx scope}
@@ -650,6 +847,17 @@ noncomputable def lowerModalEquality {scope : Sig} {context : Ctx scope}
       simpa [Evidence.lowerModalEquality, Proposition.substitute,
         StaticExpr.substitute, Capture.substitute] using
         Evidence.Proves.equalityCaptureReadOnly (lowerModalEquality capture)
+  | .classifierGroundEquality left right equivalent => by
+      simpa [Evidence.lowerModalEquality, Proposition.substitute,
+        StaticExpr.substitute, ClassifierExpr.substitute] using
+        (Evidence.Proves.classifierGroundEquality (context := context)
+          left right equivalent)
+  | .equalityCaptureProjectScoped capture classifier => by
+      simpa [Evidence.lowerModalEquality, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute,
+        ClassifierExpr.substitute] using
+        Evidence.Proves.equalityCaptureProjectScoped
+          (lowerModalEquality capture) (lowerModalEquality classifier)
   | .equalityCaptureProject equality kindEquivalent => by
       simpa [Evidence.lowerModalEquality, Proposition.substitute,
         StaticExpr.substitute, Capture.substitute] using
@@ -675,6 +883,12 @@ noncomputable def lowerModalEquality {scope : Sig} {context : Ctx scope}
           (capture.substitute
             (StaticSubst.dropModal scope separationCount modes))
           kind emptyKind)
+  | .equalityCaptureProjectComplete membership => by
+      simpa [Evidence.lowerModalEquality, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute,
+        ClassifierExpr.substitute] using
+        Evidence.Proves.equalityCaptureProjectComplete
+          (lowerModalCaptureHasKind membership)
 
 /-- Checked inclusion derivations under a lock lower to checked derivations in
 the unchanged outer context.  Equality premises are lowered recursively. -/
@@ -730,6 +944,17 @@ noncomputable def lowerModalInclusion {scope : Sig} {context : Ctx scope}
         StaticExpr.substitute, Ty.substitute] using
         Evidence.Proves.typeCapturing (lowerModalInclusion captures)
           (lowerModalInclusion shape)
+  | .classifierGroundInclusion lower upper included => by
+      simpa [Evidence.lowerModalInclusion, Proposition.substitute,
+        StaticExpr.substitute, ClassifierExpr.substitute] using
+        (Evidence.Proves.classifierGroundInclusion (context := context)
+          lower upper included)
+  | .classifierExclude allowed excluded => by
+      simpa [Evidence.lowerModalInclusion, Proposition.substitute,
+        StaticExpr.substitute, ClassifierExpr.substitute] using
+        Evidence.Proves.classifierExclude
+          (lowerModalInclusion allowed)
+          (lowerModalClassifierDisjoint excluded)
   | .captureEmpty target => by
       simpa [Evidence.lowerModalInclusion, Proposition.substitute,
         StaticExpr.substitute] using
@@ -780,11 +1005,27 @@ noncomputable def lowerModalInclusion {scope : Sig} {context : Ctx scope}
         (Evidence.Proves.captureProjectSource (context := context)
           (capture.substitute
             (StaticSubst.dropModal scope separationCount modes)) kind)
+  | .captureProjectSourceScoped capture kind => by
+      simpa [Evidence.lowerModalInclusion, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute,
+        ClassifierExpr.substitute] using
+        (Evidence.Proves.captureProjectSourceScoped (context := context)
+          (capture.substitute
+            (StaticSubst.dropModal scope separationCount modes))
+          (kind.substitute
+            (StaticSubst.dropModal scope separationCount modes)))
   | .captureProjectMono subcapture kindSubtyping => by
       simpa [Evidence.lowerModalInclusion, Proposition.substitute,
         StaticExpr.substitute, Capture.substitute] using
         Evidence.Proves.captureProjectMono
           (lowerModalInclusion subcapture) kindSubtyping
+  | .captureProjectMonoScoped subcapture subclassifier => by
+      simpa [Evidence.lowerModalInclusion, Proposition.substitute,
+        StaticExpr.substitute, Capture.substitute,
+        ClassifierExpr.substitute] using
+        Evidence.Proves.captureProjectMonoScoped
+          (lowerModalInclusion subcapture)
+          (lowerModalInclusion subclassifier)
   | .captureProjectMerge capture leftKind rightKind => by
       simpa [Evidence.lowerModalInclusion, Proposition.substitute,
         StaticExpr.substitute, Capture.substitute] using
@@ -792,6 +1033,89 @@ noncomputable def lowerModalInclusion {scope : Sig} {context : Ctx scope}
           (capture.substitute
             (StaticSubst.dropModal scope separationCount modes))
           leftKind rightKind)
+
+/-- Checked classifier-disjointness derivations under a lock lower to the
+unchanged outer context. -/
+noncomputable def lowerModalClassifierDisjoint {scope : Sig}
+    {context : Ctx scope} {separationCount : Nat}
+    {modes : List CaptureMode}
+    {requirements : ModalContext separationCount modes scope}
+    {evidence : Evidence .classifierDisjoint
+      (ModalScope scope separationCount modes)}
+    {proposition : Proposition .classifierDisjoint
+      (ModalScope scope separationCount modes)}
+    (typing : Evidence.Proves (context.extendModal requirements)
+      evidence proposition) :
+    Evidence.Proves context evidence.lowerModalClassifierDisjoint
+      (proposition.substitute
+        (StaticSubst.dropModal scope separationCount modes)) :=
+  match typing with
+  | .var binding => by
+      simpa [Evidence.lowerModalClassifierDisjoint] using
+        (lowerModalVar
+          (modalRelations_ne_classifierDisjoint separationCount modes)
+          binding)
+  | .classifierGroundDisjoint left right disjoint => by
+      simpa [Evidence.lowerModalClassifierDisjoint,
+        Proposition.substitute, ClassifierExpr.substitute] using
+        (Evidence.Proves.classifierGroundDisjoint (context := context)
+          left right disjoint)
+  | .classifierDisjointSymm inner => by
+      simpa [Evidence.lowerModalClassifierDisjoint,
+        Proposition.substitute] using
+        Evidence.Proves.classifierDisjointSymm
+          (lowerModalClassifierDisjoint inner)
+
+/-- Checked capture-kind derivations under a lock lower to the unchanged
+outer context. -/
+noncomputable def lowerModalCaptureHasKind {scope : Sig}
+    {context : Ctx scope} {separationCount : Nat}
+    {modes : List CaptureMode}
+    {requirements : ModalContext separationCount modes scope}
+    {evidence : Evidence .captureHasKind
+      (ModalScope scope separationCount modes)}
+    {proposition : Proposition .captureHasKind
+      (ModalScope scope separationCount modes)}
+    (typing : Evidence.Proves (context.extendModal requirements)
+      evidence proposition) :
+    Evidence.Proves context evidence.lowerModalCaptureHasKind
+      (proposition.substitute
+        (StaticSubst.dropModal scope separationCount modes)) :=
+  match typing with
+  | .var binding => by
+      simpa [Evidence.lowerModalCaptureHasKind] using
+        (lowerModalVar
+          (modalRelations_ne_captureHasKind separationCount modes) binding)
+  | .captureHasKindEmpty kind => by
+      simpa [Evidence.lowerModalCaptureHasKind, Proposition.substitute,
+        Capture.substitute, ClassifierExpr.substitute] using
+        (Evidence.Proves.captureHasKindEmpty (context := context)
+          (kind.substitute
+            (StaticSubst.dropModal scope separationCount modes)))
+  | .captureHasKindUnion left right => by
+      simpa [Evidence.lowerModalCaptureHasKind, Proposition.substitute,
+        Capture.substitute, ClassifierExpr.substitute] using
+        Evidence.Proves.captureHasKindUnion
+          (lowerModalCaptureHasKind left) (lowerModalCaptureHasKind right)
+  | .captureHasKindProject capture kind => by
+      simpa [Evidence.lowerModalCaptureHasKind, Proposition.substitute,
+        Capture.substitute, ClassifierExpr.substitute] using
+        (Evidence.Proves.captureHasKindProject (context := context)
+          (capture.substitute
+            (StaticSubst.dropModal scope separationCount modes))
+          (kind.substitute
+            (StaticSubst.dropModal scope separationCount modes)))
+  | .captureHasKindSubcapture subcapture upper => by
+      simpa [Evidence.lowerModalCaptureHasKind, Proposition.substitute,
+        Capture.substitute, ClassifierExpr.substitute] using
+        Evidence.Proves.captureHasKindSubcapture
+          (lowerModalInclusion subcapture) (lowerModalCaptureHasKind upper)
+  | .captureHasKindWiden membership subclassifier => by
+      simpa [Evidence.lowerModalCaptureHasKind, Proposition.substitute,
+        Capture.substitute, ClassifierExpr.substitute] using
+        Evidence.Proves.captureHasKindWiden
+          (lowerModalCaptureHasKind membership)
+          (lowerModalInclusion subclassifier)
 
 /-- Checked disjointness derivations under a lock lower to checked
 derivations in the unchanged outer context. -/
@@ -839,6 +1163,17 @@ noncomputable def lowerModalDisjoint {scope : Sig} {context : Ctx scope}
           (rightCapture.substitute
             (StaticSubst.dropModal scope separationCount modes)) rightKind
           kindDisjoint)
+  | .disjointCaptureProjectScoped leftCapture rightCapture classifiers => by
+      simpa [Evidence.lowerModalDisjoint, Proposition.substitute,
+        Capture.substitute, ClassifierExpr.substitute] using
+        (Evidence.Proves.disjointCaptureProjectScoped (context := context)
+          (leftCapture.substitute
+            (StaticSubst.dropModal scope separationCount modes))
+          (rightCapture.substitute
+            (StaticSubst.dropModal scope separationCount modes))
+          (lowerModalClassifierDisjoint classifiers))
+
+end
 
 end Evidence.Proves
 

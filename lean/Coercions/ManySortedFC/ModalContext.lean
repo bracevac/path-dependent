@@ -114,6 +114,26 @@ theorem modalRelations_ne_inclusion (count : Nat) (modes : List CaptureMode)
       cases equality
   | inr equality => cases equality
 
+theorem modalRelations_ne_classifierDisjoint (count : Nat)
+    (modes : List CaptureMode) :
+    Relation.classifierDisjoint ∉ modalRelations count modes := by
+  intro membership
+  cases modalRelations_shape membership with
+  | inl mode =>
+      obtain ⟨_, equality⟩ := mode
+      cases equality
+  | inr equality => cases equality
+
+theorem modalRelations_ne_captureHasKind (count : Nat)
+    (modes : List CaptureMode) :
+    Relation.captureHasKind ∉ modalRelations count modes := by
+  intro membership
+  cases modalRelations_shape membership with
+  | inl mode =>
+      obtain ⟨_, equality⟩ := mode
+      cases equality
+  | inr equality => cases equality
+
 /-! ## Proposition membership -/
 
 /-- An exact proposition occurs at some position in a theory. -/

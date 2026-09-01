@@ -109,6 +109,14 @@ end StaticSubst
 mutual
 
 @[simp]
+def ClassifierExpr.substitute_ofRename {source target : Sig}
+    (expression : ClassifierExpr source) (rho : Rename source target) :
+    expression.substitute (StaticSubst.ofRename rho) = expression.rename rho :=
+  match expression with
+  | .ground _ => rfl
+  | .var _ => rfl
+
+@[simp]
 def Capture.substitute_ofRename {source target : Sig}
     (capture : Capture source) (rho : Rename source target) :
     capture.substitute (StaticSubst.ofRename rho) = capture.rename rho :=
@@ -124,7 +132,8 @@ def Capture.substitute_ofRename {source target : Sig}
   | .cvar _ => rfl
   | .project capture _ => by
       simp only [Capture.substitute, Capture.rename,
-        Capture.substitute_ofRename capture]
+        Capture.substitute_ofRename capture,
+        ClassifierExpr.substitute_ofRename]
 
 @[simp]
 def SeparationContext.substitute_ofRename {count : Nat}
@@ -213,6 +222,8 @@ def StaticExpr.substitute_ofRename {source target : Sig}
       Ty.substitute_ofRename]
   | .capture capture => by simp only [StaticExpr.substitute,
       StaticExpr.rename, Capture.substitute_ofRename]
+  | .classifier classifier => by simp only [StaticExpr.substitute,
+      StaticExpr.rename, ClassifierExpr.substitute_ofRename]
 
 @[simp]
 def Proposition.substitute_ofRename {source target : Sig}
@@ -231,6 +242,11 @@ def Proposition.substitute_ofRename {source target : Sig}
       Proposition.rename, Capture.substitute_ofRename]
   | .mode capture => by simp only [Proposition.substitute,
       Proposition.rename, Capture.substitute_ofRename]
+  | .classifierDisjoint left right => by simp only [Proposition.substitute,
+      Proposition.rename, ClassifierExpr.substitute_ofRename]
+  | .captureHasKind capture kind => by simp only [Proposition.substitute,
+      Proposition.rename, Capture.substitute_ofRename,
+      ClassifierExpr.substitute_ofRename]
 
 @[simp]
 def Theory.substitute_ofRename {source target : Sig}
@@ -363,6 +379,22 @@ end StaticSubst
 mutual
 
 @[simp]
+def ClassifierExpr.substitute_postRename {source middle target : Sig}
+    (expression : ClassifierExpr source)
+    (substitution : StaticSubst source middle) (rho : Rename middle target) :
+    (expression.substitute substitution).rename rho =
+      expression.substitute (substitution.postRename rho) :=
+  match expression with
+  | .ground _ => rfl
+  | .var name => by
+      generalize equality : substitution.symbolVar name = replacement
+      cases replacement with
+      | classifier replacement =>
+          simp only [ClassifierExpr.substitute, StaticSubst.postRename]
+          rw [equality]
+          rfl
+
+@[simp]
 def Capture.substitute_postRename {source middle target : Sig}
     (capture : Capture source) (substitution : StaticSubst source middle)
     (rho : Rename middle target) :
@@ -385,7 +417,8 @@ def Capture.substitute_postRename {source middle target : Sig}
           rfl
   | .project capture _ => by
       simp only [Capture.substitute, Capture.rename,
-        Capture.substitute_postRename capture]
+        Capture.substitute_postRename capture,
+        ClassifierExpr.substitute_postRename]
 
 @[simp]
 def SeparationContext.substitute_postRename {count : Nat}
@@ -487,6 +520,8 @@ def StaticExpr.substitute_postRename {source middle target : Sig}
       Ty.substitute_postRename]
   | .capture capture => by simp only [StaticExpr.substitute,
       StaticExpr.rename, Capture.substitute_postRename]
+  | .classifier classifier => by simp only [StaticExpr.substitute,
+      StaticExpr.rename, ClassifierExpr.substitute_postRename]
 
 @[simp]
 def Proposition.substitute_postRename {source middle target : Sig}
@@ -505,6 +540,11 @@ def Proposition.substitute_postRename {source middle target : Sig}
       Proposition.rename, Capture.substitute_postRename]
   | .mode capture => by simp only [Proposition.substitute,
       Proposition.rename, Capture.substitute_postRename]
+  | .classifierDisjoint left right => by simp only [Proposition.substitute,
+      Proposition.rename, ClassifierExpr.substitute_postRename]
+  | .captureHasKind capture kind => by simp only [Proposition.substitute,
+      Proposition.rename, Capture.substitute_postRename,
+      ClassifierExpr.substitute_postRename]
 
 @[simp]
 def Theory.substitute_postRename {source middle target : Sig}
@@ -713,6 +753,17 @@ end StaticSubst
 
 mutual
 
+def ClassifierExpr.rename_substitute {source middle target : Sig}
+    (expression : ClassifierExpr source) (before : Rename source middle)
+    (after : StaticSubst middle target) (result : StaticSubst source target)
+    (follows : StaticSubst.Follows before after result) :
+    (expression.rename before).substitute after =
+      expression.substitute result :=
+  match expression with
+  | .ground _ => rfl
+  | .var index => by
+      simp [ClassifierExpr.rename, ClassifierExpr.substitute, follows.symbol]
+
 def Capture.rename_substitute {source middle target : Sig}
     (capture : Capture source) (before : Rename source middle)
     (after : StaticSubst middle target) (result : StaticSubst source target)
@@ -731,7 +782,8 @@ def Capture.rename_substitute {source middle target : Sig}
       simp [Capture.rename, Capture.substitute, follows.symbol]
   | .project capture _ => by
       simp only [Capture.rename, Capture.substitute,
-        Capture.rename_substitute capture before after result follows]
+        Capture.rename_substitute capture before after result follows,
+        ClassifierExpr.rename_substitute _ before after result follows]
 
 def SeparationContext.rename_substitute {count : Nat}
     {source middle target : Sig} (context : SeparationContext count source)
@@ -834,6 +886,9 @@ def StaticExpr.rename_substitute {source middle target : Sig}
   | .capture capture => by simp only [StaticExpr.rename,
       StaticExpr.substitute,
       Capture.rename_substitute capture before after result follows]
+  | .classifier classifier => by simp only [StaticExpr.rename,
+      StaticExpr.substitute,
+      ClassifierExpr.rename_substitute classifier before after result follows]
 
 def Proposition.rename_substitute {source middle target : Sig}
     {relation : Relation} (proposition : Proposition relation source)
@@ -862,6 +917,14 @@ def Proposition.rename_substitute {source middle target : Sig}
   | .mode capture => by simp only [Proposition.rename,
       Proposition.substitute,
       Capture.rename_substitute capture before after result follows]
+  | .classifierDisjoint left right => by simp only [Proposition.rename,
+      Proposition.substitute,
+      ClassifierExpr.rename_substitute left before after result follows,
+      ClassifierExpr.rename_substitute right before after result follows]
+  | .captureHasKind capture kind => by simp only [Proposition.rename,
+      Proposition.substitute,
+      Capture.rename_substitute capture before after result follows,
+      ClassifierExpr.rename_substitute kind before after result follows]
 
 def Theory.rename_substitute {source middle target : Sig}
     {symbols : List StaticSort} {relations : List Relation}
@@ -1023,7 +1086,7 @@ theorem ofRename_id_comp {source target : Sig}
     cases expression <;>
       simp [StaticSubst.comp, StaticSubst.ofRename, Rename.id,
         StaticExpr.symbol, StaticExpr.substitute, Ty.substitute,
-        Capture.substitute, expressionEq]
+        Capture.substitute, ClassifierExpr.substitute, expressionEq]
 
 @[simp]
 theorem comp_ofRename_id {source target : Sig}
@@ -1128,6 +1191,22 @@ end StaticSubst
 mutual
 
 @[simp]
+def ClassifierExpr.substitute_comp {source middle target : Sig}
+    (expression : ClassifierExpr source)
+    (before : StaticSubst source middle) (after : StaticSubst middle target) :
+    (expression.substitute before).substitute after =
+      expression.substitute (before.comp after) :=
+  match expression with
+  | .ground _ => rfl
+  | .var name => by
+      generalize equality : before.symbolVar name = replacement
+      cases replacement with
+      | classifier replacement =>
+          simp only [ClassifierExpr.substitute, StaticSubst.comp]
+          rw [equality]
+          rfl
+
+@[simp]
 def Capture.substitute_comp {source middle target : Sig}
     (capture : Capture source) (before : StaticSubst source middle)
     (after : StaticSubst middle target) :
@@ -1148,7 +1227,8 @@ def Capture.substitute_comp {source middle target : Sig}
           rw [equality]
           rfl
   | .project capture _ => by
-      simp only [Capture.substitute, Capture.substitute_comp capture]
+      simp only [Capture.substitute, Capture.substitute_comp capture,
+        ClassifierExpr.substitute_comp]
 
 @[simp]
 def SeparationContext.substitute_comp {count : Nat}
@@ -1245,6 +1325,8 @@ def StaticExpr.substitute_comp {source middle target : Sig}
   | .type type => by simp only [StaticExpr.substitute, Ty.substitute_comp]
   | .capture capture => by simp only [StaticExpr.substitute,
       Capture.substitute_comp]
+  | .classifier classifier => by simp only [StaticExpr.substitute,
+      ClassifierExpr.substitute_comp]
 
 @[simp]
 def Proposition.substitute_comp {source middle target : Sig}
@@ -1263,6 +1345,10 @@ def Proposition.substitute_comp {source middle target : Sig}
       Capture.substitute_comp]
   | .mode capture => by simp only [Proposition.substitute,
       Capture.substitute_comp]
+  | .classifierDisjoint left right => by simp only [Proposition.substitute,
+      ClassifierExpr.substitute_comp]
+  | .captureHasKind capture kind => by simp only [Proposition.substitute,
+      Capture.substitute_comp, ClassifierExpr.substitute_comp]
 
 @[simp]
 def Theory.substitute_comp {source middle target : Sig}
@@ -1350,7 +1436,7 @@ theorem symbol_substitute {source target : Sig} {sort : StaticSort}
   generalize equality : substitution.symbolVar index = expression
   cases sort <;> cases expression <;>
     simp only [StaticExpr.symbol, StaticExpr.substitute, Ty.substitute,
-      Capture.substitute] <;> rw [equality]
+      Capture.substitute, ClassifierExpr.substitute] <;> rw [equality]
 
 def weaken_substitute_instantiateSymbol {source target : Sig}
     {sort newest : StaticSort} (expression : StaticExpr sort source)
@@ -1942,6 +2028,10 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
       exact .equalityCaptureUnion leftInduction rightInduction
   | equalityCaptureReadOnly _ induction =>
       exact .equalityCaptureReadOnly induction
+  | classifierGroundEquality _ _ equivalent =>
+      exact .classifierGroundEquality _ _ equivalent
+  | equalityCaptureProjectScoped _ _ captureInduction classifierInduction =>
+      exact .equalityCaptureProjectScoped captureInduction classifierInduction
   | equalityCaptureProject _ kindEquivalent induction =>
       exact .equalityCaptureProject induction kindEquivalent
   | equalityCaptureProjectTop =>
@@ -1950,6 +2040,8 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
       exact .equalityCaptureProjectCompose _ _ _
   | equalityCaptureProjectEmpty _ _ emptyKind =>
       exact .equalityCaptureProjectEmpty _ _ emptyKind
+  | equalityCaptureProjectComplete _ induction =>
+      exact .equalityCaptureProjectComplete induction
   | inclusionRefl => exact .inclusionRefl _
   | inclusionTrans _ _ firstInduction secondInduction =>
       exact .inclusionTrans firstInduction secondInduction
@@ -1961,6 +2053,10 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
       exact .typeArrow domainInduction codomainInduction
   | typeCapturing _ _ captureInduction shapeInduction =>
       exact .typeCapturing captureInduction shapeInduction
+  | classifierGroundInclusion _ _ included =>
+      exact .classifierGroundInclusion _ _ included
+  | classifierExclude _ _ allowedInduction excludedInduction =>
+      exact .classifierExclude allowedInduction excludedInduction
   | captureEmpty => exact .captureEmpty _
   | captureUnionLeft => exact .captureUnionLeft _ _
   | captureUnionRight => exact .captureUnionRight _ _
@@ -1977,8 +2073,11 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
   | captureReadOnlyMono _ induction =>
       exact .captureReadOnlyMono induction
   | captureProjectSource => exact .captureProjectSource _ _
+  | captureProjectSourceScoped => exact .captureProjectSourceScoped _ _
   | captureProjectMono _ kindSubtyping induction =>
       exact .captureProjectMono induction kindSubtyping
+  | captureProjectMonoScoped _ _ subcaptureInduction classifierInduction =>
+      exact .captureProjectMonoScoped subcaptureInduction classifierInduction
   | captureProjectMerge => exact .captureProjectMerge _ _ _
   | modeEmpty => exact .modeEmpty _
   | modeUnion _ _ leftInduction rightInduction =>
@@ -2004,6 +2103,20 @@ noncomputable def substitute {source target : Sig} {sourceContext : Ctx source}
       exact .disjointEquality equalityInduction disjointInduction
   | disjointCaptureProject _ _ _ _ kindDisjoint =>
       exact .disjointCaptureProject _ _ _ _ kindDisjoint
+  | classifierGroundDisjoint _ _ disjoint =>
+      exact .classifierGroundDisjoint _ _ disjoint
+  | classifierDisjointSymm _ induction =>
+      exact .classifierDisjointSymm induction
+  | disjointCaptureProjectScoped _ _ _ induction =>
+      exact .disjointCaptureProjectScoped _ _ induction
+  | captureHasKindEmpty => exact .captureHasKindEmpty _
+  | captureHasKindUnion _ _ leftInduction rightInduction =>
+      exact .captureHasKindUnion leftInduction rightInduction
+  | captureHasKindProject => exact .captureHasKindProject _ _
+  | captureHasKindSubcapture _ _ subcaptureInduction upperInduction =>
+      exact .captureHasKindSubcapture subcaptureInduction upperInduction
+  | captureHasKindWiden _ _ membershipInduction classifierInduction =>
+      exact .captureHasKindWiden membershipInduction classifierInduction
 
 end Evidence.Proves
 

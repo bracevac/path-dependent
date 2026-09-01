@@ -640,6 +640,16 @@ stable roots. -/
 
 mutual
 
+private def classifierOpenAtRename {first second : Source.Sig}
+    (classifier : DOTCapture.ModalIntersections.ClassifierExpr first)
+    (receiver : DOTCapture.ModalIntersections.Path first)
+    (rho : DOTCapture.ModalIntersections.Rename first second) :
+    (classifier.openAt receiver).rename rho =
+      (classifier.rename rho).openAt (receiver.rename rho) :=
+  match classifier with
+  | .ground _ => rfl
+  | .ref reference => by cases reference <;> rfl
+
 private def captureOpenAtRename {first second : Source.Sig}
     (capture : Source.Capture first)
     (receiver : DOTCapture.ModalIntersections.Path first)
@@ -653,6 +663,11 @@ private def captureOpenAtRename {first second : Source.Sig}
         DOTCapture.ModalIntersections.Capture.rename,
         captureOpenAtRename left receiver rho,
         captureOpenAtRename right receiver rho]
+  | .project capture classifier => by
+      simp only [DOTCapture.ModalIntersections.Capture.openAt,
+        DOTCapture.ModalIntersections.Capture.rename,
+        captureOpenAtRename capture receiver rho,
+        classifierOpenAtRename classifier receiver rho]
   | .readOnly inner => by
       simp only [DOTCapture.ModalIntersections.Capture.openAt,
         DOTCapture.ModalIntersections.Capture.rename,
@@ -847,6 +862,9 @@ private def typeOccurrencePreimage {scope : Source.Sig}
           lower_eq := rfl
           upper_eq := rfl }
   | .captureMember _ _ _, _, _, _, occurrence => nomatch occurrence
+  | .classifierMember _ _ _, _, _, _, occurrence => nomatch occurrence
+  | .classifierDisjoint _ _, _, _, _, occurrence => nomatch occurrence
+  | .captureHasKind _ _, _, _, _, occurrence => nomatch occurrence
   | .inter left right, label, lower, upper, occurrence => by
       cases occurrence with
       | left retained =>
@@ -894,6 +912,9 @@ private def captureOccurrencePreimage {scope : Source.Sig}
           occurrence := .here
           lower_eq := rfl
           upper_eq := rfl }
+  | .classifierMember _ _ _, _, _, _, occurrence => nomatch occurrence
+  | .classifierDisjoint _ _, _, _, _, occurrence => nomatch occurrence
+  | .captureHasKind _ _, _, _, _, occurrence => nomatch occurrence
   | .inter left right, label, lower, upper, occurrence => by
       cases occurrence with
       | left retained =>

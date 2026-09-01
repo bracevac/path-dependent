@@ -4,9 +4,9 @@ Lean formalizations of type-preserving translations from DOT fragments into
 explicit-coercion calculi.
 
 - `FCsub` is the standalone type-constraint target.
-- `ManySortedFC` is the standalone target for type and capture names,
-  constraint telescopes, checked evidence, structural adapters, packages, and
-  existential opening.
+- `ManySortedFC` is the standalone target for type, capture, and classifier
+  names, constraint telescopes, checked evidence, structural adapters,
+  packages, and existential opening.
 - `DOT` contains the source calculi.
 - `Translation` contains derivation-directed compiler case studies.
 
@@ -94,8 +94,8 @@ Adapter measurements compare ordinary erasure with a clearly labeled
 identity-adapter baseline, so eta-expansion is counted rather than hidden.
 These are structural AST counters, not serialized sizes or execution-time
 measurements.
-`Tools/checker-footprint.sh` reproducibly reports 1,636 physical lines and
-75,050 bytes for its explicit executable-checker module list; this is a
+`Tools/checker-footprint.sh` reproducibly reports 1,793 physical lines and
+83,010 bytes for its explicit executable-checker module list; this is a
 selected module footprint, not a dependency closure or minimized trusted
 computing base.
 
@@ -107,15 +107,25 @@ beta, and zeta steps. A writable view of the same root is rejected. This is a
 static access-separation case study: the shared runtime still has no
 concurrency, mutation, allocation, consumption, or freshness semantics.
 
-The classifier-projection extension adds a closed classifier tree, ground
-kind intersection and subtraction, and `Capture.project` to ManySortedFC.
-The standalone checker recomputes equivalence, subkind, emptiness, and
-disjointness conditions for projection evidence. A small source layer lowers
-each `.only`/`.except` chain to one projection. Its target witness is checked
-independently; the paired source and target programs have literally equal
-erasures and perform beta and zeta steps.
-This layer is not a general source-term compiler and does not include
-kind-bounded capture variables, classifier inference, handlers or intercepts,
-or full Capless(K) typing.
+The bounded Stage 7 extensibility test adds a third bindable static sort.
+Cumulative object theories may declare classifier members and retain
+inclusion, disjointness, and capture-kind constraints alongside type and
+capture constraints. Repeated labels share one normalized name. Ground
+`.only`/`.except` chains lower to one projection; direct projection may instead
+use an abstract classifier name. The standalone checker validates the
+generated model and cross-shape theory map. The end-to-end regression opens
+one mixed object, passes its callback payload once, and performs beta and zeta
+steps after erasure.
+
+Scope, theory, model, map, renaming, substitution, and checker traversal are
+sort-generic. The classifier tree, its ground decision procedures,
+capture-kind membership, and exclusion rule are hard-coded. The
+`GroundStaticDomain` contract records the obligations used by the ground
+decision procedure; it is not a plugin interface for the closed kernel. The
+source binds classifier names through object theories, an extension beyond
+the paper's ground kind language. Ground operands are still required for
+subtraction, so symbolic `except[K]`, recursive classifier equations,
+classifier inference, handlers, intercepts, and full Capless(K) typing are
+deferred.
 
 `All.lean` imports the complete development.

@@ -1,6 +1,7 @@
 import Coercions.Translation.ManySorted.ModalIntersections.Layout
 import Coercions.Translation.ManySorted.Intersections.ObjectPreparation
 import Coercions.Translation.ManySorted.Acyclic.NegativeObjectInterface
+import Coercions.Translation.ManySorted.Classifiers.Source
 
 /-!
 # Preparation for cumulative modal intersections
@@ -20,6 +21,8 @@ abbrev Sig := DOTCapture.ModalIntersections.Sig
 abbrev BVar := DOTCapture.ModalIntersections.BVar
 abbrev Path := DOTCapture.ModalIntersections.Path
 abbrev StaticRef := DOTCapture.ModalIntersections.StaticRef
+abbrev ClassifierRef := DOTCapture.ModalIntersections.ClassifierRef
+abbrev ClassifierExpr := DOTCapture.ModalIntersections.ClassifierExpr
 abbrev CaptureMode := DOTCapture.ModalIntersections.CaptureMode
 abbrev Capture := DOTCapture.ModalIntersections.Capture
 abbrev SeparationContext := DOTCapture.ModalIntersections.SeparationContext
@@ -105,6 +108,7 @@ def symbols {scope : Source.Sig} :
   | [] => []
   | .type _ _ :: remaining => .type :: symbols remaining
   | .capture _ _ :: remaining => .capture :: symbols remaining
+  | .classifier _ _ :: remaining => .classifier :: symbols remaining
 
 /-- Allocate every member name before translating the first bound. -/
 def members (targetScope : Target.Sig) {sourceScope : Source.Sig} :
@@ -119,6 +123,10 @@ def members (targetScope : Target.Sig) {sourceScope : Source.Sig} :
       .capture label .here ::
         (members targetScope remaining).map fun member =>
           member.rename ManySortedFC.Rename.succ
+  | .classifier label _ :: remaining =>
+      .classifier label .here ::
+        (members targetScope remaining).map fun member =>
+          member.rename ManySortedFC.Rename.succ
 
 end Allocation
 
@@ -130,6 +138,8 @@ def expectType {scope : Target.Sig} (label : Nat) :
   | .type _ name => .ok name
   | .capture _ _ =>
       .error (.memberSortMismatch label .type .capture)
+  | .classifier _ _ =>
+      .error (.memberSortMismatch label .type .classifier)
 
 def expectCapture {scope : Target.Sig} (label : Nat) :
     MemberName scope -> Except Error
@@ -137,6 +147,17 @@ def expectCapture {scope : Target.Sig} (label : Nat) :
   | .capture _ name => .ok name
   | .type _ _ =>
       .error (.memberSortMismatch label .capture .type)
+  | .classifier _ _ =>
+      .error (.memberSortMismatch label .capture .classifier)
+
+def expectClassifier {scope : Target.Sig} (label : Nat) :
+    MemberName scope -> Except Error
+      (Target.BVar scope (.symbol .classifier))
+  | .classifier _ name => .ok name
+  | .type _ _ =>
+      .error (.memberSortMismatch label .classifier .type)
+  | .capture _ _ =>
+      .error (.memberSortMismatch label .classifier .capture)
 
 def pathMember {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
@@ -195,6 +216,17 @@ def captureExpression {scope : Target.Sig}
       | some capture => .ok capture
       | none => .error (.unknownLocalMember label)
 
+def classifierExpression {scope : Target.Sig}
+    (resolution : LocalResolution scope) (label : Nat) :
+    Except Error (ManySortedFC.ClassifierExpr scope) :=
+  match resolution with
+  | .allocated members => do
+      pure (.var (← expectClassifier label (← localMember members label)))
+  | .interpreted model =>
+      match model.classifierMember? label with
+      | some classifier => .ok classifier
+      | none => .error (.unknownLocalMember label)
+
 end LocalResolution
 
 def typeReference {sourceScope : Source.Sig}
@@ -219,6 +251,25 @@ def captureReference {sourceScope : Source.Sig}
       pure (.cvar (← expectCapture label (← pathMember layout path label)))
   | .localCaptureMember label => locals.captureExpression label
 
+def classifierReference {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (locals : LocalResolution targetScope) :
+    Source.ClassifierRef sourceScope ->
+      Except Error (ManySortedFC.ClassifierExpr targetScope)
+  | .member path label => do
+      pure (.var (← expectClassifier label (← pathMember layout path label)))
+  | .localMember label => locals.classifierExpression label
+
+def classifierCore {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (locals : LocalResolution targetScope) :
+    Source.ClassifierExpr sourceScope ->
+      Except Error (ManySortedFC.ClassifierExpr targetScope)
+  | .ground kind => .ok (.ground kind)
+  | .ref reference => classifierReference layout locals reference
+
 def captureCore {sourceScope : Source.Sig}
     {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
@@ -228,6 +279,9 @@ def captureCore {sourceScope : Source.Sig}
   | .union left right => do
       pure (.union (← captureCore layout locals left)
         (← captureCore layout locals right))
+  | .project inner classifier => do
+      pure (.project (← captureCore layout locals inner)
+        (← classifierCore layout locals classifier))
   | .readOnly capture => do
       pure (.readOnly (← captureCore layout locals capture))
   | .singleton (.var sourceVar) =>
@@ -430,6 +484,22 @@ private def translateCaptureMemberIntervals {sourceScope : Source.Sig}
       pure (⟨lower, upper⟩ ::
         (← translateCaptureMemberIntervals layout members remaining))
 
+private def translateClassifierMemberIntervals {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (members : List (MemberName targetScope)) :
+    List (Source.MemberInterval
+      (Source.MemberExpr sourceScope (.classifier))) ->
+      Except Error
+        (List (Source.MemberInterval
+          (Target.StaticExpr .classifier targetScope)))
+  | [] => .ok []
+  | interval :: remaining => do
+      let lower ← classifierCore layout (.allocated members) interval.lower
+      let upper ← classifierCore layout (.allocated members) interval.upper
+      pure (⟨.classifier lower, .classifier upper⟩ ::
+        (← translateClassifierMemberIntervals layout members remaining))
+
 /-- Translate one normalization-layer member expression while preserving its
 isomorphic type/capture sort tag. -/
 def translateMemberExpr {sort : DOTCapture.Intersections.StaticSort}
@@ -443,6 +513,9 @@ def translateMemberExpr {sort : DOTCapture.Intersections.StaticSort}
   match sort with
   | .type => fun expression => translateStaticExpr layout members expression
   | .capture => fun expression => translateStaticExpr layout members expression
+  | .classifier => fun expression => do
+      pure (.classifier
+        (← classifierCore layout (.allocated members) expression))
 
 /-- Translate a homogeneous block of retained member intervals.  This public,
 sort-indexed wrapper is the metatheoretic boundary used to relate raw source
@@ -456,10 +529,13 @@ def translateMemberIntervals {sort : DOTCapture.Intersections.StaticSort}
       Except Error (List (Source.MemberInterval
         (Target.StaticExpr
           (DOTCaptureToManySortedFC.Intersections.Encoding.targetSort sort)
-          targetScope))) :=
-  match sort with
-  | .type => translateTypeMemberIntervals layout members
-  | .capture => translateCaptureMemberIntervals layout members
+          targetScope)))
+  | [] => .ok []
+  | interval :: remaining => do
+      let lower ← translateMemberExpr layout members interval.lower
+      let upper ← translateMemberExpr layout members interval.upper
+      let tail ← translateMemberIntervals layout members remaining
+      pure (⟨lower, upper⟩ :: tail)
 
 @[simp]
 theorem translateMemberIntervals_nil
@@ -468,7 +544,7 @@ theorem translateMemberIntervals_nil
     (layout : Layout sourceScope targetScope)
     (members : List (MemberName targetScope)) :
     translateMemberIntervals (sort := sort) layout members [] = .ok [] := by
-  cases sort <;> rfl
+  rfl
 
 @[simp]
 theorem translateMemberIntervals_cons
@@ -485,9 +561,35 @@ theorem translateMemberIntervals_cons
       let upper ← translateMemberExpr layout members interval.upper
       let tail ← translateMemberIntervals layout members remaining
       pure (⟨lower, upper⟩ :: tail)) := by
-  cases sort with
-  | type => rfl
-  | capture => rfl
+  rfl
+
+def translateMemberConstraint {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (members : List (MemberName targetScope)) :
+    DOTCapture.Intersections.Constraint (Source.MemberExpr sourceScope) ->
+      Except Error (PreparedConstraint targetScope)
+  | .classifierDisjoint left right => do
+      pure (.classifierDisjoint
+        (← classifierCore layout (.allocated members) left)
+        (← classifierCore layout (.allocated members) right))
+  | .captureHasKind sourceCapture sourceClassifier => do
+      let .capture sourceCapture := sourceCapture
+      pure (.captureHasKind
+        (← captureCore layout (.allocated members) sourceCapture)
+        (← classifierCore layout (.allocated members) sourceClassifier))
+
+def translateMemberConstraints {sourceScope : Source.Sig}
+    {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (members : List (MemberName targetScope)) :
+    List (DOTCapture.Intersections.Constraint
+      (Source.MemberExpr sourceScope)) ->
+      Except Error (List (PreparedConstraint targetScope))
+  | [] => .ok []
+  | constraint :: remaining => do
+      pure ((← translateMemberConstraint layout members constraint) ::
+        (← translateMemberConstraints layout members remaining))
 
 def entries {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
@@ -512,10 +614,34 @@ def entries {sourceScope : Source.Sig} {targetScope : Target.Sig}
           (← entries layout allMembers remaining allocatedRemaining))
       else
         .error (.allocationMismatch label)
+  | .classifier label sourceIntervals :: remaining,
+      .classifier allocatedLabel name :: allocatedRemaining => do
+      if _labelsMatch : label = allocatedLabel then
+        pure (.classifier label name
+          (← translateMemberIntervals layout allMembers sourceIntervals) ::
+          (← entries layout allMembers remaining allocatedRemaining))
+      else
+        .error (.allocationMismatch label)
   | entry :: _, _ => .error (.allocationMismatch entry.label)
   | [], _ :: _ => .error (.allocationMismatch 0)
 
 end Compile
+
+/-! ## Ground surface filters -/
+
+/-- Embed the existing ground `.only`/`.except` surface into the cumulative
+source.  A nonempty chain is collapsed by `ProjectedCapture.kind` to one
+ground project; an unfiltered base remains unchanged.  Abstract classifier
+members may be used directly with `Capture.project`, but abstract exclusion
+is deliberately outside Stage 7. -/
+def elaborateProjectedCapture {scope : Source.Sig} :
+    DOTCaptureToManySortedFC.Classifiers.Source.ProjectedCapture
+      (Source.Capture scope) -> Source.Capture scope
+  | .base capture => capture
+  | projected@(.only _ _) =>
+      .project projected.root (.ground projected.kind)
+  | projected@(.except _ _) =>
+      .project projected.root (.ground projected.kind)
 
 /-- Prepare one normalized interface signature in a complete names-only
 scope. -/
@@ -529,7 +655,12 @@ def prepare {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (ManySortedFC.Rename.weakenSymbols symbols)
   let preparedEntries ← Compile.entries namesLayout allocated
     signature.entries allocated
-  pure { symbols := symbols, entries := preparedEntries }
+  let preparedConstraints ← Compile.translateMemberConstraints namesLayout
+    allocated signature.constraints
+  pure
+    { symbols := symbols
+      entries := preparedEntries
+      constraints := preparedConstraints }
 
 /-- Normalize by label, reject cross-sort collisions, then prepare all
 retained occurrences. -/
@@ -631,6 +762,21 @@ def translateCapture {sourceScope : Source.Sig} {targetScope : Target.Sig}
     Except Error (Target.Capture targetScope) :=
   Compile.captureCore layout (.interpreted layout.localModel) source
 
+/-- Total classifier interpretation used only to make the compiler's
+proof-bookkeeping functions total on malformed inputs. -/
+def totalClassifier {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope) :
+    Source.ClassifierExpr sourceScope ->
+      ManySortedFC.ClassifierExpr targetScope
+  | .ground kind => .ground kind
+  | .ref (.member path label) =>
+      match layout.member? path label with
+      | some (.classifier _ targetVar) => .var targetVar
+      | _ => .ground ManySortedFC.Classifier.Kind.empty
+  | .ref (.localMember label) =>
+      (layout.localModel.classifierMember? label).getD
+        (.ground ManySortedFC.Classifier.Kind.empty)
+
 /-- A total capture interpretation for proof-only compiler bookkeeping.
 Malformed member selections fall back to the empty target capture; every
 prepared compiler input recovers its exact successful translation below. -/
@@ -640,6 +786,9 @@ def totalCapture {sourceScope : Source.Sig} {targetScope : Target.Sig}
   | .empty => .empty
   | .union left right =>
       .union (totalCapture layout left) (totalCapture layout right)
+  | .project inner classifier =>
+      .project (totalCapture layout inner)
+        (totalClassifier layout classifier)
   | .readOnly capture => .readOnly (totalCapture layout capture)
   | .singleton (.var sourceVar) => .singleton (layout.termVar sourceVar)
   | .ref (.bound sourceVar) => .cvar (layout.staticSlot sourceVar).name
@@ -649,6 +798,62 @@ def totalCapture {sourceScope : Source.Sig} {targetScope : Target.Sig}
       | _ => .empty
   | .ref (.localCaptureMember label) =>
       (layout.localModel.captureMember? label).getD .empty
+
+/-- A successful partial classifier translation agrees with its proof-only
+total counterpart. -/
+private theorem totalClassifier_of_prepared {sourceScope : Source.Sig}
+    {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
+    (sourceClassifier : Source.ClassifierExpr sourceScope)
+    (targetClassifier : ManySortedFC.ClassifierExpr targetScope)
+    (prepared : Compile.classifierCore layout
+      (.interpreted layout.localModel) sourceClassifier =
+        .ok targetClassifier) :
+    totalClassifier layout sourceClassifier = targetClassifier := by
+  cases sourceClassifier with
+  | ground kind =>
+      simpa [Compile.classifierCore, totalClassifier] using prepared
+  | ref reference =>
+      cases reference with
+      | member path label =>
+          cases found : layout.member? path label with
+          | none =>
+              simp only [Compile.classifierCore,
+                Compile.classifierReference, Compile.pathMember, found]
+                at prepared
+              cases prepared
+          | some member =>
+              cases member with
+              | type memberLabel memberName =>
+                  simp only [Compile.classifierCore,
+                    Compile.classifierReference, Compile.pathMember,
+                    Compile.expectClassifier, found] at prepared
+                  cases prepared
+              | capture memberLabel memberName =>
+                  simp only [Compile.classifierCore,
+                    Compile.classifierReference, Compile.pathMember,
+                    Compile.expectClassifier, found] at prepared
+                  cases prepared
+              | classifier memberLabel memberName =>
+                  simp only [Compile.classifierCore,
+                    Compile.classifierReference, Compile.pathMember,
+                    Compile.expectClassifier, found] at prepared
+                  cases prepared
+                  simp [totalClassifier, found]
+      | localMember label =>
+          cases found : layout.localModel.classifierMember? label with
+          | none =>
+              simp only [Compile.classifierCore,
+                Compile.classifierReference,
+                Compile.LocalResolution.classifierExpression, found]
+                at prepared
+              cases prepared
+          | some classifier =>
+              simp only [Compile.classifierCore,
+                Compile.classifierReference,
+                Compile.LocalResolution.classifierExpression, found]
+                at prepared
+              cases prepared
+              simp [totalClassifier, found]
 
 /-- Successful partial capture preparation agrees with the total map. -/
 theorem totalCapture_of_prepared {sourceScope : Source.Sig}
@@ -687,6 +892,33 @@ theorem totalCapture_of_prepared {sourceScope : Source.Sig}
                   simpa [translateCapture] using
                     rightPrepared)
               simp [totalCapture, leftEquality, rightEquality]
+  | project inner classifier induction =>
+      cases innerPrepared : Compile.captureCore layout
+          (.interpreted layout.localModel) inner with
+      | error error =>
+          unfold translateCapture Compile.captureCore at prepared
+          rw [innerPrepared] at prepared
+          cases prepared
+      | ok targetInner =>
+          cases classifierPrepared : Compile.classifierCore layout
+              (.interpreted layout.localModel) classifier with
+          | error error =>
+              unfold translateCapture Compile.captureCore at prepared
+              rw [innerPrepared, classifierPrepared] at prepared
+              cases prepared
+          | ok targetClassifier =>
+              unfold translateCapture Compile.captureCore at prepared
+              rw [innerPrepared, classifierPrepared] at prepared
+              cases prepared
+              have innerEquality :
+                  totalCapture layout inner = targetInner :=
+                induction targetInner (by
+                  simpa [translateCapture] using innerPrepared)
+              have classifierEquality :
+                  totalClassifier layout classifier = targetClassifier :=
+                totalClassifier_of_prepared layout classifier
+                  targetClassifier classifierPrepared
+              simp [totalCapture, innerEquality, classifierEquality]
   | readOnly capture induction =>
       cases innerPrepared : Compile.captureCore layout
           (.interpreted layout.localModel) capture with
@@ -736,6 +968,12 @@ theorem totalCapture_of_prepared {sourceScope : Source.Sig}
                   simp [found] at prepared
                   cases prepared
                   simp [totalCapture, found]
+              | classifier memberLabel memberName =>
+                  unfold translateCapture
+                    Compile.captureCore Compile.captureReference
+                    Compile.pathMember Compile.expectCapture at prepared
+                  simp [found] at prepared
+                  cases prepared
       | localCaptureMember label =>
           cases found : layout.localModel.captureMember? label with
           | none =>

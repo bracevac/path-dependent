@@ -125,6 +125,20 @@ end Cancels
 
 mutual
 
+/-- Substitution after a cancelled renaming is the identity on classifier
+expressions. -/
+def classifier_rename_substitute {source target : Sig}
+    (classifier : ClassifierExpr source) {rho : Rename source target}
+    {substitution : StaticSubst target source}
+    (cancellation : Cancels rho substitution) :
+    (classifier.rename rho).substitute substitution = classifier :=
+  match classifier with
+  | .ground _ => rfl
+  | .var name => by
+      simp only [ClassifierExpr.rename, ClassifierExpr.substitute]
+      rw [cancellation.symbolVar name]
+      rfl
+
 /-- Substitution after a cancelled renaming is the identity on captures. -/
 def capture_rename_substitute {source target : Sig}
     (capture : Capture source) {rho : Rename source target}
@@ -147,9 +161,10 @@ def capture_rename_substitute {source target : Sig}
       simp only [Capture.rename, Capture.substitute]
       rw [cancellation.symbolVar name]
       rfl
-  | .project capture _ => by
+  | .project capture classifier => by
       simp only [Capture.rename, Capture.substitute,
-        capture_rename_substitute capture cancellation]
+        capture_rename_substitute capture cancellation,
+        classifier_rename_substitute classifier cancellation]
 
 /-- Cancellation acts pointwise on the captures that generate modal
 separation assumptions. -/
@@ -259,6 +274,9 @@ def expression_rename_substitute {source target : Sig}
   | .capture capture => by
       simp only [StaticExpr.rename, StaticExpr.substitute,
         capture_rename_substitute capture cancellation]
+  | .classifier classifier => by
+      simp only [StaticExpr.rename, StaticExpr.substitute,
+        classifier_rename_substitute classifier cancellation]
 
 /-- Substitution after a cancelled renaming is the identity on propositions. -/
 def proposition_rename_substitute {source target : Sig}
@@ -284,6 +302,14 @@ def proposition_rename_substitute {source target : Sig}
       simp only [Proposition.rename, Proposition.substitute,
         capture_rename_substitute left cancellation,
         capture_rename_substitute right cancellation]
+  | .classifierDisjoint left right => by
+      simp only [Proposition.rename, Proposition.substitute,
+        classifier_rename_substitute left cancellation,
+        classifier_rename_substitute right cancellation]
+  | .captureHasKind capture classifier => by
+      simp only [Proposition.rename, Proposition.substitute,
+        capture_rename_substitute capture cancellation,
+        classifier_rename_substitute classifier cancellation]
   | .mode capture => by
       simp only [Proposition.rename, Proposition.substitute,
         capture_rename_substitute capture cancellation]
