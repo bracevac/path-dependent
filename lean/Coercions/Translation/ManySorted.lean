@@ -18,6 +18,7 @@ import Coercions.Translation.ManySorted.BinderOnly.TermElaborationErasure
 import Coercions.DOT.Captures.ModalIntersections.BinderEmbeddingErasure
 import Coercions.Translation.ManySorted.Acyclic
 import Coercions.Translation.ManySorted.Intersections
+import Coercions.Translation.ManySorted.ModalIntersections
 
 /-!
 # Shared bridge infrastructure for translations into many-sorted FC

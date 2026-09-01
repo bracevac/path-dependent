@@ -105,7 +105,7 @@ inductive Occurs {scope : Sig} : {modes : List CaptureMode} →
     CaptureMode → Capture scope → Type where
   | here {modes : List CaptureMode} {mode : CaptureMode}
       {rest : ModeContext modes scope} {capture : Capture scope} :
-      Occurs (.cons rest capture) mode capture
+      Occurs (.cons (mode := mode) rest capture) mode capture
   | there {modes : List CaptureMode} {newestMode mode : CaptureMode}
       {rest : ModeContext modes scope} {newest capture : Capture scope}
       (older : Occurs rest mode capture) :
@@ -316,6 +316,24 @@ inductive Satisfies {scope : Sig} (context : Ctx scope)
 /-! ## Small structural regressions -/
 
 namespace ModalJudgmentExamples
+
+/-- The newest positional occurrence retains the mode stored at that exact
+mode-context entry. -/
+def headModeExact {scope : Sig} {modes : List CaptureMode}
+    {mode : CaptureMode} (rest : ModeContext modes scope)
+    (capture : Capture scope) :
+    ModeContext.Occurs (.cons (mode := mode) rest capture) mode capture :=
+  .here
+
+/-- A writable head cannot be consulted as a read-only assumption. -/
+def writableHeadIsNotReadOnly {scope : Sig} (capture : Capture scope) :
+    ModeContext.Occurs
+        (.cons (mode := .writable) (.nil : ModeContext [] scope) capture)
+        .readOnly capture ->
+      Empty := by
+  intro occurrence
+  cases occurrence with
+  | there older => cases older
 
 /-- Shared read-only access is separated even when both views contain the
 same capabilities. -/
