@@ -26,6 +26,8 @@ import Coercions.Translation.ManySorted.ModalIntersections.ModalTheoryMapElabora
 import Coercions.Translation.ManySorted.ModalIntersections.ModalTheoryMapElaborationExamples
 import Coercions.Translation.ManySorted.ModalIntersections.AdapterElaboration
 import Coercions.Translation.ManySorted.ModalIntersections.AdapterElaborationExamples
+import Coercions.Translation.ManySorted.ModalIntersections.CompilerArtifacts
+import Coercions.Translation.ManySorted.ModalIntersections.CompilerArtifactsExamples
 
 /-!
 # Cumulative captured-DOT compiler foundation
