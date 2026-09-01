@@ -3,6 +3,7 @@ import Coercions.Translation.ManySorted.ModalIntersections.Preparation
 import Coercions.Translation.ManySorted.ModalIntersections.PreparationExamples
 import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenance
 import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenanceExamples
+import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenanceTransportExamples
 import Coercions.Translation.ManySorted.ModalIntersections.CompilerContext
 import Coercions.Translation.ManySorted.ModalIntersections.CompilerContextExamples
 
