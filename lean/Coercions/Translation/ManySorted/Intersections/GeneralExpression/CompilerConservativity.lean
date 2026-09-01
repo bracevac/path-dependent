@@ -8,13 +8,17 @@ import Coercions.Translation.ManySorted.Intersections.GeneralExpression.Recursiv
 
 M11 changes the static representation of object signatures, so independently
 generated M10 and M11 FC terms need not contain the same evidence syntax or
-the same static binders.  The public compiler artifacts do support the
-operational statement that matters: successful artifacts for the same source
-program erase to the same runtime program.
+the same static binders.  There are consequently two distinct conservativity
+boundaries in this module.
 
-The cross-milestone theorems below deliberately assume only compatibility of
-the runtime variable projections.  They do not identify target evidence terms
-or assert success of the still-separate compiler implementations.
+First, a successful M10 artifact can itself be re-indexed as an M11 artifact
+for the embedded source while retaining the exact target term.  This requires
+the honest compatibility premises: the ready states install the same target
+context and runtime projection, and M11's static translation of the embedded
+result agrees with the M10 artifact's recorded result.  Second, independently
+generated M10 and M11 artifacts always agree after erasure when their runtime
+projections agree.  Neither statement claims that the two executable
+compilers choose identical evidence terms.
 -/
 
 namespace DOTCaptureToManySortedFC.Intersections.GeneralExpression.CompilerConservativity
@@ -78,13 +82,177 @@ end Compiler
 namespace Embedding
 
 export DOTCapture.Intersections.GeneralExpression.Embedding
-  (embedValue embedTerm eraseValueWith_embed eraseTermWith_embed embedCtx)
+  (embedValue embedTerm eraseValueWith_embed eraseTermWith_embed embedCtx
+    embedValueTyping embedTermTyping)
 
 end Embedding
 
 end M11
 
 open ManySortedFC
+
+/-! ## Exact reuse of a successful M10 artifact
+
+`ReadyAgreement` is deliberately smaller than a new compiler invariant.  It
+states exactly what is required to reuse an already checked M10 target term at
+the M11 boundary.  It does not claim that arbitrary M11 layouts are suitable
+for running the recursive M11 compiler.
+-/
+
+/-- Compatibility of M10 and M11 ready states at the independently checked
+artifact boundary.  The target scopes are already definitionally the same;
+the fields identify the installed context and the independent runtime
+projection. -/
+structure ReadyAgreement
+    {scope : M10.Source.Scope} {context : M10.Source.Ctx scope}
+    (m10Ready : M10.Runtime.Ready context)
+    (m11Ready : M11.Compiler.Ready (M11.Embedding.embedCtx context)
+      (DOTCaptureToManySortedFC.Acyclic.Layout.sig context)) : Prop where
+  targetContext : m11Ready.target = m10Ready.target
+  runtimeRenaming : m11Ready.runtimeRenaming =
+    M10.Erasure.compiledRenaming context
+
+/-- Re-index a successful M10 value compilation as a genuine M11 compiled
+artifact for the structurally embedded source.  The target term is retained
+literally; only the source indices and the proofs around it change.
+
+The static-translation premise is intentionally explicit.  It is the exact
+remaining obligation for a particular embedded result type and avoids
+pretending that an arbitrary `Ready.layout` agrees with the M10 context. -/
+def exact_m10_value_artifact_as_m11
+    {scope : M10.Source.Scope} {context : M10.Source.Ctx scope}
+    {m10Ready : M10.Runtime.Ready context}
+    {value : M10.Source.Value scope} {type : M10.Source.Ty scope}
+    {typing : DOTCapture.Acyclic.GeneralExpression.Value.HasType
+      context value type}
+    {m10Compiled : M10.Compiler.CompiledValue m10Ready value type}
+    (m10Success : M10.Compiler.compilePolarizedValue? m10Ready typing =
+      some m10Compiled)
+    {m11Ready : M11.Compiler.Ready (M11.Embedding.embedCtx context)
+      (DOTCaptureToManySortedFC.Acyclic.Layout.sig context)}
+    (readyAgreement : ReadyAgreement m10Ready m11Ready)
+    (typeAgreement :
+      DOTCaptureToManySortedFC.Intersections.ObjectPreparation.translateType
+          m11Ready.layout (DOTCapture.Intersections.Source.embedM10Ty type) =
+        .ok m10Compiled.targetType) :
+    M11.Compiler.CompiledValue m11Ready
+      (M11.Embedding.embedValue value)
+      (DOTCapture.Intersections.Source.embedM10Ty type) where
+  sourceTyping := M11.Embedding.embedValueTyping typing
+  targetType := m10Compiled.targetType
+  typeTranslated := typeAgreement
+  term := m10Compiled.term
+  isValue := m10Compiled.isValue
+  typing := by
+    rw [readyAgreement.targetContext]
+    exact m10Compiled.typing
+  exactErasure := by
+    calc
+      m10Compiled.term.erase = M10.Erasure.eraseValue context value :=
+        DOTCaptureToManySortedFC.Acyclic.GeneralExpression.CompilerErasure.compilePolarizedValue_erase
+          m10Success
+      _ = m11Ready.eraseValue (M11.Embedding.embedValue value) := by
+        unfold M10.Erasure.eraseValue
+        unfold DOTCaptureToManySortedFC.Intersections.GeneralExpression.Compiler.Ready.eraseValue
+        rw [readyAgreement.runtimeRenaming]
+        exact (M11.Embedding.eraseValueWith_embed
+          (M10.Erasure.compiledRenaming context) value).symm
+
+/-- Computation counterpart of `exact_m10_value_artifact_as_m11`.  Besides
+the result type, the immediate-use translation is checked explicitly.  The
+returned M11 artifact contains the M10 target term definitionally. -/
+def exact_m10_term_artifact_as_m11
+    {scope : M10.Source.Scope} {context : M10.Source.Ctx scope}
+    {m10Ready : M10.Runtime.Ready context}
+    {term : M10.Source.Term scope} {use : M10.Source.Capture scope}
+    {type : M10.Source.Ty scope}
+    {typing : DOTCapture.Acyclic.GeneralExpression.Term.HasType
+      context term use type}
+    {m10Compiled : M10.Compiler.CompiledTerm m10Ready term use type}
+    (m10Success : M10.Compiler.compilePolarizedTerm? m10Ready typing =
+      some m10Compiled)
+    {m11Ready : M11.Compiler.Ready (M11.Embedding.embedCtx context)
+      (DOTCaptureToManySortedFC.Acyclic.Layout.sig context)}
+    (readyAgreement : ReadyAgreement m10Ready m11Ready)
+    (useAgreement :
+      DOTCaptureToManySortedFC.Intersections.ObjectPreparation.translateCapture
+          m11Ready.layout
+          (DOTCapture.Intersections.Source.embedM10Capture use) =
+        .ok m10Compiled.targetUse)
+    (typeAgreement :
+      DOTCaptureToManySortedFC.Intersections.ObjectPreparation.translateType
+          m11Ready.layout (DOTCapture.Intersections.Source.embedM10Ty type) =
+        .ok m10Compiled.targetType) :
+    M11.Compiler.CompiledTerm m11Ready
+      (M11.Embedding.embedTerm term)
+      (DOTCapture.Intersections.Source.embedM10Capture use)
+      (DOTCapture.Intersections.Source.embedM10Ty type) where
+  sourceTyping := M11.Embedding.embedTermTyping typing
+  targetUse := m10Compiled.targetUse
+  targetType := m10Compiled.targetType
+  useTranslated := useAgreement
+  typeTranslated := typeAgreement
+  term := m10Compiled.term
+  typing := by
+    rw [readyAgreement.targetContext]
+    exact m10Compiled.typing
+  exactErasure := by
+    calc
+      m10Compiled.term.erase = M10.Erasure.eraseTerm context term :=
+        DOTCaptureToManySortedFC.Acyclic.GeneralExpression.CompilerErasure.compilePolarizedTerm_erase
+          m10Success
+      _ = m11Ready.eraseTerm (M11.Embedding.embedTerm term) := by
+        unfold M10.Erasure.eraseTerm
+        unfold DOTCaptureToManySortedFC.Intersections.GeneralExpression.Compiler.Ready.eraseTerm
+        rw [readyAgreement.runtimeRenaming]
+        exact (M11.Embedding.eraseTermWith_embed
+          (M10.Erasure.compiledRenaming context) term).symm
+
+@[simp]
+theorem exact_m10_value_artifact_as_m11_term
+    {scope : M10.Source.Scope} {context : M10.Source.Ctx scope}
+    {m10Ready : M10.Runtime.Ready context}
+    {value : M10.Source.Value scope} {type : M10.Source.Ty scope}
+    {typing : DOTCapture.Acyclic.GeneralExpression.Value.HasType
+      context value type}
+    {m10Compiled : M10.Compiler.CompiledValue m10Ready value type}
+    (m10Success : M10.Compiler.compilePolarizedValue? m10Ready typing =
+      some m10Compiled)
+    {m11Ready : M11.Compiler.Ready (M11.Embedding.embedCtx context)
+      (DOTCaptureToManySortedFC.Acyclic.Layout.sig context)}
+    (readyAgreement : ReadyAgreement m10Ready m11Ready)
+    (typeAgreement :
+      DOTCaptureToManySortedFC.Intersections.ObjectPreparation.translateType
+          m11Ready.layout (DOTCapture.Intersections.Source.embedM10Ty type) =
+        .ok m10Compiled.targetType) :
+    (exact_m10_value_artifact_as_m11 m10Success readyAgreement
+      typeAgreement).term = m10Compiled.term := rfl
+
+@[simp]
+theorem exact_m10_term_artifact_as_m11_term
+    {scope : M10.Source.Scope} {context : M10.Source.Ctx scope}
+    {m10Ready : M10.Runtime.Ready context}
+    {term : M10.Source.Term scope} {use : M10.Source.Capture scope}
+    {type : M10.Source.Ty scope}
+    {typing : DOTCapture.Acyclic.GeneralExpression.Term.HasType
+      context term use type}
+    {m10Compiled : M10.Compiler.CompiledTerm m10Ready term use type}
+    (m10Success : M10.Compiler.compilePolarizedTerm? m10Ready typing =
+      some m10Compiled)
+    {m11Ready : M11.Compiler.Ready (M11.Embedding.embedCtx context)
+      (DOTCaptureToManySortedFC.Acyclic.Layout.sig context)}
+    (readyAgreement : ReadyAgreement m10Ready m11Ready)
+    (useAgreement :
+      DOTCaptureToManySortedFC.Intersections.ObjectPreparation.translateCapture
+          m11Ready.layout
+          (DOTCapture.Intersections.Source.embedM10Capture use) =
+        .ok m10Compiled.targetUse)
+    (typeAgreement :
+      DOTCaptureToManySortedFC.Intersections.ObjectPreparation.translateType
+          m11Ready.layout (DOTCapture.Intersections.Source.embedM10Ty type) =
+        .ok m10Compiled.targetType) :
+    (exact_m10_term_artifact_as_m11 m10Success readyAgreement useAgreement
+      typeAgreement).term = m10Compiled.term := rfl
 
 /-! ## Coherence between M11 artifacts -/
 
@@ -228,6 +396,12 @@ theorem emptyReady_runtimeRenaming :
         (DOTCapture.Acyclic.Ctx.nil : M10.Source.Ctx 0) := by
   funext name
   nomatch name
+
+/-- The canonical closed M10 and M11 compiler states agree at the exact
+artifact boundary. -/
+def emptyReadyAgreement : ReadyAgreement M10.Runtime.nil emptyReady where
+  targetContext := rfl
+  runtimeRenaming := emptyReady_runtimeRenaming
 
 /-- Closed successful M10 and M11 value artifacts erase to the same runtime
 term without an extra compatibility premise. -/
