@@ -1,4 +1,5 @@
 import Coercions.DOT.Captures.ModalIntersections.Scope
+import Coercions.DOT.Captures.Intersections.Signature
 
 /-!
 # Static and object syntax for modal captured intersections
@@ -230,9 +231,20 @@ end
 
 namespace Capture
 
+/-! `seq` records call-by-value immediate-use order while keeping an empty
+first prediction definitionally neutral. -/
+
+def seq {scope : Sig} : Capture scope → Capture scope → Capture scope
+  | .empty, continuation => continuation
+  | immediate, continuation => .union immediate continuation
+
 def weaken {scope : Sig} {kind : BinderKind} (capture : Capture scope) :
     Capture (scope ▹ kind) :=
   capture.rename DOTCapture.BinderOnly.Rename.succ
+
+@[simp]
+theorem seq_empty {scope : Sig} (continuation : Capture scope) :
+    seq .empty continuation = continuation := rfl
 
 end Capture
 
@@ -295,6 +307,28 @@ def exact {sort : StaticSort} {scope : Sig}
 end Interval
 
 namespace Interface
+
+/-- Bound expressions indexed by the normalization library's two-sort tag.
+The cumulative and intersection source layers use isomorphic sort types. -/
+def Expr (scope : Sig) : DOTCapture.Intersections.StaticSort → Type
+  | .type => StaticExpr .type scope
+  | .capture => StaticExpr .capture scope
+
+/-- Normalize an interface by label before any target name is allocated.
+Every occurrence is retained; a repeated label at another sort is the only
+collection error. -/
+def collect {scope : Sig} : Interface scope →
+    Except DOTCapture.Intersections.SortConflict
+      (DOTCapture.Intersections.Signature (Expr scope))
+  | .empty => .ok .empty
+  | .typeMember label lower upper =>
+      .ok (.singletonType label (.type lower) (.type upper))
+  | .captureMember label lower upper =>
+      .ok (.singletonCapture label (.capture lower) (.capture upper))
+  | .inter left right => do
+      let leftSignature ← left.collect
+      let rightSignature ← right.collect
+      leftSignature.merge? rightSignature
 
 def weaken {scope : Sig} {kind : BinderKind} (interface : Interface scope) :
     Interface (scope ▹ kind) :=

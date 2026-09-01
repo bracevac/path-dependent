@@ -263,6 +263,13 @@ end
 namespace Capture
 
 @[simp]
+theorem seq_rename {source target : Sig}
+    (immediate continuation : Capture source) (rho : Rename source target) :
+    (immediate.seq continuation).rename rho =
+      (immediate.rename rho).seq (continuation.rename rho) := by
+  cases immediate <;> rfl
+
+@[simp]
 theorem weaken_rename {source target : Sig} {kind : BinderKind}
     (capture : Capture source) (rho : Rename source target) :
     (capture.weaken (kind := kind)).rename (rho.lift (kind := kind)) =

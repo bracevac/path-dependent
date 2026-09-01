@@ -33,6 +33,18 @@ def liftTerm {source : Sig} {target : Nat} (rho : Renaming source target) :
   | .here => 0
   | .there index => (rho index).succ
 
+/-- Forget a newly bound static variable.  It has no runtime coordinate. -/
+def liftStatic {source : Sig} {target : Nat} (rho : Renaming source target)
+    (sort : StaticSort) : Renaming (source ▹ .static sort) target :=
+  fun
+  | .there index => rho index
+
+/-- Forget an existential's hidden static variable while preserving its
+newest payload variable in the runtime scope. -/
+def liftPayload {source : Sig} {target : Nat} (rho : Renaming source target)
+    (sort : StaticSort) : Renaming (PayloadScope source sort) (target + 1) :=
+  (rho.liftStatic sort).liftTerm
+
 /-- Canonical runtime coordinates for an all-term heterogeneous scope. -/
 def allTermIdentity : {scope : Nat} → Renaming (termScope scope) scope
   | 0 => fun index => nomatch index
@@ -53,6 +65,9 @@ def eraseValueWith {scope : Sig} {runtimeScope : Nat}
   | .var name => .var (rho name)
   | .unit => .unit
   | .lam _ _ body => .lam (eraseTermWith rho.liftTerm body)
+  | @Value.staticLam _ sort _ body =>
+      eraseValueWith (rho.liftStatic sort) body
+  | .pack _ _ _ payload => eraseValueWith rho payload
   | .object _ payload => eraseValueWith rho payload
   | .objectConsumer _ _ body => .lam (eraseTermWith rho.liftTerm body)
 
@@ -64,12 +79,62 @@ def eraseTermWith {scope : Sig} {runtimeScope : Nat}
       .app (eraseTermWith rho function) (eraseTermWith rho argument)
   | .let' _ rhs body =>
       .let' (eraseTermWith rho rhs) (eraseTermWith rho.liftTerm body)
+  | .staticApp _ function _ => eraseTermWith rho function
+  | @Term.«open» _ sort _ _ _ package body =>
+      .let' (eraseTermWith rho package)
+        (eraseTermWith (rho.liftPayload sort) body)
   | .objectApp _ function argument =>
       .app (eraseTermWith rho function) (eraseTermWith rho argument)
   | .objectLet _ _ rhs body =>
       .let' (eraseTermWith rho rhs) (eraseTermWith rho.liftTerm body)
 
 end
+
+/-! ## Exact generalized erasure equations -/
+
+/-- Static abstraction is runtime-transparent; its body is erased under a
+projection that forgets the new static variable. -/
+@[simp]
+theorem eraseValueWith_staticLam {scope : Sig} {runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope) {sort : StaticSort}
+    (interval : Interval sort scope)
+    (body : Value (scope ▹ .static sort)) :
+    eraseValueWith rho (.staticLam interval body) =
+      eraseValueWith (rho.liftStatic sort) body := rfl
+
+/-- Existential packaging erases to its runtime payload exactly. -/
+@[simp]
+theorem eraseValueWith_pack {scope : Sig} {runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope) {sort : StaticSort}
+    (interval : Interval sort scope)
+    (payloadType : Ty (scope ▹ .static sort))
+    (witness : StaticExpr sort scope) (payload : Value scope) :
+    eraseValueWith rho (.pack interval payloadType witness payload) =
+      eraseValueWith rho payload := rfl
+
+/-- Static application erases its interval and static argument without
+changing or reordering the function computation. -/
+@[simp]
+theorem eraseTermWith_staticApp {scope : Sig} {runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope) {sort : StaticSort}
+    (interval : Interval sort scope) (function : Term scope)
+    (argument : StaticExpr sort scope) :
+    eraseTermWith rho (.staticApp interval function argument) =
+      eraseTermWith rho function := rfl
+
+/-- Existential opening executes the package once and becomes the
+corresponding runtime binding.  The hidden static name has no runtime slot;
+the payload variable does. -/
+@[simp]
+theorem eraseTermWith_open {scope : Sig} {runtimeScope : Nat}
+    (rho : Renaming scope runtimeScope) {sort : StaticSort}
+    (interval : Interval sort scope)
+    (payloadType : Ty (scope ▹ .static sort)) (result : Ty scope)
+    (package : Term scope) (body : Term (PayloadScope scope sort)) :
+    eraseTermWith rho
+        (.open interval payloadType result package body) =
+      .let' (eraseTermWith rho package)
+        (eraseTermWith (rho.liftPayload sort) body) := rfl
 
 /-- Canonical erasure on the all-term fragment. -/
 def eraseValue {scope : Nat} (value : Value (termScope scope)) :
@@ -80,6 +145,42 @@ def eraseValue {scope : Nat} (value : Value (termScope scope)) :
 def eraseTerm {scope : Nat} (term : Term (termScope scope)) :
     Runtime.Tm scope :=
   eraseTermWith Renaming.allTermIdentity term
+
+/-! ## Exact canonical erasure equations -/
+
+@[simp]
+theorem eraseValue_staticLam {scope : Nat} {sort : StaticSort}
+    (interval : Interval sort (termScope scope))
+    (body : Value (termScope scope ▹ .static sort)) :
+    eraseValue (.staticLam interval body) =
+      eraseValueWith (Renaming.allTermIdentity.liftStatic sort) body := rfl
+
+@[simp]
+theorem eraseValue_pack {scope : Nat} {sort : StaticSort}
+    (interval : Interval sort (termScope scope))
+    (payloadType : Ty (termScope scope ▹ .static sort))
+    (witness : StaticExpr sort (termScope scope))
+    (payload : Value (termScope scope)) :
+    eraseValue (.pack interval payloadType witness payload) =
+      eraseValue payload := rfl
+
+@[simp]
+theorem eraseTerm_staticApp {scope : Nat} {sort : StaticSort}
+    (interval : Interval sort (termScope scope))
+    (function : Term (termScope scope))
+    (argument : StaticExpr sort (termScope scope)) :
+    eraseTerm (.staticApp interval function argument) =
+      eraseTerm function := rfl
+
+@[simp]
+theorem eraseTerm_open {scope : Nat} {sort : StaticSort}
+    (interval : Interval sort (termScope scope))
+    (payloadType : Ty (termScope scope ▹ .static sort))
+    (result : Ty (termScope scope)) (package : Term (termScope scope))
+    (body : Term (PayloadScope (termScope scope) sort)) :
+    eraseTerm (.open interval payloadType result package body) =
+      .let' (eraseTerm package)
+        (eraseTermWith (Renaming.allTermIdentity.liftPayload sort) body) := rfl
 
 namespace CapturedIntersections
 
