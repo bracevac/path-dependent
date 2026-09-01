@@ -9,6 +9,7 @@ import Coercions.ManySortedFC.IntervalElaboration
 import Coercions.ManySortedFC.Evidence
 import Coercions.ManySortedFC.EvidenceChecker
 import Coercions.ManySortedFC.EvidenceCheckerCompleteness
+import Coercions.ManySortedFC.EvidenceNormalization
 import Coercions.ManySortedFC.TheoryModel
 import Coercions.ManySortedFC.ModalContext
 import Coercions.ManySortedFC.TheoryModelChecker
@@ -55,6 +56,7 @@ import Coercions.ManySortedFC.ModalAdapterExamples
 import Coercions.ManySortedFC.ModalPreservationExamples
 import Coercions.ManySortedFC.DisjointCaptureTheoryExamples
 import Coercions.ManySortedFC.ClassifierProjectionExamples
+import Coercions.ManySortedFC.EvidenceNormalizationExamples
 
 /-!
 Independent import root for the many-sorted FC target. This development is a

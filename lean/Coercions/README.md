@@ -67,6 +67,46 @@ fixed-point primitive. It also does not prove semantic consistency of every
 recursive type equation or a full DOT tight-typing theorem: only supplied,
 independently checkable models can be packaged.
 
+`Translation/ManySorted/CheckedFrontend` puts an executable checked boundary
+in front of the cumulative compiler. Its inputs are intrinsically scoped but
+explicitly annotated. First-order certificate syntax supplies inclusions,
+intervals, value adapters, modes, and all ordered separation pairs; the front
+end checks these trees structurally without proof search and returns an
+ordinary source typing derivation. The supported fragment includes runtime
+and static functions, application, plain and package-opening lets, packages,
+modal lock/unlock, and explicit use widening. Object construction, member
+selection, and recursive objects are outside the raw syntax; their explicit
+unsupported sentinels test only boundary diagnostics. Enclosing-lock lookup
+and quantifier/modal adapter certificates are also deferred. Lexical static
+lower and upper bounds are checked by exact named lookup. A successful
+pipeline result retains the exact source-checking equation and records
+standalone ManySortedFC checker acceptance.
+Global compiler correctness remains `AdministrativeEq`.
+
+`Translation/ManySorted/CertificateStudy` measures emitted artifacts rather
+than estimating them from source syntax. Its checked normalization pass first
+checks each logical certificate, removes only administrative proof structure,
+then rechecks the result at the same proposition. The rechecked corpus shrinks
+from 94 to 6 evidence nodes; the real compiler-emitted certificate in that
+corpus is already minimal at 3 nodes. A separate whole-artifact traversal
+reports a syntax-only opportunity of 76 to 72 nodes over 51 evidence trees.
+Adapter measurements compare ordinary erasure with a clearly labeled
+identity-adapter baseline, so eta-expansion is counted rather than hidden.
+These are structural AST counters, not serialized sizes or execution-time
+measurements.
+`Tools/checker-footprint.sh` reproducibly reports 1,636 physical lines and
+75,050 bytes for its explicit executable-checker module list; this is a
+selected module footprint, not a dependency closure or minimized trusted
+computing base.
+
+The Capybara-inspired benchmark checks two nonempty, same-root read-only
+callback captures, invokes both callbacks sequentially, and passes through a
+repeated-label object package/open before runtime execution. The emitted
+artifact is independently checked and its erasure performs genuine force,
+beta, and zeta steps. A writable view of the same root is rejected. This is a
+static access-separation case study: the shared runtime still has no
+concurrency, mutation, allocation, consumption, or freshness semantics.
+
 The classifier-projection extension adds a closed classifier tree, ground
 kind intersection and subtraction, and `Capture.project` to ManySortedFC.
 The standalone checker recomputes equivalence, subkind, emptiness, and
