@@ -2,6 +2,8 @@ import Coercions.Translation.ManySorted.ModalIntersections.Layout
 import Coercions.Translation.ManySorted.ModalIntersections.Preparation
 import Coercions.Translation.ManySorted.ModalIntersections.PreparationMetatheory
 import Coercions.Translation.ManySorted.ModalIntersections.PreparationExamples
+import Coercions.Translation.ManySorted.ModalIntersections.ObjectContract
+import Coercions.Translation.ManySorted.ModalIntersections.ObjectContractExamples
 import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenance
 import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenanceExamples
 import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenanceTransportExamples
@@ -28,12 +30,20 @@ import Coercions.Translation.ManySorted.ModalIntersections.AdapterElaboration
 import Coercions.Translation.ManySorted.ModalIntersections.AdapterElaborationExamples
 import Coercions.Translation.ManySorted.ModalIntersections.CompilerArtifacts
 import Coercions.Translation.ManySorted.ModalIntersections.CompilerArtifactsExamples
+import Coercions.Translation.ManySorted.ModalIntersections.PositiveObjectCompilation
+import Coercions.Translation.ManySorted.ModalIntersections.PositiveObjectCompilationExamples
+import Coercions.Translation.ManySorted.ModalIntersections.Compiler
+import Coercions.Translation.ManySorted.ModalIntersections.CompilerExamples
+import Coercions.Translation.ManySorted.ModalIntersections.CompilerMetrics
+import Coercions.Translation.ManySorted.ModalIntersections.CompilerMetricsExamples
 
 /-!
-# Cumulative captured-DOT compiler foundation
+# Cumulative captured-DOT compiler
 
-This layer fixes the combined source-to-target layout, prepares lexical and
-object theories names first, tracks proof-relevant modal coordinates, and
-records independently checked target contexts.  The recursive term compiler
-is built on these exact artifacts.
+This layer fixes the combined source-to-target layout, allocates theory names
+before constraints, tracks proof-relevant modal coordinates, and emits
+independently checked `ManySortedFC` artifacts. Object payloads carry an
+explicit representation capture, related to both the source representation
+and the advertised object capture by checked evidence. The compiler compares
+target erasure with the source language's independently defined erasure.
 -/

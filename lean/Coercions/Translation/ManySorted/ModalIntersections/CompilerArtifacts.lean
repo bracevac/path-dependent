@@ -56,7 +56,7 @@ structure CompiledValue {sourceScope : Source.Sig}
   sourceTyping : Source.ValueTyping environment sourceValue sourceType
   targetType : Target.Ty targetScope
   typePrepared :
-    Preparation.translateType core.layout sourceType = .ok targetType
+    ObjectContract.translateType core.layout sourceType = .ok targetType
   term : Target.Tm targetScope
   valueChecked : ManySortedFC.Tm.ValueChecked term
   valueAccepted : ManySortedFC.Tm.checkValue term = some valueChecked
@@ -83,7 +83,7 @@ structure CompiledTerm {sourceScope : Source.Sig}
   usePrepared :
     Preparation.translateCapture core.layout sourceUse = .ok targetUse
   typePrepared :
-    Preparation.translateType core.layout sourceType = .ok targetType
+    ObjectContract.translateType core.layout sourceType = .ok targetType
   term : Target.Tm targetScope
   checked : ManySortedFC.Tm.Checked core.target term
   accepted : ManySortedFC.Tm.check core.target term = some checked
@@ -183,7 +183,7 @@ def finishValue? {sourceScope : Source.Sig}
     (candidateErasure : ManySortedFC.Runtime.AdministrativeEq candidate.erase
       (core.eraseValue sourceValue)) :
     Option (CompiledValue core sourceValue sourceType) :=
-  match typePrepared : Preparation.translateType core.layout sourceType with
+  match typePrepared : ObjectContract.translateType core.layout sourceType with
   | .error _ => none
   | .ok targetType =>
       match valueAccepted : ManySortedFC.Tm.checkValue candidate with
@@ -233,7 +233,7 @@ def finishTerm? {sourceScope : Source.Sig}
   | .error _ => none
   | .ok targetUse =>
       match typePrepared :
-          Preparation.translateType core.layout sourceType with
+          ObjectContract.translateType core.layout sourceType with
       | .error _ => none
       | .ok targetType =>
           match accepted : ManySortedFC.Tm.check core.target candidate with

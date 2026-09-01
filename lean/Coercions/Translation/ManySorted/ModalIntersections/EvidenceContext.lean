@@ -1,4 +1,5 @@
 import Coercions.Translation.ManySorted.ModalIntersections.EvidenceElaboration
+import Coercions.Translation.ManySorted.ModalIntersections.ObjectOccurrenceEvidence
 
 /-!
 # Evidence-complete cumulative compiler contexts
@@ -11,9 +12,8 @@ typing derivations.
 
 No operation searches the target context for an equal proposition.  Every
 transport renames the evidence syntax already selected by the source proof.
-The partial object-installation boundary at the end records the new root.  It
-does not yet construct the complete object-extended context; retained member
-occurrences require a stronger ordinal-carrying artifact supplied separately.
+`Context.extendContractedObject` installs the complete object theory, payload,
+member leaves, and checked stable-root contract executably.
 -/
 
 namespace DOTCaptureToManySortedFC.ModalIntersections.EvidenceContext
@@ -178,7 +178,7 @@ def prepareBinding? {sourceScope : Source.Sig}
     (name : DOTCapture.ModalIntersections.BVar sourceScope .term) :
     Option (PreparedBinding core name) := do
   let targetType <-
-    match prepared : Preparation.translateType core.layout
+    match prepared : ObjectContract.translateType core.layout
         (environment.bindings.lookupTerm name) with
     | .ok targetType =>
         some
@@ -207,8 +207,76 @@ def checked {sourceScope : Source.Sig}
 
 end BindingCompiler
 
-/-- A stable source object root tied to its exact target payload coordinate
-and independently prepared representation type. -/
+/-- Checked capture facts retained by every stable object root.  They expose
+the payload's actual capture identity separately from both the independently
+translated representation capture and the object's advertised capture. -/
+structure RootCaptureContract {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (representationCapture representationView objectCapture :
+      ManySortedFC.Capture targetScope) where
+  exactEvidence : ManySortedFC.Evidence (.equality .capture) targetScope
+  exactTyping : ManySortedFC.Evidence.Proves core.target exactEvidence
+    (.equality (.capture representationCapture) (.capture representationView))
+  exactAcceptance : ∃ checked,
+    ManySortedFC.Evidence.check core.target exactEvidence = some checked ∧
+      checked.proposition =
+        .equality (.capture representationCapture)
+          (.capture representationView)
+  containmentEvidence : ManySortedFC.Evidence (.inclusion .capture)
+    targetScope
+  containmentTyping : ManySortedFC.Evidence.Proves core.target
+    containmentEvidence
+    (.inclusion (.capture representationCapture) (.capture objectCapture))
+  containmentAcceptance : ∃ checked,
+    ManySortedFC.Evidence.check core.target containmentEvidence =
+      some checked ∧
+      checked.proposition =
+        .inclusion (.capture representationCapture) (.capture objectCapture)
+
+def checkRootCaptureContract? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (representationCapture representationView objectCapture :
+      ManySortedFC.Capture targetScope)
+    (exactEvidence : ManySortedFC.Evidence (.equality .capture) targetScope)
+    (containmentEvidence : ManySortedFC.Evidence (.inclusion .capture)
+      targetScope) :
+    Option (RootCaptureContract core representationCapture
+      representationView objectCapture) :=
+  match exactAcceptance : ManySortedFC.Evidence.check core.target
+      exactEvidence with
+  | none => none
+  | some exactChecked =>
+      if exactMatches : exactChecked.proposition =
+          .equality (.capture representationCapture)
+            (.capture representationView) then
+        match containmentAcceptance : ManySortedFC.Evidence.check core.target
+            containmentEvidence with
+        | none => none
+        | some containmentChecked =>
+            if containmentMatches : containmentChecked.proposition =
+                .inclusion (.capture representationCapture)
+                  (.capture objectCapture) then
+              some
+                { exactEvidence
+                  exactTyping := by
+                    simpa only [exactMatches] using exactChecked.typing
+                  exactAcceptance :=
+                    ⟨exactChecked, exactAcceptance, exactMatches⟩
+                  containmentEvidence
+                  containmentTyping := by
+                    simpa only [containmentMatches] using
+                      containmentChecked.typing
+                  containmentAcceptance :=
+                    ⟨containmentChecked, containmentAcceptance,
+                      containmentMatches⟩ }
+            else none
+      else none
+
+/-- A stable source object root tied to its exact target payload coordinate,
+independently prepared source-view type, and a checked value-only adapter from
+the variable's precise target type to that source view. -/
 structure PreparedRoot {sourceScope : Source.Sig}
     {environment : Source.TypingEnv sourceScope}
     {targetScope : Target.Sig} (core : Core environment targetScope)
@@ -221,11 +289,91 @@ structure PreparedRoot {sourceScope : Source.Sig}
   targetName : ManySortedFC.BVar targetScope .term
   selected : targetName = core.layout.termVar sourceName
   targetRepresentation : ManySortedFC.Ty targetScope
-  prepared : Preparation.translateType core.layout
+  prepared : ObjectContract.translateType core.layout
     (object.representationAt receiver) = .ok targetRepresentation
-  lookup : core.target.lookup targetName = .term targetRepresentation
+  boundRepresentation : ManySortedFC.Ty targetScope
+  lookup : core.target.lookup targetName = .term boundRepresentation
+  objectCapture : ManySortedFC.Capture targetScope
+  objectCapturePrepared : Preparation.translateCapture core.layout
+    object.outerCapture = .ok objectCapture
+  captureContract : RootCaptureContract core
+    boundRepresentation.outerCapture targetRepresentation.outerCapture
+    objectCapture
+  adapter : ManySortedFC.Adapter targetScope
+  adapterChecked : ManySortedFC.Adapter.Checked core.target adapter
+  adapterAccepted : ManySortedFC.Adapter.check core.target adapter =
+    some adapterChecked
+  sourceExact : adapterChecked.source =
+    boundRepresentation.precise targetName
+  targetExact : adapterChecked.target = targetRepresentation
 
-/-- Recheck a proof-selected target root coordinate. -/
+/-- Recheck a proof-selected target root coordinate and its explicit
+structural adapter.  In particular, no equality between a bound payload type
+and the independently translated source view is assumed. -/
+def finishRootWithAdapter? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    {receiver : DOTCapture.ModalIntersections.Path sourceScope}
+    {object : DOTCapture.ModalIntersections.ObjectType sourceScope}
+    (exposes : DOTCapture.ModalIntersections.ExposesObject
+      environment.bindings receiver object)
+    (candidate : ManySortedFC.BVar targetScope .term)
+    (adapter : ManySortedFC.Adapter targetScope)
+    (exactEvidence : ManySortedFC.Evidence (.equality .capture) targetScope)
+    (containmentEvidence : ManySortedFC.Evidence (.inclusion .capture)
+      targetScope) :
+    Option (PreparedRoot core exposes) :=
+  match exposes with
+  | @DOTCapture.ModalIntersections.ExposesObject.variable _ _ sourceName _ _ =>
+      match prepared : ObjectContract.translateType core.layout
+          (object.representationAt (.var sourceName)) with
+      | .error _ => none
+      | .ok targetRepresentation =>
+          if selected : candidate = core.layout.termVar sourceName then
+            match lookup : core.target.lookup candidate with
+            | .term boundRepresentation =>
+                match objectCapturePrepared : Preparation.translateCapture
+                    core.layout object.outerCapture with
+                | .error _ => none
+                | .ok objectCapture =>
+                    match checkRootCaptureContract? core
+                        boundRepresentation.outerCapture
+                        targetRepresentation.outerCapture objectCapture
+                        exactEvidence containmentEvidence with
+                    | none => none
+                    | some captureContract =>
+                        match accepted : ManySortedFC.Adapter.check core.target
+                            adapter with
+                        | none => none
+                        | some checked =>
+                            if sourceExact : checked.source =
+                                boundRepresentation.precise candidate then
+                              if targetExact : checked.target =
+                                  targetRepresentation then
+                                some
+                                  { sourceName
+                                    receiver_eq := rfl
+                                    targetName := candidate
+                                    selected
+                                    targetRepresentation
+                                    prepared
+                                    boundRepresentation
+                                    lookup
+                                    objectCapture
+                                    objectCapturePrepared
+                                    captureContract
+                                    adapter
+                                    adapterChecked := checked
+                                    adapterAccepted := accepted
+                                    sourceExact
+                                    targetExact }
+                              else none
+                            else none
+            | _ => none
+          else none
+
+/-- Identity-only convenience boundary for roots whose precise bound type is
+already their independently translated source view. -/
 def finishRoot? {sourceScope : Source.Sig}
     {environment : Source.TypingEnv sourceScope}
     {targetScope : Target.Sig} (core : Core environment targetScope)
@@ -235,25 +383,13 @@ def finishRoot? {sourceScope : Source.Sig}
       environment.bindings receiver object)
     (candidate : ManySortedFC.BVar targetScope .term) :
     Option (PreparedRoot core exposes) :=
-  match exposes with
-  | @DOTCapture.ModalIntersections.ExposesObject.variable _ _ sourceName _ _ =>
-      match prepared : Preparation.translateType core.layout
-          (object.representationAt (.var sourceName)) with
-      | .error _ => none
-      | .ok targetRepresentation =>
-          if selected : candidate = core.layout.termVar sourceName then
-            if lookup : core.target.lookup candidate =
-                .term targetRepresentation then
-              some
-                { sourceName
-                  receiver_eq := rfl
-                  targetName := candidate
-                  selected
-                  targetRepresentation
-                  prepared
-                  lookup }
-            else none
-          else none
+  match core.target.lookup candidate with
+  | .term boundRepresentation =>
+      finishRootWithAdapter? core exposes candidate
+        (.identity (boundRepresentation.precise candidate))
+        (.equalityRefl (.capture boundRepresentation.outerCapture))
+        (.inclusionRefl (.capture boundRepresentation.outerCapture))
+  | _ => none
 
 structure RootCompiler {sourceScope : Source.Sig}
     {environment : Source.TypingEnv sourceScope}
@@ -865,6 +1001,67 @@ private def exposurePreimage {scope : Source.Sig}
               receiver_eq := rfl
               object_eq := preimage.object_eq }
 
+/-- An exposure below an object-opening binder is either the newly opened
+root or an older root transported through that binder. -/
+private inductive ObjectExtensionExposure {scope : Source.Sig}
+    (context : DOTCapture.ModalIntersections.Ctx scope)
+    (sourceObject : DOTCapture.ModalIntersections.ObjectType scope)
+    (receiver : DOTCapture.ModalIntersections.Path (scope ▹ .term))
+    (object : DOTCapture.ModalIntersections.ObjectType (scope ▹ .term)) where
+  | newest
+      (receiver_eq : receiver = .var .here)
+      (object_eq : object = sourceObject.weaken) :
+      ObjectExtensionExposure context sourceObject receiver object
+  | older
+      (oldReceiver : DOTCapture.ModalIntersections.Path scope)
+      (oldObject : DOTCapture.ModalIntersections.ObjectType scope)
+      (exposes : DOTCapture.ModalIntersections.ExposesObject context
+        oldReceiver oldObject)
+      (receiver_eq : receiver = oldReceiver.weaken)
+      (object_eq : object = oldObject.weaken) :
+      ObjectExtensionExposure context sourceObject receiver object
+
+private def objectExtensionExposure {scope : Source.Sig}
+    (context : DOTCapture.ModalIntersections.Ctx scope)
+    (sourceObject : DOTCapture.ModalIntersections.ObjectType scope)
+    (receiver : DOTCapture.ModalIntersections.Path (scope ▹ .term))
+    (object : DOTCapture.ModalIntersections.ObjectType (scope ▹ .term))
+    (exposes : DOTCapture.ModalIntersections.ExposesObject
+      (context.extendTerm sourceObject.formedType) receiver object) :
+    ObjectExtensionExposure context sourceObject receiver object := by
+  cases exposes
+  rename_i name found
+  cases name with
+  | here =>
+      let preimage := objectPreimage sourceObject.formedType object found
+      have oldObjectEq : preimage.oldObject = sourceObject := by
+        cases sourceObject
+        simpa [DOTCapture.ModalIntersections.ObjectType.formedType,
+          DOTCapture.ModalIntersections.Ty.stripCapture] using
+            preimage.exposed
+      exact .newest rfl (preimage.object_eq.trans
+        (congrArg DOTCapture.ModalIntersections.ObjectType.weaken oldObjectEq))
+  | there oldName =>
+      cases bindingEquation : context.lookup oldName with
+      | term oldType =>
+          have oldFound : oldType.weaken.stripCapture = .object object := by
+            rw [DOTCapture.ModalIntersections.Ty.weaken,
+              DOTCapture.ModalIntersections.Ty.stripCapture_rename]
+            simpa [DOTCapture.ModalIntersections.Ctx.lookupTerm,
+              DOTCapture.ModalIntersections.Binding.termType,
+              DOTCapture.ModalIntersections.Binding.weaken,
+              DOTCapture.ModalIntersections.Binding.rename,
+              bindingEquation] using found
+          let preimage := objectPreimage oldType object oldFound
+          have oldExposes : DOTCapture.ModalIntersections.ExposesObject
+              context (.var oldName) preimage.oldObject :=
+            DOTCapture.ModalIntersections.ExposesObject.variable (by
+              simpa [DOTCapture.ModalIntersections.Ctx.lookupTerm,
+                DOTCapture.ModalIntersections.Binding.termType,
+                bindingEquation] using preimage.exposed)
+          exact .older (.var oldName) preimage.oldObject oldExposes rfl
+            preimage.object_eq
+
 private structure TermVariablePreimage {scope : Source.Sig}
     {kind : DOTCapture.ModalIntersections.BinderKind}
     (context : DOTCapture.ModalIntersections.Ctx scope)
@@ -1109,8 +1306,13 @@ private def plainRoots {scope : Source.Sig}
       _ _ exposes
     do
       let old <- context.roots.root retained.exposes
-      finishRoot? (context.core.extendPlain sourceType prepared.targetType)
-        exposes (ManySortedFC.Rename.succ.var old.targetName)
+      finishRootWithAdapter?
+        (context.core.extendPlain sourceType prepared.targetType) exposes
+        (ManySortedFC.Rename.succ.var old.targetName)
+        (old.adapter.rename ManySortedFC.Rename.succ)
+        (old.captureContract.exactEvidence.rename ManySortedFC.Rename.succ)
+        (old.captureContract.containmentEvidence.rename
+          ManySortedFC.Rename.succ)
 
 /-- Add a prepared ordinary binding.  `Plain` excludes allocation of a fresh
 stable object root; all older proof-selected coordinates are retained. -/
@@ -1287,8 +1489,12 @@ private def staticRoots {scope : Source.Sig}
       _ _ exposes
     do
       let old <- context.roots.root retained.exposes
-      finishRoot? (context.core.extendStatic interval prepared.theory)
-        exposes ((Layout.staticRename targetScope interval).var old.targetName)
+      let targetRename := Layout.staticRename targetScope interval
+      finishRootWithAdapter?
+        (context.core.extendStatic interval prepared.theory) exposes
+        (targetRename.var old.targetName) (old.adapter.rename targetRename)
+        (old.captureContract.exactEvidence.rename targetRename)
+        (old.captureContract.containmentEvidence.rename targetRename)
 
 /-- Install a prepared lexical interval, including its exact newest lower and
 upper coordinates. -/
@@ -1370,9 +1576,13 @@ private def modalRoots {scope : Source.Sig}
     RootCompiler (context.core.push requirements prepared.requirements) where
   root := fun exposes => do
     let old <- context.roots.root exposes
-    finishRoot? (context.core.push requirements prepared.requirements)
-      exposes ((ManySortedFC.Rename.weakenModal targetScope separationCount
-        (Preparation.translateModes modes)).var old.targetName)
+    let targetRename := ManySortedFC.Rename.weakenModal targetScope
+      separationCount (Preparation.translateModes modes)
+    finishRootWithAdapter?
+      (context.core.push requirements prepared.requirements) exposes
+      (targetRename.var old.targetName) (old.adapter.rename targetRename)
+      (old.captureContract.exactEvidence.rename targetRename)
+      (old.captureContract.containmentEvidence.rename targetRename)
 
 /-- Enter a prepared modal frame.  Newest queries use its exact current-frame
 variables; every older candidate is renamed below the new evidence block. -/
@@ -1402,6 +1612,306 @@ def push {scope : Source.Sig}
 
 /-! ## Stable-object installation boundary -/
 
+private def contractedTypeOccurrenceEvidence? {targetScope : Target.Sig}
+    (object : ObjectContract.PreparedObject targetScope)
+    {sourceScope : Source.Sig}
+    {interface : DOTCapture.ModalIntersections.Interface sourceScope}
+    {label : Nat}
+    {lower upper : Source.Ty sourceScope}
+    (occurrence : interface.HasTypeOccurrence label lower upper) :
+    Option
+      (ManySortedFC.Evidence (.inclusion .type)
+        (ManySortedFC.PayloadScope targetScope object.symbols
+          object.relations) ×
+       ManySortedFC.Evidence (.inclusion .type)
+        (ManySortedFC.PayloadScope targetScope object.symbols
+          object.relations)) := do
+  let selected <- ObjectOccurrenceEvidence.findTypeOrdinalSelection? label
+    (ConstraintRetention.RawOccurrence.typeOrdinal occurrence)
+    object.encoding.openedOccurrences
+  let contractedRename := ObjectContract.openedBaseRename targetScope
+    object.memberSymbols object.memberRelations
+  let payloadRename := contractedRename.comp ManySortedFC.Rename.succ
+  pure
+    ( .var (payloadRename.var selected.selected.lowerEvidence),
+      .var (payloadRename.var selected.selected.upperEvidence) )
+
+private def contractedCaptureOccurrenceEvidence? {targetScope : Target.Sig}
+    (object : ObjectContract.PreparedObject targetScope)
+    {sourceScope : Source.Sig}
+    {interface : DOTCapture.ModalIntersections.Interface sourceScope}
+    {label : Nat}
+    {lower upper : Source.Capture sourceScope}
+    (occurrence : interface.HasCaptureOccurrence label lower upper) :
+    Option
+      (ManySortedFC.Evidence (.inclusion .capture)
+        (ManySortedFC.PayloadScope targetScope object.symbols
+          object.relations) ×
+       ManySortedFC.Evidence (.inclusion .capture)
+        (ManySortedFC.PayloadScope targetScope object.symbols
+          object.relations)) := do
+  let selected <- ObjectOccurrenceEvidence.findCaptureOrdinalSelection? label
+    (ConstraintRetention.RawOccurrence.captureOrdinal occurrence)
+    object.encoding.openedOccurrences
+  let contractedRename := ObjectContract.openedBaseRename targetScope
+    object.memberSymbols object.memberRelations
+  let payloadRename := contractedRename.comp ManySortedFC.Rename.succ
+  pure
+    ( .var (payloadRename.var selected.selected.lowerEvidence),
+      .var (payloadRename.var selected.selected.upperEvidence) )
+
+/-- The root-to-representation adapter justified by `repExact`.  A bare
+source representation is reached through an explicit empty retag followed by
+`forgetEmptyCapture`; capture information is never discarded implicitly. -/
+private def contractedRootAdapter {targetScope : Target.Sig}
+    (object : ObjectContract.PreparedObject targetScope)
+    (targetRepresentation : ManySortedFC.Ty
+      (ManySortedFC.PayloadScope targetScope object.symbols object.relations)) :
+    ManySortedFC.Adapter
+      (ManySortedFC.PayloadScope targetScope object.symbols object.relations) :=
+  let source := (object.representation.rename ManySortedFC.Rename.succ).precise
+    .here
+  let exact : ManySortedFC.Evidence (.inclusion .capture)
+      (ManySortedFC.PayloadScope targetScope object.symbols object.relations) :=
+    .inclusionTrans (.captureVariable .here)
+      (.equalityToInclusion (.var (.there object.repExactEvidence)))
+  let shape : ManySortedFC.Evidence (.inclusion .type)
+      (ManySortedFC.PayloadScope targetScope object.symbols object.relations) :=
+    .inclusionRefl (.type targetRepresentation.stripCapture)
+  match targetRepresentation with
+  | .capturing targetCapture targetShape =>
+      .retagCapture source targetCapture targetShape exact shape
+  | targetShape =>
+      .compose
+        (.retagCapture source .empty targetShape exact shape)
+        (.forgetEmptyCapture targetShape)
+
+private def contractedObjectLeaves {scope : Source.Sig}
+    {environment : Source.TypingEnv scope} {targetScope : Target.Sig}
+    (context : Context environment targetScope)
+    (sourceObject : DOTCapture.ModalIntersections.ObjectType scope)
+    (prepared : PreparedContractedObject context.core sourceObject) :
+    LeafCompiler
+      (context.core.extendContractedObject sourceObject prepared.object) where
+  lower := by
+    intro sort reference endpoint bound
+    let nextCore := context.core.extendContractedObject sourceObject
+      prepared.object
+    let targetRename := Layout.objectRename (symbols := prepared.object.symbols)
+      (relations := prepared.object.relations) targetScope
+    cases bound with
+    | @bound _ index _ _ found =>
+        cases index with
+        | there older =>
+            let retained := lowerBoundPreimage environment.bindings
+              (.term sourceObject.formedType) older endpoint found
+            let oldBound : DOTCapture.ModalIntersections.HasLower
+                environment.bindings (.bound older) retained.oldEndpoint :=
+              .bound retained.found
+            exact do
+              let compiled <- context.leaves.lower oldBound
+              renameCheckedLeaf? nextCore endpoint (.bound (.there older))
+                targetRename compiled
+    | typeMember exposes occurrence =>
+        rename_i receiver object label lower upper
+        let exposed := objectExtensionExposure environment.bindings sourceObject
+          receiver object exposes
+        cases exposed with
+        | newest receiverEq objectEq =>
+            subst receiver
+            subst object
+            rw [objectInterfaceWeaken] at occurrence
+            let retained := typeOccurrencePreimage sourceObject.interface label
+              lower upper occurrence
+            exact do
+              let evidence <- contractedTypeOccurrenceEvidence?
+                prepared.object retained.occurrence
+              finishInclusion? nextCore (.type (lower.openAt (.var .here)))
+                (.type (.ref (.typeMember (.var .here) label))) evidence.1
+        | older oldReceiver oldObject oldExposes receiverEq objectEq =>
+            subst receiver
+            subst object
+            rw [objectInterfaceWeaken] at occurrence
+            let retained := typeOccurrencePreimage oldObject.interface label
+              lower upper occurrence
+            let oldBound : DOTCapture.ModalIntersections.HasLower
+                environment.bindings (.typeMember oldReceiver label)
+                (.type (retained.oldLower.openAt oldReceiver)) :=
+              .typeMember oldExposes retained.occurrence
+            exact do
+              let compiled <- context.leaves.lower oldBound
+              renameCheckedLeaf? nextCore
+                (.type (lower.openAt oldReceiver.weaken))
+                (.type (.ref (.typeMember oldReceiver.weaken label)))
+                targetRename compiled
+    | captureMember exposes occurrence =>
+        rename_i receiver object label lower upper
+        let exposed := objectExtensionExposure environment.bindings sourceObject
+          receiver object exposes
+        cases exposed with
+        | newest receiverEq objectEq =>
+            subst receiver
+            subst object
+            rw [objectInterfaceWeaken] at occurrence
+            let retained := captureOccurrencePreimage sourceObject.interface
+              label lower upper occurrence
+            exact do
+              let evidence <- contractedCaptureOccurrenceEvidence?
+                prepared.object retained.occurrence
+              finishInclusion? nextCore
+                (.capture (lower.openAt (.var .here)))
+                (.capture (.ref (.captureMember (.var .here) label)))
+                evidence.1
+        | older oldReceiver oldObject oldExposes receiverEq objectEq =>
+            subst receiver
+            subst object
+            rw [objectInterfaceWeaken] at occurrence
+            let retained := captureOccurrencePreimage oldObject.interface label
+              lower upper occurrence
+            let oldBound : DOTCapture.ModalIntersections.HasLower
+                environment.bindings (.captureMember oldReceiver label)
+                (.capture (retained.oldLower.openAt oldReceiver)) :=
+              .captureMember oldExposes retained.occurrence
+            exact do
+              let compiled <- context.leaves.lower oldBound
+              renameCheckedLeaf? nextCore
+                (.capture (lower.openAt oldReceiver.weaken))
+                (.capture (.ref (.captureMember oldReceiver.weaken label)))
+                targetRename compiled
+  upper := by
+    intro sort reference endpoint bound
+    let nextCore := context.core.extendContractedObject sourceObject
+      prepared.object
+    let targetRename := Layout.objectRename (symbols := prepared.object.symbols)
+      (relations := prepared.object.relations) targetScope
+    cases bound with
+    | @bound _ index _ _ found =>
+        cases index with
+        | there older =>
+            let retained := upperBoundPreimage environment.bindings
+              (.term sourceObject.formedType) older endpoint found
+            let oldBound : DOTCapture.ModalIntersections.HasUpper
+                environment.bindings (.bound older) retained.oldEndpoint :=
+              .bound retained.found
+            exact do
+              let compiled <- context.leaves.upper oldBound
+              renameCheckedLeaf? nextCore (.bound (.there older)) endpoint
+                targetRename compiled
+    | typeMember exposes occurrence =>
+        rename_i receiver object label lower upper
+        let exposed := objectExtensionExposure environment.bindings sourceObject
+          receiver object exposes
+        cases exposed with
+        | newest receiverEq objectEq =>
+            subst receiver
+            subst object
+            rw [objectInterfaceWeaken] at occurrence
+            let retained := typeOccurrencePreimage sourceObject.interface label
+              lower upper occurrence
+            exact do
+              let evidence <- contractedTypeOccurrenceEvidence?
+                prepared.object retained.occurrence
+              finishInclusion? nextCore
+                (.type (.ref (.typeMember (.var .here) label)))
+                (.type (upper.openAt (.var .here))) evidence.2
+        | older oldReceiver oldObject oldExposes receiverEq objectEq =>
+            subst receiver
+            subst object
+            rw [objectInterfaceWeaken] at occurrence
+            let retained := typeOccurrencePreimage oldObject.interface label
+              lower upper occurrence
+            let oldBound : DOTCapture.ModalIntersections.HasUpper
+                environment.bindings (.typeMember oldReceiver label)
+                (.type (retained.oldUpper.openAt oldReceiver)) :=
+              .typeMember oldExposes retained.occurrence
+            exact do
+              let compiled <- context.leaves.upper oldBound
+              renameCheckedLeaf? nextCore
+                (.type (.ref (.typeMember oldReceiver.weaken label)))
+                (.type (upper.openAt oldReceiver.weaken)) targetRename compiled
+    | captureMember exposes occurrence =>
+        rename_i receiver object label lower upper
+        let exposed := objectExtensionExposure environment.bindings sourceObject
+          receiver object exposes
+        cases exposed with
+        | newest receiverEq objectEq =>
+            subst receiver
+            subst object
+            rw [objectInterfaceWeaken] at occurrence
+            let retained := captureOccurrencePreimage sourceObject.interface
+              label lower upper occurrence
+            exact do
+              let evidence <- contractedCaptureOccurrenceEvidence?
+                prepared.object retained.occurrence
+              finishInclusion? nextCore
+                (.capture (.ref (.captureMember (.var .here) label)))
+                (.capture (upper.openAt (.var .here))) evidence.2
+        | older oldReceiver oldObject oldExposes receiverEq objectEq =>
+            subst receiver
+            subst object
+            rw [objectInterfaceWeaken] at occurrence
+            let retained := captureOccurrencePreimage oldObject.interface label
+              lower upper occurrence
+            let oldBound : DOTCapture.ModalIntersections.HasUpper
+                environment.bindings (.captureMember oldReceiver label)
+                (.capture (retained.oldUpper.openAt oldReceiver)) :=
+              .captureMember oldExposes retained.occurrence
+            exact do
+              let compiled <- context.leaves.upper oldBound
+              renameCheckedLeaf? nextCore
+                (.capture (.ref (.captureMember oldReceiver.weaken label)))
+                (.capture (upper.openAt oldReceiver.weaken)) targetRename
+                compiled
+  termVariable := by
+    intro name captures shape found
+    let nextCore := context.core.extendContractedObject sourceObject
+      prepared.object
+    let targetRename := Layout.objectRename (symbols := prepared.object.symbols)
+      (relations := prepared.object.relations) targetScope
+    cases name with
+    | here =>
+        exact finishInclusion? nextCore
+          (.capture (.singleton (.var .here))) (.capture captures)
+          (.inclusionTrans (.captureVariable .here)
+            (.var (.there prepared.object.repCaptureEvidence)))
+    | there older =>
+        let retained := termVariablePreimage environment.bindings
+          (.term sourceObject.formedType) older captures shape found
+        exact do
+          let compiled <- context.leaves.termVariable retained.found
+          renameCheckedLeaf? nextCore
+            (.capture (.singleton (.var (.there older)))) (.capture captures)
+            targetRename compiled
+  payload := by
+    intro receiver object exposes
+    let nextCore := context.core.extendContractedObject sourceObject
+      prepared.object
+    let targetRename := Layout.objectRename (symbols := prepared.object.symbols)
+      (relations := prepared.object.relations) targetScope
+    let exposed := objectExtensionExposure environment.bindings sourceObject
+      receiver object exposes
+    cases exposed with
+    | newest receiverEq objectEq =>
+        subst receiver
+        subst object
+        exact finishInclusion? nextCore
+          (.capture (.singleton (.var .here)))
+          (.capture
+            ((sourceObject.weaken.representationAt (.var .here)).outerCapture))
+          (.inclusionTrans (.captureVariable .here)
+            (.equalityToInclusion
+              (.var (.there prepared.object.repExactEvidence))))
+    | older oldReceiver oldObject oldExposes receiverEq objectEq =>
+        subst receiver
+        subst object
+        exact do
+          let compiled <- context.leaves.payload oldExposes
+          renameCheckedLeaf? nextCore
+            (.capture (.singleton oldReceiver.weaken))
+            (.capture
+              ((oldObject.weaken.representationAt oldReceiver.weaken).outerCapture))
+            targetRename compiled
+
 /-- The source exposure introduced by opening one prepared object. -/
 def newestObjectExposure {scope : Source.Sig}
     {environment : Source.TypingEnv scope}
@@ -1412,6 +1922,91 @@ def newestObjectExposure {scope : Source.Sig}
   apply DOTCapture.ModalIntersections.ExposesObject.variable
   cases sourceObject
   rfl
+
+/-- Prepare the newly opened stable root from the explicit payload contract.
+The adapter is always checker-delimited and uses `repExact`; bare source
+representations additionally cross `forgetEmptyCapture`. -/
+def prepareNewestContractedRoot? {scope : Source.Sig}
+    {environment : Source.TypingEnv scope} {targetScope : Target.Sig}
+    (context : Context environment targetScope)
+    (sourceObject : DOTCapture.ModalIntersections.ObjectType scope)
+    (prepared : PreparedContractedObject context.core sourceObject) :
+    Option (PreparedRoot
+      (context.core.extendContractedObject sourceObject prepared.object)
+      (newestObjectExposure (environment := environment) sourceObject)) :=
+  let nextCore := context.core.extendContractedObject sourceObject
+    prepared.object
+  match ObjectContract.translateType nextCore.layout
+      (sourceObject.weaken.representationAt (.var .here)) with
+  | .error _ => none
+  | .ok targetRepresentation =>
+      finishRootWithAdapter? nextCore
+        (newestObjectExposure (environment := environment) sourceObject)
+        .here (contractedRootAdapter prepared.object targetRepresentation)
+        (.var (.there prepared.object.repExactEvidence))
+        (.var (.there prepared.object.repCaptureEvidence))
+
+private def contractedObjectRoots {scope : Source.Sig}
+    {environment : Source.TypingEnv scope} {targetScope : Target.Sig}
+    (context : Context environment targetScope)
+    (sourceObject : DOTCapture.ModalIntersections.ObjectType scope)
+    (prepared : PreparedContractedObject context.core sourceObject) :
+    RootCompiler
+      (context.core.extendContractedObject sourceObject prepared.object) where
+  root := fun exposes =>
+    let exposed := objectExtensionExposure environment.bindings sourceObject
+      _ _ exposes
+    match exposed with
+    | .newest receiverEq objectEq => by
+        subst receiverEq
+        subst objectEq
+        let nextCore := context.core.extendContractedObject sourceObject
+          prepared.object
+        exact match ObjectContract.translateType nextCore.layout
+            (sourceObject.weaken.representationAt (.var .here)) with
+          | .error _ => none
+          | .ok targetRepresentation =>
+              finishRootWithAdapter? nextCore exposes .here
+                (contractedRootAdapter prepared.object targetRepresentation)
+                (.var (.there prepared.object.repExactEvidence))
+                (.var (.there prepared.object.repCaptureEvidence))
+    | .older oldReceiver oldObject oldExposes receiverEq objectEq => by
+        subst receiverEq
+        subst objectEq
+        exact do
+          let old <- context.roots.root oldExposes
+          let targetRename := Layout.objectRename
+            (symbols := prepared.object.symbols)
+            (relations := prepared.object.relations) targetScope
+          finishRootWithAdapter?
+            (context.core.extendContractedObject sourceObject prepared.object)
+            exposes (targetRename.var old.targetName)
+            (old.adapter.rename targetRename)
+            (old.captureContract.exactEvidence.rename targetRename)
+            (old.captureContract.containmentEvidence.rename targetRename)
+
+/-- Open one contracted theory and payload while retaining every older
+compiler component.  The definition is executable: all new evidence and root
+artifacts are reconstructed through the standalone checkers on demand. -/
+def extendContractedObject {scope : Source.Sig}
+    {environment : Source.TypingEnv scope} {targetScope : Target.Sig}
+    (context : Context environment targetScope)
+    (sourceObject : DOTCapture.ModalIntersections.ObjectType scope)
+    (prepared : PreparedContractedObject context.core sourceObject) :
+    Context (environment.extendTerm sourceObject.formedType)
+      (ManySortedFC.PayloadScope targetScope prepared.object.symbols
+        prepared.object.relations) :=
+  let targetRename := Layout.objectRename
+    (symbols := prepared.object.symbols)
+    (relations := prepared.object.relations) targetScope
+  { core := context.core.extendContractedObject sourceObject prepared.object
+    leaves := contractedObjectLeaves context sourceObject prepared
+    active := (context.active.renameSource
+      (DOTCapture.BinderOnly.Rename.succ (scope := scope)
+        (kind := .term))).renameTarget targetRename
+    bindings := .checked
+      (context.core.extendContractedObject sourceObject prepared.object)
+    roots := contractedObjectRoots context sourceObject prepared }
 
 /-- The proof-selected newest root needed by a future object extension.  This
 is deliberately a partial installation boundary, not `Context.extendObject`:

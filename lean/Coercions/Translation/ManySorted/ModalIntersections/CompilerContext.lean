@@ -3,6 +3,7 @@ import Coercions.DOT.Captures.ModalIntersections.TypingContext
 import Coercions.ManySortedFC.ModalPreservation
 import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenanceTransport
 import Coercions.Translation.ManySorted.ModalIntersections.PreparationRenaming
+import Coercions.Translation.ManySorted.ModalIntersections.ObjectContract
 
 /-!
 # Compiler-ready contexts for cumulative modal intersections
@@ -172,7 +173,7 @@ structure PreparedTerm {sourceScope : Source.Sig}
     {targetScope : Target.Sig} (core : Core environment targetScope)
     (sourceType : Source.Ty sourceScope) where
   targetType : Target.Ty targetScope
-  prepared : Preparation.translateType core.layout sourceType =
+  prepared : ObjectContract.translateType core.layout sourceType =
     .ok targetType
 
 /-- Successful translation of one capture in this exact layout. -/
@@ -206,7 +207,7 @@ structure PreparedStaticExpr {sourceScope : Source.Sig}
     {sort : Source.StaticSort}
     (sourceExpression : Source.StaticExpr sort sourceScope) where
   targetExpression : Target.StaticExpr (translateSort sort) targetScope
-  prepared : Preparation.translateStaticExpr core.layout sourceExpression =
+  prepared : ObjectContract.translateStaticExpr core.layout sourceExpression =
     .ok targetExpression
 
 /-- Successful translation of one lexical true interval in this exact
@@ -218,7 +219,7 @@ structure PreparedStatic {sourceScope : Source.Sig}
     (interval : DOTCapture.ModalIntersections.Interval sort sourceScope) where
   theory : Target.Theory targetScope [translateSort sort]
     (intervalRelations interval)
-  prepared : Preparation.translateInterval core.layout interval = .ok theory
+  prepared : ObjectContract.translateInterval core.layout interval = .ok theory
 
 /-- Exact interval and payload-type translations needed when an existential
 package is opened. -/
@@ -231,12 +232,12 @@ structure PreparedPayload {sourceScope : Source.Sig}
   theory : Target.Theory targetScope [translateSort sort]
     (intervalRelations interval)
   intervalPrepared :
-    Preparation.translateInterval core.layout interval = .ok theory
+    ObjectContract.translateInterval core.layout interval = .ok theory
   targetPayload : Target.Ty
     (Target.StaticScope targetScope [translateSort sort]
       (intervalRelations interval))
   payloadPrepared :
-    Preparation.translateType (core.layout.extendStatic interval)
+    ObjectContract.translateType (core.layout.extendStatic interval)
       sourcePayload = .ok targetPayload
 
 /-- A cumulative source object prepared and encoded in this exact layout. -/
@@ -247,6 +248,15 @@ structure PreparedObject {sourceScope : Source.Sig}
   object : Preparation.PreparedObject targetScope
   prepared : Preparation.prepareObject core.layout sourceObject = .ok object
 
+/-- Strengthened cumulative object preparation with one explicit internal
+representation-capture name and checked containment relation. -/
+structure PreparedContractedObject {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (sourceObject : Source.ObjectType sourceScope) where
+  object : ObjectContract.PreparedObject targetScope
+  prepared : ObjectContract.prepare core.layout sourceObject = .ok object
+
 /-- A negative object parameter and dependent result template prepared in
 this exact layout. -/
 structure PreparedObjectArrow {sourceScope : Source.Sig}
@@ -256,6 +266,16 @@ structure PreparedObjectArrow {sourceScope : Source.Sig}
     (resultTemplate : Source.Ty sourceScope) where
   arrow : Preparation.PreparedObjectArrow targetScope
   prepared : Preparation.prepareObjectArrow core.layout parameter
+    resultTemplate = .ok arrow
+
+/-- Negative-object preparation over the strengthened cumulative contract. -/
+structure PreparedContractedObjectArrow {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (parameter : Source.ObjectType sourceScope)
+    (resultTemplate : Source.Ty sourceScope) where
+  arrow : ObjectContract.PreparedObjectArrow targetScope
+  prepared : ObjectContract.prepareArrow core.layout parameter
     resultTemplate = .ok arrow
 
 /-- Successful capture translation for one modal frame in this exact
@@ -398,6 +418,21 @@ def extendObject {sourceScope : Source.Sig}
   target := (core.target.extendTheory object.encoding.theory).extendTerm
     object.representation
 
+/-- Open a contracted cumulative object and bind its explicitly captured
+runtime representation as the newest stable root. -/
+def extendContractedObject {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (sourceObject : Source.ObjectType sourceScope)
+    (object : ObjectContract.PreparedObject targetScope) :
+    Core (environment.extendTerm sourceObject.formedType)
+      (Target.StaticScope targetScope object.symbols object.relations ▹
+        .term) where
+  layout := core.layout.extendObjectWith object.symbols object.relations
+    object.openedMembers
+  target := (core.target.extendTheory object.theory).extendTerm
+    object.representation
+
 /-- Enter a translated modal evidence block.  This changes neither source
 variable scope nor runtime scope. -/
 def push {sourceScope : Source.Sig}
@@ -509,6 +544,32 @@ theorem runtimeRenaming_extendObject {sourceScope : Source.Sig}
         (toTermIndex_weakenStatic_val targetScope
           object.encoding.symbols object.encoding.relations
           (core.layout.termVar older))
+
+/-- Contract symbols and evidence erase just like historical object theory
+components; the explicit payload remains the sole runtime binder. -/
+@[simp]
+theorem runtimeRenaming_extendContractedObject {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope)
+    (sourceObject : Source.ObjectType sourceScope)
+    (object : ObjectContract.PreparedObject targetScope) :
+    (core.extendContractedObject sourceObject object).runtimeRenaming =
+      SourceErasure.Renaming.castTarget object.one_payload.symm
+        core.runtimeRenaming.liftTerm := by
+  funext sourceVar
+  apply Fin.ext
+  cases sourceVar with
+  | here => rfl
+  | there older =>
+      change
+        (ManySortedFC.BVar.toTermIndex
+          ((ManySortedFC.Rename.weakenStatic object.symbols
+            object.relations).var (core.layout.termVar older))).val + 1 =
+        (ManySortedFC.BVar.toTermIndex
+          (core.layout.termVar older)).val + 1
+      exact congrArg (fun coordinate => coordinate + 1)
+        (toTermIndex_weakenStatic_val targetScope object.symbols
+          object.relations (core.layout.termVar older))
 
 /-- Modal evidence is proof-only, so pushing a frame leaves every erased
 runtime coordinate unchanged. -/
@@ -669,6 +730,56 @@ noncomputable def extendObject {sourceScope : Source.Sig}
       (ManySortedFC.StaticSubst.ofRename namesRename)).substitute
       (ManySortedFC.StaticSubst.ofRename ManySortedFC.Rename.succ)
   rw [Preparation.totalCapture_extendObject,
+    ManySortedFC.Capture.substitute_ofRename,
+    ManySortedFC.Capture.substitute_ofRename,
+    ManySortedFC.Capture.rename_comp]
+  rfl
+
+/-- Open the strengthened object theory and its explicit captured payload.
+The additional `C_rep` symbol and containment evidence are proof-only, so the
+modal-provenance transport is the same coordinated static weakening used by
+the historical object extension. -/
+noncomputable def extendContractedObject {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (ready : Ready environment targetScope)
+    (sourceObject : Source.ObjectType sourceScope)
+    (prepared : PreparedContractedObject ready.core sourceObject) :
+    Ready (environment.extendTerm sourceObject.formedType)
+      (Target.StaticScope targetScope prepared.object.symbols
+        prepared.object.relations ▹ .term) := by
+  let object := prepared.object
+  let namesRename := ManySortedFC.Rename.weakenStatic (scope := targetScope)
+    object.symbols object.relations
+  let namesSubstitution := ManySortedFC.TermStaticSubst.ofRename namesRename
+  let namesContext := ready.core.target.extendTheory object.theory
+  have namesPreserves : namesSubstitution.Preserves ready.core.target
+      namesContext :=
+    ManySortedFC.TermStaticSubst.Preserves.weakenTheory ready.core.target
+      object.theory
+  let namesProvenance := ready.provenance.substituteTarget namesSubstitution
+    namesPreserves
+  let nextCore := ready.core.extendContractedObject sourceObject object
+  let termSubstitution := ManySortedFC.TermStaticSubst.ofRename
+    (ManySortedFC.Rename.succ
+      (scope := Target.StaticScope targetScope object.symbols
+        object.relations) (kind := .term))
+  have termPreserves : termSubstitution.Preserves namesContext
+      nextCore.target :=
+    ManySortedFC.TermStaticSubst.Preserves.weaken namesContext
+      (.term object.representation)
+  refine { core := nextCore, provenance := ?_ }
+  refine ActiveProvenance.renameSource namesProvenance
+    (DOTCapture.BinderOnly.Rename.succ (scope := sourceScope) (kind := .term))
+    termSubstitution termPreserves nextCore.captureMap ?_
+  intro capture
+  change Preparation.totalCapture
+      (ready.core.layout.extendObjectWith object.symbols object.relations
+        object.openedMembers)
+      (capture.rename DOTCapture.BinderOnly.Rename.succ) =
+    ((Preparation.totalCapture ready.core.layout capture).substitute
+      (ManySortedFC.StaticSubst.ofRename namesRename)).substitute
+      (ManySortedFC.StaticSubst.ofRename ManySortedFC.Rename.succ)
+  rw [Preparation.totalCapture_extendObjectWith,
     ManySortedFC.Capture.substitute_ofRename,
     ManySortedFC.Capture.substitute_ofRename,
     ManySortedFC.Capture.rename_comp]

@@ -116,6 +116,19 @@ def extendObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
   staticSlot := by intro sort sourceVar; rfl
   member := by intro path label; cases path; rfl
 
+def extendObjectWith {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (symbols : List Target.StaticSort) (relations : List Target.Relation)
+    (openedMembers : List (Intersections.Encoding.MemberName
+      (Target.StaticScope targetScope symbols relations))) :
+    Follows layout
+      (layout.extendObjectWith symbols relations openedMembers)
+      DOTCapture.BinderOnly.Rename.succ
+      (Layout.objectRename targetScope) where
+  termVar := by intro sourceVar; rfl
+  staticSlot := by intro sort sourceVar; rfl
+  member := by intro path label; cases path; rfl
+
 end Follows
 
 end Layout
@@ -213,6 +226,21 @@ theorem totalCapture_extendObject {sourceScope : Source.Sig}
       (totalCapture layout capture).rename
         (Layout.objectRename targetScope) :=
   totalCapture_follows (Layout.Follows.extendObject layout encoding) capture
+
+@[simp]
+theorem totalCapture_extendObjectWith {sourceScope : Source.Sig}
+    {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
+    (symbols : List Target.StaticSort) (relations : List Target.Relation)
+    (openedMembers : List (Intersections.Encoding.MemberName
+      (Target.StaticScope targetScope symbols relations)))
+    (capture : Source.Capture sourceScope) :
+    totalCapture (layout.extendObjectWith symbols relations openedMembers)
+        (capture.rename DOTCapture.BinderOnly.Rename.succ) =
+      (totalCapture layout capture).rename
+        (Layout.objectRename targetScope) :=
+  totalCapture_follows
+    (Layout.Follows.extendObjectWith layout symbols relations openedMembers)
+    capture
 
 @[simp]
 theorem totalCapture_weakenModal {sourceScope : Source.Sig}

@@ -96,6 +96,21 @@ structure OpenedAmbientCompiler {sourceScope : Source.Sig}
         (ManySortedFC.StaticScope targetScope actual.encoding.symbols
           actual.encoding.relations))
 
+/-- Ambient inclusions translated below a contracted object's full static
+theory, including its unique representation-capture symbol and both contract
+relations. -/
+structure ContractedOpenedAmbientCompiler {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    (actual : ObjectContract.PreparedObject targetScope) where
+  compile : {sort : Source.StaticSort} ->
+    {lower upper : Source.StaticExpr sort sourceScope} ->
+    DOTCapture.ModalIntersections.Includes environment.bindings lower upper ->
+      Option (Target.Evidence (.inclusion (translateSort sort))
+        (ManySortedFC.StaticScope targetScope actual.symbols
+          actual.relations))
+
 /-! ## Reifying member witnesses -/
 
 private def findTypeMemberLabel? {scope : Target.Sig}
@@ -141,7 +156,7 @@ private def compileSymbolArgsFrom? {sourceScope : Source.Sig}
           (.symbol .type))
       let label <- findTypeMemberLabel? name entries
       let witness <-
-        (Preparation.translateType core.layout
+        (ObjectContract.translateType core.layout
           (model.typeMember label)).toOption
       let older <- compileSymbolArgsFrom? core model entries remaining
         ((ManySortedFC.Rename.succ
@@ -249,6 +264,21 @@ def compileMappedSymbolArgs? {sourceScope : Source.Sig}
     expected.encoding.prepared.entries expected.encoding.symbols
     ManySortedFC.Rename.id
 
+/-- Compile a member-only interpretation and move it below the actual
+contract's one `C_rep` symbol and two evidence binders. -/
+def compileContractedMappedSymbolArgs? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    (actual expected : ObjectContract.PreparedObject targetScope)
+    (mapping : Source.LocalMapping sourceScope) :
+    Option (Target.SymbolArgs
+      (ManySortedFC.StaticScope targetScope actual.symbols actual.relations)
+      expected.memberSymbols) := do
+  let members <- compileMappedSymbolArgs? core actual.base expected.base mapping
+  pure (members.rename (ObjectContract.openedBaseRename targetScope
+    actual.memberSymbols actual.memberRelations))
+
 /-! ## Sorting checked evidence into a generated theory -/
 
 /-- A sort-indexed certificate candidate.  Candidates remain proof syntax;
@@ -257,6 +287,17 @@ proposition requested by the normalized theory. -/
 inductive ModelEvidence (scope : Target.Sig) where
   | type (evidence : Target.Evidence (.inclusion .type) scope)
   | capture (evidence : Target.Evidence (.inclusion .capture) scope)
+  | captureEquality (evidence : Target.Evidence (.equality .capture) scope)
+
+namespace ModelEvidence
+
+def rename {source target : Target.Sig} (rho : Target.Rename source target) :
+    ModelEvidence source -> ModelEvidence target
+  | .type evidence => .type (evidence.rename rho)
+  | .capture evidence => .capture (evidence.rename rho)
+  | .captureEquality evidence => .captureEquality (evidence.rename rho)
+
+end ModelEvidence
 
 /-! ## Source-derived evidence in an opened object theory -/
 
@@ -329,6 +370,120 @@ def compileDerivationEvidence? {sourceScope : Source.Sig}
       let right <- compileDerivationEvidence? prepared ambient rightProof
       pure (left ++ right)
 
+private def contractedTypeOccurrenceEvidence? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedContractedObject core available)
+    {label : Nat} {lower upper : Source.Ty sourceScope}
+    (occurrence : available.interface.HasTypeOccurrence label lower upper) :
+    Option
+      (Target.Evidence (.inclusion .type)
+          (ManySortedFC.StaticScope targetScope prepared.object.symbols
+            prepared.object.relations) ×
+       Target.Evidence (.inclusion .type)
+          (ManySortedFC.StaticScope targetScope prepared.object.symbols
+            prepared.object.relations)) := do
+  let selected <- findTypeOrdinalSelection? label
+    (ConstraintRetention.RawOccurrence.typeOrdinal occurrence)
+    prepared.object.encoding.openedOccurrences
+  let rho := ObjectContract.openedBaseRename targetScope
+    prepared.object.memberSymbols prepared.object.memberRelations
+  pure (.var (rho.var selected.selected.lowerEvidence),
+    .var (rho.var selected.selected.upperEvidence))
+
+private def contractedCaptureOccurrenceEvidence? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedContractedObject core available)
+    {label : Nat} {lower upper : Source.Capture sourceScope}
+    (occurrence : available.interface.HasCaptureOccurrence label lower upper) :
+    Option
+      (Target.Evidence (.inclusion .capture)
+          (ManySortedFC.StaticScope targetScope prepared.object.symbols
+            prepared.object.relations) ×
+       Target.Evidence (.inclusion .capture)
+          (ManySortedFC.StaticScope targetScope prepared.object.symbols
+            prepared.object.relations)) := do
+  let selected <- findCaptureOrdinalSelection? label
+    (ConstraintRetention.RawOccurrence.captureOrdinal occurrence)
+    prepared.object.encoding.openedOccurrences
+  let rho := ObjectContract.openedBaseRename targetScope
+    prepared.object.memberSymbols prepared.object.memberRelations
+  pure (.var (rho.var selected.selected.lowerEvidence),
+    .var (rho.var selected.selected.upperEvidence))
+
+/-- Contracted counterpart of `compileLocalIncludes?`. Member leaves select
+the same normalized occurrence as M11 and are then shifted below `C_rep` and
+the two generated contract relations. -/
+def compileContractedLocalIncludes? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedContractedObject core available)
+    (ambient : ContractedOpenedAmbientCompiler core prepared.object) :
+    {sort : Source.StaticSort} ->
+    {lower upper : Source.StaticExpr sort sourceScope} ->
+    DOTCapture.ModalIntersections.LocalTheory.Includes
+      environment.bindings available.interface lower upper ->
+      Option (Target.Evidence (.inclusion (translateSort sort))
+        (ManySortedFC.StaticScope targetScope prepared.object.symbols
+          prepared.object.relations))
+  | _, _, _, .ambient proof => ambient.compile proof
+  | .type, _, _, .typeLower occurrence => do
+      let evidence <- contractedTypeOccurrenceEvidence? prepared occurrence
+      pure evidence.1
+  | .type, _, _, .typeUpper occurrence => do
+      let evidence <- contractedTypeOccurrenceEvidence? prepared occurrence
+      pure evidence.2
+  | .capture, _, _, .captureLower occurrence => do
+      let evidence <- contractedCaptureOccurrenceEvidence? prepared occurrence
+      pure evidence.1
+  | .capture, _, _, .captureUpper occurrence => do
+      let evidence <- contractedCaptureOccurrenceEvidence? prepared occurrence
+      pure evidence.2
+  | _, _, _, .trans first second => do
+      let firstEvidence <- compileContractedLocalIncludes? prepared ambient
+        first
+      let secondEvidence <- compileContractedLocalIncludes? prepared ambient
+        second
+      pure (.inclusionTrans firstEvidence secondEvidence)
+
+/-- Compile every expected member obligation below the actual contracted
+theory. Generated exactness and containment obligations are supplied
+separately, so this traversal remains purely source-interface directed. -/
+def compileContractedDerivationEvidence? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedContractedObject core available)
+    (ambient : ContractedOpenedAmbientCompiler core prepared.object)
+    {mapping : Source.LocalMapping sourceScope} :
+    {expected : Source.Interface sourceScope} ->
+    DOTCapture.ModalIntersections.Interface.Derives
+      environment.bindings available.interface mapping expected ->
+      Option (List (ModelEvidence
+        (ManySortedFC.StaticScope targetScope prepared.object.symbols
+          prepared.object.relations)))
+  | _, .empty => some []
+  | _, .typeMember lowerProof upperProof => do
+      let lower <- compileContractedLocalIncludes? prepared ambient lowerProof
+      let upper <- compileContractedLocalIncludes? prepared ambient upperProof
+      pure [.type lower, .type upper]
+  | _, .captureMember lowerProof upperProof => do
+      let lower <- compileContractedLocalIncludes? prepared ambient lowerProof
+      let upper <- compileContractedLocalIncludes? prepared ambient upperProof
+      pure [.capture lower, .capture upper]
+  | _, .inter leftProof rightProof => do
+      let left <- compileContractedDerivationEvidence? prepared ambient
+        leftProof
+      let right <- compileContractedDerivationEvidence? prepared ambient
+        rightProof
+      pure (left ++ right)
+
 /-- Compile every raw realization occurrence.  Intersections append their
 candidate lists, so repeated occurrences remain present independently even
 when normalization later places them under one shared member name. -/
@@ -370,6 +525,8 @@ private def findModelEvidence? {scope : Target.Sig}
           else findModelEvidence? context proposition remaining
   | .inclusion .type, proposition, .capture _ :: remaining =>
       findModelEvidence? context proposition remaining
+  | .inclusion .type, proposition, .captureEquality _ :: remaining =>
+      findModelEvidence? context proposition remaining
   | .inclusion .capture, proposition, .capture candidate :: remaining =>
       match ManySortedFC.Evidence.check context candidate with
       | none => findModelEvidence? context proposition remaining
@@ -377,6 +534,19 @@ private def findModelEvidence? {scope : Target.Sig}
           if checked.proposition = proposition then some candidate
           else findModelEvidence? context proposition remaining
   | .inclusion .capture, proposition, .type _ :: remaining =>
+      findModelEvidence? context proposition remaining
+  | .inclusion .capture, proposition, .captureEquality _ :: remaining =>
+      findModelEvidence? context proposition remaining
+  | .equality .capture, proposition,
+      .captureEquality candidate :: remaining =>
+      match ManySortedFC.Evidence.check context candidate with
+      | none => findModelEvidence? context proposition remaining
+      | some checked =>
+          if checked.proposition = proposition then some candidate
+          else findModelEvidence? context proposition remaining
+  | .equality .capture, proposition, .type _ :: remaining =>
+      findModelEvidence? context proposition remaining
+  | .equality .capture, proposition, .capture _ :: remaining =>
       findModelEvidence? context proposition remaining
   | _, _, _ => none
 
@@ -491,6 +661,159 @@ def compileRealization? {sourceScope : Source.Sig}
                 model
                 modelChecked }
 
+/-! ## Contracted cumulative models -/
+
+/-- A strengthened cumulative model accepted by the standalone checker.  Its
+symbol block contains the unique `C_rep`; its evidence block contains both
+`repExact` and `repCapture` before the retained member obligations. -/
+structure CompiledContractedModel {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    (object : ObjectContract.PreparedObject targetScope) where
+  symbols : Target.SymbolArgs targetScope object.symbols
+  evidence : Target.EvidenceArgs targetScope object.relations
+  checked : ManySortedFC.Theory.CheckedModel core.target object.theory
+  checkerAcceptance : ManySortedFC.Theory.checkModel core.target object.theory
+    symbols evidence = some checked
+
+/-- Independently sort and check all generated contract and member evidence.
+The modeled theory itself is never opened while these candidates are checked.
+-/
+def checkContractedModel? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    (object : ObjectContract.PreparedObject targetScope)
+    (symbols : Target.SymbolArgs targetScope object.symbols)
+    (candidates : List (ModelEvidence targetScope)) :
+    Option (CompiledContractedModel core object) := do
+  let evidence <- compileEvidenceArgs? core.target symbols candidates
+    object.theory
+  match accepted : ManySortedFC.Theory.checkModel core.target object.theory
+      symbols evidence with
+  | none => none
+  | some checked =>
+      some { symbols, evidence, checked, checkerAcceptance := accepted }
+
+/-- A source realization plus the source's independently derived payload-to-
+object containment fact, tied to the exact contracted target model. -/
+structure CompiledContractedRealization {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    {sourceObject : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedContractedObject core sourceObject)
+    (ambient : AmbientCompiler core)
+    (realization : DOTCapture.ModalIntersections.ObjectType.Realization
+      environment.bindings sourceObject)
+    (containment : DOTCapture.ModalIntersections.CaptureIncludes
+      environment.bindings
+      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
+        sourceObject realization.model).outerCapture
+      sourceObject.outerCapture) where
+  memberSymbols : Target.SymbolArgs targetScope
+    prepared.object.memberSymbols
+  memberSymbolsCompiled : compileSymbolArgs? core realization.model
+    prepared.object.encoding = some memberSymbols
+  symbols : Target.SymbolArgs targetScope prepared.object.symbols
+  symbolsExtended : prepared.object.extendSymbols memberSymbols = symbols
+  memberCandidates : List (ModelEvidence targetScope)
+  memberCandidatesCompiled : compileRealizationEvidence? ambient
+    realization.constraints = some memberCandidates
+  containmentEvidence : Target.Evidence (.inclusion .capture) targetScope
+  containmentCompiled : ambient.compile containment = some containmentEvidence
+  candidates : List (ModelEvidence targetScope)
+  candidates_eq : candidates =
+    .captureEquality (.equalityRefl
+      (.capture (prepared.object.actualCapture memberSymbols))) ::
+    .capture containmentEvidence :: memberCandidates
+  model : CompiledContractedModel core prepared.object
+  modelChecked : checkContractedModel? core prepared.object symbols candidates =
+    some model
+
+/-- Compile and independently check the complete contracted model.  Exactness
+is supplied by ambient reflexivity at `D`; containment is compiled from the
+source derivation.  Neither can cite assumptions exported by the package. -/
+def compileContractedRealization? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {sourceObject : Source.ObjectType sourceScope}
+    (prepared : CompilerContext.PreparedContractedObject core sourceObject)
+    (ambient : AmbientCompiler core)
+    (realization : DOTCapture.ModalIntersections.ObjectType.Realization
+      environment.bindings sourceObject)
+    (containment : DOTCapture.ModalIntersections.CaptureIncludes
+      environment.bindings
+      (DOTCapture.ModalIntersections.ObjectType.realizedRepresentation
+        sourceObject realization.model).outerCapture
+      sourceObject.outerCapture) :
+    Option (CompiledContractedRealization core prepared ambient realization
+      containment) :=
+  match memberSymbolsCompiled : compileSymbolArgs? core realization.model
+      prepared.object.encoding with
+  | none => none
+  | some memberSymbols =>
+      let symbols := prepared.object.extendSymbols memberSymbols
+      match memberCandidatesCompiled : compileRealizationEvidence? ambient
+          realization.constraints with
+      | none => none
+      | some memberCandidates =>
+          match containmentCompiled : ambient.compile containment with
+          | none => none
+          | some containmentEvidence =>
+              let candidates :=
+                .captureEquality (.equalityRefl
+                  (.capture
+                    (prepared.object.actualCapture memberSymbols))) ::
+                .capture containmentEvidence :: memberCandidates
+              match modelChecked : checkContractedModel? core prepared.object
+                  symbols candidates with
+              | none => none
+              | some model => some
+                  { memberSymbols
+                    memberSymbolsCompiled
+                    symbols
+                    symbolsExtended := rfl
+                    memberCandidates
+                    memberCandidatesCompiled
+                    containmentEvidence
+                    containmentCompiled
+                    candidates
+                    candidates_eq := rfl
+                    model
+                    modelChecked }
+
+/-- The canonical reuse of an opened object's own static names and evidence,
+accepted as a model of the ambiently renamed object theory. -/
+structure CompiledSelfModel {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    (sourceObject : Source.ObjectType sourceScope)
+    (object : ObjectContract.PreparedObject targetScope) where
+  checked : ManySortedFC.Theory.CheckedModel
+    (core.extendContractedObject sourceObject object).target object.selfTheory
+  checkerAcceptance : ManySortedFC.Theory.checkModel
+    (core.extendContractedObject sourceObject object).target object.selfTheory
+    object.selfSymbols object.selfEvidence = some checked
+
+/-- Ask the standalone checker to validate the opened self-model.  Failure is
+retained as `none`; compiler code receives no privileged identity model. -/
+def checkSelfModel? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    (sourceObject : Source.ObjectType sourceScope)
+    (object : ObjectContract.PreparedObject targetScope) :
+    Option (CompiledSelfModel core sourceObject object) :=
+  match accepted : ManySortedFC.Theory.checkModel
+      (core.extendContractedObject sourceObject object).target object.selfTheory
+      object.selfSymbols object.selfEvidence with
+  | none => none
+  | some checked => some { checked, checkerAcceptance := accepted }
+
 /-- A cross-shape map accepted under exactly the actual object's opened
 theory.  `TheoryMap.HasType core.target` makes the no-self-discharge boundary
 visible: the expected theory is not opened by this judgment. -/
@@ -532,6 +855,171 @@ def checkView? {sourceScope : Source.Sig}
   | none => none
   | some typing =>
       some { mapping, typing, checkerAcceptance := accepted }
+
+/-! ## Contracted cross-shape views -/
+
+/-- A cross-shape map between strengthened cumulative theories.  Both
+generated capture obligations are checked under only the actual theory. -/
+structure CompiledContractedView {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    (actual expected : ObjectContract.PreparedObject targetScope) where
+  mapping : ManySortedFC.TheoryMap actual.theory expected.theory
+  typing : ManySortedFC.TheoryMap.HasType core.target mapping
+  checkerAcceptance :
+    ManySortedFC.TheoryMap.check core.target mapping = some typing
+
+/-- Independently validate a complete contracted theory interpretation. -/
+def checkContractedView? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    (actual expected : ObjectContract.PreparedObject targetScope)
+    (symbols : Target.SymbolArgs
+      (ManySortedFC.StaticScope targetScope actual.symbols actual.relations)
+      expected.symbols)
+    (candidates : List (ModelEvidence
+      (ManySortedFC.StaticScope targetScope actual.symbols
+        actual.relations))) :
+    Option (CompiledContractedView core actual expected) := do
+  let expectedTheory := ManySortedFC.TheoryMap.openedTarget actual.theory
+    expected.theory
+  let evidence <- compileEvidenceArgs?
+    (core.target.extendTheory actual.theory) symbols candidates expectedTheory
+  let mapping : ManySortedFC.TheoryMap actual.theory expected.theory :=
+    { symbols, evidence }
+  match accepted : ManySortedFC.TheoryMap.check core.target mapping with
+  | none => none
+  | some typing => some { mapping, typing, checkerAcceptance := accepted }
+
+/-- Prepend the actual object's existing representation-capture identity to a
+member-only interpretation of the expected signature.  No fresh capture name
+is allocated by projection. -/
+def projectionSymbols {targetScope : Target.Sig}
+    (actual expected : ObjectContract.PreparedObject targetScope)
+    (members : Target.SymbolArgs
+      (ManySortedFC.StaticScope targetScope actual.symbols actual.relations)
+      expected.memberSymbols) :
+    Target.SymbolArgs
+      (ManySortedFC.StaticScope targetScope actual.symbols actual.relations)
+      expected.symbols :=
+  .cons (.capture (.cvar actual.repCaptureName)) members
+
+/-- Check a projection that structurally preserves the one internal
+representation-capture identity.  The supplied candidates must still prove
+the destination exactness, containment, and every member constraint. -/
+def checkContractedProjection? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    (actual expected : ObjectContract.PreparedObject targetScope)
+    (members : Target.SymbolArgs
+      (ManySortedFC.StaticScope targetScope actual.symbols actual.relations)
+      expected.memberSymbols)
+    (candidates : List (ModelEvidence
+      (ManySortedFC.StaticScope targetScope actual.symbols
+        actual.relations))) :
+    Option (CompiledContractedView core actual expected) :=
+  checkContractedView? core actual expected
+    (projectionSymbols actual expected members) candidates
+
+@[simp]
+theorem projectionSymbols_repCapture {targetScope : Target.Sig}
+    (actual expected : ObjectContract.PreparedObject targetScope)
+    (members : Target.SymbolArgs
+      (ManySortedFC.StaticScope targetScope actual.symbols actual.relations)
+      expected.memberSymbols) :
+    projectionSymbols actual expected members =
+      .cons (.capture (.cvar actual.repCaptureName)) members := rfl
+
+/-- A source-derived member projection completed with explicit checked
+contract candidates.  The destination `C_rep` is definitionally the actual
+object's existing name; exactness and containment are still independently
+validated by `TheoryMap.check`. -/
+structure CompiledContractedDerivation {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    {available expected : Source.ObjectType sourceScope}
+    (actualPrepared : CompilerContext.PreparedContractedObject core available)
+    (expectedPrepared : CompilerContext.PreparedContractedObject core expected)
+    (ambient : ContractedOpenedAmbientCompiler core actualPrepared.object)
+    (mapping : Source.LocalMapping sourceScope)
+    (derivation : DOTCapture.ModalIntersections.Interface.Derives
+      environment.bindings available.interface mapping expected.interface)
+    (exactCandidate : Target.Evidence (.equality .capture)
+      (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+        actualPrepared.object.relations))
+    (containmentCandidate : Target.Evidence (.inclusion .capture)
+      (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+        actualPrepared.object.relations)) where
+  members : Target.SymbolArgs
+    (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+      actualPrepared.object.relations)
+    expectedPrepared.object.memberSymbols
+  membersCompiled : compileContractedMappedSymbolArgs? core
+    actualPrepared.object expectedPrepared.object mapping = some members
+  memberCandidates : List (ModelEvidence
+    (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+      actualPrepared.object.relations))
+  memberCandidatesCompiled : compileContractedDerivationEvidence?
+    actualPrepared ambient derivation = some memberCandidates
+  candidates : List (ModelEvidence
+    (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+      actualPrepared.object.relations))
+  candidates_eq : candidates = .captureEquality exactCandidate ::
+    .capture containmentCandidate :: memberCandidates
+  view : CompiledContractedView core actualPrepared.object
+    expectedPrepared.object
+  viewChecked : checkContractedProjection? core actualPrepared.object
+    expectedPrepared.object members candidates = some view
+
+/-- Compile and check a contracted source projection.  Candidate contract
+facts normally come from a stable root's retained `RootCaptureContract`; a
+literal model may supply the corresponding checked model evidence directly. -/
+def compileContractedView? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available expected : Source.ObjectType sourceScope}
+    (actualPrepared : CompilerContext.PreparedContractedObject core available)
+    (expectedPrepared : CompilerContext.PreparedContractedObject core expected)
+    (ambient : ContractedOpenedAmbientCompiler core actualPrepared.object)
+    {mapping : Source.LocalMapping sourceScope}
+    (derivation : DOTCapture.ModalIntersections.Interface.Derives
+      environment.bindings available.interface mapping expected.interface)
+    (exactCandidate : Target.Evidence (.equality .capture)
+      (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+        actualPrepared.object.relations))
+    (containmentCandidate : Target.Evidence (.inclusion .capture)
+      (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+        actualPrepared.object.relations)) :
+    Option (CompiledContractedDerivation core actualPrepared expectedPrepared
+      ambient mapping derivation exactCandidate containmentCandidate) :=
+  match membersCompiled : compileContractedMappedSymbolArgs? core
+      actualPrepared.object expectedPrepared.object mapping with
+  | none => none
+  | some members =>
+      match memberCandidatesCompiled : compileContractedDerivationEvidence?
+          actualPrepared ambient derivation with
+      | none => none
+      | some memberCandidates =>
+          let candidates := .captureEquality exactCandidate ::
+            .capture containmentCandidate :: memberCandidates
+          match viewChecked : checkContractedProjection? core
+              actualPrepared.object expectedPrepared.object members candidates
+          with
+          | none => none
+          | some view => some
+              { members
+                membersCompiled
+                memberCandidates
+                memberCandidatesCompiled
+                candidates
+                candidates_eq := rfl
+                view
+                viewChecked }
 
 /-- A checked target view tied to the exact source mapping and derivation
 from the available interface to the expected interface. -/

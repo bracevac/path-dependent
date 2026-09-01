@@ -12,6 +12,8 @@ describes the administrative term structure required to transport a value
 between two types.  `Adapter.cast` embeds one whole-type inclusion, while
 `Adapter.retagCapture` is the explicit introduction boundary that combines
 separate evidence for a value's actual outer capture and underlying shape.
+`Adapter.forgetEmptyCapture` explicitly removes only an empty outer capture
+annotation; it does not identify bare and captured types definitionally.
 
 Function adapters stand for eta-expansion with a contravariant domain adapter
 and a covariant codomain adapter. Universal adapters stand for static
@@ -40,6 +42,11 @@ inductive Adapter : Sig → Type where
       (targetCapture : Capture scope) (targetShape : Ty scope)
       (captures : Evidence (.inclusion .capture) scope)
       (shape : Evidence (.inclusion .type) scope) : Adapter scope
+
+  /-- Remove an explicitly empty outer capture annotation.  This is a
+  value-only structural boundary, not a definitional equality and not a
+  general operation for discarding nonempty captures. -/
+  | forgetEmptyCapture {scope : Sig} (shape : Ty scope) : Adapter scope
 
   /-- Lift a structural adapter through an existing capture annotation. -/
   | captured {scope : Sig}
@@ -126,6 +133,8 @@ def rename {source target : Sig} (adapter : Adapter source)
   | .retagCapture sourceType targetCapture targetShape captures shape =>
       .retagCapture (sourceType.rename rho) (targetCapture.rename rho)
         (targetShape.rename rho) (captures.rename rho) (shape.rename rho)
+  | .forgetEmptyCapture shape =>
+      .forgetEmptyCapture (shape.rename rho)
   | .captured captures shape =>
       .captured (captures.rename rho) (shape.rename rho)
   | .compose first second =>
@@ -178,6 +187,7 @@ theorem rename_id {scope : Sig} (adapter : Adapter scope) :
   | cast evidence => simp [rename]
   | retagCapture sourceType targetCapture targetShape captures shape =>
       simp [rename]
+  | forgetEmptyCapture shape => simp [rename]
   | captured captures shape induction =>
       simp [rename, induction]
   | compose first second firstInduction secondInduction =>
@@ -209,6 +219,7 @@ theorem rename_comp {first second third : Sig} (adapter : Adapter first)
   | retagCapture sourceType targetCapture targetShape captures shape =>
       simp [rename, Ty.rename_comp, Capture.rename_comp,
         Evidence.rename_comp]
+  | forgetEmptyCapture shape => simp [rename, Ty.rename_comp]
   | captured captures shape induction =>
       simp [rename, Evidence.rename_comp, induction]
   | compose first second firstInduction secondInduction =>
@@ -260,6 +271,11 @@ inductive HasType : {scope : Sig} → Ctx scope → Adapter scope →
       HasType context
         (.retagCapture source targetCapture targetShape captures shape)
         source (.capturing targetCapture targetShape)
+
+  | forgetEmptyCapture {scope : Sig} {context : Ctx scope}
+      (shape : Ty scope) :
+      HasType context (.forgetEmptyCapture shape)
+        (.capturing .empty shape) shape
 
   | captured {scope : Sig} {context : Ctx scope}
       {captures : Evidence (.inclusion .capture) scope}
@@ -423,6 +439,9 @@ def check {scope : Sig} (context : Ctx scope) (adapter : Adapter scope) :
               none
           else
             none
+  | .forgetEmptyCapture shape =>
+      some ⟨.capturing .empty shape, shape,
+        .forgetEmptyCapture shape⟩
   | .captured captures shape => do
       let capturesChecked ← Evidence.check context captures
       let ⟨capturesProposition, capturesTyping⟩ := capturesChecked

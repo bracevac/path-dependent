@@ -51,16 +51,24 @@ abbrev CapturedStaticScope : DOTCapture.ModalIntersections.Sig :=
 abbrev FinalScope : DOTCapture.ModalIntersections.Sig :=
   (CapturedStaticScope ▹ .static .type) ▹ .term
 
-def preparedOne
-    (context : Context DOTCapture.ModalIntersections.TypingEnv.nil []) :
-    PreparedTerm context.core (.one : Source.Ty []) where
+def preparedOne {sourceScope : DOTCapture.ModalIntersections.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : ManySortedFC.Sig}
+    (context : Context environment targetScope) :
+    PreparedTerm context.core (.one : Source.Ty sourceScope) where
   targetType := .one
-  prepared := rfl
+  prepared := by simp [ObjectContract.translateType]
 
 def preparedCapturedOne :
     PreparedTerm Context.nil.core (Source.capturedOne (scope := [])) where
   targetType := .capturing .empty .one
-  prepared := rfl
+  prepared := by
+    have emptyCapture : Preparation.translateCapture
+        Context.nil.core.layout
+        (DOTCapture.ModalIntersections.Capture.empty : Source.Capture []) =
+        .ok .empty := rfl
+    simp [Source.capturedOne, ObjectContract.translateType, emptyCapture,
+      bind, Except.bind, pure, Except.pure]
 
 def preparedUnboundedType {sourceScope : DOTCapture.ModalIntersections.Sig}
     {environment : Source.TypingEnv sourceScope}
@@ -90,7 +98,7 @@ def preparedUnitPayload {sourceScope : DOTCapture.ModalIntersections.Sig}
   theory := ManySortedFC.Interval.unconstrained .type
   intervalPrepared := rfl
   targetPayload := .one
-  payloadPrepared := rfl
+  payloadPrepared := by simp [ObjectContract.translateType]
 
 def preparedReadOnly {sourceScope : DOTCapture.ModalIntersections.Sig}
     {environment : Source.TypingEnv sourceScope}
@@ -137,9 +145,8 @@ def lexicalContext := Context.nil.extendStatic Source.lexicalInterval
 
 def lexicalPlainPrepared :
     PreparedTerm lexicalContext.core (.one : Source.Ty
-      ([.static .capture] : DOTCapture.ModalIntersections.Sig)) where
-  targetType := .one
-  prepared := rfl
+      ([.static .capture] : DOTCapture.ModalIntersections.Sig)) :=
+  preparedOne lexicalContext
 
 def lexicalPlainContext := lexicalContext.extendPlain .one (by trivial)
   lexicalPlainPrepared
@@ -222,9 +229,8 @@ def secondLock := firstLock.push (Source.readOnlyRequirements (scope := []))
   (preparedReadOnly firstLock)
 
 def transportedLocksPlainPrepared :
-    PreparedTerm secondLock.core (.one : Source.Ty []) where
-  targetType := .one
-  prepared := rfl
+    PreparedTerm secondLock.core (.one : Source.Ty []) :=
+  preparedOne secondLock
 
 def transportedLocksPlain := secondLock.extendPlain .one (by trivial)
   transportedLocksPlainPrepared
@@ -266,49 +272,52 @@ example : compiledNewestTransported?.map (fun result => result.evidence) ≠
     compiledOlderTransported?.map (fun result => result.evidence) := by
   native_decide
 
-/-! ## Object-install hook boundary -/
+/-! ## Contracted object installation -/
 
 def emptyEncoding :
     DOTCaptureToManySortedFC.Intersections.Encoding.Encoding [] where
   prepared := { symbols := [], entries := [] }
 
-def targetEmptyObject : Preparation.PreparedObject [] where
+def targetEmptyObject : ObjectContract.PreparedObject [] where
   encoding := emptyEncoding
-  representation := .one
+  sourceRepresentationAtNames := .one
   outerCapture := .empty
 
-def preparedEmptyObject : PreparedObject Context.nil.core Source.emptyObject
-    where
+def preparedEmptyObject : PreparedContractedObject Context.nil.core
+    Source.emptyObject where
   object := targetEmptyObject
-  prepared := rfl
+  prepared := by rfl
 
-def acceptedEmptyRoot : PreparedRoot
-    (Context.nil.core.extendObject Source.emptyObject targetEmptyObject)
-    (Context.newestObjectExposure Source.emptyObject) where
-  sourceName := .here
-  receiver_eq := rfl
-  targetName := .here
-  selected := rfl
-  targetRepresentation := .one
-  prepared := rfl
-  lookup := rfl
+def emptyObjectContext := Context.nil.extendContractedObject
+  Source.emptyObject preparedEmptyObject
 
-def emptyObjectHook : Context.ObjectRootHook Context.nil
-    Source.emptyObject preparedEmptyObject where
-  newestRoot := acceptedEmptyRoot
+def acceptedEmptyRoot? := emptyObjectContext.roots.root
+  (Context.newestObjectExposure Source.emptyObject)
 
-example : emptyObjectHook.newestRoot.targetName = .here := rfl
+example : acceptedEmptyRoot?.isSome = true := by native_decide
 
-example : (finishRoot?
-    (Context.nil.core.extendObject Source.emptyObject targetEmptyObject)
-    (Context.newestObjectExposure Source.emptyObject) .here).isSome = true := by
+example : acceptedEmptyRoot?.map (fun root =>
+    root.boundRepresentation.outerCapture) =
+      some (.cvar (.there targetEmptyObject.repCaptureName)) := by
   native_decide
+
+example : acceptedEmptyRoot?.map (fun root => root.adapter) =
+    some (.compose
+      (.retagCapture
+        ((targetEmptyObject.representation.rename ManySortedFC.Rename.succ).precise
+          .here)
+        .empty .one
+        (.inclusionTrans (.captureVariable .here)
+          (.equalityToInclusion
+            (.var (.there targetEmptyObject.repExactEvidence))))
+        (.inclusionRefl (.type .one)))
+      (.forgetEmptyCapture .one)) := by native_decide
 
 def malformedRootCore : Core
     (DOTCapture.ModalIntersections.TypingEnv.nil.extendTerm
       Source.emptyObject.formedType)
     ([] ▹ .term) where
-  layout := Layout.empty.extendObject emptyEncoding
+  layout := Layout.empty.extendPlain
   target := ManySortedFC.Ctx.nil.extendTerm .top
 
 def rejectedNewestRoot? := finishRoot? malformedRootCore

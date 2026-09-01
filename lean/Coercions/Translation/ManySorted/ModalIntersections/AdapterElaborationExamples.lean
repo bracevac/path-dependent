@@ -196,11 +196,11 @@ example : isModal modalCompiled.adapter = true := by native_decide
 
 /-! Exact preparation and checker provenance remain available on the result. -/
 
-example : Preparation.translateType Core.nil.layout (.one : Source.Ty []) =
+example : ObjectContract.translateType Core.nil.layout (.one : Source.Ty []) =
     .ok castCompiled.sourcePrepared.targetType :=
   castCompiled.sourcePrepared.prepared
 
-example : Preparation.translateType Core.nil.layout (.top : Source.Ty []) =
+example : ObjectContract.translateType Core.nil.layout (.top : Source.Ty []) =
     .ok castCompiled.targetPrepared.targetType :=
   castCompiled.targetPrepared.prepared
 
@@ -223,7 +223,220 @@ example : ManySortedFC.Runtime.AdministrativeEq
   functionCompiled.administrative runtimeFunction .lam
 
 example : castCompiled.adapter.erase (.unit : ManySortedFC.Runtime.Tm 0) =
-    .unit := rfl
+    .unit := by native_decide
+
+/-! ## Captured negative object-arrow bridge -/
+
+namespace NegativeObjectCaptureBridge
+
+namespace SourceCases
+
+def object : DOTCapture.ModalIntersections.ObjectType [] :=
+  .mk .empty .one .empty
+
+def nativeShape : Source.Ty [] := .objectArrow object .one
+
+def nativeIdentity : Source.Adapts
+    DOTCapture.ModalIntersections.TypingEnv.nil
+    (.capturing .empty nativeShape) (.capturing .empty nativeShape) :=
+  .captured .refl .identity
+
+def legacyShape : Source.Ty [] :=
+  .arr (.capturing .empty (.object object)) .one
+
+def widenedCapture : DOTCapture.ModalIntersections.Capture [] :=
+  .union .empty .empty
+
+def nativeWidening : Source.Adapts
+    DOTCapture.ModalIntersections.TypingEnv.nil
+    (.capturing .empty nativeShape)
+    (.capturing widenedCapture nativeShape) :=
+  .captured .captureUnionLeft .identity
+
+def legacyIdentity : Source.Adapts
+    DOTCapture.ModalIntersections.TypingEnv.nil
+    (.capturing .empty legacyShape)
+    (.capturing .empty legacyShape) :=
+  .captured .refl .identity
+
+end SourceCases
+
+def native? := compile? Context.nil SourceCases.nativeIdentity
+def widened? := compile? Context.nil SourceCases.nativeWidening
+def legacy? := compile? Context.nil SourceCases.legacyIdentity
+
+example : native?.isSome = true := by decide +kernel
+example : widened?.isSome = true := by decide +kernel
+example : legacy?.isSome = true := by decide +kernel
+
+def nativeCompiled := native?.get (by decide +kernel)
+def widenedCompiled := widened?.get (by decide +kernel)
+def legacyCompiled := legacy?.get (by decide +kernel)
+
+/-- Contracted negative arrows have one visible capture wrapper around the
+static object-model abstraction. -/
+def isSingleCapturedUniversal {scope : ManySortedFC.Sig} :
+    ManySortedFC.Ty scope -> Bool
+  | .capturing _ (.forallT _ _) => true
+  | _ => false
+
+/-- Locate the explicit empty-capture bridge below any later closure
+adjustment. -/
+def containsExplicitEmptyBridge {scope : ManySortedFC.Sig} :
+    ManySortedFC.Adapter scope -> Bool
+  | .compose (.retagCapture _ .empty _ _ _)
+      (.compose _ (.forgetEmptyCapture _)) => true
+  | .compose first second =>
+      containsExplicitEmptyBridge first ||
+        containsExplicitEmptyBridge second
+  | _ => false
+
+/-- The outer lift contains the retag/inner/forget bridge. -/
+def usesExplicitEmptyBridge {scope : ManySortedFC.Sig} :
+    ManySortedFC.Adapter scope -> Bool
+  | .captured _ shape => containsExplicitEmptyBridge shape
+  | _ => false
+
+/-- Inspect the second occurrence of the negative consumer's closure, below
+its static model abstraction. -/
+def hasEmptyInnerClosure {scope : ManySortedFC.Sig} :
+    ManySortedFC.Ty scope -> Bool
+  | .capturing _ (.forallT _
+      (.capturing .empty (.arr _ _))) => true
+  | _ => false
+
+def hasWidenedInnerClosure {scope : ManySortedFC.Sig} :
+    ManySortedFC.Ty scope -> Bool
+  | .capturing _ (.forallT _
+      (.capturing (.union .empty .empty) (.arr _ _))) => true
+  | _ => false
+
+example : isSingleCapturedUniversal nativeCompiled.checked.source = true := by
+  decide +kernel
+
+example : isSingleCapturedUniversal nativeCompiled.checked.target = true := by
+  decide +kernel
+
+example : isSingleCapturedUniversal widenedCompiled.checked.source = true := by
+  decide +kernel
+
+example : isSingleCapturedUniversal widenedCompiled.checked.target = true := by
+  decide +kernel
+
+example : isSingleCapturedUniversal legacyCompiled.checked.source = true := by
+  decide +kernel
+
+example : isSingleCapturedUniversal legacyCompiled.checked.target = true := by
+  decide +kernel
+
+example : usesExplicitEmptyBridge nativeCompiled.adapter = true := by
+  decide +kernel
+
+example : usesExplicitEmptyBridge widenedCompiled.adapter = true := by
+  decide +kernel
+
+example : usesExplicitEmptyBridge legacyCompiled.adapter = true := by
+  decide +kernel
+
+example : widenedCompiled.checked.source.outerCapture = .empty := by
+  decide +kernel
+
+example : widenedCompiled.checked.target.outerCapture =
+    (.union .empty .empty : ManySortedFC.Capture []) := by
+  decide +kernel
+
+example : hasEmptyInnerClosure widenedCompiled.checked.source = true := by
+  decide +kernel
+
+example : hasWidenedInnerClosure widenedCompiled.checked.target = true := by
+  decide +kernel
+
+example : ManySortedFC.Adapter.check Core.nil.target nativeCompiled.adapter =
+    some nativeCompiled.checked := nativeCompiled.checkerAcceptance
+
+example : ManySortedFC.Adapter.check Core.nil.target widenedCompiled.adapter =
+    some widenedCompiled.checked := widenedCompiled.checkerAcceptance
+
+example : ManySortedFC.Adapter.check Core.nil.target legacyCompiled.adapter =
+    some legacyCompiled.checked := legacyCompiled.checkerAcceptance
+
+namespace NonemptyIdentity
+
+abbrev Scope : DOTCapture.ModalIntersections.Sig := [] ▹ .term
+
+def boundType : Source.Ty [] := .capturing .empty .one
+
+def boundPrepared? := prepareType? Context.nil.core boundType
+
+example : boundPrepared?.isSome = true := by decide +kernel
+
+def boundPrepared := boundPrepared?.get (by decide +kernel)
+
+def context := Context.nil.extendPlain boundType (by trivial) boundPrepared
+
+def object : DOTCapture.ModalIntersections.ObjectType Scope :=
+  .mk .empty .one .empty
+
+def shape : Source.Ty Scope := .objectArrow object .one
+
+def capture : DOTCapture.ModalIntersections.Capture Scope :=
+  .singleton (.var .here)
+
+def adaptation : Source.Adapts
+    (DOTCapture.ModalIntersections.TypingEnv.nil.extendTerm boundType)
+    (.capturing capture shape) (.capturing capture shape) :=
+  .captured .refl .identity
+
+def compiled? := compile? context adaptation
+
+example : compiled?.isSome = true := by decide +kernel
+
+def compiled := compiled?.get (by decide +kernel)
+
+/-- The nonempty case cannot pass through the empty-source bridge.  Its
+checker-accepted fallback lifts the same capture inclusion below the static
+model abstraction. -/
+def usesDirectClosureLift {scope : ManySortedFC.Sig} :
+    ManySortedFC.Adapter scope -> Bool
+  | .captured _ (.forallT _
+      (.captured _ (.identity _))) => true
+  | _ => false
+
+def hasSingletonInnerClosure {scope : ManySortedFC.Sig} :
+    ManySortedFC.Ty scope -> Bool
+  | .capturing _ (.forallT _
+      (.capturing (.singleton _) (.arr _ _))) => true
+  | _ => false
+
+example : isSingleCapturedUniversal compiled.checked.source = true := by
+  decide +kernel
+
+example : isSingleCapturedUniversal compiled.checked.target = true := by
+  decide +kernel
+
+example : compiled.checked.source.outerCapture =
+    (.singleton .here : ManySortedFC.Capture ([] ▹ .term)) := by
+  decide +kernel
+
+example : compiled.checked.target.outerCapture =
+    (.singleton .here : ManySortedFC.Capture ([] ▹ .term)) := by
+  decide +kernel
+
+example : hasSingletonInnerClosure compiled.checked.source = true := by
+  decide +kernel
+
+example : hasSingletonInnerClosure compiled.checked.target = true := by
+  decide +kernel
+
+example : usesDirectClosureLift compiled.adapter = true := by
+  decide +kernel
+
+example : ManySortedFC.Adapter.check context.core.target compiled.adapter =
+    some compiled.checked := compiled.checkerAcceptance
+
+end NonemptyIdentity
+
+end NegativeObjectCaptureBridge
 
 /-! ## Rejection boundaries -/
 

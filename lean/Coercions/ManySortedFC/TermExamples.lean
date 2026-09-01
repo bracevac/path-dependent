@@ -80,6 +80,74 @@ theorem syntactic_unit_can_enter_captured_payload_type :
 theorem capture_retag_erases_to_unit :
     unitWithEmptyCapture.erase = Runtime.Tm.unit := rfl
 
+/-! ## Explicit removal of an empty capture annotation -/
+
+/-- Empty-capture removal records the exact captured source type and the bare
+target type; it carries no evidence and cannot be instantiated at a nonempty
+capture. -/
+def forgetEmptyOne : Adapter [] :=
+  .forgetEmptyCapture .one
+
+theorem forget_empty_capture_has_exact_endpoints :
+    Adapter.synth Ctx.nil forgetEmptyOne =
+      some (.capturing .empty .one, .one) := by
+  native_decide
+
+def unitAfterForgettingEmptyCapture : Tm [] :=
+  .adapt unitWithEmptyCapture forgetEmptyOne
+
+theorem empty_captured_unit_can_return_to_bare_one :
+    Tm.synth Ctx.nil unitAfterForgettingEmptyCapture =
+      some (.empty, .one) := by
+  native_decide
+
+theorem forgetting_empty_capture_erases_exactly :
+    unitAfterForgettingEmptyCapture.erase = unitWithEmptyCapture.erase := rfl
+
+/-- The endpoint is exact, but the ordinary adapter boundary still consumes
+only values. -/
+def computedEmptyCapturedUnit : Tm [] :=
+  .let' (.capturing .empty .one) .empty unitWithEmptyCapture
+    unitWithEmptyCapture.weaken (.captureEmpty .empty)
+
+def rejectComputationForgettingEmptyCapture : Tm [] :=
+  .adapt computedEmptyCapturedUnit forgetEmptyOne
+
+theorem forget_empty_capture_remains_value_only :
+    (Tm.check Ctx.nil rejectComputationForgettingEmptyCapture).isNone = true := by
+  native_decide
+
+/-- A free term name makes a nonempty capture expression available for the
+negative structural-checker regression. -/
+def singletonCaptureContext : Ctx ([] ▹ .term) :=
+  Ctx.nil.extendTerm .one
+
+def oneWithSingletonCaptureAdapter : Adapter ([] ▹ .term) :=
+  .retagCapture .one (.singleton .here) .one
+    (.captureEmpty (.singleton .here))
+    (.inclusionRefl (.type .one))
+
+/-- The second adapter requires `∅ · One` exactly, so it cannot directly
+discard the nonempty singleton annotation produced by the first adapter. -/
+def rejectForgettingNonemptyCapture : Adapter ([] ▹ .term) :=
+  .compose oneWithSingletonCaptureAdapter (.forgetEmptyCapture .one)
+
+theorem nonempty_capture_cannot_be_forgotten_directly :
+    (Adapter.check singletonCaptureContext
+      rejectForgettingNonemptyCapture).isNone = true := by
+  native_decide
+
+def unitWithSingletonCapture : Tm ([] ▹ .term) :=
+  .adapt .unit oneWithSingletonCaptureAdapter
+
+def rejectTermForgettingNonemptyCapture : Tm ([] ▹ .term) :=
+  .adapt unitWithSingletonCapture (.forgetEmptyCapture .one)
+
+theorem term_checker_rejects_forgetting_nonempty_capture :
+    (Tm.check singletonCaptureContext
+      rejectTermForgettingNonemptyCapture).isNone = true := by
+  native_decide
+
 /-- A logical cast transports `unit` along the primitive `One <= Top`
 certificate. -/
 def unitAsTop : Tm [] :=
