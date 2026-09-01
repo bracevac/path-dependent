@@ -393,6 +393,65 @@ private def translateCaptureMemberIntervals {sourceScope : Source.Sig}
       pure (⟨lower, upper⟩ ::
         (← translateCaptureMemberIntervals layout members remaining))
 
+/-- Translate one normalization-layer member expression while preserving its
+isomorphic type/capture sort tag. -/
+def translateMemberExpr {sort : DOTCapture.Intersections.StaticSort}
+    {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (members : List (MemberName targetScope)) :
+    Source.MemberExpr sourceScope sort -> Except Error
+      (Target.StaticExpr
+        (DOTCaptureToManySortedFC.Intersections.Encoding.targetSort sort)
+        targetScope) :=
+  match sort with
+  | .type => fun expression => translateStaticExpr layout members expression
+  | .capture => fun expression => translateStaticExpr layout members expression
+
+/-- Translate a homogeneous block of retained member intervals.  This public,
+sort-indexed wrapper is the metatheoretic boundary used to relate raw source
+occurrences to the exact normalized target theory; the implementation still
+shares the two specialized recursive workers above. -/
+def translateMemberIntervals {sort : DOTCapture.Intersections.StaticSort}
+    {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (members : List (MemberName targetScope)) :
+    List (Source.MemberInterval (Source.MemberExpr sourceScope sort)) ->
+      Except Error (List (Source.MemberInterval
+        (Target.StaticExpr
+          (DOTCaptureToManySortedFC.Intersections.Encoding.targetSort sort)
+          targetScope))) :=
+  match sort with
+  | .type => translateTypeMemberIntervals layout members
+  | .capture => translateCaptureMemberIntervals layout members
+
+@[simp]
+theorem translateMemberIntervals_nil
+    {sort : DOTCapture.Intersections.StaticSort}
+    {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (members : List (MemberName targetScope)) :
+    translateMemberIntervals (sort := sort) layout members [] = .ok [] := by
+  cases sort <;> rfl
+
+@[simp]
+theorem translateMemberIntervals_cons
+    {sort : DOTCapture.Intersections.StaticSort}
+    {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (members : List (MemberName targetScope))
+    (interval : Source.MemberInterval
+      (Source.MemberExpr sourceScope sort))
+    (remaining : List (Source.MemberInterval
+      (Source.MemberExpr sourceScope sort))) :
+    translateMemberIntervals layout members (interval :: remaining) = (do
+      let lower ← translateMemberExpr layout members interval.lower
+      let upper ← translateMemberExpr layout members interval.upper
+      let tail ← translateMemberIntervals layout members remaining
+      pure (⟨lower, upper⟩ :: tail)) := by
+  cases sort with
+  | type => rfl
+  | capture => rfl
+
 def entries {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
     (allMembers : List (MemberName targetScope)) :
@@ -404,7 +463,7 @@ def entries {sourceScope : Source.Sig} {targetScope : Target.Sig}
       .type allocatedLabel name :: allocatedRemaining => do
       if _labelsMatch : label = allocatedLabel then
         pure (.type label name
-          (← translateTypeMemberIntervals layout allMembers sourceIntervals) ::
+          (← translateMemberIntervals layout allMembers sourceIntervals) ::
           (← entries layout allMembers remaining allocatedRemaining))
       else
         .error (.allocationMismatch label)
@@ -412,7 +471,7 @@ def entries {sourceScope : Source.Sig} {targetScope : Target.Sig}
       .capture allocatedLabel name :: allocatedRemaining => do
       if _labelsMatch : label = allocatedLabel then
         pure (.capture label name
-          (← translateCaptureMemberIntervals layout allMembers sourceIntervals) ::
+          (← translateMemberIntervals layout allMembers sourceIntervals) ::
           (← entries layout allMembers remaining allocatedRemaining))
       else
         .error (.allocationMismatch label)
@@ -535,6 +594,118 @@ def translateCapture {sourceScope : Source.Sig} {targetScope : Target.Sig}
     Except Error (Target.Capture targetScope) :=
   Compile.translateCapture layout [] source
 
+/-- A total capture interpretation for proof-only compiler bookkeeping.
+Malformed member selections fall back to the empty target capture; every
+prepared compiler input recovers its exact successful translation below. -/
+def totalCapture {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope) :
+    Source.Capture sourceScope -> Target.Capture targetScope
+  | .empty => .empty
+  | .union left right =>
+      .union (totalCapture layout left) (totalCapture layout right)
+  | .readOnly capture => .readOnly (totalCapture layout capture)
+  | .singleton (.var sourceVar) => .singleton (layout.termVar sourceVar)
+  | .ref (.bound sourceVar) => .cvar (layout.staticSlot sourceVar).name
+  | .ref (.captureMember path label) =>
+      match layout.member? path label with
+      | some (.capture _ targetVar) => .cvar targetVar
+      | _ => .empty
+  | .ref (.localCaptureMember _) => .empty
+
+/-- Successful partial capture preparation agrees with the total map. -/
+theorem totalCapture_of_prepared {sourceScope : Source.Sig}
+    {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
+    (sourceCapture : Source.Capture sourceScope)
+    (targetCapture : Target.Capture targetScope)
+    (prepared : translateCapture layout sourceCapture = .ok targetCapture) :
+    totalCapture layout sourceCapture = targetCapture := by
+  induction sourceCapture generalizing targetCapture with
+  | empty => simpa [translateCapture, Compile.translateCapture,
+      Compile.captureCore, totalCapture] using prepared
+  | union left right leftInduction rightInduction =>
+      cases leftPrepared : Compile.captureCore layout [] left with
+      | error error =>
+          unfold translateCapture Compile.translateCapture
+            Compile.captureCore at prepared
+          rw [leftPrepared] at prepared
+          cases prepared
+      | ok targetLeft =>
+          cases rightPrepared : Compile.captureCore layout [] right with
+          | error error =>
+              unfold translateCapture Compile.translateCapture
+                Compile.captureCore at prepared
+              rw [leftPrepared, rightPrepared] at prepared
+              cases prepared
+          | ok targetRight =>
+              unfold translateCapture Compile.translateCapture
+                Compile.captureCore at prepared
+              rw [leftPrepared, rightPrepared] at prepared
+              cases prepared
+              have leftEquality : totalCapture layout left = targetLeft :=
+                leftInduction targetLeft (by
+                  simpa [translateCapture, Compile.translateCapture] using
+                    leftPrepared)
+              have rightEquality : totalCapture layout right = targetRight :=
+                rightInduction targetRight (by
+                  simpa [translateCapture, Compile.translateCapture] using
+                    rightPrepared)
+              simp [totalCapture, leftEquality, rightEquality]
+  | readOnly capture induction =>
+      cases innerPrepared : Compile.captureCore layout [] capture with
+      | error error =>
+          unfold translateCapture Compile.translateCapture
+            Compile.captureCore at prepared
+          rw [innerPrepared] at prepared
+          cases prepared
+      | ok targetInner =>
+          unfold translateCapture Compile.translateCapture
+            Compile.captureCore at prepared
+          rw [innerPrepared] at prepared
+          cases prepared
+          simp only [totalCapture]
+          rw [induction targetInner]
+          simpa [translateCapture, Compile.translateCapture] using
+            innerPrepared
+  | singleton path =>
+      cases path
+      simpa [translateCapture, Compile.translateCapture,
+        Compile.captureCore, totalCapture] using prepared
+  | ref reference =>
+      cases reference with
+      | bound sourceVar =>
+          unfold translateCapture Compile.translateCapture
+            Compile.captureCore Compile.captureReference at prepared
+          cases prepared
+          rfl
+      | captureMember path label =>
+          cases found : layout.member? path label with
+          | none =>
+              unfold translateCapture Compile.translateCapture
+                Compile.captureCore Compile.captureReference
+                Compile.pathMember at prepared
+              simp [found] at prepared
+              cases prepared
+          | some member =>
+              cases member with
+              | type memberLabel memberName =>
+                  unfold translateCapture Compile.translateCapture
+                    Compile.captureCore Compile.captureReference
+                    Compile.pathMember Compile.expectCapture at prepared
+                  simp [found] at prepared
+                  cases prepared
+              | capture memberLabel memberName =>
+                  unfold translateCapture Compile.translateCapture
+                    Compile.captureCore Compile.captureReference
+                    Compile.pathMember Compile.expectCapture at prepared
+                  simp [found] at prepared
+                  cases prepared
+                  simp [totalCapture, found]
+      | localCaptureMember label =>
+          unfold translateCapture Compile.translateCapture
+            Compile.captureCore Compile.captureReference
+            Compile.localMember MemberNames.find? Compile.expectCapture at prepared
+          cases prepared
+
 def translateSeparationContext {count : Nat}
     {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
@@ -557,6 +728,153 @@ def translateRequirements {count : Nat}
     Except Error
       (Target.ModalContext count (translateModes modes) targetScope) :=
   Compile.translateRequirements layout [] source
+
+/-- Total separation-context translation induced pointwise by `totalCapture`. -/
+def totalSeparationContext {count : Nat} {sourceScope : Source.Sig}
+    {targetScope : Target.Sig} (layout : Layout sourceScope targetScope) :
+    Source.SeparationContext count sourceScope ->
+      Target.SeparationContext count targetScope
+  | .nil => .nil
+  | .cons rest capture =>
+      .cons (totalSeparationContext layout rest) (totalCapture layout capture)
+
+/-- Total mode-context translation induced pointwise by `totalCapture`. -/
+def totalModeContext {modes : List Source.CaptureMode}
+    {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope) :
+    Source.ModeContext modes sourceScope ->
+      Target.ModeContext (translateModes modes) targetScope
+  | .nil => .nil
+  | .cons rest capture =>
+      .cons (totalModeContext layout rest) (totalCapture layout capture)
+
+/-- Total modal-interface translation used by coherent context construction. -/
+def totalRequirements {count : Nat} {modes : List Source.CaptureMode}
+    {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope) :
+    Source.ModalRequirements count modes sourceScope ->
+      Target.ModalContext count (translateModes modes) targetScope
+  | .mk separation mode =>
+      .mk (totalSeparationContext layout separation)
+        (totalModeContext layout mode)
+
+theorem totalSeparationContext_of_prepared {count : Nat}
+    {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (source : Source.SeparationContext count sourceScope)
+    (target : Target.SeparationContext count targetScope)
+    (prepared : translateSeparationContext layout source = .ok target) :
+    totalSeparationContext layout source = target := by
+  induction source with
+  | nil =>
+      simpa [translateSeparationContext, Compile.translateSeparationContext,
+        Compile.separationContextCore, totalSeparationContext] using prepared
+  | cons rest capture induction =>
+      cases restPrepared : Compile.separationContextCore layout [] rest with
+      | error error =>
+          unfold translateSeparationContext Compile.translateSeparationContext
+            Compile.separationContextCore at prepared
+          rw [restPrepared] at prepared
+          cases prepared
+      | ok targetRest =>
+          cases capturePrepared : Compile.captureCore layout [] capture with
+          | error error =>
+              unfold translateSeparationContext
+                Compile.translateSeparationContext
+                Compile.separationContextCore at prepared
+              rw [restPrepared, capturePrepared] at prepared
+              cases prepared
+          | ok targetCapture =>
+              unfold translateSeparationContext
+                Compile.translateSeparationContext
+                Compile.separationContextCore at prepared
+              rw [restPrepared, capturePrepared] at prepared
+              cases prepared
+              have restEquality := induction layout targetRest (by
+                simpa [translateSeparationContext,
+                  Compile.translateSeparationContext] using restPrepared)
+              have captureEquality := totalCapture_of_prepared layout capture
+                targetCapture (by
+                  simpa [translateCapture, Compile.translateCapture] using
+                    capturePrepared)
+              simp [totalSeparationContext, restEquality, captureEquality]
+
+theorem totalModeContext_of_prepared {modes : List Source.CaptureMode}
+    {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (source : Source.ModeContext modes sourceScope)
+    (target : Target.ModeContext (translateModes modes) targetScope)
+    (prepared : translateModeContext layout source = .ok target) :
+    totalModeContext layout source = target := by
+  induction source with
+  | nil =>
+      simpa [translateModeContext, Compile.translateModeContext,
+        Compile.modeContextCore, totalModeContext] using prepared
+  | cons rest capture induction =>
+      cases restPrepared : Compile.modeContextCore layout [] rest with
+      | error error =>
+          unfold translateModeContext Compile.translateModeContext
+            Compile.modeContextCore at prepared
+          rw [restPrepared] at prepared
+          cases prepared
+      | ok targetRest =>
+          cases capturePrepared : Compile.captureCore layout [] capture with
+          | error error =>
+              unfold translateModeContext Compile.translateModeContext
+                Compile.modeContextCore at prepared
+              rw [restPrepared, capturePrepared] at prepared
+              cases prepared
+          | ok targetCapture =>
+              unfold translateModeContext Compile.translateModeContext
+                Compile.modeContextCore at prepared
+              rw [restPrepared, capturePrepared] at prepared
+              cases prepared
+              have restEquality := induction layout targetRest (by
+                simpa [translateModeContext, Compile.translateModeContext]
+                  using restPrepared)
+              have captureEquality := totalCapture_of_prepared layout capture
+                targetCapture (by
+                  simpa [translateCapture, Compile.translateCapture] using
+                    capturePrepared)
+              simp [totalModeContext, restEquality, captureEquality]
+
+/-- Successful partial modal preparation is exactly the canonical total
+translation used by `CompilerContext.Ready.push`. -/
+theorem totalRequirements_of_prepared {count : Nat}
+    {modes : List Source.CaptureMode} {sourceScope : Source.Sig}
+    {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
+    (source : Source.ModalRequirements count modes sourceScope)
+    (target : Target.ModalContext count (translateModes modes) targetScope)
+    (prepared : translateRequirements layout source = .ok target) :
+    totalRequirements layout source = target := by
+  cases source with
+  | mk separation mode =>
+      unfold translateRequirements Compile.translateRequirements at prepared
+      simp only [Compile.requirementsCore] at prepared
+      cases separationPrepared :
+          Compile.separationContextCore layout [] separation with
+      | error error =>
+          rw [separationPrepared] at prepared
+          cases prepared
+      | ok targetSeparation =>
+          cases modePrepared : Compile.modeContextCore layout [] mode with
+          | error error =>
+              rw [separationPrepared, modePrepared] at prepared
+              cases prepared
+          | ok targetMode =>
+              rw [separationPrepared, modePrepared] at prepared
+              cases prepared
+              have separationEquality :=
+                totalSeparationContext_of_prepared layout separation
+                  targetSeparation (by
+                    simpa [translateSeparationContext,
+                      Compile.translateSeparationContext] using
+                        separationPrepared)
+              have modeEquality := totalModeContext_of_prepared layout mode
+                targetMode (by
+                  simpa [translateModeContext, Compile.translateModeContext]
+                    using modePrepared)
+              simp [totalRequirements, separationEquality, modeEquality]
 
 mutual
 

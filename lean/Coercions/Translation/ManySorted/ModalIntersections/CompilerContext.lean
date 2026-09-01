@@ -1,6 +1,8 @@
 import Coercions.DOT.Captures.ModalIntersections.Erasure
 import Coercions.DOT.Captures.ModalIntersections.TypingContext
-import Coercions.Translation.ManySorted.ModalIntersections.Preparation
+import Coercions.ManySortedFC.ModalPreservation
+import Coercions.Translation.ManySorted.ModalIntersections.ModalProvenanceTransport
+import Coercions.Translation.ManySorted.ModalIntersections.PreparationRenaming
 
 /-!
 # Compiler-ready contexts for cumulative modal intersections
@@ -147,6 +149,20 @@ structure Core {sourceScope : Source.Sig}
   layout : Layout sourceScope targetScope
   target : Target.Ctx targetScope
 
+namespace Core
+
+/-- Canonical total capture map used only to index proof-relevant modal
+provenance.  Successfully prepared captures recover their exact translation;
+malformed ambient selections map to empty.  The derivation-directed compiler
+uses the prepared constructors below before extending its canonical state. -/
+def captureMap {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (core : Core environment targetScope) :
+    Source.Capture sourceScope -> Target.Capture targetScope :=
+  Preparation.totalCapture core.layout
+
+end Core
+
 /-! ## Exact preparation artifacts -/
 
 /-- Successful translation of one ordinary source binding in this exact
@@ -167,6 +183,20 @@ structure PreparedCapture {sourceScope : Source.Sig}
   targetCapture : Target.Capture targetScope
   prepared : Preparation.translateCapture core.layout sourceCapture =
     .ok targetCapture
+
+namespace PreparedCapture
+
+@[simp]
+theorem captureMap_eq {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} {core : Core environment targetScope}
+    {sourceCapture : Source.Capture sourceScope}
+    (prepared : PreparedCapture core sourceCapture) :
+    core.captureMap sourceCapture = prepared.targetCapture :=
+  Preparation.totalCapture_of_prepared core.layout sourceCapture
+    prepared.targetCapture prepared.prepared
+
+end PreparedCapture
 
 /-- Successful translation of one sorted static expression in this exact
 layout. -/
@@ -240,6 +270,39 @@ structure PreparedModal {sourceScope : Source.Sig}
     (Preparation.translateModes modes) targetScope
   prepared : Preparation.translateRequirements core.layout
     sourceRequirements = .ok requirements
+
+namespace PreparedModal
+
+/-- The exact prepared modal interface is the canonical pointwise map used by
+proof-relevant target provenance. -/
+@[simp]
+theorem canonicalRequirements {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} {core : Core environment targetScope}
+    {separationCount : Nat} {modes : List Source.CaptureMode}
+    {sourceRequirements : Source.ModalRequirements separationCount modes
+      sourceScope}
+    (prepared : PreparedModal core sourceRequirements) :
+    mapRequirements core.captureMap sourceRequirements =
+      prepared.requirements := by
+  calc
+    mapRequirements core.captureMap sourceRequirements =
+        Preparation.totalRequirements core.layout sourceRequirements :=
+      (Preparation.totalRequirements_eq_mapRequirements core.layout
+        sourceRequirements).symm
+    _ = prepared.requirements :=
+      Preparation.totalRequirements_of_prepared core.layout
+        sourceRequirements prepared.requirements prepared.prepared
+
+end PreparedModal
+
+/-- A coherent compiler context combines the exact layout/target context with
+proof-relevant provenance for every active source lock. -/
+structure Ready {sourceScope : Source.Sig}
+    (environment : Source.TypingEnv sourceScope)
+    (targetScope : Target.Sig) where
+  core : Core environment targetScope
+  provenance : ActiveProvenance environment.locks core.target core.captureMap
 
 namespace Core
 
@@ -470,5 +533,193 @@ theorem runtimeRenaming_push {sourceScope : Source.Sig}
     (Preparation.translateModes modes) (core.layout.termVar sourceVar)
 
 end Core
+
+/-! ## Canonical prepared context extensions -/
+
+namespace Ready
+
+/-- The empty source environment has no active modal frame. -/
+def nil : Ready DOTCapture.ModalIntersections.TypingEnv.nil [] where
+  core := Core.nil
+  provenance := ActiveProvenance.nil ManySortedFC.Ctx.nil
+    (Preparation.totalCapture Layout.empty)
+
+/-- Add an ordinary source binding only after its type has translated in the
+exact current layout. -/
+noncomputable def extendPlain {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (ready : Ready environment targetScope)
+    (sourceType : Source.Ty sourceScope)
+    (prepared : PreparedTerm ready.core sourceType) :
+    Ready (environment.extendTerm sourceType) (targetScope ▹ .term) := by
+  let nextCore := ready.core.extendPlain sourceType prepared.targetType
+  let substitution := ManySortedFC.TermStaticSubst.ofRename
+    (ManySortedFC.Rename.succ (scope := targetScope) (kind := .term))
+  have preserves : substitution.Preserves ready.core.target nextCore.target :=
+    ManySortedFC.TermStaticSubst.Preserves.weaken ready.core.target
+      (.term prepared.targetType)
+  refine { core := nextCore, provenance := ?_ }
+  refine ActiveProvenance.renameSource ready.provenance
+    (DOTCapture.BinderOnly.Rename.succ (scope := sourceScope) (kind := .term))
+    substitution preserves nextCore.captureMap ?_
+  intro capture
+  change Preparation.totalCapture ready.core.layout.extendPlain
+      (capture.rename DOTCapture.BinderOnly.Rename.succ) =
+    (Preparation.totalCapture ready.core.layout capture).substitute
+      (ManySortedFC.StaticSubst.ofRename ManySortedFC.Rename.succ)
+  rw [Preparation.totalCapture_extendPlain]
+  rw [ManySortedFC.Capture.substitute_ofRename]
+
+/-- Add one lexical static interval only after its complete target theory has
+been prepared in the exact current layout. -/
+noncomputable def extendStatic {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (ready : Ready environment targetScope)
+    {sort : Source.StaticSort}
+    (interval : DOTCapture.ModalIntersections.Interval sort sourceScope)
+    (prepared : PreparedStatic ready.core interval) :
+    Ready (environment.extendStatic interval)
+      (Target.StaticScope targetScope [translateSort sort]
+        (intervalRelations interval)) := by
+  let nextCore := ready.core.extendStatic interval prepared.theory
+  let rho := Layout.staticRename targetScope interval
+  let substitution := ManySortedFC.TermStaticSubst.ofRename rho
+  have preserves : substitution.Preserves ready.core.target nextCore.target :=
+    ManySortedFC.TermStaticSubst.Preserves.weakenTheory ready.core.target
+      prepared.theory
+  refine { core := nextCore, provenance := ?_ }
+  refine ActiveProvenance.renameSource ready.provenance
+    (DOTCapture.BinderOnly.Rename.succ (scope := sourceScope)
+      (kind := .static sort)) substitution preserves nextCore.captureMap ?_
+  intro capture
+  change Preparation.totalCapture (ready.core.layout.extendStatic interval)
+      (capture.rename DOTCapture.BinderOnly.Rename.succ) =
+    (Preparation.totalCapture ready.core.layout capture).substitute
+      (ManySortedFC.StaticSubst.ofRename
+        (Layout.staticRename targetScope interval))
+  rw [Preparation.totalCapture_extendStatic]
+  rw [ManySortedFC.Capture.substitute_ofRename]
+
+/-- Open a prepared existential interval and payload in the same two stages as
+the source environment: first the hidden static name, then the runtime value. -/
+noncomputable def extendPayload {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (ready : Ready environment targetScope)
+    {sort : Source.StaticSort}
+    (interval : DOTCapture.ModalIntersections.Interval sort sourceScope)
+    (sourcePayload : Source.Ty (sourceScope ▹ .static sort))
+    (prepared : PreparedPayload ready.core interval sourcePayload) :
+    Ready (environment.extendPayload interval sourcePayload)
+      (Target.StaticScope targetScope [translateSort sort]
+        (intervalRelations interval) ▹ .term) := by
+  let staticPrepared : PreparedStatic ready.core interval :=
+    { theory := prepared.theory
+      prepared := prepared.intervalPrepared }
+  let afterStatic := ready.extendStatic interval staticPrepared
+  have afterStaticLayout : afterStatic.core.layout =
+      ready.core.layout.extendStatic interval := by
+    rfl
+  let payloadPrepared : PreparedTerm afterStatic.core sourcePayload :=
+    { targetType := prepared.targetPayload
+      prepared := by
+        rw [afterStaticLayout]
+        exact prepared.payloadPrepared }
+  exact afterStatic.extendPlain sourcePayload payloadPrepared
+
+/-- Open a prepared object theory and install its representation as one stable
+runtime root.  Existing modal leaves first cross the proof-only theory and
+then the source/target term binder in lockstep. -/
+noncomputable def extendObject {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (ready : Ready environment targetScope)
+    (sourceObject : Source.ObjectType sourceScope)
+    (prepared : PreparedObject ready.core sourceObject) :
+    Ready (environment.extendTerm sourceObject.formedType)
+      (Target.StaticScope targetScope prepared.object.encoding.symbols
+        prepared.object.encoding.relations ▹ .term) := by
+  let object := prepared.object
+  let namesRename := ManySortedFC.Rename.weakenStatic (scope := targetScope)
+    object.encoding.symbols object.encoding.relations
+  let namesSubstitution := ManySortedFC.TermStaticSubst.ofRename namesRename
+  let namesContext := ready.core.target.extendTheory object.encoding.theory
+  have namesPreserves : namesSubstitution.Preserves ready.core.target
+      namesContext :=
+    ManySortedFC.TermStaticSubst.Preserves.weakenTheory ready.core.target
+      object.encoding.theory
+  let namesProvenance := ready.provenance.substituteTarget namesSubstitution
+    namesPreserves
+  let nextCore := ready.core.extendObject sourceObject object
+  let termSubstitution := ManySortedFC.TermStaticSubst.ofRename
+    (ManySortedFC.Rename.succ
+      (scope := Target.StaticScope targetScope object.encoding.symbols
+        object.encoding.relations) (kind := .term))
+  have termPreserves : termSubstitution.Preserves namesContext
+      nextCore.target :=
+    ManySortedFC.TermStaticSubst.Preserves.weaken namesContext
+      (.term object.representation)
+  refine { core := nextCore, provenance := ?_ }
+  refine ActiveProvenance.renameSource namesProvenance
+    (DOTCapture.BinderOnly.Rename.succ (scope := sourceScope) (kind := .term))
+    termSubstitution termPreserves nextCore.captureMap ?_
+  intro capture
+  change Preparation.totalCapture
+      (ready.core.layout.extendObject object.encoding)
+      (capture.rename DOTCapture.BinderOnly.Rename.succ) =
+    ((Preparation.totalCapture ready.core.layout capture).substitute
+      (ManySortedFC.StaticSubst.ofRename namesRename)).substitute
+      (ManySortedFC.StaticSubst.ofRename ManySortedFC.Rename.succ)
+  rw [Preparation.totalCapture_extendObject,
+    ManySortedFC.Capture.substitute_ofRename,
+    ManySortedFC.Capture.substitute_ofRename,
+    ManySortedFC.Capture.rename_comp]
+  rfl
+
+/-- Enter a source lock only after its complete modal interface has prepared.
+The target theory is reconstructed canonically from the same successful
+source interface so `ActiveProvenance.push` supplies its exact coordinates. -/
+noncomputable def push {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig} (ready : Ready environment targetScope)
+    {separationCount : Nat} {modes : List Source.CaptureMode}
+    (sourceRequirements : Source.ModalRequirements separationCount modes
+      sourceScope)
+    (prepared : PreparedModal ready.core sourceRequirements) :
+    Ready (environment.push sourceRequirements)
+      (Target.ModalScope targetScope separationCount
+        (Preparation.translateModes modes)) := by
+  cases sourceRequirements with
+  | mk separation modeContext =>
+      let targetRequirements := prepared.requirements
+      have targetRequirementsEquality :
+          mapRequirements ready.core.captureMap
+              (.mk separation modeContext) = targetRequirements :=
+        prepared.canonicalRequirements
+      let nextCore := ready.core.push (.mk separation modeContext)
+        targetRequirements
+      refine { core := nextCore, provenance := ?_ }
+      have pushed := ready.provenance.push separation modeContext
+      have captureMapEquality :
+          Preparation.totalCapture
+              (ready.core.layout.weakenModal separationCount
+                (Preparation.translateModes modes)) =
+            (fun capture =>
+              (Preparation.totalCapture ready.core.layout capture).rename
+                (ManySortedFC.Rename.weakenModal targetScope separationCount
+                  (Preparation.translateModes modes))) := by
+        funext capture
+        exact Preparation.totalCapture_weakenModal ready.core.layout
+          separationCount (Preparation.translateModes modes) capture
+      change ActiveProvenance
+        (environment.locks.push (.mk separation modeContext))
+        (ready.core.target.extendModal
+          targetRequirements)
+        (Preparation.totalCapture
+          (ready.core.layout.weakenModal separationCount
+            (Preparation.translateModes modes)))
+      rw [captureMapEquality]
+      rw [← targetRequirementsEquality]
+      simpa only [Core.captureMap] using pushed
+
+end Ready
 
 end DOTCaptureToManySortedFC.ModalIntersections.CompilerContext
