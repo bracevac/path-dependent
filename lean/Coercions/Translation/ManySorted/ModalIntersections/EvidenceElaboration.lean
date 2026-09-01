@@ -57,7 +57,7 @@ structure PreparedExpression {sourceScope : Source.Sig}
     {sort : Source.StaticSort} (source : Source.StaticExpr sort sourceScope)
     where
   target : Target.StaticExpr (translateSort sort) targetScope
-  prepared : Preparation.translateStaticExpr core.layout source = .ok target
+  prepared : ObjectContract.translateStaticExpr core.layout source = .ok target
 
 /-- Run the partial preparer once and retain its exact result equation. -/
 def prepareExpression? {sourceScope : Source.Sig}
@@ -65,7 +65,7 @@ def prepareExpression? {sourceScope : Source.Sig}
     {targetScope : Target.Sig} (core : Core environment targetScope)
     {sort : Source.StaticSort} (source : Source.StaticExpr sort sourceScope) :
     Option (PreparedExpression core source) :=
-  match prepared : Preparation.translateStaticExpr core.layout source with
+  match prepared : ObjectContract.translateStaticExpr core.layout source with
   | .ok target => some { target, prepared }
   | .error _ => none
 

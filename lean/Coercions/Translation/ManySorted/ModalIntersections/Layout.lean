@@ -347,11 +347,13 @@ def objectRename (targetScope : Target.Sig)
 /-- Open an encoded object theory and install its payload as a stable source
 root.  Member lookup reuses the names already allocated by `Encoding`; it
 never allocates a second identity. -/
-def extendObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
-    (layout : Layout sourceScope targetScope) (encoding : Encoding targetScope) :
+def extendObjectWith {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope)
+    (symbols : List Target.StaticSort) (relations : List Target.Relation)
+    (openedMembers : List
+      (MemberName (Target.StaticScope targetScope symbols relations))) :
     Layout (sourceScope ▹ .term)
-      (Target.StaticScope targetScope encoding.symbols encoding.relations ▹
-        .term) where
+      (Target.StaticScope targetScope symbols relations ▹ .term) where
   termVar := fun
     | .here => .here
     | .there older =>
@@ -363,11 +365,53 @@ def extendObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
     match path with
     | .var .here =>
         (DOTCaptureToManySortedFC.Intersections.Preparation.MemberNames.find?
-          encoding.openedMembers label).map fun member =>
+          openedMembers label).map fun member =>
             member.rename ManySortedFC.Rename.succ
     | .var (.there older) =>
         (layout.member? (.var older) label).map fun member =>
           member.rename (objectRename targetScope)
+
+/-- Historical encoded-object specialization of `extendObjectWith`. -/
+def extendObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
+    (layout : Layout sourceScope targetScope) (encoding : Encoding targetScope) :
+    Layout (sourceScope ▹ .term)
+      (Target.StaticScope targetScope encoding.symbols encoding.relations ▹
+        .term) :=
+  layout.extendObjectWith encoding.symbols encoding.relations
+    encoding.openedMembers
+
+@[simp]
+theorem extendObjectWith_term_here {sourceScope : Source.Sig}
+    {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
+    (symbols : List Target.StaticSort) (relations : List Target.Relation)
+    (openedMembers : List
+      (MemberName (Target.StaticScope targetScope symbols relations))) :
+    (layout.extendObjectWith symbols relations openedMembers).termVar .here =
+      .here := rfl
+
+@[simp]
+theorem extendObjectWith_term_there {sourceScope : Source.Sig}
+    {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
+    (symbols : List Target.StaticSort) (relations : List Target.Relation)
+    (openedMembers : List
+      (MemberName (Target.StaticScope targetScope symbols relations)))
+    (sourceVar : Source.BVar sourceScope .term) :
+    (layout.extendObjectWith symbols relations openedMembers).termVar
+        (.there sourceVar) =
+      (objectRename targetScope).var (layout.termVar sourceVar) := rfl
+
+@[simp]
+theorem extendObjectWith_member_here {sourceScope : Source.Sig}
+    {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
+    (symbols : List Target.StaticSort) (relations : List Target.Relation)
+    (openedMembers : List
+      (MemberName (Target.StaticScope targetScope symbols relations)))
+    (label : Nat) :
+    (layout.extendObjectWith symbols relations openedMembers).member?
+        (.var .here) label =
+      (DOTCaptureToManySortedFC.Intersections.Preparation.MemberNames.find?
+        openedMembers label).map fun member =>
+          member.rename ManySortedFC.Rename.succ := rfl
 
 @[simp]
 theorem extendObject_term_here {sourceScope : Source.Sig}

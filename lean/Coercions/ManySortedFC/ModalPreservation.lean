@@ -1329,6 +1329,9 @@ noncomputable def substitute {sourceScope : Sig}
       · simpa only [StaticExpr.substitute, Proposition.substitute,
           Ty.stripCapture_substitute_structural source substitution.static
             structural] using substitutedShape
+  | forgetEmptyCapture shape =>
+      intro targetScope targetContext substitution preserves structural
+      exact .forgetEmptyCapture _
   | captured capturesTyping shapeTyping induction =>
       intro targetScope targetContext substitution preserves structural
       exact .captured

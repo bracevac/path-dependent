@@ -323,6 +323,7 @@ def erase {scope : Sig} (adapter : Adapter scope) {runtimeScope : Nat}
   | .identity _ => term
   | .cast _ => term
   | .retagCapture _ _ _ _ _ => term
+  | .forgetEmptyCapture _ => term
   | .captured _ shape => shape.erase term
   | .compose first second => second.erase (first.erase term)
   | .function domain codomain =>
@@ -355,6 +356,11 @@ theorem erase_retagCapture {scope : Sig} (source : Ty scope)
     {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
     (Adapter.retagCapture source targetCapture targetShape captures shape).erase
       term = term := rfl
+
+@[simp]
+theorem erase_forgetEmptyCapture {scope : Sig} (shape : Ty scope)
+    {runtimeScope : Nat} (term : Runtime.Tm runtimeScope) :
+    (Adapter.forgetEmptyCapture shape).erase term = term := rfl
 
 @[simp]
 theorem erase_captured {scope : Sig}
@@ -458,6 +464,7 @@ theorem erase_rename {source target : Sig} (adapter : Adapter source)
   | identity => rfl
   | cast => rfl
   | retagCapture => rfl
+  | forgetEmptyCapture => rfl
   | captured captures shape induction =>
       simp [Adapter.rename, erase, induction]
   | compose first second firstInduction secondInduction =>
@@ -485,6 +492,7 @@ theorem erase_runtimeRename {scope : Sig} (adapter : Adapter scope)
   | identity => rfl
   | cast => rfl
   | retagCapture => rfl
+  | forgetEmptyCapture => rfl
   | captured captures shape induction =>
       simpa only [erase] using induction term rho
   | compose first second firstInduction secondInduction =>
@@ -519,6 +527,7 @@ theorem erase_value {scope : Sig} (adapter : Adapter scope)
   | identity => exact termValue
   | cast => exact termValue
   | retagCapture => exact termValue
+  | forgetEmptyCapture => exact termValue
   | captured captures shape induction => exact induction termValue
   | compose first second firstInduction secondInduction =>
       exact secondInduction (firstInduction termValue)

@@ -219,4 +219,150 @@ def compile? {sourceScope : Source.Sig}
                 else none
           else none
 
+/-! ## Contracted cumulative adaptations -/
+
+/-- Move an expected contracted representation below the actual contracted
+theory while retaining the expected theory's own binders. -/
+def openedContractedExpectedRepresentation {targetScope : Target.Sig}
+    (actual expected : ObjectContract.PreparedObject targetScope) :
+    Target.Ty (ManySortedFC.StaticScope
+      (ManySortedFC.StaticScope targetScope actual.symbols actual.relations)
+      expected.symbols expected.relations) :=
+  expected.representation.rename
+    ((ManySortedFC.Rename.weakenStatic actual.symbols actual.relations).liftStatic
+      expected.symbols expected.relations)
+
+/-- Representation endpoint obtained by applying one checked contracted
+TheoryMap.  The destination `C_rep` is interpreted as the actual object's
+existing representation-capture name. -/
+def mappedContractedExpectedRepresentation {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available expected : Source.ObjectType sourceScope}
+    {actualPrepared : CompilerContext.PreparedContractedObject core available}
+    {expectedPrepared : CompilerContext.PreparedContractedObject core expected}
+    {openedAmbient : ContractedOpenedAmbientCompiler core
+      actualPrepared.object}
+    {mapping : DOTCapture.ModalIntersections.LocalModel.Mapping sourceScope}
+    {derivation : DOTCapture.ModalIntersections.Interface.Derives
+      environment.bindings available.interface mapping expected.interface}
+    {exactCandidate : Target.Evidence (.equality .capture)
+      (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+        actualPrepared.object.relations)}
+    {containmentCandidate : Target.Evidence (.inclusion .capture)
+      (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+        actualPrepared.object.relations)}
+    (compiled : CompiledContractedDerivation core actualPrepared
+      expectedPrepared openedAmbient mapping derivation exactCandidate
+      containmentCandidate) :
+    Target.Ty (ManySortedFC.StaticScope targetScope
+      actualPrepared.object.symbols actualPrepared.object.relations) :=
+  (openedContractedExpectedRepresentation actualPrepared.object
+    expectedPrepared.object).instantiateStatic compiled.view.mapping.symbols
+
+/-- A source object adaptation whose contracted theory projection and
+value-only payload adapter have both crossed their standalone target
+checkers.  The explicit exact candidate normally comes from the stable root's
+retained capture contract; no new representation-capture identity is made. -/
+structure CompiledContractedAdaptation {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    (core : Core environment targetScope)
+    {available expected : Source.ObjectType sourceScope}
+    (actualPrepared : CompilerContext.PreparedContractedObject core available)
+    (expectedPrepared : CompilerContext.PreparedContractedObject core expected)
+    (openedAmbient : ContractedOpenedAmbientCompiler core
+      actualPrepared.object)
+    (adaptation : DOTCapture.ModalIntersections.ObjectType.Adapts
+      environment.bindings available expected)
+    (exactCandidate : Target.Evidence (.equality .capture)
+      (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+        actualPrepared.object.relations)) where
+  outerCandidate : Target.Evidence (.inclusion .capture)
+    (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+      actualPrepared.object.relations)
+  outerCandidateCompiled : openedAmbient.compile adaptation.outerCapture =
+    some outerCandidate
+  containmentCandidate : Target.Evidence (.inclusion .capture)
+    (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+      actualPrepared.object.relations)
+  containmentCandidate_eq : containmentCandidate =
+    .inclusionTrans (.var actualPrepared.object.repCaptureEvidence)
+      outerCandidate
+  view : CompiledContractedDerivation core actualPrepared expectedPrepared
+    openedAmbient adaptation.mapping adaptation.theory exactCandidate
+    containmentCandidate
+  viewCompiled : compileContractedView? actualPrepared expectedPrepared
+    openedAmbient adaptation.theory exactCandidate containmentCandidate =
+      some view
+  representationCandidate : Target.Adapter
+    (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+      actualPrepared.object.relations)
+  representation : RepresentationAdapter
+    (core.target.extendTheory actualPrepared.object.theory)
+    actualPrepared.object.representation
+    (mappedContractedExpectedRepresentation view)
+  representationChecked : checkRepresentationAdapter?
+    (core.target.extendTheory actualPrepared.object.theory)
+    actualPrepared.object.representation
+    (mappedContractedExpectedRepresentation view) representationCandidate =
+      some representation
+
+/-- Compile one contracted source adaptation.  The exact candidate is
+checked as the destination theory's generated `repExact`; containment is
+composed from the actual object's exported `repCapture` and the source outer
+capture derivation, then checked as the generated destination relation.
+
+This boundary is intentionally partial.  A projection preserves the actual
+object's `C_rep`, so it succeeds only when that same name is provably equal to
+the expected mapped representation capture.  A value adapter that merely
+widens an outer capture does not establish that equality and is rejected here
+even if its structural term transformation is otherwise valid. -/
+def compileContracted? {sourceScope : Source.Sig}
+    {environment : Source.TypingEnv sourceScope}
+    {targetScope : Target.Sig}
+    {core : Core environment targetScope}
+    {available expected : Source.ObjectType sourceScope}
+    (actualPrepared : CompilerContext.PreparedContractedObject core available)
+    (expectedPrepared : CompilerContext.PreparedContractedObject core expected)
+    (openedAmbient : ContractedOpenedAmbientCompiler core
+      actualPrepared.object)
+    (adaptation : DOTCapture.ModalIntersections.ObjectType.Adapts
+      environment.bindings available expected)
+    (exactCandidate : Target.Evidence (.equality .capture)
+      (ManySortedFC.StaticScope targetScope actualPrepared.object.symbols
+        actualPrepared.object.relations))
+    (candidate : Target.Adapter (ManySortedFC.StaticScope targetScope
+      actualPrepared.object.symbols actualPrepared.object.relations)) :
+    Option (CompiledContractedAdaptation core actualPrepared expectedPrepared
+      openedAmbient adaptation exactCandidate) :=
+  match outerCompiled : openedAmbient.compile adaptation.outerCapture with
+  | none => none
+  | some outerCandidate =>
+      let containmentCandidate :=
+        ManySortedFC.Evidence.inclusionTrans
+          (.var actualPrepared.object.repCaptureEvidence) outerCandidate
+      match viewCompiled : compileContractedView? actualPrepared
+          expectedPrepared openedAmbient adaptation.theory exactCandidate
+          containmentCandidate with
+      | none => none
+      | some view =>
+          let expectedTarget := mappedContractedExpectedRepresentation view
+          match representationChecked : checkRepresentationAdapter?
+              (core.target.extendTheory actualPrepared.object.theory)
+              actualPrepared.object.representation expectedTarget candidate
+          with
+          | none => none
+          | some representation => some
+              { outerCandidate
+                outerCandidateCompiled := outerCompiled
+                containmentCandidate
+                containmentCandidate_eq := rfl
+                view
+                viewCompiled
+                representationCandidate := candidate
+                representation
+                representationChecked }
+
 end DOTCaptureToManySortedFC.ModalIntersections.ObjectAdaptation

@@ -393,6 +393,7 @@ private theorem check_complete_projection {scope : Sig}
           subst capturesProp
           subst shapeProp
           simp [synth, check, capturesEq, shapeEq]
+  | forgetEmptyCapture => rfl
   | captured capturesTyping shapeTyping shapeIH =>
       have capturesIH := Evidence.check_complete_projection capturesTyping
       obtain ⟨capturesChecked, capturesEq, capturesPropEq⟩ :=

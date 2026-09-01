@@ -312,6 +312,8 @@ def substitute {source target : Sig} (adapter : Adapter source)
         (targetCapture.substitute substitution.static)
         (targetShape.substitute substitution.static)
         (captures.substitute substitution) (shape.substitute substitution)
+  | .forgetEmptyCapture shape =>
+      .forgetEmptyCapture (shape.substitute substitution.static)
   | .captured captures shape =>
       .captured (captures.substitute substitution)
         (shape.substitute substitution)

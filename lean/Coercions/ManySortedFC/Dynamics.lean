@@ -202,6 +202,7 @@ theorem erase_substituteStatic {source target : Sig}
   | identity => rfl
   | cast => rfl
   | retagCapture => rfl
+  | forgetEmptyCapture => rfl
   | captured captures shape induction =>
       simp [Adapter.substitute, Adapter.erase, induction]
   | compose first second firstInduction secondInduction =>

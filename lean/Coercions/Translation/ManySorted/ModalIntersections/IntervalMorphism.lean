@@ -383,34 +383,34 @@ def BodyTranslationAgreement {sourceScope : Source.Sig}
     (body : Source.Ty (sourceScope ▹ .static sort)) : Prop :=
   match entailment with
   | .unbounded =>
-      Preparation.translateType
+      ObjectContract.translateType
           (core.layout.extendStatic
             (.bounds .none .none : Source.Interval sort sourceScope)) body =
-        Preparation.translateType
+        ObjectContract.translateType
           (core.layout.extendStatic
             (.bounds .none .none : Source.Interval sort sourceScope)) body
   | @DOTCapture.ModalIntersections.Interval.Entails.lower _ _ _
       availableLower requiredLower _ =>
-      Preparation.translateType
+      ObjectContract.translateType
           (core.layout.extendStatic
             (.bounds (.some requiredLower) .none)) body =
-        Preparation.translateType
+        ObjectContract.translateType
           (core.layout.extendStatic
             (.bounds (.some availableLower) .none)) body
   | @DOTCapture.ModalIntersections.Interval.Entails.upper _ _ _
       availableUpper requiredUpper _ =>
-      Preparation.translateType
+      ObjectContract.translateType
           (core.layout.extendStatic
             (.bounds .none (.some requiredUpper))) body =
-        Preparation.translateType
+        ObjectContract.translateType
           (core.layout.extendStatic
             (.bounds .none (.some availableUpper))) body
   | @DOTCapture.ModalIntersections.Interval.Entails.between _ _ _
       availableLower availableUpper requiredLower requiredUpper _ _ =>
-      Preparation.translateType
+      ObjectContract.translateType
           (core.layout.extendStatic
             (.bounds (.some requiredLower) (.some requiredUpper))) body =
-        Preparation.translateType
+        ObjectContract.translateType
           (core.layout.extendStatic
             (.bounds (.some availableLower) (.some availableUpper))) body
 
@@ -429,18 +429,37 @@ theorem translateBody_required_eq_available {sourceScope : Source.Sig}
   | .unbounded => by simp [BodyTranslationAgreement]
   | @DOTCapture.ModalIntersections.Interval.Entails.lower _ _ _
       availableLower requiredLower _ => by
-      simpa [BodyTranslationAgreement] using
-        (Preparation.translateType_extendStatic_lower_eq core.layout
-          availableLower requiredLower body)
+      have layoutEq :
+          core.layout.extendStatic (.bounds (.some requiredLower) .none) =
+            core.layout.extendStatic
+              (.bounds (.some availableLower) .none) := by
+        simpa using
+          (Preparation.Layout.extendStatic_lower_eq core.layout requiredLower
+            availableLower)
+      exact congrArg (fun layout => ObjectContract.translateType layout body)
+        layoutEq
   | @DOTCapture.ModalIntersections.Interval.Entails.upper _ _ _
       availableUpper requiredUpper _ => by
-      simpa [BodyTranslationAgreement] using
-        (Preparation.translateType_extendStatic_upper_eq core.layout
-          availableUpper requiredUpper body)
+      have layoutEq :
+          core.layout.extendStatic (.bounds .none (.some requiredUpper)) =
+            core.layout.extendStatic
+              (.bounds .none (.some availableUpper)) := by
+        simpa using
+          (Preparation.Layout.extendStatic_upper_eq core.layout requiredUpper
+            availableUpper)
+      exact congrArg (fun layout => ObjectContract.translateType layout body)
+        layoutEq
   | @DOTCapture.ModalIntersections.Interval.Entails.between _ _ _
       availableLower availableUpper requiredLower requiredUpper _ _ => by
-      simpa [BodyTranslationAgreement] using
-        (Preparation.translateType_extendStatic_between_eq core.layout
-          availableLower availableUpper requiredLower requiredUpper body)
+      have layoutEq :
+          core.layout.extendStatic
+              (.bounds (.some requiredLower) (.some requiredUpper)) =
+            core.layout.extendStatic
+              (.bounds (.some availableLower) (.some availableUpper)) := by
+        simpa using
+          (Preparation.Layout.extendStatic_between_eq core.layout
+            requiredLower requiredUpper availableLower availableUpper)
+      exact congrArg (fun layout => ObjectContract.translateType layout body)
+        layoutEq
 
 end DOTCaptureToManySortedFC.ModalIntersections.IntervalMorphism

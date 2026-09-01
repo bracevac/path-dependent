@@ -45,7 +45,7 @@ def prepareType? {sourceScope : Source.Sig}
     {environment : Source.TypingEnv sourceScope}
     {targetScope : Target.Sig} (core : Core environment targetScope)
     (source : Source.Ty sourceScope) : Option (PreparedTerm core source) :=
-  match prepared : Preparation.translateType core.layout source with
+  match prepared : ObjectContract.translateType core.layout source with
   | .error _ => none
   | .ok targetType => some { targetType, prepared }
 
@@ -55,7 +55,7 @@ def prepareInterval? {sourceScope : Source.Sig}
     {targetScope : Target.Sig} (core : Core environment targetScope)
     {sort : Source.StaticSort} (interval : Source.Interval sort sourceScope) :
     Option (PreparedStatic core interval) :=
-  match prepared : Preparation.translateInterval core.layout interval with
+  match prepared : ObjectContract.translateInterval core.layout interval with
   | .error _ => none
   | .ok theory => some { theory, prepared }
 
@@ -135,6 +135,17 @@ def finish? {sourceScope : Source.Sig}
 
 /-! ## Derivation-directed compilation -/
 
+/-- Negative object arrows translate to an already captured static model
+abstraction.  A surrounding source capture is therefore the capture of that
+abstraction, rather than a second nested target capture. -/
+private def isNegativeObjectArrow {scope : Source.Sig} :
+    Source.Ty scope -> Bool
+  | .objectArrow _ _ => true
+  | .arr (.capturing domainCapture
+      (.object (.mk _ _ objectCapture))) _ =>
+      decide (domainCapture = objectCapture)
+  | _ => false
+
 /-- Compile the cumulative source adapter grammar without adapter search.
 Logical leaves use the cumulative evidence compiler; quantified bound changes
 use the checked interval-morphism compiler in their stated variance. -/
@@ -166,13 +177,53 @@ def compile? {sourceScope : Source.Sig}
         let codomainCompiled <- compile? context codomain
         finish? context _ _
           (.function domainCompiled.adapter codomainCompiled.adapter)
-  | .captured subcapture inner =>
+  | @DOTCapture.ModalIntersections.Adapts.captured _ _ _ _
+      sourceShape targetShape subcapture inner =>
       do
         let capturesCompiled <- compileCaptureIncludes?
           context.compiler.captures context.compiler.leaves subcapture
         let innerCompiled <- compile? context inner
-        finish? context _ _
-          (.captured capturesCompiled.evidence innerCompiled.adapter)
+        let direct :=
+          .captured capturesCompiled.evidence innerCompiled.adapter
+        if isNegativeObjectArrow sourceShape &&
+            isNegativeObjectArrow targetShape then
+            let sourceBody :=
+              innerCompiled.sourcePrepared.targetType.stripCapture
+            let targetBody :=
+              innerCompiled.targetPrepared.targetType.stripCapture
+            let introduceEmpty : Target.Adapter targetScope :=
+              .retagCapture sourceBody .empty sourceBody
+                (.inclusionRefl (.capture .empty))
+                (.inclusionRefl (.type sourceBody))
+            let exposeInner : Target.Adapter targetScope :=
+              .compose introduceEmpty
+                (.compose innerCompiled.adapter
+                  (.forgetEmptyCapture targetBody))
+            match targetBody with
+            | @ManySortedFC.Ty.forallT _ symbols relations theory
+                (.capturing .empty targetArrow) =>
+                let innerCaptures := capturesCompiled.evidence.rename
+                  (ManySortedFC.Rename.weakenStatic symbols relations)
+                let closeTarget : Target.Adapter targetScope :=
+                  .forallT theory
+                    (.captured innerCaptures (.identity targetArrow))
+                let bridged :=
+                  .captured capturesCompiled.evidence
+                    (.compose exposeInner closeTarget)
+                match finish? context _ _ bridged with
+                | some compiled => some compiled
+                | none =>
+                    let directClosureLift :=
+                      .captured capturesCompiled.evidence
+                        (.forallT theory
+                          (.captured innerCaptures
+                            (.identity targetArrow)))
+                    finish? context _ _ directClosureLift
+            | _ =>
+                finish? context _ _
+                  (.captured capturesCompiled.evidence exposeInner)
+        else
+          finish? context _ _ direct
   | @DOTCapture.ModalIntersections.Adapts.forallI _ _ sort interval
       sourceBody targetBody body =>
       do

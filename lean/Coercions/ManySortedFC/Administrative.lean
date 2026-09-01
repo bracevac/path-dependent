@@ -137,6 +137,8 @@ theorem erase_admin {scope : Sig} (adapter : Adapter scope)
       exact .refl
   | retagCapture =>
       exact .refl
+  | forgetEmptyCapture =>
+      exact .refl
   | captured captures shape induction =>
       exact induction term termValue
   | compose first second firstInduction secondInduction =>
