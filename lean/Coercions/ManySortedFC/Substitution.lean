@@ -75,7 +75,6 @@ def symbol {scope : Sig} {sort : StaticSort}
   match sort with
   | .type => .type (.tvar name)
   | .capture => .capture (.cvar name)
-  | .classifier => .classifier (.var name)
 
 end StaticExpr
 
@@ -287,19 +286,6 @@ end StaticSubst
 
 /-! ## Capture-avoiding action on static syntax -/
 
-namespace ClassifierExpr
-
-/-- Apply a simultaneous static substitution to a classifier expression. -/
-def substitute {source target : Sig} (expression : ClassifierExpr source)
-    (substitution : StaticSubst source target) : ClassifierExpr target :=
-  match expression with
-  | .ground kind => .ground kind
-  | .var name =>
-      match substitution.symbolVar name with
-      | .classifier replacement => replacement
-
-end ClassifierExpr
-
 mutual
 
 /-- Apply a simultaneous static substitution to a capture expression. -/
@@ -316,8 +302,7 @@ def Capture.substitute {source target : Sig} (capture : Capture source)
       match substitution.symbolVar name with
       | .capture replacement => replacement
   | .project capture kind =>
-      .project (capture.substitute substitution)
-        (kind.substitute substitution)
+      .project (capture.substitute substitution) kind
 
 /-- Substitute every capture in a separation context. -/
 def SeparationContext.substitute {count : Nat} {source target : Sig}
@@ -398,8 +383,6 @@ def StaticExpr.substitute {sort : StaticSort} {source target : Sig}
   match expression with
   | .type type => .type (type.substitute substitution)
   | .capture capture => .capture (capture.substitute substitution)
-  | .classifier classifier =>
-      .classifier (classifier.substitute substitution)
 
 /-- Substitute every static expression in a proposition. -/
 def Proposition.substitute {relation : Relation} {source target : Sig}
@@ -418,12 +401,8 @@ def Proposition.substitute {relation : Relation} {source target : Sig}
   | .disjoint left right =>
       .disjoint (left.substitute substitution) (right.substitute substitution)
   | .mode capture => .mode (capture.substitute substitution)
-  | .classifierDisjoint left right =>
-      .classifierDisjoint (left.substitute substitution)
-        (right.substitute substitution)
   | .captureHasKind capture kind =>
-      .captureHasKind (capture.substitute substitution)
-        (kind.substitute substitution)
+      .captureHasKind (capture.substitute substitution) kind
 
 /-- Substitute the ambient scope of a names-first theory. -/
 def Theory.substitute {source target : Sig}
@@ -485,18 +464,6 @@ def instantiateStatic {scope : Sig} {symbols : List StaticSort}
     (StaticSubst.staticOfSymbolArgs Rename.id arguments relations)
 
 end Capture
-
-namespace ClassifierExpr
-
-/-- Instantiate a classifier expression below a complete theory scope. -/
-def instantiateStatic {scope : Sig} {symbols : List StaticSort}
-    {relations : List Relation}
-    (body : ClassifierExpr (StaticScope scope symbols relations))
-    (arguments : SymbolArgs scope symbols) : ClassifierExpr scope :=
-  body.substitute
-    (StaticSubst.staticOfSymbolArgs Rename.id arguments relations)
-
-end ClassifierExpr
 
 namespace Ty
 

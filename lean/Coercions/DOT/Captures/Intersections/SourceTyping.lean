@@ -46,24 +46,12 @@ end Ty
 
 mutual
 
-/-- Open local classifier-member references at one stable object root. -/
-def ClassifierExpr.openAt {scope : Scope} (receiver : Path scope) :
-    ClassifierExpr scope -> ClassifierExpr scope
-  | .ground kind => .ground kind
-  | .ref (.localClassifierMember label) =>
-      .ref (.classifierMember receiver label)
-  | .ref (.classifierMember path label) =>
-      .ref (.classifierMember path label)
-
 /-- Open local capture-member references at one stable object root. -/
 def Capture.openAt {scope : Scope} (receiver : Path scope) :
     Capture scope -> Capture scope
   | .empty => .empty
   | .union left right =>
       .union (Capture.openAt receiver left) (Capture.openAt receiver right)
-  | .project capture classifier =>
-      .project (Capture.openAt receiver capture)
-        (ClassifierExpr.openAt receiver classifier)
   | .singleton path => .singleton path
   | .ref (.localCaptureMember label) =>
       .ref (.captureMember receiver label)
@@ -180,14 +168,10 @@ def expression {sort : StaticSort} {scope : Scope}
       exact .type (.ref (.typeMember receiver label))
   | captureMember receiver label =>
       exact .capture (.ref (.captureMember receiver label))
-  | classifierMember receiver label =>
-      exact .classifier (.ref (.classifierMember receiver label))
   | localTypeMember label =>
       exact .type (.ref (.localTypeMember label))
   | localCaptureMember label =>
       exact .capture (.ref (.localCaptureMember label))
-  | localClassifierMember label =>
-      exact .classifier (.ref (.localClassifierMember label))
 
 end StaticRef
 

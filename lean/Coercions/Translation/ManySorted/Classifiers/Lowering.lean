@@ -68,7 +68,7 @@ collapsed to exactly one target projection. -/
 def capture {Base : Type} {targetScope : ManySortedFC.Sig}
     (translateBase : Base -> ManySortedFC.Capture targetScope) :
     Source.ProjectedCapture Base -> ManySortedFC.Capture targetScope :=
-  lowerWith translateBase fun base kind => .project base (.ground kind)
+  lowerWith translateBase fun base kind => .project base kind
 
 @[simp]
 theorem capture_base {Base : Type} {targetScope : ManySortedFC.Sig}

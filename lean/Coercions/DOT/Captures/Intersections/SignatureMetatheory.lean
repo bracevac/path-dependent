@@ -35,43 +35,12 @@ theorem exists_occurrence {Expr : StaticSort -> Type u}
       | nil => exact (nonempty rfl).elim
       | cons interval remaining =>
           exact ⟨.capture label interval, by simp [occurrences]⟩
-  | classifier label intervals =>
-      cases intervals with
-      | nil => exact (nonempty rfl).elim
-      | cons interval remaining =>
-          exact ⟨.classifier label interval, by simp [occurrences]⟩
 
 end Entry
 
 namespace Signature
 
 /-! ## Normalization and lookup -/
-
-/-- Mixed constraints are never inspected or discharged by normalization;
-successful merge retains them in source order. -/
-theorem merge?_constraints {Expr : StaticSort -> Type u}
-    {left right result : Signature Expr}
-    (success : merge? left right = .ok result) :
-    result.constraints = left.constraints ++ right.constraints := by
-  unfold merge? at success
-  split at success
-  · contradiction
-  · cases success
-    rfl
-
-theorem constraint_mem_merge?_iff {Expr : StaticSort -> Type u}
-    {left right result : Signature Expr} {constraint : Constraint Expr}
-    (success : merge? left right = .ok result) :
-    constraint ∈ result.constraints ↔
-      constraint ∈ left.constraints ∨ constraint ∈ right.constraints := by
-  rw [merge?_constraints success, List.mem_append]
-
-/-- Association changes no retained mixed-constraint order. -/
-theorem constraints_append_assoc {Expr : StaticSort -> Type u}
-    (first second third : Signature Expr) :
-    (first.constraints ++ second.constraints) ++ third.constraints =
-      first.constraints ++ (second.constraints ++ third.constraints) :=
-  List.append_assoc _ _ _
 
 theorem empty_normalized {Expr : StaticSort -> Type u} :
     (empty : Signature Expr).Normalized := by
@@ -101,25 +70,6 @@ theorem singletonCapture_normalized {Expr : StaticSort -> Type u}
       or_false] at membership
     subst entry
     simp [Entry.IsNonempty]
-
-theorem singletonClassifier_normalized {Expr : StaticSort -> Type u}
-    (label : Nat) (lower upper : Expr .classifier) :
-    (singletonClassifier label lower upper).Normalized := by
-  constructor
-  · exact .cons (by simp) .nil
-  · intro entry membership
-    simp only [singletonClassifier, List.mem_cons, List.not_mem_nil,
-      or_false] at membership
-    subst entry
-    simp [Entry.IsNonempty]
-
-theorem singletonConstraint_normalized {Expr : StaticSort -> Type u}
-    (constraint : Constraint Expr) :
-    (singletonConstraint constraint).Normalized := by
-  constructor
-  · exact .nil
-  · intro entry membership
-    cases membership
 
 private theorem labels_nodup_of_sorted {Expr : StaticSort -> Type u}
     (entries : List (Entry Expr)) (sorted : entries.Pairwise Before) :
@@ -239,26 +189,11 @@ private theorem combineSameLabel?_label
           rfl
       | capture incomingLabel incomingIntervals =>
           simp [combineSameLabel?] at success
-      | classifier incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
   | capture existingLabel existingIntervals =>
       cases incoming with
       | type incomingLabel incomingIntervals =>
           simp [combineSameLabel?] at success
       | capture incomingLabel incomingIntervals =>
-          simp only [combineSameLabel?] at success
-          injection success with combinedEq
-          subst combined
-          rfl
-      | classifier incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
-  | classifier existingLabel existingIntervals =>
-      cases incoming with
-      | type incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
-      | capture incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
-      | classifier incomingLabel incomingIntervals =>
           simp only [combineSameLabel?] at success
           injection success with combinedEq
           subst combined
@@ -279,26 +214,11 @@ private theorem combineSameLabel?_nonempty
           exact List.append_ne_nil_of_left_ne_nil existingNonempty _
       | capture incomingLabel incomingIntervals =>
           simp [combineSameLabel?] at success
-      | classifier incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
   | capture existingLabel existingIntervals =>
       cases incoming with
       | type incomingLabel incomingIntervals =>
           simp [combineSameLabel?] at success
       | capture incomingLabel incomingIntervals =>
-          simp only [combineSameLabel?] at success
-          injection success with combinedEq
-          subst combined
-          exact List.append_ne_nil_of_left_ne_nil existingNonempty _
-      | classifier incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
-  | classifier existingLabel existingIntervals =>
-      cases incoming with
-      | type incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
-      | capture incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
-      | classifier incomingLabel incomingIntervals =>
           simp only [combineSameLabel?] at success
           injection success with combinedEq
           subst combined
@@ -508,28 +428,11 @@ private theorem combineSameLabel?_occurrences
           simp [Entry.occurrences]
       | capture incomingLabel incomingIntervals =>
           simp [combineSameLabel?] at success
-      | classifier incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
   | capture existingLabel existingIntervals =>
       cases incoming with
       | type incomingLabel incomingIntervals =>
           simp [combineSameLabel?] at success
       | capture incomingLabel incomingIntervals =>
-          simp only [Entry.label] at same
-          subst incomingLabel
-          simp only [combineSameLabel?] at success
-          injection success with combinedEq
-          subst combined
-          simp [Entry.occurrences]
-      | classifier incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
-  | classifier existingLabel existingIntervals =>
-      cases incoming with
-      | type incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
-      | capture incomingLabel incomingIntervals =>
-          simp [combineSameLabel?] at success
-      | classifier incomingLabel incomingIntervals =>
           simp only [Entry.label] at same
           subst incomingLabel
           simp only [combineSameLabel?] at success
@@ -639,22 +542,8 @@ theorem merge?_normalized {Expr : StaticSort -> Type u}
   | ok entries =>
       simp [merged] at success
       subst result
-      have leftEntriesNormalized :
-          ({ entries := left.entries } : Signature Expr).Normalized := by
-        exact
-          { sorted := leftNormalized.sorted
-            nonempty := leftNormalized.nonempty }
-      have rightEntriesNormalized :
-          ({ entries := right.entries } : Signature Expr).Normalized := by
-        exact
-          { sorted := rightNormalized.sorted
-            nonempty := rightNormalized.nonempty }
-      have entriesNormalized := mergeEntries?_normalized left.entries
-        right.entries entries leftEntriesNormalized rightEntriesNormalized
-        merged
-      exact
-        { sorted := entriesNormalized.sorted
-          nonempty := entriesNormalized.nonempty }
+      exact mergeEntries?_normalized left.entries right.entries entries
+        leftNormalized rightNormalized merged
 
 private theorem mergeEntries?_occurrences
     {Expr : StaticSort -> Type u}

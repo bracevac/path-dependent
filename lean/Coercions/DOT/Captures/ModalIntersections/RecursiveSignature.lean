@@ -77,15 +77,6 @@ end TypeDefinitions
 
 /-! ## Simultaneously realized capture-member declarations -/
 
-/-- A classifier filter is ambient when it is ground or selected from an
-already stable outer root.  A local classifier member would add a recursive
-classifier equation, which is deliberately outside Stage 6/7. -/
-def classifierAmbientOnly {scope : Sig} :
-    DOTCapture.ModalIntersections.ClassifierExpr scope -> Bool
-  | .ground _ => true
-  | .ref (.member _ _) => true
-  | .ref (.localMember _) => false
-
 /-- Capture expressions that do not refer to the signature currently being
 constructed. Stable selections from already opened ambient roots remain
 admissible. -/
@@ -93,8 +84,6 @@ def captureAmbientOnly {scope : Sig} : Capture scope -> Bool
   | .empty => true
   | .union left right =>
       captureAmbientOnly left && captureAmbientOnly right
-  | .project capture classifier =>
-      captureAmbientOnly capture && classifierAmbientOnly classifier
   | .readOnly capture => captureAmbientOnly capture
   | .singleton _ => true
   | .ref (.localCaptureMember _) => false
@@ -163,12 +152,6 @@ def asLocalModel {scope : Sig} (model : AmbientCaptureModel scope) :
     DOTCapture.ModalIntersections.LocalModel.Model scope where
   typeMember := fun label => .ref (.localTypeMember label)
   captureMember := model.witness
-  classifierMember := fun label => .ref (.localMember label)
-
-@[simp]
-theorem asLocalModel_classifierMember {scope : Sig}
-    (model : AmbientCaptureModel scope) (label : Label) :
-    model.asLocalModel.classifierMember label = .ref (.localMember label) := rfl
 
 end AmbientCaptureModel
 

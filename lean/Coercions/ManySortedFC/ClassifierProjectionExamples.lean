@@ -144,6 +144,36 @@ theorem empty_projection_is_checked :
       some emptyProjectionEndpoint := by
   native_decide
 
+/-! ## Empty capture kind implies an empty capture -/
+
+abbrev EmptyKindAssumptionScope : Sig :=
+  TestScope ▹ .evidence .captureHasKind
+
+def emptyKindAssumptionContext : Ctx EmptyKindAssumptionScope :=
+  testContext.extendCaptureHasKind testCapture exceptTop
+
+def assumedEmptyKind : Evidence .captureHasKind EmptyKindAssumptionScope :=
+  .var .here
+
+/-- This is the paper's `k-absurd`/`sc-proj` consequence: projection
+completeness identifies the capture with its projection, and the ground empty
+filter identifies that projection with the empty capture. -/
+def emptyKindForcesEmpty : Evidence (.equality .capture)
+    EmptyKindAssumptionScope :=
+  .equalityTrans
+    (.equalitySymm (.equalityCaptureProjectComplete assumedEmptyKind))
+    (.equalityCaptureProjectEmpty testCapture.weaken exceptTop)
+
+def emptyKindForcesEmptyEndpoint :
+    Proposition (.equality .capture) EmptyKindAssumptionScope :=
+  .equality (.capture testCapture.weaken) (.capture .empty)
+
+theorem empty_kind_forces_empty_is_checked :
+    (Evidence.check emptyKindAssumptionContext emptyKindForcesEmpty).map
+        Evidence.Checked.proposition =
+      some emptyKindForcesEmptyEndpoint := by
+  native_decide
+
 /-! ## Nested projection composition -/
 
 def nestedComposition : Evidence (.equality .capture) TestScope :=
@@ -229,6 +259,29 @@ theorem union_merge_is_checked :
     (Evidence.check testContext unionMerge).map
         Evidence.Checked.proposition =
       some unionMergeEndpoint := by
+  native_decide
+
+/-- The converse is derived by widening each component to the union kind and
+then eliminating the capture union. Together with `unionMerge`, this is the
+paper's same-reference merge law in both subcapture directions. -/
+def unionSplit : Evidence (.inclusion .capture) TestScope :=
+  .captureUnionElim
+    (.captureProjectMono
+      (.inclusionRefl (.capture testCapture)) onlyB (onlyB ++ onlyLater))
+    (.captureProjectMono
+      (.inclusionRefl (.capture testCapture)) onlyLater
+        (onlyB ++ onlyLater))
+
+def unionSplitEndpoint : Proposition (.inclusion .capture) TestScope :=
+  .inclusion
+    (.capture (.union (.project testCapture onlyB)
+      (.project testCapture onlyLater)))
+    (.capture (.project testCapture (onlyB ++ onlyLater)))
+
+theorem union_split_is_checked :
+    (Evidence.check testContext unionSplit).map
+        Evidence.Checked.proposition =
+      some unionSplitEndpoint := by
   native_decide
 
 /-! ## Sibling projections are disjoint, hence separate -/

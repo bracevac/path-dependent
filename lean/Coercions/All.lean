@@ -10,8 +10,8 @@ transitively exposes the independently buildable DOT and FCsub roots, while
 `Coercions.DOT.Captures` and `Coercions.Translation.ManySorted` expose the
 captured-DOT source layers, their cumulative compiler bridges, and the bounded
 guarded recursive type-member case study.
-Classifier projections provide the third-sort extensibility test: surface
-`.only`/`.except` chains lower to checked ground filters, while cumulative
-object theories may bind classifier names and carry mixed classifier
-constraints. All classifier syntax and evidence erase without runtime code.
+The classifier case study keeps classifier nodes and kinds ground. Surface
+`.only`/`.except` chains lower to capture filters, while a kind-bounded capture
+variable lowers to a capture symbol plus checked ground-kind evidence. It does
+not add a third classifier/kind sort.
 -/

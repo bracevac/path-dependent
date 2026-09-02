@@ -1,6 +1,5 @@
 import Coercions.DOT.Captures.ModalIntersections.Scope
 import Coercions.DOT.Captures.Intersections.Signature
-import Coercions.ManySortedFC.Classifier.Kind
 
 /-!
 # Static and object syntax for modal captured intersections
@@ -14,30 +13,10 @@ declaration and leave normalization to a later layer.
 namespace DOTCapture.ModalIntersections
 
 abbrev Label := Nat
-abbrev ClassifierKind := ManySortedFC.Classifier.Kind
 
 /-- Stable paths are term variables. -/
 inductive Path : Sig → Type where
   | var {scope : Sig} (name : BVar scope .term) : Path scope
-deriving DecidableEq
-
-/-- Classifier-member references are cumulative-only: they may select a
-stable object root or refer to another declaration in the interface currently
-being normalized.  Historical lexical static binders remain type/capture
-only. -/
-inductive ClassifierRef : Sig → Type where
-  | member {scope : Sig} (receiver : Path scope) (label : Label) :
-      ClassifierRef scope
-  | localMember {scope : Sig} (label : Label) : ClassifierRef scope
-deriving DecidableEq
-
-/-- Scoped classifier filters.  Ground filters reuse the executable
-classifier-kind algebra; abstract filters arise only from stable or local
-object members. -/
-inductive ClassifierExpr : Sig → Type where
-  | ground {scope : Sig} (kind : ClassifierKind) : ClassifierExpr scope
-  | ref {scope : Sig} (reference : ClassifierRef scope) :
-      ClassifierExpr scope
 deriving DecidableEq
 
 /-- A static reference is either lexical or selected from a stable object
@@ -67,8 +46,6 @@ capability identity; it does not establish resource freshness. -/
 inductive Capture : Sig → Type where
   | empty {scope : Sig} : Capture scope
   | union {scope : Sig} (left right : Capture scope) : Capture scope
-  | project {scope : Sig} (capture : Capture scope)
-      (classifier : ClassifierExpr scope) : Capture scope
   | readOnly {scope : Sig} (capture : Capture scope) : Capture scope
   | singleton {scope : Sig} (path : Path scope) : Capture scope
   | ref {scope : Sig} (reference : StaticRef .capture scope) : Capture scope
@@ -149,12 +126,6 @@ inductive Interface : Sig → Type where
       Interface scope
   | captureMember {scope : Sig} (label : Label)
       (lower upper : Capture scope) : Interface scope
-  | classifierMember {scope : Sig} (label : Label)
-      (lower upper : ClassifierExpr scope) : Interface scope
-  | classifierDisjoint {scope : Sig}
-      (left right : ClassifierExpr scope) : Interface scope
-  | captureHasKind {scope : Sig} (capture : Capture scope)
-      (classifier : ClassifierExpr scope) : Interface scope
   | inter {scope : Sig} (left right : Interface scope) : Interface scope
 
 /-- One static interface and one runtime representation payload type. -/
@@ -215,34 +186,6 @@ def weaken {scope : Sig} {kind : BinderKind} (path : Path scope) :
 
 end Path
 
-namespace ClassifierRef
-
-def rename {source target : Sig} (reference : ClassifierRef source)
-    (rho : Rename source target) : ClassifierRef target :=
-  match reference with
-  | .member receiver label => .member (receiver.rename rho) label
-  | .localMember label => .localMember label
-
-def weaken {scope : Sig} {kind : BinderKind}
-    (reference : ClassifierRef scope) : ClassifierRef (scope ▹ kind) :=
-  reference.rename DOTCapture.BinderOnly.Rename.succ
-
-end ClassifierRef
-
-namespace ClassifierExpr
-
-def rename {source target : Sig} (classifier : ClassifierExpr source)
-    (rho : Rename source target) : ClassifierExpr target :=
-  match classifier with
-  | .ground kind => .ground kind
-  | .ref reference => .ref (reference.rename rho)
-
-def weaken {scope : Sig} {kind : BinderKind}
-    (classifier : ClassifierExpr scope) : ClassifierExpr (scope ▹ kind) :=
-  classifier.rename DOTCapture.BinderOnly.Rename.succ
-
-end ClassifierExpr
-
 namespace StaticRef
 
 def rename {sort : StaticSort} {source target : Sig}
@@ -268,8 +211,6 @@ def Capture.rename {source target : Sig} (capture : Capture source)
   match capture with
   | .empty => .empty
   | .union left right => .union (left.rename rho) (right.rename rho)
-  | .project capture classifier =>
-      .project (capture.rename rho) (classifier.rename rho)
   | .readOnly captures => .readOnly (captures.rename rho)
   | .singleton path => .singleton (path.rename rho)
   | .ref reference => .ref (reference.rename rho)
@@ -347,12 +288,6 @@ def Interface.rename {source target : Sig} (interface : Interface source)
       .typeMember label (lower.rename rho) (upper.rename rho)
   | .captureMember label lower upper =>
       .captureMember label (lower.rename rho) (upper.rename rho)
-  | .classifierMember label lower upper =>
-      .classifierMember label (lower.rename rho) (upper.rename rho)
-  | .classifierDisjoint left right =>
-      .classifierDisjoint (left.rename rho) (right.rename rho)
-  | .captureHasKind capture classifier =>
-      .captureHasKind (capture.rename rho) (classifier.rename rho)
   | .inter left right => .inter (left.rename rho) (right.rename rho)
 
 def ObjectType.rename {source target : Sig} (object : ObjectType source)
@@ -473,12 +408,11 @@ end Interval
 
 namespace Interface
 
-/-- Bound expressions indexed by the normalization library's cumulative
-member-sort tag.  Lexical static expressions remain type/capture-only. -/
+/-- Bound expressions indexed by the normalization library's two-sort tag.
+The cumulative and intersection source layers use isomorphic sort types. -/
 def Expr (scope : Sig) : DOTCapture.Intersections.StaticSort → Type
   | .type => StaticExpr .type scope
   | .capture => StaticExpr .capture scope
-  | .classifier => ClassifierExpr scope
 
 /-- Normalize an interface by label before any target name is allocated.
 Every occurrence is retained; a repeated label at another sort is the only
@@ -491,13 +425,6 @@ def collect {scope : Sig} : Interface scope →
       .ok (.singletonType label (.type lower) (.type upper))
   | .captureMember label lower upper =>
       .ok (.singletonCapture label (.capture lower) (.capture upper))
-  | .classifierMember label lower upper =>
-      .ok (.singletonClassifier label lower upper)
-  | .classifierDisjoint left right =>
-      .ok (.singletonConstraint (.classifierDisjoint left right))
-  | .captureHasKind capture classifier =>
-      .ok (.singletonConstraint
-        (.captureHasKind (.capture capture) classifier))
   | .inter left right => do
       let leftSignature ← left.collect
       let rightSignature ← right.collect
@@ -514,10 +441,6 @@ def exactType {scope : Sig} (label : Label) (witness : Ty scope) :
 def exactCapture {scope : Sig} (label : Label) (witness : Capture scope) :
     Interface scope :=
   .captureMember label witness witness
-
-def exactClassifier {scope : Sig} (label : Label)
-    (witness : ClassifierExpr scope) : Interface scope :=
-  .classifierMember label witness witness
 
 end Interface
 

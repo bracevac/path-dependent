@@ -27,7 +27,6 @@ abbrev Scope := DOTCapture.Intersections.Source.Scope
 abbrev Ctx := DOTCapture.Intersections.Source.Ctx
 abbrev StaticSort := DOTCapture.Intersections.Source.StaticSort
 abbrev StaticExpr := DOTCapture.Intersections.Source.StaticExpr
-abbrev ClassifierExpr := DOTCapture.Intersections.Source.ClassifierExpr
 abbrev Capture := DOTCapture.Intersections.Source.Capture
 abbrev Ty := DOTCapture.Intersections.Source.Ty
 abbrev Value := DOTCapture.Intersections.GeneralExpression.Value
@@ -75,9 +74,6 @@ def translateStatic {sourceScope : Source.Scope} {targetScope : Target.Sig}
       (ObjectPreparation.translateType ready.layout type).map .type
   | .capture, .capture capture =>
       (ObjectPreparation.translateCapture ready.layout capture).map .capture
-  | .classifier, .classifier classifier =>
-      Preparation.Compile.translateStaticExpr ready.layout []
-        (.classifier classifier)
 
 /-! ## Exact target-context lookup -/
 
@@ -329,17 +325,6 @@ def compileIncludes? {sourceScope : Source.Scope}
       finishEvidence? ready (.capture (.union left right)) (.capture target)
         (.captureUnionElim leftCompiled.evidence rightCompiled.evidence)
   | .capture, _, _,
-      @DOTCapture.Intersections.GeneralExpression.Includes.captureProjectSource
-        _ _ capture classifier => do
-      let targetCapture <-
-        (ObjectPreparation.translateCapture ready.layout capture).toOption
-      let targetClassifierExpr <-
-        (translateStatic ready (.classifier classifier)).toOption
-      let .classifier targetClassifier := targetClassifierExpr
-      finishEvidence? ready (.capture (.project capture classifier))
-        (.capture capture)
-        (.captureProjectSourceScoped targetCapture targetClassifier)
-  | .capture, _, _,
       @DOTCapture.Intersections.GeneralExpression.Includes.payloadRoot
         _ _ (.var name) object _exposes =>
       finishEvidence? ready (.capture (.singleton (.var name)))
@@ -347,113 +332,6 @@ def compileIncludes? {sourceScope : Source.Scope}
           (DOTCapture.Intersections.GeneralExpression.ObjectType.representationAt
             object (.var name)).outerCapture)
         (.captureVariable (ready.layout.termVar name))
-
-/-! Classifier and mixed-relation certificates remain separate from the
-sort-indexed inclusion grammar. Every member leaf is resolved to an existing
-target assumption, and every ground leaf is recomputed by the target
-checker. -/
-
-private def translateClassifier? {sourceScope : Source.Scope}
-    {source : Source.Ctx sourceScope} {targetScope : Target.Sig}
-    (ready : Ready source targetScope)
-    (classifier : Source.ClassifierExpr sourceScope) :
-    Option (ManySortedFC.ClassifierExpr targetScope) :=
-  match translateStatic ready (.classifier classifier) with
-  | .ok (.classifier target) => some target
-  | .error _ => none
-
-private def compileClassifierIncludesEvidence? {sourceScope : Source.Scope}
-    {source : Source.Ctx sourceScope} {targetScope : Target.Sig}
-    (ready : Ready source targetScope) :
-    {lower upper : Source.ClassifierExpr sourceScope} ->
-      DOTCapture.Intersections.GeneralExpression.ClassifierIncludes
-        source lower upper ->
-      Option (Target.Evidence (.inclusion .classifier) targetScope)
-  | lower, _, .refl => do
-      let target <- translateClassifier? ready lower
-      pure (.inclusionRefl (.classifier target))
-  | _, _, .trans first second => do
-      let firstEvidence <- compileClassifierIncludesEvidence? ready first
-      let secondEvidence <- compileClassifierIncludesEvidence? ready second
-      pure (.inclusionTrans firstEvidence secondEvidence)
-  | .ground lower, .ground upper, .ground _ =>
-      some (.classifierGroundInclusion lower upper)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.ClassifierIncludes.lower
-      _ _ receiver _ label lower _ _ _ => do
-      let lowerTarget <- translateClassifier? ready
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver lower)
-      let upperTarget <- translateClassifier? ready
-        (.ref (.classifierMember receiver label))
-      let found <- findEvidence? ready.target
-        (.inclusion (.classifier lowerTarget) (.classifier upperTarget))
-      pure (.var found.index)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.ClassifierIncludes.upper
-      _ _ receiver _ label _ upper _ _ => do
-      let lowerTarget <- translateClassifier? ready
-        (.ref (.classifierMember receiver label))
-      let upperTarget <- translateClassifier? ready
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver upper)
-      let found <- findEvidence? ready.target
-        (.inclusion (.classifier lowerTarget) (.classifier upperTarget))
-      pure (.var found.index)
-
-private def compileClassifiersDisjointEvidence? {sourceScope : Source.Scope}
-    {source : Source.Ctx sourceScope} {targetScope : Target.Sig}
-    (ready : Ready source targetScope) :
-    {left right : Source.ClassifierExpr sourceScope} ->
-      DOTCapture.Intersections.GeneralExpression.ClassifiersDisjoint
-        source left right -> Option (Target.Evidence .classifierDisjoint
-          targetScope)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.ClassifiersDisjoint.ground
-      _ _ left right _ =>
-      some (.classifierGroundDisjoint left right)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.ClassifiersDisjoint.member
-      _ _ receiver _ left right _ _ => do
-      let leftTarget <- translateClassifier? ready
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver left)
-      let rightTarget <- translateClassifier? ready
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver right)
-      let found <- findEvidence? ready.target
-        (.classifierDisjoint leftTarget rightTarget)
-      pure (.var found.index)
-  | _, _, .symm proof => do
-      let evidence <- compileClassifiersDisjointEvidence? ready proof
-      pure (.classifierDisjointSymm evidence)
-
-private def compileCaptureHasKindEvidence? {sourceScope : Source.Scope}
-    {source : Source.Ctx sourceScope} {targetScope : Target.Sig}
-    (ready : Ready source targetScope) :
-    {capture : Source.Capture sourceScope} ->
-    {classifier : Source.ClassifierExpr sourceScope} ->
-      DOTCapture.Intersections.GeneralExpression.CaptureHasKind
-        source capture classifier ->
-      Option (Target.Evidence .captureHasKind targetScope)
-  | _, classifier, .empty => do
-      let targetClassifier <- translateClassifier? ready classifier
-      pure (.captureHasKindEmpty targetClassifier)
-  | _, _, .union left right => do
-      let leftEvidence <- compileCaptureHasKindEvidence? ready left
-      let rightEvidence <- compileCaptureHasKindEvidence? ready right
-      pure (.captureHasKindUnion leftEvidence rightEvidence)
-  | .project capture classifier, _, .project => do
-      let targetCapture <-
-        (ObjectPreparation.translateCapture ready.layout capture).toOption
-      let targetClassifier <- translateClassifier? ready classifier
-      pure (.captureHasKindProject targetCapture targetClassifier)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.CaptureHasKind.member
-      _ _ receiver _ capture classifier _ _ => do
-      let targetCapture <-
-        (ObjectPreparation.translateCapture ready.layout
-          (DOTCapture.Intersections.Source.Capture.openAt receiver capture)).toOption
-      let targetClassifier <- translateClassifier? ready
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver classifier)
-      let found <- findEvidence? ready.target
-        (.captureHasKind targetCapture targetClassifier)
-      pure (.var found.index)
-  | _, _, .widen membership included => do
-      let membershipEvidence <- compileCaptureHasKindEvidence? ready membership
-      let inclusionEvidence <- compileClassifierIncludesEvidence? ready included
-      pure (.captureHasKindWiden membershipEvidence inclusionEvidence)
 
 /-! ## Independently checked ordinary values and computations -/
 
@@ -629,7 +507,6 @@ private def findTypeMemberLabel? {scope : Target.Sig}
       if candidate = name then some label
       else findTypeMemberLabel? name remaining
   | .capture _ _ _ :: remaining => findTypeMemberLabel? name remaining
-  | .classifier _ _ _ :: remaining => findTypeMemberLabel? name remaining
 
 private def findCaptureMemberLabel? {scope : Target.Sig}
     (name : Target.BVar scope (.symbol .capture)) :
@@ -639,17 +516,6 @@ private def findCaptureMemberLabel? {scope : Target.Sig}
       if candidate = name then some label
       else findCaptureMemberLabel? name remaining
   | .type _ _ _ :: remaining => findCaptureMemberLabel? name remaining
-  | .classifier _ _ _ :: remaining => findCaptureMemberLabel? name remaining
-
-private def findClassifierMemberLabel? {scope : Target.Sig}
-    (name : Target.BVar scope (.symbol .classifier)) :
-    List (Encoding.PreparedEntry scope) -> Option Nat
-  | [] => none
-  | .classifier label candidate _ :: remaining =>
-      if candidate = name then some label
-      else findClassifierMemberLabel? name remaining
-  | .type _ _ _ :: remaining => findClassifierMemberLabel? name remaining
-  | .capture _ _ _ :: remaining => findClassifierMemberLabel? name remaining
 
 /-- Reify a source local model as simultaneous ambient target witnesses.  A
 prepared entry is located by its allocated coordinate, so this code neither
@@ -694,20 +560,6 @@ private def compileSymbolArgsFrom? {sourceScope : Source.Scope}
           (scope := ManySortedFC.SymbolScope targetScope remaining)
           (kind := .symbol .capture)).comp rho)
       pure (.cons (.capture witness) older)
-  | .classifier :: remaining, rho => do
-      let name := rho.var
-        (.here : Target.BVar
-          (ManySortedFC.SymbolScope targetScope (.classifier :: remaining))
-          (.symbol .classifier))
-      let label <- findClassifierMemberLabel? name entries
-      let targetExpression <-
-        (translateStatic ready (.classifier (model.classifierMember label))).toOption
-      let .classifier witness := targetExpression
-      let older <- compileSymbolArgsFrom? ready model entries remaining
-        ((ManySortedFC.Rename.succ
-          (scope := ManySortedFC.SymbolScope targetScope remaining)
-          (kind := .symbol .classifier)).comp rho)
-      pure (.cons (.classifier witness) older)
 
 private def compileSymbolArgs? {sourceScope : Source.Scope}
     {source : Source.Ctx sourceScope} {targetScope : Target.Sig}
@@ -724,9 +576,6 @@ theory proposition. -/
 inductive ModelEvidence (scope : Target.Sig) where
   | type (evidence : Target.Evidence (.inclusion .type) scope)
   | capture (evidence : Target.Evidence (.inclusion .capture) scope)
-  | classifier (evidence : Target.Evidence (.inclusion .classifier) scope)
-  | classifierDisjoint (evidence : Target.Evidence .classifierDisjoint scope)
-  | captureHasKind (evidence : Target.Evidence .captureHasKind scope)
 
 /-- Compile every proof carried by a source realization.  The subsequent
 model builder matches these certificates against the normalized generated
@@ -750,16 +599,6 @@ def compileRealizationEvidence? {sourceScope : Source.Scope}
       let lower <- compileIncludes? ready lowerProof
       let upper <- compileIncludes? ready upperProof
       pure [.capture lower.evidence, .capture upper.evidence]
-  | _, .classifierMember lowerProof upperProof => do
-      let lower <- compileClassifierIncludesEvidence? ready lowerProof
-      let upper <- compileClassifierIncludesEvidence? ready upperProof
-      pure [.classifier lower, .classifier upper]
-  | _, .classifierDisjoint proof => do
-      let evidence <- compileClassifiersDisjointEvidence? ready proof
-      pure [.classifierDisjoint evidence]
-  | _, .captureHasKind proof => do
-      let evidence <- compileCaptureHasKindEvidence? ready proof
-      pure [.captureHasKind evidence]
   | _, .inter leftProof rightProof => do
       let left <- compileRealizationEvidence? ready leftProof
       let right <- compileRealizationEvidence? ready rightProof
@@ -777,41 +616,15 @@ private def findModelEvidence? {scope : Target.Sig}
       | some result =>
           if result.proposition = proposition then some candidate
           else findModelEvidence? context proposition remaining
+  | .inclusion .type, proposition, .capture _ :: remaining =>
+      findModelEvidence? context proposition remaining
   | .inclusion .capture, proposition, .capture candidate :: remaining =>
       match ManySortedFC.Evidence.check context candidate with
       | none => findModelEvidence? context proposition remaining
       | some result =>
           if result.proposition = proposition then some candidate
           else findModelEvidence? context proposition remaining
-  | .inclusion .classifier, proposition,
-      .classifier candidate :: remaining =>
-      match ManySortedFC.Evidence.check context candidate with
-      | none => findModelEvidence? context proposition remaining
-      | some result =>
-          if result.proposition = proposition then some candidate
-          else findModelEvidence? context proposition remaining
-  | .classifierDisjoint, proposition,
-      .classifierDisjoint candidate :: remaining =>
-      match ManySortedFC.Evidence.check context candidate with
-      | none => findModelEvidence? context proposition remaining
-      | some result =>
-          if result.proposition = proposition then some candidate
-          else findModelEvidence? context proposition remaining
-  | .captureHasKind, proposition, .captureHasKind candidate :: remaining =>
-      match ManySortedFC.Evidence.check context candidate with
-      | none => findModelEvidence? context proposition remaining
-      | some result =>
-          if result.proposition = proposition then some candidate
-          else findModelEvidence? context proposition remaining
-  | .inclusion .type, proposition, _ :: remaining =>
-      findModelEvidence? context proposition remaining
-  | .inclusion .capture, proposition, _ :: remaining =>
-      findModelEvidence? context proposition remaining
-  | .inclusion .classifier, proposition, _ :: remaining =>
-      findModelEvidence? context proposition remaining
-  | .classifierDisjoint, proposition, _ :: remaining =>
-      findModelEvidence? context proposition remaining
-  | .captureHasKind, proposition, _ :: remaining =>
+  | .inclusion .capture, proposition, .type _ :: remaining =>
       findModelEvidence? context proposition remaining
   | _, _, _ => none
 
@@ -854,19 +667,6 @@ private def compileModel? {sourceScope : Source.Scope}
 /-- Reconstruct the source realization exposed by a stable object root.  Each
 raw interval occurrence yields its own lower and upper derivation, while all
 same-label occurrences share `LocalModel.atPath` as their model. -/
-@[simp]
-private theorem classifierRealizeLocalsAtPath {scope : Source.Scope}
-    (receiver : DOTCapture.Intersections.Source.Path scope)
-    (classifier : Source.ClassifierExpr scope) :
-    DOTCapture.Intersections.GeneralExpression.ClassifierExpr.realizeLocals
-        (DOTCapture.Intersections.GeneralExpression.LocalModel.atPath receiver)
-        classifier =
-      DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver
-        classifier := by
-  cases classifier with
-  | ground _ => rfl
-  | ref reference => cases reference <;> rfl
-
 private def realizeInterfaceAtPath
     {scope : Source.Scope} {context : Source.Ctx scope}
     {receiver : DOTCapture.Intersections.Source.Path scope}
@@ -880,26 +680,11 @@ private def realizeInterfaceAtPath
     (captureInObject : forall {label lower upper},
       interface.HasCaptureOccurrence label lower upper ->
         object.interface.HasCaptureOccurrence label lower upper) ->
-    (classifierInObject : forall {label lower upper},
-      DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierOccurrence
-          interface label lower upper ->
-        DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierOccurrence
-          object.interface label lower upper) ->
-    (classifierDisjointInObject : forall {left right},
-      DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierDisjointOccurrence
-          interface left right ->
-        DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierDisjointOccurrence
-          object.interface left right) ->
-    (captureKindInObject : forall {capture classifier},
-      DOTCapture.Intersections.GeneralExpression.Interface.HasCaptureKindOccurrence
-          interface capture classifier ->
-        DOTCapture.Intersections.GeneralExpression.Interface.HasCaptureKindOccurrence
-          object.interface capture classifier) ->
       DOTCapture.Intersections.GeneralExpression.Interface.Realizes context
         (DOTCapture.Intersections.GeneralExpression.LocalModel.atPath receiver)
         interface
-  | .empty, _, _, _, _, _ => .empty
-  | .typeMember label lower upper, typeInObject, _, _, _, _ => by
+  | .empty, _, _ => .empty
+  | .typeMember label lower upper, typeInObject, _ => by
       apply DOTCapture.Intersections.GeneralExpression.Interface.Realizes.typeMember
       · simpa using
           (DOTCapture.Intersections.GeneralExpression.Includes.source
@@ -913,7 +698,7 @@ private def realizeInterfaceAtPath
               (DOTCapture.Intersections.Source.HasUpper.typeMember exposes
                 (typeInObject
                   DOTCapture.Intersections.Source.Interface.HasTypeOccurrence.here))))
-  | .captureMember label lower upper, _, captureInObject, _, _, _ => by
+  | .captureMember label lower upper, _, captureInObject => by
       apply
         DOTCapture.Intersections.GeneralExpression.Interface.Realizes.captureMember
       · simpa using
@@ -928,50 +713,14 @@ private def realizeInterfaceAtPath
               (DOTCapture.Intersections.Source.HasUpper.captureMember exposes
                 (captureInObject
                   DOTCapture.Intersections.Source.Interface.HasCaptureOccurrence.here))))
-  | .classifierMember label lower upper, _, _, classifierInObject, _, _ => by
-      apply
-        DOTCapture.Intersections.GeneralExpression.Interface.Realizes.classifierMember
-      · simpa using
-          (DOTCapture.Intersections.GeneralExpression.ClassifierIncludes.lower
-            exposes
-            (classifierInObject
-              DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierOccurrence.here))
-      · simpa using
-          (DOTCapture.Intersections.GeneralExpression.ClassifierIncludes.upper
-            exposes
-            (classifierInObject
-              DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierOccurrence.here))
-  | .classifierDisjoint left right, _, _, _, disjointInObject, _ => by
-      apply
-        DOTCapture.Intersections.GeneralExpression.Interface.Realizes.classifierDisjoint
-      simpa using
-        (DOTCapture.Intersections.GeneralExpression.ClassifiersDisjoint.member
-          exposes
-          (disjointInObject
-            DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierDisjointOccurrence.here))
-  | .captureHasKind capture classifier, _, _, _, _, captureKindInObject => by
-      apply
-        DOTCapture.Intersections.GeneralExpression.Interface.Realizes.captureHasKind
-      simpa using
-        (DOTCapture.Intersections.GeneralExpression.CaptureHasKind.member
-          exposes
-          (captureKindInObject
-            DOTCapture.Intersections.GeneralExpression.Interface.HasCaptureKindOccurrence.here))
-  | .inter left right, typeInObject, captureInObject, classifierInObject,
-      disjointInObject, captureKindInObject =>
+  | .inter left right, typeInObject, captureInObject =>
       .inter
         (realizeInterfaceAtPath exposes left
           (fun occurrence => typeInObject (.left occurrence))
-          (fun occurrence => captureInObject (.left occurrence))
-          (fun occurrence => classifierInObject (.left occurrence))
-          (fun occurrence => disjointInObject (.left occurrence))
-          (fun occurrence => captureKindInObject (.left occurrence)))
+          (fun occurrence => captureInObject (.left occurrence)))
         (realizeInterfaceAtPath exposes right
           (fun occurrence => typeInObject (.right occurrence))
-          (fun occurrence => captureInObject (.right occurrence))
-          (fun occurrence => classifierInObject (.right occurrence))
-          (fun occurrence => disjointInObject (.right occurrence))
-          (fun occurrence => captureKindInObject (.right occurrence)))
+          (fun occurrence => captureInObject (.right occurrence)))
 
 /-- The complete positive-style realization available for a stable object
 variable, derived solely from its exposed interface. -/
@@ -992,9 +741,7 @@ private def realizationAtVariable {scope : Source.Scope}
     { model :=
         DOTCapture.Intersections.GeneralExpression.LocalModel.atPath (.var name)
       constraints := realizeInterfaceAtPath exposes object.interface
-        (fun occurrence => occurrence) (fun occurrence => occurrence)
-        (fun occurrence => occurrence) (fun occurrence => occurrence)
-        (fun occurrence => occurrence) }
+        (fun occurrence => occurrence) (fun occurrence => occurrence) }
 
 /-! ## Reifiable negative object views -/
 
@@ -1053,26 +800,6 @@ private def compileMappedSymbolArgsFrom? {sourceScope : Source.Scope}
           (scope := ManySortedFC.SymbolScope targetScope remaining)
           (kind := .symbol .capture)).comp rho)
       pure (.cons (.capture witness) older)
-  | .classifier :: remaining, rho => do
-      let name := rho.var
-        (.here : Target.BVar
-          (ManySortedFC.SymbolScope targetScope (.classifier :: remaining))
-          (.symbol .classifier))
-      let label <- findClassifierMemberLabel? name entries
-      let openedLayout := ready.layout.rename
-        (ManySortedFC.Rename.weakenStatic actual.encoding.symbols
-          actual.encoding.relations)
-      let targetExpression <-
-        (Preparation.Compile.translateStaticExpr openedLayout
-          actual.encoding.openedMembers
-          (.classifier (mapping.classifierMember label))).toOption
-      let .classifier witness := targetExpression
-      let older <- compileMappedSymbolArgsFrom? ready actual mapping entries
-        remaining
-        ((ManySortedFC.Rename.succ
-          (scope := ManySortedFC.SymbolScope targetScope remaining)
-          (kind := .symbol .classifier)).comp rho)
-      pure (.cons (.classifier witness) older)
 
 private def compileMappedSymbolArgs? {sourceScope : Source.Scope}
     {source : Source.Ctx sourceScope} {targetScope : Target.Sig}
@@ -1112,36 +839,6 @@ private def translateLocalStatic {sourceScope : Source.Scope}
           (ManySortedFC.Rename.weakenStatic actual.encoding.symbols
             actual.encoding.relations))
         actual.encoding.openedMembers capture).map .capture
-  | .classifier, .classifier classifier =>
-      Preparation.Compile.translateStaticExpr
-        (ready.layout.rename
-          (ManySortedFC.Rename.weakenStatic actual.encoding.symbols
-            actual.encoding.relations))
-        actual.encoding.openedMembers (.classifier classifier)
-
-private def translateLocalClassifier? {sourceScope : Source.Scope}
-    {source : Source.Ctx sourceScope} {targetScope : Target.Sig}
-    (ready : Ready source targetScope)
-    (actual : ObjectPreparation.PreparedObject targetScope)
-    (classifier : Source.ClassifierExpr sourceScope) :
-    Option (ManySortedFC.ClassifierExpr
-      (ManySortedFC.StaticScope targetScope actual.encoding.symbols
-        actual.encoding.relations)) :=
-  match translateLocalStatic ready actual (.classifier classifier) with
-  | .ok (.classifier target) => some target
-  | .error _ => none
-
-private def translateLocalCapture? {sourceScope : Source.Scope}
-    {source : Source.Ctx sourceScope} {targetScope : Target.Sig}
-    (ready : Ready source targetScope)
-    (actual : ObjectPreparation.PreparedObject targetScope)
-    (capture : Source.Capture sourceScope) :
-    Option (ManySortedFC.Capture
-      (ManySortedFC.StaticScope targetScope actual.encoding.symbols
-        actual.encoding.relations)) :=
-  match translateLocalStatic ready actual (.capture capture) with
-  | .ok (.capture target) => some target
-  | .error _ => none
 
 /-- A checked inclusion in the target context where the actual object's
 static theory is open. -/
@@ -1224,8 +921,6 @@ private def findOpenedTypeEvidence?
         findOpenedTypeEvidence? label lower upper remaining
   | .capture _ _ _ _ _ _ :: remaining =>
       findOpenedTypeEvidence? label lower upper remaining
-  | .classifier _ _ _ _ _ _ :: remaining =>
-      findOpenedTypeEvidence? label lower upper remaining
 
 /-- Capture-sorted counterpart of `findOpenedTypeEvidence?`. -/
 private def findOpenedCaptureEvidence?
@@ -1249,33 +944,6 @@ private def findOpenedCaptureEvidence?
         findOpenedCaptureEvidence? label lower upper remaining
   | .type _ _ _ _ _ _ :: remaining =>
       findOpenedCaptureEvidence? label lower upper remaining
-  | .classifier _ _ _ _ _ _ :: remaining =>
-      findOpenedCaptureEvidence? label lower upper remaining
-
-/-- Classifier-sorted counterpart of the two ordinary interval selectors. -/
-private def findOpenedClassifierEvidence?
-    {scope : Target.Sig} {symbols : List Target.StaticSort}
-    {relations : List Target.Relation} (label : Nat)
-    (lower upper : Target.StaticExpr .classifier
-      (ManySortedFC.StaticScope scope symbols relations)) :
-    List (Encoding.OpenedOccurrence scope symbols relations) ->
-      Option
-        (Target.Evidence (.inclusion .classifier)
-            (ManySortedFC.StaticScope scope symbols relations) ×
-          Target.Evidence (.inclusion .classifier)
-            (ManySortedFC.StaticScope scope symbols relations))
-  | [] => none
-  | .classifier candidateLabel _ candidateLower candidateUpper
-        lowerEvidence upperEvidence :: remaining =>
-      if candidateLabel = label && candidateLower = lower &&
-          candidateUpper = upper then
-        some (.var lowerEvidence, .var upperEvidence)
-      else
-        findOpenedClassifierEvidence? label lower upper remaining
-  | .type _ _ _ _ _ _ :: remaining =>
-      findOpenedClassifierEvidence? label lower upper remaining
-  | .capture _ _ _ _ _ _ :: remaining =>
-      findOpenedClassifierEvidence? label lower upper remaining
 
 /-- Compile the ordinary source inclusion grammar with local-member-aware
 endpoint translation.  This is used by `LocalTheory.Includes.ambient`; in
@@ -1423,18 +1091,6 @@ private def compileLocalAmbientIncludes?
         (.capture target)
         (.captureUnionElim leftCompiled.evidence rightCompiled.evidence)
   | .capture, _, _,
-      @DOTCapture.Intersections.GeneralExpression.Includes.captureProjectSource
-        _ _ capture classifier => do
-      let targetCaptureExpr <-
-        (translateLocalStatic ready actual (.capture capture)).toOption
-      let .capture targetCapture := targetCaptureExpr
-      let targetClassifierExpr <-
-        (translateLocalStatic ready actual (.classifier classifier)).toOption
-      let .classifier targetClassifier := targetClassifierExpr
-      finishLocalEvidence? ready actual
-        (.capture (.project capture classifier)) (.capture capture)
-        (.captureProjectSourceScoped targetCapture targetClassifier)
-  | .capture, _, _,
       @DOTCapture.Intersections.GeneralExpression.Includes.payloadRoot
         _ _ (.var name) object _ =>
       finishLocalEvidence? ready actual
@@ -1508,208 +1164,6 @@ private def compileLocalIncludes?
       finishLocalEvidence? ready actual _ _
         (.inclusionTrans firstCompiled.evidence secondCompiled.evidence)
 
-/-! Classifier and mixed-relation reasoning in an opened object theory. -/
-
-private def compileLocalAmbientClassifierIncludesEvidence?
-    {sourceScope : Source.Scope} {source : Source.Ctx sourceScope}
-    {targetScope : Target.Sig} (ready : Ready source targetScope)
-    (actual : ObjectPreparation.PreparedObject targetScope) :
-    {lower upper : Source.ClassifierExpr sourceScope} ->
-      DOTCapture.Intersections.GeneralExpression.ClassifierIncludes
-        source lower upper ->
-      Option (Target.Evidence (.inclusion .classifier)
-        (ManySortedFC.StaticScope targetScope actual.encoding.symbols
-          actual.encoding.relations))
-  | lower, _, .refl => do
-      let target <- translateLocalClassifier? ready actual lower
-      pure (.inclusionRefl (.classifier target))
-  | _, _, .trans first second => do
-      let firstEvidence <-
-        compileLocalAmbientClassifierIncludesEvidence? ready actual first
-      let secondEvidence <-
-        compileLocalAmbientClassifierIncludesEvidence? ready actual second
-      pure (.inclusionTrans firstEvidence secondEvidence)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.ClassifierIncludes.ground
-      _ _ lower upper _ =>
-      some (.classifierGroundInclusion lower upper)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.ClassifierIncludes.lower
-      _ _ receiver _ label lower _ _ _ => do
-      let lowerTarget <- translateLocalClassifier? ready actual
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver lower)
-      let upperTarget <- translateLocalClassifier? ready actual
-        (.ref (.classifierMember receiver label))
-      let found <- findEvidence?
-        (ready.target.extendTheory actual.encoding.theory)
-        (.inclusion (.classifier lowerTarget) (.classifier upperTarget))
-      pure (.var found.index)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.ClassifierIncludes.upper
-      _ _ receiver _ label _ upper _ _ => do
-      let lowerTarget <- translateLocalClassifier? ready actual
-        (.ref (.classifierMember receiver label))
-      let upperTarget <- translateLocalClassifier? ready actual
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver upper)
-      let found <- findEvidence?
-        (ready.target.extendTheory actual.encoding.theory)
-        (.inclusion (.classifier lowerTarget) (.classifier upperTarget))
-      pure (.var found.index)
-
-private def compileLocalAmbientClassifiersDisjointEvidence?
-    {sourceScope : Source.Scope} {source : Source.Ctx sourceScope}
-    {targetScope : Target.Sig} (ready : Ready source targetScope)
-    (actual : ObjectPreparation.PreparedObject targetScope) :
-    {left right : Source.ClassifierExpr sourceScope} ->
-      DOTCapture.Intersections.GeneralExpression.ClassifiersDisjoint
-        source left right -> Option (Target.Evidence .classifierDisjoint
-          (ManySortedFC.StaticScope targetScope actual.encoding.symbols
-            actual.encoding.relations))
-  | _, _, @DOTCapture.Intersections.GeneralExpression.ClassifiersDisjoint.ground
-      _ _ left right _ => some (.classifierGroundDisjoint left right)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.ClassifiersDisjoint.member
-      _ _ receiver _ left right _ _ => do
-      let leftTarget <- translateLocalClassifier? ready actual
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver left)
-      let rightTarget <- translateLocalClassifier? ready actual
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver right)
-      let found <- findEvidence?
-        (ready.target.extendTheory actual.encoding.theory)
-        (.classifierDisjoint leftTarget rightTarget)
-      pure (.var found.index)
-  | _, _, .symm proof => do
-      let evidence <- compileLocalAmbientClassifiersDisjointEvidence?
-        ready actual proof
-      pure (.classifierDisjointSymm evidence)
-
-private def compileLocalAmbientCaptureHasKindEvidence?
-    {sourceScope : Source.Scope} {source : Source.Ctx sourceScope}
-    {targetScope : Target.Sig} (ready : Ready source targetScope)
-    (actual : ObjectPreparation.PreparedObject targetScope) :
-    {capture : Source.Capture sourceScope} ->
-    {classifier : Source.ClassifierExpr sourceScope} ->
-      DOTCapture.Intersections.GeneralExpression.CaptureHasKind
-        source capture classifier -> Option (Target.Evidence .captureHasKind
-          (ManySortedFC.StaticScope targetScope actual.encoding.symbols
-            actual.encoding.relations))
-  | _, classifier, .empty => do
-      let targetClassifier <- translateLocalClassifier? ready actual classifier
-      pure (.captureHasKindEmpty targetClassifier)
-  | _, _, .union left right => do
-      let leftEvidence <- compileLocalAmbientCaptureHasKindEvidence?
-        ready actual left
-      let rightEvidence <- compileLocalAmbientCaptureHasKindEvidence?
-        ready actual right
-      pure (.captureHasKindUnion leftEvidence rightEvidence)
-  | .project capture classifier, _, .project => do
-      let targetCapture <- translateLocalCapture? ready actual capture
-      let targetClassifier <- translateLocalClassifier? ready actual classifier
-      pure (.captureHasKindProject targetCapture targetClassifier)
-  | _, _, @DOTCapture.Intersections.GeneralExpression.CaptureHasKind.member
-      _ _ receiver _ capture classifier _ _ => do
-      let targetCapture <- translateLocalCapture? ready actual
-        (DOTCapture.Intersections.Source.Capture.openAt receiver capture)
-      let targetClassifier <- translateLocalClassifier? ready actual
-        (DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver classifier)
-      let found <- findEvidence?
-        (ready.target.extendTheory actual.encoding.theory)
-        (.captureHasKind targetCapture targetClassifier)
-      pure (.var found.index)
-  | _, _, .widen membership included => do
-      let membershipEvidence <- compileLocalAmbientCaptureHasKindEvidence?
-        ready actual membership
-      let inclusionEvidence <-
-        compileLocalAmbientClassifierIncludesEvidence? ready actual included
-      pure (.captureHasKindWiden membershipEvidence inclusionEvidence)
-
-private def compileLocalClassifierIncludesEvidence?
-    {sourceScope : Source.Scope} {source : Source.Ctx sourceScope}
-    {targetScope : Target.Sig} (ready : Ready source targetScope)
-    (actual : ObjectPreparation.PreparedObject targetScope) :
-    {available : DOTCapture.Intersections.Source.Interface sourceScope} ->
-    {lower upper : Source.ClassifierExpr sourceScope} ->
-      DOTCapture.Intersections.GeneralExpression.LocalTheory.ClassifierIncludes
-        source available lower upper ->
-      Option (Target.Evidence (.inclusion .classifier)
-        (ManySortedFC.StaticScope targetScope actual.encoding.symbols
-          actual.encoding.relations))
-  | _, _, _, .ambient proof =>
-      compileLocalAmbientClassifierIncludesEvidence? ready actual proof
-  | _, _, _, @DOTCapture.Intersections.GeneralExpression.LocalTheory.ClassifierIncludes.lower
-      _ _ _ label lower _ _ => do
-      let lowerTarget <- translateLocalClassifier? ready actual lower
-      let upperTarget <- translateLocalClassifier? ready actual
-        (.ref (.localClassifierMember label))
-      let evidence <- findOpenedClassifierEvidence? label
-        (.classifier lowerTarget) (.classifier upperTarget)
-        actual.encoding.openedOccurrences
-      pure evidence.1
-  | _, _, _, @DOTCapture.Intersections.GeneralExpression.LocalTheory.ClassifierIncludes.upper
-      _ _ _ label _ upper _ => do
-      let lowerTarget <- translateLocalClassifier? ready actual
-        (.ref (.localClassifierMember label))
-      let upperTarget <- translateLocalClassifier? ready actual upper
-      let evidence <- findOpenedClassifierEvidence? label
-        (.classifier lowerTarget) (.classifier upperTarget)
-        actual.encoding.openedOccurrences
-      pure evidence.2
-  | _, _, _, .trans first second => do
-      let firstEvidence <- compileLocalClassifierIncludesEvidence?
-        ready actual first
-      let secondEvidence <- compileLocalClassifierIncludesEvidence?
-        ready actual second
-      pure (.inclusionTrans firstEvidence secondEvidence)
-
-private def compileLocalClassifiersDisjointEvidence?
-    {sourceScope : Source.Scope} {source : Source.Ctx sourceScope}
-    {targetScope : Target.Sig} (ready : Ready source targetScope)
-    (actual : ObjectPreparation.PreparedObject targetScope) :
-    {available : DOTCapture.Intersections.Source.Interface sourceScope} ->
-    {left right : Source.ClassifierExpr sourceScope} ->
-      DOTCapture.Intersections.GeneralExpression.LocalTheory.ClassifiersDisjoint
-        source available left right ->
-      Option (Target.Evidence .classifierDisjoint
-        (ManySortedFC.StaticScope targetScope actual.encoding.symbols
-          actual.encoding.relations))
-  | _, _, _, .ambient proof =>
-      compileLocalAmbientClassifiersDisjointEvidence? ready actual proof
-  | _, left, right, .assumption _ => do
-      let leftTarget <- translateLocalClassifier? ready actual left
-      let rightTarget <- translateLocalClassifier? ready actual right
-      let found <- findEvidence?
-        (ready.target.extendTheory actual.encoding.theory)
-        (.classifierDisjoint leftTarget rightTarget)
-      pure (.var found.index)
-  | _, _, _, .symm proof => do
-      let evidence <- compileLocalClassifiersDisjointEvidence?
-        ready actual proof
-      pure (.classifierDisjointSymm evidence)
-
-private def compileLocalCaptureHasKindEvidence?
-    {sourceScope : Source.Scope} {source : Source.Ctx sourceScope}
-    {targetScope : Target.Sig} (ready : Ready source targetScope)
-    (actual : ObjectPreparation.PreparedObject targetScope) :
-    {available : DOTCapture.Intersections.Source.Interface sourceScope} ->
-    {capture : Source.Capture sourceScope} ->
-    {classifier : Source.ClassifierExpr sourceScope} ->
-      DOTCapture.Intersections.GeneralExpression.LocalTheory.CaptureHasKind
-        source available capture classifier ->
-      Option (Target.Evidence .captureHasKind
-        (ManySortedFC.StaticScope targetScope actual.encoding.symbols
-          actual.encoding.relations))
-  | _, _, _, .ambient proof =>
-      compileLocalAmbientCaptureHasKindEvidence? ready actual proof
-  | _, capture, classifier, .assumption _ => do
-      let targetCapture <- translateLocalCapture? ready actual capture
-      let targetClassifier <- translateLocalClassifier? ready actual classifier
-      let found <- findEvidence?
-        (ready.target.extendTheory actual.encoding.theory)
-        (.captureHasKind targetCapture targetClassifier)
-      pure (.var found.index)
-  | _, _, _, .widen membership included => do
-      let membershipEvidence <- compileLocalCaptureHasKindEvidence?
-        ready actual membership
-      let inclusionEvidence <- compileLocalClassifierIncludesEvidence?
-        ready actual included
-      pure (.captureHasKindWiden membershipEvidence inclusionEvidence)
-
 /-- Compile one proof per expected interval endpoint into checked candidates
 in the opened actual theory. -/
 private def compileDerivedEvidence?
@@ -1734,19 +1188,6 @@ private def compileDerivedEvidence?
       let lower <- compileLocalIncludes? ready actual lowerProof
       let upper <- compileLocalIncludes? ready actual upperProof
       pure [.capture lower.evidence, .capture upper.evidence]
-  | _, .classifierMember lowerProof upperProof => do
-      let lower <- compileLocalClassifierIncludesEvidence?
-        ready actual lowerProof
-      let upper <- compileLocalClassifierIncludesEvidence?
-        ready actual upperProof
-      pure [.classifier lower, .classifier upper]
-  | _, .classifierDisjoint proof => do
-      let evidence <- compileLocalClassifiersDisjointEvidence?
-        ready actual proof
-      pure [.classifierDisjoint evidence]
-  | _, .captureHasKind proof => do
-      let evidence <- compileLocalCaptureHasKindEvidence? ready actual proof
-      pure [.captureHasKind evidence]
   | _, .inter leftProof rightProof => do
       let left <- compileDerivedEvidence? ready actual leftProof
       let right <- compileDerivedEvidence? ready actual rightProof

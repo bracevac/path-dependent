@@ -6,10 +6,10 @@ without variables or hypotheses: a ground syntax, a semantic observation
 space, decidable equality/inclusion/disjointness judgments, and proofs that
 those judgments have their expected extensional meanings.
 
-This is deliberately not a plugin interface for `ManySortedFC`.  The closed
-kernel still fixes its static sorts, expressions, propositions, and evidence
-constructors.  The contract only factors the common obligations of a ground
-decision procedure so that a kernel extension can reuse and audit them.
+This is a standalone contract, not a plugin interface for `ManySortedFC` and
+not a declaration of target static sorts. It factors the reusable obligations
+of a closed ground decision procedure. Importing or instantiating it does not
+add target syntax, propositions, or evidence constructors.
 -/
 
 namespace ManySortedFC
