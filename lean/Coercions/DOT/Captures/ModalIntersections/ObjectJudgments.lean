@@ -18,16 +18,12 @@ labels occurring in an interface are constrained by `Interface.Realizes`. -/
 structure Model (scope : Sig) where
   typeMember : Label -> Ty scope
   captureMember : Label -> Capture scope
-  classifierMember : Label -> ClassifierExpr scope :=
-    fun _ => .ground ManySortedFC.Classifier.Kind.empty
 
 /-- A symbolic interpretation of destination labels in the local theory of
 an available object. -/
 structure Mapping (scope : Sig) where
   typeMember : Label -> Ty scope
   captureMember : Label -> Capture scope
-  classifierMember : Label -> ClassifierExpr scope :=
-    fun _ => .ground ManySortedFC.Classifier.Kind.empty
 
 namespace Model
 
@@ -35,7 +31,6 @@ def rename {source target : Sig} (model : Model source)
     (rho : Rename source target) : Model target where
   typeMember := fun label => (model.typeMember label).rename rho
   captureMember := fun label => (model.captureMember label).rename rho
-  classifierMember := fun label => (model.classifierMember label).rename rho
 
 def weaken {scope : Sig} {kind : BinderKind} (model : Model scope) :
     Model (scope ▹ kind) :=
@@ -47,7 +42,6 @@ end Model
 def atPath {scope : Sig} (receiver : Path scope) : Model scope where
   typeMember := fun label => .ref (.typeMember receiver label)
   captureMember := fun label => .ref (.captureMember receiver label)
-  classifierMember := fun label => .ref (.member receiver label)
 
 @[simp]
 theorem atPath_weaken {scope : Sig} {kind : BinderKind}
@@ -59,20 +53,11 @@ end LocalModel
 
 /-! ## Realization of local references -/
 
-def ClassifierExpr.realizeLocals {scope : Sig}
-    (model : LocalModel.Model scope) :
-    ClassifierExpr scope -> ClassifierExpr scope
-  | .ground kind => .ground kind
-  | .ref (.localMember label) => model.classifierMember label
-  | .ref reference => .ref reference
-
 def Capture.realizeLocals {scope : Sig} (model : LocalModel.Model scope) :
     Capture scope -> Capture scope
   | .empty => .empty
   | .union left right =>
       .union (left.realizeLocals model) (right.realizeLocals model)
-  | .project inner classifier =>
-      .project (inner.realizeLocals model) (classifier.realizeLocals model)
   | .readOnly capture => .readOnly (capture.realizeLocals model)
   | .singleton path => .singleton path
   | .ref (.localCaptureMember label) => model.captureMember label
@@ -151,15 +136,6 @@ end
 /-! ## Stable-path realization -/
 
 @[simp]
-theorem ClassifierExpr.realizeLocals_atPath {scope : Sig}
-    (receiver : Path scope) (classifier : ClassifierExpr scope) :
-    classifier.realizeLocals (LocalModel.atPath receiver) =
-      classifier.openAt receiver := by
-  cases classifier with
-  | ground kind => rfl
-  | ref reference => cases reference <;> rfl
-
-@[simp]
 theorem Capture.realizeLocals_atPath {scope : Sig}
     (receiver : Path scope) (capture : Capture scope) :
     capture.realizeLocals (LocalModel.atPath receiver) =
@@ -168,9 +144,6 @@ theorem Capture.realizeLocals_atPath {scope : Sig}
   | empty => rfl
   | union left right leftIH rightIH =>
       simp only [Capture.realizeLocals, Capture.openAt, leftIH, rightIH]
-  | project inner classifier induction =>
-      simp only [Capture.realizeLocals, Capture.openAt, induction,
-        ClassifierExpr.realizeLocals_atPath]
   | readOnly capture induction =>
       simp only [Capture.realizeLocals, Capture.openAt, induction]
   | singleton path => rfl
@@ -288,7 +261,6 @@ def asModel {scope : Sig} (mapping : LocalModel.Mapping scope) :
     LocalModel.Model scope where
   typeMember := mapping.typeMember
   captureMember := mapping.captureMember
-  classifierMember := mapping.classifierMember
 
 def mapType {scope : Sig} (mapping : LocalModel.Mapping scope)
     (type : Ty scope) : Ty scope :=
@@ -298,10 +270,6 @@ def mapCapture {scope : Sig} (mapping : LocalModel.Mapping scope)
     (capture : Capture scope) : Capture scope :=
   capture.realizeLocals mapping.asModel
 
-def mapClassifier {scope : Sig} (mapping : LocalModel.Mapping scope)
-    (classifier : ClassifierExpr scope) : ClassifierExpr scope :=
-  classifier.realizeLocals mapping.asModel
-
 /-- Interpret a symbolic mapping in an available ambient model. -/
 def apply {scope : Sig} (mapping : LocalModel.Mapping scope)
     (model : LocalModel.Model scope) : LocalModel.Model scope where
@@ -309,14 +277,11 @@ def apply {scope : Sig} (mapping : LocalModel.Mapping scope)
     (mapping.typeMember label).realizeLocals model
   captureMember := fun label =>
     (mapping.captureMember label).realizeLocals model
-  classifierMember := fun label =>
-    (mapping.classifierMember label).realizeLocals model
 
 /-- Map each destination label to the same local member. -/
 def identity {scope : Sig} : LocalModel.Mapping scope where
   typeMember := fun label => .ref (.localTypeMember label)
   captureMember := fun label => .ref (.localCaptureMember label)
-  classifierMember := fun label => .ref (.localMember label)
 
 @[simp]
 theorem apply_identity {scope : Sig} (model : LocalModel.Model scope) :
@@ -330,14 +295,6 @@ theorem identity_asModel_weaken {scope : Sig} {kind : BinderKind} :
       (identity (scope := scope ▹ kind)).asModel := by
   rfl
 
-private theorem realizeClassifierIdentity {scope : Sig}
-    (classifier : ClassifierExpr scope) :
-    classifier.realizeLocals (identity (scope := scope)).asModel =
-      classifier := by
-  cases classifier with
-  | ground kind => rfl
-  | ref reference => cases reference <;> rfl
-
 private theorem realizeCaptureIdentity {scope : Sig}
     (capture : Capture scope) :
     capture.realizeLocals (identity (scope := scope)).asModel = capture := by
@@ -345,19 +302,10 @@ private theorem realizeCaptureIdentity {scope : Sig}
   | empty => rfl
   | union left right leftIH rightIH =>
       simp only [Capture.realizeLocals, leftIH, rightIH]
-  | project inner classifier induction =>
-      simp only [Capture.realizeLocals, induction,
-        realizeClassifierIdentity classifier]
   | readOnly capture induction =>
       simp only [Capture.realizeLocals, induction]
   | singleton path => rfl
   | ref reference => cases reference <;> rfl
-
-@[simp]
-theorem mapClassifier_identity {scope : Sig}
-    (classifier : ClassifierExpr scope) :
-    mapClassifier (identity (scope := scope)) classifier = classifier :=
-  realizeClassifierIdentity classifier
 
 @[simp]
 theorem mapCapture_identity {scope : Sig} (capture : Capture scope) :
@@ -532,70 +480,6 @@ def refl {scope : Sig} {context : Ctx scope}
 
 end LocalTheory.Includes
 
-/-- Classifier inclusion using either ambient evidence or one of the raw
-classifier-member interval assumptions exposed by the available object. -/
-inductive LocalTheory.ClassifierIncludes {scope : Sig}
-    (context : Ctx scope) (available : Interface scope) :
-    ClassifierExpr scope → ClassifierExpr scope → Type where
-  | ambient {lower upper : ClassifierExpr scope}
-      (proof : DOTCapture.ModalIntersections.ClassifierIncludes context
-        lower upper) :
-      LocalTheory.ClassifierIncludes context available lower upper
-  | lower {label : Label} {lower upper : ClassifierExpr scope}
-      (occurrence : available.HasClassifierOccurrence label lower upper) :
-      LocalTheory.ClassifierIncludes context available lower
-        (.ref (.localMember label))
-  | upper {label : Label} {lower upper : ClassifierExpr scope}
-      (occurrence : available.HasClassifierOccurrence label lower upper) :
-      LocalTheory.ClassifierIncludes context available
-        (.ref (.localMember label)) upper
-  | trans {lower middle upper : ClassifierExpr scope}
-      (first : LocalTheory.ClassifierIncludes context available lower middle)
-      (second : LocalTheory.ClassifierIncludes context available middle upper) :
-      LocalTheory.ClassifierIncludes context available lower upper
-
-namespace LocalTheory.ClassifierIncludes
-
-def refl {scope : Sig} {context : Ctx scope}
-    {available : Interface scope} {classifier : ClassifierExpr scope} :
-    LocalTheory.ClassifierIncludes context available classifier classifier :=
-  .ambient .refl
-
-end LocalTheory.ClassifierIncludes
-
-/-- Classifier disjointness available either ambiently or as an explicit raw
-constraint of the opened object theory. -/
-inductive LocalTheory.ClassifiersDisjoint {scope : Sig}
-    (context : Ctx scope) (available : Interface scope) :
-    ClassifierExpr scope → ClassifierExpr scope → Type where
-  | ambient {left right : ClassifierExpr scope}
-      (proof : DOTCapture.ModalIntersections.ClassifiersDisjoint context
-        left right) :
-      LocalTheory.ClassifiersDisjoint context available left right
-  | assumption {left right : ClassifierExpr scope}
-      (occurrence : available.HasClassifierDisjointOccurrence left right) :
-      LocalTheory.ClassifiersDisjoint context available left right
-  | symm {left right : ClassifierExpr scope}
-      (proof : LocalTheory.ClassifiersDisjoint context available left right) :
-      LocalTheory.ClassifiersDisjoint context available right left
-
-/-- Capture membership in a classifier, with explicit object-theory
-constraints available after a stable open. -/
-inductive LocalTheory.CaptureHasKind {scope : Sig}
-    (context : Ctx scope) (available : Interface scope) :
-    Capture scope → ClassifierExpr scope → Type where
-  | ambient {capture : Capture scope} {classifier : ClassifierExpr scope}
-      (proof : DOTCapture.ModalIntersections.CaptureHasKind context capture
-        classifier) :
-      LocalTheory.CaptureHasKind context available capture classifier
-  | assumption {capture : Capture scope} {classifier : ClassifierExpr scope}
-      (occurrence : available.HasCaptureKindOccurrence capture classifier) :
-      LocalTheory.CaptureHasKind context available capture classifier
-  | widen {capture : Capture scope} {lower upper : ClassifierExpr scope}
-      (membership : LocalTheory.CaptureHasKind context available capture lower)
-      (included : LocalTheory.ClassifierIncludes context available lower upper) :
-      LocalTheory.CaptureHasKind context available capture upper
-
 /-! ## Positive realizations and negative interface views -/
 
 namespace Interface
@@ -617,41 +501,10 @@ inductive Realizes {scope : Sig} (context : Ctx scope)
       (upperProof : CaptureIncludes context (model.captureMember label)
         (upper.realizeLocals model)) :
       Realizes context model (.captureMember label lower upper)
-  | classifierMember {label : Label}
-      {lower upper : ClassifierExpr scope}
-      (lowerProof : ClassifierIncludes context
-        (lower.realizeLocals model) (model.classifierMember label))
-      (upperProof : ClassifierIncludes context
-        (model.classifierMember label) (upper.realizeLocals model)) :
-      Realizes context model (.classifierMember label lower upper)
-  | classifierDisjoint {left right : ClassifierExpr scope}
-      (proof : ClassifiersDisjoint context
-        (left.realizeLocals model) (right.realizeLocals model)) :
-      Realizes context model (.classifierDisjoint left right)
-  | captureHasKind {capture : Capture scope}
-      {classifier : ClassifierExpr scope}
-      (proof : CaptureHasKind context (capture.realizeLocals model)
-        (classifier.realizeLocals model)) :
-      Realizes context model (.captureHasKind capture classifier)
   | inter {left right : Interface scope}
       (leftProof : Realizes context model left)
       (rightProof : Realizes context model right) :
       Realizes context model (.inter left right)
-
-/-- A model realizes an intersection exactly when it realizes both component
-theories. `Nonempty` hides the proof-relevant realization certificates in this
-semantic conjunction statement. -/
-theorem realizesInterNonemptyIff {scope : Sig} {context : Ctx scope}
-    {model : LocalModel.Model scope} {left right : Interface scope} :
-    Nonempty (Realizes context model (.inter left right)) ↔
-      Nonempty (Realizes context model left) ∧
-        Nonempty (Realizes context model right) := by
-  constructor
-  · rintro ⟨realization⟩
-    cases realization with
-    | inter leftProof rightProof => exact ⟨⟨leftProof⟩, ⟨rightProof⟩⟩
-  · rintro ⟨⟨leftProof⟩, ⟨rightProof⟩⟩
-    exact ⟨.inter leftProof rightProof⟩
 
 /-- Prove every destination occurrence from the raw local theory of the
 available interface after symbolic substitution. -/
@@ -673,23 +526,6 @@ inductive Derives {scope : Sig} (context : Ctx scope)
         (.capture (mapping.captureMember label))
         (.capture (mapping.mapCapture upper))) :
       Derives context available mapping (.captureMember label lower upper)
-  | classifierMember {label : Label}
-      {lower upper : ClassifierExpr scope}
-      (lowerProof : LocalTheory.ClassifierIncludes context available
-        (mapping.mapClassifier lower) (mapping.classifierMember label))
-      (upperProof : LocalTheory.ClassifierIncludes context available
-        (mapping.classifierMember label) (mapping.mapClassifier upper)) :
-      Derives context available mapping
-        (.classifierMember label lower upper)
-  | classifierDisjoint {left right : ClassifierExpr scope}
-      (proof : LocalTheory.ClassifiersDisjoint context available
-        (mapping.mapClassifier left) (mapping.mapClassifier right)) :
-      Derives context available mapping (.classifierDisjoint left right)
-  | captureHasKind {capture : Capture scope}
-      {classifier : ClassifierExpr scope}
-      (proof : LocalTheory.CaptureHasKind context available
-        (mapping.mapCapture capture) (mapping.mapClassifier classifier)) :
-      Derives context available mapping (.captureHasKind capture classifier)
   | inter {left right : Interface scope}
       (leftProof : Derives context available mapping left)
       (rightProof : Derives context available mapping right) :
@@ -730,16 +566,7 @@ private def identityTheoryWithin {scope : Sig} {context : Ctx scope}
         available.HasTypeOccurrence label lower upper)
     (captureInAvailable : forall {label lower upper},
       current.HasCaptureOccurrence label lower upper ->
-        available.HasCaptureOccurrence label lower upper)
-    (classifierInAvailable : forall {label lower upper},
-      current.HasClassifierOccurrence label lower upper ->
-        available.HasClassifierOccurrence label lower upper)
-    (disjointInAvailable : forall {left right},
-      current.HasClassifierDisjointOccurrence left right ->
-        available.HasClassifierDisjointOccurrence left right)
-    (captureKindInAvailable : forall {capture classifier},
-      current.HasCaptureKindOccurrence capture classifier ->
-        available.HasCaptureKindOccurrence capture classifier) :
+        available.HasCaptureOccurrence label lower upper) :
     Interface.Derives context available LocalModel.Mapping.identity current := by
   cases current with
   | empty => exact .empty
@@ -755,35 +582,14 @@ private def identityTheoryWithin {scope : Sig} {context : Ctx scope}
           (captureInAvailable Interface.HasCaptureOccurrence.here)))
         (by simpa using (LocalTheory.Includes.captureUpper
           (captureInAvailable Interface.HasCaptureOccurrence.here)))
-  | classifierMember label lower upper =>
-      exact .classifierMember
-        (by simpa using (LocalTheory.ClassifierIncludes.lower
-          (classifierInAvailable Interface.HasClassifierOccurrence.here)))
-        (by simpa using (LocalTheory.ClassifierIncludes.upper
-          (classifierInAvailable Interface.HasClassifierOccurrence.here)))
-  | classifierDisjoint left right =>
-      exact .classifierDisjoint
-        (by simpa using (LocalTheory.ClassifiersDisjoint.assumption
-          (disjointInAvailable
-            Interface.HasClassifierDisjointOccurrence.here)))
-  | captureHasKind capture classifier =>
-      exact .captureHasKind
-        (by simpa using (LocalTheory.CaptureHasKind.assumption
-          (captureKindInAvailable Interface.HasCaptureKindOccurrence.here)))
   | inter left right =>
       exact .inter
         (identityTheoryWithin available left
           (fun occurrence => typeInAvailable (.left occurrence))
-          (fun occurrence => captureInAvailable (.left occurrence))
-          (fun occurrence => classifierInAvailable (.left occurrence))
-          (fun occurrence => disjointInAvailable (.left occurrence))
-          (fun occurrence => captureKindInAvailable (.left occurrence)))
+          (fun occurrence => captureInAvailable (.left occurrence)))
         (identityTheoryWithin available right
           (fun occurrence => typeInAvailable (.right occurrence))
-          (fun occurrence => captureInAvailable (.right occurrence))
-          (fun occurrence => classifierInAvailable (.right occurrence))
-          (fun occurrence => disjointInAvailable (.right occurrence))
-          (fun occurrence => captureKindInAvailable (.right occurrence)))
+          (fun occurrence => captureInAvailable (.right occurrence)))
 
 /-- The symbolic identity derivation retains every raw occurrence. -/
 def identityTheory {scope : Sig} {context : Ctx scope}
@@ -791,8 +597,7 @@ def identityTheory {scope : Sig} {context : Ctx scope}
     Interface.Derives context interface LocalModel.Mapping.identity
       interface :=
   identityTheoryWithin interface interface (fun occurrence => occurrence)
-    (fun occurrence => occurrence) (fun occurrence => occurrence)
-    (fun occurrence => occurrence) (fun occurrence => occurrence)
+    (fun occurrence => occurrence)
 
 def project {scope : Sig} {context : Ctx scope}
     {available expected : ObjectType scope}

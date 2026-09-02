@@ -113,7 +113,6 @@ end Allocation
 def preparedIntervalCount {scope : Target.Sig} : PreparedEntry scope -> Nat
   | .type _ _ intervals => intervals.length
   | .capture _ _ intervals => intervals.length
-  | .classifier _ _ intervals => intervals.length
 
 /-- Repeat the entry's one allocated member once per retained interval.  This
 view makes sharing explicit without changing the preparation representation. -/
@@ -190,7 +189,6 @@ theorem entries_preserve_shape {sourceScope : Source.Scope}
           | cons allocated allocatedRemaining =>
               cases allocated with
               | capture allocatedLabel name => simp [entries] at success
-              | classifier allocatedLabel name => simp [entries] at success
               | type allocatedLabel name =>
                   by_cases labelsMatch : label = allocatedLabel
                   · simp only [entries, labelsMatch] at success
@@ -212,30 +210,7 @@ theorem entries_preserve_shape {sourceScope : Source.Scope}
           | cons allocated allocatedRemaining =>
               cases allocated with
               | type allocatedLabel name => simp [entries] at success
-              | classifier allocatedLabel name => simp [entries] at success
               | capture allocatedLabel name =>
-                  by_cases labelsMatch : label = allocatedLabel
-                  · simp only [entries, labelsMatch] at success
-                    obtain ⟨translated, preparedRemaining, _intervalSuccess,
-                      remainingSuccess, preparedShape⟩ :=
-                        except_cons_success success
-                    subst allocatedLabel
-                    subst preparedEntries
-                    have remainingShape := induction allocatedRemaining
-                      remainingSuccess
-                    constructor <;> simp [remainingShape,
-                      PreparedEntry.label, PreparedEntry.sort,
-                      DOTCapture.Intersections.Entry.label,
-                      DOTCapture.Intersections.Entry.sort, targetSort]
-                  · simp [entries, labelsMatch] at success
-      | classifier label sourceIntervals =>
-          cases allocated with
-          | nil => simp [entries] at success
-          | cons allocated allocatedRemaining =>
-              cases allocated with
-              | type allocatedLabel name => simp [entries] at success
-              | capture allocatedLabel name => simp [entries] at success
-              | classifier allocatedLabel name =>
                   by_cases labelsMatch : label = allocatedLabel
                   · simp only [entries, labelsMatch] at success
                     obtain ⟨translated, preparedRemaining, _intervalSuccess,
@@ -284,56 +259,38 @@ end Compile
 
 private theorem prepared_symbols_of_result {targetScope : Target.Sig}
     (symbols : List ManySortedFC.StaticSort)
-    (entriesResult : Except Error
+    (result : Except Error
       (List (PreparedEntry (Target.SymbolScope targetScope symbols))))
-    (constraintsResult : Except Error
-      (List (PreparedConstraint (Target.SymbolScope targetScope symbols))))
     {prepared : PreparedSignature targetScope}
     (success : (do
-      let entries ← entriesResult
-      let constraints ← constraintsResult
-      pure (PreparedSignature.mk symbols entries constraints)) =
-        .ok prepared) :
+      let entries ← result
+      pure ({ symbols := symbols, entries := entries } :
+        PreparedSignature targetScope)) = .ok prepared) :
     prepared.symbols = symbols := by
-  cases entriesResult with
-  | error failure =>
-      simp [bind, Except.bind] at success
+  cases result with
+  | error failure => simp [Functor.map, Except.map] at success
   | ok entries =>
-      cases constraintsResult with
-      | error failure =>
-          simp [bind, Except.bind] at success
-      | ok constraints =>
-          simp [bind, Except.bind, pure, Except.pure] at success
-          subst prepared
-          rfl
+      simp [Functor.map, Except.map] at success
+      subst prepared
+      rfl
 
 private theorem prepared_result_of_success {targetScope : Target.Sig}
     (symbols : List ManySortedFC.StaticSort)
-    (entriesResult : Except Error
+    (result : Except Error
       (List (PreparedEntry (Target.SymbolScope targetScope symbols))))
-    (constraintsResult : Except Error
-      (List (PreparedConstraint (Target.SymbolScope targetScope symbols))))
     {prepared : PreparedSignature targetScope}
     (success : (do
-      let entries ← entriesResult
-      let constraints ← constraintsResult
-      pure (PreparedSignature.mk symbols entries constraints)) =
-        .ok prepared) :
-    ∃ entries constraints,
-      entriesResult = .ok entries ∧
-      constraintsResult = .ok constraints ∧
-      prepared = PreparedSignature.mk symbols entries constraints := by
-  cases entriesResult with
-  | error failure =>
-      simp [bind, Except.bind] at success
+      let entries ← result
+      pure ({ symbols := symbols, entries := entries } :
+        PreparedSignature targetScope)) = .ok prepared) :
+    ∃ entries, result = .ok entries ∧
+      prepared = { symbols := symbols, entries := entries } := by
+  cases result with
+  | error failure => simp [Functor.map, Except.map] at success
   | ok entries =>
-      cases constraintsResult with
-      | error failure =>
-          simp [bind, Except.bind] at success
-      | ok constraints =>
-          simp [bind, Except.bind, pure, Except.pure] at success
-          subst prepared
-          exact ⟨entries, constraints, rfl, rfl, rfl⟩
+      simp [Functor.map, Except.map] at success
+      subst prepared
+      exact ⟨entries, rfl, rfl⟩
 
 /-- Preparation cannot alter the symbol telescope fixed by allocation. -/
 theorem prepare_preserves_allocated_symbols
@@ -345,7 +302,7 @@ theorem prepare_preserves_allocated_symbols
     prepared.symbols = Allocation.symbols signature.entries := by
   unfold prepare at success
   exact prepared_symbols_of_result (Allocation.symbols signature.entries)
-    _ _ success
+    _ success
 
 /-- Consequently, successful preparation allocates one symbol for every
 normalized entry, hence one symbol for every normalized label. -/
@@ -373,10 +330,8 @@ theorem prepare_preserves_entry_shape
         signature.entries.map fun entry =>
           targetSort (DOTCapture.Intersections.Entry.sort entry) := by
   unfold prepare at success
-  obtain ⟨preparedEntries, preparedConstraints, entriesSuccess,
-    _constraintsSuccess, preparedShape⟩ :=
-    prepared_result_of_success (Allocation.symbols signature.entries) _ _
-      success
+  obtain ⟨preparedEntries, entriesSuccess, preparedShape⟩ :=
+    prepared_result_of_success (Allocation.symbols signature.entries) _ success
   subst prepared
   exact Compile.entries_preserve_shape _ _ signature.entries _ entriesSuccess
 

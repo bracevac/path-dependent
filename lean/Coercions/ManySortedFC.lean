@@ -59,8 +59,6 @@ import Coercions.ManySortedFC.ModalPreservationExamples
 import Coercions.ManySortedFC.DisjointCaptureTheoryExamples
 import Coercions.ManySortedFC.ClassifierProjectionExamples
 import Coercions.ManySortedFC.StaticDomainExamples
-import Coercions.ManySortedFC.BindableClassifierExamples
-import Coercions.ManySortedFC.BindableClassifierSemanticsExamples
 import Coercions.ManySortedFC.EvidenceNormalizationExamples
 
 /-!
@@ -76,12 +74,12 @@ type projections have checked unfold equality. Capture terms remain acyclic,
 and this syntactic facility does not claim a global semantic consistency
 theorem for arbitrary recursive type equations.
 
-Classifier kinds form a third static sort. Static theories may bind classifier
-names and constrain them by equality, inclusion, disjointness, and capture-kind
-membership. Capture projection accepts either a ground kind or a bound
-classifier name. Ground checks are recomputed by the standalone checker;
-variable claims require scoped evidence. Ground kind intersection and
-subtraction are executable; source `.only`/`.except` chains lower before
-cumulative compilation. Symbolic subtraction, handlers, intercepts, and the
-full Capless(K) type system are outside this calculus.
+Classifier projection is a ground extension: classifier nodes and kind
+filters are closed data inside capture syntax, not a third bindable static
+sort. `captureHasKind(C, K)` constrains an ordinary capture symbol by a ground
+kind, and projection completeness certifies `C.project(K) = C`. The target
+checker recomputes ground subkind, equivalence, emptiness, and disjointness
+side conditions. This is the capture-kinding and projection interface needed
+by the classifier case study; it is not the full Capless(K) source calculus,
+handler semantics, or safety proof.
 -/

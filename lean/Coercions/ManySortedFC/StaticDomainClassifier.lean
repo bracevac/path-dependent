@@ -2,16 +2,16 @@ import Coercions.ManySortedFC.StaticDomain
 import Coercions.ManySortedFC.Classifier
 
 /-!
-# The closed classifier-kind ground domain
+# The standalone classifier-kind ground domain
 
 This instantiates `GroundStaticDomain` with the existing executable
-classifier-kind algebra.  Ground expressions are `Classifier.Kind` values,
+classifier-kind algebra. Ground expressions are `Classifier.Kind` values,
 semantic observations are classifier tree nodes, and interpretation is
 `Classifier.Kind.Contains`.
 
-The instance itself does not extend the kernel. It records the exact contract
-implemented by the closed classifier decision procedures; the target's
-classifier sort and evidence constructors remain explicit kernel syntax.
+This instance packages the closed classifier algebra used by ground capture
+projection. It does not add a classifier static sort, classifier variables,
+target propositions, or target evidence constructors.
 -/
 
 namespace ManySortedFC

@@ -1,17 +1,14 @@
 import Coercions.Translation.ManySorted.Classifiers.Lowering
-import Coercions.ManySortedFC.TermChecker
-import Coercions.ManySortedFC.Erasure
-import Coercions.ManySortedFC.StaticExamples
+import Coercions.ManySortedFC.SeparationConsistency
 
 /-!
 # Classifier-filter regressions
 
 The first group mirrors the paper artifact's ground-kind `.only`/`.except`
-examples.  Capability-level cases that require kind inference are outside this
-closed layer.  The final group places the lowered projection in the checked
-capture type of a real ManySortedFC lambda, checks the complete annotated term
-with the standalone checker, proves literal agreement with the independent
-source erasure, and executes its beta/zeta runtime spine.
+examples. The final group interprets a capture with two concrete capabilities:
+an IO capability survives `only[Shared].except[Control]`, while a Control
+capability does not. Checked capture-kinding and term-level regressions live in
+`CaptureKindingExamples`.
 -/
 
 namespace DOTCaptureToManySortedFC.Classifiers.Examples
@@ -22,13 +19,6 @@ export DOTCaptureToManySortedFC.Classifiers.Source
   (Classifier Kind Filter ProjectedCapture Term Program)
 
 end Source
-
-namespace Target
-
-export ManySortedFC
-  (BVar Capture Ctx Evidence EvidenceArgs Sig StaticScope SymbolArgs Theory Tm Ty)
-
-end Target
 
 /-! ## A closed classifier hierarchy used by the paper-derived checks -/
 
@@ -178,116 +168,77 @@ example : ¬ ManySortedFC.Classifier.Kind.Subkind
     (any.except io).kind (any.except control).kind := by
   native_decide
 
-/-! ## One independently checked source/target pair -/
+/-! ## A nonempty concrete projection
 
-/-- The source program has a genuine beta redex whose argument first performs
-a genuine zeta step.  Its advertised capture uses the paper's
-`only[Shared].except[Control]` chain. -/
-def sourceProgram : Source.Program BaseCapture 0 where
-  capture := sharedWithoutControl
-  term := .app
-    (.lam (.var 0))
-    (.let' .unit (.var 0))
+The logical checks above concern the closed kind algebra.  This valuation
+also gives the filter an actual capture to operate on: `file` is classified
+under `IO`, while `thrower` is classified under `Control`.
+-/
 
-abbrev MixedScope : Target.Sig :=
-  Target.StaticScope [] [.type, .capture]
-    [.equality .type, .equality .capture]
+inductive ConcreteCapability where
+  | file
+  | thrower
+deriving DecidableEq
 
-/-- The capture name allocated by `exactMixedTheory`, below its two exported
-evidence binders and the type name in the same symbol block. -/
-def mixedCapture : Target.Capture MixedScope :=
-  .cvar (.there (.there (.there .here)))
+abbrev ConcreteScope : ManySortedFC.Sig :=
+  ([] : ManySortedFC.Sig) ▹ .term ▹ .term
 
-/-- This case study maps its one source base to an abstract target capture.
-The model later supplied at static application instantiates that name with the
-empty capture, but the lambda is checked while the name is still abstract. -/
-def abstractBase (_ : BaseCapture) : Target.Capture MixedScope :=
-  mixedCapture
+/-- The older term variable denotes `file`; the newer one denotes `thrower`.
+Both are genuinely present and writable in this semantic instance. -/
+def concreteValuation :
+    ManySortedFC.AccessValuation ConcreteScope ConcreteCapability where
+  term := fun
+    | .here => fun capability =>
+        if capability = .thrower then .writable else .absent
+    | .there .here => fun capability =>
+        if capability = .file then .writable else .absent
+    | .there (.there older) => nomatch older
+  captureSymbol := fun
+    | .there (.there older) => nomatch older
+  classOf := fun
+    | .file => io
+    | .thrower => control
 
-/-- The full surface chain has become one target projection node. -/
-def projectedClosure : Target.Capture MixedScope :=
-  DOTCaptureToManySortedFC.Classifiers.Lowering.capture
-    abstractBase sourceProgram.capture
+def concreteAll : ManySortedFC.Capture ConcreteScope :=
+  .union (.singleton (.there .here)) (.singleton .here)
 
-example : projectedClosure =
-    .project mixedCapture sourceProgram.capture.kind := rfl
+def concreteFiltered : ManySortedFC.Capture ConcreteScope :=
+  .project concreteAll sharedWithoutControl.kind
 
-/-- A real target lambda whose checked result type retains `projectedClosure`.
-The lambda body is pure, so its declared closure is a safe over-approximation. -/
-def projectedIdentity : Target.Tm MixedScope :=
-  .lam .one .one projectedClosure (.var .here)
-    (.captureEmpty
-      (.union projectedClosure.weaken (.singleton .here)))
-
-/-- The capture equality exported by `exactMixedTheory`. -/
-def mixedCaptureEqualsEmpty :
-    Target.Evidence (.equality .capture) MixedScope :=
-  .var (.there .here)
-
-/-- Projection is bounded by its abstract source, and the opened theory fixes
-that source to the empty capture.  Both steps are explicit target evidence. -/
-def projectedClosureIsEmpty :
-    Target.Evidence (.inclusion .capture) MixedScope :=
-  .inclusionTrans
-    (.captureProjectSource mixedCapture sourceProgram.capture.kind)
-    (.equalityToInclusion mixedCaptureEqualsEmpty)
-
-/-- The erased static wrapper is accepted only because the projection is
-explicitly discharged to its empty source capture.  This exercises the
-projection certificate inside the checked term rather than merely checking a
-standalone proposition. -/
-def polymorphicIdentity : Target.Tm [] :=
-  .slam ManySortedFC.StaticExamples.exactMixedTheory .empty
-    projectedIdentity projectedClosureIsEmpty
-
-def instantiatedIdentity : Target.Tm [] :=
-  .sapp ManySortedFC.StaticExamples.exactMixedTheory polymorphicIdentity
-    ManySortedFC.StaticExamples.exactMixedWitnesses
-    ManySortedFC.StaticExamples.exactMixedEvidence
-
-/-- The argument is a computation rather than a value.  Its zeta reduction
-precedes the surrounding beta reduction under the shared CBV runtime. -/
-def computedUnit : Target.Tm [] :=
-  .let' .one .empty .unit (.var .here)
-    (.captureEmpty .empty)
-
-def targetProgram : Target.Tm [] :=
-  .app instantiatedIdentity computedUnit
-
-theorem target_program_is_independently_accepted :
-    (ManySortedFC.Tm.check (.nil : ManySortedFC.Ctx [])
-      targetProgram).isSome = true := by
+theorem concrete_all_contains_file :
+    concreteAll.access concreteValuation .file = .writable := by
   native_decide
 
-theorem projected_closure_survives_target_synthesis :
-    (ManySortedFC.Tm.check (.nil : ManySortedFC.Ctx [])
-      instantiatedIdentity).map
-        (fun checked => checked.type) =
-      some (ManySortedFC.Ty.capturing
-        (.project .empty sourceProgram.capture.kind)
-        (.arr .one .one)) := by
+theorem concrete_all_contains_thrower :
+    concreteAll.access concreteValuation .thrower = .writable := by
   native_decide
 
-/-- For this representative checked pair, target erasure agrees literally
-with the source erasure defined without reference to target syntax.  This is
-an execution regression, not a claim that this file compiles arbitrary source
-terms. -/
-theorem representative_exact_erasure :
-    targetProgram.erase = sourceProgram.erase := rfl
+/-- `only[Shared].except[Control]` retains the IO capability. -/
+theorem concrete_filter_retains_file :
+    concreteFiltered.access concreteValuation .file = .writable := by
+  native_decide
 
-def afterZeta : ManySortedFC.Runtime.Tm 0 :=
-  .app (.lam (.var 0)) .unit
+/-- The same filter removes the Control capability. -/
+theorem concrete_filter_removes_thrower :
+    concreteFiltered.access concreteValuation .thrower = .absent := by
+  native_decide
 
-theorem runtime_zeta :
-    ManySortedFC.Runtime.Step targetProgram.erase afterZeta :=
-  .appArgument .lam (.zeta .unit)
+theorem concrete_filter_is_not_empty :
+    ¬ ManySortedFC.SeparationSemantics.Equivalent concreteValuation
+      concreteFiltered .empty := by
+  intro equivalent
+  have atFile := equivalent .file
+  rw [concrete_filter_retains_file] at atFile
+  simp only [ManySortedFC.Capture.access] at atFile
+  cases atFile
 
-theorem runtime_beta :
-    ManySortedFC.Runtime.Step afterZeta .unit :=
-  .beta .unit
-
-theorem runtime_executes :
-    ManySortedFC.Runtime.Steps targetProgram.erase .unit :=
-  .tail (.single runtime_zeta) runtime_beta
+theorem concrete_filter_is_not_all :
+    ¬ ManySortedFC.SeparationSemantics.Equivalent concreteValuation
+      concreteFiltered concreteAll := by
+  intro equivalent
+  have atThrower := equivalent .thrower
+  rw [concrete_filter_removes_thrower,
+    concrete_all_contains_thrower] at atThrower
+  cases atThrower
 
 end DOTCaptureToManySortedFC.Classifiers.Examples

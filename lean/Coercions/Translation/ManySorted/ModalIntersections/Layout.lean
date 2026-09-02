@@ -69,8 +69,6 @@ expression. -/
 structure TargetLocalModel (targetScope : Target.Sig) where
   typeMember? : Nat -> Option (ManySortedFC.Ty targetScope)
   captureMember? : Nat -> Option (ManySortedFC.Capture targetScope)
-  classifierMember? : Nat -> Option (ManySortedFC.ClassifierExpr targetScope) :=
-    fun _ => none
 
 namespace TargetLocalModel
 
@@ -78,7 +76,6 @@ namespace TargetLocalModel
 def empty {targetScope : Target.Sig} : TargetLocalModel targetScope where
   typeMember? := fun _ => none
   captureMember? := fun _ => none
-  classifierMember? := fun _ => none
 
 /-- Rename every expression in a local-member interpretation. -/
 def rename {first second : Target.Sig} (model : TargetLocalModel first)
@@ -87,18 +84,13 @@ def rename {first second : Target.Sig} (model : TargetLocalModel first)
     (model.typeMember? label).map fun type => type.rename rho
   captureMember? := fun label =>
     (model.captureMember? label).map fun capture => capture.rename rho
-  classifierMember? := fun label =>
-    (model.classifierMember? label).map fun classifier =>
-      classifier.rename rho
 
 @[ext (iff := false)]
 theorem ext {targetScope : Target.Sig}
     {first second : TargetLocalModel targetScope}
     (types : forall label, first.typeMember? label = second.typeMember? label)
     (captures : forall label,
-      first.captureMember? label = second.captureMember? label)
-    (classifiers : forall label,
-      first.classifierMember? label = second.classifierMember? label) :
+      first.captureMember? label = second.captureMember? label) :
     first = second := by
   cases first
   cases second
@@ -107,8 +99,6 @@ theorem ext {targetScope : Target.Sig}
     exact types label
   · funext label
     exact captures label
-  · funext label
-    exact classifiers label
 
 @[simp]
 theorem rename_id {targetScope : Target.Sig}
@@ -123,11 +113,6 @@ theorem rename_id {targetScope : Target.Sig}
     cases found : model.captureMember? label with
     | none => simp [rename, found]
     | some capture => simp [rename, found, ManySortedFC.Capture.rename_id]
-  · intro label
-    cases found : model.classifierMember? label with
-    | none => simp [rename, found]
-    | some classifier =>
-        simp [rename, found, ManySortedFC.ClassifierExpr.rename_id]
 
 @[simp]
 theorem rename_comp {first second third : Target.Sig}
@@ -145,11 +130,6 @@ theorem rename_comp {first second third : Target.Sig}
     | none => simp [rename, found]
     | some capture =>
         simp [rename, found, ManySortedFC.Capture.rename_comp]
-  · intro label
-    cases found : model.classifierMember? label with
-    | none => simp [rename, found]
-    | some classifier =>
-        simp [rename, found, ManySortedFC.ClassifierExpr.rename_comp]
 
 end TargetLocalModel
 

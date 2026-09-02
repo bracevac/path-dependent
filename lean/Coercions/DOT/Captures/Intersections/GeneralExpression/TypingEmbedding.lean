@@ -11,18 +11,11 @@ namespace Embedding
 namespace M10
 
 abbrev Ctx := DOTCapture.Acyclic.Ctx
-abbrev StaticSort := DOTCapture.Acyclic.StaticSort
 abbrev StaticRef := DOTCapture.Acyclic.StaticRef
 abbrev StaticExpr := DOTCapture.Acyclic.StaticExpr
 abbrev ObjectSig := DOTCapture.Acyclic.ObjectSig
 
 end M10
-
-/-- Embed either historical M10 static sort into the cumulative static-sort
-universe. -/
-def embedStaticSort : M10.StaticSort -> StaticSort
-  | .type => .type
-  | .capture => .capture
 
 /-- Embed an M10 source context pointwise. -/
 def embedCtx : {scope : Scope} -> M10.Ctx scope -> Ctx scope
@@ -30,16 +23,16 @@ def embedCtx : {scope : Scope} -> M10.Ctx scope -> Ctx scope
   | _, .extend outer type => .extend (embedCtx outer) (Source.embedM10Ty type)
 
 /-- Embed a fixed M10 member reference at its reserved M11 label. -/
-def embedStaticRef {sort : M10.StaticSort} {scope : Scope} :
-    M10.StaticRef sort scope -> StaticRef (embedStaticSort sort) scope
+def embedStaticRef {sort : StaticSort} {scope : Scope} :
+    M10.StaticRef sort scope -> StaticRef sort scope
   | .typeMember receiver =>
       .typeMember (Source.embedM10Path receiver) Source.m10TypeLabel
   | .captureMember receiver =>
       .captureMember (Source.embedM10Path receiver) Source.m10CaptureLabel
 
 /-- Embed a sorted M10 static expression. -/
-def embedStaticExpr {sort : M10.StaticSort} {scope : Scope} :
-    M10.StaticExpr sort scope -> StaticExpr (embedStaticSort sort) scope
+def embedStaticExpr {sort : StaticSort} {scope : Scope} :
+    M10.StaticExpr sort scope -> StaticExpr sort scope
   | .type type => .type (Source.embedM10Ty type)
   | .capture capture => .capture (Source.embedM10Capture capture)
 
@@ -296,7 +289,7 @@ def embedExposes {scope : Scope} {context : M10.Ctx scope}
       simp [Source.embedM10Ty])
 
 @[simp]
-theorem embedStaticRef_expression {scope : Scope} {sort : M10.StaticSort}
+theorem embedStaticRef_expression {scope : Scope} {sort : StaticSort}
     (reference : M10.StaticRef sort scope) :
     Source.StaticRef.expression (embedStaticRef reference) =
       embedStaticExpr reference.expression := by
@@ -398,7 +391,7 @@ def embeddedCaptureOccurrence {scope : Scope}
       (Source.Interface.HasCaptureOccurrence.here))
 
 def embedHasLower {scope : Scope} {context : M10.Ctx scope}
-    {sort : M10.StaticSort} {reference : M10.StaticRef sort scope}
+    {sort : StaticSort} {reference : M10.StaticRef sort scope}
     {endpoint : M10.StaticExpr sort scope}
     (bound : DOTCapture.Acyclic.HasLower context reference endpoint) :
     Source.HasLower (embedCtx context) (embedStaticRef reference)
@@ -414,7 +407,7 @@ def embedHasLower {scope : Scope} {context : M10.Ctx scope}
           (embeddedCaptureOccurrence _))
 
 def embedHasUpper {scope : Scope} {context : M10.Ctx scope}
-    {sort : M10.StaticSort} {reference : M10.StaticRef sort scope}
+    {sort : StaticSort} {reference : M10.StaticRef sort scope}
     {endpoint : M10.StaticExpr sort scope}
     (bound : DOTCapture.Acyclic.HasUpper context reference endpoint) :
     Source.HasUpper (embedCtx context) (embedStaticRef reference)
@@ -432,7 +425,7 @@ def embedHasUpper {scope : Scope} {context : M10.Ctx scope}
 /-- Every proof-relevant M10 inclusion has the same proof tree after
 embedding. The payload-root case uses the opened M11 representation. -/
 def embedIncludes {scope : Scope} {context : M10.Ctx scope}
-    {sort : M10.StaticSort} {source target : M10.StaticExpr sort scope}
+    {sort : StaticSort} {source target : M10.StaticExpr sort scope}
     (proof : DOTCapture.Acyclic.Includes context source target) :
     Includes (embedCtx context) (embedStaticExpr source)
       (embedStaticExpr target) :=

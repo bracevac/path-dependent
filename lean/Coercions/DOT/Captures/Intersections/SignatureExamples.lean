@@ -25,7 +25,6 @@ deriving DecidableEq, Repr
 def BoundExpr : StaticSort -> Type
   | .type => TypeBound
   | .capture => CaptureBound
-  | .classifier => Unit
 
 open Signature
 
@@ -46,7 +45,7 @@ theorem typeRight_normalized : typeRight.Normalized := by
       (TypeBound.atom 1) TypeBound.top)
 
 def typeMerged : Signature BoundExpr :=
-  ⟨[.type 3 [⟨.bottom, .atom 0⟩, ⟨.atom 1, .top⟩]], []⟩
+  ⟨[.type 3 [⟨.bottom, .atom 0⟩, ⟨.atom 1, .top⟩]]⟩
 
 /-- Same-label type members allocate one identity and retain both intervals. -/
 example : merge? typeLeft typeRight = .ok typeMerged := rfl
@@ -82,7 +81,7 @@ theorem captureRight_normalized : captureRight.Normalized := by
 
 def captureMerged : Signature BoundExpr :=
   ⟨[.capture 5 [⟨.empty, .singleton 0⟩,
-    ⟨.singleton 1, .universal⟩]], []⟩
+    ⟨.singleton 1, .universal⟩]]⟩
 
 /-- Capture constraints use the same label-first merge without crossing sorts. -/
 example : merge? captureLeft captureRight = .ok captureMerged := rfl
@@ -117,7 +116,7 @@ theorem earlierType_normalized : earlierType.Normalized := by
 
 def sortedMixed : Signature BoundExpr :=
   ⟨[.type 2 [⟨.bottom, .top⟩],
-    .capture 8 [⟨.empty, .universal⟩]], []⟩
+    .capture 8 [⟨.empty, .universal⟩]]⟩
 
 /-- Different labels retain their distinct sorts and normalize by label first. -/
 example : merge? laterCapture earlierType = .ok sortedMixed := rfl
@@ -146,8 +145,8 @@ example : LawfulMerge typeLeft typeRight typeMerged :=
 
 /-- Reversing the conjuncts preserves the constraint multiset. -/
 example : ConstraintEquivalent typeMerged
-    ⟨[.type 3 [⟨.atom 1, .top⟩, ⟨.bottom, .atom 0⟩]], []⟩ :=
+    ⟨[.type 3 [⟨.atom 1, .top⟩, ⟨.bottom, .atom 0⟩]]⟩ :=
   merge?_comm_equivalent typeLeft typeRight typeMerged
-    ⟨[.type 3 [⟨.atom 1, .top⟩, ⟨.bottom, .atom 0⟩]], []⟩ rfl rfl
+    ⟨[.type 3 [⟨.atom 1, .top⟩, ⟨.bottom, .atom 0⟩]]⟩ rfl rfl
 
 end DOTCapture.Intersections.Examples

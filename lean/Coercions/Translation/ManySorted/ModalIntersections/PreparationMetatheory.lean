@@ -42,13 +42,6 @@ private theorem renameMembers_comp {first second third : Target.Sig}
             renameMembers remaining (rho₁.comp rho₂)
         rw [induction]
         rfl
-      | classifier label name =>
-        change MemberName.classifier label (rho₂.var (rho₁.var name)) ::
-            renameMembers (renameMembers remaining rho₁) rho₂ =
-          MemberName.classifier label ((rho₁.comp rho₂).var name) ::
-            renameMembers remaining (rho₁.comp rho₂)
-        rw [induction]
-        rfl
 
 @[simp]
 private theorem find?_rename {first second : Target.Sig}
@@ -76,14 +69,6 @@ private theorem find?_rename {first second : Target.Sig}
           · simp only [renameMembers, List.map_cons, MemberName.rename,
               MemberNames.find?, MemberName.label, labelsMatch, if_false]
             exact induction
-      | classifier memberLabel name =>
-          by_cases labelsMatch : memberLabel = label
-          · subst memberLabel
-            simp [renameMembers, MemberNames.find?, MemberName.rename,
-              MemberName.label]
-          · simp only [renameMembers, List.map_cons, MemberName.rename,
-              MemberNames.find?, MemberName.label, labelsMatch, if_false]
-            exact induction
 
 private def renameCaptureResult {first second : Target.Sig}
     (rho : Target.Rename first second) :
@@ -96,8 +81,6 @@ private def compileExpectCapture {scope : Target.Sig} (label : Nat) :
       (Target.BVar scope (.symbol .capture))
   | .capture _ name => .ok name
   | .type _ _ => .error (.memberSortMismatch label .capture .type)
-  | .classifier _ _ =>
-      .error (.memberSortMismatch label .capture .classifier)
 
 private def compilePathMember {sourceScope : Source.Sig}
     {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
@@ -172,8 +155,6 @@ private def compileExpectType {scope : Target.Sig} (label : Nat) :
     MemberName scope -> Except Error (Target.BVar scope (.symbol .type))
   | .type _ name => .ok name
   | .capture _ _ => .error (.memberSortMismatch label .type .capture)
-  | .classifier _ _ =>
-      .error (.memberSortMismatch label .type .classifier)
 
 private def compileTypeReference {sourceScope : Source.Sig}
     {targetScope : Target.Sig} (layout : Layout sourceScope targetScope)
@@ -224,46 +205,6 @@ private theorem translateType_ref {sourceScope : Source.Sig}
               Except.bind, pure, Except.pure]
 
 namespace Compile
-
-private theorem classifierCore_follows
-    {firstSource secondSource : Source.Sig}
-    {firstTarget secondTarget : Target.Sig}
-    {first : Layout firstSource firstTarget}
-    {second : Layout secondSource secondTarget}
-    {sourceRename : DOTCapture.ModalIntersections.Rename
-      firstSource secondSource}
-    {targetRename : Target.Rename firstTarget secondTarget}
-    (follows : Layout.Follows first second sourceRename targetRename)
-    (members : List (MemberName firstTarget))
-    (classifier : Source.ClassifierExpr firstSource) :
-    classifierCore second (.allocated
-        (renameMembers members targetRename))
-        (classifier.rename sourceRename) =
-      (classifierCore first (.allocated members) classifier).map fun target =>
-        target.rename targetRename := by
-  cases classifier with
-  | ground kind => rfl
-  | ref reference =>
-      cases reference with
-      | member path label =>
-          simp only [DOTCapture.ModalIntersections.ClassifierExpr.rename,
-            DOTCapture.ModalIntersections.ClassifierRef.rename,
-            classifierCore, classifierReference, pathMember,
-            expectClassifier]
-          rw [follows.member]
-          cases found : first.member? path label with
-          | none => rfl
-          | some member => cases member <;> rfl
-      | localMember label =>
-          simp only [DOTCapture.ModalIntersections.ClassifierExpr.rename,
-            DOTCapture.ModalIntersections.ClassifierRef.rename,
-            classifierCore, classifierReference,
-            LocalResolution.classifierExpression, localMember,
-            expectClassifier]
-          rw [find?_rename]
-          cases found : MemberNames.find? members label with
-          | none => rfl
-          | some member => cases member <;> rfl
 
 private theorem compileTypeReference_follows
     {firstSource secondSource : Source.Sig}
@@ -332,23 +273,6 @@ theorem translateCapture_follows {firstSource secondSource : Source.Sig}
       rw [leftInduction, rightInduction]
       cases translateCapture first members left <;>
         cases translateCapture first members right <;> rfl
-  | project capture classifier captureInduction =>
-      simp only [DOTCapture.ModalIntersections.Capture.rename]
-      change (do
-          pure (ManySortedFC.Capture.project
-            (← translateCapture second (renameMembers members targetRename)
-              (capture.rename sourceRename))
-            (← classifierCore second (.allocated
-              (renameMembers members targetRename))
-              (classifier.rename sourceRename)))) =
-        (do
-          pure (ManySortedFC.Capture.project
-            (← translateCapture first members capture)
-            (← classifierCore first (.allocated members) classifier))).map
-              fun target => ManySortedFC.Capture.rename target targetRename
-      rw [captureInduction, classifierCore_follows follows members classifier]
-      cases translateCapture first members capture <;>
-        cases classifierCore first (.allocated members) classifier <;> rfl
   | readOnly capture induction =>
       simp only [DOTCapture.ModalIntersections.Capture.rename]
       change (do
@@ -525,43 +449,6 @@ whereas object preparation uses an allocated member-name list.  The modal
 renaming laws below therefore follow the ambient interpreter directly.
 -/
 
-private theorem classifierCore_follows
-    {firstSource secondSource : Source.Sig}
-    {firstTarget secondTarget : Target.Sig}
-    {first : Layout firstSource firstTarget}
-    {second : Layout secondSource secondTarget}
-    {sourceRename : DOTCapture.ModalIntersections.Rename
-      firstSource secondSource}
-    {targetRename : Target.Rename firstTarget secondTarget}
-    (follows : Layout.Follows first second sourceRename targetRename)
-    (classifier : Source.ClassifierExpr firstSource) :
-    Compile.classifierCore second (.interpreted second.localModel)
-        (classifier.rename sourceRename) =
-      (Compile.classifierCore first (.interpreted first.localModel)
-        classifier).map fun target => target.rename targetRename := by
-  cases classifier with
-  | ground kind => rfl
-  | ref reference =>
-      cases reference with
-      | member path label =>
-          simp only [DOTCapture.ModalIntersections.ClassifierExpr.rename,
-            DOTCapture.ModalIntersections.ClassifierRef.rename,
-            Compile.classifierCore, Compile.classifierReference,
-            Compile.pathMember, Compile.expectClassifier]
-          rw [follows.member]
-          cases found : first.member? path label with
-          | none => rfl
-          | some member => cases member <;> rfl
-      | localMember label =>
-          simp only [DOTCapture.ModalIntersections.ClassifierExpr.rename,
-            DOTCapture.ModalIntersections.ClassifierRef.rename,
-            Compile.classifierCore, Compile.classifierReference,
-            Compile.LocalResolution.classifierExpression]
-          rw [follows.localClassifier]
-          cases found : first.localModel.classifierMember? label with
-          | none => rfl
-          | some classifier => rfl
-
 theorem translateCapture_follows {firstSource secondSource : Source.Sig}
     {firstTarget secondTarget : Target.Sig}
     {first : Layout firstSource firstTarget}
@@ -590,24 +477,6 @@ theorem translateCapture_follows {firstSource secondSource : Source.Sig}
       rw [leftInduction, rightInduction]
       cases translateCapture first left <;>
         cases translateCapture first right <;> rfl
-  | project capture classifier captureInduction =>
-      simp only [DOTCapture.ModalIntersections.Capture.rename]
-      change (do
-          pure (ManySortedFC.Capture.project
-            (← translateCapture second (capture.rename sourceRename))
-            (← Compile.classifierCore second
-              (.interpreted second.localModel)
-              (classifier.rename sourceRename)))) =
-        (do
-          pure (ManySortedFC.Capture.project
-            (← translateCapture first capture)
-            (← Compile.classifierCore first
-              (.interpreted first.localModel) classifier))).map fun target =>
-                ManySortedFC.Capture.rename target targetRename
-      rw [captureInduction, classifierCore_follows follows classifier]
-      cases translateCapture first capture <;>
-        cases Compile.classifierCore first (.interpreted first.localModel)
-          classifier <;> rfl
   | readOnly capture induction =>
       simp only [DOTCapture.ModalIntersections.Capture.rename]
       change (do
@@ -846,13 +715,6 @@ def comp {firstSource middleSource lastSource : Source.Sig}
     | none => rfl
     | some capture =>
         simp only [Option.map_some, ManySortedFC.Capture.rename_comp]
-  localClassifier := by
-    intro label
-    rw [secondFollows.localClassifier, firstFollows.localClassifier]
-    cases found : first.localModel.classifierMember? label with
-    | none => rfl
-    | some classifier =>
-        simp only [Option.map_some, ManySortedFC.ClassifierExpr.rename_comp]
 
 /-- Coordinated renaming remains coherent below one same-shape lexical
 interval.  Endpoint syntax is renamed, but the emitted symbol/evidence spine
@@ -879,8 +741,7 @@ def extendStaticCongr {firstSource secondSource : Source.Sig}
             staticSlot := ?_
             member := ?_
             localType := ?_
-            localCapture := ?_
-            localClassifier := ?_ }
+            localCapture := ?_ }
         · intro sourceVar
           cases sourceVar with
           | there older =>
@@ -961,18 +822,6 @@ def extendStaticCongr {firstSource secondSource : Source.Sig}
           | none => rfl
           | some capture =>
               simp only [Option.map_some, ManySortedFC.Capture.rename_comp]
-              rw [DOTCaptureToManySortedFC.BinderOnly.ManySortedRename.comp_weakenStatic]
-        · intro label
-          simp only [DOTCapture.ModalIntersections.Interval.rename,
-            DOTCapture.ModalIntersections.Endpoint.rename,
-            Layout.extendStatic, TargetLocalModel.rename,
-            Layout.staticRename, liftStaticFor, intervalRelations]
-          rw [follows.localClassifier]
-          cases found : first.localModel.classifierMember? label with
-          | none => rfl
-          | some classifier =>
-              simp only [Option.map_some,
-                ManySortedFC.ClassifierExpr.rename_comp]
               rw [DOTCaptureToManySortedFC.BinderOnly.ManySortedRename.comp_weakenStatic]
 
 /-- The auxiliary local-member table follows the same static weakening

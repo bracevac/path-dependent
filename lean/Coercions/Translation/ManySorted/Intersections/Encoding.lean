@@ -43,7 +43,6 @@ end Target
 def targetSort : Source.StaticSort -> Target.StaticSort
   | .type => .type
   | .capture => .capture
-  | .classifier => .classifier
 
 /-- A member name allocated in the complete names-only block. -/
 inductive MemberName (scope : Target.Sig) where
@@ -51,8 +50,6 @@ inductive MemberName (scope : Target.Sig) where
       (name : Target.BVar scope (.symbol .type)) : MemberName scope
   | capture (label : Nat)
       (name : Target.BVar scope (.symbol .capture)) : MemberName scope
-  | classifier (label : Nat)
-      (name : Target.BVar scope (.symbol .classifier)) : MemberName scope
 deriving DecidableEq
 
 namespace MemberName
@@ -60,19 +57,16 @@ namespace MemberName
 def label {scope : Target.Sig} : MemberName scope -> Nat
   | .type label _ => label
   | .capture label _ => label
-  | .classifier label _ => label
 
 def sort {scope : Target.Sig} : MemberName scope -> Target.StaticSort
   | .type _ _ => .type
   | .capture _ _ => .capture
-  | .classifier _ _ => .classifier
 
 def rename {source target : Target.Sig} (member : MemberName source)
     (rho : Target.Rename source target) : MemberName target :=
   match member with
   | .type label name => .type label (rho.var name)
   | .capture label name => .capture label (rho.var name)
-  | .classifier label name => .classifier label (rho.var name)
 
 @[simp]
 theorem rename_label {source target : Target.Sig}
@@ -97,11 +91,6 @@ inductive PreparedEntry (scope : Target.Sig) where
   | capture (label : Nat) (name : Target.BVar scope (.symbol .capture))
       (intervals : List (Source.Interval (Target.StaticExpr .capture scope))) :
       PreparedEntry scope
-  | classifier (label : Nat)
-      (name : Target.BVar scope (.symbol .classifier))
-      (intervals : List
-        (Source.Interval (Target.StaticExpr .classifier scope))) :
-      PreparedEntry scope
 deriving DecidableEq
 
 namespace PreparedEntry
@@ -120,17 +109,14 @@ def intervalRelations {alpha : Type} (sort : Target.StaticSort) :
 def label {scope : Target.Sig} : PreparedEntry scope -> Nat
   | .type label _ _ => label
   | .capture label _ _ => label
-  | .classifier label _ _ => label
 
 def sort {scope : Target.Sig} : PreparedEntry scope -> Target.StaticSort
   | .type _ _ _ => .type
   | .capture _ _ _ => .capture
-  | .classifier _ _ _ => .classifier
 
 def member {scope : Target.Sig} : PreparedEntry scope -> MemberName scope
   | .type label name _ => .type label name
   | .capture label name _ => .capture label name
-  | .classifier label name _ => .classifier label name
 
 /-- Two directed propositions are retained for every interval occurrence. -/
 def relations {scope : Target.Sig} : PreparedEntry scope -> List Target.Relation
@@ -138,8 +124,6 @@ def relations {scope : Target.Sig} : PreparedEntry scope -> List Target.Relation
       intervalRelations .type intervals
   | .capture _ _ intervals =>
       intervalRelations .capture intervals
-  | .classifier _ _ intervals =>
-      intervalRelations .classifier intervals
 
 @[simp]
 theorem member_label {scope : Target.Sig} (entry : PreparedEntry scope) :
@@ -153,68 +137,27 @@ theorem member_sort {scope : Target.Sig} (entry : PreparedEntry scope) :
 
 end PreparedEntry
 
-/-- A translated cross-sort proposition in the complete member-name scope. -/
-inductive PreparedConstraint (scope : Target.Sig) where
-  | classifierDisjoint
-      (left right : ManySortedFC.ClassifierExpr scope) :
-      PreparedConstraint scope
-  | captureHasKind (capture : ManySortedFC.Capture scope)
-      (classifier : ManySortedFC.ClassifierExpr scope) :
-      PreparedConstraint scope
-deriving DecidableEq
-
-namespace PreparedConstraint
-
-def relation {scope : Target.Sig} : PreparedConstraint scope -> Target.Relation
-  | .classifierDisjoint _ _ => .classifierDisjoint
-  | .captureHasKind _ _ => .captureHasKind
-
-def proposition {scope : Target.Sig} :
-    (constraint : PreparedConstraint scope) ->
-      Target.Proposition constraint.relation scope
-  | .classifierDisjoint left right => .classifierDisjoint left right
-  | .captureHasKind capture classifier =>
-      .captureHasKind capture classifier
-
-end PreparedConstraint
-
 /-- All names are fixed before `entries` is constructed.  In particular,
 every entry bound lives in the same complete symbol scope and may mention any
 other member name regardless of entry order. -/
 structure PreparedSignature (scope : Target.Sig) where
   symbols : List Target.StaticSort
   entries : List (PreparedEntry (Target.SymbolScope scope symbols))
-  constraints : List
-    (PreparedConstraint (Target.SymbolScope scope symbols)) := []
 deriving DecidableEq
 
 namespace PreparedSignature
 
+/-- Concatenate the relation spines of prepared entries in source order. -/
 @[reducible]
-def entriesRelationsWithTail {scope : Target.Sig} :
-    List (PreparedEntry scope) -> List Target.Relation -> List Target.Relation
-  | [], tail => tail
-  | entry :: remaining, tail =>
-      entry.relations ++ entriesRelationsWithTail remaining tail
-
-/-- Concatenate the relation spines of prepared entries in source order.
-Definitionally this is the tail-aware traversal specialized to no mixed
-constraints. -/
-@[reducible]
-def entriesRelations {scope : Target.Sig}
-    (entries : List (PreparedEntry scope)) : List Target.Relation :=
-  entriesRelationsWithTail entries []
-
-@[simp]
-theorem entriesRelationsWithTail_nil {scope : Target.Sig}
-    (entries : List (PreparedEntry scope)) :
-    entriesRelationsWithTail entries [] = entriesRelations entries := by
-  rfl
+def entriesRelations {scope : Target.Sig} :
+    List (PreparedEntry scope) -> List Target.Relation
+  | [] => []
+  | entry :: remaining =>
+      entry.relations ++ entriesRelations remaining
 
 def relations {scope : Target.Sig} (prepared : PreparedSignature scope) :
     List Target.Relation :=
-  entriesRelationsWithTail prepared.entries
-    (prepared.constraints.map PreparedConstraint.relation)
+  entriesRelations prepared.entries
 
 def members {scope : Target.Sig} (prepared : PreparedSignature scope) :
     List (MemberName (Target.SymbolScope scope prepared.symbols)) :=
@@ -262,20 +205,6 @@ def captureIntervalsTheory {scope : Target.Sig}
         (.cons (.inclusion (.capture (.cvar name)) interval.upper)
           (captureIntervalsTheory name remaining))
 
-def classifierIntervalsTheory {scope : Target.Sig}
-    {symbols : List Target.StaticSort}
-    (name : Target.BVar (Target.SymbolScope scope symbols)
-      (.symbol .classifier)) :
-    (intervals : List (Source.Interval
-      (Target.StaticExpr .classifier (Target.SymbolScope scope symbols)))) ->
-      Target.Theory scope symbols
-        (PreparedEntry.intervalRelations .classifier intervals)
-  | [] => .nil
-  | interval :: remaining =>
-      .cons (.inclusion interval.lower (.classifier (.var name)))
-        (.cons (.inclusion (.classifier (.var name)) interval.upper)
-          (classifierIntervalsTheory name remaining))
-
 def entryTheory {scope : Target.Sig}
     {symbols : List Target.StaticSort}
     (entry : PreparedEntry (Target.SymbolScope scope symbols)) :
@@ -283,7 +212,6 @@ def entryTheory {scope : Target.Sig}
   match entry with
   | .type _ name intervals => typeIntervalsTheory name intervals
   | .capture _ name intervals => captureIntervalsTheory name intervals
-  | .classifier _ name intervals => classifierIntervalsTheory name intervals
 
 def entriesTheory {scope : Target.Sig}
     {symbols : List Target.StaticSort} :
@@ -293,28 +221,6 @@ def entriesTheory {scope : Target.Sig}
   | [] => .nil
   | entry :: remaining =>
       appendTheory (entryTheory entry) (entriesTheory remaining)
-
-def entriesTheoryWithTail {scope : Target.Sig}
-    {symbols : List Target.StaticSort} :
-    (entries : List (PreparedEntry (Target.SymbolScope scope symbols))) ->
-    {tailRelations : List Target.Relation} ->
-    Target.Theory scope symbols tailRelations ->
-      Target.Theory scope symbols
-        (PreparedSignature.entriesRelationsWithTail entries tailRelations)
-  | [], _, tail => tail
-  | entry :: remaining, _, tail =>
-      appendTheory (entryTheory entry)
-        (entriesTheoryWithTail remaining tail)
-
-def constraintsTheory {scope : Target.Sig}
-    {symbols : List Target.StaticSort} :
-    (constraints : List
-      (PreparedConstraint (Target.SymbolScope scope symbols))) ->
-      Target.Theory scope symbols
-        (constraints.map PreparedConstraint.relation)
-  | [] => .nil
-  | constraint :: remaining =>
-      .cons constraint.proposition (constraintsTheory remaining)
 
 /-- A generated names-first target theory is determined by its allocation
 table.  Keeping the theory derived prevents constructing an `Encoding` whose
@@ -329,8 +235,7 @@ namespace Encoding
 def theory {scope : Target.Sig} (encoding : Encoding scope) :
     Target.Theory scope encoding.prepared.symbols
       encoding.prepared.relations :=
-  entriesTheoryWithTail encoding.prepared.entries
-    (constraintsTheory encoding.prepared.constraints)
+  entriesTheory encoding.prepared.entries
 
 end Encoding
 
@@ -364,15 +269,6 @@ inductive OpenedOccurrence (scope : Target.Sig)
         (Target.StaticScope scope symbols relations)
         (.evidence (.inclusion .capture))) :
       OpenedOccurrence scope symbols relations
-  | classifier (label : Nat)
-      (name : Target.BVar (Target.StaticScope scope symbols relations)
-        (.symbol .classifier))
-      (lower upper : Target.StaticExpr .classifier
-        (Target.StaticScope scope symbols relations))
-      (lowerEvidence upperEvidence : Target.BVar
-        (Target.StaticScope scope symbols relations)
-        (.evidence (.inclusion .classifier))) :
-      OpenedOccurrence scope symbols relations
 deriving DecidableEq
 
 namespace OpenedOccurrence
@@ -382,14 +278,12 @@ def label {scope : Target.Sig} {symbols : List Target.StaticSort}
     OpenedOccurrence scope symbols relations -> Nat
   | .type label _ _ _ _ _ => label
   | .capture label _ _ _ _ _ => label
-  | .classifier label _ _ _ _ _ => label
 
 def sort {scope : Target.Sig} {symbols : List Target.StaticSort}
     {relations : List Target.Relation} :
     OpenedOccurrence scope symbols relations -> Target.StaticSort
   | .type _ _ _ _ _ _ => .type
   | .capture _ _ _ _ _ _ => .capture
-  | .classifier _ _ _ _ _ _ => .classifier
 
 def member {scope : Target.Sig} {symbols : List Target.StaticSort}
     {relations : List Target.Relation} :
@@ -397,7 +291,6 @@ def member {scope : Target.Sig} {symbols : List Target.StaticSort}
       MemberName (Target.StaticScope scope symbols relations)
   | .type label name _ _ _ _ => .type label name
   | .capture label name _ _ _ _ => .capture label name
-  | .classifier label name _ _ _ _ => .classifier label name
 
 def lowerProposition {scope : Target.Sig}
     {symbols : List Target.StaticSort} {relations : List Target.Relation} :
@@ -408,8 +301,6 @@ def lowerProposition {scope : Target.Sig}
       .inclusion lower (.type (.tvar name))
   | .capture _ name lower _ _ _ =>
       .inclusion lower (.capture (.cvar name))
-  | .classifier _ name lower _ _ _ =>
-      .inclusion lower (.classifier (.var name))
 
 def upperProposition {scope : Target.Sig}
     {symbols : List Target.StaticSort} {relations : List Target.Relation} :
@@ -420,8 +311,6 @@ def upperProposition {scope : Target.Sig}
       .inclusion (.type (.tvar name)) upper
   | .capture _ name _ upper _ _ =>
       .inclusion (.capture (.cvar name)) upper
-  | .classifier _ name _ upper _ _ =>
-      .inclusion (.classifier (.var name)) upper
 
 def lowerEvidence {scope : Target.Sig}
     {symbols : List Target.StaticSort} {relations : List Target.Relation} :
@@ -430,7 +319,6 @@ def lowerEvidence {scope : Target.Sig}
         (.evidence (.inclusion occurrence.sort))
   | .type _ _ _ _ evidence _ => evidence
   | .capture _ _ _ _ evidence _ => evidence
-  | .classifier _ _ _ _ evidence _ => evidence
 
 def upperEvidence {scope : Target.Sig}
     {symbols : List Target.StaticSort} {relations : List Target.Relation} :
@@ -439,7 +327,6 @@ def upperEvidence {scope : Target.Sig}
         (.evidence (.inclusion occurrence.sort))
   | .type _ _ _ _ _ evidence => evidence
   | .capture _ _ _ _ _ evidence => evidence
-  | .classifier _ _ _ _ _ evidence => evidence
 
 /-- Both evidence coordinates look up the exact propositions carried by this
 opened interval. -/
@@ -483,9 +370,6 @@ def weakenTwo {scope : Target.Sig}
         (rho.var lowerEvidence) (rho.var upperEvidence)
   | .capture label name lower upper lowerEvidence upperEvidence =>
       .capture label (rho.var name) (lower.rename rho) (upper.rename rho)
-        (rho.var lowerEvidence) (rho.var upperEvidence)
-  | .classifier label name lower upper lowerEvidence upperEvidence =>
-      .classifier label (rho.var name) (lower.rename rho) (upper.rename rho)
         (rho.var lowerEvidence) (rho.var upperEvidence)
 
 /-- Opening two newer assumptions preserves the exact evidence lookups of an
@@ -595,50 +479,6 @@ theorem weakenTwo_evidenceMatches {scope : Target.Sig}
             ManySortedFC.Rename.weakenMany, ManySortedFC.Rename.comp,
             ManySortedFC.Rename.succ]
           rfl)
-  | classifier label name lower upper lowerEvidence upperEvidence =>
-      rcases validity with ⟨lowerValid, upperValid⟩
-      simp only [OpenedOccurrence.lowerEvidence,
-        OpenedOccurrence.upperEvidence, OpenedOccurrence.lowerProposition,
-        OpenedOccurrence.upperProposition] at lowerValid upperValid
-      constructor
-      · change
-          ((context.extendEvidence olderProposition).extendEvidence
-            newestProposition).lookup
-              (.there (.there lowerEvidence)) = _
-        simp only [ManySortedFC.Ctx.extendEvidence]
-        rw [ManySortedFC.Ctx.lookup_there,
-          ManySortedFC.Ctx.lookup_there]
-        have transported := congrArg
-          (fun binding =>
-            (binding.weaken (newest := .evidence older)).weaken
-              (newest := .evidence newest)) lowerValid
-        exact transported.trans (by
-          simp [weakenTwo, lowerProposition, ManySortedFC.Binding.weaken,
-            ManySortedFC.Binding.rename,
-            ManySortedFC.Proposition.rename, ManySortedFC.StaticExpr.rename,
-            ManySortedFC.ClassifierExpr.rename,
-            ManySortedFC.Rename.weakenMany, ManySortedFC.Rename.comp,
-            ManySortedFC.Rename.succ]
-          rfl)
-      · change
-          ((context.extendEvidence olderProposition).extendEvidence
-            newestProposition).lookup
-              (.there (.there upperEvidence)) = _
-        simp only [ManySortedFC.Ctx.extendEvidence]
-        rw [ManySortedFC.Ctx.lookup_there,
-          ManySortedFC.Ctx.lookup_there]
-        have transported := congrArg
-          (fun binding =>
-            (binding.weaken (newest := .evidence older)).weaken
-              (newest := .evidence newest)) upperValid
-        exact transported.trans (by
-          simp [weakenTwo, upperProposition, ManySortedFC.Binding.weaken,
-            ManySortedFC.Binding.rename,
-            ManySortedFC.Proposition.rename, ManySortedFC.StaticExpr.rename,
-            ManySortedFC.ClassifierExpr.rename,
-            ManySortedFC.Rename.weakenMany, ManySortedFC.Rename.comp,
-            ManySortedFC.Rename.succ]
-          rfl)
 
 end OpenedOccurrence
 
@@ -701,91 +541,18 @@ def openCaptureIntervals {scope : Target.Sig}
           (ManySortedFC.Relation.inclusion .capture)
           (ManySortedFC.Relation.inclusion .capture)
 
-def openClassifierIntervals {scope : Target.Sig}
-    {symbols : List Target.StaticSort} (label : Nat)
-    (name : Target.BVar (Target.SymbolScope scope symbols)
-      (.symbol .classifier)) :
-    (intervals : List (Source.Interval
-      (Target.StaticExpr .classifier (Target.SymbolScope scope symbols)))) ->
-    (tailRelations : List Target.Relation) ->
-    List (OpenedOccurrence scope symbols tailRelations) ->
-    List (OpenedOccurrence scope symbols
-      (PreparedEntry.intervalRelations .classifier intervals ++ tailRelations))
-  | [], _, tail => tail
-  | interval :: remaining, tailRelations, tail =>
-      let older := openClassifierIntervals label name remaining
-        tailRelations tail
-      let remainingRelations : List Target.Relation :=
-        PreparedEntry.intervalRelations .classifier remaining
-      let fullRelations : List Target.Relation :=
-        ManySortedFC.Relation.inclusion .classifier ::
-          ManySortedFC.Relation.inclusion .classifier ::
-          (remainingRelations ++ tailRelations)
-      let rho := ManySortedFC.Rename.weakenMany
-        (Target.SymbolScope scope symbols)
-        (ManySortedFC.evidenceKinds fullRelations)
-      let current : OpenedOccurrence scope symbols fullRelations :=
-        .classifier label (rho.var name) (interval.lower.rename rho)
-          (interval.upper.rename rho) .here (.there .here)
-      current :: older.map fun occurrence =>
-        occurrence.weakenTwo
-          (ManySortedFC.Relation.inclusion .classifier)
-          (ManySortedFC.Relation.inclusion .classifier)
-
-def openEntriesWithTail {scope : Target.Sig}
+def openEntries {scope : Target.Sig}
     {symbols : List Target.StaticSort} :
     (entries : List (PreparedEntry (Target.SymbolScope scope symbols))) ->
-    (tailRelations : List Target.Relation) ->
-    List (OpenedOccurrence scope symbols tailRelations) ->
     List (OpenedOccurrence scope symbols
-      (PreparedSignature.entriesRelationsWithTail entries tailRelations))
-  | [], _, tail => tail
-  | .type label name intervals :: remaining, tailRelations, tail =>
-      openTypeIntervals label name intervals
-        (PreparedSignature.entriesRelationsWithTail remaining tailRelations)
-        (openEntriesWithTail remaining tailRelations tail)
-  | .capture label name intervals :: remaining, tailRelations, tail =>
-      openCaptureIntervals label name intervals
-        (PreparedSignature.entriesRelationsWithTail remaining tailRelations)
-        (openEntriesWithTail remaining tailRelations tail)
-  | .classifier label name intervals :: remaining, tailRelations, tail =>
-      openClassifierIntervals label name intervals
-        (PreparedSignature.entriesRelationsWithTail remaining tailRelations)
-        (openEntriesWithTail remaining tailRelations tail)
-
-def openEntries {scope : Target.Sig}
-    {symbols : List Target.StaticSort}
-    (entries : List (PreparedEntry (Target.SymbolScope scope symbols))) :
-    List (OpenedOccurrence scope symbols
-      (PreparedSignature.entriesRelations entries)) :=
-  match entries with
+      (PreparedSignature.entriesRelations entries))
   | [] => []
   | .type label name intervals :: remaining =>
       openTypeIntervals label name intervals
-        (PreparedSignature.entriesRelations remaining)
-        (openEntries remaining)
+        (PreparedSignature.entriesRelations remaining) (openEntries remaining)
   | .capture label name intervals :: remaining =>
       openCaptureIntervals label name intervals
-        (PreparedSignature.entriesRelations remaining)
-        (openEntries remaining)
-  | .classifier label name intervals :: remaining =>
-      openClassifierIntervals label name intervals
-        (PreparedSignature.entriesRelations remaining)
-        (openEntries remaining)
-
-/-- The direct entry-only recursor is exactly the tail-free specialization of
-the mixed-theory traversal.  Keeping this theorem explicit lets historical
-entry-only metatheory avoid dependent casts without assigning mixed
-constraints an `OpenedOccurrence`. -/
-theorem openEntries_eq_openEntriesWithTail {scope : Target.Sig}
-    {symbols : List Target.StaticSort}
-    (entries : List (PreparedEntry (Target.SymbolScope scope symbols))) :
-    openEntries entries = openEntriesWithTail entries [] [] := by
-  induction entries with
-  | nil => rfl
-  | cons entry remaining induction =>
-      cases entry <;>
-        simp only [openEntries, openEntriesWithTail, induction]
+        (PreparedSignature.entriesRelations remaining) (openEntries remaining)
 
 namespace Encoding
 
@@ -812,8 +579,7 @@ def openedMembers {scope : Target.Sig} (encoding : Encoding scope) :
 occurrence order.  Repeated intervals remain repeated records. -/
 def openedOccurrences {scope : Target.Sig} (encoding : Encoding scope) :
     List (OpenedOccurrence scope encoding.symbols encoding.relations) :=
-  openEntriesWithTail encoding.prepared.entries
-    (encoding.prepared.constraints.map PreparedConstraint.relation) []
+  openEntries encoding.prepared.entries
 
 end Encoding
 

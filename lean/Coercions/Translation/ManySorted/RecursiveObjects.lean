@@ -24,8 +24,6 @@ Guarded type definitions and capture-member equations are realized
 simultaneously inside the cumulative object theory. Type members use checked
 recursive projections. Capture members use finite ambient witnesses supplied
 as one existential model; no target capture fixed point is generated.
-Classifier members remain nonrecursive: recursive classifier witnesses and
-equations are outside this case-study layer.
 
 A tagged recursive literal compiles positively to one checked model and one
 ordinary value payload with explicit `C_rep` evidence. Its object theory checks

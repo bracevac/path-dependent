@@ -100,26 +100,6 @@ def check {scope : Sig} (context : Ctx scope) :
             .equality (.capture (.readOnly source))
               (.capture (.readOnly target)),
             .equalityCaptureReadOnly typing⟩
-  | _, .classifierGroundEquality left right =>
-      if equivalent : Classifier.Kind.Equivalent left right then
-        some ⟨
-          .equality (.classifier (.ground left))
-            (.classifier (.ground right)),
-          .classifierGroundEquality left right equivalent⟩
-      else
-        none
-  | _, .equalityCaptureProjectScoped capture classifier => do
-      let captureChecked ← check context capture
-      let classifierChecked ← check context classifier
-      let ⟨captureProposition, captureTyping⟩ := captureChecked
-      let ⟨classifierProposition, classifierTyping⟩ := classifierChecked
-      match captureProposition, classifierProposition with
-      | .equality (.capture sourceCapture) (.capture targetCapture),
-          .equality (.classifier sourceKind) (.classifier targetKind) =>
-          pure ⟨
-            .equality (.capture (.project sourceCapture sourceKind))
-              (.capture (.project targetCapture targetKind)),
-            .equalityCaptureProjectScoped captureTyping classifierTyping⟩
   | _, .equalityCaptureProject equality sourceKind targetKind => do
       let checked ← check context equality
       let ⟨proposition, typing⟩ := checked
@@ -134,9 +114,7 @@ def check {scope : Sig} (context : Ctx scope) :
             none
   | _, .equalityCaptureProjectTop capture =>
       some ⟨
-        .equality
-          (.capture (.project capture (.ground Classifier.Kind.top)))
-          (.capture capture),
+        .equality (.capture (.project capture .top)) (.capture capture),
         .equalityCaptureProjectTop capture⟩
   | _, .equalityCaptureProjectCompose capture innerKind outerKind =>
       some ⟨
@@ -214,40 +192,6 @@ def check {scope : Sig} (context : Ctx scope) :
               (.type (.capturing targetCapture targetShape)),
             .typeCapturing capturesTyping shapeTyping⟩
 
-  | _, .classifierGroundInclusion lower upper =>
-      if included : Classifier.Kind.Subkind lower upper then
-        some ⟨
-          .inclusion (.classifier (.ground lower))
-            (.classifier (.ground upper)),
-          .classifierGroundInclusion lower upper included⟩
-      else
-        none
-  | _, .classifierExclude kind allowedKind excludedKind allowed excluded => do
-      let allowedChecked ← check context allowed
-      let excludedChecked ← check context excluded
-      let ⟨allowedProposition, allowedTyping⟩ := allowedChecked
-      let ⟨excludedProposition, excludedTyping⟩ := excludedChecked
-      if allowedMatches : allowedProposition =
-          .inclusion (.classifier kind) (.classifier (.ground allowedKind)) then
-        if excludedMatches : excludedProposition =
-            .classifierDisjoint kind (.ground excludedKind) then
-          let alignedAllowedTyping : Proves context allowed
-              (.inclusion (.classifier kind)
-                (.classifier (.ground allowedKind))) := by
-            simpa [allowedMatches] using allowedTyping
-          let alignedExcludedTyping : Proves context excluded
-              (.classifierDisjoint kind (.ground excludedKind)) := by
-            simpa [excludedMatches] using excludedTyping
-          pure ⟨
-            .inclusion (.classifier kind)
-              (.classifier (.ground
-                (Classifier.Kind.subtract allowedKind excludedKind))),
-            .classifierExclude alignedAllowedTyping alignedExcludedTyping⟩
-        else
-          none
-      else
-        none
-
   | _, .captureEmpty target =>
       some ⟨.inclusion (.capture .empty) (.capture target),
         .captureEmpty target⟩
@@ -299,10 +243,6 @@ def check {scope : Sig} (context : Ctx scope) :
       some ⟨
         .inclusion (.capture (.project capture kind)) (.capture capture),
         .captureProjectSource capture kind⟩
-  | _, .captureProjectSourceScoped capture kind =>
-      some ⟨
-        .inclusion (.capture (.project capture kind)) (.capture capture),
-        .captureProjectSourceScoped capture kind⟩
   | _, .captureProjectMono subcapture sourceKind targetKind => do
       let checked ← check context subcapture
       let ⟨proposition, typing⟩ := checked
@@ -316,18 +256,6 @@ def check {scope : Sig} (context : Ctx scope) :
               .captureProjectMono typing kindSubtyping⟩
           else
             none
-  | _, .captureProjectMonoScoped subcapture subclassifier => do
-      let captureChecked ← check context subcapture
-      let classifierChecked ← check context subclassifier
-      let ⟨captureProposition, captureTyping⟩ := captureChecked
-      let ⟨classifierProposition, classifierTyping⟩ := classifierChecked
-      match captureProposition, classifierProposition with
-      | .inclusion (.capture sourceCapture) (.capture targetCapture),
-          .inclusion (.classifier sourceKind) (.classifier targetKind) =>
-          pure ⟨
-            .inclusion (.capture (.project sourceCapture sourceKind))
-              (.capture (.project targetCapture targetKind)),
-            .captureProjectMonoScoped captureTyping classifierTyping⟩
   | _, .captureProjectMerge capture leftKind rightKind =>
       some ⟨
         .inclusion (.capture (.project capture (leftKind ++ rightKind)))
@@ -473,28 +401,7 @@ def check {scope : Sig} (context : Ctx scope) :
             kindDisjoint⟩
       else
         none
-  | _, .classifierGroundDisjoint left right =>
-      if disjoint : Classifier.Kind.Disjoint left right then
-        some ⟨.classifierDisjoint (.ground left) (.ground right),
-          .classifierGroundDisjoint left right disjoint⟩
-      else
-        none
-  | _, .classifierDisjointSymm evidence => do
-      let checked ← check context evidence
-      let ⟨proposition, typing⟩ := checked
-      match proposition with
-      | .classifierDisjoint left right =>
-          pure ⟨.classifierDisjoint right left,
-            .classifierDisjointSymm typing⟩
-  | _, .disjointCaptureProjectScoped leftCapture rightCapture classifiers => do
-      let checked ← check context classifiers
-      let ⟨proposition, typing⟩ := checked
-      match proposition with
-      | .classifierDisjoint leftKind rightKind =>
-          pure ⟨
-            .disjoint (.project leftCapture leftKind)
-              (.project rightCapture rightKind),
-            .disjointCaptureProjectScoped leftCapture rightCapture typing⟩
+
   | _, .captureHasKindEmpty kind =>
       some ⟨.captureHasKind .empty kind, .captureHasKindEmpty kind⟩
   | _, .captureHasKindUnion left right => do
@@ -532,22 +439,21 @@ def check {scope : Sig} (context : Ctx scope) :
               .captureHasKindSubcapture subcaptureTyping alignedUpperTyping⟩
           else
             none
-  | _, .captureHasKindWiden membership subclassifier => do
-      let membershipChecked ← check context membership
-      let classifierChecked ← check context subclassifier
-      let ⟨membershipProposition, membershipTyping⟩ := membershipChecked
-      let ⟨classifierProposition, classifierTyping⟩ := classifierChecked
-      match membershipProposition, classifierProposition with
-      | .captureHasKind capture membershipKind,
-          .inclusion (.classifier inclusionLower)
-            (.classifier inclusionUpper) =>
-          if lowerMatches : membershipKind = inclusionLower then
-            let alignedClassifierTyping : Proves context subclassifier
-                (.inclusion (.classifier membershipKind)
-                  (.classifier inclusionUpper)) := by
-              simpa [lowerMatches] using classifierTyping
-            pure ⟨.captureHasKind capture inclusionUpper,
-              .captureHasKindWiden membershipTyping alignedClassifierTyping⟩
+  | _, .captureHasKindWiden membership sourceKind targetKind => do
+      let checked ← check context membership
+      let ⟨proposition, typing⟩ := checked
+      match proposition with
+      | .captureHasKind capture actualSourceKind =>
+          if sourceMatches : actualSourceKind = sourceKind then
+            if kindSubtyping :
+                Classifier.Kind.Subkind sourceKind targetKind then
+              let alignedTyping : Proves context membership
+                  (.captureHasKind capture sourceKind) := by
+                simpa [sourceMatches] using typing
+              pure ⟨.captureHasKind capture targetKind,
+                .captureHasKindWiden alignedTyping kindSubtyping⟩
+            else
+              none
           else
             none
 

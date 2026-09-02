@@ -140,14 +140,12 @@ def localModel {scope : Nat} (model : Old.Model scope) :
     LocalModel.Model (termScope scope) where
   typeMember := fun label => type (model.typeMember label)
   captureMember := fun label => capture (model.captureMember label)
-  classifierMember := fun label => classifier (model.classifierMember label)
 
 /-- Translate every symbolic image in an M11 theory mapping pointwise. -/
 def localMapping {scope : Nat} (mapping : Old.Mapping scope) :
     LocalModel.Mapping (termScope scope) where
   typeMember := fun label => type (mapping.typeMember label)
   captureMember := fun label => capture (mapping.captureMember label)
-  classifierMember := fun label => classifier (mapping.classifierMember label)
 
 @[simp]
 theorem localModel_atPath {scope : Nat}
@@ -157,30 +155,6 @@ theorem localModel_atPath {scope : Nat}
           receiver) =
       LocalModel.atPath (path receiver) := by
   rfl
-
-@[simp]
-theorem sourceClassifier_realizeLocals_atPath {scope : Nat}
-    (receiver : DOTCapture.Intersections.Source.Path scope)
-    (sourceClassifier : DOTCapture.Intersections.Source.ClassifierExpr scope) :
-    DOTCapture.Intersections.GeneralExpression.ClassifierExpr.realizeLocals
-        (DOTCapture.Intersections.GeneralExpression.LocalModel.atPath receiver)
-        sourceClassifier =
-      DOTCapture.Intersections.Source.ClassifierExpr.openAt receiver
-        sourceClassifier := by
-  cases sourceClassifier with
-  | ground _ => rfl
-  | ref reference => cases reference <;> rfl
-
-@[simp]
-def classifier_realizeLocals {scope : Nat} (model : Old.Model scope)
-    (sourceClassifier : DOTCapture.Intersections.Source.ClassifierExpr scope) :
-    classifier
-        (DOTCapture.Intersections.GeneralExpression.ClassifierExpr.realizeLocals
-          model sourceClassifier) =
-      (classifier sourceClassifier).realizeLocals (localModel model) :=
-  match sourceClassifier with
-  | .ground _ => rfl
-  | .ref reference => by cases reference <;> rfl
 
 mutual
 
@@ -197,11 +171,6 @@ def capture_realizeLocals {scope : Nat} (model : Old.Model scope)
       simp only [DOTCapture.Intersections.GeneralExpression.Capture.realizeLocals,
         capture, Capture.realizeLocals, capture_realizeLocals model left,
         capture_realizeLocals model right]
-  | .project sourceCapture sourceClassifier => by
-      simp only [DOTCapture.Intersections.GeneralExpression.Capture.realizeLocals,
-        capture, Capture.realizeLocals,
-        capture_realizeLocals model sourceCapture,
-        classifier_realizeLocals model sourceClassifier]
   | .singleton _ => rfl
   | .ref reference => by cases reference <;> rfl
 
@@ -244,13 +213,6 @@ theorem localMapping_mapCapture {scope : Nat} (mapping : Old.Mapping scope)
   capture_realizeLocals mapping.asModel sourceCapture
 
 @[simp]
-theorem localMapping_mapClassifier {scope : Nat} (mapping : Old.Mapping scope)
-    (sourceClassifier : DOTCapture.Intersections.Source.ClassifierExpr scope) :
-    classifier (mapping.mapClassifier sourceClassifier) =
-      (localMapping mapping).mapClassifier (classifier sourceClassifier) :=
-  classifier_realizeLocals mapping.asModel sourceClassifier
-
-@[simp]
 theorem localMapping_apply {scope : Nat} (mapping : Old.Mapping scope)
     (model : Old.Model scope) :
     localModel (mapping.apply model) =
@@ -263,8 +225,6 @@ theorem localMapping_apply {scope : Nat} (mapping : Old.Mapping scope)
     exact type_realizeLocals model (mapping.typeMember label)
   · funext label
     exact capture_realizeLocals model (mapping.captureMember label)
-  · funext label
-    exact classifier_realizeLocals model (mapping.classifierMember label)
 
 @[simp]
 theorem objectType_realizedRepresentation {scope : Nat}
@@ -279,54 +239,6 @@ theorem objectType_realizedRepresentation {scope : Nat}
 
 /-! ## Object-theory judgments -/
 
-/-- The historical local theory now has a classifier sort, while the
-cumulative calculus intentionally keeps classifier inclusion in its own
-judgment family. -/
-def EmbeddedLocalTheoryIncludes {scope : Nat}
-    (sourceContext : DOTCapture.Intersections.Source.Ctx scope)
-    (available : DOTCapture.Intersections.Source.Interface scope) :
-    {sort : DOTCapture.Intersections.Source.StaticSort} ->
-      DOTCapture.Intersections.Source.StaticExpr sort scope ->
-      DOTCapture.Intersections.Source.StaticExpr sort scope -> Type
-  | .type, lower, upper =>
-      LocalTheory.Includes (context sourceContext) (interface available)
-        (staticExpr lower) (staticExpr upper)
-  | .capture, lower, upper =>
-      LocalTheory.Includes (context sourceContext) (interface available)
-        (staticExpr lower) (staticExpr upper)
-  | .classifier, lower, upper =>
-      LocalTheory.ClassifierIncludes (context sourceContext)
-        (interface available) (staticExpr lower) (staticExpr upper)
-
-private def embeddedLocalTheoryAmbient {scope : Nat}
-    {sourceContext : DOTCapture.Intersections.Source.Ctx scope}
-    {available : DOTCapture.Intersections.Source.Interface scope}
-    {sort : DOTCapture.Intersections.Source.StaticSort}
-    {lower upper : DOTCapture.Intersections.Source.StaticExpr sort scope}
-    (proof : EmbeddedIncludes sourceContext lower upper) :
-    EmbeddedLocalTheoryIncludes sourceContext available lower upper :=
-  match lower, upper with
-  | .type _, .type _ => LocalTheory.Includes.ambient proof
-  | .capture _, .capture _ => LocalTheory.Includes.ambient proof
-  | .classifier _, .classifier _ =>
-      LocalTheory.ClassifierIncludes.ambient proof
-
-private def embeddedLocalTheoryTrans {scope : Nat}
-    {sourceContext : DOTCapture.Intersections.Source.Ctx scope}
-    {available : DOTCapture.Intersections.Source.Interface scope}
-    {sort : DOTCapture.Intersections.Source.StaticSort}
-    {lower middle upper :
-      DOTCapture.Intersections.Source.StaticExpr sort scope}
-    (first : EmbeddedLocalTheoryIncludes sourceContext available lower middle)
-    (second : EmbeddedLocalTheoryIncludes sourceContext available middle upper) :
-    EmbeddedLocalTheoryIncludes sourceContext available lower upper :=
-  match lower, middle, upper with
-  | .type _, .type _, .type _ => LocalTheory.Includes.trans first second
-  | .capture _, .capture _, .capture _ =>
-      LocalTheory.Includes.trans first second
-  | .classifier _, .classifier _, .classifier _ =>
-      LocalTheory.ClassifierIncludes.trans first second
-
 /-- Symbolic local-theory inclusion preserves every exact occurrence. -/
 def localTheoryIncludes {scope : Nat}
     {sourceContext : DOTCapture.Intersections.Source.Ctx scope}
@@ -336,72 +248,18 @@ def localTheoryIncludes {scope : Nat}
     (proof :
       DOTCapture.Intersections.GeneralExpression.LocalTheory.Includes
         sourceContext available lower upper) :
-    EmbeddedLocalTheoryIncludes sourceContext available lower upper :=
+    LocalTheory.Includes (context sourceContext) (interface available)
+      (staticExpr lower) (staticExpr upper) :=
   match proof with
-  | .ambient ambient => embeddedLocalTheoryAmbient (generalIncludes ambient)
-  | .typeLower occurrence => LocalTheory.Includes.typeLower
-      (hasTypeOccurrence occurrence)
-  | .typeUpper occurrence => LocalTheory.Includes.typeUpper
-      (hasTypeOccurrence occurrence)
-  | .captureLower occurrence => LocalTheory.Includes.captureLower
+  | .ambient ambient => .ambient (generalIncludes ambient)
+  | .typeLower occurrence => .typeLower (hasTypeOccurrence occurrence)
+  | .typeUpper occurrence => .typeUpper (hasTypeOccurrence occurrence)
+  | .captureLower occurrence => .captureLower
       (hasCaptureOccurrence occurrence)
-  | .captureUpper occurrence => LocalTheory.Includes.captureUpper
+  | .captureUpper occurrence => .captureUpper
       (hasCaptureOccurrence occurrence)
   | .trans first second =>
-      embeddedLocalTheoryTrans (localTheoryIncludes first)
-        (localTheoryIncludes second)
-
-/-- Embed classifier inclusion under an opened raw object theory. -/
-def localTheoryClassifierIncludes {scope : Nat}
-    {sourceContext : DOTCapture.Intersections.Source.Ctx scope}
-    {available : DOTCapture.Intersections.Source.Interface scope}
-    {lower upper : DOTCapture.Intersections.Source.ClassifierExpr scope}
-    (proof :
-      DOTCapture.Intersections.GeneralExpression.LocalTheory.ClassifierIncludes
-        sourceContext available lower upper) :
-    LocalTheory.ClassifierIncludes (context sourceContext)
-      (interface available) (classifier lower) (classifier upper) :=
-  match proof with
-  | .ambient ambient => .ambient (classifierIncludes ambient)
-  | .lower occurrence => .lower (hasClassifierOccurrence occurrence)
-  | .upper occurrence => .upper (hasClassifierOccurrence occurrence)
-  | .trans first second =>
-      .trans (localTheoryClassifierIncludes first)
-        (localTheoryClassifierIncludes second)
-
-/-- Embed classifier disjointness under an opened raw object theory. -/
-def localTheoryClassifiersDisjoint {scope : Nat}
-    {sourceContext : DOTCapture.Intersections.Source.Ctx scope}
-    {available : DOTCapture.Intersections.Source.Interface scope}
-    {left right : DOTCapture.Intersections.Source.ClassifierExpr scope}
-    (proof :
-      DOTCapture.Intersections.GeneralExpression.LocalTheory.ClassifiersDisjoint
-        sourceContext available left right) :
-    LocalTheory.ClassifiersDisjoint (context sourceContext)
-      (interface available) (classifier left) (classifier right) :=
-  match proof with
-  | .ambient ambient => .ambient (classifiersDisjoint ambient)
-  | .assumption occurrence =>
-      .assumption (hasClassifierDisjointOccurrence occurrence)
-  | .symm inner => .symm (localTheoryClassifiersDisjoint inner)
-
-/-- Embed capture-kind membership under an opened raw object theory. -/
-def localTheoryCaptureHasKind {scope : Nat}
-    {sourceContext : DOTCapture.Intersections.Source.Ctx scope}
-    {available : DOTCapture.Intersections.Source.Interface scope}
-    {sourceCapture : DOTCapture.Intersections.Source.Capture scope}
-    {sourceClassifier : DOTCapture.Intersections.Source.ClassifierExpr scope}
-    (proof :
-      DOTCapture.Intersections.GeneralExpression.LocalTheory.CaptureHasKind
-        sourceContext available sourceCapture sourceClassifier) :
-    LocalTheory.CaptureHasKind (context sourceContext) (interface available)
-      (capture sourceCapture) (classifier sourceClassifier) :=
-  match proof with
-  | .ambient ambient => .ambient (captureHasKind ambient)
-  | .assumption occurrence => .assumption (hasCaptureKindOccurrence occurrence)
-  | .widen membership included =>
-      .widen (localTheoryCaptureHasKind membership)
-        (localTheoryClassifierIncludes included)
+      .trans (localTheoryIncludes first) (localTheoryIncludes second)
 
 /-- A positive M11 realization remains a positive cumulative realization. -/
 def interfaceRealizes {scope : Nat}
@@ -416,35 +274,16 @@ def interfaceRealizes {scope : Nat}
   | .empty => .empty
   | .typeMember lowerProof upperProof =>
       .typeMember
-        (by simpa only [EmbeddedIncludes, staticExpr, localModel,
-            type_realizeLocals] using
+        (by simpa only [staticExpr, localModel, type_realizeLocals] using
           generalIncludes lowerProof)
-        (by simpa only [EmbeddedIncludes, staticExpr, localModel,
-            type_realizeLocals] using
+        (by simpa only [staticExpr, localModel, type_realizeLocals] using
           generalIncludes upperProof)
   | .captureMember lowerProof upperProof =>
       .captureMember
-        (by simpa only [EmbeddedIncludes, staticExpr, localModel,
-            capture_realizeLocals] using
+        (by simpa only [staticExpr, localModel, capture_realizeLocals] using
           generalIncludes lowerProof)
-        (by simpa only [EmbeddedIncludes, staticExpr, localModel,
-            capture_realizeLocals] using
+        (by simpa only [staticExpr, localModel, capture_realizeLocals] using
           generalIncludes upperProof)
-  | .classifierMember lowerProof upperProof =>
-      .classifierMember
-        (by simpa only [localModel, classifier_realizeLocals] using
-          classifierIncludes lowerProof)
-        (by simpa only [localModel, classifier_realizeLocals] using
-          classifierIncludes upperProof)
-  | .classifierDisjoint disjoint =>
-      .classifierDisjoint
-        (by simpa only [localModel, classifier_realizeLocals] using
-          classifiersDisjoint disjoint)
-  | .captureHasKind membership =>
-      .captureHasKind
-        (by simpa only [localModel, capture_realizeLocals,
-            classifier_realizeLocals] using
-          captureHasKind membership)
   | .inter left right =>
       .inter (interfaceRealizes left) (interfaceRealizes right)
 
@@ -461,38 +300,20 @@ def interfaceDerives {scope : Nat}
   | .empty => .empty
   | .typeMember lowerProof upperProof =>
       .typeMember
-        (by simpa only [EmbeddedLocalTheoryIncludes, staticExpr, localMapping,
+        (by simpa only [staticExpr, localMapping,
             localMapping_mapType] using
           localTheoryIncludes lowerProof)
-        (by simpa only [EmbeddedLocalTheoryIncludes, staticExpr, localMapping,
+        (by simpa only [staticExpr, localMapping,
             localMapping_mapType] using
           localTheoryIncludes upperProof)
   | .captureMember lowerProof upperProof =>
       .captureMember
-        (by simpa only [EmbeddedLocalTheoryIncludes, staticExpr, localMapping,
+        (by simpa only [staticExpr, localMapping,
             localMapping_mapCapture] using
           localTheoryIncludes lowerProof)
-        (by simpa only [EmbeddedLocalTheoryIncludes, staticExpr, localMapping,
+        (by simpa only [staticExpr, localMapping,
             localMapping_mapCapture] using
           localTheoryIncludes upperProof)
-  | .classifierMember lowerProof upperProof =>
-      .classifierMember
-        (by simpa only [localMapping,
-            localMapping_mapClassifier] using
-          localTheoryClassifierIncludes lowerProof)
-        (by simpa only [localMapping,
-            localMapping_mapClassifier] using
-          localTheoryClassifierIncludes upperProof)
-  | .classifierDisjoint disjoint =>
-      .classifierDisjoint
-        (by simpa only [localMapping,
-            localMapping_mapClassifier] using
-          localTheoryClassifiersDisjoint disjoint)
-  | .captureHasKind membership =>
-      .captureHasKind
-        (by simpa only [localMapping, localMapping_mapCapture,
-            localMapping_mapClassifier] using
-          localTheoryCaptureHasKind membership)
   | .inter left right =>
       .inter (interfaceDerives left) (interfaceDerives right)
 
@@ -538,27 +359,12 @@ def interfaceRealizesAtPath {scope : Nat}
     (captureInObject : forall {label lower upper},
       sourceInterface.HasCaptureOccurrence label lower upper ->
         sourceObject.interface.HasCaptureOccurrence label lower upper) ->
-    (classifierInObject : forall {label lower upper},
-      DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierOccurrence
-          sourceInterface label lower upper ->
-        DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierOccurrence
-          sourceObject.interface label lower upper) ->
-    (disjointInObject : forall {left right},
-      DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierDisjointOccurrence
-          sourceInterface left right ->
-        DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierDisjointOccurrence
-          sourceObject.interface left right) ->
-    (captureKindInObject : forall {sourceCapture sourceClassifier},
-      DOTCapture.Intersections.GeneralExpression.Interface.HasCaptureKindOccurrence
-          sourceInterface sourceCapture sourceClassifier ->
-        DOTCapture.Intersections.GeneralExpression.Interface.HasCaptureKindOccurrence
-          sourceObject.interface sourceCapture sourceClassifier) ->
       DOTCapture.Intersections.GeneralExpression.Interface.Realizes
         sourceContext
         (DOTCapture.Intersections.GeneralExpression.LocalModel.atPath receiver)
         sourceInterface
-  | .empty, _, _, _, _, _ => .empty
-  | .typeMember _ _ _, typeInObject, _, _, _, _ =>
+  | .empty, _, _ => .empty
+  | .typeMember _ _ _, typeInObject, _ =>
       .typeMember
         (by simpa using
           (DOTCapture.Intersections.GeneralExpression.Includes.source
@@ -572,7 +378,7 @@ def interfaceRealizesAtPath {scope : Nat}
               (DOTCapture.Intersections.Source.HasUpper.typeMember exposes
                 (typeInObject
                   DOTCapture.Intersections.Source.Interface.HasTypeOccurrence.here)))))
-  | .captureMember _ _ _, _, captureInObject, _, _, _ =>
+  | .captureMember _ _ _, _, captureInObject =>
       .captureMember
         (by simpa using
           (DOTCapture.Intersections.GeneralExpression.Includes.source
@@ -586,48 +392,14 @@ def interfaceRealizesAtPath {scope : Nat}
               (DOTCapture.Intersections.Source.HasUpper.captureMember exposes
                 (captureInObject
                   DOTCapture.Intersections.Source.Interface.HasCaptureOccurrence.here)))))
-  | .classifierMember _ _ _, _, _, classifierInObject, _, _ =>
-      .classifierMember
-        (by simpa using
-          (DOTCapture.Intersections.GeneralExpression.ClassifierIncludes.lower
-            exposes
-            (classifierInObject
-              DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierOccurrence.here)))
-        (by simpa using
-          (DOTCapture.Intersections.GeneralExpression.ClassifierIncludes.upper
-            exposes
-            (classifierInObject
-              DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierOccurrence.here)))
-  | .classifierDisjoint _ _, _, _, _, disjointInObject, _ =>
-      .classifierDisjoint
-        (DOTCapture.Intersections.GeneralExpression.ClassifiersDisjoint.member
-          exposes
-          (disjointInObject
-            DOTCapture.Intersections.GeneralExpression.Interface.HasClassifierDisjointOccurrence.here))
-  | .captureHasKind _ _, _, _, _, _, captureKindInObject =>
-      .captureHasKind
-        (by simpa only [
-            DOTCapture.Intersections.GeneralExpression.Capture.realizeLocals_atPath,
-            sourceClassifier_realizeLocals_atPath] using
-          (DOTCapture.Intersections.GeneralExpression.CaptureHasKind.member
-            exposes
-            (captureKindInObject
-              DOTCapture.Intersections.GeneralExpression.Interface.HasCaptureKindOccurrence.here)))
-  | .inter left right, typeInObject, captureInObject, classifierInObject,
-      disjointInObject, captureKindInObject =>
+  | .inter left right, typeInObject, captureInObject =>
       .inter
         (interfaceRealizesAtPath exposes left
           (fun occurrence => typeInObject (.left occurrence))
-          (fun occurrence => captureInObject (.left occurrence))
-          (fun occurrence => classifierInObject (.left occurrence))
-          (fun occurrence => disjointInObject (.left occurrence))
-          (fun occurrence => captureKindInObject (.left occurrence)))
+          (fun occurrence => captureInObject (.left occurrence)))
         (interfaceRealizesAtPath exposes right
           (fun occurrence => typeInObject (.right occurrence))
-          (fun occurrence => captureInObject (.right occurrence))
-          (fun occurrence => classifierInObject (.right occurrence))
-          (fun occurrence => disjointInObject (.right occurrence))
-          (fun occurrence => captureKindInObject (.right occurrence)))
+          (fun occurrence => captureInObject (.right occurrence)))
 
 /-- The positive-style source realization exposed by an object variable. -/
 def objectRealizationAtVariable {scope : Nat}
@@ -648,9 +420,7 @@ def objectRealizationAtVariable {scope : Nat}
     { model :=
         DOTCapture.Intersections.GeneralExpression.LocalModel.atPath (.var name)
       constraints := interfaceRealizesAtPath exposes sourceObject.interface
-        (fun occurrence => occurrence) (fun occurrence => occurrence)
-        (fun occurrence => occurrence) (fun occurrence => occurrence)
-        (fun occurrence => occurrence) }
+        (fun occurrence => occurrence) (fun occurrence => occurrence) }
 
 /-- The structural portion of an M11 cross-shape view embeds without
 quantifying over models from the larger cumulative syntax. -/
@@ -667,13 +437,13 @@ def objectAdapts {scope : Nat}
     simpa only [objectType_interface] using
       interfaceDerives adaptation.theory
   outerCapture := by
-    simpa only [EmbeddedIncludes, staticExpr, objectType_outerCapture,
+    simpa only [staticExpr, objectType_outerCapture,
       objectType_mappedOuterCapture] using
       (LocalTheory.Includes.ambient
         (generalIncludes adaptation.outerCapture))
   packageCapture := by
     have translated := generalIncludes adaptation.outerCapture
-    simp only [EmbeddedIncludes, staticExpr] at translated
+    simp only [staticExpr] at translated
     rw [objectType_packageCapture available,
       objectType_packageCapture expected] at translated
     exact translated
@@ -706,8 +476,7 @@ def objectAdaptationRepresentation {scope : Nat}
         (localModel model))
       (ObjectType.realizedRepresentation (objectType expected)
         ((objectAdapts adaptation).mapping.apply (localModel model))) := by
-  simpa only [EmbeddedIncludes, staticExpr,
-    objectType_realizedRepresentation,
+  simpa only [staticExpr, objectType_realizedRepresentation,
     objectAdapts_mapping, localMapping_apply] using
       generalIncludes (adaptation.representation model realization)
 
@@ -764,7 +533,7 @@ def valueTyping {scope : Nat}
           (capture bodyUse)
           (.union ((capture closure).weaken (kind := .term))
             (.singleton (.var .here))) := by
-        simpa only [EmbeddedIncludes, typingEnvironment_extendTerm, staticExpr,
+        simpa only [typingEnvironment_extendTerm, staticExpr,
           capture_rename, embedRename_succ, Capture.weaken, capture, path,
           embedVar] using generalIncludes captures
       simpa only [value, type] using
@@ -789,8 +558,7 @@ def valueTyping {scope : Nat}
             (.singleton (.var .here))) := by
         simpa only [typingEnvironment_extendTerm,
           generalObjectType_formedType,
-          context_extendTerm, EmbeddedIncludes, staticExpr, capture_rename,
-          embedRename_succ,
+          context_extendTerm, staticExpr, capture_rename, embedRename_succ,
           Capture.weaken, capture, path, embedVar] using
             generalIncludes captures
       simpa only [value, type, generalObjectType_formedType] using
@@ -814,8 +582,7 @@ def valueTyping {scope : Nat}
             (.singleton (.var .here))) := by
         simpa only [typingEnvironment_extendTerm,
           generalObjectType_formedType,
-          context_extendTerm, EmbeddedIncludes, staticExpr, capture_rename,
-          embedRename_succ,
+          context_extendTerm, staticExpr, capture_rename, embedRename_succ,
           Capture.weaken, capture, path, embedVar] using
             generalIncludes captures
       simpa only [value, type, generalObjectType_formedType] using
@@ -830,14 +597,14 @@ def valueTyping {scope : Nat}
           (type payloadType).stripCapture
           (ObjectType.realizedRepresentation (objectType sourceObject)
             (localModel realization.model)).stripCapture := by
-        simpa only [EmbeddedIncludes, staticExpr, type_stripCapture,
+        simpa only [staticExpr, type_stripCapture,
           objectType_realizedRepresentation] using
             generalIncludes payloadShape
       have embeddedPayloadCapture : CaptureIncludes (context sourceContext)
           (type payloadType).outerCapture
           (ObjectType.realizedRepresentation (objectType sourceObject)
             (localModel realization.model)).outerCapture := by
-        simpa only [EmbeddedIncludes, staticExpr, type_outerCapture,
+        simpa only [staticExpr, type_outerCapture,
           objectType_realizedRepresentation] using
             generalIncludes payloadCapture
       have embeddedObjectCapture : CaptureIncludes (context sourceContext)
@@ -845,7 +612,7 @@ def valueTyping {scope : Nat}
             (localModel realization.model)).outerCapture
           (objectType sourceObject).outerCapture := by
         have translated := generalIncludes objectCapture
-        simp only [EmbeddedIncludes, staticExpr] at translated
+        simp only [staticExpr] at translated
         rw [type_outerCapture, objectType_realizedRepresentation,
           objectType_outerCapture] at translated
         exact translated
@@ -889,14 +656,14 @@ def objectArgumentTyping {scope : Nat}
           (type payloadType).stripCapture
           (ObjectType.realizedRepresentation (objectType available)
             (localModel realization.model)).stripCapture := by
-        simpa only [EmbeddedIncludes, staticExpr, type_stripCapture,
+        simpa only [staticExpr, type_stripCapture,
           objectType_realizedRepresentation] using
             generalIncludes payloadShape
       have embeddedPayloadCapture : CaptureIncludes (context sourceContext)
           (type payloadType).outerCapture
           (ObjectType.realizedRepresentation (objectType available)
             (localModel realization.model)).outerCapture := by
-        simpa only [EmbeddedIncludes, staticExpr, type_outerCapture,
+        simpa only [staticExpr, type_outerCapture,
           objectType_realizedRepresentation] using
             generalIncludes payloadCapture
       have embeddedObjectCapture : CaptureIncludes (context sourceContext)
@@ -904,7 +671,7 @@ def objectArgumentTyping {scope : Nat}
             (localModel realization.model)).outerCapture
           (objectType available).outerCapture := by
         have translated := generalIncludes objectCapture
-        simp only [EmbeddedIncludes, staticExpr] at translated
+        simp only [staticExpr] at translated
         rw [type_outerCapture, objectType_realizedRepresentation,
           objectType_outerCapture] at translated
         exact translated
@@ -914,7 +681,7 @@ def objectArgumentTyping {scope : Nat}
               (localModel realization.model))).outerCapture
           (objectType expected).outerCapture := by
         have translated := generalIncludes expectedCapture
-        simp only [EmbeddedIncludes, staticExpr] at translated
+        simp only [staticExpr] at translated
         rw [type_outerCapture, objectType_realizedRepresentation,
           localMapping_apply, objectType_outerCapture] at translated
         simpa only [objectAdapts_mapping] using translated
@@ -962,7 +729,7 @@ def objectArgumentTyping {scope : Nat}
               (LocalModel.atPath (.var (embedVar name))))).outerCapture
           (objectType expected).outerCapture := by
         have translated := generalIncludes expectedCapture
-        simp only [EmbeddedIncludes, staticExpr] at translated
+        simp only [staticExpr] at translated
         rw [type_outerCapture, objectType_realizedRepresentation,
           localMapping_apply, localModel_atPath,
           objectType_outerCapture] at translated
@@ -981,7 +748,7 @@ def objectArgumentTyping {scope : Nat}
         generalObjectType_formedType, objectType_realizedRepresentation,
         objectType_realizedOuterCapture,
         objectAdapts_mapping, localMapping_apply, localModel_atPath,
-        EmbeddedIncludes, staticExpr, objectArgumentModel] using
+        staticExpr, objectArgumentModel] using
         (ObjectArgument.HasType.stable
           (environment := typingEnvironment sourceContext)
           (name := embedVar name) (available := objectType available)
@@ -1021,8 +788,7 @@ def objectFunctionTyping {scope : Nat}
           (.union ((capture closure).weaken (kind := .term))
             (.singleton (.var .here))) := by
         simpa only [typingEnvironment_extendTerm, context_extendTerm,
-          generalObjectType_formedType, EmbeddedIncludes, staticExpr,
-          capture_rename,
+          generalObjectType_formedType, staticExpr, capture_rename,
           embedRename_succ, Capture.weaken, capture, path, embedVar] using
             generalIncludes captures
       simpa only [term, value, capture] using
@@ -1044,8 +810,7 @@ def objectFunctionTyping {scope : Nat}
           (.union ((capture closure).weaken (kind := .term))
             (.singleton (.var .here))) := by
         simpa only [typingEnvironment_extendTerm, context_extendTerm,
-          generalObjectType_formedType, EmbeddedIncludes, staticExpr,
-          capture_rename,
+          generalObjectType_formedType, staticExpr, capture_rename,
           embedRename_succ, Capture.weaken, capture, path, embedVar] using
             generalIncludes captures
       simpa only [term, value, generalObjectType_formedType, capture] using
@@ -1068,8 +833,7 @@ def objectFunctionTyping {scope : Nat}
           (capture bodyUse)
           ((capture bodyOuterUse).weaken (kind := .term)) := by
         simpa only [typingEnvironment_extendTerm, context_extendTerm,
-          EmbeddedIncludes, staticExpr, capture_rename, embedRename_succ,
-          Capture.weaken] using
+          staticExpr, capture_rename, embedRename_succ, Capture.weaken] using
             generalIncludes discharge
       simpa only [term, type, capture, generalObjectType_formedType] using
         (ObjectFunction.HasType.letPlain (plain boundPlain)
@@ -1098,7 +862,7 @@ def termTyping {scope : Nat}
         (Term.HasType.select (exposesObject exposes))
   | .app functionTyping functionShape domainPlain argumentTyping => by
       simpa only [term, capture_seq, type_stripCapture, type_outerCapture,
-        type, capture, EmbeddedIncludes, staticExpr] using
+        type, capture, staticExpr] using
         (Term.HasType.app (termTyping functionTyping)
           (by simpa only [type_stripCapture, type] using
             congrArg type functionShape)
@@ -1129,8 +893,7 @@ def termTyping {scope : Nat}
           (capture bodyUse)
           ((capture bodyOuterUse).weaken (kind := .term)) := by
         simpa only [typingEnvironment_extendTerm, context_extendTerm,
-          EmbeddedIncludes, staticExpr, capture_rename, embedRename_succ,
-          Capture.weaken] using
+          staticExpr, capture_rename, embedRename_succ, Capture.weaken] using
             generalIncludes discharge
       simpa only [term, capture] using
         (Term.HasType.letPlain (plain boundPlain) (termTyping rhsTyping)
@@ -1156,8 +919,7 @@ def termTyping {scope : Nat}
           (.union ((capture bodyOuterUse).weaken (kind := .term))
             (.singleton (.var .here))) := by
         simpa only [typingEnvironment_extendTerm, context_extendTerm,
-          generalObjectType_formedType, EmbeddedIncludes, staticExpr,
-          capture_rename,
+          generalObjectType_formedType, staticExpr, capture_rename,
           embedRename_succ, Capture.weaken, capture, path, embedVar] using
             generalIncludes discharge
       simpa only [term, capture_seq, objectType_packageCapture, capture] using
@@ -1183,8 +945,7 @@ def termTyping {scope : Nat}
           (.union ((capture bodyOuterUse).weaken (kind := .term))
             (.singleton (.var .here))) := by
         simpa only [typingEnvironment_extendTerm, context_extendTerm,
-          generalObjectType_formedType, EmbeddedIncludes, staticExpr,
-          capture_rename,
+          generalObjectType_formedType, staticExpr, capture_rename,
           embedRename_succ, Capture.weaken, capture, path, embedVar] using
             generalIncludes discharge
       simpa only [term, capture_seq, objectType_packageCapture, capture] using

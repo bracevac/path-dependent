@@ -148,6 +148,12 @@ def extendMode {scope : Sig} (context : Ctx scope)
     Ctx (scope ▹ .evidence (.mode mode)) :=
   context.extendEvidence (.mode capture)
 
+/-- Add an assumed ground classifier-kind bound for a capture. -/
+def extendCaptureHasKind {scope : Sig} (context : Ctx scope)
+    (capture : Capture scope) (kind : Classifier.Kind) :
+    Ctx (scope ▹ .evidence .captureHasKind) :=
+  context.extendEvidence (.captureHasKind capture kind)
+
 /-- Allocate a heterogeneous names-first block of generative symbols. -/
 def extendSymbols {scope : Sig} (context : Ctx scope) :
     (symbols : List StaticSort) -> Ctx (SymbolScope scope symbols)

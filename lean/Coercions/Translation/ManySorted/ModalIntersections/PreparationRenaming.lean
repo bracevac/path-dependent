@@ -81,10 +81,6 @@ structure Follows {firstSource secondSource : Source.Sig}
     second.localModel.captureMember? label =
       (first.localModel.captureMember? label).map fun capture =>
         capture.rename targetRename
-  localClassifier : forall label,
-    second.localModel.classifierMember? label =
-      (first.localModel.classifierMember? label).map fun classifier =>
-        classifier.rename targetRename
 
 namespace Follows
 
@@ -101,7 +97,6 @@ def renameTarget {sourceScope : Source.Sig}
     simp
   localType := by intro label; rfl
   localCapture := by intro label; rfl
-  localClassifier := by intro label; rfl
 
 def extendPlain {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope) :
@@ -112,7 +107,6 @@ def extendPlain {sourceScope : Source.Sig} {targetScope : Target.Sig}
   member := by intro path label; cases path; rfl
   localType := by intro label; rfl
   localCapture := by intro label; rfl
-  localClassifier := by intro label; rfl
 
 def extendStatic {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope) {sort : Source.StaticSort}
@@ -125,7 +119,6 @@ def extendStatic {sourceScope : Source.Sig} {targetScope : Target.Sig}
   member := by intro path label; cases path; rfl
   localType := by intro label; rfl
   localCapture := by intro label; rfl
-  localClassifier := by intro label; rfl
 
 def extendObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
@@ -138,7 +131,6 @@ def extendObject {sourceScope : Source.Sig} {targetScope : Target.Sig}
   member := by intro path label; cases path; rfl
   localType := by intro label; rfl
   localCapture := by intro label; rfl
-  localClassifier := by intro label; rfl
 
 def extendObjectWith {sourceScope : Source.Sig} {targetScope : Target.Sig}
     (layout : Layout sourceScope targetScope)
@@ -154,51 +146,10 @@ def extendObjectWith {sourceScope : Source.Sig} {targetScope : Target.Sig}
   member := by intro path label; cases path; rfl
   localType := by intro label; rfl
   localCapture := by intro label; rfl
-  localClassifier := by intro label; rfl
 
 end Follows
 
 end Layout
-
-/-- Total classifier interpretation is natural under coordinated source and
-target renaming.  As for captures, malformed member selections retain their
-canonical ground fallback on both sides. -/
-@[simp]
-theorem totalClassifier_follows {firstSource secondSource : Source.Sig}
-    {firstTarget secondTarget : Target.Sig}
-    {first : Layout firstSource firstTarget}
-    {second : Layout secondSource secondTarget}
-    {sourceRename : DOTCapture.ModalIntersections.Rename
-      firstSource secondSource}
-    {targetRename : Target.Rename firstTarget secondTarget}
-    (follows : Layout.Follows first second sourceRename targetRename)
-    (classifier : Source.ClassifierExpr firstSource) :
-    totalClassifier second (classifier.rename sourceRename) =
-      (totalClassifier first classifier).rename targetRename := by
-  cases classifier with
-  | ground kind => rfl
-  | ref reference =>
-      cases reference with
-      | member path label =>
-          simp only [DOTCapture.ModalIntersections.ClassifierExpr.rename,
-            DOTCapture.ModalIntersections.ClassifierRef.rename,
-            totalClassifier]
-          rw [show
-            second.member? (path.rename sourceRename) label =
-              (first.member? path label).map
-                (fun name => name.rename targetRename) from
-            follows.member path label]
-          cases found : first.member? path label with
-          | none => rfl
-          | some member => cases member <;> rfl
-      | localMember label =>
-          simp only [DOTCapture.ModalIntersections.ClassifierExpr.rename,
-            DOTCapture.ModalIntersections.ClassifierRef.rename,
-            totalClassifier]
-          rw [follows.localClassifier]
-          cases found : first.localModel.classifierMember? label with
-          | none => rfl
-          | some classifier => rfl
 
 /-- Total capture interpretation is natural under coordinated source and
 target renaming.  Member lookup is compared before inspecting the member
@@ -220,10 +171,6 @@ theorem totalCapture_follows {firstSource secondSource : Source.Sig}
   | union left right leftInduction rightInduction =>
       simp [DOTCapture.ModalIntersections.Capture.rename, totalCapture,
         ManySortedFC.Capture.rename, leftInduction, rightInduction]
-  | project capture classifier captureInduction =>
-      simp [DOTCapture.ModalIntersections.Capture.rename, totalCapture,
-        ManySortedFC.Capture.rename, captureInduction,
-        totalClassifier_follows follows classifier]
   | readOnly capture induction =>
       simp [DOTCapture.ModalIntersections.Capture.rename, totalCapture,
         ManySortedFC.Capture.rename, induction]

@@ -97,8 +97,6 @@ def translateCapture {sourceScope : Source.Scope} {targetScope : Target.Sig}
   | .union left right => do
       pure (.union (← translateCapture layout left)
         (← translateCapture layout right))
-  | capture@(.project _ _) =>
-      Preparation.Compile.translateCapture layout [] capture
   | .singleton (.var name) =>
       .ok (.singleton (layout.termVar name))
   | .ref reference =>

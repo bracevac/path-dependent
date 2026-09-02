@@ -3,10 +3,9 @@ import Coercions.ManySortedFC.StaticDomainClassifier
 /-!
 # Ground static-domain checks for classifier kinds
 
-The examples use the generic certificate boundary, not the target evidence
-checker.  They demonstrate that the classifier instance exposes the existing
-ground algorithms without suggesting that target sorts are dynamically
-extensible.
+The examples exercise the standalone generic certificate boundary. They do
+not invoke the target evidence checker and do not introduce classifier or
+kind variables, or a classifier target sort.
 -/
 
 namespace ManySortedFC.StaticDomainExamples

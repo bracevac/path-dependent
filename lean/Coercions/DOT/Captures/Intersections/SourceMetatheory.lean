@@ -30,27 +30,6 @@ theorem rename_comp {sort : StaticSort} {first second third : Scope}
 
 end StaticRef
 
-namespace ClassifierExpr
-
-@[simp]
-theorem rename_id {scope : Scope} (classifier : ClassifierExpr scope) :
-    classifier.rename DOTCapture.Acyclic.Rename.id = classifier := by
-  cases classifier with
-  | ground kind => rfl
-  | ref reference => cases reference <;> simp [rename]
-
-@[simp]
-theorem rename_comp {first second third : Scope}
-    (classifier : ClassifierExpr first) (rho₁ : Rename first second)
-    (rho₂ : Rename second third) :
-    (classifier.rename rho₁).rename rho₂ =
-      classifier.rename (rho₁.comp rho₂) := by
-  cases classifier with
-  | ground kind => rfl
-  | ref reference => cases reference <;> simp [rename]
-
-end ClassifierExpr
-
 mutual
 
 @[simp]
@@ -60,9 +39,6 @@ theorem Capture.rename_id {scope : Scope} (capture : Capture scope) :
   | empty => rfl
   | union left right =>
       simp [Capture.rename, Capture.rename_id left, Capture.rename_id right]
-  | project inner classifier =>
-      simp [Capture.rename, Capture.rename_id inner,
-        ClassifierExpr.rename_id classifier]
   | singleton path => simp [Capture.rename]
   | ref reference => simp [Capture.rename]
 
@@ -90,13 +66,6 @@ theorem Interface.rename_id {scope : Scope} (interface : Interface scope) :
       simp [Interface.rename, Ty.rename_id lower, Ty.rename_id upper]
   | captureMember label lower upper =>
       simp [Interface.rename, Capture.rename_id]
-  | classifierMember label lower upper =>
-      simp [Interface.rename, ClassifierExpr.rename_id]
-  | classifierDisjoint left right =>
-      simp [Interface.rename, ClassifierExpr.rename_id]
-  | captureHasKind capture classifier =>
-      simp [Interface.rename, Capture.rename_id,
-        ClassifierExpr.rename_id]
   | inter left right =>
       simp [Interface.rename, Interface.rename_id left,
         Interface.rename_id right]
@@ -124,9 +93,6 @@ theorem Capture.rename_comp {first second third : Scope}
   | union left right =>
       simp [Capture.rename, Capture.rename_comp left rho₁ rho₂,
         Capture.rename_comp right rho₁ rho₂]
-  | project inner classifier =>
-      simp [Capture.rename, Capture.rename_comp inner rho₁ rho₂,
-        ClassifierExpr.rename_comp classifier rho₁ rho₂]
   | singleton path => simp [Capture.rename]
   | ref reference => simp [Capture.rename]
 
@@ -160,13 +126,6 @@ theorem Interface.rename_comp {first second third : Scope}
         Ty.rename_comp upper rho₁ rho₂]
   | captureMember label lower upper =>
       simp [Interface.rename, Capture.rename_comp]
-  | classifierMember label lower upper =>
-      simp [Interface.rename, ClassifierExpr.rename_comp]
-  | classifierDisjoint left right =>
-      simp [Interface.rename, ClassifierExpr.rename_comp]
-  | captureHasKind capture classifier =>
-      simp [Interface.rename, Capture.rename_comp,
-        ClassifierExpr.rename_comp]
   | inter left right =>
       simp [Interface.rename, Interface.rename_comp left rho₁ rho₂,
         Interface.rename_comp right rho₁ rho₂]
@@ -228,26 +187,6 @@ theorem collect_normalized {scope : Scope} (interface : Interface scope)
       exact DOTCapture.Intersections.Signature.singletonCapture_normalized
         (Expr := Expr scope) label (StaticExpr.capture lower)
           (StaticExpr.capture upper)
-  | classifierMember label lower upper =>
-      simp only [collect, Except.ok.injEq] at success
-      subst signature
-      exact DOTCapture.Intersections.Signature.singletonClassifier_normalized
-        (Expr := Expr scope) label (StaticExpr.classifier lower)
-          (StaticExpr.classifier upper)
-  | classifierDisjoint left right =>
-      simp only [collect, Except.ok.injEq] at success
-      subst signature
-      exact DOTCapture.Intersections.Signature.singletonConstraint_normalized
-        (DOTCapture.Intersections.Constraint.classifierDisjoint
-          (Expr := Expr scope) (StaticExpr.classifier left)
-          (StaticExpr.classifier right))
-  | captureHasKind capture classifier =>
-      simp only [collect, Except.ok.injEq] at success
-      subst signature
-      exact DOTCapture.Intersections.Signature.singletonConstraint_normalized
-        (DOTCapture.Intersections.Constraint.captureHasKind
-          (Expr := Expr scope) (StaticExpr.capture capture)
-          (StaticExpr.classifier classifier))
   | inter left right =>
       simp only [collect] at success
       cases leftResult : left.collect with

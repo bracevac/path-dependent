@@ -390,17 +390,6 @@ def compileRealizedIncludes? {sourceScope : Src.Sig}
       finishRealizedInclusion? prepared (.capture (.union left right))
         (.capture target)
         (.captureUnionElim leftCompiled.evidence rightCompiled.evidence)
-  | .capture, .capture (.project capture classifier), .capture _,
-      .captureProjectSource => do
-      let projectedPrepared <- prepareRealizedExpression? prepared
-        (.capture (.project capture classifier))
-      let .capture targetProjected := projectedPrepared.target
-      match targetProjected with
-      | .project targetCapture targetClassifier =>
-          finishRealizedInclusion? prepared
-            (.capture (.project capture classifier)) (.capture capture)
-            (.captureProjectSourceScoped targetCapture targetClassifier)
-      | _ => none
   | .capture, .capture (.readOnly capture), .capture _,
       .captureReadOnly => do
       let capturePrepared <- prepareRealizedExpression? prepared

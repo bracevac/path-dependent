@@ -5,9 +5,8 @@ import Coercions.DOT.Captures.ModalIntersections.Syntax
 # Normalization of cumulative object interfaces
 
 The existing normalization kernel is expression-parametric. This module
-instantiates it with source types, captures, and classifier expressions,
-retaining one member identity per label and every contributed interval or
-mixed constraint.
+instantiates it with combined source types and captures, retaining one member
+identity per label and every contributed interval occurrence.
 -/
 
 namespace DOTCapture.ModalIntersections.Interface
@@ -35,23 +34,6 @@ theorem collect_normalized {scope : Sig} (interface : Interface scope)
       exact DOTCapture.Intersections.Signature.singletonCapture_normalized
         (Expr := Expr scope) label (StaticExpr.capture lower)
           (StaticExpr.capture upper)
-  | classifierMember label lower upper =>
-      simp only [collect, Except.ok.injEq] at success
-      subst signature
-      exact DOTCapture.Intersections.Signature.singletonClassifier_normalized
-        (Expr := Expr scope) label lower upper
-  | classifierDisjoint left right =>
-      simp only [collect, Except.ok.injEq] at success
-      subst signature
-      exact DOTCapture.Intersections.Signature.singletonConstraint_normalized
-        (DOTCapture.Intersections.Constraint.classifierDisjoint
-          (Expr := Expr scope) left right)
-  | captureHasKind capture classifier =>
-      simp only [collect, Except.ok.injEq] at success
-      subst signature
-      exact DOTCapture.Intersections.Signature.singletonConstraint_normalized
-        (DOTCapture.Intersections.Constraint.captureHasKind
-          (Expr := Expr scope) (StaticExpr.capture capture) classifier)
   | inter left right =>
       simp only [collect] at success
       cases leftResult : left.collect with

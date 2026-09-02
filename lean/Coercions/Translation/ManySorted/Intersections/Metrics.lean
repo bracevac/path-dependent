@@ -24,9 +24,7 @@ structure StaticMetrics where
   normalizedAllocatedNames : Nat
   /-- Source interval occurrences retained after normalization. -/
   retainedIntervals : Nat
-  /-- Mixed classifier propositions retained after normalization. -/
-  retainedMixedConstraints : Nat
-  /-- Primitive interval propositions plus mixed classifier propositions. -/
+  /-- Primitive lower/name and name/upper target propositions. -/
   emittedConstraints : Nat
   /-- Ordinary runtime representations carried by one object package. -/
   runtimePayloads : Nat
@@ -41,7 +39,6 @@ def ofPreparedObject {sourceScope : Preparation.Source.Scope}
   { rawDeclarationOccurrences := (rawOccurrences interface).length
     normalizedAllocatedNames := object.encoding.prepared.members.length
     retainedIntervals := object.encoding.prepared.occurrenceCount
-    retainedMixedConstraints := object.encoding.prepared.constraints.length
     emittedConstraints := object.encoding.relations.length
     runtimePayloads := 1 }
 
@@ -76,16 +73,15 @@ theorem payload_scope_matches_report
           (ofPreparedObject interface object).runtimePayloads := by
   simp [ofPreparedObject, object.one_payload]
 
-/-- Every interval emits its two endpoints and every mixed constraint emits
-one proposition. This is accounting only; no consistency premise appears. -/
-theorem emitted_constraints_eq_interval_endpoints_plus_mixed
+/-- Every retained interval emits exactly its lower and upper inclusion.
+This is resource accounting only; no interval-consistency premise appears. -/
+theorem emitted_constraints_eq_twice_retained
     {sourceScope : Preparation.Source.Scope}
     {targetScope : ManySortedFC.Sig}
     (interface : Preparation.Source.Interface sourceScope)
     (object : PreparedObject targetScope) :
     (ofPreparedObject interface object).emittedConstraints =
-      2 * (ofPreparedObject interface object).retainedIntervals +
-        (ofPreparedObject interface object).retainedMixedConstraints := by
+      2 * (ofPreparedObject interface object).retainedIntervals := by
   exact Encoding.relations_length object.encoding
 
 end DOTCaptureToManySortedFC.Intersections.Metrics

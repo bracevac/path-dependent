@@ -89,7 +89,6 @@ def symbols {scope : Source.Scope} :
   | [] => []
   | .type _ _ :: remaining => .type :: symbols remaining
   | .capture _ _ :: remaining => .capture :: symbols remaining
-  | .classifier _ _ :: remaining => .classifier :: symbols remaining
 
 /-- Allocate all member names before translating any interval endpoint.  The
 head normalized entry is the newest target symbol. -/
@@ -103,10 +102,6 @@ def members (targetScope : Target.Sig) {sourceScope : Source.Scope} :
           member.rename ManySortedFC.Rename.succ
   | .capture label _ :: remaining =>
       .capture label .here ::
-        (members targetScope remaining).map fun member =>
-          member.rename ManySortedFC.Rename.succ
-  | .classifier label _ :: remaining =>
-      .classifier label .here ::
         (members targetScope remaining).map fun member =>
           member.rename ManySortedFC.Rename.succ
 
@@ -141,8 +136,6 @@ private def expectType {scope : Target.Sig} (label : Nat) :
   | .type _ name => .ok name
   | .capture _ _ =>
       .error (.memberSortMismatch label .type .capture)
-  | .classifier _ _ =>
-      .error (.memberSortMismatch label .type .classifier)
 
 private def expectCapture {scope : Target.Sig} (label : Nat) :
     MemberName scope -> Except Error
@@ -150,17 +143,6 @@ private def expectCapture {scope : Target.Sig} (label : Nat) :
   | .capture _ name => .ok name
   | .type _ _ =>
       .error (.memberSortMismatch label .capture .type)
-  | .classifier _ _ =>
-      .error (.memberSortMismatch label .capture .classifier)
-
-private def expectClassifier {scope : Target.Sig} (label : Nat) :
-    MemberName scope -> Except Error
-      (Target.BVar scope (.symbol .classifier))
-  | .classifier _ name => .ok name
-  | .type _ _ =>
-      .error (.memberSortMismatch label .classifier .type)
-  | .capture _ _ =>
-      .error (.memberSortMismatch label .classifier .capture)
 
 private def pathMember {sourceScope : Source.Scope}
     {targetScope : Target.Sig}
@@ -200,27 +182,6 @@ private def captureReference {sourceScope : Source.Scope}
   | .localCaptureMember label => do
       expectCapture label (← localMember members label)
 
-private def classifierReference {sourceScope : Source.Scope}
-    {targetScope : Target.Sig}
-    (layout : OuterLayout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
-    Source.StaticRef .classifier sourceScope ->
-      Except Error (Target.BVar targetScope (.symbol .classifier))
-  | .classifierMember path label => do
-      expectClassifier label (← pathMember layout path label)
-  | .localClassifierMember label => do
-      expectClassifier label (← localMember members label)
-
-private def classifier {sourceScope : Source.Scope}
-    {targetScope : Target.Sig}
-    (layout : OuterLayout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
-    DOTCapture.Intersections.Source.ClassifierExpr sourceScope ->
-      Except Error (ManySortedFC.ClassifierExpr targetScope)
-  | .ground kind => .ok (.ground kind)
-  | .ref reference => do
-      pure (.var (← classifierReference layout members reference))
-
 mutual
 
 private def capture {sourceScope : Source.Scope}
@@ -232,9 +193,6 @@ private def capture {sourceScope : Source.Scope}
   | .union left right => do
       pure (.union (← capture layout members left)
         (← capture layout members right))
-  | .project inner filter => do
-      pure (.project (← capture layout members inner)
-        (← classifier layout members filter))
   | .singleton (.var sourceVar) =>
       .ok (.singleton (layout.termVar sourceVar))
   | .ref reference => do
@@ -270,8 +228,6 @@ private def expression {sort : Source.StaticSort}
   cases source with
   | type value => exact (type layout members value).map .type
   | capture value => exact (capture layout members value).map .capture
-  | classifier value =>
-      exact (classifier layout members value).map .classifier
 
 /-- Sort-preserving wrapper for translating either kind of static bound. -/
 def translateStaticExpr {sort : Source.StaticSort}
@@ -315,36 +271,6 @@ def translateIntervals {sort : Source.StaticSort}
       pure ((← translateInterval layout members current) ::
         (← translateIntervals layout members remaining))
 
-def translateConstraint {sourceScope : Source.Scope}
-    {targetScope : Target.Sig}
-    (layout : OuterLayout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
-    DOTCapture.Intersections.Constraint (Source.Expr sourceScope) ->
-      Except Error (PreparedConstraint targetScope)
-  | .classifierDisjoint left right => do
-      let .classifier targetLeft ←
-        translateStaticExpr layout members left
-      let .classifier targetRight ←
-        translateStaticExpr layout members right
-      pure (.classifierDisjoint targetLeft targetRight)
-  | .captureHasKind sourceCapture sourceClassifier => do
-      let .capture targetCapture ←
-        translateStaticExpr layout members sourceCapture
-      let .classifier targetClassifier ←
-        translateStaticExpr layout members sourceClassifier
-      pure (.captureHasKind targetCapture targetClassifier)
-
-def translateConstraints {sourceScope : Source.Scope}
-    {targetScope : Target.Sig}
-    (layout : OuterLayout sourceScope targetScope)
-    (members : List (MemberName targetScope)) :
-    List (DOTCapture.Intersections.Constraint (Source.Expr sourceScope)) ->
-      Except Error (List (PreparedConstraint targetScope))
-  | [] => .ok []
-  | constraint :: remaining => do
-      pure ((← translateConstraint layout members constraint) ::
-        (← translateConstraints layout members remaining))
-
 def entries {sourceScope : Source.Scope}
     {targetScope : Target.Sig}
     (layout : OuterLayout sourceScope targetScope)
@@ -365,14 +291,6 @@ def entries {sourceScope : Source.Scope}
       .capture allocatedLabel name :: allocatedRemaining => do
       if _labelsMatch : label = allocatedLabel then
         pure (.capture label name
-          (← translateIntervals layout allMembers sourceIntervals) ::
-          (← entries layout allMembers remaining allocatedRemaining))
-      else
-        .error (.allocationMismatch label)
-  | .classifier label sourceIntervals :: remaining,
-      .classifier allocatedLabel name :: allocatedRemaining => do
-      if _labelsMatch : label = allocatedLabel then
-        pure (.classifier label name
           (← translateIntervals layout allMembers sourceIntervals) ::
           (← entries layout allMembers remaining allocatedRemaining))
       else
@@ -414,12 +332,7 @@ def prepare {sourceScope : Source.Scope} {targetScope : Target.Sig}
   let namesLayout := Compile.weakenLayout layout symbols
   let preparedEntries ← Compile.entries namesLayout allocated
     signature.entries allocated
-  let preparedConstraints ← Compile.translateConstraints namesLayout
-    allocated signature.constraints
-  pure
-    { symbols := symbols
-      entries := preparedEntries
-      constraints := preparedConstraints }
+  pure { symbols := symbols, entries := preparedEntries }
 
 /-- Collect by label, reject a sort conflict, allocate every surviving name,
 then translate all bounds. -/

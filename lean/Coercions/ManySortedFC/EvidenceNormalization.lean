@@ -35,9 +35,6 @@ def nodeCount {scope : Sig} {relation : Relation} :
       1 + nodeCount captures + nodeCount shape
   | .equalityCaptureUnion left right => 1 + nodeCount left + nodeCount right
   | .equalityCaptureReadOnly inner => 1 + nodeCount inner
-  | .classifierGroundEquality _ _ => 1
-  | .equalityCaptureProjectScoped capture classifier =>
-      1 + nodeCount capture + nodeCount classifier
   | .equalityCaptureProject inner _ _ => 1 + nodeCount inner
   | .equalityCaptureProjectTop _ => 1
   | .equalityCaptureProjectCompose _ _ _ => 1
@@ -50,9 +47,6 @@ def nodeCount {scope : Sig} {relation : Relation} :
   | .typeBottom _ => 1
   | .typeArrow domain codomain => 1 + nodeCount domain + nodeCount codomain
   | .typeCapturing captures shape => 1 + nodeCount captures + nodeCount shape
-  | .classifierGroundInclusion _ _ => 1
-  | .classifierExclude _ _ _ allowed excluded =>
-      1 + nodeCount allowed + nodeCount excluded
   | .captureEmpty _ => 1
   | .captureUnionLeft _ _ => 1
   | .captureUnionRight _ _ => 1
@@ -61,10 +55,7 @@ def nodeCount {scope : Sig} {relation : Relation} :
   | .captureReadOnly _ => 1
   | .captureReadOnlyMono subcapture => 1 + nodeCount subcapture
   | .captureProjectSource _ _ => 1
-  | .captureProjectSourceScoped _ _ => 1
   | .captureProjectMono subcapture _ _ => 1 + nodeCount subcapture
-  | .captureProjectMonoScoped subcapture subclassifier =>
-      1 + nodeCount subcapture + nodeCount subclassifier
   | .captureProjectMerge _ _ _ => 1
   | .modeEmpty _ => 1
   | .modeUnion left right => 1 + nodeCount left + nodeCount right
@@ -85,17 +76,12 @@ def nodeCount {scope : Sig} {relation : Relation} :
   | .disjointEquality equality disjoint =>
       1 + nodeCount equality + nodeCount disjoint
   | .disjointCaptureProject _ _ _ _ => 1
-  | .classifierGroundDisjoint _ _ => 1
-  | .classifierDisjointSymm inner => 1 + nodeCount inner
-  | .disjointCaptureProjectScoped _ _ classifiers =>
-      1 + nodeCount classifiers
   | .captureHasKindEmpty _ => 1
   | .captureHasKindUnion left right => 1 + nodeCount left + nodeCount right
   | .captureHasKindProject _ _ => 1
   | .captureHasKindSubcapture subcapture upper =>
       1 + nodeCount subcapture + nodeCount upper
-  | .captureHasKindWiden membership subclassifier =>
-      1 + nodeCount membership + nodeCount subclassifier
+  | .captureHasKindWiden membership _ _ => 1 + nodeCount membership
 
 /-! ## Administrative smart constructors -/
 
@@ -178,11 +164,6 @@ def normalizeSyntax {scope : Sig} {relation : Relation} :
       .equalityCaptureUnion (normalizeSyntax left) (normalizeSyntax right)
   | .equalityCaptureReadOnly capture =>
       .equalityCaptureReadOnly (normalizeSyntax capture)
-  | .classifierGroundEquality left right =>
-      .classifierGroundEquality left right
-  | .equalityCaptureProjectScoped capture classifier =>
-      .equalityCaptureProjectScoped (normalizeSyntax capture)
-        (normalizeSyntax classifier)
   | .equalityCaptureProject equality sourceKind targetKind =>
       .equalityCaptureProject (normalizeSyntax equality) sourceKind targetKind
   | .equalityCaptureProjectTop capture => .equalityCaptureProjectTop capture
@@ -203,11 +184,6 @@ def normalizeSyntax {scope : Sig} {relation : Relation} :
       .typeArrow (normalizeSyntax domain) (normalizeSyntax codomain)
   | .typeCapturing captures shape =>
       .typeCapturing (normalizeSyntax captures) (normalizeSyntax shape)
-  | .classifierGroundInclusion lower upper =>
-      .classifierGroundInclusion lower upper
-  | .classifierExclude kind allowedKind excludedKind allowed excluded =>
-      .classifierExclude kind allowedKind excludedKind
-        (normalizeSyntax allowed) (normalizeSyntax excluded)
   | .captureEmpty target => .captureEmpty target
   | .captureUnionLeft left right => .captureUnionLeft left right
   | .captureUnionRight left right => .captureUnionRight left right
@@ -218,13 +194,8 @@ def normalizeSyntax {scope : Sig} {relation : Relation} :
   | .captureReadOnlyMono subcapture =>
       .captureReadOnlyMono (normalizeSyntax subcapture)
   | .captureProjectSource capture kind => .captureProjectSource capture kind
-  | .captureProjectSourceScoped capture kind =>
-      .captureProjectSourceScoped capture kind
   | .captureProjectMono subcapture sourceKind targetKind =>
       .captureProjectMono (normalizeSyntax subcapture) sourceKind targetKind
-  | .captureProjectMonoScoped subcapture subclassifier =>
-      .captureProjectMonoScoped (normalizeSyntax subcapture)
-        (normalizeSyntax subclassifier)
   | .captureProjectMerge capture leftKind rightKind =>
       .captureProjectMerge capture leftKind rightKind
   | .modeEmpty mode => .modeEmpty mode
@@ -257,13 +228,6 @@ def normalizeSyntax {scope : Sig} {relation : Relation} :
         (normalizeSyntax disjoint)
   | .disjointCaptureProject leftCapture leftKind rightCapture rightKind =>
       .disjointCaptureProject leftCapture leftKind rightCapture rightKind
-  | .classifierGroundDisjoint left right =>
-      .classifierGroundDisjoint left right
-  | .classifierDisjointSymm evidence =>
-      .classifierDisjointSymm (normalizeSyntax evidence)
-  | .disjointCaptureProjectScoped leftCapture rightCapture classifiers =>
-      .disjointCaptureProjectScoped leftCapture rightCapture
-        (normalizeSyntax classifiers)
   | .captureHasKindEmpty kind => .captureHasKindEmpty kind
   | .captureHasKindUnion left right =>
       .captureHasKindUnion (normalizeSyntax left) (normalizeSyntax right)
@@ -272,9 +236,8 @@ def normalizeSyntax {scope : Sig} {relation : Relation} :
   | .captureHasKindSubcapture subcapture upper =>
       .captureHasKindSubcapture (normalizeSyntax subcapture)
         (normalizeSyntax upper)
-  | .captureHasKindWiden membership subclassifier =>
-      .captureHasKindWiden (normalizeSyntax membership)
-        (normalizeSyntax subclassifier)
+  | .captureHasKindWiden membership sourceKind targetKind =>
+      .captureHasKindWiden (normalizeSyntax membership) sourceKind targetKind
 
 /-! ## Checked public boundary -/
 

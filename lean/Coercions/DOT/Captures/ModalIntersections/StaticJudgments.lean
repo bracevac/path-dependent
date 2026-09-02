@@ -1,6 +1,4 @@
 import Coercions.DOT.Captures.ModalIntersections.Context
-import Coercions.ManySortedFC.Classifier.Disjoint
-import Coercions.ManySortedFC.Classifier.Subtract
 
 /-!
 # Static judgments for cumulative captured DOT
@@ -32,21 +30,11 @@ Nested objects and negative object arrows delimit their own local-member
 namespaces, so opening an enclosing object does not traverse either boundary.
 -/
 
-def ClassifierExpr.openAt {scope : Sig}
-    (classifier : ClassifierExpr scope) (receiver : Path scope) :
-    ClassifierExpr scope :=
-  match classifier with
-  | .ground kind => .ground kind
-  | .ref (.localMember label) => .ref (.member receiver label)
-  | .ref reference => .ref reference
-
 def Capture.openAt {scope : Sig} (capture : Capture scope)
     (receiver : Path scope) : Capture scope :=
   match capture with
   | .empty => .empty
   | .union left right => .union (left.openAt receiver) (right.openAt receiver)
-  | .project inner classifier =>
-      .project (inner.openAt receiver) (classifier.openAt receiver)
   | .readOnly inner => .readOnly (inner.openAt receiver)
   | .singleton path => .singleton path
   | .ref (.localCaptureMember label) =>
@@ -166,47 +154,6 @@ inductive HasCaptureOccurrence {scope : Sig} : Interface scope →
       (occurrence : HasCaptureOccurrence right label lower upper) :
       HasCaptureOccurrence (.inter left right) label lower upper
 
-/-- One exact classifier-member occurrence in an unnormalized intersection. -/
-inductive HasClassifierOccurrence {scope : Sig} : Interface scope →
-    Label → ClassifierExpr scope → ClassifierExpr scope → Type where
-  | here {label : Label} {lower upper : ClassifierExpr scope} :
-      HasClassifierOccurrence (.classifierMember label lower upper)
-        label lower upper
-  | left {left right : Interface scope} {label : Label}
-      {lower upper : ClassifierExpr scope}
-      (occurrence : HasClassifierOccurrence left label lower upper) :
-      HasClassifierOccurrence (.inter left right) label lower upper
-  | right {left right : Interface scope} {label : Label}
-      {lower upper : ClassifierExpr scope}
-      (occurrence : HasClassifierOccurrence right label lower upper) :
-      HasClassifierOccurrence (.inter left right) label lower upper
-
-inductive HasClassifierDisjointOccurrence {scope : Sig} :
-    Interface scope → ClassifierExpr scope → ClassifierExpr scope → Type where
-  | here {left right : ClassifierExpr scope} :
-      HasClassifierDisjointOccurrence (.classifierDisjoint left right)
-        left right
-  | left {first second : Interface scope} {left right : ClassifierExpr scope}
-      (occurrence : HasClassifierDisjointOccurrence first left right) :
-      HasClassifierDisjointOccurrence (.inter first second) left right
-  | right {first second : Interface scope} {left right : ClassifierExpr scope}
-      (occurrence : HasClassifierDisjointOccurrence second left right) :
-      HasClassifierDisjointOccurrence (.inter first second) left right
-
-inductive HasCaptureKindOccurrence {scope : Sig} : Interface scope →
-    Capture scope → ClassifierExpr scope → Type where
-  | here {capture : Capture scope} {classifier : ClassifierExpr scope} :
-      HasCaptureKindOccurrence (.captureHasKind capture classifier)
-        capture classifier
-  | left {left right : Interface scope} {capture : Capture scope}
-      {classifier : ClassifierExpr scope}
-      (occurrence : HasCaptureKindOccurrence left capture classifier) :
-      HasCaptureKindOccurrence (.inter left right) capture classifier
-  | right {left right : Interface scope} {capture : Capture scope}
-      {classifier : ClassifierExpr scope}
-      (occurrence : HasCaptureKindOccurrence right capture classifier) :
-      HasCaptureKindOccurrence (.inter left right) capture classifier
-
 end Interface
 
 /-- A stable variable exposes the complete object stored in its binding. -/
@@ -215,81 +162,6 @@ inductive ExposesObject {scope : Sig} (context : Ctx scope) :
   | variable {name : BVar scope .term} {object : ObjectType scope}
       (found : (context.lookupTerm name).stripCapture = .object object) :
       ExposesObject context (.var name) object
-
-inductive ClassifiersDisjoint {scope : Sig} (context : Ctx scope) :
-    ClassifierExpr scope → ClassifierExpr scope → Type where
-  | ground {left right : ClassifierKind}
-      (disjoint : ManySortedFC.Classifier.Kind.Disjoint left right) :
-      ClassifiersDisjoint context (.ground left) (.ground right)
-  | member {receiver : Path scope} {object : ObjectType scope}
-      {left right : ClassifierExpr scope}
-      (exposes : ExposesObject context receiver object)
-      (occurrence : object.interface.HasClassifierDisjointOccurrence
-        left right) :
-      ClassifiersDisjoint context (left.openAt receiver)
-        (right.openAt receiver)
-  | symm {left right : ClassifierExpr scope}
-      (disjoint : ClassifiersDisjoint context left right) :
-      ClassifiersDisjoint context right left
-
-/-- Classifier-kind inclusion in the ambient source context.  Ground facts
-are checked by the executable kind algebra; stable member bounds expose the
-corresponding object-theory assumptions.  Exclusion requires both of its
-logical premises explicitly. -/
-inductive ClassifierIncludes {scope : Sig} (context : Ctx scope) :
-    ClassifierExpr scope → ClassifierExpr scope → Type where
-  | refl {classifier : ClassifierExpr scope} :
-      ClassifierIncludes context classifier classifier
-  | trans {lower middle upper : ClassifierExpr scope}
-      (first : ClassifierIncludes context lower middle)
-      (second : ClassifierIncludes context middle upper) :
-      ClassifierIncludes context lower upper
-  | ground {lower upper : ClassifierKind}
-      (included : ManySortedFC.Classifier.Kind.Subkind lower upper) :
-      ClassifierIncludes context (.ground lower) (.ground upper)
-  | exclude {classifier : ClassifierExpr scope}
-      {allowed excluded : ClassifierKind}
-      (allowedProof : ClassifierIncludes context classifier (.ground allowed))
-      (excludedProof : ClassifiersDisjoint context classifier
-        (.ground excluded)) :
-      ClassifierIncludes context classifier
-        (.ground (ManySortedFC.Classifier.Kind.subtract allowed excluded))
-  | lower {receiver : Path scope} {object : ObjectType scope}
-      {label : Label} {lower upper : ClassifierExpr scope}
-      (exposes : ExposesObject context receiver object)
-      (occurrence : object.interface.HasClassifierOccurrence
-        label lower upper) :
-      ClassifierIncludes context (lower.openAt receiver)
-        (.ref (.member receiver label))
-  | upper {receiver : Path scope} {object : ObjectType scope}
-      {label : Label} {lower upper : ClassifierExpr scope}
-      (exposes : ExposesObject context receiver object)
-      (occurrence : object.interface.HasClassifierOccurrence
-        label lower upper) :
-      ClassifierIncludes context (.ref (.member receiver label))
-        (upper.openAt receiver)
-
-inductive CaptureHasKind {scope : Sig} (context : Ctx scope) :
-    Capture scope → ClassifierExpr scope → Type where
-  | empty {classifier : ClassifierExpr scope} :
-      CaptureHasKind context .empty classifier
-  | union {left right : Capture scope} {classifier : ClassifierExpr scope}
-      (leftProof : CaptureHasKind context left classifier)
-      (rightProof : CaptureHasKind context right classifier) :
-      CaptureHasKind context (.union left right) classifier
-  | project {capture : Capture scope} {classifier : ClassifierExpr scope} :
-      CaptureHasKind context (.project capture classifier) classifier
-  | member {receiver : Path scope} {object : ObjectType scope}
-      {capture : Capture scope} {classifier : ClassifierExpr scope}
-      (exposes : ExposesObject context receiver object)
-      (occurrence : object.interface.HasCaptureKindOccurrence
-        capture classifier) :
-      CaptureHasKind context (capture.openAt receiver)
-        (classifier.openAt receiver)
-  | widen {capture : Capture scope} {lower upper : ClassifierExpr scope}
-      (membership : CaptureHasKind context capture lower)
-      (included : ClassifierIncludes context lower upper) :
-      CaptureHasKind context capture upper
 
 /-- A lexical interval or stable member supplies one lower endpoint. -/
 inductive HasLower {scope : Sig} (context : Ctx scope) :
@@ -380,12 +252,6 @@ inductive Includes {scope : Sig} (context : Ctx scope) :
       (fromLeft : Includes context (.capture left) (.capture target))
       (fromRight : Includes context (.capture right) (.capture target)) :
       Includes context (.capture (.union left right)) (.capture target)
-  /-- Filtering through an arbitrary scoped classifier can only discard
-  capabilities. -/
-  | captureProjectSource {capture : Capture scope}
-      {classifier : ClassifierExpr scope} :
-      Includes context (.capture (.project capture classifier))
-        (.capture capture)
   | captureReadOnly {capture : Capture scope} :
       Includes context (.capture (.readOnly capture)) (.capture capture)
   | captureReadOnlyMono {lower upper : Capture scope}

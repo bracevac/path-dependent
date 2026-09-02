@@ -92,21 +92,6 @@ private theorem check_complete_projection {scope : Sig}
         dsimp at propEq
         subst checkedProp
         simp [check, checkedEq]
-  | classifierGroundEquality left right equivalent =>
-      simp [check, equivalent]
-  | equalityCaptureProjectScoped capture classifier captureIH classifierIH =>
-      obtain ⟨captureChecked, captureEq, capturePropEq⟩ :=
-        Option.map_eq_some_iff.mp captureIH
-      obtain ⟨classifierChecked, classifierEq, classifierPropEq⟩ :=
-        Option.map_eq_some_iff.mp classifierIH
-      cases captureChecked with
-      | mk captureProp captureTyping =>
-        cases classifierChecked with
-        | mk classifierProp classifierTyping =>
-          dsimp at capturePropEq classifierPropEq
-          subst captureProp
-          subst classifierProp
-          simp [check, captureEq, classifierEq]
   | equalityCaptureProject captureTyping kindEquivalent ih =>
       obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
       cases checked with
@@ -174,21 +159,6 @@ private theorem check_complete_projection {scope : Sig}
           subst capturesProp
           subst shapeProp
           simp [check, capturesEq, shapeEq]
-  | classifierGroundInclusion lower upper included =>
-      simp [check, included]
-  | classifierExclude allowed excluded allowedIH excludedIH =>
-      obtain ⟨allowedChecked, allowedEq, allowedPropEq⟩ :=
-        Option.map_eq_some_iff.mp allowedIH
-      obtain ⟨excludedChecked, excludedEq, excludedPropEq⟩ :=
-        Option.map_eq_some_iff.mp excludedIH
-      cases allowedChecked with
-      | mk allowedProp allowedTyping =>
-        cases excludedChecked with
-        | mk excludedProp excludedTyping =>
-          dsimp at allowedPropEq excludedPropEq
-          subst allowedProp
-          subst excludedProp
-          simp [check, allowedEq, excludedEq]
   | captureEmpty => rfl
   | captureUnionLeft => rfl
   | captureUnionRight => rfl
@@ -217,7 +187,6 @@ private theorem check_complete_projection {scope : Sig}
         subst checkedProp
         simp [check, checkedEq]
   | captureProjectSource => rfl
-  | captureProjectSourceScoped => rfl
   | captureProjectMono captureTyping kindSubtyping ih =>
       obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
       cases checked with
@@ -225,20 +194,6 @@ private theorem check_complete_projection {scope : Sig}
         dsimp at propEq
         subst checkedProp
         simp [check, checkedEq, kindSubtyping]
-  | captureProjectMonoScoped subcapture subclassifier subcaptureIH
-      classifierIH =>
-      obtain ⟨captureChecked, captureEq, capturePropEq⟩ :=
-        Option.map_eq_some_iff.mp subcaptureIH
-      obtain ⟨classifierChecked, classifierEq, classifierPropEq⟩ :=
-        Option.map_eq_some_iff.mp classifierIH
-      cases captureChecked with
-      | mk captureProp captureTyping =>
-        cases classifierChecked with
-        | mk classifierProp classifierTyping =>
-          dsimp at capturePropEq classifierPropEq
-          subst captureProp
-          subst classifierProp
-          simp [check, captureEq, classifierEq]
   | captureProjectMerge => rfl
   | modeEmpty => rfl
   | modeUnion left right leftIH rightIH =>
@@ -360,22 +315,6 @@ private theorem check_complete_projection {scope : Sig}
   | disjointCaptureProject leftCapture leftKind rightCapture rightKind
       kindDisjoint =>
       simp [check, kindDisjoint]
-  | classifierGroundDisjoint left right disjoint =>
-      simp [check, disjoint]
-  | classifierDisjointSymm evidence ih =>
-      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
-      cases checked with
-      | mk checkedProp checkedTyping =>
-        dsimp at propEq
-        subst checkedProp
-        simp [check, checkedEq]
-  | disjointCaptureProjectScoped leftCapture rightCapture classifiers ih =>
-      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
-      cases checked with
-      | mk checkedProp checkedTyping =>
-        dsimp at propEq
-        subst checkedProp
-        simp [check, checkedEq]
   | captureHasKindEmpty => rfl
   | captureHasKindUnion left right leftIH rightIH =>
       obtain ⟨leftChecked, leftEq, leftPropEq⟩ :=
@@ -404,19 +343,13 @@ private theorem check_complete_projection {scope : Sig}
           subst subcaptureProp
           subst upperProp
           simp [check, subcaptureEq, upperEq]
-  | captureHasKindWiden membership subclassifier membershipIH classifierIH =>
-      obtain ⟨membershipChecked, membershipEq, membershipPropEq⟩ :=
-        Option.map_eq_some_iff.mp membershipIH
-      obtain ⟨classifierChecked, classifierEq, classifierPropEq⟩ :=
-        Option.map_eq_some_iff.mp classifierIH
-      cases membershipChecked with
-      | mk membershipProp membershipTyping =>
-        cases classifierChecked with
-        | mk classifierProp classifierTyping =>
-          dsimp at membershipPropEq classifierPropEq
-          subst membershipProp
-          subst classifierProp
-          simp [check, membershipEq, classifierEq]
+  | captureHasKindWiden membershipTyping kindSubtyping ih =>
+      obtain ⟨checked, checkedEq, propEq⟩ := Option.map_eq_some_iff.mp ih
+      cases checked with
+      | mk checkedProp checkedTyping =>
+        dsimp at propEq
+        subst checkedProp
+        simp [check, checkedEq, kindSubtyping]
 
 end Evidence
 
