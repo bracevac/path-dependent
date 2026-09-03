@@ -1,4 +1,4 @@
-import Coercions.FCdot.Typing
+import Coercions.FCdot.Canonical
 
 /-!
 # FCdot store machine
@@ -7,69 +7,14 @@ States are a store of literals, a continuation of frames, and a running
 term, all indexed by one signature.  Allocation extends the signature.
 Casts on values are wrappers: allocation strips them, stores the literal at
 its own type, and rewrites the continuation so that the new variable is used
-under the composite cast.  Application on a coerced closure inserts the
-inversion evidence `piDom`/`piCod`, which is typed only at allocated
-closures.  Progress needs that a closed atom of function type reaches a
-closure, which is the semantic obligation on closed evidence
-(`Canonical.lean`).
+under the composite cast.  Application on a coerced closure reads the
+domain and codomain evidence off the head normal form of the atom's casts
+(`Canonical.lean`).  Progress needs that this normalization succeeds on a
+closed atom of function type, and preservation needs the resulting evidence
+to be typed; both are consequences of the canonical-forms theorem.
 -/
 
 namespace FCdot
-
-/-! ## Stores -/
-
-inductive Store : Sig → Type where
-  | nil : Store []
-  | cons : Store s → Value s → Store (s,x)
-
-/-- The value stored at a binder, weakened into the current scope. -/
-def Store.lookup : Store s → BVar s .var → Value s
-  | .cons _ v, .here => v.weaken
-  | .cons σ _, .there y => (σ.lookup y).weaken
-
-/-- Block witnesses of a value: those of the underlying literal. -/
-def Value.witnesses : Value s → Witnesses (s,x)
-  | .lam _ _ => .nil
-  | .obj _ W _ _ => W
-  | .cast v _ => v.witnesses
-
-/-- Field labels of a value: those of the underlying literal. -/
-def Value.fieldLabels : Value s → List Label
-  | .lam _ _ => []
-  | .obj _ _ _ F => F.labels
-  | .cast v _ => v.fieldLabels
-
-/-- The literal under the cast wrappers. -/
-def Value.core : Value s → Value s
-  | .cast v _ => v.core
-  | v => v
-
-/-- The cast wrappers of a value, innermost first. -/
-def Value.coercions : Value s → List (LeCo s)
-  | .cast v e => v.coercions ++ [e]
-  | _ => []
-
-/-- The cast wrappers of an atom, innermost first. -/
-def Atom.coercions : Atom s → List (LeCo s)
-  | .var _ => []
-  | .cast a e => a.coercions ++ [e]
-  | .foldSelf a => a.coercions
-  | .unfoldSelf a => a.coercions
-
-/-- A stored value is a literal: no cast wrappers. -/
-def Value.IsLiteral : Value s → Prop
-  | .cast _ _ => False
-  | _ => True
-
-/-- Store typing: every entry is a literal typed in the transparent context
-of the entries before it, and the context records its witnesses and fields. -/
-inductive Store.Typed : Store s → Ctx s → Prop where
-  | nil : Store.Typed .nil .nil
-  | cons :
-      Store.Typed σ Γ →
-      v.IsLiteral →
-      Value.HasType Γ v T →
-      Store.Typed (.cons σ v) (.cons Γ (.transparent T v.witnesses v.fieldLabels))
 
 /-! ## Continuations -/
 
@@ -131,12 +76,6 @@ def Value.composite? (v : Value s) : Option (LeCo s) :=
   | [] => none
   | e :: es => some (LeCo.composite e es)
 
-/-- Use the innermost binder under a cast everywhere in a term. -/
-def Subst.selfCast (E : LeCo (s,x)) : Subst (s,x) (s,x) where
-  var := fun
-    | .here => .cast (.var .here) E
-    | .there y => .var (.there y)
-
 /-- Adjust a continuation body to a stripped value: if the value carried
 casts, every use of the new variable goes under their composite. -/
 def Tm.adjust (u : Tm (s,x)) (v : Value s) : Tm (s,x) :=
@@ -168,17 +107,27 @@ inductive Step : State s → State s' → Prop where
   | appVar :
       σ.lookup x = .lam S₀ t₀ →
       Step ⟨σ, K, .app (.var x) b⟩ ⟨σ, K, t₀.substAtom b⟩
-  /-- Application through a wrapped atom: the argument is cast by the
-      closure's domain inversion, the result by its codomain inversion. -/
+  /-- Application through a wrapped atom whose casts normalize to the
+      identity: the atom's function type and the closure's coincide. -/
+  | appCastRefl :
+      σ.lookup a.root = .lam S₀ t₀ →
+      a ≠ .var a.root →
+      closedAtomForm σ n a = some (a', F) →
+      (F = .id ∨ ∃ φ, F = .eqv φ) →
+      Step ⟨σ, K, .app a b⟩ ⟨σ, K, t₀.substAtom b⟩
+  /-- Application through a wrapped atom whose casts normalize to a function
+      coercion `pi d c`: the argument is cast by `d` and the result by `c` at
+      the argument. -/
   | appCast :
       σ.lookup a.root = .lam S₀ t₀ →
       a ≠ .var a.root →
+      closedAtomForm σ n a = some (a', .pi d c) →
       Step ⟨σ, K, .app a b⟩
-        ⟨σ, K, .cast (t₀.substAtom (.cast b (.piDom a))) (.piCod a b)⟩
+        ⟨σ, K, .cast (t₀.substAtom (.cast b d)) (c.subst (Subst.single b))⟩
   | proj :
       σ.lookup a.root = .obj Tel W E F →
       F.get? ℓ = some t →
-      Step ⟨σ, K, .proj a ℓ⟩ ⟨σ, K, t.selfAt a.root⟩
+      Step ⟨σ, K, .proj a ℓ h⟩ ⟨σ, K, t.selfAt a.root⟩
 
 /-- Reflexive transitive closure across signatures. -/
 inductive Steps : State s → State s' → Prop where

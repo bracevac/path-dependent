@@ -306,7 +306,24 @@ theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)}
 
 /-! ## Preservation -/
 
+/-- Typedness of the head form used by the application step: whenever the
+head form of a function atom's casts is `pi d c`, `d` and `c` are typed
+between the atom's function type and its closure's type; whenever it is the
+identity form, the two function types coincide.  Discharged by the
+canonical-forms theorem (`CanonicalMetatheory.lean`). -/
+structure FormsTyped (σ : Store s) (Γ : Ctx s) : Prop where
+  pi : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {d : LeCo s}
+    {c : LeCo (s,x)} {S₀ : Ty s} {T₀ : Ty (s,x)},
+    Atom.HasType Γ a (.pi S T) → closedAtomForm σ n a = some (a', .pi d c) →
+    Γ.lookupTy a.root = .pi S₀ T₀ →
+    LeCo.HasType Γ d S S₀ ∧ LeCo.HasType (Γ.cons (.opaque S)) c T₀ T
+  refl : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {F : Form s},
+    Atom.HasType Γ a (.pi S T) → closedAtomForm σ n a = some (a', F) →
+    (F = .id ∨ ∃ φ, F = .eqv φ) →
+    Γ.lookupTy a.root = .pi S T
+
 theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
+    (hF : ∀ Γ, Store.Typed st.σ Γ → FormsTyped st.σ Γ)
     (hT : State.Typed st U) (step : Step st st') :
     ∃ ρ : Rename s s', State.Typed st' (U.rename ρ) := by
   cases step with
@@ -385,23 +402,37 @@ theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
           refine ⟨Rename.id, ?_⟩
           rw [Ty.rename_id]
           exact ⟨Γ, _, hσ, Tm.HasType.substAtom ht₀ hb, hK⟩
-  | @appCast a σ K b S₀ t₀ hx hne =>
+  | @appCastRefl a σ K b S₀ t₀ n a' F hx hne hcf hid =>
+      obtain ⟨Γ, T, hσ, ht, hK⟩ := hT
+      cases ht with
+      | app ha hb =>
+          have hval := hσ.lookup a.root
+          have hty := (hF Γ hσ).refl ha hcf hid
+          rw [hx, hty] at hval
+          obtain ⟨T₀, hTe, ht₀⟩ := Value.HasType.lam_inv hval
+          injection hTe with _ hS hT'
+          subst hS
+          subst hT'
+          refine ⟨Rename.id, ?_⟩
+          rw [Ty.rename_id]
+          exact ⟨Γ, _, hσ, Tm.HasType.substAtom ht₀ hb, hK⟩
+  | @appCast a σ K b S₀ t₀ n a' d c hx hne hcf =>
       obtain ⟨Γ, T, hσ, ht, hK⟩ := hT
       cases ht with
       | app ha hb =>
           have hval := hσ.lookup a.root
           rw [hx] at hval
           obtain ⟨T₀, hTe, ht₀⟩ := Value.HasType.lam_inv hval
-          have htr := hσ.isTransparent a.root
-          have hdom := LeCo.HasType.piDom ha hTe htr
-          have hcod := LeCo.HasType.piCod (b := b) ha hTe htr hb
+          obtain ⟨hdom, hcod⟩ := (hF Γ hσ).pi ha hcf hTe
           refine ⟨Rename.id, ?_⟩
           rw [Ty.rename_id]
           refine ⟨Γ, _, hσ, ?_, hK⟩
-          refine Tm.HasType.cast ?_ hcod
+          have hcod' := hcod.subst (Subst.Typed.single hb)
+          rw [Subst.single_root] at hcod'
+          refine Tm.HasType.cast ?_ hcod'
           have := Tm.HasType.substAtom ht₀ (Atom.HasType.cast hb hdom)
           simpa [Atom.root] using this
-  | @proj t σ K a l Tel W E F hx hg =>
+  | @proj t σ K a l h Tel W E F hx hg =>
       obtain ⟨Γ, T, hσ, ht, hK⟩ := hT
       cases ht with
       | proj ha hh =>

@@ -1,23 +1,30 @@
-import Coercions.FCdot.Machine
+import Coercions.FCdot.Store
 
 /-!
 # Head normal forms of closed evidence
 
-Closed inclusion evidence over a store normalizes to a head form: `bot`,
-`top`, `refl`, a function coercion with explicit domain and codomain
-evidence, or an object coercion with an explicit morphism.  Normalization
-is a fuel-indexed total function on closed terms; existence of fuel and
-typing of the result are the theorems of `CanonicalMetatheory.lean`.
+Inclusion evidence over a store normalizes to a head form: `bot`, `top`,
+`refl`, a function coercion with closed domain and codomain evidence, or a
+chain of object coercions.  Evidence is normalized under an environment
+that closes its opaque binders by store atoms and records, for each such
+binder, the normal forms of its type's telescope (its *view*).  Views are
+data: eliminating a member fact looks a view up rather than substituting
+evidence, and composing object coercions chains closures rather than
+substituting one morphism into the other.  This keeps every recursion
+structural in the evidence term, so the normalizer is a fuel-indexed total
+function whose fuel bound is syntactic.
 
-Elimination at an atom substitutes the atom into the morphism obtained for
-the view; composing two object coercions substitutes the first into the
-second under a cast of the self binder.  Both are eager substitutions, so
-the normalizer never re-enters a term it produced.
+The metatheory (existence of fuel, typing of forms, and the corollaries
+used by progress) is in `CanonicalMetatheory.lean`.
 -/
 
 namespace FCdot
 
 /-! ## Resolution of names through transparent definitions -/
+
+def Ctx.length : Ctx s → Nat
+  | .nil => 0
+  | .cons Γ _ => Γ.length + 1
 
 /-- Follow definitions at the head of a type, with fuel. -/
 def Ctx.resolveFuel (Γ : Ctx s) : Nat → Ty s → Ty s
@@ -28,169 +35,273 @@ def Ctx.resolveFuel (Γ : Ctx s) : Nat → Ty s → Ty s
       | none => .sel x ℓ
   | _ + 1, T => T
 
-def Ctx.length : Ctx s → Nat
-  | .nil => 0
-  | .cons Γ _ => Γ.length + 1
-
 /-- Resolution with enough fuel for any alias chain in the context. -/
 def Ctx.resolve (Γ : Ctx s) (T : Ty s) : Ty s := Γ.resolveFuel (Γ.length + 1) T
 
-/-! ## Forms -/
-
-/-- Head normal forms of closed inclusion evidence. -/
-inductive Form : Sig → Type where
-  | bot : Form s
-  | top : Form s
-  | refl : Form s
-  /-- Function coercion: domain evidence and codomain evidence under the
-      target domain binder. -/
-  | pi : LeCo s → LeCo (s,x) → Form s
-  /-- Object coercion: a morphism under the source object's self binder. -/
-  | obj : Morphism (s,x) → Form s
-
-/-- Index into a morphism, oldest entry first (mirrors `Telescope.At`). -/
-def Morphism.length : Morphism s → Nat
-  | .nil => 0
-  | .le m _ => m.length + 1
-  | .eq m _ => m.length + 1
-  | .has m _ => m.length + 1
-
-/-- The `i`-th inclusion entry of a morphism, if it is one. -/
-def Morphism.getLe? : Morphism s → Nat → Option (LeCo s)
-  | .nil, _ => none
-  | .le m e, i => if i = m.length then some e else m.getLe? i
-  | .eq m _, i => if i = m.length then none else m.getLe? i
-  | .has m _, i => if i = m.length then none else m.getLe? i
-
-def Morphism.getHas? : Morphism s → Nat → Option (Has s)
-  | .nil, _ => none
-  | .le m _, i => if i = m.length then none else m.getHas? i
-  | .eq m _, i => if i = m.length then none else m.getHas? i
-  | .has m h, i => if i = m.length then some h else m.getHas? i
-
-/-- Instantiate the self binder of a morphism by an atom. -/
-def Morphism.at (m : Morphism (s,x)) (a : Atom s) : Morphism s := m.subst (Subst.single a)
-
-/-- Compose two object coercions: use the self binder of the second under
-a cast by the first. -/
-def Morphism.compose (m₁ m₂ : Morphism (s,x)) : Morphism (s,x) :=
-  m₂.subst (Subst.selfCast (LeCo.obj m₁).weaken)
-
-/-- Combine the head forms of two composable coercions. -/
-def Form.combine : Form s → Form s → Form s
-  | .refl, F => F
-  | F, .refl => F
-  | .bot, _ => .bot
-  | _, .top => .top
-  | .pi d₁ c₁, .pi d₂ c₂ =>
-      .pi (.trans d₂ d₁) (.trans (c₁.subst (Subst.selfCast d₂.weaken)) c₂)
-  | .obj m₁, .obj m₂ => .obj (Morphism.compose m₁ m₂)
-  | F, _ => F
-
-/-- The identity morphism on a telescope: each proposition by elimination
-at the self binder with reflexive evidence. -/
-def Telescope.identity (Tel : Telescope (s,x)) (T : Ty (s,x)) : Morphism (s,x) :=
-  go Tel
-where
-  go : Telescope (s,x) → Morphism (s,x)
-    | .nil => .nil
-    | .cons Tel' (.le _ _) => .le (go Tel') (.member (.var .here) (.refl T) Tel'.length)
-    | .cons Tel' (.eq _ _) => .eq (go Tel') (.member (.var .here) (.refl T) Tel'.length)
-    | .cons Tel' (.has _) => .has (go Tel') (.member (.var .here) (.refl T) Tel'.length)
-
-/-! ## The normalizer -/
-
-/-- Telescope evidence of a stored literal, instantiated at its binder. -/
-def Store.literalEvidence (σ : Store s) (x : BVar s .var) : Option (Morphism s) :=
-  match σ.lookup x with
-  | .obj _ _ E _ => some (E.at (.var x))
-  | _ => none
+/-! ## Forms, views, environments -/
 
 mutual
 
-/-- Head form of closed inclusion evidence, with fuel. -/
-def hnf (σ : Store s) : Nat → LeCo s → Option (Form s)
-  | 0, _ => none
-  | _ + 1, .refl _ => some .refl
-  | _ + 1, .top _ => some .top
-  | _ + 1, .bot _ => some .bot
-  | _ + 1, .eqToLe _ => some .refl
-  | _ + 1, .pi d c => some (.pi d c)
-  | _ + 1, .obj m => some (.obj m)
-  | n + 1, .trans e f => do
-      let F ← hnf σ n e
-      let G ← hnf σ n f
-      pure (F.combine G)
-  | n + 1, .member a e i => do
-      let F ← hnf σ n e
-      match F with
-      | .obj m => do
-          let e' ← (m.at a).getLe? i
-          hnf σ n e'
-      | .refl => viewLe σ n a i
-      | _ => none
-  | n + 1, .piDom a => do
-      let F ← atomForm σ n a
-      match F with
-      | .pi d _ => hnf σ n d
-      | .refl => some .refl
-      | _ => none
-  | n + 1, .piCod a b => do
-      let F ← atomForm σ n a
-      match F with
-      | .pi _ c => hnf σ n (c.subst (Subst.single b))
-      | .refl => some .refl
-      | _ => none
+/-- Head normal forms of inclusion evidence, closed over the store scope `s`. -/
+inductive Form (s : Sig) : Type where
+  | bot : Form s
+  | top : Form s
+  /-- Syntactic identity: both endpoints are the same type. -/
+  | id : Form s
+  /-- Definitional conversion: closed equality evidence between the endpoints. -/
+  | eqv : EqCo s → Form s
+  /-- Function coercion: closed domain evidence and codomain evidence under
+      the target domain binder. -/
+  | pi : LeCo s → LeCo (s,x) → Form s
+  /-- Object coercion: a chain of steps applied in order. -/
+  | obj : List (ChainStep s) → Form s
 
-/-- The form of the `i`-th inclusion proposition of an atom's own type,
-at the atom. -/
-def viewLe (σ : Store s) : Nat → Atom s → Nat → Option (Form s)
-  | 0, _, _ => none
-  | n + 1, .var x, i => do
-      let m ← σ.literalEvidence x
-      let e ← m.getLe? i
-      hnf σ n e
-  | n + 1, .cast a e, i => hnf σ n (.member a e i)
-  | n + 1, .foldSelf a, i => viewLe σ n a i
-  | n + 1, .unfoldSelf a, i => viewLe σ n a i
+/-- The normal form of one telescope proposition at a self atom. -/
+inductive PropForm (s : Sig) : Type where
+  | le : Form s → PropForm s
+  | eq : PropForm s
+  /-- Field `ℓ` is present at binder `x`. -/
+  | has : BVar s .var → Label → PropForm s
 
-/-- The form of an atom's composite wrappers, from its root's literal type. -/
-def atomForm (σ : Store s) : Nat → Atom s → Option (Form s)
-  | 0, _ => none
-  | _ + 1, .var _ => some .refl
-  | n + 1, .cast a e => do
-      let F ← atomForm σ n a
-      let G ← hnf σ n e
-      pure (F.combine G)
-  | n + 1, .foldSelf a => atomForm σ n a
-  | n + 1, .unfoldSelf a => atomForm σ n a
+/-- One step of an object coercion chain: a definitional conversion of the
+self atom, or a morphism under a self binder together with the environment
+closing its other binders into the store scope. -/
+inductive ChainStep (s : Sig) : Type where
+  | conv : EqCo s → ChainStep s
+  | clos : (s' : Sig) → Telescope (s',x) → Morphism (s',x) → Env s s' → ChainStep s
+
+/-- Environment closing an open scope into the store scope: for each binder
+of the open scope, a closing atom and the view of its type. -/
+inductive Env (s : Sig) : Sig → Type where
+  | nil : Env s []
+  | cons : Env s s' → Atom s → List (PropForm s) → Env s (s',x)
 
 end
 
-/-- Field presence witnessed by closed `has` evidence, with fuel. -/
-def hnfHas (σ : Store s) : Nat → Has s → Option (BVar s .var × Label)
-  | 0, _ => none
-  | _ + 1, .field _ => none
-  | n + 1, .member a e i => do
-      let F ← hnf σ n e
-      match F with
-      | .obj m => do
-          let h ← (m.at a).getHas? i
-          hnfHas σ n h
-      | .refl => viewHas σ n a i
+abbrev View (s : Sig) := List (PropForm s)
+
+namespace Env
+
+def atom : Env s s' → BVar s' .var → Atom s
+  | .cons _ a _, .here => a
+  | .cons η _ _, .there y => η.atom y
+
+def view : Env s s' → BVar s' .var → View s
+  | .cons _ _ V, .here => V
+  | .cons η _ _, .there y => η.view y
+
+/-- The closing substitution induced by an environment. -/
+def toSubst (η : Env s s') : Subst s' s where
+  var := η.atom
+
+end Env
+
+/-- The `i`-th proposition form of a view. -/
+def View.nth? : View s → Nat → Option (PropForm s)
+  | [], _ => none
+  | P :: _, 0 => some P
+  | _ :: V, i + 1 => View.nth? V i
+
+/-! ### Renaming of forms over the store scope -/
+
+mutual
+
+def Form.rename : Form s → Rename s s₂ → Form s₂
+  | .bot, _ => .bot
+  | .top, _ => .top
+  | .id, _ => .id
+  | .eqv φ, ρ => .eqv (φ.rename ρ)
+  | .pi d c, ρ => .pi (d.rename ρ) (c.rename ρ.lift)
+  | .obj cs, ρ => .obj (ChainStep.renameList cs ρ)
+
+def ChainStep.renameList : List (ChainStep s) → Rename s s₂ → List (ChainStep s₂)
+  | [], _ => []
+  | c :: cs, ρ => c.rename ρ :: ChainStep.renameList cs ρ
+
+def ChainStep.rename : ChainStep s → Rename s s₂ → ChainStep s₂
+  | .conv φ, ρ => .conv (φ.rename ρ)
+  | .clos s' Tel m η, ρ => .clos s' Tel m (η.rename ρ)
+
+def PropForm.rename : PropForm s → Rename s s₂ → PropForm s₂
+  | .le F, ρ => .le (F.rename ρ)
+  | .eq, _ => .eq
+  | .has x ℓ, ρ => .has (ρ.var x) ℓ
+
+def PropForm.renameList : List (PropForm s) → Rename s s₂ → List (PropForm s₂)
+  | [], _ => []
+  | P :: V, ρ => P.rename ρ :: PropForm.renameList V ρ
+
+def Env.rename : Env s s' → Rename s s₂ → Env s₂ s'
+  | .nil, _ => .nil
+  | .cons η a V, ρ => .cons (η.rename ρ) (a.rename ρ) (PropForm.renameList V ρ)
+
+end
+
+def Env.weaken (η : Env s s') : Env (s,,k) s' := η.rename Rename.succ
+
+/-! ## Composition of forms -/
+
+/-- Combine the head forms of two composable coercions.  Conversions are
+composed as equalities and absorbed into function forms; object chains
+concatenate, with conversions recorded as chain steps. -/
+def Form.combine : Form s → Form s → Form s
+  | .id, F => F
+  | F, .id => F
+  | .bot, _ => .bot
+  | _, .top => .top
+  | .eqv _, .bot => .bot
+  | .eqv φ, .eqv ψ => .eqv (.trans φ ψ)
+  | .eqv _, .pi d c => .pi d c
+  | .pi d c, .eqv _ => .pi d c
+  | .eqv φ, .obj cs => .obj (.conv φ :: cs)
+  | .obj cs, .eqv ψ => .obj (cs ++ [.conv ψ])
+  | .pi d₁ c₁, .pi d₂ c₂ =>
+      .pi (.trans d₂ d₁) (.trans (c₁.subst (Subst.selfCast d₂.weaken)) c₂)
+  | .obj cs₁, .obj cs₂ => .obj (cs₁ ++ cs₂)
+  | F, _ => F
+
+/-- Close the morphism of a closure step into an object coercion over the store. -/
+def ChainStep.close : ChainStep s → LeCo s
+  | .conv φ => .eqToLe φ
+  | .clos _ Tel m η => .obj (Tel.rename η.toSubst.root.lift) (m.subst η.toSubst.lift)
+
+/-- The environment of a store with no views. -/
+def emptyEnv : Store s → Env s s
+  | .nil => .nil
+  | .cons σ _ => .cons ((emptyEnv σ).weaken) (.var .here) []
+
+/-! ## The normalizer -/
+
+mutual
+
+/-- Head form of inclusion evidence under an environment, with fuel. -/
+def hnf (σ : Store s) : Nat → Env s s' → LeCo s' → Option (Form s)
+  | 0, _, _ => none
+  | _ + 1, η, .refl T => some (.eqv (.refl (T.rename η.toSubst.root)))
+  | _ + 1, _, .top _ => some .top
+  | _ + 1, _, .bot _ => some .bot
+  | _ + 1, η, .eqToLe φ => some (.eqv (φ.subst η.toSubst))
+  | _ + 1, η, .pi d c => some (.pi (d.subst η.toSubst) (c.subst η.toSubst.lift))
+  | _ + 1, η, .obj Tel m => some (.obj [ChainStep.clos _ Tel m η])
+  | n + 1, η, .trans e f => do
+      let F ← hnf σ n η e
+      let G ← hnf σ n η f
+      pure (F.combine G)
+  | n + 1, η, .member a e i => do
+      let F ← hnf σ n η e
+      let (a', V) ← atomView σ n η a
+      let V' ← applyForm σ n F a' V
+      match View.nth? V' i with
+      | some (.le G) => some G
       | _ => none
-where
-  viewHas (σ : Store s) : Nat → Atom s → Nat → Option (BVar s .var × Label)
-    | 0, _, _ => none
-    | n + 1, .var x, i =>
-        match σ.lookup x with
-        | .obj Tel _ _ F =>
-            match Tel.get? i with
-            | some (.has ℓ) => if (F.get? ℓ).isSome then some (x, ℓ) else none
-            | _ => none
-        | _ => none
-    | n + 1, .cast a e, i => hnfHas σ n (.member a e i)
-    | n + 1, .foldSelf a, i => viewHas σ n a i
-    | n + 1, .unfoldSelf a, i => viewHas σ n a i
+
+/-- The closing atom of an open atom and the view of its type. -/
+def atomView (σ : Store s) : Nat → Env s s' → Atom s' → Option (Atom s × View s)
+  | 0, _, _ => none
+  | _ + 1, η, .var y => some (η.atom y, η.view y)
+  | n + 1, η, .cast a e => do
+      let (a', V) ← atomView σ n η a
+      let F ← hnf σ n η e
+      let V' ← applyForm σ n F a' V
+      pure (.cast a' (e.subst η.toSubst), V')
+  | n + 1, η, .foldSelf Tel a => do
+      let (a', V) ← atomView σ n η a
+      pure (.foldSelf (Tel.rename η.toSubst.root.lift) a', V)
+  | n + 1, η, .unfoldSelf a => do
+      let (a', V) ← atomView σ n η a
+      pure (.unfoldSelf a', V)
+
+/-- The closing atom of an open atom and the head form of its wrappers,
+from its root's type. -/
+def atomForm (σ : Store s) : Nat → Env s s' → Atom s' → Option (Atom s × Form s)
+  | 0, _, _ => none
+  | n + 1, η, .var y => closedAtomForm σ n (η.atom y)
+  | n + 1, η, .cast a e => do
+      let (a', F) ← atomForm σ n η a
+      let G ← hnf σ n η e
+      pure (.cast a' (e.subst η.toSubst), F.combine G)
+  | n + 1, η, .foldSelf Tel a => do
+      let (a', F) ← atomForm σ n η a
+      pure (.foldSelf (Tel.rename η.toSubst.root.lift) a', F)
+  | n + 1, η, .unfoldSelf a => do
+      let (a', F) ← atomForm σ n η a
+      pure (.unfoldSelf a', F)
+
+/-- The head form of a closed atom's wrappers, from its root's literal type. -/
+def closedAtomForm (σ : Store s) : Nat → Atom s → Option (Atom s × Form s)
+  | 0, _ => none
+  | _ + 1, .var x => some (.var x, .id)
+  | n + 1, .cast a e => do
+      let (a', F) ← closedAtomForm σ n a
+      let G ← hnf σ n (storeEnv n σ) e
+      pure (.cast a' e, F.combine G)
+  | n + 1, .foldSelf Tel a => do
+      let (a', F) ← closedAtomForm σ n a
+      pure (.foldSelf Tel a', F)
+  | n + 1, .unfoldSelf a => do
+      let (a', F) ← closedAtomForm σ n a
+      pure (.unfoldSelf a', F)
+
+/-- Apply a head form of an object coercion to a self atom with its view,
+producing the view of the target telescope. -/
+def applyForm (σ : Store s) : Nat → Form s → Atom s → View s → Option (View s)
+  | 0, _, _, _ => none
+  | _ + 1, .id, _, V => some V
+  | _ + 1, .eqv _, _, V => some V
+  | n + 1, .obj cs, a, V => applyChain σ n cs a V
+  -- A non-object target has no telescope: its view is empty.
+  | _ + 1, .pi _ _, _, _ => some []
+  | _ + 1, .top, _, _ => some []
+  | _ + 1, .bot, _, _ => some []
+
+def applyChain (σ : Store s) : Nat → List (ChainStep s) → Atom s → View s → Option (View s)
+  | 0, _, _, _ => none
+  | _ + 1, [], _, V => some V
+  | n + 1, .conv φ :: cs, a, V => applyChain σ n cs (.cast a (.eqToLe φ)) V
+  | n + 1, .clos _ Tel m η :: cs, a, V => do
+      let V' ← morphismView σ n (η.cons a V) m
+      applyChain σ n cs (.cast a (.obj (Tel.rename η.toSubst.root.lift) (m.subst η.toSubst.lift))) V'
+
+def morphismView (σ : Store s) : Nat → Env s (s',x) → Morphism (s',x) → Option (View s)
+  | 0, _, _ => none
+  | _ + 1, _, .nil => some []
+  | n + 1, η, .le m e => do
+      let V ← morphismView σ n η m
+      let F ← hnf σ n η e
+      pure (V ++ [.le F])
+  | n + 1, η, .eq m _ => do
+      let V ← morphismView σ n η m
+      pure (V ++ [.eq])
+  | n + 1, η, .has m h => do
+      let V ← morphismView σ n η m
+      let p ← hasView σ n η .here h
+      pure (V ++ [.has p.1 p.2])
+
+/-- Field presence witnessed by `has` evidence at the expected binder `x`. -/
+def hasView (σ : Store s) : Nat → Env s s' → BVar s' .var → Has s' → Option (BVar s .var × Label)
+  | 0, _, _, _ => none
+  | _ + 1, η, x, .field ℓ => some ((η.atom x).root, ℓ)
+  | n + 1, η, _, .member a e i => do
+      let F ← hnf σ n η e
+      let (a', V) ← atomView σ n η a
+      let V' ← applyForm σ n F a' V
+      match View.nth? V' i with
+      | some (.has x ℓ) => some (x, ℓ)
+      | _ => none
+
+/-- The environment of the store scope itself: every binder closes to its
+own variable and views its own literal's telescope evidence. -/
+def storeEnv : Nat → Store s → Env s s
+  | _, .nil => .nil
+  | 0, σ => emptyEnv σ
+  | n + 1, .cons σ v =>
+      let η := (storeEnv n σ).weaken
+      let V : View _ :=
+        match v with
+        | .obj _ _ E _ => (morphismView (.cons σ v) n (η.cons (.var .here) []) E).getD []
+        | _ => []
+      .cons η (.var .here) V
+
+end
 
 end FCdot

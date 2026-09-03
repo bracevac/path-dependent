@@ -87,10 +87,8 @@ mutual
   | .bot T => simp [LeCo.rename]
   | .eqToLe φ => simp [LeCo.rename, EqCo.rename_id φ]
   | .pi e f => simp [LeCo.rename, Rename.lift_id, LeCo.rename_id e, LeCo.rename_id f]
-  | .obj m => simp [LeCo.rename, Rename.lift_id, Morphism.rename_id m]
+  | .obj Tel m => simp [LeCo.rename, Rename.lift_id, Morphism.rename_id m, Telescope.rename_id Tel]
   | .member a e i => simp [LeCo.rename, Atom.rename_id a, LeCo.rename_id e]
-  | .piDom a => simp [LeCo.rename, Atom.rename_id a]
-  | .piCod a b => simp [LeCo.rename, Atom.rename_id a, Atom.rename_id b]
 
 @[simp] theorem EqCo.rename_id {s : Sig} (φ : EqCo s) : φ.rename Rename.id = φ := by
   match φ with
@@ -116,7 +114,7 @@ mutual
   match a with
   | .var x => simp [Atom.rename]
   | .cast a e => simp [Atom.rename, Atom.rename_id a, LeCo.rename_id e]
-  | .foldSelf a => simp [Atom.rename, Atom.rename_id a]
+  | .foldSelf Tel a => simp [Atom.rename, Rename.lift_id, Atom.rename_id a, Telescope.rename_id Tel]
   | .unfoldSelf a => simp [Atom.rename, Atom.rename_id a]
 
 end
@@ -136,10 +134,8 @@ mutual
   | .eqToLe φ => simp [LeCo.rename, EqCo.rename_comp φ]
   | .pi e f =>
       simp [LeCo.rename, Rename.lift_comp, LeCo.rename_comp e, LeCo.rename_comp f]
-  | .obj m => simp [LeCo.rename, Rename.lift_comp, Morphism.rename_comp m]
+  | .obj Tel m => simp [LeCo.rename, Rename.lift_comp, Morphism.rename_comp m, Telescope.rename_comp Tel]
   | .member a e i => simp [LeCo.rename, Atom.rename_comp a, LeCo.rename_comp e]
-  | .piDom a => simp [LeCo.rename, Atom.rename_comp a]
-  | .piCod a b => simp [LeCo.rename, Atom.rename_comp a, Atom.rename_comp b]
 
 @[simp] theorem EqCo.rename_comp {s1 s2 s3 : Sig} (φ : EqCo s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -173,7 +169,7 @@ mutual
   match a with
   | .var x => simp [Atom.rename]
   | .cast a e => simp [Atom.rename, Atom.rename_comp a, LeCo.rename_comp e]
-  | .foldSelf a => simp [Atom.rename, Atom.rename_comp a]
+  | .foldSelf Tel a => simp [Atom.rename, Rename.lift_comp, Atom.rename_comp a, Telescope.rename_comp Tel]
   | .unfoldSelf a => simp [Atom.rename, Atom.rename_comp a]
 
 end
@@ -187,7 +183,7 @@ mutual
   | .atom a => simp [Tm.rename]
   | .val v => simp [Tm.rename, Value.rename_id v]
   | .app a b => simp [Tm.rename]
-  | .proj a ℓ => simp [Tm.rename]
+  | .proj a ℓ h => simp [Tm.rename, Has.rename_id h]
   | .let t u => simp [Tm.rename, Rename.lift_id, Tm.rename_id t, Tm.rename_id u]
   | .cast t e => simp [Tm.rename, Tm.rename_id t]
 
@@ -221,7 +217,7 @@ mutual
   | .atom a => simp [Tm.rename]
   | .val v => simp [Tm.rename, Value.rename_comp v]
   | .app a b => simp [Tm.rename]
-  | .proj a ℓ => simp [Tm.rename]
+  | .proj a ℓ h => simp [Tm.rename, Has.rename_comp h]
   | .let t u =>
       simp [Tm.rename, Rename.lift_comp, Tm.rename_comp t, Tm.rename_comp u]
   | .cast t e => simp [Tm.rename, Tm.rename_comp t]
@@ -258,7 +254,7 @@ end
   match a with
   | .var x => simp [Atom.rename, Atom.root]
   | .cast a e => simp [Atom.rename, Atom.root, Atom.root_rename a]
-  | .foldSelf a => simp [Atom.rename, Atom.root, Atom.root_rename a]
+  | .foldSelf Tel a => simp [Atom.rename, Atom.root, Atom.root_rename a]
   | .unfoldSelf a => simp [Atom.rename, Atom.root, Atom.root_rename a]
 
 namespace Subst
@@ -309,7 +305,7 @@ end Subst
   match a with
   | .var x => simp [Atom.subst, Atom.root, Subst.root_var]
   | .cast a e => simp [Atom.subst, Atom.root, Atom.root_subst a]
-  | .foldSelf a => simp [Atom.subst, Atom.root, Atom.root_subst a]
+  | .foldSelf Tel a => simp [Atom.subst, Atom.root, Atom.root_subst a]
   | .unfoldSelf a => simp [Atom.subst, Atom.root, Atom.root_subst a]
 
 /-! ## Substitution by a renaming -/
@@ -325,10 +321,8 @@ mutual
   | .bot T => simp [LeCo.subst, LeCo.rename]
   | .eqToLe φ => simp [LeCo.subst, LeCo.rename, EqCo.subst_ofRename φ]
   | .pi e f => simp [LeCo.subst, LeCo.rename, LeCo.subst_ofRename e, LeCo.subst_ofRename f]
-  | .obj m => simp [LeCo.subst, LeCo.rename, Morphism.subst_ofRename m]
+  | .obj Tel m => simp [LeCo.subst, LeCo.rename, Morphism.subst_ofRename m, Subst.ofRename_root]
   | .member a e i => simp [LeCo.subst, LeCo.rename, Atom.subst_ofRename a, LeCo.subst_ofRename e]
-  | .piDom a => simp [LeCo.subst, LeCo.rename, Atom.subst_ofRename a]
-  | .piCod a b => simp [LeCo.subst, LeCo.rename, Atom.subst_ofRename a, Atom.subst_ofRename b]
 
 @[simp] theorem EqCo.subst_ofRename {s1 s2 : Sig} (φ : EqCo s1) (ρ : Rename s1 s2) :
     φ.subst (Subst.ofRename ρ) = φ.rename ρ := by
@@ -358,7 +352,7 @@ mutual
   match a with
   | .var x => simp [Atom.subst, Atom.rename, Subst.ofRename]
   | .cast a e => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, LeCo.subst_ofRename e]
-  | .foldSelf a => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a]
+  | .foldSelf Tel a => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, Subst.ofRename_root]
   | .unfoldSelf a => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a]
 
 end
@@ -371,7 +365,7 @@ mutual
   | .atom a => simp [Tm.subst, Tm.rename]
   | .val v => simp [Tm.subst, Tm.rename, Value.subst_ofRename v]
   | .app a b => simp [Tm.subst, Tm.rename]
-  | .proj a ℓ => simp [Tm.subst, Tm.rename]
+  | .proj a ℓ h => simp [Tm.subst, Tm.rename, Has.subst_ofRename h]
   | .let t u => simp [Tm.subst, Tm.rename, Tm.subst_ofRename t, Tm.subst_ofRename u]
   | .cast t e => simp [Tm.subst, Tm.rename, Tm.subst_ofRename t, LeCo.subst_ofRename e]
 

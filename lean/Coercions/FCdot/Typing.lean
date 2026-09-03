@@ -25,23 +25,12 @@ inductive LeCo.HasType : Ctx s → LeCo s → Ty s → Ty s → Prop where
       LeCo.HasType Γ (.pi e f) (.pi S1 T1) (.pi S2 T2)
   | obj :
       Morphism.HasType (Γ.cons (.opaque (.obj Tel))) m Tel' →
-      LeCo.HasType Γ (.obj m) (.obj Tel) (.obj Tel')
+      LeCo.HasType Γ (.obj Tel m) (.obj Tel) (.obj Tel')
   | member :
       Atom.HasType Γ a S →
       LeCo.HasType Γ e S (.obj Tel) →
       Tel.At i (.le S' T') →
       LeCo.HasType Γ (.member a e i) (S'.substVar a.root) (T'.substVar a.root)
-  | piDom :
-      Atom.HasType Γ a (.pi S T) →
-      Γ.lookupTy a.root = .pi S₀ T₀ →
-      Γ.IsTransparent a.root →
-      LeCo.HasType Γ (.piDom a) S S₀
-  | piCod :
-      Atom.HasType Γ a (.pi S T) →
-      Γ.lookupTy a.root = .pi S₀ T₀ →
-      Γ.IsTransparent a.root →
-      Atom.HasType Γ b S →
-      LeCo.HasType Γ (.piCod a b) (T₀.substVar b.root) (T.substVar b.root)
 
 inductive EqCo.HasType : Ctx s → EqCo s → Ty s → Ty s → Prop where
   | refl : EqCo.HasType Γ (.refl T) T T
@@ -85,7 +74,7 @@ inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where
   /-- `Rec-I`. -/
   | foldSelf :
       Atom.HasType Γ a (.obj (Tel.substVar a.root).weaken) →
-      Atom.HasType Γ (.foldSelf a) (.obj Tel)
+      Atom.HasType Γ (.foldSelf Tel a) (.obj Tel)
 
 end
 
@@ -101,7 +90,7 @@ inductive Tm.HasType : Ctx s → Tm s → Ty s → Prop where
   | proj :
       Atom.HasType Γ a S →
       Has.HasType Γ h a.root ℓ →
-      Tm.HasType Γ (.proj a ℓ) (.sel a.root ℓ)
+      Tm.HasType Γ (.proj a ℓ h) (.sel a.root ℓ)
   | «let» :
       Tm.HasType Γ t T →
       Tm.HasType (Γ.cons (.opaque T)) u U.weaken →
