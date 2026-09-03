@@ -6,12 +6,11 @@ import Coercions.FCdot.Preservation
 
 A form is typed at a *depth* `k` relative to a store context.  Shape
 conditions and the syntactic typing of the form's evidence hold at every
-depth.  An object form at depth `j + 1` comes with a threshold `t` and a
-fuel bound `N`: applied to any self typed at the form's source type whose
-view is typed at a depth `j' ∈ [t, j]`, the application succeeds with some
-fuel `n ≤ N` and the resulting view is typed at depth `j' - (2^n - 1)`.  Quantifying over all
-input depths in the interval keeps typedness downward closed; the threshold
-and the fuel bound are what let two object forms compose into a chain.  The exponential loss is what makes
+depth.  An object form at depth `j + 1` may be applied to any typed self:
+per input there is a threshold and a loss; when the input view is typed at
+a depth in `[threshold, j]` the application succeeds for some fuel and the
+output view is typed at the input depth minus the loss.  Quantifying over
+all input depths in the interval keeps typedness downward closed.  The exponential loss is what makes
 chains of object coercions compose (`2^a + 2^b ≤ 2^(max a b + 1)`).
 
 Depth is a proof-theoretic budget, not a runtime quantity: every evidence
@@ -62,7 +61,12 @@ def ChainWellTyped : List (ChainStep s) → Ty s → Ty s → Prop
         ChainWellTyped rest (.obj (Tel₂.rename η.toSubst.root.lift)) T
 
 /-- Forms typed at depth `k`.  Shape and syntactic typing hold at every
-depth; the applicative clause of an object form lives at positive depth. -/
+depth.  An object form at depth `j + 1` may be applied to any self typed at
+its source type: for each input there is a threshold `t` and a loss `L`
+such that whenever the input view is typed at a depth `j' ∈ [t, j]`, the
+application succeeds for some fuel and the resulting view is typed at depth
+`j' - L`.  Threshold and loss are per input: the depth an application
+consumes is intrinsic to the forms stored in the input view. -/
 def FormTyped : Nat → Form s → Ty s → Ty s → Prop
   | _, .bot, S, _ => Γ.resolve S = .bot
   | _, .top, _, T => Γ.resolve T = .top
@@ -75,71 +79,101 @@ def FormTyped : Nat → Form s → Ty s → Ty s → Prop
       ∃ Tel₁ Tel₂, Γ.resolve S = .obj Tel₁ ∧ Γ.resolve T = .obj Tel₂ ∧ ChainWellTyped Γ cs S T
   | j + 1, .obj cs, S, T =>
       ∃ Tel₁ Tel₂, Γ.resolve S = .obj Tel₁ ∧ Γ.resolve T = .obj Tel₂ ∧ ChainWellTyped Γ cs S T ∧
-        ∃ t N, ∀ j', t ≤ j' → j' ≤ j →
-          ∀ a, Atom.HasType Γ a S →
-            ∀ V, ViewTypedWith σ Γ (FormTyped j') V Tel₁ a →
-              ∃ n, n ≤ N ∧ ∃ V', applyChain σ n cs a V = some V' ∧
-                ViewTypedWith σ Γ (FormTyped (j' - fuelLoss n)) V' Tel₂ a
+        ∀ a, Atom.HasType Γ a S → ∀ V, ∃ t L, ∀ j', t ≤ j' → j' ≤ j →
+          ViewTypedWith σ Γ (FormTyped j') V Tel₁ a →
+            ∃ n V', applyChain σ n cs a V = some V' ∧
+              ViewTypedWith σ Γ (FormTyped (j' - L)) V' Tel₂ a
 
 abbrev ViewTyped (k : Nat) := ViewTypedWith σ Γ (FormTyped σ Γ k)
 abbrev PropFormTyped (k : Nat) := PropFormTypedWith σ Γ (FormTyped σ Γ k)
 
-/-- Forms typed at depth `k` with an explicit threshold `t` and fuel bound
-`N` for the object clause.  For every form other than an object form at
-positive depth this is `FormTyped`; `FormTyped` is the existential closure
-over `t` and `N`.  The main normalization theorem produces `t` and `N`
-uniformly in the depth, which is what lets it fix one fuel per term. -/
-def FormTypedTN (t N : Nat) : Nat → Form s → Ty s → Ty s → Prop
+theorem FormTyped_eqv {k : Nat} {φ : EqCo s} {S T : Ty s} :
+    FormTyped σ Γ k (.eqv φ) S T ↔ (EqCo.HasType Γ φ S T ∧ Γ.resolve S = Γ.resolve T) := by
+  cases k <;> simp [FormTyped]
+
+theorem FormTyped_top {k : Nat} {S T : Ty s} :
+    FormTyped σ Γ k .top S T ↔ Γ.resolve T = .top := by cases k <;> simp [FormTyped]
+theorem FormTyped_bot {k : Nat} {S T : Ty s} :
+    FormTyped σ Γ k .bot S T ↔ Γ.resolve S = .bot := by cases k <;> simp [FormTyped]
+theorem FormTyped_id {k : Nat} {S T : Ty s} :
+    FormTyped σ Γ k .id S T ↔ S = T := by cases k <;> simp [FormTyped]
+theorem FormTyped_pi {k : Nat} {d : LeCo s} {c : LeCo (s,x)} {S T : Ty s} :
+    FormTyped σ Γ k (.pi d c) S T ↔
+      ∃ S₁ T₁ S₂ T₂, Γ.resolve S = .pi S₁ T₁ ∧ Γ.resolve T = .pi S₂ T₂ ∧
+        LeCo.HasType Γ d S₂ S₁ ∧ LeCo.HasType (Γ.cons (.opaque S₂)) c T₁ T₂ := by
+  cases k <;> simp [FormTyped]
+
+/-- Form typedness with the per-input threshold and loss given by one
+function `f`, uniform in the depth.  Equivalent to `FormTyped` by choice;
+the normalization theorem produces the function, which lets a consumer at
+any depth use the same threshold and loss. -/
+def FormTypedF (f : Atom s → View s → Nat × Nat) : Nat → Form s → Ty s → Ty s → Prop
   | j + 1, .obj cs, S, T =>
       ∃ Tel₁ Tel₂, Γ.resolve S = .obj Tel₁ ∧ Γ.resolve T = .obj Tel₂ ∧ ChainWellTyped Γ cs S T ∧
-        ∀ j', t ≤ j' → j' ≤ j →
-          ∀ a, Atom.HasType Γ a S →
-            ∀ V, ViewTypedWith σ Γ (FormTyped σ Γ j') V Tel₁ a →
-              ∃ n, n ≤ N ∧ ∃ V', applyChain σ n cs a V = some V' ∧
-                ViewTypedWith σ Γ (FormTyped σ Γ (j' - fuelLoss n)) V' Tel₂ a
+        ∀ a, Atom.HasType Γ a S → ∀ V j', (f a V).1 ≤ j' → j' ≤ j →
+          ViewTypedWith σ Γ (FormTyped σ Γ j') V Tel₁ a →
+            ∃ n V', applyChain σ n cs a V = some V' ∧
+              ViewTypedWith σ Γ (FormTyped σ Γ (j' - (f a V).2)) V' Tel₂ a
   | k, F, S, T => FormTyped σ Γ k F S T
 
-theorem FormTypedTN.toFormTyped {t N k : Nat} {F : Form s} {S T : Ty s}
-    (h : FormTypedTN σ Γ t N k F S T) : FormTyped σ Γ k F S T := by
+theorem FormTypedF_nonObj {f : Atom s → View s → Nat × Nat} {k : Nat} {F : Form s} {S T : Ty s}
+    (hF : ∀ cs, F ≠ .obj cs) :
+    FormTypedF σ Γ f k F S T ↔ FormTyped σ Γ k F S T := by
   cases k with
-  | zero => cases F <;> simpa [FormTypedTN] using h
+  | zero => cases F <;> simp [FormTypedF]
+  | succ j =>
+      cases F with
+      | obj cs => exact absurd rfl (hF cs)
+      | bot => simp [FormTypedF]
+      | top => simp [FormTypedF]
+      | id => simp [FormTypedF]
+      | eqv φ => simp [FormTypedF]
+      | pi d c => simp [FormTypedF]
+
+theorem FormTypedF_zero {f : Atom s → View s → Nat × Nat} {F : Form s} {S T : Ty s} :
+    FormTypedF σ Γ f 0 F S T ↔ FormTyped σ Γ 0 F S T := by
+  cases F <;> simp [FormTypedF]
+
+theorem FormTypedF.toFormTyped {f : Atom s → View s → Nat × Nat} {k : Nat} {F : Form s} {S T : Ty s}
+    (h : FormTypedF σ Γ f k F S T) : FormTyped σ Γ k F S T := by
+  cases k with
+  | zero => exact (FormTypedF_zero σ Γ).mp h
   | succ j =>
       cases F with
       | obj cs =>
-          simp only [FormTypedTN] at h
+          simp only [FormTypedF] at h
           obtain ⟨Tel₁, Tel₂, h₁, h₂, hc, hcl⟩ := h
           rw [FormTyped]
-          exact ⟨Tel₁, Tel₂, h₁, h₂, hc, t, N, hcl⟩
-      | bot => simpa [FormTypedTN] using h
-      | top => simpa [FormTypedTN] using h
-      | id => simpa [FormTypedTN] using h
-      | eqv φ => simpa [FormTypedTN] using h
-      | pi d c => simpa [FormTypedTN] using h
+          exact ⟨Tel₁, Tel₂, h₁, h₂, hc, fun a ha V => ⟨(f a V).1, (f a V).2, hcl a ha V⟩⟩
+      | bot => exact (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mp h
+      | top => exact (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mp h
+      | id => exact (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mp h
+      | eqv φ => exact (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mp h
+      | pi d c => exact (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mp h
 
-theorem FormTyped.exists_TN {k : Nat} {F : Form s} {S T : Ty s}
-    (h : FormTyped σ Γ k F S T) : ∃ t N, FormTypedTN σ Γ t N k F S T := by
+theorem FormTyped.exists_F {k : Nat} {F : Form s} {S T : Ty s}
+    (h : FormTyped σ Γ k F S T) : ∃ f, FormTypedF σ Γ f k F S T := by
   cases k with
-  | zero => exact ⟨0, 0, by cases F <;> simpa [FormTypedTN] using h⟩
+  | zero => exact ⟨fun _ _ => (0, 0), (FormTypedF_zero σ Γ).mpr h⟩
   | succ j =>
       cases F with
       | obj cs =>
           rw [FormTyped] at h
-          obtain ⟨Tel₁, Tel₂, h₁, h₂, hc, t, N, hcl⟩ := h
-          exact ⟨t, N, by simp only [FormTypedTN]; exact ⟨Tel₁, Tel₂, h₁, h₂, hc, hcl⟩⟩
-      | bot => exact ⟨0, 0, by simpa [FormTypedTN] using h⟩
-      | top => exact ⟨0, 0, by simpa [FormTypedTN] using h⟩
-      | id => exact ⟨0, 0, by simpa [FormTypedTN] using h⟩
-      | eqv φ => exact ⟨0, 0, by simpa [FormTypedTN] using h⟩
-      | pi d c => exact ⟨0, 0, by simpa [FormTypedTN] using h⟩
-
-/-- Parameterized typedness is downward closed in the depth, with the same
-threshold and fuel bound. -/
-theorem FormTypedTN_mono_obj {t N j j' : Nat} {cs : List (ChainStep s)} {S T : Ty s}
-    (hk : j' ≤ j) (h : FormTypedTN σ Γ t N (j + 1) (.obj cs) S T) :
-    FormTypedTN σ Γ t N (j' + 1) (.obj cs) S T := by
-  simp only [FormTypedTN] at h ⊢
-  obtain ⟨Tel₁, Tel₂, h₁, h₂, hc, hcl⟩ := h
-  exact ⟨Tel₁, Tel₂, h₁, h₂, hc, fun j'' ht hj'' => hcl j'' ht (Nat.le_trans hj'' hk)⟩
+          obtain ⟨Tel₁, Tel₂, h₁, h₂, hc, hcl⟩ := h
+          classical
+          refine ⟨fun a V => if ha : Atom.HasType Γ a S then
+              ((Classical.choose (hcl a ha V)), Classical.choose (Classical.choose_spec (hcl a ha V)))
+            else (0, 0), ?_⟩
+          simp only [FormTypedF]
+          refine ⟨Tel₁, Tel₂, h₁, h₂, hc, fun a ha V j' ht hj hV => ?_⟩
+          have hspec := Classical.choose_spec (Classical.choose_spec (hcl a ha V))
+          simp only [ha, dite_true] at ht ⊢
+          exact hspec j' ht hj hV
+      | bot => exact ⟨fun _ _ => (0, 0), (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mpr h⟩
+      | top => exact ⟨fun _ _ => (0, 0), (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mpr h⟩
+      | id => exact ⟨fun _ _ => (0, 0), (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mpr h⟩
+      | eqv φ => exact ⟨fun _ _ => (0, 0), (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mpr h⟩
+      | pi d c => exact ⟨fun _ _ => (0, 0), (FormTypedF_nonObj σ Γ (by intro cs h; cases h)).mpr h⟩
 
 /-- An environment is canonical at depth `k`: it closes an open context by a
 typed substitution into the store context, every binder's stored view is

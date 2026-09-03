@@ -13,9 +13,12 @@ import Coercions.FCdot.TypingSubst
 import Coercions.FCdot.Preservation
 import Coercions.FCdot.ErasureMetatheory
 import Coercions.FCdot.CanonicalDepth
+import Coercions.FCdot.CanonicalFormF
 import Coercions.FCdot.CanonicalEnv
 import Coercions.FCdot.CanonicalMono
 import Coercions.FCdot.CanonicalCombine
+import Coercions.FCdot.CanonicalCombineF
+import Coercions.FCdot.CanonicalApply
 import Coercions.FCdot.Checker
 import Coercions.FCdot.CheckerCompleteness
 /-!
