@@ -312,21 +312,17 @@ theorem Form.combine_typed {k : Nat} {F G : Form s} {S M T : Ty s}
               exact ⟨Tel₁, Tel₂, hres.trans hM, hT, M, hφ, hres, hchain⟩
           | succ j =>
               rw [FormTyped] at hG
-              obtain ⟨Tel₁, Tel₂, hM, hT, hchain, t, N, hcl⟩ := hG
+              obtain ⟨Tel₁, Tel₂, hM, hT, hchain, hcl⟩ := hG
               rw [FormTyped]
-              refine ⟨Tel₁, Tel₂, hres.trans hM, hT, ⟨M, hφ, hres, hchain⟩, t, N + 1, ?_⟩
-              intro j' ht hj a ha V hV
+              refine ⟨Tel₁, Tel₂, hres.trans hM, hT, ⟨M, hφ, hres, hchain⟩, fun a ha V => ?_⟩
               have ha' : Atom.HasType Γ (.cast a (.eqToLe φ)) M :=
                 Atom.HasType.cast ha (.eqToLe hφ)
-              obtain ⟨n, hn, V', happ, hV'⟩ :=
-                hcl j' ht hj _ ha' V (ViewTypedWith_cast hV)
-              refine ⟨n + 1, by omega, V', ?_, ?_⟩
-              · rw [applyChain_cons_conv]
-                exact happ
-              · refine ViewTypedWith_mono (fun _ _ _ h => FormTyped_mono ?_ h)
-                  (ViewTypedWith_root rfl hV')
-                have := fuelLoss_mono (show n ≤ n + 1 by omega)
-                omega
+              obtain ⟨t, L, hcl'⟩ := hcl _ ha' V
+              refine ⟨t, L, fun j' ht hj hV => ?_⟩
+              obtain ⟨n, V', happ, hV'⟩ := hcl' j' ht hj (ViewTypedWith_cast hV)
+              refine ⟨n + 1, V', ?_, ViewTypedWith_root rfl hV'⟩
+              rw [applyChain_cons_conv]
+              exact happ
   | pi d c =>
       rw [FormTyped] at hF
       obtain ⟨S₁, T₁, S₂, T₂, hS, hM, hd, hcod⟩ := hF
@@ -401,18 +397,15 @@ theorem Form.combine_typed {k : Nat} {F G : Form s} {S M T : Ty s}
                 ChainWellTyped_append cs hchain ⟨T, hψ, hres, rfl⟩⟩
           | succ j =>
               rw [FormTyped] at hF ⊢
-              obtain ⟨Tel₁, Tel₂, hS, hM, hchain, t, N, hcl⟩ := hF
+              obtain ⟨Tel₁, Tel₂, hS, hM, hchain, hcl⟩ := hF
               refine ⟨Tel₁, Tel₂, hS, hres.symm.trans hM,
-                ChainWellTyped_append cs hchain ⟨T, hψ, hres, rfl⟩,
-                t, N + cs.length + 2, ?_⟩
-              intro j' ht hj a ha V hV
-              obtain ⟨n, hn, V', happ, hV'⟩ := hcl j' ht hj a ha V hV
+                ChainWellTyped_append cs hchain ⟨T, hψ, hres, rfl⟩, fun a ha V => ?_⟩
+              obtain ⟨t, L, hcl'⟩ := hcl a ha V
+              refine ⟨t, L, fun j' ht hj hV => ?_⟩
+              obtain ⟨n, V', happ, hV'⟩ := hcl' j' ht hj hV
               have h2 : applyChain σ 2 [ChainStep.conv ψ] (ChainStep.chainAtom cs a) V'
                   = some V' := rfl
-              refine ⟨n + 2 + cs.length, by omega, V', applyChain_append_of cs happ h2, ?_⟩
-              refine ViewTypedWith_mono (fun _ _ _ h => FormTyped_mono ?_ h) hV'
-              have := fuelLoss_mono (show n ≤ n + 2 + cs.length by omega)
-              omega
+              exact ⟨n + 2 + cs.length, V', applyChain_append_of cs happ h2, hV'⟩
       | obj cs₂ =>
           rw [Form.combine_obj_obj]
           cases k with
@@ -423,30 +416,37 @@ theorem Form.combine_typed {k : Nat} {F G : Form s} {S M T : Ty s}
               exact ⟨Tel₁, Tel₂, hS, hT, ChainWellTyped_append cs hchain₁ hchain₂⟩
           | succ j =>
               rw [FormTyped] at hF hG ⊢
-              obtain ⟨Tel₁, TelM, hS, hM, hchain₁, t₁, N₁, hcl₁⟩ := hF
-              obtain ⟨TelM', Tel₂, hM', hT, hchain₂, t₂, N₂, hcl₂⟩ := hG
+              obtain ⟨Tel₁, TelM, hS, hM, hchain₁, hcl₁⟩ := hF
+              obtain ⟨TelM', Tel₂, hM', hT, hchain₂, hcl₂⟩ := hG
               injection hM.symm.trans hM' with _ hTel
               subst hTel
-              refine ⟨Tel₁, Tel₂, hS, hT, ChainWellTyped_append cs hchain₁ hchain₂,
-                max t₁ (t₂ + fuelLoss N₁), N₁ + N₂ + cs.length, ?_⟩
-              intro j' ht hj a ha V hV
-              have ht₁ : t₁ ≤ j' := Nat.le_trans (Nat.le_max_left _ _) ht
-              have ht₂ : t₂ + fuelLoss N₁ ≤ j' := Nat.le_trans (Nat.le_max_right _ _) ht
-              obtain ⟨n₁, hn₁, V', happ₁, hV'⟩ := hcl₁ j' ht₁ hj a ha V hV
-              have hloss : fuelLoss n₁ ≤ fuelLoss N₁ := fuelLoss_mono hn₁
+              refine ⟨Tel₁, Tel₂, hS, hT, ChainWellTyped_append cs hchain₁ hchain₂, fun a ha V => ?_⟩
+              obtain ⟨t₁, L₁, hcl₁'⟩ := hcl₁ a ha V
               have hb : Atom.HasType Γ (ChainStep.chainAtom cs a) M := by
                 rw [ChainStep.chainAtom_eq_chainAtom']
                 exact ChainWellTyped_chainAtom cs hchain₁ ha
-              obtain ⟨n₂, hn₂, V'', happ₂, hV''⟩ :=
-                hcl₂ (j' - fuelLoss n₁) (by omega) (by omega) _ hb V'
-                  (ViewTypedWith_root (ChainStep.chainAtom_root cs a).symm hV')
-              refine ⟨n₁ + n₂ + cs.length, by omega, V'',
-                applyChain_append_of cs happ₁ happ₂, ?_⟩
-              refine ViewTypedWith_mono (fun _ _ _ h => FormTyped_mono ?_ h)
-                (ViewTypedWith_root (ChainStep.chainAtom_root cs a) hV'')
-              have h1 := fuelLoss_add_le' n₁ n₂
-              have h2 := fuelLoss_mono (show n₁ + n₂ ≤ n₁ + n₂ + cs.length by omega)
-              omega
+              by_cases hex : ∃ j', t₁ ≤ j' ∧ j' ≤ j ∧ ViewTypedWith σ Γ (FormTyped σ Γ j') V Tel₁ a
+              · obtain ⟨j₀, ht₀, hj₀, hV₀⟩ := hex
+                obtain ⟨n₀, V₁, happ₀, _⟩ := hcl₁' j₀ ht₀ hj₀ hV₀
+                obtain ⟨t₂, L₂, hcl₂'⟩ := hcl₂ _ hb V₁
+                refine ⟨max t₁ (t₂ + L₁), L₁ + L₂, fun j' ht hj hV => ?_⟩
+                have ht₁ : t₁ ≤ j' := Nat.le_trans (Nat.le_max_left _ _) ht
+                have ht₂ : t₂ + L₁ ≤ j' := Nat.le_trans (Nat.le_max_right _ _) ht
+                obtain ⟨n₁, V₁', happ₁, hV₁'⟩ := hcl₁' j' ht₁ hj hV
+                have hV₁eq : V₁' = V₁ := by
+                  have h₁ := applyChain_le (Nat.le_max_left n₁ n₀) happ₁
+                  have h₂ := applyChain_le (Nat.le_max_right n₁ n₀) happ₀
+                  exact Option.some.inj (h₁.symm.trans h₂)
+                subst hV₁eq
+                obtain ⟨n₂, V'', happ₂, hV''⟩ :=
+                  hcl₂' (j' - L₁) (by omega) (by omega)
+                    (ViewTypedWith_root (ChainStep.chainAtom_root cs a).symm hV₁')
+                refine ⟨n₁ + n₂ + cs.length, V'', applyChain_append_of cs happ₁ happ₂, ?_⟩
+                have hdepth : j' - L₁ - L₂ = j' - (L₁ + L₂) := by omega
+                rw [hdepth] at hV''
+                exact ViewTypedWith_root (ChainStep.chainAtom_root cs a) hV''
+              · refine ⟨j + 1, 0, fun j' ht hj hV => ?_⟩
+                exact absurd ⟨j', by omega, hj, hV⟩ hex
 
 /-- Composition of head forms preserves typedness whenever the second form
 is not `bot` — the common case, and the one the normalizer needs. -/

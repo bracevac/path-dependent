@@ -495,9 +495,10 @@ theorem FormTyped_mono {k k' : Nat} {F : Form s} {S T : Ty s}
           | zero => omega
           | succ j =>
               rw [FormTyped] at h ⊢
-              obtain ⟨Tel₁, Tel₂, h1, h2, h3, t, N, hcl⟩ := h
-              exact ⟨Tel₁, Tel₂, h1, h2, h3, t, N,
-                fun j'' ht hle => hcl j'' ht (by omega)⟩
+              obtain ⟨Tel₁, Tel₂, h1, h2, h3, hcl⟩ := h
+              refine ⟨Tel₁, Tel₂, h1, h2, h3, fun a ha V => ?_⟩
+              obtain ⟨t, L, hcl'⟩ := hcl a ha V
+              exact ⟨t, L, fun j'' ht hle => hcl' j'' ht (by omega)⟩
 
 /-- The depth-independent content of form typedness. -/
 theorem FormTyped_shape_mono {k : Nat} {F : Form s} {S T : Ty s}
