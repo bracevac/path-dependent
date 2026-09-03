@@ -784,7 +784,53 @@ Decisions taken while implementing M1, each confirmed with the author:
 4. **Canonical forms by a fuel-indexed normalizer with closures.**  Views
    of opaque binders are data in an environment; object coercions compose
    by chaining closures; evidence is never substituted back into itself.
-   Typedness of forms is indexed by a depth; an object form carries a
-   threshold and a fuel bound, and applying it with fuel `n` costs depth
-   `2^n − 1`, which is what makes chains compose.  Stores are canonical at
-   every depth, so the corollaries used by progress hold at any depth.
+   Typedness of forms is a step-indexed relation: an object form at depth
+   `j+1` sends an input view typed at depth `j' ≤ j` to an output typed at
+   depth `j' − L`, provided `j'` is at least a threshold `t`.  Threshold
+   and loss are per input (a uniform pair per form is impossible: the loss
+   of applying a closure depends on the closures inside the input view).
+   Composition of forms is unconditional (`Form.combine_typed`).
+5. **Threshold and loss are computed, not existential.**  Packaging `t`
+   and `L` existentially inside the depth quantifier loses them: an entry
+   extracted from an applied view is typed at every depth, but each depth's
+   proof may carry a different (possibly vacuous) threshold, and a later
+   elimination through that entry needs one threshold valid at all depths.
+   Carrying witness data through the relation fails on positivity (output
+   witnesses genuinely depend on the input view's witnesses, since the
+   `var` case returns the environment's view).  So a cost normalizer
+   mirrors `hnf`/`atomView`/`morphismView`/`applyChain` and returns the
+   elimination cost per input; the object clause of `FormTyped` uses this
+   fixed function, and per-depth typedness at unbounded depth then implies
+   uniform validity because the same number appears at every depth.
+   Threshold and loss coincide (one cost per input; `member` pays `+1`).
+
+   *Correspondence with the DOT soundness proofs.*  This is the same
+   difficulty as transitivity pushback in Amin–Rompf–Odersky and the sized
+   subtyping judgments there, and as possible types (WadlerFest) and
+   invertible typing (Rapoport et al.): eliminating through a member
+   declaration re-derives a subderivation, and the proof needs a measure
+   showing the re-derivation is bounded.  Correspondences:
+   - inert contexts ↔ prefix-typed stores with literal evidence checked at
+     self `⊤` (`Store.Typed`); we get this for free;
+   - invertible/tight typing ↔ the canonical-forms theorem; the derivation
+     is a term here, so "rewrite to an invertible shape" is "normalize";
+   - the size index and pushback accounting ↔ the depth index with
+     computed costs.
+   Ours is heavier because a closure stored in a view can be applied by a
+   morphism that is not its ancestor, which breaks the subterm structure
+   that lets Rapoport's proof be an induction on derivations.
+
+   *For later: a syntactic measure.*  Store evidence is well-founded by
+   store position (self at `⊤` cannot be eliminated; prefix typing forbids
+   forward references), so store views are canonical by induction on the
+   store.  For closures from the term, every attempted loop (a closure
+   applied inside its own run, two sibling closures applying each other)
+   is blocked by a telescope-size argument: re-entering a closure's source
+   type needs an `eq` entry or witness mentioning that object type, which
+   forces strict containment.  This suggests termination by a measure on
+   (store position, telescope containment), which would delete the depth
+   apparatus and give a proof of the "simple soundness" shape.  Not
+   pursued: forms are copied across coercions into entries typed by names
+   (`self.ℓ`), so the measure needs a global invariant about which
+   telescopes can be closure sources, and witness definitions break plain
+   containment.  Revisit once the computed-cost proof is complete.
