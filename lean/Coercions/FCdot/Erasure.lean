@@ -16,7 +16,7 @@ def Tm.erase : Tm s → Runtime.Tm s
   | .atom a => .var a.root
   | .val v => v.erase
   | .app a b => .app a.root b.root
-  | .proj a ℓ => .proj a.root ℓ
+  | .proj a ℓ _ => .proj a.root ℓ
   | .let t u => .let t.erase u.erase
   | .cast t _ => t.erase
 

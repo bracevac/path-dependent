@@ -219,19 +219,6 @@ theorem LeCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Ren
       have := LeCo.HasType.member (a := a.rename ρ) (ha.rename hρ)
         (he.rename hρ) (hAt.rename ρ.lift)
       simpa [LeCo.rename, Ty.substVar_rename, Atom.root_rename] using this
-  | @LeCo.HasType.piDom _ _ a S T S₀ T₀ ha hty htr =>
-      exact LeCo.HasType.piDom (T := T.rename ρ.lift) (T₀ := T₀.rename ρ.lift)
-        (by simpa [Ty.rename] using ha.rename hρ)
-        (by rw [Atom.root_rename, hρ.ty a.root, hty]; rfl)
-        (by rw [Atom.root_rename]; exact hρ.transparent htr)
-  | @LeCo.HasType.piCod _ _ a S T S₀ T₀ b ha hty htr hb =>
-      have := LeCo.HasType.piCod (Γ := Γ') (a := a.rename ρ) (S := S.rename ρ)
-        (T := T.rename ρ.lift) (S₀ := S₀.rename ρ) (T₀ := T₀.rename ρ.lift) (b := b.rename ρ)
-        (by simpa [Ty.rename] using ha.rename hρ)
-        (by rw [Atom.root_rename, hρ.ty a.root, hty]; rfl)
-        (by rw [Atom.root_rename]; exact hρ.transparent htr)
-        (hb.rename hρ)
-      simpa [LeCo.rename, Ty.substVar_rename, Atom.root_rename] using this
 
 theorem EqCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {φ : EqCo s1} {S T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : EqCo.HasType Γ φ S T) :

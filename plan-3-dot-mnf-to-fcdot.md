@@ -760,3 +760,31 @@ have equal erasures.  E4 is the acceptance test for the whole exercise.
 4. Field labels as block names means a field's type is abstract (`x.a`) and
    only bounded above.  Selecting a field and then applying it requires a
    cast through `x.a ≤ Π(…)`.  Check E2 covers this before believing it.
+
+## 13. Decision log (implementation, September 2026)
+
+Decisions taken while implementing M1, each confirmed with the author:
+
+1. **Object telescope evidence is checked with the self binder at `⊤`.**
+   A literal's `E` may use only its definitions (`def`) and fields
+   (`field`) plus outer evidence; it cannot assume its own telescope.  This
+   removes self-justifying evidence and makes store views well-founded.
+2. **Allocation strips casts.**  `let x = cast^n v in u` stores the literal
+   `v` at its own type and rewrites `u` so that `x` is used under the
+   composite cast (`Tm.adjust`).  Field bodies are therefore always typed
+   at the literal's declared type, which is what `proj` needs.
+3. **Application through a cast atom uses the normalizer.**  The step reads
+   the domain and codomain evidence off the head normal form of the atom's
+   casts (`closedAtomForm σ n a = some (_, pi d c)`), casts the argument by
+   `d` and the result by `c` at the argument.  The earlier inversion
+   constructors `piDom`/`piCod` were removed: they forced the normalizer to
+   normalize evidence that is not a subterm of its input.  Preservation of
+   this one rule takes the typedness of the form as a hypothesis
+   (`FormsTyped`), discharged by the canonical-forms theorem.
+4. **Canonical forms by a fuel-indexed normalizer with closures.**  Views
+   of opaque binders are data in an environment; object coercions compose
+   by chaining closures; evidence is never substituted back into itself.
+   Typedness of forms is indexed by a depth; an object form carries a
+   threshold and a fuel bound, and applying it with fuel `n` costs depth
+   `2^n − 1`, which is what makes chains compose.  Stores are canonical at
+   every depth, so the corollaries used by progress hold at any depth.

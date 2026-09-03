@@ -106,17 +106,12 @@ inductive LeCo : Sig → Type where
   | eqToLe : EqCo s → LeCo s
   /-- Contravariant domain, covariant codomain under the parameter binder. -/
   | pi : LeCo s → LeCo (s,x) → LeCo s
-  /-- Pointwise object coercion: a morphism between telescopes under the self block. -/
-  | obj : Morphism (s,x) → LeCo s
+  /-- Pointwise object coercion from the annotated source telescope: a morphism
+      between telescopes under the self block. -/
+  | obj : Telescope (s,x) → Morphism (s,x) → LeCo s
   /-- Elimination at an atom: the `i`-th proposition of the target telescope of `e`,
       instantiated at the root of `a`, when that proposition is an inclusion. -/
   | member : Atom s → LeCo s → Nat → LeCo s
-  /-- Inversion at an allocated closure: the domain of the closure reachable
-      through the atom includes the domain of the atom's function type. -/
-  | piDom : Atom s → LeCo s
-  /-- Inversion at an allocated closure, applied to an argument atom: the
-      closure's codomain is included in the atom's codomain at that argument. -/
-  | piCod : Atom s → Atom s → LeCo s
 
 /-- Equality evidence. -/
 inductive EqCo : Sig → Type where
@@ -144,7 +139,8 @@ inductive Morphism : Sig → Type where
 inductive Atom : Sig → Type where
   | var : BVar s .var → Atom s
   | cast : Atom s → LeCo s → Atom s
-  | foldSelf : Atom s → Atom s
+  /-- `Rec-I`, annotated with the target telescope. -/
+  | foldSelf : Telescope (s,x) → Atom s → Atom s
   | unfoldSelf : Atom s → Atom s
 
 end
@@ -153,7 +149,7 @@ end
 def Atom.root : Atom s → BVar s .var
   | .var x => x
   | .cast a _ => a.root
-  | .foldSelf a => a.root
+  | .foldSelf _ a => a.root
   | .unfoldSelf a => a.root
 
 mutual
@@ -165,10 +161,8 @@ def LeCo.rename : LeCo s1 → Rename s1 s2 → LeCo s2
   | .bot T, ρ => .bot (T.rename ρ)
   | .eqToLe φ, ρ => .eqToLe (φ.rename ρ)
   | .pi e f, ρ => .pi (e.rename ρ) (f.rename ρ.lift)
-  | .obj m, ρ => .obj (m.rename ρ.lift)
+  | .obj Tel m, ρ => .obj (Tel.rename ρ.lift) (m.rename ρ.lift)
   | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
-  | .piDom a, ρ => .piDom (a.rename ρ)
-  | .piCod a b, ρ => .piCod (a.rename ρ) (b.rename ρ)
 
 def EqCo.rename : EqCo s1 → Rename s1 s2 → EqCo s2
   | .refl T, ρ => .refl (T.rename ρ)
@@ -190,7 +184,7 @@ def Morphism.rename : Morphism s1 → Rename s1 s2 → Morphism s2
 def Atom.rename : Atom s1 → Rename s1 s2 → Atom s2
   | .var x, ρ => .var (ρ.var x)
   | .cast a e, ρ => .cast (a.rename ρ) (e.rename ρ)
-  | .foldSelf a, ρ => .foldSelf (a.rename ρ)
+  | .foldSelf Tel a, ρ => .foldSelf (Tel.rename ρ.lift) (a.rename ρ)
   | .unfoldSelf a, ρ => .unfoldSelf (a.rename ρ)
 
 end
@@ -203,7 +197,8 @@ inductive Tm : Sig → Type where
   | atom : Atom s → Tm s
   | val : Value s → Tm s
   | app : Atom s → Atom s → Tm s
-  | proj : Atom s → Label → Tm s
+  /-- Field projection, annotated with the field-presence evidence. -/
+  | proj : Atom s → Label → Has s → Tm s
   | «let» : Tm s → Tm (s,x) → Tm s
   | cast : Tm s → LeCo s → Tm s
 
@@ -244,7 +239,7 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .atom a, ρ => .atom (a.rename ρ)
   | .val v, ρ => .val (v.rename ρ)
   | .app a b, ρ => .app (a.rename ρ) (b.rename ρ)
-  | .proj a ℓ, ρ => .proj (a.rename ρ) ℓ
+  | .proj a ℓ h, ρ => .proj (a.rename ρ) ℓ (h.rename ρ)
   | .let t u, ρ => .let (t.rename ρ) (u.rename ρ.lift)
   | .cast t e, ρ => .cast (t.rename ρ) (e.rename ρ)
 
@@ -300,6 +295,12 @@ def ofRename (ρ : Rename s1 s2) : Subst s1 s2 where
 
 end Subst
 
+/-- Use the innermost binder under a cast everywhere in a term. -/
+def Subst.selfCast (E : LeCo (s,x)) : Subst (s,x) (s,x) where
+  var := fun
+    | .here => .cast (.var .here) E
+    | .there y => .var (.there y)
+
 mutual
 
 def LeCo.subst : LeCo s1 → Subst s1 s2 → LeCo s2
@@ -309,10 +310,8 @@ def LeCo.subst : LeCo s1 → Subst s1 s2 → LeCo s2
   | .bot T, σ => .bot (T.rename σ.root)
   | .eqToLe φ, σ => .eqToLe (φ.subst σ)
   | .pi e f, σ => .pi (e.subst σ) (f.subst σ.lift)
-  | .obj m, σ => .obj (m.subst σ.lift)
+  | .obj Tel m, σ => .obj (Tel.rename σ.root.lift) (m.subst σ.lift)
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
-  | .piDom a, σ => .piDom (a.subst σ)
-  | .piCod a b, σ => .piCod (a.subst σ) (b.subst σ)
 
 def EqCo.subst : EqCo s1 → Subst s1 s2 → EqCo s2
   | .refl T, σ => .refl (T.rename σ.root)
@@ -334,7 +333,7 @@ def Morphism.subst : Morphism s1 → Subst s1 s2 → Morphism s2
 def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
   | .var x, σ => σ.var x
   | .cast a e, σ => .cast (a.subst σ) (e.subst σ)
-  | .foldSelf a, σ => .foldSelf (a.subst σ)
+  | .foldSelf Tel a, σ => .foldSelf (Tel.rename σ.root.lift) (a.subst σ)
   | .unfoldSelf a, σ => .unfoldSelf (a.subst σ)
 
 end
@@ -345,7 +344,7 @@ def Tm.subst : Tm s1 → Subst s1 s2 → Tm s2
   | .atom a, σ => .atom (a.subst σ)
   | .val v, σ => .val (v.subst σ)
   | .app a b, σ => .app (a.subst σ) (b.subst σ)
-  | .proj a ℓ, σ => .proj (a.subst σ) ℓ
+  | .proj a ℓ h, σ => .proj (a.subst σ) ℓ (h.subst σ)
   | .let t u, σ => .let (t.subst σ) (u.subst σ.lift)
   | .cast t e, σ => .cast (t.subst σ) (e.subst σ)
 

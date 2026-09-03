@@ -107,12 +107,6 @@ theorem LeCo.HasType.refine {Γ Γ' : Ctx s} {e : LeCo s} {S T : Ty s}
   | .pi he hf => exact .pi (he.refine hR) (hf.refine (hR.cons _))
   | .obj hm => exact .obj (hm.refine (hR.cons _))
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
-  | @LeCo.HasType.piDom _ _ a S T S₀ T₀ ha hty htr =>
-      exact LeCo.HasType.piDom (T := T) (T₀ := T₀) (ha.refine hR)
-        ((hR.ty a.root).trans hty) (hR.transparentOf htr)
-  | @LeCo.HasType.piCod _ _ a S T S₀ T₀ b ha hty htr hb =>
-      exact LeCo.HasType.piCod (T := T) (T₀ := T₀) (ha.refine hR)
-        ((hR.ty a.root).trans hty) (hR.transparentOf htr) (hb.refine hR)
 
 theorem EqCo.HasType.refine {Γ Γ' : Ctx s} {φ : EqCo s} {S T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : EqCo.HasType Γ φ S T) : EqCo.HasType Γ' φ S T := by

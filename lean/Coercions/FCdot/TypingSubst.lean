@@ -33,8 +33,7 @@ namespace FCdot
 transported type, and definitions and field labels survive along `σ.root`. -/
 structure Subst.Typed {s1 s2 : Sig} (Γ : Ctx s1) (σ : Subst s1 s2) (Γ' : Ctx s2) : Prop where
   var : ∀ x, Atom.HasType Γ' (σ.var x) ((Γ.lookupTy x).rename σ.root)
-  /-- On transparent binders the substitution behaves like a renaming: this is
-  what `piDom`/`piCod` observe. -/
+  /-- On transparent binders the substitution behaves like a renaming. -/
   ty : ∀ x, Γ.IsTransparent x →
       Γ'.lookupTy (σ.root.var x) = (Γ.lookupTy x).rename σ.root
   transparent : ∀ x, Γ.IsTransparent x → Γ'.IsTransparent (σ.root.var x)
@@ -212,20 +211,6 @@ theorem LeCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subs
   | @LeCo.HasType.member _ _ a S e Tel i S' T' ha he hAt =>
       have := LeCo.HasType.member (a := a.subst σ) (ha.subst hσ)
         (by simpa [Ty.rename] using he.subst hσ) (hAt.rename σ.root.lift)
-      simpa [LeCo.subst, Ty.substVar_rename] using this
-  | @LeCo.HasType.piDom _ _ a S T S₀ T₀ ha hty htr =>
-      exact LeCo.HasType.piDom (T := T.rename σ.root.lift) (T₀ := T₀.rename σ.root.lift)
-        (by simpa [Ty.rename] using ha.subst hσ)
-        (by rw [Atom.root_subst, hσ.ty a.root htr, hty]; rfl)
-        (by rw [Atom.root_subst]; exact hσ.transparent a.root htr)
-  | @LeCo.HasType.piCod _ _ a S T S₀ T₀ b ha hty htr hb =>
-      have := LeCo.HasType.piCod (Γ := Γ') (a := a.subst σ) (S := S.rename σ.root)
-        (T := T.rename σ.root.lift) (S₀ := S₀.rename σ.root) (T₀ := T₀.rename σ.root.lift)
-        (b := b.subst σ)
-        (by simpa [Ty.rename] using ha.subst hσ)
-        (by rw [Atom.root_subst, hσ.ty a.root htr, hty]; rfl)
-        (by rw [Atom.root_subst]; exact hσ.transparent a.root htr)
-        (hb.subst hσ)
       simpa [LeCo.subst, Ty.substVar_rename] using this
 
 theorem EqCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
