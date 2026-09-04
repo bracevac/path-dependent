@@ -19,6 +19,7 @@ import Coercions.FCdot.FormTyping
 import Coercions.FCdot.FormAlgebra
 import Coercions.FCdot.CanonicalForms
 import Coercions.FCdot.Progress
+import Coercions.FCdot.Consistency
 import Coercions.FCdot.Examples
 /-!
 Import root for FCdot, the explicit-evidence coercion target of Plan III.
