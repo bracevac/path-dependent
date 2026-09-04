@@ -1,26 +1,34 @@
-import Coercions.FCdot.Canonical
+import Coercions.FCdot.Normalizer
+import Coercions.FCdot.Resolution
 import Coercions.FCdot.Typing
 
 /-!
 # Typedness of forms and views
 
-Forms are typed *syntactically*: a form is typed between two endpoints when
-its pieces of evidence are typed and the endpoints resolve to the shapes the
-form promises.  An object form is typed when each of its entries is typed
-against the corresponding proposition of the (opened) target telescope, and
-its presence entries point at presence propositions of the source.  Since
-object coercions are between opened telescopes, an entry's endpoints do not
-depend on the atom the coercion is applied to; the definition quantifies
-over the instantiating root anyway, which also covers views of atoms at
-self-mentioning telescopes.
+A head form is typed *syntactically*: it is typed evidence for `S ≤ T` when
+its pieces of evidence are typed and the two endpoints have the shapes the
+form promises.  Shapes are read off `Γ.resolve`, which follows transparent
+definitions to a non-name head.
 
-Forms are typed *at a root*: shapes are read off the type after resolving
-definitions and opening the self block at that root, so `foldSelf` and
-`unfoldSelf` on an atom do not change what its chain of casts is typed at.
-Forms of coercions are typed at every root; forms of atom chains at the
-atom's root.
+Typedness comes in two modes.
 
-No depth index: the recursion is structural in the form.
+* `Γ ⊨ F : S ≤ T` (plain) is for coercion forms and for the entries of
+  views: the endpoints are closed types unrelated to any particular atom.
+  An object form is typed between *opened* telescopes (`Telescope s`, no
+  self binder): each entry is typed against a proposition of the target,
+  and each presence entry points at a presence proposition of the source.
+* `Γ ⊨[r] F : S ≤ T` (at the root `r`) is for the chain of casts of an
+  atom rooted at `r`: shapes are read off the resolved type with its self
+  block opened at `r`, so `foldSelf` and `unfoldSelf` on the atom do not
+  change what the chain is typed at.  Plain typedness implies typedness at
+  every root (`FormTyped.atRoot`, in `FormAlgebra`).
+
+A *view* `Γ ⊨[r, σ] V : Tel` is the list of forms of the propositions of a
+telescope, instantiated at the atom's root `r`: inclusion entries are typed
+coercion forms, equality entries record equal resolutions, presence entries
+name the root and a field the object stored at the root has.
+
+No depth index anywhere: every definition is structural in the form.
 -/
 
 namespace FCdot
@@ -140,5 +148,98 @@ end
 /-- `Γ ⊨[r, σ] V : Tel`: over the store `σ`, the view `V` of an atom rooted
 at `r` is typed against `Tel` instantiated at `r`. -/
 scoped notation:40 Γ:51 " ⊨[" r ", " σ "] " V:51 " : " Tel:51 => ViewTyped Γ r σ V Tel
+
+/-! ## Indexing appended views -/
+
+theorem View.nth?_append_lt : ∀ (V V' : View s) (i : Nat), i < V.length →
+    View.nth? (V ++ V') i = View.nth? V i
+  | [], _, i, h => by simp at h
+  | _ :: V, V', 0, _ => rfl
+  | _ :: V, V', i + 1, h => by
+      simp only [List.cons_append, View.nth?]
+      exact View.nth?_append_lt V V' i (by simpa using h)
+
+theorem View.nth?_append_length : ∀ (V : View s) (P : PropForm s),
+    View.nth? (V ++ [P]) V.length = some P
+  | [], P => rfl
+  | Q :: V, P => by
+      simp only [List.cons_append, List.length_cons, View.nth?]
+      exact View.nth?_append_length V P
+
+theorem View.nth?_lt_length : ∀ (V : View s) (i : Nat) (P : PropForm s),
+    View.nth? V i = some P → i < V.length
+  | [], _, _, h => by simp [View.nth?] at h
+  | _ :: V, 0, _, _ => by simp
+  | _ :: V, i + 1, P, h => by
+      simp only [View.nth?] at h
+      have := View.nth?_lt_length V i P h
+      simp; omega
+
+theorem Entries.nth?_append_length : ∀ (Es : List (Entry s)) (E : Entry s),
+    Entries.nth? (Es ++ [E]) Es.length = some E
+  | [], E => rfl
+  | _ :: Es, E => by
+      simp only [List.cons_append, List.length_cons, Entries.nth?]
+      exact Entries.nth?_append_length Es E
+
+theorem Entries.nth?_append_lt : ∀ (Es Es' : List (Entry s)) (i : Nat), i < Es.length →
+    Entries.nth? (Es ++ Es') i = Entries.nth? Es i
+  | [], _, i, h => by simp at h
+  | _ :: Es, Es', 0, _ => rfl
+  | _ :: Es, Es', i + 1, h => by
+      simp only [List.cons_append, Entries.nth?]
+      exact Entries.nth?_append_lt Es Es' i (by simpa using h)
+
+/-- A telescope position is below the telescope's length. -/
+theorem Telescope.At.lt {Tel : Telescope s'} {i : Nat} {P : Proposition s'}
+    (h : Tel.At i P) : i < Tel.length := by
+  induction h with
+  | @here Tel P => simp [Telescope.length]
+  | there _ ih => simp [Telescope.length]; omega
+
+/-! ## Typed views -/
+
+section
+variable {σ : Store s} {Γ : Ctx s}
+
+theorem ViewTyped_nil {r : BVar s .var} : ViewTyped Γ r σ [] (.nil : Telescope (s,x)) :=
+  ⟨rfl, fun _ _ h => by cases h⟩
+
+theorem ViewTyped_cons {V : View s} {Tel : Telescope (s,x)} {P : Proposition (s,x)}
+    {P' : PropForm s} {r : BVar s .var}
+    (hV : Γ ⊨[r, σ] V : Tel)
+    (hP : PropFormTyped Γ r σ (some P') (P⟦r⟧)) :
+    Γ ⊨[r, σ] (V ++ [P']) : .cons Tel P := by
+  refine ⟨by simp [Telescope.length, hV.1], fun i Q hQ => ?_⟩
+  cases hQ with
+  | here =>
+      rw [← hV.1, View.nth?_append_length]
+      exact hP
+  | there hQ' =>
+      rw [View.nth?_append_lt _ _ _ (by rw [hV.1]; exact hQ'.lt)]
+      exact hV.2 i Q hQ'
+
+/-- A typed view has an entry at every telescope position. -/
+theorem ViewTyped.nth?_isSome {V : View s} {Tel : Telescope (s,x)} {r : BVar s .var}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {P : Proposition (s,x)} (h : Tel.At i P) :
+    ∃ Q, View.nth? V i = some Q := by
+  have := hV.2 i P h
+  cases hq : View.nth? V i with
+  | none => rw [hq] at this; cases P <;> exact absurd this (by simp [PropFormTyped])
+  | some Q => exact ⟨Q, rfl⟩
+
+end
+
+/-! ## Field presence in a typed store -/
+
+theorem Fields.get?_isSome_of_mem : {F : Fields s} → {ℓ : Label} → ℓ ∈ F.labels →
+    (F.get? ℓ).isSome
+  | .nil, _, h => by simp [Fields.labels] at h
+  | .cons F ℓ' t, ℓ, h => by
+      simp only [Fields.labels, List.mem_cons] at h
+      by_cases hℓ : ℓ = ℓ'
+      · simp [Fields.get?, hℓ]
+      · simp only [Fields.get?, hℓ, if_false]
+        exact Fields.get?_isSome_of_mem (h.resolve_left hℓ)
 
 end FCdot

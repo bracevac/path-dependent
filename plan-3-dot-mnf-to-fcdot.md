@@ -820,6 +820,28 @@ Decisions taken while implementing M1, each confirmed with the author:
    morphism that is not its ancestor, which breaks the subterm structure
    that lets Rapoport's proof be an induction on derivations.
 
+6. **Inert stores, opened object coercions (2026-09-03).**  Three
+   simplifications, all DOT-faithful, replace items 1, 4 and 5:
+   - **S1.** Object literals carry witnesses and fields only; their precise
+     type is the telescope generated from them (`eq self.A W.A`, `has ℓ`).
+     No stored evidence, no self-at-`⊤` rule.  Facts beyond definitions are
+     established by coercions in the term, as DOT's typing does.
+   - **S3.** Object coercions `obj Tel m` are between *opened* telescopes
+     (no self binder): the morphism is typed in `Γ` and mentions the roots
+     it talks about; `has` entries of the target are inherited from the
+     source by index.  Closed, self-mentioning object types are reached only
+     by `foldSelf` at an atom.  This is exactly DOT, which has no subtyping
+     rule between `μ` types.
+   - (S2, DOT-shaped telescopes, turned out not to be needed.)
+   Consequence: a coercion's normal form does not depend on the atom it is
+   applied to, closures need no environments, `applyChain` is selection,
+   and the normalizer is structural on closed evidence over the store.
+   Termination is structural, typedness of forms is syntactic, and the
+   depth-indexed relation, costs, thresholds, and the inversion/descent
+   program (`notes-descent-lemma.md`) are unnecessary.  The difficulty they
+   addressed was an artifact of *generic* self-eliminating morphisms, which
+   the DOT translation never produces.
+
    *For later: a syntactic measure.*  Store evidence is well-founded by
    store position (self at `⊤` cannot be eliminated; prefix typing forbids
    forward references), so store views are canonical by induction on the
@@ -834,3 +856,35 @@ Decisions taken while implementing M1, each confirmed with the author:
    (`self.ℓ`), so the measure needs a global invariant about which
    telescopes can be closure sources, and witness definitions break plain
    containment.  Revisit once the computed-cost proof is complete.
+
+7. **Canonical forms, preservation, progress: done (2026-09-04).**
+   `CanonicalForms.lean` proves, by structural induction on typing
+   derivations over a typed store, that every closed inclusion normalizes
+   to a typed head form, every atom has a typed view, and presence evidence
+   names a field of the object at the root.  Two details found while
+   proving:
+   - *Typedness has two modes.*  A coercion form and a view are typed with
+     plain shapes (`Γ.resolve`); their endpoints are closed types and are
+     unrelated to any particular atom.  Only the chain of casts of an atom
+     (`closedAtomForm`) is typed *at the atom's root*, where the shape of a
+     type is its resolution with the self block opened at that root, so
+     `foldSelf`/`unfoldSelf` are invisible to the chain.  Plain typedness
+     lifts to any root (`FormTyped.atRoot`), which is what the `cast` case
+     of the chain needs.  Typing coercion forms at a root instead would be
+     wrong: the `member` case extracts an entry form from a view and must
+     re-use it as a coercion, at no root.
+   - *Object-form entries live over opened telescopes* (`Telescope s`, no
+     self binder), so no instantiation root is needed; this also removes the
+     corner case of a scope with no variables at all.
+   The same file derives the chain theorem and discharges the
+   `FormsTyped` obligation of `preservation` and the canonical-forms
+   hypothesis of `erase_reflect` (`preservation'`, `erase_reflect'`);
+   `Progress.lean` proves `progress` and `not_stuck`.  Modules in build
+   order: `Normalizer`, `Resolution`, `FormTyping`, `FormAlgebra`,
+   `CanonicalForms`, `Progress` (reorganized 2026-09-04 from nine files,
+   with paper notation added throughout; see `FCdot/README.md`).  The
+   depth/environment/cost modules of
+   items 4-5 were deleted (last in commit `ed258ca`).  No `sorry`; axioms
+   are `propext`, `Quot.sound`, plus `Classical.choice` in `progress` and
+   `erase_reflect'`.  Cast-frame runs are bounded by `State.castMeasure`
+   (`castRedex_normalize`).
