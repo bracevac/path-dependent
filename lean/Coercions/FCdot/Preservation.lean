@@ -81,10 +81,10 @@ theorem LeCo.composite_snoc {s : Sig} (e f : LeCo s) (l : List (LeCo s)) :
 is well typed, and the composite of the wrappers coerces its type to the
 value's type. -/
 theorem Value.HasType.coreDecomp {s : Sig} {Γ : Ctx s} :
-    ∀ (v : Value s) (T : Ty s), Value.HasType Γ v T →
-      ∃ S₀, Value.HasType Γ v.core S₀ ∧ v.core.IsLiteral ∧
+    ∀ (v : Value s) (T : Ty s), Γ ⊢ᵥ v : T →
+      ∃ S₀, Γ ⊢ᵥ v.core : S₀ ∧ v.core.IsLiteral ∧
         ((v.composite? = none ∧ S₀ = T) ∨
-          ∃ E, v.composite? = some E ∧ LeCo.HasType Γ E S₀ T)
+          ∃ E, v.composite? = some E ∧ Γ ⊢ E : S₀ ≤ T)
   | .lam S t, T, h =>
       ⟨T, by simpa [Value.core] using h, by simp [Value.core, Value.IsLiteral],
         Or.inl ⟨by simp [Value.composite?, Value.coercions], rfl⟩⟩
@@ -114,8 +114,8 @@ theorem Value.HasType.coreDecomp {s : Sig} {Γ : Ctx s} :
 
 /-! ## Store typing -/
 
-theorem Store.Typed.lookup {s : Sig} {σ : Store s} {Γ : Ctx s} (h : Store.Typed σ Γ) :
-    ∀ x : BVar s .var, Value.HasType Γ (σ.lookup x) (Γ.lookupTy x) := by
+theorem Store.Typed.lookup {s : Sig} {σ : Store s} {Γ : Ctx s} (h : ⊢ σ : Γ) :
+    ∀ x : BVar s .var, Γ ⊢ᵥ (σ.lookup x) : (Γ.lookupTy x) := by
   induction h with
   | nil => intro x; cases x
   | @cons s0 σ0 Γ0 v T hσ hlit hv ih =>
@@ -125,7 +125,7 @@ theorem Store.Typed.lookup {s : Sig} {σ : Store s} {Γ : Ctx s} (h : Store.Type
       | there y => simpa [Store.lookup] using (ih y).weaken _
 
 theorem Store.Typed.lookupFields {s : Sig} {σ : Store s} {Γ : Ctx s}
-    (h : Store.Typed σ Γ) :
+    (h : ⊢ σ : Γ) :
     ∀ x : BVar s .var, Γ.lookupFields x = some (σ.lookup x).fieldLabels := by
   induction h with
   | nil => intro x; cases x
@@ -139,12 +139,12 @@ theorem Store.Typed.lookupFields {s : Sig} {σ : Store s} {Γ : Ctx s}
             Value.fieldLabels_rename]
 
 theorem Store.Typed.isTransparent {s : Sig} {σ : Store s} {Γ : Ctx s}
-    (h : Store.Typed σ Γ) (x : BVar s .var) : Γ.IsTransparent x :=
+    (h : ⊢ σ : Γ) (x : BVar s .var) : Γ.IsTransparent x :=
   Ctx.IsTransparent.of_lookup (h.lookupFields x)
 
-theorem Store.Typed.lookupDef {s : Sig} {σ : Store s} {Γ : Ctx s} (h : Store.Typed σ Γ) :
+theorem Store.Typed.lookupDef {s : Sig} {σ : Store s} {Γ : Ctx s} (h : ⊢ σ : Γ) :
     ∀ (x : BVar s .var) (l : Label),
-      Γ.lookupDef x l = some (((σ.lookup x).witnesses.get l).substVar x) := by
+      Γ.lookupDef x l = some (((σ.lookup x).witnesses.get l)⟦x⟧) := by
   induction h with
   | nil => intro x l; cases x
   | @cons s0 σ0 Γ0 v T hσ hlit hv ih =>
@@ -161,8 +161,8 @@ theorem Store.Typed.lookupDef {s : Sig} {σ : Store s} {Γ : Ctx s} (h : Store.T
 /-! ## Continuation weakening -/
 
 theorem Cont.Typed.weaken {s : Sig} {Γ : Ctx s} {K : Cont s} {T U : Ty s}
-    (h : Cont.Typed Γ K T U) (b : Binding s) :
-    Cont.Typed (Γ.cons b) K.weaken T.weaken U.weaken := by
+    (h : Γ ⊢ₖ K : T ⇒ U) (b : Binding s) :
+    (Γ.cons b) ⊢ₖ K↑ : T↑ ⇒ U↑ := by
   induction h with
   | nil => exact .nil
   | «let» hu hK ih =>
@@ -175,19 +175,19 @@ theorem Cont.Typed.weaken {s : Sig} {Γ : Ctx s} {K : Cont s} {T U : Ty s}
 /-! ## Inversions -/
 
 theorem Atom.HasType.var_inv {s : Sig} {Γ : Ctx s} {x : BVar s .var} {T : Ty s}
-    (h : Atom.HasType Γ (.var x) T) : T = Γ.lookupTy x := by
+    (h : Γ ⊢ₐ (.var x) : T) : T = Γ.lookupTy x := by
   cases h with
   | var => rfl
 
 theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {S₀ : Ty s} {t₀ : Tm (s,x)}
-    {T : Ty s} (h : Value.HasType Γ (.lam S₀ t₀) T) :
-    ∃ T₀, T = .pi S₀ T₀ ∧ Tm.HasType (Γ.cons (.opaque S₀)) t₀ T₀ := by
+    {T : Ty s} (h : Γ ⊢ᵥ (.lam S₀ t₀) : T) :
+    ∃ T₀, T = .pi S₀ T₀ ∧ (Γ.cons (.opaque S₀)) ⊢ t₀ : T₀ := by
   cases h with
   | lam ht => exact ⟨_, rfl, ht⟩
 
 theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s}
     {W : Witnesses (s,x)} {F : Fields (s,x)} {T : Ty s}
-    (h : Value.HasType Γ (.obj W F) T) :
+    (h : Γ ⊢ᵥ (.obj W F) : T) :
     T = .obj (Telescope.ofLiteral W F.labels) ∧ W.Guarded ∧
       Fields.HasType
         (Γ.cons (.transparent (.obj (Telescope.ofLiteral W F.labels)) W F.labels)) F := by
@@ -195,8 +195,8 @@ theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s}
   | obj hG hF => exact ⟨rfl, hG, hF⟩
 
 theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} :
-    ∀ (F : Fields (s,x)), Fields.HasType Γ F → ∀ (l : Label) (t : Tm (s,x)),
-      F.get? l = some t → Tm.HasType Γ t (.sel .here l)
+    ∀ (F : Fields (s,x)), Γ ⊢ᶠ F → ∀ (l : Label) (t : Tm (s,x)),
+      F.get? l = some t → Γ ⊢ t : (.sel .here l)
   | .nil, _, l, t, hg => by simp [Fields.get?] at hg
   | .cons F l' t', h, l, t, hg => by
       cases h with
@@ -220,24 +220,24 @@ theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} :
   cases x <;> rfl
 
 theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
-    {W : Witnesses (s,x)} {Fs : List Label} (hE : LeCo.HasType Γ E S₀ T) :
-    Subst.Typed (Γ.cons (.opaque T)) (Subst.selfCast E.weaken)
+    {W : Witnesses (s,x)} {Fs : List Label} (hE : Γ ⊢ E : S₀ ≤ T) :
+    Subst.Typed (Γ.cons (.opaque T)) (Subst.selfCast E↑)
       (Γ.cons (.transparent S₀ W Fs)) where
   var := by
     intro y
     cases y with
     | here =>
-        show Atom.HasType (Γ.cons (.transparent S₀ W Fs)) (.cast (.var .here) E.weaken)
-          (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.selfCast E.weaken).root)
-        have hE' : LeCo.HasType (Γ.cons (.transparent S₀ W Fs)) E.weaken S₀.weaken T.weaken :=
+        show Atom.HasType (Γ.cons (.transparent S₀ W Fs)) (.cast (.var .here) E↑)
+          (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.selfCast E↑).root)
+        have hE' : (Γ.cons (.transparent S₀ W Fs)) ⊢ E↑ : S₀↑ ≤ T↑ :=
           hE.weaken _
-        have hvar : Atom.HasType (Γ.cons (.transparent S₀ W Fs)) (.var .here) S₀.weaken := by
+        have hvar : (Γ.cons (.transparent S₀ W Fs)) ⊢ₐ (.var .here) : S₀↑ := by
           simpa [Binding.ty] using
             Atom.HasType.var (Γ := Γ.cons (.transparent S₀ W Fs)) (x := .here)
         simpa [Binding.ty] using Atom.HasType.cast hvar hE'
     | there z =>
         show Atom.HasType (Γ.cons (.transparent S₀ W Fs)) (.var (.there z))
-          (((Γ.cons (.opaque T)).lookupTy (.there z)).rename (Subst.selfCast E.weaken).root)
+          (((Γ.cons (.opaque T)).lookupTy (.there z)).rename (Subst.selfCast E↑).root)
         simpa using Atom.HasType.var (Γ := Γ.cons (.transparent S₀ W Fs)) (x := .there z)
   ty := by
     intro y ht
@@ -269,7 +269,7 @@ variable it is stored at. -/
 theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)}
     {W : Witnesses (s,x)} {Fs : List Label} {y : BVar s .var}
     (hty : Γ.lookupTy y = .obj Tel)
-    (hdef : ∀ l, Γ.lookupDef y l = some ((W.get l).substVar y))
+    (hdef : ∀ l, Γ.lookupDef y l = some ((W.get l)⟦y⟧))
     (hfields : Γ.lookupFields y = some Fs) :
     Ctx.Ren (Γ.cons (.transparent (.obj Tel) W Fs)) (Rename.subst y) Γ where
   ty := by
@@ -290,7 +290,7 @@ theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)}
         | none => rw [hd] at hW'; simp at hW'
         | some W0 =>
             rw [hd] at hW'
-            have hWe : W' = W0.weaken := by simpa using hW'.symm
+            have hWe : W' = W0↑ := by simpa using hW'.symm
             subst hWe
             simpa using hd
   fields := by
@@ -314,16 +314,16 @@ canonical-forms theorem (`CanonicalMetatheory.lean`). -/
 structure FormsTyped (σ : Store s) (Γ : Ctx s) : Prop where
   pi : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {d : LeCo s}
     {c : LeCo (s,x)} {S₀ : Ty s} {T₀ : Ty (s,x)},
-    Atom.HasType Γ a (.pi S T) → closedAtomForm σ n a = some (a', .pi d c) →
+    Γ ⊢ₐ a : (.pi S T) → closedAtomForm σ n a = some (a', .pi d c) →
     Γ.lookupTy a.root = .pi S₀ T₀ →
-    LeCo.HasType Γ d S S₀ ∧ LeCo.HasType (Γ.cons (.opaque S)) c T₀ T
+    Γ ⊢ d : S ≤ S₀ ∧ (Γ.cons (.opaque S)) ⊢ c : T₀ ≤ T
   refl : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {F : Form s},
-    Atom.HasType Γ a (.pi S T) → closedAtomForm σ n a = some (a', F) →
+    Γ ⊢ₐ a : (.pi S T) → closedAtomForm σ n a = some (a', F) →
     (F = .id ∨ ∃ φ, F = .eqv φ) →
     Γ.lookupTy a.root = .pi S T
 
 theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
-    (hF : ∀ Γ, Store.Typed st.σ Γ → FormsTyped st.σ Γ)
+    (hF : ∀ Γ, ⊢ st.σ : Γ → FormsTyped st.σ Γ)
     (hT : State.Typed st U) (step : Step st st') :
     ∃ ρ : Rename s s', State.Typed st' (U.rename ρ) := by
   cases step with
@@ -372,7 +372,7 @@ theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
               · subst hS
                 rw [show Tm.adjust u v = u by simp [Tm.adjust, hn]]
                 exact hu.refine Ctx.Refines.transparent
-              · rw [show Tm.adjust u v = u.subst (Subst.selfCast E.weaken) by
+              · rw [show Tm.adjust u v = u.subst (Subst.selfCast E↑) by
                       simp [Tm.adjust, hE?]]
                 have := hu.subst (Subst.Typed.selfCast (W := v.core.witnesses)
                   (Fs := v.core.fieldLabels) hE)
@@ -439,7 +439,7 @@ theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
           have hval := hσ.lookup a.root
           rw [hx] at hval
           obtain ⟨hTe, hG, hF⟩ := Value.HasType.obj_inv hval
-          have hdef : ∀ l', Γ.lookupDef a.root l' = some ((W.get l').substVar a.root) := by
+          have hdef : ∀ l', Γ.lookupDef a.root l' = some ((W.get l')⟦a.root⟧) := by
             intro l'
             have hlk := hσ.lookupDef a.root l'
             rw [hx] at hlk

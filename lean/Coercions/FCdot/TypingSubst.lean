@@ -32,7 +32,7 @@ namespace FCdot
 /-- `Subst.Typed Γ σ Γ'`: every variable of `Γ` goes to an atom of the
 transported type, and definitions and field labels survive along `σ.root`. -/
 structure Subst.Typed {s1 s2 : Sig} (Γ : Ctx s1) (σ : Subst s1 s2) (Γ' : Ctx s2) : Prop where
-  var : ∀ x, Atom.HasType Γ' (σ.var x) ((Γ.lookupTy x).rename σ.root)
+  var : ∀ x, Γ' ⊢ₐ (σ.var x) : ((Γ.lookupTy x).rename σ.root)
   /-- On transparent binders the substitution behaves like a renaming. -/
   ty : ∀ x, Γ.IsTransparent x →
       Γ'.lookupTy (σ.root.var x) = (Γ.lookupTy x).rename σ.root
@@ -59,7 +59,7 @@ theorem lift {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
         rw [← he]
         exact .var
     | there y =>
-        show Atom.HasType (Γ'.cons (b.rename σ.root)) ((σ.var y).weaken)
+        show Atom.HasType (Γ'.cons (b.rename σ.root)) ((σ.var y)↑)
           (((Γ.cons b).lookupTy (.there y)).rename σ.root.lift)
         rw [Ctx.lookupTy_there, Ty.weaken_rename]
         exact (h.var y).weaken _
@@ -103,7 +103,7 @@ theorem lift {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
         | none => rw [hd] at hW; simp at hW
         | some W0 =>
             rw [hd] at hW
-            have hWe : W = W0.weaken := by simpa using hW.symm
+            have hWe : W = W0↑ := by simpa using hW.symm
             subst hWe
             rw [h.def_ y l W0 hd]
             simp [Ty.weaken_rename]
@@ -124,7 +124,7 @@ theorem ofRename {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2} (h : Ctx.Ren �
     Subst.Typed Γ (Subst.ofRename ρ) Γ' where
   var := by
     intro x
-    show Atom.HasType Γ' (.var (ρ.var x)) _
+    show Γ' ⊢ₐ (.var (ρ.var x)) : _
     rw [Subst.ofRename_root, ← h.ty x]
     exact .var
   ty := by
@@ -141,16 +141,16 @@ theorem ofRename {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2} (h : Ctx.Ren �
     simpa using h.fields x Fs hFs
 
 /-- Instantiating the innermost *opaque* binder by an atom of its type. -/
-theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Atom.HasType Γ a T) :
+theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
     Subst.Typed (Γ.cons (.opaque T)) (Subst.single a) Γ where
   var := by
     intro x
     cases x with
     | here =>
-        show Atom.HasType Γ a (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.single a).root)
+        show Γ ⊢ₐ a : (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.single a).root)
         simpa [Binding.ty] using ha
     | there y =>
-        show Atom.HasType Γ (.var y) _
+        show Γ ⊢ₐ (.var y) : _
         simpa using Atom.HasType.var (Γ := Γ) (x := y)
   ty := by
     intro x ht
@@ -174,7 +174,7 @@ theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Atom.HasType Γ a T) :
         | none => rw [hd] at hW; simp at hW
         | some W0 =>
             rw [hd] at hW
-            have hWe : W = W0.weaken := by simpa using hW.symm
+            have hWe : W = W0↑ := by simpa using hW.symm
             subst hWe
             simpa [Subst.single_root] using hd
   fields := by
@@ -192,8 +192,8 @@ end Subst.Typed
 mutual
 
 theorem LeCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
-    {e : LeCo s1} {S T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : LeCo.HasType Γ e S T) :
-    LeCo.HasType Γ' (e.subst σ) (S.rename σ.root) (T.rename σ.root) := by
+    {e : LeCo s1} {S T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ e : S ≤ T) :
+    Γ' ⊢ (e.subst σ) : (S.rename σ.root) ≤ (T.rename σ.root) := by
   match h with
   | .refl => exact .refl
   | .trans he hf => exact .trans (he.subst hσ) (hf.subst hσ)
@@ -213,8 +213,8 @@ theorem LeCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subs
       simpa [LeCo.subst, Ty.substVar_rename] using this
 
 theorem EqCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
-    {φ : EqCo s1} {S T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : EqCo.HasType Γ φ S T) :
-    EqCo.HasType Γ' (φ.subst σ) (S.rename σ.root) (T.rename σ.root) := by
+    {φ : EqCo s1} {S T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ φ : S ≡ T) :
+    Γ' ⊢ (φ.subst σ) : (S.rename σ.root) ≡ (T.rename σ.root) := by
   match h with
   | .refl => exact .refl
   | .symm hφ => exact .symm (hφ.subst hσ)
@@ -227,8 +227,8 @@ theorem EqCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subs
 
 theorem Has.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {hh : Has s1} {x : BVar s1 .var} {l : Label}
-    (hσ : Subst.Typed Γ σ Γ') (h : Has.HasType Γ hh x l) :
-    Has.HasType Γ' (hh.subst σ) (σ.root.var x) l := by
+    (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ hh : x ∋ l) :
+    Γ' ⊢ (hh.subst σ) : (σ.root.var x) ∋ l := by
   match h with
   | @Has.HasType.member _ _ a S e Tel i l ha he hAt =>
       have := Has.HasType.member (a := a.subst σ) (ha.subst hσ)
@@ -238,8 +238,8 @@ theorem Has.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst
 
 theorem Morphism.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
     {σ : Subst s1 s2} {src : Telescope s1} {m : Morphism s1} {Tel : Telescope s1}
-    (hσ : Subst.Typed Γ σ Γ') (h : Morphism.HasType Γ src m Tel) :
-    Morphism.HasType Γ' (src.rename σ.root) (m.subst σ) (Tel.rename σ.root) := by
+    (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ m : src ⇒ Tel) :
+    Γ' ⊢ (m.subst σ) : (src.rename σ.root) ⇒ (Tel.rename σ.root) := by
   match h with
   | .nil => exact .nil
   | .le hm he => exact .le (hm.subst hσ) (he.subst hσ)
@@ -248,8 +248,8 @@ theorem Morphism.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
       exact .has (hm.subst hσ) (by simpa [Proposition.rename] using hAt.rename σ.root)
 
 theorem Atom.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
-    {a : Atom s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Atom.HasType Γ a T) :
-    Atom.HasType Γ' (a.subst σ) (T.rename σ.root) := by
+    {a : Atom s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ₐ a : T) :
+    Γ' ⊢ₐ (a.subst σ) : (T.rename σ.root) := by
   match h with
   | @Atom.HasType.var _ _ x => exact hσ.var x
   | .cast ha he => exact .cast (ha.subst hσ) (he.subst hσ)
@@ -272,8 +272,8 @@ end
 mutual
 
 theorem Tm.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
-    {t : Tm s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Tm.HasType Γ t T) :
-    Tm.HasType Γ' (t.subst σ) (T.rename σ.root) := by
+    {t : Tm s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ t : T) :
+    Γ' ⊢ (t.subst σ) : (T.rename σ.root) := by
   match h with
   | .atom ha => exact .atom (ha.subst hσ)
   | .val hv => exact .val (hv.subst hσ)
@@ -292,8 +292,8 @@ theorem Tm.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst 
   | .cast ht he => exact .cast (ht.subst hσ) (he.subst hσ)
 
 theorem Value.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
-    {v : Value s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Value.HasType Γ v T) :
-    Value.HasType Γ' (v.subst σ) (T.rename σ.root) := by
+    {v : Value s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ᵥ v : T) :
+    Γ' ⊢ᵥ (v.subst σ) : (T.rename σ.root) := by
   match h with
   | .lam ht =>
       have := ht.subst (hσ.lift _)
@@ -308,8 +308,8 @@ theorem Value.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Sub
 
 theorem Fields.HasType.subst {s1 s2 : Sig} {Γ : Ctx (s1,x)} {Γ' : Ctx (s2,x)}
     {σ : Subst s1 s2} {F : Fields (s1,x)}
-    (hσ : Subst.Typed Γ σ.lift Γ') (h : Fields.HasType Γ F) :
-    Fields.HasType Γ' (F.subst σ.lift) := by
+    (hσ : Subst.Typed Γ σ.lift Γ') (h : Γ ⊢ᶠ F) :
+    Γ' ⊢ᶠ (F.subst σ.lift) := by
   match h with
   | .nil => exact .nil
   | .cons hF ht =>
@@ -322,20 +322,20 @@ end
 /-! ## Instantiating the innermost opaque binder -/
 
 theorem Atom.HasType.substAtom {Γ : Ctx s} {T : Ty s} {b : Atom (s,x)} {U : Ty (s,x)}
-    {a : Atom s} (hb : Atom.HasType (Γ.cons (.opaque T)) b U) (ha : Atom.HasType Γ a T) :
-    Atom.HasType Γ (b.subst (Subst.single a)) (U.substVar a.root) := by
+    {a : Atom s} (hb : (Γ.cons (.opaque T)) ⊢ₐ b : U) (ha : Γ ⊢ₐ a : T) :
+    Γ ⊢ₐ (b.subst (Subst.single a)) : (U⟦a.root⟧) := by
   have := hb.subst (Subst.Typed.single ha)
   simpa [Ty.substVar] using this
 
 theorem Tm.HasType.substAtom {Γ : Ctx s} {T : Ty s} {u : Tm (s,x)} {U : Ty (s,x)}
-    {a : Atom s} (hu : Tm.HasType (Γ.cons (.opaque T)) u U) (ha : Atom.HasType Γ a T) :
-    Tm.HasType Γ (u.substAtom a) (U.substVar a.root) := by
+    {a : Atom s} (hu : (Γ.cons (.opaque T)) ⊢ u : U) (ha : Γ ⊢ₐ a : T) :
+    Γ ⊢ (u.substAtom a) : (U⟦a.root⟧) := by
   have := hu.subst (Subst.Typed.single ha)
   simpa [Tm.substAtom, Ty.substVar] using this
 
 theorem Value.HasType.substAtom {Γ : Ctx s} {T : Ty s} {v : Value (s,x)} {U : Ty (s,x)}
-    {a : Atom s} (hv : Value.HasType (Γ.cons (.opaque T)) v U) (ha : Atom.HasType Γ a T) :
-    Value.HasType Γ (v.subst (Subst.single a)) (U.substVar a.root) := by
+    {a : Atom s} (hv : (Γ.cons (.opaque T)) ⊢ᵥ v : U) (ha : Γ ⊢ₐ a : T) :
+    Γ ⊢ᵥ (v.subst (Subst.single a)) : (U⟦a.root⟧) := by
   have := hv.subst (Subst.Typed.single ha)
   simpa [Ty.substVar] using this
 

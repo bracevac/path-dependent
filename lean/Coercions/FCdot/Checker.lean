@@ -375,7 +375,7 @@ def Ty.strengthen? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option (Ty s) :=
   T.rename? PartialRename.unshift
 
 theorem Ty.strengthen?_sound {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s}
-    (h : T.strengthen? = some U) : T = U.weaken :=
+    (h : T.strengthen? = some U) : T = U↑ :=
   Ty.rename?_sound T U PartialRename.unshift Rename.succ PartialRename.unshift_inverts h
 
 theorem Ty.strengthen?_weaken {s : Sig} {k : Kind} (U : Ty s) :
@@ -383,18 +383,18 @@ theorem Ty.strengthen?_weaken {s : Sig} {k : Kind} (U : Ty s) :
   Ty.rename?_complete U PartialRename.unshift Rename.succ PartialRename.unshift_inverts
 
 theorem Ty.strengthen?_eq_some_iff {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s} :
-    T.strengthen? = some U ↔ T = U.weaken := by
+    T.strengthen? = some U ↔ T = U↑ := by
   constructor
   · exact Ty.strengthen?_sound
   · intro h; subst h; exact Ty.strengthen?_weaken U
 
 /-- Strengthening inverts weakening, on the nose. -/
 theorem Ty.strengthen?_some_iff {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s} :
-    T.strengthen? = some U ↔ T = U.weaken :=
+    T.strengthen? = some U ↔ T = U↑ :=
   Ty.strengthen?_eq_some_iff
 
 /-- Strengthening, carrying the equation it establishes. -/
-def Ty.strengthenW? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option { U : Ty s // T = U.weaken } :=
+def Ty.strengthenW? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option { U : Ty s // T = U↑ } :=
   match witness? T.strengthen? with
   | some ⟨U, hU⟩ => some ⟨U, Ty.strengthen?_sound hU⟩
   | none => none
@@ -411,34 +411,34 @@ derivation it validated, so soundness is by construction. -/
 structure LeChecked {s : Sig} (Γ : Ctx s) (ev : LeCo s) where
   source : Ty s
   target : Ty s
-  typing : LeCo.HasType Γ ev source target
+  typing : Γ ⊢ ev : source ≤ target
 
 structure EqChecked {s : Sig} (Γ : Ctx s) (ev : EqCo s) where
   source : Ty s
   target : Ty s
-  typing : EqCo.HasType Γ ev source target
+  typing : Γ ⊢ ev : source ≡ target
 
 structure HasChecked {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) where
   label : Label
-  typing : Has.HasType Γ ev y label
+  typing : Γ ⊢ ev : y ∋ label
 
 /-- A morphism is checked against its *source* telescope: presence propositions
 are inherited from it by index.  The target telescope is synthesised. -/
 structure MorChecked {s : Sig} (Γ : Ctx s) (src : Telescope s) (m : Morphism s) where
   tel : Telescope s
-  typing : Morphism.HasType Γ src m tel
+  typing : Γ ⊢ m : src ⇒ tel
 
 structure AtomChecked {s : Sig} (Γ : Ctx s) (a : Atom s) where
   type : Ty s
-  typing : Atom.HasType Γ a type
+  typing : Γ ⊢ₐ a : type
 
 structure TmChecked {s : Sig} (Γ : Ctx s) (t : Tm s) where
   type : Ty s
-  typing : Tm.HasType Γ t type
+  typing : Γ ⊢ t : type
 
 structure ValueChecked {s : Sig} (Γ : Ctx s) (v : Value s) where
   type : Ty s
-  typing : Value.HasType Γ v type
+  typing : Γ ⊢ᵥ v : type
 
 /-- Endpoints of a coercion. -/
 abbrev Endpoints (s : Sig) := Ty s × Ty s
@@ -453,14 +453,14 @@ definitionally. -/
 /-- `LeCo.member`: the `i`-th proposition of the object type `e` lands in, when
 it is an inclusion. -/
 def leMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat)
-    {Sa : Ty s} (ha : Atom.HasType Γ a Sa) {Se Te : Ty s} (he : LeCo.HasType Γ e Se Te) :
+    {Sa : Ty s} (ha : Γ ⊢ₐ a : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
     Option (LeChecked Γ (.member a e i)) :=
   if hs : Se = Sa then
     match Te, he with
     | .obj Tel, he =>
         match Telescope.getAt? Tel i with
         | some ⟨.le S' T', hAt⟩ =>
-            some ⟨S'.substVar a.root, T'.substVar a.root,
+            some ⟨S'⟦a.root⟧, T'⟦a.root⟧,
               .member ha (by subst hs; exact he) hAt⟩
         | _ => none
     | _, _ => none
@@ -468,14 +468,14 @@ def leMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat)
 
 /-- `EqCo.member`: the same, when the proposition is an equality. -/
 def eqMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat)
-    {Sa : Ty s} (ha : Atom.HasType Γ a Sa) {Se Te : Ty s} (he : LeCo.HasType Γ e Se Te) :
+    {Sa : Ty s} (ha : Γ ⊢ₐ a : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
     Option (EqChecked Γ (.member a e i)) :=
   if hs : Se = Sa then
     match Te, he with
     | .obj Tel, he =>
         match Telescope.getAt? Tel i with
         | some ⟨.eq S' T', hAt⟩ =>
-            some ⟨S'.substVar a.root, T'.substVar a.root,
+            some ⟨S'⟦a.root⟧, T'⟦a.root⟧,
               .member ha (by subst hs; exact he) hAt⟩
         | _ => none
     | _, _ => none
@@ -484,7 +484,7 @@ def eqMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat)
 /-- `Has.member`: the same, when the proposition is a field declaration.  The
 subject variable is checked, the label synthesised. -/
 def hasMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat) (y : BVar s .var)
-    {Sa : Ty s} (ha : Atom.HasType Γ a Sa) {Se Te : Ty s} (he : LeCo.HasType Γ e Se Te) :
+    {Sa : Ty s} (ha : Γ ⊢ₐ a : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
     Option (HasChecked Γ (.member a e i) y) :=
   if hx : a.root = y then
     if hs : Se = Sa then
@@ -501,26 +501,26 @@ def hasMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat) (y : BV
 /-- `Morphism.has`: the target inherits the `j`-th proposition of the *source*
 telescope, which must be a field declaration. -/
 def morHas {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s} (j : Nat)
-    {Tel : Telescope s} (hm : Morphism.HasType Γ src m Tel) :
+    {Tel : Telescope s} (hm : Γ ⊢ m : src ⇒ Tel) :
     Option (MorChecked Γ src (.has m j)) :=
   match Telescope.getAt? src j with
   | some ⟨.has ℓ, hAt⟩ => some ⟨.cons Tel (.has ℓ), .has hm hAt⟩
   | _ => none
 
 /-- `Rec-E`: the atom's type must be an object type. -/
-def atomUnfold {s : Sig} {Γ : Ctx s} {b : Atom s} {Tb : Ty s} (hb : Atom.HasType Γ b Tb) :
+def atomUnfold {s : Sig} {Γ : Ctx s} {b : Atom s} {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) :
     Option (AtomChecked Γ (.unfoldSelf b)) :=
   match Tb, hb with
-  | .obj Tel, hb => some ⟨.obj (Tel.substVar b.root).weaken, .unfoldSelf hb⟩
+  | .obj Tel, hb => some ⟨.obj (Tel⟦b.root⟧)↑, .unfoldSelf hb⟩
   | _, _ => none
 
 /-- Application: the function's type must be an arrow whose domain is the
 argument's type. -/
-def tmApp {s : Sig} {Γ : Ctx s} {a b : Atom s} {Ta : Ty s} (ha : Atom.HasType Γ a Ta)
-    {Tb : Ty s} (hb : Atom.HasType Γ b Tb) : Option (TmChecked Γ (.app a b)) :=
+def tmApp {s : Sig} {Γ : Ctx s} {a b : Atom s} {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta)
+    {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) : Option (TmChecked Γ (.app a b)) :=
   match Ta, ha with
   | .pi S T, ha =>
-      if h : Tb = S then some ⟨T.substVar b.root, .app ha (by subst h; exact hb)⟩ else none
+      if h : Tb = S then some ⟨T⟦b.root⟧, .app ha (by subst h; exact hb)⟩ else none
   | _, _ => none
 
 /-! ## Evidence kernel
@@ -550,7 +550,7 @@ def synthLeCore {s : Sig} (Γ : Ctx s) (ev : LeCo s) : Option (LeChecked Γ ev) 
       some ⟨.pi ce.target cf.source, .pi ce.source cf.target, .pi ce.typing cf.typing⟩
   | .obj Tel m => do
       let cm ← synthMorCore Γ Tel m
-      some ⟨.obj Tel.weaken, .obj cm.tel.weaken, .obj cm.typing⟩
+      some ⟨.obj Tel↑, .obj cm.tel↑, .obj cm.typing⟩
   | .member a e i => do
       let ca ← synthAtomCore Γ a
       let ce ← synthLeCore Γ e
@@ -619,7 +619,7 @@ def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a
       atomUnfold cb.typing
   | .foldSelf Tel b => do
       let cb ← synthAtomCore Γ b
-      if h : cb.type = .obj (Tel.substVar b.root).weaken then
+      if h : cb.type = .obj (Tel⟦b.root⟧)↑ then
         some ⟨.obj Tel, .foldSelf (by rw [← h]; exact cb.typing)⟩
       else none
 
@@ -679,7 +679,7 @@ def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked �
       else none
 
 def checkFieldsCore {s : Sig} (Γ : Ctx (s,x)) (F : Fields (s,x)) :
-    Option (PLift (Fields.HasType Γ F)) :=
+    Option (PLift (Γ ⊢ᶠ F)) :=
   match F with
   | .nil => some ⟨.nil⟩
   | .cons F ℓ t => do
@@ -756,7 +756,7 @@ private theorem isSome_elim {α : Type} {o : Option α} (h : o.isSome = true) : 
   | some v => exact ⟨v, rfl⟩
 
 theorem synthLe_sound {s : Sig} {Γ : Ctx s} {ev : LeCo s} {S T : Ty s}
-    (h : synthLe Γ ev = some (S, T)) : LeCo.HasType Γ ev S T := by
+    (h : synthLe Γ ev = some (S, T)) : Γ ⊢ ev : S ≤ T := by
   unfold synthLe at h
   cases hc : synthLeCore Γ ev with
   | none => rw [hc] at h; simp at h
@@ -768,11 +768,11 @@ theorem synthLe_sound {s : Sig} {Γ : Ctx s} {ev : LeCo s} {S T : Ty s}
       exact c.typing
 
 theorem checkLe_sound {s : Sig} {Γ : Ctx s} {ev : LeCo s} {S T : Ty s}
-    (h : checkLe Γ ev S T = true) : LeCo.HasType Γ ev S T :=
+    (h : checkLe Γ ev S T = true) : Γ ⊢ ev : S ≤ T :=
   synthLe_sound (of_decide_eq_true h)
 
 theorem synthEq_sound {s : Sig} {Γ : Ctx s} {ev : EqCo s} {S T : Ty s}
-    (h : synthEq Γ ev = some (S, T)) : EqCo.HasType Γ ev S T := by
+    (h : synthEq Γ ev = some (S, T)) : Γ ⊢ ev : S ≡ T := by
   unfold synthEq at h
   cases hc : synthEqCore Γ ev with
   | none => rw [hc] at h; simp at h
@@ -784,7 +784,7 @@ theorem synthEq_sound {s : Sig} {Γ : Ctx s} {ev : EqCo s} {S T : Ty s}
       exact c.typing
 
 theorem checkEq_sound {s : Sig} {Γ : Ctx s} {ev : EqCo s} {S T : Ty s}
-    (h : checkEq Γ ev S T = true) : EqCo.HasType Γ ev S T :=
+    (h : checkEq Γ ev S T = true) : Γ ⊢ ev : S ≡ T :=
   synthEq_sound (of_decide_eq_true h)
 
 theorem synthHas_sound {s : Sig} {Γ : Ctx s} {ev : Has s} {y : BVar s .var} {ℓ : Label}
@@ -804,7 +804,7 @@ theorem checkHas_sound {s : Sig} {Γ : Ctx s} {ev : Has s} {y : BVar s .var} {�
 
 theorem synthMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
     {Tel : Telescope s} (h : synthMorphism Γ src m = some Tel) :
-    Morphism.HasType Γ src m Tel := by
+    Γ ⊢ m : src ⇒ Tel := by
   unfold synthMorphism at h
   cases hc : synthMorCore Γ src m with
   | none => rw [hc] at h; simp at h
@@ -815,11 +815,11 @@ theorem synthMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morp
       exact c.typing
 
 theorem checkMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
-    {Tel : Telescope s} (h : checkMorphism Γ src m Tel = true) : Morphism.HasType Γ src m Tel :=
+    {Tel : Telescope s} (h : checkMorphism Γ src m Tel = true) : Γ ⊢ m : src ⇒ Tel :=
   synthMorphism_sound (of_decide_eq_true h)
 
 theorem synthAtom_sound {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
-    (h : synthAtom Γ a = some T) : Atom.HasType Γ a T := by
+    (h : synthAtom Γ a = some T) : Γ ⊢ₐ a : T := by
   unfold synthAtom at h
   cases hc : synthAtomCore Γ a with
   | none => rw [hc] at h; simp at h
@@ -830,11 +830,11 @@ theorem synthAtom_sound {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
       exact c.typing
 
 theorem checkAtom_sound {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
-    (h : checkAtom Γ a T = true) : Atom.HasType Γ a T :=
+    (h : checkAtom Γ a T = true) : Γ ⊢ₐ a : T :=
   synthAtom_sound (of_decide_eq_true h)
 
 theorem synthTm_sound {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : synthTm Γ t = some T) : Tm.HasType Γ t T := by
+    (h : synthTm Γ t = some T) : Γ ⊢ t : T := by
   unfold synthTm at h
   cases hc : synthTmCore Γ t with
   | none => rw [hc] at h; simp at h
@@ -845,11 +845,11 @@ theorem synthTm_sound {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
       exact c.typing
 
 theorem checkTm_sound {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : checkTm Γ t T = true) : Tm.HasType Γ t T :=
+    (h : checkTm Γ t T = true) : Γ ⊢ t : T :=
   synthTm_sound (of_decide_eq_true h)
 
 theorem synthValue_sound {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
-    (h : synthValue Γ v = some T) : Value.HasType Γ v T := by
+    (h : synthValue Γ v = some T) : Γ ⊢ᵥ v : T := by
   unfold synthValue at h
   cases hc : synthValueCore Γ v with
   | none => rw [hc] at h; simp at h
@@ -860,11 +860,11 @@ theorem synthValue_sound {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
       exact c.typing
 
 theorem checkValue_sound {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
-    (h : checkValue Γ v T = true) : Value.HasType Γ v T :=
+    (h : checkValue Γ v T = true) : Γ ⊢ᵥ v : T :=
   synthValue_sound (of_decide_eq_true h)
 
 theorem checkFields_sound {s : Sig} {Γ : Ctx (s,x)} {F : Fields (s,x)}
-    (h : checkFields Γ F = true) : Fields.HasType Γ F := by
+    (h : checkFields Γ F = true) : Γ ⊢ᶠ F := by
   obtain ⟨p, _⟩ := isSome_elim h
   exact p.down
 

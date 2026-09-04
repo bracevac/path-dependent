@@ -16,8 +16,8 @@ section
 variable {σ : Store s} {Γ : Ctx s}
 
 /-- A function atom is rooted at a closure. -/
-theorem closed_pi_inversion (hσ : Store.Typed σ Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
-    (h : Atom.HasType Γ a (.pi S T)) : ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
+theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
+    (h : Γ ⊢ₐ a : (.pi S T)) : ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
   obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
   have hlk : ∃ S₀ T₀, Γ.lookupTy a.root = .pi S₀ T₀ := by
     rcases hσ.lookupTy_shape a.root with hp | ⟨Tel, ho⟩
@@ -42,7 +42,7 @@ theorem closed_pi_inversion (hσ : Store.Typed σ Γ) {a : Atom s} {S : Ty s} {T
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-- Presence evidence at a location names a field of the object stored there. -/
-theorem closed_has_field (hσ : Store.Typed σ Γ) {h : Has s} {x : BVar s .var} {ℓ : Label}
+theorem closed_has_field (hσ : ⊢ σ : Γ) {h : Has s} {x : BVar s .var} {ℓ : Label}
     (hh : Has.HasType Γ h x ℓ) : ∃ W F t, σ.lookup x = .obj W F ∧ F.get? ℓ = some t := by
   obtain ⟨_, _, W, F, hl, hget⟩ := has_canon hσ hh
   obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp hget

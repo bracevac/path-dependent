@@ -33,8 +33,8 @@ namespace Ctx
 
 /-- Type of a variable, in the current scope. -/
 def lookupTy : Ctx s → BVar s .var → Ty s
-  | .cons _ b, .here => b.ty.weaken
-  | .cons Γ _, .there y => (lookupTy Γ y).weaken
+  | .cons _ b, .here => b.ty↑
+  | .cons Γ _, .there y => (lookupTy Γ y)↑
 
 /-- Definition of a block name, if its binder is transparent. -/
 def lookupDef : Ctx s → BVar s .var → Label → Option (Ty s)

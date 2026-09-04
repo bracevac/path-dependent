@@ -45,6 +45,22 @@ def Ctx.resolveAt (Γ : Ctx s) : Option (BVar s .var) → Ty s → Ty s
   | none, T => Γ.resolve T
   | some r, T => (Γ.resolve T).unfoldAt r
 
+/-! ### Notation for typed forms
+
+`Γ ⊨ F : S ≤ T` types a coercion form with plain shapes; `Γ ⊨[r] F : S ≤ T`
+types the chain of casts of an atom rooted at `r`, with shapes opened at
+`r`.  `Γ ⊨ Es : Tel₁ ⇒ Tel₂` types the entries of an object form between
+opened telescopes. -/
+
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊨ " F:51 " : " S:51 " ≤ " T:51 => FormTyped Γ none F S T
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊨[" r "] " F:51 " : " S:51 " ≤ " T:51 => FormTyped Γ (some r) F S T
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊨ " Es:51 " : " Tel₁:51 " ⇒ " Tel₂:51 => EntriesTyped Γ none Tel₁ Es Tel₂
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊨[" r "] " Es:51 " : " Tel₁:51 " ⇒ " Tel₂:51 => EntriesTyped Γ (some r) Tel₁ Es Tel₂
+
 section
 
 variable (Γ : Ctx s) (ρ : Option (BVar s .var))
@@ -86,6 +102,17 @@ end
 
 end
 
+open Lean PrettyPrinter in
+@[app_unexpander FormTyped] def FormTyped.unexpand : Unexpander
+  | `($_ $Γ none $F $S $T) => `($Γ ⊨ $F : $S ≤ $T)
+  | `($_ $Γ (some $r) $F $S $T) => `($Γ ⊨[$r] $F : $S ≤ $T)
+  | _ => throw ()
+open Lean PrettyPrinter in
+@[app_unexpander EntriesTyped] def EntriesTyped.unexpand : Unexpander
+  | `($_ $Γ none $Tel₁ $Es $Tel₂) => `($Γ ⊨ $Es : $Tel₁ ⇒ $Tel₂)
+  | `($_ $Γ (some $r) $Tel₁ $Es $Tel₂) => `($Γ ⊨[$r] $Es : $Tel₁ ⇒ $Tel₂)
+  | _ => throw ()
+
 section
 variable (Γ : Ctx s) (r : BVar s .var) (σ : Store s)
 
@@ -103,5 +130,9 @@ def ViewTyped (V : View s) (Tel : Telescope (s,x)) : Prop :=
   ∀ i P, Tel.At i P → PropFormTyped Γ r σ (View.nth? V i) (P.substVar r)
 
 end
+
+/-- `Γ ⊨[r, σ] V : Tel`: over the store `σ`, the view `V` of an atom rooted
+at `r` is typed against `Tel` instantiated at `r`. -/
+scoped notation:40 Γ:51 " ⊨[" r ", " σ "] " V:51 " : " Tel:51 => ViewTyped Γ r σ V Tel
 
 end FCdot

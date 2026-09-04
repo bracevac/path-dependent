@@ -43,6 +43,14 @@ def Cont.erase : Cont s → Runtime.Cont s
 def State.erase (st : State s) : Runtime.State s :=
   ⟨st.σ.erase, st.K.erase, st.t.erase⟩
 
+/-! ### Notation: `⌊t⌋` erases a term, value, store, continuation, or state. -/
+
+scoped notation:max "⌊" t "⌋" => Tm.erase t
+scoped notation:max "⌊" v "⌋" => Value.erase v
+scoped notation:max "⌊" σ "⌋" => Store.erase σ
+scoped notation:max "⌊" K "⌋" => Cont.erase K
+scoped notation:max "⌊" st "⌋" => State.erase st
+
 /-- States whose next step only moves a cast frame; such steps erase to no
 runtime step. -/
 def State.CastRedex (st : State s) : Prop :=

@@ -11,7 +11,7 @@ structural checker of `Coercions.FCdot.Checker`.  Each example comes with
 
 * the term and its type, built from the type translation of §5.1;
 * the checker's verdict on it;
-* a typing derivation `Eᵢ_typed : Tm.HasType Ctx.nil Eᵢ EᵢTy`;
+* a typing derivation `Eᵢ_typed : Ctx.nil ⊢ Eᵢ : EᵢTy`;
 * the erasure equation against the source term of `Coercions.DotMNF.Examples`,
   which is pinned to that file's derivation by a type ascription.  Both
   calculi erase into `Coercions.Runtime`, so the equation is an equality of
@@ -98,14 +98,14 @@ example : lb = DotMNF.Examples.lb := rfl
 
 /-- `{A : S..T}` as a telescope over the self block: `[S ≤ y.A, y.A ≤ T]`. -/
 def telTyp (A : Label) (S T : Ty s) : Telescope (s,x) :=
-  .cons (.cons .nil (.le S.weaken (.sel .here A))) (.le (.sel .here A) T.weaken)
+  .cons (.cons .nil (.le S↑ (.sel .here A))) (.le (.sel .here A) T↑)
 
 /-- `{A : S..T}`.  Lower bound at index `0`, upper bound at index `1`. -/
 def tTyp (A : Label) (S T : Ty s) : Ty s := .obj (telTyp A S T)
 
 /-- `{a : T}` as a telescope over the self block: `[has a, y.a ≤ T]`. -/
 def telFld (a : Label) (T : Ty s) : Telescope (s,x) :=
-  .cons (.cons .nil (.has a)) (.le (.sel .here a) T.weaken)
+  .cons (.cons .nil (.has a)) (.le (.sel .here a) T↑)
 
 /-- `{a : T}`.  Field declaration at index `0`, upper bound at index `1`. -/
 def tFld (a : Label) (T : Ty s) : Ty s := .obj (telFld a T)
@@ -149,7 +149,7 @@ def E1Ty : Ty [] := .pi E1Dom E1Res
 
 example : checkTm Ctx.nil E1 E1Ty = true := by decide +kernel
 
-theorem E1_typed : Tm.HasType Ctx.nil E1 E1Ty := checkTm_sound (by decide +kernel)
+theorem E1_typed : Ctx.nil ⊢ E1 : E1Ty := checkTm_sound (by decide +kernel)
 
 /-- The source term of `DotMNF.Examples.E1`. -/
 def E1src : DotMNF.Tm [] :=
@@ -207,8 +207,8 @@ def E2Ty : Ty s := .obj E2Tel
 
 #guard checkValue Ctx.nil (.obj E2Wit E2Fields) E2Ty
 
-theorem E2_value {s : Sig} {Γ : Ctx s} : Value.HasType Γ (.obj E2Wit E2Fields) E2Ty := by
-  have h : Value.HasType Γ (.obj E2Wit E2Fields) (.obj (Telescope.ofLiteral E2Wit [la])) :=
+theorem E2_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ (.obj E2Wit E2Fields) : E2Ty := by
+  have h : Γ ⊢ᵥ (.obj E2Wit E2Fields) : (.obj (Telescope.ofLiteral E2Wit [la])) :=
     .obj rfl (.cons .nil (.cast (.val (.lam (.atom .var))) (.eqToLe (.symm (.def rfl)))))
   rw [E2Tel_eq] at h
   exact h
@@ -260,7 +260,7 @@ theorem E2_app : Tm.HasType E2Ctx2
     (.sel (.there .here) lA) :=
   .app E2_fun E2_arg
 
-theorem E2_typed : Tm.HasType Ctx.nil E2 E2Ty' :=
+theorem E2_typed : Ctx.nil ⊢ E2 : E2Ty' :=
   .let (.val E2_value)
     (.let (.proj .var (.member (Tel := E2Tel) .var .refl .here)) (.cast E2_app .top))
 
@@ -298,7 +298,7 @@ def E3Ty : Ty [] := .pi E3Dom (.pi tNat tInt)
 
 example : checkTm Ctx.nil E3 E3Ty = true := by decide +kernel
 
-theorem E3_typed : Tm.HasType Ctx.nil E3 E3Ty := checkTm_sound (by decide +kernel)
+theorem E3_typed : Ctx.nil ⊢ E3 : E3Ty := checkTm_sound (by decide +kernel)
 
 /-- The source term of `DotMNF.Examples.E3`. -/
 def E3src : DotMNF.Tm [] :=
@@ -351,7 +351,7 @@ def E4Ty : Ty [] := .pi E4X (.pi E4S (.pi tInt (.sel (.there .here) lA)))
 
 example : checkTm Ctx.nil E4 E4Ty = true := by decide +kernel
 
-theorem E4_typed : Tm.HasType Ctx.nil E4 E4Ty := checkTm_sound (by decide +kernel)
+theorem E4_typed : Ctx.nil ⊢ E4 : E4Ty := checkTm_sound (by decide +kernel)
 
 /-- The source term of `DotMNF.Examples.E4`. -/
 def E4src : DotMNF.Tm [] :=
@@ -423,7 +423,7 @@ def E5Ty : Ty [] := .pi E5AT (.sel .here lA)
 /-- `w : {A : ⊤..⊤}, v : {A : ⊤..⊤}`, the context of the object literal. -/
 def E5Ctxv : Ctx ([],x,x) := (Ctx.nil.cons (.opaque E5AT)).cons (.opaque E5AT)
 
-theorem E5_value : Value.HasType E5Ctxv (.obj (E5Wit .here) E5Fields) (E5ObjTy .here) := by
+theorem E5_value : E5Ctxv ⊢ᵥ (.obj (E5Wit .here) E5Fields) : (E5ObjTy .here) := by
   have h : Value.HasType E5Ctxv (.obj (E5Wit .here) E5Fields)
       (.obj (Telescope.ofLiteral (E5Wit .here) [la])) :=
     .obj rfl
@@ -439,7 +439,7 @@ def E5Ctxf : Ctx ([],x,x) :=
   (Ctx.nil.cons (.opaque E5AT)).cons (.opaque (.pi E5AT (E5ObjTy .here)))
 
 /-- `f`, at its declared type. -/
-theorem E5_f : Atom.HasType E5Ctxf (.var .here) (.pi E5AT (E5ObjTy .here)) := .var
+theorem E5_f : E5Ctxf ⊢ₐ (.var .here) : (.pi E5AT (E5ObjTy .here)) := .var
 
 /-- `f w : Obj(z. [z.a ≃ w.A, has a])`: the application renames `v`'s block. -/
 theorem E5_app : Tm.HasType E5Ctxf (.app (.var .here) (.var (.there .here)))
@@ -458,7 +458,7 @@ theorem E5_proj : Tm.HasType E5Ctxo
   .cast (.proj .var (.member (Tel := E5Tel (.there (.there .here))) .var .refl .here))
     (.eqToLe (.member (Tel := E5Tel (.there (.there .here))) .var .refl (.there .here)))
 
-theorem E5_typed : Tm.HasType Ctx.nil E5 E5Ty :=
+theorem E5_typed : Ctx.nil ⊢ E5 : E5Ty :=
   .val (.lam (.let (.val (.lam (.val E5_value))) (.let E5_app E5_proj)))
 
 /-- The source term of `DotMNF.Examples.E5`. -/

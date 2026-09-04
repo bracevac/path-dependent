@@ -285,14 +285,14 @@ theorem Witnesses.guarded_get {s : Sig} :
         exact Witnesses.guarded_get W h.2 ℓ
 
 theorem Value.witnesses_guarded {Γ : Ctx s} {v : Value s} {T : Ty s}
-    (hlit : v.IsLiteral) (hv : Value.HasType Γ v T) : v.witnesses.Guarded := by
+    (hlit : v.IsLiteral) (hv : Γ ⊢ᵥ v : T) : v.witnesses.Guarded := by
   cases v with
   | lam S t => rfl
   | obj W F => cases hv with
       | obj hg _ => exact hg
   | cast v e => exact absurd hlit (by simp [Value.IsLiteral])
 
-theorem Store.Typed.wellDefined {σ : Store s} {Γ : Ctx s} (h : Store.Typed σ Γ) :
+theorem Store.Typed.wellDefined {σ : Store s} {Γ : Ctx s} (h : ⊢ σ : Γ) :
     Γ.WellDefined := by
   induction h with
   | nil => intro x ℓ ℓ' _; cases x

@@ -24,41 +24,41 @@ variable {σ : Store s} {Γ : Ctx s}
 /-! ## Views are stable under folding and unfolding the self block -/
 
 theorem ViewTyped_unfold {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
-    (h : ViewTyped Γ r σ V Tel) : ViewTyped Γ r σ V ((Tel.substVar r).weaken) := by
+    (h : Γ ⊨[r, σ] V : Tel) : Γ ⊨[r, σ] V : ((Tel⟦r⟧)↑) := by
   refine ⟨?_, fun i P hP => ?_⟩
   · rw [h.1]; simp [Telescope.weaken, Telescope.substVar, Telescope.length_rename]
   · simp only [Telescope.weaken, Telescope.substVar] at hP
     obtain ⟨P₁, hP₁, rfl⟩ := Telescope.At.rename_inv hP
     obtain ⟨P₀, hP₀, rfl⟩ := Telescope.At.rename_inv hP₁
     have := h.2 i P₀ hP₀
-    have e : ((P₀.rename (Rename.subst r)).rename Rename.succ).substVar r = P₀.substVar r :=
+    have e : ((P₀.rename (Rename.subst r)).rename Rename.succ)⟦r⟧ = P₀⟦r⟧ :=
       Proposition.substVar_weaken_substVar P₀ r r
     rw [e]
     exact this
 
 theorem ViewTyped_fold {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
-    (h : ViewTyped Γ r σ V ((Tel.substVar r).weaken)) : ViewTyped Γ r σ V Tel := by
+    (h : Γ ⊨[r, σ] V : ((Tel⟦r⟧)↑)) : Γ ⊨[r, σ] V : Tel := by
   refine ⟨?_, fun i P₀ hP₀ => ?_⟩
   · rw [h.1]; simp [Telescope.weaken, Telescope.substVar, Telescope.length_rename]
-  · have hP : Telescope.At ((Tel.substVar r).weaken (k := .var)) i ((P₀.substVar r).weaken (k := .var)) :=
+  · have hP : ((Tel⟦r⟧).weaken (k := .var)) ∋ (i ↦ ((P₀⟦r⟧).weaken (k := .var))) :=
       (hP₀.rename (Rename.subst r)).rename (Rename.succ (k := .var))
     have := h.2 i _ hP
-    have e : ((P₀.substVar r).weaken (k := .var)).substVar r = P₀.substVar r :=
+    have e : ((P₀⟦r⟧).weaken (k := .var))⟦r⟧ = P₀⟦r⟧ :=
       Proposition.substVar_weaken_substVar P₀ r r
     rw [e] at this
     exact this
 
 /-! ## The precise view of a location -/
 
-theorem eqForms_typed (hσ : Store.Typed σ Γ) (x : BVar s .var) {W₀ : Witnesses (s,x)}
+theorem eqForms_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) {W₀ : Witnesses (s,x)}
     (hW : (σ.lookup x).witnesses = W₀) :
-    ∀ W : Witnesses (s,x), ViewTyped Γ x σ W.eqForms (W₀.eqEntriesOf W)
+    ∀ W : Witnesses (s,x), Γ ⊨[x, σ] W.eqForms : (W₀.eqEntriesOf W)
   | .nil => by simp only [Witnesses.eqForms, Witnesses.eqEntriesOf]; exact ViewTyped_nil
   | .cons W ℓ T => by
       simp only [Witnesses.eqForms, Witnesses.eqEntriesOf]
       refine ViewTyped_cons (eqForms_typed hσ x hW W) ?_
-      show Γ.resolve ((Ty.sel .here ℓ).substVar x) = Γ.resolve ((W₀.get ℓ).substVar x)
-      have hd : Γ.lookupDef x ℓ = some ((W₀.get ℓ).substVar x) := by
+      show Γ.resolve ((Ty.sel .here ℓ).substVar x) = Γ.resolve ((W₀.get ℓ)⟦x⟧)
+      have hd : Γ.lookupDef x ℓ = some ((W₀.get ℓ)⟦x⟧) := by
         rw [hσ.lookupDef x ℓ, hW]
       have : (Ty.sel .here ℓ).substVar x = .sel x ℓ := rfl
       rw [this]
@@ -66,8 +66,8 @@ theorem eqForms_typed (hσ : Store.Typed σ Γ) (x : BVar s .var) {W₀ : Witnes
 
 theorem hasForms_typed (x : BVar s .var) :
     ∀ (ls : List Label) (V : View s) (Tel : Telescope (s,x)),
-      ViewTyped Γ x σ V Tel → (∀ ℓ ∈ ls, σ.HasField x ℓ) →
-      ViewTyped Γ x σ (V ++ Fields.hasForms x ls) (Tel.hasEntries ls)
+      Γ ⊨[x, σ] V : Tel → (∀ ℓ ∈ ls, σ.HasField x ℓ) →
+      Γ ⊨[x, σ] (V ++ Fields.hasForms x ls) : (Tel.hasEntries ls)
   | [], V, Tel, hV, _ => by simpa [Fields.hasForms, Telescope.hasEntries] using hV
   | ℓ :: ls, V, Tel, hV, hF => by
       simp only [Fields.hasForms, Telescope.hasEntries]
@@ -77,9 +77,9 @@ theorem hasForms_typed (x : BVar s .var) :
       exact ⟨rfl, rfl, hF ℓ (by simp)⟩
 
 /-- The precise view of a location is typed at its type. -/
-theorem precView_typed (hσ : Store.Typed σ Γ) (x : BVar s .var) :
+theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) :
     (∀ Tel : Telescope (s,x), Γ.resolve (Γ.lookupTy x) = .obj Tel →
-      ViewTyped Γ x σ ((σ.lookup x).precView x) Tel) ∧
+      Γ ⊨[x, σ] ((σ.lookup x).precView x) : Tel) ∧
     Γ.resolve (Γ.lookupTy x) ≠ .bot := by
   have hv := hσ.lookup x
   have hlit := hσ.lookup_isLiteral x
@@ -105,7 +105,7 @@ theorem precView_typed (hσ : Store.Typed σ Γ) (x : BVar s .var) :
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-- Field presence recorded in the context is field presence in the store. -/
-theorem Store.Typed.hasField (hσ : Store.Typed σ Γ) {x : BVar s .var} {Fs : List Label}
+theorem Store.Typed.hasField (hσ : ⊢ σ : Γ) {x : BVar s .var} {Fs : List Label}
     {ℓ : Label} (hF : Γ.lookupFields x = some Fs) (hmem : ℓ ∈ Fs) : σ.HasField x ℓ := by
   rw [hσ.lookupFields x] at hF
   have hFs := (Option.some.injEq _ _).mp hF
@@ -121,7 +121,7 @@ theorem Store.Typed.hasField (hσ : Store.Typed σ Γ) {x : BVar s .var} {Fs : L
 /-! ## Statements -/
 
 def LeConcl (σ : Store s) (Γ : Ctx s) (e : LeCo s) (S T : Ty s) : Prop :=
-  ∃ n F, hnf σ n e = some F ∧ FormTyped Γ none F S T
+  ∃ n F, hnf σ n e = some F ∧ Γ ⊨ F : S ≤ T
 
 def EqConcl (Γ : Ctx s) (S T : Ty s) : Prop := Γ.resolve S = Γ.resolve T
 
@@ -130,26 +130,26 @@ def HasConcl (σ : Store s) (h : Has s) (x : BVar s .var) (ℓ : Label) : Prop :
 
 def MorConcl (σ : Store s) (Γ : Ctx s) (src : Telescope s) (m : Morphism s) (Tel : Telescope s) :
     Prop :=
-  ∃ n Es, entries σ n m = some Es ∧ EntriesTyped Γ none src Es Tel
+  ∃ n Es, entries σ n m = some Es ∧ Γ ⊨ Es : src ⇒ Tel
 
 def AtomConcl (σ : Store s) (Γ : Ctx s) (a : Atom s) (S : Ty s) : Prop :=
   ∃ n V, view σ n a = some V ∧
-    (∀ Tel : Telescope (s,x), Γ.resolve S = .obj Tel → ViewTyped Γ a.root σ V Tel) ∧
+    (∀ Tel : Telescope (s,x), Γ.resolve S = .obj Tel → Γ ⊨[a.root, σ] V : Tel) ∧
     Γ.resolve S ≠ .bot
 
 /-- The entry of a typed view at a proposition of the telescope. -/
 theorem ViewTyped.at {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
-    (hV : ViewTyped Γ r σ V Tel) {i : Nat} {P : Proposition (s,x)} (hAt : Tel.At i P) :
-    PropFormTyped Γ r σ (View.nth? V i) (P.substVar r) :=
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {P : Proposition (s,x)} (hAt : Tel.At i P) :
+    PropFormTyped Γ r σ (View.nth? V i) (P⟦r⟧) :=
   hV.2 i P hAt
 
-variable (hσ : Store.Typed σ Γ)
+variable (hσ : ⊢ σ : Γ)
 include hσ
 
 set_option linter.unusedSectionVars false in
 mutual
 
-theorem le_canon {e : LeCo s} {S T : Ty s} (h : LeCo.HasType Γ e S T) : LeConcl σ Γ e S T := by
+theorem le_canon {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) : LeConcl σ Γ e S T := by
   match h with
   | @LeCo.HasType.refl _ _ T => exact ⟨1, _, rfl, .eqv rfl⟩
   | @LeCo.HasType.top _ _ T => exact ⟨1, _, rfl, .top (by simp)⟩
@@ -184,7 +184,7 @@ theorem le_canon {e : LeCo s} {S T : Ty s} (h : LeCo.HasType Γ e S T) : LeConcl
           | eq => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
           | has y ℓ => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
 
-theorem eq_canon {φ : EqCo s} {S T : Ty s} (h : EqCo.HasType Γ φ S T) : EqConcl Γ S T := by
+theorem eq_canon {φ : EqCo s} {S T : Ty s} (h : Γ ⊢ φ : S ≡ T) : EqConcl Γ S T := by
   match h with
   | .refl => rfl
   | .symm h' => exact (eq_canon h').symm
@@ -230,7 +230,7 @@ theorem has_canon {hh : Has s} {x : BVar s .var} {ℓ : Label} (h : Has.HasType 
               simp [hasView, hnf_le (by omega : n₂ ≤ max n₁ n₂ + 1) hF, hV', hq]
 
 theorem mor_canon {src : Telescope s} {m : Morphism s} {Tel : Telescope s}
-    (h : Morphism.HasType Γ src m Tel) : MorConcl σ Γ src m Tel := by
+    (h : Γ ⊢ m : src ⇒ Tel) : MorConcl σ Γ src m Tel := by
   match h with
   | .nil => exact ⟨1, [], rfl, .nil⟩
   | .le hm he =>
@@ -245,7 +245,7 @@ theorem mor_canon {src : Telescope s} {m : Morphism s} {Tel : Telescope s}
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, Es ++ [.has _], by simp [entries, hEs], .has hT hAt⟩
 
-theorem atom_canon {a : Atom s} {S : Ty s} (h : Atom.HasType Γ a S) : AtomConcl σ Γ a S := by
+theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ Γ a S := by
   match h with
   | @Atom.HasType.var _ _ x =>
       obtain ⟨hV, hnb⟩ := precView_typed hσ x
@@ -270,7 +270,7 @@ theorem atom_canon {a : Atom s} {S : Ty s} (h : Atom.HasType Γ a S) : AtomConcl
       rw [Ctx.resolve_obj] at h
       have hTel := (Ty.obj.injEq _ _).mp h
       subst hTel
-      exact ViewTyped_fold (hVt ((Tel.substVar a.root).weaken) (Ctx.resolve_obj _ _))
+      exact ViewTyped_fold (hVt ((Tel⟦a.root⟧)↑) (Ctx.resolve_obj _ _))
 
 end
 

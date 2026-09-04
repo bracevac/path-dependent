@@ -19,23 +19,23 @@ does this for a transparent target binder; the version needed here has an
 opaque one. -/
 
 theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
-    (hE : LeCo.HasType Γ E S₀ T) :
-    Subst.Typed (Γ.cons (.opaque T)) (Subst.selfCast E.weaken) (Γ.cons (.opaque S₀)) where
+    (hE : Γ ⊢ E : S₀ ≤ T) :
+    Subst.Typed (Γ.cons (.opaque T)) (Subst.selfCast E↑) (Γ.cons (.opaque S₀)) where
   var := by
     intro y
     cases y with
     | here =>
-        show Atom.HasType (Γ.cons (.opaque S₀)) (.cast (.var .here) E.weaken)
-          (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.selfCast E.weaken).root)
-        have hE' : LeCo.HasType (Γ.cons (.opaque S₀)) E.weaken S₀.weaken T.weaken :=
+        show Atom.HasType (Γ.cons (.opaque S₀)) (.cast (.var .here) E↑)
+          (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.selfCast E↑).root)
+        have hE' : (Γ.cons (.opaque S₀)) ⊢ E↑ : S₀↑ ≤ T↑ :=
           hE.weaken _
-        have hvar : Atom.HasType (Γ.cons (.opaque S₀)) (.var .here) S₀.weaken := by
+        have hvar : (Γ.cons (.opaque S₀)) ⊢ₐ (.var .here) : S₀↑ := by
           simpa [Binding.ty] using
             Atom.HasType.var (Γ := Γ.cons (.opaque S₀)) (x := .here)
         simpa [Binding.ty] using Atom.HasType.cast hvar hE'
     | there z =>
         show Atom.HasType (Γ.cons (.opaque S₀)) (.var (.there z))
-          (((Γ.cons (.opaque T)).lookupTy (.there z)).rename (Subst.selfCast E.weaken).root)
+          (((Γ.cons (.opaque T)).lookupTy (.there z)).rename (Subst.selfCast E↑).root)
         simpa using Atom.HasType.var (Γ := Γ.cons (.opaque S₀)) (x := .there z)
   ty := by
     intro y ht
@@ -100,7 +100,7 @@ theorem Ctx.resolveAt_none (Γ : Ctx s) (T : Ty s) : Γ.resolveAt none T = Γ.re
 mutual
 
 theorem FormTyped.atRoot {F : Form s} {S T : Ty s} (r : BVar s .var)
-    (h : FormTyped Γ none F S T) : FormTyped Γ (some r) F S T := by
+    (h : Γ ⊨ F : S ≤ T) : Γ ⊨[r] F : S ≤ T := by
   match h with
   | .bot hS => exact .bot hS
   | .top hT => exact .top hT
@@ -113,7 +113,7 @@ theorem FormTyped.atRoot {F : Form s} {S T : Ty s} (r : BVar s .var)
       · simp only [Ctx.resolveAt] at hT ⊢; rw [hT]; simp [Ty.unfoldAt]
 
 theorem EntriesTyped.atRoot {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)} (r : BVar s .var)
-    (h : EntriesTyped Γ none Tel₁ Es Tel₂) : EntriesTyped Γ (some r) Tel₁ Es Tel₂ := by
+    (h : Γ ⊨ Es : Tel₁ ⇒ Tel₂) : Γ ⊨[r] Es : Tel₁ ⇒ Tel₂ := by
   match h with
   | .nil => exact .nil
   | .le h' hF => exact .le (EntriesTyped.atRoot r h') (FormTyped.atRoot r hF)
@@ -335,8 +335,8 @@ theorem entriesAt_snoc (V : View s) :
 /-- Applying typed entries (over opened telescopes) to a typed view at a root. -/
 theorem entriesAt_typed {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)} {V : View s}
     {r : BVar s .var}
-    (hEs : EntriesTyped Γ none Tel₁ Es Tel₂) (hV : ViewTyped Γ r σ V Tel₁.weaken) :
-    ∃ V', entriesAt V Es = some V' ∧ ViewTyped Γ r σ V' Tel₂.weaken := by
+    (hEs : Γ ⊨ Es : Tel₁ ⇒ Tel₂) (hV : Γ ⊨[r, σ] V : Tel₁↑) :
+    ∃ V', entriesAt V Es = some V' ∧ Γ ⊨[r, σ] V' : Tel₂↑ := by
   match hEs with
   | .nil => exact ⟨[], rfl, ViewTyped_nil⟩
   | @EntriesTyped.le _ _ _ _ _ Es F S' T' hEs' hF =>
@@ -345,7 +345,7 @@ theorem entriesAt_typed {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)} {V :
       · rw [entriesAt_snoc, hV']; rfl
       · rw [Telescope.weaken_cons, Proposition.weaken_le]
         refine ViewTyped_cons hT ?_
-        show FormTyped Γ none F ((S'.weaken (k := .var)).substVar r) ((T'.weaken (k := .var)).substVar r)
+        show Γ ⊨ F : ((S'.weaken (k := .var))⟦r⟧) ≤ ((T'.weaken (k := .var))⟦r⟧)
         rw [Ty.weaken_substVar, Ty.weaken_substVar]
         exact hF
   | .eq hEs' hE =>
@@ -354,7 +354,7 @@ theorem entriesAt_typed {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)} {V :
       · rw [entriesAt_snoc, hV']; rfl
       · rw [Telescope.weaken_cons, Proposition.weaken_eq]
         refine ViewTyped_cons hT ?_
-        show Γ.resolve ((_ : Ty s).weaken.substVar r) = Γ.resolve ((_ : Ty s).weaken.substVar r)
+        show Γ.resolve ((_ : Ty s)↑.substVar r) = Γ.resolve ((_ : Ty s)↑.substVar r)
         rw [Ty.weaken_substVar, Ty.weaken_substVar]
         exact hE
   | @EntriesTyped.has _ _ _ _ _ Es j ℓ hEs' hAt =>
@@ -372,12 +372,12 @@ theorem entriesAt_typed {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)} {V :
 /-- Applying a typed form to the typed view of an atom yields the typed view
 of the target. -/
 theorem viewThrough_typed {F : Form s} {S T : Ty s} {a : Atom s} {V : View s} {n : Nat}
-    (hF : FormTyped Γ none F S T)
+    (hF : Γ ⊨ F : S ≤ T)
     (hV : view σ n a = some V)
-    (hVt : ∀ Tel : Telescope (s,x), Γ.resolve S = .obj Tel → ViewTyped Γ a.root σ V Tel)
+    (hVt : ∀ Tel : Telescope (s,x), Γ.resolve S = .obj Tel → Γ ⊨[a.root, σ] V : Tel)
     (hnb : Γ.resolve S ≠ .bot) :
     ∃ V', viewThrough σ (n + 1) F a = some V' ∧
-      (∀ Tel : Telescope (s,x), Γ.resolve T = .obj Tel → ViewTyped Γ a.root σ V' Tel) ∧
+      (∀ Tel : Telescope (s,x), Γ.resolve T = .obj Tel → Γ ⊨[a.root, σ] V' : Tel) ∧
       Γ.resolve T ≠ .bot := by
   cases hF with
   | bot hS => exact absurd hS hnb

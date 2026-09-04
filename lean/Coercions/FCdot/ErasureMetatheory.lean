@@ -164,7 +164,7 @@ theorem Cont.erase_rename {s1 s2 : Sig} :
       simp [Cont.rename, Frame.rename, Cont.erase, Cont.erase_rename K]
 
 /-- Erasure commutes with weakening of continuations. -/
-theorem Cont.erase_weaken {s : Sig} (K : Cont s) : K.weaken.erase = K.erase.weaken := by
+theorem Cont.erase_weaken {s : Sig} (K : Cont s) : K↑.erase = K.erase.weaken := by
   simp [Cont.weaken, Runtime.Cont.weaken, Cont.erase_rename]
 
 /-! ## Commutation of erasure with atom substitution
@@ -207,13 +207,13 @@ end
 /-- Instantiating the innermost binder by an atom erases to instantiating by
 the atom's root. -/
 theorem Tm.erase_substAtom {s : Sig} (u : Tm (s,x)) (a : Atom s) :
-    (u.substAtom a).erase = u.erase.substVar a.root := by
+    (u.substAtom a).erase = u.erase.substVar (a.root) := by
   simp [Tm.substAtom, Tm.erase_subst, Runtime.Tm.substVar]
 
 /-- Substituting the self binder of a stored field erases to the same
 substitution on the runtime term. -/
 theorem Tm.selfAt_erase {s : Sig} (t : Tm (s,x)) (y : BVar s .var) :
-    (t.selfAt y).erase = t.erase.substVar y := by
+    (t.selfAt y).erase = t.erase.substVar (y) := by
   simp [Tm.selfAt, Tm.erase_rename, Runtime.Tm.substVar]
 
 /-- Adjusting a continuation body to a stripped value only inserts casts, so
@@ -267,7 +267,7 @@ theorem Value.isLiteral_rename {s1 s2 : Sig} :
 
 /-- Entries of a typed store are literals, in any scope. -/
 theorem Store.Typed.lookup_isLiteral {s : Sig} {σ : Store s} {Γ : Ctx s}
-    (h : Store.Typed σ Γ) : ∀ x : BVar s .var, (σ.lookup x).IsLiteral := by
+    (h : ⊢ σ : Γ) : ∀ x : BVar s .var, (σ.lookup x).IsLiteral := by
   induction h with
   | nil => intro x; cases x
   | @cons s0 σ0 Γ0 v T hσ hlit hv ih =>
@@ -443,7 +443,7 @@ application case uses. -/
 /-- Invariant along cast-frame steps: the running term is typed, or it is
 already a value or an atom. -/
 def State.CastInv (st : State s) (Γ : Ctx s) : Prop :=
-  (∃ T, Tm.HasType Γ st.t T) ∨ (∃ v, st.t = .val v) ∨ (∃ a, st.t = .atom a)
+  (∃ T, Γ ⊢ st.t : T) ∨ (∃ v, st.t = .val v) ∨ (∃ a, st.t = .atom a)
 
 /-- The cast-frame step of `castRedex_steps` preserves the invariant. -/
 theorem castRedex_steps_inv {s : Sig} (st : State s) (Γ : Ctx s) (hq : st.CastInv Γ)
@@ -504,7 +504,7 @@ theorem app_step_of_form {s : Sig} {σ : Store s} {K : Cont s} {a b : Atom s}
     (hform : closedAtomForm σ n a = some (a', F))
     (hF : F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) :
     ∃ st' : State s, Step (⟨σ, K, .app a b⟩ : State s) st' ∧
-      st'.erase = (⟨σ.erase, K.erase, t₀.erase.substVar b.root⟩ : Runtime.State s) := by
+      st'.erase = (⟨σ.erase, K.erase, t₀.erase.substVar (b.root)⟩ : Runtime.State s) := by
   rcases hF with hF | ⟨φ, hF⟩ | ⟨d, c, hF⟩
   · subst hF
     exact ⟨_, Step.appCastRefl hv hne hform (Or.inl rfl), by
@@ -520,12 +520,12 @@ theorem app_step_of_form {s : Sig} {σ : Store s} {K : Cont s} {a b : Atom s}
 the runtime step.  `hcf` is the canonical-forms obligation and `hat` says
 that a residual application is applied to a typed function atom. -/
 theorem erase_reflect_aux {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {Γ : Ctx s}
-    {r : Runtime.State s'} (hσ : Store.Typed σ Γ)
-    (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Atom.HasType Γ a (.pi S T) →
+    {r : Runtime.State s'} (hσ : ⊢ σ : Γ)
+    (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : (.pi S T) →
       a ≠ .var a.root → ∃ n a' F, closedAtomForm σ n a = some (a', F) ∧
         (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c))
     (hat : ∀ a b : Atom s, t = .app a b →
-      ∃ (S : Ty s) (T : Ty (s,x)), Atom.HasType Γ a (.pi S T))
+      ∃ (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : (.pi S T))
     (hnc : ¬ (State.CastRedex ⟨σ, K, t⟩))
     (h : Runtime.Step (State.erase ⟨σ, K, t⟩) r) :
     ∃ st' : State s', Step (⟨σ, K, t⟩ : State s) st' ∧ st'.erase = r := by
@@ -604,22 +604,22 @@ theorem erase_reflect_aux {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {�
 realized by a run of the FCdot machine, which first takes the pending
 cast-frame steps. -/
 theorem erase_reflect {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.State s'}
-    (hσ : Store.Typed st.σ Γ)
-    (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Atom.HasType Γ a (.pi S T) →
+    (hσ : ⊢ st.σ : Γ)
+    (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : (.pi S T) →
       a ≠ .var a.root → ∃ n a' F, closedAtomForm st.σ n a = some (a', F) ∧
         (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c))
-    (hty : ∃ T, Tm.HasType Γ st.t T)
+    (hty : ∃ T, Γ ⊢ st.t : T)
     (h : Runtime.Step st.erase r) :
     ∃ st' : State s', Steps st st' ∧ st'.erase = r := by
   obtain ⟨st1, hsteps, herase, hstore, hnc, hinv⟩ :=
     castRedex_normalize_inv st Γ (Or.inl hty)
-  have hσ1 : Store.Typed st1.σ Γ := by rw [hstore]; exact hσ
-  have hcf1 : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Atom.HasType Γ a (.pi S T) →
+  have hσ1 : ⊢ st1.σ : Γ := by rw [hstore]; exact hσ
+  have hcf1 : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : (.pi S T) →
       a ≠ .var a.root → ∃ n a' F, closedAtomForm st1.σ n a = some (a', F) ∧
         (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) := by
     rw [hstore]; exact hcf
   have hat : ∀ a b : Atom s, st1.t = .app a b →
-      ∃ (S : Ty s) (T : Ty (s,x)), Atom.HasType Γ a (.pi S T) := by
+      ∃ (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : (.pi S T) := by
     intro a b hab
     rcases hinv with ⟨T, hT⟩ | ⟨v, hv⟩ | ⟨a0, ha0⟩
     · rw [hab] at hT
@@ -648,7 +648,7 @@ theorem final_erase {s : Sig} {st : State s} (h : st.Final) : st.erase.Final := 
 
 /-- Conversely, a state whose erasure is final is itself final, unless a cast
 frame is still pending. -/
-theorem final_reflect {s : Sig} {st : State s} {Γ : Ctx s} (hσ : Store.Typed st.σ Γ)
+theorem final_reflect {s : Sig} {st : State s} {Γ : Ctx s} (hσ : ⊢ st.σ : Γ)
     (h : st.erase.Final) : st.Final ∨ st.CastRedex := by
   obtain ⟨σ, K, t⟩ := st
   obtain ⟨hK, ht⟩ := h
