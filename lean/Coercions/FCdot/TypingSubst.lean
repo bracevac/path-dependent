@@ -150,7 +150,7 @@ theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
         show Γ ⊢ₐ a : (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.single a).root)
         simpa [Binding.ty] using ha
     | there y =>
-        show Γ ⊢ₐ (.var y) : _
+        show Γ ⊢ₐ .var y : _
         simpa using Atom.HasType.var (Γ := Γ) (x := y)
   ty := by
     intro x ht
@@ -323,19 +323,19 @@ end
 
 theorem Atom.HasType.substAtom {Γ : Ctx s} {T : Ty s} {b : Atom (s,x)} {U : Ty (s,x)}
     {a : Atom s} (hb : (Γ.cons (.opaque T)) ⊢ₐ b : U) (ha : Γ ⊢ₐ a : T) :
-    Γ ⊢ₐ (b.subst (Subst.single a)) : (U⟦a.root⟧) := by
+    Γ ⊢ₐ b.subst (Subst.single a) : (U⟦a.root⟧) := by
   have := hb.subst (Subst.Typed.single ha)
   simpa [Ty.substVar] using this
 
 theorem Tm.HasType.substAtom {Γ : Ctx s} {T : Ty s} {u : Tm (s,x)} {U : Ty (s,x)}
     {a : Atom s} (hu : (Γ.cons (.opaque T)) ⊢ u : U) (ha : Γ ⊢ₐ a : T) :
-    Γ ⊢ (u.substAtom a) : (U⟦a.root⟧) := by
+    Γ ⊢ u.substAtom a : (U⟦a.root⟧) := by
   have := hu.subst (Subst.Typed.single ha)
   simpa [Tm.substAtom, Ty.substVar] using this
 
 theorem Value.HasType.substAtom {Γ : Ctx s} {T : Ty s} {v : Value (s,x)} {U : Ty (s,x)}
     {a : Atom s} (hv : (Γ.cons (.opaque T)) ⊢ᵥ v : U) (ha : Γ ⊢ₐ a : T) :
-    Γ ⊢ᵥ (v.subst (Subst.single a)) : (U⟦a.root⟧) := by
+    Γ ⊢ᵥ v.subst (Subst.single a) : (U⟦a.root⟧) := by
   have := hv.subst (Subst.Typed.single ha)
   simpa [Ty.substVar] using this
 

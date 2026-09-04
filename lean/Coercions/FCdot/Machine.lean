@@ -129,7 +129,7 @@ inductive Step : State s → State s' → Prop where
   | appCastRefl :
       σ.lookup a.root = .lam S₀ t₀ →
       a ≠ .var a.root →
-      closedAtomForm σ n a = some (a', F) →
+      σ ⊢ a ⇓ᶜ[n] (a', F) →
       (F = .id ∨ ∃ φ, F = .eqv φ) →
       ⟨σ, K, .app a b⟩ ⟶ ⟨σ, K, t₀.substAtom b⟩
   /-- Application through a wrapped atom whose casts normalize to a function
@@ -138,7 +138,7 @@ inductive Step : State s → State s' → Prop where
   | appCast :
       σ.lookup a.root = .lam S₀ t₀ →
       a ≠ .var a.root →
-      closedAtomForm σ n a = some (a', .pi d c) →
+      σ ⊢ a ⇓ᶜ[n] (a', .pi d c) →
       ⟨σ, K, .app a b⟩ ⟶
         ⟨σ, K, .cast (t₀.substAtom (.cast b d)) (c.subst (Subst.single b))⟩
   | proj :

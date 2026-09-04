@@ -32,7 +32,7 @@ theorem Ctx.resolveAt_fold (Γ : Ctx s) (r : BVar s .var) (Tel : Telescope (s,x)
 root's type to the atom's type, at the root. -/
 theorem closedAtomForm_typed (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s}
     (h : Γ ⊢ₐ a : S) :
-    ∃ n a' F, closedAtomForm σ n a = some (a', F) ∧
+    ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
       Γ ⊨[a.root] F : (Γ.lookupTy a.root) ≤ S := by
   match h with
   | .var => exact ⟨1, _, .id, rfl, .id rfl⟩
@@ -74,8 +74,8 @@ theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
 /-- The head form of a function atom's casts is the identity, an equality, or
 a `pi` form. -/
 theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
-    (h : Γ ⊢ₐ a : (.pi S T)) :
-    ∃ n a' F, closedAtomForm σ n a = some (a', F) ∧
+    (h : Γ ⊢ₐ a : .pi S T) :
+    ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
       (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) := by
   obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
   refine ⟨n, a', F, hF, ?_⟩

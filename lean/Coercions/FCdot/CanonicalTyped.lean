@@ -104,13 +104,19 @@ end
 
 open Lean PrettyPrinter in
 @[app_unexpander FormTyped] def FormTyped.unexpand : Unexpander
-  | `($_ $Γ none $F $S $T) => `($Γ ⊨ $F : $S ≤ $T)
-  | `($_ $Γ (some $r) $F $S $T) => `($Γ ⊨[$r] $F : $S ≤ $T)
+  | `($_ $Γ $ρ $F $S $T) =>
+    match ρ with
+    | `(none) => `($Γ ⊨ $F : $S ≤ $T)
+    | `(some $r) => `($Γ ⊨[$r] $F : $S ≤ $T)
+    | _ => throw ()
   | _ => throw ()
 open Lean PrettyPrinter in
 @[app_unexpander EntriesTyped] def EntriesTyped.unexpand : Unexpander
-  | `($_ $Γ none $Tel₁ $Es $Tel₂) => `($Γ ⊨ $Es : $Tel₁ ⇒ $Tel₂)
-  | `($_ $Γ (some $r) $Tel₁ $Es $Tel₂) => `($Γ ⊨[$r] $Es : $Tel₁ ⇒ $Tel₂)
+  | `($_ $Γ $ρ $Tel₁ $Es $Tel₂) =>
+    match ρ with
+    | `(none) => `($Γ ⊨ $Es : $Tel₁ ⇒ $Tel₂)
+    | `(some $r) => `($Γ ⊨[$r] $Es : $Tel₁ ⇒ $Tel₂)
+    | _ => throw ()
   | _ => throw ()
 
 section

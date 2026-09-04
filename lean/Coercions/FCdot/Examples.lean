@@ -207,8 +207,8 @@ def E2Ty : Ty s := .obj E2Tel
 
 #guard checkValue Ctx.nil (.obj E2Wit E2Fields) E2Ty
 
-theorem E2_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ (.obj E2Wit E2Fields) : E2Ty := by
-  have h : Γ ⊢ᵥ (.obj E2Wit E2Fields) : (.obj (Telescope.ofLiteral E2Wit [la])) :=
+theorem E2_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ .obj E2Wit E2Fields : E2Ty := by
+  have h : Γ ⊢ᵥ .obj E2Wit E2Fields : (.obj (Telescope.ofLiteral E2Wit [la])) :=
     .obj rfl (.cons .nil (.cast (.val (.lam (.atom .var))) (.eqToLe (.symm (.def rfl)))))
   rw [E2Tel_eq] at h
   exact h
@@ -423,7 +423,7 @@ def E5Ty : Ty [] := .pi E5AT (.sel .here lA)
 /-- `w : {A : ⊤..⊤}, v : {A : ⊤..⊤}`, the context of the object literal. -/
 def E5Ctxv : Ctx ([],x,x) := (Ctx.nil.cons (.opaque E5AT)).cons (.opaque E5AT)
 
-theorem E5_value : E5Ctxv ⊢ᵥ (.obj (E5Wit .here) E5Fields) : (E5ObjTy .here) := by
+theorem E5_value : E5Ctxv ⊢ᵥ .obj (E5Wit .here) E5Fields : E5ObjTy .here := by
   have h : Value.HasType E5Ctxv (.obj (E5Wit .here) E5Fields)
       (.obj (Telescope.ofLiteral (E5Wit .here) [la])) :=
     .obj rfl
@@ -439,7 +439,7 @@ def E5Ctxf : Ctx ([],x,x) :=
   (Ctx.nil.cons (.opaque E5AT)).cons (.opaque (.pi E5AT (E5ObjTy .here)))
 
 /-- `f`, at its declared type. -/
-theorem E5_f : E5Ctxf ⊢ₐ (.var .here) : (.pi E5AT (E5ObjTy .here)) := .var
+theorem E5_f : E5Ctxf ⊢ₐ .var .here : .pi E5AT (E5ObjTy .here) := .var
 
 /-- `f w : Obj(z. [z.a ≃ w.A, has a])`: the application renames `v`'s block. -/
 theorem E5_app : Tm.HasType E5Ctxf (.app (.var .here) (.var (.there .here)))
