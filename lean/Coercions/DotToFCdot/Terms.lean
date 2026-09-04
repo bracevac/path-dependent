@@ -17,10 +17,15 @@ namespace DotMNF
 
 open FCdot (Kind Sig BVar Rename Label)
 
-/-- Concatenation of fields. -/
+/-- Concatenation of fields.  The first argument is the outermost one: its
+fields shadow, and `FCdot.Fields.labels` lists them first.  An intersection
+is therefore translated with its *right* conjunct's fields first — the right
+conjunct shadows in DOT, and that is also the order of `Ty.fieldLabels` (and
+hence of the `has` entries of the literal's telescope) and of
+`DotMNF.Defs.erase`. -/
 def _root_.FCdot.Fields.append : FCdot.Fields s → FCdot.Fields s → FCdot.Fields s
-  | F, .nil => F
-  | F, .cons F' ℓ t => .cons (F.append F') ℓ t
+  | .nil, F' => F'
+  | .cons F ℓ t, F' => .cons (F.append F') ℓ t
 
 mutual
 
@@ -29,7 +34,7 @@ def HasTy.translate : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} → HasTy Γ t 
   | Γ, _, _, @HasTy.var _ _ x => .atom (Γ.varAtom x)
   | _, .val (.lam S _), _, .lam h _ => .val (.lam S.translate h.translate)
   | _, _, _, .app h₁ h₂ => .app h₁.translateAtom h₂.translateAtom
-  | _, _, _, @HasTy.obj _ _ T _ h _ _ =>
+  | _, _, _, @HasTy.obj _ _ T _ h _ _ _ =>
       .cast (.val (.obj T.witnesses h.translateFields)) (litCo T)
   | _, .proj _ a, T, .proj h =>
       .cast (.proj h.translateAtom a (.member h.translateAtom (.refl (Ty.translate (.fld a T))) 0))
@@ -47,7 +52,7 @@ def DefsTy.translateFields : {Γ : Ctx (s,x)} → {d : Defs (s,x)} → {T : Ty (
   | _, _, _, .typ => .nil
   | _, .trm a _, _, .trm h =>
       .cons .nil a (.cast h.translate (.eqToLe (.symm (.def .here a))))
-  | _, _, _, .and h₁ h₂ => h₁.translateFields.append h₂.translateFields
+  | _, _, _, .and h₁ h₂ => h₂.translateFields.append h₁.translateFields
 
 end
 

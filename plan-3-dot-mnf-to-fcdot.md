@@ -903,3 +903,15 @@ Decisions taken while implementing M1, each confirmed with the author:
    `Coercions.DotToFCdot` holds the translation as definitions (types,
    contexts, evidence, atoms, terms).  Next: the M3/M4 theorems
    (typedness, erasure, `dot_safety`), then M5.
+   *Status (2026-09-05, night):* M3, M4, M5 done.  `Coercions.DotToFCdot`
+   proves `Sub.translate_typed`, `HasTy.translateAtom_typed` (with the root
+   conjunct), `HasTy.translate_typed`, `HasTy.translate_erase`, `coherence`,
+   `dot_safety`, `reachable_consistent`, `reachable_realized`; see its
+   README.  Two things the proofs forced: (a) contexts must be well-formed
+   (`Ctx.Wf`: a literal's self binder carries a declaration type of literal
+   shape with distinct labels), trivially true of the empty context; (b) a
+   further fragment condition on `{}-I`, `Ty.Guarded T`: the declared type
+   of a field may not be a bare selection on the object's own self (its
+   witness would alias another name of the same block).  The field order of
+   a translated intersection follows the right conjunct, as DOT-MNF's
+   shadowing and erasure do.
