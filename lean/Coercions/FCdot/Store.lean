@@ -23,13 +23,13 @@ def Store.lookup : Store s → BVar s .var → Value s
 /-- Block witnesses of a value: those of the underlying literal. -/
 def Value.witnesses : Value s → Witnesses (s,x)
   | .lam _ _ => .nil
-  | .obj _ W _ _ => W
+  | .obj W _ => W
   | .cast v _ => v.witnesses
 
 /-- Field labels of a value: those of the underlying literal. -/
 def Value.fieldLabels : Value s → List Label
   | .lam _ _ => []
-  | .obj _ _ _ F => F.labels
+  | .obj _ F => F.labels
   | .cast v _ => v.fieldLabels
 
 /-- The literal under the cast wrappers. -/

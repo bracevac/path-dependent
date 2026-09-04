@@ -105,7 +105,7 @@ theorem LeCo.HasType.refine {Γ Γ' : Ctx s} {e : LeCo s} {S T : Ty s}
   | .bot => exact .bot
   | .eqToLe hφ => exact .eqToLe (hφ.refine hR)
   | .pi he hf => exact .pi (he.refine hR) (hf.refine (hR.cons _))
-  | .obj hm => exact .obj (hm.refine (hR.cons _))
+  | .obj hm => exact .obj (hm.refine hR)
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
 
 theorem EqCo.HasType.refine {Γ Γ' : Ctx s} {φ : EqCo s} {S T : Ty s}
@@ -123,14 +123,15 @@ theorem Has.HasType.refine {Γ Γ' : Ctx s} {hh : Has s} {x : BVar s .var} {l : 
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
   | .field hf hm => exact .field (hR.fields _ _ hf) hm
 
-theorem Morphism.HasType.refine {Γ Γ' : Ctx (s,x)} {m : Morphism (s,x)}
-    {Tel : Telescope (s,x)}
-    (hR : Ctx.Refines Γ Γ') (h : Morphism.HasType Γ m Tel) : Morphism.HasType Γ' m Tel := by
+theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope s} {m : Morphism s}
+    {Tel : Telescope s}
+    (hR : Ctx.Refines Γ Γ') (h : Morphism.HasType Γ src m Tel) :
+    Morphism.HasType Γ' src m Tel := by
   match h with
   | .nil => exact .nil
   | .le hm he => exact .le (hm.refine hR) (he.refine hR)
   | .eq hm hφ => exact .eq (hm.refine hR) (hφ.refine hR)
-  | .has hm hh => exact .has (hm.refine hR) (hh.refine hR)
+  | .has hm hAt => exact .has (hm.refine hR) hAt
 
 theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Atom.HasType Γ a T) : Atom.HasType Γ' a T := by
@@ -158,7 +159,7 @@ theorem Value.HasType.refine {Γ Γ' : Ctx s} {v : Value s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Value.HasType Γ v T) : Value.HasType Γ' v T := by
   match h with
   | .lam ht => exact .lam (ht.refine (hR.cons _))
-  | .obj hG hE hF => exact .obj hG (hE.refine (hR.cons _)) (hF.refine (hR.cons _))
+  | .obj hG hF => exact .obj hG (hF.refine (hR.cons _))
   | .cast hv he => exact .cast (hv.refine hR) (he.refine hR)
 
 theorem Fields.HasType.refine {Γ Γ' : Ctx (s,x)} {F : Fields (s,x)}

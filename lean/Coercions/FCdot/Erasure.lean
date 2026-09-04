@@ -22,7 +22,7 @@ def Tm.erase : Tm s → Runtime.Tm s
 
 def Value.erase : Value s → Runtime.Tm s
   | .lam _ t => .lam t.erase
-  | .obj _ _ _ F => .obj F.erase
+  | .obj _ F => .obj F.erase
   | .cast v _ => v.erase
 
 def Fields.erase : Fields s → Runtime.Fields s

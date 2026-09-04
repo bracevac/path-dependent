@@ -422,9 +422,11 @@ structure HasChecked {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) where
   label : Label
   typing : Has.HasType Γ ev y label
 
-structure MorChecked {s : Sig} (Γ : Ctx (s,x)) (m : Morphism (s,x)) where
-  tel : Telescope (s,x)
-  typing : Morphism.HasType Γ m tel
+/-- A morphism is checked against its *source* telescope: presence propositions
+are inherited from it by index.  The target telescope is synthesised. -/
+structure MorChecked {s : Sig} (Γ : Ctx s) (src : Telescope s) (m : Morphism s) where
+  tel : Telescope s
+  typing : Morphism.HasType Γ src m tel
 
 structure AtomChecked {s : Sig} (Γ : Ctx s) (a : Atom s) where
   type : Ty s
@@ -496,6 +498,15 @@ def hasMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat) (y : BV
     else none
   else none
 
+/-- `Morphism.has`: the target inherits the `j`-th proposition of the *source*
+telescope, which must be a field declaration. -/
+def morHas {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s} (j : Nat)
+    {Tel : Telescope s} (hm : Morphism.HasType Γ src m Tel) :
+    Option (MorChecked Γ src (.has m j)) :=
+  match Telescope.getAt? src j with
+  | some ⟨.has ℓ, hAt⟩ => some ⟨.cons Tel (.has ℓ), .has hm hAt⟩
+  | _ => none
+
 /-- `Rec-E`: the atom's type must be an object type. -/
 def atomUnfold {s : Sig} {Γ : Ctx s} {b : Atom s} {Tb : Ty s} (hb : Atom.HasType Γ b Tb) :
     Option (AtomChecked Γ (.unfoldSelf b)) :=
@@ -538,8 +549,8 @@ def synthLeCore {s : Sig} (Γ : Ctx s) (ev : LeCo s) : Option (LeChecked Γ ev) 
       let cf ← synthLeCore (Γ.cons (.opaque ce.source)) f
       some ⟨.pi ce.target cf.source, .pi ce.source cf.target, .pi ce.typing cf.typing⟩
   | .obj Tel m => do
-      let cm ← synthMorCore (Γ.cons (.opaque (.obj Tel))) m
-      some ⟨.obj Tel, .obj cm.tel, .obj cm.typing⟩
+      let cm ← synthMorCore Γ Tel m
+      some ⟨.obj Tel.weaken, .obj cm.tel.weaken, .obj cm.typing⟩
   | .member a e i => do
       let ca ← synthAtomCore Γ a
       let ce ← synthLeCore Γ e
@@ -578,21 +589,21 @@ def synthHasCore {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) :
       | some ⟨Fs, hF⟩ => if hm : ℓ ∈ Fs then some ⟨ℓ, .field hF hm⟩ else none
       | none => none
 
-def synthMorCore {s : Sig} (Γ : Ctx (s,x)) (m : Morphism (s,x)) : Option (MorChecked Γ m) :=
+def synthMorCore {s : Sig} (Γ : Ctx s) (src : Telescope s) (m : Morphism s) :
+    Option (MorChecked Γ src m) :=
   match m with
   | .nil => some ⟨.nil, .nil⟩
   | .le m e => do
-      let cm ← synthMorCore Γ m
+      let cm ← synthMorCore Γ src m
       let ce ← synthLeCore Γ e
       some ⟨.cons cm.tel (.le ce.source ce.target), .le cm.typing ce.typing⟩
   | .eq m φ => do
-      let cm ← synthMorCore Γ m
+      let cm ← synthMorCore Γ src m
       let cφ ← synthEqCore Γ φ
       some ⟨.cons cm.tel (.eq cφ.source cφ.target), .eq cm.typing cφ.typing⟩
-  | .has m h => do
-      let cm ← synthMorCore Γ m
-      let ch ← synthHasCore Γ h .here
-      some ⟨.cons cm.tel (.has ch.label), .has cm.typing ch.typing⟩
+  | .has m j => do
+      let cm ← synthMorCore Γ src m
+      morHas j cm.typing
 
 def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a) :=
   match a with
@@ -654,13 +665,11 @@ def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked �
   | .lam S t => do
       let ct ← synthTmCore (Γ.cons (.opaque S)) t
       some ⟨.pi S ct.type, .lam ct.typing⟩
-  | .obj Tel W E F =>
+  | .obj W F =>
       if hg : W.all (fun T => !T.isSelfName) = true then do
-        let cE ← synthMorCore (Γ.cons (.transparent .top W F.labels)) E
-        if hTel : cE.tel = Tel then do
-          let pF ← checkFieldsCore (Γ.cons (.transparent (.obj Tel) W F.labels)) F
-          some ⟨.obj Tel, .obj hg (by rw [← hTel]; exact cE.typing) pF.down⟩
-        else none
+        let Tel := Telescope.ofLiteral W F.labels
+        let pF ← checkFieldsCore (Γ.cons (.transparent (.obj Tel) W F.labels)) F
+        some ⟨.obj Tel, .obj hg pF.down⟩
       else none
   | .cast v e => do
       let cv ← synthValueCore Γ v
@@ -707,12 +716,14 @@ def synthHas {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) : Option Labe
 def checkHas {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) (ℓ : Label) : Bool :=
   decide (synthHas Γ ev y = some ℓ)
 
-/-- Synthesise the target telescope of a morphism. -/
-def synthMorphism {s : Sig} (Γ : Ctx (s,x)) (m : Morphism (s,x)) : Option (Telescope (s,x)) :=
-  (synthMorCore Γ m).map MorChecked.tel
+/-- Synthesise the target telescope of a morphism, given its source telescope. -/
+def synthMorphism {s : Sig} (Γ : Ctx s) (src : Telescope s) (m : Morphism s) :
+    Option (Telescope s) :=
+  (synthMorCore Γ src m).map MorChecked.tel
 
-def checkMorphism {s : Sig} (Γ : Ctx (s,x)) (m : Morphism (s,x)) (Tel : Telescope (s,x)) : Bool :=
-  decide (synthMorphism Γ m = some Tel)
+def checkMorphism {s : Sig} (Γ : Ctx s) (src : Telescope s) (m : Morphism s)
+    (Tel : Telescope s) : Bool :=
+  decide (synthMorphism Γ src m = some Tel)
 
 def synthAtom {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (Ty s) :=
   (synthAtomCore Γ a).map AtomChecked.type
@@ -791,10 +802,11 @@ theorem checkHas_sound {s : Sig} {Γ : Ctx s} {ev : Has s} {y : BVar s .var} {�
     (h : checkHas Γ ev y ℓ = true) : Has.HasType Γ ev y ℓ :=
   synthHas_sound (of_decide_eq_true h)
 
-theorem synthMorphism_sound {s : Sig} {Γ : Ctx (s,x)} {m : Morphism (s,x)}
-    {Tel : Telescope (s,x)} (h : synthMorphism Γ m = some Tel) : Morphism.HasType Γ m Tel := by
+theorem synthMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
+    {Tel : Telescope s} (h : synthMorphism Γ src m = some Tel) :
+    Morphism.HasType Γ src m Tel := by
   unfold synthMorphism at h
-  cases hc : synthMorCore Γ m with
+  cases hc : synthMorCore Γ src m with
   | none => rw [hc] at h; simp at h
   | some c =>
       rw [hc] at h
@@ -802,8 +814,8 @@ theorem synthMorphism_sound {s : Sig} {Γ : Ctx (s,x)} {m : Morphism (s,x)}
       rw [← h2]
       exact c.typing
 
-theorem checkMorphism_sound {s : Sig} {Γ : Ctx (s,x)} {m : Morphism (s,x)}
-    {Tel : Telescope (s,x)} (h : checkMorphism Γ m Tel = true) : Morphism.HasType Γ m Tel :=
+theorem checkMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
+    {Tel : Telescope s} (h : checkMorphism Γ src m Tel = true) : Morphism.HasType Γ src m Tel :=
   synthMorphism_sound (of_decide_eq_true h)
 
 theorem synthAtom_sound {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
@@ -872,9 +884,14 @@ private def smokeId : Tm ([],x) := .val (.lam .top (.atom (.var .here)))
 private def smokeField : Tm ([],x) :=
   .cast (.cast smokeId (.top (.pi .top .top))) (.eqToLe (.symm (.def .here smokeLabel)))
 
-/-- An object literal with an empty telescope and one field. -/
-private def smokeObj : Value [] :=
-  .obj .nil (.cons .nil smokeLabel .top) .nil (.cons .nil smokeLabel smokeField)
+/-- Witnesses of the smoke literal: the single field is defined as `⊤`. -/
+private def smokeW : Witnesses ([],x) := .cons .nil smokeLabel .top
+
+/-- An object literal with one witnessed field. -/
+private def smokeObj : Value [] := .obj smokeW (.cons .nil smokeLabel smokeField)
+
+/-- The literal's precise type: one definition entry, one presence entry. -/
+private def smokeObjTy : Ty [] := .obj (Telescope.ofLiteral smokeW [smokeLabel])
 
 /-- A context whose only binder declares the field `ℓ`. -/
 private def smokeCtx : Ctx ([],x) := Ctx.nil.cons (.opaque (.obj (.cons .nil (.has smokeLabel))))
@@ -882,7 +899,9 @@ private def smokeCtx : Ctx ([],x) := Ctx.nil.cons (.opaque (.obj (.cons .nil (.h
 /-- A context whose only binder has the empty object type. -/
 private def smokeCtxNil : Ctx ([],x) := Ctx.nil.cons (.opaque (.obj .nil))
 
-#guard checkValue Ctx.nil smokeObj (.obj .nil)
+#guard checkValue Ctx.nil smokeObj smokeObjTy
+#guard synthValue Ctx.nil smokeObj = some smokeObjTy
+#guard !checkValue Ctx.nil smokeObj (.obj .nil)
 #guard !checkValue Ctx.nil smokeObj (.obj (.cons .nil (.has smokeLabel)))
 #guard checkTm smokeCtx smokeId (.pi .top .top)
 #guard !checkTm smokeCtx smokeId (.pi .top .bot)
@@ -909,6 +928,11 @@ private def smokeCtxTrans : Ctx ([],x) :=
     (.obj (.cons .nil (.has smokeLabel))) (.obj .nil)
 #guard synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) .nil) =
     some (.obj (.cons .nil (.has smokeLabel)), .obj .nil)
+
+-- A presence proposition is inherited from the source telescope by index.
+#guard synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 0)) =
+    some (.obj (.cons .nil (.has smokeLabel)), .obj (.cons .nil (.has smokeLabel)))
+#guard synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 1)) = none
 
 -- The annotated `Rec-I` synthesises its type.
 #guard checkAtom smokeCtxNil (.foldSelf .nil (.var .here)) (.obj .nil)

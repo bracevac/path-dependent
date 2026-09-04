@@ -106,9 +106,10 @@ inductive LeCo : Sig → Type where
   | eqToLe : EqCo s → LeCo s
   /-- Contravariant domain, covariant codomain under the parameter binder. -/
   | pi : LeCo s → LeCo (s,x) → LeCo s
-  /-- Pointwise object coercion from the annotated source telescope: a morphism
-      between telescopes under the self block. -/
-  | obj : Telescope (s,x) → Morphism (s,x) → LeCo s
+  /-- Object coercion between *opened* telescopes (no self block): the source
+      telescope is annotated; the morphism proves the target's propositions in
+      the ambient scope. -/
+  | obj : Telescope s → Morphism s → LeCo s
   /-- Elimination at an atom: the `i`-th proposition of the target telescope of `e`,
       instantiated at the root of `a`, when that proposition is an inclusion. -/
   | member : Atom s → LeCo s → Nat → LeCo s
@@ -128,12 +129,14 @@ inductive Has : Sig → Type where
   /-- Only valid inside the evidence block of an object literal that has the field. -/
   | field : Label → Has s
 
-/-- A morphism into a telescope: one piece of evidence per target proposition, oldest first. -/
+/-- A morphism into a telescope: one piece of evidence per target proposition,
+oldest first.  A field-presence proposition is inherited from the source
+telescope by index. -/
 inductive Morphism : Sig → Type where
   | nil : Morphism s
   | le : Morphism s → LeCo s → Morphism s
   | eq : Morphism s → EqCo s → Morphism s
-  | has : Morphism s → Has s → Morphism s
+  | has : Morphism s → Nat → Morphism s
 
 /-- Atoms: a variable under wrappers that erase to nothing. -/
 inductive Atom : Sig → Type where
@@ -161,7 +164,7 @@ def LeCo.rename : LeCo s1 → Rename s1 s2 → LeCo s2
   | .bot T, ρ => .bot (T.rename ρ)
   | .eqToLe φ, ρ => .eqToLe (φ.rename ρ)
   | .pi e f, ρ => .pi (e.rename ρ) (f.rename ρ.lift)
-  | .obj Tel m, ρ => .obj (Tel.rename ρ.lift) (m.rename ρ.lift)
+  | .obj Tel m, ρ => .obj (Tel.rename ρ) (m.rename ρ)
   | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
 
 def EqCo.rename : EqCo s1 → Rename s1 s2 → EqCo s2
@@ -179,7 +182,7 @@ def Morphism.rename : Morphism s1 → Rename s1 s2 → Morphism s2
   | .nil, _ => .nil
   | .le m e, ρ => .le (m.rename ρ) (e.rename ρ)
   | .eq m φ, ρ => .eq (m.rename ρ) (φ.rename ρ)
-  | .has m h, ρ => .has (m.rename ρ) (h.rename ρ)
+  | .has m j, ρ => .has (m.rename ρ) j
 
 def Atom.rename : Atom s1 → Rename s1 s2 → Atom s2
   | .var x, ρ => .var (ρ.var x)
@@ -204,9 +207,9 @@ inductive Tm : Sig → Type where
 
 inductive Value : Sig → Type where
   | lam : Ty s → Tm (s,x) → Value s
-  /-- Object literal: declared telescope, block witnesses (absent labels are `⊤`),
-      evidence for the telescope at the transparent self binder, and fields. -/
-  | obj : Telescope (s,x) → Witnesses (s,x) → Morphism (s,x) → Fields (s,x) → Value s
+  /-- Object literal: block witnesses (absent labels are `⊤`) and fields.  Its
+      precise type is the telescope generated from them (`Telescope.ofLiteral`). -/
+  | obj : Witnesses (s,x) → Fields (s,x) → Value s
   /-- Adapted value: a wrapper, not a computation. -/
   | cast : Value s → LeCo s → Value s
 
@@ -233,6 +236,24 @@ def Fields.get? : Fields s → Label → Option (Tm s)
 /-- Field presence, as a proposition on the syntax. -/
 def Fields.Has (F : Fields s) (ℓ : Label) : Prop := (F.get? ℓ).isSome
 
+/-- Definition entries of a literal's witnesses: one `eq self.ℓ (W.get ℓ)` per
+listed label (a shadowed label gets the outer definition, so every entry is
+true of the literal). -/
+def Witnesses.eqEntriesOf (W₀ : Witnesses (s,x)) : Witnesses (s,x) → Telescope (s,x)
+  | .nil => .nil
+  | .cons W ℓ _ => .cons (W₀.eqEntriesOf W) (.eq (.sel .here ℓ) (W₀.get ℓ))
+
+def Witnesses.eqEntries (W : Witnesses (s,x)) : Telescope (s,x) := W.eqEntriesOf W
+
+/-- Presence entries for a list of field labels, appended to a telescope. -/
+def Telescope.hasEntries : Telescope s → List Label → Telescope s
+  | Tel, [] => Tel
+  | Tel, ℓ :: ls => (Tel.cons (.has ℓ)).hasEntries ls
+
+/-- The precise telescope of an object literal: its definitions, then its fields. -/
+def Telescope.ofLiteral (W : Witnesses (s,x)) (labels : List Label) : Telescope (s,x) :=
+  W.eqEntries.hasEntries labels
+
 mutual
 
 def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
@@ -245,7 +266,7 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
 
 def Value.rename : Value s1 → Rename s1 s2 → Value s2
   | .lam S t, ρ => .lam (S.rename ρ) (t.rename ρ.lift)
-  | .obj Tel W E F, ρ => .obj (Tel.rename ρ.lift) (W.rename ρ.lift) (E.rename ρ.lift) (F.rename ρ.lift)
+  | .obj W F, ρ => .obj (W.rename ρ.lift) (F.rename ρ.lift)
   | .cast v e, ρ => .cast (v.rename ρ) (e.rename ρ)
 
 def Witnesses.rename : Witnesses s1 → Rename s1 s2 → Witnesses s2
@@ -310,7 +331,7 @@ def LeCo.subst : LeCo s1 → Subst s1 s2 → LeCo s2
   | .bot T, σ => .bot (T.rename σ.root)
   | .eqToLe φ, σ => .eqToLe (φ.subst σ)
   | .pi e f, σ => .pi (e.subst σ) (f.subst σ.lift)
-  | .obj Tel m, σ => .obj (Tel.rename σ.root.lift) (m.subst σ.lift)
+  | .obj Tel m, σ => .obj (Tel.rename σ.root) (m.subst σ)
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
 
 def EqCo.subst : EqCo s1 → Subst s1 s2 → EqCo s2
@@ -328,7 +349,7 @@ def Morphism.subst : Morphism s1 → Subst s1 s2 → Morphism s2
   | .nil, _ => .nil
   | .le m e, σ => .le (m.subst σ) (e.subst σ)
   | .eq m φ, σ => .eq (m.subst σ) (φ.subst σ)
-  | .has m h, σ => .has (m.subst σ) (h.subst σ)
+  | .has m j, σ => .has (m.subst σ) j
 
 def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
   | .var x, σ => σ.var x
@@ -350,8 +371,7 @@ def Tm.subst : Tm s1 → Subst s1 s2 → Tm s2
 
 def Value.subst : Value s1 → Subst s1 s2 → Value s2
   | .lam S t, σ => .lam (S.rename σ.root) (t.subst σ.lift)
-  | .obj Tel W E F, σ =>
-      .obj (Tel.rename σ.root.lift) (W.rename σ.root.lift) (E.subst σ.lift) (F.subst σ.lift)
+  | .obj W F, σ => .obj (W.rename σ.root.lift) (F.subst σ.lift)
   | .cast v e, σ => .cast (v.subst σ) (e.subst σ)
 
 def Fields.subst : Fields s1 → Subst s1 s2 → Fields s2
