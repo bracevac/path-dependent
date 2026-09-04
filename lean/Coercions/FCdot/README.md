@@ -41,13 +41,13 @@ All notation is `scoped` in namespace `FCdot`.
 | `Tel ▹ P`, `Tel ∋ (i ↦ P)` | telescope extension; the `i`-th proposition, counted from the oldest (also for entries `Es` and views `V`) |
 | `T↑`, `T⟦y⟧` | weakening under a new binder; instantiation of the innermost binder |
 | `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ` | inclusion, equality, and presence evidence |
-| `Γ ⊢ m : src ⇒ Tel` | a morphism proving the opened telescope `Tel`, inheriting presence from `src` |
+| `Γ ⊢ m : src ⇒ Tel` | a template morphism proving the closed telescope `Tel` from the propositions of `src` |
 | `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ F` | atoms, terms, values, fields |
 | `⊢ σ : Γ`, `Γ ⊢ₖ K : T ⇒ U` | stores and continuations |
 | `st ⟶ st'`, `st ⟶* st'`, `⌊st⌋` | steps and erasure |
 | `σ ⊢ e ⇓[n] F`, `σ ⊢ m ⇓ₘ[n] Es`, `σ ⊢ a ⇓ᵥ[n] V`, `σ ⊢ x ; h ⇓ₕ[n] (y, ℓ)`, `σ ⊢ a ⇓ᶜ[n] (a', F)` | normalization with fuel `n` |
 | `Γ ⊨ F : S ≤ T`, `Γ ⊨[r] F : S ≤ T` | typed coercion form; typed chain of casts at root `r` |
-| `Γ ⊨ Es : Tel₁ ⇒ Tel₂`, `Γ ⊨[r, σ] V : Tel` | typed entries; typed view |
+| `Γ ⊨ Es : Tel₁ ⇒ Tel₂`, `Γ ⊨[r, σ] V : Tel` | typed template entries between closed telescopes; typed view |
 
 ## Design
 
@@ -56,25 +56,23 @@ All notation is `scoped` in namespace `FCdot`.
   telescope generated from them, `μ (Telescope.ofLiteral W F.labels)`: one
   `self ∙ ℓ ≐ W.get ℓ` per witness, one `∋ ℓ` per field.  Facts beyond
   definitions are established by coercions in the term.
-* **Opened object coercions.**  `obj Tel m : μ Tel↑ ≤ μ Tel'↑` compares two
-  telescopes with no self binder; a closed, self-mentioning object type is
-  reached only from an atom, by `foldSelf`.  This is DOT, which has no
-  subtyping rule between `μ` types.  Consequently the normal form of a
-  coercion does not depend on the atom it is applied to, and the normalizer
-  is structural.
-* **One plain typedness; chains typed at opened shapes.**  Coercion forms,
-  entries, and views are typed with plain shapes (`Γ.resolve`), by one
-  inductive `Γ ⊨ F : S ≤ T`.  The chain of casts of an atom rooted at `r` is
-  not a second judgment: it is plain typedness at the resolved endpoints
-  with their self block opened at `r` (`Γ ⊨[r] F : S ≤ T` is
-  `Γ ⊨ F : Γ.resolveAt r S ≤ Γ.resolveAt r T`), so `foldSelf` and
-  `unfoldSelf` are invisible to it.  Plain typedness at `S, T` gives
-  typedness at the opened shapes at any root (`FormTyped.atRoot`), and the
-  chain composes by the plain composition lemma (`ChainTyped.combine`).
-* **Telescope-shaped forms.**  Entries of an object form and views of atoms
-  are telescope-shaped inductives (`Es ▹ E`, `V ▹ P`, oldest first) indexed
-  by `Es ∋ (i ↦ E)`, `V ∋ (i ↦ P)`, exactly like `Telescope.At`; their
-  typedness judgments mirror the telescope they are typed against.
+* **Object coercions are template morphisms.**  `obj Tel m : μ Tel ≤ μ Tel'`
+  compares two closed telescopes; each target proposition is proven by a
+  *template* `pre ∘ (source proposition j) ∘ post` with closed sides typed
+  in `Γ`, or is a source equality (possibly flipped), or inherits a
+  presence by index.  A template never eliminates through the self's
+  members, which is what keeps normalization structural: the normal form
+  of a coercion does not depend on the atom it is applied to, composition
+  substitutes templates into templates, and application looks the source
+  proposition up in the atom's view.  `pair` intersects two coercions into
+  object types; the atom `both` intersects two typings of one root
+  (`And-I`).  `⊤` is the empty object type `μ .nil`.
+* **Two modes of typedness.**  Coercion forms and views are typed with plain
+  shapes (`Γ.resolve`).  Only the chain of casts of an atom is typed at the
+  atom's root, where the self block is opened at that root, so `foldSelf`
+  and `unfoldSelf` are invisible to it (`Ctx.resolveAt`, `ChainTyped`).
+  Plain typedness lifts to any root (`FormTyped.atRoot`) with no
+  well-definedness hypothesis.
 
 ## Main theorems
 

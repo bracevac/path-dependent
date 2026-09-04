@@ -39,7 +39,6 @@ def Binding.rename : Binding s1 → Rename s1 s2 → Binding s2
 
 theorem Ty.isSelfName_rename_lift {s1 s2 : Sig} :
     ∀ (T : Ty (s1,x)) (ρ : Rename s1 s2), (T.rename ρ.lift).isSelfName = T.isSelfName
-  | .top, _ => rfl
   | .bot, _ => rfl
   | .pi _ _, _ => rfl
   | .obj _, _ => rfl
@@ -213,9 +212,10 @@ theorem LeCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Ren
   | .eqToLe hφ => exact .eqToLe (hφ.rename hρ)
   | .pi he hf =>
       exact .pi (he.rename hρ) (hf.rename (hρ.lift _))
-  | @LeCo.HasType.obj _ _ Tel m Tel' hm =>
-      have := LeCo.HasType.obj (Morphism.HasType.rename hρ hm)
-      simpa [LeCo.rename, Ty.rename, Telescope.weaken_rename] using this
+  | .obj hm => exact .obj (hm.rename hρ)
+  | .pair he hf =>
+      have := LeCo.HasType.pair (he.rename hρ) (hf.rename hρ)
+      simpa [LeCo.rename, Ty.rename, Telescope.append_rename] using this
   | @LeCo.HasType.member _ _ a S e Tel i S' T' ha he hAt =>
       have := LeCo.HasType.member (a := a.rename ρ) (ha.rename hρ)
         (he.rename hρ) (hAt.rename ρ.lift)
@@ -245,16 +245,36 @@ theorem Has.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rena
       simpa [Has.rename, Atom.root_rename] using this
   | .field hf hm => exact .field (hρ.fields _ _ hf) hm
 
+theorem Side.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {σ : Side s1} {X Y : Ty (s1,x)} (hρ : Ctx.Ren Γ ρ Γ') (h : Side.HasType Γ σ X Y) :
+    Side.HasType Γ' (σ.rename ρ) (X.rename ρ.lift) (Y.rename ρ.lift) := by
+  match h with
+  | .none => exact .none
+  | .some he =>
+      have := Side.HasType.some (he.rename hρ)
+      simpa [Side.rename, Ty.weaken_rename] using this
+
 theorem Morphism.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
-    {ρ : Rename s1 s2} {src : Telescope s1} {m : Morphism s1} {Tel : Telescope s1}
+    {ρ : Rename s1 s2} {src : Telescope (s1,x)} {m : Morphism s1} {Tel : Telescope (s1,x)}
     (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ m : src ⇒ Tel) :
-    Γ' ⊢ (m.rename ρ) : (src.rename ρ) ⇒ (Tel.rename ρ) := by
+    Γ' ⊢ (m.rename ρ) : (src.rename ρ.lift) ⇒ (Tel.rename ρ.lift) := by
   match h with
   | .nil => exact .nil
-  | .le hm he => exact .le (hm.rename hρ) (he.rename hρ)
-  | .eq hm hφ => exact .eq (hm.rename hρ) (hφ.rename hρ)
-  | @Morphism.HasType.has _ _ _ _ _ j l hm hAt =>
-      exact .has (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ)
+  | .le hm hAt hpre hpost =>
+      exact .le (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+        (hpre.rename hρ) (hpost.rename hρ)
+  | .leEq hm hAt hpre hpost =>
+      exact .leEq (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+        (hpre.rename hρ) (hpost.rename hρ)
+  | .leEqSym hm hAt hpre hpost =>
+      exact .leEqSym (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+        (hpre.rename hρ) (hpost.rename hρ)
+  | .eq hm hAt =>
+      exact .eq (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+  | .eqSym hm hAt =>
+      exact .eqSym (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+  | .has hm hAt =>
+      exact .has (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
 
 theorem Atom.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {a : Atom s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ₐ a : T) :
@@ -275,6 +295,10 @@ theorem Atom.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Ren
       have := Atom.HasType.foldSelf (Tel := Tel.rename ρ.lift) (a := a.rename ρ)
         (by simpa [Atom.root_rename] using ha')
       simpa [Atom.rename, Ty.rename] using this
+  | .both ha hb hr =>
+      have := Atom.HasType.both (ha.rename hρ) (hb.rename hρ)
+        (by simp [Atom.root_rename, hr])
+      simpa [Atom.rename, Ty.rename, Telescope.append_rename] using this
 
 end
 
@@ -343,6 +367,17 @@ theorem EqCo.HasType.weaken {Γ : Ctx s} {φ : EqCo s} {S T : Ty s}
 theorem Has.HasType.weaken {Γ : Ctx s} {hh : Has s} {x : BVar s .var} {l : Label}
     (h : Γ ⊢ hh : x ∋ l) (b : Binding s) :
     Γ.cons b ⊢ hh.rename Rename.succ : (.there x) ∋ l :=
+  h.rename (Ctx.Ren.succ b)
+
+theorem Side.HasType.weaken {Γ : Ctx s} {σ : Side s} {X Y : Ty (s,x)}
+    (h : Side.HasType Γ σ X Y) (b : Binding s) :
+    Side.HasType (Γ.cons b) (σ.rename Rename.succ) (X.rename Rename.succ.lift)
+      (Y.rename Rename.succ.lift) :=
+  h.rename (Ctx.Ren.succ b)
+
+theorem Morphism.HasType.weaken {Γ : Ctx s} {m : Morphism s} {src Tel : Telescope (s,x)}
+    (h : Γ ⊢ m : src ⇒ Tel) (b : Binding s) :
+    (Γ.cons b) ⊢ m.rename Rename.succ : src.rename Rename.succ.lift ⇒ Tel.rename Rename.succ.lift :=
   h.rename (Ctx.Ren.succ b)
 
 theorem Atom.HasType.weaken {Γ : Ctx s} {a : Atom s} {T : Ty s}

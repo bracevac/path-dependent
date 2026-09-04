@@ -895,3 +895,11 @@ Decisions taken while implementing M1, each confirmed with the author:
    are `propext`, `Quot.sound`, plus `Classical.choice` in `progress` and
    `erase_reflect'`.  Cast-frame runs are bounded by `State.castMeasure`
    (`castRedex_normalize`).
+   *Status (2026-09-04, evening):* implemented.  `Coercions.FCdot` is green
+   under S4 (template morphisms with `Hole`/`Side`, `pair`, `both`, `⊤ = μ .nil`,
+   the canonical-forms theorem re-proven with `Form.pair_typed`,
+   `ChainTyped.pair`, and the entry-composition lemmas by induction on the
+   size of the two forms); `Coercions.DotMNF` carries the side conditions;
+   `Coercions.DotToFCdot` holds the translation as definitions (types,
+   contexts, evidence, atoms, terms).  Next: the M3/M4 theorems
+   (typedness, erasure, `dot_safety`), then M5.

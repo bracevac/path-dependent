@@ -63,7 +63,6 @@ unfolding a definition always exposes a different head. -/
 def Ty.isSelfName : Ty (s,x) → Bool
   | .sel .here _ => true
   | .sel (.there _) _ => false
-  | .top => false
   | .bot => false
   | .pi _ _ => false
   | .obj _ => false
