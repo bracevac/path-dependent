@@ -868,11 +868,18 @@ Decisions taken while implementing M1, each confirmed with the author:
      unrelated to any particular atom.  Only the chain of casts of an atom
      (`closedAtomForm`) is typed *at the atom's root*, where the shape of a
      type is its resolution with the self block opened at that root, so
-     `foldSelf`/`unfoldSelf` are invisible to the chain.  Plain typedness
-     lifts to any root (`FormTyped.atRoot`), which is what the `cast` case
-     of the chain needs.  Typing coercion forms at a root instead would be
-     wrong: the `member` case extracts an entry form from a view and must
-     re-use it as a coercion, at no root.
+     `foldSelf`/`unfoldSelf` are invisible to the chain.  Typing coercion
+     forms at a root instead would be wrong: the `member` case extracts an
+     entry form from a view and must re-use it as a coercion, at no root.
+     Final form (2026-09-04, afternoon): there is one plain inductive
+     `Γ ⊨ F : S ≤ T`, and the rooted judgment is a definition,
+     `Γ ⊨[r] F : S ≤ T := Γ ⊨ F : Γ.resolveAt r S ≤ Γ.resolveAt r T`, so
+     composition is proven once and plain typedness lifts to any root
+     (`FormTyped.atRoot`) without any well-definedness hypothesis.  Entries
+     of object forms and views of atoms are telescope-shaped inductives
+     (`Entries`, `View`, with `∋ (i ↦ _)` like `Telescope.At`), and their
+     typedness (`Γ ⊨ Es : Tel₁ ⇒ Tel₂`, `Γ ⊨[r, σ] V : Tel`) mirrors the
+     telescope constructor by constructor.
    - *Object-form entries live over opened telescopes* (`Telescope s`, no
      self binder), so no instantiation root is needed; this also removes the
      corner case of a scope with no variables at all.

@@ -8,7 +8,9 @@ Three facts about forms that the canonical-forms theorem consumes.
 
 * *Composition.*  `Form.combine` of two typed forms is a typed form
   (`Form.combine_typed`); composing object forms routes the second form's
-  presence entries through the first (`EntriesTyped.through`).
+  presence entries through the first (`EntriesTyped.through`).  The chain
+  of casts composes the same way (`ChainTyped.combine`), and plain typedness
+  lifts to the opened shapes at any root (`FormTyped.atRoot`).
 * *Application.*  Applying a typed form to the typed view of an atom gives
   the typed view of the target (`viewThrough_typed`, `entriesAt_typed`).
 * *Fuel.*  Every function of the normalizer is monotone in its fuel, so a
@@ -72,177 +74,112 @@ theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : L
         rw [Ctx.lookupFields_there] at hFs
         simpa using hFs
 
-
-
 section
-variable {σ : Store s} {Γ : Ctx s} {ρ : Option (BVar s .var)}
+variable {σ : Store s} {Γ : Ctx s}
 
-/-! ## Shapes in either mode -/
+/-! ## Typedness depends on an endpoint only through its shape -/
 
-theorem Ctx.resolveAt_bot_iff (Γ : Ctx s) (ρ : Option (BVar s .var)) (T : Ty s) :
-    Γ.resolveAt ρ T = .bot ↔ Γ.resolve T = .bot := by
-  cases ρ with
-  | none => rfl
-  | some r =>
-      simp only [Ctx.resolveAt]
-      cases Γ.resolve T <;> simp [Ty.unfoldAt]
-
-theorem Ctx.resolveAt_top_iff (Γ : Ctx s) (ρ : Option (BVar s .var)) (T : Ty s) :
-    Γ.resolveAt ρ T = .top ↔ Γ.resolve T = .top := by
-  cases ρ with
-  | none => rfl
-  | some r =>
-      simp only [Ctx.resolveAt]
-      cases Γ.resolve T <;> simp [Ty.unfoldAt]
-
-theorem Ctx.resolveAt_pi_iff (Γ : Ctx s) (ρ : Option (BVar s .var)) (T : Ty s) (S₁ : Ty s)
-    (T₁ : Ty (s,x)) : Γ.resolveAt ρ T = .pi S₁ T₁ ↔ Γ.resolve T = .pi S₁ T₁ := by
-  cases ρ with
-  | none => rfl
-  | some r =>
-      simp only [Ctx.resolveAt]
-      cases Γ.resolve T <;> simp [Ty.unfoldAt]
-
-theorem Ctx.resolveAt_none (Γ : Ctx s) (T : Ty s) : Γ.resolveAt none T = Γ.resolve T := rfl
-
-/-! ## Plain typedness implies typedness at any root -/
-
-mutual
-
-theorem FormTyped.atRoot {F : Form s} {S T : Ty s} (r : BVar s .var)
-    (h : Γ ⊨ F : S ≤ T) : Γ ⊨[r] F : S ≤ T := by
-  match h with
-  | .bot hS => exact .bot hS
-  | .top hT => exact .top hT
-  | .id hres => exact .id (by simp only [Ctx.resolveAt] at hres ⊢; rw [hres])
-  | .eqv hres => exact .eqv (by simp only [Ctx.resolveAt] at hres ⊢; rw [hres])
-  | .pi hS hT hd hc => exact .pi hS hT hd hc
-  | .obj hS hT hEs =>
-      refine .obj ?_ ?_ (EntriesTyped.atRoot r hEs)
-      · simp only [Ctx.resolveAt] at hS ⊢; rw [hS]; simp [Ty.unfoldAt]
-      · simp only [Ctx.resolveAt] at hT ⊢; rw [hT]; simp [Ty.unfoldAt]
-
-theorem EntriesTyped.atRoot {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)} (r : BVar s .var)
-    (h : Γ ⊨ Es : Tel₁ ⇒ Tel₂) : Γ ⊨[r] Es : Tel₁ ⇒ Tel₂ := by
-  match h with
-  | .nil => exact .nil
-  | .le h' hF => exact .le (EntriesTyped.atRoot r h') (FormTyped.atRoot r hF)
-  | .eq h' hE => exact .eq (EntriesTyped.atRoot r h') hE
-  | .has h' hAt => exact .has (EntriesTyped.atRoot r h') hAt
-
-end
-
-/-- Typedness of a form only depends on the source through its shape. -/
 theorem FormTyped.srcRes {F : Form s} {S S' T : Ty s}
-    (h : Γ.resolveAt ρ S = Γ.resolveAt ρ S') (hF : FormTyped Γ ρ F S' T) : FormTyped Γ ρ F S T := by
+    (h : Γ.resolve S = Γ.resolve S') (hF : Γ ⊨ F : S' ≤ T) : Γ ⊨ F : S ≤ T := by
   cases hF with
-  | bot hS => exact .bot ((Ctx.resolveAt_bot_iff Γ ρ S).mp (h.trans ((Ctx.resolveAt_bot_iff Γ ρ S').mpr hS)))
+  | bot hS => exact .bot (h.trans hS)
   | top hT => exact .top hT
   | id hres => exact .id (h.trans hres)
   | eqv hres => exact .eqv (h.trans hres)
-  | pi hS hT hd hc =>
-      exact .pi ((Ctx.resolveAt_pi_iff Γ ρ S _ _).mp (h.trans ((Ctx.resolveAt_pi_iff Γ ρ S' _ _).mpr hS))) hT hd hc
+  | pi hS hT hd hc => exact .pi (h.trans hS) hT hd hc
   | obj hS hT hEs => exact .obj (h.trans hS) hT hEs
 
-/-- Typedness of a form only depends on the target through its shape. -/
 theorem FormTyped.tgtRes {F : Form s} {S T T' : Ty s}
-    (h : Γ.resolveAt ρ T' = Γ.resolveAt ρ T) (hF : FormTyped Γ ρ F S T') : FormTyped Γ ρ F S T := by
+    (h : Γ.resolve T' = Γ.resolve T) (hF : Γ ⊨ F : S ≤ T') : Γ ⊨ F : S ≤ T := by
   cases hF with
   | bot hS => exact .bot hS
-  | top hT => exact .top ((Ctx.resolveAt_top_iff Γ ρ T).mp (h.symm.trans ((Ctx.resolveAt_top_iff Γ ρ T').mpr hT)))
+  | top hT => exact .top (h.symm.trans hT)
   | id hres => exact .id (hres.trans h)
   | eqv hres => exact .eqv (hres.trans h)
-  | pi hS hT hd hc =>
-      exact .pi hS ((Ctx.resolveAt_pi_iff Γ ρ T _ _).mp (h.symm.trans ((Ctx.resolveAt_pi_iff Γ ρ T' _ _).mpr hT))) hd hc
+  | pi hS hT hd hc => exact .pi hS (h.symm.trans hT) hd hc
   | obj hS hT hEs => exact .obj hS (h.symm.trans hT) hEs
+
+theorem ChainTyped.srcRes {r : BVar s .var} {F : Form s} {S S' T : Ty s}
+    (h : Γ.resolveAt r S = Γ.resolveAt r S') (hF : Γ ⊨[r] F : S' ≤ T) : Γ ⊨[r] F : S ≤ T := by
+  rw [ChainTyped, h]; exact hF
+
+theorem ChainTyped.tgtRes {r : BVar s .var} {F : Form s} {S T T' : Ty s}
+    (h : Γ.resolveAt r T' = Γ.resolveAt r T) (hF : Γ ⊨[r] F : S ≤ T') : Γ ⊨[r] F : S ≤ T := by
+  rw [ChainTyped, ← h]; exact hF
+
+/-! ## Plain typedness gives typedness at the shapes opened at any root
+
+The opened shape of an endpoint is a non-name type determined by the plain
+shape, and resolution is the identity on it. -/
+
+theorem FormTyped.atRoot {F : Form s} {S T : Ty s} (r : BVar s .var)
+    (h : Γ ⊨ F : S ≤ T) : Γ ⊨[r] F : S ≤ T := by
+  cases h with
+  | bot hS => exact .bot (by simp [Ctx.resolveAt, hS])
+  | top hT => exact .top (by simp [Ctx.resolveAt, hT])
+  | id hres => exact .id (by simp only [Ctx.resolveAt]; rw [hres])
+  | eqv hres => exact .eqv (by simp only [Ctx.resolveAt]; rw [hres])
+  | pi hS hT hd hc => exact .pi (by simp [Ctx.resolveAt, hS]) (by simp [Ctx.resolveAt, hT]) hd hc
+  | obj hS hT hEs =>
+      exact .obj (by simp [Ctx.resolveAt, hS]) (by simp [Ctx.resolveAt, hT]) hEs
 
 /-! ## Entries by position -/
 
-theorem EntriesTyped.length {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)}
-    (h : EntriesTyped Γ ρ Tel₁ Es Tel₂) : Es.length = Tel₂.length := by
+theorem EntriesTyped.length {Tel₁ Tel₂ : Telescope s} {Es : Entries s}
+    (h : Γ ⊨ Es : Tel₁ ⇒ Tel₂) : Es.length = Tel₂.length := by
   match h with
   | .nil => rfl
-  | .le h' _ => simp [Telescope.length, h'.length]
-  | .eq h' _ => simp [Telescope.length, h'.length]
-  | .has h' _ => simp [Telescope.length, h'.length]
+  | .le h' _ => simp [Entries.length, Telescope.length, h'.length]
+  | .eq h' _ => simp [Entries.length, Telescope.length, h'.length]
+  | .has h' _ => simp [Entries.length, Telescope.length, h'.length]
 
-theorem EntriesTyped.nth?_has {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)}
-    (h : EntriesTyped Γ ρ Tel₁ Es Tel₂) {j : Nat} {ℓ : Label} (hAt : Tel₂.At j (.has ℓ)) :
-    ∃ j', Entries.nth? Es j = some (.has j') ∧ Tel₁.At j' (.has ℓ) := by
+/-- The entry at a presence proposition of the target is a presence entry
+pointing at a presence proposition of the source. -/
+theorem EntriesTyped.At_has {Tel₁ Tel₂ : Telescope s} {Es : Entries s}
+    (h : Γ ⊨ Es : Tel₁ ⇒ Tel₂) {j : Nat} {ℓ : Label} (hAt : Tel₂ ∋ (j ↦ ∋ ℓ)) :
+    ∃ j', Es ∋ (j ↦ .has j') ∧ Tel₁ ∋ (j' ↦ ∋ ℓ) := by
   match h with
   | .nil => cases hAt
   | .le hEs _ =>
       cases hAt with
-      | there hAt' =>
-          obtain ⟨j', hj', hT⟩ := hEs.nth?_has hAt'
-          refine ⟨j', ?_, hT⟩
-          rw [Entries.nth?_append_lt _ _ _ (by rw [hEs.length]; exact hAt'.lt)]
-          exact hj'
+      | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
   | .eq hEs _ =>
       cases hAt with
-      | there hAt' =>
-          obtain ⟨j', hj', hT⟩ := hEs.nth?_has hAt'
-          refine ⟨j', ?_, hT⟩
-          rw [Entries.nth?_append_lt _ _ _ (by rw [hEs.length]; exact hAt'.lt)]
-          exact hj'
-  | @EntriesTyped.has _ _ _ _ _ Es j₀ ℓ₀ hEs hT =>
+      | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
+  | .has hEs hT =>
       cases hAt with
-      | here =>
-          refine ⟨j₀, ?_, hT⟩
-          rw [← hEs.length]
-          exact Entries.nth?_append_length Es _
-      | there hAt' =>
-          obtain ⟨j', hj', hT'⟩ := hEs.nth?_has hAt'
-          refine ⟨j', ?_, hT'⟩
-          rw [Entries.nth?_append_lt _ _ _ (by rw [hEs.length]; exact hAt'.lt)]
-          exact hj'
+      | here => exact ⟨_, by rw [← hEs.length]; exact .here, hT⟩
+      | there hAt' => obtain ⟨j', hj', hT'⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT'⟩
+
+theorem EntriesTyped.get?_has {Tel₁ Tel₂ : Telescope s} {Es : Entries s}
+    (h : Γ ⊨ Es : Tel₁ ⇒ Tel₂) {j : Nat} {ℓ : Label} (hAt : Tel₂ ∋ (j ↦ ∋ ℓ)) :
+    ∃ j', Es.get? j = some (.has j') ∧ Tel₁ ∋ (j' ↦ ∋ ℓ) := by
+  obtain ⟨j', hj', hT⟩ := h.At_has hAt
+  exact ⟨j', hj'.get?, hT⟩
 
 /-! ## Routing entries through a first coercion -/
 
-theorem Entries.through_snoc (Es₁ : List (Entry s)) :
-    ∀ (Es : List (Entry s)) (E : Entry s),
-      Entries.through Es₁ (Es ++ [E]) =
-        (Entries.through Es₁ Es).bind (fun Es' => (Entry.through Es₁ E).map (fun E' => Es' ++ [E']))
-  | [], E => by
-      cases h : Entry.through Es₁ E <;> simp [Entries.through, h]
-  | E₀ :: Es, E => by
-      simp only [List.cons_append, Entries.through]
-      cases h₀ : Entry.through Es₁ E₀ with
-      | none => simp
-      | some E₀' =>
-          rw [Entries.through_snoc Es₁ Es E]
-          cases h : Entries.through Es₁ Es with
-          | none => simp
-          | some Es' =>
-              cases h' : Entry.through Es₁ E with
-              | none => simp
-              | some E' => simp
-
-theorem EntriesTyped.through {Tel₁ TelM Tel₂ : Telescope s} {Es₁ Es₂ : List (Entry s)}
-    (h₁ : EntriesTyped Γ ρ Tel₁ Es₁ TelM) (h₂ : EntriesTyped Γ ρ TelM Es₂ Tel₂) :
-    ∃ Es, Entries.through Es₁ Es₂ = some Es ∧ EntriesTyped Γ ρ Tel₁ Es Tel₂ := by
+theorem EntriesTyped.through {Tel₁ TelM Tel₂ : Telescope s} {Es₁ Es₂ : Entries s}
+    (h₁ : Γ ⊨ Es₁ : Tel₁ ⇒ TelM) (h₂ : Γ ⊨ Es₂ : TelM ⇒ Tel₂) :
+    ∃ Es, Entries.through Es₁ Es₂ = some Es ∧ Γ ⊨ Es : Tel₁ ⇒ Tel₂ := by
   match h₂ with
-  | .nil => exact ⟨[], rfl, .nil⟩
+  | .nil => exact ⟨.nil, rfl, .nil⟩
   | .le h₂' hF =>
       obtain ⟨Es, hEs, hT⟩ := h₁.through h₂'
-      refine ⟨Es ++ [.le _], ?_, .le hT hF⟩
-      rw [Entries.through_snoc, hEs]; rfl
+      exact ⟨Es ▹ .le _, by simp [Entries.through, hEs, Entry.through], .le hT hF⟩
   | .eq h₂' hE =>
       obtain ⟨Es, hEs, hT⟩ := h₁.through h₂'
-      refine ⟨Es ++ [.eq], ?_, .eq hT hE⟩
-      rw [Entries.through_snoc, hEs]; rfl
+      exact ⟨Es ▹ .eq, by simp [Entries.through, hEs, Entry.through], .eq hT hE⟩
   | .has h₂' hAt =>
       obtain ⟨Es, hEs, hT⟩ := h₁.through h₂'
-      obtain ⟨j', hj', hT'⟩ := h₁.nth?_has hAt
-      refine ⟨Es ++ [.has j'], ?_, .has hT hT'⟩
-      rw [Entries.through_snoc, hEs]
-      simp [Entry.through, hj']
+      obtain ⟨j', hj', hT'⟩ := h₁.get?_has hAt
+      exact ⟨Es ▹ .has j', by simp [Entries.through, hEs, Entry.through, hj'], .has hT hT'⟩
 
 /-! ## Composition of typed forms -/
 
 theorem Form.combine_typed {F G : Form s} {S M T : Ty s}
-    (hF : FormTyped Γ ρ F S M) (hG : FormTyped Γ ρ G M T) :
-    ∃ H, F.combine G = some H ∧ FormTyped Γ ρ H S T := by
+    (hF : Γ ⊨ F : S ≤ M) (hG : Γ ⊨ G : M ≤ T) :
+    ∃ H, F.combine G = some H ∧ Γ ⊨ H : S ≤ T := by
   cases hF with
   | bot hS =>
       refine ⟨.bot, ?_, .bot hS⟩
@@ -250,168 +187,108 @@ theorem Form.combine_typed {F G : Form s} {S M T : Ty s}
   | id hres =>
       exact ⟨G, by cases G <;> rfl, hG.srcRes hres⟩
   | top hM =>
-      have hM' : Γ.resolveAt ρ M = .top := (Ctx.resolveAt_top_iff Γ ρ M).mpr hM
       cases hG with
       | bot hb => rw [hM] at hb; exact absurd hb (by simp)
       | top hT => exact ⟨.top, rfl, .top hT⟩
-      | id hres => exact ⟨.top, rfl, .top ((Ctx.resolveAt_top_iff Γ ρ T).mp (hres ▸ hM'))⟩
-      | eqv hres => exact ⟨.top, rfl, .top ((Ctx.resolveAt_top_iff Γ ρ T).mp (hres ▸ hM'))⟩
+      | id hres => exact ⟨.top, rfl, .top (hres ▸ hM)⟩
+      | eqv hres => exact ⟨.top, rfl, .top (hres ▸ hM)⟩
       | pi hp _ _ _ => rw [hM] at hp; exact absurd hp (by simp)
-      | obj ho _ _ => rw [hM'] at ho; exact absurd ho (by simp)
+      | obj ho _ _ => rw [hM] at ho; exact absurd ho (by simp)
   | eqv hres =>
       cases hG with
-      | bot hb =>
-          exact ⟨.bot, rfl, .bot ((Ctx.resolveAt_bot_iff Γ ρ S).mp
-            (hres.trans ((Ctx.resolveAt_bot_iff Γ ρ M).mpr hb)))⟩
+      | bot hb => exact ⟨.bot, rfl, .bot (hres.trans hb)⟩
       | top hT => exact ⟨.top, rfl, .top hT⟩
       | id hres' => exact ⟨.eqv _, rfl, .eqv (hres.trans hres')⟩
       | eqv hres' => exact ⟨.eqv _, rfl, .eqv (hres.trans hres')⟩
-      | pi hp hT hd hc =>
-          exact ⟨.pi _ _, rfl, .pi ((Ctx.resolveAt_pi_iff Γ ρ S _ _).mp
-            (hres.trans ((Ctx.resolveAt_pi_iff Γ ρ M _ _).mpr hp))) hT hd hc⟩
+      | pi hp hT hd hc => exact ⟨.pi _ _, rfl, .pi (hres.trans hp) hT hd hc⟩
       | obj ho hT hEs => exact ⟨.obj _, rfl, .obj (hres.trans ho) hT hEs⟩
   | pi hS hM hd hc =>
-      have hM' : Γ.resolveAt ρ M = .pi _ _ := (Ctx.resolveAt_pi_iff Γ ρ M _ _).mpr hM
       cases hG with
       | bot hb => rw [hM] at hb; exact absurd hb (by simp)
       | top hT => exact ⟨.top, rfl, .top hT⟩
-      | id hres =>
-          exact ⟨.pi _ _, rfl, .pi hS ((Ctx.resolveAt_pi_iff Γ ρ T _ _).mp (hres ▸ hM')) hd hc⟩
-      | eqv hres =>
-          exact ⟨.pi _ _, rfl, .pi hS ((Ctx.resolveAt_pi_iff Γ ρ T _ _).mp (hres ▸ hM')) hd hc⟩
+      | id hres => exact ⟨.pi _ _, rfl, .pi hS (hres ▸ hM) hd hc⟩
+      | eqv hres => exact ⟨.pi _ _, rfl, .pi hS (hres ▸ hM) hd hc⟩
       | pi hp hT hd₂ hc₂ =>
           rw [hM] at hp
-          have hpi := Ty.pi.inj hp
-          obtain ⟨hs, ht⟩ := hpi
-          subst hs; subst ht
+          obtain ⟨rfl, rfl⟩ := Ty.pi.inj hp
           refine ⟨.pi _ _, rfl, .pi hS hT (.trans hd₂ hd) (.trans ?_ hc₂)⟩
-          have hsub := LeCo.HasType.subst (Subst.Typed.selfCastOpaque hd₂) hc
-          simpa using hsub
-      | obj ho _ _ => rw [hM'] at ho; exact absurd ho (by simp)
+          simpa using LeCo.HasType.subst (Subst.Typed.selfCastOpaque hd₂) hc
+      | obj ho _ _ => rw [hM] at ho; exact absurd ho (by simp)
   | obj hS hM hEs =>
       cases hG with
-      | bot hb =>
-          have := (Ctx.resolveAt_bot_iff Γ ρ M).mpr hb
-          rw [hM] at this; exact absurd this (by simp)
+      | bot hb => rw [hM] at hb; exact absurd hb (by simp)
       | top hT => exact ⟨.top, rfl, .top hT⟩
       | id hres => exact ⟨.obj _, rfl, .obj hS (hres.symm.trans hM) hEs⟩
       | eqv hres => exact ⟨.obj _, rfl, .obj hS (hres.symm.trans hM) hEs⟩
-      | pi hp _ _ _ =>
-          have := (Ctx.resolveAt_pi_iff Γ ρ M _ _).mpr hp
-          rw [hM] at this; exact absurd this (by simp)
+      | pi hp _ _ _ => rw [hM] at hp; exact absurd hp (by simp)
       | obj hM' hT hEs₂ =>
           rw [hM] at hM'
-          have hTel := Telescope.weaken_inj (Ty.obj.inj hM')
-          subst hTel
+          obtain rfl := Telescope.weaken_inj (Ty.obj.inj hM')
           obtain ⟨Es, hEs', hT'⟩ := hEs.through hEs₂
           exact ⟨.obj Es, by simp [Form.combine, hEs'], .obj hS hT hT'⟩
 
+/-- The chain of casts composes: a corollary of `Form.combine_typed` at the
+opened shapes. -/
+theorem ChainTyped.combine {r : BVar s .var} {F G : Form s} {S M T : Ty s}
+    (hF : Γ ⊨[r] F : S ≤ M) (hG : Γ ⊨[r] G : M ≤ T) :
+    ∃ H, F.combine G = some H ∧ Γ ⊨[r] H : S ≤ T :=
+  Form.combine_typed hF hG
+
 /-! ## Applying a typed object form to a typed view -/
 
-theorem entriesAt_snoc (V : View s) :
-    ∀ (Es : List (Entry s)) (E : Entry s),
-      entriesAt V (Es ++ [E]) =
-        (entriesAt V Es).bind (fun V' =>
-          (match E with
-            | .le F => some (PropForm.le F)
-            | .eq => some PropForm.eq
-            | .has j => View.nth? V j).map (fun P => V' ++ [P]))
-  | [], E => by cases E with
-      | le F => simp [entriesAt]
-      | eq => simp [entriesAt]
-      | has j => cases h : View.nth? V j <;> simp [entriesAt, h]
-  | E₀ :: Es, E => by
-      have ih := entriesAt_snoc V Es E
-      cases E₀ with
-      | le F =>
-          simp only [List.cons_append, entriesAt]
-          rw [ih]
-          cases h : entriesAt V Es <;> cases E <;> simp
-          all_goals (cases h' : View.nth? V _ <;> simp)
-      | eq =>
-          simp only [List.cons_append, entriesAt]
-          rw [ih]
-          cases h : entriesAt V Es <;> cases E <;> simp
-          all_goals (cases h' : View.nth? V _ <;> simp)
-      | has j =>
-          simp only [List.cons_append, entriesAt]
-          cases h₀ : View.nth? V j with
-          | none => simp
-          | some P₀ =>
-              rw [ih]
-              cases h : entriesAt V Es <;> cases E <;> simp
-              all_goals (cases h' : View.nth? V _ <;> simp)
-
 /-- Applying typed entries (over opened telescopes) to a typed view at a root. -/
-theorem entriesAt_typed {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)} {V : View s}
+theorem entriesAt_typed {Tel₁ Tel₂ : Telescope s} {Es : Entries s} {V : View s}
     {r : BVar s .var}
     (hEs : Γ ⊨ Es : Tel₁ ⇒ Tel₂) (hV : Γ ⊨[r, σ] V : Tel₁↑) :
     ∃ V', entriesAt V Es = some V' ∧ Γ ⊨[r, σ] V' : Tel₂↑ := by
   match hEs with
-  | .nil => exact ⟨[], rfl, ViewTyped_nil⟩
-  | @EntriesTyped.le _ _ _ _ _ Es F S' T' hEs' hF =>
+  | .nil => exact ⟨.nil, rfl, .nil⟩
+  | .le (F := F) hEs' hF =>
       obtain ⟨V', hV', hT⟩ := entriesAt_typed hEs' hV
-      refine ⟨V' ++ [.le F], ?_, ?_⟩
-      · rw [entriesAt_snoc, hV']; rfl
-      · rw [Telescope.weaken_cons, Proposition.weaken_le]
-        refine ViewTyped_cons hT ?_
-        show Γ ⊨ F : ((S'.weaken (k := .var))⟦r⟧) ≤ ((T'.weaken (k := .var))⟦r⟧)
-        rw [Ty.weaken_substVar, Ty.weaken_substVar]
-        exact hF
+      refine ⟨V' ▹ .le F, by simp [entriesAt, hV'], ?_⟩
+      rw [Telescope.weaken_cons, Proposition.weaken_le]
+      exact .le hT (by rwa [Ty.weaken_substVar, Ty.weaken_substVar])
   | .eq hEs' hE =>
       obtain ⟨V', hV', hT⟩ := entriesAt_typed hEs' hV
-      refine ⟨V' ++ [.eq], ?_, ?_⟩
-      · rw [entriesAt_snoc, hV']; rfl
-      · rw [Telescope.weaken_cons, Proposition.weaken_eq]
-        refine ViewTyped_cons hT ?_
-        show Γ.resolve ((_ : Ty s)↑.substVar r) = Γ.resolve ((_ : Ty s)↑.substVar r)
-        rw [Ty.weaken_substVar, Ty.weaken_substVar]
-        exact hE
-  | @EntriesTyped.has _ _ _ _ _ Es j ℓ hEs' hAt =>
+      refine ⟨V' ▹ .eq, by simp [entriesAt, hV'], ?_⟩
+      rw [Telescope.weaken_cons, Proposition.weaken_eq]
+      exact .eq hT (by rwa [Ty.weaken_substVar, Ty.weaken_substVar])
+  | .has (ℓ := ℓ) hEs' hAt =>
       obtain ⟨V', hV', hT⟩ := entriesAt_typed hEs' hV
-      have hP := hV.2 j _ hAt.weaken
-      cases hQ : View.nth? V j with
-      | none => rw [hQ] at hP; exact absurd hP (by simp [PropFormTyped])
-      | some Q =>
-          rw [hQ] at hP
-          refine ⟨V' ++ [Q], ?_, ?_⟩
-          · rw [entriesAt_snoc, hV']; simp [hQ]
-          · rw [Telescope.weaken_cons, Proposition.weaken_has]
-            exact ViewTyped_cons hT hP
+      obtain ⟨hQ, hHF⟩ := hV.has_entry hAt.weaken
+      refine ⟨V' ▹ .has r ℓ, by simp [entriesAt, hV', hQ.get?], ?_⟩
+      rw [Telescope.weaken_cons, Proposition.weaken_has]
+      exact .has hT hHF
 
 /-- Applying a typed form to the typed view of an atom yields the typed view
 of the target. -/
 theorem viewThrough_typed {F : Form s} {S T : Ty s} {a : Atom s} {V : View s} {n : Nat}
     (hF : Γ ⊨ F : S ≤ T)
     (hV : σ ⊢ a ⇓ᵥ[n] V)
-    (hVt : ∀ Tel : Telescope (s,x), Γ.resolve S = .obj Tel → Γ ⊨[a.root, σ] V : Tel)
-    (hnb : Γ.resolve S ≠ .bot) :
+    (hVt : ∀ Tel : Telescope (s,x), Γ.resolve S = μ Tel → Γ ⊨[a.root, σ] V : Tel)
+    (hnb : Γ.resolve S ≠ ⊥) :
     ∃ V', viewThrough σ (n + 1) F a = some V' ∧
-      (∀ Tel : Telescope (s,x), Γ.resolve T = .obj Tel → Γ ⊨[a.root, σ] V' : Tel) ∧
-      Γ.resolve T ≠ .bot := by
+      (∀ Tel : Telescope (s,x), Γ.resolve T = μ Tel → Γ ⊨[a.root, σ] V' : Tel) ∧
+      Γ.resolve T ≠ ⊥ := by
   cases hF with
   | bot hS => exact absurd hS hnb
   | top hT =>
-      refine ⟨[], rfl, fun Tel h => ?_, ?_⟩
+      refine ⟨.nil, rfl, fun Tel h => ?_, ?_⟩
       · rw [hT] at h; exact absurd h (by simp)
       · rw [hT]; simp
   | id hres =>
-      simp only [Ctx.resolveAt] at hres
       exact ⟨V, by simp [viewThrough, hV], fun Tel h => hVt Tel (hres.trans h), by rw [← hres]; exact hnb⟩
   | eqv hres =>
-      simp only [Ctx.resolveAt] at hres
       exact ⟨V, by simp [viewThrough, hV], fun Tel h => hVt Tel (hres.trans h), by rw [← hres]; exact hnb⟩
   | pi _ hT _ _ =>
-      refine ⟨[], rfl, fun Tel h => ?_, ?_⟩
+      refine ⟨.nil, rfl, fun Tel h => ?_, ?_⟩
       · rw [hT] at h; exact absurd h (by simp)
       · rw [hT]; simp
   | obj hS hT hEs =>
-      simp only [Ctx.resolveAt] at hS hT
       obtain ⟨V', hV', hT'⟩ := entriesAt_typed hEs (hVt _ hS)
       refine ⟨V', by simp [viewThrough, hV, hV'], fun Tel h => ?_, ?_⟩
       · rw [hT] at h
-        have hTel := Ty.obj.inj h
-        subst hTel
+        obtain rfl := Ty.obj.inj h
         exact hT'
       · rw [hT]; simp
 
@@ -424,7 +301,7 @@ variable (σ : Store s)
 
 theorem normalizer_succ : ∀ n : Nat,
     (∀ (e : LeCo s) (F : Form s), σ ⊢ e ⇓[n] F → σ ⊢ e ⇓[(n + 1)] F) ∧
-    (∀ (m : Morphism s) (Es : List (Entry s)), σ ⊢ m ⇓ₘ[n] Es → σ ⊢ m ⇓ₘ[(n + 1)] Es) ∧
+    (∀ (m : Morphism s) (Es : Entries s), σ ⊢ m ⇓ₘ[n] Es → σ ⊢ m ⇓ₘ[(n + 1)] Es) ∧
     (∀ (a : Atom s) (V : View s), σ ⊢ a ⇓ᵥ[n] V → σ ⊢ a ⇓ᵥ[(n + 1)] V) ∧
     (∀ (F : Form s) (a : Atom s) (V : View s),
       viewThrough σ n F a = some V → viewThrough σ (n + 1) F a = some V) ∧
@@ -489,7 +366,7 @@ theorem normalizer_succ : ∀ n : Nat,
         | cast a e =>
             cases he : hnf σ n e with
             | none => simp [view, he] at h
-            | some F => simpa [view, he, ih1 e F he, ih4 F a V (by simpa [view, he] using h)] using h
+            | some F => simp [view, ih1 e F he, ih4 F a V (by simpa [view, he] using h)]
         | foldSelf Tel a => simp only [view] at h ⊢; exact ih3 a V h
         | unfoldSelf a => simp only [view] at h ⊢; exact ih3 a V h
       · intro F a V h
@@ -522,7 +399,7 @@ theorem hnf_le {n n' : Nat} {e : LeCo s} {F : Form s} (h : n ≤ n') (hF : σ �
   | refl => exact hF
   | step _ ih => exact (normalizer_succ σ _).1 e F ih
 
-theorem entries_le {n n' : Nat} {m : Morphism s} {Es : List (Entry s)} (h : n ≤ n')
+theorem entries_le {n n' : Nat} {m : Morphism s} {Es : Entries s} (h : n ≤ n')
     (hE : σ ⊢ m ⇓ₘ[n] Es) : σ ⊢ m ⇓ₘ[n'] Es := by
   induction h with
   | refl => exact hE

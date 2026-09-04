@@ -8,16 +8,20 @@ identity, a definitional conversion, a function coercion with closed domain
 and codomain evidence, or an object coercion given by the normal forms of
 its target's propositions.  Object coercions are between opened telescopes
 (no self block), so the normal form of a coercion does not depend on the
-atom it is applied to: it is a list of *entries*, one per target
+atom it is applied to: it is a telescope of *entries*, one per target
 proposition, where a presence entry refers to the source by index.
 
-The *view* of a concrete atom is the list of normal forms of the
+The *view* of a concrete atom is the telescope of normal forms of the
 propositions of its (resolved) object type: a location's view is read off
 its literal, and the view of a cast atom is obtained by applying the head
 form of the cast to the view of the underlying atom.  Eliminating a member
 fact looks a view up.  Every recursion is structural in the closed evidence
 term or atom, so the normalizer is a fuel-indexed total function whose fuel
 bound is syntactic.
+
+Entries and views are telescope-shaped (oldest first, `cons` at the end),
+indexed by an `At` relation mirroring `Telescope.At`, with executable
+lookups `get?`.
 -/
 
 namespace FCdot
@@ -56,7 +60,7 @@ inductive Form (s : Sig) : Type where
       the target domain binder. -/
   | pi : LeCo s → LeCo (s,x) → Form s
   /-- Object coercion: one entry per proposition of the (opened) target. -/
-  | obj : List (Entry s) → Form s
+  | obj : Entries s → Form s
 
 /-- The normal form of one target proposition of an object coercion. -/
 inductive Entry (s : Sig) : Type where
@@ -64,6 +68,11 @@ inductive Entry (s : Sig) : Type where
   | eq : Entry s
   /-- Presence, inherited from the source's `j`-th proposition. -/
   | has : Nat → Entry s
+
+/-- Entries of an object coercion, oldest first. -/
+inductive Entries (s : Sig) : Type where
+  | nil : Entries s
+  | cons : Entries s → Entry s → Entries s
 
 end
 
@@ -74,32 +83,64 @@ inductive PropForm (s : Sig) : Type where
   /-- Field `ℓ` is present at binder `x`. -/
   | has : BVar s .var → Label → PropForm s
 
-abbrev View (s : Sig) := List (PropForm s)
+/-- The view of an atom: the forms of its propositions, oldest first. -/
+inductive View (s : Sig) : Type where
+  | nil : View s
+  | cons : View s → PropForm s → View s
 
-def View.nth? : View s → Nat → Option (PropForm s)
-  | [], _ => none
-  | P :: _, 0 => some P
-  | _ :: V, i + 1 => View.nth? V i
+/-! ### Notation for entries and views
 
-def Entries.nth? : List (Entry s) → Nat → Option (Entry s)
-  | [], _ => none
-  | E :: _, 0 => some E
-  | _ :: Es, i + 1 => Entries.nth? Es i
+`Es ▹ E`, `V ▹ P` extend entries and views; `Es ∋ (i ↦ E)`, `V ∋ (i ↦ P)`
+are the `i`-th entry and proposition form, counted from the oldest. -/
+
+scoped infixl:65 " ▹ " => Entries.cons
+scoped infixl:65 " ▹ " => View.cons
+
+def Entries.length : Entries s → Nat
+  | .nil => 0
+  | .cons Es _ => Es.length + 1
+
+def View.length : View s → Nat
+  | .nil => 0
+  | .cons V _ => V.length + 1
+
+/-- `Es ∋ (i ↦ E)`: the `i`-th entry of `Es` (from the oldest) is `E`. -/
+inductive Entries.At : Entries s → Nat → Entry s → Prop where
+  | here : Entries.At (Es ▹ E) Es.length E
+  | there : Entries.At Es i E → Entries.At (Es ▹ E') i E
+
+/-- `V ∋ (i ↦ P)`: the `i`-th proposition form of `V` (from the oldest) is `P`. -/
+inductive View.At : View s → Nat → PropForm s → Prop where
+  | here : View.At (V ▹ P) V.length P
+  | there : View.At V i P → View.At (V ▹ Q) i P
+
+scoped notation:50 Es:51 " ∋ " "(" i " ↦ " E ")" => Entries.At Es i E
+scoped notation:50 V:51 " ∋ " "(" i " ↦ " P ")" => View.At V i P
+
+/-- Lookup by index, executable. -/
+def Entries.get? : Entries s → Nat → Option (Entry s)
+  | .nil, _ => none
+  | .cons Es E, i => if i = Es.length then some E else Es.get? i
+
+/-- Lookup by index, executable. -/
+def View.get? : View s → Nat → Option (PropForm s)
+  | .nil, _ => none
+  | .cons V P, i => if i = V.length then some P else V.get? i
 
 /-! ## Composition of forms -/
 
 /-- Route a presence entry of the second coercion through the first. -/
-def Entry.through (Es₁ : List (Entry s)) : Entry s → Option (Entry s)
+def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
   | .le F => some (.le F)
   | .eq => some .eq
-  | .has j => Entries.nth? Es₁ j
+  | .has j => Es₁.get? j
 
-def Entries.through (Es₁ : List (Entry s)) : List (Entry s) → Option (List (Entry s))
-  | [] => some []
-  | E :: Es => do
-      let E' ← Entry.through Es₁ E
+def Entries.through (Es₁ : Entries s) : Entries s → Option (Entries s)
+  | .nil => some .nil
+  | .cons Es E => do
       let Es' ← Entries.through Es₁ Es
-      pure (E' :: Es')
+      let E' ← Entry.through Es₁ E
+      pure (Es' ▹ E')
 
 /-- Combine the head forms of two composable coercions.  Conversions compose
 as equalities and are absorbed into function and object forms; the
@@ -123,23 +164,38 @@ def Form.combine : Form s → Form s → Option (Form s)
 
 /-! ## The view of a literal -/
 
-/-- Presence forms for the fields of a literal at binder `x`. -/
-def Fields.hasForms (x : BVar s .var) : List Label → View s
-  | [] => []
-  | ℓ :: ls => .has x ℓ :: Fields.hasForms x ls
+/-- Presence forms for the fields of a literal at binder `x`, appended to a
+view (as `Telescope.hasEntries`). -/
+def Fields.hasForms (x : BVar s .var) : View s → List Label → View s
+  | V, [] => V
+  | V, ℓ :: ls => Fields.hasForms x (V ▹ .has x ℓ) ls
 
 /-- Equation forms for the witnesses of a literal. -/
 def Witnesses.eqForms : Witnesses (s,x) → View s
-  | .nil => []
-  | .cons W _ _ => W.eqForms ++ [.eq]
+  | .nil => .nil
+  | .cons W _ _ => W.eqForms ▹ .eq
 
 /-- The view of a stored literal at its precise type: one entry per
 proposition of `Telescope.ofLiteral`. -/
 def Value.precView (x : BVar s .var) : Value s → View s
-  | .obj W F => W.eqForms ++ Fields.hasForms x F.labels
-  | _ => []
+  | .obj W F => Fields.hasForms x W.eqForms F.labels
+  | _ => .nil
 
 /-! ## The normalizer -/
+
+/-- Instantiate the entries of an object coercion at an atom whose view is `V`. -/
+def entriesAt (V : View s) : Entries s → Option (View s)
+  | .nil => some .nil
+  | .cons Es (.le F) => do
+      let V' ← entriesAt V Es
+      pure (V' ▹ .le F)
+  | .cons Es .eq => do
+      let V' ← entriesAt V Es
+      pure (V' ▹ .eq)
+  | .cons Es (.has j) => do
+      let V' ← entriesAt V Es
+      let P ← V.get? j
+      pure (V' ▹ P)
 
 mutual
 
@@ -159,24 +215,24 @@ def hnf (σ : Store s) : Nat → LeCo s → Option (Form s)
   | n + 1, .member a e i => do
       let F ← hnf σ n e
       let V ← viewThrough σ n F a
-      match View.nth? V i with
+      match V.get? i with
       | some (.le G) => some G
       | _ => none
 
 /-- Entries of a morphism: the normal forms of its pieces of evidence. -/
-def entries (σ : Store s) : Nat → Morphism s → Option (List (Entry s))
+def entries (σ : Store s) : Nat → Morphism s → Option (Entries s)
   | 0, _ => none
-  | _ + 1, .nil => some []
+  | _ + 1, .nil => some .nil
   | n + 1, .le m e => do
       let Es ← entries σ n m
       let F ← hnf σ n e
-      pure (Es ++ [.le F])
+      pure (Es ▹ .le F)
   | n + 1, .eq m _ => do
       let Es ← entries σ n m
-      pure (Es ++ [.eq])
+      pure (Es ▹ .eq)
   | n + 1, .has m j => do
       let Es ← entries σ n m
-      pure (Es ++ [.has j])
+      pure (Es ▹ .has j)
 
 /-- The view of a concrete atom at its resolved object type. -/
 def view (σ : Store s) : Nat → Atom s → Option (View s)
@@ -197,23 +253,9 @@ def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
       let V ← view σ n a
       entriesAt V Es
   -- A non-object target has no telescope: its view is empty.
-  | _ + 1, .pi _ _, _ => some []
-  | _ + 1, .top, _ => some []
-  | _ + 1, .bot, _ => some []
-
-/-- Instantiate the entries of an object coercion at an atom whose view is `V`. -/
-def entriesAt (V : View s) : List (Entry s) → Option (View s)
-  | [] => some []
-  | .le F :: Es => do
-      let V' ← entriesAt V Es
-      pure (.le F :: V')
-  | .eq :: Es => do
-      let V' ← entriesAt V Es
-      pure (.eq :: V')
-  | .has j :: Es => do
-      let P ← View.nth? V j
-      let V' ← entriesAt V Es
-      pure (P :: V')
+  | _ + 1, .pi _ _, _ => some .nil
+  | _ + 1, .top, _ => some .nil
+  | _ + 1, .bot, _ => some .nil
 
 /-- Field presence witnessed by `has` evidence at the expected binder `x`. -/
 def hasView (σ : Store s) : Nat → BVar s .var → Has s → Option (BVar s .var × Label)
@@ -222,7 +264,7 @@ def hasView (σ : Store s) : Nat → BVar s .var → Has s → Option (BVar s .v
   | n + 1, _, .member a e i => do
       let F ← hnf σ n e
       let V ← viewThrough σ n F a
-      match View.nth? V i with
+      match V.get? i with
       | some (.has y ℓ) => some (y, ℓ)
       | _ => none
 
