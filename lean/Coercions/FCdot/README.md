@@ -28,6 +28,7 @@ erasure safe.
 | `FormAlgebra` | composition and application of typed forms; fuel monotonicity and determinism |
 | `CanonicalForms` | the canonical-forms theorem; the chain of casts; `preservation'`, `erase_reflect'` |
 | `Progress` | `progress`, `not_stuck` |
+| `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
 | `Examples` | the five mandatory examples E1 to E5, decided in the kernel |
 
 ## Notation
@@ -89,6 +90,10 @@ progress           : st.Typed U → st.Final ∨ ∃ s' (st' : State s'), st ⟶
 erase_step         : st ⟶ st' → (cast-frame step ∧ ⌊st⌋ = ⌊st'⌋) ∨ Runtime.Step ⌊st⌋ ⌊st'⌋
 erase_reflect'     : ⊢ st.σ : Γ → (∃ T, Γ ⊢ st.t : T) → Runtime.Step ⌊st⌋ r →
                        ∃ st', st ⟶* st' ∧ ⌊st'⌋ = r
+closed_le_shapes   : ⊢ σ : Γ → Γ ⊢ e : S ≤ T → (S resolves to ⊥) ∨ (T resolves to ⊤) ∨
+                       (equal resolutions) ∨ (both Π) ∨ (both μ)
+reachable_consistent : st.Typed U → st ⟶* st' → ∃ Γ, ⊢ st'.σ : Γ ∧ (¬ ∃ e, Γ ⊢ e : ⊤ ≤ ⊥) ∧
+                       ∀ x ℓ, ∃ W, Γ.lookupDef x ℓ = some W ∧ Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W
 ```
 
 Axioms (`#print axioms`): `propext` and `Quot.sound` for all of the above;
@@ -98,6 +103,5 @@ tree contains no `sorry`, `axiom`, `partial`, or `native_decide`.
 ## What is not here
 
 No open-evidence normalization: the machine only ever normalizes closed
-evidence over the store, and that is all the metatheory needs.  No
-consistency corollaries stated separately (they are milestone M5).  The
-translation from `DotMNF` is milestones M3 to M4.
+evidence over the store, and that is all the metatheory needs.  The
+translation from `DotMNF` lives in `lean/Coercions/DotToFCdot/`.
