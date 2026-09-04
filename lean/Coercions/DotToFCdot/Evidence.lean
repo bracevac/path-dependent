@@ -44,15 +44,22 @@ def identityMorphism (off : Nat) : FCdot.Telescope (s,x) → FCdot.Morphism s
 /-- The morphism from a literal's precise telescope to its declaration type,
 with the next unused definition-equality and field-presence positions.
 Type members read both bounds off the definition equality; fields inherit
-their presence and read their bound off the definition equality. -/
+their presence and read their bound off the definition equality.
+
+The two counters run in opposite orders on an intersection: the definition
+equalities of `Telescope.ofLiteral` follow `Ty.witnesses`, whose left
+conjunct sits innermost (lowest positions), while its presence entries
+follow `Ty.fieldLabels`, whose *right* conjunct comes first (see there).
+So `S` gets the equality positions `e …` and the presence positions after
+`T`'s, and `T` gets the presence positions `h …`. -/
 def litMorphism : Ty (s,x) → Nat → Nat → FCdot.Morphism s × Nat × Nat
   | .typ _ _ _, e, h =>
       (.le (.le .nil .none (.eqSym e) .none) .none (.eq e) .none, e + 1, h)
   | .fld _ _, e, h => (.le (.has .nil h) .none (.eq e) .none, e + 1, h + 1)
   | .and S T, e, h =>
-      let (m₁, e₁, h₁) := litMorphism S e h
-      let (m₂, e₂, h₂) := litMorphism T e₁ h₁
-      (m₁.append m₂, e₂, h₂)
+      let (m₁, e₁, h₁) := litMorphism S e (h + T.fieldLabels.length)
+      let (m₂, e₂, _) := litMorphism T e₁ h
+      (m₁.append m₂, e₂, h₁)
   | _, e, h => (.nil, e, h)
 
 /-- The coercion from a literal's precise type to `⟦μ(x. T)⟧`. -/

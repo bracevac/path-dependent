@@ -78,10 +78,16 @@ def Ty.witnesses : Ty (s,x) → FCdot.Witnesses (s,x)
   | .and S T => S.witnesses.append T.witnesses
   | _ => .nil
 
-/-- The field labels of a declaration type. -/
+/-- The field labels of a declaration type, newest (outermost) first.
+`FCdot.Fields.labels` lists the outermost field first and `FCdot.Fields.get?`
+lets the outermost field win, and in DOT the *right* conjunct of an
+intersection shadows; so the right conjunct's fields are the outermost ones
+of the translated literal and come first here.  This is the same convention
+as `Ty.witnesses`, where `FCdot.Witnesses.append` puts the second argument's
+witnesses outermost and `Witnesses.get` gives them priority. -/
 def Ty.fieldLabels : Ty s → List Label
   | .fld a _ => [a]
-  | .and S T => S.fieldLabels ++ T.fieldLabels
+  | .and S T => T.fieldLabels ++ S.fieldLabels
   | _ => []
 
 /-- The precise target type of a literal whose declaration type is `T`. -/
