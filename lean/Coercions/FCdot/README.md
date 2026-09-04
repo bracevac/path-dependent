@@ -38,7 +38,7 @@ All notation is `scoped` in namespace `FCdot`.
 |---|---|
 | `⊤`, `⊥`, `x ∙ ℓ`, `Π(S) T`, `μ Tel` | types; `μ` binds the implicit self variable of the telescope |
 | `S ⊑ T`, `S ≐ T`, `∋ ℓ` | propositions (data, hence not `≤`, `=`) |
-| `Tel ▹ P`, `Tel ∋ (i ↦ P)` | telescope extension; the `i`-th proposition, counted from the oldest |
+| `Tel ▹ P`, `Tel ∋ (i ↦ P)` | telescope extension; the `i`-th proposition, counted from the oldest (also for entries `Es` and views `V`) |
 | `T↑`, `T⟦y⟧` | weakening under a new binder; instantiation of the innermost binder |
 | `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ` | inclusion, equality, and presence evidence |
 | `Γ ⊢ m : src ⇒ Tel` | a morphism proving the opened telescope `Tel`, inheriting presence from `src` |
@@ -62,11 +62,19 @@ All notation is `scoped` in namespace `FCdot`.
   subtyping rule between `μ` types.  Consequently the normal form of a
   coercion does not depend on the atom it is applied to, and the normalizer
   is structural.
-* **Two modes of typedness.**  Coercion forms and views are typed with plain
-  shapes (`Γ.resolve`).  Only the chain of casts of an atom is typed at the
-  atom's root, where the self block is opened at that root, so `foldSelf`
-  and `unfoldSelf` are invisible to it (`Ctx.resolveAt`).  Plain typedness
-  lifts to any root (`FormTyped.atRoot`).
+* **One plain typedness; chains typed at opened shapes.**  Coercion forms,
+  entries, and views are typed with plain shapes (`Γ.resolve`), by one
+  inductive `Γ ⊨ F : S ≤ T`.  The chain of casts of an atom rooted at `r` is
+  not a second judgment: it is plain typedness at the resolved endpoints
+  with their self block opened at `r` (`Γ ⊨[r] F : S ≤ T` is
+  `Γ ⊨ F : Γ.resolveAt r S ≤ Γ.resolveAt r T`), so `foldSelf` and
+  `unfoldSelf` are invisible to it.  Plain typedness at `S, T` gives
+  typedness at the opened shapes at any root (`FormTyped.atRoot`), and the
+  chain composes by the plain composition lemma (`ChainTyped.combine`).
+* **Telescope-shaped forms.**  Entries of an object form and views of atoms
+  are telescope-shaped inductives (`Es ▹ E`, `V ▹ P`, oldest first) indexed
+  by `Es ∋ (i ↦ E)`, `V ∋ (i ↦ P)`, exactly like `Telescope.At`; their
+  typedness judgments mirror the telescope they are typed against.
 
 ## Main theorems
 

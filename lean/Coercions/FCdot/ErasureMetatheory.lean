@@ -270,10 +270,10 @@ theorem Store.Typed.lookup_isLiteral {s : Sig} {σ : Store s} {Γ : Ctx s}
     (h : ⊢ σ : Γ) : ∀ x : BVar s .var, (σ.lookup x).IsLiteral := by
   induction h with
   | nil => intro x; cases x
-  | @cons s0 σ0 Γ0 v T hσ hlit hv ih =>
+  | cons _ hlit _ ih =>
       intro x
       cases x with
-      | here => exact Value.isLiteral_rename v _ hlit
+      | here => exact Value.isLiteral_rename _ _ hlit
       | there y => exact Value.isLiteral_rename _ _ (ih y)
 
 /-- A literal whose erasure is a runtime lambda is a lambda. -/
@@ -381,27 +381,33 @@ theorem State.not_castRedex_of_measure_zero {s : Sig} (st : State s)
     simp only [State.castMeasure, Cont.castDepth] at h
     omega
 
+/-- `castPush` trades one head cast for one cast frame. -/
+theorem State.castMeasure_castPush {s : Sig} (σ : Store s) (K : Cont s) (t : Tm s)
+    (e : LeCo s) :
+    (⟨σ, K ▹ .cast e, t⟩ : State s).castMeasure < (⟨σ, K, .cast t e⟩ : State s).castMeasure := by
+  simp only [State.castMeasure, Tm.castDepth, Cont.castDepth]
+  omega
+
+/-- `castVal` and `castAtom` consume a cast frame, leaving a cast-free term. -/
+theorem State.castMeasure_castFrame {s : Sig} (σ : Store s) (K : Cont s) (e : LeCo s)
+    {t t' : Tm s} (ht : t.castDepth = 0) (ht' : t'.castDepth = 0) :
+    (⟨σ, K, t'⟩ : State s).castMeasure < (⟨σ, K ▹ .cast e, t⟩ : State s).castMeasure := by
+  simp only [State.castMeasure, Cont.castDepth, ht, ht']
+  omega
+
 /-- A cast redex steps, without changing the erasure or the store, to a state
 of strictly smaller cast measure. -/
 theorem castRedex_steps {s : Sig} (st : State s) (h : st.CastRedex) :
     ∃ st' : State s, Step st st' ∧ st'.erase = st.erase ∧ st'.σ = st.σ ∧
       st'.castMeasure < st.castMeasure := by
   obtain ⟨σ, K, t⟩ := st
-  rcases h with ⟨t0, e, ht⟩ | ⟨K0, e, hK, hv⟩
+  rcases h with ⟨t0, e, ht⟩ | ⟨K0, e, hK, ⟨v, hvt⟩ | ⟨a, hat⟩⟩
   · subst ht
-    refine ⟨⟨σ, .cons K (.cast e), t0⟩, .castPush, rfl, rfl, ?_⟩
-    simp only [State.castMeasure, Tm.castDepth, Cont.castDepth]
-    omega
-  · subst hK
-    rcases hv with ⟨v, hvt⟩ | ⟨a, hat⟩
-    · subst hvt
-      refine ⟨⟨σ, K0, .val (.cast v e)⟩, .castVal, rfl, rfl, ?_⟩
-      simp only [State.castMeasure, Tm.castDepth, Cont.castDepth]
-      omega
-    · subst hat
-      refine ⟨⟨σ, K0, .atom (.cast a e)⟩, .castAtom, rfl, rfl, ?_⟩
-      simp only [State.castMeasure, Tm.castDepth, Cont.castDepth]
-      omega
+    exact ⟨_, .castPush, rfl, rfl, State.castMeasure_castPush σ K t0 e⟩
+  · subst hK hvt
+    exact ⟨_, .castVal, rfl, rfl, State.castMeasure_castFrame σ K0 e rfl rfl⟩
+  · subst hK hat
+    exact ⟨_, .castAtom, rfl, rfl, State.castMeasure_castFrame σ K0 e rfl rfl⟩
 
 theorem Steps.head {s s' s'' : Sig} {st : State s} {st' : State s'} {st'' : State s''}
     (h : Step st st') (hs : Steps st' st'') : Steps st st'' := by
@@ -409,27 +415,46 @@ theorem Steps.head {s s' s'' : Sig} {st : State s} {st' : State s'} {st'' : Stat
   | refl => exact .tail .refl h
   | tail _ h2 ih => exact .tail (ih h) h2
 
+/-- Iterating a cast-frame step that preserves a predicate `P` and strictly
+decreases the cast measure reaches a state that is not a cast redex.
+`castRedex_normalize` and `castRedex_normalize_inv` are the instances
+`P := True` and `P := State.CastInv · Γ`. -/
+theorem castRedex_normalize_of {s : Sig} (P : State s → Prop)
+    (hstep : ∀ st : State s, P st → st.CastRedex →
+      ∃ st' : State s, st ⟶ st' ∧ st'.erase = st.erase ∧ st'.σ = st.σ ∧
+        st'.castMeasure < st.castMeasure ∧ P st')
+    (st : State s) (hp : P st) :
+    ∃ st' : State s, st ⟶* st' ∧ st'.erase = st.erase ∧ st'.σ = st.σ ∧
+      ¬ st'.CastRedex ∧ P st' := by
+  suffices key : ∀ (n : Nat) (st : State s), P st → st.castMeasure ≤ n →
+      ∃ st' : State s, st ⟶* st' ∧ st'.erase = st.erase ∧ st'.σ = st.σ ∧
+        ¬ st'.CastRedex ∧ P st' from key st.castMeasure st hp (Nat.le_refl _)
+  intro n
+  induction n with
+  | zero =>
+      intro st hp hm
+      exact ⟨st, .refl, rfl, rfl,
+        State.not_castRedex_of_measure_zero st (Nat.le_zero.mp hm), hp⟩
+  | succ n ih =>
+      intro st hp hm
+      by_cases hc : st.CastRedex
+      · obtain ⟨st1, hstep, he1, hs1, hlt, hp1⟩ := hstep st hp hc
+        obtain ⟨st2, hsteps, he2, hs2, hnc, hp2⟩ := ih st1 hp1 (by omega)
+        exact ⟨st2, Steps.head hstep hsteps, he2.trans he1, hs2.trans hs1, hnc, hp2⟩
+      · exact ⟨st, .refl, rfl, rfl, hc, hp⟩
+
 /-- Every state reaches, by cast-frame steps only, a state with the same
 erasure and store that is not a cast redex. -/
 theorem castRedex_normalize {s : Sig} (st : State s) :
     ∃ st' : State s, Steps st st' ∧ st'.erase = st.erase ∧ st'.σ = st.σ ∧
       ¬ st'.CastRedex := by
-  suffices key : ∀ (n : Nat) (st : State s), st.castMeasure ≤ n →
-      ∃ st' : State s, Steps st st' ∧ st'.erase = st.erase ∧ st'.σ = st.σ ∧
-        ¬ st'.CastRedex from key st.castMeasure st (Nat.le_refl _)
-  intro n
-  induction n with
-  | zero =>
-      intro st hm
-      exact ⟨st, .refl, rfl, rfl,
-        State.not_castRedex_of_measure_zero st (Nat.le_zero.mp hm)⟩
-  | succ n ih =>
-      intro st hm
-      by_cases hc : st.CastRedex
-      · obtain ⟨st1, hstep, he1, hs1, hlt⟩ := castRedex_steps st hc
-        obtain ⟨st2, hsteps, he2, hs2, hnc⟩ := ih st1 (by omega)
-        exact ⟨st2, Steps.head hstep hsteps, by rw [he2, he1], by rw [hs2, hs1], hnc⟩
-      · exact ⟨st, .refl, rfl, rfl, hc⟩
+  obtain ⟨st', hsteps, he, hs, hnc, -⟩ :=
+    castRedex_normalize_of (fun _ => True)
+      (fun st _ hc =>
+        let ⟨st', hstep, he, hs, hlt⟩ := castRedex_steps st hc
+        ⟨st', hstep, he, hs, hlt, trivial⟩)
+      st trivial
+  exact ⟨st', hsteps, he, hs, hnc⟩
 
 /-! ### Carrying typing through cast-frame normalization
 
@@ -451,48 +476,28 @@ theorem castRedex_steps_inv {s : Sig} (st : State s) (Γ : Ctx s) (hq : st.CastI
     ∃ st' : State s, Step st st' ∧ st'.erase = st.erase ∧ st'.σ = st.σ ∧
       st'.castMeasure < st.castMeasure ∧ st'.CastInv Γ := by
   obtain ⟨σ, K, t⟩ := st
-  rcases h with ⟨t0, e, ht⟩ | ⟨K0, e, hK, hv⟩
+  rcases h with ⟨t0, e, ht⟩ | ⟨K0, e, hK, ⟨v, hvt⟩ | ⟨a, hat⟩⟩
   · subst ht
-    refine ⟨⟨σ, .cons K (.cast e), t0⟩, .castPush, rfl, rfl, ?_, ?_⟩
-    · simp only [State.castMeasure, Tm.castDepth, Cont.castDepth]
-      omega
-    · rcases hq with ⟨T, hT⟩ | ⟨v, hvv⟩ | ⟨a, haa⟩
-      · cases hT with
-        | cast ht' _ => exact Or.inl ⟨_, ht'⟩
-      · simp at hvv
-      · simp at haa
-  · subst hK
-    rcases hv with ⟨v, hvt⟩ | ⟨a, hat⟩
-    · subst hvt
-      refine ⟨⟨σ, K0, .val (.cast v e)⟩, .castVal, rfl, rfl, ?_, Or.inr (Or.inl ⟨_, rfl⟩)⟩
-      simp only [State.castMeasure, Tm.castDepth, Cont.castDepth]
-      omega
-    · subst hat
-      refine ⟨⟨σ, K0, .atom (.cast a e)⟩, .castAtom, rfl, rfl, ?_, Or.inr (Or.inr ⟨_, rfl⟩)⟩
-      simp only [State.castMeasure, Tm.castDepth, Cont.castDepth]
-      omega
+    refine ⟨_, .castPush, rfl, rfl, State.castMeasure_castPush σ K t0 e, ?_⟩
+    rcases hq with ⟨T, hT⟩ | ⟨v, hvv⟩ | ⟨a, haa⟩
+    · cases hT with
+      | cast ht' _ => exact Or.inl ⟨_, ht'⟩
+    · simp at hvv
+    · simp at haa
+  · subst hK hvt
+    exact ⟨_, .castVal, rfl, rfl, State.castMeasure_castFrame σ K0 e rfl rfl,
+      Or.inr (Or.inl ⟨_, rfl⟩)⟩
+  · subst hK hat
+    exact ⟨_, .castAtom, rfl, rfl, State.castMeasure_castFrame σ K0 e rfl rfl,
+      Or.inr (Or.inr ⟨_, rfl⟩)⟩
 
 /-- `castRedex_normalize`, carrying the invariant to the normal form. -/
 theorem castRedex_normalize_inv {s : Sig} (st : State s) (Γ : Ctx s)
     (hq : st.CastInv Γ) :
     ∃ st' : State s, Steps st st' ∧ st'.erase = st.erase ∧ st'.σ = st.σ ∧
-      ¬ st'.CastRedex ∧ st'.CastInv Γ := by
-  suffices key : ∀ (n : Nat) (st : State s), st.CastInv Γ → st.castMeasure ≤ n →
-      ∃ st' : State s, Steps st st' ∧ st'.erase = st.erase ∧ st'.σ = st.σ ∧
-        ¬ st'.CastRedex ∧ st'.CastInv Γ from key st.castMeasure st hq (Nat.le_refl _)
-  intro n
-  induction n with
-  | zero =>
-      intro st hq hm
-      exact ⟨st, .refl, rfl, rfl,
-        State.not_castRedex_of_measure_zero st (Nat.le_zero.mp hm), hq⟩
-  | succ n ih =>
-      intro st hq hm
-      by_cases hc : st.CastRedex
-      · obtain ⟨st1, hstep, he1, hs1, hlt, hq1⟩ := castRedex_steps_inv st Γ hq hc
-        obtain ⟨st2, hsteps, he2, hs2, hnc, hq2⟩ := ih st1 hq1 (by omega)
-        exact ⟨st2, Steps.head hstep hsteps, by rw [he2, he1], by rw [hs2, hs1], hnc, hq2⟩
-      · exact ⟨st, .refl, rfl, rfl, hc, hq⟩
+      ¬ st'.CastRedex ∧ st'.CastInv Γ :=
+  castRedex_normalize_of (State.CastInv · Γ) (fun st hq hc => castRedex_steps_inv st Γ hq hc)
+    st hq
 
 /-! ## Backward simulation -/
 
@@ -516,6 +521,83 @@ theorem app_step_of_form {s : Sig} {σ : Store s} {K : Cont s} {a b : Atom s}
     exact ⟨_, Step.appCast hv hne hform, by
       simp [State.erase, Tm.erase, Tm.erase_substAtom, Atom.root]⟩
 
+/-- Reflection of a runtime `rename` step: an atom under a `let` frame is
+substituted into the frame's body. -/
+theorem erase_reflect_rename {s s' : Sig} {σ : Store s} {K : Cont s} {u : Tm (s,x)}
+    {a : Atom s} {r : Runtime.State s'}
+    (h : Runtime.Step ⌊(⟨σ, K ▹ .let u, .atom a⟩ : State s)⌋ r) :
+    ∃ st' : State s', (⟨σ, K ▹ .let u, .atom a⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
+  simp only [State.erase, Cont.erase, Tm.erase] at h
+  refine Runtime.Step.var_cons_inv (motive := fun s'' r' =>
+    ∃ st' : State s'', (⟨σ, K ▹ .let u, .atom a⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
+  exact ⟨_, .rename, by simp [State.erase, Tm.erase_substAtom]⟩
+
+/-- Reflection of a runtime `alloc` step: a value under a `let` frame is
+stored, with its casts stripped and pushed into the frame's body. -/
+theorem erase_reflect_alloc {s s' : Sig} {σ : Store s} {K : Cont s} {u : Tm (s,x)}
+    {v : Value s} {r : Runtime.State s'}
+    (h : Runtime.Step ⌊(⟨σ, K ▹ .let u, .val v⟩ : State s)⌋ r) :
+    ∃ st' : State s', (⟨σ, K ▹ .let u, .val v⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
+  simp only [State.erase, Cont.erase, Tm.erase] at h
+  refine Runtime.Step.value_cons_inv (motive := fun s'' r' =>
+    ∃ st' : State s'', (⟨σ, K ▹ .let u, .val v⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r')
+    (Value.erase_isValue v) h ?_
+  exact ⟨_, .alloc, by
+    simp [State.erase, Store.erase, Cont.erase_weaken, Value.erase_core, Tm.erase_adjust]⟩
+
+/-- Reflection of a runtime `app` step.  The store entry at the head's root
+is a literal, hence a lambda; a bare variable steps by `appVar`, and a
+wrapped atom by `app_step_of_form` once `hcf` supplies the head form of its
+casts. -/
+theorem erase_reflect_app {s s' : Sig} {σ : Store s} {K : Cont s} {a b : Atom s}
+    {Γ : Ctx s} {r : Runtime.State s'} (hσ : ⊢ σ : Γ)
+    (hcf : a ≠ .var a.root → ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
+      (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c))
+    (h : Runtime.Step ⌊(⟨σ, K, .app a b⟩ : State s)⌋ r) :
+    ∃ st' : State s', (⟨σ, K, .app a b⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
+  simp only [State.erase, Tm.erase] at h
+  refine Runtime.Step.app_inv (motive := fun s'' r' =>
+    ∃ st' : State s'', (⟨σ, K, .app a b⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
+  intro t' hlk
+  rw [Store.lookup_erase] at hlk
+  obtain ⟨S₀, t₀, hv, rfl⟩ := Value.erase_eq_lam _ t' (hσ.lookup_isLiteral a.root) hlk
+  by_cases hne : a = .var a.root
+  · have hstep : (⟨σ, K, .app (.var a.root) b⟩ : State s) ⟶ ⟨σ, K, t₀.substAtom b⟩ :=
+      Step.appVar hv
+    rw [← hne] at hstep
+    exact ⟨_, hstep, by simp [State.erase, Tm.erase_substAtom]⟩
+  · obtain ⟨n, a', F, hform, hF⟩ := hcf hne
+    exact app_step_of_form (K := K) (b := b) hv hne hform hF
+
+/-- Reflection of a runtime `proj` step: the store entry at the root is a
+literal, hence an object, and the runtime field is the erasure of a field. -/
+theorem erase_reflect_proj {s s' : Sig} {σ : Store s} {K : Cont s} {a : Atom s} {ℓ : Label}
+    {hh : Has s} {Γ : Ctx s} {r : Runtime.State s'} (hσ : ⊢ σ : Γ)
+    (h : Runtime.Step ⌊(⟨σ, K, .proj a ℓ hh⟩ : State s)⌋ r) :
+    ∃ st' : State s', (⟨σ, K, .proj a ℓ hh⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
+  simp only [State.erase, Tm.erase] at h
+  refine Runtime.Step.proj_inv (motive := fun s'' r' =>
+    ∃ st' : State s'', (⟨σ, K, .proj a ℓ hh⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
+  intro F' t' hlk hg
+  rw [Store.lookup_erase] at hlk
+  obtain ⟨W, F, hv, rfl⟩ := Value.erase_eq_obj _ F' (hσ.lookup_isLiteral a.root) hlk
+  rw [Fields.erase_get?] at hg
+  cases hgg : F.get? ℓ with
+  | none => rw [hgg] at hg; simp at hg
+  | some t0 =>
+      rw [hgg, Option.map_some] at hg
+      exact ⟨_, Step.proj hv hgg, by simp [State.erase, Tm.selfAt_erase, Option.some.inj hg]⟩
+
+/-- Reflection of a runtime `let` step: the body becomes a `let` frame. -/
+theorem erase_reflect_let {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {u : Tm (s,x)}
+    {r : Runtime.State s'}
+    (h : Runtime.Step ⌊(⟨σ, K, .let t u⟩ : State s)⌋ r) :
+    ∃ st' : State s', (⟨σ, K, .let t u⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
+  simp only [State.erase, Tm.erase] at h
+  refine Runtime.Step.let_inv (motive := fun s'' r' =>
+    ∃ st' : State s'', (⟨σ, K, .let t u⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
+  exact ⟨_, .let, by simp [State.erase, Cont.erase]⟩
+
 /-- Reflection at a state that is not a cast redex: one FCdot step realizes
 the runtime step.  `hcf` is the canonical-forms obligation and `hat` says
 that a residual application is applied to a typed function atom. -/
@@ -532,72 +614,23 @@ theorem erase_reflect_aux {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {�
   cases t with
   | atom a =>
       cases K with
-      | nil =>
-          simp only [State.erase, Cont.erase, Tm.erase] at h
-          exact (Runtime.Step.var_nil_inv h).elim
+      | nil => exact (Runtime.Step.var_nil_inv h).elim
       | cons K0 f =>
           cases f with
-          | «let» u =>
-              simp only [State.erase, Cont.erase, Tm.erase] at h
-              refine Runtime.Step.var_cons_inv (motive := fun s'' r' =>
-                ∃ st' : State s'', Step (⟨σ, .cons K0 (.let u), .atom a⟩ : State s) st' ∧
-                  st'.erase = r') h ?_
-              exact ⟨_, .rename, by simp [State.erase, Tm.erase_substAtom]⟩
+          | «let» u => exact erase_reflect_rename h
           | cast e => exact absurd (Or.inr ⟨K0, e, rfl, Or.inr ⟨a, rfl⟩⟩) hnc
   | val v =>
       cases K with
-      | nil =>
-          simp only [State.erase, Cont.erase, Tm.erase] at h
-          exact (Runtime.Step.value_nil_inv (Value.erase_isValue v) h).elim
+      | nil => exact (Runtime.Step.value_nil_inv (Value.erase_isValue v) h).elim
       | cons K0 f =>
           cases f with
-          | «let» u =>
-              simp only [State.erase, Cont.erase, Tm.erase] at h
-              refine Runtime.Step.value_cons_inv (motive := fun s'' r' =>
-                ∃ st' : State s'', Step (⟨σ, .cons K0 (.let u), .val v⟩ : State s) st' ∧
-                  st'.erase = r') (Value.erase_isValue v) h ?_
-              exact ⟨_, .alloc, by
-                simp [State.erase, Store.erase, Cont.erase_weaken, Value.erase_core,
-                  Tm.erase_adjust]⟩
+          | «let» u => exact erase_reflect_alloc h
           | cast e => exact absurd (Or.inr ⟨K0, e, rfl, Or.inl ⟨v, rfl⟩⟩) hnc
   | app a b =>
-      simp only [State.erase, Tm.erase] at h
-      refine Runtime.Step.app_inv (motive := fun s'' r' =>
-        ∃ st' : State s'', Step (⟨σ, K, .app a b⟩ : State s) st' ∧ st'.erase = r') h ?_
-      intro t' hlk
-      rw [Store.lookup_erase] at hlk
-      obtain ⟨S₀, t₀, hv, ht₀⟩ :=
-        Value.erase_eq_lam _ t' (hσ.lookup_isLiteral a.root) hlk
-      subst ht₀
-      by_cases hne : a = .var a.root
-      · have hstep : Step (⟨σ, K, .app (.var a.root) b⟩ : State s) ⟨σ, K, t₀.substAtom b⟩ :=
-          Step.appVar hv
-        rw [← hne] at hstep
-        exact ⟨_, hstep, by simp [State.erase, Tm.erase_substAtom]⟩
-      · obtain ⟨S, T, hpi⟩ := hat a b rfl
-        obtain ⟨n, a', F, hform, hF⟩ := hcf a S T hpi hne
-        exact app_step_of_form (K := K) (b := b) hv hne hform hF
-  | proj a ℓ hh =>
-      simp only [State.erase, Tm.erase] at h
-      refine Runtime.Step.proj_inv (motive := fun s'' r' =>
-        ∃ st' : State s'', Step (⟨σ, K, .proj a ℓ hh⟩ : State s) st' ∧ st'.erase = r') h ?_
-      intro F' t' hlk hg
-      rw [Store.lookup_erase] at hlk
-      obtain ⟨W, F, hv, hF⟩ :=
-        Value.erase_eq_obj _ F' (hσ.lookup_isLiteral a.root) hlk
-      subst hF
-      rw [Fields.erase_get?] at hg
-      cases hgg : F.get? ℓ with
-      | none => rw [hgg] at hg; simp at hg
-      | some t0 =>
-          rw [hgg] at hg
-          simp only [Option.map_some, Option.some.injEq] at hg
-          exact ⟨_, Step.proj hv hgg, by simp [State.erase, Tm.selfAt_erase, hg]⟩
-  | «let» t u =>
-      simp only [State.erase, Tm.erase] at h
-      refine Runtime.Step.let_inv (motive := fun s'' r' =>
-        ∃ st' : State s'', Step (⟨σ, K, .let t u⟩ : State s) st' ∧ st'.erase = r') h ?_
-      exact ⟨_, .let, by simp [State.erase, Cont.erase]⟩
+      exact erase_reflect_app hσ
+        (fun hne => let ⟨S, T, hpi⟩ := hat a b rfl; hcf a S T hpi hne) h
+  | proj a ℓ hh => exact erase_reflect_proj hσ h
+  | «let» t u => exact erase_reflect_let h
   | cast t e => exact absurd (Or.inl ⟨t, e, rfl⟩) hnc
 
 /-- Backward simulation: every runtime step out of an erased state is
@@ -667,24 +700,10 @@ theorem final_reflect {s : Sig} {st : State s} {Γ : Ctx s} (hσ : ⊢ st.σ : �
           cases f with
           | «let» u => simp [State.erase, Cont.erase] at hK
           | cast e => exact Or.inr (Or.inr ⟨K0, e, rfl, Or.inl ⟨v, rfl⟩⟩)
-  | app a b =>
-      exfalso
+  | app a b | proj a ℓ hh | «let» t u =>
+      -- the erasure is an application, projection, or `let`: not final
       simp only [State.erase, Tm.erase] at ht
-      rcases ht with hv | ⟨y, hy⟩
-      · cases hv
-      · cases hy
-  | proj a ℓ =>
-      exfalso
-      simp only [State.erase, Tm.erase] at ht
-      rcases ht with hv | ⟨y, hy⟩
-      · cases hv
-      · cases hy
-  | «let» t u =>
-      exfalso
-      simp only [State.erase, Tm.erase] at ht
-      rcases ht with hv | ⟨y, hy⟩
-      · cases hv
-      · cases hy
+      exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
   | cast t e => exact Or.inr (Or.inl ⟨t, e, rfl⟩)
 
 end FCdot

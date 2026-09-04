@@ -24,12 +24,12 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
     · exact hp
     · exfalso
       cases hFt with
-      | bot hb => rw [ho] at hb; simp at hb
-      | top ht => simp at ht
-      | id hres => rw [ho] at hres; simp [Ctx.resolveAt, Ty.unfoldAt] at hres
-      | eqv hres => rw [ho] at hres; simp [Ctx.resolveAt, Ty.unfoldAt] at hres
-      | pi hp _ _ _ => rw [ho] at hp; simp at hp
-      | obj _ ho' _ => simp [Ctx.resolveAt, Ty.unfoldAt] at ho'
+      | bot hb => simp [Ctx.resolveAt, ho] at hb
+      | top ht => simp [Ctx.resolveAt] at ht
+      | id hres => simp [Ctx.resolveAt, ho] at hres
+      | eqv hres => simp [Ctx.resolveAt, ho] at hres
+      | pi hp _ _ _ => simp [Ctx.resolveAt, ho] at hp
+      | obj _ ho' _ => simp [Ctx.resolveAt] at ho'
   obtain ⟨S₀, T₀, hlk⟩ := hlk
   have hv := hσ.lookup a.root
   have hlit := hσ.lookup_isLiteral a.root
