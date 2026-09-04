@@ -389,17 +389,17 @@ end
 /-! ## Weakening then instantiating -/
 
 @[simp] theorem Ty.rename_subst_weaken {s : Sig} {k : Kind} (T : Ty s) (y : BVar s k) :
-    (T.weaken (k := k)).substVar y = T := by
+    (T.weaken (k := k))⟦y⟧ = T := by
   simp [Ty.weaken, Ty.substVar, Rename.succ_subst]
 
 @[simp] theorem Proposition.rename_subst_weaken {s : Sig} {k : Kind}
     (P : Proposition s) (y : BVar s k) :
-    (P.weaken (k := k)).substVar y = P := by
+    (P.weaken (k := k))⟦y⟧ = P := by
   simp [Proposition.weaken, Proposition.substVar, Rename.succ_subst]
 
 @[simp] theorem Telescope.rename_subst_weaken {s : Sig} {k : Kind}
     (Tel : Telescope s) (y : BVar s k) :
-    (Tel.weaken (k := k)).substVar y = Tel := by
+    (Tel.weaken (k := k))⟦y⟧ = Tel := by
   simp [Telescope.weaken, Telescope.substVar, Rename.succ_subst]
 
 /-! ## `subst` against `lift` -/
@@ -412,49 +412,49 @@ theorem Rename.subst_comp {s1 s2 : Sig} {k : Kind} (y : BVar s1 k) (ρ : Rename 
 
 theorem Ty.substVar_rename {s1 s2 : Sig} {k : Kind} (T : Ty (s1,,k))
     (y : BVar s1 k) (ρ : Rename s1 s2) :
-    (T.substVar y).rename ρ = (T.rename ρ.lift).substVar (ρ.var y) := by
+    (T⟦y⟧).rename ρ = (T.rename ρ.lift)⟦ρ.var y⟧ := by
   simp only [Ty.substVar, Ty.rename_comp, Rename.subst_comp]
 
 theorem Proposition.substVar_rename {s1 s2 : Sig} {k : Kind} (P : Proposition (s1,,k))
     (y : BVar s1 k) (ρ : Rename s1 s2) :
-    (P.substVar y).rename ρ = (P.rename ρ.lift).substVar (ρ.var y) := by
+    (P⟦y⟧).rename ρ = (P.rename ρ.lift)⟦ρ.var y⟧ := by
   simp only [Proposition.substVar, Proposition.rename_comp, Rename.subst_comp]
 
 theorem Telescope.substVar_rename {s1 s2 : Sig} {k : Kind} (Tel : Telescope (s1,,k))
     (y : BVar s1 k) (ρ : Rename s1 s2) :
-    (Tel.substVar y).rename ρ = (Tel.rename ρ.lift).substVar (ρ.var y) := by
+    (Tel⟦y⟧).rename ρ = (Tel.rename ρ.lift)⟦ρ.var y⟧ := by
   simp only [Telescope.substVar, Telescope.rename_comp, Rename.subst_comp]
 
 /-! ## `weaken` against `lift` -/
 
 theorem Ty.weaken_rename {s1 s2 : Sig} {k : Kind} (T : Ty s1) (ρ : Rename s1 s2) :
-    (T.weaken (k := k)).rename ρ.lift = (T.rename ρ).weaken := by
+    (T.weaken (k := k)).rename ρ.lift = (T.rename ρ)↑ := by
   simp only [Ty.weaken, Ty.rename_comp, Rename.succ_lift]
 
 theorem Proposition.weaken_rename {s1 s2 : Sig} {k : Kind} (P : Proposition s1)
     (ρ : Rename s1 s2) :
-    (P.weaken (k := k)).rename ρ.lift = (P.rename ρ).weaken := by
+    (P.weaken (k := k)).rename ρ.lift = (P.rename ρ)↑ := by
   simp only [Proposition.weaken, Proposition.rename_comp, Rename.succ_lift]
 
 theorem Telescope.weaken_rename {s1 s2 : Sig} {k : Kind} (Tel : Telescope s1)
     (ρ : Rename s1 s2) :
-    (Tel.weaken (k := k)).rename ρ.lift = (Tel.rename ρ).weaken := by
+    (Tel.weaken (k := k)).rename ρ.lift = (Tel.rename ρ)↑ := by
   simp only [Telescope.weaken, Telescope.rename_comp, Rename.succ_lift]
 
 theorem LeCo.weaken_rename {s1 s2 : Sig} {k : Kind} (e : LeCo s1) (ρ : Rename s1 s2) :
-    (e.weaken (k := k)).rename ρ.lift = (e.rename ρ).weaken := by
+    (e.weaken (k := k)).rename ρ.lift = (e.rename ρ)↑ := by
   simp only [LeCo.weaken, LeCo.rename_comp, Rename.succ_lift]
 
 theorem Tm.weaken_rename {s1 s2 : Sig} {k : Kind} (t : Tm s1) (ρ : Rename s1 s2) :
-    (t.weaken (k := k)).rename ρ.lift = (t.rename ρ).weaken := by
+    (t.weaken (k := k)).rename ρ.lift = (t.rename ρ)↑ := by
   simp only [Tm.weaken, Tm.rename_comp, Rename.succ_lift]
 
 theorem Atom.weaken_rename {s1 s2 : Sig} {k : Kind} (a : Atom s1) (ρ : Rename s1 s2) :
-    (a.weaken (k := k)).rename ρ.lift = (a.rename ρ).weaken := by
+    (a.weaken (k := k)).rename ρ.lift = (a.rename ρ)↑ := by
   simp only [Atom.weaken, Atom.rename_comp, Rename.succ_lift]
 
 theorem Value.weaken_rename {s1 s2 : Sig} {k : Kind} (v : Value s1) (ρ : Rename s1 s2) :
-    (v.weaken (k := k)).rename ρ.lift = (v.rename ρ).weaken := by
+    (v.weaken (k := k)).rename ρ.lift = (v.rename ρ)↑ := by
   simp only [Value.weaken, Value.rename_comp, Rename.succ_lift]
 
 /-! ## Telescope lookup is stable under renaming -/

@@ -25,15 +25,15 @@ variable {σ : Store s} {Γ : Ctx s}
 
 /-- Opening the self block at the root is invisible to `foldSelf`. -/
 theorem Ctx.resolveAt_fold (Γ : Ctx s) (r : BVar s .var) (Tel : Telescope (s,x)) :
-    Γ.resolveAt (some r) (.obj Tel) = Γ.resolveAt (some r) (.obj ((Tel.substVar r).weaken)) := by
+    Γ.resolveAt (some r) (.obj Tel) = Γ.resolveAt (some r) (.obj ((Tel⟦r⟧)↑)) := by
   simp [Ctx.resolveAt, Ty.unfoldAt, Telescope.weaken_substVar]
 
 /-- The chain of casts of a closed atom normalizes to a form typed from the
 root's type to the atom's type, at the root. -/
-theorem closedAtomForm_typed (hσ : Store.Typed σ Γ) {a : Atom s} {S : Ty s}
-    (h : Atom.HasType Γ a S) :
+theorem closedAtomForm_typed (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s}
+    (h : Γ ⊢ₐ a : S) :
     ∃ n a' F, closedAtomForm σ n a = some (a', F) ∧
-      FormTyped Γ (some a.root) F (Γ.lookupTy a.root) S := by
+      Γ ⊨[a.root] F : (Γ.lookupTy a.root) ≤ S := by
   match h with
   | .var => exact ⟨1, _, .id, rfl, .id rfl⟩
   | @Atom.HasType.cast _ _ a S₀ e T ha he =>
@@ -56,7 +56,7 @@ theorem closedAtomForm_typed (hσ : Store.Typed σ Γ) {a : Atom s} {S : Ty s}
       exact hFt.tgtRes (Ctx.resolveAt_fold Γ a.root Tel).symm
 
 /-- The type recorded for a location is a function or an object type. -/
-theorem Store.Typed.lookupTy_shape (hσ : Store.Typed σ Γ) (x : BVar s .var) :
+theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
     (∃ S T, Γ.lookupTy x = .pi S T) ∨ ∃ Tel, Γ.lookupTy x = .obj Tel := by
   have hv := hσ.lookup x
   have hlit := hσ.lookup_isLiteral x
@@ -73,8 +73,8 @@ theorem Store.Typed.lookupTy_shape (hσ : Store.Typed σ Γ) (x : BVar s .var) :
 
 /-- The head form of a function atom's casts is the identity, an equality, or
 a `pi` form. -/
-theorem closedAtomForm_pi (hσ : Store.Typed σ Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
-    (h : Atom.HasType Γ a (.pi S T)) :
+theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
+    (h : Γ ⊢ₐ a : (.pi S T)) :
     ∃ n a' F, closedAtomForm σ n a = some (a', F) ∧
       (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) := by
   obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
@@ -91,7 +91,7 @@ theorem closedAtomForm_pi (hσ : Store.Typed σ Γ) {a : Atom s} {S : Ty s} {T :
   | obj _ ho _ => simp [Ctx.resolveAt, Ty.unfoldAt] at ho
 
 /-- The canonical-forms obligation of preservation. -/
-theorem Store.Typed.formsTyped (hσ : Store.Typed σ Γ) : FormsTyped σ Γ where
+theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
   pi := by
     intro a S T n a' d c S₀ T₀ ha hF hlk
     obtain ⟨n', a'', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
@@ -133,7 +133,7 @@ theorem preservation' {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
 
 /-- Backward simulation over typed stores. -/
 theorem erase_reflect' {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.State s'}
-    (hσ : Store.Typed st.σ Γ) (hty : ∃ T, Tm.HasType Γ st.t T)
+    (hσ : ⊢ st.σ : Γ) (hty : ∃ T, Γ ⊢ st.t : T)
     (h : Runtime.Step st.erase r) :
     ∃ st' : State s', Steps st st' ∧ st'.erase = r :=
   erase_reflect hσ (fun _ _ _ ha _ => closedAtomForm_pi hσ ha) hty h

@@ -54,15 +54,24 @@ def Value.IsLiteral : Value s → Prop
   | .cast _ _ => False
   | _ => True
 
-/-- Store typing: every entry is a literal typed in the transparent context
-of the entries before it, and the context records its witnesses and fields. -/
+set_option hygiene false in
+scoped notation:40 "⊢ " σ:51 " : " Γ:51 => Store.Typed σ Γ
+
+/-- `⊢ σ : Γ`, store typing: every entry is a literal typed in the transparent
+context of the entries before it, and the context records its witnesses and
+fields. -/
 inductive Store.Typed : Store s → Ctx s → Prop where
-  | nil : Store.Typed .nil .nil
+  | nil : ⊢ .nil : .nil
   | cons :
-      Store.Typed σ Γ →
+      ⊢ σ : Γ →
       v.IsLiteral →
-      Value.HasType Γ v T →
-      Store.Typed (.cons σ v) (.cons Γ (.transparent T v.witnesses v.fieldLabels))
+      Γ ⊢ᵥ v : T →
+      ⊢ .cons σ v : .cons Γ (.transparent T v.witnesses v.fieldLabels)
+
+open Lean PrettyPrinter in
+@[app_unexpander Store.Typed] def Store.Typed.unexpand : Unexpander
+  | `($_ $σ $Γ) => `(⊢ $σ : $Γ)
+  | _ => throw ()
 
 
 end FCdot

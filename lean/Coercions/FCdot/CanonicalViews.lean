@@ -62,14 +62,14 @@ theorem Telescope.At.lt {Tel : Telescope s'} {i : Nat} {P : Proposition s'}
 /-! ## Instantiating weakened propositions -/
 
 theorem Ty.weaken_substVar (T : Ty s) (r : BVar s .var) :
-    (T.weaken (k := .var)).substVar r = T := by
+    (T.weaken (k := .var))⟦r⟧ = T := by
   simp only [Ty.weaken, Ty.substVar, Ty.rename_comp]
   rw [show (Rename.succ.comp (Rename.subst r) : Rename s s) = Rename.id from
     Rename.funext' (by intro k y; cases k; rfl)]
   exact Ty.rename_id T
 
 theorem Proposition.weaken_substVar (P : Proposition s) (r : BVar s .var) :
-    (P.weaken (k := .var)).substVar r = P := by
+    (P.weaken (k := .var))⟦r⟧ = P := by
   simp only [Proposition.weaken, Proposition.substVar, Proposition.rename_comp]
   rw [show (Rename.succ.comp (Rename.subst r) : Rename s s) = Rename.id from
     Rename.funext' (by intro k y; cases k; rfl)]
@@ -130,26 +130,26 @@ theorem Telescope.rename_inj {s1 s2 : Sig} (Tel Tel' : Telescope s1) (ρ : Renam
 end
 
 theorem Telescope.weaken_inj {Tel₁ Tel₂ : Telescope s} {k : Kind}
-    (h : (Tel₁.weaken (k := k)) = Tel₂.weaken) : Tel₁ = Tel₂ :=
+    (h : (Tel₁.weaken (k := k)) = Tel₂↑) : Tel₁ = Tel₂ :=
   Telescope.rename_inj _ _ _ Rename.succ_injective h
 
 @[simp] theorem Telescope.weaken_nil {s : Sig} {k : Kind} :
     (Telescope.nil (s := s)).weaken (k := k) = .nil := rfl
 
 @[simp] theorem Telescope.weaken_cons (Tel : Telescope s) (P : Proposition s) {k : Kind} :
-    (Tel.cons P).weaken (k := k) = Tel.weaken.cons P.weaken := rfl
+    (Tel.cons P).weaken (k := k) = Tel↑.cons P↑ := rfl
 
 @[simp] theorem Proposition.weaken_le (S T : Ty s) {k : Kind} :
-    (Proposition.le S T).weaken (k := k) = .le S.weaken T.weaken := rfl
+    (Proposition.le S T).weaken (k := k) = .le S↑ T↑ := rfl
 
 @[simp] theorem Proposition.weaken_eq (S T : Ty s) {k : Kind} :
-    (Proposition.eq S T).weaken (k := k) = .eq S.weaken T.weaken := rfl
+    (Proposition.eq S T).weaken (k := k) = .eq S↑ T↑ := rfl
 
 @[simp] theorem Proposition.weaken_has (ℓ : Label) {k : Kind} :
     (Proposition.has (s := s) ℓ).weaken (k := k) = .has ℓ := rfl
 
 theorem Telescope.weaken_substVar (Tel : Telescope s) (r : BVar s .var) :
-    (Tel.weaken (k := .var)).substVar r = Tel := by
+    (Tel.weaken (k := .var))⟦r⟧ = Tel := by
   simp only [Telescope.weaken, Telescope.substVar, Telescope.rename_comp]
   rw [show (Rename.succ.comp (Rename.subst r) : Rename s s) = Rename.id from
     Rename.funext' (by intro k y; cases k; rfl)]
@@ -158,11 +158,11 @@ theorem Telescope.weaken_substVar (Tel : Telescope s) (r : BVar s .var) :
 /-- Instantiating a self-substituted, weakened proposition at any root gives
 the original instantiation. -/
 theorem Proposition.substVar_weaken_substVar (P : Proposition (s,x)) (r r' : BVar s .var) :
-    (((P.substVar r).weaken (k := .var)).substVar r') = P.substVar r := by
+    ((P⟦r⟧).weaken (k := .var))⟦r'⟧ = P⟦r⟧ := by
   rw [Proposition.weaken_substVar]
 
 theorem Telescope.At.weaken {Tel : Telescope s} {i : Nat} {P : Proposition s}
-    (h : Tel.At i P) : (Tel.weaken (k := .var)).At i (P.weaken) := by
+    (h : Tel.At i P) : (Tel.weaken (k := .var)).At i (P↑) := by
   induction h with
   | here => simp only [Telescope.weaken, Telescope.rename]; rw [← Telescope.length_rename]; exact .here
   | there _ ih => exact .there ih
@@ -188,9 +188,9 @@ theorem ViewTyped_nil {r : BVar s .var} : ViewTyped Γ r σ [] (.nil : Telescope
 
 theorem ViewTyped_cons {V : View s} {Tel : Telescope (s,x)} {P : Proposition (s,x)}
     {P' : PropForm s} {r : BVar s .var}
-    (hV : ViewTyped Γ r σ V Tel)
-    (hP : PropFormTyped Γ r σ (some P') (P.substVar r)) :
-    ViewTyped Γ r σ (V ++ [P']) (.cons Tel P) := by
+    (hV : Γ ⊨[r, σ] V : Tel)
+    (hP : PropFormTyped Γ r σ (some P') (P⟦r⟧)) :
+    Γ ⊨[r, σ] (V ++ [P']) : (.cons Tel P) := by
   refine ⟨by simp [Telescope.length, hV.1], fun i Q hQ => ?_⟩
   cases hQ with
   | here =>
@@ -202,7 +202,7 @@ theorem ViewTyped_cons {V : View s} {Tel : Telescope (s,x)} {P : Proposition (s,
 
 /-- A typed view has an entry at every telescope position. -/
 theorem ViewTyped.nth?_isSome {V : View s} {Tel : Telescope (s,x)} {r : BVar s .var}
-    (hV : ViewTyped Γ r σ V Tel) {i : Nat} {P : Proposition (s,x)} (h : Tel.At i P) :
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {P : Proposition (s,x)} (h : Tel.At i P) :
     ∃ Q, View.nth? V i = some Q := by
   have := hV.2 i P h
   cases hq : View.nth? V i with

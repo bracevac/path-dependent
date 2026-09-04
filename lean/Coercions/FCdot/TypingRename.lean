@@ -63,10 +63,10 @@ theorem Witnesses.Guarded.rename {W : Witnesses (s1,x)} (ρ : Rename s1 s2)
 /-! ## Context lookups, unfolded -/
 
 @[simp] theorem Ctx.lookupTy_here (Γ : Ctx s) (b : Binding s) :
-    (Γ.cons b).lookupTy .here = b.ty.weaken := rfl
+    (Γ.cons b).lookupTy .here = b.ty↑ := rfl
 
 @[simp] theorem Ctx.lookupTy_there (Γ : Ctx s) (b : Binding s) (y : BVar s .var) :
-    (Γ.cons b).lookupTy (.there y) = (Γ.lookupTy y).weaken := rfl
+    (Γ.cons b).lookupTy (.there y) = (Γ.lookupTy y)↑ := rfl
 
 @[simp] theorem Ctx.lookupDef_here_opaque (Γ : Ctx s) (T : Ty s) (l : Label) :
     (Γ.cons (.opaque T)).lookupDef .here l = none := rfl
@@ -143,10 +143,10 @@ theorem lift {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
     intro x
     cases x with
     | here =>
-        show ((b.rename ρ).ty).weaken = ((b.ty).weaken).rename ρ.lift
+        show ((b.rename ρ).ty)↑ = ((b.ty)↑).rename ρ.lift
         rw [Binding.ty_rename, Ty.weaken_rename]
     | there y =>
-        show (Γ'.lookupTy (ρ.var y)).weaken = ((Γ.lookupTy y).weaken).rename ρ.lift
+        show (Γ'.lookupTy (ρ.var y))↑ = ((Γ.lookupTy y)↑).rename ρ.lift
         rw [h.ty y, Ty.weaken_rename]
   def_ := by
     intro x l W hW
@@ -166,7 +166,7 @@ theorem lift {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
         | none => rw [hd] at hW; simp at hW
         | some W0 =>
             rw [hd] at hW
-            have hWe : W = W0.weaken := by simpa using hW.symm
+            have hWe : W = W0↑ := by simpa using hW.symm
             subst hWe
             rw [h.def_ y l W0 hd]
             simp [Ty.weaken_rename]
@@ -203,8 +203,8 @@ end Ctx.Ren
 mutual
 
 theorem LeCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {e : LeCo s1} {S T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : LeCo.HasType Γ e S T) :
-    LeCo.HasType Γ' (e.rename ρ) (S.rename ρ) (T.rename ρ) := by
+    {e : LeCo s1} {S T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ e : S ≤ T) :
+    Γ' ⊢ (e.rename ρ) : (S.rename ρ) ≤ (T.rename ρ) := by
   match h with
   | .refl => exact .refl
   | .trans he hf => exact .trans (he.rename hρ) (hf.rename hρ)
@@ -222,8 +222,8 @@ theorem LeCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Ren
       simpa [LeCo.rename, Ty.substVar_rename, Atom.root_rename] using this
 
 theorem EqCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {φ : EqCo s1} {S T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : EqCo.HasType Γ φ S T) :
-    EqCo.HasType Γ' (φ.rename ρ) (S.rename ρ) (T.rename ρ) := by
+    {φ : EqCo s1} {S T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ φ : S ≡ T) :
+    Γ' ⊢ (φ.rename ρ) : (S.rename ρ) ≡ (T.rename ρ) := by
   match h with
   | .refl => exact .refl
   | .symm hφ => exact .symm (hφ.rename hρ)
@@ -236,8 +236,8 @@ theorem EqCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Ren
 
 theorem Has.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {hh : Has s1} {x : BVar s1 .var} {l : Label}
-    (hρ : Ctx.Ren Γ ρ Γ') (h : Has.HasType Γ hh x l) :
-    Has.HasType Γ' (hh.rename ρ) (ρ.var x) l := by
+    (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ hh : x ∋ l) :
+    Γ' ⊢ (hh.rename ρ) : (ρ.var x) ∋ l := by
   match h with
   | @Has.HasType.member _ _ a S e Tel i l ha he hAt =>
       have := Has.HasType.member (a := a.rename ρ) (ha.rename hρ)
@@ -247,8 +247,8 @@ theorem Has.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rena
 
 theorem Morphism.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
     {ρ : Rename s1 s2} {src : Telescope s1} {m : Morphism s1} {Tel : Telescope s1}
-    (hρ : Ctx.Ren Γ ρ Γ') (h : Morphism.HasType Γ src m Tel) :
-    Morphism.HasType Γ' (src.rename ρ) (m.rename ρ) (Tel.rename ρ) := by
+    (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ m : src ⇒ Tel) :
+    Γ' ⊢ (m.rename ρ) : (src.rename ρ) ⇒ (Tel.rename ρ) := by
   match h with
   | .nil => exact .nil
   | .le hm he => exact .le (hm.rename hρ) (he.rename hρ)
@@ -257,8 +257,8 @@ theorem Morphism.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
       exact .has (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ)
 
 theorem Atom.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {a : Atom s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Atom.HasType Γ a T) :
-    Atom.HasType Γ' (a.rename ρ) (T.rename ρ) := by
+    {a : Atom s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ₐ a : T) :
+    Γ' ⊢ₐ (a.rename ρ) : (T.rename ρ) := by
   match h with
   | @Atom.HasType.var _ _ x =>
       rw [← hρ.ty x]
@@ -283,8 +283,8 @@ end
 mutual
 
 theorem Tm.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {t : Tm s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Tm.HasType Γ t T) :
-    Tm.HasType Γ' (t.rename ρ) (T.rename ρ) := by
+    {t : Tm s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ t : T) :
+    Γ' ⊢ (t.rename ρ) : (T.rename ρ) := by
   match h with
   | .atom ha => exact .atom (ha.rename hρ)
   | .val hv => exact .val (hv.rename hρ)
@@ -303,8 +303,8 @@ theorem Tm.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Renam
   | .cast ht he => exact .cast (ht.rename hρ) (he.rename hρ)
 
 theorem Value.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {v : Value s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Value.HasType Γ v T) :
-    Value.HasType Γ' (v.rename ρ) (T.rename ρ) := by
+    {v : Value s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ᵥ v : T) :
+    Γ' ⊢ᵥ (v.rename ρ) : (T.rename ρ) := by
   match h with
   | .lam ht => exact .lam (ht.rename (hρ.lift _))
   | @Value.HasType.obj _ F0 _ W0 hG hF =>
@@ -317,8 +317,8 @@ theorem Value.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Re
 
 theorem Fields.HasType.rename {s1 s2 : Sig} {Γ : Ctx (s1,x)} {Γ' : Ctx (s2,x)}
     {ρ : Rename s1 s2} {F : Fields (s1,x)}
-    (hρ : Ctx.Ren Γ ρ.lift Γ') (h : Fields.HasType Γ F) :
-    Fields.HasType Γ' (F.rename ρ.lift) := by
+    (hρ : Ctx.Ren Γ ρ.lift Γ') (h : Γ ⊢ᶠ F) :
+    Γ' ⊢ᶠ (F.rename ρ.lift) := by
   match h with
   | .nil => exact .nil
   | .cons hF ht =>
@@ -331,33 +331,33 @@ end
 /-! ## Weakening -/
 
 theorem LeCo.HasType.weaken {Γ : Ctx s} {e : LeCo s} {S T : Ty s}
-    (h : LeCo.HasType Γ e S T) (b : Binding s) :
-    LeCo.HasType (Γ.cons b) e.weaken S.weaken T.weaken :=
+    (h : Γ ⊢ e : S ≤ T) (b : Binding s) :
+    (Γ.cons b) ⊢ e↑ : S↑ ≤ T↑ :=
   h.rename (Ctx.Ren.succ b)
 
 theorem EqCo.HasType.weaken {Γ : Ctx s} {φ : EqCo s} {S T : Ty s}
-    (h : EqCo.HasType Γ φ S T) (b : Binding s) :
-    EqCo.HasType (Γ.cons b) (φ.rename Rename.succ) S.weaken T.weaken :=
+    (h : Γ ⊢ φ : S ≡ T) (b : Binding s) :
+    (Γ.cons b) ⊢ (φ.rename Rename.succ) : S↑ ≡ T↑ :=
   h.rename (Ctx.Ren.succ b)
 
 theorem Has.HasType.weaken {Γ : Ctx s} {hh : Has s} {x : BVar s .var} {l : Label}
-    (h : Has.HasType Γ hh x l) (b : Binding s) :
-    Has.HasType (Γ.cons b) (hh.rename Rename.succ) (.there x) l :=
+    (h : Γ ⊢ hh : x ∋ l) (b : Binding s) :
+    (Γ.cons b) ⊢ (hh.rename Rename.succ) : (.there x) ∋ l :=
   h.rename (Ctx.Ren.succ b)
 
 theorem Atom.HasType.weaken {Γ : Ctx s} {a : Atom s} {T : Ty s}
-    (h : Atom.HasType Γ a T) (b : Binding s) :
-    Atom.HasType (Γ.cons b) a.weaken T.weaken :=
+    (h : Γ ⊢ₐ a : T) (b : Binding s) :
+    (Γ.cons b) ⊢ₐ a↑ : T↑ :=
   h.rename (Ctx.Ren.succ b)
 
 theorem Tm.HasType.weaken {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : Tm.HasType Γ t T) (b : Binding s) :
-    Tm.HasType (Γ.cons b) t.weaken T.weaken :=
+    (h : Γ ⊢ t : T) (b : Binding s) :
+    (Γ.cons b) ⊢ t↑ : T↑ :=
   h.rename (Ctx.Ren.succ b)
 
 theorem Value.HasType.weaken {Γ : Ctx s} {v : Value s} {T : Ty s}
-    (h : Value.HasType Γ v T) (b : Binding s) :
-    Value.HasType (Γ.cons b) v.weaken T.weaken :=
+    (h : Γ ⊢ᵥ v : T) (b : Binding s) :
+    (Γ.cons b) ⊢ᵥ v↑ : T↑ :=
   h.rename (Ctx.Ren.succ b)
 
 end FCdot

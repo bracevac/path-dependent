@@ -117,7 +117,7 @@ def Form.combine : Form s → Form s → Option (Form s)
   | .eqv _, .obj Es => some (.obj Es)
   | .obj Es, .eqv _ => some (.obj Es)
   | .pi d₁ c₁, .pi d₂ c₂ =>
-      some (.pi (.trans d₂ d₁) (.trans (c₁.subst (Subst.selfCast d₂.weaken)) c₂))
+      some (.pi (.trans d₂ d₁) (.trans (c₁.subst (Subst.selfCast d₂↑)) c₂))
   | .obj Es₁, .obj Es₂ => (Entries.through Es₁ Es₂).map .obj
   | F, _ => some F
 
@@ -228,6 +228,16 @@ def hasView (σ : Store s) : Nat → BVar s .var → Has s → Option (BVar s .v
 
 end
 
+/-! ### Notation for normalization
+
+`σ ⊢ e ⇓[n] F`: with fuel `n`, `e` normalizes to `F` over `σ`; likewise
+`⇓ₘ` for morphisms, `⇓ᵥ` for views of atoms, `⇓ₕ` for presence evidence. -/
+
+scoped notation:40 σ:51 " ⊢ " e:51 " ⇓[" n "] " F:51 => hnf σ n e = some F
+scoped notation:40 σ:51 " ⊢ " m:51 " ⇓ₘ[" n "] " Es:51 => entries σ n m = some Es
+scoped notation:40 σ:51 " ⊢ " a:51 " ⇓ᵥ[" n "] " V:51 => view σ n a = some V
+scoped notation:40 σ:51 " ⊢ " x:51 " ; " h:51 " ⇓ₕ[" n "] " P:51 => hasView σ n x h = some P
+
 /-- The head form of a closed atom's wrappers, from its root. -/
 def closedAtomForm (σ : Store s) : Nat → Atom s → Option (Atom s × Form s)
   | 0, _ => none
@@ -243,5 +253,8 @@ def closedAtomForm (σ : Store s) : Nat → Atom s → Option (Atom s × Form s)
   | n + 1, .unfoldSelf a => do
       let (a', F) ← closedAtomForm σ n a
       pure (.unfoldSelf a', F)
+
+/-- `σ ⊢ a ⇓ᶜ[n] (a', F)`: the chain of casts of `a` normalizes to `F`. -/
+scoped notation:40 σ:51 " ⊢ " a:51 " ⇓ᶜ[" n "] " r:51 => closedAtomForm σ n a = some r
 
 end FCdot

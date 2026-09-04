@@ -37,17 +37,29 @@ def Cont.rename : Cont s1 → Rename s1 s2 → Cont s2
 
 def Cont.weaken (K : Cont s) : Cont (s,x) := K.rename Rename.succ
 
-/-- `Cont.Typed Γ K T U`: `K` accepts a value of type `T` and produces `U`. -/
+scoped postfix:max "↑" => Cont.weaken
+
+scoped infixl:65 " ▹ " => Cont.cons
+
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ₖ " K:51 " : " T:51 " ⇒ " U:51 => Cont.Typed Γ K T U
+
+/-- `Γ ⊢ₖ K : T ⇒ U`: `K` accepts a value of type `T` and produces `U`. -/
 inductive Cont.Typed : Ctx s → Cont s → Ty s → Ty s → Prop where
-  | nil : Cont.Typed Γ .nil T T
+  | nil : Γ ⊢ₖ .nil : T ⇒ T
   | «let» :
-      Tm.HasType (Γ.cons (.opaque T)) u U.weaken →
-      Cont.Typed Γ K U V →
-      Cont.Typed Γ (.cons K (.let u)) T V
+      Γ.cons (.opaque T) ⊢ u : U↑ →
+      Γ ⊢ₖ K : U ⇒ V →
+      Γ ⊢ₖ K ▹ .let u : T ⇒ V
   | cast :
-      LeCo.HasType Γ e T U →
-      Cont.Typed Γ K U V →
-      Cont.Typed Γ (.cons K (.cast e)) T V
+      Γ ⊢ e : T ≤ U →
+      Γ ⊢ₖ K : U ⇒ V →
+      Γ ⊢ₖ K ▹ .cast e : T ⇒ V
+
+open Lean PrettyPrinter in
+@[app_unexpander Cont.Typed] def Cont.Typed.unexpand : Unexpander
+  | `($_ $Γ $K $T $U) => `($Γ ⊢ₖ $K : $T ⇒ $U)
+  | _ => throw ()
 
 /-! ## States -/
 
@@ -60,7 +72,7 @@ structure State (s : Sig) where
 which the term and continuation are typed. -/
 def State.Typed (st : State s) (U : Ty s) : Prop :=
   ∃ (Γ : Ctx s) (T : Ty s),
-    Store.Typed st.σ Γ ∧ Tm.HasType Γ st.t T ∧ Cont.Typed Γ st.K T U
+    ⊢ st.σ : Γ ∧ Γ ⊢ st.t : T ∧ Γ ⊢ₖ st.K : T ⇒ U
 
 def State.Final (st : State s) : Prop :=
   st.K = .nil ∧ (∃ v, st.t = .val v) ∨ st.K = .nil ∧ (∃ a, st.t = .atom a)
@@ -88,25 +100,30 @@ def Tm.selfAt (t : Tm (s,x)) (y : BVar s .var) : Tm s := t.rename (Rename.subst 
 
 /-! ## Steps -/
 
-/-- Contexts in which a step's evidence side conditions are checked: the
-transparent context of the current store. -/
+set_option hygiene false in
+scoped infix:40 " ⟶ " => Step
+set_option hygiene false in
+scoped infix:40 " ⟶* " => Steps
+
+/-- `st ⟶ st'`.  Contexts in which a step's evidence side conditions are
+checked: the transparent context of the current store. -/
 inductive Step : State s → State s' → Prop where
   | «let» :
-      Step ⟨σ, K, .let t u⟩ ⟨σ, .cons K (.let u), t⟩
+      ⟨σ, K, .let t u⟩ ⟶ ⟨σ, K ▹ .let u, t⟩
   | castPush :
-      Step ⟨σ, K, .cast t e⟩ ⟨σ, .cons K (.cast e), t⟩
+      ⟨σ, K, .cast t e⟩ ⟶ ⟨σ, K ▹ .cast e, t⟩
   | castVal :
-      Step ⟨σ, .cons K (.cast e), .val v⟩ ⟨σ, K, .val (.cast v e)⟩
+      ⟨σ, K ▹ .cast e, .val v⟩ ⟶ ⟨σ, K, .val (.cast v e)⟩
   | castAtom :
-      Step ⟨σ, .cons K (.cast e), .atom a⟩ ⟨σ, K, .atom (.cast a e)⟩
+      ⟨σ, K ▹ .cast e, .atom a⟩ ⟶ ⟨σ, K, .atom (.cast a e)⟩
   | alloc :
-      Step ⟨σ, .cons K (.let u), .val v⟩ ⟨.cons σ v.core, K.weaken, u.adjust v⟩
+      ⟨σ, K ▹ .let u, .val v⟩ ⟶ ⟨.cons σ v.core, K.weaken, u.adjust v⟩
   | rename :
-      Step ⟨σ, .cons K (.let u), .atom a⟩ ⟨σ, K, u.substAtom a⟩
+      ⟨σ, K ▹ .let u, .atom a⟩ ⟶ ⟨σ, K, u.substAtom a⟩
   /-- Application through a bare variable. -/
   | appVar :
       σ.lookup x = .lam S₀ t₀ →
-      Step ⟨σ, K, .app (.var x) b⟩ ⟨σ, K, t₀.substAtom b⟩
+      ⟨σ, K, .app (.var x) b⟩ ⟶ ⟨σ, K, t₀.substAtom b⟩
   /-- Application through a wrapped atom whose casts normalize to the
       identity: the atom's function type and the closure's coincide. -/
   | appCastRefl :
@@ -114,7 +131,7 @@ inductive Step : State s → State s' → Prop where
       a ≠ .var a.root →
       closedAtomForm σ n a = some (a', F) →
       (F = .id ∨ ∃ φ, F = .eqv φ) →
-      Step ⟨σ, K, .app a b⟩ ⟨σ, K, t₀.substAtom b⟩
+      ⟨σ, K, .app a b⟩ ⟶ ⟨σ, K, t₀.substAtom b⟩
   /-- Application through a wrapped atom whose casts normalize to a function
       coercion `pi d c`: the argument is cast by `d` and the result by `c` at
       the argument. -/
@@ -122,17 +139,26 @@ inductive Step : State s → State s' → Prop where
       σ.lookup a.root = .lam S₀ t₀ →
       a ≠ .var a.root →
       closedAtomForm σ n a = some (a', .pi d c) →
-      Step ⟨σ, K, .app a b⟩
+      ⟨σ, K, .app a b⟩ ⟶
         ⟨σ, K, .cast (t₀.substAtom (.cast b d)) (c.subst (Subst.single b))⟩
   | proj :
       σ.lookup a.root = .obj W F →
       F.get? ℓ = some t →
-      Step ⟨σ, K, .proj a ℓ h⟩ ⟨σ, K, t.selfAt a.root⟩
+      ⟨σ, K, .proj a ℓ h⟩ ⟶ ⟨σ, K, t.selfAt a.root⟩
 
-/-- Reflexive transitive closure across signatures. -/
+/-- `st ⟶* st'`: reflexive transitive closure across signatures. -/
 inductive Steps : State s → State s' → Prop where
-  | refl : Steps st st
-  | tail : Steps st st' → Step st' st'' → Steps st st''
+  | refl : st ⟶* st
+  | tail : st ⟶* st' → st' ⟶ st'' → st ⟶* st''
+
+open Lean PrettyPrinter in
+@[app_unexpander Step] def Step.unexpand : Unexpander
+  | `($_ $st $st') => `($st ⟶ $st')
+  | _ => throw ()
+open Lean PrettyPrinter in
+@[app_unexpander Steps] def Steps.unexpand : Unexpander
+  | `($_ $st $st') => `($st ⟶* $st')
+  | _ => throw ()
 
 def State.Stuck (st : State s) : Prop :=
   ¬ st.Final ∧ ¬ ∃ s', ∃ st' : State s', Step st st'

@@ -40,15 +40,33 @@ end
 
 deriving instance DecidableEq for Ty, Proposition, Telescope
 
+/-! ### Notation for types
+
+`⊤`, `⊥`, `x ∙ ℓ` (the `ℓ`-name of `x`'s block), `Π(S) T`, `μ Tel` (object
+type; the self binder is implicit), propositions `S ⊑ T`, `S ≐ T`, `∋ ℓ`, and
+telescopes `Tel ▹ P`. -/
+
+scoped notation "⊤" => Ty.top
+scoped notation "⊥" => Ty.bot
+scoped infix:80 " ∙ " => Ty.sel
+scoped notation:max "Π(" S ") " T:max => Ty.pi S T
+scoped prefix:max "μ " => Ty.obj
+scoped infix:70 " ⊑ " => Proposition.le
+scoped infix:70 " ≐ " => Proposition.eq
+scoped prefix:max "∋ " => Proposition.has
+scoped infixl:65 " ▹ " => Telescope.cons
+
 /-- Length of a telescope. -/
 def Telescope.length : Telescope s → Nat
   | .nil => 0
   | .cons Tel _ => Tel.length + 1
 
-/-- `Telescope.At Tel i P`: the `i`-th proposition of `Tel` (from the oldest) is `P`. -/
+/-- `Tel ∋ (i ↦ P)`: the `i`-th proposition of `Tel` (from the oldest) is `P`. -/
 inductive Telescope.At : Telescope s → Nat → Proposition s → Prop where
-  | here : Telescope.At (.cons Tel P) Tel.length P
-  | there : Telescope.At Tel i P → Telescope.At (.cons Tel Q) i P
+  | here : Telescope.At (Tel ▹ P) Tel.length P
+  | there : Telescope.At Tel i P → Telescope.At (Tel ▹ Q) i P
+
+scoped notation:50 Tel:51 " ∋ " "(" i " ↦ " P ")" => Telescope.At Tel i P
 
 /-- Concatenation of telescopes (second appended after the first). -/
 def Telescope.append : Telescope s → Telescope s → Telescope s
@@ -92,6 +110,17 @@ def Proposition.substVar (P : Proposition (s,,k)) (y : BVar s k) : Proposition s
   P.rename (Rename.subst y)
 def Telescope.substVar (Tel : Telescope (s,,k)) (y : BVar s k) : Telescope s :=
   Tel.rename (Rename.subst y)
+
+/-! ### Notation for weakening and instantiation
+
+`T↑` weakens under a new binder; `T⟦y⟧` instantiates the innermost binder. -/
+
+scoped postfix:max "↑" => Ty.weaken
+scoped postfix:max "↑" => Telescope.weaken
+scoped postfix:max "↑" => Proposition.weaken
+scoped notation:max T:max "⟦" y "⟧" => Ty.substVar T y
+scoped notation:max T:max "⟦" y "⟧" => Telescope.substVar T y
+scoped notation:max T:max "⟦" y "⟧" => Proposition.substVar T y
 
 /-! ## Evidence and atoms -/
 
@@ -283,6 +312,11 @@ def Tm.weaken (t : Tm s) : Tm (s,,k) := t.rename Rename.succ
 def Atom.weaken (a : Atom s) : Atom (s,,k) := a.rename Rename.succ
 def Value.weaken (v : Value s) : Value (s,,k) := v.rename Rename.succ
 def LeCo.weaken (e : LeCo s) : LeCo (s,,k) := e.rename Rename.succ
+
+scoped postfix:max "↑" => Tm.weaken
+scoped postfix:max "↑" => Atom.weaken
+scoped postfix:max "↑" => Value.weaken
+scoped postfix:max "↑" => LeCo.weaken
 
 /-! ## Atom substitution
 
