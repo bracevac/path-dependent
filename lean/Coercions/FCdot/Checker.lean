@@ -7,10 +7,14 @@ The checker validates fully annotated evidence.  It never searches: every
 directed step, and every field-presence proof, is already present in the
 input.
 
-Since `LeCo.obj` carries its source telescope and `Atom.foldSelf` its target
-telescope, *every* judgement of the evidence layer synthesises its outputs.
-The kernel is therefore a family of synthesising cores; the checking modes are
-synthesis followed by a decidable comparison.
+Since `LeCo.obj` carries its source telescope, `LeCo.pair` and `Atom.both`
+their target telescopes, and `Atom.foldSelf` its target telescope, *every*
+judgement of the evidence layer synthesises its outputs.  A template
+`le pre h post` of a morphism is checked from its hole outwards: the hole is
+read in the source telescope (`Hole.read?`), then each side is checked against
+the endpoint next to the hole and synthesises the outer endpoint.  The kernel
+is therefore a family of synthesising cores; the checking modes are synthesis
+followed by a decidable comparison.
 
 The kernels return the typing derivation itself, so soundness holds by
 construction.  Completeness lives in `Coercions.FCdot.CheckerCompleteness`.
@@ -201,7 +205,6 @@ end PartialRename
 mutual
 
 def Ty.rename? : Ty s1 → PartialRename s1 s2 → Option (Ty s2)
-  | .top, _ => some .top
   | .bot, _ => some .bot
   | .sel x ℓ, ρ => (ρ.var x).map (fun y => .sel y ℓ)
   | .pi S T, ρ =>
@@ -238,7 +241,6 @@ mutual
 theorem Ty.rename?_complete :
     ∀ {s1 s2 : Sig} (U : Ty s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
       ρ.Inverts σ → (U.rename σ).rename? ρ = some U
-  | _, _, .top, _, _, _ => by simp [Ty.rename, Ty.rename?]
   | _, _, .bot, _, _, _ => by simp [Ty.rename, Ty.rename?]
   | _, _, .sel x ℓ, ρ, σ, h => by
       simp only [Ty.rename, Ty.rename?]
@@ -278,9 +280,6 @@ mutual
 theorem Ty.rename?_sound :
     ∀ {s1 s2 : Sig} (T : Ty s1) (U : Ty s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
       ρ.Inverts σ → T.rename? ρ = some U → T = U.rename σ
-  | _, _, .top, U, _, _, _, hU => by
-      simp only [Ty.rename?, Option.some.injEq] at hU
-      subst hU; rfl
   | _, _, .bot, U, _, _, _, hU => by
       simp only [Ty.rename?, Option.some.injEq] at hU
       subst hU; rfl
@@ -422,11 +421,25 @@ structure HasChecked {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) where
   label : Label
   typing : Γ ⊢ ev : y ∋ label
 
-/-- A morphism is checked against its *source* telescope: presence propositions
-are inherited from it by index.  The target telescope is synthesised. -/
-structure MorChecked {s : Sig} (Γ : Ctx s) (src : Telescope s) (m : Morphism s) where
-  tel : Telescope s
+/-- A morphism is checked against its *source* telescope (closed, over the self
+binder): holes and presence propositions are read from it by index.  The target
+telescope is synthesised. -/
+structure MorChecked {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s) where
+  tel : Telescope (s,x)
   typing : Γ ⊢ m : src ⇒ tel
+
+/-- A template side checked against the endpoint next to the hole: for a
+`pre` side the hole's left endpoint `X` is given and the outer source is
+synthesised. -/
+structure PreChecked {s : Sig} (Γ : Ctx s) (side : Side s) (X : Ty (s,x)) where
+  source : Ty (s,x)
+  typing : Side.HasType Γ side source X
+
+/-- A `post` side: the hole's right endpoint `Y` is given and the outer target
+is synthesised. -/
+structure PostChecked {s : Sig} (Γ : Ctx s) (side : Side s) (Y : Ty (s,x)) where
+  target : Ty (s,x)
+  typing : Side.HasType Γ side Y target
 
 structure AtomChecked {s : Sig} (Γ : Ctx s) (a : Atom s) where
   type : Ty s
@@ -500,12 +513,97 @@ def hasMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat) (y : BV
 
 /-- `Morphism.has`: the target inherits the `j`-th proposition of the *source*
 telescope, which must be a field declaration. -/
-def morHas {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s} (j : Nat)
-    {Tel : Telescope s} (hm : Γ ⊢ m : src ⇒ Tel) :
+def morHas {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} (j : Nat)
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) :
     Option (MorChecked Γ src (.has m j)) :=
   match Telescope.getAt? src j with
-  | some ⟨.has ℓ, hAt⟩ => some ⟨.cons Tel (.has ℓ), .has hm hAt⟩
+  | some ⟨.has ℓ, hAt⟩ => some ⟨Tel ▹ ∋ ℓ, .has hm hAt⟩
   | _ => none
+
+/-- `Morphism.eq`: the target repeats the `j`-th proposition of the source
+telescope, which must be an equality, flipped when `b` is set. -/
+def morEq {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} (j : Nat) (b : Bool)
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) :
+    Option (MorChecked Γ src (.eq m j b)) :=
+  match Telescope.getAt? src j with
+  | some ⟨.eq X Y, hAt⟩ =>
+      match b with
+      | false => some ⟨Tel ▹ X ≐ Y, .eq hm hAt⟩
+      | true => some ⟨Tel ▹ Y ≐ X, .eqSym hm hAt⟩
+  | _ => none
+
+/-! ### Holes
+
+A hole names a proposition of the source telescope and reads it as an
+inclusion `X ⊑ Y`: an inclusion as it is, an equality in either direction.
+`Hole.Reads` is the typing-side relation, `Hole.read?` its executable
+counterpart; the three `le` rules of `Morphism.HasType` are the three ways of
+reading a hole. -/
+
+/-- `Hole.Reads src h X Y`: in `src`, the hole `h` proves `X ⊑ Y`. -/
+inductive Hole.Reads (src : Telescope (s,x)) : Hole → Ty (s,x) → Ty (s,x) → Prop where
+  | le : src ∋ (j ↦ X ⊑ Y) → Hole.Reads src (.le j) X Y
+  | eq : src ∋ (j ↦ X ≐ Y) → Hole.Reads src (.eq j) X Y
+  | eqSym : src ∋ (j ↦ Y ≐ X) → Hole.Reads src (.eqSym j) X Y
+
+/-- The template rule, uniformly over the reading of the hole. -/
+theorem Morphism.HasType.leOfReads {Γ : Ctx s} {src Tel : Telescope (s,x)} {m : Morphism s}
+    {pre post : Side s} {h : Hole} {S X Y T : Ty (s,x)}
+    (hm : Γ ⊢ m : src ⇒ Tel) (hr : Hole.Reads src h X Y)
+    (hpre : Side.HasType Γ pre S X) (hpost : Side.HasType Γ post Y T) :
+    Γ ⊢ .le m pre h post : src ⇒ Tel ▹ S ⊑ T := by
+  cases hr with
+  | le hAt => exact .le hm hAt hpre hpost
+  | eq hAt => exact .leEq hm hAt hpre hpost
+  | eqSym hAt => exact .leEqSym hm hAt hpre hpost
+
+/-- Read a hole in the source telescope, with the proof of what it proves. -/
+def Hole.read? (src : Telescope (s,x)) :
+    (h : Hole) → Option { XY : Ty (s,x) × Ty (s,x) // Hole.Reads src h XY.1 XY.2 }
+  | .le j =>
+      match Telescope.getAt? src j with
+      | some ⟨.le X Y, hAt⟩ => some ⟨(X, Y), .le hAt⟩
+      | _ => none
+  | .eq j =>
+      match Telescope.getAt? src j with
+      | some ⟨.eq X Y, hAt⟩ => some ⟨(X, Y), .eq hAt⟩
+      | _ => none
+  | .eqSym j =>
+      match Telescope.getAt? src j with
+      | some ⟨.eq Y X, hAt⟩ => some ⟨(X, Y), .eqSym hAt⟩
+      | _ => none
+
+theorem Hole.read?_of_Reads {src : Telescope (s,x)} {h : Hole} {X Y : Ty (s,x)}
+    (hr : Hole.Reads src h X Y) : Hole.read? src h = some ⟨(X, Y), hr⟩ := by
+  cases hr with
+  | le hAt => simp [Hole.read?, Telescope.getAt?_of_At hAt]
+  | eq hAt => simp [Hole.read?, Telescope.getAt?_of_At hAt]
+  | eqSym hAt => simp [Hole.read?, Telescope.getAt?_of_At hAt]
+
+/-- `LeCo.pair`: two coercions with the same source, into the annotated object
+types. -/
+def lePair {s : Sig} {Γ : Ctx s} {e f : LeCo s} (Tel₁ Tel₂ : Telescope (s,x))
+    {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) {Sf Tf : Ty s} (hf : Γ ⊢ f : Sf ≤ Tf) :
+    Option (LeChecked Γ (.pair Tel₁ Tel₂ e f)) :=
+  if hs : Sf = Se then
+    if h1 : Te = μ Tel₁ then
+      if h2 : Tf = μ Tel₂ then
+        some ⟨Se, μ (Tel₁ ++ Tel₂), by subst hs; subst h1; subst h2; exact .pair he hf⟩
+      else none
+    else none
+  else none
+
+/-- `And-I`: two typings of the same root, at the annotated object types. -/
+def atomBoth {s : Sig} {Γ : Ctx s} {a b : Atom s} (Tel₁ Tel₂ : Telescope (s,x))
+    {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta) {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) :
+    Option (AtomChecked Γ (.both Tel₁ Tel₂ a b)) :=
+  if h1 : Ta = μ Tel₁ then
+    if h2 : Tb = μ Tel₂ then
+      if hr : b.root = a.root then
+        some ⟨μ (Tel₁ ++ Tel₂), by subst h1; subst h2; exact .both ha hb hr⟩
+      else none
+    else none
+  else none
 
 /-- `Rec-E`: the atom's type must be an object type. -/
 def atomUnfold {s : Sig} {Γ : Ctx s} {b : Atom s} {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) :
@@ -550,7 +648,11 @@ def synthLeCore {s : Sig} (Γ : Ctx s) (ev : LeCo s) : Option (LeChecked Γ ev) 
       some ⟨.pi ce.target cf.source, .pi ce.source cf.target, .pi ce.typing cf.typing⟩
   | .obj Tel m => do
       let cm ← synthMorCore Γ Tel m
-      some ⟨.obj Tel↑, .obj cm.tel↑, .obj cm.typing⟩
+      some ⟨μ Tel, μ cm.tel, .obj cm.typing⟩
+  | .pair Tel₁ Tel₂ e f => do
+      let ce ← synthLeCore Γ e
+      let cf ← synthLeCore Γ f
+      lePair Tel₁ Tel₂ ce.typing cf.typing
   | .member a e i => do
       let ca ← synthAtomCore Γ a
       let ce ← synthLeCore Γ e
@@ -589,18 +691,41 @@ def synthHasCore {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) :
       | some ⟨Fs, hF⟩ => if hm : ℓ ∈ Fs then some ⟨ℓ, .field hF hm⟩ else none
       | none => none
 
-def synthMorCore {s : Sig} (Γ : Ctx s) (src : Telescope s) (m : Morphism s) :
+/-- A `pre` side, checked against the hole's left endpoint `X`: `none` leaves
+it in place, `some e` needs `e` to land in the closed type `X` weakens. -/
+def checkPreCore {s : Sig} (Γ : Ctx s) (side : Side s) (X : Ty (s,x)) :
+    Option (PreChecked Γ side X) :=
+  match side with
+  | .none => some ⟨X, .none⟩
+  | .some e => do
+      let ce ← synthLeCore Γ e
+      if h : X = ce.target↑ then some ⟨ce.source↑, by subst h; exact .some ce.typing⟩
+      else none
+
+/-- A `post` side, checked against the hole's right endpoint `Y`. -/
+def checkPostCore {s : Sig} (Γ : Ctx s) (side : Side s) (Y : Ty (s,x)) :
+    Option (PostChecked Γ side Y) :=
+  match side with
+  | .none => some ⟨Y, .none⟩
+  | .some e => do
+      let ce ← synthLeCore Γ e
+      if h : Y = ce.source↑ then some ⟨ce.target↑, by subst h; exact .some ce.typing⟩
+      else none
+
+def synthMorCore {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s) :
     Option (MorChecked Γ src m) :=
   match m with
   | .nil => some ⟨.nil, .nil⟩
-  | .le m e => do
+  | .le m pre h post => do
       let cm ← synthMorCore Γ src m
-      let ce ← synthLeCore Γ e
-      some ⟨.cons cm.tel (.le ce.source ce.target), .le cm.typing ce.typing⟩
-  | .eq m φ => do
+      let r ← Hole.read? src h
+      let cpre ← checkPreCore Γ pre r.val.1
+      let cpost ← checkPostCore Γ post r.val.2
+      some ⟨cm.tel ▹ cpre.source ⊑ cpost.target,
+        cm.typing.leOfReads r.property cpre.typing cpost.typing⟩
+  | .eq m j b => do
       let cm ← synthMorCore Γ src m
-      let cφ ← synthEqCore Γ φ
-      some ⟨.cons cm.tel (.eq cφ.source cφ.target), .eq cm.typing cφ.typing⟩
+      morEq j b cm.typing
   | .has m j => do
       let cm ← synthMorCore Γ src m
       morHas j cm.typing
@@ -622,6 +747,10 @@ def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a
       if h : cb.type = .obj (Tel⟦b.root⟧)↑ then
         some ⟨.obj Tel, .foldSelf (by rw [← h]; exact cb.typing)⟩
       else none
+  | .both Tel₁ Tel₂ a b => do
+      let ca ← synthAtomCore Γ a
+      let cb ← synthAtomCore Γ b
+      atomBoth Tel₁ Tel₂ ca.typing cb.typing
 
 end
 
@@ -717,12 +846,12 @@ def checkHas {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) (ℓ : Label)
   decide (synthHas Γ ev y = some ℓ)
 
 /-- Synthesise the target telescope of a morphism, given its source telescope. -/
-def synthMorphism {s : Sig} (Γ : Ctx s) (src : Telescope s) (m : Morphism s) :
-    Option (Telescope s) :=
+def synthMorphism {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s) :
+    Option (Telescope (s,x)) :=
   (synthMorCore Γ src m).map MorChecked.tel
 
-def checkMorphism {s : Sig} (Γ : Ctx s) (src : Telescope s) (m : Morphism s)
-    (Tel : Telescope s) : Bool :=
+def checkMorphism {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s)
+    (Tel : Telescope (s,x)) : Bool :=
   decide (synthMorphism Γ src m = some Tel)
 
 def synthAtom {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (Ty s) :=
@@ -802,8 +931,8 @@ theorem checkHas_sound {s : Sig} {Γ : Ctx s} {ev : Has s} {y : BVar s .var} {�
     (h : checkHas Γ ev y ℓ = true) : Has.HasType Γ ev y ℓ :=
   synthHas_sound (of_decide_eq_true h)
 
-theorem synthMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
-    {Tel : Telescope s} (h : synthMorphism Γ src m = some Tel) :
+theorem synthMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s}
+    {Tel : Telescope (s,x)} (h : synthMorphism Γ src m = some Tel) :
     Γ ⊢ m : src ⇒ Tel := by
   unfold synthMorphism at h
   cases hc : synthMorCore Γ src m with
@@ -814,8 +943,8 @@ theorem synthMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morp
       rw [← h2]
       exact c.typing
 
-theorem checkMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
-    {Tel : Telescope s} (h : checkMorphism Γ src m Tel = true) : Γ ⊢ m : src ⇒ Tel :=
+theorem checkMorphism_sound {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s}
+    {Tel : Telescope (s,x)} (h : checkMorphism Γ src m Tel = true) : Γ ⊢ m : src ⇒ Tel :=
   synthMorphism_sound (of_decide_eq_true h)
 
 theorem synthAtom_sound {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
@@ -937,6 +1066,70 @@ private def smokeCtxTrans : Ctx ([],x) :=
 -- The annotated `Rec-I` synthesises its type.
 #guard checkAtom smokeCtxNil (.foldSelf .nil (.var .here)) (.obj .nil)
 #guard synthAtom smokeCtxNil (.foldSelf .nil (.var .here)) = some (.obj .nil)
+
+/-- A source telescope with one inclusion and one equality. -/
+private def smokeSrc : Telescope ([],x,x) := .nil ▹ ⊤ ⊑ ⊤ ▹ ⊤ ≐ ⊥
+
+-- A template with empty sides copies the hole.
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊤))
+-- A hole must name an inclusion (`le`) or an equality (`eq`, `eqSym`).
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 1) .none)) = none
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eq 0) .none)) = none
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eq 1) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊥))
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤))
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 2) .none)) = none
+-- A closed side composes with the hole at a weakened closed type.
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil (.some (.top ⊥)) (.le 0) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤))
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) (.some (.top ⊤)))) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤))
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil (.some (.refl ⊥)) (.le 0) .none)) = none
+#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) (.some (.bot ⊤)))) = none
+-- Equalities are copied, possibly flipped; inclusions are not equalities.
+#guard synthLe smokeCtx (.obj smokeSrc (.eq .nil 1 false)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊤ ≐ ⊥))
+#guard synthLe smokeCtx (.obj smokeSrc (.eq .nil 1 true)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤))
+#guard synthLe smokeCtx (.obj smokeSrc (.eq .nil 0 false)) = none
+-- Templates accumulate, oldest first.
+#guard synthLe smokeCtx (.obj smokeSrc (.le (.eq .nil 1 true) .none (.le 0) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤ ▹ ⊤ ⊑ ⊤))
+
+/-- The smoke binder's telescope. -/
+private def smokeTel : Telescope ([],x,x) := .nil ▹ ∋ smokeLabel
+
+-- Pairing concatenates the targets of two coercions with the same source.
+#guard synthLe smokeCtx
+    (.pair .nil smokeTel (.obj smokeTel .nil) (.obj smokeTel (.has .nil 0))) =
+    some (μ smokeTel, μ smokeTel)
+#guard synthLe smokeCtx
+    (.pair smokeTel smokeTel (.obj smokeTel (.has .nil 0)) (.obj smokeTel (.has .nil 0))) =
+    some (μ smokeTel, μ (smokeTel ▹ ∋ smokeLabel))
+-- The annotations must match the targets, and the sources must agree.
+#guard synthLe smokeCtx
+    (.pair smokeTel .nil (.obj smokeTel .nil) (.obj smokeTel (.has .nil 0))) = none
+#guard synthLe smokeCtx
+    (.pair .nil smokeTel (.obj .nil .nil) (.obj smokeTel (.has .nil 0))) = none
+
+-- `And-I` concatenates two typings of the same root.
+#guard synthAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here)) =
+    some (μ (smokeTel ▹ ∋ smokeLabel))
+#guard checkAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here))
+    (μ (smokeTel ▹ ∋ smokeLabel))
+#guard synthAtom smokeCtx (.both .nil smokeTel (.var .here) (.var .here)) = none
+
+/-- Two binders of the same object type. -/
+private def smokeCtx2 : Ctx ([],x,x) :=
+  smokeCtx.cons (.opaque (μ (.nil ▹ ∋ smokeLabel)))
+
+#guard synthAtom smokeCtx2
+    (.both (.nil ▹ ∋ smokeLabel) (.nil ▹ ∋ smokeLabel) (.var .here) (.var .here)) =
+    some (μ (.nil ▹ ∋ smokeLabel ▹ ∋ smokeLabel))
+#guard synthAtom smokeCtx2
+    (.both (.nil ▹ ∋ smokeLabel) (.nil ▹ ∋ smokeLabel) (.var .here) (.var (.there .here))) = none
 
 end SmokeTests
 

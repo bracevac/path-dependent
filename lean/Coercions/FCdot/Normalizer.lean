@@ -6,10 +6,13 @@ import Coercions.FCdot.Store
 Inclusion evidence over a store normalizes to a head form: `bot`, `top`,
 identity, a definitional conversion, a function coercion with closed domain
 and codomain evidence, or an object coercion given by the normal forms of
-its target's propositions.  Object coercions are between opened telescopes
-(no self block), so the normal form of a coercion does not depend on the
-atom it is applied to: it is a telescope of *entries*, one per target
-proposition, where a presence entry refers to the source by index.
+its templates.  A template proves a target proposition as
+`pre ∘ (source proposition j) ∘ post` with closed sides, so the normal form
+of a coercion does not depend on the atom it is applied to: it is a
+telescope of *entries*, one per target proposition, each naming a source
+proposition by index.  Composition substitutes templates into templates;
+application to an atom looks the source proposition up in the atom's view
+and combines the sides with it.
 
 The *view* of a concrete atom is the telescope of normal forms of the
 propositions of its (resolved) object type: a location's view is read off
@@ -59,14 +62,16 @@ inductive Form (s : Sig) : Type where
   /-- Function coercion: closed domain evidence and codomain evidence under
       the target domain binder. -/
   | pi : LeCo s → LeCo (s,x) → Form s
-  /-- Object coercion: one entry per proposition of the (opened) target. -/
+  /-- Object coercion: one entry per proposition of the target telescope. -/
   | obj : Entries s → Form s
 
-/-- The normal form of one target proposition of an object coercion. -/
+/-- The normal form of one target proposition of an object coercion: a
+template `pre ∘ (source proposition) ∘ post` with normalized sides (`id` for
+an absent side), a source equality possibly flipped, or an inherited
+presence. -/
 inductive Entry (s : Sig) : Type where
-  | le : Form s → Entry s
-  | eq : Entry s
-  /-- Presence, inherited from the source's `j`-th proposition. -/
+  | le : Form s → Hole → Form s → Entry s
+  | eq : Nat → Bool → Entry s
   | has : Nat → Entry s
 
 /-- Entries of an object coercion, oldest first. -/
@@ -75,6 +80,21 @@ inductive Entries (s : Sig) : Type where
   | cons : Entries s → Entry s → Entries s
 
 end
+
+/-- Decidable tests for the two absorbing forms. -/
+def Form.isBot : Form s → Bool
+  | .bot => true
+  | _ => false
+
+def Form.isTop : Form s → Bool
+  | .top => true
+  | _ => false
+
+theorem Form.isBot_eq_true {F : Form s} : F.isBot = true ↔ F = .bot := by
+  cases F <;> simp [Form.isBot]
+
+theorem Form.isTop_eq_true {F : Form s} : F.isTop = true ↔ F = .top := by
+  cases F <;> simp [Form.isTop]
 
 /-- The normal form of one proposition of a concrete atom's telescope. -/
 inductive PropForm (s : Sig) : Type where
@@ -129,23 +149,100 @@ def View.get? : View s → Nat → Option (PropForm s)
 
 /-! ## Composition of forms -/
 
-/-- Route a presence entry of the second coercion through the first. -/
+/-- The index named by a hole. -/
+def Hole.index : Hole → Nat
+  | .le j => j
+  | .eq j => j
+  | .eqSym j => j
+
+/-- Flip the direction of an equality hole. -/
+def Hole.flip : Hole → Hole
+  | .le j => .le j
+  | .eq j => .eqSym j
+  | .eqSym j => .eq j
+
+/-- An entry found by lookup is a subterm. -/
+theorem Entries.get?_sizeOf : ∀ {Es : Entries s} {j : Nat} {E : Entry s},
+    Es.get? j = some E → sizeOf E < sizeOf Es
+  | .nil, _, _, h => by simp [Entries.get?] at h
+  | .cons Es E', j, E, h => by
+      simp only [Entries.get?] at h
+      by_cases hj : j = Es.length
+      · rw [if_pos hj] at h; cases h; simp; omega
+      · rw [if_neg hj] at h
+        have := Entries.get?_sizeOf h
+        simp; omega
+
+/-- Lookup returning the entry together with the fact that it is a subterm,
+for the termination of composition. -/
+def Entries.get?Attach : (Es : Entries s) → Nat → Option {E : Entry s // sizeOf E < sizeOf Es}
+  | .nil, _ => none
+  | .cons Es E, i =>
+      if i = Es.length then some ⟨E, by simp; omega⟩
+      else (Es.get?Attach i).map fun ⟨E', h⟩ => ⟨E', by simp; omega⟩
+
+theorem Entries.get?Attach_val : ∀ (Es : Entries s) (j : Nat),
+    (Es.get?Attach j).map Subtype.val = Es.get? j
+  | .nil, _ => rfl
+  | .cons Es E, i => by
+      simp only [Entries.get?Attach, Entries.get?]
+      by_cases h : i = Es.length
+      · simp [h]
+      · simp [h, ← Entries.get?Attach_val Es i, Option.map_map]
+
+theorem Entries.get?Attach_eq_some {Es : Entries s} {j : Nat} {E : Entry s}
+    (h : Es.get? j = some E) : ∃ hlt, Es.get?Attach j = some ⟨E, hlt⟩ := by
+  have := Entries.get?Attach_val Es j
+  rw [h] at this
+  cases hA : Es.get?Attach j with
+  | none => rw [hA] at this; simp at this
+  | some p =>
+      rw [hA] at this
+      obtain ⟨E', hlt⟩ := p
+      simp at this
+      subst this
+      exact ⟨hlt, rfl⟩
+
+mutual
+
+/-- Route an entry of the second coercion through the entries of the first:
+the hole of a template is replaced by the first coercion's template for that
+source proposition, and the sides are composed. -/
 def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
-  | .le F => some (.le F)
-  | .eq => some .eq
-  | .has j => Es₁.get? j
+  | .le pre h post =>
+      match Es₁.get?Attach h.index, h with
+      | some ⟨.le pre₁ h₁ post₁, _⟩, .le _ =>
+          (Form.combine pre pre₁).bind fun pre' =>
+            (Form.combine post₁ post).bind fun post' =>
+              some (.le pre' h₁ post')
+      | some ⟨.eq k b, _⟩, .eq _ => some (.le pre (if b then .eqSym k else .eq k) post)
+      | some ⟨.eq k b, _⟩, .eqSym _ => some (.le pre (if b then .eq k else .eqSym k) post)
+      | _, _ => none
+  | .eq j b =>
+      match Es₁.get? j with
+      | some (.eq k b') => some (.eq k (xor b b'))
+      | _ => none
+  | .has j =>
+      match Es₁.get? j with
+      | some (.has k) => some (.has k)
+      | _ => none
+termination_by E => sizeOf Es₁ + sizeOf E
+decreasing_by
+  all_goals (simp_wf; (try simp at *); omega)
 
 def Entries.through (Es₁ : Entries s) : Entries s → Option (Entries s)
   | .nil => some .nil
-  | .cons Es E => do
-      let Es' ← Entries.through Es₁ Es
-      let E' ← Entry.through Es₁ E
-      pure (Es' ▹ E')
+  | .cons Es E =>
+      (Entries.through Es₁ Es).bind fun Es' =>
+        (Entry.through Es₁ E).bind fun E' =>
+          some (Es' ▹ E')
+termination_by Es => sizeOf Es₁ + sizeOf Es
+decreasing_by all_goals simp_wf <;> omega
 
 /-- Combine the head forms of two composable coercions.  Conversions compose
 as equalities and are absorbed into function and object forms; the
-composite of two object coercions is the second, with its presence entries
-routed through the first. -/
+composite of two object coercions is the second, with its templates routed
+through the first. -/
 def Form.combine : Form s → Form s → Option (Form s)
   | .id, F => some F
   | F, .id => some F
@@ -161,6 +258,46 @@ def Form.combine : Form s → Form s → Option (Form s)
       some (.pi (.trans d₂ d₁) (.trans (c₁.subst (Subst.selfCast d₂↑)) c₂))
   | .obj Es₁, .obj Es₂ => (Entries.through Es₁ Es₂).map .obj
   | F, _ => some F
+termination_by F G => sizeOf F + sizeOf G
+decreasing_by all_goals simp_wf <;> omega
+
+end
+
+/-- The identity entries of a telescope: each proposition from itself. -/
+def Telescope.identityEntries : Telescope (s,x) → Entries s
+  | .nil => .nil
+  | .cons Tel (.le _ _) => Tel.identityEntries ▹ .le .id (.le Tel.length) .id
+  | .cons Tel (.eq _ _) => Tel.identityEntries ▹ .eq Tel.length false
+  | .cons Tel (.has _) => Tel.identityEntries ▹ .has Tel.length
+
+/-- Concatenation of entries. -/
+def Entries.append : Entries s → Entries s → Entries s
+  | Es, .nil => Es
+  | Es, .cons Es' E => (Es.append Es') ▹ E
+
+instance : Append (Entries s) := ⟨Entries.append⟩
+
+/-- The entries of a coercion into an object type with telescope `Tel`, read
+off its head form: an object form gives its entries, a conversion gives the
+identity entries of `Tel`, and so does `top` (its target is `⊤ = μ .nil`, so
+`Tel` is empty). -/
+def Form.toEntries (Tel : Telescope (s,x)) : Form s → Option (Entries s)
+  | .obj Es => some Es
+  | .id => some Tel.identityEntries
+  | .eqv _ => some Tel.identityEntries
+  | .top => some Tel.identityEntries
+  | _ => none
+
+/-- The head form of a pairing: `bot` if either component is, `top` if both
+are, else the concatenated entries. -/
+def Form.pair (Tel₁ Tel₂ : Telescope (s,x)) : Form s → Form s → Option (Form s)
+  | .bot, _ => some .bot
+  | _, .bot => some .bot
+  | .top, .top => some .top
+  | F, G => do
+      let Es₁ ← F.toEntries Tel₁
+      let Es₂ ← G.toEntries Tel₂
+      pure (.obj (Es₁ ++ Es₂))
 
 /-! ## The view of a literal -/
 
@@ -183,21 +320,50 @@ def Value.precView (x : BVar s .var) : Value s → View s
 
 /-! ## The normalizer -/
 
+/-- Concatenation of views. -/
+def View.append : View s → View s → View s
+  | V, .nil => V
+  | V, .cons V' P => (V.append V') ▹ P
+
+instance : Append (View s) := ⟨View.append⟩
+
+/-- Instantiate a template at a view: the hole is replaced by the view's
+form of the source proposition (an equality reads as `id`), then the sides
+are combined. -/
+def Entry.at (V : View s) : Entry s → Option (PropForm s)
+  | .le pre h post => do
+      let mid ← match h, ← V.get? h.index with
+        | .le _, .le F => some F
+        | .eq _, .eq => some .id
+        | .eqSym _, .eq => some .id
+        | _, _ => none
+      let F ← pre.combine mid
+      let G ← F.combine post
+      pure (.le G)
+  | .eq j _ => do
+      match ← V.get? j with
+      | .eq => pure .eq
+      | _ => none
+  | .has j => do
+      match ← V.get? j with
+      | .has y ℓ => pure (.has y ℓ)
+      | _ => none
+
 /-- Instantiate the entries of an object coercion at an atom whose view is `V`. -/
 def entriesAt (V : View s) : Entries s → Option (View s)
   | .nil => some .nil
-  | .cons Es (.le F) => do
+  | .cons Es E => do
       let V' ← entriesAt V Es
-      pure (V' ▹ .le F)
-  | .cons Es .eq => do
-      let V' ← entriesAt V Es
-      pure (V' ▹ .eq)
-  | .cons Es (.has j) => do
-      let V' ← entriesAt V Es
-      let P ← V.get? j
+      let P ← E.at V
       pure (V' ▹ P)
 
 mutual
+
+/-- The normal form of a template side, with fuel: `id` when absent. -/
+def sideForm (σ : Store s) : Nat → Side s → Option (Form s)
+  | 0, _ => none
+  | _ + 1, .none => some .id
+  | n + 1, .some e => hnf σ n e
 
 /-- Head form of closed inclusion evidence, with fuel. -/
 def hnf (σ : Store s) : Nat → LeCo s → Option (Form s)
@@ -208,6 +374,10 @@ def hnf (σ : Store s) : Nat → LeCo s → Option (Form s)
   | _ + 1, .eqToLe φ => some (.eqv φ)
   | _ + 1, .pi d c => some (.pi d c)
   | n + 1, .obj _ m => (entries σ n m).map .obj
+  | n + 1, .pair Tel₁ Tel₂ e f => do
+      let F ← hnf σ n e
+      let G ← hnf σ n f
+      Form.pair Tel₁ Tel₂ F G
   | n + 1, .trans e f => do
       let F ← hnf σ n e
       let G ← hnf σ n f
@@ -219,17 +389,18 @@ def hnf (σ : Store s) : Nat → LeCo s → Option (Form s)
       | some (.le G) => some G
       | _ => none
 
-/-- Entries of a morphism: the normal forms of its pieces of evidence. -/
+/-- Entries of a morphism: the normal forms of its templates. -/
 def entries (σ : Store s) : Nat → Morphism s → Option (Entries s)
   | 0, _ => none
   | _ + 1, .nil => some .nil
-  | n + 1, .le m e => do
+  | n + 1, .le m pre h post => do
       let Es ← entries σ n m
-      let F ← hnf σ n e
-      pure (Es ▹ .le F)
-  | n + 1, .eq m _ => do
+      let F ← sideForm σ n pre
+      let G ← sideForm σ n post
+      pure (Es ▹ .le F h G)
+  | n + 1, .eq m j b => do
       let Es ← entries σ n m
-      pure (Es ▹ .eq)
+      pure (Es ▹ .eq j b)
   | n + 1, .has m j => do
       let Es ← entries σ n m
       pure (Es ▹ .has j)
@@ -243,6 +414,10 @@ def view (σ : Store s) : Nat → Atom s → Option (View s)
       viewThrough σ n F a
   | n + 1, .foldSelf _ a => view σ n a
   | n + 1, .unfoldSelf a => view σ n a
+  | n + 1, .both _ _ a b => do
+      let V ← view σ n a
+      let V' ← view σ n b
+      pure (V ++ V')
 
 /-- The view of an atom through a head form applied to it. -/
 def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
@@ -295,6 +470,11 @@ def closedAtomForm (σ : Store s) : Nat → Atom s → Option (Atom s × Form s)
   | n + 1, .unfoldSelf a => do
       let (a', F) ← closedAtomForm σ n a
       pure (.unfoldSelf a', F)
+  | n + 1, .both Tel₁ Tel₂ a b => do
+      let (a', F) ← closedAtomForm σ n a
+      let (b', G) ← closedAtomForm σ n b
+      let H ← Form.pair Tel₁ Tel₂ F G
+      pure (.both Tel₁ Tel₂ a' b', H)
 
 /-- `σ ⊢ a ⇓ᶜ[n] (a', F)`: the chain of casts of `a` normalizes to `F`. -/
 scoped notation:40 σ:51 " ⊢ " a:51 " ⇓ᶜ[" n "] " r:51 => closedAtomForm σ n a = some r

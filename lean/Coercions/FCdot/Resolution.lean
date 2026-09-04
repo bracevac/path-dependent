@@ -49,7 +49,6 @@ theorem BVar.toNat_lt_ctxLength {Γ : Ctx s} (x : BVar s .var) : x.toNat < Γ.le
 theorem Ty.weaken_eq_sel {s : Sig} {k : Kind} {W : Ty s} {y : BVar (s,,k) .var} {ℓ : Label}
     (h : (W.weaken (k := k)) = .sel y ℓ) : ∃ z, W = .sel z ℓ ∧ y = .there z := by
   cases W with
-  | top => simp [Ty.weaken, Ty.rename] at h
   | bot => simp [Ty.weaken, Ty.rename] at h
   | sel z ℓ' =>
       refine ⟨z, ?_, ?_⟩
@@ -109,7 +108,6 @@ theorem Ctx.resolveFuel_nonSel (Γ : Ctx s) (n : Nat) {T : Ty s}
   cases n with
   | zero => rfl
   | succ n => cases T with
-    | top => rfl
     | bot => rfl
     | sel x ℓ => exact absurd rfl (h x ℓ)
     | pi => rfl
@@ -153,10 +151,6 @@ theorem Ctx.resolveFuel_add (Γ : Ctx s) :
   | 0, m, T => by rw [Ctx.resolveFuel_zero, Nat.zero_add]
   | n + 1, m, T => by
       cases T with
-      | top =>
-          rw [Γ.resolveFuel_nonSel (n + 1) (by intro x ℓ h; cases h),
-            Γ.resolveFuel_nonSel m (by intro x ℓ h; cases h),
-            Γ.resolveFuel_nonSel (n + 1 + m) (by intro x ℓ h; cases h)]
       | bot =>
           rw [Γ.resolveFuel_nonSel (n + 1) (by intro x ℓ h; cases h),
             Γ.resolveFuel_nonSel m (by intro x ℓ h; cases h),
@@ -204,8 +198,6 @@ theorem Ctx.resolveFuel_succ_eq {Γ : Ctx s} (hwd : Γ.WellDefined) :
     ∀ (n : Nat) (T : Ty s), Γ.FuelFor n T → Γ.resolveFuel n T = Γ.resolveFuel (n + 1) T
   | 0, T, hf => by
       cases T with
-      | top => rw [Γ.resolveFuel_nonSel 0 (by intro x ℓ h; cases h),
-          Γ.resolveFuel_nonSel 1 (by intro x ℓ h; cases h)]
       | bot => rw [Γ.resolveFuel_nonSel 0 (by intro x ℓ h; cases h),
           Γ.resolveFuel_nonSel 1 (by intro x ℓ h; cases h)]
       | pi S T => rw [Γ.resolveFuel_nonSel 0 (by intro x ℓ h; cases h),
@@ -218,8 +210,6 @@ theorem Ctx.resolveFuel_succ_eq {Γ : Ctx s} (hwd : Γ.WellDefined) :
           omega
   | n + 1, T, hf => by
       cases T with
-      | top => rw [Γ.resolveFuel_nonSel (n + 1) (by intro x ℓ h; cases h),
-          Γ.resolveFuel_nonSel (n + 2) (by intro x ℓ h; cases h)]
       | bot => rw [Γ.resolveFuel_nonSel (n + 1) (by intro x ℓ h; cases h),
           Γ.resolveFuel_nonSel (n + 2) (by intro x ℓ h; cases h)]
       | pi S T => rw [Γ.resolveFuel_nonSel (n + 1) (by intro x ℓ h; cases h),

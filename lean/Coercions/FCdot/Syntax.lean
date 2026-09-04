@@ -17,7 +17,6 @@ namespace FCdot
 mutual
 
 inductive Ty : Sig → Type where
-  | top : Ty s
   | bot : Ty s
   /-- The `ℓ`-name of the block of term binder `x`. -/
   | sel : BVar s .var → Label → Ty s
@@ -40,11 +39,15 @@ end
 
 deriving instance DecidableEq for Ty, Proposition, Telescope
 
+/-- The top type is the object type with no propositions: every type is
+included in it, and it says nothing about its inhabitants. -/
+@[match_pattern] abbrev Ty.top : Ty s := .obj .nil
+
 /-! ### Notation for types
 
-`⊤`, `⊥`, `x ∙ ℓ` (the `ℓ`-name of `x`'s block), `Π(S) T`, `μ Tel` (object
-type; the self binder is implicit), propositions `S ⊑ T`, `S ≐ T`, `∋ ℓ`, and
-telescopes `Tel ▹ P`. -/
+`⊤` (the empty object type `μ .nil`), `⊥`, `x ∙ ℓ` (the `ℓ`-name of `x`'s
+block), `Π(S) T`, `μ Tel` (object type; the self binder is implicit),
+propositions `S ⊑ T`, `S ≐ T`, `∋ ℓ`, and telescopes `Tel ▹ P`. -/
 
 scoped notation "⊤" => Ty.top
 scoped notation "⊥" => Ty.bot
@@ -73,6 +76,8 @@ def Telescope.append : Telescope s → Telescope s → Telescope s
   | Tel, .nil => Tel
   | Tel, .cons Tel' P => .cons (Tel.append Tel') P
 
+instance : Append (Telescope s) := ⟨Telescope.append⟩
+
 /-- Lookup by index, executable. -/
 def Telescope.get? : Telescope s → Nat → Option (Proposition s)
   | .nil, _ => none
@@ -83,7 +88,6 @@ def Telescope.get? : Telescope s → Nat → Option (Proposition s)
 mutual
 
 def Ty.rename : Ty s1 → Rename s1 s2 → Ty s2
-  | .top, _ => .top
   | .bot, _ => .bot
   | .sel x ℓ, ρ => .sel (ρ.var x) ℓ
   | .pi S T, ρ => .pi (S.rename ρ) (T.rename ρ.lift)
@@ -124,6 +128,14 @@ scoped notation:max T:max "⟦" y "⟧" => Proposition.substVar T y
 
 /-! ## Evidence and atoms -/
 
+/-- A hole of a template: the `j`-th proposition of the source telescope,
+read as an inclusion.  An equality may be read in either direction. -/
+inductive Hole : Type where
+  | le : Nat → Hole
+  | eq : Nat → Hole
+  | eqSym : Nat → Hole
+deriving DecidableEq
+
 mutual
 
 /-- Directed inclusion evidence.  No symmetry. -/
@@ -135,10 +147,13 @@ inductive LeCo : Sig → Type where
   | eqToLe : EqCo s → LeCo s
   /-- Contravariant domain, covariant codomain under the parameter binder. -/
   | pi : LeCo s → LeCo (s,x) → LeCo s
-  /-- Object coercion between *opened* telescopes (no self block): the source
-      telescope is annotated; the morphism proves the target's propositions in
-      the ambient scope. -/
-  | obj : Telescope s → Morphism s → LeCo s
+  /-- Object coercion between closed telescopes: the source telescope is
+      annotated; the morphism proves each target proposition by a *template*
+      (a closed coercion, a source proposition, a closed coercion). -/
+  | obj : Telescope (s,x) → Morphism s → LeCo s
+  /-- Pairing: two coercions into object types give one into the
+      concatenation of their telescopes. -/
+  | pair : Telescope (s,x) → Telescope (s,x) → LeCo s → LeCo s → LeCo s
   /-- Elimination at an atom: the `i`-th proposition of the target telescope of `e`,
       instantiated at the root of `a`, when that proposition is an inclusion. -/
   | member : Atom s → LeCo s → Nat → LeCo s
@@ -158,13 +173,20 @@ inductive Has : Sig → Type where
   /-- Only valid inside the evidence block of an object literal that has the field. -/
   | field : Label → Has s
 
-/-- A morphism into a telescope: one piece of evidence per target proposition,
-oldest first.  A field-presence proposition is inherited from the source
-telescope by index. -/
+/-- One side of a template: an optional closed coercion. -/
+inductive Side : Sig → Type where
+  | none : Side s
+  | some : LeCo s → Side s
+
+/-- A morphism into a telescope: one template per target proposition, oldest
+first.  An inclusion is proven as `pre ∘ (source proposition) ∘ post` where
+the source proposition is named by a `Hole`; an equality is a source
+equality, possibly flipped; a field-presence proposition is inherited from
+the source telescope by index. -/
 inductive Morphism : Sig → Type where
   | nil : Morphism s
-  | le : Morphism s → LeCo s → Morphism s
-  | eq : Morphism s → EqCo s → Morphism s
+  | le : Morphism s → Side s → Hole → Side s → Morphism s
+  | eq : Morphism s → Nat → Bool → Morphism s
   | has : Morphism s → Nat → Morphism s
 
 /-- Atoms: a variable under wrappers that erase to nothing. -/
@@ -174,6 +196,8 @@ inductive Atom : Sig → Type where
   /-- `Rec-I`, annotated with the target telescope. -/
   | foldSelf : Telescope (s,x) → Atom s → Atom s
   | unfoldSelf : Atom s → Atom s
+  /-- `And-I`: two typings of the same root, at the concatenated telescope. -/
+  | both : Telescope (s,x) → Telescope (s,x) → Atom s → Atom s → Atom s
 
 end
 
@@ -183,6 +207,7 @@ def Atom.root : Atom s → BVar s .var
   | .cast a _ => a.root
   | .foldSelf _ a => a.root
   | .unfoldSelf a => a.root
+  | .both _ _ a _ => a.root
 
 mutual
 
@@ -193,7 +218,8 @@ def LeCo.rename : LeCo s1 → Rename s1 s2 → LeCo s2
   | .bot T, ρ => .bot (T.rename ρ)
   | .eqToLe φ, ρ => .eqToLe (φ.rename ρ)
   | .pi e f, ρ => .pi (e.rename ρ) (f.rename ρ.lift)
-  | .obj Tel m, ρ => .obj (Tel.rename ρ) (m.rename ρ)
+  | .obj Tel m, ρ => .obj (Tel.rename ρ.lift) (m.rename ρ)
+  | .pair Tel₁ Tel₂ e f, ρ => .pair (Tel₁.rename ρ.lift) (Tel₂.rename ρ.lift) (e.rename ρ) (f.rename ρ)
   | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
 
 def EqCo.rename : EqCo s1 → Rename s1 s2 → EqCo s2
@@ -207,10 +233,14 @@ def Has.rename : Has s1 → Rename s1 s2 → Has s2
   | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
   | .field ℓ, _ => .field ℓ
 
+def Side.rename : Side s1 → Rename s1 s2 → Side s2
+  | .none, _ => .none
+  | .some e, ρ => .some (e.rename ρ)
+
 def Morphism.rename : Morphism s1 → Rename s1 s2 → Morphism s2
   | .nil, _ => .nil
-  | .le m e, ρ => .le (m.rename ρ) (e.rename ρ)
-  | .eq m φ, ρ => .eq (m.rename ρ) (φ.rename ρ)
+  | .le m pre h post, ρ => .le (m.rename ρ) (pre.rename ρ) h (post.rename ρ)
+  | .eq m j b, ρ => .eq (m.rename ρ) j b
   | .has m j, ρ => .has (m.rename ρ) j
 
 def Atom.rename : Atom s1 → Rename s1 s2 → Atom s2
@@ -218,6 +248,7 @@ def Atom.rename : Atom s1 → Rename s1 s2 → Atom s2
   | .cast a e, ρ => .cast (a.rename ρ) (e.rename ρ)
   | .foldSelf Tel a, ρ => .foldSelf (Tel.rename ρ.lift) (a.rename ρ)
   | .unfoldSelf a, ρ => .unfoldSelf (a.rename ρ)
+  | .both Tel₁ Tel₂ a b, ρ => .both (Tel₁.rename ρ.lift) (Tel₂.rename ρ.lift) (a.rename ρ) (b.rename ρ)
 
 end
 
@@ -366,7 +397,9 @@ def LeCo.subst : LeCo s1 → Subst s1 s2 → LeCo s2
   | .bot T, σ => .bot (T.rename σ.root)
   | .eqToLe φ, σ => .eqToLe (φ.subst σ)
   | .pi e f, σ => .pi (e.subst σ) (f.subst σ.lift)
-  | .obj Tel m, σ => .obj (Tel.rename σ.root) (m.subst σ)
+  | .obj Tel m, σ => .obj (Tel.rename σ.root.lift) (m.subst σ)
+  | .pair Tel₁ Tel₂ e f, σ =>
+      .pair (Tel₁.rename σ.root.lift) (Tel₂.rename σ.root.lift) (e.subst σ) (f.subst σ)
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
 
 def EqCo.subst : EqCo s1 → Subst s1 s2 → EqCo s2
@@ -380,10 +413,14 @@ def Has.subst : Has s1 → Subst s1 s2 → Has s2
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
   | .field ℓ, _ => .field ℓ
 
+def Side.subst : Side s1 → Subst s1 s2 → Side s2
+  | .none, _ => .none
+  | .some e, σ => .some (e.subst σ)
+
 def Morphism.subst : Morphism s1 → Subst s1 s2 → Morphism s2
   | .nil, _ => .nil
-  | .le m e, σ => .le (m.subst σ) (e.subst σ)
-  | .eq m φ, σ => .eq (m.subst σ) (φ.subst σ)
+  | .le m pre h post, σ => .le (m.subst σ) (pre.subst σ) h (post.subst σ)
+  | .eq m j b, σ => .eq (m.subst σ) j b
   | .has m j, σ => .has (m.subst σ) j
 
 def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
@@ -391,6 +428,8 @@ def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
   | .cast a e, σ => .cast (a.subst σ) (e.subst σ)
   | .foldSelf Tel a, σ => .foldSelf (Tel.rename σ.root.lift) (a.subst σ)
   | .unfoldSelf a, σ => .unfoldSelf (a.subst σ)
+  | .both Tel₁ Tel₂ a b, σ =>
+      .both (Tel₁.rename σ.root.lift) (Tel₂.rename σ.root.lift) (a.subst σ) (b.subst σ)
 
 end
 

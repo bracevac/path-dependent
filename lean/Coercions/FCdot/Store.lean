@@ -42,12 +42,14 @@ def Value.coercions : Value s → List (LeCo s)
   | .cast v e => v.coercions ++ [e]
   | _ => []
 
-/-- The cast wrappers of an atom, innermost first. -/
+/-- The cast wrappers of an atom, innermost first (along the first component
+of an intersection). -/
 def Atom.coercions : Atom s → List (LeCo s)
   | .var _ => []
   | .cast a e => a.coercions ++ [e]
   | .foldSelf _ a => a.coercions
   | .unfoldSelf a => a.coercions
+  | .both _ _ a _ => a.coercions
 
 /-- A stored value is a literal: no cast wrappers. -/
 def Value.IsLiteral : Value s → Prop

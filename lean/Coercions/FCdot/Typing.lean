@@ -40,11 +40,16 @@ inductive LeCo.HasType : Ctx s → LeCo s → Ty s → Ty s → Prop where
       Γ ⊢ e : S2 ≤ S1 →
       Γ.cons (.opaque S2) ⊢ f : T1 ≤ T2 →
       Γ ⊢ .pi e f : Π(S1) T1 ≤ Π(S2) T2
-  /-- Object coercion between opened telescopes: the morphism proves the target's
-      propositions in `Γ`; presence propositions are inherited from the source. -/
+  /-- Object coercion between closed telescopes: the morphism proves each target
+      proposition by a template over a source proposition. -/
   | obj :
       Γ ⊢ m : Tel ⇒ Tel' →
-      Γ ⊢ .obj Tel m : μ Tel↑ ≤ μ Tel'↑
+      Γ ⊢ .obj Tel m : μ Tel ≤ μ Tel'
+  /-- Pairing: two coercions into object types give one into the concatenation. -/
+  | pair :
+      Γ ⊢ e : S ≤ μ Tel₁ →
+      Γ ⊢ f : S ≤ μ Tel₂ →
+      Γ ⊢ .pair Tel₁ Tel₂ e f : S ≤ μ (Tel₁ ++ Tel₂)
   | member :
       Γ ⊢ₐ a : S →
       Γ ⊢ e : S ≤ μ Tel →
@@ -74,15 +79,30 @@ inductive Has.HasType : Ctx s → Has s → BVar s .var → Label → Prop where
       Γ.lookupFields x = some Fs → ℓ ∈ Fs →
       Γ ⊢ .field ℓ : x ∋ ℓ
 
-/-- `Γ ⊢ m : src ⇒ Tel`: `m` proves every proposition of the opened telescope
-`Tel` in `Γ`; a presence proposition is inherited from the opened source
-telescope `src` by index. -/
-inductive Morphism.HasType : Ctx s → Telescope s → Morphism s → Telescope s → Prop where
+/-- A template side: `none` leaves the endpoint as it is; `some e` is a closed
+coercion `A ≤ B` between weakened closed types. -/
+inductive Side.HasType : Ctx s → Side s → Ty (s,x) → Ty (s,x) → Prop where
+  | none : Side.HasType Γ .none X X
+  | some : Γ ⊢ e : A ≤ B → Side.HasType Γ (.some e) A↑ B↑
+
+/-- `Γ ⊢ m : src ⇒ Tel`: `m` proves every proposition of the closed telescope
+`Tel` from the propositions of the closed source telescope `src`, one
+template per target proposition. -/
+inductive Morphism.HasType : Ctx s → Telescope (s,x) → Morphism s → Telescope (s,x) → Prop where
   | nil : Γ ⊢ .nil : src ⇒ .nil
-  | le : Γ ⊢ m : src ⇒ Tel → Γ ⊢ e : S ≤ T →
-      Γ ⊢ .le m e : src ⇒ Tel ▹ S ⊑ T
-  | eq : Γ ⊢ m : src ⇒ Tel → Γ ⊢ φ : S ≡ T →
-      Γ ⊢ .eq m φ : src ⇒ Tel ▹ S ≐ T
+  | le : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ X ⊑ Y) →
+      Side.HasType Γ pre S X → Side.HasType Γ post Y T →
+      Γ ⊢ .le m pre (.le j) post : src ⇒ Tel ▹ S ⊑ T
+  | leEq : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ X ≐ Y) →
+      Side.HasType Γ pre S X → Side.HasType Γ post Y T →
+      Γ ⊢ .le m pre (.eq j) post : src ⇒ Tel ▹ S ⊑ T
+  | leEqSym : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ Y ≐ X) →
+      Side.HasType Γ pre S X → Side.HasType Γ post Y T →
+      Γ ⊢ .le m pre (.eqSym j) post : src ⇒ Tel ▹ S ⊑ T
+  | eq : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ X ≐ Y) →
+      Γ ⊢ .eq m j false : src ⇒ Tel ▹ X ≐ Y
+  | eqSym : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ X ≐ Y) →
+      Γ ⊢ .eq m j true : src ⇒ Tel ▹ Y ≐ X
   | has : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ ∋ ℓ) →
       Γ ⊢ .has m j : src ⇒ Tel ▹ ∋ ℓ
 
@@ -98,6 +118,12 @@ inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where
   | foldSelf :
       Γ ⊢ₐ a : μ (Tel⟦a.root⟧)↑ →
       Γ ⊢ₐ .foldSelf Tel a : μ Tel
+  /-- `And-I`: two typings of the same root. -/
+  | both :
+      Γ ⊢ₐ a : μ Tel₁ →
+      Γ ⊢ₐ b : μ Tel₂ →
+      b.root = a.root →
+      Γ ⊢ₐ .both Tel₁ Tel₂ a b : μ (Tel₁ ++ Tel₂)
 
 end
 

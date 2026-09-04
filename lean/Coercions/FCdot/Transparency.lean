@@ -106,6 +106,7 @@ theorem LeCo.HasType.refine {Γ Γ' : Ctx s} {e : LeCo s} {S T : Ty s}
   | .eqToLe hφ => exact .eqToLe (hφ.refine hR)
   | .pi he hf => exact .pi (he.refine hR) (hf.refine (hR.cons _))
   | .obj hm => exact .obj (hm.refine hR)
+  | .pair he hf => exact .pair (he.refine hR) (hf.refine hR)
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
 
 theorem EqCo.HasType.refine {Γ Γ' : Ctx s} {φ : EqCo s} {S T : Ty s}
@@ -123,14 +124,24 @@ theorem Has.HasType.refine {Γ Γ' : Ctx s} {hh : Has s} {x : BVar s .var} {l : 
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
   | .field hf hm => exact .field (hR.fields _ _ hf) hm
 
-theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope s} {m : Morphism s}
-    {Tel : Telescope s}
+theorem Side.HasType.refine {Γ Γ' : Ctx s} {σ : Side s} {X Y : Ty (s,x)}
+    (hR : Ctx.Refines Γ Γ') (h : Side.HasType Γ σ X Y) : Side.HasType Γ' σ X Y := by
+  match h with
+  | .none => exact .none
+  | .some he => exact .some (he.refine hR)
+
+theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope (s,x)} {m : Morphism s}
+    {Tel : Telescope (s,x)}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ m : src ⇒ Tel) :
     Γ' ⊢ m : src ⇒ Tel := by
   match h with
   | .nil => exact .nil
-  | .le hm he => exact .le (hm.refine hR) (he.refine hR)
-  | .eq hm hφ => exact .eq (hm.refine hR) (hφ.refine hR)
+  | .le hm hAt hpre hpost => exact .le (hm.refine hR) hAt (hpre.refine hR) (hpost.refine hR)
+  | .leEq hm hAt hpre hpost => exact .leEq (hm.refine hR) hAt (hpre.refine hR) (hpost.refine hR)
+  | .leEqSym hm hAt hpre hpost =>
+      exact .leEqSym (hm.refine hR) hAt (hpre.refine hR) (hpost.refine hR)
+  | .eq hm hAt => exact .eq (hm.refine hR) hAt
+  | .eqSym hm hAt => exact .eqSym (hm.refine hR) hAt
   | .has hm hAt => exact .has (hm.refine hR) hAt
 
 theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
@@ -140,6 +151,7 @@ theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
   | .cast ha he => exact .cast (ha.refine hR) (he.refine hR)
   | .unfoldSelf ha => exact .unfoldSelf (ha.refine hR)
   | .foldSelf ha => exact .foldSelf (ha.refine hR)
+  | .both ha hb hr => exact .both (ha.refine hR) (hb.refine hR) hr
 
 end
 

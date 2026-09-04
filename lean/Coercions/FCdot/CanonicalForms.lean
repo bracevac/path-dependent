@@ -143,7 +143,7 @@ def EqConcl (Γ : Ctx s) (S T : Ty s) : Prop := Γ.resolve S = Γ.resolve T
 def HasConcl (σ : Store s) (h : Has s) (x : BVar s .var) (ℓ : Label) : Prop :=
   ∃ n, σ ⊢ x ; h ⇓ₕ[n] (x, ℓ) ∧ σ.HasField x ℓ
 
-def MorConcl (σ : Store s) (Γ : Ctx s) (src : Telescope s) (m : Morphism s) (Tel : Telescope s) :
+def MorConcl (σ : Store s) (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s) (Tel : Telescope (s,x)) :
     Prop :=
   ∃ n Es, σ ⊢ m ⇓ₘ[n] Es ∧ Γ ⊨ Es : src ⇒ Tel
 
@@ -189,6 +189,12 @@ theorem le_canon {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) : LeConcl σ
   | .obj hm =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, .obj Es, by simp [hnf, hEs], .obj (by simp) (by simp) hT⟩
+  | .pair he hf =>
+      obtain ⟨n₁, F, hF, hFt⟩ := le_canon he
+      obtain ⟨n₂, G, hG, hGt⟩ := le_canon hf
+      obtain ⟨H, hH, hHt⟩ := Form.pair_typed hFt hGt rfl rfl
+      refine ⟨max n₁ n₂ + 1, H, ?_, hHt⟩
+      simp [hnf, hnf_le (Nat.le_max_left n₁ n₂) hF, hnf_le (Nat.le_max_right n₁ n₂) hG, hH]
   | .trans he hf =>
       obtain ⟨n₁, F, hF, hFt⟩ := le_canon he
       obtain ⟨n₂, G, hG, hGt⟩ := le_canon hf
@@ -225,21 +231,52 @@ theorem has_canon {hh : Has s} {x : BVar s .var} {ℓ : Label} (h : Γ ⊢ hh : 
       obtain ⟨hq, hHF⟩ := hVt'.has_entry hAt
       exact ⟨max n₁ n₂ + 2, by simp [hasView, hnf_le_max hF, hV', hq.get?], hHF⟩
 
-theorem mor_canon {src : Telescope s} {m : Morphism s} {Tel : Telescope s}
+theorem mor_canon {src : Telescope (s,x)} {m : Morphism s} {Tel : Telescope (s,x)}
     (h : Γ ⊢ m : src ⇒ Tel) : MorConcl σ Γ src m Tel := by
   match h with
   | .nil => exact ⟨1, .nil, rfl, .nil⟩
-  | .le hm he =>
+  | .le hm hAt hpre hpost =>
       obtain ⟨n₁, Es, hEs, hT⟩ := mor_canon hm
-      obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      refine ⟨max n₁ n₂ + 1, Es ▹ .le F, ?_, .le hT hFt⟩
-      simp [entries, entries_le (Nat.le_max_left n₁ n₂) hEs, hnf_le (Nat.le_max_right n₁ n₂) hF]
-  | .eq hm hφ =>
+      obtain ⟨n₂, F, hF, hFt⟩ := side_canon hpre
+      obtain ⟨n₃, G, hG, hGt⟩ := side_canon hpost
+      refine ⟨max n₁ (max n₂ n₃) + 1, Es ▹ .le F (.le _) G, ?_, .le hT (.le hAt) hFt hGt⟩
+      simp [entries, entries_le (Nat.le_max_left _ _) hEs,
+        sideForm_le (Nat.le_trans (Nat.le_max_left n₂ n₃) (Nat.le_max_right n₁ _)) hF,
+        sideForm_le (Nat.le_trans (Nat.le_max_right n₂ n₃) (Nat.le_max_right n₁ _)) hG]
+  | .leEq hm hAt hpre hpost =>
+      obtain ⟨n₁, Es, hEs, hT⟩ := mor_canon hm
+      obtain ⟨n₂, F, hF, hFt⟩ := side_canon hpre
+      obtain ⟨n₃, G, hG, hGt⟩ := side_canon hpost
+      refine ⟨max n₁ (max n₂ n₃) + 1, Es ▹ .le F (.eq _) G, ?_, .le hT (.eq hAt) hFt hGt⟩
+      simp [entries, entries_le (Nat.le_max_left _ _) hEs,
+        sideForm_le (Nat.le_trans (Nat.le_max_left n₂ n₃) (Nat.le_max_right n₁ _)) hF,
+        sideForm_le (Nat.le_trans (Nat.le_max_right n₂ n₃) (Nat.le_max_right n₁ _)) hG]
+  | .leEqSym hm hAt hpre hpost =>
+      obtain ⟨n₁, Es, hEs, hT⟩ := mor_canon hm
+      obtain ⟨n₂, F, hF, hFt⟩ := side_canon hpre
+      obtain ⟨n₃, G, hG, hGt⟩ := side_canon hpost
+      refine ⟨max n₁ (max n₂ n₃) + 1, Es ▹ .le F (.eqSym _) G, ?_, .le hT (.eqSym hAt) hFt hGt⟩
+      simp [entries, entries_le (Nat.le_max_left _ _) hEs,
+        sideForm_le (Nat.le_trans (Nat.le_max_left n₂ n₃) (Nat.le_max_right n₁ _)) hF,
+        sideForm_le (Nat.le_trans (Nat.le_max_right n₂ n₃) (Nat.le_max_right n₁ _)) hG]
+  | .eq hm hAt =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
-      exact ⟨n + 1, Es ▹ .eq, by simp [entries, hEs], .eq hT (eq_canon hφ)⟩
+      exact ⟨n + 1, Es ▹ .eq _ false, by simp [entries, hEs], .eq hT hAt⟩
+  | .eqSym hm hAt =>
+      obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
+      exact ⟨n + 1, Es ▹ .eq _ true, by simp [entries, hEs], .eqSym hT hAt⟩
   | .has hm hAt =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, Es ▹ .has _, by simp [entries, hEs], .has hT hAt⟩
+
+/-- A template side normalizes to a typed side form. -/
+theorem side_canon {p : Side s} {X Y : Ty (s,x)} (h : Side.HasType Γ p X Y) :
+    ∃ n F, sideForm σ n p = some F ∧ SideTyped Γ F X Y := by
+  match h with
+  | .none => exact ⟨1, .id, rfl, .id⟩
+  | .some he =>
+      obtain ⟨n, F, hF, hFt⟩ := le_canon he
+      exact ⟨n + 1, F, by simp [sideForm, hF], .closed hFt⟩
 
 theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ Γ a S := by
   match h with
@@ -264,6 +301,16 @@ theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ 
       rw [Ctx.resolve_obj] at h
       obtain rfl := Ty.obj.inj h
       exact ViewTyped_fold (hVt _ (Ctx.resolve_obj _ _))
+  | .both ha hb hroot =>
+      obtain ⟨n₁, V₁, hV₁, hVt₁, _⟩ := atom_canon ha
+      obtain ⟨n₂, V₂, hV₂, hVt₂, _⟩ := atom_canon hb
+      refine ⟨max n₁ n₂ + 1, V₁ ++ V₂, ?_, fun Tel' h => ?_, by simp⟩
+      · simp [view, view_le (Nat.le_max_left n₁ n₂) hV₁, view_le (Nat.le_max_right n₁ n₂) hV₂]
+      · rw [Ctx.resolve_obj] at h
+        obtain rfl := Ty.obj.inj h
+        have h₂ := hVt₂ _ (Ctx.resolve_obj _ _)
+        rw [hroot] at h₂
+        exact (hVt₁ _ (Ctx.resolve_obj _ _)).append h₂
 
 end
 
@@ -279,11 +326,27 @@ variable {σ : Store s} {Γ : Ctx s}
 @[simp] theorem Atom.root_foldSelf (Tel : Telescope (s,x)) (a : Atom s) :
     (Atom.foldSelf Tel a).root = a.root := rfl
 @[simp] theorem Atom.root_unfoldSelf (a : Atom s) : (Atom.unfoldSelf a).root = a.root := rfl
+@[simp] theorem Atom.root_both (Tel₁ Tel₂ : Telescope (s,x)) (a b : Atom s) :
+    (Atom.both Tel₁ Tel₂ a b).root = a.root := rfl
 
 /-- Opening the self block at the root is invisible to `foldSelf`. -/
 theorem Ctx.resolveAt_fold (Γ : Ctx s) (r : BVar s .var) (Tel : Telescope (s,x)) :
     Γ.resolveAt r (μ Tel) = Γ.resolveAt r (μ ((Tel⟦r⟧)↑)) := by
   simp [Ctx.resolveAt]
+
+/-- Pairing the chains of casts of two atoms at the same root. -/
+theorem ChainTyped.pair {r : BVar s .var} {F G : Form s} {S : Ty s} {Tel₁ Tel₂ : Telescope (s,x)}
+    (hF : Γ ⊨[r] F : S ≤ μ Tel₁) (hG : Γ ⊨[r] G : S ≤ μ Tel₂) :
+    ∃ H, Form.pair Tel₁ Tel₂ F G = some H ∧ Γ ⊨[r] H : S ≤ μ (Tel₁ ++ Tel₂) := by
+  have hI : ∀ Tel : Telescope (s,x), Tel.identityEntries = ((Tel⟦r⟧)↑).identityEntries := by
+    intro Tel
+    rw [show ((Tel⟦r⟧)↑ : Telescope (s,x)) = Tel.rename ((Rename.subst r).comp Rename.succ) by
+      simp [Telescope.substVar, Telescope.weaken, Telescope.rename_comp]]
+    exact (Telescope.identityEntries_rename Tel _).symm
+  simp only [ChainTyped, Ctx.resolveAt, Ctx.resolve_obj, Ty.unfoldAt_obj] at hF hG ⊢
+  obtain ⟨H, hH, hHt⟩ := Form.pair_typed hF hG (hI Tel₁) (hI Tel₂)
+  refine ⟨H, hH, ?_⟩
+  simpa [Telescope.substVar, Telescope.weaken, Telescope.append_rename] using hHt
 
 /-- The chain of casts of a closed atom normalizes to a form typed from the
 root's type to the atom's type, at the root. -/
@@ -311,6 +374,15 @@ theorem closedAtomForm_typed (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s}
       refine ⟨n + 1, .foldSelf Tel a', F, by simp [closedAtomForm, hF], ?_⟩
       simp only [Atom.root_foldSelf]
       exact hFt.tgtRes (Ctx.resolveAt_fold Γ _ Tel).symm
+  | .both (Tel₁ := Tel₁) (Tel₂ := Tel₂) ha hb hroot =>
+      obtain ⟨n₁, a', F, hF, hFt⟩ := closedAtomForm_typed hσ ha
+      obtain ⟨n₂, b', G, hG, hGt⟩ := closedAtomForm_typed hσ hb
+      rw [hroot] at hGt
+      obtain ⟨H, hH, hHt⟩ := ChainTyped.pair hFt hGt
+      refine ⟨max n₁ n₂ + 1, .both Tel₁ Tel₂ a' b', H, ?_, ?_⟩
+      · simp [closedAtomForm, closedAtomForm_le (Nat.le_max_left n₁ n₂) hF,
+          closedAtomForm_le (Nat.le_max_right n₁ n₂) hG, hH]
+      · simpa [Atom.root] using hHt
 
 /-- The type recorded for a location is a function or an object type. -/
 theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :

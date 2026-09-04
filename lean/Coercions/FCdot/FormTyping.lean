@@ -12,9 +12,11 @@ definitions to a non-name head.
 
 There is one plain typedness judgment, `Γ ⊨ F : S ≤ T`: the endpoints are
 closed types unrelated to any particular atom.  An object form is typed
-between *opened* telescopes (`Telescope s`, no self binder): each entry is
-typed against a proposition of the target (`Γ ⊨ Es : Tel₁ ⇒ Tel₂`), and each
-presence entry points at a presence proposition of the source.
+between closed telescopes (`Γ ⊨ Es : Tel₁ ⇒ Tel₂`): each entry is a template
+proving a target proposition from a source proposition named by index, with
+closed sides (`SideTyped`) between weakened closed types.  Templates never
+eliminate through the self's members, which is what keeps everything
+structural.
 
 The chain of casts of an atom rooted at `r` is typed at the *opened* shapes
 (`Γ ⊨[r] F : S ≤ T`, `ChainTyped`): plain typedness between the resolved
@@ -58,10 +60,19 @@ at the root.  The chain of casts of an atom is typed at the atom's root, so
 that folding and unfolding the self block are invisible. -/
 def Ctx.resolveAt (Γ : Ctx s) (r : BVar s .var) (T : Ty s) : Ty s := (Γ.resolve T).unfoldAt r
 
+/-! ## Holes -/
+
+/-- `Tel.HoleAt h X Y`: the hole `h` reads the source proposition it names as
+the inclusion `X ≤ Y`. -/
+inductive Telescope.HoleAt (Tel : Telescope (s,x)) : Hole → Ty (s,x) → Ty (s,x) → Prop where
+  | le : Tel ∋ (j ↦ X ⊑ Y) → Tel.HoleAt (.le j) X Y
+  | eq : Tel ∋ (j ↦ X ≐ Y) → Tel.HoleAt (.eq j) X Y
+  | eqSym : Tel ∋ (j ↦ Y ≐ X) → Tel.HoleAt (.eqSym j) X Y
+
 /-! ### Notation for typed forms
 
 `Γ ⊨ F : S ≤ T` types a coercion form with plain shapes; `Γ ⊨ Es : Tel₁ ⇒ Tel₂`
-types the entries of an object form between opened telescopes. -/
+types the entries of an object form between closed telescopes. -/
 
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊨ " F:51 " : " S:51 " ≤ " T:51 => FormTyped Γ F S T
@@ -71,7 +82,7 @@ scoped notation:40 Γ:51 " ⊨ " Es:51 " : " Tel₁:51 " ⇒ " Tel₂:51 => Entr
 mutual
 
 /-- `Γ ⊨ F : S ≤ T`: the head form `F` is typed evidence for `S ≤ T`, with
-shapes read off `Γ.resolve`.  Object forms are between opened telescopes. -/
+shapes read off `Γ.resolve`.  Object forms are between closed telescopes. -/
 inductive FormTyped {s : Sig} (Γ : Ctx s) : Form s → Ty s → Ty s → Prop where
   | bot : Γ.resolve S = ⊥ → Γ ⊨ .bot : S ≤ T
   | top : Γ.resolve T = ⊤ → Γ ⊨ .top : S ≤ T
@@ -80,18 +91,28 @@ inductive FormTyped {s : Sig} (Γ : Ctx s) : Form s → Ty s → Ty s → Prop w
   | pi : Γ.resolve S = Π(S₁) T₁ → Γ.resolve T = Π(S₂) T₂ →
       Γ ⊢ d : S₂ ≤ S₁ → Γ.cons (.opaque S₂) ⊢ c : T₁ ≤ T₂ →
       Γ ⊨ .pi d c : S ≤ T
-  | obj : Γ.resolve S = μ Tel₁↑ → Γ.resolve T = μ Tel₂↑ → Γ ⊨ Es : Tel₁ ⇒ Tel₂ →
+  | obj : Γ.resolve S = μ Tel₁ → Γ.resolve T = μ Tel₂ → Γ ⊨ Es : Tel₁ ⇒ Tel₂ →
       Γ ⊨ .obj Es : S ≤ T
 
-/-- `Γ ⊨ Es : Tel₁ ⇒ Tel₂`: the entries `Es` are typed against the
-propositions of the opened telescope `Tel₂`, with presence entries pointing
-into the opened source `Tel₁`. -/
-inductive EntriesTyped {s : Sig} (Γ : Ctx s) : Telescope s → Entries s → Telescope s → Prop where
+/-- A template side as a form: `id` leaves the endpoint unchanged; any other
+form is a closed coercion between weakened closed types. -/
+inductive SideTyped {s : Sig} (Γ : Ctx s) : Form s → Ty (s,x) → Ty (s,x) → Prop where
+  | id : SideTyped Γ .id X X
+  | closed : Γ ⊨ F : A ≤ B → SideTyped Γ F A↑ B↑
+
+/-- `Γ ⊨ Es : Tel₁ ⇒ Tel₂`: each entry of `Es` proves the corresponding
+proposition of the target `Tel₂` from a proposition of the source `Tel₁`:
+an inclusion by a template around a source inclusion or equality, an
+equality from a source equality, a presence from a source presence. -/
+inductive EntriesTyped {s : Sig} (Γ : Ctx s) : Telescope (s,x) → Entries s → Telescope (s,x) → Prop where
   | nil : Γ ⊨ .nil : Tel₁ ⇒ .nil
-  | le : Γ ⊨ Es : Tel₁ ⇒ Tel₂ → Γ ⊨ F : S ≤ T →
-      Γ ⊨ Es ▹ .le F : Tel₁ ⇒ Tel₂ ▹ S ⊑ T
-  | eq : Γ ⊨ Es : Tel₁ ⇒ Tel₂ → Γ.resolve S = Γ.resolve T →
-      Γ ⊨ Es ▹ .eq : Tel₁ ⇒ Tel₂ ▹ S ≐ T
+  | le : Γ ⊨ Es : Tel₁ ⇒ Tel₂ → Tel₁.HoleAt h X Y →
+      SideTyped Γ pre S X → SideTyped Γ post Y T →
+      Γ ⊨ Es ▹ .le pre h post : Tel₁ ⇒ Tel₂ ▹ S ⊑ T
+  | eq : Γ ⊨ Es : Tel₁ ⇒ Tel₂ → Tel₁ ∋ (j ↦ X ≐ Y) →
+      Γ ⊨ Es ▹ .eq j false : Tel₁ ⇒ Tel₂ ▹ X ≐ Y
+  | eqSym : Γ ⊨ Es : Tel₁ ⇒ Tel₂ → Tel₁ ∋ (j ↦ X ≐ Y) →
+      Γ ⊨ Es ▹ .eq j true : Tel₁ ⇒ Tel₂ ▹ Y ≐ X
   | has : Γ ⊨ Es : Tel₁ ⇒ Tel₂ → Tel₁ ∋ (j ↦ ∋ ℓ) →
       Γ ⊨ Es ▹ .has j : Tel₁ ⇒ Tel₂ ▹ ∋ ℓ
 
@@ -114,6 +135,19 @@ def ChainTyped (Γ : Ctx s) (r : BVar s .var) (F : Form s) (S T : Ty s) : Prop :
 /-- `Γ ⊨[r] F : S ≤ T`: the chain of casts of an atom rooted at `r`, typed
 with shapes opened at `r`. -/
 scoped notation:40 Γ:51 " ⊨[" r "] " F:51 " : " S:51 " ≤ " T:51 => ChainTyped Γ r F S T
+
+/-! ## Instantiation and weakening of propositions and telescopes -/
+
+@[simp] theorem Telescope.substVar_nil (r : BVar s .var) :
+    (Telescope.nil : Telescope (s,x)).substVar r = .nil := rfl
+@[simp] theorem Telescope.substVar_cons (Tel : Telescope (s,x)) (P : Proposition (s,x)) (r : BVar s .var) :
+    (Tel ▹ P).substVar r = Tel.substVar r ▹ P.substVar r := rfl
+@[simp] theorem Proposition.substVar_le (S T : Ty (s,x)) (r : BVar s .var) :
+    (S ⊑ T).substVar r = S⟦r⟧ ⊑ T⟦r⟧ := rfl
+@[simp] theorem Proposition.substVar_eq (S T : Ty (s,x)) (r : BVar s .var) :
+    (S ≐ T).substVar r = S⟦r⟧ ≐ T⟦r⟧ := rfl
+@[simp] theorem Proposition.substVar_has (ℓ : Label) (r : BVar s .var) :
+    (Proposition.has (s := (s,x)) ℓ).substVar r = ∋ ℓ := rfl
 
 /-! ## Typed views -/
 
