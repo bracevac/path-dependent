@@ -24,6 +24,12 @@ intrinsic scoping a context entry lives in the signature *before* its own
 binder, so `T^x` cannot be an entry.  The two are interderivable, since
 `Rec-I` and `Rec-E` convert between `x : μ(x. T)` and `x : T^x`, and the
 shape chosen here is the one that matches `FCdot.Ctx` binder for binder.
+
+The fragment of §3.2 is enforced in the rules that need it (plan §13 item
+8): `And₁`, `And₂`, `And`, `And-I`, `Rec-I`, `Rec-E` carry `Ty.Decl` premises
+for the operands and bodies they decompose or build, and `{}-I` requires
+the definitions to be guarded.  These are the shapes the translation to
+`FCdot` can express; nothing else about DOT is restricted.
 -/
 
 namespace DotMNF
@@ -32,15 +38,22 @@ open FCdot (Kind Sig BVar Rename Label)
 
 /-! ## Contexts -/
 
-/-- A context is a list of types, newest binder first. -/
+/-- A context is a list of types, newest binder first.  A binder introduced
+by an object literal remembers the literal's definitions (`consSelf`); its
+type is `μ(x. T)` like any other binder, and `lookup` does not distinguish
+the two.  The translation of Plan III §8 does: such a binder is typed at the
+literal's precise type in the target. -/
 inductive Ctx : Sig → Type where
   | nil : Ctx []
   | cons : Ctx s → Ty s → Ctx (s,x)
+  | consSelf : Ctx s → Defs (s,x) → Ty (s,x) → Ctx (s,x)
 
 /-- The type of a variable, weakened into the current scope. -/
 def Ctx.lookup : Ctx s → BVar s .var → Ty s
   | .cons _ T, .here => T.weaken
   | .cons Γ _, .there y => (Γ.lookup y).weaken
+  | .consSelf _ _ T, .here => (Ty.mu T).weaken
+  | .consSelf Γ _ _, .there y => (Γ.lookup y).weaken
 
 /-! ## The judgments -/
 
@@ -52,9 +65,9 @@ inductive Sub : {s : Sig} → Ctx s → Ty s → Ty s → Type where
   | bot : Sub Γ .bot T
   | refl : Sub Γ T T
   | trans : Sub Γ S M → Sub Γ M T → Sub Γ S T
-  | and1 : Sub Γ (.and S T) S
-  | and2 : Sub Γ (.and S T) T
-  | and : Sub Γ S T → Sub Γ S U → Sub Γ S (.and T U)
+  | and1 : Ty.Decl S → Ty.Decl T → Sub Γ (.and S T) S
+  | and2 : Ty.Decl S → Ty.Decl T → Sub Γ (.and S T) T
+  | and : Sub Γ S T → Sub Γ S U → Ty.Decl T → Ty.Decl U → Sub Γ S (.and T U)
   | fld : Sub Γ T U → Sub Γ (.fld a T) (.fld a U)
   | typ : Sub Γ S2 S1 → Sub Γ T1 T2 → Sub Γ (.typ A S1 T1) (.typ A S2 T2)
   /-- `Sel-<:`. -/
@@ -73,10 +86,11 @@ inductive HasTy : {s : Sig} → Ctx s → Tm s → Ty s → Type where
       HasTy Γ (.path (.var x)) (.all S T) →
       HasTy Γ (.path (.var y)) S →
       HasTy Γ (.app x y) (T.substVar y)
-  /-- `{}-I`. -/
+  /-- `{}-I`.  The self binder remembers the definitions. -/
   | obj :
-      DefsTy (Γ.cons (.mu T)) d T →
+      DefsTy (Γ.consSelf d T) d T →
       Defs.Distinct d →
+      Defs.Guarded d →
       HasTy Γ (.val (.obj d)) (.mu T)
   /-- `{}-E`. -/
   | proj : HasTy Γ (.path (.var x)) (.fld a T) → HasTy Γ (.proj x a) T
@@ -85,14 +99,19 @@ inductive HasTy : {s : Sig} → Ctx s → Tm s → Ty s → Type where
       HasTy (Γ.cons T) u U.weaken →
       Ty.Wf U →
       HasTy Γ (.let t u) U
-  /-- `Rec-I`. -/
-  | recI : HasTy Γ (.path (.var x)) (T.substVar x) → HasTy Γ (.path (.var x)) (.mu T)
-  /-- `Rec-E`. -/
-  | recE : HasTy Γ (.path (.var x)) (.mu T) → HasTy Γ (.path (.var x)) (T.substVar x)
-  /-- `And-I`, on variables only. -/
+  /-- `Rec-I`, for declaration-shaped bodies. -/
+  | recI :
+      HasTy Γ (.path (.var x)) (T.substVar x) → Ty.Decl T →
+      HasTy Γ (.path (.var x)) (.mu T)
+  /-- `Rec-E`, for declaration-shaped bodies. -/
+  | recE :
+      HasTy Γ (.path (.var x)) (.mu T) → Ty.Decl T →
+      HasTy Γ (.path (.var x)) (T.substVar x)
+  /-- `And-I`, on variables only, for declaration-shaped types. -/
   | andI :
       HasTy Γ (.path (.var x)) T →
       HasTy Γ (.path (.var x)) U →
+      Ty.Decl T → Ty.Decl U →
       HasTy Γ (.path (.var x)) (.and T U)
   | sub : HasTy Γ t T → Sub Γ T U → HasTy Γ t U
 

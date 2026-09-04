@@ -162,18 +162,32 @@ inductive Ty.Decl : {s : Sig} → Ty s → Prop where
   | mu : Ty.Decl T → Ty.Decl (.mu T)
   | and : Ty.Decl S → Ty.Decl T → Ty.Decl (.and S T)
 
-/-- Well-formedness.  Structural, except that intersections are restricted to
-declaration-shaped operands.  Bounds are arbitrary: `Wf {A : S..T}` does not
-ask for `S <: T`. -/
+/-- Well-formedness.  Structural, except that intersections and recursive
+types are restricted to declaration-shaped operands and bodies.  Bounds are
+arbitrary: `Wf {A : S..T}` does not ask for `S <: T`. -/
 inductive Ty.Wf : {s : Sig} → Ty s → Prop where
   | top : Ty.Wf (.top : Ty s)
   | bot : Ty.Wf (.bot : Ty s)
   | sel : Ty.Wf (.sel p A)
   | typ : Ty.Wf S → Ty.Wf T → Ty.Wf (.typ A S T)
   | fld : Ty.Wf T → Ty.Wf (.fld a T)
-  | mu : Ty.Wf T → Ty.Wf (.mu T)
+  | mu : Ty.Wf T → Ty.Decl T → Ty.Wf (.mu T)
   | all : Ty.Wf S → Ty.Wf T → Ty.Wf (.all S T)
   | and : Ty.Wf S → Ty.Wf T → Ty.Decl S → Ty.Decl T → Ty.Wf (.and S T)
+
+/-- A type is a bare selection on the innermost binder (`x.B` under the self
+binder `x`). -/
+def Ty.isSelfSel : Ty (s,x) → Bool
+  | .sel (.var .here) _ => true
+  | _ => false
+
+/-- Guarded definitions: no type member is defined as a bare selection on the
+object's own self (`{A = x.B}`), so unfolding a definition always exposes a
+different head. -/
+inductive Defs.Guarded : {s : Sig} → Defs (s,x) → Prop where
+  | typ : T.isSelfSel = false → Defs.Guarded (.typ A T)
+  | trm : Defs.Guarded (.trm a t)
+  | and : Defs.Guarded d1 → Defs.Guarded d2 → Defs.Guarded (.and d1 d2)
 
 /-- The labels of a definition list are pairwise distinct. -/
 inductive Defs.Distinct : {s : Sig} → Defs s → Prop where
