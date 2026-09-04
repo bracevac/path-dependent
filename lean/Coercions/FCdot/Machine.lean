@@ -125,7 +125,7 @@ inductive Step : State s → State s' → Prop where
       Step ⟨σ, K, .app a b⟩
         ⟨σ, K, .cast (t₀.substAtom (.cast b d)) (c.subst (Subst.single b))⟩
   | proj :
-      σ.lookup a.root = .obj Tel W E F →
+      σ.lookup a.root = .obj W F →
       F.get? ℓ = some t →
       Step ⟨σ, K, .proj a ℓ h⟩ ⟨σ, K, t.selfAt a.root⟩
 

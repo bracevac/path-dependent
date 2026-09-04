@@ -54,6 +54,11 @@ theorem hasMember_eq {Γ : Ctx s} {a : Atom s} {e : LeCo s} {i : Nat} {S : Ty s}
     hasMember i a.root ha he = some ⟨ℓ, .member ha he hAt⟩ := by
   simp [hasMember, Telescope.getAt?_of_At hAt]
 
+theorem morHas_eq {Γ : Ctx s} {src : Telescope s} {m : Morphism s} {j : Nat} {ℓ : Label}
+    {Tel : Telescope s} (hm : Morphism.HasType Γ src m Tel) (hAt : src.At j (.has ℓ)) :
+    morHas j hm = some ⟨.cons Tel (.has ℓ), .has hm hAt⟩ := by
+  simp [morHas, Telescope.getAt?_of_At hAt]
+
 theorem atomUnfold_eq {Γ : Ctx s} {b : Atom s} {Tel : Telescope (s,x)}
     (hb : Atom.HasType Γ b (.obj Tel)) :
     atomUnfold hb = some ⟨.obj (Tel.substVar b.root).weaken, .unfoldSelf hb⟩ := rfl
@@ -115,15 +120,16 @@ theorem Has.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {hv : Has s} {y : BVar
       simp [synthHasCore, witness?_eq_some hf, hm]
 
 /-- The kernel synthesises the target telescope of every morphism derivation. -/
-theorem Morphism.HasType.complete : ∀ {s : Sig} {Γ : Ctx (s,x)} {m : Morphism (s,x)}
-    {Tel : Telescope (s,x)} (h : Morphism.HasType Γ m Tel), synthMorCore Γ m = some ⟨Tel, h⟩
-  | _, _, _, _, .nil => by simp [synthMorCore]
-  | _, _, _, _, .le hm he => by
+theorem Morphism.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
+    {Tel : Telescope s} (h : Morphism.HasType Γ src m Tel),
+      synthMorCore Γ src m = some ⟨Tel, h⟩
+  | _, _, _, _, _, .nil => by simp [synthMorCore]
+  | _, _, _, _, _, .le hm he => by
       simp [synthMorCore, Morphism.HasType.complete hm, LeCo.HasType.complete he]
-  | _, _, _, _, .eq hm hφ => by
+  | _, _, _, _, _, .eq hm hφ => by
       simp [synthMorCore, Morphism.HasType.complete hm, EqCo.HasType.complete hφ]
-  | _, _, _, _, .has hm hh => by
-      simp [synthMorCore, Morphism.HasType.complete hm, Has.HasType.complete hh]
+  | _, _, _, _, _, .has hm hAt => by
+      simp [synthMorCore, Morphism.HasType.complete hm, morHas_eq hm hAt]
 
 /-- The kernel synthesises the type of every atom derivation. -/
 theorem Atom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
@@ -168,9 +174,9 @@ theorem Value.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T : T
     (h : Value.HasType Γ v T), synthValueCore Γ v = some ⟨T, h⟩
   | _, _, _, _, .lam ht => by
       simp [synthValueCore, Tm.HasType.complete ht]
-  | _, _, _, _, .obj hg hE hF => by
+  | _, _, _, _, .obj hg hF => by
       simp only [Witnesses.Guarded] at hg
-      simp [synthValueCore, hg, Morphism.HasType.complete hE, Fields.HasType.complete hF]
+      simp [synthValueCore, hg, Fields.HasType.complete hF]
   | _, _, _, _, .cast hv he => by
       simp [synthValueCore, Value.HasType.complete hv, LeCo.HasType.complete he]
 
@@ -239,20 +245,21 @@ theorem checkHas_iff {Γ : Ctx s} {hv : Has s} {y : BVar s .var} {ℓ : Label} :
     checkHas Γ hv y ℓ = true ↔ Has.HasType Γ hv y ℓ :=
   ⟨checkHas_sound, checkHas_complete⟩
 
-theorem synthMorphism_complete {Γ : Ctx (s,x)} {m : Morphism (s,x)} {Tel : Telescope (s,x)}
-    (h : Morphism.HasType Γ m Tel) : synthMorphism Γ m = some Tel := by
+theorem synthMorphism_complete {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
+    {Tel : Telescope s} (h : Morphism.HasType Γ src m Tel) :
+    synthMorphism Γ src m = some Tel := by
   simp [synthMorphism, Morphism.HasType.complete h]
 
-theorem synthMorphism_iff {Γ : Ctx (s,x)} {m : Morphism (s,x)} {Tel : Telescope (s,x)} :
-    synthMorphism Γ m = some Tel ↔ Morphism.HasType Γ m Tel :=
+theorem synthMorphism_iff {Γ : Ctx s} {src : Telescope s} {m : Morphism s} {Tel : Telescope s} :
+    synthMorphism Γ src m = some Tel ↔ Morphism.HasType Γ src m Tel :=
   ⟨synthMorphism_sound, synthMorphism_complete⟩
 
-theorem checkMorphism_complete {Γ : Ctx (s,x)} {m : Morphism (s,x)} {Tel : Telescope (s,x)}
-    (h : Morphism.HasType Γ m Tel) : checkMorphism Γ m Tel = true :=
+theorem checkMorphism_complete {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
+    {Tel : Telescope s} (h : Morphism.HasType Γ src m Tel) : checkMorphism Γ src m Tel = true :=
   decide_eq_true (synthMorphism_complete h)
 
-theorem checkMorphism_iff {Γ : Ctx (s,x)} {m : Morphism (s,x)} {Tel : Telescope (s,x)} :
-    checkMorphism Γ m Tel = true ↔ Morphism.HasType Γ m Tel :=
+theorem checkMorphism_iff {Γ : Ctx s} {src : Telescope s} {m : Morphism s} {Tel : Telescope s} :
+    checkMorphism Γ src m Tel = true ↔ Morphism.HasType Γ src m Tel :=
   ⟨checkMorphism_sound, checkMorphism_complete⟩
 
 theorem synthAtom_complete {Γ : Ctx s} {a : Atom s} {T : Ty s} (h : Atom.HasType Γ a T) :
@@ -339,9 +346,9 @@ theorem Has.HasType.label_unique {Γ : Ctx s} {hv : Has s} {y : BVar s .var} {�
   have := (synthHas_complete h).symm.trans (synthHas_complete h')
   simpa using this
 
-theorem Morphism.HasType.telescope_unique {Γ : Ctx (s,x)} {m : Morphism (s,x)}
-    {Tel Tel' : Telescope (s,x)} (h : Morphism.HasType Γ m Tel)
-    (h' : Morphism.HasType Γ m Tel') : Tel = Tel' := by
+theorem Morphism.HasType.telescope_unique {Γ : Ctx s} {src : Telescope s} {m : Morphism s}
+    {Tel Tel' : Telescope s} (h : Morphism.HasType Γ src m Tel)
+    (h' : Morphism.HasType Γ src m Tel') : Tel = Tel' := by
   have := (synthMorphism_complete h).symm.trans (synthMorphism_complete h')
   simpa using this
 
@@ -395,9 +402,9 @@ theorem Value.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T 
   | _, _, _, _, _, .lam ht, h' => by
       cases h' with
       | lam ht' => rw [Tm.HasType.type_unique ht ht']
-  | _, _, _, _, _, .obj _ _ _, h' => by
+  | _, _, _, _, _, .obj _ _, h' => by
       cases h' with
-      | obj _ _ _ => rfl
+      | obj _ _ => rfl
   | _, _, _, _, _, .cast _ he, h' => by
       cases h' with
       | cast _ he' => exact (he.endpoints_unique he').2

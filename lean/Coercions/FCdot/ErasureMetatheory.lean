@@ -129,7 +129,7 @@ theorem Value.erase_rename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
     (v.rename ρ).erase = v.erase.rename ρ := by
   match v with
   | .lam S t => simp [Value.rename, Value.erase, Runtime.Tm.rename, Tm.erase_rename t]
-  | .obj Tel W E F =>
+  | .obj W F =>
       simp [Value.rename, Value.erase, Runtime.Tm.rename, Fields.erase_rename F]
   | .cast v e => simp [Value.rename, Value.erase, Value.erase_rename v]
 
@@ -190,7 +190,7 @@ theorem Value.erase_subst {s1 s2 : Sig} (v : Value s1) (σ : Subst s1 s2) :
     (v.subst σ).erase = v.erase.rename σ.root := by
   match v with
   | .lam S t => simp [Value.subst, Value.erase, Runtime.Tm.rename, Tm.erase_subst t]
-  | .obj Tel W E F =>
+  | .obj W F =>
       simp [Value.subst, Value.erase, Runtime.Tm.rename, Fields.erase_subst F]
   | .cast v e => simp [Value.subst, Value.erase, Value.erase_subst v]
 
@@ -230,7 +230,7 @@ theorem Tm.erase_adjust {s : Sig} (u : Tm (s,x)) (v : Value s) :
 /-- Cast wrappers on a value are invisible to the erasure. -/
 theorem Value.erase_core {s : Sig} : ∀ v : Value s, v.core.erase = v.erase
   | .lam _ _ => rfl
-  | .obj _ _ _ _ => rfl
+  | .obj _ _ => rfl
   | .cast v _ => by simp [Value.core, Value.erase, Value.erase_core v]
 
 /-- Store lookup commutes with erasure. -/
@@ -253,7 +253,7 @@ theorem Fields.erase_get? {s : Sig} :
 /-- Every erased value is a runtime value. -/
 theorem Value.erase_isValue {s : Sig} : ∀ v : Value s, Runtime.IsValue v.erase
   | .lam _ _ => .lam
-  | .obj _ _ _ _ => .obj
+  | .obj _ _ => .obj
   | .cast v _ => by simpa [Value.erase] using Value.erase_isValue v
 
 /-! ## Store entries are literals -/
@@ -262,7 +262,7 @@ theorem Value.erase_isValue {s : Sig} : ∀ v : Value s, Runtime.IsValue v.erase
 theorem Value.isLiteral_rename {s1 s2 : Sig} :
     ∀ (v : Value s1) (ρ : Rename s1 s2), v.IsLiteral → (v.rename ρ).IsLiteral
   | .lam _ _, _, _ => trivial
-  | .obj _ _ _ _, _, _ => trivial
+  | .obj _ _, _, _ => trivial
   | .cast _ _, _, h => h.elim
 
 /-- Entries of a typed store are literals, in any scope. -/
@@ -281,16 +281,15 @@ theorem Value.erase_eq_lam {s : Sig} :
     ∀ (v : Value s) (t' : Runtime.Tm (s,x)), v.IsLiteral → v.erase = .lam t' →
       ∃ (S₀ : Ty s) (t₀ : Tm (s,x)), v = .lam S₀ t₀ ∧ t₀.erase = t'
   | .lam S t, t', _, h => ⟨S, t, rfl, by simpa [Value.erase] using h⟩
-  | .obj _ _ _ _, t', _, h => by simp [Value.erase] at h
+  | .obj _ _, t', _, h => by simp [Value.erase] at h
   | .cast _ _, _, hlit, _ => hlit.elim
 
 /-- A literal whose erasure is a runtime object is an object. -/
 theorem Value.erase_eq_obj {s : Sig} :
     ∀ (v : Value s) (F' : Runtime.Fields (s,x)), v.IsLiteral → v.erase = .obj F' →
-      ∃ (Tel : Telescope (s,x)) (W : Witnesses (s,x)) (E : Morphism (s,x)) (F : Fields (s,x)),
-        v = .obj Tel W E F ∧ F.erase = F'
+      ∃ (W : Witnesses (s,x)) (F : Fields (s,x)), v = .obj W F ∧ F.erase = F'
   | .lam _ _, F', _, h => by simp [Value.erase] at h
-  | .obj Tel W E F, F', _, h => ⟨Tel, W, E, F, rfl, by simpa [Value.erase] using h⟩
+  | .obj W F, F', _, h => ⟨W, F, rfl, by simpa [Value.erase] using h⟩
   | .cast _ _, _, hlit, _ => hlit.elim
 
 end FCdot
@@ -584,7 +583,7 @@ theorem erase_reflect_aux {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {�
         ∃ st' : State s'', Step (⟨σ, K, .proj a ℓ hh⟩ : State s) st' ∧ st'.erase = r') h ?_
       intro F' t' hlk hg
       rw [Store.lookup_erase] at hlk
-      obtain ⟨Tel, W, E, F, hv, hF⟩ :=
+      obtain ⟨W, F, hv, hF⟩ :=
         Value.erase_eq_obj _ F' (hσ.lookup_isLiteral a.root) hlk
       subst hF
       rw [Fields.erase_get?] at hg

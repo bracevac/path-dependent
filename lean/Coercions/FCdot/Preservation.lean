@@ -35,32 +35,32 @@ theorem Value.witnesses_rename {s1 s2 : Sig} :
     ∀ (v : Value s1) (ρ : Rename s1 s2),
       (v.rename ρ).witnesses = v.witnesses.rename ρ.lift
   | .lam S t, ρ => by simp [Value.rename, Value.witnesses, Witnesses.rename]
-  | .obj Tel W E F, ρ => by simp [Value.rename, Value.witnesses]
+  | .obj W F, ρ => by simp [Value.rename, Value.witnesses]
   | .cast v e, ρ => by
       simp [Value.rename, Value.witnesses, Value.witnesses_rename v ρ]
 
 theorem Value.fieldLabels_rename {s1 s2 : Sig} :
     ∀ (v : Value s1) (ρ : Rename s1 s2), (v.rename ρ).fieldLabels = v.fieldLabels
   | .lam S t, ρ => by simp [Value.rename, Value.fieldLabels]
-  | .obj Tel W E F, ρ => by simp [Value.rename, Value.fieldLabels]
+  | .obj W F, ρ => by simp [Value.rename, Value.fieldLabels]
   | .cast v e, ρ => by
       simp [Value.rename, Value.fieldLabels, Value.fieldLabels_rename v ρ]
 
 theorem Value.core_witnesses {s : Sig} :
     ∀ v : Value s, v.core.witnesses = v.witnesses
   | .lam _ _ => rfl
-  | .obj _ _ _ _ => rfl
+  | .obj _ _ => rfl
   | .cast v _ => by simp [Value.core, Value.witnesses, Value.core_witnesses v]
 
 theorem Value.core_fieldLabels {s : Sig} :
     ∀ v : Value s, v.core.fieldLabels = v.fieldLabels
   | .lam _ _ => rfl
-  | .obj _ _ _ _ => rfl
+  | .obj _ _ => rfl
   | .cast v _ => by simp [Value.core, Value.fieldLabels, Value.core_fieldLabels v]
 
 theorem Value.core_isLiteral {s : Sig} : ∀ v : Value s, v.core.IsLiteral
   | .lam _ _ => trivial
-  | .obj _ _ _ _ => trivial
+  | .obj _ _ => trivial
   | .cast v _ => by simpa [Value.core] using Value.core_isLiteral v
 
 /-! ## Composites of cast wrappers -/
@@ -88,7 +88,7 @@ theorem Value.HasType.coreDecomp {s : Sig} {Γ : Ctx s} :
   | .lam S t, T, h =>
       ⟨T, by simpa [Value.core] using h, by simp [Value.core, Value.IsLiteral],
         Or.inl ⟨by simp [Value.composite?, Value.coercions], rfl⟩⟩
-  | .obj Tel W E F, T, h =>
+  | .obj W F, T, h =>
       ⟨T, by simpa [Value.core] using h, by simp [Value.core, Value.IsLiteral],
         Or.inl ⟨by simp [Value.composite?, Value.coercions], rfl⟩⟩
   | .cast v e, T, h => by
@@ -185,14 +185,14 @@ theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {S₀ : Ty s} {t₀ : Tm (s
   cases h with
   | lam ht => exact ⟨_, rfl, ht⟩
 
-theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)}
-    {W : Witnesses (s,x)} {E : Morphism (s,x)} {F : Fields (s,x)} {T : Ty s}
-    (h : Value.HasType Γ (.obj Tel W E F) T) :
-    T = .obj Tel ∧ W.Guarded ∧
-      Morphism.HasType (Γ.cons (.transparent .top W F.labels)) E Tel ∧
-      Fields.HasType (Γ.cons (.transparent (.obj Tel) W F.labels)) F := by
+theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s}
+    {W : Witnesses (s,x)} {F : Fields (s,x)} {T : Ty s}
+    (h : Value.HasType Γ (.obj W F) T) :
+    T = .obj (Telescope.ofLiteral W F.labels) ∧ W.Guarded ∧
+      Fields.HasType
+        (Γ.cons (.transparent (.obj (Telescope.ofLiteral W F.labels)) W F.labels)) F := by
   cases h with
-  | obj hG hE hF => exact ⟨rfl, hG, hE, hF⟩
+  | obj hG hF => exact ⟨rfl, hG, hF⟩
 
 theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} :
     ∀ (F : Fields (s,x)), Fields.HasType Γ F → ∀ (l : Label) (t : Tm (s,x)),
@@ -432,13 +432,13 @@ theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
           refine Tm.HasType.cast ?_ hcod'
           have := Tm.HasType.substAtom ht₀ (Atom.HasType.cast hb hdom)
           simpa [Atom.root] using this
-  | @proj t σ K a l h Tel W E F hx hg =>
+  | @proj t σ K a l h W F hx hg =>
       obtain ⟨Γ, T, hσ, ht, hK⟩ := hT
       cases ht with
       | proj ha hh =>
           have hval := hσ.lookup a.root
           rw [hx] at hval
-          obtain ⟨hTe, hG, hE, hF⟩ := Value.HasType.obj_inv hval
+          obtain ⟨hTe, hG, hF⟩ := Value.HasType.obj_inv hval
           have hdef : ∀ l', Γ.lookupDef a.root l' = some ((W.get l').substVar a.root) := by
             intro l'
             have hlk := hσ.lookupDef a.root l'

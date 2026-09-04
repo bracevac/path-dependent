@@ -204,10 +204,9 @@ theorem LeCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subs
       have hf' := hf.subst (hσ.lift _)
       simp only [Subst.lift_root, Binding.rename_opaque] at hf'
       exact .pi (he.subst hσ) hf'
-  | .obj hm =>
-      have hm' := Morphism.HasType.subst (hσ.lift _) hm
-      simp only [Binding.rename_opaque, Ty.rename] at hm'
-      exact .obj hm'
+  | @LeCo.HasType.obj _ _ Tel m Tel' hm =>
+      have := LeCo.HasType.obj (Morphism.HasType.subst hσ hm)
+      simpa [LeCo.subst, Ty.rename, Telescope.weaken_rename] using this
   | @LeCo.HasType.member _ _ a S e Tel i S' T' ha he hAt =>
       have := LeCo.HasType.member (a := a.subst σ) (ha.subst hσ)
         (by simpa [Ty.rename] using he.subst hσ) (hAt.rename σ.root.lift)
@@ -237,24 +236,16 @@ theorem Has.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst
       simpa [Has.subst] using this
   | .field hf hm => exact .field (hσ.fields _ _ hf) hm
 
-theorem Morphism.HasType.subst {s1 s2 : Sig} {Γ : Ctx (s1,x)} {Γ' : Ctx (s2,x)}
-    {σ : Subst s1 s2} {m : Morphism (s1,x)} {Tel : Telescope (s1,x)}
-    (hσ : Subst.Typed Γ σ.lift Γ') (h : Morphism.HasType Γ m Tel) :
-    Morphism.HasType Γ' (m.subst σ.lift) (Tel.rename σ.root.lift) := by
+theorem Morphism.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
+    {σ : Subst s1 s2} {src : Telescope s1} {m : Morphism s1} {Tel : Telescope s1}
+    (hσ : Subst.Typed Γ σ Γ') (h : Morphism.HasType Γ src m Tel) :
+    Morphism.HasType Γ' (src.rename σ.root) (m.subst σ) (Tel.rename σ.root) := by
   match h with
   | .nil => exact .nil
-  | .le hm he =>
-      have := he.subst hσ
-      simp only [Subst.lift_root] at this
-      exact .le (hm.subst hσ) this
-  | .eq hm hφ =>
-      have := hφ.subst hσ
-      simp only [Subst.lift_root] at this
-      exact .eq (hm.subst hσ) this
-  | .has hm hh =>
-      have := hh.subst hσ
-      simp only [Subst.lift_root, Rename.lift_here] at this
-      exact .has (hm.subst hσ) this
+  | .le hm he => exact .le (hm.subst hσ) (he.subst hσ)
+  | .eq hm hφ => exact .eq (hm.subst hσ) (hφ.subst hσ)
+  | @Morphism.HasType.has _ _ _ _ _ j l hm hAt =>
+      exact .has (hm.subst hσ) (by simpa [Proposition.rename] using hAt.rename σ.root)
 
 theorem Atom.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {a : Atom s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Atom.HasType Γ a T) :
@@ -307,12 +298,12 @@ theorem Value.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Sub
   | .lam ht =>
       have := ht.subst (hσ.lift _)
       simpa [Value.subst, Ty.rename] using Value.HasType.lam (by simpa using this)
-  | .obj hG hE hF =>
-      refine .obj (Witnesses.Guarded.rename σ.root hG) ?_ ?_
-      · have := Morphism.HasType.subst (hσ.lift _) hE
-        simpa using this
-      · have := Fields.HasType.subst (hσ.lift _) hF
-        simpa [Ty.rename] using this
+  | @Value.HasType.obj _ F0 _ W0 hG hF =>
+      have hF' := Fields.HasType.subst (hσ.lift _) hF
+      have := Value.HasType.obj (Γ := Γ') (W := W0.rename σ.root.lift) (F := F0.subst σ.lift)
+        (Witnesses.Guarded.rename σ.root hG)
+        (by simpa [Binding.rename, Ty.rename, Telescope.ofLiteral_rename] using hF')
+      simpa [Value.subst, Ty.rename, Telescope.ofLiteral_rename] using this
   | .cast hv he => exact .cast (hv.subst hσ) (he.subst hσ)
 
 theorem Fields.HasType.subst {s1 s2 : Sig} {Γ : Ctx (s1,x)} {Γ' : Ctx (s2,x)}

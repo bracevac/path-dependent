@@ -23,9 +23,11 @@ inductive LeCo.HasType : Ctx s → LeCo s → Ty s → Ty s → Prop where
       LeCo.HasType Γ e S2 S1 →
       LeCo.HasType (Γ.cons (.opaque S2)) f T1 T2 →
       LeCo.HasType Γ (.pi e f) (.pi S1 T1) (.pi S2 T2)
+  /-- Object coercion between opened telescopes: the morphism proves the target's
+      propositions in `Γ`; presence propositions are inherited from the source. -/
   | obj :
-      Morphism.HasType (Γ.cons (.opaque (.obj Tel))) m Tel' →
-      LeCo.HasType Γ (.obj Tel m) (.obj Tel) (.obj Tel')
+      Morphism.HasType Γ Tel m Tel' →
+      LeCo.HasType Γ (.obj Tel m) (.obj Tel.weaken) (.obj Tel'.weaken)
   | member :
       Atom.HasType Γ a S →
       LeCo.HasType Γ e S (.obj Tel) →
@@ -54,15 +56,17 @@ inductive Has.HasType : Ctx s → Has s → BVar s .var → Label → Prop where
       Γ.lookupFields x = some Fs → ℓ ∈ Fs →
       Has.HasType Γ (.field ℓ) x ℓ
 
-/-- A morphism proves every proposition of a telescope at the innermost binder. -/
-inductive Morphism.HasType : Ctx (s,x) → Morphism (s,x) → Telescope (s,x) → Prop where
-  | nil : Morphism.HasType Γ .nil .nil
-  | le : Morphism.HasType Γ m Tel → LeCo.HasType Γ e S T →
-      Morphism.HasType Γ (.le m e) (.cons Tel (.le S T))
-  | eq : Morphism.HasType Γ m Tel → EqCo.HasType Γ φ S T →
-      Morphism.HasType Γ (.eq m φ) (.cons Tel (.eq S T))
-  | has : Morphism.HasType Γ m Tel → Has.HasType Γ h .here ℓ →
-      Morphism.HasType Γ (.has m h) (.cons Tel (.has ℓ))
+/-- `Morphism.HasType Γ src m Tel`: `m` proves every proposition of the opened
+telescope `Tel` in `Γ`; a presence proposition is inherited from the opened
+source telescope `src` by index. -/
+inductive Morphism.HasType : Ctx s → Telescope s → Morphism s → Telescope s → Prop where
+  | nil : Morphism.HasType Γ src .nil .nil
+  | le : Morphism.HasType Γ src m Tel → LeCo.HasType Γ e S T →
+      Morphism.HasType Γ src (.le m e) (.cons Tel (.le S T))
+  | eq : Morphism.HasType Γ src m Tel → EqCo.HasType Γ φ S T →
+      Morphism.HasType Γ src (.eq m φ) (.cons Tel (.eq S T))
+  | has : Morphism.HasType Γ src m Tel → src.At j (.has ℓ) →
+      Morphism.HasType Γ src (.has m j) (.cons Tel (.has ℓ))
 
 inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where
   | var : Atom.HasType Γ (.var x) (Γ.lookupTy x)
@@ -101,15 +105,12 @@ inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
   | lam :
       Tm.HasType (Γ.cons (.opaque S)) t T →
       Value.HasType Γ (.lam S t) (.pi S T)
-  /-- The telescope evidence is checked with the self binder at type `⊤`:
-      only the definitions and fields are available, so an object cannot
-      discharge its own telescope by assuming it.  Fields are typed with the
-      self binder at the declared object type. -/
+  /-- An object literal has its precise type, generated from its witnesses and
+      fields.  Fields are typed with the self binder at that type. -/
   | obj :
       W.Guarded →
-      Morphism.HasType (Γ.cons (.transparent .top W F.labels)) E Tel →
-      Fields.HasType (Γ.cons (.transparent (.obj Tel) W F.labels)) F →
-      Value.HasType Γ (.obj Tel W E F) (.obj Tel)
+      Fields.HasType (Γ.cons (.transparent (.obj (Telescope.ofLiteral W F.labels)) W F.labels)) F →
+      Value.HasType Γ (.obj W F) (.obj (Telescope.ofLiteral W F.labels))
   | cast : Value.HasType Γ v S → LeCo.HasType Γ e S T → Value.HasType Γ (.cast v e) T
 
 /-- Each field `ℓ = t` has type `self.ℓ`. -/

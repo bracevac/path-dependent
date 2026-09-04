@@ -1,29 +1,18 @@
-import Coercions.FCdot.CanonicalTyped
+import Coercions.FCdot.Canonical
+import Coercions.FCdot.Typing
+import Coercions.FCdot.TypingRename
 
 /-!
-# Resolution, chains, and depth monotonicity
+# Resolution through transparent definitions
 
-Three independent pieces of infrastructure for the canonical-forms
-development.
-
-*Resolution.*  `Ctx.resolve` follows transparent definitions at the head of a
-type with a fixed fuel budget `Γ.length + 1`.  That budget suffices because an
-alias chain strictly increases the de Bruijn index of the selected binder: a
+`Ctx.resolve` follows transparent definitions at the head of a type with a
+fixed fuel budget `Γ.length + 1`.  That budget suffices because an alias
+chain strictly increases the de Bruijn index of the selected binder: a
 binder's definition mentions only the binder itself or older binders
 (`Ctx.lookupDef_sel_le`), and guardedness rules out the binder itself
 (`Ctx.WellDefined`).  Hence `resolve` is idempotent and commutes with one
 unfolding step, and store contexts are well-defined
 (`Store.Typed.wellDefined`).
-
-*Chains.*  A well-typed chain of object-coercion steps composes: chains
-concatenate (`ChainWellTyped_append`), a one-step chain closes to a typed
-object coercion (`ChainWellTyped.close_typed`), and casting an atom through
-every step of a chain transports it from the chain's source to its target
-(`ChainWellTyped_chainAtom`).
-
-*Depth.*  `FormTyped` is indexed by a proof-theoretic budget.  The applicative
-clause of the object case quantifies over all input depths `j' ≤ j`, which
-makes the whole predicate downward closed in the depth without any induction.
 -/
 
 namespace FCdot
@@ -299,7 +288,8 @@ theorem Value.witnesses_guarded {Γ : Ctx s} {v : Value s} {T : Ty s}
     (hlit : v.IsLiteral) (hv : Value.HasType Γ v T) : v.witnesses.Guarded := by
   cases v with
   | lam S t => rfl
-  | obj Tel W E F => exact (hv.obj_inv).2.1
+  | obj W F => cases hv with
+      | obj hg _ => exact hg
   | cast v e => exact absurd hlit (by simp [Value.IsLiteral])
 
 theorem Store.Typed.wellDefined {σ : Store s} {Γ : Ctx s} (h : Store.Typed σ Γ) :
@@ -327,280 +317,5 @@ theorem Store.Typed.wellDefined {σ : Store s} {Γ : Ctx s} (h : Store.Typed σ 
               subst hW
               exact absurd hd (ih y ℓ ℓ')
 
-/-! ## Chains of object-coercion steps -/
-
-section
-
-variable {s : Sig} {Γ : Ctx s}
-
-/-- Cast an atom through every step of a chain, in order. -/
-def ChainStep.chainAtom' : List (ChainStep s) → Atom s → Atom s
-  | [], a => a
-  | c :: cs, a => ChainStep.chainAtom' cs (.cast a c.close)
-
-@[simp] theorem ChainStep.chainAtom'_nil (a : Atom s) :
-    ChainStep.chainAtom' [] a = a := rfl
-
-@[simp] theorem ChainStep.chainAtom'_cons (c : ChainStep s) (cs : List (ChainStep s))
-    (a : Atom s) :
-    ChainStep.chainAtom' (c :: cs) a = ChainStep.chainAtom' cs (.cast a c.close) := rfl
-
-/-- Chains concatenate. -/
-theorem ChainWellTyped_append :
-    ∀ (cs₁ : List (ChainStep s)) {cs₂ : List (ChainStep s)} {S M T : Ty s},
-      ChainWellTyped Γ cs₁ S M → ChainWellTyped Γ cs₂ M T →
-      ChainWellTyped Γ (cs₁ ++ cs₂) S T := by
-  intro cs₁
-  induction cs₁ with
-  | nil =>
-      intro cs₂ S M T h1 h2
-      rw [ChainWellTyped] at h1
-      subst h1
-      exact h2
-  | cons c cs ih =>
-      intro cs₂ S M T h1 h2
-      cases c with
-      | conv φ =>
-          obtain ⟨S', hφ, hres, hrest⟩ := h1
-          exact ⟨S', hφ, hres, ih hrest h2⟩
-      | clos s' Tel m η =>
-          obtain ⟨Δ, Tel₂, hm, hη, hS, hrest⟩ := h1
-          exact ⟨Δ, Tel₂, hm, hη, hS, ih hrest h2⟩
-
-/-- A one-step chain closes to a typed coercion. -/
-theorem ChainWellTyped.close_typed {c : ChainStep s} {S T : Ty s}
-    (h : ChainWellTyped Γ [c] S T) : LeCo.HasType Γ c.close S T := by
-  cases c with
-  | conv φ =>
-      obtain ⟨S', hφ, _, hrest⟩ := h
-      rw [ChainWellTyped] at hrest
-      subst hrest
-      exact .eqToLe hφ
-  | clos s' Tel m η =>
-      obtain ⟨Δ, Tel₂, hm, hη, hS, hrest⟩ := h
-      rw [ChainWellTyped] at hrest
-      subst hS
-      subst hrest
-      have hm' := Morphism.HasType.subst (σ := η.toSubst) (hη.lift (.opaque (.obj Tel))) hm
-      simp only [Binding.rename_opaque, Ty.rename] at hm'
-      exact .obj hm'
-
-/-- Casting an atom through a well-typed chain transports it from the
-chain's source to its target. -/
-theorem ChainWellTyped_chainAtom :
-    ∀ (cs : List (ChainStep s)) {S T : Ty s} {a : Atom s},
-      ChainWellTyped Γ cs S T → Atom.HasType Γ a S →
-      Atom.HasType Γ (ChainStep.chainAtom' cs a) T := by
-  intro cs
-  induction cs with
-  | nil =>
-      intro S T a h ha
-      rw [ChainWellTyped] at h
-      subst h
-      exact ha
-  | cons c cs ih =>
-      intro S T a h ha
-      cases c with
-      | conv φ =>
-          obtain ⟨S', hφ, hres, hrest⟩ := h
-          refine ih hrest (Atom.HasType.cast ha ?_)
-          exact ChainWellTyped.close_typed (c := .conv φ) ⟨S', hφ, hres, rfl⟩
-      | clos s' Tel m η =>
-          obtain ⟨Δ, Tel₂, hm, hη, hS, hrest⟩ := h
-          subst hS
-          refine ih hrest (Atom.HasType.cast ha ?_)
-          exact ChainWellTyped.close_typed (c := .clos s' Tel m η) ⟨Δ, Tel₂, hm, hη, rfl, rfl⟩
-
-end
-
-/-! ## The fuel-loss budget -/
-
-@[simp] theorem fuelLoss_zero : fuelLoss 0 = 0 := rfl
-
-theorem fuelLoss_succ (n : Nat) : fuelLoss (n + 1) = 2 * fuelLoss n + 1 := by
-  have h : 1 ≤ 2 ^ n := Nat.one_le_two_pow
-  simp only [fuelLoss, Nat.pow_succ]
-  omega
-
-theorem fuelLoss_mono {m n : Nat} (h : m ≤ n) : fuelLoss m ≤ fuelLoss n := by
-  simp only [fuelLoss]
-  exact Nat.sub_le_sub_right (Nat.pow_le_pow_right (by omega) h) 1
-
-theorem fuelLoss_add_le (a b : Nat) : fuelLoss a + fuelLoss b ≤ fuelLoss (max a b + 1) := by
-  have ha : 2 ^ a ≤ 2 ^ (max a b) := Nat.pow_le_pow_right (by omega) (Nat.le_max_left a b)
-  have hb : 2 ^ b ≤ 2 ^ (max a b) := Nat.pow_le_pow_right (by omega) (Nat.le_max_right a b)
-  have h1 : 1 ≤ 2 ^ a := Nat.one_le_two_pow
-  have h2 : 1 ≤ 2 ^ b := Nat.one_le_two_pow
-  simp only [fuelLoss, Nat.pow_succ]
-  omega
-
-/-! ## Depth monotonicity -/
-
-section
-
-variable {s : Sig} {σ : Store s} {Γ : Ctx s}
-
-/-- Typedness of a proposition form is monotone in the form predicate. -/
-theorem PropFormTypedWith_mono {FT FT' : Form s → Ty s → Ty s → Prop}
-    (hm : ∀ F S T, FT F S T → FT' F S T) {P : Option (PropForm s)} {Q : Proposition s}
-    {r : BVar s .var} (h : PropFormTypedWith σ Γ FT P Q r) :
-    PropFormTypedWith σ Γ FT' P Q r := by
-  cases P with
-  | none => exact absurd h (by simp [PropFormTypedWith])
-  | some Pf =>
-      cases Pf with
-      | le F =>
-          cases Q with
-          | le S T => exact hm _ _ _ h
-          | eq S T => exact absurd h (by simp [PropFormTypedWith])
-          | has ℓ => exact absurd h (by simp [PropFormTypedWith])
-      | eq =>
-          cases Q with
-          | le S T => exact absurd h (by simp [PropFormTypedWith])
-          | eq S T => exact h
-          | has ℓ => exact absurd h (by simp [PropFormTypedWith])
-      | has y ℓ =>
-          cases Q with
-          | le S T => exact absurd h (by simp [PropFormTypedWith])
-          | eq S T => exact absurd h (by simp [PropFormTypedWith])
-          | has ℓ' => exact h
-
-/-- Typedness of a view is monotone in the form predicate. -/
-theorem ViewTypedWith_mono {FT FT' : Form s → Ty s → Ty s → Prop}
-    (hm : ∀ F S T, FT F S T → FT' F S T) {V : View s} {Tel : Telescope (s,x)} {a : Atom s}
-    (h : ViewTypedWith σ Γ FT V Tel a) : ViewTypedWith σ Γ FT' V Tel a :=
-  fun i P hP => PropFormTypedWith_mono hm (h i P hP)
-
-/-- Form typedness is downward closed in the depth. -/
-theorem FormTyped_mono {k k' : Nat} {F : Form s} {S T : Ty s}
-    (hk : k' ≤ k) (h : FormTyped σ Γ k F S T) : FormTyped σ Γ k' F S T := by
-  cases F with
-  | bot => rw [FormTyped] at h ⊢; exact h
-  | top => rw [FormTyped] at h ⊢; exact h
-  | id => rw [FormTyped] at h ⊢; exact h
-  | eqv φ => rw [FormTyped] at h ⊢; exact h
-  | pi d c => rw [FormTyped] at h ⊢; exact h
-  | obj cs =>
-      cases k' with
-      | zero =>
-          cases k with
-          | zero => exact h
-          | succ j =>
-              rw [FormTyped] at h
-              rw [FormTyped]
-              obtain ⟨Tel₁, Tel₂, h1, h2, h3, _⟩ := h
-              exact ⟨Tel₁, Tel₂, h1, h2, h3⟩
-      | succ j' =>
-          cases k with
-          | zero => omega
-          | succ j =>
-              rw [FormTyped] at h ⊢
-              obtain ⟨Tel₁, Tel₂, h1, h2, h3, hcl⟩ := h
-              refine ⟨Tel₁, Tel₂, h1, h2, h3, fun a ha V => ?_⟩
-              obtain ⟨t, L, hcl'⟩ := hcl a ha V
-              exact ⟨t, L, fun j'' ht hle => hcl' j'' ht (by omega)⟩
-
-/-- The depth-independent content of form typedness. -/
-theorem FormTyped_shape_mono {k : Nat} {F : Form s} {S T : Ty s}
-    (h : FormTyped σ Γ k F S T) : FormTyped σ Γ 0 F S T :=
-  FormTyped_mono (Nat.zero_le k) h
-
-/-- Away from object forms, typedness does not depend on the depth at all. -/
-theorem FormTyped_mono_nonObj {k k' : Nat} {F : Form s} {S T : Ty s}
-    (hF : ∀ cs, F ≠ .obj cs) :
-    FormTyped σ Γ k F S T ↔ FormTyped σ Γ k' F S T := by
-  cases F with
-  | bot => rw [FormTyped, FormTyped]
-  | top => rw [FormTyped, FormTyped]
-  | id => rw [FormTyped, FormTyped]
-  | eqv φ => rw [FormTyped, FormTyped]
-  | pi d c => rw [FormTyped, FormTyped]
-  | obj cs => exact absurd rfl (hF cs)
-
-theorem ViewTyped_mono {k k' : Nat} {V : View s} {Tel : Telescope (s,x)} {a : Atom s}
-    (hk : k' ≤ k) (h : ViewTyped σ Γ k V Tel a) : ViewTyped σ Γ k' V Tel a :=
-  ViewTypedWith_mono (fun _ _ _ hF => FormTyped_mono hk hF) h
-
-theorem PropFormTyped_mono {k k' : Nat} {P : Option (PropForm s)} {Q : Proposition s}
-    {r : BVar s .var} (hk : k' ≤ k) (h : PropFormTyped σ Γ k P Q r) :
-    PropFormTyped σ Γ k' P Q r :=
-  PropFormTypedWith_mono (fun _ _ _ hF => FormTyped_mono hk hF) h
-
-theorem EnvCanon_mono {s' : Sig} {k k' : Nat} {η : Env s s'} {Δ : Ctx s'}
-    (hk : k' ≤ k) (h : EnvCanon σ Γ k η Δ) : EnvCanon σ Γ k' η Δ :=
-  ⟨h.1, fun y Tel hy => ViewTyped_mono hk (h.2.1 y Tel hy), h.2.2⟩
-
-end
-
-/-! ## Building views telescope by telescope -/
-
-namespace Depth
-
-/-- Indexing below the split point ignores the appended tail. -/
-theorem nth?_append_lt : ∀ (V V' : View s) (i : Nat), i < V.length →
-    View.nth? (V ++ V') i = View.nth? V i
-  | [], _, i, h => by simp at h
-  | _ :: V, V', 0, _ => rfl
-  | _ :: V, V', i + 1, h => by
-      simp only [List.cons_append, View.nth?]
-      exact nth?_append_lt V V' i (by simpa using h)
-
-/-- Indexing exactly at the split point returns the appended element. -/
-theorem nth?_append_length : ∀ (V : View s) (P : PropForm s),
-    View.nth? (V ++ [P]) V.length = some P
-  | [], P => rfl
-  | Q :: V, P => by
-      simp only [List.cons_append, List.length_cons, View.nth?]
-      exact nth?_append_length V P
-
-end Depth
-
-/-- A telescope position is below the telescope's length. -/
-theorem Telescope.At.lt {s : Sig} {Tel : Telescope s} {i : Nat} {P : Proposition s}
-    (h : Tel.At i P) : i < Tel.length := by
-  induction h with
-  | @here Tel P => simp [Telescope.length]
-  | there _ ih => simp [Telescope.length]; omega
-
-section
-
-variable {s : Sig} {σ : Store s} {Γ : Ctx s}
-
-@[simp] theorem PropFormTypedWith_le_iff {FT : Form s → Ty s → Ty s → Prop}
-    {F : Form s} {S T : Ty s} {r : BVar s .var} :
-    PropFormTypedWith σ Γ FT (some (.le F)) (.le S T) r ↔ FT F S T := Iff.rfl
-
-@[simp] theorem PropFormTypedWith_eq_iff {FT : Form s → Ty s → Ty s → Prop}
-    {S T : Ty s} {r : BVar s .var} :
-    PropFormTypedWith σ Γ FT (some .eq) (.eq S T) r ↔ Γ.resolve S = Γ.resolve T := Iff.rfl
-
-@[simp] theorem PropFormTypedWith_has_iff {FT : Form s → Ty s → Ty s → Prop}
-    {y : BVar s .var} {ℓ ℓ' : Label} {r : BVar s .var} :
-    PropFormTypedWith σ Γ FT (some (.has y ℓ)) (.has ℓ') r ↔
-      (y = r ∧ ℓ = ℓ' ∧ σ.HasField r ℓ) := Iff.rfl
-
-/-- The empty view is typed against the empty telescope. -/
-theorem ViewTypedWith_nil {FT : Form s → Ty s → Ty s → Prop} {a : Atom s} :
-    ViewTypedWith σ Γ FT [] (.nil : Telescope (s,x)) a := by
-  intro i P h
-  cases h
-
-/-- Extending a view and its telescope in lockstep. -/
-theorem ViewTypedWith_cons {FT : Form s → Ty s → Ty s → Prop} {V : View s}
-    {Tel : Telescope (s,x)} {P : Proposition (s,x)} {P' : PropForm s} {a : Atom s}
-    (hlen : V.length = Tel.length)
-    (hV : ViewTypedWith σ Γ FT V Tel a)
-    (hP : PropFormTypedWith σ Γ FT (some P') (P.substVar a.root) a.root) :
-    ViewTypedWith σ Γ FT (V ++ [P']) (.cons Tel P) a := by
-  intro i Q hQ
-  cases hQ with
-  | here =>
-      rw [← hlen, Depth.nth?_append_length]
-      exact hP
-  | there hQ' =>
-      rw [Depth.nth?_append_lt _ _ _ (by rw [hlen]; exact hQ'.lt)]
-      exact hV i Q hQ'
-
-end
 
 end FCdot
