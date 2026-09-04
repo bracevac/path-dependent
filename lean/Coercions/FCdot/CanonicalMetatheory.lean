@@ -52,7 +52,7 @@ theorem ViewTyped_fold {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
 
 theorem eqForms_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) {W₀ : Witnesses (s,x)}
     (hW : (σ.lookup x).witnesses = W₀) :
-    ∀ W : Witnesses (s,x), Γ ⊨[x, σ] W.eqForms : (W₀.eqEntriesOf W)
+    ∀ W : Witnesses (s,x), Γ ⊨[x, σ] W.eqForms : W₀.eqEntriesOf W
   | .nil => by simp only [Witnesses.eqForms, Witnesses.eqEntriesOf]; exact ViewTyped_nil
   | .cons W ℓ T => by
       simp only [Witnesses.eqForms, Witnesses.eqEntriesOf]
@@ -67,7 +67,7 @@ theorem eqForms_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) {W₀ : Witnesses (s
 theorem hasForms_typed (x : BVar s .var) :
     ∀ (ls : List Label) (V : View s) (Tel : Telescope (s,x)),
       Γ ⊨[x, σ] V : Tel → (∀ ℓ ∈ ls, σ.HasField x ℓ) →
-      Γ ⊨[x, σ] (V ++ Fields.hasForms x ls) : (Tel.hasEntries ls)
+      Γ ⊨[x, σ] (V ++ Fields.hasForms x ls) : Tel.hasEntries ls
   | [], V, Tel, hV, _ => by simpa [Fields.hasForms, Telescope.hasEntries] using hV
   | ℓ :: ls, V, Tel, hV, hF => by
       simp only [Fields.hasForms, Telescope.hasEntries]
@@ -121,19 +121,19 @@ theorem Store.Typed.hasField (hσ : ⊢ σ : Γ) {x : BVar s .var} {Fs : List La
 /-! ## Statements -/
 
 def LeConcl (σ : Store s) (Γ : Ctx s) (e : LeCo s) (S T : Ty s) : Prop :=
-  ∃ n F, hnf σ n e = some F ∧ Γ ⊨ F : S ≤ T
+  ∃ n F, σ ⊢ e ⇓[n] F ∧ Γ ⊨ F : S ≤ T
 
 def EqConcl (Γ : Ctx s) (S T : Ty s) : Prop := Γ.resolve S = Γ.resolve T
 
 def HasConcl (σ : Store s) (h : Has s) (x : BVar s .var) (ℓ : Label) : Prop :=
-  ∃ n, hasView σ n x h = some (x, ℓ) ∧ σ.HasField x ℓ
+  ∃ n, σ ⊢ x ; h ⇓ₕ[n] (x, ℓ) ∧ σ.HasField x ℓ
 
 def MorConcl (σ : Store s) (Γ : Ctx s) (src : Telescope s) (m : Morphism s) (Tel : Telescope s) :
     Prop :=
-  ∃ n Es, entries σ n m = some Es ∧ Γ ⊨ Es : src ⇒ Tel
+  ∃ n Es, σ ⊢ m ⇓ₘ[n] Es ∧ Γ ⊨ Es : src ⇒ Tel
 
 def AtomConcl (σ : Store s) (Γ : Ctx s) (a : Atom s) (S : Ty s) : Prop :=
-  ∃ n V, view σ n a = some V ∧
+  ∃ n V, σ ⊢ a ⇓ᵥ[n] V ∧
     (∀ Tel : Telescope (s,x), Γ.resolve S = .obj Tel → Γ ⊨[a.root, σ] V : Tel) ∧
     Γ.resolve S ≠ .bot
 

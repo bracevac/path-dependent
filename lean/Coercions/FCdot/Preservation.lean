@@ -175,19 +175,19 @@ theorem Cont.Typed.weaken {s : Sig} {Γ : Ctx s} {K : Cont s} {T U : Ty s}
 /-! ## Inversions -/
 
 theorem Atom.HasType.var_inv {s : Sig} {Γ : Ctx s} {x : BVar s .var} {T : Ty s}
-    (h : Γ ⊢ₐ (.var x) : T) : T = Γ.lookupTy x := by
+    (h : Γ ⊢ₐ .var x : T) : T = Γ.lookupTy x := by
   cases h with
   | var => rfl
 
 theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {S₀ : Ty s} {t₀ : Tm (s,x)}
-    {T : Ty s} (h : Γ ⊢ᵥ (.lam S₀ t₀) : T) :
+    {T : Ty s} (h : Γ ⊢ᵥ .lam S₀ t₀ : T) :
     ∃ T₀, T = .pi S₀ T₀ ∧ (Γ.cons (.opaque S₀)) ⊢ t₀ : T₀ := by
   cases h with
   | lam ht => exact ⟨_, rfl, ht⟩
 
 theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s}
     {W : Witnesses (s,x)} {F : Fields (s,x)} {T : Ty s}
-    (h : Γ ⊢ᵥ (.obj W F) : T) :
+    (h : Γ ⊢ᵥ .obj W F : T) :
     T = .obj (Telescope.ofLiteral W F.labels) ∧ W.Guarded ∧
       Fields.HasType
         (Γ.cons (.transparent (.obj (Telescope.ofLiteral W F.labels)) W F.labels)) F := by
@@ -196,7 +196,7 @@ theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s}
 
 theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} :
     ∀ (F : Fields (s,x)), Γ ⊢ᶠ F → ∀ (l : Label) (t : Tm (s,x)),
-      F.get? l = some t → Γ ⊢ t : (.sel .here l)
+      F.get? l = some t → Γ ⊢ t : .sel .here l
   | .nil, _, l, t, hg => by simp [Fields.get?] at hg
   | .cons F l' t', h, l, t, hg => by
       cases h with
@@ -231,7 +231,7 @@ theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
           (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.selfCast E↑).root)
         have hE' : (Γ.cons (.transparent S₀ W Fs)) ⊢ E↑ : S₀↑ ≤ T↑ :=
           hE.weaken _
-        have hvar : (Γ.cons (.transparent S₀ W Fs)) ⊢ₐ (.var .here) : S₀↑ := by
+        have hvar : (Γ.cons (.transparent S₀ W Fs)) ⊢ₐ .var .here : S₀↑ := by
           simpa [Binding.ty] using
             Atom.HasType.var (Γ := Γ.cons (.transparent S₀ W Fs)) (x := .here)
         simpa [Binding.ty] using Atom.HasType.cast hvar hE'
@@ -314,11 +314,11 @@ canonical-forms theorem (`CanonicalMetatheory.lean`). -/
 structure FormsTyped (σ : Store s) (Γ : Ctx s) : Prop where
   pi : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {d : LeCo s}
     {c : LeCo (s,x)} {S₀ : Ty s} {T₀ : Ty (s,x)},
-    Γ ⊢ₐ a : (.pi S T) → closedAtomForm σ n a = some (a', .pi d c) →
+    Γ ⊢ₐ a : .pi S T → σ ⊢ a ⇓ᶜ[n] (a', .pi d c) →
     Γ.lookupTy a.root = .pi S₀ T₀ →
     Γ ⊢ d : S ≤ S₀ ∧ (Γ.cons (.opaque S)) ⊢ c : T₀ ≤ T
   refl : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {F : Form s},
-    Γ ⊢ₐ a : (.pi S T) → closedAtomForm σ n a = some (a', F) →
+    Γ ⊢ₐ a : .pi S T → σ ⊢ a ⇓ᶜ[n] (a', F) →
     (F = .id ∨ ∃ φ, F = .eqv φ) →
     Γ.lookupTy a.root = .pi S T
 

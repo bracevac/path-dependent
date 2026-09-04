@@ -342,7 +342,7 @@ theorem EqCo.HasType.weaken {Γ : Ctx s} {φ : EqCo s} {S T : Ty s}
 
 theorem Has.HasType.weaken {Γ : Ctx s} {hh : Has s} {x : BVar s .var} {l : Label}
     (h : Γ ⊢ hh : x ∋ l) (b : Binding s) :
-    (Γ.cons b) ⊢ (hh.rename Rename.succ) : (.there x) ∋ l :=
+    Γ.cons b ⊢ hh.rename Rename.succ : (.there x) ∋ l :=
   h.rename (Ctx.Ren.succ b)
 
 theorem Atom.HasType.weaken {Γ : Ctx s} {a : Atom s} {T : Ty s}

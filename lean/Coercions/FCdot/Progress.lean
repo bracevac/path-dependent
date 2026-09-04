@@ -17,7 +17,7 @@ variable {σ : Store s} {Γ : Ctx s}
 
 /-- A function atom is rooted at a closure. -/
 theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
-    (h : Γ ⊢ₐ a : (.pi S T)) : ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
+    (h : Γ ⊢ₐ a : .pi S T) : ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
   obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
   have hlk : ∃ S₀ T₀, Γ.lookupTy a.root = .pi S₀ T₀ := by
     rcases hσ.lookupTy_shape a.root with hp | ⟨Tel, ho⟩

@@ -37,19 +37,19 @@ theorem exists_of_isSome {α : Type} {o : Option α} (h : o.isSome = true) : ∃
   | some a => exact ⟨a, rfl⟩
 
 theorem leMember_eq {Γ : Ctx s} {a : Atom s} {e : LeCo s} {i : Nat} {S : Ty s}
-    {S' T' : Ty (s,x)} {Tel : Telescope (s,x)} (ha : Γ ⊢ₐ a : S) (he : Γ ⊢ e : S ≤ (.obj Tel))
+    {S' T' : Ty (s,x)} {Tel : Telescope (s,x)} (ha : Γ ⊢ₐ a : S) (he : Γ ⊢ e : S ≤ .obj Tel)
     (hAt : Tel.At i (.le S' T')) :
     leMember i ha he = some ⟨S'⟦a.root⟧, T'⟦a.root⟧, .member ha he hAt⟩ := by
   simp [leMember, Telescope.getAt?_of_At hAt]
 
 theorem eqMember_eq {Γ : Ctx s} {a : Atom s} {e : LeCo s} {i : Nat} {S : Ty s}
-    {S' T' : Ty (s,x)} {Tel : Telescope (s,x)} (ha : Γ ⊢ₐ a : S) (he : Γ ⊢ e : S ≤ (.obj Tel))
+    {S' T' : Ty (s,x)} {Tel : Telescope (s,x)} (ha : Γ ⊢ₐ a : S) (he : Γ ⊢ e : S ≤ .obj Tel)
     (hAt : Tel.At i (.eq S' T')) :
     eqMember i ha he = some ⟨S'⟦a.root⟧, T'⟦a.root⟧, .member ha he hAt⟩ := by
   simp [eqMember, Telescope.getAt?_of_At hAt]
 
 theorem hasMember_eq {Γ : Ctx s} {a : Atom s} {e : LeCo s} {i : Nat} {S : Ty s} {ℓ : Label}
-    {Tel : Telescope (s,x)} (ha : Γ ⊢ₐ a : S) (he : Γ ⊢ e : S ≤ (.obj Tel))
+    {Tel : Telescope (s,x)} (ha : Γ ⊢ₐ a : S) (he : Γ ⊢ e : S ≤ .obj Tel)
     (hAt : Tel.At i (.has ℓ)) :
     hasMember i a.root ha he = some ⟨ℓ, .member ha he hAt⟩ := by
   simp [hasMember, Telescope.getAt?_of_At hAt]
@@ -60,11 +60,11 @@ theorem morHas_eq {Γ : Ctx s} {src : Telescope s} {m : Morphism s} {j : Nat} {�
   simp [morHas, Telescope.getAt?_of_At hAt]
 
 theorem atomUnfold_eq {Γ : Ctx s} {b : Atom s} {Tel : Telescope (s,x)}
-    (hb : Γ ⊢ₐ b : (.obj Tel)) :
+    (hb : Γ ⊢ₐ b : .obj Tel) :
     atomUnfold hb = some ⟨.obj (Tel⟦b.root⟧)↑, .unfoldSelf hb⟩ := rfl
 
 theorem tmApp_eq {Γ : Ctx s} {a b : Atom s} {S : Ty s} {T : Ty (s,x)}
-    (ha : Γ ⊢ₐ a : (.pi S T)) (hb : Γ ⊢ₐ b : S) :
+    (ha : Γ ⊢ₐ a : .pi S T) (hb : Γ ⊢ₐ b : S) :
     tmApp ha hb = some ⟨T⟦b.root⟧, .app ha hb⟩ := by
   simp [tmApp]
 

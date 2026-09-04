@@ -29,7 +29,7 @@ theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : L
           (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.selfCast E↑).root)
         have hE' : (Γ.cons (.opaque S₀)) ⊢ E↑ : S₀↑ ≤ T↑ :=
           hE.weaken _
-        have hvar : (Γ.cons (.opaque S₀)) ⊢ₐ (.var .here) : S₀↑ := by
+        have hvar : (Γ.cons (.opaque S₀)) ⊢ₐ .var .here : S₀↑ := by
           simpa [Binding.ty] using
             Atom.HasType.var (Γ := Γ.cons (.opaque S₀)) (x := .here)
         simpa [Binding.ty] using Atom.HasType.cast hvar hE'
@@ -373,7 +373,7 @@ theorem entriesAt_typed {Tel₁ Tel₂ : Telescope s} {Es : List (Entry s)} {V :
 of the target. -/
 theorem viewThrough_typed {F : Form s} {S T : Ty s} {a : Atom s} {V : View s} {n : Nat}
     (hF : Γ ⊨ F : S ≤ T)
-    (hV : view σ n a = some V)
+    (hV : σ ⊢ a ⇓ᵥ[n] V)
     (hVt : ∀ Tel : Telescope (s,x), Γ.resolve S = .obj Tel → Γ ⊨[a.root, σ] V : Tel)
     (hnb : Γ.resolve S ≠ .bot) :
     ∃ V', viewThrough σ (n + 1) F a = some V' ∧

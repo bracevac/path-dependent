@@ -190,7 +190,7 @@ theorem ViewTyped_cons {V : View s} {Tel : Telescope (s,x)} {P : Proposition (s,
     {P' : PropForm s} {r : BVar s .var}
     (hV : Γ ⊨[r, σ] V : Tel)
     (hP : PropFormTyped Γ r σ (some P') (P⟦r⟧)) :
-    Γ ⊨[r, σ] (V ++ [P']) : (.cons Tel P) := by
+    Γ ⊨[r, σ] (V ++ [P']) : .cons Tel P := by
   refine ⟨by simp [Telescope.length, hV.1], fun i Q hQ => ?_⟩
   cases hQ with
   | here =>
