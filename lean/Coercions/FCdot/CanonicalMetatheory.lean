@@ -52,16 +52,14 @@ theorem ViewTyped_fold {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
 
 theorem eqForms_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) {W₀ : Witnesses (s,x)}
     (hW : (σ.lookup x).witnesses = W₀) :
-    ∀ W : Witnesses (s,x), Γ ⊨[x, σ] W.eqForms : W₀.eqEntriesOf W
+    ∀ W : Witnesses (s,x), Γ ⊨[x, σ] W.eqForms : W₀.eqEntriesOf .here W
   | .nil => by simp only [Witnesses.eqForms, Witnesses.eqEntriesOf]; exact ViewTyped_nil
   | .cons W ℓ T => by
       simp only [Witnesses.eqForms, Witnesses.eqEntriesOf]
       refine ViewTyped_cons (eqForms_typed hσ x hW W) ?_
-      show Γ.resolve ((Ty.sel .here ℓ).substVar x) = Γ.resolve ((W₀.get ℓ)⟦x⟧)
+      show Γ.resolve (x ∙ ℓ) = Γ.resolve ((W₀.get ℓ)⟦x⟧)
       have hd : Γ.lookupDef x ℓ = some ((W₀.get ℓ)⟦x⟧) := by
         rw [hσ.lookupDef x ℓ, hW]
-      have : (Ty.sel .here ℓ).substVar x = .sel x ℓ := rfl
-      rw [this]
       exact Ctx.resolve_sel_some (Store.Typed.wellDefined hσ) hd
 
 theorem hasForms_typed (x : BVar s .var) :
@@ -96,8 +94,7 @@ theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) :
       rw [hT]
       refine ⟨fun Tel h => ?_, by simp⟩
       rw [Ctx.resolve_obj] at h
-      have hTel := (Ty.obj.injEq _ _).mp h
-      subst hTel
+      obtain rfl := Ty.obj.inj h
       simp only [Value.precView, Telescope.ofLiteral, Witnesses.eqEntries]
       refine hasForms_typed x F.labels _ _ (eqForms_typed hσ x (by rw [hl]; rfl) W) ?_
       intro ℓ hℓ
@@ -108,8 +105,7 @@ theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) :
 theorem Store.Typed.hasField (hσ : ⊢ σ : Γ) {x : BVar s .var} {Fs : List Label}
     {ℓ : Label} (hF : Γ.lookupFields x = some Fs) (hmem : ℓ ∈ Fs) : σ.HasField x ℓ := by
   rw [hσ.lookupFields x] at hF
-  have hFs := (Option.some.injEq _ _).mp hF
-  subst hFs
+  obtain rfl := Option.some.inj hF
   have hlit := hσ.lookup_isLiteral x
   cases hl : σ.lookup x with
   | lam S t => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
@@ -137,11 +133,74 @@ def AtomConcl (σ : Store s) (Γ : Ctx s) (a : Atom s) (S : Ty s) : Prop :=
     (∀ Tel : Telescope (s,x), Γ.resolve S = .obj Tel → Γ ⊨[a.root, σ] V : Tel) ∧
     Γ.resolve S ≠ .bot
 
-/-- The entry of a typed view at a proposition of the telescope. -/
-theorem ViewTyped.at {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
-    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {P : Proposition (s,x)} (hAt : Tel.At i P) :
-    PropFormTyped Γ r σ (View.nth? V i) (P⟦r⟧) :=
-  hV.2 i P hAt
+/-! ## Entries of typed views -/
+
+/-- The entry of a typed view at an inclusion proposition is a typed coercion
+form. -/
+theorem ViewTyped.le_entry {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {S' T' : Ty (s,x)} (hAt : Tel ∋ (i ↦ S' ⊑ T')) :
+    ∃ G, View.nth? V i = some (.le G) ∧ Γ ⊨ G : S'⟦r⟧ ≤ T'⟦r⟧ := by
+  have hP := hV.2 i _ hAt
+  cases hq : View.nth? V i with
+  | none => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+  | some Q =>
+      rw [hq] at hP
+      cases Q with
+      | le G => exact ⟨G, rfl, by simpa [PropFormTyped, Proposition.substVar, Proposition.rename, Ty.substVar] using hP⟩
+      | eq => simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+      | has _ _ => simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+
+/-- The entry of a typed view at an equality proposition is `eq`, and the two
+sides resolve equally. -/
+theorem ViewTyped.eq_entry {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {S' T' : Ty (s,x)} (hAt : Tel ∋ (i ↦ S' ≐ T')) :
+    View.nth? V i = some .eq ∧ Γ.resolve (S'⟦r⟧) = Γ.resolve (T'⟦r⟧) := by
+  have hP := hV.2 i _ hAt
+  cases hq : View.nth? V i with
+  | none => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+  | some Q =>
+      rw [hq] at hP
+      cases Q with
+      | le _ => simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+      | eq => exact ⟨rfl, by simpa [PropFormTyped, Proposition.substVar, Proposition.rename, Ty.substVar] using hP⟩
+      | has _ _ => simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+
+/-- The entry of a typed view at a presence proposition names the root and a
+field the object at the root has. -/
+theorem ViewTyped.has_entry {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {ℓ : Label} (hAt : Tel ∋ (i ↦ ∋ ℓ)) :
+    View.nth? V i = some (.has r ℓ) ∧ σ.HasField r ℓ := by
+  have hP := hV.2 i _ hAt
+  cases hq : View.nth? V i with
+  | none => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+  | some Q =>
+      rw [hq] at hP
+      cases Q with
+      | le _ => simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+      | eq => simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+      | has y ℓ' =>
+          simp only [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+          obtain ⟨rfl, rfl, h⟩ := hP
+          exact ⟨rfl, h⟩
+
+/-- The view of an atom through a coercion to an object type, from the
+normal forms of both.  Fuel: one more than the larger of the two. -/
+theorem view_through_obj {a : Atom s} {S : Ty s} {Tel : Telescope (s,x)} {V : View s}
+    {F : Form s} {e : LeCo s} {n₁ n₂ : Nat}
+    (hV : σ ⊢ a ⇓ᵥ[n₁] V)
+    (hVt : ∀ Tel : Telescope (s,x), Γ.resolve S = μ Tel → Γ ⊨[a.root, σ] V : Tel)
+    (hnb : Γ.resolve S ≠ ⊥)
+    (hF : σ ⊢ e ⇓[n₂] F) (hFt : Γ ⊨ F : S ≤ μ Tel) :
+    ∃ V', viewThrough σ (max n₁ n₂ + 1) F a = some V' ∧ Γ ⊨[a.root, σ] V' : Tel := by
+  obtain ⟨V', hV', hVt', _⟩ :=
+    viewThrough_typed hFt (view_le (Nat.le_max_left n₁ n₂) hV) hVt hnb
+  exact ⟨V', hV', hVt' Tel (Ctx.resolve_obj _ _)⟩
+
+/-- Fuel bookkeeping: a normal form found with fuel `n₂` is found with
+`max n₁ n₂ + 1`. -/
+theorem hnf_le_max {e : LeCo s} {F : Form s} {n₁ n₂ : Nat} (hF : σ ⊢ e ⇓[n₂] F) :
+    σ ⊢ e ⇓[max n₁ n₂ + 1] F :=
+  hnf_le (Nat.le_trans (Nat.le_max_right n₁ n₂) (Nat.le_succ _)) hF
 
 variable (hσ : ⊢ σ : Γ)
 include hσ
@@ -151,38 +210,27 @@ mutual
 
 theorem le_canon {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) : LeConcl σ Γ e S T := by
   match h with
-  | @LeCo.HasType.refl _ _ T => exact ⟨1, _, rfl, .eqv rfl⟩
-  | @LeCo.HasType.top _ _ T => exact ⟨1, _, rfl, .top (by simp)⟩
-  | @LeCo.HasType.bot _ _ T => exact ⟨1, _, rfl, .bot (by simp)⟩
+  | .refl => exact ⟨1, _, rfl, .eqv rfl⟩
+  | .top => exact ⟨1, _, rfl, .top (by simp)⟩
+  | .bot => exact ⟨1, _, rfl, .bot (by simp)⟩
   | .eqToLe hφ => exact ⟨1, _, rfl, .eqv (eq_canon hφ)⟩
-  | @LeCo.HasType.pi _ _ d S₂ S₁ c T₁ T₂ hd hc =>
-      exact ⟨1, _, rfl, .pi (by simp) (by simp) hd hc⟩
-  | @LeCo.HasType.obj _ _ Tel m Tel' hm =>
+  | .pi hd hc => exact ⟨1, _, rfl, .pi (by simp) (by simp) hd hc⟩
+  | .obj hm =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
-      exact ⟨n + 1, .obj Es, by simp [hnf, hEs], .obj (by simp [Ctx.resolveAt]) (by simp [Ctx.resolveAt]) hT⟩
+      exact ⟨n + 1, .obj Es, by simp [hnf, hEs],
+        .obj (by simp [Ctx.resolveAt]) (by simp [Ctx.resolveAt]) hT⟩
   | .trans he hf =>
       obtain ⟨n₁, F, hF, hFt⟩ := le_canon he
       obtain ⟨n₂, G, hG, hGt⟩ := le_canon hf
       obtain ⟨H, hH, hHt⟩ := Form.combine_typed hFt hGt
       refine ⟨max n₁ n₂ + 1, H, ?_, hHt⟩
       simp [hnf, hnf_le (Nat.le_max_left n₁ n₂) hF, hnf_le (Nat.le_max_right n₁ n₂) hG, hH]
-  | @LeCo.HasType.member _ _ a S e Tel i S' T' ha he hAt =>
+  | .member ha he hAt =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := atom_canon ha
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨V', hV', hVt', _⟩ :=
-        viewThrough_typed hFt (view_le (Nat.le_max_left n₁ n₂) hV) hVt hnb
-      have hP := (hVt' Tel (by simp)).at hAt
-      cases hq : View.nth? V' i with
-      | none => rw [hq] at hP; simp [PropFormTyped, Proposition.rename] at hP
-      | some Q =>
-          cases Q with
-          | le G =>
-              rw [hq] at hP
-              refine ⟨max n₁ n₂ + 2, G, ?_, ?_⟩
-              · simp [hnf, hnf_le (by omega : n₂ ≤ max n₁ n₂ + 1) hF, hV', hq]
-              · simpa [PropFormTyped, Proposition.substVar, Proposition.rename, Ty.substVar] using hP
-          | eq => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
-          | has y ℓ => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+      obtain ⟨V', hV', hVt'⟩ := view_through_obj hV hVt hnb hF hFt
+      obtain ⟨G, hG, hGt⟩ := hVt'.le_entry hAt
+      exact ⟨max n₁ n₂ + 2, G, by simp [hnf, hnf_le_max hF, hV', hG], hGt⟩
 
 theorem eq_canon {φ : EqCo s} {S T : Ty s} (h : Γ ⊢ φ : S ≡ T) : EqConcl Γ S T := by
   match h with
@@ -190,44 +238,22 @@ theorem eq_canon {φ : EqCo s} {S T : Ty s} (h : Γ ⊢ φ : S ≡ T) : EqConcl 
   | .symm h' => exact (eq_canon h').symm
   | .trans h₁ h₂ => exact (eq_canon h₁).trans (eq_canon h₂)
   | .def hdef => exact Ctx.resolve_sel_some (Store.Typed.wellDefined hσ) hdef
-  | @EqCo.HasType.member _ _ a S e Tel i S' T' ha he hAt =>
+  | .member ha he hAt =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := atom_canon ha
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨V', hV', hVt', _⟩ :=
-        viewThrough_typed hFt (view_le (Nat.le_max_left n₁ n₂) hV) hVt hnb
-      have hP := (hVt' Tel (by simp)).at hAt
-      cases hq : View.nth? V' i with
-      | none => rw [hq] at hP; simp [PropFormTyped, Proposition.rename] at hP
-      | some Q =>
-          cases Q with
-          | le G => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
-          | eq =>
-              rw [hq] at hP
-              simpa [PropFormTyped, Proposition.substVar, Proposition.rename, Ty.substVar, EqConcl] using hP
-          | has y ℓ => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
+      obtain ⟨V', hV', hVt'⟩ := view_through_obj hV hVt hnb hF hFt
+      exact (hVt'.eq_entry hAt).2
 
-theorem has_canon {hh : Has s} {x : BVar s .var} {ℓ : Label} (h : Has.HasType Γ hh x ℓ) :
+theorem has_canon {hh : Has s} {x : BVar s .var} {ℓ : Label} (h : Γ ⊢ hh : x ∋ ℓ) :
     HasConcl σ hh x ℓ := by
   match h with
   | .field hF hmem => exact ⟨1, rfl, hσ.hasField hF hmem⟩
-  | @Has.HasType.member _ _ a S e Tel i ℓ ha he hAt =>
+  | .member ha he hAt =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := atom_canon ha
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨V', hV', hVt', _⟩ :=
-        viewThrough_typed hFt (view_le (Nat.le_max_left n₁ n₂) hV) hVt hnb
-      have hP := (hVt' Tel (by simp)).at hAt
-      cases hq : View.nth? V' i with
-      | none => rw [hq] at hP; simp [PropFormTyped, Proposition.rename] at hP
-      | some Q =>
-          cases Q with
-          | le G => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
-          | eq => rw [hq] at hP; simp [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
-          | has y ℓ' =>
-              rw [hq] at hP
-              simp only [PropFormTyped, Proposition.substVar, Proposition.rename] at hP
-              obtain ⟨rfl, rfl, hHF⟩ := hP
-              refine ⟨max n₁ n₂ + 2, ?_, hHF⟩
-              simp [hasView, hnf_le (by omega : n₂ ≤ max n₁ n₂ + 1) hF, hV', hq]
+      obtain ⟨V', hV', hVt'⟩ := view_through_obj hV hVt hnb hF hFt
+      obtain ⟨hq, hHF⟩ := hVt'.has_entry hAt
+      exact ⟨max n₁ n₂ + 2, by simp [hasView, hnf_le_max hF, hV', hq], hHF⟩
 
 theorem mor_canon {src : Telescope s} {m : Morphism s} {Tel : Telescope s}
     (h : Γ ⊢ m : src ⇒ Tel) : MorConcl σ Γ src m Tel := by
@@ -247,30 +273,27 @@ theorem mor_canon {src : Telescope s} {m : Morphism s} {Tel : Telescope s}
 
 theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ Γ a S := by
   match h with
-  | @Atom.HasType.var _ _ x =>
-      obtain ⟨hV, hnb⟩ := precView_typed hσ x
+  | .var =>
+      obtain ⟨hV, hnb⟩ := precView_typed hσ _
       exact ⟨1, _, rfl, hV, hnb⟩
   | .cast ha he =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := atom_canon ha
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
       obtain ⟨V', hV', hVt', hnb'⟩ :=
         viewThrough_typed hFt (view_le (Nat.le_max_left n₁ n₂) hV) hVt hnb
-      refine ⟨max n₁ n₂ + 2, V', ?_, hVt', hnb'⟩
-      simp [view, hnf_le (by omega : n₂ ≤ max n₁ n₂ + 1) hF, hV']
-  | @Atom.HasType.unfoldSelf _ _ a Tel ha =>
+      exact ⟨max n₁ n₂ + 2, V', by simp [view, hnf_le_max hF, hV'], hVt', hnb'⟩
+  | .unfoldSelf ha =>
       obtain ⟨n, V, hV, hVt, hnb⟩ := atom_canon ha
       refine ⟨n + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩
       rw [Ctx.resolve_obj] at h
-      have hTel := (Ty.obj.injEq _ _).mp h
-      subst hTel
-      exact ViewTyped_unfold (hVt Tel (by simp))
-  | @Atom.HasType.foldSelf _ _ a Tel ha =>
+      obtain rfl := Ty.obj.inj h
+      exact ViewTyped_unfold (hVt _ (Ctx.resolve_obj _ _))
+  | .foldSelf ha =>
       obtain ⟨n, V, hV, hVt, hnb⟩ := atom_canon ha
       refine ⟨n + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩
       rw [Ctx.resolve_obj] at h
-      have hTel := (Ty.obj.injEq _ _).mp h
-      subst hTel
-      exact ViewTyped_fold (hVt ((Tel⟦a.root⟧)↑) (Ctx.resolve_obj _ _))
+      obtain rfl := Ty.obj.inj h
+      exact ViewTyped_fold (hVt _ (Ctx.resolve_obj _ _))
 
 end
 

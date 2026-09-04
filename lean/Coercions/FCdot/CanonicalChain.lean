@@ -96,20 +96,20 @@ theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
     intro a S T n a' d c S₀ T₀ ha hF hlk
     obtain ⟨n', a'', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
     have hd := closedAtomForm_det hF hF'
-    have hFe : F' = .pi d c := ((Prod.mk.injEq _ _ _ _).mp hd).2.symm
+    have hFe : F' = .pi d c := (Prod.mk.inj hd).2.symm
     subst hFe
     cases hFt with
     | pi hS hT hd hc =>
         rw [hlk, Ctx.resolve_pi] at hS
         rw [Ctx.resolve_pi] at hT
-        obtain ⟨rfl, rfl⟩ := (Ty.pi.injEq _ _ _ _).mp hS
-        obtain ⟨rfl, rfl⟩ := (Ty.pi.injEq _ _ _ _).mp hT
+        obtain ⟨rfl, rfl⟩ := Ty.pi.inj hS
+        obtain ⟨rfl, rfl⟩ := Ty.pi.inj hT
         exact ⟨hd, hc⟩
   refl := by
     intro a S T n a' F ha hF hid
     obtain ⟨n', a'', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
     have hd := closedAtomForm_det hF hF'
-    have hFe : F' = F := ((Prod.mk.injEq _ _ _ _).mp hd).2.symm
+    have hFe : F' = F := (Prod.mk.inj hd).2.symm
     subst hFe
     have hres : Γ.resolveAt (some a.root) (Γ.lookupTy a.root) = Γ.resolveAt (some a.root) (.pi S T) := by
       rcases hid with rfl | ⟨φ, rfl⟩
@@ -119,7 +119,7 @@ theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
     have hres' := (Ctx.resolveAt_pi_iff Γ _ _ _ _).mp hres
     rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩
     · rw [hp, Ctx.resolve_pi] at hres'
-      obtain ⟨rfl, rfl⟩ := (Ty.pi.injEq _ _ _ _).mp hres'
+      obtain ⟨rfl, rfl⟩ := Ty.pi.inj hres'
       exact hp
     · rw [ho, Ctx.resolve_obj] at hres'; simp at hres'
 

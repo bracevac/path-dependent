@@ -271,7 +271,7 @@ theorem Form.combine_typed {F G : Form s} {S M T : Ty s}
           exact ⟨.pi _ _, rfl, .pi hS ((Ctx.resolveAt_pi_iff Γ ρ T _ _).mp (hres ▸ hM')) hd hc⟩
       | pi hp hT hd₂ hc₂ =>
           rw [hM] at hp
-          have hpi := (Ty.pi.injEq _ _ _ _).mp hp
+          have hpi := Ty.pi.inj hp
           obtain ⟨hs, ht⟩ := hpi
           subst hs; subst ht
           refine ⟨.pi _ _, rfl, .pi hS hT (.trans hd₂ hd) (.trans ?_ hc₂)⟩
@@ -291,7 +291,7 @@ theorem Form.combine_typed {F G : Form s} {S M T : Ty s}
           rw [hM] at this; exact absurd this (by simp)
       | obj hM' hT hEs₂ =>
           rw [hM] at hM'
-          have hTel := Telescope.weaken_inj ((Ty.obj.injEq _ _).mp hM')
+          have hTel := Telescope.weaken_inj (Ty.obj.inj hM')
           subst hTel
           obtain ⟨Es, hEs', hT'⟩ := hEs.through hEs₂
           exact ⟨.obj Es, by simp [Form.combine, hEs'], .obj hS hT hT'⟩
@@ -400,7 +400,7 @@ theorem viewThrough_typed {F : Form s} {S T : Ty s} {a : Atom s} {V : View s} {n
       obtain ⟨V', hV', hT'⟩ := entriesAt_typed hEs (hVt _ hS)
       refine ⟨V', by simp [viewThrough, hV, hV'], fun Tel h => ?_, ?_⟩
       · rw [hT] at h
-        have hTel := (Ty.obj.injEq _ _).mp h
+        have hTel := Ty.obj.inj h
         subst hTel
         exact hT'
       · rw [hT]; simp

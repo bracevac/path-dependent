@@ -486,17 +486,18 @@ theorem Witnesses.get_rename {s1 s2 : Sig} :
 
 /-! ## The precise telescope of a literal is stable under renaming -/
 
-theorem Witnesses.eqEntriesOf_rename {s1 s2 : Sig} (W₀ : Witnesses (s1,x)) (ρ : Rename s1 s2) :
-    ∀ (W : Witnesses (s1,x)),
-      (W₀.rename ρ.lift).eqEntriesOf (W.rename ρ.lift) = (W₀.eqEntriesOf W).rename ρ.lift
+theorem Witnesses.eqEntriesOf_rename {s1 s2 : Sig} (self : BVar s1 .var) (W₀ : Witnesses s1)
+    (ρ : Rename s1 s2) :
+    ∀ W : Witnesses s1,
+      (W₀.rename ρ).eqEntriesOf (ρ.var self) (W.rename ρ) = (W₀.eqEntriesOf self W).rename ρ
   | .nil => by simp [Witnesses.rename, Witnesses.eqEntriesOf, Telescope.rename]
-  | .cons W l T => by
+  | .cons W ℓ T => by
       simp [Witnesses.rename, Witnesses.eqEntriesOf, Telescope.rename, Proposition.rename,
-        Ty.rename, Witnesses.eqEntriesOf_rename W₀ ρ W, Witnesses.get_rename]
+        Ty.rename, Witnesses.eqEntriesOf_rename self W₀ ρ W, Witnesses.get_rename]
 
 @[simp] theorem Witnesses.eqEntries_rename {s1 s2 : Sig} (W : Witnesses (s1,x)) (ρ : Rename s1 s2) :
     (W.rename ρ.lift).eqEntries = W.eqEntries.rename ρ.lift :=
-  Witnesses.eqEntriesOf_rename W ρ W
+  Witnesses.eqEntriesOf_rename .here W ρ.lift W
 
 @[simp] theorem Telescope.hasEntries_rename {s1 s2 : Sig} :
     ∀ (Tel : Telescope s1) (ls : List Label) (ρ : Rename s1 s2),
