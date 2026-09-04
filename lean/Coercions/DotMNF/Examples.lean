@@ -95,6 +95,10 @@ theorem E2Guarded : Defs.Guarded (E2Defs (s := s)) := .and (.typ rfl) .trm
 /-- The self type is declaration-shaped. -/
 theorem E2SelfDecl : Ty.Decl (E2Self (s := s)) := .and .typ .fld
 
+/-- No member's witness is a bare selection on the self. -/
+theorem E2SelfGuarded : Ty.Guarded (E2Self (s := s)) := by
+  simp [E2Self, E2A, Ty.Guarded, Ty.isSelfSel]
+
 def E2DefsTy : DefsTy (Ctx.consSelf Γ E2Defs E2Self) E2Defs E2Self :=
   .and .typ (.trm (.lam (var' .here rfl) .sel))
 
@@ -121,7 +125,7 @@ def E2app : HasTy E2Ctx2 (.app .here .here) (.sel (.var (.there .here)) lA) :=
 `x.A`, which may not escape the `let`. -/
 def E2 : HasTy Ctx.nil
     (.let (.val (.obj E2Defs)) (.let (.proj .here la) (.app .here .here))) .top :=
-  .let (.obj E2DefsTy E2Distinct E2Guarded)
+  .let (.obj E2DefsTy E2Distinct E2Guarded E2SelfGuarded)
     (.let E2proj (.sub E2app .top) .top)
     .top
 
@@ -264,7 +268,11 @@ def E5v : HasTy E5Ctxz (.path (.var (.there .here))) E5AT := var' (.there .here)
 def E5field : HasTy E5Ctxz (.path (.var (.there .here))) (.sel (.var (.there .here)) lA) :=
   .sub (.sub E5v .top) (.selLower E5v)
 def E5DefsTy : DefsTy E5Ctxz E5Defs E5Self := .trm E5field
-def E5ObjTy : HasTy E5Ctxv E5Obj (.mu E5Self) := .obj E5DefsTy .trm .trm
+theorem E5SelfGuarded : Ty.Guarded (E5Self (s := s)) := by
+  simp [E5Self, Ty.Guarded, Ty.isSelfSel]
+
+def E5ObjTy : HasTy E5Ctxv E5Obj (.mu E5Self) :=
+  .obj E5DefsTy .trm .trm E5SelfGuarded
 def E5fVal : HasTy E5Ctx1 (.val (.lam E5AT E5Obj)) E5F := .lam E5ObjTy (.typ .top .top)
 
 def E5Ctxf : Ctx ([],x,x) := .cons E5Ctx1 E5F

@@ -189,6 +189,21 @@ inductive Defs.Guarded : {s : Sig} → Defs (s,x) → Prop where
   | trm : Defs.Guarded (.trm a t)
   | and : Defs.Guarded d1 → Defs.Guarded d2 → Defs.Guarded (.and d1 d2)
 
+/-- Guarded declaration types: no member's *witness* is a bare selection on
+the object's own self.  A type member's witness is its exact type, a field's
+witness is its declared type, and the target defines the block name `x.ℓ` to
+be that witness; a witness `x.B` would make `x.ℓ` an alias for another name
+of the same block, which the target forbids (`FCdot.Witnesses.Guarded`, what
+makes `FCdot.Ctx.resolve` terminate).  `Defs.Guarded` covers the type
+members, whose witness is the definition itself; fields need this because
+their witness comes from the declaration type, not from the definitions.
+Plan §12 risk 2, resolved by excluding the unguarded case. -/
+def Ty.Guarded : Ty (s,x) → Prop
+  | .typ _ S _ => S.isSelfSel = false
+  | .fld _ T => T.isSelfSel = false
+  | .and S T => Ty.Guarded S ∧ Ty.Guarded T
+  | _ => True
+
 /-- The labels of a definition list are pairwise distinct. -/
 inductive Defs.Distinct : {s : Sig} → Defs s → Prop where
   | typ : Defs.Distinct (.typ A T)
