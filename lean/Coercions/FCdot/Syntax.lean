@@ -265,14 +265,15 @@ def Fields.get? : Fields s → Label → Option (Tm s)
 /-- Field presence, as a proposition on the syntax. -/
 def Fields.Has (F : Fields s) (ℓ : Label) : Prop := (F.get? ℓ).isSome
 
-/-- Definition entries of a literal's witnesses: one `eq self.ℓ (W.get ℓ)` per
+/-- Definition entries of a literal's witnesses: one `self ∙ ℓ ≐ W₀.get ℓ` per
 listed label (a shadowed label gets the outer definition, so every entry is
-true of the literal). -/
-def Witnesses.eqEntriesOf (W₀ : Witnesses (s,x)) : Witnesses (s,x) → Telescope (s,x)
+true of the literal).  Stated for an arbitrary self variable so that the
+recursion is structural. -/
+def Witnesses.eqEntriesOf (self : BVar s' .var) (W₀ : Witnesses s') : Witnesses s' → Telescope s'
   | .nil => .nil
-  | .cons W ℓ _ => .cons (W₀.eqEntriesOf W) (.eq (.sel .here ℓ) (W₀.get ℓ))
+  | .cons W ℓ _ => W₀.eqEntriesOf self W ▹ self ∙ ℓ ≐ W₀.get ℓ
 
-def Witnesses.eqEntries (W : Witnesses (s,x)) : Telescope (s,x) := W.eqEntriesOf W
+def Witnesses.eqEntries (W : Witnesses (s,x)) : Telescope (s,x) := W.eqEntriesOf .here W
 
 /-- Presence entries for a list of field labels, appended to a telescope. -/
 def Telescope.hasEntries : Telescope s → List Label → Telescope s
