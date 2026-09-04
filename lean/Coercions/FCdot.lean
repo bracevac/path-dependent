@@ -22,6 +22,7 @@ import Coercions.FCdot.CanonicalMono
 import Coercions.FCdot.CanonicalMetatheory
 import Coercions.FCdot.CanonicalChain
 import Coercions.FCdot.Progress
+import Coercions.FCdot.Examples
 /-!
 Import root for FCdot, the explicit-evidence coercion target of Plan III.
 -/
