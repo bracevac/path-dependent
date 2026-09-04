@@ -90,14 +90,19 @@ theorem E2Distinct : Defs.Distinct (E2Defs (s := s)) := by
   subst h
   decide
 
-def E2DefsTy : DefsTy (Ctx.cons Γ (.mu E2Self)) E2Defs E2Self :=
+theorem E2Guarded : Defs.Guarded (E2Defs (s := s)) := .and (.typ rfl) .trm
+
+/-- The self type is declaration-shaped. -/
+theorem E2SelfDecl : Ty.Decl (E2Self (s := s)) := .and .typ .fld
+
+def E2DefsTy : DefsTy (Ctx.consSelf Γ E2Defs E2Self) E2Defs E2Self :=
   .and .typ (.trm (.lam (var' .here rfl) .sel))
 
 def E2Ctx1 : Ctx ([],x) := .cons .nil (.mu E2Self)
 
 def E2xMu : HasTy E2Ctx1 (.path (.var .here)) (.mu E2Self) := var' .here rfl
-def E2xOpen : HasTy E2Ctx1 (.path (.var .here)) E2Self := .recE E2xMu
-def E2xFld : HasTy E2Ctx1 (.path (.var .here)) (.fld la E2A) := .sub E2xOpen .and2
+def E2xOpen : HasTy E2Ctx1 (.path (.var .here)) E2Self := .recE E2xMu E2SelfDecl
+def E2xFld : HasTy E2Ctx1 (.path (.var .here)) (.fld la E2A) := .sub E2xOpen (.and2 .typ .fld)
 def E2proj : HasTy E2Ctx1 (.proj .here la) E2A := .proj E2xFld
 
 def E2Ctx2 : Ctx ([],x,x) := .cons E2Ctx1 E2A
@@ -105,10 +110,10 @@ def E2Ctx2 : Ctx ([],x,x) := .cons E2Ctx1 E2A
 def E2f : HasTy E2Ctx2 (.path (.var .here)) E2A' := var' .here rfl
 def E2xMu2 : HasTy E2Ctx2 (.path (.var (.there .here))) (.mu E2Self) := var' (.there .here) rfl
 def E2xOpen2 : HasTy E2Ctx2 (.path (.var (.there .here)))
-    (.and (.typ lA E2A' E2A') (.fld la E2A')) := .recE E2xMu2
+    (.and (.typ lA E2A' E2A') (.fld la E2A')) := .recE E2xMu2 E2SelfDecl
 /-- `∀(y : x.A) x.A <: x.A`, by the lower bound of the exact member `A`. -/
 def E2fArg : HasTy E2Ctx2 (.path (.var .here)) (.sel (.var (.there .here)) lA) :=
-  .sub E2f (.selLower (.sub E2xOpen2 .and1))
+  .sub E2f (.selLower (.sub E2xOpen2 (.and1 .typ .fld)))
 def E2app : HasTy E2Ctx2 (.app .here .here) (.sel (.var (.there .here)) lA) :=
   .app E2f E2fArg
 
@@ -116,7 +121,7 @@ def E2app : HasTy E2Ctx2 (.app .here .here) (.sel (.var (.there .here)) lA) :=
 `x.A`, which may not escape the `let`. -/
 def E2 : HasTy Ctx.nil
     (.let (.val (.obj E2Defs)) (.let (.proj .here la) (.app .here .here))) .top :=
-  .let (.obj E2DefsTy E2Distinct)
+  .let (.obj E2DefsTy E2Distinct E2Guarded)
     (.let E2proj (.sub E2app .top) .top)
     .top
 
@@ -136,8 +141,10 @@ def E3Ctx1 : Ctx ([],x) := .cons .nil E3Dom
 def E3Ctx2 : Ctx ([],x,x) := .cons E3Ctx1 E3T2
 
 def E3xDom : HasTy E3Ctx2 (.path (.var (.there .here))) E3Dom := var' (.there .here) rfl
-def E3xLo : HasTy E3Ctx2 (.path (.var (.there .here))) (.typ lA .bot E3T1) := .sub E3xDom .and1
-def E3xHi : HasTy E3Ctx2 (.path (.var (.there .here))) (.typ lA E3T2 .top) := .sub E3xDom .and2
+def E3xLo : HasTy E3Ctx2 (.path (.var (.there .here))) (.typ lA .bot E3T1) :=
+  .sub E3xDom (.and1 .typ .typ)
+def E3xHi : HasTy E3Ctx2 (.path (.var (.there .here))) (.typ lA E3T2 .top) :=
+  .sub E3xDom (.and2 .typ .typ)
 /-- `T₂ <: x.A <: T₁`: the shared member, used at both bounds. -/
 def E3sub : Sub E3Ctx2 E3T2 E3T1 := .trans (.selLower E3xHi) (.selUpper E3xLo)
 def E3z : HasTy E3Ctx2 (.path (.var .here)) E3T1 := .sub (var' .here rfl) E3sub
@@ -248,14 +255,16 @@ def E5Obj : Tm (s,x) := .val (.obj (.trm la (.path (.var (.there .here)))))
 
 def E5Ctx1 : Ctx ([],x) := .cons .nil E5AT
 def E5Ctxv : Ctx ([],x,x) := .cons E5Ctx1 E5AT
-def E5Ctxz : Ctx ([],x,x,x) := .cons E5Ctxv (.mu E5Self)
+/-- The definitions of the literal `ν(z. {a = v})`. -/
+def E5Defs : Defs (s,x,x) := .trm la (.path (.var (.there .here)))
+def E5Ctxz : Ctx ([],x,x,x) := .consSelf E5Ctxv E5Defs E5Self
 
 def E5v : HasTy E5Ctxz (.path (.var (.there .here))) E5AT := var' (.there .here) rfl
 /-- The field body: `v : ⊤ <: v.A`, by the lower bound of `v`'s member. -/
 def E5field : HasTy E5Ctxz (.path (.var (.there .here))) (.sel (.var (.there .here)) lA) :=
   .sub (.sub E5v .top) (.selLower E5v)
-def E5DefsTy : DefsTy E5Ctxz (.trm la (.path (.var (.there .here)))) E5Self := .trm E5field
-def E5ObjTy : HasTy E5Ctxv E5Obj (.mu E5Self) := .obj E5DefsTy .trm
+def E5DefsTy : DefsTy E5Ctxz E5Defs E5Self := .trm E5field
+def E5ObjTy : HasTy E5Ctxv E5Obj (.mu E5Self) := .obj E5DefsTy .trm .trm
 def E5fVal : HasTy E5Ctx1 (.val (.lam E5AT E5Obj)) E5F := .lam E5ObjTy (.typ .top .top)
 
 def E5Ctxf : Ctx ([],x,x) := .cons E5Ctx1 E5F
@@ -269,7 +278,7 @@ def E5Ctxo : Ctx ([],x,x,x) := .cons E5Ctxf E5Owned
 
 def E5oMu : HasTy E5Ctxo (.path (.var .here)) E5Owned' := var' .here rfl
 def E5oOpen : HasTy E5Ctxo (.path (.var .here))
-    (.fld la (.sel (.var (.there (.there .here))) lA)) := .recE E5oMu
+    (.fld la (.sel (.var (.there (.there .here))) lA)) := .recE E5oMu .fld
 def E5proj : HasTy E5Ctxo (.proj .here la) (.sel (.var (.there (.there .here))) lA) :=
   .proj E5oOpen
 
