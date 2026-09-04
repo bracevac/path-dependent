@@ -310,7 +310,7 @@ theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)}
 head form of a function atom's casts is `pi d c`, `d` and `c` are typed
 between the atom's function type and its closure's type; whenever it is the
 identity form, the two function types coincide.  Discharged by the
-canonical-forms theorem (`CanonicalMetatheory.lean`). -/
+canonical-forms theorem (`CanonicalForms.lean`). -/
 structure FormsTyped (σ : Store s) (Γ : Ctx s) : Prop where
   pi : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {d : LeCo s}
     {c : LeCo (s,x)} {S₀ : Ty s} {T₀ : Ty (s,x)},

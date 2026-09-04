@@ -1,4 +1,4 @@
-import Coercions.FCdot.Canonical
+import Coercions.FCdot.Normalizer
 
 /-!
 # FCdot store machine
@@ -9,7 +9,7 @@ Casts on values are wrappers: allocation strips them, stores the literal at
 its own type, and rewrites the continuation so that the new variable is used
 under the composite cast.  Application on a coerced closure reads the
 domain and codomain evidence off the head normal form of the atom's casts
-(`Canonical.lean`).  Progress needs that this normalization succeeds on a
+(`Normalizer.lean`).  Progress needs that this normalization succeeds on a
 closed atom of function type, and preservation needs the resulting evidence
 to be typed; both are consequences of the canonical-forms theorem.
 -/

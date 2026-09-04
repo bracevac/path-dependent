@@ -1,7 +1,7 @@
 import Coercions.FCdot.Store
 
 /-!
-# Head normal forms of closed evidence
+# The normalizer: head normal forms of closed evidence
 
 Inclusion evidence over a store normalizes to a head form: `bot`, `top`,
 identity, a definitional conversion, a function coercion with closed domain

@@ -512,4 +512,125 @@ theorem Telescope.ofLiteral_rename {s1 s2 : Sig} (W : Witnesses (s1,x)) (ls : Li
     (Telescope.ofLiteral W ls).rename ρ.lift = Telescope.ofLiteral (W.rename ρ.lift) ls := by
   simp [Telescope.ofLiteral]
 
+/-! ## Instantiating weakened syntax, injectivity of renaming -/
+
+
+theorem Ty.weaken_substVar (T : Ty s) (r : BVar s .var) :
+    (T.weaken (k := .var))⟦r⟧ = T := by
+  simp only [Ty.weaken, Ty.substVar, Ty.rename_comp]
+  rw [show (Rename.succ.comp (Rename.subst r) : Rename s s) = Rename.id from
+    Rename.funext' (by intro k y; cases k; rfl)]
+  exact Ty.rename_id T
+
+theorem Proposition.weaken_substVar (P : Proposition s) (r : BVar s .var) :
+    (P.weaken (k := .var))⟦r⟧ = P := by
+  simp only [Proposition.weaken, Proposition.substVar, Proposition.rename_comp]
+  rw [show (Rename.succ.comp (Rename.subst r) : Rename s s) = Rename.id from
+    Rename.funext' (by intro k y; cases k; rfl)]
+  exact Proposition.rename_id P
+
+/-! ### Injectivity of renaming -/
+
+def Rename.Injective (ρ : Rename s1 s2) : Prop :=
+  ∀ {k} (x y : BVar s1 k), ρ.var x = ρ.var y → x = y
+
+theorem Rename.Injective.lift {ρ : Rename s1 s2} (h : ρ.Injective) {k : Kind} :
+    (ρ.lift (k := k)).Injective := by
+  intro k' x y hxy
+  cases x <;> cases y <;> simp at hxy
+  · rfl
+  · rw [h _ _ hxy]
+
+theorem Rename.succ_injective {s : Sig} {k : Kind} : (Rename.succ (s := s) (k := k)).Injective := by
+  intro k' x y hxy
+  simpa using hxy
+
+mutual
+
+theorem Ty.rename_inj {s1 s2 : Sig} (T T' : Ty s1) (ρ : Rename s1 s2) (hρ : ρ.Injective)
+    (h : T.rename ρ = T'.rename ρ) : T = T' := by
+  match T with
+  | .top => cases T' <;> simp [Ty.rename] at h ⊢
+  | .bot => cases T' <;> simp [Ty.rename] at h ⊢
+  | .sel x ℓ =>
+      cases T' <;> simp [Ty.rename] at h ⊢
+      exact ⟨hρ _ _ h.1, h.2⟩
+  | .pi S T =>
+      cases T' <;> simp [Ty.rename] at h ⊢
+      exact ⟨Ty.rename_inj S _ ρ hρ h.1, Ty.rename_inj T _ ρ.lift hρ.lift h.2⟩
+  | .obj Tel =>
+      cases T' <;> simp [Ty.rename] at h ⊢
+      exact Telescope.rename_inj Tel _ ρ.lift hρ.lift h
+
+theorem Proposition.rename_inj {s1 s2 : Sig} (P P' : Proposition s1) (ρ : Rename s1 s2)
+    (hρ : ρ.Injective) (h : P.rename ρ = P'.rename ρ) : P = P' := by
+  match P with
+  | .le S T =>
+      cases P' <;> simp [Proposition.rename] at h ⊢
+      exact ⟨Ty.rename_inj S _ ρ hρ h.1, Ty.rename_inj T _ ρ hρ h.2⟩
+  | .eq S T =>
+      cases P' <;> simp [Proposition.rename] at h ⊢
+      exact ⟨Ty.rename_inj S _ ρ hρ h.1, Ty.rename_inj T _ ρ hρ h.2⟩
+  | .has ℓ => cases P' <;> simp [Proposition.rename] at h ⊢ <;> exact h
+
+theorem Telescope.rename_inj {s1 s2 : Sig} (Tel Tel' : Telescope s1) (ρ : Rename s1 s2)
+    (hρ : ρ.Injective) (h : Tel.rename ρ = Tel'.rename ρ) : Tel = Tel' := by
+  match Tel with
+  | .nil => cases Tel' <;> simp [Telescope.rename] at h ⊢
+  | .cons Tel P =>
+      cases Tel' <;> simp [Telescope.rename] at h ⊢
+      exact ⟨Telescope.rename_inj Tel _ ρ hρ h.1, Proposition.rename_inj P _ ρ hρ h.2⟩
+
+end
+
+theorem Telescope.weaken_inj {Tel₁ Tel₂ : Telescope s} {k : Kind}
+    (h : (Tel₁.weaken (k := k)) = Tel₂↑) : Tel₁ = Tel₂ :=
+  Telescope.rename_inj _ _ _ Rename.succ_injective h
+
+@[simp] theorem Telescope.weaken_nil {s : Sig} {k : Kind} :
+    (Telescope.nil (s := s)).weaken (k := k) = .nil := rfl
+
+@[simp] theorem Telescope.weaken_cons (Tel : Telescope s) (P : Proposition s) {k : Kind} :
+    (Tel.cons P).weaken (k := k) = Tel↑.cons P↑ := rfl
+
+@[simp] theorem Proposition.weaken_le (S T : Ty s) {k : Kind} :
+    (Proposition.le S T).weaken (k := k) = .le S↑ T↑ := rfl
+
+@[simp] theorem Proposition.weaken_eq (S T : Ty s) {k : Kind} :
+    (Proposition.eq S T).weaken (k := k) = .eq S↑ T↑ := rfl
+
+@[simp] theorem Proposition.weaken_has (ℓ : Label) {k : Kind} :
+    (Proposition.has (s := s) ℓ).weaken (k := k) = .has ℓ := rfl
+
+theorem Telescope.weaken_substVar (Tel : Telescope s) (r : BVar s .var) :
+    (Tel.weaken (k := .var))⟦r⟧ = Tel := by
+  simp only [Telescope.weaken, Telescope.substVar, Telescope.rename_comp]
+  rw [show (Rename.succ.comp (Rename.subst r) : Rename s s) = Rename.id from
+    Rename.funext' (by intro k y; cases k; rfl)]
+  exact Telescope.rename_id Tel
+
+/-- Instantiating a self-substituted, weakened proposition at any root gives
+the original instantiation. -/
+theorem Proposition.substVar_weaken_substVar (P : Proposition (s,x)) (r r' : BVar s .var) :
+    ((P⟦r⟧).weaken (k := .var))⟦r'⟧ = P⟦r⟧ := by
+  rw [Proposition.weaken_substVar]
+
+theorem Telescope.At.weaken {Tel : Telescope s} {i : Nat} {P : Proposition s}
+    (h : Tel.At i P) : (Tel.weaken (k := .var)).At i (P↑) := by
+  induction h with
+  | here => simp only [Telescope.weaken, Telescope.rename]; rw [← Telescope.length_rename]; exact .here
+  | there _ ih => exact .there ih
+
+theorem Telescope.At.rename_inv : {Tel : Telescope s1} → {ρ : Rename s1 s2} → {i : Nat} →
+    {P : Proposition s2} → (Tel.rename ρ).At i P → ∃ P₀, Tel.At i P₀ ∧ P = P₀.rename ρ
+  | .nil, _, _, _, h => by simp [Telescope.rename] at h; cases h
+  | .cons Tel Q, ρ, i, P, h => by
+      simp only [Telescope.rename] at h
+      cases h with
+      | here => exact ⟨Q, by rw [Telescope.length_rename]; exact .here, rfl⟩
+      | there h' =>
+          obtain ⟨P₀, hP₀, rfl⟩ := Telescope.At.rename_inv h'
+          exact ⟨P₀, .there hP₀, rfl⟩
+
+
 end FCdot

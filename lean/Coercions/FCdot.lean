@@ -13,14 +13,11 @@ import Coercions.FCdot.Preservation
 import Coercions.FCdot.ErasureMetatheory
 import Coercions.FCdot.Checker
 import Coercions.FCdot.CheckerCompleteness
-import Coercions.FCdot.Canonical
+import Coercions.FCdot.Normalizer
 import Coercions.FCdot.Resolution
-import Coercions.FCdot.CanonicalTyped
-import Coercions.FCdot.CanonicalViews
-import Coercions.FCdot.CanonicalCombine
-import Coercions.FCdot.CanonicalMono
-import Coercions.FCdot.CanonicalMetatheory
-import Coercions.FCdot.CanonicalChain
+import Coercions.FCdot.FormTyping
+import Coercions.FCdot.FormAlgebra
+import Coercions.FCdot.CanonicalForms
 import Coercions.FCdot.Progress
 import Coercions.FCdot.Examples
 /-!

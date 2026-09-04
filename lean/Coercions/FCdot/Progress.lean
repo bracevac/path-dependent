@@ -1,4 +1,4 @@
-import Coercions.FCdot.CanonicalChain
+import Coercions.FCdot.CanonicalForms
 
 /-!
 # Progress

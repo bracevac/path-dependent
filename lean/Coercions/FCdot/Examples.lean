@@ -17,28 +17,16 @@ structural checker of `Coercions.FCdot.Checker`.  Each example comes with
   calculi erase into `Coercions.Runtime`, so the equation is an equality of
   `Runtime.Tm` and holds by `rfl`.
 
-## `decide` and the two examples that use object literals
+## The verdicts are decided in the kernel
 
-E1, E3 and E4 state the verdict as `checkTm … = true := by decide +kernel`
-and read the derivation off it with `checkTm_sound`, so the checker is run by
-the kernel.  (Plain `decide` is not enough: `synthTmCore` is compiled by
-well-founded recursion and the *elaborator* will not unfold it, while the
-kernel will.)
-
-E2 and E5 contain object literals, and for those the kernel gets stuck, on a
-definition rather than on the size of the computation: `Witnesses.eqEntriesOf`
-(`Syntax.lean`) recurses on `Witnesses (s,x)`, whose family index is not a
-variable, so Lean cannot compile it structurally and falls back to
-`WellFounded.fix` over `sizeOfWFRel`, whose `Acc.rec` does not reduce.  (The
-checker's own kernels are also well-founded, but over `Nat`, and
-`WellFounded.Nat.fix` does reduce — which is why E1, E3 and E4 go through.)
-Every literal's type goes through `Telescope.ofLiteral` and hence through
-`eqEntriesOf`, so even `ν(z. ∅)` is out of reach of `decide`.  For those two examples the verdict is therefore a `#guard` (which
-runs the compiled checker) and the typing derivation is built by hand from the
-rules, with `E2Tel_eq`/`E5Tel_eq` — proved by `simp` from the equation lemmas —
-supplying the one step the kernel cannot take.  Generalising
-`Witnesses.eqEntriesOf` to `Witnesses s'` (as `Witnesses.all` already is) would
-make it structural and put E2 and E5 within reach of `decide` too.
+Every verdict is stated as `checkTm … = true := by decide +kernel`, and the
+typing derivation is read off it with `checkTm_sound`, so the checker is run
+by the kernel.  (Plain `decide` is not enough: `synthTmCore` is compiled by
+well-founded recursion over `Nat`, which the elaborator will not unfold but
+the kernel will.)  E2 and E5 contain object literals; their derivations are
+also built by hand from the rules, as a second, independent witness, with
+`E2Tel_eq`/`E5Tel_eq` identifying the literal's telescope with
+`Telescope.ofLiteral`.
 
 ## The type translation, concretely
 
@@ -205,7 +193,7 @@ theorem E2Tel_eq : Telescope.ofLiteral (E2Wit (s := s)) [la] = E2Tel := by
 /-- The literal's precise type. -/
 def E2Ty : Ty s := .obj E2Tel
 
-#guard checkValue Ctx.nil (.obj E2Wit E2Fields) E2Ty
+example : checkValue Ctx.nil (.obj E2Wit E2Fields) E2Ty = true := by decide +kernel
 
 theorem E2_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ .obj E2Wit E2Fields : E2Ty := by
   have h : Γ ⊢ᵥ .obj E2Wit E2Fields : (.obj (Telescope.ofLiteral E2Wit [la])) :=
@@ -232,8 +220,8 @@ def E2 : Tm [] :=
 
 def E2Ty' : Ty [] := .top
 
-#guard checkTm Ctx.nil E2 E2Ty'
-#guard !checkTm Ctx.nil E2 .bot
+example : checkTm Ctx.nil E2 E2Ty' = true := by decide +kernel
+example : checkTm Ctx.nil E2 .bot = false := by decide +kernel
 
 /-- After the outer `let`: `x : E2Ty`. -/
 def E2Ctx1 : Ctx ([],x) := Ctx.nil.cons (.opaque E2Ty)
@@ -417,8 +405,8 @@ def E5 : Tm [] :=
 
 def E5Ty : Ty [] := .pi E5AT (.sel .here lA)
 
-#guard checkTm Ctx.nil E5 E5Ty
-#guard !checkTm Ctx.nil E5 (.pi E5AT .top)
+example : checkTm Ctx.nil E5 E5Ty = true := by decide +kernel
+example : checkTm Ctx.nil E5 (.pi E5AT .top) = false := by decide +kernel
 
 /-- `w : {A : ⊤..⊤}, v : {A : ⊤..⊤}`, the context of the object literal. -/
 def E5Ctxv : Ctx ([],x,x) := (Ctx.nil.cons (.opaque E5AT)).cons (.opaque E5AT)

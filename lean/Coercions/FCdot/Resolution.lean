@@ -1,4 +1,4 @@
-import Coercions.FCdot.Canonical
+import Coercions.FCdot.Normalizer
 import Coercions.FCdot.Typing
 import Coercions.FCdot.TypingRename
 
