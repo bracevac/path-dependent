@@ -9,3 +9,5 @@
 *.toc
 main.pdf
 build.log
+pg-*.png
+*.dvi
