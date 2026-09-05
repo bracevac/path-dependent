@@ -33,6 +33,7 @@ The first version of the development required definitions to be well founded, wi
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \[
 \begin{array}{@{}lrcl@{}}
 \text{Forms} & F,G & ::= & \form{bot} \mid \form{top} \mid \form{id} \mid \form{eqv}\,\varphi \mid \form{pi}\,d\,c \mid \form{obj}\,\mathit{Es} \\
@@ -40,6 +41,7 @@ The first version of the development required definitions to be well founded, wi
 \text{Proposition forms} & Q & ::= & \form{le}\,F \mid \form{eq} \mid \form{has}\,x\,\ell \qquad\quad V ::= \tnil \mid \tcons{V}{Q}
 \end{array}
 \]
+\color{black}
 \caption{Head forms of closed inclusion evidence, their entries, and views of atoms.}
 \label{fig:forms}
 \end{figure*}
@@ -52,6 +54,7 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \[
 \begin{array}{@{}lcl@{}}
 \mathit{hnf}_\sigma(\ev{refl}\,T) & = & \form{eqv}\,(\ev{refl}\,T) \\
@@ -70,12 +73,14 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \mathit{viewThrough}_\sigma(F, a) & = & \tnil \quad \text{for } F \in \{\form{pi}\,d\,c, \form{top}, \form{bot}\}
 \end{array}
 \]
+\color{black}
 \caption{The normalizer, with the fuel argument and the failure cases elided. Each recursive call is on a subterm and consumes one unit of fuel.}
 \label{fig:normalizer}
 \end{figure*}
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \[
 \begin{array}{@{}lcl@{}}
 \form{id} \circ G = G & \qquad & F \circ \form{id} = F \\
@@ -85,6 +90,7 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \multicolumn{3}{@{}l@{}}{\form{obj}\,\mathit{Es}_1 \circ \form{obj}\,\mathit{Es}_2 = \form{obj}\,(\mathit{Es}_2 \text{ routed through } \mathit{Es}_1)}
 \end{array}
 \]
+\color{black}
 \caption{Composition of head forms, $F \circ G$. In addition, $\form{eqv}\,\varphi \circ \form{bot} = \form{bot}$, and in every other case $F \circ G = F$. Routing the entries of one object form through another fails when an entry names a proposition of the wrong kind, which does not happen between typed forms.}
 \label{fig:combine}
 \end{figure*}
@@ -103,6 +109,7 @@ The chain of casts of an atom, $\chn{\sigma}{a}{n}{(a', F)}$, composes the head 
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \begin{mathpar}
 \inferrule{\resolve{\Gamma}{S} = \bot}{\formj{\Gamma}{\form{bot}}{S}{T}}
 \and
@@ -137,6 +144,7 @@ The chain of casts of an atom, $\chn{\sigma}{a}{n}{(a', F)}$, composes the head 
 \inferrule{\viewj{\Gamma}{r}{\sigma}{V}{\tel} \\ \sigma(r) \text{ has field } \ell}
   {\viewj{\Gamma}{r}{\sigma}{\tcons{V}{\form{has}\,r\,\ell}}{\tcons{\tel}{\phas{\ell}}}}
 \end{mathpar}
+\color{black}
 \caption{Typed forms $\formj{\Gamma}{F}{S}{T}$, typed entries $\entj{\Gamma}{\mathit{Es}}{\tel_1}{\tel_2}$, and typed views $\viewj{\Gamma}{r}{\sigma}{V}{\tel}$. The entry rules for equalities mirror the morphism rules. A side is typed as $\form{id}$ between equal types, or as a form between closed types weakened under the self binder.}
 \label{fig:formtyped}
 \end{figure*}

@@ -1,25 +1,25 @@
 \section{Overview}\label{sec:overview}
 
-This section walks through the design on two examples before the definitions. The first shows what a bad-bounds derivation becomes. The second is a derivation that a translation into existential packages cannot handle, and it decided the shape of \FCdot.
+This section walks through the design on two examples before the definitions. Throughout the paper, source syntax and judgments are set in \src{blue} and target syntax and judgments in \tgt{red}. The first shows what a bad-bounds derivation becomes. The second is a derivation that a translation into existential packages cannot handle, and it decided the shape of \FCdot.
 
 \subsection{Source: DOT in monadic normal form}
 
 The source calculus is the WadlerFest DOT of Amin et al.\ \cite{amin2016essence}, which is already in a let-normal form: application and selection take variables, and a let binds the result of a computation. We call it \DOTMNF because the right-hand side of a let is an arbitrary term. Types are
 \[
-\begin{array}{@{}rcl@{}}
+\src{\begin{array}{@{}rcl@{}}
 S, T & ::= & \top \mid \bot \mid \dtyp{A}{S}{T} \mid \dfld{a}{T} \mid x.A \\
 & \mid & \dmu{x}{T} \mid \dall{x}{S}{T} \mid S \wedge T .
-\end{array}
+\end{array}}
 \]
 Terms are variables, values, applications $x\,y$, selections $x.a$, and $\klet x = t \kin u$. Values are lambdas $\lambda(x:T).\,t$ and object literals $\dnew{x}{d}$ whose definitions $d$ are type members $\ddeftyp{A}{T}$ and term members $\ddeftrm{a}{t}$ joined by $\wedge$. Subtyping has the rules of DOT: a type member $x : \dtyp{A}{S}{T}$ gives $S \sub x.A$ and $x.A \sub T$, function types are contravariant in the domain, intersections have projections and pairing, and recursive types are introduced and eliminated on variables by \rn{Rec-I} and \rn{Rec-E}. A program runs on a store machine with a continuation of let frames. The machine has no types to consult.
 
 Consider the program
 \[
-\lambda(x : \dtyp{A}{\top}{\bot}).\ \klet y = x \kin y
+\src{\lambda(x : \dtyp{A}{\top}{\bot}).\ \klet y = x \kin y}
 \]
 at result type $\dtyp{B}{\mathit{Int}}{\mathit{Int}}$. Its derivation retypes $x$ from $\dtyp{A}{\top}{\bot}$ to the unrelated $\dtyp{B}{\mathit{Int}}{\mathit{Int}}$ by
 \[
-\dtyp{A}{\top}{\bot} \sub \top \sub x.A \sub \bot \sub \dtyp{B}{\mathit{Int}}{\mathit{Int}},
+\src{\dtyp{A}{\top}{\bot} \sub \top \sub x.A \sub \bot \sub \dtyp{B}{\mathit{Int}}{\mathit{Int}}},
 \]
 using the two bounds of $x$'s own member. This is a well-typed program. It is also harmless, because no argument of type $\dtyp{A}{\top}{\bot}$ exists, and a safety proof has to say why.
 
@@ -30,7 +30,7 @@ In \FCdot a type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function t
 \begin{array}{rcl}
 \dtyp{A}{S}{T} & \mapsto & \obj{[\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,]} \\
 \dfld{a}{T} & \mapsto & \obj{[\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,]} \\
-S \wedge T & \mapsto & \obj{(\tel_S \mathbin{+\!\!+} \tel_T)}
+\src{S \wedge T} & \mapsto & \obj{(\tel_S \mathbin{+\!\!+} \tel_T)}
 \end{array}
 \]
 A field $a$ has a block name $\sel{\self}{a}$ too, which is the type of the field. An intersection of declarations is therefore a concatenation of propositions and never an operation on types.
@@ -45,13 +45,13 @@ Any evidence that the type of an atom is included in an object type yields the p
 The retyping of the first example becomes the evidence
 \[
 \begin{array}{@{}l@{}}
-e = \ev{trans}\ (\ev{top}\,D)\ (\ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,D)\,0) \\
+\tgt{e} = \ev{trans}\ (\ev{top}\,D)\ (\ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,D)\,0) \\
 \qquad\qquad (\ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,D)\,1)\ (\ev{bot}\,R)))
 \end{array}
 \]
 with $D = \trans{\dtyp{A}{\top}{\bot}}$ and $R = \trans{\dtyp{B}{\mathit{Int}}{\mathit{Int}}}$. The two middle steps eliminate the two propositions of $x$'s own telescope, $\ple{\top}{\sel{x}{A}}$ and $\ple{\sel{x}{A}}{\bot}$. No absurdity rule is involved. The whole program is
 \[
-\lambda(x : D).\ \klet y = \ev{cast}\,x\,e \kin y
+\tgt{\lambda(x : D).\ \klet y = \ev{cast}\,x\,e \kin y}
 \]
 and it type checks in \FCdot with no subsumption. Its erasure is the erasure of the source program.
 
@@ -66,14 +66,14 @@ S = \dtyp{A}{\bot}{\top}, \qquad T = \dtyp{A}{\mathit{Int}}{\top}, \\
 \]
 DOT derives $S \sub x.B \sub T$, hence $w : T$ by subsumption, hence $\mathit{Int} \sub w.A$. So
 \[
-\klet g = \lambda(y : w.A).\,y \kin g\,n \qquad \text{with } n : \mathit{Int}
+\src{\klet g = \lambda(y : w.A).\,y \kin g\,n} \qquad \text{with } \src{n : \mathit{Int}}
 \]
 is well typed. In the package design, $w.A$ denotes the name $\alpha$ opened from the declared type $S$ of $w$. The retyping of $w$ at $T$ is a coercion between two package types, and using it means opening the coerced package, which yields a fresh $\alpha'$ with $\mathit{Int} \le \alpha'$. Nothing relates $\alpha'$ to $\alpha$, and the application $g\,n$ has no translation. The context is unrealizable, but a total translation on derivations has to translate this derivation.
 
 The conclusion we drew is that member identity must be attached to the binder, not to the type through which the binder is viewed. In \FCdot the type $w.A$ is the block name $\sel{w}{A}$, whatever type $w$ is viewed at. The retyping $S \le T$ through $x.B$ is closed evidence
 \[
 \begin{array}{@{}l@{}}
-e_{ST} = \ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,X)\,0) \\
+\tgt{e_{ST}} = \ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,X)\,0) \\
 \qquad\qquad\quad (\ev{member}\,x\,(\ev{refl}\,X)\,1)
 \end{array}
 \]

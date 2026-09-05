@@ -8,11 +8,11 @@ The translation is a function on derivations. Types translate homomorphically, s
 \small
 \[
 \begin{array}{@{}rcl@{}}
-\trans{\top} & = & \obj{\tnil} \qquad\qquad \trans{\bot} \ =\ \bot \qquad\qquad \trans{x.A} \ =\ \sel{x}{A} \\
+\trans{\src{\top}} & = & \obj{\tnil} \qquad\qquad \trans{\src{\bot}} \ =\ \tgt{\bot} \qquad\qquad \trans{\dsel{x}{A}} \ =\ \sel{x}{A} \\
 \trans{\dall{x}{S}{T}} & = & \pit{\trans{S}}{\trans{T}} \\
 \trans{\dtyp{A}{S}{T}} & = & \obj{[\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,]} \\
 \trans{\dfld{a}{T}} & = & \obj{[\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,]} \\
-\trans{S \wedge T} & = & \obj{(\mathit{tel}\,S \mathbin{+\!\!+} \mathit{tel}\,T)} \\
+\trans{\src{S \wedge T}} & = & \obj{(\mathit{tel}\,S \mathbin{+\!\!+} \mathit{tel}\,T)} \\
 \trans{\dmu{x}{T}} & = & \obj{(\mathit{tel}_{\self}\,T)}
 \end{array}
 \]

@@ -2,6 +2,7 @@
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \[
 \begin{array}{@{}lrcl@{}}
 \text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit{S}{T} \mid \obj{\tel} \qquad\quad \top \mathrel{:=} \obj{\tnil} \\
@@ -21,6 +22,7 @@
 \text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : T \mathrel{:=} W ; \vec{\ell}
 \end{array}
 \]
+\color{black}
 \caption{Syntax of \FCdot. In $\ev{pi}\,e\,e'$, in $\obj{\tel}$, and in the telescopes carried by evidence and atoms, the second component lives under one more binder.}
 \label{fig:target-syntax}
 \end{figure*}
@@ -35,6 +37,7 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \begin{mathpar}
 \inferrule{ }{\lej{\Gamma}{\ev{refl}\,T}{T}{T}}
 \and
@@ -83,6 +86,7 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 \inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \tat{\tel}{j}{\phas{\ell}}}
   {\morj{\Gamma}{\ev{has}\,m\,j}{\tel}{\tcons{\tel'}{\phas{\ell}}}}
 \end{mathpar}
+\color{black}
 \caption{Evidence typing. The rules for $\ev{refl}$, $\ev{symm}$, and $\ev{trans}$ on equalities are omitted. A hole reads a source proposition as an inclusion: $\holej{\tel}{\ev{le}\,j}{X}{Y}$ when $\tat{\tel}{j}{\ple{X}{Y}}$, $\holej{\tel}{\ev{eq}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{X}{Y}}$, and $\holej{\tel}{\ev{eqSym}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{Y}{X}}$.}
 \label{fig:evidence}
 \end{figure*}
@@ -97,6 +101,7 @@ An object coercion $\ev{obj}\,\tel\,m$ is annotated with its source telescope an
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \begin{mathpar}
 \inferrule{ }{\atomj{\Gamma}{x}{\Gamma(x)}}
 \and
@@ -130,6 +135,7 @@ An object coercion $\ev{obj}\,\tel\,m$ is annotated with its source telescope an
 \and
 \inferrule{\fldj{\Gamma}{F} \\ \tmj{\Gamma}{t}{\sel{x}{\ell}}}{\fldj{\Gamma}{F, \ell = t}}
 \end{mathpar}
+\color{black}
 \caption{Typing of atoms, terms, values, and fields. In the field rules $x$ is the self binder of the literal.}
 \label{fig:terms}
 \end{figure*}
@@ -144,6 +150,7 @@ An object literal $\lit{W}{F}$ has witnesses and fields and nothing else. Its ty
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \[
 \begin{array}{@{}lcll@{}}
 \mst{\sigma}{K}{\klet x = t \kin u} &\step& \mst{\sigma}{K \triangleright \ev{let}\,u}{t} \\
@@ -158,12 +165,14 @@ An object literal $\lit{W}{F}$ has witnesses and fields and nothing else. Its ty
 \mst{\sigma}{K}{\ev{proj}\,a\,\ell\,h} &\step& \mst{\sigma}{K}{\inst{t}{\rt{a}}} & \text{if } \sigma(\rt{a}) = \lit{W}{F} \text{ and } F(\ell) = t
 \end{array}
 \]
+\color{black}
 \caption{The store machine of \FCdot. $\mathit{core}(v)$ is the literal under the cast wrappers of $v$, and $\mathit{adjust}(u, v)$ substitutes $\ev{cast}\,x\,E$ for $x$ in $u$ when $E$ is the composite of those wrappers, and is $u$ when there are none. The judgment $\chn{\sigma}{a}{n}{(a', F)}$ is the normalization of the chain of casts of $a$ with fuel $n$, defined in Section~\ref{sec:normalizer}.}
 \label{fig:machine}
 \end{figure*}
 
 A store holds one value per binder of its signature, and store typing $\storej{\sigma}{\Gamma}$ requires every entry to be a literal, typed in the transparent context of the entries before it, with the context recording the literal's witnesses and field labels:
 \begin{mathpar}
+\color{tgtcol}
 \inferrule{ }{\storej{\cdot}{\cdot}}
 \and
 \inferrule{\storej{\sigma}{\Gamma} \\ v \text{ is a literal} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, v}{\Gamma, x : T \mathrel{:=} \mathit{witnesses}(v) ; \mathit{fields}(v)}}

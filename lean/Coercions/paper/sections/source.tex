@@ -2,6 +2,7 @@
 
 \begin{figure*}
 \small
+\color{srccol}
 \[
 \begin{array}{@{}lrcl@{}}
 \text{Paths} & p & ::= & x \\
@@ -12,12 +13,14 @@
 \text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : \dmu{x}{T} \mathrel{:=} d
 \end{array}
 \]
+\color{black}
 \caption{Syntax of \DOTMNF.}
 \label{fig:source-syntax}
 \end{figure*}
 
 \begin{figure*}
 \small
+\color{srccol}
 \begin{mathpar}
 \inferrule[Top]{ }{\subj{\Gamma}{T}{\top}}
 \and
@@ -69,6 +72,7 @@
 \and
 \inferrule[Def-And]{\dtyj{\Gamma}{d_1}{T_1} \\ \dtyj{\Gamma}{d_2}{T_2}}{\dtyj{\Gamma}{d_1 \wedge d_2}{T_1 \wedge T_2}}
 \end{mathpar}
+\color{black}
 \caption{Subtyping, typing, and definition typing of \DOTMNF.}
 \label{fig:source-typing}
 \end{figure*}
@@ -88,6 +92,7 @@ The rule \rn{\{\}-I} binds the self variable at the recursive type $\dmu{x}{T}$ 
 A state $\mst{\sigma}{K}{t}$ is a store of values, a continuation of let frames, and a term, all over one signature. Allocation extends the signature by one binder, and $\weak{K}$ weakens the continuation under it. Figure~\ref{fig:source-machine} gives the steps.
 \begin{figure*}
 \small
+\color{srccol}
 \[
 \begin{array}{@{}lcll@{}}
 \mst{\sigma}{K}{\klet x = t \kin u} &\step& \mst{\sigma}{K \triangleright (x.\,u)}{t} \\
@@ -97,6 +102,7 @@ A state $\mst{\sigma}{K}{t}$ is a store of values, a continuation of let frames,
 \mst{\sigma}{K}{x.a} &\step& \mst{\sigma}{K}{\inst{t}{x}} & \text{if } \sigma(x) = \dnew{z}{d} \text{ and } d \ni \ddeftrm{a}{t}
 \end{array}
 \]
+\color{black}
 \caption{The store machine of \DOTMNF.}
 \label{fig:source-machine}
 \end{figure*}
