@@ -185,7 +185,6 @@ inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
   /-- An object literal has its precise type, generated from its witnesses and
       fields.  Fields are typed with the self binder at that type. -/
   | obj :
-      W.Guarded →
       Γ.cons (.transparent (μ (Telescope.ofLiteral W F.labels)) W F.labels) ⊢ᶠ F →
       Γ ⊢ᵥ .obj W F : μ (Telescope.ofLiteral W F.labels)
   | cast : Γ ⊢ᵥ v : S → Γ ⊢ e : S ≤ T → Γ ⊢ᵥ .cast v e : T

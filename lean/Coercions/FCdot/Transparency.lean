@@ -171,7 +171,7 @@ theorem Value.HasType.refine {Γ Γ' : Ctx s} {v : Value s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᵥ v : T) : Γ' ⊢ᵥ v : T := by
   match h with
   | .lam ht => exact .lam (ht.refine (hR.cons _))
-  | .obj hG hF => exact .obj hG (hF.refine (hR.cons _))
+  | .obj hF => exact .obj (hF.refine (hR.cons _))
   | .cast hv he => exact .cast (hv.refine hR) (he.refine hR)
 
 theorem Fields.HasType.refine {Γ Γ' : Ctx (s,x)} {F : Fields (s,x)}

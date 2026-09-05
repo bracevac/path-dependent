@@ -37,28 +37,6 @@ def Binding.rename : Binding s1 → Rename s1 s2 → Binding s2
   | .cons F l t, ρ => by
       simp [Fields.rename, Fields.labels, Fields.labels_rename F ρ]
 
-theorem Ty.isSelfName_rename_lift {s1 s2 : Sig} :
-    ∀ (T : Ty (s1,x)) (ρ : Rename s1 s2), (T.rename ρ.lift).isSelfName = T.isSelfName
-  | .bot, _ => rfl
-  | .pi _ _, _ => rfl
-  | .obj _, _ => rfl
-  | .sel .here _, _ => rfl
-  | .sel (.there _) _, _ => rfl
-
-theorem Witnesses.all_isSelfName_rename {s1 s2 : Sig} :
-    ∀ (W : Witnesses (s1,x)) (ρ : Rename s1 s2),
-      (W.rename ρ.lift).all (fun T => !T.isSelfName) = W.all (fun T => !T.isSelfName)
-  | .nil, _ => rfl
-  | .cons W l T, ρ => by
-      simp [Witnesses.rename, Witnesses.all, Ty.isSelfName_rename_lift T ρ,
-        Witnesses.all_isSelfName_rename W ρ]
-
-theorem Witnesses.Guarded.rename {W : Witnesses (s1,x)} (ρ : Rename s1 s2)
-    (h : W.Guarded) : (W.rename ρ.lift).Guarded := by
-  unfold Witnesses.Guarded at h ⊢
-  rw [Witnesses.all_isSelfName_rename W ρ]
-  exact h
-
 /-! ## Context lookups, unfolded -/
 
 @[simp] theorem Ctx.lookupTy_here (Γ : Ctx s) (b : Binding s) :
@@ -331,10 +309,9 @@ theorem Value.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Re
     Γ' ⊢ᵥ (v.rename ρ) : (T.rename ρ) := by
   match h with
   | .lam ht => exact .lam (ht.rename (hρ.lift _))
-  | @Value.HasType.obj _ F0 _ W0 hG hF =>
+  | @Value.HasType.obj _ F0 _ W0 hF =>
       have hF' := Fields.HasType.rename (hρ.lift _) hF
       have := Value.HasType.obj (Γ := Γ') (W := W0.rename ρ.lift) (F := F0.rename ρ.lift)
-        (Witnesses.Guarded.rename ρ hG)
         (by simpa [Binding.rename, Ty.rename, Telescope.ofLiteral_rename] using hF')
       simpa [Value.rename, Ty.rename, Telescope.ofLiteral_rename] using this
   | .cast hv he => exact .cast (hv.rename hρ) (he.rename hρ)

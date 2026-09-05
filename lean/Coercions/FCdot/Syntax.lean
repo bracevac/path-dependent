@@ -288,6 +288,21 @@ def Witnesses.get : Witnesses s → Label → Ty s
   | .nil, _ => .top
   | .cons W ℓ' T, ℓ => if ℓ = ℓ' then T else W.get ℓ
 
+/-- Labels of a witness list, oldest first (so that concatenation is list append). -/
+def Witnesses.labels : Witnesses s → List Label
+  | .nil => []
+  | .cons W ℓ _ => W.labels ++ [ℓ]
+
+/-- Only a listed label has a witness of its own: an unlisted one reads as `⊤`. -/
+theorem Witnesses.get_of_not_mem_labels {s : Sig} :
+    ∀ (W : Witnesses s) {ℓ : Label}, ℓ ∉ W.labels → W.get ℓ = ⊤
+  | .nil, _, _ => rfl
+  | .cons W ℓ' T, ℓ, h => by
+      have h1 : ℓ ∉ W.labels := fun hm => h (by simp [Witnesses.labels, hm])
+      have h2 : ℓ ≠ ℓ' := fun he => h (by simp [Witnesses.labels, he])
+      rw [show Witnesses.get (Witnesses.cons W ℓ' T) ℓ = W.get ℓ by simp [Witnesses.get, h2]]
+      exact Witnesses.get_of_not_mem_labels W h1
+
 /-- Field lookup. -/
 def Fields.get? : Fields s → Label → Option (Tm s)
   | .nil, _ => none

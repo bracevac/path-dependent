@@ -910,8 +910,24 @@ Decisions taken while implementing M1, each confirmed with the author:
    README.  Two things the proofs forced: (a) contexts must be well-formed
    (`Ctx.Wf`: a literal's self binder carries a declaration type of literal
    shape with distinct labels), trivially true of the empty context; (b) a
-   further fragment condition on `{}-I`, `Ty.Guarded T`: the declared type
-   of a field may not be a bare selection on the object's own self (its
-   witness would alias another name of the same block).  The field order of
+   further fragment condition on `{}-I`, a self-alias restriction: the
+   declared type of a field may not be a bare selection on the object's own
+   self (its witness would alias another name of the same block); item 8
+   removes it again.  The field order of
    a translated intersection follows the right conjunct, as DOT-MNF's
    shadowing and erasure do.
+8. **The self-alias restriction of item 7(b) is gone.**  `FCdot.Ctx.resolve`
+   was rebuilt on alias-tolerant resolution: a chain of definitions either
+   settles (a shape, or an undefined name) or is periodic, since the
+   context has only finitely many defined names (`Γ.defPairs`, pigeonhole),
+   and a cyclic chain resolves to `⊤` (the empty object type), so a fixed
+   fuel (`Γ.defPairs.length + 1`) always suffices — no well-founded-witness
+   hypothesis needed anywhere.  `Value.HasType.obj` no longer requires its
+   witnesses to be alias-free; `DotMNF.HasTy.obj` no longer carries the two
+   side conditions that used to enforce that on the source side (one on the
+   definitions, one on the declaration type).  DOT admits definitions such as
+   `ν(x. {A = x.B} ∧ {B = x.A})` and fields typed `{v : x.T}` inside their
+   own literal; both translate and check now.  *Status (2026-09-05):* done;
+   `FCdot/Examples.lean` and `DotMNF/Examples.lean` carry examples of both
+   shapes (a field typed at its own type member, and a two-element alias
+   cycle).

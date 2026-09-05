@@ -82,6 +82,14 @@ example : lB = DotMNF.Examples.lB := rfl
 example : la = DotMNF.Examples.la := rfl
 example : lb = DotMNF.Examples.lb := rfl
 
+/-- Type label `T`. -/
+def lT : Label := .typ 2
+/-- Term label `v`. -/
+def lv : Label := .trm 2
+
+example : lT = DotMNF.Examples.lT := rfl
+example : lv = DotMNF.Examples.lv := rfl
+
 /-! ## Type shapes -/
 
 /-- `{A : S..T}` as a telescope over the self block: `[S ≤ y.A, y.A ≤ T]`. -/
@@ -197,7 +205,7 @@ example : checkValue Ctx.nil (.obj E2Wit E2Fields) E2Ty = true := by decide +ker
 
 theorem E2_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ .obj E2Wit E2Fields : E2Ty := by
   have h : Γ ⊢ᵥ .obj E2Wit E2Fields : (.obj (Telescope.ofLiteral E2Wit [la])) :=
-    .obj rfl (.cons .nil (.cast (.val (.lam (.atom .var))) (.eqToLe (.symm (.def rfl)))))
+    .obj (.cons .nil (.cast (.val (.lam (.atom .var))) (.eqToLe (.symm (.def rfl)))))
   rw [E2Tel_eq] at h
   exact h
 
@@ -414,7 +422,7 @@ def E5Ctxv : Ctx ([],x,x) := (Ctx.nil.cons (.opaque E5AT)).cons (.opaque E5AT)
 theorem E5_value : E5Ctxv ⊢ᵥ .obj (E5Wit .here) E5Fields : E5ObjTy .here := by
   have h : Value.HasType E5Ctxv (.obj (E5Wit .here) E5Fields)
       (.obj (Telescope.ofLiteral (E5Wit .here) [la])) :=
-    .obj rfl
+    .obj
       (.cons .nil
         (.atom (.cast .var
           (.trans .top (.trans (.member (Tel := telTyp lA .top .top) .var .refl (.there .here))
@@ -460,6 +468,83 @@ example : DotMNF.HasTy .nil E5src
   DotMNF.Examples.E5
 
 theorem E5_erase : E5.erase = E5src.erase := rfl
+
+/-! ## E6: a field typed at its own literal's type member
+
+`ν(x. {T = Int} ∧ {v = n})` with `n : Int` from the enclosing scope,
+matching `DotMNF.Examples.E6`.  The field `v`'s witness is `self.T`, a bare
+selection on the object's own self: previously forbidden by the self-alias
+restriction on witnesses, now checked directly. -/
+
+/-- The witnesses: `T ↦ Int`, `v ↦ self.T` (a same-block alias). -/
+def E6Wit : Witnesses (s,x) := .cons (.cons .nil lT tInt) lv (.sel .here lT)
+
+/-- The field body: `n` (from the enclosing scope), cast from `Int` to `self.T`
+by the definition of `T`, then from `self.T` to the block name `self.v` by
+the definition of `v`. -/
+def E6Field : Tm (s,x,x) :=
+  .atom (.cast
+    (.cast (.var (.there .here)) (.eqToLe (.symm (.def .here lT))))
+    (.eqToLe (.symm (.def .here lv))))
+
+def E6Fields : Fields (s,x,x) := .cons .nil lv E6Field
+
+/-- The literal's precise telescope: `[self.T ≃ Int, self.v ≃ self.T, has v]`. -/
+def E6Tel : Telescope (s,x) :=
+  .cons (.cons (.cons .nil (.eq (.sel .here lT) tInt)) (.eq (.sel .here lv) (.sel .here lT)))
+    (.has lv)
+
+/-- `E6Tel` is what the literal generates. -/
+theorem E6Tel_eq : Telescope.ofLiteral (E6Wit (s := s)) [lv] = E6Tel := by
+  simp [Telescope.ofLiteral, Witnesses.eqEntries, Witnesses.eqEntriesOf, Telescope.hasEntries,
+    Witnesses.get, E6Wit, E6Tel, lT, lv]
+
+/-- The literal's precise type. -/
+def E6Ty : Ty s := .obj E6Tel
+
+/-- `n : Int` in scope. -/
+def E6Ctx : Ctx ([],x) := Ctx.nil.cons (.opaque tInt)
+
+example : checkValue E6Ctx (.obj E6Wit E6Fields) E6Ty = true := by decide +kernel
+
+theorem E6_value {s : Sig} {Γ : Ctx s} :
+    (Γ.cons (.opaque tInt)) ⊢ᵥ .obj E6Wit E6Fields : E6Ty := by
+  have h : (Γ.cons (.opaque tInt)) ⊢ᵥ .obj E6Wit E6Fields :
+      (.obj (Telescope.ofLiteral E6Wit [lv])) :=
+    .obj (.cons .nil
+      (.atom (.cast (.cast .var (.eqToLe (.symm (.def rfl)))) (.eqToLe (.symm (.def rfl))))))
+  rw [E6Tel_eq] at h
+  exact h
+
+/-! ## E7: a two-element alias cycle
+
+`ν(x. {A = x.B} ∧ {B = x.A})`, matching `DotMNF.Examples.E7`.  Both
+witnesses are bare selections on the object's own self, each other's alias:
+a shape the self-alias restriction used to rule out entirely, admitted now
+because alias-tolerant resolution follows a same-block alias to whatever it
+names, cycles included (a cyclic alias resolves to `⊤`). -/
+
+/-- The witnesses: `A ↦ self.B`, `B ↦ self.A`. -/
+def E7Wit : Witnesses (s,x) := .cons (.cons .nil lA (.sel .here lB)) lB (.sel .here lA)
+
+/-- The literal's precise telescope: `[self.A ≃ self.B, self.B ≃ self.A]`, no fields. -/
+def E7Tel : Telescope (s,x) :=
+  .cons (.cons .nil (.eq (.sel .here lA) (.sel .here lB))) (.eq (.sel .here lB) (.sel .here lA))
+
+/-- `E7Tel` is what the literal generates. -/
+theorem E7Tel_eq : Telescope.ofLiteral (E7Wit (s := s)) [] = E7Tel := by
+  simp [Telescope.ofLiteral, Witnesses.eqEntries, Witnesses.eqEntriesOf, Telescope.hasEntries,
+    Witnesses.get, E7Wit, E7Tel, lA, lB]
+
+/-- The literal's precise type. -/
+def E7Ty : Ty s := .obj E7Tel
+
+example : checkValue Ctx.nil (.obj E7Wit .nil) E7Ty = true := by decide +kernel
+
+theorem E7_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ .obj E7Wit .nil : E7Ty := by
+  have h : Γ ⊢ᵥ .obj E7Wit .nil : (.obj (Telescope.ofLiteral E7Wit [])) := .obj .nil
+  rw [E7Tel_eq] at h
+  exact h
 
 end Examples
 end FCdot

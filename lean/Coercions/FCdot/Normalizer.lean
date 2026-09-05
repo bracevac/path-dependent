@@ -35,17 +35,40 @@ def Ctx.length : Ctx s → Nat
   | .nil => 0
   | .cons Γ _ => Γ.length + 1
 
-/-- Follow definitions at the head of a type, with fuel. -/
-def Ctx.resolveFuel (Γ : Ctx s) : Nat → Ty s → Ty s
-  | 0, T => T
-  | n + 1, .sel x ℓ =>
-      match Γ.lookupDef x ℓ with
-      | some W => Γ.resolveFuel n W
-      | none => .sel x ℓ
-  | _ + 1, T => T
+/-- One alias step: `some W` if the head of the type is a name defined by a
+transparent binder, `none` if the type is settled (a shape, or a name whose
+binder is opaque). -/
+def Ctx.next (Γ : Ctx s) : Ty s → Option (Ty s)
+  | .sel x ℓ => Γ.lookupDef x ℓ
+  | _ => none
 
-/-- Resolution with enough fuel for any alias chain in the context. -/
-def Ctx.resolve (Γ : Ctx s) (T : Ty s) : Ty s := Γ.resolveFuel (Γ.length + 1) T
+/-- Follow definitions at the head of a type, with fuel.  Aliases within a
+block are allowed, so a chain of definitions may be cyclic; running out of
+fuel on a defined name means it is, and a cycle resolves to `⊤`, the object
+type with no propositions. -/
+def Ctx.resolveFuel (Γ : Ctx s) : Nat → Ty s → Ty s
+  | 0, T =>
+      match Γ.next T with
+      | none => T
+      | some _ => ⊤
+  | n + 1, T =>
+      match Γ.next T with
+      | none => T
+      | some W => Γ.resolveFuel n W
+
+/-- All defined names of the context, as pairs of binder and label: the
+labels of the witnesses of each transparent binder. -/
+def Ctx.defPairs : Ctx s → List (BVar s .var × Label)
+  | .nil => []
+  | .cons Γ b =>
+      (Ctx.defPairs Γ).map (fun p => (BVar.there p.1, p.2)) ++
+        (match b with
+         | .transparent _ W _ => W.labels.map (fun ℓ => (BVar.here, ℓ))
+         | .opaque _ => [])
+
+/-- Resolution with enough fuel for any alias chain in the context: a chain
+longer than the number of defined names repeats a name, hence is cyclic. -/
+def Ctx.resolve (Γ : Ctx s) (T : Ty s) : Ty s := Γ.resolveFuel (Γ.defPairs.length + 1) T
 
 /-! ## Forms, entries, views -/
 
