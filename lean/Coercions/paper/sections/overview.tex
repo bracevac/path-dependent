@@ -30,7 +30,7 @@ In \FCdot a type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function t
 \begin{array}{rcl}
 \dtyp{A}{S}{T} & \mapsto & \obj{[\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,]} \\
 \dfld{a}{T} & \mapsto & \obj{[\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,]} \\
-\src{S \wedge T} & \mapsto & \obj{(\tel_S \mathbin{+\!\!+} \tel_T)}
+\src{S \wedge T} & \mapsto & \obj{(\tel_{\src{S}} \mathbin{+\!\!+} \tel_{\src{T}})}
 \end{array}
 \]
 A field $a$ has a block name $\sel{\self}{a}$ too, which is the type of the field. An intersection of declarations is therefore a concatenation of propositions and never an operation on types.

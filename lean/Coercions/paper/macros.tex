@@ -64,7 +64,7 @@
 \newcommand{\step}{\longrightarrow}
 \newcommand{\steps}{\longrightarrow^{*}}
 \newcommand{\erase}[1]{\lfloor #1 \rfloor}
-\newcommand{\trans}[1]{\llbracket #1 \rrbracket}
+\newcommand{\trans}[1]{{\color{black}\llbracket}\src{#1}{\color{black}\rrbracket}}
 \newcommand{\resolve}[2]{\tgt{\mathit{resolve}_{#1}(#2)}}
 \newcommand{\resolveAt}[3]{\tgt{\mathit{resolve}_{#1}^{#2}(#3)}}
 \newcommand{\hnf}[4]{\tgt{#1 \vdash #2 \Downarrow_{#3} #4}}
