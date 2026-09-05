@@ -14,4 +14,4 @@ Two lines of work. Each directory is self-contained and depends on nothing beyon
 
 - **`Coercions/`**: DOT translated into an FC-style coercion calculus with a decidable checker. DOT's type safety is a corollary. Its README is the map.
 
-Axioms: `propext` and `Quot.sound`, plus `Classical.choice` in three theorems of `Coercions`. No `sorry`, `axiom`, `partial`, or `native_decide` outside example files. Rocq ports of `LambdaP`, `LambdaPFC`, and `LambdaPCC` are in `../rocq/`. `lake build` builds everything.
+Axioms: `propext` and `Quot.sound`, nothing else. No `sorry`, `axiom`, `partial`, or `native_decide` outside example files. Rocq ports of `LambdaP`, `LambdaPFC`, and `LambdaPCC` are in `../rocq/`. `lake build` builds everything.
