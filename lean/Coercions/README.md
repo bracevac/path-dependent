@@ -1,60 +1,93 @@
 # Coercions
 
-Lean formalizations of type-preserving translations from DOT fragments into
-explicit-coercion calculi.
+Root modules: `DotMNF.lean`, `FCdot.lean`, `DotToFCdot.lean`, `Runtime.lean`,
+`FCsub.lean`, `ManySortedFC.lean`, `All.lean` (= FCsub + ManySortedFC).
 
-## Current development (Plan III, `plan-3-dot-mnf-to-fcdot.md`)
+## Runtime.lean
+The untyped runtime both DotMNF and FCdot erase into: `var`, `lam`, `obj` with
+fields, `app`, `proj`, `let`; store machine; `Final`, `Stuck`.
 
-- `DotMNF` — the source: WadlerFest DOT in monadic normal form, with object
-  literals that carry type members *and* term members, recursive self
-  types, intersections of declarations, and bad bounds admitted.  Its
-  machine erases step by step into the shared runtime (`erase_step`,
-  `erase_reflect`).  It has no metatheory of its own; safety is transported
-  from the target.
-- `FCdot` — the target: an explicit-evidence coercion calculus whose
-  evidence erases to nothing.  Checker with completeness, preservation,
-  progress, both erasure simulations, canonical forms over inert stores,
-  consistency of typed stores.  See `FCdot/README.md`.
-- `DotToFCdot` — the bridge: the translation of derivations, typedness,
-  erasure equality `⌊h.translate⌋ = ⌊t⌋`, coherence, `dot_safety`, and the
-  consistency corollaries for translated programs.  See
-  `DotToFCdot/README.md`.
-- `Runtime` — the shared untyped runtime both calculi erase into: variables,
-  lambdas, objects **with their term members**, application, projection,
-  `let`.  For example E2 (`FCdot/Examples.lean`, `DotMNF/Examples.lean`),
-  `let x = ν(x. {A = ∀(y : x.A) x.A} ∧ {a = λ(y : x.A). y}) in let f = x.a in f f`,
-  erases on both sides to
-  `let x = ν(x. {a = λy. y}) in let f = x.a in f f`, and the two erasures
-  are equal by `rfl`.
+## DotMNF/ — source: WadlerFest DOT in monadic normal form
+| module | contents |
+|---|---|
+| `Syntax` | paths, types (`⊤ ⊥ {A:S..T} {a:T} p.A μ ∀ ∧`), terms, values, definitions; `Decl`, `Wf`, `Distinct`, `Guarded` |
+| `Typing` | contexts (`cons`, `consSelf`); `Sub`, `HasTy`, `DefsTy` (Type-valued) |
+| `Machine` | store, continuations, `Step`, `Steps`, `Final`, `Stuck` |
+| `Erasure` | erasure to `Runtime`; `erase_step`, `erase_reflect`, `final_erase`, `final_reflect` |
+| `Examples` | E1–E5 as `HasTy` derivations |
 
-Restrictions of the source relative to WadlerFest DOT, all stated in the
-typing rules (`DotMNF/Typing.lean`) and in the plan's §13: intersections
-and recursive-type bodies are declaration-shaped; type-member definitions
-and field declarations inside a literal are not bare selections on the
-literal's own self (`Defs.Guarded`, `Ty.Guarded`; the plan's §12 risk 2).
-The last restriction is slated for removal by making the target's
-resolution follow aliases within a block.
+## FCdot/ — target: explicit-evidence coercion calculus
+| module | contents |
+|---|---|
+| `Debruijn` | signatures, `BVar`, renamings |
+| `Syntax` | types (`⊤ = μ []`, `⊥`, `x ∙ ℓ`, `Π`, `μ Tel`), propositions, telescopes; evidence `LeCo` (`refl trans top bot eqToLe pi obj pair member`), `EqCo`, `Has`, template morphisms (`Hole`, `Side`, `Morphism`); atoms (`var cast foldSelf unfoldSelf both`); terms, values, witnesses, fields; renaming, substitution; notation |
+| `Context` | bindings (opaque / transparent with witnesses), contexts, lookups, guardedness |
+| `Typing` | `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ`, `Γ ⊢ m : Tel ⇒ Tel'`, `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ F` |
+| `Store` | stores, literals, `⊢ σ : Γ` |
+| `Normalizer` | `Ctx.resolve`; forms, entries, views; `combine`, `pair`, `entriesAt`; fuel-indexed `hnf`, `entries`, `view`, `viewThrough`, `hasView`, `closedAtomForm` |
+| `Machine` | continuations `Γ ⊢ₖ K : T ⇒ U`, states, `st ⟶ st'`, `st ⟶* st'` |
+| `Erasure` | `⌊·⌋` to `Runtime`; `CastRedex` |
+| `RenameLemmas` | `rename_id`, `rename_comp`, subst/rename algebra, injectivity, weakening lemmas |
+| `TypingRename` | typing under renaming and weakening |
+| `Transparency` | context refinement (transparent ⇒ opaque) preserves typing |
+| `TypingSubst` | typing under atom substitution |
+| `Preservation` | inversion lemmas, store-typing lemmas, `preservation` (modulo `FormsTyped`) |
+| `ErasureMetatheory` | `erase_step`, cast-frame normalization, `erase_reflect` (modulo canonical forms), `final_erase`, `final_reflect` |
+| `Checker` | executable checker: `synthLe`, `checkTm`, … with soundness |
+| `CheckerCompleteness` | `checkTm_iff` and friends; type uniqueness |
+| `Resolution` | `Ctx.resolve` lemmas; fuel bound; well-defined contexts |
+| `FormTyping` | `Γ ⊨ F : S ≤ T`, `SideTyped`, `Γ ⊨ Es : Tel₁ ⇒ Tel₂`, `Γ ⊨[r] F : S ≤ T` (chains), `Γ ⊨[r, σ] V : Tel` (views) |
+| `FormAlgebra` | `combine_typed`, `pair_typed`, `entriesAt_typed`, `viewThrough_typed`, `atRoot`; fuel monotonicity and determinism |
+| `CanonicalForms` | `le_canon`, `eq_canon`, `has_canon`, `mor_canon`, `atom_canon`; `closedAtomForm_typed`; `formsTyped`; `preservation'`, `erase_reflect'` |
+| `Progress` | `closed_pi_inversion`, `closed_has_field`, `progress`, `not_stuck` |
+| `Consistency` | `closed_le_shapes`, `no_top_le_bot`, `realized`, `Steps.typed`, `reachable_consistent` |
+| `Examples` | E1–E5 checked in the kernel, erasure equal to DotMNF's |
 
-## Earlier targets, kept
+## DotToFCdot/ — the translation
+| module | contents |
+|---|---|
+| `Types` | `Ty.translate`, `Ty.tel`, `Ty.telSelf`, `Ty.witnesses`, `Ty.fieldLabels`, `Ty.literalTy`, `Ctx.translate` |
+| `TypesLemmas` | translation commutes with renaming and instantiation; `translate_decl`, `tel_substVar` |
+| `Evidence` | `Sub.translate`, `HasTy.translateAtom`, `litCo`, `identityMorphism`, `Ctx.varAtom` |
+| `EvidenceTyped` | `Sub.translate_typed`, `translateAtom_typed`, `translateAtom_root`, `litCo_typed`, `varAtom_typed`; `Ctx.Wf` |
+| `Terms` | `HasTy.translate`, `DefsTy.translateFields` |
+| `TermsTyped` | `HasTy.translate_typed`, `translateFields_typed` |
+| `Erasure` | `translate_erase`, `coherence` |
+| `Safety` | `Simulated`, `dot_safety`, `dot_not_stuck` |
+| `Consistency` | `reachable_consistent`, `reachable_realized` for translated programs |
 
-- `FCsub` — System F-sub with explicit coercions, telescope-constrained
-  quantifiers, and head-guarded recursive projections; `progress`,
-  `preservation`, and a total checker with `checkTerm_iff`.  Standalone.
-- `ManySortedFC` — the static layer of a two-sorted (type and capture)
-  target: syntax, checked evidence, sound and complete checkers, consistency
-  models, a decidable ground classifier kind algebra.  No operational
-  semantics.  Standalone.
+## FCsub/ — System F-sub with explicit coercions (standalone)
+| module | contents |
+|---|---|
+| `Scope` | intrinsically scoped heterogeneous variables |
+| `Syntax` | syntax |
+| `Telescope`, `TelescopeMetatheory` | telescope operations and morphism metatheory |
+| `Recursion` | simultaneous guarded recursive types |
+| `Context` | contexts and telescope opening |
+| `Typing` | declarative typing |
+| `Substitution`, `SubstitutionMetatheory` | four-sort substitution and its typing metatheory |
+| `Structural` | structural metatheory |
+| `Normalization` | coercion normalization |
+| `Dynamics` | annotated call-by-value dynamics |
+| `Preservation`, `Progress` | preservation; closed-program progress |
+| `Runtime`, `RuntimeSubstitution`, `RuntimeMetatheory` | erased runtime and its metatheory |
+| `Erasure`, `ErasureMetatheory`, `Simulation` | erasure and erasure simulation |
+| `Checker`, `CheckerCompleteness` | executable checker, `checkTerm_iff` |
+| `ClosedArtifact` | proof-free closed artifacts |
+| `Examples` | kernel examples (`native_decide`) |
 
-The earlier acyclic DOT source (`DOT/`) and the DOT-to-FCsub bridge
-(`Translation/`), whose objects carried no term members and erased to a
-constant, were removed from this branch on 2026-09-05; they remain in git
-history before that date.
-
-The `FCsub` and `ManySortedFC` example files use `native_decide`; the
-current development does not (its examples are decided in the kernel).  The
-core metatheory of every part uses only `propext` and `Quot.sound`, with
-`Classical.choice` in the FCdot `progress`/`erase_reflect'` line and what
-depends on it.
-
-`All.lean` imports `FCsub` and `ManySortedFC`; the current line is rooted at
-`DotMNF.lean`, `FCdot.lean`, `DotToFCdot.lean`.
+## ManySortedFC/ — static layer of a two-sorted (type and capture) target (standalone, no dynamics)
+| module | contents |
+|---|---|
+| `Scope`, `Syntax`, `Context`, `Substitution`, `Adapter` | syntax and scoping |
+| `Evidence`, `EvidenceChecker`, `EvidenceCheckerCompleteness`, `EvidenceNormalization` | logical evidence, its checker, normalization |
+| `Term`, `TermTyping`, `TermChecker`, `TermCheckerCompleteness`, `TermProjection`, `Erasure`, `Runtime` | annotated terms, capture-predictive typing, checker, erasure |
+| `Recursion` | guarded recursive type members |
+| `Intervals`, `IntervalElaboration` | interval theories |
+| `TheoryModel`, `TheoryModelChecker`, `TheoryMorphism`, `TheoryMorphismChecker` | local theories, models, morphisms |
+| `TheoryMap`, `TheoryMapChecker`, `TheoryMapCheckerCompleteness`, `TheoryMapComposition`, `TheoryMapMetatheory`, `TheoryMapValidity` | cross-shape theory maps |
+| `Consistency`, `ModelConsistency`, `SeparationConsistency` | consistency models |
+| `DisjointCaptureTheory` | pairwise-disjoint capture theories |
+| `ModalContext`, `ModalConfinement`, `ModalTheoryMap` | modal contexts |
+| `Classifier`, `StaticDomain`, `StaticDomainClassifier`, `StaticInstantiation` | classifier kinds, static domains |
+| `*Examples` | regressions (`native_decide`) |
