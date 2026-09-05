@@ -20,8 +20,10 @@ where $\mathit{defs}(\Gamma)$ lists the pairs of a transparent binder and a labe
 
 \begin{lemma}[Resolution]\label{lem:resolve}
 \begin{enumerate}
-\item If $\Gamma(x) \ni \ell \mathrel{:=} W$ then $\resolve{\Gamma}{\sel{x}{\ell}} = \resolve{\Gamma}{W}$.
-\item For every $T$, $\resolve{\Gamma}{\resolve{\Gamma}{T}} = \resolve{\Gamma}{T}$.
+\item If $\Gamma(x) \ni \ell \mathrel{:=} W$ then
+\[ \resolve{\Gamma}{\sel{x}{\ell}} = \resolve{\Gamma}{W} . \]
+\item For every $T$,
+\[ \resolve{\Gamma}{\resolve{\Gamma}{T}} = \resolve{\Gamma}{T} . \]
 \end{enumerate}
 \end{lemma}
 
