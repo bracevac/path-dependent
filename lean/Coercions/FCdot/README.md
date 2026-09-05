@@ -13,7 +13,7 @@ erasure safe.
 |---|---|
 | `Debruijn` | signatures `s`, bound variables `BVar s k`, renamings |
 | `Syntax` | types, propositions, telescopes; evidence (`LeCo`, `EqCo`, `Has`, `Morphism`); atoms; terms and values; renaming |
-| `Context` | bindings, contexts, lookup of types, definitions and fields; guardedness |
+| `Context` | bindings, contexts, lookup of types, definitions and fields |
 | `Typing` | the judgments `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ`, `Γ ⊢ m : src ⇒ Tel`, `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ F` |
 | `Store` | stores, store typing `⊢ σ : Γ` |
 | `Normalizer` | head normal forms of closed evidence, views of atoms, the fuel-indexed normalizer `σ ⊢ e ⇓[n] F` |
@@ -56,7 +56,15 @@ All notation is `scoped` in namespace `FCdot`.
   definition per block label) and fields `F`.  Its precise type is the
   telescope generated from them, `μ (Telescope.ofLiteral W F.labels)`: one
   `self ∙ ℓ ≐ W.get ℓ` per witness, one `∋ ℓ` per field.  Facts beyond
-  definitions are established by coercions in the term.
+  definitions are established by coercions in the term.  Block names are
+  *defined* by these witnesses (`Ctx.lookupDef`); a witness may itself be a
+  name of the same block, so aliases within a block are allowed, including
+  same-block cycles.  Resolution (`Ctx.resolve`) follows such aliases;
+  alias-tolerant resolution shows a fixed fuel always suffices, because a
+  chain of definitions either settles at a shape or an undefined name, or
+  else must repeat within `Γ.defPairs.length` steps (pigeonhole on the
+  context's finitely many defined names), and a cyclic alias resolves to
+  `⊤` (the empty object type).
 * **Object coercions are template morphisms.**  `obj Tel m : μ Tel ≤ μ Tel'`
   compares two closed telescopes; each target proposition is proven by a
   *template* `pre ∘ (source proposition j) ∘ post` with closed sides typed

@@ -225,9 +225,8 @@ theorem Value.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T : T
     (h : Γ ⊢ᵥ v : T), synthValueCore Γ v = some ⟨T, h⟩
   | _, _, _, _, .lam ht => by
       simp [synthValueCore, Tm.HasType.complete ht]
-  | _, _, _, _, .obj hg hF => by
-      simp only [Witnesses.Guarded] at hg
-      simp [synthValueCore, hg, Fields.HasType.complete hF]
+  | _, _, _, _, .obj hF => by
+      simp [synthValueCore, Fields.HasType.complete hF]
   | _, _, _, _, .cast hv he => by
       simp [synthValueCore, Value.HasType.complete hv, LeCo.HasType.complete he]
 
@@ -455,9 +454,9 @@ theorem Value.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T 
   | _, _, _, _, _, .lam ht, h' => by
       cases h' with
       | lam ht' => rw [Tm.HasType.type_unique ht ht']
-  | _, _, _, _, _, .obj _ _, h' => by
+  | _, _, _, _, _, .obj _, h' => by
       cases h' with
-      | obj _ _ => rfl
+      | obj _ => rfl
   | _, _, _, _, _, .cast _ he, h' => by
       cases h' with
       | cast _ he' => exact (he.endpoints_unique he').2

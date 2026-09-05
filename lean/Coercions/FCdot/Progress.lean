@@ -37,7 +37,7 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
   | lam S₁ t₁ => exact ⟨_, _, rfl⟩
   | obj W F =>
       rw [hl] at hv
-      obtain ⟨hT, _, _⟩ := hv.obj_inv
+      obtain ⟨hT, _⟩ := hv.obj_inv
       rw [hlk] at hT; simp at hT
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 

@@ -194,11 +194,11 @@ theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {S₀ : Ty s} {t₀ : Tm (s
 theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s}
     {W : Witnesses (s,x)} {F : Fields (s,x)} {T : Ty s}
     (h : Γ ⊢ᵥ .obj W F : T) :
-    T = .obj (Telescope.ofLiteral W F.labels) ∧ W.Guarded ∧
+    T = .obj (Telescope.ofLiteral W F.labels) ∧
       Fields.HasType
         (Γ.cons (.transparent (.obj (Telescope.ofLiteral W F.labels)) W F.labels)) F := by
   cases h with
-  | obj hG hF => exact ⟨rfl, hG, hF⟩
+  | obj hF => exact ⟨rfl, hF⟩
 
 theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} :
     ∀ (F : Fields (s,x)), Γ ⊢ᶠ F → ∀ (l : Label) (t : Tm (s,x)),
@@ -381,7 +381,7 @@ theorem Tm.HasType.projField {s : Sig} {σ : Store s} {Γ : Ctx s} {y : BVar s .
     Γ ⊢ t.selfAt y : y ∙ ℓ := by
   have hval := hσ.lookup y
   rw [hx] at hval
-  obtain ⟨hTe, _, hF⟩ := Value.HasType.obj_inv hval
+  obtain ⟨hTe, hF⟩ := Value.HasType.obj_inv hval
   have hdef : ∀ l, Γ.lookupDef y l = some ((W.get l)⟦y⟧) := by
     intro l
     have hlk := hσ.lookupDef y l

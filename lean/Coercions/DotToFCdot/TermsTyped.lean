@@ -14,9 +14,11 @@ Three cases carry the content:
   bounds of the type members and the declared types of the fields (`Ty.witnesses`), its
   labels are the field labels (`Ty.fieldLabels`), and its fields are the translated
   definitions.  The literal has its precise type `T.literalTy`, from which `litCo` (M3)
-  coerces to `⟦μ(x. T)⟧`.  Two side facts make the value rule apply: the translated
-  fields' labels are exactly `T.fieldLabels` (`DefsTy.translateFields_labels`), and the
-  witnesses are guarded (`Ty.witnesses_guarded`, from the source-side `Ty.Guarded`).
+  coerces to `⟦μ(x. T)⟧`.  The one side fact that makes the value rule apply is that the
+  translated fields' labels are exactly `T.fieldLabels` (`DefsTy.translateFields_labels`);
+  the target's alias-tolerant resolution admits same-block aliases among the witnesses
+  (including cycles, which resolve to `⊤`), so the translation no longer has to prove
+  the witnesses alias-free.
 * Each field body is typed at its declared type but must be typed at the block name
   `self ∙ a`; the definition equality `self ∙ a ≐ W.get a` of the transparent self binder
   turns one into the other, and distinctness identifies `W.get a` with the field's own
@@ -46,60 +48,12 @@ theorem Fields.HasType.append {s : Sig} {Γ : Ctx (s,x)} :
       cases h₁ with
       | cons hF ht => exact .cons (Fields.HasType.append hF h₂) ht
 
-/-! ## Guardedness of concatenated witnesses -/
-
-theorem Witnesses.all_append {s : Sig} (p : Ty s → Bool) :
-    ∀ (W W' : Witnesses s), (W.append W').all p = (W.all p && W'.all p)
-  | _, .nil => by simp [Witnesses.append, Witnesses.all]
-  | W, .cons W' ℓ T => by
-      simp only [Witnesses.append, Witnesses.all, Witnesses.all_append p W W']
-      cases p T <;> cases W.all p <;> cases W'.all p <;> rfl
-
 end FCdot
 
 namespace DotMNF
 
 open FCdot (Kind Sig BVar Rename Label Morphism LeCo EqCo Has Atom Side)
 open scoped FCdot
-
-/-! ## The witnesses of a guarded declaration type are guarded -/
-
-/-- The translation of a type that is not a bare selection on the self is not a bare name
-of the self block. -/
-theorem Ty.translate_not_selfName {s : Sig} :
-    ∀ {T : Ty (s,x)}, T.isSelfSel = false → T.translate.isSelfName = false
-  | .top, _ => by rw [Ty.translate_top]; rfl
-  | .bot, _ => by rw [Ty.translate_bot]; rfl
-  | .sel (.var .here) _, h => by simp [Ty.isSelfSel] at h
-  | .sel (.var (.there y)) A, _ => by rw [Ty.translate_sel]; rfl
-  | .all _ _, _ => by rw [Ty.translate_all]; rfl
-  | .typ A S T, _ => by rw [Ty.translate_typ]; rfl
-  | .fld a T, _ => by rw [Ty.translate_fld]; rfl
-  | .and S T, _ => by rw [Ty.translate_and]; rfl
-  | .mu T, _ => by rw [Ty.translate_mu]; rfl
-
-theorem Ty.witnesses_guarded {s : Sig} :
-    ∀ (T : Ty (s,x)), Ty.Guarded T → T.witnesses.Guarded
-  | .top, _ => by simp [Ty.witnesses, FCdot.Witnesses.Guarded, FCdot.Witnesses.all]
-  | .bot, _ => by simp [Ty.witnesses, FCdot.Witnesses.Guarded, FCdot.Witnesses.all]
-  | .sel _ _, _ => by simp [Ty.witnesses, FCdot.Witnesses.Guarded, FCdot.Witnesses.all]
-  | .all _ _, _ => by simp [Ty.witnesses, FCdot.Witnesses.Guarded, FCdot.Witnesses.all]
-  | .mu _, _ => by simp [Ty.witnesses, FCdot.Witnesses.Guarded, FCdot.Witnesses.all]
-  | .typ A S T, h => by
-      rw [Ty.Guarded] at h
-      simp [Ty.witnesses, FCdot.Witnesses.Guarded, FCdot.Witnesses.all,
-        Ty.translate_not_selfName h]
-  | .fld a T, h => by
-      rw [Ty.Guarded] at h
-      simp [Ty.witnesses, FCdot.Witnesses.Guarded, FCdot.Witnesses.all,
-        Ty.translate_not_selfName h]
-  | .and S T, h => by
-      rw [Ty.Guarded] at h
-      have hS := Ty.witnesses_guarded S h.1
-      have hT := Ty.witnesses_guarded T h.2
-      rw [FCdot.Witnesses.Guarded] at hS hT ⊢
-      rw [Ty.witnesses, FCdot.Witnesses.all_append, hS, hT]
-      rfl
 
 /-! ## The labels of the translated fields -/
 
@@ -182,14 +136,14 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
       rw [HasTy.translateAtom_root h₂] at happ
       simp only [HasTy.translate, Ty.translate_substVar]
       exact happ
-  | _, Γ, _, _, @HasTy.obj _ d T _ hd hdist _ hg, hwf => by
+  | _, Γ, _, _, @HasTy.obj _ d T _ hd hdist, hwf => by
       have hlab : hd.translateFields.labels = T.fieldLabels := hd.translateFields_labels
       have hdl : Ty.DistinctLabels T := hd.distinctLabels hdist
       have hf : FCdot.Fields.HasType (Γ.consSelf d T).translate hd.translateFields :=
         hd.translateFields_typed (.consSelf hwf hd.literalShape hdl) (Ty.defSpec_self T hdl)
       have hval : FCdot.Value.HasType Γ.translate (.obj T.witnesses hd.translateFields)
           (μ (FCdot.Telescope.ofLiteral T.witnesses hd.translateFields.labels)) :=
-        .obj (Ty.witnesses_guarded T hg) (by rw [hlab]; exact hf)
+        .obj (by rw [hlab]; exact hf)
       rw [hlab] at hval
       simp only [HasTy.translate]
       exact .cast (.val hval) (litCo_typed hd hdist)
