@@ -35,25 +35,26 @@ literal's own self (`Defs.Guarded`, `Ty.Guarded`; the plan's §12 risk 2).
 The last restriction is slated for removal by making the target's
 resolution follow aliases within a block.
 
-## Legacy (before this branch)
-
-Kept for their theorems; not part of the current line.
+## Earlier targets, kept
 
 - `FCsub` — System F-sub with explicit coercions, telescope-constrained
-  quantifiers, head-guarded recursive projections; `progress`,
-  `preservation`, a total checker with `checkTerm_iff`.
-- `DOT/Acyclic` — the acyclic, variable-path, one-type-member-per-object
-  DOT source and its explicitly coerced Stage A form.
-- `Translation/Acyclic`, `Translation/StableRoots` — the old DOT-to-FCsub
-  bridge; its source objects carry no term members and erase to a constant,
-  which is the limitation Plan III was written to remove.
+  quantifiers, and head-guarded recursive projections; `progress`,
+  `preservation`, and a total checker with `checkTerm_iff`.  Standalone.
 - `ManySortedFC` — the static layer of a two-sorted (type and capture)
-  target; no operational semantics.
+  target: syntax, checked evidence, sound and complete checkers, consistency
+  models, a decidable ground classifier kind algebra.  No operational
+  semantics.  Standalone.
 
-The legacy example files use `native_decide`; the current development does
-not (`Examples` are decided in the kernel).  The core metatheory of every
-part uses only `propext` and `Quot.sound`, with `Classical.choice` in the
-FCdot `progress`/`erase_reflect'` line and what depends on it.
+The earlier acyclic DOT source (`DOT/`) and the DOT-to-FCsub bridge
+(`Translation/`), whose objects carried no term members and erased to a
+constant, were removed from this branch on 2026-09-05; they remain in git
+history before that date.
 
-`All.lean` imports the legacy development; the current line is rooted at
+The `FCsub` and `ManySortedFC` example files use `native_decide`; the
+current development does not (its examples are decided in the kernel).  The
+core metatheory of every part uses only `propext` and `Quot.sound`, with
+`Classical.choice` in the FCdot `progress`/`erase_reflect'` line and what
+depends on it.
+
+`All.lean` imports `FCsub` and `ManySortedFC`; the current line is rooted at
 `DotMNF.lean`, `FCdot.lean`, `DotToFCdot.lean`.

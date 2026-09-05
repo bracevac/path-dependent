@@ -1,7 +1,7 @@
 name = "path-dependent"
 version = "0.1.0"
 srcDir = "lean"
-defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC", "LambdaPFCI", "LambdaPCCI", "DOT", "FCsub", "DotToFCsub", "DotFC", "ManySortedFC", "FCdot", "Runtime", "DotMNF", "DotToFCdot"]
+defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC", "LambdaPFCI", "LambdaPCCI", "FCsub", "DotFC", "ManySortedFC", "FCdot", "Runtime", "DotMNF", "DotToFCdot"]
 
 [leanOptions]
 pp.unicode.fun = true
@@ -28,16 +28,8 @@ name = "DotFC"
 roots = ["Coercions.All"]
 
 [[lean_lib]]
-name = "DOT"
-roots = ["Coercions.DOT.Acyclic"]
-
-[[lean_lib]]
 name = "FCsub"
 roots = ["Coercions.FCsub"]
-
-[[lean_lib]]
-name = "DotToFCsub"
-roots = ["Coercions.Translation"]
 
 [[lean_lib]]
 name = "ManySortedFC"
