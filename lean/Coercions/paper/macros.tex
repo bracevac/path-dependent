@@ -3,6 +3,9 @@
 \definecolor{tgtcol}{RGB}{160,40,30}
 \newcommand{\src}[1]{{\color{srccol}#1}}
 \newcommand{\tgt}[1]{{\color{tgtcol}#1}}
+\newcommand{\mathsrc}{\everymath{\color{srccol}}\everydisplay{\color{srccol}}}
+\newcommand{\mathtgt}{\everymath{\color{tgtcol}}\everydisplay{\color{tgtcol}}}
+\newcommand{\mathplain}{\everymath{}\everydisplay{}}
 
 %% Names
 \newcommand{\FCdot}{\tgt{\ensuremath{\mathrm{FC}_{\mathrm{dot}}}}\xspace}

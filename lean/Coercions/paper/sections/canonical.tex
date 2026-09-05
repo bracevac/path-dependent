@@ -1,3 +1,4 @@
+\mathtgt
 \section{Canonical Forms of Closed Evidence}\label{sec:canonical}
 
 Over a typed store every binder is transparent, every block name is defined by a stored literal, and evidence has no assumptions beyond those definitions. This section shows that such evidence normalizes, and that its normal forms have the shapes that preservation and progress need.
@@ -6,7 +7,7 @@ Over a typed store every binder is transparent, every block name is defined by a
 
 A head form promises a shape for its endpoints, which is $\bot$, $\top$, a function type, or an object type, and shapes are read after following the definitions of the store. Write $\Gamma(x) \ni \ell \mathrel{:=} W$ when $x$ is transparent in $\Gamma$ with witness $W$ at $\ell$. One step of resolution, $\mathit{next}_\Gamma(T)$, is $W$ when $T$ is a name $\sel{x}{\ell}$ with $\Gamma(x) \ni \ell \mathrel{:=} W$, and is undefined when $T$ is any other type or the name of an opaque binder. A chain of definitions may be cyclic, because a witness may itself be a name of the same block, as in the literal
 \[
-\nu(x.\,\ddeftyp{A}{x.B} \wedge \ddeftyp{B}{x.A}) .
+\lit{A = \sel{\self}{B},\ B = \sel{\self}{A}}{\tnil} .
 \]
 Resolution therefore runs with fuel:
 \[
@@ -164,13 +165,17 @@ Opening makes $\ev{fold}$ and $\ev{unfold}$ invisible to the chain. The rooted j
 \subsection{Composition, pairing, and application preserve typedness}
 
 \begin{lemma}[Composition]\label{lem:combine}
-If $\formj{\Gamma}{F}{S}{M}$ and $\formj{\Gamma}{G}{M}{T}$ then $F \circ G$ is defined and $\formj{\Gamma}{F \circ G}{S}{T}$.
+If
+\[ \formj{\Gamma}{F}{S}{M} \quad\text{and}\quad \formj{\Gamma}{G}{M}{T} \]
+then $F \circ G$ is defined and $\formj{\Gamma}{F \circ G}{S}{T}$.
 \end{lemma}
 
 The proof is an induction on the sum of the sizes of the two forms, mutually with the analogous statement for routing typed entries through typed entries. The object case is the one that matters. A template of the second form has a hole naming a proposition of the middle telescope, and the first form's typed entry at that position is a template around a hole in the source telescope, or an equality. The sides compose by the induction hypothesis at smaller size, and because sides are closed forms typed between weakened closed types, the composite never mentions the self block. Two function forms compose because the domain casts compose in the reverse direction and the substitution of a typed cast for the parameter preserves the typing of the codomain evidence.
 
 \begin{lemma}[Pairing and application]\label{lem:pair-apply}
-If $\formj{\Gamma}{F}{S}{\obj{\tel_1}}$ and $\formj{\Gamma}{G}{S}{\obj{\tel_2}}$ then $\mathit{pair}_{\tel_1,\tel_2}\,F\,G$ is defined and typed at $S \le \obj{(\tel_1 \mathbin{+\!\!+} \tel_2)}$. If $\entj{\Gamma}{\mathit{Es}}{\tel_1}{\tel_2}$ and $\viewj{\Gamma}{r}{\sigma}{V}{\tel_1}$ then $\mathit{entriesAt}\,V\,\mathit{Es}$ is defined and is a view typed at $\tel_2$.
+If $\formj{\Gamma}{F}{S}{\obj{\tel_1}}$ and $\formj{\Gamma}{G}{S}{\obj{\tel_2}}$ then $\mathit{pair}_{\tel_1,\tel_2}\,F\,G$ is defined and typed at
+\[ S \le \obj{(\tel_1 \mathbin{+\!\!+} \tel_2)} . \]
+If $\entj{\Gamma}{\mathit{Es}}{\tel_1}{\tel_2}$ and $\viewj{\Gamma}{r}{\sigma}{V}{\tel_1}$, then $\mathit{entriesAt}\,V\,\mathit{Es}$ is defined and is a view typed at $\tel_2$.
 \end{lemma}
 
 \subsection{The theorem}
@@ -182,7 +187,9 @@ Let $\storej{\sigma}{\Gamma}$.
 \item If $\eqj{\Gamma}{\varphi}{S}{T}$ then $\resolve{\Gamma}{S} = \resolve{\Gamma}{T}$.
 \item If $\hasj{\Gamma}{h}{x}{\ell}$ then presence normalization of $h$ at $x$ succeeds and $\sigma(x)$ is a literal with a field $\ell$.
 \item If $\morj{\Gamma}{m}{\tel}{\tel'}$ then the entries of $m$ normalize to $\mathit{Es}$ with $\entj{\Gamma}{\mathit{Es}}{\tel}{\tel'}$.
-\item If $\atomj{\Gamma}{a}{S}$ then $\vw{\sigma}{a}{n}{V}$ for some $n$ and $V$, $\resolve{\Gamma}{S} \neq \bot$, and $\viewj{\Gamma}{\rt{a}}{\sigma}{V}{\tel}$ whenever $\resolve{\Gamma}{S} = \obj{\tel}$.
+\item If $\atomj{\Gamma}{a}{S}$ then $\vw{\sigma}{a}{n}{V}$ for some $n$ and $V$, with $\resolve{\Gamma}{S} \neq \bot$, and
+\[ \viewj{\Gamma}{\rt{a}}{\sigma}{V}{\tel} \]
+whenever $\resolve{\Gamma}{S} = \obj{\tel}$.
 \end{enumerate}
 \end{theorem}
 
@@ -191,7 +198,8 @@ By mutual structural induction on the evidence derivations. The cases for $\ev{r
 \end{proof}
 
 \begin{theorem}[Chain of casts]\label{thm:chain}
-If $\storej{\sigma}{\Gamma}$ and $\atomj{\Gamma}{a}{S}$ then $\chn{\sigma}{a}{n}{(a', F)}$ for some $n$, $a'$, and $F$ with $\chainj{\Gamma}{\rt{a}}{F}{\Gamma(\rt{a})}{S}$.
+If $\storej{\sigma}{\Gamma}$ and $\atomj{\Gamma}{a}{S}$ then $\chn{\sigma}{a}{n}{(a', F)}$ for some $n$, $a'$, and $F$ with
+\[ \chainj{\Gamma}{\rt{a}}{F}{\Gamma(\rt{a})}{S} . \]
 \end{theorem}
 
 The chain theorem types the composite of the casts of an atom from the type of its root to the type of the atom, at the root. Its proof composes the forms of the casts by Lemma~\ref{lem:combine}, lifted to the rooted judgment, and uses that opening at the root is stable under folding and unfolding.
@@ -201,7 +209,13 @@ Let $\storej{\sigma}{\Gamma}$ and $\lej{\Gamma}{e}{S}{T}$. Then $S$ resolves to 
 \end{corollary}
 
 \begin{corollary}[Inversion at the store]\label{cor:inversion}
-Let $\storej{\sigma}{\Gamma}$. If $\atomj{\Gamma}{a}{\pit{S}{T}}$ then $\sigma(\rt{a})$ is a lambda, and the chain of casts of $a$ normalizes to $\form{id}$, a conversion, or a function form. If $\hasj{\Gamma}{h}{x}{\ell}$ then $\sigma(x)$ is a literal with a field $\ell$. For every binder $x$ and label $\ell$ there is a $W$ with $\Gamma(x) \ni \ell \mathrel{:=} W$ and $\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W}$.
+Let $\storej{\sigma}{\Gamma}$.
+\begin{enumerate}
+\item If $\atomj{\Gamma}{a}{\pit{S}{T}}$, then $\sigma(\rt{a})$ is a lambda, and the chain of casts of $a$ normalizes to $\form{id}$, a conversion, or a function form.
+\item If $\hasj{\Gamma}{h}{x}{\ell}$, then $\sigma(x)$ is a literal with a field $\ell$.
+\item For every binder $x$ and label $\ell$ there is a $W$ with $\Gamma(x) \ni \ell \mathrel{:=} W$ and
+\[ \eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W} . \]
+\end{enumerate}
 \end{corollary}
 
 The first corollary is the target-side residue of what invertible typing provides in the DOT proofs, proven once, over stores, with no restriction on recursive members and no semantic model. The second is exactly what progress needs.

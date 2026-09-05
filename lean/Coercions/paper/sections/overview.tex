@@ -3,6 +3,7 @@
 This section walks through the design on two examples before the definitions. Throughout the paper, source syntax and judgments are set in \src{blue} and target syntax and judgments in \tgt{red}. The first shows what a bad-bounds derivation becomes. The second is a derivation that a translation into existential packages cannot handle, and it decided the shape of \FCdot.
 
 \subsection{Source: DOT in monadic normal form}
+\mathsrc
 
 The source calculus is the WadlerFest DOT of Amin et al.\ \cite{amin2016essence}, which is already in a let-normal form: application and selection take variables, and a let binds the result of a computation. We call it \DOTMNF because the right-hand side of a let is an arbitrary term. Types are
 \[
@@ -24,6 +25,7 @@ at result type $\dtyp{B}{\mathit{Int}}{\mathit{Int}}$. Its derivation retypes $x
 using the two bounds of $x$'s own member. This is a well-typed program. It is also harmless, because no argument of type $\dtyp{A}{\top}{\bot}$ exists, and a safety proof has to say why.
 
 \subsection{Target: blocks, telescopes, evidence}
+\mathtgt
 
 In \FCdot a type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{S}{T}$, or an object type $\obj{\tel}$, where $\tel$ is a telescope of propositions over a self binder. Propositions are inclusions $\ple{S}{T}$, equalities $\peq{S}{T}$, and field presence $\phas{\ell}$. The empty object type asserts nothing, and it is $\top$. Declarations translate as follows.
 \[
@@ -57,20 +59,20 @@ and it type checks in \FCdot with no subsumption. Its erasure is the erasure of 
 
 \subsection{The counterexample: elimination at a cast atom}\label{sec:counterexample}
 
-A natural first design translates a declaration $\dtyp{A}{S}{T}$ into an existential package, in the style of F-ing modules \cite{rossberg2014fing}: opening a variable $x$ of that type yields a fresh type name $\alpha$ with $S \le \alpha \le T$, and every later fact about $x.A$ is a fact about $\alpha$. This does not work. Let
+A natural first design translates a declaration $\dtyp{A}{S}{T}$ into an existential package, in the style of F-ing modules \cite{rossberg2014fing}: opening a variable $x$ of that type yields a fresh type name $\alpha$ with $\src{S} \le \alpha \le \src{T}$, and every later fact about $\dsel{x}{A}$ is a fact about $\alpha$. This does not work. Let
 \[
-\begin{array}{@{}l@{}}
+\src{\begin{array}{@{}l@{}}
 S = \dtyp{A}{\bot}{\top}, \qquad T = \dtyp{A}{\mathit{Int}}{\top}, \\
 \Gamma = x : \dtyp{B}{S}{T},\ w : S .
-\end{array}
+\end{array}}
 \]
-DOT derives $S \sub x.B \sub T$, hence $w : T$ by subsumption, hence $\mathit{Int} \sub w.A$. So
+DOT derives $\src{S \sub x.B \sub T}$, hence $\src{w : T}$ by subsumption, hence $\src{\mathit{Int} \sub w.A}$. So
 \[
 \src{\klet g = \lambda(y : w.A).\,y \kin g\,n} \qquad \text{with } \src{n : \mathit{Int}}
 \]
-is well typed. In the package design, $w.A$ denotes the name $\alpha$ opened from the declared type $S$ of $w$. The retyping of $w$ at $T$ is a coercion between two package types, and using it means opening the coerced package, which yields a fresh $\alpha'$ with $\mathit{Int} \le \alpha'$. Nothing relates $\alpha'$ to $\alpha$, and the application $g\,n$ has no translation. The context is unrealizable, but a total translation on derivations has to translate this derivation.
+is well typed. In the package design, $\src{w.A}$ denotes the name $\alpha$ opened from the declared type $\src{S}$ of $\src{w}$. The retyping of $\src{w}$ at $\src{T}$ is a coercion between two package types, and using it means opening the coerced package, which yields a fresh $\alpha'$ with $\src{\mathit{Int}} \le \alpha'$. Nothing relates $\alpha'$ to $\alpha$, and the application $\src{g\,n}$ has no translation. The context is unrealizable, but a total translation on derivations has to translate this derivation.
 
-The conclusion we drew is that member identity must be attached to the binder, not to the type through which the binder is viewed. In \FCdot the type $w.A$ is the block name $\sel{w}{A}$, whatever type $w$ is viewed at. The retyping $S \le T$ through $x.B$ is closed evidence
+The conclusion we drew is that member identity must be attached to the binder, not to the type through which the binder is viewed. In \FCdot the type $\src{w.A}$ is the block name $\sel{w}{A}$, whatever type $w$ is viewed at. The retyping $\trans{S} \le \trans{T}$ through $\src{x.B}$ is closed evidence
 \[
 \begin{array}{@{}l@{}}
 \tgt{e_{ST}} = \ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,X)\,0) \\

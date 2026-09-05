@@ -1,3 +1,4 @@
+\mathtgt
 \section{The Target: \FCdot}\label{sec:target}
 
 \begin{figure*}
@@ -140,7 +141,16 @@ An object coercion $\ev{obj}\,\tel\,m$ is annotated with its source telescope an
 \label{fig:terms}
 \end{figure*}
 
-An atom is a variable under wrappers that erase to nothing: a cast, the unfolding of a self block at the root, the folding of the root back into a self block, and the pairing of two typings of one variable. The root of an atom is the variable underneath: $\rt{x} = x$, $\rt{\ev{cast}\,a\,e} = \rt{a}$, $\rt{\ev{fold}\,\tel\,a} = \rt{\ev{unfold}\,a} = \rt{a}$, and $\rt{\ev{both}\,\tel_1\,\tel_2\,a\,b} = \rt{a}$, which is also $\rt{b}$ whenever the atom is typed. Figure~\ref{fig:terms} gives the typing. Unfolding instantiates the self binder of the telescope by the atom's root and weakens the result under a fresh, unused self binder, so that $\obj{\weak{(\inst{\tel}{\rt{a}})}}$ is an object type whose propositions are about $\rt{a}$ rather than about the self. Folding is its inverse. These are the atom forms of the source rules \rn{Rec-E} and \rn{Rec-I}, and $\ev{both}$ is \rn{And-I}.
+An atom is a variable under wrappers that erase to nothing: a cast, the unfolding of a self block at the root, the folding of the root back into a self block, and the pairing of two typings of one variable. The root of an atom is the variable underneath:
+\[
+\begin{array}{@{}rcl@{}}
+\rt{x} & = & x \\
+\rt{\ev{cast}\,a\,e} & = & \rt{a} \\
+\rt{\ev{fold}\,\tel\,a} & = & \rt{\ev{unfold}\,a} \ =\ \rt{a} \\
+\rt{\ev{both}\,\tel_1\,\tel_2\,a\,b} & = & \rt{a}
+\end{array}
+\]
+In the last case $\rt{b}$ is the same variable whenever the atom is typed. Figure~\ref{fig:terms} gives the typing. Unfolding instantiates the self binder of the telescope by the atom's root and weakens the result under a fresh, unused self binder, so that $\obj{\weak{(\inst{\tel}{\rt{a}})}}$ is an object type whose propositions are about $\rt{a}$ rather than about the self. Folding is its inverse. These are the atom forms of the source rules \rn{Rec-E} and \rn{Rec-I}, and $\ev{both}$ is \rn{And-I}.
 
 Terms are in monadic normal form over atoms: application and projection take atoms, a let sequences computations, and a cast on a term becomes a cast frame when it runs. There is no subsumption. Application instantiates the codomain at the root of the argument, as \rn{All-E} does in the source, and the result of a let may not mention the block of the let-bound variable. A projection $\ev{proj}\,a\,\ell\,h$ carries the presence evidence $h$ and has the block name $\sel{\rt{a}}{\ell}$ as its type. Converting that name to a declared field type takes a further cast, which the translation supplies from the declaration.
 
