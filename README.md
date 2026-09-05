@@ -8,7 +8,7 @@ and typically lag behind.
 
 I **absolutely** use coding agents as my trusted research assistants (and love them!).
 It's a lot more fun to work on this topic area this way without arrogant f4rt5n1ff3r5 discouraging 
-and diminishing you at very step. 
+and diminishing you at every step. 
 
 ## Some interesting results so far:
 
