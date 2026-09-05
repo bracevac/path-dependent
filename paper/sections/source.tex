@@ -1,0 +1,104 @@
+\section{The Source: \DOTMNF}\label{sec:source}
+
+\begin{figure*}
+\small
+\[
+\begin{array}{@{}lrcl@{}}
+\text{Paths} & p & ::= & x \\
+\text{Types} & S,T & ::= & \top \mid \bot \mid \dtyp{A}{S}{T} \mid \dfld{a}{T} \mid p.A \mid \dmu{x}{T} \mid \dall{x}{S}{T} \mid S \wedge T \\
+\text{Terms} & t,u & ::= & p \mid v \mid x\,y \mid x.a \mid \klet x = t \kin u \\
+\text{Values} & v & ::= & \dnew{x}{d} \mid \lambda(x : T).\,t \\
+\text{Definitions} & d & ::= & \ddeftyp{A}{T} \mid \ddeftrm{a}{t} \mid d \wedge d \\
+\text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : \dmu{x}{T} \mathrel{:=} d
+\end{array}
+\]
+\caption{Syntax of \DOTMNF.}
+\label{fig:source-syntax}
+\end{figure*}
+
+\begin{figure*}
+\small
+\begin{mathpar}
+\inferrule[Top]{ }{\subj{\Gamma}{T}{\top}}
+\and
+\inferrule[Bot]{ }{\subj{\Gamma}{\bot}{T}}
+\and
+\inferrule[Refl]{ }{\subj{\Gamma}{T}{T}}
+\and
+\inferrule[Trans]{\subj{\Gamma}{S}{M} \\ \subj{\Gamma}{M}{T}}{\subj{\Gamma}{S}{T}}
+\and
+\inferrule[And$_1$]{\Decl\,S \\ \Decl\,T}{\subj{\Gamma}{S \wedge T}{S}}
+\and
+\inferrule[And$_2$]{\Decl\,S \\ \Decl\,T}{\subj{\Gamma}{S \wedge T}{T}}
+\and
+\inferrule[And]{\subj{\Gamma}{S}{T} \\ \subj{\Gamma}{S}{U} \\ \Decl\,T \\ \Decl\,U}{\subj{\Gamma}{S}{T \wedge U}}
+\and
+\inferrule[Fld]{\subj{\Gamma}{T}{U}}{\subj{\Gamma}{\dfld{a}{T}}{\dfld{a}{U}}}
+\and
+\inferrule[Typ]{\subj{\Gamma}{S_2}{S_1} \\ \subj{\Gamma}{T_1}{T_2}}{\subj{\Gamma}{\dtyp{A}{S_1}{T_1}}{\dtyp{A}{S_2}{T_2}}}
+\and
+\inferrule[Sel-<:]{\dtyj{\Gamma}{x}{\dtyp{A}{S}{T}}}{\subj{\Gamma}{x.A}{T}}
+\and
+\inferrule[<:-Sel]{\dtyj{\Gamma}{x}{\dtyp{A}{S}{T}}}{\subj{\Gamma}{S}{x.A}}
+\and
+\inferrule[All]{\subj{\Gamma}{S_2}{S_1} \\ \subj{\Gamma, x : S_2}{T_1}{T_2}}{\subj{\Gamma}{\dall{x}{S_1}{T_1}}{\dall{x}{S_2}{T_2}}}
+\\
+\inferrule[Var]{ }{\dtyj{\Gamma}{x}{\Gamma(x)}}
+\and
+\inferrule[All-I]{\dtyj{\Gamma, x : S}{t}{T} \\ \Wf\,S}{\dtyj{\Gamma}{\lambda(x : S).\,t}{\dall{x}{S}{T}}}
+\and
+\inferrule[All-E]{\dtyj{\Gamma}{x}{\dall{z}{S}{T}} \\ \dtyj{\Gamma}{y}{S}}{\dtyj{\Gamma}{x\,y}{\inst{T}{y}}}
+\and
+\inferrule[\{\}-I]{\dtyj{\Gamma, x : \dmu{x}{T} \mathrel{:=} d}{d}{T} \\ \Distinct\,d}{\dtyj{\Gamma}{\dnew{x}{d}}{\dmu{x}{T}}}
+\and
+\inferrule[\{\}-E]{\dtyj{\Gamma}{x}{\dfld{a}{T}}}{\dtyj{\Gamma}{x.a}{T}}
+\and
+\inferrule[Let]{\dtyj{\Gamma}{t}{T} \\ \dtyj{\Gamma, x : T}{u}{\weak{U}} \\ \Wf\,U}{\dtyj{\Gamma}{\klet x = t \kin u}{U}}
+\and
+\inferrule[Rec-I]{\dtyj{\Gamma}{x}{\inst{T}{x}} \\ \Decl\,T}{\dtyj{\Gamma}{x}{\dmu{x}{T}}}
+\and
+\inferrule[Rec-E]{\dtyj{\Gamma}{x}{\dmu{x}{T}} \\ \Decl\,T}{\dtyj{\Gamma}{x}{\inst{T}{x}}}
+\and
+\inferrule[And-I]{\dtyj{\Gamma}{x}{T} \\ \dtyj{\Gamma}{x}{U} \\ \Decl\,T \\ \Decl\,U}{\dtyj{\Gamma}{x}{T \wedge U}}
+\and
+\inferrule[Sub]{\dtyj{\Gamma}{t}{T} \\ \subj{\Gamma}{T}{U}}{\dtyj{\Gamma}{t}{U}}
+\\
+\inferrule[Def-Typ]{ }{\dtyj{\Gamma}{\ddeftyp{A}{T}}{\dtyp{A}{T}{T}}}
+\and
+\inferrule[Def-Trm]{\dtyj{\Gamma}{t}{T}}{\dtyj{\Gamma}{\ddeftrm{a}{t}}{\dfld{a}{T}}}
+\and
+\inferrule[Def-And]{\dtyj{\Gamma}{d_1}{T_1} \\ \dtyj{\Gamma}{d_2}{T_2}}{\dtyj{\Gamma}{d_1 \wedge d_2}{T_1 \wedge T_2}}
+\end{mathpar}
+\caption{Subtyping, typing, and definition typing of \DOTMNF.}
+\label{fig:source-typing}
+\end{figure*}
+
+Figure~\ref{fig:source-syntax} gives the syntax. The calculus is WadlerFest DOT \cite{amin2016essence} with two presentational choices. Object literals carry no type annotation, since the translation is directed by derivations and definition typing determines the declaration type. And all syntax is intrinsically scoped: a term of signature $s$ mentions only the binders of $s$, and every judgment is indexed by its signature. We write $\weak{T}$ for weakening under a new binder and $\inst{T}{y}$ for instantiating the innermost binder by the variable $y$. Every substitution performed by typing or by the machine is a renaming.
+
+\paragraph{The fragment.}
+Intersections are restricted to declaration-shaped types: $\top$, type members, fields, recursive types with declaration-shaped bodies, and intersections of those. The predicate $\Decl$ states this. Well-formedness $\Wf$ is structural except that $S \wedge T$ and $\dmu{x}{T}$ require declaration-shaped operands. Bounds inside a declaration are arbitrary well-formed types, and $\Wf(\dtyp{A}{S}{T})$ does not ask for $S \sub T$. The labels of a definition list must be distinct. Nothing else about DOT is restricted.
+
+Figure~\ref{fig:source-typing} gives subtyping, typing, and definition typing. The three judgments are mutually inductive, because \rn{Sel-<:} and \rn{<:-Sel} have typing premises and a variable typing may go through subsumption. The rules that decompose or build an intersection or a recursive type carry $\Decl$ premises, which is where the fragment is enforced. Well-formedness appears only where a type is introduced out of thin air, at the domain of a lambda and at the result of a let. In the mechanization the three judgments are inductive families in $\mathsf{Type}$, because the translation is a function on derivations.
+
+The rule \rn{\{\}-I} binds the self variable at the recursive type $\dmu{x}{T}$ rather than at the opened body, because in an intrinsically scoped context an entry lives in the signature before its own binder. The two presentations are interderivable through \rn{Rec-I} and \rn{Rec-E}. The context also records the definitions of a literal at its self binder, written $\Gamma, x : \dmu{x}{T} \mathrel{:=} d$. Typing does not distinguish such a binder from an ordinary one. The translation does.
+
+\paragraph{Machine.}
+A state $\mst{\sigma}{K}{t}$ is a store of values, a continuation of let frames, and a term, all over one signature. Allocation extends the signature by one binder, and $\weak{K}$ weakens the continuation under it. Figure~\ref{fig:source-machine} gives the steps.
+\begin{figure*}
+\small
+\[
+\begin{array}{@{}lcll@{}}
+\mst{\sigma}{K}{\klet x = t \kin u} &\step& \mst{\sigma}{K \triangleright (x.\,u)}{t} \\
+\mst{\sigma}{K \triangleright (x.\,u)}{v} &\step& \mst{\sigma, v}{\weak{K}}{u} \\
+\mst{\sigma}{K \triangleright (x.\,u)}{y} &\step& \mst{\sigma}{K}{\inst{u}{y}} \\
+\mst{\sigma}{K}{x\,y} &\step& \mst{\sigma}{K}{\inst{t}{y}} & \text{if } \sigma(x) = \lambda(z : S).\,t \\
+\mst{\sigma}{K}{x.a} &\step& \mst{\sigma}{K}{\inst{t}{x}} & \text{if } \sigma(x) = \dnew{z}{d} \text{ and } d \ni \ddeftrm{a}{t}
+\end{array}
+\]
+\caption{The store machine of \DOTMNF.}
+\label{fig:source-machine}
+\end{figure*}
+A state is final when the continuation is empty and the term is a value or a variable. On lookup in a definition list the right conjunct shadows the left.
+
+\paragraph{Erasure.}
+The runtime is an untyped store machine with the same five rules, whose object literals keep term members only. Erasure drops types and type members and is the identity on signatures. Every source step erases to exactly one runtime step, and every runtime step out of an erased state is the erasure of a source step. These two facts, \lean{erase\_step} and \lean{erase\_reflect}, are the only metatheory the source calculus has.

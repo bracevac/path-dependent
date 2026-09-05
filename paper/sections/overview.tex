@@ -1,0 +1,102 @@
+\section{Overview}\label{sec:overview}
+
+This section walks through the design on two examples before the definitions. The first shows what a bad-bounds derivation becomes. The second is a derivation that a translation into existential packages cannot handle, and it decided the shape of \FCdot.
+
+\subsection{Source: DOT in monadic normal form}
+
+The source calculus is the WadlerFest DOT of Amin et al.\ \cite{amin2016essence}, which is already in a let-normal form: application and selection take variables, and a let binds the result of a computation. We call it \DOTMNF because the right-hand side of a let is an arbitrary term. Types are
+\[
+\begin{array}{@{}rcl@{}}
+S, T & ::= & \top \mid \bot \mid \dtyp{A}{S}{T} \mid \dfld{a}{T} \mid x.A \\
+& \mid & \dmu{x}{T} \mid \dall{x}{S}{T} \mid S \wedge T .
+\end{array}
+\]
+Terms are variables, values, applications $x\,y$, selections $x.a$, and $\klet x = t \kin u$. Values are lambdas $\lambda(x:T).\,t$ and object literals $\dnew{x}{d}$ whose definitions $d$ are type members $\ddeftyp{A}{T}$ and term members $\ddeftrm{a}{t}$ joined by $\wedge$. Subtyping has the rules of DOT: a type member $x : \dtyp{A}{S}{T}$ gives $S \sub x.A$ and $x.A \sub T$, function types are contravariant in the domain, intersections have projections and pairing, and recursive types are introduced and eliminated on variables by \rn{Rec-I} and \rn{Rec-E}. A program runs on a store machine with a continuation of let frames. The machine has no types to consult.
+
+Consider the program
+\[
+\lambda(x : \dtyp{A}{\top}{\bot}).\ \klet y = x \kin y
+\]
+at result type $\dtyp{B}{\mathit{Int}}{\mathit{Int}}$. Its derivation retypes $x$ from $\dtyp{A}{\top}{\bot}$ to the unrelated $\dtyp{B}{\mathit{Int}}{\mathit{Int}}$ by
+\[
+\dtyp{A}{\top}{\bot} \sub \top \sub x.A \sub \bot \sub \dtyp{B}{\mathit{Int}}{\mathit{Int}},
+\]
+using the two bounds of $x$'s own member. This is a well-typed program. It is also harmless, because no argument of type $\dtyp{A}{\top}{\bot}$ exists, and a safety proof has to say why.
+
+\subsection{Target: blocks, telescopes, evidence}
+
+In \FCdot a type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{S}{T}$, or an object type $\obj{\tel}$, where $\tel$ is a telescope of propositions over a self binder. Propositions are inclusions $\ple{S}{T}$, equalities $\peq{S}{T}$, and field presence $\phas{\ell}$. The empty object type asserts nothing, and it is $\top$. Declarations translate as follows.
+\[
+\begin{array}{rcl}
+\dtyp{A}{S}{T} & \mapsto & \obj{[\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,]} \\
+\dfld{a}{T} & \mapsto & \obj{[\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,]} \\
+S \wedge T & \mapsto & \obj{(\tel_S \mathbin{+\!\!+} \tel_T)}
+\end{array}
+\]
+A field $a$ has a block name $\sel{\self}{a}$ too, which is the type of the field. An intersection of declarations is therefore a concatenation of propositions and never an operation on types.
+
+A term of \FCdot is in monadic normal form over atoms. An atom is a variable under wrappers that erase to nothing: a cast $\ev{cast}\,a\,e$ by inclusion evidence $e$, the folding and unfolding of a self block, and the pairing of two typings of one variable. Inclusion evidence has the constructors one expects, $\ev{refl}$, $\ev{trans}$, $\ev{top}$, $\ev{bot}$, a function coercion $\ev{pi}$, and an object coercion $\ev{obj}$, plus one rule with no counterpart in FC:
+\begin{mathpar}
+\inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\ple{S'}{T'}}}
+  {\lej{\Gamma}{\ev{member}\,a\,e\,i}{\inst{S'}{\rt{a}}}{\inst{T'}{\rt{a}}}}
+\end{mathpar}
+Any evidence that the type of an atom is included in an object type yields the propositions of that object type, instantiated at the root variable of the atom. With $e = \ev{refl}$ the rule reads the declared type of a variable. With $e$ going through bad bounds it is the counterexample of the next subsection.
+
+The retyping of the first example becomes the evidence
+\[
+\begin{array}{@{}l@{}}
+e = \ev{trans}\ (\ev{top}\,D)\ (\ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,D)\,0) \\
+\qquad\qquad (\ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,D)\,1)\ (\ev{bot}\,R)))
+\end{array}
+\]
+with $D = \trans{\dtyp{A}{\top}{\bot}}$ and $R = \trans{\dtyp{B}{\mathit{Int}}{\mathit{Int}}}$. The two middle steps eliminate the two propositions of $x$'s own telescope, $\ple{\top}{\sel{x}{A}}$ and $\ple{\sel{x}{A}}{\bot}$. No absurdity rule is involved. The whole program is
+\[
+\lambda(x : D).\ \klet y = \ev{cast}\,x\,e \kin y
+\]
+and it type checks in \FCdot with no subsumption. Its erasure is the erasure of the source program.
+
+\subsection{The counterexample: elimination at a cast atom}\label{sec:counterexample}
+
+A natural first design translates a declaration $\dtyp{A}{S}{T}$ into an existential package, in the style of F-ing modules \cite{rossberg2014fing}: opening a variable $x$ of that type yields a fresh type name $\alpha$ with $S \le \alpha \le T$, and every later fact about $x.A$ is a fact about $\alpha$. This does not work. Let
+\[
+\begin{array}{@{}l@{}}
+S = \dtyp{A}{\bot}{\top}, \qquad T = \dtyp{A}{\mathit{Int}}{\top}, \\
+\Gamma = x : \dtyp{B}{S}{T},\ w : S .
+\end{array}
+\]
+DOT derives $S \sub x.B \sub T$, hence $w : T$ by subsumption, hence $\mathit{Int} \sub w.A$. So
+\[
+\klet g = \lambda(y : w.A).\,y \kin g\,n \qquad \text{with } n : \mathit{Int}
+\]
+is well typed. In the package design, $w.A$ denotes the name $\alpha$ opened from the declared type $S$ of $w$. The retyping of $w$ at $T$ is a coercion between two package types, and using it means opening the coerced package, which yields a fresh $\alpha'$ with $\mathit{Int} \le \alpha'$. Nothing relates $\alpha'$ to $\alpha$, and the application $g\,n$ has no translation. The context is unrealizable, but a total translation on derivations has to translate this derivation.
+
+The conclusion we drew is that member identity must be attached to the binder, not to the type through which the binder is viewed. In \FCdot the type $w.A$ is the block name $\sel{w}{A}$, whatever type $w$ is viewed at. The retyping $S \le T$ through $x.B$ is closed evidence
+\[
+\begin{array}{@{}l@{}}
+e_{ST} = \ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,X)\,0) \\
+\qquad\qquad\quad (\ev{member}\,x\,(\ev{refl}\,X)\,1)
+\end{array}
+\]
+where $X = \trans{\dtyp{B}{S}{T}}$, and the fact $\mathit{Int} \le \sel{w}{A}$ is obtained by eliminating at the \emph{cast atom} $\ev{cast}\,w\,e_{ST}$, whose type is $\trans{T}$:
+\[
+\ev{member}\ (\ev{cast}\,w\,e_{ST})\ (\ev{refl}\,\trans{T})\ 0 .
+\]
+The root of the cast atom is $w$, so the proposition $\ple{\mathit{Int}}{\sel{\self}{A}}$ of $\trans{T}$ is instantiated at $w$. This is why $\ev{member}$ takes an arbitrary inclusion and not a context lookup, and this program is the acceptance test of the design.
+
+\subsection{What runs}
+
+The store machine of \FCdot stores literals only. Allocation of a value under casts strips the casts, stores the literal at its own type, and rewrites the continuation so that the new variable is used under the composite cast. A cast on a computation becomes a frame, and a cast frame returns a wrapped value or a wrapped atom. Application through a wrapped atom is where evidence meets execution: the chain of casts on the atom is normalized to a head form, and when that form is a function coercion $\form{pi}\,d\,c$, the argument is cast by $d$ and the result by $c$. Projection carries presence evidence. Erasure maps the source machine and the target machine into one untyped runtime, and both erased machines run in lockstep with the originals, except that the cast-frame steps of the target erase to nothing.
+
+\subsection{Why closed evidence normalizes structurally}\label{sec:why-structural}
+
+The theorem that carries the metatheory says that over a typed store every closed inclusion normalizes to a head form and every atom to a view. Two decisions make its proof a structural induction.
+
+First, stores are inert. An object literal $\lit{W}{F}$ carries witnesses $W$, one type per defined label, and fields $F$. Its precise type is the telescope generated from them: one equality $\peq{\sel{\self}{\ell}}{W(\ell)}$ per witness and one presence $\phas{\ell}$ per field. A literal carries no evidence of its own and asserts nothing beyond its definitions. Every further fact is established by a coercion in the term, in the same way that DOT establishes it by subsumption.
+
+Second, object coercions are template morphisms. A coercion $\ev{obj}\,\tel\,m$ from $\obj{\tel}$ to $\obj{\tel'}$ proves each proposition of $\tel'$ by a template: a closed coercion, then a proposition of $\tel$ named by its index, then another closed coercion. A template never eliminates through the self block. As a result the normal form of an object coercion is a telescope of entries that does not depend on the atom it will be applied to, composition of two object coercions substitutes the templates of the first into the holes of the second, and application to an atom looks each named proposition up in the atom's view. Every recursion is on a subterm.
+
+The alternative, morphisms whose bodies may eliminate at the self block, is more expressive and was our first design. Its normal forms are closures, composition needs an environment of views, and typedness of a form needs a step index with an accounting of the eliminations performed. We proved a good part of that development before observing that the DOT translation never produces such a morphism. The restriction to templates loses nothing for DOT and turns the proof into an induction on syntax.
+
+\subsection{Safety by translation}
+
+Given the theorem, safety of \FCdot is preservation and progress in the usual shape. Safety of \DOTMNF is then a corollary with no metatheory of its own. The invariant along a source run is that some typed target state over the same signature has the same erasure. It holds initially because the translation is typed and erases to the source. A source step erases to a runtime step. The target realizes that runtime step by a run, which stays typed by preservation. Progress of the target then gives a step or a final state, and both transfer back through erasure. The source calculus is never inverted.
