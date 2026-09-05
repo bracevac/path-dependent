@@ -26,8 +26,7 @@ widens a member. The unrestricted pair rule is left open here.
 **`LambdaPFC/`** is the same calculus with the general covariant pair rule.
 Subtyping derivations are compiled into store-indexed coercions, dependent
 premises are suspended until a stored pair supplies the location they
-bind, and termination follows the allocation order of the store. A
-TAPL-style walkthrough of the proof accompanies it.
+bind, and termination follows the allocation order of the store.
 
 **`LambdaPFCI/`** adds binary intersection and union types to `LambdaPFC`,
 with a recursive merge of two views of the same record spine, and leaves

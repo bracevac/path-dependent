@@ -64,11 +64,9 @@ The regressions are hand-built derivations.
 ## Paper and notes
 
 `lambda_p.tex`, "Semantic Coercions for Paths through Dependent Pairs", is
-the paper presentation of this proof. `Metatheory.md` is a complete
-TAPL-style walkthrough of progress and preservation, and
-`MetatheorySlides.md` a condensed version that places the architecture
-next to DOT and pDOT. Both also explain how `../LambdaPFCI` reuses the
-architecture for intersections and unions. From the repository root:
+the paper presentation of this proof. `Metatheory.md` and
+`MetatheorySlides.md` are working notes on the proof. From the repository
+root:
 
 ```sh
 latexmk -cd -pdf -interaction=nonstopmode -halt-on-error lean/LambdaPFC/lambda_p.tex
