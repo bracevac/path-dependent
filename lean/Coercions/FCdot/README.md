@@ -29,7 +29,7 @@ erasure safe.
 | `CanonicalForms` | the canonical-forms theorem; the chain of casts; `preservation'`, `erase_reflect'` |
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
-| `Examples` | the five mandatory examples E1 to E5, decided in the kernel |
+| `Examples` | the examples E1 to E7, decided in the kernel |
 
 ## Notation
 
