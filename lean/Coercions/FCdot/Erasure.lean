@@ -57,4 +57,23 @@ def State.CastRedex (st : State s) : Prop :=
   (∃ t e, st.t = .cast t e) ∨
   (∃ K e, st.K = .cons K (.cast e) ∧ ((∃ v, st.t = .val v) ∨ (∃ a, st.t = .atom a)))
 
+/-- The executable test for `State.CastRedex`. -/
+def State.isCastRedex (st : State s) : Bool :=
+  match st.t, st.K with
+  | .cast _ _, _ => true
+  | .val _, .cons _ (.cast _) => true
+  | .atom _, .cons _ (.cast _) => true
+  | _, _ => false
+
+theorem State.isCastRedex_iff (st : State s) : st.isCastRedex = true ↔ st.CastRedex := by
+  obtain ⟨σ, K, t⟩ := st
+  rcases K with _ | ⟨K, f⟩
+  · cases t <;> simp [State.isCastRedex, State.CastRedex]
+  · cases f <;> cases t <;> simp [State.isCastRedex, State.CastRedex]
+
+/-- Whether a state is about to move a cast frame is decidable, so the case
+splits of progress and of the backward simulation need no choice. -/
+instance (st : State s) : Decidable st.CastRedex :=
+  decidable_of_decidable_of_iff (State.isCastRedex_iff st)
+
 end FCdot

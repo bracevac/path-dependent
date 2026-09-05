@@ -104,8 +104,7 @@ reachable_consistent : st.Typed U → st ⟶* st' → ∃ Γ, ⊢ st'.σ : Γ �
                        ∀ x ℓ, ∃ W, Γ.lookupDef x ℓ = some W ∧ Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W
 ```
 
-Axioms (`#print axioms`): `propext` and `Quot.sound` for all of the above;
-`progress` and `erase_reflect'` additionally use `Classical.choice`.  The
+Axioms (`#print axioms`): `propext` and `Quot.sound` for all of the above.  The
 tree contains no `sorry`, `axiom`, `partial`, or `native_decide`.
 
 ## What is not here

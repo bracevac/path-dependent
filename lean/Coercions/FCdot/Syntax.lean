@@ -201,6 +201,8 @@ inductive Atom : Sig → Type where
 
 end
 
+deriving instance DecidableEq for LeCo, EqCo, Has, Side, Morphism, Atom
+
 /-- The variable under an atom's wrappers. -/
 def Atom.root : Atom s → BVar s .var
   | .var x => x

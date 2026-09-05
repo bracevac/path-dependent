@@ -77,7 +77,5 @@ reachable_consistent     : HasTy .nil t T → ⟨∅, ∅, d.translate⟩ ⟶* s
 reachable_realized       : … ∧ ∀ x ℓ, ∃ W, Γ.lookupDef x ℓ = some W ∧ Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W
 ```
 
-Axioms: `propext` and `Quot.sound` everywhere except `dot_safety`, which
-additionally uses `Classical.choice`, inherited from FCdot's `progress` and
-`erase_reflect'`.  No
+Axioms: `propext` and `Quot.sound` everywhere.  No
 `sorry`, `axiom`, `partial`, or `native_decide`.
