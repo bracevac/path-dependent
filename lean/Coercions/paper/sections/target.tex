@@ -24,7 +24,7 @@
 \end{array}
 \]
 \color{black}
-\caption{Syntax of \FCdot. In $\ev{pi}\,e\,e'$, in $\obj{\tel}$, and in the telescopes carried by evidence and atoms, the second component lives under one more binder.}
+\caption{Syntax of \FCdot. In $\ev{pi}\,e\,e'$ the second component lives under one more binder. In $\obj{\tel}$, and in the telescopes carried by evidence and atoms, it is the telescope arguments that live under one more binder.}
 \label{fig:target-syntax}
 \end{figure*}
 
@@ -94,11 +94,11 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 
 There are three families of evidence: inclusions $\lej{\Gamma}{e}{S}{T}$, equalities $\eqj{\Gamma}{\varphi}{S}{T}$, and presence $\hasj{\Gamma}{h}{x}{\ell}$, which says that the object bound at $x$ has a field $\ell$. Figure~\ref{fig:evidence} gives their typing. Endpoints are assigned by typing, not carried by the syntax, and there is no symmetry for inclusions.
 
-The elimination rule $\ev{member}$ is the one rule that connects the type of an atom to the block of its root. From $a : S$ and evidence $e$ for $S \le \obj{\tel}$, the $i$-th proposition of $\tel$ holds at $\rt{a}$, as an inclusion, an equality, or a presence, according to its kind. The rule $\ev{def}$ reads the definition of a block name off a transparent binder. Contexts have two kinds of binder: an opaque one, $x : T$, whose block is abstract, and a transparent one, $x : T \mathrel{:=} W ; \vec\ell$, whose block is defined by the witnesses $W$ and which is known to have the fields $\vec\ell$. A witness list assigns $\top$ to every label it does not mention. Transparent binders arise in two places: inside an object literal, where the fields are typed under the literal's own self binder, and in store typing, where every allocated binder is transparent.
+The elimination rule $\ev{member}$ is the one rule that connects the type of an atom to the block of its root, the variable under its wrappers, defined in Section~\ref{sec:atoms}. From $a : S$ and evidence $e$ for $S \le \obj{\tel}$, the $i$-th proposition of $\tel$ holds at $\rt{a}$, as an inclusion, an equality, or a presence, according to its kind. The rule $\ev{def}$ reads the definition of a block name off a transparent binder, and $\Gamma(x) \ni \ell \mathrel{:=} W$ says that $x$ is transparent in $\Gamma$ with witness $W$ at $\ell$. Contexts have two kinds of binder: an opaque one, $x : T$, whose block is abstract, and a transparent one, $x : T \mathrel{:=} W ; \vec\ell$, whose block is defined by the witnesses $W$ and which is known to have the fields $\vec\ell$. A witness list assigns $\top$ to every label it does not mention. Transparent binders arise in two places: inside an object literal, where the fields are typed under the literal's own self binder, and in store typing, where every allocated binder is transparent.
 
 An object coercion $\ev{obj}\,\tel\,m$ is annotated with its source telescope and carries a morphism $m$ that proves each proposition of the target telescope, oldest first. A target inclusion is proven by a template $\ev{le}\,m\,q\,H\,q'$: a hole $H$ names a proposition of the source and reads it as an inclusion $X \le Y$, and the two sides $q$ and $q'$ are closed coercions that adjust the endpoints. A side is either absent or a coercion $A \le B$ between closed types weakened under the self binder, so it cannot mention the self block. A target equality is a source equality, possibly flipped. A target presence is inherited from a source presence by index. A morphism therefore never eliminates through the self block, which is the property Section~\ref{sec:why-structural} relies on. Pairing, $\ev{pair}$, combines two coercions into object types into one coercion into the concatenation, and it is how the source's \rn{And} rule is translated.
 
-\subsection{Atoms, terms, and values}
+\subsection{Atoms, terms, and values}\label{sec:atoms}
 
 \begin{figure*}
 \small
@@ -146,7 +146,8 @@ An atom is a variable under wrappers that erase to nothing: a cast, the unfoldin
 \begin{array}{@{}rcl@{}}
 \rt{x} & = & x \\
 \rt{\ev{cast}\,a\,e} & = & \rt{a} \\
-\rt{\ev{fold}\,\tel\,a} & = & \rt{\ev{unfold}\,a} \ =\ \rt{a} \\
+\rt{\ev{fold}\,\tel\,a} & = & \rt{a} \\
+\rt{\ev{unfold}\,a} & = & \rt{a} \\
 \rt{\ev{both}\,\tel_1\,\tel_2\,a\,b} & = & \rt{a}
 \end{array}
 \]
@@ -170,8 +171,8 @@ An object literal $\lit{W}{F}$ has witnesses and fields and nothing else. Its ty
 \mst{\sigma}{K \triangleright \ev{let}\,u}{v} &\step& \mst{\sigma, \mathit{core}(v)}{\weak{K}}{\mathit{adjust}(u, v)} \\
 \mst{\sigma}{K \triangleright \ev{let}\,u}{a} &\step& \mst{\sigma}{K}{\inst{u}{a}} \\
 \mst{\sigma}{K}{x\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} & \text{if } \sigma(x) = \lambda(z : S_0).\,t_0 \\
-\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \neq \rt{a},\ \chn{\sigma}{a}{n}{(a', F)},\ F \in \{\form{id}, \form{eqv}\,\varphi\} \\
-\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\ev{cast}\,(\inst{t_0}{\ev{cast}\,b\,d})\,(\inst{c}{b})} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \neq \rt{a},\ \chn{\sigma}{a}{n}{(a', \form{pi}\,d\,c)} \\
+\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \text{ not a variable},\ \chn{\sigma}{a}{n}{(a', F)},\ F \in \{\form{id}, \form{eqv}\,\varphi\} \\
+\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\ev{cast}\,(\inst{t_0}{\ev{cast}\,b\,d})\,(\inst{c}{b})} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \text{ not a variable},\ \chn{\sigma}{a}{n}{(a', \form{pi}\,d\,c)} \\
 \mst{\sigma}{K}{\ev{proj}\,a\,\ell\,h} &\step& \mst{\sigma}{K}{\inst{t}{\rt{a}}} & \text{if } \sigma(\rt{a}) = \lit{W}{F} \text{ and } F(\ell) = t
 \end{array}
 \]

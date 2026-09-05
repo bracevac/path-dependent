@@ -17,7 +17,7 @@
 \newcommand{\klet}{\kw{let}\;}
 \newcommand{\kin}{\;\kw{in}\;}
 \newcommand{\ev}[1]{\tgt{\mathsf{#1}}}
-\newcommand{\form}[1]{\tgt{\mathsf{#1}}}
+\newcommand{\form}[1]{\tgt{\widehat{\mathsf{#1}}}}
 
 %% DOT types
 \newcommand{\dtyp}[3]{\src{\{#1 : #2..#3\}}}
@@ -69,6 +69,7 @@
 \newcommand{\erase}[1]{\lfloor #1 \rfloor}
 \newcommand{\trans}[1]{{\color{black}\llbracket}\src{#1}{\color{black}\rrbracket}}
 \newcommand{\resolve}[2]{\tgt{\mathit{resolve}_{#1}(#2)}}
+\newcommand{\resolven}[3]{\tgt{\mathit{resolve}^{#2}_{#1}(#3)}}
 \newcommand{\resolveAt}[3]{\tgt{\mathit{resolve}_{#1}^{#2}(#3)}}
 \newcommand{\hnf}[4]{\tgt{#1 \vdash #2 \Downarrow_{#3} #4}}
 \newcommand{\vw}[4]{\tgt{#1 \vdash #2 \Downarrow^{v}_{#3} #4}}

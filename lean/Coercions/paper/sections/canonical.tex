@@ -12,12 +12,12 @@ A head form promises a shape for its endpoints, which is $\bot$, $\top$, a funct
 Resolution therefore runs with fuel:
 \[
 \begin{array}{@{}lcl@{}}
-\resolve{\Gamma}{T}^{0} & = & \top \text{ if } \mathit{next}_\Gamma(T) \text{ defined, else } T \\
-\resolve{\Gamma}{T}^{n+1} & = & \resolve{\Gamma}{W}^{n} \text{ if } \mathit{next}_\Gamma(T) = W, \text{ else } T \\
-\resolve{\Gamma}{T} & = & \resolve{\Gamma}{T}^{|\mathit{defs}(\Gamma)| + 1}
+\resolven{\Gamma}{0}{T} & = & \top \text{ if } \mathit{next}_\Gamma(T) \text{ defined, else } T \\
+\resolven{\Gamma}{n+1}{T} & = & \resolven{\Gamma}{n}{W} \text{ if } \mathit{next}_\Gamma(T) = W, \text{ else } T \\
+\resolve{\Gamma}{T} & = & \resolven{\Gamma}{|\mathit{defs}(\Gamma)| + 1}{T}
 \end{array}
 \]
-where $\mathit{defs}(\Gamma)$ lists the pairs of a transparent binder and a label it has a witness for. A chain that runs out of fuel on a defined name is cyclic, and a cyclic alias resolves to $\top$, the object type that asserts nothing. The only facts known about the names of a cycle are their equalities with each other, and $\top$ asserts nothing more. Resolving to $\bot$ instead would be unsound: the literal with the two-element cycle above is a value, and item 5 of Theorem~\ref{thm:canon} says that the type of a well-typed atom never resolves to $\bot$. The fuel is enough: a chain of definitions either settles, at a shape or at an undefined name, within $|\mathit{defs}(\Gamma)| + 1$ steps, or it visits a defined name twice and is periodic from then on. This is a pigeonhole argument on the finitely many defined names, and it gives the two facts used everywhere below, with no side condition on the context.
+where $\mathit{defs}(\Gamma)$ lists the pairs of a transparent binder and a label its witness list mentions. A name at a label the list does not mention is defined as $\top$ and settles in one step. A chain that runs out of fuel on a defined name is cyclic, and a cyclic alias resolves to $\top$, the object type that asserts nothing. The only facts known about the names of a cycle are their equalities with each other, and $\top$ asserts nothing more. Resolving to $\bot$ instead would be unsound: a field of the literal above declared at $\sel{\self}{A}$ holds a value, an atom bound to that field has a type that resolves through the cycle, and item 5 of Theorem~\ref{thm:canon} says that the type of a well-typed atom never resolves to $\bot$. The fuel is enough: a chain of definitions either settles, at a shape or at an undefined name, within $|\mathit{defs}(\Gamma)| + 1$ steps, or it visits a defined name twice and is periodic from then on. This is a pigeonhole argument on the finitely many defined names, and it gives the two facts used everywhere below, with no side condition on the context.
 
 \begin{lemma}[Resolution]\label{lem:resolve}
 \begin{enumerate}
@@ -28,7 +28,7 @@ where $\mathit{defs}(\Gamma)$ lists the pairs of a transparent binder and a labe
 \end{enumerate}
 \end{lemma}
 
-The first version of the development required definitions to be well founded, with a side condition on literals that a witness may not be a bare name of the same block. The condition propagated into the translation and, from there, into a restriction on the source rule \rn{\{\}-I}. Replacing well-founded resolution by the fuel-and-pigeonhole one removed the condition on both sides. Section~\ref{sec:forced} returns to this.
+The first version of the development required definitions to be well founded, with a side condition on literals that a witness may not be a bare name of the same block, the self-alias restriction. The condition propagated into the translation and, from there, into a restriction on the source rule \rn{\{\}-I}. Replacing well-founded resolution by the fuel-and-pigeonhole one removed the condition on both sides. Section~\ref{sec:forced} returns to this.
 
 \subsection{Forms, entries, and views}
 
@@ -47,7 +47,7 @@ The first version of the development required definitions to be well founded, wi
 \label{fig:forms}
 \end{figure*}
 
-Figure~\ref{fig:forms} gives the normal forms: the head form of an inclusion, the entry of a template, and the view of an atom. A head form of an inclusion is $\form{bot}$, $\form{top}$, the syntactic identity $\form{id}$, a conversion $\form{eqv}\,\varphi$ by closed equality evidence, a function coercion $\form{pi}\,d\,c$, or an object coercion $\form{obj}\,\mathit{Es}$ with one entry per proposition of the target telescope. The domain and codomain evidence of a function form is not normalized further, because the machine uses it as a cast and normalizes it only when it is applied. An entry $\form{le}\,F\,H\,G$ is the normal form of a template: the two sides are forms, $\form{id}$ standing for an absent side, around a hole $H$ that still names a source proposition. The other entries are as in morphisms.
+Figure~\ref{fig:forms} gives the normal forms: the head form of an inclusion, the entry of a template, and the view of an atom. Head forms wear a hat, to tell $\form{obj}$, the normal form, from $\ev{obj}$, the evidence. A head form of an inclusion is $\form{bot}$, $\form{top}$, the syntactic identity $\form{id}$, a conversion $\form{eqv}\,\varphi$ by closed equality evidence, a function coercion $\form{pi}\,d\,c$, or an object coercion $\form{obj}\,\mathit{Es}$ with one entry per proposition of the target telescope. The domain and codomain evidence of a function form is not normalized further, because the machine uses it as a cast and normalizes it only when it is applied. An entry $\form{le}\,F\,H\,G$ is the normal form of a template: the two sides are forms, $\form{id}$ standing for an absent side, around a hole $H$ that still names a source proposition. The other entries are as in morphisms.
 
 A view is the telescope of forms of the propositions that an atom's resolved object type asserts about it. The form of an inclusion proposition is a head form, an equality proposition records only that its two sides resolve equally, and a presence proposition records the binder and the field, $\form{has}\,x\,\ell$.
 
@@ -156,7 +156,7 @@ Typedness has two modes, and keeping them apart is what makes the elimination ca
 \[
 \begin{array}{@{}rcl@{}}
 \resolveAt{\Gamma}{r}{T} & = & \mathit{open}_r(\resolve{\Gamma}{T}) \\
-\mathit{open}_r(\obj{\tel}) & = & \obj{\weak{(\inst{\tel}{r})}} \\
+\mathit{open}_r(\obj{\tel}) & = & \obj{\weak{(\inst{\tel}{r})}} \qquad \mathit{open}_r(T) = T \text{ otherwise} \\
 \chainj{\Gamma}{r}{F}{S}{T} & \mathrel{:=} & \formj{\Gamma}{F}{\resolveAt{\Gamma}{r}{S}}{\resolveAt{\Gamma}{r}{T}} .
 \end{array}
 \]
@@ -194,7 +194,7 @@ whenever $\resolve{\Gamma}{S} = \obj{\tel}$.
 \end{theorem}
 
 \begin{proof}
-By mutual structural induction on the evidence derivations. The cases for $\ev{refl}$, $\ev{top}$, $\ev{bot}$, $\ev{eqToLe}$, and $\ev{pi}$ produce their form with one unit of fuel. The case $\ev{trans}$ is Lemma~\ref{lem:combine}, $\ev{pair}$ is Lemma~\ref{lem:pair-apply}, and $\ev{obj}$ is item 4 applied to the morphism. For $\ev{member}\,a\,e\,i$, item 5 gives a typed view of $a$, and item 1 gives a typed form of $e$ whose target is an object type. Hence the source of $e$ resolves to an object type, and the view of $a$ through the form of $e$ is a typed view of the target telescope by Lemma~\ref{lem:pair-apply}. Its entry at $i$ is a typed form, an equality of resolutions, or a field of the object at the root, according to the kind of the proposition. The case $\ev{def}$ is Lemma~\ref{lem:resolve}. For an atom that is a variable, the precise view of the stored literal is typed at the literal's telescope, because each definition equality resolves equally by Lemma~\ref{lem:resolve} and each presence names a field the literal has. A cast atom pushes its view through the form of the cast. Folding and unfolding keep the view, since a typed view of $\tel$ is a typed view of the opened telescope and conversely. The fuel of every case is one more than the maximum of the fuels of the premises.
+By mutual structural induction on the evidence derivations. The cases for $\ev{refl}$, $\ev{top}$, $\ev{bot}$, $\ev{eqToLe}$, and $\ev{pi}$ produce their form with one unit of fuel. The case $\ev{trans}$ is Lemma~\ref{lem:combine}, $\ev{pair}$ is Lemma~\ref{lem:pair-apply}, and $\ev{obj}$ is item 4 applied to the morphism. For $\ev{member}\,a\,e\,i$, item 5 gives a typed view of $a$, and item 1 gives a typed form of $e$ whose target is an object type. Hence the source of $e$ resolves to an object type, and the view of $a$ through the form of $e$ is a typed view of the target telescope by Lemma~\ref{lem:pair-apply}. Its entry at $i$ is a typed form, an equality of resolutions, or a field of the object at the root, according to the kind of the proposition. The case $\ev{def}$ is Lemma~\ref{lem:resolve}. For an atom that is a variable, the precise view of the stored literal is typed at the literal's telescope, because each definition equality resolves equally by Lemma~\ref{lem:resolve} and each presence names a field the literal has. A cast atom pushes its view through the form of the cast. Folding and unfolding keep the view, since a typed view of $\tel$ is a typed view of the opened telescope and conversely. The fuel of every case is at most two more than the maximum of the fuels of the premises.
 \end{proof}
 
 \begin{theorem}[Chain of casts]\label{thm:chain}
@@ -238,4 +238,4 @@ The two rules that consult the store are application and projection, and Corolla
 A step of the machine either moves a cast frame and leaves the erasure unchanged, or erases to one runtime step. Conversely, if $\storej{\sigma}{\Gamma}$, the term of the state is typed, and the erased state takes a runtime step to $r$, then the state takes a run to a state whose erasure is $r$.
 \end{theorem}
 
-The backward direction realizes a runtime application by first moving the pending cast frames, then applying through the atom, which Corollary~\ref{cor:inversion} makes possible. Along any run from a typed state the store stays typed, so Corollary~\ref{cor:shapes} holds at every reachable state: no reachable store admits closed evidence for $\top \le \bot$, and every block name of every reachable store is defined.
+The backward direction realizes a runtime application by first moving the pending cast frames, then applying through the atom, which Corollary~\ref{cor:inversion} makes possible. Along any run from a typed state the store stays typed, so Corollaries~\ref{cor:shapes} and~\ref{cor:inversion} hold at every reachable state: no reachable store admits closed evidence for $\top \le \bot$, and every block name of every reachable store is defined.

@@ -12,7 +12,7 @@ S, T & ::= & \top \mid \bot \mid \dtyp{A}{S}{T} \mid \dfld{a}{T} \mid x.A \\
 & \mid & \dmu{x}{T} \mid \dall{x}{S}{T} \mid S \wedge T .
 \end{array}}
 \]
-Terms are variables, values, applications $x\,y$, selections $x.a$, and $\klet x = t \kin u$. Values are lambdas $\lambda(x:T).\,t$ and object literals $\dnew{x}{d}$ whose definitions $d$ are type members $\ddeftyp{A}{T}$ and term members $\ddeftrm{a}{t}$ joined by $\wedge$. Subtyping has the rules of DOT: a type member $x : \dtyp{A}{S}{T}$ gives $S \sub x.A$ and $x.A \sub T$, function types are contravariant in the domain, intersections have projections and pairing, and recursive types are introduced and eliminated on variables by \rn{Rec-I} and \rn{Rec-E}. A program runs on a store machine with a continuation of let frames. The machine has no types to consult.
+Terms are variables, values, applications $x\,y$, selections $x.a$, and $\klet x = t \kin u$. Values are lambdas $\lambda(x:T).\,t$ and object literals $\dnew{x}{d}$ whose definitions $d$ are type members $\ddeftyp{A}{T}$ and term members $\ddeftrm{a}{t}$ joined by $\wedge$. Subtyping has the rules of DOT: a type member $x : \dtyp{A}{S}{T}$ gives $S \sub x.A$ and $x.A \sub T$, function types are contravariant in the domain, and intersections have projections and pairing. Recursive types are introduced and eliminated on variables by the typing rules \rn{Rec-I} and \rn{Rec-E}. A program runs on a store machine with a continuation of let frames. The machine has no types to consult.
 
 Consider the program
 \[
