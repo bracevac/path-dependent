@@ -1,40 +1,59 @@
 # Coercions
 
 Lean formalizations of type-preserving translations from DOT fragments into
-explicit-coercion calculi.  This directory was cut down in September 2026 to
-the parts that carry general theorems; the removed material (captured DOT
-sources, the many-sorted cumulative compilers, the checked front end, the
-certificate study, the classifier and Capybara case studies, and the
-intersection, recursive-object, and path-alias FCsub layers) lives in git
-history before the `coercions-cut` branch.
+explicit-coercion calculi.
 
-- `FCsub` is the standalone type-constraint target: System F-sub with
-  explicit coercions, telescope-constrained quantifiers, and head-guarded
-  recursive projections.  It has `progress`, `preservation`, and a total
-  checker with `checkTerm_iff` completeness.
-- `DOT/Acyclic` is the acyclic, variable-path, one-type-member-per-object
-  DOT source (`Source`) and its explicitly coerced Stage A form (`Explicit`)
-  with elaboration, normalization, and a checker.
-- `Translation/Acyclic` and `Translation/StableRoots` are the DOT-to-FCsub
-  bridge.  `StableRoots.TermTranslation.compile` is total on the
-  `StableHasTy` fragment and `sound` gives target typing, literal erasure
-  equality, and a source-to-target step correspondence.
-- `ManySortedFC` is the static layer of the two-sorted (type and capture)
-  target: syntax, checked evidence, sound and complete evidence and term
-  checkers, theory models and maps, a closed consistency model, a
-  separation consistency model distinguishing read-only overlap from
-  disjointness, and a decidable ground classifier kind algebra.  It has no
-  operational semantics or type-safety theorem.
+## Current development (Plan III, `plan-3-dot-mnf-to-fcdot.md`)
 
-Known limits that the next milestone must address: source objects carry no
-term members and erase to a constant; FCsub has no products, no recursive
-values, and no intersection types; no term compiler exists for
-intersections, recursive self types, or general paths; `StableHasTy` is a
-side predicate on derivations rather than a source-level fragment; and no
-closed-context consistency or coherence theorem exists for the bridge.
+- `DotMNF` — the source: WadlerFest DOT in monadic normal form, with object
+  literals that carry type members *and* term members, recursive self
+  types, intersections of declarations, and bad bounds admitted.  Its
+  machine erases step by step into the shared runtime (`erase_step`,
+  `erase_reflect`).  It has no metatheory of its own; safety is transported
+  from the target.
+- `FCdot` — the target: an explicit-evidence coercion calculus whose
+  evidence erases to nothing.  Checker with completeness, preservation,
+  progress, both erasure simulations, canonical forms over inert stores,
+  consistency of typed stores.  See `FCdot/README.md`.
+- `DotToFCdot` — the bridge: the translation of derivations, typedness,
+  erasure equality `⌊h.translate⌋ = ⌊t⌋`, coherence, `dot_safety`, and the
+  consistency corollaries for translated programs.  See
+  `DotToFCdot/README.md`.
+- `Runtime` — the shared untyped runtime both calculi erase into: variables,
+  lambdas, objects **with their term members**, application, projection,
+  `let`.  For example E2 (`FCdot/Examples.lean`, `DotMNF/Examples.lean`),
+  `let x = ν(x. {A = ∀(y : x.A) x.A} ∧ {a = λ(y : x.A). y}) in let f = x.a in f f`,
+  erases on both sides to
+  `let x = ν(x. {a = λy. y}) in let f = x.a in f f`, and the two erasures
+  are equal by `rfl`.
 
-Example and regression files use `native_decide`, so those specific results
-depend on `Lean.ofReduceBool`.  The core metatheory uses only `propext` and
-`Quot.sound`.
+Restrictions of the source relative to WadlerFest DOT, all stated in the
+typing rules (`DotMNF/Typing.lean`) and in the plan's §13: intersections
+and recursive-type bodies are declaration-shaped; type-member definitions
+and field declarations inside a literal are not bare selections on the
+literal's own self (`Defs.Guarded`, `Ty.Guarded`; the plan's §12 risk 2).
+The last restriction is slated for removal by making the target's
+resolution follow aliases within a block.
 
-`All.lean` imports the complete development.
+## Legacy (before this branch)
+
+Kept for their theorems; not part of the current line.
+
+- `FCsub` — System F-sub with explicit coercions, telescope-constrained
+  quantifiers, head-guarded recursive projections; `progress`,
+  `preservation`, a total checker with `checkTerm_iff`.
+- `DOT/Acyclic` — the acyclic, variable-path, one-type-member-per-object
+  DOT source and its explicitly coerced Stage A form.
+- `Translation/Acyclic`, `Translation/StableRoots` — the old DOT-to-FCsub
+  bridge; its source objects carry no term members and erase to a constant,
+  which is the limitation Plan III was written to remove.
+- `ManySortedFC` — the static layer of a two-sorted (type and capture)
+  target; no operational semantics.
+
+The legacy example files use `native_decide`; the current development does
+not (`Examples` are decided in the kernel).  The core metatheory of every
+part uses only `propext` and `Quot.sound`, with `Classical.choice` in the
+FCdot `progress`/`erase_reflect'` line and what depends on it.
+
+`All.lean` imports the legacy development; the current line is rooted at
+`DotMNF.lean`, `FCdot.lean`, `DotToFCdot.lean`.
