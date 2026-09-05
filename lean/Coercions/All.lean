@@ -2,9 +2,8 @@ import Coercions.Translation
 import Coercions.ManySortedFC
 
 /-!
-Umbrella for the coercion development. `Coercions.Translation` transitively
-exposes the independently buildable acyclic DOT and FCsub roots and the
-stable-root DOT-to-FCsub compiler. `Coercions.ManySortedFC` exposes the static
-layer of the many-sorted target: syntax, evidence, checkers, consistency
-models, and the ground classifier algebra.
+Umbrella for the *legacy* coercion development (the old DOT-to-FCsub bridge
+and the many-sorted static layer), kept for its theorems.  The current
+development, Plan III, is rooted at `Coercions.DotMNF`, `Coercions.FCdot`,
+and `Coercions.DotToFCdot`; see `README.md` in this directory.
 -/
