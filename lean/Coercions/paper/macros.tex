@@ -1,76 +1,86 @@
+%% Colors: source (DOT-MNF) and target (FCdot)
+\definecolor{srccol}{RGB}{0,70,150}
+\definecolor{tgtcol}{RGB}{160,40,30}
+\newcommand{\src}[1]{{\color{srccol}#1}}
+\newcommand{\tgt}[1]{{\color{tgtcol}#1}}
+\newcommand{\mathsrc}{\everymath{\color{srccol}}\everydisplay{\color{srccol}}}
+\newcommand{\mathtgt}{\everymath{\color{tgtcol}}\everydisplay{\color{tgtcol}}}
+\newcommand{\mathplain}{\everymath{}\everydisplay{}}
+
 %% Names
-\newcommand{\FCdot}{\ensuremath{\mathrm{FC}_{\mathrm{dot}}}\xspace}
-\newcommand{\DOTMNF}{DOT-MNF\xspace}
+\newcommand{\FCdot}{\tgt{\ensuremath{\mathrm{FC}_{\mathrm{dot}}}}\xspace}
+\newcommand{\DOTMNF}{\src{DOT-MNF}\xspace}
 \newcommand{\Lean}{Lean~4\xspace}
 
 %% Keywords and constructors
 \newcommand{\kw}[1]{\mathbf{#1}}
 \newcommand{\klet}{\kw{let}\;}
 \newcommand{\kin}{\;\kw{in}\;}
-\newcommand{\ev}[1]{\mathsf{#1}}
-\newcommand{\form}[1]{\mathsf{#1}}
+\newcommand{\ev}[1]{\tgt{\mathsf{#1}}}
+\newcommand{\form}[1]{\tgt{\widehat{\mathsf{#1}}}}
 
 %% DOT types
-\newcommand{\dtyp}[3]{\{#1 : #2..#3\}}
-\newcommand{\dfld}[2]{\{#1 : #2\}}
-\newcommand{\dmu}[2]{\mu(#1.\,#2)}
-\newcommand{\dall}[3]{\forall(#1 : #2)\,#3}
-\newcommand{\dsel}[2]{#1.#2}
-\newcommand{\dnew}[2]{\nu(#1.\,#2)}
-\newcommand{\ddeftyp}[2]{\{#1 = #2\}}
-\newcommand{\ddeftrm}[2]{\{#1 = #2\}}
-\newcommand{\sub}{<:}
+\newcommand{\dtyp}[3]{\src{\{#1 : #2..#3\}}}
+\newcommand{\dfld}[2]{\src{\{#1 : #2\}}}
+\newcommand{\dmu}[2]{\src{\mu(#1.\,#2)}}
+\newcommand{\dall}[3]{\src{\forall(#1 : #2)\,#3}}
+\newcommand{\dsel}[2]{\src{#1.#2}}
+\newcommand{\dnew}[2]{\src{\nu(#1.\,#2)}}
+\newcommand{\ddeftyp}[2]{\src{\{#1 = #2\}}}
+\newcommand{\ddeftrm}[2]{\src{\{#1 = #2\}}}
+\newcommand{\sub}{\src{<:}}
 
 %% FCdot types
-\newcommand{\sel}[2]{#1\mathbin{\cdot}#2}
-\newcommand{\pit}[2]{\Pi(#1)\,#2}
-\newcommand{\obj}[1]{\mu\,#1}
-\newcommand{\ple}[2]{#1 \sqsubseteq #2}
-\newcommand{\peq}[2]{#1 \doteq #2}
-\newcommand{\phas}[1]{\ni #1}
-\newcommand{\tel}{\mathit{Tel}}
+\newcommand{\sel}[2]{\tgt{#1\mathbin{\cdot}#2}}
+\newcommand{\pit}[2]{\tgt{\Pi(#1)\,#2}}
+\newcommand{\obj}[1]{\tgt{\mu\,#1}}
+\newcommand{\ple}[2]{\tgt{#1 \sqsubseteq #2}}
+\newcommand{\peq}[2]{\tgt{#1 \doteq #2}}
+\newcommand{\phas}[1]{\tgt{\ni #1}}
+\newcommand{\tel}{\tgt{\mathit{Tel}}}
 \newcommand{\tnil}{[\,]}
-\newcommand{\tcons}[2]{#1 \triangleright #2}
-\newcommand{\tat}[3]{#1 \ni (#2 \mapsto #3)}
+\newcommand{\tcons}[2]{\tgt{#1 \triangleright #2}}
+\newcommand{\tat}[3]{\tgt{#1 \ni (#2 \mapsto #3)}}
 \newcommand{\weak}[1]{#1{\uparrow}}
 \newcommand{\inst}[2]{#1\llbracket #2\rrbracket}
-\newcommand{\self}{\mathit{self}}
-\newcommand{\rt}[1]{\mathit{root}(#1)}
+\newcommand{\self}{\tgt{\mathit{self}}}
+\newcommand{\rt}[1]{\tgt{\mathit{root}(#1)}}
 
 %% Judgments
-\newcommand{\lej}[4]{#1 \vdash #2 : #3 \le #4}
-\newcommand{\eqj}[4]{#1 \vdash #2 : #3 \equiv #4}
-\newcommand{\hasj}[4]{#1 \vdash #2 : #3 \ni #4}
-\newcommand{\morj}[4]{#1 \vdash #2 : #3 \Rightarrow #4}
-\newcommand{\atomj}[3]{#1 \vdash_{\!a} #2 : #3}
-\newcommand{\tmj}[3]{#1 \vdash #2 : #3}
-\newcommand{\valj}[3]{#1 \vdash_{\!v} #2 : #3}
-\newcommand{\fldj}[2]{#1 \vdash_{\!f} #2}
-\newcommand{\storej}[2]{\vdash #1 : #2}
-\newcommand{\contj}[4]{#1 \vdash_{\!k} #2 : #3 \Rightarrow #4}
-\newcommand{\formj}[4]{#1 \models #2 : #3 \le #4}
-\newcommand{\chainj}[5]{#1 \models_{#2} #3 : #4 \le #5}
-\newcommand{\entj}[4]{#1 \models #2 : #3 \Rightarrow #4}
-\newcommand{\viewj}[5]{#1 \models_{#2,#3} #4 : #5}
-\newcommand{\holej}[4]{#1 \vdash #2 : \ple{#3}{#4}}
-\newcommand{\subj}[3]{#1 \vdash #2 \sub #3}
-\newcommand{\dtyj}[3]{#1 \vdash #2 : #3}
+\newcommand{\lej}[4]{\tgt{#1 \vdash #2 : #3 \le #4}}
+\newcommand{\eqj}[4]{\tgt{#1 \vdash #2 : #3 \equiv #4}}
+\newcommand{\hasj}[4]{\tgt{#1 \vdash #2 : #3 \ni #4}}
+\newcommand{\morj}[4]{\tgt{#1 \vdash #2 : #3 \Rightarrow #4}}
+\newcommand{\atomj}[3]{\tgt{#1 \vdash_{\!a} #2 : #3}}
+\newcommand{\tmj}[3]{\tgt{#1 \vdash #2 : #3}}
+\newcommand{\valj}[3]{\tgt{#1 \vdash_{\!v} #2 : #3}}
+\newcommand{\fldj}[2]{\tgt{#1 \vdash_{\!f} #2}}
+\newcommand{\storej}[2]{\tgt{\vdash #1 : #2}}
+\newcommand{\contj}[4]{\tgt{#1 \vdash_{\!k} #2 : #3 \Rightarrow #4}}
+\newcommand{\formj}[4]{\tgt{#1 \models #2 : #3 \le #4}}
+\newcommand{\chainj}[5]{\tgt{#1 \models_{#2} #3 : #4 \le #5}}
+\newcommand{\entj}[4]{\tgt{#1 \models #2 : #3 \Rightarrow #4}}
+\newcommand{\viewj}[5]{\tgt{#1 \models_{#2,#3} #4 : #5}}
+\newcommand{\holej}[4]{\tgt{#1 \vdash #2 : \ple{#3}{#4}}}
+\newcommand{\subj}[3]{\src{#1 \vdash #2 \sub #3}}
+\newcommand{\dtyj}[3]{\src{#1 \vdash #2 : #3}}
 \newcommand{\step}{\longrightarrow}
 \newcommand{\steps}{\longrightarrow^{*}}
 \newcommand{\erase}[1]{\lfloor #1 \rfloor}
-\newcommand{\trans}[1]{\llbracket #1 \rrbracket}
-\newcommand{\resolve}[2]{\mathit{resolve}_{#1}(#2)}
-\newcommand{\resolveAt}[3]{\mathit{resolve}_{#1}^{#2}(#3)}
-\newcommand{\hnf}[4]{#1 \vdash #2 \Downarrow_{#3} #4}
-\newcommand{\vw}[4]{#1 \vdash #2 \Downarrow^{v}_{#3} #4}
-\newcommand{\chn}[4]{#1 \vdash #2 \Downarrow^{c}_{#3} #4}
+\newcommand{\trans}[1]{{\color{black}\llbracket}\src{#1}{\color{black}\rrbracket}}
+\newcommand{\resolve}[2]{\tgt{\mathit{resolve}_{#1}(#2)}}
+\newcommand{\resolven}[3]{\tgt{\mathit{resolve}^{#2}_{#1}(#3)}}
+\newcommand{\resolveAt}[3]{\tgt{\mathit{resolve}_{#1}^{#2}(#3)}}
+\newcommand{\hnf}[4]{\tgt{#1 \vdash #2 \Downarrow_{#3} #4}}
+\newcommand{\vw}[4]{\tgt{#1 \vdash #2 \Downarrow^{v}_{#3} #4}}
+\newcommand{\chn}[4]{\tgt{#1 \vdash #2 \Downarrow^{c}_{#3} #4}}
 \newcommand{\mst}[3]{\langle #1, #2, #3\rangle}
 \newcommand{\lk}[2]{#1(#2)}
-\newcommand{\Decl}{\mathit{Decl}}
-\newcommand{\Wf}{\mathit{Wf}}
-\newcommand{\Distinct}{\mathit{Distinct}}
-\newcommand{\lit}[2]{\nu(#1;\,#2)}
-\newcommand{\ofLit}[2]{\mathit{tel}(#1, #2)}
+\newcommand{\Decl}{\src{\mathit{Decl}}}
+\newcommand{\Wf}{\src{\mathit{Wf}}}
+\newcommand{\Distinct}{\src{\mathit{Distinct}}}
+\newcommand{\lit}[2]{\tgt{\nu(#1;\,#2)}}
+\newcommand{\ofLit}[2]{\tgt{\mathit{tel}(#1, #2)}}
 \newcommand{\dom}{\mathit{dom}}
 
 %% Rule names

@@ -1,3 +1,4 @@
+\mathplain
 \section{Mechanization}\label{sec:mechanization}
 
 Everything in this paper is mechanized in \Lean \cite{demoura2021lean}. The development has no library dependencies: the core language and its standard library only, no Mathlib. Table~\ref{tab:sizes} gives its size.
@@ -56,7 +57,7 @@ Corollary~\ref{cor:shapes} & \lean{closed\_le\_shapes}, \lean{Store.Typed.no\_to
 Corollary~\ref{cor:inversion} & \lean{closed\_pi\_inversion}, \lean{closedAtomForm\_pi}, \lean{closed\_has\_field}, \lean{Store.Typed.realized} \\
 preservation, progress & \lean{preservation'}, \lean{progress}, \lean{not\_stuck} \\
 erasure simulation & \lean{erase\_step}, \lean{erase\_reflect'}, \lean{reachable\_consistent} \\
-Theorem~\ref{thm:trans-typed} & \lean{Sub.translate\_typed}, \lean{HasTy.translateAtom\_typed}, \lean{HasTy.translate\_typed} \\
+Theorem~\ref{thm:trans-typed} & \lean{Sub.translate\_typed}, \lean{HasTy.translateAtom\_typed}, \lean{HasTy.translateAtom\_root}, \lean{HasTy.translate\_typed} \\
 Theorem~\ref{thm:trans-erase} & \lean{HasTy.translate\_erase}, \lean{coherence} \\
 Theorem~\ref{thm:dot-safety} & \lean{dot\_safety}, \lean{dot\_not\_stuck} \\
 consistency corollary & \lean{reachable\_consistent}, \lean{reachable\_realized} \\

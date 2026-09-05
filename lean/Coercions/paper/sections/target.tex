@@ -1,7 +1,9 @@
+\mathtgt
 \section{The Target: \FCdot}\label{sec:target}
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \[
 \begin{array}{@{}lrcl@{}}
 \text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit{S}{T} \mid \obj{\tel} \qquad\quad \top \mathrel{:=} \obj{\tnil} \\
@@ -21,7 +23,8 @@
 \text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : T \mathrel{:=} W ; \vec{\ell}
 \end{array}
 \]
-\caption{Syntax of \FCdot. In $\ev{pi}\,e\,e'$, in $\obj{\tel}$, and in the telescopes carried by evidence and atoms, the second component lives under one more binder.}
+\color{black}
+\caption{Syntax of \FCdot. In $\ev{pi}\,e\,e'$ the second component lives under one more binder. In $\obj{\tel}$, and in the telescopes carried by evidence and atoms, it is the telescope arguments that live under one more binder.}
 \label{fig:target-syntax}
 \end{figure*}
 
@@ -35,6 +38,7 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \begin{mathpar}
 \inferrule{ }{\lej{\Gamma}{\ev{refl}\,T}{T}{T}}
 \and
@@ -83,20 +87,22 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 \inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \tat{\tel}{j}{\phas{\ell}}}
   {\morj{\Gamma}{\ev{has}\,m\,j}{\tel}{\tcons{\tel'}{\phas{\ell}}}}
 \end{mathpar}
+\color{black}
 \caption{Evidence typing. The rules for $\ev{refl}$, $\ev{symm}$, and $\ev{trans}$ on equalities are omitted. A hole reads a source proposition as an inclusion: $\holej{\tel}{\ev{le}\,j}{X}{Y}$ when $\tat{\tel}{j}{\ple{X}{Y}}$, $\holej{\tel}{\ev{eq}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{X}{Y}}$, and $\holej{\tel}{\ev{eqSym}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{Y}{X}}$.}
 \label{fig:evidence}
 \end{figure*}
 
 There are three families of evidence: inclusions $\lej{\Gamma}{e}{S}{T}$, equalities $\eqj{\Gamma}{\varphi}{S}{T}$, and presence $\hasj{\Gamma}{h}{x}{\ell}$, which says that the object bound at $x$ has a field $\ell$. Figure~\ref{fig:evidence} gives their typing. Endpoints are assigned by typing, not carried by the syntax, and there is no symmetry for inclusions.
 
-The elimination rule $\ev{member}$ is the one rule that connects the type of an atom to the block of its root. From $a : S$ and evidence $e$ for $S \le \obj{\tel}$, the $i$-th proposition of $\tel$ holds at $\rt{a}$, as an inclusion, an equality, or a presence, according to its kind. The rule $\ev{def}$ reads the definition of a block name off a transparent binder. Contexts have two kinds of binder: an opaque one, $x : T$, whose block is abstract, and a transparent one, $x : T \mathrel{:=} W ; \vec\ell$, whose block is defined by the witnesses $W$ and which is known to have the fields $\vec\ell$. A witness list assigns $\top$ to every label it does not mention. Transparent binders arise in two places: inside an object literal, where the fields are typed under the literal's own self binder, and in store typing, where every allocated binder is transparent.
+The elimination rule $\ev{member}$ is the one rule that connects the type of an atom to the block of its root, the variable under its wrappers, defined in Section~\ref{sec:atoms}. From $a : S$ and evidence $e$ for $S \le \obj{\tel}$, the $i$-th proposition of $\tel$ holds at $\rt{a}$, as an inclusion, an equality, or a presence, according to its kind. The rule $\ev{def}$ reads the definition of a block name off a transparent binder, and $\Gamma(x) \ni \ell \mathrel{:=} W$ says that $x$ is transparent in $\Gamma$ with witness $W$ at $\ell$. Contexts have two kinds of binder: an opaque one, $x : T$, whose block is abstract, and a transparent one, $x : T \mathrel{:=} W ; \vec\ell$, whose block is defined by the witnesses $W$ and which is known to have the fields $\vec\ell$. A witness list assigns $\top$ to every label it does not mention. Transparent binders arise in two places: inside an object literal, where the fields are typed under the literal's own self binder, and in store typing, where every allocated binder is transparent.
 
 An object coercion $\ev{obj}\,\tel\,m$ is annotated with its source telescope and carries a morphism $m$ that proves each proposition of the target telescope, oldest first. A target inclusion is proven by a template $\ev{le}\,m\,q\,H\,q'$: a hole $H$ names a proposition of the source and reads it as an inclusion $X \le Y$, and the two sides $q$ and $q'$ are closed coercions that adjust the endpoints. A side is either absent or a coercion $A \le B$ between closed types weakened under the self binder, so it cannot mention the self block. A target equality is a source equality, possibly flipped. A target presence is inherited from a source presence by index. A morphism therefore never eliminates through the self block, which is the property Section~\ref{sec:why-structural} relies on. Pairing, $\ev{pair}$, combines two coercions into object types into one coercion into the concatenation, and it is how the source's \rn{And} rule is translated.
 
-\subsection{Atoms, terms, and values}
+\subsection{Atoms, terms, and values}\label{sec:atoms}
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \begin{mathpar}
 \inferrule{ }{\atomj{\Gamma}{x}{\Gamma(x)}}
 \and
@@ -130,11 +136,22 @@ An object coercion $\ev{obj}\,\tel\,m$ is annotated with its source telescope an
 \and
 \inferrule{\fldj{\Gamma}{F} \\ \tmj{\Gamma}{t}{\sel{x}{\ell}}}{\fldj{\Gamma}{F, \ell = t}}
 \end{mathpar}
+\color{black}
 \caption{Typing of atoms, terms, values, and fields. In the field rules $x$ is the self binder of the literal.}
 \label{fig:terms}
 \end{figure*}
 
-An atom is a variable under wrappers that erase to nothing: a cast, the unfolding of a self block at the root, the folding of the root back into a self block, and the pairing of two typings of one variable. The root of an atom is the variable underneath: $\rt{x} = x$, $\rt{\ev{cast}\,a\,e} = \rt{a}$, $\rt{\ev{fold}\,\tel\,a} = \rt{\ev{unfold}\,a} = \rt{a}$, and $\rt{\ev{both}\,\tel_1\,\tel_2\,a\,b} = \rt{a}$, which is also $\rt{b}$ whenever the atom is typed. Figure~\ref{fig:terms} gives the typing. Unfolding instantiates the self binder of the telescope by the atom's root and weakens the result under a fresh, unused self binder, so that $\obj{\weak{(\inst{\tel}{\rt{a}})}}$ is an object type whose propositions are about $\rt{a}$ rather than about the self. Folding is its inverse. These are the atom forms of the source rules \rn{Rec-E} and \rn{Rec-I}, and $\ev{both}$ is \rn{And-I}.
+An atom is a variable under wrappers that erase to nothing: a cast, the unfolding of a self block at the root, the folding of the root back into a self block, and the pairing of two typings of one variable. The root of an atom is the variable underneath:
+\[
+\begin{array}{@{}rcl@{}}
+\rt{x} & = & x \\
+\rt{\ev{cast}\,a\,e} & = & \rt{a} \\
+\rt{\ev{fold}\,\tel\,a} & = & \rt{a} \\
+\rt{\ev{unfold}\,a} & = & \rt{a} \\
+\rt{\ev{both}\,\tel_1\,\tel_2\,a\,b} & = & \rt{a}
+\end{array}
+\]
+In the last case $\rt{b}$ is the same variable whenever the atom is typed. Figure~\ref{fig:terms} gives the typing. Unfolding instantiates the self binder of the telescope by the atom's root and weakens the result under a fresh, unused self binder, so that $\obj{\weak{(\inst{\tel}{\rt{a}})}}$ is an object type whose propositions are about $\rt{a}$ rather than about the self. Folding is its inverse. These are the atom forms of the source rules \rn{Rec-E} and \rn{Rec-I}, and $\ev{both}$ is \rn{And-I}.
 
 Terms are in monadic normal form over atoms: application and projection take atoms, a let sequences computations, and a cast on a term becomes a cast frame when it runs. There is no subsumption. Application instantiates the codomain at the root of the argument, as \rn{All-E} does in the source, and the result of a let may not mention the block of the let-bound variable. A projection $\ev{proj}\,a\,\ell\,h$ carries the presence evidence $h$ and has the block name $\sel{\rt{a}}{\ell}$ as its type. Converting that name to a declared field type takes a further cast, which the translation supplies from the declaration.
 
@@ -144,6 +161,7 @@ An object literal $\lit{W}{F}$ has witnesses and fields and nothing else. Its ty
 
 \begin{figure*}
 \small
+\color{tgtcol}
 \[
 \begin{array}{@{}lcll@{}}
 \mst{\sigma}{K}{\klet x = t \kin u} &\step& \mst{\sigma}{K \triangleright \ev{let}\,u}{t} \\
@@ -153,17 +171,19 @@ An object literal $\lit{W}{F}$ has witnesses and fields and nothing else. Its ty
 \mst{\sigma}{K \triangleright \ev{let}\,u}{v} &\step& \mst{\sigma, \mathit{core}(v)}{\weak{K}}{\mathit{adjust}(u, v)} \\
 \mst{\sigma}{K \triangleright \ev{let}\,u}{a} &\step& \mst{\sigma}{K}{\inst{u}{a}} \\
 \mst{\sigma}{K}{x\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} & \text{if } \sigma(x) = \lambda(z : S_0).\,t_0 \\
-\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \neq \rt{a},\ \chn{\sigma}{a}{n}{(a', F)},\ F \in \{\form{id}, \form{eqv}\,\varphi\} \\
-\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\ev{cast}\,(\inst{t_0}{\ev{cast}\,b\,d})\,(\inst{c}{b})} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \neq \rt{a},\ \chn{\sigma}{a}{n}{(a', \form{pi}\,d\,c)} \\
+\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \text{ not a variable},\ \chn{\sigma}{a}{n}{(a', F)},\ F \in \{\form{id}, \form{eqv}\,\varphi\} \\
+\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\ev{cast}\,(\inst{t_0}{\ev{cast}\,b\,d})\,(\inst{c}{b})} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \text{ not a variable},\ \chn{\sigma}{a}{n}{(a', \form{pi}\,d\,c)} \\
 \mst{\sigma}{K}{\ev{proj}\,a\,\ell\,h} &\step& \mst{\sigma}{K}{\inst{t}{\rt{a}}} & \text{if } \sigma(\rt{a}) = \lit{W}{F} \text{ and } F(\ell) = t
 \end{array}
 \]
+\color{black}
 \caption{The store machine of \FCdot. $\mathit{core}(v)$ is the literal under the cast wrappers of $v$, and $\mathit{adjust}(u, v)$ substitutes $\ev{cast}\,x\,E$ for $x$ in $u$ when $E$ is the composite of those wrappers, and is $u$ when there are none. The judgment $\chn{\sigma}{a}{n}{(a', F)}$ is the normalization of the chain of casts of $a$ with fuel $n$, defined in Section~\ref{sec:normalizer}.}
 \label{fig:machine}
 \end{figure*}
 
 A store holds one value per binder of its signature, and store typing $\storej{\sigma}{\Gamma}$ requires every entry to be a literal, typed in the transparent context of the entries before it, with the context recording the literal's witnesses and field labels:
 \begin{mathpar}
+\color{tgtcol}
 \inferrule{ }{\storej{\cdot}{\cdot}}
 \and
 \inferrule{\storej{\sigma}{\Gamma} \\ v \text{ is a literal} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, v}{\Gamma, x : T \mathrel{:=} \mathit{witnesses}(v) ; \mathit{fields}(v)}}
