@@ -1,0 +1,48 @@
+\documentclass[sigplan,review,anonymous,10pt]{acmart}
+%% Draft settings.  Remove `review,anonymous` for a camera-ready version.
+\settopmatter{printfolios=true,printccs=false,printacmref=false}
+\setcopyright{none}
+\acmConference[Draft]{Draft}{2026}{}
+\acmYear{2026}
+\acmDOI{}
+\acmISBN{}
+
+\usepackage{mathpartir}
+\usepackage{stmaryrd}
+\usepackage{booktabs}
+\usepackage{xspace}
+\usepackage{listings}
+\usepackage{microtype}
+\input{macros}
+
+\lstset{basicstyle=\ttfamily\small,columns=fullflexible,keepspaces=true,
+  frame=none,xleftmargin=1em}
+
+\begin{document}
+
+\title{Explicit Evidence for Dependent Object Types}
+
+\author{Oliver Bra\v{c}evac}
+\affiliation{\institution{}\country{}}
+\email{}
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+
+\maketitle
+
+\input{sections/intro}
+\input{sections/overview}
+\input{sections/source}
+\input{sections/target}
+\input{sections/canonical}
+\input{sections/translation}
+\input{sections/mechanization}
+\input{sections/related}
+\input{sections/conclusion}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{refs}
+
+\end{document}

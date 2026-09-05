@@ -1,0 +1,65 @@
+\section{Mechanization}\label{sec:mechanization}
+
+Everything in this paper is mechanized in \Lean \cite{demoura2021lean}. The development has no library dependencies: the core language and its standard library only, no Mathlib. Table~\ref{tab:sizes} gives its size.
+
+\begin{table}
+\small
+\caption{Size of the development, in lines of Lean. The source part has syntax, typing, machine, erasure, and examples. The target part has syntax, typing, the checker, the machine, the normalizer, the metatheory, and examples.}
+\label{tab:sizes}
+\centering
+\begin{tabular}{@{}lr@{}}
+\toprule
+component & lines \\
+\midrule
+\DOTMNF & 1{,}078 \\
+\FCdot & 9{,}033 \\
+translation and its theorems & 1{,}885 \\
+shared runtime & 101 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Axioms.}
+The theorems of Sections~\ref{sec:canonical} and~\ref{sec:translation} depend on propositional extensionality and quotient soundness only, with two exceptions. Progress and the backward erasure simulation split on whether an atom is a bare variable and on whether a state is about to move a cast frame. The development has no decision procedure for either, so the two case splits are classical, and safety of \DOTMNF inherits the dependency. Deriving decidable equality for atoms and deciding the cast-frame predicate would remove it. The tree contains no unproven assumption, no admitted lemma, and no unbounded recursion. The pigeonhole argument behind resolution is proven from scratch, because the core library has no lemma for it and the nearby list lemmas depend on choice.
+
+\paragraph{Scoping.}
+All syntax is intrinsically scoped by signatures, which are lists of binder kinds, with de Bruijn variables and renamings shared by the source, the target, and the runtime. Every substitution performed by typing and by the machines is a renaming, with one exception: the target machine substitutes an atom for a variable, which is a renaming of roots on types and evidence and a replacement of the variable by the atom on terms. Weakening and instantiation are renamings too, which keeps the statements of the theorems free of side conditions about free variables.
+
+\paragraph{Derivations as data.}
+The judgments of \DOTMNF are inductive families in $\mathsf{Type}$, so a derivation is a term and the translation is a structurally recursive function on it. The checker of \FCdot returns derivations too. Its kernels are synthesizing functions whose result carries the typing derivation it found, so soundness holds by construction, and completeness is proven by induction on derivations.
+
+\paragraph{The normalizer.}
+Composition of forms and the routing of entries are mutually recursive on the sizes of their arguments, and the lookup of an entry returns the entry together with a proof that it is a subterm, which is what the termination argument uses. The normalizer proper is indexed by fuel, and the monotonicity and determinism lemmas turn the fuel into bookkeeping: every statement about a normal form is stated for some fuel and holds for every larger one.
+
+\paragraph{Examples.}
+Seven programs are carried on both sides. Each is a \DOTMNF typing derivation, built as a term, and an \FCdot term or literal whose checker run is decided by the kernel of the proof assistant. The first five are the mandatory examples of the design, and for each of them the two sides erase to the same runtime term by reflexivity. They are bad bounds under a lambda, a recursive object whose member is used at its own type and applied to itself, an intersection with a shared member used at both bounds, the counterexample of Section~\ref{sec:counterexample}, and an object returned from a function and selected after a let, which exercises the renaming of a block at an application. The last two are the literals that the self-alias restriction of Section~\ref{sec:forced} used to reject, a field typed at its own literal's type member and a two-element alias cycle, each with a typing derivation on the target side as well.
+
+\paragraph{Notation and names.}
+The Lean sources use the notation of this paper for judgments, telescopes, normalization, and erasure, so that the statements in the files read as they do here. Table~\ref{tab:names} maps the results of the paper to the declarations that prove them.
+
+\begin{table*}
+\small
+\caption{Results of the paper and the Lean declarations that prove them. All declarations live in the namespaces \lean{FCdot} and \lean{DotMNF}.}
+\label{tab:names}
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+result & declarations \\
+\midrule
+checker completeness & \lean{checkTm\_iff} \\
+Lemma~\ref{lem:resolve} & \lean{Ctx.resolve\_sel\_some}, \lean{Ctx.resolve\_resolve} \\
+Lemma~\ref{lem:combine} & \lean{Form.combine\_typed}, \lean{EntriesTyped.through} \\
+Lemma~\ref{lem:pair-apply} & \lean{Form.pair\_typed}, \lean{entriesAt\_typed} \\
+Theorem~\ref{thm:canon} & \lean{le\_canon}, \lean{eq\_canon}, \lean{has\_canon}, \lean{mor\_canon}, \lean{atom\_canon} \\
+Theorem~\ref{thm:chain} & \lean{closedAtomForm\_typed} \\
+Corollary~\ref{cor:shapes} & \lean{closed\_le\_shapes}, \lean{Store.Typed.no\_top\_le\_bot} \\
+Corollary~\ref{cor:inversion} & \lean{closed\_pi\_inversion}, \lean{closedAtomForm\_pi}, \lean{closed\_has\_field}, \lean{Store.Typed.realized} \\
+preservation, progress & \lean{preservation'}, \lean{progress}, \lean{not\_stuck} \\
+erasure simulation & \lean{erase\_step}, \lean{erase\_reflect'}, \lean{reachable\_consistent} \\
+Theorem~\ref{thm:trans-typed} & \lean{Sub.translate\_typed}, \lean{HasTy.translateAtom\_typed}, \lean{HasTy.translate\_typed} \\
+Theorem~\ref{thm:trans-erase} & \lean{HasTy.translate\_erase}, \lean{coherence} \\
+Theorem~\ref{thm:dot-safety} & \lean{dot\_safety}, \lean{dot\_not\_stuck} \\
+consistency corollary & \lean{reachable\_consistent}, \lean{reachable\_realized} \\
+\bottomrule
+\end{tabular}
+\end{table*}

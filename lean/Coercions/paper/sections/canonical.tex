@@ -1,0 +1,219 @@
+\section{Canonical Forms of Closed Evidence}\label{sec:canonical}
+
+Over a typed store every binder is transparent, every block name is defined by a stored literal, and evidence has no assumptions beyond those definitions. This section shows that such evidence normalizes, and that its normal forms have the shapes that preservation and progress need.
+
+\subsection{Shapes and resolution}\label{sec:resolution}
+
+A head form promises a shape for its endpoints, which is $\bot$, $\top$, a function type, or an object type, and shapes are read after following the definitions of the store. Write $\Gamma(x) \ni \ell \mathrel{:=} W$ when $x$ is transparent in $\Gamma$ with witness $W$ at $\ell$. One step of resolution, $\mathit{next}_\Gamma(T)$, is $W$ when $T$ is a name $\sel{x}{\ell}$ with $\Gamma(x) \ni \ell \mathrel{:=} W$, and is undefined when $T$ is any other type or the name of an opaque binder. A chain of definitions may be cyclic, because a witness may itself be a name of the same block, as in the literal
+\[
+\nu(x.\,\ddeftyp{A}{x.B} \wedge \ddeftyp{B}{x.A}) .
+\]
+Resolution therefore runs with fuel:
+\[
+\begin{array}{@{}lcl@{}}
+\resolve{\Gamma}{T}^{0} & = & \top \text{ if } \mathit{next}_\Gamma(T) \text{ defined, else } T \\
+\resolve{\Gamma}{T}^{n+1} & = & \resolve{\Gamma}{W}^{n} \text{ if } \mathit{next}_\Gamma(T) = W, \text{ else } T \\
+\resolve{\Gamma}{T} & = & \resolve{\Gamma}{T}^{|\mathit{defs}(\Gamma)| + 1}
+\end{array}
+\]
+where $\mathit{defs}(\Gamma)$ lists the pairs of a transparent binder and a label it has a witness for. A chain that runs out of fuel on a defined name is cyclic, and a cyclic alias resolves to $\top$, the object type that asserts nothing. The only facts known about the names of a cycle are their equalities with each other, and $\top$ asserts nothing more. Resolving to $\bot$ instead would be unsound: the literal with the two-element cycle above is a value, and item 5 of Theorem~\ref{thm:canon} says that the type of a well-typed atom never resolves to $\bot$. The fuel is enough: a chain of definitions either settles, at a shape or at an undefined name, within $|\mathit{defs}(\Gamma)| + 1$ steps, or it visits a defined name twice and is periodic from then on. This is a pigeonhole argument on the finitely many defined names, and it gives the two facts used everywhere below, with no side condition on the context.
+
+\begin{lemma}[Resolution]\label{lem:resolve}
+\begin{enumerate}
+\item If $\Gamma(x) \ni \ell \mathrel{:=} W$ then
+\[ \resolve{\Gamma}{\sel{x}{\ell}} = \resolve{\Gamma}{W} . \]
+\item For every $T$,
+\[ \resolve{\Gamma}{\resolve{\Gamma}{T}} = \resolve{\Gamma}{T} . \]
+\end{enumerate}
+\end{lemma}
+
+The first version of the development required definitions to be well founded, with a side condition on literals that a witness may not be a bare name of the same block. The condition propagated into the translation and, from there, into a restriction on the source rule \rn{\{\}-I}. Replacing well-founded resolution by the fuel-and-pigeonhole one removed the condition on both sides. Section~\ref{sec:forced} returns to this.
+
+\subsection{Forms, entries, and views}
+
+\begin{figure*}
+\small
+\[
+\begin{array}{@{}lrcl@{}}
+\text{Forms} & F,G & ::= & \form{bot} \mid \form{top} \mid \form{id} \mid \form{eqv}\,\varphi \mid \form{pi}\,d\,c \mid \form{obj}\,\mathit{Es} \\
+\text{Entries} & E & ::= & \form{le}\,F\,H\,G \mid \form{eq}\,j\,b \mid \form{has}\,j \qquad \mathit{Es} ::= \tnil \mid \tcons{\mathit{Es}}{E} \\
+\text{Proposition forms} & Q & ::= & \form{le}\,F \mid \form{eq} \mid \form{has}\,x\,\ell \qquad\quad V ::= \tnil \mid \tcons{V}{Q}
+\end{array}
+\]
+\caption{Head forms of closed inclusion evidence, their entries, and views of atoms.}
+\label{fig:forms}
+\end{figure*}
+
+Figure~\ref{fig:forms} gives the normal forms: the head form of an inclusion, the entry of a template, and the view of an atom. A head form of an inclusion is $\form{bot}$, $\form{top}$, the syntactic identity $\form{id}$, a conversion $\form{eqv}\,\varphi$ by closed equality evidence, a function coercion $\form{pi}\,d\,c$, or an object coercion $\form{obj}\,\mathit{Es}$ with one entry per proposition of the target telescope. The domain and codomain evidence of a function form is not normalized further, because the machine uses it as a cast and normalizes it only when it is applied. An entry $\form{le}\,F\,H\,G$ is the normal form of a template: the two sides are forms, $\form{id}$ standing for an absent side, around a hole $H$ that still names a source proposition. The other entries are as in morphisms.
+
+A view is the telescope of forms of the propositions that an atom's resolved object type asserts about it. The form of an inclusion proposition is a head form, an equality proposition records only that its two sides resolve equally, and a presence proposition records the binder and the field, $\form{has}\,x\,\ell$.
+
+\subsection{The normalizer}\label{sec:normalizer}
+
+\begin{figure*}
+\small
+\[
+\begin{array}{@{}lcl@{}}
+\mathit{hnf}_\sigma(\ev{refl}\,T) & = & \form{eqv}\,(\ev{refl}\,T) \\
+\mathit{hnf}_\sigma(\ev{top}\,T) & = & \form{top} \qquad\qquad \mathit{hnf}_\sigma(\ev{bot}\,T) \ =\ \form{bot} \\
+\mathit{hnf}_\sigma(\ev{eqToLe}\,\varphi) & = & \form{eqv}\,\varphi \qquad\quad\ \mathit{hnf}_\sigma(\ev{pi}\,d\,c) \ =\ \form{pi}\,d\,c \\
+\mathit{hnf}_\sigma(\ev{obj}\,\tel\,m) & = & \form{obj}\,(\mathit{entries}_\sigma(m)) \\
+\mathit{hnf}_\sigma(\ev{pair}\,\tel_1\,\tel_2\,e\,f) & = & \mathit{pair}_{\tel_1,\tel_2}\,(\mathit{hnf}_\sigma(e))\,(\mathit{hnf}_\sigma(f)) \\
+\mathit{hnf}_\sigma(\ev{trans}\,e\,f) & = & \mathit{hnf}_\sigma(e) \circ \mathit{hnf}_\sigma(f) \\
+\mathit{hnf}_\sigma(\ev{member}\,a\,e\,i) & = & G \quad \text{where } \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \ni (i \mapsto \form{le}\,G) \\[3pt]
+\mathit{view}_\sigma(x) & = & \text{the precise view of } \sigma(x) \text{ at } x \\
+\mathit{view}_\sigma(\ev{cast}\,a\,e) & = & \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \\
+\mathit{view}_\sigma(\ev{fold}\,\tel\,a) & = & \mathit{view}_\sigma(a) \ =\ \mathit{view}_\sigma(\ev{unfold}\,a) \\
+\mathit{view}_\sigma(\ev{both}\,\tel_1\,\tel_2\,a\,b) & = & \mathit{view}_\sigma(a) \mathbin{+\!\!+} \mathit{view}_\sigma(b) \\[3pt]
+\mathit{viewThrough}_\sigma(\form{id}, a) & = & \mathit{view}_\sigma(a) \ =\ \mathit{viewThrough}_\sigma(\form{eqv}\,\varphi, a) \\
+\mathit{viewThrough}_\sigma(\form{obj}\,\mathit{Es}, a) & = & \mathit{entriesAt}(\mathit{view}_\sigma(a), \mathit{Es}) \\
+\mathit{viewThrough}_\sigma(F, a) & = & \tnil \quad \text{for } F \in \{\form{pi}\,d\,c, \form{top}, \form{bot}\}
+\end{array}
+\]
+\caption{The normalizer, with the fuel argument and the failure cases elided. Each recursive call is on a subterm and consumes one unit of fuel.}
+\label{fig:normalizer}
+\end{figure*}
+
+\begin{figure*}
+\small
+\[
+\begin{array}{@{}lcl@{}}
+\form{id} \circ G = G & \qquad & F \circ \form{id} = F \\
+\form{bot} \circ G = \form{bot} & & F \circ \form{top} = \form{top} \\
+\form{eqv}\,\varphi \circ \form{eqv}\,\psi = \form{eqv}\,(\ev{trans}\,\varphi\,\psi) & & \form{eqv}\,\varphi \circ F = F = F \circ \form{eqv}\,\varphi \quad \text{for } F \in \{\form{pi}\,d\,c, \form{obj}\,\mathit{Es}\} \\
+\multicolumn{3}{@{}l@{}}{\form{pi}\,d_1\,c_1 \circ \form{pi}\,d_2\,c_2 = \form{pi}\,(\ev{trans}\,d_2\,d_1)\,(\ev{trans}\,(c_1[x \mapsto \ev{cast}\,x\,d_2])\,c_2)} \\
+\multicolumn{3}{@{}l@{}}{\form{obj}\,\mathit{Es}_1 \circ \form{obj}\,\mathit{Es}_2 = \form{obj}\,(\mathit{Es}_2 \text{ routed through } \mathit{Es}_1)}
+\end{array}
+\]
+\caption{Composition of head forms, $F \circ G$. In addition, $\form{eqv}\,\varphi \circ \form{bot} = \form{bot}$, and in every other case $F \circ G = F$. Routing the entries of one object form through another fails when an entry names a proposition of the wrong kind, which does not happen between typed forms.}
+\label{fig:combine}
+\end{figure*}
+
+Figure~\ref{fig:normalizer} gives the normalizer, a family of mutually recursive functions indexed by fuel. Each returns an option, and the fuel bound of a successful run is determined by the size of the input, so the functions are total and the fuel is bookkeeping. Normalization of an inclusion is written $\hnf{\sigma}{e}{n}{F}$, the view of an atom $\vw{\sigma}{a}{n}{V}$, and the chain of casts of an atom $\chn{\sigma}{a}{n}{(a', F)}$. The results are monotone in the fuel and deterministic.
+
+The precise view of a stored literal lists $\form{eq}$ for each witness and $\form{has}\,x\,\ell$ for each field, in the order of the literal's precise telescope. The view of a cast atom is the view of the underlying atom pushed through the head form of the cast, and folding, unfolding, and pairing act on views as they act on telescopes.
+
+Composition, $F \circ G$ in Figure~\ref{fig:combine}, is where the design of Section~\ref{sec:why-structural} shows. Conversions are absorbed. Two function forms compose contravariantly in the domain and by substituting the domain cast for the parameter in the first codomain. Two object forms compose by routing every entry of the second through the entries of the first. Consider an entry of the second form whose hole names the proposition $j$ of the middle telescope. The first form's entry at position $j$ is itself a template around a hole in the source telescope, or it is an equality. Either way the composite entry keeps that hole and composes the sides. Every recursive call to composition is on a strict subterm, and no view is consulted.
+
+Application of an object form to a view, $\mathit{entriesAt}$, is pointwise. A template is instantiated by replacing its hole by the view's form of the proposition it names, an equality reading as $\form{id}$, and composing with the sides. An equality entry requires the view to hold an equality at the named position, and a presence entry copies the binder and label found there.
+
+The chain of casts of an atom, $\chn{\sigma}{a}{n}{(a', F)}$, composes the head forms of the casts on the atom from its root outwards, pairs at $\ev{both}$, and passes through $\ev{fold}$ and $\ev{unfold}$. It is the form the machine consults at an application.
+
+\subsection{Typed forms}
+
+\begin{figure*}
+\small
+\begin{mathpar}
+\inferrule{\resolve{\Gamma}{S} = \bot}{\formj{\Gamma}{\form{bot}}{S}{T}}
+\and
+\inferrule{\resolve{\Gamma}{T} = \top}{\formj{\Gamma}{\form{top}}{S}{T}}
+\and
+\inferrule{\resolve{\Gamma}{S} = \resolve{\Gamma}{T}}{\formj{\Gamma}{\form{id}}{S}{T}}
+\and
+\inferrule{\resolve{\Gamma}{S} = \resolve{\Gamma}{T}}{\formj{\Gamma}{\form{eqv}\,\varphi}{S}{T}}
+\and
+\inferrule{\resolve{\Gamma}{S} = \pit{S_1}{T_1} \\ \resolve{\Gamma}{T} = \pit{S_2}{T_2} \\ \lej{\Gamma}{d}{S_2}{S_1} \\ \lej{\Gamma, x : S_2}{c}{T_1}{T_2}}
+  {\formj{\Gamma}{\form{pi}\,d\,c}{S}{T}}
+\and
+\inferrule{\resolve{\Gamma}{S} = \obj{\tel_1} \\ \resolve{\Gamma}{T} = \obj{\tel_2} \\ \entj{\Gamma}{\mathit{Es}}{\tel_1}{\tel_2}}
+  {\formj{\Gamma}{\form{obj}\,\mathit{Es}}{S}{T}}
+\\
+\inferrule{ }{\entj{\Gamma}{\tnil}{\tel_1}{\tnil}}
+\and
+\inferrule{\entj{\Gamma}{\mathit{Es}}{\tel_1}{\tel_2} \\ \holej{\tel_1}{H}{X}{Y} \\ \Gamma \models F : S \le X \text{ (side)} \\ \Gamma \models G : Y \le T \text{ (side)}}
+  {\entj{\Gamma}{\tcons{\mathit{Es}}{\form{le}\,F\,H\,G}}{\tel_1}{\tcons{\tel_2}{\ple{S}{T}}}}
+\and
+\inferrule{\entj{\Gamma}{\mathit{Es}}{\tel_1}{\tel_2} \\ \tat{\tel_1}{j}{\phas{\ell}}}
+  {\entj{\Gamma}{\tcons{\mathit{Es}}{\form{has}\,j}}{\tel_1}{\tcons{\tel_2}{\phas{\ell}}}}
+\\
+\inferrule{ }{\viewj{\Gamma}{r}{\sigma}{\tnil}{\tnil}}
+\and
+\inferrule{\viewj{\Gamma}{r}{\sigma}{V}{\tel} \\ \formj{\Gamma}{F}{\inst{S}{r}}{\inst{T}{r}}}
+  {\viewj{\Gamma}{r}{\sigma}{\tcons{V}{\form{le}\,F}}{\tcons{\tel}{\ple{S}{T}}}}
+\and
+\inferrule{\viewj{\Gamma}{r}{\sigma}{V}{\tel} \\ \resolve{\Gamma}{\inst{S}{r}} = \resolve{\Gamma}{\inst{T}{r}}}
+  {\viewj{\Gamma}{r}{\sigma}{\tcons{V}{\form{eq}}}{\tcons{\tel}{\peq{S}{T}}}}
+\and
+\inferrule{\viewj{\Gamma}{r}{\sigma}{V}{\tel} \\ \sigma(r) \text{ has field } \ell}
+  {\viewj{\Gamma}{r}{\sigma}{\tcons{V}{\form{has}\,r\,\ell}}{\tcons{\tel}{\phas{\ell}}}}
+\end{mathpar}
+\caption{Typed forms $\formj{\Gamma}{F}{S}{T}$, typed entries $\entj{\Gamma}{\mathit{Es}}{\tel_1}{\tel_2}$, and typed views $\viewj{\Gamma}{r}{\sigma}{V}{\tel}$. The entry rules for equalities mirror the morphism rules. A side is typed as $\form{id}$ between equal types, or as a form between closed types weakened under the self binder.}
+\label{fig:formtyped}
+\end{figure*}
+
+A head form is typed syntactically, in Figure~\ref{fig:formtyped}: it is typed evidence for $S \le T$ when its pieces of evidence are typed and the two endpoints resolve to the shapes the form promises. The entries of an object form are typed between two closed telescopes, entry by entry, against the morphism rules of Figure~\ref{fig:evidence}. The domain and codomain of a function form are typed as evidence, since that is how the machine uses them. A view is typed against a telescope instantiated at the root of the atom.
+
+Typedness has two modes, and keeping them apart is what makes the elimination case of the theorem go through. A coercion form and a view are typed with plain shapes: their endpoints are closed types unrelated to any particular atom. This is what lets the $\ev{member}$ case of the theorem extract a form from a view and reuse it as a coercion at no root at all. The chain of casts of an atom, on the other hand, is typed at the atom's root, where the shape of a type is its resolution with the self block opened at that root:
+\[
+\begin{array}{@{}rcl@{}}
+\resolveAt{\Gamma}{r}{T} & = & \mathit{open}_r(\resolve{\Gamma}{T}) \\
+\mathit{open}_r(\obj{\tel}) & = & \obj{\weak{(\inst{\tel}{r})}} \\
+\chainj{\Gamma}{r}{F}{S}{T} & \mathrel{:=} & \formj{\Gamma}{F}{\resolveAt{\Gamma}{r}{S}}{\resolveAt{\Gamma}{r}{T}} .
+\end{array}
+\]
+Opening makes $\ev{fold}$ and $\ev{unfold}$ invisible to the chain. The rooted judgment is a definition, so composition is proven once, for plain typedness, and plain typedness lifts to any root.
+
+\subsection{Composition, pairing, and application preserve typedness}
+
+\begin{lemma}[Composition]\label{lem:combine}
+If $\formj{\Gamma}{F}{S}{M}$ and $\formj{\Gamma}{G}{M}{T}$ then $F \circ G$ is defined and $\formj{\Gamma}{F \circ G}{S}{T}$.
+\end{lemma}
+
+The proof is an induction on the sum of the sizes of the two forms, mutually with the analogous statement for routing typed entries through typed entries. The object case is the one that matters. A template of the second form has a hole naming a proposition of the middle telescope, and the first form's typed entry at that position is a template around a hole in the source telescope, or an equality. The sides compose by the induction hypothesis at smaller size, and because sides are closed forms typed between weakened closed types, the composite never mentions the self block. Two function forms compose because the domain casts compose in the reverse direction and the substitution of a typed cast for the parameter preserves the typing of the codomain evidence.
+
+\begin{lemma}[Pairing and application]\label{lem:pair-apply}
+If $\formj{\Gamma}{F}{S}{\obj{\tel_1}}$ and $\formj{\Gamma}{G}{S}{\obj{\tel_2}}$ then $\mathit{pair}_{\tel_1,\tel_2}\,F\,G$ is defined and typed at $S \le \obj{(\tel_1 \mathbin{+\!\!+} \tel_2)}$. If $\entj{\Gamma}{\mathit{Es}}{\tel_1}{\tel_2}$ and $\viewj{\Gamma}{r}{\sigma}{V}{\tel_1}$ then $\mathit{entriesAt}\,V\,\mathit{Es}$ is defined and is a view typed at $\tel_2$.
+\end{lemma}
+
+\subsection{The theorem}
+
+\begin{theorem}[Canonical forms]\label{thm:canon}
+Let $\storej{\sigma}{\Gamma}$.
+\begin{enumerate}
+\item If $\lej{\Gamma}{e}{S}{T}$ then $\hnf{\sigma}{e}{n}{F}$ for some $n$ and $F$ with $\formj{\Gamma}{F}{S}{T}$.
+\item If $\eqj{\Gamma}{\varphi}{S}{T}$ then $\resolve{\Gamma}{S} = \resolve{\Gamma}{T}$.
+\item If $\hasj{\Gamma}{h}{x}{\ell}$ then presence normalization of $h$ at $x$ succeeds and $\sigma(x)$ is a literal with a field $\ell$.
+\item If $\morj{\Gamma}{m}{\tel}{\tel'}$ then the entries of $m$ normalize to $\mathit{Es}$ with $\entj{\Gamma}{\mathit{Es}}{\tel}{\tel'}$.
+\item If $\atomj{\Gamma}{a}{S}$ then $\vw{\sigma}{a}{n}{V}$ for some $n$ and $V$, $\resolve{\Gamma}{S} \neq \bot$, and $\viewj{\Gamma}{\rt{a}}{\sigma}{V}{\tel}$ whenever $\resolve{\Gamma}{S} = \obj{\tel}$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By mutual structural induction on the evidence derivations. The cases for $\ev{refl}$, $\ev{top}$, $\ev{bot}$, $\ev{eqToLe}$, and $\ev{pi}$ produce their form with one unit of fuel. The case $\ev{trans}$ is Lemma~\ref{lem:combine}, $\ev{pair}$ is Lemma~\ref{lem:pair-apply}, and $\ev{obj}$ is item 4 applied to the morphism. For $\ev{member}\,a\,e\,i$, item 5 gives a typed view of $a$, and item 1 gives a typed form of $e$ whose target is an object type. Hence the source of $e$ resolves to an object type, and the view of $a$ through the form of $e$ is a typed view of the target telescope by Lemma~\ref{lem:pair-apply}. Its entry at $i$ is a typed form, an equality of resolutions, or a field of the object at the root, according to the kind of the proposition. The case $\ev{def}$ is Lemma~\ref{lem:resolve}. For an atom that is a variable, the precise view of the stored literal is typed at the literal's telescope, because each definition equality resolves equally by Lemma~\ref{lem:resolve} and each presence names a field the literal has. A cast atom pushes its view through the form of the cast. Folding and unfolding keep the view, since a typed view of $\tel$ is a typed view of the opened telescope and conversely. The fuel of every case is one more than the maximum of the fuels of the premises.
+\end{proof}
+
+\begin{theorem}[Chain of casts]\label{thm:chain}
+If $\storej{\sigma}{\Gamma}$ and $\atomj{\Gamma}{a}{S}$ then $\chn{\sigma}{a}{n}{(a', F)}$ for some $n$, $a'$, and $F$ with $\chainj{\Gamma}{\rt{a}}{F}{\Gamma(\rt{a})}{S}$.
+\end{theorem}
+
+The chain theorem types the composite of the casts of an atom from the type of its root to the type of the atom, at the root. Its proof composes the forms of the casts by Lemma~\ref{lem:combine}, lifted to the rooted judgment, and uses that opening at the root is stable under folding and unfolding.
+
+\begin{corollary}[Shapes of closed inclusions]\label{cor:shapes}
+Let $\storej{\sigma}{\Gamma}$ and $\lej{\Gamma}{e}{S}{T}$. Then $S$ resolves to $\bot$, or $T$ resolves to $\top$, or $S$ and $T$ resolve equally, or both resolve to function types, or both resolve to object types. In particular there is no closed evidence for $\top \le \bot$, none from an object type into a function type, and none from a function type into an object type with at least one proposition.
+\end{corollary}
+
+\begin{corollary}[Inversion at the store]\label{cor:inversion}
+Let $\storej{\sigma}{\Gamma}$. If $\atomj{\Gamma}{a}{\pit{S}{T}}$ then $\sigma(\rt{a})$ is a lambda, and the chain of casts of $a$ normalizes to $\form{id}$, a conversion, or a function form. If $\hasj{\Gamma}{h}{x}{\ell}$ then $\sigma(x)$ is a literal with a field $\ell$. For every binder $x$ and label $\ell$ there is a $W$ with $\Gamma(x) \ni \ell \mathrel{:=} W$ and $\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W}$.
+\end{corollary}
+
+The first corollary is the target-side residue of what invertible typing provides in the DOT proofs, proven once, over stores, with no restriction on recursive members and no semantic model. The second is exactly what progress needs.
+
+\subsection{Preservation, progress, and simulation}
+
+\begin{theorem}[Preservation]
+If a state is typed at $U$ and steps to a state over a possibly larger signature, the new state is typed at $U$ renamed into that signature.
+\end{theorem}
+
+The only rule whose case needs the store is application through a wrapped atom. There the machine reads a function form $\form{pi}\,d\,c$ off the chain of casts of the atom, and Theorem~\ref{thm:chain} types that form from the root's type to the atom's function type, at the root. The store holds a lambda at the root, so the root's type is syntactically a function type, and the shapes of the typed form give $d$ and $c$ the endpoints that the cast on the argument and the cast on the result need. Allocation uses that stripping the casts of a typed value leaves a typed literal together with a typed composite cast, and that a term typed with a binder opaque is typed with it transparent. The remaining cases are the usual renaming and substitution lemmas.
+
+\begin{theorem}[Progress]
+A typed state is final or steps.
+\end{theorem}
+
+The two rules that consult the store are application and projection, and Corollary~\ref{cor:inversion} supplies a closure at the root of a function atom with a normalizing chain of casts, and a field at the root of a projection.
+
+\begin{theorem}[Erasure simulation]
+A step of the machine either moves a cast frame and leaves the erasure unchanged, or erases to one runtime step. Conversely, if $\storej{\sigma}{\Gamma}$, the term of the state is typed, and the erased state takes a runtime step to $r$, then the state takes a run to a state whose erasure is $r$.
+\end{theorem}
+
+The backward direction realizes a runtime application by first moving the pending cast frames, then applying through the atom, which Corollary~\ref{cor:inversion} makes possible. Along any run from a typed state the store stays typed, so Corollary~\ref{cor:shapes} holds at every reachable state: no reachable store admits closed evidence for $\top \le \bot$, and every block name of every reachable store is defined.

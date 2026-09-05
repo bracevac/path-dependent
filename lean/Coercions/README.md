@@ -64,3 +64,5 @@ checkers, theory models and maps, consistency models, and a classifier-kind
 algebra.  It has no operational semantics.
 
 Each directory's README lists its modules.
+
+**`paper/`** is the write-up of the main line (acmart, `latexmk -pdf main.tex`), with a table mapping its results to the Lean declarations.
