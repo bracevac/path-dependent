@@ -48,7 +48,7 @@ every store reachable by a translated program.
 objects that keep their term members.
 
 Axioms throughout: `propext` and `Quot.sound`, plus `Classical.choice` in
-FCdot's `progress` and what depends on it.  No `sorry`, `axiom`, `partial`,
+FCdot's `progress`, `erase_reflect'`, and `dot_safety`.  No `sorry`, `axiom`, `partial`,
 or `native_decide` in the main line; the mandatory examples E1–E5 are
 decided in the kernel on both sides and have equal erasures.
 
