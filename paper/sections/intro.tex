@@ -19,8 +19,8 @@ FC is a language of types without term dependence. DOT types mention variables, 
 \item \FCdot, an explicit-evidence calculus for DOT: types over binder blocks, telescopes of propositions as object types, evidence for inclusion, equality, and presence, template morphisms between object types, atoms, terms in monadic normal form, and a store machine (Section~\ref{sec:target}). The calculus has a decidable checker, proven complete.
 \item The canonical forms theorem for closed evidence over a typed store, obtained from a structural normalizer, and the resulting preservation, progress, and erasure simulations (Section~\ref{sec:canonical}).
 \item A translation of \DOTMNF, the WadlerFest calculus in monadic normal form, into \FCdot. It is a total function on derivations, homomorphic on types, type preserving, and coherent. Type safety of \DOTMNF and consistency of every reachable store are corollaries (Section~\ref{sec:translation}).
-\item A mechanization in \Lean of everything above with no library dependencies, whose main theorems depend on propositional extensionality and quotient soundness only (Section~\ref{sec:mechanization}).
+\item A mechanization in \Lean of everything above with no library dependencies, whose main theorems depend on propositional extensionality and quotient soundness, with one classical case split in progress (Section~\ref{sec:mechanization}).
 \end{itemize}
 
 \paragraph{Scope.}
-The source calculus has variable paths only, as in the WadlerFest presentation, and intersections are restricted to declaration-shaped types. Section~\ref{sec:conclusion} discusses what changes for paths.
+The source calculus has variable paths only, as in the WadlerFest presentation, and intersections are restricted to declaration-shaped types. Section~\ref{sec:source} says what the restriction excludes, and Section~\ref{sec:conclusion} discusses what changes for paths.
