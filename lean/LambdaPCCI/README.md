@@ -1,120 +1,60 @@
 # LambdaPCCI
 
-`LambdaPCCI` is the self-contained intersection-and-union-type variant of the
-capture-checking path-dependent-pair calculus. It defines its own intrinsically
-scoped syntax, static semantics, store, path resolution, CK machine, and
-soundness proof, leaving `LambdaPCC` unchanged as the baseline calculus.
+`LambdaPCCI` is `../LambdaPCC` with binary intersection and union types.
+It is self-contained and leaves `LambdaPCC` unchanged as the baseline.
+Intersections of shapes are realized simultaneously at one store location
+and unions as a tagged realization of one alternative, as in
+`../LambdaPFCI`, and aligned record spines are merged by a recursive,
+binder-aware plan interpreted under the merged first-component type. The
+merge is capture-aware and conservative: distinct capture annotations on
+first components or term members widen to their union while the shapes are
+merged or intersected, abstract type-member intervals join their lower
+shapes and merge their upper shapes, and abstract capture-member intervals
+join distinct lower bounds when their upper bound agrees.
 
-The calculus has capturing types and a term-typing judgment that assigns a
-use set, an upper bound on the capabilities used during evaluation. Capture
-sets contain term paths and selections of abstract capture-set members.
-Dependent function results and pair members may mention the bound argument or
-first component, including in capture sets. Pairs support term members,
-abstract type members, and abstract capture-set members; the latter two are
-represented by lower and upper bounds.
+The union produced by a merge is a common upper bound, not a capture-set
+intersection, so a merge can lose capture precision. Distinct upper bounds
+on abstract capture members are not merged, since keeping both would need
+capture-set intersection syntax. A merge supplies no well-formedness proof
+for its result. As in `LambdaPCC`, the runtime has no primitive capability
+operations and the recorded capture set of a value is the one assigned by
+its introduction rule.
 
-The development proves:
+## Main theorems
 
-- deterministic resolution of paths to locations, shape-type definitions,
-  or capture-set definitions;
-- binary intersections of shape types, interpreted as simultaneous
-  realization at one store location;
-- binary unions of shape types, interpreted as a tagged realization of one
-  alternative at one store location;
-- recursive, binder-aware merging of aligned same-label record spines, with
-  member plans interpreted under the merged first-component type;
-- conservative capture-aware merging: distinct capture annotations on first
-  components or term members widen to `C ∪ D`, while their shapes are
-  recursively merged or intersected;
-- merging of abstract type-member intervals by joining their lower shapes and
-  recursively merging their upper shapes, and of abstract capture-member
-  intervals by joining distinct lowers when their upper bound agrees;
-- a source typing interpretation that preserves use sets;
-- progress, one-step preservation, and finite preservation for
-  the runtime typing invariant;
-- closed type safety;
-- application coverage for both operand paths of every application step
-  reached by a closed execution; and
-- a returned-value capture-set bound: the capture set assigned by the value's
-  introduction rule subcaptures the capture set of its result type.
+All depending on `propext` and `Quot.sound` only.
 
-The public theorems are `Tm.Ty.closed_progress`,
-`Tm.Ty.closed_finite_preservation`, `Tm.Ty.closed_type_safety`,
-`Cap.Tm.Ty.closed_finite_application_coverage`, and
-`Cap.Tm.Ty.closed_finite_returned_capture_bound`.
+```
+Tm.Ty.closed_progress                          the initial state progresses                        (CaptureSafety)
+Tm.Ty.closed_finite_preservation               every reached state keeps joint type-and-use evidence (CaptureSafety)
+Tm.Ty.closed_type_safety                       no finite run of a closed well-typed term gets stuck (CaptureSafety)
+Cap.Tm.Ty.closed_finite_application_coverage   both operand paths of every application step are covered by the transported use set (CaptureBounds)
+Cap.Tm.Ty.closed_finite_returned_capture_bound the capture set assigned to a returned value subcaptures that of its result type (CaptureBounds)
+```
 
-The capture union produced by a merge is a common upper bound, not a
-capture-set intersection; it can therefore lose capture precision. Distinct
-upper bounds on abstract capture members are not merged, because preserving
-both would require capture-set intersection syntax. As with ordinary
-subtyping, a merge supplies no target well-formedness proof; clients must
-separately establish any resulting interval bounds.
+## Modules
 
-The runtime calculus has no primitive capability operations. Application
-coverage therefore accounts for the paths inspected by function application,
-while the development makes no platform-effect-safety claim. The capture set
-recorded for a value is the one assigned by its introduction rule; the static
-semantics does not require this set to be minimal.
+| module | contents |
+|---|---|
+| `FinFun` | finite renamings between scopes |
+| `Syntax`, `Context`, `Typing` | syntax with capture sets and member kinds, contexts, path typing, subtyping, capture-aware recursive merge plans, term typing with use sets |
+| `Runtime`, `StoreStratification` | stores, generalized path resolution, the CK machine, allocation-order lemmas |
+| `RuntimeEquality`, `Valuation` | proof-relevant runtime path equality and type conversion, valuations |
+| `CaptureEvidence`, `CaptureAction`, `CaptureStatic`, `CaptureCoercion` | capture-aware evidence, composition and capture relations, environments and the compilation of subtyping, action of coercions and merge plans |
+| `CaptureWeakening`, `CaptureAllocation`, `CaptureTyping` | weakening across a fresh cell, valid store entries, the joint type-and-use invariant |
+| `CaptureInterpretation`, `CapturePreservation`, `CaptureSafety` | interpretation of source typing, progress and one-step preservation, finite preservation and closed type safety |
+| `CaptureBounds` | application coverage and the returned-value capture bound |
+| `CaptureRegression`, `GeneralPairRegression`, `RecordRegression` | the regressions of `LambdaPCC` |
+| `IntersectionRegression` | a closed self-application through two incomparable function views with empty capture sets |
+| `RecordIntersectionRegression` | two empty-capture aliases of one record, then one merged alias using the member at both shapes |
+| `TypeMemberIntersectionRegression` | a shared-lower abstract type-member merge with empty captures and uses |
+| `TypeMemberUnionRegression` | the distinct-lower merge, with a shape union |
+| `RecursiveRecordMergeRegression` | a recursive merge of a two-cell spine joining a capture member's lower bounds and two views of a captured capability |
 
-`CaptureRegression.lean` checks abstract capture-set-member selection,
-capture-set-member pair covariance, capture-dependent result types, and root
-contraction for term paths. `GeneralPairRegression.lean` gives closed
-allocation traces for general dependent-pair covariance at both
-interval-member forms and for lower/upper selection of a stored capture-set
-member. `RecordRegression.lean` checks a right-nested record whose function
-consumes a value at an earlier path-dependent type member.
-`IntersectionRegression.lean` checks a closed self-application that uses one
-closure through two incomparable function views with empty capture sets.
-`RecordIntersectionRegression.lean` first checks two empty-capture aliases of
-one record whose same stored member is used through incomparable function
-views, then merges those views so one alias uses the member at both component
-shapes. `TypeMemberIntersectionRegression.lean` merges two views of one
-abstract type member and uses its selected type through the shared lower bound
-and both merged upper views. `TypeMemberUnionRegression.lean` removes that
-shared-lower restriction by merging the two lowers with a shape union.
-`RecursiveRecordMergeRegression.lean` recursively merges a two-cell spine:
-its inner abstract capture member joins lower bounds, while its outer term
-member joins two distinct views of one genuinely captured capability and
-intersects their shape views. The final selected member exposes that nonempty
-capture union at an empty evaluation-use set before a closed self-application.
-
-## Files
-
-- `Syntax.lean`, `Context.lean`, and `Typing.lean`: source syntax, capture
-  sets, static judgments, recursive merge plans, and term use sets.
-- `Runtime.lean` and `StoreStratification.lean`: stores, generalized path
-  resolution, the CK machine, and allocation-order lemmas.
-- `RuntimeEquality.lean` and `Valuation.lean`: runtime path equality,
-  conversion, and binder-aware valuations.
-- `CaptureEvidence.lean`, `CaptureAction.lean`, `CaptureStatic.lean`, and
-  `CaptureCoercion.lean`: annotated stores, location and value typing,
-  store-indexed subcapturing, and coercions.
-- `CaptureWeakening.lean`, `CaptureAllocation.lean`, and
-  `CaptureTyping.lean`: store extension, allocation, and the joint
-  type-and-use machine invariant.
-- `CaptureInterpretation.lean`, `CapturePreservation.lean`, and
-  `CaptureSafety.lean`: source interpretation, progress, one-step and finite
-  preservation, and closed type safety.
-- `CaptureBounds.lean`: application coverage and the returned-value
-  capture-set bound.
-- `CaptureRegression.lean`, `GeneralPairRegression.lean`, and
-  `RecordRegression.lean`: checked examples for capture-set members, general
-  dependent-pair covariance, and nested record lookup.
-- `IntersectionRegression.lean`: capture-aware use of both projections of an
-  opaque shape intersection.
-- `RecordIntersectionRegression.lean`: a closed same-label record intersection
-  with both a two-alias view and a merged one-alias view of the same member.
-- `TypeMemberIntersectionRegression.lean`: a closed shared-lower abstract
-  type-member merge, with empty captures and uses.
-- `TypeMemberUnionRegression.lean`: the corresponding distinct-lower merge,
-  with empty captures and uses.
-- `RecursiveRecordMergeRegression.lean`: recursive capture-member and term-
-  member merging with distinct dependent capture contracts.
+The regressions are hand-built derivations, the last five mirroring those
+of `../LambdaPFCI` with capture annotations.
 
 ## Building
 
-From the repository root:
-
-```sh
-lake build LambdaPCCI
-```
+From the repository root, `lake build LambdaPCCI`. There is no paper for
+this variant. `../LambdaPCC/paper/` covers the baseline.
