@@ -83,7 +83,7 @@ theorem eqForms_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) {W₀ : Witnesses (s
       show Γ.resolve (x ∙ ℓ) = Γ.resolve ((W₀.get ℓ)⟦x⟧)
       have hd : Γ.lookupDef x ℓ = some ((W₀.get ℓ)⟦x⟧) := by
         rw [hσ.lookupDef x ℓ, hW]
-      exact Ctx.resolve_sel_some (Store.Typed.wellDefined hσ) hd
+      exact Ctx.resolve_sel_some hd
 
 theorem hasForms_typed (x : BVar s .var) :
     ∀ (ls : List Label) (V : View s) (Tel : Telescope (s,x)),
@@ -109,7 +109,7 @@ theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) :
       simp at h
   | obj W F =>
       rw [hl] at hv
-      obtain ⟨hT, _, _⟩ := hv.obj_inv
+      obtain ⟨hT, _⟩ := hv.obj_inv
       rw [hT]
       refine ⟨fun Tel h => ?_, by simp⟩
       rw [Ctx.resolve_obj] at h
@@ -213,7 +213,7 @@ theorem eq_canon {φ : EqCo s} {S T : Ty s} (h : Γ ⊢ φ : S ≡ T) : EqConcl 
   | .refl => rfl
   | .symm h' => exact (eq_canon h').symm
   | .trans h₁ h₂ => exact (eq_canon h₁).trans (eq_canon h₂)
-  | .def hdef => exact Ctx.resolve_sel_some (Store.Typed.wellDefined hσ) hdef
+  | .def hdef => exact Ctx.resolve_sel_some hdef
   | .member ha he hAt =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := atom_canon ha
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
@@ -396,7 +396,7 @@ theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
       exact Or.inl ⟨_, _, hT⟩
   | obj W F =>
       rw [hl] at hv
-      obtain ⟨hT, _, _⟩ := hv.obj_inv
+      obtain ⟨hT, _⟩ := hv.obj_inv
       exact Or.inr ⟨_, hT⟩
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 

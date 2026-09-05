@@ -49,7 +49,7 @@ theorem HasTy.translate_erase : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
   | _, _, _, .app h₁ h₂ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase,
         HasTy.translateAtom_root h₁, HasTy.translateAtom_root h₂]
-  | _, _, _, @HasTy.obj _ _ _ _ h _ _ _ => by
+  | _, _, _, @HasTy.obj _ _ _ _ h _ => by
       simp only [HasTy.translate, FCdot.Tm.erase, FCdot.Value.erase, Tm.erase, Value.erase,
         DefsTy.translateFields_erase h]
   | _, .proj _ a, T, .proj h => by

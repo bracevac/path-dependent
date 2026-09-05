@@ -58,22 +58,4 @@ inductive Transparent : Ctx s → Prop where
 
 end Ctx
 
-/-- A witness is guarded when it is not a bare name of the same block:
-unfolding a definition always exposes a different head. -/
-def Ty.isSelfName : Ty (s,x) → Bool
-  | .sel .here _ => true
-  | .sel (.there _) _ => false
-  | .bot => false
-  | .pi _ _ => false
-  | .obj _ => false
-
-def Ty.GuardedAt (T : Ty (s,x)) : Prop := T.isSelfName = false
-
-def Witnesses.all : Witnesses s' → (Ty s' → Bool) → Bool
-  | .nil, _ => true
-  | .cons W _ T, p => p T && W.all p
-
-def Witnesses.Guarded (W : Witnesses (s,x)) : Prop :=
-  W.all (fun T => !T.isSelfName) = true
-
 end FCdot

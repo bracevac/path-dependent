@@ -27,10 +27,12 @@ shape chosen here is the one that matches `FCdot.Ctx` binder for binder.
 
 The fragment of §3.2 is enforced in the rules that need it (plan §13 item
 8): `And₁`, `And₂`, `And`, `And-I`, `Rec-I`, `Rec-E` carry `Ty.Decl` premises
-for the operands and bodies they decompose or build, and `{}-I` requires
-the definitions *and the declaration type* to be guarded.  These are the
-shapes the translation to `FCdot` can express; nothing else about DOT is
-restricted.
+for the operands and bodies they decompose or build.  These are the shapes
+the translation to `FCdot` can express; nothing else about DOT is
+restricted.  `{}-I` no longer restricts aliasing among the definitions: the
+target's alias-tolerant resolution (`FCdot.Ctx.resolve`) admits same-block
+aliases and cycles (a cyclic alias resolves to `⊤`), so the self-alias
+restriction that used to accompany `Defs.Distinct` here is gone.
 -/
 
 namespace DotMNF
@@ -91,8 +93,6 @@ inductive HasTy : {s : Sig} → Ctx s → Tm s → Ty s → Type where
   | obj :
       DefsTy (Γ.consSelf d T) d T →
       Defs.Distinct d →
-      Defs.Guarded d →
-      Ty.Guarded T →
       HasTy Γ (.val (.obj d)) (.mu T)
   /-- `{}-E`. -/
   | proj : HasTy Γ (.path (.var x)) (.fld a T) → HasTy Γ (.proj x a) T

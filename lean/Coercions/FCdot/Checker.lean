@@ -794,12 +794,10 @@ def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked �
   | .lam S t => do
       let ct ← synthTmCore (Γ.cons (.opaque S)) t
       some ⟨.pi S ct.type, .lam ct.typing⟩
-  | .obj W F =>
-      if hg : W.all (fun T => !T.isSelfName) = true then do
-        let Tel := Telescope.ofLiteral W F.labels
-        let pF ← checkFieldsCore (Γ.cons (.transparent (.obj Tel) W F.labels)) F
-        some ⟨.obj Tel, .obj hg pF.down⟩
-      else none
+  | .obj W F => do
+      let Tel := Telescope.ofLiteral W F.labels
+      let pF ← checkFieldsCore (Γ.cons (.transparent (.obj Tel) W F.labels)) F
+      some ⟨.obj Tel, .obj pF.down⟩
   | .cast v e => do
       let cv ← synthValueCore Γ v
       let ce ← synthLeCore Γ e

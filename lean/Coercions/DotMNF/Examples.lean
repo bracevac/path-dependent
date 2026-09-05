@@ -35,6 +35,10 @@ def lB : Label := .typ 1
 def la : Label := .trm 0
 /-- Term label `b`. -/
 def lb : Label := .trm 1
+/-- Type label `T`. -/
+def lT : Label := .typ 2
+/-- Term label `v`. -/
+def lv : Label := .trm 2
 
 /-! ## E1: bad bounds under a lambda
 
@@ -90,14 +94,8 @@ theorem E2Distinct : Defs.Distinct (E2Defs (s := s)) := by
   subst h
   decide
 
-theorem E2Guarded : Defs.Guarded (E2Defs (s := s)) := .and (.typ rfl) .trm
-
 /-- The self type is declaration-shaped. -/
 theorem E2SelfDecl : Ty.Decl (E2Self (s := s)) := .and .typ .fld
-
-/-- No member's witness is a bare selection on the self. -/
-theorem E2SelfGuarded : Ty.Guarded (E2Self (s := s)) := by
-  simp [E2Self, E2A, Ty.Guarded, Ty.isSelfSel]
 
 def E2DefsTy : DefsTy (Ctx.consSelf Γ E2Defs E2Self) E2Defs E2Self :=
   .and .typ (.trm (.lam (var' .here rfl) .sel))
@@ -125,7 +123,7 @@ def E2app : HasTy E2Ctx2 (.app .here .here) (.sel (.var (.there .here)) lA) :=
 `x.A`, which may not escape the `let`. -/
 def E2 : HasTy Ctx.nil
     (.let (.val (.obj E2Defs)) (.let (.proj .here la) (.app .here .here))) .top :=
-  .let (.obj E2DefsTy E2Distinct E2Guarded E2SelfGuarded)
+  .let (.obj E2DefsTy E2Distinct)
     (.let E2proj (.sub E2app .top) .top)
     .top
 
@@ -268,11 +266,9 @@ def E5v : HasTy E5Ctxz (.path (.var (.there .here))) E5AT := var' (.there .here)
 def E5field : HasTy E5Ctxz (.path (.var (.there .here))) (.sel (.var (.there .here)) lA) :=
   .sub (.sub E5v .top) (.selLower E5v)
 def E5DefsTy : DefsTy E5Ctxz E5Defs E5Self := .trm E5field
-theorem E5SelfGuarded : Ty.Guarded (E5Self (s := s)) := by
-  simp [E5Self, Ty.Guarded, Ty.isSelfSel]
 
 def E5ObjTy : HasTy E5Ctxv E5Obj (.mu E5Self) :=
-  .obj E5DefsTy .trm .trm E5SelfGuarded
+  .obj E5DefsTy .trm
 def E5fVal : HasTy E5Ctx1 (.val (.lam E5AT E5Obj)) E5F := .lam E5ObjTy (.typ .top .top)
 
 def E5Ctxf : Ctx ([],x,x) := .cons E5Ctx1 E5F
@@ -302,6 +298,73 @@ def E5 : HasTy Ctx.nil
       (.let (.val (.lam E5AT E5Obj)) (.let (.app .here (.there .here)) (.proj .here la)))))
     (.all E5AT (.sel (.var .here) lA)) :=
   .lam E5fLet (.typ .top .top)
+
+/-! ## E6: a field typed at its own literal's type member
+
+`ν(x. {T = Int} ∧ {v = n})`, with `n : Int` from the enclosing scope, typed
+at `μ(x. {T : Int..Int} ∧ {v : x.T})`.  The field `v` is declared at `x.T`, a
+selection on the object's own self: the shape the self-alias restriction
+used to forbid, now admitted by alias-tolerant resolution on the target
+side. -/
+
+/-- `{a : ⊤}`, standing for `Int`. -/
+def E6Int : Ty s := .fld la .top
+/-- The object's self type `{T : Int..Int} ∧ {v : x.T}`. -/
+def E6Self : Ty (s,x,x) := .and (.typ lT E6Int E6Int) (.fld lv (.sel (.var .here) lT))
+/-- The object's definitions: `T = Int`, `v = n` (`n` the enclosing variable). -/
+def E6Defs : Defs (s,x,x) := .and (.typ lT E6Int) (.trm lv (.path (.var (.there .here))))
+
+theorem E6Distinct : Defs.Distinct (E6Defs (s := s)) := by
+  refine .and .typ .trm ?_
+  intro ℓ h
+  simp only [Defs.labels, List.mem_singleton] at h ⊢
+  subst h
+  decide
+
+/-- The self type is declaration-shaped. -/
+theorem E6SelfDecl : Ty.Decl (E6Self (s := s)) := .and .typ .fld
+
+def E6Ctx1 : Ctx ([],x) := .cons .nil E6Int
+def E6Ctxz : Ctx ([],x,x) := .consSelf E6Ctx1 E6Defs E6Self
+
+def E6xMu : HasTy E6Ctxz (.path (.var .here)) (.mu E6Self) := var' .here rfl
+def E6xOpen : HasTy E6Ctxz (.path (.var .here)) E6Self := .recE E6xMu E6SelfDecl
+def E6xTyp : HasTy E6Ctxz (.path (.var .here)) (.typ lT E6Int E6Int) :=
+  .sub E6xOpen (.and1 .typ .fld)
+/-- `n : Int <: x.T`, by the lower bound of the exact member `T`. -/
+def E6nT : HasTy E6Ctxz (.path (.var (.there .here))) (.sel (.var .here) lT) :=
+  .sub (var' (.there .here) rfl) (.selLower E6xTyp)
+
+def E6DefsTy : DefsTy E6Ctxz E6Defs E6Self := .and .typ (.trm E6nT)
+
+/-- `λ(n : Int). ν(x. {T = Int} ∧ {v = n})`. -/
+def E6 : HasTy E6Ctx1 (.val (.obj E6Defs)) (.mu E6Self) :=
+  .obj E6DefsTy E6Distinct
+
+/-! ## E7: a two-element alias cycle
+
+`ν(x. {A = x.B} ∧ {B = x.A})`: both type members are bare selections on the
+object's own self, and each other's.  Admitted now that alias-tolerant
+resolution follows same-block aliases on the target side (a cyclic alias
+resolves to `⊤`, `FCdot.Ctx.resolve`); the self-alias restriction that used
+to forbid this shape on the definitions is gone. -/
+
+def E7Self : Ty (s,x) :=
+  .and (.typ lA (.sel (.var .here) lB) (.sel (.var .here) lB))
+    (.typ lB (.sel (.var .here) lA) (.sel (.var .here) lA))
+def E7Defs : Defs (s,x) := .and (.typ lA (.sel (.var .here) lB)) (.typ lB (.sel (.var .here) lA))
+
+theorem E7Distinct : Defs.Distinct (E7Defs (s := s)) := by
+  refine .and .typ .typ ?_
+  intro ℓ h
+  simp only [Defs.labels, List.mem_singleton] at h ⊢
+  subst h
+  decide
+
+def E7DefsTy : DefsTy (Ctx.consSelf Γ E7Defs E7Self) E7Defs E7Self := .and .typ .typ
+
+/-- `ν(x. {A = x.B} ∧ {B = x.A})`. -/
+def E7 : HasTy Ctx.nil (.val (.obj E7Defs)) (.mu E7Self) := .obj E7DefsTy E7Distinct
 
 end Examples
 end DotMNF

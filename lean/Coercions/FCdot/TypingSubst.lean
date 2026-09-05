@@ -323,10 +323,9 @@ theorem Value.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Sub
   | .lam ht =>
       have := ht.subst (hσ.lift _)
       simpa [Value.subst, Ty.rename] using Value.HasType.lam (by simpa using this)
-  | @Value.HasType.obj _ F0 _ W0 hG hF =>
+  | @Value.HasType.obj _ F0 _ W0 hF =>
       have hF' := Fields.HasType.subst (hσ.lift _) hF
       have := Value.HasType.obj (Γ := Γ') (W := W0.rename σ.root.lift) (F := F0.subst σ.lift)
-        (Witnesses.Guarded.rename σ.root hG)
         (by simpa [Binding.rename, Ty.rename, Telescope.ofLiteral_rename] using hF')
       simpa [Value.subst, Ty.rename, Telescope.ofLiteral_rename] using this
   | .cast hv he => exact .cast (hv.subst hσ) (he.subst hσ)

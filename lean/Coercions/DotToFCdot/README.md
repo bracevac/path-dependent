@@ -53,11 +53,11 @@ Typedness holds for well-formed contexts, `Ctx.Wf`: a literal's self binder
 members) with distinct labels, which is what `{}-I` produces.  The initial
 context is empty, so `dot_safety` has no side condition.
 
-DOT-MNF's `{}-I` requires the declaration type to be guarded (`Ty.Guarded`):
-no member's witness is a bare selection on the object's own self, including
-the declared type of a field.  A field typed `x.A` inside its own literal
-would make `x∙a` an alias of `x∙A`, which FCdot's resolution forbids; the
-derivation can always type the field at the definition of `A` instead.
+The self-alias restriction is gone: `{}-I` no longer restricts which members'
+witnesses may be a bare selection on the object's own self.  FCdot's
+alias-tolerant resolution (`FCdot.Ctx.resolve`) follows same-block aliases —
+a field typed `x.A` inside its own literal makes `x∙a` an alias of `x∙A`,
+which now resolves like any other alias — and a cyclic alias resolves to `⊤`.
 
 Fields of an intersection are translated with the right conjunct outermost,
 matching DOT-MNF's shadowing and its erasure.

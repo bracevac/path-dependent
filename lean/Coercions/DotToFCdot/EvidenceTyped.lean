@@ -54,11 +54,6 @@ theorem Morphism.HasType.append {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)}
 
 /-! ## Witnesses: labels, positions, distinctness -/
 
-/-- Labels of a witness list, oldest first (so that concatenation is list append). -/
-def Witnesses.labels : Witnesses s → List Label
-  | .nil => []
-  | .cons W ℓ _ => W.labels ++ [ℓ]
-
 theorem Witnesses.length_append {s : Sig} :
     ∀ (W W' : Witnesses s), (W.append W').length = W.length + W'.length
   | _, .nil => rfl
