@@ -72,7 +72,7 @@ theorem Witnesses.labels_append {s : Sig} :
 
 /-- `Witnesses.At W i ℓ T`: the `i`-th witness of `W`, counted from the oldest, is `ℓ` at
 type `T`. -/
-inductive Witnesses.At : Witnesses s → Nat → Label → Ty s → Prop where
+inductive Witnesses.At : Witnesses s → Nat → Label → Shape s → Prop where
   | here : Witnesses.At (.cons W ℓ T) W.length ℓ T
   | there : Witnesses.At W i ℓ T → Witnesses.At (.cons W ℓ' T') i ℓ T
 
@@ -81,14 +81,14 @@ inductive Witnesses.Distinct : Witnesses s → Prop where
   | nil : Witnesses.Distinct .nil
   | cons : Witnesses.Distinct W → ℓ ∉ W.labels → Witnesses.Distinct (.cons W ℓ T)
 
-theorem Witnesses.At.mem_labels {s : Sig} {W : Witnesses s} {i : Nat} {ℓ : Label} {T : Ty s}
+theorem Witnesses.At.mem_labels {s : Sig} {W : Witnesses s} {i : Nat} {ℓ : Label} {T : Shape s}
     (h : Witnesses.At W i ℓ T) : ℓ ∈ W.labels := by
   induction h with
   | here => simp [Witnesses.labels]
   | there _ ih => simp [Witnesses.labels]; exact Or.inl ih
 
 /-- With distinct labels, `Witnesses.get` returns the witness at any position. -/
-theorem Witnesses.At.get {s : Sig} {W : Witnesses s} {i : Nat} {ℓ : Label} {T : Ty s}
+theorem Witnesses.At.get {s : Sig} {W : Witnesses s} {i : Nat} {ℓ : Label} {T : Shape s}
     (h : Witnesses.At W i ℓ T) (hd : W.Distinct) : W.get ℓ = T := by
   induction h with
   | here => simp [Witnesses.get]
@@ -100,13 +100,13 @@ theorem Witnesses.At.get {s : Sig} {W : Witnesses s} {i : Nat} {ℓ : Label} {T 
           simp only [Witnesses.get, if_neg hne]
           exact ih hd'
 
-theorem Witnesses.At.append_left {s : Sig} {W : Witnesses s} {i : Nat} {ℓ : Label} {T : Ty s}
+theorem Witnesses.At.append_left {s : Sig} {W : Witnesses s} {i : Nat} {ℓ : Label} {T : Shape s}
     (h : Witnesses.At W i ℓ T) : ∀ W' : Witnesses s, Witnesses.At (W.append W') i ℓ T
   | .nil => h
   | .cons W' _ _ => .there (Witnesses.At.append_left h W')
 
 theorem Witnesses.At.append_right {s : Sig} (W : Witnesses s) {W' : Witnesses s} {i : Nat}
-    {ℓ : Label} {T : Ty s} (h : Witnesses.At W' i ℓ T) :
+    {ℓ : Label} {T : Shape s} (h : Witnesses.At W' i ℓ T) :
     Witnesses.At (W.append W') (W.length + i) ℓ T := by
   induction h with
   | @here W'' ℓ' T' =>
@@ -143,7 +143,7 @@ theorem Witnesses.eqEntriesOf_length {s : Sig} (self : BVar s .var) (W₀ : Witn
         Witnesses.eqEntriesOf_length self W₀ W]
 
 theorem Witnesses.eqEntriesOf_At {s : Sig} (self : BVar s .var) (W₀ : Witnesses s)
-    {W : Witnesses s} {i : Nat} {ℓ : Label} {T : Ty s} (h : Witnesses.At W i ℓ T) :
+    {W : Witnesses s} {i : Nat} {ℓ : Label} {T : Shape s} (h : Witnesses.At W i ℓ T) :
     (W₀.eqEntriesOf self W) ∋ (i ↦ self ∙ ℓ ≐ W₀.get ℓ) := by
   induction h with
   | @here W' ℓ' T' =>
@@ -230,50 +230,89 @@ theorem Telescope.At.one_two {s : Sig} (P Q : Proposition s) :
 theorem Witnesses.length_nil {s : Sig} : (Witnesses.nil : Witnesses s).length = 0 := by
   simp [Witnesses.length]
 
-theorem Witnesses.At.hereNil {s : Sig} {l : Label} {T : Ty s} :
+theorem Witnesses.At.hereNil {s : Sig} {l : Label} {T : Shape s} :
     Witnesses.At (Witnesses.cons .nil l T) 0 l T := by
   have h : Witnesses.At (Witnesses.cons (.nil : Witnesses s) l T)
       ((Witnesses.nil : Witnesses s).length) l T := .here
   rw [Witnesses.length_nil] at h
   exact h
 
-theorem Ty.substVar_sel_here {s : Sig} (A : Label) (r : BVar s .var) :
-    ((Ty.sel .here A : Ty (s,x)))⟦r⟧ = Ty.sel r A := by
-  simp [Ty.substVar, Ty.rename]
+theorem Shape.substVar_sel_here {s : Sig} (A : Label) (r : BVar s .var) :
+    ((Shape.sel .here A : Shape (s,x)))⟦r⟧ = Shape.sel r A := by
+  simp [Shape.substVar, Shape.rename]
 
 end FCdot
 
 namespace DotMNF
 
-open FCdot (Kind Sig BVar Rename Label Morphism LeCo EqCo Has Atom Side)
+open FCdot (Kind Sig BVar Rename Label Morphism ShapeCo CapCo LeCo EqCo Has Atom Side)
 open scoped FCdot
 
 /-! ## Equations for the type translation
 
-`Ty.translate`, `Ty.tel` and `Ty.telSelf` are a mutual structural recursion, so their
-defining equations are not definitional; these are the rewrite rules used throughout. -/
+`Ty.translateShape`, `Ty.tel` and `Ty.telSelf` are a mutual structural recursion, so their
+defining equations are not definitional; these are the rewrite rules used throughout.  Each
+equation of the vanilla `Ty.translate` is the `translateShape` equation here — the vanilla
+target sort is the shape sort — and the `translate` equation beside it is the same shape at
+the empty capture set. -/
 
-theorem Ty.translate_top {s : Sig} : (Ty.top : Ty s).translate = ⊤ := by simp [Ty.translate]
+theorem Ty.translateShape_top {s : Sig} : (Ty.top : Ty s).translateShape = ⊤ := by
+  simp [Ty.translateShape]
 
-theorem Ty.translate_bot {s : Sig} : (Ty.bot : Ty s).translate = ⊥ := by simp [Ty.translate]
+theorem Ty.translate_top {s : Sig} : (Ty.top : Ty s).translate = ⊤ ^ [] := by
+  simp [Ty.translate, Ty.translateShape]
+
+theorem Ty.translateShape_bot {s : Sig} : (Ty.bot : Ty s).translateShape = ⊥ := by
+  simp [Ty.translateShape]
+
+theorem Ty.translate_bot {s : Sig} : (Ty.bot : Ty s).translate = ⊥ ^ [] := by
+  simp [Ty.translate, Ty.translateShape]
+
+theorem Ty.translateShape_sel {s : Sig} (y : BVar s .var) (A : Label) :
+    (Ty.sel (.var y) A).translateShape = y ∙ A := by simp [Ty.translateShape]
 
 theorem Ty.translate_sel {s : Sig} (y : BVar s .var) (A : Label) :
-    (Ty.sel (.var y) A).translate = y ∙ A := by simp [Ty.translate]
+    (Ty.sel (.var y) A).translate = (y ∙ A) ^ [] := by simp [Ty.translate, Ty.translateShape]
+
+theorem Ty.translateShape_all {s : Sig} (S : Ty s) (T : Ty (s,x)) :
+    (Ty.all S T).translateShape = Π(S.translate) T.translate := by
+  simp [Ty.translateShape, Ty.translate]
 
 theorem Ty.translate_all {s : Sig} (S : Ty s) (T : Ty (s,x)) :
-    (Ty.all S T).translate = Π(S.translate) T.translate := by simp [Ty.translate]
+    (Ty.all S T).translate = (Π(S.translate) T.translate) ^ [] := by
+  simp [Ty.translate, Ty.translateShape]
+
+theorem Ty.translateShape_typ {s : Sig} (A : Label) (S T : Ty s) :
+    (Ty.typ A S T).translateShape = μ (Ty.typ A S T).tel := by simp [Ty.translateShape]
 
 theorem Ty.translate_typ {s : Sig} (A : Label) (S T : Ty s) :
-    (Ty.typ A S T).translate = μ (Ty.typ A S T).tel := by simp [Ty.translate]
+    (Ty.typ A S T).translate = (μ (Ty.typ A S T).tel) ^ [] := by
+  simp [Ty.translate, Ty.translateShape]
+
+theorem Ty.translateShape_fld {s : Sig} (a : Label) (T : Ty s) :
+    (Ty.fld a T).translateShape = μ (Ty.fld a T).tel := by simp [Ty.translateShape]
 
 theorem Ty.translate_fld {s : Sig} (a : Label) (T : Ty s) :
-    (Ty.fld a T).translate = μ (Ty.fld a T).tel := by simp [Ty.translate]
+    (Ty.fld a T).translate = (μ (Ty.fld a T).tel) ^ [] := by
+  simp [Ty.translate, Ty.translateShape]
+
+theorem Ty.translateShape_and {s : Sig} (S T : Ty s) :
+    (Ty.and S T).translateShape = μ ((Ty.tel S).append (Ty.tel T)) := by
+  simp [Ty.translateShape, Ty.tel]
 
 theorem Ty.translate_and {s : Sig} (S T : Ty s) :
-    (Ty.and S T).translate = μ ((Ty.tel S).append (Ty.tel T)) := by simp [Ty.translate, Ty.tel]
+    (Ty.and S T).translate = (μ ((Ty.tel S).append (Ty.tel T))) ^ [] := by
+  simp [Ty.translate, Ty.translateShape, Ty.tel]
+
+theorem Ty.translateShape_mu {s : Sig} (T : Ty (s,x)) :
+    (Ty.mu T).translateShape = μ T.telSelf := by simp [Ty.translateShape]
 
 theorem Ty.translate_mu {s : Sig} (T : Ty (s,x)) :
-    (Ty.mu T).translate = μ T.telSelf := by simp [Ty.translate]
+    (Ty.mu T).translate = (μ T.telSelf) ^ [] := by simp [Ty.translate, Ty.translateShape]
+
+theorem Ty.translateShape_weaken {s : Sig} (T : Ty s) :
+    (T.weaken : Ty (s,x)).translateShape = (T.translateShape)↑ :=
+  Ty.translateShape_rename T FCdot.Rename.succ
 
 theorem Ty.translate_weaken {s : Sig} (T : Ty s) :
     (T.weaken : Ty (s,x)).translate = (T.translate)↑ :=
@@ -281,12 +320,13 @@ theorem Ty.translate_weaken {s : Sig} (T : Ty s) :
 
 theorem Ty.tel_typ {s : Sig} (A : Label) (S T : Ty s) :
     (Ty.typ A S T).tel =
-      FCdot.Telescope.cons (FCdot.Telescope.cons .nil ((S.translate)↑ ⊑ .here ∙ A))
-        (.here ∙ A ⊑ (T.translate)↑) := by simp [Ty.tel]
+      FCdot.Telescope.cons (FCdot.Telescope.cons .nil ((S.translateShape)↑ ⊑ .here ∙ A))
+        (.here ∙ A ⊑ (T.translateShape)↑) := by simp [Ty.tel]
 
 theorem Ty.tel_fld {s : Sig} (a : Label) (T : Ty s) :
     (Ty.fld a T).tel =
-      FCdot.Telescope.cons (FCdot.Telescope.cons .nil (∋ a)) (.here ∙ a ⊑ (T.translate)↑) := by
+      FCdot.Telescope.cons (FCdot.Telescope.cons .nil (∋ a))
+        (.here ∙ a ⊑ (T.translateShape)↑) := by
   simp [Ty.tel]
 
 theorem Ty.tel_and {s : Sig} (S T : Ty s) :
@@ -294,12 +334,13 @@ theorem Ty.tel_and {s : Sig} (S T : Ty s) :
 
 theorem Ty.telSelf_typ {s : Sig} (A : Label) (S T : Ty (s,x)) :
     (Ty.typ A S T).telSelf =
-      FCdot.Telescope.cons (FCdot.Telescope.cons .nil (S.translate ⊑ .here ∙ A))
-        (.here ∙ A ⊑ T.translate) := by simp [Ty.telSelf]
+      FCdot.Telescope.cons (FCdot.Telescope.cons .nil (S.translateShape ⊑ .here ∙ A))
+        (.here ∙ A ⊑ T.translateShape) := by simp [Ty.telSelf]
 
 theorem Ty.telSelf_fld {s : Sig} (a : Label) (T : Ty (s,x)) :
     (Ty.fld a T).telSelf =
-      FCdot.Telescope.cons (FCdot.Telescope.cons .nil (∋ a)) (.here ∙ a ⊑ T.translate) := by
+      FCdot.Telescope.cons (FCdot.Telescope.cons .nil (∋ a))
+        (.here ∙ a ⊑ T.translateShape) := by
   simp [Ty.telSelf]
 
 theorem Ty.telSelf_and {s : Sig} (S T : Ty (s,x)) :
@@ -422,27 +463,28 @@ theorem identityMorphism_typed_right {s : Sig} {Γ : FCdot.Ctx s}
 /-! ## Putting an operand into its telescope -/
 
 /-- `into T` turns evidence into `⟦T⟧` into evidence into `μ (tel T)`. -/
-theorem into_typed {s : Sig} {Γ : FCdot.Ctx s} {S T : Ty s} {d : FCdot.LeCo s}
-    (hd : Γ ⊢ d : S.translate ≤ T.translate) : Γ ⊢ into T d : S.translate ≤ μ T.tel := by
+theorem into_typed {s : Sig} {Γ : FCdot.Ctx s} {S T : Ty s} {e : FCdot.ShapeCo s}
+    (he : Γ ⊢ˢ e : S.translateShape ≤ T.translateShape) :
+    Γ ⊢ˢ into T e : S.translateShape ≤ μ T.tel := by
   rw [into]
   by_cases h : T.isObj = true
-  · rw [if_pos h, ← Ty.translate_isObj h]; exact hd
+  · rw [if_pos h, ← Ty.translateShape_isObj h]; exact he
   · rw [if_neg h, Ty.tel_of_not_isObj (by simpa using h)]
-    exact .intoBnd hd
+    exact .intoBnd he
 
 /-- The same for atoms; `And-I` needs it on both operands. -/
 theorem intoAtom_typed {s : Sig} {Γ : FCdot.Ctx s} {T : Ty s} {a : FCdot.Atom s}
-    (ha : Γ ⊢ₐ a : T.translate) : Γ ⊢ₐ intoAtom T a : μ T.tel := by
+    (ha : Γ ⊢ₐ a : T.translate) : Γ ⊢ₐ intoAtom T a : (μ T.tel) ^ [] := by
   rw [intoAtom]
   by_cases h : T.isObj = true
   · rw [if_pos h, ← Ty.translate_isObj h]; exact ha
   · rw [if_neg h, Ty.tel_of_not_isObj (by simpa using h)]
-    exact .cast ha (.intoBnd .refl)
+    exact .cast ha (.capt (.intoBnd .refl) .refl)
 
 /-- The self-bound of a non-object operand sits at position `0` of its own
 telescope. -/
 theorem Ty.tel_bnd_at {s : Sig} {T : Ty s} (h : T.isObj = false) :
-    (Ty.tel T : FCdot.Telescope (s,x)) ∋ (0 ↦ ⊑ T.translate↑) := by
+    (Ty.tel T : FCdot.Telescope (s,x)) ∋ (0 ↦ ⊑ T.translateShape↑) := by
   rw [Ty.tel_of_not_isObj h]
   exact .here
 
@@ -535,8 +577,8 @@ theorem Ty.witnesses_distinct {s : Sig} :
 
 /-- The definition equality that the templates of `T` read, at definition offset `e`. -/
 def Ty.EqSpec {s : Sig} (src : FCdot.Telescope (s,x)) : Ty (s,x) → Nat → Prop
-  | .typ A S _, e => src ∋ (e ↦ .here ∙ A ≐ S.translate)
-  | .fld a T, e => src ∋ (e ↦ .here ∙ a ≐ T.translate)
+  | .typ A S _, e => src ∋ (e ↦ .here ∙ A ≐ S.translateShape)
+  | .fld a T, e => src ∋ (e ↦ .here ∙ a ≐ T.translateShape)
   | .and S T, e => Ty.EqSpec src S e ∧ Ty.EqSpec src T (e + S.witnesses.length)
   | _, _ => True
 
@@ -636,7 +678,7 @@ theorem eqSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distinc
   | .mu _, _, _ => by simp [Ty.EqSpec]
   | .typ A S T', e, hpos => by
       simp only [Ty.witnesses] at hpos
-      have h1 := hpos 0 A S.translate FCdot.Witnesses.At.hereNil
+      have h1 := hpos 0 A S.translateShape FCdot.Witnesses.At.hereNil
       rw [Nat.add_zero] at h1
       have h2 := FCdot.Witnesses.eqEntriesOf_At FCdot.BVar.here Wall h1
       rw [h1.get hdist] at h2
@@ -644,7 +686,7 @@ theorem eqSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distinc
       exact FCdot.Telescope.At.hasEntries lsAll h2
   | .fld a T', e, hpos => by
       simp only [Ty.witnesses] at hpos
-      have h1 := hpos 0 a T'.translate FCdot.Witnesses.At.hereNil
+      have h1 := hpos 0 a T'.translateShape FCdot.Witnesses.At.hereNil
       rw [Nat.add_zero] at h1
       have h2 := FCdot.Witnesses.eqEntriesOf_At FCdot.BVar.here Wall h1
       rw [h1.get hdist] at h2
@@ -689,9 +731,9 @@ theorem hasSpec_of {s : Sig} {src : FCdot.Telescope (s,x)} :
 
 theorem litCo_typed_of_shape {s : Sig} {Γ : FCdot.Ctx s} {T : Ty (s,x)}
     (hsh : Ty.LiteralShape T) (hdl : Ty.DistinctLabels T) :
-    Γ ⊢ litCo T : T.literalTy ≤ (Ty.mu T).translate := by
+    Γ ⊢ˢ litCo T : T.literalTy.shape ≤ (Ty.mu T).translateShape := by
   have hW : T.witnesses.Distinct := Ty.witnesses_distinct T hdl
-  rw [Ty.translate_mu]
+  rw [Ty.translateShape_mu, Ty.literalTy_shape]
   refine .obj (litMorphism_typed T hsh 0 T.witnesses.length ?_ ?_)
   · exact eqSpec_of hW T.fieldLabels T 0 (fun i l X hAt => by rw [Nat.zero_add]; exact hAt)
   · refine hasSpec_of T T.witnesses.length (fun i l hAt => ?_)
@@ -703,8 +745,14 @@ theorem litCo_typed_of_shape {s : Sig} {Γ : FCdot.Ctx s} {T : Ty (s,x)}
 /-- `litCo` is closed evidence: it is typed in any context. -/
 theorem litCo_typed {s : Sig} {Γ' : FCdot.Ctx s} {Γ : Ctx (s,x)} {d : Defs (s,x)}
     {T : Ty (s,x)} (hd : DefsTy Γ d T) (hdist : Defs.Distinct d) :
-    Γ' ⊢ litCo T : T.literalTy ≤ (Ty.mu T).translate :=
+    Γ' ⊢ˢ litCo T : T.literalTy.shape ≤ (Ty.mu T).translateShape :=
   litCo_typed_of_shape hd.literalShape (hd.distinctLabels hdist)
+
+/-- The same as a type inclusion, at the empty capture set both sides. -/
+theorem litCo_pure_typed {s : Sig} {Γ' : FCdot.Ctx s} {Γ : Ctx (s,x)} {d : Defs (s,x)}
+    {T : Ty (s,x)} (hd : DefsTy Γ d T) (hdist : Defs.Distinct d) :
+    Γ' ⊢ (litCo T).pure : T.literalTy ≤ (Ty.mu T).translate :=
+  .capt (litCo_typed hd hdist) .refl
 
 /-! ## Well-formed contexts
 
@@ -738,7 +786,7 @@ theorem Ctx.varAtom_cons_there {s : Sig} (Γ : Ctx s) (T : Ty s) (y : BVar s .va
     (Γ.cons T).varAtom (.there y) = (Γ.varAtom y)↑ := rfl
 
 theorem Ctx.varAtom_consSelf_here {s : Sig} (Γ : Ctx s) (d : Defs (s,x)) (T : Ty (s,x)) :
-    (Γ.consSelf d T).varAtom .here = .cast (.var .here) ((litCo T)↑) := rfl
+    (Γ.consSelf d T).varAtom .here = .cast (.var .here) (((litCo T).pure)↑) := rfl
 
 theorem Ctx.varAtom_consSelf_there {s : Sig} (Γ : Ctx s) (d : Defs (s,x)) (T : Ty (s,x))
     (y : BVar s .var) : (Γ.consSelf d T).varAtom (.there y) = (Γ.varAtom y)↑ := rfl
@@ -768,7 +816,8 @@ theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar 
       | consSelf hwf' hsh hdl =>
           rw [Ctx.lookup_consSelf_here, Ctx.varAtom_consSelf_here, Ty.translate_weaken]
           exact .cast .var
-            ((litCo_typed_of_shape (Γ := Γ.translate) hsh hdl).weaken
+            ((FCdot.LeCo.HasType.capt (litCo_typed_of_shape (Γ := Γ.translate) hsh hdl)
+                FCdot.CapCo.HasType.refl).weaken
               (.transparent T.literalTy T.witnesses T.fieldLabels))
   | .consSelf Γ d T, hwf, .there y => by
       cases hwf with
@@ -799,62 +848,67 @@ theorem HasTy.translateAtom_root : ∀ {s : Sig} {Γ : Ctx s} {y : BVar s .var} 
 
 mutual
 
-theorem Sub.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {S T : Ty s} (d : Sub Γ S T), Γ.Wf →
-    Γ.translate ⊢ d.translate : S.translate ≤ T.translate
-  | _, _, _, _, .top, _ => by rw [Sub.translate, Ty.translate_top]; exact .top
-  | _, _, _, _, .bot, _ => by rw [Sub.translate, Ty.translate_bot]; exact .bot
-  | _, _, _, _, .refl, _ => by rw [Sub.translate]; exact .refl
+/-- The shape half of the evidence translation is typed at the translated
+shapes: the vanilla `Sub.translate_typed`, read at the shape sort. -/
+theorem Sub.translateShape_typed : ∀ {s : Sig} {Γ : Ctx s} {S T : Ty s} (d : Sub Γ S T), Γ.Wf →
+    Γ.translate ⊢ˢ d.translateShape : S.translateShape ≤ T.translateShape
+  | _, _, _, _, .top, _ => by rw [Sub.translateShape, Ty.translateShape_top]; exact .top
+  | _, _, _, _, .bot, _ => by rw [Sub.translateShape, Ty.translateShape_bot]; exact .bot
+  | _, _, _, _, .refl, _ => by rw [Sub.translateShape]; exact .refl
   | _, _, _, _, .trans d₁ d₂, hwf => by
-      rw [Sub.translate]
-      exact .trans (d₁.translate_typed hwf) (d₂.translate_typed hwf)
+      rw [Sub.translateShape]
+      exact .trans (d₁.translateShape_typed hwf) (d₂.translateShape_typed hwf)
   | _, _, _, _, @Sub.and1 _ _ S T, _ => by
       by_cases hS : S.isObj = true
-      · rw [Sub.translate, if_pos hS, Ty.tel_and, Ty.translate_and, Ty.translate_isObj hS]
+      · rw [Sub.translateShape, if_pos hS, Ty.tel_and, Ty.translateShape_and, Ty.translateShape_isObj hS]
         exact .obj (identityMorphism_typed_left _ _ (Ty.tel_closedBnds S))
       · have hS' : S.isObj = false := by simpa using hS
-        rw [Sub.translate, if_neg hS, Ty.tel_and, Ty.translate_and]
+        rw [Sub.translateShape, if_neg hS, Ty.tel_and, Ty.translateShape_and]
         exact .bound ((Ty.tel_bnd_at hS').append_left' T.tel)
   | _, _, _, _, @Sub.and2 _ _ S T, _ => by
       by_cases hT : T.isObj = true
-      · rw [Sub.translate, if_pos hT, Ty.tel_and, Ty.translate_and, Ty.translate_isObj hT]
+      · rw [Sub.translateShape, if_pos hT, Ty.tel_and, Ty.translateShape_and, Ty.translateShape_isObj hT]
         exact .obj (identityMorphism_typed_right _ _ (Ty.tel_closedBnds T))
       · have hT' : T.isObj = false := by simpa using hT
-        rw [Sub.translate, if_neg hT, Ty.tel_and, Ty.translate_and]
+        rw [Sub.translateShape, if_neg hT, Ty.tel_and, Ty.translateShape_and]
         refine .bound ?_
         have h0 := FCdot.Telescope.At.append_right S.tel (Ty.tel_bnd_at hT')
         rwa [Nat.add_zero] at h0
   | _, _, _, _, .and d₁ d₂, hwf => by
-      rw [Sub.translate, Ty.translate_and]
-      exact .pair (into_typed (d₁.translate_typed hwf)) (into_typed (d₂.translate_typed hwf))
+      rw [Sub.translateShape, Ty.translateShape_and]
+      exact .pair (into_typed (d₁.translateShape_typed hwf)) (into_typed (d₂.translateShape_typed hwf))
   | _, _, _, _, .fld d, hwf => by
-      rw [Sub.translate]
-      simp only [Ty.translate_fld, Ty.tel_fld]
+      rw [Sub.translateShape]
+      simp only [Ty.translateShape_fld, Ty.tel_fld]
       exact .obj (.le (.has .nil (FCdot.Telescope.At.zero_two _ _))
-        (FCdot.Telescope.At.one_two _ _) .none (.some (d.translate_typed hwf)))
+        (FCdot.Telescope.At.one_two _ _) .none (.some (d.translateShape_typed hwf)))
   | _, _, _, _, .typ d₁ d₂, hwf => by
-      rw [Sub.translate]
-      simp only [Ty.translate_typ, Ty.tel_typ]
+      rw [Sub.translateShape]
+      simp only [Ty.translateShape_typ, Ty.tel_typ]
       exact .obj (.le (.le .nil (FCdot.Telescope.At.zero_two _ _)
-          (.some (d₁.translate_typed hwf)) .none)
-        (FCdot.Telescope.At.one_two _ _) .none (.some (d₂.translate_typed hwf)))
+          (.some (d₁.translateShape_typed hwf)) .none)
+        (FCdot.Telescope.At.one_two _ _) .none (.some (d₂.translateShape_typed hwf)))
   | _, _, _, _, .selUpper h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_typ, Ty.tel_typ] at ha
-      have hm := FCdot.LeCo.HasType.member ha .refl (FCdot.Telescope.At.one_two _ _)
-      rw [HasTy.translateAtom_root h, FCdot.Ty.substVar_sel_here, FCdot.Ty.weaken_substVar] at hm
-      rw [Sub.translate, Ty.translate_sel, Ty.translate_typ, Ty.tel_typ]
+      have hm := FCdot.ShapeCo.HasType.member ha .refl (FCdot.Telescope.At.one_two _ _)
+      rw [HasTy.translateAtom_root h, FCdot.Shape.substVar_sel_here,
+        FCdot.Shape.weaken_substVar] at hm
+      rw [Sub.translateShape, Ty.translateShape_sel, Ty.translateShape_typ, Ty.tel_typ]
       exact hm
   | _, _, _, _, .selLower h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_typ, Ty.tel_typ] at ha
-      have hm := FCdot.LeCo.HasType.member ha .refl (FCdot.Telescope.At.zero_two _ _)
-      rw [HasTy.translateAtom_root h, FCdot.Ty.substVar_sel_here, FCdot.Ty.weaken_substVar] at hm
-      rw [Sub.translate, Ty.translate_sel, Ty.translate_typ, Ty.tel_typ]
+      have hm := FCdot.ShapeCo.HasType.member ha .refl (FCdot.Telescope.At.zero_two _ _)
+      rw [HasTy.translateAtom_root h, FCdot.Shape.substVar_sel_here,
+        FCdot.Shape.weaken_substVar] at hm
+      rw [Sub.translateShape, Ty.translateShape_sel, Ty.translateShape_typ, Ty.tel_typ]
       exact hm
   | _, _, _, _, .all d₁ d₂, hwf => by
-      rw [Sub.translate]
-      simp only [Ty.translate_all]
-      exact .pi (d₁.translate_typed hwf) (d₂.translate_typed (.cons hwf))
+      rw [Sub.translateShape]
+      simp only [Ty.translateShape_all]
+      exact .pi (.capt (d₁.translateShape_typed hwf) .refl)
+        (.capt (d₂.translateShape_typed (.cons hwf)) .refl)
 
 theorem HasTy.translateAtom_typed : ∀ {s : Sig} {Γ : Ctx s} {y : BVar s .var} {T : Ty s}
     (h : HasTy Γ (.path (.var y)) T), Γ.Wf → Γ.translate ⊢ₐ h.translateAtom : T.translate
@@ -891,9 +945,16 @@ theorem HasTy.translateAtom_typed : ∀ {s : Sig} {Γ : Ctx s} {y : BVar s .var}
         (by simp [HasTy.translateAtom_root h₁, HasTy.translateAtom_root h₂])
   | _, _, _, _, .sub h d, hwf => by
       rw [HasTy.translateAtom]
-      exact .cast (HasTy.translateAtom_typed h hwf) (d.translate_typed hwf)
+      exact .cast (HasTy.translateAtom_typed h hwf) (.capt (d.translateShape_typed hwf) .refl)
 
 end
+
+/-- `⟦d⟧` is typed at the translated types: the shape half of the evidence
+between the two shapes, the capture half `refl []` between the two (empty)
+capture sets. -/
+theorem Sub.translate_typed {s : Sig} {Γ : Ctx s} {S T : Ty s} (d : Sub Γ S T) (hwf : Γ.Wf) :
+    Γ.translate ⊢ d.translate : S.translate ≤ T.translate :=
+  .capt (d.translateShape_typed hwf) .refl
 
 end DotMNF
 

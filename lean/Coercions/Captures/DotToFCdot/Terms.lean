@@ -37,10 +37,13 @@ def HasTy.translate : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} → HasTy Γ t 
   | _, .val (.lam S _), _, .lam h _ => .val (.lam S.translate h.translate)
   | _, _, _, .app h₁ h₂ => .app h₁.translateAtom h₂.translateAtom
   | _, _, _, @HasTy.obj _ _ T _ h _ =>
-      .cast (.val (.obj T.witnesses h.translateFields)) (litCo T)
+      .cast (.val (.obj T.witnesses h.translateFields)) (litCo T).pure
   | _, .proj _ a, T, .proj h =>
-      .cast (.proj h.translateAtom a (.member h.translateAtom (.refl (Ty.translate (.fld a T))) 0))
-        (.member h.translateAtom (.refl (Ty.translate (.fld a T))) 1)
+      .cast
+        (.proj h.translateAtom a
+          (.member h.translateAtom (.refl (Ty.translateShape (.fld a T))) 0))
+        (FCdot.ShapeCo.pure
+          (.member h.translateAtom (.refl (Ty.translateShape (.fld a T))) 1))
   | _, _, _, .let h₁ h₂ _ => .let h₁.translate h₂.translate
   | _, _, _, h@(.recI _ _) => .atom h.translateAtom
   | _, _, _, h@(.recE _ _) => .atom h.translateAtom
@@ -53,7 +56,7 @@ def DefsTy.translateFields : {Γ : Ctx (s,x)} → {d : Defs (s,x)} → {T : Ty (
     DefsTy Γ d T → FCdot.Fields (s,x)
   | _, _, _, .typ => .nil
   | _, .trm a _, _, .trm h =>
-      .cons .nil a (.cast h.translate (.eqToLe (.symm (.def .here a))))
+      .cons .nil a (.cast h.translate (FCdot.ShapeCo.pure (.eqToLe (.symm (.def .here a)))))
   | _, _, _, .and h₁ h₂ => h₂.translateFields.append h₁.translateFields
 
 end

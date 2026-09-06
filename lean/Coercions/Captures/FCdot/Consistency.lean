@@ -29,7 +29,7 @@ variable {σ : Store s} {Γ : Ctx s}
 
 /-- A telescope all of whose propositions are bounds. -/
 def Telescope.BndsOnly (Tel : Telescope (s,x)) : Prop :=
-  ∀ (i : Nat) (P : Proposition (s,x)), Tel ∋ (i ↦ P) → ∃ X : Ty (s,x), P = Proposition.bnd X
+  ∀ (i : Nat) (P : Proposition (s,x)), Tel ∋ (i ↦ P) → ∃ X : Shape (s,x), P = Proposition.bnd X
 
 theorem Telescope.BndsOnly.nil : (Telescope.nil (s := (s,x))).BndsOnly := by
   intro i P h; cases h
@@ -37,7 +37,7 @@ theorem Telescope.BndsOnly.nil : (Telescope.nil (s := (s,x))).BndsOnly := by
 /-- An entry over a bounds-only telescope proves a bound. -/
 theorem EntryTyped.bnd_of_bndsOnly {ρ : Option (BVar s .var)} {TelM : Telescope (s,x)}
     {E : Entry s} {P : Proposition (s,x)} (hb : TelM.BndsOnly)
-    (hE : EntryTyped Γ ρ TelM E P) : ∃ X : Ty (s,x), P = Proposition.bnd X := by
+    (hE : EntryTyped Γ ρ TelM E P) : ∃ X : Shape (s,x), P = Proposition.bnd X := by
   cases hE with
   | le hh _ _ =>
       cases hh with
@@ -54,7 +54,7 @@ mutual
 
 /-- View-free entries out of a source that is neither `⊥` nor an object type
 can only prove bounds. -/
-theorem BndsTyped.bndsOnly {ρ : Option (BVar s .var)} {S : Ty s} {Es : Entries s}
+theorem BndsTyped.bndsOnly {ρ : Option (BVar s .var)} {S : Shape s} {Es : Entries s}
     {Tel : Telescope (s,x)} (hb : Γ.resolveAt? ρ S ≠ ⊥)
     (ho : ∀ Tel₁ : Telescope (s,x), Γ.resolveAt? ρ S ≠ μ Tel₁)
     (h : BndsTyped Γ ρ S Es Tel) : Tel.BndsOnly := by
@@ -73,7 +73,7 @@ theorem BndsTyped.bndsOnly {ρ : Option (BVar s .var)} {S : Ty s} {Es : Entries 
 
 /-- A form out of a source that is neither `⊥` nor an object type reaches
 only object types with bounds only. -/
-theorem FormTyped.bndsOnly_target {ρ : Option (BVar s .var)} {S M : Ty s} {H : Form s}
+theorem FormTyped.bndsOnly_target {ρ : Option (BVar s .var)} {S M : Shape s} {H : Form s}
     {TelM : Telescope (s,x)} (hb : Γ.resolveAt? ρ S ≠ ⊥)
     (ho : ∀ Tel₁ : Telescope (s,x), Γ.resolveAt? ρ S ≠ μ Tel₁)
     (hH : FormTyped Γ ρ H S M) (hM : Γ.resolveAt? ρ M = μ TelM) : TelM.BndsOnly := by
@@ -81,34 +81,39 @@ theorem FormTyped.bndsOnly_target {ρ : Option (BVar s .var)} {S M : Ty s} {H : 
   | .bot hS => exact absurd hS hb
   | .top hT =>
       rw [hM] at hT
-      obtain rfl := Ty.obj.inj (by simpa using hT : (μ TelM : Ty s) = μ .nil)
+      obtain rfl := Shape.obj.inj (by simpa using hT : (μ TelM : Shape s) = μ .nil)
       exact Telescope.BndsOnly.nil
   | .id hres => exact absurd (hres.trans hM) (ho TelM)
   | .eqv hres => exact absurd (hres.trans hM) (ho TelM)
   | .pi _ hT _ _ => rw [hM] at hT; exact absurd hT (by simp)
   | .obj hS _ _ => exact absurd hS (ho _)
+  | .boxed _ hT _ => rw [hM] at hT; exact absurd hT (by simp)
+  | .boxIn hT _ => rw [hM] at hT; exact absurd hT (by simp)
   | .bnd hS _ _ => exact absurd hS (ho _)
   | .into hT hB =>
       rw [hM] at hT
-      obtain rfl := Ty.obj.inj hT
+      obtain rfl := Shape.obj.inj hT
       exact BndsTyped.bndsOnly hb ho hB
 
 end
 
 /-- Closed inclusion evidence relates types of compatible shapes: the source
 resolves to `⊥`, or the target to `⊤`, or both resolve equally, or both are
-function types, or both are object types, or the source resolves to an
-object type with a bound whose type is below the target, or the target
-resolves to an object type that is bounds-only unless the source is an
-object type too. -/
+function types, or both are object types, or the target resolves to a box
+shape, or the source resolves to an object type with a bound whose type is
+below the target, or the target resolves to an object type that is
+bounds-only unless the source is an object type too.  Shapes are what
+resolution reads, so every disjunct is about the shape of an endpoint; the
+box disjunct is the one the box former adds. -/
 theorem closed_le_shapes (hσ : ⊢ σ : Γ) {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) :
-    Γ.resolve S = ⊥ ∨ Γ.resolve T = ⊤ ∨ Γ.resolve S = Γ.resolve T ∨
-    (∃ S₁ T₁ S₂ T₂, Γ.resolve S = Π(S₁) T₁ ∧ Γ.resolve T = Π(S₂) T₂) ∨
-    (∃ Tel₁ Tel₂, Γ.resolve S = μ Tel₁ ∧ Γ.resolve T = μ Tel₂) ∨
-    (∃ (Tel₁ : Telescope (s,x)) (i : Nat) (T' : Ty s) (F : Form s),
-      Γ.resolve S = μ Tel₁ ∧ Tel₁ ∋ (i ↦ ⊑ T'↑) ∧ Γ ⊨ F : T' ≤ T) ∨
-    (∃ Tel₂ : Telescope (s,x), Γ.resolve T = μ Tel₂ ∧
-      ((∃ Tel₁ : Telescope (s,x), Γ.resolve S = μ Tel₁) ∨ Tel₂.BndsOnly)) := by
+    Γ.resolve S.shape = ⊥ ∨ Γ.resolve T.shape = ⊤ ∨ Γ.resolve S.shape = Γ.resolve T.shape ∨
+    (∃ S₁ T₁ S₂ T₂, Γ.resolve S.shape = Π(S₁) T₁ ∧ Γ.resolve T.shape = Π(S₂) T₂) ∨
+    (∃ Tel₁ Tel₂, Γ.resolve S.shape = μ Tel₁ ∧ Γ.resolve T.shape = μ Tel₂) ∨
+    (∃ Y : Ty s, Γ.resolve T.shape = □ Y) ∨
+    (∃ (Tel₁ : Telescope (s,x)) (i : Nat) (T' : Shape s) (F : Form s),
+      Γ.resolve S.shape = μ Tel₁ ∧ Tel₁ ∋ (i ↦ ⊑ T'↑) ∧ Γ ⊨ F : T' ≤ T.shape) ∨
+    (∃ Tel₂ : Telescope (s,x), Γ.resolve T.shape = μ Tel₂ ∧
+      ((∃ Tel₁ : Telescope (s,x), Γ.resolve S.shape = μ Tel₁) ∨ Tel₂.BndsOnly)) := by
   obtain ⟨_, F, _, hF⟩ := le_canon hσ h
   cases hF with
   | bot hS => exact Or.inl hS
@@ -117,51 +122,66 @@ theorem closed_le_shapes (hσ : ⊢ σ : Γ) {e : LeCo s} {S T : Ty s} (h : Γ �
   | eqv hres => exact Or.inr (Or.inr (Or.inl hres))
   | pi hS hT _ _ => exact Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, _, _, hS, hT⟩)))
   | obj hS hT _ => exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, hS, hT⟩))))
+  | boxed _ hT _ =>
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, hT⟩)))))
+  | boxIn hT _ =>
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, hT⟩)))))
   | bnd hS hAt hF' =>
-      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, _, _, hS, hAt, hF'⟩)))))
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+        (Or.inl ⟨_, _, _, _, hS, hAt, hF'⟩))))))
   | into hT hB =>
-      cases hres : Γ.resolve S with
+      cases hres : Γ.resolve S.shape with
       | bot => exact Or.inl rfl
       | obj Tel₁ =>
-          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, hT, Or.inl ⟨Tel₁, rfl⟩⟩)))))
+          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+            ⟨_, hT, Or.inl ⟨Tel₁, rfl⟩⟩))))))
       | sel y ℓ =>
-          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, hT, Or.inr ?_⟩)))))
+          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, hT, Or.inr ?_⟩))))))
           exact BndsTyped.bndsOnly (ρ := none) (by rw [Ctx.resolveAt?_none, hres]; simp)
             (fun Tel₁ h' => by rw [Ctx.resolveAt?_none, hres] at h'; simp at h') hB
       | pi S₀ T₀ =>
-          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, hT, Or.inr ?_⟩)))))
+          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, hT, Or.inr ?_⟩))))))
+          exact BndsTyped.bndsOnly (ρ := none) (by rw [Ctx.resolveAt?_none, hres]; simp)
+            (fun Tel₁ h' => by rw [Ctx.resolveAt?_none, hres] at h'; simp at h') hB
+      | box X =>
+          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, hT, Or.inr ?_⟩))))))
           exact BndsTyped.bndsOnly (ρ := none) (by rw [Ctx.resolveAt?_none, hres]; simp)
             (fun Tel₁ h' => by rw [Ctx.resolveAt?_none, hres] at h'; simp at h') hB
 
 /-- No closed evidence for `⊤ ≤ ⊥`. -/
-theorem Store.Typed.no_top_le_bot (hσ : ⊢ σ : Γ) : ¬ ∃ e : LeCo s, Γ ⊢ e : ⊤ ≤ ⊥ := by
-  rintro ⟨e, h⟩
+theorem Store.Typed.no_top_le_bot (hσ : ⊢ σ : Γ) :
+    ¬ ∃ (e : LeCo s) (C C' : CaptureSet s), Γ ⊢ e : ⊤ ^ C ≤ ⊥ ^ C' := by
+  rintro ⟨e, C, C', h⟩
   rcases closed_le_shapes hσ h with
-    h | h | h | ⟨_, _, _, _, h, _⟩ | ⟨_, _, _, h⟩ | ⟨Tel₁, i, T', F, hS, hAt, _⟩ | ⟨_, h, _⟩
+    h | h | h | ⟨_, _, _, _, h, _⟩ | ⟨_, _, _, h⟩ | ⟨_, h⟩ |
+      ⟨Tel₁, i, T', F, hS, hAt, _⟩ | ⟨_, h, _⟩
   · simp at h
   · simp at h
   · simp at h
   · simp at h
   · simp at h
-  · obtain rfl := Ty.obj.inj (by simpa using hS : (μ .nil : Ty s) = μ Tel₁)
+  · simp at h
+  · obtain rfl := Shape.obj.inj (by simpa using hS : (μ .nil : Shape s) = μ Tel₁)
     cases hAt
   · simp at h
 
 /-- No closed evidence from an object type without bounds into a function
 type. -/
 theorem Store.Typed.no_obj_le_pi (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S : Ty s}
-    {T : Ty (s,x)} (hnb : ∀ (i : Nat) (T' : Ty s), ¬ Tel ∋ (i ↦ ⊑ T'↑)) :
-    ¬ ∃ e : LeCo s, Γ ⊢ e : μ Tel ≤ Π(S) T := by
-  rintro ⟨e, h⟩
+    {T : Ty (s,x)} (hnb : ∀ (i : Nat) (T' : Shape s), ¬ Tel ∋ (i ↦ ⊑ T'↑)) :
+    ¬ ∃ (e : LeCo s) (C C' : CaptureSet s), Γ ⊢ e : (μ Tel) ^ C ≤ (Π(S) T) ^ C' := by
+  rintro ⟨e, C, C', h⟩
   rcases closed_le_shapes hσ h with
-    h | h | h | ⟨_, _, _, _, h, _⟩ | ⟨_, _, _, h⟩ | ⟨Tel₁, i, T', F, hS, hAt, _⟩ | ⟨_, h, _⟩
+    h | h | h | ⟨_, _, _, _, h, _⟩ | ⟨_, _, _, h⟩ | ⟨_, h⟩ |
+      ⟨Tel₁, i, T', F, hS, hAt, _⟩ | ⟨_, h, _⟩
   · simp at h
   · simp at h
   · simp at h
   · simp at h
   · simp at h
-  · rw [Ctx.resolve_obj] at hS
-    obtain rfl := Ty.obj.inj hS
+  · simp at h
+  · rw [Ty.shape_capt, Ctx.resolve_obj] at hS
+    obtain rfl := Shape.obj.inj hS
     exact hnb i T' hAt
   · simp at h
 
@@ -169,21 +189,23 @@ theorem Store.Typed.no_obj_le_pi (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S 
 proposition that is not a bound. -/
 theorem Store.Typed.no_pi_le_obj (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S : Ty s}
     {T : Ty (s,x)} {i : Nat} {P : Proposition (s,x)} (hAt : Tel ∋ (i ↦ P))
-    (hP : ∀ X : Ty (s,x), P ≠ Proposition.bnd X) :
-    ¬ ∃ e : LeCo s, Γ ⊢ e : Π(S) T ≤ μ Tel := by
-  rintro ⟨e, h⟩
+    (hP : ∀ X : Shape (s,x), P ≠ Proposition.bnd X) :
+    ¬ ∃ (e : LeCo s) (C C' : CaptureSet s), Γ ⊢ e : (Π(S) T) ^ C ≤ (μ Tel) ^ C' := by
+  rintro ⟨e, C, C', h⟩
   rcases closed_le_shapes hσ h with
-    h | h | h | ⟨_, _, _, _, _, h⟩ | ⟨_, _, h, _⟩ | ⟨_, _, _, _, h, _⟩ | ⟨Tel₂, hT, hd⟩
+    h | h | h | ⟨_, _, _, _, _, h⟩ | ⟨_, _, h, _⟩ | ⟨_, h⟩ |
+      ⟨_, _, _, _, h, _⟩ | ⟨Tel₂, hT, hd⟩
   · simp at h
-  · rw [Ctx.resolve_obj] at h
-    obtain rfl := Ty.obj.inj (by simpa using h : (μ Tel : Ty s) = μ .nil)
+  · rw [Ty.shape_capt, Ctx.resolve_obj] at h
+    obtain rfl := Shape.obj.inj (by simpa using h : (μ Tel : Shape s) = μ .nil)
     cases hAt
   · simp at h
   · simp at h
   · simp at h
   · simp at h
-  · rw [Ctx.resolve_obj] at hT
-    obtain rfl := Ty.obj.inj hT
+  · simp at h
+  · rw [Ty.shape_capt, Ctx.resolve_obj] at hT
+    obtain rfl := Shape.obj.inj hT
     rcases hd with ⟨Tel₁, h₁⟩ | hbo
     · simp at h₁
     · obtain ⟨X, hX⟩ := hbo _ _ hAt
@@ -211,7 +233,8 @@ theorem Steps.typed {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
 closed `⊤ ≤ ⊥` in its context, and every block name is defined. -/
 theorem reachable_consistent {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
     (hT : State.Typed st U) (run : st ⟶* st') :
-    ∃ Γ : Ctx s', ⊢ st'.σ : Γ ∧ (¬ ∃ e : LeCo s', Γ ⊢ e : ⊤ ≤ ⊥) ∧
+    ∃ Γ : Ctx s', ⊢ st'.σ : Γ ∧
+      (¬ ∃ (e : LeCo s') (C C' : CaptureSet s'), Γ ⊢ e : ⊤ ^ C ≤ ⊥ ^ C') ∧
       ∀ x ℓ, ∃ W, Γ.lookupDef x ℓ = some W ∧ Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W := by
   obtain ⟨U', Γ, T, hσ, _, _⟩ := Steps.typed hT run
   exact ⟨Γ, hσ, hσ.no_top_le_bot, hσ.realized⟩

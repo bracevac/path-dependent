@@ -80,28 +80,30 @@ theorem Ty.isObj_rename {s s' : Sig} : ∀ (T : Ty s) (ρ : Rename s s'),
 
 mutual
 
-theorem Ty.translate_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
-    (T.rename ρ).translate = T.translate.rename ρ := by
+/-- The shape translation commutes with renaming: the vanilla
+`Ty.translate_rename`, whose target sort is now `Shape`. -/
+theorem Ty.translateShape_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
+    (T.rename ρ).translateShape = T.translateShape.rename ρ := by
   match T with
-  | .top => simp [Ty.rename, Ty.translate, FCdot.Ty.rename, FCdot.Telescope.rename]
-  | .bot => simp [Ty.rename, Ty.translate, FCdot.Ty.rename]
-  | .sel (.var x) A => simp [Ty.rename, Path.rename, Ty.translate, FCdot.Ty.rename]
+  | .top => simp [Ty.rename, Ty.translateShape, FCdot.Shape.rename, FCdot.Telescope.rename]
+  | .bot => simp [Ty.rename, Ty.translateShape, FCdot.Shape.rename]
+  | .sel (.var x) A => simp [Ty.rename, Path.rename, Ty.translateShape, FCdot.Shape.rename]
   | .all S T =>
-      simp [Ty.rename, Ty.translate, FCdot.Ty.rename,
-        Ty.translate_rename S ρ, Ty.translate_rename T ρ.lift]
+      simp [Ty.rename, Ty.translateShape, FCdot.Shape.rename,
+        Ty.translateShape_rename S ρ, Ty.translateShape_rename T ρ.lift]
   | .typ A S T =>
-      simp [Ty.rename, Ty.translate, Ty.tel, FCdot.Ty.rename, FCdot.Telescope.rename,
-        FCdot.Proposition.rename, FCdot.Rename.lift_here, FCdot.Ty.weaken_rename,
-        Ty.translate_rename S ρ, Ty.translate_rename T ρ]
+      simp [Ty.rename, Ty.translateShape, Ty.tel, FCdot.Shape.rename, FCdot.Telescope.rename,
+        FCdot.Proposition.rename, FCdot.Rename.lift_here, FCdot.Shape.weaken_rename,
+        Ty.translateShape_rename S ρ, Ty.translateShape_rename T ρ]
   | .fld a T =>
-      simp [Ty.rename, Ty.translate, Ty.tel, FCdot.Ty.rename, FCdot.Telescope.rename,
-        FCdot.Proposition.rename, FCdot.Rename.lift_here, FCdot.Ty.weaken_rename,
-        Ty.translate_rename T ρ]
+      simp [Ty.rename, Ty.translateShape, Ty.tel, FCdot.Shape.rename, FCdot.Telescope.rename,
+        FCdot.Proposition.rename, FCdot.Rename.lift_here, FCdot.Shape.weaken_rename,
+        Ty.translateShape_rename T ρ]
   | .and S T =>
-      simp [Ty.rename, Ty.translate, Ty.tel, FCdot.Ty.rename, FCdot.Telescope.append_rename',
+      simp [Ty.rename, Ty.translateShape, Ty.tel, FCdot.Shape.rename, FCdot.Telescope.append_rename',
         Ty.tel_rename S ρ, Ty.tel_rename T ρ]
   | .mu T =>
-      simp [Ty.rename, Ty.translate, FCdot.Ty.rename, Ty.telSelf_rename T ρ]
+      simp [Ty.rename, Ty.translateShape, FCdot.Shape.rename, Ty.telSelf_rename T ρ]
 
 theorem Ty.tel_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
     (T.rename ρ).tel = T.tel.rename ρ.lift := by
@@ -109,22 +111,22 @@ theorem Ty.tel_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
   | .top => simp [Ty.rename, Ty.tel, FCdot.Telescope.rename]
   | .bot =>
       simp [Ty.rename, Ty.tel, FCdot.Telescope.rename, FCdot.Proposition.rename,
-        FCdot.Ty.rename, FCdot.Ty.weaken]
+        FCdot.Shape.rename, FCdot.Shape.weaken]
   | .sel (.var y) A =>
       simp [Ty.rename, Path.rename, Ty.tel, FCdot.Telescope.rename, FCdot.Proposition.rename,
-        FCdot.Ty.weaken_rename, FCdot.Ty.rename]
+        FCdot.Shape.weaken_rename, FCdot.Shape.rename]
   | .all S T =>
       simp [Ty.rename, Ty.tel, FCdot.Telescope.rename, FCdot.Proposition.rename,
-        FCdot.Ty.weaken_rename, FCdot.Ty.rename,
-        Ty.translate_rename S ρ, Ty.translate_rename T ρ.lift]
+        FCdot.Shape.weaken_rename, FCdot.Shape.rename,
+        Ty.translateShape_rename S ρ, Ty.translateShape_rename T ρ.lift]
   | .typ A S T =>
       simp [Ty.rename, Ty.tel, FCdot.Telescope.rename, FCdot.Proposition.rename,
-        FCdot.Ty.rename, FCdot.Rename.lift_here, FCdot.Ty.weaken_rename,
-        Ty.translate_rename S ρ, Ty.translate_rename T ρ]
+        FCdot.Shape.rename, FCdot.Rename.lift_here, FCdot.Shape.weaken_rename,
+        Ty.translateShape_rename S ρ, Ty.translateShape_rename T ρ]
   | .fld a T =>
       simp [Ty.rename, Ty.tel, FCdot.Telescope.rename, FCdot.Proposition.rename,
-        FCdot.Ty.rename, FCdot.Rename.lift_here, FCdot.Ty.weaken_rename,
-        Ty.translate_rename T ρ]
+        FCdot.Shape.rename, FCdot.Rename.lift_here, FCdot.Shape.weaken_rename,
+        Ty.translateShape_rename T ρ]
   | .and S T =>
       simp [Ty.rename, Ty.tel, FCdot.Telescope.append_rename',
         Ty.tel_rename S ρ, Ty.tel_rename T ρ]
@@ -132,8 +134,8 @@ theorem Ty.tel_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
       by_cases hd : T.isDecl = true
       · simp [Ty.rename, Ty.tel, hd, Ty.isDecl_rename T ρ.lift, Ty.telSelf_rename T ρ]
       · simp [Ty.rename, Ty.tel, hd, Ty.isDecl_rename T ρ.lift, Ty.telSelf_rename T ρ,
-          FCdot.Telescope.rename, FCdot.Proposition.rename, FCdot.Ty.weaken_rename,
-          FCdot.Ty.rename]
+          FCdot.Telescope.rename, FCdot.Proposition.rename, FCdot.Shape.weaken_rename,
+          FCdot.Shape.rename]
 
 theorem Ty.telSelf_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
     (T.rename ρ.lift).telSelf = T.telSelf.rename ρ.lift := by
@@ -141,21 +143,21 @@ theorem Ty.telSelf_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
   | .top => simp [Ty.rename, Ty.telSelf, FCdot.Telescope.rename]
   | .bot =>
       simp [Ty.rename, Ty.telSelf, FCdot.Telescope.rename, FCdot.Proposition.rename,
-        FCdot.Ty.rename]
+        FCdot.Shape.rename]
   | .sel (.var y) A =>
       simp [Ty.rename, Path.rename, Ty.telSelf, FCdot.Telescope.rename,
-        FCdot.Proposition.rename, FCdot.Ty.rename]
+        FCdot.Proposition.rename, FCdot.Shape.rename]
   | .all S T =>
       simp [Ty.rename, Ty.telSelf, FCdot.Telescope.rename, FCdot.Proposition.rename,
-        FCdot.Ty.rename, Ty.translate_rename S ρ.lift, Ty.translate_rename T ρ.lift.lift]
+        FCdot.Shape.rename, Ty.translateShape_rename S ρ.lift, Ty.translateShape_rename T ρ.lift.lift]
   | .typ A S T =>
       simp [Ty.rename, Ty.telSelf, FCdot.Telescope.rename, FCdot.Proposition.rename,
-        FCdot.Ty.rename, FCdot.Rename.lift_here,
-        Ty.translate_rename S ρ.lift, Ty.translate_rename T ρ.lift]
+        FCdot.Shape.rename, FCdot.Rename.lift_here,
+        Ty.translateShape_rename S ρ.lift, Ty.translateShape_rename T ρ.lift]
   | .fld a T =>
       simp [Ty.rename, Ty.telSelf, FCdot.Telescope.rename, FCdot.Proposition.rename,
-        FCdot.Ty.rename, FCdot.Rename.lift_here,
-        Ty.translate_rename T ρ.lift]
+        FCdot.Shape.rename, FCdot.Rename.lift_here,
+        Ty.translateShape_rename T ρ.lift]
   | .and S T =>
       simp [Ty.rename, Ty.telSelf, FCdot.Telescope.append_rename',
         Ty.telSelf_rename S ρ, Ty.telSelf_rename T ρ]
@@ -169,12 +171,22 @@ theorem Ty.telSelf_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
       · have hd' : ¬ (T0.rename ρ.lift.lift).isDecl = true := by
           rw [Ty.isDecl_rename T0 ρ.lift.lift]; exact hd
         simp only [Ty.rename, Ty.telSelf, if_neg hd, if_neg hd']
-        simp [FCdot.Telescope.rename, FCdot.Proposition.rename, FCdot.Ty.rename,
+        simp [FCdot.Telescope.rename, FCdot.Proposition.rename, FCdot.Shape.rename,
           Ty.telSelf_rename T0 ρ.lift]
 
 end
 
+/-- `⟦T⟧` commutes with renaming.  The empty capture set is renaming-stable,
+so this is `Ty.translateShape_rename` one layer up. -/
+theorem Ty.translate_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
+    (T.rename ρ).translate = T.translate.rename ρ := by
+  simp [Ty.translate, Ty.translateShape_rename T ρ]
+
 /-! ## `translate` and instantiation of the innermost binder -/
+
+theorem Ty.translateShape_substVar {s : Sig} (T : Ty (s,x)) (r : BVar s .var) :
+    (T.substVar r).translateShape = T.translateShape.substVar r :=
+  Ty.translateShape_rename T (Rename.subst r)
 
 theorem Ty.translate_substVar {s : Sig} (T : Ty (s,x)) (r : BVar s .var) :
     (T.substVar r).translate = T.translate.substVar r :=
@@ -187,23 +199,23 @@ theorem Ty.tel_eq_telSelf_weaken {s : Sig} (T : Ty s) : T.tel = (T.weaken).telSe
   | .top => simp [Ty.weaken, Ty.rename, Ty.tel, Ty.telSelf]
   | .bot =>
       simp [Ty.weaken, Ty.rename, Ty.tel, Ty.telSelf,
-        FCdot.Ty.rename, FCdot.Ty.weaken]
+        FCdot.Shape.rename, FCdot.Shape.weaken]
   | .sel (.var y) A =>
       simp [Ty.weaken, Ty.rename, Path.rename, Ty.tel, Ty.telSelf,
-        FCdot.Ty.rename, FCdot.Ty.weaken]
+        FCdot.Shape.rename, FCdot.Shape.weaken]
   | .all S T =>
       simp [Ty.weaken, Ty.rename, Ty.tel, Ty.telSelf,
-        FCdot.Ty.rename, FCdot.Ty.weaken,
-        Ty.translate_rename S FCdot.Rename.succ,
-        Ty.translate_rename T (FCdot.Rename.succ (k := Kind.var)).lift]
+        FCdot.Shape.rename, FCdot.Shape.weaken,
+        Ty.translateShape_rename S FCdot.Rename.succ,
+        Ty.translateShape_rename T (FCdot.Rename.succ (k := Kind.var)).lift]
   | .typ A S T =>
       simp [Ty.weaken, Ty.rename, Ty.tel, Ty.telSelf,
-        FCdot.Ty.weaken,
-        Ty.translate_rename S FCdot.Rename.succ, Ty.translate_rename T FCdot.Rename.succ]
+        FCdot.Shape.weaken,
+        Ty.translateShape_rename S FCdot.Rename.succ, Ty.translateShape_rename T FCdot.Rename.succ]
   | .fld a T =>
       simp [Ty.weaken, Ty.rename, Ty.tel, Ty.telSelf,
-        FCdot.Ty.weaken,
-        Ty.translate_rename T FCdot.Rename.succ]
+        FCdot.Shape.weaken,
+        Ty.translateShape_rename T FCdot.Rename.succ]
   | .and S T =>
       simp [Ty.weaken, Ty.rename, Ty.tel, Ty.telSelf,
         Ty.tel_eq_telSelf_weaken S, Ty.tel_eq_telSelf_weaken T]
@@ -224,7 +236,7 @@ theorem Ty.tel_eq_telSelf_weaken {s : Sig} (T : Ty s) : T.tel = (T.weaken).telSe
           rw [Ty.isDecl_rename T0 _]; exact hd
         rw [hw]
         simp [Ty.tel, Ty.telSelf, hd, hd',
-          FCdot.Ty.rename, FCdot.Ty.weaken, Ty.telSelf_rename T0 FCdot.Rename.succ]
+          FCdot.Shape.rename, FCdot.Shape.weaken, Ty.telSelf_rename T0 FCdot.Rename.succ]
 
 end DotMNF
 
@@ -244,32 +256,32 @@ theorem Ty.tel_substVar {s : Sig} (T : Ty (s,x)) (r : BVar s .var) :
   | .bot =>
       simp [Ty.substVar, Ty.rename, Ty.tel, Ty.telSelf, FCdot.Telescope.rename,
         FCdot.Telescope.weaken, FCdot.Telescope.substVar, FCdot.Proposition.rename,
-        FCdot.Ty.rename, FCdot.Ty.weaken]
+        FCdot.Shape.rename, FCdot.Shape.weaken]
   | .sel (.var y) A =>
       simp [Ty.substVar, Ty.rename, Path.rename, Ty.tel, Ty.telSelf, FCdot.Telescope.rename,
         FCdot.Telescope.weaken, FCdot.Telescope.substVar, FCdot.Proposition.rename,
-        FCdot.Ty.rename, FCdot.Ty.weaken]
+        FCdot.Shape.rename, FCdot.Shape.weaken]
   | .all S T =>
       simp [Ty.substVar, Ty.rename, Ty.tel, Ty.telSelf, FCdot.Telescope.rename,
         FCdot.Telescope.weaken, FCdot.Telescope.substVar, FCdot.Proposition.rename,
-        FCdot.Ty.rename, FCdot.Ty.weaken, FCdot.Rename.comp_assoc, FCdot.Rename.succ_subst,
+        FCdot.Shape.rename, FCdot.Shape.weaken, FCdot.Rename.comp_assoc, FCdot.Rename.succ_subst,
         FCdot.Rename.comp_id, ← FCdot.Rename.lift_comp,
-        Ty.translate_rename S (Rename.subst r),
-        Ty.translate_rename T (Rename.subst r).lift]
+        Ty.translateShape_rename S (Rename.subst r),
+        Ty.translateShape_rename T (Rename.subst r).lift]
   | .typ A S T =>
       simp [Ty.substVar, Ty.rename, Ty.tel, Ty.telSelf, FCdot.Telescope.rename,
         FCdot.Telescope.weaken, FCdot.Telescope.substVar, FCdot.Proposition.rename,
-        FCdot.Ty.rename,
-        FCdot.Ty.weaken, FCdot.Rename.subst_here,
+        FCdot.Shape.rename,
+        FCdot.Shape.weaken, FCdot.Rename.subst_here,
         FCdot.Rename.comp_assoc, FCdot.Rename.succ_subst, FCdot.Rename.comp_id,
-        Ty.translate_rename S (Rename.subst r), Ty.translate_rename T (Rename.subst r)]
+        Ty.translateShape_rename S (Rename.subst r), Ty.translateShape_rename T (Rename.subst r)]
   | .fld a T =>
       simp [Ty.substVar, Ty.rename, Ty.tel, Ty.telSelf, FCdot.Telescope.rename,
         FCdot.Telescope.weaken, FCdot.Telescope.substVar, FCdot.Proposition.rename,
-        FCdot.Ty.rename,
-        FCdot.Ty.weaken, FCdot.Rename.subst_here,
+        FCdot.Shape.rename,
+        FCdot.Shape.weaken, FCdot.Rename.subst_here,
         FCdot.Rename.comp_assoc, FCdot.Rename.succ_subst, FCdot.Rename.comp_id,
-        Ty.translate_rename T (Rename.subst r)]
+        Ty.translateShape_rename T (Rename.subst r)]
   | .and S T =>
       have hS := Ty.tel_substVar S r
       have hT := Ty.tel_substVar T r
@@ -295,14 +307,14 @@ theorem Ty.tel_substVar {s : Sig} (T : Ty (s,x)) (r : BVar s .var) :
       · have hd' : ¬ (T0.rename (Rename.subst r).lift).isDecl = true := by
           rw [Ty.isDecl_rename T0 _]; exact hd
         have htel : ((Ty.mu T0 : Ty (s,x)).substVar r).tel
-            = .cons .nil (.bnd (FCdot.Ty.obj (Ty.telSelf (T0.rename (Rename.subst r).lift))).weaken) := by
+            = .cons .nil (.bnd (FCdot.Shape.obj (Ty.telSelf (T0.rename (Rename.subst r).lift))).weaken) := by
           simp [Ty.substVar, Ty.rename, Ty.tel, hd']
         have htelSelf : (Ty.mu T0 : Ty (s,x)).telSelf
-            = .cons .nil (.bnd (FCdot.Ty.obj (Ty.telSelf T0))) := by
+            = .cons .nil (.bnd (FCdot.Shape.obj (Ty.telSelf T0))) := by
           simp [Ty.telSelf, hd]
         rw [htel, htelSelf, h1]
         simp [FCdot.Telescope.substVar, FCdot.Telescope.weaken, FCdot.Telescope.rename,
-          FCdot.Proposition.rename, FCdot.Ty.rename, FCdot.Ty.weaken,
+          FCdot.Proposition.rename, FCdot.Shape.rename, FCdot.Shape.weaken,
           FCdot.Telescope.rename_comp, FCdot.Rename.comp_assoc, FCdot.Rename.succ_subst,
           FCdot.Rename.comp_id, ← FCdot.Rename.lift_comp]
 
@@ -322,9 +334,9 @@ theorem Ty.witnesses_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
   | .sel p A => simp [Ty.rename, Ty.witnesses, FCdot.Witnesses.rename]
   | .all S T => simp [Ty.rename, Ty.witnesses, FCdot.Witnesses.rename]
   | .typ A S T =>
-      simp [Ty.rename, Ty.witnesses, FCdot.Witnesses.rename, Ty.translate_rename S ρ.lift]
+      simp [Ty.rename, Ty.witnesses, FCdot.Witnesses.rename, Ty.translateShape_rename S ρ.lift]
   | .fld a T =>
-      simp [Ty.rename, Ty.witnesses, FCdot.Witnesses.rename, Ty.translate_rename T ρ.lift]
+      simp [Ty.rename, Ty.witnesses, FCdot.Witnesses.rename, Ty.translateShape_rename T ρ.lift]
   | .and S T =>
       simp [Ty.rename, Ty.witnesses, FCdot.Witnesses.append_rename,
         Ty.witnesses_rename S ρ, Ty.witnesses_rename T ρ]
@@ -345,7 +357,7 @@ theorem Ty.fieldLabels_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
 
 theorem Ty.literalTy_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
     (T.rename ρ.lift).literalTy = T.literalTy.rename ρ := by
-  simp only [Ty.literalTy, FCdot.Ty.rename, Ty.witnesses_rename T ρ,
+  simp only [Ty.literalTy, FCdot.Ty.pure_rename, FCdot.Shape.rename, Ty.witnesses_rename T ρ,
     Ty.fieldLabels_rename (T := T) (ρ := ρ.lift)]
   rw [FCdot.Telescope.ofLiteral_rename]
 
@@ -380,7 +392,12 @@ theorem Ty.Decl.isObj {s : Sig} {T : Ty s} (h : Ty.Decl T) : T.isObj = true := b
   | and => rfl
   | mu h' => exact (Ty.isDecl_iff _).mpr h'
 
-theorem Ty.translate_decl {s : Sig} {T : Ty s} (h : Ty.Decl T) : T.translate = .obj T.tel :=
+theorem Ty.translateShape_decl {s : Sig} {T : Ty s} (h : Ty.Decl T) :
+    T.translateShape = .obj T.tel :=
+  Ty.translateShape_isObj h.isObj
+
+theorem Ty.translate_decl {s : Sig} {T : Ty s} (h : Ty.Decl T) :
+    T.translate = FCdot.Ty.capt [] (.obj T.tel) :=
   Ty.translate_isObj h.isObj
 
 end DotMNF

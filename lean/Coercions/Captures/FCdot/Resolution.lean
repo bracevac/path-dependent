@@ -157,35 +157,36 @@ theorem exists_repeat {α : Type} [DecidableEq α] (f : Nat → α) (l : List α
 @[simp] theorem Ctx.next_sel (Γ : Ctx s) (x : BVar s .var) (ℓ : Label) :
     Γ.next (.sel x ℓ) = Γ.lookupDef x ℓ := rfl
 
-@[simp] theorem Ctx.next_top (Γ : Ctx s) : Γ.next (⊤ : Ty s) = none := rfl
+@[simp] theorem Ctx.next_top (Γ : Ctx s) : Γ.next (⊤ : Shape s) = none := rfl
 
-theorem Ctx.next_nonSel {Γ : Ctx s} {T : Ty s} (h : ∀ x ℓ, T ≠ .sel x ℓ) :
+theorem Ctx.next_nonSel {Γ : Ctx s} {T : Shape s} (h : ∀ x ℓ, T ≠ .sel x ℓ) :
     Γ.next T = none := by
   cases T with
   | sel x ℓ => exact absurd rfl (h x ℓ)
   | bot => rfl
   | pi => rfl
   | obj => rfl
+  | box => rfl
 
 /-! ## Basic resolution equations -/
 
 /-- A settled type resolves to itself, with any fuel. -/
-theorem Ctx.resolveFuel_settled (Γ : Ctx s) {T : Ty s} (h : Γ.next T = none) :
+theorem Ctx.resolveFuel_settled (Γ : Ctx s) {T : Shape s} (h : Γ.next T = none) :
     ∀ n : Nat, Γ.resolveFuel n T = T
   | 0 => by simp [Ctx.resolveFuel, h]
   | _ + 1 => by simp [Ctx.resolveFuel, h]
 
-theorem Ctx.resolveFuel_nonSel (Γ : Ctx s) (n : Nat) {T : Ty s}
+theorem Ctx.resolveFuel_nonSel (Γ : Ctx s) (n : Nat) {T : Shape s}
     (h : ∀ x ℓ, T ≠ .sel x ℓ) : Γ.resolveFuel n T = T :=
   Γ.resolveFuel_settled (Ctx.next_nonSel h) n
 
-theorem Ctx.resolve_nonSel (Γ : Ctx s) {T : Ty s} (h : ∀ x ℓ, T ≠ .sel x ℓ) :
+theorem Ctx.resolve_nonSel (Γ : Ctx s) {T : Shape s} (h : ∀ x ℓ, T ≠ .sel x ℓ) :
     Γ.resolve T = T := Γ.resolveFuel_nonSel _ h
 
-@[simp] theorem Ctx.resolve_top (Γ : Ctx s) : Γ.resolve (.top : Ty s) = .top :=
+@[simp] theorem Ctx.resolve_top (Γ : Ctx s) : Γ.resolve (.top : Shape s) = .top :=
   Γ.resolve_nonSel (by intro x ℓ h; cases h)
 
-@[simp] theorem Ctx.resolve_bot (Γ : Ctx s) : Γ.resolve (.bot : Ty s) = .bot :=
+@[simp] theorem Ctx.resolve_bot (Γ : Ctx s) : Γ.resolve (.bot : Shape s) = .bot :=
   Γ.resolve_nonSel (by intro x ℓ h; cases h)
 
 @[simp] theorem Ctx.resolve_pi (Γ : Ctx s) (S : Ty s) (T : Ty (s,x)) :
@@ -194,6 +195,10 @@ theorem Ctx.resolve_nonSel (Γ : Ctx s) {T : Ty s} (h : ∀ x ℓ, T ≠ .sel x 
 
 @[simp] theorem Ctx.resolve_obj (Γ : Ctx s) (Tel : Telescope (s,x)) :
     Γ.resolve (.obj Tel) = .obj Tel :=
+  Γ.resolve_nonSel (by intro x ℓ h; cases h)
+
+@[simp] theorem Ctx.resolve_box (Γ : Ctx s) (T : Ty s) :
+    Γ.resolve (.box T) = .box T :=
   Γ.resolve_nonSel (by intro x ℓ h; cases h)
 
 theorem Ctx.resolveFuel_sel_none (Γ : Ctx s) (n : Nat) {x : BVar s .var} {ℓ : Label}
@@ -205,7 +210,7 @@ theorem Ctx.resolve_sel_none (Γ : Ctx s) {x : BVar s .var} {ℓ : Label}
   Γ.resolveFuel_sel_none _ h
 
 theorem Ctx.resolveFuel_sel_some (Γ : Ctx s) (n : Nat) {x : BVar s .var} {ℓ : Label}
-    {W : Ty s} (h : Γ.lookupDef x ℓ = some W) :
+    {W : Shape s} (h : Γ.lookupDef x ℓ = some W) :
     Γ.resolveFuel (n + 1) (.sel x ℓ) = Γ.resolveFuel n W := by
   simp [Ctx.resolveFuel, h]
 
@@ -216,17 +221,17 @@ point where the type has settled. -/
 
 /-- `Γ.chain T i`: the type reached from `T` by `i` alias steps, if the chain
 has not settled before. -/
-def Ctx.chain (Γ : Ctx s) (T : Ty s) : Nat → Option (Ty s)
+def Ctx.chain (Γ : Ctx s) (T : Shape s) : Nat → Option (Shape s)
   | 0 => some T
   | i + 1 => (Γ.chain T i).bind Γ.next
 
-@[simp] theorem Ctx.chain_zero (Γ : Ctx s) (T : Ty s) : Γ.chain T 0 = some T := rfl
+@[simp] theorem Ctx.chain_zero (Γ : Ctx s) (T : Shape s) : Γ.chain T 0 = some T := rfl
 
-theorem Ctx.chain_succ (Γ : Ctx s) (T : Ty s) (i : Nat) :
+theorem Ctx.chain_succ (Γ : Ctx s) (T : Shape s) (i : Nat) :
     Γ.chain T (i + 1) = (Γ.chain T i).bind Γ.next := rfl
 
 /-- The chain may also be peeled at the front. -/
-theorem Ctx.chain_succ_head (Γ : Ctx s) (T : Ty s) :
+theorem Ctx.chain_succ_head (Γ : Ctx s) (T : Shape s) :
     ∀ i : Nat, Γ.chain T (i + 1) = (Γ.next T).bind (fun W => Γ.chain W i)
   | 0 => by cases h : Γ.next T <;> simp [Ctx.chain, h]
   | i + 1 => by
@@ -236,7 +241,7 @@ theorem Ctx.chain_succ_head (Γ : Ctx s) (T : Ty s) :
       | some W => simp [Ctx.chain_succ]
 
 theorem Ctx.chain_add (Γ : Ctx s) (k : Nat) :
-    ∀ (i : Nat) (T : Ty s), Γ.chain T (i + k) = (Γ.chain T i).bind (fun U => Γ.chain U k)
+    ∀ (i : Nat) (T : Shape s), Γ.chain T (i + k) = (Γ.chain T i).bind (fun U => Γ.chain U k)
   | 0, T => by simp [Ctx.chain]
   | i + 1, T => by
       rw [show i + 1 + k = (i + k) + 1 by omega, Ctx.chain_succ_head, Ctx.chain_succ_head,
@@ -245,7 +250,7 @@ theorem Ctx.chain_add (Γ : Ctx s) (k : Nat) :
       | none => rfl
       | some W => simp [Ctx.chain_add Γ k i W]
 
-theorem Ctx.chain_isSome_of_le (Γ : Ctx s) {T : Ty s} {m n : Nat} (hmn : m ≤ n)
+theorem Ctx.chain_isSome_of_le (Γ : Ctx s) {T : Shape s} {m n : Nat} (hmn : m ≤ n)
     (h : (Γ.chain T n).isSome) : (Γ.chain T m).isSome := by
   rw [show n = m + (n - m) by omega, Ctx.chain_add] at h
   cases hc : Γ.chain T m with
@@ -254,7 +259,7 @@ theorem Ctx.chain_isSome_of_le (Γ : Ctx s) {T : Ty s} {m n : Nat} (hmn : m ≤ 
 
 /-- If the chain settles within the available fuel, the settled type is the result. -/
 theorem Ctx.resolveFuel_of_chain (Γ : Ctx s) :
-    ∀ (i : Nat) {n : Nat} {T U : Ty s}, i ≤ n → Γ.chain T i = some U → Γ.next U = none →
+    ∀ (i : Nat) {n : Nat} {T U : Shape s}, i ≤ n → Γ.chain T i = some U → Γ.next U = none →
       Γ.resolveFuel n T = U
   | 0, n, T, U, _, hc, hu => by
       have hTU : T = U := by simpa using hc
@@ -277,7 +282,7 @@ theorem Ctx.resolveFuel_of_chain (Γ : Ctx s) :
 /-- If every step within the available fuel is defined, the fuel runs out on a
 cycle and the result is `⊤`. -/
 theorem Ctx.resolveFuel_eq_top (Γ : Ctx s) :
-    ∀ (n : Nat) {T : Ty s}, (Γ.chain T (n + 1)).isSome → Γ.resolveFuel n T = ⊤
+    ∀ (n : Nat) {T : Shape s}, (Γ.chain T (n + 1)).isSome → Γ.resolveFuel n T = ⊤
   | 0, T, h => by
       rw [Ctx.chain_succ_head] at h
       cases hn : Γ.next T with
@@ -294,7 +299,7 @@ theorem Ctx.resolveFuel_eq_top (Γ : Ctx s) :
           exact Ctx.resolveFuel_eq_top Γ n h'
 
 /-- A chain that is `none` at some point has settled at an earlier index. -/
-theorem Ctx.chain_settles (Γ : Ctx s) {T : Ty s} :
+theorem Ctx.chain_settles (Γ : Ctx s) {T : Shape s} :
     ∀ {n : Nat}, Γ.chain T (n + 1) = none →
       ∃ i U, i ≤ n ∧ Γ.chain T i = some U ∧ Γ.next U = none
   | 0, h => ⟨0, T, Nat.le_refl 0, rfl, by simpa [Ctx.chain] using h⟩
@@ -316,6 +321,9 @@ theorem Ctx.defPairs_cons_transparent (Γ : Ctx s) (T : Ty s) (W : Witnesses (s,
       Γ.defPairs.map (fun p => (BVar.there p.1, p.2)) ++
         W.labels.map (fun ℓ => (BVar.here, ℓ)) := rfl
 
+theorem Ctx.defPairs_consC (Γ : Ctx s) (b : CapBound s) :
+    (Ctx.consC Γ b).defPairs = Γ.defPairs.map (fun p => (BVar.there p.1, p.2)) := rfl
+
 theorem Ctx.defPairs_cons_opaque (Γ : Ctx s) (T : Ty s) :
     (Ctx.cons Γ (.opaque T)).defPairs =
       Γ.defPairs.map (fun p => (BVar.there p.1, p.2)) := by
@@ -324,7 +332,7 @@ theorem Ctx.defPairs_cons_opaque (Γ : Ctx s) (T : Ty s) :
 /-- A name with a definition is one of the context's defined names, unless its
 definition is the vacuous witness `⊤`. -/
 theorem Ctx.lookupDef_defPairs : ∀ {s : Sig} (Γ : Ctx s) (x : BVar s .var) (ℓ : Label)
-    (W : Ty s), Γ.lookupDef x ℓ = some W → (x, ℓ) ∈ Γ.defPairs ∨ W = ⊤
+    (W : Shape s), Γ.lookupDef x ℓ = some W → (x, ℓ) ∈ Γ.defPairs ∨ W = ⊤
   | _, .cons Γ (.transparent T W₀ Fs), .here, ℓ, W, h => by
       rw [Ctx.lookupDef_here_transparent] at h
       have hW : W = W₀.get ℓ := (Option.some.inj h).symm
@@ -339,6 +347,19 @@ theorem Ctx.lookupDef_defPairs : ∀ {s : Sig} (Γ : Ctx s) (x : BVar s .var) (�
           exact Or.inr (by rw [hW]; exact Witnesses.get_of_not_mem_labels W₀ hm)
   | _, .cons Γ (.opaque T), .here, ℓ, W, h => by
       rw [Ctx.lookupDef_here_opaque] at h; simp at h
+  | _, .consC Γ _, .there y, ℓ, W, h => by
+      rw [Ctx.lookupDef_thereC] at h
+      cases hd : Γ.lookupDef y ℓ with
+      | none => rw [hd] at h; simp at h
+      | some W₀ =>
+          rw [hd] at h
+          simp only [Option.map_some] at h
+          have hW : W = W₀↑ := (Option.some.inj h).symm
+          rcases Ctx.lookupDef_defPairs Γ y ℓ W₀ hd with hmem | htop
+          · refine Or.inl ?_
+            rw [Ctx.defPairs_consC]
+            exact List.mem_map_of_mem (f := fun p => (BVar.there p.1, p.2)) hmem
+          · exact Or.inr (by rw [hW, htop]; rfl)
   | _, .cons Γ b, .there y, ℓ, W, h => by
       rw [Ctx.lookupDef_there] at h
       cases hd : Γ.lookupDef y ℓ with
@@ -367,7 +388,7 @@ that point on, so it never settles and more fuel changes nothing. -/
 
 /-- The names on an unsettled chain, save one whose definition is `⊤`, are
 defined names of the context. -/
-theorem Ctx.chain_mem_defPairs (Γ : Ctx s) {T : Ty s} {n : Nat}
+theorem Ctx.chain_mem_defPairs (Γ : Ctx s) {T : Shape s} {n : Nat}
     (hsome : (Γ.chain T (n + 1)).isSome) (hne : Γ.chain T (n + 1) ≠ some ⊤) :
     ∀ i, i < n + 1 →
       Γ.chain T i ∈ Γ.defPairs.map (fun p => some ((p.1 : BVar s .var) ∙ p.2)) := by
@@ -397,6 +418,7 @@ theorem Ctx.chain_mem_defPairs (Γ : Ctx s) {T : Ty s} {n : Nat}
           | bot => simp [Ctx.next] at hnv
           | pi => simp [Ctx.next] at hnv
           | obj => simp [Ctx.next] at hnv
+          | box => simp [Ctx.next] at hnv
           | sel y ℓ =>
               have hlk : Γ.lookupDef y ℓ = some W := by simpa using hnv
               rcases Ctx.lookupDef_defPairs Γ y ℓ W hlk with hmem | htop
@@ -405,7 +427,7 @@ theorem Ctx.chain_mem_defPairs (Γ : Ctx s) {T : Ty s} {n : Nat}
               · exact absurd htop hWne
 
 /-- A repeated name makes the chain periodic from the first occurrence on. -/
-theorem Ctx.chain_periodic (Γ : Ctx s) {T : Ty s} {i j : Nat} (hij : i ≤ j)
+theorem Ctx.chain_periodic (Γ : Ctx s) {T : Shape s} {i j : Nat} (hij : i ≤ j)
     (h : Γ.chain T i = Γ.chain T j) :
     ∀ m, i ≤ m → Γ.chain T (m + (j - i)) = Γ.chain T m := by
   intro m him
@@ -414,7 +436,7 @@ theorem Ctx.chain_periodic (Γ : Ctx s) {T : Ty s} {i j : Nat} (hij : i ≤ j)
 
 /-- Once the fuel is at least the number of defined names, one more unit changes
 nothing. -/
-theorem Ctx.resolveFuel_succ_eq {Γ : Ctx s} {n : Nat} (hn : Γ.defPairs.length ≤ n) (T : Ty s) :
+theorem Ctx.resolveFuel_succ_eq {Γ : Ctx s} {n : Nat} (hn : Γ.defPairs.length ≤ n) (T : Shape s) :
     Γ.resolveFuel n T = Γ.resolveFuel (n + 1) T := by
   cases hcs : Γ.chain T (n + 1) with
   | none =>
@@ -450,7 +472,7 @@ theorem Ctx.resolveFuel_succ_eq {Γ : Ctx s} {n : Nat} (hn : Γ.defPairs.length 
           rw [Γ.resolveFuel_eq_top (n + 1) (by rw [hkey]; exact h2)]
 
 theorem Ctx.resolveFuel_eq_of_le {Γ : Ctx s} {n : Nat} (hn : Γ.defPairs.length ≤ n) :
-    ∀ {m : Nat}, n ≤ m → ∀ (T : Ty s), Γ.resolveFuel n T = Γ.resolveFuel m T := by
+    ∀ {m : Nat}, n ≤ m → ∀ (T : Shape s), Γ.resolveFuel n T = Γ.resolveFuel m T := by
   intro m
   induction m with
   | zero => intro hnm T; rw [show n = 0 by omega]
@@ -462,7 +484,7 @@ theorem Ctx.resolveFuel_eq_of_le {Γ : Ctx s} {n : Nat} (hn : Γ.defPairs.length
         exact Ctx.resolveFuel_succ_eq (by omega) T
 
 /-- Any fuel beyond the number of defined names computes `Ctx.resolve`. -/
-theorem Ctx.resolveFuel_stable {Γ : Ctx s} {n : Nat} (hn : Γ.defPairs.length ≤ n) (T : Ty s) :
+theorem Ctx.resolveFuel_stable {Γ : Ctx s} {n : Nat} (hn : Γ.defPairs.length ≤ n) (T : Shape s) :
     Γ.resolveFuel n T = Γ.resolve T := by
   rw [Ctx.resolve,
     Ctx.resolveFuel_eq_of_le hn (m := n + Γ.defPairs.length + 1) (by omega) T,
@@ -473,13 +495,13 @@ theorem Ctx.resolveFuel_stable {Γ : Ctx s} {n : Nat} (hn : Γ.defPairs.length �
 
 /-- Resolution commutes with one unfolding step; no side condition on the
 context is needed, a cyclic chain of aliases resolving to `⊤` on both sides. -/
-theorem Ctx.resolve_sel_some {Γ : Ctx s} {x : BVar s .var} {ℓ : Label} {W : Ty s}
+theorem Ctx.resolve_sel_some {Γ : Ctx s} {x : BVar s .var} {ℓ : Label} {W : Shape s}
     (h : Γ.lookupDef x ℓ = some W) : Γ.resolve (.sel x ℓ) = Γ.resolve W := by
   rw [Ctx.resolve, Γ.resolveFuel_sel_some Γ.defPairs.length h]
   exact Ctx.resolveFuel_stable (Nat.le_refl _) W
 
 /-- The result of resolution is settled: a shape, or a name without a definition. -/
-theorem Ctx.resolve_settled (Γ : Ctx s) (T : Ty s) : Γ.next (Γ.resolve T) = none := by
+theorem Ctx.resolve_settled (Γ : Ctx s) (T : Shape s) : Γ.next (Γ.resolve T) = none := by
   rw [Ctx.resolve]
   cases hcs : Γ.chain T (Γ.defPairs.length + 1 + 1) with
   | none =>
@@ -491,9 +513,274 @@ theorem Ctx.resolve_settled (Γ : Ctx s) (T : Ty s) : Γ.next (Γ.resolve T) = n
       rfl
 
 /-- Resolution is idempotent. -/
-theorem Ctx.resolve_resolve {Γ : Ctx s} (T : Ty s) :
+theorem Ctx.resolve_resolve {Γ : Ctx s} (T : Shape s) :
     Γ.resolve (Γ.resolve T) = Γ.resolve T :=
   Γ.resolveFuel_settled (Γ.resolve_settled T) _
+
+/-! ## Capture resolution: `caps`, `roots`, and subcapturing
+
+`caps_Γ` resolves a capture set to the atoms it stands for.  A term binder
+stands for the capture set of its type, a capture binder for itself when its
+bound is a root or `∗` and for the resolution of its bound otherwise, and a
+capture name for the empty set: in this stage nothing stands behind a name,
+the capture witnesses that fill the clause arriving with the capture sort in
+telescopes.  The recursion descends on the binder of an atom, so it is well
+founded on the spine of the context, and the fuel on labels is reserved for
+the name clause.
+
+`roots_Γ` is `caps_Γ` here; the compiler's line redefines it as
+`expand ∘ caps`.  `CapLe Γ C D` is the inclusion of roots; it is reflexive,
+transitive, implied by `Subset`, closed under union on the left, invariant
+under replacing a set by one with the same roots, and monotone under store
+extension. -/
+
+/-- The capture set of a type. -/
+def Ty.captureSet : Ty s → CaptureSet s
+  | .capt C _ => C
+
+@[simp] theorem Ty.captureSet_capt (C : CaptureSet s) (S : Shape s) :
+    (Ty.capt C S).captureSet = C := rfl
+
+@[simp] theorem Ty.captureSet_weaken (T : Ty s) :
+    (T.weaken (k := k)).captureSet = T.captureSet.weaken := by
+  cases T; rfl
+
+@[simp] theorem Ctx.lookupCap_here (Γ : Ctx s) (b : CapBound s) :
+    (Ctx.consC Γ b).lookupCap .here = b↑ := rfl
+
+@[simp] theorem Ctx.lookupCap_there (Γ : Ctx s) (b : Binding s) (κ : BVar s .cap) :
+    (Ctx.cons Γ b).lookupCap (.there κ) = (Γ.lookupCap κ)↑ := rfl
+
+@[simp] theorem Ctx.lookupCap_thereC (Γ : Ctx s) (b : CapBound s) (κ : BVar s .cap) :
+    (Ctx.consC Γ b).lookupCap (.there κ) = (Γ.lookupCap κ)↑ := rfl
+
+mutual
+
+/-- `caps_Γ C`: the atoms the capture set `C` resolves to, atom by atom. -/
+def Ctx.caps : (Γ : Ctx s) → CaptureSet s → CaptureSet s
+  | _, [] => []
+  | Γ, a :: C => Γ.capsAtom a ++ Γ.caps C
+termination_by Γ C => (sizeOf Γ, C.length + 1)
+
+/-- `caps_Γ` on one atom, by descent on the atom's binder: a term binder
+resolves to the capture set of its type, a capture binder to itself or to its
+bound, and a capture name to the empty set. -/
+def Ctx.capsAtom : (Γ : Ctx s) → CapAtom s → CaptureSet s
+  | .cons Γ b, .var .here => (Γ.caps b.ty.captureSet).weaken
+  | .cons Γ _, .var (.there y) => (Γ.capsAtom (.var y)).weaken
+  | .consC Γ _, .var (.there y) => (Γ.capsAtom (.var y)).weaken
+  | .consC _ .root, .cvar .here => [.cvar .here]
+  | .consC _ .star, .cvar .here => [.cvar .here]
+  | .consC Γ (.upper C), .cvar .here => (Γ.caps C).weaken
+  | .consC Γ (.inst C), .cvar .here => (Γ.caps C).weaken
+  | .cons Γ _, .cvar (.there κ) => (Γ.capsAtom (.cvar κ)).weaken
+  | .consC Γ _, .cvar (.there κ) => (Γ.capsAtom (.cvar κ)).weaken
+  | _, .name _ _ => []
+termination_by Γ _ => (sizeOf Γ, 0)
+
+end
+
+@[simp] theorem Ctx.caps_nil (Γ : Ctx s) : Γ.caps [] = [] := by
+  simp [Ctx.caps]
+
+@[simp] theorem Ctx.caps_cons (Γ : Ctx s) (a : CapAtom s) (C : CaptureSet s) :
+    Γ.caps (a :: C) = Γ.capsAtom a ++ Γ.caps C := by
+  simp [Ctx.caps]
+
+/-- The name clause of this stage: a capture name resolves to the empty set. -/
+@[simp] theorem Ctx.capsAtom_name (Γ : Ctx s) (x : BVar s .var) (ℓ : Label) :
+    Γ.capsAtom (.name x ℓ) = [] := by
+  cases Γ <;> simp [Ctx.capsAtom]
+
+/-- `caps` of a union is the union of the `caps`. -/
+theorem Ctx.caps_append (Γ : Ctx s) :
+    ∀ C D : CaptureSet s, Γ.caps (C ++ D) = Γ.caps C ++ Γ.caps D
+  | [], _ => by simp
+  | a :: C, D => by
+      simp only [List.cons_append, Ctx.caps_cons, Ctx.caps_append Γ C D, List.append_assoc]
+
+/-- The `caps` of an atom of a set are `caps` of the set. -/
+theorem Ctx.capsAtom_mem (Γ : Ctx s) (a : CapAtom s) :
+    ∀ D : CaptureSet s, a ∈ D → (Γ.capsAtom a).Subset (Γ.caps D)
+  | [], h => by simp at h
+  | b :: D, h => by
+      intro c hc
+      rw [Ctx.caps_cons]
+      rcases List.mem_cons.mp h with rfl | h
+      · exact List.mem_append_left _ hc
+      · exact List.mem_append_right _ (Ctx.capsAtom_mem Γ a D h c hc)
+
+/-- `caps` is monotone in the syntactic inclusion of sets. -/
+theorem Ctx.caps_subset {Γ : Ctx s} :
+    ∀ {C D : CaptureSet s}, C.Subset D → (Γ.caps C).Subset (Γ.caps D)
+  | [], _, _ => by intro c hc; simp at hc
+  | a :: C, D, h => by
+      intro c hc
+      rw [Ctx.caps_cons] at hc
+      rcases List.mem_append.mp hc with hc | hc
+      · exact Ctx.capsAtom_mem Γ a D (h a (List.mem_cons_self ..)) c hc
+      · exact Ctx.caps_subset (fun b hb => h b (List.mem_cons_of_mem a hb)) c hc
+
+/-! ### Monotonicity under store extension -/
+
+theorem Ctx.capsAtom_weaken (Γ : Ctx s) (b : Binding s) (a : CapAtom s) :
+    (Ctx.cons Γ b).capsAtom a.weaken = (Γ.capsAtom a).weaken := by
+  cases a <;> simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+    CaptureSet.rename, Ctx.capsAtom]
+
+theorem Ctx.capsAtom_weakenC (Γ : Ctx s) (b : CapBound s) (a : CapAtom s) :
+    (Ctx.consC Γ b).capsAtom a.weaken = (Γ.capsAtom a).weaken := by
+  cases a <;> simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+    CaptureSet.rename, Ctx.capsAtom]
+
+theorem Ctx.caps_weaken (Γ : Ctx s) (b : Binding s) :
+    ∀ C : CaptureSet s, (Ctx.cons Γ b).caps C.weaken = (Γ.caps C).weaken
+  | [] => by simp [CaptureSet.weaken, CaptureSet.rename]
+  | a :: C => by
+      show (Ctx.cons Γ b).caps (CapAtom.weaken a :: CaptureSet.weaken C)
+        = CaptureSet.weaken (Γ.caps (a :: C))
+      rw [Ctx.caps_cons, Ctx.capsAtom_weaken, Ctx.caps_weaken Γ b C, Ctx.caps_cons]
+      simp [CaptureSet.weaken, CaptureSet.rename]
+
+theorem Ctx.caps_weakenC (Γ : Ctx s) (b : CapBound s) :
+    ∀ C : CaptureSet s, (Ctx.consC Γ b).caps C.weaken = (Γ.caps C).weaken
+  | [] => by simp [CaptureSet.weaken, CaptureSet.rename]
+  | a :: C => by
+      show (Ctx.consC Γ b).caps (CapAtom.weaken a :: CaptureSet.weaken C)
+        = CaptureSet.weaken (Γ.caps (a :: C))
+      rw [Ctx.caps_cons, Ctx.capsAtom_weakenC, Ctx.caps_weakenC Γ b C, Ctx.caps_cons]
+      simp [CaptureSet.weaken, CaptureSet.rename]
+
+/-! ### The clauses of `caps` at a binder -/
+
+/-- The term-binder clause: `caps_Γ {x}` is `caps_Γ` of the capture set of
+`Γ.lookupTy x`, which mentions only binders older than `x`. -/
+theorem Ctx.capsAtom_var : ∀ {s : Sig} (Γ : Ctx s) (x : BVar s .var),
+    Γ.capsAtom (.var x) = Γ.caps (Γ.lookupTy x).captureSet
+  | _, .cons Γ b, .here => by
+      rw [Ctx.lookupTy_here, Ty.captureSet_weaken, Ctx.caps_weaken]
+      simp [Ctx.capsAtom]
+  | _, .cons Γ b, .there y => by
+      rw [Ctx.lookupTy_there, Ty.captureSet_weaken, Ctx.caps_weaken,
+        ← Ctx.capsAtom_var Γ y]
+      simp [Ctx.capsAtom]
+  | _, .consC Γ b, .there y => by
+      rw [Ctx.lookupTy_thereC, Ty.captureSet_weaken, Ctx.caps_weakenC,
+        ← Ctx.capsAtom_var Γ y]
+      simp [Ctx.capsAtom]
+
+/-- The resolution of a capture bound at its binder: a root or `∗` is a leaf,
+an upper bound or an instantiation resolves to its set. -/
+def Ctx.capsBound (Γ : Ctx s) (κ : BVar s .cap) : CapBound s → CaptureSet s
+  | .root => [.cvar κ]
+  | .star => [.cvar κ]
+  | .upper C => Γ.caps C
+  | .inst C => Γ.caps C
+
+theorem Ctx.capsBound_weaken (Γ : Ctx s) (b : Binding s) (κ : BVar s .cap)
+    (β : CapBound s) :
+    (Ctx.cons Γ b).capsBound (.there κ) β.weaken = (Γ.capsBound κ β).weaken := by
+  cases β with
+  | root => rfl
+  | star => rfl
+  | upper C => exact Ctx.caps_weaken Γ b C
+  | inst C => exact Ctx.caps_weaken Γ b C
+
+theorem Ctx.capsBound_weakenC (Γ : Ctx s) (b : CapBound s) (κ : BVar s .cap)
+    (β : CapBound s) :
+    (Ctx.consC Γ b).capsBound (.there κ) β.weaken = (Γ.capsBound κ β).weaken := by
+  cases β with
+  | root => rfl
+  | star => rfl
+  | upper C => exact Ctx.caps_weakenC Γ b C
+  | inst C => exact Ctx.caps_weakenC Γ b C
+
+/-- The capture-binder clause: `caps_Γ {κ}` is `{κ}` when the bound of `κ` is
+a root or `∗`, and `caps_Γ` of the bound otherwise. -/
+theorem Ctx.capsAtom_cvar : ∀ {s : Sig} (Γ : Ctx s) (κ : BVar s .cap),
+    Γ.capsAtom (.cvar κ) = Γ.capsBound κ (Γ.lookupCap κ)
+  | _, .consC Γ β, .here => by
+      rw [Ctx.lookupCap_here]
+      cases β with
+      | root => simp [Ctx.capsAtom, Ctx.capsBound, CapBound.weaken, CapBound.rename]
+      | star => simp [Ctx.capsAtom, Ctx.capsBound, CapBound.weaken, CapBound.rename]
+      | upper C => rw [Ctx.capsAtom]; exact (Ctx.caps_weakenC Γ _ C).symm
+      | inst C => rw [Ctx.capsAtom]; exact (Ctx.caps_weakenC Γ _ C).symm
+  | _, .cons Γ b, .there κ => by
+      rw [Ctx.lookupCap_there, Ctx.capsBound_weaken Γ b κ (Γ.lookupCap κ),
+        ← Ctx.capsAtom_cvar Γ κ]
+      simp [Ctx.capsAtom]
+  | _, .consC Γ b, .there κ => by
+      rw [Ctx.lookupCap_thereC, Ctx.capsBound_weakenC Γ b κ (Γ.lookupCap κ),
+        ← Ctx.capsAtom_cvar Γ κ]
+      simp [Ctx.capsAtom]
+
+/-! ### Roots and subcapturing -/
+
+/-- The roots of a capture set.  In this stage every capture name resolves to
+the empty set, so `roots` is `caps`; the compiler's line redefines it as
+`expand ∘ caps`. -/
+def Ctx.roots (Γ : Ctx s) (C : CaptureSet s) : CaptureSet s := Γ.caps C
+
+@[simp] theorem Ctx.roots_eq_caps (Γ : Ctx s) (C : CaptureSet s) :
+    Γ.roots C = Γ.caps C := rfl
+
+/-- Subcapturing as a proposition: the roots of `C` are among the roots of
+`D`. -/
+abbrev CapLe (Γ : Ctx s) (C D : CaptureSet s) : Prop :=
+  (Γ.roots C).Subset (Γ.roots D)
+
+theorem CapLe.refl (Γ : Ctx s) (C : CaptureSet s) : CapLe Γ C C := fun _ h => h
+
+theorem CapLe.trans {Γ : Ctx s} {C D E : CaptureSet s}
+    (h₁ : CapLe Γ C D) (h₂ : CapLe Γ D E) : CapLe Γ C E := fun a h => h₂ a (h₁ a h)
+
+theorem CapLe.of_subset {Γ : Ctx s} {C D : CaptureSet s} (h : C.Subset D) :
+    CapLe Γ C D := Ctx.caps_subset h
+
+theorem CapLe.union {Γ : Ctx s} {C D E : CaptureSet s}
+    (h₁ : CapLe Γ C E) (h₂ : CapLe Γ D E) : CapLe Γ (C ∪ D) E := by
+  intro a ha
+  rw [Ctx.roots_eq_caps, CaptureSet.union_def, Ctx.caps_append] at ha
+  rcases List.mem_append.mp ha with h | h
+  · exact h₁ a h
+  · exact h₂ a h
+
+/-- Replacing either side by a set with the same roots changes nothing. -/
+theorem CapLe.congr_roots {Γ : Ctx s} {C C' D D' : CaptureSet s}
+    (hC : Γ.roots C = Γ.roots C') (hD : Γ.roots D = Γ.roots D')
+    (h : CapLe Γ C D) : CapLe Γ C' D' := by
+  show (Γ.roots C').Subset (Γ.roots D')
+  rw [← hC, ← hD]; exact h
+
+theorem CapLe.weaken {Γ : Ctx s} {C D : CaptureSet s} (b : Binding s)
+    (h : CapLe Γ C D) : CapLe (Ctx.cons Γ b) C.weaken D.weaken := by
+  intro a ha
+  rw [Ctx.roots_eq_caps, Ctx.caps_weaken] at ha ⊢
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha ⊢
+  obtain ⟨c, hc, rfl⟩ := ha
+  exact ⟨c, h c hc, rfl⟩
+
+theorem CapLe.weakenC {Γ : Ctx s} {C D : CaptureSet s} (b : CapBound s)
+    (h : CapLe Γ C D) : CapLe (Ctx.consC Γ b) C.weaken D.weaken := by
+  intro a ha
+  rw [Ctx.roots_eq_caps, Ctx.caps_weakenC] at ha ⊢
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha ⊢
+  obtain ⟨c, hc, rfl⟩ := ha
+  exact ⟨c, h c hc, rfl⟩
+
+/-! ### Item 6 of the canonical-forms theorem -/
+
+/-- Closed capture evidence includes roots: `Γ ⊢ᶜ f : C ⊑ D` gives
+`roots_Γ(C) ⊆ roots_Γ(D)`.  This stage's four constructors are discharged by
+four of the five properties above. -/
+theorem cap_canon {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s}
+    (h : Γ ⊢ᶜ f : C ⊑ D) : CapLe Γ C D := by
+  induction h with
+  | refl => exact CapLe.refl _ _
+  | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
+  | elem hsub => exact CapLe.of_subset hsub
+  | union _ _ ih₁ ih₂ => exact CapLe.union ih₁ ih₂
 
 end FCdot
 

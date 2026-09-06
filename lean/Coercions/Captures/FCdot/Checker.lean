@@ -9,17 +9,21 @@ The checker validates fully annotated evidence.  It never searches: every
 directed step, and every field-presence proof, is already present in the
 input.
 
-Since `LeCo.obj` carries its source telescope, `LeCo.pair` and `Atom.both`
-their target telescopes, and `Atom.foldSelf` its target telescope, *every*
-judgement of the evidence layer synthesises its outputs.  A template
-`le pre h post` of a morphism is checked from its hole outwards: the hole is
-read in the source telescope (`Hole.read?`), then each side is checked against
-the endpoint next to the hole and synthesises the outer endpoint.  The kernel
-is therefore a family of synthesising cores; the checking modes are synthesis
-followed by a decidable comparison.
+Since `ShapeCo.obj` carries its source telescope, `ShapeCo.pair` and
+`Atom.both` their target telescopes, and `Atom.foldSelf` its target
+telescope, *every* judgement of the evidence layer synthesises its outputs.
+A template `le pre h post` of a morphism is checked from its hole outwards:
+the hole is read in the source telescope (`Hole.read?`), then each side is
+checked against the endpoint next to the hole and synthesises the outer
+endpoint.  The kernel is therefore a family of synthesising cores; the
+checking modes are synthesis followed by a decidable comparison.
+
+The capture family is synthesising too: `synthCap` returns the two capture
+sets and decides the one syntactic inclusion, `CapCo.elem`.
 
 The kernels return the typing derivation itself, so soundness holds by
-construction.  Completeness lives in `Coercions.FCdot.CheckerCompleteness`.
+construction.  Completeness lives in
+`Coercions.Captures.FCdot.CheckerCompleteness`.
 -/
 
 namespace FCdot
@@ -124,10 +128,11 @@ def witness? {α : Type} : (o : Option α) → Option { a : α // o = some a }
 theorem witness?_eq_some {α : Type} {o : Option α} {a : α} (h : o = some a) :
     witness? o = some ⟨a, h⟩ := by subst h; rfl
 
-/-! ## Strengthening of types
+/-! ## Strengthening of shapes and types
 
-`Ty.strengthen?` inverts `Ty.weaken`.  It is implemented as the action of a
-partial renaming, which is what makes the traversal under binders work. -/
+`Shape.strengthen?` and `Ty.strengthen?` invert `weaken`.  Both are the
+action of a partial renaming, which is what makes the traversal under
+binders work. -/
 
 /-- A renaming that may fail on some variables. -/
 structure PartialRename (s1 s2 : Sig) where
@@ -204,9 +209,93 @@ theorem unshift_inverts {s : Sig} {k : Kind} :
 
 end PartialRename
 
+/-! ### Partial renaming of capture sets -/
+
+def CapAtom.rename? : CapAtom s1 → PartialRename s1 s2 → Option (CapAtom s2)
+  | .var x, ρ => (ρ.var x).map .var
+  | .cvar κ, ρ => (ρ.var κ).map .cvar
+  | .name x ℓ, ρ => (ρ.var x).map (fun y => .name y ℓ)
+
+def CaptureSet.rename? : CaptureSet s1 → PartialRename s1 s2 → Option (CaptureSet s2)
+  | [], _ => some []
+  | a :: C, ρ =>
+      match a.rename? ρ, CaptureSet.rename? C ρ with
+      | some a', some C' => some (a' :: C')
+      | _, _ => none
+
+theorem CapAtom.rename?_complete :
+    ∀ {s1 s2 : Sig} (a : CapAtom s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+      ρ.Inverts σ → (a.rename σ).rename? ρ = some a
+  | _, _, .var x, ρ, σ, h => by
+      simp only [CapAtom.rename, CapAtom.rename?]
+      rw [(h (σ.var x) x).mpr rfl]; rfl
+  | _, _, .cvar κ, ρ, σ, h => by
+      simp only [CapAtom.rename, CapAtom.rename?]
+      rw [(h (σ.var κ) κ).mpr rfl]; rfl
+  | _, _, .name x ℓ, ρ, σ, h => by
+      simp only [CapAtom.rename, CapAtom.rename?]
+      rw [(h (σ.var x) x).mpr rfl]; rfl
+
+theorem CaptureSet.rename?_complete :
+    ∀ {s1 s2 : Sig} (C : CaptureSet s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+      ρ.Inverts σ → CaptureSet.rename? (CaptureSet.rename C σ) ρ = some C
+  | _, _, [], _, _, _ => rfl
+  | _, _, a :: C, ρ, σ, h => by
+      show CaptureSet.rename? ((a.rename σ) :: (CaptureSet.rename C σ)) ρ = _
+      simp only [CaptureSet.rename?, CapAtom.rename?_complete a ρ σ h,
+        CaptureSet.rename?_complete C ρ σ h]
+
+theorem CapAtom.rename?_sound :
+    ∀ {s1 s2 : Sig} (a : CapAtom s1) (b : CapAtom s2) (ρ : PartialRename s1 s2)
+      (σ : Rename s2 s1), ρ.Inverts σ → a.rename? ρ = some b → a = b.rename σ
+  | _, _, .var x, b, ρ, σ, h, hb => by
+      simp only [CapAtom.rename?, Option.map_eq_some_iff] at hb
+      obtain ⟨y, hy, hb⟩ := hb
+      subst hb
+      simp only [CapAtom.rename]
+      rw [(h x y).mp hy]
+  | _, _, .cvar x, b, ρ, σ, h, hb => by
+      simp only [CapAtom.rename?, Option.map_eq_some_iff] at hb
+      obtain ⟨y, hy, hb⟩ := hb
+      subst hb
+      simp only [CapAtom.rename]
+      rw [(h x y).mp hy]
+  | _, _, .name x ℓ, b, ρ, σ, h, hb => by
+      simp only [CapAtom.rename?, Option.map_eq_some_iff] at hb
+      obtain ⟨y, hy, hb⟩ := hb
+      subst hb
+      simp only [CapAtom.rename]
+      rw [(h x y).mp hy]
+
+theorem CaptureSet.rename?_sound :
+    ∀ {s1 s2 : Sig} (C : CaptureSet s1) (D : CaptureSet s2) (ρ : PartialRename s1 s2)
+      (σ : Rename s2 s1), ρ.Inverts σ → CaptureSet.rename? C ρ = some D →
+        C = CaptureSet.rename D σ
+  | _, _, [], D, _, _, _, hD => by
+      simp only [CaptureSet.rename?, Option.some.injEq] at hD
+      subst hD; rfl
+  | _, _, a :: C, D, ρ, σ, h, hD => by
+      simp only [CaptureSet.rename?] at hD
+      cases ha : a.rename? ρ with
+      | none => rw [ha] at hD; simp at hD
+      | some b =>
+        cases hC : CaptureSet.rename? C ρ with
+        | none => rw [ha, hC] at hD; simp at hD
+        | some D' =>
+          rw [ha, hC] at hD
+          simp only [Option.some.injEq] at hD
+          subst hD
+          show a :: C = (b :: D').map (fun c => c.rename σ)
+          rw [List.map_cons, ← CapAtom.rename?_sound a b ρ σ h ha]
+          have hCD : C = CaptureSet.rename D' σ := CaptureSet.rename?_sound C D' ρ σ h hC
+          rw [hCD]
+          rfl
+
+/-! ### Partial renaming of shapes, types, propositions, telescopes -/
+
 mutual
 
-def Ty.rename? : Ty s1 → PartialRename s1 s2 → Option (Ty s2)
+def Shape.rename? : Shape s1 → PartialRename s1 s2 → Option (Shape s2)
   | .bot, _ => some .bot
   | .sel x ℓ, ρ => (ρ.var x).map (fun y => .sel y ℓ)
   | .pi S T, ρ =>
@@ -217,6 +306,16 @@ def Ty.rename? : Ty s1 → PartialRename s1 s2 → Option (Ty s2)
       match Tel.rename? ρ.lift with
       | some Tel' => some (.obj Tel')
       | none => none
+  | .box T, ρ =>
+      match T.rename? ρ with
+      | some T' => some (.box T')
+      | none => none
+
+def Ty.rename? : Ty s1 → PartialRename s1 s2 → Option (Ty s2)
+  | .capt C S, ρ =>
+      match C.rename? ρ, S.rename? ρ with
+      | some C', some S' => some (.capt C' S')
+      | _, _ => none
 
 def Proposition.rename? : Proposition s1 → PartialRename s1 s2 → Option (Proposition s2)
   | .le S T, ρ =>
@@ -244,34 +343,44 @@ end
 
 mutual
 
-theorem Ty.rename?_complete :
-    ∀ {s1 s2 : Sig} (U : Ty s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+theorem Shape.rename?_complete :
+    ∀ {s1 s2 : Sig} (U : Shape s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
       ρ.Inverts σ → (U.rename σ).rename? ρ = some U
-  | _, _, .bot, _, _, _ => by simp [Ty.rename, Ty.rename?]
+  | _, _, .bot, _, _, _ => by simp [Shape.rename, Shape.rename?]
   | _, _, .sel x ℓ, ρ, σ, h => by
-      simp only [Ty.rename, Ty.rename?]
+      simp only [Shape.rename, Shape.rename?]
       rw [(h (σ.var x) x).mpr rfl]
       rfl
   | _, _, .pi S T, ρ, σ, h => by
-      simp only [Ty.rename, Ty.rename?]
+      simp only [Shape.rename, Shape.rename?]
       rw [Ty.rename?_complete S ρ σ h, Ty.rename?_complete T ρ.lift σ.lift h.lift]
   | _, _, .obj Tel, ρ, σ, h => by
-      simp only [Ty.rename, Ty.rename?]
+      simp only [Shape.rename, Shape.rename?]
       rw [Telescope.rename?_complete Tel ρ.lift σ.lift h.lift]
+  | _, _, .box T, ρ, σ, h => by
+      simp only [Shape.rename, Shape.rename?]
+      rw [Ty.rename?_complete T ρ σ h]
+
+theorem Ty.rename?_complete :
+    ∀ {s1 s2 : Sig} (U : Ty s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+      ρ.Inverts σ → (U.rename σ).rename? ρ = some U
+  | _, _, .capt C S, ρ, σ, h => by
+      simp only [Ty.rename, Ty.rename?]
+      rw [CaptureSet.rename?_complete C ρ σ h, Shape.rename?_complete S ρ σ h]
 
 theorem Proposition.rename?_complete :
     ∀ {s1 s2 : Sig} (P : Proposition s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
       ρ.Inverts σ → (P.rename σ).rename? ρ = some P
   | _, _, .le S T, ρ, σ, h => by
       simp only [Proposition.rename, Proposition.rename?]
-      rw [Ty.rename?_complete S ρ σ h, Ty.rename?_complete T ρ σ h]
+      rw [Shape.rename?_complete S ρ σ h, Shape.rename?_complete T ρ σ h]
   | _, _, .eq S T, ρ, σ, h => by
       simp only [Proposition.rename, Proposition.rename?]
-      rw [Ty.rename?_complete S ρ σ h, Ty.rename?_complete T ρ σ h]
+      rw [Shape.rename?_complete S ρ σ h, Shape.rename?_complete T ρ σ h]
   | _, _, .has ℓ, _, _, _ => by simp [Proposition.rename, Proposition.rename?]
   | _, _, .bnd T, ρ, σ, h => by
       simp only [Proposition.rename, Proposition.rename?]
-      rw [Ty.rename?_complete T ρ σ h]
+      rw [Shape.rename?_complete T ρ σ h]
 
 theorem Telescope.rename?_complete :
     ∀ {s1 s2 : Sig} (Tel : Telescope s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
@@ -286,20 +395,20 @@ end
 
 mutual
 
-theorem Ty.rename?_sound :
-    ∀ {s1 s2 : Sig} (T : Ty s1) (U : Ty s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+theorem Shape.rename?_sound :
+    ∀ {s1 s2 : Sig} (T : Shape s1) (U : Shape s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
       ρ.Inverts σ → T.rename? ρ = some U → T = U.rename σ
   | _, _, .bot, U, _, _, _, hU => by
-      simp only [Ty.rename?, Option.some.injEq] at hU
+      simp only [Shape.rename?, Option.some.injEq] at hU
       subst hU; rfl
   | _, _, .sel x ℓ, U, ρ, σ, h, hU => by
-      simp only [Ty.rename?, Option.map_eq_some_iff] at hU
+      simp only [Shape.rename?, Option.map_eq_some_iff] at hU
       obtain ⟨y, hy, hU⟩ := hU
       subst hU
-      simp only [Ty.rename]
+      simp only [Shape.rename]
       rw [(h x y).mp hy]
   | _, _, .pi S T, U, ρ, σ, h, hU => by
-      simp only [Ty.rename?] at hU
+      simp only [Shape.rename?] at hU
       cases hS : S.rename? ρ with
       | none => rw [hS] at hU; simp at hU
       | some S' =>
@@ -309,18 +418,45 @@ theorem Ty.rename?_sound :
           rw [hS, hT] at hU
           simp only [Option.some.injEq] at hU
           subst hU
-          simp only [Ty.rename]
+          simp only [Shape.rename]
           rw [← Ty.rename?_sound S S' ρ σ h hS, ← Ty.rename?_sound T T' ρ.lift σ.lift h.lift hT]
   | _, _, .obj Tel, U, ρ, σ, h, hU => by
-      simp only [Ty.rename?] at hU
+      simp only [Shape.rename?] at hU
       cases hTel : Tel.rename? ρ.lift with
       | none => rw [hTel] at hU; simp at hU
       | some Tel' =>
         rw [hTel] at hU
         simp only [Option.some.injEq] at hU
         subst hU
-        simp only [Ty.rename]
+        simp only [Shape.rename]
         rw [← Telescope.rename?_sound Tel Tel' ρ.lift σ.lift h.lift hTel]
+  | _, _, .box T, U, ρ, σ, h, hU => by
+      simp only [Shape.rename?] at hU
+      cases hT : T.rename? ρ with
+      | none => rw [hT] at hU; simp at hU
+      | some T' =>
+        rw [hT] at hU
+        simp only [Option.some.injEq] at hU
+        subst hU
+        simp only [Shape.rename]
+        rw [← Ty.rename?_sound T T' ρ σ h hT]
+
+theorem Ty.rename?_sound :
+    ∀ {s1 s2 : Sig} (T : Ty s1) (U : Ty s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+      ρ.Inverts σ → T.rename? ρ = some U → T = U.rename σ
+  | _, _, .capt C S, U, ρ, σ, h, hU => by
+      simp only [Ty.rename?] at hU
+      cases hC : C.rename? ρ with
+      | none => rw [hC] at hU; simp at hU
+      | some C' =>
+        cases hS : S.rename? ρ with
+        | none => rw [hC, hS] at hU; simp at hU
+        | some S' =>
+          rw [hC, hS] at hU
+          simp only [Option.some.injEq] at hU
+          subst hU
+          simp only [Ty.rename]
+          rw [← CaptureSet.rename?_sound C C' ρ σ h hC, ← Shape.rename?_sound S S' ρ σ h hS]
 
 theorem Proposition.rename?_sound :
     ∀ {s1 s2 : Sig} (P : Proposition s1) (Q : Proposition s2) (ρ : PartialRename s1 s2)
@@ -337,7 +473,7 @@ theorem Proposition.rename?_sound :
           simp only [Option.some.injEq] at hQ
           subst hQ
           simp only [Proposition.rename]
-          rw [← Ty.rename?_sound S S' ρ σ h hS, ← Ty.rename?_sound T T' ρ σ h hT]
+          rw [← Shape.rename?_sound S S' ρ σ h hS, ← Shape.rename?_sound T T' ρ σ h hT]
   | _, _, .eq S T, Q, ρ, σ, h, hQ => by
       simp only [Proposition.rename?] at hQ
       cases hS : S.rename? ρ with
@@ -350,7 +486,7 @@ theorem Proposition.rename?_sound :
           simp only [Option.some.injEq] at hQ
           subst hQ
           simp only [Proposition.rename]
-          rw [← Ty.rename?_sound S S' ρ σ h hS, ← Ty.rename?_sound T T' ρ σ h hT]
+          rw [← Shape.rename?_sound S S' ρ σ h hS, ← Shape.rename?_sound T T' ρ σ h hT]
   | _, _, .has ℓ, Q, _, _, _, hQ => by
       simp only [Proposition.rename?, Option.some.injEq] at hQ
       subst hQ; rfl
@@ -363,7 +499,7 @@ theorem Proposition.rename?_sound :
         simp only [Option.some.injEq] at hQ
         subst hQ
         simp only [Proposition.rename]
-        rw [← Ty.rename?_sound T T' ρ σ h hT]
+        rw [← Shape.rename?_sound T T' ρ σ h hT]
 
 theorem Telescope.rename?_sound :
     ∀ {s1 s2 : Sig} (Tel : Telescope s1) (Tel2 : Telescope s2) (ρ : PartialRename s1 s2)
@@ -389,6 +525,34 @@ theorem Telescope.rename?_sound :
 end
 
 /-- Strengthening: undo one weakening, if the innermost binder does not occur. -/
+def Shape.strengthen? {s : Sig} {k : Kind} (S : Shape (s,,k)) : Option (Shape s) :=
+  S.rename? PartialRename.unshift
+
+theorem Shape.strengthen?_sound {s : Sig} {k : Kind} {S : Shape (s,,k)} {U : Shape s}
+    (h : S.strengthen? = some U) : S = U↑ :=
+  Shape.rename?_sound S U PartialRename.unshift Rename.succ PartialRename.unshift_inverts h
+
+theorem Shape.strengthen?_weaken {s : Sig} {k : Kind} (U : Shape s) :
+    (U.weaken (k := k)).strengthen? = some U :=
+  Shape.rename?_complete U PartialRename.unshift Rename.succ PartialRename.unshift_inverts
+
+theorem Shape.strengthen?_eq_some_iff {s : Sig} {k : Kind} {S : Shape (s,,k)} {U : Shape s} :
+    S.strengthen? = some U ↔ S = U↑ := by
+  constructor
+  · exact Shape.strengthen?_sound
+  · intro h; subst h; exact Shape.strengthen?_weaken U
+
+/-- Strengthening, carrying the equation it establishes. -/
+def Shape.strengthenW? {s : Sig} {k : Kind} (S : Shape (s,,k)) :
+    Option { U : Shape s // S = U↑ } :=
+  match witness? S.strengthen? with
+  | some ⟨U, hU⟩ => some ⟨U, Shape.strengthen?_sound hU⟩
+  | none => none
+
+theorem Shape.strengthenW?_weaken {s : Sig} {k : Kind} (U : Shape s) :
+    (U.weaken (k := k)).strengthenW? = some ⟨U, rfl⟩ := by
+  simp only [Shape.strengthenW?, witness?_eq_some (Shape.strengthen?_weaken (k := k) U)]
+
 def Ty.strengthen? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option (Ty s) :=
   T.rename? PartialRename.unshift
 
@@ -426,14 +590,24 @@ theorem Ty.strengthenW?_weaken {s : Sig} {k : Kind} (U : Ty s) :
 Every kernel synthesises the outputs of its judgement and returns the
 derivation it validated, so soundness is by construction. -/
 
+structure ShapeChecked {s : Sig} (Γ : Ctx s) (ev : ShapeCo s) where
+  source : Shape s
+  target : Shape s
+  typing : Γ ⊢ˢ ev : source ≤ target
+
+structure CapChecked {s : Sig} (Γ : Ctx s) (ev : CapCo s) where
+  source : CaptureSet s
+  target : CaptureSet s
+  typing : Γ ⊢ᶜ ev : source ⊑ target
+
 structure LeChecked {s : Sig} (Γ : Ctx s) (ev : LeCo s) where
   source : Ty s
   target : Ty s
   typing : Γ ⊢ ev : source ≤ target
 
 structure EqChecked {s : Sig} (Γ : Ctx s) (ev : EqCo s) where
-  source : Ty s
-  target : Ty s
+  source : Shape s
+  target : Shape s
   typing : Γ ⊢ ev : source ≡ target
 
 structure HasChecked {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) where
@@ -450,14 +624,14 @@ structure MorChecked {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphis
 /-- A template side checked against the endpoint next to the hole: for a
 `pre` side the hole's left endpoint `X` is given and the outer source is
 synthesised. -/
-structure PreChecked {s : Sig} (Γ : Ctx s) (side : Side s) (X : Ty (s,x)) where
-  source : Ty (s,x)
+structure PreChecked {s : Sig} (Γ : Ctx s) (side : Side s) (X : Shape (s,x)) where
+  source : Shape (s,x)
   typing : Side.HasType Γ side source X
 
 /-- A `post` side: the hole's right endpoint `Y` is given and the outer target
 is synthesised. -/
-structure PostChecked {s : Sig} (Γ : Ctx s) (side : Side s) (Y : Ty (s,x)) where
-  target : Ty (s,x)
+structure PostChecked {s : Sig} (Γ : Ctx s) (side : Side s) (Y : Shape (s,x)) where
+  target : Shape (s,x)
   typing : Side.HasType Γ side Y target
 
 structure AtomChecked {s : Sig} (Γ : Ctx s) (a : Atom s) where
@@ -472,62 +646,73 @@ structure ValueChecked {s : Sig} (Γ : Ctx s) (v : Value s) where
   type : Ty s
   typing : Γ ⊢ᵥ v : type
 
-/-- Endpoints of a coercion. -/
+/-- Endpoints of a type inclusion. -/
 abbrev Endpoints (s : Sig) := Ty s × Ty s
+/-- Endpoints of a shape inclusion or of an equality. -/
+abbrev ShapeEndpoints (s : Sig) := Shape s × Shape s
+/-- Endpoints of a capture inclusion. -/
+abbrev CapEndpoints (s : Sig) := CaptureSet s × CaptureSet s
 
 /-! ### Elimination at an atom
 
 The three `member` rules share their premises.  Each is factored into a helper
 that takes the *synthesised* data of the premises, so that the helper's only
 case analyses are on plain variables and on a lookup that reduces
-definitionally. -/
+definitionally.  An atom synthesises a *type*, and the inner coercion relates
+*shapes*, so the helper reads the shape of the atom's type. -/
 
-/-- `LeCo.member`: the `i`-th proposition of the object type `e` lands in, when
-it is an inclusion. -/
-def leMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat)
-    {Sa : Ty s} (ha : Γ ⊢ₐ a : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
-    Option (LeChecked Γ (.member a e i)) :=
-  if hs : Se = Sa then
-    match Te, he with
-    | .obj Tel, he =>
-        match Telescope.getAt? Tel i with
-        | some ⟨.le S' T', hAt⟩ =>
-            some ⟨S'⟦a.root⟧, T'⟦a.root⟧,
-              .member ha (by subst hs; exact he) hAt⟩
-        | _ => none
-    | _, _ => none
-  else none
+/-- `ShapeCo.member`: the `i`-th proposition of the object shape `e` lands in,
+when it is an inclusion. -/
+def leMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} (i : Nat)
+    {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta) {Se Te : Shape s} (he : Γ ⊢ˢ e : Se ≤ Te) :
+    Option (ShapeChecked Γ (.member a e i)) :=
+  match Ta, ha with
+  | .capt _ Sa, ha =>
+      if hs : Se = Sa then
+        match Te, he with
+        | .obj Tel, he =>
+            match Telescope.getAt? Tel i with
+            | some ⟨.le S' T', hAt⟩ =>
+                some ⟨S'⟦a.root⟧, T'⟦a.root⟧,
+                  .member ha (by subst hs; exact he) hAt⟩
+            | _ => none
+        | _, _ => none
+      else none
 
 /-- `EqCo.member`: the same, when the proposition is an equality. -/
-def eqMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat)
-    {Sa : Ty s} (ha : Γ ⊢ₐ a : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
+def eqMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} (i : Nat)
+    {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta) {Se Te : Shape s} (he : Γ ⊢ˢ e : Se ≤ Te) :
     Option (EqChecked Γ (.member a e i)) :=
-  if hs : Se = Sa then
-    match Te, he with
-    | .obj Tel, he =>
-        match Telescope.getAt? Tel i with
-        | some ⟨.eq S' T', hAt⟩ =>
-            some ⟨S'⟦a.root⟧, T'⟦a.root⟧,
-              .member ha (by subst hs; exact he) hAt⟩
-        | _ => none
-    | _, _ => none
-  else none
+  match Ta, ha with
+  | .capt _ Sa, ha =>
+      if hs : Se = Sa then
+        match Te, he with
+        | .obj Tel, he =>
+            match Telescope.getAt? Tel i with
+            | some ⟨.eq S' T', hAt⟩ =>
+                some ⟨S'⟦a.root⟧, T'⟦a.root⟧,
+                  .member ha (by subst hs; exact he) hAt⟩
+            | _ => none
+        | _, _ => none
+      else none
 
 /-- `Has.member`: the same, when the proposition is a field declaration.  The
 subject variable is checked, the label synthesised. -/
-def hasMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat) (y : BVar s .var)
-    {Sa : Ty s} (ha : Γ ⊢ₐ a : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
+def hasMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} (i : Nat) (y : BVar s .var)
+    {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta) {Se Te : Shape s} (he : Γ ⊢ˢ e : Se ≤ Te) :
     Option (HasChecked Γ (.member a e i) y) :=
   if hx : a.root = y then
-    if hs : Se = Sa then
-      match Te, he with
-      | .obj Tel, he =>
-          match Telescope.getAt? Tel i with
-          | some ⟨.has ℓ, hAt⟩ =>
-              some ⟨ℓ, by subst hx; subst hs; exact .member ha he hAt⟩
-          | _ => none
-      | _, _ => none
-    else none
+    match Ta, ha with
+    | .capt _ Sa, ha =>
+        if hs : Se = Sa then
+          match Te, he with
+          | .obj Tel, he =>
+              match Telescope.getAt? Tel i with
+              | some ⟨.has ℓ, hAt⟩ =>
+                  some ⟨ℓ, by subst hx; subst hs; exact .member ha he hAt⟩
+              | _ => none
+          | _, _ => none
+        else none
   else none
 
 /-- `Morphism.has`: the target inherits the `j`-th proposition of the *source*
@@ -539,10 +724,10 @@ def morHas {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} (j : 
   | some ⟨.has ℓ, hAt⟩ => some ⟨Tel ▹ ∋ ℓ, .has hm hAt⟩
   | _ => none
 
-/-- `LeCo.bound`: the annotated object type is below the type of its `i`-th
-proposition, which must be a bound of a (weakened) closed type. -/
+/-- `ShapeCo.bound`: the annotated object shape is below the shape of its
+`i`-th proposition, which must be a bound of a (weakened) closed shape. -/
 def leBound {s : Sig} {Γ : Ctx s} (Tel : Telescope (s,x)) (i : Nat) :
-    Option (LeChecked Γ (.bound Tel i)) :=
+    Option (ShapeChecked Γ (.bound Tel i)) :=
   match Telescope.getAt? Tel i with
   | some ⟨.bnd X, hAt⟩ =>
       match X.strengthenW? with
@@ -551,9 +736,10 @@ def leBound {s : Sig} {Γ : Ctx s} (Tel : Telescope (s,x)) (i : Nat) :
   | _ => none
 
 /-- `Morphism.bnd`: a target bound proven by a closed coercion out of the
-source object type. -/
-def morBnd {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {e : LeCo s}
-    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
+source object shape. -/
+def morBnd {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {e : ShapeCo s}
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) {Se Te : Shape s}
+    (he : Γ ⊢ˢ e : Se ≤ Te) :
     Option (MorChecked Γ src (.bnd m e)) :=
   if hs : Se = μ src then
     some ⟨Tel ▹ ⊑ Te↑, .bnd hm (by rw [← hs]; exact he)⟩
@@ -580,14 +766,14 @@ counterpart; the three `le` rules of `Morphism.HasType` are the three ways of
 reading a hole. -/
 
 /-- `Hole.Reads src h X Y`: in `src`, the hole `h` proves `X ⊑ Y`. -/
-inductive Hole.Reads (src : Telescope (s,x)) : Hole → Ty (s,x) → Ty (s,x) → Prop where
+inductive Hole.Reads (src : Telescope (s,x)) : Hole → Shape (s,x) → Shape (s,x) → Prop where
   | le : src ∋ (j ↦ X ⊑ Y) → Hole.Reads src (.le j) X Y
   | eq : src ∋ (j ↦ X ≐ Y) → Hole.Reads src (.eq j) X Y
   | eqSym : src ∋ (j ↦ Y ≐ X) → Hole.Reads src (.eqSym j) X Y
 
 /-- The template rule, uniformly over the reading of the hole. -/
 theorem Morphism.HasType.leOfReads {Γ : Ctx s} {src Tel : Telescope (s,x)} {m : Morphism s}
-    {pre post : Side s} {h : Hole} {S X Y T : Ty (s,x)}
+    {pre post : Side s} {h : Hole} {S X Y T : Shape (s,x)}
     (hm : Γ ⊢ m : src ⇒ Tel) (hr : Hole.Reads src h X Y)
     (hpre : Side.HasType Γ pre S X) (hpost : Side.HasType Γ post Y T) :
     Γ ⊢ .le m pre h post : src ⇒ Tel ▹ S ⊑ T := by
@@ -598,7 +784,7 @@ theorem Morphism.HasType.leOfReads {Γ : Ctx s} {src Tel : Telescope (s,x)} {m :
 
 /-- Read a hole in the source telescope, with the proof of what it proves. -/
 def Hole.read? (src : Telescope (s,x)) :
-    (h : Hole) → Option { XY : Ty (s,x) × Ty (s,x) // Hole.Reads src h XY.1 XY.2 }
+    (h : Hole) → Option { XY : Shape (s,x) × Shape (s,x) // Hole.Reads src h XY.1 XY.2 }
   | .le j =>
       match Telescope.getAt? src j with
       | some ⟨.le X Y, hAt⟩ => some ⟨(X, Y), .le hAt⟩
@@ -612,18 +798,18 @@ def Hole.read? (src : Telescope (s,x)) :
       | some ⟨.eq Y X, hAt⟩ => some ⟨(X, Y), .eqSym hAt⟩
       | _ => none
 
-theorem Hole.read?_of_Reads {src : Telescope (s,x)} {h : Hole} {X Y : Ty (s,x)}
+theorem Hole.read?_of_Reads {src : Telescope (s,x)} {h : Hole} {X Y : Shape (s,x)}
     (hr : Hole.Reads src h X Y) : Hole.read? src h = some ⟨(X, Y), hr⟩ := by
   cases hr with
   | le hAt => simp [Hole.read?, Telescope.getAt?_of_At hAt]
   | eq hAt => simp [Hole.read?, Telescope.getAt?_of_At hAt]
   | eqSym hAt => simp [Hole.read?, Telescope.getAt?_of_At hAt]
 
-/-- `LeCo.pair`: two coercions with the same source, into the annotated object
-types. -/
-def lePair {s : Sig} {Γ : Ctx s} {e f : LeCo s} (Tel₁ Tel₂ : Telescope (s,x))
-    {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) {Sf Tf : Ty s} (hf : Γ ⊢ f : Sf ≤ Tf) :
-    Option (LeChecked Γ (.pair Tel₁ Tel₂ e f)) :=
+/-- `ShapeCo.pair`: two coercions with the same source, into the annotated
+object shapes. -/
+def lePair {s : Sig} {Γ : Ctx s} {e f : ShapeCo s} (Tel₁ Tel₂ : Telescope (s,x))
+    {Se Te : Shape s} (he : Γ ⊢ˢ e : Se ≤ Te) {Sf Tf : Shape s} (hf : Γ ⊢ˢ f : Sf ≤ Tf) :
+    Option (ShapeChecked Γ (.pair Tel₁ Tel₂ e f)) :=
   if hs : Sf = Se then
     if h1 : Te = μ Tel₁ then
       if h2 : Tf = μ Tel₂ then
@@ -632,52 +818,117 @@ def lePair {s : Sig} {Γ : Ctx s} {e f : LeCo s} (Tel₁ Tel₂ : Telescope (s,x
     else none
   else none
 
-/-- `And-I`: two typings of the same root, at the annotated object types. -/
+/-- `And-I`: two typings of the same root, at the annotated object shapes and
+the same capture set. -/
 def atomBoth {s : Sig} {Γ : Ctx s} {a b : Atom s} (Tel₁ Tel₂ : Telescope (s,x))
     {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta) {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) :
     Option (AtomChecked Γ (.both Tel₁ Tel₂ a b)) :=
-  if h1 : Ta = μ Tel₁ then
-    if h2 : Tb = μ Tel₂ then
-      if hr : b.root = a.root then
-        some ⟨μ (Tel₁ ++ Tel₂), by subst h1; subst h2; exact .both ha hb hr⟩
-      else none
-    else none
-  else none
+  match Ta, ha with
+  | .capt Ca Sa, ha =>
+      match Tb, hb with
+      | .capt Cb Sb, hb =>
+          if h1 : Sa = μ Tel₁ then
+            if h2 : Sb = μ Tel₂ then
+              if hc : Cb = Ca then
+                if hr : b.root = a.root then
+                  some ⟨(μ (Tel₁ ++ Tel₂)) ^ Ca, by
+                    subst h1; subst h2; subst hc; exact .both ha hb hr⟩
+                else none
+              else none
+            else none
+          else none
 
-/-- `Rec-E`: the atom's type must be an object type. -/
+/-- `Rec-E`: the atom's shape must be an object shape. -/
 def atomUnfold {s : Sig} {Γ : Ctx s} {b : Atom s} {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) :
     Option (AtomChecked Γ (.unfoldSelf b)) :=
   match Tb, hb with
-  | .obj Tel, hb => some ⟨.obj (Tel⟦b.root⟧)↑, .unfoldSelf hb⟩
+  | .capt C (.obj Tel), hb => some ⟨(.obj (Tel⟦b.root⟧)↑) ^ C, .unfoldSelf hb⟩
   | _, _ => none
 
-/-- Application: the function's type must be an arrow whose domain is the
+/-- `Rec-I`: the atom's shape must be the annotated telescope opened at its
+own root. -/
+def atomFold {s : Sig} {Γ : Ctx s} {b : Atom s} (Tel : Telescope (s,x))
+    {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) :
+    Option (AtomChecked Γ (.foldSelf Tel b)) :=
+  match Tb, hb with
+  | .capt C S, hb =>
+      if h : S = .obj (Tel⟦b.root⟧)↑ then
+        some ⟨(.obj Tel) ^ C, .foldSelf (by rw [← h]; exact hb)⟩
+      else none
+
+/-- Boxing: pure, and nothing to check. -/
+def atomBox {s : Sig} {Γ : Ctx s} {a : Atom s} {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta) :
+    AtomChecked Γ (.box a) :=
+  ⟨(□ Ta) ^ [], .box ha⟩
+
+/-- Unboxing: the atom's shape must be a box, its capture set must be the
+source of the charge, and the charge must land in the empty set. -/
+def atomUnbox {s : Sig} {Γ : Ctx s} {a : Atom s} {f : CapCo s}
+    {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta) {C D : CaptureSet s} (hf : Γ ⊢ᶜ f : C ⊑ D) :
+    Option (AtomChecked Γ (.unbox a f)) :=
+  if hD : D = [] then
+    match Ta, ha with
+    | .capt _ (.box (.capt C' S')), ha =>
+        if hC : C' = C then
+          some ⟨S' ^ C, by subst hD; subst hC; exact .unbox ha hf⟩
+        else none
+    | _, _ => none
+  else none
+
+/-- `CapCo.elem`: the one decided step of the capture family. -/
+def capElem {s : Sig} {Γ : Ctx s} (C D : CaptureSet s) : Option (CapChecked Γ (.elem C D)) :=
+  if h : C.Subset D then some ⟨C, D, .elem h⟩ else none
+
+/-- Application: the function's shape must be an arrow whose domain is the
 argument's type. -/
 def tmApp {s : Sig} {Γ : Ctx s} {a b : Atom s} {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta)
     {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) : Option (TmChecked Γ (.app a b)) :=
   match Ta, ha with
-  | .pi S T, ha =>
-      if h : Tb = S then some ⟨T⟦b.root⟧, .app ha (by subst h; exact hb)⟩ else none
+  | .capt _ (.pi T U), ha =>
+      if h : Tb = T then some ⟨U⟦b.root⟧, .app ha (by subst h; exact hb)⟩ else none
   | _, _ => none
+
+/-! ## The capture kernel
+
+The capture family mentions no atom, so it is a kernel of its own. -/
+
+def synthCapCore {s : Sig} (Γ : Ctx s) (ev : CapCo s) : Option (CapChecked Γ ev) :=
+  match ev with
+  | .refl C => some ⟨C, C, .refl⟩
+  | .elem C D => capElem C D
+  | .trans f g => do
+      let cf ← synthCapCore Γ f
+      let cg ← synthCapCore Γ g
+      if h : cf.target = cg.source then
+        some ⟨cf.source, cg.target, .trans (by rw [← h]; exact cf.typing) cg.typing⟩
+      else none
+  | .union f g => do
+      let cf ← synthCapCore Γ f
+      let cg ← synthCapCore Γ g
+      if h : cf.target = cg.target then
+        some ⟨cf.source ∪ cg.source, cg.target,
+          .union (by rw [← h]; exact cf.typing) cg.typing⟩
+      else none
 
 /-! ## Evidence kernel
 
-Every core synthesises: the source and target of a coercion, the label of a
-field-presence proof, the target telescope of a morphism, the type of an atom. -/
+Every core synthesises: the endpoints of a coercion, the label of a
+field-presence proof, the target telescope of a morphism, the type of an
+atom. -/
 
 mutual
 
-def synthLeCore {s : Sig} (Γ : Ctx s) (ev : LeCo s) : Option (LeChecked Γ ev) :=
+def synthShapeCore {s : Sig} (Γ : Ctx s) (ev : ShapeCo s) : Option (ShapeChecked Γ ev) :=
   match ev with
-  | .refl T => some ⟨T, T, .refl⟩
-  | .top T => some ⟨T, .top, .top⟩
-  | .bot T => some ⟨.bot, T, .bot⟩
+  | .refl S => some ⟨S, S, .refl⟩
+  | .top S => some ⟨S, .top, .top⟩
+  | .bot S => some ⟨.bot, S, .bot⟩
   | .eqToLe φ => do
       let c ← synthEqCore Γ φ
       some ⟨c.source, c.target, .eqToLe c.typing⟩
   | .trans e f => do
-      let ce ← synthLeCore Γ e
-      let cf ← synthLeCore Γ f
+      let ce ← synthShapeCore Γ e
+      let cf ← synthShapeCore Γ f
       if h : ce.target = cf.source then
         some ⟨ce.source, cf.target, .trans ce.typing (by rw [h]; exact cf.typing)⟩
       else none
@@ -689,21 +940,31 @@ def synthLeCore {s : Sig} (Γ : Ctx s) (ev : LeCo s) : Option (LeChecked Γ ev) 
       let cm ← synthMorCore Γ Tel m
       some ⟨μ Tel, μ cm.tel, .obj cm.typing⟩
   | .pair Tel₁ Tel₂ e f => do
-      let ce ← synthLeCore Γ e
-      let cf ← synthLeCore Γ f
+      let ce ← synthShapeCore Γ e
+      let cf ← synthShapeCore Γ f
       lePair Tel₁ Tel₂ ce.typing cf.typing
   | .bound Tel i => leBound Tel i
   | .intoBnd e => do
-      let ce ← synthLeCore Γ e
+      let ce ← synthShapeCore Γ e
       some ⟨ce.source, μ (.nil ▹ ⊑ ce.target↑), .intoBnd ce.typing⟩
   | .member a e i => do
       let ca ← synthAtomCore Γ a
-      let ce ← synthLeCore Γ e
+      let ce ← synthShapeCore Γ e
       leMember i ca.typing ce.typing
+  | .boxed d => do
+      let cd ← synthLeCore Γ d
+      some ⟨□ cd.source, □ cd.target, .boxed cd.typing⟩
+
+def synthLeCore {s : Sig} (Γ : Ctx s) (ev : LeCo s) : Option (LeChecked Γ ev) :=
+  match ev with
+  | .capt e f => do
+      let ce ← synthShapeCore Γ e
+      let cf ← synthCapCore Γ f
+      some ⟨ce.source ^ cf.source, ce.target ^ cf.target, .capt ce.typing cf.typing⟩
 
 def synthEqCore {s : Sig} (Γ : Ctx s) (ev : EqCo s) : Option (EqChecked Γ ev) :=
   match ev with
-  | .refl T => some ⟨T, T, .refl⟩
+  | .refl S => some ⟨S, S, .refl⟩
   | .symm φ => do
       let c ← synthEqCore Γ φ
       some ⟨c.target, c.source, .symm c.typing⟩
@@ -719,7 +980,7 @@ def synthEqCore {s : Sig} (Γ : Ctx s) (ev : EqCo s) : Option (EqChecked Γ ev) 
       | none => none
   | .member a e i => do
       let ca ← synthAtomCore Γ a
-      let ce ← synthLeCore Γ e
+      let ce ← synthShapeCore Γ e
       eqMember i ca.typing ce.typing
 
 def synthHasCore {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) :
@@ -727,7 +988,7 @@ def synthHasCore {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) :
   match ev with
   | .member a e i => do
       let ca ← synthAtomCore Γ a
-      let ce ← synthLeCore Γ e
+      let ce ← synthShapeCore Γ e
       hasMember i y ca.typing ce.typing
   | .field ℓ =>
       match witness? (Γ.lookupFields y) with
@@ -735,23 +996,23 @@ def synthHasCore {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) :
       | none => none
 
 /-- A `pre` side, checked against the hole's left endpoint `X`: `none` leaves
-it in place, `some e` needs `e` to land in the closed type `X` weakens. -/
-def checkPreCore {s : Sig} (Γ : Ctx s) (side : Side s) (X : Ty (s,x)) :
+it in place, `some e` needs `e` to land in the closed shape `X` weakens. -/
+def checkPreCore {s : Sig} (Γ : Ctx s) (side : Side s) (X : Shape (s,x)) :
     Option (PreChecked Γ side X) :=
   match side with
   | .none => some ⟨X, .none⟩
   | .some e => do
-      let ce ← synthLeCore Γ e
+      let ce ← synthShapeCore Γ e
       if h : X = ce.target↑ then some ⟨ce.source↑, by subst h; exact .some ce.typing⟩
       else none
 
 /-- A `post` side, checked against the hole's right endpoint `Y`. -/
-def checkPostCore {s : Sig} (Γ : Ctx s) (side : Side s) (Y : Ty (s,x)) :
+def checkPostCore {s : Sig} (Γ : Ctx s) (side : Side s) (Y : Shape (s,x)) :
     Option (PostChecked Γ side Y) :=
   match side with
   | .none => some ⟨Y, .none⟩
   | .some e => do
-      let ce ← synthLeCore Γ e
+      let ce ← synthShapeCore Γ e
       if h : Y = ce.source↑ then some ⟨ce.target↑, by subst h; exact .some ce.typing⟩
       else none
 
@@ -774,7 +1035,7 @@ def synthMorCore {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s)
       morHas j cm.typing
   | .bnd m e => do
       let cm ← synthMorCore Γ src m
-      let ce ← synthLeCore Γ e
+      let ce ← synthShapeCore Γ e
       morBnd cm.typing ce.typing
 
 def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a) :=
@@ -791,13 +1052,18 @@ def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a
       atomUnfold cb.typing
   | .foldSelf Tel b => do
       let cb ← synthAtomCore Γ b
-      if h : cb.type = .obj (Tel⟦b.root⟧)↑ then
-        some ⟨.obj Tel, .foldSelf (by rw [← h]; exact cb.typing)⟩
-      else none
+      atomFold Tel cb.typing
   | .both Tel₁ Tel₂ a b => do
       let ca ← synthAtomCore Γ a
       let cb ← synthAtomCore Γ b
       atomBoth Tel₁ Tel₂ ca.typing cb.typing
+  | .box b => do
+      let cb ← synthAtomCore Γ b
+      some (atomBox cb.typing)
+  | .unbox b f => do
+      let cb ← synthAtomCore Γ b
+      let cf ← synthCapCore Γ f
+      atomUnbox cb.typing cf.typing
 
 end
 
@@ -821,7 +1087,8 @@ def synthTmCore {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (TmChecked Γ t) :=
       let ca ← synthAtomCore Γ a
       let ch ← synthHasCore Γ h a.root
       if hl : ch.label = ℓ then
-        some ⟨.sel a.root ℓ, .proj ca.typing (by rw [← hl]; exact ch.typing)⟩
+        some ⟨Ty.capt [] (Shape.sel a.root ℓ),
+          .proj ca.typing (by rw [← hl]; exact ch.typing)⟩
       else none
   | .let t u => do
       let ct ← synthTmCore Γ t
@@ -838,13 +1105,13 @@ def synthTmCore {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (TmChecked Γ t) :=
 
 def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked Γ v) :=
   match v with
-  | .lam S t => do
-      let ct ← synthTmCore (Γ.cons (.opaque S)) t
-      some ⟨.pi S ct.type, .lam ct.typing⟩
+  | .lam T t => do
+      let ct ← synthTmCore (Γ.cons (.opaque T)) t
+      some ⟨(.pi T ct.type) ^ [], .lam ct.typing⟩
   | .obj W F => do
       let Tel := Telescope.ofLiteral W F.labels
-      let pF ← checkFieldsCore (Γ.cons (.transparent (.obj Tel) W F.labels)) F
-      some ⟨.obj Tel, .obj pF.down⟩
+      let pF ← checkFieldsCore (Γ.cons (.transparent ((.obj Tel) ^ []) W F.labels)) F
+      some ⟨(.obj Tel) ^ [], .obj pF.down⟩
   | .cast v e => do
       let cv ← synthValueCore Γ v
       let ce ← synthLeCore Γ e
@@ -859,7 +1126,7 @@ def checkFieldsCore {s : Sig} (Γ : Ctx (s,x)) (F : Fields (s,x)) :
   | .cons F ℓ t => do
       let pF ← checkFieldsCore Γ F
       let ct ← synthTmCore Γ t
-      if h : ct.type = .sel .here ℓ then
+      if h : ct.type = Ty.capt [] (Shape.sel .here ℓ) then
         some ⟨.cons pF.down (by rw [← h]; exact ct.typing)⟩
       else none
 
@@ -870,17 +1137,31 @@ end
 Each judgement has a synthesising mode and a checking mode; the checking mode
 compares the synthesised outputs with the expected ones. -/
 
-/-- Synthesise both endpoints of an inclusion. -/
+/-- Synthesise both endpoints of a shape inclusion. -/
+def synthShape {s : Sig} (Γ : Ctx s) (ev : ShapeCo s) : Option (ShapeEndpoints s) :=
+  (synthShapeCore Γ ev).map fun c => (c.source, c.target)
+
+def checkShape {s : Sig} (Γ : Ctx s) (ev : ShapeCo s) (S T : Shape s) : Bool :=
+  decide (synthShape Γ ev = some (S, T))
+
+/-- Synthesise both capture sets of a capture inclusion. -/
+def synthCap {s : Sig} (Γ : Ctx s) (ev : CapCo s) : Option (CapEndpoints s) :=
+  (synthCapCore Γ ev).map fun c => (c.source, c.target)
+
+def checkCap {s : Sig} (Γ : Ctx s) (ev : CapCo s) (C D : CaptureSet s) : Bool :=
+  decide (synthCap Γ ev = some (C, D))
+
+/-- Synthesise both endpoints of a type inclusion. -/
 def synthLe {s : Sig} (Γ : Ctx s) (ev : LeCo s) : Option (Endpoints s) :=
   (synthLeCore Γ ev).map fun c => (c.source, c.target)
 
 def checkLe {s : Sig} (Γ : Ctx s) (ev : LeCo s) (S T : Ty s) : Bool :=
   decide (synthLe Γ ev = some (S, T))
 
-def synthEq {s : Sig} (Γ : Ctx s) (ev : EqCo s) : Option (Endpoints s) :=
+def synthEq {s : Sig} (Γ : Ctx s) (ev : EqCo s) : Option (ShapeEndpoints s) :=
   (synthEqCore Γ ev).map fun c => (c.source, c.target)
 
-def checkEq {s : Sig} (Γ : Ctx s) (ev : EqCo s) (S T : Ty s) : Bool :=
+def checkEq {s : Sig} (Γ : Ctx s) (ev : EqCo s) (S T : Shape s) : Bool :=
   decide (synthEq Γ ev = some (S, T))
 
 /-- Synthesise the label a field-presence proof establishes for `y`. -/
@@ -929,6 +1210,38 @@ private theorem isSome_elim {α : Type} {o : Option α} (h : o.isSome = true) : 
   | none => simp at h
   | some v => exact ⟨v, rfl⟩
 
+theorem synthShape_sound {s : Sig} {Γ : Ctx s} {ev : ShapeCo s} {S T : Shape s}
+    (h : synthShape Γ ev = some (S, T)) : Γ ⊢ˢ ev : S ≤ T := by
+  unfold synthShape at h
+  cases hc : synthShapeCore Γ ev with
+  | none => rw [hc] at h; simp at h
+  | some c =>
+      rw [hc] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨h1, h2⟩ := h
+      rw [← h1, ← h2]
+      exact c.typing
+
+theorem checkShape_sound {s : Sig} {Γ : Ctx s} {ev : ShapeCo s} {S T : Shape s}
+    (h : checkShape Γ ev S T = true) : Γ ⊢ˢ ev : S ≤ T :=
+  synthShape_sound (of_decide_eq_true h)
+
+theorem synthCap_sound {s : Sig} {Γ : Ctx s} {ev : CapCo s} {C D : CaptureSet s}
+    (h : synthCap Γ ev = some (C, D)) : Γ ⊢ᶜ ev : C ⊑ D := by
+  unfold synthCap at h
+  cases hc : synthCapCore Γ ev with
+  | none => rw [hc] at h; simp at h
+  | some c =>
+      rw [hc] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨h1, h2⟩ := h
+      rw [← h1, ← h2]
+      exact c.typing
+
+theorem checkCap_sound {s : Sig} {Γ : Ctx s} {ev : CapCo s} {C D : CaptureSet s}
+    (h : checkCap Γ ev C D = true) : Γ ⊢ᶜ ev : C ⊑ D :=
+  synthCap_sound (of_decide_eq_true h)
+
 theorem synthLe_sound {s : Sig} {Γ : Ctx s} {ev : LeCo s} {S T : Ty s}
     (h : synthLe Γ ev = some (S, T)) : Γ ⊢ ev : S ≤ T := by
   unfold synthLe at h
@@ -945,7 +1258,7 @@ theorem checkLe_sound {s : Sig} {Γ : Ctx s} {ev : LeCo s} {S T : Ty s}
     (h : checkLe Γ ev S T = true) : Γ ⊢ ev : S ≤ T :=
   synthLe_sound (of_decide_eq_true h)
 
-theorem synthEq_sound {s : Sig} {Γ : Ctx s} {ev : EqCo s} {S T : Ty s}
+theorem synthEq_sound {s : Sig} {Γ : Ctx s} {ev : EqCo s} {S T : Shape s}
     (h : synthEq Γ ev = some (S, T)) : Γ ⊢ ev : S ≡ T := by
   unfold synthEq at h
   cases hc : synthEqCore Γ ev with
@@ -957,7 +1270,7 @@ theorem synthEq_sound {s : Sig} {Γ : Ctx s} {ev : EqCo s} {S T : Ty s}
       rw [← h1, ← h2]
       exact c.typing
 
-theorem checkEq_sound {s : Sig} {Γ : Ctx s} {ev : EqCo s} {S T : Ty s}
+theorem checkEq_sound {s : Sig} {Γ : Ctx s} {ev : EqCo s} {S T : Shape s}
     (h : checkEq Γ ev S T = true) : Γ ⊢ ev : S ≡ T :=
   synthEq_sound (of_decide_eq_true h)
 
@@ -1045,136 +1358,181 @@ theorem checkFields_sound {s : Sig} {Γ : Ctx (s,x)} {F : Fields (s,x)}
 
 /-! ## Smoke tests
 
-The kernel is genuinely executable: these run at elaboration time. -/
+The kernel is genuinely executable: these run in the kernel at elaboration
+time. -/
 
 section SmokeTests
 
 private def smokeLabel : Label := .trm 0
 
-/-- `λ(x : ⊤). x`. -/
-private def smokeId : Tm ([],x) := .val (.lam .top (.atom (.var .here)))
+/-- `λ(x : ⊤ ^ []). x`. -/
+private def smokeId : Tm ([],x) := .val (.lam (⊤ ^ []) (.atom (.var .here)))
 
-/-- A term of type `self.ℓ`, obtained by unfolding the block definition. -/
+/-- The type of `smokeId`. -/
+private def smokeIdTy : Ty ([],x) := (Π(⊤ ^ []) (⊤ ^ [])) ^ []
+
+/-- A term of type `(self.ℓ) ^ []`, obtained by widening to `⊤` and then
+unfolding the block definition. -/
 private def smokeField : Tm ([],x) :=
-  .cast (.cast smokeId (.top (.pi .top .top))) (.eqToLe (.symm (.def .here smokeLabel)))
+  .cast
+    (.cast smokeId (.capt (.top (.pi (⊤ ^ []) (⊤ ^ []))) (.refl [])))
+    (.capt (.eqToLe (.symm (.def .here smokeLabel))) (.refl []))
 
 /-- Witnesses of the smoke literal: the single field is defined as `⊤`. -/
-private def smokeW : Witnesses ([],x) := .cons .nil smokeLabel .top
+private def smokeW : Witnesses ([],x) := .cons .nil smokeLabel ⊤
 
 /-- An object literal with one witnessed field. -/
 private def smokeObj : Value [] := .obj smokeW (.cons .nil smokeLabel smokeField)
 
 /-- The literal's precise type: one definition entry, one presence entry. -/
-private def smokeObjTy : Ty [] := .obj (Telescope.ofLiteral smokeW [smokeLabel])
+private def smokeObjTy : Ty [] := (μ (Telescope.ofLiteral smokeW [smokeLabel])) ^ []
 
 /-- A context whose only binder declares the field `ℓ`. -/
-private def smokeCtx : Ctx ([],x) := Ctx.nil.cons (.opaque (.obj (.cons .nil (.has smokeLabel))))
+private def smokeCtx : Ctx ([],x) :=
+  Ctx.nil.cons (.opaque ((μ (.cons .nil (.has smokeLabel))) ^ []))
 
 /-- A context whose only binder has the empty object type. -/
-private def smokeCtxNil : Ctx ([],x) := Ctx.nil.cons (.opaque (.obj .nil))
+private def smokeCtxNil : Ctx ([],x) := Ctx.nil.cons (.opaque ((μ .nil) ^ []))
 
-#guard checkValue Ctx.nil smokeObj smokeObjTy
-#guard synthValue Ctx.nil smokeObj = some smokeObjTy
-#guard !checkValue Ctx.nil smokeObj (.obj .nil)
-#guard !checkValue Ctx.nil smokeObj (.obj (.cons .nil (.has smokeLabel)))
-#guard checkTm smokeCtx smokeId (.pi .top .top)
-#guard !checkTm smokeCtx smokeId (.pi .top .bot)
-#guard checkLe Ctx.nil (.trans (.refl .top) (.top .top)) .top .top
-/-- Field evidence read off the binder's own object type. -/
+example : checkValue Ctx.nil smokeObj smokeObjTy = true := by decide +kernel
+example : synthValue Ctx.nil smokeObj = some smokeObjTy := by decide +kernel
+example : checkValue Ctx.nil smokeObj ((μ .nil) ^ []) = false := by decide +kernel
+example : checkValue Ctx.nil smokeObj ((μ (.cons .nil (.has smokeLabel))) ^ []) = false := by
+  decide +kernel
+example : checkTm smokeCtx smokeId smokeIdTy = true := by decide +kernel
+example : checkTm smokeCtx smokeId ((Π(⊤ ^ []) (⊥ ^ [])) ^ []) = false := by decide +kernel
+example : checkShape Ctx.nil (.trans (.refl ⊤) (.top ⊤)) ⊤ ⊤ = true := by decide +kernel
+example : checkLe Ctx.nil (.capt (.trans (.refl ⊤) (.top ⊤)) (.refl [])) (⊤ ^ []) (⊤ ^ []) = true := by
+  decide +kernel
+
+/-- Field evidence read off the binder's own object shape. -/
 private def smokeHas : Has ([],x) :=
-  .member (.var .here) (.refl (.obj (.cons .nil (.has smokeLabel)))) 0
+  .member (.var .here) (.refl (μ (.cons .nil (.has smokeLabel)))) 0
 
 /-- A context whose only binder is transparent and declares the field. -/
 private def smokeCtxTrans : Ctx ([],x) :=
-  Ctx.nil.cons (.transparent .top (.cons .nil smokeLabel .top) [smokeLabel])
+  Ctx.nil.cons (.transparent (⊤ ^ []) (.cons .nil smokeLabel ⊤) [smokeLabel])
 
-#guard checkTm smokeCtx (.proj (.var .here) smokeLabel smokeHas) (.sel .here smokeLabel)
-#guard !checkTm smokeCtx (.proj (.var .here) (.trm 1) smokeHas) (.sel .here (.trm 1))
-#guard checkTm smokeCtxTrans (.proj (.var .here) smokeLabel (.field smokeLabel))
-    (.sel .here smokeLabel)
-#guard !checkTm smokeCtx (.proj (.var .here) smokeLabel (.field smokeLabel))
-    (.sel .here smokeLabel)
-#guard checkTm smokeCtx (.let (.atom (.var .here)) (.atom (.var (.there .here))))
-    (.obj (.cons .nil (.has smokeLabel)))
+/-- The type of `x.ℓ` at the binder `x = .here`. -/
+private def smokeProjTy : Ty ([],x) := (.sel .here smokeLabel) ^ []
+
+example : checkTm smokeCtx (.proj (.var .here) smokeLabel smokeHas) smokeProjTy = true := by
+  decide +kernel
+example : checkTm smokeCtx (.proj (.var .here) (.trm 1) smokeHas)
+    ((.sel .here (.trm 1)) ^ []) = false := by decide +kernel
+example : checkTm smokeCtxTrans (.proj (.var .here) smokeLabel (.field smokeLabel))
+    smokeProjTy = true := by decide +kernel
+example : checkTm smokeCtx (.proj (.var .here) smokeLabel (.field smokeLabel))
+    smokeProjTy = false := by decide +kernel
+example : checkTm smokeCtx (.let (.atom (.var .here)) (.atom (.var (.there .here))))
+    ((μ (.cons .nil (.has smokeLabel))) ^ []) = true := by decide +kernel
 
 -- The annotated object coercion synthesises both endpoints.
-#guard checkLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) .nil)
-    (.obj (.cons .nil (.has smokeLabel))) (.obj .nil)
-#guard synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) .nil) =
-    some (.obj (.cons .nil (.has smokeLabel)), .obj .nil)
+example : checkShape smokeCtx (.obj (.cons .nil (.has smokeLabel)) .nil)
+    (μ (.cons .nil (.has smokeLabel))) (μ .nil) = true := by decide +kernel
+example : synthShape smokeCtx (.obj (.cons .nil (.has smokeLabel)) .nil) =
+    some (μ (.cons .nil (.has smokeLabel)), μ .nil) := by decide +kernel
 
 -- A presence proposition is inherited from the source telescope by index.
-#guard synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 0)) =
-    some (.obj (.cons .nil (.has smokeLabel)), .obj (.cons .nil (.has smokeLabel)))
-#guard synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 1)) = none
+example : synthShape smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 0)) =
+    some (μ (.cons .nil (.has smokeLabel)), μ (.cons .nil (.has smokeLabel))) := by decide +kernel
+example : synthShape smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 1)) = none := by
+  decide +kernel
 
 -- The annotated `Rec-I` synthesises its type.
-#guard checkAtom smokeCtxNil (.foldSelf .nil (.var .here)) (.obj .nil)
-#guard synthAtom smokeCtxNil (.foldSelf .nil (.var .here)) = some (.obj .nil)
+example : checkAtom smokeCtxNil (.foldSelf .nil (.var .here)) ((μ .nil) ^ []) = true := by
+  decide +kernel
+example : synthAtom smokeCtxNil (.foldSelf .nil (.var .here)) = some ((μ .nil) ^ []) := by
+  decide +kernel
 
 /-- A source telescope with one inclusion and one equality. -/
 private def smokeSrc : Telescope ([],x,x) := .nil ▹ ⊤ ⊑ ⊤ ▹ ⊤ ≐ ⊥
 
 -- A template with empty sides copies the hole.
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊤))
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊤)) := by decide +kernel
 -- A hole must name an inclusion (`le`) or an equality (`eq`, `eqSym`).
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 1) .none)) = none
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eq 0) .none)) = none
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eq 1) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊥))
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤))
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 2) .none)) = none
--- A closed side composes with the hole at a weakened closed type.
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil (.some (.top ⊥)) (.le 0) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤))
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) (.some (.top ⊤)))) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤))
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil (.some (.refl ⊥)) (.le 0) .none)) = none
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) (.some (.bot ⊤)))) = none
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil .none (.le 1) .none)) = none := by
+  decide +kernel
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil .none (.eq 0) .none)) = none := by
+  decide +kernel
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil .none (.eq 1) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊥)) := by decide +kernel
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤)) := by decide +kernel
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil .none (.le 2) .none)) = none := by
+  decide +kernel
+-- A closed side composes with the hole at a weakened closed shape.
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil (.some (.top ⊥)) (.le 0) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤)) := by decide +kernel
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) (.some (.top ⊤)))) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤)) := by decide +kernel
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil (.some (.refl ⊥)) (.le 0) .none)) = none := by
+  decide +kernel
+example : synthShape smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) (.some (.bot ⊤)))) = none := by
+  decide +kernel
 -- Equalities are copied, possibly flipped; inclusions are not equalities.
-#guard synthLe smokeCtx (.obj smokeSrc (.eq .nil 1 false)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊤ ≐ ⊥))
-#guard synthLe smokeCtx (.obj smokeSrc (.eq .nil 1 true)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤))
-#guard synthLe smokeCtx (.obj smokeSrc (.eq .nil 0 false)) = none
+example : synthShape smokeCtx (.obj smokeSrc (.eq .nil 1 false)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊤ ≐ ⊥)) := by decide +kernel
+example : synthShape smokeCtx (.obj smokeSrc (.eq .nil 1 true)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤)) := by decide +kernel
+example : synthShape smokeCtx (.obj smokeSrc (.eq .nil 0 false)) = none := by decide +kernel
 -- Templates accumulate, oldest first.
-#guard synthLe smokeCtx (.obj smokeSrc (.le (.eq .nil 1 true) .none (.le 0) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤ ▹ ⊤ ⊑ ⊤))
+example : synthShape smokeCtx (.obj smokeSrc (.le (.eq .nil 1 true) .none (.le 0) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤ ▹ ⊤ ⊑ ⊤)) := by decide +kernel
 
 /-- The smoke binder's telescope. -/
 private def smokeTel : Telescope ([],x,x) := .nil ▹ ∋ smokeLabel
 
 -- Pairing concatenates the targets of two coercions with the same source.
-#guard synthLe smokeCtx
+example : synthShape smokeCtx
     (.pair .nil smokeTel (.obj smokeTel .nil) (.obj smokeTel (.has .nil 0))) =
-    some (μ smokeTel, μ smokeTel)
-#guard synthLe smokeCtx
+    some (μ smokeTel, μ smokeTel) := by decide +kernel
+example : synthShape smokeCtx
     (.pair smokeTel smokeTel (.obj smokeTel (.has .nil 0)) (.obj smokeTel (.has .nil 0))) =
-    some (μ smokeTel, μ (smokeTel ▹ ∋ smokeLabel))
+    some (μ smokeTel, μ (smokeTel ▹ ∋ smokeLabel)) := by decide +kernel
 -- The annotations must match the targets, and the sources must agree.
-#guard synthLe smokeCtx
-    (.pair smokeTel .nil (.obj smokeTel .nil) (.obj smokeTel (.has .nil 0))) = none
-#guard synthLe smokeCtx
-    (.pair .nil smokeTel (.obj .nil .nil) (.obj smokeTel (.has .nil 0))) = none
+example : synthShape smokeCtx
+    (.pair smokeTel .nil (.obj smokeTel .nil) (.obj smokeTel (.has .nil 0))) = none := by
+  decide +kernel
+example : synthShape smokeCtx
+    (.pair .nil smokeTel (.obj .nil .nil) (.obj smokeTel (.has .nil 0))) = none := by decide +kernel
 
--- `And-I` concatenates two typings of the same root.
-#guard synthAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here)) =
-    some (μ (smokeTel ▹ ∋ smokeLabel))
-#guard checkAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here))
-    (μ (smokeTel ▹ ∋ smokeLabel))
-#guard synthAtom smokeCtx (.both .nil smokeTel (.var .here) (.var .here)) = none
+-- `And-I` concatenates two typings of the same root, at the same capture set.
+example : synthAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here)) =
+    some ((μ (smokeTel ▹ ∋ smokeLabel)) ^ []) := by decide +kernel
+example : checkAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here))
+    ((μ (smokeTel ▹ ∋ smokeLabel)) ^ []) = true := by decide +kernel
+example : synthAtom smokeCtx (.both .nil smokeTel (.var .here) (.var .here)) = none := by
+  decide +kernel
 
 /-- Two binders of the same object type. -/
 private def smokeCtx2 : Ctx ([],x,x) :=
-  smokeCtx.cons (.opaque (μ (.nil ▹ ∋ smokeLabel)))
+  smokeCtx.cons (.opaque ((μ (.nil ▹ ∋ smokeLabel)) ^ []))
 
-#guard synthAtom smokeCtx2
+example : synthAtom smokeCtx2
     (.both (.nil ▹ ∋ smokeLabel) (.nil ▹ ∋ smokeLabel) (.var .here) (.var .here)) =
-    some (μ (.nil ▹ ∋ smokeLabel ▹ ∋ smokeLabel))
-#guard synthAtom smokeCtx2
-    (.both (.nil ▹ ∋ smokeLabel) (.nil ▹ ∋ smokeLabel) (.var .here) (.var (.there .here))) = none
+    some ((μ (.nil ▹ ∋ smokeLabel ▹ ∋ smokeLabel)) ^ []) := by decide +kernel
+example : synthAtom smokeCtx2
+    (.both (.nil ▹ ∋ smokeLabel) (.nil ▹ ∋ smokeLabel) (.var .here) (.var (.there .here))) =
+    none := by decide +kernel
+
+-- The capture family: `elem` is decided, `union` needs one target.
+example : synthCap smokeCtx (.refl [.var .here]) = some ([.var .here], [.var .here]) := by
+  decide +kernel
+example : synthCap smokeCtx (.elem [] [.var .here]) = some ([], [.var .here]) := by decide +kernel
+example : synthCap smokeCtx (.elem [.var .here] []) = none := by decide +kernel
+example : synthCap smokeCtx (.union (.elem [] [.var .here]) (.refl [.var .here])) =
+    some ([.var .here], [.var .here]) := by decide +kernel
+example : synthCap smokeCtx (.union (.elem [] [.var .here]) (.refl [])) = none := by decide +kernel
+
+-- The box former: `box` is pure, `unbox` restores the boxed capture set.
+example : synthAtom smokeCtx (.box (.var .here)) =
+    some ((□ ((μ (.cons .nil (.has smokeLabel))) ^ [])) ^ []) := by decide +kernel
+example : synthAtom smokeCtx (.unbox (.box (.var .here)) (.refl [])) =
+    some ((μ (.cons .nil (.has smokeLabel))) ^ []) := by decide +kernel
+example : synthAtom smokeCtx (.unbox (.box (.var .here)) (.elem [] [.var .here])) = none := by
+  decide +kernel
 
 end SmokeTests
 

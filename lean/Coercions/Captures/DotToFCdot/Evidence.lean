@@ -14,16 +14,22 @@ The object rules translate to template morphisms (plan §13 items 8 and 9):
 
 * `And₁`, `And₂` project by identity templates on the first or second half
   when the operand is an object shape, and by the self-bound cast
-  `LeCo.bound` when it is not;
+  `ShapeCo.bound` when it is not;
 * `And` pairs and `And-I` intersects two typings of the same root (`both`),
   each operand first put into its telescope by `into`/`intoAtom`: the
-  identity on an object shape, `LeCo.intoBnd` on anything else;
+  identity on an object shape, `ShapeCo.intoBnd` on anything else;
 * `Fld` and `Typ` map each proposition through the translated bound;
 * `Sel-<:`, `<:-Sel` are `member` at the atom, on the exact proposition;
 * `Rec-I`, `Rec-E` unfold at the root and refold at the other telescope;
 * a variable bound by an object literal is cast from the literal's precise
   type to its declared type (`litCo`), reading every proposition off the
   literal's definition equalities and field presences.
+
+Inclusion evidence between shapes is `ShapeCo`, and a type inclusion is a
+shape inclusion paired with a capture inclusion.  A translated type is pure
+(`Ty.translate T = T.translateShape ^ []`), so the translation builds a
+`ShapeCo` and every clause that needs a type inclusion reads it through
+`ShapeCo.pure e = capt e (refl [])`: `Sub.translate d = d.translateShape.pure`.
 -/
 
 namespace DotMNF
@@ -53,13 +59,13 @@ only these (`Ty.tel_closedBnds`), and only these can be copied by identity
 templates. -/
 inductive _root_.Captures.FCdot.Telescope.ClosedBnds : {s : FCdot.Sig} → FCdot.Telescope (s,x) → Prop where
   | nil : FCdot.Telescope.ClosedBnds (.nil : FCdot.Telescope (s,x))
-  | le {Tel : FCdot.Telescope (s,x)} {X Y : FCdot.Ty (s,x)} :
+  | le {Tel : FCdot.Telescope (s,x)} {X Y : FCdot.Shape (s,x)} :
       FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.le X Y))
-  | eq {Tel : FCdot.Telescope (s,x)} {X Y : FCdot.Ty (s,x)} :
+  | eq {Tel : FCdot.Telescope (s,x)} {X Y : FCdot.Shape (s,x)} :
       FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.eq X Y))
   | has {Tel : FCdot.Telescope (s,x)} {ℓ : Label} :
       FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.has ℓ))
-  | bnd {Tel : FCdot.Telescope (s,x)} {T : FCdot.Ty s} :
+  | bnd {Tel : FCdot.Telescope (s,x)} {T : FCdot.Shape s} :
       FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.bnd T.weaken))
 
 /-- The identity templates of a telescope whose propositions sit at positions
@@ -79,15 +85,15 @@ def identityMorphism (src : FCdot.Telescope (s,x)) (off : Nat) :
 /-! ## Putting an operand into its telescope -/
 
 /-- Evidence `⟦S⟧ ≤ μ (tel T)` out of evidence `⟦S⟧ ≤ ⟦T⟧`.  For an object
-shape the two targets are the same type; otherwise `tel T` is the single
-self-bound `[⊑ ⟦T⟧↑]` and `LeCo.intoBnd` moves into it. -/
-def into (T : Ty s) (d : FCdot.LeCo s) : FCdot.LeCo s :=
-  if T.isObj then d else .intoBnd d
+shape the two targets are the same shape; otherwise `tel T` is the single
+self-bound `[⊑ ⟦T⟧↑]` and `ShapeCo.intoBnd` moves into it. -/
+def into (T : Ty s) (e : FCdot.ShapeCo s) : FCdot.ShapeCo s :=
+  if T.isObj then e else .intoBnd e
 
 /-- The same at the level of atoms: an atom of `⟦T⟧` as an atom of
 `μ (tel T)`.  Casting preserves the root, which is what `And-I` needs. -/
 def intoAtom (T : Ty s) (a : FCdot.Atom s) : FCdot.Atom s :=
-  if T.isObj then a else .cast a (.intoBnd (.refl T.translate))
+  if T.isObj then a else .cast a (FCdot.ShapeCo.pure (.intoBnd (.refl T.translateShape)))
 
 @[simp] theorem intoAtom_root (T : Ty s) (a : FCdot.Atom s) :
     (intoAtom T a).root = a.root := by
@@ -115,8 +121,8 @@ def litMorphism : Ty (s,x) → Nat → Nat → FCdot.Morphism s × Nat × Nat
       (m₁.append m₂, e₂, h₁)
   | _, e, h => (.nil, e, h)
 
-/-- The coercion from a literal's precise type to `⟦μ(x. T)⟧`. -/
-def litCo (T : Ty (s,x)) : FCdot.LeCo s :=
+/-- The coercion from a literal's precise shape to `⟦μ(x. T)⟧`'s shape. -/
+def litCo (T : Ty (s,x)) : FCdot.ShapeCo s :=
   .obj (FCdot.Telescope.ofLiteral T.witnesses T.fieldLabels)
     (litMorphism T 0 T.witnesses.length).1
 
@@ -125,19 +131,20 @@ precise type when the binder is a literal's self. -/
 def Ctx.varAtom : Ctx s → BVar s .var → FCdot.Atom s
   | .cons _ _, .here => .var .here
   | .cons Γ _, .there y => (Γ.varAtom y).weaken
-  | .consSelf _ _ T, .here => .cast (.var .here) (litCo T).weaken
+  | .consSelf _ _ T, .here => .cast (.var .here) ((litCo T).pure).weaken
   | .consSelf Γ _ _, .there y => (Γ.varAtom y).weaken
 
 /-! ## The translation -/
 
 mutual
 
-/-- `⟦d⟧ : ⟦S⟧ ≤ ⟦T⟧`. -/
-def Sub.translate : {Γ : Ctx s} → {S T : Ty s} → Sub Γ S T → FCdot.LeCo s
-  | _, T, _, .top => .top T.translate
-  | _, _, T, .bot => .bot T.translate
-  | _, T, _, .refl => .refl T.translate
-  | _, _, _, .trans d₁ d₂ => .trans d₁.translate d₂.translate
+/-- The shape half of `⟦d⟧`: the vanilla evidence translation, whose target
+sort is now `ShapeCo`. -/
+def Sub.translateShape : {Γ : Ctx s} → {S T : Ty s} → Sub Γ S T → FCdot.ShapeCo s
+  | _, T, _, .top => .top T.translateShape
+  | _, _, T, .bot => .bot T.translateShape
+  | _, T, _, .refl => .refl T.translateShape
+  | _, _, _, .trans d₁ d₂ => .trans d₁.translateShape d₂.translateShape
   | _, .and S T, _, .and1 =>
       if S.isObj then
         .obj (Ty.tel (.and S T)) (identityMorphism (Ty.tel (.and S T)) 0 S.tel)
@@ -147,17 +154,18 @@ def Sub.translate : {Γ : Ctx s} → {S T : Ty s} → Sub Γ S T → FCdot.LeCo 
         .obj (Ty.tel (.and S T)) (identityMorphism (Ty.tel (.and S T)) S.tel.length T.tel)
       else .bound (Ty.tel (.and S T)) S.tel.length
   | _, _, .and T U, .and d₁ d₂ =>
-      .pair T.tel U.tel (into T d₁.translate) (into U d₂.translate)
+      .pair T.tel U.tel (into T d₁.translateShape) (into U d₂.translateShape)
   | _, .fld a T, _, .fld d =>
-      .obj (Ty.tel (.fld a T)) (.le (.has .nil 0) .none (.le 1) (.some d.translate))
+      .obj (Ty.tel (.fld a T)) (.le (.has .nil 0) .none (.le 1) (.some d.translateShape))
   | _, .typ A S₁ T₁, _, .typ d₁ d₂ =>
       .obj (Ty.tel (.typ A S₁ T₁))
-        (.le (.le .nil (.some d₁.translate) (.le 0) .none) .none (.le 1) (.some d₂.translate))
+        (.le (.le .nil (.some d₁.translateShape) (.le 0) .none) .none (.le 1)
+          (.some d₂.translateShape))
   | _, _, _, @Sub.selUpper _ _ _ A S T h =>
-      .member h.translateAtom (.refl (Ty.translate (.typ A S T))) 1
+      .member h.translateAtom (.refl (Ty.translateShape (.typ A S T))) 1
   | _, _, _, @Sub.selLower _ _ _ A S T h =>
-      .member h.translateAtom (.refl (Ty.translate (.typ A S T))) 0
-  | _, _, _, .all d₁ d₂ => .pi d₁.translate d₂.translate
+      .member h.translateAtom (.refl (Ty.translateShape (.typ A S T))) 0
+  | _, _, _, .all d₁ d₂ => .pi d₁.translateShape.pure d₂.translateShape.pure
 
 /-- The atom of a variable typing, rooted at the variable. -/
 def HasTy.translateAtom : {Γ : Ctx s} → {x : BVar s .var} → {T : Ty s} →
@@ -169,9 +177,13 @@ def HasTy.translateAtom : {Γ : Ctx s} → {x : BVar s .var} → {T : Ty s} →
       .foldSelf (Ty.tel (T.substVar x)) (.unfoldSelf h.translateAtom)
   | _, _, _, @HasTy.andI _ _ _ T U h₁ h₂ =>
       .both T.tel U.tel (intoAtom T h₁.translateAtom) (intoAtom U h₂.translateAtom)
-  | _, _, _, .sub h d => .cast h.translateAtom d.translate
+  | _, _, _, .sub h d => .cast h.translateAtom d.translateShape.pure
 
 end
+
+/-- `⟦d⟧ : ⟦S⟧ ≤ ⟦T⟧`: the shape coercion at the empty capture set. -/
+def Sub.translate {s : Sig} {Γ : Ctx s} {S T : Ty s} (d : Sub Γ S T) : FCdot.LeCo s :=
+  d.translateShape.pure
 
 end DotMNF
 

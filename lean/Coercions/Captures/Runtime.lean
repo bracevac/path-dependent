@@ -6,8 +6,9 @@ namespace Captures
 # Shared untyped runtime
 
 One monadic-normal-form store machine that both the DOT-MNF source and the
-FCdot target erase into.  Signatures are reused from `FCdot.Debruijn`; the
-runtime has only term binders.
+FCdot target erase into.  Signatures are reused from `FCdot.Debruijn`.  Only
+term binders carry runtime content; a capture binder has a store slot with no
+data, so that erasure maps slot to slot.
 -/
 
 namespace Runtime
@@ -54,19 +55,24 @@ def Fields.rename : Fields s1 → Rename s1 s2 → Fields s2
 end
 
 def Tm.weaken (t : Tm s) : Tm (s,,k) := t.rename Rename.succ
-def Tm.substVar (t : Tm (s,x)) (y : BVar s .var) : Tm s := t.rename (Rename.subst y)
+def Tm.substVar (t : Tm (s,,k)) (y : BVar s k) : Tm s := t.rename (Rename.subst y)
 
 inductive IsValue : Tm s → Prop where
   | lam : IsValue (.lam t)
   | obj : IsValue (.obj F)
 
+/-- A store: one slot per term binder, and a data-free slot per capture
+binder.  (`consᶜ` of the plan: `ᶜ` is not a legal Lean identifier character,
+so the capture-sort twin of a name carries the suffix `C`.) -/
 inductive Store : Sig → Type where
   | nil : Store []
   | cons : Store s → Tm s → Store (s,x)
+  | consC : Store s → Store (s,c)
 
 def Store.lookup : Store s → BVar s .var → Tm s
   | .cons _ v, .here => v.weaken
   | .cons σ _, .there y => (σ.lookup y).weaken
+  | .consC σ, .there y => (σ.lookup y).weaken
 
 inductive Cont : Sig → Type where
   | nil : Cont s
@@ -76,7 +82,7 @@ def Cont.rename : Cont s1 → Rename s1 s2 → Cont s2
   | .nil, _ => .nil
   | .cons K u, ρ => .cons (K.rename ρ) (u.rename ρ.lift)
 
-def Cont.weaken (K : Cont s) : Cont (s,x) := K.rename Rename.succ
+def Cont.weaken (K : Cont s) : Cont (s,,k) := K.rename Rename.succ
 
 structure State (s : Sig) where
   σ : Store s

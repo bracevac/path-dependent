@@ -9,15 +9,44 @@ Evidence typing assigns endpoints to proof terms.  Term typing has no
 subsumption; every inclusion is an explicit `cast`.  Elimination at an atom
 (`member`) is the only way member facts flow from a binder's type to its
 block.
+
+A type is a shape with a capture set, so inclusion of types splits into two
+families: the *shape* family `Γ ⊢ˢ e : S ≤ S'`, which is the vanilla family
+read at the shape sort, and the *capture* family `Γ ⊢ᶜ f : C ⊑ C'`.  A type
+inclusion `Γ ⊢ capt e f : S ^ C ≤ S' ^ C'` is the pair of the two.  In this
+stage nothing reads a capture set beyond `capt` and `elem`.
 -/
 
 namespace FCdot
+
+/-! ## The capture family
+
+`Γ ⊢ᶜ f : C ⊑ C'`.  It does not mention atoms in this stage, so it is a
+family of its own rather than a member of the mutual block below. -/
+
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ᶜ " f:51 " : " C:71 " ⊑ " D:71 => CapCo.HasType Γ f C D
+
+/-- `Γ ⊢ᶜ f : C ⊑ D`: inclusion evidence between capture sets. -/
+inductive CapCo.HasType : Ctx s → CapCo s → CaptureSet s → CaptureSet s → Prop where
+  | refl : Γ ⊢ᶜ .refl C : C ⊑ C
+  | trans : Γ ⊢ᶜ f : C₁ ⊑ C₂ → Γ ⊢ᶜ g : C₂ ⊑ C₃ → Γ ⊢ᶜ .trans f g : C₁ ⊑ C₃
+  /-- A syntactic inclusion, decided. -/
+  | elem : CaptureSet.Subset C₁ C₂ → Γ ⊢ᶜ .elem C₁ C₂ : C₁ ⊑ C₂
+  | union : Γ ⊢ᶜ f : C₁ ⊑ D → Γ ⊢ᶜ g : C₂ ⊑ D → Γ ⊢ᶜ .union f g : (C₁ ∪ C₂) ⊑ D
+
+open Lean PrettyPrinter in
+@[app_unexpander CapCo.HasType] def CapCo.HasType.unexpand : Unexpander
+  | `($_ $Γ $f $C $D) => `($Γ ⊢ᶜ $f : $C ⊑ $D)
+  | _ => throw ()
 
 /-! ### Notation for the evidence judgments
 
 Declared before the judgments so that the rules can use them; the
 pretty-printers are attached after. -/
 
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ˢ " e:51 " : " S:51 " ≤ " T:51 => ShapeCo.HasType Γ e S T
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ " e:51 " : " S:51 " ≤ " T:51 => LeCo.HasType Γ e S T
 set_option hygiene false in
@@ -31,58 +60,71 @@ scoped notation:40 Γ:51 " ⊢ₐ " a:51 " : " T:51 => Atom.HasType Γ a T
 
 mutual
 
-/-- `Γ ⊢ e : S ≤ T`: inclusion evidence. -/
-inductive LeCo.HasType : Ctx s → LeCo s → Ty s → Ty s → Prop where
-  | refl : Γ ⊢ .refl T : T ≤ T
-  | trans : Γ ⊢ e : S ≤ M → Γ ⊢ f : M ≤ T → Γ ⊢ .trans e f : S ≤ T
-  | top : Γ ⊢ .top T : T ≤ ⊤
-  | bot : Γ ⊢ .bot T : ⊥ ≤ T
-  | eqToLe : Γ ⊢ φ : S ≡ T → Γ ⊢ .eqToLe φ : S ≤ T
+/-- `Γ ⊢ˢ e : S ≤ T`: inclusion evidence between shapes. -/
+inductive ShapeCo.HasType : Ctx s → ShapeCo s → Shape s → Shape s → Prop where
+  | refl : Γ ⊢ˢ .refl S : S ≤ S
+  | trans : Γ ⊢ˢ e : S ≤ M → Γ ⊢ˢ f : M ≤ T → Γ ⊢ˢ .trans e f : S ≤ T
+  | top : Γ ⊢ˢ .top S : S ≤ ⊤
+  | bot : Γ ⊢ˢ .bot S : ⊥ ≤ S
+  | eqToLe : Γ ⊢ φ : S ≡ T → Γ ⊢ˢ .eqToLe φ : S ≤ T
+  /-- Contravariant domain, covariant codomain; both are type inclusions. -/
   | pi :
-      Γ ⊢ e : S2 ≤ S1 →
-      Γ.cons (.opaque S2) ⊢ f : T1 ≤ T2 →
-      Γ ⊢ .pi e f : Π(S1) T1 ≤ Π(S2) T2
+      Γ ⊢ e : T2 ≤ T1 →
+      Γ.cons (.opaque T2) ⊢ f : U1 ≤ U2 →
+      Γ ⊢ˢ .pi e f : Π(T1) U1 ≤ Π(T2) U2
   /-- Object coercion between closed telescopes: the morphism proves each target
       proposition by a template over a source proposition. -/
   | obj :
       Γ ⊢ m : Tel ⇒ Tel' →
-      Γ ⊢ .obj Tel m : μ Tel ≤ μ Tel'
-  /-- Pairing: two coercions into object types give one into the concatenation. -/
+      Γ ⊢ˢ .obj Tel m : μ Tel ≤ μ Tel'
+  /-- Pairing: two coercions into object shapes give one into the concatenation. -/
   | pair :
-      Γ ⊢ e : S ≤ μ Tel₁ →
-      Γ ⊢ f : S ≤ μ Tel₂ →
-      Γ ⊢ .pair Tel₁ Tel₂ e f : S ≤ μ (Tel₁ ++ Tel₂)
-  /-- The annotated object type is below its `i`-th bound. -/
+      Γ ⊢ˢ e : S ≤ μ Tel₁ →
+      Γ ⊢ˢ f : S ≤ μ Tel₂ →
+      Γ ⊢ˢ .pair Tel₁ Tel₂ e f : S ≤ μ (Tel₁ ++ Tel₂)
+  /-- The annotated object shape is below its `i`-th bound. -/
   | bound :
-      Tel ∋ (i ↦ ⊑ T↑) →
-      Γ ⊢ .bound Tel i : μ Tel ≤ T
-  /-- An `S` below `T` is an `S` below the one-bound object type. -/
+      Tel ∋ (i ↦ ⊑ S↑) →
+      Γ ⊢ˢ .bound Tel i : μ Tel ≤ S
+  /-- An `S` below `T` is an `S` below the one-bound object shape. -/
   | intoBnd :
-      Γ ⊢ e : S ≤ T →
-      Γ ⊢ .intoBnd e : S ≤ μ (.nil ▹ ⊑ T↑)
+      Γ ⊢ˢ e : S ≤ T →
+      Γ ⊢ˢ .intoBnd e : S ≤ μ (.nil ▹ ⊑ T↑)
   | member :
-      Γ ⊢ₐ a : S →
-      Γ ⊢ e : S ≤ μ Tel →
+      Γ ⊢ₐ a : S ^ C →
+      Γ ⊢ˢ e : S ≤ μ Tel →
       Tel ∋ (i ↦ S' ⊑ T') →
-      Γ ⊢ .member a e i : S'⟦a.root⟧ ≤ T'⟦a.root⟧
+      Γ ⊢ˢ .member a e i : S'⟦a.root⟧ ≤ T'⟦a.root⟧
+  /-- The box former is covariant in the boxed type. -/
+  | boxed :
+      Γ ⊢ d : T ≤ T' →
+      Γ ⊢ˢ .boxed d : □ T ≤ □ T'
 
-/-- `Γ ⊢ φ : S ≡ T`: equality evidence. -/
-inductive EqCo.HasType : Ctx s → EqCo s → Ty s → Ty s → Prop where
-  | refl : Γ ⊢ .refl T : T ≡ T
+/-- `Γ ⊢ d : T ≤ T'`: inclusion evidence between types, a shape inclusion
+paired with a capture inclusion. -/
+inductive LeCo.HasType : Ctx s → LeCo s → Ty s → Ty s → Prop where
+  | capt :
+      Γ ⊢ˢ e : S ≤ S' →
+      Γ ⊢ᶜ f : C ⊑ C' →
+      Γ ⊢ .capt e f : S ^ C ≤ S' ^ C'
+
+/-- `Γ ⊢ φ : S ≡ T`: equality evidence between shapes. -/
+inductive EqCo.HasType : Ctx s → EqCo s → Shape s → Shape s → Prop where
+  | refl : Γ ⊢ .refl S : S ≡ S
   | symm : Γ ⊢ φ : S ≡ T → Γ ⊢ .symm φ : T ≡ S
   | trans : Γ ⊢ φ : S ≡ M → Γ ⊢ ψ : M ≡ T → Γ ⊢ .trans φ ψ : S ≡ T
   | def : Γ.lookupDef x ℓ = some W → Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W
   | member :
-      Γ ⊢ₐ a : S →
-      Γ ⊢ e : S ≤ μ Tel →
+      Γ ⊢ₐ a : S ^ C →
+      Γ ⊢ˢ e : S ≤ μ Tel →
       Tel ∋ (i ↦ S' ≐ T') →
       Γ ⊢ .member a e i : S'⟦a.root⟧ ≡ T'⟦a.root⟧
 
 /-- `Γ ⊢ h : x ∋ ℓ`: `h` proves that the block of `x` has field `ℓ`. -/
 inductive Has.HasType : Ctx s → Has s → BVar s .var → Label → Prop where
   | member :
-      Γ ⊢ₐ a : S →
-      Γ ⊢ e : S ≤ μ Tel →
+      Γ ⊢ₐ a : S ^ C →
+      Γ ⊢ˢ e : S ≤ μ Tel →
       Tel ∋ (i ↦ ∋ ℓ) →
       Γ ⊢ .member a e i : a.root ∋ ℓ
   | field :
@@ -90,10 +132,10 @@ inductive Has.HasType : Ctx s → Has s → BVar s .var → Label → Prop where
       Γ ⊢ .field ℓ : x ∋ ℓ
 
 /-- A template side: `none` leaves the endpoint as it is; `some e` is a closed
-coercion `A ≤ B` between weakened closed types. -/
-inductive Side.HasType : Ctx s → Side s → Ty (s,x) → Ty (s,x) → Prop where
+coercion `A ≤ B` between weakened closed shapes. -/
+inductive Side.HasType : Ctx s → Side s → Shape (s,x) → Shape (s,x) → Prop where
   | none : Side.HasType Γ .none X X
-  | some : Γ ⊢ e : A ≤ B → Side.HasType Γ (.some e) A↑ B↑
+  | some : Γ ⊢ˢ e : A ≤ B → Side.HasType Γ (.some e) A↑ B↑
 
 /-- `Γ ⊢ m : src ⇒ Tel`: `m` proves every proposition of the closed telescope
 `Tel` from the propositions of the closed source telescope `src`, one
@@ -116,31 +158,45 @@ inductive Morphism.HasType : Ctx s → Telescope (s,x) → Morphism s → Telesc
   | has : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ ∋ ℓ) →
       Γ ⊢ .has m j : src ⇒ Tel ▹ ∋ ℓ
   /-- A target bound is proven by a closed coercion out of the source object
-      type. -/
-  | bnd : Γ ⊢ m : src ⇒ Tel → Γ ⊢ e : μ src ≤ T →
-      Γ ⊢ .bnd m e : src ⇒ Tel ▹ ⊑ T↑
+      shape. -/
+  | bnd : Γ ⊢ m : src ⇒ Tel → Γ ⊢ˢ e : μ src ≤ S →
+      Γ ⊢ .bnd m e : src ⇒ Tel ▹ ⊑ S↑
 
 /-- `Γ ⊢ₐ a : T`: atoms. -/
 inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where
   | var : Γ ⊢ₐ .var x : Γ.lookupTy x
-  | cast : Γ ⊢ₐ a : S → Γ ⊢ e : S ≤ T → Γ ⊢ₐ .cast a e : T
-  /-- `Rec-E`: the self block of the object type is the atom's own block. -/
+  | cast : Γ ⊢ₐ a : T → Γ ⊢ e : T ≤ T' → Γ ⊢ₐ .cast a e : T'
+  /-- `Rec-E`: the self block of the object shape is the atom's own block. -/
   | unfoldSelf :
-      Γ ⊢ₐ a : μ Tel →
-      Γ ⊢ₐ .unfoldSelf a : μ (Tel⟦a.root⟧)↑
+      Γ ⊢ₐ a : (μ Tel) ^ C →
+      Γ ⊢ₐ .unfoldSelf a : (μ (Tel⟦a.root⟧)↑) ^ C
   /-- `Rec-I`. -/
   | foldSelf :
-      Γ ⊢ₐ a : μ (Tel⟦a.root⟧)↑ →
-      Γ ⊢ₐ .foldSelf Tel a : μ Tel
-  /-- `And-I`: two typings of the same root. -/
+      Γ ⊢ₐ a : (μ (Tel⟦a.root⟧)↑) ^ C →
+      Γ ⊢ₐ .foldSelf Tel a : (μ Tel) ^ C
+  /-- `And-I`: two typings of the same root, at the same capture set. -/
   | both :
-      Γ ⊢ₐ a : μ Tel₁ →
-      Γ ⊢ₐ b : μ Tel₂ →
+      Γ ⊢ₐ a : (μ Tel₁) ^ C →
+      Γ ⊢ₐ b : (μ Tel₂) ^ C →
       b.root = a.root →
-      Γ ⊢ₐ .both Tel₁ Tel₂ a b : μ (Tel₁ ++ Tel₂)
+      Γ ⊢ₐ .both Tel₁ Tel₂ a b : (μ (Tel₁ ++ Tel₂)) ^ C
+  /-- Boxing is pure: the box shape hides the captured set. -/
+  | box :
+      Γ ⊢ₐ a : T →
+      Γ ⊢ₐ .box a : (□ T) ^ []
+  /-- Unboxing, charged with the boxed capture set.  In this stage there are
+      no use sets yet, so the charge is discharged against the empty set. -/
+  | unbox :
+      Γ ⊢ₐ a : (□ (S ^ C)) ^ D →
+      Γ ⊢ᶜ f : C ⊑ [] →
+      Γ ⊢ₐ .unbox a f : S ^ C
 
 end
 
+open Lean PrettyPrinter in
+@[app_unexpander ShapeCo.HasType] def ShapeCo.HasType.unexpand : Unexpander
+  | `($_ $Γ $e $S $T) => `($Γ ⊢ˢ $e : $S ≤ $T)
+  | _ => throw ()
 open Lean PrettyPrinter in
 @[app_unexpander LeCo.HasType] def LeCo.HasType.unexpand : Unexpander
   | `($_ $Γ $e $S $T) => `($Γ ⊢ $e : $S ≤ $T)
@@ -178,35 +234,39 @@ inductive Tm.HasType : Ctx s → Tm s → Ty s → Prop where
   | atom : Γ ⊢ₐ a : T → Γ ⊢ .atom a : T
   | val : Γ ⊢ᵥ v : T → Γ ⊢ .val v : T
   | app :
-      Γ ⊢ₐ a : Π(S) T →
-      Γ ⊢ₐ b : S →
-      Γ ⊢ .app a b : T⟦b.root⟧
+      Γ ⊢ₐ a : (Π(T) U) ^ C →
+      Γ ⊢ₐ b : T →
+      Γ ⊢ .app a b : U⟦b.root⟧
+  /-- A field's result is the block name `ℓ` of the atom's root.  In this stage
+      a capture name stands for the empty set, so the result is pure; the
+      capture witnesses that give `{x∙ℓ}` its content arrive in A1. -/
   | proj :
-      Γ ⊢ₐ a : S →
+      Γ ⊢ₐ a : T →
       Γ ⊢ h : a.root ∋ ℓ →
-      Γ ⊢ .proj a ℓ h : a.root ∙ ℓ
+      Γ ⊢ .proj a ℓ h : (a.root ∙ ℓ) ^ []
   | «let» :
       Γ ⊢ t : T →
       Γ.cons (.opaque T) ⊢ u : U↑ →
       Γ ⊢ .let t u : U
-  | cast : Γ ⊢ t : S → Γ ⊢ e : S ≤ T → Γ ⊢ .cast t e : T
+  | cast : Γ ⊢ t : T → Γ ⊢ e : T ≤ T' → Γ ⊢ .cast t e : T'
 
-/-- `Γ ⊢ᵥ v : T`: values. -/
+/-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is empty in
+this stage. -/
 inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
   | lam :
-      Γ.cons (.opaque S) ⊢ t : T →
-      Γ ⊢ᵥ .lam S t : Π(S) T
+      Γ.cons (.opaque T) ⊢ t : U →
+      Γ ⊢ᵥ .lam T t : (Π(T) U) ^ []
   /-- An object literal has its precise type, generated from its witnesses and
       fields.  Fields are typed with the self binder at that type. -/
   | obj :
-      Γ.cons (.transparent (μ (Telescope.ofLiteral W F.labels)) W F.labels) ⊢ᶠ F →
-      Γ ⊢ᵥ .obj W F : μ (Telescope.ofLiteral W F.labels)
-  | cast : Γ ⊢ᵥ v : S → Γ ⊢ e : S ≤ T → Γ ⊢ᵥ .cast v e : T
+      Γ.cons (.transparent ((μ (Telescope.ofLiteral W F.labels)) ^ []) W F.labels) ⊢ᶠ F →
+      Γ ⊢ᵥ .obj W F : (μ (Telescope.ofLiteral W F.labels)) ^ []
+  | cast : Γ ⊢ᵥ v : T → Γ ⊢ e : T ≤ T' → Γ ⊢ᵥ .cast v e : T'
 
-/-- `Γ ⊢ᶠ F`: each field `ℓ = t` has type `self ∙ ℓ`. -/
+/-- `Γ ⊢ᶠ F`: each field `ℓ = t` has type `(self ∙ ℓ) ^ []`. -/
 inductive Fields.HasType : Ctx (s,x) → Fields (s,x) → Prop where
   | nil : Γ ⊢ᶠ .nil
-  | cons : Γ ⊢ᶠ F → Γ ⊢ t : .here ∙ ℓ → Γ ⊢ᶠ .cons F ℓ t
+  | cons : Γ ⊢ᶠ F → Γ ⊢ t : (.here ∙ ℓ) ^ [] → Γ ⊢ᶠ .cons F ℓ t
 
 end
 

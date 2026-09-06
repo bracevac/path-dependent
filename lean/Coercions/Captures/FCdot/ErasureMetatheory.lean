@@ -151,8 +151,8 @@ theorem Tm.erase_weaken {s : Sig} (t : Tm s) :
   simp [Tm.weaken, Runtime.Tm.weaken, Tm.erase_rename]
 
 /-- Erasure commutes with weakening of values. -/
-theorem Value.erase_weaken {s : Sig} (v : Value s) :
-    (v.weaken (k := .var)).erase = v.erase.weaken := by
+theorem Value.erase_weaken {s : Sig} {k : Kind} (v : Value s) :
+    (v.weaken (k := k)).erase = v.erase.weaken := by
   simp [Value.weaken, Runtime.Tm.weaken, Value.erase_rename]
 
 /-- Erasure commutes with renaming of continuations; cast frames vanish. -/
@@ -243,6 +243,9 @@ theorem Store.lookup_erase {s : Sig} :
   | .cons σ v, .there y => by
       simp [Store.erase, Store.lookup, Runtime.Store.lookup, Value.erase_weaken,
         Store.lookup_erase σ y]
+  | .consC σ _, .there y => by
+      simp [Store.erase, Store.lookup, Runtime.Store.lookup, Value.erase_weaken,
+        Store.lookup_erase σ y]
 
 /-- Field lookup commutes with erasure. -/
 theorem Fields.erase_get? {s : Sig} :
@@ -276,6 +279,10 @@ theorem Store.Typed.lookup_isLiteral {s : Sig} {σ : Store s} {Γ : Ctx s}
       intro x
       cases x with
       | here => exact Value.isLiteral_rename _ _ hlit
+      | there y => exact Value.isLiteral_rename _ _ (ih y)
+  | consC _ ih =>
+      intro x
+      cases x with
       | there y => exact Value.isLiteral_rename _ _ (ih y)
 
 /-- A literal whose erasure is a runtime lambda is a lambda. -/
@@ -605,11 +612,12 @@ the runtime step.  `hcf` is the canonical-forms obligation and `hat` says
 that a residual application is applied to a typed function atom. -/
 theorem erase_reflect_aux {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {Γ : Ctx s}
     {r : Runtime.State s'} (hσ : ⊢ σ : Γ)
-    (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T →
+    (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)) (C : CaptureSet s),
+      Γ ⊢ₐ a : (Π(S) T) ^ C →
       a ≠ .var a.root → ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
         (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c))
     (hat : ∀ a b : Atom s, t = .app a b →
-      ∃ (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T)
+      ∃ (S : Ty s) (T : Ty (s,x)) (C : CaptureSet s), Γ ⊢ₐ a : (Π(S) T) ^ C)
     (hnc : ¬ (State.CastRedex ⟨σ, K, t⟩))
     (h : Runtime.Step (State.erase ⟨σ, K, t⟩) r) :
     ∃ st' : State s', Step (⟨σ, K, t⟩ : State s) st' ∧ st'.erase = r := by
@@ -630,7 +638,7 @@ theorem erase_reflect_aux {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {�
           | cast e => exact absurd (Or.inr ⟨K0, e, rfl, Or.inl ⟨v, rfl⟩⟩) hnc
   | app a b =>
       exact erase_reflect_app hσ
-        (fun hne => let ⟨S, T, hpi⟩ := hat a b rfl; hcf a S T hpi hne) h
+        (fun hne => let ⟨S, T, C, hpi⟩ := hat a b rfl; hcf a S T C hpi hne) h
   | proj a ℓ hh => exact erase_reflect_proj hσ h
   | «let» t u => exact erase_reflect_let h
   | cast t e => exact absurd (Or.inl ⟨t, e, rfl⟩) hnc
@@ -640,7 +648,8 @@ realized by a run of the FCdot machine, which first takes the pending
 cast-frame steps. -/
 theorem erase_reflect {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.State s'}
     (hσ : ⊢ st.σ : Γ)
-    (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T →
+    (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)) (C : CaptureSet s),
+      Γ ⊢ₐ a : (Π(S) T) ^ C →
       a ≠ .var a.root → ∃ n a' F, st.σ ⊢ a ⇓ᶜ[n] (a', F) ∧
         (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c))
     (hty : ∃ T, Γ ⊢ st.t : T)
@@ -649,17 +658,18 @@ theorem erase_reflect {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.Stat
   obtain ⟨st1, hsteps, herase, hstore, hnc, hinv⟩ :=
     castRedex_normalize_inv st Γ (Or.inl hty)
   have hσ1 : ⊢ st1.σ : Γ := by rw [hstore]; exact hσ
-  have hcf1 : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T →
+  have hcf1 : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)) (C : CaptureSet s),
+      Γ ⊢ₐ a : (Π(S) T) ^ C →
       a ≠ .var a.root → ∃ n a' F, st1.σ ⊢ a ⇓ᶜ[n] (a', F) ∧
         (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) := by
     rw [hstore]; exact hcf
   have hat : ∀ a b : Atom s, st1.t = .app a b →
-      ∃ (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T := by
+      ∃ (S : Ty s) (T : Ty (s,x)) (C : CaptureSet s), Γ ⊢ₐ a : (Π(S) T) ^ C := by
     intro a b hab
     rcases hinv with ⟨T, hT⟩ | ⟨v, hv⟩ | ⟨a0, ha0⟩
     · rw [hab] at hT
       cases hT with
-      | app hpa _ => exact ⟨_, _, hpa⟩
+      | app hpa _ => exact ⟨_, _, _, hpa⟩
     · rw [hab] at hv; simp at hv
     · rw [hab] at ha0; simp at ha0
   rw [← herase] at h

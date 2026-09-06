@@ -54,7 +54,7 @@ end FCdot
 
 namespace DotMNF
 
-open FCdot (Kind Sig BVar Rename Label Morphism LeCo EqCo Has Atom Side)
+open FCdot (Kind Sig BVar Rename Label Morphism ShapeCo CapCo LeCo EqCo Has Atom Side)
 open scoped FCdot
 
 /-! ## The labels of the translated fields -/
@@ -81,7 +81,7 @@ for the witnesses `W` of the *whole* literal.  So the field's declared type must
 
 /-- `Wall.get` returns the translated declared type at every field of `T`. -/
 def Ty.DefSpec {s : Sig} (Wall : FCdot.Witnesses (s,x)) : Ty (s,x) → Prop
-  | .fld a T => Wall.get a = T.translate
+  | .fld a T => Wall.get a = T.translateShape
   | .and S T => Ty.DefSpec Wall S ∧ Ty.DefSpec Wall T
   | _ => True
 
@@ -97,7 +97,7 @@ theorem defSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distin
   | .typ _ _ _, _, _ => by simp [Ty.DefSpec]
   | .fld a T', e, hpos => by
       simp only [Ty.witnesses] at hpos
-      have h1 := hpos 0 a T'.translate FCdot.Witnesses.At.hereNil
+      have h1 := hpos 0 a T'.translateShape FCdot.Witnesses.At.hereNil
       rw [Nat.add_zero] at h1
       rw [Ty.DefSpec]
       exact h1.get hdist
@@ -144,19 +144,19 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
       have hf : FCdot.Fields.HasType (Γ.consSelf d T).translate hd.translateFields :=
         hd.translateFields_typed (.consSelf hwf hd.literalShape hdl) (Ty.defSpec_self T hdl)
       have hval : FCdot.Value.HasType Γ.translate (.obj T.witnesses hd.translateFields)
-          (μ (FCdot.Telescope.ofLiteral T.witnesses hd.translateFields.labels)) :=
+          ((μ (FCdot.Telescope.ofLiteral T.witnesses hd.translateFields.labels)) ^ []) :=
         .obj (by rw [hlab]; exact hf)
       rw [hlab] at hval
       simp only [HasTy.translate]
-      exact .cast (.val hval) (litCo_typed hd hdist)
+      exact .cast (.val hval) (litCo_pure_typed hd hdist)
   | _, _, _, _, @HasTy.proj _ _ _ a T h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_fld, Ty.tel_fld] at ha
       have hhas := FCdot.Has.HasType.member ha .refl (FCdot.Telescope.At.zero_two _ _)
-      have hle := FCdot.LeCo.HasType.member ha .refl (FCdot.Telescope.At.one_two _ _)
-      rw [FCdot.Ty.substVar_sel_here, FCdot.Ty.weaken_substVar] at hle
-      simp only [HasTy.translate, Ty.translate_fld, Ty.tel_fld]
-      exact .cast (.proj ha hhas) hle
+      have hle := FCdot.ShapeCo.HasType.member ha .refl (FCdot.Telescope.At.one_two _ _)
+      rw [FCdot.Shape.substVar_sel_here, FCdot.Shape.weaken_substVar] at hle
+      simp only [HasTy.translate, Ty.translateShape_fld, Ty.tel_fld]
+      exact .cast (.proj ha hhas) (.capt hle .refl)
   | _, _, _, _, .let h₁ h₂ _, hwf => by
       have ih₂ := HasTy.translate_typed h₂ (.cons hwf)
       rw [Ty.translate_weaken] at ih₂
@@ -186,12 +186,12 @@ theorem DefsTy.translateFields_typed : ∀ {s : Sig} {Γ : Ctx s} {d : Defs (s,x
       rw [Ty.DefSpec] at hspec
       have hdef : (Γ.consSelf d Tall).translate.lookupDef .here a
           = some (Tall.witnesses.get a) := rfl
-      have hle : FCdot.LeCo.HasType (Γ.consSelf d Tall).translate
-          (.eqToLe (.symm (.def .here a))) T''.translate (.here ∙ a) := by
+      have hle : FCdot.ShapeCo.HasType (Γ.consSelf d Tall).translate
+          (.eqToLe (.symm (.def .here a))) T''.translateShape (.here ∙ a) := by
         rw [← hspec]
         exact .eqToLe (.symm (.def hdef))
       simp only [DefsTy.translateFields]
-      exact .cons .nil (.cast (HasTy.translate_typed h hwf) hle)
+      exact .cons .nil (.cast (HasTy.translate_typed h hwf) (.capt hle .refl))
   | _, _, _, _, _, _, .and h₁ h₂, hwf, hspec => by
       rw [Ty.DefSpec] at hspec
       simp only [DefsTy.translateFields]

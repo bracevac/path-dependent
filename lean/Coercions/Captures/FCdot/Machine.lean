@@ -9,7 +9,9 @@ States are a store of literals, a continuation of frames, and a running
 term, all indexed by one signature.  Allocation extends the signature.
 Casts on values are wrappers: allocation strips them, stores the literal at
 its own type, and rewrites the continuation so that the new variable is used
-under the composite cast.  Application on a coerced closure reads the
+under the composite cast.  The box wrappers on atoms carry no inclusion, so
+`Atom.coercions` steps past them and `Tm.adjust` strips them exactly as it
+strips casts.  The application steps are the vanilla ones.  Application on a coerced closure reads the
 domain and codomain evidence off the head normal form of the atom's casts
 (`Normalizer.lean`).  Progress needs that this normalization succeeds on a
 closed atom of function type, and preservation needs the resulting evidence
