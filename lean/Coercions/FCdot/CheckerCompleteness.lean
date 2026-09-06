@@ -71,6 +71,16 @@ theorem morEqSym_eq {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {j : N
     morEq j true hm = some ⟨Tel ▹ Y ≐ X, .eqSym hm hAt⟩ := by
   simp [morEq, Telescope.getAt?_of_At hAt]
 
+theorem leBound_eq {Γ : Ctx s} {Tel : Telescope (s,x)} {i : Nat} {T : Ty s}
+    (hAt : Tel ∋ (i ↦ ⊑ T↑)) :
+    leBound (Γ := Γ) Tel i = some ⟨μ Tel, T, .bound hAt⟩ := by
+  simp [leBound, Telescope.getAt?_of_At hAt, Ty.strengthenW?_weaken]
+
+theorem morBnd_eq {Γ : Ctx s} {src Tel : Telescope (s,x)} {m : Morphism s} {e : LeCo s}
+    {T : Ty s} (hm : Γ ⊢ m : src ⇒ Tel) (he : Γ ⊢ e : μ src ≤ T) :
+    morBnd hm he = some ⟨Tel ▹ ⊑ T↑, .bnd hm he⟩ := by
+  simp [morBnd]
+
 theorem lePair_eq {Γ : Ctx s} {e f : LeCo s} {S : Ty s} {Tel₁ Tel₂ : Telescope (s,x)}
     (he : Γ ⊢ e : S ≤ μ Tel₁) (hf : Γ ⊢ f : S ≤ μ Tel₂) :
     lePair Tel₁ Tel₂ he hf = some ⟨S, μ (Tel₁ ++ Tel₂), .pair he hf⟩ := by
@@ -116,6 +126,10 @@ theorem LeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {e : LeCo s} {S T : T
       simp [synthLeCore, Morphism.HasType.complete hm]
   | _, _, _, _, _, .pair he hf => by
       simp [synthLeCore, LeCo.HasType.complete he, LeCo.HasType.complete hf, lePair_eq he hf]
+  | _, _, _, _, _, .bound hAt => by
+      simp [synthLeCore, leBound_eq hAt]
+  | _, _, _, _, _, .intoBnd he => by
+      simp [synthLeCore, LeCo.HasType.complete he]
   | _, _, _, _, _, .member ha he hAt => by
       simp [synthLeCore, Atom.HasType.complete ha, LeCo.HasType.complete he,
         leMember_eq ha he hAt]
@@ -178,6 +192,9 @@ theorem Morphism.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {src : Telescope 
       simp [synthMorCore, Morphism.HasType.complete hm, morEqSym_eq hm hAt]
   | _, _, _, _, _, .has hm hAt => by
       simp [synthMorCore, Morphism.HasType.complete hm, morHas_eq hm hAt]
+  | _, _, _, _, _, .bnd hm he => by
+      simp [synthMorCore, Morphism.HasType.complete hm, LeCo.HasType.complete he,
+        morBnd_eq hm he]
 
 /-- The kernel synthesises the type of every atom derivation. -/
 theorem Atom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}

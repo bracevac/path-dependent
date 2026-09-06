@@ -50,6 +50,7 @@ theorem Morphism.HasType.append {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)}
   | _, _, .eq h₂ hAt => .eq (h₁.append h₂) hAt
   | _, _, .eqSym h₂ hAt => .eqSym (h₁.append h₂) hAt
   | _, _, .has h₂ hAt => .has (h₁.append h₂) hAt
+  | _, _, .bnd h₂ he => .bnd (h₁.append h₂) he
 
 
 /-! ## Witnesses: labels, positions, distinctness -/
@@ -302,38 +303,146 @@ theorem Ty.telSelf_fld {s : Sig} (a : Label) (T : Ty (s,x)) :
 theorem Ty.telSelf_and {s : Sig} (S T : Ty (s,x)) :
     (Ty.and S T).telSelf = (Ty.telSelf S).append (Ty.telSelf T) := by simp [Ty.telSelf]
 
+/-! ## Telescopes without self-bounds, and telescopes with closed self-bounds -/
+
+theorem _root_.FCdot.Telescope.NoBnd.append {s' : Sig} {Tel₁ : FCdot.Telescope s'}
+    (h₁ : Tel₁.NoBnd) :
+    ∀ Tel₂ : FCdot.Telescope s', Tel₂.NoBnd → (Tel₁.append Tel₂).NoBnd
+  | .nil, _ => h₁
+  | .cons _ (.bnd _), h₂ => h₂.elim
+  | .cons Tel (.le _ _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
+  | .cons Tel (.eq _ _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
+  | .cons Tel (.has _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
+
+theorem _root_.FCdot.Telescope.NoBnd.rename {s₁ s₂ : Sig} (ρ : FCdot.Rename s₁ s₂) :
+    ∀ Tel : FCdot.Telescope s₁, Tel.NoBnd → (Tel.rename ρ).NoBnd
+  | .nil, h => h
+  | .cons _ (.bnd _), h => h.elim
+  | .cons Tel (.le _ _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
+  | .cons Tel (.eq _ _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
+  | .cons Tel (.has _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
+
+theorem _root_.FCdot.Telescope.NoBnd.closedBnds {s : Sig} :
+    ∀ {Tel : FCdot.Telescope (s,x)}, Tel.NoBnd → Tel.ClosedBnds
+  | .nil, _ => .nil
+  | .cons _ (.bnd _), h => h.elim
+  | .cons Tel (.le _ _), h => .le (FCdot.Telescope.NoBnd.closedBnds h)
+  | .cons Tel (.eq _ _), h => .eq (FCdot.Telescope.NoBnd.closedBnds h)
+  | .cons Tel (.has _), h => .has (FCdot.Telescope.NoBnd.closedBnds h)
+
+theorem _root_.FCdot.Telescope.ClosedBnds.append {s : Sig} {Tel₁ : FCdot.Telescope (s,x)}
+    (h₁ : Tel₁.ClosedBnds) :
+    ∀ {Tel₂ : FCdot.Telescope (s,x)}, Tel₂.ClosedBnds → (Tel₁.append Tel₂).ClosedBnds
+  | _, .nil => h₁
+  | _, .le h₂ => .le (FCdot.Telescope.ClosedBnds.append h₁ h₂)
+  | _, .eq h₂ => .eq (FCdot.Telescope.ClosedBnds.append h₁ h₂)
+  | _, .has h₂ => .has (FCdot.Telescope.ClosedBnds.append h₁ h₂)
+  | _, .bnd h₂ => .bnd (FCdot.Telescope.ClosedBnds.append h₁ h₂)
+
+/-- A declaration-shaped body has no self-bounds at all: `Ty.telSelf` only
+produces one on a shape `Wf.mu` excludes. -/
+theorem Ty.telSelf_noBnd_of_decl {s : Sig} :
+    ∀ {S : Ty (s,x)}, Ty.Decl S → (Ty.telSelf S).NoBnd
+  | .top, _ => by simp [Ty.telSelf, FCdot.Telescope.NoBnd]
+  | .typ _ _ _, _ => by simp [Ty.telSelf, FCdot.Telescope.NoBnd]
+  | .fld _ _, _ => by simp [Ty.telSelf, FCdot.Telescope.NoBnd]
+  | .and S T, h => by
+      cases h with
+      | and hS hT =>
+          simp only [Ty.telSelf]
+          exact FCdot.Telescope.NoBnd.append (Ty.telSelf_noBnd_of_decl hS) _
+            (Ty.telSelf_noBnd_of_decl hT)
+  | .mu T, h => by
+      cases h with
+      | mu hT =>
+          have hd : T.isDecl = true := (Ty.isDecl_iff T).mpr hT
+          simp only [Ty.telSelf, if_pos hd, FCdot.Telescope.substVar]
+          exact FCdot.Telescope.NoBnd.rename _ _ (Ty.telSelf_noBnd_of_decl hT)
+
+/-- Every self-bound the translation of a type carries is a weakened closed
+type: this is the closedness convention of `FCdot` (plan §13 item 9). -/
+theorem Ty.tel_closedBnds {s : Sig} :
+    ∀ S : Ty s, (Ty.tel S : FCdot.Telescope (s,x)).ClosedBnds
+  | .top => by simp only [Ty.tel]; exact .nil
+  | .bot => by simp only [Ty.tel]; exact .bnd .nil
+  | .sel (.var _) _ => by simp only [Ty.tel]; exact .bnd .nil
+  | .all _ _ => by simp only [Ty.tel]; exact .bnd .nil
+  | .typ _ _ _ => by simp only [Ty.tel]; exact .le (.le .nil)
+  | .fld _ _ => by simp only [Ty.tel]; exact .le (.has .nil)
+  | .and S T => by
+      simp only [Ty.tel]
+      exact (Ty.tel_closedBnds S).append (Ty.tel_closedBnds T)
+  | .mu T => by
+      by_cases hd : T.isDecl = true
+      · simp only [Ty.tel, if_pos hd]
+        exact (Ty.telSelf_noBnd_of_decl ((Ty.isDecl_iff T).mp hd)).closedBnds
+      · simp only [Ty.tel, if_neg hd]
+        exact .bnd .nil
+
 /-! ## Identity templates between concatenated telescopes -/
 
-/-- `identityMorphism off Tel` proves every proposition of `Tel` by the identical
-proposition of the source, found `off` positions further along. -/
+/-- `identityMorphism src off Tel` proves every proposition of `Tel` by the identical
+proposition of the source, found `off` positions further along; a self-bound is
+proven by the cast of `μ src` through the source's own bound there. -/
 theorem identityMorphism_typed {s : Sig} {Γ : FCdot.Ctx s} {src : FCdot.Telescope (s,x)}
     (off : Nat) :
-    ∀ (Tel : FCdot.Telescope (s,x)),
+    ∀ {Tel : FCdot.Telescope (s,x)}, Tel.ClosedBnds →
       (∀ i P, Tel ∋ (i ↦ P) → src ∋ (off + i ↦ P)) →
-      Γ ⊢ identityMorphism off Tel : src ⇒ Tel
-  | .nil, _ => by rw [identityMorphism]; exact .nil
-  | .cons Tel P, h => by
-      have ih : Γ ⊢ identityMorphism off Tel : src ⇒ Tel :=
-        identityMorphism_typed off Tel (fun i Q hQ => h i Q hQ.there)
-      have hhere : src ∋ (off + Tel.length ↦ P) := h _ _ .here
-      cases P with
-      | le X Y => rw [identityMorphism]; exact .le ih hhere .none .none
-      | eq X Y => rw [identityMorphism]; exact .eq ih hhere
-      | has l => rw [identityMorphism]; exact .has ih hhere
+      Γ ⊢ identityMorphism src off Tel : src ⇒ Tel
+  | _, .nil, _ => by rw [identityMorphism]; exact .nil
+  | _, .le hb, h => by
+      have ih := identityMorphism_typed (Γ := Γ) (src := src) off hb (fun i Q hQ => h i Q hQ.there)
+      rw [identityMorphism]; exact .le ih (h _ _ .here) .none .none
+  | _, .eq hb, h => by
+      have ih := identityMorphism_typed (Γ := Γ) (src := src) off hb (fun i Q hQ => h i Q hQ.there)
+      rw [identityMorphism]; exact .eq ih (h _ _ .here)
+  | _, .has hb, h => by
+      have ih := identityMorphism_typed (Γ := Γ) (src := src) off hb (fun i Q hQ => h i Q hQ.there)
+      rw [identityMorphism]; exact .has ih (h _ _ .here)
+  | _, .bnd hb, h => by
+      have ih := identityMorphism_typed (Γ := Γ) (src := src) off hb (fun i Q hQ => h i Q hQ.there)
+      rw [identityMorphism]; exact .bnd ih (.bound (h _ _ .here))
 
 /-- `And₁`: the first half of a concatenation sits at the same positions. -/
 theorem identityMorphism_typed_left {s : Sig} {Γ : FCdot.Ctx s}
-    (Tel₁ Tel₂ : FCdot.Telescope (s,x)) :
-    Γ ⊢ identityMorphism 0 Tel₁ : Tel₁.append Tel₂ ⇒ Tel₁ :=
-  identityMorphism_typed 0 Tel₁ (fun _ _ hP => by
+    (Tel₁ Tel₂ : FCdot.Telescope (s,x)) (hb : Tel₁.ClosedBnds) :
+    Γ ⊢ identityMorphism (Tel₁.append Tel₂) 0 Tel₁ : Tel₁.append Tel₂ ⇒ Tel₁ :=
+  identityMorphism_typed 0 hb (fun _ _ hP => by
     rw [Nat.zero_add]; exact FCdot.Telescope.At.append_left' hP Tel₂)
 
 /-- `And₂`: the second half is offset by the length of the first. -/
 theorem identityMorphism_typed_right {s : Sig} {Γ : FCdot.Ctx s}
-    (Tel₁ Tel₂ : FCdot.Telescope (s,x)) :
-    Γ ⊢ identityMorphism Tel₁.length Tel₂ : Tel₁.append Tel₂ ⇒ Tel₂ :=
-  identityMorphism_typed Tel₁.length Tel₂ (fun _ _ hP =>
+    (Tel₁ Tel₂ : FCdot.Telescope (s,x)) (hb : Tel₂.ClosedBnds) :
+    Γ ⊢ identityMorphism (Tel₁.append Tel₂) Tel₁.length Tel₂ : Tel₁.append Tel₂ ⇒ Tel₂ :=
+  identityMorphism_typed Tel₁.length hb (fun _ _ hP =>
     FCdot.Telescope.At.append_right Tel₁ hP)
+
+/-! ## Putting an operand into its telescope -/
+
+/-- `into T` turns evidence into `⟦T⟧` into evidence into `μ (tel T)`. -/
+theorem into_typed {s : Sig} {Γ : FCdot.Ctx s} {S T : Ty s} {d : FCdot.LeCo s}
+    (hd : Γ ⊢ d : S.translate ≤ T.translate) : Γ ⊢ into T d : S.translate ≤ μ T.tel := by
+  rw [into]
+  by_cases h : T.isObj = true
+  · rw [if_pos h, ← Ty.translate_isObj h]; exact hd
+  · rw [if_neg h, Ty.tel_of_not_isObj (by simpa using h)]
+    exact .intoBnd hd
+
+/-- The same for atoms; `And-I` needs it on both operands. -/
+theorem intoAtom_typed {s : Sig} {Γ : FCdot.Ctx s} {T : Ty s} {a : FCdot.Atom s}
+    (ha : Γ ⊢ₐ a : T.translate) : Γ ⊢ₐ intoAtom T a : μ T.tel := by
+  rw [intoAtom]
+  by_cases h : T.isObj = true
+  · rw [if_pos h, ← Ty.translate_isObj h]; exact ha
+  · rw [if_neg h, Ty.tel_of_not_isObj (by simpa using h)]
+    exact .cast ha (.intoBnd .refl)
+
+/-- The self-bound of a non-object operand sits at position `0` of its own
+telescope. -/
+theorem Ty.tel_bnd_at {s : Sig} {T : Ty s} (h : T.isObj = false) :
+    (Ty.tel T : FCdot.Telescope (s,x)) ∋ (0 ↦ ⊑ T.translate↑) := by
+  rw [Ty.tel_of_not_isObj h]
+  exact .here
 
 /-! ## Shapes of the declaration type of a set of definitions -/
 
@@ -677,7 +786,7 @@ theorem HasTy.translateAtom_root : ∀ {s : Sig} {Γ : Ctx s} {y : BVar s .var} 
   | _, _, _, _, .recE h _ => by
       rw [HasTy.translateAtom]
       simpa [FCdot.Atom.root] using HasTy.translateAtom_root h
-  | _, _, _, _, .andI h₁ h₂ _ _ => by
+  | _, _, _, _, .andI h₁ h₂ => by
       rw [HasTy.translateAtom]
       simpa [FCdot.Atom.root] using HasTy.translateAtom_root h₁
   | _, _, _, _, .sub h _ => by
@@ -696,19 +805,25 @@ theorem Sub.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {S T : Ty s} (d : Sub �
   | _, _, _, _, .trans d₁ d₂, hwf => by
       rw [Sub.translate]
       exact .trans (d₁.translate_typed hwf) (d₂.translate_typed hwf)
-  | _, _, _, _, .and1 hS hT, _ => by
-      rw [Sub.translate, Ty.tel_and, Ty.translate_and, Ty.translate_decl hS]
-      exact .obj (identityMorphism_typed_left _ _)
-  | _, _, _, _, .and2 hS hT, _ => by
-      rw [Sub.translate, Ty.tel_and, Ty.translate_and, Ty.translate_decl hT]
-      exact .obj (identityMorphism_typed_right _ _)
-  | _, _, _, _, .and d₁ d₂ hT hU, hwf => by
-      have i1 := d₁.translate_typed hwf
-      have i2 := d₂.translate_typed hwf
-      rw [Ty.translate_decl hT] at i1
-      rw [Ty.translate_decl hU] at i2
+  | _, _, _, _, @Sub.and1 _ _ S T, _ => by
+      by_cases hS : S.isObj = true
+      · rw [Sub.translate, if_pos hS, Ty.tel_and, Ty.translate_and, Ty.translate_isObj hS]
+        exact .obj (identityMorphism_typed_left _ _ (Ty.tel_closedBnds S))
+      · have hS' : S.isObj = false := by simpa using hS
+        rw [Sub.translate, if_neg hS, Ty.tel_and, Ty.translate_and]
+        exact .bound ((Ty.tel_bnd_at hS').append_left' T.tel)
+  | _, _, _, _, @Sub.and2 _ _ S T, _ => by
+      by_cases hT : T.isObj = true
+      · rw [Sub.translate, if_pos hT, Ty.tel_and, Ty.translate_and, Ty.translate_isObj hT]
+        exact .obj (identityMorphism_typed_right _ _ (Ty.tel_closedBnds T))
+      · have hT' : T.isObj = false := by simpa using hT
+        rw [Sub.translate, if_neg hT, Ty.tel_and, Ty.translate_and]
+        refine .bound ?_
+        have h0 := FCdot.Telescope.At.append_right S.tel (Ty.tel_bnd_at hT')
+        rwa [Nat.add_zero] at h0
+  | _, _, _, _, .and d₁ d₂, hwf => by
       rw [Sub.translate, Ty.translate_and]
-      exact .pair i1 i2
+      exact .pair (into_typed (d₁.translate_typed hwf)) (into_typed (d₂.translate_typed hwf))
   | _, _, _, _, .fld d, hwf => by
       rw [Sub.translate]
       simp only [Ty.translate_fld, Ty.tel_fld]
@@ -766,13 +881,12 @@ theorem HasTy.translateAtom_typed : ∀ {s : Sig} {Γ : Ctx s} {y : BVar s .var}
       rw [show (FCdot.Atom.unfoldSelf (HasTy.translateAtom h)).root = y by
         simp [FCdot.Atom.root, hroot]]
       exact hu
-  | _, _, _, _, .andI h₁ h₂ hT hU, hwf => by
-      have i1 := HasTy.translateAtom_typed h₁ hwf
-      have i2 := HasTy.translateAtom_typed h₂ hwf
-      rw [Ty.translate_decl hT] at i1
-      rw [Ty.translate_decl hU] at i2
+  | _, _, _, _, .andI h₁ h₂, hwf => by
+      have i1 := intoAtom_typed (HasTy.translateAtom_typed h₁ hwf)
+      have i2 := intoAtom_typed (HasTy.translateAtom_typed h₂ hwf)
       rw [HasTy.translateAtom, Ty.translate_and]
-      exact .both i1 i2 (by rw [HasTy.translateAtom_root h₁, HasTy.translateAtom_root h₂])
+      exact .both i1 i2
+        (by simp [HasTy.translateAtom_root h₁, HasTy.translateAtom_root h₂])
   | _, _, _, _, .sub h d, hwf => by
       rw [HasTy.translateAtom]
       exact .cast (HasTy.translateAtom_typed h hwf) (d.translate_typed hwf)

@@ -29,6 +29,10 @@ inductive Proposition : Sig → Type where
   | le : Ty s → Ty s → Proposition s
   | eq : Ty s → Ty s → Proposition s
   | has : Label → Proposition s
+  /-- Self-bound: the object itself is included in the type.  By convention
+      the type is always a weakened closed type, so a bound never mentions
+      the self block. -/
+  | bnd : Ty s → Proposition s
 
 /-- Telescope of propositions, oldest first.  Propositions do not bind. -/
 inductive Telescope : Sig → Type where
@@ -57,6 +61,7 @@ scoped prefix:max "μ " => Ty.obj
 scoped infix:70 " ⊑ " => Proposition.le
 scoped infix:70 " ≐ " => Proposition.eq
 scoped prefix:max "∋ " => Proposition.has
+scoped prefix:75 "⊑ " => Proposition.bnd
 scoped infixl:65 " ▹ " => Telescope.cons
 
 /-- Length of a telescope. -/
@@ -97,6 +102,7 @@ def Proposition.rename : Proposition s1 → Rename s1 s2 → Proposition s2
   | .le S T, ρ => .le (S.rename ρ) (T.rename ρ)
   | .eq S T, ρ => .eq (S.rename ρ) (T.rename ρ)
   | .has ℓ, _ => .has ℓ
+  | .bnd T, ρ => .bnd (T.rename ρ)
 
 def Telescope.rename : Telescope s1 → Rename s1 s2 → Telescope s2
   | .nil, _ => .nil
@@ -154,6 +160,10 @@ inductive LeCo : Sig → Type where
   /-- Pairing: two coercions into object types give one into the
       concatenation of their telescopes. -/
   | pair : Telescope (s,x) → Telescope (s,x) → LeCo s → LeCo s → LeCo s
+  /-- The annotated object type is below its `i`-th bound. -/
+  | bound : Telescope (s,x) → Nat → LeCo s
+  /-- An `S` below `T` is an `S` below the one-bound object type `μ [⊑ T↑]`. -/
+  | intoBnd : LeCo s → LeCo s
   /-- Elimination at an atom: the `i`-th proposition of the target telescope of `e`,
       instantiated at the root of `a`, when that proposition is an inclusion. -/
   | member : Atom s → LeCo s → Nat → LeCo s
@@ -188,6 +198,9 @@ inductive Morphism : Sig → Type where
   | le : Morphism s → Side s → Hole → Side s → Morphism s
   | eq : Morphism s → Nat → Bool → Morphism s
   | has : Morphism s → Nat → Morphism s
+  /-- A template for a target bound: a closed coercion out of the source
+      object type. -/
+  | bnd : Morphism s → LeCo s → Morphism s
 
 /-- Atoms: a variable under wrappers that erase to nothing. -/
 inductive Atom : Sig → Type where
@@ -222,6 +235,8 @@ def LeCo.rename : LeCo s1 → Rename s1 s2 → LeCo s2
   | .pi e f, ρ => .pi (e.rename ρ) (f.rename ρ.lift)
   | .obj Tel m, ρ => .obj (Tel.rename ρ.lift) (m.rename ρ)
   | .pair Tel₁ Tel₂ e f, ρ => .pair (Tel₁.rename ρ.lift) (Tel₂.rename ρ.lift) (e.rename ρ) (f.rename ρ)
+  | .bound Tel i, ρ => .bound (Tel.rename ρ.lift) i
+  | .intoBnd e, ρ => .intoBnd (e.rename ρ)
   | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
 
 def EqCo.rename : EqCo s1 → Rename s1 s2 → EqCo s2
@@ -244,6 +259,7 @@ def Morphism.rename : Morphism s1 → Rename s1 s2 → Morphism s2
   | .le m pre h post, ρ => .le (m.rename ρ) (pre.rename ρ) h (post.rename ρ)
   | .eq m j b, ρ => .eq (m.rename ρ) j b
   | .has m j, ρ => .has (m.rename ρ) j
+  | .bnd m e, ρ => .bnd (m.rename ρ) (e.rename ρ)
 
 def Atom.rename : Atom s1 → Rename s1 s2 → Atom s2
   | .var x, ρ => .var (ρ.var x)
@@ -417,6 +433,8 @@ def LeCo.subst : LeCo s1 → Subst s1 s2 → LeCo s2
   | .obj Tel m, σ => .obj (Tel.rename σ.root.lift) (m.subst σ)
   | .pair Tel₁ Tel₂ e f, σ =>
       .pair (Tel₁.rename σ.root.lift) (Tel₂.rename σ.root.lift) (e.subst σ) (f.subst σ)
+  | .bound Tel i, σ => .bound (Tel.rename σ.root.lift) i
+  | .intoBnd e, σ => .intoBnd (e.subst σ)
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
 
 def EqCo.subst : EqCo s1 → Subst s1 s2 → EqCo s2
@@ -439,6 +457,7 @@ def Morphism.subst : Morphism s1 → Subst s1 s2 → Morphism s2
   | .le m pre h post, σ => .le (m.subst σ) (pre.subst σ) h (post.subst σ)
   | .eq m j b, σ => .eq (m.subst σ) j b
   | .has m j, σ => .has (m.subst σ) j
+  | .bnd m e, σ => .bnd (m.subst σ) (e.subst σ)
 
 def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
   | .var x, σ => σ.var x

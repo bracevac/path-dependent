@@ -166,9 +166,9 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
   | _, _, _, _, .recE h hd, hwf => by
       simp only [HasTy.translate]
       exact .atom (HasTy.translateAtom_typed (.recE h hd) hwf)
-  | _, _, _, _, .andI h₁ h₂ hT hU, hwf => by
+  | _, _, _, _, .andI h₁ h₂, hwf => by
       simp only [HasTy.translate]
-      exact .atom (HasTy.translateAtom_typed (.andI h₁ h₂ hT hU) hwf)
+      exact .atom (HasTy.translateAtom_typed (.andI h₁ h₂) hwf)
   | _, _, _, _, .sub h d, hwf => by
       simp only [HasTy.translate]
       exact .cast (HasTy.translate_typed h hwf) (d.translate_typed hwf)

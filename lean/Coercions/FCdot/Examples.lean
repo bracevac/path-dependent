@@ -6,8 +6,9 @@ import Coercions.DotMNF.Erasure
 /-!
 # FCdot examples
 
-The five mandatory examples of Plan III §10, as `FCdot` terms accepted by the
-structural checker of `Coercions.FCdot.Checker`.  Each example comes with
+The mandatory examples of Plan III §10 (E1 to E7) and the acceptance test for
+self-bound propositions (E8), as `FCdot` terms accepted by the structural
+checker of `Coercions.FCdot.Checker`.  Each example comes with
 
 * the term and its type, built from the type translation of §5.1;
 * the checker's verdict on it;
@@ -34,6 +35,7 @@ also built by hand from the rules, as a second, independent witness, with
 {A : S..T}   ↦  Obj(y. [ S ≤ y.A , y.A ≤ T ])          `telTyp`
 {a : T}      ↦  Obj(y. [ has a , y.a ≤ T ])            `telFld`
 S ∧ T        ↦  Obj(y. Tel_S ++ Tel_T)                 `Telescope.append`
+x.A ∧ T      ↦  Obj(y. [⊑ x.A] ++ Tel_T)               a self-bound (E8)
 μ(x. T)      ↦  Obj(x. Tel_T)                          (the literal's own type)
 ```
 
@@ -545,6 +547,118 @@ theorem E7_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ .obj E7Wit .nil : E7Ty := by
   have h : Γ ⊢ᵥ .obj E7Wit .nil : (.obj (Telescope.ofLiteral E7Wit [])) := .obj .nil
   rw [E7Tel_eq] at h
   exact h
+
+/-! ## E8: refining an abstract type
+
+`λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a`, matching
+`DotMNF.Examples.E8`.  This is the acceptance test for self-bound
+propositions: `x.A` is a type selection, not a declaration, so the
+intersection `x.A ∧ {a : ⊤}` translates to the telescope
+
+```text
+[ ⊑ x.A , has a , y.a ≤ ⊤ ]
+```
+
+whose first proposition is the self-bound `⊑ x.A` -- "the object itself is
+included in `x.A`".  The two source derivations of `y.a` translate to two
+different pieces of evidence:
+
+* `E8`: `And₂` first, an object coercion copying the two propositions of
+  `{a : ⊤}` at offset `1`, then `{}-E`;
+* `E8b`: `And₁` first -- the bound cast `LeCo.bound … 0` -- then `Sel-<:`,
+  i.e. the upper bound of `x`'s member `A`, then `{}-E`.
+
+`E8_both` is the `And-I` direction: from `y : x.A` and `y : {a : ⊤}` the
+atom `Atom.both` recovers `y`'s own type, the non-declaration operand being
+re-wrapped by `LeCo.intoBnd`. -/
+
+/-- `{A : ⊥..{a : ⊤}}`, the bound of the abstract type. -/
+def E8X : Ty s := tTyp lA .bot (tFld la .top)
+
+/-- `x.A ∧ {a : ⊤}` as a telescope: a single self-bound, then `{a : ⊤}`. -/
+def E8YTel (x : BVar s .var) : Telescope (s,x) :=
+  (Telescope.nil.cons (⊑ (Ty.sel x lA)↑)).append (telFld la .top)
+
+/-- `x.A ∧ {a : ⊤}`.  Self-bound at index `0`, field declaration at `1`,
+field upper bound at `2`. -/
+def E8Y (x : BVar s .var) : Ty s := .obj (E8YTel x)
+
+/-- `And₂`: the identity morphism onto the second operand, at offset `1`. -/
+def E8And2 (x : BVar s .var) : LeCo s :=
+  .obj (E8YTel x) (.le (.has .nil 1) .none (.le 2) .none)
+
+/-- `And₁` then `Sel-<:`: through the self-bound to `x.A`, then to `{a : ⊤}`
+by the upper bound of `x`'s member `A`. -/
+def E8Sel (x : BVar s .var) : LeCo s :=
+  .trans (.bound (E8YTel x) 0) (.member (.var x) (.refl E8X) 1)
+
+/-- `λ(x). λ(y). y.a`, the `And₂` derivation. -/
+def E8 : Tm [] :=
+  .val (.lam E8X
+    (.val (.lam (E8Y .here)
+      (.cast (.proj (.var .here) la (.member (.var .here) (E8And2 (.there .here)) 0))
+        (.top (.sel .here la))))))
+
+/-- `λ(x). λ(y). y.a`, the `And₁`-then-`Sel-<:` derivation: the same term
+after erasure. -/
+def E8b : Tm [] :=
+  .val (.lam E8X
+    (.val (.lam (E8Y .here)
+      (.cast (.proj (.var .here) la (.member (.var .here) (E8Sel (.there .here)) 0))
+        (.top (.sel .here la))))))
+
+/-- `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : ⊤}) ⊤`. -/
+def E8Ty : Ty [] := .pi E8X (.pi (E8Y .here) .top)
+
+example : checkTm Ctx.nil E8 E8Ty = true := by decide +kernel
+
+theorem E8_typed : Ctx.nil ⊢ E8 : E8Ty := checkTm_sound (by decide +kernel)
+
+example : checkTm Ctx.nil E8b E8Ty = true := by decide +kernel
+
+theorem E8b_typed : Ctx.nil ⊢ E8b : E8Ty := checkTm_sound (by decide +kernel)
+
+/-- The two derivations erase to the same runtime term. -/
+theorem E8b_erase_E8 : E8b.erase = E8.erase := rfl
+
+/-- `λ(x). λ(y). y.a` in the source calculus. -/
+def E8src : DotMNF.Tm [] :=
+  .val (.lam DotMNF.Examples.E8Dom
+    (.val (.lam (DotMNF.Examples.E8Ref .here) (.proj .here DotMNF.Examples.la))))
+
+example : DotMNF.HasTy .nil E8src
+    (.all DotMNF.Examples.E8Dom (.all (DotMNF.Examples.E8Ref .here) .top)) :=
+  DotMNF.Examples.E8
+
+example : DotMNF.HasTy .nil E8src
+    (.all DotMNF.Examples.E8Dom (.all (DotMNF.Examples.E8Ref .here) .top)) :=
+  DotMNF.Examples.E8b
+
+theorem E8_erase : E8.erase = E8src.erase := rfl
+
+theorem E8b_erase : E8b.erase = E8src.erase := rfl
+
+/-! ### `And-I`
+
+`y : x.A` and `y : {a : ⊤}` give back `y : x.A ∧ {a : ⊤}`: an atom, not a
+closed program. -/
+
+/-- `x : {A : ⊥..{a : ⊤}}, y : x.A ∧ {a : ⊤}`. -/
+def E8Ctx : Ctx ([],x,x) := (Ctx.nil.cons (.opaque E8X)).cons (.opaque (E8Y .here))
+
+/-- `And-I`: the two views of `y` recombined.  The non-declaration operand
+is re-wrapped by `intoBnd`, the declaration operand is used as it is. -/
+theorem E8_both : E8Ctx ⊢ₐ
+    (.both (Telescope.nil.cons (⊑ (Ty.sel (.there .here) lA)↑)) (telFld la .top)
+      (.cast (.cast (.var .here) (.bound (E8YTel (.there .here)) 0))
+        (.intoBnd (.refl (.sel (.there .here) lA))))
+      (.cast (.var .here) (E8And2 (.there .here)))) :
+    (E8Y (.there .here)) :=
+  .both
+    (.cast (.cast .var (.bound (Tel := E8YTel (.there .here)) (.there (.there .here))))
+      (.intoBnd .refl))
+    (.cast .var (.obj (.le (.has .nil (.there .here)) .here .none .none)))
+    rfl
 
 end Examples
 end FCdot

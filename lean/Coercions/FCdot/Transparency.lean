@@ -107,6 +107,8 @@ theorem LeCo.HasType.refine {Γ Γ' : Ctx s} {e : LeCo s} {S T : Ty s}
   | .pi he hf => exact .pi (he.refine hR) (hf.refine (hR.cons _))
   | .obj hm => exact .obj (hm.refine hR)
   | .pair he hf => exact .pair (he.refine hR) (hf.refine hR)
+  | .bound hAt => exact .bound hAt
+  | .intoBnd he => exact .intoBnd (he.refine hR)
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
 
 theorem EqCo.HasType.refine {Γ Γ' : Ctx s} {φ : EqCo s} {S T : Ty s}
@@ -143,6 +145,7 @@ theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope (s,x)} {m : Mo
   | .eq hm hAt => exact .eq (hm.refine hR) hAt
   | .eqSym hm hAt => exact .eqSym (hm.refine hR) hAt
   | .has hm hAt => exact .has (hm.refine hR) hAt
+  | .bnd hm he => exact .bnd (hm.refine hR) (he.refine hR)
 
 theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ₐ a : T) : Γ' ⊢ₐ a : T := by

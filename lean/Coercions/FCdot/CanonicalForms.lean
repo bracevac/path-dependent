@@ -13,63 +13,26 @@ normalizes to typed data:
   stored at `x` has field `ℓ`;
 * `mor_canon`: a typed morphism has typed entries;
 * `atom_canon`: `Γ ⊢ₐ a : S` gives a view `σ ⊢ a ⇓ᵥ[n] V` typed at every
-  telescope `S` resolves to, and `S` does not resolve to `⊥`.
+  telescope `S` resolves to, and `S` does not resolve to `⊥`;
+* `closedAtomForm_typed`: the chain of casts of a closed atom normalizes to
+  a form typed from the root's type to the atom's type, at the root.
 
 The proof is a structural induction on typing derivations.  Object coercions
 are between opened telescopes, so nothing is ever re-normalized at an
 instantiation: the `member` cases take an entry out of the atom's view.
+The view of a cast atom is computed from the view *and the chain* of the
+underlying atom (a bound entry of a view is a form typed from the root), so
+`atom_canon` and `closedAtomForm_typed` are proven together.
 
-The chain of casts of a closed atom then normalizes to a form typed from the
-root's type to the atom's type, at the root (`closedAtomForm_typed`).  This
-discharges the `FormsTyped` obligation of `preservation` and the
-canonical-forms hypothesis of `erase_reflect` (`preservation'`,
-`erase_reflect'`).
+`closedAtomForm_typed` discharges the `FormsTyped` obligation of
+`preservation` and the canonical-forms hypothesis of `erase_reflect`
+(`preservation'`, `erase_reflect'`).
 -/
 
 namespace FCdot
 
 section
 variable {σ : Store s} {Γ : Ctx s}
-
-/-! ## Views are stable under folding and unfolding the self block -/
-
-theorem ViewTyped_unfold {r : BVar s .var} {V : View s} {Tel : Telescope (s,x)}
-    (h : Γ ⊨[r, σ] V : Tel) : Γ ⊨[r, σ] V : ((Tel⟦r⟧)↑) := by
-  induction h with
-  | nil => exact .nil
-  | le _ hF ih =>
-      simp only [Telescope.substVar, Telescope.rename, Proposition.rename, Telescope.weaken_cons,
-        Proposition.weaken_le]
-      exact .le ih (by rwa [Ty.weaken_substVar, Ty.weaken_substVar])
-  | eq _ hE ih =>
-      simp only [Telescope.substVar, Telescope.rename, Proposition.rename, Telescope.weaken_cons,
-        Proposition.weaken_eq]
-      exact .eq ih (by rwa [Ty.weaken_substVar, Ty.weaken_substVar])
-  | has _ hH ih =>
-      simp only [Telescope.substVar, Telescope.rename, Proposition.rename, Telescope.weaken_cons,
-        Proposition.weaken_has]
-      exact .has ih hH
-
-theorem ViewTyped_fold {r : BVar s .var} : ∀ {V : View s} {Tel : Telescope (s,x)},
-    Γ ⊨[r, σ] V : ((Tel⟦r⟧)↑) → Γ ⊨[r, σ] V : Tel
-  | _, .nil, h => by cases h; exact .nil
-  | _, .cons Tel (.le S T), h => by
-      simp only [Telescope.substVar, Telescope.rename, Proposition.rename, Telescope.weaken_cons,
-        Proposition.weaken_le] at h
-      cases h with
-      | le hV hF =>
-          exact .le (ViewTyped_fold hV) (by rwa [Ty.weaken_substVar, Ty.weaken_substVar] at hF)
-  | _, .cons Tel (.eq S T), h => by
-      simp only [Telescope.substVar, Telescope.rename, Proposition.rename, Telescope.weaken_cons,
-        Proposition.weaken_eq] at h
-      cases h with
-      | eq hV hE =>
-          exact .eq (ViewTyped_fold hV) (by rwa [Ty.weaken_substVar, Ty.weaken_substVar] at hE)
-  | _, .cons Tel (.has ℓ), h => by
-      simp only [Telescope.substVar, Telescope.rename, Proposition.rename, Telescope.weaken_cons,
-        Proposition.weaken_has] at h
-      cases h with
-      | has hV hH => exact .has (ViewTyped_fold hV) hH
 
 /-! ## The precise view of a location -/
 
@@ -94,10 +57,9 @@ theorem hasForms_typed (x : BVar s .var) :
       hasForms_typed x ls _ _ (.has hV (hF ℓ (by simp))) (fun ℓ' h => hF ℓ' (by simp [h]))
 
 /-- The precise view of a location is typed at its type. -/
-theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) :
-    (∀ Tel : Telescope (s,x), Γ.resolve (Γ.lookupTy x) = μ Tel →
-      Γ ⊨[x, σ] ((σ.lookup x).precView x) : Tel) ∧
-    Γ.resolve (Γ.lookupTy x) ≠ ⊥ := by
+theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) : RootViewTyped Γ σ x := by
+  show (∀ Tel : Telescope (s,x), Γ.resolve (Γ.lookupTy x) = μ Tel →
+      Γ ⊨[x, σ] ((σ.lookup x).precView x) : Tel) ∧ Γ.resolve (Γ.lookupTy x) ≠ ⊥
   have hv := hσ.lookup x
   have hlit := hσ.lookup_isLiteral x
   cases hl : σ.lookup x with
@@ -152,26 +114,85 @@ def AtomConcl (σ : Store s) (Γ : Ctx s) (a : Atom s) (S : Ty s) : Prop :=
     (∀ Tel : Telescope (s,x), Γ.resolve S = μ Tel → Γ ⊨[a.root, σ] V : Tel) ∧
     Γ.resolve S ≠ ⊥
 
+/-- The view of an atom, read at the shapes opened at its root: the same
+statement, since opening and folding a telescope at the root is invisible to
+a view. -/
+theorem AtomConcl.opened {a : Atom s} {S : Ty s} (h : AtomConcl σ Γ a S) :
+    ∃ n V, σ ⊢ a ⇓ᵥ[n] V ∧
+      (∀ Tel : Telescope (s,x), Γ.resolveAt? (some a.root) S = μ Tel → Γ ⊨[a.root, σ] V : Tel) ∧
+      Γ.resolveAt? (some a.root) S ≠ ⊥ := by
+  obtain ⟨n, V, hV, hVt, hnb⟩ := h
+  refine ⟨n, V, hV, fun Tel hT => ?_, fun hb => hnb (Ty.unfoldAt_eq_bot hb)⟩
+  obtain ⟨Tel₀, h₀, rfl⟩ := Ty.unfoldAt_eq_obj hT
+  exact ViewTyped_unfold (hVt Tel₀ h₀)
+
+theorem AtomConcl.of_opened {a : Atom s} {S : Ty s} {n : Nat} {V : View s}
+    (hV : σ ⊢ a ⇓ᵥ[n] V)
+    (hVt : ∀ Tel : Telescope (s,x), Γ.resolveAt? (some a.root) S = μ Tel → Γ ⊨[a.root, σ] V : Tel)
+    (hnb : Γ.resolveAt? (some a.root) S ≠ ⊥) : AtomConcl σ Γ a S := by
+  refine ⟨n, V, hV, fun Tel h => ?_, fun hb => hnb ?_⟩
+  · exact ViewTyped_fold (hVt _ (by simp only [Ctx.resolveAt?_some, Ctx.resolveAt, h]; rfl))
+  · simp only [Ctx.resolveAt?_some, Ctx.resolveAt, hb]; rfl
+
 /-! ## Views through coercions -/
 
-/-- The view of an atom through a coercion to an object type, from the
-normal forms of both.  Fuel: one more than the larger of the two. -/
-theorem view_through_obj {a : Atom s} {S : Ty s} {Tel : Telescope (s,x)} {V : View s}
-    {F : Form s} {e : LeCo s} {n₁ n₂ : Nat}
+/-- The view of an atom through a coercion to an object type, from the view
+and the chain of the atom and the normal form of the coercion. -/
+theorem view_through_obj {a a' : Atom s} {S : Ty s} {Tel : Telescope (s,x)} {V : View s}
+    {F C : Form s} {n₁ n₃ : Nat}
+    (hroot : RootViewTyped Γ σ a.root)
     (hV : σ ⊢ a ⇓ᵥ[n₁] V)
-    (hVt : ∀ Tel : Telescope (s,x), Γ.resolve S = μ Tel → Γ ⊨[a.root, σ] V : Tel)
-    (hnb : Γ.resolve S ≠ ⊥)
-    (hF : σ ⊢ e ⇓[n₂] F) (hFt : Γ ⊨ F : S ≤ μ Tel) :
-    ∃ V', viewThrough σ (max n₁ n₂ + 1) F a = some V' ∧ Γ ⊨[a.root, σ] V' : Tel := by
-  obtain ⟨V', hV', hVt', _⟩ :=
-    viewThrough_typed hFt (view_le (Nat.le_max_left n₁ n₂) hV) hVt hnb
-  exact ⟨V', hV', hVt' Tel (Ctx.resolve_obj _ _)⟩
+    (hVt : ∀ Tel : Telescope (s,x), Γ.resolveAt? (some a.root) S = μ Tel → Γ ⊨[a.root, σ] V : Tel)
+    (hnb : Γ.resolveAt? (some a.root) S ≠ ⊥)
+    (hC : σ ⊢ a ⇓ᶜ[n₃] (a', C))
+    (hCt : Γ ⊨[a.root] C : Γ.lookupTy a.root ≤ S)
+    (hFt : Γ ⊨ F : S ≤ μ Tel) :
+    ∃ m V', viewThrough σ m F a = some V' ∧ Γ ⊨[a.root, σ] V' : Tel := by
+  obtain ⟨m, V', hV', hVt', _⟩ :=
+    viewThrough_typed hroot (hFt.atRoot _) (view_le (Nat.le_max_left n₁ n₃) hV)
+      (closedAtomForm_le (Nat.le_max_right n₁ n₃) hC) hCt hVt hnb
+  exact ⟨m, V', hV', ViewTyped_fold (hVt' _ (by simp))⟩
 
-/-- Fuel bookkeeping: a normal form found with fuel `n₂` is found with
-`max n₁ n₂ + 1`. -/
-theorem hnf_le_max {e : LeCo s} {F : Form s} {n₁ n₂ : Nat} (hF : σ ⊢ e ⇓[n₂] F) :
-    σ ⊢ e ⇓[max n₁ n₂ + 1] F :=
-  hnf_le (Nat.le_trans (Nat.le_max_right n₁ n₂) (Nat.le_succ _)) hF
+/-! ## Pairing the chains of two atoms -/
+
+/-- The root of an atom under wrappers. -/
+@[simp] theorem Atom.root_cast (a : Atom s) (e : LeCo s) : (Atom.cast a e).root = a.root := rfl
+@[simp] theorem Atom.root_foldSelf (Tel : Telescope (s,x)) (a : Atom s) :
+    (Atom.foldSelf Tel a).root = a.root := rfl
+@[simp] theorem Atom.root_unfoldSelf (a : Atom s) : (Atom.unfoldSelf a).root = a.root := rfl
+@[simp] theorem Atom.root_both (Tel₁ Tel₂ : Telescope (s,x)) (a b : Atom s) :
+    (Atom.both Tel₁ Tel₂ a b).root = a.root := rfl
+
+/-- Opening the self block at the root is invisible to `foldSelf`. -/
+theorem Ctx.resolveAt_fold (Γ : Ctx s) (r : BVar s .var) (Tel : Telescope (s,x)) :
+    Γ.resolveAt r (μ Tel) = Γ.resolveAt r (μ ((Tel⟦r⟧)↑)) := by
+  show Γ.resolveAt? (some r) (μ Tel) = Γ.resolveAt? (some r) (μ ((Tel⟦r⟧)↑))
+  rw [Ctx.resolveAt?_obj, Ctx.resolveAt?_obj, ← Telescope.openAt?_some,
+    Telescope.openAt?_idem]
+
+/-- Pairing the chains of casts of two atoms at the same root. -/
+theorem ChainTyped.pair {r : BVar s .var} {F G : Form s} {S : Ty s} {Tel₁ Tel₂ : Telescope (s,x)}
+    (hF : Γ ⊨[r] F : S ≤ μ Tel₁) (hG : Γ ⊨[r] G : S ≤ μ Tel₂) :
+    ∃ H, Form.pair Tel₁ Tel₂ F G = some H ∧ Γ ⊨[r] H : S ≤ μ (Tel₁ ++ Tel₂) := by
+  have hI : ∀ Tel : Telescope (s,x), Tel.identityEntries = ((Tel⟦r⟧)↑).identityEntries := by
+    intro Tel
+    rw [show ((Tel⟦r⟧)↑ : Telescope (s,x)) = Tel.rename ((Rename.subst r).comp Rename.succ) by
+      simp [Telescope.substVar, Telescope.weaken, Telescope.rename_comp]]
+    exact (Telescope.identityEntries_rename Tel _).symm
+  have hop : ∀ Tel : Telescope (s,x),
+      Γ.resolveAt? (some r) (μ ((Tel⟦r⟧)↑)) = μ ((Tel⟦r⟧)↑) := by
+    intro Tel
+    simp [Ctx.resolveAt?_obj, Telescope.weaken_substVar]
+  have hF' : Γ ⊨[r] F : S ≤ μ ((Tel₁⟦r⟧)↑) := ChainTyped.tgtRes (Ctx.resolveAt_fold Γ r Tel₁) hF
+  have hG' : Γ ⊨[r] G : S ≤ μ ((Tel₂⟦r⟧)↑) := ChainTyped.tgtRes (Ctx.resolveAt_fold Γ r Tel₂) hG
+  obtain ⟨H, hH, hHt⟩ :=
+    Form.pair_typed hF' hG' (hop Tel₁) (hop Tel₂) (hI Tel₁) (hI Tel₂)
+  refine ⟨H, hH, ChainTyped.tgtRes ?_ hHt⟩
+  show Γ.resolveAt? (some r) _ = Γ.resolveAt? (some r) _
+  simp [Ctx.resolveAt?_obj, Telescope.openAt?_append, Telescope.weaken_substVar,
+    Telescope.append_rename]
+
+/-! ## Canonical forms -/
 
 variable (hσ : ⊢ σ : Γ)
 include hσ
@@ -189,10 +210,15 @@ theorem le_canon {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) : LeConcl σ
   | .obj hm =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, .obj Es, by simp [hnf, hEs], .obj (by simp) (by simp) hT⟩
+  | .bound hAt => exact ⟨1, _, rfl, .bnd (by simp) hAt (.id rfl)⟩
+  | .intoBnd he =>
+      obtain ⟨n, F, hF, hFt⟩ := le_canon he
+      exact ⟨n + 1, .into (.nil ▹ .bnd F), by simp [hnf, hF],
+        .into (by simp) (.cons .nil hFt)⟩
   | .pair he hf =>
       obtain ⟨n₁, F, hF, hFt⟩ := le_canon he
       obtain ⟨n₂, G, hG, hGt⟩ := le_canon hf
-      obtain ⟨H, hH, hHt⟩ := Form.pair_typed hFt hGt rfl rfl
+      obtain ⟨H, hH, hHt⟩ := Form.pair_typed hFt hGt (by simp) (by simp) rfl rfl
       refine ⟨max n₁ n₂ + 1, H, ?_, hHt⟩
       simp [hnf, hnf_le (Nat.le_max_left n₁ n₂) hF, hnf_le (Nat.le_max_right n₁ n₂) hG, hH]
   | .trans he hf =>
@@ -201,12 +227,16 @@ theorem le_canon {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) : LeConcl σ
       obtain ⟨H, hH, hHt⟩ := Form.combine_typed hFt hGt
       refine ⟨max n₁ n₂ + 1, H, ?_, hHt⟩
       simp [hnf, hnf_le (Nat.le_max_left n₁ n₂) hF, hnf_le (Nat.le_max_right n₁ n₂) hG, hH]
-  | .member ha he hAt =>
-      obtain ⟨n₁, V, hV, hVt, hnb⟩ := atom_canon ha
+  | .member (a := a) ha he hAt =>
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨V', hV', hVt'⟩ := view_through_obj hV hVt hnb hF hFt
+      obtain ⟨n₃, a₀, C, hC, hCt⟩ := closedAtomForm_typed ha
+      obtain ⟨m, V', hV', hVt'⟩ :=
+        view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
       obtain ⟨G, hG, hGt⟩ := hVt'.le_entry hAt
-      exact ⟨max n₁ n₂ + 2, G, by simp [hnf, hnf_le_max hF, hV', hG.get?], hGt⟩
+      refine ⟨max n₂ m + 1, G, ?_, hGt⟩
+      simp [hnf, hnf_le (Nat.le_max_left n₂ m) hF,
+        viewThrough_le (Nat.le_max_right n₂ m) hV', hG.get?]
 
 theorem eq_canon {φ : EqCo s} {S T : Ty s} (h : Γ ⊢ φ : S ≡ T) : EqConcl Γ S T := by
   match h with
@@ -214,22 +244,28 @@ theorem eq_canon {φ : EqCo s} {S T : Ty s} (h : Γ ⊢ φ : S ≡ T) : EqConcl 
   | .symm h' => exact (eq_canon h').symm
   | .trans h₁ h₂ => exact (eq_canon h₁).trans (eq_canon h₂)
   | .def hdef => exact Ctx.resolve_sel_some hdef
-  | .member ha he hAt =>
-      obtain ⟨n₁, V, hV, hVt, hnb⟩ := atom_canon ha
+  | .member (a := a) ha he hAt =>
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨V', hV', hVt'⟩ := view_through_obj hV hVt hnb hF hFt
+      obtain ⟨n₃, a₀, C, hC, hCt⟩ := closedAtomForm_typed ha
+      obtain ⟨m, V', hV', hVt'⟩ :=
+        view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
       exact (hVt'.eq_entry hAt).2
 
 theorem has_canon {hh : Has s} {x : BVar s .var} {ℓ : Label} (h : Γ ⊢ hh : x ∋ ℓ) :
     HasConcl σ hh x ℓ := by
   match h with
   | .field hF hmem => exact ⟨1, rfl, hσ.hasField hF hmem⟩
-  | .member ha he hAt =>
-      obtain ⟨n₁, V, hV, hVt, hnb⟩ := atom_canon ha
+  | .member (a := a) ha he hAt =>
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨V', hV', hVt'⟩ := view_through_obj hV hVt hnb hF hFt
+      obtain ⟨n₃, a₀, C, hC, hCt⟩ := closedAtomForm_typed ha
+      obtain ⟨m, V', hV', hVt'⟩ :=
+        view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
       obtain ⟨hq, hHF⟩ := hVt'.has_entry hAt
-      exact ⟨max n₁ n₂ + 2, by simp [hasView, hnf_le_max hF, hV', hq.get?], hHF⟩
+      refine ⟨max n₂ m + 1, ?_, hHF⟩
+      simp [hasView, hnf_le (Nat.le_max_left n₂ m) hF,
+        viewThrough_le (Nat.le_max_right n₂ m) hV', hq.get?]
 
 theorem mor_canon {src : Telescope (s,x)} {m : Morphism s} {Tel : Telescope (s,x)}
     (h : Γ ⊢ m : src ⇒ Tel) : MorConcl σ Γ src m Tel := by
@@ -268,6 +304,12 @@ theorem mor_canon {src : Telescope (s,x)} {m : Morphism s} {Tel : Telescope (s,x
   | .has hm hAt =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, Es ▹ .has _, by simp [entries, hEs], .has hT hAt⟩
+  | .bnd hm he =>
+      obtain ⟨n₁, Es, hEs, hT⟩ := mor_canon hm
+      obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
+      refine ⟨max n₁ n₂ + 1, Es ▹ .bnd F, ?_, .bnd hT hFt⟩
+      simp [entries, entries_le (Nat.le_max_left n₁ n₂) hEs,
+        hnf_le (Nat.le_max_right n₁ n₂) hF]
 
 /-- A template side normalizes to a typed side form. -/
 theorem side_canon {p : Side s} {X Y : Ty (s,x)} (h : Side.HasType Γ p X Y) :
@@ -283,12 +325,16 @@ theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ 
   | .var =>
       obtain ⟨hV, hnb⟩ := precView_typed hσ _
       exact ⟨1, _, rfl, hV, hnb⟩
-  | .cast ha he =>
-      obtain ⟨n₁, V, hV, hVt, hnb⟩ := atom_canon ha
+  | .cast (a := a) (e := e) ha he =>
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨V', hV', hVt', hnb'⟩ :=
-        viewThrough_typed hFt (view_le (Nat.le_max_left n₁ n₂) hV) hVt hnb
-      exact ⟨max n₁ n₂ + 2, V', by simp [view, hnf_le_max hF, hV'], hVt', hnb'⟩
+      obtain ⟨n₃, a₀, C, hC, hCt⟩ := closedAtomForm_typed ha
+      obtain ⟨m, V', hV', hVt', hnb'⟩ :=
+        viewThrough_typed (precView_typed hσ a.root) (hFt.atRoot _)
+          (view_le (Nat.le_max_left n₁ n₃) hV)
+          (closedAtomForm_le (Nat.le_max_right n₁ n₃) hC) hCt hVt hnb
+      refine AtomConcl.of_opened (n := max n₂ m + 1) (V := V') ?_ hVt' hnb'
+      simp [view, hnf_le (Nat.le_max_left n₂ m) hF, viewThrough_le (Nat.le_max_right n₂ m) hV']
   | .unfoldSelf ha =>
       obtain ⟨n, V, hV, hVt, hnb⟩ := atom_canon ha
       refine ⟨n + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩
@@ -312,77 +358,49 @@ theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ 
         rw [hroot] at h₂
         exact (hVt₁ _ (Ctx.resolve_obj _ _)).append h₂
 
-end
-
-end
-
-/-! ## The chain of casts of a closed atom -/
-
-section
-variable {σ : Store s} {Γ : Ctx s}
-
-/-- The root of an atom under wrappers. -/
-@[simp] theorem Atom.root_cast (a : Atom s) (e : LeCo s) : (Atom.cast a e).root = a.root := rfl
-@[simp] theorem Atom.root_foldSelf (Tel : Telescope (s,x)) (a : Atom s) :
-    (Atom.foldSelf Tel a).root = a.root := rfl
-@[simp] theorem Atom.root_unfoldSelf (a : Atom s) : (Atom.unfoldSelf a).root = a.root := rfl
-@[simp] theorem Atom.root_both (Tel₁ Tel₂ : Telescope (s,x)) (a b : Atom s) :
-    (Atom.both Tel₁ Tel₂ a b).root = a.root := rfl
-
-/-- Opening the self block at the root is invisible to `foldSelf`. -/
-theorem Ctx.resolveAt_fold (Γ : Ctx s) (r : BVar s .var) (Tel : Telescope (s,x)) :
-    Γ.resolveAt r (μ Tel) = Γ.resolveAt r (μ ((Tel⟦r⟧)↑)) := by
-  simp [Ctx.resolveAt]
-
-/-- Pairing the chains of casts of two atoms at the same root. -/
-theorem ChainTyped.pair {r : BVar s .var} {F G : Form s} {S : Ty s} {Tel₁ Tel₂ : Telescope (s,x)}
-    (hF : Γ ⊨[r] F : S ≤ μ Tel₁) (hG : Γ ⊨[r] G : S ≤ μ Tel₂) :
-    ∃ H, Form.pair Tel₁ Tel₂ F G = some H ∧ Γ ⊨[r] H : S ≤ μ (Tel₁ ++ Tel₂) := by
-  have hI : ∀ Tel : Telescope (s,x), Tel.identityEntries = ((Tel⟦r⟧)↑).identityEntries := by
-    intro Tel
-    rw [show ((Tel⟦r⟧)↑ : Telescope (s,x)) = Tel.rename ((Rename.subst r).comp Rename.succ) by
-      simp [Telescope.substVar, Telescope.weaken, Telescope.rename_comp]]
-    exact (Telescope.identityEntries_rename Tel _).symm
-  simp only [ChainTyped, Ctx.resolveAt, Ctx.resolve_obj, Ty.unfoldAt_obj] at hF hG ⊢
-  obtain ⟨H, hH, hHt⟩ := Form.pair_typed hF hG (hI Tel₁) (hI Tel₂)
-  refine ⟨H, hH, ?_⟩
-  simpa [Telescope.substVar, Telescope.weaken, Telescope.append_rename] using hHt
-
 /-- The chain of casts of a closed atom normalizes to a form typed from the
 root's type to the atom's type, at the root. -/
-theorem closedAtomForm_typed (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s}
-    (h : Γ ⊢ₐ a : S) :
+theorem closedAtomForm_typed {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) :
     ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
       Γ ⊨[a.root] F : (Γ.lookupTy a.root) ≤ S := by
   match h with
   | .var => exact ⟨1, _, .id, rfl, .id rfl⟩
   | .cast (e := e) ha he =>
-      obtain ⟨n₁, a', F, hF, hFt⟩ := closedAtomForm_typed hσ ha
-      obtain ⟨n₂, G, hG, hGt⟩ := le_canon hσ he
+      obtain ⟨n₁, a', F, hF, hFt⟩ := closedAtomForm_typed ha
+      obtain ⟨n₂, G, hG, hGt⟩ := le_canon he
       obtain ⟨H, hH, hHt⟩ := ChainTyped.combine hFt (hGt.atRoot _)
       refine ⟨max n₁ n₂ + 1, .cast a' e, H, ?_, ?_⟩
       · simp [closedAtomForm, closedAtomForm_le (Nat.le_max_left n₁ n₂) hF,
           hnf_le (Nat.le_max_right n₁ n₂) hG, hH]
       · simp only [Atom.root_cast]; exact hHt
   | .unfoldSelf (Tel := Tel) ha =>
-      obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ ha
+      obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed ha
       refine ⟨n + 1, .unfoldSelf a', F, by simp [closedAtomForm, hF], ?_⟩
       simp only [Atom.root_unfoldSelf]
       exact hFt.tgtRes (Ctx.resolveAt_fold Γ _ Tel)
   | .foldSelf (Tel := Tel) ha =>
-      obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ ha
+      obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed ha
       refine ⟨n + 1, .foldSelf Tel a', F, by simp [closedAtomForm, hF], ?_⟩
       simp only [Atom.root_foldSelf]
       exact hFt.tgtRes (Ctx.resolveAt_fold Γ _ Tel).symm
   | .both (Tel₁ := Tel₁) (Tel₂ := Tel₂) ha hb hroot =>
-      obtain ⟨n₁, a', F, hF, hFt⟩ := closedAtomForm_typed hσ ha
-      obtain ⟨n₂, b', G, hG, hGt⟩ := closedAtomForm_typed hσ hb
+      obtain ⟨n₁, a', F, hF, hFt⟩ := closedAtomForm_typed ha
+      obtain ⟨n₂, b', G, hG, hGt⟩ := closedAtomForm_typed hb
       rw [hroot] at hGt
       obtain ⟨H, hH, hHt⟩ := ChainTyped.pair hFt hGt
       refine ⟨max n₁ n₂ + 1, .both Tel₁ Tel₂ a' b', H, ?_, ?_⟩
       · simp [closedAtomForm, closedAtomForm_le (Nat.le_max_left n₁ n₂) hF,
           closedAtomForm_le (Nat.le_max_right n₁ n₂) hG, hH]
       · simpa [Atom.root] using hHt
+
+end
+
+end
+
+/-! ## Corollaries -/
+
+section
+variable {σ : Store s} {Γ : Ctx s}
 
 /-- The type recorded for a location is a function or an object type. -/
 theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
@@ -418,6 +436,11 @@ theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s
   | eqv _ => exact Or.inr (Or.inl ⟨_, rfl⟩)
   | pi _ _ _ _ => exact Or.inr (Or.inr ⟨_, _, rfl⟩)
   | obj _ ho _ => simp [Ctx.resolveAt] at ho
+  | into ho _ => simp [Ctx.resolveAt] at ho
+  | bnd hS hAt _ =>
+      obtain ⟨hrv, _⟩ := (precView_typed hσ a.root).opened
+      obtain ⟨G, hG, _⟩ := (hrv _ hS).bnd_entry hAt
+      exact absurd hG (Value.precView_noBnd a.root _ _ _)
 
 /-- The canonical-forms obligation of preservation. -/
 theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
@@ -429,7 +452,8 @@ theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
     subst hFe
     cases hFt with
     | pi hS hT hd hc =>
-        simp only [Ctx.resolveAt, hlk, Ctx.resolve_pi, Ty.unfoldAt_pi] at hS hT
+        simp only [Ctx.resolveAt?_some, Ctx.resolveAt, hlk, Ctx.resolve_pi,
+          Ty.unfoldAt_pi] at hS hT
         obtain ⟨rfl, rfl⟩ := Ty.pi.inj hS
         obtain ⟨rfl, rfl⟩ := Ty.pi.inj hT
         exact ⟨hd, hc⟩
@@ -439,8 +463,7 @@ theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
     have hd := closedAtomForm_det hF hF'
     have hFe : F' = F := (Prod.mk.inj hd).2.symm
     subst hFe
-    have hres : Γ.resolve (Γ.resolveAt a.root (Γ.lookupTy a.root)) =
-        Γ.resolve (Γ.resolveAt a.root (Π(S) T)) := by
+    have hres : Γ.resolveAt a.root (Γ.lookupTy a.root) = Γ.resolveAt a.root (Π(S) T) := by
       rcases hid with rfl | ⟨φ, rfl⟩
       · cases hFt with | id h => exact h
       · cases hFt with | eqv h => exact h
@@ -449,8 +472,6 @@ theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
       obtain ⟨rfl, rfl⟩ := Ty.pi.inj hres
       exact hp
     · simp [Ctx.resolveAt, ho] at hres
-
-/-! ## Corollaries without obligations -/
 
 /-- Preservation over typed states. -/
 theorem preservation' {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}

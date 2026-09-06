@@ -50,6 +50,14 @@ inductive LeCo.HasType : Ctx s → LeCo s → Ty s → Ty s → Prop where
       Γ ⊢ e : S ≤ μ Tel₁ →
       Γ ⊢ f : S ≤ μ Tel₂ →
       Γ ⊢ .pair Tel₁ Tel₂ e f : S ≤ μ (Tel₁ ++ Tel₂)
+  /-- The annotated object type is below its `i`-th bound. -/
+  | bound :
+      Tel ∋ (i ↦ ⊑ T↑) →
+      Γ ⊢ .bound Tel i : μ Tel ≤ T
+  /-- An `S` below `T` is an `S` below the one-bound object type. -/
+  | intoBnd :
+      Γ ⊢ e : S ≤ T →
+      Γ ⊢ .intoBnd e : S ≤ μ (.nil ▹ ⊑ T↑)
   | member :
       Γ ⊢ₐ a : S →
       Γ ⊢ e : S ≤ μ Tel →
@@ -105,6 +113,10 @@ inductive Morphism.HasType : Ctx s → Telescope (s,x) → Morphism s → Telesc
       Γ ⊢ .eq m j true : src ⇒ Tel ▹ Y ≐ X
   | has : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ ∋ ℓ) →
       Γ ⊢ .has m j : src ⇒ Tel ▹ ∋ ℓ
+  /-- A target bound is proven by a closed coercion out of the source object
+      type. -/
+  | bnd : Γ ⊢ m : src ⇒ Tel → Γ ⊢ e : μ src ≤ T →
+      Γ ⊢ .bnd m e : src ⇒ Tel ▹ ⊑ T↑
 
 /-- `Γ ⊢ₐ a : T`: atoms. -/
 inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where

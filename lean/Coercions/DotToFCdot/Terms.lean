@@ -42,7 +42,7 @@ def HasTy.translate : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} → HasTy Γ t 
   | _, _, _, .let h₁ h₂ _ => .let h₁.translate h₂.translate
   | _, _, _, h@(.recI _ _) => .atom h.translateAtom
   | _, _, _, h@(.recE _ _) => .atom h.translateAtom
-  | _, _, _, h@(.andI _ _ _ _) => .atom h.translateAtom
+  | _, _, _, h@(.andI _ _) => .atom h.translateAtom
   | _, _, _, .sub h d => .cast h.translate d.translate
 
 /-- The fields of a literal, typed under its self binder: each field body is

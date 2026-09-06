@@ -9,10 +9,10 @@ that function, and DOT-MNF's type safety is transported from FCdot's.
 
 | module | contents |
 |---|---|
-| `Types` | `Ty.translate`, `Ty.tel`/`Ty.telSelf` (declaration-shaped types as telescopes over a self block), `Ty.witnesses`, `Ty.fieldLabels`, `Ty.literalTy`, `Ctx.translate` |
-| `TypesLemmas` | renaming and instantiation commute with the translation; `Ty.translate_decl`; `Ty.tel_substVar` (opening a body at the root) |
-| `Evidence` | `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `Ctx.varAtom` |
-| `EvidenceTyped` | `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `Ctx.varAtom_typed`; the well-formedness `Ctx.Wf` of contexts |
+| `Types` | `Ty.translate`, `Ty.tel`/`Ty.telSelf` (a type as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Ty.isObj` and `Ty.translate_isObj`/`Ty.tel_of_not_isObj`, `Ty.witnesses`, `Ty.fieldLabels`, `Ty.literalTy`, `Ctx.translate` |
+| `TypesLemmas` | renaming and instantiation commute with the translation; `Ty.isDecl_rename`, `Ty.isObj_rename`; `Ty.translate_decl`; `Ty.tel_substVar` (opening a body at the root) |
+| `Evidence` | `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `Ctx.varAtom` |
+| `EvidenceTyped` | `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `Ctx.varAtom_typed`, `Ty.tel_closedBnds` (every self-bound the translation produces is closed); the well-formedness `Ctx.Wf` of contexts |
 | `Terms` | `HasTy.translate`, `DefsTy.translateFields` |
 | `TermsTyped` | `HasTy.translate_typed`, `DefsTy.translateFields_typed` |
 | `Erasure` | `HasTy.translate_erase` (`⌊h.translate⌋ = ⌊t⌋`), `coherence` |
@@ -30,19 +30,35 @@ p.A          ↦  x ∙ A
 {a : T}      ↦  μ [ ∋ a , self∙a ⊑ ⟦T⟧↑ ]
 S ∧ T        ↦  μ (tel S ++ tel T)
 μ(x. T)      ↦  μ (telSelf T)         (the body's self is the object's self)
+
+tel B        =  [ ⊑ ⟦B⟧↑ ]            B a selection, a function type, ⊥,
+                                      or a μ whose body is not a declaration
 ```
 
+Intersections are unrestricted: an operand that is not an object shape
+contributes the single *self-bound* proposition `⊑ ⟦B⟧` of FCdot (plan §13
+item 9).  `Ty.isObj` is the shape test that decides between the two: it
+holds exactly when `⟦T⟧ = μ (tel T)`, and fails exactly when `tel T` is the
+one-bound telescope above.  The bodies of `μ` stay restricted to `Ty.Decl`,
+because a bound never mentions the self.
+
 Subtyping: `Top/Bot/Refl/Trans` to the corresponding evidence; `And₁`,
-`And₂` to object coercions with identity templates on one half; `And` to
-`pair`; `Fld`, `Typ` to object coercions whose templates route the source
-proposition through the translated bound; `Sel-<:`, `<:-Sel` to `member` at
-the atom on the exact proposition of the declaration; `All` to `pi`.
+`And₂` to object coercions with identity templates on one half when the
+operand is an object shape (a self-bound of the source is copied by
+`Morphism.bnd` over `LeCo.bound`), and to the bound cast `LeCo.bound` itself
+when it is not; `And` to `pair`, each component first put into its
+telescope by `into` (the identity on an object shape, `LeCo.intoBnd`
+otherwise); `Fld`, `Typ` to object coercions whose templates route the
+source proposition through the translated bound; `Sel-<:`, `<:-Sel` to
+`member` at the atom on the exact proposition of the declaration; `All` to
+`pi`.
 
 Variable typings: `Var` is the variable, cast by `litCo` when the binder is a
 literal's self; `Rec-I`/`Rec-E` unfold at the root and refold at the other
-telescope; `And-I` is `both`; `Sub` is a cast.  Terms follow the syntax; a
-projection carries its presence evidence and is cast to the declared field
-type; an object literal becomes a literal with the witnesses of its
+telescope; `And-I` is `both` on the two operands put into their telescopes
+by `intoAtom` (a cast, so the root is unchanged); `Sub` is a cast.  Terms
+follow the syntax; a projection carries its presence evidence and is cast
+to the declared field type; an object literal becomes a literal with the witnesses of its
 declaration type, each field cast to its block name by the literal's own
 definition equality, the whole cast by `litCo`.
 

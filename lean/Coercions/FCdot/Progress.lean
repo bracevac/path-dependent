@@ -30,6 +30,11 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
       | eqv hres => simp [Ctx.resolveAt, ho] at hres
       | pi hp _ _ _ => simp [Ctx.resolveAt, ho] at hp
       | obj _ ho' _ => simp [Ctx.resolveAt] at ho'
+      | into ho' _ => simp [Ctx.resolveAt] at ho'
+      | bnd hS hAt _ =>
+          obtain ⟨hrv, _⟩ := (precView_typed hσ a.root).opened
+          obtain ⟨G, hG, _⟩ := (hrv _ hS).bnd_entry hAt
+          exact Value.precView_noBnd a.root _ _ _ hG
   obtain ⟨S₀, T₀, hlk⟩ := hlk
   have hv := hσ.lookup a.root
   have hlit := hσ.lookup_isLiteral a.root

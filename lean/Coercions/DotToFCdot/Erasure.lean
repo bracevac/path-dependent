@@ -63,9 +63,9 @@ theorem HasTy.translate_erase : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
   | _, _, _, .recE h₁ h₂ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
         HasTy.translateAtom_root (.recE h₁ h₂)]
-  | _, _, _, .andI h₁ h₂ h₃ h₄ => by
+  | _, _, _, .andI h₁ h₂ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
-        HasTy.translateAtom_root (.andI h₁ h₂ h₃ h₄)]
+        HasTy.translateAtom_root (.andI h₁ h₂)]
   | _, _, _, .sub h _ => by
       simp only [HasTy.translate, FCdot.Tm.erase, HasTy.translate_erase h]
 

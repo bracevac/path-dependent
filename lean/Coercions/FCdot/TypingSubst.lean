@@ -208,6 +208,13 @@ theorem LeCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subs
   | .pair he hf =>
       have := LeCo.HasType.pair (he.subst hσ) (hf.subst hσ)
       simpa [LeCo.subst, Ty.rename, Telescope.append_rename] using this
+  | .bound hAt =>
+      exact .bound (by
+        simpa [Proposition.rename, Ty.weaken_rename] using hAt.rename σ.root.lift)
+  | .intoBnd he =>
+      have := LeCo.HasType.intoBnd (he.subst hσ)
+      simpa [LeCo.subst, Ty.rename, Telescope.rename, Proposition.rename,
+        Ty.weaken_rename] using this
   | @LeCo.HasType.member _ _ a S e Tel i S' T' ha he hAt =>
       have := LeCo.HasType.member (a := a.subst σ) (ha.subst hσ)
         (by simpa [Ty.rename] using he.subst hσ) (hAt.rename σ.root.lift)
@@ -267,6 +274,9 @@ theorem Morphism.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
       exact .eqSym (hm.subst hσ) (by simpa [Proposition.rename] using hAt.rename σ.root.lift)
   | .has hm hAt =>
       exact .has (hm.subst hσ) (by simpa [Proposition.rename] using hAt.rename σ.root.lift)
+  | .bnd hm he =>
+      have := Morphism.HasType.bnd (hm.subst hσ) (by simpa [Ty.rename] using he.subst hσ)
+      simpa [Morphism.subst, Telescope.rename, Proposition.rename, Ty.weaken_rename] using this
 
 theorem Atom.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {a : Atom s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ₐ a : T) :
