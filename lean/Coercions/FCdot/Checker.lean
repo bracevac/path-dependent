@@ -226,6 +226,10 @@ def Proposition.rename? : Proposition s1 → PartialRename s1 s2 → Option (Pro
       | some S', some T' => some (.eq S' T')
       | _, _ => none
   | .has ℓ, _ => some (.has ℓ)
+  | .bnd T, ρ =>
+      match T.rename? ρ with
+      | some T' => some (.bnd T')
+      | none => none
 
 def Telescope.rename? : Telescope s1 → PartialRename s1 s2 → Option (Telescope s2)
   | .nil, _ => some .nil
@@ -263,6 +267,9 @@ theorem Proposition.rename?_complete :
       simp only [Proposition.rename, Proposition.rename?]
       rw [Ty.rename?_complete S ρ σ h, Ty.rename?_complete T ρ σ h]
   | _, _, .has ℓ, _, _, _ => by simp [Proposition.rename, Proposition.rename?]
+  | _, _, .bnd T, ρ, σ, h => by
+      simp only [Proposition.rename, Proposition.rename?]
+      rw [Ty.rename?_complete T ρ σ h]
 
 theorem Telescope.rename?_complete :
     ∀ {s1 s2 : Sig} (Tel : Telescope s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
@@ -345,6 +352,16 @@ theorem Proposition.rename?_sound :
   | _, _, .has ℓ, Q, _, _, _, hQ => by
       simp only [Proposition.rename?, Option.some.injEq] at hQ
       subst hQ; rfl
+  | _, _, .bnd T, Q, ρ, σ, h, hQ => by
+      simp only [Proposition.rename?] at hQ
+      cases hT : T.rename? ρ with
+      | none => rw [hT] at hQ; simp at hQ
+      | some T' =>
+        rw [hT] at hQ
+        simp only [Option.some.injEq] at hQ
+        subst hQ
+        simp only [Proposition.rename]
+        rw [← Ty.rename?_sound T T' ρ σ h hT]
 
 theorem Telescope.rename?_sound :
     ∀ {s1 s2 : Sig} (Tel : Telescope s1) (Tel2 : Telescope s2) (ρ : PartialRename s1 s2)
@@ -520,6 +537,26 @@ def morHas {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} (j : 
   | some ⟨.has ℓ, hAt⟩ => some ⟨Tel ▹ ∋ ℓ, .has hm hAt⟩
   | _ => none
 
+/-- `LeCo.bound`: the annotated object type is below the type of its `i`-th
+proposition, which must be a bound of a (weakened) closed type. -/
+def leBound {s : Sig} {Γ : Ctx s} (Tel : Telescope (s,x)) (i : Nat) :
+    Option (LeChecked Γ (.bound Tel i)) :=
+  match Telescope.getAt? Tel i with
+  | some ⟨.bnd X, hAt⟩ =>
+      match X.strengthenW? with
+      | some ⟨T, hT⟩ => some ⟨μ Tel, T, .bound (by rw [hT] at hAt; exact hAt)⟩
+      | none => none
+  | _ => none
+
+/-- `Morphism.bnd`: a target bound proven by a closed coercion out of the
+source object type. -/
+def morBnd {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {e : LeCo s}
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
+    Option (MorChecked Γ src (.bnd m e)) :=
+  if hs : Se = μ src then
+    some ⟨Tel ▹ ⊑ Te↑, .bnd hm (by rw [← hs]; exact he)⟩
+  else none
+
 /-- `Morphism.eq`: the target repeats the `j`-th proposition of the source
 telescope, which must be an equality, flipped when `b` is set. -/
 def morEq {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} (j : Nat) (b : Bool)
@@ -653,6 +690,10 @@ def synthLeCore {s : Sig} (Γ : Ctx s) (ev : LeCo s) : Option (LeChecked Γ ev) 
       let ce ← synthLeCore Γ e
       let cf ← synthLeCore Γ f
       lePair Tel₁ Tel₂ ce.typing cf.typing
+  | .bound Tel i => leBound Tel i
+  | .intoBnd e => do
+      let ce ← synthLeCore Γ e
+      some ⟨ce.source, μ (.nil ▹ ⊑ ce.target↑), .intoBnd ce.typing⟩
   | .member a e i => do
       let ca ← synthAtomCore Γ a
       let ce ← synthLeCore Γ e
@@ -729,6 +770,10 @@ def synthMorCore {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s)
   | .has m j => do
       let cm ← synthMorCore Γ src m
       morHas j cm.typing
+  | .bnd m e => do
+      let cm ← synthMorCore Γ src m
+      let ce ← synthLeCore Γ e
+      morBnd cm.typing ce.typing
 
 def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a) :=
   match a with

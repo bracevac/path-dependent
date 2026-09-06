@@ -931,3 +931,62 @@ Decisions taken while implementing M1, each confirmed with the author:
    `FCdot/Examples.lean` and `DotMNF/Examples.lean` carry examples of both
    shapes (a field typed at its own type member, and a two-element alias
    cycle).
+
+9. **Self-bound propositions, and *routed* entries in normal forms.**  A
+   telescope may carry `⊑ T` ("the object itself is included in `T`"), so an
+   intersection whose operand is not a declaration is still an object type.
+   The evidence side is `LeCo.bound` (cast through a bound), `LeCo.intoBnd`
+   (an inclusion becomes a one-bound object type) and `Morphism.bnd` (a
+   target bound is proven by a coercion out of the source object type).
+
+   The one design decision the normal forms forced: pairing.  A pair
+   component may be a bound cast `Form.bnd i F`, whose target's propositions
+   are reached through a *different* object type -- the one the bound names
+   -- of which the source telescope knows nothing.  An `obj` form's entries
+   name source propositions by index and cannot express that.  The fix is
+   `Entry.thru H E`: the entry `E` reads the object type that the form `H`
+   reaches from the source, and `Entry.at` computes the view of the atom
+   through `H` before applying `E`.  Three invariants keep this structural:
+   routes never nest (`Entry.prefix` composes them), the route of an entry
+   is always a sub-form of the form carrying it (so applying a form to a
+   view recurses on strictly smaller forms), and only `Form.into` forms
+   carry routed entries, so `obj ∘ obj` still routes entries by index as
+   before.  Consequently `Form.pair` always produces an `into` form:
+   `Form.freeEntries` reads each component's entries and routes them through
+   the identity, or through the bound the component goes under.  A bound
+   whose type resolves to `⊥` needs no entries at all: such a form
+   (`Form.absorbs`) is typed evidence for every inclusion out of its source
+   and is returned as it is.
+
+   **What it lifts, on the source side.**  DOT-MNF no longer restricts
+   intersections: `Sub.and1`, `Sub.and2`, `Sub.and`, `HasTy.andI` and
+   `Ty.Wf.and` have lost their `Ty.Decl` premises, so `S ∧ T` is well formed
+   for all well-formed `S`, `T` — in particular the refinement of an
+   abstract type, `x.A ∧ {a : ⊤}`, which is the acceptance test (E8 on both
+   sides).  What stays restricted is the *body of a `μ`*: `Ty.Wf.mu`,
+   `Rec-I` and `Rec-E` still ask for `Ty.Decl`, because a bound proposition
+   is a weakened closed type and never mentions the self, so a body that is
+   not declaration-shaped has no telescope over its own self.  `Ty.Decl`
+   therefore survives, now with a decision procedure `Ty.isDecl`.
+
+   **The translation.**  `Ty.tel B = [⊑ ⟦B⟧↑]` for a `B` that is not an
+   object shape — a selection, a function type, `⊥`, or a `μ` whose body is
+   not declaration-shaped — and `Ty.tel` is otherwise as before, so it is
+   total and `⟦S ∧ T⟧ = μ (tel S ++ tel T)` needs no side condition.  The
+   shape test is `Ty.isObj`: it holds exactly when `⟦T⟧ = μ (tel T)` and
+   fails exactly when `tel T` is that one-bound telescope.  It is *not*
+   `Ty.isDecl`: an intersection is an object shape whatever its operands
+   are.  `And₁`/`And₂` are the identity templates when the operand is an
+   object shape (a self-bound of the source being copied by `Morphism.bnd`
+   over `LeCo.bound`) and the bound cast `LeCo.bound` when it is not; `And`
+   and `And-I` put each operand into its telescope first (`into`,
+   `intoAtom`).  The `μ` clause of `tel`/`telSelf` consults `Ty.isDecl` and
+   falls back to a single *closed* bound, which is what keeps every bound
+   the translation produces closed (`Ty.tel_closedBnds`) — without that
+   fallback `Sub.and1` on `μ(x. x.A) ∧ T` would have to prove an open bound,
+   which no rule of FCdot can do.  *Status (2026-09-05):* done on both
+   sides.  FCdot: syntax, checker, normalizer, form typedness, canonical
+   forms, progress, consistency, `Examples.E8`.  DOT-MNF and the
+   translation: the rules, `Ty.isDecl`, `Ty.isObj`, the evidence, the
+   typedness proofs with unchanged statements, and E8 as source derivations
+   with `E8_erase : E8.erase = E8src.erase := rfl`.

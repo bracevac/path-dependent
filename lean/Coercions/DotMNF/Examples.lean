@@ -104,7 +104,7 @@ def E2Ctx1 : Ctx ([],x) := .cons .nil (.mu E2Self)
 
 def E2xMu : HasTy E2Ctx1 (.path (.var .here)) (.mu E2Self) := var' .here rfl
 def E2xOpen : HasTy E2Ctx1 (.path (.var .here)) E2Self := .recE E2xMu E2SelfDecl
-def E2xFld : HasTy E2Ctx1 (.path (.var .here)) (.fld la E2A) := .sub E2xOpen (.and2 .typ .fld)
+def E2xFld : HasTy E2Ctx1 (.path (.var .here)) (.fld la E2A) := .sub E2xOpen (.and2)
 def E2proj : HasTy E2Ctx1 (.proj .here la) E2A := .proj E2xFld
 
 def E2Ctx2 : Ctx ([],x,x) := .cons E2Ctx1 E2A
@@ -115,7 +115,7 @@ def E2xOpen2 : HasTy E2Ctx2 (.path (.var (.there .here)))
     (.and (.typ lA E2A' E2A') (.fld la E2A')) := .recE E2xMu2 E2SelfDecl
 /-- `∀(y : x.A) x.A <: x.A`, by the lower bound of the exact member `A`. -/
 def E2fArg : HasTy E2Ctx2 (.path (.var .here)) (.sel (.var (.there .here)) lA) :=
-  .sub E2f (.selLower (.sub E2xOpen2 (.and1 .typ .fld)))
+  .sub E2f (.selLower (.sub E2xOpen2 (.and1)))
 def E2app : HasTy E2Ctx2 (.app .here .here) (.sel (.var (.there .here)) lA) :=
   .app E2f E2fArg
 
@@ -144,9 +144,9 @@ def E3Ctx2 : Ctx ([],x,x) := .cons E3Ctx1 E3T2
 
 def E3xDom : HasTy E3Ctx2 (.path (.var (.there .here))) E3Dom := var' (.there .here) rfl
 def E3xLo : HasTy E3Ctx2 (.path (.var (.there .here))) (.typ lA .bot E3T1) :=
-  .sub E3xDom (.and1 .typ .typ)
+  .sub E3xDom (.and1)
 def E3xHi : HasTy E3Ctx2 (.path (.var (.there .here))) (.typ lA E3T2 .top) :=
-  .sub E3xDom (.and2 .typ .typ)
+  .sub E3xDom (.and2)
 /-- `T₂ <: x.A <: T₁`: the shared member, used at both bounds. -/
 def E3sub : Sub E3Ctx2 E3T2 E3T1 := .trans (.selLower E3xHi) (.selUpper E3xLo)
 def E3z : HasTy E3Ctx2 (.path (.var .here)) E3T1 := .sub (var' .here rfl) E3sub
@@ -162,7 +162,7 @@ def E3inner : HasTy E3Ctx1
 def E3 : HasTy Ctx.nil
     (.val (.lam E3Dom (.val (.lam E3T2 (.let (.path (.var .here)) (.path (.var .here)))))))
     (.all E3Dom (.all E3T2 E3T1)) :=
-  .lam E3inner (.and (.typ .bot (.fld .top)) (.typ (.fld .top) .top) .typ .typ)
+  .lam E3inner (.and (.typ .bot (.fld .top)) (.typ (.fld .top) .top))
 
 /-! ## E4: the counterexample of §1
 
@@ -330,7 +330,7 @@ def E6Ctxz : Ctx ([],x,x) := .consSelf E6Ctx1 E6Defs E6Self
 def E6xMu : HasTy E6Ctxz (.path (.var .here)) (.mu E6Self) := var' .here rfl
 def E6xOpen : HasTy E6Ctxz (.path (.var .here)) E6Self := .recE E6xMu E6SelfDecl
 def E6xTyp : HasTy E6Ctxz (.path (.var .here)) (.typ lT E6Int E6Int) :=
-  .sub E6xOpen (.and1 .typ .fld)
+  .sub E6xOpen (.and1)
 /-- `n : Int <: x.T`, by the lower bound of the exact member `T`. -/
 def E6nT : HasTy E6Ctxz (.path (.var (.there .here))) (.sel (.var .here) lT) :=
   .sub (var' (.there .here) rfl) (.selLower E6xTyp)
@@ -365,6 +365,73 @@ def E7DefsTy : DefsTy (Ctx.consSelf Γ E7Defs E7Self) E7Defs E7Self := .and .typ
 
 /-- `ν(x. {A = x.B} ∧ {B = x.A})`. -/
 def E7 : HasTy Ctx.nil (.val (.obj E7Defs)) (.mu E7Self) := .obj E7DefsTy E7Distinct
+
+/-! ## E8: refining an abstract type
+
+`λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a`, at
+`∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : ⊤}) ⊤`.  The left operand of the
+intersection is a type selection, so the type is outside the declaration
+fragment: this is the example the self-bound proposition of `FCdot` buys
+(plan §13 item 9), and `Wf.and` accepts it because it no longer asks for
+declaration-shaped operands.
+
+Two derivations of the body, `y.a`: one reads `{a : ⊤}` off the refinement
+by `And₂`, the other reads `x.A` off it by `And₁` and then goes through
+`Sel-<:`.  `E8AndI` is the `And-I` direction, which puts the two typings of
+`y` back together; it is a derivation, not a closed program. -/
+
+/-- `{A : ⊥..{a : ⊤}}`, the declaration of the abstract type. -/
+def E8Dom : Ty s := .typ lA .bot (.fld la .top)
+
+/-- `x.A ∧ {a : ⊤}`, the refinement of `x.A`. -/
+def E8Ref (x : BVar s .var) : Ty s := .and (.sel (.var x) lA) (.fld la .top)
+
+theorem E8DomWf : Ty.Wf (E8Dom (s := s)) := .typ .bot (.fld .top)
+
+/-- The refinement is well formed although its left operand is not
+declaration-shaped: `Wf.and` has no `Ty.Decl` premises. -/
+theorem E8RefWf {x : BVar s .var} : Ty.Wf (E8Ref x) := .and .sel (.fld .top)
+
+def E8Ctx1 : Ctx ([],x) := Ctx.nil.cons E8Dom
+def E8Ctx2 : Ctx ([],x,x) := E8Ctx1.cons (E8Ref .here)
+
+/-- `y : x.A ∧ {a : ⊤}`. -/
+def E8y : HasTy E8Ctx2 (.path (.var .here)) (E8Ref (.there .here)) := var' .here rfl
+
+/-- `x : {A : ⊥..{a : ⊤}}`. -/
+def E8x : HasTy E8Ctx2 (.path (.var (.there .here))) E8Dom := var' (.there .here) rfl
+
+/-- `And₂`: the declaration operand of the refinement. -/
+def E8yFld2 : HasTy E8Ctx2 (.path (.var .here)) (.fld la .top) := .sub E8y .and2
+
+/-- `And₁`: the abstract type itself. -/
+def E8yA : HasTy E8Ctx2 (.path (.var .here)) (.sel (.var (.there .here)) lA) :=
+  .sub E8y .and1
+
+/-- `Sel-<:`: the upper bound of `x`'s member `A`. -/
+def E8Upper : Sub E8Ctx2 (.sel (.var (.there .here)) lA) (.fld la .top) := .selUpper E8x
+
+/-- The same conclusion as `E8yFld2`, the other way round. -/
+def E8yFld1 : HasTy E8Ctx2 (.path (.var .here)) (.fld la .top) := .sub E8yA E8Upper
+
+/-- `And-I`: the two views of `y` recombined into the refinement. -/
+def E8AndI : HasTy E8Ctx2 (.path (.var .here)) (E8Ref (.there .here)) := .andI E8yA E8yFld2
+
+/-- `y.a`, through `And₂`. -/
+def E8Body2 : HasTy E8Ctx2 (.proj .here la) .top := .proj E8yFld2
+
+/-- `y.a`, through `And₁` and `Sel-<:`. -/
+def E8Body1 : HasTy E8Ctx2 (.proj .here la) .top := .proj E8yFld1
+
+/-- `λ(x). λ(y). y.a`, with the `And₂` derivation of the body. -/
+def E8 : HasTy Ctx.nil (.val (.lam E8Dom (.val (.lam (E8Ref .here) (.proj .here la)))))
+    (.all E8Dom (.all (E8Ref .here) .top)) :=
+  .lam (.lam E8Body2 E8RefWf) E8DomWf
+
+/-- The same term, with the `And₁`-then-`Sel-<:` derivation of the body. -/
+def E8b : HasTy Ctx.nil (.val (.lam E8Dom (.val (.lam (E8Ref .here) (.proj .here la)))))
+    (.all E8Dom (.all (E8Ref .here) .top)) :=
+  .lam (.lam E8Body1 E8RefWf) E8DomWf
 
 end Examples
 end DotMNF

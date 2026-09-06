@@ -29,7 +29,7 @@ erasure safe.
 | `CanonicalForms` | the canonical-forms theorem; the chain of casts; `preservation'`, `erase_reflect'` |
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
-| `Examples` | the examples E1 to E7, decided in the kernel |
+| `Examples` | the examples E1 to E8, decided in the kernel |
 
 ## Notation
 
@@ -38,7 +38,7 @@ All notation is `scoped` in namespace `FCdot`.
 | | |
 |---|---|
 | `⊤`, `⊥`, `x ∙ ℓ`, `Π(S) T`, `μ Tel` | types; `μ` binds the implicit self variable of the telescope |
-| `S ⊑ T`, `S ≐ T`, `∋ ℓ` | propositions (data, hence not `≤`, `=`) |
+| `S ⊑ T`, `S ≐ T`, `∋ ℓ`, `⊑ T` | propositions (data, hence not `≤`, `=`); `⊑ T` is the *self-bound* "the object itself is included in `T`" |
 | `Tel ▹ P`, `Tel ∋ (i ↦ P)` | telescope extension; the `i`-th proposition, counted from the oldest (also for entries `Es` and views `V`) |
 | `T↑`, `T⟦y⟧` | weakening under a new binder; instantiation of the innermost binder |
 | `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ` | inclusion, equality, and presence evidence |
@@ -76,6 +76,21 @@ All notation is `scoped` in namespace `FCdot`.
   proposition up in the atom's view.  `pair` intersects two coercions into
   object types; the atom `both` intersects two typings of one root
   (`And-I`).  `⊤` is the empty object type `μ .nil`.
+* **Self-bound propositions.**  A telescope may also carry `⊑ T`: the object
+  itself is included in `T`.  This is what lets an intersection whose
+  operand is not a declaration (a type selection, a function type, `⊥`)
+  still be an object type.  `LeCo.bound Tel i` casts through the `i`-th
+  bound, `LeCo.intoBnd` puts an inclusion into a one-bound object type, and
+  `Morphism.bnd` proves a target bound by a coercion out of the source
+  object type.  On normal forms: `Form.bnd i F` is "through bound `i`, then
+  `F`", `Form.into Es` is a coercion whose entries do not consult the view
+  of the source, and `Entry.thru H E` is an entry *routed* through `H` --
+  the entry `E` reads the object type `H` reaches from the source rather
+  than the source itself.  Routes never nest and are always sub-forms of the
+  form that carries them, so applying a form to a view stays structural in
+  the form.  Pairing produces an `into` form (`Form.freeEntries` routes each
+  component's entries through the identity, or through the bound it goes
+  under).
 * **Two modes of typedness.**  Coercion forms and views are typed with plain
   shapes (`Γ.resolve`).  Only the chain of casts of an atom is typed at the
   atom's root, where the self block is opened at that root, so `foldSelf`
@@ -99,7 +114,9 @@ erase_step         : st ⟶ st' → (cast-frame step ∧ ⌊st⌋ = ⌊st'⌋) �
 erase_reflect'     : ⊢ st.σ : Γ → (∃ T, Γ ⊢ st.t : T) → Runtime.Step ⌊st⌋ r →
                        ∃ st', st ⟶* st' ∧ ⌊st'⌋ = r
 closed_le_shapes   : ⊢ σ : Γ → Γ ⊢ e : S ≤ T → (S resolves to ⊥) ∨ (T resolves to ⊤) ∨
-                       (equal resolutions) ∨ (both Π) ∨ (both μ)
+                       (equal resolutions) ∨ (both Π) ∨ (both μ) ∨
+                       (S resolves to an object type with a bound below T) ∨
+                       (T resolves to an object type, bounds-only unless S is one too)
 reachable_consistent : st.Typed U → st ⟶* st' → ∃ Γ, ⊢ st'.σ : Γ ∧ (¬ ∃ e, Γ ⊢ e : ⊤ ≤ ⊥) ∧
                        ∀ x ℓ, ∃ W, Γ.lookupDef x ℓ = some W ∧ Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W
 ```

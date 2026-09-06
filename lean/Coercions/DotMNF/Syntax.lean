@@ -154,7 +154,7 @@ def Defs.lookupTrm : Defs s → Label → Option (Tm s)
 
 /-! ## The fragment: declaration shapes, well-formedness, distinctness -/
 
-/-- Declaration-shaped types: the only types that may be intersected. -/
+/-- Declaration-shaped types: the shapes a `μ` may bind. -/
 inductive Ty.Decl : {s : Sig} → Ty s → Prop where
   | top : Ty.Decl (.top : Ty s)
   | typ : Ty.Decl (.typ A S T)
@@ -162,9 +162,47 @@ inductive Ty.Decl : {s : Sig} → Ty s → Prop where
   | mu : Ty.Decl T → Ty.Decl (.mu T)
   | and : Ty.Decl S → Ty.Decl T → Ty.Decl (.and S T)
 
-/-- Well-formedness.  Structural, except that intersections and recursive
-types are restricted to declaration-shaped operands and bodies.  Bounds are
-arbitrary: `Wf {A : S..T}` does not ask for `S <: T`. -/
+/-- The decision procedure for `Ty.Decl` (`Ty.isDecl_iff`).  It is what
+`Ty.tel` consults on the body of a `μ`, and it makes `Ty.Decl` decidable, so
+that a derivation may discharge the premises of `Wf.mu`, `Rec-I` and `Rec-E`
+by `decide`. -/
+def Ty.isDecl : Ty s → Bool
+  | .top => true
+  | .typ _ _ _ => true
+  | .fld _ _ => true
+  | .mu T => T.isDecl
+  | .and S T => S.isDecl && T.isDecl
+  | .bot => false
+  | .sel _ _ => false
+  | .all _ _ => false
+
+theorem Ty.isDecl_iff : ∀ {s : Sig} (T : Ty s), T.isDecl = true ↔ Ty.Decl T
+  | _, .top => ⟨fun _ => .top, fun _ => rfl⟩
+  | _, .typ _ _ _ => ⟨fun _ => .typ, fun _ => rfl⟩
+  | _, .fld _ _ => ⟨fun _ => .fld, fun _ => rfl⟩
+  | _, .bot => ⟨fun h => by simp [Ty.isDecl] at h, fun h => by cases h⟩
+  | _, .sel _ _ => ⟨fun h => by simp [Ty.isDecl] at h, fun h => by cases h⟩
+  | _, .all _ _ => ⟨fun h => by simp [Ty.isDecl] at h, fun h => by cases h⟩
+  | _, .mu T =>
+      ⟨fun h => .mu ((Ty.isDecl_iff T).mp h), fun h => by
+        cases h with | mu h' => exact (Ty.isDecl_iff T).mpr h'⟩
+  | _, .and S T =>
+      ⟨fun h => by
+        rw [Ty.isDecl, Bool.and_eq_true] at h
+        exact .and ((Ty.isDecl_iff S).mp h.1) ((Ty.isDecl_iff T).mp h.2),
+       fun h => by
+        cases h with
+        | and hS hT =>
+            rw [Ty.isDecl, Bool.and_eq_true]
+            exact ⟨(Ty.isDecl_iff S).mpr hS, (Ty.isDecl_iff T).mpr hT⟩⟩
+
+instance Ty.Decl.instDecidable {s : Sig} (T : Ty s) : Decidable (Ty.Decl T) :=
+  decidable_of_iff _ (Ty.isDecl_iff T)
+
+/-- Well-formedness.  Structural, except that the body of a recursive type is
+restricted to declaration shapes.  Intersections are unrestricted: a
+non-declaration operand translates to a self-bound proposition (plan §13
+item 9).  Bounds are arbitrary: `Wf {A : S..T}` does not ask for `S <: T`. -/
 inductive Ty.Wf : {s : Sig} → Ty s → Prop where
   | top : Ty.Wf (.top : Ty s)
   | bot : Ty.Wf (.bot : Ty s)
@@ -173,7 +211,7 @@ inductive Ty.Wf : {s : Sig} → Ty s → Prop where
   | fld : Ty.Wf T → Ty.Wf (.fld a T)
   | mu : Ty.Wf T → Ty.Decl T → Ty.Wf (.mu T)
   | all : Ty.Wf S → Ty.Wf T → Ty.Wf (.all S T)
-  | and : Ty.Wf S → Ty.Wf T → Ty.Decl S → Ty.Decl T → Ty.Wf (.and S T)
+  | and : Ty.Wf S → Ty.Wf T → Ty.Wf (.and S T)
 
 /-- The labels of a definition list are pairwise distinct. -/
 inductive Defs.Distinct : {s : Sig} → Defs s → Prop where

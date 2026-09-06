@@ -17,8 +17,9 @@ type safety back to the source.
 ```
 
 **`DotMNF/`** is WadlerFest DOT in monadic normal form: objects with type and
-term members, recursive self types, intersections of declarations, type
-selections on variables, and bad bounds admitted.  It has subtyping, term
+term members, recursive self types, unrestricted intersections, type
+selections on variables, and bad bounds admitted.  The body of a recursive
+self type is still restricted to declaration shapes.  It has subtyping, term
 and definition typing, a store machine, and an erasure into the runtime.
 It has no metatheory of its own.
 
@@ -36,7 +37,9 @@ object type.  Canonical forms are what makes application through casts
 executable and progress provable without inverting evidence syntactically.
 
 **`DotToFCdot/`** translates derivations: types homomorphically, with
-declaration-shaped types becoming object types over a fresh self;
+declaration-shaped types becoming object types over a fresh self and every
+other shape becoming the single self-bound proposition `⊑ ⟦B⟧`, which is
+what makes an intersection with a non-declaration operand translatable;
 subtyping derivations to closed evidence; variable typings to atoms rooted
 at the variable; terms to terms with the same erasure.  Its theorems are
 typedness of the translation, erasure equality `⌊h.translate⌋ = ⌊t⌋`,
@@ -48,7 +51,8 @@ every store reachable by a translated program.
 objects that keep their term members.
 
 Axioms throughout: `propext` and `Quot.sound`.  No `sorry`, `axiom`, `partial`,
-or `native_decide` in the main line; the mandatory examples E1–E5 are
+or `native_decide` in the main line; the mandatory examples E1–E5 and the
+acceptance test E8 (the refinement `x.A ∧ {a : ⊤}` of an abstract type) are
 decided in the kernel on both sides and have equal erasures.
 
 ## Earlier targets, standalone

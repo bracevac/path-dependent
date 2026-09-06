@@ -25,11 +25,15 @@ binder, so `T^x` cannot be an entry.  The two are interderivable, since
 `Rec-I` and `Rec-E` convert between `x : μ(x. T)` and `x : T^x`, and the
 shape chosen here is the one that matches `FCdot.Ctx` binder for binder.
 
-The fragment of §3.2 is enforced in the rules that need it (plan §13 item
-8): `And₁`, `And₂`, `And`, `And-I`, `Rec-I`, `Rec-E` carry `Ty.Decl` premises
-for the operands and bodies they decompose or build.  These are the shapes
-the translation to `FCdot` can express; nothing else about DOT is
-restricted.  `{}-I` no longer restricts aliasing among the definitions: the
+The fragment of §3.2 is enforced in the rules that need it (plan §13 items
+8 and 9): `Rec-I` and `Rec-E` carry `Ty.Decl` premises for the bodies they
+open and close, as does `Wf.mu`.  Intersections are *not* restricted:
+`And₁`, `And₂`, `And` and `And-I` apply to arbitrary operands, since a
+non-declaration operand `B` translates to the one-proposition telescope
+`[⊑ ⟦B⟧]` — the self-bound proposition of `FCdot` (plan §13 item 9).  The
+declaration shapes are still the only bodies a `μ` may bind, because a bound
+proposition never mentions the self.  `{}-I` no longer restricts aliasing
+among the definitions: the
 target's alias-tolerant resolution (`FCdot.Ctx.resolve`) admits same-block
 aliases and cycles (a cyclic alias resolves to `⊤`), so the self-alias
 restriction that used to accompany `Defs.Distinct` here is gone.
@@ -68,9 +72,9 @@ inductive Sub : {s : Sig} → Ctx s → Ty s → Ty s → Type where
   | bot : Sub Γ .bot T
   | refl : Sub Γ T T
   | trans : Sub Γ S M → Sub Γ M T → Sub Γ S T
-  | and1 : Ty.Decl S → Ty.Decl T → Sub Γ (.and S T) S
-  | and2 : Ty.Decl S → Ty.Decl T → Sub Γ (.and S T) T
-  | and : Sub Γ S T → Sub Γ S U → Ty.Decl T → Ty.Decl U → Sub Γ S (.and T U)
+  | and1 : Sub Γ (.and S T) S
+  | and2 : Sub Γ (.and S T) T
+  | and : Sub Γ S T → Sub Γ S U → Sub Γ S (.and T U)
   | fld : Sub Γ T U → Sub Γ (.fld a T) (.fld a U)
   | typ : Sub Γ S2 S1 → Sub Γ T1 T2 → Sub Γ (.typ A S1 T1) (.typ A S2 T2)
   /-- `Sel-<:`. -/
@@ -109,11 +113,10 @@ inductive HasTy : {s : Sig} → Ctx s → Tm s → Ty s → Type where
   | recE :
       HasTy Γ (.path (.var x)) (.mu T) → Ty.Decl T →
       HasTy Γ (.path (.var x)) (T.substVar x)
-  /-- `And-I`, on variables only, for declaration-shaped types. -/
+  /-- `And-I`, on variables only. -/
   | andI :
       HasTy Γ (.path (.var x)) T →
       HasTy Γ (.path (.var x)) U →
-      Ty.Decl T → Ty.Decl U →
       HasTy Γ (.path (.var x)) (.and T U)
   | sub : HasTy Γ t T → Sub Γ T U → HasTy Γ t U
 
