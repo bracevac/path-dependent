@@ -7,15 +7,15 @@
 \[
 \begin{array}{@{}lrcl@{}}
 \text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit{S}{T} \mid \obj{\tel} \qquad\quad \top \mathrel{:=} \obj{\tnil} \\
-\text{Propositions} & P & ::= & \ple{S}{T} \mid \peq{S}{T} \mid \phas{\ell} \\
+\text{Propositions} & P & ::= & \ple{S}{T} \mid \peq{S}{T} \mid \phas{\ell} \mid \pbnd{T} \\
 \text{Telescopes} & \tel & ::= & \tnil \mid \tcons{\tel}{P} \\[2pt]
 \text{Inclusion} & e & ::= & \ev{refl}\,T \mid \ev{trans}\,e\,e \mid \ev{top}\,T \mid \ev{bot}\,T \mid \ev{eqToLe}\,\varphi \mid \ev{pi}\,e\,e \\
-& & \mid & \ev{obj}\,\tel\,m \mid \ev{pair}\,\tel\,\tel\,e\,e \mid \ev{member}\,a\,e\,i \\
+& & \mid & \ev{obj}\,\tel\,m \mid \ev{pair}\,\tel\,\tel\,e\,e \mid \ev{member}\,a\,e\,i \mid \ev{bound}\,\tel\,i \mid \ev{intoBnd}\,e \\
 \text{Equality} & \varphi & ::= & \ev{refl}\,T \mid \ev{symm}\,\varphi \mid \ev{trans}\,\varphi\,\varphi \mid \ev{def}\,x\,\ell \mid \ev{member}\,a\,e\,i \\
 \text{Presence} & h & ::= & \ev{member}\,a\,e\,i \mid \ev{field}\,\ell \\
 \text{Holes} & H & ::= & \ev{le}\,j \mid \ev{eq}\,j \mid \ev{eqSym}\,j \\
 \text{Sides} & q & ::= & \ev{none} \mid \ev{some}\,e \\
-\text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q \mid \ev{eq}\,m\,j\,b \mid \ev{has}\,m\,j \\[2pt]
+\text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q \mid \ev{eq}\,m\,j\,b \mid \ev{has}\,m\,j \mid \ev{bnd}\,m\,e \\[2pt]
 \text{Atoms} & a,b & ::= & x \mid \ev{cast}\,a\,e \mid \ev{fold}\,\tel\,a \mid \ev{unfold}\,a \mid \ev{both}\,\tel\,\tel\,a\,a \\
 \text{Terms} & t,u & ::= & a \mid v \mid a\,b \mid \ev{proj}\,a\,\ell\,h \mid \klet x = t \kin u \mid \ev{cast}\,t\,e \\
 \text{Values} & v & ::= & \lambda(x : S).\,t \mid \lit{W}{F} \mid \ev{cast}\,v\,e \\
@@ -32,7 +32,7 @@ Figure~\ref{fig:target-syntax} gives the syntax. As in the source, everything is
 
 \subsection{Types}
 
-A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{S}{T}$ whose codomain may mention the parameter's block, or an object type $\obj{\tel}$. A telescope is a list of propositions over a self binder, oldest first. Propositions do not bind, so the telescope is a list rather than a dependent context, and $\tat{\tel}{i}{P}$ says that its $i$-th proposition is $P$. The empty object type asserts nothing about its inhabitants and every type is included in it, so $\top$ is defined as $\obj{\tnil}$. Types never contain terms: the only way a type refers to a binder is through the names of its block. Every label has a name in every block, and $\sel{x}{a}$ for a term label $a$ is the type of the field $a$ of $x$.
+A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{S}{T}$ whose codomain may mention the parameter's block, or an object type $\obj{\tel}$. A telescope is a list of propositions over a self binder, oldest first. Propositions do not bind, so the telescope is a list rather than a dependent context, and $\tat{\tel}{i}{P}$ says that its $i$-th proposition is $P$. The empty object type asserts nothing about its inhabitants and every type is included in it, so $\top$ is defined as $\obj{\tnil}$. The fourth kind of proposition, a self-bound $\pbnd{T}$, says that the object itself is included in $T$. By convention the type of a bound is a closed type weakened under the self binder, so a bound never mentions the self. The rules that prove a bound only ever prove such a bound, and the rule that uses one only reads such a bound. Bounds are what a type that is not a declaration becomes inside a telescope, and Section~\ref{sec:translation} uses them for intersections with a selection, a function type, or $\bot$ as an operand. Types never contain terms: the only way a type refers to a binder is through the names of its block. Every label has a name in every block, and $\sel{x}{a}$ for a term label $a$ is the type of the field $a$ of $x$.
 
 \subsection{Evidence}
 
@@ -58,6 +58,10 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 \and
 \inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\ple{S'}{T'}}}
   {\lej{\Gamma}{\ev{member}\,a\,e\,i}{\inst{S'}{\rt{a}}}{\inst{T'}{\rt{a}}}}
+\and
+\inferrule{\tat{\tel}{i}{\pbnd{\weak{T}}}}{\lej{\Gamma}{\ev{bound}\,\tel\,i}{\obj{\tel}}{T}}
+\and
+\inferrule{\lej{\Gamma}{e}{S}{T}}{\lej{\Gamma}{\ev{intoBnd}\,e}{S}{\obj{[\,\pbnd{\weak{T}}\,]}}}
 \\
 \inferrule{\Gamma(x) \ni \ell \mathrel{:=} W}{\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W}}
 \and
@@ -86,6 +90,9 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 \and
 \inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \tat{\tel}{j}{\phas{\ell}}}
   {\morj{\Gamma}{\ev{has}\,m\,j}{\tel}{\tcons{\tel'}{\phas{\ell}}}}
+\and
+\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \lej{\Gamma}{e}{\obj{\tel}}{T}}
+  {\morj{\Gamma}{\ev{bnd}\,m\,e}{\tel}{\tcons{\tel'}{\pbnd{\weak{T}}}}}
 \end{mathpar}
 \color{black}
 \caption{Evidence typing. The rules for $\ev{refl}$, $\ev{symm}$, and $\ev{trans}$ on equalities are omitted. A hole reads a source proposition as an inclusion: $\holej{\tel}{\ev{le}\,j}{X}{Y}$ when $\tat{\tel}{j}{\ple{X}{Y}}$, $\holej{\tel}{\ev{eq}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{X}{Y}}$, and $\holej{\tel}{\ev{eqSym}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{Y}{X}}$.}
@@ -97,6 +104,8 @@ There are three families of evidence: inclusions $\lej{\Gamma}{e}{S}{T}$, equali
 The elimination rule $\ev{member}$ is the one rule that connects the type of an atom to the block of its root, the variable under its wrappers, defined in Section~\ref{sec:atoms}. From $a : S$ and evidence $e$ for $S \le \obj{\tel}$, the $i$-th proposition of $\tel$ holds at $\rt{a}$, as an inclusion, an equality, or a presence, according to its kind. The rule $\ev{def}$ reads the definition of a block name off a transparent binder, and $\Gamma(x) \ni \ell \mathrel{:=} W$ says that $x$ is transparent in $\Gamma$ with witness $W$ at $\ell$. Contexts have two kinds of binder: an opaque one, $x : T$, whose block is abstract, and a transparent one, $x : T \mathrel{:=} W ; \vec\ell$, whose block is defined by the witnesses $W$ and which is known to have the fields $\vec\ell$. A witness list assigns $\top$ to every label it does not mention. Transparent binders arise in two places: inside an object literal, where the fields are typed under the literal's own self binder, and in store typing, where every allocated binder is transparent.
 
 An object coercion $\ev{obj}\,\tel\,m$ is annotated with its source telescope and carries a morphism $m$ that proves each proposition of the target telescope, oldest first. A target inclusion is proven by a template $\ev{le}\,m\,q\,H\,q'$: a hole $H$ names a proposition of the source and reads it as an inclusion $X \le Y$, and the two sides $q$ and $q'$ are closed coercions that adjust the endpoints. A side is either absent or a coercion $A \le B$ between closed types weakened under the self binder, so it cannot mention the self block. A target equality is a source equality, possibly flipped. A target presence is inherited from a source presence by index. A morphism therefore never eliminates through the self block, which is the property Section~\ref{sec:why-structural} relies on. Pairing, $\ev{pair}$, combines two coercions into object types into one coercion into the concatenation, and it is how the source's \rn{And} rule is translated.
+
+A self-bound has one elimination, one introduction, and one entry in morphisms. The cast $\ev{bound}\,\tel\,i$ takes the object type $\obj{\tel}$ through its $i$-th bound. The evidence $\ev{intoBnd}\,e$ turns $S \le T$ into $S \le \obj{[\,\pbnd{\weak{T}}\,]}$, the object type with that one bound. And a morphism proves a target bound by $\ev{bnd}\,m\,e$, where $e$ is closed evidence out of the source object type as a whole. This is the one entry of a morphism that reads the whole source rather than one of its propositions, and it still eliminates nothing through the self block, since $e$ is closed.
 
 \subsection{Atoms, terms, and values}\label{sec:atoms}
 
