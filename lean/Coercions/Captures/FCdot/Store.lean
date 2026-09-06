@@ -5,22 +5,29 @@ namespace Captures
 /-!
 # FCdot stores
 
-A store holds literals, one per allocated binder.  Store typing types each
-entry in the transparent context of the entries before it.
+A store holds literals, one per allocated binder, and a capture slot per
+capture binder.  Store typing types each entry in the transparent context of
+the entries before it; a capture slot carries its bound and no obligation,
+since a capture binder has no runtime content.
 -/
 
 namespace FCdot
 
 /-! ## Stores -/
 
+/-- A store: a literal per term binder, a capture bound per capture binder.
+(`consᶜ` of the plan: `ᶜ` is not a legal Lean identifier character, so the
+capture-sort twin of a name carries the suffix `C`.) -/
 inductive Store : Sig → Type where
   | nil : Store []
   | cons : Store s → Value s → Store (s,x)
+  | consC : Store s → CapBound s → Store (s,c)
 
 /-- The value stored at a binder, weakened into the current scope. -/
 def Store.lookup : Store s → BVar s .var → Value s
   | .cons _ v, .here => v.weaken
   | .cons σ _, .there y => (σ.lookup y).weaken
+  | .consC σ _, .there y => (σ.lookup y).weaken
 
 /-- Block witnesses of a value: those of the underlying literal. -/
 def Value.witnesses : Value s → Witnesses (s,x)
@@ -45,13 +52,15 @@ def Value.coercions : Value s → List (LeCo s)
   | _ => []
 
 /-- The cast wrappers of an atom, innermost first (along the first component
-of an intersection). -/
+of an intersection).  The box wrappers carry no type inclusion. -/
 def Atom.coercions : Atom s → List (LeCo s)
   | .var _ => []
   | .cast a e => a.coercions ++ [e]
   | .foldSelf _ a => a.coercions
   | .unfoldSelf a => a.coercions
   | .both _ _ a _ => a.coercions
+  | .box a => a.coercions
+  | .unbox a _ => a.coercions
 
 /-- A stored value is a literal: no cast wrappers. -/
 def Value.IsLiteral : Value s → Prop
@@ -63,14 +72,17 @@ scoped notation:40 "⊢ " σ:51 " : " Γ:51 => Store.Typed σ Γ
 
 /-- `⊢ σ : Γ`, store typing: every entry is a literal typed in the transparent
 context of the entries before it, and the context records its witnesses and
-fields. -/
+fields.  A capture slot records its bound and carries no obligation. -/
 inductive Store.Typed : Store s → Ctx s → Prop where
   | nil : ⊢ .nil : .nil
-  | cons :
-      ⊢ σ : Γ →
-      v.IsLiteral →
-      Γ ⊢ᵥ v : T →
+  | cons
+      (store : ⊢ σ : Γ)
+      (literal : v.IsLiteral)
+      (value : Γ ⊢ᵥ v : T) :
       ⊢ .cons σ v : .cons Γ (.transparent T v.witnesses v.fieldLabels)
+  | consC
+      (store : ⊢ σ : Γ) :
+      ⊢ .consC σ b : .consC Γ b
 
 open Lean PrettyPrinter in
 @[app_unexpander Store.Typed] def Store.Typed.unexpand : Unexpander

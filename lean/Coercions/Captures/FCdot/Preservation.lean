@@ -124,6 +124,10 @@ theorem Store.Typed.lookup {s : Sig} {σ : Store s} {Γ : Ctx s} (h : ⊢ σ : �
       cases x with
       | here => simpa [Store.lookup, Binding.ty] using hv.weaken _
       | there y => simpa [Store.lookup] using (ih y).weaken _
+  | consC _ ih =>
+      intro x
+      cases x with
+      | there y => simpa [Store.lookup] using (ih y).weakenC _
 
 theorem Store.Typed.lookupFields {s : Sig} {σ : Store s} {Γ : Ctx s}
     (h : ⊢ σ : Γ) :
@@ -137,6 +141,12 @@ theorem Store.Typed.lookupFields {s : Sig} {σ : Store s} {Γ : Ctx s}
           simp [Store.lookup, Value.weaken, Value.fieldLabels_rename]
       | there y =>
           simp only [Ctx.lookupFields_there, ih y, Store.lookup, Value.weaken,
+            Value.fieldLabels_rename]
+  | consC _ ih =>
+      intro x
+      cases x with
+      | there y =>
+          simp only [Ctx.lookupFields_thereC, ih y, Store.lookup, Value.weaken,
             Value.fieldLabels_rename]
 
 theorem Store.Typed.isTransparent {s : Sig} {σ : Store s} {Γ : Ctx s}
@@ -153,12 +163,19 @@ theorem Store.Typed.lookupDef {s : Sig} {σ : Store s} {Γ : Ctx s} (h : ⊢ σ 
       cases x with
       | here =>
           simp only [Ctx.lookupDef, Store.lookup, Value.weaken, Value.witnesses_rename,
-            Witnesses.get_rename, Ty.substVar, Ty.rename_comp,
-            Rename.succ_lift_comp_subst_here, Ty.rename_id]
+            Witnesses.get_rename, Shape.substVar, Shape.rename_comp,
+            Rename.succ_lift_comp_subst_here, Shape.rename_id]
       | there y =>
           simp only [Ctx.lookupDef_there, ih y l, Option.map_some, Store.lookup,
-            Value.weaken, Value.witnesses_rename, Witnesses.get_rename, Ty.substVar,
-            Ty.weaken, Ty.rename_comp, Rename.succ_lift_comp_subst_there]
+            Value.weaken, Value.witnesses_rename, Witnesses.get_rename, Shape.substVar,
+            Shape.weaken, Shape.rename_comp, Rename.succ_lift_comp_subst_there]
+  | consC _ ih =>
+      intro x l
+      cases x with
+      | there y =>
+          simp only [Ctx.lookupDef_thereC, ih y l, Option.map_some, Store.lookup,
+            Value.weaken, Value.witnesses_rename, Witnesses.get_rename, Shape.substVar,
+            Shape.weaken, Shape.rename_comp, Rename.succ_lift_comp_subst_there]
 
 /-- The closure stored at a variable is typed at the variable's type. -/
 theorem Store.Typed.lam_of_lookup {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVar s .var}
@@ -189,22 +206,22 @@ theorem Atom.HasType.var_inv {s : Sig} {Γ : Ctx s} {x : BVar s .var} {T : Ty s}
 
 theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {S₀ : Ty s} {t₀ : Tm (s,x)}
     {T : Ty s} (h : Γ ⊢ᵥ .lam S₀ t₀ : T) :
-    ∃ T₀, T = .pi S₀ T₀ ∧ (Γ.cons (.opaque S₀)) ⊢ t₀ : T₀ := by
+    ∃ T₀, T = (Π(S₀) T₀) ^ [] ∧ (Γ.cons (.opaque S₀)) ⊢ t₀ : T₀ := by
   cases h with
   | lam ht => exact ⟨_, rfl, ht⟩
 
 theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s}
     {W : Witnesses (s,x)} {F : Fields (s,x)} {T : Ty s}
     (h : Γ ⊢ᵥ .obj W F : T) :
-    T = .obj (Telescope.ofLiteral W F.labels) ∧
+    T = (μ (Telescope.ofLiteral W F.labels)) ^ [] ∧
       Fields.HasType
-        (Γ.cons (.transparent (.obj (Telescope.ofLiteral W F.labels)) W F.labels)) F := by
+        (Γ.cons (.transparent ((μ (Telescope.ofLiteral W F.labels)) ^ []) W F.labels)) F := by
   cases h with
   | obj hF => exact ⟨rfl, hF⟩
 
 theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} :
     ∀ (F : Fields (s,x)), Γ ⊢ᶠ F → ∀ (l : Label) (t : Tm (s,x)),
-      F.get? l = some t → Γ ⊢ t : .sel .here l
+      F.get? l = some t → Γ ⊢ t : (.here ∙ l) ^ []
   | .nil, _, l, t, hg => by simp [Fields.get?] at hg
   | .cons F l' t', h, l, t, hg => by
       cases h with
@@ -223,8 +240,7 @@ theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} :
     (Subst.selfCast E).root = Rename.id := by
   apply Rename.funext'
   intro k x
-  cases k
-  cases x <;> rfl
+  cases k <;> cases x <;> rfl
 
 theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
     {W : Witnesses (s,x)} {Fs : List Label} (hE : Γ ⊢ E : S₀ ≤ T) :
@@ -273,23 +289,26 @@ theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
 
 /-- The self binder of a stored object literal may be replaced by the
 variable it is stored at. -/
-theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)}
+theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)} {C : CaptureSet s}
     {W : Witnesses (s,x)} {Fs : List Label} {y : BVar s .var}
-    (hty : Γ.lookupTy y = .obj Tel)
+    (hty : Γ.lookupTy y = (μ Tel) ^ C)
     (hdef : ∀ l, Γ.lookupDef y l = some ((W.get l)⟦y⟧))
     (hfields : Γ.lookupFields y = some Fs) :
-    Ctx.Ren (Γ.cons (.transparent (.obj Tel) W Fs)) (Rename.subst y) Γ where
+    Ctx.Ren (Γ.cons (.transparent ((μ Tel) ^ C) W Fs)) (Rename.subst y) Γ where
   ty := by
     intro z
     cases z with
-    | here => simpa [Binding.ty] using hty
+    | here =>
+        have h : ((Γ.cons (Binding.transparent ((μ Tel) ^ C) W Fs)).lookupTy BVar.here).rename
+            (Rename.subst y) = (μ Tel) ^ C := Ty.rename_subst_weaken _ _
+        exact hty.trans h.symm
     | there w => simp
   def_ := by
     intro z l W' hW'
     cases z with
     | here =>
         obtain rfl : W.get l = W' := by simpa using hW'
-        simpa [Ty.substVar] using hdef l
+        simpa [Shape.substVar] using hdef l
     | there w =>
         rw [Ctx.lookupDef_there] at hW'
         obtain ⟨W0, hd, rfl⟩ := Option.map_eq_some_iff.mp hW'
@@ -312,15 +331,16 @@ between the atom's function type and its closure's type; whenever it is the
 identity form, the two function types coincide.  Discharged by the
 canonical-forms theorem (`CanonicalForms.lean`). -/
 structure FormsTyped (σ : Store s) (Γ : Ctx s) : Prop where
-  pi : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {d : LeCo s}
-    {c : LeCo (s,x)} {S₀ : Ty s} {T₀ : Ty (s,x)},
-    Γ ⊢ₐ a : .pi S T → σ ⊢ a ⇓ᶜ[n] (a', .pi d c) →
-    Γ.lookupTy a.root = .pi S₀ T₀ →
+  pi : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {C : CaptureSet s} {n : Nat} {a' : Atom s}
+    {d : LeCo s} {c : LeCo (s,x)} {S₀ : Ty s} {T₀ : Ty (s,x)},
+    Γ ⊢ₐ a : (Π(S) T) ^ C → σ ⊢ a ⇓ᶜ[n] (a', .pi d c) →
+    (Γ.lookupTy a.root).shape = Π(S₀) T₀ →
     Γ ⊢ d : S ≤ S₀ ∧ (Γ.cons (.opaque S)) ⊢ c : T₀ ≤ T
-  refl : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {F : Form s},
-    Γ ⊢ₐ a : .pi S T → σ ⊢ a ⇓ᶜ[n] (a', F) →
+  refl : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {C : CaptureSet s} {n : Nat} {a' : Atom s}
+    {F : Form s},
+    Γ ⊢ₐ a : (Π(S) T) ^ C → σ ⊢ a ⇓ᶜ[n] (a', F) →
     (F = .id ∨ ∃ φ, F = .eqv φ) →
-    Γ.lookupTy a.root = .pi S T
+    (Γ.lookupTy a.root).shape = Π(S) T
 
 /-- A step that does not allocate keeps the signature: the result type is
 transported along the identity renaming. -/
@@ -348,18 +368,19 @@ theorem preservation_alloc {s : Sig} {σ : Store s} {Γ : Ctx s} {K : Cont s}
 
 /-- β: a closure applied at its own function type. -/
 theorem Value.HasType.beta {s : Sig} {Γ : Ctx s} {S₀ S : Ty s} {t₀ : Tm (s,x)}
-    {T : Ty (s,x)} {b : Atom s}
-    (hlam : Γ ⊢ᵥ .lam S₀ t₀ : Π(S) T) (hb : Γ ⊢ₐ b : S) :
+    {T : Ty (s,x)} {C : CaptureSet s} {b : Atom s}
+    (hlam : Γ ⊢ᵥ .lam S₀ t₀ : (Π(S) T) ^ C) (hb : Γ ⊢ₐ b : S) :
     Γ ⊢ t₀.substAtom b : T⟦b.root⟧ := by
   obtain ⟨T₀, hTe, ht₀⟩ := Value.HasType.lam_inv hlam
-  obtain ⟨rfl, rfl⟩ := Ty.pi.inj hTe
+  obtain ⟨-, rfl, rfl⟩ : C = [] ∧ S = S₀ ∧ T = T₀ := by
+    simpa [Ty.capt.injEq, Shape.pi.injEq] using hTe
   exact Tm.HasType.substAtom ht₀ hb
 
 /-- β for a closure stored at the root of an atom whose type is that root's
 type: `appVar`, and `appCastRefl` where the casts normalize to the identity. -/
 theorem Store.Typed.beta {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVar s .var}
-    {S₀ S : Ty s} {t₀ : Tm (s,x)} {T : Ty (s,x)} {b : Atom s}
-    (hσ : ⊢ σ : Γ) (hx : σ.lookup x = .lam S₀ t₀) (hty : Γ.lookupTy x = Π(S) T)
+    {S₀ S : Ty s} {t₀ : Tm (s,x)} {T : Ty (s,x)} {C : CaptureSet s} {b : Atom s}
+    (hσ : ⊢ σ : Γ) (hx : σ.lookup x = .lam S₀ t₀) (hty : Γ.lookupTy x = (Π(S) T) ^ C)
     (hb : Γ ⊢ₐ b : S) : Γ ⊢ t₀.substAtom b : T⟦b.root⟧ :=
   (hty ▸ hσ.lam_of_lookup hx).beta hb
 
@@ -380,7 +401,7 @@ self binder replaced by the object's variable, has the projection's type. -/
 theorem Tm.HasType.projField {s : Sig} {σ : Store s} {Γ : Ctx s} {y : BVar s .var}
     {W : Witnesses (s,x)} {F : Fields (s,x)} {ℓ : Label} {t : Tm (s,x)}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup y = .obj W F) (hg : F.get? ℓ = some t) :
-    Γ ⊢ t.selfAt y : y ∙ ℓ := by
+    Γ ⊢ t.selfAt y : (y ∙ ℓ) ^ [] := by
   have hval := hσ.lookup y
   rw [hx] at hval
   obtain ⟨hTe, hF⟩ := Value.HasType.obj_inv hval
@@ -394,7 +415,8 @@ theorem Tm.HasType.projField {s : Sig} {σ : Store s} {Γ : Ctx s} {y : BVar s .
     rw [hx] at hlk
     simpa [Value.fieldLabels] using hlk
   have hren := Ctx.Ren.selfObj hTe hdef hfields
-  simpa [Tm.selfAt, Ty.rename] using (Fields.HasType.get F hF ℓ t hg).rename hren
+  simpa [Tm.selfAt, Ty.rename, Shape.rename, CaptureSet.rename] using
+    (Fields.HasType.get F hF ℓ t hg).rename hren
 
 theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
     (hF : ∀ Γ, ⊢ st.σ : Γ → FormsTyped st.σ Γ)
@@ -434,13 +456,13 @@ theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
   case appCastRefl hx _ hcf hid =>
       cases ht with
       | app ha hb =>
-          exact State.Typed.exists_rename_id
-            ⟨Γ, _, hσ, hσ.beta hx ((hF Γ hσ).refl ha hcf hid) hb, hK⟩
+          obtain ⟨C₀, hty⟩ := Ty.shape_eq_iff.mp ((hF Γ hσ).refl ha hcf hid)
+          exact State.Typed.exists_rename_id ⟨Γ, _, hσ, hσ.beta hx hty hb, hK⟩
   case appCast hx _ hcf =>
       cases ht with
       | app ha hb =>
           obtain ⟨T₀, hTe, ht₀⟩ := Value.HasType.lam_inv (hσ.lam_of_lookup hx)
-          obtain ⟨hdom, hcod⟩ := (hF Γ hσ).pi ha hcf hTe
+          obtain ⟨hdom, hcod⟩ := (hF Γ hσ).pi ha hcf (by rw [hTe]; rfl)
           exact State.Typed.exists_rename_id ⟨Γ, _, hσ, ht₀.betaCast hdom hcod hb, hK⟩
   case proj hx hg =>
       cases ht with

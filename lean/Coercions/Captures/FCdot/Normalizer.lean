@@ -36,19 +36,20 @@ namespace FCdot
 def Ctx.length : Ctx s → Nat
   | .nil => 0
   | .cons Γ _ => Γ.length + 1
+  | .consC Γ _ => Γ.length + 1
 
-/-- One alias step: `some W` if the head of the type is a name defined by a
-transparent binder, `none` if the type is settled (a shape, or a name whose
+/-- One alias step: `some W` if the head of the shape is a name defined by a
+transparent binder, `none` if the shape is settled (a former, or a name whose
 binder is opaque). -/
-def Ctx.next (Γ : Ctx s) : Ty s → Option (Ty s)
+def Ctx.next (Γ : Ctx s) : Shape s → Option (Shape s)
   | .sel x ℓ => Γ.lookupDef x ℓ
   | _ => none
 
-/-- Follow definitions at the head of a type, with fuel.  Aliases within a
+/-- Follow definitions at the head of a shape, with fuel.  Aliases within a
 block are allowed, so a chain of definitions may be cyclic; running out of
 fuel on a defined name means it is, and a cycle resolves to `⊤`, the object
-type with no propositions. -/
-def Ctx.resolveFuel (Γ : Ctx s) : Nat → Ty s → Ty s
+shape with no propositions. -/
+def Ctx.resolveFuel (Γ : Ctx s) : Nat → Shape s → Shape s
   | 0, T =>
       match Γ.next T with
       | none => T
@@ -67,10 +68,11 @@ def Ctx.defPairs : Ctx s → List (BVar s .var × Label)
         (match b with
          | .transparent _ W _ => W.labels.map (fun ℓ => (BVar.here, ℓ))
          | .opaque _ => [])
+  | .consC Γ _ => (Ctx.defPairs Γ).map (fun p => (BVar.there p.1, p.2))
 
 /-- Resolution with enough fuel for any alias chain in the context: a chain
 longer than the number of defined names repeats a name, hence is cyclic. -/
-def Ctx.resolve (Γ : Ctx s) (T : Ty s) : Ty s := Γ.resolveFuel (Γ.defPairs.length + 1) T
+def Ctx.resolve (Γ : Ctx s) (S : Shape s) : Shape s := Γ.resolveFuel (Γ.defPairs.length + 1) S
 
 /-! ## Forms, entries, views -/
 
@@ -96,6 +98,14 @@ inductive Form (s : Sig) : Type where
   /-- Coercion into a bounds-only object type: one bound entry per target
       proposition. -/
   | into : Entries s → Form s
+  /-- Box coercion: the head form of the evidence between the boxed types.
+      The box former is inert, so its coercion keeps that form as a function
+      coercion keeps its domain and codomain evidence. -/
+  | boxed : Form s → Form s
+  /-- A coercion whose target is a box shape but whose source is not: the
+      form reaching the boxed type.  This is the head form of the chain of a
+      `box` atom, whose content is reached from the atom's root. -/
+  | boxIn : Form s → Form s
 
 /-- The normal form of one target proposition of an object coercion: a
 template `pre ∘ (source proposition) ∘ post` with normalized sides (`id` for
@@ -133,6 +143,14 @@ def Form.isBndId : Form s → Bool
 def Form.isTop : Form s → Bool
   | .top => true
   | _ => false
+
+/-- Peeling a box: the form reaching the boxed type out of a form whose
+target is a box shape.  `boxIn F` records exactly that form, a `bot` source
+absorbs everything, and no other form has a box target over a typed store. -/
+def Form.unbox? : Form s → Option (Form s)
+  | .boxIn F => some F
+  | .bot => some .bot
+  | _ => none
 
 theorem Form.isBot_eq_true {F : Form s} : F.isBot = true ↔ F = .bot := by
   cases F <;> simp [Form.isBot]
@@ -199,6 +217,20 @@ def View.get? : View s → Nat → Option (PropForm s)
   | .cons V P, i => if i = V.length then some P else V.get? i
 
 /-! ## Composition of forms -/
+
+/-- Transitivity of a type inclusion: the shape parts compose and the
+capture parts compose.  `LeCo` has one constructor, so transitivity is a
+definition rather than a constructor; at `[]` on both sides it is vanilla's
+`LeCo.trans`. -/
+def LeCo.trans : LeCo s → LeCo s → LeCo s
+  | .capt e f, .capt e' f' => .capt (.trans e e') (.trans f f')
+
+theorem LeCo.HasType.trans {Γ : Ctx s} {d e : LeCo s} {T U V : Ty s}
+    (hd : Γ ⊢ d : T ≤ U) (he : Γ ⊢ e : U ≤ V) : Γ ⊢ d.trans e : T ≤ V := by
+  cases hd with
+  | capt hd₁ hd₂ =>
+      cases he with
+      | capt he₁ he₂ => exact .capt (.trans hd₁ he₁) (.trans hd₂ he₂)
 
 /-- The index named by a hole. -/
 def Hole.index : Hole → Nat
@@ -352,13 +384,19 @@ def Form.combine : Form s → Form s → Option (Form s)
   | .eqv φ, .eqv ψ => some (.eqv (.trans φ ψ))
   | .eqv _, .pi d c => some (.pi d c)
   | .pi d c, .eqv _ => some (.pi d c)
+  | .eqv _, .boxed d => some (.boxed d)
+  | .boxed d, .eqv _ => some (.boxed d)
+  | .boxIn F, .eqv _ => some (.boxIn F)
   | .eqv _, .obj Es => some (.obj Es)
   | .obj Es, .eqv _ => some (.obj Es)
   | .eqv _, .bnd i F => some (.bnd i F)
   | .eqv _, .into Es => some (.into Es)
   | .into Es, .eqv _ => some (.into Es)
   | .pi d₁ c₁, .pi d₂ c₂ =>
-      some (.pi (.trans d₂ d₁) (.trans (c₁.subst (Subst.selfCast d₂↑)) c₂))
+      some (.pi (d₂.trans d₁) ((c₁.subst (Subst.selfCast d₂↑)).trans c₂))
+  | .boxed d₁, .boxed d₂ => (Form.combine d₁ d₂).map Form.boxed
+  | .boxIn F, .boxed G => (Form.combine F G).map Form.boxIn
+  | F, .boxIn G => (Form.combine F G).map Form.boxIn
   | .obj Es₁, .obj Es₂ => (Entries.through Es₁ Es₂).map .obj
   | .into Es₁, .obj Es₂ => (Entries.mapPrefix (.into Es₁) Es₂).map .into
   | .top, .obj Es => (Entries.mapPrefix .top Es).map .into
@@ -510,31 +548,39 @@ def entriesAt (σ : Store s) : Nat → Atom s → Form s → View s → Entries 
 def sideForm (σ : Store s) : Nat → Side s → Option (Form s)
   | 0, _ => none
   | _ + 1, .none => some .id
-  | n + 1, .some e => hnf σ n e
+  | n + 1, .some e => hnfShape σ n e
 
-/-- Head form of closed inclusion evidence, with fuel. -/
+/-- Head form of closed inclusion evidence between types, with fuel: a
+capture inclusion has no head form, so the head form of `capt e f` is that
+of its shape part `e`. -/
 def hnf (σ : Store s) : Nat → LeCo s → Option (Form s)
   | 0, _ => none
-  | _ + 1, .refl T => some (.eqv (.refl T))
+  | n + 1, .capt e _ => hnfShape σ n e
+
+/-- Head form of closed inclusion evidence between shapes, with fuel. -/
+def hnfShape (σ : Store s) : Nat → ShapeCo s → Option (Form s)
+  | 0, _ => none
+  | _ + 1, .refl S => some (.eqv (.refl S))
   | _ + 1, .top _ => some .top
   | _ + 1, .bot _ => some .bot
   | _ + 1, .eqToLe φ => some (.eqv φ)
   | _ + 1, .pi d c => some (.pi d c)
+  | n + 1, .boxed d => (hnf σ n d).map Form.boxed
   | n + 1, .obj _ m => (entries σ n m).map .obj
   | n + 1, .pair Tel₁ Tel₂ e f => do
-      let F ← hnf σ n e
-      let G ← hnf σ n f
+      let F ← hnfShape σ n e
+      let G ← hnfShape σ n f
       Form.pair Tel₁ Tel₂ F G
   | _ + 1, .bound _ i => some (.bnd i .id)
   | n + 1, .intoBnd e => do
-      let F ← hnf σ n e
+      let F ← hnfShape σ n e
       pure (.into (.nil ▹ .bnd F))
   | n + 1, .trans e f => do
-      let F ← hnf σ n e
-      let G ← hnf σ n f
+      let F ← hnfShape σ n e
+      let G ← hnfShape σ n f
       F.combine G
   | n + 1, .member a e i => do
-      let F ← hnf σ n e
+      let F ← hnfShape σ n e
       let V ← viewThrough σ n F a
       match V.get? i with
       | some (.le G) => some G
@@ -557,7 +603,7 @@ def entries (σ : Store s) : Nat → Morphism s → Option (Entries s)
       pure (Es ▹ .has j)
   | n + 1, .bnd m e => do
       let Es ← entries σ n m
-      let F ← hnf σ n e
+      let F ← hnfShape σ n e
       pure (Es ▹ .bnd F)
 
 /-- The view of a concrete atom at its resolved object type. -/
@@ -573,6 +619,13 @@ def view (σ : Store s) : Nat → Atom s → Option (View s)
       let V ← view σ n a
       let V' ← view σ n b
       pure (V ++ V')
+  | n + 1, .box a => view σ n a
+  -- Unboxing reaches the boxed type from the root through the peeled chain,
+  -- so the view of an unboxed atom is the view of the root through it.
+  | n + 1, .unbox a _ => do
+      let (_, F) ← closedAtomForm σ n a
+      let G ← F.unbox?
+      viewThrough σ n G (.var a.root)
 
 /-- The view of an atom through a head form applied to it. -/
 def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
@@ -595,6 +648,8 @@ def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
       viewThrough σ n H (.var a.root)
   -- A non-object target has no telescope: its view is empty.
   | _ + 1, .pi _ _, _ => some .nil
+  | _ + 1, .boxed _, _ => some .nil
+  | _ + 1, .boxIn _, _ => some .nil
   | _ + 1, .top, _ => some .nil
   | _ + 1, .bot, _ => some .nil
 
@@ -603,7 +658,7 @@ def hasView (σ : Store s) : Nat → BVar s .var → Has s → Option (BVar s .v
   | 0, _, _ => none
   | _ + 1, x, .field ℓ => some (x, ℓ)
   | n + 1, _, .member a e i => do
-      let F ← hnf σ n e
+      let F ← hnfShape σ n e
       let V ← viewThrough σ n F a
       match V.get? i with
       | some (.has y ℓ) => some (y, ℓ)
@@ -629,6 +684,18 @@ def closedAtomForm (σ : Store s) : Nat → Atom s → Option (Atom s × Form s)
       let (b', G) ← closedAtomForm σ n b
       let H ← Form.pair Tel₁ Tel₂ F G
       pure (.both Tel₁ Tel₂ a' b', H)
+  -- The box former is inert but not invisible: the chain of a box atom is
+  -- the chain of its content recorded under `boxIn`, and an unbox peels that
+  -- record off, so a box under an unbox cancels (`closedAtomForm_unbox_box`)
+  -- and a coercion crossing the box (`Form.boxed`) is composed into the
+  -- record rather than lost.
+  | n + 1, .box a => do
+      let (a', F) ← closedAtomForm σ n a
+      pure (.box a', .boxIn F)
+  | n + 1, .unbox a f => do
+      let (a', F) ← closedAtomForm σ n a
+      let G ← F.unbox?
+      pure (.unbox a' f, G)
 
 end
 
@@ -638,12 +705,25 @@ end
 `⇓ₘ` for morphisms, `⇓ᵥ` for views of atoms, `⇓ₕ` for presence evidence. -/
 
 scoped notation:40 σ:51 " ⊢ " e:51 " ⇓[" n "] " F:51 => hnf σ n e = some F
+scoped notation:40 σ:51 " ⊢ " e:51 " ⇓ˢ[" n "] " F:51 => hnfShape σ n e = some F
 scoped notation:40 σ:51 " ⊢ " m:51 " ⇓ₘ[" n "] " Es:51 => entries σ n m = some Es
 scoped notation:40 σ:51 " ⊢ " a:51 " ⇓ᵥ[" n "] " V:51 => view σ n a = some V
 scoped notation:40 σ:51 " ⊢ " x:51 " ; " h:51 " ⇓ₕ[" n "] " P:51 => hasView σ n x h = some P
 
 /-- `σ ⊢ a ⇓ᶜ[n] (a', F)`: the chain of casts of `a` normalizes to `F`. -/
 scoped notation:40 σ:51 " ⊢ " a:51 " ⇓ᶜ[" n "] " r:51 => closedAtomForm σ n a = some r
+
+/-- The head form of a type inclusion is the head form of its shape part. -/
+@[simp] theorem hnf_capt (σ : Store s) (n : Nat) (e : ShapeCo s) (f : CapCo s) :
+    hnf σ (n + 1) (.capt e f) = hnfShape σ n e := rfl
+
+/-- Cancellation of a box under an unbox: the `boxIn` record the box makes
+is peeled off again, so the chain of `unbox (box a) f` is the chain of `a`,
+and an unboxed function atom still reaches the application step. -/
+theorem closedAtomForm_unbox_box (σ : Store s) (n : Nat) (a : Atom s) (f : CapCo s) :
+    closedAtomForm σ (n + 1 + 1) (.unbox (.box a) f)
+      = (closedAtomForm σ n a).map (fun r => (.unbox (.box r.1) f, r.2)) := by
+  cases h : closedAtomForm σ n a <;> simp [closedAtomForm, Form.unbox?, h]
 
 end FCdot
 

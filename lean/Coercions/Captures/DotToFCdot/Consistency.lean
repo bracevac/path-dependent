@@ -23,11 +23,12 @@ theorem translate_initial_typed {t : Tm []} {T : Ty []} (d : HasTy .nil t T) :
   ⟨.nil, T.translate, .nil, HasTy.translate_typed d .nil, .nil⟩
 
 /-- `reachable_consistent`: along any run of the translated program, the
-store's context proves no closed `⊤ ≤ ⊥`. -/
+store's context proves no closed `⊤ ≤ ⊥`, at any pair of capture sets. -/
 theorem reachable_consistent {t : Tm []} {T : Ty []} (d : HasTy .nil t T)
     {s : Sig} {st : FCdot.State s}
     (run : FCdot.Steps (⟨.nil, .nil, d.translate⟩ : FCdot.State []) st) :
-    ∃ Γ : FCdot.Ctx s, ⊢ st.σ : Γ ∧ ¬ ∃ e : LeCo s, Γ ⊢ e : ⊤ ≤ ⊥ := by
+    ∃ Γ : FCdot.Ctx s, ⊢ st.σ : Γ ∧
+      ¬ ∃ (e : LeCo s) (C C' : CaptureSet s), Γ ⊢ e : ⊤ ^ C ≤ ⊥ ^ C' := by
   obtain ⟨Γ, hσ, hcons, _⟩ := FCdot.reachable_consistent (translate_initial_typed d) run
   exact ⟨Γ, hσ, hcons⟩
 

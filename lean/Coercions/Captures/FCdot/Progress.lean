@@ -19,9 +19,11 @@ variable {σ : Store s} {Γ : Ctx s}
 
 /-- A function atom is rooted at a closure. -/
 theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
-    (h : Γ ⊢ₐ a : .pi S T) : ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
+    {C : CaptureSet s} (h : Γ ⊢ₐ a : (Π(S) T) ^ C) :
+    ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
   obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
-  have hlk : ∃ S₀ T₀, Γ.lookupTy a.root = .pi S₀ T₀ := by
+  rw [Ty.shape_capt] at hFt
+  have hlk : ∃ S₀ T₀, (Γ.lookupTy a.root).shape = Π(S₀) T₀ := by
     rcases hσ.lookupTy_shape a.root with hp | ⟨Tel, ho⟩
     · exact hp
     · exfalso
@@ -33,10 +35,9 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
       | pi hp _ _ _ => simp [Ctx.resolveAt, ho] at hp
       | obj _ ho' _ => simp [Ctx.resolveAt] at ho'
       | into ho' _ => simp [Ctx.resolveAt] at ho'
-      | bnd hS hAt _ =>
-          obtain ⟨hrv, _⟩ := (precView_typed hσ a.root).opened
-          obtain ⟨G, hG, _⟩ := (hrv _ hS).bnd_entry hAt
-          exact Value.precView_noBnd a.root _ _ _ hG
+      | boxed _ hb _ => simp at hb
+      | boxIn hb _ => simp at hb
+      | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
   obtain ⟨S₀, T₀, hlk⟩ := hlk
   have hv := hσ.lookup a.root
   have hlit := hσ.lookup_isLiteral a.root
@@ -45,7 +46,7 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
   | obj W F =>
       rw [hl] at hv
       obtain ⟨hT, _⟩ := hv.obj_inv
-      rw [hlk] at hT; simp at hT
+      rw [hT] at hlk; simp at hlk
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-- Presence evidence at a location names a field of the object stored there. -/

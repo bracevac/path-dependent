@@ -6,8 +6,9 @@ namespace Captures
 The scoping discipline follows the ModalCapybara mechanization: a signature
 is a list of binder kinds, a bound variable is a position of a given kind,
 and renamings are functions on bound variables with lifting under binders.
-This plan has a single binder kind; the discipline is kept so that further
-kinds (capture variables, later) are additive.
+This development has two binder kinds, term variables and capture
+variables; the discipline is kind-generic, so that a further kind would be
+additive.
 -/
 
 namespace FCdot
@@ -18,9 +19,10 @@ inductive Label : Type where
   | trm : Nat → Label
 deriving DecidableEq, Repr
 
-/-- Binder kinds.  Only term variables in this plan. -/
+/-- Binder kinds: term variables and capture variables. -/
 inductive Kind : Type where
   | var : Kind
+  | cap : Kind
 deriving DecidableEq, Repr
 
 /-- A signature: the shape of a context, newest binder first. -/
@@ -36,12 +38,16 @@ instance Sig.instEmptyCollection : EmptyCollection Sig where
 /-- Extend a signature with a term variable. -/
 @[reducible] def Sig.extend_var (s : Sig) : Sig := Sig.extend s .var
 
+/-- Extend a signature with a capture variable. -/
+@[reducible] def Sig.extend_cap (s : Sig) : Sig := Sig.extend s .cap
+
 /-- Extend by a block of binders; the head of the block is newest. -/
 def Sig.extendMany : Sig → Sig → Sig
   | s, [] => s
   | s, k :: K => (s.extendMany K).extend k
 
 postfix:80 ",x" => Sig.extend_var
+postfix:80 ",c" => Sig.extend_cap
 infixl:65 ",," => Sig.extend
 
 instance Sig.instAppend : Append Sig where
@@ -50,6 +56,12 @@ instance Sig.instAppend : Append Sig where
 @[simp] theorem Sig.extendMany_nil (s : Sig) : s.extendMany [] = s := rfl
 @[simp] theorem Sig.extendMany_cons (s : Sig) (k : Kind) (K : Sig) :
     s.extendMany (k :: K) = (s.extendMany K).extend k := rfl
+
+/-- The two block extensions in the binder notations. -/
+@[simp] theorem Sig.extendMany_var (s : Sig) (K : Sig) :
+    s.extendMany (.var :: K) = (s.extendMany K),x := rfl
+@[simp] theorem Sig.extendMany_cap (s : Sig) (K : Sig) :
+    s.extendMany (.cap :: K) = (s.extendMany K),c := rfl
 
 /-- Bound variables, de Bruijn indexed by position and kind. -/
 inductive BVar : Sig → Kind → Type where

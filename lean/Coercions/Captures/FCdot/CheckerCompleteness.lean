@@ -5,16 +5,16 @@ namespace Captures
 /-!
 # Completeness of the FCdot checker
 
-`Coercions.FCdot.Checker` gives an executable kernel that returns the very
-derivation it validated, so soundness is extraction.  This file proves the
+`Coercions.Captures.FCdot.Checker` gives an executable kernel that returns the
+very derivation it validated, so soundness is extraction.  This file proves the
 converse: every derivation is accepted, and the synthesising cores reproduce
 exactly the outputs the derivation assigns.
 
-Because the syntax is fully annotated — `LeCo.obj` carries its source
+Because the syntax is fully annotated — `ShapeCo.obj` carries its source
 telescope, `Atom.foldSelf` its target telescope — the evidence layer is
 completely determined by its input: no acceptance predicate is needed, and
-`synthLe`, `synthEq`, `synthHas`, `synthMorphism` and `synthAtom` are total
-inverses of the typing relations.
+`synthShape`, `synthCap`, `synthLe`, `synthEq`, `synthHas`, `synthMorphism`
+and `synthAtom` are total inverses of the typing relations.
 
 Since `Tm.proj` now carries its own field-presence evidence, the term layer
 searches for nothing either: completeness is unconditional throughout, and the
@@ -38,20 +38,27 @@ theorem exists_of_isSome {α : Type} {o : Option α} (h : o.isSome = true) : ∃
   | none => simp at h
   | some a => exact ⟨a, rfl⟩
 
-theorem leMember_eq {Γ : Ctx s} {a : Atom s} {e : LeCo s} {i : Nat} {S : Ty s}
-    {S' T' : Ty (s,x)} {Tel : Telescope (s,x)} (ha : Γ ⊢ₐ a : S) (he : Γ ⊢ e : S ≤ .obj Tel)
+theorem capElem_eq {Γ : Ctx s} {C D : CaptureSet s} (h : C.Subset D) :
+    capElem (Γ := Γ) C D = some ⟨C, D, .elem h⟩ := by
+  simp only [capElem, dif_pos h]
+
+theorem leMember_eq {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} {i : Nat} {S : Shape s}
+    {C : CaptureSet s} {S' T' : Shape (s,x)} {Tel : Telescope (s,x)}
+    (ha : Γ ⊢ₐ a : S ^ C) (he : Γ ⊢ˢ e : S ≤ .obj Tel)
     (hAt : Tel.At i (.le S' T')) :
     leMember i ha he = some ⟨S'⟦a.root⟧, T'⟦a.root⟧, .member ha he hAt⟩ := by
   simp [leMember, Telescope.getAt?_of_At hAt]
 
-theorem eqMember_eq {Γ : Ctx s} {a : Atom s} {e : LeCo s} {i : Nat} {S : Ty s}
-    {S' T' : Ty (s,x)} {Tel : Telescope (s,x)} (ha : Γ ⊢ₐ a : S) (he : Γ ⊢ e : S ≤ .obj Tel)
+theorem eqMember_eq {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} {i : Nat} {S : Shape s}
+    {C : CaptureSet s} {S' T' : Shape (s,x)} {Tel : Telescope (s,x)}
+    (ha : Γ ⊢ₐ a : S ^ C) (he : Γ ⊢ˢ e : S ≤ .obj Tel)
     (hAt : Tel.At i (.eq S' T')) :
     eqMember i ha he = some ⟨S'⟦a.root⟧, T'⟦a.root⟧, .member ha he hAt⟩ := by
   simp [eqMember, Telescope.getAt?_of_At hAt]
 
-theorem hasMember_eq {Γ : Ctx s} {a : Atom s} {e : LeCo s} {i : Nat} {S : Ty s} {ℓ : Label}
-    {Tel : Telescope (s,x)} (ha : Γ ⊢ₐ a : S) (he : Γ ⊢ e : S ≤ .obj Tel)
+theorem hasMember_eq {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} {i : Nat} {S : Shape s}
+    {C : CaptureSet s} {ℓ : Label} {Tel : Telescope (s,x)}
+    (ha : Γ ⊢ₐ a : S ^ C) (he : Γ ⊢ˢ e : S ≤ .obj Tel)
     (hAt : Tel.At i (.has ℓ)) :
     hasMember i a.root ha he = some ⟨ℓ, .member ha he hAt⟩ := by
   simp [hasMember, Telescope.getAt?_of_At hAt]
@@ -62,82 +69,116 @@ theorem morHas_eq {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {j : Nat
   simp [morHas, Telescope.getAt?_of_At hAt]
 
 theorem morEq_eq {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {j : Nat}
-    {X Y : Ty (s,x)} {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel)
+    {X Y : Shape (s,x)} {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel)
     (hAt : src.At j (.eq X Y)) :
     morEq j false hm = some ⟨Tel ▹ X ≐ Y, .eq hm hAt⟩ := by
   simp [morEq, Telescope.getAt?_of_At hAt]
 
 theorem morEqSym_eq {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {j : Nat}
-    {X Y : Ty (s,x)} {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel)
+    {X Y : Shape (s,x)} {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel)
     (hAt : src.At j (.eq X Y)) :
     morEq j true hm = some ⟨Tel ▹ Y ≐ X, .eqSym hm hAt⟩ := by
   simp [morEq, Telescope.getAt?_of_At hAt]
 
-theorem leBound_eq {Γ : Ctx s} {Tel : Telescope (s,x)} {i : Nat} {T : Ty s}
-    (hAt : Tel ∋ (i ↦ ⊑ T↑)) :
-    leBound (Γ := Γ) Tel i = some ⟨μ Tel, T, .bound hAt⟩ := by
-  simp [leBound, Telescope.getAt?_of_At hAt, Ty.strengthenW?_weaken]
+theorem leBound_eq {Γ : Ctx s} {Tel : Telescope (s,x)} {i : Nat} {S : Shape s}
+    (hAt : Tel ∋ (i ↦ ⊑ S↑)) :
+    leBound (Γ := Γ) Tel i = some ⟨μ Tel, S, .bound hAt⟩ := by
+  simp [leBound, Telescope.getAt?_of_At hAt, Shape.strengthenW?_weaken]
 
-theorem morBnd_eq {Γ : Ctx s} {src Tel : Telescope (s,x)} {m : Morphism s} {e : LeCo s}
-    {T : Ty s} (hm : Γ ⊢ m : src ⇒ Tel) (he : Γ ⊢ e : μ src ≤ T) :
-    morBnd hm he = some ⟨Tel ▹ ⊑ T↑, .bnd hm he⟩ := by
+theorem morBnd_eq {Γ : Ctx s} {src Tel : Telescope (s,x)} {m : Morphism s} {e : ShapeCo s}
+    {S : Shape s} (hm : Γ ⊢ m : src ⇒ Tel) (he : Γ ⊢ˢ e : μ src ≤ S) :
+    morBnd hm he = some ⟨Tel ▹ ⊑ S↑, .bnd hm he⟩ := by
   simp [morBnd]
 
-theorem lePair_eq {Γ : Ctx s} {e f : LeCo s} {S : Ty s} {Tel₁ Tel₂ : Telescope (s,x)}
-    (he : Γ ⊢ e : S ≤ μ Tel₁) (hf : Γ ⊢ f : S ≤ μ Tel₂) :
+theorem lePair_eq {Γ : Ctx s} {e f : ShapeCo s} {S : Shape s} {Tel₁ Tel₂ : Telescope (s,x)}
+    (he : Γ ⊢ˢ e : S ≤ μ Tel₁) (hf : Γ ⊢ˢ f : S ≤ μ Tel₂) :
     lePair Tel₁ Tel₂ he hf = some ⟨S, μ (Tel₁ ++ Tel₂), .pair he hf⟩ := by
   simp [lePair]
 
 theorem atomBoth_eq {Γ : Ctx s} {a b : Atom s} {Tel₁ Tel₂ : Telescope (s,x)}
-    (ha : Γ ⊢ₐ a : μ Tel₁) (hb : Γ ⊢ₐ b : μ Tel₂) (hr : b.root = a.root) :
-    atomBoth Tel₁ Tel₂ ha hb = some ⟨μ (Tel₁ ++ Tel₂), .both ha hb hr⟩ := by
+    {C : CaptureSet s}
+    (ha : Γ ⊢ₐ a : (μ Tel₁) ^ C) (hb : Γ ⊢ₐ b : (μ Tel₂) ^ C) (hr : b.root = a.root) :
+    atomBoth Tel₁ Tel₂ ha hb = some ⟨(μ (Tel₁ ++ Tel₂)) ^ C, .both ha hb hr⟩ := by
   simp [atomBoth, hr]
 
-theorem atomUnfold_eq {Γ : Ctx s} {b : Atom s} {Tel : Telescope (s,x)}
-    (hb : Γ ⊢ₐ b : .obj Tel) :
-    atomUnfold hb = some ⟨.obj (Tel⟦b.root⟧)↑, .unfoldSelf hb⟩ := rfl
+theorem atomUnfold_eq {Γ : Ctx s} {b : Atom s} {Tel : Telescope (s,x)} {C : CaptureSet s}
+    (hb : Γ ⊢ₐ b : (μ Tel) ^ C) :
+    atomUnfold hb = some ⟨(μ (Tel⟦b.root⟧)↑) ^ C, .unfoldSelf hb⟩ := rfl
 
-theorem tmApp_eq {Γ : Ctx s} {a b : Atom s} {S : Ty s} {T : Ty (s,x)}
-    (ha : Γ ⊢ₐ a : .pi S T) (hb : Γ ⊢ₐ b : S) :
-    tmApp ha hb = some ⟨T⟦b.root⟧, .app ha hb⟩ := by
+theorem atomFold_eq {Γ : Ctx s} {b : Atom s} {Tel : Telescope (s,x)} {C : CaptureSet s}
+    (hb : Γ ⊢ₐ b : (μ (Tel⟦b.root⟧)↑) ^ C) :
+    atomFold Tel hb = some ⟨(μ Tel) ^ C, .foldSelf hb⟩ := by
+  simp [atomFold]
+
+theorem atomUnbox_eq {Γ : Ctx s} {a : Atom s} {f : CapCo s} {S : Shape s}
+    {C D : CaptureSet s} (ha : Γ ⊢ₐ a : (□ (S ^ C)) ^ D) (hf : Γ ⊢ᶜ f : C ⊑ []) :
+    atomUnbox ha hf = some ⟨S ^ C, .unbox ha hf⟩ := by
+  simp [atomUnbox]
+
+theorem tmApp_eq {Γ : Ctx s} {a b : Atom s} {C : CaptureSet s} {T : Ty s} {U : Ty (s,x)}
+    (ha : Γ ⊢ₐ a : (Π(T) U) ^ C) (hb : Γ ⊢ₐ b : T) :
+    tmApp ha hb = some ⟨U⟦b.root⟧, .app ha hb⟩ := by
   simp [tmApp]
 
 end Plumbing
 
+/-! ## Completeness for the capture family
+
+The capture family is a kernel of its own, so its completeness is a plain
+induction on the derivation. -/
+
+theorem CapCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s}
+    (h : Γ ⊢ᶜ f : C ⊑ D), synthCapCore Γ f = some ⟨C, D, h⟩
+  | _, _, _, _, _, .refl => by simp [synthCapCore]
+  | _, _, _, _, _, .elem hs => by simp [synthCapCore, capElem_eq hs]
+  | _, _, _, _, _, .trans hf hg => by
+      simp [synthCapCore, CapCo.HasType.complete hf, CapCo.HasType.complete hg]
+  | _, _, _, _, _, .union hf hg => by
+      simp [synthCapCore, CapCo.HasType.complete hf, CapCo.HasType.complete hg]
+
 /-! ## Completeness for evidence
 
-The five evidence judgements are mutually inductive, so the proof is a single
-mutual recursion on the derivation.  Every core synthesises, so each statement
-is an equation: the kernel returns precisely the derivation's outputs. -/
+The six evidence judgements of the mutual block are proven by a single mutual
+recursion on the derivation.  Every core synthesises, so each statement is an
+equation: the kernel returns precisely the derivation's outputs. -/
 
 mutual
 
-/-- The kernel synthesises the endpoints of every inclusion derivation. -/
-theorem LeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {e : LeCo s} {S T : Ty s}
-    (h : Γ ⊢ e : S ≤ T), synthLeCore Γ e = some ⟨S, T, h⟩
-  | _, _, _, _, _, .refl => by simp [synthLeCore]
-  | _, _, _, _, _, .top => by simp [synthLeCore]
-  | _, _, _, _, _, .bot => by simp [synthLeCore]
+/-- The kernel synthesises the endpoints of every shape-inclusion derivation. -/
+theorem ShapeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {e : ShapeCo s} {S T : Shape s}
+    (h : Γ ⊢ˢ e : S ≤ T), synthShapeCore Γ e = some ⟨S, T, h⟩
+  | _, _, _, _, _, .refl => by simp [synthShapeCore]
+  | _, _, _, _, _, .top => by simp [synthShapeCore]
+  | _, _, _, _, _, .bot => by simp [synthShapeCore]
   | _, _, _, _, _, .eqToLe hφ => by
-      simp [synthLeCore, EqCo.HasType.complete hφ]
+      simp [synthShapeCore, EqCo.HasType.complete hφ]
   | _, _, _, _, _, .trans he hf => by
-      simp [synthLeCore, LeCo.HasType.complete he, LeCo.HasType.complete hf]
+      simp [synthShapeCore, ShapeCo.HasType.complete he, ShapeCo.HasType.complete hf]
   | _, _, _, _, _, .pi he hf => by
-      simp [synthLeCore, LeCo.HasType.complete he, LeCo.HasType.complete hf]
+      simp [synthShapeCore, LeCo.HasType.complete he, LeCo.HasType.complete hf]
   | _, _, _, _, _, .obj hm => by
-      simp [synthLeCore, Morphism.HasType.complete hm]
+      simp [synthShapeCore, Morphism.HasType.complete hm]
   | _, _, _, _, _, .pair he hf => by
-      simp [synthLeCore, LeCo.HasType.complete he, LeCo.HasType.complete hf, lePair_eq he hf]
+      simp [synthShapeCore, ShapeCo.HasType.complete he, ShapeCo.HasType.complete hf,
+        lePair_eq he hf]
   | _, _, _, _, _, .bound hAt => by
-      simp [synthLeCore, leBound_eq hAt]
+      simp [synthShapeCore, leBound_eq hAt]
   | _, _, _, _, _, .intoBnd he => by
-      simp [synthLeCore, LeCo.HasType.complete he]
+      simp [synthShapeCore, ShapeCo.HasType.complete he]
   | _, _, _, _, _, .member ha he hAt => by
-      simp [synthLeCore, Atom.HasType.complete ha, LeCo.HasType.complete he,
+      simp [synthShapeCore, Atom.HasType.complete ha, ShapeCo.HasType.complete he,
         leMember_eq ha he hAt]
+  | _, _, _, _, _, .boxed hd => by
+      simp [synthShapeCore, LeCo.HasType.complete hd]
+
+/-- The kernel synthesises the endpoints of every type-inclusion derivation. -/
+theorem LeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {d : LeCo s} {S T : Ty s}
+    (h : Γ ⊢ d : S ≤ T), synthLeCore Γ d = some ⟨S, T, h⟩
+  | _, _, _, _, _, .capt he hf => by
+      simp [synthLeCore, ShapeCo.HasType.complete he, CapCo.HasType.complete hf]
 
 /-- The kernel synthesises the endpoints of every equality derivation. -/
-theorem EqCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {φ : EqCo s} {S T : Ty s}
+theorem EqCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {φ : EqCo s} {S T : Shape s}
     (h : Γ ⊢ φ : S ≡ T), synthEqCore Γ φ = some ⟨S, T, h⟩
   | _, _, _, _, _, .refl => by simp [synthEqCore]
   | _, _, _, _, _, .symm hφ => by
@@ -147,32 +188,32 @@ theorem EqCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {φ : EqCo s} {S T : 
   | _, _, _, _, _, .def hd => by
       simp [synthEqCore, witness?_eq_some hd]
   | _, _, _, _, _, .member ha he hAt => by
-      simp [synthEqCore, Atom.HasType.complete ha, LeCo.HasType.complete he,
+      simp [synthEqCore, Atom.HasType.complete ha, ShapeCo.HasType.complete he,
         eqMember_eq ha he hAt]
 
 /-- The kernel synthesises the label of every field-presence derivation. -/
 theorem Has.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {hv : Has s} {y : BVar s .var} {ℓ : Label}
     (h : Has.HasType Γ hv y ℓ), synthHasCore Γ hv y = some ⟨ℓ, h⟩
   | _, _, _, _, _, .member ha he hAt => by
-      simp [synthHasCore, Atom.HasType.complete ha, LeCo.HasType.complete he,
+      simp [synthHasCore, Atom.HasType.complete ha, ShapeCo.HasType.complete he,
         hasMember_eq ha he hAt]
   | _, _, _, _, _, .field hf hm => by
       simp [synthHasCore, witness?_eq_some hf, hm]
 
 /-- The kernel accepts every `pre` side at the endpoint next to its hole, and
 synthesises the outer one. -/
-theorem Side.HasType.completePre : ∀ {s : Sig} {Γ : Ctx s} {side : Side s} {S X : Ty (s,x)}
+theorem Side.HasType.completePre : ∀ {s : Sig} {Γ : Ctx s} {side : Side s} {S X : Shape (s,x)}
     (h : Side.HasType Γ side S X), checkPreCore Γ side X = some ⟨S, h⟩
   | _, _, _, _, _, .none => by simp [checkPreCore]
   | _, _, _, _, _, .some he => by
-      simp [checkPreCore, LeCo.HasType.complete he]
+      simp [checkPreCore, ShapeCo.HasType.complete he]
 
 /-- The same for `post` sides. -/
-theorem Side.HasType.completePost : ∀ {s : Sig} {Γ : Ctx s} {side : Side s} {Y T : Ty (s,x)}
+theorem Side.HasType.completePost : ∀ {s : Sig} {Γ : Ctx s} {side : Side s} {Y T : Shape (s,x)}
     (h : Side.HasType Γ side Y T), checkPostCore Γ side Y = some ⟨T, h⟩
   | _, _, _, _, _, .none => by simp [checkPostCore]
   | _, _, _, _, _, .some he => by
-      simp [checkPostCore, LeCo.HasType.complete he]
+      simp [checkPostCore, ShapeCo.HasType.complete he]
 
 /-- The kernel synthesises the target telescope of every morphism derivation. -/
 theorem Morphism.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)}
@@ -195,7 +236,7 @@ theorem Morphism.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {src : Telescope 
   | _, _, _, _, _, .has hm hAt => by
       simp [synthMorCore, Morphism.HasType.complete hm, morHas_eq hm hAt]
   | _, _, _, _, _, .bnd hm he => by
-      simp [synthMorCore, Morphism.HasType.complete hm, LeCo.HasType.complete he,
+      simp [synthMorCore, Morphism.HasType.complete hm, ShapeCo.HasType.complete he,
         morBnd_eq hm he]
 
 /-- The kernel synthesises the type of every atom derivation. -/
@@ -207,10 +248,15 @@ theorem Atom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty 
   | _, _, _, _, .unfoldSelf hb => by
       simp [synthAtomCore, Atom.HasType.complete hb, atomUnfold_eq hb]
   | _, _, _, _, .foldSelf hb => by
-      simp [synthAtomCore, Atom.HasType.complete hb]
+      simp [synthAtomCore, Atom.HasType.complete hb, atomFold_eq hb]
   | _, _, _, _, .both ha hb hr => by
       simp [synthAtomCore, Atom.HasType.complete ha, Atom.HasType.complete hb,
         atomBoth_eq ha hb hr]
+  | _, _, _, _, .box ha => by
+      simp [synthAtomCore, Atom.HasType.complete ha, atomBox]
+  | _, _, _, _, .unbox ha hf => by
+      simp [synthAtomCore, Atom.HasType.complete ha, CapCo.HasType.complete hf,
+        atomUnbox_eq ha hf]
 
 end
 
@@ -260,11 +306,43 @@ end
 
 /-! ## Public interface
 
-Soundness lives in `Coercions.FCdot.Checker`; here it is paired with
+Soundness lives in `Coercions.Captures.FCdot.Checker`; here it is paired with
 completeness into decision procedures. -/
 
 section Public
 variable {s : Sig}
+
+theorem synthShape_complete {Γ : Ctx s} {e : ShapeCo s} {S T : Shape s} (h : Γ ⊢ˢ e : S ≤ T) :
+    synthShape Γ e = some (S, T) := by
+  simp [synthShape, ShapeCo.HasType.complete h]
+
+theorem synthShape_iff {Γ : Ctx s} {e : ShapeCo s} {S T : Shape s} :
+    synthShape Γ e = some (S, T) ↔ Γ ⊢ˢ e : S ≤ T :=
+  ⟨synthShape_sound, synthShape_complete⟩
+
+theorem checkShape_complete {Γ : Ctx s} {e : ShapeCo s} {S T : Shape s} (h : Γ ⊢ˢ e : S ≤ T) :
+    checkShape Γ e S T = true :=
+  decide_eq_true (synthShape_complete h)
+
+theorem checkShape_iff {Γ : Ctx s} {e : ShapeCo s} {S T : Shape s} :
+    checkShape Γ e S T = true ↔ Γ ⊢ˢ e : S ≤ T :=
+  ⟨checkShape_sound, checkShape_complete⟩
+
+theorem synthCap_complete {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D) :
+    synthCap Γ f = some (C, D) := by
+  simp [synthCap, CapCo.HasType.complete h]
+
+theorem synthCap_iff {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s} :
+    synthCap Γ f = some (C, D) ↔ Γ ⊢ᶜ f : C ⊑ D :=
+  ⟨synthCap_sound, synthCap_complete⟩
+
+theorem checkCap_complete {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D) :
+    checkCap Γ f C D = true :=
+  decide_eq_true (synthCap_complete h)
+
+theorem checkCap_iff {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s} :
+    checkCap Γ f C D = true ↔ Γ ⊢ᶜ f : C ⊑ D :=
+  ⟨checkCap_sound, checkCap_complete⟩
 
 theorem synthLe_complete {Γ : Ctx s} {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) :
     synthLe Γ e = some (S, T) := by
@@ -282,19 +360,19 @@ theorem checkLe_iff {Γ : Ctx s} {e : LeCo s} {S T : Ty s} :
     checkLe Γ e S T = true ↔ Γ ⊢ e : S ≤ T :=
   ⟨checkLe_sound, checkLe_complete⟩
 
-theorem synthEq_complete {Γ : Ctx s} {φ : EqCo s} {S T : Ty s} (h : Γ ⊢ φ : S ≡ T) :
+theorem synthEq_complete {Γ : Ctx s} {φ : EqCo s} {S T : Shape s} (h : Γ ⊢ φ : S ≡ T) :
     synthEq Γ φ = some (S, T) := by
   simp [synthEq, EqCo.HasType.complete h]
 
-theorem synthEq_iff {Γ : Ctx s} {φ : EqCo s} {S T : Ty s} :
+theorem synthEq_iff {Γ : Ctx s} {φ : EqCo s} {S T : Shape s} :
     synthEq Γ φ = some (S, T) ↔ Γ ⊢ φ : S ≡ T :=
   ⟨synthEq_sound, synthEq_complete⟩
 
-theorem checkEq_complete {Γ : Ctx s} {φ : EqCo s} {S T : Ty s} (h : Γ ⊢ φ : S ≡ T) :
+theorem checkEq_complete {Γ : Ctx s} {φ : EqCo s} {S T : Shape s} (h : Γ ⊢ φ : S ≡ T) :
     checkEq Γ φ S T = true :=
   decide_eq_true (synthEq_complete h)
 
-theorem checkEq_iff {Γ : Ctx s} {φ : EqCo s} {S T : Ty s} :
+theorem checkEq_iff {Γ : Ctx s} {φ : EqCo s} {S T : Shape s} :
     checkEq Γ φ S T = true ↔ Γ ⊢ φ : S ≡ T :=
   ⟨checkEq_sound, checkEq_complete⟩
 
@@ -400,13 +478,25 @@ sound to implement by synthesis and comparison. -/
 section Determinism
 variable {s : Sig}
 
+theorem ShapeCo.HasType.endpoints_unique {Γ : Ctx s} {e : ShapeCo s} {S T S' T' : Shape s}
+    (h : Γ ⊢ˢ e : S ≤ T) (h' : Γ ⊢ˢ e : S' ≤ T') : S = S' ∧ T = T' := by
+  have := (synthShape_complete h).symm.trans (synthShape_complete h')
+  simp only [Option.some.injEq, Prod.mk.injEq] at this
+  exact this
+
+theorem CapCo.HasType.endpoints_unique {Γ : Ctx s} {f : CapCo s} {C D C' D' : CaptureSet s}
+    (h : Γ ⊢ᶜ f : C ⊑ D) (h' : Γ ⊢ᶜ f : C' ⊑ D') : C = C' ∧ D = D' := by
+  have := (synthCap_complete h).symm.trans (synthCap_complete h')
+  simp only [Option.some.injEq, Prod.mk.injEq] at this
+  exact this
+
 theorem LeCo.HasType.endpoints_unique {Γ : Ctx s} {e : LeCo s} {S T S' T' : Ty s}
     (h : Γ ⊢ e : S ≤ T) (h' : Γ ⊢ e : S' ≤ T') : S = S' ∧ T = T' := by
   have := (synthLe_complete h).symm.trans (synthLe_complete h')
   simp only [Option.some.injEq, Prod.mk.injEq] at this
   exact this
 
-theorem EqCo.HasType.endpoints_unique {Γ : Ctx s} {φ : EqCo s} {S T S' T' : Ty s}
+theorem EqCo.HasType.endpoints_unique {Γ : Ctx s} {φ : EqCo s} {S T S' T' : Shape s}
     (h : Γ ⊢ φ : S ≡ T) (h' : Γ ⊢ φ : S' ≡ T') : S = S' ∧ T = T' := by
   have := (synthEq_complete h).symm.trans (synthEq_complete h')
   simp only [Option.some.injEq, Prod.mk.injEq] at this
@@ -434,7 +524,7 @@ end Determinism
 
 The term layer is deterministic as well.  The proof is a direct induction on
 the derivations rather than a corollary of synthesis: the projection rule fixes
-the type as `a.root.ℓ` whatever evidence it used. -/
+the type as `(a.root.ℓ) ^ []` whatever evidence it used. -/
 
 mutual
 
@@ -450,8 +540,8 @@ theorem Tm.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T T' : T
       cases h' with
       | app ha' hb' =>
           have hp := ha.type_unique ha'
-          injection hp with _ _ hT
-          rw [hT]
+          simp only [Ty.capt.injEq, Shape.pi.injEq] at hp
+          rw [hp.2.2]
   | _, _, _, _, _, .proj _ _, h' => by
       cases h' with
       | proj _ _ => rfl

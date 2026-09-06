@@ -7,7 +7,10 @@ namespace Captures
 # Erasure of FCdot into the shared runtime
 
 Atoms erase to their root variable, casts and evidence vanish, object
-literals keep only their fields.  Cast frames erase to nothing.
+literals keep only their fields.  Cast frames erase to nothing.  The box
+wrappers `box a` and `unbox a f` carry no runtime content either: both erase
+to the erasure of `a`, which is the root variable of `a`.  A capture slot of
+a store erases to the runtime's data-free capture slot.
 -/
 
 namespace FCdot
@@ -33,9 +36,12 @@ def Fields.erase : Fields s → Runtime.Fields s
 
 end
 
+/-- Erasure of a store, slot for slot: a capture slot has no runtime
+content, so it erases to the runtime's data-free capture slot. -/
 def Store.erase : Store s → Runtime.Store s
   | .nil => .nil
   | .cons σ v => .cons σ.erase v.erase
+  | .consC σ _ => .consC σ.erase
 
 def Cont.erase : Cont s → Runtime.Cont s
   | .nil => .nil
