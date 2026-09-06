@@ -27,7 +27,7 @@ using the two bounds of $x$'s own member. This is a well-typed program. It is al
 \subsection{Target: blocks, telescopes, evidence}
 \mathtgt
 
-In \FCdot a type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{S}{T}$, or an object type $\obj{\tel}$, where $\tel$ is a telescope of propositions over a self binder. Propositions are inclusions $\ple{S}{T}$, equalities $\peq{S}{T}$, and field presence $\phas{\ell}$. The empty object type asserts nothing, and it is $\top$. Declarations translate as follows.
+In \FCdot a type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{S}{T}$, or an object type $\obj{\tel}$, where $\tel$ is a telescope of propositions over a self binder. Propositions are inclusions $\ple{S}{T}$, equalities $\peq{S}{T}$, field presence $\phas{\ell}$, and self-bounds $\pbnd{T}$, which say that the object itself is included in $T$. The empty object type asserts nothing, and it is $\top$. Declarations translate as follows.
 \[
 \begin{array}{rcl}
 \dtyp{A}{S}{T} & \mapsto & \obj{[\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,]} \\
@@ -35,7 +35,7 @@ In \FCdot a type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function t
 \src{S \wedge T} & \mapsto & \obj{(\tel_{\src{S}} \mathbin{+\!\!+} \tel_{\src{T}})}
 \end{array}
 \]
-A field $a$ has a block name $\sel{\self}{a}$ too, which is the type of the field. An intersection of declarations is therefore a concatenation of propositions and never an operation on types.
+A field $a$ has a block name $\sel{\self}{a}$ too, which is the type of the field. A type that is not a declaration, such as a selection $\dsel{x}{A}$, enters a telescope as the single bound $\pbnd{\weak{\sel{x}{A}}}$. An intersection is therefore always a concatenation of propositions and never an operation on types.
 
 A term of \FCdot is in monadic normal form over atoms. An atom is a variable under wrappers that erase to nothing: a cast $\ev{cast}\,a\,e$ by inclusion evidence $e$, the folding and unfolding of a self block, and the pairing of two typings of one variable. Inclusion evidence has the constructors one expects, $\ev{refl}$, $\ev{trans}$, $\ev{top}$, $\ev{bot}$, a function coercion $\ev{pi}$, and an object coercion $\ev{obj}$, plus one rule with no counterpart in FC:
 \begin{mathpar}
