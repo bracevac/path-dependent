@@ -1,4 +1,4 @@
-# FCdot, at stage A2 of captures
+# FCdot, at stage A3a of captures
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -30,7 +30,7 @@ erasure safe.
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
 | `Prediction` | the use-set half of preservation (`step_uses`), `capture_prediction` along a run, `inspects_covered`, `effect_safety`, `returned_capture_bound` |
-| `Examples` | the examples E1 to E8 and the capture examples C3, C4, C1, C6, decided in the kernel |
+| `Examples` | the examples E1 to E8 and the capture examples C3, C4, C1, C6, decided in the kernel, and the target side of the A3a source examples S3, C2, C7 |
 
 ## Notation
 
@@ -177,7 +177,7 @@ the view of an atom instantiate at the same thing.
 | `Resolution` | the `name` clause of `Ctx.capsAtom` follows the capture witness, with fuel equal to the number of capture witnesses of the block plus one and the empty set as the least solution at a cycle; `Ctx.Root_name`, the resolution lemma in the capture sort, and monotonicity of `roots` in the fuel |
 | `FormTyping`, `FormAlgebra` | `SideTypedC` for chains, `EntriesTyped.leC`/`eqC`/`eqSymC`, `EntryTyped` likewise, `ViewTyped.leC`/`eqC`; the capture cases of `Form.combine_typed`, `EntriesTyped.through`, `Form.pair_typed` and `entriesAt_typed` are transitivity of `CapLe` and of root equality |
 | `CanonicalForms` | `cap_canon` and its equality twin `capeq_canon` move into the mutual induction with `shape_canon`, `le_canon` and `atom_canon`; `atom_canon` gains item 7; `capEqForms_typed` types the capture block of a literal's precise view; the `SideC` bridge `capstep_canon`/`sideC_canon`; `closed_box_inversion` in place of `chain_box_inv` |
-| `Machine`, `Erasure`, `Preservation`, `ErasureMetatheory` | the `unbox` steps read the head form of the atom's casts, as the application steps do, and `FormsTyped` gains the two clauses that type them (`boxed`, `boxRefl`); `recap` is stripped by `adjust` where casts are; a box is allocated like any literal, erases to the one-field object at `boxLabel`, and an unbox erases to that field's projection, so `erase_step` and `erase_reflect'` keep their statements |
+| `Machine`, `Erasure`, `Preservation`, `ErasureMetatheory` | the `unbox` steps read the head form of the atom's casts, as the application steps do, and `FormsTyped` gains the two clauses that type them (`boxed`, `boxRefl`); `recap` is stripped by `adjust` where casts are; a box is allocated like any literal, erases to the runtime's inert box, and an unbox erases to the runtime's `unbox`, so `erase_step` and `erase_reflect'` keep their statements |
 | `Progress`, `Consistency` | `progress` gains the `unbox` case, discharged by `closed_box_inversion`; `EntryTyped.bnd_of_bndsOnly` gains the impossible cases for the new slots; the consistency corollary in the capture sort at a platform binder (`Store.Typed.no_cap_escape`, `no_cap_star_le_nil`) |
 | `Examples` | E1 to E8 read as A1 literals with an empty capture-witness list, still decided in the kernel, plus C3 (bad capture bounds under a lambda, with the consistency corollary) and C4 (`sc-var` and capture `member` at the same wrapped atom) |
 
@@ -346,3 +346,48 @@ Axioms (`#print axioms`): `propext` and `Quot.sound` for all of the above, and f
 `Examples.C3_typed`, `Examples.C3_badBounds`, `Examples.C4_capvar`,
 `Examples.C4_member`.  The tree contains no `sorry`, `axiom`, `partial`, `unsafe`, or
 `native_decide`, and no Mathlib.
+
+## Stage A3a
+
+The source became capturing in A3a, and two things reached the target.
+
+The erasure of a box changed.  A1 sent a box to a one-field runtime object at a reserved label
+`boxLabel` and an unboxing to that field's projection.  Once the source has boxes too, a source
+object literal with a field at that label and a source box have the same erasure, and the simulation
+that ties the two calculi together by erasure alone cannot tell them apart.  The runtime therefore
+has an inert box of its own.  `Value.erase` sends a box to `Runtime.Tm.box` at the boxed atom's root
+and `Tm.erase` sends an unboxing to `Runtime.Tm.unbox` at the same root, `boxLabel` and its two
+lemmas `boxField_get?` and `boxField_substVar` are gone, and `unbox_erase_step` is gone with them.
+`erase_step`, `erase_reflect`, `erase_reflect'`, `final_erase` and `final_reflect` keep their
+statements word for word.  `Value.erase_eq_obj` recovered the stage A2 statement it had briefly lost,
+"a literal whose erasure is a runtime object is an object", and the box half of it is the new
+`Value.erase_eq_box`.  `Runtime.Step.unbox_inv` joins `app_inv` and `proj_inv`.
+
+The examples gained the target side of the three source examples of the stage.
+
+```
+Examples.S3_client     : S3Ctx ⊢ S3client : S3clientTy
+Examples.C7_client     : C7Ctx ⊢ C7client : C7clientTy
+Examples.C7_rejected   : checkTm C7Ctx C7clientBad C7clientTy = false
+Examples.C2_client     : C2Ctx ⊢ C2client : Ty.pure ⊤
+Examples.S3_translated : ⟦platCtx⟧ ⊢ ⟦S3_typed⟧ : ⟦S3Ty⟧
+Examples.C2_translated : ⟦platCtx⟧ ⊢ ⟦C2_typed⟧ : ⟦C2Ty⟧
+Examples.C7_translated : ⟦platCtx⟧ ⊢ ⟦C7_typed⟧ : ⟦C7Ty⟧
+Examples.S3_erase      : ⌊⟦S3_typed⟧⌋ = ⌊S3tm⌋
+Examples.C2_erase      : ⌊⟦C2_typed⟧⌋ = ⌊C2tm⌋
+Examples.C7_erase      : ⌊⟦C7_typed⟧⌋ = ⌊C7tm⌋
+```
+
+The three `_client` theorems are the client half of each example, written directly in the target in
+the context the translation of the source types produces, and decided by the structural checker in
+the kernel.  S3 reads a field declared at a type member and unboxes what the member's upper bound
+says is a box.  C7 reads one element of a container of boxed capabilities and unboxes it at `{κ₁}`,
+and `C7_rejected` is the same client with the empty use set and the syntactic capture evidence, which
+the checker refuses.  C2 reads a closure off an abstract capture member and calls it, and the call is
+charged to `{κ₁,κ₂}` by `capvar` composed with the member's upper bound.  The three `_translated`
+theorems are `HasTy.translate_typed` at the source derivations, and the three `_erase` theorems are
+`HasTy.translate_erase` at the same.  Neither is decided by the checker: the type translation and the
+term translation are compiled by well-founded recursion, so neither reduces in the kernel, and
+`decide +kernel` cannot be run on a goal that mentions them.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound` for all of the above.

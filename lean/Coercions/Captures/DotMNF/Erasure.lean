@@ -4,16 +4,25 @@ import Coercions.Captures.Runtime
 namespace Captures
 
 /-!
-# Erasure of DOT-MNF into the shared runtime
+# Erasure of DOT-MNF^cc into the shared runtime
 
-Erasure drops types and type members and keeps everything else: paths become
-variables, object literals keep their term members only, and the store and
-the continuation are erased pointwise.  Erasure is the identity on
-signatures.
+Erasure drops types, type members and capture members and keeps everything
+else: paths become variables, object literals keep their term members only,
+and the store and the continuation are erased pointwise.  A capture slot of
+a store erases to the runtime's data-free capture slot.  Erasure is the
+identity on signatures.
+
+A box is the runtime's inert box holding the boxed variable, and an unboxing
+is the runtime's `unbox` at the same variable, exactly as in the target
+(`FCdot.Value.erase`, `FCdot.Tm.erase`), so that the translation's erasure
+equation `⌊⟦h⟧⌋ = ⌊t⌋` is again an identity.
 
 The two theorems of milestone M2 are `DotMNF.erase_step` and
 `DotMNF.erase_reflect`: the machine of §3.5 and the runtime machine of §4
-are in lockstep, in both directions, with no administrative equivalence.
+are in lockstep, in both directions, with no administrative equivalence and
+no side condition.  A box is no longer confusable with an object literal
+after erasure, so `erase_reflect` carries no obligation about the state it
+starts from.
 -/
 
 namespace DotMNF
@@ -59,22 +68,31 @@ def Tm.erase : Tm s → Runtime.Tm s
   | .app x y => .app x y
   | .proj x a => .proj x a
   | .let t u => .let t.erase u.erase
+  -- The charged capture set has no runtime content; an unboxing opens the
+  -- runtime box a box erases to.
+  | .unbox _ x => .unbox x
 
 def Value.erase : Value s → Runtime.Tm s
   | .obj d => .obj d.erase
   | .lam _ t => .lam t.erase
+  -- A box is the runtime's inert box holding the boxed variable.
+  | .box x => .box x
 
-/-- Type members erase to nothing. -/
+/-- Type members and capture members erase to nothing. -/
 def Defs.erase : Defs s → Runtime.Fields s
   | .typ _ _ => .nil
+  | .cap _ _ => .nil
   | .trm a t => .cons .nil a t.erase
   | .and d1 d2 => appendFields d1.erase d2.erase
 
 end
 
+/-- Erasure of a store, slot for slot: a capture slot has no runtime
+content, so it erases to the runtime's data-free capture slot. -/
 def Store.erase : Store s → Runtime.Store s
   | .nil => .nil
   | .cons σ v => .cons σ.erase v.erase
+  | .consC σ => .consC σ.erase
 
 def Cont.erase : Cont s → Runtime.Cont s
   | .nil => .nil
@@ -82,6 +100,18 @@ def Cont.erase : Cont s → Runtime.Cont s
 
 def State.erase (st : State s) : Runtime.State s :=
   ⟨st.σ.erase, st.K.erase, st.t.erase⟩
+
+/-! ### The box and its opening
+
+The two equations of the box design: a box erases to the runtime's inert box
+at the boxed variable, and an unboxing to the runtime's `unbox` at the same
+variable. -/
+
+@[simp] theorem Value.erase_box (x : BVar s .var) :
+    (Value.box x).erase = .box x := rfl
+
+@[simp] theorem Tm.erase_unbox (C : CaptureSet s) (x : BVar s .var) :
+    (Tm.unbox C x).erase = .unbox x := rfl
 
 /-! ## Erasure commutes with renaming -/
 
@@ -97,17 +127,20 @@ theorem Tm.erase_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
   | .let t u =>
       simp only [Tm.rename, Tm.erase, Runtime.Tm.rename,
         Tm.erase_rename t ρ, Tm.erase_rename u ρ.lift]
+  | .unbox C x => simp only [Tm.rename, Tm.erase, Runtime.Tm.rename]
 
 theorem Value.erase_rename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
     (v.rename ρ).erase = v.erase.rename ρ := by
   match v with
   | .obj d => simp only [Value.rename, Value.erase, Runtime.Tm.rename, Defs.erase_rename d ρ.lift]
   | .lam S t => simp only [Value.rename, Value.erase, Runtime.Tm.rename, Tm.erase_rename t ρ.lift]
+  | .box x => simp only [Value.rename, Value.erase, Runtime.Tm.rename]
 
 theorem Defs.erase_rename {s1 s2 : Sig} (d : Defs s1) (ρ : Rename s1 s2) :
     (d.rename ρ).erase = d.erase.rename ρ := by
   match d with
   | .typ A T => simp only [Defs.rename, Defs.erase, Runtime.Fields.rename]
+  | .cap C c => simp only [Defs.rename, Defs.erase, Runtime.Fields.rename]
   | .trm a t => simp only [Defs.rename, Defs.erase, Runtime.Fields.rename, Tm.erase_rename t ρ]
   | .and d1 d2 =>
       simp only [Defs.rename, Defs.erase, appendFields_rename,
@@ -119,8 +152,8 @@ theorem Tm.erase_substVar {s : Sig} (t : Tm (s,x)) (y : BVar s .var) :
     (t.substVar y).erase = t.erase.substVar y :=
   Tm.erase_rename t (Rename.subst y)
 
-theorem Value.erase_weaken {s : Sig} (v : Value s) :
-    (v.weaken).erase = v.erase.weaken :=
+theorem Value.erase_weaken {s : Sig} {k : Kind} (v : Value s) :
+    (v.weaken (k := k)).erase = v.erase.weaken :=
   Value.erase_rename v Rename.succ
 
 theorem Cont.erase_rename {s1 s2 : Sig} (K : Cont s1) (ρ : Rename s1 s2) :
@@ -134,6 +167,27 @@ theorem Cont.erase_rename {s1 s2 : Sig} (K : Cont s1) (ρ : Rename s1 s2) :
 theorem Cont.erase_weaken {s : Sig} (K : Cont s) : (K.weaken).erase = K.erase.weaken :=
   Cont.erase_rename K Rename.succ
 
+/-! ## Erasure and the inspected root
+
+The root a term reads survives erasure: an application erases to a runtime
+application at the same root, a projection to a projection at the same root,
+and an unboxing to a runtime unboxing at the same root. -/
+
+theorem Tm.inspects_erase {s : Sig} {t : Tm s} {x : BVar s .var}
+    (h : t.inspects = some x) : (t.erase).inspects = some x := by
+  cases t with
+  | app x' y => rw [Tm.inspects_app] at h; cases h; rfl
+  | proj x' ℓ => rw [Tm.inspects_proj] at h; cases h; rfl
+  | unbox C x' => rw [Tm.inspects_unbox] at h; cases h; rfl
+  | path p => exact absurd h (by simp)
+  | val v => exact absurd h (by simp)
+  | «let» t u => exact absurd h (by simp)
+
+/-- Erasure of a state preserves the root the state reads. -/
+theorem State.inspects_erase {s : Sig} {st : State s} {x : BVar s .var}
+    (h : st.inspects = some x) : (st.erase).t.inspects = some x :=
+  Tm.inspects_erase h
+
 /-! ## Erasure commutes with store lookup and with definition lookup -/
 
 theorem Store.lookup_erase {s : Sig} (σ : Store s) (x : BVar s .var) :
@@ -144,11 +198,15 @@ theorem Store.lookup_erase {s : Sig} (σ : Store s) (x : BVar s .var) :
   | .cons σ _, .there y =>
       simp only [Store.erase, Runtime.Store.lookup, Store.lookup, Value.erase_weaken,
         Store.lookup_erase σ y]
+  | .consC σ, .there y =>
+      simp only [Store.erase, Runtime.Store.lookup, Store.lookup, Value.erase_weaken,
+        Store.lookup_erase σ y]
 
 theorem Defs.erase_lookupTrm {s : Sig} (d : Defs s) (ℓ : Label) :
     d.erase.get? ℓ = (d.lookupTrm ℓ).map Tm.erase := by
   match d with
   | .typ A T => rfl
+  | .cap C c => rfl
   | .trm a t =>
       simp only [Defs.erase, Defs.lookupTrm, Runtime.Fields.get?]
       split <;> rfl
@@ -160,6 +218,7 @@ theorem Value.isValue_erase {s : Sig} (v : Value s) : Runtime.IsValue v.erase :=
   match v with
   | .obj d => exact Runtime.IsValue.obj
   | .lam S t => exact Runtime.IsValue.lam
+  | .box x => exact Runtime.IsValue.box
 
 /-! ## Simulation -/
 
@@ -173,6 +232,15 @@ theorem step_proj_erase {s : Sig} {σ : Store s} {K : Cont s} {x : BVar s .var} 
   refine Runtime.Step.proj (F := d.erase) ?_ ?_
   · rw [Store.lookup_erase, hl]; rfl
   · rw [Defs.erase_lookupTrm, hd]; rfl
+
+/-- The unboxing case of `erase_step`: the runtime box the store holds at
+the receiver is opened at the boxed variable. -/
+theorem step_unbox_erase {s : Sig} {σ : Store s} {K : Cont s} {C : CaptureSet s}
+    {x y : BVar s .var} (hl : σ.lookup x = .box y) :
+    Runtime.Step (State.erase ⟨σ, K, .unbox C x⟩)
+      (State.erase ⟨σ, K, .path (.var y)⟩) := by
+  simp only [State.erase, Tm.erase, Path.root]
+  exact Runtime.Step.unbox (by rw [Store.lookup_erase, hl]; rfl)
 
 /-- Every source step erases to exactly one runtime step. -/
 theorem erase_step {s s' : Sig} {st : State s} {st' : State s'} (h : Step st st') :
@@ -193,11 +261,12 @@ theorem erase_step {s s' : Sig} {st : State s} {st' : State s'} (h : Step st st'
       rw [Store.lookup_erase, hl]
       rfl
   | proj hl hd => exact step_proj_erase hl hd
+  | unbox hl => exact step_unbox_erase hl
 
 /-! ## Reflection
 
 Every runtime step of an erased state is the erasure of a source step.  The
-three interesting cases are factored out, because the case analysis on the
+four interesting cases are factored out, because the case analysis on the
 continuation duplicates them. -/
 
 theorem reflect_let {s : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {u : Tm (s,x)} :
@@ -212,6 +281,7 @@ theorem reflect_app {s : Sig} {σ : Store s} {K : Cont s} {x y : BVar s .var}
   rw [Store.lookup_erase] at hl
   cases hv : σ.lookup x with
   | obj d => rw [hv] at hl; simp [Value.erase] at hl
+  | box z => rw [hv] at hl; simp [Value.erase] at hl
   | lam S t =>
       rw [hv] at hl
       simp only [Value.erase, Runtime.Tm.lam.injEq] at hl
@@ -227,6 +297,7 @@ theorem reflect_proj {s : Sig} {σ : Store s} {K : Cont s} {x : BVar s .var} {�
   rw [Store.lookup_erase] at hl
   cases hv : σ.lookup x with
   | lam S t => rw [hv] at hl; simp [Value.erase] at hl
+  | box z => rw [hv] at hl; simp [Value.erase] at hl
   | obj d =>
       rw [hv] at hl
       simp only [Value.erase, Runtime.Tm.obj.injEq] at hl
@@ -241,8 +312,29 @@ theorem reflect_proj {s : Sig} {σ : Store s} {K : Cont s} {x : BVar s .var} {�
           exact ⟨⟨σ, K, t.substVar x⟩, Step.proj hv hd, by
             simp only [State.erase, Tm.erase_substVar]⟩
 
+/-- Reflection of the runtime `unbox` step an unboxing erases to.  A box
+erases to the runtime's box and to nothing else, so the store entry is read
+off the erasure with no obligation of its own. -/
+theorem reflect_unbox {s : Sig} {σ : Store s} {K : Cont s} {C : CaptureSet s}
+    {x y : BVar s .var} (hl : σ.erase.lookup x = .box y) :
+    ∃ st' : State s, Step ⟨σ, K, .unbox C x⟩ st' ∧
+      st'.erase = ⟨σ.erase, K.erase, .var y⟩ := by
+  rw [Store.lookup_erase] at hl
+  cases hv : σ.lookup x with
+  | lam S t => rw [hv] at hl; simp [Value.erase] at hl
+  | obj d => rw [hv] at hl; simp [Value.erase] at hl
+  | box z =>
+      rw [hv] at hl
+      simp only [Value.erase, Runtime.Tm.box.injEq] at hl
+      subst hl
+      exact ⟨⟨σ, K, .path (.var z)⟩, Step.unbox hv, by
+        simp only [State.erase, Tm.erase, Path.root]⟩
+
 /-- Every runtime step out of an erased state is the erasure of a source
-step, at the same target state. -/
+step, at the same target state.  This is the vanilla statement, with no side
+condition: with the runtime's inert box, a box and an object literal no
+longer share an erasure, so the backward simulation needs no obligation
+about the state it starts from. -/
 theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
     (h : Runtime.Step st.erase r) :
     ∃ st' : State s', Step st st' ∧ st'.erase = r := by
@@ -257,6 +349,9 @@ theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
   | .nil, .val (.obj d) =>
       simp only [State.erase, Cont.erase, Tm.erase, Value.erase] at h
       cases h
+  | .nil, .val (.box z) =>
+      simp only [State.erase, Cont.erase, Tm.erase, Value.erase] at h
+      cases h
   | .nil, .app x y =>
       simp only [State.erase, Cont.erase, Tm.erase] at h
       cases h with
@@ -265,6 +360,10 @@ theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
       simp only [State.erase, Cont.erase, Tm.erase] at h
       cases h with
       | proj hl hf => exact reflect_proj hl hf
+  | .nil, .unbox C x =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
+      cases h with
+      | unbox hl => exact reflect_unbox hl
   | .nil, .let t u =>
       simp only [State.erase, Cont.erase, Tm.erase] at h
       cases h with
@@ -288,6 +387,12 @@ theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
       | alloc hv =>
           exact ⟨⟨.cons σ (.obj d), K.weaken, u⟩, Step.alloc, by
             simp only [State.erase, Store.erase, Cont.erase_weaken, Value.erase]⟩
+  | .cons K u, .val (.box z) =>
+      simp only [State.erase, Cont.erase, Tm.erase, Value.erase] at h
+      cases h with
+      | alloc hv =>
+          exact ⟨⟨.cons σ (.box z), K.weaken, u⟩, Step.alloc, by
+            simp only [State.erase, Store.erase, Cont.erase_weaken, Value.erase]⟩
   | .cons K u, .app x y =>
       simp only [State.erase, Cont.erase, Tm.erase] at h
       cases h with
@@ -298,6 +403,11 @@ theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
       cases h with
       | alloc hv => cases hv
       | proj hl hf => exact reflect_proj hl hf
+  | .cons K u, .unbox C x =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
+      cases h with
+      | alloc hv => cases hv
+      | unbox hl => exact reflect_unbox hl
   | .cons K u, .let t u' =>
       simp only [State.erase, Cont.erase, Tm.erase] at h
       cases h with
