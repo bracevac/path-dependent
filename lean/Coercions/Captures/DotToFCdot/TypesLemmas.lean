@@ -98,6 +98,7 @@ theorem Ty.translateShape_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
   | .fld a T =>
       simp [Ty.rename, Ty.translateShape, Ty.tel, FCdot.Shape.rename, FCdot.Telescope.rename,
         FCdot.Proposition.rename, FCdot.Rename.lift_here, FCdot.Shape.weaken_rename,
+        FCdot.CaptureSet.rename, FCdot.CapAtom.rename,
         Ty.translateShape_rename T ρ]
   | .and S T =>
       simp [Ty.rename, Ty.translateShape, Ty.tel, FCdot.Shape.rename, FCdot.Telescope.append_rename',
@@ -126,6 +127,7 @@ theorem Ty.tel_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
   | .fld a T =>
       simp [Ty.rename, Ty.tel, FCdot.Telescope.rename, FCdot.Proposition.rename,
         FCdot.Shape.rename, FCdot.Rename.lift_here, FCdot.Shape.weaken_rename,
+        FCdot.CaptureSet.rename, FCdot.CapAtom.rename,
         Ty.translateShape_rename T ρ]
   | .and S T =>
       simp [Ty.rename, Ty.tel, FCdot.Telescope.append_rename',
@@ -157,6 +159,7 @@ theorem Ty.telSelf_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
   | .fld a T =>
       simp [Ty.rename, Ty.telSelf, FCdot.Telescope.rename, FCdot.Proposition.rename,
         FCdot.Shape.rename, FCdot.Rename.lift_here,
+        FCdot.CaptureSet.rename, FCdot.CapAtom.rename,
         Ty.translateShape_rename T ρ.lift]
   | .and S T =>
       simp [Ty.rename, Ty.telSelf, FCdot.Telescope.append_rename',
@@ -355,12 +358,17 @@ theorem Ty.fieldLabels_rename {s s' : Sig} (T : Ty s) (ρ : Rename s s') :
       simp [Ty.rename, Ty.fieldLabels, Ty.fieldLabels_rename S ρ, Ty.fieldLabels_rename T ρ]
   | .mu T => simp [Ty.rename, Ty.fieldLabels]
 
+@[simp] theorem Ty.capWitnesses_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
+    (T.rename ρ.lift).capWitnesses = T.capWitnesses.rename ρ.lift := by
+  rw [Ty.capWitnesses, Ty.capWitnesses, FCdot.CapWitnesses.ofLabels_rename,
+    Ty.fieldLabels_rename (T := T) (ρ := ρ.lift)]
+  rfl
+
 theorem Ty.literalTy_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
     (T.rename ρ.lift).literalTy = T.literalTy.rename ρ := by
   simp only [Ty.literalTy, FCdot.Ty.pure_rename, FCdot.Shape.rename, Ty.witnesses_rename T ρ,
-    Ty.fieldLabels_rename (T := T) (ρ := ρ.lift)]
+    Ty.fieldLabels_rename (T := T) (ρ := ρ.lift), Ty.capWitnesses_rename T ρ]
   rw [FCdot.Telescope.ofLiteral_rename]
-  simp [FCdot.CapWitnesses.rename]
 
 end DotMNF
 

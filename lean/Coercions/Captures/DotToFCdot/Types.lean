@@ -112,7 +112,10 @@ def Ty.tel : Ty s → FCdot.Telescope (s,x)
   | .typ A S T =>
       .cons (.cons .nil (.le (Ty.translateShape S).weaken (.sel .here A)))
         (.le (.sel .here A) (Ty.translateShape T).weaken)
-  | .fld a T => .cons (.cons .nil (.has a)) (.le (.sel .here a) (Ty.translateShape T).weaken)
+  | .fld a T =>
+      .cons
+        (.cons (.cons .nil (.has a)) (.le (.sel .here a) (Ty.translateShape T).weaken))
+        (.leC [FCdot.CapAtom.name .here a] [])
   | .and S T => (Ty.tel S).append (Ty.tel T)
   | .mu T =>
       if T.isDecl then Ty.telSelf T
@@ -133,7 +136,9 @@ def Ty.telSelf : Ty (s,x) → FCdot.Telescope (s,x)
   | .typ A S T =>
       .cons (.cons .nil (.le (Ty.translateShape S) (.sel .here A)))
         (.le (.sel .here A) (Ty.translateShape T))
-  | .fld a T => .cons (.cons .nil (.has a)) (.le (.sel .here a) (Ty.translateShape T))
+  | .fld a T =>
+      .cons (.cons (.cons .nil (.has a)) (.le (.sel .here a) (Ty.translateShape T)))
+        (.leC [FCdot.CapAtom.name .here a] [])
   | .and S T => (Ty.telSelf S).append (Ty.telSelf T)
   | .mu T =>
       if T.isDecl then (Ty.telSelf T).substVar .here
@@ -215,20 +220,65 @@ def Ty.fieldLabels : Ty s → List Label
   | .and S T => T.fieldLabels ++ S.fieldLabels
   | _ => []
 
-/-- The capture witnesses of a translated literal.  The source of stage A1
-has no capture members, so every label's capture witness is the empty set;
-`CapWitnesses.get` reads an unlisted label as `[]`, so the empty list is that
-assignment, and the capture block of a translated literal's precise telescope
-is empty.  It is named rather than written `.nil` at each site so that the
-capture block is one definition, and so that every index computation below
-can be stated with `T.capWitnesses.length` in it. -/
-def Ty.capWitnesses (_ : Ty (s,x)) : FCdot.CapWitnesses (s,x) := .nil
+/-- One capture witness per listed label, all of them the empty set,
+appended to a capture-witness list.  The first label of the list is consed
+first, so it sits at the lowest position of the capture block, which is the
+order `Telescope.hasEntries` gives the presences.  (Stage A2.) -/
+def _root_.Captures.FCdot.CapWitnesses.ofLabels :
+    FCdot.CapWitnesses s → List Label → FCdot.CapWitnesses s
+  | Wc, [] => Wc
+  | Wc, ℓ :: ls => FCdot.CapWitnesses.ofLabels (.cons Wc ℓ []) ls
+
+theorem _root_.Captures.FCdot.CapWitnesses.ofLabels_length {s : Sig} :
+    ∀ (Wc : FCdot.CapWitnesses s) (ls : List Label),
+      (FCdot.CapWitnesses.ofLabels Wc ls).length = Wc.length + ls.length
+  | _, [] => by simp [FCdot.CapWitnesses.ofLabels]
+  | Wc, ℓ :: ls => by
+      rw [FCdot.CapWitnesses.ofLabels, FCdot.CapWitnesses.ofLabels_length (Wc.cons ℓ []) ls]
+      simp [FCdot.CapWitnesses.length]
+      omega
+
+theorem _root_.Captures.FCdot.CapWitnesses.ofLabels_rename {s s' : Sig} (ρ : Rename s s') :
+    ∀ (Wc : FCdot.CapWitnesses s) (ls : List Label),
+      (FCdot.CapWitnesses.ofLabels Wc ls).rename ρ
+        = FCdot.CapWitnesses.ofLabels (Wc.rename ρ) ls
+  | _, [] => rfl
+  | Wc, ℓ :: ls => by
+      rw [FCdot.CapWitnesses.ofLabels, FCdot.CapWitnesses.ofLabels_rename ρ (Wc.cons ℓ []) ls,
+        FCdot.CapWitnesses.ofLabels]
+      rfl
+
+/-- Every capture witness of `ofLabels` is empty, so its lookup at any label
+is empty as soon as the base list has that property. -/
+theorem _root_.Captures.FCdot.CapWitnesses.ofLabels_get {s : Sig} :
+    ∀ (Wc : FCdot.CapWitnesses s), (∀ m, Wc.get m = []) → ∀ (ls : List Label) (ℓ : Label),
+      (FCdot.CapWitnesses.ofLabels Wc ls).get ℓ = []
+  | Wc, hWc, [], ℓ => hWc ℓ
+  | Wc, hWc, ℓ' :: ls, ℓ => by
+      refine FCdot.CapWitnesses.ofLabels_get (Wc.cons ℓ' []) (fun m => ?_) ls ℓ
+      by_cases hm : m = ℓ'
+      · simp [FCdot.CapWitnesses.get, hm]
+      · simp [FCdot.CapWitnesses.get, hm]; exact hWc m
+
+/-- The capture witnesses of a translated literal: one empty capture set per
+field label.  The source of this stage has no capture members, so a field
+holds a value of a pure type and its capture name is the empty set; that
+declaration is what a `member` in the capture sort reads at a projection
+(stage A2.6).  The order is `Ty.fieldLabels`, so the capture entry of a
+label sits at the same offset inside the capture block as its presence does
+inside the presence block. -/
+def Ty.capWitnesses (T : Ty (s,x)) : FCdot.CapWitnesses (s,x) :=
+  FCdot.CapWitnesses.ofLabels .nil T.fieldLabels
 
 @[simp] theorem Ty.capWitnesses_length {s : Sig} (T : Ty (s,x)) :
-    T.capWitnesses.length = 0 := rfl
+    T.capWitnesses.length = T.fieldLabels.length := by
+  rw [Ty.capWitnesses, FCdot.CapWitnesses.ofLabels_length]
+  simp [FCdot.CapWitnesses.length]
 
-@[simp] theorem Ty.capWitnesses_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
-    (T.rename ρ.lift).capWitnesses = T.capWitnesses.rename ρ.lift := rfl
+@[simp] theorem Ty.capWitnesses_get {s : Sig} (T : Ty (s,x)) (ℓ : Label) :
+    T.capWitnesses.get ℓ = [] :=
+  FCdot.CapWitnesses.ofLabels_get .nil (fun _ => rfl) _ _
+
 
 /-- The precise target type of a literal whose declaration type is `T`: its
 type definitions, then its (empty) capture definitions, then its fields. -/

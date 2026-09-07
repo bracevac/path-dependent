@@ -38,7 +38,7 @@ def Binding.rename : Binding s1 → Rename s1 s2 → Binding s2
 @[simp] theorem Fields.labels_rename {s1 s2 : Sig} :
     ∀ (F : Fields s1) (ρ : Rename s1 s2), (F.rename ρ).labels = F.labels
   | .nil, _ => rfl
-  | .cons F l t, ρ => by
+  | .cons F l t g, ρ => by
       simp [Fields.rename, Fields.labels, Fields.labels_rename F ρ]
 
 /-! ## Context lookups, unfolded -/
@@ -263,9 +263,17 @@ theorem Ctx.Ren.succC {Γ : Ctx s} (b : CapBound s) : Ctx.Ren Γ Rename.succ (Γ
 @[simp] theorem CaptureSet.rename_nil {s1 s2 : Sig} (ρ : Rename s1 s2) :
     CaptureSet.rename [] ρ = [] := rfl
 
-@[simp] theorem CaptureSet.rename_union {s1 s2 : Sig} (C D : CaptureSet s1) (ρ : Rename s1 s2) :
-    (C ∪ D).rename ρ = C.rename ρ ∪ D.rename ρ := by
-  simp [CaptureSet.rename, CaptureSet.union_def]
+/-! `CaptureSet.rename_union` is stated in `RenameLemmas.lean`, where the
+use-set lemmas need it.  It is a simp lemma from here on. -/
+attribute [simp] CaptureSet.rename_union
+
+/-- The closing set of a lambda body or of a field, `A↑ ∪ {self}`, under a
+renaming: the weakened part is renamed and the self stays the self. -/
+theorem CaptureSet.closing_rename {s1 s2 : Sig} (A : CaptureSet s1) (ρ : Rename s1 s2) :
+    (A↑ ∪ [CapAtom.var (BVar.here : BVar (s1,x) .var)]).rename ρ.lift
+      = ((A.rename ρ)↑ ∪ [CapAtom.var BVar.here]) := by
+  simp only [CaptureSet.rename_union, CaptureSet.weaken_rename]
+  rfl
 
 /-- A syntactic inclusion survives renaming: renaming acts pointwise. -/
 theorem CaptureSet.Subset.rename {s1 s2 : Sig} {C D : CaptureSet s1}
@@ -502,10 +510,12 @@ theorem Tm.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Renam
         (by simpa [Atom.root_rename] using hhh.rename hρ)
       simpa [Tm.rename, Ty.rename, Shape.rename, CaptureSet.rename, CapAtom.rename,
         Atom.root_rename] using this
-  | .let ht hu =>
-      refine .let (ht.rename hρ) ?_
-      have := hu.rename (hρ.lift _)
-      simpa [Ty.weaken_rename] using this
+  | .let ht hu hf =>
+      refine .let (ht.rename hρ) ?_ ?_
+      · have := hu.rename (hρ.lift _)
+        simpa [Ty.weaken_rename] using this
+      · have := CapCo.HasType.rename (hρ.lift _) hf
+        simpa only [Tm.uses_rename, CaptureSet.weaken_rename] using this
   | .cast ht he => exact .cast (ht.rename hρ) (LeCo.HasType.rename hρ he)
   | .unbox ha hf =>
       have := Tm.HasType.unbox (by simpa [Ty.rename, Shape.rename] using ha.rename hρ)
@@ -516,16 +526,18 @@ theorem Value.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Re
     {v : Value s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ᵥ v : T) :
     Γ' ⊢ᵥ (v.rename ρ) : (T.rename ρ) := by
   match h with
-  | .lam ht =>
-      have := Value.HasType.lam (ht.rename (hρ.lift _))
-      simpa [Value.rename, Ty.rename, Shape.rename] using this
-  | @Value.HasType.obj _ F0 _ W0 Wc0 hF =>
+  | .lam ht hg =>
+      have hg' := CapCo.HasType.rename (hρ.lift _) hg
+      simp only [Value.rename, Ty.rename, Shape.rename]
+      exact .lam (ht.rename (hρ.lift _))
+        (by simpa only [Tm.uses_rename, CaptureSet.closing_rename] using hg')
+  | @Value.HasType.obj _ A0 F0 _ W0 Wc0 hF =>
       have hF' := Fields.HasType.rename (hρ.lift _) hF
-      have := Value.HasType.obj (Γ := Γ') (W := W0.rename ρ.lift) (Wc := Wc0.rename ρ.lift)
-        (F := F0.rename ρ.lift)
+      have := Value.HasType.obj (Γ := Γ') (A := A0.rename ρ) (W := W0.rename ρ.lift)
+        (Wc := Wc0.rename ρ.lift) (F := F0.rename ρ.lift)
         (by
-          simpa [Binding.rename, Ty.rename, Shape.rename,
-            Telescope.ofLiteral_rename] using hF')
+          simpa only [Binding.rename_transparent, Ty.rename, Shape.rename,
+            Telescope.ofLiteral_rename, Fields.labels_rename] using hF')
       simpa [Value.rename, Ty.rename, Shape.rename, Telescope.ofLiteral_rename] using this
   | .box ha =>
       have := Value.HasType.box (ha.rename hρ)
@@ -533,15 +545,18 @@ theorem Value.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Re
   | .cast hv he => exact .cast (hv.rename hρ) (LeCo.HasType.rename hρ he)
 
 theorem Fields.HasType.rename {s1 s2 : Sig} {Γ : Ctx (s1,x)} {Γ' : Ctx (s2,x)}
-    {ρ : Rename s1 s2} {F : Fields (s1,x)}
-    (hρ : Ctx.Ren Γ ρ.lift Γ') (h : Γ ⊢ᶠ F) :
-    Γ' ⊢ᶠ (F.rename ρ.lift) := by
+    {ρ : Rename s1 s2} {F : Fields (s1,x)} {A : CaptureSet s1}
+    (hρ : Ctx.Ren Γ ρ.lift Γ') (h : Γ ⊢ᶠ[A] F) :
+    Γ' ⊢ᶠ[A.rename ρ] (F.rename ρ.lift) := by
   match h with
   | .nil => exact .nil
-  | .cons hF ht =>
-      refine .cons (hF.rename hρ) ?_
-      have := ht.rename hρ
-      simpa [Ty.rename, Shape.rename, CaptureSet.rename, CapAtom.rename] using this
+  | .cons hF ht hg =>
+      refine .cons (hF.rename hρ) ?_ ?_
+      · have := ht.rename hρ
+        simpa [Ty.rename, Shape.rename, CaptureSet.rename, CapAtom.rename,
+          Rename.lift_here] using this
+      · have := CapCo.HasType.rename hρ hg
+        simpa only [Tm.uses_rename, CaptureSet.closing_rename] using this
 
 end
 

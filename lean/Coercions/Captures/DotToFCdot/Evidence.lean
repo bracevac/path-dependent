@@ -120,27 +120,31 @@ conjunct sits innermost (lowest positions), while its presence entries
 follow `Ty.fieldLabels`, whose *right* conjunct comes first (see there).
 So `S` gets the equality positions `e …` and the presence positions after
 `T`'s, and `T` gets the presence positions `h …`. -/
-def litMorphism : Ty (s,x) → Nat → Nat → FCdot.Morphism s × Nat × Nat
-  | .typ _ _ _, e, h =>
-      (.le (.le .nil .none (.eqSym e) .none) .none (.eq e) .none, e + 1, h)
-  | .fld _ _, e, h => (.le (.has .nil h) .none (.eq e) .none, e + 1, h + 1)
-  | .and S T, e, h =>
-      let (m₁, e₁, h₁) := litMorphism S e (h + T.fieldLabels.length)
-      let (m₂, e₂, _) := litMorphism T e₁ h
-      (m₁.append m₂, e₂, h₁)
-  | _, e, h => (.nil, e, h)
+def litMorphism : Ty (s,x) → Nat → Nat → Nat → FCdot.Morphism s × Nat × Nat × Nat
+  | .typ _ _ _, e, c, h =>
+      (.le (.le .nil .none (.eqSym e) .none) .none (.eq e) .none, e + 1, c, h)
+  | .fld _ _, e, c, h =>
+      (.leC (.le (.has .nil h) .none (.eq e) .none) .nil (.eqC c) .nil, e + 1, c + 1, h + 1)
+  | .and S T, e, c, h =>
+      let (m₁, e₁, c₁, h₁) :=
+        litMorphism S e (c + T.fieldLabels.length) (h + T.fieldLabels.length)
+      let (m₂, e₂, _, _) := litMorphism T e₁ c h
+      (m₁.append m₂, e₂, c₁, h₁)
+  | _, e, c, h => (.nil, e, c, h)
 
 /-- The coercion from a literal's precise shape to `⟦μ(x. T)⟧`'s shape.
 
 The precise telescope is `type equalities, capture equalities, presences`,
-so the definition equalities start at `0` and the presences start after both
-earlier blocks, at `|W| + |Wᶜ|` (`FCdot.CapWitnesses.eqEntries_length`).  In
-stage A1 the capture block is empty (`Ty.capWitnesses`) and the declared
-telescope has no capture propositions, so no template entry has to be built
-for it. -/
+so the definition equalities start at `0`, the capture equalities start at
+`|W|`, and the presences start after both earlier blocks, at `|W| + |Wᶜ|`
+(`FCdot.CapWitnesses.eqEntries_length`).  Since stage A2 the declared
+telescope of a field carries the capture entry `[name self ℓ] ⊑ᶜ []`, which
+the template reads off the literal's own capture equality `[name self ℓ] ≐ᶜ
+[]` through a `leC` hole with identity side chains. -/
 def litCo (T : Ty (s,x)) : FCdot.ShapeCo s :=
   .obj (FCdot.Telescope.ofLiteral T.witnesses T.capWitnesses T.fieldLabels)
-    (litMorphism T 0 (T.witnesses.length + T.capWitnesses.length)).1
+    (litMorphism T 0 T.witnesses.length
+      (T.witnesses.length + T.capWitnesses.length)).1
 
 /-- The atom of a variable: the variable itself, cast from the literal's
 precise type when the binder is a literal's self. -/
@@ -172,7 +176,8 @@ def Sub.translateShape : {Γ : Ctx s} → {S T : Ty s} → Sub Γ S T → FCdot.
   | _, _, .and T U, .and d₁ d₂ =>
       .pair T.tel U.tel (into T d₁.translateShape) (into U d₂.translateShape)
   | _, .fld a T, _, .fld d =>
-      .obj (Ty.tel (.fld a T)) (.le (.has .nil 0) .none (.le 1) (.some d.translateShape))
+      .obj (Ty.tel (.fld a T))
+        (.leC (.le (.has .nil 0) .none (.le 1) (.some d.translateShape)) .nil (.leC 2) .nil)
   | _, .typ A S₁ T₁, _, .typ d₁ d₂ =>
       .obj (Ty.tel (.typ A S₁ T₁))
         (.le (.le .nil (.some d₁.translateShape) (.le 0) .none) .none (.le 1)

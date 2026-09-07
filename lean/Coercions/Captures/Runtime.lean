@@ -57,6 +57,45 @@ end
 def Tm.weaken (t : Tm s) : Tm (s,,k) := t.rename Rename.succ
 def Tm.substVar (t : Tm (s,,k)) (y : BVar s k) : Tm s := t.rename (Rename.subst y)
 
+/-! ## The inspected root
+
+The variable whose stored value the next step reads: the function of an
+application and the receiver of a projection.  Every other runtime term
+reads no slot.  The target's `unbox` erases to a projection at the same
+root, so the two readings agree; that fact belongs to erasure, and the facts
+here are about the runtime alone. -/
+
+def Tm.inspects : Tm s → Option (BVar s .var)
+  | .app x _ => some x
+  | .proj x _ => some x
+  | _ => none
+
+@[simp] theorem Tm.inspects_app (x y : BVar s .var) : (Tm.app x y).inspects = some x := rfl
+@[simp] theorem Tm.inspects_proj (x : BVar s .var) (ℓ : Label) :
+    (Tm.proj x ℓ).inspects = some x := rfl
+@[simp] theorem Tm.inspects_var (x : BVar s .var) : (Tm.var x).inspects = none := rfl
+@[simp] theorem Tm.inspects_lam (t : Tm (s,x)) : (Tm.lam t).inspects = none := rfl
+@[simp] theorem Tm.inspects_obj (F : Fields (s,x)) : (Tm.obj F).inspects = none := rfl
+@[simp] theorem Tm.inspects_let (t : Tm s) (u : Tm (s,x)) : (Tm.let t u).inspects = none := rfl
+
+theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
+    (t.rename ρ).inspects = t.inspects.map ρ.var := by
+  match t with
+  | .var x => simp [Tm.rename]
+  | .lam t => simp [Tm.rename]
+  | .obj F => simp [Tm.rename]
+  | .app x y => simp [Tm.rename]
+  | .proj x ℓ => simp [Tm.rename]
+  | .let t u => simp [Tm.rename]
+
+theorem Tm.inspects_substVar {s : Sig} {k : Kind} (t : Tm (s,,k)) (y : BVar s k) :
+    (t.substVar y).inspects = t.inspects.map (Rename.subst y).var :=
+  Tm.inspects_rename t (Rename.subst y)
+
+theorem Tm.inspects_weaken {s : Sig} {k : Kind} (t : Tm s) :
+    (t.weaken (k := k)).inspects = t.inspects.map Rename.succ.var :=
+  Tm.inspects_rename t Rename.succ
+
 inductive IsValue : Tm s → Prop where
   | lam : IsValue (.lam t)
   | obj : IsValue (.obj F)

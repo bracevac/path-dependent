@@ -31,22 +31,22 @@ def Store.lookup : Store s → BVar s .var → Value s
 
 /-- Block witnesses of a value: those of the underlying literal. -/
 def Value.witnesses : Value s → Witnesses (s,x)
-  | .lam _ _ => .nil
-  | .obj W _ _ => W
+  | .lam _ _ _ _ => .nil
+  | .obj _ W _ _ => W
   | .box _ => .nil
   | .cast v _ => v.witnesses
 
 /-- Capture witnesses of a value: those of the underlying literal. -/
 def Value.capWitnesses : Value s → CapWitnesses (s,x)
-  | .lam _ _ => .nil
-  | .obj _ Wc _ => Wc
+  | .lam _ _ _ _ => .nil
+  | .obj _ _ Wc _ => Wc
   | .box _ => .nil
   | .cast v _ => v.capWitnesses
 
 /-- Field labels of a value: those of the underlying literal. -/
 def Value.fieldLabels : Value s → List Label
-  | .lam _ _ => []
-  | .obj _ _ F => F.labels
+  | .lam _ _ _ _ => []
+  | .obj _ _ _ F => F.labels
   | .box _ => []
   | .cast v _ => v.fieldLabels
 
@@ -96,6 +96,59 @@ open Lean PrettyPrinter in
 @[app_unexpander Store.Typed] def Store.Typed.unexpand : Unexpander
   | `($_ $σ $Γ) => `(⊢ $σ : $Γ)
   | _ => throw ()
+
+/-! ## The annotation of a stored value
+
+A stored value is a literal, and the introduction rule of a literal types it
+at its own annotation.  So the capture set of a binder's type in a typed
+store's context is the annotation of the value stored at that binder, and
+`roots {x}` is the roots of that annotation. -/
+
+/-- The annotation of a value travels with a renaming. -/
+theorem Value.annot_rename {s1 s2 : Sig} :
+    ∀ (v : Value s1) (ρ : Rename s1 s2), (v.rename ρ).annot = v.annot.rename ρ
+  | .lam _ _ _ _, _ => rfl
+  | .obj _ _ _ _, _ => rfl
+  | .box _, _ => rfl
+  | .cast v _, ρ => Value.annot_rename v ρ
+
+/-- The annotation of a value travels with a weakening. -/
+@[simp] theorem Value.annot_weaken {k : Kind} (v : Value s) :
+    (v.weaken (k := k)).annot = v.annot.weaken :=
+  Value.annot_rename v Rename.succ
+
+/-- A literal is typed at its own annotation: the capture set of its type is
+the capture set its introduction rule assigns to it.  (A cast value is not a
+literal, and a cast may change the capture set.) -/
+theorem Value.HasType.captureSet_annot {Γ : Ctx s} {v : Value s} {T : Ty s}
+    (h : Γ ⊢ᵥ v : T) (hl : v.IsLiteral) : T.captureSet = v.annot := by
+  cases h with
+  | lam _ _ => rfl
+  | obj _ => rfl
+  | box _ => rfl
+  | cast _ _ => exact absurd hl (fun h => h)
+
+/-- In a typed store, the capture set of a binder's type is the annotation of
+the value stored at that binder, both read in the current scope. -/
+theorem Store.Typed.lookup_annot {s : Sig} {σ : Store s} {Γ : Ctx s}
+    (h : ⊢ σ : Γ) (x : BVar s .var) :
+    (Γ.lookupTy x).captureSet = (σ.lookup x).annot := by
+  induction h with
+  | nil => cases x
+  | @cons _ σ0 Γ0 v T _ literal value ih =>
+      cases x with
+      | here =>
+          show (Ty.weaken (Binding.ty _)).captureSet = (Value.weaken v).annot
+          rw [Ty.captureSet_weaken, Value.annot_weaken]
+          exact congrArg CaptureSet.weaken (value.captureSet_annot literal)
+      | there y =>
+          show ((Γ0.lookupTy y)↑).captureSet = ((σ0.lookup y)↑).annot
+          rw [Ty.captureSet_weaken, Value.annot_weaken, ih y]
+  | @consC _ σ0 Γ0 _ _ ih =>
+      cases x with
+      | there y =>
+          show ((Γ0.lookupTy y)↑).captureSet = ((σ0.lookup y)↑).annot
+          rw [Ty.captureSet_weaken, Value.annot_weaken, ih y]
 
 
 end FCdot

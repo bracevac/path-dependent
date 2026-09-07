@@ -279,23 +279,24 @@ theorem Tm.HasType.refine {Γ Γ' : Ctx s} {t : Tm s} {T : Ty s}
   | .val hv => exact .val (hv.refine hR)
   | .app ha hb => exact .app (ha.refine hR) (hb.refine hR)
   | .proj ha hh => exact .proj (ha.refine hR) (hh.refine hR)
-  | .let ht hu => exact .let (ht.refine hR) (hu.refine (hR.cons _))
+  | .let ht hu hf =>
+      exact .let (ht.refine hR) (hu.refine (hR.cons _)) (hf.refine (hR.cons _))
   | .cast ht he => exact .cast (ht.refine hR) (LeCo.HasType.refine hR he)
   | .unbox ha hf => exact .unbox (ha.refine hR) (hf.refine hR)
 
 theorem Value.HasType.refine {Γ Γ' : Ctx s} {v : Value s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᵥ v : T) : Γ' ⊢ᵥ v : T := by
   match h with
-  | .lam ht => exact .lam (ht.refine (hR.cons _))
+  | .lam ht hg => exact .lam (ht.refine (hR.cons _)) (hg.refine (hR.cons _))
   | .obj hF => exact .obj (hF.refine (hR.cons _))
   | .box ha => exact .box (ha.refine hR)
   | .cast hv he => exact .cast (hv.refine hR) (LeCo.HasType.refine hR he)
 
-theorem Fields.HasType.refine {Γ Γ' : Ctx (s,x)} {F : Fields (s,x)}
-    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᶠ F) : Γ' ⊢ᶠ F := by
+theorem Fields.HasType.refine {Γ Γ' : Ctx (s,x)} {F : Fields (s,x)} {A : CaptureSet s}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᶠ[A] F) : Γ' ⊢ᶠ[A] F := by
   match h with
   | .nil => exact .nil
-  | .cons hF ht => exact .cons (hF.refine hR) (ht.refine hR)
+  | .cons hF ht hg => exact .cons (hF.refine hR) (ht.refine hR) (hg.refine hR)
 
 end
 

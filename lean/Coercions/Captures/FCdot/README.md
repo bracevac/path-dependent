@@ -1,4 +1,4 @@
-# FCdot, at stage A1 of captures
+# FCdot, at stage A2 of captures
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -14,7 +14,7 @@ erasure safe.
 | `Debruijn` | signatures `s`, bound variables `BVar s k`, renamings |
 | `Syntax` | types, propositions, telescopes; evidence (`LeCo`, `EqCo`, `Has`, `Morphism`); atoms; terms and values; renaming |
 | `Context` | bindings, contexts, lookup of types, definitions and fields |
-| `Typing` | the judgments `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ`, `Γ ⊢ m : src ⇒ Tel`, `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ F` |
+| `Typing` | the judgments `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ`, `Γ ⊢ m : src ⇒ Tel`, `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ[A] F` |
 | `Store` | stores, store typing `⊢ σ : Γ` |
 | `Normalizer` | head normal forms of closed evidence, views of atoms, the fuel-indexed normalizer `σ ⊢ e ⇓[n] F` |
 | `Machine` | continuations `Γ ⊢ₖ K : T ⇒ U`, states, the step relation `st ⟶ st'` |
@@ -29,7 +29,8 @@ erasure safe.
 | `CanonicalForms` | the canonical-forms theorem, including item 6 (`cap_canon`) and item 7 (an atom's root is below the capture set of its type); the chain of casts; `closed_box_inversion`; `preservation'`, `erase_reflect'` |
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
-| `Examples` | the examples E1 to E8 and the capture examples C3, C4, decided in the kernel |
+| `Prediction` | the use-set half of preservation (`step_uses`), `capture_prediction` along a run, `inspects_covered`, `effect_safety`, `returned_capture_bound` |
+| `Examples` | the examples E1 to E8 and the capture examples C3, C4, C1, C6, decided in the kernel |
 
 ## Notation
 
@@ -43,7 +44,7 @@ All notation is `scoped` in namespace `FCdot`.
 | `T↑`, `T⟦y⟧` | weakening under a new binder; instantiation of the innermost binder |
 | `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ` | inclusion, equality, and presence evidence |
 | `Γ ⊢ m : src ⇒ Tel` | a template morphism proving the closed telescope `Tel` from the propositions of `src` |
-| `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ F` | atoms, terms, values, fields |
+| `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ[A] F` | atoms, terms, values, fields |
 | `⊢ σ : Γ`, `Γ ⊢ₖ K : T ⇒ U` | stores and continuations |
 | `st ⟶ st'`, `st ⟶* st'`, `⌊st⌋` | steps and erasure |
 | `σ ⊢ e ⇓[n] F`, `σ ⊢ m ⇓ₘ[n] Es`, `σ ⊢ a ⇓ᵥ[n] V`, `σ ⊢ x ; h ⇓ₕ[n] (y, ℓ)`, `σ ⊢ a ⇓ᶜ[n] (a', F)` | normalization with fuel `n` |
@@ -180,7 +181,37 @@ the view of an atom instantiate at the same thing.
 | `Progress`, `Consistency` | `progress` gains the `unbox` case, discharged by `closed_box_inversion`; `EntryTyped.bnd_of_bndsOnly` gains the impossible cases for the new slots; the consistency corollary in the capture sort at a platform binder (`Store.Typed.no_cap_escape`, `no_cap_star_le_nil`) |
 | `Examples` | E1 to E8 read as A1 literals with an empty capture-witness list, still decided in the kernel, plus C3 (bad capture bounds under a lambda, with the consistency corollary) and C4 (`sc-var` and capture `member` at the same wrapped atom) |
 
-### Notation added by A0 and A1
+## Stage A2
+
+A2 makes the capture sets that A1 carries do their job.  A value carries the capture
+set its introduction rule assigns to it, so a stored value's binder has a real capture
+set and `roots` at a variable is no longer empty.  A term has a use set, computed by a
+total structural function `uses`, with explicit evidence wherever a use set is
+discharged against a declared set.  And the prediction theorem is proven: along any run
+from a typed state the roots of the use set only shrink, and every step that inspects a
+root inspects one whose roots lie in the use set.  No new sort, no new evidence family,
+no new form, entry or slot: use sets are not in types.
+
+| module | what A2 changed |
+|---|---|
+| `Syntax` | the new data fields of `Tm.let t u U' f`, `Tm.unbox a U f`, `Value.lam A T t g`, `Value.obj A W Wc F` and `Fields.cons F l t g`; `Value.annot`; the total structural `Tm.uses` and `Tm.inspects` with their simp equations and `Tm.inspects_mem_uses`; `Ty.captureSet` moved here from `Resolution`, so that `Store` can see it |
+| `RenameLemmas` | `CaptureSet.rename_union`; `Tm.uses_rename`, `Tm.uses_subst`, `Tm.uses_substAtom` (a substitution acts on a use set by the root renaming of A0), `Tm.inspects_rename`, `Tm.inspects_subst`; every `rename_id`, `rename_comp` and `subst_ofRename` proof names the new fields |
+| `Context` | `Fields.labels` names the field's closing evidence and ignores it |
+| `Typing` | the new premises: `let` carries `f : uses u ⊑ U'↑`, `lam` and `fields` carry `g : uses t ⊑ (A↑ ∪ [var .here])`, `unbox` charges against its declared `U` in place of `[]`; `lam` and `obj` conclude at the value's own annotation `A`; `Fields.HasType` is indexed by that annotation; `proj` concludes `(a.root ∙ l) ^ [name a.root l]` |
+| `TypingRename`, `Transparency`, `TypingSubst` | the indexed `Fields.HasType.rename`, `refine` and `subst`; `CaptureSet.closing_rename`; `CapCo.HasType.substAtom` and `CapCo.HasType.letBody_substAtom`, the substitution lemma preservation needs at the `rename` step |
+| `Store` | `Value.annot_rename` and `annot_weaken`; `Value.HasType.captureSet_annot` (a literal is typed at its own annotation) and `Store.Typed.lookup_annot` (the capture set of a binder's type is the stored value's annotation); `Store.Typed.cons` unchanged |
+| `Checker`, `CheckerCompleteness` | `checkTm` computes `uses` and checks the new capture premises with `synthCap`; `checkFields` takes the literal's assigned set; the three kernels carry explicit `termination_by` measures; `checkTm_iff` and its friends unchanged |
+| `Normalizer` | `Value.precView` names the literal's annotation and ignores it; nothing else, since use sets are not in types |
+| `Resolution` | unchanged; `capsAtom` at a term binder already reads the capture set of the binder's type, which is now the stored value's annotation |
+| `Machine` | `Frame.let u U' f` with its two new fields and the matching premise of `Cont.Typed.let`; `usesK`, `State.uses`, `State.inspects`; `Store.Ext` with `comp`, `roots`, `root_iff`, `capLe` and `injective`; `Store.Typed.ctx_unique`; two new imports, `Resolution` and `CheckerCompleteness` |
+| `Erasure`, `ErasureMetatheory` | every clause drops the new annotations and the new evidence; `Tm.inspects_erase` and `State.inspects_erase`; `erase_step`, `erase_reflect`, `final_erase` and `final_reflect` unchanged |
+| `FormTyping`, `FormAlgebra` | `Store.HasField` names the literal's annotation; nothing else |
+| `Preservation` | the factored step-result lemmas `Fields.HasType.getFull`, `Tm.HasType.projFieldFull`, `Store.Typed.lam_closing`, `Tm.HasType.let_inv`, `Tm.HasType.cast_inv`, `Tm.HasType.letBody_substAtom`, `Store.Typed.unboxRefl_result`, `Store.Typed.unboxCast_result`, `CapCo.HasType.adjust` and `CapCo.HasType.adjust_none`; `Value.HasType.lam_inv` exposes the closing evidence as a third conjunct; `preservation` unchanged |
+| `CanonicalForms`, `Progress`, `Consistency` | patterns and existentials name the new fields (`closed_has_field`, `closed_pi_inversion`); every statement unchanged; item 7 of `atom_canon` is unchanged and now has content |
+| `Prediction` | the new module: `step_uses`, `capture_prediction`, `inspects_covered`, `effect_safety` and `returned_capture_bound`, with the helpers `Store.Typed.root_annot`, `Store.Typed.app_uses`, `Store.Typed.proj_uses`, `CapLe.mem` and `Value.core_annot` |
+| `Examples` | every example term carries the new fields; E2, E5 and E6 gained the capture-definition entry of their field, E5 and E6 are typed at the capture set their field body really uses, and E8's result carries the capture name of its label; the new examples C1 (use sets computed by `decide`) and C6 (the rejected variant, a run, and the prediction instantiated) |
+
+### Notation added by A0, A1 and A2
 
 All the vanilla notation still works, at the sort the vanilla line used it.  New in A0:
 
@@ -201,6 +232,15 @@ New in A1:
 | `C₁ ⊑ᶜ C₂`, `C₁ ≐ᶜ C₂` | capture propositions, under the self like every proposition; their right sides may mention `[var .here]` and `[name .here ℓ]` |
 | `Γ ⊢ᶜ φ : C ≡ D` | capture *equality* evidence (`CapEq`), beside the inclusion judgment `Γ ⊢ᶜ f : C ⊑ D` |
 | `σ ⊢ a ⇓ᶜ[n] (a', F)` | the chain of casts of an atom, with `Atom.recap` one more transparent wrapper in it |
+
+New in A2:
+
+| | |
+|---|---|
+| `Γ ⊢ᶠ[A] F` | field typing, indexed by the literal's assigned capture set (the vanilla `Γ ⊢ᶠ F`) |
+
+A2 adds no other notation.  `uses`, `usesK`, `State.uses`, `annot`, `inspects` and
+`Store.Ext` are plain identifiers.
 
 `ᶜ` is not a legal Lean identifier character, so an identifier the plan spells with a
 `ᶜ` suffix carries the ASCII suffix `C` here (`Ctx.consC`, `Store.consC`,
@@ -252,6 +292,55 @@ line each because the box revision leaves no atom whose capture set disagrees wi
 root: `var` is the definition of `Ctx.capsAtom`, `cast a (capt e f)` composes the
 hypothesis with `cap_canon f`, `recap a f` *is* `cap_canon` of its own evidence, and
 `foldSelf`, `unfoldSelf` and `both` pass the set through.
+
+A2 changed none of these statements.  It gave item 7 its content: at a variable bound
+to a stored value the capture set of the binder's type is that value's annotation
+(`Store.Typed.lookup_annot`, `Store.Typed.root_annot`).
+
+### The five theorems of A2
+
+`Prediction.lean` states the use-set half of preservation beside `preservation'`, never
+folded into it.
+
+```
+FCdot.step_uses              : ⊢ st.σ : Γ → st.Typed U → st ⟶ st' →
+                                 ∃ ρ, Store.Ext st.σ st'.σ ρ ∧
+                                 ∀ Γ', ⊢ st'.σ : Γ' → CapLe Γ' st'.uses (st.uses.rename ρ)
+FCdot.capture_prediction     : st.Typed U → st ⟶* st' →
+                                 ∃ ρ, Store.Ext st.σ st'.σ ρ ∧
+                                 ∀ Γ', ⊢ st'.σ : Γ' → CapLe Γ' st'.uses (st.uses.rename ρ)
+FCdot.inspects_covered       : st.inspects = some x → CapLe Γ [var x] st.uses
+FCdot.effect_safety          : st.Typed U → ⊢ st.σ : Γ → st ⟶* st' →
+                                 ¬ Γ.Root (cvar κ) st.uses → st'.inspects = some x →
+                                 ⊢ st'.σ : Γ' →
+                                 ∃ ρ, Store.Ext st.σ st'.σ ρ ∧ ¬ Γ'.Root (cvar (ρ.var κ)) [var x]
+FCdot.returned_capture_bound : ⊢ σ : Γ →
+                                 (⟨σ, nil, val v⟩.Typed (S ^ C) → CapLe Γ v.annot C) ∧
+                                 (⟨σ, nil, atom a⟩.Typed (S ^ C) → CapLe Γ [var a.root] C)
+```
+
+`Store.Ext σ σ' ρ` is the canonical embedding of a store into an extension of it
+(`refl`, `cons`, `consC`).  It composes, and over two typings of the two stores it
+carries `roots` along the renaming, which is `Ctx.caps_weaken` iterated.
+
+### The capture examples C1 and C6
+
+```
+Examples.C1_typed         : C1Ctx ⊢ᵥ c1val : c1Ty
+Examples.C1_uses_console  : C1prog1.uses = {c1, unit, console, log}
+Examples.C1_uses_pure     : C1prog2.uses = {c1, unit}
+Examples.C6_rejected      : checkValue C1Ctx c1bad c1badTy = false
+Examples.C6_run           : C6st0 ⟶* C6st7
+Examples.C6_covered       : the instance of inspects_covered composed with
+                            capture_prediction at the state that reads console
+Examples.C6_safe          : the instance of effect_safety for the program whose use
+                            set has no root κ₂
+```
+
+`c1` is the closure of plan V-A §2.6 in the platform context of two rigid capture
+binders.  The bad variant, whose inner annotation is empty, is rejected by the checker
+in the kernel; the good one is run, and the prediction is instantiated at the state
+that inspects `console`.
 
 Axioms (`#print axioms`): `propext` and `Quot.sound` for all of the above, and for
 `Examples.C3_typed`, `Examples.C3_badBounds`, `Examples.C4_capvar`,

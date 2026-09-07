@@ -17,7 +17,7 @@ namespace FCdot
 /-- Labels of a field list. -/
 def Fields.labels : Fields s → List Label
   | .nil => []
-  | .cons F ℓ _ => ℓ :: F.labels
+  | .cons F ℓ _ _ => ℓ :: F.labels
 
 /-- What a capture binder stands for.  `root` is a scope root, `star` a rigid
 capability that subsumes nothing, `upper C` a bounded binder, and `inst C` an

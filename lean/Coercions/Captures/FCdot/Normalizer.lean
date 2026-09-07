@@ -525,7 +525,7 @@ def CapWitnesses.eqFormsC (base : View s) : CapWitnesses (s,x) → View s
 proposition of `Telescope.ofLiteral`, so the type equations come first, then
 one `eqC` slot per capture witness, then the presences. -/
 def Value.precView (x : BVar s .var) : Value s → View s
-  | .obj W Wc F => Fields.hasForms x (Wc.eqFormsC W.eqForms) F.labels
+  | .obj _ W Wc F => Fields.hasForms x (Wc.eqFormsC W.eqForms) F.labels
   | _ => .nil
 
 /-! ## The normalizer -/
