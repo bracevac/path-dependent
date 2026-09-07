@@ -44,7 +44,7 @@ namespace FCdot
 
 /-- Field presence in a store. -/
 def Store.HasField (σ : Store s) (x : BVar s .var) (ℓ : Label) : Prop :=
-  ∃ W Wc F, σ.lookup x = .obj W Wc F ∧ (F.get? ℓ).isSome
+  ∃ A W Wc F, σ.lookup x = .obj A W Wc F ∧ (F.get? ℓ).isSome
 
 /-! ## Shapes: resolve, and open the self block at a root -/
 
@@ -742,10 +742,10 @@ theorem Fields.hasForms_noBnd (x : BVar s .var) :
 /-- A literal's precise view has only equality and presence entries. -/
 theorem Value.precView_noBnd (x : BVar s .var) (v : Value s) : (v.precView x).NoBnd := by
   cases v with
-  | obj W Wc F =>
+  | obj A W Wc F =>
       exact Fields.hasForms_noBnd x F.labels _
         (CapWitnesses.eqFormsC_noBnd _ Wc (Witnesses.eqForms_noBnd W))
-  | lam S t => exact View.NoBnd.nil
+  | lam A S t g => exact View.NoBnd.nil
   | box a => exact View.NoBnd.nil
   | cast v e => exact View.NoBnd.nil
 
@@ -754,7 +754,7 @@ theorem Value.precView_noBnd (x : BVar s .var) (v : Value s) : (v.precView x).No
 theorem Fields.get?_isSome_of_mem : {F : Fields s} → {ℓ : Label} → ℓ ∈ F.labels →
     (F.get? ℓ).isSome
   | .nil, _, h => by simp [Fields.labels] at h
-  | .cons F ℓ' t, ℓ, h => by
+  | .cons F ℓ' t g, ℓ, h => by
       simp only [Fields.labels, List.mem_cons] at h
       by_cases hℓ : ℓ = ℓ'
       · simp [Fields.get?, hℓ]

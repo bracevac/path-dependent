@@ -291,7 +291,7 @@ scoped notation:40 Γ:51 " ⊢ " t:51 " : " T:51 => Tm.HasType Γ t T
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ᵥ " v:51 " : " T:51 => Value.HasType Γ v T
 set_option hygiene false in
-scoped notation:40 Γ:51 " ⊢ᶠ " F:51 => Fields.HasType Γ F
+scoped notation:40 Γ:51 " ⊢ᶠ[" A "] " F:51 => Fields.HasType Γ A F
 
 mutual
 
@@ -303,36 +303,46 @@ inductive Tm.HasType : Ctx s → Tm s → Ty s → Prop where
       Γ ⊢ₐ a : (Π(T) U) ^ C →
       Γ ⊢ₐ b : T →
       Γ ⊢ .app a b : U⟦b.root⟧
-  /-- A field's result is the block name `ℓ` of the atom's root.  In this stage
-      a capture name stands for the empty set, so the result is pure; the
-      capture witnesses that give `{x∙ℓ}` its content arrive in A1. -/
+  /-- A field's result is the block name `ℓ` of the atom's root, captured at
+      the capture name of the same label.  The capture witness `Wᶜ(ℓ)` of a
+      literal is the declared capture set of the field's result, read by
+      `defC` and resolved by `capsAtom`. -/
   | proj :
       Γ ⊢ₐ a : T →
       Γ ⊢ h : a.root ∋ ℓ →
-      Γ ⊢ .proj a ℓ h : (a.root ∙ ℓ) ^ []
+      Γ ⊢ .proj a ℓ h : (a.root ∙ ℓ) ^ [CapAtom.name a.root ℓ]
+  /-- The body of a let declares the use set `U'`, and the avoidance evidence
+      `f` puts the body's use set below it.  `U'` does not mention the bound
+      variable, so the use set of the let is structural. -/
   | «let» :
       Γ ⊢ t : T →
       Γ.cons (.opaque T) ⊢ u : U↑ →
-      Γ ⊢ .let t u : U
+      Γ.cons (.opaque T) ⊢ᶜ f : u.uses ⊑ U'↑ →
+      Γ ⊢ .let t u U' f : U
   | cast : Γ ⊢ t : T → Γ ⊢ e : T ≤ T' → Γ ⊢ .cast t e : T'
-  /-- Unboxing, charged with the boxed capture set.  In this stage there are
-      no use sets yet, so the charge is discharged against the empty set. -/
+  /-- Unboxing, charged with the boxed capture set against the use set `U`
+      the term declares. -/
   | unbox :
       Γ ⊢ₐ a : (□ (S ^ C)) ^ D →
-      Γ ⊢ᶜ f : C ⊑ [] →
-      Γ ⊢ .unbox a f : S ^ C
+      Γ ⊢ᶜ f : C ⊑ U →
+      Γ ⊢ .unbox a U f : S ^ C
 
 /-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is empty in
 this stage. -/
 inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
+  /-- A lambda carries the capture set `A` its rule assigns to it, and the
+      closing evidence `g` puts the body's use set below `A` weakened united
+      with the parameter. -/
   | lam :
       Γ.cons (.opaque T) ⊢ t : U →
-      Γ ⊢ᵥ .lam T t : (Π(T) U) ^ []
+      Γ.cons (.opaque T) ⊢ᶜ g : t.uses ⊑ (A↑ ∪ [CapAtom.var .here]) →
+      Γ ⊢ᵥ .lam A T t g : (Π(T) U) ^ A
   /-- An object literal has its precise type, generated from its witnesses and
-      fields.  Fields are typed with the self binder at that type. -/
+      fields, at the capture set `A` it carries.  Fields are typed with the
+      self binder at that type, against the same `A`. -/
   | obj :
-      Γ.cons (.transparent ((μ (Telescope.ofLiteral W Wc F.labels)) ^ []) W Wc F.labels) ⊢ᶠ F →
-      Γ ⊢ᵥ .obj W Wc F : (μ (Telescope.ofLiteral W Wc F.labels)) ^ []
+      Γ.cons (.transparent ((μ (Telescope.ofLiteral W Wc F.labels)) ^ A) W Wc F.labels) ⊢ᶠ[A] F →
+      Γ ⊢ᵥ .obj A W Wc F : (μ (Telescope.ofLiteral W Wc F.labels)) ^ A
   /-- Boxing is pure: the box shape hides the captured set.  A box is a
       literal with no witnesses and no fields. -/
   | box :
@@ -340,10 +350,17 @@ inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
       Γ ⊢ᵥ .box a : (□ T) ^ []
   | cast : Γ ⊢ᵥ v : T → Γ ⊢ e : T ≤ T' → Γ ⊢ᵥ .cast v e : T'
 
-/-- `Γ ⊢ᶠ F`: each field `ℓ = t` has type `(self ∙ ℓ) ^ []`. -/
-inductive Fields.HasType : Ctx (s,x) → Fields (s,x) → Prop where
-  | nil : Γ ⊢ᶠ .nil
-  | cons : Γ ⊢ᶠ F → Γ ⊢ t : (.here ∙ ℓ) ^ [] → Γ ⊢ᶠ .cons F ℓ t
+/-- `Γ ⊢ᶠ[A] F`: each field `ℓ = t` has type `(self ∙ ℓ) ^ {self ∙ ℓ}`, and
+its closing evidence puts its use set below the literal's assigned set `A`
+weakened united with the self.  The index `A` is the literal's assigned
+set. -/
+inductive Fields.HasType : Ctx (s,x) → CaptureSet s → Fields (s,x) → Prop where
+  | nil : Γ ⊢ᶠ[A] .nil
+  | cons :
+      Γ ⊢ᶠ[A] F →
+      Γ ⊢ t : (.here ∙ ℓ) ^ [CapAtom.name .here ℓ] →
+      Γ ⊢ᶜ g : t.uses ⊑ (A↑ ∪ [CapAtom.var .here]) →
+      Γ ⊢ᶠ[A] .cons F ℓ t g
 
 end
 
@@ -357,7 +374,7 @@ open Lean PrettyPrinter in
   | _ => throw ()
 open Lean PrettyPrinter in
 @[app_unexpander Fields.HasType] def Fields.HasType.unexpand : Unexpander
-  | `($_ $Γ $F) => `($Γ ⊢ᶠ $F)
+  | `($_ $Γ $A $F) => `($Γ ⊢ᶠ[$A] $F)
   | _ => throw ()
 
 end FCdot

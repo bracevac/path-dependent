@@ -123,16 +123,16 @@ theorem Tm.erase_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
   | .val v => simp [Tm.rename, Tm.erase, Value.erase_rename v]
   | .app a b => simp [Tm.rename, Tm.erase, Runtime.Tm.rename]
   | .proj a ℓ _ => simp [Tm.rename, Tm.erase, Runtime.Tm.rename]
-  | .let t u =>
+  | .let t u U f =>
       simp [Tm.rename, Tm.erase, Runtime.Tm.rename, Tm.erase_rename t, Tm.erase_rename u]
   | .cast t e => simp [Tm.rename, Tm.erase, Tm.erase_rename t]
-  | .unbox a f => simp [Tm.rename, Tm.erase, Runtime.Tm.rename, Atom.root_rename]
+  | .unbox a U f => simp [Tm.rename, Tm.erase, Runtime.Tm.rename, Atom.root_rename]
 
 theorem Value.erase_rename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
     (v.rename ρ).erase = v.erase.rename ρ := by
   match v with
-  | .lam S t => simp [Value.rename, Value.erase, Runtime.Tm.rename, Tm.erase_rename t]
-  | .obj W Wc F =>
+  | .lam A S t g => simp [Value.rename, Value.erase, Runtime.Tm.rename, Tm.erase_rename t]
+  | .obj A W Wc F =>
       simp [Value.rename, Value.erase, Runtime.Tm.rename, Fields.erase_rename F]
   | .box a => simp [Value.rename, Value.erase, Runtime.Tm.rename, Runtime.Fields.rename,
       Atom.root_rename]
@@ -142,7 +142,7 @@ theorem Fields.erase_rename {s1 s2 : Sig} (F : Fields s1) (ρ : Rename s1 s2) :
     (F.rename ρ).erase = F.erase.rename ρ := by
   match F with
   | .nil => simp [Fields.rename, Fields.erase, Runtime.Fields.rename]
-  | .cons F ℓ t =>
+  | .cons F ℓ t g =>
       simp [Fields.rename, Fields.erase, Runtime.Fields.rename, Fields.erase_rename F,
         Tm.erase_rename t]
 
@@ -162,7 +162,7 @@ theorem Value.erase_weaken {s : Sig} {k : Kind} (v : Value s) :
 theorem Cont.erase_rename {s1 s2 : Sig} :
     ∀ (K : Cont s1) (ρ : Rename s1 s2), (K.rename ρ).erase = K.erase.rename ρ
   | .nil, ρ => by simp [Cont.rename, Cont.erase, Runtime.Cont.rename]
-  | .cons K (.let u), ρ => by
+  | .cons K (.let u U f), ρ => by
       simp [Cont.rename, Frame.rename, Cont.erase, Runtime.Cont.rename,
         Cont.erase_rename K, Tm.erase_rename]
   | .cons K (.cast e), ρ => by
@@ -187,16 +187,16 @@ theorem Tm.erase_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
   | .val v => simp [Tm.subst, Tm.erase, Value.erase_subst v]
   | .app a b => simp [Tm.subst, Tm.erase, Runtime.Tm.rename, Subst.root_var]
   | .proj a ℓ _ => simp [Tm.subst, Tm.erase, Runtime.Tm.rename, Subst.root_var]
-  | .let t u =>
+  | .let t u U f =>
       simp [Tm.subst, Tm.erase, Runtime.Tm.rename, Tm.erase_subst t, Tm.erase_subst u]
   | .cast t e => simp [Tm.subst, Tm.erase, Tm.erase_subst t]
-  | .unbox a f => simp [Tm.subst, Tm.erase, Runtime.Tm.rename, Atom.root_subst]
+  | .unbox a U f => simp [Tm.subst, Tm.erase, Runtime.Tm.rename, Atom.root_subst]
 
 theorem Value.erase_subst {s1 s2 : Sig} (v : Value s1) (σ : Subst s1 s2) :
     (v.subst σ).erase = v.erase.rename σ.root := by
   match v with
-  | .lam S t => simp [Value.subst, Value.erase, Runtime.Tm.rename, Tm.erase_subst t]
-  | .obj W Wc F =>
+  | .lam A S t g => simp [Value.subst, Value.erase, Runtime.Tm.rename, Tm.erase_subst t]
+  | .obj A W Wc F =>
       simp [Value.subst, Value.erase, Runtime.Tm.rename, Fields.erase_subst F]
   | .box a => simp [Value.subst, Value.erase, Runtime.Tm.rename, Runtime.Fields.rename,
       Atom.root_subst]
@@ -206,7 +206,7 @@ theorem Fields.erase_subst {s1 s2 : Sig} (F : Fields s1) (σ : Subst s1 s2) :
     (F.subst σ).erase = F.erase.rename σ.root := by
   match F with
   | .nil => simp [Fields.subst, Fields.erase, Runtime.Fields.rename]
-  | .cons F ℓ t =>
+  | .cons F ℓ t g =>
       simp [Fields.subst, Fields.erase, Runtime.Fields.rename, Fields.erase_subst F,
         Tm.erase_subst t]
 
@@ -237,8 +237,8 @@ theorem Tm.erase_adjust {s : Sig} (u : Tm (s,x)) (v : Value s) :
 
 /-- Cast wrappers on a value are invisible to the erasure. -/
 theorem Value.erase_core {s : Sig} : ∀ v : Value s, v.core.erase = v.erase
-  | .lam _ _ => rfl
-  | .obj _ _ _ => rfl
+  | .lam _ _ _ _ => rfl
+  | .obj _ _ _ _ => rfl
   | .box _ => rfl
   | .cast v _ => by simp [Value.core, Value.erase, Value.erase_core v]
 
@@ -258,14 +258,14 @@ theorem Store.lookup_erase {s : Sig} :
 theorem Fields.erase_get? {s : Sig} :
     ∀ (F : Fields s) (ℓ : Label), F.erase.get? ℓ = (F.get? ℓ).map Tm.erase
   | .nil, ℓ => rfl
-  | .cons F ℓ' t, ℓ => by
+  | .cons F ℓ' t g, ℓ => by
       by_cases h : ℓ = ℓ' <;>
         simp [Fields.erase, Fields.get?, Runtime.Fields.get?, h, Fields.erase_get? F ℓ]
 
 /-- Every erased value is a runtime value. -/
 theorem Value.erase_isValue {s : Sig} : ∀ v : Value s, Runtime.IsValue v.erase
-  | .lam _ _ => .lam
-  | .obj _ _ _ => .obj
+  | .lam _ _ _ _ => .lam
+  | .obj _ _ _ _ => .obj
   | .box _ => .obj
   | .cast v _ => by simpa [Value.erase] using Value.erase_isValue v
 
@@ -274,8 +274,8 @@ theorem Value.erase_isValue {s : Sig} : ∀ v : Value s, Runtime.IsValue v.erase
 /-- Being a literal is stable under renaming. -/
 theorem Value.isLiteral_rename {s1 s2 : Sig} :
     ∀ (v : Value s1) (ρ : Rename s1 s2), v.IsLiteral → (v.rename ρ).IsLiteral
-  | .lam _ _, _, _ => trivial
-  | .obj _ _ _, _, _ => trivial
+  | .lam _ _ _ _, _, _ => trivial
+  | .obj _ _ _ _, _, _ => trivial
   | .box _, _, _ => trivial
   | .cast _ _, _, h => h.elim
 
@@ -297,9 +297,10 @@ theorem Store.Typed.lookup_isLiteral {s : Sig} {σ : Store s} {Γ : Ctx s}
 /-- A literal whose erasure is a runtime lambda is a lambda. -/
 theorem Value.erase_eq_lam {s : Sig} :
     ∀ (v : Value s) (t' : Runtime.Tm (s,x)), v.IsLiteral → v.erase = .lam t' →
-      ∃ (S₀ : Ty s) (t₀ : Tm (s,x)), v = .lam S₀ t₀ ∧ t₀.erase = t'
-  | .lam S t, t', _, h => ⟨S, t, rfl, by simpa [Value.erase] using h⟩
-  | .obj _ _ _, t', _, h => by simp [Value.erase] at h
+      ∃ (A : CaptureSet s) (S₀ : Ty s) (t₀ : Tm (s,x)) (g : CapCo (s,x)),
+        v = .lam A S₀ t₀ g ∧ t₀.erase = t'
+  | .lam A S t g, t', _, h => ⟨A, S, t, g, rfl, by simpa [Value.erase] using h⟩
+  | .obj _ _ _ _, t', _, h => by simp [Value.erase] at h
   | .box _, t', _, h => by simp [Value.erase] at h
   | .cast _ _, _, hlit, _ => hlit.elim
 
@@ -307,11 +308,12 @@ theorem Value.erase_eq_lam {s : Sig} :
 erases to the one-field object holding the boxed atom's root. -/
 theorem Value.erase_eq_obj {s : Sig} :
     ∀ (v : Value s) (F' : Runtime.Fields (s,x)), v.IsLiteral → v.erase = .obj F' →
-      (∃ (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x)) (F : Fields (s,x)),
-        v = .obj W Wc F ∧ F.erase = F') ∨
+      (∃ (A : CaptureSet s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))
+          (F : Fields (s,x)),
+        v = .obj A W Wc F ∧ F.erase = F') ∨
       (∃ b : Atom s, v = .box b ∧ F' = .cons .nil boxLabel (.var (.there b.root)))
-  | .lam _ _, F', _, h => by simp [Value.erase] at h
-  | .obj W Wc F, F', _, h => Or.inl ⟨W, Wc, F, rfl, by simpa [Value.erase] using h⟩
+  | .lam _ _ _ _, F', _, h => by simp [Value.erase] at h
+  | .obj A W Wc F, F', _, h => Or.inl ⟨A, W, Wc, F, rfl, by simpa [Value.erase] using h⟩
   | .box b, F', _, h => Or.inr ⟨b, rfl, by simpa [Value.erase] using h.symm⟩
   | .cast _ _, _, hlit, _ => hlit.elim
 
@@ -325,9 +327,9 @@ atom with the boxed atom's root: `unboxRefl` hands back `b` itself and
 nothing.  `Store.lookup_erase` discharges the hypothesis `unbox_erase_step`
 carries for module order. -/
 theorem unbox_erase_step' {s : Sig} {σ : Store s} {K : Cont s} {a b c : Atom s}
-    {f : CapCo s} (h : σ.lookup a.root = .box b) (hc : c.root = b.root) :
-    Runtime.Step ⌊(⟨σ, K, .unbox a f⟩ : State s)⌋ ⌊(⟨σ, K, .atom c⟩ : State s)⌋ := by
-  have hstep := unbox_erase_step (K := K) (f := f) (Store.lookup_erase σ a.root) h
+    {U : CaptureSet s} {f : CapCo s} (h : σ.lookup a.root = .box b) (hc : c.root = b.root) :
+    Runtime.Step ⌊(⟨σ, K, .unbox a U f⟩ : State s)⌋ ⌊(⟨σ, K, .atom c⟩ : State s)⌋ := by
+  have hstep := unbox_erase_step (K := K) (U := U) (f := f) (Store.lookup_erase σ a.root) h
   simpa [State.erase, Tm.erase, hc] using hstep
 
 /-! ## Forward simulation -/
@@ -393,14 +395,14 @@ def Tm.castDepth : Tm s → Nat
   | .val _ => 0
   | .app _ _ => 0
   | .proj _ _ _ => 0
-  | .let _ _ => 0
-  | .unbox _ _ => 0
+  | .let _ _ _ _ => 0
+  | .unbox _ _ _ => 0
   | .cast t _ => t.castDepth + 1
 
 /-- Number of cast frames at the top of a continuation. -/
 def Cont.castDepth : Cont s → Nat
   | .nil => 0
-  | .cons _ (.let _) => 0
+  | .cons _ (.let _ _ _) => 0
   | .cons K (.cast _) => K.castDepth + 1
 
 /-- Cast-frame steps strictly decrease this measure: `castPush` trades one
@@ -541,8 +543,9 @@ theorem castRedex_normalize_inv {s : Sig} (st : State s) (Γ : Ctx s)
 /-- The FCdot step realizing a runtime application step at a wrapped atom,
 given the head form of the atom's casts. -/
 theorem app_step_of_form {s : Sig} {σ : Store s} {K : Cont s} {a b : Atom s}
-    {S₀ : Ty s} {t₀ : Tm (s,x)} {n : Nat} {a' : Atom s} {F : Form s}
-    (hv : σ.lookup a.root = .lam S₀ t₀) (hne : a ≠ .var a.root)
+    {A : CaptureSet s} {S₀ : Ty s} {t₀ : Tm (s,x)} {g : CapCo (s,x)}
+    {n : Nat} {a' : Atom s} {F : Form s}
+    (hv : σ.lookup a.root = .lam A S₀ t₀ g) (hne : a ≠ .var a.root)
     (hform : σ ⊢ a ⇓ᶜ[n] (a', F))
     (hF : F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) :
     ∃ st' : State s, Step (⟨σ, K, .app a b⟩ : State s) st' ∧
@@ -561,23 +564,23 @@ theorem app_step_of_form {s : Sig} {σ : Store s} {K : Cont s} {a b : Atom s}
 /-- Reflection of a runtime `rename` step: an atom under a `let` frame is
 substituted into the frame's body. -/
 theorem erase_reflect_rename {s s' : Sig} {σ : Store s} {K : Cont s} {u : Tm (s,x)}
-    {a : Atom s} {r : Runtime.State s'}
-    (h : Runtime.Step ⌊(⟨σ, K ▹ .let u, .atom a⟩ : State s)⌋ r) :
-    ∃ st' : State s', (⟨σ, K ▹ .let u, .atom a⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
+    {U : CaptureSet s} {f : CapCo (s,x)} {a : Atom s} {r : Runtime.State s'}
+    (h : Runtime.Step ⌊(⟨σ, K ▹ .let u U f, .atom a⟩ : State s)⌋ r) :
+    ∃ st' : State s', (⟨σ, K ▹ .let u U f, .atom a⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
   simp only [State.erase, Cont.erase, Tm.erase] at h
   refine Runtime.Step.var_cons_inv (motive := fun s'' r' =>
-    ∃ st' : State s'', (⟨σ, K ▹ .let u, .atom a⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
+    ∃ st' : State s'', (⟨σ, K ▹ .let u U f, .atom a⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
   exact ⟨_, .rename, by simp [State.erase, Tm.erase_substAtom]⟩
 
 /-- Reflection of a runtime `alloc` step: a value under a `let` frame is
 stored, with its casts stripped and pushed into the frame's body. -/
 theorem erase_reflect_alloc {s s' : Sig} {σ : Store s} {K : Cont s} {u : Tm (s,x)}
-    {v : Value s} {r : Runtime.State s'}
-    (h : Runtime.Step ⌊(⟨σ, K ▹ .let u, .val v⟩ : State s)⌋ r) :
-    ∃ st' : State s', (⟨σ, K ▹ .let u, .val v⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
+    {U : CaptureSet s} {f : CapCo (s,x)} {v : Value s} {r : Runtime.State s'}
+    (h : Runtime.Step ⌊(⟨σ, K ▹ .let u U f, .val v⟩ : State s)⌋ r) :
+    ∃ st' : State s', (⟨σ, K ▹ .let u U f, .val v⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
   simp only [State.erase, Cont.erase, Tm.erase] at h
   refine Runtime.Step.value_cons_inv (motive := fun s'' r' =>
-    ∃ st' : State s'', (⟨σ, K ▹ .let u, .val v⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r')
+    ∃ st' : State s'', (⟨σ, K ▹ .let u U f, .val v⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r')
     (Value.erase_isValue v) h ?_
   exact ⟨_, .alloc, by
     simp [State.erase, Store.erase, Cont.erase_weaken, Value.erase_core, Tm.erase_adjust]⟩
@@ -597,7 +600,7 @@ theorem erase_reflect_app {s s' : Sig} {σ : Store s} {K : Cont s} {a b : Atom s
     ∃ st' : State s'', (⟨σ, K, .app a b⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
   intro t' hlk
   rw [Store.lookup_erase] at hlk
-  obtain ⟨S₀, t₀, hv, rfl⟩ := Value.erase_eq_lam _ t' (hσ.lookup_isLiteral a.root) hlk
+  obtain ⟨A, S₀, t₀, g, hv, rfl⟩ := Value.erase_eq_lam _ t' (hσ.lookup_isLiteral a.root) hlk
   by_cases hne : a = .var a.root
   · have hstep : (⟨σ, K, .app (.var a.root) b⟩ : State s) ⟶ ⟨σ, K, t₀.substAtom b⟩ :=
       Step.appVar hv
@@ -613,8 +616,9 @@ erases to a runtime object, so the store entry is read from `hfld` rather
 than from the erasure. -/
 theorem erase_reflect_proj {s s' : Sig} {σ : Store s} {K : Cont s} {a : Atom s} {ℓ : Label}
     {hh : Has s} {r : Runtime.State s'}
-    (hfld : ∃ (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x)) (F : Fields (s,x)) (t : Tm (s,x)),
-      σ.lookup a.root = .obj W Wc F ∧ F.get? ℓ = some t)
+    (hfld : ∃ (A : CaptureSet s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))
+        (F : Fields (s,x)) (t : Tm (s,x)),
+      σ.lookup a.root = .obj A W Wc F ∧ F.get? ℓ = some t)
     (h : Runtime.Step ⌊(⟨σ, K, .proj a ℓ hh⟩ : State s)⌋ r) :
     ∃ st' : State s', (⟨σ, K, .proj a ℓ hh⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
   simp only [State.erase, Tm.erase] at h
@@ -622,7 +626,7 @@ theorem erase_reflect_proj {s s' : Sig} {σ : Store s} {K : Cont s} {a : Atom s}
     ∃ st' : State s'', (⟨σ, K, .proj a ℓ hh⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
   intro F' t' hlk hg
   rw [Store.lookup_erase] at hlk
-  obtain ⟨W, Wc, F, t0, hv, hgg⟩ := hfld
+  obtain ⟨A, W, Wc, F, t0, hv, hgg⟩ := hfld
   rw [hv] at hlk
   obtain rfl : F.erase = F' := by simpa [Value.erase] using hlk
   rw [Fields.erase_get?, hgg, Option.map_some] at hg
@@ -633,15 +637,15 @@ the stored box and the head form of the atom's casts -- the canonical-forms
 obligation `closed_box_inversion` discharges -- and the machine's two
 `unbox` steps consume exactly those three head forms. -/
 theorem erase_reflect_unbox {s s' : Sig} {σ : Store s} {K : Cont s} {a : Atom s}
-    {f : CapCo s} {r : Runtime.State s'}
+    {U : CaptureSet s} {f : CapCo s} {r : Runtime.State s'}
     (hbx : ∃ (b a' : Atom s) (n : Nat) (F : Form s), σ.lookup a.root = .box b ∧
       σ ⊢ a ⇓ᶜ[n] (a', F) ∧ (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d, F = .boxed d))
-    (h : Runtime.Step ⌊(⟨σ, K, .unbox a f⟩ : State s)⌋ r) :
-    ∃ st' : State s', (⟨σ, K, .unbox a f⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
+    (h : Runtime.Step ⌊(⟨σ, K, .unbox a U f⟩ : State s)⌋ r) :
+    ∃ st' : State s', (⟨σ, K, .unbox a U f⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
   obtain ⟨b, a', n, F, hv, hform, hF⟩ := hbx
   simp only [State.erase, Tm.erase] at h
   refine Runtime.Step.proj_inv (motive := fun s'' r' =>
-    ∃ st' : State s'', (⟨σ, K, .unbox a f⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
+    ∃ st' : State s'', (⟨σ, K, .unbox a U f⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
   intro F' t' hlk hg
   rw [Store.lookup_erase, hv] at hlk
   obtain rfl : (Runtime.Fields.cons .nil boxLabel (.var (BVar.there b.root))) = F' := by
@@ -658,12 +662,12 @@ theorem erase_reflect_unbox {s s' : Sig} {σ : Store s} {K : Cont s} {a : Atom s
 
 /-- Reflection of a runtime `let` step: the body becomes a `let` frame. -/
 theorem erase_reflect_let {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {u : Tm (s,x)}
-    {r : Runtime.State s'}
-    (h : Runtime.Step ⌊(⟨σ, K, .let t u⟩ : State s)⌋ r) :
-    ∃ st' : State s', (⟨σ, K, .let t u⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
+    {U : CaptureSet s} {f : CapCo (s,x)} {r : Runtime.State s'}
+    (h : Runtime.Step ⌊(⟨σ, K, .let t u U f⟩ : State s)⌋ r) :
+    ∃ st' : State s', (⟨σ, K, .let t u U f⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
   simp only [State.erase, Tm.erase] at h
   refine Runtime.Step.let_inv (motive := fun s'' r' =>
-    ∃ st' : State s'', (⟨σ, K, .let t u⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
+    ∃ st' : State s'', (⟨σ, K, .let t u U f⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r') h ?_
   exact ⟨_, .let, by simp [State.erase, Cont.erase]⟩
 
 /-- Reflection at a state that is not a cast redex: one FCdot step realizes
@@ -680,9 +684,10 @@ theorem erase_reflect_aux {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {�
     (hat : ∀ a b : Atom s, t = .app a b →
       ∃ (S : Ty s) (T : Ty (s,x)) (C : CaptureSet s), Γ ⊢ₐ a : (Π(S) T) ^ C)
     (hfl : ∀ (a : Atom s) (ℓ : Label) (hh : Has s), t = .proj a ℓ hh →
-      ∃ (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x)) (F : Fields (s,x)) (t0 : Tm (s,x)),
-        σ.lookup a.root = .obj W Wc F ∧ F.get? ℓ = some t0)
-    (hbx : ∀ (a : Atom s) (f : CapCo s), t = .unbox a f →
+      ∃ (A : CaptureSet s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))
+        (F : Fields (s,x)) (t0 : Tm (s,x)),
+        σ.lookup a.root = .obj A W Wc F ∧ F.get? ℓ = some t0)
+    (hbx : ∀ (a : Atom s) (U : CaptureSet s) (f : CapCo s), t = .unbox a U f →
       ∃ (b a' : Atom s) (n : Nat) (F : Form s), σ.lookup a.root = .box b ∧
         σ ⊢ a ⇓ᶜ[n] (a', F) ∧ (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d, F = .boxed d))
     (hnc : ¬ (State.CastRedex ⟨σ, K, t⟩))
@@ -694,21 +699,21 @@ theorem erase_reflect_aux {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {�
       | nil => exact (Runtime.Step.var_nil_inv h).elim
       | cons K0 f =>
           cases f with
-          | «let» u => exact erase_reflect_rename h
+          | «let» u U f => exact erase_reflect_rename h
           | cast e => exact absurd (Or.inr ⟨K0, e, rfl, Or.inr ⟨a, rfl⟩⟩) hnc
   | val v =>
       cases K with
       | nil => exact (Runtime.Step.value_nil_inv (Value.erase_isValue v) h).elim
       | cons K0 f =>
           cases f with
-          | «let» u => exact erase_reflect_alloc h
+          | «let» u U f => exact erase_reflect_alloc h
           | cast e => exact absurd (Or.inr ⟨K0, e, rfl, Or.inl ⟨v, rfl⟩⟩) hnc
   | app a b =>
       exact erase_reflect_app hσ
         (fun hne => let ⟨S, T, C, hpi⟩ := hat a b rfl; hcf a S T C hpi hne) h
   | proj a ℓ hh => exact erase_reflect_proj (hfl a ℓ hh rfl) h
-  | unbox a f => exact erase_reflect_unbox (hbx a f rfl) h
-  | «let» t u => exact erase_reflect_let h
+  | unbox a U f => exact erase_reflect_unbox (hbx a U f rfl) h
+  | «let» t u U f => exact erase_reflect_let h
   | cast t e => exact absurd (Or.inl ⟨t, e, rfl⟩) hnc
 
 /-- Backward simulation: every runtime step out of an erased state is
@@ -721,8 +726,9 @@ theorem erase_reflect {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.Stat
       a ≠ .var a.root → ∃ n a' F, st.σ ⊢ a ⇓ᶜ[n] (a', F) ∧
         (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c))
     (hfd : ∀ (hh : Has s) (x : BVar s .var) (ℓ : Label), Γ ⊢ hh : x ∋ ℓ →
-      ∃ (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x)) (F : Fields (s,x)) (t0 : Tm (s,x)),
-        st.σ.lookup x = .obj W Wc F ∧ F.get? ℓ = some t0)
+      ∃ (A : CaptureSet s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))
+        (F : Fields (s,x)) (t0 : Tm (s,x)),
+        st.σ.lookup x = .obj A W Wc F ∧ F.get? ℓ = some t0)
     (hbox : ∀ (a : Atom s) (T : Ty s) (D : CaptureSet s), Γ ⊢ₐ a : (□ T) ^ D →
       ∃ (b a' : Atom s) (n : Nat) (F : Form s), st.σ.lookup a.root = .box b ∧
         st.σ ⊢ a ⇓ᶜ[n] (a', F) ∧ (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d, F = .boxed d))
@@ -747,8 +753,9 @@ theorem erase_reflect {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.Stat
     · rw [hab] at hv; simp at hv
     · rw [hab] at ha0; simp at ha0
   have hfl : ∀ (a : Atom s) (ℓ : Label) (hh : Has s), st1.t = .proj a ℓ hh →
-      ∃ (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x)) (F : Fields (s,x)) (t0 : Tm (s,x)),
-        st1.σ.lookup a.root = .obj W Wc F ∧ F.get? ℓ = some t0 := by
+      ∃ (A : CaptureSet s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))
+        (F : Fields (s,x)) (t0 : Tm (s,x)),
+        st1.σ.lookup a.root = .obj A W Wc F ∧ F.get? ℓ = some t0 := by
     intro a ℓ hh hab
     rw [hstore]
     rcases hinv with ⟨T, hT⟩ | ⟨v, hv⟩ | ⟨a0, ha0⟩
@@ -757,10 +764,10 @@ theorem erase_reflect {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.Stat
       | proj _ hhh => exact hfd _ _ _ hhh
     · rw [hab] at hv; simp at hv
     · rw [hab] at ha0; simp at ha0
-  have hbx : ∀ (a : Atom s) (f : CapCo s), st1.t = .unbox a f →
+  have hbx : ∀ (a : Atom s) (U : CaptureSet s) (f : CapCo s), st1.t = .unbox a U f →
       ∃ (b a' : Atom s) (n : Nat) (F : Form s), st1.σ.lookup a.root = .box b ∧
         st1.σ ⊢ a ⇓ᶜ[n] (a', F) ∧ (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d, F = .boxed d) := by
-    intro a f hab
+    intro a U f hab
     rw [hstore]
     rcases hinv with ⟨T, hT⟩ | ⟨v, hv⟩ | ⟨a0, ha0⟩
     · rw [hab] at hT
@@ -799,16 +806,16 @@ theorem final_reflect {s : Sig} {st : State s} {Γ : Ctx s} (hσ : ⊢ st.σ : �
       | nil => exact Or.inl (Or.inr ⟨rfl, a, rfl⟩)
       | cons K0 f =>
           cases f with
-          | «let» u => simp [State.erase, Cont.erase] at hK
+          | «let» u U f => simp [State.erase, Cont.erase] at hK
           | cast e => exact Or.inr (Or.inr ⟨K0, e, rfl, Or.inr ⟨a, rfl⟩⟩)
   | val v =>
       cases K with
       | nil => exact Or.inl (Or.inl ⟨rfl, v, rfl⟩)
       | cons K0 f =>
           cases f with
-          | «let» u => simp [State.erase, Cont.erase] at hK
+          | «let» u U f => simp [State.erase, Cont.erase] at hK
           | cast e => exact Or.inr (Or.inr ⟨K0, e, rfl, Or.inl ⟨v, rfl⟩⟩)
-  | app a b | proj a ℓ hh | «let» t u | unbox a f =>
+  | app a b | proj a ℓ hh | «let» t u U f | unbox a U f =>
       -- the erasure is an application, projection, or `let`: not final
       simp only [State.erase, Tm.erase] at ht
       exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)

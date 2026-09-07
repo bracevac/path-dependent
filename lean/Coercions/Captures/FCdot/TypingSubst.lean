@@ -35,7 +35,7 @@ namespace FCdot
 @[simp] theorem Fields.labels_subst {s1 s2 : Sig} :
     ∀ (F : Fields s1) (σ : Subst s1 s2), (F.subst σ).labels = F.labels
   | .nil, _ => rfl
-  | .cons F l t, σ => by
+  | .cons F l t g, σ => by
       simp [Fields.subst, Fields.labels, Fields.labels_subst F σ]
 
 /-! ## Typed substitutions -/
@@ -532,10 +532,12 @@ theorem Tm.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst 
         (by rw [Atom.root_subst]; exact hhh.subst hσ)
       simpa [Tm.subst, Ty.rename, Shape.rename, CaptureSet.rename, CapAtom.rename,
         Atom.root_subst] using this
-  | .let ht hu =>
-      refine .let (ht.subst hσ) ?_
-      have := hu.subst (hσ.lift _)
-      simpa [Ty.weaken_rename] using this
+  | .let ht hu hf =>
+      refine .let (ht.subst hσ) ?_ ?_
+      · have := hu.subst (hσ.lift _)
+        simpa [Ty.weaken_rename] using this
+      · have := CapCo.HasType.subst (hσ.lift _) hf
+        simpa only [Tm.uses_subst, Subst.lift_root, CaptureSet.weaken_rename] using this
   | .cast ht he => exact .cast (ht.subst hσ) (LeCo.HasType.subst hσ he)
   | .unbox ha hf =>
       have := Tm.HasType.unbox (by simpa [Ty.rename, Shape.rename] using ha.subst hσ)
@@ -546,14 +548,19 @@ theorem Value.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Sub
     {v : Value s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ᵥ v : T) :
     Γ' ⊢ᵥ (v.subst σ) : (T.rename σ.root) := by
   match h with
-  | .lam ht =>
-      have := ht.subst (hσ.lift _)
-      simp only [Subst.lift_root, Binding.rename_opaque] at this
-      have := Value.HasType.lam this
+  | .lam ht hg =>
+      have ht' := ht.subst (hσ.lift _)
+      have hg' := CapCo.HasType.subst (hσ.lift _) hg
+      simp only [Subst.lift_root, Binding.rename_opaque] at ht' hg'
+      have := Value.HasType.lam ht'
+        (by
+          simpa only [Tm.uses_subst, Subst.lift_root,
+            CaptureSet.closing_rename] using hg')
       simpa [Value.subst, Ty.rename, Shape.rename] using this
-  | @Value.HasType.obj _ F0 _ W0 Wc0 hF =>
+  | @Value.HasType.obj _ A0 F0 _ W0 Wc0 hF =>
       have hF' := Fields.HasType.subst (hσ.lift _) hF
-      have := Value.HasType.obj (Γ := Γ') (W := W0.rename σ.root.lift)
+      have := Value.HasType.obj (Γ := Γ') (A := A0.rename σ.root)
+        (W := W0.rename σ.root.lift)
         (Wc := Wc0.rename σ.root.lift) (F := F0.subst σ.lift)
         (by
           simpa [Binding.rename, Ty.rename, Shape.rename,
@@ -565,15 +572,18 @@ theorem Value.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Sub
   | .cast hv he => exact .cast (hv.subst hσ) (LeCo.HasType.subst hσ he)
 
 theorem Fields.HasType.subst {s1 s2 : Sig} {Γ : Ctx (s1,x)} {Γ' : Ctx (s2,x)}
-    {σ : Subst s1 s2} {F : Fields (s1,x)}
-    (hσ : Subst.Typed Γ σ.lift Γ') (h : Γ ⊢ᶠ F) :
-    Γ' ⊢ᶠ (F.subst σ.lift) := by
+    {σ : Subst s1 s2} {F : Fields (s1,x)} {A : CaptureSet s1}
+    (hσ : Subst.Typed Γ σ.lift Γ') (h : Γ ⊢ᶠ[A] F) :
+    Γ' ⊢ᶠ[A.rename σ.root] (F.subst σ.lift) := by
   match h with
   | .nil => exact .nil
-  | .cons hF ht =>
-      refine .cons (hF.subst hσ) ?_
-      have := ht.subst hσ
-      simpa [Ty.rename, Shape.rename, CaptureSet.rename, CapAtom.rename] using this
+  | .cons hF ht hg =>
+      refine .cons (hF.subst hσ) ?_ ?_
+      · have := ht.subst hσ
+        simpa [Ty.rename, Shape.rename, CaptureSet.rename, CapAtom.rename] using this
+      · have := CapCo.HasType.subst hσ hg
+        simpa only [Tm.uses_subst, Subst.lift_root,
+          CaptureSet.closing_rename] using this
 
 end
 
@@ -596,6 +606,25 @@ theorem Value.HasType.substAtom {Γ : Ctx s} {T : Ty s} {v : Value (s,x)} {U : T
     Γ ⊢ᵥ v.subst (Subst.single a) : (U⟦a.root⟧) := by
   have := hv.subst (Subst.Typed.single ha)
   simpa [Ty.substVar] using this
+
+/-- Capture evidence under the instantiation of the innermost opaque binder. -/
+theorem CapCo.HasType.substAtom {Γ : Ctx s} {T : Ty s} {f : CapCo (s,x)}
+    {C D : CaptureSet (s,x)} {a : Atom s}
+    (hf : (Γ.cons (.opaque T)) ⊢ᶜ f : C ⊑ D) (ha : Γ ⊢ₐ a : T) :
+    Γ ⊢ᶜ f.subst (Subst.single a) : C⟦a.root⟧ ⊑ D⟦a.root⟧ := by
+  have := hf.subst (Subst.Typed.single ha)
+  simpa [CaptureSet.substVar] using this
+
+/-- The avoidance evidence of a let body, instantiated at the atom the body is
+substituted with.  This is the form `Preservation.lean` needs at the `rename`
+step: the declared use set `U'` does not mention the bound variable, so it is
+unchanged, and the body's use set is instantiated at the atom's root. -/
+theorem CapCo.HasType.letBody_substAtom {Γ : Ctx s} {T : Ty s} {u : Tm (s,x)}
+    {U' : CaptureSet s} {f : CapCo (s,x)} {a : Atom s}
+    (hf : (Γ.cons (.opaque T)) ⊢ᶜ f : u.uses ⊑ U'↑) (ha : Γ ⊢ₐ a : T) :
+    Γ ⊢ᶜ f.subst (Subst.single a) : (u.substAtom a).uses ⊑ U' := by
+  have := hf.substAtom ha
+  simpa only [Tm.uses_substAtom, CaptureSet.rename_subst_weaken] using this
 
 end FCdot
 

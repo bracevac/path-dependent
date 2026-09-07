@@ -111,8 +111,8 @@ theorem atomFold_eq {Γ : Ctx s} {b : Atom s} {Tel : Telescope (s,x)} {C : Captu
   simp [atomFold]
 
 theorem tmUnbox_eq {Γ : Ctx s} {a : Atom s} {f : CapCo s} {S : Shape s}
-    {C D : CaptureSet s} (ha : Γ ⊢ₐ a : (□ (S ^ C)) ^ D) (hf : Γ ⊢ᶜ f : C ⊑ []) :
-    tmUnbox ha hf = some ⟨S ^ C, .unbox ha hf⟩ := by
+    {C D U : CaptureSet s} (ha : Γ ⊢ₐ a : (□ (S ^ C)) ^ D) (hf : Γ ⊢ᶜ f : C ⊑ U) :
+    tmUnbox U ha hf = some ⟨S ^ C, .unbox ha hf⟩ := by
   simp [tmUnbox]
 
 theorem tmApp_eq {Γ : Ctx s} {a b : Atom s} {C : CaptureSet s} {T : Ty s} {U : Ty (s,x)}
@@ -359,9 +359,9 @@ theorem Tm.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
       simp [synthTmCore, Atom.HasType.complete ha, Atom.HasType.complete hb, tmApp_eq ha hb]
   | _, _, _, _, .proj ha hh => by
       simp [synthTmCore, Atom.HasType.complete ha, Has.HasType.complete hh]
-  | _, _, _, _, .let ht hu => by
+  | _, _, _, _, .let ht hu hf => by
       simp [synthTmCore, Tm.HasType.complete ht, Tm.HasType.complete hu,
-        Ty.strengthenW?_weaken]
+        CapCo.HasType.complete hf, Ty.strengthenW?_weaken]
   | _, _, _, _, .cast ht he => by
       simp [synthTmCore, Tm.HasType.complete ht, LeCo.HasType.complete he]
   | _, _, _, _, .unbox ha hf => by
@@ -371,8 +371,8 @@ theorem Tm.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
 /-- The kernel synthesises the type of every value derivation. -/
 theorem Value.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
     (h : Γ ⊢ᵥ v : T), synthValueCore Γ v = some ⟨T, h⟩
-  | _, _, _, _, .lam ht => by
-      simp [synthValueCore, Tm.HasType.complete ht]
+  | _, _, _, _, .lam ht hg => by
+      simp [synthValueCore, Tm.HasType.complete ht, CapCo.HasType.complete hg]
   | _, _, _, _, .obj hF => by
       simp [synthValueCore, Fields.HasType.complete hF]
   | _, _, _, _, .box ha => by
@@ -381,11 +381,13 @@ theorem Value.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T : T
       simp [synthValueCore, Value.HasType.complete hv, LeCo.HasType.complete he]
 
 /-- The kernel accepts every field block derivation. -/
-theorem Fields.HasType.complete : ∀ {s : Sig} {Γ : Ctx (s,x)} {F : Fields (s,x)}
-    (h : Γ ⊢ᶠ F), checkFieldsCore Γ F = some ⟨h⟩
-  | _, _, _, .nil => by simp [checkFieldsCore]
-  | _, _, _, .cons hF ht => by
-      simp [checkFieldsCore, Fields.HasType.complete hF, Tm.HasType.complete ht]
+theorem Fields.HasType.complete : ∀ {s : Sig} {Γ : Ctx (s,x)} {A : CaptureSet s}
+    {F : Fields (s,x)}
+    (h : Γ ⊢ᶠ[A] F), checkFieldsCore A Γ F = some ⟨h⟩
+  | _, _, _, _, .nil => by simp [checkFieldsCore]
+  | _, _, _, _, .cons hF ht hg => by
+      simp [checkFieldsCore, Fields.HasType.complete hF, Tm.HasType.complete ht,
+        CapCo.HasType.complete hg]
 
 end
 
@@ -560,12 +562,12 @@ theorem checkValue_iff {Γ : Ctx s} {v : Value s} {T : Ty s} :
     checkValue Γ v T = true ↔ Γ ⊢ᵥ v : T :=
   ⟨checkValue_sound, checkValue_complete⟩
 
-theorem checkFields_complete {Γ : Ctx (s,x)} {F : Fields (s,x)} (h : Γ ⊢ᶠ F) :
-    checkFields Γ F = true := by
+theorem checkFields_complete {Γ : Ctx (s,x)} {A : CaptureSet s} {F : Fields (s,x)}
+    (h : Γ ⊢ᶠ[A] F) : checkFields A Γ F = true := by
   simp [checkFields, Fields.HasType.complete h]
 
-theorem checkFields_iff {Γ : Ctx (s,x)} {F : Fields (s,x)} :
-    checkFields Γ F = true ↔ Γ ⊢ᶠ F :=
+theorem checkFields_iff {Γ : Ctx (s,x)} {A : CaptureSet s} {F : Fields (s,x)} :
+    checkFields A Γ F = true ↔ Γ ⊢ᶠ[A] F :=
   ⟨checkFields_sound, checkFields_complete⟩
 
 end Public
@@ -652,9 +654,9 @@ theorem Tm.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T T' : T
   | _, _, _, _, _, .proj _ _, h' => by
       cases h' with
       | proj _ _ => rfl
-  | _, _, _, _, _, .let ht hu, h' => by
+  | _, _, _, _, _, .let ht hu _, h' => by
       cases h' with
-      | «let» ht' hu' =>
+      | «let» ht' hu' _ =>
           have hT := Tm.HasType.type_unique ht ht'
           subst hT
           have hU := Tm.HasType.type_unique hu hu'
@@ -673,9 +675,9 @@ theorem Tm.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T T' : T
 
 theorem Value.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T T' : Ty s},
     Γ ⊢ᵥ v : T → Γ ⊢ᵥ v : T' → T = T'
-  | _, _, _, _, _, .lam ht, h' => by
+  | _, _, _, _, _, .lam ht _, h' => by
       cases h' with
-      | lam ht' => rw [Tm.HasType.type_unique ht ht']
+      | lam ht' _ => rw [Tm.HasType.type_unique ht ht']
   | _, _, _, _, _, .obj _, h' => by
       cases h' with
       | obj _ => rfl

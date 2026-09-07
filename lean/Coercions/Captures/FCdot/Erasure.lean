@@ -30,14 +30,18 @@ def Tm.erase : Tm s → Runtime.Tm s
   | .val v => v.erase
   | .app a b => .app a.root b.root
   | .proj a ℓ _ => .proj a.root ℓ
-  | .let t u => .let t.erase u.erase
+  -- The declared use set and the avoidance evidence of a let have no runtime
+  -- content and vanish.
+  | .let t u _ _ => .let t.erase u.erase
   | .cast t _ => t.erase
   -- Unboxing reads the one field of the runtime object a box erases to.
-  | .unbox a _ => .proj a.root boxLabel
+  | .unbox a _ _ => .proj a.root boxLabel
 
 def Value.erase : Value s → Runtime.Tm s
-  | .lam _ t => .lam t.erase
-  | .obj _ _ F => .obj F.erase
+  -- The assigned capture set and the closing evidence are annotations and
+  -- vanish with the parameter type.
+  | .lam _ _ t _ => .lam t.erase
+  | .obj _ _ _ F => .obj F.erase
   -- A box is a one-field object holding the boxed atom's root, weakened
   -- past the object's own self binder.
   | .box a => .obj (.cons .nil boxLabel (.var (.there a.root)))
@@ -45,7 +49,7 @@ def Value.erase : Value s → Runtime.Tm s
 
 def Fields.erase : Fields s → Runtime.Fields s
   | .nil => .nil
-  | .cons F ℓ t => .cons F.erase ℓ t.erase
+  | .cons F ℓ t _ => .cons F.erase ℓ t.erase
 
 end
 
@@ -58,7 +62,7 @@ def Store.erase : Store s → Runtime.Store s
 
 def Cont.erase : Cont s → Runtime.Cont s
   | .nil => .nil
-  | .cons K (.let u) => .cons K.erase u.erase
+  | .cons K (.let u _ _) => .cons K.erase u.erase
   | .cons K (.cast _) => K.erase
 
 def State.erase (st : State s) : Runtime.State s :=
@@ -82,8 +86,8 @@ variable the box is stored at yields the root of the boxed atom. -/
 @[simp] theorem Value.erase_box (a : Atom s) :
     ⌊(Value.box a)⌋ = .obj (.cons .nil boxLabel (.var (.there a.root))) := rfl
 
-@[simp] theorem Tm.erase_unbox (a : Atom s) (f : CapCo s) :
-    ⌊(Tm.unbox a f)⌋ = .proj a.root boxLabel := rfl
+@[simp] theorem Tm.erase_unbox (a : Atom s) (U : CaptureSet s) (f : CapCo s) :
+    ⌊(Tm.unbox a U f)⌋ = .proj a.root boxLabel := rfl
 
 theorem boxField_get? (a : Atom s) :
     (Runtime.Fields.cons .nil boxLabel (.var (BVar.there a.root)) :
@@ -97,14 +101,41 @@ theorem boxField_substVar (a : Atom s) (x : BVar s .var) :
 `Store.lookup_erase` (which needs the runtime renaming lemmas, and so lives
 in `ErasureMetatheory.lean`) supplies `hlk`; both steps land on the same
 erased state, since a cast on an atom erases to nothing. -/
-theorem unbox_erase_step {σ : Store s} {K : Cont s} {a b : Atom s} {f : CapCo s}
+theorem unbox_erase_step {σ : Store s} {K : Cont s} {a b : Atom s}
+    {U : CaptureSet s} {f : CapCo s}
     (hlk : (⌊σ⌋ : Runtime.Store s).lookup a.root = ⌊σ.lookup a.root⌋)
     (h : σ.lookup a.root = .box b) :
-    Runtime.Step ⌊(⟨σ, K, .unbox a f⟩ : State s)⌋ ⌊(⟨σ, K, .atom b⟩ : State s)⌋ := by
+    Runtime.Step ⌊(⟨σ, K, .unbox a U f⟩ : State s)⌋ ⌊(⟨σ, K, .atom b⟩ : State s)⌋ := by
   refine Runtime.Step.proj (F := .cons .nil boxLabel (.var (.there b.root)))
     (t := .var (.there b.root)) ?_ (boxField_get? b)
   show (⌊σ⌋ : Runtime.Store s).lookup a.root = _
   rw [hlk, h]; rfl
+
+/-! ### Erasure and the inspected root
+
+The root a term reads survives erasure: an application erases to a runtime
+application at the same root, a projection to a projection at the same root,
+and an unboxing to the projection of the box field at the same root.  A cast
+term reads no root of its own, while its erasure is the erasure of the term
+under the cast, so the equation is stated in the direction the prediction
+theorem uses: a root read in `FCdot` is read after erasure. -/
+
+/-- Erasure preserves an inspected root. -/
+theorem Tm.inspects_erase {s : Sig} {t : Tm s} {x : BVar s .var}
+    (h : t.inspects = some x) : (⌊t⌋ : Runtime.Tm s).inspects = some x := by
+  cases t with
+  | app a b => rw [Tm.inspects_app] at h; cases h; rfl
+  | proj a ℓ p => rw [Tm.inspects_proj] at h; cases h; rfl
+  | unbox a U f => rw [Tm.inspects_unbox] at h; cases h; rfl
+  | atom a => exact absurd h (by simp)
+  | val v => exact absurd h (by simp)
+  | «let» t u U f => exact absurd h (by simp)
+  | cast t e => exact absurd h (by simp)
+
+/-- Erasure of a state preserves the root the state reads. -/
+theorem State.inspects_erase {s : Sig} {st : State s} {x : BVar s .var}
+    (h : st.inspects = some x) : (⌊st⌋ : Runtime.State s).t.inspects = some x :=
+  Tm.inspects_erase h
 
 /-- States whose next step only moves a cast frame; such steps erase to no
 runtime step. -/

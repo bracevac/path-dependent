@@ -260,6 +260,18 @@ def Proposition.substVar (P : Proposition (s,,k)) (y : BVar s k) : Proposition s
 def Telescope.substVar (Tel : Telescope (s,,k)) (y : BVar s k) : Telescope s :=
   Tel.rename (Rename.subst y)
 
+/-- The capture set of a type: a type is a shape with a capture set beside
+it, and this is the capture set. -/
+def Ty.captureSet : Ty s → CaptureSet s
+  | .capt C _ => C
+
+@[simp] theorem Ty.captureSet_capt (C : CaptureSet s) (S : Shape s) :
+    (Ty.capt C S).captureSet = C := rfl
+
+@[simp] theorem Ty.captureSet_weaken (T : Ty s) :
+    (T.weaken (k := k)).captureSet = T.captureSet.weaken := by
+  cases T; rfl
+
 /-! ### Notation for weakening and instantiation
 
 `T↑` weakens under a new binder of any kind; `T⟦y⟧` instantiates the
@@ -563,18 +575,26 @@ inductive Tm : Sig → Type where
   | app : Atom s → Atom s → Tm s
   /-- Field projection, annotated with the field-presence evidence. -/
   | proj : Atom s → Label → Has s → Tm s
-  | «let» : Tm s → Tm (s,x) → Tm s
+  /-- `let x = t in u ⦃U'; f⦄`.  The let declares the use set `U'` of its
+      body and carries the avoidance evidence `f` putting the body's use set
+      below `U'` weakened.  `U'` is data, so that `uses` is structural. -/
+  | «let» : Tm s → Tm (s,x) → CaptureSet s → CapCo (s,x) → Tm s
   | cast : Tm s → LeCo s → Tm s
   /-- Unboxing: a term, not an atom.  It reads the atom's box and charges
-      the boxed capture set against the evidence `f`. -/
-  | unbox : Atom s → CapCo s → Tm s
+      the boxed capture set against the declared set `U` by the evidence
+      `f`. -/
+  | unbox : Atom s → CaptureSet s → CapCo s → Tm s
 
 inductive Value : Sig → Type where
-  | lam : Ty s → Tm (s,x) → Value s
-  /-- Object literal: block witnesses (absent labels are `⊤`), capture
-      witnesses (absent labels are `[]`), and fields.  Its precise shape is
-      the telescope generated from them (`Telescope.ofLiteral`). -/
-  | obj : Witnesses (s,x) → CapWitnesses (s,x) → Fields (s,x) → Value s
+  /-- `λ^A(x : T). t ⦃g⦄`: the assigned capture set `A`, the parameter type,
+      the body, and the closing evidence `g` putting the body's use set below
+      `A` weakened united with the parameter. -/
+  | lam : CaptureSet s → Ty s → Tm (s,x) → CapCo (s,x) → Value s
+  /-- Object literal `ν^A(W; Wᶜ; F)`: the assigned capture set, block
+      witnesses (absent labels are `⊤`), capture witnesses (absent labels are
+      `[]`), and fields.  Its precise shape is the telescope generated from
+      them (`Telescope.ofLiteral`). -/
+  | obj : CaptureSet s → Witnesses (s,x) → CapWitnesses (s,x) → Fields (s,x) → Value s
   /-- A boxed atom: a value with no witnesses and no fields.  The box shape
       hides the captured set, so a box is pure. -/
   | box : Atom s → Value s
@@ -588,7 +608,9 @@ inductive Witnesses : Sig → Type where
 
 inductive Fields : Sig → Type where
   | nil : Fields s
-  | cons : Fields s → Label → Tm s → Fields s
+  /-- `ℓ = t ⦃g⦄`: the field's term with the closing evidence putting its use
+      set below the literal's assigned set united with the self. -/
+  | cons : Fields s → Label → Tm s → CapCo s → Fields s
 
 end
 
@@ -615,10 +637,93 @@ theorem Witnesses.get_of_not_mem_labels {s : Sig} :
 /-- Field lookup. -/
 def Fields.get? : Fields s → Label → Option (Tm s)
   | .nil, _ => none
-  | .cons F ℓ' t, ℓ => if ℓ = ℓ' then some t else F.get? ℓ
+  | .cons F ℓ' t _, ℓ => if ℓ = ℓ' then some t else F.get? ℓ
 
 /-- Field presence, as a proposition on the syntax. -/
 def Fields.Has (F : Fields s) (ℓ : Label) : Prop := (F.get? ℓ).isSome
+
+/-! ## Annotations, use sets, and the inspected root
+
+A value carries the capture set its introduction rule assigns to it: a
+lambda and a literal carry it as a field, a box is pure, and a cast keeps
+the annotation of the value under it.  A term carries a *use set*, computed
+by a total structural function from the sets the syntax declares.  A state
+inspects at most one root, the variable whose stored value the next step
+reads. -/
+
+/-- The capture set a value's introduction rule assigns to it. -/
+def Value.annot : Value s → CaptureSet s
+  | .lam A _ _ _ => A
+  | .obj A _ _ _ => A
+  | .box _ => []
+  | .cast v _ => v.annot
+
+@[simp] theorem Value.annot_lam (A : CaptureSet s) (T : Ty s) (t : Tm (s,x))
+    (g : CapCo (s,x)) : (Value.lam A T t g).annot = A := rfl
+
+@[simp] theorem Value.annot_obj (A : CaptureSet s) (W : Witnesses (s,x))
+    (Wc : CapWitnesses (s,x)) (F : Fields (s,x)) : (Value.obj A W Wc F).annot = A := rfl
+
+@[simp] theorem Value.annot_box (a : Atom s) : (Value.box a).annot = [] := rfl
+
+@[simp] theorem Value.annot_cast (v : Value s) (e : LeCo s) :
+    (Value.cast v e).annot = v.annot := rfl
+
+/-- The use set of a term: the capabilities the term may still read.  It is
+total and structural, because every set a binder declares is data. -/
+def Tm.uses : Tm s → CaptureSet s
+  | .atom a => [.var a.root]
+  | .val _ => []
+  | .app a b => [.var a.root, .var b.root]
+  | .proj a _ _ => [.var a.root]
+  | .let t _ U _ => t.uses ∪ U
+  | .cast t _ => t.uses
+  | .unbox a U _ => [.var a.root] ∪ U
+
+@[simp] theorem Tm.uses_atom (a : Atom s) : (Tm.atom a).uses = [.var a.root] := rfl
+@[simp] theorem Tm.uses_val (v : Value s) : (Tm.val v).uses = [] := rfl
+@[simp] theorem Tm.uses_app (a b : Atom s) :
+    (Tm.app a b).uses = [.var a.root, .var b.root] := rfl
+@[simp] theorem Tm.uses_proj (a : Atom s) (ℓ : Label) (h : Has s) :
+    (Tm.proj a ℓ h).uses = [.var a.root] := rfl
+@[simp] theorem Tm.uses_let (t : Tm s) (u : Tm (s,x)) (U : CaptureSet s) (f : CapCo (s,x)) :
+    (Tm.let t u U f).uses = t.uses ∪ U := rfl
+@[simp] theorem Tm.uses_cast (t : Tm s) (e : LeCo s) : (Tm.cast t e).uses = t.uses := rfl
+@[simp] theorem Tm.uses_unbox (a : Atom s) (U : CaptureSet s) (f : CapCo s) :
+    (Tm.unbox a U f).uses = [.var a.root] ∪ U := rfl
+
+/-- The root a term reads when it steps: the function of an application, the
+receiver of a projection, the box of an unboxing.  Every other term reads no
+stored value. -/
+def Tm.inspects : Tm s → Option (BVar s .var)
+  | .app a _ => some a.root
+  | .proj a _ _ => some a.root
+  | .unbox a _ _ => some a.root
+  | _ => none
+
+@[simp] theorem Tm.inspects_app (a b : Atom s) : (Tm.app a b).inspects = some a.root := rfl
+@[simp] theorem Tm.inspects_proj (a : Atom s) (ℓ : Label) (h : Has s) :
+    (Tm.proj a ℓ h).inspects = some a.root := rfl
+@[simp] theorem Tm.inspects_unbox (a : Atom s) (U : CaptureSet s) (f : CapCo s) :
+    (Tm.unbox a U f).inspects = some a.root := rfl
+@[simp] theorem Tm.inspects_atom (a : Atom s) : (Tm.atom a).inspects = none := rfl
+@[simp] theorem Tm.inspects_val (v : Value s) : (Tm.val v).inspects = none := rfl
+@[simp] theorem Tm.inspects_let (t : Tm s) (u : Tm (s,x)) (U : CaptureSet s)
+    (f : CapCo (s,x)) : (Tm.let t u U f).inspects = none := rfl
+@[simp] theorem Tm.inspects_cast (t : Tm s) (e : LeCo s) : (Tm.cast t e).inspects = none := rfl
+
+/-- An inspected root is used.  This is the bridge between the prediction
+theorem, which is about use sets, and the steps, which read roots. -/
+theorem Tm.inspects_mem_uses {s : Sig} {t : Tm s} {x : BVar s .var}
+    (h : t.inspects = some x) : CapAtom.var x ∈ t.uses := by
+  cases t with
+  | app a b => cases h; simp
+  | proj a ℓ hh => cases h; simp
+  | unbox a U f => cases h; simp
+  | atom a => simp at h
+  | val v => simp at h
+  | «let» t u U f => simp at h
+  | cast t e => simp at h
 
 /-- Definition entries of a literal's witnesses: one `self ∙ ℓ ≐ W₀.get ℓ` per
 listed label (a shadowed label gets the outer definition, so every entry is
@@ -661,13 +766,14 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .val v, ρ => .val (v.rename ρ)
   | .app a b, ρ => .app (a.rename ρ) (b.rename ρ)
   | .proj a ℓ h, ρ => .proj (a.rename ρ) ℓ (h.rename ρ)
-  | .let t u, ρ => .let (t.rename ρ) (u.rename ρ.lift)
+  | .let t u U f, ρ => .let (t.rename ρ) (u.rename ρ.lift) (U.rename ρ) (f.rename ρ.lift)
   | .cast t e, ρ => .cast (t.rename ρ) (e.rename ρ)
-  | .unbox a f, ρ => .unbox (a.rename ρ) (f.rename ρ)
+  | .unbox a U f, ρ => .unbox (a.rename ρ) (U.rename ρ) (f.rename ρ)
 
 def Value.rename : Value s1 → Rename s1 s2 → Value s2
-  | .lam S t, ρ => .lam (S.rename ρ) (t.rename ρ.lift)
-  | .obj W Wc F, ρ => .obj (W.rename ρ.lift) (Wc.rename ρ.lift) (F.rename ρ.lift)
+  | .lam A S t g, ρ => .lam (A.rename ρ) (S.rename ρ) (t.rename ρ.lift) (g.rename ρ.lift)
+  | .obj A W Wc F, ρ =>
+      .obj (A.rename ρ) (W.rename ρ.lift) (Wc.rename ρ.lift) (F.rename ρ.lift)
   | .box a, ρ => .box (a.rename ρ)
   | .cast v e, ρ => .cast (v.rename ρ) (e.rename ρ)
 
@@ -677,7 +783,7 @@ def Witnesses.rename : Witnesses s1 → Rename s1 s2 → Witnesses s2
 
 def Fields.rename : Fields s1 → Rename s1 s2 → Fields s2
   | .nil, _ => .nil
-  | .cons F ℓ t, ρ => .cons (F.rename ρ) ℓ (t.rename ρ)
+  | .cons F ℓ t g, ρ => .cons (F.rename ρ) ℓ (t.rename ρ) (g.rename ρ)
 
 end
 
@@ -841,20 +947,22 @@ def Tm.subst : Tm s1 → Subst s1 s2 → Tm s2
   | .val v, σ => .val (v.subst σ)
   | .app a b, σ => .app (a.subst σ) (b.subst σ)
   | .proj a ℓ h, σ => .proj (a.subst σ) ℓ (h.subst σ)
-  | .let t u, σ => .let (t.subst σ) (u.subst σ.lift)
+  | .let t u U f, σ =>
+      .let (t.subst σ) (u.subst σ.lift) (U.rename σ.root) (f.subst σ.lift)
   | .cast t e, σ => .cast (t.subst σ) (e.subst σ)
-  | .unbox a f, σ => .unbox (a.subst σ) (f.subst σ)
+  | .unbox a U f, σ => .unbox (a.subst σ) (U.rename σ.root) (f.subst σ)
 
 def Value.subst : Value s1 → Subst s1 s2 → Value s2
-  | .lam S t, σ => .lam (S.rename σ.root) (t.subst σ.lift)
-  | .obj W Wc F, σ =>
-      .obj (W.rename σ.root.lift) (Wc.rename σ.root.lift) (F.subst σ.lift)
+  | .lam A S t g, σ =>
+      .lam (A.rename σ.root) (S.rename σ.root) (t.subst σ.lift) (g.subst σ.lift)
+  | .obj A W Wc F, σ =>
+      .obj (A.rename σ.root) (W.rename σ.root.lift) (Wc.rename σ.root.lift) (F.subst σ.lift)
   | .box a, σ => .box (a.subst σ)
   | .cast v e, σ => .cast (v.subst σ) (e.subst σ)
 
 def Fields.subst : Fields s1 → Subst s1 s2 → Fields s2
   | .nil, _ => .nil
-  | .cons F ℓ t, σ => .cons (F.subst σ) ℓ (t.subst σ)
+  | .cons F ℓ t g, σ => .cons (F.subst σ) ℓ (t.subst σ) (g.subst σ)
 
 end
 

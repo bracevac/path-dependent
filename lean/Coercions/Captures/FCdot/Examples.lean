@@ -1,6 +1,7 @@
 import Coercions.Captures.FCdot.Checker
 import Coercions.Captures.FCdot.Erasure
 import Coercions.Captures.FCdot.Consistency
+import Coercions.Captures.FCdot.Prediction
 import Coercions.Captures.DotMNF.Examples
 import Coercions.Captures.DotMNF.Erasure
 
@@ -104,6 +105,26 @@ the type inclusion `.capt e (.refl [])` (`co`). -/
 /-- A shape inclusion as an inclusion of pure types. -/
 def co (e : ShapeCo s) : LeCo s := .capt e (.refl [])
 
+/-! ## Syntactic inclusions of capture sets
+
+The three inclusions the hand-written derivations below need.  They are stated
+as lemmas rather than decided, because the derivations are stated for an
+arbitrary signature and `decide` needs a closed proposition. -/
+
+/-- The empty capture set is included in every set. -/
+theorem sub_nil {s : Sig} {C : CaptureSet s} : CaptureSet.Subset [] C := by
+  intro a h; simp at h
+
+/-- Every capture set is included in itself. -/
+theorem sub_refl {s : Sig} {C : CaptureSet s} : CaptureSet.Subset C C := fun _ h => h
+
+/-- A one-atom set is included in every set that begins with that atom. -/
+theorem sub_head {s : Sig} {a : CapAtom s} {C : CaptureSet s} :
+    CaptureSet.Subset [a] (a :: C) := by
+  intro b h
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+  simp [h]
+
 /-! ## Type shapes -/
 
 /-- `{A : S..T}` as a telescope over the self block: `[S ≤ y.A, y.A ≤ T]`. -/
@@ -154,8 +175,10 @@ example : checkLe E1Ctx (badBounds .here E1Res) (Ty.pure E1Dom) (Ty.pure E1Res) 
   decide +kernel
 
 def E1 : Tm [] :=
-  .val (.lam (Ty.pure E1Dom)
-    (.let (.atom (.cast (.var .here) (badBounds .here E1Res))) (.atom (.var .here))))
+  .val (.lam [] (Ty.pure E1Dom)
+    (.let (.atom (.cast (.var .here) (badBounds .here E1Res))) (.atom (.var .here))
+      [] (.capvar (.var .here)))
+    (.elem [CapAtom.var .here] [CapAtom.var .here]))
 
 def E1Ty : Ty [] := Ty.pure (.pi (Ty.pure E1Dom) (Ty.pure E1Res))
 
@@ -197,52 +220,78 @@ def E2W : Shape (s,x) := piSel lA .here
 /-- The literal's witnesses: `A` and `a` are both defined as `E2W`. -/
 def E2Wit : Witnesses (s,x) := .cons (.cons .nil lA E2W) la E2W
 
+/-- The literal's capture witnesses: the field `a` holds a pure value, so its
+capture name is declared empty.  This is the entry a `member` in the capture
+sort reads to bound the capture name of a projection. -/
+def E2CapWit : CapWitnesses (s,x) := .cons .nil la []
+
 /-- The field body `λ(y : self.A). y`, cast from its own arrow type to the
 block name `self.a` by the definition of `a`. -/
 def E2Field : Tm (s,x) :=
-  .cast (.val (.lam (Ty.pure (.sel .here lA)) (.atom (.var .here))))
-    (co (.eqToLe (.symm (.def .here la))))
+  .cast
+    (.val (.lam [] (Ty.pure (.sel .here lA)) (.atom (.var .here))
+      (.elem [CapAtom.var .here] [CapAtom.var .here])))
+    (.capt (.eqToLe (.symm (.def .here la))) (.elem [] [CapAtom.name .here la]))
 
-def E2Fields : Fields (s,x) := .cons .nil la E2Field
+def E2Fields : Fields (s,x) :=
+  .cons .nil la E2Field (.elem [] [CapAtom.var .here])
 
-/-- The literal's precise telescope: `[self.A ≃ E2W, self.a ≃ E2W, has a]`. -/
+/-- The literal's precise telescope:
+`[self.A ≃ E2W, self.a ≃ E2W, {self∙a} ≐ᶜ {}, has a]`. -/
 def E2Tel : Telescope (s,x) :=
-  .cons (.cons (.cons .nil (.eq (.sel .here lA) E2W)) (.eq (.sel .here la) E2W)) (.has la)
+  .cons
+    (.cons (.cons (.cons .nil (.eq (.sel .here lA) E2W)) (.eq (.sel .here la) E2W))
+      (.eqC [CapAtom.name .here la] []))
+    (.has la)
 
 /-- `E2Tel` is what the literal generates. -/
-theorem E2Tel_eq : Telescope.ofLiteral (E2Wit (s := s)) .nil [la] = E2Tel := by
+theorem E2Tel_eq : Telescope.ofLiteral (E2Wit (s := s)) E2CapWit [la] = E2Tel := by
   simp [Telescope.ofLiteral, CapWitnesses.eqEntries, CapWitnesses.eqEntriesOf,
     Witnesses.eqEntries, Witnesses.eqEntriesOf, Telescope.hasEntries,
-    Witnesses.get, E2Wit, E2Tel, lA, la]
+    Witnesses.get, CapWitnesses.get, E2Wit, E2CapWit, E2Tel, lA, la]
 
 /-- The literal's precise type. -/
 def E2Ty : Shape s := .obj E2Tel
 
-example : checkValue Ctx.nil (.obj E2Wit .nil E2Fields) (Ty.pure E2Ty) = true := by decide +kernel
+example : checkValue Ctx.nil (.obj [] E2Wit E2CapWit E2Fields) (Ty.pure E2Ty) = true := by
+  decide +kernel
 
-theorem E2_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ .obj E2Wit .nil E2Fields : Ty.pure E2Ty := by
-  have h : Γ ⊢ᵥ .obj E2Wit .nil E2Fields : Ty.pure (.obj (Telescope.ofLiteral E2Wit .nil [la])) :=
+theorem E2_value {s : Sig} {Γ : Ctx s} :
+    Γ ⊢ᵥ .obj [] E2Wit E2CapWit E2Fields : Ty.pure E2Ty := by
+  have h : Γ ⊢ᵥ .obj [] E2Wit E2CapWit E2Fields :
+      Ty.pure (.obj (Telescope.ofLiteral E2Wit E2CapWit [la])) :=
     .obj (.cons .nil
-      (.cast (.val (.lam (.atom .var))) (.capt (.eqToLe (.symm (.def rfl))) .refl)))
+      (.cast (.val (.lam (.atom .var) (.elem sub_refl)))
+        (.capt (.eqToLe (.symm (.def rfl))) (.elem sub_nil)))
+      (.elem sub_nil))
   rw [E2Tel_eq] at h
   exact h
 
 /-- `x.a`, opened at the let-bound `x`. -/
-def E2Has (x : BVar s .var) : Has s := .member (.var x) (.refl E2Ty) 2
-/-- `x.a ≤ ∀(y : x.A) x.A`, from the definition of `a`. -/
-def E2aPi (x : BVar s .var) : LeCo s := co (.eqToLe (.member (.var x) (.refl E2Ty) 1))
-/-- `∀(y : x.A) x.A ≤ x.A`, from the exact bounds of `A`. -/
-def E2piA (x : BVar s .var) : LeCo s := co (.eqToLe (.symm (.member (.var x) (.refl E2Ty) 0)))
+def E2Has (x : BVar s .var) : Has s := .member (.var x) (.refl E2Ty) 3
+/-- `x.a ≤ ∀(y : x.A) x.A`, from the definition of `a`.  The capture name of
+the projection is carried along unchanged. -/
+def E2aPi (x : BVar s .var) : LeCo s :=
+  .capt (.eqToLe (.member (.var x) (.refl E2Ty) 1)) (.refl [CapAtom.name x la])
+/-- `∀(y : x.A) x.A ≤ x.A`, from the exact bounds of `A`, and the capture name
+of the field down to the empty set, from its capture definition. -/
+def E2piA (x : BVar s .var) : LeCo s :=
+  .capt (.eqToLe (.symm (.member (.var x) (.refl E2Ty) 0)))
+    (.eqToLe (.member (.var x) (.refl E2Ty) 2))
 
 /-- `let x = ν(…) in let f = x.a in f f`, at type `⊤`: the type of `f f` is
 `x.A`, which may not escape the `let`. -/
 def E2 : Tm [] :=
-  .let (.val (.obj E2Wit .nil E2Fields))
+  .let (.val (.obj [] E2Wit E2CapWit E2Fields))
     (.let (.proj (.var .here) la (E2Has .here))
       (.cast
         (.app (.cast (.var .here) (E2aPi (.there .here)))
           (.cast (.var .here) (LeCo.trans (E2aPi (.there .here)) (E2piA (.there .here)))))
-        (co (.top (.sel (.there .here) lA)))))
+        (co (.top (.sel (.there .here) lA))))
+      [CapAtom.name .here la]
+      (.union (.capvar (.var .here)) (.capvar (.var .here))))
+    []
+    (.union (.capvar (.var .here)) (.eqToLe (.member (.var .here) (.refl E2Ty) 2)))
 
 def E2Ty' : Ty [] := Ty.pure .top
 
@@ -251,13 +300,15 @@ example : checkTm Ctx.nil E2 (Ty.pure .bot) = false := by decide +kernel
 
 /-- After the outer `let`: `x : E2Ty`. -/
 def E2Ctx1 : Ctx ([],x) := Ctx.nil.cons (.opaque (Ty.pure E2Ty))
-/-- After the inner `let`: `x : E2Ty, f : x.a`. -/
-def E2Ctx2 : Ctx ([],x,x) := E2Ctx1.cons (.opaque (Ty.pure (.sel .here la)))
+/-- After the inner `let`: `x : x.a ^ {x∙a}`, the capture name of the field. -/
+def E2Ctx2 : Ctx ([],x,x) :=
+  E2Ctx1.cons (.opaque ((.sel .here la) ^ [CapAtom.name .here la]))
 
-/-- `f : x.a ≤ ∀(y : x.A) x.A`. -/
+/-- `f : x.a ≤ ∀(y : x.A) x.A`, at the capture name of the field. -/
 theorem E2_fun : Atom.HasType E2Ctx2 (.cast (.var .here) (E2aPi (.there .here)))
-    (Ty.pure (piSel lA (.there .here))) :=
-  .cast .var (.capt (.eqToLe (.member (Tel := E2Tel) .var .refl (.there .here))) .refl)
+    ((piSel lA (.there .here)) ^ [CapAtom.name (.there .here) la]) :=
+  .cast .var
+    (.capt (.eqToLe (.member (Tel := E2Tel) .var .refl (.there (.there .here)))) .refl)
 
 /-- `f : x.a ≤ ∀(y : x.A) x.A ≤ x.A`, so `f` is its own argument. -/
 theorem E2_arg : Atom.HasType E2Ctx2
@@ -265,9 +316,9 @@ theorem E2_arg : Atom.HasType E2Ctx2
     (Ty.pure (.sel (.there .here) lA)) :=
   .cast .var
     (LeCo.HasType.trans
-      (.capt (.eqToLe (.member (Tel := E2Tel) .var .refl (.there .here))) .refl)
-      (.capt (.eqToLe (.symm (.member (Tel := E2Tel) .var .refl (.there (.there .here)))))
-        .refl))
+      (.capt (.eqToLe (.member (Tel := E2Tel) .var .refl (.there (.there .here)))) .refl)
+      (.capt (.eqToLe (.symm (.member (Tel := E2Tel) .var .refl (.there (.there (.there .here))))))
+        (.eqToLe (.member (Tel := E2Tel) .var .refl (.there .here)))))
 
 /-- `f f : x.A`. -/
 theorem E2_app : Tm.HasType E2Ctx2
@@ -279,7 +330,9 @@ theorem E2_app : Tm.HasType E2Ctx2
 theorem E2_typed : Ctx.nil ⊢ E2 : E2Ty' :=
   .let (.val E2_value)
     (.let (.proj .var (.member (Tel := E2Tel) .var .refl .here))
-      (.cast E2_app (.capt .top .refl)))
+      (.cast E2_app (.capt .top .refl))
+      (.union (.capvar .var) (.capvar .var)))
+    (.union (.capvar .var) (.eqToLe (.member (Tel := E2Tel) .var .refl (.there .here))))
 
 /-- The source term of `DotMNF.Examples.E2`. -/
 def E2src : DotMNF.Tm [] :=
@@ -307,9 +360,12 @@ def E3sub (x : BVar s .var) : LeCo s :=
 
 /-- `λ(x : {A : ⊥..Int} ∧ {A : Nat..⊤}). λ(z : Nat). let y = (z : Int) in y`. -/
 def E3 : Tm [] :=
-  .val (.lam (Ty.pure E3Dom)
-    (.val (.lam (Ty.pure tNat)
-      (.let (.atom (.cast (.var .here) (E3sub (.there .here)))) (.atom (.var .here))))))
+  .val (.lam [] (Ty.pure E3Dom)
+    (.val (.lam [] (Ty.pure tNat)
+      (.let (.atom (.cast (.var .here) (E3sub (.there .here)))) (.atom (.var .here))
+        [] (.capvar (.var .here)))
+      (.elem [CapAtom.var .here] [CapAtom.var .here])))
+    (.elem [] [CapAtom.var .here]))
 
 def E3Ty : Ty [] :=
   Ty.pure (.pi (Ty.pure E3Dom) (Ty.pure (.pi (Ty.pure tNat) (Ty.pure tInt))))
@@ -359,11 +415,19 @@ def E4IntLe (x w : BVar s .var) : LeCo s := co (.member (E4wT x w) (.refl E4T) 0
 
 /-- `λ(x : {B : S..T}). λ(w : S). λ(n : Int). let g = λ(y : w.A). y in g n`. -/
 def E4 : Tm [] :=
-  .val (.lam (Ty.pure E4X) (.val (.lam (Ty.pure E4S) (.val (.lam (Ty.pure tInt)
-    (.let (.val (.lam (Ty.pure (.sel (.there .here) lA)) (.atom (.var .here))))
-      (.app (.var .here)
-        (.cast (.var (.there .here))
-          (E4IntLe (.there (.there (.there .here))) (.there (.there .here)))))))))))
+  .val (.lam [] (Ty.pure E4X)
+    (.val (.lam [] (Ty.pure E4S)
+      (.val (.lam [] (Ty.pure tInt)
+        (.let
+          (.val (.lam [] (Ty.pure (.sel (.there .here) lA)) (.atom (.var .here))
+            (.elem [CapAtom.var .here] [CapAtom.var .here])))
+          (.app (.var .here)
+            (.cast (.var (.there .here))
+              (E4IntLe (.there (.there (.there .here))) (.there (.there .here)))))
+          [] (.union (.capvar (.var .here)) (.capvar (.var (.there .here)))))
+        (.elem [] [CapAtom.var .here])))
+      (.elem [] [CapAtom.var .here])))
+    (.elem [] [CapAtom.var .here]))
 
 def E4Ty : Ty [] :=
   Ty.pure (.pi (Ty.pure E4X) (Ty.pure (.pi (Ty.pure E4S)
@@ -405,14 +469,20 @@ def E5AT : Shape s := tTyp lA .top .top
 /-- Witnesses of `ν(z. {a = v})`: the single field is defined as `v.A`. -/
 def E5Wit (v : BVar s .var) : Witnesses (s,x) := .cons .nil la (.sel (.there v) lA)
 
-/-- `[z.a ≃ v.A, has a]`, the telescope of `ν(z. {a = v})`. -/
-def E5Tel (v : BVar s .var) : Telescope (s,x) :=
-  .cons (.cons .nil (.eq (.sel .here la) (.sel (.there v) lA))) (.has la)
+/-- Capture witnesses of `ν(z. {a = v})`: the field holds the pure `v`, so its
+capture name is declared empty. -/
+def E5CapWit : CapWitnesses (s,x) := .cons .nil la []
 
-theorem E5Tel_eq (v : BVar s .var) : Telescope.ofLiteral (E5Wit v) .nil [la] = E5Tel v := by
+/-- `[z.a ≃ v.A, {z∙a} ≐ᶜ {}, has a]`, the telescope of `ν(z. {a = v})`. -/
+def E5Tel (v : BVar s .var) : Telescope (s,x) :=
+  .cons (.cons (.cons .nil (.eq (.sel .here la) (.sel (.there v) lA)))
+    (.eqC [CapAtom.name .here la] [])) (.has la)
+
+theorem E5Tel_eq (v : BVar s .var) :
+    Telescope.ofLiteral (E5Wit v) E5CapWit [la] = E5Tel v := by
   simp [Telescope.ofLiteral, CapWitnesses.eqEntries, CapWitnesses.eqEntriesOf,
     Witnesses.eqEntries, Witnesses.eqEntriesOf, Telescope.hasEntries,
-    Witnesses.get, E5Wit, E5Tel]
+    Witnesses.get, CapWitnesses.get, E5Wit, E5CapWit, E5Tel]
 
 /-- `Obj(z. [z.a ≃ v.A, has a])`, the type of `ν(z. {a = v})`. -/
 def E5ObjTy (v : BVar s .var) : Shape s := .obj (E5Tel v)
@@ -420,21 +490,35 @@ def E5ObjTy (v : BVar s .var) : Shape s := .obj (E5Tel v)
 /-- The field body: `v : {A : ⊤..⊤} ≤ ⊤ ≤ v.A ≃ z.a`. -/
 def E5Field : Tm (s,x,x) :=
   .atom (.cast (.var (.there .here))
-    (co (.trans (.top E5AT)
-      (.trans (.member (.var (.there .here)) (.refl E5AT) 0)
-        (.eqToLe (.symm (.def .here la)))))))
+    (.capt (.trans (.top E5AT)
+        (.trans (.member (.var (.there .here)) (.refl E5AT) 0)
+          (.eqToLe (.symm (.def .here la)))))
+      (.elem [] [CapAtom.name .here la])))
 
-def E5Fields : Fields (s,x,x) := .cons .nil la E5Field
+def E5Fields : Fields (s,x,x) :=
+  .cons .nil la E5Field
+    (.elem [CapAtom.var (.there .here)] [CapAtom.var (.there .here), CapAtom.var .here])
 
-/-- `λ(w : {A : ⊤..⊤}). let f = … in let o = f w in (o.a : w.A)`. -/
+/-- `λ(w : {A : ⊤..⊤}). let f = … in let o = f w in (o.a : w.A)`.  The literal
+captures the parameter `v` of the inner lambda, so it carries the assigned set
+`{v}`, and the inner lambda's result type is the object type at `{v}`. -/
 def E5 : Tm [] :=
-  .val (.lam (Ty.pure E5AT)
-    (.let (.val (.lam (Ty.pure E5AT) (.val (.obj (E5Wit .here) .nil E5Fields))))
+  .val (.lam [] (Ty.pure E5AT)
+    (.let
+      (.val (.lam [] (Ty.pure E5AT)
+        (.val (.obj [CapAtom.var .here] (E5Wit .here) E5CapWit E5Fields))
+        (.elem [] [CapAtom.var .here])))
       (.let (.app (.var .here) (.var (.there .here)))
         (.cast
           (.proj (.var .here) la
-            (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 1))
-          (co (.eqToLe (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 0)))))))
+            (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 2))
+          (.capt (.eqToLe (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 0))
+            (.eqToLe (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 1))))
+        [CapAtom.var (.there .here)] (.capvar (.var .here)))
+      []
+      (.union (.union (.capvar (.var .here)) (.capvar (.var (.there .here))))
+        (.capvar (.var (.there .here)))))
+    (.elem [] [CapAtom.var .here]))
 
 def E5Ty : Ty [] := Ty.pure (.pi (Ty.pure E5AT) (Ty.pure (.sel .here lA)))
 
@@ -446,47 +530,59 @@ example : checkTm Ctx.nil E5 (Ty.pure (.pi (Ty.pure E5AT) (Ty.pure .top))) = fal
 def E5Ctxv : Ctx ([],x,x) :=
   (Ctx.nil.cons (.opaque (Ty.pure E5AT))).cons (.opaque (Ty.pure E5AT))
 
-theorem E5_value : E5Ctxv ⊢ᵥ .obj (E5Wit .here) .nil E5Fields : Ty.pure (E5ObjTy .here) := by
-  have h : Value.HasType E5Ctxv (.obj (E5Wit .here) .nil E5Fields)
-      (Ty.pure (.obj (Telescope.ofLiteral (E5Wit .here) .nil [la]))) :=
+theorem E5_value : E5Ctxv ⊢ᵥ .obj [CapAtom.var .here] (E5Wit .here) E5CapWit E5Fields :
+    (E5ObjTy .here) ^ [CapAtom.var .here] := by
+  have h : Value.HasType E5Ctxv (.obj [CapAtom.var .here] (E5Wit .here) E5CapWit E5Fields)
+      ((.obj (Telescope.ofLiteral (E5Wit .here) E5CapWit [la])) ^ [CapAtom.var .here]) :=
     .obj
       (.cons .nil
         (.atom (.cast .var
           (.capt (.trans .top
             (.trans (.member (Tel := telTyp lA .top .top) .var .refl (.there .here))
-              (.eqToLe (.symm (.def rfl))))) .refl))))
+              (.eqToLe (.symm (.def rfl))))) (.elem sub_nil))))
+        (.elem sub_head))
   rw [E5Tel_eq] at h
   exact h
 
-/-- `w : {A : ⊤..⊤}, f : ∀(v : {A : ⊤..⊤}) Obj(z. [z.a ≃ v.A, has a])`. -/
+/-- `w : {A : ⊤..⊤}, f : ∀(v : {A : ⊤..⊤}) (Obj(z. [z.a ≃ v.A, …]) ^ {v})`. -/
 def E5Ctxf : Ctx ([],x,x) :=
   (Ctx.nil.cons (.opaque (Ty.pure E5AT))).cons
-    (.opaque (Ty.pure (.pi (Ty.pure E5AT) (Ty.pure (E5ObjTy .here)))))
+    (.opaque (Ty.pure (.pi (Ty.pure E5AT) ((E5ObjTy .here) ^ [CapAtom.var .here]))))
 
 /-- `f`, at its declared type. -/
 theorem E5_f : E5Ctxf ⊢ₐ .var .here :
-    Ty.pure (.pi (Ty.pure E5AT) (Ty.pure (E5ObjTy .here))) := .var
+    Ty.pure (.pi (Ty.pure E5AT) ((E5ObjTy .here) ^ [CapAtom.var .here])) := .var
 
-/-- `f w : Obj(z. [z.a ≃ w.A, has a])`: the application renames `v`'s block. -/
+/-- `f w : Obj(z. [z.a ≃ w.A, …]) ^ {w}`: the application renames `v`'s block
+and its capture set. -/
 theorem E5_app : Tm.HasType E5Ctxf (.app (.var .here) (.var (.there .here)))
-    (Ty.pure (E5ObjTy (.there .here))) :=
+    ((E5ObjTy (.there .here)) ^ [CapAtom.var (.there .here)]) :=
   .app E5_f .var
 
-/-- `w : …, f : …, o : Obj(z. [z.a ≃ w.A, has a])`. -/
-def E5Ctxo : Ctx ([],x,x,x) := E5Ctxf.cons (.opaque (Ty.pure (E5ObjTy (.there .here))))
+/-- `w : …, f : …, o : Obj(z. [z.a ≃ w.A, …]) ^ {w}`. -/
+def E5Ctxo : Ctx ([],x,x,x) :=
+  E5Ctxf.cons (.opaque ((E5ObjTy (.there .here)) ^ [CapAtom.var (.there .here)]))
 
-/-- `o.a`, then `o.a ≃ w.A`: the result mentions neither `let` binder. -/
+/-- `o.a`, then `o.a ≃ w.A`: the result mentions neither `let` binder, and its
+capture name is discharged by the literal's capture definition. -/
 theorem E5_proj : Tm.HasType E5Ctxo
     (.cast
-      (.proj (.var .here) la (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 1))
-      (co (.eqToLe (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 0))))
+      (.proj (.var .here) la (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 2))
+      (.capt (.eqToLe (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 0))
+        (.eqToLe (.member (.var .here) (.refl (E5ObjTy (.there (.there .here)))) 1))))
     (Ty.pure (.sel (.there (.there .here)) lA)) :=
   .cast (.proj .var (.member (Tel := E5Tel (.there (.there .here))) .var .refl .here))
-    (.capt (.eqToLe (.member (Tel := E5Tel (.there (.there .here))) .var .refl (.there .here)))
-      .refl)
+    (.capt
+      (.eqToLe (.member (Tel := E5Tel (.there (.there .here))) .var .refl
+        (.there (.there .here))))
+      (.eqToLe (.member (Tel := E5Tel (.there (.there .here))) .var .refl (.there .here))))
 
 theorem E5_typed : Ctx.nil ⊢ E5 : E5Ty :=
-  .val (.lam (.let (.val (.lam (.val E5_value))) (.let E5_app E5_proj)))
+  .val (.lam
+    (.let (.val (.lam (.val E5_value) (.elem sub_nil)))
+      (.let E5_app E5_proj (.capvar .var))
+      (.union (.union (.capvar .var) (.capvar .var)) (.capvar .var)))
+    (.elem sub_nil))
 
 /-- The source term of `DotMNF.Examples.E5`. -/
 def E5src : DotMNF.Tm [] :=
@@ -510,26 +606,35 @@ restriction on witnesses, now checked directly. -/
 /-- The witnesses: `T ↦ Int`, `v ↦ self.T` (a same-block alias). -/
 def E6Wit : Witnesses (s,x) := .cons (.cons .nil lT tInt) lv (.sel .here lT)
 
+/-- Capture witnesses: the field `v` holds the pure `n`, so its capture name is
+declared empty. -/
+def E6CapWit : CapWitnesses (s,x) := .cons .nil lv []
+
 /-- The field body: `n` (from the enclosing scope), cast from `Int` to `self.T`
 by the definition of `T`, then from `self.T` to the block name `self.v` by
 the definition of `v`. -/
 def E6Field : Tm (s,x,x) :=
   .atom (.cast
     (.cast (.var (.there .here)) (co (.eqToLe (.symm (.def .here lT)))))
-    (co (.eqToLe (.symm (.def .here lv)))))
+    (.capt (.eqToLe (.symm (.def .here lv))) (.elem [] [CapAtom.name .here lv])))
 
-def E6Fields : Fields (s,x,x) := .cons .nil lv E6Field
+def E6Fields : Fields (s,x,x) :=
+  .cons .nil lv E6Field
+    (.elem [CapAtom.var (.there .here)] [CapAtom.var (.there .here), CapAtom.var .here])
 
-/-- The literal's precise telescope: `[self.T ≃ Int, self.v ≃ self.T, has v]`. -/
+/-- The literal's precise telescope:
+`[self.T ≃ Int, self.v ≃ self.T, {self∙v} ≐ᶜ {}, has v]`. -/
 def E6Tel : Telescope (s,x) :=
-  .cons (.cons (.cons .nil (.eq (.sel .here lT) tInt)) (.eq (.sel .here lv) (.sel .here lT)))
+  .cons
+    (.cons (.cons (.cons .nil (.eq (.sel .here lT) tInt))
+      (.eq (.sel .here lv) (.sel .here lT))) (.eqC [CapAtom.name .here lv] []))
     (.has lv)
 
 /-- `E6Tel` is what the literal generates. -/
-theorem E6Tel_eq : Telescope.ofLiteral (E6Wit (s := s)) .nil [lv] = E6Tel := by
+theorem E6Tel_eq : Telescope.ofLiteral (E6Wit (s := s)) E6CapWit [lv] = E6Tel := by
   simp [Telescope.ofLiteral, CapWitnesses.eqEntries, CapWitnesses.eqEntriesOf,
     Witnesses.eqEntries, Witnesses.eqEntriesOf, Telescope.hasEntries,
-    Witnesses.get, E6Wit, E6Tel, lT, lv]
+    Witnesses.get, CapWitnesses.get, E6Wit, E6CapWit, E6Tel, lT, lv]
 
 /-- The literal's precise type. -/
 def E6Ty : Shape s := .obj E6Tel
@@ -537,15 +642,20 @@ def E6Ty : Shape s := .obj E6Tel
 /-- `n : Int` in scope. -/
 def E6Ctx : Ctx ([],x) := Ctx.nil.cons (.opaque (Ty.pure tInt))
 
-example : checkValue E6Ctx (.obj E6Wit .nil E6Fields) (Ty.pure E6Ty) = true := by decide +kernel
+example :
+    checkValue E6Ctx (.obj [CapAtom.var .here] E6Wit E6CapWit E6Fields)
+      (E6Ty ^ [CapAtom.var .here]) = true := by decide +kernel
 
 theorem E6_value {s : Sig} {Γ : Ctx s} :
-    (Γ.cons (.opaque (Ty.pure tInt))) ⊢ᵥ .obj E6Wit .nil E6Fields : Ty.pure E6Ty := by
-  have h : (Γ.cons (.opaque (Ty.pure tInt))) ⊢ᵥ .obj E6Wit .nil E6Fields :
-      Ty.pure (.obj (Telescope.ofLiteral E6Wit .nil [lv])) :=
+    (Γ.cons (.opaque (Ty.pure tInt))) ⊢ᵥ .obj [CapAtom.var .here] E6Wit E6CapWit E6Fields :
+      E6Ty ^ [CapAtom.var .here] := by
+  have h : (Γ.cons (.opaque (Ty.pure tInt))) ⊢ᵥ
+      .obj [CapAtom.var .here] E6Wit E6CapWit E6Fields :
+      (.obj (Telescope.ofLiteral E6Wit E6CapWit [lv])) ^ [CapAtom.var .here] :=
     .obj (.cons .nil
       (.atom (.cast (.cast .var (.capt (.eqToLe (.symm (.def rfl))) .refl))
-        (.capt (.eqToLe (.symm (.def rfl))) .refl))))
+        (.capt (.eqToLe (.symm (.def rfl))) (.elem sub_nil))))
+      (.elem sub_head))
   rw [E6Tel_eq] at h
   exact h
 
@@ -573,10 +683,10 @@ theorem E7Tel_eq : Telescope.ofLiteral (E7Wit (s := s)) .nil [] = E7Tel := by
 /-- The literal's precise type. -/
 def E7Ty : Shape s := .obj E7Tel
 
-example : checkValue Ctx.nil (.obj E7Wit .nil .nil) (Ty.pure E7Ty) = true := by decide +kernel
+example : checkValue Ctx.nil (.obj [] E7Wit .nil .nil) (Ty.pure E7Ty) = true := by decide +kernel
 
-theorem E7_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ .obj E7Wit .nil .nil : Ty.pure E7Ty := by
-  have h : Γ ⊢ᵥ .obj E7Wit .nil .nil :
+theorem E7_value {s : Sig} {Γ : Ctx s} : Γ ⊢ᵥ .obj [] E7Wit .nil .nil : Ty.pure E7Ty := by
+  have h : Γ ⊢ᵥ .obj [] E7Wit .nil .nil :
       Ty.pure (.obj (Telescope.ofLiteral E7Wit .nil [])) := .obj .nil
   rw [E7Tel_eq] at h
   exact h
@@ -627,22 +737,30 @@ def E8Sel (x : BVar s .var) : ShapeCo s :=
 
 /-- `λ(x). λ(y). y.a`, the `And₂` derivation. -/
 def E8 : Tm [] :=
-  .val (.lam (Ty.pure E8X)
-    (.val (.lam (Ty.pure (E8Y .here))
+  .val (.lam [] (Ty.pure E8X)
+    (.val (.lam [] (Ty.pure (E8Y .here))
       (.cast (.proj (.var .here) la (.member (.var .here) (E8And2 (.there .here)) 0))
-        (co (.top (.sel .here la)))))))
+        (.capt (.top (.sel .here la)) (.refl [CapAtom.name .here la])))
+      (.elem [CapAtom.var .here] [CapAtom.var .here])))
+    (.elem [] [CapAtom.var .here]))
 
 /-- `λ(x). λ(y). y.a`, the `And₁`-then-`Sel-<:` derivation: the same term
 after erasure. -/
 def E8b : Tm [] :=
-  .val (.lam (Ty.pure E8X)
-    (.val (.lam (Ty.pure (E8Y .here))
+  .val (.lam [] (Ty.pure E8X)
+    (.val (.lam [] (Ty.pure (E8Y .here))
       (.cast (.proj (.var .here) la (.member (.var .here) (E8Sel (.there .here)) 0))
-        (co (.top (.sel .here la)))))))
+        (.capt (.top (.sel .here la)) (.refl [CapAtom.name .here la])))
+      (.elem [CapAtom.var .here] [CapAtom.var .here])))
+    (.elem [] [CapAtom.var .here]))
 
-/-- `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : ⊤}) ⊤`. -/
+/-- `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : ⊤}) (⊤ ^ {y∙a})`.  The result is
+the projection's own capture name: `y` is an opaque binder, and its declared
+telescope has no capture proposition to read the name through. -/
 def E8Ty : Ty [] :=
-  Ty.pure (.pi (Ty.pure E8X) (Ty.pure (.pi (Ty.pure (E8Y .here)) (Ty.pure .top))))
+  Ty.pure (.pi (Ty.pure E8X)
+    (Ty.pure (.pi (Ty.pure (E8Y .here))
+      ((⊤ : Shape ([],x,x)) ^ [CapAtom.name .here la]))))
 
 example : checkTm Ctx.nil E8 E8Ty = true := by decide +kernel
 
@@ -739,9 +857,11 @@ theorem C3_badBounds : C3Ctx ⊢ᶜ badCapBounds (.there .here) (.there (.there 
   checkCap_sound (by decide +kernel)
 
 def C3 : Tm ([],c) :=
-  .val (.lam (Ty.pure (capBad .here))
-    (.val (.lam (Ty.pure (boxCap (.there .here)))
-      (.unbox (.var .here) (badCapBounds (.there .here) (.there (.there .here)))))))
+  .val (.lam [] (Ty.pure (capBad .here))
+    (.val (.lam [] (Ty.pure (boxCap (.there .here)))
+      (.unbox (.var .here) [] (badCapBounds (.there .here) (.there (.there .here))))
+      (.elem [CapAtom.var .here] [CapAtom.var .here])))
+    (.elem [] [CapAtom.var .here]))
 
 def C3Ty : Ty ([],c) :=
   Ty.pure (.pi (Ty.pure (capBad .here))
@@ -805,6 +925,372 @@ theorem C4_member :
     C4Ctx ⊢ᶜ .member C4Atom (.refl (C4Dom (.there .here))) 0 :
       [CapAtom.var .here] ⊑ [CapAtom.cvar (.there .here)] :=
   checkCap_sound (by decide +kernel)
+
+
+/-! ## C1 and C6: the platform, use sets, and a run
+
+The two examples of stage A2.6.  Both live over the platform prefix of two
+rigid capture binders, `κ₁ ⊑ᶜ ∗` and `κ₂ ⊑ᶜ ∗`, with `Unit := ⊤` and two
+closures standing for the capabilities: `log`, annotated `{κ₁}`, and
+`console`, annotated `{κ₂}`.  A capability is the identity closure; what
+matters is the set it carries.
+
+C1 is the use-set example.  The closure
+
+```text
+c1 := λ^{log}(u : Unit). let _ = log u in λ^{console}(v : Unit). console v
+```
+
+is accepted at `(Π(Unit) ((Π(Unit) Unit) ^ {console})) ^ {log}` by the
+checker, and the two programs that call it have the use sets the rule for
+`let` predicts, computed by `decide`.
+
+C6 is the prediction example.  The same closure with the inner annotation
+`{}` is rejected by the checker.  The good program is run in the store `σ₀`,
+by a `Steps` derivation written out step by step, and at the state that reads
+`console` the conclusion of `inspects_covered` composed with
+`capture_prediction` bounds what that state may read by the use set of the
+initial state.  The second program, whose use set has no root `κ₂`, never
+reads a root with root `κ₂`, by `effect_safety`. -/
+
+/-! ### The platform and the capabilities -/
+
+/-- The type of a capability: a closure from `Unit` to `Unit` capturing the
+platform binder `κ`. -/
+def capTy {s : Sig} (κ : BVar s .cap) : Ty s :=
+  (.pi (Ty.pure .top) (Ty.pure .top)) ^ [CapAtom.cvar κ]
+
+/-- A capability: the identity closure, annotated with its platform binder.
+Its closing evidence is the syntactic inclusion of the body's use set in the
+annotation united with the parameter. -/
+def capVal {s : Sig} (κ : BVar s .cap) : Value s :=
+  .lam [CapAtom.cvar κ] (Ty.pure .top) (.atom (.var .here))
+    (.elem [CapAtom.var .here] [CapAtom.cvar (.there κ), CapAtom.var .here])
+
+/-- `unit`, the only value of `Unit`: the empty object literal. -/
+def unitVal {s : Sig} : Value s := .obj [] .nil .nil .nil
+
+/-! ### C1: the closure and its use sets
+
+The signature of the platform store is `κ₁, κ₂, log, console, unit`, and `c1`
+is checked in it.  The binders, innermost first, are `unit`, `console`,
+`log`, `κ₂`, `κ₁`. -/
+
+/-- `κ₁ ⊑ᶜ ∗, κ₂ ⊑ᶜ ∗, log : capTy κ₁, console : capTy κ₂, unit : Unit`, all
+opaque: the context in which `c1` is checked. -/
+def C1Ctx : Ctx ([],c,c,x,x,x) :=
+  ((((Ctx.nil.consC .star).consC .star).cons (.opaque (capTy (.there .here)))).cons
+      (.opaque (capTy (.there .here)))).cons (.opaque (Ty.pure .top))
+
+/-- `(Π(Unit) ((Π(Unit) Unit) ^ {console})) ^ {log}`. -/
+def c1Ty : Ty ([],c,c,x,x,x) :=
+  (.pi (Ty.pure .top)
+      ((.pi (Ty.pure .top) (Ty.pure .top)) ^ [CapAtom.var (.there (.there .here))]))
+    ^ [CapAtom.var (.there (.there .here))]
+
+/-- `λ^{log}(u : Unit). let _ = log u in λ^{console}(v : Unit). console v`.
+The inner closing evidence is the syntactic inclusion; so is the outer one,
+because the outer annotation is the variable `log` itself. -/
+def c1val : Value ([],c,c,x,x,x) :=
+  .lam [CapAtom.var (.there (.there .here))] (Ty.pure .top)
+    (.let (.app (.var (.there (.there (.there .here)))) (.var .here))
+      (.val (.lam [CapAtom.var (.there (.there (.there .here)))] (Ty.pure .top)
+        (.app (.var (.there (.there (.there (.there .here))))) (.var .here))
+        (.elem [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here]
+          [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here])))
+      [] (.elem [] []))
+    (.elem [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here]
+      [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here])
+
+example : checkValue C1Ctx c1val c1Ty = true := by decide +kernel
+
+/-- **C1**: the closure is accepted at the declared type. -/
+theorem C1_typed : C1Ctx ⊢ᵥ c1val : c1Ty := checkValue_sound (by decide +kernel)
+
+/-! The two programs.  Their signature adds `c1` to the platform, so the
+binders, innermost first, are `c1`, `unit`, `console`, `log`, `κ₂`, `κ₁`. -/
+
+/-- `let f = c1 unit in f unit ⦃{console, log}; f⦄`: the body still calls the
+returned closure, so the let declares `{console, log}` and the avoidance
+evidence is `capvar (var f)` for `{f} ⊑ {console}` composed with `elem`. -/
+def C1prog1 : Tm ([],c,c,x,x,x,x) :=
+  .let (.app (.var .here) (.var (.there .here)))
+    (.app (.var .here) (.var (.there (.there .here))))
+    [CapAtom.var (.there (.there .here)), CapAtom.var (.there (.there (.there .here)))]
+    (.union
+      (.trans (.capvar (.var .here))
+        (.elem [CapAtom.var (.there (.there (.there .here)))]
+          [CapAtom.var (.there (.there (.there .here))),
+            CapAtom.var (.there (.there (.there (.there .here))))]))
+      (.trans (.capvar (.var (.there (.there .here))))
+        (.elem []
+          [CapAtom.var (.there (.there (.there .here))),
+            CapAtom.var (.there (.there (.there (.there .here))))])))
+
+/-- `let f = c1 unit in unit ⦃{}; f⦄`: the body drops the closure, so the let
+declares nothing and the avoidance evidence is `capvar (var unit)`. -/
+def C1prog2 : Tm ([],c,c,x,x,x,x) :=
+  .let (.app (.var .here) (.var (.there .here)))
+    (.atom (.var (.there (.there .here))))
+    [] (.capvar (.var (.there (.there .here))))
+
+/-- The use set of the first program: `{c1, unit, console, log}`. -/
+theorem C1_uses_console :
+    C1prog1.uses =
+      [CapAtom.var .here, CapAtom.var (.there .here), CapAtom.var (.there (.there .here)),
+        CapAtom.var (.there (.there (.there .here)))] := by decide
+
+/-- The use set of the second program: `{c1, unit}`.  The returned closure is
+avoided, so neither `console` nor `log` is in it. -/
+theorem C1_uses_pure :
+    C1prog2.uses = [CapAtom.var .here, CapAtom.var (.there .here)] := by decide
+
+/-! ### C6: the rejected variant, the run, and the prediction -/
+
+/-- `c1` with the inner annotation `{}` in place of `{console}`, the closing
+evidence still the syntactic inclusion. -/
+def c1bad : Value ([],c,c,x,x,x) :=
+  .lam [CapAtom.var (.there (.there .here))] (Ty.pure .top)
+    (.let (.app (.var (.there (.there (.there .here)))) (.var .here))
+      (.val (.lam [] (Ty.pure .top)
+        (.app (.var (.there (.there (.there (.there .here))))) (.var .here))
+        (.elem [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here]
+          [CapAtom.var .here])))
+      [] (.elem [] []))
+    (.elem [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here]
+      [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here])
+
+/-- The type the bad closure claims: the inner arrow is pure. -/
+def c1badTy : Ty ([],c,c,x,x,x) :=
+  (.pi (Ty.pure .top) ((.pi (Ty.pure .top) (Ty.pure .top)) ^ []))
+    ^ [CapAtom.var (.there (.there .here))]
+
+/-- **C6, the rejected variant**: the checker refuses the bad closure, because
+the body of the inner lambda uses `console`, which the empty annotation does
+not cover. -/
+theorem C6_rejected : checkValue C1Ctx c1bad c1badTy = false := by decide +kernel
+
+/-- The platform store `σ₀ := κ₁, κ₂, log, console, unit, c1`. -/
+def C6Store : Store ([],c,c,x,x,x,x) :=
+  Store.cons (Store.cons (Store.cons (Store.cons
+    (Store.consC (Store.consC Store.nil .star) .star)
+      (capVal (.there .here)))
+      (capVal (.there .here)))
+      unitVal)
+    c1val
+
+/-- The context of `σ₀`: every entry is stored, so every term binder is
+transparent. -/
+def C6Ctx : Ctx ([],c,c,x,x,x,x) :=
+  Ctx.cons (Ctx.cons (Ctx.cons (Ctx.cons
+    (Ctx.consC (Ctx.consC Ctx.nil .star) .star)
+      (.transparent (capTy (.there .here)) .nil .nil []))
+      (.transparent (capTy (.there .here)) .nil .nil []))
+      (.transparent (Ty.pure .top) .nil .nil []))
+    (.transparent c1Ty .nil .nil [])
+
+theorem C6_store : ⊢ C6Store : C6Ctx :=
+  .cons (.cons (.cons (.cons (.consC (.consC .nil))
+    trivial (checkValue_sound (by decide +kernel)))
+    trivial (checkValue_sound (by decide +kernel)))
+    trivial (checkValue_sound (by decide +kernel)))
+    trivial (checkValue_sound (by decide +kernel))
+
+/-- The initial state of the good program. -/
+def C6st0 : State ([],c,c,x,x,x,x) := ⟨C6Store, .nil, C1prog1⟩
+
+theorem C6st0_typed : State.Typed C6st0 (Ty.pure .top) :=
+  ⟨C6Ctx, Ty.pure .top, C6_store, checkTm_sound (by decide +kernel), .nil⟩
+
+/-! The states of the run, written out.  `C6K0` is the continuation the first
+`let` pushes, `C6inner0` the inner closure still under the let binder of
+`c1`'s body, and `C6inner` the closure the run allocates. -/
+
+/-- The body of the first `let`: `f unit`. -/
+def C6body1 : Tm ([],c,c,x,x,x,x,x) :=
+  .app (.var .here) (.var (.there (.there .here)))
+
+/-- The declared use set of the first `let`: `{console, log}`. -/
+def C6U1 : CaptureSet ([],c,c,x,x,x,x) :=
+  [CapAtom.var (.there (.there .here)), CapAtom.var (.there (.there (.there .here)))]
+
+/-- The avoidance evidence of the first `let`. -/
+def C6f1 : CapCo ([],c,c,x,x,x,x,x) :=
+  .union
+    (.trans (.capvar (.var .here))
+      (.elem [CapAtom.var (.there (.there (.there .here)))]
+        [CapAtom.var (.there (.there (.there .here))),
+          CapAtom.var (.there (.there (.there (.there .here))))]))
+    (.trans (.capvar (.var (.there (.there .here))))
+      (.elem []
+        [CapAtom.var (.there (.there (.there .here))),
+          CapAtom.var (.there (.there (.there (.there .here))))]))
+
+/-- The continuation the first `let` pushes. -/
+def C6K0 : Cont ([],c,c,x,x,x,x) := .nil ▹ .let C6body1 C6U1 C6f1
+
+/-- The inner closure of `c1`, still under the let binder of `c1`'s body. -/
+def C6inner0 : Tm ([],c,c,x,x,x,x,x) :=
+  .val (.lam [CapAtom.var (.there (.there (.there .here)))] (Ty.pure .top)
+    (.app (.var (.there (.there (.there (.there .here))))) (.var .here))
+    (.elem [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here]
+      [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here]))
+
+/-- The inner closure once the let binder of `c1`'s body is gone: the value the
+run allocates. -/
+def C6inner : Value ([],c,c,x,x,x,x) :=
+  .lam [CapAtom.var (.there (.there .here))] (Ty.pure .top)
+    (.app (.var (.there (.there (.there .here)))) (.var .here))
+    (.elem [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here]
+      [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here])
+
+def C6st1 : State ([],c,c,x,x,x,x) :=
+  ⟨C6Store, C6K0, .app (.var .here) (.var (.there .here))⟩
+
+def C6st2 : State ([],c,c,x,x,x,x) :=
+  ⟨C6Store, C6K0,
+    .let (.app (.var (.there (.there (.there .here)))) (.var (.there .here)))
+      C6inner0 [] (.elem [] [])⟩
+
+def C6st3 : State ([],c,c,x,x,x,x) :=
+  ⟨C6Store, C6K0 ▹ .let C6inner0 [] (.elem [] []),
+    .app (.var (.there (.there (.there .here)))) (.var (.there .here))⟩
+
+def C6st4 : State ([],c,c,x,x,x,x) :=
+  ⟨C6Store, C6K0 ▹ .let C6inner0 [] (.elem [] []), .atom (.var (.there .here))⟩
+
+def C6st5 : State ([],c,c,x,x,x,x) := ⟨C6Store, C6K0, .val C6inner⟩
+
+/-- The store after the allocation. -/
+def C6Store1 : Store ([],c,c,x,x,x,x,x) := C6Store.cons C6inner
+
+def C6st6 : State ([],c,c,x,x,x,x,x) :=
+  ⟨C6Store1, .nil, .app (.var .here) (.var (.there (.there .here)))⟩
+
+/-- The state that reads `console`. -/
+def C6st7 : State ([],c,c,x,x,x,x,x) :=
+  ⟨C6Store1, .nil,
+    .app (.var (.there (.there (.there .here)))) (.var (.there (.there .here)))⟩
+
+theorem C6_step1 : C6st0 ⟶ C6st1 := .let
+
+/-- The closure `c1` is read out of the store; the body it hands back is fixed
+by the `rfl` side condition, so the resulting state is computed, not guessed. -/
+theorem C6_step2 : C6st1 ⟶ C6st2 := by
+  have h := Step.appVar (σ := C6Store) (x := .here) (K := C6K0)
+    (b := .var (.there .here)) rfl
+  exact h
+
+theorem C6_step3 : C6st2 ⟶ C6st3 := .let
+
+theorem C6_step4 : C6st3 ⟶ C6st4 := by
+  have h := Step.appVar (σ := C6Store) (x := .there (.there (.there .here)))
+    (K := C6K0 ▹ .let C6inner0 [] (.elem [] [])) (b := .var (.there .here)) rfl
+  exact h
+
+theorem C6_step5 : C6st4 ⟶ C6st5 := .rename
+theorem C6_step6 : C6st5 ⟶ C6st6 := .alloc
+
+theorem C6_step7 : C6st6 ⟶ C6st7 := by
+  have h := Step.appVar (σ := C6Store1) (x := .here) (K := .nil)
+    (b := .var (.there (.there .here))) rfl
+  exact h
+
+/-- **C6, the run**: `let f = c1 unit in f unit` steps by `let`, `appVar`,
+`let`, `appVar`, `rename`, `alloc`, `appVar` to the state that reads
+`console`. -/
+theorem C6_run : C6st0 ⟶* C6st7 :=
+  .tail (.tail (.tail (.tail (.tail (.tail (.tail .refl
+    C6_step1) C6_step2) C6_step3) C6_step4) C6_step5) C6_step6) C6_step7
+
+/-- The context of the store after the allocation. -/
+def C6Ctx1 : Ctx ([],c,c,x,x,x,x,x) :=
+  C6Ctx.cons
+    (.transparent
+      ((.pi (Ty.pure .top) (Ty.pure .top)) ^ [CapAtom.var (.there (.there .here))])
+      .nil .nil [])
+
+theorem C6_store1 : ⊢ C6Store1 : C6Ctx1 :=
+  .cons C6_store trivial (checkValue_sound (by decide +kernel))
+
+/-- **C6, the prediction**: at the state that reads `console`, that root is
+covered by the use set of the initial state, carried along the store extension
+the run performed.  This is `inspects_covered` composed with
+`capture_prediction`. -/
+theorem C6_covered :
+    ∃ ρ : Rename ([],c,c,x,x,x,x) ([],c,c,x,x,x,x,x),
+      Store.Ext C6Store C6Store1 ρ ∧
+        ∀ Γ' : Ctx ([],c,c,x,x,x,x,x), ⊢ C6Store1 : Γ' →
+          CapLe Γ' [CapAtom.var (.there (.there (.there .here)))]
+            (C6st0.uses.rename ρ) := by
+  obtain ⟨ρ, hE, h⟩ := capture_prediction C6st0_typed C6_run
+  exact ⟨ρ, hE, fun Γ' hΓ' => (inspects_covered (st := C6st7) rfl).trans (h Γ' hΓ')⟩
+
+/-- The roots of `{console}` over the store's own context.  `Ctx.caps` is
+compiled by well-founded recursion over a measure that mentions the context,
+which neither the elaborator nor the kernel unfolds, so this computation runs
+through the two clause lemmas `Ctx.capsAtom_var` and `Ctx.capsAtom_cvar`.  No
+capture name is involved, so the fuel is `0`. -/
+theorem C6_console_caps :
+    C6Ctx1.caps 0 [CapAtom.var (.there (.there (.there .here)))]
+      = [CapAtom.cvar (.there (.there (.there (.there (.there .here)))))] := by
+  simp [C6Ctx1, C6Ctx, capTy, Ctx.capsAtom_var, Ctx.capsAtom_cvar, Ctx.capsBound,
+    Binding.ty, CaptureSet.weaken, CaptureSet.rename,
+    CapAtom.rename, CapBound.weaken, CapBound.rename]
+
+/-- The membership the example instantiates: over the store's own context,
+`κ₂` is a root of `{console}`. -/
+theorem C6_console_root :
+    C6Ctx1.Root (CapAtom.cvar (.there (.there (.there (.there (.there .here))))))
+      [CapAtom.var (.there (.there (.there .here)))] :=
+  Ctx.Root.of_mem_caps (n := 0) (by rw [C6_console_caps]; decide +kernel)
+
+/-- `κ₂` is therefore a root of the use set of the initial state, as
+transported by the run's store extension. -/
+theorem C6_covered_root :
+    ∃ ρ : Rename ([],c,c,x,x,x,x) ([],c,c,x,x,x,x,x),
+      Store.Ext C6Store C6Store1 ρ ∧
+        C6Ctx1.Root (CapAtom.cvar (.there (.there (.there (.there (.there .here))))))
+          (C6st0.uses.rename ρ) := by
+  obtain ⟨ρ, hE, h⟩ := C6_covered
+  exact ⟨ρ, hE, h C6Ctx1 C6_store1 _ C6_console_root⟩
+
+/-! ### The second run: no root `κ₂` in the use set, none read -/
+
+/-- The initial state of the second program. -/
+def C6st0' : State ([],c,c,x,x,x,x) := ⟨C6Store, .nil, C1prog2⟩
+
+theorem C6st0'_typed : State.Typed C6st0' (Ty.pure .top) :=
+  ⟨C6Ctx, Ty.pure .top, C6_store, checkTm_sound (by decide +kernel), .nil⟩
+
+/-- The roots of the use set of the second program, at every fuel: `c1`
+resolves to `log`, which resolves to `κ₁`, and `unit` resolves to nothing.  The
+fuel plays no part, since no capture name is involved. -/
+theorem C6_prog2_caps (n : Nat) :
+    C6Ctx.caps n C6st0'.uses
+      = [CapAtom.cvar (.there (.there (.there (.there (.there .here)))))] := by
+  simp [C6st0', C1prog2, C6Ctx, capTy, c1Ty, Atom.root, Ctx.capsAtom_var, Ctx.capsAtom_cvar,
+    Ctx.capsBound, Binding.ty, CaptureSet.weaken,
+    CaptureSet.rename, CapAtom.rename, CapBound.weaken, CapBound.rename]
+
+/-- The use set of the second program has no root `κ₂`. -/
+theorem C6_no_kappa2 :
+    ¬ C6Ctx.Root (CapAtom.cvar (.there (.there (.there (.there .here))))) C6st0'.uses := by
+  rintro ⟨n, hn⟩
+  rw [Ctx.roots_eq_caps, C6_prog2_caps] at hn
+  revert hn
+  decide +kernel
+
+/-- **C6, effect safety**: no state reachable from the second program reads a
+root whose root is `κ₂`. -/
+theorem C6_safe {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
+    (run : C6st0' ⟶* st') (hin : st'.inspects = some x) (hΓ' : ⊢ st'.σ : Γ') :
+    ∃ ρ : Rename ([],c,c,x,x,x,x) s', Store.Ext C6Store st'.σ ρ ∧
+      ¬ Γ'.Root
+        (CapAtom.cvar (ρ.var (.there (.there (.there (.there .here))))))
+        [CapAtom.var x] :=
+  effect_safety C6st0'_typed C6_store run C6_no_kappa2 hin hΓ'
+
 
 end Examples
 end FCdot

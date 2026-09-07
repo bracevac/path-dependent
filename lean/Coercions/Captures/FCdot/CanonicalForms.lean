@@ -89,13 +89,13 @@ theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) : RootViewTyped Γ 
   have hv := hσ.lookup x
   have hlit := hσ.lookup_isLiteral x
   cases hl : σ.lookup x with
-  | lam S t =>
+  | lam A S t g =>
       rw [hl] at hv
-      obtain ⟨T₀, hT, _⟩ := hv.lam_inv
+      obtain ⟨T₀, hT, _, _⟩ := hv.lam_inv
       rw [hT]
       refine ⟨fun Tel h => ?_, by simp⟩
       simp at h
-  | obj W Wc F =>
+  | obj A W Wc F =>
       rw [hl] at hv
       obtain ⟨hT, _⟩ := hv.obj_inv
       rw [hT]
@@ -108,7 +108,7 @@ theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) : RootViewTyped Γ 
         (capEqForms_typed hσ x (by rw [hl]; rfl)
           (eqForms_typed hσ x (by rw [hl]; rfl) W) Wc) ?_
       intro ℓ hℓ
-      exact ⟨W, Wc, F, hl, Fields.get?_isSome_of_mem hℓ⟩
+      exact ⟨A, W, Wc, F, hl, Fields.get?_isSome_of_mem hℓ⟩
   | box b =>
       rw [hl] at hv
       obtain ⟨X, hT, _⟩ := hv.box_inv
@@ -124,10 +124,10 @@ theorem Store.Typed.hasField (hσ : ⊢ σ : Γ) {x : BVar s .var} {Fs : List La
   obtain rfl := Option.some.inj hF
   have hlit := hσ.lookup_isLiteral x
   cases hl : σ.lookup x with
-  | lam S t => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
-  | obj W Wc F =>
+  | lam A S t g => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
+  | obj A W Wc F =>
       rw [hl] at hmem
-      exact ⟨W, Wc, F, hl, Fields.get?_isSome_of_mem (by simpa [Value.fieldLabels] using hmem)⟩
+      exact ⟨A, W, Wc, F, hl, Fields.get?_isSome_of_mem (by simpa [Value.fieldLabels] using hmem)⟩
   | box b => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
@@ -255,11 +255,11 @@ theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
   have hv := hσ.lookup x
   have hlit := hσ.lookup_isLiteral x
   cases hl : σ.lookup x with
-  | lam S t =>
+  | lam A S t g =>
       rw [hl] at hv
-      obtain ⟨T₀, hT, _⟩ := hv.lam_inv
+      obtain ⟨T₀, hT, _, _⟩ := hv.lam_inv
       exact Or.inl ⟨_, _, by rw [hT]; rfl⟩
-  | obj W Wc F =>
+  | obj A W Wc F =>
       rw [hl] at hv
       obtain ⟨hT, _⟩ := hv.obj_inv
       exact Or.inr (Or.inl ⟨_, by rw [hT]; rfl⟩)
@@ -623,11 +623,12 @@ theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s
 there. -/
 theorem closed_has_field (hσ : ⊢ σ : Γ) {h : Has s} {x : BVar s .var} {ℓ : Label}
     (hh : Has.HasType Γ h x ℓ) :
-    ∃ (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x)) (F : Fields (s,x)) (t : Tm (s,x)),
-      σ.lookup x = .obj W Wc F ∧ F.get? ℓ = some t := by
-  obtain ⟨_, _, W, Wc, F, hl, hget⟩ := has_canon hσ hh
+    ∃ (A : CaptureSet s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x)) (F : Fields (s,x))
+      (t : Tm (s,x)),
+      σ.lookup x = .obj A W Wc F ∧ F.get? ℓ = some t := by
+  obtain ⟨_, _, A, W, Wc, F, hl, hget⟩ := has_canon hσ hh
   obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp hget
-  exact ⟨W, Wc, F, t, hl, ht⟩
+  exact ⟨A, W, Wc, F, t, hl, ht⟩
 
 /-- A closed atom of box shape is rooted at a stored box, and the chain of
 its casts normalizes to the identity, an equality, or a `boxed` form: the box
@@ -683,11 +684,11 @@ theorem closed_box_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {T : Ty s} {D : Ca
   have hv := hσ.lookup a.root
   have hlit := hσ.lookup_isLiteral a.root
   cases hl : σ.lookup a.root with
-  | lam S₁ t₁ =>
+  | lam A S₁ t₁ g =>
       rw [hl] at hv
-      obtain ⟨T₀, hT, _⟩ := hv.lam_inv
+      obtain ⟨T₀, hT, _, _⟩ := hv.lam_inv
       rw [hT] at hx; simp at hx
-  | obj W Wc F' =>
+  | obj A W Wc F' =>
       rw [hl] at hv
       obtain ⟨hT, _⟩ := hv.obj_inv
       rw [hT] at hx; simp at hx

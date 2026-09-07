@@ -365,16 +365,19 @@ mutual
   | .val v => simp [Tm.rename, Value.rename_id v]
   | .app a b => simp [Tm.rename]
   | .proj a ℓ h => simp [Tm.rename, Has.rename_id h]
-  | .let t u => simp [Tm.rename, Rename.lift_id, Tm.rename_id t, Tm.rename_id u]
+  | .let t u U f =>
+      simp [Tm.rename, Rename.lift_id, Tm.rename_id t, Tm.rename_id u,
+        CaptureSet.rename_id U]
   | .cast t e => simp [Tm.rename, Tm.rename_id t]
-  | .unbox a f => simp [Tm.rename]
+  | .unbox a U f => simp [Tm.rename, CaptureSet.rename_id U]
 
 @[simp] theorem Value.rename_id {s : Sig} (v : Value s) : v.rename Rename.id = v := by
   match v with
-  | .lam S t => simp [Value.rename, Rename.lift_id, Tm.rename_id t]
-  | .obj W Wc F =>
+  | .lam A S t g =>
+      simp [Value.rename, Rename.lift_id, Tm.rename_id t, CaptureSet.rename_id A]
+  | .obj A W Wc F =>
       simp [Value.rename, Rename.lift_id, Witnesses.rename_id W, CapWitnesses.rename_id Wc,
-        Fields.rename_id F]
+        Fields.rename_id F, CaptureSet.rename_id A]
   | .box a => simp [Value.rename]
   | .cast v e => simp [Value.rename, Value.rename_id v]
 
@@ -386,7 +389,7 @@ mutual
 @[simp] theorem Fields.rename_id {s : Sig} (F : Fields s) : F.rename Rename.id = F := by
   match F with
   | .nil => simp [Fields.rename]
-  | .cons F ℓ t => simp [Fields.rename, Fields.rename_id F, Tm.rename_id t]
+  | .cons F ℓ t g => simp [Fields.rename, Fields.rename_id F, Tm.rename_id t]
 
 end
 
@@ -402,19 +405,21 @@ mutual
   | .val v => simp [Tm.rename, Value.rename_comp v]
   | .app a b => simp [Tm.rename]
   | .proj a ℓ h => simp [Tm.rename, Has.rename_comp h]
-  | .let t u =>
-      simp [Tm.rename, Rename.lift_comp, Tm.rename_comp t, Tm.rename_comp u]
+  | .let t u U f =>
+      simp [Tm.rename, Rename.lift_comp, Tm.rename_comp t, Tm.rename_comp u,
+        CaptureSet.rename_comp U]
   | .cast t e => simp [Tm.rename, Tm.rename_comp t]
-  | .unbox a f => simp [Tm.rename]
+  | .unbox a U f => simp [Tm.rename, CaptureSet.rename_comp U]
 
 @[simp] theorem Value.rename_comp {s1 s2 s3 : Sig} (v : Value s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
     (v.rename ρ).rename ρ' = v.rename (ρ.comp ρ') := by
   match v with
-  | .lam S t => simp [Value.rename, Rename.lift_comp, Tm.rename_comp t]
-  | .obj W Wc F =>
+  | .lam A S t g =>
+      simp [Value.rename, Rename.lift_comp, Tm.rename_comp t, CaptureSet.rename_comp A]
+  | .obj A W Wc F =>
       simp [Value.rename, Rename.lift_comp, Witnesses.rename_comp W, CapWitnesses.rename_comp Wc,
-        Fields.rename_comp F]
+        Fields.rename_comp F, CaptureSet.rename_comp A]
   | .box a => simp [Value.rename]
   | .cast v e => simp [Value.rename, Value.rename_comp v]
 
@@ -430,7 +435,7 @@ mutual
     (F.rename ρ).rename ρ' = F.rename (ρ.comp ρ') := by
   match F with
   | .nil => simp [Fields.rename]
-  | .cons F ℓ t => simp [Fields.rename, Fields.rename_comp F, Tm.rename_comp t]
+  | .cons F ℓ t g => simp [Fields.rename, Fields.rename_comp F, Tm.rename_comp t]
 
 end
 
@@ -656,16 +661,19 @@ mutual
   | .val v => simp [Tm.subst, Tm.rename, Value.subst_ofRename v]
   | .app a b => simp [Tm.subst, Tm.rename]
   | .proj a ℓ h => simp [Tm.subst, Tm.rename, Has.subst_ofRename h]
-  | .let t u => simp [Tm.subst, Tm.rename, Tm.subst_ofRename t, Tm.subst_ofRename u]
+  | .let t u U f =>
+      simp [Tm.subst, Tm.rename, Tm.subst_ofRename t, Tm.subst_ofRename u,
+        CapCo.subst_ofRename f]
   | .cast t e => simp [Tm.subst, Tm.rename, Tm.subst_ofRename t, LeCo.subst_ofRename e]
-  | .unbox a f =>
+  | .unbox a U f =>
       simp [Tm.subst, Tm.rename, Atom.subst_ofRename a, CapCo.subst_ofRename f]
 
 @[simp] theorem Value.subst_ofRename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
     v.subst (Subst.ofRename ρ) = v.rename ρ := by
   match v with
-  | .lam S t => simp [Value.subst, Value.rename, Tm.subst_ofRename t]
-  | .obj W Wc F =>
+  | .lam A S t g =>
+      simp [Value.subst, Value.rename, Tm.subst_ofRename t, CapCo.subst_ofRename g]
+  | .obj A W Wc F =>
       simp [Value.subst, Value.rename, Fields.subst_ofRename F, Subst.ofRename_root]
   | .box a => simp [Value.subst, Value.rename, Atom.subst_ofRename a]
   | .cast v e => simp [Value.subst, Value.rename, Value.subst_ofRename v, LeCo.subst_ofRename e]
@@ -674,8 +682,9 @@ mutual
     F.subst (Subst.ofRename ρ) = F.rename ρ := by
   match F with
   | .nil => simp [Fields.subst, Fields.rename]
-  | .cons F ℓ t =>
-      simp [Fields.subst, Fields.rename, Fields.subst_ofRename F, Tm.subst_ofRename t]
+  | .cons F ℓ t g =>
+      simp [Fields.subst, Fields.rename, Fields.subst_ofRename F, Tm.subst_ofRename t,
+        CapCo.subst_ofRename g]
 
 end
 
@@ -1047,6 +1056,74 @@ theorem Telescope.At.rename_inv : {Tel : Telescope s1} → {ρ : Rename s1 s2} �
           obtain ⟨P₀, hP₀, rfl⟩ := Telescope.At.rename_inv h'
           exact ⟨P₀, .there hP₀, rfl⟩
 
+
+/-! ## Use sets and the inspected root under renaming and substitution
+
+The use set of a term is a capture set, and it travels with the term: a
+renaming renames it, and a substitution renames it by the substitution's
+renaming of roots (`Subst.root`, the same reading of a substitution on
+capture sets that types and evidence already use).  The inspected root
+travels the same way. -/
+
+theorem CaptureSet.rename_union {s1 s2 : Sig} (C D : CaptureSet s1) (ρ : Rename s1 s2) :
+    (C ∪ D).rename ρ = C.rename ρ ∪ D.rename ρ := by
+  simp [CaptureSet.rename, CaptureSet.union_def]
+
+theorem Tm.uses_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
+    (t.rename ρ).uses = t.uses.rename ρ := by
+  match t with
+  | .atom a => simp [Tm.rename, CaptureSet.rename, CapAtom.rename]
+  | .val v => simp [Tm.rename, CaptureSet.rename]
+  | .app a b => simp [Tm.rename, CaptureSet.rename, CapAtom.rename]
+  | .proj a ℓ h => simp [Tm.rename, CaptureSet.rename, CapAtom.rename]
+  | .let t u U f =>
+      simp only [Tm.rename, Tm.uses_let, CaptureSet.rename_union, Tm.uses_rename t]
+  | .cast t e => simp only [Tm.rename, Tm.uses_cast, Tm.uses_rename t]
+  | .unbox a U f =>
+      simp only [Tm.rename, Tm.uses_unbox, CaptureSet.rename_union, Atom.root_rename]
+      simp [CaptureSet.rename, CapAtom.rename]
+
+theorem Tm.uses_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
+    (t.subst σ).uses = t.uses.rename σ.root := by
+  match t with
+  | .atom a => simp [Tm.subst, CaptureSet.rename, CapAtom.rename]
+  | .val v => simp [Tm.subst, CaptureSet.rename]
+  | .app a b => simp [Tm.subst, CaptureSet.rename, CapAtom.rename]
+  | .proj a ℓ h => simp [Tm.subst, CaptureSet.rename, CapAtom.rename]
+  | .let t u U f =>
+      simp only [Tm.subst, Tm.uses_let, CaptureSet.rename_union, Tm.uses_subst t]
+  | .cast t e => simp only [Tm.subst, Tm.uses_cast, Tm.uses_subst t]
+  | .unbox a U f =>
+      simp only [Tm.subst, Tm.uses_unbox, CaptureSet.rename_union, Atom.root_subst]
+      simp [CaptureSet.rename, CapAtom.rename]
+
+/-- Instantiating the innermost binder of a term by an atom instantiates its
+use set at the atom's root. -/
+theorem Tm.uses_substAtom {s : Sig} (t : Tm (s,x)) (a : Atom s) :
+    (t.substAtom a).uses = t.uses⟦a.root⟧ := by
+  simp [Tm.substAtom, Tm.uses_subst, CaptureSet.substVar]
+
+theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
+    (t.rename ρ).inspects = t.inspects.map ρ.var := by
+  match t with
+  | .atom a => simp [Tm.rename]
+  | .val v => simp [Tm.rename]
+  | .app a b => simp [Tm.rename]
+  | .proj a ℓ h => simp [Tm.rename]
+  | .let t u U f => simp [Tm.rename]
+  | .cast t e => simp [Tm.rename]
+  | .unbox a U f => simp [Tm.rename]
+
+theorem Tm.inspects_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
+    (t.subst σ).inspects = t.inspects.map σ.root.var := by
+  match t with
+  | .atom a => simp [Tm.subst]
+  | .val v => simp [Tm.subst]
+  | .app a b => simp [Tm.subst]
+  | .proj a ℓ h => simp [Tm.subst]
+  | .let t u U f => simp [Tm.subst]
+  | .cast t e => simp [Tm.subst]
+  | .unbox a U f => simp [Tm.subst]
 
 end FCdot
 

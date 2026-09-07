@@ -27,7 +27,7 @@ theorem Fields.append_erase {s : Sig} (F G : FCdot.Fields s) :
     (F.append G).erase = DotMNF.appendFields G.erase F.erase := by
   match F with
   | .nil => rfl
-  | .cons F ℓ t => simp only [FCdot.Fields.append, Fields.erase, DotMNF.appendFields,
+  | .cons F ℓ t g => simp only [FCdot.Fields.append, Fields.erase, DotMNF.appendFields,
       Fields.append_erase F G]
 
 end FCdot
@@ -77,8 +77,8 @@ theorem DefsTy.translateFields_erase : {Γ : Ctx (s,x)} → {d : Defs (s,x)} →
     (h : DefsTy Γ d T) → h.translateFields.erase = Defs.erase d
   | _, _, _, .typ => by simp only [DefsTy.translateFields, FCdot.Fields.erase, Defs.erase]
   | _, .trm a _, _, .trm h => by
-      simp only [DefsTy.translateFields, FCdot.Fields.erase, FCdot.Tm.erase, Defs.erase,
-        HasTy.translate_erase h]
+      simp only [DefsTy.translateFields, FCdot.Fields.erase, fieldBody, FCdot.Tm.erase,
+        Defs.erase, HasTy.translate_erase h]
   | _, _, _, .and h₁ h₂ => by
       simp only [DefsTy.translateFields, FCdot.Fields.append_erase, Defs.erase,
         DefsTy.translateFields_erase h₁, DefsTy.translateFields_erase h₂]

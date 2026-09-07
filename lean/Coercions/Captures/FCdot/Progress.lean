@@ -20,7 +20,7 @@ variable {σ : Store s} {Γ : Ctx s}
 /-- A function atom is rooted at a closure. -/
 theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
     {C : CaptureSet s} (h : Γ ⊢ₐ a : (Π(S) T) ^ C) :
-    ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
+    ∃ A S₀ t₀ g, σ.lookup a.root = .lam A S₀ t₀ g := by
   obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
   rw [Ty.shape_capt] at hFt
   have hlk : ∃ S₀ T₀, (Γ.lookupTy a.root).shape = Π(S₀) T₀ := by
@@ -52,8 +52,8 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
   have hv := hσ.lookup a.root
   have hlit := hσ.lookup_isLiteral a.root
   cases hl : σ.lookup a.root with
-  | lam S₁ t₁ => exact ⟨_, _, rfl⟩
-  | obj W Wc F =>
+  | lam A S₁ t₁ g => exact ⟨_, _, _, _, rfl⟩
+  | obj A W Wc F =>
       rw [hl] at hv
       obtain ⟨hT, _⟩ := hv.obj_inv
       rw [hT] at hlk; simp at hlk
@@ -77,19 +77,19 @@ theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
       | nil => exact Or.inl (Or.inr ⟨rfl, a, rfl⟩)
       | cons K f =>
           cases f with
-          | «let» u => exact Or.inr ⟨_, _, .rename⟩
+          | «let» u U' f => exact Or.inr ⟨_, _, .rename⟩
           | cast e => exact Or.inr ⟨_, _, .castAtom⟩
   | val v =>
       cases K with
       | nil => exact Or.inl (Or.inl ⟨rfl, v, rfl⟩)
       | cons K f =>
           cases f with
-          | «let» u => exact Or.inr ⟨_, _, .alloc⟩
+          | «let» u U' f => exact Or.inr ⟨_, _, .alloc⟩
           | cast e => exact Or.inr ⟨_, _, .castVal⟩
   | app a b =>
       cases ht with
       | app ha hb =>
-          obtain ⟨S₀, t₀, hl⟩ := closed_pi_inversion hσ ha
+          obtain ⟨A, S₀, t₀, g, hl⟩ := closed_pi_inversion hσ ha
           by_cases hne : a = .var a.root
           · obtain ⟨x, rfl⟩ : ∃ x, a = .var x := ⟨_, hne⟩
             exact Or.inr ⟨_, _, Step.appVar hl⟩
@@ -101,13 +101,13 @@ theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
   | proj a ℓ h =>
       cases ht with
       | proj _ hh =>
-          obtain ⟨W, Wc, F, t, hl, hget⟩ := closed_has_field hσ hh
+          obtain ⟨A, W, Wc, F, t, hl, hget⟩ := closed_has_field hσ hh
           exact Or.inr ⟨_, _, Step.proj hl hget⟩
-  | «let» t u => exact Or.inr ⟨_, _, .let⟩
+  | «let» t u U' f => exact Or.inr ⟨_, _, .let⟩
   | cast t e => exact Or.inr ⟨_, _, .castPush⟩
   -- An `unbox` is a term now: its atom is rooted at a stored box, and the
   -- head form of its casts is one of the three the two steps consume.
-  | unbox a f =>
+  | unbox a U f =>
       cases ht with
       | unbox ha _ =>
           obtain ⟨b, a', n, F, hl, hform, hFs⟩ := closed_box_inversion hσ ha

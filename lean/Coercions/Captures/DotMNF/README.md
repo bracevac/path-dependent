@@ -1,4 +1,4 @@
-# DotMNF, at stage A1 of captures
+# DotMNF, at stage A2 of captures
 
 WadlerFest DOT in monadic normal form, the source of the translation in `../DotToFCdot`.
 
@@ -10,4 +10,8 @@ WadlerFest DOT in monadic normal form, the source of the translation in `../DotT
 | `Erasure` | erasure to `Runtime`; `erase_step`, `erase_reflect`, `final_erase`, `final_reflect` |
 | `Examples` | E1 to E8 as `HasTy` derivations; E8 is the refinement of an abstract type, `x.A ∧ {a : ⊤}`, with two derivations of its projection and an `And-I` derivation |
 
-Unchanged in stages A0 and A1.  The capturing source calculus is stage A3.
+Unchanged in stages A0, A1 and A2.  Captures live on the target side until A3: this
+source has no capturing types, no capture members, no boxes and no use sets, and none
+of its rules mentions a capture set.  The capturing source calculus `DOT-MNF^cc`, with
+capturing types, capture members, `any` as the top of subcapturing, boxes, use sets and
+`(sub)` on answers, is stage A3.

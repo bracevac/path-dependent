@@ -541,16 +541,8 @@ by one with the same roots, and monotone under store extension.  The
 resolution lemma of the capture sort, `Ctx.Root_name`, says that a defined
 capture name has exactly the roots of its witness. -/
 
-/-- The capture set of a type. -/
-def Ty.captureSet : Ty s → CaptureSet s
-  | .capt C _ => C
-
-@[simp] theorem Ty.captureSet_capt (C : CaptureSet s) (S : Shape s) :
-    (Ty.capt C S).captureSet = C := rfl
-
-@[simp] theorem Ty.captureSet_weaken (T : Ty s) :
-    (T.weaken (k := k)).captureSet = T.captureSet.weaken := by
-  cases T; rfl
+/-! `Ty.captureSet` and its two simp lemmas are stated in `Syntax.lean`,
+where store typing already needs them. -/
 
 @[simp] theorem Ctx.lookupCap_here (Γ : Ctx s) (b : CapBound s) :
     (Ctx.consC Γ b).lookupCap .here = b↑ := rfl

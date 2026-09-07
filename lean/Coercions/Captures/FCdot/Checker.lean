@@ -954,12 +954,12 @@ def valueBox {s : Sig} {Γ : Ctx s} {a : Atom s} {Ta : Ty s} (ha : Γ ⊢ₐ a :
   ⟨(□ Ta) ^ [], .box ha⟩
 
 /-- Unboxing: the atom's shape must be a box, its capture set must be the
-source of the charge, and the charge must land in the empty set.  An
-unboxing is a term. -/
-def tmUnbox {s : Sig} {Γ : Ctx s} {a : Atom s} {f : CapCo s}
+source of the charge, and the charge must land in the declared use set `U`.
+An unboxing is a term. -/
+def tmUnbox {s : Sig} {Γ : Ctx s} {a : Atom s} {f : CapCo s} (U : CaptureSet s)
     {Ta : Ty s} (ha : Γ ⊢ₐ a : Ta) {C D : CaptureSet s} (hf : Γ ⊢ᶜ f : C ⊑ D) :
-    Option (TmChecked Γ (.unbox a f)) :=
-  if hD : D = [] then
+    Option (TmChecked Γ (.unbox a U f)) :=
+  if hD : D = U then
     match Ta, ha with
     | .capt _ (.box (.capt C' S')), ha =>
         if hC : C' = C then
@@ -1311,14 +1311,21 @@ def synthTmCore {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (TmChecked Γ t) :=
       let ca ← synthAtomCore Γ a
       let ch ← synthHasCore Γ h a.root
       if hl : ch.label = ℓ then
-        some ⟨Ty.capt [] (Shape.sel a.root ℓ),
+        some ⟨Ty.capt [CapAtom.name a.root ℓ] (Shape.sel a.root ℓ),
           .proj ca.typing (by rw [← hl]; exact ch.typing)⟩
       else none
-  | .let t u => do
+  | .let t u U' f => do
       let ct ← synthTmCore Γ t
       let cu ← synthTmCore (Γ.cons (.opaque ct.type)) u
+      let cf ← synthCapCore (Γ.cons (.opaque ct.type)) f
       match cu.type.strengthenW? with
-      | some ⟨U, hU⟩ => some ⟨U, .let ct.typing (by rw [← hU]; exact cu.typing)⟩
+      | some ⟨U, hU⟩ =>
+          if hs : cf.source = u.uses then
+            if ht : cf.target = U'↑ then
+              some ⟨U, .let ct.typing (by rw [← hU]; exact cu.typing)
+                (by rw [← hs, ← ht]; exact cf.typing)⟩
+            else none
+          else none
       | none => none
   | .cast t e => do
       let ct ← synthTmCore Γ t
@@ -1326,20 +1333,27 @@ def synthTmCore {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (TmChecked Γ t) :=
       if h : ce.source = ct.type then
         some ⟨ce.target, .cast ct.typing (by rw [← h]; exact ce.typing)⟩
       else none
-  | .unbox a f => do
+  | .unbox a U f => do
       let ca ← synthAtomCore Γ a
       let cf ← synthCapCore Γ f
-      tmUnbox ca.typing cf.typing
+      tmUnbox U ca.typing cf.typing
+termination_by sizeOf t
 
 def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked Γ v) :=
   match v with
-  | .lam T t => do
+  | .lam A T t g => do
       let ct ← synthTmCore (Γ.cons (.opaque T)) t
-      some ⟨(.pi T ct.type) ^ [], .lam ct.typing⟩
-  | .obj W Wc F => do
+      let cg ← synthCapCore (Γ.cons (.opaque T)) g
+      if hs : cg.source = t.uses then
+        if ht : cg.target = (A↑ ∪ [CapAtom.var .here]) then
+          some ⟨(.pi T ct.type) ^ A,
+            .lam ct.typing (by rw [← hs, ← ht]; exact cg.typing)⟩
+        else none
+      else none
+  | .obj A W Wc F => do
       let Tel := Telescope.ofLiteral W Wc F.labels
-      let pF ← checkFieldsCore (Γ.cons (.transparent ((.obj Tel) ^ []) W Wc F.labels)) F
-      some ⟨(.obj Tel) ^ [], .obj pF.down⟩
+      let pF ← checkFieldsCore A (Γ.cons (.transparent ((.obj Tel) ^ A) W Wc F.labels)) F
+      some ⟨(.obj Tel) ^ A, .obj pF.down⟩
   | .box a => do
       let ca ← synthAtomCore Γ a
       some (valueBox ca.typing)
@@ -1349,17 +1363,25 @@ def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked �
       if h : ce.source = cv.type then
         some ⟨ce.target, .cast cv.typing (by rw [← h]; exact ce.typing)⟩
       else none
+termination_by sizeOf v
 
-def checkFieldsCore {s : Sig} (Γ : Ctx (s,x)) (F : Fields (s,x)) :
-    Option (PLift (Γ ⊢ᶠ F)) :=
+def checkFieldsCore {s : Sig} (A : CaptureSet s) (Γ : Ctx (s,x)) (F : Fields (s,x)) :
+    Option (PLift (Γ ⊢ᶠ[A] F)) :=
   match F with
   | .nil => some ⟨.nil⟩
-  | .cons F ℓ t => do
-      let pF ← checkFieldsCore Γ F
+  | .cons F ℓ t g => do
+      let pF ← checkFieldsCore A Γ F
       let ct ← synthTmCore Γ t
-      if h : ct.type = Ty.capt [] (Shape.sel .here ℓ) then
-        some ⟨.cons pF.down (by rw [← h]; exact ct.typing)⟩
+      let cg ← synthCapCore Γ g
+      if h : ct.type = Ty.capt [CapAtom.name .here ℓ] (Shape.sel .here ℓ) then
+        if hs : cg.source = t.uses then
+          if ht : cg.target = (A↑ ∪ [CapAtom.var .here]) then
+            some ⟨.cons pF.down (by rw [← h]; exact ct.typing)
+              (by rw [← hs, ← ht]; exact cg.typing)⟩
+          else none
+        else none
       else none
+termination_by sizeOf F
 
 end
 
@@ -1436,8 +1458,8 @@ def synthValue {s : Sig} (Γ : Ctx s) (v : Value s) : Option (Ty s) :=
 def checkValue {s : Sig} (Γ : Ctx s) (v : Value s) (T : Ty s) : Bool :=
   decide (synthValue Γ v = some T)
 
-def checkFields {s : Sig} (Γ : Ctx (s,x)) (F : Fields (s,x)) : Bool :=
-  (checkFieldsCore Γ F).isSome
+def checkFields {s : Sig} (A : CaptureSet s) (Γ : Ctx (s,x)) (F : Fields (s,x)) : Bool :=
+  (checkFieldsCore A Γ F).isSome
 
 /-! ## Soundness
 
@@ -1604,8 +1626,8 @@ theorem checkValue_sound {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
     (h : checkValue Γ v T = true) : Γ ⊢ᵥ v : T :=
   synthValue_sound (of_decide_eq_true h)
 
-theorem checkFields_sound {s : Sig} {Γ : Ctx (s,x)} {F : Fields (s,x)}
-    (h : checkFields Γ F = true) : Γ ⊢ᶠ F := by
+theorem checkFields_sound {s : Sig} {Γ : Ctx (s,x)} {F : Fields (s,x)} {A : CaptureSet s}
+    (h : checkFields A Γ F = true) : Γ ⊢ᶠ[A] F := by
   obtain ⟨p, _⟩ := isSome_elim h
   exact p.down
 
@@ -1620,7 +1642,8 @@ section SmokeTests
 private def smokeLabel : Label := .trm 0
 
 /-- `λ(x : ⊤ ^ []). x`. -/
-private def smokeId : Tm ([],x) := .val (.lam (⊤ ^ []) (.atom (.var .here)))
+private def smokeId : Tm ([],x) :=
+  .val (.lam [] (⊤ ^ []) (.atom (.var .here)) (.refl [CapAtom.var .here]))
 
 /-- The type of `smokeId`. -/
 private def smokeIdTy : Ty ([],x) := (Π(⊤ ^ []) (⊤ ^ [])) ^ []
@@ -1630,7 +1653,8 @@ unfolding the block definition. -/
 private def smokeField : Tm ([],x) :=
   .cast
     (.cast smokeId (.capt (.top (.pi (⊤ ^ []) (⊤ ^ []))) (.refl [])))
-    (.capt (.eqToLe (.symm (.def .here smokeLabel))) (.refl []))
+    (.capt (.eqToLe (.symm (.def .here smokeLabel)))
+      (.elem [] [CapAtom.name .here smokeLabel]))
 
 /-- Witnesses of the smoke literal: the single field is defined as `⊤`. -/
 private def smokeW : Witnesses ([],x) := .cons .nil smokeLabel ⊤
@@ -1639,7 +1663,9 @@ private def smokeW : Witnesses ([],x) := .cons .nil smokeLabel ⊤
 private def smokeWc : CapWitnesses ([],x) := .nil
 
 /-- An object literal with one witnessed field. -/
-private def smokeObj : Value [] := .obj smokeW smokeWc (.cons .nil smokeLabel smokeField)
+private def smokeObj : Value [] :=
+  .obj [] smokeW smokeWc
+    (.cons .nil smokeLabel smokeField (.elem [] [CapAtom.var .here]))
 
 /-- The literal's precise type: one definition entry, one presence entry. -/
 private def smokeObjTy : Ty [] := (μ (Telescope.ofLiteral smokeW smokeWc [smokeLabel])) ^ []
@@ -1675,7 +1701,8 @@ private def smokeCtxTrans : Ctx ([],x) :=
   Ctx.nil.cons (.transparent (⊤ ^ []) (.cons .nil smokeLabel ⊤) .nil [smokeLabel])
 
 /-- The type of `x.ℓ` at the binder `x = .here`. -/
-private def smokeProjTy : Ty ([],x) := (.sel .here smokeLabel) ^ []
+private def smokeProjTy : Ty ([],x) :=
+  (.sel .here smokeLabel) ^ [CapAtom.name .here smokeLabel]
 
 example : checkTm smokeCtx (.proj (.var .here) smokeLabel smokeHas) smokeProjTy = true := by
   decide +kernel
@@ -1685,7 +1712,9 @@ example : checkTm smokeCtxTrans (.proj (.var .here) smokeLabel (.field smokeLabe
     smokeProjTy = true := by decide +kernel
 example : checkTm smokeCtx (.proj (.var .here) smokeLabel (.field smokeLabel))
     smokeProjTy = false := by decide +kernel
-example : checkTm smokeCtx (.let (.atom (.var .here)) (.atom (.var (.there .here))))
+example : checkTm smokeCtx
+    (.let (.atom (.var .here)) (.atom (.var (.there .here))) [CapAtom.var .here]
+      (.refl [CapAtom.var (.there .here)]))
     ((μ (.cons .nil (.has smokeLabel))) ^ []) = true := by decide +kernel
 
 -- The annotated object coercion synthesises both endpoints.
@@ -1791,9 +1820,9 @@ example : synthCap smokeCtx (.union (.elem [] [.var .here]) (.refl [])) = none :
 -- boxed capture set.
 example : synthValue smokeCtx (.box (.var .here)) =
     some ((□ ((μ (.cons .nil (.has smokeLabel))) ^ [])) ^ []) := by decide +kernel
-example : synthTm smokeCtxBox (.unbox (.var .here) (.refl [])) =
+example : synthTm smokeCtxBox (.unbox (.var .here) [] (.refl [])) =
     some ((μ (.cons .nil (.has smokeLabel))) ^ []) := by decide +kernel
-example : synthTm smokeCtxBox (.unbox (.var .here) (.elem [] [.var .here])) = none := by
+example : synthTm smokeCtxBox (.unbox (.var .here) [] (.elem [] [.var .here])) = none := by
   decide +kernel
 
 -- The capture sort at an atom: `capvar` reads the atom's own capture set off
