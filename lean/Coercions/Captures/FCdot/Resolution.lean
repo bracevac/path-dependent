@@ -316,8 +316,8 @@ theorem Ctx.chain_settles (Γ : Ctx s) {T : Shape s} :
 /-! ## Defined names of a context -/
 
 theorem Ctx.defPairs_cons_transparent (Γ : Ctx s) (T : Ty s) (W : Witnesses (s,x))
-    (Fs : List Label) :
-    (Ctx.cons Γ (.transparent T W Fs)).defPairs =
+    (Wc : CapWitnesses (s,x)) (Fs : List Label) :
+    (Ctx.cons Γ (.transparent T W Wc Fs)).defPairs =
       Γ.defPairs.map (fun p => (BVar.there p.1, p.2)) ++
         W.labels.map (fun ℓ => (BVar.here, ℓ)) := rfl
 
@@ -333,7 +333,7 @@ theorem Ctx.defPairs_cons_opaque (Γ : Ctx s) (T : Ty s) :
 definition is the vacuous witness `⊤`. -/
 theorem Ctx.lookupDef_defPairs : ∀ {s : Sig} (Γ : Ctx s) (x : BVar s .var) (ℓ : Label)
     (W : Shape s), Γ.lookupDef x ℓ = some W → (x, ℓ) ∈ Γ.defPairs ∨ W = ⊤
-  | _, .cons Γ (.transparent T W₀ Fs), .here, ℓ, W, h => by
+  | _, .cons Γ (.transparent T W₀ Wc Fs), .here, ℓ, W, h => by
       rw [Ctx.lookupDef_here_transparent] at h
       have hW : W = W₀.get ℓ := (Option.some.inj h).symm
       have hdec : Decidable (ℓ ∈ W₀.labels) := inferInstance
@@ -519,20 +519,27 @@ theorem Ctx.resolve_resolve {Γ : Ctx s} (T : Shape s) :
 
 /-! ## Capture resolution: `caps`, `roots`, and subcapturing
 
-`caps_Γ` resolves a capture set to the atoms it stands for.  A term binder
-stands for the capture set of its type, a capture binder for itself when its
-bound is a root or `∗` and for the resolution of its bound otherwise, and a
-capture name for the empty set: in this stage nothing stands behind a name,
-the capture witnesses that fill the clause arriving with the capture sort in
-telescopes.  The recursion descends on the binder of an atom, so it is well
-founded on the spine of the context, and the fuel on labels is reserved for
-the name clause.
+`caps_Γ n C` resolves a capture set to the atoms it stands for, with fuel `n`
+for the capture names.  A term binder stands for the capture set of its type,
+a capture binder for itself when its bound is a root or `∗` and for the
+resolution of its bound otherwise, and a capture name `x ∙ ℓ` for the
+resolution of the capture witness of its block, read by `Ctx.lookupDefC`.
 
-`roots_Γ` is `caps_Γ` here; the compiler's line redefines it as
-`expand ∘ caps`.  `CapLe Γ C D` is the inclusion of roots; it is reflexive,
-transitive, implied by `Subset`, closed under union on the left, invariant
-under replacing a set by one with the same roots, and monotone under store
-extension. -/
+A capture witness may name a label of its own block, so the name clause is the
+one that needs fuel: every other clause descends on the binder of the atom and
+is well founded on the spine of the context, while a chain of names stays at
+one binder.  Running out of fuel on a name means the chain is cyclic, and a
+cycle resolves to `[]`, the least solution — the capture analogue of a cyclic
+type alias resolving to `⊤`.  Resolution is monotone in the fuel
+(`Ctx.caps_mono_fuel`), so the *roots* of a set are the atoms it resolves to
+at some fuel: `Γ.Root a C`.  `roots_Γ n` is `caps_Γ n` here; the compiler's
+line redefines it as `expand ∘ caps`.
+
+`CapLe Γ C D` is the inclusion of roots; it is reflexive, transitive, implied
+by `Subset`, closed under union on the left, invariant under replacing a set
+by one with the same roots, and monotone under store extension.  The
+resolution lemma of the capture sort, `Ctx.Root_name`, says that a defined
+capture name has exactly the roots of its witness. -/
 
 /-- The capture set of a type. -/
 def Ty.captureSet : Ty s → CaptureSet s
@@ -554,181 +561,490 @@ def Ty.captureSet : Ty s → CaptureSet s
 @[simp] theorem Ctx.lookupCap_thereC (Γ : Ctx s) (b : CapBound s) (κ : BVar s .cap) :
     (Ctx.consC Γ b).lookupCap (.there κ) = (Γ.lookupCap κ)↑ := rfl
 
+/-- Weakening a capture set preserves syntactic inclusion. -/
+theorem CaptureSet.Subset.weaken {C D : CaptureSet s} (h : C.Subset D) :
+    (C.weaken (k := k)).Subset D.weaken := by
+  intro a ha
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha ⊢
+  obtain ⟨b, hb, rfl⟩ := ha
+  exact ⟨b, h b hb, rfl⟩
+
 mutual
 
-/-- `caps_Γ C`: the atoms the capture set `C` resolves to, atom by atom. -/
-def Ctx.caps : (Γ : Ctx s) → CaptureSet s → CaptureSet s
-  | _, [] => []
-  | Γ, a :: C => Γ.capsAtom a ++ Γ.caps C
-termination_by Γ C => (sizeOf Γ, C.length + 1)
+/-- `caps_Γ n C`: the atoms the capture set `C` resolves to, atom by atom,
+with fuel `n` for capture names. -/
+def Ctx.caps : (Γ : Ctx s) → Nat → CaptureSet s → CaptureSet s
+  | _, _, [] => []
+  | Γ, n, a :: C => Γ.capsAtom n a ++ Γ.caps n C
+termination_by Γ n C => (sizeOf Γ, n, C.length + 1)
 
-/-- `caps_Γ` on one atom, by descent on the atom's binder: a term binder
-resolves to the capture set of its type, a capture binder to itself or to its
-bound, and a capture name to the empty set. -/
-def Ctx.capsAtom : (Γ : Ctx s) → CapAtom s → CaptureSet s
-  | .cons Γ b, .var .here => (Γ.caps b.ty.captureSet).weaken
-  | .cons Γ _, .var (.there y) => (Γ.capsAtom (.var y)).weaken
-  | .consC Γ _, .var (.there y) => (Γ.capsAtom (.var y)).weaken
-  | .consC _ .root, .cvar .here => [.cvar .here]
-  | .consC _ .star, .cvar .here => [.cvar .here]
-  | .consC Γ (.upper C), .cvar .here => (Γ.caps C).weaken
-  | .consC Γ (.inst C), .cvar .here => (Γ.caps C).weaken
-  | .cons Γ _, .cvar (.there κ) => (Γ.capsAtom (.cvar κ)).weaken
-  | .consC Γ _, .cvar (.there κ) => (Γ.capsAtom (.cvar κ)).weaken
-  | _, .name _ _ => []
-termination_by Γ _ => (sizeOf Γ, 0)
+/-- `caps_Γ n` on one atom: a term binder resolves to the capture set of its
+type and a capture binder to itself or to its bound, both by descent on the
+binder; a capture name follows the capture witness of its block, at the same
+context, and so consumes one unit of fuel.  A name with no fuel left lies on
+a cyclic chain and resolves to the empty set. -/
+def Ctx.capsAtom : (Γ : Ctx s) → Nat → CapAtom s → CaptureSet s
+  | .cons Γ b, n, .var .here => (Γ.caps n b.ty.captureSet).weaken
+  | .cons Γ _, n, .var (.there y) => (Γ.capsAtom n (.var y)).weaken
+  | .consC Γ _, n, .var (.there y) => (Γ.capsAtom n (.var y)).weaken
+  | .consC _ .root, _, .cvar .here => [.cvar .here]
+  | .consC _ .star, _, .cvar .here => [.cvar .here]
+  | .consC Γ (.upper C), n, .cvar .here => (Γ.caps n C).weaken
+  | .consC Γ (.inst C), n, .cvar .here => (Γ.caps n C).weaken
+  | .cons Γ _, n, .cvar (.there κ) => (Γ.capsAtom n (.cvar κ)).weaken
+  | .consC Γ _, n, .cvar (.there κ) => (Γ.capsAtom n (.cvar κ)).weaken
+  | _, 0, .name _ _ => []
+  | Γ, n + 1, .name x ℓ =>
+      match Γ.lookupDefC x ℓ with
+      | some C => Γ.caps n C
+      | none => []
+termination_by Γ n _ => (sizeOf Γ, n, 0)
 
 end
 
-@[simp] theorem Ctx.caps_nil (Γ : Ctx s) : Γ.caps [] = [] := by
+@[simp] theorem Ctx.caps_nil (Γ : Ctx s) (n : Nat) : Γ.caps n [] = [] := by
   simp [Ctx.caps]
 
-@[simp] theorem Ctx.caps_cons (Γ : Ctx s) (a : CapAtom s) (C : CaptureSet s) :
-    Γ.caps (a :: C) = Γ.capsAtom a ++ Γ.caps C := by
+@[simp] theorem Ctx.caps_cons (Γ : Ctx s) (n : Nat) (a : CapAtom s) (C : CaptureSet s) :
+    Γ.caps n (a :: C) = Γ.capsAtom n a ++ Γ.caps n C := by
   simp [Ctx.caps]
 
-/-- The name clause of this stage: a capture name resolves to the empty set. -/
-@[simp] theorem Ctx.capsAtom_name (Γ : Ctx s) (x : BVar s .var) (ℓ : Label) :
-    Γ.capsAtom (.name x ℓ) = [] := by
+/-- A capture name with no fuel left resolves to the empty set. -/
+@[simp] theorem Ctx.capsAtom_name_zero (Γ : Ctx s) (x : BVar s .var) (ℓ : Label) :
+    Γ.capsAtom 0 (.name x ℓ) = [] := by
   cases Γ <;> simp [Ctx.capsAtom]
 
+/-- The name clause: a capture name follows the capture witness of its block. -/
+theorem Ctx.capsAtom_name_succ (Γ : Ctx s) (n : Nat) (x : BVar s .var) (ℓ : Label) :
+    Γ.capsAtom (n + 1) (.name x ℓ) =
+      (Γ.lookupDefC x ℓ).elim [] (fun C => Γ.caps n C) := by
+  cases Γ with
+  | nil => cases x
+  | cons Γ b => cases h : (Ctx.cons Γ b).lookupDefC x ℓ <;> simp [Ctx.capsAtom, h]
+  | consC Γ b => cases h : (Ctx.consC Γ b).lookupDefC x ℓ <;> simp [Ctx.capsAtom, h]
+
+theorem Ctx.capsAtom_name_some {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
+    {C : CaptureSet s} (h : Γ.lookupDefC x ℓ = some C) (n : Nat) :
+    Γ.capsAtom (n + 1) (.name x ℓ) = Γ.caps n C := by
+  rw [Ctx.capsAtom_name_succ, h]; rfl
+
+theorem Ctx.capsAtom_name_none {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
+    (h : Γ.lookupDefC x ℓ = none) (n : Nat) :
+    Γ.capsAtom (n + 1) (.name x ℓ) = [] := by
+  rw [Ctx.capsAtom_name_succ, h]; rfl
+
 /-- `caps` of a union is the union of the `caps`. -/
-theorem Ctx.caps_append (Γ : Ctx s) :
-    ∀ C D : CaptureSet s, Γ.caps (C ++ D) = Γ.caps C ++ Γ.caps D
+theorem Ctx.caps_append (Γ : Ctx s) (n : Nat) :
+    ∀ C D : CaptureSet s, Γ.caps n (C ++ D) = Γ.caps n C ++ Γ.caps n D
   | [], _ => by simp
   | a :: C, D => by
-      simp only [List.cons_append, Ctx.caps_cons, Ctx.caps_append Γ C D, List.append_assoc]
+      simp only [List.cons_append, Ctx.caps_cons, Ctx.caps_append Γ n C D, List.append_assoc]
 
 /-- The `caps` of an atom of a set are `caps` of the set. -/
-theorem Ctx.capsAtom_mem (Γ : Ctx s) (a : CapAtom s) :
-    ∀ D : CaptureSet s, a ∈ D → (Γ.capsAtom a).Subset (Γ.caps D)
+theorem Ctx.capsAtom_mem (Γ : Ctx s) (n : Nat) (a : CapAtom s) :
+    ∀ D : CaptureSet s, a ∈ D → (Γ.capsAtom n a).Subset (Γ.caps n D)
   | [], h => by simp at h
   | b :: D, h => by
       intro c hc
       rw [Ctx.caps_cons]
       rcases List.mem_cons.mp h with rfl | h
       · exact List.mem_append_left _ hc
-      · exact List.mem_append_right _ (Ctx.capsAtom_mem Γ a D h c hc)
+      · exact List.mem_append_right _ (Ctx.capsAtom_mem Γ n a D h c hc)
 
 /-- `caps` is monotone in the syntactic inclusion of sets. -/
-theorem Ctx.caps_subset {Γ : Ctx s} :
-    ∀ {C D : CaptureSet s}, C.Subset D → (Γ.caps C).Subset (Γ.caps D)
+theorem Ctx.caps_subset {Γ : Ctx s} {n : Nat} :
+    ∀ {C D : CaptureSet s}, C.Subset D → (Γ.caps n C).Subset (Γ.caps n D)
   | [], _, _ => by intro c hc; simp at hc
   | a :: C, D, h => by
       intro c hc
       rw [Ctx.caps_cons] at hc
       rcases List.mem_append.mp hc with hc | hc
-      · exact Ctx.capsAtom_mem Γ a D (h a (List.mem_cons_self ..)) c hc
+      · exact Ctx.capsAtom_mem Γ n a D (h a (List.mem_cons_self ..)) c hc
       · exact Ctx.caps_subset (fun b hb => h b (List.mem_cons_of_mem a hb)) c hc
+
+/-! ### Monotonicity in the fuel
+
+More fuel resolves more names: a chain that ran out of fuel contributed the
+empty set, and one that did not is unchanged.  The atom half and the set half
+are proven together, by induction on the fuel and then on the spine of the
+context, because the name clause of the first calls the second at one unit
+less fuel. -/
+
+/-- The set half of a monotonicity statement follows from the atom half. -/
+theorem Ctx.caps_of_capsAtom {Γ : Ctx s} {n m : Nat}
+    (h : ∀ a : CapAtom s, (Γ.capsAtom n a).Subset (Γ.capsAtom m a)) :
+    ∀ C : CaptureSet s, (Γ.caps n C).Subset (Γ.caps m C)
+  | [] => by intro c hc; simp at hc
+  | a :: C => by
+      intro c hc
+      rw [Ctx.caps_cons] at hc ⊢
+      rcases List.mem_append.mp hc with hc | hc
+      · exact List.mem_append_left _ (h a c hc)
+      · exact List.mem_append_right _ (Ctx.caps_of_capsAtom h C c hc)
+
+theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
+    (∀ a : CapAtom s, (Γ.capsAtom n a).Subset (Γ.capsAtom (n + 1) a)) ∧
+      (∀ C : CaptureSet s, (Γ.caps n C).Subset (Γ.caps (n + 1) C)) := by
+  induction n with
+  | zero =>
+      intro s Γ
+      induction Γ with
+      | nil =>
+          have hat : ∀ a : CapAtom [],
+              (Ctx.nil.capsAtom 0 a).Subset (Ctx.nil.capsAtom 1 a) := by
+            intro a
+            cases a with
+            | var x => cases x
+            | cvar κ => cases κ
+            | name x ℓ => cases x
+          exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
+      | cons Γ b ih =>
+          have hat : ∀ a,
+              ((Ctx.cons Γ b).capsAtom 0 a).Subset ((Ctx.cons Γ b).capsAtom 1 a) := by
+            intro a
+            cases a with
+            | var y =>
+                cases y with
+                | here => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
+                | there y => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | cvar κ =>
+                cases κ with
+                | there κ => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | name x ℓ =>
+                intro c hc; rw [Ctx.capsAtom_name_zero] at hc; simp at hc
+          exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
+      | consC Γ b ih =>
+          have hat : ∀ a,
+              ((Ctx.consC Γ b).capsAtom 0 a).Subset ((Ctx.consC Γ b).capsAtom 1 a) := by
+            intro a
+            cases a with
+            | var y =>
+                cases y with
+                | there y => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | cvar κ =>
+                cases κ with
+                | here =>
+                    cases b with
+                    | root => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
+                    | star => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
+                    | upper C => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
+                    | inst C => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
+                | there κ => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | name x ℓ =>
+                intro c hc; rw [Ctx.capsAtom_name_zero] at hc; simp at hc
+          exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
+  | succ n ihn =>
+      intro s Γ
+      induction Γ with
+      | nil =>
+          have hat : ∀ a : CapAtom [],
+              (Ctx.nil.capsAtom (n + 1) a).Subset (Ctx.nil.capsAtom (n + 1 + 1) a) := by
+            intro a
+            cases a with
+            | var x => cases x
+            | cvar κ => cases κ
+            | name x ℓ => cases x
+          exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
+      | cons Γ b ih =>
+          have hat : ∀ a,
+              ((Ctx.cons Γ b).capsAtom (n + 1) a).Subset
+                ((Ctx.cons Γ b).capsAtom (n + 1 + 1) a) := by
+            intro a
+            cases a with
+            | var y =>
+                cases y with
+                | here => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
+                | there y => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | cvar κ =>
+                cases κ with
+                | there κ => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | name x ℓ =>
+                cases h : (Ctx.cons Γ b).lookupDefC x ℓ with
+                | none =>
+                    intro c hc
+                    rw [Ctx.capsAtom_name_none h] at hc; simp at hc
+                | some C =>
+                    intro c hc
+                    rw [Ctx.capsAtom_name_some h] at hc
+                    rw [Ctx.capsAtom_name_some h]
+                    exact (ihn (Ctx.cons Γ b)).2 C c hc
+          exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
+      | consC Γ b ih =>
+          have hat : ∀ a,
+              ((Ctx.consC Γ b).capsAtom (n + 1) a).Subset
+                ((Ctx.consC Γ b).capsAtom (n + 1 + 1) a) := by
+            intro a
+            cases a with
+            | var y =>
+                cases y with
+                | there y => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | cvar κ =>
+                cases κ with
+                | here =>
+                    cases b with
+                    | root => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
+                    | star => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
+                    | upper C => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
+                    | inst C => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
+                | there κ => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | name x ℓ =>
+                cases h : (Ctx.consC Γ b).lookupDefC x ℓ with
+                | none =>
+                    intro c hc
+                    rw [Ctx.capsAtom_name_none h] at hc; simp at hc
+                | some C =>
+                    intro c hc
+                    rw [Ctx.capsAtom_name_some h] at hc
+                    rw [Ctx.capsAtom_name_some h]
+                    exact (ihn (Ctx.consC Γ b)).2 C c hc
+          exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
+
+theorem Ctx.capsAtom_succ (Γ : Ctx s) (n : Nat) (a : CapAtom s) :
+    (Γ.capsAtom n a).Subset (Γ.capsAtom (n + 1) a) := (Ctx.caps_succ_aux n Γ).1 a
+
+theorem Ctx.caps_succ (Γ : Ctx s) (n : Nat) (C : CaptureSet s) :
+    (Γ.caps n C).Subset (Γ.caps (n + 1) C) := (Ctx.caps_succ_aux n Γ).2 C
+
+/-- Resolution is monotone in the fuel. -/
+theorem Ctx.caps_mono_fuel (Γ : Ctx s) {n m : Nat} (h : n ≤ m) (C : CaptureSet s) :
+    (Γ.caps n C).Subset (Γ.caps m C) := by
+  induction m with
+  | zero => intro c hc; rw [Nat.le_zero.mp h] at hc; exact hc
+  | succ m ih =>
+      rcases Nat.lt_or_ge n (m + 1) with hlt | hge
+      · exact fun c hc => Γ.caps_succ m C c (ih (Nat.le_of_lt_succ hlt) c hc)
+      · intro c hc; rw [Nat.le_antisymm h hge] at hc; exact hc
+
+theorem Ctx.capsAtom_mono_fuel (Γ : Ctx s) {n m : Nat} (h : n ≤ m) (a : CapAtom s) :
+    (Γ.capsAtom n a).Subset (Γ.capsAtom m a) := by
+  intro c hc
+  have h1 : c ∈ Γ.caps n [a] := by rw [Ctx.caps_cons, Ctx.caps_nil]; simpa using hc
+  have h2 := Γ.caps_mono_fuel h [a] c h1
+  rw [Ctx.caps_cons, Ctx.caps_nil] at h2
+  simpa using h2
 
 /-! ### Monotonicity under store extension -/
 
-theorem Ctx.capsAtom_weaken (Γ : Ctx s) (b : Binding s) (a : CapAtom s) :
-    (Ctx.cons Γ b).capsAtom a.weaken = (Γ.capsAtom a).weaken := by
-  cases a <;> simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
-    CaptureSet.rename, Ctx.capsAtom]
+theorem Ctx.caps_weaken_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : Binding s),
+    (∀ a : CapAtom s, (Ctx.cons Γ b).capsAtom n a.weaken = (Γ.capsAtom n a).weaken) ∧
+      (∀ C : CaptureSet s, (Ctx.cons Γ b).caps n C.weaken = (Γ.caps n C).weaken) := by
+  intro n
+  induction n with
+  | zero =>
+      intro s Γ b
+      have hatom : ∀ a : CapAtom s,
+          (Ctx.cons Γ b).capsAtom 0 a.weaken = (Γ.capsAtom 0 a).weaken := by
+        intro a
+        cases a <;> simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+          CaptureSet.rename, Ctx.capsAtom]
+      refine ⟨hatom, ?_⟩
+      intro C
+      induction C with
+      | nil => simp [CaptureSet.weaken, CaptureSet.rename]
+      | cons a C ihC =>
+          show (Ctx.cons Γ b).caps 0 (CapAtom.weaken a :: CaptureSet.weaken C)
+            = CaptureSet.weaken (Γ.caps 0 (a :: C))
+          rw [Ctx.caps_cons, hatom, ihC, Ctx.caps_cons]
+          simp [CaptureSet.weaken, CaptureSet.rename]
+  | succ n ihn =>
+      intro s Γ b
+      have hatom : ∀ a : CapAtom s,
+          (Ctx.cons Γ b).capsAtom (n + 1) a.weaken = (Γ.capsAtom (n + 1) a).weaken := by
+        intro a
+        cases a with
+        | var y =>
+            simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+              CaptureSet.rename, Ctx.capsAtom]
+        | cvar κ =>
+            simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+              CaptureSet.rename, Ctx.capsAtom]
+        | name x ℓ =>
+            have hw : (CapAtom.name x ℓ).weaken (k := .var) = .name (.there x) ℓ := rfl
+            rw [hw]
+            cases h : Γ.lookupDefC x ℓ with
+            | none =>
+                rw [Ctx.capsAtom_name_none h,
+                  Ctx.capsAtom_name_none (Γ := Ctx.cons Γ b)
+                    (by rw [Ctx.lookupDefC_there, h]; rfl)]
+                simp [CaptureSet.weaken, CaptureSet.rename]
+            | some C =>
+                rw [Ctx.capsAtom_name_some h,
+                  Ctx.capsAtom_name_some (Γ := Ctx.cons Γ b) (C := C.weaken)
+                    (by rw [Ctx.lookupDefC_there, h]; rfl)]
+                exact (ihn Γ b).2 C
+      refine ⟨hatom, ?_⟩
+      intro C
+      induction C with
+      | nil => simp [CaptureSet.weaken, CaptureSet.rename]
+      | cons a C ihC =>
+          show (Ctx.cons Γ b).caps (n + 1) (CapAtom.weaken a :: CaptureSet.weaken C)
+            = CaptureSet.weaken (Γ.caps (n + 1) (a :: C))
+          rw [Ctx.caps_cons, hatom, ihC, Ctx.caps_cons]
+          simp [CaptureSet.weaken, CaptureSet.rename]
 
-theorem Ctx.capsAtom_weakenC (Γ : Ctx s) (b : CapBound s) (a : CapAtom s) :
-    (Ctx.consC Γ b).capsAtom a.weaken = (Γ.capsAtom a).weaken := by
-  cases a <;> simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
-    CaptureSet.rename, Ctx.capsAtom]
+theorem Ctx.caps_weakenC_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : CapBound s),
+    (∀ a : CapAtom s, (Ctx.consC Γ b).capsAtom n a.weaken = (Γ.capsAtom n a).weaken) ∧
+      (∀ C : CaptureSet s, (Ctx.consC Γ b).caps n C.weaken = (Γ.caps n C).weaken) := by
+  intro n
+  induction n with
+  | zero =>
+      intro s Γ b
+      have hatom : ∀ a : CapAtom s,
+          (Ctx.consC Γ b).capsAtom 0 a.weaken = (Γ.capsAtom 0 a).weaken := by
+        intro a
+        cases a <;> simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+          CaptureSet.rename, Ctx.capsAtom]
+      refine ⟨hatom, ?_⟩
+      intro C
+      induction C with
+      | nil => simp [CaptureSet.weaken, CaptureSet.rename]
+      | cons a C ihC =>
+          show (Ctx.consC Γ b).caps 0 (CapAtom.weaken a :: CaptureSet.weaken C)
+            = CaptureSet.weaken (Γ.caps 0 (a :: C))
+          rw [Ctx.caps_cons, hatom, ihC, Ctx.caps_cons]
+          simp [CaptureSet.weaken, CaptureSet.rename]
+  | succ n ihn =>
+      intro s Γ b
+      have hatom : ∀ a : CapAtom s,
+          (Ctx.consC Γ b).capsAtom (n + 1) a.weaken = (Γ.capsAtom (n + 1) a).weaken := by
+        intro a
+        cases a with
+        | var y =>
+            simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+              CaptureSet.rename, Ctx.capsAtom]
+        | cvar κ =>
+            simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+              CaptureSet.rename, Ctx.capsAtom]
+        | name x ℓ =>
+            have hw : (CapAtom.name x ℓ).weaken (k := .cap) = .name (.there x) ℓ := rfl
+            rw [hw]
+            cases h : Γ.lookupDefC x ℓ with
+            | none =>
+                rw [Ctx.capsAtom_name_none h,
+                  Ctx.capsAtom_name_none (Γ := Ctx.consC Γ b)
+                    (by rw [Ctx.lookupDefC_thereC, h]; rfl)]
+                simp [CaptureSet.weaken, CaptureSet.rename]
+            | some C =>
+                rw [Ctx.capsAtom_name_some h,
+                  Ctx.capsAtom_name_some (Γ := Ctx.consC Γ b) (C := C.weaken)
+                    (by rw [Ctx.lookupDefC_thereC, h]; rfl)]
+                exact (ihn Γ b).2 C
+      refine ⟨hatom, ?_⟩
+      intro C
+      induction C with
+      | nil => simp [CaptureSet.weaken, CaptureSet.rename]
+      | cons a C ihC =>
+          show (Ctx.consC Γ b).caps (n + 1) (CapAtom.weaken a :: CaptureSet.weaken C)
+            = CaptureSet.weaken (Γ.caps (n + 1) (a :: C))
+          rw [Ctx.caps_cons, hatom, ihC, Ctx.caps_cons]
+          simp [CaptureSet.weaken, CaptureSet.rename]
 
-theorem Ctx.caps_weaken (Γ : Ctx s) (b : Binding s) :
-    ∀ C : CaptureSet s, (Ctx.cons Γ b).caps C.weaken = (Γ.caps C).weaken
-  | [] => by simp [CaptureSet.weaken, CaptureSet.rename]
-  | a :: C => by
-      show (Ctx.cons Γ b).caps (CapAtom.weaken a :: CaptureSet.weaken C)
-        = CaptureSet.weaken (Γ.caps (a :: C))
-      rw [Ctx.caps_cons, Ctx.capsAtom_weaken, Ctx.caps_weaken Γ b C, Ctx.caps_cons]
-      simp [CaptureSet.weaken, CaptureSet.rename]
+theorem Ctx.capsAtom_weaken (Γ : Ctx s) (b : Binding s) (n : Nat) (a : CapAtom s) :
+    (Ctx.cons Γ b).capsAtom n a.weaken = (Γ.capsAtom n a).weaken :=
+  (Ctx.caps_weaken_aux n Γ b).1 a
 
-theorem Ctx.caps_weakenC (Γ : Ctx s) (b : CapBound s) :
-    ∀ C : CaptureSet s, (Ctx.consC Γ b).caps C.weaken = (Γ.caps C).weaken
-  | [] => by simp [CaptureSet.weaken, CaptureSet.rename]
-  | a :: C => by
-      show (Ctx.consC Γ b).caps (CapAtom.weaken a :: CaptureSet.weaken C)
-        = CaptureSet.weaken (Γ.caps (a :: C))
-      rw [Ctx.caps_cons, Ctx.capsAtom_weakenC, Ctx.caps_weakenC Γ b C, Ctx.caps_cons]
-      simp [CaptureSet.weaken, CaptureSet.rename]
+theorem Ctx.capsAtom_weakenC (Γ : Ctx s) (b : CapBound s) (n : Nat) (a : CapAtom s) :
+    (Ctx.consC Γ b).capsAtom n a.weaken = (Γ.capsAtom n a).weaken :=
+  (Ctx.caps_weakenC_aux n Γ b).1 a
+
+theorem Ctx.caps_weaken (Γ : Ctx s) (b : Binding s) (n : Nat) (C : CaptureSet s) :
+    (Ctx.cons Γ b).caps n C.weaken = (Γ.caps n C).weaken :=
+  (Ctx.caps_weaken_aux n Γ b).2 C
+
+theorem Ctx.caps_weakenC (Γ : Ctx s) (b : CapBound s) (n : Nat) (C : CaptureSet s) :
+    (Ctx.consC Γ b).caps n C.weaken = (Γ.caps n C).weaken :=
+  (Ctx.caps_weakenC_aux n Γ b).2 C
 
 /-! ### The clauses of `caps` at a binder -/
 
 /-- The term-binder clause: `caps_Γ {x}` is `caps_Γ` of the capture set of
 `Γ.lookupTy x`, which mentions only binders older than `x`. -/
-theorem Ctx.capsAtom_var : ∀ {s : Sig} (Γ : Ctx s) (x : BVar s .var),
-    Γ.capsAtom (.var x) = Γ.caps (Γ.lookupTy x).captureSet
-  | _, .cons Γ b, .here => by
+theorem Ctx.capsAtom_var : ∀ {s : Sig} (Γ : Ctx s) (n : Nat) (x : BVar s .var),
+    Γ.capsAtom n (.var x) = Γ.caps n (Γ.lookupTy x).captureSet
+  | _, .cons Γ b, n, .here => by
       rw [Ctx.lookupTy_here, Ty.captureSet_weaken, Ctx.caps_weaken]
       simp [Ctx.capsAtom]
-  | _, .cons Γ b, .there y => by
+  | _, .cons Γ b, n, .there y => by
       rw [Ctx.lookupTy_there, Ty.captureSet_weaken, Ctx.caps_weaken,
-        ← Ctx.capsAtom_var Γ y]
+        ← Ctx.capsAtom_var Γ n y]
       simp [Ctx.capsAtom]
-  | _, .consC Γ b, .there y => by
+  | _, .consC Γ b, n, .there y => by
       rw [Ctx.lookupTy_thereC, Ty.captureSet_weaken, Ctx.caps_weakenC,
-        ← Ctx.capsAtom_var Γ y]
+        ← Ctx.capsAtom_var Γ n y]
       simp [Ctx.capsAtom]
 
 /-- The resolution of a capture bound at its binder: a root or `∗` is a leaf,
 an upper bound or an instantiation resolves to its set. -/
-def Ctx.capsBound (Γ : Ctx s) (κ : BVar s .cap) : CapBound s → CaptureSet s
+def Ctx.capsBound (Γ : Ctx s) (n : Nat) (κ : BVar s .cap) : CapBound s → CaptureSet s
   | .root => [.cvar κ]
   | .star => [.cvar κ]
-  | .upper C => Γ.caps C
-  | .inst C => Γ.caps C
+  | .upper C => Γ.caps n C
+  | .inst C => Γ.caps n C
 
-theorem Ctx.capsBound_weaken (Γ : Ctx s) (b : Binding s) (κ : BVar s .cap)
+theorem Ctx.capsBound_weaken (Γ : Ctx s) (b : Binding s) (n : Nat) (κ : BVar s .cap)
     (β : CapBound s) :
-    (Ctx.cons Γ b).capsBound (.there κ) β.weaken = (Γ.capsBound κ β).weaken := by
+    (Ctx.cons Γ b).capsBound n (.there κ) β.weaken = (Γ.capsBound n κ β).weaken := by
   cases β with
   | root => rfl
   | star => rfl
-  | upper C => exact Ctx.caps_weaken Γ b C
-  | inst C => exact Ctx.caps_weaken Γ b C
+  | upper C => exact Ctx.caps_weaken Γ b n C
+  | inst C => exact Ctx.caps_weaken Γ b n C
 
-theorem Ctx.capsBound_weakenC (Γ : Ctx s) (b : CapBound s) (κ : BVar s .cap)
+theorem Ctx.capsBound_weakenC (Γ : Ctx s) (b : CapBound s) (n : Nat) (κ : BVar s .cap)
     (β : CapBound s) :
-    (Ctx.consC Γ b).capsBound (.there κ) β.weaken = (Γ.capsBound κ β).weaken := by
+    (Ctx.consC Γ b).capsBound n (.there κ) β.weaken = (Γ.capsBound n κ β).weaken := by
   cases β with
   | root => rfl
   | star => rfl
-  | upper C => exact Ctx.caps_weakenC Γ b C
-  | inst C => exact Ctx.caps_weakenC Γ b C
+  | upper C => exact Ctx.caps_weakenC Γ b n C
+  | inst C => exact Ctx.caps_weakenC Γ b n C
 
 /-- The capture-binder clause: `caps_Γ {κ}` is `{κ}` when the bound of `κ` is
 a root or `∗`, and `caps_Γ` of the bound otherwise. -/
-theorem Ctx.capsAtom_cvar : ∀ {s : Sig} (Γ : Ctx s) (κ : BVar s .cap),
-    Γ.capsAtom (.cvar κ) = Γ.capsBound κ (Γ.lookupCap κ)
-  | _, .consC Γ β, .here => by
+theorem Ctx.capsAtom_cvar : ∀ {s : Sig} (Γ : Ctx s) (n : Nat) (κ : BVar s .cap),
+    Γ.capsAtom n (.cvar κ) = Γ.capsBound n κ (Γ.lookupCap κ)
+  | _, .consC Γ β, n, .here => by
       rw [Ctx.lookupCap_here]
       cases β with
       | root => simp [Ctx.capsAtom, Ctx.capsBound, CapBound.weaken, CapBound.rename]
       | star => simp [Ctx.capsAtom, Ctx.capsBound, CapBound.weaken, CapBound.rename]
-      | upper C => rw [Ctx.capsAtom]; exact (Ctx.caps_weakenC Γ _ C).symm
-      | inst C => rw [Ctx.capsAtom]; exact (Ctx.caps_weakenC Γ _ C).symm
-  | _, .cons Γ b, .there κ => by
-      rw [Ctx.lookupCap_there, Ctx.capsBound_weaken Γ b κ (Γ.lookupCap κ),
-        ← Ctx.capsAtom_cvar Γ κ]
+      | upper C => rw [Ctx.capsAtom]; exact (Ctx.caps_weakenC Γ _ n C).symm
+      | inst C => rw [Ctx.capsAtom]; exact (Ctx.caps_weakenC Γ _ n C).symm
+  | _, .cons Γ b, n, .there κ => by
+      rw [Ctx.lookupCap_there, Ctx.capsBound_weaken Γ b n κ (Γ.lookupCap κ),
+        ← Ctx.capsAtom_cvar Γ n κ]
       simp [Ctx.capsAtom]
-  | _, .consC Γ b, .there κ => by
-      rw [Ctx.lookupCap_thereC, Ctx.capsBound_weakenC Γ b κ (Γ.lookupCap κ),
-        ← Ctx.capsAtom_cvar Γ κ]
+  | _, .consC Γ b, n, .there κ => by
+      rw [Ctx.lookupCap_thereC, Ctx.capsBound_weakenC Γ b n κ (Γ.lookupCap κ),
+        ← Ctx.capsAtom_cvar Γ n κ]
       simp [Ctx.capsAtom]
 
 /-! ### Roots and subcapturing -/
 
-/-- The roots of a capture set.  In this stage every capture name resolves to
-the empty set, so `roots` is `caps`; the compiler's line redefines it as
-`expand ∘ caps`. -/
-def Ctx.roots (Γ : Ctx s) (C : CaptureSet s) : CaptureSet s := Γ.caps C
+/-- The roots of a capture set at a given fuel.  In this stage `roots` is
+`caps`; the compiler's line redefines it as `expand ∘ caps`. -/
+def Ctx.roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s) : CaptureSet s := Γ.caps n C
 
-@[simp] theorem Ctx.roots_eq_caps (Γ : Ctx s) (C : CaptureSet s) :
-    Γ.roots C = Γ.caps C := rfl
+@[simp] theorem Ctx.roots_eq_caps (Γ : Ctx s) (n : Nat) (C : CaptureSet s) :
+    Γ.roots n C = Γ.caps n C := rfl
+
+/-- `a` is a root of `C`: `C` resolves to `a` at some fuel.  Resolution is
+monotone in the fuel, so this is the least solution of the resolution
+equations, in which a cyclic chain of capture names contributes nothing. -/
+def Ctx.Root (Γ : Ctx s) (a : CapAtom s) (C : CaptureSet s) : Prop :=
+  ∃ n : Nat, a ∈ Γ.roots n C
+
+theorem Ctx.Root.of_mem_caps {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s} {n : Nat}
+    (h : a ∈ Γ.caps n C) : Γ.Root a C := ⟨n, h⟩
 
 /-- Subcapturing as a proposition: the roots of `C` are among the roots of
 `D`. -/
 abbrev CapLe (Γ : Ctx s) (C D : CaptureSet s) : Prop :=
-  (Γ.roots C).Subset (Γ.roots D)
+  ∀ a : CapAtom s, Γ.Root a C → Γ.Root a D
+
+/-- Two capture sets have the same roots. -/
+abbrev RootsEq (Γ : Ctx s) (C D : CaptureSet s) : Prop :=
+  ∀ a : CapAtom s, Γ.Root a C ↔ Γ.Root a D
 
 theorem CapLe.refl (Γ : Ctx s) (C : CaptureSet s) : CapLe Γ C C := fun _ h => h
 
@@ -736,51 +1052,100 @@ theorem CapLe.trans {Γ : Ctx s} {C D E : CaptureSet s}
     (h₁ : CapLe Γ C D) (h₂ : CapLe Γ D E) : CapLe Γ C E := fun a h => h₂ a (h₁ a h)
 
 theorem CapLe.of_subset {Γ : Ctx s} {C D : CaptureSet s} (h : C.Subset D) :
-    CapLe Γ C D := Ctx.caps_subset h
+    CapLe Γ C D := fun _ hr => hr.elim fun n hn => ⟨n, Ctx.caps_subset h _ hn⟩
 
 theorem CapLe.union {Γ : Ctx s} {C D E : CaptureSet s}
     (h₁ : CapLe Γ C E) (h₂ : CapLe Γ D E) : CapLe Γ (C ∪ D) E := by
-  intro a ha
+  rintro a ⟨n, ha⟩
   rw [Ctx.roots_eq_caps, CaptureSet.union_def, Ctx.caps_append] at ha
   rcases List.mem_append.mp ha with h | h
-  · exact h₁ a h
-  · exact h₂ a h
+  · exact h₁ a ⟨n, h⟩
+  · exact h₂ a ⟨n, h⟩
 
 /-- Replacing either side by a set with the same roots changes nothing. -/
 theorem CapLe.congr_roots {Γ : Ctx s} {C C' D D' : CaptureSet s}
-    (hC : Γ.roots C = Γ.roots C') (hD : Γ.roots D = Γ.roots D')
-    (h : CapLe Γ C D) : CapLe Γ C' D' := by
-  show (Γ.roots C').Subset (Γ.roots D')
-  rw [← hC, ← hD]; exact h
+    (hC : RootsEq Γ C C') (hD : RootsEq Γ D D')
+    (h : CapLe Γ C D) : CapLe Γ C' D' :=
+  fun a ha => (hD a).mp (h a ((hC a).mpr ha))
+
+theorem RootsEq.refl (Γ : Ctx s) (C : CaptureSet s) : RootsEq Γ C C := fun _ => Iff.rfl
+
+theorem RootsEq.symm {Γ : Ctx s} {C D : CaptureSet s} (h : RootsEq Γ C D) :
+    RootsEq Γ D C := fun a => (h a).symm
+
+theorem RootsEq.trans {Γ : Ctx s} {C D E : CaptureSet s}
+    (h₁ : RootsEq Γ C D) (h₂ : RootsEq Γ D E) : RootsEq Γ C E :=
+  fun a => (h₁ a).trans (h₂ a)
+
+theorem RootsEq.le {Γ : Ctx s} {C D : CaptureSet s} (h : RootsEq Γ C D) :
+    CapLe Γ C D := fun a ha => (h a).mp ha
+
+theorem RootsEq.of_le {Γ : Ctx s} {C D : CaptureSet s}
+    (h₁ : CapLe Γ C D) (h₂ : CapLe Γ D C) : RootsEq Γ C D :=
+  fun a => ⟨h₁ a, h₂ a⟩
 
 theorem CapLe.weaken {Γ : Ctx s} {C D : CaptureSet s} (b : Binding s)
     (h : CapLe Γ C D) : CapLe (Ctx.cons Γ b) C.weaken D.weaken := by
-  intro a ha
-  rw [Ctx.roots_eq_caps, Ctx.caps_weaken] at ha ⊢
-  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha ⊢
+  rintro a ⟨n, ha⟩
+  rw [Ctx.roots_eq_caps, Ctx.caps_weaken] at ha
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha
   obtain ⟨c, hc, rfl⟩ := ha
-  exact ⟨c, h c hc, rfl⟩
+  obtain ⟨m, hm⟩ := h c ⟨n, hc⟩
+  refine ⟨m, ?_⟩
+  rw [Ctx.roots_eq_caps, Ctx.caps_weaken]
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map]
+  exact ⟨c, hm, rfl⟩
 
 theorem CapLe.weakenC {Γ : Ctx s} {C D : CaptureSet s} (b : CapBound s)
     (h : CapLe Γ C D) : CapLe (Ctx.consC Γ b) C.weaken D.weaken := by
-  intro a ha
-  rw [Ctx.roots_eq_caps, Ctx.caps_weakenC] at ha ⊢
-  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha ⊢
+  rintro a ⟨n, ha⟩
+  rw [Ctx.roots_eq_caps, Ctx.caps_weakenC] at ha
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha
   obtain ⟨c, hc, rfl⟩ := ha
-  exact ⟨c, h c hc, rfl⟩
+  obtain ⟨m, hm⟩ := h c ⟨n, hc⟩
+  refine ⟨m, ?_⟩
+  rw [Ctx.roots_eq_caps, Ctx.caps_weakenC]
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map]
+  exact ⟨c, hm, rfl⟩
 
-/-! ### Item 6 of the canonical-forms theorem -/
+/-! ### The resolution lemma of the capture sort -/
 
-/-- Closed capture evidence includes roots: `Γ ⊢ᶜ f : C ⊑ D` gives
-`roots_Γ(C) ⊆ roots_Γ(D)`.  This stage's four constructors are discharged by
-four of the five properties above. -/
-theorem cap_canon {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s}
-    (h : Γ ⊢ᶜ f : C ⊑ D) : CapLe Γ C D := by
-  induction h with
-  | refl => exact CapLe.refl _ _
-  | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
-  | elem hsub => exact CapLe.of_subset hsub
-  | union _ _ ih₁ ih₂ => exact CapLe.union ih₁ ih₂
+/-- A defined capture name has exactly the roots of its capture witness: this
+is the capture-sort analogue of `Ctx.resolve_sel_some`, and the fact that
+`defC` evidence needs. -/
+theorem Ctx.Root_name {Γ : Ctx s} {x : BVar s .var} {ℓ : Label} {C : CaptureSet s}
+    (h : Γ.lookupDefC x ℓ = some C) : RootsEq Γ [CapAtom.name x ℓ] C := by
+  intro a
+  constructor
+  · rintro ⟨n, hn⟩
+    rw [Ctx.roots_eq_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil] at hn
+    cases n with
+    | zero => rw [Ctx.capsAtom_name_zero] at hn; simp at hn
+    | succ n => rw [Ctx.capsAtom_name_some h] at hn; exact ⟨n, hn⟩
+  · rintro ⟨n, hn⟩
+    refine ⟨n + 1, ?_⟩
+    rw [Ctx.roots_eq_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
+      Ctx.capsAtom_name_some h]
+    exact hn
+
+/-- A capture name with no definition has no roots. -/
+theorem Ctx.Root_name_none {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
+    (h : Γ.lookupDefC x ℓ = none) (a : CapAtom s) : ¬ Γ.Root a [CapAtom.name x ℓ] := by
+  rintro ⟨n, hn⟩
+  rw [Ctx.roots_eq_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil] at hn
+  cases n with
+  | zero => rw [Ctx.capsAtom_name_zero] at hn; simp at hn
+  | succ n => rw [Ctx.capsAtom_name_none h] at hn; simp at hn
+
+/-! ### Item 6 of the canonical-forms theorem
+
+`cap_canon`, the statement that closed capture evidence includes roots, no
+longer fits here: `CapCo.HasType` is now mutual with atom typing, so `capvar`
+needs item 7 of the theorem and `member` needs the view of an atom.  The
+statement moves, unchanged, into the mutual induction of `CanonicalForms.lean`
+(plan-5c A1.6); the four constructors it had in A0 are still discharged by
+`CapLe.refl`, `CapLe.trans`, `CapLe.of_subset` and `CapLe.union`, and `defC`
+by `Ctx.Root_name` above. -/
 
 end FCdot
 

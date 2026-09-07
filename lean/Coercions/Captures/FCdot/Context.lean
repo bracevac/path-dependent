@@ -40,15 +40,16 @@ def CapBound.weaken (b : CapBound s) : CapBound (s,,k) := b.rename Rename.succ
 
 scoped postfix:max "↑" => CapBound.weaken
 
-/-- A binding for a term binder.  Witnesses and field labels of a
-transparent binder live in the scope that includes the binder itself. -/
+/-- A binding for a term binder.  Witnesses, capture witnesses and field
+labels of a transparent binder live in the scope that includes the binder
+itself. -/
 inductive Binding : Sig → Type where
   | opaque : Ty s → Binding s
-  | transparent : Ty s → Witnesses (s,x) → List Label → Binding s
+  | transparent : Ty s → Witnesses (s,x) → CapWitnesses (s,x) → List Label → Binding s
 
 def Binding.ty : Binding s → Ty s
   | .opaque T => T
-  | .transparent T _ _ => T
+  | .transparent T _ _ _ => T
 
 /-- A context: term binders and capture binders, newest first.  (`consᶜ` of
 the plan: `ᶜ` is not a legal Lean identifier character, so the capture-sort
@@ -75,14 +76,23 @@ def lookupCap : Ctx s → BVar s .cap → CapBound s
 
 /-- Definition of a block name, if its binder is transparent. -/
 def lookupDef : Ctx s → BVar s .var → Label → Option (Shape s)
-  | .cons _ (.transparent _ W _), .here, ℓ => some (W.get ℓ)
+  | .cons _ (.transparent _ W _ _), .here, ℓ => some (W.get ℓ)
   | .cons _ (.opaque _), .here, _ => none
   | .cons Γ _, .there y, ℓ => (lookupDef Γ y ℓ).map Shape.weaken
   | .consC Γ _, .there y, ℓ => (lookupDef Γ y ℓ).map Shape.weaken
 
+/-- Definition of a block's capture name, if its binder is transparent.  As
+`lookupDef`, the capture witness already lives in the scope that includes the
+binder, so it is read at the binder itself.  (`lookupDefᶜ` of the plan.) -/
+def lookupDefC : Ctx s → BVar s .var → Label → Option (CaptureSet s)
+  | .cons _ (.transparent _ _ Wc _), .here, ℓ => some (Wc.get ℓ)
+  | .cons _ (.opaque _), .here, _ => none
+  | .cons Γ _, .there y, ℓ => (lookupDefC Γ y ℓ).map CaptureSet.weaken
+  | .consC Γ _, .there y, ℓ => (lookupDefC Γ y ℓ).map CaptureSet.weaken
+
 /-- Field labels of a transparent binder. -/
 def lookupFields : Ctx s → BVar s .var → Option (List Label)
-  | .cons _ (.transparent _ _ Fs), .here => some Fs
+  | .cons _ (.transparent _ _ _ Fs), .here => some Fs
   | .cons _ (.opaque _), .here => none
   | .cons Γ _, .there y => lookupFields Γ y
   | .consC Γ _, .there y => lookupFields Γ y
@@ -93,7 +103,7 @@ def IsTransparent (Γ : Ctx s) (x : BVar s .var) : Prop := (Γ.lookupFields x).i
 /-- Every term binder is transparent. -/
 inductive Transparent : Ctx s → Prop where
   | nil : Transparent .nil
-  | cons : Transparent Γ → Transparent (Ctx.cons Γ (.transparent T W Fs))
+  | cons : Transparent Γ → Transparent (Ctx.cons Γ (.transparent T W Wc Fs))
   | consC : Transparent Γ → Transparent (Ctx.consC Γ b)
 
 end Ctx

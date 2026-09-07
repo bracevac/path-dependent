@@ -24,7 +24,7 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
   obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
   rw [Ty.shape_capt] at hFt
   have hlk : ∃ S₀ T₀, (Γ.lookupTy a.root).shape = Π(S₀) T₀ := by
-    rcases hσ.lookupTy_shape a.root with hp | ⟨Tel, ho⟩
+    rcases hσ.lookupTy_shape a.root with hp | ⟨Tel, ho⟩ | ⟨X, hx⟩
     · exact hp
     · exfalso
       cases hFt with
@@ -36,25 +36,32 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
       | obj _ ho' _ => simp [Ctx.resolveAt] at ho'
       | into ho' _ => simp [Ctx.resolveAt] at ho'
       | boxed _ hb _ => simp at hb
-      | boxIn hb _ => simp at hb
+      | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
+    · exfalso
+      cases hFt with
+      | bot hb => simp [Ctx.resolveAt, hx] at hb
+      | top ht => simp [Ctx.resolveAt] at ht
+      | id hres => simp [Ctx.resolveAt, hx] at hres
+      | eqv hres => simp [Ctx.resolveAt, hx] at hres
+      | pi hp _ _ _ => simp [Ctx.resolveAt, hx] at hp
+      | obj _ ho' _ => simp [Ctx.resolveAt] at ho'
+      | into ho' _ => simp [Ctx.resolveAt] at ho'
+      | boxed _ hb _ => simp at hb
       | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
   obtain ⟨S₀, T₀, hlk⟩ := hlk
   have hv := hσ.lookup a.root
   have hlit := hσ.lookup_isLiteral a.root
   cases hl : σ.lookup a.root with
   | lam S₁ t₁ => exact ⟨_, _, rfl⟩
-  | obj W F =>
+  | obj W Wc F =>
       rw [hl] at hv
       obtain ⟨hT, _⟩ := hv.obj_inv
       rw [hT] at hlk; simp at hlk
+  | box b =>
+      rw [hl] at hv
+      obtain ⟨X, hT, _⟩ := hv.box_inv
+      rw [hT] at hlk; simp at hlk
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
-
-/-- Presence evidence at a location names a field of the object stored there. -/
-theorem closed_has_field (hσ : ⊢ σ : Γ) {h : Has s} {x : BVar s .var} {ℓ : Label}
-    (hh : Has.HasType Γ h x ℓ) : ∃ W F t, σ.lookup x = .obj W F ∧ F.get? ℓ = some t := by
-  obtain ⟨_, _, W, F, hl, hget⟩ := has_canon hσ hh
-  obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp hget
-  exact ⟨W, F, t, hl, ht⟩
 
 end
 
@@ -94,10 +101,20 @@ theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
   | proj a ℓ h =>
       cases ht with
       | proj _ hh =>
-          obtain ⟨W, F, t, hl, hget⟩ := closed_has_field hσ hh
+          obtain ⟨W, Wc, F, t, hl, hget⟩ := closed_has_field hσ hh
           exact Or.inr ⟨_, _, Step.proj hl hget⟩
   | «let» t u => exact Or.inr ⟨_, _, .let⟩
   | cast t e => exact Or.inr ⟨_, _, .castPush⟩
+  -- An `unbox` is a term now: its atom is rooted at a stored box, and the
+  -- head form of its casts is one of the three the two steps consume.
+  | unbox a f =>
+      cases ht with
+      | unbox ha _ =>
+          obtain ⟨b, a', n, F, hl, hform, hFs⟩ := closed_box_inversion hσ ha
+          rcases hFs with rfl | ⟨φ, rfl⟩ | ⟨d, rfl⟩
+          · exact Or.inr ⟨_, _, Step.unboxRefl hl hform (Or.inl rfl)⟩
+          · exact Or.inr ⟨_, _, Step.unboxRefl hl hform (Or.inr ⟨φ, rfl⟩)⟩
+          · exact Or.inr ⟨_, _, Step.unboxCast hl hform⟩
 
 /-- A typed state is never stuck. -/
 theorem not_stuck {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) : ¬ st.Stuck := by

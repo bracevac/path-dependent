@@ -67,6 +67,8 @@ mutual
   | .eq S T => simp [Proposition.rename, Shape.rename_id S, Shape.rename_id T]
   | .has ℓ => simp [Proposition.rename]
   | .bnd T => simp [Proposition.rename, Shape.rename_id T]
+  | .leC C D => simp [Proposition.rename, CaptureSet.rename_id C, CaptureSet.rename_id D]
+  | .eqC C D => simp [Proposition.rename, CaptureSet.rename_id C, CaptureSet.rename_id D]
 
 @[simp] theorem Telescope.rename_id {s : Sig} (Tel : Telescope s) :
     Tel.rename Rename.id = Tel := by
@@ -106,6 +108,8 @@ mutual
   | .eq S T => simp [Proposition.rename, Shape.rename_comp S, Shape.rename_comp T]
   | .has ℓ => simp [Proposition.rename]
   | .bnd T => simp [Proposition.rename, Shape.rename_comp T]
+  | .leC C D => simp [Proposition.rename, CaptureSet.rename_comp C, CaptureSet.rename_comp D]
+  | .eqC C D => simp [Proposition.rename, CaptureSet.rename_comp C, CaptureSet.rename_comp D]
 
 @[simp] theorem Telescope.rename_comp {s1 s2 s3 : Sig} (Tel : Telescope s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -145,6 +149,27 @@ mutual
   | .trans f g => simp [CapCo.rename, CapCo.rename_id f, CapCo.rename_id g]
   | .elem C D => simp [CapCo.rename]
   | .union f g => simp [CapCo.rename, CapCo.rename_id f, CapCo.rename_id g]
+  | .capvar a => simp [CapCo.rename, Atom.rename_id a]
+  | .member a e i => simp [CapCo.rename, Atom.rename_id a, ShapeCo.rename_id e]
+  | .eqToLe φ => simp [CapCo.rename, CapEq.rename_id φ]
+
+@[simp] theorem CapEq.rename_id {s : Sig} (φ : CapEq s) : φ.rename Rename.id = φ := by
+  match φ with
+  | .refl C => simp [CapEq.rename]
+  | .symm φ => simp [CapEq.rename, CapEq.rename_id φ]
+  | .trans φ ψ => simp [CapEq.rename, CapEq.rename_id φ, CapEq.rename_id ψ]
+  | .defC x ℓ => simp [CapEq.rename]
+  | .member a e i => simp [CapEq.rename, Atom.rename_id a, ShapeCo.rename_id e]
+
+@[simp] theorem CapStep.rename_id {s : Sig} (st : CapStep s) : st.rename Rename.id = st := by
+  match st with
+  | .closed f => simp [CapStep.rename, CapCo.rename_id f]
+  | .incl C D => simp [CapStep.rename, Rename.lift_id]
+
+@[simp] theorem SideC.rename_id {s : Sig} (q : SideC s) : q.rename Rename.id = q := by
+  match q with
+  | .nil => simp [SideC.rename]
+  | .cons st q => simp [SideC.rename, CapStep.rename_id st, SideC.rename_id q]
 
 @[simp] theorem LeCo.rename_id {s : Sig} (d : LeCo s) : d.rename Rename.id = d := by
   match d with
@@ -176,6 +201,9 @@ mutual
   | .eq m j b => simp [Morphism.rename, Morphism.rename_id m]
   | .has m j => simp [Morphism.rename, Morphism.rename_id m]
   | .bnd m e => simp [Morphism.rename, Morphism.rename_id m, ShapeCo.rename_id e]
+  | .leC m q h q' =>
+      simp [Morphism.rename, Morphism.rename_id m, SideC.rename_id q, SideC.rename_id q']
+  | .eqC m j b => simp [Morphism.rename, Morphism.rename_id m]
 
 @[simp] theorem Atom.rename_id {s : Sig} (a : Atom s) : a.rename Rename.id = a := by
   match a with
@@ -187,8 +215,7 @@ mutual
   | .both Tel₁ Tel₂ a b =>
       simp [Atom.rename, Rename.lift_id, Telescope.rename_id Tel₁, Telescope.rename_id Tel₂,
         Atom.rename_id a, Atom.rename_id b]
-  | .box a => simp [Atom.rename, Atom.rename_id a]
-  | .unbox a f => simp [Atom.rename, Atom.rename_id a, CapCo.rename_id f]
+  | .recap a f => simp [Atom.rename, Atom.rename_id a, CapCo.rename_id f]
 
 end
 
@@ -225,6 +252,33 @@ mutual
   | .trans f g => simp [CapCo.rename, CapCo.rename_comp f, CapCo.rename_comp g]
   | .elem C D => simp [CapCo.rename]
   | .union f g => simp [CapCo.rename, CapCo.rename_comp f, CapCo.rename_comp g]
+  | .capvar a => simp [CapCo.rename, Atom.rename_comp a]
+  | .member a e i => simp [CapCo.rename, Atom.rename_comp a, ShapeCo.rename_comp e]
+  | .eqToLe φ => simp [CapCo.rename, CapEq.rename_comp φ]
+
+@[simp] theorem CapEq.rename_comp {s1 s2 s3 : Sig} (φ : CapEq s1)
+    (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
+    (φ.rename ρ).rename ρ' = φ.rename (ρ.comp ρ') := by
+  match φ with
+  | .refl C => simp [CapEq.rename]
+  | .symm φ => simp [CapEq.rename, CapEq.rename_comp φ]
+  | .trans φ ψ => simp [CapEq.rename, CapEq.rename_comp φ, CapEq.rename_comp ψ]
+  | .defC x ℓ => simp [CapEq.rename]
+  | .member a e i => simp [CapEq.rename, Atom.rename_comp a, ShapeCo.rename_comp e]
+
+@[simp] theorem CapStep.rename_comp {s1 s2 s3 : Sig} (st : CapStep s1)
+    (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
+    (st.rename ρ).rename ρ' = st.rename (ρ.comp ρ') := by
+  match st with
+  | .closed f => simp [CapStep.rename, CapCo.rename_comp f]
+  | .incl C D => simp [CapStep.rename, Rename.lift_comp]
+
+@[simp] theorem SideC.rename_comp {s1 s2 s3 : Sig} (q : SideC s1)
+    (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
+    (q.rename ρ).rename ρ' = q.rename (ρ.comp ρ') := by
+  match q with
+  | .nil => simp [SideC.rename]
+  | .cons st q => simp [SideC.rename, CapStep.rename_comp st, SideC.rename_comp q]
 
 @[simp] theorem LeCo.rename_comp {s1 s2 s3 : Sig} (d : LeCo s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -266,6 +320,9 @@ mutual
   | .eq m j b => simp [Morphism.rename, Morphism.rename_comp m]
   | .has m j => simp [Morphism.rename, Morphism.rename_comp m]
   | .bnd m e => simp [Morphism.rename, Morphism.rename_comp m, ShapeCo.rename_comp e]
+  | .leC m q h q' =>
+      simp [Morphism.rename, Morphism.rename_comp m, SideC.rename_comp q, SideC.rename_comp q']
+  | .eqC m j b => simp [Morphism.rename, Morphism.rename_comp m]
 
 @[simp] theorem Atom.rename_comp {s1 s2 s3 : Sig} (a : Atom s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -279,10 +336,24 @@ mutual
   | .both Tel₁ Tel₂ a b =>
       simp [Atom.rename, Rename.lift_comp, Telescope.rename_comp Tel₁, Telescope.rename_comp Tel₂,
         Atom.rename_comp a, Atom.rename_comp b]
-  | .box a => simp [Atom.rename, Atom.rename_comp a]
-  | .unbox a f => simp [Atom.rename, Atom.rename_comp a, CapCo.rename_comp f]
+  | .recap a f => simp [Atom.rename, Atom.rename_comp a, CapCo.rename_comp f]
 
 end
+
+/-! ## `rename_id` and `rename_comp` for capture witnesses -/
+
+@[simp] theorem CapWitnesses.rename_id {s : Sig} :
+    ∀ W : CapWitnesses s, W.rename Rename.id = W
+  | .nil => rfl
+  | .cons W ℓ C => by
+      simp [CapWitnesses.rename, CapWitnesses.rename_id W]
+
+@[simp] theorem CapWitnesses.rename_comp {s1 s2 s3 : Sig} :
+    ∀ (W : CapWitnesses s1) (ρ : Rename s1 s2) (ρ' : Rename s2 s3),
+      (W.rename ρ).rename ρ' = W.rename (ρ.comp ρ')
+  | .nil, _, _ => rfl
+  | .cons W ℓ C, ρ, ρ' => by
+      simp [CapWitnesses.rename, CapWitnesses.rename_comp W]
 
 /-! ## `rename_id` for terms, values, witnesses, fields -/
 
@@ -296,12 +367,15 @@ mutual
   | .proj a ℓ h => simp [Tm.rename, Has.rename_id h]
   | .let t u => simp [Tm.rename, Rename.lift_id, Tm.rename_id t, Tm.rename_id u]
   | .cast t e => simp [Tm.rename, Tm.rename_id t]
+  | .unbox a f => simp [Tm.rename]
 
 @[simp] theorem Value.rename_id {s : Sig} (v : Value s) : v.rename Rename.id = v := by
   match v with
   | .lam S t => simp [Value.rename, Rename.lift_id, Tm.rename_id t]
-  | .obj W F =>
-      simp [Value.rename, Rename.lift_id, Witnesses.rename_id W, Fields.rename_id F]
+  | .obj W Wc F =>
+      simp [Value.rename, Rename.lift_id, Witnesses.rename_id W, CapWitnesses.rename_id Wc,
+        Fields.rename_id F]
+  | .box a => simp [Value.rename]
   | .cast v e => simp [Value.rename, Value.rename_id v]
 
 @[simp] theorem Witnesses.rename_id {s : Sig} (W : Witnesses s) : W.rename Rename.id = W := by
@@ -331,14 +405,17 @@ mutual
   | .let t u =>
       simp [Tm.rename, Rename.lift_comp, Tm.rename_comp t, Tm.rename_comp u]
   | .cast t e => simp [Tm.rename, Tm.rename_comp t]
+  | .unbox a f => simp [Tm.rename]
 
 @[simp] theorem Value.rename_comp {s1 s2 s3 : Sig} (v : Value s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
     (v.rename ρ).rename ρ' = v.rename (ρ.comp ρ') := by
   match v with
   | .lam S t => simp [Value.rename, Rename.lift_comp, Tm.rename_comp t]
-  | .obj W F =>
-      simp [Value.rename, Rename.lift_comp, Witnesses.rename_comp W, Fields.rename_comp F]
+  | .obj W Wc F =>
+      simp [Value.rename, Rename.lift_comp, Witnesses.rename_comp W, CapWitnesses.rename_comp Wc,
+        Fields.rename_comp F]
+  | .box a => simp [Value.rename]
   | .cast v e => simp [Value.rename, Value.rename_comp v]
 
 @[simp] theorem Witnesses.rename_comp {s1 s2 s3 : Sig} (W : Witnesses s1)
@@ -367,8 +444,7 @@ end
   | .foldSelf Tel a => simp [Atom.rename, Atom.root, Atom.root_rename a]
   | .unfoldSelf a => simp [Atom.rename, Atom.root, Atom.root_rename a]
   | .both Tel₁ Tel₂ a b => simp [Atom.rename, Atom.root, Atom.root_rename a]
-  | .box a => simp [Atom.rename, Atom.root, Atom.root_rename a]
-  | .unbox a f => simp [Atom.rename, Atom.root, Atom.root_rename a]
+  | .recap a f => simp [Atom.rename, Atom.root, Atom.root_rename a]
 
 namespace Subst
 
@@ -450,8 +526,7 @@ end Subst
   | .foldSelf Tel a => simp [Atom.subst, Atom.root, Atom.root_subst a]
   | .unfoldSelf a => simp [Atom.subst, Atom.root, Atom.root_subst a]
   | .both Tel₁ Tel₂ a b => simp [Atom.subst, Atom.root, Atom.root_subst a]
-  | .box a => simp [Atom.subst, Atom.root, Atom.root_subst a]
-  | .unbox a f => simp [Atom.subst, Atom.root, Atom.root_subst a]
+  | .recap a f => simp [Atom.subst, Atom.root, Atom.root_subst a]
 
 /-! ## Substitution by a renaming -/
 
@@ -485,6 +560,34 @@ mutual
   | .trans f g => simp [CapCo.subst, CapCo.rename, CapCo.subst_ofRename f, CapCo.subst_ofRename g]
   | .elem C D => simp [CapCo.subst, CapCo.rename]
   | .union f g => simp [CapCo.subst, CapCo.rename, CapCo.subst_ofRename f, CapCo.subst_ofRename g]
+  | .capvar a => simp [CapCo.subst, CapCo.rename, Atom.subst_ofRename a]
+  | .member a e i =>
+      simp [CapCo.subst, CapCo.rename, Atom.subst_ofRename a, ShapeCo.subst_ofRename e]
+  | .eqToLe φ => simp [CapCo.subst, CapCo.rename, CapEq.subst_ofRename φ]
+
+@[simp] theorem CapEq.subst_ofRename {s1 s2 : Sig} (φ : CapEq s1) (ρ : Rename s1 s2) :
+    φ.subst (Subst.ofRename ρ) = φ.rename ρ := by
+  match φ with
+  | .refl C => simp [CapEq.subst, CapEq.rename]
+  | .symm φ => simp [CapEq.subst, CapEq.rename, CapEq.subst_ofRename φ]
+  | .trans φ ψ =>
+      simp [CapEq.subst, CapEq.rename, CapEq.subst_ofRename φ, CapEq.subst_ofRename ψ]
+  | .defC x ℓ => simp [CapEq.subst, CapEq.rename]
+  | .member a e i =>
+      simp [CapEq.subst, CapEq.rename, Atom.subst_ofRename a, ShapeCo.subst_ofRename e]
+
+@[simp] theorem CapStep.subst_ofRename {s1 s2 : Sig} (st : CapStep s1) (ρ : Rename s1 s2) :
+    st.subst (Subst.ofRename ρ) = st.rename ρ := by
+  match st with
+  | .closed f => simp [CapStep.subst, CapStep.rename, CapCo.subst_ofRename f]
+  | .incl C D => simp [CapStep.subst, CapStep.rename]
+
+@[simp] theorem SideC.subst_ofRename {s1 s2 : Sig} (q : SideC s1) (ρ : Rename s1 s2) :
+    q.subst (Subst.ofRename ρ) = q.rename ρ := by
+  match q with
+  | .nil => simp [SideC.subst, SideC.rename]
+  | .cons st q => simp [SideC.subst, SideC.rename, CapStep.subst_ofRename st,
+      SideC.subst_ofRename q]
 
 @[simp] theorem LeCo.subst_ofRename {s1 s2 : Sig} (d : LeCo s1) (ρ : Rename s1 s2) :
     d.subst (Subst.ofRename ρ) = d.rename ρ := by
@@ -525,6 +628,10 @@ mutual
   | .has m j => simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m]
   | .bnd m e =>
       simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m, ShapeCo.subst_ofRename e]
+  | .leC m q h q' =>
+      simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m, SideC.subst_ofRename q,
+        SideC.subst_ofRename q']
+  | .eqC m j b => simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m]
 
 @[simp] theorem Atom.subst_ofRename {s1 s2 : Sig} (a : Atom s1) (ρ : Rename s1 s2) :
     a.subst (Subst.ofRename ρ) = a.rename ρ := by
@@ -536,8 +643,7 @@ mutual
   | .both Tel₁ Tel₂ a b =>
       simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, Atom.subst_ofRename b,
         Subst.ofRename_root]
-  | .box a => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a]
-  | .unbox a f => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, CapCo.subst_ofRename f]
+  | .recap a f => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, CapCo.subst_ofRename f]
 
 end
 
@@ -552,13 +658,16 @@ mutual
   | .proj a ℓ h => simp [Tm.subst, Tm.rename, Has.subst_ofRename h]
   | .let t u => simp [Tm.subst, Tm.rename, Tm.subst_ofRename t, Tm.subst_ofRename u]
   | .cast t e => simp [Tm.subst, Tm.rename, Tm.subst_ofRename t, LeCo.subst_ofRename e]
+  | .unbox a f =>
+      simp [Tm.subst, Tm.rename, Atom.subst_ofRename a, CapCo.subst_ofRename f]
 
 @[simp] theorem Value.subst_ofRename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
     v.subst (Subst.ofRename ρ) = v.rename ρ := by
   match v with
   | .lam S t => simp [Value.subst, Value.rename, Tm.subst_ofRename t]
-  | .obj W F =>
-      simp [Value.subst, Value.rename, Fields.subst_ofRename F]
+  | .obj W Wc F =>
+      simp [Value.subst, Value.rename, Fields.subst_ofRename F, Subst.ofRename_root]
+  | .box a => simp [Value.subst, Value.rename, Atom.subst_ofRename a]
   | .cast v e => simp [Value.subst, Value.rename, Value.subst_ofRename v, LeCo.subst_ofRename e]
 
 @[simp] theorem Fields.subst_ofRename {s1 s2 : Sig} (F : Fields s1) (ρ : Rename s1 s2) :
@@ -718,6 +827,14 @@ theorem Witnesses.get_rename {s1 s2 : Sig} :
       by_cases hl : l = l' <;>
         simp [Witnesses.rename, Witnesses.get, hl, Witnesses.get_rename W l ρ]
 
+theorem CapWitnesses.get_rename {s1 s2 : Sig} :
+    ∀ (W : CapWitnesses s1) (l : Label) (ρ : Rename s1 s2),
+      (W.rename ρ).get l = (W.get l).rename ρ
+  | .nil, _, _ => rfl
+  | .cons W l' C, l, ρ => by
+      by_cases hl : l = l' <;>
+        simp [CapWitnesses.rename, CapWitnesses.get, hl, CapWitnesses.get_rename W l ρ]
+
 /-! ## The precise telescope of a literal is stable under renaming -/
 
 theorem Witnesses.eqEntriesOf_rename {s1 s2 : Sig} (self : BVar s1 .var) (W₀ : Witnesses s1)
@@ -741,9 +858,26 @@ theorem Witnesses.eqEntriesOf_rename {s1 s2 : Sig} (self : BVar s1 .var) (W₀ :
       simp [Telescope.hasEntries, Telescope.hasEntries_rename (Tel.cons (.has l)) ls ρ,
         Telescope.rename, Proposition.rename]
 
-theorem Telescope.ofLiteral_rename {s1 s2 : Sig} (W : Witnesses (s1,x)) (ls : List Label)
-    (ρ : Rename s1 s2) :
-    (Telescope.ofLiteral W ls).rename ρ.lift = Telescope.ofLiteral (W.rename ρ.lift) ls := by
+theorem CapWitnesses.eqEntriesOf_rename {s1 s2 : Sig} (self : BVar s1 .var)
+    (W₀ : CapWitnesses s1) (ρ : Rename s1 s2) :
+    ∀ (base : Telescope s1) (W : CapWitnesses s1),
+      (W₀.rename ρ).eqEntriesOf (ρ.var self) (base.rename ρ) (W.rename ρ)
+        = (W₀.eqEntriesOf self base W).rename ρ
+  | _, .nil => rfl
+  | base, .cons W ℓ C => by
+      simp [CapWitnesses.rename, CapWitnesses.eqEntriesOf, Telescope.rename, Proposition.rename,
+        CaptureSet.rename, CapAtom.rename,
+        CapWitnesses.eqEntriesOf_rename self W₀ ρ base W, CapWitnesses.get_rename]
+
+@[simp] theorem CapWitnesses.eqEntries_rename {s1 s2 : Sig} (W : CapWitnesses (s1,x))
+    (base : Telescope (s1,x)) (ρ : Rename s1 s2) :
+    (W.rename ρ.lift).eqEntries (base.rename ρ.lift) = (W.eqEntries base).rename ρ.lift :=
+  CapWitnesses.eqEntriesOf_rename .here W ρ.lift base W
+
+theorem Telescope.ofLiteral_rename {s1 s2 : Sig} (W : Witnesses (s1,x))
+    (Wc : CapWitnesses (s1,x)) (ls : List Label) (ρ : Rename s1 s2) :
+    (Telescope.ofLiteral W Wc ls).rename ρ.lift
+      = Telescope.ofLiteral (W.rename ρ.lift) (Wc.rename ρ.lift) ls := by
   simp [Telescope.ofLiteral]
 
 /-! ## Instantiating weakened syntax, injectivity of renaming -/
@@ -840,6 +974,12 @@ theorem Proposition.rename_inj {s1 s2 : Sig} (P P' : Proposition s1) (ρ : Renam
   | .bnd T =>
       cases P' <;> simp [Proposition.rename] at h ⊢
       exact Shape.rename_inj T _ ρ hρ h
+  | .leC C D =>
+      cases P' <;> simp [Proposition.rename] at h ⊢
+      exact ⟨CaptureSet.rename_inj ρ hρ C _ h.1, CaptureSet.rename_inj ρ hρ D _ h.2⟩
+  | .eqC C D =>
+      cases P' <;> simp [Proposition.rename] at h ⊢
+      exact ⟨CaptureSet.rename_inj ρ hρ C _ h.1, CaptureSet.rename_inj ρ hρ D _ h.2⟩
 
 theorem Telescope.rename_inj {s1 s2 : Sig} (Tel Tel' : Telescope s1) (ρ : Rename s1 s2)
     (hρ : ρ.Injective) (h : Tel.rename ρ = Tel'.rename ρ) : Tel = Tel' := by

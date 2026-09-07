@@ -7,13 +7,21 @@ namespace Captures
 # Erasure of FCdot into the shared runtime
 
 Atoms erase to their root variable, casts and evidence vanish, object
-literals keep only their fields.  Cast frames erase to nothing.  The box
-wrappers `box a` and `unbox a f` carry no runtime content either: both erase
-to the erasure of `a`, which is the root variable of `a`.  A capture slot of
-a store erases to the runtime's data-free capture slot.
+literals keep only their fields.  Cast frames erase to nothing.  A
+`recap a f` carries no runtime content, so it erases to the erasure of `a`,
+which is the root variable of `a`.  A box is a one-field runtime object at
+the reserved label `boxLabel` holding the boxed atom's root, and an unbox is
+the projection of that field, so the machine's `unbox` steps erase to the
+runtime's projection step and the allocation of a box to the runtime
+allocation of that object.  A capture slot of a store erases to the
+runtime's data-free capture slot.
 -/
 
 namespace FCdot
+
+/-- The reserved label of the single field a box erases to.  Nothing else
+uses it: the source (A3) erases `□ x` through the same box. -/
+def boxLabel : Label := .trm 0
 
 mutual
 
@@ -24,10 +32,15 @@ def Tm.erase : Tm s → Runtime.Tm s
   | .proj a ℓ _ => .proj a.root ℓ
   | .let t u => .let t.erase u.erase
   | .cast t _ => t.erase
+  -- Unboxing reads the one field of the runtime object a box erases to.
+  | .unbox a _ => .proj a.root boxLabel
 
 def Value.erase : Value s → Runtime.Tm s
   | .lam _ t => .lam t.erase
-  | .obj _ F => .obj F.erase
+  | .obj _ _ F => .obj F.erase
+  -- A box is a one-field object holding the boxed atom's root, weakened
+  -- past the object's own self binder.
+  | .box a => .obj (.cons .nil boxLabel (.var (.there a.root)))
   | .cast v _ => v.erase
 
 def Fields.erase : Fields s → Runtime.Fields s
@@ -58,6 +71,40 @@ scoped notation:max "⌊" v "⌋" => Value.erase v
 scoped notation:max "⌊" σ "⌋" => Store.erase σ
 scoped notation:max "⌊" K "⌋" => Cont.erase K
 scoped notation:max "⌊" st "⌋" => State.erase st
+
+/-! ### The box and its projection
+
+The two equations of the design correction, and the two computations that
+make the machine's `unbox` steps erase to the runtime's projection step: the
+field of the erased box is found at `boxLabel`, and closing it at the
+variable the box is stored at yields the root of the boxed atom. -/
+
+@[simp] theorem Value.erase_box (a : Atom s) :
+    ⌊(Value.box a)⌋ = .obj (.cons .nil boxLabel (.var (.there a.root))) := rfl
+
+@[simp] theorem Tm.erase_unbox (a : Atom s) (f : CapCo s) :
+    ⌊(Tm.unbox a f)⌋ = .proj a.root boxLabel := rfl
+
+theorem boxField_get? (a : Atom s) :
+    (Runtime.Fields.cons .nil boxLabel (.var (BVar.there a.root)) :
+        Runtime.Fields (s,x)).get? boxLabel = some (.var (.there a.root)) := by
+  simp [Runtime.Fields.get?]
+
+theorem boxField_substVar (a : Atom s) (x : BVar s .var) :
+    (Runtime.Tm.var (BVar.there a.root) : Runtime.Tm (s,x)).substVar x = .var a.root := rfl
+
+/-- The `unbox` steps of the machine erase to the runtime's projection step.
+`Store.lookup_erase` (which needs the runtime renaming lemmas, and so lives
+in `ErasureMetatheory.lean`) supplies `hlk`; both steps land on the same
+erased state, since a cast on an atom erases to nothing. -/
+theorem unbox_erase_step {σ : Store s} {K : Cont s} {a b : Atom s} {f : CapCo s}
+    (hlk : (⌊σ⌋ : Runtime.Store s).lookup a.root = ⌊σ.lookup a.root⌋)
+    (h : σ.lookup a.root = .box b) :
+    Runtime.Step ⌊(⟨σ, K, .unbox a f⟩ : State s)⌋ ⌊(⟨σ, K, .atom b⟩ : State s)⌋ := by
+  refine Runtime.Step.proj (F := .cons .nil boxLabel (.var (.there b.root)))
+    (t := .var (.there b.root)) ?_ (boxField_get? b)
+  show (⌊σ⌋ : Runtime.Store s).lookup a.root = _
+  rw [hlk, h]; rfl
 
 /-- States whose next step only moves a cast frame; such steps erase to no
 runtime step. -/

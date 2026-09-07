@@ -14,6 +14,11 @@ the innermost *opaque* binder by an atom of its type.
 
 namespace FCdot
 
+@[simp] theorem CaptureSet.rename_subst_weaken' {s : Sig} {k : Kind}
+    (C : CaptureSet s) (y : BVar s k) :
+    CaptureSet.rename (C.weaken (k := k)) (Rename.subst y) = C :=
+  CaptureSet.rename_subst_weaken C y
+
 @[simp] theorem Ty.rename_subst_weaken' {s : Sig} {k : Kind} (T : Ty s) (y : BVar s k) :
     (T.weaken (k := k)).rename (Rename.subst y) = T :=
   Ty.rename_subst_weaken T y
@@ -45,6 +50,9 @@ structure Subst.Typed {s1 s2 : Sig} (Γ : Ctx s1) (σ : Subst s1 s2) (Γ' : Ctx 
   transparent : ∀ x, Γ.IsTransparent x → Γ'.IsTransparent (σ.root.var x)
   def_ : ∀ x l (W : Shape s1), Γ.lookupDef x l = some W →
       Γ'.lookupDef (σ.root.var x) l = some (W.rename σ.root)
+  /-- Capture definitions of transparent binders survive too. -/
+  defC : ∀ x l (C : CaptureSet s1), Γ.lookupDefC x l = some C →
+      Γ'.lookupDefC (σ.root.var x) l = some (C.rename σ.root)
   fields : ∀ x Fs, Γ.lookupFields x = some Fs → Γ'.lookupFields (σ.root.var x) = some Fs
 
 namespace Subst.Typed
@@ -85,7 +93,7 @@ theorem lift {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
     | here =>
         cases b with
         | «opaque» T => simp at ht
-        | transparent T W' Fs => simp
+        | transparent T W' Wc' Fs => simp
     | there y =>
         rw [Ctx.isTransparent_there] at ht
         rw [Rename.lift_there, Ctx.isTransparent_there]
@@ -97,7 +105,7 @@ theorem lift {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
     | here =>
         cases b with
         | «opaque» T => simp at hW
-        | transparent T W' Fs =>
+        | transparent T W' Wc' Fs =>
             have hWe : W = W'.get l := by simpa using hW.symm
             subst hWe
             simp only [Rename.lift_here, Binding.rename_transparent,
@@ -113,6 +121,29 @@ theorem lift {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
             subst hWe
             rw [h.def_ y l W0 hd]
             simp [Shape.weaken_rename]
+  defC := by
+    intro x l C hC
+    simp only [Subst.lift_root]
+    cases x with
+    | here =>
+        cases b with
+        | «opaque» T => simp at hC
+        | transparent T W' Wc' Fs =>
+            have hCe : C = Wc'.get l := by simpa using hC.symm
+            subst hCe
+            simp only [Rename.lift_here, Binding.rename_transparent,
+              Ctx.lookupDefC_here_transparent, CapWitnesses.get_rename]
+    | there y =>
+        rw [Ctx.lookupDefC_there] at hC
+        rw [Rename.lift_there, Ctx.lookupDefC_there]
+        cases hd : Γ.lookupDefC y l with
+        | none => rw [hd] at hC; simp at hC
+        | some C0 =>
+            rw [hd] at hC
+            have hCe : C = C0↑ := by simpa using hC.symm
+            subst hCe
+            rw [h.defC y l C0 hd]
+            simp [CaptureSet.weaken_rename]
   fields := by
     intro x Fs hFs
     simp only [Subst.lift_root]
@@ -120,7 +151,7 @@ theorem lift {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
     | here =>
         cases b with
         | «opaque» T => simp at hFs
-        | transparent T W' Fs' => simpa using hFs
+        | transparent T W' Wc' Fs' => simpa using hFs
     | there y =>
         rw [Ctx.lookupFields_there] at hFs
         rw [Rename.lift_there, Ctx.lookupFields_there]
@@ -142,6 +173,9 @@ theorem ofRename {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2} (h : Ctx.Ren �
   def_ := by
     intro x l W hW
     simpa using h.def_ x l W hW
+  defC := by
+    intro x l C hC
+    simpa using h.defC x l C hC
   fields := by
     intro x Fs hFs
     simpa using h.fields x Fs hFs
@@ -183,6 +217,19 @@ theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
             have hWe : W = W0↑ := by simpa using hW.symm
             subst hWe
             simpa [Subst.single_root] using hd
+  defC := by
+    intro x l C hC
+    cases x with
+    | here => simp at hC
+    | there y =>
+        rw [Ctx.lookupDefC_there] at hC
+        cases hd : Γ.lookupDefC y l with
+        | none => rw [hd] at hC; simp at hC
+        | some C0 =>
+            rw [hd] at hC
+            have hCe : C = C0↑ := by simpa using hC.symm
+            subst hCe
+            simpa [Subst.single_root] using hd
   fields := by
     intro x Fs hFs
     cases x with
@@ -192,7 +239,7 @@ theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
         simpa [Subst.single_root] using hFs
 
 /-- Passing under a capture binder: `Subst.liftC` is a typed substitution
-whenever `σ` is.  The capture binder carries no term, so the three lookups
+whenever `σ` is.  The capture binder carries no term, so the four lookups
 step past it by the same kind-generic weakening. -/
 theorem liftC {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
     (h : Subst.Typed Γ σ Γ') (b : CapBound s1) :
@@ -237,6 +284,21 @@ theorem liftC {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
             subst hWe
             rw [h.def_ y l W0 hd]
             simp [Shape.weaken_rename]
+  defC := by
+    intro x l C hC
+    simp only [Subst.liftC_root]
+    cases x with
+    | there y =>
+        rw [Ctx.lookupDefC_thereC] at hC
+        rw [Rename.lift_there, Ctx.lookupDefC_thereC]
+        cases hd : Γ.lookupDefC y l with
+        | none => rw [hd] at hC; simp at hC
+        | some C0 =>
+            rw [hd] at hC
+            have hCe : C = C0↑ := by simpa using hC.symm
+            subst hCe
+            rw [h.defC y l C0 hd]
+            simp [CaptureSet.weaken_rename]
   fields := by
     intro x Fs hFs
     simp only [Subst.liftC_root]
@@ -250,20 +312,66 @@ end Subst.Typed
 
 /-! ## Evidence and atoms -/
 
-/-- Substitution acts on a capture set as the renaming of roots, so the
-capture family is transported by `σ.root` like the type sort. -/
+mutual
+
+/-- The capture family is transported by the substitution.  Types and
+evidence see an atom only through its root, so a capture set travels along
+the renaming of roots, exactly as in the type sort; the family mentions
+atoms (`capvar`, `member`), so it belongs to the mutual recursion. -/
 theorem CapCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {f : CapCo s1} {C D : CaptureSet s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ᶜ f : C ⊑ D) :
     Γ' ⊢ᶜ (f.subst σ) : (C.rename σ.root) ⊑ (D.rename σ.root) := by
-  induction h with
-  | refl => exact .refl
-  | trans _ _ ihf ihg => exact .trans (ihf hσ) (ihg hσ)
-  | elem hs => exact .elem (hs.rename σ.root)
-  | union _ _ ihf ihg =>
-      have := CapCo.HasType.union (ihf hσ) (ihg hσ)
+  match h with
+  | .refl => exact .refl
+  | .trans hf hg => exact .trans (hf.subst hσ) (hg.subst hσ)
+  | .elem hs => exact .elem (hs.rename σ.root)
+  | .union hf hg =>
+      have := CapCo.HasType.union (hf.subst hσ) (hg.subst hσ)
       simpa [CapCo.subst, CaptureSet.rename] using this
+  | @CapCo.HasType.capvar _ _ a S C ha =>
+      have := CapCo.HasType.capvar (a := a.subst σ)
+        (by simpa [Ty.rename] using Atom.HasType.subst hσ ha)
+      simpa [CapCo.subst, CaptureSet.rename, CapAtom.rename, Atom.root_subst] using this
+  | @CapCo.HasType.member _ _ a S D e Tel i C₁ C₂ ha he hAt =>
+      have := CapCo.HasType.member (a := a.subst σ)
+        (by simpa [Ty.rename] using Atom.HasType.subst hσ ha)
+        (by simpa [Shape.rename] using he.subst hσ) (hAt.rename σ.root.lift)
+      simpa [CapCo.subst, CaptureSet.substVar_rename, Atom.root_subst] using this
+  | .eqToLe hφ => exact .eqToLe (hφ.subst hσ)
 
-mutual
+theorem CapEq.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
+    {φ : CapEq s1} {C D : CaptureSet s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) :
+    Γ' ⊢ᶜ (φ.subst σ) : (C.rename σ.root) ≡ (D.rename σ.root) := by
+  match h with
+  | .refl => exact .refl
+  | .symm hφ => exact .symm (hφ.subst hσ)
+  | .trans hφ hψ => exact .trans (hφ.subst hσ) (hψ.subst hσ)
+  | .defC hd =>
+      have := CapEq.HasType.defC (hσ.defC _ _ _ hd)
+      simpa [CapEq.subst, CaptureSet.rename, CapAtom.rename] using this
+  | @CapEq.HasType.member _ _ a S D e Tel i C₁ C₂ ha he hAt =>
+      have := CapEq.HasType.member (a := a.subst σ)
+        (by simpa [Ty.rename] using Atom.HasType.subst hσ ha)
+        (by simpa [Shape.rename] using he.subst hσ) (hAt.rename σ.root.lift)
+      simpa [CapEq.subst, CaptureSet.substVar_rename, Atom.root_subst] using this
+
+theorem CapStep.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
+    {st : CapStep s1} {X Y : CaptureSet (s1,x)} (hσ : Subst.Typed Γ σ Γ')
+    (h : CapStep.HasType Γ st X Y) :
+    CapStep.HasType Γ' (st.subst σ) (X.rename σ.root.lift) (Y.rename σ.root.lift) := by
+  match h with
+  | .closed hf =>
+      have := CapStep.HasType.closed (hf.subst hσ)
+      simpa [CapStep.subst, CaptureSet.weaken_rename] using this
+  | .incl hs => exact .incl (hs.rename σ.root.lift)
+
+theorem SideC.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
+    {q : SideC s1} {X Y : CaptureSet (s1,x)} (hσ : Subst.Typed Γ σ Γ')
+    (h : SideC.HasType Γ q X Y) :
+    SideC.HasType Γ' (q.subst σ) (X.rename σ.root.lift) (Y.rename σ.root.lift) := by
+  match h with
+  | .nil => exact .nil
+  | .cons hst hq => exact .cons (hst.subst hσ) (hq.subst hσ)
 
 theorem ShapeCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {e : ShapeCo s1} {S T : Shape s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ˢ e : S ≤ T) :
@@ -365,6 +473,12 @@ theorem Morphism.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
         (by simpa [Shape.rename] using he.subst hσ)
       simpa [Morphism.subst, Telescope.rename, Proposition.rename,
         Shape.weaken_rename] using this
+  | .leC hm hh hq hq' =>
+      exact .leC (hm.subst hσ) (hh.rename σ.root) (hq.subst hσ) (hq'.subst hσ)
+  | .eqC hm hAt =>
+      exact .eqC (hm.subst hσ) (by simpa [Proposition.rename] using hAt.rename σ.root.lift)
+  | .eqSymC hm hAt =>
+      exact .eqSymC (hm.subst hσ) (by simpa [Proposition.rename] using hAt.rename σ.root.lift)
 
 theorem Atom.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {a : Atom s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ₐ a : T) :
@@ -389,12 +503,12 @@ theorem Atom.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subs
         (by simpa [Ty.rename, Shape.rename] using hb.subst hσ)
         (by simp [Atom.root_subst, hr])
       simpa [Atom.subst, Ty.rename, Shape.rename, Telescope.append_rename] using this
-  | .box ha =>
-      have := Atom.HasType.box (ha.subst hσ)
-      simpa [Atom.subst, Ty.rename, Shape.rename] using this
-  | .unbox ha hf =>
-      have := Atom.HasType.unbox (by simpa [Ty.rename, Shape.rename] using ha.subst hσ)
-        (by simpa using CapCo.HasType.subst hσ hf)
+  | @Atom.HasType.recap _ _ a S C f C' ha hf =>
+      have := Atom.HasType.recap (a := a.subst σ) (C' := C'.rename σ.root)
+        (by simpa [Ty.rename] using ha.subst hσ)
+        (by
+          simpa [CaptureSet.rename, CapAtom.rename, Atom.root_subst] using
+            CapCo.HasType.subst hσ hf)
       simpa [Atom.subst, Ty.rename] using this
 
 end
@@ -423,6 +537,10 @@ theorem Tm.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst 
       have := hu.subst (hσ.lift _)
       simpa [Ty.weaken_rename] using this
   | .cast ht he => exact .cast (ht.subst hσ) (LeCo.HasType.subst hσ he)
+  | .unbox ha hf =>
+      have := Tm.HasType.unbox (by simpa [Ty.rename, Shape.rename] using ha.subst hσ)
+        (by simpa using CapCo.HasType.subst hσ hf)
+      simpa [Tm.subst, Ty.rename] using this
 
 theorem Value.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {v : Value s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ᵥ v : T) :
@@ -433,13 +551,17 @@ theorem Value.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Sub
       simp only [Subst.lift_root, Binding.rename_opaque] at this
       have := Value.HasType.lam this
       simpa [Value.subst, Ty.rename, Shape.rename] using this
-  | @Value.HasType.obj _ F0 _ W0 hF =>
+  | @Value.HasType.obj _ F0 _ W0 Wc0 hF =>
       have hF' := Fields.HasType.subst (hσ.lift _) hF
-      have := Value.HasType.obj (Γ := Γ') (W := W0.rename σ.root.lift) (F := F0.subst σ.lift)
+      have := Value.HasType.obj (Γ := Γ') (W := W0.rename σ.root.lift)
+        (Wc := Wc0.rename σ.root.lift) (F := F0.subst σ.lift)
         (by
           simpa [Binding.rename, Ty.rename, Shape.rename,
             Telescope.ofLiteral_rename] using hF')
       simpa [Value.subst, Ty.rename, Shape.rename, Telescope.ofLiteral_rename] using this
+  | .box ha =>
+      have := Value.HasType.box (ha.subst hσ)
+      simpa [Value.subst, Ty.rename, Shape.rename, CaptureSet.rename] using this
   | .cast hv he => exact .cast (hv.subst hσ) (LeCo.HasType.subst hσ he)
 
 theorem Fields.HasType.subst {s1 s2 : Sig} {Γ : Ctx (s1,x)} {Γ' : Ctx (s2,x)}

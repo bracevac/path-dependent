@@ -52,6 +52,28 @@ theorem eqForms_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) {W₀ : Witnesses (s
         rw [hσ.lookupDef x ℓ, hW]
       exact Ctx.resolve_sel_some hd
 
+/-- The capture-equation block of a literal's precise view is typed at the
+capture-definition block of its precise telescope: each slot is
+`Ctx.Root_name` at the capture witness the context records for the binder.
+The slots carry no data, so the block does not mention `Wᶜ` on the view
+side. -/
+theorem capEqForms_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) {Wc₀ : CapWitnesses (s,x)}
+    (hW : (σ.lookup x).capWitnesses = Wc₀) {base : View s} {baseTel : Telescope (s,x)}
+    (hbase : Γ ⊨[x, σ] base : baseTel) :
+    ∀ Wc : CapWitnesses (s,x),
+      Γ ⊨[x, σ] CapWitnesses.eqFormsC base Wc : Wc₀.eqEntriesOf .here baseTel Wc
+  | .nil => by simp only [CapWitnesses.eqFormsC, CapWitnesses.eqEntriesOf]; exact hbase
+  | .cons Wc ℓ C => by
+      simp only [CapWitnesses.eqFormsC, CapWitnesses.eqEntriesOf]
+      refine .eqC (capEqForms_typed hσ x hW hbase Wc) ?_
+      show RootsEq Γ ([CapAtom.name (BVar.here) ℓ]⟦x⟧) ((Wc₀.get ℓ)⟦x⟧)
+      have hd : Γ.lookupDefC x ℓ = some ((Wc₀.get ℓ)⟦x⟧) := by
+        rw [hσ.lookupDefC x ℓ, hW]
+      have he : ([CapAtom.name (BVar.here) ℓ]⟦x⟧ : CaptureSet s) = [CapAtom.name x ℓ] := by
+        simp [CaptureSet.substVar, CaptureSet.rename, CapAtom.rename, Rename.subst]
+      rw [he]
+      exact Ctx.Root_name hd
+
 theorem hasForms_typed (x : BVar s .var) :
     ∀ (ls : List Label) (V : View s) (Tel : Telescope (s,x)),
       Γ ⊨[x, σ] V : Tel → (∀ ℓ ∈ ls, σ.HasField x ℓ) →
@@ -73,17 +95,26 @@ theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) : RootViewTyped Γ 
       rw [hT]
       refine ⟨fun Tel h => ?_, by simp⟩
       simp at h
-  | obj W F =>
+  | obj W Wc F =>
       rw [hl] at hv
       obtain ⟨hT, _⟩ := hv.obj_inv
       rw [hT]
       refine ⟨fun Tel h => ?_, by simp⟩
       rw [Ty.shape_capt, Ctx.resolve_obj] at h
       obtain rfl := Shape.obj.inj h
-      simp only [Value.precView, Telescope.ofLiteral, Witnesses.eqEntries]
-      refine hasForms_typed x F.labels _ _ (eqForms_typed hσ x (by rw [hl]; rfl) W) ?_
+      simp only [Value.precView, Telescope.ofLiteral, Witnesses.eqEntries,
+        CapWitnesses.eqEntries]
+      refine hasForms_typed x F.labels _ _
+        (capEqForms_typed hσ x (by rw [hl]; rfl)
+          (eqForms_typed hσ x (by rw [hl]; rfl) W) Wc) ?_
       intro ℓ hℓ
-      exact ⟨W, F, hl, Fields.get?_isSome_of_mem hℓ⟩
+      exact ⟨W, Wc, F, hl, Fields.get?_isSome_of_mem hℓ⟩
+  | box b =>
+      rw [hl] at hv
+      obtain ⟨X, hT, _⟩ := hv.box_inv
+      rw [hT]
+      refine ⟨fun Tel h => ?_, by simp⟩
+      simp at h
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-- Field presence recorded in the context is field presence in the store. -/
@@ -94,9 +125,10 @@ theorem Store.Typed.hasField (hσ : ⊢ σ : Γ) {x : BVar s .var} {Fs : List La
   have hlit := hσ.lookup_isLiteral x
   cases hl : σ.lookup x with
   | lam S t => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
-  | obj W F =>
+  | obj W Wc F =>
       rw [hl] at hmem
-      exact ⟨W, F, hl, Fields.get?_isSome_of_mem (by simpa [Value.fieldLabels] using hmem)⟩
+      exact ⟨W, Wc, F, hl, Fields.get?_isSome_of_mem (by simpa [Value.fieldLabels] using hmem)⟩
+  | box b => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-! ## Statements -/
@@ -122,9 +154,10 @@ def MorConcl (σ : Store s) (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s
   ∃ n Es, σ ⊢ m ⇓ₘ[n] Es ∧ Γ ⊨ Es : src ⇒ Tel
 
 def AtomConcl (σ : Store s) (Γ : Ctx s) (a : Atom s) (S : Ty s) : Prop :=
-  ∃ n V, σ ⊢ a ⇓ᵥ[n] V ∧
+  (∃ n V, σ ⊢ a ⇓ᵥ[n] V ∧
     (∀ Tel : Telescope (s,x), Γ.resolve S.shape = μ Tel → Γ ⊨[a.root, σ] V : Tel) ∧
-    Γ.resolve S.shape ≠ ⊥
+    Γ.resolve S.shape ≠ ⊥) ∧
+    CapLe Γ [CapAtom.var a.root] S.captureSet
 
 /-- The view of an atom, read at the shapes opened at its root: the same
 statement, since opening and folding a telescope at the root is invisible to
@@ -134,17 +167,22 @@ theorem AtomConcl.opened {a : Atom s} {S : Ty s} (h : AtomConcl σ Γ a S) :
       (∀ Tel : Telescope (s,x), Γ.resolveAt? (some a.root) S.shape = μ Tel →
         Γ ⊨[a.root, σ] V : Tel) ∧
       Γ.resolveAt? (some a.root) S.shape ≠ ⊥ := by
-  obtain ⟨n, V, hV, hVt, hnb⟩ := h
+  obtain ⟨⟨n, V, hV, hVt, hnb⟩, _⟩ := h
   refine ⟨n, V, hV, fun Tel hT => ?_, fun hb => hnb (Shape.unfoldAt_eq_bot hb)⟩
   obtain ⟨Tel₀, h₀, rfl⟩ := Shape.unfoldAt_eq_obj hT
   exact ViewTyped_unfold (hVt Tel₀ h₀)
+
+/-- Item 7 of the theorem, read off the conclusion. -/
+theorem AtomConcl.capLe {a : Atom s} {S : Ty s} (h : AtomConcl σ Γ a S) :
+    CapLe Γ [CapAtom.var a.root] S.captureSet := h.2
 
 theorem AtomConcl.of_opened {a : Atom s} {S : Ty s} {n : Nat} {V : View s}
     (hV : σ ⊢ a ⇓ᵥ[n] V)
     (hVt : ∀ Tel : Telescope (s,x), Γ.resolveAt? (some a.root) S.shape = μ Tel →
       Γ ⊨[a.root, σ] V : Tel)
-    (hnb : Γ.resolveAt? (some a.root) S.shape ≠ ⊥) : AtomConcl σ Γ a S := by
-  refine ⟨n, V, hV, fun Tel h => ?_, fun hb => hnb ?_⟩
+    (hnb : Γ.resolveAt? (some a.root) S.shape ≠ ⊥)
+    (hcap : CapLe Γ [CapAtom.var a.root] S.captureSet) : AtomConcl σ Γ a S := by
+  refine ⟨⟨n, V, hV, fun Tel h => ?_, fun hb => hnb ?_⟩, hcap⟩
   · exact ViewTyped_fold (hVt _ (by simp only [Ctx.resolveAt?_some, Ctx.resolveAt, h]; rfl))
   · simp only [Ctx.resolveAt?_some, Ctx.resolveAt, hb]; rfl
 
@@ -208,9 +246,12 @@ theorem ChainTyped.pair {r : BVar s .var} {F G : Form s} {S : Shape s} {Tel₁ T
 
 /-! ## The shape of a location's type -/
 
-/-- The type recorded for a location has a function or an object shape. -/
+/-- The type recorded for a location has the shape of the literal stored
+there: a function shape, an object shape, or -- since a box is now a stored
+value -- a box shape. -/
 theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
-    (∃ S T, (Γ.lookupTy x).shape = Π(S) T) ∨ ∃ Tel, (Γ.lookupTy x).shape = μ Tel := by
+    (∃ S T, (Γ.lookupTy x).shape = Π(S) T) ∨ (∃ Tel, (Γ.lookupTy x).shape = μ Tel) ∨
+      ∃ X, (Γ.lookupTy x).shape = □ X := by
   have hv := hσ.lookup x
   have hlit := hσ.lookup_isLiteral x
   cases hl : σ.lookup x with
@@ -218,10 +259,14 @@ theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
       rw [hl] at hv
       obtain ⟨T₀, hT, _⟩ := hv.lam_inv
       exact Or.inl ⟨_, _, by rw [hT]; rfl⟩
-  | obj W F =>
+  | obj W Wc F =>
       rw [hl] at hv
       obtain ⟨hT, _⟩ := hv.obj_inv
-      exact Or.inr ⟨_, by rw [hT]; rfl⟩
+      exact Or.inr (Or.inl ⟨_, by rw [hT]; rfl⟩)
+  | box b =>
+      rw [hl] at hv
+      obtain ⟨X, hT, _⟩ := hv.box_inv
+      exact Or.inr (Or.inr ⟨_, by rw [hT]; rfl⟩)
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-- Over a typed store the root's type never resolves to `⊥`, and it never
@@ -233,40 +278,19 @@ theorem Store.Typed.root_no_bnd (hσ : ⊢ σ : Γ) (r : BVar s .var) {Tel : Tel
   obtain ⟨G, hG, _⟩ := (hrv _ hS).bnd_entry hAt
   exact Value.precView_noBnd r _ _ _ hG
 
-/-- A chain of casts out of the root's type never reaches a box shape other
-than by recording the form that reaches the boxed type: the root's type is a
-function or an object shape, and no form leaves such a shape for a box
-except the `boxIn` record. -/
-theorem chain_box_inv (hσ : ⊢ σ : Γ) {r : BVar s .var} {F : Form s} {X : Ty s}
-    (hF : Γ ⊨[r] F : (Γ.lookupTy r).shape ≤ □ X) :
-    ∃ G, F = .boxIn G ∧ Γ ⊨[r] G : (Γ.lookupTy r).shape ≤ X.shape := by
-  have hlk := hσ.lookupTy_shape r
-  cases hF with
-  | bot hb =>
-      rcases hlk with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩
-      · simp [Ctx.resolveAt, hp] at hb
-      · simp [Ctx.resolveAt, ho] at hb
-  | top hT => simp at hT
-  | id hres =>
-      rcases hlk with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩
-      · simp [Ctx.resolveAt, hp] at hres
-      · simp [Ctx.resolveAt, ho] at hres
-  | eqv hres =>
-      rcases hlk with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩
-      · simp [Ctx.resolveAt, hp] at hres
-      · simp [Ctx.resolveAt, ho] at hres
-  | pi _ hT _ _ => simp at hT
-  | obj _ hT _ => simp at hT
-  | into hT _ => simp at hT
-  | boxed hb _ _ =>
-      rcases hlk with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩
-      · simp [Ctx.resolveAt, hp] at hb
-      · simp [Ctx.resolveAt, ho] at hb
-  | bnd hS hAt _ => exact absurd (hσ.root_no_bnd r hS hAt) (by simp)
-  | boxIn hT hG =>
-      rw [Ctx.resolveAt?_box] at hT
-      obtain rfl := Shape.box.inj hT
-      exact ⟨_, rfl, hG⟩
+/-! ## The roots of a variable -/
+
+/-- A variable has exactly the roots of the capture set of its type: the
+term-binder clause of `caps`, read as a statement about roots.  This is the
+`var` case of item 7 of the theorem. -/
+theorem Ctx.Root_var (Γ : Ctx s) (x : BVar s .var) :
+    RootsEq Γ [CapAtom.var x] (Γ.lookupTy x).captureSet := by
+  intro a
+  have key : ∀ n : Nat,
+      a ∈ Γ.caps n [CapAtom.var x] ↔ a ∈ Γ.caps n (Γ.lookupTy x).captureSet := by
+    intro n
+    rw [Ctx.caps_cons, Ctx.caps_nil, List.append_nil, Ctx.capsAtom_var]
+  exact ⟨fun ⟨n, hn⟩ => ⟨n, (key n).mp hn⟩, fun ⟨n, hn⟩ => ⟨n, (key n).mpr hn⟩⟩
 
 /-! ## Canonical forms -/
 
@@ -284,9 +308,8 @@ theorem shape_canon {e : ShapeCo s} {S T : Shape s} (h : Γ ⊢ˢ e : S ≤ T) :
   | .bot => exact ⟨1, _, rfl, .bot (by simp)⟩
   | .eqToLe hφ => exact ⟨1, _, rfl, .eqv (eq_canon hφ)⟩
   | .pi hd hc => exact ⟨1, _, rfl, .pi (by simp) (by simp) hd hc⟩
-  | .boxed hd =>
-      obtain ⟨n, G, hG, hGt⟩ := le_canon hd
-      exact ⟨n + 1, .boxed G, by simp [hnfShape, hG], .boxed (by simp) (by simp) hGt⟩
+  | .boxed (d := d) hd =>
+      exact ⟨1, .boxed d, by simp [hnfShape], .boxed (by simp) (by simp) hd⟩
   | .obj hm =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, .obj Es, by simp [hnfShape, hEs], .obj (by simp) (by simp) hT⟩
@@ -326,6 +349,64 @@ theorem le_canon {d : LeCo s} {S T : Ty s} (h : Γ ⊢ d : S ≤ T) : LeConcl σ
   | .capt he _ =>
       obtain ⟨n, F, hF, hFt⟩ := shape_canon he
       exact ⟨n + 1, F, by simpa using hF, hFt⟩
+
+/-- The capture half of a type inclusion. -/
+theorem le_canon_cap {d : LeCo s} {S T : Ty s} (h : Γ ⊢ d : S ≤ T) :
+    CapLe Γ S.captureSet T.captureSet := by
+  match h with
+  | .capt _ hf => exact cap_canon hf
+
+/-- Item 6 of the theorem: closed capture evidence includes roots.  In A0 the
+statement lived in `Resolution.lean` with four constructors; `capvar` and
+`member` mention atoms, so it now runs in the mutual induction, unchanged. -/
+theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D) :
+    CapLe Γ C D := by
+  match h with
+  | .refl => exact CapLe.refl _ _
+  | .trans hf hg => exact (cap_canon hf).trans (cap_canon hg)
+  | .elem hsub => exact CapLe.of_subset hsub
+  | .union hf hg => exact CapLe.union (cap_canon hf) (cap_canon hg)
+  | .capvar ha => exact (atom_canon ha).capLe
+  | .member (a := a) ha he hAt =>
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
+      obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he
+      obtain ⟨n₃, a₀, C₀, hC, hCt⟩ := closedAtomForm_typed ha
+      obtain ⟨m, V', hV', hVt'⟩ :=
+        view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
+      exact (hVt'.leC_entry hAt).2
+  | .eqToLe hφ => exact (capeq_canon hφ).le
+
+/-- The equality analogue of item 6: closed capture equality evidence gives
+equality of roots. -/
+theorem capeq_canon {φ : CapEq s} {C D : CaptureSet s} (h : Γ ⊢ᶜ φ : C ≡ D) :
+    RootsEq Γ C D := by
+  match h with
+  | .refl => exact RootsEq.refl _ _
+  | .symm hφ => exact (capeq_canon hφ).symm
+  | .trans h₁ h₂ => exact (capeq_canon h₁).trans (capeq_canon h₂)
+  | .defC hd => exact Ctx.Root_name hd
+  | .member (a := a) ha he hAt =>
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
+      obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he
+      obtain ⟨n₃, a₀, C₀, hC, hCt⟩ := closedAtomForm_typed ha
+      obtain ⟨m, V', hV', hVt'⟩ :=
+        view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
+      exact (hVt'.eqC_entry hAt).2
+
+/-- One step of a capture template is semantically what it says: closed
+evidence by item 6, a syntactic inclusion by itself. -/
+theorem capstep_canon {st : CapStep s} {X Y : CaptureSet (s,x)}
+    (h : CapStep.HasType Γ st X Y) : CapStepTyped Γ st X Y := by
+  match h with
+  | .closed hf => exact .closed (cap_canon hf)
+  | .incl hsub => exact .incl hsub
+
+/-- A capture-template side is a typed chain, step by step. -/
+theorem sideC_canon {q : SideC s} {X Y : CaptureSet (s,x)}
+    (h : SideC.HasType Γ q X Y) : SideTypedC Γ q X Y := by
+  match h with
+  | .nil => exact .nil
+  | .cons hst hq => exact .cons (capstep_canon hst) (sideC_canon hq)
 
 theorem eq_canon {φ : EqCo s} {S T : Shape s} (h : Γ ⊢ φ : S ≡ T) : EqConcl Γ S T := by
   match h with
@@ -393,6 +474,16 @@ theorem mor_canon {src : Telescope (s,x)} {m : Morphism s} {Tel : Telescope (s,x
   | .has hm hAt =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, Es ▹ .has _, by simp [entries, hEs], .has hT hAt⟩
+  | .leC hm hAt hpre hpost =>
+      obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
+      exact ⟨n + 1, Es ▹ .leC _ _ _, by simp [entries, hEs],
+        .leC hT hAt (sideC_canon hpre) (sideC_canon hpost)⟩
+  | .eqC hm hAt =>
+      obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
+      exact ⟨n + 1, Es ▹ .eqC _ false, by simp [entries, hEs], .eqC hT hAt⟩
+  | .eqSymC hm hAt =>
+      obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
+      exact ⟨n + 1, Es ▹ .eqC _ true, by simp [entries, hEs], .eqSymC hT hAt⟩
   | .bnd hm he =>
       obtain ⟨n₁, Es, hEs, hT⟩ := mor_canon hm
       obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he
@@ -411,9 +502,9 @@ theorem side_canon {p : Side s} {X Y : Shape (s,x)} (h : Side.HasType Γ p X Y) 
 
 theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ Γ a S := by
   match h with
-  | .var =>
+  | .var (x := x) =>
       obtain ⟨hV, hnb⟩ := precView_typed hσ _
-      exact ⟨1, _, rfl, hV, hnb⟩
+      exact ⟨⟨1, _, rfl, hV, hnb⟩, (Ctx.Root_var Γ x).le⟩
   | .cast (a := a) (e := e) ha he =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
@@ -423,45 +514,35 @@ theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ 
           (view_le (Nat.le_max_left n₁ n₃) hV)
           (closedAtomForm_le (Nat.le_max_right n₁ n₃) hC) hCt hVt hnb
       refine AtomConcl.of_opened (n := max n₂ m + 1) (V := V') ?_ hVt' hnb'
+        (((atom_canon ha).capLe).trans (le_canon_cap he))
       simp [view, hnf_le (Nat.le_max_left n₂ m) hF, viewThrough_le (Nat.le_max_right n₂ m) hV']
   | .unfoldSelf ha =>
-      obtain ⟨n, V, hV, hVt, hnb⟩ := atom_canon ha
-      refine ⟨n + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩
+      obtain ⟨⟨n, V, hV, hVt, hnb⟩, hcap⟩ := atom_canon ha
+      refine ⟨⟨n + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩, hcap⟩
       rw [Ty.shape_capt, Ctx.resolve_obj] at h
       obtain rfl := Shape.obj.inj h
       exact ViewTyped_unfold (hVt _ (by rw [Ty.shape_capt]; exact Ctx.resolve_obj _ _))
   | .foldSelf ha =>
-      obtain ⟨n, V, hV, hVt, hnb⟩ := atom_canon ha
-      refine ⟨n + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩
+      obtain ⟨⟨n, V, hV, hVt, hnb⟩, hcap⟩ := atom_canon ha
+      refine ⟨⟨n + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩, hcap⟩
       rw [Ty.shape_capt, Ctx.resolve_obj] at h
       obtain rfl := Shape.obj.inj h
       exact ViewTyped_fold (hVt _ (by rw [Ty.shape_capt]; exact Ctx.resolve_obj _ _))
   | .both ha hb hroot =>
-      obtain ⟨n₁, V₁, hV₁, hVt₁, _⟩ := atom_canon ha
-      obtain ⟨n₂, V₂, hV₂, hVt₂, _⟩ := atom_canon hb
-      refine ⟨max n₁ n₂ + 1, V₁ ++ V₂, ?_, fun Tel' h => ?_, by simp⟩
+      obtain ⟨⟨n₁, V₁, hV₁, hVt₁, _⟩, hcap⟩ := atom_canon ha
+      obtain ⟨⟨n₂, V₂, hV₂, hVt₂, _⟩, _⟩ := atom_canon hb
+      refine ⟨⟨max n₁ n₂ + 1, V₁ ++ V₂, ?_, fun Tel' h => ?_, by simp⟩, hcap⟩
       · simp [view, view_le (Nat.le_max_left n₁ n₂) hV₁, view_le (Nat.le_max_right n₁ n₂) hV₂]
       · rw [Ty.shape_capt, Ctx.resolve_obj] at h
         obtain rfl := Shape.obj.inj h
         have h₂ := hVt₂ _ (by rw [Ty.shape_capt]; exact Ctx.resolve_obj _ _)
         rw [hroot] at h₂
         exact (hVt₁ _ (by rw [Ty.shape_capt]; exact Ctx.resolve_obj _ _)).append h₂
-  -- A box shape resolves to itself and is never an object shape, so the view
-  -- of a box atom carries no obligation; unboxing reads the view of the root
-  -- through the chain that the box recorded.
-  | .box ha =>
-      obtain ⟨n, V, hV, _, _⟩ := atom_canon ha
-      exact ⟨n + 1, V, by simp [view, hV], fun Tel' h => by simp at h, by simp⟩
-  | .unbox (S := S) (C := C) ha hf =>
-      obtain ⟨n, a₀, F, hF, hFt⟩ := closedAtomForm_typed ha
-      obtain ⟨G, rfl, hGt⟩ := chain_box_inv hσ hFt
-      obtain ⟨m, V, hV, hVt, hnb⟩ :=
-        viewThroughVar_typed (precView_typed hσ _) _ G _ (Nat.le_refl _) hGt
-      refine AtomConcl.of_opened (n := max n m + 1) (V := V) ?_ ?_ ?_
-      · simp [view, closedAtomForm_le (Nat.le_max_left n m) hF, Form.unbox?,
-          viewThrough_le (Nat.le_max_right n m) hV]
-      · intro Tel' h; exact hVt Tel' (by simpa using h)
-      · intro hb; exact hnb (by simpa using hb)
+  -- Recapturing keeps the shape, hence the telescope, hence the view; the
+  -- new capture set is the one its own evidence reaches.
+  | .recap ha hf =>
+      obtain ⟨⟨n, V, hV, hVt, hnb⟩, _⟩ := atom_canon ha
+      exact ⟨⟨n + 1, V, by simp [view, hV], hVt, hnb⟩, cap_canon hf⟩
 
 /-- The chain of casts of a closed atom normalizes to a form typed from the
 root's type to the atom's type, at the root. -/
@@ -498,15 +579,11 @@ theorem closedAtomForm_typed {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) :
       · simp [closedAtomForm, closedAtomForm_le (Nat.le_max_left n₁ n₂) hF,
           closedAtomForm_le (Nat.le_max_right n₁ n₂) hG, hH]
       · simpa [Atom.root] using hHt
-  -- The box records the chain of its content; the unbox peels the record off.
-  | .box ha =>
+  -- A recapturing wrapper carries no type inclusion, so the chain passes
+  -- through it unchanged, as through `foldSelf` and `unfoldSelf`.
+  | .recap (f := f) ha _ =>
       obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed ha
-      refine ⟨n + 1, .box a', .boxIn F, by simp [closedAtomForm, hF], ?_⟩
-      exact .boxIn (by simp) hFt
-  | .unbox (f := f) ha _ =>
-      obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed ha
-      obtain ⟨G, rfl, hGt⟩ := chain_box_inv hσ (by simpa using hFt)
-      exact ⟨n + 1, .unbox a' f, G, by simp [closedAtomForm, hF, Form.unbox?], hGt⟩
+      exact ⟨n + 1, .recap a' f, F, by simp [closedAtomForm, hF], hFt⟩
 
 end
 
@@ -529,18 +606,93 @@ theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s
   refine ⟨n, a', F, hF, ?_⟩
   cases hFt with
   | bot hb =>
-      rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩
-      · simp [Ctx.resolveAt, hp] at hb
-      · simp [Ctx.resolveAt, ho] at hb
-  | top ht => simp [Ctx.resolveAt] at ht
+      rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩
+      · simp [hp] at hb
+      · simp [ho] at hb
+      · simp [hx] at hb
+  | top ht => simp at ht
   | id _ => exact Or.inl rfl
   | eqv _ => exact Or.inr (Or.inl ⟨_, rfl⟩)
   | pi _ _ _ _ => exact Or.inr (Or.inr ⟨_, _, rfl⟩)
-  | obj _ ho _ => simp [Ctx.resolveAt] at ho
-  | into ho _ => simp [Ctx.resolveAt] at ho
+  | obj _ ho _ => simp at ho
+  | into ho _ => simp at ho
   | boxed _ hb _ => simp at hb
-  | boxIn hb _ => simp at hb
   | bnd hS hAt _ => exact absurd (hσ.root_no_bnd a.root hS hAt) (by simp)
+
+/-- Presence evidence at a location names a field of the object stored
+there. -/
+theorem closed_has_field (hσ : ⊢ σ : Γ) {h : Has s} {x : BVar s .var} {ℓ : Label}
+    (hh : Has.HasType Γ h x ℓ) :
+    ∃ (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x)) (F : Fields (s,x)) (t : Tm (s,x)),
+      σ.lookup x = .obj W Wc F ∧ F.get? ℓ = some t := by
+  obtain ⟨_, _, W, Wc, F, hl, hget⟩ := has_canon hσ hh
+  obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp hget
+  exact ⟨W, Wc, F, t, hl, ht⟩
+
+/-- A closed atom of box shape is rooted at a stored box, and the chain of
+its casts normalizes to the identity, an equality, or a `boxed` form: the box
+analogue of `closed_pi_inversion`, and exactly the three head forms the
+machine's two `unbox` steps consume. -/
+theorem closed_box_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {T : Ty s} {D : CaptureSet s}
+    (h : Γ ⊢ₐ a : (□ T) ^ D) :
+    ∃ (b a' : Atom s) (n : Nat) (F : Form s), σ.lookup a.root = .box b ∧
+      σ ⊢ a ⇓ᶜ[n] (a', F) ∧ (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d, F = .boxed d) := by
+  obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
+  rw [Ty.shape_capt] at hFt
+  have hform : F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d, F = .boxed d := by
+    cases hFt with
+    | bot hb =>
+        rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩
+        · simp [hp] at hb
+        · simp [ho] at hb
+        · simp [hx] at hb
+    | top ht => simp at ht
+    | id _ => exact Or.inl rfl
+    | eqv _ => exact Or.inr (Or.inl ⟨_, rfl⟩)
+    | pi _ hT _ _ => simp at hT
+    | obj _ hT _ => simp at hT
+    | into hT _ => simp at hT
+    | boxed _ _ _ => exact Or.inr (Or.inr ⟨_, rfl⟩)
+    | bnd hS hAt _ => exact absurd (hσ.root_no_bnd a.root hS hAt) (by simp)
+  have hshape : ∃ X : Ty s, (Γ.lookupTy a.root).shape = □ X := by
+    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | hbx
+    · exfalso
+      cases hFt with
+      | bot hb => simp [hp] at hb
+      | top ht => simp at ht
+      | id hres => simp [hp] at hres
+      | eqv hres => simp [hp] at hres
+      | pi _ hT _ _ => simp at hT
+      | obj _ hT _ => simp at hT
+      | into hT _ => simp at hT
+      | boxed hS _ _ => simp [hp] at hS
+      | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
+    · exfalso
+      cases hFt with
+      | bot hb => simp [ho] at hb
+      | top ht => simp at ht
+      | id hres => simp [ho] at hres
+      | eqv hres => simp [ho] at hres
+      | pi _ hT _ _ => simp at hT
+      | obj _ hT _ => simp at hT
+      | into hT _ => simp at hT
+      | boxed hS _ _ => simp [ho] at hS
+      | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
+    · exact hbx
+  obtain ⟨X, hx⟩ := hshape
+  have hv := hσ.lookup a.root
+  have hlit := hσ.lookup_isLiteral a.root
+  cases hl : σ.lookup a.root with
+  | lam S₁ t₁ =>
+      rw [hl] at hv
+      obtain ⟨T₀, hT, _⟩ := hv.lam_inv
+      rw [hT] at hx; simp at hx
+  | obj W Wc F' =>
+      rw [hl] at hv
+      obtain ⟨hT, _⟩ := hv.obj_inv
+      rw [hT] at hx; simp at hx
+  | box b => exact ⟨b, a', n, F, rfl, hF, hform⟩
+  | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-- The canonical-forms obligation of preservation. -/
 theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
@@ -570,11 +722,44 @@ theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
       rcases hid with rfl | ⟨φ, rfl⟩
       · cases hFt with | id h => exact h
       · cases hFt with | eqv h => exact h
-    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩
+    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩
     · simp only [Ctx.resolveAt, hp, Ctx.resolve_pi, Shape.unfoldAt_pi] at hres
       obtain ⟨rfl, rfl⟩ := Shape.pi.inj hres
       exact hp
     · simp [Ctx.resolveAt, ho] at hres
+    · simp [Ctx.resolveAt, hx] at hres
+  boxed := by
+    intro a X T D n a' d ha hF hlk
+    obtain ⟨n', a'', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
+    have hd := closedAtomForm_det hF hF'
+    have hFe : F' = .boxed d := (Prod.mk.inj hd).2.symm
+    subst hFe
+    rw [Ty.shape_capt] at hFt
+    cases hFt with
+    | boxed hS hT hdd =>
+        simp only [Ctx.resolveAt?_some, Ctx.resolveAt, hlk, Ctx.resolve_box,
+          Shape.unfoldAt_box] at hS hT
+        obtain rfl := Shape.box.inj hS
+        obtain rfl := Shape.box.inj hT
+        exact hdd
+  boxRefl := by
+    intro a T D n a' F ha hF hid
+    obtain ⟨n', a'', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
+    have hd := closedAtomForm_det hF hF'
+    have hFe : F' = F := (Prod.mk.inj hd).2.symm
+    subst hFe
+    rw [Ty.shape_capt] at hFt
+    have hres : Γ.resolveAt a.root ((Γ.lookupTy a.root).shape)
+        = Γ.resolveAt a.root (□ T) := by
+      rcases hid with rfl | ⟨φ, rfl⟩
+      · cases hFt with | id h => exact h
+      · cases hFt with | eqv h => exact h
+    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩
+    · simp [Ctx.resolveAt, hp] at hres
+    · simp [Ctx.resolveAt, ho] at hres
+    · simp only [Ctx.resolveAt, hx, Ctx.resolve_box, Shape.unfoldAt_box] at hres
+      obtain rfl := Shape.box.inj hres
+      exact hx
 
 /-- Preservation over typed states. -/
 theorem preservation' {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
@@ -587,7 +772,9 @@ theorem erase_reflect' {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.Sta
     (hσ : ⊢ st.σ : Γ) (hty : ∃ T, Γ ⊢ st.t : T)
     (h : Runtime.Step st.erase r) :
     ∃ st' : State s', Steps st st' ∧ st'.erase = r :=
-  erase_reflect hσ (fun _ _ _ _ ha _ => closedAtomForm_pi hσ ha) hty h
+  erase_reflect hσ (fun _ _ _ _ ha _ => closedAtomForm_pi hσ ha)
+    (fun _ _ _ hh => closed_has_field hσ hh)
+    (fun _ _ _ ha => closed_box_inversion hσ ha) hty h
 
 end
 

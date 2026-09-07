@@ -13,38 +13,38 @@ block.
 A type is a shape with a capture set, so inclusion of types splits into two
 families: the *shape* family `Γ ⊢ˢ e : S ≤ S'`, which is the vanilla family
 read at the shape sort, and the *capture* family `Γ ⊢ᶜ f : C ⊑ C'`.  A type
-inclusion `Γ ⊢ capt e f : S ^ C ≤ S' ^ C'` is the pair of the two.  In this
-stage nothing reads a capture set beyond `capt` and `elem`.
+inclusion `Γ ⊢ capt e f : S ^ C ≤ S' ^ C'` is the pair of the two.  Capture
+equality `Γ ⊢ᶜ φ : C ≡ C'` sits beside them, and both capture families
+mention atoms (`capvar`, `member`), so they live in the mutual block.  An
+atom's own capability is the capability of its root: a box is a *value* and
+an unboxing a *term*, not atom wrappers, so every rule that opens a self
+binder at an atom opens it at `a.root`, as in the vanilla line.
 -/
 
 namespace FCdot
 
-/-! ## The capture family
+/-! ## Reading a capture proposition at a hole
 
-`Γ ⊢ᶜ f : C ⊑ C'`.  It does not mention atoms in this stage, so it is a
-family of its own rather than a member of the mutual block below. -/
+A capture template names a proposition of its source telescope and reads it
+as an inclusion: a subcapturing proposition as it is, a capture equality in
+either direction. -/
 
-set_option hygiene false in
-scoped notation:40 Γ:51 " ⊢ᶜ " f:51 " : " C:71 " ⊑ " D:71 => CapCo.HasType Γ f C D
-
-/-- `Γ ⊢ᶜ f : C ⊑ D`: inclusion evidence between capture sets. -/
-inductive CapCo.HasType : Ctx s → CapCo s → CaptureSet s → CaptureSet s → Prop where
-  | refl : Γ ⊢ᶜ .refl C : C ⊑ C
-  | trans : Γ ⊢ᶜ f : C₁ ⊑ C₂ → Γ ⊢ᶜ g : C₂ ⊑ C₃ → Γ ⊢ᶜ .trans f g : C₁ ⊑ C₃
-  /-- A syntactic inclusion, decided. -/
-  | elem : CaptureSet.Subset C₁ C₂ → Γ ⊢ᶜ .elem C₁ C₂ : C₁ ⊑ C₂
-  | union : Γ ⊢ᶜ f : C₁ ⊑ D → Γ ⊢ᶜ g : C₂ ⊑ D → Γ ⊢ᶜ .union f g : (C₁ ∪ C₂) ⊑ D
-
-open Lean PrettyPrinter in
-@[app_unexpander CapCo.HasType] def CapCo.HasType.unexpand : Unexpander
-  | `($_ $Γ $f $C $D) => `($Γ ⊢ᶜ $f : $C ⊑ $D)
-  | _ => throw ()
+/-- `src.HoleAtC h C₁ C₂`: in `src`, the capture hole `h` proves `C₁ ⊑ C₂`. -/
+inductive Telescope.HoleAtC (src : Telescope (s,x)) :
+    HoleC → CaptureSet (s,x) → CaptureSet (s,x) → Prop where
+  | leC : src ∋ (j ↦ C₁ ⊑ᶜ C₂) → Telescope.HoleAtC src (.leC j) C₁ C₂
+  | eqC : src ∋ (j ↦ C₁ ≐ᶜ C₂) → Telescope.HoleAtC src (.eqC j) C₁ C₂
+  | eqSymC : src ∋ (j ↦ C₂ ≐ᶜ C₁) → Telescope.HoleAtC src (.eqSymC j) C₁ C₂
 
 /-! ### Notation for the evidence judgments
 
 Declared before the judgments so that the rules can use them; the
 pretty-printers are attached after. -/
 
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ᶜ " f:51 " : " C:71 " ⊑ " D:71 => CapCo.HasType Γ f C D
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ᶜ " φ:51 " : " C:71 " ≡ " D:71 => CapEq.HasType Γ φ C D
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ˢ " e:51 " : " S:51 " ≤ " T:51 => ShapeCo.HasType Γ e S T
 set_option hygiene false in
@@ -59,6 +59,56 @@ set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ₐ " a:51 " : " T:51 => Atom.HasType Γ a T
 
 mutual
+
+/-- `Γ ⊢ᶜ f : C ⊑ D`: inclusion evidence between capture sets.  It mentions
+atoms (`capvar`, `member`), so it belongs to the mutual block. -/
+inductive CapCo.HasType : Ctx s → CapCo s → CaptureSet s → CaptureSet s → Prop where
+  | refl : Γ ⊢ᶜ .refl C : C ⊑ C
+  | trans : Γ ⊢ᶜ f : C₁ ⊑ C₂ → Γ ⊢ᶜ g : C₂ ⊑ C₃ → Γ ⊢ᶜ .trans f g : C₁ ⊑ C₃
+  /-- A syntactic inclusion, decided. -/
+  | elem : CaptureSet.Subset C₁ C₂ → Γ ⊢ᶜ .elem C₁ C₂ : C₁ ⊑ C₂
+  | union : Γ ⊢ᶜ f : C₁ ⊑ D → Γ ⊢ᶜ g : C₂ ⊑ D → Γ ⊢ᶜ .union f g : (C₁ ∪ C₂) ⊑ D
+  /-- An atom's own capture set is below the capture set of its type.  No side
+      condition: a chain with a box in it has the empty capture set. -/
+  | capvar :
+      Γ ⊢ₐ a : S ^ C →
+      Γ ⊢ᶜ .capvar a : [CapAtom.var a.root] ⊑ C
+  /-- Elimination at an atom, in the capture sort: the `i`-th proposition of
+      the object shape `e` lands in, instantiated at the atom. -/
+  | member :
+      Γ ⊢ₐ a : S ^ D →
+      Γ ⊢ˢ e : S ≤ μ Tel →
+      Tel ∋ (i ↦ C₁ ⊑ᶜ C₂) →
+      Γ ⊢ᶜ .member a e i : C₁⟦a.root⟧ ⊑ C₂⟦a.root⟧
+  | eqToLe : Γ ⊢ᶜ φ : C₁ ≡ C₂ → Γ ⊢ᶜ .eqToLe φ : C₁ ⊑ C₂
+
+/-- `Γ ⊢ᶜ φ : C ≡ D`: equality evidence between capture sets. -/
+inductive CapEq.HasType : Ctx s → CapEq s → CaptureSet s → CaptureSet s → Prop where
+  | refl : Γ ⊢ᶜ .refl C : C ≡ C
+  | symm : Γ ⊢ᶜ φ : C₁ ≡ C₂ → Γ ⊢ᶜ .symm φ : C₂ ≡ C₁
+  | trans : Γ ⊢ᶜ φ : C₁ ≡ C₂ → Γ ⊢ᶜ ψ : C₂ ≡ C₃ → Γ ⊢ᶜ .trans φ ψ : C₁ ≡ C₃
+  /-- Definition of a transparent binder's capture name. -/
+  | defC : Γ.lookupDefC x ℓ = some C → Γ ⊢ᶜ .defC x ℓ : [CapAtom.name x ℓ] ≡ C
+  | member :
+      Γ ⊢ₐ a : S ^ D →
+      Γ ⊢ˢ e : S ≤ μ Tel →
+      Tel ∋ (i ↦ C₁ ≐ᶜ C₂) →
+      Γ ⊢ᶜ .member a e i : C₁⟦a.root⟧ ≡ C₂⟦a.root⟧
+
+/-- One step of a capture-template side: closed capture evidence weakened
+under the self, or a syntactic inclusion of sets that may mention the self. -/
+inductive CapStep.HasType : Ctx s → CapStep s → CaptureSet (s,x) → CaptureSet (s,x) → Prop where
+  | closed : Γ ⊢ᶜ f : A ⊑ B → CapStep.HasType Γ (.closed f) A↑ B↑
+  | incl : CaptureSet.Subset C D → CapStep.HasType Γ (.incl C D) C D
+
+/-- A capture-template side is a chain of steps, typed step by step; the empty
+chain is the identity. -/
+inductive SideC.HasType : Ctx s → SideC s → CaptureSet (s,x) → CaptureSet (s,x) → Prop where
+  | nil : SideC.HasType Γ .nil X X
+  | cons :
+      CapStep.HasType Γ st X Y →
+      SideC.HasType Γ q Y Z →
+      SideC.HasType Γ (.cons st q) X Z
 
 /-- `Γ ⊢ˢ e : S ≤ T`: inclusion evidence between shapes. -/
 inductive ShapeCo.HasType : Ctx s → ShapeCo s → Shape s → Shape s → Prop where
@@ -161,6 +211,18 @@ inductive Morphism.HasType : Ctx s → Telescope (s,x) → Morphism s → Telesc
       shape. -/
   | bnd : Γ ⊢ m : src ⇒ Tel → Γ ⊢ˢ e : μ src ≤ S →
       Γ ⊢ .bnd m e : src ⇒ Tel ▹ ⊑ S↑
+  /-- A target subcapturing proposition: a side chain into the hole's left
+      endpoint, a hole naming a source capture proposition, a side chain out
+      of its right endpoint. -/
+  | leC : Γ ⊢ m : src ⇒ Tel → src.HoleAtC h C₁ C₂ →
+      SideC.HasType Γ q D₁ C₁ → SideC.HasType Γ q' C₂ D₂ →
+      Γ ⊢ .leC m q h q' : src ⇒ Tel ▹ D₁ ⊑ᶜ D₂
+  /-- A target capture equality is a source capture equality. -/
+  | eqC : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ C₁ ≐ᶜ C₂) →
+      Γ ⊢ .eqC m j false : src ⇒ Tel ▹ C₁ ≐ᶜ C₂
+  /-- … possibly flipped. -/
+  | eqSymC : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ C₁ ≐ᶜ C₂) →
+      Γ ⊢ .eqC m j true : src ⇒ Tel ▹ C₂ ≐ᶜ C₁
 
 /-- `Γ ⊢ₐ a : T`: atoms. -/
 inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where
@@ -180,19 +242,23 @@ inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where
       Γ ⊢ₐ b : (μ Tel₂) ^ C →
       b.root = a.root →
       Γ ⊢ₐ .both Tel₁ Tel₂ a b : (μ (Tel₁ ++ Tel₂)) ^ C
-  /-- Boxing is pure: the box shape hides the captured set. -/
-  | box :
-      Γ ⊢ₐ a : T →
-      Γ ⊢ₐ .box a : (□ T) ^ []
-  /-- Unboxing, charged with the boxed capture set.  In this stage there are
-      no use sets yet, so the charge is discharged against the empty set. -/
-  | unbox :
-      Γ ⊢ₐ a : (□ (S ^ C)) ^ D →
-      Γ ⊢ᶜ f : C ⊑ [] →
-      Γ ⊢ₐ .unbox a f : S ^ C
+  /-- Recapturing: the atom keeps its shape and takes any capture set its own
+      capture set is below. -/
+  | recap :
+      Γ ⊢ₐ a : S ^ C →
+      Γ ⊢ᶜ f : [CapAtom.var a.root] ⊑ C' →
+      Γ ⊢ₐ .recap a f : S ^ C'
 
 end
 
+open Lean PrettyPrinter in
+@[app_unexpander CapCo.HasType] def CapCo.HasType.unexpand : Unexpander
+  | `($_ $Γ $f $C $D) => `($Γ ⊢ᶜ $f : $C ⊑ $D)
+  | _ => throw ()
+open Lean PrettyPrinter in
+@[app_unexpander CapEq.HasType] def CapEq.HasType.unexpand : Unexpander
+  | `($_ $Γ $φ $C $D) => `($Γ ⊢ᶜ $φ : $C ≡ $D)
+  | _ => throw ()
 open Lean PrettyPrinter in
 @[app_unexpander ShapeCo.HasType] def ShapeCo.HasType.unexpand : Unexpander
   | `($_ $Γ $e $S $T) => `($Γ ⊢ˢ $e : $S ≤ $T)
@@ -249,6 +315,12 @@ inductive Tm.HasType : Ctx s → Tm s → Ty s → Prop where
       Γ.cons (.opaque T) ⊢ u : U↑ →
       Γ ⊢ .let t u : U
   | cast : Γ ⊢ t : T → Γ ⊢ e : T ≤ T' → Γ ⊢ .cast t e : T'
+  /-- Unboxing, charged with the boxed capture set.  In this stage there are
+      no use sets yet, so the charge is discharged against the empty set. -/
+  | unbox :
+      Γ ⊢ₐ a : (□ (S ^ C)) ^ D →
+      Γ ⊢ᶜ f : C ⊑ [] →
+      Γ ⊢ .unbox a f : S ^ C
 
 /-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is empty in
 this stage. -/
@@ -259,8 +331,13 @@ inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
   /-- An object literal has its precise type, generated from its witnesses and
       fields.  Fields are typed with the self binder at that type. -/
   | obj :
-      Γ.cons (.transparent ((μ (Telescope.ofLiteral W F.labels)) ^ []) W F.labels) ⊢ᶠ F →
-      Γ ⊢ᵥ .obj W F : (μ (Telescope.ofLiteral W F.labels)) ^ []
+      Γ.cons (.transparent ((μ (Telescope.ofLiteral W Wc F.labels)) ^ []) W Wc F.labels) ⊢ᶠ F →
+      Γ ⊢ᵥ .obj W Wc F : (μ (Telescope.ofLiteral W Wc F.labels)) ^ []
+  /-- Boxing is pure: the box shape hides the captured set.  A box is a
+      literal with no witnesses and no fields. -/
+  | box :
+      Γ ⊢ₐ a : T →
+      Γ ⊢ᵥ .box a : (□ T) ^ []
   | cast : Γ ⊢ᵥ v : T → Γ ⊢ e : T ≤ T' → Γ ⊢ᵥ .cast v e : T'
 
 /-- `Γ ⊢ᶠ F`: each field `ℓ = t` has type `(self ∙ ℓ) ^ []`. -/

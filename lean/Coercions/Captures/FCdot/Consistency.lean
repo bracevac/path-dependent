@@ -49,6 +49,15 @@ theorem EntryTyped.bnd_of_bndsOnly {ρ : Option (BVar s .var)} {TelM : Telescope
   | has hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
   | bnd _ => exact ⟨_, rfl⟩
   | bndId _ => exact ⟨_, rfl⟩
+  -- The capture slots: their hole names a capture proposition of the source,
+  -- and a bounds-only telescope has none.
+  | leC hh _ _ =>
+      cases hh with
+      | leC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
+      | eqC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
+      | eqSymC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
+  | eqC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
+  | eqSymC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
 
 mutual
 
@@ -88,7 +97,6 @@ theorem FormTyped.bndsOnly_target {ρ : Option (BVar s .var)} {S M : Shape s} {H
   | .pi _ hT _ _ => rw [hM] at hT; exact absurd hT (by simp)
   | .obj hS _ _ => exact absurd hS (ho _)
   | .boxed _ hT _ => rw [hM] at hT; exact absurd hT (by simp)
-  | .boxIn hT _ => rw [hM] at hT; exact absurd hT (by simp)
   | .bnd hS _ _ => exact absurd hS (ho _)
   | .into hT hB =>
       rw [hM] at hT
@@ -123,8 +131,6 @@ theorem closed_le_shapes (hσ : ⊢ σ : Γ) {e : LeCo s} {S T : Ty s} (h : Γ �
   | pi hS hT _ _ => exact Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, _, _, hS, hT⟩)))
   | obj hS hT _ => exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, hS, hT⟩))))
   | boxed _ hT _ =>
-      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, hT⟩)))))
-  | boxIn hT _ =>
       exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, hT⟩)))))
   | bnd hS hAt hF' =>
       exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
@@ -210,6 +216,34 @@ theorem Store.Typed.no_pi_le_obj (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S 
     · simp at h₁
     · obtain ⟨X, hX⟩ := hbo _ _ hAt
       exact hP X hX
+
+/-! ## Consistency in the capture sort -/
+
+/-- A rigid capture binder -- a root, or the platform's `∗` -- is its own
+root: `caps` stops there at every fuel. -/
+theorem Ctx.Root_cvar_rigid {Γ : Ctx s} {κ : BVar s .cap}
+    (h : Γ.lookupCap κ = .root ∨ Γ.lookupCap κ = .star) :
+    Γ.Root (.cvar κ) [CapAtom.cvar κ] := by
+  refine ⟨0, ?_⟩
+  rw [Ctx.roots_eq_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
+    Ctx.capsAtom_cvar]
+  rcases h with h | h <;> rw [h] <;> simp [Ctx.capsBound]
+
+/-- Consistency in the capture sort, at a platform binder `κ ⊑ᶜ ∗`: no closed
+capture evidence puts `{κ}` below a set whose roots miss `κ`.  Bad capture
+bounds stay expressible under a lambda (example C3); over a typed store they
+prove nothing. -/
+theorem Store.Typed.no_cap_escape (hσ : ⊢ σ : Γ) {κ : BVar s .cap}
+    (hκ : Γ.lookupCap κ = .star) {D : CaptureSet s} (hD : ¬ Γ.Root (.cvar κ) D) :
+    ¬ ∃ f : CapCo s, Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ D := by
+  rintro ⟨f, hf⟩
+  exact hD (cap_canon hσ hf _ (Ctx.Root_cvar_rigid (Or.inr hκ)))
+
+/-- In particular the platform's capability never sinks to the empty set. -/
+theorem Store.Typed.no_cap_star_le_nil (hσ : ⊢ σ : Γ) {κ : BVar s .cap}
+    (hκ : Γ.lookupCap κ = .star) :
+    ¬ ∃ f : CapCo s, Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ [] :=
+  hσ.no_cap_escape hκ (by rintro ⟨n, hn⟩; simp at hn)
 
 /-- Every block name of a store binder is defined by the stored literal's
 witness, and the definition is closed equality evidence. -/

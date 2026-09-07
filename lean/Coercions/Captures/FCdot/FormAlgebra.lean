@@ -68,6 +68,13 @@ theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : L
     | there z =>
         rw [Ctx.lookupDef_there] at hW
         simpa using hW
+  defC := by
+    intro y l C hC
+    cases y with
+    | here => simp at hC
+    | there z =>
+        rw [Ctx.lookupDefC_there] at hC
+        simpa using hC
   fields := by
     intro y Fs hFs
     cases y with
@@ -94,7 +101,6 @@ theorem FormTyped.srcRes {s : Sig} {Γ : Ctx s} {ρ : Option (BVar s .var)} {F :
   | .pi hS hT hd hc => exact .pi (h.trans hS) hT hd hc
   | .obj hS hT hEs => exact .obj (h.trans hS) hT hEs
   | .boxed hS hT hd => exact .boxed (h.trans hS) hT hd
-  | .boxIn hT hF' => exact .boxIn hT (FormTyped.srcRes h hF')
   | .bnd hS hAt hF' => exact .bnd (h.trans hS) hAt hF'
   | .into hT hB => exact .into hT (BndsTyped.srcRes h hB)
 
@@ -120,7 +126,6 @@ theorem FormTyped.tgtRes {s : Sig} {Γ : Ctx s} {ρ : Option (BVar s .var)} {F :
   | .pi hS hT hd hc => exact .pi hS (h.symm.trans hT) hd hc
   | .obj hS hT hEs => exact .obj hS (h.symm.trans hT) hEs
   | .boxed hS hT hd => exact .boxed hS (h.symm.trans hT) hd
-  | .boxIn hT hF' => exact .boxIn (h.symm.trans hT) hF'
   | .bnd hS hAt hF' => exact .bnd hS hAt (FormTyped.tgtRes h hF')
   | .into hT hB => exact .into (h.symm.trans hT) hB
 
@@ -145,6 +150,36 @@ theorem SideTyped.open (r : BVar s .var) {F : Form s} {S X : Shape (s,x)}
   cases h with
   | id => exact .id
   | closed hF => rw [Shape.weaken_substVar, Shape.weaken_substVar]; exact .closed hF
+
+/-- A capture step opened at a root: a closed step is between weakened closed
+sets, which opening leaves alone; an inclusion step is opened pointwise, and a
+syntactic inclusion survives a renaming. -/
+theorem CapStepTyped.open (r : BVar s .var) {st : CapStep s} {X Y : CaptureSet (s,x)}
+    (h : CapStepTyped Γ st X Y) : CapStepTyped Γ st ((X⟦r⟧)↑) ((Y⟦r⟧)↑) := by
+  cases h with
+  | closed hle =>
+      rw [CaptureSet.rename_subst_weaken, CaptureSet.rename_subst_weaken]
+      exact .closed hle
+  | incl hsub => exact .incl ((hsub.rename (Rename.subst r)).rename Rename.succ)
+
+theorem SideTypedC.open (r : BVar s .var) : ∀ {q : SideC s} {X Y : CaptureSet (s,x)},
+    SideTypedC Γ q X Y → SideTypedC Γ q ((X⟦r⟧)↑) ((Y⟦r⟧)↑)
+  | _, _, _, .nil => .nil
+  | _, _, _, .cons hst hq => .cons (hst.open r) (SideTypedC.open r hq)
+
+/-- Capture-template sides compose by concatenating their chains. -/
+theorem SideTypedC.append : ∀ {q q' : SideC s} {X Y Z : CaptureSet (s,x)},
+    SideTypedC Γ q X Y → SideTypedC Γ q' Y Z → SideTypedC Γ (q ++ q') X Z
+  | _, _, _, _, _, .nil, h => h
+  | _, _, _, _, _, .cons hst hq, h => .cons hst (SideTypedC.append hq h)
+
+theorem Telescope.HoleAtC.open (r : BVar s .var) {Tel : Telescope (s,x)} {h : HoleC}
+    {C₁ C₂ : CaptureSet (s,x)} (hh : Tel.HoleAtC h C₁ C₂) :
+    ((Tel⟦r⟧)↑).HoleAtC h ((C₁⟦r⟧)↑) ((C₂⟦r⟧)↑) := by
+  cases hh with
+  | leC hAt => exact .leC ((hAt.rename _).rename _)
+  | eqC hAt => exact .eqC ((hAt.rename _).rename _)
+  | eqSymC hAt => exact .eqSymC ((hAt.rename _).rename _)
 
 theorem Telescope.HoleAt.open (r : BVar s .var) {Tel : Telescope (s,x)} {h : Hole}
     {X Y : Shape (s,x)} (hh : Tel.HoleAt h X Y) :
@@ -174,10 +209,7 @@ theorem FormTyped.atRoot {s : Sig} {Γ : Ctx s} {F : Form s} {S T : Shape s} (r 
       exact .obj (Ctx.resolveAt_of_resolve r hS) (Ctx.resolveAt_of_resolve r hT)
         (EntriesTyped.atRoot r hEs)
   | .boxed hS hT hd =>
-      exact .boxed (Ctx.resolveAt_of_resolve r hS) (Ctx.resolveAt_of_resolve r hT)
-        (FormTyped.atRoot r hd)
-  | .boxIn hT hF' =>
-      exact .boxIn (Ctx.resolveAt_of_resolve r hT) (FormTyped.atRoot r hF')
+      exact .boxed (Ctx.resolveAt_of_resolve r hS) (Ctx.resolveAt_of_resolve r hT) hd
   | .bnd (T := T') (Tel := Tel) (i := i) hS hAt hF' =>
       refine .bnd (Ctx.resolveAt_of_resolve r hS) ?_ (FormTyped.atRoot r hF')
       have h1 : Telescope.At (Tel⟦r⟧) i ((⊑ T'↑ : Proposition (s,x))⟦r⟧) :=
@@ -222,6 +254,18 @@ theorem EntriesTyped.atRoot {s : Sig} {Γ : Ctx s} (r : BVar s .var)
       have h1 : Telescope.At (Tel₁⟦r⟧) j ((⊑ X : Proposition (s,x))⟦r⟧) :=
         hAt.rename (Rename.subst r)
       exact h1.weaken
+  | .leC h' hh hpre hpost =>
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_leC,
+        Proposition.weaken_leC]
+      exact .leC (EntriesTyped.atRoot r h') (hh.open r) (hpre.open r) (hpost.open r)
+  | .eqC h' hAt =>
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eqC,
+        Proposition.weaken_eqC]
+      exact .eqC (EntriesTyped.atRoot r h') ((hAt.rename _).rename _)
+  | .eqSymC h' hAt =>
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eqC,
+        Proposition.weaken_eqC]
+      exact .eqSymC (EntriesTyped.atRoot r h') ((hAt.rename _).rename _)
 
 theorem BndsTyped.atRoot {s : Sig} {Γ : Ctx s} (r : BVar s .var) {S : Shape s} {Es : Entries s}
     {Tel : Telescope (s,x)} (h : BndsTyped Γ none S Es Tel) :
@@ -263,6 +307,15 @@ theorem EntryTyped.atRoot {s : Sig} {Γ : Ctx s} (r : BVar s .var) {Tel₁ : Tel
       have h1 : Telescope.At (Tel₁⟦r⟧) j ((⊑ X : Proposition (s,x))⟦r⟧) :=
         hAt.rename (Rename.subst r)
       exact h1.weaken
+  | .leC hh hpre hpost =>
+      simp only [Proposition.substVar_leC, Proposition.weaken_leC]
+      exact .leC (hh.open r) (hpre.open r) (hpost.open r)
+  | .eqC hAt =>
+      simp only [Proposition.substVar_eqC, Proposition.weaken_eqC]
+      exact .eqC ((hAt.rename _).rename _)
+  | .eqSymC hAt =>
+      simp only [Proposition.substVar_eqC, Proposition.weaken_eqC]
+      exact .eqSymC ((hAt.rename _).rename _)
 
 end
 
@@ -283,6 +336,9 @@ theorem EntriesTyped.length {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesco
   | .has h' _ => simp [Entries.length, Telescope.length, h'.length]
   | .bnd h' _ => simp [Entries.length, Telescope.length, h'.length]
   | .bndId h' _ => simp [Entries.length, Telescope.length, h'.length]
+  | .leC h' _ _ _ => simp [Entries.length, Telescope.length, h'.length]
+  | .eqC h' _ => simp [Entries.length, Telescope.length, h'.length]
+  | .eqSymC h' _ => simp [Entries.length, Telescope.length, h'.length]
 
 /-- The entry at an inclusion of the target is a template. -/
 theorem EntriesTyped.At_le {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescope (s,x)}
@@ -323,6 +379,21 @@ theorem EntriesTyped.At_le {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescop
       | there hAt' =>
           obtain ⟨pre, h', post, X, Y, hE, hh', hpre', hpost'⟩ := hEs.At_le hAt'
           exact ⟨pre, h', post, X, Y, .there hE, hh', hpre', hpost'⟩
+  | .leC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh', hpre', hpost'⟩ := hEs.At_le hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh', hpre', hpost'⟩
+  | .eqC hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh', hpre', hpost'⟩ := hEs.At_le hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh', hpre', hpost'⟩
+  | .eqSymC hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh', hpre', hpost'⟩ := hEs.At_le hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh', hpre', hpost'⟩
 
 /-- The entry at an equality of the target reads a source equality, possibly
 flipped. -/
@@ -359,6 +430,18 @@ theorem EntriesTyped.At_eq {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescop
       cases hAt with
       | there hAt' =>
           obtain ⟨k, b, hE, hk⟩ := hEs.At_eq hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .leC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨k, b, hE, hk⟩ := hEs.At_eq hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .eqC hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨k, b, hE, hk⟩ := hEs.At_eq hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .eqSymC hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨k, b, hE, hk⟩ := hEs.At_eq hAt'; exact ⟨k, b, .there hE, hk⟩
 
 /-- The entry at a presence proposition of the target is a presence entry
 pointing at a presence proposition of the source. -/
@@ -385,6 +468,15 @@ theorem EntriesTyped.At_has {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesco
       cases hAt with
       | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
   | .bndId hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
+  | .leC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
+  | .eqC hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
+  | .eqSymC hEs _ =>
       cases hAt with
       | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
 
@@ -418,6 +510,15 @@ theorem EntriesTyped.At_bnd {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesco
       cases hAt with
       | here => exact ⟨_, by rw [← hEs.length]; exact .here, Or.inr ⟨_, rfl, hT⟩⟩
       | there hAt' => obtain ⟨G, hG', hk⟩ := hEs.At_bnd hAt'; exact ⟨G, .there hG', hk⟩
+  | .leC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hk⟩ := hEs.At_bnd hAt'; exact ⟨G, .there hG, hk⟩
+  | .eqC hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hk⟩ := hEs.At_bnd hAt'; exact ⟨G, .there hG, hk⟩
+  | .eqSymC hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hk⟩ := hEs.At_bnd hAt'; exact ⟨G, .there hG, hk⟩
 
 /-- The bound entry of typed entries, as a form out of any source with the
 right shape. -/
@@ -431,6 +532,101 @@ theorem EntriesTyped.At_bnd' {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesc
   · obtain rfl := Shape.weaken_inj hX
     exact hGt.srcRes (hS.trans (Ctx.resolveAt?_obj_self hS).symm)
   · exact .bnd hS hAt' (.id rfl)
+
+/-- The entry at a subcapturing proposition of the target is a capture
+template around a capture proposition of the source. -/
+theorem EntriesTyped.At_leC {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescope (s,x)}
+    {Es : Entries s} (h : EntriesTyped Γ ρ Tel₁ Es Tel₂) {j : Nat} {D₁ D₂ : CaptureSet (s,x)}
+    (hAt : Tel₂ ∋ (j ↦ D₁ ⊑ᶜ D₂)) :
+    ∃ pre h' post X Y, Es ∋ (j ↦ .leC pre h' post) ∧ Tel₁.HoleAtC h' X Y ∧
+      SideTypedC Γ pre D₁ X ∧ SideTypedC Γ post Y D₂ := by
+  match h with
+  | .nil => cases hAt
+  | .le hEs _ _ _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
+  | .eq hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
+  | .eqSym hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
+  | .has hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
+  | .bnd hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
+  | .bndId hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
+  | .leC hEs hh hpre hpost =>
+      cases hAt with
+      | here => exact ⟨_, _, _, _, _, by rw [← hEs.length]; exact .here, hh, hpre, hpost⟩
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh', hpre', hpost'⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh', hpre', hpost'⟩
+  | .eqC hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
+  | .eqSymC hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
+
+/-- The entry at a capture equality of the target reads a source capture
+equality, possibly flipped. -/
+theorem EntriesTyped.At_eqC {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescope (s,x)}
+    {Es : Entries s} (h : EntriesTyped Γ ρ Tel₁ Es Tel₂) {j : Nat} {C₁ C₂ : CaptureSet (s,x)}
+    (hAt : Tel₂ ∋ (j ↦ C₁ ≐ᶜ C₂)) :
+    ∃ k b, Es ∋ (j ↦ .eqC k b) ∧
+      (b = false ∧ Tel₁ ∋ (k ↦ C₁ ≐ᶜ C₂) ∨ b = true ∧ Tel₁ ∋ (k ↦ C₂ ≐ᶜ C₁)) := by
+  match h with
+  | .nil => cases hAt
+  | .le hEs _ _ _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .eq hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .eqSym hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .has hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .bnd hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .bndId hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .leC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .eqC hEs hAt₁ =>
+      cases hAt with
+      | here => exact ⟨_, false, by rw [← hEs.length]; exact .here, Or.inl ⟨rfl, hAt₁⟩⟩
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .eqSymC hEs hAt₁ =>
+      cases hAt with
+      | here => exact ⟨_, true, by rw [← hEs.length]; exact .here, Or.inr ⟨rfl, hAt₁⟩⟩
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
 
 /-- The entries of a coercion into a bounds-only object type, by position. -/
 theorem BndsTyped.length {ρ : Option (BVar s .var)} {S : Shape s} {Es : Entries s}
@@ -512,7 +708,7 @@ theorem Form.combine_id_right (F : Form s) : Form.combine F .id = some F := by
 /-- Composition on the far side of a bound cast, when the second form is not
 one of the three absorbed by an earlier clause. -/
 theorem Form.combine_bnd (i : Nat) {F G H : Form s} (h1 : G ≠ .id) (h2 : G ≠ .top)
-    (h3 : ∀ Es, G ≠ .into Es) (h4 : ∀ G', G ≠ .boxIn G') (h : F.combine G = some H) :
+    (h3 : ∀ Es, G ≠ .into Es) (h : F.combine G = some H) :
     (Form.bnd i F).combine G = some (.bnd i H) := by
   cases G <;> simp_all [Form.combine]
 
@@ -528,7 +724,6 @@ theorem Form.isBndId_eq_true {F : Form s} (h : F.isBndId = true) : ∃ k, F = .b
       | pi _ _ => simp [Form.isBndId] at h
       | obj _ => simp [Form.isBndId] at h
       | boxed _ => simp [Form.isBndId] at h
-      | boxIn _ => simp [Form.isBndId] at h
       | bnd _ _ => simp [Form.isBndId] at h
       | into _ => simp [Form.isBndId] at h
   | bot => simp [Form.isBndId] at h
@@ -538,7 +733,6 @@ theorem Form.isBndId_eq_true {F : Form s} (h : F.isBndId = true) : ∃ k, F = .b
   | pi _ _ => simp [Form.isBndId] at h
   | obj _ => simp [Form.isBndId] at h
   | boxed _ => simp [Form.isBndId] at h
-  | boxIn _ => simp [Form.isBndId] at h
   | into _ => simp [Form.isBndId] at h
 
 /-- Prefixing a bound entry that is not an identity template composes. -/
@@ -554,7 +748,6 @@ theorem Entry.prefix_bnd {F G : Form s} (h : G.isBndId = false) :
       | pi _ _ => simp [Entry.prefix]
       | obj _ => simp [Entry.prefix]
       | boxed _ => simp [Entry.prefix]
-      | boxIn _ => simp [Entry.prefix]
       | bnd _ _ => simp [Entry.prefix]
       | into _ => simp [Entry.prefix]
   | bot => simp [Entry.prefix]
@@ -564,7 +757,6 @@ theorem Entry.prefix_bnd {F G : Form s} (h : G.isBndId = false) :
   | pi _ _ => simp [Entry.prefix]
   | obj _ => simp [Entry.prefix]
   | boxed _ => simp [Entry.prefix]
-  | boxIn _ => simp [Entry.prefix]
   | into _ => simp [Entry.prefix]
 
 theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
@@ -612,9 +804,6 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
                 obtain ⟨H, hH, hHt⟩ :=
                   (combine_typed_aux (ρ := none) n).1 F G _ _ _ hn hF hG
                 exact ⟨H, hH, .closed hHt⟩
-      have hbox : ∀ F G₀ : Form s, sizeOf F + sizeOf (Form.boxIn G₀) ≤ n + 1 →
-          sizeOf F + sizeOf G₀ ≤ n := by
-        intro F G₀ h; simp at h ⊢; omega
       refine ⟨?_, ?_, ?_, ?_⟩
       · intro F G S M T hn hF hG
         cases hF with
@@ -636,10 +825,6 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
                   ihP .top _ S M _ _ (by simp at hn ⊢; omega) (.top hM) hM hEs
                 exact ⟨.into Es', by simp [Form.combine, hEs'], .into hT hT'⟩
             | boxed hb _ _ => rw [hM] at hb; exact absurd hb (by simp)
-            | boxIn hT hG' =>
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ S M _ (hbox _ _ hn) (.top hM) hG'
-                exact ⟨_, by simp [Form.combine, hH], .boxIn hT hHt⟩
             | bnd ho hAt _ =>
                 rw [hM] at ho
                 obtain rfl := Shape.obj.inj ho
@@ -663,10 +848,6 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
                 refine ⟨_, ?_, .obj (hres.trans ho) hT hEs⟩; simp [Form.combine]
             | boxed hb hT hd =>
                 refine ⟨_, ?_, .boxed (hres.trans hb) hT hd⟩; simp [Form.combine]
-            | boxIn hT hG' =>
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ S M _ (hbox _ _ hn) (.eqv hres) hG'
-                exact ⟨_, by simp [Form.combine, hH], .boxIn hT hHt⟩
             | bnd ho hAt hF' =>
                 refine ⟨_, ?_, .bnd (hres.trans ho) hAt hF'⟩; simp [Form.combine]
             | into hT hBs =>
@@ -685,10 +866,6 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
                 simp [Form.combine]
             | obj ho _ _ => rw [hM] at ho; exact absurd ho (by simp)
             | boxed hb _ _ => rw [hM] at hb; exact absurd hb (by simp)
-            | boxIn hT hG' =>
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ S M _ (hbox _ _ hn) (.pi hS hM hd hc) hG'
-                exact ⟨_, by simp [Form.combine, hH], .boxIn hT hHt⟩
             | bnd ho _ _ => rw [hM] at ho; exact absurd ho (by simp)
             | into hT hBs =>
                 obtain ⟨Es', hEs', hT'⟩ :=
@@ -708,10 +885,6 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
                   (Ctx.resolveAt?_obj_self hS) (Ctx.resolveAt?_obj_self hM) hEs hEs₂
                 exact ⟨.obj Es, by simp [Form.combine, hEs'], .obj hS hT hT'⟩
             | boxed hb _ _ => rw [hM] at hb; exact absurd hb (by simp)
-            | boxIn hT hG' =>
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ S M _ (hbox _ _ hn) (.obj hS hM hEs) hG'
-                exact ⟨_, by simp [Form.combine, hH], .boxIn hT hHt⟩
             | bnd ho hAt hF' =>
                 rw [hM] at ho
                 obtain rfl := Shape.obj.inj ho
@@ -736,14 +909,7 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
             | boxed hb hT hd₂ =>
                 rw [hM] at hb
                 obtain rfl := Shape.box.inj hb
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ _ _ _ (by simp at hn ⊢; omega) hd hd₂
-                refine ⟨_, ?_, .boxed hS hT hHt⟩
-                simp [Form.combine, hH]
-            | boxIn hT hG' =>
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ S M _ (hbox _ _ hn) (.boxed hS hM hd) hG'
-                exact ⟨_, by simp [Form.combine, hH], .boxIn hT hHt⟩
+                exact ⟨_, by simp [Form.combine], .boxed hS hT (.trans hd hd₂)⟩
             | bnd ho _ _ => rw [hM] at ho; exact absurd ho (by simp)
             | into hT hBs =>
                 obtain ⟨Es', hEs', hT'⟩ :=
@@ -761,33 +927,29 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
             | bot hb =>
                 obtain ⟨H, hH, hHt⟩ :=
                   ihF _ .bot _ M T (by simp at hn ⊢; omega) hF' (.bot hb)
-                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
+                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
             | eqv hres =>
                 rename_i φ
                 obtain ⟨H, hH, hHt⟩ :=
                   ihF _ (.eqv φ) _ M T (by simp at hn ⊢; omega) hF' (.eqv hres)
-                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
+                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
             | pi hp hT hd hc =>
                 obtain ⟨H, hH, hHt⟩ :=
                   ihF _ _ _ M T (by simp at hn ⊢; omega) hF' (.pi hp hT hd hc)
-                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
+                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
             | obj ho hT hEs =>
                 obtain ⟨H, hH, hHt⟩ :=
                   ihF _ _ _ M T (by simp at hn ⊢; omega) hF' (.obj ho hT hEs)
-                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
+                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
             | boxed hb hT hd =>
                 obtain ⟨H, hH, hHt⟩ :=
                   ihF _ _ _ M T (by simp at hn ⊢; omega) hF' (.boxed hb hT hd)
-                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
+                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) hH, .bnd hS hAt hHt⟩
             | bnd ho hAt' hF'' =>
                 obtain ⟨H, hH, hHt⟩ :=
                   ihF _ _ _ M T (by simp at hn ⊢; omega) hF' (.bnd ho hAt' hF'')
-                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) (by simp) hH,
+                exact ⟨_, Form.combine_bnd _ (by simp) (by simp) (by simp) hH,
                   .bnd hS hAt hHt⟩
-            | boxIn hT hG' =>
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ S M _ (hbox _ _ hn) (.bnd hS hAt hF') hG'
-                exact ⟨_, by simp [Form.combine, hH], .boxIn hT hHt⟩
         | into hM hBs =>
             cases hG with
             | bot hb => rw [hM] at hb; exact absurd hb (by simp)
@@ -797,10 +959,6 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
                 refine ⟨_, ?_, .into (hres.symm.trans hM) hBs⟩; simp [Form.combine]
             | pi hp _ _ _ => rw [hM] at hp; exact absurd hp (by simp)
             | boxed hb _ _ => rw [hM] at hb; exact absurd hb (by simp)
-            | boxIn hT hG' =>
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ S M _ (hbox _ _ hn) (.into hM hBs) hG'
-                exact ⟨_, by simp [Form.combine, hH], .boxIn hT hHt⟩
             | obj ho hT hEs₂ =>
                 rw [hM] at ho
                 obtain rfl := Shape.obj.inj ho
@@ -825,30 +983,6 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
             | into hT hBs₂ =>
                 obtain ⟨Es', hEs', hT'⟩ :=
                   ihB _ _ S M _ (by simp at hn ⊢; omega) (.into hM hBs) hBs₂
-                exact ⟨.into Es', by simp [Form.combine, hEs'], .into hT hT'⟩
-        | boxIn hM hF' =>
-            cases hG with
-            | bot hb => rw [hM] at hb; exact absurd hb (by simp)
-            | top hT => exact ⟨.top, by simp [Form.combine], .top hT⟩
-            | id hres => exact ⟨_, Form.combine_id_right _, .boxIn (hres ▸ hM) hF'⟩
-            | eqv hres =>
-                refine ⟨_, ?_, .boxIn (hres ▸ hM) hF'⟩; simp [Form.combine]
-            | pi hp _ _ _ => rw [hM] at hp; exact absurd hp (by simp)
-            | obj ho _ _ => rw [hM] at ho; exact absurd ho (by simp)
-            | bnd ho _ _ => rw [hM] at ho; exact absurd ho (by simp)
-            | boxed hb hT hd =>
-                rw [hM] at hb
-                obtain rfl := Shape.box.inj hb
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ _ _ _ (by simp at hn ⊢; omega) hF' hd
-                exact ⟨_, by simp [Form.combine, hH], .boxIn hT hHt⟩
-            | boxIn hT hG' =>
-                obtain ⟨H, hH, hHt⟩ :=
-                  ihF _ _ S M _ (hbox _ _ hn) (.boxIn hM hF') hG'
-                exact ⟨_, by simp [Form.combine, hH], .boxIn hT hHt⟩
-            | into hT hBs =>
-                obtain ⟨Es', hEs', hT'⟩ :=
-                  ihB _ _ S M _ (by simp at hn ⊢; omega) (.boxIn hM hF') hBs
                 exact ⟨.into Es', by simp [Form.combine, hEs'], .into hT hT'⟩
       · intro Es₁ Es₂ Tel₁ TelM Tel₂ hn hop₁ hopM h₁ h₂
         match h₂ with
@@ -924,6 +1058,53 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
             · rcases hdisj with ⟨T₀, rfl, hGt⟩ | ⟨k', rfl, hAt'⟩
               · exact .bnd hT hGt
               · exact .bndId hT hAt'
+        -- A capture template composes by concatenating its chains with the
+        -- middle's; a middle capture equality contributes the identity chain,
+        -- so the outer sides are kept and only the hole is retargeted.
+        | .leC (pre := pre) (post := post) h₂' hh hpre hpost =>
+            obtain ⟨Es, hEs, hT⟩ := ihE _ _ _ _ _ (by simp at hn; omega) hop₁ hopM h₁ h₂'
+            cases hh with
+            | leC hAt =>
+                obtain ⟨pre₁, h₁', post₁, X₁, Y₁, hE, hh₁, hpre₁, hpost₁⟩ := h₁.At_leC hAt
+                refine ⟨Es ▹ .leC (pre ++ pre₁) h₁' (post₁ ++ post), ?_,
+                  .leC hT hh₁ (hpre.append hpre₁) (hpost₁.append hpost)⟩
+                simp only [Entries.through, hEs]
+                unfold Entry.through
+                simp [HoleC.index, hE.get?]
+            | eqC hAt =>
+                obtain ⟨k, b, hE, hk⟩ := h₁.At_eqC hAt
+                refine ⟨Es ▹ .leC pre (if b then .eqSymC k else .eqC k) post, ?_, ?_⟩
+                · simp only [Entries.through, hEs]
+                  unfold Entry.through
+                  simp [HoleC.index, hE.get?]
+                · rcases hk with ⟨rfl, hk⟩ | ⟨rfl, hk⟩
+                  · exact .leC hT (.eqC hk) hpre hpost
+                  · exact .leC hT (.eqSymC hk) hpre hpost
+            | eqSymC hAt =>
+                obtain ⟨k, b, hE, hk⟩ := h₁.At_eqC hAt
+                refine ⟨Es ▹ .leC pre (if b then .eqC k else .eqSymC k) post, ?_, ?_⟩
+                · simp only [Entries.through, hEs]
+                  unfold Entry.through
+                  simp [HoleC.index, hE.get?]
+                · rcases hk with ⟨rfl, hk⟩ | ⟨rfl, hk⟩
+                  · exact .leC hT (.eqSymC hk) hpre hpost
+                  · exact .leC hT (.eqC hk) hpre hpost
+        | .eqC h₂' hAt =>
+            obtain ⟨Es, hEs, hT⟩ := ihE _ _ _ _ _ (by simp at hn; omega) hop₁ hopM h₁ h₂'
+            obtain ⟨k, b, hE, hk⟩ := h₁.At_eqC hAt
+            refine ⟨Es ▹ .eqC k b, ?_, ?_⟩
+            · simp [Entries.through, hEs, Entry.through, hE.get?]
+            · rcases hk with ⟨rfl, hk⟩ | ⟨rfl, hk⟩
+              · exact .eqC hT hk
+              · exact .eqSymC hT hk
+        | .eqSymC h₂' hAt =>
+            obtain ⟨Es, hEs, hT⟩ := ihE _ _ _ _ _ (by simp at hn; omega) hop₁ hopM h₁ h₂'
+            obtain ⟨k, b, hE, hk⟩ := h₁.At_eqC hAt
+            refine ⟨Es ▹ .eqC k (!b), ?_, ?_⟩
+            · simp [Entries.through, hEs, Entry.through, hE.get?]
+            · rcases hk with ⟨rfl, hk⟩ | ⟨rfl, hk⟩
+              · exact .eqSymC hT hk
+              · exact .eqC hT hk
       · intro F Es S M Tel hn hF hB
         match hB with
         | .nil => exact ⟨.nil, by simp [Entries.mapPrefix], .nil⟩
@@ -981,6 +1162,19 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
             obtain ⟨Es', hEs'', hT'⟩ := ihP F _ S M _ _ (by simp at hn ⊢; omega) hF hM hEs'
             exact ⟨Es' ▹ .thru F (.bnd (.bnd k .id)),
               by simp [Entries.mapPrefix, hEs'', Entry.prefix], .thru hT' hF hM (.bndId hAt)⟩
+        | .leC (pre := pre) (h := h) (post := post) hEs' hh hpre hpost =>
+            obtain ⟨Es', hEs'', hT'⟩ := ihP F _ S M _ _ (by simp at hn ⊢; omega) hF hM hEs'
+            exact ⟨Es' ▹ .thru F (.leC pre h post),
+              by simp [Entries.mapPrefix, hEs'', Entry.prefix],
+              .thru hT' hF hM (.leC hh hpre hpost)⟩
+        | .eqC (j := j) hEs' hAt =>
+            obtain ⟨Es', hEs'', hT'⟩ := ihP F _ S M _ _ (by simp at hn ⊢; omega) hF hM hEs'
+            exact ⟨Es' ▹ .thru F (.eqC j false),
+              by simp [Entries.mapPrefix, hEs'', Entry.prefix], .thru hT' hF hM (.eqC hAt)⟩
+        | .eqSymC (j := j) hEs' hAt =>
+            obtain ⟨Es', hEs'', hT'⟩ := ihP F _ S M _ _ (by simp at hn ⊢; omega) hF hM hEs'
+            exact ⟨Es' ▹ .thru F (.eqC j true),
+              by simp [Entries.mapPrefix, hEs'', Entry.prefix], .thru hT' hF hM (.eqSymC hAt)⟩
 
 theorem Form.combine_typed {ρ : Option (BVar s .var)} {F G : Form s} {S M T : Shape s}
     (hF : FormTyped Γ ρ F S M) (hG : FormTyped Γ ρ G M T) :
@@ -1057,6 +1251,14 @@ theorem Telescope.identityEntries_typed {ρ : Option (BVar s .var)} :
       rw [Telescope.identityEntries]
       exact .bndId (Telescope.identityEntries_typed Tel Tel' fun i P hP => h i P (.there hP))
         (h _ _ .here)
+  | .cons Tel (.leC C D), Tel', h => by
+      rw [Telescope.identityEntries]
+      exact .leC (Telescope.identityEntries_typed Tel Tel' fun i P hP => h i P (.there hP))
+        (.leC (h _ _ .here)) .nil .nil
+  | .cons Tel (.eqC C D), Tel', h => by
+      rw [Telescope.identityEntries]
+      exact .eqC (Telescope.identityEntries_typed Tel Tel' fun i P hP => h i P (.there hP))
+        (h _ _ .here)
 
 theorem Telescope.identityEntries_self {ρ : Option (BVar s .var)} (Tel : Telescope (s,x)) :
     EntriesTyped Γ ρ Tel Tel.identityEntries Tel :=
@@ -1078,6 +1280,12 @@ theorem Telescope.identityEntries_rename : ∀ (Tel : Telescope (s,x)) (ρ : Ren
   | .cons Tel (.bnd _), ρ => by
       simp [Telescope.rename, Proposition.rename, Telescope.identityEntries,
         Telescope.identityEntries_rename Tel ρ, Telescope.length_rename]
+  | .cons Tel (.leC _ _), ρ => by
+      simp [Telescope.rename, Proposition.rename, Telescope.identityEntries,
+        Telescope.identityEntries_rename Tel ρ, Telescope.length_rename]
+  | .cons Tel (.eqC _ _), ρ => by
+      simp [Telescope.rename, Proposition.rename, Telescope.identityEntries,
+        Telescope.identityEntries_rename Tel ρ, Telescope.length_rename]
 
 /-- Positions of the first telescope of a concatenation. -/
 theorem Telescope.At.append_left {Tel : Telescope s'} {i : Nat} {P : Proposition s'}
@@ -1097,6 +1305,9 @@ theorem EntriesTyped.append {ρ : Option (BVar s .var)} {Tel Tel₁ Tel₂ : Tel
   | .has h₂' hAt => exact .has (h₁.append h₂') hAt
   | .bnd h₂' hG => exact .bnd (h₁.append h₂') hG
   | .bndId h₂' hAt => exact .bndId (h₁.append h₂') hAt
+  | .leC h₂' hh hpre hpost => exact .leC (h₁.append h₂') hh hpre hpost
+  | .eqC h₂' hAt => exact .eqC (h₁.append h₂') hAt
+  | .eqSymC h₂' hAt => exact .eqSymC (h₁.append h₂') hAt
 
 theorem BndsTyped.append {ρ : Option (BVar s .var)} {S : Shape s} {Tel₁ Tel₂ : Telescope (s,x)}
     {Es₁ Es₂ : Entries s}
@@ -1130,7 +1341,6 @@ theorem Form.absorbs_typed {ρ : Option (BVar s .var)} : ∀ (F : Form s) (S M U
   | .pi _ _, _, _, _, hab, _ => by simp [Form.absorbs] at hab
   | .obj _, _, _, _, hab, _ => by simp [Form.absorbs] at hab
   | .boxed _, _, _, _, hab, _ => by simp [Form.absorbs] at hab
-  | .boxIn _, _, _, _, hab, _ => by simp [Form.absorbs] at hab
   | .into _, _, _, _, hab, _ => by simp [Form.absorbs] at hab
 
 /-- The view-free entries read off a non-absorbing form into an object
@@ -1171,9 +1381,6 @@ theorem Form.freeEntries_typed {ρ : Option (BVar s .var)} : ∀ (F : Form s) {S
   | .boxed d, S, Tel, Tel', h, hop, _, _ => by
       cases h with
       | boxed _ hT _ => rw [hop] at hT; exact absurd hT (by simp)
-  | .boxIn d, S, Tel, Tel', h, hop, _, _ => by
-      cases h with
-      | boxIn hT _ => rw [hop] at hT; exact absurd hT (by simp)
   | .obj Es₀, S, Tel, Tel', h, hop, _, _ => by
       cases h with
       | obj hS hT hEs =>
@@ -1265,6 +1472,22 @@ theorem ViewTyped.append {r : BVar s .var} {V₁ V₂ : View s} {Tel₁ Tel₂ :
   | eq _ hE ih => exact .eq ih hE
   | has _ hH ih => exact .has ih hH
   | bnd _ hG ih => exact .bnd ih hG
+  | leC _ hC ih => exact .leC ih hC
+  | eqC _ hC ih => exact .eqC ih hC
+
+/-- A capture-template side instantiated at a root: the roots of its source
+are among the roots of its target.  A closed step is between weakened closed
+sets, which instantiation leaves alone; an inclusion step is a syntactic
+inclusion, which instantiation preserves. -/
+theorem SideTypedC.inst (r : BVar s .var) : ∀ {q : SideC s} {X Y : CaptureSet (s,x)},
+    SideTypedC Γ q X Y → CapLe Γ (X⟦r⟧) (Y⟦r⟧)
+  | _, _, _, .nil => CapLe.refl _ _
+  | _, _, _, .cons hst hq => by
+      refine CapLe.trans ?_ (SideTypedC.inst r hq)
+      cases hst with
+      | closed hle =>
+          rw [CaptureSet.rename_subst_weaken, CaptureSet.rename_subst_weaken]; exact hle
+      | incl hsub => exact CapLe.of_subset (hsub.rename (Rename.subst r))
 
 /-- A closed side instantiated at a root is a typed coercion form. -/
 theorem SideTyped.inst (r : BVar s .var) {F : Form s} {S X : Shape (s,x)}
@@ -1289,6 +1512,8 @@ theorem Telescope.opened_bnd {r : BVar s .var} {Tel : Telescope (s,x)}
   | le _ _ => simp [Proposition.rename] at hEq
   | eq _ _ => simp [Proposition.rename] at hEq
   | has _ => simp [Proposition.rename] at hEq
+  | leC _ _ => simp [Proposition.rename] at hEq
+  | eqC _ _ => simp [Proposition.rename] at hEq
 
 end
 
@@ -1334,10 +1559,7 @@ theorem normalizer_succ : ∀ n : Nat,
         | bot T => rw [hnfShape] at h; rw [hnfShape]; exact h
         | eqToLe φ => rw [hnfShape] at h; rw [hnfShape]; exact h
         | pi d c => rw [hnfShape] at h; rw [hnfShape]; exact h
-        | boxed d =>
-            cases hd : hnf σ n d with
-            | none => simp [hnfShape, hd] at h
-            | some G => simpa [hnfShape, hd, ihL d G hd] using h
+        | boxed d => rw [hnfShape] at h; rw [hnfShape]; exact h
         | bound Tel i => rw [hnfShape] at h; rw [hnfShape]; exact h
         | intoBnd e =>
             cases he : hnfShape σ n e with
@@ -1404,6 +1626,14 @@ theorem normalizer_succ : ∀ n : Nat,
                 cases he : hnfShape σ n e with
                 | none => simp [entries, hm, he] at h
                 | some F => simpa [entries, hm, he, ih2 m Es₀ hm, ih1 e F he] using h
+        | leC m pre hh post =>
+            cases hm : entries σ n m with
+            | none => simp [entries, hm] at h
+            | some Es₀ => simpa [entries, hm, ih2 m Es₀ hm] using h
+        | eqC m j b =>
+            cases hm : entries σ n m with
+            | none => simp [entries, hm] at h
+            | some Es₀ => simpa [entries, hm, ih2 m Es₀ hm] using h
       · intro a V h
         cases a with
         | var x => rw [view] at h; rw [view]; exact h
@@ -1413,17 +1643,7 @@ theorem normalizer_succ : ∀ n : Nat,
             | some F => simp [view, ihL e F he, ih4 F a V (by simpa [view, he] using h)]
         | foldSelf Tel a => simp only [view] at h ⊢; exact ih3 a V h
         | unfoldSelf a => simp only [view] at h ⊢; exact ih3 a V h
-        | box a => simp only [view] at h ⊢; exact ih3 a V h
-        | unbox a f =>
-            cases hc : closedAtomForm σ n a with
-            | none => simp [view, hc] at h
-            | some q =>
-                cases hu : Form.unbox? q.2 with
-                | none => simp [view, hc, hu] at h
-                | some G =>
-                    have h' : viewThrough σ n G (.var a.root) = some V := by
-                      simpa [view, hc, hu] using h
-                    simpa [view, ih6 a q hc, hu] using ih4 G (.var a.root) V h'
+        | recap a f => simp only [view] at h ⊢; exact ih3 a V h
         | both Tel₁ Tel₂ a b =>
             cases ha : view σ n a with
             | none => simp [view, ha] at h
@@ -1476,7 +1696,6 @@ theorem normalizer_succ : ∀ n : Nat,
                               ih4 H (.var a.root) V h'
         | pi d c => rw [viewThrough] at h; rw [viewThrough]; exact h
         | boxed d => rw [viewThrough] at h; rw [viewThrough]; exact h
-        | boxIn F => rw [viewThrough] at h; rw [viewThrough]; exact h
         | top => rw [viewThrough] at h; rw [viewThrough]; exact h
         | bot => rw [viewThrough] at h; rw [viewThrough]; exact h
       · intro x hh p hp
@@ -1508,17 +1727,10 @@ theorem normalizer_succ : ∀ n : Nat,
             cases hc : closedAtomForm σ n a with
             | none => simp [closedAtomForm, hc] at h
             | some q => simpa [closedAtomForm, hc, ih6 a q hc] using h
-        | box a =>
+        | recap a f =>
             cases hc : closedAtomForm σ n a with
             | none => simp [closedAtomForm, hc] at h
             | some q => simpa [closedAtomForm, hc, ih6 a q hc] using h
-        | unbox a f =>
-            cases hc : closedAtomForm σ n a with
-            | none => simp [closedAtomForm, hc] at h
-            | some q =>
-                cases hu : Form.unbox? q.2 with
-                | none => simp [closedAtomForm, hc, hu] at h
-                | some G => simpa [closedAtomForm, hc, hu, ih6 a q hc] using h
         | both Tel₁ Tel₂ a b =>
             cases hc : closedAtomForm σ n a with
             | none => simp [closedAtomForm, hc] at h
@@ -1532,6 +1744,8 @@ theorem normalizer_succ : ∀ n : Nat,
         | le pre hh post => simp only [Entry.at] at h ⊢; exact h
         | eq j b => simp only [Entry.at] at h ⊢; exact h
         | has j => simp only [Entry.at] at h ⊢; exact h
+        | leC pre hh post => simp only [Entry.at] at h ⊢; exact h
+        | eqC j b => simp only [Entry.at] at h ⊢; exact h
         | bnd G => simp only [Entry.at] at h ⊢; exact h
         | thru H E =>
             cases hv : viewThrough σ n H a with
@@ -1738,6 +1952,31 @@ theorem EntryTyped.at_typed {r : BVar s .var} {M : Shape s} {TelM : Telescope (s
       have hBnd : Γ ⊨[r] (Form.bnd k .id) : M ≤ X⟦r⟧ := .bnd hM hAt' (.id rfl)
       obtain ⟨H, hH, hHt⟩ := Form.combine_typed hC hBnd
       exact ⟨1, .bnd H, by simp [Entry.at, hH], fun hV₀ => .bnd hV₀ hHt⟩
+  -- A capture slot carries no data: its typedness is the inclusion of roots
+  -- at the root, put together by transitivity from the two side chains and
+  -- the slot the hole names.
+  | .leC hh hpre hpost =>
+      have hpre' := hpre.inst r
+      have hpost' := hpost.inst r
+      cases hh with
+      | leC hAt =>
+          obtain ⟨hq, hle⟩ := hV.leC_entry hAt
+          exact ⟨1, .leC, by simp [Entry.at, HoleC.index, hq.get?],
+            fun hV₀ => .leC hV₀ (hpre'.trans (hle.trans hpost'))⟩
+      | eqC hAt =>
+          obtain ⟨hq, heq⟩ := hV.eqC_entry hAt
+          exact ⟨1, .leC, by simp [Entry.at, HoleC.index, hq.get?],
+            fun hV₀ => .leC hV₀ (hpre'.trans (heq.le.trans hpost'))⟩
+      | eqSymC hAt =>
+          obtain ⟨hq, heq⟩ := hV.eqC_entry hAt
+          exact ⟨1, .leC, by simp [Entry.at, HoleC.index, hq.get?],
+            fun hV₀ => .leC hV₀ (hpre'.trans (heq.symm.le.trans hpost'))⟩
+  | .eqC hAt =>
+      obtain ⟨hq, heq⟩ := hV.eqC_entry hAt
+      exact ⟨1, .eqC, by simp [Entry.at, hq.get?], fun hV₀ => .eqC hV₀ heq⟩
+  | .eqSymC hAt =>
+      obtain ⟨hq, heq⟩ := hV.eqC_entry hAt
+      exact ⟨1, .eqC, by simp [Entry.at, hq.get?], fun hV₀ => .eqC hV₀ heq.symm⟩
 
 /-- Applying typed view-free entries at a root: the view of the source is
 consulted only through the routes of the entries, which are sub-forms. -/
@@ -1823,6 +2062,27 @@ theorem entriesAt_typed {r : BVar s .var} {Tel₁ : Telescope (s,x)}
       have h₁ := entriesAt_le (Nat.le_trans (Nat.le_max_left m m') (Nat.le_succ _)) hV'
       have h₂ := entryAt_le (Nat.le_trans (Nat.le_max_right m m') (Nat.le_succ _)) hQ
       simp [entriesAt, h₁, h₂]
+  | _, _, .leC hEs' hh hpre hpost => by
+      obtain ⟨m, V', hV', hT⟩ := entriesAt_typed a hC hS hV hEs'
+      obtain ⟨m', Q, hQ, hQt⟩ := EntryTyped.at_typed a hC hS hV (.leC hh hpre hpost)
+      refine ⟨max m m' + 2, V' ▹ Q, ?_, hQt hT⟩
+      have h₁ := entriesAt_le (Nat.le_trans (Nat.le_max_left m m') (Nat.le_succ _)) hV'
+      have h₂ := entryAt_le (Nat.le_trans (Nat.le_max_right m m') (Nat.le_succ _)) hQ
+      simp [entriesAt, h₁, h₂]
+  | _, _, .eqC hEs' hAt => by
+      obtain ⟨m, V', hV', hT⟩ := entriesAt_typed a hC hS hV hEs'
+      obtain ⟨m', Q, hQ, hQt⟩ := EntryTyped.at_typed a hC hS hV (.eqC hAt)
+      refine ⟨max m m' + 2, V' ▹ Q, ?_, hQt hT⟩
+      have h₁ := entriesAt_le (Nat.le_trans (Nat.le_max_left m m') (Nat.le_succ _)) hV'
+      have h₂ := entryAt_le (Nat.le_trans (Nat.le_max_right m m') (Nat.le_succ _)) hQ
+      simp [entriesAt, h₁, h₂]
+  | _, _, .eqSymC hEs' hAt => by
+      obtain ⟨m, V', hV', hT⟩ := entriesAt_typed a hC hS hV hEs'
+      obtain ⟨m', Q, hQ, hQt⟩ := EntryTyped.at_typed a hC hS hV (.eqSymC hAt)
+      refine ⟨max m m' + 2, V' ▹ Q, ?_, hQt hT⟩
+      have h₁ := entriesAt_le (Nat.le_trans (Nat.le_max_left m m') (Nat.le_succ _)) hV'
+      have h₂ := entryAt_le (Nat.le_trans (Nat.le_max_right m m') (Nat.le_succ _)) hQ
+      simp [entriesAt, h₁, h₂]
 
 /-- The view of the root variable through a typed form. -/
 theorem viewThroughVar_typed {r : BVar s .var} (hroot : RootViewTyped Γ σ r) :
@@ -1855,10 +2115,6 @@ theorem viewThroughVar_typed {r : BVar s .var} (hroot : RootViewTyped Γ σ r) :
         · rw [hT] at h; exact absurd h (by simp)
         · rw [hT]; simp
     | .boxed _ hT _ =>
-        refine ⟨1, .nil, rfl, fun Tel h => ?_, ?_⟩
-        · rw [hT] at h; exact absurd h (by simp)
-        · rw [hT]; simp
-    | .boxIn hT _ =>
         refine ⟨1, .nil, rfl, fun Tel h => ?_, ?_⟩
         · rw [hT] at h; exact absurd h (by simp)
         · rw [hT]; simp
@@ -1921,10 +2177,6 @@ theorem viewThrough_typed_aux {a a' : Atom s} {V : View s} {C : Form s}
         · rw [hT] at h; exact absurd h (by simp)
         · rw [hT]; simp
     | .boxed _ hT _ =>
-        refine ⟨1, .nil, rfl, fun Tel h => ?_, ?_⟩
-        · rw [hT] at h; exact absurd h (by simp)
-        · rw [hT]; simp
-    | .boxIn hT _ =>
         refine ⟨1, .nil, rfl, fun Tel h => ?_, ?_⟩
         · rw [hT] at h; exact absurd h (by simp)
         · rw [hT]; simp
