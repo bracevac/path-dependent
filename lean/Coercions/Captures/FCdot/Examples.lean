@@ -4,6 +4,7 @@ import Coercions.Captures.FCdot.Consistency
 import Coercions.Captures.FCdot.Prediction
 import Coercions.Captures.DotMNF.Examples
 import Coercions.Captures.DotMNF.Erasure
+import Coercions.Captures.DotToFCdot.Prediction
 
 namespace Captures
 
@@ -190,7 +191,8 @@ theorem E1_typed : Ctx.nil ⊢ E1 : E1Ty := checkTm_sound (by decide +kernel)
 def E1src : DotMNF.Tm [] :=
   .val (.lam DotMNF.Examples.E1Dom (.let (.path (.var .here)) (.path (.var .here))))
 
-example : DotMNF.HasTy .nil E1src (.all DotMNF.Examples.E1Dom DotMNF.Examples.E1Res) :=
+example : DotMNF.HasTy [] .nil E1src
+    (DotMNF.Ty.capt [] (.all DotMNF.Examples.E1Dom DotMNF.Examples.E1Res)) :=
   DotMNF.Examples.E1
 
 theorem E1_erase : E1.erase = E1src.erase := rfl
@@ -339,7 +341,7 @@ def E2src : DotMNF.Tm [] :=
   .let (.val (.obj DotMNF.Examples.E2Defs))
     (.let (.proj .here DotMNF.Examples.la) (.app .here .here))
 
-example : DotMNF.HasTy .nil E2src .top := DotMNF.Examples.E2
+example : DotMNF.HasTy [] .nil E2src (DotMNF.Ty.capt [] .top) := DotMNF.Examples.E2
 
 theorem E2_erase : E2.erase = E2src.erase := rfl
 
@@ -379,8 +381,9 @@ def E3src : DotMNF.Tm [] :=
   .val (.lam DotMNF.Examples.E3Dom
     (.val (.lam DotMNF.Examples.E3T2 (.let (.path (.var .here)) (.path (.var .here))))))
 
-example : DotMNF.HasTy .nil E3src
-    (.all DotMNF.Examples.E3Dom (.all DotMNF.Examples.E3T2 DotMNF.Examples.E3T1)) :=
+example : DotMNF.HasTy [] .nil E3src
+    (DotMNF.Ty.capt [] (.all DotMNF.Examples.E3Dom
+      (DotMNF.Ty.capt [] (.all DotMNF.Examples.E3T2 DotMNF.Examples.E3T1)))) :=
   DotMNF.Examples.E3
 
 theorem E3_erase : E3.erase = E3src.erase := rfl
@@ -440,12 +443,15 @@ theorem E4_typed : Ctx.nil ⊢ E4 : E4Ty := checkTm_sound (by decide +kernel)
 /-- The source term of `DotMNF.Examples.E4`. -/
 def E4src : DotMNF.Tm [] :=
   .val (.lam DotMNF.Examples.E4X (.val (.lam DotMNF.Examples.E4S (.val (.lam DotMNF.Examples.E4Int
-    (.let (.val (.lam (.sel (.var (.there .here)) DotMNF.Examples.lA) (.path (.var .here))))
+    (.let (.val (.lam (DotMNF.Ty.capt [] (.sel (.var (.there .here)) DotMNF.Examples.lA))
+      (.path (.var .here))))
       (.app .here (.there .here))))))))
 
-example : DotMNF.HasTy .nil E4src
-    (.all DotMNF.Examples.E4X (.all DotMNF.Examples.E4S (.all DotMNF.Examples.E4Int
-      (.sel (.var (.there .here)) DotMNF.Examples.lA)))) :=
+example : DotMNF.HasTy [] .nil E4src
+    (DotMNF.Ty.capt [] (.all DotMNF.Examples.E4X
+      (DotMNF.Ty.capt [] (.all DotMNF.Examples.E4S
+        (DotMNF.Ty.capt [] (.all DotMNF.Examples.E4Int
+          (DotMNF.Ty.capt [] (.sel (.var (.there .here)) DotMNF.Examples.lA)))))))) :=
   DotMNF.Examples.E4
 
 theorem E4_erase : E4.erase = E4src.erase := rfl
@@ -590,8 +596,9 @@ def E5src : DotMNF.Tm [] :=
     (.let (.val (.lam DotMNF.Examples.E5AT DotMNF.Examples.E5Obj))
       (.let (.app .here (.there .here)) (.proj .here DotMNF.Examples.la))))
 
-example : DotMNF.HasTy .nil E5src
-    (.all DotMNF.Examples.E5AT (.sel (.var .here) DotMNF.Examples.lA)) :=
+example : DotMNF.HasTy [] .nil E5src
+    (DotMNF.Ty.capt [] (.all DotMNF.Examples.E5AT
+      (DotMNF.Ty.capt [] (.sel (.var .here) DotMNF.Examples.lA)))) :=
   DotMNF.Examples.E5
 
 theorem E5_erase : E5.erase = E5src.erase := rfl
@@ -778,12 +785,14 @@ def E8src : DotMNF.Tm [] :=
   .val (.lam DotMNF.Examples.E8Dom
     (.val (.lam (DotMNF.Examples.E8Ref .here) (.proj .here DotMNF.Examples.la))))
 
-example : DotMNF.HasTy .nil E8src
-    (.all DotMNF.Examples.E8Dom (.all (DotMNF.Examples.E8Ref .here) .top)) :=
+example : DotMNF.HasTy [] .nil E8src
+    (DotMNF.Ty.capt [] (.all DotMNF.Examples.E8Dom
+      (DotMNF.Ty.capt [] (.all (DotMNF.Examples.E8Ref .here) (DotMNF.Ty.capt [] .top))))) :=
   DotMNF.Examples.E8
 
-example : DotMNF.HasTy .nil E8src
-    (.all DotMNF.Examples.E8Dom (.all (DotMNF.Examples.E8Ref .here) .top)) :=
+example : DotMNF.HasTy [] .nil E8src
+    (DotMNF.Ty.capt [] (.all DotMNF.Examples.E8Dom
+      (DotMNF.Ty.capt [] (.all (DotMNF.Examples.E8Ref .here) (DotMNF.Ty.capt [] .top))))) :=
   DotMNF.Examples.E8b
 
 theorem E8_erase : E8.erase = E8src.erase := rfl
@@ -1290,6 +1299,277 @@ theorem C6_safe {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
         (CapAtom.cvar (ρ.var (.there (.there (.there (.there .here))))))
         [CapAtom.var x] :=
   effect_safety C6st0'_typed C6_store run C6_no_kappa2 hin hΓ'
+
+
+/-! ## S3, C2 and C7: the capture examples of stage A3a
+
+The three source derivations of `DotMNF.Examples` over the platform prefix
+of two rigid capture binders, on this side of the translation.  Each comes
+in three parts.
+
+* **The translation is typed.**  `Sᵢ_translated` is `HasTy.translate_typed`
+  at the source derivation: the translated term has the translated type in
+  the translated context.  It is not decided by the checker.  The type
+  translation `Shape.translate` and the term translation `HasTy.translate`
+  are compiled by well-founded recursion, so neither reduces in the kernel,
+  and `decide +kernel` cannot be run on a goal that mentions them.
+* **The erasure is the source term's.**  `Sᵢ_erase` is
+  `HasTy.translate_erase` at the same derivation.
+* **A target twin, decided by the checker.**  `Sᵢ_client` is the client half
+  of the example written directly in the target, in the context the
+  translation of the source types produce, and `checkTm … = true` is decided
+  in the kernel there.  The negative half of C7 is `checkTm … = false` on
+  the same twin with the empty use set and the syntactic capture evidence. -/
+
+/-- `Unit → Unit` in the target. -/
+def tArrow : Shape s := .pi (Ty.pure .top) (Ty.pure .top)
+
+/-- The type of a capability in the target. -/
+def tCapTy (κ : BVar s .cap) : Ty s := tArrow ^ [CapAtom.cvar κ]
+
+/-- Type label `C`, a capture member. -/
+def lC : Label := .typ 3
+/-- Term label `elem`. -/
+def lelem : Label := .trm 3
+/-- Term label `run`. -/
+def lrun : Label := .trm 4
+/-- Term label `e₁`. -/
+def lE1 : Label := .trm 5
+/-- Term label `e₂`. -/
+def lE2 : Label := .trm 6
+
+example : lC = DotMNF.Examples.lC := rfl
+example : lelem = DotMNF.Examples.lelem := rfl
+example : lrun = DotMNF.Examples.lrun := rfl
+example : lE1 = DotMNF.Examples.le1 := rfl
+example : lE2 = DotMNF.Examples.le2 := rfl
+
+/-- The platform context of the three examples is the context of the
+platform prefix `Platform.cons (Platform.cons Platform.nil)`. -/
+example : DotMNF.Examples.platCtx
+    = (DotMNF.Platform.cons (DotMNF.Platform.cons DotMNF.Platform.nil)).ctx := rfl
+
+/-- Its translation is the target platform prefix of two rigid binders. -/
+example : DotMNF.Examples.platCtx.translate = (Ctx.nil.consC .star).consC .star := rfl
+
+/-- The platform context is well formed, which is what
+`HasTy.translate_typed` asks of it. -/
+theorem platWf : DotMNF.Ctx.Wf DotMNF.Examples.platCtx := .consC (.consC .nil)
+
+/-! ### S3 on the target side
+
+`⟦μ(z. {A : □T..□T} ∧ {elem : z.A ^ {}})⟧` is the five-proposition object
+type below: the two bounds of the member `A`, the presence of `elem`, the
+declared shape of `elem`, and its declared capture set.  The client reads
+the field at index `2`, brings it to `z.A` by index `3` and to `□T` by index
+`1`, empties its capture set by index `4`, and unboxes at `{f}`. -/
+
+/-- `□((Unit → Unit) ^ {f})` in the target. -/
+def S3Box (f : BVar s .var) : Shape s := .box (tArrow ^ [CapAtom.var f])
+
+/-- The telescope of `⟦μ(z. {A : □T..□T} ∧ {elem : z.A ^ {}})⟧`. -/
+def S3Tel (f : BVar s .var) : Telescope (s,x) :=
+  .cons (.cons (.cons (.cons (.cons .nil
+    (.le (S3Box (.there f)) (.sel .here lA)))
+    (.le (.sel .here lA) (S3Box (.there f))))
+    (.has lelem))
+    (.le (.sel .here lelem) (.sel .here lA)))
+    (.leC [CapAtom.name .here lelem] [])
+
+/-- The object type of S3. -/
+def S3Obj (f : BVar s .var) : Shape s := .obj (S3Tel f)
+
+/-- `κ₁ ⊑ᶜ ∗, κ₂ ⊑ᶜ ∗, f : (Unit → Unit) ^ {κ₁}, o : ⟦μ(z. …)⟧`. -/
+def S3Ctx : Ctx ([],c,c,x,x) :=
+  (((Ctx.nil.consC .star).consC .star).cons
+    (.opaque (tCapTy (.there .here)))).cons (.opaque (Ty.pure (S3Obj .here)))
+
+/-- The element, read off the object and brought to the boxed type. -/
+def S3elem : Tm ([],c,c,x,x) :=
+  .cast (.proj (.var .here) lelem (.member (.var .here) (.refl (S3Obj (.there .here))) 2))
+    (.capt
+      (.trans (.member (.var .here) (.refl (S3Obj (.there .here))) 3)
+        (.member (.var .here) (.refl (S3Obj (.there .here))) 1))
+      (.member (.var .here) (.refl (S3Obj (.there .here))) 4))
+
+/-- The client of S3: read the element and unbox it at `{f}`. -/
+def S3client : Tm ([],c,c,x,x) :=
+  .let S3elem
+    (.unbox (.var .here) [CapAtom.var (.there (.there .here))]
+      (.refl [CapAtom.var (.there (.there .here))]))
+    [CapAtom.var (.there .here)]
+    (.union (.trans (.capvar (.var .here)) (.elem [] [CapAtom.var (.there (.there .here))]))
+      (.refl [CapAtom.var (.there (.there .here))]))
+
+/-- Its type: the unboxed capability, captured at `{f}`. -/
+def S3clientTy : Ty ([],c,c,x,x) := tArrow ^ [CapAtom.var (.there .here)]
+
+example : checkTm S3Ctx S3client S3clientTy = true := by decide +kernel
+
+/-- **S3, the target twin.**  The client half of S3, checked by the
+structural checker. -/
+theorem S3_client : S3Ctx ⊢ S3client : S3clientTy := checkTm_sound (by decide +kernel)
+
+/-- **S3, translated.**  The translation of the source derivation is typed
+at the translated type in the translated context. -/
+theorem S3_translated : DotMNF.Examples.platCtx.translate ⊢
+    DotMNF.Examples.S3_typed.translate : DotMNF.Examples.S3Ty.translate :=
+  DotMNF.Examples.S3_typed.translate_typed platWf
+
+/-- **S3, erased.**  The translation erases to the source term. -/
+theorem S3_erase :
+    Tm.erase DotMNF.Examples.S3_typed.translate = DotMNF.Tm.erase DotMNF.Examples.S3tm :=
+  DotMNF.HasTy.translate_erase _
+
+/-! ### C7 on the target side
+
+`⟦μ(z. {e₁ : □((Unit→Unit) ^ {κ₁}) ^ {}} ∧ {e₂ : □((Unit→Unit) ^ {κ₂}) ^ {}})⟧`
+is six propositions, three per field.  Both capture entries declare the
+empty set, which is what makes the container pure.  The client reads the
+first field and unboxes it at `{κ₁}`. -/
+
+/-- The telescope of C7's container. -/
+def C7Tel (κ1 κ2 : BVar s .cap) : Telescope (s,x) :=
+  .cons (.cons (.cons (.cons (.cons (.cons .nil
+    (.has lE1))
+    (.le (.sel .here lE1) (.box (tCapTy (.there κ1)))))
+    (.leC [CapAtom.name .here lE1] []))
+    (.has lE2))
+    (.le (.sel .here lE2) (.box (tCapTy (.there κ2)))))
+    (.leC [CapAtom.name .here lE2] [])
+
+/-- The object type of C7. -/
+def C7Obj (κ1 κ2 : BVar s .cap) : Shape s := .obj (C7Tel κ1 κ2)
+
+/-- `κ₁ ⊑ᶜ ∗, κ₂ ⊑ᶜ ∗, o : ⟦μ(z. …)⟧`. -/
+def C7Ctx : Ctx ([],c,c,x) :=
+  ((Ctx.nil.consC .star).consC .star).cons
+    (.opaque (Ty.pure (C7Obj (.there .here) .here)))
+
+/-- The first element, read off the container and brought to the boxed
+type. -/
+def C7elem : Tm ([],c,c,x) :=
+  .cast
+    (.proj (.var .here) lE1
+      (.member (.var .here) (.refl (C7Obj (.there (.there .here)) (.there .here))) 0))
+    (.capt
+      (.member (.var .here) (.refl (C7Obj (.there (.there .here)) (.there .here))) 1)
+      (.member (.var .here) (.refl (C7Obj (.there (.there .here)) (.there .here))) 2))
+
+/-- The client of C7: read the first element and unbox it at `{κ₁}`. -/
+def C7client : Tm ([],c,c,x) :=
+  .let C7elem
+    (.unbox (.var .here) [CapAtom.cvar (.there (.there (.there .here)))]
+      (.refl [CapAtom.cvar (.there (.there (.there .here)))]))
+    [CapAtom.cvar (.there (.there .here))]
+    (.union
+      (.trans (.capvar (.var .here))
+        (.elem [] [CapAtom.cvar (.there (.there (.there .here)))]))
+      (.refl [CapAtom.cvar (.there (.there (.there .here)))]))
+
+/-- Its type: the unboxed capability, captured at `{κ₁}`. -/
+def C7clientTy : Ty ([],c,c,x) := tArrow ^ [CapAtom.cvar (.there (.there .here))]
+
+example : checkTm C7Ctx C7client C7clientTy = true := by decide +kernel
+
+/-- **C7, the target twin.**  The client half of C7, checked by the
+structural checker: unboxing the first element charges `{κ₁}`. -/
+theorem C7_client : C7Ctx ⊢ C7client : C7clientTy := checkTm_sound (by decide +kernel)
+
+/-- The same client with the empty use set: the unboxing is annotated `{}`
+and its capture evidence is the syntactic inclusion `{κ₁} ⊆ {}`. -/
+def C7clientBad : Tm ([],c,c,x) :=
+  .let C7elem
+    (.unbox (.var .here) [] (.elem [CapAtom.cvar (.there (.there (.there .here)))] []))
+    []
+    (.union (.trans (.capvar (.var .here)) (.elem [] [])) (.refl []))
+
+/-- **C7, rejected.**  The client does not type with use set `{}`: the
+element's own set `{κ₁}` is not below the empty set, and there is no rule
+that would put it there over a platform prefix. -/
+theorem C7_rejected : checkTm C7Ctx C7clientBad C7clientTy = false := by decide +kernel
+
+/-- **C7, translated.** -/
+theorem C7_translated : DotMNF.Examples.platCtx.translate ⊢
+    DotMNF.Examples.C7_typed.translate : DotMNF.Examples.C7Ty.translate :=
+  DotMNF.Examples.C7_typed.translate_typed platWf
+
+/-- **C7, erased.** -/
+theorem C7_erase :
+    Tm.erase DotMNF.Examples.C7_typed.translate = DotMNF.Tm.erase DotMNF.Examples.C7tm :=
+  DotMNF.HasTy.translate_erase _
+
+/-! ### C2 on the target side
+
+`⟦μ(z. {C : {}..{κ₁,κ₂}} ∧ {run : (Unit → Unit) ^ {z.C}})⟧` is five
+propositions: the two bounds of the capture member `C`, the presence of
+`run`, its declared shape, and its declared capture set `{z.C}`.  The client
+reads `run` at index `2`, and the call it makes is charged to `{κ₁,κ₂}` by
+`capvar` composed with the upper bound of the capture member, index `1` --
+the target's reading of `sc-var` followed by `sc-sel-upper`. -/
+
+/-- The telescope of C2's abstract object type. -/
+def C2Tel (κ1 κ2 : BVar s .cap) : Telescope (s,x) :=
+  .cons (.cons (.cons (.cons (.cons .nil
+    (.leC [] [CapAtom.name .here lC]))
+    (.leC [CapAtom.name .here lC]
+      [CapAtom.cvar (.there κ1), CapAtom.cvar (.there κ2)]))
+    (.has lrun))
+    (.le (.sel .here lrun) tArrow))
+    (.leC [CapAtom.name .here lrun] [CapAtom.name .here lC])
+
+/-- The abstract object type of C2. -/
+def C2Obj (κ1 κ2 : BVar s .cap) : Shape s := .obj (C2Tel κ1 κ2)
+
+/-- `κ₁ ⊑ᶜ ∗, κ₂ ⊑ᶜ ∗, x : ⟦μ(z. …)⟧ ^ {κ₁,κ₂}, u : Unit`. -/
+def C2Ctx : Ctx ([],c,c,x,x) :=
+  (((Ctx.nil.consC .star).consC .star).cons
+    (.opaque (C2Obj (.there .here) .here
+      ^ [CapAtom.cvar (.there .here), CapAtom.cvar .here]))).cons
+    (.opaque (Ty.pure .top))
+
+/-- The closure, read off the abstract member. -/
+def C2run : Tm ([],c,c,x,x) :=
+  .cast
+    (.proj (.var (.there .here)) lrun
+      (.member (.var (.there .here))
+        (.refl (C2Obj (.there (.there (.there .here))) (.there (.there .here)))) 2))
+    (.capt
+      (.member (.var (.there .here))
+        (.refl (C2Obj (.there (.there (.there .here))) (.there (.there .here)))) 3)
+      (.member (.var (.there .here))
+        (.refl (C2Obj (.there (.there (.there .here))) (.there (.there .here)))) 4))
+
+/-- The client of C2: read the closure off the abstract member and call it.
+Its use set is `{κ₁,κ₂}`, by `capvar` and the member's upper bound. -/
+def C2client : Tm ([],c,c,x,x) :=
+  .let C2run (.app (.var .here) (.var (.there .here)))
+    [CapAtom.cvar (.there (.there (.there .here))),
+      CapAtom.cvar (.there (.there .here))]
+    (.union
+      (.trans (.capvar (.var .here))
+        (.member (.var (.there (.there .here)))
+          (.refl (C2Obj (.there (.there (.there (.there .here))))
+            (.there (.there (.there .here))))) 1))
+      (.trans (.capvar (.var (.there .here)))
+        (.elem [] [CapAtom.cvar (.there (.there (.there (.there .here)))),
+          CapAtom.cvar (.there (.there (.there .here)))])))
+
+example : checkTm C2Ctx C2client (Ty.pure .top) = true := by decide +kernel
+
+/-- **C2, the target twin.**  The client half of C2, checked by the
+structural checker. -/
+theorem C2_client : C2Ctx ⊢ C2client : Ty.pure .top := checkTm_sound (by decide +kernel)
+
+/-- **C2, translated.** -/
+theorem C2_translated : DotMNF.Examples.platCtx.translate ⊢
+    DotMNF.Examples.C2_typed.translate : DotMNF.Examples.C2Ty.translate :=
+  DotMNF.Examples.C2_typed.translate_typed platWf
+
+/-- **C2, erased.** -/
+theorem C2_erase :
+    Tm.erase DotMNF.Examples.C2_typed.translate = DotMNF.Tm.erase DotMNF.Examples.C2tm :=
+  DotMNF.HasTy.translate_erase _
 
 
 end Examples

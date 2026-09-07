@@ -9,6 +9,12 @@ One monadic-normal-form store machine that both the DOT-MNF source and the
 FCdot target erase into.  Signatures are reused from `FCdot.Debruijn`.  Only
 term binders carry runtime content; a capture binder has a store slot with no
 data, so that erasure maps slot to slot.
+
+The runtime carries an inert box of its own: `Tm.box x` is a value and
+`Tm.unbox x` a term, with one step that reads the box the store holds at `x`
+and continues at its content.  Both calculi erase their boxes to it, so a box
+and an object literal never share an erasure and the backward simulations
+need no side condition to tell them apart.
 -/
 
 namespace Runtime
@@ -25,6 +31,10 @@ inductive Tm : Sig → Type where
   | app : BVar s .var → BVar s .var → Tm s
   | proj : BVar s .var → Label → Tm s
   | «let» : Tm s → Tm (s,x) → Tm s
+  /-- An inert box holding a variable.  It is a value. -/
+  | box : BVar s .var → Tm s
+  /-- Open a box: read the variable the box at `x` holds. -/
+  | unbox : BVar s .var → Tm s
 
 inductive Fields : Sig → Type where
   | nil : Fields s
@@ -47,6 +57,8 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .app x y, ρ => .app (ρ.var x) (ρ.var y)
   | .proj x ℓ, ρ => .proj (ρ.var x) ℓ
   | .let t u, ρ => .let (t.rename ρ) (u.rename ρ.lift)
+  | .box x, ρ => .box (ρ.var x)
+  | .unbox x, ρ => .unbox (ρ.var x)
 
 def Fields.rename : Fields s1 → Rename s1 s2 → Fields s2
   | .nil, _ => .nil
@@ -60,14 +72,15 @@ def Tm.substVar (t : Tm (s,,k)) (y : BVar s k) : Tm s := t.rename (Rename.subst 
 /-! ## The inspected root
 
 The variable whose stored value the next step reads: the function of an
-application and the receiver of a projection.  Every other runtime term
-reads no slot.  The target's `unbox` erases to a projection at the same
-root, so the two readings agree; that fact belongs to erasure, and the facts
-here are about the runtime alone. -/
+application, the receiver of a projection, and the box an `unbox` opens.
+Every other runtime term reads no slot.  Both calculi erase an unboxing to
+the runtime's `unbox` at the same root, so the two readings agree; that fact
+belongs to erasure, and the facts here are about the runtime alone. -/
 
 def Tm.inspects : Tm s → Option (BVar s .var)
   | .app x _ => some x
   | .proj x _ => some x
+  | .unbox x => some x
   | _ => none
 
 @[simp] theorem Tm.inspects_app (x y : BVar s .var) : (Tm.app x y).inspects = some x := rfl
@@ -77,6 +90,8 @@ def Tm.inspects : Tm s → Option (BVar s .var)
 @[simp] theorem Tm.inspects_lam (t : Tm (s,x)) : (Tm.lam t).inspects = none := rfl
 @[simp] theorem Tm.inspects_obj (F : Fields (s,x)) : (Tm.obj F).inspects = none := rfl
 @[simp] theorem Tm.inspects_let (t : Tm s) (u : Tm (s,x)) : (Tm.let t u).inspects = none := rfl
+@[simp] theorem Tm.inspects_box (x : BVar s .var) : (Tm.box x).inspects = none := rfl
+@[simp] theorem Tm.inspects_unbox (x : BVar s .var) : (Tm.unbox x).inspects = some x := rfl
 
 theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
     (t.rename ρ).inspects = t.inspects.map ρ.var := by
@@ -87,6 +102,8 @@ theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
   | .app x y => simp [Tm.rename]
   | .proj x ℓ => simp [Tm.rename]
   | .let t u => simp [Tm.rename]
+  | .box x => simp [Tm.rename]
+  | .unbox x => simp [Tm.rename]
 
 theorem Tm.inspects_substVar {s : Sig} {k : Kind} (t : Tm (s,,k)) (y : BVar s k) :
     (t.substVar y).inspects = t.inspects.map (Rename.subst y).var :=
@@ -99,6 +116,7 @@ theorem Tm.inspects_weaken {s : Sig} {k : Kind} (t : Tm s) :
 inductive IsValue : Tm s → Prop where
   | lam : IsValue (.lam t)
   | obj : IsValue (.obj F)
+  | box : IsValue (.box x)
 
 /-- A store: one slot per term binder, and a data-free slot per capture
 binder.  (`consᶜ` of the plan: `ᶜ` is not a legal Lean identifier character,
@@ -134,6 +152,9 @@ inductive Step : State s → State s' → Prop where
   | rename : Step ⟨σ, .cons K u, .var y⟩ ⟨σ, K, u.substVar y⟩
   | app : σ.lookup x = .lam t → Step ⟨σ, K, .app x y⟩ ⟨σ, K, t.substVar y⟩
   | proj : σ.lookup x = .obj F → F.get? ℓ = some t → Step ⟨σ, K, .proj x ℓ⟩ ⟨σ, K, t.substVar x⟩
+  /-- Unboxing: read the box the store holds at `x` and continue at its
+      content.  The box is inert, so nothing is substituted. -/
+  | unbox : σ.lookup x = .box y → Step ⟨σ, K, .unbox x⟩ ⟨σ, K, .var y⟩
 
 inductive Steps : State s → State s' → Prop where
   | refl : Steps st st

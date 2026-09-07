@@ -4,29 +4,38 @@ import Coercions.Captures.DotToFCdot.EvidenceTyped
 namespace Captures
 
 /-!
-# Typedness of the term translation (Plan III §8.2, M4)
+# Typedness of the term translation (Plan III §8.2, M4; stage A3a)
 
-Every typing derivation of DOT-MNF translates to an FCdot term of the translated type,
-and the definitions of an object literal translate to fields of the literal's own block
-names.  The two theorems are mutual, as `HasTy` and `DefsTy` are.
+Every typing derivation of DOT-MNF^cc translates to an FCdot term of the
+translated type, its use-set evidence is typed at the translated use set, and
+the definitions of an object literal translate to fields of the literal's own
+block names.  The three theorems are mutual, as `HasTy` and `DefsTy` are.
 
-Three cases carry the content:
+Four cases carry the content:
 
-* `{}-I` builds an FCdot literal from the *declaration type*: its witnesses are the exact
-  bounds of the type members and the declared types of the fields (`Ty.witnesses`), its
-  labels are the field labels (`Ty.fieldLabels`), and its fields are the translated
-  definitions.  The literal has its precise type `T.literalTy`, from which `litCo` (M3)
-  coerces to `⟦μ(x. T)⟧`.  The one side fact that makes the value rule apply is that the
-  translated fields' labels are exactly `T.fieldLabels` (`DefsTy.translateFields_labels`);
-  the target's alias-tolerant resolution admits same-block aliases among the witnesses
-  (including cycles, which resolve to `⊤`), so the translation no longer has to prove
-  the witnesses alias-free.
-* Each field body is typed at its declared type but must be typed at the block name
-  `self ∙ a`; the definition equality `self ∙ a ≐ W.get a` of the transparent self binder
-  turns one into the other, and distinctness identifies `W.get a` with the field's own
-  translated type (`Ty.DefSpec`, `defSpec_of`).
-* `{}-E` gives `x ∙ a`, not `⟦T⟧`; the translation casts by the bound `self ∙ a ⊑ ⟦T⟧↑`,
-  the proposition at index 1 of `(Ty.fld a T).tel`, instantiated at `x`.
+* `{}-I` builds an FCdot literal from the *declaration shape*: its type
+  witnesses are the exact bounds of the type members and the declared shapes
+  of the fields (`Shape.witnesses`), its capture witnesses are the declared
+  capture sets of the fields and the definitions of the capture members
+  (`Shape.capWitnesses`), its labels are the field labels
+  (`Shape.fieldLabels`), and its fields are the translated definitions.  The
+  literal has its precise type `Shape.literalTy` at the assigned set `⟦U⟧`,
+  from which `litCo` coerces to `⟦(μ(x. S)) ^ U⟧`.
+* Each field body is typed at its declared type but must be typed at the
+  block name `self ∙ a` captured at the capture name `{self ∙ a}`.  The
+  definition equality `self ∙ a ≐ W.get a` and the capture definition
+  `{self ∙ a} ≐ᶜ Wᶜ.get a` of the transparent self binder turn one into the
+  other, and distinctness identifies the two witnesses with the field's own
+  declared shape and declared capture set (`Shape.DefSpec`,
+  `Shape.CapDefSpec`).
+* `{}-E` gives `(x ∙ a) ^ {x∙a}`, not `⟦T⟧`.  The translation casts by the
+  bound `self ∙ a ⊑ ⟦S⟧↑` at index 1 and the capture entry
+  `{self∙a} ⊑ᶜ ⟦C⟧↑` at index 2 of `(Shape.fld a (S ^ C)).tel`, both
+  instantiated at `x`.
+* Every binder of the target that declares a capture set takes its evidence
+  from the source's own use-set evidence.  A lambda, a literal's field, a let
+  and an unboxing each declare the translated source use set, and
+  `HasTy.translate_uses` is what discharges them.
 -/
 
 namespace FCdot
@@ -59,51 +68,60 @@ open scoped FCdot
 
 /-! ## The labels of the translated fields -/
 
-theorem DefsTy.translateFields_labels : ∀ {s : Sig} {Γ : Ctx (s,x)} {d : Defs (s,x)}
-    {T : Ty (s,x)} (h : DefsTy Γ d T), h.translateFields.labels = T.fieldLabels
-  | _, _, _, _, .typ => by
+theorem DefsTy.translateFields_labels : ∀ {s : Sig} {U : CaptureSet (s,x)} {Γ : Ctx (s,x)}
+    {d : Defs (s,x)} {S : Shape (s,x)} (h : DefsTy U Γ d S),
+    h.translateFields.labels = S.fieldLabels
+  | _, _, _, _, _, .typ => by
       simp only [DefsTy.translateFields]
-      simp [FCdot.Fields.labels, Ty.fieldLabels]
-  | _, _, _, _, .trm _ => by
+      simp [FCdot.Fields.labels, Shape.fieldLabels]
+  | _, _, _, _, _, .cap => by
       simp only [DefsTy.translateFields]
-      simp [FCdot.Fields.labels, Ty.fieldLabels]
-  | _, _, _, _, .and h₁ h₂ => by
+      simp [FCdot.Fields.labels, Shape.fieldLabels]
+  | _, _, _, _, _, .trm _ => by
+      simp only [DefsTy.translateFields]
+      simp [FCdot.Fields.labels, Shape.fieldLabels]
+  | _, _, _, _, _, .and h₁ h₂ => by
       simp only [DefsTy.translateFields]
       rw [FCdot.Fields.labels_append, h₂.translateFields_labels, h₁.translateFields_labels,
-        Ty.fieldLabels]
+        Shape.fieldLabels]
 
 /-! ## What a field body needs from the literal's witnesses
 
-A field's body is typed at its declared type and is cast to the block name `self ∙ a` by
-the definition equality of the transparent self binder, which reads `self ∙ a ≐ W.get a`
-for the witnesses `W` of the *whole* literal.  So the field's declared type must be what
-`W.get` returns at its label; distinctness gives it. -/
+A field's body is typed at its declared type and is cast to the block name
+`self ∙ a` and the capture name `{self ∙ a}` by the definition equality and
+the capture definition of the transparent self binder.  Those read
+`self ∙ a ≐ W.get a` and `{self ∙ a} ≐ᶜ Wᶜ.get a` for the witnesses `W` and
+`Wᶜ` of the *whole* literal.  So the field's declared shape must be what
+`W.get` returns at its label and its declared capture set what `Wᶜ.get`
+returns there.  Distinctness gives both. -/
 
-/-- `Wall.get` returns the translated declared type at every field of `T`. -/
-def Ty.DefSpec {s : Sig} (Wall : FCdot.Witnesses (s,x)) : Ty (s,x) → Prop
-  | .fld a T => Wall.get a = T.translateShape
-  | .and S T => Ty.DefSpec Wall S ∧ Ty.DefSpec Wall T
+/-- `Wall.get` returns the translated declared shape at every field of `S`. -/
+def Shape.DefSpec {s : Sig} (Wall : FCdot.Witnesses (s,x)) : Shape (s,x) → Prop
+  | .fld a (.capt _ S) => Wall.get a = S.translate
+  | .and S T => Shape.DefSpec Wall S ∧ Shape.DefSpec Wall T
   | _ => True
 
 theorem defSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distinct) :
-    ∀ (T : Ty (s,x)) (e : Nat),
-      (∀ i l X, FCdot.Witnesses.At T.witnesses i l X → FCdot.Witnesses.At Wall (e + i) l X) →
-      Ty.DefSpec Wall T
-  | .top, _, _ => by simp [Ty.DefSpec]
-  | .bot, _, _ => by simp [Ty.DefSpec]
-  | .sel _ _, _, _ => by simp [Ty.DefSpec]
-  | .all _ _, _, _ => by simp [Ty.DefSpec]
-  | .mu _, _, _ => by simp [Ty.DefSpec]
-  | .typ _ _ _, _, _ => by simp [Ty.DefSpec]
-  | .fld a T', e, hpos => by
-      simp only [Ty.witnesses] at hpos
-      have h1 := hpos 0 a T'.translateShape FCdot.Witnesses.At.hereNil
+    ∀ (S : Shape (s,x)) (e : Nat),
+      (∀ i l X, FCdot.Witnesses.At S.witnesses i l X → FCdot.Witnesses.At Wall (e + i) l X) →
+      Shape.DefSpec Wall S
+  | .top, _, _ => by simp [Shape.DefSpec]
+  | .bot, _, _ => by simp [Shape.DefSpec]
+  | .sel _ _, _, _ => by simp [Shape.DefSpec]
+  | .all _ _, _, _ => by simp [Shape.DefSpec]
+  | .box _, _, _ => by simp [Shape.DefSpec]
+  | .mu _, _, _ => by simp [Shape.DefSpec]
+  | .typ _ _ _, _, _ => by simp [Shape.DefSpec]
+  | .cap _ _ _, _, _ => by simp [Shape.DefSpec]
+  | .fld a (.capt C S'), e, hpos => by
+      simp only [Shape.witnesses] at hpos
+      have h1 := hpos 0 a S'.translate FCdot.Witnesses.At.hereNil
       rw [Nat.add_zero] at h1
-      rw [Ty.DefSpec]
+      rw [Shape.DefSpec]
       exact h1.get hdist
   | .and S T', e, hpos => by
-      simp only [Ty.witnesses] at hpos
-      rw [Ty.DefSpec]
+      simp only [Shape.witnesses] at hpos
+      rw [Shape.DefSpec]
       refine ⟨defSpec_of hdist S e (fun i l X hAt => hpos i l X (hAt.append_left _)), ?_⟩
       refine defSpec_of hdist T' (e + S.witnesses.length) (fun i l X hAt => ?_)
       have hh := hpos (S.witnesses.length + i) l X
@@ -111,193 +129,256 @@ theorem defSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distin
       rw [show e + (S.witnesses.length + i) = e + S.witnesses.length + i by omega] at hh
       exact hh
 
-/-- A declaration type with distinct labels satisfies its own specification. -/
-theorem Ty.defSpec_self {s : Sig} (T : Ty (s,x)) (hdl : Ty.DistinctLabels T) :
-    Ty.DefSpec T.witnesses T :=
-  defSpec_of (Ty.witnesses_distinct T hdl) T 0 (fun i l X hAt => by
+/-- A declaration shape with distinct labels satisfies its own type
+specification. -/
+theorem Shape.defSpec_self {s : Sig} (S : Shape (s,x)) (hdl : Shape.DistinctLabels S) :
+    Shape.DefSpec S.witnesses S :=
+  defSpec_of (Shape.witnesses_distinct S hdl) S 0 (fun i l X hAt => by
     rw [Nat.zero_add]; exact hAt)
 
-/-! ## Use sets, purity, and the evidence of a translated binder
+/-- `Wall.get` returns the translated declared capture set at every field of
+`S`.  The capture twin of `Shape.DefSpec`.  A capture member declares its own
+name, which no field body reads, so it falls in the catch-all. -/
+def Shape.CapDefSpec {s : Sig} (Wall : FCdot.CapWitnesses (s,x)) : Shape (s,x) → Prop
+  | .fld a (.capt C _) => Wall.get a = C.translate
+  | .and S T => Shape.CapDefSpec Wall S ∧ Shape.CapDefSpec Wall T
+  | _ => True
 
-Every binder of a translated context has a pure type, so a variable's own
-capture set is below the empty set (`pureEvidence`).  The use set of a
-translated term is a set of such variables, because a translated let
-declares the empty use set and no translated term unboxes. -/
+theorem capDefSpec_of {s : Sig} {Wall : FCdot.CapWitnesses (s,x)} (hdist : Wall.Distinct) :
+    ∀ (S : Shape (s,x)) (e : Nat),
+      (∀ i l C, FCdot.CapWitnesses.At S.capWitnesses i l C →
+        FCdot.CapWitnesses.At Wall (e + i) l C) →
+      Shape.CapDefSpec Wall S
+  | .top, _, _ => by simp [Shape.CapDefSpec]
+  | .bot, _, _ => by simp [Shape.CapDefSpec]
+  | .sel _ _, _, _ => by simp [Shape.CapDefSpec]
+  | .all _ _, _, _ => by simp [Shape.CapDefSpec]
+  | .box _, _, _ => by simp [Shape.CapDefSpec]
+  | .mu _, _, _ => by simp [Shape.CapDefSpec]
+  | .typ _ _ _, _, _ => by simp [Shape.CapDefSpec]
+  | .cap _ _ _, _, _ => by simp [Shape.CapDefSpec]
+  | .fld a (.capt C _), e, hpos => by
+      simp only [Shape.capWitnesses] at hpos
+      have h1 := hpos 0 a C.translate FCdot.CapWitnesses.At.hereNil
+      rw [Nat.add_zero] at h1
+      rw [Shape.CapDefSpec]
+      exact h1.get hdist
+  | .and S T', e, hpos => by
+      simp only [Shape.capWitnesses] at hpos
+      rw [Shape.CapDefSpec]
+      refine ⟨capDefSpec_of hdist S e (fun i l C hAt => hpos i l C (hAt.append_left _)), ?_⟩
+      refine capDefSpec_of hdist T' (e + S.capWitnesses.length) (fun i l C hAt => ?_)
+      have hh := hpos (S.capWitnesses.length + i) l C
+        (FCdot.CapWitnesses.At.append_right S.capWitnesses hAt)
+      rw [show e + (S.capWitnesses.length + i) = e + S.capWitnesses.length + i by omega] at hh
+      exact hh
 
-/-- Every term binder of a translated context is pure. -/
-theorem Ctx.translate_pure {s : Sig} :
-    ∀ (Γ : Ctx s) (y : BVar s .var), (Γ.translate.lookupTy y).captureSet = []
-  | .cons Γ T, .here => by
-      rw [Ctx.translate, FCdot.Ctx.lookupTy, FCdot.Ty.captureSet_weaken]
-      rfl
-  | .cons Γ T, .there y => by
-      rw [Ctx.translate, FCdot.Ctx.lookupTy, FCdot.Ty.captureSet_weaken,
-        Ctx.translate_pure Γ y]
-      rfl
-  | .consSelf Γ d T, .here => by
-      rw [Ctx.translate, FCdot.Ctx.lookupTy, FCdot.Ty.captureSet_weaken]
-      rfl
-  | .consSelf Γ d T, .there y => by
-      rw [Ctx.translate, FCdot.Ctx.lookupTy, FCdot.Ty.captureSet_weaken,
-        Ctx.translate_pure Γ y]
-      rfl
+/-- A declaration shape with distinct labels satisfies its own capture
+specification. -/
+theorem Shape.capDefSpec_self {s : Sig} (S : Shape (s,x)) (hdl : Shape.DistinctLabels S) :
+    Shape.CapDefSpec S.capWitnesses S :=
+  capDefSpec_of (Shape.capWitnesses_distinct S hdl) S 0 (fun i l C hAt => by
+    rw [Nat.zero_add]; exact hAt)
 
-/-- In a context all of whose term binders are pure, `pureEvidence` puts a
-set of term variables below the empty set. -/
-theorem pureEvidence_typed {s : Sig} {Γ : FCdot.Ctx s}
-    (hpure : ∀ y : BVar s .var, (Γ.lookupTy y).captureSet = []) :
-    ∀ (C : FCdot.CaptureSet s), C.AllVar → Γ ⊢ᶜ pureEvidence C : C ⊑ []
-  | [], _ => by rw [pureEvidence]; exact .refl
-  | .var y :: C, h => by
-      have hty : Γ.lookupTy y = (Γ.lookupTy y).shape ^ [] := by
-        cases hl : Γ.lookupTy y with
-        | capt D S =>
-            have hD : D = [] := by
-              have := hpure y; rw [hl] at this; simpa using this
-            rw [hD]; rfl
-      have hv : Γ ⊢ₐ (FCdot.Atom.var y) : (Γ.lookupTy y).shape ^ [] := by
-        rw [← hty]; exact .var
-      have hcv : Γ ⊢ᶜ FCdot.CapCo.capvar (.var y) : [FCdot.CapAtom.var y] ⊑ [] := by
-        simpa [FCdot.Atom.root] using FCdot.CapCo.HasType.capvar hv
-      have hun := FCdot.CapCo.HasType.union hcv (pureEvidence_typed hpure C h)
-      rw [pureEvidence]
-      simpa using hun
-  | .cvar _ :: _, h => h.elim
-  | .name _ _ :: _, h => h.elim
+/-! ## The use set of a translated variable term
 
-/-- The closing evidence of a translated lambda body or of a translated
-field is typed at the closing set of any assigned set. -/
-theorem closingEvidence_typed {s : Sig} {Γ : FCdot.Ctx (s,x)} {t : FCdot.Tm (s,x)}
-    (hpure : ∀ y : BVar (s,x) .var, (Γ.lookupTy y).captureSet = [])
-    (hall : t.uses.AllVar) (A : FCdot.CaptureSet s) :
-    Γ ⊢ᶜ closingEvidence A t : t.uses ⊑ (A↑ ∪ [FCdot.CapAtom.var .here]) := by
-  rw [closingEvidence]
-  refine .trans (pureEvidence_typed hpure _ hall) (.elem ?_)
-  intro a ha
-  simp at ha
+Every rule that concludes at a variable produces an atom, possibly under
+casts, so the use set of the translated term is the singleton of the
+variable.  This is what makes `HasTy.translate_uses` at an atom derivation
+the plan's `{x} ⊑ ⟦U⟧`. -/
 
-/-- The use set of a translated term holds term variables only. -/
-theorem HasTy.translate_uses_allVar : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : HasTy Γ t T), (h.translate.uses).AllVar
-  | _, _, _, _, .var => by
-      simp only [HasTy.translate]; simp [FCdot.CaptureSet.AllVar]
-  | _, _, _, _, .lam _ _ => by
-      simp only [HasTy.translate]; simp [FCdot.CaptureSet.AllVar]
-  | _, _, _, _, .app _ _ => by
-      simp only [HasTy.translate]; simp [FCdot.CaptureSet.AllVar]
-  | _, _, _, _, .obj _ _ => by
-      simp only [HasTy.translate]; simp [FCdot.CaptureSet.AllVar]
-  | _, _, _, _, .proj _ => by
-      simp only [HasTy.translate]; simp [FCdot.CaptureSet.AllVar]
-  | _, _, _, _, .let h₁ _ _ => by
-      have ih := HasTy.translate_uses_allVar h₁
-      simp only [HasTy.translate]
-      simpa using ih
-  | _, _, _, _, .recI _ _ => by
-      simp only [HasTy.translate]; simp [FCdot.CaptureSet.AllVar]
-  | _, _, _, _, .recE _ _ => by
-      simp only [HasTy.translate]; simp [FCdot.CaptureSet.AllVar]
-  | _, _, _, _, .andI _ _ => by
-      simp only [HasTy.translate]; simp [FCdot.CaptureSet.AllVar]
-  | _, _, _, _, .sub h _ => by
-      have ih := HasTy.translate_uses_allVar h
-      simp only [HasTy.translate]
-      simpa using ih
+theorem HasTy.translate_uses_atom : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s}
+    {y : BVar s .var} {T : Ty s} (h : HasTy U Γ (.path (.var y)) T),
+    h.translate.uses = [FCdot.CapAtom.var y]
+  | _, _, Γ, y, _, .var => by
+      rw [HasTy.translate]; simp [FCdot.Atom.root, Ctx.varAtom_root Γ y]
+  | _, _, _, _, _, .recI h hd => by
+      rw [HasTy.translate]
+      simp [HasTy.translateAtom_root (HasTy.recI h hd)]
+  | _, _, _, _, _, .recE h hd => by
+      rw [HasTy.translate]
+      simp [HasTy.translateAtom_root (HasTy.recE h hd)]
+  | _, _, _, _, _, .andI h₁ h₂ => by
+      rw [HasTy.translate]
+      simp [HasTy.translateAtom_root (HasTy.andI h₁ h₂)]
+  | _, _, _, _, _, .sub h _ _ => by
+      rw [HasTy.translate]
+      simpa using HasTy.translate_uses_atom h
 
-/-! ## Typedness of the term and field translations -/
+/-! ## Typedness of the term, use-set and field translations -/
 
 mutual
 
-theorem HasTy.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : HasTy Γ t T), Γ.Wf →
+theorem HasTy.translate_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t : Tm s} {T : Ty s}
+    (h : HasTy U Γ t T), Γ.Wf →
     FCdot.Tm.HasType Γ.translate h.translate T.translate
-  | _, Γ, _, _, @HasTy.var _ _ x, hwf => by
+  | _, _, Γ, _, _, @HasTy.var _ _ x, hwf => by
+      have ha := HasTy.translateAtom_typed (@HasTy.var _ Γ x) hwf
+      rw [HasTy.translateAtom] at ha
       simp only [HasTy.translate]
-      exact .atom (Ctx.varAtom_typed Γ hwf x)
-  | _, Γ, _, _, @HasTy.lam _ _ _ S _ h _, hwf => by
-      simp only [HasTy.translate, Ty.translate_all]
+      exact .atom ha
+  | _, _, _, _, _, @HasTy.lam _ _ U T1 _ _ h _, hwf => by
+      simp only [HasTy.translate, Ty.translate_capt, Shape.translate_all_eq]
       refine .val (.lam (HasTy.translate_typed h (.cons hwf)) ?_)
-      exact closingEvidence_typed (Γ := (Γ.cons S).translate) (Ctx.translate_pure (Γ.cons S))
-        (HasTy.translate_uses_allVar h) []
-  | _, _, _, _, .app h₁ h₂, hwf => by
+      simpa using HasTy.translate_uses h (.cons hwf)
+  | _, _, _, _, _, .app h₁ h₂, hwf => by
       have ha := HasTy.translateAtom_typed h₁ hwf
       have hb := HasTy.translateAtom_typed h₂ hwf
-      rw [Ty.translate_all] at ha
+      rw [Ty.translate_capt, Shape.translate_all_eq] at ha
       have happ := FCdot.Tm.HasType.app ha hb
       rw [HasTy.translateAtom_root h₂] at happ
       simp only [HasTy.translate, Ty.translate_substVar]
       exact happ
-  | _, Γ, _, _, @HasTy.obj _ d T _ hd hdist, hwf => by
-      have hlab : hd.translateFields.labels = T.fieldLabels := hd.translateFields_labels
-      have hdl : Ty.DistinctLabels T := hd.distinctLabels hdist
-      have hf : FCdot.Fields.HasType (Γ.consSelf d T).translate [] hd.translateFields :=
-        hd.translateFields_typed (.consSelf hwf hd.literalShape hdl) (Ty.defSpec_self T hdl)
+  | _, _, Γ, _, _, @HasTy.obj _ _ U d S hd hdist, hwf => by
+      have hlab : hd.translateFields.labels = S.fieldLabels := hd.translateFields_labels
+      have hdl : Shape.DistinctLabels S := hd.distinctLabels hdist
+      have hf : FCdot.Fields.HasType (Γ.consSelf d S U).translate U.translate
+          hd.translateFields :=
+        hd.translateFields_typed (.consSelf hwf hd.literalShape hdl)
+          (Shape.defSpec_self S hdl) (Shape.capDefSpec_self S hdl)
       have hval : FCdot.Value.HasType Γ.translate
-          (.obj [] T.witnesses T.capWitnesses hd.translateFields)
-          ((μ (FCdot.Telescope.ofLiteral T.witnesses T.capWitnesses hd.translateFields.labels)) ^ []) :=
+          (.obj U.translate S.witnesses S.capWitnesses hd.translateFields)
+          ((μ (FCdot.Telescope.ofLiteral S.witnesses S.capWitnesses
+            hd.translateFields.labels)) ^ U.translate) :=
         .obj (by rw [hlab]; exact hf)
       rw [hlab] at hval
       simp only [HasTy.translate]
-      exact .cast (.val hval) (litCo_pure_typed hd hdist)
-  | _, _, _, _, @HasTy.proj _ _ _ a T h, hwf => by
+      exact .cast (.val hval) (litCo_atC_typed hd hdist U)
+  | _, _, _, _, _, @HasTy.box _ _ _ _ _ h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
-      rw [Ty.translate_fld, Ty.tel_fld] at ha
+      simp only [HasTy.translate, Ty.translate_capt, Shape.translate_box_eq]
+      exact .val (.box ha)
+  | _, _, _, _, _, @HasTy.proj _ _ _ _ a (.capt CT ST) _ h, hwf => by
+      have ha := HasTy.translateAtom_typed h hwf
+      rw [Ty.translate_capt, Shape.translate_fld, Shape.tel_fld] at ha
       have hhas := FCdot.Has.HasType.member ha .refl (FCdot.Telescope.At.zero_three _ _ _)
       have hle := FCdot.ShapeCo.HasType.member ha .refl (FCdot.Telescope.At.one_three _ _ _)
       have hcap := FCdot.CapCo.HasType.member ha .refl (FCdot.Telescope.At.two_three _ _ _)
       rw [FCdot.Shape.substVar_sel_here, FCdot.Shape.weaken_substVar] at hle
-      rw [FCdot.CaptureSet.substVar_name_here, FCdot.CaptureSet.substVar_nil] at hcap
-      simp only [HasTy.translate, Ty.translateShape_fld, Ty.tel_fld]
+      rw [FCdot.CaptureSet.substVar_name_here, FCdot.CaptureSet.weaken_substVar'] at hcap
+      simp only [HasTy.translate, Shape.translate_fld, Shape.tel_fld, Ty.translate_capt]
       exact .cast (.proj ha hhas) (.capt hle hcap)
-  | _, Γ, _, _, @HasTy.let _ _ _ T _ _ h₁ h₂ _, hwf => by
+  | _, _, _, _, _, @HasTy.let _ _ U _ _ _ _ h₁ h₂ _, hwf => by
       have ih₂ := HasTy.translate_typed h₂ (.cons hwf)
       rw [Ty.translate_weaken] at ih₂
+      have hu := HasTy.translate_uses h₂ (.cons hwf)
+      rw [CaptureSet.translate_weaken] at hu
       simp only [HasTy.translate]
-      refine .let (HasTy.translate_typed h₁ hwf) ih₂ ?_
-      exact pureEvidence_typed (Γ := (Γ.cons T).translate) (Ctx.translate_pure (Γ.cons T))
-        _ (HasTy.translate_uses_allVar h₂)
-  | _, _, _, _, .recI h hd, hwf => by
+      exact .let (HasTy.translate_typed h₁ hwf) ih₂ hu
+  | _, _, _, _, _, @HasTy.unbox _ _ _ _ _ _ _ h f, hwf => by
+      have ha := HasTy.translateAtom_typed h hwf
+      rw [Ty.translate_capt, Shape.translate_box_eq, Ty.translate_capt] at ha
+      simp only [HasTy.translate, Ty.translate_capt]
+      exact .unbox ha (f.translate_typed hwf)
+  | _, _, _, _, _, .recI h hd, hwf => by
       simp only [HasTy.translate]
       exact .atom (HasTy.translateAtom_typed (.recI h hd) hwf)
-  | _, _, _, _, .recE h hd, hwf => by
+  | _, _, _, _, _, .recE h hd, hwf => by
       simp only [HasTy.translate]
       exact .atom (HasTy.translateAtom_typed (.recE h hd) hwf)
-  | _, _, _, _, .andI h₁ h₂, hwf => by
+  | _, _, _, _, _, .andI h₁ h₂, hwf => by
       simp only [HasTy.translate]
       exact .atom (HasTy.translateAtom_typed (.andI h₁ h₂) hwf)
-  | _, _, _, _, .sub h d, hwf => by
+  | _, _, _, _, _, .sub h d _, hwf => by
       simp only [HasTy.translate]
       exact .cast (HasTy.translate_typed h hwf) (d.translate_typed hwf)
 
-theorem DefsTy.translateFields_typed : ∀ {s : Sig} {Γ : Ctx s} {d : Defs (s,x)} {Tall : Ty (s,x)}
-    {d' : Defs (s,x)} {T' : Ty (s,x)} (h : DefsTy (Γ.consSelf d Tall) d' T'),
-    (Γ.consSelf d Tall).Wf → Ty.DefSpec Tall.witnesses T' →
-    FCdot.Fields.HasType (Γ.consSelf d Tall).translate [] h.translateFields
-  | _, _, _, _, _, _, .typ, _, _ => by
+theorem HasTy.translate_uses : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t : Tm s} {T : Ty s}
+    (h : HasTy U Γ t T), Γ.Wf →
+    FCdot.CapCo.HasType Γ.translate h.translateUses h.translate.uses U.translate
+  | _, _, Γ, _, _, @HasTy.var _ _ x, _ => by
+      rw [HasTy.translateUses, HasTy.translate_uses_atom (@HasTy.var _ Γ x)]
+      exact .refl
+  | _, _, _, _, _, .lam _ _, _ => by
+      rw [HasTy.translateUses, HasTy.translate]
+      exact .refl
+  | _, _, _, _, _, .app h₁ h₂, hwf => by
+      have hu₁ := HasTy.translate_uses h₁ hwf
+      have hu₂ := HasTy.translate_uses h₂ hwf
+      rw [HasTy.translate_uses_atom h₁] at hu₁
+      rw [HasTy.translate_uses_atom h₂] at hu₂
+      rw [HasTy.translateUses, HasTy.translate]
+      simpa [FCdot.Tm.uses, HasTy.translateAtom_root h₁, HasTy.translateAtom_root h₂]
+        using FCdot.CapCo.HasType.union hu₁ hu₂
+  | _, _, _, _, _, .obj _ _, _ => by
+      rw [HasTy.translateUses, HasTy.translate]
+      exact .refl
+  | _, _, _, _, _, .box _, _ => by
+      rw [HasTy.translateUses, HasTy.translate]
+      exact .refl
+  | _, _, _, _, _, .proj h, hwf => by
+      have hu := HasTy.translate_uses h hwf
+      rw [HasTy.translate_uses_atom h] at hu
+      rw [HasTy.translateUses, HasTy.translate]
+      simpa [FCdot.Tm.uses, HasTy.translateAtom_root h] using hu
+  | _, _, _, _, _, @HasTy.let _ _ U _ _ _ _ h₁ _ _, hwf => by
+      rw [HasTy.translateUses, HasTy.translate]
+      exact .union (HasTy.translate_uses h₁ hwf) .refl
+  | _, _, _, _, _, @HasTy.unbox _ _ U _ _ _ _ h _, hwf => by
+      have hu := HasTy.translate_uses h hwf
+      rw [HasTy.translate_uses_atom h] at hu
+      rw [HasTy.translateUses, HasTy.translate]
+      have hun := FCdot.CapCo.HasType.union hu (FCdot.CapCo.HasType.refl (C := U.translate))
+      simpa [FCdot.Tm.uses, HasTy.translateAtom_root h] using hun
+  | _, _, _, _, _, .recI h hd, hwf => by
+      have hu := HasTy.translate_uses h hwf
+      rw [HasTy.translate_uses_atom h] at hu
+      rw [HasTy.translateUses, HasTy.translate]
+      simpa [FCdot.Tm.uses, HasTy.translateAtom_root (HasTy.recI h hd)] using hu
+  | _, _, _, _, _, .recE h hd, hwf => by
+      have hu := HasTy.translate_uses h hwf
+      rw [HasTy.translate_uses_atom h] at hu
+      rw [HasTy.translateUses, HasTy.translate]
+      simpa [FCdot.Tm.uses, HasTy.translateAtom_root (HasTy.recE h hd)] using hu
+  | _, _, _, _, _, .andI h₁ h₂, hwf => by
+      have hu := HasTy.translate_uses h₁ hwf
+      rw [HasTy.translate_uses_atom h₁] at hu
+      rw [HasTy.translateUses, HasTy.translate]
+      simpa [FCdot.Tm.uses, HasTy.translateAtom_root (HasTy.andI h₁ h₂)] using hu
+  | _, _, _, _, _, .sub h _ f, hwf => by
+      rw [HasTy.translateUses, HasTy.translate]
+      exact .trans (HasTy.translate_uses h hwf) (f.translate_typed hwf)
+
+theorem DefsTy.translateFields_typed : ∀ {s : Sig} {Γ : Ctx s} {U : CaptureSet s}
+    {d : Defs (s,x)} {Sall : Shape (s,x)} {d' : Defs (s,x)} {S' : Shape (s,x)}
+    (h : DefsTy (CaptureSet.weaken U ∪ [.var .here]) (Γ.consSelf d Sall U) d' S'),
+    (Γ.consSelf d Sall U).Wf → Shape.DefSpec Sall.witnesses S' →
+    Shape.CapDefSpec Sall.capWitnesses S' →
+    FCdot.Fields.HasType (Γ.consSelf d Sall U).translate U.translate h.translateFields
+  | _, _, _, _, _, _, _, .typ, _, _, _ => by
       simp only [DefsTy.translateFields]
       exact .nil
-  | _, Γ, d, Tall, _, _, @DefsTy.trm _ _ _ T'' a h, hwf, hspec => by
-      rw [Ty.DefSpec] at hspec
-      have hdef : (Γ.consSelf d Tall).translate.lookupDef .here a
-          = some (Tall.witnesses.get a) := rfl
-      have hle : FCdot.ShapeCo.HasType (Γ.consSelf d Tall).translate
-          (.eqToLe (.symm (.def .here a))) T''.translateShape (.here ∙ a) := by
+  | _, _, _, _, _, _, _, .cap, _, _, _ => by
+      simp only [DefsTy.translateFields]
+      exact .nil
+  | _, Γ, U, d, Sall, _, _, @DefsTy.trm _ _ _ a _ (.capt CT ST) h, hwf, hspec, hcspec => by
+      rw [Shape.DefSpec] at hspec
+      rw [Shape.CapDefSpec] at hcspec
+      have hdef : (Γ.consSelf d Sall U).translate.lookupDef .here a
+          = some (Sall.witnesses.get a) := rfl
+      have hdefC : (Γ.consSelf d Sall U).translate.lookupDefC .here a
+          = some (Sall.capWitnesses.get a) := rfl
+      have hle : FCdot.ShapeCo.HasType (Γ.consSelf d Sall U).translate
+          (.eqToLe (.symm (.def .here a))) ST.translate (.here ∙ a) := by
         rw [← hspec]
         exact .eqToLe (.symm (.def hdef))
-      have hbody : FCdot.Tm.HasType (Γ.consSelf d Tall).translate (fieldBody a h.translate)
+      have hlec : FCdot.CapCo.HasType (Γ.consSelf d Sall U).translate
+          (.eqToLe (.symm (.defC .here a))) CT.translate [FCdot.CapAtom.name .here a] := by
+        rw [← hcspec]
+        exact .eqToLe (.symm (.defC hdefC))
+      have hbody : FCdot.Tm.HasType (Γ.consSelf d Sall U).translate (fieldBody a h.translate)
           ((FCdot.Shape.sel .here a) ^ [FCdot.CapAtom.name .here a]) :=
-        .cast (HasTy.translate_typed h hwf)
-          (.capt hle (.elem (by intro b hb; simp at hb)))
-      have hall : (fieldBody a h.translate).uses.AllVar := by
-        simpa [fieldBody] using HasTy.translate_uses_allVar h
+        .cast (HasTy.translate_typed h hwf) (.capt hle hlec)
+      have hg := HasTy.translate_uses h hwf
       simp only [DefsTy.translateFields]
       refine .cons .nil hbody ?_
-      exact closingEvidence_typed (Γ := (Γ.consSelf d Tall).translate)
-        (Ctx.translate_pure (Γ.consSelf d Tall)) hall []
-  | _, _, _, _, _, _, .and h₁ h₂, hwf, hspec => by
-      rw [Ty.DefSpec] at hspec
+      simpa [fieldBody] using hg
+  | _, _, _, _, _, _, _, .and h₁ h₂, hwf, hspec, hcspec => by
+      rw [Shape.DefSpec] at hspec
+      rw [Shape.CapDefSpec] at hcspec
       simp only [DefsTy.translateFields]
-      exact (h₂.translateFields_typed hwf hspec.2).append (h₁.translateFields_typed hwf hspec.1)
+      exact (h₂.translateFields_typed hwf hspec.2 hcspec.2).append
+        (h₁.translateFields_typed hwf hspec.1 hcspec.1)
 
 end
 

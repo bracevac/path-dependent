@@ -4,36 +4,39 @@ import Coercions.Captures.FCdot.Context
 namespace Captures
 
 /-!
-# Translation of types (Plan III §8.1, M3)
+# Translation of types (Plan III §8.1, M3; stage A3a)
 
-Types translate homomorphically.  Declaration-shaped types become object
+Types translate homomorphically.  Declaration-shaped shapes become object
 types over a fresh self block: a type member `{A : S..T}` is the pair of
-propositions `⟦S⟧ ⊑ self∙A`, `self∙A ⊑ ⟦T⟧`; a field `{a : T}` is presence of
-`a` together with `self∙a ⊑ ⟦T⟧`; an intersection concatenates; a recursive
-type `μ(x. T)` binds its own self, identified with the block of the object.
-`⊤` is the empty object type, so every declaration-shaped type, `⊤`
-included, is `μ (tel T)`.
+propositions `⟦S⟧ ⊑ self∙A`, `self∙A ⊑ ⟦T⟧`; a field `{a : S ^ C}` is
+presence of `a`, `self∙a ⊑ ⟦S⟧` and `{self∙a} ⊑ᶜ ⟦C⟧`; a capture member
+`{A : c₁..c₂}` is the pair of inclusions `⟦c₁⟧ ⊑ᶜ {self∙A}`,
+`{self∙A} ⊑ᶜ ⟦c₂⟧`; an intersection concatenates; a recursive shape
+`μ(x. S)` binds its own self, identified with the block of the object.
+`⊤` is the empty object type, so every declaration-shaped shape, `⊤`
+included, is `μ (tel S)`.
 
-Everything else — `⊥`, a type selection, a function type, and a `μ` whose
-body is not declaration-shaped — is read as the *single self-bound
+Everything else, that is `⊥`, a type selection, a function shape, a box, and
+a `μ` whose body is not declaration-shaped, is read as the *single self-bound
 proposition* `[⊑ ⟦B⟧]` (plan §13 item 9), so that `tel` is total and an
-intersection may have arbitrary operands.  `Ty.isObj` is the shape test that
-separates the two: `⟦T⟧ = μ (tel T)` when it holds, and `tel T = [⊑ ⟦T⟧↑]`
-when it does not.  A bound proposition never mentions the self, which is why
-the body of a `μ` is still restricted to `Ty.Decl`.
+intersection may have arbitrary operands.  `Shape.isObj` is the shape test
+that separates the two: `⟦S⟧ = μ (tel S)` when it holds, and
+`tel S = [⊑ ⟦S⟧↑]` when it does not.  A bound proposition never mentions the
+self, which is why the body of a `μ` is still restricted to `Shape.Decl`.
 
-Two telescope functions: `tel T` reads a type over `s` as propositions about
-a fresh self, `telSelf T` reads a type over `(s,x)` whose self is already the
-innermost binder.  They agree on weakened types (`tel_eq_telSelf_weaken`).
+Two telescope functions: `tel S` reads a shape over `s` as propositions about
+a fresh self, `telSelf S` reads a shape over `(s,x)` whose self is already
+the innermost binder.  They agree on weakened shapes
+(`tel_eq_telSelf_weaken`).
 
-A target type is a shape with a capture set, so the recursion that mirrors
-the source type is `Ty.translateShape`, and `⟦T⟧ = Ty.translate T` is that
-shape at the empty capture set: `Ty.translate T = T.translateShape ^ []`
-(stage A0 carries capture sets and never reads them, and every type the
-translation produces is pure).  Positions that hold a shape — a proposition,
-a witness, a self-bound — take `translateShape` directly; positions that
-hold a type — the two sides of an arrow, the type of an atom or a term —
-take `translate`.
+A source type is a shape with a capture set, and so is a target type, so the
+translation splits in the same way: `Shape.translate` is the vanilla
+recursion, whose target sort is now the target's shape sort;
+`CaptureSet.translate` maps capture atoms pointwise, the source's `sel x C`
+to the target's name `x∙C`; and `⟦S ^ C⟧ = ⟦S⟧ ^ ⟦C⟧`.  Positions that hold
+a shape, a proposition, a witness or a self-bound take `Shape.translate`;
+positions that hold a type, the two sides of an arrow, the boxed type, the
+type of an atom or a term, take `Ty.translate`.
 -/
 
 namespace FCdot
@@ -54,11 +57,24 @@ def CapWitnesses.length : CapWitnesses s → Nat
   | .nil => 0
   | .cons W _ _ => W.length + 1
 
-/-- A shape inclusion read as a type inclusion at the empty capture set.
-Every coercion the translation builds goes through this: stage A0 assigns
-the empty capture set to every translated type, so the capture half of a
-translated inclusion is always `refl []`. -/
-def ShapeCo.pure (e : ShapeCo s) : LeCo s := .capt e (.refl [])
+/-- Concatenation of capture witnesses (second appended after the first),
+the twin of `Witnesses.append`.  Stage A3a: a declaration shape now has
+capture witnesses of its own, one per field and one per capture member, so
+they are collected by the same structural recursion as the type
+witnesses. -/
+def CapWitnesses.append : CapWitnesses s → CapWitnesses s → CapWitnesses s
+  | W, .nil => W
+  | W, .cons W' ℓ C => .cons (W.append W') ℓ C
+
+/-- A shape inclusion read as a type inclusion at a fixed capture set: the
+two types have the same capture set and the capture half is `refl`. -/
+def ShapeCo.atC (e : ShapeCo s) (C : CaptureSet s) : LeCo s := .capt e (.refl C)
+
+/-- A shape inclusion read as a type inclusion at the empty capture set. -/
+def ShapeCo.pure (e : ShapeCo s) : LeCo s := e.atC []
+
+@[simp] theorem ShapeCo.atC_rename {s1 s2 : Sig} (e : ShapeCo s1) (C : CaptureSet s1)
+    (ρ : Rename s1 s2) : (e.atC C).rename ρ = (e.rename ρ).atC (C.rename ρ) := rfl
 
 @[simp] theorem ShapeCo.pure_rename {s1 s2 : Sig} (e : ShapeCo s1) (ρ : Rename s1 s2) :
     (e.pure).rename ρ = (e.rename ρ).pure := rfl
@@ -75,230 +91,283 @@ namespace DotMNF
 
 open FCdot (Kind Sig BVar Rename Label)
 
-/-- The types whose translation is the object type of their own telescope,
-`⟦T⟧ = μ (tel T)` (`Ty.translate_isObj`).  For the others `tel T` is the
-single self-bound `[⊑ ⟦T⟧↑]` (`Ty.tel_of_not_isObj`), and the two differ.
+/-! ## Capture sets
+
+A source capture atom is a term binder, a capture binder, or the capture
+member of a term binder; the target has the same three atoms, with `name`
+for what the source calls `sel`.  So `⟦C⟧` is `C` mapped pointwise. -/
+
+/-- `⟦a⟧` on capture atoms. -/
+def CapAtom.translate : CapAtom s → FCdot.CapAtom s
+  | .var x => .var x
+  | .cvar κ => .cvar κ
+  | .sel x A => .name x A
+
+/-- `⟦C⟧` on capture sets: pointwise. -/
+def CaptureSet.translate (C : CaptureSet s) : FCdot.CaptureSet s :=
+  C.map CapAtom.translate
+
+@[simp] theorem CaptureSet.translate_nil {s : Sig} :
+    CaptureSet.translate ([] : CaptureSet s) = [] := rfl
+
+@[simp] theorem CaptureSet.translate_cons {s : Sig} (a : CapAtom s) (C : CaptureSet s) :
+    CaptureSet.translate (a :: C) = a.translate :: C.translate := rfl
+
+@[simp] theorem CaptureSet.translate_append {s : Sig} (C D : CaptureSet s) :
+    (C ++ D).translate = C.translate ++ D.translate := by
+  simp [CaptureSet.translate]
+
+@[simp] theorem CaptureSet.translate_union {s : Sig} (C D : CaptureSet s) :
+    (C ∪ D).translate = C.translate ∪ D.translate := by
+  simp [CaptureSet.translate]
+
+/-- A syntactic inclusion is preserved by the translation: it is a pointwise
+map of lists. -/
+theorem CaptureSet.Subset.translate {s : Sig} {C D : CaptureSet s} (h : C.Subset D) :
+    FCdot.CaptureSet.Subset C.translate D.translate := by
+  intro b hb
+  rw [CaptureSet.translate, List.mem_map] at hb
+  obtain ⟨a, ha, rfl⟩ := hb
+  exact List.mem_map_of_mem (h a ha)
+
+theorem CapAtom.translate_rename {s s' : Sig} :
+    ∀ (a : CapAtom s) (ρ : Rename s s'),
+      (a.rename ρ).translate = a.translate.rename ρ
+  | .var _, _ => rfl
+  | .cvar _, _ => rfl
+  | .sel _ _, _ => rfl
+
+@[simp] theorem CaptureSet.translate_rename {s s' : Sig} (C : CaptureSet s) (ρ : Rename s s') :
+    (C.rename ρ).translate = C.translate.rename ρ := by
+  induction C with
+  | nil => rfl
+  | cons a C ih =>
+      simp only [CaptureSet.rename, CaptureSet.translate, FCdot.CaptureSet.rename,
+        List.map_cons, List.cons.injEq]
+      refine ⟨CapAtom.translate_rename a ρ, ?_⟩
+      simpa [CaptureSet.rename, CaptureSet.translate, FCdot.CaptureSet.rename] using ih
+
+@[simp] theorem CaptureSet.translate_weaken {s : Sig} {k : Kind} (C : CaptureSet s) :
+    (C.weaken (k := k)).translate = FCdot.CaptureSet.weaken (k := k) C.translate :=
+  CaptureSet.translate_rename C FCdot.Rename.succ
+
+/-! ## Shapes -/
+
+/-- The shapes whose translation is the object type of their own telescope,
+`⟦S⟧ = μ (tel S)` (`Shape.translate_isObj`).  For the others `tel S` is the
+single self-bound `[⊑ ⟦S⟧↑]` (`Shape.tel_of_not_isObj`), and the two differ.
 An intersection always passes, whatever its operands, while a `μ` passes
-exactly when its body is declaration-shaped. -/
-def Ty.isObj : Ty s → Bool
+exactly when its body is declaration-shaped.  A capture member passes, a box
+does not. -/
+def Shape.isObj : Shape s → Bool
   | .bot => false
   | .sel _ _ => false
   | .all _ _ => false
-  | .mu T => T.isDecl
+  | .box _ => false
+  | .mu S => S.isDecl
   | .top => true
   | .typ _ _ _ => true
   | .fld _ _ => true
+  | .cap _ _ _ => true
   | .and _ _ => true
 
 mutual
 
-/-- The shape of `⟦T⟧`: the vanilla translation, whose target sort is what
-the vanilla line called a type and what is now a shape. -/
-def Ty.translateShape : Ty s → FCdot.Shape s
+/-- `⟦S⟧` on shapes: the vanilla translation, whose source and target sorts
+are what the vanilla line called types and are now shapes. -/
+def Shape.translate : Shape s → FCdot.Shape s
   | .top => FCdot.Shape.obj .nil
   | .bot => .bot
   | .sel (.var x) A => .sel x A
-  | .all S T => .pi (FCdot.Ty.pure (Ty.translateShape S)) (FCdot.Ty.pure (Ty.translateShape T))
-  | .typ A S T => .obj (Ty.tel (.typ A S T))
-  | .fld a T => .obj (Ty.tel (.fld a T))
-  | .and S T => .obj (Ty.tel (.and S T))
-  | .mu T => .obj (Ty.telSelf T)
+  | .all (.capt C1 S1) (.capt C2 S2) =>
+      .pi (.capt C1.translate S1.translate) (.capt C2.translate S2.translate)
+  | .box (.capt C S) => .box (.capt C.translate S.translate)
+  | .typ A S T => .obj (Shape.tel (.typ A S T))
+  | .fld a T => .obj (Shape.tel (.fld a T))
+  | .cap A c1 c2 => .obj (Shape.tel (.cap A c1 c2))
+  | .and S T => .obj (Shape.tel (.and S T))
+  | .mu S => .obj (Shape.telSelf S)
 
-/-- A type over `s` as propositions about a fresh self block.  A shape that
-is not an object type contributes the single self-bound `⊑ ⟦T⟧↑`; the bodies
-of those bounds are spelled out rather than written `Ty.translate _`, because
-`Ty.translate` would not be applied to a smaller argument there. -/
-def Ty.tel : Ty s → FCdot.Telescope (s,x)
+/-- A shape over `s` as propositions about a fresh self block.  A shape that
+is not an object shape contributes the single self-bound `⊑ ⟦S⟧↑`; the bodies
+of those bounds are spelled out rather than written `Shape.translate _`,
+because `Shape.translate` would not be applied to a smaller argument there. -/
+def Shape.tel : Shape s → FCdot.Telescope (s,x)
   | .typ A S T =>
-      .cons (.cons .nil (.le (Ty.translateShape S).weaken (.sel .here A)))
-        (.le (.sel .here A) (Ty.translateShape T).weaken)
-  | .fld a T =>
+      .cons (.cons .nil (.le (Shape.translate S).weaken (.sel .here A)))
+        (.le (.sel .here A) (Shape.translate T).weaken)
+  | .fld a (.capt C S) =>
       .cons
-        (.cons (.cons .nil (.has a)) (.le (.sel .here a) (Ty.translateShape T).weaken))
-        (.leC [FCdot.CapAtom.name .here a] [])
-  | .and S T => (Ty.tel S).append (Ty.tel T)
-  | .mu T =>
-      if T.isDecl then Ty.telSelf T
-      else .cons .nil (.bnd (FCdot.Shape.obj (Ty.telSelf T)).weaken)
+        (.cons (.cons .nil (.has a)) (.le (.sel .here a) (Shape.translate S).weaken))
+        (.leC [FCdot.CapAtom.name .here a] (CaptureSet.translate C).weaken)
+  | .cap A c1 c2 =>
+      .cons (.cons .nil (.leC (CaptureSet.translate c1).weaken [FCdot.CapAtom.name .here A]))
+        (.leC [FCdot.CapAtom.name .here A] (CaptureSet.translate c2).weaken)
+  | .and S T => (Shape.tel S).append (Shape.tel T)
+  | .mu S =>
+      if S.isDecl then Shape.telSelf S
+      else .cons .nil (.bnd (FCdot.Shape.obj (Shape.telSelf S)).weaken)
   | .top => .nil
   | .bot => .cons .nil (.bnd (FCdot.Shape.bot).weaken)
   | .sel (.var y) A => .cons .nil (.bnd (FCdot.Shape.sel y A).weaken)
-  | .all S T =>
+  | .all (.capt C1 S1) (.capt C2 S2) =>
       .cons .nil
-        (.bnd (FCdot.Shape.pi (FCdot.Ty.pure (Ty.translateShape S))
-          (FCdot.Ty.pure (Ty.translateShape T))).weaken)
+        (.bnd (FCdot.Shape.pi (.capt C1.translate S1.translate)
+          (.capt C2.translate S2.translate)).weaken)
+  | .box (.capt C S) =>
+      .cons .nil
+        (.bnd (FCdot.Shape.box (.capt C.translate S.translate)).weaken)
 
-/-- A type over `(s,x)` whose self is the innermost binder, as propositions
-about that binder.  The self-bound of a non-object shape is *not* weakened
-here and may therefore mention the self; `Wf.mu` keeps such bodies out of
-well-formed types, but the function is total. -/
-def Ty.telSelf : Ty (s,x) → FCdot.Telescope (s,x)
+/-- A shape over `(s,x)` whose self is the innermost binder, as propositions
+about that binder.  The capture sets of a field and of a capture member are
+already under the self here, so they are not weakened (plan-5a (c-1)).  The
+self-bound of a non-object shape is *not* weakened either and may therefore
+mention the self; `Wf.mu` keeps such bodies out of well-formed types, but the
+function is total. -/
+def Shape.telSelf : Shape (s,x) → FCdot.Telescope (s,x)
   | .typ A S T =>
-      .cons (.cons .nil (.le (Ty.translateShape S) (.sel .here A)))
-        (.le (.sel .here A) (Ty.translateShape T))
-  | .fld a T =>
-      .cons (.cons (.cons .nil (.has a)) (.le (.sel .here a) (Ty.translateShape T)))
-        (.leC [FCdot.CapAtom.name .here a] [])
-  | .and S T => (Ty.telSelf S).append (Ty.telSelf T)
-  | .mu T =>
-      if T.isDecl then (Ty.telSelf T).substVar .here
-      else .cons .nil (.bnd (FCdot.Shape.obj (Ty.telSelf T)))
+      .cons (.cons .nil (.le (Shape.translate S) (.sel .here A)))
+        (.le (.sel .here A) (Shape.translate T))
+  | .fld a (.capt C S) =>
+      .cons (.cons (.cons .nil (.has a)) (.le (.sel .here a) (Shape.translate S)))
+        (.leC [FCdot.CapAtom.name .here a] (CaptureSet.translate C))
+  | .cap A c1 c2 =>
+      .cons (.cons .nil (.leC (CaptureSet.translate c1) [FCdot.CapAtom.name .here A]))
+        (.leC [FCdot.CapAtom.name .here A] (CaptureSet.translate c2))
+  | .and S T => (Shape.telSelf S).append (Shape.telSelf T)
+  | .mu S =>
+      if S.isDecl then (Shape.telSelf S).substVar .here
+      else .cons .nil (.bnd (FCdot.Shape.obj (Shape.telSelf S)))
   | .top => .nil
   | .bot => .cons .nil (.bnd FCdot.Shape.bot)
   | .sel (.var y) A => .cons .nil (.bnd (FCdot.Shape.sel y A))
-  | .all S T =>
+  | .all (.capt C1 S1) (.capt C2 S2) =>
       .cons .nil
-        (.bnd (FCdot.Shape.pi (FCdot.Ty.pure (Ty.translateShape S))
-          (FCdot.Ty.pure (Ty.translateShape T))))
+        (.bnd (FCdot.Shape.pi (.capt C1.translate S1.translate)
+          (.capt C2.translate S2.translate)))
+  | .box (.capt C S) =>
+      .cons .nil (.bnd (FCdot.Shape.box (.capt C.translate S.translate)))
 
 end
 
-/-- `⟦T⟧`: the translated shape at the empty capture set. -/
-def Ty.translate (T : Ty s) : FCdot.Ty s := FCdot.Ty.pure T.translateShape
+/-- `⟦S ^ C⟧ = ⟦S⟧ ^ ⟦C⟧`: the translated shape at the translated capture
+set. -/
+def Ty.translate : Ty s → FCdot.Ty s
+  | .capt C S => FCdot.Ty.capt C.translate S.translate
 
-@[simp] theorem Ty.translate_capt {s : Sig} (T : Ty s) :
-    T.translate = FCdot.Ty.capt [] T.translateShape := rfl
+@[simp] theorem Ty.translate_capt {s : Sig} (C : CaptureSet s) (S : Shape s) :
+    (S ^ C).translate = FCdot.Ty.capt C.translate S.translate := rfl
 
 @[simp] theorem Ty.translate_shape {s : Sig} (T : Ty s) :
-    T.translate.shape = T.translateShape := rfl
+    T.translate.shape = T.shape.translate := by cases T; rfl
+
+@[simp] theorem Ty.translate_captureSet {s : Sig} (T : Ty s) :
+    T.translate.captureSet = T.captureSet.translate := by cases T; rfl
+
+/-- The arrow shape, one layer up: both sides are capturing types. -/
+theorem Shape.translate_all_eq {s : Sig} (T1 : Ty s) (T2 : Ty (s,x)) :
+    (Shape.all T1 T2).translate = FCdot.Shape.pi T1.translate T2.translate := by
+  cases T1; cases T2; rw [Shape.translate]; rfl
+
+theorem Shape.translate_box_eq {s : Sig} (T : Ty s) :
+    (Shape.box T).translate = FCdot.Shape.box T.translate := by
+  cases T; rw [Shape.translate]; rfl
 
 /-! ## The two shapes of a telescope -/
 
 /-- An object shape translates to the object shape of its own telescope. -/
-theorem Ty.translateShape_isObj {s : Sig} :
-    ∀ {T : Ty s}, T.isObj = true → T.translateShape = .obj T.tel
-  | .top, _ => by simp [Ty.translateShape, Ty.tel]
-  | .typ _ _ _, _ => by simp [Ty.translateShape]
-  | .fld _ _, _ => by simp [Ty.translateShape]
-  | .and _ _, _ => by simp [Ty.translateShape]
-  | .mu T, h => by
-      rw [Ty.isObj] at h
-      simp [Ty.translateShape, Ty.tel, h]
+theorem Shape.translate_isObj {s : Sig} :
+    ∀ {S : Shape s}, S.isObj = true → S.translate = .obj S.tel
+  | .top, _ => by simp [Shape.translate, Shape.tel]
+  | .typ _ _ _, _ => by simp [Shape.translate]
+  | .fld _ _, _ => by simp [Shape.translate]
+  | .cap _ _ _, _ => by simp [Shape.translate]
+  | .and _ _, _ => by simp [Shape.translate]
+  | .mu S, h => by
+      rw [Shape.isObj] at h
+      simp [Shape.translate, Shape.tel, h]
 
-/-- The same one layer up, at the empty capture set. -/
-theorem Ty.translate_isObj {s : Sig} {T : Ty s} (h : T.isObj = true) :
-    T.translate = FCdot.Ty.capt [] (.obj T.tel) := by
-  rw [Ty.translate, Ty.translateShape_isObj h]
-
-/-- Every other shape is read as the single self-bound `⊑ ⟦T⟧↑`. -/
-theorem Ty.tel_of_not_isObj {s : Sig} :
-    ∀ {T : Ty s}, T.isObj = false → T.tel = .cons .nil (.bnd T.translateShape.weaken)
-  | .bot, _ => by simp [Ty.translateShape, Ty.tel]
-  | .sel (.var _) _, _ => by simp [Ty.translateShape, Ty.tel]
-  | .all _ _, _ => by simp [Ty.translateShape, Ty.tel]
-  | .mu T, h => by
-      rw [Ty.isObj] at h
-      simp [Ty.translateShape, Ty.tel, h]
+/-- Every other shape is read as the single self-bound `⊑ ⟦S⟧↑`. -/
+theorem Shape.tel_of_not_isObj {s : Sig} :
+    ∀ {S : Shape s}, S.isObj = false → S.tel = .cons .nil (.bnd S.translate.weaken)
+  | .bot, _ => by simp [Shape.translate, Shape.tel]
+  | .sel (.var _) _, _ => by simp [Shape.translate, Shape.tel]
+  | .all (.capt _ _) (.capt _ _), _ => by simp [Shape.translate, Shape.tel]
+  | .box (.capt _ _), _ => by simp [Shape.translate, Shape.tel]
+  | .mu S, h => by
+      rw [Shape.isObj] at h
+      simp [Shape.translate, Shape.tel, h]
 
 /-- The same with the self already bound: there the bound is not weakened. -/
-theorem Ty.telSelf_of_not_isObj {s : Sig} :
-    ∀ {T : Ty (s,x)}, T.isObj = false → T.telSelf = .cons .nil (.bnd T.translateShape)
-  | .bot, _ => by simp [Ty.translateShape, Ty.telSelf]
-  | .sel (.var _) _, _ => by simp [Ty.translateShape, Ty.telSelf]
-  | .all _ _, _ => by simp [Ty.translateShape, Ty.telSelf]
-  | .mu T, h => by
-      rw [Ty.isObj] at h
-      simp [Ty.translateShape, Ty.telSelf, h]
+theorem Shape.telSelf_of_not_isObj {s : Sig} :
+    ∀ {S : Shape (s,x)}, S.isObj = false → S.telSelf = .cons .nil (.bnd S.translate)
+  | .bot, _ => by simp [Shape.translate, Shape.telSelf]
+  | .sel (.var _) _, _ => by simp [Shape.translate, Shape.telSelf]
+  | .all (.capt _ _) (.capt _ _), _ => by simp [Shape.translate, Shape.telSelf]
+  | .box (.capt _ _), _ => by simp [Shape.translate, Shape.telSelf]
+  | .mu S, h => by
+      rw [Shape.isObj] at h
+      simp [Shape.translate, Shape.telSelf, h]
 
-/-- The witnesses of a literal, read off its declaration type: the exact
-bound of each type member and the declared type of each field. -/
-def Ty.witnesses : Ty (s,x) → FCdot.Witnesses (s,x)
-  | .typ A S _ => .cons .nil A S.translateShape
-  | .fld a T => .cons .nil a T.translateShape
+/-! ## Witnesses of a literal -/
+
+/-- The type witnesses of a literal, read off its declaration shape: the
+exact bound of each type member and the declared shape of each field.  A
+capture member has no type witness; it has a capture witness instead. -/
+def Shape.witnesses : Shape (s,x) → FCdot.Witnesses (s,x)
+  | .typ A S _ => .cons .nil A S.translate
+  | .fld a (.capt _ S) => .cons .nil a S.translate
   | .and S T => S.witnesses.append T.witnesses
   | _ => .nil
 
-/-- The field labels of a declaration type, newest (outermost) first.
+/-- The capture witnesses of a literal, read off its declaration shape: the
+*declared capture set* of each field and the *definition* of each capture
+member.  This is the single place a translated literal's capture
+declarations come from (stage A3a; stage A2 had one empty witness per field
+label).  The order is the structural one, the left conjunct of an
+intersection at the lower positions, as `Shape.witnesses` already is. -/
+def Shape.capWitnesses : Shape (s,x) → FCdot.CapWitnesses (s,x)
+  | .fld a (.capt C _) => .cons .nil a C.translate
+  | .cap A c1 _ => .cons .nil A c1.translate
+  | .and S T => S.capWitnesses.append T.capWitnesses
+  | _ => .nil
+
+/-- The field labels of a declaration shape, newest (outermost) first.
 `FCdot.Fields.labels` lists the outermost field first and `FCdot.Fields.get?`
 lets the outermost field win, and in DOT the *right* conjunct of an
 intersection shadows; so the right conjunct's fields are the outermost ones
-of the translated literal and come first here.  This is the same convention
-as `Ty.witnesses`, where `FCdot.Witnesses.append` puts the second argument's
-witnesses outermost and `Witnesses.get` gives them priority. -/
-def Ty.fieldLabels : Ty s → List Label
+of the translated literal and come first here. -/
+def Shape.fieldLabels : Shape s → List Label
   | .fld a _ => [a]
   | .and S T => T.fieldLabels ++ S.fieldLabels
   | _ => []
 
-/-- One capture witness per listed label, all of them the empty set,
-appended to a capture-witness list.  The first label of the list is consed
-first, so it sits at the lowest position of the capture block, which is the
-order `Telescope.hasEntries` gives the presences.  (Stage A2.) -/
-def _root_.Captures.FCdot.CapWitnesses.ofLabels :
-    FCdot.CapWitnesses s → List Label → FCdot.CapWitnesses s
-  | Wc, [] => Wc
-  | Wc, ℓ :: ls => FCdot.CapWitnesses.ofLabels (.cons Wc ℓ []) ls
+/-- The precise target shape of a literal whose declaration shape is `S`: its
+type definitions, then its capture definitions, then its fields. -/
+def Shape.literalShape (S : Shape (s,x)) : FCdot.Shape s :=
+  .obj (FCdot.Telescope.ofLiteral S.witnesses S.capWitnesses S.fieldLabels)
 
-theorem _root_.Captures.FCdot.CapWitnesses.ofLabels_length {s : Sig} :
-    ∀ (Wc : FCdot.CapWitnesses s) (ls : List Label),
-      (FCdot.CapWitnesses.ofLabels Wc ls).length = Wc.length + ls.length
-  | _, [] => by simp [FCdot.CapWitnesses.ofLabels]
-  | Wc, ℓ :: ls => by
-      rw [FCdot.CapWitnesses.ofLabels, FCdot.CapWitnesses.ofLabels_length (Wc.cons ℓ []) ls]
-      simp [FCdot.CapWitnesses.length]
-      omega
+/-- The precise target type of a literal whose declaration shape is `S` and
+whose assigned capture set is `U`. -/
+def Shape.literalTy (S : Shape (s,x)) (U : CaptureSet s) : FCdot.Ty s :=
+  FCdot.Ty.capt U.translate S.literalShape
 
-theorem _root_.Captures.FCdot.CapWitnesses.ofLabels_rename {s s' : Sig} (ρ : Rename s s') :
-    ∀ (Wc : FCdot.CapWitnesses s) (ls : List Label),
-      (FCdot.CapWitnesses.ofLabels Wc ls).rename ρ
-        = FCdot.CapWitnesses.ofLabels (Wc.rename ρ) ls
-  | _, [] => rfl
-  | Wc, ℓ :: ls => by
-      rw [FCdot.CapWitnesses.ofLabels, FCdot.CapWitnesses.ofLabels_rename ρ (Wc.cons ℓ []) ls,
-        FCdot.CapWitnesses.ofLabels]
-      rfl
+@[simp] theorem Shape.literalTy_shape {s : Sig} (S : Shape (s,x)) (U : CaptureSet s) :
+    (S.literalTy U).shape = S.literalShape := rfl
 
-/-- Every capture witness of `ofLabels` is empty, so its lookup at any label
-is empty as soon as the base list has that property. -/
-theorem _root_.Captures.FCdot.CapWitnesses.ofLabels_get {s : Sig} :
-    ∀ (Wc : FCdot.CapWitnesses s), (∀ m, Wc.get m = []) → ∀ (ls : List Label) (ℓ : Label),
-      (FCdot.CapWitnesses.ofLabels Wc ls).get ℓ = []
-  | Wc, hWc, [], ℓ => hWc ℓ
-  | Wc, hWc, ℓ' :: ls, ℓ => by
-      refine FCdot.CapWitnesses.ofLabels_get (Wc.cons ℓ' []) (fun m => ?_) ls ℓ
-      by_cases hm : m = ℓ'
-      · simp [FCdot.CapWitnesses.get, hm]
-      · simp [FCdot.CapWitnesses.get, hm]; exact hWc m
-
-/-- The capture witnesses of a translated literal: one empty capture set per
-field label.  The source of this stage has no capture members, so a field
-holds a value of a pure type and its capture name is the empty set; that
-declaration is what a `member` in the capture sort reads at a projection
-(stage A2.6).  The order is `Ty.fieldLabels`, so the capture entry of a
-label sits at the same offset inside the capture block as its presence does
-inside the presence block. -/
-def Ty.capWitnesses (T : Ty (s,x)) : FCdot.CapWitnesses (s,x) :=
-  FCdot.CapWitnesses.ofLabels .nil T.fieldLabels
-
-@[simp] theorem Ty.capWitnesses_length {s : Sig} (T : Ty (s,x)) :
-    T.capWitnesses.length = T.fieldLabels.length := by
-  rw [Ty.capWitnesses, FCdot.CapWitnesses.ofLabels_length]
-  simp [FCdot.CapWitnesses.length]
-
-@[simp] theorem Ty.capWitnesses_get {s : Sig} (T : Ty (s,x)) (ℓ : Label) :
-    T.capWitnesses.get ℓ = [] :=
-  FCdot.CapWitnesses.ofLabels_get .nil (fun _ => rfl) _ _
-
-
-/-- The precise target type of a literal whose declaration type is `T`: its
-type definitions, then its (empty) capture definitions, then its fields. -/
-def Ty.literalTy (T : Ty (s,x)) : FCdot.Ty s :=
-  FCdot.Ty.pure
-    (.obj (FCdot.Telescope.ofLiteral T.witnesses T.capWitnesses T.fieldLabels))
-
-@[simp] theorem Ty.literalTy_shape {s : Sig} (T : Ty (s,x)) :
-    T.literalTy.shape =
-      FCdot.Shape.obj (FCdot.Telescope.ofLiteral T.witnesses T.capWitnesses T.fieldLabels) :=
-  rfl
+@[simp] theorem Shape.literalTy_captureSet {s : Sig} (S : Shape (s,x)) (U : CaptureSet s) :
+    (S.literalTy U).captureSet = U.translate := rfl
 
 /-- Contexts translate binder by binder: an ordinary binder is opaque at its
 translated type; a literal's self binder is transparent at the literal's
-precise type. -/
+precise type, whose capture set is the translated use set the literal was
+assigned; a platform capture binder is a rigid capture binder. -/
 def Ctx.translate : Ctx s → FCdot.Ctx s
   | .nil => .nil
   | .cons Γ T => .cons Γ.translate (.opaque T.translate)
-  | .consSelf Γ _ T =>
-      .cons Γ.translate (.transparent T.literalTy T.witnesses T.capWitnesses T.fieldLabels)
+  | .consSelf Γ _ S U =>
+      .cons Γ.translate (.transparent (S.literalTy U) S.witnesses S.capWitnesses S.fieldLabels)
+  | .consC Γ => .consC Γ.translate .star
 
 end DotMNF
 

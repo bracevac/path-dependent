@@ -5,7 +5,7 @@ namespace `Captures`.  The tree started as a copy of the vanilla line `lean/Coer
 at the commit in `BASE` and grows a capture sort beside the type sort.  Every vanilla statement is kept, restated in
 the new representation, never weakened.
 
-Stages A0, A1 and A2 of `plan-5c-captures-stages.md` are complete.  A0 made the representation: what the vanilla
+Stages A0, A1, A2 and A3a of `plan-5c-captures-stages.md` are complete.  A0 made the representation: what the vanilla
 line called a type is now a shape, a type is a shape with a capture set beside it, binders and stores gained a
 capture kind with its four capture bounds, and the box former joined the shapes.  Capture sets were carried
 everywhere and read nowhere.  A1 gave them a place to be read: telescopes carry capture propositions, an inclusion
@@ -29,27 +29,50 @@ whose initial use set has no root in a platform capability never reads a root th
 finished program's answer captures no more than its type says (`returned_capture_bound`).  A2 adds no sort, no
 evidence family, and no form, entry or slot: use sets are not in types.
 
+A3a is the capturing source and its translation.  `DOT-MNF^cc` is DOT-MNF after the split stage A0 made on the
+target, with capture members at type labels, the box former, the unboxing term `C ⊸ x`, a rigid platform capture
+binder, and a use set as the first index of term typing.  `any` is not in it, so every capture set of the stage is a
+list of concrete atoms, and `any` by position is stage A3b.  The translation reads the source's own use-set
+evidence: beside `HasTy.translate` there is `HasTy.translateUses`, typed at `uses ⟦h⟧ ⊑ ⟦U⟧`, and it supplies the
+annotation and the evidence of every translated lambda, literal, let and unboxing, so the A2 stand-ins that assumed
+a pure source are gone.  Two corollaries carry the target's prediction across the simulation, both over a platform
+prefix: `dot_capture_prediction` bounds the matched target state's use set by the translation of the source's
+declared set along the run, and `dot_effect_safety` says that a source program whose declared use set does not name
+a platform capability never reads a root with that capability.  The stage also revised the runtime, and the reason
+is a collision.  The A1 erasure sent a box to a one-field object at a reserved label, and once the source has boxes
+too, a source literal with a field at that label and a source box have the same erasure, so the simulation, which
+relates the two calculi by erasure alone, cannot tell them apart.  The runtime therefore has an inert box of its
+own, both calculi erase a box to it, and `dot_safety` and `dot_not_stuck` are the vanilla statements on the whole
+source with no side condition.
+
 **`FCdot/`** is the target, FCdot^cc.  Its README lists the modules, what each of A0, A1 and A2 changed in them, the
 notation, and the theorems: the canonical-forms theorem with `cap_canon` and item 7, `closed_box_inversion`, the
 five theorems of the new module `Prediction.lean`, and the capture examples C1 and C6, which check a capability
 closure, compute its use sets in the kernel, reject the variant that hides a capability, and instantiate the
-prediction on a run.
+prediction on a run.  A3a reached it twice.  The erasure of a box and of an unboxing goes to the runtime's own box
+and unboxing, and the target twins of the three source examples of the stage, S3, C2 and C7, are checked there by
+the structural checker in the kernel.
 
-**`DotMNF/`** is the source, still the vanilla DOT-MNF: no capturing types, no capture members, no boxes, no use
-sets.  It is unchanged by all three stages so far.  The capturing source calculus `DOT-MNF^cc` is stage A3.
+**`DotMNF/`** is the source, `DOT-MNF^cc` since A3a.  A shape is the vanilla type former, a type is a shape with a
+capture set, and the new shapes are the capture member `{C : c₁..c₂}` and the box `□ T`.  A value is pure and the
+capture set of its type is the use set of its body without the binder, `Var` refines a binder's capture set to
+`{x}`, and `sc-var` reads the declared set back off the context.  Type-member bounds are shapes, so a capturing
+type enters a type member through a box, which is what the example S3 is about.  The machine allocates a box like
+any value and has one new step, which reads a box out of the store and continues at its content.
 
-**`DotToFCdot/`** is the translation, routed through the pure pairing `capt _ (refl _)`: a translated type is the
-shape translation with the empty capture set.  A2 reaches it twice.  A field's result now carries the capture name
-of its label, so the declared telescope of a source field gained the capture entry `{self∙ℓ} ⊑ᶜ {}` beside its
-presence and its bound, a translated literal declares one empty capture witness per field label, and a translated
-projection is cast back to the pure type by that entry read at the receiver.  And every binder of a translated
-context is pure, so the use set of a translated term holds term variables of pure type only: a translated let
-declares the empty use set with `pureEvidence` as its avoidance evidence, and a translated lambda and literal carry
-the empty assigned set with the closing evidence built from the same.  Every theorem of the translation keeps its
-statement.
+**`DotToFCdot/`** is the translation.  A source type is a shape with a capture set and so is a target type, so the
+translation splits the same way, and a field's declared capture set now reaches its telescope entry instead of the
+empty set A2 put there.  A capture member becomes the two inclusions of a capture name, a translated literal
+declares one capture witness per field and per capture member, and a translated projection is cast to the field's
+declared set by the capture entry read at the receiver.  Use sets are the other half: the source carries its own,
+so the translation of a derivation carries the evidence for it, and no translated binder needs to be pure any more.
+Every theorem of the translation keeps its statement, and the source's safety, consistency and prediction are all
+borrowed from the target through it.
 
 **`Runtime.lean`** is the shared untyped runtime with a data-free capture slot in its store.  A2 gave it the
-inspected root of a runtime term, `Runtime.Tm.inspects`, and changed nothing else.
+inspected root of a runtime term, `Runtime.Tm.inspects`.  A3a gave it an inert box: `Tm.box x` is a value,
+`Tm.unbox x` a term, and the one new step reads the box the store holds at `x` and continues at its content.
+Both calculi erase their boxes to it, so a box and an object literal never share an erasure.
 
 Identifiers the plan spells with a `ᶜ` suffix carry the ASCII suffix `C` here (`Ctx.consC`, `Store.consC`,
 `Subst.liftC`, `Ctx.lookupDefC`, `Proposition.leC`, `CapEq.defC`, `SideC`, `HoleC`), since `ᶜ` is not a legal
@@ -57,7 +80,5 @@ identifier character; notation tokens such as `⊑ᶜ`, `≐ᶜ` and `⊢ᶜ` ar
 
 ## What is not here yet
 
-The capturing source calculus and its translation: capturing types, capture members, `any` as the top of
-subcapturing, boxes and use sets on the source side, `(sub)` on answers, the level-free reading of a result `any` as
-the concrete set of binders in scope, the five-template packing of an existential result, and the box clauses of the
-translation.  That is stage A3.
+`any` as the top of subcapturing, read by position: the level-free reading of a result `any` as the concrete set of
+binders in scope, the five-template packing of an existential result, and `(sub)` on answers.  That is stage A3b.
