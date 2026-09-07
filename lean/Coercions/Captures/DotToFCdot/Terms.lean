@@ -37,7 +37,7 @@ def HasTy.translate : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} → HasTy Γ t 
   | _, .val (.lam S _), _, .lam h _ => .val (.lam S.translate h.translate)
   | _, _, _, .app h₁ h₂ => .app h₁.translateAtom h₂.translateAtom
   | _, _, _, @HasTy.obj _ _ T _ h _ =>
-      .cast (.val (.obj T.witnesses h.translateFields)) (litCo T).pure
+      .cast (.val (.obj T.witnesses T.capWitnesses h.translateFields)) (litCo T).pure
   | _, .proj _ a, T, .proj h =>
       .cast
         (.proj h.translateAtom a

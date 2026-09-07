@@ -9,13 +9,18 @@ States are a store of literals, a continuation of frames, and a running
 term, all indexed by one signature.  Allocation extends the signature.
 Casts on values are wrappers: allocation strips them, stores the literal at
 its own type, and rewrites the continuation so that the new variable is used
-under the composite cast.  The box wrappers on atoms carry no inclusion, so
-`Atom.coercions` steps past them and `Tm.adjust` strips them exactly as it
-strips casts.  The application steps are the vanilla ones.  Application on a coerced closure reads the
-domain and codomain evidence off the head normal form of the atom's casts
-(`Normalizer.lean`).  Progress needs that this normalization succeeds on a
-closed atom of function type, and preservation needs the resulting evidence
-to be typed; both are consequences of the canonical-forms theorem.
+under the composite cast.  A `recap a f` carries no type inclusion, so
+`Atom.coercions` steps past it and `Tm.adjust` strips it exactly as it strips
+casts.  The application steps are the vanilla ones.  Application on a coerced
+closure reads the domain and codomain evidence off the head normal form of
+the atom's casts (`Normalizer.lean`).  A box is a value, allocated by the
+same `alloc` step as any other literal, and `unbox` is a term whose steps
+read the head normal form of its atom's casts in the same way: an identity or
+a conversion hands back the stored atom, and a box coercion `boxed d` hands
+it back under the cast `d`, as `appCast` casts an argument by the domain
+evidence.  Progress needs that this normalization succeeds on a closed atom
+of function or box type, and preservation needs the resulting evidence to be
+typed; both are consequences of the canonical-forms theorem.
 -/
 
 namespace FCdot
@@ -146,9 +151,24 @@ inductive Step : State s → State s' → Prop where
       ⟨σ, K, .app a b⟩ ⟶
         ⟨σ, K, .cast (t₀.substAtom (.cast b d)) (c.subst (Subst.single b))⟩
   | proj :
-      σ.lookup a.root = .obj W F →
+      σ.lookup a.root = .obj W Wc F →
       F.get? ℓ = some t →
       ⟨σ, K, .proj a ℓ h⟩ ⟶ ⟨σ, K, t.selfAt a.root⟩
+  /-- Unboxing an atom rooted at a stored box whose casts normalize to the
+      identity or to a conversion: the boxed atom, weakened into the current
+      scope by `Store.lookup`, is the result. -/
+  | unboxRefl :
+      σ.lookup a.root = .box b →
+      σ ⊢ a ⇓ᶜ[n] (a', F) →
+      (F = .id ∨ ∃ φ, F = .eqv φ) →
+      ⟨σ, K, .unbox a f⟩ ⟶ ⟨σ, K, .atom b⟩
+  /-- Unboxing an atom whose casts normalize to a box coercion `boxed d`:
+      the boxed atom is handed back under `d`, as `appCast` hands the
+      argument to the closure under the domain evidence. -/
+  | unboxCast :
+      σ.lookup a.root = .box b →
+      σ ⊢ a ⇓ᶜ[n] (a', .boxed d) →
+      ⟨σ, K, .unbox a f⟩ ⟶ ⟨σ, K, .atom (.cast b d)⟩
 
 /-- `st ⟶* st'`: reflexive transitive closure across signatures. -/
 inductive Steps : State s → State s' → Prop where

@@ -143,8 +143,8 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
       have hdl : Ty.DistinctLabels T := hd.distinctLabels hdist
       have hf : FCdot.Fields.HasType (Γ.consSelf d T).translate hd.translateFields :=
         hd.translateFields_typed (.consSelf hwf hd.literalShape hdl) (Ty.defSpec_self T hdl)
-      have hval : FCdot.Value.HasType Γ.translate (.obj T.witnesses hd.translateFields)
-          ((μ (FCdot.Telescope.ofLiteral T.witnesses hd.translateFields.labels)) ^ []) :=
+      have hval : FCdot.Value.HasType Γ.translate (.obj T.witnesses T.capWitnesses hd.translateFields)
+          ((μ (FCdot.Telescope.ofLiteral T.witnesses T.capWitnesses hd.translateFields.labels)) ^ []) :=
         .obj (by rw [hlab]; exact hf)
       rw [hlab] at hval
       simp only [HasTy.translate]

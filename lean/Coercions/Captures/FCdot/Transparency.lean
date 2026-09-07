@@ -18,6 +18,7 @@ namespace FCdot
 structure Ctx.Refines {s : Sig} (Γ Γ' : Ctx s) : Prop where
   ty : ∀ x, Γ'.lookupTy x = Γ.lookupTy x
   def_ : ∀ x l (W : Shape s), Γ.lookupDef x l = some W → Γ'.lookupDef x l = some W
+  defC : ∀ x l (C : CaptureSet s), Γ.lookupDefC x l = some C → Γ'.lookupDefC x l = some C
   fields : ∀ x Fs, Γ.lookupFields x = some Fs → Γ'.lookupFields x = some Fs
 
 namespace Ctx.Refines
@@ -25,12 +26,14 @@ namespace Ctx.Refines
 theorem refl {Γ : Ctx s} : Ctx.Refines Γ Γ where
   ty := fun _ => rfl
   def_ := fun _ _ _ h => h
+  defC := fun _ _ _ h => h
   fields := fun _ _ h => h
 
 theorem trans {Γ1 Γ2 Γ3 : Ctx s} (h1 : Ctx.Refines Γ1 Γ2) (h2 : Ctx.Refines Γ2 Γ3) :
     Ctx.Refines Γ1 Γ3 where
   ty := fun x => (h2.ty x).trans (h1.ty x)
   def_ := fun x l W h => h2.def_ x l W (h1.def_ x l W h)
+  defC := fun x l C h => h2.defC x l C (h1.defC x l C h)
   fields := fun x Fs h => h2.fields x Fs (h1.fields x Fs h)
 
 theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
@@ -46,7 +49,7 @@ theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     | here =>
         cases b with
         | «opaque» T => simp at hW
-        | transparent T W' Fs => exact hW
+        | transparent T W' Wc' Fs => exact hW
     | there y =>
         rw [Ctx.lookupDef_there] at hW ⊢
         cases hd : Γ.lookupDef y l with
@@ -57,20 +60,38 @@ theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
             subst hWe
             rw [h.def_ y l W0 hd]
             rfl
+  defC := by
+    intro x l C hC
+    cases x with
+    | here =>
+        cases b with
+        | «opaque» T => simp at hC
+        | transparent T W' Wc' Fs => exact hC
+    | there y =>
+        rw [Ctx.lookupDefC_there] at hC ⊢
+        cases hd : Γ.lookupDefC y l with
+        | none => rw [hd] at hC; simp at hC
+        | some C0 =>
+            rw [hd] at hC
+            have hCe : C = C0↑ := by simpa using hC.symm
+            subst hCe
+            rw [h.defC y l C0 hd]
+            rfl
   fields := by
     intro x Fs hFs
     cases x with
     | here =>
         cases b with
         | «opaque» T => simp at hFs
-        | transparent T W' Fs' => exact hFs
+        | transparent T W' Wc' Fs' => exact hFs
     | there y =>
         rw [Ctx.lookupFields_there] at hFs ⊢
         exact h.fields y Fs hFs
 
 /-- Weakening an opaque binder to the transparent binder of the same type. -/
-theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Fs : List Label} :
-    Ctx.Refines (Γ.cons (.opaque T)) (Γ.cons (.transparent T W Fs)) where
+theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)}
+    {Fs : List Label} :
+    Ctx.Refines (Γ.cons (.opaque T)) (Γ.cons (.transparent T W Wc Fs)) where
   ty := by
     intro x
     cases x with
@@ -81,6 +102,11 @@ theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Fs : List Lab
     cases x with
     | here => simp at hW
     | there y => rw [Ctx.lookupDef_there] at hW ⊢; exact hW
+  defC := by
+    intro x l C' hC
+    cases x with
+    | here => simp at hC
+    | there y => rw [Ctx.lookupDefC_there] at hC ⊢; exact hC
   fields := by
     intro x Fs' hFs
     cases x with
@@ -111,6 +137,19 @@ theorem consC {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : CapBound s) :
             subst hWe
             rw [h.def_ y l W0 hd]
             rfl
+  defC := by
+    intro x l C hC
+    cases x with
+    | there y =>
+        rw [Ctx.lookupDefC_thereC] at hC ⊢
+        cases hd : Γ.lookupDefC y l with
+        | none => rw [hd] at hC; simp at hC
+        | some C0 =>
+            rw [hd] at hC
+            have hCe : C = C0↑ := by simpa using hC.symm
+            subst hCe
+            rw [h.defC y l C0 hd]
+            rfl
   fields := by
     intro x Fs hFs
     cases x with
@@ -120,20 +159,43 @@ theorem consC {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : CapBound s) :
 
 end Ctx.Refines
 
-/-! ## Monotonicity of the typing families
-
-The capture family reads nothing from a context, so it is monotone by the
-identity; the lemma is stated for uniformity with the other families. -/
-
-theorem CapCo.HasType.refine {Γ Γ' : Ctx s} {f : CapCo s} {C D : CaptureSet s}
-    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᶜ f : C ⊑ D) : Γ' ⊢ᶜ f : C ⊑ D := by
-  induction h with
-  | refl => exact .refl
-  | trans _ _ ihf ihg => exact .trans (ihf hR) (ihg hR)
-  | elem hs => exact .elem hs
-  | union _ _ ihf ihg => exact .union (ihf hR) (ihg hR)
+/-! ## Monotonicity of the typing families -/
 
 mutual
+
+/-- The capture family reads a context only at `defC` and through atoms, and
+both survive a refinement. -/
+theorem CapCo.HasType.refine {Γ Γ' : Ctx s} {f : CapCo s} {C D : CaptureSet s}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᶜ f : C ⊑ D) : Γ' ⊢ᶜ f : C ⊑ D := by
+  match h with
+  | .refl => exact .refl
+  | .trans hf hg => exact .trans (hf.refine hR) (hg.refine hR)
+  | .elem hs => exact .elem hs
+  | .union hf hg => exact .union (hf.refine hR) (hg.refine hR)
+  | .capvar ha => exact .capvar (ha.refine hR)
+  | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
+  | .eqToLe hφ => exact .eqToLe (hφ.refine hR)
+
+theorem CapEq.HasType.refine {Γ Γ' : Ctx s} {φ : CapEq s} {C D : CaptureSet s}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) : Γ' ⊢ᶜ φ : C ≡ D := by
+  match h with
+  | .refl => exact .refl
+  | .symm hφ => exact .symm (hφ.refine hR)
+  | .trans hφ hψ => exact .trans (hφ.refine hR) (hψ.refine hR)
+  | .defC hd => exact .defC (hR.defC _ _ _ hd)
+  | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
+
+theorem CapStep.HasType.refine {Γ Γ' : Ctx s} {st : CapStep s} {X Y : CaptureSet (s,x)}
+    (hR : Ctx.Refines Γ Γ') (h : CapStep.HasType Γ st X Y) : CapStep.HasType Γ' st X Y := by
+  match h with
+  | .closed hf => exact .closed (hf.refine hR)
+  | .incl hs => exact .incl hs
+
+theorem SideC.HasType.refine {Γ Γ' : Ctx s} {q : SideC s} {X Y : CaptureSet (s,x)}
+    (hR : Ctx.Refines Γ Γ') (h : SideC.HasType Γ q X Y) : SideC.HasType Γ' q X Y := by
+  match h with
+  | .nil => exact .nil
+  | .cons hst hq => exact .cons (hst.refine hR) (hq.refine hR)
 
 theorem ShapeCo.HasType.refine {Γ Γ' : Ctx s} {e : ShapeCo s} {S T : Shape s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ˢ e : S ≤ T) : Γ' ⊢ˢ e : S ≤ T := by
@@ -192,6 +254,9 @@ theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope (s,x)} {m : Mo
   | .eqSym hm hAt => exact .eqSym (hm.refine hR) hAt
   | .has hm hAt => exact .has (hm.refine hR) hAt
   | .bnd hm he => exact .bnd (hm.refine hR) (he.refine hR)
+  | .leC hm hh hq hq' => exact .leC (hm.refine hR) hh (hq.refine hR) (hq'.refine hR)
+  | .eqC hm hAt => exact .eqC (hm.refine hR) hAt
+  | .eqSymC hm hAt => exact .eqSymC (hm.refine hR) hAt
 
 theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ₐ a : T) : Γ' ⊢ₐ a : T := by
@@ -201,8 +266,7 @@ theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
   | .unfoldSelf ha => exact .unfoldSelf (ha.refine hR)
   | .foldSelf ha => exact .foldSelf (ha.refine hR)
   | .both ha hb hr => exact .both (ha.refine hR) (hb.refine hR) hr
-  | .box ha => exact .box (ha.refine hR)
-  | .unbox ha hf => exact .unbox (ha.refine hR) (hf.refine hR)
+  | .recap ha hf => exact .recap (ha.refine hR) (hf.refine hR)
 
 end
 
@@ -217,12 +281,14 @@ theorem Tm.HasType.refine {Γ Γ' : Ctx s} {t : Tm s} {T : Ty s}
   | .proj ha hh => exact .proj (ha.refine hR) (hh.refine hR)
   | .let ht hu => exact .let (ht.refine hR) (hu.refine (hR.cons _))
   | .cast ht he => exact .cast (ht.refine hR) (LeCo.HasType.refine hR he)
+  | .unbox ha hf => exact .unbox (ha.refine hR) (hf.refine hR)
 
 theorem Value.HasType.refine {Γ Γ' : Ctx s} {v : Value s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᵥ v : T) : Γ' ⊢ᵥ v : T := by
   match h with
   | .lam ht => exact .lam (ht.refine (hR.cons _))
   | .obj hF => exact .obj (hF.refine (hR.cons _))
+  | .box ha => exact .box (ha.refine hR)
   | .cast hv he => exact .cast (hv.refine hR) (LeCo.HasType.refine hR he)
 
 theorem Fields.HasType.refine {Γ Γ' : Ctx (s,x)} {F : Fields (s,x)}

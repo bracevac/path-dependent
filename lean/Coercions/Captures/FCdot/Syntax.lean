@@ -12,7 +12,9 @@ telescopes of propositions over a self block.  Evidence is a proof-term
 language whose endpoints are assigned by typing: `ShapeCo` between shapes,
 `CapCo` between capture sets, and `LeCo` the pair of the two.  Terms are in
 monadic normal form over atoms; an atom is a variable under
-erasure-invisible wrappers.
+erasure-invisible wrappers.  A box is a *value* (`Value.box`) and an
+unboxing a *term* (`Tm.unbox`), not atom wrappers, so that the capability an
+atom denotes is always the capability of its root.
 -/
 
 namespace FCdot
@@ -124,6 +126,11 @@ inductive Proposition : Sig → Type where
       the shape is always a weakened closed shape, so a bound never mentions
       the self block. -/
   | bnd : Shape s → Proposition s
+  /-- Subcapturing between capture sets.  Like every proposition it lives
+      under the self, and its right side may mention the self block. -/
+  | leC : CaptureSet s → CaptureSet s → Proposition s
+  /-- Equality of capture sets, under the self as well. -/
+  | eqC : CaptureSet s → CaptureSet s → Proposition s
 
 /-- Telescope of propositions, oldest first.  Propositions do not bind. -/
 inductive Telescope : Sig → Type where
@@ -164,6 +171,8 @@ scoped infix:70 " ⊑ " => Proposition.le
 scoped infix:70 " ≐ " => Proposition.eq
 scoped prefix:max "∋ " => Proposition.has
 scoped prefix:75 "⊑ " => Proposition.bnd
+scoped infix:70 " ⊑ᶜ " => Proposition.leC
+scoped infix:70 " ≐ᶜ " => Proposition.eqC
 scoped infixl:65 " ▹ " => Telescope.cons
 
 /-- The shape of a type: a type is a shape with a capture set beside it, and
@@ -225,6 +234,8 @@ def Proposition.rename : Proposition s1 → Rename s1 s2 → Proposition s2
   | .eq S T, ρ => .eq (S.rename ρ) (T.rename ρ)
   | .has ℓ, _ => .has ℓ
   | .bnd T, ρ => .bnd (T.rename ρ)
+  | .leC C D, ρ => .leC (C.rename ρ) (D.rename ρ)
+  | .eqC C D, ρ => .eqC (C.rename ρ) (D.rename ρ)
 
 def Telescope.rename : Telescope s1 → Rename s1 s2 → Telescope s2
   | .nil, _ => .nil
@@ -275,6 +286,15 @@ inductive Hole : Type where
   | eqSym : Nat → Hole
 deriving DecidableEq
 
+/-- A hole of a capture template: the `j`-th proposition of the source
+telescope, read as an inclusion of capture sets.  A capture equality may be
+read in either direction. -/
+inductive HoleC : Type where
+  | leC : Nat → HoleC
+  | eqC : Nat → HoleC
+  | eqSymC : Nat → HoleC
+deriving DecidableEq
+
 mutual
 
 /-- Directed inclusion evidence between shapes.  No symmetry. -/
@@ -311,6 +331,37 @@ inductive CapCo : Sig → Type where
   /-- A syntactic inclusion `C₁ ⊆ C₂`, decided at typing. -/
   | elem : CaptureSet s → CaptureSet s → CapCo s
   | union : CapCo s → CapCo s → CapCo s
+  /-- An atom's own capture set is below the capture set of its type. -/
+  | capvar : Atom s → CapCo s
+  /-- Elimination at an atom: the `i`-th proposition of the target telescope
+      of `e`, instantiated at the root of `a`, when that proposition is a
+      subcapturing proposition. -/
+  | member : Atom s → ShapeCo s → Nat → CapCo s
+  /-- An equality of capture sets read as an inclusion. -/
+  | eqToLe : CapEq s → CapCo s
+
+/-- Equality evidence between capture sets. -/
+inductive CapEq : Sig → Type where
+  | refl : CaptureSet s → CapEq s
+  | symm : CapEq s → CapEq s
+  | trans : CapEq s → CapEq s → CapEq s
+  /-- Definition of a transparent binder's capture name.  (`defᶜ` of the
+      plan: `ᶜ` is not a legal Lean identifier character.) -/
+  | defC : BVar s .var → Label → CapEq s
+  | member : Atom s → ShapeCo s → Nat → CapEq s
+
+/-- One step of a capture-template side: closed capture evidence, weakened
+under the self, or a syntactic inclusion of sets that may mention the self
+(plan-5a (c-2′)). -/
+inductive CapStep : Sig → Type where
+  | closed : CapCo s → CapStep s
+  | incl : CaptureSet (s,x) → CaptureSet (s,x) → CapStep s
+
+/-- A capture-template side: a chain of steps, oldest first.  It is the list
+of its steps; chains compose by concatenation. -/
+inductive SideC : Sig → Type where
+  | nil : SideC s
+  | cons : CapStep s → SideC s → SideC s
 
 /-- Inclusion evidence between types: a shape coercion and a capture
 coercion. -/
@@ -350,6 +401,12 @@ inductive Morphism : Sig → Type where
   /-- A template for a target bound: a closed coercion out of the source
       object shape. -/
   | bnd : Morphism s → ShapeCo s → Morphism s
+  /-- A template for a target subcapturing proposition: a side chain, a hole
+      naming a source capture proposition, and a side chain. -/
+  | leC : Morphism s → SideC s → HoleC → SideC s → Morphism s
+  /-- A target capture equality is a source capture equality, possibly
+      flipped. -/
+  | eqC : Morphism s → Nat → Bool → Morphism s
 
 /-- Atoms: a variable under wrappers that erase to nothing. -/
 inductive Atom : Sig → Type where
@@ -360,14 +417,13 @@ inductive Atom : Sig → Type where
   | unfoldSelf : Atom s → Atom s
   /-- `And-I`: two typings of the same root, at the concatenated telescope. -/
   | both : Telescope (s,x) → Telescope (s,x) → Atom s → Atom s → Atom s
-  /-- Boxing: pure; the box shape hides the captured set. -/
-  | box : Atom s → Atom s
-  /-- Unboxing, charged with the boxed capture set. -/
-  | unbox : Atom s → CapCo s → Atom s
+  /-- Recapturing: the atom keeps its shape and takes a wider capture set. -/
+  | recap : Atom s → CapCo s → Atom s
 
 end
 
-deriving instance DecidableEq for ShapeCo, CapCo, LeCo, EqCo, Has, Side, Morphism, Atom
+deriving instance DecidableEq for ShapeCo, CapCo, CapEq, CapStep, SideC, LeCo, EqCo, Has,
+  Side, Morphism, Atom
 
 /-- The variable under an atom's wrappers. -/
 def Atom.root : Atom s → BVar s .var
@@ -376,8 +432,14 @@ def Atom.root : Atom s → BVar s .var
   | .foldSelf _ a => a.root
   | .unfoldSelf a => a.root
   | .both _ _ a _ => a.root
-  | .box a => a.root
-  | .unbox a _ => a.root
+  | .recap a _ => a.root
+
+/-- Concatenation of capture-template sides. -/
+def SideC.append : SideC s → SideC s → SideC s
+  | .nil, q => q
+  | .cons st q, q' => .cons st (q.append q')
+
+instance : Append (SideC s) := ⟨SideC.append⟩
 
 mutual
 
@@ -401,6 +463,24 @@ def CapCo.rename : CapCo s1 → Rename s1 s2 → CapCo s2
   | .trans f g, ρ => .trans (f.rename ρ) (g.rename ρ)
   | .elem C D, ρ => .elem (C.rename ρ) (D.rename ρ)
   | .union f g, ρ => .union (f.rename ρ) (g.rename ρ)
+  | .capvar a, ρ => .capvar (a.rename ρ)
+  | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
+  | .eqToLe φ, ρ => .eqToLe (φ.rename ρ)
+
+def CapEq.rename : CapEq s1 → Rename s1 s2 → CapEq s2
+  | .refl C, ρ => .refl (C.rename ρ)
+  | .symm φ, ρ => .symm (φ.rename ρ)
+  | .trans φ ψ, ρ => .trans (φ.rename ρ) (ψ.rename ρ)
+  | .defC x ℓ, ρ => .defC (ρ.var x) ℓ
+  | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
+
+def CapStep.rename : CapStep s1 → Rename s1 s2 → CapStep s2
+  | .closed f, ρ => .closed (f.rename ρ)
+  | .incl C D, ρ => .incl (C.rename ρ.lift) (D.rename ρ.lift)
+
+def SideC.rename : SideC s1 → Rename s1 s2 → SideC s2
+  | .nil, _ => .nil
+  | .cons st q, ρ => .cons (st.rename ρ) (q.rename ρ)
 
 def LeCo.rename : LeCo s1 → Rename s1 s2 → LeCo s2
   | .capt e f, ρ => .capt (e.rename ρ) (f.rename ρ)
@@ -426,6 +506,8 @@ def Morphism.rename : Morphism s1 → Rename s1 s2 → Morphism s2
   | .eq m j b, ρ => .eq (m.rename ρ) j b
   | .has m j, ρ => .has (m.rename ρ) j
   | .bnd m e, ρ => .bnd (m.rename ρ) (e.rename ρ)
+  | .leC m q h q', ρ => .leC (m.rename ρ) (q.rename ρ) h (q'.rename ρ)
+  | .eqC m j b, ρ => .eqC (m.rename ρ) j b
 
 def Atom.rename : Atom s1 → Rename s1 s2 → Atom s2
   | .var x, ρ => .var (ρ.var x)
@@ -434,12 +516,44 @@ def Atom.rename : Atom s1 → Rename s1 s2 → Atom s2
   | .unfoldSelf a, ρ => .unfoldSelf (a.rename ρ)
   | .both Tel₁ Tel₂ a b, ρ =>
       .both (Tel₁.rename ρ.lift) (Tel₂.rename ρ.lift) (a.rename ρ) (b.rename ρ)
-  | .box a, ρ => .box (a.rename ρ)
-  | .unbox a f, ρ => .unbox (a.rename ρ) (f.rename ρ)
+  | .recap a f, ρ => .recap (a.rename ρ) (f.rename ρ)
 
 end
 
 /-! ## Terms and values -/
+
+/-- Capture witnesses of an object literal: one capture set per label.  An
+absent label reads as the empty set.  (`Wᶜ` of the plan.) -/
+inductive CapWitnesses : Sig → Type where
+  | nil : CapWitnesses s
+  | cons : CapWitnesses s → Label → CaptureSet s → CapWitnesses s
+deriving DecidableEq
+
+/-- Capture-witness lookup; undefined labels are the empty set. -/
+def CapWitnesses.get : CapWitnesses s → Label → CaptureSet s
+  | .nil, _ => []
+  | .cons W ℓ' C, ℓ => if ℓ = ℓ' then C else W.get ℓ
+
+/-- Labels of a capture-witness list, oldest first. -/
+def CapWitnesses.labels : CapWitnesses s → List Label
+  | .nil => []
+  | .cons W ℓ _ => W.labels ++ [ℓ]
+
+/-- Only a listed label has a capture witness of its own; an unlisted one
+reads as the empty set. -/
+theorem CapWitnesses.get_of_not_mem_labels {s : Sig} :
+    ∀ (W : CapWitnesses s) {ℓ : Label}, ℓ ∉ W.labels → W.get ℓ = []
+  | .nil, _, _ => rfl
+  | .cons W ℓ' C, ℓ, h => by
+      have h1 : ℓ ∉ W.labels := fun hm => h (by simp [CapWitnesses.labels, hm])
+      have h2 : ℓ ≠ ℓ' := fun he => h (by simp [CapWitnesses.labels, he])
+      rw [show CapWitnesses.get (CapWitnesses.cons W ℓ' C) ℓ = W.get ℓ by
+        simp [CapWitnesses.get, h2]]
+      exact CapWitnesses.get_of_not_mem_labels W h1
+
+def CapWitnesses.rename : CapWitnesses s1 → Rename s1 s2 → CapWitnesses s2
+  | .nil, _ => .nil
+  | .cons W ℓ C, ρ => .cons (W.rename ρ) ℓ (C.rename ρ)
 
 mutual
 
@@ -451,12 +565,19 @@ inductive Tm : Sig → Type where
   | proj : Atom s → Label → Has s → Tm s
   | «let» : Tm s → Tm (s,x) → Tm s
   | cast : Tm s → LeCo s → Tm s
+  /-- Unboxing: a term, not an atom.  It reads the atom's box and charges
+      the boxed capture set against the evidence `f`. -/
+  | unbox : Atom s → CapCo s → Tm s
 
 inductive Value : Sig → Type where
   | lam : Ty s → Tm (s,x) → Value s
-  /-- Object literal: block witnesses (absent labels are `⊤`) and fields.  Its
-      precise shape is the telescope generated from them (`Telescope.ofLiteral`). -/
-  | obj : Witnesses (s,x) → Fields (s,x) → Value s
+  /-- Object literal: block witnesses (absent labels are `⊤`), capture
+      witnesses (absent labels are `[]`), and fields.  Its precise shape is
+      the telescope generated from them (`Telescope.ofLiteral`). -/
+  | obj : Witnesses (s,x) → CapWitnesses (s,x) → Fields (s,x) → Value s
+  /-- A boxed atom: a value with no witnesses and no fields.  The box shape
+      hides the captured set, so a box is pure. -/
+  | box : Atom s → Value s
   /-- Adapted value: a wrapper, not a computation. -/
   | cast : Value s → LeCo s → Value s
 
@@ -509,14 +630,29 @@ def Witnesses.eqEntriesOf (self : BVar s' .var) (W₀ : Witnesses s') : Witnesse
 
 def Witnesses.eqEntries (W : Witnesses (s,x)) : Telescope (s,x) := W.eqEntriesOf .here W
 
+/-- Capture-definition entries of a literal's capture witnesses: one
+`[name self ℓ] ≐ᶜ Wᶜ.get ℓ` per listed label, appended to a telescope.  A
+shadowed label gets the outer witness, so every entry is true of the
+literal.  Stated for an arbitrary self variable and an arbitrary base so that
+the recursion is structural and the entries land after the type block. -/
+def CapWitnesses.eqEntriesOf (self : BVar s' .var) (W₀ : CapWitnesses s')
+    (base : Telescope s') : CapWitnesses s' → Telescope s'
+  | .nil => base
+  | .cons W ℓ _ => W₀.eqEntriesOf self base W ▹ [CapAtom.name self ℓ] ≐ᶜ W₀.get ℓ
+
+def CapWitnesses.eqEntries (W : CapWitnesses (s,x)) (base : Telescope (s,x)) :
+    Telescope (s,x) := W.eqEntriesOf .here base W
+
 /-- Presence entries for a list of field labels, appended to a telescope. -/
 def Telescope.hasEntries : Telescope s → List Label → Telescope s
   | Tel, [] => Tel
   | Tel, ℓ :: ls => (Tel.cons (.has ℓ)).hasEntries ls
 
-/-- The precise telescope of an object literal: its definitions, then its fields. -/
-def Telescope.ofLiteral (W : Witnesses (s,x)) (labels : List Label) : Telescope (s,x) :=
-  W.eqEntries.hasEntries labels
+/-- The precise telescope of an object literal: its type definitions, then
+its capture definitions, then its fields. -/
+def Telescope.ofLiteral (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))
+    (labels : List Label) : Telescope (s,x) :=
+  (Wc.eqEntries W.eqEntries).hasEntries labels
 
 mutual
 
@@ -527,10 +663,12 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .proj a ℓ h, ρ => .proj (a.rename ρ) ℓ (h.rename ρ)
   | .let t u, ρ => .let (t.rename ρ) (u.rename ρ.lift)
   | .cast t e, ρ => .cast (t.rename ρ) (e.rename ρ)
+  | .unbox a f, ρ => .unbox (a.rename ρ) (f.rename ρ)
 
 def Value.rename : Value s1 → Rename s1 s2 → Value s2
   | .lam S t, ρ => .lam (S.rename ρ) (t.rename ρ.lift)
-  | .obj W F, ρ => .obj (W.rename ρ.lift) (F.rename ρ.lift)
+  | .obj W Wc F, ρ => .obj (W.rename ρ.lift) (Wc.rename ρ.lift) (F.rename ρ.lift)
+  | .box a, ρ => .box (a.rename ρ)
   | .cast v e, ρ => .cast (v.rename ρ) (e.rename ρ)
 
 def Witnesses.rename : Witnesses s1 → Rename s1 s2 → Witnesses s2
@@ -615,6 +753,8 @@ def Subst.selfCast (E : LeCo (s,x)) : Subst (s,x) (s,x) where
   cvar := fun
     | .there y => .there y
 
+/-! ### Substitution on evidence, atoms and terms -/
+
 mutual
 
 def ShapeCo.subst : ShapeCo s1 → Subst s1 s2 → ShapeCo s2
@@ -637,6 +777,24 @@ def CapCo.subst : CapCo s1 → Subst s1 s2 → CapCo s2
   | .trans f g, σ => .trans (f.subst σ) (g.subst σ)
   | .elem C D, σ => .elem (C.rename σ.root) (D.rename σ.root)
   | .union f g, σ => .union (f.subst σ) (g.subst σ)
+  | .capvar a, σ => .capvar (a.subst σ)
+  | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
+  | .eqToLe φ, σ => .eqToLe (φ.subst σ)
+
+def CapEq.subst : CapEq s1 → Subst s1 s2 → CapEq s2
+  | .refl C, σ => .refl (C.rename σ.root)
+  | .symm φ, σ => .symm (φ.subst σ)
+  | .trans φ ψ, σ => .trans (φ.subst σ) (ψ.subst σ)
+  | .defC x ℓ, σ => .defC (σ.root.var x) ℓ
+  | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
+
+def CapStep.subst : CapStep s1 → Subst s1 s2 → CapStep s2
+  | .closed f, σ => .closed (f.subst σ)
+  | .incl C D, σ => .incl (C.rename σ.root.lift) (D.rename σ.root.lift)
+
+def SideC.subst : SideC s1 → Subst s1 s2 → SideC s2
+  | .nil, _ => .nil
+  | .cons st q, σ => .cons (st.subst σ) (q.subst σ)
 
 def LeCo.subst : LeCo s1 → Subst s1 s2 → LeCo s2
   | .capt e f, σ => .capt (e.subst σ) (f.subst σ)
@@ -662,6 +820,8 @@ def Morphism.subst : Morphism s1 → Subst s1 s2 → Morphism s2
   | .eq m j b, σ => .eq (m.subst σ) j b
   | .has m j, σ => .has (m.subst σ) j
   | .bnd m e, σ => .bnd (m.subst σ) (e.subst σ)
+  | .leC m q h q', σ => .leC (m.subst σ) (q.subst σ) h (q'.subst σ)
+  | .eqC m j b, σ => .eqC (m.subst σ) j b
 
 def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
   | .var x, σ => σ.var x
@@ -670,8 +830,7 @@ def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
   | .unfoldSelf a, σ => .unfoldSelf (a.subst σ)
   | .both Tel₁ Tel₂ a b, σ =>
       .both (Tel₁.rename σ.root.lift) (Tel₂.rename σ.root.lift) (a.subst σ) (b.subst σ)
-  | .box a, σ => .box (a.subst σ)
-  | .unbox a f, σ => .unbox (a.subst σ) (f.subst σ)
+  | .recap a f, σ => .recap (a.subst σ) (f.subst σ)
 
 end
 
@@ -684,10 +843,13 @@ def Tm.subst : Tm s1 → Subst s1 s2 → Tm s2
   | .proj a ℓ h, σ => .proj (a.subst σ) ℓ (h.subst σ)
   | .let t u, σ => .let (t.subst σ) (u.subst σ.lift)
   | .cast t e, σ => .cast (t.subst σ) (e.subst σ)
+  | .unbox a f, σ => .unbox (a.subst σ) (f.subst σ)
 
 def Value.subst : Value s1 → Subst s1 s2 → Value s2
   | .lam S t, σ => .lam (S.rename σ.root) (t.subst σ.lift)
-  | .obj W F, σ => .obj (W.rename σ.root.lift) (F.subst σ.lift)
+  | .obj W Wc F, σ =>
+      .obj (W.rename σ.root.lift) (Wc.rename σ.root.lift) (F.subst σ.lift)
+  | .box a, σ => .box (a.subst σ)
   | .cast v e, σ => .cast (v.subst σ) (e.subst σ)
 
 def Fields.subst : Fields s1 → Subst s1 s2 → Fields s2

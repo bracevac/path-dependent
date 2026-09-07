@@ -1,4 +1,4 @@
-# FCdot, at stage A0 of captures
+# FCdot, at stage A1 of captures
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -26,10 +26,10 @@ erasure safe.
 | `Resolution` | `Γ.resolve`: following transparent definitions, and why a fixed fuel suffices |
 | `FormTyping` | typedness of forms `Γ ⊨ F : S ≤ T`, `Γ ⊨[r] F : S ≤ T`, entries, and views `Γ ⊨[r, σ] V : Tel` |
 | `FormAlgebra` | composition and application of typed forms; fuel monotonicity and determinism |
-| `CanonicalForms` | the canonical-forms theorem; the chain of casts; `preservation'`, `erase_reflect'` |
+| `CanonicalForms` | the canonical-forms theorem, including item 6 (`cap_canon`) and item 7 (an atom's root is below the capture set of its type); the chain of casts; `closed_box_inversion`; `preservation'`, `erase_reflect'` |
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
-| `Examples` | the examples E1 to E8, decided in the kernel |
+| `Examples` | the examples E1 to E8 and the capture examples C3, C4, decided in the kernel |
 
 ## Notation
 
@@ -52,10 +52,12 @@ All notation is `scoped` in namespace `FCdot`.
 
 ## Design
 
-* **Inert stores.**  An object literal `obj W F` carries witnesses `W` (a
-  definition per block label) and fields `F`.  Its precise type is the
-  telescope generated from them, `μ (Telescope.ofLiteral W F.labels)`: one
-  `self ∙ ℓ ≐ W.get ℓ` per witness, one `∋ ℓ` per field.  Facts beyond
+* **Inert stores.**  An object literal `obj W Wᶜ F` carries witnesses `W` (a
+  definition per block label), capture witnesses `Wᶜ` (a capture set per
+  block label, `[]` where absent) and fields `F`.  Its precise type is the
+  telescope generated from them, `μ (Telescope.ofLiteral W Wᶜ F.labels)`: one
+  `self ∙ ℓ ≐ W.get ℓ` per witness, then one `[name self ℓ] ≐ᶜ Wᶜ.get ℓ` per
+  capture witness, then one `∋ ℓ` per field.  Facts beyond
   definitions are established by coercions in the term.  Block names are
   *defined* by these witnesses (`Ctx.lookupDef`); a witness may itself be a
   name of the same block, so aliases within a block are allowed, including
@@ -132,28 +134,55 @@ translation from `DotMNF` lives in `lean/Coercions/DotToFCdot/`.
 
 ## Stage A0
 
-What this stage changed in each module.  The tables above describe what the modules contain.
+What A0 changed in each module.  The tables above describe what the modules contain.
 
 | module | what A0 changed |
 |---|---|
 | `Debruijn` | `Kind` gains `cap`; `Sig.extend_cap`, notation `,c`; everything else was already kind-generic |
-| `Syntax` | `CapAtom`, `CaptureSet` with `∪`, `Subset` and its decision; `Shape` (the vanilla `Ty`, plus `box`), `Ty ::= S ^ C`, `Ty.pure`, `Ty.shape`, `Dom`/`Cod`; `ShapeCo`/`CapCo`/`LeCo`; `Atom.box`, `Atom.unbox`; `Subst.cvar`, `Subst.liftC` |
+| `Syntax` | `CapAtom`, `CaptureSet` with its union, `Subset` and its decision; `Shape` (the vanilla `Ty`, plus `box`), `Ty ::= S ^ C`, `Ty.pure`, `Ty.shape`, `Dom`/`Cod`; `ShapeCo`/`CapCo`/`LeCo`; `Subst.cvar`, `Subst.liftC` |
 | `Context` | `CapBound` (all four bounds), `Ctx.consC`, `Ctx.lookupCap`; `lookupDef` returns a `Shape`; no binder records a level |
 | `Store`, `Runtime.lean` | `Store.consC` on both sides, `Store.Typed.consC` with no premise; `Store.Typed.cons`'s premises named |
-| `Typing` | the shape family `Γ ⊢ˢ e : S ≤ S'`, the capture family `Γ ⊢ᶜ f : C ⊑ C'`, `Γ ⊢ capt e f : S ^ C ≤ S' ^ C'`; `boxed`, `box`, `unbox`; `both` at one capture set; values and projections are pure |
+| `Typing` | the shape family `Γ ⊢ˢ e : S ≤ S'`, the capture family `Γ ⊢ᶜ f : C ⊑ C'` with `refl`, `trans`, `elem`, `union`, and the pairing `Γ ⊢ capt e f : S ^ C ≤ S' ^ C'`; `boxed`; `both` at one capture set; values and projections are pure |
 | `RenameLemmas`, `TypingRename`, `Transparency`, `TypingSubst` | each vanilla lemma split into its `Shape`/`Ty` pair; weakening stated at an arbitrary kind; `weakenC` twins and `Subst.Typed.liftC` |
-| `Checker`, `CheckerCompleteness` | `synthShape`/`checkShape`, `synthCap`/`checkCap` (deciding `Subset`) beside `synthLe`/`checkLe`; `checkTm_iff` and friends unchanged |
-| `Normalizer` | `hnfShape` (the vanilla `hnf`) and `hnf` on `LeCo`; `Form.boxed`, `Form.boxIn`, `Form.unbox?`; box clauses of `combine`, `view`, `closedAtomForm` |
-| `Resolution` | resolution on shapes; `Ctx.caps`/`Ctx.capsAtom`/`Ctx.capsBound`, `Ctx.roots`, `CapLe` with its five properties and store monotonicity; `cap_canon` |
-| `FormTyping`, `FormAlgebra` | forms typed between shapes; `FormTyped.boxed`, `FormTyped.boxIn` and their algebra |
-| `CanonicalForms` | `shape_canon` (the vanilla `le_canon`) and `le_canon` above it; `chain_box_inv`; `closedAtomForm_typed` between the two shapes |
-| `Machine`, `Erasure`, `Preservation`, `ErasureMetatheory` | unchanged but for the capture store slot; box and unbox are stripped where casts are |
+| `Checker`, `CheckerCompleteness` | `synthShape`/`checkShape` and `synthCap`/`checkCap` (deciding `Subset`) beside `synthLe`/`checkLe`; `checkTm_iff` and friends unchanged |
+| `Normalizer` | `hnfShape` (the vanilla `hnf`) and `hnf` on `LeCo`; `Form.boxed` carrying the evidence between the boxed types, as `Form.pi` carries its domain and codomain evidence, with its `combine` clauses |
+| `Resolution` | resolution on shapes; `Ctx.caps`/`Ctx.capsAtom`/`Ctx.capsBound`, `Ctx.roots`, `Ctx.Root`, `CapLe` and `RootsEq` with the five properties and store monotonicity |
+| `FormTyping`, `FormAlgebra` | forms typed between shapes; `FormTyped.boxed` carrying the coercion between the boxed types, as `FormTyped.pi` carries its domain and codomain evidence, and its algebra |
+| `CanonicalForms` | `shape_canon` (the vanilla `le_canon`) and `le_canon` above it; `closedAtomForm_typed` between the two shapes |
+| `Machine`, `Erasure`, `Preservation`, `ErasureMetatheory` | unchanged but for the capture store slot |
 | `Progress`, `Consistency` | unchanged statements; `closed_le_shapes` gains one disjunct, "the target resolves to a box" |
 | `Examples` | E1 to E8 with `^ []` everywhere, still decided in the kernel |
 
-### Notation added by A0
+## Stage A1
 
-All the vanilla notation still works, at the sort the vanilla line used it.  New:
+A1 puts the capture sort into telescopes: capture propositions live under the self, a
+literal records a capture witness per label, capture evidence can read a variable, a
+telescope entry, or a definition, and the canonical-forms theorem gains its capture
+item.  A1 also carries out the **box revision** of `plan-5c-captures-stages.md` §A1
+("Design correction, second version"): the atom wrappers `Atom.box` and `Atom.unbox`
+of A0 are removed, boxing becomes a *value* and unboxing a *term*, and so every atom's
+capability is the capability of its root, which is what makes the capture rules and
+the view of an atom instantiate at the same thing.
+
+| module | what A1 changed |
+|---|---|
+| `Syntax` | `Proposition.leC`/`eqC`, `CapEq`, `CapStep`/`SideC`, `HoleC`, `Morphism.leC`/`eqC`, `Atom.recap`, `CapCo.capvar`/`member`/`eqToLe`, `CapWitnesses` with `get`/`labels`/`eqEntries`; `Value.obj W Wᶜ F` and `Telescope.ofLiteral W Wᶜ labels`, whose capture block sits between the type block and the presences; the box revision: `Atom.box`/`Atom.unbox` out, `Value.box` and `Tm.unbox` in |
+| `Context` | `Binding.transparent` records the literal's `CapWitnesses`; `Ctx.lookupDefC` reads a capture witness at the binder |
+| `Store` | `Store.Typed.cons` records the value's capture witnesses; a stored box is a literal with no witnesses and no fields |
+| `Typing` | `capvar`, `member` in the capture sort, `defC`, `eqToLe`, and the capture-equality family `Γ ⊢ᶜ φ : C ≡ C'`; `Atom.recap`; capture templates `Morphism.leC`/`eqC` over `SideC` chains, with `Telescope.HoleAtC`, `CapStep.HasType` and `SideC.HasType`; `Value.HasType.box` and `Tm.HasType.unbox` (the A0 atom rules, read one sort up); `Value.HasType.obj` at `ofLiteral W Wᶜ F.labels` |
+| `RenameLemmas`, `TypingRename`, `Transparency`, `TypingSubst` | renaming and substitution for the new families; substitution into a capture set is the root renaming, as in A0 |
+| `Checker`, `CheckerCompleteness` | `synthCapEq`/`checkCapEq` beside `synthCap`/`checkCap`; synthesis for `capvar`, `member` in both capture families, `defC`, `eqToLe`, `recap`, `leC` with side chains and `eqC`; `checkTm_iff` and friends unchanged |
+| `Normalizer` | `Entry.leC`/`eqC` (a capture template is its own normal form) and the data-free `PropForm.leC`/`eqC`; `Entries.through` and `Entry.prefix` on capture entries; `Value.precView` through the capture witnesses; `closedAtomForm` and `view` at `recap`, and no clauses for the two removed atom wrappers |
+| `Resolution` | the `name` clause of `Ctx.capsAtom` follows the capture witness, with fuel equal to the number of capture witnesses of the block plus one and the empty set as the least solution at a cycle; `Ctx.Root_name`, the resolution lemma in the capture sort, and monotonicity of `roots` in the fuel |
+| `FormTyping`, `FormAlgebra` | `SideTypedC` for chains, `EntriesTyped.leC`/`eqC`/`eqSymC`, `EntryTyped` likewise, `ViewTyped.leC`/`eqC`; the capture cases of `Form.combine_typed`, `EntriesTyped.through`, `Form.pair_typed` and `entriesAt_typed` are transitivity of `CapLe` and of root equality |
+| `CanonicalForms` | `cap_canon` and its equality twin `capeq_canon` move into the mutual induction with `shape_canon`, `le_canon` and `atom_canon`; `atom_canon` gains item 7; `capEqForms_typed` types the capture block of a literal's precise view; the `SideC` bridge `capstep_canon`/`sideC_canon`; `closed_box_inversion` in place of `chain_box_inv` |
+| `Machine`, `Erasure`, `Preservation`, `ErasureMetatheory` | the `unbox` steps read the head form of the atom's casts, as the application steps do, and `FormsTyped` gains the two clauses that type them (`boxed`, `boxRefl`); `recap` is stripped by `adjust` where casts are; a box is allocated like any literal, erases to the one-field object at `boxLabel`, and an unbox erases to that field's projection, so `erase_step` and `erase_reflect'` keep their statements |
+| `Progress`, `Consistency` | `progress` gains the `unbox` case, discharged by `closed_box_inversion`; `EntryTyped.bnd_of_bndsOnly` gains the impossible cases for the new slots; the consistency corollary in the capture sort at a platform binder (`Store.Typed.no_cap_escape`, `no_cap_star_le_nil`) |
+| `Examples` | E1 to E8 read as A1 literals with an empty capture-witness list, still decided in the kernel, plus C3 (bad capture bounds under a lambda, with the consistency corollary) and C4 (`sc-var` and capture `member` at the same wrapped atom) |
+
+### Notation added by A0 and A1
+
+All the vanilla notation still works, at the sort the vanilla line used it.  New in A0:
 
 | | |
 |---|---|
@@ -165,30 +194,41 @@ All the vanilla notation still works, at the sort the vanilla line used it.  New
 | `Γ ⊢ e : T ≤ T'` | inclusion evidence between types, a shape inclusion paired with a capture inclusion |
 | `σ ⊢ e ⇓ˢ[n] F` | head form of a shape coercion (`σ ⊢ e ⇓[n] F` stays on type coercions) |
 
+New in A1:
+
+| | |
+|---|---|
+| `C₁ ⊑ᶜ C₂`, `C₁ ≐ᶜ C₂` | capture propositions, under the self like every proposition; their right sides may mention `[var .here]` and `[name .here ℓ]` |
+| `Γ ⊢ᶜ φ : C ≡ D` | capture *equality* evidence (`CapEq`), beside the inclusion judgment `Γ ⊢ᶜ f : C ⊑ D` |
+| `σ ⊢ a ⇓ᶜ[n] (a', F)` | the chain of casts of an atom, with `Atom.recap` one more transparent wrapper in it |
+
 `ᶜ` is not a legal Lean identifier character, so an identifier the plan spells with a
 `ᶜ` suffix carries the ASCII suffix `C` here (`Ctx.consC`, `Store.consC`,
-`Subst.liftC`, `Store.Typed.consC`); notation tokens such as `⊢ᶜ` are unaffected.
+`Subst.liftC`, `Store.Typed.consC`, `Proposition.leC`/`eqC`, `CapEq.defC`,
+`Ctx.lookupDefC`, `SideC`, `HoleC`, `CapWitnesses`); notation tokens such as `⊑ᶜ`,
+`≐ᶜ` and `⊢ᶜ` are unaffected.
 
 ### Main theorems, restated
 
-Every statement is the vanilla statement, restated: what the vanilla line wrote at `Ty` is written at `Shape`
-wherever the position carries no capture set, and at `Ty` wherever it does.  Nothing gained a hypothesis.
-
-## Main theorems
-
 Every statement below is the vanilla statement, restated: what the vanilla line wrote
 at `Ty` is written at `Shape` wherever the position carries no capture set, and at
-`Ty` wherever it does.  Nothing gained a hypothesis.
+`Ty` wherever it does.  Nothing gained a hypothesis; `atom_canon` gained a conjunct
+(item 7), which is a strengthening.
 
 ```
 FCdot.checkTm_iff        : checkTm Γ t T = true ↔ Γ ⊢ t : T
 FCdot.shape_canon        : ⊢ σ : Γ → Γ ⊢ˢ e : S ≤ T → ∃ n F, σ ⊢ e ⇓ˢ[n] F ∧ Γ ⊨ F : S ≤ T
 FCdot.le_canon           : ⊢ σ : Γ → Γ ⊢ d : S ≤ T →
                              ∃ n F, σ ⊢ d ⇓[n] F ∧ Γ ⊨ F : S.shape ≤ T.shape
-FCdot.atom_canon         : ⊢ σ : Γ → Γ ⊢ₐ a : S → ∃ n V, σ ⊢ a ⇓ᵥ[n] V ∧
+FCdot.atom_canon         : ⊢ σ : Γ → Γ ⊢ₐ a : S → (∃ n V, σ ⊢ a ⇓ᵥ[n] V ∧
                              (∀ Tel, Γ.resolve S.shape = μ Tel → Γ ⊨[a.root, σ] V : Tel) ∧
-                             Γ.resolve S.shape ≠ ⊥
-FCdot.cap_canon          : Γ ⊢ᶜ f : C ⊑ D → CapLe Γ C D
+                             Γ.resolve S.shape ≠ ⊥) ∧
+                             CapLe Γ [.var a.root] S.captureSet
+FCdot.cap_canon          : ⊢ σ : Γ → Γ ⊢ᶜ f : C ⊑ D → CapLe Γ C D
+FCdot.capeq_canon        : ⊢ σ : Γ → Γ ⊢ᶜ φ : C ≡ D → RootsEq Γ C D
+FCdot.closed_box_inversion : ⊢ σ : Γ → Γ ⊢ₐ a : (□ T) ^ D →
+                             ∃ b a' n F, σ.lookup a.root = .box b ∧ σ ⊢ a ⇓ᶜ[n] (a', F) ∧
+                             (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d, F = .boxed d)
 FCdot.closedAtomForm_typed : ⊢ σ : Γ → Γ ⊢ₐ a : S → ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
                              Γ ⊨[a.root] F : (Γ.lookupTy a.root).shape ≤ S.shape
 FCdot.preservation'      : st.Typed U → st ⟶ st' → ∃ ρ, st'.Typed (U.rename ρ)
@@ -200,10 +240,20 @@ FCdot.erase_reflect'     : ⊢ st.σ : Γ → (∃ T, Γ ⊢ st.t : T) → Runti
 FCdot.closed_le_shapes   : the vanilla eight-way disjunction on Γ.resolve _.shape,
                              with one new disjunct: the target resolves to a box
 FCdot.Store.Typed.no_top_le_bot : ¬ ∃ e C C', Γ ⊢ e : ⊤ ^ C ≤ ⊥ ^ C'
+FCdot.Store.Typed.no_cap_star_le_nil : Γ.lookupCap κ = .star → ¬ ∃ f, Γ ⊢ᶜ f : [cvar κ] ⊑ []
 FCdot.reachable_consistent : st.Typed U → st ⟶* st' → ∃ Γ, ⊢ st'.σ : Γ ∧
                              (¬ ∃ e C C', Γ ⊢ e : ⊤ ^ C ≤ ⊥ ^ C') ∧
                              ∀ x ℓ, ∃ W, Γ.lookupDef x ℓ = some W ∧ Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W
 ```
 
-Axioms (`#print axioms`): `propext` and `Quot.sound` for all of the above.  The tree
-contains no `sorry`, `axiom`, `partial`, `unsafe`, or `native_decide`, and no Mathlib.
+Item 7 of the theorem is the second conjunct of `atom_canon`: over a typed store, the
+root of a typed atom is below the capture set of the atom's type.  Its cases are one
+line each because the box revision leaves no atom whose capture set disagrees with its
+root: `var` is the definition of `Ctx.capsAtom`, `cast a (capt e f)` composes the
+hypothesis with `cap_canon f`, `recap a f` *is* `cap_canon` of its own evidence, and
+`foldSelf`, `unfoldSelf` and `both` pass the set through.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound` for all of the above, and for
+`Examples.C3_typed`, `Examples.C3_badBounds`, `Examples.C4_capvar`,
+`Examples.C4_member`.  The tree contains no `sorry`, `axiom`, `partial`, `unsafe`, or
+`native_decide`, and no Mathlib.

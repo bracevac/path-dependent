@@ -66,7 +66,7 @@ def Ctx.defPairs : Ctx s → List (BVar s .var × Label)
   | .cons Γ b =>
       (Ctx.defPairs Γ).map (fun p => (BVar.there p.1, p.2)) ++
         (match b with
-         | .transparent _ W _ => W.labels.map (fun ℓ => (BVar.here, ℓ))
+         | .transparent _ W _ _ => W.labels.map (fun ℓ => (BVar.here, ℓ))
          | .opaque _ => [])
   | .consC Γ _ => (Ctx.defPairs Γ).map (fun p => (BVar.there p.1, p.2))
 
@@ -98,14 +98,11 @@ inductive Form (s : Sig) : Type where
   /-- Coercion into a bounds-only object type: one bound entry per target
       proposition. -/
   | into : Entries s → Form s
-  /-- Box coercion: the head form of the evidence between the boxed types.
-      The box former is inert, so its coercion keeps that form as a function
-      coercion keeps its domain and codomain evidence. -/
-  | boxed : Form s → Form s
-  /-- A coercion whose target is a box shape but whose source is not: the
-      form reaching the boxed type.  This is the head form of the chain of a
-      `box` atom, whose content is reached from the atom's root. -/
-  | boxIn : Form s → Form s
+  /-- Box coercion: closed evidence between the boxed types.  The box former
+      is inert, so its coercion keeps that evidence exactly as a function
+      coercion keeps its domain and codomain evidence, and the `unbox` step
+      of the machine hands the stored atom back under it. -/
+  | boxed : LeCo s → Form s
 
 /-- The normal form of one target proposition of an object coercion: a
 template `pre ∘ (source proposition) ∘ post` with normalized sides (`id` for
@@ -115,6 +112,13 @@ inductive Entry (s : Sig) : Type where
   | le : Form s → Hole → Form s → Entry s
   | eq : Nat → Bool → Entry s
   | has : Nat → Entry s
+  /-- A capture template: a side chain, a hole naming a source capture
+      proposition, and a side chain.  A capture template is its own normal
+      form, so the sides are the chains of the morphism, unnormalized. -/
+  | leC : SideC s → HoleC → SideC s → Entry s
+  /-- A target capture equality: a source capture equality, possibly
+      flipped. -/
+  | eqC : Nat → Bool → Entry s
   /-- A bound entry: a coercion out of the source object type. -/
   | bnd : Form s → Entry s
   /-- A routed entry: the coercion `H` reaches another object type from the
@@ -144,14 +148,6 @@ def Form.isTop : Form s → Bool
   | .top => true
   | _ => false
 
-/-- Peeling a box: the form reaching the boxed type out of a form whose
-target is a box shape.  `boxIn F` records exactly that form, a `bot` source
-absorbs everything, and no other form has a box target over a typed store. -/
-def Form.unbox? : Form s → Option (Form s)
-  | .boxIn F => some F
-  | .bot => some .bot
-  | _ => none
-
 theorem Form.isBot_eq_true {F : Form s} : F.isBot = true ↔ F = .bot := by
   cases F <;> simp [Form.isBot]
 
@@ -166,6 +162,12 @@ inductive PropForm (s : Sig) : Type where
   | has : BVar s .var → Label → PropForm s
   /-- A bound of the atom's type: a form typed from the root's type. -/
   | bnd : Form s → PropForm s
+  /-- A subcapturing proposition of the atom's type.  The slot carries no
+      data: its typedness is the fact `roots ⊆ roots` at the root, not a
+      form. -/
+  | leC : PropForm s
+  /-- A capture equality of the atom's type, likewise data free. -/
+  | eqC : PropForm s
 
 /-- The form of a bound entry of a view. -/
 def PropForm.bndForm? : PropForm s → Option (Form s)
@@ -243,6 +245,18 @@ def Hole.flip : Hole → Hole
   | .le j => .le j
   | .eq j => .eqSym j
   | .eqSym j => .eq j
+
+/-- The index named by a capture hole. -/
+def HoleC.index : HoleC → Nat
+  | .leC j => j
+  | .eqC j => j
+  | .eqSymC j => j
+
+/-- Flip the direction of a capture-equality hole. -/
+def HoleC.flip : HoleC → HoleC
+  | .leC j => .leC j
+  | .eqC j => .eqSymC j
+  | .eqSymC j => .eqC j
 
 /-- An entry found by lookup is a subterm. -/
 theorem Entries.get?_sizeOf : ∀ {Es : Entries s} {j : Nat} {E : Entry s},
@@ -334,6 +348,19 @@ def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
       match Es₁.get? j with
       | some (.has k) => some (.has k)
       | _ => none
+  -- Capture templates compose by concatenating their chains; a middle
+  -- capture equality contributes the identity chain, so the outer sides
+  -- are kept and only the hole is retargeted.
+  | .leC pre h post =>
+      match Es₁.get? h.index, h with
+      | some (.leC pre₁ h₁ post₁), .leC _ => some (.leC (pre ++ pre₁) h₁ (post₁ ++ post))
+      | some (.eqC k b), .eqC _ => some (.leC pre (if b then .eqSymC k else .eqC k) post)
+      | some (.eqC k b), .eqSymC _ => some (.leC pre (if b then .eqC k else .eqSymC k) post)
+      | _, _ => none
+  | .eqC j b =>
+      match Es₁.get? j with
+      | some (.eqC k b') => some (.eqC k (xor b b'))
+      | _ => none
   | .bnd G => (Form.combine (.obj Es₁) G).map .bnd
   -- Object forms never carry routed entries, so this case does not arise.
   | .thru _ _ => none
@@ -386,7 +413,6 @@ def Form.combine : Form s → Form s → Option (Form s)
   | .pi d c, .eqv _ => some (.pi d c)
   | .eqv _, .boxed d => some (.boxed d)
   | .boxed d, .eqv _ => some (.boxed d)
-  | .boxIn F, .eqv _ => some (.boxIn F)
   | .eqv _, .obj Es => some (.obj Es)
   | .obj Es, .eqv _ => some (.obj Es)
   | .eqv _, .bnd i F => some (.bnd i F)
@@ -394,9 +420,7 @@ def Form.combine : Form s → Form s → Option (Form s)
   | .into Es, .eqv _ => some (.into Es)
   | .pi d₁ c₁, .pi d₂ c₂ =>
       some (.pi (d₂.trans d₁) ((c₁.subst (Subst.selfCast d₂↑)).trans c₂))
-  | .boxed d₁, .boxed d₂ => (Form.combine d₁ d₂).map Form.boxed
-  | .boxIn F, .boxed G => (Form.combine F G).map Form.boxIn
-  | F, .boxIn G => (Form.combine F G).map Form.boxIn
+  | .boxed d₁, .boxed d₂ => some (.boxed (d₁.trans d₂))
   | .obj Es₁, .obj Es₂ => (Entries.through Es₁ Es₂).map .obj
   | .into Es₁, .obj Es₂ => (Entries.mapPrefix (.into Es₁) Es₂).map .into
   | .top, .obj Es => (Entries.mapPrefix .top Es).map .into
@@ -424,6 +448,8 @@ def Telescope.identityEntries : Telescope (s,x) → Entries s
   | .cons Tel (.eq _ _) => Tel.identityEntries ▹ .eq Tel.length false
   | .cons Tel (.has _) => Tel.identityEntries ▹ .has Tel.length
   | .cons Tel (.bnd _) => Tel.identityEntries ▹ .bnd (.bnd Tel.length .id)
+  | .cons Tel (.leC _ _) => Tel.identityEntries ▹ .leC .nil (.leC Tel.length) .nil
+  | .cons Tel (.eqC _ _) => Tel.identityEntries ▹ .eqC Tel.length false
 
 /-- Concatenation of entries. -/
 def Entries.append : Entries s → Entries s → Entries s
@@ -487,10 +513,19 @@ def Witnesses.eqForms : Witnesses (s,x) → View s
   | .nil => .nil
   | .cons W _ _ => W.eqForms ▹ .eq
 
+/-- Capture-equation forms for the capture witnesses of a literal, appended
+to a view: one data-free `eqC` slot per capture witness, as
+`CapWitnesses.eqEntries` appends one `[name self ℓ] ≐ᶜ Wᶜ.get ℓ` per capture
+witness after the type block. -/
+def CapWitnesses.eqFormsC (base : View s) : CapWitnesses (s,x) → View s
+  | .nil => base
+  | .cons W _ _ => CapWitnesses.eqFormsC base W ▹ .eqC
+
 /-- The view of a stored literal at its precise type: one entry per
-proposition of `Telescope.ofLiteral`. -/
+proposition of `Telescope.ofLiteral`, so the type equations come first, then
+one `eqC` slot per capture witness, then the presences. -/
 def Value.precView (x : BVar s .var) : Value s → View s
-  | .obj W F => Fields.hasForms x W.eqForms F.labels
+  | .obj W Wc F => Fields.hasForms x (Wc.eqFormsC W.eqForms) F.labels
   | _ => .nil
 
 /-! ## The normalizer -/
@@ -527,6 +562,19 @@ def Entry.at (σ : Store s) : Nat → Atom s → Form s → View s → Entry s �
   | _ + 1, _, _, V, .has j => do
       match ← V.get? j with
       | .has y ℓ => pure (.has y ℓ)
+      | _ => none
+  -- A capture slot carries no data: the template only has to name a
+  -- capture proposition of the view, read as an inclusion in the direction
+  -- its hole asks for.
+  | _ + 1, _, _, V, .leC _ h _ => do
+      match h, ← V.get? h.index with
+      | .leC _, .leC => pure .leC
+      | .eqC _, .eqC => pure .leC
+      | .eqSymC _, .eqC => pure .leC
+      | _, _ => none
+  | _ + 1, _, _, V, .eqC j _ => do
+      match ← V.get? j with
+      | .eqC => pure .eqC
       | _ => none
   | _ + 1, _, C, _, .bnd G => (C.combine G).map PropForm.bnd
   | n + 1, a, C, _, .thru H E => do
@@ -565,7 +613,7 @@ def hnfShape (σ : Store s) : Nat → ShapeCo s → Option (Form s)
   | _ + 1, .bot _ => some .bot
   | _ + 1, .eqToLe φ => some (.eqv φ)
   | _ + 1, .pi d c => some (.pi d c)
-  | n + 1, .boxed d => (hnf σ n d).map Form.boxed
+  | _ + 1, .boxed d => some (.boxed d)
   | n + 1, .obj _ m => (entries σ n m).map .obj
   | n + 1, .pair Tel₁ Tel₂ e f => do
       let F ← hnfShape σ n e
@@ -605,6 +653,12 @@ def entries (σ : Store s) : Nat → Morphism s → Option (Entries s)
       let Es ← entries σ n m
       let F ← hnfShape σ n e
       pure (Es ▹ .bnd F)
+  | n + 1, .leC m pre h post => do
+      let Es ← entries σ n m
+      pure (Es ▹ .leC pre h post)
+  | n + 1, .eqC m j b => do
+      let Es ← entries σ n m
+      pure (Es ▹ .eqC j b)
 
 /-- The view of a concrete atom at its resolved object type. -/
 def view (σ : Store s) : Nat → Atom s → Option (View s)
@@ -619,13 +673,8 @@ def view (σ : Store s) : Nat → Atom s → Option (View s)
       let V ← view σ n a
       let V' ← view σ n b
       pure (V ++ V')
-  | n + 1, .box a => view σ n a
-  -- Unboxing reaches the boxed type from the root through the peeled chain,
-  -- so the view of an unboxed atom is the view of the root through it.
-  | n + 1, .unbox a _ => do
-      let (_, F) ← closedAtomForm σ n a
-      let G ← F.unbox?
-      viewThrough σ n G (.var a.root)
+  -- Recapturing keeps the shape, hence the telescope, hence the view.
+  | n + 1, .recap a _ => view σ n a
 
 /-- The view of an atom through a head form applied to it. -/
 def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
@@ -649,7 +698,6 @@ def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
   -- A non-object target has no telescope: its view is empty.
   | _ + 1, .pi _ _, _ => some .nil
   | _ + 1, .boxed _, _ => some .nil
-  | _ + 1, .boxIn _, _ => some .nil
   | _ + 1, .top, _ => some .nil
   | _ + 1, .bot, _ => some .nil
 
@@ -684,18 +732,11 @@ def closedAtomForm (σ : Store s) : Nat → Atom s → Option (Atom s × Form s)
       let (b', G) ← closedAtomForm σ n b
       let H ← Form.pair Tel₁ Tel₂ F G
       pure (.both Tel₁ Tel₂ a' b', H)
-  -- The box former is inert but not invisible: the chain of a box atom is
-  -- the chain of its content recorded under `boxIn`, and an unbox peels that
-  -- record off, so a box under an unbox cancels (`closedAtomForm_unbox_box`)
-  -- and a coercion crossing the box (`Form.boxed`) is composed into the
-  -- record rather than lost.
-  | n + 1, .box a => do
+  -- Recapturing carries no type inclusion, so the chain passes through it
+  -- unchanged, as it does through `foldSelf` and `unfoldSelf`.
+  | n + 1, .recap a f => do
       let (a', F) ← closedAtomForm σ n a
-      pure (.box a', .boxIn F)
-  | n + 1, .unbox a f => do
-      let (a', F) ← closedAtomForm σ n a
-      let G ← F.unbox?
-      pure (.unbox a' f, G)
+      pure (.recap a' f, F)
 
 end
 
@@ -716,14 +757,6 @@ scoped notation:40 σ:51 " ⊢ " a:51 " ⇓ᶜ[" n "] " r:51 => closedAtomForm �
 /-- The head form of a type inclusion is the head form of its shape part. -/
 @[simp] theorem hnf_capt (σ : Store s) (n : Nat) (e : ShapeCo s) (f : CapCo s) :
     hnf σ (n + 1) (.capt e f) = hnfShape σ n e := rfl
-
-/-- Cancellation of a box under an unbox: the `boxIn` record the box makes
-is peeled off again, so the chain of `unbox (box a) f` is the chain of `a`,
-and an unboxed function atom still reaches the application step. -/
-theorem closedAtomForm_unbox_box (σ : Store s) (n : Nat) (a : Atom s) (f : CapCo s) :
-    closedAtomForm σ (n + 1 + 1) (.unbox (.box a) f)
-      = (closedAtomForm σ n a).map (fun r => (.unbox (.box r.1) f, r.2)) := by
-  cases h : closedAtomForm σ n a <;> simp [closedAtomForm, Form.unbox?, h]
 
 end FCdot
 

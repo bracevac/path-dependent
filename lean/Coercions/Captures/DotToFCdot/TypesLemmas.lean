@@ -360,6 +360,7 @@ theorem Ty.literalTy_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
   simp only [Ty.literalTy, FCdot.Ty.pure_rename, FCdot.Shape.rename, Ty.witnesses_rename T ρ,
     Ty.fieldLabels_rename (T := T) (ρ := ρ.lift)]
   rw [FCdot.Telescope.ofLiteral_rename]
+  simp [FCdot.CapWitnesses.rename]
 
 end DotMNF
 

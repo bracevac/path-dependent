@@ -44,7 +44,7 @@ namespace FCdot
 
 /-- Field presence in a store. -/
 def Store.HasField (σ : Store s) (x : BVar s .var) (ℓ : Label) : Prop :=
-  ∃ W F, σ.lookup x = .obj W F ∧ (F.get? ℓ).isSome
+  ∃ W Wc F, σ.lookup x = .obj W Wc F ∧ (F.get? ℓ).isSome
 
 /-! ## Shapes: resolve, and open the self block at a root -/
 
@@ -155,6 +155,33 @@ inductive Telescope.HoleAt (Tel : Telescope (s,x)) :
   | eq : Tel ∋ (j ↦ X ≐ Y) → Tel.HoleAt (.eq j) X Y
   | eqSym : Tel ∋ (j ↦ Y ≐ X) → Tel.HoleAt (.eqSym j) X Y
 
+/-! ### Typed capture-template sides
+
+A capture template's sides are chains of steps.  A step is typed
+*semantically*: a closed step by the fact `CapLe Γ A B` between its closed
+endpoints, an inclusion step by the syntactic inclusion of its two sets.
+The closed step keeps the evidence it carries but reads its typedness as the
+inclusion of roots, which is what the composition lemmas of `FormAlgebra`
+need and what `cap_canon` supplies at the closed steps of a typed morphism. -/
+
+/-- One step of a typed capture-template side.  A closed step relates two
+weakened closed sets in the inclusion of roots; an inclusion step relates two
+sets in the syntactic inclusion.  A step's own sets are the morphism's,
+carried verbatim by the entry and never read again -- a capture template is
+its own normal form -- so the endpoints of an inclusion step are the sets it
+is typed between, which is what lets a side be opened at a root. -/
+inductive CapStepTyped {s : Sig} (Γ : Ctx s) :
+    CapStep s → CaptureSet (s,x) → CaptureSet (s,x) → Prop where
+  | closed : CapLe Γ A B → CapStepTyped Γ (.closed f) A↑ B↑
+  | incl : CaptureSet.Subset X Y → CapStepTyped Γ (.incl C D) X Y
+
+/-- `SideTypedC Γ q X Y`: the chain `q` takes `X` to `Y`, step by step; the
+empty chain is the identity. -/
+inductive SideTypedC {s : Sig} (Γ : Ctx s) :
+    SideC s → CaptureSet (s,x) → CaptureSet (s,x) → Prop where
+  | nil : SideTypedC Γ .nil X X
+  | cons : CapStepTyped Γ st X Y → SideTypedC Γ q Y Z → SideTypedC Γ (.cons st q) X Z
+
 /-! ### Typed forms
 
 `FormTyped Γ ρ F S T` types a coercion form with the shapes of mode `ρ`;
@@ -179,15 +206,11 @@ inductive FormTyped {s : Sig} (Γ : Ctx s) :
       FormTyped Γ ρ (.pi d c) S T
   | obj : Γ.resolveAt? ρ S = μ Tel₁ → Γ.resolveAt? ρ T = μ Tel₂ →
       EntriesTyped Γ ρ Tel₁ Es Tel₂ → FormTyped Γ ρ (.obj Es) S T
-  /-- A box is inert: a coercion between box shapes is a coercion between
-      the boxed types, read at their shapes. -/
+  /-- A box is inert: a coercion between box shapes carries the coercion
+      between the boxed types, exactly as `pi` carries its domain and
+      codomain evidence. -/
   | boxed : Γ.resolveAt? ρ S = □ X → Γ.resolveAt? ρ T = □ Y →
-      FormTyped Γ ρ G X.shape Y.shape → FormTyped Γ ρ (.boxed G) S T
-  /-- Reaching a box shape from a source that is not one: the recorded form
-      reaches the boxed type itself.  This is the head form of the chain of a
-      `box` atom, whose content is reached from the atom's root. -/
-  | boxIn : Γ.resolveAt? ρ T = □ Y → FormTyped Γ ρ F S Y.shape →
-      FormTyped Γ ρ (.boxIn F) S T
+      Γ ⊢ d : X ≤ Y → FormTyped Γ ρ (.boxed d) S T
   /-- Cast by a bound of the source object type. -/
   | bnd : Γ.resolveAt? ρ S = μ Tel → Tel ∋ (i ↦ ⊑ T↑) → FormTyped Γ ρ F T U →
       FormTyped Γ ρ (.bnd i F) S U
@@ -225,6 +248,19 @@ inductive EntriesTyped {s : Sig} (Γ : Ctx s) :
   /-- The identity template on a source bound, whatever its type. -/
   | bndId : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁ ∋ (j ↦ ⊑ X) →
       EntriesTyped Γ ρ Tel₁ (Es ▹ .bnd (.bnd j .id)) (Tel₂ ▹ ⊑ X)
+  /-- A target subcapturing proposition, by a capture template around a
+      source capture proposition named by the hole. -/
+  | leC {C₁ C₂ D₁ D₂ : CaptureSet (s,x)} : EntriesTyped Γ ρ Tel₁ Es Tel₂ →
+      Tel₁.HoleAtC h C₁ C₂ → SideTypedC Γ pre D₁ C₁ → SideTypedC Γ post C₂ D₂ →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .leC pre h post) (Tel₂ ▹ D₁ ⊑ᶜ D₂)
+  /-- A target capture equality is a source capture equality. -/
+  | eqC {C₁ C₂ : CaptureSet (s,x)} : EntriesTyped Γ ρ Tel₁ Es Tel₂ →
+      Tel₁ ∋ (j ↦ C₁ ≐ᶜ C₂) →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .eqC j false) (Tel₂ ▹ C₁ ≐ᶜ C₂)
+  /-- … possibly flipped. -/
+  | eqSymC {C₁ C₂ : CaptureSet (s,x)} : EntriesTyped Γ ρ Tel₁ Es Tel₂ →
+      Tel₁ ∋ (j ↦ C₁ ≐ᶜ C₂) →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .eqC j true) (Tel₂ ▹ C₂ ≐ᶜ C₁)
 
 /-- `EntryTyped Γ ρ Tel₁ E P`: a single entry proving `P` from the
 propositions of `Tel₁`.  Routes never nest and never end in a general bound
@@ -239,6 +275,13 @@ inductive EntryTyped {s : Sig} (Γ : Ctx s) :
   | bnd : FormTyped Γ ρ (.bnd j .id) (μ Tel₁) T →
       EntryTyped Γ ρ Tel₁ (.bnd (.bnd j .id)) (⊑ T↑)
   | bndId : Tel₁ ∋ (j ↦ ⊑ X) → EntryTyped Γ ρ Tel₁ (.bnd (.bnd j .id)) (⊑ X)
+  | leC {C₁ C₂ D₁ D₂ : CaptureSet (s,x)} : Telescope.HoleAtC Tel₁ h C₁ C₂ →
+      SideTypedC Γ pre D₁ C₁ → SideTypedC Γ post C₂ D₂ →
+      EntryTyped Γ ρ Tel₁ (.leC pre h post) (D₁ ⊑ᶜ D₂)
+  | eqC {C₁ C₂ : CaptureSet (s,x)} : Tel₁ ∋ (j ↦ C₁ ≐ᶜ C₂) →
+      EntryTyped Γ ρ Tel₁ (.eqC j false) (C₁ ≐ᶜ C₂)
+  | eqSymC {C₁ C₂ : CaptureSet (s,x)} : Tel₁ ∋ (j ↦ C₁ ≐ᶜ C₂) →
+      EntryTyped Γ ρ Tel₁ (.eqC j true) (C₂ ≐ᶜ C₁)
 
 /-- `BndsTyped Γ ρ S Es Tel`: the entries of a coercion from `S` into the
 object type `μ Tel` that do not consult the view of the source. -/
@@ -281,6 +324,23 @@ abbrev ChainTyped (Γ : Ctx s) (r : BVar s .var) (F : Form s) (S T : Shape s) : 
     (Proposition.has (s := (s,x)) ℓ).substVar r = ∋ ℓ := rfl
 @[simp] theorem Proposition.substVar_bnd (X : Shape (s,x)) (r : BVar s .var) :
     (⊑ X).substVar r = ⊑ X⟦r⟧ := rfl
+@[simp] theorem Proposition.weaken_leC (C D : CaptureSet s) {k : Kind} :
+    (C ⊑ᶜ D).weaken (k := k) = C↑ ⊑ᶜ D↑ := rfl
+@[simp] theorem Proposition.weaken_eqC (C D : CaptureSet s) {k : Kind} :
+    (C ≐ᶜ D).weaken (k := k) = C↑ ≐ᶜ D↑ := rfl
+
+/-- Instantiating a weakened capture set gives the set back. -/
+theorem CaptureSet.weaken_substVar {k : Kind} (C : CaptureSet s) (r : BVar s k) :
+    (C.weaken (k := k))⟦r⟧ = C := by
+  simp only [CaptureSet.weaken, CaptureSet.substVar, CaptureSet.rename_comp]
+  rw [show (Rename.succ.comp (Rename.subst r) : Rename s s) = Rename.id from
+    Rename.funext' (by intro k y; cases k <;> rfl)]
+  exact CaptureSet.rename_id C
+
+@[simp] theorem Proposition.substVar_leC (C D : CaptureSet (s,x)) (r : BVar s .var) :
+    (C ⊑ᶜ D).substVar r = C⟦r⟧ ⊑ᶜ D⟦r⟧ := rfl
+@[simp] theorem Proposition.substVar_eqC (C D : CaptureSet (s,x)) (r : BVar s .var) :
+    (C ≐ᶜ D).substVar r = C⟦r⟧ ≐ᶜ D⟦r⟧ := rfl
 
 /-! ## Typed views -/
 
@@ -303,6 +363,15 @@ inductive ViewTyped {s : Sig} (Γ : Ctx s) (r : BVar s .var) (σ : Store s) :
   | bnd {X : Shape (s,x)} : Γ ⊨[r, σ] V : Tel →
       FormTyped Γ (some r) G (Γ.lookupTy r).shape (X⟦r⟧) →
       Γ ⊨[r, σ] V ▹ .bnd G : Tel ▹ ⊑ X
+  /-- A subcapturing proposition of the atom's type, instantiated at the
+      root: the roots of the left set are among the roots of the right one.
+      The slot carries no data. -/
+  | leC {C₁ C₂ : CaptureSet (s,x)} : Γ ⊨[r, σ] V : Tel → CapLe Γ (C₁⟦r⟧) (C₂⟦r⟧) →
+      Γ ⊨[r, σ] V ▹ .leC : Tel ▹ C₁ ⊑ᶜ C₂
+  /-- A capture equality of the atom's type, instantiated at the root: the
+      two sets have the same roots. -/
+  | eqC {C₁ C₂ : CaptureSet (s,x)} : Γ ⊨[r, σ] V : Tel → RootsEq Γ (C₁⟦r⟧) (C₂⟦r⟧) →
+      Γ ⊨[r, σ] V ▹ .eqC : Tel ▹ C₁ ≐ᶜ C₂
 
 open Lean PrettyPrinter in
 @[app_unexpander ViewTyped] def ViewTyped.unexpand : Unexpander
@@ -383,6 +452,8 @@ theorem ViewTyped.length {V : View s} {Tel : Telescope (s,x)}
   | eq _ _ ih => simp [View.length, Telescope.length, ih]
   | has _ _ ih => simp [View.length, Telescope.length, ih]
   | bnd _ _ ih => simp [View.length, Telescope.length, ih]
+  | leC _ _ ih => simp [View.length, Telescope.length, ih]
+  | eqC _ _ ih => simp [View.length, Telescope.length, ih]
 
 /-- The entry of a typed view at an inclusion proposition is a typed coercion
 form. -/
@@ -402,6 +473,12 @@ theorem ViewTyped.le_entry {V : View s} {Tel : Telescope (s,x)}
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
   | bnd _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+  | leC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+  | eqC _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
 
@@ -425,6 +502,12 @@ theorem ViewTyped.eq_entry {V : View s} {Tel : Telescope (s,x)}
   | bnd _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | leC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | eqC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
 
 /-- The entry of a typed view at a presence proposition names the root and a
 field the object at the root has. -/
@@ -444,6 +527,12 @@ theorem ViewTyped.has_entry {V : View s} {Tel : Telescope (s,x)}
       | here => exact ⟨by rw [← hV'.length]; exact .here, hH⟩
       | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
   | bnd _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | leC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | eqC _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
 
@@ -467,6 +556,68 @@ theorem ViewTyped.bnd_entry {V : View s} {Tel : Telescope (s,x)}
       cases hAt with
       | here => exact ⟨_, by rw [← hV'.length]; exact .here, hG⟩
       | there hAt' => obtain ⟨G, hG', hGt⟩ := ih hAt'; exact ⟨G, .there hG', hGt⟩
+  | leC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+  | eqC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+
+/-- The entry of a typed view at a subcapturing proposition is the data-free
+`leC` slot, and the two sets are in the inclusion of roots at the root. -/
+theorem ViewTyped.leC_entry {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {C₁ C₂ : CaptureSet (s,x)}
+    (hAt : Tel ∋ (i ↦ C₁ ⊑ᶜ C₂)) :
+    V ∋ (i ↦ .leC) ∧ CapLe Γ (C₁⟦r⟧) (C₂⟦r⟧) := by
+  induction hV with
+  | nil => cases hAt
+  | le _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | eq _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | has _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | bnd _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | leC hV' hE ih =>
+      cases hAt with
+      | here => exact ⟨by rw [← hV'.length]; exact .here, hE⟩
+      | there hAt' => obtain ⟨hQ, hE'⟩ := ih hAt'; exact ⟨.there hQ, hE'⟩
+  | eqC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+
+/-- The entry of a typed view at a capture equality is the data-free `eqC`
+slot, and the two sets have the same roots at the root. -/
+theorem ViewTyped.eqC_entry {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {C₁ C₂ : CaptureSet (s,x)}
+    (hAt : Tel ∋ (i ↦ C₁ ≐ᶜ C₂)) :
+    V ∋ (i ↦ .eqC) ∧ RootsEq Γ (C₁⟦r⟧) (C₂⟦r⟧) := by
+  induction hV with
+  | nil => cases hAt
+  | le _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | eq _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | has _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | bnd _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | leC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | eqC hV' hE ih =>
+      cases hAt with
+      | here => exact ⟨by rw [← hV'.length]; exact .here, hE⟩
+      | there hAt' => obtain ⟨hQ, hE'⟩ := ih hAt'; exact ⟨.there hQ, hE'⟩
 
 /-- A typed view has an entry at every telescope position. -/
 theorem ViewTyped.get?_isSome {V : View s} {Tel : Telescope (s,x)}
@@ -477,6 +628,8 @@ theorem ViewTyped.get?_isSome {V : View s} {Tel : Telescope (s,x)}
   | eq S' T' => exact ⟨_, (hV.eq_entry h).1.get?⟩
   | has ℓ => exact ⟨_, (hV.has_entry h).1.get?⟩
   | bnd X => obtain ⟨G, hG, _⟩ := hV.bnd_entry h; exact ⟨_, hG.get?⟩
+  | leC C₁ C₂ => exact ⟨_, (hV.leC_entry h).1.get?⟩
+  | eqC C₁ C₂ => exact ⟨_, (hV.eqC_entry h).1.get?⟩
 
 /-! ## Views are stable under folding and unfolding the self block -/
 
@@ -500,6 +653,14 @@ theorem ViewTyped_unfold {V : View s} {Tel : Telescope (s,x)}
       simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_bnd,
         Proposition.weaken_bnd]
       exact .bnd ih (by rwa [Shape.weaken_substVar])
+  | leC _ hC ih =>
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_leC,
+        Proposition.weaken_leC]
+      exact .leC ih (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar])
+  | eqC _ hC ih =>
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eqC,
+        Proposition.weaken_eqC]
+      exact .eqC ih (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar])
 
 theorem ViewTyped_fold : ∀ {V : View s} {Tel : Telescope (s,x)},
     Γ ⊨[r, σ] V : ((Tel⟦r⟧)↑) → Γ ⊨[r, σ] V : Tel
@@ -526,6 +687,20 @@ theorem ViewTyped_fold : ∀ {V : View s} {Tel : Telescope (s,x)},
         Proposition.weaken_bnd] at h
       cases h with
       | bnd hV hG => exact .bnd (ViewTyped_fold hV) (by rwa [Shape.weaken_substVar] at hG)
+  | _, .cons Tel (.leC C D), h => by
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_leC,
+        Proposition.weaken_leC] at h
+      cases h with
+      | leC hV hC =>
+          exact .leC (ViewTyped_fold hV)
+            (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar] at hC)
+  | _, .cons Tel (.eqC C D), h => by
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eqC,
+        Proposition.weaken_eqC] at h
+      cases h with
+      | eqC hV hC =>
+          exact .eqC (ViewTyped_fold hV)
+            (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar] at hC)
 
 end
 
@@ -550,6 +725,13 @@ theorem Witnesses.eqForms_noBnd : ∀ W : Witnesses (s,x), W.eqForms.NoBnd
       rw [Witnesses.eqForms]
       exact (Witnesses.eqForms_noBnd W).cons (by intro G h; cases h)
 
+theorem CapWitnesses.eqFormsC_noBnd (base : View s) :
+    ∀ Wc : CapWitnesses (s,x), base.NoBnd → (CapWitnesses.eqFormsC base Wc).NoBnd
+  | .nil, h => by rw [CapWitnesses.eqFormsC]; exact h
+  | .cons W _ _, h => by
+      rw [CapWitnesses.eqFormsC]
+      exact (CapWitnesses.eqFormsC_noBnd base W h).cons (by intro G hG; cases hG)
+
 theorem Fields.hasForms_noBnd (x : BVar s .var) :
     ∀ (ls : List Label) (V : View s), V.NoBnd → (Fields.hasForms x V ls).NoBnd
   | [], V, hV => hV
@@ -560,8 +742,11 @@ theorem Fields.hasForms_noBnd (x : BVar s .var) :
 /-- A literal's precise view has only equality and presence entries. -/
 theorem Value.precView_noBnd (x : BVar s .var) (v : Value s) : (v.precView x).NoBnd := by
   cases v with
-  | obj W F => exact Fields.hasForms_noBnd x F.labels _ (Witnesses.eqForms_noBnd W)
+  | obj W Wc F =>
+      exact Fields.hasForms_noBnd x F.labels _
+        (CapWitnesses.eqFormsC_noBnd _ Wc (Witnesses.eqForms_noBnd W))
   | lam S t => exact View.NoBnd.nil
+  | box a => exact View.NoBnd.nil
   | cast v e => exact View.NoBnd.nil
 
 /-! ## Field presence in a typed store -/

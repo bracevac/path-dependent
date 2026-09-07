@@ -53,6 +53,9 @@ theorem Morphism.HasType.append {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)}
   | _, _, .eqSym h₂ hAt => .eqSym (h₁.append h₂) hAt
   | _, _, .has h₂ hAt => .has (h₁.append h₂) hAt
   | _, _, .bnd h₂ he => .bnd (h₁.append h₂) he
+  | _, _, .leC h₂ hAt hpre hpost => .leC (h₁.append h₂) hAt hpre hpost
+  | _, _, .eqC h₂ hAt => .eqC (h₁.append h₂) hAt
+  | _, _, .eqSymC h₂ hAt => .eqSymC (h₁.append h₂) hAt
 
 
 /-! ## Witnesses: labels, positions, distinctness -/
@@ -152,6 +155,35 @@ theorem Witnesses.eqEntriesOf_At {s : Sig} (self : BVar s .var) (W₀ : Witnesse
         ← Witnesses.eqEntriesOf_length self W₀ W']
       exact .here
   | there _ ih => exact .there ih
+
+/-- The capture block of a literal's precise telescope is as long as its
+capture-witness list, so the presence entries of `ofLiteral W Wᶜ ls` start at
+position `W.length + Wᶜ.length`. -/
+theorem CapWitnesses.eqEntriesOf_length {s : Sig} (self : BVar s .var) (W₀ : CapWitnesses s)
+    (base : Telescope s) :
+    ∀ (W : CapWitnesses s), (W₀.eqEntriesOf self base W).length = base.length + W.length
+  | .nil => rfl
+  | .cons W _ _ => by
+      simp only [CapWitnesses.eqEntriesOf, Telescope.length, CapWitnesses.length,
+        CapWitnesses.eqEntriesOf_length self W₀ base W]
+      omega
+
+theorem CapWitnesses.eqEntries_length {s : Sig} (W : CapWitnesses (s,x))
+    (base : Telescope (s,x)) : (W.eqEntries base).length = base.length + W.length :=
+  CapWitnesses.eqEntriesOf_length _ _ _ _
+
+/-- The capture block is appended *after* the type block, so every position
+of the base telescope keeps its index. -/
+theorem CapWitnesses.At.eqEntriesOf {s : Sig} (self : BVar s .var) (W₀ : CapWitnesses s)
+    {base : Telescope s} {i : Nat} {P : Proposition s} (h : base ∋ (i ↦ P)) :
+    ∀ (W : CapWitnesses s), (W₀.eqEntriesOf self base W) ∋ (i ↦ P)
+  | .nil => h
+  | .cons W _ _ => .there (CapWitnesses.At.eqEntriesOf self W₀ h W)
+
+theorem CapWitnesses.At.eqEntries {s : Sig} {W : CapWitnesses (s,x)}
+    {base : Telescope (s,x)} {i : Nat} {P : Proposition (s,x)} (h : base ∋ (i ↦ P)) :
+    (W.eqEntries base) ∋ (i ↦ P) :=
+  CapWitnesses.At.eqEntriesOf _ _ h _
 
 /-- `LabelAt ls i ℓ`: the `i`-th label of `ls`. -/
 inductive LabelAt : List Label → Nat → Label → Prop where
@@ -356,6 +388,8 @@ theorem _root_.Captures.FCdot.Telescope.NoBnd.append {s' : Sig} {Tel₁ : FCdot.
   | .cons Tel (.le _ _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
   | .cons Tel (.eq _ _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
   | .cons Tel (.has _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
+  | .cons Tel (.leC _ _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
+  | .cons Tel (.eqC _ _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
 
 theorem _root_.Captures.FCdot.Telescope.NoBnd.rename {s₁ s₂ : Sig} (ρ : FCdot.Rename s₁ s₂) :
     ∀ Tel : FCdot.Telescope s₁, Tel.NoBnd → (Tel.rename ρ).NoBnd
@@ -364,6 +398,8 @@ theorem _root_.Captures.FCdot.Telescope.NoBnd.rename {s₁ s₂ : Sig} (ρ : FCd
   | .cons Tel (.le _ _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
   | .cons Tel (.eq _ _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
   | .cons Tel (.has _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
+  | .cons Tel (.leC _ _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
+  | .cons Tel (.eqC _ _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
 
 theorem _root_.Captures.FCdot.Telescope.NoBnd.closedBnds {s : Sig} :
     ∀ {Tel : FCdot.Telescope (s,x)}, Tel.NoBnd → Tel.ClosedBnds
@@ -372,6 +408,8 @@ theorem _root_.Captures.FCdot.Telescope.NoBnd.closedBnds {s : Sig} :
   | .cons Tel (.le _ _), h => .le (FCdot.Telescope.NoBnd.closedBnds h)
   | .cons Tel (.eq _ _), h => .eq (FCdot.Telescope.NoBnd.closedBnds h)
   | .cons Tel (.has _), h => .has (FCdot.Telescope.NoBnd.closedBnds h)
+  | .cons Tel (.leC _ _), h => .leC (FCdot.Telescope.NoBnd.closedBnds h)
+  | .cons Tel (.eqC _ _), h => .eqC (FCdot.Telescope.NoBnd.closedBnds h)
 
 theorem _root_.Captures.FCdot.Telescope.ClosedBnds.append {s : Sig} {Tel₁ : FCdot.Telescope (s,x)}
     (h₁ : Tel₁.ClosedBnds) :
@@ -381,6 +419,8 @@ theorem _root_.Captures.FCdot.Telescope.ClosedBnds.append {s : Sig} {Tel₁ : FC
   | _, .eq h₂ => .eq (FCdot.Telescope.ClosedBnds.append h₁ h₂)
   | _, .has h₂ => .has (FCdot.Telescope.ClosedBnds.append h₁ h₂)
   | _, .bnd h₂ => .bnd (FCdot.Telescope.ClosedBnds.append h₁ h₂)
+  | _, .leC h₂ => .leC (FCdot.Telescope.ClosedBnds.append h₁ h₂)
+  | _, .eqC h₂ => .eqC (FCdot.Telescope.ClosedBnds.append h₁ h₂)
 
 /-- A declaration-shaped body has no self-bounds at all: `Ty.telSelf` only
 produces one on a shape `Wf.mu` excludes. -/
@@ -445,6 +485,12 @@ theorem identityMorphism_typed {s : Sig} {Γ : FCdot.Ctx s} {src : FCdot.Telesco
   | _, .bnd hb, h => by
       have ih := identityMorphism_typed (Γ := Γ) (src := src) off hb (fun i Q hQ => h i Q hQ.there)
       rw [identityMorphism]; exact .bnd ih (.bound (h _ _ .here))
+  | _, .leC hb, h => by
+      have ih := identityMorphism_typed (Γ := Γ) (src := src) off hb (fun i Q hQ => h i Q hQ.there)
+      rw [identityMorphism]; exact .leC ih (.leC (h _ _ .here)) .nil .nil
+  | _, .eqC hb, h => by
+      have ih := identityMorphism_typed (Γ := Γ) (src := src) off hb (fun i Q hQ => h i Q hQ.there)
+      rw [identityMorphism]; exact .eqC ih (h _ _ .here)
 
 /-- `And₁`: the first half of a concatenation sits at the same positions. -/
 theorem identityMorphism_typed_left {s : Sig} {Γ : FCdot.Ctx s}
@@ -667,10 +713,10 @@ theorem litMorphism_typed {s : Sig} {Γ : FCdot.Ctx s} {src : FCdot.Telescope (s
 /-! ## The definition equalities and presences of a literal's own telescope -/
 
 theorem eqSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distinct)
-    (lsAll : List Label) :
+    (Wc : FCdot.CapWitnesses (s,x)) (lsAll : List Label) :
     ∀ (T : Ty (s,x)) (e : Nat),
       (∀ i l X, FCdot.Witnesses.At T.witnesses i l X → FCdot.Witnesses.At Wall (e + i) l X) →
-      Ty.EqSpec (FCdot.Telescope.ofLiteral Wall lsAll) T e
+      Ty.EqSpec (FCdot.Telescope.ofLiteral Wall Wc lsAll) T e
   | .top, _, _ => by simp [Ty.EqSpec]
   | .bot, _, _ => by simp [Ty.EqSpec]
   | .sel _ _, _, _ => by simp [Ty.EqSpec]
@@ -683,7 +729,7 @@ theorem eqSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distinc
       have h2 := FCdot.Witnesses.eqEntriesOf_At FCdot.BVar.here Wall h1
       rw [h1.get hdist] at h2
       rw [Ty.EqSpec]
-      exact FCdot.Telescope.At.hasEntries lsAll h2
+      exact FCdot.Telescope.At.hasEntries lsAll (FCdot.CapWitnesses.At.eqEntries h2)
   | .fld a T', e, hpos => by
       simp only [Ty.witnesses] at hpos
       have h1 := hpos 0 a T'.translateShape FCdot.Witnesses.At.hereNil
@@ -691,12 +737,12 @@ theorem eqSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distinc
       have h2 := FCdot.Witnesses.eqEntriesOf_At FCdot.BVar.here Wall h1
       rw [h1.get hdist] at h2
       rw [Ty.EqSpec]
-      exact FCdot.Telescope.At.hasEntries lsAll h2
+      exact FCdot.Telescope.At.hasEntries lsAll (FCdot.CapWitnesses.At.eqEntries h2)
   | .and S T', e, hpos => by
       simp only [Ty.witnesses] at hpos
       rw [Ty.EqSpec]
-      refine ⟨eqSpec_of hdist lsAll S e (fun i l X hAt => hpos i l X (hAt.append_left _)), ?_⟩
-      refine eqSpec_of hdist lsAll T' (e + S.witnesses.length) (fun i l X hAt => ?_)
+      refine ⟨eqSpec_of hdist Wc lsAll S e (fun i l X hAt => hpos i l X (hAt.append_left _)), ?_⟩
+      refine eqSpec_of hdist Wc lsAll T' (e + S.witnesses.length) (fun i l X hAt => ?_)
       have hh := hpos (S.witnesses.length + i) l X
         (FCdot.Witnesses.At.append_right S.witnesses hAt)
       rw [show e + (S.witnesses.length + i) = e + S.witnesses.length + i by omega] at hh
@@ -734,12 +780,15 @@ theorem litCo_typed_of_shape {s : Sig} {Γ : FCdot.Ctx s} {T : Ty (s,x)}
     Γ ⊢ˢ litCo T : T.literalTy.shape ≤ (Ty.mu T).translateShape := by
   have hW : T.witnesses.Distinct := Ty.witnesses_distinct T hdl
   rw [Ty.translateShape_mu, Ty.literalTy_shape]
-  refine .obj (litMorphism_typed T hsh 0 T.witnesses.length ?_ ?_)
-  · exact eqSpec_of hW T.fieldLabels T 0 (fun i l X hAt => by rw [Nat.zero_add]; exact hAt)
-  · refine hasSpec_of T T.witnesses.length (fun i l hAt => ?_)
-    have hh := FCdot.Telescope.hasEntries_At hAt (T.witnesses.eqEntries)
-    rw [show (T.witnesses.eqEntries).length = T.witnesses.length from
-      FCdot.Witnesses.eqEntriesOf_length _ _ _] at hh
+  refine .obj (litMorphism_typed T hsh 0 (T.witnesses.length + T.capWitnesses.length) ?_ ?_)
+  · exact eqSpec_of hW T.capWitnesses T.fieldLabels T 0
+      (fun i l X hAt => by rw [Nat.zero_add]; exact hAt)
+  · refine hasSpec_of T (T.witnesses.length + T.capWitnesses.length) (fun i l hAt => ?_)
+    have hh :=
+      FCdot.Telescope.hasEntries_At hAt (T.capWitnesses.eqEntries T.witnesses.eqEntries)
+    rw [FCdot.CapWitnesses.eqEntries_length,
+      show (T.witnesses.eqEntries).length = T.witnesses.length from
+        FCdot.Witnesses.eqEntriesOf_length _ _ _] at hh
     exact hh
 
 /-- `litCo` is closed evidence: it is typed in any context. -/
@@ -818,13 +867,13 @@ theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar 
           exact .cast .var
             ((FCdot.LeCo.HasType.capt (litCo_typed_of_shape (Γ := Γ.translate) hsh hdl)
                 FCdot.CapCo.HasType.refl).weaken
-              (.transparent T.literalTy T.witnesses T.fieldLabels))
+              (.transparent T.literalTy T.witnesses .nil T.fieldLabels))
   | .consSelf Γ d T, hwf, .there y => by
       cases hwf with
       | consSelf hwf' _ _ =>
           rw [Ctx.lookup_consSelf_there, Ctx.varAtom_consSelf_there, Ty.translate_weaken]
           exact (Ctx.varAtom_typed Γ hwf' y).weaken
-            (.transparent T.literalTy T.witnesses T.fieldLabels)
+            (.transparent T.literalTy T.witnesses .nil T.fieldLabels)
 
 /-! ## The root of a translated variable typing -/
 

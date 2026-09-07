@@ -47,6 +47,13 @@ def Witnesses.length : Witnesses s → Nat
   | .nil => 0
   | .cons W _ _ => W.length + 1
 
+/-- Length of a capture-witness list: the number of capture-definition
+entries the literal's precise telescope carries between its type block and
+its presence block (stage A1). -/
+def CapWitnesses.length : CapWitnesses s → Nat
+  | .nil => 0
+  | .cons W _ _ => W.length + 1
+
 /-- A shape inclusion read as a type inclusion at the empty capture set.
 Every coercion the translation builds goes through this: stage A0 assigns
 the empty capture set to every translated type, so the capture half of a
@@ -208,12 +215,30 @@ def Ty.fieldLabels : Ty s → List Label
   | .and S T => T.fieldLabels ++ S.fieldLabels
   | _ => []
 
-/-- The precise target type of a literal whose declaration type is `T`. -/
+/-- The capture witnesses of a translated literal.  The source of stage A1
+has no capture members, so every label's capture witness is the empty set;
+`CapWitnesses.get` reads an unlisted label as `[]`, so the empty list is that
+assignment, and the capture block of a translated literal's precise telescope
+is empty.  It is named rather than written `.nil` at each site so that the
+capture block is one definition, and so that every index computation below
+can be stated with `T.capWitnesses.length` in it. -/
+def Ty.capWitnesses (_ : Ty (s,x)) : FCdot.CapWitnesses (s,x) := .nil
+
+@[simp] theorem Ty.capWitnesses_length {s : Sig} (T : Ty (s,x)) :
+    T.capWitnesses.length = 0 := rfl
+
+@[simp] theorem Ty.capWitnesses_rename {s s' : Sig} (T : Ty (s,x)) (ρ : Rename s s') :
+    (T.rename ρ.lift).capWitnesses = T.capWitnesses.rename ρ.lift := rfl
+
+/-- The precise target type of a literal whose declaration type is `T`: its
+type definitions, then its (empty) capture definitions, then its fields. -/
 def Ty.literalTy (T : Ty (s,x)) : FCdot.Ty s :=
-  FCdot.Ty.pure (.obj (FCdot.Telescope.ofLiteral T.witnesses T.fieldLabels))
+  FCdot.Ty.pure
+    (.obj (FCdot.Telescope.ofLiteral T.witnesses T.capWitnesses T.fieldLabels))
 
 @[simp] theorem Ty.literalTy_shape {s : Sig} (T : Ty (s,x)) :
-    T.literalTy.shape = FCdot.Shape.obj (FCdot.Telescope.ofLiteral T.witnesses T.fieldLabels) :=
+    T.literalTy.shape =
+      FCdot.Shape.obj (FCdot.Telescope.ofLiteral T.witnesses T.capWitnesses T.fieldLabels) :=
   rfl
 
 /-- Contexts translate binder by binder: an ordinary binder is opaque at its
@@ -223,7 +248,7 @@ def Ctx.translate : Ctx s → FCdot.Ctx s
   | .nil => .nil
   | .cons Γ T => .cons Γ.translate (.opaque T.translate)
   | .consSelf Γ _ T =>
-      .cons Γ.translate (.transparent T.literalTy T.witnesses T.fieldLabels)
+      .cons Γ.translate (.transparent T.literalTy T.witnesses T.capWitnesses T.fieldLabels)
 
 end DotMNF
 

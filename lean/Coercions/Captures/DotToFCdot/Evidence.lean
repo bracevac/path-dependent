@@ -45,6 +45,8 @@ def _root_.Captures.FCdot.Morphism.append : FCdot.Morphism s → FCdot.Morphism 
   | m, .eq m' j b => .eq (m.append m') j b
   | m, .has m' j => .has (m.append m') j
   | m, .bnd m' e => .bnd (m.append m') e
+  | m, .leC m' q h q' => .leC (m.append m') q h q'
+  | m, .eqC m' j b => .eqC (m.append m') j b
 
 /-- A telescope with no self-bound propositions at all.  `Ty.telSelf`
 produces one only on a shape that `Wf.mu` excludes. -/
@@ -67,6 +69,10 @@ inductive _root_.Captures.FCdot.Telescope.ClosedBnds : {s : FCdot.Sig} → FCdot
       FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.has ℓ))
   | bnd {Tel : FCdot.Telescope (s,x)} {T : FCdot.Shape s} :
       FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.bnd T.weaken))
+  | leC {Tel : FCdot.Telescope (s,x)} {C D : FCdot.CaptureSet (s,x)} :
+      FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.leC C D))
+  | eqC {Tel : FCdot.Telescope (s,x)} {C D : FCdot.CaptureSet (s,x)} :
+      FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.eqC C D))
 
 /-- The identity templates of a telescope whose propositions sit at positions
 `off, off + 1, …` of the source `src`.  A self-bound is copied by the cast
@@ -81,6 +87,9 @@ def identityMorphism (src : FCdot.Telescope (s,x)) (off : Nat) :
   | .cons Tel (.has _) => .has (identityMorphism src off Tel) (off + Tel.length)
   | .cons Tel (.bnd _) =>
       .bnd (identityMorphism src off Tel) (.bound src (off + Tel.length))
+  | .cons Tel (.leC _ _) =>
+      .leC (identityMorphism src off Tel) .nil (.leC (off + Tel.length)) .nil
+  | .cons Tel (.eqC _ _) => .eqC (identityMorphism src off Tel) (off + Tel.length) false
 
 /-! ## Putting an operand into its telescope -/
 
@@ -121,10 +130,17 @@ def litMorphism : Ty (s,x) → Nat → Nat → FCdot.Morphism s × Nat × Nat
       (m₁.append m₂, e₂, h₁)
   | _, e, h => (.nil, e, h)
 
-/-- The coercion from a literal's precise shape to `⟦μ(x. T)⟧`'s shape. -/
+/-- The coercion from a literal's precise shape to `⟦μ(x. T)⟧`'s shape.
+
+The precise telescope is `type equalities, capture equalities, presences`,
+so the definition equalities start at `0` and the presences start after both
+earlier blocks, at `|W| + |Wᶜ|` (`FCdot.CapWitnesses.eqEntries_length`).  In
+stage A1 the capture block is empty (`Ty.capWitnesses`) and the declared
+telescope has no capture propositions, so no template entry has to be built
+for it. -/
 def litCo (T : Ty (s,x)) : FCdot.ShapeCo s :=
-  .obj (FCdot.Telescope.ofLiteral T.witnesses T.fieldLabels)
-    (litMorphism T 0 T.witnesses.length).1
+  .obj (FCdot.Telescope.ofLiteral T.witnesses T.capWitnesses T.fieldLabels)
+    (litMorphism T 0 (T.witnesses.length + T.capWitnesses.length)).1
 
 /-- The atom of a variable: the variable itself, cast from the literal's
 precise type when the binder is a literal's self. -/

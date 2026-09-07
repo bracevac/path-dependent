@@ -1,4 +1,4 @@
-# DotToFCdot, at stage A0 of captures
+# DotToFCdot, at stage A1 of captures
 
 The translation of DOT-MNF into FCdot (Plan III §8, milestones M3 to M5),
 namespace `DotMNF`.  Derivations are `Type`-valued, so the translation is a
@@ -9,7 +9,7 @@ that function, and DOT-MNF's type safety is transported from FCdot's.
 
 | module | contents |
 |---|---|
-| `Types` | `Ty.translate`, `Ty.tel`/`Ty.telSelf` (a type as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Ty.isObj` and `Ty.translate_isObj`/`Ty.tel_of_not_isObj`, `Ty.witnesses`, `Ty.fieldLabels`, `Ty.literalTy`, `Ctx.translate` |
+| `Types` | `Ty.translate`, `Ty.tel`/`Ty.telSelf` (a type as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Ty.isObj` and `Ty.translate_isObj`/`Ty.tel_of_not_isObj`, `Ty.witnesses`, `Ty.capWitnesses`, `Ty.fieldLabels`, `Ty.literalTy`, `Ctx.translate` |
 | `TypesLemmas` | renaming and instantiation commute with the translation; `Ty.isDecl_rename`, `Ty.isObj_rename`; `Ty.translate_decl`; `Ty.tel_substVar` (opening a body at the root) |
 | `Evidence` | `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `Ctx.varAtom` |
 | `EvidenceTyped` | `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `Ctx.varAtom_typed`, `Ty.tel_closedBnds` (every self-bound the translation produces is closed); the well-formedness `Ctx.Wf` of contexts |
@@ -71,9 +71,9 @@ context is empty, so `dot_safety` has no side condition.
 
 The self-alias restriction is gone: `{}-I` no longer restricts which members'
 witnesses may be a bare selection on the object's own self.  FCdot's
-alias-tolerant resolution (`FCdot.Ctx.resolve`) follows same-block aliases —
+alias-tolerant resolution (`FCdot.Ctx.resolve`) follows same-block aliases , 
 a field typed `x.A` inside its own literal makes `x∙a` an alias of `x∙A`,
-which now resolves like any other alias — and a cyclic alias resolves to `⊤`.
+which now resolves like any other alias, and a cyclic alias resolves to `⊤`.
 
 Fields of an intersection are translated with the right conjunct outermost,
 matching DOT-MNF's shadowing and its erasure.
@@ -107,13 +107,42 @@ Axioms: `propext` and `Quot.sound` everywhere.  No
 | `Terms`, `TermsTyped`, `Erasure`, `Safety` | every cast through `capt _ (refl _)`; statements unchanged |
 | `Consistency` | `reachable_consistent` quantifies the two capture sets of `⊤ ≤ ⊥` |
 
+## Stage A1
+
+The source is still `DOT-MNF` without captures (the capturing source is stage A3), so
+A1 changes the translation only where the *target* changed: a literal now carries a
+capture-witness list, and its precise telescope has a capture block between the type
+block and the presences.  A translated literal declares no capture members, so its
+capture witnesses are empty and the block is empty, but every index computation over
+the precise telescope is stated with the capture block in it, so that A3 has only to
+change what `Ty.capWitnesses` returns.
+
+| module | what A1 changed |
+|---|---|
+| `Types` | `Ty.capWitnesses`, the capture witnesses of a translated literal, empty, so every label's capture witness reads as `[]` (`CapWitnesses.get` of an unlisted label); `FCdot.CapWitnesses.length`; `Ty.literalTy` and `Ctx.translate` at `Telescope.ofLiteral W Wᶜ ls` and `Binding.transparent T W Wᶜ ls` |
+| `TypesLemmas` | `Ty.capWitnesses_rename` (renaming a capture-witness list of a translated literal is the identity), used by `Ty.literalTy_rename`; every other statement unchanged |
+| `Evidence` | `litCo` builds the object coercion out of `ofLiteral T.witnesses T.capWitnesses T.fieldLabels`, with the presence counter offset by `T.witnesses.length + T.capWitnesses.length`; `FCdot.Morphism.append` and `identityMorphism` gain their capture clauses (a capture proposition is copied by the identity template `leC m [] (leC j) []`, a capture equality by `eqC m j false`); `FCdot.Telescope.NoBnd` and `ClosedBnds` cover the two new propositions |
+| `EvidenceTyped` | `FCdot.CapWitnesses.eqEntriesOf_length`/`eqEntries_length` (the capture block is as long as the capture-witness list, so the presences start at `|W| + |Wᶜ|`) and `CapWitnesses.At.eqEntriesOf`/`At.eqEntries` (the capture block is appended after the type block, so type-equality positions keep their index); `eqSpec_of` is stated for an arbitrary capture block; `identityMorphism_typed`, `Morphism.HasType.append`, `NoBnd.append`/`rename`/`closedBnds` and `ClosedBnds.append` gain their capture cases; `litCo_typed_of_shape` reads the presence offset off the two length lemmas |
+| `Terms`, `TermsTyped` | a translated literal is `Value.obj T.witnesses T.capWitnesses (…)`, typed at `μ (ofLiteral T.witnesses T.capWitnesses F.labels)`; statements unchanged |
+| `Erasure`, `Safety`, `Consistency` | unchanged; a literal's capture witnesses are not erased data and the translation builds no box, so erasure equality and both simulations are A0's |
+
+### Notation
+
+The translation adds no notation of its own; it uses FCdot's, including A1's `⊑ᶜ`,
+`≐ᶜ` and `⊢ᶜ`.  As elsewhere, an identifier the plan spells with a `ᶜ` suffix carries
+the ASCII suffix `C` (`Ctx.lookupDefC`, `CapWitnesses`, `SideC`, `HoleC`).
+
 ### Main theorems, restated
+
+Every statement is A0's, and A0's is the vanilla statement restated at the shape/type
+split.  Nothing gained a hypothesis, and no conclusion was dropped.
 
 ```
 DotMNF.Sub.translate_typed       : Γ.Wf → Γ.translate ⊢ d.translate : S.translate ≤ T.translate
 DotMNF.Sub.translateShape_typed  : Γ.Wf → Γ.translate ⊢ˢ d.translateShape :
                                      S.translateShape ≤ T.translateShape
 DotMNF.HasTy.translateAtom_typed : Γ.Wf → Γ.translate ⊢ₐ h.translateAtom : T.translate
+DotMNF.HasTy.translateAtom_root  : h.translateAtom.root = x
 DotMNF.HasTy.translate_typed     : Γ.Wf → Γ.translate ⊢ h.translate : T.translate
 DotMNF.HasTy.translate_erase     : ⌊h.translate⌋ = ⌊t⌋
 DotMNF.coherence                 : ⌊d₁.translate⌋ = ⌊d₂.translate⌋
@@ -124,3 +153,13 @@ DotMNF.reachable_consistent      : HasTy .nil t T → ⟨∅, ∅, d.translate�
 DotMNF.reachable_realized        : … ∧ ∀ x ℓ, ∃ W, Γ.lookupDef x ℓ = some W ∧
                                      Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W
 ```
+
+These rest on the target's A1 theorems, which keep their statements as well: item 7 of
+the canonical-forms theorem (a typed atom's root is below the capture set of its type),
+`FCdot.cap_canon` over a typed store, and `FCdot.closed_box_inversion`, the box
+analogue of `closed_pi_inversion` that the box revision needed.  The translation builds
+no box and no `recap`, so it meets none of them directly; it inherits them through
+`FCdot.progress`, `preservation'` and `erase_reflect'`.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound` everywhere.  No `sorry`, `axiom`,
+`partial`, `unsafe`, or `native_decide`, and no Mathlib.
