@@ -132,8 +132,11 @@ theorem Tm.erase_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
 theorem Value.erase_rename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
     (v.rename ρ).erase = v.erase.rename ρ := by
   match v with
-  | .obj d => simp only [Value.rename, Value.erase, Runtime.Tm.rename, Defs.erase_rename d ρ.lift]
-  | .lam S t => simp only [Value.rename, Value.erase, Runtime.Tm.rename, Tm.erase_rename t ρ.lift]
+  | .obj d =>
+      simp only [Value.rename, Value.erase, Runtime.Tm.rename, Defs.erase_rename d ρ.lift.lift]
+  | .lam S t =>
+      simp only [Value.rename, Value.erase, Runtime.Tm.rename,
+        Tm.erase_rename t ρ.lift.lift.lift]
   | .box x => simp only [Value.rename, Value.erase, Runtime.Tm.rename]
 
 theorem Defs.erase_rename {s1 s2 : Sig} (d : Defs s1) (ρ : Rename s1 s2) :
@@ -166,6 +169,78 @@ theorem Cont.erase_rename {s1 s2 : Sig} (K : Cont s1) (ρ : Rename s1 s2) :
 
 theorem Cont.erase_weaken {s : Sig} (K : Cont s) : (K.weaken).erase = K.erase.weaken :=
   Cont.erase_rename K Rename.succ
+
+/-! ## Erasure commutes with substitution
+
+`Tm.erase_subst` is the source's copy of the target's `FCdot.Tm.erase_subst`
+(B1.6): a substitution's capture component has no runtime content, so what
+survives erasure is its term component alone, which is a `Runtime.VRen`. -/
+
+@[simp] theorem Subst.lift_var {s1 s2 : Sig} (σ : Subst s1 s2) :
+    (σ.lift).var = Runtime.VRen.lift σ.var :=
+  _root_.funext fun z => by cases z <;> rfl
+
+@[simp] theorem Subst.liftC_var {s1 s2 : Sig} (σ : Subst s1 s2) :
+    (σ.liftC).var = Runtime.VRen.liftC σ.var :=
+  _root_.funext fun z => by cases z; rfl
+
+@[simp] theorem Subst.enter_var {s : Sig} (y : BVar s .var) :
+    (Subst.enter y).var = Runtime.VRen.enter y :=
+  _root_.funext fun z => by
+    match z with
+    | .here => rfl
+    | .there (.there (.there z)) => rfl
+
+@[simp] theorem Subst.enterObj_var {s : Sig} (y : BVar s .var) :
+    (Subst.enterObj y).var = Runtime.VRen.enterObj y :=
+  _root_.funext fun z => by
+    match z with
+    | .here => rfl
+    | .there (.there z) => rfl
+
+theorem appendFields_map {s1 s2 : Sig} (F G : Runtime.Fields s1) (f : Runtime.VRen s1 s2) :
+    (appendFields F G).map f = appendFields (F.map f) (G.map f) := by
+  match G with
+  | .nil => rfl
+  | .cons G ℓ t =>
+      simp only [appendFields, Runtime.Fields.map, appendFields_map F G f]
+
+mutual
+
+theorem Tm.erase_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
+    (t.subst σ).erase = t.erase.map σ.var := by
+  match t with
+  | .path p => cases p; rfl
+  | .val v => simp only [Tm.subst, Tm.erase, Value.erase_subst v σ]
+  | .app x y => rfl
+  | .proj x a => rfl
+  | .let t u =>
+      simp only [Tm.subst, Tm.erase, Runtime.Tm.map, Tm.erase_subst t σ,
+        Tm.erase_subst u σ.lift, Subst.lift_var]
+  | .unbox C x => rfl
+
+theorem Value.erase_subst {s1 s2 : Sig} (v : Value s1) (σ : Subst s1 s2) :
+    (v.subst σ).erase = v.erase.map σ.var := by
+  match v with
+  | .obj d =>
+      simp only [Value.subst, Value.erase, Runtime.Tm.map, Defs.erase_subst d σ.liftC.lift,
+        Subst.lift_var, Subst.liftC_var]
+  | .lam T t =>
+      simp only [Value.subst, Value.erase, Runtime.Tm.map,
+        Tm.erase_subst t σ.liftC.liftC.lift, Subst.lift_var, Subst.liftC_var]
+  | .box x => rfl
+
+theorem Defs.erase_subst {s1 s2 : Sig} (d : Defs s1) (σ : Subst s1 s2) :
+    (d.subst σ).erase = d.erase.map σ.var := by
+  match d with
+  | .typ A S => rfl
+  | .cap C c => rfl
+  | .trm a t => simp only [Defs.subst, Defs.erase, Runtime.Fields.map, Tm.erase_subst t σ]
+  | .and d1 d2 =>
+      simp only [Defs.subst, Defs.erase, appendFields_map,
+        Defs.erase_subst d1 σ, Defs.erase_subst d2 σ]
+
+end
 
 /-! ## Erasure and the inspected root
 
@@ -225,10 +300,11 @@ theorem Value.isValue_erase {s : Sig} (v : Value s) : Runtime.IsValue v.erase :=
 /-- The projection case of `erase_step`, as a lemma so that the erased field
 list is named rather than inferred. -/
 theorem step_proj_erase {s : Sig} {σ : Store s} {K : Cont s} {x : BVar s .var} {a : Label}
-    {d : Defs (s,x)} {t : Tm (s,x)}
+    {d : Defs ((s,c),x)} {t : Tm ((s,c),x)}
     (hl : σ.lookup x = .obj d) (hd : d.lookupTrm a = some t) :
-    Runtime.Step (State.erase ⟨σ, K, .proj x a⟩) (State.erase ⟨σ, K, t.substVar x⟩) := by
-  simp only [State.erase, Tm.erase, Tm.erase_substVar]
+    Runtime.Step (State.erase ⟨σ, K, .proj x a⟩)
+      (State.erase ⟨σ, K, t.subst (Subst.enterObj x)⟩) := by
+  simp only [State.erase, Tm.erase, Tm.erase_subst, Subst.enterObj_var]
   refine Runtime.Step.proj (F := d.erase) ?_ ?_
   · rw [Store.lookup_erase, hl]; rfl
   · rw [Defs.erase_lookupTrm, hd]; rfl
@@ -256,7 +332,7 @@ theorem erase_step {s s' : Sig} {st : State s} {st' : State s'} (h : Step st st'
       simp only [State.erase, Tm.erase, Cont.erase, Path.root, Tm.erase_substVar]
       exact Runtime.Step.rename
   | app hl =>
-      simp only [State.erase, Tm.erase, Tm.erase_substVar]
+      simp only [State.erase, Tm.erase, Tm.erase_subst, Subst.enter_var]
       refine Runtime.Step.app ?_
       rw [Store.lookup_erase, hl]
       rfl
@@ -275,9 +351,9 @@ theorem reflect_let {s : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {u : Tm (s,
   ⟨⟨σ, .cons K u, t⟩, Step.let, rfl⟩
 
 theorem reflect_app {s : Sig} {σ : Store s} {K : Cont s} {x y : BVar s .var}
-    {t₀ : Runtime.Tm (s,x)} (hl : σ.erase.lookup x = .lam t₀) :
+    {t₀ : Runtime.Tm (((s,c),c),x)} (hl : σ.erase.lookup x = .lam t₀) :
     ∃ st' : State s, Step ⟨σ, K, .app x y⟩ st' ∧
-      st'.erase = ⟨σ.erase, K.erase, t₀.substVar y⟩ := by
+      st'.erase = ⟨σ.erase, K.erase, t₀.map (Runtime.VRen.enter y)⟩ := by
   rw [Store.lookup_erase] at hl
   cases hv : σ.lookup x with
   | obj d => rw [hv] at hl; simp [Value.erase] at hl
@@ -286,14 +362,14 @@ theorem reflect_app {s : Sig} {σ : Store s} {K : Cont s} {x y : BVar s .var}
       rw [hv] at hl
       simp only [Value.erase, Runtime.Tm.lam.injEq] at hl
       subst hl
-      exact ⟨⟨σ, K, t.substVar y⟩, Step.app hv, by
-        simp only [State.erase, Tm.erase_substVar]⟩
+      exact ⟨⟨σ, K, t.subst (Subst.enter y)⟩, Step.app hv, by
+        simp only [State.erase, Tm.erase_subst, Subst.enter_var]⟩
 
 theorem reflect_proj {s : Sig} {σ : Store s} {K : Cont s} {x : BVar s .var} {ℓ : Label}
-    {F : Runtime.Fields (s,x)} {t₀ : Runtime.Tm (s,x)}
+    {F : Runtime.Fields ((s,c),x)} {t₀ : Runtime.Tm ((s,c),x)}
     (hl : σ.erase.lookup x = .obj F) (hf : F.get? ℓ = some t₀) :
     ∃ st' : State s, Step ⟨σ, K, .proj x ℓ⟩ st' ∧
-      st'.erase = ⟨σ.erase, K.erase, t₀.substVar x⟩ := by
+      st'.erase = ⟨σ.erase, K.erase, t₀.map (Runtime.VRen.enterObj x)⟩ := by
   rw [Store.lookup_erase] at hl
   cases hv : σ.lookup x with
   | lam S t => rw [hv] at hl; simp [Value.erase] at hl
@@ -309,8 +385,8 @@ theorem reflect_proj {s : Sig} {σ : Store s} {K : Cont s} {x : BVar s .var} {�
           rw [hd] at hf
           injection hf with hf
           subst hf
-          exact ⟨⟨σ, K, t.substVar x⟩, Step.proj hv hd, by
-            simp only [State.erase, Tm.erase_substVar]⟩
+          exact ⟨⟨σ, K, t.subst (Subst.enterObj x)⟩, Step.proj hv hd, by
+            simp only [State.erase, Tm.erase_subst, Subst.enterObj_var]⟩
 
 /-- Reflection of the runtime `unbox` step an unboxing erases to.  A box
 erases to the runtime's box and to nothing else, so the store entry is read

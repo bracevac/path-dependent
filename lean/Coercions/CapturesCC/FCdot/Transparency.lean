@@ -215,6 +215,23 @@ theorem consC {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : CapBound s) :
         show ((Γ'.lookupCap κ0)↑).isRoot = ((Γ.lookupCap κ0)↑).isRoot
         simp [h.capEq]
 
+/-! ### The scope contexts
+
+A scope, a lambda body and an object body are built from the two `cons`
+lemmas above, so refinement passes under all three. -/
+
+theorem scope {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') : Ctx.Refines Γ.scope Γ'.scope :=
+  (h.consC .root).consC .star
+
+theorem body {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (T : Dom s) :
+    Ctx.Refines (Γ.body T) (Γ'.body T) :=
+  (h.scope).cons _
+
+theorem objBody {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (T : Ty s) (W : Witnesses (s,x))
+    (Wc : CapWitnesses (s,x)) (ls : List Label) :
+    Ctx.Refines (Γ.objBody T W Wc ls) (Γ'.objBody T W Wc ls) :=
+  (h.consC .root).cons _
+
 end Ctx.Refines
 
 /-! ## Levels under a refinement
@@ -291,7 +308,7 @@ theorem ShapeCo.HasType.refine {Γ Γ' : Ctx s} {e : ShapeCo s} {S T : Shape s}
   | .bot => exact .bot
   | .eqToLe hφ => exact .eqToLe (hφ.refine hR)
   | .pi he hf =>
-      exact .pi (LeCo.HasType.refine hR he) (LeCo.HasType.refine (hR.cons _) hf)
+      exact .pi (LeCo.HasType.refine hR.scope he) (LeCo.HasType.refine (hR.body _) hf)
   | .obj hm => exact .obj (hm.refine hR)
   | .pair he hf => exact .pair (he.refine hR) (hf.refine hR)
   | .bound hAt => exact .bound hAt
@@ -372,8 +389,8 @@ theorem Tm.HasType.refine {Γ Γ' : Ctx s} {t : Tm s} {T : Ty s}
 theorem Value.HasType.refine {Γ Γ' : Ctx s} {v : Value s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᵥ v : T) : Γ' ⊢ᵥ v : T := by
   match h with
-  | .lam ht hg => exact .lam (ht.refine (hR.cons _)) (hg.refine (hR.cons _))
-  | .obj hF => exact .obj (hF.refine (hR.cons _))
+  | .lam ht hg => exact .lam (ht.refine (hR.body _)) (hg.refine (hR.body _))
+  | .obj hF => exact .obj (hF.refine (hR.objBody _ _ _ _))
   | .box ha => exact .box (ha.refine hR)
   | .cast hv he => exact .cast (hv.refine hR) (LeCo.HasType.refine hR he)
 

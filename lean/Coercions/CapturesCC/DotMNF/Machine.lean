@@ -6,9 +6,10 @@ namespace CapturesCC
 # DOT-MNF^cc store machine
 
 A state is a store of values, a continuation of `let` frames, and a running
-term, all indexed by one signature.  Allocation extends the signature; every
-substitution performed by the machine is a renaming, so no substitution
-operation beyond `rename` is needed.
+term, all indexed by one signature.  Allocation extends the signature.  The
+two steps that enter a body enter three binders and two binders at once, so
+they use the substitution of `DotMNF.Subst`; every other step still moves by
+a renaming.
 
 This is Plan III §3.5 plus the unboxing step of stage A3a:
 
@@ -16,8 +17,8 @@ This is Plan III §3.5 plus the unboxing step of stage A3a:
 ⟨σ, K, let x = t in u⟩                       ⟶  ⟨σ, K ▹ (x. u), t⟩
 ⟨σ, K ▹ (x. u), v⟩                           ⟶  ⟨σ, v ; K↑, u⟩
 ⟨σ, K ▹ (x. u), y⟩                           ⟶  ⟨σ, K, u[x := y]⟩
-⟨σ, K, x y⟩       σ(x) = λ(z : T) t          ⟶  ⟨σ, K, t[z := y]⟩
-⟨σ, K, x.a⟩       σ(x) = ν(z. d), d ∋ {a = t} ⟶  ⟨σ, K, t[z := x]⟩
+⟨σ, K, x y⟩       σ(x) = λ[κ](z : T) t       ⟶  ⟨σ, K, t[enter y]⟩
+⟨σ, K, x.a⟩       σ(x) = ν[κ](z. d), d ∋ {a = t} ⟶  ⟨σ, K, t[enterObj x]⟩
 ⟨σ, K, C ⊸ x⟩     σ(x) = □ y                 ⟶  ⟨σ, K, y⟩
 ```
 
@@ -102,13 +103,16 @@ inductive Step : State s → State s' → Prop where
   | alloc : Step ⟨σ, .cons K u, .val v⟩ ⟨.cons σ v, K.weaken, u⟩
   /-- A path answer is consumed by a renaming. -/
   | rename : Step ⟨σ, .cons K u, .path (.var y)⟩ ⟨σ, K, u.substVar y⟩
-  /-- Application: look the closure up in the store. -/
-  | app : σ.lookup x = .lam T t → Step ⟨σ, K, .app x y⟩ ⟨σ, K, t.substVar y⟩
-  /-- Selection: look the object up in the store and instantiate the field's
-      self binder by the receiver. -/
+  /-- Application: look the closure up in the store and enter its body, which
+      instantiates the parameter by the argument, the arrow's capture binder
+      by the argument, and the body root by the outermost reading. -/
+  | app : σ.lookup x = .lam T t → Step ⟨σ, K, .app x y⟩ ⟨σ, K, t.subst (Subst.enter y)⟩
+  /-- Selection: look the object up in the store and enter the field's body,
+      which instantiates the self binder by the receiver and the class root by
+      the outermost reading. -/
   | proj :
       σ.lookup x = .obj d → d.lookupTrm a = some t →
-      Step ⟨σ, K, .proj x a⟩ ⟨σ, K, t.substVar x⟩
+      Step ⟨σ, K, .proj x a⟩ ⟨σ, K, t.subst (Subst.enterObj x)⟩
   /-- Unboxing: look the box up in the store and continue at its content. -/
   | unbox :
       σ.lookup x = .box y →

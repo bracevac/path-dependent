@@ -233,7 +233,7 @@ theorem Store.Typed.lookupDefC {s : Sig} {σ : Store s} {Γ : Ctx s} (h : ⊢ σ
 
 /-- The closure stored at a variable is typed at the variable's type. -/
 theorem Store.Typed.lam_of_lookup {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVar s .var}
-    {A : CaptureSet s} {S₀ : Ty s} {t₀ : Tm (s,x)} {g : CapCo (s,x)}
+    {A : CaptureSet s} {S₀ : Dom s} {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)}
     (h : ⊢ σ : Γ) (hx : σ.lookup x = .lam A S₀ t₀ g) :
     Γ ⊢ᵥ .lam A S₀ t₀ g : Γ.lookupTy x :=
   hx ▸ h.lookup x
@@ -272,10 +272,10 @@ annotation `A`, the body is typed under the parameter, and the closing
 evidence puts the body's use set below `A` weakened united with the
 parameter.  The last conjunct is the premise the `lam` rule of A2.2 carries;
 `step_uses` reads it at the application steps. -/
-theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s} {S₀ : Ty s}
-    {t₀ : Tm (s,x)} {g : CapCo (s,x)} {T : Ty s} (h : Γ ⊢ᵥ .lam A S₀ t₀ g : T) :
-    ∃ T₀, T = (Π(S₀) T₀) ^ A ∧ (Γ.cons (.opaque S₀)) ⊢ t₀ : T₀ ∧
-      (Γ.cons (.opaque S₀)) ⊢ᶜ g : t₀.uses ⊑ (A↑ ∪ [CapAtom.var .here]) := by
+theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s} {S₀ : Dom s}
+    {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)} {T : Ty s} (h : Γ ⊢ᵥ .lam A S₀ t₀ g : T) :
+    ∃ T₀ : Cod s, T = (Π(S₀) T₀) ^ A ∧ (Γ.body S₀) ⊢ t₀ : T₀.underRoot ∧
+      (Γ.body S₀) ⊢ᶜ g : t₀.uses ⊑ (A↑↑↑ ∪ [CapAtom.var .here]) := by
   cases h with
   | lam ht hg => exact ⟨_, rfl, ht, hg⟩
 
@@ -290,12 +290,12 @@ theorem Value.HasType.box_inv {s : Sig} {Γ : Ctx s} {b : Atom s} {T : Ty s}
 the literal's own annotation `A`, and the fields are typed against that same
 `A`, which is the index of the fields judgement of A2.2. -/
 theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s}
-    {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {F : Fields (s,x)} {T : Ty s}
+    {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {F : Fields ((s,c),x)} {T : Ty s}
     (h : Γ ⊢ᵥ .obj A W Wc F : T) :
     T = (μ (Telescope.ofLiteral W Wc F.labels)) ^ A ∧
       Fields.HasType
-        (Γ.cons (.transparent ((μ (Telescope.ofLiteral W Wc F.labels)) ^ A) W Wc F.labels))
-        A F := by
+        (Γ.objBody ((μ (Telescope.ofLiteral W Wc F.labels)) ^ A) W Wc F.labels)
+        A↑ F := by
   cases h with
   | obj hF => exact ⟨rfl, hF⟩
 
@@ -328,11 +328,40 @@ theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} {A : CaptureSet s}
 
 /-! ## The two substitution instances the machine uses -/
 
-@[simp] theorem Subst.selfCast_root {s : Sig} (E : LeCo (s,x)) :
-    (Subst.selfCast E).root = Rename.id := by
-  apply Rename.funext'
-  intro k x
-  cases k <;> cases x <;> rfl
+@[simp] theorem Subst.selfCast_var_there {s : Sig} (E : LeCo (s,x)) (z : BVar s .var) :
+    (Subst.selfCast E).var (.there z) = .var (.there z) := rfl
+
+@[simp] theorem Subst.selfCast_cvar_there {s : Sig} (E : LeCo (s,x)) (κ : BVar s .cap) :
+    (Subst.selfCast E).cvar (.there κ) = .cvar (.there κ) := rfl
+
+@[simp] theorem Subst.selfCast_rootVar {s : Sig} (E : LeCo (s,x)) (y : BVar (s,x) .var) :
+    (Subst.selfCast E).rootVar y = y := by
+  cases y <;> rfl
+
+/-- The self cast is invisible to the type sort: it changes a term variable
+into a cast around it, and a type reads only the root of that cast.  This is
+the substitution reading of `Subst.selfCast_root` of the vanilla line. -/
+theorem Subst.selfCast_core {s : Sig} (E : LeCo (s,x)) :
+    (Subst.selfCast E).core = Subst.ofRename Rename.id := by
+  apply Subst.funext'
+  · intro y; cases y <;> rfl
+  · intro κ; cases κ with | there y => rfl
+
+@[simp] theorem CapAtom.subst_selfCast {s : Sig} (a : CapAtom (s,x)) (E : LeCo (s,x)) :
+    a.subst (Subst.selfCast E) = a := by
+  rw [CapAtom.subst_core, Subst.selfCast_core, CapAtom.subst_ofRename, CapAtom.rename_id]
+
+@[simp] theorem CaptureSet.subst_selfCast {s : Sig} (C : CaptureSet (s,x)) (E : LeCo (s,x)) :
+    C.subst (Subst.selfCast E) = C := by
+  rw [CaptureSet.subst_core, Subst.selfCast_core, CaptureSet.subst_ofRename, CaptureSet.rename_id]
+
+@[simp] theorem Shape.subst_selfCast {s : Sig} (S : Shape (s,x)) (E : LeCo (s,x)) :
+    S.subst (Subst.selfCast E) = S := by
+  rw [Shape.subst_core, Subst.selfCast_core, Shape.subst_ofRename, Shape.rename_id]
+
+@[simp] theorem Ty.subst_selfCast {s : Sig} (T : Ty (s,x)) (E : LeCo (s,x)) :
+    T.subst (Subst.selfCast E) = T := by
+  rw [Ty.subst_core, Subst.selfCast_core, Ty.subst_ofRename, Ty.rename_id]
 
 /-! ### A term binding is invisible to the capture spine
 
@@ -383,7 +412,7 @@ theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
     cases y with
     | here =>
         show (Γ.cons (.transparent S₀ W Wc Fs)) ⊢ₐ .cast (.var .here) E↑ :
-          ((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.selfCast E↑).root
+          ((Γ.cons (.opaque T)).lookupTy .here).subst (Subst.selfCast E↑)
         have hE' : (Γ.cons (.transparent S₀ W Wc Fs)) ⊢ E↑ : S₀↑ ≤ T↑ :=
           hE.weaken _
         have hvar : (Γ.cons (.transparent S₀ W Wc Fs)) ⊢ₐ .var .here : S₀↑ := by
@@ -392,7 +421,7 @@ theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
         simpa [Binding.ty] using Atom.HasType.cast hvar hE'
     | there z =>
         show (Γ.cons (.transparent S₀ W Wc Fs)) ⊢ₐ .var (.there z) :
-          ((Γ.cons (.opaque T)).lookupTy (.there z)).rename (Subst.selfCast E↑).root
+          ((Γ.cons (.opaque T)).lookupTy (.there z)).subst (Subst.selfCast E↑)
         simpa using Atom.HasType.var (Γ := Γ.cons (.transparent S₀ W Wc Fs)) (x := .there z)
   ty := by
     intro y ht
@@ -427,18 +456,18 @@ theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
         simpa using hFs'
   capRoot := by
     intro r hr
-    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    simp only [CapAtom.subst_selfCast]
     unfold Ctx.IsRoot
     rw [← Ctx.isRootB_cons_eq Γ (Binding.opaque T) (.transparent S₀ W Wc Fs) r]
     exact hr
   capLvl := by
     intro e r _ hl
-    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    simp only [CapAtom.subst_selfCast]
     unfold Ctx.LvlLe
     rw [← Ctx.lvlLeB_cons_eq Γ (Binding.opaque T) (.transparent S₀ W Wc Fs) e r]
     exact hl
   capInner := by
-    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    simp only [CapAtom.subst_selfCast]
     exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot _)
 
 /-- The self binder of a stored object literal may be replaced by the
@@ -543,12 +572,13 @@ it is the identity form, the two function types coincide; and the same two
 sentences for a box atom, whose head form is `boxed d` or the identity.
 Discharged by the canonical-forms theorem (`CanonicalForms.lean`). -/
 structure FormsTyped (σ : Store s) (Γ : Ctx s) : Prop where
-  pi : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {C : CaptureSet s} {n : Nat} {a' : Atom s}
-    {d : LeCo s} {c : LeCo (s,x)} {S₀ : Ty s} {T₀ : Ty (s,x)},
+  pi : ∀ {a : Atom s} {S : Dom s} {T : Cod s} {C : CaptureSet s} {n : Nat} {a' : Atom s}
+    {d : LeCo (Sig.scope s)} {c : LeCo (Sig.body s)} {S₀ : Dom s} {T₀ : Cod s},
     Γ ⊢ₐ a : (Π(S) T) ^ C → σ ⊢ a ⇓ᶜ[n] (a', .pi d c) →
     (Γ.lookupTy a.root).shape = Π(S₀) T₀ →
-    Γ ⊢ d : S ≤ S₀ ∧ (Γ.cons (.opaque S)) ⊢ c : T₀ ≤ T
-  refl : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {C : CaptureSet s} {n : Nat} {a' : Atom s}
+    Γ.scope ⊢ d : S.underRoot ≤ S₀.underRoot ∧
+      (Γ.body S) ⊢ c : T₀.underRoot ≤ T.underRoot
+  refl : ∀ {a : Atom s} {S : Dom s} {T : Cod s} {C : CaptureSet s} {n : Nat} {a' : Atom s}
     {F : Form s},
     Γ ⊢ₐ a : (Π(S) T) ^ C → σ ⊢ a ⇓ᶜ[n] (a', F) →
     (F = .id ∨ ∃ φ, F = .eqv φ) →
@@ -616,24 +646,53 @@ theorem CapCo.HasType.adjust_none {s : Sig} {Γ : Ctx s} {T : Ty s} {v : Value s
   rw [show u.adjust v = u by simp [Tm.adjust, hn]]
   exact hf.refine Ctx.Refines.transparent
 
-/-- β: a closure applied at its own function type. -/
-theorem Value.HasType.beta {s : Sig} {Γ : Ctx s} {A : CaptureSet s} {S₀ S : Ty s}
-    {t₀ : Tm (s,x)} {g : CapCo (s,x)} {T : Ty (s,x)} {C : CaptureSet s} {b : Atom s}
-    (hlam : Γ ⊢ᵥ .lam A S₀ t₀ g : (Π(S) T) ^ C) (hb : Γ ⊢ₐ b : S) :
-    Γ ⊢ t₀.substAtom b : T⟦b.root⟧ := by
+/-- The type sort of a substitution reads an argument only through its root,
+so two arguments with one root give one substitution on types. -/
+theorem Subst.arg_core_congr {s : Sig} {a a' : Atom s} (h : a.root = a'.root) :
+    (Subst.arg a).core = (Subst.arg a').core := by
+  apply Subst.funext'
+  · intro y
+    cases y with
+    | here => show Atom.var a.root = Atom.var a'.root; rw [h]
+    | there y => cases y with | there y => rfl
+  · intro κ
+    cases κ with
+    | there κ =>
+        cases κ with
+        | here => show CapAtom.var a.root = CapAtom.var a'.root; rw [h]
+        | there κ => rfl
+
+theorem Ty.arg_congr {s : Sig} (T : Cod s) {a a' : Atom s} (h : a.root = a'.root) :
+    T.subst (Subst.arg a) = T.subst (Subst.arg a') := by
+  rw [Ty.subst_core T (Subst.arg a), Ty.subst_core T (Subst.arg a'),
+    Subst.arg_core_congr h]
+
+/-- β: a closure applied at its own function type.  The step enters the body
+by one substitution, which instantiates the parameter at the argument, the
+arrow's capture binder at the argument's root and the body root at the
+universal root, and the last of the three is what asks the context to bind no
+root of its own (B1.5, discharged at the machine by `Store.Typed.rootFree`). -/
+theorem Value.HasType.beta {s : Sig} {Γ : Ctx s} {A : CaptureSet s} {S₀ S : Dom s}
+    {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)} {T : Cod s} {C : CaptureSet s}
+    {b : Atom s} (hΓ : Γ.root? = none)
+    (hlam : Γ ⊢ᵥ .lam A S₀ t₀ g : (Π(S) T) ^ C)
+    (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root))) :
+    Γ ⊢ t₀.subst (Subst.enter b) : T.subst (Subst.arg b) := by
   obtain ⟨T₀, hTe, ht₀, -⟩ := Value.HasType.lam_inv hlam
   obtain ⟨-, rfl, rfl⟩ : C = A ∧ S = S₀ ∧ T = T₀ := by
     simpa [Ty.capt.injEq, Shape.pi.injEq] using hTe
-  exact Tm.HasType.substAtom ht₀ hb
+  have h := ht₀.subst (Subst.Typed.enter hΓ hb)
+  rwa [Cod.underRoot_enter] at h
 
 /-- β for a closure stored at the root of an atom whose type is that root's
 type: `appVar`, and `appCastRefl` where the casts normalize to the identity. -/
 theorem Store.Typed.beta {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVar s .var}
-    {A : CaptureSet s} {S₀ S : Ty s} {t₀ : Tm (s,x)} {g : CapCo (s,x)} {T : Ty (s,x)}
-    {C : CaptureSet s} {b : Atom s}
+    {A : CaptureSet s} {S₀ S : Dom s} {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)}
+    {T : Cod s} {C : CaptureSet s} {b : Atom s}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup x = .lam A S₀ t₀ g) (hty : Γ.lookupTy x = (Π(S) T) ^ C)
-    (hb : Γ ⊢ₐ b : S) : Γ ⊢ t₀.substAtom b : T⟦b.root⟧ :=
-  (hty ▸ hσ.lam_of_lookup hx).beta hb
+    (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root))) :
+    Γ ⊢ t₀.subst (Subst.enter b) : T.subst (Subst.arg b) :=
+  (hty ▸ hσ.lam_of_lookup hx).beta hσ.rootFree hb
 
 /-- The body and the closing evidence of a stored closure, read in the
 current context at the parameter binder.  This is the ingredient `step_uses`
@@ -641,23 +700,48 @@ needs at `appVar`, `appCastRefl` and `appCast`: substituting the argument
 into `g` bounds the use set of the body by the closure's annotation united
 with the argument. -/
 theorem Store.Typed.lam_closing {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVar s .var}
-    {A : CaptureSet s} {S₀ : Ty s} {t₀ : Tm (s,x)} {g : CapCo (s,x)}
+    {A : CaptureSet s} {S₀ : Dom s} {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup x = .lam A S₀ t₀ g) :
-    ∃ T₀, Γ.lookupTy x = (Π(S₀) T₀) ^ A ∧ (Γ.cons (.opaque S₀)) ⊢ t₀ : T₀ ∧
-      (Γ.cons (.opaque S₀)) ⊢ᶜ g : t₀.uses ⊑ (A↑ ∪ [CapAtom.var .here]) :=
+    ∃ T₀ : Cod s, Γ.lookupTy x = (Π(S₀) T₀) ^ A ∧ (Γ.body S₀) ⊢ t₀ : T₀.underRoot ∧
+      (Γ.body S₀) ⊢ᶜ g : t₀.uses ⊑ (A↑↑↑ ∪ [CapAtom.var .here]) :=
   Value.HasType.lam_inv (hσ.lam_of_lookup hx)
 
-/-- β through a function coercion `pi d c`: the argument is cast by `d` and
-the result by `c` at the argument. -/
-theorem Tm.HasType.betaCast {s : Sig} {Γ : Ctx s} {S₀ S : Ty s} {t₀ : Tm (s,x)}
-    {T₀ T : Ty (s,x)} {d : LeCo s} {c : LeCo (s,x)} {b : Atom s}
-    (ht₀ : (Γ.cons (.opaque S₀)) ⊢ t₀ : T₀) (hdom : Γ ⊢ d : S ≤ S₀)
-    (hcod : (Γ.cons (.opaque S)) ⊢ c : T₀ ≤ T) (hb : Γ ⊢ₐ b : S) :
-    Γ ⊢ .cast (t₀.substAtom (.cast b d)) (c.subst (Subst.single b)) : T⟦b.root⟧ := by
-  have hcod' := hcod.subst (Subst.Typed.single hb)
-  rw [Subst.single_root] at hcod'
+/-- The domain evidence of a `pi` form, instantiated at the argument's root:
+this is the cast the `appCast` step applies to the argument, and the reason
+the step is typed.  The form's evidence lives in a scope, so the
+instantiation sends the arrow's capture binder to the argument's root and the
+body root to the universal root. -/
+theorem Atom.HasType.castDom {s : Sig} {Γ : Ctx s} {S₀ S : Dom s}
+    {d : LeCo (Sig.scope s)} {b : Atom s} (hΓ : Γ.root? = none)
+    (hdom : Γ.scope ⊢ d : S.underRoot ≤ S₀.underRoot)
+    (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root))) :
+    Γ ⊢ₐ .cast b (d.subst (Subst.enterC b))
+      : S₀.subst (Subst.singleC (.var (Atom.cast b (d.subst (Subst.enterC b))).root)) := by
+  have hdom' := hdom.subst (Subst.Typed.enterC (b := b) hΓ)
+  rw [Dom.underRoot_enterC, Dom.underRoot_enterC] at hdom'
+  exact Atom.HasType.cast hb hdom'
+
+/-- β through a function coercion `pi d c`: the argument is cast by the
+domain evidence read at the argument's root, and the result by the codomain
+evidence read at the argument. -/
+theorem Tm.HasType.betaCast {s : Sig} {Γ : Ctx s} {S₀ S : Dom s} {t₀ : Tm (Sig.body s)}
+    {T₀ T : Cod s} {d : LeCo (Sig.scope s)} {c : LeCo (Sig.body s)} {b : Atom s}
+    (hΓ : Γ.root? = none)
+    (ht₀ : (Γ.body S₀) ⊢ t₀ : T₀.underRoot)
+    (hdom : Γ.scope ⊢ d : S.underRoot ≤ S₀.underRoot)
+    (hcod : (Γ.body S) ⊢ c : T₀.underRoot ≤ T.underRoot)
+    (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root))) :
+    Γ ⊢ .cast (t₀.subst (Subst.enter (.cast b (d.subst (Subst.enterC b)))))
+        (c.subst (Subst.enter b)) : T.subst (Subst.arg b) := by
+  -- the domain evidence, instantiated at the argument's root
+  have hb' := Atom.HasType.castDom hΓ hdom hb
+  have hcod' := hcod.subst (Subst.Typed.enter hΓ hb)
+  rw [Cod.underRoot_enter, Cod.underRoot_enter] at hcod'
   refine Tm.HasType.cast ?_ hcod'
-  simpa [Atom.root] using Tm.HasType.substAtom ht₀ (Atom.HasType.cast hb hdom)
+  have h := ht₀.subst (Subst.Typed.enter hΓ hb')
+  rw [Cod.underRoot_enter, Ty.arg_congr T₀ (a := .cast b (d.subst (Subst.enterC b)))
+    (a' := b) rfl] at h
+  exact h
 
 /-- The content of a stored box: its type is the box of the boxed atom's
 type, so the atom is typed at the boxed type of the variable's shape. -/
@@ -675,12 +759,12 @@ set below that annotation united with the variable.  `Tm.HasType.projField`
 below is the first component, the one preservation uses; `step_uses` reads
 the third at the `proj` step. -/
 theorem Tm.HasType.projFieldFull {s : Sig} {σ : Store s} {Γ : Ctx s} {y : BVar s .var}
-    {A : CaptureSet s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {F : Fields (s,x)}
-    {ℓ : Label} {t : Tm (s,x)}
+    {A : CaptureSet s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {F : Fields ((s,c),x)}
+    {ℓ : Label} {t : Tm ((s,c),x)}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup y = .obj A W Wc F) (hg : F.get? ℓ = some t) :
-    (Γ ⊢ t.selfAt y : (y ∙ ℓ) ^ [CapAtom.name y ℓ]) ∧
+    (Γ ⊢ t.subst (Subst.enterObj y) : (y ∙ ℓ) ^ [CapAtom.name y ℓ]) ∧
       Γ.lookupTy y = (μ (Telescope.ofLiteral W Wc F.labels)) ^ A ∧
-      ∃ g', Γ ⊢ᶜ g' : (t.selfAt y).uses ⊑ (A ∪ [CapAtom.var y]) := by
+      ∃ g', Γ ⊢ᶜ g' : (t.subst (Subst.enterObj y)).uses ⊑ (A ∪ [CapAtom.var y]) := by
   have hval := hσ.lookup y
   rw [hx] at hval
   obtain ⟨hTe, hF⟩ := Value.HasType.obj_inv hval
@@ -698,22 +782,23 @@ theorem Tm.HasType.projFieldFull {s : Sig} {σ : Store s} {Γ : Ctx s} {y : BVar
     have hlk := hσ.lookupFields y
     rw [hx] at hlk
     simpa [Value.fieldLabels] using hlk
-  have hren := Ctx.Ren.selfObj hTe hdef hdefC hfields
+  have hsub := Subst.Typed.enterObj (W := W) (Wc := Wc) (ls := F.labels)
+    hσ.rootFree hTe hdef hdefC hfields
   obtain ⟨ht, ⟨g', hg'⟩⟩ := Fields.HasType.getFull F hF ℓ t hg
-  refine ⟨?_, hTe, ⟨g'.rename (Rename.subst y), ?_⟩⟩
-  · simpa [Tm.selfAt, Ty.rename, Shape.rename, CaptureSet.rename, CapAtom.rename] using
-      ht.rename hren
-  · have h := hg'.rename hren
-    rw [CaptureSet.rename_union, CaptureSet.rename_subst_weaken', ← Tm.uses_rename] at h
-    exact h
+  refine ⟨?_, hTe, ⟨g'.subst (Subst.enterObj y), ?_⟩⟩
+  · simpa [Ty.subst, Shape.subst, CaptureSet.subst, CapAtom.subst, Subst.rootVar,
+      Subst.enterObj, Atom.root] using ht.subst hsub
+  · have h := hg'.subst hsub
+    rw [CaptureSet.subst_union, CaptureSet.weaken2_subst_enterObj, ← Tm.uses_subst] at h
+    simpa [CaptureSet.subst, CapAtom.subst, Subst.rootVar, Subst.enterObj, Atom.root] using h
 
 /-- Projecting a field of a stored object literal: the field's body, with the
 self binder replaced by the object's variable, has the projection's type. -/
 theorem Tm.HasType.projField {s : Sig} {σ : Store s} {Γ : Ctx s} {y : BVar s .var}
-    {A : CaptureSet s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {F : Fields (s,x)}
-    {ℓ : Label} {t : Tm (s,x)}
+    {A : CaptureSet s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {F : Fields ((s,c),x)}
+    {ℓ : Label} {t : Tm ((s,c),x)}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup y = .obj A W Wc F) (hg : F.get? ℓ = some t) :
-    Γ ⊢ t.selfAt y : (y ∙ ℓ) ^ [CapAtom.name y ℓ] :=
+    Γ ⊢ t.subst (Subst.enterObj y) : (y ∙ ℓ) ^ [CapAtom.name y ℓ] :=
   (Tm.HasType.projFieldFull hσ hx hg).1
 
 /-! ## The result of each step, typed
@@ -816,7 +901,8 @@ theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
       | app ha hb =>
           obtain ⟨T₀, hTe, ht₀, -⟩ := Value.HasType.lam_inv (hσ.lam_of_lookup hx)
           obtain ⟨hdom, hcod⟩ := (hF Γ hσ).pi ha hcf (by rw [hTe]; rfl)
-          exact State.Typed.exists_rename_id ⟨Γ, _, hσ, ht₀.betaCast hdom hcod hb, hK⟩
+          exact State.Typed.exists_rename_id
+            ⟨Γ, _, hσ, ht₀.betaCast hσ.rootFree hdom hcod hb, hK⟩
   case proj hx hg =>
       cases ht with
       | proj _ _ => exact State.Typed.exists_rename_id ⟨Γ, _, hσ, Tm.HasType.projField hσ hx hg, hK⟩

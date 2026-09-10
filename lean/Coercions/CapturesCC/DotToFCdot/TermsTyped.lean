@@ -1,5 +1,6 @@
 import Coercions.CapturesCC.DotToFCdot.Terms
 import Coercions.CapturesCC.DotToFCdot.EvidenceTyped
+import Coercions.CapturesCC.DotToFCdot.TypesSubst
 
 namespace CapturesCC
 
@@ -219,23 +220,38 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t
       exact .atom ha
   | _, _, _, _, _, @HasTy.lam _ _ U T1 _ _ h _, hwf => by
       simp only [HasTy.translate, Ty.translate_capt, Shape.translate_all_eq]
-      refine .val (.lam (HasTy.translate_typed h (.cons hwf)) ?_)
-      simpa using HasTy.translate_uses h (.cons hwf)
-  | _, _, _, _, _, .app h₁ h₂, hwf => by
+      have hb := HasTy.translate_typed h (hwf.body T1)
+      rw [Ctx.translate_body, Ty.translate_underRootCod] at hb
+      refine .val (.lam hb ?_)
+      have hu := HasTy.translate_uses h (hwf.body T1)
+      rw [Ctx.translate_body] at hu
+      simpa using hu
+  | _, _, Γ, _, _, @HasTy.app _ _ _ _ y T1 T2 _ h₁ h₂, hwf => by
       have ha := HasTy.translateAtom_typed h₁ hwf
       have hb := HasTy.translateAtom_typed h₂ hwf
       rw [Ty.translate_capt, Shape.translate_all_eq] at ha
-      have happ := FCdot.Tm.HasType.app ha hb
-      rw [HasTy.translateAtom_root h₂] at happ
-      simp only [HasTy.translate, Ty.translate_substVar]
+      rw [Ty.translate_singleC] at hb
+      have hb' : Γ.translate ⊢ₐ h₂.translateAtom
+          : (T1.translate).subst (FCdot.Subst.singleC (.var h₂.translateAtom.root)) := by
+        rw [HasTy.translateAtom_root h₂]
+        exact hb
+      have happ := FCdot.Tm.HasType.app ha hb'
+      simp only [HasTy.translate]
+      rw [Ty.translate_arg T2 h₂.translateAtom y (HasTy.translateAtom_root h₂)]
       exact happ
   | _, _, Γ, _, _, @HasTy.obj _ _ U d S hd hdist, hwf => by
-      have hlab : hd.translateFields.labels = S.fieldLabels := hd.translateFields_labels
-      have hdl : Shape.DistinctLabels S := hd.distinctLabels hdist
-      have hf : FCdot.Fields.HasType (Γ.consSelf d S U).translate U.translate
+      have hdlR : Shape.DistinctLabels S.underRoot := hd.distinctLabels hdist
+      have hshR : Shape.LiteralShape S.underRoot := hd.literalShape
+      have hdl : Shape.DistinctLabels S := Shape.distinctLabels_of_underRoot hdlR
+      have hsh : Shape.LiteralShape S := Shape.literalShape_of_underRoot hshR
+      have hlab : hd.translateFields.labels = S.fieldLabels := by
+        rw [hd.translateFields_labels]
+        exact Shape.fieldLabels_rename S FCdot.Rename.succ.lift
+      have hf : FCdot.Fields.HasType (Γ.objBody d S U).translate (U.weaken).translate
           hd.translateFields :=
-        hd.translateFields_typed (.consSelf hwf hd.literalShape hdl)
-          (Shape.defSpec_self S hdl) (Shape.capDefSpec_self S hdl)
+        hd.translateFields_typed (.consSelf (.consRoot hwf) hshR hdlR)
+          (Shape.defSpec_self S.underRoot hdlR) (Shape.capDefSpec_self S.underRoot hdlR)
+      rw [Ctx.translate_objBody, CaptureSet.translate_weaken] at hf
       have hval : FCdot.Value.HasType Γ.translate
           (.obj U.translate S.witnesses S.capWitnesses hd.translateFields)
           ((μ (FCdot.Telescope.ofLiteral S.witnesses S.capWitnesses
@@ -243,7 +259,9 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t
         .obj (by rw [hlab]; exact hf)
       rw [hlab] at hval
       simp only [HasTy.translate]
-      exact .cast (.val hval) (litCo_atC_typed hd hdist U)
+      refine .cast (.val hval) ?_
+      simp only [FCdot.ShapeCo.atC, Ty.translate_capt]
+      exact .capt (litCo_typed_of_shape hsh hdl) .refl
   | _, _, _, _, _, @HasTy.box _ _ _ _ _ h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       simp only [HasTy.translate, Ty.translate_capt, Shape.translate_box_eq]

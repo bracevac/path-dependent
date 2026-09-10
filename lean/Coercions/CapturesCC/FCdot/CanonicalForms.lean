@@ -639,7 +639,7 @@ variable {σ : Store s} {Γ : Ctx s}
 /-- The head form of a function atom's casts is the identity, an equality, or
 a `pi` form.  A box shape never resolves to a `Π`, so the box forms are
 refuted like the object ones. -/
-theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
+theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Dom s} {T : Cod s}
     {C : CaptureSet s} (h : Γ ⊢ₐ a : (Π(S) T) ^ C) :
     ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
       (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) := by
@@ -665,8 +665,8 @@ theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s
 there. -/
 theorem closed_has_field (hσ : ⊢ σ : Γ) {h : Has s} {x : BVar s .var} {ℓ : Label}
     (hh : Has.HasType Γ h x ℓ) :
-    ∃ (A : CaptureSet s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x)) (F : Fields (s,x))
-      (t : Tm (s,x)),
+    ∃ (A : CaptureSet s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))
+      (F : Fields ((s,c),x)) (t : Tm ((s,c),x)),
       σ.lookup x = .obj A W Wc F ∧ F.get? ℓ = some t := by
   obtain ⟨_, _, A, W, Wc, F, hl, hget⟩ := has_canon hσ hh
   obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp hget

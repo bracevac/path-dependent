@@ -443,6 +443,8 @@ end
 
 /-! ## Roots -/
 
+@[simp] theorem Atom.root_var {s : Sig} (x : BVar s .var) : (Atom.var x).root = x := rfl
+
 @[simp] theorem Atom.root_rename {s1 s2 : Sig} (a : Atom s1) (ρ : Rename s1 s2) :
     (a.rename ρ).root = ρ.var a.root := by
   match a with
@@ -463,17 +465,19 @@ theorem funext' {s1 s2 : Sig} {σ τ : Subst s1 s2}
   simp only [Subst.mk.injEq]
   exact ⟨funext h, funext hc⟩
 
-theorem root_var {s1 s2 : Sig} (σ : Subst s1 s2) (x : BVar s1 .var) :
-    σ.root.var x = (σ.var x).root := rfl
+/-- The map on roots is the root of the image atom.  This is the definition,
+and it is the form the old `Subst.root_var` had. -/
+@[simp] theorem rootVar_def {s1 s2 : Sig} (σ : Subst s1 s2) (x : BVar s1 .var) :
+    σ.rootVar x = (σ.var x).root := rfl
 
-theorem root_cvar {s1 s2 : Sig} (σ : Subst s1 s2) (κ : BVar s1 .cap) :
-    σ.root.var κ = σ.cvar κ := rfl
+@[simp] theorem ofRename_var {s1 s2 : Sig} (ρ : Rename s1 s2) (x : BVar s1 .var) :
+    (Subst.ofRename ρ).var x = .var (ρ.var x) := rfl
 
-@[simp] theorem ofRename_root {s1 s2 : Sig} (ρ : Rename s1 s2) :
-    (Subst.ofRename ρ).root = ρ := by
-  apply Rename.funext'
-  intro k x
-  cases k <;> rfl
+@[simp] theorem ofRename_cvar {s1 s2 : Sig} (ρ : Rename s1 s2) (κ : BVar s1 .cap) :
+    (Subst.ofRename ρ).cvar κ = .cvar (ρ.var κ) := rfl
+
+@[simp] theorem ofRename_rootVar {s1 s2 : Sig} (ρ : Rename s1 s2) (x : BVar s1 .var) :
+    (Subst.ofRename ρ).rootVar x = ρ.var x := rfl
 
 @[simp] theorem ofRename_lift {s1 s2 : Sig} (ρ : Rename s1 s2) :
     (Subst.ofRename ρ).lift = Subst.ofRename ρ.lift := by
@@ -481,7 +485,8 @@ theorem root_cvar {s1 s2 : Sig} (σ : Subst s1 s2) (κ : BVar s1 .cap) :
   · intro x
     cases x <;> simp [Subst.lift, Subst.ofRename, Atom.weaken, Atom.rename]
   · intro κ
-    cases κ; rfl
+    cases κ
+    simp [Subst.lift, Subst.ofRename, CapAtom.rename]
 
 @[simp] theorem ofRename_liftC {s1 s2 : Sig} (ρ : Rename s1 s2) :
     (Subst.ofRename ρ).liftC = Subst.ofRename ρ.lift := by
@@ -490,52 +495,233 @@ theorem root_cvar {s1 s2 : Sig} (σ : Subst s1 s2) (κ : BVar s1 .cap) :
     cases x
     simp [Subst.liftC, Subst.ofRename, Atom.weaken, Atom.rename]
   · intro κ
-    cases κ <;> rfl
+    cases κ
+    · rfl
+    · simp [Subst.liftC, Subst.ofRename, CapAtom.rename]
 
-@[simp] theorem lift_root {s1 s2 : Sig} (σ : Subst s1 s2) :
-    σ.lift.root = σ.root.lift := by
-  apply Rename.funext'
-  intro k x
-  cases k
-  · cases x with
-    | here => simp [Subst.root, Subst.lift, Atom.root]
-    | there x => simp [Subst.root, Subst.lift, Atom.weaken]
-  · cases x with
-    | there x => rfl
+@[simp] theorem lift_rootVar_here {s1 s2 : Sig} (σ : Subst s1 s2) :
+    σ.lift.rootVar .here = .here := rfl
 
-@[simp] theorem liftC_root {s1 s2 : Sig} (σ : Subst s1 s2) :
-    σ.liftC.root = σ.root.lift := by
-  apply Rename.funext'
-  intro k x
-  cases k
-  · cases x with
-    | there x => simp [Subst.root, Subst.liftC, Atom.weaken]
-  · cases x with
-    | here => rfl
-    | there x => rfl
+@[simp] theorem lift_rootVar_there {s1 s2 : Sig} (σ : Subst s1 s2) (x : BVar s1 .var) :
+    σ.lift.rootVar (.there x) = .there (σ.rootVar x) := by
+  simp [Subst.rootVar, Subst.lift, Atom.weaken]
 
-@[simp] theorem single_root {s : Sig} (a : Atom s) :
-    (Subst.single a).root = Rename.subst a.root := by
-  apply Rename.funext'
-  intro k x
-  cases k
-  · cases x <;> simp [Subst.root, Subst.single, Atom.root]
-  · cases x with
-    | there x => rfl
+@[simp] theorem liftC_rootVar_there {s1 s2 : Sig} (σ : Subst s1 s2) (x : BVar s1 .var) :
+    σ.liftC.rootVar (.there x) = .there (σ.rootVar x) := by
+  simp [Subst.rootVar, Subst.liftC, Atom.weaken]
+
+@[simp] theorem single_rootVar_here {s : Sig} (a : Atom s) :
+    (Subst.single a).rootVar .here = a.root := rfl
+
+@[simp] theorem single_rootVar_there {s : Sig} (a : Atom s) (x : BVar s .var) :
+    (Subst.single a).rootVar (.there x) = x := rfl
 
 end Subst
 
 @[simp] theorem Atom.root_subst {s1 s2 : Sig} (a : Atom s1) (σ : Subst s1 s2) :
-    (a.subst σ).root = σ.root.var a.root := by
+    (a.subst σ).root = σ.rootVar a.root := by
   match a with
-  | .var x => simp [Atom.subst, Atom.root, Subst.root_var]
+  | .var x => simp [Atom.subst, Atom.root]
   | .cast a e => simp [Atom.subst, Atom.root, Atom.root_subst a]
   | .foldSelf Tel a => simp [Atom.subst, Atom.root, Atom.root_subst a]
   | .unfoldSelf a => simp [Atom.subst, Atom.root, Atom.root_subst a]
   | .both Tel₁ Tel₂ a b => simp [Atom.subst, Atom.root, Atom.root_subst a]
   | .recap a f => simp [Atom.subst, Atom.root, Atom.root_subst a]
 
-/-! ## Substitution by a renaming -/
+/-! ## Substitution by a renaming
+
+`X.subst (Subst.ofRename ρ) = X.rename ρ` for every traversal.  This is the
+one identity that keeps the whole renaming library in use: a renaming is a
+substitution, and the two agree. -/
+
+@[simp] theorem CapAtom.subst_ofRename {s1 s2 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2) :
+    a.subst (Subst.ofRename ρ) = a.rename ρ := by
+  cases a <;> simp [CapAtom.subst, CapAtom.rename]
+
+@[simp] theorem CaptureSet.subst_ofRename {s1 s2 : Sig} (C : CaptureSet s1)
+    (ρ : Rename s1 s2) : C.subst (Subst.ofRename ρ) = C.rename ρ := by
+  simp [CaptureSet.subst, CaptureSet.rename]
+
+mutual
+
+@[simp] theorem Shape.subst_ofRename {s1 s2 : Sig} (S : Shape s1) (ρ : Rename s1 s2) :
+    S.subst (Subst.ofRename ρ) = S.rename ρ := by
+  match S with
+  | .bot => simp [Shape.subst, Shape.rename]
+  | .sel x ℓ => simp [Shape.subst, Shape.rename]
+  | .pi S T =>
+      simp [Shape.subst, Shape.rename, Ty.subst_ofRename S, Ty.subst_ofRename T]
+  | .obj Tel => simp [Shape.subst, Shape.rename, Telescope.subst_ofRename Tel]
+  | .box T => simp [Shape.subst, Shape.rename, Ty.subst_ofRename T]
+
+@[simp] theorem Ty.subst_ofRename {s1 s2 : Sig} (T : Ty s1) (ρ : Rename s1 s2) :
+    T.subst (Subst.ofRename ρ) = T.rename ρ := by
+  match T with
+  | .capt C S => simp [Ty.subst, Ty.rename, Shape.subst_ofRename S]
+
+@[simp] theorem Proposition.subst_ofRename {s1 s2 : Sig} (P : Proposition s1)
+    (ρ : Rename s1 s2) : P.subst (Subst.ofRename ρ) = P.rename ρ := by
+  match P with
+  | .le S T =>
+      simp [Proposition.subst, Proposition.rename, Shape.subst_ofRename S,
+        Shape.subst_ofRename T]
+  | .eq S T =>
+      simp [Proposition.subst, Proposition.rename, Shape.subst_ofRename S,
+        Shape.subst_ofRename T]
+  | .has ℓ => simp [Proposition.subst, Proposition.rename]
+  | .bnd T => simp [Proposition.subst, Proposition.rename, Shape.subst_ofRename T]
+  | .leC C D => simp [Proposition.subst, Proposition.rename]
+  | .eqC C D => simp [Proposition.subst, Proposition.rename]
+
+@[simp] theorem Telescope.subst_ofRename {s1 s2 : Sig} (Tel : Telescope s1)
+    (ρ : Rename s1 s2) : Tel.subst (Subst.ofRename ρ) = Tel.rename ρ := by
+  match Tel with
+  | .nil => simp [Telescope.subst, Telescope.rename]
+  | .cons Tel P =>
+      simp [Telescope.subst, Telescope.rename, Telescope.subst_ofRename Tel,
+        Proposition.subst_ofRename P]
+
+end
+
+@[simp] theorem Witnesses.subst_ofRename {s1 s2 : Sig} :
+    ∀ (W : Witnesses s1) (ρ : Rename s1 s2), W.subst (Subst.ofRename ρ) = W.rename ρ
+  | .nil, _ => rfl
+  | .cons W ℓ T, ρ => by
+      simp [Witnesses.subst, Witnesses.rename, Witnesses.subst_ofRename W]
+
+@[simp] theorem CapWitnesses.subst_ofRename {s1 s2 : Sig} :
+    ∀ (W : CapWitnesses s1) (ρ : Rename s1 s2), W.subst (Subst.ofRename ρ) = W.rename ρ
+  | .nil, _ => rfl
+  | .cons W ℓ C, ρ => by
+      simp [CapWitnesses.subst, CapWitnesses.rename, CapWitnesses.subst_ofRename W]
+
+/-! ## Renaming then substituting
+
+A renaming followed by a substitution is one substitution, `Subst.compRename`.
+The two cancellation lemmas of the stage are this fusion plus a case split on
+the four binder positions of a body. -/
+
+namespace Subst
+
+/-- Rename, then substitute, in one pass. -/
+def compRename (ρ : Rename s1 s2) (σ : Subst s2 s3) : Subst s1 s3 where
+  var := fun x => σ.var (ρ.var x)
+  cvar := fun κ => σ.cvar (ρ.var κ)
+
+@[simp] theorem compRename_var {s1 s2 s3 : Sig} (ρ : Rename s1 s2) (σ : Subst s2 s3)
+    (x : BVar s1 .var) : (Subst.compRename ρ σ).var x = σ.var (ρ.var x) := rfl
+
+@[simp] theorem compRename_cvar {s1 s2 s3 : Sig} (ρ : Rename s1 s2) (σ : Subst s2 s3)
+    (κ : BVar s1 .cap) : (Subst.compRename ρ σ).cvar κ = σ.cvar (ρ.var κ) := rfl
+
+theorem compRename_lift {s1 s2 s3 : Sig} (ρ : Rename s1 s2) (σ : Subst s2 s3) :
+    (Subst.compRename ρ σ).lift = Subst.compRename ρ.lift σ.lift := by
+  apply Subst.funext' <;> intro y <;> cases y <;> rfl
+
+theorem compRename_liftC {s1 s2 s3 : Sig} (ρ : Rename s1 s2) (σ : Subst s2 s3) :
+    (Subst.compRename ρ σ).liftC = Subst.compRename ρ.lift σ.liftC := by
+  apply Subst.funext' <;> intro y <;> cases y <;> rfl
+
+end Subst
+
+theorem CapAtom.rename_subst {s1 s2 s3 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2)
+    (σ : Subst s2 s3) : (a.rename ρ).subst σ = a.subst (Subst.compRename ρ σ) := by
+  cases a <;> rfl
+
+theorem CaptureSet.rename_subst {s1 s2 s3 : Sig} (C : CaptureSet s1) (ρ : Rename s1 s2)
+    (σ : Subst s2 s3) : (C.rename ρ).subst σ = C.subst (Subst.compRename ρ σ) := by
+  simp only [CaptureSet.rename, CaptureSet.subst, List.map_map, Function.comp_def,
+    CapAtom.rename_subst]
+
+mutual
+
+theorem Shape.rename_subst {s1 s2 s3 : Sig} (S : Shape s1) (ρ : Rename s1 s2)
+    (σ : Subst s2 s3) : (S.rename ρ).subst σ = S.subst (Subst.compRename ρ σ) := by
+  match S with
+  | .bot => rfl
+  | .sel x ℓ => rfl
+  | .pi S T =>
+      simp only [Shape.rename, Shape.subst, Ty.rename_subst, Subst.compRename_liftC,
+        Subst.compRename_lift]
+  | .obj Tel =>
+      simp only [Shape.rename, Shape.subst, Telescope.rename_subst, Subst.compRename_lift]
+  | .box T => simp only [Shape.rename, Shape.subst, Ty.rename_subst]
+
+theorem Ty.rename_subst {s1 s2 s3 : Sig} (T : Ty s1) (ρ : Rename s1 s2)
+    (σ : Subst s2 s3) : (T.rename ρ).subst σ = T.subst (Subst.compRename ρ σ) := by
+  match T with
+  | .capt C S =>
+      simp only [Ty.rename, Ty.subst, CaptureSet.rename_subst, Shape.rename_subst]
+
+theorem Proposition.rename_subst {s1 s2 s3 : Sig} (P : Proposition s1) (ρ : Rename s1 s2)
+    (σ : Subst s2 s3) : (P.rename ρ).subst σ = P.subst (Subst.compRename ρ σ) := by
+  match P with
+  | .le S T => simp only [Proposition.rename, Proposition.subst, Shape.rename_subst]
+  | .eq S T => simp only [Proposition.rename, Proposition.subst, Shape.rename_subst]
+  | .has ℓ => rfl
+  | .bnd T => simp only [Proposition.rename, Proposition.subst, Shape.rename_subst]
+  | .leC C D => simp only [Proposition.rename, Proposition.subst, CaptureSet.rename_subst]
+  | .eqC C D => simp only [Proposition.rename, Proposition.subst, CaptureSet.rename_subst]
+
+theorem Telescope.rename_subst {s1 s2 s3 : Sig} (Tel : Telescope s1) (ρ : Rename s1 s2)
+    (σ : Subst s2 s3) : (Tel.rename ρ).subst σ = Tel.subst (Subst.compRename ρ σ) := by
+  match Tel with
+  | .nil => rfl
+  | .cons Tel P =>
+      simp only [Telescope.rename, Telescope.subst, Telescope.rename_subst,
+        Proposition.rename_subst]
+
+end
+
+/-! ### The two cancellations of a body
+
+A step that enters a lambda body undoes the two insertions that put the
+domain and the codomain under the body root.  Both are the fusion above
+followed by a case split on the four binder positions of the body: the
+parameter, the arrow's capture binder, the body root, and an older binder. -/
+
+/-- Entering a body cancels the reading of the domain as the parameter's
+binding: the result is the domain instantiated at the argument's root. -/
+theorem Dom.inBody_enter {s : Sig} (T : Dom s) (a : Atom s) :
+    (Dom.inBody T).subst (Subst.enter a) = T.subst (Subst.singleC (.var a.root)) := by
+  have h : Subst.compRename Rename.succ.lift
+      (Subst.compRename Rename.succ (Subst.enter a))
+      = Subst.singleC (CapAtom.var a.root) := by
+    apply Subst.funext'
+    · intro x; cases x; rfl
+    · intro κ; cases κ <;> rfl
+  show ((T.rename Rename.succ.lift).rename Rename.succ).subst (Subst.enter a) = _
+  rw [Ty.rename_subst, Ty.rename_subst, h]
+
+/-- The scope-level twin of `Dom.inBody_enter`: entering a scope cancels the
+reading of the domain under the body root.  A coercion of a `pi` form lives
+in a scope, and this is what its endpoints become when a step instantiates
+it at the argument's root. -/
+theorem Dom.underRoot_enterC {s : Sig} (T : Dom s) (a : Atom s) :
+    (Dom.underRoot T).subst (Subst.enterC a) = T.subst (Subst.singleC (.var a.root)) := by
+  have h : Subst.compRename Rename.succ.lift (Subst.enterC a)
+      = Subst.singleC (CapAtom.var a.root) := by
+    apply Subst.funext'
+    · intro x; cases x; rfl
+    · intro κ; cases κ <;> rfl
+  show (T.rename Rename.succ.lift).subst (Subst.enterC a) = _
+  rw [Ty.rename_subst, h]
+
+/-- Entering a body cancels the reading of the codomain under the body root:
+the result is what the application rule does to the codomain. -/
+theorem Cod.underRoot_enter {s : Sig} (E : Cod s) (a : Atom s) :
+    (Cod.underRoot E).subst (Subst.enter a) = E.subst (Subst.arg a) := by
+  have h : Subst.compRename Rename.succ.lift.lift (Subst.enter a) = Subst.arg a := by
+    apply Subst.funext'
+    · intro x
+      cases x with
+      | here => rfl
+      | there x => cases x; rfl
+    · intro κ
+      cases κ with
+      | there κ => cases κ <;> rfl
+  show (E.rename Rename.succ.lift.lift).subst (Subst.enter a) = _
+  rw [Ty.rename_subst, h]
 
 mutual
 
@@ -550,11 +736,10 @@ mutual
   | .eqToLe φ => simp [ShapeCo.subst, ShapeCo.rename, EqCo.subst_ofRename φ]
   | .pi e f => simp [ShapeCo.subst, ShapeCo.rename, LeCo.subst_ofRename e, LeCo.subst_ofRename f]
   | .obj Tel m =>
-      simp [ShapeCo.subst, ShapeCo.rename, Morphism.subst_ofRename m, Subst.ofRename_root]
+      simp [ShapeCo.subst, ShapeCo.rename, Morphism.subst_ofRename m]
   | .pair Tel₁ Tel₂ e f =>
-      simp [ShapeCo.subst, ShapeCo.rename, ShapeCo.subst_ofRename e, ShapeCo.subst_ofRename f,
-        Subst.ofRename_root]
-  | .bound Tel i => simp [ShapeCo.subst, ShapeCo.rename, Subst.ofRename_root]
+      simp [ShapeCo.subst, ShapeCo.rename, ShapeCo.subst_ofRename e, ShapeCo.subst_ofRename f]
+  | .bound Tel i => simp [ShapeCo.subst, ShapeCo.rename]
   | .intoBnd e => simp [ShapeCo.subst, ShapeCo.rename, ShapeCo.subst_ofRename e]
   | .member a e i =>
       simp [ShapeCo.subst, ShapeCo.rename, Atom.subst_ofRename a, ShapeCo.subst_ofRename e]
@@ -571,7 +756,7 @@ mutual
   | .member a e i =>
       simp [CapCo.subst, CapCo.rename, Atom.subst_ofRename a, ShapeCo.subst_ofRename e]
   | .eqToLe φ => simp [CapCo.subst, CapCo.rename, CapEq.subst_ofRename φ]
-  | .level e r => simp [CapCo.subst, CapCo.rename, Subst.ofRename_root]
+  | .level e r => simp [CapCo.subst, CapCo.rename]
 
 @[simp] theorem CapEq.subst_ofRename {s1 s2 : Sig} (φ : CapEq s1) (ρ : Rename s1 s2) :
     φ.subst (Subst.ofRename ρ) = φ.rename ρ := by
@@ -646,11 +831,10 @@ mutual
   match a with
   | .var x => simp [Atom.subst, Atom.rename, Subst.ofRename]
   | .cast a e => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, LeCo.subst_ofRename e]
-  | .foldSelf Tel a => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, Subst.ofRename_root]
+  | .foldSelf Tel a => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a]
   | .unfoldSelf a => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a]
   | .both Tel₁ Tel₂ a b =>
-      simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, Atom.subst_ofRename b,
-        Subst.ofRename_root]
+      simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, Atom.subst_ofRename b]
   | .recap a f => simp [Atom.subst, Atom.rename, Atom.subst_ofRename a, CapCo.subst_ofRename f]
 
 end
@@ -677,7 +861,7 @@ mutual
   | .lam A S t g =>
       simp [Value.subst, Value.rename, Tm.subst_ofRename t, CapCo.subst_ofRename g]
   | .obj A W Wc F =>
-      simp [Value.subst, Value.rename, Fields.subst_ofRename F, Subst.ofRename_root]
+      simp [Value.subst, Value.rename, Fields.subst_ofRename F]
   | .box a => simp [Value.subst, Value.rename, Atom.subst_ofRename a]
   | .cast v e => simp [Value.subst, Value.rename, Value.subst_ofRename v, LeCo.subst_ofRename e]
 
@@ -958,7 +1142,8 @@ theorem Shape.rename_inj {s1 s2 : Sig} (S S' : Shape s1) (ρ : Rename s1 s2) (h�
       exact ⟨hρ _ _ h.1, h.2⟩
   | .pi S T =>
       cases S' <;> simp [Shape.rename] at h ⊢
-      exact ⟨Ty.rename_inj S _ ρ hρ h.1, Ty.rename_inj T _ ρ.lift hρ.lift h.2⟩
+      exact ⟨Ty.rename_inj S _ ρ.lift hρ.lift h.1,
+        Ty.rename_inj T _ ρ.lift.lift (Rename.Injective.lift (Rename.Injective.lift hρ)) h.2⟩
   | .obj Tel =>
       cases S' <;> simp [Shape.rename] at h ⊢
       exact Telescope.rename_inj Tel _ ρ.lift hρ.lift h
@@ -1063,14 +1248,17 @@ theorem Telescope.At.rename_inv : {Tel : Telescope s1} → {ρ : Rename s1 s2} �
 /-! ## Use sets and the inspected root under renaming and substitution
 
 The use set of a term is a capture set, and it travels with the term: a
-renaming renames it, and a substitution renames it by the substitution's
-renaming of roots (`Subst.root`, the same reading of a substitution on
-capture sets that types and evidence already use).  The inspected root
-travels the same way. -/
+renaming renames it, and a substitution substitutes in it, which is the same
+reading of a substitution on capture sets that types and evidence already
+use.  The inspected root travels by the substitution's map on roots. -/
 
 theorem CaptureSet.rename_union {s1 s2 : Sig} (C D : CaptureSet s1) (ρ : Rename s1 s2) :
     (C ∪ D).rename ρ = C.rename ρ ∪ D.rename ρ := by
   simp [CaptureSet.rename, CaptureSet.union_def]
+
+theorem CaptureSet.subst_union {s1 s2 : Sig} (C D : CaptureSet s1) (σ : Subst s1 s2) :
+    (C ∪ D).subst σ = C.subst σ ∪ D.subst σ := by
+  simp [CaptureSet.subst, CaptureSet.union_def]
 
 theorem Tm.uses_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
     (t.rename ρ).uses = t.uses.rename ρ := by
@@ -1087,24 +1275,37 @@ theorem Tm.uses_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
       simp [CaptureSet.rename, CapAtom.rename]
 
 theorem Tm.uses_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
-    (t.subst σ).uses = t.uses.rename σ.root := by
+    (t.subst σ).uses = t.uses.subst σ := by
   match t with
-  | .atom a => simp [Tm.subst, CaptureSet.rename, CapAtom.rename]
-  | .val v => simp [Tm.subst, CaptureSet.rename]
-  | .app a b => simp [Tm.subst, CaptureSet.rename, CapAtom.rename]
-  | .proj a ℓ h => simp [Tm.subst, CaptureSet.rename, CapAtom.rename]
+  | .atom a => simp [Tm.subst, CaptureSet.subst, CapAtom.subst]
+  | .val v => simp [Tm.subst, CaptureSet.subst]
+  | .app a b => simp [Tm.subst, CaptureSet.subst, CapAtom.subst]
+  | .proj a ℓ h => simp [Tm.subst, CaptureSet.subst, CapAtom.subst]
   | .let t u U f =>
-      simp only [Tm.subst, Tm.uses_let, CaptureSet.rename_union, Tm.uses_subst t]
+      simp only [Tm.subst, Tm.uses_let, CaptureSet.subst_union, Tm.uses_subst t]
   | .cast t e => simp only [Tm.subst, Tm.uses_cast, Tm.uses_subst t]
   | .unbox a U f =>
-      simp only [Tm.subst, Tm.uses_unbox, CaptureSet.rename_union, Atom.root_subst]
-      simp [CaptureSet.rename, CapAtom.rename]
+      simp only [Tm.subst, Tm.uses_unbox, CaptureSet.subst_union, Atom.root_subst]
+      simp [CaptureSet.subst, CapAtom.subst]
+
+/-- On a capture atom, instantiating the innermost term binder by an atom is
+instantiating it by that atom's root: a capture atom sees a term variable
+only through its root. -/
+theorem CapAtom.subst_single {s : Sig} (b : CapAtom (s,x)) (a : Atom s) :
+    b.subst (Subst.single a) = b.rename (Rename.subst a.root) := by
+  match b with
+  | .var x => cases x <;> rfl
+  | .cvar κ => cases κ; rfl
+  | .name x ℓ => cases x <;> rfl
+  | .top => rfl
 
 /-- Instantiating the innermost binder of a term by an atom instantiates its
 use set at the atom's root. -/
 theorem Tm.uses_substAtom {s : Sig} (t : Tm (s,x)) (a : Atom s) :
     (t.substAtom a).uses = t.uses⟦a.root⟧ := by
-  simp [Tm.substAtom, Tm.uses_subst, CaptureSet.substVar]
+  simp only [Tm.substAtom, Tm.uses_subst, CaptureSet.substVar, CaptureSet.subst,
+    CaptureSet.rename]
+  exact List.map_congr_left (fun b _ => CapAtom.subst_single b a)
 
 theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
     (t.rename ρ).inspects = t.inspects.map ρ.var := by
@@ -1118,7 +1319,7 @@ theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
   | .unbox a U f => simp [Tm.rename]
 
 theorem Tm.inspects_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
-    (t.subst σ).inspects = t.inspects.map σ.root.var := by
+    (t.subst σ).inspects = t.inspects.map σ.rootVar := by
   match t with
   | .atom a => simp [Tm.subst]
   | .val v => simp [Tm.subst]

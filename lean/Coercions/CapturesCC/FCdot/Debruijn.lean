@@ -41,6 +41,26 @@ instance Sig.instEmptyCollection : EmptyCollection Sig where
 /-- Extend a signature with a capture variable. -/
 @[reducible] def Sig.extend_cap (s : Sig) : Sig := Sig.extend s .cap
 
+/-- The signature an arrow's domain lives in.  Every site that spells the
+domain of an arrow reads it through this name.  The arrow binds one capture
+binder for the whole domain, the parameter's `any`, so the domain lives one
+capture binder deep. -/
+@[reducible] def Sig.dom (s : Sig) : Sig := Sig.extend_cap s
+
+/-- The signature an arrow's codomain lives in.  It is the domain's
+signature with the parameter binder on top, so the codomain may mention the
+parameter. -/
+@[reducible] def Sig.cod (s : Sig) : Sig := Sig.extend_var (Sig.dom s)
+
+/-- The signature a *scope* lives in: the body root, then the arrow's capture
+binder.  It is the signature of `Ctx.scope`, and the coercion between two
+arrows lives there, because the scope discipline of the stage puts every
+capture binder opened by a rule of the type sort under a root of its own. -/
+@[reducible] def Sig.scope (s : Sig) : Sig := Sig.extend_cap (Sig.dom s)
+
+/-- The signature a lambda *body* lives in: a scope, then the parameter. -/
+@[reducible] def Sig.body (s : Sig) : Sig := Sig.extend_var (Sig.scope s)
+
 /-- Extend by a block of binders; the head of the block is newest. -/
 def Sig.extendMany : Sig → Sig → Sig
   | s, [] => s

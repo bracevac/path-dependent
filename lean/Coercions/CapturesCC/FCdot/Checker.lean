@@ -306,7 +306,7 @@ def Shape.rename? : Shape s1 → PartialRename s1 s2 → Option (Shape s2)
   | .bot, _ => some .bot
   | .sel x ℓ, ρ => (ρ.var x).map (fun y => .sel y ℓ)
   | .pi S T, ρ =>
-      match S.rename? ρ, T.rename? ρ.lift with
+      match S.rename? ρ.lift, T.rename? ρ.lift.lift with
       | some S', some T' => some (.pi S' T')
       | _, _ => none
   | .obj Tel, ρ =>
@@ -368,7 +368,9 @@ theorem Shape.rename?_complete :
       rfl
   | _, _, .pi S T, ρ, σ, h => by
       simp only [Shape.rename, Shape.rename?]
-      rw [Ty.rename?_complete S ρ σ h, Ty.rename?_complete T ρ.lift σ.lift h.lift]
+      rw [Ty.rename?_complete S ρ.lift σ.lift h.lift,
+        Ty.rename?_complete T ρ.lift.lift σ.lift.lift
+          (PartialRename.Inverts.lift (PartialRename.Inverts.lift h))]
   | _, _, .obj Tel, ρ, σ, h => by
       simp only [Shape.rename, Shape.rename?]
       rw [Telescope.rename?_complete Tel ρ.lift σ.lift h.lift]
@@ -430,17 +432,19 @@ theorem Shape.rename?_sound :
       rw [(h x y).mp hy]
   | _, _, .pi S T, U, ρ, σ, h, hU => by
       simp only [Shape.rename?] at hU
-      cases hS : S.rename? ρ with
+      cases hS : S.rename? ρ.lift with
       | none => rw [hS] at hU; simp at hU
       | some S' =>
-        cases hT : T.rename? ρ.lift with
+        cases hT : T.rename? ρ.lift.lift with
         | none => rw [hS, hT] at hU; simp at hU
         | some T' =>
           rw [hS, hT] at hU
           simp only [Option.some.injEq] at hU
           subst hU
           simp only [Shape.rename]
-          rw [← Ty.rename?_sound S S' ρ σ h hS, ← Ty.rename?_sound T T' ρ.lift σ.lift h.lift hT]
+          rw [← Ty.rename?_sound S S' ρ.lift σ.lift h.lift hS,
+            ← Ty.rename?_sound T T' ρ.lift.lift σ.lift.lift
+              (PartialRename.Inverts.lift (PartialRename.Inverts.lift h)) hT]
   | _, _, .obj Tel, U, ρ, σ, h, hU => by
       simp only [Shape.rename?] at hU
       cases hTel : Tel.rename? ρ.lift with
@@ -572,6 +576,49 @@ theorem Telescope.rename?_sound :
             ← Proposition.rename?_sound P P' ρ σ h hP]
 
 end
+
+/-! ### Inverting the scope readings
+
+`Dom.underRoot` and `Cod.underRoot` insert the body root under the arrow's
+capture binder.  The checker recovers the domain and the codomain of an arrow
+from the endpoints of its two component coercions, which is the same partial
+renaming as a strengthening, one binder deeper. -/
+
+/-- Invert the insertion of a body root into a domain. -/
+def Dom.underRoot? {s : Sig} (T : Ty ((s,c),c)) : Option (Dom s) :=
+  T.rename? PartialRename.unshift.lift
+
+theorem Dom.underRoot?_sound {s : Sig} {T : Ty ((s,c),c)} {U : Dom s}
+    (h : Dom.underRoot? T = some U) : T = Dom.underRoot U :=
+  Ty.rename?_sound T U PartialRename.unshift.lift Rename.succ.lift
+    (PartialRename.Inverts.lift PartialRename.unshift_inverts) h
+
+theorem Dom.underRoot?_underRoot {s : Sig} (U : Dom s) :
+    Dom.underRoot? (Dom.underRoot U) = some U :=
+  Ty.rename?_complete U PartialRename.unshift.lift Rename.succ.lift
+    (PartialRename.Inverts.lift PartialRename.unshift_inverts)
+
+/-- Invert the insertion of a body root into a codomain. -/
+def Cod.underRoot? {s : Sig} (E : Ty (((s,c),c),x)) : Option (Cod s) :=
+  E.rename? PartialRename.unshift.lift.lift
+
+theorem Cod.underRoot?_sound {s : Sig} {E : Ty (((s,c),c),x)} {U : Cod s}
+    (h : Cod.underRoot? E = some U) : E = Cod.underRoot U :=
+  Ty.rename?_sound E U PartialRename.unshift.lift.lift Rename.succ.lift.lift
+    (PartialRename.Inverts.lift (PartialRename.Inverts.lift PartialRename.unshift_inverts)) h
+
+theorem Cod.underRoot?_underRoot {s : Sig} (U : Cod s) :
+    Cod.underRoot? (Cod.underRoot U) = some U :=
+  Ty.rename?_complete U PartialRename.unshift.lift.lift Rename.succ.lift.lift
+    (PartialRename.Inverts.lift (PartialRename.Inverts.lift PartialRename.unshift_inverts))
+
+theorem witness_underRootDom {s : Sig} (U : Dom s) :
+    witness? (Dom.underRoot? (Dom.underRoot U)) = some ⟨U, Dom.underRoot?_underRoot U⟩ :=
+  witness?_eq_some (Dom.underRoot?_underRoot U)
+
+theorem witness_underRootCod {s : Sig} (U : Cod s) :
+    witness? (Cod.underRoot? (Cod.underRoot U)) = some ⟨U, Cod.underRoot?_underRoot U⟩ :=
+  witness?_eq_some (Cod.underRoot?_underRoot U)
 
 /-- Strengthening: undo one weakening, if the innermost binder does not occur. -/
 def Shape.strengthen? {s : Sig} {k : Kind} (S : Shape (s,,k)) : Option (Shape s) :=
@@ -1037,7 +1084,9 @@ def tmApp {s : Sig} {Γ : Ctx s} {a b : Atom s} {Ta : Ty s} (ha : Γ ⊢ₐ a : 
     {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) : Option (TmChecked Γ (.app a b)) :=
   match Ta, ha with
   | .capt _ (.pi T U), ha =>
-      if h : Tb = T then some ⟨U⟦b.root⟧, .app ha (by subst h; exact hb)⟩ else none
+      if h : Tb = T.subst (Subst.singleC (CapAtom.var b.root)) then
+        some ⟨U.subst (Subst.arg b), .app ha (by subst h; exact hb)⟩
+      else none
   | _, _ => none
 
 /-! ## Evidence kernel
@@ -1161,9 +1210,18 @@ def synthShapeCore {s : Sig} (Γ : Ctx s) (ev : ShapeCo s) : Option (ShapeChecke
         some ⟨ce.source, cf.target, .trans ce.typing (by rw [h]; exact cf.typing)⟩
       else none
   | .pi e f => do
-      let ce ← synthLeCore Γ e
-      let cf ← synthLeCore (Γ.cons (.opaque ce.source)) f
-      some ⟨.pi ce.target cf.source, .pi ce.source cf.target, .pi ce.typing cf.typing⟩
+      let ce ← synthLeCore Γ.scope e
+      let d2 ← witness? (Dom.underRoot? ce.source)
+      let d1 ← witness? (Dom.underRoot? ce.target)
+      let cf ← synthLeCore (Γ.body d2.val) f
+      let u1 ← witness? (Cod.underRoot? cf.source)
+      let u2 ← witness? (Cod.underRoot? cf.target)
+      some ⟨.pi d1.val u1.val, .pi d2.val u2.val, by
+        refine ShapeCo.HasType.pi ?_ ?_
+        · rw [← Dom.underRoot?_sound d2.property, ← Dom.underRoot?_sound d1.property]
+          exact ce.typing
+        · rw [← Cod.underRoot?_sound u1.property, ← Cod.underRoot?_sound u2.property]
+          exact cf.typing⟩
   | .obj Tel m => do
       let cm ← synthMorCore Γ Tel m
       some ⟨μ Tel, μ cm.tel, .obj cm.typing⟩
@@ -1353,17 +1411,19 @@ termination_by sizeOf t
 def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked Γ v) :=
   match v with
   | .lam A T t g => do
-      let ct ← synthTmCore (Γ.cons (.opaque T)) t
-      let cg ← synthCapCore (Γ.cons (.opaque T)) g
+      let ct ← synthTmCore (Γ.body T) t
+      let U ← witness? (Cod.underRoot? ct.type)
+      let cg ← synthCapCore (Γ.body T) g
       if hs : cg.source = t.uses then
-        if ht : cg.target = (A↑ ∪ [CapAtom.var .here]) then
-          some ⟨(.pi T ct.type) ^ A,
-            .lam ct.typing (by rw [← hs, ← ht]; exact cg.typing)⟩
+        if ht : cg.target = (A↑↑↑ ∪ [CapAtom.var .here]) then
+          some ⟨(.pi T U.val) ^ A,
+            .lam (by rw [← Cod.underRoot?_sound U.property]; exact ct.typing)
+              (by rw [← hs, ← ht]; exact cg.typing)⟩
         else none
       else none
   | .obj A W Wc F => do
       let Tel := Telescope.ofLiteral W Wc F.labels
-      let pF ← checkFieldsCore A (Γ.cons (.transparent ((.obj Tel) ^ A) W Wc F.labels)) F
+      let pF ← checkFieldsCore A↑ (Γ.objBody ((.obj Tel) ^ A) W Wc F.labels) F
       some ⟨(.obj Tel) ^ A, .obj pF.down⟩
   | .box a => do
       let ca ← synthAtomCore Γ a
@@ -1653,15 +1713,15 @@ section SmokeTests
 private def smokeLabel : Label := .trm 0
 
 /-- `λ(x : ⊤ ^ []). x`. -/
-private def smokeId : Tm ([],x) :=
+private def smokeId {s : Sig} : Tm (s,x) :=
   .val (.lam [] (⊤ ^ []) (.atom (.var .here)) (.refl [CapAtom.var .here]))
 
 /-- The type of `smokeId`. -/
-private def smokeIdTy : Ty ([],x) := (Π(⊤ ^ []) (⊤ ^ [])) ^ []
+private def smokeIdTy {s : Sig} : Ty (s,x) := (Π(⊤ ^ []) (⊤ ^ [])) ^ []
 
 /-- A term of type `(self.ℓ) ^ []`, obtained by widening to `⊤` and then
 unfolding the block definition. -/
-private def smokeField : Tm ([],x) :=
+private def smokeField {s : Sig} : Tm (s,x) :=
   .cast
     (.cast smokeId (.capt (.top (.pi (⊤ ^ []) (⊤ ^ []))) (.refl [])))
     (.capt (.eqToLe (.symm (.def .here smokeLabel)))

@@ -74,6 +74,30 @@ def lookupCap : Ctx s → BVar s .cap → CapBound s
   | .consC Γ _, .there κ => (lookupCap Γ κ)↑
   | .cons Γ _, .there κ => (lookupCap Γ κ)↑
 
+/-! ### The scope contexts
+
+A lambda body and an object body are scopes.  A scope opens its own root and
+then the arrow's capture binder, in that order: the parameter and the arrow
+binder are then at the level of the body root, which is what makes a
+capability of the body stay inside the body.  The arrow binder is `.star`,
+with no declared bound, so the body assumes nothing about the argument
+beyond what the level rule gives. -/
+
+/-- A scope: its own root, then the arrow's capture binder. -/
+def scope (Γ : Ctx s) : Ctx ((s,c),c) := (Γ.consC .root).consC .star
+
+/-- A lambda body: a scope, then the parameter at the domain read under the
+body root. -/
+def body (Γ : Ctx s) (T : Dom s) : Ctx (((s,c),c),x) := Γ.scope.cons (.opaque T.underRoot)
+
+/-- An object body: the class root, then the self as a transparent binder at
+the literal's own type.  The witnesses are written under the self alone, so
+they are read under the class root by the same insertion. -/
+def objBody (Γ : Ctx s) (T : Ty s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))
+    (ls : List Label) : Ctx ((s,c),x) :=
+  (Γ.consC .root).cons
+    (.transparent T.weaken (W.rename Rename.succ.lift) (Wc.rename Rename.succ.lift) ls)
+
 end Ctx
 
 /-! ## Levels
@@ -217,6 +241,30 @@ def lookupFields : Ctx s → BVar s .var → Option (List Label)
 
 /-- A binder is transparent when it records fields (possibly none). -/
 def IsTransparent (Γ : Ctx s) (x : BVar s .var) : Prop := (Γ.lookupFields x).isSome
+
+/-! ### Scope order
+
+**T-B1.8.**  In a lambda body the parameter and the arrow's capture binder
+have the same level, and that level is the body root.  This is the sentence
+"parameter `any`s are at the same level as the function's local `any`" in the
+target, and it is what rejects an escape out of a scope.  Both sides compute,
+so each proof is `rfl`. -/
+
+/-- The parameter of a body is at the level of the body root. -/
+theorem body_lvl_param (Γ : Ctx s) (T : Dom s) :
+    (Γ.body T).lvl (k := .var) .here = some (.there (.there .here)) := rfl
+
+/-- The arrow's capture binder is at the same level, the body root. -/
+theorem body_lvl_arrow (Γ : Ctx s) (T : Dom s) :
+    (Γ.body T).lvl (k := .cap) (.there .here) = some (.there (.there .here)) := rfl
+
+/-- And the body root is its own level. -/
+theorem body_lvl_root (Γ : Ctx s) (T : Dom s) :
+    (Γ.body T).lvl (k := .cap) (.there (.there .here)) = some (.there (.there .here)) := rfl
+
+/-- The arrow's capture binder carries no declared bound. -/
+theorem body_lookupCap_arrow (Γ : Ctx s) (T : Dom s) :
+    (Γ.body T).lookupCap (.there .here) = .star := rfl
 
 /-- Every term binder is transparent. -/
 inductive Transparent : Ctx s → Prop where

@@ -130,7 +130,7 @@ theorem Shape.translate_rename {s s' : Sig} (S : Shape s) (ρ : Rename s s') :
   | .sel (.var x) A => simp [Shape.rename, Path.rename, Shape.translate, FCdot.Shape.rename]
   | .all (.capt C1 S1) (.capt C2 S2) =>
       simp [Shape.rename, Ty.rename, Shape.translate, FCdot.Shape.rename, FCdot.Ty.rename,
-        Shape.translate_rename S1 ρ, Shape.translate_rename S2 ρ.lift]
+        Shape.translate_rename S1 ρ.lift, Shape.translate_rename S2 ρ.lift.lift]
   | .box (.capt C S0) =>
       simp [Shape.rename, Ty.rename, Shape.translate, FCdot.Shape.rename, FCdot.Ty.rename,
         Shape.translate_rename S0 ρ]
@@ -166,7 +166,7 @@ theorem Shape.tel_rename {s s' : Sig} (S : Shape s) (ρ : Rename s s') :
   | .all (.capt C1 S1) (.capt C2 S2) =>
       simp [Shape.rename, Ty.rename, Shape.tel, FCdot.Telescope.rename,
         FCdot.Proposition.rename, FCdot.Shape.weaken_rename, FCdot.Shape.rename,
-        FCdot.Ty.rename, Shape.translate_rename S1 ρ, Shape.translate_rename S2 ρ.lift]
+        FCdot.Ty.rename, Shape.translate_rename S1 ρ.lift, Shape.translate_rename S2 ρ.lift.lift]
   | .box (.capt C S0) =>
       simp [Shape.rename, Ty.rename, Shape.tel, FCdot.Telescope.rename,
         FCdot.Proposition.rename, FCdot.Shape.weaken_rename, FCdot.Shape.rename,
@@ -208,7 +208,7 @@ theorem Shape.telSelf_rename {s s' : Sig} (S : Shape (s,x)) (ρ : Rename s s') :
   | .all (.capt C1 S1) (.capt C2 S2) =>
       simp [Shape.rename, Ty.rename, Shape.telSelf, FCdot.Telescope.rename,
         FCdot.Proposition.rename, FCdot.Shape.rename, FCdot.Ty.rename,
-        Shape.translate_rename S1 ρ.lift, Shape.translate_rename S2 ρ.lift.lift]
+        Shape.translate_rename S1 ρ.lift.lift, Shape.translate_rename S2 ρ.lift.lift.lift]
   | .box (.capt C S0) =>
       simp [Shape.rename, Ty.rename, Shape.telSelf, FCdot.Telescope.rename,
         FCdot.Proposition.rename, FCdot.Shape.rename, FCdot.Ty.rename,
@@ -275,10 +275,10 @@ theorem Shape.tel_eq_telSelf_weaken {s : Sig} (S : Shape s) : S.tel = (S.weaken)
   | .all (.capt C1 S1) (.capt C2 S2) =>
       simp [Shape.weaken, Shape.rename, Ty.rename, Shape.tel, Shape.telSelf,
         FCdot.Shape.rename, FCdot.Shape.weaken, FCdot.Ty.rename,
-        Shape.translate_rename S1 FCdot.Rename.succ,
-        Shape.translate_rename S2 (FCdot.Rename.succ (k := Kind.var)).lift,
-        CaptureSet.translate_rename C1 FCdot.Rename.succ,
-        CaptureSet.translate_rename C2 (FCdot.Rename.succ (k := Kind.var)).lift]
+        Shape.translate_rename S1 (FCdot.Rename.succ (k := Kind.var)).lift,
+        Shape.translate_rename S2 (FCdot.Rename.succ (k := Kind.var)).lift.lift,
+        CaptureSet.translate_rename C1 (FCdot.Rename.succ (k := Kind.var)).lift,
+        CaptureSet.translate_rename C2 (FCdot.Rename.succ (k := Kind.var)).lift.lift]
   | .box (.capt C S0) =>
       simp [Shape.weaken, Shape.rename, Ty.rename, Shape.tel, Shape.telSelf,
         FCdot.Shape.rename, FCdot.Shape.weaken, FCdot.Ty.rename,
@@ -349,10 +349,10 @@ theorem Shape.tel_substVar {s : Sig} (S : Shape (s,x)) (r : BVar s .var) :
         FCdot.Proposition.rename, FCdot.Shape.rename, FCdot.Shape.weaken, FCdot.Ty.rename,
         FCdot.Rename.comp_assoc, FCdot.Rename.succ_subst, FCdot.Rename.comp_id,
         ← FCdot.Rename.lift_comp,
-        Shape.translate_rename S1 (Rename.subst r),
-        Shape.translate_rename S2 (Rename.subst r).lift,
-        CaptureSet.translate_rename C1 (Rename.subst r),
-        CaptureSet.translate_rename C2 (Rename.subst r).lift]
+        Shape.translate_rename S1 (Rename.subst r).lift,
+        Shape.translate_rename S2 (Rename.subst r).lift.lift,
+        CaptureSet.translate_rename C1 (Rename.subst r).lift,
+        CaptureSet.translate_rename C2 (Rename.subst r).lift.lift]
   | .box (.capt C S0) =>
       simp [Shape.substVar, Shape.rename, Ty.rename, Shape.tel, Shape.telSelf,
         FCdot.Telescope.rename, FCdot.Telescope.weaken, FCdot.Telescope.substVar,
@@ -429,6 +429,78 @@ namespace DotMNF
 open FCdot (Kind Sig BVar Rename Label)
 
 /-! ## Witnesses, field labels, and the literal type -/
+
+/-! ## Injectivity of renaming on source shapes
+
+The `obj` rule of B1.7 types a literal's definitions against its declaration
+shape read under the class root, so the facts the translation needs about
+that shape have to travel back through one renaming.  Renaming a source
+shape by an injective renaming is injective, exactly as it is in the target
+(`FCdot.Shape.rename_inj`). -/
+
+theorem Path.rename_inj {s1 s2 : Sig} (p p' : Path s1) (ρ : FCdot.Rename s1 s2)
+    (hρ : ρ.Injective) (h : p.rename ρ = p'.rename ρ) : p = p' := by
+  cases p; cases p'
+  simp only [Path.rename, Path.var.injEq] at h ⊢
+  exact hρ _ _ h
+
+theorem CapAtom.rename_inj {s1 s2 : Sig} (a a' : CapAtom s1) (ρ : FCdot.Rename s1 s2)
+    (hρ : ρ.Injective) (h : a.rename ρ = a'.rename ρ) : a = a' := by
+  cases a <;> cases a' <;> simp [CapAtom.rename] at h ⊢
+  · exact hρ _ _ h
+  · exact hρ _ _ h
+  · exact ⟨hρ _ _ h.1, h.2⟩
+
+theorem CaptureSet.rename_inj {s1 s2 : Sig} (ρ : FCdot.Rename s1 s2) (hρ : ρ.Injective) :
+    ∀ (C C' : CaptureSet s1), CaptureSet.rename C ρ = CaptureSet.rename C' ρ → C = C'
+  | [], [], _ => rfl
+  | [], _ :: _, h => by simp [CaptureSet.rename] at h
+  | _ :: _, [], h => by simp [CaptureSet.rename] at h
+  | a :: C, a' :: C', h => by
+      simp only [CaptureSet.rename_cons, List.cons.injEq] at h ⊢
+      exact ⟨CapAtom.rename_inj a a' ρ hρ h.1, CaptureSet.rename_inj ρ hρ C C' h.2⟩
+
+mutual
+
+theorem Shape.rename_inj {s1 s2 : Sig} (S S' : Shape s1) (ρ : FCdot.Rename s1 s2)
+    (hρ : ρ.Injective) (h : S.rename ρ = S'.rename ρ) : S = S' := by
+  match S with
+  | .top => cases S' <;> simp [Shape.rename] at h ⊢
+  | .bot => cases S' <;> simp [Shape.rename] at h ⊢
+  | .sel p A =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact ⟨Path.rename_inj p _ ρ hρ h.1, h.2⟩
+  | .typ A S1 S2 =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact ⟨h.1, Shape.rename_inj S1 _ ρ hρ h.2.1, Shape.rename_inj S2 _ ρ hρ h.2.2⟩
+  | .fld a T =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact ⟨h.1, Ty.rename_inj T _ ρ hρ h.2⟩
+  | .cap A c1 c2 =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact ⟨h.1, CaptureSet.rename_inj ρ hρ c1 _ h.2.1, CaptureSet.rename_inj ρ hρ c2 _ h.2.2⟩
+  | .mu S0 =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact Shape.rename_inj S0 _ ρ.lift hρ.lift h
+  | .all T1 T2 =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact ⟨Ty.rename_inj T1 _ ρ.lift hρ.lift h.1,
+        Ty.rename_inj T2 _ ρ.lift.lift (FCdot.Rename.Injective.lift (FCdot.Rename.Injective.lift hρ)) h.2⟩
+  | .and S1 S2 =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact ⟨Shape.rename_inj S1 _ ρ hρ h.1, Shape.rename_inj S2 _ ρ hρ h.2⟩
+  | .box T =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact Ty.rename_inj T _ ρ hρ h
+
+theorem Ty.rename_inj {s1 s2 : Sig} (T T' : Ty s1) (ρ : FCdot.Rename s1 s2)
+    (hρ : ρ.Injective) (h : T.rename ρ = T'.rename ρ) : T = T' := by
+  match T with
+  | .capt C S =>
+      cases T' <;> simp [Ty.rename] at h ⊢
+      exact ⟨CaptureSet.rename_inj ρ hρ C _ h.1, Shape.rename_inj S _ ρ hρ h.2⟩
+
+end
 
 theorem Shape.witnesses_rename {s s' : Sig} (S : Shape (s,x)) (ρ : Rename s s') :
     (S.rename ρ.lift).witnesses = S.witnesses.rename ρ.lift := by
@@ -564,6 +636,55 @@ theorem Ctx.translate_lookup_consSelf_there {s : Sig} (Γ : Ctx s) (d : Defs (s,
 
 theorem Ctx.translate_lookup_consC_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
     (Ctx.consC Γ).translate.lookupTy (.there y) = (Γ.translate.lookupTy y).weaken := rfl
+
+theorem Ctx.translate_lookup_consRoot_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
+    (Ctx.consRoot Γ).translate.lookupTy (.there y) = (Γ.translate.lookupTy y).weaken := rfl
+
+/-! ## The scope contexts translate to the target's scope contexts
+
+The source binds the same binders in the same places, so `Ctx.translate` is
+a homomorphism on the three scope contexts of B1.1. -/
+
+theorem Ty.translate_underRoot {s : Sig} (T : Dom s) :
+    (Dom.underRoot T).translate = FCdot.Dom.underRoot T.translate :=
+  Ty.translate_rename T FCdot.Rename.succ.lift
+
+theorem Ty.translate_underRootCod {s : Sig} (E : Cod s) :
+    (Cod.underRoot E).translate = FCdot.Cod.underRoot E.translate :=
+  Ty.translate_rename E FCdot.Rename.succ.lift.lift
+
+@[simp] theorem Ctx.translate_scope {s : Sig} (Γ : Ctx s) :
+    (Γ.scope).translate = Γ.translate.scope := rfl
+
+@[simp] theorem Ctx.translate_body {s : Sig} (Γ : Ctx s) (T : Dom s) :
+    (Γ.body T).translate = Γ.translate.body T.translate := by
+  simp only [Ctx.body, Ctx.translate, FCdot.Ctx.body, Ctx.translate_scope,
+    Ty.translate_underRoot]
+
+/-- The source's object body translates to the target's: the class root
+becomes a root capture binder and the self a transparent binder at the
+literal's precise type, with the witnesses read under the class root by the
+same insertion on both sides. -/
+theorem Ctx.translate_objBody {s : Sig} (Γ : Ctx s) (d : Defs ((s,c),x)) (S : Shape (s,x))
+    (U : CaptureSet s) :
+    (Γ.objBody d S U).translate
+      = Γ.translate.objBody (S.literalTy U) S.witnesses S.capWitnesses S.fieldLabels := by
+  show FCdot.Ctx.cons (FCdot.Ctx.consC Γ.translate .root)
+      (.transparent ((S.rename FCdot.Rename.succ.lift).literalTy (U.rename FCdot.Rename.succ))
+        (S.rename FCdot.Rename.succ.lift).witnesses
+        (S.rename FCdot.Rename.succ.lift).capWitnesses
+        (S.rename FCdot.Rename.succ.lift).fieldLabels) = _
+  rw [Shape.literalTy_rename S U FCdot.Rename.succ, Shape.witnesses_rename S FCdot.Rename.succ,
+    Shape.capWitnesses_rename S FCdot.Rename.succ,
+    Shape.fieldLabels_rename S FCdot.Rename.succ.lift]
+  rfl
+
+/-- The shape witnesses and the field labels of a literal are written under
+the self alone, so the class root is inserted below them by the same
+renaming on both sides. -/
+theorem Shape.translate_underRoot {s : Sig} (S : Shape (s,x)) :
+    (Shape.underRoot S).translate = S.translate.rename FCdot.Rename.succ.lift :=
+  Shape.translate_rename S FCdot.Rename.succ.lift
 
 end DotMNF
 

@@ -1,4 +1,5 @@
 import Coercions.CapturesCC.FCdot.Checker
+import Coercions.CapturesCC.FCdot.LevelInversion
 import Coercions.CapturesCC.FCdot.Erasure
 import Coercions.CapturesCC.FCdot.Consistency
 import Coercions.CapturesCC.FCdot.Prediction
@@ -126,6 +127,20 @@ theorem sub_head {s : Sig} {a : CapAtom s} {C : CaptureSet s} :
   simp only [List.mem_cons, List.not_mem_nil, or_false] at h
   simp [h]
 
+/-! ### Reading an outer binder from inside a scope
+
+A lambda body opens three binders, the body root, the arrow's capture binder
+and the parameter, so an outer binder is three steps out.  A codomain and an
+object body open two, so an outer binder is two steps out there, and a
+domain opens one. -/
+
+/-- An outer binder, read inside a lambda body. -/
+abbrev up {s : Sig} {k : Kind} (y : BVar s k) : BVar (Sig.body s) k :=
+  .there (.there (.there y))
+
+/-- An outer binder, read inside a codomain or an object body. -/
+abbrev up2 {s : Sig} {k : Kind} (y : BVar s k) : BVar ((s,c),x) k := .there (.there y)
+
 /-! ## Type shapes -/
 
 /-- `{A : S..T}` as a telescope over the self block: `[S ≤ y.A, y.A ≤ T]`. -/
@@ -144,7 +159,7 @@ def tFld (a : Label) (T : Shape s) : Shape s := .obj (telFld a T)
 
 /-- `∀(y : x.A) x.A`, the self-referential arrow of E2 and E4. -/
 def piSel (A : Label) (x : BVar s .var) : Shape s :=
-  .pi (Ty.pure (.sel x A)) (Ty.pure (.sel (.there x) A))
+  .pi (Ty.pure (.sel (.there x) A)) (Ty.pure (.sel (up2 x) A))
 
 /-- `Int`, i.e. `{a : ⊤}`. -/
 def tInt : Shape s := tFld la .top
@@ -229,13 +244,13 @@ def E2CapWit : CapWitnesses (s,x) := .cons .nil la []
 
 /-- The field body `λ(y : self.A). y`, cast from its own arrow type to the
 block name `self.a` by the definition of `a`. -/
-def E2Field : Tm (s,x) :=
+def E2Field : Tm ((s,c),x) :=
   .cast
-    (.val (.lam [] (Ty.pure (.sel .here lA)) (.atom (.var .here))
+    (.val (.lam [] (Ty.pure (.sel (.there .here) lA)) (.atom (.var .here))
       (.elem [CapAtom.var .here] [CapAtom.var .here])))
     (.capt (.eqToLe (.symm (.def .here la))) (.elem [] [CapAtom.name .here la]))
 
-def E2Fields : Fields (s,x) :=
+def E2Fields : Fields ((s,c),x) :=
   .cons .nil la E2Field (.elem [] [CapAtom.var .here])
 
 /-- The literal's precise telescope:
@@ -364,7 +379,7 @@ def E3sub (x : BVar s .var) : LeCo s :=
 def E3 : Tm [] :=
   .val (.lam [] (Ty.pure E3Dom)
     (.val (.lam [] (Ty.pure tNat)
-      (.let (.atom (.cast (.var .here) (E3sub (.there .here)))) (.atom (.var .here))
+      (.let (.atom (.cast (.var .here) (E3sub (up .here)))) (.atom (.var .here))
         [] (.capvar (.var .here)))
       (.elem [CapAtom.var .here] [CapAtom.var .here])))
     (.elem [] [CapAtom.var .here]))
@@ -422,11 +437,11 @@ def E4 : Tm [] :=
     (.val (.lam [] (Ty.pure E4S)
       (.val (.lam [] (Ty.pure tInt)
         (.let
-          (.val (.lam [] (Ty.pure (.sel (.there .here) lA)) (.atom (.var .here))
+          (.val (.lam [] (Ty.pure (.sel (.there (up .here)) lA)) (.atom (.var .here))
             (.elem [CapAtom.var .here] [CapAtom.var .here])))
           (.app (.var .here)
             (.cast (.var (.there .here))
-              (E4IntLe (.there (.there (.there .here))) (.there (.there .here)))))
+              (E4IntLe (.there (up (up .here))) (.there (up .here)))))
           [] (.union (.capvar (.var .here)) (.capvar (.var (.there .here)))))
         (.elem [] [CapAtom.var .here])))
       (.elem [] [CapAtom.var .here])))
@@ -434,7 +449,7 @@ def E4 : Tm [] :=
 
 def E4Ty : Ty [] :=
   Ty.pure (.pi (Ty.pure E4X) (Ty.pure (.pi (Ty.pure E4S)
-    (Ty.pure (.pi (Ty.pure tInt) (Ty.pure (.sel (.there .here) lA)))))))
+    (Ty.pure (.pi (Ty.pure tInt) (Ty.pure (.sel (up2 .here) lA)))))))
 
 example : checkTm Ctx.nil E4 E4Ty = true := by decide +kernel
 
@@ -443,7 +458,7 @@ theorem E4_typed : Ctx.nil ⊢ E4 : E4Ty := checkTm_sound (by decide +kernel)
 /-- The source term of `DotMNF.Examples.E4`. -/
 def E4src : DotMNF.Tm [] :=
   .val (.lam DotMNF.Examples.E4X (.val (.lam DotMNF.Examples.E4S (.val (.lam DotMNF.Examples.E4Int
-    (.let (.val (.lam (DotMNF.Ty.capt [] (.sel (.var (.there .here)) DotMNF.Examples.lA))
+    (.let (.val (.lam (DotMNF.Ty.capt [] (.sel (.var (.there (up .here))) DotMNF.Examples.lA))
       (.path (.var .here))))
       (.app .here (.there .here))))))))
 
@@ -451,7 +466,7 @@ example : DotMNF.HasTy [] .nil E4src
     (DotMNF.Ty.capt [] (.all DotMNF.Examples.E4X
       (DotMNF.Ty.capt [] (.all DotMNF.Examples.E4S
         (DotMNF.Ty.capt [] (.all DotMNF.Examples.E4Int
-          (DotMNF.Ty.capt [] (.sel (.var (.there .here)) DotMNF.Examples.lA)))))))) :=
+          (DotMNF.Ty.capt [] (.sel (.var (up2 .here)) DotMNF.Examples.lA)))))))) :=
   DotMNF.Examples.E4
 
 theorem E4_erase : E4.erase = E4src.erase := rfl
@@ -494,16 +509,16 @@ theorem E5Tel_eq (v : BVar s .var) :
 def E5ObjTy (v : BVar s .var) : Shape s := .obj (E5Tel v)
 
 /-- The field body: `v : {A : ⊤..⊤} ≤ ⊤ ≤ v.A ≃ z.a`. -/
-def E5Field : Tm (s,x,x) :=
-  .atom (.cast (.var (.there .here))
+def E5Field : Tm ((s,x,c),x) :=
+  .atom (.cast (.var (up2 .here))
     (.capt (.trans (.top E5AT)
-        (.trans (.member (.var (.there .here)) (.refl E5AT) 0)
+        (.trans (.member (.var (up2 .here)) (.refl E5AT) 0)
           (.eqToLe (.symm (.def .here la)))))
       (.elem [] [CapAtom.name .here la])))
 
-def E5Fields : Fields (s,x,x) :=
+def E5Fields : Fields ((s,x,c),x) :=
   .cons .nil la E5Field
-    (.elem [CapAtom.var (.there .here)] [CapAtom.var (.there .here), CapAtom.var .here])
+    (.elem [CapAtom.var (up2 .here)] [CapAtom.var (up2 .here), CapAtom.var .here])
 
 /-- `λ(w : {A : ⊤..⊤}). let f = … in let o = f w in (o.a : w.A)`.  The literal
 captures the parameter `v` of the inner lambda, so it carries the assigned set
@@ -532,9 +547,11 @@ example : checkTm Ctx.nil E5 E5Ty = true := by decide +kernel
 example : checkTm Ctx.nil E5 (Ty.pure (.pi (Ty.pure E5AT) (Ty.pure .top))) = false := by
   decide +kernel
 
+/-- `w : {A : ⊤..⊤}`, the body of the outer lambda. -/
+def E5Ctx1 : Ctx (Sig.body ([] : Sig)) := Ctx.body Ctx.nil (Ty.pure E5AT)
+
 /-- `w : {A : ⊤..⊤}, v : {A : ⊤..⊤}`, the context of the object literal. -/
-def E5Ctxv : Ctx ([],x,x) :=
-  (Ctx.nil.cons (.opaque (Ty.pure E5AT))).cons (.opaque (Ty.pure E5AT))
+def E5Ctxv : Ctx (Sig.body (Sig.body ([] : Sig))) := Ctx.body E5Ctx1 (Ty.pure E5AT)
 
 theorem E5_value : E5Ctxv ⊢ᵥ .obj [CapAtom.var .here] (E5Wit .here) E5CapWit E5Fields :
     (E5ObjTy .here) ^ [CapAtom.var .here] := by
@@ -551,8 +568,8 @@ theorem E5_value : E5Ctxv ⊢ᵥ .obj [CapAtom.var .here] (E5Wit .here) E5CapWit
   exact h
 
 /-- `w : {A : ⊤..⊤}, f : ∀(v : {A : ⊤..⊤}) (Obj(z. [z.a ≃ v.A, …]) ^ {v})`. -/
-def E5Ctxf : Ctx ([],x,x) :=
-  (Ctx.nil.cons (.opaque (Ty.pure E5AT))).cons
+def E5Ctxf : Ctx (Sig.body ([] : Sig),x) :=
+  E5Ctx1.cons
     (.opaque (Ty.pure (.pi (Ty.pure E5AT) ((E5ObjTy .here) ^ [CapAtom.var .here]))))
 
 /-- `f`, at its declared type. -/
@@ -566,7 +583,7 @@ theorem E5_app : Tm.HasType E5Ctxf (.app (.var .here) (.var (.there .here)))
   .app E5_f .var
 
 /-- `w : …, f : …, o : Obj(z. [z.a ≃ w.A, …]) ^ {w}`. -/
-def E5Ctxo : Ctx ([],x,x,x) :=
+def E5Ctxo : Ctx (Sig.body ([] : Sig),x,x) :=
   E5Ctxf.cons (.opaque ((E5ObjTy (.there .here)) ^ [CapAtom.var (.there .here)]))
 
 /-- `o.a`, then `o.a ≃ w.A`: the result mentions neither `let` binder, and its
@@ -583,9 +600,20 @@ theorem E5_proj : Tm.HasType E5Ctxo
         (.there (.there .here))))
       (.eqToLe (.member (Tel := E5Tel (.there (.there .here))) .var .refl (.there .here))))
 
+/-- The codomain of `f`, named so that the `lam` rule below has its codomain
+given rather than inferred from the body's type through `Cod.underRoot`. -/
+def E5Cod : Cod (Sig.body ([] : Sig)) := (E5ObjTy .here) ^ [CapAtom.var .here]
+
+/-- `f = λ(v : {A : ⊤..⊤}). ν(z. {a = v})`, in the body of the outer lambda. -/
+theorem E5_fval : E5Ctx1 ⊢ᵥ
+    .lam [] (Ty.pure E5AT) (.val (.obj [CapAtom.var .here] (E5Wit .here) E5CapWit E5Fields))
+      (.elem [] [CapAtom.var .here]) :
+    (Shape.pi (Ty.pure E5AT) E5Cod) ^ [] :=
+  .lam (.val E5_value) (.elem sub_nil)
+
 theorem E5_typed : Ctx.nil ⊢ E5 : E5Ty :=
   .val (.lam
-    (.let (.val (.lam (.val E5_value) (.elem sub_nil)))
+    (.let (.val E5_fval)
       (.let E5_app E5_proj (.capvar .var))
       (.union (.union (.capvar .var) (.capvar .var)) (.capvar .var)))
     (.elem sub_nil))
@@ -620,14 +648,14 @@ def E6CapWit : CapWitnesses (s,x) := .cons .nil lv []
 /-- The field body: `n` (from the enclosing scope), cast from `Int` to `self.T`
 by the definition of `T`, then from `self.T` to the block name `self.v` by
 the definition of `v`. -/
-def E6Field : Tm (s,x,x) :=
+def E6Field : Tm ((s,x,c),x) :=
   .atom (.cast
-    (.cast (.var (.there .here)) (co (.eqToLe (.symm (.def .here lT)))))
+    (.cast (.var (up2 .here)) (co (.eqToLe (.symm (.def .here lT)))))
     (.capt (.eqToLe (.symm (.def .here lv))) (.elem [] [CapAtom.name .here lv])))
 
-def E6Fields : Fields (s,x,x) :=
+def E6Fields : Fields ((s,x,c),x) :=
   .cons .nil lv E6Field
-    (.elem [CapAtom.var (.there .here)] [CapAtom.var (.there .here), CapAtom.var .here])
+    (.elem [CapAtom.var (up2 .here)] [CapAtom.var (up2 .here), CapAtom.var .here])
 
 /-- The literal's precise telescope:
 `[self.T ≃ Int, self.v ≃ self.T, {self∙v} ≐ᶜ {}, has v]`. -/
@@ -745,8 +773,8 @@ def E8Sel (x : BVar s .var) : ShapeCo s :=
 /-- `λ(x). λ(y). y.a`, the `And₂` derivation. -/
 def E8 : Tm [] :=
   .val (.lam [] (Ty.pure E8X)
-    (.val (.lam [] (Ty.pure (E8Y .here))
-      (.cast (.proj (.var .here) la (.member (.var .here) (E8And2 (.there .here)) 0))
+    (.val (.lam [] (Ty.pure (E8Y (.there .here)))
+      (.cast (.proj (.var .here) la (.member (.var .here) (E8And2 (up .here)) 0))
         (.capt (.top (.sel .here la)) (.refl [CapAtom.name .here la])))
       (.elem [CapAtom.var .here] [CapAtom.var .here])))
     (.elem [] [CapAtom.var .here]))
@@ -755,8 +783,8 @@ def E8 : Tm [] :=
 after erasure. -/
 def E8b : Tm [] :=
   .val (.lam [] (Ty.pure E8X)
-    (.val (.lam [] (Ty.pure (E8Y .here))
-      (.cast (.proj (.var .here) la (.member (.var .here) (E8Sel (.there .here)) 0))
+    (.val (.lam [] (Ty.pure (E8Y (.there .here)))
+      (.cast (.proj (.var .here) la (.member (.var .here) (E8Sel (up .here)) 0))
         (.capt (.top (.sel .here la)) (.refl [CapAtom.name .here la])))
       (.elem [CapAtom.var .here] [CapAtom.var .here])))
     (.elem [] [CapAtom.var .here]))
@@ -766,8 +794,8 @@ the projection's own capture name: `y` is an opaque binder, and its declared
 telescope has no capture proposition to read the name through. -/
 def E8Ty : Ty [] :=
   Ty.pure (.pi (Ty.pure E8X)
-    (Ty.pure (.pi (Ty.pure (E8Y .here))
-      ((⊤ : Shape ([],x,x)) ^ [CapAtom.name .here la]))))
+    (Ty.pure (.pi (Ty.pure (E8Y (.there .here)))
+      ((⊤ : Shape (Sig.cod (Sig.cod ([] : Sig)))) ^ [CapAtom.name .here la]))))
 
 example : checkTm Ctx.nil E8 E8Ty = true := by decide +kernel
 
@@ -783,16 +811,18 @@ theorem E8b_erase_E8 : E8b.erase = E8.erase := rfl
 /-- `λ(x). λ(y). y.a` in the source calculus. -/
 def E8src : DotMNF.Tm [] :=
   .val (.lam DotMNF.Examples.E8Dom
-    (.val (.lam (DotMNF.Examples.E8Ref .here) (.proj .here DotMNF.Examples.la))))
+    (.val (.lam (DotMNF.Examples.E8Ref (.there .here)) (.proj .here DotMNF.Examples.la))))
 
 example : DotMNF.HasTy [] .nil E8src
     (DotMNF.Ty.capt [] (.all DotMNF.Examples.E8Dom
-      (DotMNF.Ty.capt [] (.all (DotMNF.Examples.E8Ref .here) (DotMNF.Ty.capt [] .top))))) :=
+      (DotMNF.Ty.capt [] (.all (DotMNF.Examples.E8Ref (.there .here))
+        (DotMNF.Ty.capt [] .top))))) :=
   DotMNF.Examples.E8
 
 example : DotMNF.HasTy [] .nil E8src
     (DotMNF.Ty.capt [] (.all DotMNF.Examples.E8Dom
-      (DotMNF.Ty.capt [] (.all (DotMNF.Examples.E8Ref .here) (DotMNF.Ty.capt [] .top))))) :=
+      (DotMNF.Ty.capt [] (.all (DotMNF.Examples.E8Ref (.there .here))
+        (DotMNF.Ty.capt [] .top))))) :=
   DotMNF.Examples.E8b
 
 theorem E8_erase : E8.erase = E8src.erase := rfl
@@ -851,31 +881,31 @@ def C3Ctx0 : Ctx ([],c) := Ctx.nil.consC .star
 
 /-- The context inside the two lambdas: `κ ⊑ᶜ ∗, x : μ(y. [{κ} ⊑ᶜ {}]),
 z : □(⊤ ^ {κ})`. -/
-def C3Ctx : Ctx ([],c,x,x) :=
-  (C3Ctx0.cons (.opaque (Ty.pure (capBad .here)))).cons
-    (.opaque (Ty.pure (boxCap (.there .here))))
+def C3Ctx : Ctx (Sig.body (Sig.body ([],c))) :=
+  Ctx.body (Ctx.body C3Ctx0 (Ty.pure (capBad (.there .here))))
+    (Ty.pure (boxCap (.there (up .here))))
 
 /-- The bad capture bound, in the context of the two lambdas. -/
 example :
-    checkCap C3Ctx (badCapBounds (.there .here) (.there (.there .here)))
-      [CapAtom.cvar (.there (.there .here))] [] = true := by
+    checkCap C3Ctx (badCapBounds (up .here) (up (up .here)))
+      [CapAtom.cvar (up (up .here))] [] = true := by
   decide +kernel
 
-theorem C3_badBounds : C3Ctx ⊢ᶜ badCapBounds (.there .here) (.there (.there .here)) :
-    [CapAtom.cvar (.there (.there .here))] ⊑ [] :=
+theorem C3_badBounds : C3Ctx ⊢ᶜ badCapBounds (up .here) (up (up .here)) :
+    [CapAtom.cvar (up (up .here))] ⊑ [] :=
   checkCap_sound (by decide +kernel)
 
 def C3 : Tm ([],c) :=
-  .val (.lam [] (Ty.pure (capBad .here))
-    (.val (.lam [] (Ty.pure (boxCap (.there .here)))
-      (.unbox (.var .here) [] (badCapBounds (.there .here) (.there (.there .here))))
+  .val (.lam [] (Ty.pure (capBad (.there .here)))
+    (.val (.lam [] (Ty.pure (boxCap (.there (up .here))))
+      (.unbox (.var .here) [] (badCapBounds (up .here) (up (up .here))))
       (.elem [CapAtom.var .here] [CapAtom.var .here])))
     (.elem [] [CapAtom.var .here]))
 
 def C3Ty : Ty ([],c) :=
-  Ty.pure (.pi (Ty.pure (capBad .here))
-    (Ty.pure (.pi (Ty.pure (boxCap (.there .here)))
-      ((⊤ : Shape ([],c,x,x)) ^ [CapAtom.cvar (.there (.there .here))]))))
+  Ty.pure (.pi (Ty.pure (capBad (.there .here)))
+    (Ty.pure (.pi (Ty.pure (boxCap (.there (up2 .here))))
+      ((⊤ : Shape (Sig.cod (Sig.cod ([],c)))) ^ [CapAtom.cvar (up2 (up2 .here))]))))
 
 example : checkTm C3Ctx0 C3 C3Ty = true := by decide +kernel
 
@@ -974,7 +1004,7 @@ Its closing evidence is the syntactic inclusion of the body's use set in the
 annotation united with the parameter. -/
 def capVal {s : Sig} (κ : BVar s .cap) : Value s :=
   .lam [CapAtom.cvar κ] (Ty.pure .top) (.atom (.var .here))
-    (.elem [CapAtom.var .here] [CapAtom.cvar (.there κ), CapAtom.var .here])
+    (.elem [CapAtom.var .here] [CapAtom.cvar (up κ), CapAtom.var .here])
 
 /-- `unit`, the only value of `Unit`: the empty object literal. -/
 def unitVal {s : Sig} : Value s := .obj [] .nil .nil .nil
@@ -994,7 +1024,7 @@ def C1Ctx : Ctx ([],c,c,x,x,x) :=
 /-- `(Π(Unit) ((Π(Unit) Unit) ^ {console})) ^ {log}`. -/
 def c1Ty : Ty ([],c,c,x,x,x) :=
   (.pi (Ty.pure .top)
-      ((.pi (Ty.pure .top) (Ty.pure .top)) ^ [CapAtom.var (.there (.there .here))]))
+      ((.pi (Ty.pure .top) (Ty.pure .top)) ^ [CapAtom.var (up2 (.there .here))]))
     ^ [CapAtom.var (.there (.there .here))]
 
 /-- `λ^{log}(u : Unit). let _ = log u in λ^{console}(v : Unit). console v`.
@@ -1002,14 +1032,14 @@ The inner closing evidence is the syntactic inclusion; so is the outer one,
 because the outer annotation is the variable `log` itself. -/
 def c1val : Value ([],c,c,x,x,x) :=
   .lam [CapAtom.var (.there (.there .here))] (Ty.pure .top)
-    (.let (.app (.var (.there (.there (.there .here)))) (.var .here))
-      (.val (.lam [CapAtom.var (.there (.there (.there .here)))] (Ty.pure .top)
-        (.app (.var (.there (.there (.there (.there .here))))) (.var .here))
-        (.elem [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here]
-          [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here])))
+    (.let (.app (.var (up (.there (.there .here)))) (.var .here))
+      (.val (.lam [CapAtom.var (.there (up (.there .here)))] (Ty.pure .top)
+        (.app (.var (up (.there (up (.there .here))))) (.var .here))
+        (.elem [CapAtom.var (up (.there (up (.there .here)))), CapAtom.var .here]
+          [CapAtom.var (up (.there (up (.there .here)))), CapAtom.var .here])))
       [] (.elem [] []))
-    (.elem [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here]
-      [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here])
+    (.elem [CapAtom.var (up (.there (.there .here))), CapAtom.var .here]
+      [CapAtom.var (up (.there (.there .here))), CapAtom.var .here])
 
 example : checkValue C1Ctx c1val c1Ty = true := by decide +kernel
 
@@ -1060,14 +1090,14 @@ theorem C1_uses_pure :
 evidence still the syntactic inclusion. -/
 def c1bad : Value ([],c,c,x,x,x) :=
   .lam [CapAtom.var (.there (.there .here))] (Ty.pure .top)
-    (.let (.app (.var (.there (.there (.there .here)))) (.var .here))
+    (.let (.app (.var (up (.there (.there .here)))) (.var .here))
       (.val (.lam [] (Ty.pure .top)
-        (.app (.var (.there (.there (.there (.there .here))))) (.var .here))
-        (.elem [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here]
+        (.app (.var (up (.there (up (.there .here))))) (.var .here))
+        (.elem [CapAtom.var (up (.there (up (.there .here)))), CapAtom.var .here]
           [CapAtom.var .here])))
       [] (.elem [] []))
-    (.elem [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here]
-      [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here])
+    (.elem [CapAtom.var (up (.there (.there .here))), CapAtom.var .here]
+      [CapAtom.var (up (.there (.there .here))), CapAtom.var .here])
 
 /-- The type the bad closure claims: the inner arrow is pure. -/
 def c1badTy : Ty ([],c,c,x,x,x) :=
@@ -1141,17 +1171,17 @@ def C6K0 : Cont ([],c,c,x,x,x,x) := .nil ▹ .let C6body1 C6U1 C6f1
 /-- The inner closure of `c1`, still under the let binder of `c1`'s body. -/
 def C6inner0 : Tm ([],c,c,x,x,x,x,x) :=
   .val (.lam [CapAtom.var (.there (.there (.there .here)))] (Ty.pure .top)
-    (.app (.var (.there (.there (.there (.there .here))))) (.var .here))
-    (.elem [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here]
-      [CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here]))
+    (.app (.var (up (.there (.there (.there .here))))) (.var .here))
+    (.elem [CapAtom.var (up (.there (.there (.there .here)))), CapAtom.var .here]
+      [CapAtom.var (up (.there (.there (.there .here)))), CapAtom.var .here]))
 
 /-- The inner closure once the let binder of `c1`'s body is gone: the value the
 run allocates. -/
 def C6inner : Value ([],c,c,x,x,x,x) :=
   .lam [CapAtom.var (.there (.there .here))] (Ty.pure .top)
-    (.app (.var (.there (.there (.there .here)))) (.var .here))
-    (.elem [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here]
-      [CapAtom.var (.there (.there (.there .here))), CapAtom.var .here])
+    (.app (.var (up (.there (.there .here)))) (.var .here))
+    (.elem [CapAtom.var (up (.there (.there .here))), CapAtom.var .here]
+      [CapAtom.var (up (.there (.there .here))), CapAtom.var .here])
 
 def C6st1 : State ([],c,c,x,x,x,x) :=
   ⟨C6Store, C6K0, .app (.var .here) (.var (.there .here))⟩
@@ -1675,7 +1705,7 @@ instead, which is `member` at index `1` of the declared telescope. -/
 
 /-- `⟦(∀(v : ⊤) (⊤ ^ {i.C}))⟧`, the shape of `next`, under the self. -/
 def C5NextShape : Shape (s,x) :=
-  .pi (Ty.pure .top) (.top ^ [CapAtom.name (.there .here) lC])
+  .pi (Ty.pure .top) (.top ^ [CapAtom.name (up2 .here) lC])
 
 /-- The capture witnesses of the callee's literal, read off the source
 declaration shape by the translation: the member's definition and the
@@ -1768,15 +1798,15 @@ def C5packCo (fs : BVar s .cap) : ShapeCo s := .obj (C5PreTel fs) (C5packMorph f
 
 /-- The field of the twin: the identity closure, cast to the field's own
 name and capture name. -/
-def C5FieldTm : Tm (s,x) :=
+def C5FieldTm : Tm ((s,c),x) :=
   .cast
     (.val (.lam [] (Ty.pure .top)
       (.cast (.atom (.var .here))
-        (.capt (.refl .top) (.elem [] [CapAtom.name (.there .here) lC])))
+        (.capt (.refl .top) (.elem [] [CapAtom.name (up .here) lC])))
       (.refl [CapAtom.var .here])))
     (.capt (.eqToLe (.symm (.def .here lnext))) (.elem [] [CapAtom.name .here lnext]))
 
-def C5Fields : Fields (s,x) :=
+def C5Fields : Fields ((s,c),x) :=
   .cons .nil lnext C5FieldTm (.elem [] [CapAtom.var .here])
 
 /-- The callee's literal in the target: pure, with the capture witnesses the
@@ -2005,6 +2035,285 @@ theorem X3_no_store : ¬ ∃ σ : Store ([],c,c,c), ⊢ σ : X2Ctx := by
   have h : X2Ctx.root? = none := hσ.rootFree
   exact absurd h (by decide)
 
+
+
+/-! ## B1: the arrow, the scope and the escape
+
+The examples of stage B1.  A lambda body is a scope now: `Ctx.body Γ T`
+binds the body root, then the arrow's capture binder, then the parameter,
+so the parameter and the arrow binder are at one level and that level is
+the body root.  Everything below reads off that one fact.
+
+`C2_typed` is the regression test that the new binders are inert where
+nothing names them.  `X4` rejects the `withFile` escape, and `X5` shows
+that the rejection is the binder order and not an accident.  `S2_level`
+and `C5a_level` are the two acceptance tests, the caller's side and the
+callee's side, of the level step that puts a concrete assigned set below a
+scope root. -/
+
+/-- **T-B1.8, scope order.**  In `Γ.body T` the parameter is `.here`, the
+arrow's capture binder is `.there .here` and the body root is
+`.there (.there .here)`.  The parameter and the arrow binder are at one
+level, and that level is the body root.  Both sides compute, so this is
+`rfl`.  The four conjuncts are `Ctx.body_lvl_param`, `Ctx.body_lvl_arrow`,
+`Ctx.body_lookupCap_arrow` and the bound of the root, collected here so
+that the examples below can cite one name. -/
+theorem scope_order {s : Sig} (Γ : Ctx s) (T : Dom s) :
+    (Γ.body T).lvl (k := .var) .here = some (.there (.there .here)) ∧
+    (Γ.body T).lvl (k := .cap) (.there .here) = some (.there (.there .here)) ∧
+    (Γ.body T).lookupCap (.there .here) = .star ∧
+    (Γ.body T).lookupCap (.there (.there .here)) = .root :=
+  ⟨rfl, rfl, rfl, rfl⟩
+
+/-! ### C2, the literal: the class root outside the self
+
+The client half of C2 is above and is untouched by the arrow: it reads
+`{x.C}`, a capture name.  The literal half is written here, because it is
+where the new binders show.  `Ctx.objBody` binds the class root and then
+the self, so the fields sit under both, and the witnesses, which generate
+the literal's own type, sit under neither.
+
+`Wᶜ` is `[C ↦ {κ₁}, run ↦ {self∙C}]` and the literal carries the assigned
+set `{κ₁}`.  Nothing in the literal names the class root, which is the
+point: the binder is inert. -/
+
+/-- The block witnesses of C2's literal: the shape of `run`. -/
+def C2Wit : Witnesses (s,x) := .cons .nil lrun tArrow
+
+/-- Its capture witnesses, `[C ↦ {κ₁}, run ↦ {self∙C}]`. -/
+def C2CapWit (κ1 : BVar s .cap) : CapWitnesses (s,x) :=
+  .cons (.cons .nil lC [CapAtom.cvar (.there κ1)]) lrun [CapAtom.name .here lC]
+
+/-- The one field of C2: the identity closure, cast to the field's own
+block name and capture name.  It sits under the class root and the self. -/
+def C2FieldTm : Tm ((s,c),x) :=
+  .cast
+    (.val (.lam [] (Ty.pure .top) (.atom (.var .here)) (.refl [CapAtom.var .here])))
+    (.capt (.eqToLe (.symm (.def .here lrun))) (.elem [] [CapAtom.name .here lrun]))
+
+def C2Fields (κ1 : BVar s .cap) : Fields ((s,c),x) :=
+  .cons .nil lrun C2FieldTm
+    (.elem [] [CapAtom.cvar (.there (.there κ1)), CapAtom.var .here])
+
+/-- The literal `ν^{κ₁}(W ; Wᶜ ; F)`. -/
+def C2lit (κ1 : BVar s .cap) : Value s :=
+  .obj [CapAtom.cvar κ1] C2Wit (C2CapWit κ1) (C2Fields κ1)
+
+/-- Its precise type, generated from the witnesses and the fields. -/
+def C2LitTy (κ1 : BVar s .cap) : Ty s :=
+  (Shape.obj (Telescope.ofLiteral C2Wit (C2CapWit κ1) [lrun])) ^ [CapAtom.cvar κ1]
+
+/-- `κ₁ ⊑ᶜ ∗, κ₂ ⊑ᶜ ∗`, the context of the literal. -/
+def C2LitCtx : Ctx ([],c,c) := (Ctx.nil.consC .star).consC .star
+
+/-- `κ₁` there. -/
+def C2κ₁ : BVar ([],c,c) .cap := .there .here
+
+/-- The class root is outside the self: in the object body the innermost
+root is `.there .here`, and the self, at `.here`, is at that level. -/
+example : (C2LitCtx.objBody (C2LitTy C2κ₁) C2Wit (C2CapWit C2κ₁) [lrun]).root?
+    = some (.there .here) := by decide
+
+example : (C2LitCtx.objBody (C2LitTy C2κ₁) C2Wit (C2CapWit C2κ₁) [lrun]).lvl
+    (k := .var) .here = some (.there .here) := by decide
+
+example : checkValue C2LitCtx (C2lit C2κ₁) (C2LitTy C2κ₁) = true := by decide +kernel
+
+/-- **C2, the literal.**  It is typed at its precise type in a context that
+opens no scope.  The class root and the arrow's capture binder are both
+inert here: no witness, no field and no type names either. -/
+theorem C2_typed : C2LitCtx ⊢ᵥ C2lit C2κ₁ : C2LitTy C2κ₁ :=
+  checkValue_sound (by decide +kernel)
+
+/-! ### X4, the `withFile` escape, rejected
+
+The page's program is `withFile[() => File^]("test.txt"): f => () => f`.
+The outer lambda's body is typed in `Γ, κ_b ⊚, κ_f ⊑ᶜ ∗, f : File ^ {κ_f}`,
+which is `Ctx.body Γ (File ^ {κ_f})`.  The inner lambda's closing evidence
+forces its assigned set to hold `f`, so reaching the expected type needs
+`{f} ⊑ᶜ {r}` for the root `r` of the scope outside the whole call, and that
+root is `⊤ᶜ` when the call is at the top level.
+
+Two theorems, both store free.  `X4_no_level` decides that the premise of
+the level rule is false there, at `⊤ᶜ` and at an older root alike.
+`X4_no_escape` is an instance of `level_inversion`: no member-free evidence
+at all puts `{f}` below `{⊤ᶜ}`, because the binder set of `f` resolves to
+the arrow binder `κ_f`, whose level is the body root.  The page's own
+consequence for the program is `escaped().read()`, a use after close. -/
+
+/-- `File ^ {κ_f}`, the domain of `withFile`'s callback: the file, captured
+at the arrow's own capture binder. -/
+def X4File : Dom [] := .top ^ [CapAtom.cvar .here]
+
+/-- The body of the callback: `κ_b ⊚, κ_f ⊑ᶜ ∗, f : File ^ {κ_f}`. -/
+def X4Ctx : Ctx (Sig.body []) := Ctx.body Ctx.nil X4File
+
+/-- The parameter `f`. -/
+def X4f : BVar (Sig.body []) .var := .here
+
+/-- The arrow's capture binder `κ_f`. -/
+def X4κf : BVar (Sig.body []) .cap := .there .here
+
+/-- The body root `κ_b`. -/
+def X4κb : BVar (Sig.body []) .cap := .there (.there .here)
+
+/-- `f` and `κ_f` are at one level, and that level is the body root.  This
+is `scope_order` at this context. -/
+example : X4Ctx.lvl X4f = some X4κb ∧ X4Ctx.lvl X4κf = some X4κb := ⟨rfl, rfl⟩
+
+/-- The same escape one scope further in: an outer scope root `κ_out`, then
+the callback's body. -/
+def X4OuterCtx : Ctx (Sig.body ([],c)) := Ctx.body (Ctx.nil.consC .root) X4File.weaken
+
+/-- `κ_out`, the root of the scope outside the call. -/
+def X4κout : BVar (Sig.body ([],c)) .cap := .there (.there (.there .here))
+
+/-- **X4, no level step.**  The level rule does not fire on `f` at the root
+outside the call.  It does not fire at the universal root, and it does not
+fire at an older scope root either: the level of `f` is the body root, and
+the body root is inside both. -/
+theorem X4_no_level :
+    ¬ X4Ctx.LvlLe (CapAtom.var X4f) ⊤ᶜ ∧
+    ¬ X4Ctx.LvlLe (CapAtom.cvar X4κf) ⊤ᶜ ∧
+    ¬ X4OuterCtx.LvlLe (CapAtom.var .here) (CapAtom.cvar X4κout) :=
+  ⟨by decide, by decide, by decide⟩
+
+/-- The checker agrees, in the kernel: the level step at `f` is rejected. -/
+example : checkCap X4Ctx (.level (.var X4f) ⊤ᶜ) [CapAtom.var X4f] [⊤ᶜ] = false := by
+  decide +kernel
+
+/-- The binder set of `f` resolves to the arrow binder, at every fuel: the
+parameter's declared type is `File ^ {κ_f}` and `κ_f` is rigid. -/
+theorem X4_caps (n : Nat) : X4Ctx.caps n [CapAtom.var X4f] = [CapAtom.cvar X4κf] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_var, Ctx.caps_nil, List.append_nil]
+  show X4Ctx.caps n [CapAtom.cvar X4κf] = _
+  rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+  rfl
+
+/-- **X4, nothing escapes the callback.**  No member-free capture evidence
+puts `{f}` below the universal root.  An instance of `level_inversion`: the
+binder set of `f` is `{κ_f}`, whose level is the body root, so it is not at
+the outermost level, and member-free evidence never lowers a level. -/
+theorem X4_no_escape :
+    ¬ ∃ g : CapCo (Sig.body []),
+        (X4Ctx ⊢ᶜ g : [CapAtom.var X4f] ⊑ [⊤ᶜ]) ∧ g.MemberFree := by
+  rintro ⟨g, hg, hgf⟩
+  have hD : ∀ m, X4Ctx.Confined (X4Ctx.caps m [(⊤ᶜ : CapAtom (Sig.body []))]) ⊤ᶜ := by
+    intro m
+    rw [Ctx.caps_cons, Ctx.capsAtom_top, Ctx.caps_nil]
+    decide
+  have hC := level_inversion hg hgf hD 0
+  rw [X4_caps] at hC
+  exact absurd hC (by decide)
+
+/-! ### X5, the counterfactual order
+
+Under the rejected order `κ_f, f, κ_b`, with the parameter bound before the
+body root, the level of `f` is the nearest root older than `f`, which at the
+top level is the outermost one.  So the level rule fires and the escape
+types.  This is why B1.1 binds the body root first, and it is a checked
+fact here rather than a claim. -/
+
+/-- The rejected order: `κ_f ⊑ᶜ ∗, f : File ^ {κ_f}, κ_b ⊚`. -/
+def X5Ctx : Ctx ([],c,x,c) :=
+  ((Ctx.nil.consC .star).cons (.opaque (.top ^ [CapAtom.cvar .here]))).consC .root
+
+/-- The parameter under the rejected order. -/
+def X5f : BVar ([],c,x,c) .var := .there .here
+
+/-- Its level is the outermost one, because no root is older than it. -/
+example : X5Ctx.lvl X5f = none := by decide
+
+/-- **X5, the counterfactual fires.**  Under the rejected binder order the
+level rule puts the parameter below the universal root, which is the escape
+X4 rejects. -/
+theorem X5_fires : X5Ctx ⊢ᶜ .level (.var X5f) ⊤ᶜ : [CapAtom.var X5f] ⊑ [⊤ᶜ] :=
+  .level (by decide) (by decide)
+
+/-- The checker agrees, in the kernel, and this is the one verdict that
+differs from X4's. -/
+example : checkCap X5Ctx (.level (.var X5f) ⊤ᶜ) [CapAtom.var X5f] [⊤ᶜ] = true := by
+  decide +kernel
+
+/-! ### S2 and C5a: the concrete assigned set below a scope root
+
+Both examples are written with the concrete assigned set `{fs, u}` in the
+result type, which is what the source's result `any` expands to.  The step
+that puts that set below a scope root `{κ_S}` is `level`, and B0 supplies
+it: `fs` is bound outside the scope, so its level encloses `κ_S`, and `u`
+is bound inside the scope, so its level is `κ_S` itself.  The `fresh`
+halves of both are stage B2's.
+
+The contexts below are the contexts of C5 with the second capture binder
+read as a scope root instead of a rigid capability.  Nothing else moves. -/
+
+/-- `κ₁ ⊑ᶜ ∗, κ_S ⊚, u : ⊤`, the callee's context with a scope. -/
+def C5aCtx : Ctx ([],c,c,x) :=
+  ((Ctx.nil.consC .star).consC .root).cons (.opaque (Ty.pure .top))
+
+/-- The scope root there. -/
+def C5aκS : BVar ([],c,c,x) .cap := .there .here
+
+/-- `fs` is outside the scope and `u` is inside it, so both are below the
+scope root. -/
+example : C5aCtx.lvl C5fs = none := by decide
+
+example : C5aCtx.lvl (k := .var) .here = some C5aκS := by decide
+
+/-- The level step of C5a: the concrete assigned set `{fs, u}` below the
+scope root, one `level` per atom. -/
+def C5aLevelCo : CapCo ([],c,c,x) :=
+  .union (.level (.cvar C5fs) (.cvar C5aκS)) (.level (.var .here) (.cvar C5aκS))
+
+/-- **C5a, the level step.**  The result set of the callee is below the
+scope root. -/
+theorem C5a_level_step : C5aCtx ⊢ᶜ C5aLevelCo : C5D ⊑ [CapAtom.cvar C5aκS] :=
+  .union (.level (by decide) (by decide)) (.level (by decide) (by decide))
+
+/-- The literal, packed at `{fs, u}` and then read at `{κ_S}`. -/
+def C5aVal : Value ([],c,c,x) :=
+  .cast (.cast (C5lit C5fs) (.capt (C5packCo C5fs) (.elem [] C5D)))
+    (.capt (.refl (C5Obj C5fs)) C5aLevelCo)
+
+example : checkValue C5aCtx C5aVal ((C5Obj C5fs) ^ [CapAtom.cvar C5aκS]) = true := by
+  decide +kernel
+
+/-- **C5a, the callee's side.**  The abstract iterator, packed at the
+concrete set `{fs, u}`, is an iterator at the scope root.  The step from
+the one to the other is `level`, twice. -/
+theorem C5a_level : C5aCtx ⊢ᵥ C5aVal : (C5Obj C5fs) ^ [CapAtom.cvar C5aκS] :=
+  checkValue_sound (by decide +kernel)
+
+/-- `κ₁ ⊑ᶜ ∗, κ_S ⊚, u : ⊤, it : ⟦Iterator⟧ ^ {κ₁, u}`, the caller's
+context with a scope. -/
+def S2aCtx : Ctx ([],c,c,x,x) :=
+  (((Ctx.nil.consC .star).consC .root).cons (.opaque (Ty.pure .top))).cons
+    (.opaque ((C5Obj (.there (.there .here)))
+      ^ [CapAtom.cvar (.there (.there .here)), CapAtom.var .here]))
+
+/-- `fs` in the caller's context. -/
+def S2afs : BVar ([],c,c,x,x) .cap := .there (.there (.there .here))
+
+/-- The scope root in the caller's context. -/
+def S2aκS : BVar ([],c,c,x,x) .cap := .there (.there .here)
+
+/-- The level step of S2, at the caller. -/
+def S2aLevelCo : CapCo ([],c,c,x,x) :=
+  .union (.level (.cvar S2afs) (.cvar S2aκS))
+    (.level (.var (.there .here)) (.cvar S2aκS))
+
+/-- The iterator read at the scope root. -/
+def S2aTm : Tm ([],c,c,x,x) :=
+  .atom (.cast (.var .here) (.capt (.refl (C5Obj S2afs)) S2aLevelCo))
+
+def S2aTy : Ty ([],c,c,x,x) := (C5Obj S2afs) ^ [CapAtom.cvar S2aκS]
+
+example : checkTm S2aCtx S2aTm S2aTy = true := by decide +kernel
+
+/-- **S2, the caller's side.**  The result of the call, whose type carries
+the concrete set `{fs, u}`, is read at the enclosing scope's root.  The one
+step that does it is `level`. -/
+theorem S2_level : S2aCtx ⊢ S2aTm : S2aTy := checkTm_sound (by decide +kernel)
 
 end Examples
 end FCdot

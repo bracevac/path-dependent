@@ -1,4 +1,4 @@
-# FCdot, at stage B0 of captures the compiler's way
+# FCdot, at stage B1 of captures the compiler's way
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -12,8 +12,8 @@ erasure safe.
 | module | contents |
 |---|---|
 | `Debruijn` | signatures `s`, bound variables `BVar s k`, renamings |
-| `Syntax` | types, propositions, telescopes; evidence (`LeCo`, `EqCo`, `Has`, `Morphism`); atoms; terms and values; renaming |
-| `Context` | bindings, contexts, lookup of types, definitions and fields |
+| `Syntax` | types, propositions, telescopes; evidence (`LeCo`, `EqCo`, `Has`, `Morphism`); atoms; terms and values; renaming, and substitution `Subst` with an atom-valued capture component and the instantiations `singleC`, `arg`, `enter`, `enterC`, `enterObj` |
+| `Context` | bindings, contexts, lookup of types, definitions and fields, levels as positions on the spine, and the three scope contexts `Ctx.scope`, `Ctx.body`, `Ctx.objBody` |
 | `Typing` | the judgments `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ`, `Γ ⊢ m : src ⇒ Tel`, `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ[A] F` |
 | `Store` | stores, store typing `⊢ σ : Γ` |
 | `Normalizer` | head normal forms of closed evidence, views of atoms, the fuel-indexed normalizer `σ ⊢ e ⇓[n] F` |
@@ -24,6 +24,7 @@ erasure safe.
 | `ErasureMetatheory` | forward simulation `erase_step`, backward simulation `erase_reflect` (modulo canonical forms), final states |
 | `Checker`, `CheckerCompleteness` | the decision procedure and `checkTm_iff` and friends |
 | `Resolution` | `Γ.resolve`: following transparent definitions, and why a fixed fuel suffices; capture resolution `Ctx.caps`, its expansion `Ctx.capBinders`, `Ctx.expandAtom`, `Ctx.expand`, and `Ctx.roots = expand ∘ caps` |
+| `LevelInversion` | `level_inversion`: member-free capture evidence never lowers a level, store free |
 | `Levels` | levels as positions on the spine: the order lemmas of `Ctx.root?`, `Ctx.lvl`, `Ctx.isRootB` and `Ctx.lvlLeB`, L0 (every binder is at or outside the innermost root), and the weakening commutations |
 | `FormTyping` | typedness of forms `Γ ⊨ F : S ≤ T`, `Γ ⊨[r] F : S ≤ T`, entries, and views `Γ ⊨[r, σ] V : Tel` |
 | `FormAlgebra` | composition and application of typed forms; fuel monotonicity and determinism |
@@ -31,7 +32,7 @@ erasure safe.
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
 | `Prediction` | the use-set half of preservation (`step_uses`), `capture_prediction` along a run, `inspects_covered`, `effect_safety`, `returned_capture_bound` |
-| `Examples` | the examples E1 to E8 and the capture examples C3, C4, C1, C6, decided in the kernel; the target side of the A3a source examples S3, C2, C7; and the target side of the A3b ones, `S1_client` (an operation declared at `{fs}` recaptured at `{cp.C}` by the lower bound of a capture member), `S1_translated`, `S1_erase`, `S2_translated`, `S2_erase`, and C5, the packing of an existential result: `C5_capWitnesses`, `C5_witnesses` and `C5_litMorphism` read off the translation, `C5_literal` and `C5_packing` decided by `checkValue` and `checkLe`, and `C5_client`, the caller that reaches `{fs}` only through the member's upper bound |
+| `Examples` | the examples E1 to E8 and the capture examples C3, C4, C1, C6, decided in the kernel; the target side of the A3a source examples S3, C2, C7; and the target side of the A3b ones, `S1_client` (an operation declared at `{fs}` recaptured at `{cp.C}` by the lower bound of a capture member), `S1_translated`, `S1_erase`, `S2_translated`, `S2_erase`, and C5, the packing of an existential result: `C5_capWitnesses`, `C5_witnesses` and `C5_litMorphism` read off the translation, `C5_literal` and `C5_packing` decided by `checkValue` and `checkLe`, and `C5_client`, the caller that reaches `{fs}` only through the member's upper bound; and the B1 examples `scope_order`, `C2_typed` (the literal, with the class root outside the self), `X4_no_level` and `X4_no_escape` (the `withFile` escape rejected, store free), `X5_fires` (the counterfactual binder order), `C5a_level` and `S2_level` (a concrete assigned set below a scope root) |
 
 ## Notation
 
@@ -542,3 +543,288 @@ premise, a typed store, is unavailable for a scoped context at B0.
 
 Axioms (`#print axioms`): `propext` and `Quot.sound` for every theorem above.  The tree
 contains no `sorry`, `axiom`, `partial`, `unsafe`, or `native_decide`, and no Mathlib.
+
+## Stage B1
+
+B1 is the second stage of captures the compiler's way (`plan-5d-captures-cc-stages.md` §B1).
+It gives the arrow a capture binder of its own, makes a lambda body and an object body
+scopes, and lets the machine enter a body by one substitution.  B0's level rule was true and
+unusable, because no rule opened a root.  B1 opens one at every arrow and at every literal,
+so the rule fires on a real binder order and the `withFile` escape is decided in Lean.
+
+An arrow is `Π[κ](T) U` and binds three things at its body.  `Ctx.scope Γ` is
+`(Γ.consC .root).consC .star`, the body root and then the arrow's capture binder.
+`Ctx.body Γ T` is that scope extended by the parameter.  So the binder order at a body is
+`κ_body ⊚, κ ⊑ᶜ ∗, x : T`, the parameter and the arrow binder are at one level, and that
+level is the body root.  Those four facts compute, and they are `Ctx.body_lvl_param`,
+`Ctx.body_lvl_arrow`, `Ctx.body_lvl_root` and `Ctx.body_lookupCap_arrow`, all `rfl`.  This is
+"parameter `any`s are at the same level as the function's local `any`" in the target, and it
+is what rejects the escape.
+
+The body root comes first for one reason.  With the parameter bound before it, the level of
+the parameter is the caller's root, and the escape types.  X5 of `Examples` is that
+counterfactual, written on the rejected order and decided, so the order is a checked fact and
+not a claim.  The arrow binder comes after the body root for the mirror reason.  With the
+arrow binder before it, `level κ κ_outer` fires, and a call from a deeper scope instantiates
+`κ` at a capability of that deeper scope and makes the conclusion false.
+
+Every capture binder that a rule of the type-sort block opens sits under a root of its own.
+That is the scope discipline, and it is what makes `Atom.HasType.weakenRoot` true.  So
+`ShapeCo.pi` and `Form.pi` carry their components at `Sig.scope s` and `Sig.body s`, one
+capture binder deeper than the syntax line of the plan, which was the stale half of B1.1.  The
+only rootless capture binders left are the platform prefix and the store's instance slots.
+
+A substitution is no longer kind preserving.  `Subst.cvar` returns a `CapAtom`, because a call
+instantiates the arrow's capture binder at the argument's root, a term variable, and entering
+a body instantiates the body root at `⊤ᶜ`.  So `Subst.root` is gone and `Subst.rootVar` takes
+its place on the term component, and six type-sort traversals are new.  The four
+instantiations the machine uses are `Subst.singleC`, `Subst.arg`, `Subst.enter` and
+`Subst.enterObj`, with `Subst.enterC` for the scope-shaped coercion of a `pi` form.
+
+**The body root goes to `⊤ᶜ`, and that is a departure from the compiler.**  A running program
+is the outermost scope.  Keeping the body root as a binder would mean putting it in the store,
+and a store binds capabilities and never scopes.  Instantiating it at the lambda's assigned
+set would be unsound, since for a caller binder `y` outside `A` the derivable `level y κ_body`
+would become the false `{y} ⊑ᶜ A`.  The compiler checks a method body once against its own
+level owner and never retargets that level at a call, so it has no counterpart for this move.
+It is sound here for a reason the compiler does not need: a store context binds no root
+(`Store.Typed.rootFree`), so over a store `Γ.LvlLe e ⊤ᶜ` holds for every atom in scope, and
+the image evidence is not only typed but true.  That is what `Subst.Typed.enter` proves, and
+it is the hardest lemma of the stage.
+
+The runtime mirrors the new binders as data-free slots, which is the discipline it already
+stated for stores.  `Runtime.Tm.lam` and `Runtime.Tm.obj` take bodies over the target's
+signatures, and erasure still maps binder to binder.  One generalisation is forced:
+`Tm.erase_subst` cannot read `t.erase.rename σ.root` any more, so the runtime gains a map of
+term variables, `Runtime.VRen`, with `Runtime.Tm.map` beside `Runtime.Tm.rename`.
+
+| module | what B1 changed |
+|---|---|
+| `Debruijn` | `Sig.dom s` becomes `s,c`, which moves `Dom`, `Cod`, `Shape.pi`, `ShapeCo.pi`, `Form.pi` and `Value.lam` at once.  Two new reducible names, `Sig.scope s` and `Sig.body s` |
+| `Syntax` | `Value.lam` at `Sig.body s`, `Value.obj`'s fields at `((s,c),x)`, `ShapeCo.pi` at `Sig.scope s` and `Sig.body s`, one lift per new binder in `Shape.rename`, `ShapeCo.rename` and `Value.rename`.  `Subst.cvar` returns a `CapAtom`, `Subst.root` is replaced by `Subst.rootVar`, and `Subst.lift` and `Subst.liftC` weaken an atom.  The six type-sort traversals `CapAtom.subst`, `CaptureSet.subst`, `Shape.subst`, `Ty.subst`, `Proposition.subst`, `Telescope.subst`, and `Witnesses.subst` and `CapWitnesses.subst` beside them.  `Dom.underRoot`, `Dom.inBody`, `Cod.underRoot`, `Subst.singleC`, `Subst.arg`, `Subst.enter`, `Subst.enterC`, `Subst.enterObj` |
+| `RenameLemmas` | `Subst.rootVar_def` and the pointwise `lift`/`single` equations that replace the old equations of renamings.  The eight new `X.subst_ofRename`, `Subst.compRename` with its fusion lemmas, and the two cancellations `Dom.inBody_enter` and `Cod.underRoot_enter`, with `Dom.underRoot_enterC` beside them.  `Tm.uses_subst` reads `(t.subst σ).uses = t.uses.subst σ` |
+| `Context` | the three scope contexts `Ctx.scope`, `Ctx.body`, `Ctx.objBody`, and the four `rfl` theorems of T-B1.8 |
+| `Typing` | the rules `ShapeCo.HasType.pi`, `Tm.HasType.app`, `Value.HasType.lam` and `Value.HasType.obj`.  `CapCo.MemberFree` and `Atom.MemberFree`, the two predicates T-B1.10 reads.  `CapCo.HasType` and `Fields.HasType` are unchanged |
+| `TypingRename` | `Ctx.RenR`, which is `Ctx.Ren` without `capInner`, with `Ctx.Ren.toRenR` and the eleven `X.HasType.renameR` twins.  `Ctx.Ren.scope`, `.body`, `.objBody`, `Ctx.RenR.scope`, `.scopeR`, `.body`, `.bodyR`, `.consRoot`, `.succScope`.  `Subst.compRen` and its four equations.  Every `rename` statement keeps its form |
+| `Transparency` | `Ctx.Refines.scope`, `.body`, `.objBody`.  The three `refine` statements keep their form |
+| `TypingSubst` | `Subst.Typed` with `σ.rootVar` and `X.subst σ`.  `Subst.Typed.consRoot`, `.scope`, `.body`, `.objBody`, `.singleC`, `.arg`, `.enter`, `.enterC`, `.enterObj`, and `Atom.HasType.weakenRoot`.  `Binding.subst`, `CapBound.subst`, `Subst.core`, `Subst.compT` |
+| `LevelInversion` | the new module: `Ctx.mem_caps_root`, `level_inversion` and `atom_level_inversion` |
+| `Normalizer` | `Form.pi` follows `ShapeCo.pi`.  No clause of the normalizer changed |
+| `FormTyping` | `FormTyped.pi` reads its two premises at `Γ.scope` and `Γ.body S₂` |
+| `FormAlgebra` | `Subst.Typed.selfCastOpaque` reads the substitution where it read the induced renaming.  Composition of two `pi` forms is untouched |
+| `Store` | `Store.Typed.rootFree` moves here from `Consistency`, verbatim, because the four entering steps consume it |
+| `Machine` | the four steps `appVar`, `appCastRefl`, `appCast` and `proj` enter by substitution.  `Tm.selfAt` is deleted.  The other seven steps and all of `Store.Ext` are untouched |
+| `Preservation` | `Subst.selfCast_core` and the four `X.subst_selfCast` replace `Subst.selfCast_root`.  `lam_of_lookup`, `lam_inv`, `lam_closing`, `obj_inv`, `beta`, `Store.Typed.beta`, `betaCast`, `FormsTyped.pi`, `projField`, `projFieldFull` restated at the new binders.  `Atom.HasType.castDom`, `Subst.arg_core_congr`, `Ty.arg_congr`.  `preservation` and `preservation'` keep their statements |
+| `Checker`, `CheckerCompleteness` | `Dom.underRoot?` and `Cod.underRoot?` with their soundness and completeness, the `pi`, `lam` and `obj` cases of the synthesiser, and `tmApp` at the instantiated domain.  `checkTm_iff` and every other completeness statement keeps its form |
+| `CanonicalForms` | `closed_has_field` at the new field signature.  Items 1 to 7, `cap_canon`, `atom_canon`, `closedAtomForm_pi` and `closed_box_inversion` are byte for byte what B0 left |
+| `Progress` | byte for byte unchanged |
+| `Consistency` | only the move of `Store.Typed.rootFree`.  Every theorem keeps its statement and its proof |
+| `Prediction` | `app_uses` and `proj_uses` at the terms the two steps now produce.  The five prediction theorems are unchanged |
+| `Erasure` | textually unchanged, every byte.  `Tm.erase` keeps its type and its clauses re-index for free |
+| `ErasureMetatheory` | `Tm.erase_subst` reads `t.erase.map σ.rootVar`.  `Tm.erase_enter` and `Tm.erase_enterObj` replace `Tm.selfAt_erase`, with the six `Subst.rootVar_*` bridges.  `erase_step`, `erase_reflect` and `erase_reflect'` keep their statements |
+| `Examples` | every example re-indexed for the new arrow, five new definitions, and the new examples `scope_order`, `C2_typed`, `X4_no_level`, `X4_no_escape`, `X5_fires`, `C5a_level` and `S2_level` |
+
+`Runtime.lean` sits outside this directory and B1 reshaped it too: `Runtime.Tm.lam` and
+`Runtime.Tm.obj` at the target's signatures, `Runtime.VRen` with its five combinators,
+`Runtime.Tm.map` and `Runtime.Fields.map`, and the two step rules `Step.app` and `Step.proj`
+continuing at a map.
+
+B1 adds no notation.
+
+### The rules
+
+```
+FCdot.ShapeCo.HasType.pi   : Γ.scope ⊢ e : T2.underRoot ≤ T1.underRoot →
+                             Γ.body T2 ⊢ f : U1.underRoot ≤ U2.underRoot →
+                             Γ ⊢ˢ .pi e f : Π(T1) U1 ≤ Π(T2) U2
+FCdot.Tm.HasType.app       : Γ ⊢ₐ a : (Π(T) E) ^ C →
+                             Γ ⊢ₐ b : T.subst (Subst.singleC (.var b.root)) →
+                             Γ ⊢ .app a b : E.subst (Subst.arg b)
+FCdot.Value.HasType.lam    : Γ.body T ⊢ t : U.underRoot →
+                             Γ.body T ⊢ᶜ g : t.uses ⊑ (A↑↑↑ ∪ [.var .here]) →
+                             Γ ⊢ᵥ .lam A T t g : (Π(T) U) ^ A
+FCdot.Value.HasType.obj    : Γ.objBody ((μ (Telescope.ofLiteral W Wc F.labels)) ^ A) W Wc
+                               F.labels ⊢ᶠ[A↑] F →
+                             Γ ⊢ᵥ .obj A W Wc F : (μ (Telescope.ofLiteral W Wc F.labels)) ^ A
+```
+
+Both arrows' capture binders are opened at one scope, which is the standard reading of a rule
+relating two binders.  The argument premise is at the instantiated domain, which for a
+top-level parameter `any` is the singleton type `S ^ {b}`, and a caller reaches it with
+`recap` and reflexivity.  The conclusion of `lam` mentions neither the body root nor the arrow
+binder, which is the de Bruijn form of the widening obligation.  The witnesses of a literal
+stay over `(s,x)`, because they generate the literal's own type and that type must not mention
+the class root, and the self is bound after the root because `this` is owned by its class.
+
+The four steps that enter a body:
+
+```
+appVar      : ⟨σ, K, .app (.var x) b⟩ ⟶ ⟨σ, K, t₀.subst (Subst.enter b)⟩
+appCastRefl : ⟨σ, K, .app a b⟩ ⟶ ⟨σ, K, t₀.subst (Subst.enter b)⟩
+appCast     : ⟨σ, K, .app a b⟩ ⟶
+                ⟨σ, K, .cast (t₀.subst (Subst.enter (.cast b (d.subst (Subst.enterC b)))))
+                             (c.subst (Subst.enter b))⟩
+proj        : ⟨σ, K, .proj a ℓ h⟩ ⟶ ⟨σ, K, t.subst (Subst.enterObj a.root)⟩
+```
+
+`appCast` instantiates the domain coercion before it casts the argument.  Its domain component
+lives at `Sig.scope s` under the scope discipline, so the instantiation is the two-binder
+`Subst.enterC` and the codomain component takes `Subst.enter b`.
+
+### Statements restated
+
+Nothing was weakened.  These are the statements of B0 and of the DOT way, restated where B1
+changed the representation, with the reason each means what it meant.
+
+```
+FCdot.ShapeCo.pi, FCdot.Form.pi : components at Sig.scope s and Sig.body s
+                                    the same contravariant domain and covariant codomain
+                                    coercion, read under the root the discipline opens
+FCdot.Value.lam, FCdot.Value.obj : body and fields at Sig.body s and ((s,c),x)
+                                    one field per binder the value now opens
+FCdot.Subst                     : cvar returns a CapAtom, root is replaced by rootVar
+                                    a call instantiates the arrow binder at a term variable
+FCdot.Tm.uses_subst             : (t.subst σ).uses = t.uses.subst σ
+                                    a use set holds only .var atoms, so the two agree
+FCdot.Tm.inspects_subst         : ... = t.inspects.map σ.rootVar, the same map
+FCdot.Ctx.Ren, FCdot.Subst.Typed : same six and three fields, at rootVar and X.subst σ
+FCdot.Tm.HasType.app            : argument at the instantiated domain, result at Subst.arg b
+                                    with no capture binder on the arrow, singleC is the
+                                    identity and Subst.arg b is Subst.single b
+FCdot.Value.HasType.lam         : three weakenings on the closing set, one per binder
+FCdot.FormTyped.pi              : the pi rule of the type sort read at a form
+FCdot.Store.Typed.lam_of_lookup, .lam_inv, .lam_closing, .obj_inv : the fields of the value
+FCdot.Value.HasType.beta        : conclusion at Subst.enter b, gains Γ.root? = none, which
+                                    the machine discharges by Store.Typed.rootFree
+FCdot.Store.Typed.beta          : gains nothing, it reads rootFree off the store typing
+FCdot.Tm.HasType.betaCast       : the same, plus the scope-shaped d and c
+FCdot.Tm.HasType.projField, .projFieldFull : at the term the proj step now produces
+FCdot.Store.Typed.app_uses, .proj_uses : the same inclusions at the same terms
+FCdot.Tm.erase_subst            : (t.subst σ).erase = t.erase.map σ.rootVar
+                                    erasure keeps roots and drops everything else, and the
+                                    capture component of a substitution is everything else
+FCdot.Runtime.Tm.lam, .obj      : bodies at the target's signatures, data-free slots
+FCdot.Runtime.Step.app, .proj   : the same variable substituted, the new binders dropped
+FCdot.preservation, .preservation' : unchanged
+FCdot.progress, FCdot.not_stuck : unchanged
+FCdot.closedAtomForm_pi, FCdot.closed_pi_inversion : unchanged
+FCdot.cap_canon, FCdot.atom_canon, FCdot.closed_box_inversion : unchanged
+FCdot.erase_step, FCdot.erase_reflect, FCdot.erase_reflect' : unchanged
+FCdot.checkTm_iff and the completeness block : unchanged
+the five Prediction theorems    : unchanged
+FCdot.lvl_canon, .rigid_canon, .rigid_target, .lvl_safety, .no_inner_escape : unchanged
+```
+
+`Ctx.Ren.selfObj` keeps its statement and its proof and has no caller any more, because the
+projection step goes through `Subst.Typed.enterObj`.
+
+### New theorems
+
+```
+FCdot.Ctx.body_lvl_param      : (Γ.body T).lvl .here = some (.there (.there .here))
+FCdot.Ctx.body_lvl_arrow      : (Γ.body T).lvl (.there .here) = some (.there (.there .here))
+FCdot.Ctx.body_lvl_root       : (Γ.body T).lvl (.there (.there .here))
+                                  = some (.there (.there .here))
+FCdot.Ctx.body_lookupCap_arrow : (Γ.body T).lookupCap (.there .here) = .star
+FCdot.Dom.inBody_enter        : (T.inBody).subst (Subst.enter a)
+                                  = T.subst (Subst.singleC (.var a.root))
+FCdot.Cod.underRoot_enter     : (E.underRoot).subst (Subst.enter a) = E.subst (Subst.arg a)
+FCdot.Dom.underRoot_enterC    : (T.underRoot).subst (Subst.enterC a)
+                                  = T.subst (Subst.singleC (.var a.root))
+FCdot.Subst.Typed.singleC     : Γ.IsRoot a ∨ b.isRoot = false →
+                                  Subst.Typed (Γ.consC b) (Subst.singleC a) Γ
+FCdot.Subst.Typed.scope       : Subst.Typed Γ σ Γ' → Subst.Typed Γ.scope σ.liftC.liftC Γ'.scope
+FCdot.Subst.Typed.arg         : Γ ⊢ₐ b : T.subst (Subst.singleC (.var b.root)) →
+                                  Subst.Typed ((Γ.consC .star).cons (.opaque T)) (Subst.arg b) Γ
+FCdot.Subst.Typed.enter       : Γ.root? = none →
+                                  Γ ⊢ₐ b : T.subst (Subst.singleC (.var b.root)) →
+                                  Subst.Typed (Γ.body T) (Subst.enter b) Γ
+FCdot.Subst.Typed.enterC      : Γ.root? = none → Subst.Typed Γ.scope (Subst.enterC b) Γ
+FCdot.Subst.Typed.enterObj    : Subst.Typed (Γ.objBody T W Wc ls) (Subst.enterObj y) Γ
+FCdot.Atom.HasType.weakenRoot : Γ ⊢ₐ a : T →
+                                  Γ.scope ⊢ₐ a.rename (Rename.succ.comp Rename.succ) : ...
+FCdot.Ctx.mem_caps_root       : Γ.IsRoot r → r ∈ Γ.caps n [r]
+FCdot.level_inversion         : Γ ⊢ᶜ f : C ⊑ D → f.MemberFree →
+                                  (∀ m, Γ.Confined (Γ.caps m D) r) →
+                                  ∀ n, Γ.Confined (Γ.caps n C) r
+FCdot.atom_level_inversion    : the atom half of the same induction
+FCdot.Runtime.Tm.rename_eq_map : t.rename ρ = t.map (fun x => ρ.var x)
+```
+
+`Subst.Typed.enter` is the hardest lemma of the stage.  Its three capture fields are what B0's
+`level` rule consumes.  The root atoms of `Γ.body T` are `⊤ᶜ` and the body root and no others,
+because a root binder of `Γ` would contradict `Γ.root? = none`, the arrow binder is `.star`
+and the parameter is a term binder.  `Subst.enter b` sends both to `⊤ᶜ`, so `capRoot` holds.
+For `capLvl`, every level fact of the body context has one of the two on its right, so its
+image asks that the image of its left side be at the outermost level of `Γ`, which is
+`Store.Typed.confined`.  `Atom.HasType.weakenRoot` is the one crossing of a fresh root, proved
+by the type-sort block's own mutual induction, and it is true only under the scope discipline.
+No corresponding lemma is needed or true for `Tm.HasType` or `Cont.Typed`.
+
+**Where the content of scope safety lives.**  Over a typed store a context is root free, so
+`lvl_safety` and `no_inner_escape` hold vacuously there: the only root is `⊤ᶜ` and
+`Store.Typed.confined` puts every atom at the outermost level.  Their content lives in rooted
+contexts, and no store types one.  What carries the content instead is `level_inversion`,
+which is store free: member-free capture evidence never lowers a level.  Bad capture bounds
+enter capture evidence only through `member` and `eqToLe`, which example C3 exhibits under a
+lambda, so the restriction to member-free evidence is exactly what an induction on the
+evidence alone needs to be true.  The escape of B1.9 is rejected through `level_inversion`
+and not through `no_inner_escape`.
+
+### The examples of B1
+
+```
+Examples.scope_order   : (Γ.body T).lvl .here = some (.there (.there .here)) ∧ three more
+Examples.C2_typed      : C2LitCtx ⊢ᵥ C2lit C2κ₁ : C2LitTy C2κ₁
+Examples.X4_no_level   : ¬ X4Ctx.LvlLe (var f) ⊤ᶜ ∧ ¬ X4Ctx.LvlLe (cvar κ_f) ⊤ᶜ ∧
+                           ¬ X4OuterCtx.LvlLe (var f) (cvar κ_out)
+Examples.X4_caps       : X4Ctx.caps n [var f] = [cvar κ_f]
+Examples.X4_no_escape  : ¬ ∃ g, (X4Ctx ⊢ᶜ g : {f} ⊑ {⊤ᶜ}) ∧ g.MemberFree
+Examples.X5_fires      : X5Ctx ⊢ᶜ level (var f) ⊤ᶜ : {f} ⊑ {⊤ᶜ}
+Examples.C5a_level_step : C5aCtx ⊢ᶜ C5aLevelCo : {fs, u} ⊑ {κ_S}
+Examples.C5a_level     : C5aCtx ⊢ᵥ C5aVal : (C5Obj fs) ^ {κ_S}
+Examples.S2_level      : S2aCtx ⊢ S2aTm : (C5Obj fs) ^ {κ_S}
+```
+
+`scope_order` is T-B1.8 in one line, and it is `rfl`.
+
+**C2, the literal.**  The client half of C2 is unchanged by the arrow, because it reads
+`{x.C}`, a capture name.  The literal half is new here, and it is where the new binders show.
+`Ctx.objBody` binds the class root and then the self, so the fields sit under both and the
+witnesses, which generate the literal's own type, sit under neither.  `Wᶜ` is
+`[C ↦ {κ₁}, run ↦ {self∙C}]` and the literal carries the assigned set `{κ₁}`.  Nothing in the
+literal names the class root, which is the point: C2 is the regression test that the new
+binders are inert where nothing names them.  Two decided facts beside it record that in the
+object body the innermost root is the class root and the self is at that level.
+
+**X4, the `withFile` escape, rejected.**  The page's program is
+`withFile[() => File^]("test.txt"): f => () => f`.  The outer lambda's body is typed in
+`Ctx.body Γ (File ^ {κ_f})`, and the inner lambda's closing evidence forces its assigned set to
+hold `f`, so reaching the expected type needs `{f} ⊑ᶜ {r}` for the root `r` of the scope
+outside the whole call, which is `⊤ᶜ` at the top level.  `X4_no_level` decides that the premise
+of the level rule is false there, at `⊤ᶜ` and at an older root alike, and the checker's verdict
+is decided in the kernel beside it.  `X4_no_escape` is stronger and is an instance of
+`level_inversion`: no member-free evidence at all puts `{f}` below `{⊤ᶜ}`.  Its content is
+`X4_caps`, the binder set of `f` resolving to the arrow binder `κ_f`, whose level is the body
+root.  Evidence that is not member free would need a telescope in scope with a capture
+proposition whose left side resolves to `κ_f`, and no binder of this context declares one.
+Both theorems are store free.  The page's own consequence for the program is
+`escaped().read()`, a use after close.
+
+**X5, the counterfactual.**  Under the rejected order `κ_f, f, κ_b`, with the parameter bound
+before the body root, the level of `f` is the nearest root older than `f`, which at the top
+level is the outermost one.  So `level (var f) ⊤ᶜ` fires and the escape types.  X5 is a
+`decide` on the hand-written context, so the binder order of B1.1 is a checked fact.
+
+**S2 and C5a.**  Both are written with the concrete assigned set `{fs, u}` in the result type,
+which is what the source's result `any` expands to.  The step that puts that set below a scope
+root `{κ_S}` is `level`, which B0 supplies: `fs` is bound outside the scope, so its level
+encloses `κ_S`, and `u` is bound inside it, so its level is `κ_S` itself.  `C5a_level` is the
+callee's side, the packed literal read at the scope root, and `S2_level` is the caller's side,
+the iterator read at the scope root.  Both contexts are the contexts of C5 with the second
+capture binder read as a root, and nothing else moves.  The `fresh` halves of both are stage
+B2's.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound`, or `propext` alone, for every theorem
+above.  The tree contains no `sorry`, `axiom`, `partial`, `unsafe`, or `native_decide`, and no
+Mathlib.

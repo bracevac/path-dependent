@@ -633,6 +633,399 @@ theorem Ctx.Ren.liftC {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
   capLvl := fun e r hr hl => Ctx.lvlLe_liftC h.capRoot h.capLvl h.capInner b e r hr hl
   capInner := Ctx.capInner_liftC h.capInner b
 
+/-! ## Context maps that may open a root
+
+`Ctx.Ren`'s third capture field, `capInner`, is what lets `lift` and `liftC`
+be iterated, and it is false of the map that opens a fresh scope: the fresh
+root sits strictly inside the image of the old innermost root.  Yet every
+judgment of the type-sort block does travel along that map, because no rule
+of that block ever reads a level of a binder it did not open itself.  So the
+block is proved over `Ctx.RenR`, the same record without `capInner`, and the
+one rule that extends the context, `ShapeCo.HasType.pi`, gets a full
+`Ctx.Ren` back from `Ctx.RenR.scope`: passing a root binder restores
+`capInner`, because the innermost root of the source and of the target are
+then the two freshly opened ones, at matching positions.  This is the scope
+discipline of B1.1 in force. -/
+
+/-- `Ctx.RenR Γ ρ Γ'`: `Ctx.Ren` without `capInner`. -/
+structure Ctx.RenR {s1 s2 : Sig} (Γ : Ctx s1) (ρ : Rename s1 s2) (Γ' : Ctx s2) : Prop where
+  ty : ∀ x, Γ'.lookupTy (ρ.var x) = (Γ.lookupTy x).rename ρ
+  def_ : ∀ x l (W : Shape s1), Γ.lookupDef x l = some W →
+      Γ'.lookupDef (ρ.var x) l = some (W.rename ρ)
+  defC : ∀ x l (C : CaptureSet s1), Γ.lookupDefC x l = some C →
+      Γ'.lookupDefC (ρ.var x) l = some (C.rename ρ)
+  fields : ∀ x Fs, Γ.lookupFields x = some Fs → Γ'.lookupFields (ρ.var x) = some Fs
+  capRoot : ∀ r, Γ.IsRoot r → Γ'.IsRoot (r.rename ρ)
+  capLvl : ∀ e r, Γ.IsRoot r → Γ.LvlLe e r → Γ'.LvlLe (e.rename ρ) (r.rename ρ)
+
+/-- Every context renaming is one. -/
+theorem Ctx.Ren.toRenR {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.Ren Γ ρ Γ') : Ctx.RenR Γ ρ Γ' where
+  ty := h.ty
+  def_ := h.def_
+  defC := h.defC
+  fields := h.fields
+  capRoot := h.capRoot
+  capLvl := h.capLvl
+
+theorem Ctx.RenR.comp {s1 s2 s3 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {Γ'' : Ctx s3}
+    {ρ : Rename s1 s2} {ρ' : Rename s2 s3}
+    (h : Ctx.RenR Γ ρ Γ') (h' : Ctx.RenR Γ' ρ' Γ'') :
+    Ctx.RenR Γ (ρ.comp ρ') Γ'' where
+  ty := fun x => by
+    show Γ''.lookupTy (ρ'.var (ρ.var x)) = _
+    rw [h'.ty (ρ.var x), h.ty x, Ty.rename_comp]
+  def_ := fun x l W hd => by
+    show Γ''.lookupDef (ρ'.var (ρ.var x)) l = _
+    rw [h'.def_ (ρ.var x) l (W.rename ρ) (h.def_ x l W hd), Shape.rename_comp]
+  defC := fun x l C hd => by
+    show Γ''.lookupDefC (ρ'.var (ρ.var x)) l = _
+    rw [h'.defC (ρ.var x) l (C.rename ρ) (h.defC x l C hd), CaptureSet.rename_comp]
+  fields := fun x Fs hf => h'.fields (ρ.var x) Fs (h.fields x Fs hf)
+  capRoot := fun r hr => by
+    have := h'.capRoot (r.rename ρ) (h.capRoot r hr)
+    rwa [CapAtom.rename_comp] at this
+  capLvl := fun e r hr hl => by
+    have := h'.capLvl (e.rename ρ) (r.rename ρ) (h.capRoot r hr) (h.capLvl e r hr hl)
+    rwa [CapAtom.rename_comp, CapAtom.rename_comp] at this
+
+/-- Appending any capture binder at the innermost end is a `Ctx.RenR`.  It is
+a `Ctx.Ren` only when the bound is not a root, which is `Ctx.Ren.succC`. -/
+theorem Ctx.RenR.succC {Γ : Ctx s} (b : CapBound s) : Ctx.RenR Γ Rename.succ (Γ.consC b) where
+  ty := fun _ => rfl
+  def_ := fun x l W hd => by
+    rw [Rename.succ_var, Ctx.lookupDef_thereC, hd]
+    rfl
+  defC := fun x l C hd => by
+    rw [Rename.succ_var, Ctx.lookupDefC_thereC, hd]
+    rfl
+  fields := fun x Fs hf => by
+    rw [Rename.succ_var, Ctx.lookupFields_thereC]
+    exact hf
+  capRoot := fun r hr => by
+    show (Γ.consC b).IsRoot (CapAtom.weaken (k := .cap) r)
+    unfold Ctx.IsRoot
+    rw [Ctx.isRootB_weakenC]
+    exact hr
+  capLvl := fun e r _ hl => by
+    show (Γ.consC b).LvlLe (CapAtom.weaken (k := .cap) e) (CapAtom.weaken (k := .cap) r)
+    exact (Ctx.lvlLe_weakenC_iff Γ b e r).mpr hl
+
+/-- The level case of `liftC` at a root binder: no `capInner` is needed,
+because a fresh root is its own level and nothing weakened can bound it. -/
+theorem Ctx.lvlLe_liftC_root {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    (hLvl : ∀ e r, Γ.IsRoot r → Γ.LvlLe e r → Γ'.LvlLe (e.rename ρ) (r.rename ρ))
+    (e r : CapAtom (s1,c))
+    (hr : (Γ.consC .root).IsRoot r) (hl : (Γ.consC .root).LvlLe e r) :
+    (Γ'.consC .root).LvlLe (e.rename ρ.lift) (r.rename ρ.lift) := by
+  rcases Ctx.isRoot_consC_cases hr with rfl | ⟨r₀, rfl, hr₀⟩
+  · exact Ctx.lvlLeB_depth_zero _ _ _ rfl
+  · rw [CapAtom.weaken_rename]
+    cases e with
+    | top => exact Ctx.top_lvlLe _ _
+    | var x =>
+        cases x with
+        | there x0 => exact Ctx.lvlLe_weakenC_step hLvl .root (CapAtom.var x0) r₀ hr₀ hl
+    | name x l =>
+        cases x with
+        | there x0 => exact Ctx.lvlLe_weakenC_step hLvl .root (CapAtom.name x0 l) r₀ hr₀ hl
+    | cvar k =>
+        cases k with
+        | here => exact absurd hl (Ctx.not_lvlLe_consC_root_here rfl r₀)
+        | there k0 => exact Ctx.lvlLe_weakenC_step hLvl .root (CapAtom.cvar k0) r₀ hr₀ hl
+
+/-- Passing a root binder turns a `Ctx.RenR` into a full `Ctx.Ren`. -/
+theorem Ctx.RenR.consRoot {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.RenR Γ ρ Γ') : Ctx.Ren (Γ.consC .root) ρ.lift (Γ'.consC .root) where
+  ty := by
+    intro x
+    cases x with
+    | there y =>
+        show (Γ'.lookupTy (ρ.var y))↑ = ((Γ.lookupTy y)↑).rename ρ.lift
+        rw [h.ty y, Ty.weaken_rename]
+  def_ := by
+    intro x l W hW
+    cases x with
+    | there y =>
+        rw [Ctx.lookupDef_thereC] at hW
+        rw [Rename.lift_there, Ctx.lookupDef_thereC]
+        cases hd : Γ.lookupDef y l with
+        | none => rw [hd] at hW; simp at hW
+        | some W0 =>
+            rw [hd] at hW
+            have hWe : W = W0↑ := by simpa using hW.symm
+            subst hWe
+            rw [h.def_ y l W0 hd]
+            simp [Shape.weaken_rename]
+  defC := by
+    intro x l C hC
+    cases x with
+    | there y =>
+        rw [Ctx.lookupDefC_thereC] at hC
+        rw [Rename.lift_there, Ctx.lookupDefC_thereC]
+        cases hd : Γ.lookupDefC y l with
+        | none => rw [hd] at hC; simp at hC
+        | some C0 =>
+            rw [hd] at hC
+            have hCe : C = C0↑ := by simpa using hC.symm
+            subst hCe
+            rw [h.defC y l C0 hd]
+            simp [CaptureSet.weaken_rename]
+  fields := by
+    intro x Fs hFs
+    cases x with
+    | there y =>
+        rw [Ctx.lookupFields_thereC] at hFs
+        rw [Rename.lift_there, Ctx.lookupFields_thereC]
+        exact h.fields y Fs hFs
+  capRoot := fun r hr => Ctx.isRoot_liftC h.capRoot .root r hr
+  capLvl := fun e r hr hl => Ctx.lvlLe_liftC_root h.capLvl e r hr hl
+  capInner := by
+    show (Γ'.consC (CapBound.root)).LvlLe (Γ'.consC (CapBound.root)).rootAtom
+      (((Γ.consC (CapBound.root)).rootAtom).rename ρ.lift)
+    have hr : (Γ'.consC (CapBound.root)).rootAtom = CapAtom.cvar .here := rfl
+    have hr2 : ((Γ.consC (CapBound.root)).rootAtom).rename ρ.lift = CapAtom.cvar .here := rfl
+    rw [hr, hr2]
+    exact Ctx.LvlLe.refl_of_root rfl
+
+/-- A `Ctx.RenR` passes under a scope as a full `Ctx.Ren`. -/
+theorem Ctx.RenR.scope {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.RenR Γ ρ Γ') : Ctx.Ren Γ.scope ρ.lift.lift Γ'.scope :=
+  (h.consRoot).liftC .star
+
+theorem Ctx.RenR.scopeR {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.RenR Γ ρ Γ') : Ctx.RenR Γ.scope ρ.lift.lift Γ'.scope :=
+  (h.scope).toRenR
+
+/-- Opening a scope: the map every `weakenRoot` runs along. -/
+theorem Ctx.RenR.succScope (Γ : Ctx s) :
+    Ctx.RenR Γ (Rename.succ.comp Rename.succ) Γ.scope :=
+  (Ctx.RenR.succC (Γ := Γ) .root).comp (Ctx.RenR.succC .star)
+
+/-! ## Substituting then renaming
+
+`Subst.compRen` is the mirror of `Subst.compRename` of `RenameLemmas.lean`:
+substitute first, then rename.  The application rule renames a substituted
+domain and a substituted codomain, so the fusion is needed at the type sort.
+Everything here is stated near its use in the `app` case below. -/
+
+namespace Subst
+
+/-- Substitute, then rename, in one pass. -/
+def compRen (σ : Subst s1 s2) (ρ : Rename s2 s3) : Subst s1 s3 where
+  var := fun x => (σ.var x).rename ρ
+  cvar := fun κ => (σ.cvar κ).rename ρ
+
+@[simp] theorem compRen_var {s1 s2 s3 : Sig} (σ : Subst s1 s2) (ρ : Rename s2 s3)
+    (x : BVar s1 .var) : (σ.compRen ρ).var x = (σ.var x).rename ρ := rfl
+
+@[simp] theorem compRen_cvar {s1 s2 s3 : Sig} (σ : Subst s1 s2) (ρ : Rename s2 s3)
+    (κ : BVar s1 .cap) : (σ.compRen ρ).cvar κ = (σ.cvar κ).rename ρ := rfl
+
+theorem compRen_lift {s1 s2 s3 : Sig} (σ : Subst s1 s2) (ρ : Rename s2 s3) :
+    (σ.compRen ρ).lift = σ.lift.compRen ρ.lift := by
+  apply Subst.funext'
+  · intro x
+    cases x with
+    | here => rfl
+    | there x => exact (Atom.weaken_rename (σ.var x) ρ).symm
+  · intro κ
+    cases κ with
+    | there κ =>
+        show ((σ.cvar κ).rename ρ).rename Rename.succ
+          = ((σ.cvar κ).rename Rename.succ).rename ρ.lift
+        rw [CapAtom.rename_comp, CapAtom.rename_comp, Rename.succ_lift]
+
+theorem compRen_liftC {s1 s2 s3 : Sig} (σ : Subst s1 s2) (ρ : Rename s2 s3) :
+    (σ.compRen ρ).liftC = σ.liftC.compRen ρ.lift := by
+  apply Subst.funext'
+  · intro x
+    cases x with
+    | there x => exact (Atom.weaken_rename (σ.var x) ρ).symm
+  · intro κ
+    cases κ with
+    | here => rfl
+    | there κ =>
+        show ((σ.cvar κ).rename ρ).rename Rename.succ
+          = ((σ.cvar κ).rename Rename.succ).rename ρ.lift
+        rw [CapAtom.rename_comp, CapAtom.rename_comp, Rename.succ_lift]
+
+end Subst
+
+theorem CapAtom.subst_rename {s1 s2 s3 : Sig} (a : CapAtom s1) (σ : Subst s1 s2)
+    (ρ : Rename s2 s3) : (a.subst σ).rename ρ = a.subst (σ.compRen ρ) := by
+  cases a with
+  | var x => simp [CapAtom.subst, CapAtom.rename, Subst.rootVar]
+  | cvar κ => rfl
+  | name x l => simp [CapAtom.subst, CapAtom.rename, Subst.rootVar]
+  | top => rfl
+
+theorem CaptureSet.subst_rename {s1 s2 s3 : Sig} (C : CaptureSet s1) (σ : Subst s1 s2)
+    (ρ : Rename s2 s3) : (C.subst σ).rename ρ = C.subst (σ.compRen ρ) := by
+  simp only [CaptureSet.subst, CaptureSet.rename, List.map_map, Function.comp_def,
+    CapAtom.subst_rename]
+
+mutual
+
+theorem Shape.subst_rename {s1 s2 s3 : Sig} (S : Shape s1) (σ : Subst s1 s2)
+    (ρ : Rename s2 s3) : (S.subst σ).rename ρ = S.subst (σ.compRen ρ) := by
+  match S with
+  | .bot => rfl
+  | .sel x ℓ => simp [Shape.subst, Shape.rename, Subst.rootVar]
+  | .pi S T =>
+      simp only [Shape.subst, Shape.rename, Ty.subst_rename, Subst.compRen_liftC,
+        Subst.compRen_lift]
+  | .obj Tel =>
+      simp only [Shape.subst, Shape.rename, Telescope.subst_rename, Subst.compRen_lift]
+  | .box T => simp only [Shape.subst, Shape.rename, Ty.subst_rename]
+
+theorem Ty.subst_rename {s1 s2 s3 : Sig} (T : Ty s1) (σ : Subst s1 s2)
+    (ρ : Rename s2 s3) : (T.subst σ).rename ρ = T.subst (σ.compRen ρ) := by
+  match T with
+  | .capt C S =>
+      simp only [Ty.subst, Ty.rename, CaptureSet.subst_rename, Shape.subst_rename]
+
+theorem Proposition.subst_rename {s1 s2 s3 : Sig} (P : Proposition s1) (σ : Subst s1 s2)
+    (ρ : Rename s2 s3) : (P.subst σ).rename ρ = P.subst (σ.compRen ρ) := by
+  match P with
+  | .le S T => simp only [Proposition.subst, Proposition.rename, Shape.subst_rename]
+  | .eq S T => simp only [Proposition.subst, Proposition.rename, Shape.subst_rename]
+  | .has ℓ => rfl
+  | .bnd T => simp only [Proposition.subst, Proposition.rename, Shape.subst_rename]
+  | .leC C D => simp only [Proposition.subst, Proposition.rename, CaptureSet.subst_rename]
+  | .eqC C D => simp only [Proposition.subst, Proposition.rename, CaptureSet.subst_rename]
+
+theorem Telescope.subst_rename {s1 s2 s3 : Sig} (Tel : Telescope s1) (σ : Subst s1 s2)
+    (ρ : Rename s2 s3) : (Tel.subst σ).rename ρ = Tel.subst (σ.compRen ρ) := by
+  match Tel with
+  | .nil => rfl
+  | .cons Tel P =>
+      simp only [Telescope.subst, Telescope.rename, Telescope.subst_rename,
+        Proposition.subst_rename]
+
+end
+
+/-- Instantiating an arrow's capture binder commutes with renaming.  This is
+the domain premise of the application rule under a context renaming. -/
+theorem Ty.singleC_rename {s1 s2 : Sig} (T : Ty (s1,c)) (a : CapAtom s1)
+    (ρ : Rename s1 s2) :
+    (T.subst (Subst.singleC a)).rename ρ
+      = (T.rename ρ.lift).subst (Subst.singleC (a.rename ρ)) := by
+  rw [Ty.subst_rename, Ty.rename_subst]
+  congr 1
+  apply Subst.funext'
+  · intro x; cases x; rfl
+  · intro κ; cases κ <;> rfl
+
+/-- What an application does to a codomain commutes with renaming. -/
+theorem Ty.arg_rename {s1 s2 : Sig} (U : Ty ((s1,c),x)) (b : Atom s1) (ρ : Rename s1 s2) :
+    (U.subst (Subst.arg b)).rename ρ
+      = (U.rename ρ.lift.lift).subst (Subst.arg (b.rename ρ)) := by
+  rw [Ty.subst_rename, Ty.rename_subst]
+  congr 1
+  apply Subst.funext'
+  · intro x
+    cases x with
+    | here => rfl
+    | there x => cases x; rfl
+  · intro κ
+    cases κ with
+    | there κ =>
+        cases κ with
+        | here =>
+            show CapAtom.var (ρ.var b.root) = CapAtom.var (b.rename ρ).root
+            rw [Atom.root_rename]
+        | there κ => rfl
+
+/-! ## The scope contexts under a renaming
+
+A scope is two capture binders and a body is a scope with the parameter on
+top, so a context renaming passes under them by `liftC` twice and `lift`
+once.  The two readings `Dom.underRoot` and `Cod.underRoot` insert the body
+root, and inserting a binder commutes with a renaming lifted past it. -/
+
+/-- Inserting a binder under the innermost one commutes with a lifted
+renaming. -/
+theorem Rename.succ_lift_comm {s1 s2 : Sig} {k k0 : Kind} (ρ : Rename s1 s2) :
+    Rename.comp (Rename.lift (k := k) (Rename.succ (k := k0)))
+        (Rename.lift (k := k) (Rename.lift (k := k0) ρ))
+      = Rename.comp (Rename.lift (k := k) ρ)
+          (Rename.lift (k := k) (Rename.succ (k := k0))) := by
+  apply Rename.funext'; intro k1 x; cases x <;> rfl
+
+theorem Dom.underRoot_rename {s1 s2 : Sig} (T : Dom s1) (ρ : Rename s1 s2) :
+    (Dom.underRoot T).rename ρ.lift.lift = Dom.underRoot (T.rename ρ.lift) := by
+  show (T.rename Rename.succ.lift).rename ρ.lift.lift
+    = (T.rename ρ.lift).rename Rename.succ.lift
+  rw [Ty.rename_comp, Ty.rename_comp, Rename.succ_lift_comm]
+
+theorem Cod.underRoot_rename {s1 s2 : Sig} (E : Cod s1) (ρ : Rename s1 s2) :
+    (Cod.underRoot E).rename ρ.lift.lift.lift = Cod.underRoot (E.rename ρ.lift.lift) := by
+  show (E.rename Rename.succ.lift.lift).rename ρ.lift.lift.lift
+    = (E.rename ρ.lift.lift).rename Rename.succ.lift.lift
+  rw [Ty.rename_comp, Ty.rename_comp]
+  congr 1
+  apply Rename.funext'
+  intro k1 x
+  cases x with
+  | here => rfl
+  | there y => cases y <;> rfl
+
+/-- The same insertion on the witnesses of an object body: they are written
+under the self alone and read under the class root. -/
+theorem Witnesses.underRoot_rename {s1 s2 : Sig} (W : Witnesses (s1,x)) (ρ : Rename s1 s2) :
+    (W.rename (Rename.lift (k := .var) (Rename.succ (k := .cap)))).rename
+        (Rename.lift (k := .var) (Rename.lift (k := .cap) ρ))
+      = (W.rename (Rename.lift (k := .var) ρ)).rename
+          (Rename.lift (k := .var) (Rename.succ (k := .cap))) := by
+  rw [Witnesses.rename_comp, Witnesses.rename_comp, Rename.succ_lift_comm]
+
+theorem CapWitnesses.underRoot_rename {s1 s2 : Sig} (W : CapWitnesses (s1,x))
+    (ρ : Rename s1 s2) :
+    (W.rename (Rename.lift (k := .var) (Rename.succ (k := .cap)))).rename
+        (Rename.lift (k := .var) (Rename.lift (k := .cap) ρ))
+      = (W.rename (Rename.lift (k := .var) ρ)).rename
+          (Rename.lift (k := .var) (Rename.succ (k := .cap))) := by
+  rw [CapWitnesses.rename_comp, CapWitnesses.rename_comp, Rename.succ_lift_comm]
+
+/-- A context renaming passes under a scope.  Both capture binders are
+appended at the innermost end, so no old level moves. -/
+theorem Ctx.Ren.scope {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.Ren Γ ρ Γ') : Ctx.Ren Γ.scope ρ.lift.lift Γ'.scope :=
+  (h.liftC .root).liftC .star
+
+/-- A context renaming passes under a lambda body. -/
+theorem Ctx.Ren.body {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.Ren Γ ρ Γ') (T : Dom s1) :
+    Ctx.Ren (Γ.body T) ρ.lift.lift.lift (Γ'.body (T.rename ρ.lift)) := by
+  unfold Ctx.body
+  rw [← Dom.underRoot_rename]
+  exact (h.scope).lift _
+
+/-- A `Ctx.RenR` passes under a lambda body as a full `Ctx.Ren`: the body
+root is a root binder, so `capInner` comes back. -/
+theorem Ctx.RenR.body {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.RenR Γ ρ Γ') (T : Dom s1) :
+    Ctx.Ren (Γ.body T) ρ.lift.lift.lift (Γ'.body (T.rename ρ.lift)) := by
+  unfold Ctx.body
+  rw [← Dom.underRoot_rename]
+  exact (h.scope).lift _
+
+theorem Ctx.RenR.bodyR {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.RenR Γ ρ Γ') (T : Dom s1) :
+    Ctx.RenR (Γ.body T) ρ.lift.lift.lift (Γ'.body (T.rename ρ.lift)) :=
+  (h.body T).toRenR
+
+/-- A context renaming passes under an object body. -/
+theorem Ctx.Ren.objBody {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.Ren Γ ρ Γ') (T : Ty s1) (W : Witnesses (s1,x)) (Wc : CapWitnesses (s1,x))
+    (ls : List Label) :
+    Ctx.Ren (Γ.objBody T W Wc ls) ρ.lift.lift
+      (Γ'.objBody (T.rename ρ) (W.rename ρ.lift) (Wc.rename ρ.lift) ls) := by
+  unfold Ctx.objBody
+  rw [← Ty.weaken_rename, ← Witnesses.underRoot_rename, ← CapWitnesses.underRoot_rename]
+  exact (h.liftC .root).lift _
+
 /-! ## Capture sets under renaming -/
 
 @[simp] theorem CaptureSet.rename_nil {s1 s2 : Sig} (ρ : Rename s1 s2) :
@@ -673,199 +1066,302 @@ mutual
 
 /-- The capture family is closed under context renamings.  It mentions atoms
 (`capvar`, `member`), so it belongs to the mutual recursion. -/
-theorem CapCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {f : CapCo s1} {C D : CaptureSet s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ᶜ f : C ⊑ D) :
+theorem CapCo.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {f : CapCo s1} {C D : CaptureSet s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ᶜ f : C ⊑ D) :
     Γ' ⊢ᶜ (f.rename ρ) : (C.rename ρ) ⊑ (D.rename ρ) := by
   match h with
   | .refl => exact .refl
-  | .trans hf hg => exact .trans (hf.rename hρ) (hg.rename hρ)
+  | .trans hf hg => exact .trans (hf.renameR hρ) (hg.renameR hρ)
   | .elem hs => exact .elem (hs.rename ρ)
   | .union hf hg =>
-      have := CapCo.HasType.union (hf.rename hρ) (hg.rename hρ)
+      have := CapCo.HasType.union (hf.renameR hρ) (hg.renameR hρ)
       simpa [CapCo.rename, CaptureSet.rename] using this
   | @CapCo.HasType.capvar _ _ a S C ha =>
       have := CapCo.HasType.capvar (a := a.rename ρ)
-        (by simpa [Ty.rename] using Atom.HasType.rename hρ ha)
+        (by simpa [Ty.rename] using Atom.HasType.renameR hρ ha)
       simpa [CapCo.rename, CaptureSet.rename, CapAtom.rename] using this
   | @CapCo.HasType.member _ _ a S D e Tel i C₁ C₂ ha he hAt =>
       have := CapCo.HasType.member (a := a.rename ρ)
-        (by simpa [Ty.rename] using Atom.HasType.rename hρ ha)
-        (by simpa [Shape.rename] using he.rename hρ)
+        (by simpa [Ty.rename] using Atom.HasType.renameR hρ ha)
+        (by simpa [Shape.rename] using he.renameR hρ)
         (by simpa [Proposition.rename] using hAt.rename ρ.lift)
       simpa [CapCo.rename, CaptureSet.substVar_rename] using this
-  | .eqToLe hφ => exact .eqToLe (hφ.rename hρ)
+  | .eqToLe hφ => exact .eqToLe (hφ.renameR hρ)
   | .level h₁ h₂ => exact .level (hρ.capRoot _ h₁) (hρ.capLvl _ _ h₁ h₂)
 
-theorem CapEq.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {φ : CapEq s1} {C D : CaptureSet s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) :
+theorem CapEq.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {φ : CapEq s1} {C D : CaptureSet s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) :
     Γ' ⊢ᶜ (φ.rename ρ) : (C.rename ρ) ≡ (D.rename ρ) := by
   match h with
   | .refl => exact .refl
-  | .symm hφ => exact .symm (hφ.rename hρ)
-  | .trans hφ hψ => exact .trans (hφ.rename hρ) (hψ.rename hρ)
+  | .symm hφ => exact .symm (hφ.renameR hρ)
+  | .trans hφ hψ => exact .trans (hφ.renameR hρ) (hψ.renameR hρ)
   | .defC hd =>
       have := CapEq.HasType.defC (hρ.defC _ _ _ hd)
       simpa [CapEq.rename, CaptureSet.rename, CapAtom.rename] using this
   | @CapEq.HasType.member _ _ a S D e Tel i C₁ C₂ ha he hAt =>
       have := CapEq.HasType.member (a := a.rename ρ)
-        (by simpa [Ty.rename] using Atom.HasType.rename hρ ha)
-        (by simpa [Shape.rename] using he.rename hρ)
+        (by simpa [Ty.rename] using Atom.HasType.renameR hρ ha)
+        (by simpa [Shape.rename] using he.renameR hρ)
         (by simpa [Proposition.rename] using hAt.rename ρ.lift)
       simpa [CapEq.rename, CaptureSet.substVar_rename] using this
 
-theorem CapStep.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {st : CapStep s1} {X Y : CaptureSet (s1,x)} (hρ : Ctx.Ren Γ ρ Γ')
+theorem CapStep.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {st : CapStep s1} {X Y : CaptureSet (s1,x)} (hρ : Ctx.RenR Γ ρ Γ')
     (h : CapStep.HasType Γ st X Y) :
     CapStep.HasType Γ' (st.rename ρ) (X.rename ρ.lift) (Y.rename ρ.lift) := by
   match h with
   | .closed hf =>
-      have := CapStep.HasType.closed (hf.rename hρ)
+      have := CapStep.HasType.closed (hf.renameR hρ)
       simpa [CapStep.rename, CaptureSet.weaken_rename] using this
   | .incl hs => exact .incl (hs.rename ρ.lift)
 
-theorem SideC.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {q : SideC s1} {X Y : CaptureSet (s1,x)} (hρ : Ctx.Ren Γ ρ Γ')
+theorem SideC.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {q : SideC s1} {X Y : CaptureSet (s1,x)} (hρ : Ctx.RenR Γ ρ Γ')
     (h : SideC.HasType Γ q X Y) :
     SideC.HasType Γ' (q.rename ρ) (X.rename ρ.lift) (Y.rename ρ.lift) := by
   match h with
   | .nil => exact .nil
-  | .cons hst hq => exact .cons (hst.rename hρ) (hq.rename hρ)
+  | .cons hst hq => exact .cons (hst.renameR hρ) (hq.renameR hρ)
 
-theorem ShapeCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {e : ShapeCo s1} {S T : Shape s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ˢ e : S ≤ T) :
+theorem ShapeCo.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {e : ShapeCo s1} {S T : Shape s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ˢ e : S ≤ T) :
     Γ' ⊢ˢ (e.rename ρ) : (S.rename ρ) ≤ (T.rename ρ) := by
   match h with
   | .refl => exact .refl
-  | .trans he hf => exact .trans (he.rename hρ) (hf.rename hρ)
+  | .trans he hf => exact .trans (he.renameR hρ) (hf.renameR hρ)
   | .top => exact .top
   | .bot => exact .bot
-  | .eqToLe hφ => exact .eqToLe (hφ.rename hρ)
+  | .eqToLe hφ => exact .eqToLe (hφ.renameR hρ)
   | .pi he hf =>
-      exact .pi (LeCo.HasType.rename hρ he) (LeCo.HasType.rename (hρ.lift _) hf)
-  | .obj hm => exact .obj (hm.rename hρ)
+      have he' := LeCo.HasType.renameR hρ.scopeR he
+      have hf' := LeCo.HasType.renameR (hρ.bodyR _) hf
+      rw [Dom.underRoot_rename, Dom.underRoot_rename] at he'
+      rw [Cod.underRoot_rename, Cod.underRoot_rename] at hf'
+      simpa only [ShapeCo.rename, Shape.rename] using ShapeCo.HasType.pi he' hf'
+  | .obj hm => exact .obj (hm.renameR hρ)
   | .pair he hf =>
-      have := ShapeCo.HasType.pair (he.rename hρ) (hf.rename hρ)
+      have := ShapeCo.HasType.pair (he.renameR hρ) (hf.renameR hρ)
       simpa [ShapeCo.rename, Shape.rename, Telescope.append_rename] using this
   | .bound hAt =>
       exact .bound (by simpa [Proposition.rename, Shape.weaken_rename] using hAt.rename ρ.lift)
   | .intoBnd he =>
-      have := ShapeCo.HasType.intoBnd (he.rename hρ)
+      have := ShapeCo.HasType.intoBnd (he.renameR hρ)
       simpa [ShapeCo.rename, Shape.rename, Telescope.rename, Proposition.rename,
         Shape.weaken_rename] using this
   | @ShapeCo.HasType.member _ _ a S C e Tel i S' T' ha he hAt =>
       have := ShapeCo.HasType.member (a := a.rename ρ)
-        (by simpa [Ty.rename] using Atom.HasType.rename hρ ha)
-        (he.rename hρ) (hAt.rename ρ.lift)
+        (by simpa [Ty.rename] using Atom.HasType.renameR hρ ha)
+        (he.renameR hρ) (hAt.rename ρ.lift)
       simpa [ShapeCo.rename, Shape.substVar_rename] using this
   | .boxed hd =>
-      have := ShapeCo.HasType.boxed (LeCo.HasType.rename hρ hd)
+      have := ShapeCo.HasType.boxed (LeCo.HasType.renameR hρ hd)
       simpa [ShapeCo.rename, Shape.rename] using this
 
-theorem LeCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {d : LeCo s1} {S T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ d : S ≤ T) :
+theorem LeCo.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {d : LeCo s1} {S T : Ty s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ d : S ≤ T) :
     Γ' ⊢ (d.rename ρ) : (S.rename ρ) ≤ (T.rename ρ) := by
   match h with
-  | .capt he hf => exact .capt (he.rename hρ) (hf.rename hρ)
+  | .capt he hf => exact .capt (he.renameR hρ) (hf.renameR hρ)
 
-theorem EqCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {φ : EqCo s1} {S T : Shape s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ φ : S ≡ T) :
+theorem EqCo.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {φ : EqCo s1} {S T : Shape s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ φ : S ≡ T) :
     Γ' ⊢ (φ.rename ρ) : (S.rename ρ) ≡ (T.rename ρ) := by
   match h with
   | .refl => exact .refl
-  | .symm hφ => exact .symm (hφ.rename hρ)
-  | .trans hφ hψ => exact .trans (hφ.rename hρ) (hψ.rename hρ)
+  | .symm hφ => exact .symm (hφ.renameR hρ)
+  | .trans hφ hψ => exact .trans (hφ.renameR hρ) (hψ.renameR hρ)
   | .def hd => exact .def (hρ.def_ _ _ _ hd)
   | @EqCo.HasType.member _ _ a S C e Tel i S' T' ha he hAt =>
       have := EqCo.HasType.member (a := a.rename ρ)
-        (by simpa [Ty.rename] using Atom.HasType.rename hρ ha)
-        (he.rename hρ) (hAt.rename ρ.lift)
+        (by simpa [Ty.rename] using Atom.HasType.renameR hρ ha)
+        (he.renameR hρ) (hAt.rename ρ.lift)
       simpa [EqCo.rename, Shape.substVar_rename] using this
 
-theorem Has.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+theorem Has.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {hh : Has s1} {x : BVar s1 .var} {l : Label}
-    (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ hh : x ∋ l) :
+    (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ hh : x ∋ l) :
     Γ' ⊢ (hh.rename ρ) : (ρ.var x) ∋ l := by
   match h with
   | @Has.HasType.member _ _ a S C e Tel i l ha he hAt =>
       have := Has.HasType.member (a := a.rename ρ)
-        (by simpa [Ty.rename] using Atom.HasType.rename hρ ha)
-        (he.rename hρ) (hAt.rename ρ.lift)
+        (by simpa [Ty.rename] using Atom.HasType.renameR hρ ha)
+        (he.renameR hρ) (hAt.rename ρ.lift)
       simpa [Has.rename, Atom.root_rename] using this
   | .field hf hm => exact .field (hρ.fields _ _ hf) hm
 
-theorem Side.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {σ : Side s1} {X Y : Shape (s1,x)} (hρ : Ctx.Ren Γ ρ Γ') (h : Side.HasType Γ σ X Y) :
+theorem Side.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {σ : Side s1} {X Y : Shape (s1,x)} (hρ : Ctx.RenR Γ ρ Γ') (h : Side.HasType Γ σ X Y) :
     Side.HasType Γ' (σ.rename ρ) (X.rename ρ.lift) (Y.rename ρ.lift) := by
   match h with
   | .none => exact .none
   | .some he =>
-      have := Side.HasType.some (he.rename hρ)
+      have := Side.HasType.some (he.renameR hρ)
       simpa [Side.rename, Shape.weaken_rename] using this
 
-theorem Morphism.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
+theorem Morphism.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
     {ρ : Rename s1 s2} {src : Telescope (s1,x)} {m : Morphism s1} {Tel : Telescope (s1,x)}
-    (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ m : src ⇒ Tel) :
+    (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ m : src ⇒ Tel) :
     Γ' ⊢ (m.rename ρ) : (src.rename ρ.lift) ⇒ (Tel.rename ρ.lift) := by
   match h with
   | .nil => exact .nil
   | .le hm hAt hpre hpost =>
-      exact .le (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
-        (hpre.rename hρ) (hpost.rename hρ)
+      exact .le (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+        (hpre.renameR hρ) (hpost.renameR hρ)
   | .leEq hm hAt hpre hpost =>
-      exact .leEq (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
-        (hpre.rename hρ) (hpost.rename hρ)
+      exact .leEq (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+        (hpre.renameR hρ) (hpost.renameR hρ)
   | .leEqSym hm hAt hpre hpost =>
-      exact .leEqSym (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
-        (hpre.rename hρ) (hpost.rename hρ)
+      exact .leEqSym (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+        (hpre.renameR hρ) (hpost.renameR hρ)
   | .eq hm hAt =>
-      exact .eq (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+      exact .eq (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
   | .eqSym hm hAt =>
-      exact .eqSym (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+      exact .eqSym (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
   | .has hm hAt =>
-      exact .has (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+      exact .has (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
   | .bnd hm he =>
-      have := Morphism.HasType.bnd (hm.rename hρ) (by simpa [Shape.rename] using he.rename hρ)
+      have := Morphism.HasType.bnd (hm.renameR hρ) (by simpa [Shape.rename] using he.renameR hρ)
       simpa [Morphism.rename, Telescope.rename, Proposition.rename,
         Shape.weaken_rename] using this
   | .leC hm hh hq hq' =>
-      exact .leC (hm.rename hρ) (hh.rename ρ) (hq.rename hρ) (hq'.rename hρ)
+      exact .leC (hm.renameR hρ) (hh.rename ρ) (hq.renameR hρ) (hq'.renameR hρ)
   | .eqC hm hAt =>
-      exact .eqC (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+      exact .eqC (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
   | .eqSymC hm hAt =>
-      exact .eqSymC (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+      exact .eqSymC (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
 
-theorem Atom.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {a : Atom s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ₐ a : T) :
+theorem Atom.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {a : Atom s1} {T : Ty s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ₐ a : T) :
     Γ' ⊢ₐ (a.rename ρ) : (T.rename ρ) := by
   match h with
   | @Atom.HasType.var _ _ x =>
       rw [← hρ.ty x]
       exact .var
-  | .cast ha he => exact .cast (ha.rename hρ) (LeCo.HasType.rename hρ he)
+  | .cast ha he => exact .cast (ha.renameR hρ) (LeCo.HasType.renameR hρ he)
   | @Atom.HasType.unfoldSelf _ _ a C Tel ha =>
       have := Atom.HasType.unfoldSelf (Tel := Tel.rename ρ.lift) (a := a.rename ρ)
-        (C := C.rename ρ) (by simpa [Ty.rename, Shape.rename] using ha.rename hρ)
+        (C := C.rename ρ) (by simpa [Ty.rename, Shape.rename] using ha.renameR hρ)
       simpa [Atom.rename, Ty.rename, Shape.rename, Telescope.weaken_rename,
         Telescope.substVar_rename] using this
   | @Atom.HasType.foldSelf _ _ a C Tel ha =>
-      have ha' := ha.rename hρ
+      have ha' := ha.renameR hρ
       simp only [Ty.rename, Shape.rename, Telescope.weaken_rename,
         Telescope.substVar_rename] at ha'
       have := Atom.HasType.foldSelf (Tel := Tel.rename ρ.lift) (a := a.rename ρ)
         (C := C.rename ρ) (by simpa [Atom.root_rename] using ha')
       simpa [Atom.rename, Ty.rename, Shape.rename] using this
   | .both ha hb hr =>
-      have := Atom.HasType.both (by simpa [Ty.rename, Shape.rename] using ha.rename hρ)
-        (by simpa [Ty.rename, Shape.rename] using hb.rename hρ)
+      have := Atom.HasType.both (by simpa [Ty.rename, Shape.rename] using ha.renameR hρ)
+        (by simpa [Ty.rename, Shape.rename] using hb.renameR hρ)
         (by simp [Atom.root_rename, hr])
       simpa [Atom.rename, Ty.rename, Shape.rename, Telescope.append_rename] using this
   | @Atom.HasType.recap _ _ a S C f C' ha hf =>
       have := Atom.HasType.recap (a := a.rename ρ) (C' := C'.rename ρ)
-        (by simpa [Ty.rename] using ha.rename hρ)
-        (by simpa [CaptureSet.rename, CapAtom.rename] using CapCo.HasType.rename hρ hf)
+        (by simpa [Ty.rename] using ha.renameR hρ)
+        (by simpa [CaptureSet.rename, CapAtom.rename] using CapCo.HasType.renameR hρ hf)
       simpa [Atom.rename, Ty.rename] using this
 
 end
+
+/-! ### The block at a full context renaming
+
+Each of the eleven theorems above is stated at `Ctx.RenR`, which asks less
+than `Ctx.Ren`.  These wrappers are the statements the rest of the tree uses,
+unchanged. -/
+
+theorem CapCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {f : CapCo s1} {C D : CaptureSet s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ᶜ f : C ⊑ D) :
+    Γ' ⊢ᶜ (f.rename ρ) : (C.rename ρ) ⊑ (D.rename ρ) :=
+  h.renameR hρ.toRenR
+
+theorem CapEq.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {φ : CapEq s1} {C D : CaptureSet s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) :
+    Γ' ⊢ᶜ (φ.rename ρ) : (C.rename ρ) ≡ (D.rename ρ) :=
+  h.renameR hρ.toRenR
+
+theorem CapStep.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {st : CapStep s1} {X Y : CaptureSet (s1,x)} (hρ : Ctx.Ren Γ ρ Γ')
+    (h : CapStep.HasType Γ st X Y) :
+    CapStep.HasType Γ' (st.rename ρ) (X.rename ρ.lift) (Y.rename ρ.lift) :=
+  h.renameR hρ.toRenR
+
+theorem SideC.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {q : SideC s1} {X Y : CaptureSet (s1,x)} (hρ : Ctx.Ren Γ ρ Γ')
+    (h : SideC.HasType Γ q X Y) :
+    SideC.HasType Γ' (q.rename ρ) (X.rename ρ.lift) (Y.rename ρ.lift) :=
+  h.renameR hρ.toRenR
+
+theorem ShapeCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {e : ShapeCo s1} {S T : Shape s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ˢ e : S ≤ T) :
+    Γ' ⊢ˢ (e.rename ρ) : (S.rename ρ) ≤ (T.rename ρ) :=
+  h.renameR hρ.toRenR
+
+theorem LeCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {d : LeCo s1} {S T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ d : S ≤ T) :
+    Γ' ⊢ (d.rename ρ) : (S.rename ρ) ≤ (T.rename ρ) :=
+  h.renameR hρ.toRenR
+
+theorem EqCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {φ : EqCo s1} {S T : Shape s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ φ : S ≡ T) :
+    Γ' ⊢ (φ.rename ρ) : (S.rename ρ) ≡ (T.rename ρ) :=
+  h.renameR hρ.toRenR
+
+theorem Has.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {hh : Has s1} {x : BVar s1 .var} {l : Label}
+    (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ hh : x ∋ l) :
+    Γ' ⊢ (hh.rename ρ) : (ρ.var x) ∋ l :=
+  h.renameR hρ.toRenR
+
+theorem Side.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {σ : Side s1} {X Y : Shape (s1,x)} (hρ : Ctx.Ren Γ ρ Γ') (h : Side.HasType Γ σ X Y) :
+    Side.HasType Γ' (σ.rename ρ) (X.rename ρ.lift) (Y.rename ρ.lift) :=
+  h.renameR hρ.toRenR
+
+theorem Morphism.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
+    {ρ : Rename s1 s2} {src : Telescope (s1,x)} {m : Morphism s1} {Tel : Telescope (s1,x)}
+    (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ m : src ⇒ Tel) :
+    Γ' ⊢ (m.rename ρ) : (src.rename ρ.lift) ⇒ (Tel.rename ρ.lift) :=
+  h.renameR hρ.toRenR
+
+theorem Atom.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {a : Atom s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ₐ a : T) :
+    Γ' ⊢ₐ (a.rename ρ) : (T.rename ρ) :=
+  h.renameR hρ.toRenR
+
+/-- **`weakenRoot`, the one crossing of a fresh root.**  A judgment of the
+type-sort block travels into a freshly opened scope.  It is `Ctx.Ren.succC`
+at a root, which does not exist, obtained instead from the block at
+`Ctx.RenR`. -/
+theorem Atom.HasType.weakenRoot {Γ : Ctx s} {a : Atom s} {T : Ty s} (h : Γ ⊢ₐ a : T) :
+    Γ.scope ⊢ₐ a.rename (Rename.succ.comp Rename.succ)
+      : T.rename (Rename.succ.comp Rename.succ) :=
+  h.renameR (Ctx.RenR.succScope Γ)
+
+/-- Weakening an atom derivation across one fresh root binder.  It is
+`Atom.HasType.weakenC` at a root, which `Ctx.Ren.succC` cannot give. -/
+theorem Atom.HasType.weakenRootC {Γ : Ctx s} {a : Atom s} {T : Ty s} (h : Γ ⊢ₐ a : T) :
+    (Γ.consC .root) ⊢ₐ a↑ : T↑ :=
+  h.renameR (Ctx.RenR.succC .root)
+
+theorem ShapeCo.HasType.weakenRoot {Γ : Ctx s} {e : ShapeCo s} {S T : Shape s}
+    (h : Γ ⊢ˢ e : S ≤ T) :
+    Γ.scope ⊢ˢ e.rename (Rename.succ.comp Rename.succ)
+      : S.rename (Rename.succ.comp Rename.succ) ≤ T.rename (Rename.succ.comp Rename.succ) :=
+  h.renameR (Ctx.RenR.succScope Γ)
+
+theorem CapCo.HasType.weakenRoot {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s}
+    (h : Γ ⊢ᶜ f : C ⊑ D) :
+    Γ.scope ⊢ᶜ f.rename (Rename.succ.comp Rename.succ)
+      : C.rename (Rename.succ.comp Rename.succ) ⊑ D.rename (Rename.succ.comp Rename.succ) :=
+  h.renameR (Ctx.RenR.succScope Γ)
+
+theorem LeCo.HasType.weakenRoot {Γ : Ctx s} {d : LeCo s} {S T : Ty s}
+    (h : Γ ⊢ d : S ≤ T) :
+    Γ.scope ⊢ d.rename (Rename.succ.comp Rename.succ)
+      : S.rename (Rename.succ.comp Rename.succ) ≤ T.rename (Rename.succ.comp Rename.succ) :=
+  h.renameR (Ctx.RenR.succScope Γ)
+
 
 /-! ## Terms, values, fields -/
 
@@ -877,10 +1373,14 @@ theorem Tm.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Renam
   match h with
   | .atom ha => exact .atom (ha.rename hρ)
   | .val hv => exact .val (hv.rename hρ)
-  | @Tm.HasType.app _ _ a C T U b ha hb =>
-      have := Tm.HasType.app (b := b.rename ρ)
-        (by simpa [Ty.rename, Shape.rename] using ha.rename hρ) (hb.rename hρ)
-      simpa [Tm.rename, Ty.substVar_rename] using this
+  | .app ha hb =>
+      have ha' := ha.rename hρ
+      have hb' := hb.rename hρ
+      simp only [Ty.rename, Shape.rename] at ha'
+      rw [Ty.singleC_rename] at hb'
+      simp only [CapAtom.rename, ← Atom.root_rename] at hb'
+      have := Tm.HasType.app ha' hb'
+      simpa only [Tm.rename, Ty.arg_rename] using this
   | @Tm.HasType.proj _ _ a T hh l ha hhh =>
       have := Tm.HasType.proj (a := a.rename ρ) (ha.rename hρ)
         (by simpa [Atom.root_rename] using hhh.rename hρ)
@@ -903,16 +1403,20 @@ theorem Value.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Re
     Γ' ⊢ᵥ (v.rename ρ) : (T.rename ρ) := by
   match h with
   | .lam ht hg =>
-      have hg' := CapCo.HasType.rename (hρ.lift _) hg
+      have ht' := ht.rename (hρ.body _)
+      have hg' := CapCo.HasType.rename (hρ.body _) hg
+      rw [Cod.underRoot_rename] at ht'
       simp only [Value.rename, Ty.rename, Shape.rename]
-      exact .lam (ht.rename (hρ.lift _))
-        (by simpa only [Tm.uses_rename, CaptureSet.closing_rename] using hg')
-  | @Value.HasType.obj _ A0 F0 _ W0 Wc0 hF =>
-      have hF' := Fields.HasType.rename (hρ.lift _) hF
-      have := Value.HasType.obj (Γ := Γ') (A := A0.rename ρ) (W := W0.rename ρ.lift)
-        (Wc := Wc0.rename ρ.lift) (F := F0.rename ρ.lift)
+      exact .lam ht'
         (by
-          simpa only [Binding.rename_transparent, Ty.rename, Shape.rename,
+          simpa only [Tm.uses_rename, CaptureSet.closing_rename,
+            CaptureSet.weaken_rename] using hg')
+  | @Value.HasType.obj _ A0 F0 _ W0 Wc0 hF =>
+      have hF' := Fields.HasType.rename (ρ := ρ.lift) (hρ.objBody _ W0 Wc0 F0.labels) hF
+      have := Value.HasType.obj (Γ := Γ') (A := A0.rename ρ) (W := W0.rename ρ.lift)
+        (Wc := Wc0.rename ρ.lift) (F := F0.rename ρ.lift.lift)
+        (by
+          simpa only [Ty.rename, Shape.rename, CaptureSet.weaken_rename,
             Telescope.ofLiteral_rename, Fields.labels_rename] using hF')
       simpa [Value.rename, Ty.rename, Shape.rename, Telescope.ofLiteral_rename] using this
   | .box ha =>

@@ -25,9 +25,13 @@ mutual
 
 inductive Tm : Sig → Type where
   | var : BVar s .var → Tm s
-  | lam : Tm (s,x) → Tm s
-  /-- Object literal with a self binder. -/
-  | obj : Fields (s,x) → Tm s
+  /-- A closure.  Its body lives under the three binders the target's arrow
+      opens: the body root, the arrow's capture binder and the parameter.
+      A capture binder carries no runtime data, so erasure still maps binder
+      to binder. -/
+  | lam : Tm (((s,c),c),x) → Tm s
+  /-- Object literal with a class root and a self binder. -/
+  | obj : Fields ((s,c),x) → Tm s
   | app : BVar s .var → BVar s .var → Tm s
   | proj : BVar s .var → Label → Tm s
   | «let» : Tm s → Tm (s,x) → Tm s
@@ -52,8 +56,8 @@ mutual
 
 def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .var x, ρ => .var (ρ.var x)
-  | .lam t, ρ => .lam (t.rename ρ.lift)
-  | .obj F, ρ => .obj (F.rename ρ.lift)
+  | .lam t, ρ => .lam (t.rename ρ.lift.lift.lift)
+  | .obj F, ρ => .obj (F.rename ρ.lift.lift)
   | .app x y, ρ => .app (ρ.var x) (ρ.var y)
   | .proj x ℓ, ρ => .proj (ρ.var x) ℓ
   | .let t u, ρ => .let (t.rename ρ) (u.rename ρ.lift)
@@ -68,6 +72,104 @@ end
 
 def Tm.weaken (t : Tm s) : Tm (s,,k) := t.rename Rename.succ
 def Tm.substVar (t : Tm (s,,k)) (y : BVar s k) : Tm s := t.rename (Rename.subst y)
+
+/-! ## Maps of term variables
+
+A renaming is kind preserving, and the target's substitution is not: it sends
+a capture binder to a capture atom, which has no runtime content.  So the
+erasure of a substitution is a map of term variables alone, and the runtime
+carries one.  Renaming is the special case induced by a renaming's term
+component (`Tm.rename_eq_map`). -/
+
+/-- A map of term variables between two signatures. -/
+@[reducible] def VRen (s1 s2 : Sig) : Type := BVar s1 .var → BVar s2 .var
+
+/-- Pass under a term binder. -/
+def VRen.lift (f : VRen s1 s2) : VRen (s1,x) (s2,x) := fun
+  | .here => .here
+  | .there x => .there (f x)
+
+/-- Pass under a capture binder, which holds no term variable of its own. -/
+def VRen.liftC (f : VRen s1 s2) : VRen (s1,c) (s2,c) := fun
+  | .there x => .there (f x)
+
+/-- The term component of a renaming. -/
+def VRen.ofRename (ρ : Rename s1 s2) : VRen s1 s2 := fun x => ρ.var x
+
+/-- Entering a closure's body: the parameter goes to the argument, the two
+capture binders carry no term variable, and an older variable stays. -/
+def VRen.enter (y : BVar s .var) : VRen (((s,c),c),x) s := fun
+  | .here => y
+  | .there (.there (.there z)) => z
+
+/-- Entering an object body: the self goes to the receiver. -/
+def VRen.enterObj (y : BVar s .var) : VRen ((s,c),x) s := fun
+  | .here => y
+  | .there (.there z) => z
+
+mutual
+
+def Tm.map : Tm s1 → VRen s1 s2 → Tm s2
+  | .var x, f => .var (f x)
+  | .lam t, f => .lam (t.map f.liftC.liftC.lift)
+  | .obj F, f => .obj (F.map f.liftC.lift)
+  | .app x y, f => .app (f x) (f y)
+  | .proj x ℓ, f => .proj (f x) ℓ
+  | .let t u, f => .let (t.map f) (u.map f.lift)
+  | .box x, f => .box (f x)
+  | .unbox x, f => .unbox (f x)
+
+def Fields.map : Fields s1 → VRen s1 s2 → Fields s2
+  | .nil, _ => .nil
+  | .cons F ℓ t, f => .cons (F.map f) ℓ (t.map f)
+
+end
+
+@[simp] theorem VRen.ofRename_lift {s1 s2 : Sig} (ρ : Rename s1 s2) :
+    VRen.ofRename (Rename.lift (k := .var) ρ) = (VRen.ofRename ρ).lift := by
+  funext z; cases z <;> rfl
+
+@[simp] theorem VRen.ofRename_liftC {s1 s2 : Sig} (ρ : Rename s1 s2) :
+    VRen.ofRename (Rename.lift (k := .cap) ρ) = (VRen.ofRename ρ).liftC := by
+  funext z; cases z; rfl
+
+mutual
+
+/-- Renaming is the map of a renaming's term component. -/
+theorem Tm.rename_eq_ofRename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
+    t.rename ρ = t.map (VRen.ofRename ρ) := by
+  match t with
+  | .var x => rfl
+  | .lam t =>
+      show Tm.lam _ = Tm.lam _
+      rw [Tm.rename_eq_ofRename t ρ.lift.lift.lift, VRen.ofRename_lift,
+        VRen.ofRename_liftC, VRen.ofRename_liftC]
+  | .obj F =>
+      show Tm.obj _ = Tm.obj _
+      rw [Fields.rename_eq_ofRename F ρ.lift.lift, VRen.ofRename_lift, VRen.ofRename_liftC]
+  | .app x y => rfl
+  | .proj x ℓ => rfl
+  | .let t u =>
+      show Tm.let _ _ = Tm.let _ _
+      rw [Tm.rename_eq_ofRename t ρ, Tm.rename_eq_ofRename u ρ.lift, VRen.ofRename_lift]
+  | .box x => rfl
+  | .unbox x => rfl
+
+theorem Fields.rename_eq_ofRename {s1 s2 : Sig} (F : Fields s1) (ρ : Rename s1 s2) :
+    F.rename ρ = F.map (VRen.ofRename ρ) := by
+  match F with
+  | .nil => rfl
+  | .cons F ℓ t =>
+      show Fields.cons _ _ _ = Fields.cons _ _ _
+      rw [Fields.rename_eq_ofRename F ρ, Tm.rename_eq_ofRename t ρ]
+
+end
+
+/-- The form B1.6 states: renaming is the map of the renaming's action on
+term variables. -/
+theorem Tm.rename_eq_map {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
+    t.rename ρ = t.map (fun x => ρ.var x) :=
+  Tm.rename_eq_ofRename t ρ
 
 /-! ## The inspected root
 
@@ -87,8 +189,8 @@ def Tm.inspects : Tm s → Option (BVar s .var)
 @[simp] theorem Tm.inspects_proj (x : BVar s .var) (ℓ : Label) :
     (Tm.proj x ℓ).inspects = some x := rfl
 @[simp] theorem Tm.inspects_var (x : BVar s .var) : (Tm.var x).inspects = none := rfl
-@[simp] theorem Tm.inspects_lam (t : Tm (s,x)) : (Tm.lam t).inspects = none := rfl
-@[simp] theorem Tm.inspects_obj (F : Fields (s,x)) : (Tm.obj F).inspects = none := rfl
+@[simp] theorem Tm.inspects_lam (t : Tm (((s,c),c),x)) : (Tm.lam t).inspects = none := rfl
+@[simp] theorem Tm.inspects_obj (F : Fields ((s,c),x)) : (Tm.obj F).inspects = none := rfl
 @[simp] theorem Tm.inspects_let (t : Tm s) (u : Tm (s,x)) : (Tm.let t u).inspects = none := rfl
 @[simp] theorem Tm.inspects_box (x : BVar s .var) : (Tm.box x).inspects = none := rfl
 @[simp] theorem Tm.inspects_unbox (x : BVar s .var) : (Tm.unbox x).inspects = some x := rfl
@@ -150,8 +252,9 @@ inductive Step : State s → State s' → Prop where
   | «let» : Step ⟨σ, K, .let t u⟩ ⟨σ, .cons K u, t⟩
   | alloc : IsValue v → Step ⟨σ, .cons K u, v⟩ ⟨.cons σ v, K.weaken, u⟩
   | rename : Step ⟨σ, .cons K u, .var y⟩ ⟨σ, K, u.substVar y⟩
-  | app : σ.lookup x = .lam t → Step ⟨σ, K, .app x y⟩ ⟨σ, K, t.substVar y⟩
-  | proj : σ.lookup x = .obj F → F.get? ℓ = some t → Step ⟨σ, K, .proj x ℓ⟩ ⟨σ, K, t.substVar x⟩
+  | app : σ.lookup x = .lam t → Step ⟨σ, K, .app x y⟩ ⟨σ, K, t.map (VRen.enter y)⟩
+  | proj : σ.lookup x = .obj F → F.get? ℓ = some t →
+      Step ⟨σ, K, .proj x ℓ⟩ ⟨σ, K, t.map (VRen.enterObj x)⟩
   /-- Unboxing: read the box the store holds at `x` and continue at its
       content.  The box is inert, so nothing is substituted. -/
   | unbox : σ.lookup x = .box y → Step ⟨σ, K, .unbox x⟩ ⟨σ, K, .var y⟩

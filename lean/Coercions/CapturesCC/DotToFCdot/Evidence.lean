@@ -165,6 +165,7 @@ def Ctx.varAtom : Ctx s → BVar s .var → FCdot.Atom s
       .cast (.var .here) (FCdot.LeCo.weaken ((litCo S).atC U.translate))
   | .consSelf Γ _ _ _, .there y => (Γ.varAtom y).weaken
   | .consC Γ, .there y => (Γ.varAtom y).weaken
+  | .consRoot Γ, .there y => (Γ.varAtom y).weaken
 
 /-! ## The translation -/
 

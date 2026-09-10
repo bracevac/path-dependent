@@ -40,7 +40,7 @@ theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : L
     cases y with
     | here =>
         show Atom.HasType (Γ.cons (.opaque S₀)) (.cast (.var .here) E↑)
-          (((Γ.cons (.opaque T)).lookupTy .here).rename (Subst.selfCast E↑).root)
+          (((Γ.cons (.opaque T)).lookupTy .here).subst (Subst.selfCast E↑))
         have hE' : (Γ.cons (.opaque S₀)) ⊢ E↑ : S₀↑ ≤ T↑ :=
           hE.weaken _
         have hvar : (Γ.cons (.opaque S₀)) ⊢ₐ .var .here : S₀↑ := by
@@ -49,7 +49,7 @@ theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : L
         simpa [Binding.ty] using Atom.HasType.cast hvar hE'
     | there z =>
         show Atom.HasType (Γ.cons (.opaque S₀)) (.var (.there z))
-          (((Γ.cons (.opaque T)).lookupTy (.there z)).rename (Subst.selfCast E↑).root)
+          (((Γ.cons (.opaque T)).lookupTy (.there z)).subst (Subst.selfCast E↑))
         simpa using Atom.HasType.var (Γ := Γ.cons (.opaque S₀)) (x := .there z)
   ty := by
     intro y ht
@@ -84,18 +84,18 @@ theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : L
         simpa using hFs
   capRoot := by
     intro r hr
-    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    simp only [CapAtom.subst_selfCast]
     unfold Ctx.IsRoot
     rw [← Ctx.isRootB_cons_eq Γ (Binding.opaque T) (.opaque S₀) r]
     exact hr
   capLvl := by
     intro e r _ hl
-    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    simp only [CapAtom.subst_selfCast]
     unfold Ctx.LvlLe
     rw [← Ctx.lvlLeB_cons_eq Γ (Binding.opaque T) (.opaque S₀) e r]
     exact hl
   capInner := by
-    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    simp only [CapAtom.subst_selfCast]
     exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot _)
 
 section
