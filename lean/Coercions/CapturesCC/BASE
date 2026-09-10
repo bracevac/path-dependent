@@ -1,0 +1,1 @@
+lean/Coercions/Captures/ @ b04d45b (captures the DOT way, stages A0 to A3b), copied verbatim as the base of the compiler's way (plan-5-extensions.md §3, plan-5b-captures-cc-note.md)
