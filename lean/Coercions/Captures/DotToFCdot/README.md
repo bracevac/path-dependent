@@ -1,4 +1,4 @@
-# DotToFCdot, at stage A3a of captures
+# DotToFCdot, at stage A3b of captures
 
 The translation of DOT-MNF^cc into FCdot^cc (Plan III §8, milestones M3 to
 M5), namespace `DotMNF`.  Derivations are `Type`-valued, so the translation
@@ -10,7 +10,7 @@ prediction are all transported from FCdot's.
 
 | module | contents |
 |---|---|
-| `Types` | `CapAtom.translate` and `CaptureSet.translate` (pointwise, the source's `sel x C` becoming the target's name `x∙C`), `Shape.translate` and `Ty.translate` (`⟦S ^ C⟧ = ⟦S⟧ ^ ⟦C⟧`), `Shape.tel`/`Shape.telSelf` (a shape as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Shape.isObj` and `Shape.translate_isObj`/`Shape.tel_of_not_isObj`, `Shape.witnesses`, `Shape.capWitnesses`, `Shape.fieldLabels`, `Shape.literalShape`, `Shape.literalTy`, `Ctx.translate` |
+| `Types` | `CapAtom.translate?` and `CaptureSet.translate` (atom by atom, the source's `sel x C` becoming the target's name `x∙C`, `any` dropped), `Shape.translate` and `Ty.translate` (`⟦S ^ C⟧ = ⟦S⟧ ^ ⟦C⟧`), `Shape.tel`/`Shape.telSelf` (a shape as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Shape.isObj` and `Shape.translate_isObj`/`Shape.tel_of_not_isObj`, `Shape.witnesses`, `Shape.capWitnesses`, `Shape.fieldLabels`, `Shape.literalShape`, `Shape.literalTy`, `Ctx.translate` |
 | `TypesLemmas` | renaming and instantiation commute with the translation; `Shape.isDecl_rename`, `Shape.isObj_rename`; `Shape.translate_decl`; `Shape.tel_substVar` (opening a body at the root) |
 | `Evidence` | `Subcap.translate`, `SubShape.translate`, `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `Ctx.varAtom` |
 | `EvidenceTyped` | `Subcap.translate_typed`, `SubShape.translate_typed`, `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `litCo_atC_typed`, `Ctx.varAtom_typed`, `Shape.tel_closedBnds` (every self-bound the translation produces is closed); the well-formedness `Ctx.Wf` of contexts |
@@ -24,7 +24,7 @@ prediction are all transported from FCdot's.
 ## The translation
 
 ```text
-S ^ C        ↦  ⟦S⟧ ^ ⟦C⟧              capture sets pointwise, sel x C ↦ x∙C
+S ^ C        ↦  ⟦S⟧ ^ ⟦C⟧              capture sets atom by atom, sel x C ↦ x∙C, any dropped
 ⊤            ↦  μ []                    (the empty object type)
 ⊥            ↦  ⊥
 p.A          ↦  x ∙ A
@@ -372,3 +372,45 @@ reads.
 
 Axioms (`#print axioms`): `propext` and `Quot.sound` everywhere.  No `sorry`, `axiom`,
 `partial`, `unsafe`, or `native_decide`, and no Mathlib.
+
+## Stage A3b
+
+`any` is a source notation with no target atom, and the translation says so.  `CapAtom.translate` is
+now `CapAtom.translate?`, a function into `Option (FCdot.CapAtom s)`, with the three A3a clauses
+unchanged under `some` and `none` at `any`, and `CaptureSet.translate` is the `filterMap` of it, so an
+unexpanded `any` is read by the target as nothing.  That is sound because the source gives `any` no
+power: no rule of the source mentions it, and the reading a program intends is the one `Ty.expand`
+puts in place before the program is typed.  Nothing else of the translation changed, and no theorem of
+it changed its statement.
+
+| module | what A3b changed |
+|---|---|
+| `Types` | `CapAtom.translate?` in place of `CapAtom.translate`, `none` at `any`; `CaptureSet.translate` as a `filterMap`; the four clause lemmas `translate_cons_var`, `translate_cons_cvar`, `translate_cons_sel`, `translate_cons_any`; `translate_cons` at an atom that has a target atom; the new `CaptureSet.translate_substVar`; `Subset.translate` and `translate_rename` reproved for `filterMap`, both with their A3a statements |
+| `EvidenceTyped` | four `simpa` argument lists name `CapAtom.translate?`.  No statement changed |
+| `TypesLemmas`, `Evidence`, `Terms`, `TermsTyped`, `Erasure`, `Safety`, `Consistency`, `Prediction` | nothing |
+
+### Statements
+
+```
+DotMNF.CapAtom.translate?        : CapAtom s → Option (FCdot.CapAtom s)
+DotMNF.CapAtom.translate_rename  : (a.rename ρ).translate? = (a.translate?).map (·.rename ρ)
+DotMNF.CaptureSet.translate_cons : a.translate? = some b → ⟦a :: C⟧ = b :: ⟦C⟧
+DotMNF.CaptureSet.translate_cons_any : ⟦any :: C⟧ = ⟦C⟧
+DotMNF.CaptureSet.translate_substVar : ⟦C.substVar y⟧ = ⟦C⟧.substVar y
+```
+
+`CapAtom.translate?` and `translate_rename` are the two statements of A3a that changed form.  A total
+function from the A3b atoms into the target's atoms cannot exist, since the target has no atom for
+`any`; on the three A3a atoms the two functions agree, `some` for `some`, and `translate_cons` is the
+A3a equation at every atom A3a had.  `translate_nil`, `translate_append`, `translate_union`,
+`translate_rename`, `translate_weaken` and `Subset.translate` keep their statements word for word, and
+so does every theorem of `Evidence`, `Terms`, `Erasure`, `Safety`, `Consistency` and `Prediction`.
+
+### The examples
+
+The two source examples of the stage, S1 and S2, are translated and erased by the general theorems in
+`../FCdot/Examples.lean`, and the packing of S2 is read off this translation there: `C5_capWitnesses`
+and `C5_witnesses` compute `Shape.capWitnesses` and `Shape.witnesses` of the callee's declaration
+shape, and `C5_litMorphism` computes the morphism of its `litCo`, whose capture block turns the one
+capture equality of the precise telescope into the two inclusions the declared type asks for, the
+lower one through a flipped hole.

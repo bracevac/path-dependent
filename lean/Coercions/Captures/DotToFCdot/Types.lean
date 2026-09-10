@@ -93,25 +93,48 @@ open FCdot (Kind Sig BVar Rename Label)
 
 /-! ## Capture sets
 
-A source capture atom is a term binder, a capture binder, or the capture
-member of a term binder; the target has the same three atoms, with `name`
-for what the source calls `sel`.  So `⟦C⟧` is `C` mapped pointwise. -/
+A source capture atom is a term binder, a capture binder, the capture member
+of a term binder, or `any`; the target has the first three atoms, with `name`
+for what the source calls `sel`, and no atom for `any`.  So `⟦C⟧` maps `C`
+atom by atom and drops every `any` (stage A3b).  An unexpanded `any` is thus
+read by the target as nothing at all, which is sound because the source
+gives it no power: no rule mentions it.  The reading a program intends is
+the one `CaptureSet.expand` puts in place before typing. -/
 
-/-- `⟦a⟧` on capture atoms. -/
-def CapAtom.translate : CapAtom s → FCdot.CapAtom s
-  | .var x => .var x
-  | .cvar κ => .cvar κ
-  | .sel x A => .name x A
+/-- `⟦a⟧` on capture atoms: the three variable forms have a target atom and
+`any` has none. -/
+def CapAtom.translate? : CapAtom s → Option (FCdot.CapAtom s)
+  | .var x => some (.var x)
+  | .cvar κ => some (.cvar κ)
+  | .sel x A => some (.name x A)
+  | .any => none
 
-/-- `⟦C⟧` on capture sets: pointwise. -/
+/-- `⟦C⟧` on capture sets: atom by atom, dropping `any`. -/
 def CaptureSet.translate (C : CaptureSet s) : FCdot.CaptureSet s :=
-  C.map CapAtom.translate
+  C.filterMap CapAtom.translate?
 
 @[simp] theorem CaptureSet.translate_nil {s : Sig} :
     CaptureSet.translate ([] : CaptureSet s) = [] := rfl
 
-@[simp] theorem CaptureSet.translate_cons {s : Sig} (a : CapAtom s) (C : CaptureSet s) :
-    CaptureSet.translate (a :: C) = a.translate :: C.translate := rfl
+@[simp] theorem CaptureSet.translate_cons_var {s : Sig} (x : BVar s .var) (C : CaptureSet s) :
+    CaptureSet.translate (CapAtom.var x :: C) = .var x :: C.translate := rfl
+
+@[simp] theorem CaptureSet.translate_cons_cvar {s : Sig} (κ : BVar s .cap) (C : CaptureSet s) :
+    CaptureSet.translate (CapAtom.cvar κ :: C) = .cvar κ :: C.translate := rfl
+
+@[simp] theorem CaptureSet.translate_cons_sel {s : Sig} (x : BVar s .var) (A : Label)
+    (C : CaptureSet s) :
+    CaptureSet.translate (CapAtom.sel x A :: C) = .name x A :: C.translate := rfl
+
+@[simp] theorem CaptureSet.translate_cons_any {s : Sig} (C : CaptureSet s) :
+    CaptureSet.translate (CapAtom.any :: C) = C.translate := rfl
+
+/-- The A3a `translate_cons`, at an atom that has a target atom: the head is
+translated and the tail follows. -/
+theorem CaptureSet.translate_cons {s : Sig} {a : CapAtom s} {b : FCdot.CapAtom s}
+    (h : a.translate? = some b) (C : CaptureSet s) :
+    CaptureSet.translate (a :: C) = b :: C.translate := by
+  simp [CaptureSet.translate, h]
 
 @[simp] theorem CaptureSet.translate_append {s : Sig} (C D : CaptureSet s) :
     (C ++ D).translate = C.translate ++ D.translate := by
@@ -121,35 +144,44 @@ def CaptureSet.translate (C : CaptureSet s) : FCdot.CaptureSet s :=
     (C ∪ D).translate = C.translate ∪ D.translate := by
   simp [CaptureSet.translate]
 
-/-- A syntactic inclusion is preserved by the translation: it is a pointwise
-map of lists. -/
+/-- A syntactic inclusion is preserved by the translation: it is an atom by
+atom map of lists, and the atoms it drops are dropped on both sides. -/
 theorem CaptureSet.Subset.translate {s : Sig} {C D : CaptureSet s} (h : C.Subset D) :
     FCdot.CaptureSet.Subset C.translate D.translate := by
   intro b hb
-  rw [CaptureSet.translate, List.mem_map] at hb
-  obtain ⟨a, ha, rfl⟩ := hb
-  exact List.mem_map_of_mem (h a ha)
+  rw [CaptureSet.translate, List.mem_filterMap] at hb
+  obtain ⟨a, ha, hb⟩ := hb
+  rw [CaptureSet.translate, List.mem_filterMap]
+  exact ⟨a, h a ha, hb⟩
 
 theorem CapAtom.translate_rename {s s' : Sig} :
     ∀ (a : CapAtom s) (ρ : Rename s s'),
-      (a.rename ρ).translate = a.translate.rename ρ
+      (a.rename ρ).translate? = (a.translate?).map (fun b => b.rename ρ)
   | .var _, _ => rfl
   | .cvar _, _ => rfl
   | .sel _ _, _ => rfl
+  | .any, _ => rfl
 
 @[simp] theorem CaptureSet.translate_rename {s s' : Sig} (C : CaptureSet s) (ρ : Rename s s') :
     (C.rename ρ).translate = C.translate.rename ρ := by
   induction C with
   | nil => rfl
   | cons a C ih =>
-      simp only [CaptureSet.rename, CaptureSet.translate, FCdot.CaptureSet.rename,
-        List.map_cons, List.cons.injEq]
-      refine ⟨CapAtom.translate_rename a ρ, ?_⟩
-      simpa [CaptureSet.rename, CaptureSet.translate, FCdot.CaptureSet.rename] using ih
+      cases a <;>
+        simp only [DotMNF.CaptureSet.rename_cons, CapAtom.rename,
+          CaptureSet.translate_cons_var, CaptureSet.translate_cons_cvar,
+          CaptureSet.translate_cons_sel, CaptureSet.translate_cons_any,
+          FCdot.CaptureSet.rename, List.map_cons, ih] <;>
+        rfl
 
 @[simp] theorem CaptureSet.translate_weaken {s : Sig} {k : Kind} (C : CaptureSet s) :
     (C.weaken (k := k)).translate = FCdot.CaptureSet.weaken (k := k) C.translate :=
   CaptureSet.translate_rename C FCdot.Rename.succ
+
+@[simp] theorem CaptureSet.translate_substVar {s : Sig} {k : Kind} (C : CaptureSet (s,,k))
+    (y : BVar s k) :
+    (C.substVar y).translate = FCdot.CaptureSet.substVar C.translate y :=
+  CaptureSet.translate_rename C (FCdot.Rename.subst y)
 
 /-! ## Shapes -/
 

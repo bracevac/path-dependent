@@ -1337,12 +1337,18 @@ def lrun : Label := .trm 4
 def lE1 : Label := .trm 5
 /-- Term label `e₂`. -/
 def lE2 : Label := .trm 6
+/-- Term label `read`. -/
+def lread : Label := .trm 7
+/-- Term label `next`. -/
+def lnext : Label := .trm 8
 
 example : lC = DotMNF.Examples.lC := rfl
 example : lelem = DotMNF.Examples.lelem := rfl
 example : lrun = DotMNF.Examples.lrun := rfl
 example : lE1 = DotMNF.Examples.le1 := rfl
 example : lE2 = DotMNF.Examples.le2 := rfl
+example : lread = DotMNF.Examples.lread := rfl
+example : lnext = DotMNF.Examples.lnext := rfl
 
 /-- The platform context of the three examples is the context of the
 platform prefix `Platform.cons (Platform.cons Platform.nil)`. -/
@@ -1570,6 +1576,284 @@ theorem C2_translated : DotMNF.Examples.platCtx.translate ⊢
 theorem C2_erase :
     Tm.erase DotMNF.Examples.C2_typed.translate = DotMNF.Tm.erase DotMNF.Examples.C2tm :=
   DotMNF.HasTy.translate_erase _
+
+/-! ## S1, S2 and C5: the examples of stage A3b
+
+The two source derivations of `DotMNF.Examples` that are written with `any`
+and typed at the expanded type, on this side of the translation, and the
+packing of S2 seen from the target.
+
+`any` never reaches the target: it is a source notation, expanded before the
+program is typed, so the translated types below are the translations of the
+expanded types.  The parts are the ones A3a used.  `Sᵢ_translated` is
+`HasTy.translate_typed` at the source derivation and `Sᵢ_erase` is
+`HasTy.translate_erase`; neither is decided, because `Shape.translate` and
+`HasTy.translate` are compiled by well-founded recursion and do not reduce
+in the kernel.  The twins that *are* decided are written directly in the
+target. -/
+
+/-- **S1, translated.**  The translation of the source derivation is typed
+at the translated type in the translated context. -/
+theorem S1_translated : DotMNF.Examples.platCtx.translate ⊢
+    DotMNF.Examples.S1_typed.translate : DotMNF.Examples.S1ProgTy.translate :=
+  DotMNF.Examples.S1_typed.translate_typed platWf
+
+/-- **S1, erased.**  The translation erases to the source term. -/
+theorem S1_erase :
+    Tm.erase DotMNF.Examples.S1_typed.translate = DotMNF.Tm.erase DotMNF.Examples.S1tm :=
+  DotMNF.HasTy.translate_erase _
+
+/-- **S2, translated.** -/
+theorem S2_translated : DotMNF.Examples.platCtx.translate ⊢
+    DotMNF.Examples.S2_typed.translate : DotMNF.Examples.S2ProgTy.translate :=
+  DotMNF.Examples.S2_typed.translate_typed platWf
+
+/-- **S2, erased.** -/
+theorem S2_erase :
+    Tm.erase DotMNF.Examples.S2_typed.translate = DotMNF.Tm.erase DotMNF.Examples.S2tm :=
+  DotMNF.HasTy.translate_erase _
+
+
+/-! ### S1 on the target side: the argument at the capture parameter
+
+The one step of S1 that the capture discipline turns on is the argument:
+the operation is declared at `{fs}` and the parameter type asks for
+`{cp.C}`, and the *lower* bound of the caller's precise capture member is
+what puts one below the other.  In the target that bound is `member` at
+index `0` of the capture parameter's telescope, and the argument is an atom
+under one cast.  The shape of the operation plays no part, so the twin uses
+`⊤ → ⊤` for it. -/
+
+/-- `⟦μ(c. {C : {fs}..{fs}})⟧`: the lower bound at index `0`, the upper at
+index `1`. -/
+def S1CPTel (fs : BVar s .cap) : Telescope (s,x) :=
+  .cons (.cons .nil (.leC [CapAtom.cvar (.there fs)] [CapAtom.name .here lC]))
+    (.leC [CapAtom.name .here lC] [CapAtom.cvar (.there fs)])
+
+/-- The capture parameter object in the target. -/
+def S1CPObj (fs : BVar s .cap) : Shape s := .obj (S1CPTel fs)
+
+/-- `κ₁ ⊑ᶜ ∗, κ₂ ⊑ᶜ ∗, cp : ⟦μ(c. {C : {fs}..{fs}})⟧, op : (⊤ → ⊤) ^ {κ₁}`. -/
+def S1Ctx : Ctx ([],c,c,x,x) :=
+  (((Ctx.nil.consC .star).consC .star).cons
+    (.opaque (Ty.pure (S1CPObj (.there .here))))).cons
+    (.opaque (tCapTy (.there (.there .here))))
+
+/-- The argument, recaptured at the capture parameter's name. -/
+def S1argTm : Tm ([],c,c,x,x) :=
+  .atom (.cast (.var .here)
+    (.capt (.refl tArrow)
+      (.member (.var (.there .here)) (.refl (S1CPObj (.there (.there (.there .here))))) 0)))
+
+/-- Its type: the operation at `{cp.C}`, which is what `withFile` asks
+for. -/
+def S1argTy : Ty ([],c,c,x,x) := tArrow ^ [CapAtom.name (.there .here) lC]
+
+example : checkTm S1Ctx S1argTm S1argTy = true := by decide +kernel
+
+/-- **S1, the target twin.**  The operation declared at `{fs}` is an
+operation at `{cp.C}`, by the lower bound of the caller's precise capture
+member. -/
+theorem S1_client : S1Ctx ⊢ S1argTm : S1argTy := checkTm_sound (by decide +kernel)
+/-! ### C5: the existential result, the packing seen from the target
+
+The callee of S2 returns a literal that defines the capture member `C` as
+`{fs}` and declares its field `next` at `{i.C}`.  Its translated capture
+witnesses are therefore `Wᶜ = [C ↦ {fs}, next ↦ {self∙C}]`, and the
+morphism of its `litCo` turns the single capture equality of the member into
+the two inclusions the declared type asks for, the lower one through a
+flipped hole.  Both facts are read off the translation itself below.
+
+The packing is then one object coercion: from the literal's precise
+telescope, whose capture block is two equalities, to the abstract iterator,
+whose capture block is `{} ⊑ᶜ self∙C` and `self∙C ⊑ᶜ {fs}`.  The caller of
+S2 never sees `{fs}` at the literal: it reads the member's upper bound
+instead, which is `member` at index `1` of the declared telescope. -/
+
+/-- `⟦(∀(v : ⊤) (⊤ ^ {i.C}))⟧`, the shape of `next`, under the self. -/
+def C5NextShape : Shape (s,x) :=
+  .pi (Ty.pure .top) (.top ^ [CapAtom.name (.there .here) lC])
+
+/-- The capture witnesses of the callee's literal, read off the source
+declaration shape by the translation: the member's definition and the
+field's declared capture set.  This is the plan's
+`Wᶜ = [C ↦ {fs}, next ↦ {self∙C}]`. -/
+theorem C5_capWitnesses {s : Sig} (fs : BVar s .cap) :
+    (DotMNF.Examples.S2PreAt (s := (s,x)) .here (.there fs)).capWitnesses
+      = .cons (.cons .nil lC [CapAtom.cvar (.there fs)]) lnext
+          [CapAtom.name .here lC] := by
+  simp [DotMNF.Shape.capWitnesses, DotMNF.Examples.S2PreAt, CapWitnesses.append,
+    DotMNF.CaptureSet.translate, DotMNF.CapAtom.translate?, DotMNF.Examples.unitTy, lC, lnext,
+    DotMNF.Examples.lC, DotMNF.Examples.lnext]
+
+/-- The block witnesses of the same literal: the translated shape of its one
+field. -/
+theorem C5_witnesses {s : Sig} (fs : BVar s .cap) :
+    (DotMNF.Examples.S2PreAt (s := (s,x)) .here (.there fs)).witnesses
+      = .cons .nil lnext C5NextShape := by
+  simp [DotMNF.Shape.witnesses, DotMNF.Examples.S2PreAt, Witnesses.append,
+    DotMNF.Shape.translate, DotMNF.CaptureSet.translate, DotMNF.CapAtom.translate?,
+    DotMNF.Examples.unitTy, C5NextShape, lC, lnext, DotMNF.Examples.lC, DotMNF.Examples.lnext]
+
+/-- The morphism of the literal's `litCo`, at the counters `litCo` starts it
+with (`0` definition equalities, `1` capture equality below the block, `3`
+presences below both).  The capture member's block is the pair
+`eqSymC 1, eqC 1`: the one capture equality of the precise telescope, read
+in both directions, is what the two declared inclusions are made of.  The
+field's block is `has 3, eq 0, eqC 2`. -/
+theorem C5_litMorphism {s : Sig} (fs : BVar s .cap) :
+    (DotMNF.litMorphism (DotMNF.Examples.S2PreAt (s := (s,x)) .here (.there fs)) 0 1 3).1
+      = Morphism.append
+          (.leC (.leC .nil .nil (.eqSymC 1) .nil) .nil (.eqC 1) .nil)
+          (.leC (.le (.has .nil 3) .none (.eq 0) .none) .nil (.eqC 2) .nil) := by
+  simp [DotMNF.litMorphism, DotMNF.Examples.S2PreAt, DotMNF.Shape.fieldLabels]
+
+/-! #### The twin -/
+
+/-- The block witnesses of the twin. -/
+def C5Wit : Witnesses (s,x) := .cons .nil lnext C5NextShape
+
+/-- Its capture witnesses: `[C ↦ {fs}, next ↦ {self∙C}]`. -/
+def C5CapWit (fs : BVar s .cap) : CapWitnesses (s,x) :=
+  .cons (.cons .nil lC [CapAtom.cvar (.there fs)]) lnext [CapAtom.name .here lC]
+
+/-- The literal's precise telescope: one definition equality, the two
+capture equalities, and the presence of the field. -/
+def C5PreTel (fs : BVar s .cap) : Telescope (s,x) :=
+  .cons (.cons (.cons (.cons .nil
+    (.eq (.sel .here lnext) C5NextShape))
+    (.eqC [CapAtom.name .here lC] [CapAtom.cvar (.there fs)]))
+    (.eqC [CapAtom.name .here lnext] [CapAtom.name .here lC]))
+    (.has lnext)
+
+theorem C5PreTel_eq (fs : BVar s .cap) :
+    Telescope.ofLiteral C5Wit (C5CapWit fs) [lnext] = C5PreTel fs := by
+  simp [Telescope.ofLiteral, CapWitnesses.eqEntries, CapWitnesses.eqEntriesOf,
+    Witnesses.eqEntries, Witnesses.eqEntriesOf, Telescope.hasEntries,
+    Witnesses.get, CapWitnesses.get, C5Wit, C5CapWit, C5PreTel, lC, lnext]
+
+/-- The declared telescope of `⟦Iterator⟧`: the two bounds of the capture
+member, the presence of `next`, its shape, and its declared capture set. -/
+def C5Tel (fs : BVar s .cap) : Telescope (s,x) :=
+  .cons (.cons (.cons (.cons (.cons .nil
+    (.leC [] [CapAtom.name .here lC]))
+    (.leC [CapAtom.name .here lC] [CapAtom.cvar (.there fs)]))
+    (.has lnext))
+    (.le (.sel .here lnext) C5NextShape))
+    (.leC [CapAtom.name .here lnext] [CapAtom.name .here lC])
+
+/-- The abstract iterator in the target. -/
+def C5Obj (fs : BVar s .cap) : Shape s := .obj (C5Tel fs)
+
+/-- The morphism of the packing: the member's lower bound comes from the
+capture equality flipped and weakened by `{} ⊆ {fs}`, its upper bound from
+the same equality read forwards, and the field's three propositions from the
+literal's own presence, definition and capture equalities. -/
+def C5packMorph (fs : BVar s .cap) : Morphism s :=
+  .leC
+    (.le
+      (.has
+        (.leC
+          (.leC .nil (.cons (.closed (.elem [] [CapAtom.cvar fs])) .nil) (.eqSymC 1) .nil)
+          .nil (.eqC 1) .nil)
+        3)
+      .none (.eq 0) .none)
+    .nil (.eqC 2) .nil
+
+/-- The packing coercion. -/
+def C5packCo (fs : BVar s .cap) : ShapeCo s := .obj (C5PreTel fs) (C5packMorph fs)
+
+/-- The field of the twin: the identity closure, cast to the field's own
+name and capture name. -/
+def C5FieldTm : Tm (s,x) :=
+  .cast
+    (.val (.lam [] (Ty.pure .top)
+      (.cast (.atom (.var .here))
+        (.capt (.refl .top) (.elem [] [CapAtom.name (.there .here) lC])))
+      (.refl [CapAtom.var .here])))
+    (.capt (.eqToLe (.symm (.def .here lnext))) (.elem [] [CapAtom.name .here lnext]))
+
+def C5Fields : Fields (s,x) :=
+  .cons .nil lnext C5FieldTm (.elem [] [CapAtom.var .here])
+
+/-- The callee's literal in the target: pure, with the capture witnesses the
+translation reads off the declaration shape. -/
+def C5lit (fs : BVar s .cap) : Value s := .obj [] C5Wit (C5CapWit fs) C5Fields
+
+/-- Its precise type. -/
+def C5PreTy (fs : BVar s .cap) : Ty s := Ty.pure (.obj (C5PreTel fs))
+
+/-- `κ₁ ⊑ᶜ ∗, κ₂ ⊑ᶜ ∗, u : ⊤`, the context of the callee's body. -/
+def C5Ctx : Ctx ([],c,c,x) :=
+  ((Ctx.nil.consC .star).consC .star).cons (.opaque (Ty.pure .top))
+
+/-- `fs` is `κ₁` there. -/
+def C5fs : BVar ([],c,c,x) .cap := .there (.there .here)
+
+/-- The set the result is packed at: `{fs, u}`, the reading of the result
+`any`. -/
+def C5D : CaptureSet ([],c,c,x) := [CapAtom.cvar C5fs, CapAtom.var .here]
+
+example : checkValue C5Ctx (C5lit C5fs) (C5PreTy C5fs) = true := by decide +kernel
+
+/-- The literal is typed at its precise type. -/
+theorem C5_literal : C5Ctx ⊢ᵥ C5lit C5fs : C5PreTy C5fs :=
+  checkValue_sound (by decide +kernel)
+
+example : checkLe C5Ctx (.capt (C5packCo C5fs) (.elem [] C5D))
+    (C5PreTy C5fs) ((C5Obj C5fs) ^ C5D) = true := by decide +kernel
+
+/-- **C5, the packing.**  The literal, cast by the packing coercion, is the
+abstract iterator at `{fs, u}`: the member's `{fs}` is behind the two
+inclusions of the declared capture block, and no capture variable of the
+literal is left in the type. -/
+theorem C5_packing : C5Ctx ⊢ᵥ .cast (C5lit C5fs) (.capt (C5packCo C5fs) (.elem [] C5D)) :
+    (C5Obj C5fs) ^ C5D :=
+  .cast C5_literal (checkLe_sound (by decide +kernel))
+
+/-! #### The caller, from the target's side
+
+The caller reads `next` off the abstract iterator and calls it.  Its capture
+evidence is `capvar` at the closure it just read, composed with `member` at
+index `1` of the declared telescope, which is the member's upper bound.  No
+`capvar` at the literal's own variable appears, and `{fs}` is named only
+where the declared bound names it. -/
+
+/-- `κ₁ ⊑ᶜ ∗, κ₂ ⊑ᶜ ∗, u : ⊤, it : ⟦Iterator⟧ ^ {κ₁, u}`. -/
+def C5CCtx : Ctx ([],c,c,x,x) :=
+  (((Ctx.nil.consC .star).consC .star).cons (.opaque (Ty.pure .top))).cons
+    (.opaque ((C5Obj (.there (.there .here)))
+      ^ [CapAtom.cvar (.there (.there .here)), CapAtom.var .here]))
+
+/-- `it.next`, read off the abstract member. -/
+def C5runTm : Tm ([],c,c,x,x) :=
+  .cast
+    (.proj (.var .here) lnext
+      (.member (.var .here) (.refl (C5Obj (.there (.there (.there .here))))) 2))
+    (.capt
+      (.member (.var .here) (.refl (C5Obj (.there (.there (.there .here))))) 3)
+      (.member (.var .here) (.refl (C5Obj (.there (.there (.there .here))))) 4))
+
+/-- The caller: `let n = it.next in n u`, charged to `{κ₁}` by `capvar` and
+the member's upper bound. -/
+def C5clientTm : Tm ([],c,c,x,x) :=
+  .let C5runTm (.app (.var .here) (.var (.there (.there .here))))
+    [CapAtom.cvar (.there (.there (.there .here)))]
+    (.union
+      (.trans (.capvar (.var .here))
+        (.member (.var (.there .here))
+          (.refl (C5Obj (.there (.there (.there (.there .here)))))) 1))
+      (.trans (.capvar (.var (.there (.there .here))))
+        (.elem [] [CapAtom.cvar (.there (.there (.there (.there .here))))])))
+
+/-- Its type: the answer, at the iterator's own capture name. -/
+def C5clientTy : Ty ([],c,c,x,x) := .top ^ [CapAtom.name .here lC]
+
+example : checkTm C5CCtx C5clientTm C5clientTy = true := by decide +kernel
+
+/-- **C5, the caller as a target twin.**  Checked by the structural
+checker. -/
+theorem C5_client : C5CCtx ⊢ C5clientTm : C5clientTy := checkTm_sound (by decide +kernel)
 
 
 end Examples
