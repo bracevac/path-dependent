@@ -1261,7 +1261,7 @@ theorem Subcap.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {C C' : CaptureSet s
       have hc := FCdot.CapCo.HasType.capvar ha
       rw [Ctx.varAtom_root Γ x] at hc
       rw [Subcap.translate]
-      simpa [CaptureSet.translate, CapAtom.translate] using hc
+      simpa [CaptureSet.translate, CapAtom.translate?] using hc
   | _, _, _, _, @Subcap.selLower _ Γ _ x A c₁ c₂ _ h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_capt, Shape.translate_cap] at ha
@@ -1272,7 +1272,7 @@ theorem Subcap.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {C C' : CaptureSet s
       rw [HasTy.translateAtom_root h, FCdot.CaptureSet.weaken_substVar',
         FCdot.CaptureSet.substVar_name_here] at hm
       rw [Subcap.translate, Shape.translate_cap]
-      simpa [CaptureSet.translate, CapAtom.translate] using hm
+      simpa [CaptureSet.translate, CapAtom.translate?] using hm
   | _, _, _, _, @Subcap.selUpper _ Γ _ x A c₁ c₂ _ h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_capt, Shape.translate_cap] at ha
@@ -1283,7 +1283,7 @@ theorem Subcap.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {C C' : CaptureSet s
       rw [HasTy.translateAtom_root h, FCdot.CaptureSet.weaken_substVar',
         FCdot.CaptureSet.substVar_name_here] at hm
       rw [Subcap.translate, Shape.translate_cap]
-      simpa [CaptureSet.translate, CapAtom.translate] using hm
+      simpa [CaptureSet.translate, CapAtom.translate?] using hm
   termination_by _ _ _ _ f _ => sizeOf f
   decreasing_by
     all_goals try simp_wf
@@ -1387,7 +1387,7 @@ theorem HasTy.translateAtom_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s
         (f := .refl [FCdot.CapAtom.var y])
         (by rw [Ctx.varAtom_root Γ y]; exact .refl)
       rw [HasTy.translateAtom]
-      simpa [CaptureSet.translate, CapAtom.translate] using hr
+      simpa [CaptureSet.translate, CapAtom.translate?] using hr
   | _, _, _, y, _, @HasTy.recI _ _ _ _ S C h hdecl, hwf => by
       have ih := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_decl (hdecl.substVar y)] at ih

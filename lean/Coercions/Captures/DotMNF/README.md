@@ -1,4 +1,4 @@
-# DotMNF, at stage A3a of captures
+# DotMNF, at stage A3b of captures
 
 DOT-MNF^cc, the capturing source of the translation in `../DotToFCdot`.
 
@@ -8,7 +8,7 @@ DOT-MNF^cc, the capturing source of the translation in `../DotToFCdot`.
 | `Typing` | contexts (`cons`, `consSelf` carrying the definitions, the self shape and the assigned use set, `consC` for a platform capture binder); `Subcap`, `SubShape`, `Sub`, `HasTy` with the use set as its first index, `DefsTy`, all Type-valued in one mutual block; the derived rules `Sub.refl`, `Subcap.empty`, `Subcap.ofVar`, `HasTy.widen`, `DefsTy.widen`; intersections are unrestricted (`And₁`, `And₂`, `And`, `And-I` and `Wf.and` carry no `Decl` premise); `Decl` still restricts the body of a `μ` (`Wf.mu`, `Rec-I`, `Rec-E`); `{}-I` admits same-block aliases (alias-tolerant resolution on the target side, no self-alias restriction here) |
 | `Machine` | store with a data-free capture slot (`consC`), continuations, `Step` with the `unbox` step, `Steps`, `Final`, `Stuck`, `State.inspects`, the platform prefix and its initial store |
 | `Erasure` | erasure to `Runtime`, a box becoming the runtime's inert box and an unboxing the runtime's `unbox`; `erase_step`, `erase_reflect`, `Tm.inspects_erase`, `State.inspects_erase` |
-| `Examples` | E1 to E8 as `HasTy` derivations, restated at pure types and empty use sets; E8 is the refinement of an abstract type, `x.A ∧ {a : ⊤}`, with two derivations of its projection and an `And-I` derivation; the capture examples S3, C2 and C7 over the platform prefix of two capture binders |
+| `Examples` | E1 to E8 as `HasTy` derivations, restated at pure types and empty use sets; E8 is the refinement of an abstract type, `x.A ∧ {a : ⊤}`, with two derivations of its projection and an `And-I` derivation; the capture examples S3, C2 and C7 over the platform prefix of two capture binders; the `any` examples S1, S2 and C5, each written with `any`, expanded at the platform set, and typed at the expanded type |
 
 Stage A3a replays on the source the split stage A0 made on the target: what the vanilla line called a
 type is a shape, and a type is a shape with a capture set beside it.  Beyond the split the source gains
@@ -23,7 +23,8 @@ typing premise is the derived rule `Subcap.ofVar`, admissible by induction on th
 own, so a source box and a source object literal never share an erasure and a runtime step out of an
 erased state names the source step that produced it.
 
-`any` by position is stage A3b, and is not here yet.
+`any` by position is stage A3b, below: it is a notation, expanded before a program is typed, and no
+rule of the calculus mentions it.
 
 ## Stage A3a
 
@@ -97,3 +98,114 @@ context is `platCtx` and whose store is `plat.store`.
 
 Axioms (`#print axioms`): `propext` for the three derivations, and `propext` with `Quot.sound` for the
 erasure theorems.  No `sorry`, `axiom`, `partial`, `unsafe`, or `native_decide`, and no Mathlib.
+
+## Stage A3b
+
+`any` by position.  A capture set may hold the atom `any`, which the calculus never interprets: no
+rule of `Subcap`, `SubShape`, `Sub`, `HasTy` or `DefsTy` mentions it, `elem` compares it syntactically
+like any other atom, and renaming maps it to itself.  Its meaning is by position, and `expand` is what
+gives it that meaning.  The codomain of an arrow reads `any` as the arrow's own set weakened together
+with the parameter, a field type or a capture-member upper bound of an object reads it as the object's
+set weakened together with the self, and the top of a program reads it as the platform set.  Each
+former resets the reading for what is under it, so a nested occurrence is read by its own enclosing
+former and no level is needed.  Every `any` is therefore a closed set once expanded, and an expanded
+program is a program of stage A3a.
+
+Four positions get no reading, and `AnyOk` refuses `any` there: the outer capture set of a parameter
+type, both bounds of a type member, the lower bound of a capture member, and everything under a box.
+The first is universal quantification over capture sets, which a program writes as an explicit capture
+member instead, as S1 does; the other three are the compiler's tunneling.  Both decisions are the
+user's to revisit, and the stage report records what each would cost.
+
+| module | what A3b changed |
+|---|---|
+| `Syntax` | the atom `CapAtom.any` and its renaming clause; `CaptureSet.expand`, `Shape.expand`, `Ty.expand` and `Shape.expandSelf`; `CaptureSet.NoAny`, `Shape.NoAny`, `Ty.NoAny`, `Shape.AnyOk`, `Ty.AnyOk`, their decision procedures `noAny`/`anyOk` and their `Decidable` instances; the renaming facts the expansion lemmas need; the three required lemmas of the stage |
+| `Typing` | nothing.  No rule mentions `any`, and `DecidableEq` still derives for `CapAtom`, so every `decide` of the A3a examples stands |
+| `Machine`, `Erasure` | nothing, byte for byte A3a's |
+| `Examples` | S1, S2 and C5, each written with `any`, `AnyOk` decided, `expand` at the platform set computed, and the derivation at the expanded type; the platform set `platSet`, the binders `fs1` to `fs5`, and the new helpers `Subcap.consAtom`, `HasTy.useSub`, `HasTy.captTo`, `fileLit`, `unitVal` |
+
+### New definitions
+
+```text
+CapAtom.any                                          the inert atom
+CaptureSet.expand C D                                every `any` of C replaced by the atoms of D
+Ty.expand    (S ^ C) D = (S.expand (C.expand D)) ^ (C.expand D)
+Shape.expand S D₀      D₀ the set of the type this shape sits in
+  all T₁ T₂   ↦ all (T₁.expand []) (T₂.expand (D₀↑ ∪ {x}))
+  mu S        ↦ mu (S.expandSelf (D₀↑ ∪ {z}))
+  fld a T     ↦ fld a (T.expand D₀)
+  cap C c₁ c₂ ↦ cap C (c₁.expand []) (c₂.expand D₀)
+  typ A S₁ S₂ ↦ typ A (S₁.expand []) (S₂.expand [])
+  box T       ↦ box (T.expand [])
+  top, bot, sel unchanged, and pointwise
+Shape.expandSelf S D                                 the `μ` body, D already under the self
+CaptureSet.NoAny, Shape.NoAny, Ty.NoAny              no `any` at all, decided
+Shape.AnyOk, Ty.AnyOk                                `any` only where `expand` reads it, decided
+```
+
+### New lemmas
+
+```
+CaptureSet.expand_of_noAny : C.NoAny → C.expand D = C
+CaptureSet.noAny_expand    : D.NoAny → (C.expand D).NoAny
+CaptureSet.expand_rename   : (C.expand D).rename ρ = (C.rename ρ).expand (D.rename ρ)
+Shape.expand_of_noAny, Ty.expand_of_noAny : expansion is the identity where there is no `any`
+Shape.noAny_expand,    Ty.noAny_expand    : AnyOk T → NoAny D → NoAny (T.expand D)
+Shape.expand_rename,   Ty.expand_rename   : expansion commutes with renaming, the reading set renamed
+Shape.expand_weaken,   Ty.expand_weaken   : the same at `Rename.succ`
+```
+
+with the clause lemmas `CaptureSet.expand_nil`, `expand_cons_any`, `expand_cons_var`,
+`expand_cons_cvar`, `expand_cons_sel`, `expand_cons_of_ne`, `expand_append`, the `NoAny` clauses
+`noAny_nil`, `noAny_cons_of_ne`, `noAny_of_cons`, `noAny_append`, `noAny_rename`, `noAny_weaken`, the
+two facts `CaptureSet.self_rename` and `CaptureSet.noAny_self` about the set an arrow or an object
+reads `any` as under its own binder, the renaming facts `CaptureSet.rename_cons`, `rename_append`,
+`rename_rename`, `weaken_rename` and `CapAtom.rename_rename`, `Shape.expandSelf_eq`, `Shape.expand_mu`,
+and the twenty-two clause lemmas `Shape.noAny_*`, `Ty.noAny_capt`, `Shape.anyOk_*`, `Ty.anyOk_capt`,
+which read the four decision procedures as the propositions they stand for.
+
+### The examples
+
+```
+DotMNF.Examples.S1_anyOk  : (S1TyAny k1).AnyOk
+DotMNF.Examples.S1_expand : (S1TyAny k1).expand platSet = S1Ty k1
+DotMNF.Examples.S1_typed  : {fs};  platCtx ⊢ S1tm : ⊤ ^ {fs}
+DotMNF.Examples.S2_anyOk  : (S2MkTyAny k1).AnyOk
+DotMNF.Examples.S2_expand : (S2MkTyAny k1).expand platSet = S2MkTy k1
+DotMNF.Examples.S2_typed  : {fs};  platCtx ⊢ S2tm : ⊤ ^ {fs}
+DotMNF.Examples.C5_typed  : {fs};  S2Ctx3  ⊢ let n = it.next in n un : ⊤ ^ {fs}
+```
+
+S1 is `withFile` with an explicit capture parameter,
+
+```text
+withFile : (∀(cp : (μ(c. {C : {}..{fs}})) ^ {})
+             (∀(op : (∀(f : File ^ {fs}) ⊤) ^ {cp.C}) (⊤ ^ {any})) ^ {fs, cp}) ^ {fs}
+```
+
+with `File := μ(f. {read : (⊤ → ⊤) ^ {f}})`.  The member bound is written out, because a member-bound
+`any` would read as the parameter object's own set with its self, which is not what a pure parameter
+object wants; the result `any` reads as `{fs, cp, op}`, and `S1_expand` computes that.  The caller
+allocates `ν(c. {C = {fs}})` at the precise member `{fs}..{fs}`, passes it at the abstract member by
+`Rec-E`, `Cap` and `Rec-I`, and passes an operation declared at `{fs}`, which the *lower* bound of the
+precise member puts below `{cp.C}`.  The answer avoids both binders through the member's upper bound,
+so the program's use set is `{fs}`.
+
+S2 is a class with a capture-set parameter and `any` in the result,
+
+```text
+Iterator := μ(i. {C : {}..{fs}} ∧ {next : (∀(v : ⊤) (⊤ ^ {i.C})) ^ {i.C}})
+mk       : (∀(u : ⊤) (Iterator ^ {any})) ^ {fs}
+```
+
+The result `any` reads as `{fs, u}`.  The callee returns a literal that defines `C = {fs}`, retyped at
+the abstract member on its own variable, which is the packing.  The caller types
+`let it = mk un in let n = it.next in n un` against the abstract member: `sc-var` and then
+`sc-sel-upper` charge its call, so its use set is `{fs}` and the literal's own `{fs}` is never named.
+
+C5 is that caller on its own, the existential result at the compiler's reading: the only step of it
+that names `{fs}` is `sc-sel-upper` at the member's upper bound.  Its target side is in
+`../FCdot/README.md`.
+
+Axioms (`#print axioms`): none for `S1_anyOk`, `S1_expand`, `S2_anyOk`, `S2_expand` and `C5_typed`,
+`propext` for `S1_typed` and `S2_typed`.
