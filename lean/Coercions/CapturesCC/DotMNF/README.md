@@ -1,4 +1,4 @@
-# DotMNF, at stage B0 of captures the compiler's way (unchanged since A3b)
+# DotMNF, at stage B1 of captures the compiler's way
 
 DOT-MNF^cc, the capturing source of the translation in `../DotToFCdot`.
 
@@ -216,3 +216,88 @@ B0 changed nothing here.  The stage adds the universal root, levels and the leve
 target only, and it adds no source former: `DOT-MNF^cc` has no atom for the universal root, so
 every capture set the source writes is a list of concrete atoms, exactly as at A3b.  No rule,
 no theorem, no example and no line of this directory moved.
+
+## Stage B1
+
+B1 moves the source, because the source arrow has to bind the same binders in the same places
+as the target's.  That is what keeps the translation homomorphic on types and erasure equality
+free.  `Shape.all` becomes `Ty (Sig.dom s) → Ty (Sig.cod s) → Shape s`, so a source arrow
+carries the parameter's `any` as one capture binder for the whole domain, and a lambda body and
+an object body are scopes with a root of their own.
+
+The source's context gains a root constructor beside its rigid one rather than a payload, so
+`Platform.ctx` and `Platform.store` are textually unchanged and every platform binder is still
+rigid.  The argument premise of `app` costs the source nothing: its variable rule already gives
+a variable its shape at the singleton set `{y}`, which is `T₁⟦κ := {y}⟧` when the parameter's
+`any` is at the top of the domain, and that is the source-side counterpart of the target's
+`recap`.
+
+| module | what B1 changed |
+|---|---|
+| `Syntax` | `Shape.all` at `Sig.dom s` and `Sig.cod s`, with `Dom`, `Cod`, `Dom.underRoot`, `Dom.inBody`, `Cod.underRoot`, the source's copies of the target's five names.  `Value.obj` at `Defs ((s,c),x)` and `Value.lam` at `Ty (Sig.dom s)` and `Tm (Sig.body s)`.  One lift per binder in `Shape.rename` and `Value.rename`, and `Shape.expand` weakening its carried set once more.  `CaptureSet.selfC_rename` and `CaptureSet.noAny_selfC`, the two-binder twins of the existing pair.  The substitution block: `Subst` with an atom-valued capture component, `Subst.ofRename`, `.lift`, `.liftC`, `.singleC`, `.arg`, `.enter` and `.enterObj` (which write `any` where the target writes `⊤ᶜ`), the eight traversals `CapAtom.subst` to `Defs.subst`, `Subst.funext` and the eight `X.subst_ofRename` |
+| `Typing` | the context constructor `Ctx.consRoot`, with one clause in `Ctx.lookup`.  `Shape.underRoot`, `Ctx.scope`, `Ctx.body`, `Ctx.objBody`.  The rules `SubShape.all`, `HasTy.lam`, `HasTy.app` and `HasTy.obj` |
+| `Machine` | `Step.app` continues at `t.subst (Subst.enter y)` and `Step.proj` at `t.subst (Subst.enterObj x)`.  `Platform.store`, `alloc`, `rename`, `let` and the two `unbox` steps are untouched |
+| `Erasure` | the `lam` and `obj` clauses of `Value.erase_rename` carry one lift per binder.  The new block "erasure commutes with substitution": `Subst.lift_var`, `Subst.liftC_var`, `Subst.enter_var`, `Subst.enterObj_var`, `appendFields_map`, and the mutual `Tm.erase_subst`, `Value.erase_subst`, `Defs.erase_subst`.  `Tm.erase` keeps its type and every other statement of the file keeps its form |
+| `Examples` | every derivation E1 to E8, S1 to S3 and C1 to C7 keeps its name and its conclusion, with the contexts rebuilt as `Ctx.body` and `Ctx.objBody` chains and outer binders read through the new `up` and `up2`.  `lam'` and `obj'` are the two helpers for writing a body over the scope signature.  `E4G'` and `E4GS'` are replaced by the parameterised `E4G w` and `E4GS w`, and `C7k1` and `C7k2` are new |
+
+### The rules
+
+```
+DotMNF.SubShape.all : Sub Γ.scope T2.underRoot T1.underRoot →
+                      Sub (Γ.body T2) U1.underRoot U2.underRoot →
+                      SubShape Γ (.all T1 U1) (.all T2 U2)
+DotMNF.HasTy.lam    : HasTy (U↑↑↑ ∪ [.var .here]) (Γ.body T₁) t T₂.underRoot → Ty.Wf T₁ →
+                      HasTy [] Γ (.val (.lam T₁ t)) ((Shape.all T₁ T₂) ^ U)
+DotMNF.HasTy.app    : HasTy U Γ (.path (.var x)) ((Shape.all T₁ T₂) ^ C) →
+                      HasTy U Γ (.path (.var y)) (T₁.subst (Subst.singleC (.var y))) →
+                      HasTy U Γ (.app x y) (T₂.subst (Subst.arg y))
+DotMNF.HasTy.obj    : DefsTy (U↑↑ ∪ [.var .here]) (Γ.objBody d S U) d S.underRoot →
+                      Defs.Distinct d → HasTy [] Γ (.val (.obj d)) ((Shape.mu S) ^ U)
+DotMNF.Step.app     : ⟨σ, K, .app x y⟩ ⟶ ⟨σ, K, t.subst (Subst.enter y)⟩
+DotMNF.Step.proj    : ⟨σ, K, .proj x ℓ⟩ ⟶ ⟨σ, K, t.subst (Subst.enterObj x)⟩
+```
+
+### Statements restated
+
+Nothing was weakened, and no rule gained a hypothesis.
+
+```
+DotMNF.Shape.all                 : Ty (Sig.dom s) → Ty (Sig.cod s) → Shape s
+                                     the arrow gains the parameter's any as one capture
+                                     binder, in the target's position
+DotMNF.Shape.rename, .expand     : one lift per binder, the same set carried further out
+DotMNF.Shape.noAny_all, .anyOk_all : the same propositions at the arrow's new arities
+DotMNF.Value.lam, .obj           : the body root and the class root as binders of the value,
+                                     mirroring FCdot.Value.lam and .obj
+DotMNF.Ctx.lookup                : one clause at consRoot, which binds no term variable
+DotMNF.SubShape.all              : both arrows' capture binders opened at one scope
+DotMNF.HasTy.lam, .obj           : the same body and the same charge, under the new binders
+DotMNF.HasTy.app                 : the argument premise is what the variable rule already gave
+DotMNF.Step.app, .proj           : the same variable instantiated by the same argument, and
+                                     the new capture binders carry no runtime data
+DotMNF.Tm.erase                  : keeps its type Tm s → Runtime.Tm s
+DotMNF.dot_safety, .dot_not_stuck, .reachable_consistent, .reachable_realized,
+DotMNF.dot_capture_prediction, .dot_effect_safety : unchanged
+DotMNF.erase_step, .erase_reflect : unchanged
+```
+
+### New definitions and lemmas
+
+```
+DotMNF.Dom, .Cod, .Dom.underRoot, .Dom.inBody, .Cod.underRoot
+DotMNF.Ctx.consRoot, .Shape.underRoot, .Ctx.scope, .Ctx.body, .Ctx.objBody
+DotMNF.Subst and the eight traversals, with Subst.funext and the eight X.subst_ofRename
+DotMNF.CaptureSet.selfC_rename, .noAny_selfC
+DotMNF.Tm.erase_subst, .Value.erase_subst, .Defs.erase_subst
+```
+
+No `Subst.comp` and no fusion lemmas exist on the source side, because nothing in the source
+needs them.  The only composite the source performs is `Subst.ofRename`, and
+`X.subst_ofRename` covers it.
+
+### The examples
+
+Every example of A3a and A3b is here, rewritten for the new arrow and otherwise unchanged.  The
+`any` examples S1, S2 and C5 are still written with `any`, expanded at the platform set by
+`rfl`, and typed at the expanded type, so `S2_expand` still reads the result `any` as `{fs, u}`.
+That concrete set is what the target's `S2_level` and `C5a_level` put below a scope root.

@@ -306,7 +306,7 @@ def Ty.translate : Ty s → FCdot.Ty s
     T.translate.captureSet = T.captureSet.translate := by cases T; rfl
 
 /-- The arrow shape, one layer up: both sides are capturing types. -/
-theorem Shape.translate_all_eq {s : Sig} (T1 : Ty s) (T2 : Ty (s,x)) :
+theorem Shape.translate_all_eq {s : Sig} (T1 : Dom s) (T2 : Cod s) :
     (Shape.all T1 T2).translate = FCdot.Shape.pi T1.translate T2.translate := by
   cases T1; cases T2; rw [Shape.translate]; rfl
 
@@ -409,6 +409,7 @@ def Ctx.translate : Ctx s → FCdot.Ctx s
   | .consSelf Γ _ S U =>
       .cons Γ.translate (.transparent (S.literalTy U) S.witnesses S.capWitnesses S.fieldLabels)
   | .consC Γ => .consC Γ.translate .star
+  | .consRoot Γ => .consC Γ.translate .root
 
 end DotMNF
 

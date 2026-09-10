@@ -190,7 +190,7 @@ theorem Ctx.resolve_nonSel (Γ : Ctx s) {T : Shape s} (h : ∀ x ℓ, T ≠ .sel
 @[simp] theorem Ctx.resolve_bot (Γ : Ctx s) : Γ.resolve (.bot : Shape s) = .bot :=
   Γ.resolve_nonSel (by intro x ℓ h; cases h)
 
-@[simp] theorem Ctx.resolve_pi (Γ : Ctx s) (S : Ty s) (T : Ty (s,x)) :
+@[simp] theorem Ctx.resolve_pi (Γ : Ctx s) (S : Dom s) (T : Cod s) :
     Γ.resolve (.pi S T) = .pi S T :=
   Γ.resolve_nonSel (by intro x ℓ h; cases h)
 

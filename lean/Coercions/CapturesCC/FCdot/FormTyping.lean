@@ -201,8 +201,10 @@ inductive FormTyped {s : Sig} (Γ : Ctx s) :
   | top : Γ.resolveAt? ρ T = ⊤ → FormTyped Γ ρ .top S T
   | id : Γ.resolveAt? ρ S = Γ.resolveAt? ρ T → FormTyped Γ ρ .id S T
   | eqv : Γ.resolveAt? ρ S = Γ.resolveAt? ρ T → FormTyped Γ ρ (.eqv φ) S T
-  | pi : Γ.resolveAt? ρ S = Π(S₁) T₁ → Γ.resolveAt? ρ T = Π(S₂) T₂ →
-      Γ ⊢ d : S₂ ≤ S₁ → Γ.cons (.opaque S₂) ⊢ c : T₁ ≤ T₂ →
+  | pi {S₁ S₂ : Dom s} {T₁ T₂ : Cod s} :
+      Γ.resolveAt? ρ S = Π(S₁) T₁ → Γ.resolveAt? ρ T = Π(S₂) T₂ →
+      Γ.scope ⊢ d : S₂.underRoot ≤ S₁.underRoot →
+      Γ.body S₂ ⊢ c : T₁.underRoot ≤ T₂.underRoot →
       FormTyped Γ ρ (.pi d c) S T
   | obj : Γ.resolveAt? ρ S = μ Tel₁ → Γ.resolveAt? ρ T = μ Tel₂ →
       EntriesTyped Γ ρ Tel₁ Es Tel₂ → FormTyped Γ ρ (.obj Es) S T

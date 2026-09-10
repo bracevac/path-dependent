@@ -65,6 +65,16 @@ theorem CaptureSet.closing_substVar {s : Sig} (A : CaptureSet s) (y : BVar s .va
         CaptureSet.rename_subst_weaken A y]
   rfl
 
+/-- The closing set of a body, read at the argument: the substitution a step
+performs when it enters a closure's body cancels the three weakenings and
+sends the parameter to the argument's root.  This is
+`CaptureSet.closing_substVar` in the representation of the stage. -/
+theorem CaptureSet.closing_subst_enter {s : Sig} (A : CaptureSet s) (b : Atom s) :
+    ((A↑↑↑ : CaptureSet (Sig.body s)) ∪ [CapAtom.var .here]).subst (Subst.enter b)
+      = A ∪ [CapAtom.var b.root] := by
+  rw [CaptureSet.subst_union, CaptureSet.weaken3_subst_enter]
+  rfl
+
 /-- A value's annotation survives the stripping of its casts. -/
 @[simp] theorem Value.core_annot {s : Sig} : ∀ v : Value s, v.core.annot = v.annot
   | .lam _ _ _ _ => rfl
@@ -88,17 +98,18 @@ lies below the closure's variable united with the argument's root.  The
 closure's closing evidence `g` is substituted by the argument, and the
 closure's annotation is the capture set of its variable. -/
 theorem Store.Typed.app_uses {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVar s .var}
-    {A : CaptureSet s} {S₀ S : Ty s} {t₀ : Tm (s,x)} {g : CapCo (s,x)} {T : Ty (s,x)}
-    {C : CaptureSet s} {b : Atom s}
+    {A : CaptureSet s} {S₀ S : Dom s} {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)}
+    {T : Cod s} {C : CaptureSet s} {b : Atom s}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup x = .lam A S₀ t₀ g)
-    (hty : Γ.lookupTy x = (Π(S) T) ^ C) (hb : Γ ⊢ₐ b : S) :
-    CapLe Γ (t₀.substAtom b).uses ([CapAtom.var x] ∪ [CapAtom.var b.root]) := by
+    (hty : Γ.lookupTy x = (Π(S) T) ^ C)
+    (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root))) :
+    CapLe Γ (t₀.subst (Subst.enter b)).uses ([CapAtom.var x] ∪ [CapAtom.var b.root]) := by
   obtain ⟨T₀, hlk, ht₀, hg⟩ := hσ.lam_closing hx
   rw [hty] at hlk
   obtain ⟨hC, hpi⟩ := Ty.capt.inj hlk
   obtain ⟨rfl, -⟩ := Shape.pi.inj hpi
-  have hsub := hg.substAtom hb
-  rw [CaptureSet.closing_substVar, ← Tm.uses_substAtom] at hsub
+  have hsub := hg.subst (Subst.Typed.enter hσ.rootFree hb)
+  rw [CaptureSet.closing_subst_enter, ← Tm.uses_subst] at hsub
   have hA : RootsEq Γ [CapAtom.var x] A := by
     rw [show A = (σ.lookup x).annot by rw [hx]; rfl]
     exact hσ.root_annot x
@@ -110,10 +121,10 @@ lies below that variable.  The field's closing evidence is renamed by
 `Rename.subst`, and the literal's annotation is the capture set of its
 variable. -/
 theorem Store.Typed.proj_uses {s : Sig} {σ : Store s} {Γ : Ctx s} {y : BVar s .var}
-    {A : CaptureSet s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {F : Fields (s,x)}
-    {ℓ : Label} {t : Tm (s,x)}
+    {A : CaptureSet s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)}
+    {F : Fields ((s,c),x)} {ℓ : Label} {t : Tm ((s,c),x)}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup y = .obj A W Wc F) (hg : F.get? ℓ = some t) :
-    CapLe Γ (t.selfAt y).uses [CapAtom.var y] := by
+    CapLe Γ (t.subst (Subst.enterObj y)).uses [CapAtom.var y] := by
   obtain ⟨-, -, g', hg'⟩ := Tm.HasType.projFieldFull hσ hx hg
   have hA : RootsEq Γ [CapAtom.var y] A := by
     rw [show A = (σ.lookup y).annot by rw [hx]; rfl]
@@ -208,7 +219,7 @@ theorem step_uses {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s} {U :
           refine step_uses_same hσ ?_
           obtain ⟨T₀, hTe, ht₀, -⟩ := Value.HasType.lam_inv (hσ.lam_of_lookup hx)
           obtain ⟨hdom, hcod⟩ := hσ.formsTyped.pi hA hcf (by rw [hTe]; rfl)
-          have hle := hσ.app_uses hx hTe (hb.cast hdom)
+          have hle := hσ.app_uses hx hTe (Atom.HasType.castDom hσ.rootFree hdom hb)
           simp only [Atom.root_cast] at hle
           simp only [Tm.uses_cast]
           exact CapLe.union (hle.trans (CapLe.mem (by mem_uses)))

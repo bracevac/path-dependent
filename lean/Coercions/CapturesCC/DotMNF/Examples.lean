@@ -62,16 +62,29 @@ def subS {s : Sig} {Γ : Ctx s} {t : Tm s} {S S' : Shape s}
     (h : HasTy [] Γ t (S ^ [])) (d : SubShape Γ S S') : HasTy [] Γ t (S' ^ []) :=
   .sub h (.capt d .refl) .refl
 
+/-! ### Reading an outer binder from inside a scope
+
+A lambda body opens three binders, the body root, the arrow's capture binder
+and the parameter, so an outer binder is three steps out.  A codomain and an
+object body open two, so an outer binder is two steps out there. -/
+
+/-- An outer binder, read inside a lambda body. -/
+abbrev up {s : Sig} {k : Kind} (y : BVar s k) : BVar (Sig.body s) k :=
+  .there (.there (.there y))
+
+/-- An outer binder, read inside a codomain or an object body. -/
+abbrev up2 {s : Sig} {k : Kind} (y : BVar s k) : BVar ((s,c),x) k := .there (.there y)
+
 /-- `All-I` at a pure lambda: the body is derived at the empty use set and
 widened to the set the rule charges it at. -/
-def lam' {s : Sig} {Γ : Ctx s} {T1 : Ty s} {t : Tm (s,x)} {T2 : Ty (s,x)}
-    (h : HasTy [] (Γ.cons T1) t T2) (w : Ty.Wf T1) :
+def lam' {s : Sig} {Γ : Ctx s} {T1 : Dom s} {t : Tm (Sig.body s)} {T2 : Cod s}
+    (h : HasTy [] (Γ.body T1) t T2.underRoot) (w : Ty.Wf T1) :
     HasTy [] Γ (.val (.lam T1 t)) ((Shape.all T1 T2) ^ []) :=
   .lam (h.widen _) w
 
 /-- `{}-I` at a pure literal, likewise. -/
-def obj' {s : Sig} {Γ : Ctx s} {d : Defs (s,x)} {S : Shape (s,x)}
-    (h : DefsTy [] (Γ.consSelf d S []) d S) (hd : Defs.Distinct d) :
+def obj' {s : Sig} {Γ : Ctx s} {d : Defs ((s,c),x)} {S : Shape (s,x)}
+    (h : DefsTy [] (Γ.objBody d S []) d S.underRoot) (hd : Defs.Distinct d) :
     HasTy [] Γ (.val (.obj d)) ((Shape.mu S) ^ []) :=
   .obj (h.widen _) hd
 
@@ -108,7 +121,7 @@ def badBounds {s : Sig} {Γ : Ctx s} {x : BVar s .var} {U D : CaptureSet s}
     SubShape Γ E1DomS S :=
   .trans .top (.trans (.selLower hx) (.trans (.selUpper hx) .bot))
 
-def E1Ctx : Ctx ([],x) := .cons .nil E1Dom
+def E1Ctx : Ctx (Sig.body ([] : Sig)) := Ctx.body .nil E1Dom
 
 def E1x : HasTy [] E1Ctx (.path (.var .here)) E1Dom := var' .here rfl
 
@@ -129,21 +142,24 @@ def E1 : HasTy [] Ctx.nil
 its term member selected and applied to itself.  The application typechecks
 because the exact bounds of `A` give `∀(y : x.A) x.A <: x.A`. -/
 
-/-- `∀(y : x.A) x.A`, under the object's self binder. -/
+/-- `∀(y : x.A) x.A`, under the object's self binder.  The arrow's own
+capture binder is between the self and the domain, so the self is one step
+further out in the domain and two in the codomain. -/
 def E2AS : Shape (s,x) :=
-  .all ((Shape.sel (.var .here) lA) ^ []) ((Shape.sel (.var (.there .here)) lA) ^ [])
+  .all ((Shape.sel (.var (.there .here)) lA) ^ [])
+    ((Shape.sel (.var (.there (.there .here))) lA) ^ [])
 def E2A : Ty (s,x) := E2AS ^ []
 /-- The same shape one binder further out. -/
 def E2AS' : Shape (s,x,x) :=
-  .all ((Shape.sel (.var (.there .here)) lA) ^ [])
-    ((Shape.sel (.var (.there (.there .here))) lA) ^ [])
+  .all ((Shape.sel (.var (.there (.there .here))) lA) ^ [])
+    ((Shape.sel (.var (.there (.there (.there .here)))) lA) ^ [])
 def E2A' : Ty (s,x,x) := E2AS' ^ []
 /-- The object's self shape `{A : E2A..E2A} ∧ {a : E2A}`. -/
 def E2Self : Shape (s,x) := .and (.typ lA E2AS E2AS) (.fld la E2A)
 /-- The object's definitions. -/
 def E2Defs : Defs (s,x) :=
   .and (.typ lA E2AS)
-    (.trm la (.val (.lam ((Shape.sel (.var .here) lA) ^ []) (.path (.var .here)))))
+    (.trm la (.val (.lam ((Shape.sel (.var (.there .here)) lA) ^ []) (.path (.var .here)))))
 
 theorem E2Distinct : Defs.Distinct (E2Defs (s := s)) := by
   refine .and .typ .trm ?_
@@ -155,7 +171,7 @@ theorem E2Distinct : Defs.Distinct (E2Defs (s := s)) := by
 /-- The self shape is declaration-shaped. -/
 theorem E2SelfDecl : Shape.Decl (E2Self (s := s)) := .and .typ .fld
 
-def E2DefsTy : DefsTy [] (Ctx.consSelf Γ E2Defs E2Self []) E2Defs E2Self :=
+def E2DefsTy : DefsTy [] (Ctx.objBody Γ E2Defs E2Self []) E2Defs E2Self.underRoot :=
   .and .typ (.trm (lam' (var' .here rfl) (.capt .sel)))
 
 def E2Ctx1 : Ctx ([],x) := .cons .nil ((Shape.mu E2Self) ^ [])
@@ -204,13 +220,13 @@ def E3T2 : Ty s := E3T2S ^ []
 def E3DomS : Shape s := .and (.typ lA .bot E3T1S) (.typ lA E3T2S .top)
 def E3Dom : Ty s := E3DomS ^ []
 
-def E3Ctx1 : Ctx ([],x) := .cons .nil E3Dom
-def E3Ctx2 : Ctx ([],x,x) := .cons E3Ctx1 E3T2
+def E3Ctx1 : Ctx (Sig.body ([] : Sig)) := Ctx.body .nil E3Dom
+def E3Ctx2 : Ctx (Sig.body (Sig.body ([] : Sig))) := Ctx.body E3Ctx1 E3T2
 
-def E3xDom : HasTy [] E3Ctx2 (.path (.var (.there .here))) E3Dom := var' (.there .here) rfl
-def E3xLo : HasTy [] E3Ctx2 (.path (.var (.there .here)))
+def E3xDom : HasTy [] E3Ctx2 (.path (.var (up .here))) E3Dom := var' (up .here) rfl
+def E3xLo : HasTy [] E3Ctx2 (.path (.var (up .here)))
     ((Shape.typ lA .bot E3T1S) ^ []) := subS E3xDom .and1
-def E3xHi : HasTy [] E3Ctx2 (.path (.var (.there .here)))
+def E3xHi : HasTy [] E3Ctx2 (.path (.var (up .here)))
     ((Shape.typ lA E3T2S .top) ^ []) := subS E3xDom .and2
 /-- `T₂ <: x.A <: T₁`: the shared member, used at both bounds. -/
 def E3sub : SubShape E3Ctx2 E3T2S E3T1S := .trans (.selLower E3xHi) (.selUpper E3xLo)
@@ -252,60 +268,57 @@ def E4T : Ty s := E4TS ^ []
 def E4XS : Shape s := .typ lB E4SS E4TS
 def E4X : Ty s := E4XS ^ []
 
-def E4Ctx1 : Ctx ([],x) := .cons .nil E4X
-def E4Ctx2 : Ctx ([],x,x) := .cons E4Ctx1 E4S
-def E4Ctx3 : Ctx ([],x,x,x) := .cons E4Ctx2 E4Int
+def E4Ctx1 : Ctx (Sig.body ([] : Sig)) := Ctx.body .nil E4X
+def E4Ctx2 : Ctx (Sig.body (Sig.body ([] : Sig))) := Ctx.body E4Ctx1 E4S
+def E4Ctx3 : Ctx (Sig.body (Sig.body (Sig.body ([] : Sig)))) := Ctx.body E4Ctx2 E4Int
 
-/-- The type of `g = λ(y : w.A). y`, in the scope of `x`, `w`, `n`. -/
-def E4GS : Shape (s,x,x,x) :=
-  .all ((Shape.sel (.var (.there .here)) lA) ^ [])
-    ((Shape.sel (.var (.there (.there .here))) lA) ^ [])
-def E4G : Ty (s,x,x,x) := E4GS ^ []
-/-- The same type one binder further out. -/
-def E4GS' : Shape (s,x,x,x,x) :=
-  .all ((Shape.sel (.var (.there (.there .here))) lA) ^ [])
-    ((Shape.sel (.var (.there (.there (.there .here)))) lA) ^ [])
-def E4G' : Ty (s,x,x,x,x) := E4GS' ^ []
+/-- The type of `g = λ(y : w.A). y`, at the binder `w` it reads. -/
+def E4GS (w : BVar s .var) : Shape s :=
+  .all ((Shape.sel (.var (.there w)) lA) ^ [])
+    ((Shape.sel (.var (.there (.there w))) lA) ^ [])
+def E4G (w : BVar s .var) : Ty s := E4GS w ^ []
 
-def E4x : HasTy [] E4Ctx3 (.path (.var (.there (.there .here)))) E4X :=
-  var' (.there (.there .here)) rfl
+def E4x : HasTy [] E4Ctx3 (.path (.var (up (up .here)))) E4X :=
+  var' (up (up .here)) rfl
 /-- `S <: x.B <: T`, the step with no realizer. -/
 def E4ST : SubShape E4Ctx3 E4SS E4TS := .trans (.selLower E4x) (.selUpper E4x)
-def E4wT : HasTy [] E4Ctx3 (.path (.var (.there .here))) E4T :=
-  subS (var' (.there .here) rfl) E4ST
+def E4wT : HasTy [] E4Ctx3 (.path (.var (up .here))) E4T :=
+  subS (var' (up .here) rfl) E4ST
 def E4g : HasTy [] E4Ctx3
-    (.val (.lam ((Shape.sel (.var (.there .here)) lA) ^ []) (.path (.var .here)))) E4G :=
+    (.val (.lam ((Shape.sel (.var (.there (up .here))) lA) ^ []) (.path (.var .here))))
+    (E4G (up .here)) :=
   lam' (var' .here rfl) (.capt .sel)
 
-def E4Ctx4 : Ctx ([],x,x,x,x) := .cons E4Ctx3 E4G
+def E4Ctx4 : Ctx (Sig.body (Sig.body (Sig.body ([] : Sig))),x) :=
+  .cons E4Ctx3 (E4G (up .here))
 
-def E4x4 : HasTy [] E4Ctx4 (.path (.var (.there (.there (.there .here))))) E4X :=
-  var' (.there (.there (.there .here))) rfl
+def E4x4 : HasTy [] E4Ctx4 (.path (.var (.there (up (up .here))))) E4X :=
+  var' (.there (up (up .here))) rfl
 def E4ST4 : SubShape E4Ctx4 E4SS E4TS := .trans (.selLower E4x4) (.selUpper E4x4)
-def E4wT4 : HasTy [] E4Ctx4 (.path (.var (.there (.there .here)))) E4T :=
-  subS (var' (.there (.there .here)) rfl) E4ST4
+def E4wT4 : HasTy [] E4Ctx4 (.path (.var (.there (up .here)))) E4T :=
+  subS (var' (.there (up .here)) rfl) E4ST4
 /-- `n : Int <: w.A`. -/
 def E4nA : HasTy [] E4Ctx4 (.path (.var (.there .here)))
-    ((Shape.sel (.var (.there (.there .here))) lA) ^ []) :=
+    ((Shape.sel (.var (.there (up .here))) lA) ^ []) :=
   subS (var' (.there .here) rfl) (.selLower E4wT4)
-def E4gv : HasTy [] E4Ctx4 (.path (.var .here)) E4G' := var' .here rfl
+def E4gv : HasTy [] E4Ctx4 (.path (.var .here)) (E4G (.there (up .here))) := var' .here rfl
 def E4app : HasTy [] E4Ctx4 (.app .here (.there .here))
-    ((Shape.sel (.var (.there (.there .here))) lA) ^ []) := .app E4gv E4nA
+    ((Shape.sel (.var (.there (up .here))) lA) ^ []) := .app E4gv E4nA
 
 def E4let : HasTy [] E4Ctx3
-    (.let (.val (.lam ((Shape.sel (.var (.there .here)) lA) ^ []) (.path (.var .here))))
+    (.let (.val (.lam ((Shape.sel (.var (.there (up .here))) lA) ^ []) (.path (.var .here))))
       (.app .here (.there .here)))
-    ((Shape.sel (.var (.there .here)) lA) ^ []) :=
+    ((Shape.sel (.var (up .here)) lA) ^ []) :=
   .let E4g E4app (.capt .sel)
 
 /-- `λ(x : {B : S..T}). λ(w : S). λ(n : Int). let g = λ(y : w.A). y in g n`. -/
 def E4 : HasTy [] Ctx.nil
     (.val (.lam E4X (.val (.lam E4S (.val (.lam E4Int
-      (.let (.val (.lam ((Shape.sel (.var (.there .here)) lA) ^ []) (.path (.var .here))))
+      (.let (.val (.lam ((Shape.sel (.var (.there (up .here))) lA) ^ []) (.path (.var .here))))
         (.app .here (.there .here)))))))))
     ((Shape.all E4X
       ((Shape.all E4S
-        ((Shape.all E4Int ((Shape.sel (.var (.there .here)) lA) ^ [])) ^ [])) ^ [])) ^ []) :=
+        ((Shape.all E4Int ((Shape.sel (.var (up2 .here)) lA) ^ [])) ^ [])) ^ [])) ^ []) :=
   lam' (lam' (lam' E4let (.capt (.fld (.capt .top)))) (.capt (.typ .bot .top)))
     (.capt (.typ (.typ .bot .top) (.typ (.fld (.capt .top)) .top)))
 
@@ -330,35 +343,37 @@ def E5Owned : Ty (s,x,x) :=
 /-- The same type one binder further out. -/
 def E5Owned' : Ty (s,x,x,x) :=
   (Shape.mu (.fld la ((Shape.sel (.var (.there (.there (.there .here)))) lA) ^ []))) ^ []
+/-- The definitions of the literal `ν(z. {a = v})`, under the class root and
+the self. -/
+def E5Defs : Defs ((s,x,c),x) := .trm la (.path (.var (up2 .here)))
 /-- The body of `f`: `ν(z. {a = v})`. -/
-def E5Obj : Tm (s,x) := .val (.obj (.trm la (.path (.var (.there .here)))))
+def E5Obj : Tm (Sig.body s) := .val (.obj E5Defs)
 
-def E5Ctx1 : Ctx ([],x) := .cons .nil E5AT
-def E5Ctxv : Ctx ([],x,x) := .cons E5Ctx1 E5AT
-/-- The definitions of the literal `ν(z. {a = v})`. -/
-def E5Defs : Defs (s,x,x) := .trm la (.path (.var (.there .here)))
-def E5Ctxz : Ctx ([],x,x,x) := .consSelf E5Ctxv E5Defs E5Self []
+def E5Ctx1 : Ctx (Sig.body ([] : Sig)) := Ctx.body .nil E5AT
+def E5Ctxv : Ctx (Sig.body (Sig.body ([] : Sig))) := Ctx.body E5Ctx1 E5AT
+def E5Ctxz : Ctx ((Sig.body (Sig.body ([] : Sig)),c),x) :=
+  Ctx.objBody E5Ctxv E5Defs E5Self []
 
-def E5v : HasTy [] E5Ctxz (.path (.var (.there .here))) E5AT := var' (.there .here) rfl
+def E5v : HasTy [] E5Ctxz (.path (.var (up2 .here))) E5AT := var' (up2 .here) rfl
 /-- The field body: `v : ⊤ <: v.A`, by the lower bound of `v`'s member. -/
-def E5field : HasTy [] E5Ctxz (.path (.var (.there .here)))
-    ((Shape.sel (.var (.there .here)) lA) ^ []) :=
+def E5field : HasTy [] E5Ctxz (.path (.var (up2 .here)))
+    ((Shape.sel (.var (up2 .here)) lA) ^ []) :=
   subS (subS E5v .top) (.selLower E5v)
-def E5DefsTy : DefsTy [] E5Ctxz E5Defs E5Self := .trm E5field
+def E5DefsTy : DefsTy [] E5Ctxz E5Defs E5Self.underRoot := .trm E5field
 
 def E5ObjTy : HasTy [] E5Ctxv E5Obj ((Shape.mu E5Self) ^ []) :=
   obj' E5DefsTy .trm
 def E5fVal : HasTy [] E5Ctx1 (.val (.lam E5AT E5Obj)) E5F :=
   lam' E5ObjTy (.capt (.typ .top .top))
 
-def E5Ctxf : Ctx ([],x,x) := .cons E5Ctx1 E5F
+def E5Ctxf : Ctx (Sig.body ([] : Sig),x) := .cons E5Ctx1 E5F
 
 def E5fv : HasTy [] E5Ctxf (.path (.var .here)) E5F := var' .here rfl
 def E5w : HasTy [] E5Ctxf (.path (.var (.there .here))) E5AT := var' (.there .here) rfl
 /-- `f w : μ(z. {a : w.A})`: the application renames `v`'s block to `w`. -/
 def E5o : HasTy [] E5Ctxf (.app .here (.there .here)) E5Owned := .app E5fv E5w
 
-def E5Ctxo : Ctx ([],x,x,x) := .cons E5Ctxf E5Owned
+def E5Ctxo : Ctx (Sig.body ([] : Sig),x,x) := .cons E5Ctxf E5Owned
 
 def E5oMu : HasTy [] E5Ctxo (.path (.var .here)) E5Owned' := var' .here rfl
 def E5oOpen : HasTy [] E5Ctxo (.path (.var .here))
@@ -396,7 +411,8 @@ def E6Int : Ty s := E6IntS ^ []
 def E6Self : Shape (s,x,x) :=
   .and (.typ lT E6IntS E6IntS) (.fld lv ((Shape.sel (.var .here) lT) ^ []))
 /-- The object's definitions: `T = Int`, `v = n` (`n` the enclosing variable). -/
-def E6Defs : Defs (s,x,x) := .and (.typ lT E6IntS) (.trm lv (.path (.var (.there .here))))
+def E6Defs : Defs ((s,x,c),x) :=
+  .and (.typ lT E6IntS) (.trm lv (.path (.var (up2 .here))))
 
 theorem E6Distinct : Defs.Distinct (E6Defs (s := s)) := by
   refine .and .typ .trm ?_
@@ -409,18 +425,18 @@ theorem E6Distinct : Defs.Distinct (E6Defs (s := s)) := by
 theorem E6SelfDecl : Shape.Decl (E6Self (s := s)) := .and .typ .fld
 
 def E6Ctx1 : Ctx ([],x) := .cons .nil E6Int
-def E6Ctxz : Ctx ([],x,x) := .consSelf E6Ctx1 E6Defs E6Self []
+def E6Ctxz : Ctx (([],x,c),x) := Ctx.objBody E6Ctx1 E6Defs E6Self []
 
 def E6xMu : HasTy [] E6Ctxz (.path (.var .here)) ((Shape.mu E6Self) ^ []) := var' .here rfl
-def E6xOpen : HasTy [] E6Ctxz (.path (.var .here)) (E6Self ^ []) := .recE E6xMu E6SelfDecl
+def E6xOpen : HasTy [] E6Ctxz (.path (.var .here)) (E6Self.underRoot ^ []) := .recE E6xMu E6SelfDecl
 def E6xTyp : HasTy [] E6Ctxz (.path (.var .here)) ((Shape.typ lT E6IntS E6IntS) ^ []) :=
   subS E6xOpen .and1
 /-- `n : Int <: x.T`, by the lower bound of the exact member `T`. -/
-def E6nT : HasTy [] E6Ctxz (.path (.var (.there .here)))
+def E6nT : HasTy [] E6Ctxz (.path (.var (up2 .here)))
     ((Shape.sel (.var .here) lT) ^ []) :=
-  subS (var' (.there .here) rfl) (.selLower E6xTyp)
+  subS (var' (up2 .here) rfl) (.selLower E6xTyp)
 
-def E6DefsTy : DefsTy [] E6Ctxz E6Defs E6Self := .and .typ (.trm E6nT)
+def E6DefsTy : DefsTy [] E6Ctxz E6Defs E6Self.underRoot := .and .typ (.trm E6nT)
 
 /-- `λ(n : Int). ν(x. {T = Int} ∧ {v = n})`. -/
 def E6 : HasTy [] E6Ctx1 (.val (.obj E6Defs)) ((Shape.mu E6Self) ^ []) :=
@@ -447,7 +463,8 @@ theorem E7Distinct : Defs.Distinct (E7Defs (s := s)) := by
   subst h
   decide
 
-def E7DefsTy : DefsTy [] (Ctx.consSelf Γ E7Defs E7Self []) E7Defs E7Self := .and .typ .typ
+def E7DefsTy : DefsTy [] (Ctx.objBody Γ E7Defs E7Self []) E7Defs E7Self.underRoot :=
+  .and .typ .typ
 
 /-- `ν(x. {A = x.B} ∧ {B = x.A})`. -/
 def E7 : HasTy [] Ctx.nil (.val (.obj E7Defs)) ((Shape.mu E7Self) ^ []) :=
@@ -481,14 +498,14 @@ theorem E8DomWf : Ty.Wf (E8Dom (s := s)) := .capt (.typ .bot (.fld (.capt .top))
 declaration-shaped: `Wf.and` has no `Shape.Decl` premises. -/
 theorem E8RefWf {x : BVar s .var} : Ty.Wf (E8Ref x) := .capt (.and .sel (.fld (.capt .top)))
 
-def E8Ctx1 : Ctx ([],x) := Ctx.nil.cons E8Dom
-def E8Ctx2 : Ctx ([],x,x) := E8Ctx1.cons (E8Ref .here)
+def E8Ctx1 : Ctx (Sig.body ([] : Sig)) := Ctx.body Ctx.nil E8Dom
+def E8Ctx2 : Ctx (Sig.body (Sig.body ([] : Sig))) := Ctx.body E8Ctx1 (E8Ref (.there .here))
 
 /-- `y : x.A ∧ {a : ⊤}`. -/
-def E8y : HasTy [] E8Ctx2 (.path (.var .here)) (E8Ref (.there .here)) := var' .here rfl
+def E8y : HasTy [] E8Ctx2 (.path (.var .here)) (E8Ref (up .here)) := var' .here rfl
 
 /-- `x : {A : ⊥..{a : ⊤}}`. -/
-def E8x : HasTy [] E8Ctx2 (.path (.var (.there .here))) E8Dom := var' (.there .here) rfl
+def E8x : HasTy [] E8Ctx2 (.path (.var (up .here))) E8Dom := var' (up .here) rfl
 
 /-- `And₂`: the declaration operand of the refinement. -/
 def E8yFld2 : HasTy [] E8Ctx2 (.path (.var .here))
@@ -496,10 +513,10 @@ def E8yFld2 : HasTy [] E8Ctx2 (.path (.var .here))
 
 /-- `And₁`: the abstract type itself. -/
 def E8yA : HasTy [] E8Ctx2 (.path (.var .here))
-    ((Shape.sel (.var (.there .here)) lA) ^ []) := subS E8y .and1
+    ((Shape.sel (.var (up .here)) lA) ^ []) := subS E8y .and1
 
 /-- `Sel-<:`: the upper bound of `x`'s member `A`. -/
-def E8Upper : SubShape E8Ctx2 (.sel (.var (.there .here)) lA) (.fld la (.top ^ [])) :=
+def E8Upper : SubShape E8Ctx2 (.sel (.var (up .here)) lA) (.fld la (.top ^ [])) :=
   .selUpper E8x
 
 /-- The same conclusion as `E8yFld2`, the other way round. -/
@@ -507,7 +524,7 @@ def E8yFld1 : HasTy [] E8Ctx2 (.path (.var .here))
     ((Shape.fld la (.top ^ [])) ^ []) := subS E8yA E8Upper
 
 /-- `And-I`: the two views of `y` recombined into the refinement. -/
-def E8AndI : HasTy [] E8Ctx2 (.path (.var .here)) (E8Ref (.there .here)) :=
+def E8AndI : HasTy [] E8Ctx2 (.path (.var .here)) (E8Ref (up .here)) :=
   .andI E8yA E8yFld2
 
 /-- `y.a`, through `And₂`. -/
@@ -518,14 +535,14 @@ def E8Body1 : HasTy [] E8Ctx2 (.proj .here la) (.top ^ []) := .proj E8yFld1
 
 /-- `λ(x). λ(y). y.a`, with the `And₂` derivation of the body. -/
 def E8 : HasTy [] Ctx.nil
-    (.val (.lam E8Dom (.val (.lam (E8Ref .here) (.proj .here la)))))
-    ((Shape.all E8Dom ((Shape.all (E8Ref .here) (.top ^ [])) ^ [])) ^ []) :=
+    (.val (.lam E8Dom (.val (.lam (E8Ref (.there .here)) (.proj .here la)))))
+    ((Shape.all E8Dom ((Shape.all (E8Ref (.there .here)) (.top ^ [])) ^ [])) ^ []) :=
   lam' (lam' E8Body2 E8RefWf) E8DomWf
 
 /-- The same term, with the `And₁`-then-`Sel-<:` derivation of the body. -/
 def E8b : HasTy [] Ctx.nil
-    (.val (.lam E8Dom (.val (.lam (E8Ref .here) (.proj .here la)))))
-    ((Shape.all E8Dom ((Shape.all (E8Ref .here) (.top ^ [])) ^ [])) ^ []) :=
+    (.val (.lam E8Dom (.val (.lam (E8Ref (.there .here)) (.proj .here la)))))
+    ((Shape.all E8Dom ((Shape.all (E8Ref (.there .here)) (.top ^ [])) ^ [])) ^ []) :=
   lam' (lam' E8Body1 E8RefWf) E8DomWf
 
 /-! ## The platform prefix of stage A3a
@@ -666,42 +683,45 @@ theorem S3Distinct (f : BVar (s,x) .var) : Defs.Distinct (S3Defs f) := by
 /-- The declaration shape is declaration-shaped. -/
 theorem S3SelfDecl {z f : BVar s .var} : Shape.Decl (S3SelfAt z f) := .and .typ .fld
 
-/-- `κ₁, κ₂, f : (Unit → Unit) ^ {κ₁}`. -/
-def S3Ctx1 : Ctx ([],c,c,x) := platCtx.cons (capTy (.there .here))
+/-- `κ₁, κ₂, f : (Unit → Unit) ^ {κ₁}`, the body of the outer lambda. -/
+def S3Ctx1 : Ctx (Sig.body ([],c,c)) :=
+  Ctx.body platCtx (capTy (.there (.there .here)))
 
-/-- The context inside the literal: the self binder `z` on top of `S3Ctx1`. -/
-def S3Ctxz : Ctx ([],c,c,x,x) :=
-  S3Ctx1.consSelf (S3Defs (.there .here)) (S3SelfAt .here (.there .here)) []
+/-- The context inside the literal: the class root and the self binder `z`
+on top of `S3Ctx1`. -/
+def S3Ctxz : Ctx ((Sig.body ([],c,c),c),x) :=
+  Ctx.objBody S3Ctx1 (S3Defs (up2 .here)) (S3SelfAt .here (.there .here)) []
 
 def S3zMu : HasTy [] S3Ctxz (.path (.var .here))
-    ((Shape.mu (S3SelfAt .here (.there (.there .here)))) ^ []) := var' .here rfl
+    ((Shape.mu (S3SelfAt .here (.there (up2 .here)))) ^ []) := var' .here rfl
 
 def S3zOpen : HasTy [] S3Ctxz (.path (.var .here))
-    ((S3SelfAt .here (.there .here)) ^ []) := .recE S3zMu S3SelfDecl
+    ((S3SelfAt .here (up2 .here)) ^ []) := .recE S3zMu S3SelfDecl
 
 def S3zTyp : HasTy [] S3Ctxz (.path (.var .here))
-    ((Shape.typ lA (S3Box (.there .here)) (S3Box (.there .here))) ^ []) :=
+    ((Shape.typ lA (S3Box (up2 .here)) (S3Box (up2 .here))) ^ []) :=
   subS S3zOpen .and1
 
 /-- `□ f : □((Unit → Unit) ^ {f})`, a pure value. -/
-def S3boxf : HasTy [] S3Ctxz (.val (.box (.there .here)))
-    ((S3Box (.there .here)) ^ []) := .box (varSelf (.there .here) rfl)
+def S3boxf : HasTy [] S3Ctxz (.val (.box (up2 .here)))
+    ((S3Box (up2 .here)) ^ []) := .box (varSelf (up2 .here) rfl)
 
 /-- The field body, brought to the declared type `z.A ^ {}` by the lower
 bound of the exact member `A`. -/
-def S3field : HasTy [] S3Ctxz (.val (.box (.there .here)))
+def S3field : HasTy [] S3Ctxz (.val (.box (up2 .here)))
     ((Shape.sel (.var .here) lA) ^ []) := subS S3boxf (.selLower S3zTyp)
 
-def S3DefsTy : DefsTy [] S3Ctxz (S3Defs (.there .here)) (S3SelfAt .here (.there .here)) :=
+def S3DefsTy : DefsTy [] S3Ctxz (S3Defs (up2 .here))
+    (S3SelfAt (.here : BVar (Sig.body ([],c,c),x) .var) (.there .here)).underRoot :=
   .and .typ (.trm S3field)
 
 /-- The literal is pure: its capture set is `{}`. -/
-def S3Lit : HasTy [] S3Ctx1 (.val (.obj (S3Defs (.there .here))))
+def S3Lit : HasTy [] S3Ctx1 (.val (.obj (S3Defs (up2 .here))))
     ((Shape.mu (S3SelfAt .here (.there .here))) ^ []) :=
   obj' S3DefsTy (S3Distinct _)
 
 /-- The context after the literal's `let`. -/
-def S3Ctxo : Ctx ([],c,c,x,x) :=
+def S3Ctxo : Ctx (Sig.body ([],c,c),x) :=
   S3Ctx1.cons ((Shape.mu (S3SelfAt .here (.there .here))) ^ [])
 
 def S3oMu : HasTy [] S3Ctxo (.path (.var .here))
@@ -715,7 +735,7 @@ def S3proj : HasTy [] S3Ctxo (.proj .here lelem)
     ((Shape.sel (.var .here) lA) ^ []) := .proj S3oFld
 
 /-- The context after the projection's `let`. -/
-def S3Ctxe : Ctx ([],c,c,x,x,x) :=
+def S3Ctxe : Ctx (Sig.body ([],c,c),x,x) :=
   S3Ctxo.cons ((Shape.sel (.var .here) lA) ^ [])
 
 def S3e : HasTy [] S3Ctxe (.path (.var .here))
@@ -742,20 +762,20 @@ def S3innerLet : HasTy [CapAtom.var (.there .here)] S3Ctxo
 
 /-- The client, typed with use set `{f}`. -/
 def S3body : HasTy [CapAtom.var .here] S3Ctx1
-    (.let (.val (.obj (S3Defs (.there .here))))
+    (.let (.val (.obj (S3Defs (up2 .here))))
       (.let (.proj .here lelem) (.unbox [CapAtom.var (.there (.there .here))] .here)))
     (arrowS ^ [CapAtom.var .here]) :=
   .let (S3Lit.widen _) S3innerLet arrowWf
 
 /-- The term of S3. -/
 def S3tm : Tm ([],c,c) :=
-  .val (.lam (capTy k1)
-    (.let (.val (.obj (S3Defs (.there .here))))
+  .val (.lam (capTy (.there (.there .here)))
+    (.let (.val (.obj (S3Defs (up2 .here))))
       (.let (.proj .here lelem) (.unbox [CapAtom.var (.there (.there .here))] .here))))
 
 /-- The type of S3. -/
 def S3Ty : Ty ([],c,c) :=
-  (Shape.all (capTy k1) (arrowS ^ [CapAtom.var .here])) ^ []
+  (Shape.all (capTy (.there (.there .here))) (arrowS ^ [CapAtom.var .here])) ^ []
 
 /-- **S3.**  A type member instantiated with a boxed capturing type, a field
 declared at that member and defined by a box, and a client that projects and
@@ -796,34 +816,42 @@ theorem C7Distinct (f1 f2 : BVar s .var) : Defs.Distinct (C7Defs f1 f2) := by
 
 theorem C7SelfDecl {κ1 κ2 : BVar s .cap} : Shape.Decl (C7SelfAt κ1 κ2) := .and .fld .fld
 
-/-- `κ₁, κ₂, f₁ : (Unit → Unit) ^ {κ₁}`. -/
-def C7Ctx1 : Ctx ([],c,c,x) := platCtx.cons (capTy (.there .here))
+/-- `κ₁, κ₂, f₁ : (Unit → Unit) ^ {κ₁}`, the body of the outer lambda. -/
+def C7Ctx1 : Ctx (Sig.body ([],c,c)) := Ctx.body platCtx (capTy (.there (.there .here)))
 
-/-- `κ₁, κ₂, f₁, f₂ : (Unit → Unit) ^ {κ₂}`. -/
-def C7Ctx2 : Ctx ([],c,c,x,x) := C7Ctx1.cons (capTy (.there .here))
+/-- `κ₁, κ₂, f₁, f₂ : (Unit → Unit) ^ {κ₂}`, the body of the inner one. -/
+def C7Ctx2 : Ctx (Sig.body (Sig.body ([],c,c))) := Ctx.body C7Ctx1 (capTy (.there (up .here)))
+
+/-- `κ₁` and `κ₂` read inside the two lambdas. -/
+abbrev C7k1 : BVar (Sig.body (Sig.body ([],c,c))) .cap := up (up (.there .here))
+abbrev C7k2 : BVar (Sig.body (Sig.body ([],c,c))) .cap := up (up .here)
 
 /-- The container's declaration shape under the self binder of the
 literal. -/
-def C7SelfZ : Shape ([],c,c,x,x,x) :=
-  C7SelfAt (.there (.there (.there (.there .here)))) (.there (.there (.there .here)))
+def C7SelfZ : Shape (Sig.body (Sig.body ([],c,c)),x) :=
+  C7SelfAt (.there C7k1) (.there C7k2)
 
-/-- The container's definitions under its self binder. -/
-def C7DefsZ : Defs ([],c,c,x,x,x) := C7Defs (.there (.there .here)) (.there .here)
+/-- The container's definitions under the class root and the self binder. -/
+def C7DefsZ : Defs ((Sig.body (Sig.body ([],c,c)),c),x) :=
+  C7Defs (up2 (up .here)) (up2 .here)
 
-/-- The context inside the container: the self binder `z` on top. -/
-def C7Ctxz : Ctx ([],c,c,x,x,x) := C7Ctx2.consSelf C7DefsZ C7SelfZ []
+/-- The context inside the container: the class root and the self binder `z`
+on top. -/
+def C7Ctxz : Ctx ((Sig.body (Sig.body ([],c,c)),c),x) :=
+  Ctx.objBody C7Ctx2 C7DefsZ C7SelfZ []
 
 /-- `□ f₁ : □((Unit → Unit) ^ {κ₁}) ^ {}`, at the field's declared type. -/
-def C7box1 : HasTy [] C7Ctxz (.val (.box (.there (.there .here))))
-    ((Shape.box (capTy (.there (.there (.there (.there .here)))))) ^ []) :=
-  .box (varAt (.there (.there .here)) rfl)
+def C7box1 : HasTy [] C7Ctxz (.val (.box (up2 (up .here))))
+    ((Shape.box (capTy (up2 C7k1))) ^ []) :=
+  .box (varAt (up2 (up .here)) rfl)
 
 /-- `□ f₂`, likewise. -/
-def C7box2 : HasTy [] C7Ctxz (.val (.box (.there .here)))
-    ((Shape.box (capTy (.there (.there (.there .here))))) ^ []) :=
-  .box (varAt (.there .here) rfl)
+def C7box2 : HasTy [] C7Ctxz (.val (.box (up2 .here)))
+    ((Shape.box (capTy (up2 C7k2))) ^ []) :=
+  .box (varAt (up2 .here) rfl)
 
-def C7DefsTy : DefsTy [] C7Ctxz C7DefsZ C7SelfZ := .and (.trm C7box1) (.trm C7box2)
+def C7DefsTy : DefsTy [] C7Ctxz C7DefsZ C7SelfZ.underRoot :=
+  .and (.trm C7box1) (.trm C7box2)
 
 /-- **The container is pure.**  Its two fields hold capabilities, and its
 capture set is `{}`. -/
@@ -831,62 +859,64 @@ def C7Lit : HasTy [] C7Ctx2 (.val (.obj C7DefsZ)) ((Shape.mu C7SelfZ) ^ []) :=
   obj' C7DefsTy (C7Distinct _ _)
 
 /-- The context after the container's `let`. -/
-def C7Ctxo : Ctx ([],c,c,x,x,x) := C7Ctx2.cons ((Shape.mu C7SelfZ) ^ [])
+def C7Ctxo : Ctx (Sig.body (Sig.body ([],c,c)),x) :=
+  C7Ctx2.cons ((Shape.mu C7SelfZ) ^ [])
 
 def C7oMu : HasTy [] C7Ctxo (.path (.var .here))
-    ((Shape.mu (C7SelfAt (.there (.there (.there (.there (.there .here)))))
-      (.there (.there (.there (.there .here)))))) ^ []) := var' .here rfl
+    ((Shape.mu (C7SelfAt (.there (.there C7k1)) (.there (.there C7k2)))) ^ []) :=
+  var' .here rfl
 
 def C7oFld : HasTy [] C7Ctxo (.path (.var .here))
-    ((Shape.fld le1 ((Shape.box (capTy (.there (.there (.there (.there .here)))))) ^ [])) ^ []) :=
+    ((Shape.fld le1 ((Shape.box (capTy (.there C7k1))) ^ [])) ^ []) :=
   subS (.recE C7oMu C7SelfDecl) .and1
 
 def C7proj : HasTy [] C7Ctxo (.proj .here le1)
-    ((Shape.box (capTy (.there (.there (.there (.there .here)))))) ^ []) := .proj C7oFld
+    ((Shape.box (capTy (.there C7k1))) ^ []) := .proj C7oFld
 
 /-- The context after the projection's `let`. -/
-def C7Ctxe : Ctx ([],c,c,x,x,x,x) :=
-  C7Ctxo.cons ((Shape.box (capTy (.there (.there (.there (.there .here)))))) ^ [])
+def C7Ctxe : Ctx (Sig.body (Sig.body ([],c,c)),x,x) :=
+  C7Ctxo.cons ((Shape.box (capTy (.there C7k1))) ^ [])
 
 def C7e : HasTy [] C7Ctxe (.path (.var .here))
-    ((Shape.box (capTy (.there (.there (.there (.there (.there .here))))))) ^ []) :=
+    ((Shape.box (capTy (.there (.there C7k1)))) ^ []) :=
   var' .here rfl
 
 /-- `{κ₁} ⊸ e`: unboxing the first element charges `{κ₁}` and nothing
 else. -/
-def C7unbox : HasTy [CapAtom.cvar (.there (.there (.there (.there (.there .here)))))] C7Ctxe
-    (.unbox [CapAtom.cvar (.there (.there (.there (.there (.there .here)))))] .here)
-    (arrowS ^ [CapAtom.cvar (.there (.there (.there (.there (.there .here)))))]) :=
+def C7unbox : HasTy [CapAtom.cvar (.there (.there C7k1))] C7Ctxe
+    (.unbox [CapAtom.cvar (.there (.there C7k1))] .here)
+    (arrowS ^ [CapAtom.cvar (.there (.there C7k1))]) :=
   .unbox (C7e.widen _) .refl
 
 /-- The two `let`s and the unboxing, the client of C7. -/
-def C7clientTm : Tm ([],c,c,x,x) :=
+def C7clientTm : Tm (Sig.body (Sig.body ([],c,c))) :=
   .let (.val (.obj C7DefsZ))
     (.let (.proj .here le1)
-      (.unbox [CapAtom.cvar (.there (.there (.there (.there (.there .here)))))] .here))
+      (.unbox [CapAtom.cvar (.there (.there C7k1))] .here))
 
 def C7innerLet :
-    HasTy [CapAtom.cvar (.there (.there (.there (.there .here))))] C7Ctxo
+    HasTy [CapAtom.cvar (.there C7k1)] C7Ctxo
       (.let (.proj .here le1)
-        (.unbox [CapAtom.cvar (.there (.there (.there (.there (.there .here)))))] .here))
-      (arrowS ^ [CapAtom.cvar (.there (.there (.there (.there .here))))]) :=
+        (.unbox [CapAtom.cvar (.there (.there C7k1))] .here))
+      (arrowS ^ [CapAtom.cvar (.there C7k1)]) :=
   .let (C7proj.widen _) C7unbox arrowWf
 
 /-- The client, typed with use set `{κ₁}`. -/
-def C7body : HasTy [CapAtom.cvar (.there (.there (.there .here)))] C7Ctx2 C7clientTm
-    (arrowS ^ [CapAtom.cvar (.there (.there (.there .here)))]) :=
+def C7body : HasTy [CapAtom.cvar C7k1] C7Ctx2 C7clientTm
+    (arrowS ^ [CapAtom.cvar C7k1]) :=
   .let (C7Lit.widen _) C7innerLet arrowWf
 
 /-- The term of C7. -/
 def C7tm : Tm ([],c,c) :=
-  .val (.lam (capTy k1) (.val (.lam (capTy (.there .here)) C7clientTm)))
+  .val (.lam (capTy (.there (.there .here)))
+    (.val (.lam (capTy (.there (up .here))) C7clientTm)))
 
 /-- The type of C7. -/
 def C7Ty : Ty ([],c,c) :=
-  (Shape.all (capTy k1)
-    ((Shape.all (capTy (.there .here))
-      (arrowS ^ [CapAtom.cvar (.there (.there (.there .here)))]))
-      ^ [CapAtom.cvar (.there (.there .here))])) ^ []
+  (Shape.all (capTy (.there (.there .here)))
+    ((Shape.all (capTy (.there (.there (.there .here))))
+      (arrowS ^ [CapAtom.cvar (.there (.there (.there (.there (.there .here)))))]))
+      ^ [CapAtom.cvar (.there (.there (.there .here)))])) ^ []
 
 /-- **C7.**  A pure container of two boxed capabilities, and a client that
 unboxes the first element at the use set `{κ₁}`. -/
@@ -950,15 +980,15 @@ def C2PreTy (κ : BVar s .cap) : Ty s := (Shape.mu (C2PreAt .here (.there κ))) 
 
 /-- The field body of a literal: the identity closure, at the capture set
 the member `C` names. -/
-def C2run {s : Sig} {Γ : Ctx s} {κ : BVar (s,x) .cap} :
-    HasTy [] (Γ.consSelf (C2Defs κ) (C2PreAt .here κ) [])
+def C2run {s : Sig} {Γ : Ctx s} {κ : BVar s .cap} :
+    HasTy [] (Γ.objBody (C2Defs (up2 κ)) (C2PreAt .here (.there κ)) [])
       (.val (.lam unitTy (.path (.var .here))))
       (arrowS ^ [CapAtom.sel .here lC]) :=
   .lam ((var' .here rfl).widen _) unitWf
 
 /-- A literal, at its precise type: pure, with `C` defined as `{κ}`. -/
 def C2Lit {s : Sig} {Γ : Ctx s} (κ : BVar s .cap) :
-    HasTy [] Γ (.val (.obj (C2Defs (.there κ)))) (C2PreTy κ) :=
+    HasTy [] Γ (.val (.obj (C2Defs (up2 κ)))) (C2PreTy κ) :=
   obj' (.and .cap (.trm C2run)) (C2Distinct _)
 
 /-- A literal's variable, retyped at the abstract type: `Rec-E`, then `Cap`
@@ -981,26 +1011,26 @@ def C2abstract {s : Sig} {Γ : Ctx s} {U : CaptureSet s} (x : BVar s .var)
 Three contexts: the abstract object `x`, the unit argument `u`, and the
 closure `g` the client reads off `x`. -/
 
-def C2CtxX {s : Sig} (Γ : Ctx s) (κ1 κ2 : BVar s .cap) : Ctx (s,x) :=
-  Γ.cons (C2AbsTy κ1 κ2)
-def C2CtxU {s : Sig} (Γ : Ctx s) (κ1 κ2 : BVar s .cap) : Ctx (s,x,x) :=
-  (C2CtxX Γ κ1 κ2).cons unitTy
-def C2CtxG {s : Sig} (Γ : Ctx s) (κ1 κ2 : BVar s .cap) : Ctx (s,x,x,x) :=
-  (C2CtxU Γ κ1 κ2).cons (arrowS ^ [CapAtom.sel (.there .here) lC])
+def C2CtxX {s : Sig} (Γ : Ctx s) (κ1 κ2 : BVar s .cap) : Ctx (Sig.body s) :=
+  Ctx.body Γ (C2AbsTy (.there κ1) (.there κ2))
+def C2CtxU {s : Sig} (Γ : Ctx s) (κ1 κ2 : BVar s .cap) : Ctx (Sig.body (Sig.body s)) :=
+  Ctx.body (C2CtxX Γ κ1 κ2) unitTy
+def C2CtxG {s : Sig} (Γ : Ctx s) (κ1 κ2 : BVar s .cap) : Ctx (Sig.body (Sig.body s),x) :=
+  (C2CtxU Γ κ1 κ2).cons (arrowS ^ [CapAtom.sel (up .here) lC])
 
 /-- `x`, opened at the abstract capture member, beside `g`. -/
 def C2xCap {s : Sig} {Γ : Ctx s} {κ1 κ2 : BVar s .cap} :
-    HasTy [CapAtom.var (.there (.there .here))] (C2CtxG Γ κ1 κ2)
-      (.path (.var (.there (.there .here))))
-      ((Shape.cap lC [] [.cvar (.there (.there (.there κ1))),
-        .cvar (.there (.there (.there κ2)))]) ^ [CapAtom.var (.there (.there .here))]) :=
-  subC (.recE (varSelf (.there (.there .here)) rfl) C2AbsDecl) .and1
+    HasTy [CapAtom.var (.there (up .here))] (C2CtxG Γ κ1 κ2)
+      (.path (.var (.there (up .here))))
+      ((Shape.cap lC [] [.cvar (.there (up (up κ1))),
+        .cvar (.there (up (up κ2)))]) ^ [CapAtom.var (.there (up .here))]) :=
+  subC (.recE (varSelf (.there (up .here)) rfl) C2AbsDecl) .and1
 
 /-- `g u`, charged to `{κ₁,κ₂}` by `sc-var` and the upper bound of the
 abstract member. -/
 def C2call {s : Sig} {Γ : Ctx s} {κ1 κ2 : BVar s .cap} :
-    HasTy [CapAtom.cvar (.there (.there (.there κ1))),
-        CapAtom.cvar (.there (.there (.there κ2)))]
+    HasTy [CapAtom.cvar (.there (up (up κ1))),
+        CapAtom.cvar (.there (up (up κ2)))]
       (C2CtxG Γ κ1 κ2) (.app .here (.there .here)) (.top ^ []) :=
   .app (T2 := unitTy)
     (.sub (varSelf .here rfl) (.capt .refl (.trans Subcap.var (.selUpper C2xCap)))
@@ -1010,23 +1040,23 @@ def C2call {s : Sig} {Γ : Ctx s} {κ1 κ2 : BVar s .cap} :
 /-- The client's body: read the closure off the abstract member and call
 it. -/
 def C2clientBody {s : Sig} {Γ : Ctx s} {κ1 κ2 : BVar s .cap} :
-    HasTy [CapAtom.cvar (.there (.there κ1)), CapAtom.cvar (.there (.there κ2))]
+    HasTy [CapAtom.cvar (up (up κ1)), CapAtom.cvar (up (up κ2))]
       (C2CtxU Γ κ1 κ2)
-      (.let (.proj (.there .here) lrun) (.app .here (.there .here))) (.top ^ []) :=
+      (.let (.proj (up .here) lrun) (.app .here (.there .here))) (.top ^ []) :=
   .let
-    (.sub (.proj (subC (.recE (varSelf (.there .here) rfl) C2AbsDecl) .and2))
+    (.sub (.proj (subC (.recE (varSelf (up .here) rfl) C2AbsDecl) .and2))
       (Sub.refl _) Subcap.var)
     C2call (.capt .top)
 
 /-- The type of the client. -/
 def C2ClientTy (κ1 κ2 : BVar s .cap) : Ty s :=
-  (Shape.all (C2AbsTy κ1 κ2)
-    (arrowS ^ [CapAtom.cvar (.there κ1), CapAtom.cvar (.there κ2)])) ^ []
+  (Shape.all (C2AbsTy (.there κ1) (.there κ2))
+    (arrowS ^ [CapAtom.cvar (up2 κ1), CapAtom.cvar (up2 κ2)])) ^ []
 
 /-- The client's term. -/
 def C2clientTm (κ1 κ2 : BVar s .cap) : Tm s :=
-  .val (.lam (C2AbsTy κ1 κ2)
-    (.val (.lam unitTy (.let (.proj (.there .here) lrun) (.app .here (.there .here))))))
+  .val (.lam (C2AbsTy (.there κ1) (.there κ2))
+    (.val (.lam unitTy (.let (.proj (up .here) lrun) (.app .here (.there .here))))))
 
 /-- The client, a value: capture polymorphic in the member `C`. -/
 def C2ClientVal {s : Sig} {Γ : Ctx s} (κ1 κ2 : BVar s .cap) :
@@ -1067,8 +1097,9 @@ def C2gb : HasTy
     C2Ctx4 (.app (.there (.there (.there .here))) (.there .here))
     (arrowS ^ [CapAtom.cvar (.there (.there (.there (.there (.there .here))))),
       CapAtom.cvar (.there (.there (.there (.there .here))))]) :=
-  .app (T2 := arrowS ^ [CapAtom.cvar (.there (.there (.there (.there (.there (.there .here)))))),
-      CapAtom.cvar (.there (.there (.there (.there (.there .here)))))])
+  .app (T2 := arrowS ^ [CapAtom.cvar
+        (.there (.there (.there (.there (.there (.there (.there .here))))))),
+      CapAtom.cvar (.there (.there (.there (.there (.there (.there .here))))))])
     ((var' (.there (.there (.there .here))) rfl).widen _)
     (C2abstract (.there .here) (.there (.there (.there (.there (.there .here)))))
       (.there (.there (.there (.there .here)))) (by simp) rfl)
@@ -1080,8 +1111,9 @@ def C2ga : HasTy
     C2Ctx3 (.app (.there (.there .here)) (.there .here))
     (arrowS ^ [CapAtom.cvar (.there (.there (.there (.there .here)))),
       CapAtom.cvar (.there (.there (.there .here)))]) :=
-  .app (T2 := arrowS ^ [CapAtom.cvar (.there (.there (.there (.there (.there .here))))),
-      CapAtom.cvar (.there (.there (.there (.there .here))))])
+  .app (T2 := arrowS ^ [CapAtom.cvar
+        (.there (.there (.there (.there (.there (.there .here)))))),
+      CapAtom.cvar (.there (.there (.there (.there (.there .here)))))])
     ((var' (.there (.there .here)) rfl).widen _)
     (C2abstract (.there .here) (.there (.there (.there (.there .here))))
       (.there (.there (.there .here))) (by simp) rfl)
@@ -1089,8 +1121,8 @@ def C2ga : HasTy
 /-- The term of C2. -/
 def C2tm : Tm ([],c,c) :=
   .let (C2clientTm k1 k2)
-    (.let (.val (.obj (C2Defs (.there (.there (.there .here))))))
-      (.let (.val (.obj (C2Defs (.there (.there (.there .here))))))
+    (.let (.val (.obj (C2Defs (.there (.there (.there (.there .here)))))))
+      (.let (.val (.obj (C2Defs (.there (.there (.there (.there .here)))))))
         (.let (.app (.there (.there .here)) (.there .here))
           (.let (.app (.there (.there (.there .here))) (.there .here))
             (.path (.var .here))))))
@@ -1192,32 +1224,32 @@ theorem S1CPWf {fs : BVar s .cap} : Ty.Wf (S1CP fs) := .capt (.mu .cap .cap)
 
 /-- `(∀(f : File ^ {fs}) ⊤) ^ {cp.C}`, the operation's type. -/
 def S1OP (fs : BVar s .cap) (cp : BVar s .var) : Ty s :=
-  (Shape.all (fileS ^ [CapAtom.cvar fs]) unitTy) ^ [CapAtom.sel cp lC]
+  (Shape.all (fileS ^ [CapAtom.cvar (.there fs)]) unitTy) ^ [CapAtom.sel cp lC]
 
 theorem S1OPWf {fs : BVar s .cap} {cp : BVar s .var} : Ty.Wf (S1OP fs cp) :=
   .capt (.all (.capt fileWf) unitWf)
 
 /-- The inner arrow as the program writes it: the result is `⊤ ^ {any}`. -/
 def S1InnerAny (fs : BVar s .cap) : Ty (s,x) :=
-  (Shape.all (S1OP (.there fs) .here) (.top ^ [CapAtom.any]))
+  (Shape.all (S1OP (.there (.there fs)) (.there .here)) (.top ^ [CapAtom.any]))
     ^ [CapAtom.cvar (.there fs), CapAtom.var .here]
 
 /-- The inner arrow at the reading `expand` gives it: the result is
 `⊤ ^ {fs, cp, op}`. -/
 def S1Inner (fs : BVar s .cap) : Ty (s,x) :=
-  (Shape.all (S1OP (.there fs) .here)
-      (.top ^ [CapAtom.cvar (.there (.there fs)), CapAtom.var (.there .here),
+  (Shape.all (S1OP (.there (.there fs)) (.there .here))
+      (.top ^ [CapAtom.cvar (.there (.there (.there fs))), CapAtom.var (.there (.there .here)),
         CapAtom.var .here]))
     ^ [CapAtom.cvar (.there fs), CapAtom.var .here]
 
 /-- The type of `withFile` as the program writes it. -/
 def S1TyAny (fs : BVar s .cap) : Ty s :=
-  (Shape.all (S1CP fs) (S1InnerAny fs)) ^ [CapAtom.cvar fs]
+  (Shape.all (S1CP (.there fs)) (S1InnerAny (.there fs))) ^ [CapAtom.cvar fs]
 
 /-- The type of `withFile` at the reading `expand` gives it: a type of stage
 A3a, with no `any` left. -/
 def S1Ty (fs : BVar s .cap) : Ty s :=
-  (Shape.all (S1CP fs) (S1Inner fs)) ^ [CapAtom.cvar fs]
+  (Shape.all (S1CP (.there fs)) (S1Inner (.there fs))) ^ [CapAtom.cvar fs]
 
 /-- **S1, written.**  Every `any` of the written type is in a position
 `expand` reads. -/
@@ -1233,42 +1265,46 @@ theorem S1_noAny : (S1Ty k1).NoAny := by decide
 /-! ### `withFile` itself -/
 
 /-- The body of `withFile`: allocate a file and hand it to the operation. -/
-def S1bodyTm : Tm (s,x,x) := .let (.val (.obj fileDefs)) (.app (.there .here) .here)
+def S1bodyTm : Tm (Sig.body (Sig.body s)) :=
+  .let (.val (.obj fileDefs)) (.app (.there .here) .here)
 
 /-- The term of `withFile`. -/
 def S1withFileTm (fs : BVar s .cap) : Tm s :=
-  .val (.lam (S1CP fs) (.val (.lam (S1OP (.there fs) .here) S1bodyTm)))
+  .val (.lam (S1CP (.there fs))
+    (.val (.lam (S1OP (.there (up fs)) (.there .here)) S1bodyTm)))
 
 /-- The operation applied to the fresh file.  The file's own use is charged
 to `{fs}`, the set it is allocated at, by `sc-var`. -/
 def S1call {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} :
-    HasTy [CapAtom.cvar (.there (.there (.there fs))), CapAtom.var (.there (.there .here)),
+    HasTy [CapAtom.cvar (.there (up (up fs))), CapAtom.var (.there (up .here)),
         CapAtom.var (.there .here)]
-      (((Γ.cons (S1CP fs)).cons (S1OP (.there fs) .here)).cons
-        (fileS ^ [CapAtom.cvar (.there (.there fs))]))
+      ((Ctx.body (Ctx.body Γ (S1CP (.there fs))) (S1OP (.there (up fs)) (.there .here))).cons
+        (fileS ^ [CapAtom.cvar (up (up fs))]))
       (.app (.there .here) .here)
-      (.top ^ [CapAtom.cvar (.there (.there (.there fs))),
-        CapAtom.var (.there (.there .here)), CapAtom.var (.there .here)]) :=
+      (.top ^ [CapAtom.cvar (.there (up (up fs))),
+        CapAtom.var (.there (up .here)), CapAtom.var (.there .here)]) :=
   HasTy.captTo
     (.app (T2 := unitTy)
       (HasTy.useSub (varAt (.there .here) rfl) (.elem (sub_one (by simp))))
       (HasTy.useSub (varAt .here rfl)
-        (Subcap.trans (C2 := [CapAtom.cvar (.there (.there (.there fs)))]) Subcap.var
+        (Subcap.trans (C2 := [CapAtom.cvar (.there (up (up fs)))]) Subcap.var
           (.elem (sub_one (by simp))))))
     (Subcap.empty _)
 
 /-- The body of `withFile`, at the use set the inner arrow charges it. -/
 def S1body {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} :
-    HasTy [CapAtom.cvar (.there (.there fs)), CapAtom.var (.there .here), CapAtom.var .here]
-      ((Γ.cons (S1CP fs)).cons (S1OP (.there fs) .here)) S1bodyTm
-      (.top ^ [CapAtom.cvar (.there (.there fs)), CapAtom.var (.there .here),
+    HasTy [CapAtom.cvar (up (up fs)), CapAtom.var (up .here), CapAtom.var .here]
+      (Ctx.body (Ctx.body Γ (S1CP (.there fs))) (S1OP (.there (up fs)) (.there .here)))
+      S1bodyTm
+      (.top ^ [CapAtom.cvar (up (up fs)), CapAtom.var (up .here),
         CapAtom.var .here]) :=
   .let ((fileLit _).widen _) S1call (.capt .top)
 
 /-- The inner lambda: `λ(op : OP). <body>`, at `{fs, cp}`. -/
 def S1innerVal {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} :
-    HasTy [] (Γ.cons (S1CP fs)) (.val (.lam (S1OP (.there fs) .here) S1bodyTm))
-      (S1Inner fs) :=
+    HasTy [] (Ctx.body Γ (S1CP (.there fs)))
+      (.val (.lam (S1OP (.there (up fs)) (.there .here)) S1bodyTm))
+      (S1Inner (.there (.there fs))) :=
   .lam S1body S1OPWf
 
 /-- **`withFile`**, at the expanded type. -/
@@ -1288,7 +1324,7 @@ def fs4 : BVar ([],c,c,x,x,x,x) .cap := .there fs3
 def fs5 : BVar ([],c,c,x,x,x,x,x) .cap := .there fs4
 
 /-- `ν(c. {C = {fs}})`, the caller's capture object. -/
-def S1cpTm (fs : BVar s .cap) : Tm s := .val (.obj (.cap lC [CapAtom.cvar (.there fs)]))
+def S1cpTm (fs : BVar s .cap) : Tm s := .val (.obj (.cap lC [CapAtom.cvar (up2 fs)]))
 
 /-- Its type: the capture member is defined, so both bounds are `{fs}`. -/
 def S1cpLit {s : Sig} {Γ : Ctx s} (fs : BVar s .cap) :
@@ -1310,12 +1346,12 @@ def S1cpAbs {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} (cp : BVar s .var)
 
 /-- `λ(f : File ^ {fs}). λ(u : ⊤). u`, the operation the caller passes. -/
 def S1opTm (fs : BVar s .cap) : Tm s :=
-  .val (.lam (fileS ^ [CapAtom.cvar fs]) (.val (.lam unitTy (.path (.var .here)))))
+  .val (.lam (fileS ^ [CapAtom.cvar (.there fs)]) (.val (.lam unitTy (.path (.var .here)))))
 
 /-- Its body, a pure closure read as `⊤`. -/
 def S1opInner {s : Sig} {Γ : Ctx s} :
     HasTy [] Γ (.val (.lam unitTy (.path (.var .here)))) (unitTy : Ty s) :=
-  subC (HasTy.lam ((var' .here rfl).widen _) unitWf) .top
+  subC (HasTy.lam (T2 := unitTy) ((var' .here rfl).widen _) unitWf) .top
 
 /-- The operation, declared at `{fs}` and passed at `{cp.C}`: the *lower*
 bound of the precise capture member is what puts `{fs}` below `{cp.C}`. -/
@@ -1337,9 +1373,9 @@ def S1Ctx3 : Ctx ([],c,c,x,x,x) := S1Ctx2.cons (S1OP fs2 .here)
 /-- The type of `g = withFile cp`: the inner arrow at the caller's own
 capture object. -/
 def S1GTy : Ty ([],c,c,x,x,x) :=
-  (Shape.all (S1OP fs3 (.there .here))
-      (.top ^ [CapAtom.cvar (.there fs3), CapAtom.var (.there (.there .here)),
-        CapAtom.var .here]))
+  (Shape.all (S1OP (.there fs3) (.there (.there .here)))
+      (.top ^ [CapAtom.cvar (.there (.there fs3)),
+        CapAtom.var (.there (.there (.there .here))), CapAtom.var .here]))
     ^ [CapAtom.cvar fs3, CapAtom.var (.there .here)]
 
 /-- … `g`. -/
@@ -1380,9 +1416,9 @@ def S1sub4 : Subcap S1Ctx4
 
 /-- `g` at its own type, its use charged to `{fs}`. -/
 def S1gVar : HasTy [CapAtom.cvar fs4] S1Ctx4 (.path (.var .here))
-    ((Shape.all (S1OP fs4 (.there (.there .here)))
-        (.top ^ [CapAtom.cvar (.there fs4), CapAtom.var (.there (.there (.there .here))),
-          CapAtom.var .here]))
+    ((Shape.all (S1OP (.there fs4) (.there (.there (.there .here))))
+        (.top ^ [CapAtom.cvar (.there (.there fs4)),
+          CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here]))
       ^ [CapAtom.cvar fs4, CapAtom.var (.there (.there .here))]) :=
   HasTy.useSub (varAt .here rfl) (.trans Subcap.var S1sub4)
 
@@ -1474,14 +1510,14 @@ its use set is `{fs}` and `{fs}` is never named at the literal. -/
 capture member. -/
 def S2AbsAt (i : BVar s .var) (fs : BVar s .cap) : Shape s :=
   .and (.cap lC [] [CapAtom.cvar fs])
-    (.fld lnext ((Shape.all unitTy (.top ^ [CapAtom.sel (.there i) lC]))
+    (.fld lnext ((Shape.all unitTy (.top ^ [CapAtom.sel (up2 i) lC]))
       ^ [CapAtom.sel i lC]))
 
 /-- The same with the member defined as `{fs}`, which is what the callee's
 literal has. -/
 def S2PreAt (i : BVar s .var) (fs : BVar s .cap) : Shape s :=
   .and (.cap lC [CapAtom.cvar fs] [CapAtom.cvar fs])
-    (.fld lnext ((Shape.all unitTy (.top ^ [CapAtom.sel (.there i) lC]))
+    (.fld lnext ((Shape.all unitTy (.top ^ [CapAtom.sel (up2 i) lC]))
       ^ [CapAtom.sel i lC]))
 
 /-- `Iterator`, the abstract shape. -/
@@ -1501,13 +1537,13 @@ theorem S2IterWf {fs : BVar s .cap} {D : CaptureSet s} : Ty.Wf ((S2IterS fs) ^ D
 
 /-- The type of `mk` as the program writes it. -/
 def S2MkTyAny (fs : BVar s .cap) : Ty s :=
-  (Shape.all unitTy ((S2IterS (.there fs)) ^ [CapAtom.any])) ^ [CapAtom.cvar fs]
+  (Shape.all unitTy ((S2IterS (up2 fs)) ^ [CapAtom.any])) ^ [CapAtom.cvar fs]
 
 /-- The type of `mk` at the reading `expand` gives it: the result `any` is
 `{fs, u}`. -/
 def S2MkTy (fs : BVar s .cap) : Ty s :=
   (Shape.all unitTy
-      ((S2IterS (.there fs)) ^ [CapAtom.cvar (.there fs), CapAtom.var .here]))
+      ((S2IterS (up2 fs)) ^ [CapAtom.cvar (up2 fs), CapAtom.var .here]))
     ^ [CapAtom.cvar fs]
 
 /-- **S2, written.** -/
@@ -1537,7 +1573,7 @@ theorem S2Distinct (fs : BVar s .cap) : Defs.Distinct (S2Defs fs) := by
 /-- The callee's literal, at its precise type: pure, with `C` defined as
 `{fs}` and `next` declared at `{i.C}`. -/
 def S2Lit {s : Sig} {Γ : Ctx s} (fs : BVar s .cap) :
-    HasTy [] Γ (.val (.obj (S2Defs (.there fs)))) ((S2PreS fs) ^ []) :=
+    HasTy [] Γ (.val (.obj (S2Defs (up2 fs)))) ((S2PreS fs) ^ []) :=
   .obj
     (.and .cap
       (.trm ((HasTy.lam
@@ -1560,15 +1596,15 @@ def S2abstract {s : Sig} {Γ : Ctx s} {U : CaptureSet s} (x : BVar s .var)
 /-- The term of `mk`: allocate the iterator and hand it back at the abstract
 member. -/
 def S2mkTm (fs : BVar s .cap) : Tm s :=
-  .val (.lam unitTy (.let (.val (.obj (S2Defs (.there (.there fs))))) (.path (.var .here))))
+  .val (.lam unitTy (.let (.val (.obj (S2Defs (up2 (up fs))))) (.path (.var .here))))
 
 /-- **`mk`**, at the expanded type. -/
 def S2mk {s : Sig} {Γ : Ctx s} (fs : BVar s .cap) :
     HasTy [] Γ (S2mkTm fs) (S2MkTy fs) :=
   .lam
-    (.let ((S2Lit (.there fs)).widen _)
+    (.let ((S2Lit (up fs)).widen _)
       (S2abstract .here rfl
-        [CapAtom.cvar (.there (.there fs)), CapAtom.var (.there .here)])
+        [CapAtom.cvar (.there (up fs)), CapAtom.var (.there .here)])
       S2IterWf)
     unitWf
 
@@ -1581,7 +1617,7 @@ def unitTm : Tm s := .val (.lam unitTy (.path (.var .here)))
 
 /-- Its typing: `All-I` and then `<:-⊤`. -/
 def unitVal {s : Sig} {Γ : Ctx s} : HasTy [] Γ (unitTm : Tm s) unitTy :=
-  subC (HasTy.lam ((var' .here rfl).widen _) unitWf) .top
+  subC (HasTy.lam (T2 := unitTy) ((var' .here rfl).widen _) unitWf) .top
 
 /-- `κ₁, κ₂, mk`. -/
 def S2Ctx1 : Ctx ([],c,c,x) := platCtx.cons (S2MkTy k1)
@@ -1597,7 +1633,8 @@ def S2Ctx3 : Ctx ([],c,c,x,x,x) := S2Ctx2.cons S2ITTy
 
 /-- The type of `n = it.next`. -/
 def S2NTy : Ty ([],c,c,x,x,x) :=
-  (Shape.all unitTy (.top ^ [CapAtom.sel (.there .here) lC])) ^ [CapAtom.sel .here lC]
+  (Shape.all unitTy (.top ^ [CapAtom.sel (.there (.there .here)) lC]))
+    ^ [CapAtom.sel .here lC]
 
 /-- … `n`. -/
 def S2Ctx4 : Ctx ([],c,c,x,x,x,x) := S2Ctx3.cons S2NTy
@@ -1631,7 +1668,7 @@ def S2n : HasTy [CapAtom.cvar fs3] S2Ctx3 (.proj .here lnext) S2NTy :=
 /-- `n` at its own type, its use charged to `{fs}` by `sc-var` and the
 member's upper bound. -/
 def S2nVar : HasTy [CapAtom.cvar fs4] S2Ctx4 (.path (.var .here))
-    ((Shape.all unitTy (.top ^ [CapAtom.sel (.there (.there .here)) lC]))
+    ((Shape.all unitTy (.top ^ [CapAtom.sel (.there (.there (.there .here))) lC]))
       ^ [CapAtom.sel (.there .here) lC]) :=
   HasTy.useSub (varAt .here rfl)
     (.trans Subcap.var (.selUpper (S2itCap (.there .here) rfl)))

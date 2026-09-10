@@ -1,3 +1,4 @@
+import Coercions.CapturesCC.FCdot.Levels
 import Coercions.CapturesCC.FCdot.Typing
 
 namespace CapturesCC
@@ -94,6 +95,16 @@ inductive Store.Typed : Store s → Ctx s → Prop where
       (store : ⊢ σ : Γ)
       (hb : b.isRoot = false) :
       ⊢ .consC σ b : .consC Γ b
+
+/-- **T-B0.7.**  A store context has no scope root: a store binds
+capabilities, never scopes.  This is O9's reserved slot, used for the first
+time by the premise of `Store.Typed.consC`.  It lives beside the judgement it
+inducts on, because the four entering steps of the machine consume it. -/
+theorem Store.Typed.rootFree (hσ : ⊢ σ : Γ) : Γ.root? = none := by
+  induction hσ with
+  | nil => rfl
+  | cons _ _ _ ih => rw [Ctx.root?_cons, ih]; rfl
+  | consC _ hb ih => rw [Ctx.root?_consC_of_not_root _ _ hb, ih]; rfl
 
 open Lean PrettyPrinter in
 @[app_unexpander Store.Typed] def Store.Typed.unexpand : Unexpander

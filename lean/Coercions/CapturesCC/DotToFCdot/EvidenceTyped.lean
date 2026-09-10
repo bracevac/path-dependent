@@ -429,7 +429,7 @@ theorem Shape.translate_bot {s : Sig} : (Shape.bot : Shape s).translate = ⊥ :=
 theorem Shape.translate_sel {s : Sig} (y : BVar s .var) (A : Label) :
     (Shape.sel (.var y) A).translate = y ∙ A := by simp [Shape.translate]
 
-theorem Shape.translate_all {s : Sig} (S : Ty s) (T : Ty (s,x)) :
+theorem Shape.translate_all {s : Sig} (S : Dom s) (T : Cod s) :
     (Shape.all S T).translate = Π(S.translate) T.translate :=
   Shape.translate_all_eq S T
 
@@ -696,6 +696,97 @@ inductive Shape.DistinctLabels : {s : Sig} → Shape s → Prop where
   | fld : Shape.DistinctLabels (.fld a T)
   | and : Shape.DistinctLabels S → Shape.DistinctLabels T →
       (∀ l, l ∈ S.declLabels → l ∉ T.declLabels) → Shape.DistinctLabels (.and S T)
+
+/-! ### The two label facts travel back through a renaming
+
+B1.7 types a literal's definitions against its declaration shape read under
+the class root, so `DefsTy.literalShape` and `DefsTy.distinctLabels` land at
+`S.underRoot` while the literal's coercion is built from `S`.  Both facts
+come back, the first through injectivity of renaming and the second through
+the invariance of `declLabels`. -/
+
+theorem Shape.LiteralShape.typ_inv {s : Sig} {A : Label} {S T : Shape s}
+    (h : Shape.LiteralShape (.typ A S T)) : S = T := by cases h; rfl
+
+theorem Shape.LiteralShape.cap_inv {s : Sig} {A : Label} {c₁ c₂ : CaptureSet s}
+    (h : Shape.LiteralShape (.cap A c₁ c₂)) : c₁ = c₂ := by cases h; rfl
+
+theorem Shape.LiteralShape.and_inv {s : Sig} {S T : Shape s}
+    (h : Shape.LiteralShape (.and S T)) : Shape.LiteralShape S ∧ Shape.LiteralShape T := by
+  cases h with | and h₁ h₂ => exact ⟨h₁, h₂⟩
+
+theorem Shape.literalShape_of_rename {s1 s2 : Sig} (ρ : Rename s1 s2) (hρ : ρ.Injective) :
+    ∀ (S : Shape s1), Shape.LiteralShape (S.rename ρ) → Shape.LiteralShape S
+  | .typ A S1 S2, h => by
+      simp only [Shape.rename] at h
+      have he : S1.rename ρ = S2.rename ρ := Shape.LiteralShape.typ_inv h
+      have hs : S1 = S2 := Shape.rename_inj S1 S2 ρ hρ he
+      subst hs
+      exact .typ
+  | .cap A c1 c2, h => by
+      simp only [Shape.rename] at h
+      have he := Shape.LiteralShape.cap_inv h
+      have hc : c1 = c2 := CaptureSet.rename_inj ρ hρ c1 c2 he
+      subst hc
+      exact .cap
+  | .fld _ _, _ => .fld
+  | .and S1 S2, h => by
+      simp only [Shape.rename] at h
+      have h' := Shape.LiteralShape.and_inv h
+      exact .and (Shape.literalShape_of_rename ρ hρ S1 h'.1)
+        (Shape.literalShape_of_rename ρ hρ S2 h'.2)
+  | .top, h => by simp only [Shape.rename] at h; cases h
+  | .bot, h => by simp only [Shape.rename] at h; cases h
+  | .sel _ _, h => by simp only [Shape.rename] at h; cases h
+  | .mu _, h => by simp only [Shape.rename] at h; cases h
+  | .all _ _, h => by simp only [Shape.rename] at h; cases h
+  | .box _, h => by simp only [Shape.rename] at h; cases h
+
+theorem Shape.declLabels_rename {s1 s2 : Sig} :
+    ∀ (S : Shape s1) (ρ : Rename s1 s2), (S.rename ρ).declLabels = S.declLabels
+  | .top, _ => rfl
+  | .bot, _ => rfl
+  | .sel _ _, _ => rfl
+  | .typ _ _ _, _ => rfl
+  | .cap _ _ _, _ => rfl
+  | .fld _ _, _ => rfl
+  | .mu _, _ => rfl
+  | .all _ _, _ => rfl
+  | .box _, _ => rfl
+  | .and S T, ρ => by
+      simp only [Shape.rename, Shape.declLabels, Shape.declLabels_rename S ρ,
+        Shape.declLabels_rename T ρ]
+
+theorem Shape.distinctLabels_of_rename {s1 s2 : Sig} (ρ : Rename s1 s2) :
+    ∀ (S : Shape s1), Shape.DistinctLabels (S.rename ρ) → Shape.DistinctLabels S
+  | .typ _ _ _, _ => .typ
+  | .cap _ _ _, _ => .cap
+  | .fld _ _, _ => .fld
+  | .and S T, h => by
+      simp only [Shape.rename] at h
+      cases h with
+      | and h₁ h₂ hdis =>
+          refine .and (Shape.distinctLabels_of_rename ρ S h₁)
+            (Shape.distinctLabels_of_rename ρ T h₂) ?_
+          intro l hl hl'
+          exact hdis l (by rw [Shape.declLabels_rename]; exact hl)
+            (by rw [Shape.declLabels_rename]; exact hl')
+  | .top, h => by simp only [Shape.rename] at h; cases h
+  | .bot, h => by simp only [Shape.rename] at h; cases h
+  | .sel _ _, h => by simp only [Shape.rename] at h; cases h
+  | .mu _, h => by simp only [Shape.rename] at h; cases h
+  | .all _ _, h => by simp only [Shape.rename] at h; cases h
+  | .box _, h => by simp only [Shape.rename] at h; cases h
+
+/-- The two facts at the literal's own declaration shape, from the same two
+at the shape read under the class root. -/
+theorem Shape.literalShape_of_underRoot {s : Sig} {S : Shape (s,x)}
+    (h : Shape.LiteralShape S.underRoot) : Shape.LiteralShape S :=
+  Shape.literalShape_of_rename Rename.succ.lift Rename.succ_injective.lift S h
+
+theorem Shape.distinctLabels_of_underRoot {s : Sig} {S : Shape (s,x)}
+    (h : Shape.DistinctLabels S.underRoot) : Shape.DistinctLabels S :=
+  Shape.distinctLabels_of_rename Rename.succ.lift S h
 
 theorem DefsTy.literalShape : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {d : Defs s}
     {S : Shape s}, DefsTy U Γ d S → Shape.LiteralShape S
@@ -1135,6 +1226,16 @@ inductive Ctx.Wf : {s : Sig} → Ctx s → Prop where
   | consSelf : Ctx.Wf Γ → Shape.LiteralShape S → Shape.DistinctLabels S →
       Ctx.Wf (Γ.consSelf d S U)
   | consC : Ctx.Wf Γ → Ctx.Wf (Ctx.consC Γ)
+  | consRoot : Ctx.Wf Γ → Ctx.Wf (Ctx.consRoot Γ)
+
+/-- A scope is well formed when its context is: it adds a root and a rigid
+capture binder, neither of which carries a literal. -/
+theorem Ctx.Wf.scope {s : Sig} {Γ : Ctx s} (h : Ctx.Wf Γ) : Ctx.Wf Γ.scope :=
+  .consC (.consRoot h)
+
+/-- A lambda body is a scope with the parameter on top. -/
+theorem Ctx.Wf.body {s : Sig} {Γ : Ctx s} (h : Ctx.Wf Γ) (T : Dom s) : Ctx.Wf (Γ.body T) :=
+  .cons h.scope
 
 /-! ## Atoms of variables -/
 
@@ -1155,6 +1256,9 @@ theorem Ctx.lookup_consSelf_there {s : Sig} (Γ : Ctx s) (d : Defs (s,x)) (S : S
 theorem Ctx.lookup_consC_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
     (Ctx.consC Γ).lookup (.there y) = (Γ.lookup y).weaken := rfl
 
+theorem Ctx.lookup_consRoot_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
+    (Ctx.consRoot Γ).lookup (.there y) = (Γ.lookup y).weaken := rfl
+
 theorem Ctx.varAtom_cons_here {s : Sig} (Γ : Ctx s) (T : Ty s) :
     (Γ.cons T).varAtom .here = .var .here := rfl
 
@@ -1173,6 +1277,9 @@ theorem Ctx.varAtom_consSelf_there {s : Sig} (Γ : Ctx s) (d : Defs (s,x)) (S : 
 theorem Ctx.varAtom_consC_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
     (Ctx.consC Γ).varAtom (.there y) = (Γ.varAtom y)↑ := rfl
 
+theorem Ctx.varAtom_consRoot_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
+    (Ctx.consRoot Γ).varAtom (.there y) = (Γ.varAtom y)↑ := rfl
+
 theorem Ctx.varAtom_root {s : Sig} : ∀ (Γ : Ctx s) (y : BVar s .var), (Γ.varAtom y).root = y
   | .cons _ _, .here => by rw [Ctx.varAtom_cons_here]; simp [FCdot.Atom.root]
   | .cons Γ _, .there y => by
@@ -1184,6 +1291,9 @@ theorem Ctx.varAtom_root {s : Sig} : ∀ (Γ : Ctx s) (y : BVar s .var), (Γ.var
       simp [FCdot.Atom.weaken, Ctx.varAtom_root Γ y]
   | .consC Γ, .there y => by
       rw [Ctx.varAtom_consC_there]
+      simp [FCdot.Atom.weaken, Ctx.varAtom_root Γ y]
+  | .consRoot Γ, .there y => by
+      rw [Ctx.varAtom_consRoot_there]
       simp [FCdot.Atom.weaken, Ctx.varAtom_root Γ y]
 
 theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar s .var),
@@ -1217,6 +1327,11 @@ theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar 
       | consC hwf' =>
           rw [Ctx.lookup_consC_there, Ctx.varAtom_consC_there, Ty.translate_weaken]
           exact (Ctx.varAtom_typed Γ hwf' y).weakenC .star rfl
+  | .consRoot Γ, hwf, .there y => by
+      cases hwf with
+      | consRoot hwf' =>
+          rw [Ctx.lookup_consRoot_there, Ctx.varAtom_consRoot_there, Ty.translate_weaken]
+          exact (Ctx.varAtom_typed Γ hwf' y).weakenRootC
 
 /-! ## The root of a translated variable typing -/
 
@@ -1362,10 +1477,14 @@ theorem SubShape.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {S T : Shape s}
         FCdot.Shape.weaken_substVar] at hm
       rw [SubShape.translate, Shape.translate_sel, Shape.translate_typ, Shape.tel_typ]
       exact hm
-  | _, _, _, _, .all d₁ d₂, hwf => by
+  | _, _, _, _, @SubShape.all _ Γ T1 T2 U1 U2 d₁ d₂, hwf => by
       rw [SubShape.translate]
       simp only [Shape.translate_all]
-      exact .pi (d₁.translate_typed hwf) (d₂.translate_typed (.cons hwf))
+      have h₁ := d₁.translate_typed hwf.scope
+      have h₂ := d₂.translate_typed (hwf.body T2)
+      rw [Ctx.translate_scope, Ty.translate_underRoot, Ty.translate_underRoot] at h₁
+      rw [Ctx.translate_body, Ty.translate_underRootCod, Ty.translate_underRootCod] at h₂
+      exact .pi h₁ h₂
   termination_by _ _ _ _ d _ => sizeOf d
 
 /-- `⟦d⟧` is typed at the translated types: the shape half between the two

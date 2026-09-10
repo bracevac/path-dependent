@@ -7,77 +7,97 @@ Captures, the compiler's way: the second capture project of plan V (`plan-5-exte
 binder on the arrow, and `fresh` as a per-call existential.  Every statement of the DOT way is kept,
 restated where the representation changed, never weakened.
 
-Stage B0 is complete.  It touches the target only and adds no term former.  It adds the universal
-root as a capture atom, written `⊤ᶜ`: the local root of the whole program, the compiler's `caps.any`
-as a constant rather than as a binder.  It adds levels, and a level is a position on the spine and
-not a field on a binding: the level of a binder is the innermost root binder of the prefix that
-precedes it, a root is its own level, and a binder with no enclosing root is at the outermost level,
-which is `⊤ᶜ`.  The order `Ctx.lvlLeB e r` says that the level of `e` is `r` or encloses it, so an
-inner root absorbs an outer capability and never the reverse, and the universal root absorbs only
-what sits inside no scope at all.  Everything is computed by recursion on the spine and is `Bool`
-valued, so a level side condition on a concrete context is decided in the kernel.
+Stage B0 added the universal root as a capture atom, written `⊤ᶜ`: the local root of the whole
+program, the compiler's `caps.any` as a constant rather than as a binder.  It added levels, and a
+level is a position on the spine and not a field on a binding.  The level of a binder is the
+innermost root binder of the prefix that precedes it, a root is its own level, and a binder with no
+enclosing root is at the outermost level, which is `⊤ᶜ`.  The order `Ctx.lvlLeB e r` says that the
+level of `e` is `r` or encloses it, so an inner root absorbs an outer capability and never the
+reverse.  One evidence rule reads that order, `Γ ⊢ᶜ level e r : {e} ⊑ {r}`, which is the compiler's
+`acceptsLevelOf`.  For it to be sound `Ctx.roots` became resolution followed by expansion, where
+expansion opens a root into the universal root and every opaque binder at its level or outside it.
+`Ctx.roots` kept its name, its signature and its fuel argument, and on a root-free context whose
+resolution mentions no `⊤ᶜ` expansion is the identity, so every roots-statement of the DOT way means
+on a store context and on the platform prefix exactly what it meant before.
 
-One evidence rule reads the order.  `Γ ⊢ᶜ level e r : {e} ⊑ {r}` holds when `r` is a scope root and
-the level of `e` is `r` or encloses it, which is the compiler's `acceptsLevelOf` reached from
-`maxSubsumes`.  Both sides are singletons and the right side is an atom, since the universal root is
-an atom and a rule with a variable on the right could not name it.  For the rule to be sound the
-roots of a capture set have to say what a root stands for, so `Ctx.roots` becomes resolution followed
-by expansion: expansion opens a root into the universal root and every opaque binder at its level or
-outside it, and leaves every other atom alone.  `Ctx.roots` keeps its name, its signature and its
-fuel argument, so subcapturing, the root predicate, root equality and the five prediction theorems
-keep their statements literally, and on a root-free context whose resolution mentions no `⊤ᶜ`
-expansion is the identity, so on a store context and on the platform prefix `roots` is `caps` again
-and every roots-statement of the DOT way means there exactly what it meant before.
+Stage B1 is complete, and it is what makes the level rule of B0 usable.  The arrow binds the
+parameter's `any` as one capture binder for the whole domain, and a lambda body and an object body
+are scopes.  A body opens three binders in this order: the body root, then the arrow's capture
+binder, then the parameter.  So the parameter and the arrow binder are at one level and that level
+is the body root, which is the compiler's sentence that parameter `any`s sit at the level of the
+function's own local `any`.  The order is load bearing in both directions.  With the parameter bound
+before the body root the level of the parameter would be the caller's root and the `withFile` escape
+would type, and the counterfactual is written down and decided.  With the arrow binder bound before
+the body root, `level κ κ_outer` would fire and a call from a deeper scope would make the conclusion
+false.  Every capture binder that a rule of the type sort opens sits under a root of its own, which
+is the scope discipline, and it is what makes the one crossing of a fresh root true.
 
-The theorems of the stage are about what closed evidence can do to a level.  Resolution never lowers
-the level (`Ctx.caps_confined`), so canonical forms gains its level case and closed evidence never
-lowers the level of what a capture set resolves to (`lvl_canon`).  A rigid binder is a root of
-everything closed evidence puts it below, and nothing else resolves below it (`rigid_canon`,
-`rigid_target`).  What closed evidence puts below a scope root resolves to capabilities at or outside
-that root (`lvl_safety`).  And no closed derivation at all puts a capability introduced strictly
-inside a scope below that scope's root (`no_inner_escape`).  A store binds capabilities and never
-scopes, which is now a premise of `Store.Typed.consC` and gives the two run-time facts: a store
-context has no root binder (`Store.Typed.rootFree`) and every capability of it is at the outermost
-level (`Store.Typed.confined`).  Over a store `no_inner_escape` is therefore vacuous at B0, since the
-only root is the universal one.  It acquires its content in stage B1, where a lambda body becomes a
-scope.  Three examples are the observable content of the stage, all decided.  X1 is a platform
-prefix, whose binders the universal root absorbs.  X2 is the nesting of a rigid capability, a scope
-root and an inner rigid capability, where the scope root absorbs the outer capability and the
-universal root alike and releases neither itself nor the inner capability.  X3 is the escape rejected
-at the inner binder.
+The machine enters a body by one substitution.  A substitution is therefore no longer kind
+preserving: its capture component returns an atom, because a call instantiates the arrow's capture
+binder at the argument's root, a term variable.  The body root is instantiated at `⊤ᶜ`, and that is
+a departure from the compiler, recorded as one.  The compiler checks a method body once against its
+own level owner and never retargets that level at a call.  The move is sound here for a reason the
+compiler does not need: a running program is the outermost scope, a store binds capabilities and
+never scopes, so a store context has no root binder, and over such a context every atom in scope is
+at the outermost level.  The image evidence is then not only typed but true.  The alternative,
+keeping the body root as a binder, would mean putting a scope into the store, and instantiating it
+at the lambda's assigned set would be unsound.
 
-The source and the translation are untouched by B0 but for one lemma.  `Platform.root_iff` gains the
-premise that its capture set does not mention `⊤ᶜ`, which every set the translation produces
-satisfies by computation, so its sole caller supplies the premise and `dot_effect_safety` keeps its
-statement.  Nothing else in `DotMNF/` or `DotToFCdot/` moved.
+The runtime mirrors the two new binders as data-free slots, which is the discipline it already
+stated for stores.  A runtime lambda and a runtime object take bodies over the same signatures the
+target uses, so erasure still maps binder to binder and every erasure statement keeps its form.  One
+generalisation is forced by the widened substitution: erasure of a substitution can no longer be a
+renaming of the runtime term, so the runtime gained a map of term variables and a traversal for it,
+and `(t.subst σ).erase = t.erase.map σ.rootVar` is the restated equation.
+
+What the stage proves about escapes is `level_inversion`, and it is store free: member-free capture
+evidence never lowers a level.  Over a typed store the older `lvl_safety` and `no_inner_escape` hold
+vacuously, because a store context is root free and its only root is `⊤ᶜ`, so their content lives in
+rooted contexts and no store types one.  Bad capture bounds enter capture evidence only through
+`member` and `eqToLe`, which example C3 exhibits under a lambda, so naming member-free evidence is
+exactly what makes an induction on the evidence alone true.  The `withFile` escape is then rejected
+twice over on the real binder order of a lambda: the premise of the level rule is decided false at
+the root outside the call, and no member-free evidence at all puts the file below that root, because
+the file's binder set resolves to the arrow binder whose level is the body root.
 
 **`FCdot/`** is the target, FCdot^cc.  Its README lists the modules, what each stage changed in them,
-the notation, and the theorems.  From the DOT way it carries the canonical-forms theorem with
-`cap_canon` and item 7, `closed_box_inversion`, the five prediction theorems, and the capture
-examples C1 and C6.  B0 reached it everywhere: `Syntax` gained the atom and the coercion, `Context`
-the level block, the new module `Levels` the order lemmas and the weakening commutations, `Resolution`
-the expansion and the hardest lemma of the stage, `Typing` the one rule, renaming and substitution
-three capture fields each, the checker one case that reduces in the kernel, `Store` and `Machine`
-their premises about what a store may bind, `CanonicalForms` and `Consistency` the theorems, and
-`Examples` the three new examples beside every old one unchanged.
+the notation, and the theorems.  B0 reached it everywhere and B1 reached it again.  `Syntax` carries
+the arrow's new binders and the whole substitution block, `Context` the levels and the three scope
+contexts, `Levels` the order lemmas, `Resolution` the expansion and the lemma that resolution never
+lowers a level, `Typing` the four reshaped rules and the two member-free predicates, the new module
+`LevelInversion` the theorem that carries the content of scope safety, `TypingSubst` the entering
+substitutions and the one crossing of a fresh root, `Machine` the four steps that enter a body,
+`Preservation` the inversion lemmas restated at the new binders with `preservation` unchanged, and
+`Examples` every old example re-indexed beside the new ones: the C2 literal with the class root
+outside the self, the escape rejected, the counterfactual order, and the two acceptance tests that
+put a concrete assigned set below a scope root.
 
 **`DotMNF/`** is the source, `DOT-MNF^cc`, with `any` by position since A3b.  A shape is the vanilla
 type former, a type is a shape with a capture set, and the new shapes are the capture member and the
 box.  `any` is read before typing by the function `expand`, whose reading is by position and needs no
-level, and an expanded program is a program of stage A3a.  B0 changed nothing here: the source has no
-atom for the universal root, so every capture set it writes is still a list of concrete atoms.
+level, and an expanded program is a program of stage A3a.  B0 changed nothing here.  B1 moved the
+source arrow in step with the target's, because the two calculi have to bind the same binders in the
+same places: the source gains a scope root constructor beside its rigid capture binder, its own three
+scope contexts, and its own substitution with an atom-valued capture component, which writes `any`
+where the target writes `⊤ᶜ`.  Every derivation of the example file keeps its name and its
+conclusion.
 
 **`DotToFCdot/`** is the translation.  A source type is a shape with a capture set and so is a target
-type, so the translation splits the same way.  Use sets are carried by the derivation, so the
+type, so the translation splits the same way, and use sets are carried by the derivation, so the
 translation of a derivation carries the evidence for them.  The source's safety, consistency and
-capture prediction are all borrowed from the target through it.  The target has no atom for `any`, so
-the translation of an atom is partial and the translation of a capture set drops what has no target
-atom, which is also why no translated set mentions `⊤ᶜ`.  B0 changed one lemma here, the platform
-premise above, and added `CaptureSet.top_not_mem_translate` and `Platform.rootFree` to prove it.
+capture prediction are all borrowed from the target through it.  B0 changed one lemma here, the
+platform premise that a capture set does not mention `⊤ᶜ`, which every translated set satisfies by
+computation.  B1 changed almost nothing, which was the point of moving the source arrow: the
+translation of an arrow is textually what it was, the translation at a lambda and at an application
+did not have to be rewritten, and `Ctx.translate` gained one clause for the source's scope root.  The
+one new file says that the type translation commutes with substitution and not only with renaming,
+which is what the application case now needs.
 
 **`Runtime.lean`** is the shared untyped runtime with a data-free capture slot in its store, an
 inspected root on its terms, and an inert box that both calculi erase their boxes to.  B0 changed
-nothing here: levels are static and no term former was added.
+nothing here, since levels are static.  B1 reshaped a runtime lambda and a runtime object to take
+bodies over the target's signatures, added a map of term variables with its traversal, and let the
+two step rules that enter a body continue at that map.
 
 Identifiers the plan spells with a `ᶜ` suffix carry the ASCII suffix `C` here (`Ctx.consC`,
 `Store.consC`, `Subst.liftC`, `Ctx.lookupDefC`, `Proposition.leC`, `CapEq.defC`, `SideC`, `HoleC`),
@@ -89,7 +109,8 @@ Axioms throughout: `propext` and `Quot.sound`.  No `sorry`, `axiom`, `partial`, 
 
 ## What is not here yet
 
-Scopes and the arrow, stage B1: the arrow binds its own root, a lambda body and an object body are
-scopes, and the machine enters a body by one substitution.  That is what makes the level rule of B0
-usable on a real binder order and what decides the `withFile` escape in Lean.  After it, `fresh` as a
-per-call existential and the capture-set parameter.
+`fresh` as a per-call existential, stage B2: an answer sort, packing as a wrapper whose premise is an
+instance binding, and a `letex` binder that is rootless by design.  Then stage B3, the source
+`DOT-MNF^cc'` with `any` by position the compiler's way, its translation, and the mandatory examples,
+among them the four worked programs of the compiler's own write-up, the two halves of C5, and two
+calls whose capabilities are incomparable.

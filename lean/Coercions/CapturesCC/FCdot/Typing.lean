@@ -124,10 +124,12 @@ inductive ShapeCo.HasType : Ctx s → ShapeCo s → Shape s → Shape s → Prop
   | top : Γ ⊢ˢ .top S : S ≤ ⊤
   | bot : Γ ⊢ˢ .bot S : ⊥ ≤ S
   | eqToLe : Γ ⊢ φ : S ≡ T → Γ ⊢ˢ .eqToLe φ : S ≤ T
-  /-- Contravariant domain, covariant codomain; both are type inclusions. -/
-  | pi :
-      Γ ⊢ e : T2 ≤ T1 →
-      Γ.cons (.opaque T2) ⊢ f : U1 ≤ U2 →
+  /-- Contravariant domain, covariant codomain; both are type inclusions.
+      Both arrows' capture binders are opened at one scope, and that scope
+      has a root of its own, which is the scope discipline of the stage. -/
+  | pi {T1 T2 : Dom s} {U1 U2 : Cod s} :
+      Γ.scope ⊢ e : T2.underRoot ≤ T1.underRoot →
+      Γ.body T2 ⊢ f : U1.underRoot ≤ U2.underRoot →
       Γ ⊢ˢ .pi e f : Π(T1) U1 ≤ Π(T2) U2
   /-- Object coercion between closed telescopes: the morphism proves each target
       proposition by a template over a source proposition. -/
@@ -291,6 +293,40 @@ open Lean PrettyPrinter in
   | `($_ $Γ $a $T) => `($Γ ⊢ₐ $a : $T)
   | _ => throw ()
 
+/-! ## Member-free capture evidence
+
+Capture evidence that reads no telescope: no `member`, no `eqToLe`, and every
+atom it reaches through `capvar` carries member-free capture evidence in its
+wrappers.  Bad capture bounds enter capture evidence only through `member`
+and `eqToLe`, so this is exactly the restriction under which capture evidence
+never lowers a level, which is `level_inversion`. -/
+
+mutual
+
+/-- Capture evidence that reads no telescope. -/
+inductive CapCo.MemberFree {s : Sig} : CapCo s → Prop where
+  | refl (C : CaptureSet s) : (CapCo.refl C).MemberFree
+  | trans {f g : CapCo s} : f.MemberFree → g.MemberFree → (CapCo.trans f g).MemberFree
+  | elem (C D : CaptureSet s) : (CapCo.elem C D).MemberFree
+  | union {f g : CapCo s} : f.MemberFree → g.MemberFree → (CapCo.union f g).MemberFree
+  | capvar {a : Atom s} : a.MemberFree → (CapCo.capvar a).MemberFree
+  | level (e r : CapAtom s) : (CapCo.level e r).MemberFree
+
+/-- An atom whose capture wrappers are member free. -/
+inductive Atom.MemberFree {s : Sig} : Atom s → Prop where
+  | var (x : BVar s .var) : (Atom.var x).MemberFree
+  | cast {a : Atom s} {e : ShapeCo s} {f : CapCo s} :
+      a.MemberFree → f.MemberFree → (Atom.cast a (.capt e f)).MemberFree
+  | recap {a : Atom s} {f : CapCo s} :
+      a.MemberFree → f.MemberFree → (Atom.recap a f).MemberFree
+  | foldSelf {a : Atom s} (Tel : Telescope (s,x)) :
+      a.MemberFree → (Atom.foldSelf Tel a).MemberFree
+  | unfoldSelf {a : Atom s} : a.MemberFree → (Atom.unfoldSelf a).MemberFree
+  | both {a b : Atom s} (Tel₁ Tel₂ : Telescope (s,x)) :
+      a.MemberFree → b.MemberFree → (Atom.both Tel₁ Tel₂ a b).MemberFree
+
+end
+
 /-! ### Notation for the term judgments -/
 
 set_option hygiene false in
@@ -306,10 +342,14 @@ mutual
 inductive Tm.HasType : Ctx s → Tm s → Ty s → Prop where
   | atom : Γ ⊢ₐ a : T → Γ ⊢ .atom a : T
   | val : Γ ⊢ᵥ v : T → Γ ⊢ .val v : T
-  | app :
+  /-- The argument is checked at the *instantiated* domain: the arrow's
+      capture binder goes to the argument's root.  A caller reaches it with
+      `recap` and reflexivity.  The result is the codomain with the parameter
+      at the argument and the capture binder at its root. -/
+  | app {T : Dom s} {U : Cod s} :
       Γ ⊢ₐ a : (Π(T) U) ^ C →
-      Γ ⊢ₐ b : T →
-      Γ ⊢ .app a b : U⟦b.root⟧
+      Γ ⊢ₐ b : T.subst (Subst.singleC (.var b.root)) →
+      Γ ⊢ .app a b : U.subst (Subst.arg b)
   /-- A field's result is the block name `ℓ` of the atom's root, captured at
       the capture name of the same label.  The capture witness `Wᶜ(ℓ)` of a
       literal is the declared capture set of the field's result, read by
@@ -340,15 +380,15 @@ inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
   /-- A lambda carries the capture set `A` its rule assigns to it, and the
       closing evidence `g` puts the body's use set below `A` weakened united
       with the parameter. -/
-  | lam :
-      Γ.cons (.opaque T) ⊢ t : U →
-      Γ.cons (.opaque T) ⊢ᶜ g : t.uses ⊑ (A↑ ∪ [CapAtom.var .here]) →
+  | lam {T : Dom s} {U : Cod s} :
+      Γ.body T ⊢ t : U.underRoot →
+      Γ.body T ⊢ᶜ g : t.uses ⊑ (A↑↑↑ ∪ [CapAtom.var .here]) →
       Γ ⊢ᵥ .lam A T t g : (Π(T) U) ^ A
   /-- An object literal has its precise type, generated from its witnesses and
       fields, at the capture set `A` it carries.  Fields are typed with the
       self binder at that type, against the same `A`. -/
   | obj :
-      Γ.cons (.transparent ((μ (Telescope.ofLiteral W Wc F.labels)) ^ A) W Wc F.labels) ⊢ᶠ[A] F →
+      Γ.objBody ((μ (Telescope.ofLiteral W Wc F.labels)) ^ A) W Wc F.labels ⊢ᶠ[A↑] F →
       Γ ⊢ᵥ .obj A W Wc F : (μ (Telescope.ofLiteral W Wc F.labels)) ^ A
   /-- Boxing is pure: the box shape hides the captured set.  A box is a
       literal with no witnesses and no fields. -/

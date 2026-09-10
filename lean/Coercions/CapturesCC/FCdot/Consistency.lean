@@ -173,8 +173,8 @@ theorem Store.Typed.no_top_le_bot (hσ : ⊢ σ : Γ) :
 
 /-- No closed evidence from an object type without bounds into a function
 type. -/
-theorem Store.Typed.no_obj_le_pi (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S : Ty s}
-    {T : Ty (s,x)} (hnb : ∀ (i : Nat) (T' : Shape s), ¬ Tel ∋ (i ↦ ⊑ T'↑)) :
+theorem Store.Typed.no_obj_le_pi (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S : Dom s}
+    {T : Cod s} (hnb : ∀ (i : Nat) (T' : Shape s), ¬ Tel ∋ (i ↦ ⊑ T'↑)) :
     ¬ ∃ (e : LeCo s) (C C' : CaptureSet s), Γ ⊢ e : (μ Tel) ^ C ≤ (Π(S) T) ^ C' := by
   rintro ⟨e, C, C', h⟩
   rcases closed_le_shapes hσ h with
@@ -193,8 +193,8 @@ theorem Store.Typed.no_obj_le_pi (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S 
 
 /-- No closed evidence from a function type into an object type with a
 proposition that is not a bound. -/
-theorem Store.Typed.no_pi_le_obj (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S : Ty s}
-    {T : Ty (s,x)} {i : Nat} {P : Proposition (s,x)} (hAt : Tel ∋ (i ↦ P))
+theorem Store.Typed.no_pi_le_obj (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S : Dom s}
+    {T : Cod s} {i : Nat} {P : Proposition (s,x)} (hAt : Tel ∋ (i ↦ P))
     (hP : ∀ X : Shape (s,x), P ≠ Proposition.bnd X) :
     ¬ ∃ (e : LeCo s) (C C' : CaptureSet s), Γ ⊢ e : (Π(S) T) ^ C ≤ (μ Tel) ^ C' := by
   rintro ⟨e, C, C', h⟩
@@ -267,14 +267,9 @@ theorem Ctx.caps_of_opaque {Γ : Ctx s} {κ : BVar s .cap}
   | upper C => rw [h] at hκ; simp [CapBound.opaque] at hκ
   | inst C => rw [h] at hκ; simp [CapBound.opaque] at hκ
 
-/-- **T-B0.7.**  A store context has no scope root: a store binds
-capabilities, never scopes.  This is O9's reserved slot, used for the first
-time by the premise of `Store.Typed.consC`. -/
-theorem Store.Typed.rootFree (hσ : ⊢ σ : Γ) : Γ.root? = none := by
-  induction hσ with
-  | nil => rfl
-  | cons _ _ _ ih => rw [Ctx.root?_cons, ih]; rfl
-  | consC _ hb ih => rw [Ctx.root?_consC_of_not_root _ _ hb, ih]; rfl
+/-! **T-B0.7**, `Store.Typed.rootFree`, is proved in `FCdot/Store.lean`,
+beside the judgement it inducts on, because the four entering steps of the
+machine consume it and `FCdot/Preservation.lean` comes before this file. -/
 
 /-- **T13, consistency at the top.**  At run time every capability is at the
 outermost level.  This is L0 read at `rootAtom = ⊤ᶜ`, which is what a

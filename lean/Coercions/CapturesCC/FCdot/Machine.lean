@@ -164,9 +164,6 @@ def Tm.adjust (u : Tm (s,x)) (v : Value s) : Tm (s,x) :=
   | none => u
   | some E => u.subst (Subst.selfCast E.weaken)
 
-/-- Substitute the self binder of a stored object's field by the object's variable. -/
-def Tm.selfAt (t : Tm (s,x)) (y : BVar s .var) : Tm s := t.rename (Rename.subst y)
-
 /-! ## Steps -/
 
 set_option hygiene false in
@@ -192,7 +189,7 @@ inductive Step : State s → State s' → Prop where
   /-- Application through a bare variable. -/
   | appVar :
       σ.lookup x = .lam A S₀ t₀ g →
-      ⟨σ, K, .app (.var x) b⟩ ⟶ ⟨σ, K, t₀.substAtom b⟩
+      ⟨σ, K, .app (.var x) b⟩ ⟶ ⟨σ, K, t₀.subst (Subst.enter b)⟩
   /-- Application through a wrapped atom whose casts normalize to the
       identity: the atom's function type and the closure's coincide. -/
   | appCastRefl :
@@ -200,20 +197,22 @@ inductive Step : State s → State s' → Prop where
       a ≠ .var a.root →
       σ ⊢ a ⇓ᶜ[n] (a', F) →
       (F = .id ∨ ∃ φ, F = .eqv φ) →
-      ⟨σ, K, .app a b⟩ ⟶ ⟨σ, K, t₀.substAtom b⟩
+      ⟨σ, K, .app a b⟩ ⟶ ⟨σ, K, t₀.subst (Subst.enter b)⟩
   /-- Application through a wrapped atom whose casts normalize to a function
-      coercion `pi d c`: the argument is cast by `d` and the result by `c` at
-      the argument. -/
+      coercion `pi d c`: the domain evidence is instantiated at the argument's
+      root before it casts the argument, and the result is cast by the
+      codomain evidence read at the argument. -/
   | appCast :
       σ.lookup a.root = .lam A S₀ t₀ g →
       a ≠ .var a.root →
       σ ⊢ a ⇓ᶜ[n] (a', .pi d c) →
       ⟨σ, K, .app a b⟩ ⟶
-        ⟨σ, K, .cast (t₀.substAtom (.cast b d)) (c.subst (Subst.single b))⟩
+        ⟨σ, K, .cast (t₀.subst (Subst.enter (.cast b (d.subst (Subst.enterC b)))))
+                     (c.subst (Subst.enter b))⟩
   | proj :
       σ.lookup a.root = .obj A W Wc F →
       F.get? ℓ = some t →
-      ⟨σ, K, .proj a ℓ h⟩ ⟶ ⟨σ, K, t.selfAt a.root⟩
+      ⟨σ, K, .proj a ℓ h⟩ ⟶ ⟨σ, K, t.subst (Subst.enterObj a.root)⟩
   /-- Unboxing an atom rooted at a stored box whose casts normalize to the
       identity or to a conversion: the boxed atom, weakened into the current
       scope by `Store.lookup`, is the result. -/

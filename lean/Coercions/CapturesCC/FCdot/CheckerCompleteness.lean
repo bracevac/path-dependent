@@ -115,9 +115,10 @@ theorem tmUnbox_eq {Γ : Ctx s} {a : Atom s} {f : CapCo s} {S : Shape s}
     tmUnbox U ha hf = some ⟨S ^ C, .unbox ha hf⟩ := by
   simp [tmUnbox]
 
-theorem tmApp_eq {Γ : Ctx s} {a b : Atom s} {C : CaptureSet s} {T : Ty s} {U : Ty (s,x)}
-    (ha : Γ ⊢ₐ a : (Π(T) U) ^ C) (hb : Γ ⊢ₐ b : T) :
-    tmApp ha hb = some ⟨U⟦b.root⟧, .app ha hb⟩ := by
+theorem tmApp_eq {Γ : Ctx s} {a b : Atom s} {C : CaptureSet s} {T : Dom s} {U : Cod s}
+    (ha : Γ ⊢ₐ a : (Π(T) U) ^ C)
+    (hb : Γ ⊢ₐ b : T.subst (Subst.singleC (CapAtom.var b.root))) :
+    tmApp ha hb = some ⟨U.subst (Subst.arg b), .app ha hb⟩ := by
   simp [tmApp]
 
 theorem capMember_eq {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} {i : Nat} {S : Shape s}
@@ -232,7 +233,13 @@ theorem ShapeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {e : ShapeCo s} {S
   | _, _, _, _, _, .trans he hf => by
       simp [synthShapeCore, ShapeCo.HasType.complete he, ShapeCo.HasType.complete hf]
   | _, _, _, _, _, .pi he hf => by
-      simp [synthShapeCore, LeCo.HasType.complete he, LeCo.HasType.complete hf]
+      simp only [synthShapeCore]
+      simp only [LeCo.HasType.complete he]
+      simp only [Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom, witness_underRootDom]
+      simp only [witness?_some, Option.bind_eq_bind, Option.bind,
+        LeCo.HasType.complete hf]
+      rw [witness_underRootCod, witness_underRootCod]
   | _, _, _, _, _, .obj hm => by
       simp [synthShapeCore, Morphism.HasType.complete hm]
   | _, _, _, _, _, .pair he hf => by
@@ -374,7 +381,9 @@ theorem Tm.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
 theorem Value.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
     (h : Γ ⊢ᵥ v : T), synthValueCore Γ v = some ⟨T, h⟩
   | _, _, _, _, .lam ht hg => by
-      simp [synthValueCore, Tm.HasType.complete ht, CapCo.HasType.complete hg]
+      simp only [synthValueCore, Tm.HasType.complete ht, Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootCod]
+      simp [CapCo.HasType.complete hg]
   | _, _, _, _, .obj hF => by
       simp [synthValueCore, Fields.HasType.complete hF]
   | _, _, _, _, .box ha => by
@@ -679,7 +688,12 @@ theorem Value.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T 
     Γ ⊢ᵥ v : T → Γ ⊢ᵥ v : T' → T = T'
   | _, _, _, _, _, .lam ht _, h' => by
       cases h' with
-      | lam ht' _ => rw [Tm.HasType.type_unique ht ht']
+      | lam ht' _ =>
+          have hu := Tm.HasType.type_unique ht ht'
+          have hw := congrArg Cod.underRoot? hu
+          rw [Cod.underRoot?_underRoot, Cod.underRoot?_underRoot] at hw
+          simp only [Option.some.injEq] at hw
+          rw [hw]
   | _, _, _, _, _, .obj _, h' => by
       cases h' with
       | obj _ => rfl

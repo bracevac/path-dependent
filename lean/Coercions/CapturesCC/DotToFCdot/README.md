@@ -1,4 +1,4 @@
-# DotToFCdot, at stage B0 of captures the compiler's way
+# DotToFCdot, at stage B1 of captures the compiler's way
 
 The translation of DOT-MNF^cc into FCdot^cc (Plan III §8, milestones M3 to
 M5), namespace `DotMNF`.  Derivations are `Type`-valued, so the translation
@@ -11,6 +11,7 @@ prediction are all transported from FCdot's.
 | module | contents |
 |---|---|
 | `Types` | `CapAtom.translate?` and `CaptureSet.translate` (atom by atom, the source's `sel x C` becoming the target's name `x∙C`, `any` dropped), `Shape.translate` and `Ty.translate` (`⟦S ^ C⟧ = ⟦S⟧ ^ ⟦C⟧`), `Shape.tel`/`Shape.telSelf` (a shape as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Shape.isObj` and `Shape.translate_isObj`/`Shape.tel_of_not_isObj`, `Shape.witnesses`, `Shape.capWitnesses`, `Shape.fieldLabels`, `Shape.literalShape`, `Shape.literalTy`, `Ctx.translate` |
+| `TypesSubst` | the type translation commutes with substitution, and the two agreements `Subst.singleC` and `Subst.arg` that the `app` case of `HasTy.translate_typed` consumes |
 | `TypesLemmas` | renaming and instantiation commute with the translation; `Shape.isDecl_rename`, `Shape.isObj_rename`; `Shape.translate_decl`; `Shape.tel_substVar` (opening a body at the root) |
 | `Evidence` | `Subcap.translate`, `SubShape.translate`, `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `Ctx.varAtom` |
 | `EvidenceTyped` | `Subcap.translate_typed`, `SubShape.translate_typed`, `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `litCo_atC_typed`, `Ctx.varAtom_typed`, `Shape.tel_closedBnds` (every self-bound the translation produces is closed); the well-formedness `Ctx.Wf` of contexts |
@@ -444,3 +445,66 @@ does every other theorem of this directory: `dot_safety`, `dot_not_stuck`, `dot_
 `translate_typed`, `translate_erase` and the coherence and consistency theorems are unchanged
 word for word.  `Platform.rootFree`, "a platform context binds capabilities only", is the one
 other new lemma.
+
+## Stage B1
+
+B1 gives both calculi the same arrow.  The source binds the parameter's `any` as one capture
+binder for the whole domain and opens a body root at every lambda and every literal, and so
+does the target.  So the translation stays homomorphic on types and erasure equality is free:
+`Shape.translate`'s `all` clause is textually unchanged, `.pi T1.translate T2.translate`, and
+`HasTy.translate` at `lam` and at `app` did not have to be rewritten at all.
+
+The one new thing the translation needs is that the type translation commutes with
+substitution, not only with renaming.  A source substitution and a target substitution agree
+when they agree on term variables through `Subst.rootVar` and on capture binders through the
+atom translation.  `Subst.singleC` at a variable and `Subst.arg` both agree, and that is what
+`HasTy.translate_typed` needs at `app`.
+
+| module | what B1 changed |
+|---|---|
+| `Types` | `Ctx.translate` gains one clause, `\| .consRoot Γ => .consC Γ.translate .root`, and keeps `\| .consC Γ => .consC Γ.translate .star`.  `Shape.translate` at `all` is textually unchanged.  `Shape.translate_all_eq` reads its operands at `Dom s` and `Cod s` |
+| `TypesSubst` | the new file: the substitution twin of `Shape.translate_rename`.  The type translation commutes with a source substitution and a target substitution that agree, and the two agreements `Subst.singleC` and `Subst.arg` that the `app` case consumes |
+| `TypesLemmas`, `Evidence`, `EvidenceTyped`, `TermsTyped` | proof lines and the auxiliary lemmas they need.  Every statement is unchanged |
+| `Terms` | untouched |
+| `Erasure`, `Safety`, `Consistency`, `Prediction` | untouched |
+
+### Statements restated
+
+Nothing was weakened and nothing gained a hypothesis.
+
+```
+DotMNF.Shape.translate at all  : textually unchanged, .pi T1.translate T2.translate
+                                   both sides bind κ in the same position now
+DotMNF.Shape.translate_all_eq  : the same equation at the arrow's new arities
+DotMNF.Ctx.translate           : one clause added at consRoot, the source's scope root
+                                   translating to the target's
+DotMNF.Subcap.translate_typed, .SubShape.translate_typed, .Sub.translate_typed : unchanged
+DotMNF.HasTy.translateAtom_typed, .translateAtom_root : unchanged
+DotMNF.HasTy.translate_typed, .translate_uses, .translate_uses_atom : unchanged
+DotMNF.HasTy.translate_erase, .coherence : unchanged
+DotMNF.dot_safety, .dot_not_stuck : unchanged
+DotMNF.reachable_consistent, .reachable_realized : unchanged
+DotMNF.dot_capture_prediction, .dot_effect_safety : unchanged
+DotMNF.Platform.ctx, .store, .targetStore, .capsAtom, .root_iff : unchanged, including
+                                   B0's own premise ⊤ᶜ ∉ C
+```
+
+The platform prefix is still a chain of `.star` binders, so `Platform.ctx` and
+`Platform.targetStore` are textually what they were, no example gains a slot and no de Bruijn
+index shifts.  A store context still binds no root, which is what `Subst.Typed.enter` consumes
+on the target side at every entering step of a translated run.
+
+### New in this stage
+
+```
+DotToFCdot/TypesSubst.lean : the type translation commutes with substitution
+```
+
+### The examples
+
+The examples of this directory are the source's, read through the translation, and every one of
+them keeps its name and its conclusion.  On the target side `S1_translated`, `S1_erase`,
+`S2_translated`, `S2_erase`, `C2_translated`, `C2_erase`, `C7_translated`, `C7_erase`,
+`S3_translated` and `S3_erase` are unchanged, and the two new target-side acceptance tests of
+B1, `S2_level` and `C5a_level`, are written directly in `FCdot/Examples.lean` because they are
+about a scope root and the source has no way to name one yet.

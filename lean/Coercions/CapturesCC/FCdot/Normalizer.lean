@@ -88,7 +88,7 @@ inductive Form (s : Sig) : Type where
   | eqv : EqCo s → Form s
   /-- Function coercion: closed domain evidence and codomain evidence under
       the target domain binder. -/
-  | pi : LeCo s → LeCo (s,x) → Form s
+  | pi : LeCo (Sig.scope s) → LeCo (Sig.body s) → Form s
   /-- Object coercion: one entry per proposition of the target telescope. -/
   | obj : Entries s → Form s
   /-- Cast by a bound: the source resolves to an object type whose `i`-th

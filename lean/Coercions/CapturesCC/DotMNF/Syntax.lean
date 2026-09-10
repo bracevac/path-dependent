@@ -353,6 +353,23 @@ theorem CaptureSet.noAny_self {s : Sig} {D : CaptureSet s} (h : D.NoAny) :
   CaptureSet.noAny_append (CaptureSet.noAny_weaken h)
     (CaptureSet.noAny_cons_of_ne (by simp) CaptureSet.noAny_nil)
 
+/-- The same set under an arrow's two binders: the arrow's capture binder is
+in the way, so the set is weakened twice. -/
+theorem CaptureSet.selfC_rename {s1 s2 : Sig} (D : CaptureSet s1) (ρ : Rename s1 s2) :
+    CaptureSet.rename
+        (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D) ∪ [CapAtom.var .here])
+        ρ.lift.lift
+      = CaptureSet.weaken (CaptureSet.weaken (k := .cap) (CaptureSet.rename D ρ))
+          ∪ [CapAtom.var .here] := by
+  simp only [CaptureSet.union_def, CaptureSet.rename_append, CaptureSet.weaken_rename,
+    CaptureSet.rename_cons, CaptureSet.rename_nil, CapAtom.rename, Rename.lift_here]
+
+theorem CaptureSet.noAny_selfC {s : Sig} {D : CaptureSet s} (h : D.NoAny) :
+    CaptureSet.NoAny
+      (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D) ∪ [CapAtom.var .here]) :=
+  CaptureSet.noAny_append (CaptureSet.noAny_weaken (CaptureSet.noAny_weaken h))
+    (CaptureSet.noAny_cons_of_ne (by simp) CaptureSet.noAny_nil)
+
 /-! ## Shapes and types
 
 A shape is the vanilla line's type former, with the capture member and the
@@ -376,8 +393,11 @@ inductive Shape : Sig → Type where
   | sel : Path s → Label → Shape s
   /-- Recursive self shape `μ(x. S)`. -/
   | mu : Shape (s,x) → Shape s
-  /-- Dependent function shape `∀(x : T₁) T₂`, on capturing types. -/
-  | all : Ty s → Ty (s,x) → Shape s
+  /-- Dependent function shape `∀[κ](x : T₁) T₂`, on capturing types.  The
+      arrow binds a capture binder `κ` before its parameter, so its domain
+      lives in `Sig.dom s` and its codomain in `Sig.cod s`, exactly as the
+      target's `FCdot.Shape.pi` does. -/
+  | all : Ty (Sig.dom s) → Ty (Sig.cod s) → Shape s
   /-- Intersection `S ∧ T`. -/
   | and : Shape s → Shape s → Shape s
   /-- The box former `□ T`.  Inert: not a declaration. -/
@@ -413,6 +433,13 @@ def Ty.captureSet : Ty s → CaptureSet s
 
 theorem Ty.eta (T : Ty s) : T = T.shape ^ T.captureSet := by cases T; rfl
 
+/-- The domain of an arrow, behind one name.  It sits under the arrow's own
+capture binder, as the target's `FCdot.Dom` does. -/
+abbrev Dom (s : Sig) : Type := Ty (Sig.dom s)
+/-- The codomain of an arrow, behind one name: it may mention the arrow's
+capture binder and the parameter. -/
+abbrev Cod (s : Sig) : Type := Ty (Sig.cod s)
+
 mutual
 
 def Shape.rename : Shape s1 → Rename s1 s2 → Shape s2
@@ -423,7 +450,7 @@ def Shape.rename : Shape s1 → Rename s1 s2 → Shape s2
   | .cap C c1 c2, ρ => .cap C (c1.rename ρ) (c2.rename ρ)
   | .sel p A, ρ => .sel (p.rename ρ) A
   | .mu S, ρ => .mu (S.rename ρ.lift)
-  | .all T1 T2, ρ => .all (T1.rename ρ) (T2.rename ρ.lift)
+  | .all T1 T2, ρ => .all (T1.rename ρ.lift) (T2.rename ρ.lift.lift)
   | .and S T, ρ => .and (S.rename ρ) (T.rename ρ)
   | .box T, ρ => .box (T.rename ρ)
 
@@ -438,6 +465,21 @@ def Ty.weaken (T : Ty s) : Ty (s,,k) := T.rename Rename.succ
 /-- Instantiate the innermost binder of a shape or a type by a variable. -/
 def Shape.substVar (S : Shape (s,,k)) (y : BVar s k) : Shape s := S.rename (Rename.subst y)
 def Ty.substVar (T : Ty (s,,k)) (y : BVar s k) : Ty s := T.rename (Rename.subst y)
+
+/-! ### The domain and the codomain under a scope
+
+A lambda body is a scope: its own root, then the arrow's capture binder,
+then the parameter.  These three abbreviations are the source's copies of
+`FCdot.Dom.underRoot`, `FCdot.Dom.inBody` and `FCdot.Cod.underRoot`, at the
+same signatures and by the same renamings, so that the translation is the
+identity on them. -/
+
+/-- The domain under the body root. -/
+abbrev Dom.underRoot (T : Dom s) : Ty ((s,c),c) := T.rename Rename.succ.lift
+/-- The domain as the body's parameter binding reads it. -/
+abbrev Dom.inBody (T : Dom s) : Ty (((s,c),c),x) := T.underRoot.weaken
+/-- The codomain under the body root. -/
+abbrev Cod.underRoot (E : Cod s) : Ty (((s,c),c),x) := E.rename Rename.succ.lift.lift
 
 @[simp] theorem Ty.shape_rename {s1 s2 : Sig} (T : Ty s1) (ρ : Rename s1 s2) :
     (T.rename ρ).shape = T.shape.rename ρ := by cases T; rfl
@@ -477,7 +519,8 @@ def Shape.expand : Shape s → CaptureSet s → Shape s
       .cap A (CaptureSet.expand c1 []) (CaptureSet.expand c2 D₀)
   | .mu S, D₀ => .mu (S.expand (CaptureSet.weaken D₀ ∪ [CapAtom.var .here]))
   | .all T1 T2, D₀ =>
-      .all (T1.expand []) (T2.expand (CaptureSet.weaken D₀ ∪ [CapAtom.var .here]))
+      .all (T1.expand [])
+        (T2.expand (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D₀) ∪ [CapAtom.var .here]))
   | .and S T, D₀ => .and (S.expand D₀) (T.expand D₀)
   | .box T, _ => .box (T.expand [])
 
@@ -594,7 +637,7 @@ instance Ty.AnyOk.instDecidable {s : Sig} (T : Ty s) : Decidable T.AnyOk :=
 @[simp] theorem Shape.noAny_mu {s : Sig} (S : Shape (s,x)) :
     Shape.NoAny (.mu S) ↔ S.NoAny := by simp [Shape.NoAny, Shape.noAny]
 
-@[simp] theorem Shape.noAny_all {s : Sig} (T1 : Ty s) (T2 : Ty (s,x)) :
+@[simp] theorem Shape.noAny_all {s : Sig} (T1 : Dom s) (T2 : Cod s) :
     Shape.NoAny (.all T1 T2) ↔ T1.NoAny ∧ T2.NoAny := by
   simp [Shape.NoAny, Ty.NoAny, Shape.noAny]
 
@@ -627,7 +670,8 @@ instance Ty.AnyOk.instDecidable {s : Sig} (T : Ty s) : Decidable T.AnyOk :=
 @[simp] theorem Shape.anyOk_mu {s : Sig} (S : Shape (s,x)) :
     Shape.AnyOk (.mu S) ↔ S.AnyOk := by simp [Shape.AnyOk, Shape.anyOk]
 
-@[simp] theorem Shape.anyOk_all {s : Sig} (C1 : CaptureSet s) (S1 : Shape s) (T2 : Ty (s,x)) :
+@[simp] theorem Shape.anyOk_all {s : Sig} (C1 : CaptureSet (Sig.dom s)) (S1 : Shape (Sig.dom s))
+    (T2 : Cod s) :
     Shape.AnyOk (.all (S1 ^ C1) T2) ↔ C1.NoAny ∧ S1.AnyOk ∧ T2.AnyOk := by
   simp [Shape.AnyOk, Ty.AnyOk, CaptureSet.NoAny, Shape.anyOk, and_assoc]
 
@@ -712,7 +756,7 @@ theorem Shape.noAny_expand {s : Sig} :
       rw [Shape.anyOk_all] at h
       rw [Shape.expand, Shape.noAny_all]
       refine ⟨Ty.noAny_expand (S1 ^ C1) [] ?_ CaptureSet.noAny_nil,
-        Ty.noAny_expand T2 _ h.2.2 (CaptureSet.noAny_self hD)⟩
+        Ty.noAny_expand T2 _ h.2.2 (CaptureSet.noAny_selfC hD)⟩
       rw [Ty.anyOk_capt]
       exact h.2.1
   | .and S T, D₀, h, hD => by
@@ -757,8 +801,9 @@ theorem Shape.expand_rename {s1 s2 : Sig} :
       simp only [Shape.expand, Shape.rename, Shape.expand_rename S _ ρ.lift,
         CaptureSet.self_rename D₀ ρ]
   | .all T1 T2, D₀, ρ => by
-      simp only [Shape.expand, Shape.rename, Ty.expand_rename T1 [] ρ,
-        Ty.expand_rename T2 _ ρ.lift, CaptureSet.self_rename D₀ ρ, CaptureSet.rename_nil]
+      simp only [Shape.expand, Shape.rename, Ty.expand_rename T1 [] ρ.lift,
+        Ty.expand_rename T2 _ ρ.lift.lift, CaptureSet.selfC_rename D₀ ρ,
+        CaptureSet.rename_nil]
   | .and S T, D₀, ρ => by
       simp only [Shape.expand, Shape.rename, Shape.expand_rename S D₀ ρ,
         Shape.expand_rename T D₀ ρ]
@@ -801,8 +846,11 @@ inductive Tm : Sig → Type where
 
 /-- Values.  Object literals carry no type annotation. -/
 inductive Value : Sig → Type where
-  | obj : Defs (s,x) → Value s
-  | lam : Ty s → Tm (s,x) → Value s
+  /-- An object literal, whose body is under the class root and the self. -/
+  | obj : Defs ((s,c),x) → Value s
+  /-- A closure, whose body is under the body root, the arrow's capture
+      binder and the parameter. -/
+  | lam : Ty (Sig.dom s) → Tm (Sig.body s) → Value s
   /-- Boxing `□ x`: a value, so that it erases as the target's box does. -/
   | box : BVar s .var → Value s
 
@@ -829,8 +877,8 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .unbox C x, ρ => .unbox (C.rename ρ) (ρ.var x)
 
 def Value.rename : Value s1 → Rename s1 s2 → Value s2
-  | .obj d, ρ => .obj (d.rename ρ.lift)
-  | .lam T t, ρ => .lam (T.rename ρ) (t.rename ρ.lift)
+  | .obj d, ρ => .obj (d.rename ρ.lift.lift)
+  | .lam T t, ρ => .lam (T.rename ρ.lift) (t.rename ρ.lift.lift.lift)
   | .box x, ρ => .box (ρ.var x)
 
 def Defs.rename : Defs s1 → Rename s1 s2 → Defs s2
@@ -852,6 +900,253 @@ def Defs.weaken (d : Defs s) : Defs (s,,k) := d.rename Rename.succ
 def Tm.substVar (t : Tm (s,x)) (y : BVar s .var) : Tm s := t.rename (Rename.subst y)
 def Value.substVar (v : Value (s,x)) (y : BVar s .var) : Value s := v.rename (Rename.subst y)
 def Defs.substVar (d : Defs (s,x)) (y : BVar s .var) : Defs s := d.rename (Rename.subst y)
+
+/-! ## Substitution
+
+The source's substitution mirrors the target's `FCdot.Subst` binder for
+binder (B1.2).  Its term component maps a variable to a variable, because
+the source has no atoms and every substitution the source performs is at a
+variable.  Its capture component maps a capture binder to a capture *atom*,
+because a call instantiates the arrow's capture binder by the argument, a
+term variable, and a step that enters a body instantiates the body root by
+the outermost reading, which is what the source writes `any`.  `any` itself
+is inert and maps to itself. -/
+
+structure Subst (s1 s2 : Sig) where
+  var : BVar s1 .var → BVar s2 .var
+  cvar : BVar s1 .cap → CapAtom s2
+
+namespace Subst
+
+def ofRename (ρ : Rename s1 s2) : Subst s1 s2 where
+  var := fun x => ρ.var x
+  cvar := fun κ => .cvar (ρ.var κ)
+
+def lift (σ : Subst s1 s2) : Subst (s1,x) (s2,x) where
+  var := fun
+    | .here => .here
+    | .there x => .there (σ.var x)
+  cvar := fun
+    | .there κ => (σ.cvar κ).rename Rename.succ
+
+/-- Pass under a capture binder.  (`liftᶜ` of the plan: `ᶜ` is not a legal
+Lean identifier character, so the capture-sort twin of a name carries the
+suffix `C`.) -/
+def liftC (σ : Subst s1 s2) : Subst (s1,c) (s2,c) where
+  var := fun
+    | .there x => .there (σ.var x)
+  cvar := fun
+    | .here => .cvar .here
+    | .there κ => (σ.cvar κ).rename Rename.succ
+
+/-- Instantiate the innermost capture binder by an atom. -/
+def singleC (a : CapAtom s) : Subst (s,c) s where
+  var := fun
+    | .there x => x
+  cvar := fun
+    | .here => a
+    | .there κ => .cvar κ
+
+/-- What an application does to a codomain: the parameter goes to the
+argument and the arrow's capture binder to the argument. -/
+def arg (y : BVar s .var) : Subst ((s,c),x) s where
+  var := fun
+    | .here => y
+    | .there (.there z) => z
+  cvar := fun
+    | .there .here => .var y
+    | .there (.there κ) => .cvar κ
+
+/-- What a step does when it enters a closure body: the parameter by the
+argument, the arrow's binder by the argument, the body root by the
+outermost reading.  This is `FCdot.Subst.enter` with `any` where the target
+writes the universal root. -/
+def enter (y : BVar s .var) : Subst (((s,c),c),x) s where
+  var := fun
+    | .here => y
+    | .there (.there (.there z)) => z
+  cvar := fun
+    | .there .here => .var y
+    | .there (.there .here) => .any
+    | .there (.there (.there κ)) => .cvar κ
+
+/-- The same when a projection enters an object body: the self by the
+receiver, the class root by the outermost reading. -/
+def enterObj (y : BVar s .var) : Subst ((s,c),x) s where
+  var := fun
+    | .here => y
+    | .there (.there z) => z
+  cvar := fun
+    | .there .here => .any
+    | .there (.there κ) => .cvar κ
+
+end Subst
+
+/-! ### The traversals
+
+Clause for clause with the renamings above, differing only at a capture
+atom. -/
+
+def CapAtom.subst : CapAtom s1 → Subst s1 s2 → CapAtom s2
+  | .var x, σ => .var (σ.var x)
+  | .cvar κ, σ => σ.cvar κ
+  | .sel x A, σ => .sel (σ.var x) A
+  | .any, _ => .any
+
+def CaptureSet.subst (C : CaptureSet s1) (σ : Subst s1 s2) : CaptureSet s2 :=
+  C.map (fun a => a.subst σ)
+
+def Path.subst : Path s1 → Subst s1 s2 → Path s2
+  | .var x, σ => .var (σ.var x)
+
+mutual
+
+def Shape.subst : Shape s1 → Subst s1 s2 → Shape s2
+  | .top, _ => .top
+  | .bot, _ => .bot
+  | .typ A S T, σ => .typ A (S.subst σ) (T.subst σ)
+  | .fld a T, σ => .fld a (T.subst σ)
+  | .cap C c1 c2, σ => .cap C (c1.subst σ) (c2.subst σ)
+  | .sel p A, σ => .sel (p.subst σ) A
+  | .mu S, σ => .mu (S.subst σ.lift)
+  | .all T1 T2, σ => .all (T1.subst σ.liftC) (T2.subst σ.liftC.lift)
+  | .and S T, σ => .and (S.subst σ) (T.subst σ)
+  | .box T, σ => .box (T.subst σ)
+
+def Ty.subst : Ty s1 → Subst s1 s2 → Ty s2
+  | .capt C S, σ => .capt (C.subst σ) (S.subst σ)
+
+end
+
+mutual
+
+def Tm.subst : Tm s1 → Subst s1 s2 → Tm s2
+  | .path p, σ => .path (p.subst σ)
+  | .val v, σ => .val (v.subst σ)
+  | .app x y, σ => .app (σ.var x) (σ.var y)
+  | .proj x a, σ => .proj (σ.var x) a
+  | .let t u, σ => .let (t.subst σ) (u.subst σ.lift)
+  | .unbox C x, σ => .unbox (C.subst σ) (σ.var x)
+
+def Value.subst : Value s1 → Subst s1 s2 → Value s2
+  | .obj d, σ => .obj (d.subst σ.liftC.lift)
+  | .lam T t, σ => .lam (T.subst σ.liftC) (t.subst σ.liftC.liftC.lift)
+  | .box x, σ => .box (σ.var x)
+
+def Defs.subst : Defs s1 → Subst s1 s2 → Defs s2
+  | .typ A S, σ => .typ A (S.subst σ)
+  | .cap C c, σ => .cap C (c.subst σ)
+  | .trm a t, σ => .trm a (t.subst σ)
+  | .and d1 d2, σ => .and (d1.subst σ) (d2.subst σ)
+
+end
+
+/-! ### A substitution of a renaming is that renaming
+
+The one identity that keeps the whole existing renaming library in use. -/
+
+theorem Subst.funext {s1 s2 : Sig} {σ τ : Subst s1 s2}
+    (hv : ∀ x, σ.var x = τ.var x) (hc : ∀ κ, σ.cvar κ = τ.cvar κ) : σ = τ := by
+  cases σ with
+  | mk v c =>
+    cases τ with
+    | mk v' c' =>
+      have h1 : v = v' := _root_.funext hv
+      have h2 : c = c' := _root_.funext hc
+      subst h1; subst h2; rfl
+
+@[simp] theorem Subst.ofRename_lift {s1 s2 : Sig} (ρ : Rename s1 s2) :
+    Subst.ofRename (Rename.lift (k := .var) ρ) = (Subst.ofRename ρ).lift :=
+  Subst.funext (fun z => by cases z <;> rfl) (fun z => by cases z; rfl)
+
+@[simp] theorem Subst.ofRename_liftC {s1 s2 : Sig} (ρ : Rename s1 s2) :
+    Subst.ofRename (Rename.lift (k := .cap) ρ) = (Subst.ofRename ρ).liftC :=
+  Subst.funext (fun z => by cases z; rfl) (fun z => by cases z <;> rfl)
+
+@[simp] theorem CapAtom.subst_ofRename {s1 s2 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2) :
+    a.subst (Subst.ofRename ρ) = a.rename ρ := by
+  cases a <;> rfl
+
+@[simp] theorem CaptureSet.subst_ofRename {s1 s2 : Sig} (C : CaptureSet s1) (ρ : Rename s1 s2) :
+    C.subst (Subst.ofRename ρ) = C.rename ρ := by
+  induction C with
+  | nil => rfl
+  | cons a C ih =>
+      show (a.subst (Subst.ofRename ρ)) :: (CaptureSet.subst C (Subst.ofRename ρ)) = _
+      rw [CapAtom.subst_ofRename, ih]
+      rfl
+
+@[simp] theorem Path.subst_ofRename {s1 s2 : Sig} (p : Path s1) (ρ : Rename s1 s2) :
+    p.subst (Subst.ofRename ρ) = p.rename ρ := by
+  cases p; rfl
+
+mutual
+
+@[simp] theorem Shape.subst_ofRename {s1 s2 : Sig} (S : Shape s1) (ρ : Rename s1 s2) :
+    S.subst (Subst.ofRename ρ) = S.rename ρ := by
+  match S with
+  | .top => rfl
+  | .bot => rfl
+  | .typ A S T =>
+      simp only [Shape.subst, Shape.rename, Shape.subst_ofRename S ρ, Shape.subst_ofRename T ρ]
+  | .fld a T => simp only [Shape.subst, Shape.rename, Ty.subst_ofRename T ρ]
+  | .cap C c1 c2 => simp only [Shape.subst, Shape.rename, CaptureSet.subst_ofRename]
+  | .sel p A => simp only [Shape.subst, Shape.rename, Path.subst_ofRename]
+  | .mu S =>
+      simp only [Shape.subst, Shape.rename, ← Subst.ofRename_lift,
+        Shape.subst_ofRename S ρ.lift]
+  | .all T1 T2 =>
+      simp only [Shape.subst, Shape.rename, ← Subst.ofRename_lift, ← Subst.ofRename_liftC,
+        Ty.subst_ofRename T1 ρ.lift, Ty.subst_ofRename T2 ρ.lift.lift]
+  | .and S T =>
+      simp only [Shape.subst, Shape.rename, Shape.subst_ofRename S ρ, Shape.subst_ofRename T ρ]
+  | .box T => simp only [Shape.subst, Shape.rename, Ty.subst_ofRename T ρ]
+
+@[simp] theorem Ty.subst_ofRename {s1 s2 : Sig} (T : Ty s1) (ρ : Rename s1 s2) :
+    T.subst (Subst.ofRename ρ) = T.rename ρ := by
+  match T with
+  | .capt C S =>
+      simp only [Ty.subst, Ty.rename, CaptureSet.subst_ofRename, Shape.subst_ofRename S ρ]
+
+end
+
+mutual
+
+@[simp] theorem Tm.subst_ofRename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
+    t.subst (Subst.ofRename ρ) = t.rename ρ := by
+  match t with
+  | .path p => simp only [Tm.subst, Tm.rename, Path.subst_ofRename]
+  | .val v => simp only [Tm.subst, Tm.rename, Value.subst_ofRename v ρ]
+  | .app x y => rfl
+  | .proj x a => rfl
+  | .let t u =>
+      simp only [Tm.subst, Tm.rename, ← Subst.ofRename_lift, Tm.subst_ofRename t ρ,
+        Tm.subst_ofRename u ρ.lift]
+  | .unbox C x =>
+      simp only [Tm.subst, Tm.rename, CaptureSet.subst_ofRename]
+      rfl
+
+@[simp] theorem Value.subst_ofRename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
+    v.subst (Subst.ofRename ρ) = v.rename ρ := by
+  match v with
+  | .obj d =>
+      simp only [Value.subst, Value.rename, ← Subst.ofRename_lift, ← Subst.ofRename_liftC,
+        Defs.subst_ofRename d ρ.lift.lift]
+  | .lam T t =>
+      simp only [Value.subst, Value.rename, ← Subst.ofRename_lift, ← Subst.ofRename_liftC,
+        Ty.subst_ofRename T ρ.lift, Tm.subst_ofRename t ρ.lift.lift.lift]
+  | .box x => rfl
+
+@[simp] theorem Defs.subst_ofRename {s1 s2 : Sig} (d : Defs s1) (ρ : Rename s1 s2) :
+    d.subst (Subst.ofRename ρ) = d.rename ρ := by
+  match d with
+  | .typ A S => simp only [Defs.subst, Defs.rename, Shape.subst_ofRename]
+  | .cap C c => simp only [Defs.subst, Defs.rename, CaptureSet.subst_ofRename]
+  | .trm a t => simp only [Defs.subst, Defs.rename, Tm.subst_ofRename t ρ]
+  | .and d1 d2 =>
+      simp only [Defs.subst, Defs.rename, Defs.subst_ofRename d1 ρ, Defs.subst_ofRename d2 ρ]
+
+end
 
 /-! ## The inspected root
 

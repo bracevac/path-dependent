@@ -1,5 +1,6 @@
 import Coercions.CapturesCC.DotToFCdot.Types
 import Coercions.CapturesCC.DotToFCdot.TypesLemmas
+import Coercions.CapturesCC.DotToFCdot.TypesSubst
 import Coercions.CapturesCC.DotToFCdot.Evidence
 import Coercions.CapturesCC.DotToFCdot.Terms
 import Coercions.CapturesCC.DotToFCdot.EvidenceTyped

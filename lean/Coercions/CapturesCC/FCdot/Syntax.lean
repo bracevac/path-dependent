@@ -116,7 +116,7 @@ inductive Shape : Sig → Type where
   | sel : BVar s .var → Label → Shape s
   /-- Dependent arrow: the codomain may mention the parameter's block.  The
       domain is a `Dom s` and the codomain a `Cod s`. -/
-  | pi : Ty s → Ty (s,x) → Shape s
+  | pi : Ty (Sig.dom s) → Ty (Sig.cod s) → Shape s
   /-- Object shape: propositions over a self block. -/
   | obj : Telescope (s,x) → Shape s
   /-- The box former: inert, neither a proposition nor a telescope entry. -/
@@ -150,9 +150,9 @@ end
 deriving instance DecidableEq for Shape, Ty, Proposition, Telescope
 
 /-- The domain of an arrow, behind one name. -/
-abbrev Dom (s : Sig) : Type := Ty s
+abbrev Dom (s : Sig) : Type := Ty (Sig.dom s)
 /-- The codomain of an arrow, behind one name: it may mention the parameter. -/
-abbrev Cod (s : Sig) : Type := Ty (s,x)
+abbrev Cod (s : Sig) : Type := Ty (Sig.cod s)
 
 /-- The top shape is the object shape with no propositions: every shape is
 included in it, and it says nothing about its inhabitants. -/
@@ -230,7 +230,7 @@ mutual
 def Shape.rename : Shape s1 → Rename s1 s2 → Shape s2
   | .bot, _ => .bot
   | .sel x ℓ, ρ => .sel (ρ.var x) ℓ
-  | .pi S T, ρ => .pi (S.rename ρ) (T.rename ρ.lift)
+  | .pi S T, ρ => .pi (S.rename ρ.lift) (T.rename ρ.lift.lift)
   | .obj Tel, ρ => .obj (Tel.rename ρ.lift)
   | .box T, ρ => .box (T.rename ρ)
 
@@ -257,6 +257,23 @@ def Shape.weaken (S : Shape s) : Shape (s,,k) := S.rename Rename.succ
 def Ty.weaken (T : Ty s) : Ty (s,,k) := T.rename Rename.succ
 def Telescope.weaken (Tel : Telescope s) : Telescope (s,,k) := Tel.rename Rename.succ
 def Proposition.weaken (P : Proposition s) : Proposition (s,,k) := P.rename Rename.succ
+
+/-! ### The domain and the codomain under a scope
+
+A lambda body is a scope: its own root, then the arrow's capture binder,
+then the parameter.  The domain is written in `Dom s`, which already has the
+arrow's capture binder, so under the body root it is renamed by
+`Rename.succ.lift`, which inserts the root between the outer signature and
+the arrow binder.  `Dom.inBody` is the domain as the parameter binding reads
+it, one term binder further out.  The codomain has the parameter on top, so
+it is renamed by the same map lifted once more. -/
+
+/-- The domain under the body root. -/
+abbrev Dom.underRoot (T : Dom s) : Ty ((s,c),c) := T.rename Rename.succ.lift
+/-- The domain as the body's parameter binding reads it. -/
+abbrev Dom.inBody (T : Dom s) : Ty (((s,c),c),x) := T.underRoot.weaken
+/-- The codomain under the body root. -/
+abbrev Cod.underRoot (E : Cod s) : Ty (((s,c),c),x) := E.rename Rename.succ.lift.lift
 
 /-- Instantiate the innermost binder of a shape or type by a variable. -/
 def CaptureSet.substVar (C : CaptureSet (s,,k)) (y : BVar s k) : CaptureSet s :=
@@ -325,8 +342,10 @@ inductive ShapeCo : Sig → Type where
   | bot : Shape s → ShapeCo s
   | eqToLe : EqCo s → ShapeCo s
   /-- Contravariant domain, covariant codomain under the parameter binder.
-      Both are coercions between types. -/
-  | pi : LeCo s → LeCo (s,x) → ShapeCo s
+      Both are coercions between types, and both live in the scope the rule
+      opens: the two arrows' capture binders are identified there, under a
+      root of their own. -/
+  | pi : LeCo (Sig.scope s) → LeCo (Sig.body s) → ShapeCo s
   /-- Object coercion between closed telescopes: the source telescope is
       annotated; the morphism proves each target proposition by a *template*
       (a closed coercion, a source proposition, a closed coercion). -/
@@ -473,7 +492,7 @@ def ShapeCo.rename : ShapeCo s1 → Rename s1 s2 → ShapeCo s2
   | .top T, ρ => .top (T.rename ρ)
   | .bot T, ρ => .bot (T.rename ρ)
   | .eqToLe φ, ρ => .eqToLe (φ.rename ρ)
-  | .pi e f, ρ => .pi (e.rename ρ) (f.rename ρ.lift)
+  | .pi e f, ρ => .pi (e.rename ρ.lift.lift) (f.rename ρ.lift.lift.lift)
   | .obj Tel m, ρ => .obj (Tel.rename ρ.lift) (m.rename ρ)
   | .pair Tel₁ Tel₂ e f, ρ =>
       .pair (Tel₁.rename ρ.lift) (Tel₂.rename ρ.lift) (e.rename ρ) (f.rename ρ)
@@ -602,12 +621,12 @@ inductive Value : Sig → Type where
   /-- `λ^A(x : T). t ⦃g⦄`: the assigned capture set `A`, the parameter type,
       the body, and the closing evidence `g` putting the body's use set below
       `A` weakened united with the parameter. -/
-  | lam : CaptureSet s → Ty s → Tm (s,x) → CapCo (s,x) → Value s
+  | lam : CaptureSet s → Ty (Sig.dom s) → Tm (((s,c),c),x) → CapCo (((s,c),c),x) → Value s
   /-- Object literal `ν^A(W; Wᶜ; F)`: the assigned capture set, block
       witnesses (absent labels are `⊤`), capture witnesses (absent labels are
       `[]`), and fields.  Its precise shape is the telescope generated from
       them (`Telescope.ofLiteral`). -/
-  | obj : CaptureSet s → Witnesses (s,x) → CapWitnesses (s,x) → Fields (s,x) → Value s
+  | obj : CaptureSet s → Witnesses (s,x) → CapWitnesses (s,x) → Fields ((s,c),x) → Value s
   /-- A boxed atom: a value with no witnesses and no fields.  The box shape
       hides the captured set, so a box is pure. -/
   | box : Atom s → Value s
@@ -671,11 +690,11 @@ def Value.annot : Value s → CaptureSet s
   | .box _ => []
   | .cast v _ => v.annot
 
-@[simp] theorem Value.annot_lam (A : CaptureSet s) (T : Ty s) (t : Tm (s,x))
-    (g : CapCo (s,x)) : (Value.lam A T t g).annot = A := rfl
+@[simp] theorem Value.annot_lam (A : CaptureSet s) (T : Dom s) (t : Tm (((s,c),c),x))
+    (g : CapCo (((s,c),c),x)) : (Value.lam A T t g).annot = A := rfl
 
 @[simp] theorem Value.annot_obj (A : CaptureSet s) (W : Witnesses (s,x))
-    (Wc : CapWitnesses (s,x)) (F : Fields (s,x)) : (Value.obj A W Wc F).annot = A := rfl
+    (Wc : CapWitnesses (s,x)) (F : Fields ((s,c),x)) : (Value.obj A W Wc F).annot = A := rfl
 
 @[simp] theorem Value.annot_box (a : Atom s) : (Value.box a).annot = [] := rfl
 
@@ -784,9 +803,10 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .unbox a U f, ρ => .unbox (a.rename ρ) (U.rename ρ) (f.rename ρ)
 
 def Value.rename : Value s1 → Rename s1 s2 → Value s2
-  | .lam A S t g, ρ => .lam (A.rename ρ) (S.rename ρ) (t.rename ρ.lift) (g.rename ρ.lift)
+  | .lam A S t g, ρ =>
+      .lam (A.rename ρ) (S.rename ρ.lift) (t.rename ρ.lift.lift.lift) (g.rename ρ.lift.lift.lift)
   | .obj A W Wc F, ρ =>
-      .obj (A.rename ρ) (W.rename ρ.lift) (Wc.rename ρ.lift) (F.rename ρ.lift)
+      .obj (A.rename ρ) (W.rename ρ.lift) (Wc.rename ρ.lift) (F.rename ρ.lift.lift)
   | .box a, ρ => .box (a.rename ρ)
   | .cast v e, ρ => .cast (v.rename ρ) (e.rename ρ)
 
@@ -817,28 +837,30 @@ scoped postfix:max "↑" => LeCo.weaken
 /-! ## Atom substitution
 
 A substitution maps term variables to atoms and capture variables to capture
-variables.  Types and evidence only see the root variable, so on them a
-substitution acts as the renaming of roots (`Subst.root`); on terms the atom
-itself replaces the variable. -/
+*atoms*.  A call instantiates the arrow's capture binder by the argument's
+root, a term variable, and a step that enters a body instantiates the body
+root by the universal root, so the capture component cannot stay
+kind-preserving.  Types and evidence see a term variable only through its
+root, which is `Subst.rootVar`; on terms the atom itself replaces the
+variable. -/
 
 structure Subst (s1 s2 : Sig) where
   var : BVar s1 .var → Atom s2
-  cvar : BVar s1 .cap → BVar s2 .cap
+  cvar : BVar s1 .cap → CapAtom s2
 
 namespace Subst
 
-/-- The renaming of roots induced by a substitution. -/
-def root (σ : Subst s1 s2) : Rename s1 s2 where
-  var := fun {k} x => match k, x with
-    | .var, x => (σ.var x).root
-    | .cap, x => σ.cvar x
+/-- The map on root variables induced by a substitution.  It replaces the
+`Subst.root` renaming of the vanilla line: a substitution is no longer kind
+preserving, so only its term component is a map of variables. -/
+def rootVar (σ : Subst s1 s2) (x : BVar s1 .var) : BVar s2 .var := (σ.var x).root
 
 def lift (σ : Subst s1 s2) : Subst (s1,x) (s2,x) where
   var := fun
     | .here => .var .here
     | .there x => (σ.var x).weaken
   cvar := fun
-    | .there x => .there (σ.cvar x)
+    | .there κ => (σ.cvar κ).rename Rename.succ
 
 /-- Pass under a capture binder.  (`liftᶜ` of the plan: `ᶜ` is not a legal
 Lean identifier character, so the capture-sort twin of a name carries the
@@ -847,8 +869,8 @@ def liftC (σ : Subst s1 s2) : Subst (s1,c) (s2,c) where
   var := fun
     | .there x => (σ.var x).weaken
   cvar := fun
-    | .here => .here
-    | .there x => .there (σ.cvar x)
+    | .here => .cvar .here
+    | .there κ => (σ.cvar κ).rename Rename.succ
 
 /-- Substitute the innermost binder by an atom, keep the rest. -/
 def single (a : Atom s) : Subst (s,x) s where
@@ -856,13 +878,116 @@ def single (a : Atom s) : Subst (s,x) s where
     | .here => a
     | .there x => .var x
   cvar := fun
-    | .there x => x
+    | .there κ => .cvar κ
 
 def ofRename (ρ : Rename s1 s2) : Subst s1 s2 where
   var := fun x => .var (ρ.var x)
-  cvar := fun x => ρ.var x
+  cvar := fun κ => .cvar (ρ.var κ)
+
+/-- Instantiate the innermost capture binder by an atom. -/
+def singleC (a : CapAtom s) : Subst (s,c) s where
+  var := fun
+    | .there x => .var x
+  cvar := fun
+    | .here => a
+    | .there κ => .cvar κ
+
+/-- What an application does to a codomain: the parameter goes to the
+argument and the arrow's capture binder to the argument's root. -/
+def arg (b : Atom s) : Subst ((s,c),x) s where
+  var := fun
+    | .here => b
+    | .there (.there y) => .var y
+  cvar := fun
+    | .there .here => .var b.root
+    | .there (.there κ) => .cvar κ
+
+/-- What a step does when it enters a lambda body: the parameter by the
+argument, the arrow's binder by the argument's root, the body root by the
+universal root. -/
+def enter (a : Atom s) : Subst (((s,c),c),x) s where
+  var := fun
+    | .here => a
+    | .there (.there (.there y)) => .var y
+  cvar := fun
+    | .there .here => .var a.root
+    | .there (.there .here) => .top
+    | .there (.there (.there κ)) => .cvar κ
+
+/-- The capture half of `Subst.enter`: what a step does to a coercion that
+lives in a *scope* and not in a body.  The arrow's binder goes to the
+argument's root and the body root to the universal root, exactly as in
+`Subst.enter`, and there is no parameter to instantiate. -/
+def enterC (a : Atom s) : Subst ((s,c),c) s where
+  var := fun
+    | .there (.there y) => .var y
+  cvar := fun
+    | .here => .var a.root
+    | .there .here => .top
+    | .there (.there κ) => .cvar κ
+
+/-- The same when a projection enters an object body: the self by the
+receiver, the class root by the universal root. -/
+def enterObj (y : BVar s .var) : Subst ((s,c),x) s where
+  var := fun
+    | .here => .var y
+    | .there (.there z) => .var z
+  cvar := fun
+    | .there .here => .top
+    | .there (.there κ) => .cvar κ
 
 end Subst
+
+/-! ### Substitution on capture atoms, types, propositions and telescopes
+
+Six traversals, clause for clause with their renamings.  They differ from a
+renaming only at a capture atom, where a capture binder becomes an atom and
+the universal root stays the universal root. -/
+
+def CapAtom.subst : CapAtom s1 → Subst s1 s2 → CapAtom s2
+  | .var x, σ => .var (σ.rootVar x)
+  | .cvar κ, σ => σ.cvar κ
+  | .name x ℓ, σ => .name (σ.rootVar x) ℓ
+  | .top, _ => .top
+
+def CaptureSet.subst (C : CaptureSet s1) (σ : Subst s1 s2) : CaptureSet s2 :=
+  C.map (fun a => a.subst σ)
+
+mutual
+
+def Shape.subst : Shape s1 → Subst s1 s2 → Shape s2
+  | .bot, _ => .bot
+  | .sel x ℓ, σ => .sel (σ.rootVar x) ℓ
+  | .pi S T, σ => .pi (S.subst σ.liftC) (T.subst σ.liftC.lift)
+  | .obj Tel, σ => .obj (Tel.subst σ.lift)
+  | .box T, σ => .box (T.subst σ)
+
+def Ty.subst : Ty s1 → Subst s1 s2 → Ty s2
+  | .capt C S, σ => .capt (C.subst σ) (S.subst σ)
+
+def Proposition.subst : Proposition s1 → Subst s1 s2 → Proposition s2
+  | .le S T, σ => .le (S.subst σ) (T.subst σ)
+  | .eq S T, σ => .eq (S.subst σ) (T.subst σ)
+  | .has ℓ, _ => .has ℓ
+  | .bnd T, σ => .bnd (T.subst σ)
+  | .leC C D, σ => .leC (C.subst σ) (D.subst σ)
+  | .eqC C D, σ => .eqC (C.subst σ) (D.subst σ)
+
+def Telescope.subst : Telescope s1 → Subst s1 s2 → Telescope s2
+  | .nil, _ => .nil
+  | .cons Tel P, σ => .cons (Tel.subst σ) (P.subst σ)
+
+end
+
+/-- Substitution on block witnesses, which carry shapes. -/
+def Witnesses.subst : Witnesses s1 → Subst s1 s2 → Witnesses s2
+  | .nil, _ => .nil
+  | .cons W ℓ T, σ => .cons (W.subst σ) ℓ (T.subst σ)
+
+/-- Substitution on capture witnesses, which carry capture sets. -/
+def CapWitnesses.subst : CapWitnesses s1 → Subst s1 s2 → CapWitnesses s2
+  | .nil, _ => .nil
+  | .cons W ℓ C, σ => .cons (W.subst σ) ℓ (C.subst σ)
 
 /-- Use the innermost binder under a cast everywhere in a term. -/
 def Subst.selfCast (E : LeCo (s,x)) : Subst (s,x) (s,x) where
@@ -870,47 +995,47 @@ def Subst.selfCast (E : LeCo (s,x)) : Subst (s,x) (s,x) where
     | .here => .cast (.var .here) E
     | .there y => .var (.there y)
   cvar := fun
-    | .there y => .there y
+    | .there y => .cvar (.there y)
 
 /-! ### Substitution on evidence, atoms and terms -/
 
 mutual
 
 def ShapeCo.subst : ShapeCo s1 → Subst s1 s2 → ShapeCo s2
-  | .refl T, σ => .refl (T.rename σ.root)
+  | .refl T, σ => .refl (T.subst σ)
   | .trans e f, σ => .trans (e.subst σ) (f.subst σ)
-  | .top T, σ => .top (T.rename σ.root)
-  | .bot T, σ => .bot (T.rename σ.root)
+  | .top T, σ => .top (T.subst σ)
+  | .bot T, σ => .bot (T.subst σ)
   | .eqToLe φ, σ => .eqToLe (φ.subst σ)
-  | .pi e f, σ => .pi (e.subst σ) (f.subst σ.lift)
-  | .obj Tel m, σ => .obj (Tel.rename σ.root.lift) (m.subst σ)
+  | .pi e f, σ => .pi (e.subst σ.liftC.liftC) (f.subst σ.liftC.liftC.lift)
+  | .obj Tel m, σ => .obj (Tel.subst σ.lift) (m.subst σ)
   | .pair Tel₁ Tel₂ e f, σ =>
-      .pair (Tel₁.rename σ.root.lift) (Tel₂.rename σ.root.lift) (e.subst σ) (f.subst σ)
-  | .bound Tel i, σ => .bound (Tel.rename σ.root.lift) i
+      .pair (Tel₁.subst σ.lift) (Tel₂.subst σ.lift) (e.subst σ) (f.subst σ)
+  | .bound Tel i, σ => .bound (Tel.subst σ.lift) i
   | .intoBnd e, σ => .intoBnd (e.subst σ)
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
   | .boxed d, σ => .boxed (d.subst σ)
 
 def CapCo.subst : CapCo s1 → Subst s1 s2 → CapCo s2
-  | .refl C, σ => .refl (C.rename σ.root)
+  | .refl C, σ => .refl (C.subst σ)
   | .trans f g, σ => .trans (f.subst σ) (g.subst σ)
-  | .elem C D, σ => .elem (C.rename σ.root) (D.rename σ.root)
+  | .elem C D, σ => .elem (C.subst σ) (D.subst σ)
   | .union f g, σ => .union (f.subst σ) (g.subst σ)
   | .capvar a, σ => .capvar (a.subst σ)
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
   | .eqToLe φ, σ => .eqToLe (φ.subst σ)
-  | .level e r, σ => .level (e.rename σ.root) (r.rename σ.root)
+  | .level e r, σ => .level (e.subst σ) (r.subst σ)
 
 def CapEq.subst : CapEq s1 → Subst s1 s2 → CapEq s2
-  | .refl C, σ => .refl (C.rename σ.root)
+  | .refl C, σ => .refl (C.subst σ)
   | .symm φ, σ => .symm (φ.subst σ)
   | .trans φ ψ, σ => .trans (φ.subst σ) (ψ.subst σ)
-  | .defC x ℓ, σ => .defC (σ.root.var x) ℓ
+  | .defC x ℓ, σ => .defC (σ.rootVar x) ℓ
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
 
 def CapStep.subst : CapStep s1 → Subst s1 s2 → CapStep s2
   | .closed f, σ => .closed (f.subst σ)
-  | .incl C D, σ => .incl (C.rename σ.root.lift) (D.rename σ.root.lift)
+  | .incl C D, σ => .incl (C.subst σ.lift) (D.subst σ.lift)
 
 def SideC.subst : SideC s1 → Subst s1 s2 → SideC s2
   | .nil, _ => .nil
@@ -920,10 +1045,10 @@ def LeCo.subst : LeCo s1 → Subst s1 s2 → LeCo s2
   | .capt e f, σ => .capt (e.subst σ) (f.subst σ)
 
 def EqCo.subst : EqCo s1 → Subst s1 s2 → EqCo s2
-  | .refl T, σ => .refl (T.rename σ.root)
+  | .refl T, σ => .refl (T.subst σ)
   | .symm φ, σ => .symm (φ.subst σ)
   | .trans φ ψ, σ => .trans (φ.subst σ) (ψ.subst σ)
-  | .def x ℓ, σ => .def (σ.root.var x) ℓ
+  | .def x ℓ, σ => .def (σ.rootVar x) ℓ
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
 
 def Has.subst : Has s1 → Subst s1 s2 → Has s2
@@ -946,10 +1071,10 @@ def Morphism.subst : Morphism s1 → Subst s1 s2 → Morphism s2
 def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
   | .var x, σ => σ.var x
   | .cast a e, σ => .cast (a.subst σ) (e.subst σ)
-  | .foldSelf Tel a, σ => .foldSelf (Tel.rename σ.root.lift) (a.subst σ)
+  | .foldSelf Tel a, σ => .foldSelf (Tel.subst σ.lift) (a.subst σ)
   | .unfoldSelf a, σ => .unfoldSelf (a.subst σ)
   | .both Tel₁ Tel₂ a b, σ =>
-      .both (Tel₁.rename σ.root.lift) (Tel₂.rename σ.root.lift) (a.subst σ) (b.subst σ)
+      .both (Tel₁.subst σ.lift) (Tel₂.subst σ.lift) (a.subst σ) (b.subst σ)
   | .recap a f, σ => .recap (a.subst σ) (f.subst σ)
 
 end
@@ -962,15 +1087,16 @@ def Tm.subst : Tm s1 → Subst s1 s2 → Tm s2
   | .app a b, σ => .app (a.subst σ) (b.subst σ)
   | .proj a ℓ h, σ => .proj (a.subst σ) ℓ (h.subst σ)
   | .let t u U f, σ =>
-      .let (t.subst σ) (u.subst σ.lift) (U.rename σ.root) (f.subst σ.lift)
+      .let (t.subst σ) (u.subst σ.lift) (U.subst σ) (f.subst σ.lift)
   | .cast t e, σ => .cast (t.subst σ) (e.subst σ)
-  | .unbox a U f, σ => .unbox (a.subst σ) (U.rename σ.root) (f.subst σ)
+  | .unbox a U f, σ => .unbox (a.subst σ) (U.subst σ) (f.subst σ)
 
 def Value.subst : Value s1 → Subst s1 s2 → Value s2
   | .lam A S t g, σ =>
-      .lam (A.rename σ.root) (S.rename σ.root) (t.subst σ.lift) (g.subst σ.lift)
+      .lam (A.subst σ) (S.subst σ.liftC) (t.subst σ.liftC.liftC.lift)
+        (g.subst σ.liftC.liftC.lift)
   | .obj A W Wc F, σ =>
-      .obj (A.rename σ.root) (W.rename σ.root.lift) (Wc.rename σ.root.lift) (F.subst σ.lift)
+      .obj (A.subst σ) (W.subst σ.lift) (Wc.subst σ.lift) (F.subst σ.liftC.lift)
   | .box a, σ => .box (a.subst σ)
   | .cast v e, σ => .cast (v.subst σ) (e.subst σ)
 

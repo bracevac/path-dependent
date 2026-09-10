@@ -75,6 +75,11 @@ inductive Ctx : Sig → Type where
   | cons : Ctx s → Ty s → Ctx (s,x)
   | consSelf : Ctx s → Defs (s,x) → Shape (s,x) → CaptureSet s → Ctx (s,x)
   | consC : Ctx s → Ctx (s,c)
+  /-- A scope root: the capture binder a lambda body or an object body opens
+      for itself.  It carries no payload, exactly as `consC` carries none, so
+      `Platform.ctx` and `Platform.store` are textually unchanged and every
+      platform binder is still rigid. -/
+  | consRoot : Ctx s → Ctx (s,c)
 
 /-- The type of a variable, weakened into the current scope.  The self
 binder of a literal has type `(μ S) ^ U`, weakened, which is the plan's
@@ -85,6 +90,29 @@ def Ctx.lookup : Ctx s → BVar s .var → Ty s
   | .consSelf _ _ S U, .here => (Ty.capt U (.mu S)).weaken
   | .consSelf Γ _ _ _, .there y => (Γ.lookup y).weaken
   | .consC Γ, .there y => (Γ.lookup y).weaken
+  | .consRoot Γ, .there y => (Γ.lookup y).weaken
+
+/-! ## The scope contexts
+
+The three contexts a scope opens, mirroring `FCdot.Ctx.scope`,
+`FCdot.Ctx.body` and `FCdot.Ctx.objBody` binder for binder, so that
+`Ctx.translate` is a homomorphism on them. -/
+
+/-- A declaration shape under the class root the object body opens. -/
+abbrev Shape.underRoot (S : Shape (s,x)) : Shape ((s,c),x) := S.rename Rename.succ.lift
+
+/-- A scope: its own root, then the arrow's capture binder. -/
+def Ctx.scope (Γ : Ctx s) : Ctx ((s,c),c) := (Γ.consRoot).consC
+
+/-- A lambda body: a scope, then the parameter at the domain read under the
+body root. -/
+def Ctx.body (Γ : Ctx s) (T : Dom s) : Ctx (((s,c),c),x) := Γ.scope.cons T.underRoot
+
+/-- An object body: the class root, then the self binder, which remembers
+the definitions and the assigned capture set as `consSelf` always did. -/
+def Ctx.objBody (Γ : Ctx s) (d : Defs ((s,c),x)) (S : Shape (s,x)) (U : CaptureSet s) :
+    Ctx ((s,c),x) :=
+  (Γ.consRoot).consSelf d S.underRoot U.weaken
 
 /-! ## The judgments -/
 
@@ -150,8 +178,13 @@ inductive SubShape : {s : Sig} → Ctx s → Shape s → Shape s → Type where
       {A : Label} {S T : Shape s} {C : CaptureSet s} :
       HasTy U Γ (.path (.var x)) ((Shape.typ A S T) ^ C) →
       SubShape Γ S (.sel (.var x) A)
-  | all {s : Sig} {Γ : Ctx s} {T1 T2 : Ty s} {U1 U2 : Ty (s,x)} :
-      Sub Γ T2 T1 → Sub (Γ.cons T2) U1 U2 → SubShape Γ (.all T1 U1) (.all T2 U2)
+  /-- Contravariant domain, covariant codomain.  Both arrows' capture
+      binders are opened at one scope, and that scope has a root of its own,
+      as the target's `FCdot.ShapeCo.HasType.pi` does. -/
+  | all {s : Sig} {Γ : Ctx s} {T1 T2 : Dom s} {U1 U2 : Cod s} :
+      Sub Γ.scope T2.underRoot T1.underRoot →
+      Sub (Γ.body T2) U1.underRoot U2.underRoot →
+      SubShape Γ (.all T1 U1) (.all T2 U2)
 
 /-- Subtyping on capturing types: `Capt`. -/
 inductive Sub : {s : Sig} → Ctx s → Ty s → Ty s → Type where
@@ -164,20 +197,22 @@ inductive HasTy : {s : Sig} → CaptureSet s → Ctx s → Tm s → Ty s → Typ
       HasTy [.var x] Γ (.path (.var x)) ((Γ.lookup x).shape ^ [.var x])
   /-- `All-I`.  A value is pure and its type's capture set is the use set of
       its body without the binder. -/
-  | lam {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {T1 : Ty s} {t : Tm (s,x)}
-      {T2 : Ty (s,x)} :
-      HasTy (CaptureSet.weaken U ∪ [.var .here]) (Γ.cons T1) t T2 → Ty.Wf T1 →
+  | lam {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {T1 : Dom s} {t : Tm (Sig.body s)}
+      {T2 : Cod s} :
+      HasTy (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken U)) ∪ [.var .here])
+        (Γ.body T1) t T2.underRoot → Ty.Wf T1 →
       HasTy [] Γ (.val (.lam T1 t)) ((Shape.all T1 T2) ^ U)
   /-- `All-E`. -/
   | app {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {x y : BVar s .var}
-      {T1 : Ty s} {T2 : Ty (s,x)} {C : CaptureSet s} :
+      {T1 : Dom s} {T2 : Cod s} {C : CaptureSet s} :
       HasTy U Γ (.path (.var x)) ((Shape.all T1 T2) ^ C) →
-      HasTy U Γ (.path (.var y)) T1 →
-      HasTy U Γ (.app x y) (T2.substVar y)
+      HasTy U Γ (.path (.var y)) (T1.subst (Subst.singleC (.var y))) →
+      HasTy U Γ (.app x y) (T2.subst (Subst.arg y))
   /-- `{}-I`.  The self binder remembers the definitions and the capture set
       assigned to the literal. -/
-  | obj {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {d : Defs (s,x)} {S : Shape (s,x)} :
-      DefsTy (CaptureSet.weaken U ∪ [.var .here]) (Γ.consSelf d S U) d S →
+  | obj {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {d : Defs ((s,c),x)} {S : Shape (s,x)} :
+      DefsTy (CaptureSet.weaken (CaptureSet.weaken U) ∪ [.var .here])
+        (Γ.objBody d S U) d S.underRoot →
       Defs.Distinct d →
       HasTy [] Γ (.val (.obj d)) ((Shape.mu S) ^ U)
   /-- `Box`: boxing is pure. -/
