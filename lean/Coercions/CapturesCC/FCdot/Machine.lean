@@ -262,7 +262,8 @@ inductive Store.Ext : Store s → Store s' → Rename s s' → Prop where
   | cons {σ : Store s} {σ' : Store s'} {ρ : Rename s s'} :
       Store.Ext σ σ' ρ → ∀ v : Value s', Store.Ext σ (σ'.cons v) (ρ.comp Rename.succ)
   | consC {σ : Store s} {σ' : Store s'} {ρ : Rename s s'} :
-      Store.Ext σ σ' ρ → ∀ b : CapBound s', Store.Ext σ (σ'.consC b) (ρ.comp Rename.succ)
+      Store.Ext σ σ' ρ → ∀ b : CapBound s', b.opaque = false →
+        Store.Ext σ (σ'.consC b) (ρ.comp Rename.succ)
 
 /-- Store extension composes. -/
 theorem Store.Ext.comp {s1 s2 s3 : Sig} {σ1 : Store s1} {σ2 : Store s2} {σ3 : Store s3}
@@ -272,7 +273,7 @@ theorem Store.Ext.comp {s1 s2 s3 : Sig} {σ1 : Store s1} {σ2 : Store s2} {σ3 :
   induction h' with
   | refl => rw [Rename.comp_id]; exact h
   | cons _ v ih => rw [← Rename.comp_assoc]; exact (ih h).cons v
-  | consC _ b ih => rw [← Rename.comp_assoc]; exact (ih h).consC b
+  | consC _ b hb ih => rw [← Rename.comp_assoc]; exact (ih h).consC b hb
 
 /-! ### Injectivity on capture atoms -/
 
@@ -300,7 +301,7 @@ theorem Store.Ext.injective {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : R
   induction h with
   | refl => exact Rename.InjectiveOnAtoms.id
   | cons _ _ ih => exact ih.comp_succ
-  | consC _ _ ih => exact ih.comp_succ
+  | consC _ _ _ ih => exact ih.comp_succ
 
 /-- Membership under a renaming injective on atoms. -/
 theorem CaptureSet.mem_rename_iff {s1 s2 : Sig} {ρ : Rename s1 s2}
@@ -331,9 +332,9 @@ theorem Store.Typed.ctx_unique {s : Sig} {σ : Store s} {Γ Γ' : Ctx s}
           have hΓ := ih store'
           subst hΓ
           rw [Value.HasType.type_unique value value']
-  | consC _ ih =>
+  | consC _ _ ih =>
       cases h' with
-      | consC store' => rw [ih store']
+      | consC store' _ => rw [ih store']
 
 /-! ### Resolution commutes with the embedding -/
 
@@ -352,24 +353,24 @@ theorem Store.Ext.roots {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Renam
       intro Γ' hσ' n C
       cases hσ' with
       | cons store' _ _ =>
-          show Ctx.caps _ n (C.rename (ρ0.comp Rename.succ)) = _
+          show Ctx.expand _ (Ctx.caps _ n (C.rename (ρ0.comp Rename.succ))) = _
           rw [show C.rename (ρ0.comp Rename.succ) = (C.rename ρ0).weaken by
                 simp [CaptureSet.weaken]]
-          rw [Ctx.caps_weaken]
+          rw [Ctx.caps_weaken, Ctx.expand_weaken]
           have hih := ih hσ store' n C
-          simp only [Ctx.roots_eq_caps] at hih
+          simp only [Ctx.roots_eq_expand_caps] at hih
           rw [hih]
           simp [CaptureSet.weaken]
-  | @consC s1 σ0 σ1 ρ0 hE0 b ih =>
+  | @consC s1 σ0 σ1 ρ0 hE0 b hb ih =>
       intro Γ' hσ' n C
       cases hσ' with
-      | consC store' =>
-          show Ctx.caps _ n (C.rename (ρ0.comp Rename.succ)) = _
+      | consC store' _ =>
+          show Ctx.expand _ (Ctx.caps _ n (C.rename (ρ0.comp Rename.succ))) = _
           rw [show C.rename (ρ0.comp Rename.succ) = (C.rename ρ0).weaken by
                 simp [CaptureSet.weaken]]
-          rw [Ctx.caps_weakenC]
+          rw [Ctx.caps_weakenC, Ctx.expand_weakenC _ _ hb]
           have hih := ih hσ store' n C
-          simp only [Ctx.roots_eq_caps] at hih
+          simp only [Ctx.roots_eq_expand_caps] at hih
           rw [hih]
           simp [CaptureSet.weaken]
 

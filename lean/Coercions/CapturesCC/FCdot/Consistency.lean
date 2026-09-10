@@ -225,9 +225,12 @@ theorem Ctx.Root_cvar_rigid {Γ : Ctx s} {κ : BVar s .cap}
     (h : Γ.lookupCap κ = .root ∨ Γ.lookupCap κ = .star) :
     Γ.Root (.cvar κ) [CapAtom.cvar κ] := by
   refine ⟨0, ?_⟩
-  rw [Ctx.roots_eq_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
+  rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
     Ctx.capsAtom_cvar]
-  rcases h with h | h <;> rw [h] <;> simp [Ctx.capsBound]
+  have hc : Γ.capsBound 0 κ (Γ.lookupCap κ) = [CapAtom.cvar κ] := by
+    rcases h with h | h <;> rw [h] <;> simp [Ctx.capsBound]
+  rw [hc]
+  exact Ctx.mem_expand.mpr ⟨.cvar κ, List.mem_cons_self .., Γ.mem_expandAtom_self _⟩
 
 /-- Consistency in the capture sort, at a platform binder `κ ⊑ᶜ ∗`: no closed
 capture evidence puts `{κ}` below a set whose roots miss `κ`.  Bad capture
@@ -244,6 +247,113 @@ theorem Store.Typed.no_cap_star_le_nil (hσ : ⊢ σ : Γ) {κ : BVar s .cap}
     (hκ : Γ.lookupCap κ = .star) :
     ¬ ∃ f : CapCo s, Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ [] :=
   hσ.no_cap_escape hκ (by rintro ⟨n, hn⟩; simp at hn)
+
+/-! ## Levels over a typed store
+
+A store binds capabilities, never scopes, so a store context has no root
+binder and every binder of it is at the outermost level.  On top of that the
+level rule is sound in the strong sense: closed evidence never lowers the
+level of what a capture set resolves to. -/
+
+/-- A capture bound that is opaque resolves to its own binder at every
+fuel. -/
+theorem Ctx.caps_of_opaque {Γ : Ctx s} {κ : BVar s .cap}
+    (hκ : (Γ.lookupCap κ).opaque = true) (n : Nat) :
+    Γ.caps n [CapAtom.cvar κ] = [CapAtom.cvar κ] := by
+  rw [Ctx.caps_cons, Ctx.caps_nil, List.append_nil, Ctx.capsAtom_cvar]
+  cases h : Γ.lookupCap κ with
+  | root => rfl
+  | star => rfl
+  | upper C => rw [h] at hκ; simp [CapBound.opaque] at hκ
+  | inst C => rw [h] at hκ; simp [CapBound.opaque] at hκ
+
+/-- **T-B0.7.**  A store context has no scope root: a store binds
+capabilities, never scopes.  This is O9's reserved slot, used for the first
+time by the premise of `Store.Typed.consC`. -/
+theorem Store.Typed.rootFree (hσ : ⊢ σ : Γ) : Γ.root? = none := by
+  induction hσ with
+  | nil => rfl
+  | cons _ _ _ ih => rw [Ctx.root?_cons, ih]; rfl
+  | consC _ hb ih => rw [Ctx.root?_consC_of_not_root _ _ hb, ih]; rfl
+
+/-- **T13, consistency at the top.**  At run time every capability is at the
+outermost level.  This is L0 read at `rootAtom = ⊤ᶜ`, which is what a
+root-free context has.  `h` is not needed for the proof: on a root-free
+context `⊤ᶜ` bounds every atom, `⊤ᶜ` included.  It is kept because it is the
+form the statement was specified in. -/
+theorem Store.Typed.confined (hσ : ⊢ σ : Γ) (C : CaptureSet s)
+    (h : CapAtom.top ∉ C) : Γ.Confined C ⊤ᶜ := by
+  have hr : Γ.rootAtom = ⊤ᶜ := by
+    unfold Ctx.rootAtom
+    rw [hσ.rootFree]
+    rfl
+  rw [← hr]
+  exact Γ.confined_rootAtom C
+
+/-- **T10, `lvl_canon`.**  Closed capture evidence never lowers the level: if
+every resolution of the target is at or outside `r`, so is every resolution
+of the source.  A corollary of item 6 over a typed store, not an induction on
+the evidence: as an induction on `f` alone the `capvar` case is false, since
+bad capture bounds are derivable under a lambda (example C3). -/
+theorem lvl_canon (hσ : ⊢ σ : Γ) {f : CapCo s} {C₁ C₂ : CaptureSet s} {r : CapAtom s}
+    (h : Γ ⊢ᶜ f : C₁ ⊑ C₂) (n : Nat)
+    (h₂ : ∀ m, Γ.Confined (Γ.caps m C₂) r) : Γ.Confined (Γ.caps n C₁) r := by
+  intro a ha
+  obtain ⟨m, hm⟩ := cap_canon hσ h a (Ctx.Root.of_mem_caps ha)
+  rw [Ctx.roots_eq_expand_caps] at hm
+  obtain ⟨b, hb, hab⟩ := Ctx.mem_expand.mp hm
+  have hbr : Γ.LvlLe b r := h₂ m b hb
+  cases hrb : Γ.isRootB b with
+  | false =>
+      rw [Ctx.expandAtom_of_not_root hrb] at hab
+      rw [List.mem_singleton.mp hab]
+      exact hbr
+  | true =>
+      rcases Ctx.mem_expandAtom_root hrb hab with rfl | ⟨κ, rfl, _, hκ⟩
+      · exact Ctx.top_lvlLe _ _
+      · exact Ctx.LvlLe.trans hrb hκ hbr
+
+/-- **T11, `rigid_canon`.**  A rigid binder is a root of every set closed
+evidence puts it below. -/
+theorem rigid_canon (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : CaptureSet s}
+    (hκ : Γ.lookupCap κ = .star) (h : Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ C) :
+    Γ.Root (.cvar κ) C :=
+  cap_canon hσ h _ (Ctx.Root_cvar_rigid (Or.inr hκ))
+
+/-- **T11', `rigid_target`.**  Nothing else resolves below a rigid binder. -/
+theorem rigid_target (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : CaptureSet s}
+    (hκ : Γ.lookupCap κ = .star) (h : Γ ⊢ᶜ f : C ⊑ [CapAtom.cvar κ]) (n : Nat) :
+    (Γ.caps n C).Subset [CapAtom.cvar κ] := by
+  intro a ha
+  obtain ⟨m, hm⟩ := cap_canon hσ h a (Ctx.Root.of_mem_caps ha)
+  rw [Ctx.roots_eq_expand_caps,
+    Ctx.caps_of_opaque (by rw [hκ]; rfl), Ctx.expand_cons, Ctx.expand_nil,
+    List.append_nil, Ctx.expandAtom_of_not_root (by rw [Ctx.isRootB, hκ]; rfl)] at hm
+  exact hm
+
+/-- **T12, scope safety.**  What closed evidence puts below a scope root
+resolves to capabilities at or outside that root. -/
+theorem lvl_safety (hσ : ⊢ σ : Γ) {r : CapAtom s} {f : CapCo s} {C : CaptureSet s}
+    (hr : Γ.IsRoot r) (h : Γ ⊢ᶜ f : C ⊑ [r]) (n : Nat) :
+    Γ.Confined (Γ.caps n C) r :=
+  lvl_canon hσ h n (fun m => by
+    rw [Ctx.caps_of_isRoot hr]
+    intro c hc
+    rw [List.mem_singleton.mp hc]
+    exact Ctx.LvlLe.refl_of_root hr)
+
+/-- **T12, the escape form.**  No closed derivation puts a capability
+introduced strictly inside a scope below that scope's root.  The conclusion
+is about what `C` resolves to and not about its syntactic atoms: a pure inner
+binder is below every set by `capvar` and `elem`, so the syntactic reading is
+false and the resolved reading is what holds. -/
+theorem no_inner_escape (hσ : ⊢ σ : Γ) {r : CapAtom s} {κ : BVar s .cap}
+    (hr : Γ.IsRoot r) (hκ : (Γ.lookupCap κ).opaque = true)
+    (hout : ¬ Γ.LvlLe (.cvar κ) r) : ¬ ∃ f : CapCo s, Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ [r] := by
+  rintro ⟨f, hf⟩
+  refine hout (lvl_safety hσ hr hf 0 (.cvar κ) ?_)
+  rw [Ctx.caps_of_opaque hκ]
+  exact List.mem_cons_self ..
 
 /-- Every block name of a store binder is defined by the stored literal's
 witness, and the definition is closed equality evidence. -/

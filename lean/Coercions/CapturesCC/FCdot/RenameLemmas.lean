@@ -152,6 +152,7 @@ mutual
   | .capvar a => simp [CapCo.rename, Atom.rename_id a]
   | .member a e i => simp [CapCo.rename, Atom.rename_id a, ShapeCo.rename_id e]
   | .eqToLe φ => simp [CapCo.rename, CapEq.rename_id φ]
+  | .level e r => simp [CapCo.rename, CapAtom.rename_id e, CapAtom.rename_id r]
 
 @[simp] theorem CapEq.rename_id {s : Sig} (φ : CapEq s) : φ.rename Rename.id = φ := by
   match φ with
@@ -255,6 +256,7 @@ mutual
   | .capvar a => simp [CapCo.rename, Atom.rename_comp a]
   | .member a e i => simp [CapCo.rename, Atom.rename_comp a, ShapeCo.rename_comp e]
   | .eqToLe φ => simp [CapCo.rename, CapEq.rename_comp φ]
+  | .level e r => simp [CapCo.rename, CapAtom.rename_comp e, CapAtom.rename_comp r]
 
 @[simp] theorem CapEq.rename_comp {s1 s2 s3 : Sig} (φ : CapEq s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -569,6 +571,7 @@ mutual
   | .member a e i =>
       simp [CapCo.subst, CapCo.rename, Atom.subst_ofRename a, ShapeCo.subst_ofRename e]
   | .eqToLe φ => simp [CapCo.subst, CapCo.rename, CapEq.subst_ofRename φ]
+  | .level e r => simp [CapCo.subst, CapCo.rename, Subst.ofRename_root]
 
 @[simp] theorem CapEq.subst_ofRename {s1 s2 : Sig} (φ : CapEq s1) (ρ : Rename s1 s2) :
     φ.subst (Subst.ofRename ρ) = φ.rename ρ := by

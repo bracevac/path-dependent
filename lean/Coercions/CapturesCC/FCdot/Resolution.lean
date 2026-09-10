@@ -1,6 +1,7 @@
 import Coercions.CapturesCC.FCdot.Normalizer
 import Coercions.CapturesCC.FCdot.Typing
 import Coercions.CapturesCC.FCdot.TypingRename
+import Coercions.CapturesCC.FCdot.Levels
 
 namespace CapturesCC
 
@@ -574,7 +575,8 @@ termination_by Γ n C => (sizeOf Γ, n, C.length + 1)
 type and a capture binder to itself or to its bound, both by descent on the
 binder; a capture name follows the capture witness of its block, at the same
 context, and so consumes one unit of fuel.  A name with no fuel left lies on
-a cyclic chain and resolves to the empty set. -/
+a cyclic chain and resolves to the empty set.  The universal root is a leaf:
+it stands for itself. -/
 def Ctx.capsAtom : (Γ : Ctx s) → Nat → CapAtom s → CaptureSet s
   | .cons Γ b, n, .var .here => (Γ.caps n b.ty.captureSet).weaken
   | .cons Γ _, n, .var (.there y) => (Γ.capsAtom n (.var y)).weaken
@@ -585,6 +587,7 @@ def Ctx.capsAtom : (Γ : Ctx s) → Nat → CapAtom s → CaptureSet s
   | .consC Γ (.inst C), n, .cvar .here => (Γ.caps n C).weaken
   | .cons Γ _, n, .cvar (.there κ) => (Γ.capsAtom n (.cvar κ)).weaken
   | .consC Γ _, n, .cvar (.there κ) => (Γ.capsAtom n (.cvar κ)).weaken
+  | _, _, .top => [.top]
   | _, 0, .name _ _ => []
   | Γ, n + 1, .name x ℓ =>
       match Γ.lookupDefC x ℓ with
@@ -600,6 +603,11 @@ end
 @[simp] theorem Ctx.caps_cons (Γ : Ctx s) (n : Nat) (a : CapAtom s) (C : CaptureSet s) :
     Γ.caps n (a :: C) = Γ.capsAtom n a ++ Γ.caps n C := by
   simp [Ctx.caps]
+
+/-- The universal root is a leaf of resolution. -/
+@[simp] theorem Ctx.capsAtom_top (Γ : Ctx s) (n : Nat) :
+    Γ.capsAtom n (.top) = [CapAtom.top] := by
+  cases Γ <;> cases n <;> simp [Ctx.capsAtom]
 
 /-- A capture name with no fuel left resolves to the empty set. -/
 @[simp] theorem Ctx.capsAtom_name_zero (Γ : Ctx s) (x : BVar s .var) (ℓ : Label) :
@@ -686,6 +694,7 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
               (Ctx.nil.capsAtom 0 a).Subset (Ctx.nil.capsAtom 1 a) := by
             intro a
             cases a with
+            | top => intro c hc; simpa using hc
             | var x => cases x
             | cvar κ => cases κ
             | name x ℓ => cases x
@@ -695,6 +704,7 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
               ((Ctx.cons Γ b).capsAtom 0 a).Subset ((Ctx.cons Γ b).capsAtom 1 a) := by
             intro a
             cases a with
+            | top => intro c hc; simpa using hc
             | var y =>
                 cases y with
                 | here => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
@@ -710,6 +720,7 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
               ((Ctx.consC Γ b).capsAtom 0 a).Subset ((Ctx.consC Γ b).capsAtom 1 a) := by
             intro a
             cases a with
+            | top => intro c hc; simpa using hc
             | var y =>
                 cases y with
                 | there y => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
@@ -733,6 +744,7 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
               (Ctx.nil.capsAtom (n + 1) a).Subset (Ctx.nil.capsAtom (n + 1 + 1) a) := by
             intro a
             cases a with
+            | top => intro c hc; simpa using hc
             | var x => cases x
             | cvar κ => cases κ
             | name x ℓ => cases x
@@ -743,6 +755,7 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
                 ((Ctx.cons Γ b).capsAtom (n + 1 + 1) a) := by
             intro a
             cases a with
+            | top => intro c hc; simpa using hc
             | var y =>
                 cases y with
                 | here => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
@@ -767,6 +780,7 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
                 ((Ctx.consC Γ b).capsAtom (n + 1 + 1) a) := by
             intro a
             cases a with
+            | top => intro c hc; simpa using hc
             | var y =>
                 cases y with
                 | there y => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
@@ -844,6 +858,9 @@ theorem Ctx.caps_weaken_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : Binding 
           (Ctx.cons Γ b).capsAtom (n + 1) a.weaken = (Γ.capsAtom (n + 1) a).weaken := by
         intro a
         cases a with
+        | top =>
+            simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+              CaptureSet.rename]
         | var y =>
             simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
               CaptureSet.rename, Ctx.capsAtom]
@@ -901,6 +918,9 @@ theorem Ctx.caps_weakenC_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : CapBoun
           (Ctx.consC Γ b).capsAtom (n + 1) a.weaken = (Γ.capsAtom (n + 1) a).weaken := by
         intro a
         cases a with
+        | top =>
+            simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+              CaptureSet.rename]
         | var y =>
             simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
               CaptureSet.rename, Ctx.capsAtom]
@@ -1011,14 +1031,758 @@ theorem Ctx.capsAtom_cvar : ∀ {s : Sig} (Γ : Ctx s) (n : Nat) (κ : BVar s .c
         ← Ctx.capsAtom_cvar Γ n κ]
       simp [Ctx.capsAtom]
 
+/-! ### Expansion: a scope root opens into the binders it covers
+
+A scope root stands for the universal root and for every opaque binder at
+its level or outside it.  Everything else stands for itself.  Expansion is a
+filter over the binders of `Γ` by flavour and by position, not a recursion
+into their content, so it takes no fuel and the descent of resolution is
+untouched. -/
+
+/-- Filtering after a map is mapping after the transported filter. -/
+theorem filter_of_map {α β : Type} (f : α → β) (p : β → Bool) :
+    ∀ l : List α, (l.map f).filter p = (l.filter fun a => p (f a)).map f
+  | [] => rfl
+  | a :: l => by
+      by_cases h : p (f a) = true <;>
+        simp [h, filter_of_map f p l]
+
+/-- Every capture binder of `Γ`. -/
+def Ctx.capBinders : Ctx s → List (BVar s .cap)
+  | .nil => []
+  | .cons Γ _ => (Ctx.capBinders Γ).map .there
+  | .consC Γ _ => .here :: (Ctx.capBinders Γ).map .there
+
+@[simp] theorem Ctx.capBinders_cons (Γ : Ctx s) (b : Binding s) :
+    (Γ.cons b).capBinders = Γ.capBinders.map .there := rfl
+
+@[simp] theorem Ctx.capBinders_consC (Γ : Ctx s) (b : CapBound s) :
+    (Γ.consC b).capBinders = .here :: Γ.capBinders.map .there := rfl
+
+/-- Every capture binder is listed. -/
+theorem Ctx.mem_capBinders {s : Sig} (Γ : Ctx s) : ∀ κ : BVar s .cap, κ ∈ Γ.capBinders := by
+  induction Γ with
+  | nil => intro κ; cases κ
+  | cons Γ b ih =>
+      intro κ
+      cases κ with
+      | there κ₀ =>
+          simp only [Ctx.capBinders_cons, List.mem_map]
+          exact ⟨κ₀, ih κ₀, rfl⟩
+  | consC Γ b ih =>
+      intro κ
+      cases κ with
+      | here => simp
+      | there κ₀ =>
+          simp only [Ctx.capBinders_consC, List.mem_cons, List.mem_map]
+          exact Or.inr ⟨κ₀, ih κ₀, rfl⟩
+
+/-- Expansion of one atom.  A root opens into the universal root and every
+opaque binder at its level or outside it.  Everything else stands for
+itself. -/
+def Ctx.expandAtom (Γ : Ctx s) (a : CapAtom s) : CaptureSet s :=
+  if Γ.isRootB a then
+    CapAtom.top :: (Γ.capBinders.filter fun κ =>
+        (Γ.lookupCap κ).opaque && Γ.lvlLeB (.cvar κ) a).map CapAtom.cvar
+  else [a]
+
+/-- Expansion of a capture set. -/
+def Ctx.expand (Γ : Ctx s) (C : CaptureSet s) : CaptureSet s := C.flatMap Γ.expandAtom
+
+theorem Ctx.expandAtom_of_root {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r) :
+    Γ.expandAtom r = CapAtom.top :: (Γ.capBinders.filter fun κ =>
+        (Γ.lookupCap κ).opaque && Γ.lvlLeB (.cvar κ) r).map CapAtom.cvar := by
+  unfold Ctx.expandAtom
+  rw [if_pos hr]
+
+theorem Ctx.expandAtom_of_not_root {Γ : Ctx s} {a : CapAtom s} (ha : Γ.isRootB a = false) :
+    Γ.expandAtom a = [a] := by
+  unfold Ctx.expandAtom
+  rw [if_neg (by simp [ha])]
+
+/-- The universal root is in the expansion of every root. -/
+theorem Ctx.top_mem_expandAtom {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r) :
+    CapAtom.top ∈ Γ.expandAtom r := by
+  rw [Ctx.expandAtom_of_root hr]
+  exact List.mem_cons_self ..
+
+/-- An opaque binder at or outside the level of a root is in its expansion. -/
+theorem Ctx.cvar_mem_expandAtom {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r)
+    {κ : BVar s .cap} (hop : (Γ.lookupCap κ).opaque = true) (hle : Γ.LvlLe (.cvar κ) r) :
+    CapAtom.cvar κ ∈ Γ.expandAtom r := by
+  rw [Ctx.expandAtom_of_root hr]
+  refine List.mem_cons_of_mem _ (List.mem_map_of_mem ?_)
+  exact List.mem_filter.mpr ⟨Γ.mem_capBinders κ, by simp [hop, hle]⟩
+
+/-- And those are all of it. -/
+theorem Ctx.mem_expandAtom_root {Γ : Ctx s} {r a : CapAtom s} (hr : Γ.IsRoot r)
+    (h : a ∈ Γ.expandAtom r) :
+    a = .top ∨ ∃ κ, a = .cvar κ ∧ (Γ.lookupCap κ).opaque = true ∧ Γ.LvlLe (.cvar κ) r := by
+  rw [Ctx.expandAtom_of_root hr] at h
+  rcases List.mem_cons.mp h with rfl | h
+  · exact Or.inl rfl
+  · rcases List.mem_map.mp h with ⟨κ, hκ, rfl⟩
+    rcases List.mem_filter.mp hκ with ⟨_, hp⟩
+    rw [Bool.and_eq_true] at hp
+    exact Or.inr ⟨κ, rfl, hp.1, hp.2⟩
+
+/-- An atom is in its own expansion: `⊤ᶜ` heads its own, a root is its own
+level, and everything else expands to its singleton. -/
+theorem Ctx.mem_expandAtom_self (Γ : Ctx s) (a : CapAtom s) : a ∈ Γ.expandAtom a := by
+  cases h : Γ.isRootB a with
+  | false =>
+      rw [Ctx.expandAtom_of_not_root h]
+      exact List.mem_cons_self ..
+  | true =>
+      cases a with
+      | top => exact Ctx.top_mem_expandAtom h
+      | var x => simp [Ctx.isRootB] at h
+      | name x ℓ => simp [Ctx.isRootB] at h
+      | cvar κ =>
+          have hroot : (Γ.lookupCap κ).isRoot = true := by simpa [Ctx.isRootB] using h
+          exact Ctx.cvar_mem_expandAtom h (CapBound.opaque_of_isRoot hroot)
+            (Ctx.LvlLe.refl_of_root h)
+
+@[simp] theorem Ctx.expand_nil (Γ : Ctx s) : Γ.expand ([] : CaptureSet s) = [] := by
+  simp [Ctx.expand]
+
+@[simp] theorem Ctx.expand_cons (Γ : Ctx s) (a : CapAtom s) (C : CaptureSet s) :
+    Γ.expand (a :: C) = Γ.expandAtom a ++ Γ.expand C := by
+  simp [Ctx.expand]
+
+theorem Ctx.expand_append (Γ : Ctx s) : ∀ C D : CaptureSet s,
+    Γ.expand (C ++ D) = Γ.expand C ++ Γ.expand D
+  | [], _ => by simp
+  | a :: C, D => by
+      rw [List.cons_append, Ctx.expand_cons, Ctx.expand_cons,
+        Ctx.expand_append Γ C D, List.append_assoc]
+
+theorem Ctx.mem_expand {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s} :
+    a ∈ Γ.expand C ↔ ∃ b ∈ C, a ∈ Γ.expandAtom b := by
+  simp [Ctx.expand]
+
+theorem Ctx.expand_subset {Γ : Ctx s} {C D : CaptureSet s} (h : C.Subset D) :
+    (Γ.expand C).Subset (Γ.expand D) := by
+  intro a ha
+  rcases Ctx.mem_expand.mp ha with ⟨b, hb, hab⟩
+  exact Ctx.mem_expand.mpr ⟨b, h b hb, hab⟩
+
+/-- A set is contained in its own expansion. -/
+theorem Ctx.subset_expand (Γ : Ctx s) (C : CaptureSet s) : C.Subset (Γ.expand C) := by
+  intro a ha
+  exact Ctx.mem_expand.mpr ⟨a, ha, Γ.mem_expandAtom_self a⟩
+
+/-- A set of non-roots is its own expansion. -/
+theorem Ctx.expand_eq_self {Γ : Ctx s} : ∀ {C : CaptureSet s},
+    (∀ a ∈ C, Γ.isRootB a = false) → Γ.expand C = C
+  | [], _ => by simp
+  | a :: C, h => by
+      rw [Ctx.expand_cons, Ctx.expandAtom_of_not_root (h a (List.mem_cons_self ..)),
+        Ctx.expand_eq_self (fun c hc => h c (List.mem_cons_of_mem a hc))]
+      rfl
+
+/-! ### Expansion and weakening
+
+Appending a term binder is invisible to expansion.  Appending a capture
+binder is invisible only when its bound is not opaque: a rigid binder
+appended to a root-free context enlarges the expansion of `⊤ᶜ`, which is
+what a store is forbidden to do. -/
+
+theorem Ctx.expandAtom_weaken (Γ : Ctx s) (b : Binding s) (a : CapAtom s) :
+    (Γ.cons b).expandAtom a.weaken = (Γ.expandAtom a).weaken := by
+  by_cases h : Γ.isRootB a = true
+  · have h' : (Γ.cons b).isRootB (CapAtom.weaken (k := .var) a) = true := by
+      rw [Ctx.isRootB_weaken]; exact h
+    rw [Ctx.expandAtom_of_root h', Ctx.expandAtom_of_root h,
+      Ctx.capBinders_cons, filter_of_map]
+    simp only [CaptureSet.weaken, CaptureSet.rename, List.map_cons, List.map_map]
+    congr 1
+    refine congrArg (List.map _) (List.filter_congr ?_)
+    intro κ _
+    show (((Γ.lookupCap κ)↑).opaque &&
+        (Γ.cons b).lvlLeB (CapAtom.weaken (k := .var) (.cvar κ))
+          (CapAtom.weaken (k := .var) a)) = _
+    rw [CapBound.opaque_weaken, Ctx.lvlLeB_weaken]
+  · rw [Bool.not_eq_true] at h
+    have h' : (Γ.cons b).isRootB (CapAtom.weaken (k := .var) a) = false := by
+      rw [Ctx.isRootB_weaken]; exact h
+    rw [Ctx.expandAtom_of_not_root h', Ctx.expandAtom_of_not_root h]
+    rfl
+
+theorem Ctx.expandAtom_weakenC (Γ : Ctx s) (b : CapBound s) (hb : b.opaque = false)
+    (a : CapAtom s) :
+    (Γ.consC b).expandAtom a.weaken = (Γ.expandAtom a).weaken := by
+  by_cases h : Γ.isRootB a = true
+  · have h' : (Γ.consC b).isRootB (CapAtom.weaken (k := .cap) a) = true := by
+      rw [Ctx.isRootB_weakenC]; exact h
+    rw [Ctx.expandAtom_of_root h', Ctx.expandAtom_of_root h, Ctx.capBinders_consC,
+      List.filter_cons_of_neg (by
+        show ¬ (((b↑).opaque && _) = true)
+        rw [CapBound.opaque_weaken, hb]; simp),
+      filter_of_map]
+    simp only [CaptureSet.weaken, CaptureSet.rename, List.map_cons, List.map_map]
+    congr 1
+    refine congrArg (List.map _) (List.filter_congr ?_)
+    intro κ _
+    show (((Γ.lookupCap κ)↑).opaque &&
+        (Γ.consC b).lvlLeB (CapAtom.weaken (k := .cap) (.cvar κ))
+          (CapAtom.weaken (k := .cap) a)) = _
+    rw [CapBound.opaque_weaken, Ctx.lvlLeB_weakenC]
+  · rw [Bool.not_eq_true] at h
+    have h' : (Γ.consC b).isRootB (CapAtom.weaken (k := .cap) a) = false := by
+      rw [Ctx.isRootB_weakenC]; exact h
+    rw [Ctx.expandAtom_of_not_root h', Ctx.expandAtom_of_not_root h]
+    rfl
+
+theorem Ctx.expand_weaken (Γ : Ctx s) (b : Binding s) : ∀ C : CaptureSet s,
+    (Γ.cons b).expand C.weaken = (Γ.expand C).weaken
+  | [] => by simp [CaptureSet.weaken, CaptureSet.rename]
+  | a :: C => by
+      show (Γ.cons b).expand (CapAtom.weaken a :: CaptureSet.weaken C)
+        = CaptureSet.weaken (Γ.expand (a :: C))
+      rw [Ctx.expand_cons, Ctx.expandAtom_weaken, Ctx.expand_weaken Γ b C,
+        Ctx.expand_cons]
+      simp [CaptureSet.weaken, CaptureSet.rename]
+
+theorem Ctx.expand_weakenC (Γ : Ctx s) (b : CapBound s) (hb : b.opaque = false) :
+    ∀ C : CaptureSet s, (Γ.consC b).expand C.weaken = (Γ.expand C).weaken
+  | [] => by simp [CaptureSet.weaken, CaptureSet.rename]
+  | a :: C => by
+      show (Γ.consC b).expand (CapAtom.weaken a :: CaptureSet.weaken C)
+        = CaptureSet.weaken (Γ.expand (a :: C))
+      rw [Ctx.expand_cons, Ctx.expandAtom_weakenC Γ b hb, Ctx.expand_weakenC Γ b hb C,
+        Ctx.expand_cons]
+      simp [CaptureSet.weaken, CaptureSet.rename]
+
+/-- The expansion of an atom that resolution can produce is contained in the
+expansion of any root it is at or outside of. -/
+theorem Ctx.expandAtom_mono {Γ : Ctx s} {a r : CapAtom s} (hr : Γ.IsRoot r)
+    (ha : a = .top ∨ ∃ κ, a = .cvar κ ∧ (Γ.lookupCap κ).opaque = true)
+    (hle : Γ.LvlLe a r) : (Γ.expandAtom a).Subset (Γ.expandAtom r) := by
+  intro c hc
+  cases hb : Γ.isRootB a with
+  | false =>
+      rw [Ctx.expandAtom_of_not_root hb] at hc
+      have hca : c = a := List.mem_singleton.mp hc
+      subst hca
+      rcases ha with rfl | ⟨κ, rfl, hop⟩
+      · exact absurd hb (by simp [Ctx.isRootB])
+      · exact Ctx.cvar_mem_expandAtom hr hop hle
+  | true =>
+      rcases Ctx.mem_expandAtom_root hb hc with rfl | ⟨κ, rfl, hop, hκ⟩
+      · exact Ctx.top_mem_expandAtom hr
+      · exact Ctx.cvar_mem_expandAtom hr hop (Ctx.LvlLe.trans hb hκ hle)
+
+/-! ### Resolution lands in opaque atoms
+
+Every atom of `Γ.caps n C` is the universal root or a capture binder whose
+bound stands for itself.  A term binder resolves to the capture set of its
+type, a bounded capture binder to its bound, and both descend; only a root, a
+rigid binder and `⊤ᶜ` are leaves. -/
+
+/-- What an atom of a resolution can be. -/
+abbrev Ctx.OpaqueAtom (Γ : Ctx s) (c : CapAtom s) : Prop :=
+  c = .top ∨ ∃ κ, c = .cvar κ ∧ (Γ.lookupCap κ).opaque = true
+
+theorem Ctx.opaqueAtom_weaken {Γ : Ctx s} (b : Binding s) {L : CaptureSet s}
+    {c : CapAtom (s,x)} (hL : ∀ c₀ ∈ L, Γ.OpaqueAtom c₀)
+    (hc : c ∈ CaptureSet.weaken (k := .var) L) : (Γ.cons b).OpaqueAtom c := by
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at hc
+  obtain ⟨c₀, hc₀, rfl⟩ := hc
+  rcases hL c₀ hc₀ with rfl | ⟨κ, rfl, hop⟩
+  · exact Or.inl rfl
+  · refine Or.inr ⟨.there κ, rfl, ?_⟩
+    rw [Ctx.lookupCap_there, CapBound.opaque_weaken]
+    exact hop
+
+theorem Ctx.opaqueAtom_weakenC {Γ : Ctx s} (b : CapBound s) {L : CaptureSet s}
+    {c : CapAtom (s,c)} (hL : ∀ c₀ ∈ L, Γ.OpaqueAtom c₀)
+    (hc : c ∈ CaptureSet.weaken (k := .cap) L) : (Γ.consC b).OpaqueAtom c := by
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at hc
+  obtain ⟨c₀, hc₀, rfl⟩ := hc
+  rcases hL c₀ hc₀ with rfl | ⟨κ, rfl, hop⟩
+  · exact Or.inl rfl
+  · refine Or.inr ⟨.there κ, rfl, ?_⟩
+    rw [Ctx.lookupCap_thereC, CapBound.opaque_weaken]
+    exact hop
+
+/-- The set half follows from the atom half. -/
+theorem Ctx.caps_opaque_of_atom {Γ : Ctx s} {n : Nat}
+    (h : ∀ (a c : CapAtom s), c ∈ Γ.capsAtom n a → Γ.OpaqueAtom c) :
+    ∀ (C : CaptureSet s) (c : CapAtom s), c ∈ Γ.caps n C → Γ.OpaqueAtom c
+  | [], c, hc => by simp at hc
+  | a :: C, c, hc => by
+      rw [Ctx.caps_cons] at hc
+      rcases List.mem_append.mp hc with hc | hc
+      · exact h a c hc
+      · exact Ctx.caps_opaque_of_atom h C c hc
+
+theorem Ctx.capsAtom_opaque_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a c : CapAtom s),
+    c ∈ Γ.capsAtom n a → Γ.OpaqueAtom c := by
+  intro n
+  induction n with
+  | zero =>
+      intro s Γ
+      induction Γ with
+      | nil =>
+          intro a c hc
+          cases a with
+          | var x => cases x
+          | cvar κ => cases κ
+          | name x ℓ => cases x
+          | top =>
+              rw [Ctx.capsAtom_top] at hc
+              exact Or.inl (List.mem_singleton.mp hc)
+      | cons Γ b ih =>
+          intro a c hc
+          cases a with
+          | top =>
+              rw [Ctx.capsAtom_top] at hc
+              exact Or.inl (List.mem_singleton.mp hc)
+          | name x ℓ => rw [Ctx.capsAtom_name_zero] at hc; simp at hc
+          | var y =>
+              cases y with
+              | here =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weaken b (Ctx.caps_opaque_of_atom ih _) hc
+              | there y₀ =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weaken b (fun _ => ih (.var y₀) _) hc
+          | cvar κ =>
+              cases κ with
+              | there κ₀ =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weaken b (fun _ => ih (.cvar κ₀) _) hc
+      | consC Γ b ih =>
+          intro a c hc
+          cases a with
+          | top =>
+              rw [Ctx.capsAtom_top] at hc
+              exact Or.inl (List.mem_singleton.mp hc)
+          | name x ℓ => rw [Ctx.capsAtom_name_zero] at hc; simp at hc
+          | var y =>
+              cases y with
+              | there y₀ =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weakenC b (fun _ => ih (.var y₀) _) hc
+          | cvar κ =>
+              cases κ with
+              | here =>
+                  cases b with
+                  | root =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Or.inr ⟨.here, List.mem_singleton.mp hc, rfl⟩
+                  | star =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Or.inr ⟨.here, List.mem_singleton.mp hc, rfl⟩
+                  | upper C =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Ctx.opaqueAtom_weakenC _ (Ctx.caps_opaque_of_atom ih _) hc
+                  | inst C =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Ctx.opaqueAtom_weakenC _ (Ctx.caps_opaque_of_atom ih _) hc
+              | there κ₀ =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weakenC b (fun _ => ih (.cvar κ₀) _) hc
+  | succ n ihn =>
+      intro s Γ
+      induction Γ with
+      | nil =>
+          intro a c hc
+          cases a with
+          | var x => cases x
+          | cvar κ => cases κ
+          | name x ℓ => cases x
+          | top =>
+              rw [Ctx.capsAtom_top] at hc
+              exact Or.inl (List.mem_singleton.mp hc)
+      | cons Γ b ih =>
+          intro a c hc
+          cases a with
+          | top =>
+              rw [Ctx.capsAtom_top] at hc
+              exact Or.inl (List.mem_singleton.mp hc)
+          | name x ℓ =>
+              cases hd : (Ctx.cons Γ b).lookupDefC x ℓ with
+              | none => rw [Ctx.capsAtom_name_none hd] at hc; simp at hc
+              | some C =>
+                  rw [Ctx.capsAtom_name_some hd] at hc
+                  exact Ctx.caps_opaque_of_atom (ihn (Ctx.cons Γ b)) C c hc
+          | var y =>
+              cases y with
+              | here =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weaken b (Ctx.caps_opaque_of_atom ih _) hc
+              | there y₀ =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weaken b (fun _ => ih (.var y₀) _) hc
+          | cvar κ =>
+              cases κ with
+              | there κ₀ =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weaken b (fun _ => ih (.cvar κ₀) _) hc
+      | consC Γ b ih =>
+          intro a c hc
+          cases a with
+          | top =>
+              rw [Ctx.capsAtom_top] at hc
+              exact Or.inl (List.mem_singleton.mp hc)
+          | name x ℓ =>
+              cases hd : (Ctx.consC Γ b).lookupDefC x ℓ with
+              | none => rw [Ctx.capsAtom_name_none hd] at hc; simp at hc
+              | some C =>
+                  rw [Ctx.capsAtom_name_some hd] at hc
+                  exact Ctx.caps_opaque_of_atom (ihn (Ctx.consC Γ b)) C c hc
+          | var y =>
+              cases y with
+              | there y₀ =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weakenC b (fun _ => ih (.var y₀) _) hc
+          | cvar κ =>
+              cases κ with
+              | here =>
+                  cases b with
+                  | root =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Or.inr ⟨.here, List.mem_singleton.mp hc, rfl⟩
+                  | star =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Or.inr ⟨.here, List.mem_singleton.mp hc, rfl⟩
+                  | upper C =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Ctx.opaqueAtom_weakenC _ (Ctx.caps_opaque_of_atom ih _) hc
+                  | inst C =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Ctx.opaqueAtom_weakenC _ (Ctx.caps_opaque_of_atom ih _) hc
+              | there κ₀ =>
+                  simp only [Ctx.capsAtom] at hc
+                  exact Ctx.opaqueAtom_weakenC b (fun _ => ih (.cvar κ₀) _) hc
+
+/-- Resolution lands in opaque atoms. -/
+theorem Ctx.caps_opaque {Γ : Ctx s} {n : Nat} {C : CaptureSet s} {a : CapAtom s}
+    (h : a ∈ Γ.caps n C) :
+    a = .top ∨ ∃ κ, a = .cvar κ ∧ (Γ.lookupCap κ).opaque = true :=
+  Ctx.caps_opaque_of_atom (Ctx.capsAtom_opaque_aux n Γ) C a h
+
+/-! ### Resolution keeps the level
+
+Resolution never lowers the level: what a capture set resolves to is at or
+outside every root the set itself is at or outside of.  This is the fact the
+level rule rests on.  The induction is on the fuel and then on the spine of
+the context, the order the rest of this file uses, which is the lexicographic
+measure of `Ctx.caps` and `Ctx.capsAtom` read the other way round: the name
+clause drops the fuel at the same context, and every other clause keeps the
+fuel and drops the context. -/
+
+/-- The capture witness of a block is at or outside the level of its binder:
+the witness lives in the scope that includes the binder itself. -/
+theorem Ctx.lookupDefC_confined {s : Sig} (Γ : Ctx s) :
+    ∀ (x : BVar s .var) (ℓ : Label) (C : CaptureSet s),
+      Γ.lookupDefC x ℓ = some C → Γ.Confined C (Γ.lvlOf (.var x)) := by
+  induction Γ with
+  | nil => intro x _ _ _; cases x
+  | cons Γ b ih =>
+      intro x ℓ C h
+      cases x with
+      | here =>
+          rw [Ctx.lvlOf_cons_here, ← Ctx.rootAtom_cons]
+          exact (Γ.cons b).confined_rootAtom C
+      | there y =>
+          rw [Ctx.lookupDefC_there] at h
+          cases hy : Γ.lookupDefC y ℓ with
+          | none => rw [hy] at h; exact absurd h (by simp)
+          | some C₀ =>
+              rw [hy] at h
+              have hC : C = CaptureSet.weaken (k := .var) C₀ := by
+                simpa using h.symm
+              subst hC
+              have hlv : (Ctx.cons Γ b).lvlOf (CapAtom.var (BVar.there y))
+                  = CapAtom.weaken (k := .var) (Γ.lvlOf (.var y)) :=
+                Ctx.lvlOf_weaken Γ b (.var y)
+              rw [hlv]
+              exact Ctx.Confined.weaken b (ih y ℓ C₀ hy)
+  | consC Γ b ih =>
+      intro x ℓ C h
+      cases x with
+      | there y =>
+          rw [Ctx.lookupDefC_thereC] at h
+          cases hy : Γ.lookupDefC y ℓ with
+          | none => rw [hy] at h; exact absurd h (by simp)
+          | some C₀ =>
+              rw [hy] at h
+              have hC : C = CaptureSet.weaken (k := .cap) C₀ := by
+                simpa using h.symm
+              subst hC
+              have hlv : (Ctx.consC Γ b).lvlOf (CapAtom.var (BVar.there y))
+                  = CapAtom.weaken (k := .cap) (Γ.lvlOf (.var y)) :=
+                Ctx.lvlOf_weakenC Γ b (.var y)
+              rw [hlv]
+              exact Ctx.Confined.weakenC b (ih y ℓ C₀ hy)
+
+/-- The set half of a confinement statement follows from the atom half. -/
+theorem Ctx.caps_confined_of_atom {Γ : Ctx s} {n : Nat} {r : CapAtom s}
+    (h : ∀ a : CapAtom s, Γ.LvlLe a r → Γ.Confined (Γ.capsAtom n a) r) :
+    ∀ C : CaptureSet s, Γ.Confined C r → Γ.Confined (Γ.caps n C) r
+  | [], _ => by intro c hc; simp at hc
+  | a :: C, hC => by
+      intro c hc
+      rw [Ctx.caps_cons] at hc
+      rcases List.mem_append.mp hc with hc | hc
+      · exact h a (hC a (List.mem_cons_self ..)) c hc
+      · exact Ctx.caps_confined_of_atom h C
+          (fun b hb => hC b (List.mem_cons_of_mem a hb)) c hc
+
+/-- The two `.there` clauses of `Ctx.capsAtom`, at a term binder. -/
+theorem Ctx.capsAtom_confined_there {s : Sig} {Γ : Ctx s} (b : Binding s) {n : Nat}
+    (ih : ∀ (a r : CapAtom s), Γ.LvlLe a r → Γ.Confined (Γ.capsAtom n a) r)
+    (a₀ : CapAtom s) (r : CapAtom (s,x))
+    (h : (Γ.cons b).LvlLe (CapAtom.weaken (k := .var) a₀) r) :
+    (Γ.cons b).Confined (CaptureSet.weaken (k := .var) (Γ.capsAtom n a₀)) r := by
+  have h1 := Ctx.Confined.weaken (Γ := Γ) b (ih a₀ (Γ.lvlOf a₀) (Γ.lvlLe_lvlOf a₀))
+  rw [← Ctx.lvlOf_weaken Γ b a₀] at h1
+  exact Ctx.confined_trans h1 h
+
+/-- The two `.there` clauses of `Ctx.capsAtom`, at a capture binder. -/
+theorem Ctx.capsAtom_confined_thereC {s : Sig} {Γ : Ctx s} (b : CapBound s) {n : Nat}
+    (ih : ∀ (a r : CapAtom s), Γ.LvlLe a r → Γ.Confined (Γ.capsAtom n a) r)
+    (a₀ : CapAtom s) (r : CapAtom (s,c))
+    (h : (Γ.consC b).LvlLe (CapAtom.weaken (k := .cap) a₀) r) :
+    (Γ.consC b).Confined (CaptureSet.weaken (k := .cap) (Γ.capsAtom n a₀)) r := by
+  have h1 := Ctx.Confined.weakenC (Γ := Γ) b (ih a₀ (Γ.lvlOf a₀) (Γ.lvlLe_lvlOf a₀))
+  rw [← Ctx.lvlOf_weakenC Γ b a₀] at h1
+  exact Ctx.confined_trans h1 h
+
+/-- The clause of `Ctx.capsAtom` at the term binder a context adds. -/
+theorem Ctx.capsAtom_confined_here {s : Sig} {Γ : Ctx s} (b : Binding s) {n : Nat}
+    (ih : ∀ (a r : CapAtom s), Γ.LvlLe a r → Γ.Confined (Γ.capsAtom n a) r)
+    (D : CaptureSet s) (r : CapAtom (s,x))
+    (h : (Γ.cons b).LvlLe (.var .here) r) :
+    (Γ.cons b).Confined (CaptureSet.weaken (k := .var) (Γ.caps n D)) r := by
+  have h0 : Γ.Confined (Γ.caps n D) Γ.rootAtom :=
+    Ctx.caps_confined_of_atom (fun a => ih a Γ.rootAtom) D (Γ.confined_rootAtom D)
+  have h1 := Ctx.Confined.weaken (Γ := Γ) b h0
+  rw [← Ctx.lvlOf_cons_here Γ b] at h1
+  exact Ctx.confined_trans h1 h
+
+/-- The clause of `Ctx.capsAtom` at a capture binder with a bound. -/
+theorem Ctx.capsAtom_confined_hereC {s : Sig} {Γ : Ctx s} (b : CapBound s)
+    (hb : b.isRoot = false) {n : Nat}
+    (ih : ∀ (a r : CapAtom s), Γ.LvlLe a r → Γ.Confined (Γ.capsAtom n a) r)
+    (D : CaptureSet s) (r : CapAtom (s,c))
+    (h : (Γ.consC b).LvlLe (.cvar .here) r) :
+    (Γ.consC b).Confined (CaptureSet.weaken (k := .cap) (Γ.caps n D)) r := by
+  have h0 : Γ.Confined (Γ.caps n D) Γ.rootAtom :=
+    Ctx.caps_confined_of_atom (fun a => ih a Γ.rootAtom) D (Γ.confined_rootAtom D)
+  have h1 := Ctx.Confined.weakenC (Γ := Γ) b h0
+  rw [← Ctx.lvlOf_consC_here Γ b hb] at h1
+  exact Ctx.confined_trans h1 h
+
+/-- The name clause, at one unit more fuel. -/
+theorem Ctx.capsAtom_confined_name {s : Sig} (Γ : Ctx s) (n : Nat)
+    (ihn : ∀ (a r : CapAtom s), Γ.LvlLe a r → Γ.Confined (Γ.capsAtom n a) r)
+    (x : BVar s .var) (ℓ : Label) (r : CapAtom s) (h : Γ.LvlLe (.name x ℓ) r) :
+    Γ.Confined (Γ.capsAtom (n + 1) (.name x ℓ)) r := by
+  cases hd : Γ.lookupDefC x ℓ with
+  | none => intro c hc; rw [Ctx.capsAtom_name_none hd] at hc; simp at hc
+  | some C =>
+      intro c hc
+      rw [Ctx.capsAtom_name_some hd] at hc
+      have hCC : Γ.Confined C (Γ.lvlOf (.name x ℓ)) := Γ.lookupDefC_confined x ℓ C hd
+      exact Ctx.caps_confined_of_atom (fun a₀ => ihn a₀ r) C
+        (Ctx.confined_trans hCC h) c hc
+
+theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : CapAtom s),
+    Γ.LvlLe a r → Γ.Confined (Γ.capsAtom n a) r := by
+  intro n
+  induction n with
+  | zero =>
+      intro s Γ
+      induction Γ with
+      | nil =>
+          intro a r h
+          cases a with
+          | var x => cases x
+          | cvar κ => cases κ
+          | name x ℓ => cases x
+          | top =>
+              intro c hc
+              rw [Ctx.capsAtom_top] at hc
+              rw [List.mem_singleton.mp hc]
+              exact h
+      | cons Γ b ih =>
+          intro a r h
+          cases a with
+          | top =>
+              intro c hc
+              rw [Ctx.capsAtom_top] at hc
+              rw [List.mem_singleton.mp hc]
+              exact h
+          | name x ℓ => intro c hc; rw [Ctx.capsAtom_name_zero] at hc; simp at hc
+          | var y =>
+              cases y with
+              | here =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_here b ih _ r h
+              | there y₀ =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_there b ih (.var y₀) r h
+          | cvar κ =>
+              cases κ with
+              | there κ₀ =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_there b ih (.cvar κ₀) r h
+      | consC Γ b ih =>
+          intro a r h
+          cases a with
+          | top =>
+              intro c hc
+              rw [Ctx.capsAtom_top] at hc
+              rw [List.mem_singleton.mp hc]
+              exact h
+          | name x ℓ => intro c hc; rw [Ctx.capsAtom_name_zero] at hc; simp at hc
+          | var y =>
+              cases y with
+              | there y₀ =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_thereC b ih (.var y₀) r h
+          | cvar κ =>
+              cases κ with
+              | here =>
+                  cases b with
+                  | root =>
+                      intro c hc
+                      simp only [Ctx.capsAtom] at hc
+                      rw [List.mem_singleton.mp hc]
+                      exact h
+                  | star =>
+                      intro c hc
+                      simp only [Ctx.capsAtom] at hc
+                      rw [List.mem_singleton.mp hc]
+                      exact h
+                  | upper C =>
+                      simp only [Ctx.capsAtom]
+                      exact Ctx.capsAtom_confined_hereC (.upper C) rfl ih C r h
+                  | inst C =>
+                      simp only [Ctx.capsAtom]
+                      exact Ctx.capsAtom_confined_hereC (.inst C) rfl ih C r h
+              | there κ₀ =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_thereC b ih (.cvar κ₀) r h
+  | succ n ihn =>
+      intro s Γ
+      induction Γ with
+      | nil =>
+          intro a r h
+          cases a with
+          | var x => cases x
+          | cvar κ => cases κ
+          | name x ℓ => cases x
+          | top =>
+              intro c hc
+              rw [Ctx.capsAtom_top] at hc
+              rw [List.mem_singleton.mp hc]
+              exact h
+      | cons Γ b ih =>
+          intro a r h
+          cases a with
+          | top =>
+              intro c hc
+              rw [Ctx.capsAtom_top] at hc
+              rw [List.mem_singleton.mp hc]
+              exact h
+          | name x ℓ => exact Ctx.capsAtom_confined_name (Γ.cons b) n (ihn (Γ.cons b)) x ℓ r h
+          | var y =>
+              cases y with
+              | here =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_here b ih _ r h
+              | there y₀ =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_there b ih (.var y₀) r h
+          | cvar κ =>
+              cases κ with
+              | there κ₀ =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_there b ih (.cvar κ₀) r h
+      | consC Γ b ih =>
+          intro a r h
+          cases a with
+          | top =>
+              intro c hc
+              rw [Ctx.capsAtom_top] at hc
+              rw [List.mem_singleton.mp hc]
+              exact h
+          | name x ℓ => exact Ctx.capsAtom_confined_name (Γ.consC b) n (ihn (Γ.consC b)) x ℓ r h
+          | var y =>
+              cases y with
+              | there y₀ =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_thereC b ih (.var y₀) r h
+          | cvar κ =>
+              cases κ with
+              | here =>
+                  cases b with
+                  | root =>
+                      intro c hc
+                      simp only [Ctx.capsAtom] at hc
+                      rw [List.mem_singleton.mp hc]
+                      exact h
+                  | star =>
+                      intro c hc
+                      simp only [Ctx.capsAtom] at hc
+                      rw [List.mem_singleton.mp hc]
+                      exact h
+                  | upper C =>
+                      simp only [Ctx.capsAtom]
+                      exact Ctx.capsAtom_confined_hereC (.upper C) rfl ih C r h
+                  | inst C =>
+                      simp only [Ctx.capsAtom]
+                      exact Ctx.capsAtom_confined_hereC (.inst C) rfl ih C r h
+              | there κ₀ =>
+                  simp only [Ctx.capsAtom]
+                  exact Ctx.capsAtom_confined_thereC b ih (.cvar κ₀) r h
+
+/-- Resolution of one atom keeps the level. -/
+theorem Ctx.capsAtom_confined {s : Sig} (Γ : Ctx s) (n : Nat) (a r : CapAtom s)
+    (h : Γ.Confined [a] r) : Γ.Confined (Γ.capsAtom n a) r :=
+  Ctx.capsAtom_confined_aux n Γ a r (h a (List.mem_cons_self ..))
+
+/-- Resolution keeps the level: what a capture set resolves to is at or
+outside every root the set itself is at or outside of. -/
+theorem Ctx.caps_confined {s : Sig} (Γ : Ctx s) (n : Nat) (C : CaptureSet s) (r : CapAtom s)
+    (h : Γ.Confined C r) : Γ.Confined (Γ.caps n C) r :=
+  Ctx.caps_confined_of_atom (fun a ha => Ctx.capsAtom_confined_aux n Γ a r ha) C h
+
 /-! ### Roots and subcapturing -/
 
-/-- The roots of a capture set at a given fuel.  In this stage `roots` is
-`caps`; the compiler's line redefines it as `expand ∘ caps`. -/
-def Ctx.roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s) : CaptureSet s := Γ.caps n C
+/-- The roots of a capture set at a given fuel: resolution followed by
+expansion.  Name, signature and fuel are those of the DOT way, and on a
+root-free context that mentions no `⊤ᶜ` this is `caps` again
+(`Ctx.roots_eq_caps_of_rootFree`). -/
+def Ctx.roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s) : CaptureSet s :=
+  Γ.expand (Γ.caps n C)
 
-@[simp] theorem Ctx.roots_eq_caps (Γ : Ctx s) (n : Nat) (C : CaptureSet s) :
-    Γ.roots n C = Γ.caps n C := rfl
+@[simp] theorem Ctx.roots_eq_expand_caps (Γ : Ctx s) (n : Nat) (C : CaptureSet s) :
+    Γ.roots n C = Γ.expand (Γ.caps n C) := rfl
+
+/-- Resolution lands in the roots. -/
+theorem Ctx.caps_subset_roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s) :
+    (Γ.caps n C).Subset (Γ.roots n C) := Γ.subset_expand _
+
+/-- Nothing outside a scope sees the change.  On a root-free context whose
+resolution does not mention `⊤ᶜ`, `roots` is `caps`, so every statement about
+roots on the platform prefix and on a store context means today what it meant
+before. -/
+theorem Ctx.roots_eq_caps_of_rootFree {Γ : Ctx s} {n : Nat} {C : CaptureSet s}
+    (h : Γ.root? = none) (hC : CapAtom.top ∉ Γ.caps n C) :
+    Γ.roots n C = Γ.caps n C := by
+  rw [Ctx.roots_eq_expand_caps]
+  refine Ctx.expand_eq_self ?_
+  intro a ha
+  rcases Ctx.caps_opaque ha with rfl | ⟨κ, rfl, _⟩
+  · exact absurd ha hC
+  · show (Γ.lookupCap κ).isRoot = false
+    exact Γ.root?_none_isRoot h κ
 
 /-- `a` is a root of `C`: `C` resolves to `a` at some fuel.  Resolution is
 monotone in the fuel, so this is the least solution of the resolution
@@ -1027,7 +1791,7 @@ def Ctx.Root (Γ : Ctx s) (a : CapAtom s) (C : CaptureSet s) : Prop :=
   ∃ n : Nat, a ∈ Γ.roots n C
 
 theorem Ctx.Root.of_mem_caps {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s} {n : Nat}
-    (h : a ∈ Γ.caps n C) : Γ.Root a C := ⟨n, h⟩
+    (h : a ∈ Γ.caps n C) : Γ.Root a C := ⟨n, Γ.caps_subset_roots n C a h⟩
 
 /-- Subcapturing as a proposition: the roots of `C` are among the roots of
 `D`. -/
@@ -1044,12 +1808,14 @@ theorem CapLe.trans {Γ : Ctx s} {C D E : CaptureSet s}
     (h₁ : CapLe Γ C D) (h₂ : CapLe Γ D E) : CapLe Γ C E := fun a h => h₂ a (h₁ a h)
 
 theorem CapLe.of_subset {Γ : Ctx s} {C D : CaptureSet s} (h : C.Subset D) :
-    CapLe Γ C D := fun _ hr => hr.elim fun n hn => ⟨n, Ctx.caps_subset h _ hn⟩
+    CapLe Γ C D :=
+  fun _ hr => hr.elim fun n hn => ⟨n, Ctx.expand_subset (Ctx.caps_subset h) _ hn⟩
 
 theorem CapLe.union {Γ : Ctx s} {C D E : CaptureSet s}
     (h₁ : CapLe Γ C E) (h₂ : CapLe Γ D E) : CapLe Γ (C ∪ D) E := by
   rintro a ⟨n, ha⟩
-  rw [Ctx.roots_eq_caps, CaptureSet.union_def, Ctx.caps_append] at ha
+  rw [Ctx.roots_eq_expand_caps, CaptureSet.union_def, Ctx.caps_append,
+    Ctx.expand_append] at ha
   rcases List.mem_append.mp ha with h | h
   · exact h₁ a ⟨n, h⟩
   · exact h₂ a ⟨n, h⟩
@@ -1079,24 +1845,29 @@ theorem RootsEq.of_le {Γ : Ctx s} {C D : CaptureSet s}
 theorem CapLe.weaken {Γ : Ctx s} {C D : CaptureSet s} (b : Binding s)
     (h : CapLe Γ C D) : CapLe (Ctx.cons Γ b) C.weaken D.weaken := by
   rintro a ⟨n, ha⟩
-  rw [Ctx.roots_eq_caps, Ctx.caps_weaken] at ha
+  rw [Ctx.roots_eq_expand_caps, Ctx.caps_weaken, Ctx.expand_weaken] at ha
   simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha
   obtain ⟨c, hc, rfl⟩ := ha
   obtain ⟨m, hm⟩ := h c ⟨n, hc⟩
   refine ⟨m, ?_⟩
-  rw [Ctx.roots_eq_caps, Ctx.caps_weaken]
+  rw [Ctx.roots_eq_expand_caps, Ctx.caps_weaken, Ctx.expand_weaken]
   simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map]
   exact ⟨c, hm, rfl⟩
 
+/-- Weakening by a capture binder whose bound is not opaque.  An opaque
+binder appended to a root-free context enlarges the expansion of `⊤ᶜ`, so the
+premise is what makes the two sides agree; B0.7 forbids a store to append
+one, and the theorem has no other caller. -/
 theorem CapLe.weakenC {Γ : Ctx s} {C D : CaptureSet s} (b : CapBound s)
+    (hb : b.opaque = false)
     (h : CapLe Γ C D) : CapLe (Ctx.consC Γ b) C.weaken D.weaken := by
   rintro a ⟨n, ha⟩
-  rw [Ctx.roots_eq_caps, Ctx.caps_weakenC] at ha
+  rw [Ctx.roots_eq_expand_caps, Ctx.caps_weakenC, Ctx.expand_weakenC Γ b hb] at ha
   simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha
   obtain ⟨c, hc, rfl⟩ := ha
   obtain ⟨m, hm⟩ := h c ⟨n, hc⟩
   refine ⟨m, ?_⟩
-  rw [Ctx.roots_eq_caps, Ctx.caps_weakenC]
+  rw [Ctx.roots_eq_expand_caps, Ctx.caps_weakenC, Ctx.expand_weakenC Γ b hb]
   simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map]
   exact ⟨c, hm, rfl⟩
 
@@ -1110,13 +1881,13 @@ theorem Ctx.Root_name {Γ : Ctx s} {x : BVar s .var} {ℓ : Label} {C : CaptureS
   intro a
   constructor
   · rintro ⟨n, hn⟩
-    rw [Ctx.roots_eq_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil] at hn
+    rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil] at hn
     cases n with
-    | zero => rw [Ctx.capsAtom_name_zero] at hn; simp at hn
+    | zero => rw [Ctx.capsAtom_name_zero, Ctx.expand_nil] at hn; simp at hn
     | succ n => rw [Ctx.capsAtom_name_some h] at hn; exact ⟨n, hn⟩
   · rintro ⟨n, hn⟩
     refine ⟨n + 1, ?_⟩
-    rw [Ctx.roots_eq_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
+    rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
       Ctx.capsAtom_name_some h]
     exact hn
 
@@ -1124,10 +1895,10 @@ theorem Ctx.Root_name {Γ : Ctx s} {x : BVar s .var} {ℓ : Label} {C : CaptureS
 theorem Ctx.Root_name_none {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
     (h : Γ.lookupDefC x ℓ = none) (a : CapAtom s) : ¬ Γ.Root a [CapAtom.name x ℓ] := by
   rintro ⟨n, hn⟩
-  rw [Ctx.roots_eq_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil] at hn
+  rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil] at hn
   cases n with
-  | zero => rw [Ctx.capsAtom_name_zero] at hn; simp at hn
-  | succ n => rw [Ctx.capsAtom_name_none h] at hn; simp at hn
+  | zero => rw [Ctx.capsAtom_name_zero, Ctx.expand_nil] at hn; simp at hn
+  | succ n => rw [Ctx.capsAtom_name_none h, Ctx.expand_nil] at hn; simp at hn
 
 /-! ### Item 6 of the canonical-forms theorem
 

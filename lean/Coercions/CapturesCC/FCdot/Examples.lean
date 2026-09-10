@@ -1099,7 +1099,7 @@ def C6Ctx : Ctx ([],c,c,x,x,x,x) :=
     (.transparent c1Ty .nil .nil [])
 
 theorem C6_store : ⊢ C6Store : C6Ctx :=
-  .cons (.cons (.cons (.cons (.consC (.consC .nil))
+  .cons (.cons (.cons (.cons (.consC (.consC .nil rfl) rfl)
     trivial (checkValue_sound (by decide +kernel)))
     trivial (checkValue_sound (by decide +kernel)))
     trivial (checkValue_sound (by decide +kernel)))
@@ -1286,7 +1286,10 @@ theorem C6_prog2_caps (n : Nat) :
 theorem C6_no_kappa2 :
     ¬ C6Ctx.Root (CapAtom.cvar (.there (.there (.there (.there .here))))) C6st0'.uses := by
   rintro ⟨n, hn⟩
-  rw [Ctx.roots_eq_caps, C6_prog2_caps] at hn
+  -- `C6Ctx` is a store context: it has no scope root, so `roots` is `caps`
+  have hroots : C6Ctx.roots n C6st0'.uses = C6Ctx.caps n C6st0'.uses :=
+    Ctx.roots_eq_caps_of_rootFree rfl (by rw [C6_prog2_caps]; decide)
+  rw [hroots, C6_prog2_caps] at hn
   revert hn
   decide +kernel
 
@@ -1854,6 +1857,153 @@ example : checkTm C5CCtx C5clientTm C5clientTy = true := by decide +kernel
 /-- **C5, the caller as a target twin.**  Checked by the structural
 checker. -/
 theorem C5_client : C5CCtx ⊢ C5clientTm : C5clientTy := checkTm_sound (by decide +kernel)
+
+
+/-! ## X1, X2 and X3: levels and the universal root
+
+The three examples of stage B0.  They use no term former.  The level rule
+reads only the shape of the context, so `Ctx.isRootB` and `Ctx.lvlLeB` decide
+every side condition in the kernel, and every verdict below is a `decide`.
+
+The universal root `⊤ᶜ` is the local root of the whole program.  A binder
+that sits inside no scope is at the outermost level, so `⊤ᶜ` absorbs it (X1).
+A binder introduced inside a scope is not at the outermost level, so `⊤ᶜ`
+does not absorb it, while the scope's own root does (X2).  Nothing at all
+puts such a binder below an enclosing root (X3). -/
+
+/-! ### X1, inner absorbs outer
+
+The context `κ₁ ⊑ᶜ ∗, x : ⊤ ^ {κ₁}` opens no scope, so every one of its
+binders is at the outermost level and the universal root is above it.  This
+is the shape of a platform prefix. -/
+
+/-- The context of X1: one rigid capability and one program binder. -/
+def X1Ctx : Ctx ([],c,x) :=
+  Ctx.cons (Ctx.consC Ctx.nil .star) (.opaque (.top ^ [CapAtom.cvar .here]))
+
+/-- The rigid capability of X1. -/
+def X1κ₁ : BVar ([],c,x) .cap := .there .here
+
+/-- The program binder of X1. -/
+def X1x : BVar ([],c,x) .var := .here
+
+/-- X1 opens no scope, so its innermost root is the universal one. -/
+example : X1Ctx.root? = none := by decide
+
+/-- The universal root is a root. -/
+example : X1Ctx.isRootB ⊤ᶜ = true := by decide
+
+/-- Both binders of X1 are at the outermost level. -/
+example : X1Ctx.lvlLeB (CapAtom.cvar X1κ₁) ⊤ᶜ = true := by decide
+
+example : X1Ctx.lvlLeB (CapAtom.var X1x) ⊤ᶜ = true := by decide
+
+/-- **X1, inner absorbs outer.**  A platform capability, and a program binder
+that captures it, are both at the outermost level, so the level rule puts
+each below the universal root. -/
+theorem X1_inner_absorbs_outer :
+    (X1Ctx ⊢ᶜ .level (.cvar X1κ₁) ⊤ᶜ : [CapAtom.cvar X1κ₁] ⊑ [⊤ᶜ]) ∧
+    (X1Ctx ⊢ᶜ .level (.var X1x) ⊤ᶜ : [CapAtom.var X1x] ⊑ [⊤ᶜ]) :=
+  ⟨.level (by decide) (by decide), .level (by decide) (by decide)⟩
+
+/-- The checker agrees, in the kernel. -/
+example : checkCap X1Ctx (.level (.cvar X1κ₁) ⊤ᶜ) [CapAtom.cvar X1κ₁] [⊤ᶜ] = true := by
+  decide +kernel
+
+example : checkCap X1Ctx (.level (.var X1x) ⊤ᶜ) [CapAtom.var X1x] [⊤ᶜ] = true := by
+  decide +kernel
+
+/-! ### X2, outer does not absorb inner
+
+The nested context `κ₁ ⊑ᶜ ∗, κ_S ⊚, κ₂ ⊑ᶜ ∗`: a rigid capability at the
+outermost level, then a scope root, then a rigid capability introduced inside
+that scope.  This is the nesting of `scoped-capabilities.md:93-106`, with
+`⊤ᶜ` for the page's outermost `any`.
+
+The scope root `κ_S` absorbs what is outside it, `κ₁` and `⊤ᶜ` alike, and the
+universal root does not absorb what is inside it, neither `κ_S` itself nor
+`κ₂`. -/
+
+/-- The context of X2 and X3: rigid, root, rigid. -/
+def X2Ctx : Ctx ([],c,c,c) :=
+  Ctx.consC (Ctx.consC (Ctx.consC Ctx.nil .star) .root) .star
+
+/-- The outer rigid capability of X2, outside the scope. -/
+def X2κ₁ : BVar ([],c,c,c) .cap := .there (.there .here)
+
+/-- The scope root of X2. -/
+def X2κS : BVar ([],c,c,c) .cap := .there .here
+
+/-- The rigid capability of X2, introduced inside the scope. -/
+def X2κ₂ : BVar ([],c,c,c) .cap := .here
+
+/-- `κ_S` is a root and the two rigid binders are not. -/
+example : X2Ctx.isRootB (CapAtom.cvar X2κS) = true := by decide
+
+example : X2Ctx.isRootB (CapAtom.cvar X2κ₁) = false := by decide
+
+example : X2Ctx.isRootB (CapAtom.cvar X2κ₂) = false := by decide
+
+/-- The innermost root of X2 is `κ_S`, and `κ₂` is at that level. -/
+example : X2Ctx.root? = some X2κS := by decide
+
+example : X2Ctx.lvl X2κ₂ = some X2κS := by decide
+
+/-- **X2, outer does not absorb inner.**  Four parts.  What is outside the
+scope is below the scope's root, the universal root included, and what is
+inside the scope is not below the universal root, the scope's own root
+included. -/
+theorem X2_outer_not_inner :
+    (X2Ctx ⊢ᶜ .level (.cvar X2κ₁) (.cvar X2κS) :
+      [CapAtom.cvar X2κ₁] ⊑ [CapAtom.cvar X2κS]) ∧
+    (X2Ctx ⊢ᶜ .level ⊤ᶜ (.cvar X2κS) : [⊤ᶜ] ⊑ [CapAtom.cvar X2κS]) ∧
+    ¬ X2Ctx.LvlLe (CapAtom.cvar X2κS) ⊤ᶜ ∧
+    ¬ X2Ctx.LvlLe (CapAtom.cvar X2κ₂) ⊤ᶜ :=
+  ⟨.level (by decide) (by decide), .level (by decide) (by decide),
+    by decide, by decide⟩
+
+/-- The checker agrees on all four, in the kernel: it accepts the two that go
+outward and rejects the two that go inward. -/
+example : checkCap X2Ctx (.level (.cvar X2κ₁) (.cvar X2κS))
+    [CapAtom.cvar X2κ₁] [CapAtom.cvar X2κS] = true := by decide +kernel
+
+example : checkCap X2Ctx (.level ⊤ᶜ (.cvar X2κS)) [⊤ᶜ] [CapAtom.cvar X2κS] = true := by
+  decide +kernel
+
+example : checkCap X2Ctx (.level (.cvar X2κS) ⊤ᶜ) [CapAtom.cvar X2κS] [⊤ᶜ] = false := by
+  decide +kernel
+
+example : checkCap X2Ctx (.level (.cvar X2κ₂) ⊤ᶜ) [CapAtom.cvar X2κ₂] [⊤ᶜ] = false := by
+  decide +kernel
+
+/-! ### X3, nothing escapes a scope
+
+`no_inner_escape` applied at `κ₂` and `⊤ᶜ` on the context of X2: no closed
+evidence at all, and not only no `level` step, puts the binder introduced
+inside the scope below the enclosing root.
+
+The three level premises are decided.  The fourth premise is a typed store,
+and at stage B0 no store types this context: a store binds capabilities and
+never scopes, so a store context has no root binder
+(`Store.Typed.rootFree`), and X2's context has one.  That is the second part
+below, and it is why X3 holds vacuously here.  The escape gets its content in
+stage B1, where a lambda body becomes a scope and a store slot can sit under
+a root the run itself provides.  The argument run there is this one. -/
+
+/-- **X3, nothing escapes a scope.**  Over any store that types the nested
+context, no capture evidence puts the rigid binder introduced inside the
+scope below the universal root. -/
+theorem X3_no_escape {σ : Store ([],c,c,c)} (hσ : ⊢ σ : X2Ctx) :
+    ¬ ∃ f : CapCo ([],c,c,c), X2Ctx ⊢ᶜ f : [CapAtom.cvar X2κ₂] ⊑ [⊤ᶜ] :=
+  no_inner_escape hσ (by decide) (by decide) (by decide)
+
+/-- **X3, the second part.**  At stage B0 the hypothesis of `X3_no_escape` is
+unavailable for this context: a store context has no scope root, and X2's
+context opens one. -/
+theorem X3_no_store : ¬ ∃ σ : Store ([],c,c,c), ⊢ σ : X2Ctx := by
+  rintro ⟨σ, hσ⟩
+  have h : X2Ctx.root? = none := hσ.rootFree
+  exact absurd h (by decide)
 
 
 end Examples

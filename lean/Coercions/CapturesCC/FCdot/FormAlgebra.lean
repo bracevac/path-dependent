@@ -82,6 +82,21 @@ theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : L
     | there z =>
         rw [Ctx.lookupFields_there] at hFs
         simpa using hFs
+  capRoot := by
+    intro r hr
+    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    unfold Ctx.IsRoot
+    rw [← Ctx.isRootB_cons_eq Γ (Binding.opaque T) (.opaque S₀) r]
+    exact hr
+  capLvl := by
+    intro e r _ hl
+    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    unfold Ctx.LvlLe
+    rw [← Ctx.lvlLeB_cons_eq Γ (Binding.opaque T) (.opaque S₀) e r]
+    exact hl
+  capInner := by
+    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot _)
 
 section
 variable {σ : Store s} {Γ : Ctx s}
