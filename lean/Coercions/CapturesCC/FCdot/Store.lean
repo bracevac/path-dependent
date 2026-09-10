@@ -80,7 +80,9 @@ scoped notation:40 "⊢ " σ:51 " : " Γ:51 => Store.Typed σ Γ
 
 /-- `⊢ σ : Γ`, store typing: every entry is a literal typed in the transparent
 context of the entries before it, and the context records its witnesses and
-fields.  A capture slot records its bound and carries no obligation. -/
+fields.  A capture slot records its bound and carries no obligation beyond
+being a capability and not a scope: a store binds capabilities, never
+scopes, so a store context has no root binder. -/
 inductive Store.Typed : Store s → Ctx s → Prop where
   | nil : ⊢ .nil : .nil
   | cons
@@ -89,7 +91,8 @@ inductive Store.Typed : Store s → Ctx s → Prop where
       (value : Γ ⊢ᵥ v : T) :
       ⊢ .cons σ v : .cons Γ (.transparent T v.witnesses v.capWitnesses v.fieldLabels)
   | consC
-      (store : ⊢ σ : Γ) :
+      (store : ⊢ σ : Γ)
+      (hb : b.isRoot = false) :
       ⊢ .consC σ b : .consC Γ b
 
 open Lean PrettyPrinter in
@@ -144,7 +147,7 @@ theorem Store.Typed.lookup_annot {s : Sig} {σ : Store s} {Γ : Ctx s}
       | there y =>
           show ((Γ0.lookupTy y)↑).captureSet = ((σ0.lookup y)↑).annot
           rw [Ty.captureSet_weaken, Value.annot_weaken, ih y]
-  | @consC _ σ0 Γ0 _ _ ih =>
+  | @consC _ σ0 Γ0 _ _ _ ih =>
       cases x with
       | there y =>
           show ((Γ0.lookupTy y)↑).captureSet = ((σ0.lookup y)↑).annot

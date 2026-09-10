@@ -1216,7 +1216,7 @@ theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar 
       cases hwf with
       | consC hwf' =>
           rw [Ctx.lookup_consC_there, Ctx.varAtom_consC_there, Ty.translate_weaken]
-          exact (Ctx.varAtom_typed Γ hwf' y).weakenC .star
+          exact (Ctx.varAtom_typed Γ hwf' y).weakenC .star rfl
 
 /-! ## The root of a translated variable typing -/
 

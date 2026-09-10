@@ -215,6 +215,8 @@ def CapAtom.rename? : CapAtom s1 → PartialRename s1 s2 → Option (CapAtom s2)
   | .var x, ρ => (ρ.var x).map .var
   | .cvar κ, ρ => (ρ.var κ).map .cvar
   | .name x ℓ, ρ => (ρ.var x).map (fun y => .name y ℓ)
+  -- the universal root is a constant, so it survives every partial renaming
+  | .top, _ => some .top
 
 def CaptureSet.rename? : CaptureSet s1 → PartialRename s1 s2 → Option (CaptureSet s2)
   | [], _ => some []
@@ -235,6 +237,7 @@ theorem CapAtom.rename?_complete :
   | _, _, .name x ℓ, ρ, σ, h => by
       simp only [CapAtom.rename, CapAtom.rename?]
       rw [(h (σ.var x) x).mpr rfl]; rfl
+  | _, _, .top, _, _, _ => rfl
 
 theorem CaptureSet.rename?_complete :
     ∀ {s1 s2 : Sig} (C : CaptureSet s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
@@ -266,6 +269,10 @@ theorem CapAtom.rename?_sound :
       subst hb
       simp only [CapAtom.rename]
       rw [(h x y).mp hy]
+  | _, _, .top, b, ρ, σ, h, hb => by
+      simp only [CapAtom.rename?, Option.some.injEq] at hb
+      subst hb
+      rfl
 
 theorem CaptureSet.rename?_sound :
     ∀ {s1 s2 : Sig} (C : CaptureSet s1) (D : CaptureSet s2) (ρ : PartialRename s1 s2)
@@ -1070,6 +1077,10 @@ def synthCapCore {s : Sig} (Γ : Ctx s) (ev : CapCo s) : Option (CapChecked Γ e
   | .eqToLe φ => do
       let cφ ← synthCapEqCore Γ φ
       some ⟨cφ.source, cφ.target, .eqToLe cφ.typing⟩
+  | .level e r =>
+      if h₁ : Γ.isRootB r then
+        if h₂ : Γ.lvlLeB e r then some ⟨[e], [r], .level h₁ h₂⟩ else none
+      else none
 
 def synthCapEqCore {s : Sig} (Γ : Ctx s) (ev : CapEq s) : Option (CapEqChecked Γ ev) :=
   match ev with

@@ -287,10 +287,37 @@ theorem Ctx.Root_var (Γ : Ctx s) (x : BVar s .var) :
     RootsEq Γ [CapAtom.var x] (Γ.lookupTy x).captureSet := by
   intro a
   have key : ∀ n : Nat,
-      a ∈ Γ.caps n [CapAtom.var x] ↔ a ∈ Γ.caps n (Γ.lookupTy x).captureSet := by
+      a ∈ Γ.roots n [CapAtom.var x] ↔ a ∈ Γ.roots n (Γ.lookupTy x).captureSet := by
     intro n
-    rw [Ctx.caps_cons, Ctx.caps_nil, List.append_nil, Ctx.capsAtom_var]
+    rw [Ctx.roots_eq_expand_caps, Ctx.roots_eq_expand_caps,
+      Ctx.caps_cons, Ctx.caps_nil, List.append_nil, Ctx.capsAtom_var]
   exact ⟨fun ⟨n, hn⟩ => ⟨n, (key n).mp hn⟩, fun ⟨n, hn⟩ => ⟨n, (key n).mpr hn⟩⟩
+
+/-- A scope root resolves to itself at every fuel: `⊤ᶜ` is a leaf of
+`capsAtom`, and a capture binder whose bound is `root` stops at itself.  This
+is what makes the roots of a singleton root its own expansion. -/
+theorem Ctx.caps_of_isRoot {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r) (n : Nat) :
+    Γ.caps n [r] = [r] := by
+  cases r with
+  | top => rw [Ctx.caps_cons, Ctx.caps_nil, Ctx.capsAtom_top]; rfl
+  | var x => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | name x ℓ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | cvar κ =>
+      have hb : Γ.lookupCap κ = .root := by
+        have hi : (Γ.lookupCap κ).isRoot = true := hr
+        cases h : Γ.lookupCap κ with
+        | root => rfl
+        | star => rw [h] at hi; simp [CapBound.isRoot] at hi
+        | upper C => rw [h] at hi; simp [CapBound.isRoot] at hi
+        | inst C => rw [h] at hi; simp [CapBound.isRoot] at hi
+      rw [Ctx.caps_cons, Ctx.caps_nil, Ctx.capsAtom_cvar, hb]
+      rfl
+
+/-- The roots of a singleton scope root are its expansion. -/
+theorem Ctx.roots_of_isRoot {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r) (n : Nat) :
+    Γ.roots n [r] = Γ.expandAtom r := by
+  rw [Ctx.roots_eq_expand_caps, Ctx.caps_of_isRoot hr, Ctx.expand_cons, Ctx.expand_nil,
+    List.append_nil]
 
 /-! ## Canonical forms -/
 
@@ -367,6 +394,21 @@ theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D)
   | .elem hsub => exact CapLe.of_subset hsub
   | .union hf hg => exact CapLe.union (cap_canon hf) (cap_canon hg)
   | .capvar ha => exact (atom_canon ha).capLe
+  | .level (e := e) (r := r) hr hle =>
+      -- the four steps of the level case: `mem_expand`, `caps_opaque`,
+      -- `caps_confined`, `expandAtom_mono`.  It uses no store.
+      intro a ha
+      obtain ⟨n, hn⟩ := ha
+      rw [Ctx.roots_eq_expand_caps] at hn
+      obtain ⟨b, hb, hab⟩ := Ctx.mem_expand.mp hn
+      have hconf : Γ.Confined [e] r := by
+        intro c hc
+        rw [List.mem_singleton.mp hc]
+        exact hle
+      have hbr : Γ.LvlLe b r := Ctx.caps_confined Γ n [e] r hconf b hb
+      refine ⟨0, ?_⟩
+      rw [Ctx.roots_of_isRoot hr]
+      exact Ctx.expandAtom_mono hr (Ctx.caps_opaque hb) hbr a hab
   | .member (a := a) ha he hAt =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
       obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he

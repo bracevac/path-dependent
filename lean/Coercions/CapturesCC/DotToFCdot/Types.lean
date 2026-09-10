@@ -129,6 +129,15 @@ def CaptureSet.translate (C : CaptureSet s) : FCdot.CaptureSet s :=
 @[simp] theorem CaptureSet.translate_cons_any {s : Sig} (C : CaptureSet s) :
     CaptureSet.translate (CapAtom.any :: C) = C.translate := rfl
 
+/-- The source has no universal root, so a translated capture set never
+mentions `⊤ᶜ`. -/
+theorem CaptureSet.top_not_mem_translate {s : Sig} (C : CaptureSet s) :
+    FCdot.CapAtom.top ∉ C.translate := by
+  intro h
+  rw [CaptureSet.translate, List.mem_filterMap] at h
+  obtain ⟨a, _, ha⟩ := h
+  cases a <;> simp [CapAtom.translate?] at ha
+
 /-- The A3a `translate_cons`, at an atom that has a target atom: the head is
 translated and the tail follows. -/
 theorem CaptureSet.translate_cons {s : Sig} {a : CapAtom s} {b : FCdot.CapAtom s}

@@ -20,6 +20,13 @@ structure Ctx.Refines {s : Sig} (Γ Γ' : Ctx s) : Prop where
   def_ : ∀ x l (W : Shape s), Γ.lookupDef x l = some W → Γ'.lookupDef x l = some W
   defC : ∀ x l (C : CaptureSet s), Γ.lookupDefC x l = some C → Γ'.lookupDefC x l = some C
   fields : ∀ x Fs, Γ.lookupFields x = some Fs → Γ'.lookupFields x = some Fs
+  /-- Refinement adds block definitions and field labels to term binders and
+      never touches the capture spine, so the innermost root is the same. -/
+  rootEq : Γ'.root? = Γ.root?
+  /-- And so is the level of every binder. -/
+  lvlEq : ∀ {k : Kind} (y : BVar s k), Γ'.lvl y = Γ.lvl y
+  /-- And so is the answer to whether a capture binder is a root. -/
+  capEq : ∀ κ : BVar s .cap, (Γ'.lookupCap κ).isRoot = (Γ.lookupCap κ).isRoot
 
 namespace Ctx.Refines
 
@@ -28,6 +35,9 @@ theorem refl {Γ : Ctx s} : Ctx.Refines Γ Γ where
   def_ := fun _ _ _ h => h
   defC := fun _ _ _ h => h
   fields := fun _ _ h => h
+  rootEq := rfl
+  lvlEq := fun _ => rfl
+  capEq := fun _ => rfl
 
 theorem trans {Γ1 Γ2 Γ3 : Ctx s} (h1 : Ctx.Refines Γ1 Γ2) (h2 : Ctx.Refines Γ2 Γ3) :
     Ctx.Refines Γ1 Γ3 where
@@ -35,6 +45,9 @@ theorem trans {Γ1 Γ2 Γ3 : Ctx s} (h1 : Ctx.Refines Γ1 Γ2) (h2 : Ctx.Refines
   def_ := fun x l W h => h2.def_ x l W (h1.def_ x l W h)
   defC := fun x l C h => h2.defC x l C (h1.defC x l C h)
   fields := fun x Fs h => h2.fields x Fs (h1.fields x Fs h)
+  rootEq := h2.rootEq.trans h1.rootEq
+  lvlEq := fun y => (h2.lvlEq y).trans (h1.lvlEq y)
+  capEq := fun κ => (h2.capEq κ).trans (h1.capEq κ)
 
 theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     Ctx.Refines (Γ.cons b) (Γ'.cons b) where
@@ -87,6 +100,19 @@ theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     | there y =>
         rw [Ctx.lookupFields_there] at hFs ⊢
         exact h.fields y Fs hFs
+  rootEq := by
+    rw [Ctx.root?_cons, Ctx.root?_cons, h.rootEq]
+  lvlEq := by
+    intro k y
+    cases y with
+    | here => simp [h.rootEq]
+    | there y0 => simp [h.lvlEq]
+  capEq := by
+    intro κ
+    cases κ with
+    | there κ0 =>
+        show ((Γ'.lookupCap κ0)↑).isRoot = ((Γ.lookupCap κ0)↑).isRoot
+        simp [h.capEq]
 
 /-- Weakening an opaque binder to the transparent binder of the same type. -/
 theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)}
@@ -112,6 +138,16 @@ theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Wc : CapWitne
     cases x with
     | here => simp at hFs
     | there y => rw [Ctx.lookupFields_there] at hFs ⊢; exact hFs
+  rootEq := rfl
+  lvlEq := by
+    intro k y
+    cases y with
+    | here => rfl
+    | there y0 => rfl
+  capEq := by
+    intro κ
+    cases κ with
+    | there κ0 => rfl
 
 theorem transparentOf {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {x : BVar s .var}
     (ht : Γ.IsTransparent x) : Γ'.IsTransparent x := by
@@ -156,8 +192,56 @@ theorem consC {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : CapBound s) :
     | there y =>
         rw [Ctx.lookupFields_thereC] at hFs ⊢
         exact h.fields y Fs hFs
+  rootEq := by
+    cases b with
+    | root => rfl
+    | star | upper C | inst C =>
+        rw [Ctx.root?_consC_of_not_root _ _ rfl, Ctx.root?_consC_of_not_root _ _ rfl, h.rootEq]
+  lvlEq := by
+    intro k y
+    cases y with
+    | here =>
+        cases b with
+        | root => rfl
+        | star | upper C | inst C =>
+            rw [Ctx.lvl_consC_here_of_not_root _ _ rfl, Ctx.lvl_consC_here_of_not_root _ _ rfl,
+              h.rootEq]
+    | there y0 => simp [h.lvlEq]
+  capEq := by
+    intro κ
+    cases κ with
+    | here => rfl
+    | there κ0 =>
+        show ((Γ'.lookupCap κ0)↑).isRoot = ((Γ.lookupCap κ0)↑).isRoot
+        simp [h.capEq]
 
 end Ctx.Refines
+
+/-! ## Levels under a refinement
+
+The three new fields say that a refinement leaves the capture spine alone,
+so every level fact reads the same on both sides.  That is what the `level`
+rule needs, and it is why the monotonicity theorems keep their meaning. -/
+
+theorem Ctx.Refines.lvlAtom {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (a : CapAtom s) :
+    Γ'.lvlAtom a = Γ.lvlAtom a := by
+  cases a <;> simp [Ctx.lvlAtom, h.lvlEq]
+
+theorem Ctx.Refines.isRootB {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (a : CapAtom s) :
+    Γ'.isRootB a = Γ.isRootB a := by
+  cases a <;> simp [Ctx.isRootB, h.capEq]
+
+theorem Ctx.Refines.isRoot {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {r : CapAtom s}
+    (hr : Γ.IsRoot r) : Γ'.IsRoot r := by
+  unfold Ctx.IsRoot
+  rw [h.isRootB]
+  exact hr
+
+theorem Ctx.Refines.lvlLe {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {e r : CapAtom s}
+    (hl : Γ.LvlLe e r) : Γ'.LvlLe e r := by
+  unfold Ctx.LvlLe Ctx.lvlLeB
+  rw [h.lvlAtom]
+  exact hl
 
 /-! ## Monotonicity of the typing families -/
 
@@ -175,6 +259,7 @@ theorem CapCo.HasType.refine {Γ Γ' : Ctx s} {f : CapCo s} {C D : CaptureSet s}
   | .capvar ha => exact .capvar (ha.refine hR)
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
   | .eqToLe hφ => exact .eqToLe (hφ.refine hR)
+  | .level h₁ h₂ => exact .level (hR.isRoot h₁) (hR.lvlLe h₂)
 
 theorem CapEq.HasType.refine {Γ Γ' : Ctx s} {φ : CapEq s} {C D : CaptureSet s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) : Γ' ⊢ᶜ φ : C ≡ D := by

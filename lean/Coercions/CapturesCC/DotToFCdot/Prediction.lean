@@ -90,7 +90,7 @@ source platform context. -/
 theorem Platform.targetStore_typed : ∀ P : Platform s,
     FCdot.Store.Typed P.targetStore P.ctx.translate
   | .nil => .nil
-  | .cons P => .consC (Platform.targetStore_typed P)
+  | .cons P => .consC (Platform.targetStore_typed P) rfl
 
 /-- The two initial stores have the same erasure: a capture slot carries no
 runtime content on either side. -/
@@ -110,6 +110,7 @@ theorem Platform.capsAtom : ∀ {s : Sig} (P : Platform s) (n : Nat) (a : FCdot.
     P.ctx.translate.capsAtom n a = [a]
   | _, P, _, .var x => (P.noVar x).elim
   | _, P, _, .name x _ => (P.noVar x).elim
+  | _, _, _, .top => by simp
   | _, .cons _, _, .cvar .here => by
       simp only [Platform.ctx, Ctx.translate, FCdot.Ctx.capsAtom]
   | _, .cons P, n, .cvar (.there κ) => by
@@ -124,14 +125,32 @@ theorem Platform.caps : ∀ {s : Sig} (P : Platform s) (n : Nat) (C : FCdot.Capt
       simp only [FCdot.Ctx.caps_cons, Platform.capsAtom P n a, Platform.caps P n C]
       rfl
 
-/-- Over a platform prefix a root of a capture set is a member of it. -/
+/-- A platform context binds capabilities only, so it has no scope root. -/
+theorem Platform.rootFree : ∀ {s : Sig} (P : Platform s), P.ctx.translate.root? = none
+  | _, .nil => rfl
+  | _, .cons P => by
+      show (FCdot.Ctx.consC P.ctx.translate FCdot.CapBound.star).root? = none
+      rw [FCdot.Ctx.root?_consC_of_not_root _ _ rfl, Platform.rootFree P]
+      rfl
+
+/-- Over a platform prefix a root of a capture set is a member of it.  The
+set is one the source wrote, and the source has no universal root, which is
+what `hC` says: `CaptureSet.translate` drops `any` and never produces `⊤ᶜ`
+(`CaptureSet.top_not_mem_translate`).  On such a set expansion is the
+identity, so this is the same statement it was. -/
 theorem Platform.root_iff {s : Sig} (P : Platform s) (a : FCdot.CapAtom s)
-    (C : FCdot.CaptureSet s) : P.ctx.translate.Root a C ↔ a ∈ C := by
+    (C : FCdot.CaptureSet s) (hC : FCdot.CapAtom.top ∉ C) :
+    P.ctx.translate.Root a C ↔ a ∈ C := by
+  have hr : ∀ n : Nat, P.ctx.translate.roots n C = C := by
+    intro n
+    rw [FCdot.Ctx.roots_eq_caps_of_rootFree P.rootFree
+        (by rw [Platform.caps]; exact hC),
+      Platform.caps]
   constructor
   · rintro ⟨n, hn⟩
-    rwa [FCdot.Ctx.roots_eq_caps, Platform.caps P n C] at hn
+    rwa [hr n] at hn
   · intro h
-    exact ⟨0, by rwa [FCdot.Ctx.roots_eq_caps, Platform.caps P 0 C]⟩
+    exact ⟨0, by rw [hr 0]; exact h⟩
 
 /-! ## The inspected root, read through the erasure -/
 
@@ -269,7 +288,7 @@ theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀}
     exact FCdot.cap_canon P.targetStore_typed (d.translate_uses P.ctx_wf)
   have hroot : ¬ P.ctx.translate.Root (FCdot.CapAtom.cvar κ)
       (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s₀).uses := fun hr =>
-    hκ ((P.root_iff _ _).mp (hbase _ hr))
+    hκ ((P.root_iff _ _ (CaptureSet.top_not_mem_translate U)).mp (hbase _ hr))
   obtain ⟨ρ, hE, hne⟩ :=
     FCdot.effect_safety (P.initial_typed d) P.targetStore_typed hrun hroot hint hσ'
   exact ⟨stt, Γ', ρ, he, hσ', hE, hne⟩

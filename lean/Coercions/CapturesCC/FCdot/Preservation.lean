@@ -149,10 +149,10 @@ theorem Store.Typed.lookup {s : Sig} {σ : Store s} {Γ : Ctx s} (h : ⊢ σ : �
       cases x with
       | here => simpa [Store.lookup, Binding.ty] using hv.weaken _
       | there y => simpa [Store.lookup] using (ih y).weaken _
-  | consC _ ih =>
+  | consC _ hb ih =>
       intro x
       cases x with
-      | there y => simpa [Store.lookup] using (ih y).weakenC _
+      | there y => simpa [Store.lookup] using (ih y).weakenC _ hb
 
 theorem Store.Typed.lookupFields {s : Sig} {σ : Store s} {Γ : Ctx s}
     (h : ⊢ σ : Γ) :
@@ -167,7 +167,7 @@ theorem Store.Typed.lookupFields {s : Sig} {σ : Store s} {Γ : Ctx s}
       | there y =>
           simp only [Ctx.lookupFields_there, ih y, Store.lookup, Value.weaken,
             Value.fieldLabels_rename]
-  | consC _ ih =>
+  | consC _ _ ih =>
       intro x
       cases x with
       | there y =>
@@ -194,7 +194,7 @@ theorem Store.Typed.lookupDef {s : Sig} {σ : Store s} {Γ : Ctx s} (h : ⊢ σ 
           simp only [Ctx.lookupDef_there, ih y l, Option.map_some, Store.lookup,
             Value.weaken, Value.witnesses_rename, Witnesses.get_rename, Shape.substVar,
             Shape.weaken, Shape.rename_comp, Rename.succ_lift_comp_subst_there]
-  | consC _ ih =>
+  | consC _ _ ih =>
       intro x l
       cases x with
       | there y =>
@@ -222,7 +222,7 @@ theorem Store.Typed.lookupDefC {s : Sig} {σ : Store s} {Γ : Ctx s} (h : ⊢ σ
             Value.weaken, Value.capWitnesses_rename, CapWitnesses.get_rename,
             CaptureSet.substVar, CaptureSet.weaken, CaptureSet.rename_comp,
             Rename.succ_lift_comp_subst_there]
-  | consC _ ih =>
+  | consC _ _ ih =>
       intro x l
       cases x with
       | there y =>
@@ -334,6 +334,46 @@ theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} {A : CaptureSet s}
   intro k x
   cases k <;> cases x <;> rfl
 
+/-! ### A term binding is invisible to the capture spine
+
+`Ctx.lookupCap`, `Ctx.root?` and `Ctx.lvl` step past a term binder without
+reading it, so two contexts that append different bindings to the same prefix
+have the same roots and the same levels.  This is what the self-cast
+substitution below needs for its three capture fields, since it changes only
+the binding at the self. -/
+
+theorem Ctx.lookupCap_cons_eq (Γ : Ctx s) (b b' : Binding s) :
+    ∀ κ : BVar (s,x) .cap, (Γ.cons b).lookupCap κ = (Γ.cons b').lookupCap κ
+  | .there _ => rfl
+
+theorem Ctx.lvl_cons_eq (Γ : Ctx s) (b b' : Binding s) {k : Kind} (z : BVar (s,x) k) :
+    (Γ.cons b).lvl z = (Γ.cons b').lvl z := by
+  cases z <;> rfl
+
+theorem Ctx.lvlAtom_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x)) :
+    (Γ.cons b).lvlAtom a = (Γ.cons b').lvlAtom a := by
+  cases a with
+  | top => rfl
+  | var z => exact Ctx.lvl_cons_eq Γ b b' z
+  | cvar z => exact Ctx.lvl_cons_eq Γ b b' z
+  | name z _ => exact Ctx.lvl_cons_eq Γ b b' z
+
+theorem Ctx.isRootB_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x)) :
+    (Γ.cons b).isRootB a = (Γ.cons b').isRootB a := by
+  cases a with
+  | top => rfl
+  | var _ => rfl
+  | name _ _ => rfl
+  | cvar κ => exact congrArg CapBound.isRoot (Ctx.lookupCap_cons_eq Γ b b' κ)
+
+theorem Ctx.lvlLeB_cons_eq (Γ : Ctx s) (b b' : Binding s) (e r : CapAtom (s,x)) :
+    (Γ.cons b).lvlLeB e r = (Γ.cons b').lvlLeB e r := by
+  unfold Ctx.lvlLeB
+  rw [Ctx.lvlAtom_cons_eq Γ b b' e]
+
+theorem Ctx.rootAtom_cons_eq (Γ : Ctx s) (b b' : Binding s) :
+    (Γ.cons b).rootAtom = (Γ.cons b').rootAtom := rfl
+
 theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
     {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {Fs : List Label} (hE : Γ ⊢ E : S₀ ≤ T) :
     Subst.Typed (Γ.cons (.opaque T)) (Subst.selfCast E↑)
@@ -385,6 +425,21 @@ theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
     | there z =>
         rw [Ctx.lookupFields_there] at hFs'
         simpa using hFs'
+  capRoot := by
+    intro r hr
+    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    unfold Ctx.IsRoot
+    rw [← Ctx.isRootB_cons_eq Γ (Binding.opaque T) (.transparent S₀ W Wc Fs) r]
+    exact hr
+  capLvl := by
+    intro e r _ hl
+    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    unfold Ctx.LvlLe
+    rw [← Ctx.lvlLeB_cons_eq Γ (Binding.opaque T) (.transparent S₀ W Wc Fs) e r]
+    exact hl
+  capInner := by
+    simp only [Subst.selfCast_root, CapAtom.rename_id]
+    exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot _)
 
 /-- The self binder of a stored object literal may be replaced by the
 variable it is stored at. -/
@@ -434,6 +489,50 @@ theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)} {C : Capt
     | there w =>
         rw [Ctx.lookupFields_there] at hFs'
         simpa using hFs'
+  capRoot := by
+    intro r hr
+    obtain ⟨r₀, rfl, hr₀⟩ := Ctx.isRoot_cons_cases hr
+    rw [CapAtom.rename_subst_weaken]
+    exact hr₀
+  capLvl := by
+    intro e r hr hl
+    obtain ⟨r₀, rfl, hr₀⟩ := Ctx.isRoot_cons_cases hr
+    rw [CapAtom.rename_subst_weaken]
+    -- the level fact about the self binder is L0 in `Γ`, at the variable it
+    -- is stored at
+    have hhere : ∀ x0 : BVar s .var,
+        (Γ.cons (Binding.transparent ((μ Tel) ^ C) W Wc Fs)).LvlLe (CapAtom.var .here)
+          (CapAtom.weaken (k := .var) r₀) → Γ.LvlLe (CapAtom.var x0) r₀ := by
+      intro x0 hh
+      have h1 : (Γ.cons (Binding.transparent ((μ Tel) ^ C) W Wc Fs)).LvlLe
+          (CapAtom.weaken (k := .var) Γ.rootAtom) (CapAtom.weaken (k := .var) r₀) := by
+        unfold Ctx.LvlLe
+        rw [Ctx.lvlLeB_congr_left (Γ.cons (Binding.transparent ((μ Tel) ^ C) W Wc Fs))
+          (CapAtom.weaken (k := .var) Γ.rootAtom) (CapAtom.var .here) _
+          (Ctx.lvlAtom_cons_here_eq Γ (Binding.transparent ((μ Tel) ^ C) W Wc Fs)).symm]
+        exact hh
+      rw [Ctx.lvlLe_weaken_iff] at h1
+      exact Ctx.LvlLe.trans (Ctx.rootAtom_isRoot Γ) (Γ.lvl_le_rootAtom_var x0) h1
+    cases e with
+    | top => exact Ctx.top_lvlLe _ _
+    | cvar k =>
+        cases k with
+        | there k0 =>
+            exact (Ctx.lvlLe_weaken_iff Γ _ (CapAtom.cvar k0) r₀).mp hl
+    | var x =>
+        cases x with
+        | here => exact hhere y hl
+        | there x0 =>
+            exact (Ctx.lvlLe_weaken_iff Γ _ (CapAtom.var x0) r₀).mp hl
+    | name x l =>
+        cases x with
+        | here => exact hhere y hl
+        | there x0 =>
+            exact (Ctx.lvlLe_weaken_iff Γ _ (CapAtom.name x0 l) r₀).mp hl
+  capInner := by
+    rw [Ctx.rootAtom_cons Γ (Binding.transparent ((μ Tel) ^ C) W Wc Fs),
+      CapAtom.rename_subst_weaken]
+    exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot Γ)
 
 /-! ## Preservation -/
 

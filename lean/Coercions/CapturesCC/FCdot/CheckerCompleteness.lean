@@ -182,6 +182,8 @@ theorem CapCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {f : CapCo s} {C D :
         capMember_eq ha he hAt]
   | _, _, _, _, _, .eqToLe hφ => by
       simp [synthCapCore, CapEq.HasType.complete hφ]
+  | _, _, _, _, _, .level h₁ h₂ => by
+      simp [synthCapCore, h₁, h₂]
 
 /-- The kernel synthesises both capture sets of every capture-equality
 derivation. -/

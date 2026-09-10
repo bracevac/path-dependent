@@ -301,7 +301,7 @@ theorem Store.Typed.lookup_isLiteral {s : Sig} {σ : Store s} {Γ : Ctx s}
       cases x with
       | here => exact Value.isLiteral_rename _ _ hlit
       | there y => exact Value.isLiteral_rename _ _ (ih y)
-  | consC _ ih =>
+  | consC _ _ ih =>
       intro x
       cases x with
       | there y => exact Value.isLiteral_rename _ _ (ih y)

@@ -15,6 +15,7 @@ import Coercions.CapturesCC.FCdot.Checker
 import Coercions.CapturesCC.FCdot.CheckerCompleteness
 import Coercions.CapturesCC.FCdot.Normalizer
 import Coercions.CapturesCC.FCdot.Resolution
+import Coercions.CapturesCC.FCdot.Levels
 import Coercions.CapturesCC.FCdot.FormTyping
 import Coercions.CapturesCC.FCdot.FormAlgebra
 import Coercions.CapturesCC.FCdot.CanonicalForms

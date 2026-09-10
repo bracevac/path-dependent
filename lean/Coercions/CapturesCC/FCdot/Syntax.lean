@@ -32,7 +32,14 @@ inductive CapAtom : Sig → Type where
   | cvar : BVar s .cap → CapAtom s
   /-- `{x∙ℓ}`, the capture set named `ℓ` in the block of `x`. -/
   | name : BVar s .var → Label → CapAtom s
+  /-- The universal root: the local root of the whole program, the
+      compiler's `caps.any` read as a constant. -/
+  | top : CapAtom s
 deriving DecidableEq, Repr
+
+/-- The universal root, written `⊤ᶜ`.  (`ᶜ` is not a legal Lean identifier
+character, so the constructor carries the plain name `top`.) -/
+scoped notation "⊤ᶜ" => CapAtom.top
 
 /-- A capture set: a list of atoms, read as a finite set. -/
 abbrev CaptureSet (s : Sig) : Type := List (CapAtom s)
@@ -92,6 +99,7 @@ def CapAtom.rename : CapAtom s1 → Rename s1 s2 → CapAtom s2
   | .var x, ρ => .var (ρ.var x)
   | .cvar κ, ρ => .cvar (ρ.var κ)
   | .name x ℓ, ρ => .name (ρ.var x) ℓ
+  | .top, _ => .top
 
 /-- Renaming of a capture set is pointwise. -/
 def CaptureSet.rename (C : CaptureSet s1) (ρ : Rename s1 s2) : CaptureSet s2 :=
@@ -351,6 +359,10 @@ inductive CapCo : Sig → Type where
   | member : Atom s → ShapeCo s → Nat → CapCo s
   /-- An equality of capture sets read as an inclusion. -/
   | eqToLe : CapEq s → CapCo s
+  /-- The level check: a capability at or outside the level of a root is
+      below that root.  One constructor and not two, because the
+      compiler's `acceptsLevelOf` has no branch on its left side. -/
+  | level : CapAtom s → CapAtom s → CapCo s
 
 /-- Equality evidence between capture sets. -/
 inductive CapEq : Sig → Type where
@@ -478,6 +490,7 @@ def CapCo.rename : CapCo s1 → Rename s1 s2 → CapCo s2
   | .capvar a, ρ => .capvar (a.rename ρ)
   | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
   | .eqToLe φ, ρ => .eqToLe (φ.rename ρ)
+  | .level e r, ρ => .level (e.rename ρ) (r.rename ρ)
 
 def CapEq.rename : CapEq s1 → Rename s1 s2 → CapEq s2
   | .refl C, ρ => .refl (C.rename ρ)
@@ -886,6 +899,7 @@ def CapCo.subst : CapCo s1 → Subst s1 s2 → CapCo s2
   | .capvar a, σ => .capvar (a.subst σ)
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
   | .eqToLe φ, σ => .eqToLe (φ.subst σ)
+  | .level e r, σ => .level (e.rename σ.root) (r.rename σ.root)
 
 def CapEq.subst : CapEq s1 → Subst s1 s2 → CapEq s2
   | .refl C, σ => .refl (C.rename σ.root)

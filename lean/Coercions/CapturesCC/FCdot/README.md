@@ -1,4 +1,4 @@
-# FCdot, at stage A3b of captures (CapturesCC copy, unchanged)
+# FCdot, at stage B0 of captures the compiler's way
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -23,7 +23,8 @@ erasure safe.
 | `Preservation` | inversion lemmas, `preservation` (modulo the `FormsTyped` obligation) |
 | `ErasureMetatheory` | forward simulation `erase_step`, backward simulation `erase_reflect` (modulo canonical forms), final states |
 | `Checker`, `CheckerCompleteness` | the decision procedure and `checkTm_iff` and friends |
-| `Resolution` | `Γ.resolve`: following transparent definitions, and why a fixed fuel suffices |
+| `Resolution` | `Γ.resolve`: following transparent definitions, and why a fixed fuel suffices; capture resolution `Ctx.caps`, its expansion `Ctx.capBinders`, `Ctx.expandAtom`, `Ctx.expand`, and `Ctx.roots = expand ∘ caps` |
+| `Levels` | levels as positions on the spine: the order lemmas of `Ctx.root?`, `Ctx.lvl`, `Ctx.isRootB` and `Ctx.lvlLeB`, L0 (every binder is at or outside the innermost root), and the weakening commutations |
 | `FormTyping` | typedness of forms `Γ ⊨ F : S ≤ T`, `Γ ⊨[r] F : S ≤ T`, entries, and views `Γ ⊨[r, σ] V : Tel` |
 | `FormAlgebra` | composition and application of typed forms; fuel monotonicity and determinism |
 | `CanonicalForms` | the canonical-forms theorem, including item 6 (`cap_canon`) and item 7 (an atom's root is below the capture set of its type); the chain of casts; `closed_box_inversion`; `preservation'`, `erase_reflect'` |
@@ -391,3 +392,153 @@ term translation are compiled by well-founded recursion, so neither reduces in t
 `decide +kernel` cannot be run on a goal that mentions them.
 
 Axioms (`#print axioms`): `propext` and `Quot.sound` for all of the above.
+
+## Stage B0
+
+B0 is the first stage of captures the compiler's way (`plan-5d-captures-cc-stages.md` §B0).
+It touches the target only and adds no term former.  It adds the universal root as a capture
+atom, the level order on capture atoms, the one evidence rule that reads that order, the
+expansion of a root into what it stands for, and the theorems that make the order sound over
+a typed store.
+
+A level is a position on the spine, not a field on a binding.  `Ctx.lvl` reads the innermost
+root binder of the prefix that precedes a binder, and a root is its own level.  `none` means
+the outermost level, the universal root `⊤ᶜ`.  `Ctx.lvlLeB e r` says that the level of `e`
+is `r` or encloses it, so an inner root absorbs an outer capability and never the reverse.
+Everything is `Bool` valued, and `Ctx.IsRoot`, `Ctx.LvlLe` and `Ctx.Confined` are `abbrev`s,
+so `by decide` closes a level side condition on a concrete context in the kernel.
+
+`Ctx.roots` keeps its name, its signature and its fuel argument, and its body becomes
+`Γ.expand (Γ.caps n C)`.  Expansion opens a root into the universal root and every opaque
+binder at its level or outside it, and leaves everything else alone.  On a root-free context
+whose resolution mentions no `⊤ᶜ`, expansion is the identity and `roots` is `caps` again
+(`Ctx.roots_eq_caps_of_rootFree`), which is why every statement of the DOT way about roots
+means on a store context and on the platform prefix what it meant before.
+
+| module | what B0 changed |
+|---|---|
+| `Syntax` | the capture atom `CapAtom.top` with the notation `⊤ᶜ`, and the capture coercion `CapCo.level e r`; one clause each in `CapAtom.rename`, `CapCo.rename` and `CapCo.subst`; `DecidableEq` derives as before |
+| `RenameLemmas` | one case each in `CapCo.rename_id`, `CapCo.rename_comp`, `CapCo.subst_ofRename`; the `CapAtom` lemmas are covered by their existing scripts |
+| `Context` | the level block after `lookupCap`: `BVar.depth`, `CapBound.opaque`, `CapBound.isRoot`, `depthGe`, `Ctx.root?`, `Ctx.rootAtom`, `Ctx.lvl`, `Ctx.lvlAtom`, `Ctx.rootDepth?`, `Ctx.isRootB`, `Ctx.lvlLeB`, the abbreviations `Ctx.IsRoot` and `Ctx.LvlLe`, and `Ctx.Confined` with its decision instance; no binding records a level |
+| `Levels` | the new module: the unfolding equations of `Ctx.root?` and `Ctx.lvl`, the order lemmas `Ctx.top_lvlLe`, `Ctx.lvl_root`, `Ctx.root?_isRoot`, `Ctx.lvl_isRoot`, `Ctx.root?_min`, `Ctx.root?_none`, `Ctx.LvlLe.refl_of_root`, `Ctx.LvlLe.trans`, L0 in its four forms (`Ctx.lvl_le_rootAtom` and its `.var`, `.name` and set-level twins), the level of an atom `Ctx.lvlOf` with `Ctx.lvlOf_isRoot` and `Ctx.lvlLe_lvlOf`, and the ten weakening commutations `Ctx.lvl_weaken(C)`, `Ctx.lvlAtom_weaken(C)`, `Ctx.lvlLeB_weaken(C)`, `Ctx.isRootB_weaken(C)`, `Ctx.Confined.weaken(C)` |
+| `Resolution` | one leaf clause `⊤ᶜ` in `Ctx.capsAtom`; `Ctx.capBinders`, `Ctx.expandAtom`, `Ctx.expand` with `expand_nil`, `expand_cons`, `expand_append`, `expand_subset`, `mem_expand`, `mem_expandAtom_self`, `expand_eq_self`, `expand_weaken`, `expand_weakenC`, `expandAtom_mono`; `Ctx.caps_opaque`; `Ctx.caps_confined` and `Ctx.capsAtom_confined`; `Ctx.roots` redefined as `Γ.expand (Γ.caps n C)`, with `Ctx.roots_eq_caps` becoming `Ctx.roots_eq_expand_caps` and the new `Ctx.roots_eq_caps_of_rootFree`; `CapLe.weakenC` gains `b.opaque = false` |
+| `Typing` | the rule `CapCo.HasType.level` |
+| `TypingRename`, `Transparency`, `TypingSubst` | `Ctx.Ren` and `Subst.Typed` gain the three capture fields `capRoot`, `capLvl`, `capInner`; `Ctx.Refines` gains `rootEq`, `lvlEq`, `capEq`; `Ctx.Ren.succC`, `Subst.Typed.liftC` and the nine `weakenC` theorems gain `b.isRoot = false`; the new instance `Ctx.Ren.liftC`; one case each in `CapCo.HasType.rename`, `.subst` and `.refine` |
+| `Checker`, `CheckerCompleteness` | one clause `⊤ᶜ` in `CapAtom.rename?`; the `level` case of `synthCapCore`, which tests `Ctx.isRootB` and `Ctx.lvlLeB` and so reduces in the kernel; one case in `CapCo.HasType.complete` |
+| `Store` | `Store.Typed.consC` gains `b.isRoot = false`: a store binds capabilities, never scopes |
+| `Machine` | `Store.Ext.consC` gains `b.opaque = false`; `Store.Ext.roots` goes through `Ctx.expand_weakenC`; the other `Store.Ext` theorems keep their statements |
+| `Preservation`, `ErasureMetatheory`, `FormAlgebra` | the six lemmas that say a term binding is invisible to the capture spine (`Ctx.lvl_cons_eq` and friends); the capture fields of `Subst.Typed.selfCast`, `Ctx.Ren.selfObj` and `Subst.Typed.selfCastOpaque`; the `consC` patterns take one more binder |
+| `CanonicalForms` | `cap_canon` gains the `level` case, with `Ctx.caps_of_isRoot` and `Ctx.roots_of_isRoot`; `Ctx.Root_var` gains two expansion steps |
+| `Consistency` | `Ctx.caps_of_opaque`; the seven theorems of B0.8: `Store.Typed.rootFree`, `Store.Typed.confined`, `lvl_canon`, `rigid_canon`, `rigid_target`, `lvl_safety`, `no_inner_escape`; `Ctx.Root_cvar_rigid` gains one expansion step |
+| `Prediction` | nothing |
+| `Examples` | every existing example unchanged but for two proof steps in `C6_store` and `C6_no_kappa2`; the new examples X1, X2 and X3 |
+
+### Notation added by B0
+
+| | |
+|---|---|
+| `⊤ᶜ` | the universal root, `CapAtom.top`: the local root of the whole program, the compiler's `caps.any` as a constant |
+
+B0 adds no other notation.  `CapCo.level`, `Ctx.lvl`, `Ctx.isRootB`, `Ctx.lvlLeB`,
+`Ctx.expand` and `Ctx.roots` are plain identifiers.  `ᶜ` is still not a legal Lean identifier
+character, so an identifier the plan spells with a `ᶜ` suffix carries the ASCII suffix `C`.
+The token `⊤ᶜ` is notation and is unaffected.
+
+### The rule
+
+```
+FCdot.CapCo.HasType.level : Γ.IsRoot r → Γ.LvlLe e r → Γ ⊢ᶜ .level e r : [e] ⊑ [r]
+```
+
+Both sides are singletons, and a set-shaped conclusion is a `union` of instances.  The right
+side is a `CapAtom` and not a capture variable, because the universal root is an atom and a
+rule with a variable on the right cannot name it.
+
+### Statements restated
+
+Nothing was weakened.  These are the statements of the DOT way, restated where B0 changed
+the representation, together with the reason each means what it meant.
+
+```
+FCdot.Ctx.roots               : Γ.roots n C = Γ.expand (Γ.caps n C)
+                                  name, signature and fuel unchanged; caps ⊆ roots, and
+                                  roots = caps on every root-free context
+FCdot.Ctx.roots_eq_expand_caps : Γ.roots n C = Γ.expand (Γ.caps n C)
+                                  the simp lemma Ctx.roots_eq_caps was, one function further
+FCdot.Ctx.roots_eq_caps_of_rootFree : Γ.root? = none → ⊤ᶜ ∉ Γ.caps n C →
+                                  Γ.roots n C = Γ.caps n C
+FCdot.CapLe.of_subset, .union, .weaken : statements kept, proofs gain an expansion step
+FCdot.CapLe.weakenC           : gains b.opaque = false; an appended non-opaque binder is
+                                  invisible to expansion
+FCdot.Ctx.Root_cvar_rigid, .Root_var, .Root_name : statements kept
+FCdot.Store.Typed.no_cap_escape, .no_cap_star_le_nil : statements and proofs kept
+FCdot.Store.Typed.consC       : gains b.isRoot = false
+FCdot.Store.Ext.consC         : gains b.opaque = false
+FCdot.Ctx.Ren, FCdot.Subst.Typed : three capture fields each, additive
+FCdot.Ctx.Refines             : three capture fields, additive
+the nine weakenC theorems     : gain b.isRoot = false
+FCdot.cap_canon               : statement kept, one case added
+FCdot.atom_canon              : nothing; only what CapLe means underneath changed
+the five Prediction theorems  : nothing
+```
+
+### New theorems
+
+```
+FCdot.Ctx.caps_confined  : Γ.Confined C r → Γ.Confined (Γ.caps n C) r
+FCdot.Ctx.lvl_le_rootAtom : Γ.LvlLe (.cvar y) Γ.rootAtom          -- L0, and its .var/.name twins
+FCdot.Ctx.mem_expandAtom_self : a ∈ Γ.expandAtom a
+FCdot.Ctx.expandAtom_mono : Γ.IsRoot r → (a = ⊤ᶜ ∨ (Γ.lookupCap κ).opaque) → Γ.LvlLe a r →
+                              (Γ.expandAtom a).Subset (Γ.expandAtom r)
+FCdot.Ctx.caps_opaque    : a ∈ Γ.caps n C → a = ⊤ᶜ ∨ ∃ κ, a = .cvar κ ∧ (Γ.lookupCap κ).opaque
+FCdot.Store.Typed.rootFree : ⊢ σ : Γ → Γ.root? = none
+FCdot.Store.Typed.confined : ⊢ σ : Γ → ⊤ᶜ ∉ C → Γ.Confined C ⊤ᶜ
+FCdot.lvl_canon          : ⊢ σ : Γ → Γ ⊢ᶜ f : C₁ ⊑ C₂ → (∀ m, Γ.Confined (Γ.caps m C₂) r) →
+                              Γ.Confined (Γ.caps n C₁) r
+FCdot.rigid_canon        : ⊢ σ : Γ → Γ.lookupCap κ = .star → Γ ⊢ᶜ f : [cvar κ] ⊑ C →
+                              Γ.Root (cvar κ) C
+FCdot.rigid_target       : ⊢ σ : Γ → Γ.lookupCap κ = .star → Γ ⊢ᶜ f : C ⊑ [cvar κ] →
+                              (Γ.caps n C).Subset [cvar κ]
+FCdot.lvl_safety         : ⊢ σ : Γ → Γ.IsRoot r → Γ ⊢ᶜ f : C ⊑ [r] →
+                              Γ.Confined (Γ.caps n C) r
+FCdot.no_inner_escape    : ⊢ σ : Γ → Γ.IsRoot r → (Γ.lookupCap κ).opaque = true →
+                              ¬ Γ.LvlLe (cvar κ) r → ¬ ∃ f, Γ ⊢ᶜ f : [cvar κ] ⊑ [r]
+```
+
+`Ctx.caps_confined` is the lemma the stage rests on: resolution never lowers the level.  It
+is a mutual well-founded induction beside `Ctx.capsAtom_confined`, with the two measures of
+`Ctx.caps` and `Ctx.capsAtom` copied over, and every leaf closes by L0 and the weakening
+commutations.  `lvl_canon` is a corollary of `cap_canon` over a typed store and not an
+induction on the evidence: as an induction on `f` alone the `capvar` case is false, since bad
+capture bounds are derivable under a lambda (example C3).  `no_inner_escape` is the sentence
+in which the escape of stage B1 is rejected, and its conclusion is about what `C` resolves to
+and not about the syntactic atoms of `C`.
+
+Over a typed store `no_inner_escape` is vacuous at B0: a store context has no root binder, so
+the only root over it is `⊤ᶜ`, and `Store.Typed.confined` puts every atom at or outside `⊤ᶜ`.
+It acquires content in stage B1, where a lambda body becomes a scope and a store slot can sit
+under a root the run itself provides.
+
+### The examples X1, X2 and X3
+
+```
+Examples.X1_inner_absorbs_outer : X1Ctx ⊢ᶜ level (cvar κ₁) ⊤ᶜ : {κ₁} ⊑ {⊤ᶜ}, and the
+                                    same at a program binder
+Examples.X2_outer_not_inner     : four parts on κ₁ ⊑ᶜ ∗, κ_S ⊚, κ₂ ⊑ᶜ ∗ --
+                                    {κ₁} ⊑ {κ_S} and {⊤ᶜ} ⊑ {κ_S} are derivable,
+                                    ¬ LvlLe κ_S ⊤ᶜ and ¬ LvlLe κ₂ ⊤ᶜ
+Examples.X3_no_escape           : ⊢ σ : X2Ctx → ¬ ∃ f, X2Ctx ⊢ᶜ f : {κ₂} ⊑ {⊤ᶜ}
+Examples.X3_no_store            : ¬ ∃ σ, ⊢ σ : X2Ctx
+```
+
+X1 is a platform prefix: it opens no scope, so every one of its binders is at the outermost
+level and the universal root absorbs it.  X2 is the nesting of `scoped-capabilities.md:93-106`
+with `⊤ᶜ` for the page's outermost `any`: the scope root absorbs what is outside it, the
+universal root included, and does not release what is inside it.  Every side condition of X1
+and X2 is decided against `Ctx.isRootB` and `Ctx.lvlLeB`, and the checker's verdict on each of
+the six coercions is decided in the kernel beside it.  X3 is `no_inner_escape` applied at `κ₂`
+and `⊤ᶜ`, with its three level premises decided.  Its second part records why the fourth
+premise, a typed store, is unavailable for a scoped context at B0.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound` for every theorem above.  The tree
+contains no `sorry`, `axiom`, `partial`, `unsafe`, or `native_decide`, and no Mathlib.

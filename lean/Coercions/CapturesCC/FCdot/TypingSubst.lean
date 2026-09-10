@@ -19,6 +19,13 @@ namespace FCdot
     CaptureSet.rename (C.weaken (k := k)) (Rename.subst y) = C :=
   CaptureSet.rename_subst_weaken C y
 
+/-- Weakening then instantiating, for a capture atom.  The type sort has this
+for every other syntactic class already. -/
+@[simp] theorem CapAtom.rename_subst_weaken {s : Sig} {k : Kind}
+    (a : CapAtom s) (y : BVar s k) :
+    (a.weaken (k := k)).rename (Rename.subst y) = a := by
+  simp [CapAtom.weaken, CapAtom.rename_comp, Rename.succ_subst]
+
 @[simp] theorem Ty.rename_subst_weaken' {s : Sig} {k : Kind} (T : Ty s) (y : BVar s k) :
     (T.weaken (k := k)).rename (Rename.subst y) = T :=
   Ty.rename_subst_weaken T y
@@ -54,6 +61,14 @@ structure Subst.Typed {s1 s2 : Sig} (Γ : Ctx s1) (σ : Subst s1 s2) (Γ' : Ctx 
   defC : ∀ x l (C : CaptureSet s1), Γ.lookupDefC x l = some C →
       Γ'.lookupDefC (σ.root.var x) l = some (C.rename σ.root)
   fields : ∀ x Fs, Γ.lookupFields x = some Fs → Γ'.lookupFields (σ.root.var x) = some Fs
+  /-- A root goes to a root.  At this stage `Subst.cvar` is still a variable
+      map, so a capture atom travels along `σ.root`. -/
+  capRoot : ∀ r, Γ.IsRoot r → Γ'.IsRoot (r.rename σ.root)
+  /-- A level fact survives. -/
+  capLvl : ∀ e r, Γ.IsRoot r → Γ.LvlLe e r →
+      Γ'.LvlLe (e.rename σ.root) (r.rename σ.root)
+  /-- No root is introduced strictly inside the image of the innermost root. -/
+  capInner : Γ'.LvlLe Γ'.rootAtom (Γ.rootAtom.rename σ.root)
 
 namespace Subst.Typed
 
@@ -156,6 +171,17 @@ theorem lift {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
         rw [Ctx.lookupFields_there] at hFs
         rw [Rename.lift_there, Ctx.lookupFields_there]
         exact h.fields y Fs hFs
+  capRoot := by
+    intro r hr
+    rw [Subst.lift_root]
+    exact Ctx.isRoot_lift h.capRoot b r hr
+  capLvl := by
+    intro e r hr hl
+    rw [Subst.lift_root]
+    exact Ctx.lvlLe_lift h.capRoot h.capLvl h.capInner b e r hr hl
+  capInner := by
+    rw [Subst.lift_root]
+    exact Ctx.capInner_lift h.capInner b
 
 theorem ofRename {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2} (h : Ctx.Ren Γ ρ Γ') :
     Subst.Typed Γ (Subst.ofRename ρ) Γ' where
@@ -179,6 +205,17 @@ theorem ofRename {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2} (h : Ctx.Ren �
   fields := by
     intro x Fs hFs
     simpa using h.fields x Fs hFs
+  capRoot := by
+    intro r hr
+    rw [Subst.ofRename_root]
+    exact h.capRoot r hr
+  capLvl := by
+    intro e r hr hl
+    rw [Subst.ofRename_root]
+    exact h.capLvl e r hr hl
+  capInner := by
+    rw [Subst.ofRename_root]
+    exact h.capInner
 
 /-- Instantiating the innermost *opaque* binder by an atom of its type. -/
 theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
@@ -237,12 +274,55 @@ theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
     | there y =>
         rw [Ctx.lookupFields_there] at hFs
         simpa [Subst.single_root] using hFs
+  capRoot := by
+    intro r hr
+    obtain ⟨r₀, rfl, hr₀⟩ := Ctx.isRoot_cons_cases hr
+    rw [Subst.single_root, CapAtom.rename_subst_weaken]
+    exact hr₀
+  capLvl := by
+    intro e r hr hl
+    obtain ⟨r₀, rfl, hr₀⟩ := Ctx.isRoot_cons_cases hr
+    rw [Subst.single_root, CapAtom.rename_subst_weaken]
+    -- the level fact about the binder being instantiated is L0 in `Γ`
+    have hhere : ∀ x0 : BVar s .var,
+        (Γ.cons (Binding.opaque T)).LvlLe (CapAtom.var .here)
+          (CapAtom.weaken (k := .var) r₀) → Γ.LvlLe (CapAtom.var x0) r₀ := by
+      intro x0 hh
+      have h1 : (Γ.cons (Binding.opaque T)).LvlLe (CapAtom.weaken (k := .var) Γ.rootAtom)
+          (CapAtom.weaken (k := .var) r₀) := by
+        unfold Ctx.LvlLe
+        rw [Ctx.lvlLeB_congr_left (Γ.cons (Binding.opaque T))
+          (CapAtom.weaken (k := .var) Γ.rootAtom) (CapAtom.var .here) _
+          (Ctx.lvlAtom_cons_here_eq Γ (Binding.opaque T)).symm]
+        exact hh
+      rw [Ctx.lvlLe_weaken_iff] at h1
+      exact Ctx.LvlLe.trans (Ctx.rootAtom_isRoot Γ) (Γ.lvl_le_rootAtom_var x0) h1
+    cases e with
+    | top => exact Ctx.top_lvlLe _ _
+    | cvar k =>
+        cases k with
+        | there k0 =>
+            exact (Ctx.lvlLe_weaken_iff Γ (Binding.opaque T) (CapAtom.cvar k0) r₀).mp hl
+    | var x =>
+        cases x with
+        | here => exact hhere a.root hl
+        | there x0 =>
+            exact (Ctx.lvlLe_weaken_iff Γ (Binding.opaque T) (CapAtom.var x0) r₀).mp hl
+    | name x l =>
+        cases x with
+        | here => exact hhere a.root hl
+        | there x0 =>
+            exact (Ctx.lvlLe_weaken_iff Γ (Binding.opaque T) (CapAtom.name x0 l) r₀).mp hl
+  capInner := by
+    rw [Subst.single_root, Ctx.rootAtom_cons Γ (Binding.opaque T),
+      CapAtom.rename_subst_weaken]
+    exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot Γ)
 
 /-- Passing under a capture binder: `Subst.liftC` is a typed substitution
 whenever `σ` is.  The capture binder carries no term, so the four lookups
 step past it by the same kind-generic weakening. -/
 theorem liftC {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
-    (h : Subst.Typed Γ σ Γ') (b : CapBound s1) :
+    (h : Subst.Typed Γ σ Γ') (b : CapBound s1) (hb : b.isRoot = false) :
     Subst.Typed (Γ.consC b) σ.liftC (Γ'.consC (b.rename σ.root)) where
   var := by
     intro x
@@ -252,7 +332,7 @@ theorem liftC {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
         show Atom.HasType (Γ'.consC (b.rename σ.root)) ((σ.var y)↑)
           (((Γ.consC b).lookupTy (.there y)).rename σ.root.lift)
         rw [Ctx.lookupTy_thereC, Ty.weaken_rename]
-        exact (h.var y).weakenC _
+        exact (h.var y).weakenC _ (by rw [CapBound.isRoot_rename]; exact hb)
   ty := by
     intro x ht
     simp only [Subst.liftC_root]
@@ -307,6 +387,17 @@ theorem liftC {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
         rw [Ctx.lookupFields_thereC] at hFs
         rw [Rename.lift_there, Ctx.lookupFields_thereC]
         exact h.fields y Fs hFs
+  capRoot := by
+    intro r hr
+    rw [Subst.liftC_root]
+    exact Ctx.isRoot_liftC h.capRoot b r hr
+  capLvl := by
+    intro e r hr hl
+    rw [Subst.liftC_root]
+    exact Ctx.lvlLe_liftC h.capRoot h.capLvl h.capInner b e r hr hl
+  capInner := by
+    rw [Subst.liftC_root]
+    exact Ctx.capInner_liftC h.capInner b
 
 end Subst.Typed
 
@@ -338,6 +429,7 @@ theorem CapCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Sub
         (by simpa [Shape.rename] using he.subst hσ) (hAt.rename σ.root.lift)
       simpa [CapCo.subst, CaptureSet.substVar_rename, Atom.root_subst] using this
   | .eqToLe hφ => exact .eqToLe (hφ.subst hσ)
+  | .level h₁ h₂ => exact .level (hσ.capRoot _ h₁) (hσ.capLvl _ _ h₁ h₂)
 
 theorem CapEq.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {φ : CapEq s1} {C D : CaptureSet s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) :

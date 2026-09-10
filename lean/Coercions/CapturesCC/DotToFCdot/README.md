@@ -1,4 +1,4 @@
-# DotToFCdot, at stage A3b of captures (CapturesCC copy, unchanged)
+# DotToFCdot, at stage B0 of captures the compiler's way
 
 The translation of DOT-MNF^cc into FCdot^cc (Plan III §8, milestones M3 to
 M5), namespace `DotMNF`.  Derivations are `Type`-valued, so the translation
@@ -414,3 +414,33 @@ and `C5_witnesses` compute `Shape.capWitnesses` and `Shape.witnesses` of the cal
 shape, and `C5_litMorphism` computes the morphism of its `litCo`, whose capture block turns the one
 capture equality of the precise telescope into the two inclusions the declared type asks for, the
 lower one through a flipped hole.
+
+## Stage B0
+
+B0 changed one lemma here and nothing else.  The stage adds the universal root `⊤ᶜ`, levels and
+the level rule to the target only.  The platform prefix stays a chain of `.star` binders, so
+`Ctx.translate`, `Platform.ctx`, `Platform.targetStore` and every example context are untouched,
+no example gains a slot, and no de Bruijn index shifts.  `Platform.targetStore_typed` passes
+`rfl` for the new `b.isRoot = false` premise of `Store.Typed.consC`, and `Platform.capsAtom`
+gains the leaf case for `⊤ᶜ`.
+
+The lemma is `Platform.root_iff`, and it gains the premise `⊤ᶜ ∉ C`.
+
+```
+DotMNF.Platform.root_iff : ⊤ᶜ ∉ C → (P.ctx.translate.Root a C ↔ a ∈ C)
+```
+
+Under the redefined `Ctx.roots` the equivalence is false as soon as `C` mentions the universal
+root: a platform context is root-free, so every platform binder is at the outermost level and
+`.star` is opaque, so every platform binder lies in the expansion of `⊤ᶜ`.  That is the design
+and not a defect, and the premise says what the A3a statement already assumed without writing
+it down.  The statement ranged over sets the source wrote, `CaptureSet.translate` drops `any`
+and never produces `⊤ᶜ` (`CaptureSet.top_not_mem_translate`, new in this stage), and on such a
+set expansion is the identity, so the two readings coincide wherever the lemma is used.
+
+The sole caller is `dot_effect_safety`, which applies it at the translation of a source use set
+and discharges the premise by computation.  `dot_effect_safety` keeps its own statement, and so
+does every other theorem of this directory: `dot_safety`, `dot_not_stuck`, `dot_capture_prediction`,
+`translate_typed`, `translate_erase` and the coherence and consistency theorems are unchanged
+word for word.  `Platform.rootFree`, "a platform context binds capabilities only", is the one
+other new lemma.

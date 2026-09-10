@@ -1,4 +1,4 @@
-# DotMNF, at stage A3b of captures (CapturesCC copy, unchanged)
+# DotMNF, at stage B0 of captures the compiler's way (unchanged since A3b)
 
 DOT-MNF^cc, the capturing source of the translation in `../DotToFCdot`.
 
@@ -209,3 +209,10 @@ that names `{fs}` is `sc-sel-upper` at the member's upper bound.  Its target sid
 
 Axioms (`#print axioms`): none for `S1_anyOk`, `S1_expand`, `S2_anyOk`, `S2_expand` and `C5_typed`,
 `propext` for `S1_typed` and `S2_typed`.
+
+## Stage B0
+
+B0 changed nothing here.  The stage adds the universal root, levels and the level rule to the
+target only, and it adds no source former: `DOT-MNF^cc` has no atom for the universal root, so
+every capture set the source writes is a list of concrete atoms, exactly as at A3b.  No rule,
+no theorem, no example and no line of this directory moved.

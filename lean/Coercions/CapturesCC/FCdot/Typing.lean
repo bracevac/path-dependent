@@ -81,6 +81,13 @@ inductive CapCo.HasType : Ctx s → CapCo s → CaptureSet s → CaptureSet s �
       Tel ∋ (i ↦ C₁ ⊑ᶜ C₂) →
       Γ ⊢ᶜ .member a e i : C₁⟦a.root⟧ ⊑ C₂⟦a.root⟧
   | eqToLe : Γ ⊢ᶜ φ : C₁ ≡ C₂ → Γ ⊢ᶜ .eqToLe φ : C₁ ⊑ C₂
+  /-- `Γ ⊢ᶜ level e r : {e} ⊑ᶜ {r}` when `r` is a scope root and the level of
+      `e` is `r` or encloses it.  Both sides are singletons.  A set shaped
+      conclusion is a `union` of instances. -/
+  | level :
+      Γ.IsRoot r →
+      Γ.LvlLe e r →
+      Γ ⊢ᶜ .level e r : [e] ⊑ [r]
 
 /-- `Γ ⊢ᶜ φ : C ≡ D`: equality evidence between capture sets. -/
 inductive CapEq.HasType : Ctx s → CapEq s → CaptureSet s → CaptureSet s → Prop where

@@ -74,6 +74,124 @@ def lookupCap : Ctx s → BVar s .cap → CapBound s
   | .consC Γ _, .there κ => (lookupCap Γ κ)↑
   | .cons Γ _, .there κ => (lookupCap Γ κ)↑
 
+end Ctx
+
+/-! ## Levels
+
+A level is a position on the spine, not a field on a binding.  The level of a
+binder is the innermost root binder of the prefix that precedes it, and a
+root is its own level.  `none` means the outermost level, the universal root
+`⊤ᶜ`.  Everything here is `Bool` valued, so that `decide` closes the
+examples of the stage. -/
+
+/-- Age of a bound variable.  Older is deeper. -/
+def BVar.depth : BVar s k → Nat
+  | .here => 0
+  | .there y => y.depth + 1
+
+@[simp] theorem BVar.depth_here : (BVar.here (s := s) (k := k)).depth = 0 := rfl
+
+@[simp] theorem BVar.depth_there (y : BVar s k) :
+    (BVar.there (k0 := k0) y).depth = y.depth + 1 := rfl
+
+/-- A capture bound is opaque when it stands for itself: a scope root or a
+rigid capability. -/
+def CapBound.opaque : CapBound s → Bool
+  | .root => true
+  | .star => true
+  | _ => false
+
+/-- A capture bound is a root when it opens a scope. -/
+def CapBound.isRoot : CapBound s → Bool
+  | .root => true
+  | _ => false
+
+@[simp] theorem CapBound.opaque_rename (b : CapBound s1) (ρ : Rename s1 s2) :
+    (b.rename ρ).opaque = b.opaque := by
+  cases b <;> rfl
+
+@[simp] theorem CapBound.isRoot_rename (b : CapBound s1) (ρ : Rename s1 s2) :
+    (b.rename ρ).isRoot = b.isRoot := by
+  cases b <;> rfl
+
+@[simp] theorem CapBound.opaque_weaken (b : CapBound s) :
+    (CapBound.weaken (k := k) b).opaque = b.opaque := CapBound.opaque_rename b _
+
+@[simp] theorem CapBound.isRoot_weaken (b : CapBound s) :
+    (CapBound.weaken (k := k) b).isRoot = b.isRoot := CapBound.isRoot_rename b _
+
+/-- Depth comparison with `none` read as infinity, the outermost level. -/
+def depthGe : Option Nat → Option Nat → Bool
+  | none, _ => true
+  | some _, none => false
+  | some m, some d => decide (d ≤ m)
+
+namespace Ctx
+
+/-- The innermost root binder of a context, if it has one. -/
+def root? : Ctx s → Option (BVar s .cap)
+  | .nil => none
+  | .consC _ .root => some .here
+  | .consC Γ _ => Γ.root?.map .there
+  | .cons Γ _ => Γ.root?.map .there
+
+/-- The innermost root as an atom.  A context with no root binder is inside
+no scope, so its root is the universal one. -/
+def rootAtom (Γ : Ctx s) : CapAtom s := Γ.root?.elim .top CapAtom.cvar
+
+/-- The level of a binder: the innermost root of the prefix before it, and
+itself when it is a root.  `none` means the outermost level, `⊤ᶜ`. -/
+def lvl : Ctx s → BVar s k → Option (BVar s .cap)
+  | .consC _ .root, .here => some .here
+  | .consC Γ _, .here => Γ.root?.map .there
+  | .cons Γ _, .here => Γ.root?.map .there
+  | .consC Γ _, .there y => (Γ.lvl y).map .there
+  | .cons Γ _, .there y => (Γ.lvl y).map .there
+
+/-- The level of a capture atom.  The universal root is at the outermost
+level, which is what `none` says. -/
+def lvlAtom (Γ : Ctx s) : CapAtom s → Option (BVar s .cap)
+  | .var x => Γ.lvl x
+  | .cvar κ => Γ.lvl κ
+  | .name x _ => Γ.lvl x
+  | .top => none
+
+/-- Depth of a root atom, with the universal root at infinity. -/
+def rootDepth? : CapAtom s → Option Nat
+  | .top => none
+  | .cvar κ => some κ.depth
+  | _ => none
+
+/-- The atom is a scope root: the universal root, or a capture binder whose
+bound is `root`. -/
+def isRootB (Γ : Ctx s) : CapAtom s → Bool
+  | .top => true
+  | .cvar κ => (Γ.lookupCap κ).isRoot
+  | _ => false
+
+/-- `e`'s level is `r` or encloses it.  Inner absorbs outer, never the
+reverse. -/
+def lvlLeB (Γ : Ctx s) (e r : CapAtom s) : Bool :=
+  depthGe ((Γ.lvlAtom e).map BVar.depth) (Ctx.rootDepth? r)
+
+/-- `r` is a scope root of `Γ`.  An `abbrev`, so that `Decidable` is
+synthesised and `by decide` works. -/
+abbrev IsRoot (Γ : Ctx s) (r : CapAtom s) : Prop := Γ.isRootB r = true
+
+/-- `e` is at or outside the level of `r`.  An `abbrev`, for the same
+reason. -/
+abbrev LvlLe (Γ : Ctx s) (e r : CapAtom s) : Prop := Γ.lvlLeB e r = true
+
+/-- A capture set is confined to a root when no atom of it is strictly
+inside that root. -/
+def Confined (Γ : Ctx s) (C : CaptureSet s) (r : CapAtom s) : Prop :=
+  ∀ a ∈ C, Γ.LvlLe a r
+
+instance Confined.instDecidable (Γ : Ctx s) (C : CaptureSet s) (r : CapAtom s) :
+    Decidable (Γ.Confined C r) := by
+  unfold Ctx.Confined
+  infer_instance
+
 /-- Definition of a block name, if its binder is transparent. -/
 def lookupDef : Ctx s → BVar s .var → Label → Option (Shape s)
   | .cons _ (.transparent _ W _ _), .here, ℓ => some (W.get ℓ)
