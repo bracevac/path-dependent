@@ -1,7 +1,7 @@
 name = "path-dependent"
 version = "0.1.0"
 srcDir = "lean"
-defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC", "LambdaPFCI", "LambdaPCCI", "FCsub", "DotFC", "ManySortedFC", "FCdot", "Runtime", "DotMNF", "DotToFCdot", "Captures", "CapturesCC"]
+defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC", "LambdaPFCI", "LambdaPCCI", "FCsub", "DotFC", "ManySortedFC", "FCdot", "Runtime", "DotMNF", "DotToFCdot", "Captures", "CapturesCC", "Classifiers"]
 
 [leanOptions]
 pp.unicode.fun = true
@@ -62,3 +62,7 @@ roots = ["Coercions.CapturesCC"]
 [[lean_lib]]
 name = "Frontend"
 roots = ["Coercions.Frontend"]
+
+[[lean_lib]]
+name = "Classifiers"
+roots = ["Coercions.Classifiers"]
