@@ -7,6 +7,9 @@ import Coercions.Frontend.Search
 import Coercions.Frontend.Typer
 import Coercions.Frontend.Step
 import Coercions.Frontend.StepFC
+import Coercions.Frontend.Pipeline
+import Coercions.Frontend.Pretty
+import Coercions.Frontend.Examples
 
 /-!
 # The vanilla front end
@@ -109,4 +112,43 @@ concrete states probe the ten rules.  Nine of them, and the stuck and the final
 shapes, reduce in the kernel by `rfl`.  The one that reaches its head form
 through the composition of forms needs the kernel's own transparency, because
 the frozen composition is defined by well-founded recursion.
+
+`Pipeline.lean` is stage F3.1: the front end end to end.  `compile` resolves a
+surface program and types it, and returns the annotated term beside the
+synthesized type and its derivation.  `compileAndRun` follows with the source
+machine at a step budget.  Five theorems say what a compiled program is worth,
+and not one of them is about the calculus: the target checker accepts the
+translation of the derivation, the translation erases to the source term, every
+reachable state is final or steps, no reachable state is stuck, and the driver
+never answers at a state the machine is stuck at.  The first four are the frozen
+results of `lean/Coercions/FCdot/CheckerCompleteness.lean` and
+`lean/Coercions/DotToFCdot/` applied to the derivation the typer returned.  The
+fifth adds the machine agreement of F2.1, which is what makes safety executable.
+
+`Pretty.lean` is stage F3.2: the way back out.  The frozen inductives carry no
+`Repr` instance and cannot gain one, so an unparser into the paper's notation is
+the only way to read a type, a term or a state of a run as text.  It prints the
+surface syntax, the annotated syntax of `Ann.lean`, the frozen syntax of
+`DotMNF`, and the store, the continuation and the term of a machine state.  A
+label becomes a name through a label table, an index becomes a name through a
+name environment, and a binder, which carries neither, is given a short name the
+environment does not already hold.  The module carries no theorem.  Its checks
+are the printer output on the programs of `Resolve.lean`, and they reduce in the
+kernel.
+
+`Examples.lean` is stage F3.3: the ten surface programs of `Resolve.lean` taken
+through the whole front end and compared against the hand written derivations of
+`lean/Coercions/DotMNF/Examples.lean`.  Three things are compared, all of them
+decidable: the term the resolver returns, the type the typer synthesizes, and
+the verdict of the target checker on the translation of the derivation.
+Derivations themselves are not, since `DotMNF.HasTy` is `Type` valued with no
+decidable equality, and the typer reaches the same judgment by another route in
+three places.  Each program carries four checks, one decided by the kernel, two
+run as compiled code through `expect` at a budget measured per program, and one
+the pipeline theorem of F3.1 at that program.  Two further programs are the
+file's own.  E10t is E10 at a function type, which is what carries an inserted
+binding through the typer and the checker, and E11 is E10t applied to the
+identity, which is what carries one through the machine.  The file closes with
+three runs of `compileAndRun`, printed by the unparser and pinned at the step
+count each needs.
 -/
