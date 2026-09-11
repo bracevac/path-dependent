@@ -136,6 +136,7 @@ theorem Ctx.isRoot_cons_cases {Γ : Ctx s} {b : Binding s} {r : CapAtom (s,x)}
   | top => exact ⟨.top, rfl, rfl⟩
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | name x l => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | proj a φ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | cvar k =>
       cases k with
       | there k0 =>
@@ -154,6 +155,7 @@ theorem Ctx.isRoot_consC_cases {Γ : Ctx s} {b : CapBound s} {r : CapAtom (s,c)}
   | top => exact Or.inr ⟨.top, rfl, rfl⟩
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | name x l => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | proj a φ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | cvar k =>
       cases k with
       | here => exact Or.inl rfl
@@ -296,6 +298,17 @@ theorem Ctx.isRoot_lift {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename 
   rw [CapAtom.weaken_rename, Ctx.isRootB_weaken]
   exact hRoot r₀ hr₀
 
+/-- A level fact under a renaming holds of every atom as soon as it holds of
+the atoms that are their own base.  `Ctx.lvlAtom` reads through every
+projection and `CapAtom.rename` is structural, so a projection compares
+exactly as its base does. -/
+theorem Ctx.lvlLe_rename_of_base {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
+    {ρ : Rename s1 s2} {r : CapAtom s1} {r' : CapAtom s2}
+    (h : ∀ e : CapAtom s1, e.base = e → Γ.LvlLe e r → Γ'.LvlLe (e.rename ρ) r')
+    (e : CapAtom s1) (hl : Γ.LvlLe e r) : Γ'.LvlLe (e.rename ρ) r' := by
+  rw [Ctx.lvlLe_base_left, CapAtom.base_rename]
+  exact h e.base (CapAtom.base_base e) (Ctx.lvlLe_base_left.mp hl)
+
 theorem Ctx.lvlLe_lift {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     (hRoot : ∀ r, Γ.IsRoot r → Γ'.IsRoot (r.rename ρ))
     (hLvl : ∀ e r, Γ.IsRoot r → Γ.LvlLe e r → Γ'.LvlLe (e.rename ρ) (r.rename ρ))
@@ -303,9 +316,14 @@ theorem Ctx.lvlLe_lift {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s
     (b : Binding s1) (e r : CapAtom (s1,x))
     (hr : (Γ.cons b).IsRoot r) (hl : (Γ.cons b).LvlLe e r) :
     (Γ'.cons (b.rename ρ)).LvlLe (e.rename ρ.lift) (r.rename ρ.lift) := by
+  revert hl
+  refine Ctx.lvlLe_rename_of_base ?_ e
+  clear e
+  intro e hbase hl
   obtain ⟨r₀, rfl, hr₀⟩ := Ctx.isRoot_cons_cases hr
   rw [CapAtom.weaken_rename]
   cases e with
+  | proj e₀ φ => exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
   | top => exact Ctx.top_lvlLe _ _
   | cvar k =>
       cases k with
@@ -346,12 +364,17 @@ theorem Ctx.lvlLe_liftC {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename 
     (b : CapBound s1) (e r : CapAtom (s1,c))
     (hr : (Γ.consC b).IsRoot r) (hl : (Γ.consC b).LvlLe e r) :
     (Γ'.consC (b.rename ρ)).LvlLe (e.rename ρ.lift) (r.rename ρ.lift) := by
+  revert hl
+  refine Ctx.lvlLe_rename_of_base ?_ e
+  clear e
+  intro e hbase hl
   rcases Ctx.isRoot_consC_cases hr with rfl | ⟨r₀, rfl, hr₀⟩
   · exact Ctx.lvlLeB_depth_zero _ _ _ rfl
   · rw [CapAtom.weaken_rename]
     cases hb : b.isRoot with
     | true =>
         cases e with
+        | proj e₀ φ => exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
         | top => exact Ctx.top_lvlLe _ _
         | var x =>
             cases x with
@@ -365,6 +388,7 @@ theorem Ctx.lvlLe_liftC {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename 
             | there k0 => exact Ctx.lvlLe_weakenC_step hLvl b (CapAtom.cvar k0) r₀ hr₀ hl
     | false =>
         cases e with
+        | proj e₀ φ => exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
         | top => exact Ctx.top_lvlLe _ _
         | var x =>
             cases x with
@@ -421,6 +445,7 @@ theorem Ctx.instOf_cons_cases {Γ : Ctx s} {b : Binding s} {a : CapAtom (s,x)}
   | top => simp [Ctx.InstOf, Ctx.instSet?] at h
   | var x => simp [Ctx.InstOf, Ctx.instSet?] at h
   | name x l => simp [Ctx.InstOf, Ctx.instSet?] at h
+  | proj a φ => simp [Ctx.InstOf, Ctx.instSet?] at h
   | cvar κ =>
       cases κ with
       | there κ0 =>
@@ -446,6 +471,7 @@ theorem Ctx.instOf_consC_cases {Γ : Ctx s} {b : CapBound s} {a : CapAtom (s,c)}
   | top => simp [Ctx.InstOf, Ctx.instSet?] at h
   | var x => simp [Ctx.InstOf, Ctx.instSet?] at h
   | name x l => simp [Ctx.InstOf, Ctx.instSet?] at h
+  | proj a φ => simp [Ctx.InstOf, Ctx.instSet?] at h
   | cvar κ =>
       cases κ with
       | here =>
@@ -477,6 +503,7 @@ theorem Ctx.InstOf.weaken {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
   | top => simp [Ctx.InstOf, Ctx.instSet?] at h
   | var x => simp [Ctx.InstOf, Ctx.instSet?] at h
   | name x l => simp [Ctx.InstOf, Ctx.instSet?] at h
+  | proj a φ => simp [Ctx.InstOf, Ctx.instSet?] at h
   | cvar κ =>
       show ((Γ.lookupCap κ)↑ : CapBound (s,x)).instSet? = _
       rw [CapBound.instSet?_weaken]
@@ -492,6 +519,7 @@ theorem Ctx.InstOf.weakenC {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
   | top => simp [Ctx.InstOf, Ctx.instSet?] at h
   | var x => simp [Ctx.InstOf, Ctx.instSet?] at h
   | name x l => simp [Ctx.InstOf, Ctx.instSet?] at h
+  | proj a φ => simp [Ctx.InstOf, Ctx.instSet?] at h
   | cvar κ =>
       show ((Γ.lookupCap κ)↑ : CapBound (s,c)).instSet? = _
       rw [CapBound.instSet?_weaken]
@@ -751,6 +779,7 @@ theorem Ctx.Ren.liftC {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
     · cases b with
       | root => simp [CapBound.instSet?] at hb
       | star => simp [CapBound.instSet?] at hb
+      | cls c => simp [CapBound.instSet?] at hb
       | upper C₁ => simp [CapBound.instSet?] at hb
       | inst C₁ =>
           have hC : C₁ = C₀ := by simpa [CapBound.instSet?] using hb
@@ -851,10 +880,15 @@ theorem Ctx.lvlLe_liftC_root {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Re
     (e r : CapAtom (s1,c))
     (hr : (Γ.consC .root).IsRoot r) (hl : (Γ.consC .root).LvlLe e r) :
     (Γ'.consC .root).LvlLe (e.rename ρ.lift) (r.rename ρ.lift) := by
+  revert hl
+  refine Ctx.lvlLe_rename_of_base ?_ e
+  clear e
+  intro e hbase hl
   rcases Ctx.isRoot_consC_cases hr with rfl | ⟨r₀, rfl, hr₀⟩
   · exact Ctx.lvlLeB_depth_zero _ _ _ rfl
   · rw [CapAtom.weaken_rename]
     cases e with
+    | proj e₀ φ => exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
     | top => exact Ctx.top_lvlLe _ _
     | var x =>
         cases x with
@@ -954,6 +988,7 @@ theorem Ctx.isRootB_inst_star (Γ : Ctx s) (C : CaptureSet s) (r : CapAtom (s,c)
   | top => rfl
   | var x => rfl
   | name x l => rfl
+  | proj a φ => rfl
   | cvar κ => cases κ with
     | here => rfl
     | there κ0 => rfl
@@ -964,11 +999,12 @@ theorem Ctx.lvl_inst_star (Γ : Ctx s) (C : CaptureSet s) {k : Kind} (x : BVar (
 
 theorem Ctx.lvlAtom_inst_star (Γ : Ctx s) (C : CaptureSet s) (a : CapAtom (s,c)) :
     (Γ.consC (CapBound.inst C)).lvlAtom a = (Γ.consC CapBound.star).lvlAtom a := by
-  cases a with
+  induction a with
   | top => rfl
   | var x => exact Ctx.lvl_inst_star Γ C x
   | name x l => exact Ctx.lvl_inst_star Γ C x
   | cvar κ => exact Ctx.lvl_inst_star Γ C κ
+  | proj a φ ih => exact ih
 
 theorem Ctx.lvlLeB_inst_star (Γ : Ctx s) (C : CaptureSet s) (e r : CapAtom (s,c)) :
     (Γ.consC (CapBound.inst C)).lvlLeB e r = (Γ.consC CapBound.star).lvlLeB e r := by
@@ -1071,11 +1107,12 @@ end Subst
 
 theorem CapAtom.subst_rename {s1 s2 s3 : Sig} (a : CapAtom s1) (σ : Subst s1 s2)
     (ρ : Rename s2 s3) : (a.subst σ).rename ρ = a.subst (σ.compRen ρ) := by
-  cases a with
+  induction a with
   | var x => simp [CapAtom.subst, CapAtom.rename, Subst.rootVar]
   | cvar κ => rfl
   | name x l => simp [CapAtom.subst, CapAtom.rename, Subst.rootVar]
   | top => rfl
+  | proj a φ ih => simp [CapAtom.subst, CapAtom.rename, ih]
 
 theorem CaptureSet.subst_rename {s1 s2 s3 : Sig} (C : CaptureSet s1) (σ : Subst s1 s2)
     (ρ : Rename s2 s3) : (C.subst σ).rename ρ = C.subst (σ.compRen ρ) := by

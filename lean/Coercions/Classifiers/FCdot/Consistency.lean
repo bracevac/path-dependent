@@ -230,7 +230,8 @@ theorem Ctx.Root_cvar_rigid {Γ : Ctx s} {κ : BVar s .cap}
   have hc : Γ.capsBound 0 κ (Γ.lookupCap κ) = [CapAtom.cvar κ] := by
     rcases h with h | h <;> rw [h] <;> simp [Ctx.capsBound]
   rw [hc]
-  exact Ctx.mem_expand.mpr ⟨.cvar κ, List.mem_cons_self .., Γ.mem_expandAtom_self _⟩
+  exact Ctx.mem_expand.mpr
+    ⟨.cvar κ, List.mem_cons_self .., Γ.mem_expandAtom_self _ (Cls.Kind.contains_top _)⟩
 
 /-- Consistency in the capture sort, at a platform binder `κ ⊑ᶜ ∗`: no closed
 capture evidence puts `{κ}` below a set whose roots miss `κ`.  Bad capture
@@ -266,6 +267,7 @@ theorem Ctx.caps_of_opaque {Γ : Ctx s} {κ : BVar s .cap}
   | star => rfl
   | upper C => rw [h] at hκ; simp [CapBound.opaque] at hκ
   | inst C => rw [h] at hκ; simp [CapBound.opaque] at hκ
+  | cls c => rfl
 
 /-! **T-B0.7**, `Store.Typed.rootFree`, is proved in `FCdot/Store.lean`,
 beside the judgement it inducts on, because the four entering steps of the
@@ -292,21 +294,10 @@ the evidence: as an induction on `f` alone the `capvar` case is false, since
 bad capture bounds are derivable under a lambda (example C3). -/
 theorem lvl_canon (hσ : ⊢ σ : Γ) {f : CapCo s} {C₁ C₂ : CaptureSet s} {r : CapAtom s}
     (h : Γ ⊢ᶜ f : C₁ ⊑ C₂) (n : Nat)
-    (h₂ : ∀ m, Γ.Confined (Γ.caps m C₂) r) : Γ.Confined (Γ.caps n C₁) r := by
+    (h₂ : ∀ m, Γ.Confined (Γ.roots m C₂) r) : Γ.Confined (Γ.roots n C₁) r := by
   intro a ha
-  obtain ⟨m, hm⟩ := cap_canon hσ h a (Ctx.Root.of_mem_caps ha)
-  rw [Ctx.roots_eq_expand_caps] at hm
-  obtain ⟨b, hb, hab⟩ := Ctx.mem_expand.mp hm
-  have hbr : Γ.LvlLe b r := h₂ m b hb
-  cases hrb : Γ.isRootB b with
-  | false =>
-      rw [Ctx.expandAtom_of_not_root hrb] at hab
-      rw [List.mem_singleton.mp hab]
-      exact hbr
-  | true =>
-      rcases Ctx.mem_expandAtom_root hrb hab with rfl | ⟨κ, rfl, _, hκ⟩
-      · exact Ctx.top_lvlLe _ _
-      · exact Ctx.LvlLe.trans hrb hκ hbr
+  obtain ⟨m, hm⟩ := cap_canon hσ h a ⟨n, ha⟩
+  exact h₂ m a hm
 
 /-- **T11, `rigid_canon`.**  A rigid binder is a root of every set closed
 evidence puts it below. -/
@@ -318,24 +309,25 @@ theorem rigid_canon (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : Ca
 /-- **T11', `rigid_target`.**  Nothing else resolves below a rigid binder. -/
 theorem rigid_target (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : CaptureSet s}
     (hκ : Γ.lookupCap κ = .star) (h : Γ ⊢ᶜ f : C ⊑ [CapAtom.cvar κ]) (n : Nat) :
-    (Γ.caps n C).Subset [CapAtom.cvar κ] := by
+    (Γ.roots n C).Subset [CapAtom.cvar κ] := by
   intro a ha
-  obtain ⟨m, hm⟩ := cap_canon hσ h a (Ctx.Root.of_mem_caps ha)
+  obtain ⟨m, hm⟩ := cap_canon hσ h a ⟨n, ha⟩
   rw [Ctx.roots_eq_expand_caps,
     Ctx.caps_of_opaque (by rw [hκ]; rfl), Ctx.expand_cons, Ctx.expand_nil,
-    List.append_nil, Ctx.expandAtom_of_not_root (by rw [Ctx.isRootB, hκ]; rfl)] at hm
+    List.append_nil, Ctx.expandAtom_of_not_root (by rw [Ctx.isRootB, hκ]; rfl) rfl] at hm
   exact hm
 
 /-- **T12, scope safety.**  What closed evidence puts below a scope root
 resolves to capabilities at or outside that root. -/
 theorem lvl_safety (hσ : ⊢ σ : Γ) {r : CapAtom s} {f : CapCo s} {C : CaptureSet s}
     (hr : Γ.IsRoot r) (h : Γ ⊢ᶜ f : C ⊑ [r]) (n : Nat) :
-    Γ.Confined (Γ.caps n C) r :=
+    Γ.Confined (Γ.roots n C) r :=
   lvl_canon hσ h n (fun m => by
-    rw [Ctx.caps_of_isRoot hr]
+    rw [Ctx.roots_of_isRoot hr]
     intro c hc
-    rw [List.mem_singleton.mp hc]
-    exact Ctx.LvlLe.refl_of_root hr)
+    rcases Ctx.mem_expandAtom_root hr hc with rfl | ⟨κ, rfl, _, hκ⟩
+    · exact Ctx.top_lvlLe _ _
+    · exact hκ)
 
 /-- **T12, the escape form.**  No closed derivation puts a capability
 introduced strictly inside a scope below that scope's root.  The conclusion
@@ -347,8 +339,9 @@ theorem no_inner_escape (hσ : ⊢ σ : Γ) {r : CapAtom s} {κ : BVar s .cap}
     (hout : ¬ Γ.LvlLe (.cvar κ) r) : ¬ ∃ f : CapCo s, Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ [r] := by
   rintro ⟨f, hf⟩
   refine hout (lvl_safety hσ hr hf 0 (.cvar κ) ?_)
-  rw [Ctx.caps_of_opaque hκ]
-  exact List.mem_cons_self ..
+  rw [Ctx.roots_eq_expand_caps, Ctx.caps_of_opaque hκ, Ctx.expand_cons, Ctx.expand_nil,
+    List.append_nil]
+  exact Ctx.mem_expandAtom_self_of_not_proj rfl
 
 /-- Every block name of a store binder is defined by the stored literal's
 witness, and the definition is closed equality evidence. -/

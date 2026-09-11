@@ -109,7 +109,9 @@ theorem Subst.liftC_core (σ : Subst s1 s2) : σ.liftC.core = σ.core.liftC := b
 
 theorem CapAtom.subst_core (a : CapAtom s1) (σ : Subst s1 s2) :
     a.subst σ = a.subst σ.core := by
-  cases a <;> rfl
+  induction a with
+  | proj a φ ih => simp [CapAtom.subst, ih]
+  | var x | cvar κ | name x ℓ | top => rfl
 
 theorem CaptureSet.subst_core (C : CaptureSet s1) (σ : Subst s1 s2) :
     C.subst σ = C.subst σ.core := by
@@ -473,6 +475,7 @@ def CapBound.subst : CapBound s1 → Subst s1 s2 → CapBound s2
   | .star, _ => .star
   | .upper C, σ => .upper (C.subst σ)
   | .inst C, σ => .inst (C.subst σ)
+  | .cls c, _ => .cls c
 
 @[simp] theorem CapBound.isRoot_subst (b : CapBound s1) (σ : Subst s1 s2) :
     (b.subst σ).isRoot = b.isRoot := by cases b <;> rfl
@@ -633,11 +636,12 @@ of the stage typed. -/
 theorem Ctx.lvlLe_of_root?_none {Γ : Ctx s} (h : Γ.root? = none) (e r : CapAtom s) :
     Γ.LvlLe e r := by
   have he : Γ.lvlAtom e = none := by
-    cases e with
+    induction e with
     | top => rfl
     | var x => exact Ctx.root?_none Γ x h
     | cvar κ => exact Ctx.root?_none Γ κ h
     | name x l => exact Ctx.root?_none Γ x h
+    | proj a φ ih => exact ih
   unfold Ctx.LvlLe Ctx.lvlLeB
   rw [he]
   rfl
@@ -652,31 +656,55 @@ with a weakening, which is `CapAtom.weaken_subst`. -/
 /-- An atom of a term-extended signature is the new binder, a field name on
 it, or an older atom weakened. -/
 theorem CapAtom.cons_cases (e : CapAtom (s,x)) :
-    e = .var .here ∨ (∃ l, e = .name .here l) ∨ ∃ e₀ : CapAtom s, e = e₀.weaken := by
+    e = .var .here ∨ (∃ l, e = .name .here l) ∨ (∃ e₀ : CapAtom s, e = e₀.weaken) ∨
+      ∃ (e₀ : CapAtom (s,x)) (φ : Cls.Kind), e = e₀ ↾ φ := by
   cases e with
-  | top => exact Or.inr (Or.inr ⟨.top, rfl⟩)
+  | top => exact Or.inr (Or.inr (Or.inl ⟨.top, rfl⟩))
   | var x => cases x with
       | here => exact Or.inl rfl
-      | there x0 => exact Or.inr (Or.inr ⟨.var x0, rfl⟩)
+      | there x0 => exact Or.inr (Or.inr (Or.inl ⟨.var x0, rfl⟩))
   | name x l => cases x with
       | here => exact Or.inr (Or.inl ⟨l, rfl⟩)
-      | there x0 => exact Or.inr (Or.inr ⟨.name x0 l, rfl⟩)
+      | there x0 => exact Or.inr (Or.inr (Or.inl ⟨.name x0 l, rfl⟩))
   | cvar k => cases k with
-      | there k0 => exact Or.inr (Or.inr ⟨.cvar k0, rfl⟩)
+      | there k0 => exact Or.inr (Or.inr (Or.inl ⟨.cvar k0, rfl⟩))
+  | proj e₀ φ => exact Or.inr (Or.inr (Or.inr ⟨e₀, φ, rfl⟩))
 
 /-- And of a capture-extended signature: the new binder, or an older atom
 weakened. -/
 theorem CapAtom.consC_cases (e : CapAtom (s,c)) :
-    e = .cvar .here ∨ ∃ e₀ : CapAtom s, e = e₀.weaken := by
+    e = .cvar .here ∨ (∃ e₀ : CapAtom s, e = e₀.weaken) ∨
+      ∃ (e₀ : CapAtom (s,c)) (φ : Cls.Kind), e = e₀ ↾ φ := by
   cases e with
-  | top => exact Or.inr ⟨.top, rfl⟩
+  | top => exact Or.inr (Or.inl ⟨.top, rfl⟩)
   | var x => cases x with
-      | there x0 => exact Or.inr ⟨.var x0, rfl⟩
+      | there x0 => exact Or.inr (Or.inl ⟨.var x0, rfl⟩)
   | name x l => cases x with
-      | there x0 => exact Or.inr ⟨.name x0 l, rfl⟩
+      | there x0 => exact Or.inr (Or.inl ⟨.name x0 l, rfl⟩)
   | cvar k => cases k with
       | here => exact Or.inl rfl
-      | there k0 => exact Or.inr ⟨.cvar k0, rfl⟩
+      | there k0 => exact Or.inr (Or.inl ⟨.cvar k0, rfl⟩)
+  | proj e₀ φ => exact Or.inr (Or.inr ⟨e₀, φ, rfl⟩)
+
+/-- An atom that is its own base stays its own base under a weakening. -/
+theorem CapAtom.base_of_weaken {s : Sig} {k : Kind} {a : CapAtom s}
+    (h : (CapAtom.weaken (k := k) a).base = a.weaken) : a.base = a := by
+  rw [CapAtom.weaken, CapAtom.base_rename] at h
+  exact CapAtom.rename_inj _ _ _ Rename.succ_injective h
+
+/-- A level fact under a substitution holds of every atom as soon as it holds
+of the atoms that are their own base.  `Ctx.lvlAtom` reads through every
+projection and `CapAtom.subst` is structural on one, so a projection compares
+exactly as the atom under it does. -/
+theorem Ctx.lvlLe_subst_of_base {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
+    {σ : Subst s1 s2} {r : CapAtom s1} {r' : CapAtom s2}
+    (h : ∀ e : CapAtom s1, e.base = e → Γ.LvlLe e r → Γ'.LvlLe (e.subst σ) r') :
+    ∀ (e : CapAtom s1), Γ.LvlLe e r → Γ'.LvlLe (e.subst σ) r'
+  | .top, hl => h .top rfl hl
+  | .var x, hl => h (.var x) rfl hl
+  | .cvar κ, hl => h (.cvar κ) rfl hl
+  | .name x ℓ, hl => h (.name x ℓ) rfl hl
+  | .proj e φ, hl => Ctx.lvlLe_subst_of_base h e hl
 
 theorem Ctx.lvlLe_weaken_step_subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
     {σ : Subst s1 s2}
@@ -772,11 +800,16 @@ theorem Ctx.lvlLe_lift_subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Su
     (Γ'.cons b').LvlLe (e.subst σ.lift) (r.subst σ.lift) := by
   obtain ⟨r₀, rfl, hr₀⟩ := Ctx.isRoot_cons_cases hr
   rw [CapAtom.weaken_subst]
-  rcases CapAtom.cons_cases e with rfl | ⟨l, rfl⟩ | ⟨e₀, rfl⟩
+  revert hl
+  refine Ctx.lvlLe_subst_of_base ?_ e
+  clear e
+  intro e hbase hl
+  rcases CapAtom.cons_cases e with rfl | ⟨l, rfl⟩ | ⟨e₀, rfl⟩ | ⟨e₀, φ, rfl⟩
   · exact Ctx.lvlLe_here_step_subst hRoot hLvl hInner b b' r₀ hr₀ hl
   · exact Ctx.lvlLe_here_step_subst hRoot hLvl hInner b b' r₀ hr₀ hl
   · rw [CapAtom.weaken_subst]
     exact Ctx.lvlLe_weaken_step_subst hLvl b' e₀ r₀ hr₀ hl
+  · exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
 
 theorem Ctx.capInner_lift_subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     (hInner : Γ'.LvlLe Γ'.rootAtom (Γ.rootAtom.subst σ)) (b : Binding s1) (b' : Binding s2) :
@@ -809,7 +842,11 @@ theorem Ctx.lvlLe_liftC_subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : S
   rcases Ctx.isRoot_consC_cases hr with rfl | ⟨r₀, rfl, hr₀⟩
   · exact Ctx.lvlLeB_depth_zero _ _ _ rfl
   · rw [CapAtom.weaken_substC]
-    rcases CapAtom.consC_cases e with rfl | ⟨e₀, rfl⟩
+    revert hl
+    refine Ctx.lvlLe_subst_of_base ?_ e
+    clear e
+    intro e hbase hl
+    rcases CapAtom.consC_cases e with rfl | ⟨e₀, rfl⟩ | ⟨e₀, φ, rfl⟩
     · cases hb : b.isRoot with
       | true => exact absurd hl (Ctx.not_lvlLe_consC_root_here hb r₀)
       | false =>
@@ -817,6 +854,7 @@ theorem Ctx.lvlLe_liftC_subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : S
             r₀ hr₀ hl
     · rw [CapAtom.weaken_substC]
       exact Ctx.lvlLe_weakenC_step_subst hLvl b' e₀ r₀ hr₀ hl
+    · exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
 
 theorem Ctx.capInner_liftC_subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     (hInner : Γ'.LvlLe Γ'.rootAtom (Γ.rootAtom.subst σ)) (b : CapBound s1) (b' : CapBound s2)
@@ -850,10 +888,15 @@ theorem Ctx.lvlLe_liftC_root_subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {�
   rcases Ctx.isRoot_consC_cases hr with rfl | ⟨r₀, rfl, hr₀⟩
   · exact Ctx.lvlLeB_depth_zero _ _ _ rfl
   · rw [CapAtom.weaken_substC]
-    rcases CapAtom.consC_cases e with rfl | ⟨e₀, rfl⟩
+    revert hl
+    refine Ctx.lvlLe_subst_of_base ?_ e
+    clear e
+    intro e hbase hl
+    rcases CapAtom.consC_cases e with rfl | ⟨e₀, rfl⟩ | ⟨e₀, φ, rfl⟩
     · exact absurd hl (Ctx.not_lvlLe_consC_root_here rfl r₀)
     · rw [CapAtom.weaken_substC]
       exact Ctx.lvlLe_weakenC_step_subst hLvl .root e₀ r₀ hr₀ hl
+    · exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
 
 
 /-! ### Two substitutions in a row, at the type sort
@@ -907,7 +950,9 @@ theorem Subst.compT_liftC (σ : Subst s1 s2) (τ : Subst s2 s3) :
 
 theorem CapAtom.subst_subst (a : CapAtom s1) (σ : Subst s1 s2) (τ : Subst s2 s3) :
     (a.subst σ).subst τ = a.subst (σ.compT τ) := by
-  cases a <;> rfl
+  induction a with
+  | proj a φ ih => simp [CapAtom.subst, ih]
+  | var x | cvar κ | name x ℓ | top => rfl
 
 theorem CaptureSet.subst_subst (C : CaptureSet s1) (σ : Subst s1 s2) (τ : Subst s2 s3) :
     (C.subst σ).subst τ = C.subst (σ.compT τ) := by
@@ -1383,11 +1428,16 @@ theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
         exact hh
       rw [Ctx.lvlLe_weaken_iff] at h1
       exact Ctx.LvlLe.trans (Ctx.rootAtom_isRoot Γ) (Γ.lvl_le_rootAtom_var x0) h1
-    rcases CapAtom.cons_cases e with rfl | ⟨l, rfl⟩ | ⟨e₀, rfl⟩
+    revert hl
+    refine Ctx.lvlLe_subst_of_base ?_ e
+    clear e
+    intro e hbase hl
+    rcases CapAtom.cons_cases e with rfl | ⟨l, rfl⟩ | ⟨e₀, rfl⟩ | ⟨e₀, φ, rfl⟩
     · exact hhere a.root hl
     · exact hhere a.root hl
     · rw [CapAtom.weaken_subst_single]
       exact (Ctx.lvlLe_weaken_iff Γ (Binding.opaque T) e₀ r₀).mp hl
+    · exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
   capInner := by
     rw [Ctx.rootAtom_cons Γ (Binding.opaque T), CapAtom.weaken_subst_single]
     exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot Γ)
@@ -1469,6 +1519,7 @@ theorem liftC {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
     · cases b with
       | root => simp [CapBound.instSet?] at hbi
       | star => simp [CapBound.instSet?] at hbi
+      | cls c => simp [CapBound.instSet?] at hbi
       | upper C₁ => simp [CapBound.instSet?] at hbi
       | inst C₁ =>
           have hC : C₁ = C₀ := by simpa [CapBound.instSet?] using hbi
@@ -2169,7 +2220,11 @@ theorem Subst.Typed.singleC {Γ : Ctx s} {b : CapBound s} (a : CapAtom s)
       · simp [h] at hb
       · exact hall _
     · rw [CapAtom.weaken_subst_singleC]
-      rcases CapAtom.consC_cases e with rfl | ⟨e₀, rfl⟩
+      revert hl
+      refine Ctx.lvlLe_subst_of_base ?_ e
+      clear e
+      intro e hbase hl
+      rcases CapAtom.consC_cases e with rfl | ⟨e₀, rfl⟩ | ⟨e₀, φ, rfl⟩
       · cases hb : b.isRoot with
         | true => exact absurd hl (Ctx.not_lvlLe_consC_root_here hb r₀)
         | false =>
@@ -2184,6 +2239,7 @@ theorem Subst.Typed.singleC {Γ : Ctx s} {b : CapBound s} (a : CapAtom s)
               (Ctx.confined_rootAtom Γ [a] a (by simp)) h1
       · rw [CapAtom.weaken_subst_singleC]
         exact (Ctx.lvlLe_weakenC_iff Γ b e₀ r₀).mp hl
+      · exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
   capInner := by
     cases hb : b.isRoot with
     | true =>
@@ -2313,15 +2369,21 @@ theorem Subst.Typed.arg {Γ : Ctx s} {T : Dom s} {b : Atom s}
         rw [Ctx.lvlLe_weaken_iff, Ctx.lvlLe_weakenC_iff] at h1
         exact Ctx.LvlLe.trans (Ctx.rootAtom_isRoot Γ)
           (Ctx.confined_rootAtom Γ [a] a (by simp)) h1
-      rcases CapAtom.cons_cases e with rfl | ⟨l, rfl⟩ | ⟨e₁, rfl⟩
+      revert hl
+      refine Ctx.lvlLe_subst_of_base ?_ e
+      clear e
+      intro e hbase hl
+      rcases CapAtom.cons_cases e with rfl | ⟨l, rfl⟩ | ⟨e₁, rfl⟩ | ⟨e₁, φ, rfl⟩
       · exact hhere hl _
       · exact hhere hl _
-      · rcases CapAtom.consC_cases e₁ with rfl | ⟨e₀, rfl⟩
+      · rcases CapAtom.consC_cases e₁ with rfl | ⟨e₀, rfl⟩ | ⟨e₀, φ, rfl⟩
         · exact hhere hl _
         · rw [CapAtom.weaken_weaken_subst_arg]
           exact (Ctx.lvlLe_weakenC_iff Γ CapBound.star e₀ r₀).mp
             ((Ctx.lvlLe_weaken_iff (Γ.consC CapBound.star) (Binding.opaque T)
               (CapAtom.weaken (k := .cap) e₀) (CapAtom.weaken (k := .cap) r₀)).mp hl)
+        · exact absurd (CapAtom.base_of_weaken hbase) (CapAtom.base_ne_proj e₀ e₀ φ)
+      · exact absurd hbase (CapAtom.base_ne_proj e₁ e₁ φ)
   capInner := by
     show Γ.LvlLe Γ.rootAtom
       ((((Γ.consC CapBound.star).cons (Binding.opaque T)).rootAtom).subst (Subst.arg b))
@@ -2946,11 +3008,12 @@ theorem Ctx.lvl_cons_eq (Γ : Ctx s) (b b' : Binding s) {k : Kind} (z : BVar (s,
 
 theorem Ctx.lvlAtom_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x)) :
     (Γ.cons b).lvlAtom a = (Γ.cons b').lvlAtom a := by
-  cases a with
+  induction a with
   | top => rfl
   | var z => exact Ctx.lvl_cons_eq Γ b b' z
   | cvar z => exact Ctx.lvl_cons_eq Γ b b' z
   | name z _ => exact Ctx.lvl_cons_eq Γ b b' z
+  | proj a φ ih => exact ih
 
 theorem Ctx.isRootB_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x)) :
     (Γ.cons b).isRootB a = (Γ.cons b').isRootB a := by
@@ -2958,6 +3021,7 @@ theorem Ctx.isRootB_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x)) 
   | top => rfl
   | var _ => rfl
   | name _ _ => rfl
+  | proj _ _ => rfl
   | cvar κ => exact congrArg CapBound.isRoot (Ctx.lookupCap_cons_eq Γ b b' κ)
 
 theorem Ctx.lvlLeB_cons_eq (Γ : Ctx s) (b b' : Binding s) (e r : CapAtom (s,x)) :
@@ -2976,6 +3040,7 @@ theorem Ctx.instOf_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x))
   | top => exact Iff.rfl
   | var _ => exact Iff.rfl
   | name _ _ => exact Iff.rfl
+  | proj _ _ => exact Iff.rfl
   | cvar κ =>
       show ((Γ.cons b).lookupCap κ).instSet? = some C ↔ _
       rw [Ctx.lookupCap_cons_eq Γ b b' κ]

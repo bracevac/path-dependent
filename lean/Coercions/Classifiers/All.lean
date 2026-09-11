@@ -1,3 +1,4 @@
+import Coercions.Classifiers.Cls
 import Coercions.Classifiers.DotMNF
 import Coercions.Classifiers.FCdot
 import Coercions.Classifiers.DotToFCdot

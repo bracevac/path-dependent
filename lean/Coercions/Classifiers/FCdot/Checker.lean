@@ -217,6 +217,8 @@ def CapAtom.rename? : CapAtom s1 → PartialRename s1 s2 → Option (CapAtom s2)
   | .name x ℓ, ρ => (ρ.var x).map (fun y => .name y ℓ)
   -- the universal root is a constant, so it survives every partial renaming
   | .top, _ => some .top
+  -- a kind mentions no binder, so a projection renames where its base does
+  | .proj a φ, ρ => (a.rename? ρ).map (CapAtom.proj · φ)
 
 def CaptureSet.rename? : CaptureSet s1 → PartialRename s1 s2 → Option (CaptureSet s2)
   | [], _ => some []
@@ -238,6 +240,9 @@ theorem CapAtom.rename?_complete :
       simp only [CapAtom.rename, CapAtom.rename?]
       rw [(h (σ.var x) x).mpr rfl]; rfl
   | _, _, .top, _, _, _ => rfl
+  | _, _, .proj a φ, ρ, σ, h => by
+      simp only [CapAtom.rename, CapAtom.rename?,
+        CapAtom.rename?_complete a ρ σ h, Option.map_some]
 
 theorem CaptureSet.rename?_complete :
     ∀ {s1 s2 : Sig} (C : CaptureSet s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
@@ -273,6 +278,12 @@ theorem CapAtom.rename?_sound :
       simp only [CapAtom.rename?, Option.some.injEq] at hb
       subst hb
       rfl
+  | _, _, .proj a φ, b, ρ, σ, h, hb => by
+      simp only [CapAtom.rename?, Option.map_eq_some_iff] at hb
+      obtain ⟨c, hc, hb⟩ := hb
+      subst hb
+      simp only [CapAtom.rename]
+      rw [← CapAtom.rename?_sound a c ρ σ h hc]
 
 theorem CaptureSet.rename?_sound :
     ∀ {s1 s2 : Sig} (C : CaptureSet s1) (D : CaptureSet s2) (ρ : PartialRename s1 s2)

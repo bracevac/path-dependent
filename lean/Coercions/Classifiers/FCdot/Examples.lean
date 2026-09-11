@@ -1282,7 +1282,9 @@ theorem C6_console_caps :
 theorem C6_console_root :
     C6Ctx1.Root (CapAtom.cvar (.there (.there (.there (.there (.there .here))))))
       [CapAtom.var (.there (.there (.there .here)))] :=
-  Ctx.Root.of_mem_caps (n := 0) (by rw [C6_console_caps]; decide +kernel)
+  Ctx.Root.of_mem_caps (n := 0)
+    (a := CapAtom.cvar (.there (.there (.there (.there (.there .here))))))
+    (by rw [C6_console_caps]; decide +kernel) (Ctx.admitsB_top _ _)
 
 /-- `κ₂` is therefore a root of the use set of the initial state, as
 transported by the run's store extension. -/
@@ -1317,8 +1319,9 @@ theorem C6_no_kappa2 :
     ¬ C6Ctx.Root (CapAtom.cvar (.there (.there (.there (.there .here))))) C6st0'.uses := by
   rintro ⟨n, hn⟩
   -- `C6Ctx` is a store context: it has no scope root, so `roots` is `caps`
-  have hroots : C6Ctx.roots n C6st0'.uses = C6Ctx.caps n C6st0'.uses :=
-    Ctx.roots_eq_caps_of_rootFree rfl (by rw [C6_prog2_caps]; decide)
+  have hroots : C6Ctx.roots n C6st0'.uses = C6Ctx.caps n C6st0'.uses := by
+    rw [Ctx.roots_eq_caps_of_rootFree rfl (by rw [C6_prog2_caps]; decide)]
+    exact Ctx.filter_map_base_eq_self (by rw [C6_prog2_caps]; decide)
   rw [hroots, C6_prog2_caps] at hn
   revert hn
   decide +kernel
@@ -3366,6 +3369,128 @@ theorem Z_two_calls_incomparable :
     rw [Ctx.roots_eq_expand_caps, Z_caps_x2] at hm
     exact absurd hm (by decide)
 
+
+/-! ## K0.9: the three classifier examples
+
+Three contexts of classified capabilities, and what a projected capture atom
+resolves to over each.  Every verdict is read off an equation for `Ctx.caps`,
+proved by `simp` over the clause lemmas, and an expansion decided in the
+kernel.  `Ctx.caps` is a well-founded recursion, so it is never handed to
+`decide`. -/
+
+/-! ### K1x, a platform filter
+
+Two classified capabilities and no scope root.  A projection by `only
+Control` keeps the `Control` capability and drops the `IO` one.  This is the
+whole of the atom case. -/
+
+/-- `κ_ctl ⊑ᶜ cls Control, κ_io ⊑ᶜ cls IO`. -/
+def K1Ctx : Ctx ([],c,c) :=
+  Ctx.consC (Ctx.consC Ctx.nil (.cls Cls.Control)) (.cls Cls.IO)
+
+/-- The `Control` capability of K1x. -/
+abbrev K1ctl : BVar ([],c,c) .cap := .there .here
+
+/-- The `IO` capability of K1x. -/
+abbrev K1io : BVar ([],c,c) .cap := .here
+
+theorem K1x_caps_ctl (n : Nat) :
+    K1Ctx.caps n [(CapAtom.cvar K1ctl) ↾ Cls.only Cls.Control]
+      = [(CapAtom.cvar K1ctl) ↾ Cls.only Cls.Control] := by
+  simp [K1Ctx, Ctx.capsAtom_proj, Ctx.capsAtom_cvar, Ctx.capsBound,
+    Ctx.lookupCap, CapBound.weaken, CapBound.rename]
+
+theorem K1x_caps_io (n : Nat) :
+    K1Ctx.caps n [(CapAtom.cvar K1io) ↾ Cls.only Cls.Control]
+      = [(CapAtom.cvar K1io) ↾ Cls.only Cls.Control] := by
+  simp [K1Ctx, Ctx.capsAtom_proj, Ctx.capsAtom_cvar, Ctx.capsBound,
+    Ctx.lookupCap, CapBound.weaken, CapBound.rename]
+
+/-- The `Control` capability survives its own filter. -/
+theorem K1x_roots_ctl :
+    K1Ctx.roots 0 [(CapAtom.cvar K1ctl) ↾ Cls.only Cls.Control] = [CapAtom.cvar K1ctl] := by
+  rw [Ctx.roots_eq_expand_caps, K1x_caps_ctl]
+  decide
+
+/-- The `IO` capability does not. -/
+theorem K1x_roots_io :
+    K1Ctx.roots 0 [(CapAtom.cvar K1io) ↾ Cls.only Cls.Control] = [] := by
+  rw [Ctx.roots_eq_expand_caps, K1x_caps_io]
+  decide
+
+/-! ### K2x, a root filter
+
+The shape the adversarial check broke.  The universal root projected at
+`except ThreadLocal` has the single root `⊤ᶜ`: `Control` lies below
+`ThreadLocal`, so both classified binders are excluded, while `⊤ᶜ` itself is
+admitted.  The refuted design derived the same kinding and kept the
+`ThreadLocal` binder among the roots. -/
+
+/-- `κ_tl ⊑ᶜ cls ThreadLocal, κ_ctl ⊑ᶜ cls Control`, with no scope root. -/
+def K2Ctx : Ctx ([],c,c) :=
+  Ctx.consC (Ctx.consC Ctx.nil (.cls Cls.ThreadLocal)) (.cls Cls.Control)
+
+theorem K2x_caps (n : Nat) :
+    K2Ctx.caps n [⊤ᶜ ↾ Cls.except Cls.ThreadLocal]
+      = [⊤ᶜ ↾ Cls.except Cls.ThreadLocal] := by
+  simp [K2Ctx, Ctx.capsAtom_proj, Ctx.capsAtom_top]
+
+/-- The universal root survives, and nothing else does. -/
+theorem K2x_roots : K2Ctx.roots 0 [⊤ᶜ ↾ Cls.except Cls.ThreadLocal] = [⊤ᶜ] := by
+  rw [Ctx.roots_eq_expand_caps, K2x_caps]
+  decide
+
+/-- And the projected set is kinded by construction, which is T2.  This is
+what the refuted design could not have. -/
+theorem K2x_kindLe :
+    K2Ctx.KindLe [⊤ᶜ ↾ Cls.except Cls.ThreadLocal] (Cls.except Cls.ThreadLocal) :=
+  Ctx.kindLe_proj K2Ctx [⊤ᶜ] (Cls.except Cls.ThreadLocal)
+
+/-! ### K3x, a scope root filter
+
+A scope root between two classified capabilities.  The root opens into `⊤ᶜ`
+and every opaque binder at its level or outside it, and the filter then keeps
+only what the kind admits.  The `Control` capability is inside the scope and
+is excluded by the kind, so it is not below the projected root: that is the
+sentence E2 will make about a program. -/
+
+/-- `κ_tl ⊑ᶜ cls ThreadLocal, κ_S ⊚, κ_ctl ⊑ᶜ cls Control`. -/
+def K3Ctx : Ctx ([],c,c,c) :=
+  Ctx.consC (Ctx.consC (Ctx.consC Ctx.nil (.cls Cls.ThreadLocal)) .root) (.cls Cls.Control)
+
+/-- The scope root of K3x. -/
+abbrev K3S : BVar ([],c,c,c) .cap := .there .here
+
+/-- The `Control` capability of K3x, opened inside the scope. -/
+abbrev K3ctl : BVar ([],c,c,c) .cap := .here
+
+theorem K3x_caps (n : Nat) :
+    K3Ctx.caps n [(CapAtom.cvar K3S) ↾ Cls.except Cls.ThreadLocal]
+      = [(CapAtom.cvar K3S) ↾ Cls.except Cls.ThreadLocal] := by
+  simp [K3Ctx, Ctx.capsAtom_proj, Ctx.capsAtom_cvar, Ctx.capsBound,
+    Ctx.lookupCap, CapBound.weaken, CapBound.rename]
+
+theorem K3x_caps_ctl (n : Nat) :
+    K3Ctx.caps n [CapAtom.cvar K3ctl] = [CapAtom.cvar K3ctl] := by
+  simp [K3Ctx, Ctx.capsAtom_cvar, Ctx.capsBound,
+    Ctx.lookupCap, CapBound.weaken, CapBound.rename]
+
+/-- The projected scope root keeps `⊤ᶜ` and itself and neither classified
+binder. -/
+theorem K3x_roots :
+    K3Ctx.roots 0 [(CapAtom.cvar K3S) ↾ Cls.except Cls.ThreadLocal]
+      = [⊤ᶜ, CapAtom.cvar K3S] := by
+  rw [Ctx.roots_eq_expand_caps, K3x_caps]
+  decide
+
+/-- So the inner `Control` capability is not below the projected root. -/
+theorem K3x_not_capLe :
+    ¬ CapLe K3Ctx [CapAtom.cvar K3ctl] [(CapAtom.cvar K3S) ↾ Cls.except Cls.ThreadLocal] := by
+  intro h
+  obtain ⟨m, hm⟩ := h (CapAtom.cvar K3ctl)
+    ⟨0, by rw [Ctx.roots_eq_expand_caps, K3x_caps_ctl]; decide⟩
+  rw [Ctx.roots_eq_expand_caps, K3x_caps] at hm
+  exact absurd hm (by decide)
 
 end Examples
 end FCdot

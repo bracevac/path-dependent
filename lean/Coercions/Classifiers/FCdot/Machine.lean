@@ -427,12 +427,27 @@ theorem Rename.InjectiveOnAtoms.id {s : Sig} :
 theorem Rename.InjectiveOnAtoms.comp_succ {s1 s2 : Sig} {ρ : Rename s1 s2}
     (h : ρ.InjectiveOnAtoms) {k : Kind} :
     (ρ.comp (Rename.succ (k := k))).InjectiveOnAtoms := by
+  have key : ∀ a b : CapAtom s1,
+      a.rename (ρ.comp (Rename.succ (k := k)))
+          = b.rename (ρ.comp (Rename.succ (k := k))) →
+        a.rename ρ = b.rename ρ := by
+    intro a
+    induction a with
+    | var x | cvar x | name x l | top =>
+        intro b hab
+        cases b <;>
+          simp only [CapAtom.rename, Rename.comp_var, Rename.succ_var,
+            CapAtom.var.injEq, CapAtom.cvar.injEq, CapAtom.name.injEq] at hab ⊢ <;>
+          simp_all
+    | proj a φ iha =>
+        intro b hab
+        cases b with
+        | proj b ψ =>
+            simp only [CapAtom.rename, CapAtom.proj.injEq] at hab ⊢
+            exact ⟨iha b hab.1, hab.2⟩
+        | top | var _ | cvar _ | name _ _ => simp [CapAtom.rename] at hab
   intro a b hab
-  refine h a b ?_
-  cases a <;> cases b <;>
-    simp only [CapAtom.rename, Rename.comp_var, Rename.succ_var,
-      CapAtom.var.injEq, CapAtom.cvar.injEq, CapAtom.name.injEq] at hab ⊢ <;>
-    simp_all
+  exact h a b (key a b hab)
 
 /-- The embedding of a store extension is injective on capture atoms. -/
 theorem Store.Ext.injective {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
@@ -540,6 +555,83 @@ theorem Store.Ext.capLe {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Renam
   refine ⟨m, ?_⟩
   rw [hE.roots hσ hσ' m D]
   exact (CaptureSet.mem_rename_iff hE.injective b (Γ.roots m D)).mpr hm
+
+/-! ## K0.7: classified capabilities and the store
+
+A classified capability is rigid, so it lives in the platform prefix and a run
+never appends one.  What a run does append carries the root classifier `⊤`. -/
+
+/-- A classified capability stands for itself, which is what `star` already
+said. -/
+@[simp] theorem CapBound.cls_opaque {s : Sig} (c : Cls.Classifier) :
+    (CapBound.cls (s := s) c).opaque = true := rfl
+
+/-- `Store.Ext.consC` asks for a bound that is not opaque, and `cls` is
+opaque, so no step of the machine allocates a classified capability. -/
+theorem CapBound.cls_not_appendable {s : Sig} (c : Cls.Classifier) :
+    (CapBound.cls (s := s) c).opaque ≠ false := by simp
+
+/-- Store typing asks only that a bound is not a scope root, and `cls` is not
+one, so a classified platform store is well typed with no change to store
+typing. -/
+theorem Store.Typed.consC_cls {s : Sig} {σ : Store s} {Γ : Ctx s} (hσ : ⊢ σ : Γ)
+    (c : Cls.Classifier) : ⊢ σ.consC (.cls c) : Γ.consC (.cls c) :=
+  Store.Typed.consC hσ rfl
+
+/-- Every capability a run appends carries the root classifier: the bound is
+not opaque, and only a classified bound carries a classifier of its own.  So a
+kind that does not contain `⊤` forbids every capability the run allocates. -/
+theorem CapBound.classifier_of_not_opaque {s : Sig} {b : CapBound s}
+    (h : b.opaque = false) : b.classifier = .top := by
+  cases b with
+  | root => exact absurd h (by simp [CapBound.opaque])
+  | star => exact absurd h (by simp [CapBound.opaque])
+  | cls c => exact absurd h (by simp [CapBound.opaque])
+  | upper C => rfl
+  | inst C => rfl
+
+/-- An extension keeps every binder's classifier: a classifier mentions no
+de Bruijn index, so each appended entry is one weakening and Fact 1 carries it
+through. -/
+theorem Store.Ext.classOf {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
+    (hE : Store.Ext σ σ' ρ) {Γ : Ctx s} (hσ : ⊢ σ : Γ) :
+    ∀ {Γ' : Ctx s'}, (⊢ σ' : Γ') → ∀ a : CapAtom s,
+      Γ'.classOf (a.rename ρ) = Γ.classOf a := by
+  induction hE with
+  | refl =>
+      intro Γ' hσ' a
+      cases Store.Typed.ctx_unique hσ hσ'
+      simp
+  | @cons s1 σ0 σ1 ρ0 hE0 v ih =>
+      intro Γ' hσ' a
+      cases hσ' with
+      | cons store' _ _ =>
+          rw [show a.rename (ρ0.comp Rename.succ)
+                = CapAtom.weaken (k := .var) (a.rename ρ0) by simp [CapAtom.weaken]]
+          rw [Ctx.classOf_weaken]
+          exact ih hσ store' a
+  | @consC s1 σ0 σ1 ρ0 hE0 b hb ih =>
+      intro Γ' hσ' a
+      cases hσ' with
+      | consC store' _ =>
+          rw [show a.rename (ρ0.comp Rename.succ)
+                = CapAtom.weaken (k := .cap) (a.rename ρ0) by simp [CapAtom.weaken]]
+          rw [Ctx.classOf_weakenC]
+          exact ih hσ store' a
+
+/-- **T4.**  Kinding travels along a store extension.  The twin of
+`Store.Ext.capLe`: roots are carried by `Store.Ext.roots` and classifiers by
+`Store.Ext.classOf`. -/
+theorem Store.Ext.kindLe {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
+    (hE : Store.Ext σ σ' ρ) {Γ : Ctx s} {Γ' : Ctx s'}
+    (hσ : ⊢ σ : Γ) (hσ' : ⊢ σ' : Γ') {C : CaptureSet s} {φ : Cls.Kind}
+    (h : Γ.KindLe C φ) : Γ'.KindLe (C.rename ρ) φ := by
+  rintro a ⟨n, hn⟩
+  rw [hE.roots hσ hσ' n C] at hn
+  simp only [CaptureSet.rename, List.mem_map] at hn
+  obtain ⟨b, hb, rfl⟩ := hn
+  rw [hE.classOf hσ hσ' b]
+  exact h b ⟨n, hb⟩
 
 end FCdot
 

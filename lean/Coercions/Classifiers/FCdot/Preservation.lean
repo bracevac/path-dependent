@@ -527,7 +527,12 @@ theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)} {C : Capt
         exact hh
       rw [Ctx.lvlLe_weaken_iff] at h1
       exact Ctx.LvlLe.trans (Ctx.rootAtom_isRoot Γ) (Γ.lvl_le_rootAtom_var x0) h1
+    revert hl
+    refine Ctx.lvlLe_rename_of_base ?_ e
+    clear e
+    intro e hbase hl
     cases e with
+    | proj e₀ φ => exact absurd hbase (CapAtom.base_ne_proj e₀ e₀ φ)
     | top => exact Ctx.top_lvlLe _ _
     | cvar k =>
         cases k with

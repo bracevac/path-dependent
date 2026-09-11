@@ -144,6 +144,16 @@ theorem CaptureSet.top_not_mem_translate {s : Sig} (C : CaptureSet s) :
   obtain ⟨a, _, ha⟩ := h
   cases a <;> simp [CapAtom.translate?] at ha
 
+/-- The source writes no projection, so every atom of a translated capture
+set is its own base.  This is the set-wise form of Fact 4 on the source side:
+`CapAtom.translate?` produces `var`, `cvar` and `name` and nothing else. -/
+theorem CaptureSet.base_of_mem_translate {s : Sig} (C : CaptureSet s) :
+    ∀ b ∈ C.translate, b.base = b := by
+  intro b hb
+  rw [CaptureSet.translate, List.mem_filterMap] at hb
+  obtain ⟨a, _, ha⟩ := hb
+  cases a <;> simp [CapAtom.translate?] at ha <;> rw [← ha] <;> rfl
+
 /-- The A3a `translate_cons`, at an atom that has a target atom: the head is
 translated and the tail follows. -/
 theorem CaptureSet.translate_cons {s : Sig} {a : CapAtom s} {b : FCdot.CapAtom s}

@@ -569,20 +569,23 @@ with fuel `n` for capture names. -/
 def Ctx.caps : (Γ : Ctx s) → Nat → CaptureSet s → CaptureSet s
   | _, _, [] => []
   | Γ, n, a :: C => Γ.capsAtom n a ++ Γ.caps n C
-termination_by Γ n C => (sizeOf Γ, n, C.length + 1)
+termination_by Γ n C => (sizeOf Γ, n, sizeOf C)
 
 /-- `caps_Γ n` on one atom: a term binder resolves to the capture set of its
 type and a capture binder to itself or to its bound, both by descent on the
 binder; a capture name follows the capture witness of its block, at the same
 context, and so consumes one unit of fuel.  A name with no fuel left lies on
 a cyclic chain and resolves to the empty set.  The universal root is a leaf:
-it stands for itself. -/
+it stands for itself.  A projection carries its kind along as data: the
+filter is not applied here, it is applied by `Ctx.expandAtom`, which is the
+second and last stage of `Ctx.roots`. -/
 def Ctx.capsAtom : (Γ : Ctx s) → Nat → CapAtom s → CaptureSet s
   | .cons Γ b, n, .var .here => (Γ.caps n b.ty.captureSet).weaken
   | .cons Γ _, n, .var (.there y) => (Γ.capsAtom n (.var y)).weaken
   | .consC Γ _, n, .var (.there y) => (Γ.capsAtom n (.var y)).weaken
   | .consC _ .root, _, .cvar .here => [.cvar .here]
   | .consC _ .star, _, .cvar .here => [.cvar .here]
+  | .consC _ (.cls _), _, .cvar .here => [.cvar .here]
   | .consC Γ (.upper C), n, .cvar .here => (Γ.caps n C).weaken
   | .consC Γ (.inst C), n, .cvar .here => (Γ.caps n C).weaken
   | .cons Γ _, n, .cvar (.there κ) => (Γ.capsAtom n (.cvar κ)).weaken
@@ -593,7 +596,8 @@ def Ctx.capsAtom : (Γ : Ctx s) → Nat → CapAtom s → CaptureSet s
       match Γ.lookupDefC x ℓ with
       | some C => Γ.caps n C
       | none => []
-termination_by Γ n _ => (sizeOf Γ, n, 0)
+  | Γ, n, .proj a φ => (Γ.capsAtom n a).map (CapAtom.proj · φ)
+termination_by Γ n a => (sizeOf Γ, n, sizeOf a)
 
 end
 
@@ -608,6 +612,35 @@ end
 @[simp] theorem Ctx.capsAtom_top (Γ : Ctx s) (n : Nat) :
     Γ.capsAtom n (.top) = [CapAtom.top] := by
   cases Γ <;> cases n <;> simp [Ctx.capsAtom]
+
+/-- A projection carries a subset to a subset. -/
+theorem CaptureSet.Subset.mapProj {C D : CaptureSet s} (h : C.Subset D) (φ : Cls.Kind) :
+    (C.map (CapAtom.proj · φ)).Subset (D.map (CapAtom.proj · φ)) := by
+  intro c hc
+  obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hc
+  exact List.mem_map_of_mem (h b hb)
+
+/-- The projection clause of resolution: the kind rides along as data. -/
+@[simp] theorem Ctx.capsAtom_proj (Γ : Ctx s) (n : Nat) (a : CapAtom s) (φ : Cls.Kind) :
+    Γ.capsAtom n (a ↾ φ) = (Γ.capsAtom n a).map (CapAtom.proj · φ) := by
+  cases Γ <;> cases n <;> simp [Ctx.capsAtom]
+
+/-- **L3.**  Every atom resolution produces carries a kind below the atom's
+own.  The bare atom carries `⊤`, which contains everything. -/
+theorem Ctx.capsAtom_kindOf (Γ : Ctx s) (n : Nat) : ∀ (a : CapAtom s),
+    ∀ b ∈ Γ.capsAtom n a, ∀ c : Cls.Classifier, b.kindOf.Contains c → a.kindOf.Contains c
+  | .top, _, _, c, _ => Cls.Kind.contains_top c
+  | .var _, _, _, c, _ => Cls.Kind.contains_top c
+  | .cvar _, _, _, c, _ => Cls.Kind.contains_top c
+  | .name _ _, _, _, c, _ => Cls.Kind.contains_top c
+  | .proj a φ, b, hb, c, hc => by
+      rw [Ctx.capsAtom_proj] at hb
+      obtain ⟨d, hd, rfl⟩ := List.mem_map.mp hb
+      show (φ.interB a.kindOf).containsB c = true
+      rw [Cls.Kind.contains_inter, Bool.and_eq_true]
+      have h : (φ.interB d.kindOf).containsB c = true := hc
+      rw [Cls.Kind.contains_inter, Bool.and_eq_true] at h
+      exact ⟨h.1, Ctx.capsAtom_kindOf Γ n a d hd c h.2⟩
 
 /-- A capture name with no fuel left resolves to the empty set. -/
 @[simp] theorem Ctx.capsAtom_name_zero (Γ : Ctx s) (x : BVar s .var) (ℓ : Label) :
@@ -693,17 +726,20 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
           have hat : ∀ a : CapAtom [],
               (Ctx.nil.capsAtom 0 a).Subset (Ctx.nil.capsAtom 1 a) := by
             intro a
-            cases a with
+            induction a with
             | top => intro c hc; simpa using hc
             | var x => cases x
             | cvar κ => cases κ
             | name x ℓ => cases x
+            | proj a φ ih =>
+                simp only [Ctx.capsAtom_proj]
+                exact CaptureSet.Subset.mapProj ih φ
           exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
       | cons Γ b ih =>
           have hat : ∀ a,
               ((Ctx.cons Γ b).capsAtom 0 a).Subset ((Ctx.cons Γ b).capsAtom 1 a) := by
             intro a
-            cases a with
+            induction a with
             | top => intro c hc; simpa using hc
             | var y =>
                 cases y with
@@ -714,12 +750,15 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
                 | there κ => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
             | name x ℓ =>
                 intro c hc; rw [Ctx.capsAtom_name_zero] at hc; simp at hc
+            | proj a φ iha =>
+                simp only [Ctx.capsAtom_proj]
+                exact CaptureSet.Subset.mapProj iha φ
           exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
       | consC Γ b ih =>
           have hat : ∀ a,
               ((Ctx.consC Γ b).capsAtom 0 a).Subset ((Ctx.consC Γ b).capsAtom 1 a) := by
             intro a
-            cases a with
+            induction a with
             | top => intro c hc; simpa using hc
             | var y =>
                 cases y with
@@ -730,11 +769,15 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
                     cases b with
                     | root => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
                     | star => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
+                    | cls c₀ => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
                     | upper C => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
                     | inst C => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
                 | there κ => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
             | name x ℓ =>
                 intro c hc; rw [Ctx.capsAtom_name_zero] at hc; simp at hc
+            | proj a φ iha =>
+                simp only [Ctx.capsAtom_proj]
+                exact CaptureSet.Subset.mapProj iha φ
           exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
   | succ n ihn =>
       intro s Γ
@@ -743,18 +786,21 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
           have hat : ∀ a : CapAtom [],
               (Ctx.nil.capsAtom (n + 1) a).Subset (Ctx.nil.capsAtom (n + 1 + 1) a) := by
             intro a
-            cases a with
+            induction a with
             | top => intro c hc; simpa using hc
             | var x => cases x
             | cvar κ => cases κ
             | name x ℓ => cases x
+            | proj a φ ih =>
+                simp only [Ctx.capsAtom_proj]
+                exact CaptureSet.Subset.mapProj ih φ
           exact ⟨hat, Ctx.caps_of_capsAtom hat⟩
       | cons Γ b ih =>
           have hat : ∀ a,
               ((Ctx.cons Γ b).capsAtom (n + 1) a).Subset
                 ((Ctx.cons Γ b).capsAtom (n + 1 + 1) a) := by
             intro a
-            cases a with
+            induction a with
             | top => intro c hc; simpa using hc
             | var y =>
                 cases y with
@@ -763,6 +809,9 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
             | cvar κ =>
                 cases κ with
                 | there κ => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | proj a φ iha =>
+                simp only [Ctx.capsAtom_proj]
+                exact CaptureSet.Subset.mapProj iha φ
             | name x ℓ =>
                 cases h : (Ctx.cons Γ b).lookupDefC x ℓ with
                 | none =>
@@ -779,7 +828,7 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
               ((Ctx.consC Γ b).capsAtom (n + 1) a).Subset
                 ((Ctx.consC Γ b).capsAtom (n + 1 + 1) a) := by
             intro a
-            cases a with
+            induction a with
             | top => intro c hc; simpa using hc
             | var y =>
                 cases y with
@@ -790,9 +839,13 @@ theorem Ctx.caps_succ_aux (n : Nat) : ∀ {s : Sig} (Γ : Ctx s),
                     cases b with
                     | root => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
                     | star => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
+                    | cls c₀ => intro c hc; simp only [Ctx.capsAtom] at hc ⊢; exact hc
                     | upper C => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
                     | inst C => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.2 _)
                 | there κ => simp only [Ctx.capsAtom]; exact CaptureSet.Subset.weaken (ih.1 _)
+            | proj a φ iha =>
+                simp only [Ctx.capsAtom_proj]
+                exact CaptureSet.Subset.mapProj iha φ
             | name x ℓ =>
                 cases h : (Ctx.consC Γ b).lookupDefC x ℓ with
                 | none =>
@@ -841,8 +894,8 @@ theorem Ctx.caps_weaken_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : Binding 
       have hatom : ∀ a : CapAtom s,
           (Ctx.cons Γ b).capsAtom 0 a.weaken = (Γ.capsAtom 0 a).weaken := by
         intro a
-        cases a <;> simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
-          CaptureSet.rename, Ctx.capsAtom]
+        induction a <;> simp_all [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+          CaptureSet.rename, Ctx.capsAtom, List.map_map, Function.comp_def]
       refine ⟨hatom, ?_⟩
       intro C
       induction C with
@@ -857,7 +910,7 @@ theorem Ctx.caps_weaken_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : Binding 
       have hatom : ∀ a : CapAtom s,
           (Ctx.cons Γ b).capsAtom (n + 1) a.weaken = (Γ.capsAtom (n + 1) a).weaken := by
         intro a
-        cases a with
+        induction a with
         | top =>
             simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
               CaptureSet.rename]
@@ -867,6 +920,11 @@ theorem Ctx.caps_weaken_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : Binding 
         | cvar κ =>
             simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
               CaptureSet.rename, Ctx.capsAtom]
+        | proj a φ iha =>
+            show (Ctx.cons Γ b).capsAtom (n + 1) ((a.weaken) ↾ φ) = _
+            rw [Ctx.capsAtom_proj, iha, Ctx.capsAtom_proj]
+            simp [CaptureSet.weaken, CaptureSet.rename, List.map_map, Function.comp_def,
+              CapAtom.rename]
         | name x ℓ =>
             have hw : (CapAtom.name x ℓ).weaken (k := .var) = .name (.there x) ℓ := rfl
             rw [hw]
@@ -901,8 +959,8 @@ theorem Ctx.caps_weakenC_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : CapBoun
       have hatom : ∀ a : CapAtom s,
           (Ctx.consC Γ b).capsAtom 0 a.weaken = (Γ.capsAtom 0 a).weaken := by
         intro a
-        cases a <;> simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
-          CaptureSet.rename, Ctx.capsAtom]
+        induction a <;> simp_all [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
+          CaptureSet.rename, Ctx.capsAtom, List.map_map, Function.comp_def]
       refine ⟨hatom, ?_⟩
       intro C
       induction C with
@@ -917,7 +975,7 @@ theorem Ctx.caps_weakenC_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : CapBoun
       have hatom : ∀ a : CapAtom s,
           (Ctx.consC Γ b).capsAtom (n + 1) a.weaken = (Γ.capsAtom (n + 1) a).weaken := by
         intro a
-        cases a with
+        induction a with
         | top =>
             simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
               CaptureSet.rename]
@@ -927,6 +985,11 @@ theorem Ctx.caps_weakenC_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (b : CapBoun
         | cvar κ =>
             simp [CapAtom.weaken, CapAtom.rename, CaptureSet.weaken,
               CaptureSet.rename, Ctx.capsAtom]
+        | proj a φ iha =>
+            show (Ctx.consC Γ b).capsAtom (n + 1) ((a.weaken) ↾ φ) = _
+            rw [Ctx.capsAtom_proj, iha, Ctx.capsAtom_proj]
+            simp [CaptureSet.weaken, CaptureSet.rename, List.map_map, Function.comp_def,
+              CapAtom.rename]
         | name x ℓ =>
             have hw : (CapAtom.name x ℓ).weaken (k := .cap) = .name (.there x) ℓ := rfl
             rw [hw]
@@ -992,6 +1055,7 @@ def Ctx.capsBound (Γ : Ctx s) (n : Nat) (κ : BVar s .cap) : CapBound s → Cap
   | .star => [.cvar κ]
   | .upper C => Γ.caps n C
   | .inst C => Γ.caps n C
+  | .cls _ => [.cvar κ]
 
 theorem Ctx.capsBound_weaken (Γ : Ctx s) (b : Binding s) (n : Nat) (κ : BVar s .cap)
     (β : CapBound s) :
@@ -999,6 +1063,7 @@ theorem Ctx.capsBound_weaken (Γ : Ctx s) (b : Binding s) (n : Nat) (κ : BVar s
   cases β with
   | root => rfl
   | star => rfl
+  | cls c => rfl
   | upper C => exact Ctx.caps_weaken Γ b n C
   | inst C => exact Ctx.caps_weaken Γ b n C
 
@@ -1008,6 +1073,7 @@ theorem Ctx.capsBound_weakenC (Γ : Ctx s) (b : CapBound s) (n : Nat) (κ : BVar
   cases β with
   | root => rfl
   | star => rfl
+  | cls c => rfl
   | upper C => exact Ctx.caps_weakenC Γ b n C
   | inst C => exact Ctx.caps_weakenC Γ b n C
 
@@ -1020,6 +1086,7 @@ theorem Ctx.capsAtom_cvar : ∀ {s : Sig} (Γ : Ctx s) (n : Nat) (κ : BVar s .c
       cases β with
       | root => simp [Ctx.capsAtom, Ctx.capsBound, CapBound.weaken, CapBound.rename]
       | star => simp [Ctx.capsAtom, Ctx.capsBound, CapBound.weaken, CapBound.rename]
+      | cls c₀ => simp [Ctx.capsAtom, Ctx.capsBound, CapBound.weaken, CapBound.rename]
       | upper C => rw [Ctx.capsAtom]; exact (Ctx.caps_weakenC Γ _ n C).symm
       | inst C => rw [Ctx.capsAtom]; exact (Ctx.caps_weakenC Γ _ n C).symm
   | _, .cons Γ b, n, .there κ => by
@@ -1077,28 +1144,83 @@ theorem Ctx.mem_capBinders {s : Sig} (Γ : Ctx s) : ∀ κ : BVar s .cap, κ ∈
           simp only [Ctx.capBinders_consC, List.mem_cons, List.mem_map]
           exact Or.inr ⟨κ₀, ih κ₀, rfl⟩
 
-/-- Expansion of one atom.  A root opens into the universal root and every
-opaque binder at its level or outside it.  Everything else stands for
-itself. -/
-def Ctx.expandAtom (Γ : Ctx s) (a : CapAtom s) : CaptureSet s :=
-  if Γ.isRootB a then
-    CapAtom.top :: (Γ.capBinders.filter fun κ =>
-        (Γ.lookupCap κ).opaque && Γ.lvlLeB (.cvar κ) a).map CapAtom.cvar
-  else [a]
+/-- Expansion of one atom.  A projection is expanded and then filtered by
+the kind it carries: this is the one place a kind is read, and it is the
+last thing that happens, so nothing re-opens what a filter admitted.  A root
+opens into the universal root and every opaque binder at its level or
+outside it.  Everything else stands for itself. -/
+def Ctx.expandAtom (Γ : Ctx s) : CapAtom s → CaptureSet s
+  | .proj a φ => (Γ.expandAtom a).filter (fun b => Γ.admitsB b φ)
+  | a =>
+    if Γ.isRootB a then
+      CapAtom.top :: (Γ.capBinders.filter fun κ =>
+          (Γ.lookupCap κ).opaque && Γ.lvlLeB (.cvar κ) a).map CapAtom.cvar
+    else [a]
 
 /-- Expansion of a capture set. -/
 def Ctx.expand (Γ : Ctx s) (C : CaptureSet s) : CaptureSet s := C.flatMap Γ.expandAtom
 
+/-- **L1.**  Expansion consumes a projection as a filter. -/
+@[simp] theorem Ctx.expandAtom_proj (Γ : Ctx s) (a : CapAtom s) (φ : Cls.Kind) :
+    Γ.expandAtom (a ↾ φ) = (Γ.expandAtom a).filter (fun b => Γ.admitsB b φ) := rfl
+
+/-- Two filters in a row are one filter by the conjunction. -/
+theorem CaptureSet.filter_filter (p q : CapAtom s → Bool) :
+    ∀ l : CaptureSet s, (l.filter p).filter q = l.filter (fun b => p b && q b)
+  | [] => rfl
+  | b :: l => by
+      by_cases hp : p b = true <;> by_cases hq : q b = true <;>
+        simp [List.filter_cons, hp, hq, CaptureSet.filter_filter p q l]
+
+theorem CaptureSet.filter_congr' (p q : CapAtom s → Bool) (h : ∀ b, p b = q b) :
+    ∀ l : CaptureSet s, l.filter p = l.filter q
+  | [] => rfl
+  | b :: l => by simp [List.filter_cons, h b, CaptureSet.filter_congr' p q h l]
+
+/-- **L2.**  And expansion consumes the smart constructor the same way.  The
+one use of the kind algebra in the stage: an intersection admits exactly what
+both sides admit. -/
+theorem Ctx.expandAtom_projBy (Γ : Ctx s) (a : CapAtom s) (φ : Cls.Kind) :
+    Γ.expandAtom (CapAtom.projBy φ a) = (Γ.expandAtom a).filter (fun b => Γ.admitsB b φ) := by
+  cases a with
+  | top | var _ | cvar _ | name _ _ => rfl
+  | proj c ψ =>
+      show (Γ.expandAtom c).filter (fun b => (φ.interB ψ).containsB (Γ.classOf b))
+        = ((Γ.expandAtom c).filter (fun b => ψ.containsB (Γ.classOf b))).filter _
+      rw [CaptureSet.filter_filter]
+      refine CaptureSet.filter_congr' _ _ (fun b => ?_) _
+      show (φ.interB ψ).containsB (Γ.classOf b)
+        = (ψ.containsB (Γ.classOf b) && φ.containsB (Γ.classOf b))
+      rw [Cls.Kind.contains_inter, Bool.and_comm]
+
+/-- The old body of expansion, at every atom that is its own base. -/
+theorem Ctx.expandAtom_of_not_proj {Γ : Ctx s} : ∀ {a : CapAtom s}, a.base = a →
+    Γ.expandAtom a = if Γ.isRootB a then
+        CapAtom.top :: (Γ.capBinders.filter fun κ =>
+          (Γ.lookupCap κ).opaque && Γ.lvlLeB (.cvar κ) a).map CapAtom.cvar
+      else [a]
+  | .top, _ => rfl
+  | .var _, _ => rfl
+  | .cvar _, _ => rfl
+  | .name _ _, _ => rfl
+  | .proj a φ, h => absurd h (CapAtom.base_ne_proj a a φ)
+
+/-- A root is its own base: a projection is never a root. -/
+theorem Ctx.base_of_isRootB {Γ : Ctx s} : ∀ {r : CapAtom s}, Γ.isRootB r = true → r.base = r
+  | .top, _ => rfl
+  | .var _, _ => rfl
+  | .cvar _, _ => rfl
+  | .name _ _, _ => rfl
+  | .proj _ _, h => by simp [Ctx.isRootB] at h
+
 theorem Ctx.expandAtom_of_root {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r) :
     Γ.expandAtom r = CapAtom.top :: (Γ.capBinders.filter fun κ =>
         (Γ.lookupCap κ).opaque && Γ.lvlLeB (.cvar κ) r).map CapAtom.cvar := by
-  unfold Ctx.expandAtom
-  rw [if_pos hr]
+  rw [Ctx.expandAtom_of_not_proj (Ctx.base_of_isRootB hr), if_pos hr]
 
-theorem Ctx.expandAtom_of_not_root {Γ : Ctx s} {a : CapAtom s} (ha : Γ.isRootB a = false) :
-    Γ.expandAtom a = [a] := by
-  unfold Ctx.expandAtom
-  rw [if_neg (by simp [ha])]
+theorem Ctx.expandAtom_of_not_root {Γ : Ctx s} {a : CapAtom s} (ha : Γ.isRootB a = false)
+    (hb : a.base = a) : Γ.expandAtom a = [a] := by
+  rw [Ctx.expandAtom_of_not_proj hb, if_neg (by simp [ha])]
 
 /-- The universal root is in the expansion of every root. -/
 theorem Ctx.top_mem_expandAtom {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r) :
@@ -1126,22 +1248,128 @@ theorem Ctx.mem_expandAtom_root {Γ : Ctx s} {r a : CapAtom s} (hr : Γ.IsRoot r
     rw [Bool.and_eq_true] at hp
     exact Or.inr ⟨κ, rfl, hp.1, hp.2⟩
 
+/-- **L5.**  Expansion produces projection-free atoms, which is Fact 4: the
+three layers above `Ctx.expandAtom` never see a projection. -/
+theorem Ctx.expandAtom_base_of_not_proj {Γ : Ctx s} {a : CapAtom s} (hb : a.base = a) :
+    ∀ b ∈ Γ.expandAtom a, b.base = b := by
+  rw [Ctx.expandAtom_of_not_proj hb]
+  split
+  · intro b hb'
+    rcases List.mem_cons.mp hb' with rfl | hb'
+    · rfl
+    · obtain ⟨κ, _, rfl⟩ := List.mem_map.mp hb'; rfl
+  · intro b hb'
+    rw [List.mem_singleton.mp hb']
+    exact hb
+
+theorem Ctx.expandAtom_base (Γ : Ctx s) : ∀ (a : CapAtom s), ∀ b ∈ Γ.expandAtom a, b.base = b
+  | .top => Ctx.expandAtom_base_of_not_proj rfl
+  | .var _ => Ctx.expandAtom_base_of_not_proj rfl
+  | .cvar _ => Ctx.expandAtom_base_of_not_proj rfl
+  | .name _ _ => Ctx.expandAtom_base_of_not_proj rfl
+  | .proj a φ => fun b hb => Γ.expandAtom_base a b (List.mem_filter.mp hb).1
+
+/-- An expansion is a sublist of the expansion of the base, because every
+projection is consumed as a filter.  This is L1 iterated. -/
+theorem Ctx.mem_expandAtom_base (Γ : Ctx s) :
+    ∀ (a : CapAtom s), ∀ b ∈ Γ.expandAtom a, b ∈ Γ.expandAtom a.base
+  | .top, _, h => h
+  | .var _, _, h => h
+  | .cvar _, _, h => h
+  | .name _ _, _, h => h
+  | .proj a φ, b, hb => Γ.mem_expandAtom_base a b (List.mem_filter.mp hb).1
+
+theorem Ctx.expandAtom_subset_base (Γ : Ctx s) (a : CapAtom s) :
+    (Γ.expandAtom a).Subset (Γ.expandAtom a.base) := by
+  intro b hb
+  exact Γ.mem_expandAtom_base a b hb
+
+/-- **L4.**  Every atom an expansion produces is admitted by the kind the
+atom it came from carried.  At a bare atom that kind is `⊤`. -/
+theorem Ctx.expandAtom_kinded (Γ : Ctx s) : ∀ (a : CapAtom s),
+    ∀ b ∈ Γ.expandAtom a, a.kindOf.Contains (Γ.classOf b)
+  | .top, b, _ => Cls.Kind.contains_top (Γ.classOf b)
+  | .var _, b, _ => Cls.Kind.contains_top (Γ.classOf b)
+  | .cvar _, b, _ => Cls.Kind.contains_top (Γ.classOf b)
+  | .name _ _, b, _ => Cls.Kind.contains_top (Γ.classOf b)
+  | .proj a φ, b, hb => by
+      have h := List.mem_filter.mp hb
+      show (φ.interB a.kindOf).containsB (Γ.classOf b) = true
+      rw [Cls.Kind.contains_inter, Bool.and_eq_true]
+      exact ⟨h.2, Γ.expandAtom_kinded a b h.1⟩
+
+/-- Expansion of an atom whose base is not a root: the base, when the kind
+the atom carries admits it, and nothing at all when it does not. -/
+theorem CapAtom.kindOf_of_base : ∀ {a : CapAtom s}, a.base = a → a.kindOf = Cls.Kind.top
+  | .top, _ => rfl
+  | .var _, _ => rfl
+  | .cvar _, _ => rfl
+  | .name _ _, _ => rfl
+  | .proj a φ, h => absurd h (CapAtom.base_ne_proj a a φ)
+
+theorem Ctx.expandAtom_of_base_not_root_aux {Γ : Ctx s} {a : CapAtom s} (hb : a.base = a)
+    (h : Γ.isRootB a.base = false) :
+    Γ.expandAtom a = if Γ.admitsB a.base a.kindOf then [a.base] else [] := by
+  have hk : Γ.admitsB a.base a.kindOf = true := by
+    rw [CapAtom.kindOf_of_base hb]
+    exact Cls.Kind.contains_top _
+  rw [if_pos hk, hb]
+  exact Ctx.expandAtom_of_not_root (by rwa [hb] at h) hb
+
+theorem Ctx.expandAtom_of_base_not_root {Γ : Ctx s} : ∀ {a : CapAtom s},
+    Γ.isRootB a.base = false →
+      Γ.expandAtom a = if Γ.admitsB a.base a.kindOf then [a.base] else []
+  | .top, h => Ctx.expandAtom_of_base_not_root_aux rfl h
+  | .var _, h => Ctx.expandAtom_of_base_not_root_aux rfl h
+  | .cvar _, h => Ctx.expandAtom_of_base_not_root_aux rfl h
+  | .name _ _, h => Ctx.expandAtom_of_base_not_root_aux rfl h
+  | .proj a φ, h => by
+      have hi : Γ.admitsB a.base (φ.interB a.kindOf)
+          = (Γ.admitsB a.base a.kindOf && Γ.admitsB a.base φ) := by
+        show (φ.interB a.kindOf).containsB (Γ.classOf a.base)
+          = (a.kindOf.containsB (Γ.classOf a.base) && φ.containsB (Γ.classOf a.base))
+        rw [Cls.Kind.contains_inter, Bool.and_comm]
+      show (Γ.expandAtom a).filter (fun b => Γ.admitsB b φ)
+        = if Γ.admitsB a.base (φ.interB a.kindOf) then [a.base] else []
+      rw [Ctx.expandAtom_of_base_not_root (a := a) h, hi]
+      cases hk : Γ.admitsB a.base a.kindOf with
+      | false => simp [hk]
+      | true =>
+          cases hp : Γ.admitsB a.base φ with
+          | false => simp [hk, hp, List.filter_cons]
+          | true => simp [hk, hp, List.filter_cons]
+
 /-- An atom is in its own expansion: `⊤ᶜ` heads its own, a root is its own
-level, and everything else expands to its singleton. -/
-theorem Ctx.mem_expandAtom_self (Γ : Ctx s) (a : CapAtom s) : a ∈ Γ.expandAtom a := by
+level, and everything else expands to its singleton.  A projection contributes
+its base, and only when the kind it carries admits it. -/
+theorem Ctx.mem_expandAtom_self_of_not_proj {Γ : Ctx s} {a : CapAtom s} (hb : a.base = a) :
+    a ∈ Γ.expandAtom a := by
   cases h : Γ.isRootB a with
   | false =>
-      rw [Ctx.expandAtom_of_not_root h]
+      rw [Ctx.expandAtom_of_not_root h hb]
       exact List.mem_cons_self ..
   | true =>
       cases a with
       | top => exact Ctx.top_mem_expandAtom h
       | var x => simp [Ctx.isRootB] at h
       | name x ℓ => simp [Ctx.isRootB] at h
+      | proj a φ => simp [Ctx.isRootB] at h
       | cvar κ =>
           have hroot : (Γ.lookupCap κ).isRoot = true := by simpa [Ctx.isRootB] using h
           exact Ctx.cvar_mem_expandAtom h (CapBound.opaque_of_isRoot hroot)
             (Ctx.LvlLe.refl_of_root h)
+
+theorem Ctx.mem_expandAtom_self (Γ : Ctx s) : ∀ (a : CapAtom s),
+    Γ.admitsB a.base a.kindOf = true → a.base ∈ Γ.expandAtom a
+  | .top, _ => Ctx.mem_expandAtom_self_of_not_proj rfl
+  | .var _, _ => Ctx.mem_expandAtom_self_of_not_proj rfl
+  | .cvar _, _ => Ctx.mem_expandAtom_self_of_not_proj rfl
+  | .name _ _, _ => Ctx.mem_expandAtom_self_of_not_proj rfl
+  | .proj a φ, h => by
+      have h' : (φ.interB a.kindOf).containsB (Γ.classOf a.base) = true := h
+      rw [Cls.Kind.contains_inter, Bool.and_eq_true] at h'
+      show a.base ∈ (Γ.expandAtom a).filter (fun b => Γ.admitsB b φ)
+      exact List.mem_filter.mpr ⟨Γ.mem_expandAtom_self a h'.2, h'.1⟩
 
 @[simp] theorem Ctx.expand_nil (Γ : Ctx s) : Γ.expand ([] : CaptureSet s) = [] := by
   simp [Ctx.expand]
@@ -1167,19 +1395,84 @@ theorem Ctx.expand_subset {Γ : Ctx s} {C D : CaptureSet s} (h : C.Subset D) :
   rcases Ctx.mem_expand.mp ha with ⟨b, hb, hab⟩
   exact Ctx.mem_expand.mpr ⟨b, h b hb, hab⟩
 
-/-- A set is contained in its own expansion. -/
-theorem Ctx.subset_expand (Γ : Ctx s) (C : CaptureSet s) : C.Subset (Γ.expand C) := by
+/-- A set is contained in its own expansion, by the bases of the atoms its
+own kinds admit. -/
+theorem Ctx.subset_expand (Γ : Ctx s) (C : CaptureSet s)
+    (h : ∀ a ∈ C, Γ.admitsB a.base a.kindOf = true) :
+    ∀ a ∈ C, a.base ∈ Γ.expand C := by
   intro a ha
-  exact Ctx.mem_expand.mpr ⟨a, ha, Γ.mem_expandAtom_self a⟩
+  exact Ctx.mem_expand.mpr ⟨a, ha, Γ.mem_expandAtom_self a (h a ha)⟩
 
-/-- A set of non-roots is its own expansion. -/
+/-- A set of non-roots that carries no projection is its own expansion. -/
 theorem Ctx.expand_eq_self {Γ : Ctx s} : ∀ {C : CaptureSet s},
-    (∀ a ∈ C, Γ.isRootB a = false) → Γ.expand C = C
-  | [], _ => by simp
-  | a :: C, h => by
-      rw [Ctx.expand_cons, Ctx.expandAtom_of_not_root (h a (List.mem_cons_self ..)),
-        Ctx.expand_eq_self (fun c hc => h c (List.mem_cons_of_mem a hc))]
+    (∀ a ∈ C, Γ.isRootB a = false) → (∀ a ∈ C, a.base = a) → Γ.expand C = C
+  | [], _, _ => by simp
+  | a :: C, h, hb => by
+      rw [Ctx.expand_cons,
+        Ctx.expandAtom_of_not_root (h a (List.mem_cons_self ..)) (hb a (List.mem_cons_self ..)),
+        Ctx.expand_eq_self (fun c hc => h c (List.mem_cons_of_mem a hc))
+          (fun c hc => hb c (List.mem_cons_of_mem a hc))]
       rfl
+
+/-- A set whose atoms all have a non-root base expands to the bases its own
+kinds admit.  This is the shape `Ctx.roots_eq_caps_of_rootFree` needs. -/
+theorem Ctx.expand_eq_filter_base {Γ : Ctx s} : ∀ {L : CaptureSet s},
+    (∀ a ∈ L, Γ.isRootB a.base = false) →
+      Γ.expand L = (L.filter (fun a => Γ.admitsB a.base a.kindOf)).map CapAtom.base
+  | [], _ => rfl
+  | a :: L, h => by
+      rw [Ctx.expand_cons, Ctx.expandAtom_of_base_not_root (h a (List.mem_cons_self ..)),
+        Ctx.expand_eq_filter_base (fun b hb => h b (List.mem_cons_of_mem a hb))]
+      cases hk : Γ.admitsB a.base a.kindOf with
+      | true => simp [hk, List.filter_cons]
+      | false => simp [hk, List.filter_cons]
+
+/-- Every kind admits an atom that is its own base, because such an atom
+carries the root kind `⊤`. -/
+@[simp] theorem Ctx.admitsB_top (Γ : Ctx s) (a : CapAtom s) :
+    Γ.admitsB a Cls.Kind.top = true := Cls.Kind.contains_top _
+
+/-- On a set of atoms that are their own base the filter of
+`Ctx.roots_eq_caps_of_rootFree` admits everything and `base` is the identity,
+so the right hand side of that equation is the set itself. -/
+theorem Ctx.filter_map_base_eq_self {Γ : Ctx s} : ∀ {L : CaptureSet s},
+    (∀ a ∈ L, a.base = a) →
+      (L.filter (fun a => Γ.admitsB a.base a.kindOf)).map CapAtom.base = L
+  | [], _ => rfl
+  | a :: L, h => by
+      have ha : a.base = a := h a (List.mem_cons_self ..)
+      have hk : Γ.admitsB a a.kindOf = true := by
+        rw [CapAtom.kindOf_of_base ha]
+        exact Γ.admitsB_top a
+      have ih := Ctx.filter_map_base_eq_self (Γ := Γ)
+        (fun b hb => h b (List.mem_cons_of_mem a hb))
+      simp [List.filter_cons, ha, hk, ih]
+
+/-- A capture bound keeps its classifier under a renaming, which is Fact 1. -/
+@[simp] theorem CapBound.classifier_rename (b : CapBound s1) (ρ : Rename s1 s2) :
+    (b.rename ρ).classifier = b.classifier := by cases b <;> rfl
+
+@[simp] theorem CapBound.classifier_weaken (b : CapBound s) :
+    (CapBound.weaken (k := k) b).classifier = b.classifier :=
+  CapBound.classifier_rename b _
+
+/-- And so an atom keeps its classifier, and every kind admits it as before. -/
+@[simp] theorem Ctx.classOf_weaken (Γ : Ctx s) (b : Binding s) (a : CapAtom s) :
+    (Γ.cons b).classOf (CapAtom.weaken (k := .var) a) = Γ.classOf a := by
+  cases a <;> simp [Ctx.classOf, CapAtom.weaken, CapAtom.rename, Ctx.lookupCap_there]
+
+@[simp] theorem Ctx.classOf_weakenC (Γ : Ctx s) (b : CapBound s) (a : CapAtom s) :
+    (Γ.consC b).classOf (CapAtom.weaken (k := .cap) a) = Γ.classOf a := by
+  cases a <;> simp [Ctx.classOf, CapAtom.weaken, CapAtom.rename, Ctx.lookupCap_thereC]
+
+@[simp] theorem Ctx.admitsB_weaken (Γ : Ctx s) (b : Binding s) (a : CapAtom s) (φ : Cls.Kind) :
+    (Γ.cons b).admitsB (CapAtom.weaken (k := .var) a) φ = Γ.admitsB a φ := by
+  unfold Ctx.admitsB; rw [Ctx.classOf_weaken]
+
+@[simp] theorem Ctx.admitsB_weakenC (Γ : Ctx s) (b : CapBound s) (a : CapAtom s)
+    (φ : Cls.Kind) :
+    (Γ.consC b).admitsB (CapAtom.weaken (k := .cap) a) φ = Γ.admitsB a φ := by
+  unfold Ctx.admitsB; rw [Ctx.classOf_weakenC]
 
 /-! ### Expansion and weakening
 
@@ -1188,8 +1481,11 @@ binder is invisible only when its bound is not opaque: a rigid binder
 appended to a root-free context enlarges the expansion of `⊤ᶜ`, which is
 what a store is forbidden to do. -/
 
-theorem Ctx.expandAtom_weaken (Γ : Ctx s) (b : Binding s) (a : CapAtom s) :
+theorem Ctx.expandAtom_weaken_of_not_proj (Γ : Ctx s) (b : Binding s) {a : CapAtom s}
+    (hbase : a.base = a) :
     (Γ.cons b).expandAtom a.weaken = (Γ.expandAtom a).weaken := by
+  have hbw : (CapAtom.weaken (k := .var) a).base = a.weaken := by
+    rw [CapAtom.weaken, CapAtom.base_rename, hbase]
   by_cases h : Γ.isRootB a = true
   · have h' : (Γ.cons b).isRootB (CapAtom.weaken (k := .var) a) = true := by
       rw [Ctx.isRootB_weaken]; exact h
@@ -1206,12 +1502,30 @@ theorem Ctx.expandAtom_weaken (Γ : Ctx s) (b : Binding s) (a : CapAtom s) :
   · rw [Bool.not_eq_true] at h
     have h' : (Γ.cons b).isRootB (CapAtom.weaken (k := .var) a) = false := by
       rw [Ctx.isRootB_weaken]; exact h
-    rw [Ctx.expandAtom_of_not_root h', Ctx.expandAtom_of_not_root h]
+    rw [Ctx.expandAtom_of_not_root h' hbw, Ctx.expandAtom_of_not_root h hbase]
     rfl
 
-theorem Ctx.expandAtom_weakenC (Γ : Ctx s) (b : CapBound s) (hb : b.opaque = false)
-    (a : CapAtom s) :
+/-- A projection commutes because `Ctx.classOf` does, which is Fact 1. -/
+theorem Ctx.expandAtom_weaken (Γ : Ctx s) (b : Binding s) : ∀ (a : CapAtom s),
+    (Γ.cons b).expandAtom a.weaken = (Γ.expandAtom a).weaken
+  | .top => Ctx.expandAtom_weaken_of_not_proj Γ b rfl
+  | .var _ => Ctx.expandAtom_weaken_of_not_proj Γ b rfl
+  | .cvar _ => Ctx.expandAtom_weaken_of_not_proj Γ b rfl
+  | .name _ _ => Ctx.expandAtom_weaken_of_not_proj Γ b rfl
+  | .proj a φ => by
+      show ((Γ.cons b).expandAtom a.weaken).filter (fun c => (Γ.cons b).admitsB c φ) = _
+      rw [Ctx.expandAtom_weaken Γ b a]
+      show ((Γ.expandAtom a).map (fun c => c.rename Rename.succ)).filter _
+        = ((Γ.expandAtom a).filter (fun c => Γ.admitsB c φ)).map (fun c => c.rename Rename.succ)
+      rw [filter_of_map]
+      exact congrArg (List.map _)
+        (CaptureSet.filter_congr' _ _ (fun c => Ctx.admitsB_weaken Γ b c φ) _)
+
+theorem Ctx.expandAtom_weakenC_of_not_proj (Γ : Ctx s) (b : CapBound s)
+    (hb : b.opaque = false) {a : CapAtom s} (hbase : a.base = a) :
     (Γ.consC b).expandAtom a.weaken = (Γ.expandAtom a).weaken := by
+  have hbw : (CapAtom.weaken (k := .cap) a).base = a.weaken := by
+    rw [CapAtom.weaken, CapAtom.base_rename, hbase]
   by_cases h : Γ.isRootB a = true
   · have h' : (Γ.consC b).isRootB (CapAtom.weaken (k := .cap) a) = true := by
       rw [Ctx.isRootB_weakenC]; exact h
@@ -1231,8 +1545,23 @@ theorem Ctx.expandAtom_weakenC (Γ : Ctx s) (b : CapBound s) (hb : b.opaque = fa
   · rw [Bool.not_eq_true] at h
     have h' : (Γ.consC b).isRootB (CapAtom.weaken (k := .cap) a) = false := by
       rw [Ctx.isRootB_weakenC]; exact h
-    rw [Ctx.expandAtom_of_not_root h', Ctx.expandAtom_of_not_root h]
+    rw [Ctx.expandAtom_of_not_root h' hbw, Ctx.expandAtom_of_not_root h hbase]
     rfl
+
+theorem Ctx.expandAtom_weakenC (Γ : Ctx s) (b : CapBound s) (hb : b.opaque = false) :
+    ∀ (a : CapAtom s), (Γ.consC b).expandAtom a.weaken = (Γ.expandAtom a).weaken
+  | .top => Ctx.expandAtom_weakenC_of_not_proj Γ b hb rfl
+  | .var _ => Ctx.expandAtom_weakenC_of_not_proj Γ b hb rfl
+  | .cvar _ => Ctx.expandAtom_weakenC_of_not_proj Γ b hb rfl
+  | .name _ _ => Ctx.expandAtom_weakenC_of_not_proj Γ b hb rfl
+  | .proj a φ => by
+      show ((Γ.consC b).expandAtom a.weaken).filter (fun c => (Γ.consC b).admitsB c φ) = _
+      rw [Ctx.expandAtom_weakenC Γ b hb a]
+      show ((Γ.expandAtom a).map (fun c => c.rename Rename.succ)).filter _
+        = ((Γ.expandAtom a).filter (fun c => Γ.admitsB c φ)).map (fun c => c.rename Rename.succ)
+      rw [filter_of_map]
+      exact congrArg (List.map _)
+        (CaptureSet.filter_congr' _ _ (fun c => Ctx.admitsB_weakenC Γ b c φ) _)
 
 theorem Ctx.expand_weaken (Γ : Ctx s) (b : Binding s) : ∀ C : CaptureSet s,
     (Γ.cons b).expand C.weaken = (Γ.expand C).weaken
@@ -1262,7 +1591,8 @@ theorem Ctx.expandAtom_mono {Γ : Ctx s} {a r : CapAtom s} (hr : Γ.IsRoot r)
   intro c hc
   cases hb : Γ.isRootB a with
   | false =>
-      rw [Ctx.expandAtom_of_not_root hb] at hc
+      rw [Ctx.expandAtom_of_not_root hb
+        (by rcases ha with rfl | ⟨κ, rfl, _⟩ <;> rfl)] at hc
       have hca : c = a := List.mem_singleton.mp hc
       subst hca
       rcases ha with rfl | ⟨κ, rfl, hop⟩
@@ -1280,18 +1610,20 @@ bound stands for itself.  A term binder resolves to the capture set of its
 type, a bounded capture binder to its bound, and both descend; only a root, a
 rigid binder and `⊤ᶜ` are leaves. -/
 
-/-- What an atom of a resolution can be. -/
+/-- What an atom of a resolution can be.  The disjunction reads the base of
+the atom: resolution carries a projection along, and what sits under it is
+`⊤ᶜ` or a capture binder whose bound is opaque, exactly as before. -/
 abbrev Ctx.OpaqueAtom (Γ : Ctx s) (c : CapAtom s) : Prop :=
-  c = .top ∨ ∃ κ, c = .cvar κ ∧ (Γ.lookupCap κ).opaque = true
+  c.base = .top ∨ ∃ κ, c.base = .cvar κ ∧ (Γ.lookupCap κ).opaque = true
 
 theorem Ctx.opaqueAtom_weaken {Γ : Ctx s} (b : Binding s) {L : CaptureSet s}
     {c : CapAtom (s,x)} (hL : ∀ c₀ ∈ L, Γ.OpaqueAtom c₀)
     (hc : c ∈ CaptureSet.weaken (k := .var) L) : (Γ.cons b).OpaqueAtom c := by
   simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at hc
   obtain ⟨c₀, hc₀, rfl⟩ := hc
-  rcases hL c₀ hc₀ with rfl | ⟨κ, rfl, hop⟩
-  · exact Or.inl rfl
-  · refine Or.inr ⟨.there κ, rfl, ?_⟩
+  rcases hL c₀ hc₀ with h0 | ⟨κ, h0, hop⟩
+  · exact Or.inl (by rw [CapAtom.base_rename, h0]; rfl)
+  · refine Or.inr ⟨.there κ, by rw [CapAtom.base_rename, h0]; rfl, ?_⟩
     rw [Ctx.lookupCap_there, CapBound.opaque_weaken]
     exact hop
 
@@ -1300,9 +1632,9 @@ theorem Ctx.opaqueAtom_weakenC {Γ : Ctx s} (b : CapBound s) {L : CaptureSet s}
     (hc : c ∈ CaptureSet.weaken (k := .cap) L) : (Γ.consC b).OpaqueAtom c := by
   simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at hc
   obtain ⟨c₀, hc₀, rfl⟩ := hc
-  rcases hL c₀ hc₀ with rfl | ⟨κ, rfl, hop⟩
-  · exact Or.inl rfl
-  · refine Or.inr ⟨.there κ, rfl, ?_⟩
+  rcases hL c₀ hc₀ with h0 | ⟨κ, h0, hop⟩
+  · exact Or.inl (by rw [CapAtom.base_rename, h0]; rfl)
+  · refine Or.inr ⟨.there κ, by rw [CapAtom.base_rename, h0]; rfl, ?_⟩
     rw [Ctx.lookupCap_thereC, CapBound.opaque_weaken]
     exact hop
 
@@ -1317,6 +1649,14 @@ theorem Ctx.caps_opaque_of_atom {Γ : Ctx s} {n : Nat}
       · exact h a c hc
       · exact Ctx.caps_opaque_of_atom h C c hc
 
+/-- The projection clause of the opacity lemma: the base of a projected atom
+is the base of the atom under it. -/
+theorem Ctx.opaqueAtom_proj {Γ : Ctx s} {L : CaptureSet s} {c : CapAtom s} {φ : Cls.Kind}
+    (hL : ∀ c₀ ∈ L, Γ.OpaqueAtom c₀) (hc : c ∈ L.map (CapAtom.proj · φ)) :
+    Γ.OpaqueAtom c := by
+  obtain ⟨d, hd, rfl⟩ := List.mem_map.mp hc
+  exact hL d hd
+
 theorem Ctx.capsAtom_opaque_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a c : CapAtom s),
     c ∈ Γ.capsAtom n a → Γ.OpaqueAtom c := by
   intro n
@@ -1326,19 +1666,25 @@ theorem Ctx.capsAtom_opaque_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a c : Ca
       induction Γ with
       | nil =>
           intro a c hc
-          cases a with
+          induction a generalizing c with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj] at hc
+              exact Ctx.opaqueAtom_proj (fun d hd => iha d hd) hc
           | var x => cases x
           | cvar κ => cases κ
           | name x ℓ => cases x
           | top =>
               rw [Ctx.capsAtom_top] at hc
-              exact Or.inl (List.mem_singleton.mp hc)
+              exact Or.inl (by rw [List.mem_singleton.mp hc]; rfl)
       | cons Γ b ih =>
           intro a c hc
-          cases a with
+          induction a generalizing c with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj] at hc
+              exact Ctx.opaqueAtom_proj (fun d hd => iha d hd) hc
           | top =>
               rw [Ctx.capsAtom_top] at hc
-              exact Or.inl (List.mem_singleton.mp hc)
+              exact Or.inl (by rw [List.mem_singleton.mp hc]; rfl)
           | name x ℓ => rw [Ctx.capsAtom_name_zero] at hc; simp at hc
           | var y =>
               cases y with
@@ -1355,10 +1701,13 @@ theorem Ctx.capsAtom_opaque_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a c : Ca
                   exact Ctx.opaqueAtom_weaken b (fun _ => ih (.cvar κ₀) _) hc
       | consC Γ b ih =>
           intro a c hc
-          cases a with
+          induction a generalizing c with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj] at hc
+              exact Ctx.opaqueAtom_proj (fun d hd => iha d hd) hc
           | top =>
               rw [Ctx.capsAtom_top] at hc
-              exact Or.inl (List.mem_singleton.mp hc)
+              exact Or.inl (by rw [List.mem_singleton.mp hc]; rfl)
           | name x ℓ => rw [Ctx.capsAtom_name_zero] at hc; simp at hc
           | var y =>
               cases y with
@@ -1371,10 +1720,13 @@ theorem Ctx.capsAtom_opaque_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a c : Ca
                   cases b with
                   | root =>
                       simp only [Ctx.capsAtom] at hc
-                      exact Or.inr ⟨.here, List.mem_singleton.mp hc, rfl⟩
+                      exact Or.inr ⟨.here, by rw [List.mem_singleton.mp hc]; rfl, rfl⟩
                   | star =>
                       simp only [Ctx.capsAtom] at hc
-                      exact Or.inr ⟨.here, List.mem_singleton.mp hc, rfl⟩
+                      exact Or.inr ⟨.here, by rw [List.mem_singleton.mp hc]; rfl, rfl⟩
+                  | cls c₀ =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Or.inr ⟨.here, by rw [List.mem_singleton.mp hc]; rfl, rfl⟩
                   | upper C =>
                       simp only [Ctx.capsAtom] at hc
                       exact Ctx.opaqueAtom_weakenC _ (Ctx.caps_opaque_of_atom ih _) hc
@@ -1389,19 +1741,25 @@ theorem Ctx.capsAtom_opaque_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a c : Ca
       induction Γ with
       | nil =>
           intro a c hc
-          cases a with
+          induction a generalizing c with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj] at hc
+              exact Ctx.opaqueAtom_proj (fun d hd => iha d hd) hc
           | var x => cases x
           | cvar κ => cases κ
           | name x ℓ => cases x
           | top =>
               rw [Ctx.capsAtom_top] at hc
-              exact Or.inl (List.mem_singleton.mp hc)
+              exact Or.inl (by rw [List.mem_singleton.mp hc]; rfl)
       | cons Γ b ih =>
           intro a c hc
-          cases a with
+          induction a generalizing c with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj] at hc
+              exact Ctx.opaqueAtom_proj (fun d hd => iha d hd) hc
           | top =>
               rw [Ctx.capsAtom_top] at hc
-              exact Or.inl (List.mem_singleton.mp hc)
+              exact Or.inl (by rw [List.mem_singleton.mp hc]; rfl)
           | name x ℓ =>
               cases hd : (Ctx.cons Γ b).lookupDefC x ℓ with
               | none => rw [Ctx.capsAtom_name_none hd] at hc; simp at hc
@@ -1423,10 +1781,13 @@ theorem Ctx.capsAtom_opaque_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a c : Ca
                   exact Ctx.opaqueAtom_weaken b (fun _ => ih (.cvar κ₀) _) hc
       | consC Γ b ih =>
           intro a c hc
-          cases a with
+          induction a generalizing c with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj] at hc
+              exact Ctx.opaqueAtom_proj (fun d hd => iha d hd) hc
           | top =>
               rw [Ctx.capsAtom_top] at hc
-              exact Or.inl (List.mem_singleton.mp hc)
+              exact Or.inl (by rw [List.mem_singleton.mp hc]; rfl)
           | name x ℓ =>
               cases hd : (Ctx.consC Γ b).lookupDefC x ℓ with
               | none => rw [Ctx.capsAtom_name_none hd] at hc; simp at hc
@@ -1444,10 +1805,13 @@ theorem Ctx.capsAtom_opaque_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a c : Ca
                   cases b with
                   | root =>
                       simp only [Ctx.capsAtom] at hc
-                      exact Or.inr ⟨.here, List.mem_singleton.mp hc, rfl⟩
+                      exact Or.inr ⟨.here, by rw [List.mem_singleton.mp hc]; rfl, rfl⟩
                   | star =>
                       simp only [Ctx.capsAtom] at hc
-                      exact Or.inr ⟨.here, List.mem_singleton.mp hc, rfl⟩
+                      exact Or.inr ⟨.here, by rw [List.mem_singleton.mp hc]; rfl, rfl⟩
+                  | cls c₀ =>
+                      simp only [Ctx.capsAtom] at hc
+                      exact Or.inr ⟨.here, by rw [List.mem_singleton.mp hc]; rfl, rfl⟩
                   | upper C =>
                       simp only [Ctx.capsAtom] at hc
                       exact Ctx.opaqueAtom_weakenC _ (Ctx.caps_opaque_of_atom ih _) hc
@@ -1458,10 +1822,11 @@ theorem Ctx.capsAtom_opaque_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a c : Ca
                   simp only [Ctx.capsAtom] at hc
                   exact Ctx.opaqueAtom_weakenC b (fun _ => ih (.cvar κ₀) _) hc
 
-/-- Resolution lands in opaque atoms. -/
+/-- Resolution lands in opaque atoms.  The disjunction reads `a.base`, which
+is `a` itself on every atom the copied representation could build. -/
 theorem Ctx.caps_opaque {Γ : Ctx s} {n : Nat} {C : CaptureSet s} {a : CapAtom s}
     (h : a ∈ Γ.caps n C) :
-    a = .top ∨ ∃ κ, a = .cvar κ ∧ (Γ.lookupCap κ).opaque = true :=
+    a.base = .top ∨ ∃ κ, a.base = .cvar κ ∧ (Γ.lookupCap κ).opaque = true :=
   Ctx.caps_opaque_of_atom (Ctx.capsAtom_opaque_aux n Γ) C a h
 
 /-! ### Resolution keeps the level
@@ -1591,6 +1956,14 @@ theorem Ctx.capsAtom_confined_name {s : Sig} (Γ : Ctx s) (n : Nat)
       exact Ctx.caps_confined_of_atom (fun a₀ => ihn a₀ r) C
         (Ctx.confined_trans hCC h) c hc
 
+/-- The projection clause of the confinement lemma: a projection is at the
+level of what it projects, so its resolution is confined where that one is. -/
+theorem Ctx.confined_proj {Γ : Ctx s} {L : CaptureSet s} {r : CapAtom s} {φ : Cls.Kind}
+    (h : Γ.Confined L r) : Γ.Confined (L.map (CapAtom.proj · φ)) r := by
+  intro c hc
+  obtain ⟨d, hd, rfl⟩ := List.mem_map.mp hc
+  exact h d hd
+
 theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : CapAtom s),
     Γ.LvlLe a r → Γ.Confined (Γ.capsAtom n a) r := by
   intro n
@@ -1600,7 +1973,10 @@ theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : 
       induction Γ with
       | nil =>
           intro a r h
-          cases a with
+          induction a with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj]
+              exact Ctx.confined_proj (iha h)
           | var x => cases x
           | cvar κ => cases κ
           | name x ℓ => cases x
@@ -1611,7 +1987,10 @@ theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : 
               exact h
       | cons Γ b ih =>
           intro a r h
-          cases a with
+          induction a with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj]
+              exact Ctx.confined_proj (iha h)
           | top =>
               intro c hc
               rw [Ctx.capsAtom_top] at hc
@@ -1633,7 +2012,10 @@ theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : 
                   exact Ctx.capsAtom_confined_there b ih (.cvar κ₀) r h
       | consC Γ b ih =>
           intro a r h
-          cases a with
+          induction a with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj]
+              exact Ctx.confined_proj (iha h)
           | top =>
               intro c hc
               rw [Ctx.capsAtom_top] at hc
@@ -1659,6 +2041,11 @@ theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : 
                       simp only [Ctx.capsAtom] at hc
                       rw [List.mem_singleton.mp hc]
                       exact h
+                  | cls c₀ =>
+                      intro c hc
+                      simp only [Ctx.capsAtom] at hc
+                      rw [List.mem_singleton.mp hc]
+                      exact h
                   | upper C =>
                       simp only [Ctx.capsAtom]
                       exact Ctx.capsAtom_confined_hereC (.upper C) rfl ih C r h
@@ -1673,7 +2060,10 @@ theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : 
       induction Γ with
       | nil =>
           intro a r h
-          cases a with
+          induction a with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj]
+              exact Ctx.confined_proj (iha h)
           | var x => cases x
           | cvar κ => cases κ
           | name x ℓ => cases x
@@ -1684,7 +2074,10 @@ theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : 
               exact h
       | cons Γ b ih =>
           intro a r h
-          cases a with
+          induction a with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj]
+              exact Ctx.confined_proj (iha h)
           | top =>
               intro c hc
               rw [Ctx.capsAtom_top] at hc
@@ -1706,7 +2099,10 @@ theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : 
                   exact Ctx.capsAtom_confined_there b ih (.cvar κ₀) r h
       | consC Γ b ih =>
           intro a r h
-          cases a with
+          induction a with
+          | proj a φ iha =>
+              rw [Ctx.capsAtom_proj]
+              exact Ctx.confined_proj (iha h)
           | top =>
               intro c hc
               rw [Ctx.capsAtom_top] at hc
@@ -1728,6 +2124,11 @@ theorem Ctx.capsAtom_confined_aux : ∀ (n : Nat) {s : Sig} (Γ : Ctx s) (a r : 
                       rw [List.mem_singleton.mp hc]
                       exact h
                   | star =>
+                      intro c hc
+                      simp only [Ctx.capsAtom] at hc
+                      rw [List.mem_singleton.mp hc]
+                      exact h
+                  | cls c₀ =>
                       intro c hc
                       simp only [Ctx.capsAtom] at hc
                       rw [List.mem_singleton.mp hc]
@@ -1765,23 +2166,27 @@ def Ctx.roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s) : CaptureSet s :=
 @[simp] theorem Ctx.roots_eq_expand_caps (Γ : Ctx s) (n : Nat) (C : CaptureSet s) :
     Γ.roots n C = Γ.expand (Γ.caps n C) := rfl
 
-/-- Resolution lands in the roots. -/
-theorem Ctx.caps_subset_roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s) :
-    (Γ.caps n C).Subset (Γ.roots n C) := Γ.subset_expand _
+/-- Resolution lands in the roots, by the bases of the atoms their own kinds
+admit.  A projected atom that its own kind excludes is not a root. -/
+theorem Ctx.caps_subset_roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s)
+    (h : ∀ a ∈ Γ.caps n C, Γ.admitsB a.base a.kindOf = true) :
+    ∀ a ∈ Γ.caps n C, a.base ∈ Γ.roots n C := Γ.subset_expand _ h
 
 /-- Nothing outside a scope sees the change.  On a root-free context whose
 resolution does not mention `⊤ᶜ`, `roots` is `caps`, so every statement about
 roots on the platform prefix and on a store context means today what it meant
 before. -/
 theorem Ctx.roots_eq_caps_of_rootFree {Γ : Ctx s} {n : Nat} {C : CaptureSet s}
-    (h : Γ.root? = none) (hC : CapAtom.top ∉ Γ.caps n C) :
-    Γ.roots n C = Γ.caps n C := by
+    (h : Γ.root? = none) (hC : CapAtom.top ∉ (Γ.caps n C).map CapAtom.base) :
+    Γ.roots n C
+      = ((Γ.caps n C).filter (fun a => Γ.admitsB a.base a.kindOf)).map CapAtom.base := by
   rw [Ctx.roots_eq_expand_caps]
-  refine Ctx.expand_eq_self ?_
+  refine Ctx.expand_eq_filter_base ?_
   intro a ha
-  rcases Ctx.caps_opaque ha with rfl | ⟨κ, rfl, _⟩
-  · exact absurd ha hC
-  · show (Γ.lookupCap κ).isRoot = false
+  rcases Ctx.caps_opaque ha with h0 | ⟨κ, h0, _⟩
+  · exact absurd (h0 ▸ List.mem_map_of_mem ha) hC
+  · rw [h0]
+    show (Γ.lookupCap κ).isRoot = false
     exact Γ.root?_none_isRoot h κ
 
 /-- `a` is a root of `C`: `C` resolves to `a` at some fuel.  Resolution is
@@ -1791,7 +2196,8 @@ def Ctx.Root (Γ : Ctx s) (a : CapAtom s) (C : CaptureSet s) : Prop :=
   ∃ n : Nat, a ∈ Γ.roots n C
 
 theorem Ctx.Root.of_mem_caps {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s} {n : Nat}
-    (h : a ∈ Γ.caps n C) : Γ.Root a C := ⟨n, Γ.caps_subset_roots n C a h⟩
+    (h : a ∈ Γ.caps n C) (hk : Γ.admitsB a.base a.kindOf = true) : Γ.Root a.base C :=
+  ⟨n, Ctx.mem_expand.mpr ⟨a, h, Γ.mem_expandAtom_self a hk⟩⟩
 
 /-- Subcapturing as a proposition: the roots of `C` are among the roots of
 `D`. -/
@@ -1905,6 +2311,7 @@ theorem Ctx.Root_inst {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
         cases hb : Γ.lookupCap κ with
         | root => rw [hb] at h'; simp [CapBound.instSet?] at h'
         | star => rw [hb] at h'; simp [CapBound.instSet?] at h'
+        | cls c₀ => rw [hb] at h'; simp [CapBound.instSet?] at h'
         | upper D => rw [hb] at h'; simp [CapBound.instSet?] at h'
         | inst D =>
             rw [hb] at h'
@@ -1927,6 +2334,7 @@ theorem Ctx.Root_inst {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
   | var _ => simp [Ctx.InstOf, Ctx.instSet?] at h
   | name _ _ => simp [Ctx.InstOf, Ctx.instSet?] at h
   | top => simp [Ctx.InstOf, Ctx.instSet?] at h
+  | proj _ _ => simp [Ctx.InstOf, Ctx.instSet?] at h
 
 /-- A capture name with no definition has no roots. -/
 theorem Ctx.Root_name_none {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
@@ -1936,6 +2344,137 @@ theorem Ctx.Root_name_none {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
   cases n with
   | zero => rw [Ctx.capsAtom_name_zero, Ctx.expand_nil] at hn; simp at hn
   | succ n => rw [Ctx.capsAtom_name_none h, Ctx.expand_nil] at hn; simp at hn
+
+
+/-! ## K0.5 and K0.6: projected sets and the kinding of a resolved set
+
+The filter a projection carries is consumed inside `Ctx.expandAtom`, and
+`Ctx.roots` is `Ctx.expand` of `Ctx.caps`, so the roots of a projected set are
+the roots of the set filtered by the kind.  That is T1, and everything else of
+the stage reads off it. -/
+
+/-- Expansion of a mapped projection is the filtered expansion.  This is L1
+read on a whole list, and it is the engine of T1. -/
+theorem Ctx.expand_map_proj (Γ : Ctx s) (φ : Cls.Kind) : ∀ L : CaptureSet s,
+    Γ.expand (L.map (CapAtom.proj · φ)) = (Γ.expand L).filter (fun b => Γ.admitsB b φ)
+  | [] => rfl
+  | a :: L => by
+      rw [List.map_cons, Ctx.expand_cons, Ctx.expand_cons, Ctx.expandAtom_proj,
+        Ctx.expand_map_proj Γ φ L, List.filter_append]
+
+/-- The one-atom form of T1: resolving and expanding a projected atom is
+resolving and expanding the atom and then filtering.  Two cases, and the
+projected one is the only place the kind algebra is used in K0. -/
+theorem Ctx.expand_capsAtom_projBy (Γ : Ctx s) (n : Nat) (φ : Cls.Kind) (a : CapAtom s) :
+    Γ.expand (Γ.capsAtom n (CapAtom.projBy φ a))
+      = (Γ.expand (Γ.capsAtom n a)).filter (fun b => Γ.admitsB b φ) := by
+  cases a with
+  | top | var _ | cvar _ | name _ _ =>
+      rw [show CapAtom.projBy φ _ = CapAtom.proj _ φ from rfl, Ctx.capsAtom_proj,
+        Ctx.expand_map_proj]
+  | proj c ψ =>
+      rw [show CapAtom.projBy φ (CapAtom.proj c ψ) = CapAtom.proj c (φ.interB ψ) from rfl,
+        Ctx.capsAtom_proj, Ctx.expand_map_proj, Ctx.capsAtom_proj, Ctx.expand_map_proj,
+        CaptureSet.filter_filter]
+      refine CaptureSet.filter_congr' _ _ (fun b => ?_) _
+      show (φ.interB ψ).containsB (Γ.classOf b)
+        = (ψ.containsB (Γ.classOf b) && φ.containsB (Γ.classOf b))
+      rw [Cls.Kind.contains_inter, Bool.and_comm]
+
+/-- **T1.**  The roots of a projected set are the roots of the set that the
+kind admits.  No induction on the context and none on the fuel: both sides are
+`flatMap`s over `C`, and `List.filter` distributes over `++`. -/
+theorem Ctx.roots_proj (Γ : Ctx s) (n : Nat) : ∀ (C : CaptureSet s) (φ : Cls.Kind),
+    Γ.roots n (CaptureSet.proj C φ) = (Γ.roots n C).filter (fun b => Γ.admitsB b φ)
+  | [], _ => by simp [CaptureSet.proj]
+  | a :: C, φ => by
+      rw [Ctx.roots_eq_expand_caps, Ctx.roots_eq_expand_caps,
+        show CaptureSet.proj (a :: C) φ = CapAtom.projBy φ a :: CaptureSet.proj C φ from rfl,
+        Ctx.caps_cons, Ctx.caps_cons, Ctx.expand_append, Ctx.expand_append,
+        List.filter_append, Ctx.expand_capsAtom_projBy]
+      have ih := Ctx.roots_proj Γ n C φ
+      rw [Ctx.roots_eq_expand_caps, Ctx.roots_eq_expand_caps] at ih
+      rw [ih]
+
+/-- **T1**, membership form.  A root of a projected set is a root of the set
+that the kind admits, and conversely. -/
+theorem Ctx.Root_proj {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s} {φ : Cls.Kind} :
+    Γ.Root a (CaptureSet.proj C φ) ↔ (Γ.Root a C ∧ Γ.admitsB a φ = true) := by
+  constructor
+  · rintro ⟨n, hn⟩
+    rw [Ctx.roots_proj] at hn
+    exact ⟨⟨n, (List.mem_filter.mp hn).1⟩, (List.mem_filter.mp hn).2⟩
+  · rintro ⟨⟨n, hn⟩, hφ⟩
+    refine ⟨n, ?_⟩
+    rw [Ctx.roots_proj]
+    exact List.mem_filter.mpr ⟨hn, hφ⟩
+
+/-- **T1** at the root kind: projecting by `⊤` changes no root.  This is
+Capless(K)'s `CaptureSet.proj_top`, which is an equation there and is an
+equality of roots here. -/
+theorem Ctx.rootsEq_proj_top (Γ : Ctx s) (C : CaptureSet s) :
+    RootsEq Γ (CaptureSet.proj C Cls.Kind.top) C := by
+  intro a
+  rw [Ctx.Root_proj]
+  exact ⟨fun h => h.1, fun h => ⟨h, Γ.admitsB_top a⟩⟩
+
+/-- Every root of `C` carries a classifier that `φ` admits.  The classifier
+twin of `CapLe`, stated beside it.  This is the plan's canonical form of
+closed kinding, as a proposition. -/
+def Ctx.KindLe (Γ : Ctx s) (C : CaptureSet s) (φ : Cls.Kind) : Prop :=
+  ∀ a : CapAtom s, Γ.Root a C → φ.Contains (Γ.classOf a)
+
+/-- Every atom resolution produces carries a kind below the kind of an atom of
+the set it came from.  L3 on a whole capture set. -/
+theorem Ctx.caps_kindOf (Γ : Ctx s) (n : Nat) : ∀ (C : CaptureSet s),
+    ∀ b ∈ Γ.caps n C, ∃ a ∈ C, ∀ c : Cls.Classifier,
+      b.kindOf.Contains c → a.kindOf.Contains c
+  | [], b, hb => by simp at hb
+  | a :: C, b, hb => by
+      rw [Ctx.caps_cons] at hb
+      rcases List.mem_append.mp hb with hb | hb
+      · exact ⟨a, List.mem_cons_self .., Γ.capsAtom_kindOf n a b hb⟩
+      · obtain ⟨d, hd, hkd⟩ := Γ.caps_kindOf n C b hb
+        exact ⟨d, List.mem_cons_of_mem a hd, hkd⟩
+
+/-- **T2.**  A set whose atoms all carry kinds inside `φ` is kinded by `φ`.
+L3 followed by L4: a root is an atom of the expansion of an atom of
+`Γ.caps n C`, L3 bounds that atom's kind by the kind of the atom of `C` it
+came from, and L4 says the root is admitted by it. -/
+theorem Ctx.kindLe_of_kinds {Γ : Ctx s} {C : CaptureSet s} {φ : Cls.Kind}
+    (h : ∀ a ∈ C, ∀ c : Cls.Classifier, a.kindOf.Contains c → φ.Contains c) :
+    Γ.KindLe C φ := by
+  rintro a ⟨n, ha⟩
+  rw [Ctx.roots_eq_expand_caps] at ha
+  obtain ⟨b, hb, hab⟩ := Ctx.mem_expand.mp ha
+  obtain ⟨d, hd, hkd⟩ := Γ.caps_kindOf n C b hb
+  exact h d hd (Γ.classOf a) (hkd (Γ.classOf a) (Γ.expandAtom_kinded b a hab))
+
+/-- **T2**, the form the stage uses: a projected set is kinded by construction,
+whatever the set was.  This is what the refuted design lost. -/
+theorem Ctx.kindLe_proj (Γ : Ctx s) (C : CaptureSet s) (φ : Cls.Kind) :
+    Γ.KindLe (CaptureSet.proj C φ) φ := fun _ ha => (Ctx.Root_proj.mp ha).2
+
+/-- **T3.**  Kinding is antitone along subcapturing. -/
+theorem Ctx.KindLe.mono {Γ : Ctx s} {C D : CaptureSet s} {φ : Cls.Kind}
+    (hle : CapLe Γ C D) (h : Γ.KindLe D φ) : Γ.KindLe C φ :=
+  fun a ha => h a (hle a ha)
+
+/-- **T3.**  And monotone along subkinding.  The only consumer of subkinding
+in K0. -/
+theorem Ctx.KindLe.sub {Γ : Ctx s} {C : CaptureSet s} {φ ψ : Cls.Kind}
+    (h : Γ.KindLe C φ) (hs : φ.Subkind ψ) : Γ.KindLe C ψ :=
+  fun a ha => Cls.Kind.Subkind.contains hs (h a ha)
+
+/-- **T3.**  A union is kinded when both sides are. -/
+theorem Ctx.KindLe.union {Γ : Ctx s} {C D : CaptureSet s} {φ : Cls.Kind}
+    (h₁ : Γ.KindLe C φ) (h₂ : Γ.KindLe D φ) : Γ.KindLe (C ∪ D) φ := by
+  rintro a ⟨n, ha⟩
+  rw [Ctx.roots_eq_expand_caps, CaptureSet.union_def, Ctx.caps_append,
+    Ctx.expand_append] at ha
+  rcases List.mem_append.mp ha with h | h
+  · exact h₁ a ⟨n, h⟩
+  · exact h₂ a ⟨n, h⟩
 
 /-! ### Item 6 of the canonical-forms theorem
 

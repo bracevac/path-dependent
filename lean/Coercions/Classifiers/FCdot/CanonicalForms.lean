@@ -316,8 +316,10 @@ theorem Ctx.caps_of_isRoot {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r) (n : 
         | star => rw [h] at hi; simp [CapBound.isRoot] at hi
         | upper C => rw [h] at hi; simp [CapBound.isRoot] at hi
         | inst C => rw [h] at hi; simp [CapBound.isRoot] at hi
+        | cls c => rw [h] at hi; simp [CapBound.isRoot] at hi
       rw [Ctx.caps_cons, Ctx.caps_nil, Ctx.capsAtom_cvar, hb]
       rfl
+  | proj a φ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
 
 /-- The roots of a singleton scope root are its expansion. -/
 theorem Ctx.roots_of_isRoot {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r) (n : Nat) :
@@ -414,7 +416,8 @@ theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D)
       have hbr : Γ.LvlLe b r := Ctx.caps_confined Γ n [e] r hconf b hb
       refine ⟨0, ?_⟩
       rw [Ctx.roots_of_isRoot hr]
-      exact Ctx.expandAtom_mono hr (Ctx.caps_opaque hb) hbr a hab
+      exact Ctx.expandAtom_mono hr (Ctx.caps_opaque hb) (Ctx.lvlLe_base_left.mp hbr) a
+        (Ctx.mem_expandAtom_base Γ b a hab)
   | .member (a := a) ha he hAt =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
       obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he
