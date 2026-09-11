@@ -210,7 +210,7 @@ theorem consC {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : CapBound s) :
   rootEq := by
     cases b with
     | root => rfl
-    | star | upper C | inst C =>
+    | star | upper C | inst C | cls c =>
         rw [Ctx.root?_consC_of_not_root _ _ rfl, Ctx.root?_consC_of_not_root _ _ rfl, h.rootEq]
   lvlEq := by
     intro k y
@@ -218,7 +218,7 @@ theorem consC {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : CapBound s) :
     | here =>
         cases b with
         | root => rfl
-        | star | upper C | inst C =>
+        | star | upper C | inst C | cls c =>
             rw [Ctx.lvl_consC_here_of_not_root _ _ rfl, Ctx.lvl_consC_here_of_not_root _ _ rfl,
               h.rootEq]
     | there y0 => simp [h.lvlEq]
@@ -268,7 +268,7 @@ rule needs, and it is why the monotonicity theorems keep their meaning. -/
 
 theorem Ctx.Refines.lvlAtom {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (a : CapAtom s) :
     Γ'.lvlAtom a = Γ.lvlAtom a := by
-  cases a <;> simp [Ctx.lvlAtom, h.lvlEq]
+  induction a <;> simp_all [Ctx.lvlAtom, h.lvlEq]
 
 theorem Ctx.Refines.isRootB {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (a : CapAtom s) :
     Γ'.isRootB a = Γ.isRootB a := by
@@ -286,6 +286,7 @@ theorem Ctx.Refines.instOf {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {a : CapAto
   | top => simp [Ctx.InstOf, Ctx.instSet?] at hI
   | var x => simp [Ctx.InstOf, Ctx.instSet?] at hI
   | name x l => simp [Ctx.InstOf, Ctx.instSet?] at hI
+  | proj a φ => simp [Ctx.InstOf, Ctx.instSet?] at hI
   | cvar κ =>
       show (Γ'.lookupCap κ).instSet? = some C
       rw [h.capInstEq]

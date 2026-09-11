@@ -20,14 +20,17 @@ def Fields.labels : Fields s → List Label
   | .cons F ℓ _ _ => ℓ :: F.labels
 
 /-- What a capture binder stands for.  `root` is a scope root, `star` a rigid
-capability that subsumes nothing, `upper C` a bounded binder, and `inst C` an
-instance.  All four are present from the start; this stage reads none of
-them. -/
+capability that subsumes nothing, `upper C` a bounded binder, `inst C` an
+instance, and `cls c` a rigid capability with a declared classifier.  All five
+are present from the start; this stage reads none of them. -/
 inductive CapBound : Sig → Type where
   | root : CapBound s
   | star : CapBound s
   | upper : CaptureSet s → CapBound s
   | inst : CaptureSet s → CapBound s
+  /-- A rigid capability with a declared classifier.  `star` is this flavour
+      at `⊤`, which is what `CapBound.classifier` says. -/
+  | cls : Cls.Classifier → CapBound s
 deriving DecidableEq
 
 def CapBound.rename : CapBound s1 → Rename s1 s2 → CapBound s2
@@ -35,6 +38,14 @@ def CapBound.rename : CapBound s1 → Rename s1 s2 → CapBound s2
   | .star, _ => .star
   | .upper C, ρ => .upper (C.rename ρ)
   | .inst C, ρ => .inst (C.rename ρ)
+  | .cls c, _ => .cls c
+
+/-- The classifier a capture bound declares.  A bound that declares none
+reads as the root classifier `⊤`, which is the strict reading: a kind that
+does not contain `⊤` admits no unannotated capability. -/
+def CapBound.classifier : CapBound s → Cls.Classifier
+  | .cls c => c
+  | _ => .top
 
 def CapBound.weaken (b : CapBound s) : CapBound (s,,k) := b.rename Rename.succ
 
@@ -131,6 +142,7 @@ rigid capability. -/
 def CapBound.opaque : CapBound s → Bool
   | .root => true
   | .star => true
+  | .cls _ => true
   | _ => false
 
 /-- A capture bound is a root when it opens a scope. -/
@@ -192,6 +204,18 @@ def lvlAtom (Γ : Ctx s) : CapAtom s → Option (BVar s .cap)
   | .cvar κ => Γ.lvl κ
   | .name x _ => Γ.lvl x
   | .top => none
+  | .proj a _ => Γ.lvlAtom a
+
+/-- The classifier an atom carries in `Γ`.  Only a capture binder can declare
+one: every other atom reads as the root classifier `⊤`.  That is Fact 2, that
+resolution lands in capture binders and in the universal root. -/
+def classOf (Γ : Ctx s) : CapAtom s → Cls.Classifier
+  | .cvar κ => (Γ.lookupCap κ).classifier
+  | _ => .top
+
+/-- The kind `φ` admits the atom `a`: the classifier of `a` is a member of
+`φ`.  `Bool` valued, so that `decide` closes the examples of the stage. -/
+def admitsB (Γ : Ctx s) (a : CapAtom s) (φ : Cls.Kind) : Bool := φ.containsB (Γ.classOf a)
 
 /-- Depth of a root atom, with the universal root at infinity. -/
 def rootDepth? : CapAtom s → Option Nat

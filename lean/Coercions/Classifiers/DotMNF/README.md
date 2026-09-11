@@ -1,6 +1,11 @@
-# DotMNF, at stage B3 of captures the compiler's way (Classifiers copy, unchanged)
+# DotMNF, at stage B3 of captures the compiler's way (unchanged in K0)
 
 DOT-MNF^cc, the capturing source of the translation in `../DotToFCdot`.
+
+**Stage K0 of classifiers changed nothing here.**  The source writes no classifier and no projected
+capture atom, so no syntax, no rule, no judgment and no theorem of this directory moved, and every
+statement below is the statement it was, with the proof it had.  The classified source is K2's
+subject.
 
 | module | contents |
 |---|---|

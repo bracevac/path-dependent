@@ -1,4 +1,11 @@
-# DotToFCdot, at stage B3 of captures the compiler's way (Classifiers copy, unchanged)
+# DotToFCdot, at stage B3 of captures the compiler's way (unchanged in K0)
+
+**Stage K0 of classifiers changed no rule, no judgment and no translation clause here.**  The source
+writes no classifier, so the translation produces no projected capture atom, and the two lemmas that
+say so are the only lines of this directory the stage touched.  `CaptureSet.base_of_mem_translate`
+is new and states it, `Platform.capsAtom` gains the projection alternative, which a translated set
+never reaches, and `Platform.root_iff` carries that premise where it already carried the one about
+the universal root.  Nothing else moved, and the classified translation is K2's subject.
 
 The translation of DOT-MNF^cc into FCdot^cc (Plan III §8, milestones M3 to
 M5), namespace `DotMNF`.  Derivations are `Type`-valued, so the translation

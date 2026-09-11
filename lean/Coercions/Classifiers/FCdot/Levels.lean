@@ -110,7 +110,7 @@ theorem Ctx.root?_isRoot {s : Sig} (Γ : Ctx s) :
       intro ρ h
       cases b with
       | root => simp only [Ctx.root?_consC_root, Option.some.injEq] at h; subst h; rfl
-      | star | upper C | inst C =>
+      | star | upper C | inst C | cls c =>
           rw [Ctx.root?_consC_of_not_root Γ _ rfl] at h
           cases hr : Γ.root? with
           | none => simp [hr] at h
@@ -153,7 +153,7 @@ theorem Ctx.lvl_isRoot {s : Sig} (Γ : Ctx s) :
           | root =>
               simp only [Ctx.lvl_consC_root_here, Option.some.injEq] at h
               subst h; rfl
-          | star | upper C | inst C =>
+          | star | upper C | inst C | cls c =>
               rw [Ctx.lvl_consC_here_of_not_root Γ _ rfl] at h
               cases hr : Γ.root? with
               | none => simp [hr] at h
@@ -195,7 +195,7 @@ theorem Ctx.root?_min {s : Sig} (Γ : Ctx s) :
           simp only [Ctx.root?_consC_root, Option.some.injEq] at h
           subst h
           simp
-      | star | upper C | inst C =>
+      | star | upper C | inst C | cls c =>
           rw [Ctx.root?_consC_of_not_root Γ _ rfl] at h
           cases hr : Γ.root? with
           | none => simp [hr] at h
@@ -225,7 +225,7 @@ theorem Ctx.root?_none {s : Sig} (Γ : Ctx s) :
       intro k y h
       cases b with
       | root => simp at h
-      | star | upper C | inst C =>
+      | star | upper C | inst C | cls c =>
           rw [Ctx.root?_consC_of_not_root Γ _ rfl] at h
           simp only [Option.map_eq_none_iff] at h
           cases y with
@@ -238,6 +238,7 @@ theorem Ctx.LvlLe.refl_of_root {Γ : Ctx s} {r : CapAtom s} (h : Γ.IsRoot r) : 
   | top => rfl
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at h
   | name x ℓ => simp [Ctx.IsRoot, Ctx.isRootB] at h
+  | proj a φ => simp [Ctx.IsRoot, Ctx.isRootB] at h
   | cvar κ =>
       have hκ : Γ.lvl κ = some κ := Γ.lvl_root h
       simp [Ctx.LvlLe, Ctx.lvlLeB, Ctx.lvlAtom, hκ, depthGe]
@@ -248,6 +249,7 @@ theorem Ctx.LvlLe.trans {Γ : Ctx s} {e r r' : CapAtom s}
   cases r with
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | name x ℓ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | proj a φ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | top =>
       -- `LvlLe e ⊤ᶜ` forces `e` to have no level, and such an `e` is below everything.
       have e₁ : depthGe ((Γ.lvlAtom e).map BVar.depth) none = true := h₁
@@ -303,6 +305,7 @@ theorem Ctx.root?_none_isRoot {s : Sig} (Γ : Ctx s) :
           | star => simp [CapBound.isRoot] at hb
           | upper C => simp [CapBound.isRoot] at hb
           | inst C => simp [CapBound.isRoot] at hb
+          | cls c => simp [CapBound.isRoot] at hb
       | false =>
           rw [Ctx.root?_consC_of_not_root Γ b hb, Option.map_eq_none_iff] at h
           cases κ with
@@ -357,14 +360,53 @@ theorem Ctx.lvl_le_rootAtom_name (Γ : Ctx s) (x : BVar s .var) (ℓ : Label) :
     Γ.LvlLe (.name x ℓ) Γ.rootAtom :=
   Γ.lvl_le_rootAtom_core x
 
+/-- L0 at a projection.  A projection is at the level of what it projects,
+so it is at or outside whatever its base is at or outside of. -/
+theorem Ctx.lvlLe_proj_left {Γ : Ctx s} {a r : CapAtom s} {φ : Cls.Kind}
+    (h : Γ.LvlLe a r) : Γ.LvlLe (a ↾ φ) r := h
+
+/-- The base of an atom is never a projection. -/
+theorem CapAtom.base_ne_proj : ∀ (a b : CapAtom s) (φ : Cls.Kind), a.base ≠ b ↾ φ
+  | .top, _, _ => by simp [CapAtom.base]
+  | .var _, _, _ => by simp [CapAtom.base]
+  | .cvar _, _, _ => by simp [CapAtom.base]
+  | .name _ _, _, _ => by simp [CapAtom.base]
+  | .proj a _, b, φ => CapAtom.base_ne_proj a b φ
+
+/-- Taking the base is idempotent. -/
+@[simp] theorem CapAtom.base_base : ∀ a : CapAtom s, a.base.base = a.base
+  | .top | .var _ | .cvar _ | .name _ _ => rfl
+  | .proj a _ => CapAtom.base_base a
+
+/-- Renaming commutes with taking the base: `CapAtom.rename` is structural
+and a kind mentions no binder, which is Fact 1. -/
+@[simp] theorem CapAtom.base_rename : ∀ (a : CapAtom s1) (ρ : Rename s1 s2),
+    (a.rename ρ).base = a.base.rename ρ
+  | .top, _ | .var _, _ | .cvar _, _ | .name _ _, _ => rfl
+  | .proj a _, ρ => CapAtom.base_rename a ρ
+
+/-- A level comparison reads through every projection, because `Ctx.lvlAtom`
+does.  This is what lets a proof by cases on the shape of an atom assume the
+atom is its own base. -/
+theorem Ctx.lvlAtom_base (Γ : Ctx s) : ∀ a : CapAtom s, Γ.lvlAtom a.base = Γ.lvlAtom a
+  | .top | .var _ | .cvar _ | .name _ _ => rfl
+  | .proj a _ => Γ.lvlAtom_base a
+
+theorem Ctx.lvlLe_base_left {Γ : Ctx s} {e r : CapAtom s} :
+    Γ.LvlLe e r ↔ Γ.LvlLe e.base r := by
+  unfold Ctx.LvlLe Ctx.lvlLeB
+  rw [Γ.lvlAtom_base e]
+
 /-- L0 on a whole capture set. -/
 theorem Ctx.confined_rootAtom (Γ : Ctx s) (C : CaptureSet s) : Γ.Confined C Γ.rootAtom := by
-  intro a _
-  cases a with
+  intro a ha
+  clear ha
+  induction a with
   | var x => exact Γ.lvl_le_rootAtom_var x
   | cvar κ => exact Γ.lvl_le_rootAtom κ
   | name x ℓ => exact Γ.lvl_le_rootAtom_name x ℓ
   | top => rfl
+  | proj a φ ih => exact Ctx.lvlLe_proj_left ih
 
 /-! ## Weakening commutations
 
@@ -389,12 +431,14 @@ theorem Ctx.lvl_weakenC (Γ : Ctx s) (b : CapBound s) (y : BVar s k) :
 
 theorem Ctx.lvlAtom_weaken (Γ : Ctx s) (b : Binding s) (a : CapAtom s) :
     (Γ.cons b).lvlAtom (CapAtom.weaken (k := .var) a) = (Γ.lvlAtom a).map .there := by
-  cases a <;> rfl
+  induction a with
+  | proj a φ ih => exact ih
+  | var x | cvar κ | name x ℓ | top => rfl
 
 theorem Ctx.lvlAtom_weakenC (Γ : Ctx s) (b : CapBound s) (a : CapAtom s) :
     (Γ.consC b).lvlAtom (CapAtom.weaken (k := .cap) a) = (Γ.lvlAtom a).map .there := by
-  cases a <;>
-    simp [Ctx.lvlAtom, CapAtom.weaken, CapAtom.rename, Ctx.lvl_consC_there]
+  induction a <;>
+    simp_all [Ctx.lvlAtom, CapAtom.weaken, CapAtom.rename, Ctx.lvl_consC_there]
 
 theorem Ctx.lvlLeB_weaken (Γ : Ctx s) (b : Binding s) (e r : CapAtom s) :
     (Γ.cons b).lvlLeB (CapAtom.weaken (k := .var) e) (CapAtom.weaken (k := .var) r)
@@ -440,6 +484,16 @@ theorem Ctx.lvlLe_of_rootDepth_none {Γ : Ctx s} {e r r' : CapAtom s}
   rw [Ctx.lvlLeB_congr_right Γ e r' r (by rw [hr, hr'])]
   exact h
 
+/-- Every level an atom has is a root binder.  The atom cases of
+`Ctx.lvl_isRoot` gathered, with a projection reading the level of its base. -/
+theorem Ctx.lvlAtom_isRoot (Γ : Ctx s) : ∀ {a : CapAtom s} {κ : BVar s .cap},
+    Γ.lvlAtom a = some κ → (Γ.lookupCap κ).isRoot = true
+  | .top, _, h => by simp [Ctx.lvlAtom] at h
+  | .var _, _, h => Γ.lvl_isRoot h
+  | .cvar _, _, h => Γ.lvl_isRoot h
+  | .name _ _, _, h => Γ.lvl_isRoot h
+  | .proj a _, _, h => Γ.lvlAtom_isRoot (a := a) h
+
 /-- A level is where its own binder is. -/
 @[simp] theorem Ctx.lvlAtom_lvlOf (Γ : Ctx s) (a : CapAtom s) :
     Γ.lvlAtom (Γ.lvlOf a) = Γ.lvlAtom a := by
@@ -447,12 +501,7 @@ theorem Ctx.lvlLe_of_rootDepth_none {Γ : Ctx s} {e r r' : CapAtom s}
   cases h : Γ.lvlAtom a with
   | none => rfl
   | some κ =>
-      have hr : (Γ.lookupCap κ).isRoot = true := by
-        cases a with
-        | top => simp [Ctx.lvlAtom] at h
-        | var x => exact Γ.lvl_isRoot h
-        | cvar κ₀ => exact Γ.lvl_isRoot h
-        | name x ℓ => exact Γ.lvl_isRoot h
+      have hr : (Γ.lookupCap κ).isRoot = true := Γ.lvlAtom_isRoot h
       simp only [Option.elim, Ctx.lvlAtom, Γ.lvl_root hr]
 
 /-- A level is a root. -/
@@ -461,12 +510,7 @@ theorem Ctx.lvlOf_isRoot (Γ : Ctx s) (a : CapAtom s) : Γ.IsRoot (Γ.lvlOf a) :
   cases h : Γ.lvlAtom a with
   | none => rfl
   | some κ =>
-      have hr : (Γ.lookupCap κ).isRoot = true := by
-        cases a with
-        | top => simp [Ctx.lvlAtom] at h
-        | var x => exact Γ.lvl_isRoot h
-        | cvar κ₀ => exact Γ.lvl_isRoot h
-        | name x ℓ => exact Γ.lvl_isRoot h
+      have hr : (Γ.lookupCap κ).isRoot = true := Γ.lvlAtom_isRoot h
       exact hr
 
 /-- An atom is at its own level. -/

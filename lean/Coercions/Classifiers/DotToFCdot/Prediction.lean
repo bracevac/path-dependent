@@ -117,6 +117,9 @@ theorem Platform.capsAtom : ∀ {s : Sig} (P : Platform s) (n : Nat) (a : FCdot.
       simp only [Platform.ctx, Ctx.translate, FCdot.Ctx.capsAtom,
         Platform.capsAtom P n (.cvar κ)]
       rfl
+  | _, P, n, .proj a φ => by
+      rw [FCdot.Ctx.capsAtom_proj, Platform.capsAtom P n a]
+      rfl
 
 theorem Platform.caps : ∀ {s : Sig} (P : Platform s) (n : Nat) (C : FCdot.CaptureSet s),
     P.ctx.translate.caps n C = C
@@ -136,16 +139,22 @@ theorem Platform.rootFree : ∀ {s : Sig} (P : Platform s), P.ctx.translate.root
 /-- Over a platform prefix a root of a capture set is a member of it.  The
 set is one the source wrote, and the source has no universal root, which is
 what `hC` says: `CaptureSet.translate` drops `any` and never produces `⊤ᶜ`
-(`CaptureSet.top_not_mem_translate`).  On such a set expansion is the
-identity, so this is the same statement it was. -/
+(`CaptureSet.top_not_mem_translate`), and it writes no projection, which is
+what `hb` says (`CaptureSet.base_of_mem_translate`).  On such a set expansion
+is the identity, so this is the same statement it was. -/
 theorem Platform.root_iff {s : Sig} (P : Platform s) (a : FCdot.CapAtom s)
-    (C : FCdot.CaptureSet s) (hC : FCdot.CapAtom.top ∉ C) :
+    (C : FCdot.CaptureSet s) (hC : FCdot.CapAtom.top ∉ C)
+    (hb : ∀ b ∈ C, b.base = b) :
     P.ctx.translate.Root a C ↔ a ∈ C := by
   have hr : ∀ n : Nat, P.ctx.translate.roots n C = C := by
     intro n
     rw [FCdot.Ctx.roots_eq_caps_of_rootFree P.rootFree
-        (by rw [Platform.caps]; exact hC),
-      Platform.caps]
+        (by rw [Platform.caps]
+            intro h
+            obtain ⟨c, hc, hcb⟩ := List.mem_map.mp h
+            rw [hb c hc] at hcb
+            exact hC (hcb ▸ hc)),
+      Platform.caps, FCdot.Ctx.filter_map_base_eq_self hb]
   constructor
   · rintro ⟨n, hn⟩
     rwa [hr n] at hn
@@ -294,7 +303,8 @@ theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀}
     exact FCdot.cap_canon P.targetStore_typed (d.translate_uses P.ctx_wf)
   have hroot : ¬ P.ctx.translate.Root (FCdot.CapAtom.cvar κ)
       (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s₀).uses := fun hr =>
-    hκ ((P.root_iff _ _ (CaptureSet.top_not_mem_translate U)).mp (hbase _ hr))
+    hκ ((P.root_iff _ _ (CaptureSet.top_not_mem_translate U)
+      (CaptureSet.base_of_mem_translate U)).mp (hbase _ hr))
   obtain ⟨ρ, hE, hne⟩ :=
     FCdot.effect_safety (P.initial_typed d) P.targetStore_typed hrun hroot hint hσ'
   exact ⟨stt, Γ', ρ, he, hσ', hE, hne⟩

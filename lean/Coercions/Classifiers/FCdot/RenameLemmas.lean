@@ -21,12 +21,22 @@ namespace FCdot
 /-! ## `rename_id` and `rename_comp` for capture atoms and capture sets -/
 
 @[simp] theorem CapAtom.rename_id {s : Sig} (a : CapAtom s) : a.rename Rename.id = a := by
-  cases a <;> simp [CapAtom.rename]
+  induction a with
+  | var x => simp [CapAtom.rename]
+  | cvar κ => simp [CapAtom.rename]
+  | name x ℓ => simp [CapAtom.rename]
+  | top => simp [CapAtom.rename]
+  | proj a φ ih => simp [CapAtom.rename, ih]
 
 @[simp] theorem CapAtom.rename_comp {s1 s2 s3 : Sig} (a : CapAtom s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
     (a.rename ρ).rename ρ' = a.rename (ρ.comp ρ') := by
-  cases a <;> simp [CapAtom.rename]
+  induction a with
+  | var x => simp [CapAtom.rename]
+  | cvar κ => simp [CapAtom.rename]
+  | name x ℓ => simp [CapAtom.rename]
+  | top => simp [CapAtom.rename]
+  | proj a φ ih => simp [CapAtom.rename, ih]
 
 @[simp] theorem CaptureSet.rename_id {s : Sig} :
     ∀ C : CaptureSet s, C.rename Rename.id = C
@@ -611,7 +621,12 @@ substitution, and the two agree. -/
 
 @[simp] theorem CapAtom.subst_ofRename {s1 s2 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2) :
     a.subst (Subst.ofRename ρ) = a.rename ρ := by
-  cases a <;> simp [CapAtom.subst, CapAtom.rename]
+  induction a with
+  | var x => simp [CapAtom.subst, CapAtom.rename]
+  | cvar κ => simp [CapAtom.subst, CapAtom.rename]
+  | name x ℓ => simp [CapAtom.subst, CapAtom.rename]
+  | top => simp [CapAtom.subst, CapAtom.rename]
+  | proj a φ ih => simp [CapAtom.subst, CapAtom.rename, ih]
 
 @[simp] theorem CaptureSet.subst_ofRename {s1 s2 : Sig} (C : CaptureSet s1)
     (ρ : Rename s1 s2) : C.subst (Subst.ofRename ρ) = C.rename ρ := by
@@ -707,7 +722,12 @@ end Subst
 
 theorem CapAtom.rename_subst {s1 s2 s3 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2)
     (σ : Subst s2 s3) : (a.rename ρ).subst σ = a.subst (Subst.compRename ρ σ) := by
-  cases a <;> rfl
+  induction a with
+  | var x => rfl
+  | cvar κ => rfl
+  | name x ℓ => rfl
+  | top => rfl
+  | proj a φ ih => simp [CapAtom.rename, CapAtom.subst, ih]
 
 theorem CaptureSet.rename_subst {s1 s2 s3 : Sig} (C : CaptureSet s1) (ρ : Rename s1 s2)
     (σ : Subst s2 s3) : (C.rename ρ).subst σ = C.subst (Subst.compRename ρ σ) := by
@@ -1271,10 +1291,20 @@ theorem Rename.succ_injective {s : Sig} {k : Kind} : (Rename.succ (s := s) (k :=
 
 theorem CapAtom.rename_inj {s1 s2 : Sig} (a a' : CapAtom s1) (ρ : Rename s1 s2)
     (hρ : ρ.Injective) (h : a.rename ρ = a'.rename ρ) : a = a' := by
-  cases a <;> cases a' <;> simp [CapAtom.rename] at h ⊢
-  · exact hρ _ _ h
-  · exact hρ _ _ h
-  · exact ⟨hρ _ _ h.1, h.2⟩
+  induction a generalizing a' with
+  | var x =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact hρ _ _ h
+  | cvar κ =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact hρ _ _ h
+  | name x ℓ =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact ⟨hρ _ _ h.1, h.2⟩
+  | top => cases a' <;> simp [CapAtom.rename] at h ⊢
+  | proj a φ ih =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact ⟨ih _ h.1, h.2⟩
 
 theorem CaptureSet.rename_inj {s1 s2 : Sig} (ρ : Rename s1 s2) (hρ : ρ.Injective) :
     ∀ (C C' : CaptureSet s1), C.rename ρ = C'.rename ρ → C = C'
@@ -1463,11 +1493,12 @@ instantiating it by that atom's root: a capture atom sees a term variable
 only through its root. -/
 theorem CapAtom.subst_single {s : Sig} (b : CapAtom (s,x)) (a : Atom s) :
     b.subst (Subst.single a) = b.rename (Rename.subst a.root) := by
-  match b with
-  | .var x => cases x <;> rfl
-  | .cvar κ => cases κ; rfl
-  | .name x ℓ => cases x <;> rfl
-  | .top => rfl
+  induction b with
+  | var x => cases x <;> rfl
+  | cvar κ => cases κ; rfl
+  | name x ℓ => cases x <;> rfl
+  | top => rfl
+  | proj b φ ih => simp [CapAtom.subst, CapAtom.rename, ih]
 
 /-- Instantiating the innermost binder of a term by an atom instantiates its
 use set at the atom's root. -/

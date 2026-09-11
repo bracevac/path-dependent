@@ -1,3 +1,4 @@
+import Coercions.Classifiers.Cls
 import Coercions.Classifiers.FCdot.Debruijn
 
 namespace Classifiers
@@ -35,11 +36,38 @@ inductive CapAtom : Sig → Type where
   /-- The universal root: the local root of the whole program, the
       compiler's `caps.any` read as a constant. -/
   | top : CapAtom s
+  /-- `θ ↾ φ`, the capture `θ` restricted to the capabilities of kind `φ`.
+      Capless(K) writes the pair `⟨θ, φ⟩` (`CaptureSet.lean:44-51`). -/
+  | proj : CapAtom s → Cls.Kind → CapAtom s
 deriving DecidableEq, Repr
 
 /-- The universal root, written `⊤ᶜ`.  (`ᶜ` is not a legal Lean identifier
 character, so the constructor carries the plain name `top`.) -/
 scoped notation "⊤ᶜ" => CapAtom.top
+
+/-- A projected atom, written `a ↾ φ`. -/
+scoped notation:max a " ↾ " φ => CapAtom.proj a φ
+
+/-- The atom under the projections.  Recursive, because nesting is legal
+syntax: renaming is structural and never normalises a projection. -/
+def CapAtom.base : CapAtom s → CapAtom s
+  | .proj a _ => a.base
+  | a => a
+
+/-- The kind a projected atom carries.  An unprojected atom carries `⊤`,
+which is what Capless(K) writes explicitly with `Kind.top`
+(`CaptureSet.lean:44`).  Recursive, so a nested projection reads as the
+intersection of the kinds it carries. -/
+def CapAtom.kindOf : CapAtom s → Cls.Kind
+  | .proj a φ => φ.interB a.kindOf
+  | _ => Cls.Kind.top
+
+/-- The smart constructor: `CaptureSet.proj` of Capless(K)
+(`CaptureSet.lean:187-194`).  It intersects at the top projection instead of
+nesting one more. -/
+def CapAtom.projBy (φ : Cls.Kind) : CapAtom s → CapAtom s
+  | .proj a ψ => .proj a (φ.interB ψ)
+  | a => .proj a φ
 
 /-- A capture set: a list of atoms, read as a finite set. -/
 abbrev CaptureSet (s : Sig) : Type := List (CapAtom s)
@@ -100,10 +128,16 @@ def CapAtom.rename : CapAtom s1 → Rename s1 s2 → CapAtom s2
   | .cvar κ, ρ => .cvar (ρ.var κ)
   | .name x ℓ, ρ => .name (ρ.var x) ℓ
   | .top, _ => .top
+  | .proj a φ, ρ => .proj (a.rename ρ) φ
 
 /-- Renaming of a capture set is pointwise. -/
 def CaptureSet.rename (C : CaptureSet s1) (ρ : Rename s1 s2) : CaptureSet s2 :=
   C.map (fun a => a.rename ρ)
+
+/-- A capture set restricted to the capabilities of kind `φ`, pointwise
+through the smart constructor (`CaptureSet.lean:187-194`). -/
+def CaptureSet.proj (C : CaptureSet s) (φ : Cls.Kind) : CaptureSet s :=
+  C.map (CapAtom.projBy φ)
 
 /-! ## Shapes, types, propositions, telescopes -/
 
@@ -1073,6 +1107,7 @@ def CapAtom.subst : CapAtom s1 → Subst s1 s2 → CapAtom s2
   | .cvar κ, σ => σ.cvar κ
   | .name x ℓ, σ => .name (σ.rootVar x) ℓ
   | .top, _ => .top
+  | .proj a φ, σ => .proj (a.subst σ) φ
 
 def CaptureSet.subst (C : CaptureSet s1) (σ : Subst s1 s2) : CaptureSet s2 :=
   C.map (fun a => a.subst σ)

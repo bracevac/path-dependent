@@ -1,4 +1,4 @@
-# FCdot, at stage B3 of captures the compiler's way (Classifiers copy, unchanged)
+# FCdot, at stage K0 of classifiers
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -11,6 +11,7 @@ erasure safe.
 
 | module | contents |
 |---|---|
+| `Cls` (`Coercions.Classifiers.Cls`) | the classifier tree, kinds as subtrees with exclusions, and their order, membership, emptiness, intersection, subtraction and subkinding.  Below the whole development, importing nothing of it |
 | `Debruijn` | signatures `s`, bound variables `BVar s k`, renamings |
 | `Syntax` | types, propositions, telescopes, the answer sort `ETy` with its declared bound; evidence (`LeCo`, `ELeCo`, `EqCo`, `Has`, `Morphism`); atoms and packed atoms `PAtom`; terms and values; renaming, and substitution `Subst` with an atom-valued capture component and the instantiations `singleC`, `arg`, `enter`, `enterC`, `enterObj`, `instRoot` |
 | `Context` | bindings, contexts, lookup of types, definitions and fields, levels as positions on the spine, the instance reader `Ctx.InstOf`, and the four scope contexts `Ctx.scope`, `Ctx.scopeInst`, `Ctx.body`, `Ctx.objBody` |
@@ -1296,5 +1297,163 @@ is the body root, so it is not at the outermost level.  The platform capability 
 platform prefix opens no scope.  And member-free evidence never lowers a level.  The statement is on
 the target because it names `⊤ᶜ`, which the source has no atom for, and it is about source evidence,
 which is what T17 is for.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem above.
+
+## Stage K0
+
+K0 is the first stage of classifiers (`plan-5f-classifiers-stages.md` §K0).  It is the target only,
+and it adds no evidence rule.  The classifier tree and the kinds arrive as data in
+`Coercions.Classifiers.Cls`, which this directory imports from `Syntax.lean` and which imports
+nothing of the tree.  A capture bound gains the flavour `cls c`, a capture atom gains the projection
+`a ↾ φ`, resolution and expansion gain one clause each, and the semantic side is `Ctx.KindLe` with
+the four theorems T1 to T4.
+
+Four sentences shape the whole stage.  A classifier is closed data, so every new congruence case of
+the renaming and substitution blocks is one `rfl` over the kind argument and every commutation of a
+projection with a rename is `List.map_map`.  Resolution lands in capture binders and in the universal
+root, which is why a classifier rides on `CapBound` and nowhere else.  A filter is only meaningful
+after expansion and must not be followed by one, so it is consumed inside `Ctx.expandAtom`, the
+second and final stage of `Ctx.roots`.  And expansion therefore produces projection-free atoms, so
+`Ctx.roots`, `Ctx.Root`, `CapLe` and `RootsEq` never see a projection and keep their bodies, their
+statements and their proofs.
+
+| module | what K0 changed |
+|---|---|
+| `Syntax` | the constructor `CapAtom.proj` with the notation `a ↾ φ`, `CapAtom.base`, `CapAtom.kindOf`, `CapAtom.projBy`, `CaptureSet.proj`, one clause in `CapAtom.rename` and one in `CapAtom.subst`, and the import of `Coercions.Classifiers.Cls` |
+| `Context` | the flavour `CapBound.cls`, `CapBound.classifier`, one clause in `CapBound.opaque` and one in `CapBound.rename`, `Ctx.classOf`, `Ctx.admitsB`, one clause in `Ctx.lvlAtom` |
+| `RenameLemmas` | six proofs move from `cases` to `induction`, with their statements unchanged |
+| `Levels` | the `cls` and `proj` alternatives, `Ctx.lvlLe_proj_left`, `CapAtom.base_ne_proj`, `CapAtom.base_base`, `CapAtom.base_rename`, `Ctx.lvlAtom_base`, `Ctx.lvlLe_base_left`, `Ctx.lvlAtom_isRoot` |
+| `Resolution` | the two new clauses of `Ctx.capsAtom` and the one of `Ctx.capsBound` and of `Ctx.expandAtom`, the `sizeOf` measures, L1 to L5, the weakening commutations of a classifier, `Ctx.admitsB_top`, `Ctx.filter_map_base_eq_self`, `Ctx.mem_expandAtom_base`, and K0.5 and K0.6 in full |
+| `TypingRename`, `TypingSubst`, `Transparency` | one alternative per atom or bound analysis, `Ctx.lvlLe_rename_of_base` and `Ctx.lvlLe_subst_of_base`, `CapBound.subst` at `cls`, `CapAtom.cons_cases` and `CapAtom.consC_cases` with one more disjunct |
+| `Checker` | one clause in `CapAtom.rename?` and in its soundness and completeness, one alternative in three case analyses |
+| `Store` | nothing.  `Store.Typed.consC` asks only that the bound is not a scope root, and `cls` is not one |
+| `Machine` | `Rename.InjectiveOnAtoms.comp_succ` by induction, and K0.7 and T4 |
+| `CanonicalForms` | the `cls` and `proj` alternatives of `Ctx.caps_of_isRoot`, and one step in the level case of `cap_canon` |
+| `Consistency` | the `cls` alternative of `Ctx.caps_of_opaque`, and the restatements of `lvl_canon`, `lvl_safety` and `rigid_target` |
+| `LevelInversion`, `Preservation` | one alternative each, and the wrapper `Ctx.lvlLe_rename_of_base` in the self-object renaming |
+| `Examples` | the three classifier examples K1x, K2x and K3x, and the two call sites that read a restated lemma |
+| every other module | nothing |
+
+### Notation
+
+One token is new, and it is `scoped` in namespace `FCdot` like the rest.
+
+| | |
+|---|---|
+| `a ↾ φ` | the capture atom `a` projected by the kind `φ`.  `notation:max`, so `(CapAtom.cvar κ) ↾ φ` needs its parentheses |
+
+`ᶜ` is not a legal identifier character, so `⊤ᶜ` stays a notation token and the classifier data is
+written `Cls.Classifier`, `Cls.Kind`, `Cls.Subtree` inside this directory.
+
+### Statements restated
+
+Nothing was weakened.  Each row below is a statement of the copy that changed form, with the sentence
+that says why its meaning is the same.  A premise reading `a.base = a` is vacuous on the copied
+representation, where every atom is its own base.
+
+| statement | change | why the meaning is the same |
+|---|---|---|
+| `CapBound` | one constructor, `cls` | additive, and `star` reads as `cls ⊤` through `CapBound.classifier` |
+| `CapBound.opaque` | one clause, `true` | a classified rigid capability stands for itself, which is what `star` already said |
+| `CapAtom` | one constructor, `proj` | additive, and a bare atom is `a ↾ ⊤` up to roots by `Ctx.rootsEq_proj_top` |
+| `Ctx.lvlAtom` | one clause | a projection is at the level of what it projects, so `Ctx.Confined` means what it meant |
+| `Ctx.capsAtom` | one clause, and the measure counts `sizeOf` where it counted list length | the old clauses are textually unchanged and `Ctx.caps_nil` and `Ctx.caps_cons` keep their statements and their `simp` proofs |
+| `Ctx.capsBound` | one clause, `[.cvar κ]` | the `star` clause verbatim, for a flavour that is `star` with a classifier |
+| `Ctx.expandAtom` | an `if` becomes a `match` with one clause before it | the wildcard branch is the old body, and `Ctx.expandAtom_of_root` keeps its statement and its proof |
+| `Ctx.expandAtom_of_not_root` | gains the premise `a.base = a` | a projection is never a root and its expansion is a filter of its base's, so the old form is false at `⊤ᶜ ↾ ∅` |
+| `Ctx.expand_eq_self` | gains the premise `∀ a ∈ C, a.base = a` | the same reason, set-wise |
+| `Ctx.OpaqueAtom`, `Ctx.caps_opaque` | the disjunction reads `a.base` where it read `a` | `base` is the identity on every atom of the copied representation |
+| `Ctx.mem_expandAtom_self` | conclusion `a.base ∈ Γ.expandAtom a` under `Γ.admitsB a.base a.kindOf = true` | on an unprojected atom `base a = a` and the premise is the fact that every kind contains `⊤` |
+| `Ctx.subset_expand`, `Ctx.caps_subset_roots`, `Ctx.Root.of_mem_caps` | the same restatement, base and admission | a projected atom of `Γ.caps` that its own kind excludes is not a root, and on a projection-free set the three are the old statements |
+| `Ctx.roots_eq_caps_of_rootFree` | the conclusion is the admitted sublist of `Γ.caps n C` mapped by `base`, and the hypothesis reads `CapAtom.top ∉ (Γ.caps n C).map CapAtom.base` | on a projection-free set the filter is all true and `base` is the identity, which is `Ctx.filter_map_base_eq_self` |
+| `CapAtom.cons_cases`, `CapAtom.consC_cases` | one more disjunct, `∃ e₀ φ, e = e₀ ↾ φ` | no premise is added, and on the copied representation the new disjunct is uninhabited |
+| `lvl_canon`, `lvl_safety`, `rigid_target` | the conclusion moves from `Γ.caps n C` to `Γ.roots n C`, and `lvl_canon`'s hypothesis with it | on a projection-free set `Γ.caps n C ⊆ Γ.roots n C`, so the new conclusion implies the old one, and the two readings of the hypothesis are interderivable by `Ctx.confined_expand`, which is the step the old proof took inline |
+| `Rename.InjectiveOnAtoms.comp_succ` | statement kept, the proof becomes an induction | `CapAtom` is recursive now, so `cases a <;> cases b` no longer closes the projection case |
+| `Ctx.roots`, `Ctx.Root`, `CapLe`, `RootsEq`, `Ctx.expand`, `Ctx.caps`, `cap_canon`, `atom_canon`, `preservation'`, `progress`, `not_stuck`, `Store.Ext.roots`, `Store.Ext.capLe`, the five `Prediction` theorems | nothing at all | expansion consumes every projection and produces projection-free atoms, so the layers above `expandAtom` never see one |
+
+### New in this stage
+
+The five lemmas that make resolution and expansion work with a filter.
+
+```
+FCdot.Ctx.expandAtom_proj     : Γ.expandAtom (a ↾ φ) = (Γ.expandAtom a).filter (Γ.admitsB · φ)
+FCdot.Ctx.expandAtom_projBy   : the same at the smart constructor, by the kind intersection
+FCdot.Ctx.capsAtom_kindOf     : every atom resolution produces carries a kind below the atom's own
+FCdot.Ctx.expandAtom_kinded   : every atom an expansion produces is admitted by the kind it came from
+FCdot.Ctx.expandAtom_base     : every atom an expansion produces is its own base
+```
+
+The kinding proposition and the four theorems.
+
+```
+FCdot.Ctx.KindLe Γ C φ        : ∀ a, Γ.Root a C → φ.Contains (Γ.classOf a)
+
+FCdot.Ctx.roots_proj          : Γ.roots n (CaptureSet.proj C φ)
+                                  = (Γ.roots n C).filter (fun b => Γ.admitsB b φ)
+FCdot.Ctx.Root_proj           : Γ.Root a (CaptureSet.proj C φ) ↔ (Γ.Root a C ∧ Γ.admitsB a φ = true)
+FCdot.Ctx.rootsEq_proj_top    : RootsEq Γ (CaptureSet.proj C Cls.Kind.top) C
+
+FCdot.Ctx.kindLe_of_kinds     : (∀ a ∈ C, ∀ c, a.kindOf.Contains c → φ.Contains c) → Γ.KindLe C φ
+FCdot.Ctx.kindLe_proj         : Γ.KindLe (CaptureSet.proj C φ) φ
+
+FCdot.Ctx.KindLe.mono         : CapLe Γ C D → Γ.KindLe D φ → Γ.KindLe C φ
+FCdot.Ctx.KindLe.sub          : Γ.KindLe C φ → φ.Subkind ψ → Γ.KindLe C ψ
+FCdot.Ctx.KindLe.union        : Γ.KindLe C φ → Γ.KindLe D φ → Γ.KindLe (C ∪ D) φ
+
+FCdot.Store.Ext.kindLe        : Store.Ext σ σ' ρ → ⊢ σ : Γ → ⊢ σ' : Γ' → Γ.KindLe C φ →
+                                  Γ'.KindLe (C.rename ρ) φ
+```
+
+T1 needs no induction on the context and none on the fuel.  `Ctx.roots` is `Ctx.expand` of
+`Ctx.caps`, `Ctx.caps` distributes over `cons`, `Ctx.expand` is a `flatMap` and `CaptureSet.proj` is
+a `map`, so both sides are `flatMap`s over `C` and `List.filter` distributes over `++`.  The
+statement reduces to one atom, which is `Ctx.expand_capsAtom_projBy`, and its projected case is the
+only use of the kind algebra in the whole stage.  T2 is L3 followed by L4, and `Ctx.kindLe_proj`
+falls straight out of `Ctx.Root_proj`, which is the point: a projected set is kinded by construction,
+and that is what a design filtering before expansion could not have.  T3 is one unfolding each, and
+`KindLe.sub` is the only consumer of subkinding in K0.  T4 needs `Store.Ext.roots`, which keeps its
+statement, and `Store.Ext.classOf`, which is Fact 1 at the level of a whole extension.
+
+The store and the machine.
+
+```
+FCdot.CapBound.cls_opaque              : (CapBound.cls c).opaque = true
+FCdot.CapBound.cls_not_appendable      : (CapBound.cls c).opaque ≠ false
+FCdot.Store.Typed.consC_cls            : ⊢ σ : Γ → ⊢ σ.consC (.cls c) : Γ.consC (.cls c)
+FCdot.CapBound.classifier_of_not_opaque: b.opaque = false → b.classifier = .top
+FCdot.Store.Ext.classOf                : Γ'.classOf (a.rename ρ) = Γ.classOf a
+```
+
+`Store.Ext.consC` asks for a bound that is not opaque and `cls` is opaque, so no step of the machine
+allocates a classified capability: a classified capability sits in the platform prefix.  Store typing
+asks only that a bound is not a scope root, so a classified platform store is well typed with no
+change to store typing.  And every capability a run does append carries the root classifier `⊤`,
+which is the strict reading of the stage at run time: a kind that does not contain `⊤` forbids every
+capability the run allocates.
+
+### The examples
+
+Three, and each is read off an equation for `Ctx.caps` proved by `simp` over the clause lemmas and an
+expansion decided in the kernel.  `Ctx.caps` is a well-founded recursion, so it is never handed to
+`decide`.
+
+```
+FCdot.Examples.K1x_roots_ctl  : K1Ctx.roots 0 [(cvar κ_ctl) ↾ only Control] = [cvar κ_ctl]
+FCdot.Examples.K1x_roots_io   : K1Ctx.roots 0 [(cvar κ_io) ↾ only Control] = []
+FCdot.Examples.K2x_roots      : K2Ctx.roots 0 [⊤ᶜ ↾ except ThreadLocal] = [⊤ᶜ]
+FCdot.Examples.K2x_kindLe     : K2Ctx.KindLe [⊤ᶜ ↾ except ThreadLocal] (except ThreadLocal)
+FCdot.Examples.K3x_roots      : K3Ctx.roots 0 [(cvar κ_S) ↾ except ThreadLocal] = [⊤ᶜ, cvar κ_S]
+FCdot.Examples.K3x_not_capLe  : ¬ CapLe K3Ctx [cvar κ_ctl] [(cvar κ_S) ↾ except ThreadLocal]
+```
+
+K1x is the whole of the atom case, over two classified capabilities and no scope root.  K2x is the
+shape the adversarial check broke: `Control` lies below `ThreadLocal`, so `except ThreadLocal`
+excludes both classified binders while the universal root itself is admitted, and the projected set
+is kinded by T2.  The refuted design derived the same kinding and kept the `ThreadLocal` binder among
+the roots.  K3x puts a scope root between the two capabilities.  The root opens into `⊤ᶜ` and every
+opaque binder at its level or outside it, the filter then keeps only `⊤ᶜ` and the root itself, and
+the `Control` capability opened inside the scope is therefore not below the projected root.  That is
+the sentence E2 will make about a program.
 
 Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem above.

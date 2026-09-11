@@ -36,8 +36,10 @@ theorem Ctx.mem_caps_root (Γ : Ctx s) (n : Nat) {r : CapAtom s} (hr : Γ.IsRoot
       | star => rw [hbb] at hb; simp [CapBound.isRoot] at hb
       | upper C => rw [hbb] at hb; simp [CapBound.isRoot] at hb
       | inst C => rw [hbb] at hb; simp [CapBound.isRoot] at hb
+      | cls c => rw [hbb] at hb; simp [CapBound.isRoot] at hb
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | name x l => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | proj a φ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
 
 
 /-! ### Member-freeness is closed under renaming
