@@ -2,6 +2,9 @@ import Coercions.Frontend.Surface
 import Coercions.Frontend.Notation
 import Coercions.Frontend.Ann
 import Coercions.Frontend.Resolve
+import Coercions.Frontend.Decide
+import Coercions.Frontend.Search
+import Coercions.Frontend.Typer
 
 /-!
 # The vanilla front end
@@ -38,4 +41,47 @@ against hand written terms by `rfl` at the end of the module.  Let insertion has
 no semantic statement attached: the direct style calculus and its type
 preservation theorem are a separate development, parked by `plan-5-extensions.md`
 §7.
+
+`Decide.lean` is stage F1.1: the side conditions the typer of F1.4 discharges by
+computation.  `DotMNF.Ty.Decl` is already decided in the frozen tree, so three
+are added here.  Well-formedness of a type and distinctness of the labels of a
+definition block are decision procedures with an `iff` and a `Decidable`
+instance each.  Strengthening, the inverse of `DotMNF.Ty.weaken`, is the action
+of the target's own partial renaming, reused verbatim from
+`lean/Coercions/FCdot/Checker.lean`, over a new traversal of `DotMNF.Ty`.  The
+module also holds the variables of a context, which the search of F1.3 walks.
+Everything here is structural and reduces in the kernel.
+
+`Search.lean` is stages F1.2 and F1.3: views of a context variable, the
+declaration table of a context, and the subtyping search.  A view and a
+declaration each carry the derivation that justifies them, so the search returns
+evidence rather than an answer and has no soundness theorem to prove.  Four
+counters live in `Budget`, two for the rounds of the two closures, one for the
+fuel of the search and one for the typer of F1.4.  The closures drop duplicates
+after every round, by type for views and by the four data fields for
+declarations, and two monotonicity theorems say that more rounds lose neither.
+The search tries eleven rules in a fixed order, the last three of them the type
+selections and the one family of transitivity middles the plan admits, and then
+retries itself at the previous fuel, which is what makes fuel monotonicity an
+induction rather than a walk through the eleven rules.
+The search is well-founded, so unlike everything before it in this library it
+does not reduce in the kernel: its six probes run compiled code through `expect`
+at measured budgets.
+
+`Typer.lean` is stages F1.4 and F1.5: the typer that replaces the hand assembly
+of `lean/Coercions/DotMNF/Examples.lean`.  Four mutually recursive functions
+synthesize a type for a term, check a term against a type, check a variable
+against a type, and check a definition list against a type in lockstep.  Each
+returns the `DotMNF` derivation, so soundness is the result type and there is no
+soundness theorem; incompleteness is necessary, since DOT subtyping is
+undecidable, and what the typer will not find is written out as a list in the
+module and not as a theorem.  The `let` rule is where a typer for a dependently
+typed language makes its one ad hoc choice, and it is made by a ladder of three
+rungs, the surface annotation, the strengthening of the body's type, and `⊤`.
+The block is the second and last well-founded site of the stage, on the fuel,
+the size of the term and a tag, and it ends its fuel level with a retry that
+makes fuel monotonicity an induction.  Its eight checks run `synthTop?` on the
+eight surface programs of F0 and compare the type against the one the hand
+written derivation concludes, in compiled code, at a budget measured per
+example.
 -/
