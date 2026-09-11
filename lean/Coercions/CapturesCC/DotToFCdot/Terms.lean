@@ -57,10 +57,10 @@ def fieldBody (a : Label) (t : FCdot.Tm (s,x)) : FCdot.Tm (s,x) :=
 mutual
 
 /-- `⟦h⟧ : ⟦T⟧`. -/
-def HasTy.translate : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
-    HasTy U Γ t T → FCdot.Tm s
+def HasTy.translate : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm s} → {E : ETy s} →
+    HasTy U Γ t E → FCdot.Tm s
   | _, Γ, _, _, @HasTy.var _ _ x =>
-      .atom (.recap (Γ.varAtom x) (.refl [FCdot.CapAtom.var x]))
+      .atom (.plain (.recap (Γ.varAtom x) (.refl [FCdot.CapAtom.var x])))
   | _, _, _, _, @HasTy.lam _ _ U T1 _ _ h _ =>
       .val (.lam U.translate T1.translate h.translate h.translateUses)
   | _, _, _, _, .app h₁ h₂ => .app h₁.translateAtom h₂.translateAtom
@@ -79,17 +79,19 @@ def HasTy.translate : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm s} → {T 
       .let h₁.translate h₂.translate U.translate h₂.translateUses
   | _, _, _, _, @HasTy.unbox _ _ U _ _ _ _ h f =>
       .unbox h.translateAtom U.translate f.translate
-  | _, _, _, _, h@(.recI _ _) => .atom h.translateAtom
-  | _, _, _, _, h@(.recE _ _) => .atom h.translateAtom
-  | _, _, _, _, h@(.andI _ _) => .atom h.translateAtom
-  | _, _, _, _, .sub h d _ => .cast h.translate d.translate
+  | _, _, _, _, h@(.recI _ _) => .atom (.plain h.translateAtom)
+  | _, _, _, _, h@(.recE _ _) => .atom (.plain h.translateAtom)
+  | _, _, _, _, h@(.andI _ _) => .atom (.plain h.translateAtom)
+  | _, _, _, _, @HasTy.letex _ _ _ U₂ _ _ _ _ _ h₁ f h₂ =>
+      .letex h₁.translate h₂.translate U₂.translate f.translate h₂.translateUses
+  | _, _, _, _, .sub h d _ => .castE h.translate d.translate
 
 /-- `⟦h⟧ᵤ`, the source's own use-set evidence, read in the target: it puts the
 use set of `⟦h⟧` below `⟦U⟧`.  On a derivation of a variable it puts `{x}`
 below `⟦U⟧`, which is the same statement, since the use set of a translated
 variable term is `{x}`. -/
-def HasTy.translateUses : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
-    HasTy U Γ t T → FCdot.CapCo s
+def HasTy.translateUses : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm s} → {E : ETy s} →
+    HasTy U Γ t E → FCdot.CapCo s
   | _, _, _, _, @HasTy.var _ _ x => .refl [FCdot.CapAtom.var x]
   | _, _, _, _, .lam _ _ => .refl []
   | _, _, _, _, .app h₁ h₂ => .union h₁.translateUses h₂.translateUses
@@ -103,6 +105,9 @@ def HasTy.translateUses : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm s} →
   | _, _, _, _, .recI h _ => h.translateUses
   | _, _, _, _, .recE h _ => h.translateUses
   | _, _, _, _, .andI h₁ _ => h₁.translateUses
+  | _, _, _, _, @HasTy.letex _ _ U₁ U₂ _ _ _ _ _ h₁ _ _ =>
+      .union (.trans h₁.translateUses (.elem U₁.translate (U₁ ∪ U₂).translate))
+        (.elem U₂.translate (U₁ ∪ U₂).translate)
   | _, _, _, _, .sub h _ f => .trans h.translateUses f.translate
 
 /-- The fields of a literal, typed under its self binder: each field body is

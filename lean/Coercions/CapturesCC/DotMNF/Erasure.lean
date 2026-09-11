@@ -71,6 +71,9 @@ def Tm.erase : Tm s → Runtime.Tm s
   -- The charged capture set has no runtime content; an unboxing opens the
   -- runtime box a box erases to.
   | .unbox _ x => .unbox x
+  -- An unpacking erases to the runtime's own unpacking, which is what makes
+  -- the source and the target erase a `letex` to the same runtime term.
+  | .letex t u => .letex t.erase u.erase
 
 def Value.erase : Value s → Runtime.Tm s
   | .obj d => .obj d.erase
@@ -97,6 +100,7 @@ def Store.erase : Store s → Runtime.Store s
 def Cont.erase : Cont s → Runtime.Cont s
   | .nil => .nil
   | .cons K u => .cons K.erase u.erase
+  | .consE K u => .consE K.erase u.erase
 
 def State.erase (st : State s) : Runtime.State s :=
   ⟨st.σ.erase, st.K.erase, st.t.erase⟩
@@ -113,6 +117,9 @@ variable. -/
 @[simp] theorem Tm.erase_unbox (C : CaptureSet s) (x : BVar s .var) :
     (Tm.unbox C x).erase = .unbox x := rfl
 
+@[simp] theorem Tm.erase_letex (t : Tm s) (u : Tm ((s,c),x)) :
+    (Tm.letex t u).erase = .letex t.erase u.erase := rfl
+
 /-! ## Erasure commutes with renaming -/
 
 mutual
@@ -128,6 +135,9 @@ theorem Tm.erase_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
       simp only [Tm.rename, Tm.erase, Runtime.Tm.rename,
         Tm.erase_rename t ρ, Tm.erase_rename u ρ.lift]
   | .unbox C x => simp only [Tm.rename, Tm.erase, Runtime.Tm.rename]
+  | .letex t u =>
+      simp only [Tm.rename, Tm.erase, Runtime.Tm.rename,
+        Tm.erase_rename t ρ, Tm.erase_rename u ρ.lift.lift]
 
 theorem Value.erase_rename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
     (v.rename ρ).erase = v.erase.rename ρ := by
@@ -166,8 +176,17 @@ theorem Cont.erase_rename {s1 s2 : Sig} (K : Cont s1) (ρ : Rename s1 s2) :
   | .cons K u =>
       simp only [Cont.rename, Cont.erase, Runtime.Cont.rename,
         Cont.erase_rename K ρ, Tm.erase_rename u ρ.lift]
+  | .consE K u =>
+      simp only [Cont.rename, Cont.erase, Runtime.Cont.rename,
+        Cont.erase_rename K ρ, Tm.erase_rename u ρ.lift.lift]
 
 theorem Cont.erase_weaken {s : Sig} (K : Cont s) : (K.weaken).erase = K.erase.weaken :=
+  Cont.erase_rename K Rename.succ
+
+/-- The capture-kind twin of `Cont.erase_weaken`, for the binder an
+unpacking opens. -/
+theorem Cont.erase_weakenC {s : Sig} (K : Cont s) :
+    (K.weakenC).erase = K.erase.weaken :=
   Cont.erase_rename K Rename.succ
 
 /-! ## Erasure commutes with substitution
@@ -218,6 +237,9 @@ theorem Tm.erase_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
       simp only [Tm.subst, Tm.erase, Runtime.Tm.map, Tm.erase_subst t σ,
         Tm.erase_subst u σ.lift, Subst.lift_var]
   | .unbox C x => rfl
+  | .letex t u =>
+      simp only [Tm.subst, Tm.erase, Runtime.Tm.map, Tm.erase_subst t σ,
+        Tm.erase_subst u σ.liftC.lift, Subst.lift_var, Subst.liftC_var]
 
 theorem Value.erase_subst {s1 s2 : Sig} (v : Value s1) (σ : Subst s1 s2) :
     (v.subst σ).erase = v.erase.map σ.var := by
@@ -257,6 +279,7 @@ theorem Tm.inspects_erase {s : Sig} {t : Tm s} {x : BVar s .var}
   | path p => exact absurd h (by simp)
   | val v => exact absurd h (by simp)
   | «let» t u => exact absurd h (by simp)
+  | letex t u => exact absurd h (by simp [Tm.inspects])
 
 /-- Erasure of a state preserves the root the state reads. -/
 theorem State.inspects_erase {s : Sig} {st : State s} {x : BVar s .var}
@@ -338,6 +361,17 @@ theorem erase_step {s s' : Sig} {st : State s} {st' : State s'} (h : Step st st'
       rfl
   | proj hl hd => exact step_proj_erase hl hd
   | unbox hl => exact step_unbox_erase hl
+  | letex =>
+      simp only [State.erase, Tm.erase, Cont.erase]
+      exact Runtime.Step.letex
+  | unpack =>
+      simp only [State.erase, Tm.erase, Cont.erase, Path.root, Tm.erase_substVar,
+        Store.erase, Cont.erase_weakenC]
+      exact Runtime.Step.unpack
+  | allocE =>
+      simp only [State.erase, Tm.erase, Cont.erase, Store.erase, Cont.erase_weakenC,
+        Cont.erase_weaken, Value.erase_weaken]
+      exact Runtime.Step.allocE (Value.isValue_erase _)
 
 /-! ## Reflection
 
@@ -349,6 +383,12 @@ theorem reflect_let {s : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {u : Tm (s,
     ∃ st' : State s, Step ⟨σ, K, .let t u⟩ st' ∧
       st'.erase = ⟨σ.erase, .cons K.erase u.erase, t.erase⟩ :=
   ⟨⟨σ, .cons K u, t⟩, Step.let, rfl⟩
+
+/-- The unpacking-push case, beside `reflect_let`. -/
+theorem reflect_letex {s : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {u : Tm ((s,c),x)} :
+    ∃ st' : State s, Step ⟨σ, K, .letex t u⟩ st' ∧
+      st'.erase = ⟨σ.erase, .consE K.erase u.erase, t.erase⟩ :=
+  ⟨⟨σ, .consE K u, t⟩, Step.letex, rfl⟩
 
 theorem reflect_app {s : Sig} {σ : Store s} {K : Cont s} {x y : BVar s .var}
     {t₀ : Runtime.Tm (((s,c),c),x)} (hl : σ.erase.lookup x = .lam t₀) :
@@ -444,6 +484,10 @@ theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
       simp only [State.erase, Cont.erase, Tm.erase] at h
       cases h with
       | «let» => exact reflect_let
+  | .nil, .letex t u =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
+      cases h with
+      | letex => exact reflect_letex
   | .cons K u, .path (.var x) =>
       simp only [State.erase, Cont.erase, Tm.erase, Path.root] at h
       cases h with
@@ -489,6 +533,67 @@ theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
       cases h with
       | alloc hv => cases hv
       | «let» => exact reflect_let
+  | .cons K u, .letex t u' =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
+      cases h with
+      | alloc hv => cases hv
+      | letex => exact reflect_letex
+  | .consE K u, .path (.var x) =>
+      simp only [State.erase, Cont.erase, Tm.erase, Path.root] at h
+      cases h with
+      | allocE hv => cases hv
+      | unpack =>
+          exact ⟨⟨σ.consC, K.weakenC, u.substVar (.there x)⟩, Step.unpack, by
+            simp only [State.erase, Store.erase, Cont.erase_weakenC, Tm.erase_substVar]⟩
+  | .consE K u, .val (.lam S t) =>
+      simp only [State.erase, Cont.erase, Tm.erase, Value.erase] at h
+      cases h with
+      | allocE hv =>
+          exact ⟨⟨(σ.consC).cons ((Value.lam S t).weaken (k := .cap)),
+              (K.weakenC).weaken, u⟩, Step.allocE, by
+            simp only [State.erase, Store.erase, Cont.erase_weaken, Cont.erase_weakenC,
+              Value.erase_weaken, Value.erase]⟩
+  | .consE K u, .val (.obj d) =>
+      simp only [State.erase, Cont.erase, Tm.erase, Value.erase] at h
+      cases h with
+      | allocE hv =>
+          exact ⟨⟨(σ.consC).cons ((Value.obj d).weaken (k := .cap)),
+              (K.weakenC).weaken, u⟩, Step.allocE, by
+            simp only [State.erase, Store.erase, Cont.erase_weaken, Cont.erase_weakenC,
+              Value.erase_weaken, Value.erase]⟩
+  | .consE K u, .val (.box z) =>
+      simp only [State.erase, Cont.erase, Tm.erase, Value.erase] at h
+      cases h with
+      | allocE hv =>
+          exact ⟨⟨(σ.consC).cons ((Value.box z).weaken (k := .cap)),
+              (K.weakenC).weaken, u⟩, Step.allocE, by
+            simp only [State.erase, Store.erase, Cont.erase_weaken, Cont.erase_weakenC,
+              Value.erase_weaken, Value.erase]⟩
+  | .consE K u, .app x y =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
+      cases h with
+      | allocE hv => cases hv
+      | app hl => exact reflect_app hl
+  | .consE K u, .proj x ℓ =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
+      cases h with
+      | allocE hv => cases hv
+      | proj hl hf => exact reflect_proj hl hf
+  | .consE K u, .unbox C x =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
+      cases h with
+      | allocE hv => cases hv
+      | unbox hl => exact reflect_unbox hl
+  | .consE K u, .let t u' =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
+      cases h with
+      | allocE hv => cases hv
+      | «let» => exact reflect_let
+  | .consE K u, .letex t u' =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
+      cases h with
+      | allocE hv => cases hv
+      | letex => exact reflect_letex
 
 end DotMNF
 

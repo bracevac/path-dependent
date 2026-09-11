@@ -57,6 +57,10 @@ set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ " m:51 " : " src:51 " ⇒ " Tel:51 => Morphism.HasType Γ src m Tel
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ₐ " a:51 " : " T:51 => Atom.HasType Γ a T
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ᵉ " g:51 " : " E:51 " ≤ " E':51 => ELeCo.HasType Γ g E E'
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ₚ " p:51 " : " E:51 => PAtom.HasType Γ p E
 
 mutual
 
@@ -96,6 +100,9 @@ inductive CapEq.HasType : Ctx s → CapEq s → CaptureSet s → CaptureSet s �
   | trans : Γ ⊢ᶜ φ : C₁ ≡ C₂ → Γ ⊢ᶜ ψ : C₂ ≡ C₃ → Γ ⊢ᶜ .trans φ ψ : C₁ ≡ C₃
   /-- Definition of a transparent binder's capture name. -/
   | defC : Γ.lookupDefC x ℓ = some C → Γ ⊢ᶜ .defC x ℓ : [CapAtom.name x ℓ] ≡ C
+  /-- An instance binder stands for the set it was opened at.  Both
+      directions come from it through `symm` and `eqToLe`. -/
+  | instC : Γ.InstOf a C → Γ ⊢ᶜ .instC a C : [a] ≡ C
   | member :
       Γ ⊢ₐ a : S ^ D →
       Γ ⊢ˢ e : S ≤ μ Tel →
@@ -129,7 +136,7 @@ inductive ShapeCo.HasType : Ctx s → ShapeCo s → Shape s → Shape s → Prop
       has a root of its own, which is the scope discipline of the stage. -/
   | pi {T1 T2 : Dom s} {U1 U2 : Cod s} :
       Γ.scope ⊢ e : T2.underRoot ≤ T1.underRoot →
-      Γ.body T2 ⊢ f : U1.underRoot ≤ U2.underRoot →
+      Γ.body T2 ⊢ᵉ f : U1.underRoot ≤ U2.underRoot →
       Γ ⊢ˢ .pi e f : Π(T1) U1 ≤ Π(T2) U2
   /-- Object coercion between closed telescopes: the morphism proves each target
       proposition by a template over a source proposition. -/
@@ -258,6 +265,26 @@ inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where
       Γ ⊢ᶜ f : [CapAtom.var a.root] ⊑ C' →
       Γ ⊢ₐ .recap a f : S ^ C'
 
+/-- `Γ ⊢ᵉ g : E ≤ E'`: inclusion evidence between answers.  It premises the
+type family, and `ShapeCo.HasType.pi` premises it, so it belongs to the
+block. -/
+inductive ELeCo.HasType : Ctx s → ELeCo s → ETy s → ETy s → Prop where
+  | plain : Γ ⊢ e : T ≤ T' → Γ ⊢ᵉ .plain e : .ty T ≤ .ty T'
+  /-- Packing: the witness is below the declared bound, and the residual
+      inclusion is read under an instance binding for the witness, in a scope
+      with a root of its own. -/
+  | pack {T : Dom s} :
+      Γ ⊢ᶜ h : C ⊑ C₀ →
+      Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) T')) ≤ T.underRoot →
+      Γ ⊢ᵉ .pack C h e : .ty T' ≤ ∃ᶜ[C₀] T
+  /-- Congruence: the bound is covariant and both bodies are read under a
+      scope of their own. -/
+  | cong {T T' : Dom s} :
+      Γ ⊢ᶜ h : C₀ ⊑ C₀' →
+      Γ.scope ⊢ e : T.underRoot ≤ T'.underRoot →
+      Γ ⊢ᵉ .cong h e : ∃ᶜ[C₀] T ≤ ∃ᶜ[C₀'] T'
+  | trans : Γ ⊢ᵉ g : E₁ ≤ E₂ → Γ ⊢ᵉ h : E₂ ≤ E₃ → Γ ⊢ᵉ .trans g h : E₁ ≤ E₃
+
 end
 
 open Lean PrettyPrinter in
@@ -291,6 +318,25 @@ open Lean PrettyPrinter in
 open Lean PrettyPrinter in
 @[app_unexpander Atom.HasType] def Atom.HasType.unexpand : Unexpander
   | `($_ $Γ $a $T) => `($Γ ⊢ₐ $a : $T)
+  | _ => throw ()
+open Lean PrettyPrinter in
+@[app_unexpander ELeCo.HasType] def ELeCo.HasType.unexpand : Unexpander
+  | `($_ $Γ $g $E $E') => `($Γ ⊢ᵉ $g : $E ≤ $E')
+  | _ => throw ()
+
+/-- `Γ ⊢ₚ p : E`: packed atoms.  It premises only judgments of the block
+above, so it is stated after it. -/
+inductive PAtom.HasType : Ctx s → PAtom s → ETy s → Prop where
+  | plain : Γ ⊢ₐ a : T → Γ ⊢ₚ .plain a : .ty T
+  | pack {T : Dom s} :
+      Γ ⊢ₐ a : S →
+      Γ ⊢ᶜ h : C ⊑ C₀ →
+      Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S)) ≤ T.underRoot →
+      Γ ⊢ₚ .pack C h e a : ∃ᶜ[C₀] T
+
+open Lean PrettyPrinter in
+@[app_unexpander PAtom.HasType] def PAtom.HasType.unexpand : Unexpander
+  | `($_ $Γ $p $E) => `($Γ ⊢ₚ $p : $E)
   | _ => throw ()
 
 /-! ## Member-free capture evidence
@@ -330,18 +376,21 @@ end
 /-! ### Notation for the term judgments -/
 
 set_option hygiene false in
-scoped notation:40 Γ:51 " ⊢ " t:51 " : " T:51 => Tm.HasType Γ t T
+scoped notation:40 Γ:51 " ⊢ " t:51 " :ᵉ " E:51 => Tm.HasType Γ t E
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ᵥ " v:51 " : " T:51 => Value.HasType Γ v T
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ᵥᵉ " v:51 " : " E:51 => Value.HasTypeE Γ v E
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ᶠ[" A "] " F:51 => Fields.HasType Γ A F
 
 mutual
 
-/-- `Γ ⊢ t : T`: terms. -/
-inductive Tm.HasType : Ctx s → Tm s → Ty s → Prop where
-  | atom : Γ ⊢ₐ a : T → Γ ⊢ .atom a : T
-  | val : Γ ⊢ᵥ v : T → Γ ⊢ .val v : T
+/-- `Γ ⊢ t :ᵉ E`: terms.  The index is an answer, and `Tm.HasTy` below is
+the plain reading, which carries the notation `Γ ⊢ t : T`. -/
+inductive Tm.HasType : Ctx s → Tm s → ETy s → Prop where
+  | atom : Γ ⊢ₚ p : E → Γ ⊢ .atom p :ᵉ E
+  | val : Γ ⊢ᵥᵉ v : E → Γ ⊢ .val v :ᵉ E
   /-- The argument is checked at the *instantiated* domain: the arrow's
       capture binder goes to the argument's root.  A caller reaches it with
       `recap` and reflexivity.  The result is the codomain with the parameter
@@ -349,7 +398,7 @@ inductive Tm.HasType : Ctx s → Tm s → Ty s → Prop where
   | app {T : Dom s} {U : Cod s} :
       Γ ⊢ₐ a : (Π(T) U) ^ C →
       Γ ⊢ₐ b : T.subst (Subst.singleC (.var b.root)) →
-      Γ ⊢ .app a b : U.subst (Subst.arg b)
+      Γ ⊢ .app a b :ᵉ U.subst (Subst.arg b)
   /-- A field's result is the block name `ℓ` of the atom's root, captured at
       the capture name of the same label.  The capture witness `Wᶜ(ℓ)` of a
       literal is the declared capture set of the field's result, read by
@@ -357,22 +406,38 @@ inductive Tm.HasType : Ctx s → Tm s → Ty s → Prop where
   | proj :
       Γ ⊢ₐ a : T →
       Γ ⊢ h : a.root ∋ ℓ →
-      Γ ⊢ .proj a ℓ h : (a.root ∙ ℓ) ^ [CapAtom.name a.root ℓ]
+      Γ ⊢ .proj a ℓ h :ᵉ .ty ((a.root ∙ ℓ) ^ [CapAtom.name a.root ℓ])
   /-- The body of a let declares the use set `U'`, and the avoidance evidence
       `f` puts the body's use set below it.  `U'` does not mention the bound
-      variable, so the use set of the let is structural. -/
+      variable, so the use set of the let is structural.  The body may have an
+      answer; a let whose body is plain is the rule as it stands. -/
   | «let» :
-      Γ ⊢ t : T →
-      Γ.cons (.opaque T) ⊢ u : U↑ →
+      Γ ⊢ t :ᵉ .ty T →
+      Γ.cons (.opaque T) ⊢ u :ᵉ E↑ →
       Γ.cons (.opaque T) ⊢ᶜ f : u.uses ⊑ U'↑ →
-      Γ ⊢ .let t u U' f : U
-  | cast : Γ ⊢ t : T → Γ ⊢ e : T ≤ T' → Γ ⊢ .cast t e : T'
+      Γ ⊢ .let t u U' f :ᵉ E
+  | cast : Γ ⊢ t :ᵉ .ty T → Γ ⊢ e : T ≤ T' → Γ ⊢ .cast t e :ᵉ .ty T'
+  /-- The answer cast: the same former at the answer sort. -/
+  | castE : Γ ⊢ t :ᵉ E → Γ ⊢ᵉ g : E ≤ E' → Γ ⊢ .castE t g :ᵉ E'
+  /-- The head's bound is charged to the declared use set, the answer avoids
+      both opened binders, and the body may name the opened binder in its
+      charge.  The opened capture binder is rigid: it has no scope of its
+      own, so two `letex`es open two incomparable binders. -/
+  | letex {T : Ty (s,c)} {C₀ U' : CaptureSet s} {E : ETy s} :
+      Γ ⊢ t :ᵉ ∃ᶜ[C₀] T →
+      Γ ⊢ᶜ h : C₀ ⊑ U' →
+      ((Γ.consC .star).cons (.opaque T)) ⊢ u :ᵉ
+        (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E)) →
+      ((Γ.consC .star).cons (.opaque T)) ⊢ᶜ f :
+        u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+          ∪ [CapAtom.cvar (.there .here)]) →
+      Γ ⊢ .letex t u U' h f :ᵉ E
   /-- Unboxing, charged with the boxed capture set against the use set `U`
       the term declares. -/
   | unbox :
       Γ ⊢ₐ a : (□ (S ^ C)) ^ D →
       Γ ⊢ᶜ f : C ⊑ U →
-      Γ ⊢ .unbox a U f : S ^ C
+      Γ ⊢ .unbox a U f :ᵉ .ty (S ^ C)
 
 /-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is empty in
 this stage. -/
@@ -381,7 +446,7 @@ inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
       closing evidence `g` puts the body's use set below `A` weakened united
       with the parameter. -/
   | lam {T : Dom s} {U : Cod s} :
-      Γ.body T ⊢ t : U.underRoot →
+      Γ.body T ⊢ t :ᵉ U.underRoot →
       Γ.body T ⊢ᶜ g : t.uses ⊑ (A↑↑↑ ∪ [CapAtom.var .here]) →
       Γ ⊢ᵥ .lam A T t g : (Π(T) U) ^ A
   /-- An object literal has its precise type, generated from its witnesses and
@@ -397,6 +462,17 @@ inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
       Γ ⊢ᵥ .box a : (□ T) ^ []
   | cast : Γ ⊢ᵥ v : T → Γ ⊢ e : T ≤ T' → Γ ⊢ᵥ .cast v e : T'
 
+/-- `Γ ⊢ᵥᵉ v : E`: values at the answer sort.  `Value.HasType` has no `pack`
+rule, so a packed value has an existential answer and no other, and a packed
+value is never stored. -/
+inductive Value.HasTypeE : Ctx s → Value s → ETy s → Prop where
+  | plain : Γ ⊢ᵥ v : T → Γ ⊢ᵥᵉ v : .ty T
+  | pack {T : Dom s} :
+      Γ ⊢ᵥ v : S →
+      Γ ⊢ᶜ h : C ⊑ C₀ →
+      Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S)) ≤ T.underRoot →
+      Γ ⊢ᵥᵉ .pack C h e v : ∃ᶜ[C₀] T
+
 /-- `Γ ⊢ᶠ[A] F`: each field `ℓ = t` has type `(self ∙ ℓ) ^ {self ∙ ℓ}`, and
 its closing evidence puts its use set below the literal's assigned set `A`
 weakened united with the self.  The index `A` is the literal's assigned
@@ -405,19 +481,34 @@ inductive Fields.HasType : Ctx (s,x) → CaptureSet s → Fields (s,x) → Prop 
   | nil : Γ ⊢ᶠ[A] .nil
   | cons :
       Γ ⊢ᶠ[A] F →
-      Γ ⊢ t : (.here ∙ ℓ) ^ [CapAtom.name .here ℓ] →
+      Γ ⊢ t :ᵉ .ty ((.here ∙ ℓ) ^ [CapAtom.name .here ℓ]) →
       Γ ⊢ᶜ g : t.uses ⊑ (A↑ ∪ [CapAtom.var .here]) →
       Γ ⊢ᶠ[A] .cons F ℓ t g
 
 end
 
+/-- The plain reading of term typing.  It carries the notation `Γ ⊢ t : T`,
+so every statement written that way is the proposition it was before the
+answer sort came in. -/
+abbrev Tm.HasTy (Γ : Ctx s) (t : Tm s) (T : Ty s) : Prop := Tm.HasType Γ t (.ty T)
+
+scoped notation:40 Γ:51 " ⊢ " t:51 " : " T:51 => Tm.HasTy Γ t T
+
 open Lean PrettyPrinter in
 @[app_unexpander Tm.HasType] def Tm.HasType.unexpand : Unexpander
+  | `($_ $Γ $t $E) => `($Γ ⊢ $t :ᵉ $E)
+  | _ => throw ()
+open Lean PrettyPrinter in
+@[app_unexpander Tm.HasTy] def Tm.HasTy.unexpand : Unexpander
   | `($_ $Γ $t $T) => `($Γ ⊢ $t : $T)
   | _ => throw ()
 open Lean PrettyPrinter in
 @[app_unexpander Value.HasType] def Value.HasType.unexpand : Unexpander
   | `($_ $Γ $v $T) => `($Γ ⊢ᵥ $v : $T)
+  | _ => throw ()
+open Lean PrettyPrinter in
+@[app_unexpander Value.HasTypeE] def Value.HasTypeE.unexpand : Unexpander
+  | `($_ $Γ $v $E) => `($Γ ⊢ᵥᵉ $v : $E)
   | _ => throw ()
 open Lean PrettyPrinter in
 @[app_unexpander Fields.HasType] def Fields.HasType.unexpand : Unexpander

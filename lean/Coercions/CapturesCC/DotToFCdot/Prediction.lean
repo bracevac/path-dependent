@@ -161,12 +161,15 @@ theorem _root_.CapturesCC.FCdot.Value.erase_inspects {s : Sig} :
   | .obj _ _ _ _ => rfl
   | .box _ => rfl
   | .cast v _ => FCdot.Value.erase_inspects v
+  | .pack _ _ _ v => FCdot.Value.erase_inspects v
 
-/-- A target term that is not a head cast reads the root its erasure reads.
-A head cast is the one term whose erasure reads a root that it does not read
-itself, and a state that is not a cast redex has no head cast. -/
+/-- A target term that is neither a head cast nor a head answer cast reads
+the root its erasure reads.  Those two are the terms whose erasure reads a
+root that they do not read themselves, and a state that is not a cast redex
+has neither. -/
 theorem _root_.CapturesCC.FCdot.Tm.inspects_reflect {s : Sig} {t : FCdot.Tm s}
     {x : BVar s .var} (hnc : ∀ (t₀ : FCdot.Tm s) (e : FCdot.LeCo s), t ≠ .cast t₀ e)
+    (hnce : ∀ (t₀ : FCdot.Tm s) (g : FCdot.ELeCo s), t ≠ .castE t₀ g)
     (h : (FCdot.Tm.erase t).inspects = some x) : t.inspects = some x := by
   cases t with
   | atom a => simp [FCdot.Tm.erase] at h
@@ -175,22 +178,25 @@ theorem _root_.CapturesCC.FCdot.Tm.inspects_reflect {s : Sig} {t : FCdot.Tm s}
   | proj a ℓ hh => simpa [FCdot.Tm.erase] using h
   | unbox a U f => simpa [FCdot.Tm.erase] using h
   | «let» t u U f => simp [FCdot.Tm.erase] at h
+  | castE t g => exact absurd rfl (hnce t g)
+  | letex t u U hh f => simp [FCdot.Tm.erase] at h
   | cast t e => exact absurd rfl (hnc t e)
 
 /-- A state that is not a cast redex reads the root its erasure reads. -/
 theorem _root_.CapturesCC.FCdot.State.inspects_reflect {s : Sig} {st : FCdot.State s}
     {x : BVar s .var} (hnc : ¬ st.CastRedex)
     (h : (FCdot.State.erase st).t.inspects = some x) : st.inspects = some x :=
-  FCdot.Tm.inspects_reflect (fun t₀ e he => hnc (Or.inl ⟨t₀, e, he⟩)) h
+  FCdot.Tm.inspects_reflect (fun t₀ e he => hnc (Or.inl ⟨t₀, e, he⟩))
+    (fun t₀ g he => hnc (Or.inr (Or.inl ⟨t₀, g, he⟩))) h
 
 /-! ## The matched target run -/
 
 /-- The initial target state of a program typed over a platform prefix is
 typed. -/
 theorem Platform.initial_typed {s : Sig} (P : Platform s) {U : CaptureSet s} {t : Tm s}
-    {T : Ty s} (d : HasTy U P.ctx t T) :
+    {T : Ty s} (d : HasTy U P.ctx t (.ty T)) :
     FCdot.State.Typed (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s) T.translate :=
-  ⟨P.ctx.translate, T.translate, P.targetStore_typed, d.translate_typed P.ctx_wf, .nil⟩
+  ⟨P.ctx.translate, .ty T.translate, P.targetStore_typed, d.translate_typed P.ctx_wf, .nil⟩
 
 /-- The matched run, with both endpoints general so that the induction on the
 source run goes through.  It is `Simulated.step` with the target run
@@ -208,7 +214,7 @@ theorem simulatedRun_aux {s₀ : Sig} {st₀ : State s₀} {stt₀ : FCdot.State
       obtain ⟨Γ₁, T₁, hσ₁, ht₁, hK₁⟩ := hT₁
       have hr := erase_step hstep
       rw [← he] at hr
-      obtain ⟨stt', hsteps, he'⟩ := FCdot.erase_reflect' hσ₁ ⟨T₁, ht₁⟩ hr
+      obtain ⟨stt', hsteps, he'⟩ := FCdot.erase_reflect' hσ₁ ⟨T₁, V₁, ht₁, hK₁⟩ hr
       exact ⟨stt', hrun.trans hsteps, he'⟩
 
 /-- **The matched run.**  A source run from the platform's initial state is
@@ -218,7 +224,7 @@ a state with the same erasure that is not a cast redex.  This is
 `FCdot.castRedex_normalize`, whose steps change neither the erasure nor the
 store. -/
 theorem Platform.simulatedRun {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
-    {T : Ty s₀} (d : HasTy U P.ctx t T) {s : Sig} {st : State s}
+    {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {s : Sig} {st : State s}
     (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st) :
     ∃ stt : FCdot.State s,
       FCdot.Steps (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s₀) stt ∧
@@ -240,7 +246,7 @@ store extension the run performs.  All the content is the target's
 `FCdot.capture_prediction`; the new part is the transport along the
 simulation. -/
 theorem dot_capture_prediction {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
-    {T : Ty s₀} (d : HasTy U P.ctx t T) {s : Sig} {st : State s}
+    {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {s : Sig} {st : State s}
     (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename s₀ s),
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
@@ -264,7 +270,7 @@ reads, along any run, a root whose root is `κ`.  The hypothesis is the roots
 condition the target asks for: over a platform prefix every atom is a capture
 variable and every binder is rigid, so a root of a set is a member of it. -/
 theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
-    {T : Ty s₀} (d : HasTy U P.ctx t T) {κ : BVar s₀ .cap}
+    {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {κ : BVar s₀ .cap}
     (hκ : ¬ (FCdot.CapAtom.cvar κ ∈ U.translate))
     {s : Sig} {st : State s} (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st)
     {x : BVar s .var} (hin : st.inspects = some x) :

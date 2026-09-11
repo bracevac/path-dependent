@@ -112,7 +112,7 @@ theorem atomFold_eq {Γ : Ctx s} {b : Atom s} {Tel : Telescope (s,x)} {C : Captu
 
 theorem tmUnbox_eq {Γ : Ctx s} {a : Atom s} {f : CapCo s} {S : Shape s}
     {C D U : CaptureSet s} (ha : Γ ⊢ₐ a : (□ (S ^ C)) ^ D) (hf : Γ ⊢ᶜ f : C ⊑ U) :
-    tmUnbox U ha hf = some ⟨S ^ C, .unbox ha hf⟩ := by
+    tmUnbox U ha hf = some ⟨.ty (S ^ C), .unbox ha hf⟩ := by
   simp [tmUnbox]
 
 theorem tmApp_eq {Γ : Ctx s} {a b : Atom s} {C : CaptureSet s} {T : Dom s} {U : Cod s}
@@ -197,6 +197,8 @@ theorem CapEq.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {φ : CapEq s} {C D 
       simp [synthCapEqCore, CapEq.HasType.complete hφ, CapEq.HasType.complete hψ]
   | _, _, _, _, _, .defC hd => by
       simp [synthCapEqCore, witness?_eq_some hd]
+  | _, _, _, _, _, .instC hI => by
+      simp only [synthCapEqCore, dif_pos hI]
   | _, _, _, _, _, .member ha he hAt => by
       simp [synthCapEqCore, Atom.HasType.complete ha, ShapeCo.HasType.complete he,
         capEqMember_eq ha he hAt]
@@ -238,7 +240,7 @@ theorem ShapeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {e : ShapeCo s} {S
       simp only [Option.bind_eq_bind, Option.bind]
       rw [witness_underRootDom, witness_underRootDom]
       simp only [witness?_some, Option.bind_eq_bind, Option.bind,
-        LeCo.HasType.complete hf]
+        ELeCo.HasType.complete hf]
       rw [witness_underRootCod, witness_underRootCod]
   | _, _, _, _, _, .obj hm => by
       simp [synthShapeCore, Morphism.HasType.complete hm]
@@ -347,7 +349,36 @@ theorem Atom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty 
       simp [synthAtomCore, Atom.HasType.complete ha, CapCo.HasType.complete hf,
         atomRecap_eq ha hf]
 
+theorem ELeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {g : ELeCo s} {E E' : ETy s}
+    (h : Γ ⊢ᵉ g : E ≤ E'), synthELeCore Γ g = some ⟨E, E', h⟩
+  | _, _, _, _, _, .plain he => by
+      simp [synthELeCore, LeCo.HasType.complete he]
+  | _, _, _, _, _, .pack hc he => by
+      simp only [synthELeCore, CapCo.HasType.complete hc, LeCo.HasType.complete he,
+        Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom]
+      simp only [witness?_some, Option.bind_eq_bind, Option.bind]
+      rw [Ty.strengthenC2?_weaken]
+      simp
+  | _, _, _, _, _, .cong hc he => by
+      simp only [synthELeCore, CapCo.HasType.complete hc, LeCo.HasType.complete he,
+        Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom, witness_underRootDom]
+  | _, _, _, _, _, .trans hg hh => by
+      simp [synthELeCore, ELeCo.HasType.complete hg, ELeCo.HasType.complete hh]
+
 end
+
+/-- The packed-atom wrapper premises only judgments of the block above. -/
+theorem PAtom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {p : PAtom s} {E : ETy s}
+    (h : Γ ⊢ₚ p : E), synthPAtomCore Γ p = some ⟨E, h⟩
+  | _, _, _, _, .plain ha => by
+      simp [synthPAtomCore, Atom.HasType.complete ha]
+  | _, _, _, _, .pack ha hc he => by
+      simp only [synthPAtomCore, Atom.HasType.complete ha, CapCo.HasType.complete hc,
+        LeCo.HasType.complete he, Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom]
+      simp
 
 /-! ## Completeness for terms
 
@@ -358,21 +389,37 @@ plain equations, with no side condition. -/
 mutual
 
 /-- The kernel synthesises the type of every term derivation. -/
-theorem Tm.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : Γ ⊢ t : T), synthTmCore Γ t = some ⟨T, h⟩
+theorem Tm.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {E : ETy s}
+    (h : Γ ⊢ t :ᵉ E), synthTmCore Γ t = some ⟨E, h⟩
   | _, _, _, _, .atom ha => by
-      simp [synthTmCore, Atom.HasType.complete ha]
-  | _, _, _, _, .val hv => by
-      simp [synthTmCore, Value.HasType.complete hv]
+      simp [synthTmCore, PAtom.HasType.complete ha]
+  | _, _, .val (.lam _ _ _ _), _, .val (.plain hv') => by
+      simp [synthTmCore, Value.HasType.complete hv']
+  | _, _, .val (.obj _ _ _ _), _, .val (.plain hv') => by
+      simp [synthTmCore, Value.HasType.complete hv']
+  | _, _, .val (.box _), _, .val (.plain hv') => by
+      simp [synthTmCore, Value.HasType.complete hv']
+  | _, _, .val (.cast _ _), _, .val (.plain hv') => by
+      simp [synthTmCore, Value.HasType.complete hv']
+  | _, _, .val (.pack _ _ _ _), _, .val (.pack hv' hc he) => by
+      simp only [synthTmCore, Value.HasType.complete hv', CapCo.HasType.complete hc,
+        LeCo.HasType.complete he, Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom]
+      simp
   | _, _, _, _, .app ha hb => by
       simp [synthTmCore, Atom.HasType.complete ha, Atom.HasType.complete hb, tmApp_eq ha hb]
   | _, _, _, _, .proj ha hh => by
       simp [synthTmCore, Atom.HasType.complete ha, Has.HasType.complete hh]
   | _, _, _, _, .let ht hu hf => by
       simp [synthTmCore, Tm.HasType.complete ht, Tm.HasType.complete hu,
-        CapCo.HasType.complete hf, Ty.strengthenW?_weaken]
+        CapCo.HasType.complete hf, ETy.strengthenW?_weaken]
   | _, _, _, _, .cast ht he => by
       simp [synthTmCore, Tm.HasType.complete ht, LeCo.HasType.complete he]
+  | _, _, _, _, .castE ht hg => by
+      simp [synthTmCore, Tm.HasType.complete ht, ELeCo.HasType.complete hg]
+  | _, _, _, _, .letex ht hc hu hf => by
+      simp [synthTmCore, Tm.HasType.complete ht, CapCo.HasType.complete hc,
+        Tm.HasType.complete hu, CapCo.HasType.complete hf, ETy.strengthenVC2?_weaken]
   | _, _, _, _, .unbox ha hf => by
       simp [synthTmCore, Atom.HasType.complete ha, CapCo.HasType.complete hf,
         tmUnbox_eq ha hf]
@@ -401,6 +448,25 @@ theorem Fields.HasType.complete : ∀ {s : Sig} {Γ : Ctx (s,x)} {A : CaptureSet
         CapCo.HasType.complete hg]
 
 end
+
+/-- Values at the answer sort.  A packed value is never `plain`, because
+`Value.HasType` has no `pack` rule. -/
+theorem Value.HasTypeE.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {E : ETy s}
+    (h : Γ ⊢ᵥᵉ v : E), synthValueECore Γ v = some ⟨E, h⟩
+  | _, _, .lam _ _ _ _, _, .plain hv => by
+      simp [synthValueECore, Value.HasType.complete hv]
+  | _, _, .obj _ _ _ _, _, .plain hv => by
+      simp [synthValueECore, Value.HasType.complete hv]
+  | _, _, .box _, _, .plain hv => by
+      simp [synthValueECore, Value.HasType.complete hv]
+  | _, _, .cast _ _, _, .plain hv => by
+      simp [synthValueECore, Value.HasType.complete hv]
+  | _, _, .pack _ _ _ _, _, .pack hv hc he => by
+      simp only [synthValueECore, Value.HasType.complete hv, CapCo.HasType.complete hc,
+        LeCo.HasType.complete he, Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom]
+      simp
+
 
 /-! ## Public interface
 
@@ -541,9 +607,25 @@ theorem checkAtom_iff {Γ : Ctx s} {a : Atom s} {T : Ty s} :
     checkAtom Γ a T = true ↔ Γ ⊢ₐ a : T :=
   ⟨checkAtom_sound, checkAtom_complete⟩
 
+theorem synthTmE_complete {Γ : Ctx s} {t : Tm s} {E : ETy s} (h : Γ ⊢ t :ᵉ E) :
+    synthTmE Γ t = some E := by
+  simp [synthTmE, Tm.HasType.complete h]
+
+theorem synthTmE_iff {Γ : Ctx s} {t : Tm s} {E : ETy s} :
+    synthTmE Γ t = some E ↔ Γ ⊢ t :ᵉ E :=
+  ⟨synthTmE_sound, synthTmE_complete⟩
+
+theorem checkTmE_complete {Γ : Ctx s} {t : Tm s} {E : ETy s} (h : Γ ⊢ t :ᵉ E) :
+    checkTmE Γ t E = true :=
+  decide_eq_true (synthTmE_complete h)
+
+theorem checkTmE_iff {Γ : Ctx s} {t : Tm s} {E : ETy s} :
+    checkTmE Γ t E = true ↔ Γ ⊢ t :ᵉ E :=
+  ⟨checkTmE_sound, checkTmE_complete⟩
+
 theorem synthTm_complete {Γ : Ctx s} {t : Tm s} {T : Ty s} (h : Γ ⊢ t : T) :
     synthTm Γ t = some T := by
-  simp [synthTm, Tm.HasType.complete h]
+  simp [synthTm, synthTmE_complete h]
 
 theorem synthTm_iff {Γ : Ctx s} {t : Tm s} {T : Ty s} :
     synthTm Γ t = some T ↔ Γ ⊢ t : T :=
@@ -551,11 +633,59 @@ theorem synthTm_iff {Γ : Ctx s} {t : Tm s} {T : Ty s} :
 
 theorem checkTm_complete {Γ : Ctx s} {t : Tm s} {T : Ty s} (h : Γ ⊢ t : T) :
     checkTm Γ t T = true :=
-  decide_eq_true (synthTm_complete h)
+  checkTmE_complete h
 
 theorem checkTm_iff {Γ : Ctx s} {t : Tm s} {T : Ty s} :
     checkTm Γ t T = true ↔ Γ ⊢ t : T :=
   ⟨checkTm_sound, checkTm_complete⟩
+
+theorem synthPAtom_complete {Γ : Ctx s} {p : PAtom s} {E : ETy s} (h : Γ ⊢ₚ p : E) :
+    synthPAtom Γ p = some E := by
+  simp [synthPAtom, PAtom.HasType.complete h]
+
+theorem synthPAtom_iff {Γ : Ctx s} {p : PAtom s} {E : ETy s} :
+    synthPAtom Γ p = some E ↔ Γ ⊢ₚ p : E :=
+  ⟨synthPAtom_sound, synthPAtom_complete⟩
+
+theorem checkPAtom_complete {Γ : Ctx s} {p : PAtom s} {E : ETy s} (h : Γ ⊢ₚ p : E) :
+    checkPAtom Γ p E = true :=
+  decide_eq_true (synthPAtom_complete h)
+
+theorem checkPAtom_iff {Γ : Ctx s} {p : PAtom s} {E : ETy s} :
+    checkPAtom Γ p E = true ↔ Γ ⊢ₚ p : E :=
+  ⟨checkPAtom_sound, checkPAtom_complete⟩
+
+theorem synthELe_complete {Γ : Ctx s} {g : ELeCo s} {E E' : ETy s} (h : Γ ⊢ᵉ g : E ≤ E') :
+    synthELe Γ g = some (E, E') := by
+  simp [synthELe, ELeCo.HasType.complete h]
+
+theorem synthELe_iff {Γ : Ctx s} {g : ELeCo s} {E E' : ETy s} :
+    synthELe Γ g = some (E, E') ↔ Γ ⊢ᵉ g : E ≤ E' :=
+  ⟨synthELe_sound, synthELe_complete⟩
+
+theorem checkELe_complete {Γ : Ctx s} {g : ELeCo s} {E E' : ETy s} (h : Γ ⊢ᵉ g : E ≤ E') :
+    checkELe Γ g E E' = true :=
+  decide_eq_true (synthELe_complete h)
+
+theorem checkELe_iff {Γ : Ctx s} {g : ELeCo s} {E E' : ETy s} :
+    checkELe Γ g E E' = true ↔ Γ ⊢ᵉ g : E ≤ E' :=
+  ⟨checkELe_sound, checkELe_complete⟩
+
+theorem synthValueE_complete {Γ : Ctx s} {v : Value s} {E : ETy s} (h : Γ ⊢ᵥᵉ v : E) :
+    synthValueE Γ v = some E := by
+  simp [synthValueE, Value.HasTypeE.complete h]
+
+theorem synthValueE_iff {Γ : Ctx s} {v : Value s} {E : ETy s} :
+    synthValueE Γ v = some E ↔ Γ ⊢ᵥᵉ v : E :=
+  ⟨synthValueE_sound, synthValueE_complete⟩
+
+theorem checkValueE_complete {Γ : Ctx s} {v : Value s} {E : ETy s} (h : Γ ⊢ᵥᵉ v : E) :
+    checkValueE Γ v E = true :=
+  decide_eq_true (synthValueE_complete h)
+
+theorem checkValueE_iff {Γ : Ctx s} {v : Value s} {E : ETy s} :
+    checkValueE Γ v E = true ↔ Γ ⊢ᵥᵉ v : E :=
+  ⟨checkValueE_sound, checkValueE_complete⟩
 
 theorem synthValue_complete {Γ : Ctx s} {v : Value s} {T : Ty s} (h : Γ ⊢ᵥ v : T) :
     synthValue Γ v = some T := by
@@ -642,69 +772,39 @@ end Determinism
 
 /-! ### Determinism for terms
 
-The term layer is deterministic as well.  The proof is a direct induction on
-the derivations rather than a corollary of synthesis: the projection rule fixes
-the type as `(a.root.ℓ) ^ []` whatever evidence it used. -/
+The term layer is deterministic as well.  Synthesis is a function and it is
+complete, so each of the four judgments below pins its output down with no
+hypothesis whatsoever. -/
 
-mutual
+theorem Tm.HasType.type_unique {s : Sig} {Γ : Ctx s} {t : Tm s} {E E' : ETy s}
+    (h : Γ ⊢ t :ᵉ E) (h' : Γ ⊢ t :ᵉ E') : E = E' := by
+  have hh := (Tm.HasType.complete h).symm.trans (Tm.HasType.complete h')
+  simp only [Option.some.injEq, TmChecked.mk.injEq] at hh
+  exact hh
 
-theorem Tm.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T T' : Ty s},
-    Γ ⊢ t : T → Γ ⊢ t : T' → T = T'
-  | _, _, _, _, _, .atom ha, h' => by
-      cases h' with
-      | atom ha' => exact ha.type_unique ha'
-  | _, _, _, _, _, .val hv, h' => by
-      cases h' with
-      | val hv' => exact Value.HasType.type_unique hv hv'
-  | _, _, _, _, _, .app ha hb, h' => by
-      cases h' with
-      | app ha' hb' =>
-          have hp := ha.type_unique ha'
-          simp only [Ty.capt.injEq, Shape.pi.injEq] at hp
-          rw [hp.2.2]
-  | _, _, _, _, _, .proj _ _, h' => by
-      cases h' with
-      | proj _ _ => rfl
-  | _, _, _, _, _, .let ht hu _, h' => by
-      cases h' with
-      | «let» ht' hu' _ =>
-          have hT := Tm.HasType.type_unique ht ht'
-          subst hT
-          have hU := Tm.HasType.type_unique hu hu'
-          have := congrArg Ty.strengthen? hU
-          rw [Ty.strengthen?_weaken, Ty.strengthen?_weaken] at this
-          exact Option.some.inj this
-  | _, _, _, _, _, .cast _ he, h' => by
-      cases h' with
-      | cast _ he' => exact (he.endpoints_unique he').2
-  | _, _, _, _, _, .unbox ha _, h' => by
-      cases h' with
-      | unbox ha' _ =>
-          have hp := ha.type_unique ha'
-          simp only [Ty.capt.injEq, Shape.box.injEq] at hp ⊢
-          exact hp.2
+theorem Value.HasType.type_unique {s : Sig} {Γ : Ctx s} {v : Value s} {T T' : Ty s}
+    (h : Γ ⊢ᵥ v : T) (h' : Γ ⊢ᵥ v : T') : T = T' := by
+  have hh := (Value.HasType.complete h).symm.trans (Value.HasType.complete h')
+  simp only [Option.some.injEq, ValueChecked.mk.injEq] at hh
+  exact hh
 
-theorem Value.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T T' : Ty s},
-    Γ ⊢ᵥ v : T → Γ ⊢ᵥ v : T' → T = T'
-  | _, _, _, _, _, .lam ht _, h' => by
-      cases h' with
-      | lam ht' _ =>
-          have hu := Tm.HasType.type_unique ht ht'
-          have hw := congrArg Cod.underRoot? hu
-          rw [Cod.underRoot?_underRoot, Cod.underRoot?_underRoot] at hw
-          simp only [Option.some.injEq] at hw
-          rw [hw]
-  | _, _, _, _, _, .obj _, h' => by
-      cases h' with
-      | obj _ => rfl
-  | _, _, _, _, _, .box ha, h' => by
-      cases h' with
-      | box ha' => rw [ha.type_unique ha']
-  | _, _, _, _, _, .cast _ he, h' => by
-      cases h' with
-      | cast _ he' => exact (he.endpoints_unique he').2
+theorem PAtom.HasType.type_unique {s : Sig} {Γ : Ctx s} {p : PAtom s} {E E' : ETy s}
+    (h : Γ ⊢ₚ p : E) (h' : Γ ⊢ₚ p : E') : E = E' := by
+  have hh := (PAtom.HasType.complete h).symm.trans (PAtom.HasType.complete h')
+  simp only [Option.some.injEq, PAtomChecked.mk.injEq] at hh
+  exact hh
 
-end
+theorem Value.HasTypeE.type_unique {s : Sig} {Γ : Ctx s} {v : Value s} {E E' : ETy s}
+    (h : Γ ⊢ᵥᵉ v : E) (h' : Γ ⊢ᵥᵉ v : E') : E = E' := by
+  have hh := (Value.HasTypeE.complete h).symm.trans (Value.HasTypeE.complete h')
+  simp only [Option.some.injEq, ValueEChecked.mk.injEq] at hh
+  exact hh
+
+theorem ELeCo.HasType.endpoints_unique {s : Sig} {Γ : Ctx s} {g : ELeCo s}
+    {E E' F F' : ETy s} (h : Γ ⊢ᵉ g : E ≤ F) (h' : Γ ⊢ᵉ g : E' ≤ F') : E = E' ∧ F = F' := by
+  have hh := (synthELe_complete h).symm.trans (synthELe_complete h')
+  simp only [Option.some.injEq, Prod.mk.injEq] at hh
+  exact hh
 
 end FCdot
 

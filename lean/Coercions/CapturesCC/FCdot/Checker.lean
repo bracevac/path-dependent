@@ -324,6 +324,16 @@ def Ty.rename? : Ty s1 → PartialRename s1 s2 → Option (Ty s2)
       | some C', some S' => some (.capt C' S')
       | _, _ => none
 
+def ETy.rename? : ETy s1 → PartialRename s1 s2 → Option (ETy s2)
+  | .ty T, ρ =>
+      match T.rename? ρ with
+      | some T' => some (.ty T')
+      | none => none
+  | .ex C T, ρ =>
+      match C.rename? ρ, T.rename? ρ.lift with
+      | some C', some T' => some (.ex C' T')
+      | _, _ => none
+
 def Proposition.rename? : Proposition s1 → PartialRename s1 s2 → Option (Proposition s2)
   | .le S T, ρ =>
       match S.rename? ρ, T.rename? ρ with
@@ -369,7 +379,7 @@ theorem Shape.rename?_complete :
   | _, _, .pi S T, ρ, σ, h => by
       simp only [Shape.rename, Shape.rename?]
       rw [Ty.rename?_complete S ρ.lift σ.lift h.lift,
-        Ty.rename?_complete T ρ.lift.lift σ.lift.lift
+        ETy.rename?_complete T ρ.lift.lift σ.lift.lift
           (PartialRename.Inverts.lift (PartialRename.Inverts.lift h))]
   | _, _, .obj Tel, ρ, σ, h => by
       simp only [Shape.rename, Shape.rename?]
@@ -384,6 +394,16 @@ theorem Ty.rename?_complete :
   | _, _, .capt C S, ρ, σ, h => by
       simp only [Ty.rename, Ty.rename?]
       rw [CaptureSet.rename?_complete C ρ σ h, Shape.rename?_complete S ρ σ h]
+
+theorem ETy.rename?_complete :
+    ∀ {s1 s2 : Sig} (E : ETy s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+      ρ.Inverts σ → (E.rename σ).rename? ρ = some E
+  | _, _, .ty T, ρ, σ, h => by
+      simp only [ETy.rename, ETy.rename?]
+      rw [Ty.rename?_complete T ρ σ h]
+  | _, _, .ex C T, ρ, σ, h => by
+      simp only [ETy.rename, ETy.rename?]
+      rw [CaptureSet.rename?_complete C ρ σ h, Ty.rename?_complete T ρ.lift σ.lift h.lift]
 
 theorem Proposition.rename?_complete :
     ∀ {s1 s2 : Sig} (P : Proposition s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
@@ -443,7 +463,7 @@ theorem Shape.rename?_sound :
           subst hU
           simp only [Shape.rename]
           rw [← Ty.rename?_sound S S' ρ.lift σ.lift h.lift hS,
-            ← Ty.rename?_sound T T' ρ.lift.lift σ.lift.lift
+            ← ETy.rename?_sound T T' ρ.lift.lift σ.lift.lift
               (PartialRename.Inverts.lift (PartialRename.Inverts.lift h)) hT]
   | _, _, .obj Tel, U, ρ, σ, h, hU => by
       simp only [Shape.rename?] at hU
@@ -482,6 +502,34 @@ theorem Ty.rename?_sound :
           subst hU
           simp only [Ty.rename]
           rw [← CaptureSet.rename?_sound C C' ρ σ h hC, ← Shape.rename?_sound S S' ρ σ h hS]
+
+theorem ETy.rename?_sound :
+    ∀ {s1 s2 : Sig} (E : ETy s1) (F : ETy s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+      ρ.Inverts σ → E.rename? ρ = some F → E = F.rename σ
+  | _, _, .ty T, F, ρ, σ, h, hF => by
+      simp only [ETy.rename?] at hF
+      cases hT : T.rename? ρ with
+      | none => rw [hT] at hF; simp at hF
+      | some T' =>
+        rw [hT] at hF
+        simp only [Option.some.injEq] at hF
+        subst hF
+        simp only [ETy.rename]
+        rw [← Ty.rename?_sound T T' ρ σ h hT]
+  | _, _, .ex C T, F, ρ, σ, h, hF => by
+      simp only [ETy.rename?] at hF
+      cases hC : C.rename? ρ with
+      | none => rw [hC] at hF; simp at hF
+      | some C' =>
+        cases hT : T.rename? ρ.lift with
+        | none => rw [hC, hT] at hF; simp at hF
+        | some T' =>
+          rw [hC, hT] at hF
+          simp only [Option.some.injEq] at hF
+          subst hF
+          simp only [ETy.rename]
+          rw [← CaptureSet.rename?_sound C C' ρ σ h hC,
+            ← Ty.rename?_sound T T' ρ.lift σ.lift h.lift hT]
 
 theorem Proposition.rename?_sound :
     ∀ {s1 s2 : Sig} (P : Proposition s1) (Q : Proposition s2) (ρ : PartialRename s1 s2)
@@ -598,18 +646,19 @@ theorem Dom.underRoot?_underRoot {s : Sig} (U : Dom s) :
   Ty.rename?_complete U PartialRename.unshift.lift Rename.succ.lift
     (PartialRename.Inverts.lift PartialRename.unshift_inverts)
 
-/-- Invert the insertion of a body root into a codomain. -/
-def Cod.underRoot? {s : Sig} (E : Ty (((s,c),c),x)) : Option (Cod s) :=
+/-- Invert the insertion of a body root into a codomain.  The codomain is an
+answer, so this is the same partial renaming one sort up. -/
+def Cod.underRoot? {s : Sig} (E : ETy (Sig.body s)) : Option (Cod s) :=
   E.rename? PartialRename.unshift.lift.lift
 
-theorem Cod.underRoot?_sound {s : Sig} {E : Ty (((s,c),c),x)} {U : Cod s}
+theorem Cod.underRoot?_sound {s : Sig} {E : ETy (Sig.body s)} {U : Cod s}
     (h : Cod.underRoot? E = some U) : E = Cod.underRoot U :=
-  Ty.rename?_sound E U PartialRename.unshift.lift.lift Rename.succ.lift.lift
+  ETy.rename?_sound E U PartialRename.unshift.lift.lift Rename.succ.lift.lift
     (PartialRename.Inverts.lift (PartialRename.Inverts.lift PartialRename.unshift_inverts)) h
 
 theorem Cod.underRoot?_underRoot {s : Sig} (U : Cod s) :
     Cod.underRoot? (Cod.underRoot U) = some U :=
-  Ty.rename?_complete U PartialRename.unshift.lift.lift Rename.succ.lift.lift
+  ETy.rename?_complete U PartialRename.unshift.lift.lift Rename.succ.lift.lift
     (PartialRename.Inverts.lift (PartialRename.Inverts.lift PartialRename.unshift_inverts))
 
 theorem witness_underRootDom {s : Sig} (U : Dom s) :
@@ -680,6 +729,65 @@ def Ty.strengthenW? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option { U : Ty s // 
 theorem Ty.strengthenW?_weaken {s : Sig} {k : Kind} (U : Ty s) :
     (U.weaken (k := k)).strengthenW? = some ⟨U, rfl⟩ := by
   simp only [Ty.strengthenW?, witness?_eq_some (Ty.strengthen?_weaken (k := k) U)]
+
+/-! ### Strengthening at the answer sort
+
+The same three, one sort up, plus the two double strengthenings the pack rule
+and the `letex` rule need: a pack's residual reads its source under the
+pack's root and its witness binder, and a `letex` body's answer avoids both
+opened binders. -/
+
+def ETy.strengthen? {s : Sig} {k : Kind} (E : ETy (s,,k)) : Option (ETy s) :=
+  E.rename? PartialRename.unshift
+
+theorem ETy.strengthen?_sound {s : Sig} {k : Kind} {E : ETy (s,,k)} {F : ETy s}
+    (h : E.strengthen? = some F) : E = F↑ :=
+  ETy.rename?_sound E F PartialRename.unshift Rename.succ PartialRename.unshift_inverts h
+
+theorem ETy.strengthen?_weaken {s : Sig} {k : Kind} (F : ETy s) :
+    (F.weaken (k := k)).strengthen? = some F :=
+  ETy.rename?_complete F PartialRename.unshift Rename.succ PartialRename.unshift_inverts
+
+def ETy.strengthenW? {s : Sig} {k : Kind} (E : ETy (s,,k)) :
+    Option { F : ETy s // E = F↑ } :=
+  match witness? E.strengthen? with
+  | some ⟨F, hF⟩ => some ⟨F, ETy.strengthen?_sound hF⟩
+  | none => none
+
+theorem ETy.strengthenW?_weaken {s : Sig} {k : Kind} (F : ETy s) :
+    (F.weaken (k := k)).strengthenW? = some ⟨F, rfl⟩ := by
+  simp only [ETy.strengthenW?, witness?_eq_some (ETy.strengthen?_weaken (k := k) F)]
+
+/-- Undo two capture weakenings of a type: what a pack's residual source
+is. -/
+def Ty.strengthenC2? {s : Sig} (T : Ty (Sig.scope s)) :
+    Option { U : Ty s // T = Ty.weaken (k := .cap) (Ty.weaken (k := .cap) U) } :=
+  match Ty.strengthenW? (k := .cap) T with
+  | some ⟨T1, h1⟩ =>
+      match Ty.strengthenW? (k := .cap) T1 with
+      | some ⟨U, h2⟩ => some ⟨U, by rw [h1, h2]⟩
+      | none => none
+  | none => none
+
+theorem Ty.strengthenC2?_weaken {s : Sig} (U : Ty s) :
+    Ty.strengthenC2? (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) U)) = some ⟨U, rfl⟩ := by
+  simp only [Ty.strengthenC2?, Ty.strengthenW?_weaken]
+
+/-- Undo a capture weakening and then a term weakening of an answer: what a
+`letex` body's answer avoids. -/
+def ETy.strengthenVC2? {s : Sig} (E : ETy ((s,c),x)) :
+    Option { F : ETy s // E = ETy.weaken (k := .var) (ETy.weaken (k := .cap) F) } :=
+  match ETy.strengthenW? (k := .var) E with
+  | some ⟨E1, h1⟩ =>
+      match ETy.strengthenW? (k := .cap) E1 with
+      | some ⟨F, h2⟩ => some ⟨F, by rw [h1, h2]⟩
+      | none => none
+  | none => none
+
+theorem ETy.strengthenVC2?_weaken {s : Sig} (F : ETy s) :
+    ETy.strengthenVC2? (ETy.weaken (k := .var) (ETy.weaken (k := .cap) F))
+      = some ⟨F, rfl⟩ := by
+  simp only [ETy.strengthenVC2?, ETy.strengthenW?_weaken]
 
 /-! ## Checked results
 
@@ -752,12 +860,25 @@ structure AtomChecked {s : Sig} (Γ : Ctx s) (a : Atom s) where
   typing : Γ ⊢ₐ a : type
 
 structure TmChecked {s : Sig} (Γ : Ctx s) (t : Tm s) where
-  type : Ty s
-  typing : Γ ⊢ t : type
+  type : ETy s
+  typing : Γ ⊢ t :ᵉ type
 
 structure ValueChecked {s : Sig} (Γ : Ctx s) (v : Value s) where
   type : Ty s
   typing : Γ ⊢ᵥ v : type
+
+structure PAtomChecked {s : Sig} (Γ : Ctx s) (p : PAtom s) where
+  type : ETy s
+  typing : Γ ⊢ₚ p : type
+
+structure ELeChecked {s : Sig} (Γ : Ctx s) (ev : ELeCo s) where
+  source : ETy s
+  target : ETy s
+  typing : Γ ⊢ᵉ ev : source ≤ target
+
+structure ValueEChecked {s : Sig} (Γ : Ctx s) (v : Value s) where
+  type : ETy s
+  typing : Γ ⊢ᵥᵉ v : type
 
 /-- Endpoints of a type inclusion. -/
 abbrev Endpoints (s : Sig) := Ty s × Ty s
@@ -1017,7 +1138,7 @@ def tmUnbox {s : Sig} {Γ : Ctx s} {a : Atom s} {f : CapCo s} (U : CaptureSet s)
     match Ta, ha with
     | .capt _ (.box (.capt C' S')), ha =>
         if hC : C' = C then
-          some ⟨S' ^ C, by subst hD; subst hC; exact .unbox ha hf⟩
+          some ⟨.ty (S' ^ C), by subst hD; subst hC; exact .unbox ha hf⟩
         else none
     | _, _ => none
   else none
@@ -1147,6 +1268,8 @@ def synthCapEqCore {s : Sig} (Γ : Ctx s) (ev : CapEq s) : Option (CapEqChecked 
       match witness? (Γ.lookupDefC y ℓ) with
       | some ⟨C, hC⟩ => some ⟨[CapAtom.name y ℓ], C, .defC hC⟩
       | none => none
+  | .instC a C =>
+      if h : Γ.InstOf a C then some ⟨[a], C, .instC h⟩ else none
   | .member a e i => do
       let ca ← synthAtomCore Γ a
       let ce ← synthShapeCore Γ e
@@ -1213,7 +1336,7 @@ def synthShapeCore {s : Sig} (Γ : Ctx s) (ev : ShapeCo s) : Option (ShapeChecke
       let ce ← synthLeCore Γ.scope e
       let d2 ← witness? (Dom.underRoot? ce.source)
       let d1 ← witness? (Dom.underRoot? ce.target)
-      let cf ← synthLeCore (Γ.body d2.val) f
+      let cf ← synthELeCore (Γ.body d2.val) f
       let u1 ← witness? (Cod.underRoot? cf.source)
       let u2 ← witness? (Cod.underRoot? cf.target)
       some ⟨.pi d1.val u1.val, .pi d2.val u2.val, by
@@ -1358,7 +1481,60 @@ def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a
       let cf ← synthCapCore Γ f
       atomRecap cb.typing cf.typing
 
+/-- The answer family: synthesising.  `ShapeCo.HasType.pi` premises it, so it
+belongs to the block. -/
+def synthELeCore {s : Sig} (Γ : Ctx s) (ev : ELeCo s) : Option (ELeChecked Γ ev) :=
+  match ev with
+  | .plain e => do
+      let ce ← synthLeCore Γ e
+      some ⟨.ty ce.source, .ty ce.target, .plain ce.typing⟩
+  | .pack C h e => do
+      let ch ← synthCapCore Γ h
+      let ce ← synthLeCore (Γ.scopeInst C) e
+      let wT ← witness? (Dom.underRoot? ce.target)
+      let wS ← Ty.strengthenC2? ce.source
+      if hC : ch.source = C then
+        some ⟨.ty wS.val, ∃ᶜ[ch.target] wT.val,
+          .pack (by rw [← hC]; exact ch.typing)
+            (by rw [← wS.property, ← Dom.underRoot?_sound wT.property]; exact ce.typing)⟩
+      else none
+  | .cong h e => do
+      let ch ← synthCapCore Γ h
+      let ce ← synthLeCore Γ.scope e
+      let w1 ← witness? (Dom.underRoot? ce.source)
+      let w2 ← witness? (Dom.underRoot? ce.target)
+      some ⟨∃ᶜ[ch.source] w1.val, ∃ᶜ[ch.target] w2.val,
+        .cong ch.typing
+          (by rw [← Dom.underRoot?_sound w1.property,
+            ← Dom.underRoot?_sound w2.property]; exact ce.typing)⟩
+  | .trans g h => do
+      let cg ← synthELeCore Γ g
+      let ch ← synthELeCore Γ h
+      if hh : cg.target = ch.source then
+        some ⟨cg.source, ch.target, .trans (by rw [← hh]; exact cg.typing) ch.typing⟩
+      else none
+
 end
+
+/-- Packed atoms.  It premises only judgments of the block above, so it is
+stated after it. -/
+def synthPAtomCore {s : Sig} (Γ : Ctx s) (p : PAtom s) : Option (PAtomChecked Γ p) :=
+  match p with
+  | .plain a => do
+      let ca ← synthAtomCore Γ a
+      some ⟨.ty ca.type, .plain ca.typing⟩
+  | .pack C h e a => do
+      let ca ← synthAtomCore Γ a
+      let ch ← synthCapCore Γ h
+      let ce ← synthLeCore (Γ.scopeInst C) e
+      let wT ← witness? (Dom.underRoot? ce.target)
+      if hC : ch.source = C then
+        if hS : ce.source = Ty.weaken (k := .cap) (Ty.weaken (k := .cap) ca.type) then
+          some ⟨∃ᶜ[ch.target] wT.val,
+            .pack ca.typing (by rw [← hC]; exact ch.typing)
+              (by rw [← hS, ← Dom.underRoot?_sound wT.property]; exact ce.typing)⟩
+        else none
+      else none
 
 /-! ## Term kernel -/
 
@@ -1366,12 +1542,26 @@ mutual
 
 def synthTmCore {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (TmChecked Γ t) :=
   match t with
-  | .atom a => do
-      let ca ← synthAtomCore Γ a
-      some ⟨ca.type, .atom ca.typing⟩
-  | .val v => do
-      let cv ← synthValueCore Γ v
-      some ⟨cv.type, .val cv.typing⟩
+  | .atom p => do
+      let cp ← synthPAtomCore Γ p
+      some ⟨cp.type, .atom cp.typing⟩
+  | .val v =>
+      match v with
+      | .pack C h e v0 => do
+          let cv ← synthValueCore Γ v0
+          let ch ← synthCapCore Γ h
+          let ce ← synthLeCore (Γ.scopeInst C) e
+          let wT ← witness? (Dom.underRoot? ce.target)
+          if hC : ch.source = C then
+            if hS : ce.source = Ty.weaken (k := .cap) (Ty.weaken (k := .cap) cv.type) then
+              some ⟨∃ᶜ[ch.target] wT.val,
+                .val (.pack cv.typing (by rw [← hC]; exact ch.typing)
+                  (by rw [← hS, ← Dom.underRoot?_sound wT.property]; exact ce.typing))⟩
+            else none
+          else none
+      | v0 => do
+          let cv ← synthValueCore Γ v0
+          some ⟨.ty cv.type, .val (.plain cv.typing)⟩
   | .app a b => do
       let ca ← synthAtomCore Γ a
       let cb ← synthAtomCore Γ b
@@ -1380,33 +1570,71 @@ def synthTmCore {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (TmChecked Γ t) :=
       let ca ← synthAtomCore Γ a
       let ch ← synthHasCore Γ h a.root
       if hl : ch.label = ℓ then
-        some ⟨Ty.capt [CapAtom.name a.root ℓ] (Shape.sel a.root ℓ),
+        some ⟨.ty (Ty.capt [CapAtom.name a.root ℓ] (Shape.sel a.root ℓ)),
           .proj ca.typing (by rw [← hl]; exact ch.typing)⟩
       else none
   | .let t u U' f => do
       let ct ← synthTmCore Γ t
-      let cu ← synthTmCore (Γ.cons (.opaque ct.type)) u
-      let cf ← synthCapCore (Γ.cons (.opaque ct.type)) f
-      match cu.type.strengthenW? with
-      | some ⟨U, hU⟩ =>
-          if hs : cf.source = u.uses then
-            if ht : cf.target = U'↑ then
-              some ⟨U, .let ct.typing (by rw [← hU]; exact cu.typing)
-                (by rw [← hs, ← ht]; exact cf.typing)⟩
-            else none
-          else none
-      | none => none
+      match ct.type, ct.typing with
+      | .ty T, ht => do
+          let cu ← synthTmCore (Γ.cons (.opaque T)) u
+          let cf ← synthCapCore (Γ.cons (.opaque T)) f
+          match cu.type.strengthenW? with
+          | some ⟨E, hE⟩ =>
+              if hs : cf.source = u.uses then
+                if hg : cf.target = U'↑ then
+                  some ⟨E, .let ht (by rw [← hE]; exact cu.typing)
+                    (by rw [← hs, ← hg]; exact cf.typing)⟩
+                else none
+              else none
+          | none => none
+      | .ex _ _, _ => none
   | .cast t e => do
       let ct ← synthTmCore Γ t
       let ce ← synthLeCore Γ e
-      if h : ce.source = ct.type then
-        some ⟨ce.target, .cast ct.typing (by rw [← h]; exact ce.typing)⟩
+      match ct.type, ct.typing with
+      | .ty T, ht =>
+          if h : ce.source = T then
+            some ⟨.ty ce.target, .cast ht (by rw [← h]; exact ce.typing)⟩
+          else none
+      | .ex _ _, _ => none
+  | .castE t g => do
+      let ct ← synthTmCore Γ t
+      let cg ← synthELeCore Γ g
+      if h : cg.source = ct.type then
+        some ⟨cg.target, .castE ct.typing (by rw [← h]; exact cg.typing)⟩
       else none
+  | .letex t u U' h f => do
+      let ct ← synthTmCore Γ t
+      match ct.type, ct.typing with
+      | .ex C₀ T, ht => do
+          let ch ← synthCapCore Γ h
+          let cu ← synthTmCore ((Γ.consC .star).cons (.opaque T)) u
+          let cf ← synthCapCore ((Γ.consC .star).cons (.opaque T)) f
+          match ETy.strengthenVC2? cu.type with
+          | some ⟨E, hE⟩ =>
+              if h1 : ch.source = C₀ then
+                if h2 : ch.target = U' then
+                  if h3 : cf.source = u.uses then
+                    if h4 : cf.target
+                        = ((CaptureSet.weaken (k := .var)
+                            (CaptureSet.weaken (k := .cap) U'))
+                          ∪ [CapAtom.cvar (.there .here)]) then
+                      some ⟨E, .letex ht (by rw [← h1, ← h2]; exact ch.typing)
+                        (by rw [← hE]; exact cu.typing)
+                        (by rw [← h3, ← h4]; exact cf.typing)⟩
+                    else none
+                  else none
+                else none
+              else none
+          | none => none
+      | .ty _, _ => none
   | .unbox a U f => do
       let ca ← synthAtomCore Γ a
       let cf ← synthCapCore Γ f
       tmUnbox U ca.typing cf.typing
 termination_by sizeOf t
+
 
 def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked Γ v) :=
   match v with
@@ -1434,6 +1662,7 @@ def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked �
       if h : ce.source = cv.type then
         some ⟨ce.target, .cast cv.typing (by rw [← h]; exact ce.typing)⟩
       else none
+  | .pack _ _ _ _ => none
 termination_by sizeOf v
 
 def checkFieldsCore {s : Sig} (A : CaptureSet s) (Γ : Ctx (s,x)) (F : Fields (s,x)) :
@@ -1444,7 +1673,7 @@ def checkFieldsCore {s : Sig} (A : CaptureSet s) (Γ : Ctx (s,x)) (F : Fields (s
       let pF ← checkFieldsCore A Γ F
       let ct ← synthTmCore Γ t
       let cg ← synthCapCore Γ g
-      if h : ct.type = Ty.capt [CapAtom.name .here ℓ] (Shape.sel .here ℓ) then
+      if h : ct.type = ETy.ty (Ty.capt [CapAtom.name .here ℓ] (Shape.sel .here ℓ)) then
         if hs : cg.source = t.uses then
           if ht : cg.target = (A↑ ∪ [CapAtom.var .here]) then
             some ⟨.cons pF.down (by rw [← h]; exact ct.typing)
@@ -1455,6 +1684,26 @@ def checkFieldsCore {s : Sig} (A : CaptureSet s) (Γ : Ctx (s,x)) (F : Fields (s
 termination_by sizeOf F
 
 end
+
+/-- Values at the answer sort.  `Value.HasType` has no `pack` rule, so a
+packed value is never `plain`. -/
+def synthValueECore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueEChecked Γ v) :=
+  match v with
+  | .pack C h e v0 => do
+      let cv ← synthValueCore Γ v0
+      let ch ← synthCapCore Γ h
+      let ce ← synthLeCore (Γ.scopeInst C) e
+      let wT ← witness? (Dom.underRoot? ce.target)
+      if hC : ch.source = C then
+        if hS : ce.source = Ty.weaken (k := .cap) (Ty.weaken (k := .cap) cv.type) then
+          some ⟨∃ᶜ[ch.target] wT.val,
+            .pack cv.typing (by rw [← hC]; exact ch.typing)
+              (by rw [← hS, ← Dom.underRoot?_sound wT.property]; exact ce.typing)⟩
+        else none
+      else none
+  | v0 => do
+      let cv ← synthValueCore Γ v0
+      some ⟨.ty cv.type, .plain cv.typing⟩
 
 /-! ## Public interface
 
@@ -1517,11 +1766,43 @@ def synthAtom {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (Ty s) :=
 def checkAtom {s : Sig} (Γ : Ctx s) (a : Atom s) (T : Ty s) : Bool :=
   decide (synthAtom Γ a = some T)
 
-def synthTm {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (Ty s) :=
+/-- Synthesise the *answer* of a term. -/
+def synthTmE {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (ETy s) :=
   (synthTmCore Γ t).map TmChecked.type
 
+def checkTmE {s : Sig} (Γ : Ctx s) (t : Tm s) (E : ETy s) : Bool :=
+  decide (synthTmE Γ t = some E)
+
+/-- Synthesise the type of a term whose answer is plain.  This is the mode
+the rest of the tree uses, and `checkTm` is `checkTmE` at `.ty T`. -/
+def synthTm {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (Ty s) :=
+  match synthTmE Γ t with
+  | some (.ty T) => some T
+  | _ => none
+
 def checkTm {s : Sig} (Γ : Ctx s) (t : Tm s) (T : Ty s) : Bool :=
-  decide (synthTm Γ t = some T)
+  checkTmE Γ t (.ty T)
+
+/-- Synthesise the answer of a packed atom. -/
+def synthPAtom {s : Sig} (Γ : Ctx s) (p : PAtom s) : Option (ETy s) :=
+  (synthPAtomCore Γ p).map PAtomChecked.type
+
+def checkPAtom {s : Sig} (Γ : Ctx s) (p : PAtom s) (E : ETy s) : Bool :=
+  decide (synthPAtom Γ p = some E)
+
+/-- Synthesise both endpoints of an answer inclusion. -/
+def synthELe {s : Sig} (Γ : Ctx s) (ev : ELeCo s) : Option (ETy s × ETy s) :=
+  (synthELeCore Γ ev).map fun c => (c.source, c.target)
+
+def checkELe {s : Sig} (Γ : Ctx s) (ev : ELeCo s) (E E' : ETy s) : Bool :=
+  decide (synthELe Γ ev = some (E, E'))
+
+/-- Synthesise the answer of a value. -/
+def synthValueE {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ETy s) :=
+  (synthValueECore Γ v).map ValueEChecked.type
+
+def checkValueE {s : Sig} (Γ : Ctx s) (v : Value s) (E : ETy s) : Bool :=
+  decide (synthValueE Γ v = some E)
 
 def synthValue {s : Sig} (Γ : Ctx s) (v : Value s) : Option (Ty s) :=
   (synthValueCore Γ v).map ValueChecked.type
@@ -1667,20 +1948,84 @@ theorem checkAtom_sound {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
     (h : checkAtom Γ a T = true) : Γ ⊢ₐ a : T :=
   synthAtom_sound (of_decide_eq_true h)
 
-theorem synthTm_sound {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : synthTm Γ t = some T) : Γ ⊢ t : T := by
-  unfold synthTm at h
+theorem synthTmE_sound {s : Sig} {Γ : Ctx s} {t : Tm s} {E : ETy s}
+    (h : synthTmE Γ t = some E) : Γ ⊢ t :ᵉ E := by
+  unfold synthTmE at h
   cases hc : synthTmCore Γ t with
   | none => rw [hc] at h; simp at h
   | some c =>
       rw [hc] at h
-      have h2 : TmChecked.type c = T := Option.some.inj h
+      have h2 : TmChecked.type c = E := Option.some.inj h
       rw [← h2]
       exact c.typing
 
+theorem checkTmE_sound {s : Sig} {Γ : Ctx s} {t : Tm s} {E : ETy s}
+    (h : checkTmE Γ t E = true) : Γ ⊢ t :ᵉ E :=
+  synthTmE_sound (of_decide_eq_true h)
+
+theorem synthTm_sound {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
+    (h : synthTm Γ t = some T) : Γ ⊢ t : T := by
+  unfold synthTm at h
+  cases hc : synthTmE Γ t with
+  | none => rw [hc] at h; simp at h
+  | some E =>
+      cases E with
+      | ty T0 =>
+          rw [hc] at h
+          have h2 : T0 = T := Option.some.inj h
+          rw [← h2]
+          exact synthTmE_sound hc
+      | ex C0 T0 => rw [hc] at h; simp at h
+
 theorem checkTm_sound {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
     (h : checkTm Γ t T = true) : Γ ⊢ t : T :=
-  synthTm_sound (of_decide_eq_true h)
+  checkTmE_sound h
+
+theorem synthPAtom_sound {s : Sig} {Γ : Ctx s} {p : PAtom s} {E : ETy s}
+    (h : synthPAtom Γ p = some E) : Γ ⊢ₚ p : E := by
+  unfold synthPAtom at h
+  cases hc : synthPAtomCore Γ p with
+  | none => rw [hc] at h; simp at h
+  | some c =>
+      rw [hc] at h
+      have h2 : PAtomChecked.type c = E := Option.some.inj h
+      rw [← h2]
+      exact c.typing
+
+theorem checkPAtom_sound {s : Sig} {Γ : Ctx s} {p : PAtom s} {E : ETy s}
+    (h : checkPAtom Γ p E = true) : Γ ⊢ₚ p : E :=
+  synthPAtom_sound (of_decide_eq_true h)
+
+theorem synthELe_sound {s : Sig} {Γ : Ctx s} {ev : ELeCo s} {E E' : ETy s}
+    (h : synthELe Γ ev = some (E, E')) : Γ ⊢ᵉ ev : E ≤ E' := by
+  unfold synthELe at h
+  cases hc : synthELeCore Γ ev with
+  | none => rw [hc] at h; simp at h
+  | some c =>
+      rw [hc] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨h1, h2⟩ := h
+      rw [← h1, ← h2]
+      exact c.typing
+
+theorem checkELe_sound {s : Sig} {Γ : Ctx s} {ev : ELeCo s} {E E' : ETy s}
+    (h : checkELe Γ ev E E' = true) : Γ ⊢ᵉ ev : E ≤ E' :=
+  synthELe_sound (of_decide_eq_true h)
+
+theorem synthValueE_sound {s : Sig} {Γ : Ctx s} {v : Value s} {E : ETy s}
+    (h : synthValueE Γ v = some E) : Γ ⊢ᵥᵉ v : E := by
+  unfold synthValueE at h
+  cases hc : synthValueECore Γ v with
+  | none => rw [hc] at h; simp at h
+  | some c =>
+      rw [hc] at h
+      have h2 : ValueEChecked.type c = E := Option.some.inj h
+      rw [← h2]
+      exact c.typing
+
+theorem checkValueE_sound {s : Sig} {Γ : Ctx s} {v : Value s} {E : ETy s}
+    (h : checkValueE Γ v E = true) : Γ ⊢ᵥᵉ v : E :=
+  synthValueE_sound (of_decide_eq_true h)
 
 theorem synthValue_sound {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
     (h : synthValue Γ v = some T) : Γ ⊢ᵥ v : T := by
@@ -1714,16 +2059,16 @@ private def smokeLabel : Label := .trm 0
 
 /-- `λ(x : ⊤ ^ []). x`. -/
 private def smokeId {s : Sig} : Tm (s,x) :=
-  .val (.lam [] (⊤ ^ []) (.atom (.var .here)) (.refl [CapAtom.var .here]))
+  .val (.lam [] (⊤ ^ []) (.atom (.plain (.var .here))) (.refl [CapAtom.var .here]))
 
 /-- The type of `smokeId`. -/
-private def smokeIdTy {s : Sig} : Ty (s,x) := (Π(⊤ ^ []) (⊤ ^ [])) ^ []
+private def smokeIdTy {s : Sig} : Ty (s,x) := (Π(⊤ ^ []) (ETy.ty (⊤ ^ []))) ^ []
 
 /-- A term of type `(self.ℓ) ^ []`, obtained by widening to `⊤` and then
 unfolding the block definition. -/
 private def smokeField {s : Sig} : Tm (s,x) :=
   .cast
-    (.cast smokeId (.capt (.top (.pi (⊤ ^ []) (⊤ ^ []))) (.refl [])))
+    (.cast smokeId (.capt (.top (.pi (⊤ ^ []) (ETy.ty (⊤ ^ [])))) (.refl [])))
     (.capt (.eqToLe (.symm (.def .here smokeLabel)))
       (.elem [] [CapAtom.name .here smokeLabel]))
 
@@ -1758,7 +2103,8 @@ example : checkValue Ctx.nil smokeObj ((μ .nil) ^ []) = false := by decide +ker
 example : checkValue Ctx.nil smokeObj ((μ (.cons .nil (.has smokeLabel))) ^ []) = false := by
   decide +kernel
 example : checkTm smokeCtx smokeId smokeIdTy = true := by decide +kernel
-example : checkTm smokeCtx smokeId ((Π(⊤ ^ []) (⊥ ^ [])) ^ []) = false := by decide +kernel
+example : checkTm smokeCtx smokeId ((Π(⊤ ^ []) (ETy.ty (⊥ ^ []))) ^ []) = false := by
+  decide +kernel
 example : checkShape Ctx.nil (.trans (.refl ⊤) (.top ⊤)) ⊤ ⊤ = true := by decide +kernel
 example : checkLe Ctx.nil (.capt (.trans (.refl ⊤) (.top ⊤)) (.refl [])) (⊤ ^ []) (⊤ ^ []) = true := by
   decide +kernel
@@ -1784,7 +2130,8 @@ example : checkTm smokeCtxTrans (.proj (.var .here) smokeLabel (.field smokeLabe
 example : checkTm smokeCtx (.proj (.var .here) smokeLabel (.field smokeLabel))
     smokeProjTy = false := by decide +kernel
 example : checkTm smokeCtx
-    (.let (.atom (.var .here)) (.atom (.var (.there .here))) [CapAtom.var .here]
+    (.let (.atom (.plain (.var .here))) (.atom (.plain (.var (.there .here))))
+      [CapAtom.var .here]
       (.refl [CapAtom.var (.there .here)]))
     ((μ (.cons .nil (.has smokeLabel))) ^ []) = true := by decide +kernel
 

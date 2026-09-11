@@ -409,7 +409,7 @@ end FCdot
 
 namespace DotMNF
 
-open FCdot (Kind Sig BVar Rename Label Morphism ShapeCo CapCo LeCo EqCo Has Atom Side)
+open FCdot (Kind Sig BVar Rename Label Morphism ShapeCo CapCo LeCo EqCo ELeCo Has Atom Side)
 open scoped FCdot
 
 /-! ## Equations for the type translation
@@ -460,6 +460,10 @@ theorem Shape.translate_weaken {s : Sig} {k : Kind} (S : Shape s) :
 theorem Ty.translate_weaken {s : Sig} {k : Kind} (T : Ty s) :
     (T.weaken (k := k)).translate = FCdot.Ty.weaken (k := k) T.translate :=
   Ty.translate_rename T FCdot.Rename.succ
+
+theorem ETy.translate_weaken {s : Sig} {k : Kind} (E : ETy s) :
+    (E.weaken (k := k)).translate = FCdot.ETy.weaken (k := k) E.translate :=
+  ETy.translate_rename E FCdot.Rename.succ
 
 theorem Shape.tel_typ {s : Sig} (A : Label) (S T : Shape s) :
     (Shape.typ A S T).tel =
@@ -580,7 +584,8 @@ theorem Shape.tel_closedBnds {s : Sig} :
   | .top => by simp only [Shape.tel]; exact .nil
   | .bot => by simp only [Shape.tel]; exact .bnd .nil
   | .sel (.var _) _ => by simp only [Shape.tel]; exact .bnd .nil
-  | .all (.capt _ _) (.capt _ _) => by simp only [Shape.tel]; exact .bnd .nil
+  | .all (.capt _ _) (.ty (.capt _ _)) => by simp only [Shape.tel]; exact .bnd .nil
+  | .all (.capt _ _) (.ex _ (.capt _ _)) => by simp only [Shape.tel]; exact .bnd .nil
   | .box (.capt _ _) => by simp only [Shape.tel]; exact .bnd .nil
   | .typ _ _ _ => by simp only [Shape.tel]; exact .le (.le .nil)
   | .fld _ (.capt _ _) => by simp only [Shape.tel]; exact .leC (.le (.has .nil))
@@ -1227,11 +1232,18 @@ inductive Ctx.Wf : {s : Sig} → Ctx s → Prop where
       Ctx.Wf (Γ.consSelf d S U)
   | consC : Ctx.Wf Γ → Ctx.Wf (Ctx.consC Γ)
   | consRoot : Ctx.Wf Γ → Ctx.Wf (Ctx.consRoot Γ)
+  | consInst : Ctx.Wf Γ → Ctx.Wf (Ctx.consInst Γ C)
 
 /-- A scope is well formed when its context is: it adds a root and a rigid
 capture binder, neither of which carries a literal. -/
 theorem Ctx.Wf.scope {s : Sig} {Γ : Ctx s} (h : Ctx.Wf Γ) : Ctx.Wf Γ.scope :=
   .consC (.consRoot h)
+
+/-- A pack's scope is well formed when its context is: it adds a root and an
+instance binder, neither of which carries a literal. -/
+theorem Ctx.Wf.scopeInst {s : Sig} {Γ : Ctx s} (h : Ctx.Wf Γ) (C : CaptureSet s) :
+    Ctx.Wf (Γ.scopeInst C) :=
+  .consInst (.consRoot h)
 
 /-- A lambda body is a scope with the parameter on top. -/
 theorem Ctx.Wf.body {s : Sig} {Γ : Ctx s} (h : Ctx.Wf Γ) (T : Dom s) : Ctx.Wf (Γ.body T) :=
@@ -1259,6 +1271,10 @@ theorem Ctx.lookup_consC_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
 theorem Ctx.lookup_consRoot_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
     (Ctx.consRoot Γ).lookup (.there y) = (Γ.lookup y).weaken := rfl
 
+theorem Ctx.lookup_consInst_there {s : Sig} (Γ : Ctx s) (C : CaptureSet s)
+    (y : BVar s .var) :
+    (Ctx.consInst Γ C).lookup (.there y) = (Γ.lookup y).weaken := rfl
+
 theorem Ctx.varAtom_cons_here {s : Sig} (Γ : Ctx s) (T : Ty s) :
     (Γ.cons T).varAtom .here = .var .here := rfl
 
@@ -1280,6 +1296,10 @@ theorem Ctx.varAtom_consC_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
 theorem Ctx.varAtom_consRoot_there {s : Sig} (Γ : Ctx s) (y : BVar s .var) :
     (Ctx.consRoot Γ).varAtom (.there y) = (Γ.varAtom y)↑ := rfl
 
+theorem Ctx.varAtom_consInst_there {s : Sig} (Γ : Ctx s) (C : CaptureSet s)
+    (y : BVar s .var) :
+    (Ctx.consInst Γ C).varAtom (.there y) = (Γ.varAtom y)↑ := rfl
+
 theorem Ctx.varAtom_root {s : Sig} : ∀ (Γ : Ctx s) (y : BVar s .var), (Γ.varAtom y).root = y
   | .cons _ _, .here => by rw [Ctx.varAtom_cons_here]; simp [FCdot.Atom.root]
   | .cons Γ _, .there y => by
@@ -1294,6 +1314,9 @@ theorem Ctx.varAtom_root {s : Sig} : ∀ (Γ : Ctx s) (y : BVar s .var), (Γ.var
       simp [FCdot.Atom.weaken, Ctx.varAtom_root Γ y]
   | .consRoot Γ, .there y => by
       rw [Ctx.varAtom_consRoot_there]
+      simp [FCdot.Atom.weaken, Ctx.varAtom_root Γ y]
+  | .consInst Γ _, .there y => by
+      rw [Ctx.varAtom_consInst_there]
       simp [FCdot.Atom.weaken, Ctx.varAtom_root Γ y]
 
 theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar s .var),
@@ -1332,11 +1355,16 @@ theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar 
       | consRoot hwf' =>
           rw [Ctx.lookup_consRoot_there, Ctx.varAtom_consRoot_there, Ty.translate_weaken]
           exact (Ctx.varAtom_typed Γ hwf' y).weakenRootC
+  | .consInst Γ C, hwf, .there y => by
+      cases hwf with
+      | consInst hwf' =>
+          rw [Ctx.lookup_consInst_there, Ctx.varAtom_consInst_there, Ty.translate_weaken]
+          exact (Ctx.varAtom_typed Γ hwf' y).weakenC (.inst C.translate) rfl
 
 /-! ## The root of a translated variable typing -/
 
 theorem HasTy.translateAtom_root : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {y : BVar s .var}
-    {T : Ty s} (h : HasTy U Γ (.path (.var y)) T), h.translateAtom.root = y
+    {T : Ty s} (h : HasTy U Γ (.path (.var y)) (.ty T)), h.translateAtom.root = y
   | _, _, Γ, y, _, .var => by rw [HasTy.translateAtom]; simp [FCdot.Atom.root, Ctx.varAtom_root Γ y]
   | _, _, _, _, _, .recI h _ => by
       rw [HasTy.translateAtom]
@@ -1347,7 +1375,7 @@ theorem HasTy.translateAtom_root : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s}
   | _, _, _, _, _, .andI h₁ h₂ => by
       rw [HasTy.translateAtom]
       simpa [FCdot.Atom.root] using HasTy.translateAtom_root h₁
-  | _, _, _, _, _, .sub h _ _ => by
+  | _, _, _, _, _, .sub h (.ty _) _ => by
       rw [HasTy.translateAtom]
       simpa [FCdot.Atom.root] using HasTy.translateAtom_root h
 
@@ -1377,6 +1405,9 @@ theorem Subcap.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {C C' : CaptureSet s
       rw [Ctx.varAtom_root Γ x] at hc
       rw [Subcap.translate]
       simpa [CaptureSet.translate, CapAtom.translate?] using hc
+  | _, Γ, _, _, @Subcap.inst _ _ κ C hI, _ => by
+      rw [Subcap.translate]
+      exact .eqToLe (.symm (.instC (Ctx.InstOf.translate hI)))
   | _, _, _, _, @Subcap.selLower _ Γ _ x A c₁ c₂ _ h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_capt, Shape.translate_cap] at ha
@@ -1496,8 +1527,29 @@ theorem Sub.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {T T' : Ty s} (d : Sub 
       exact .capt (d.translate_typed hwf) (f.translate_typed hwf)
   termination_by _ _ _ _ d _ => sizeOf d
 
+/-- `⟦d⟧` on answer inclusions is typed at the translated answers: `pack`
+becomes the target's pack at the translated witness, read in the translated
+pack scope, and `exist` becomes the target's congruence. -/
+theorem ESub.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {E E' : ETy s} (d : ESub Γ E E'), Γ.Wf →
+    Γ.translate ⊢ᵉ d.translate : E.translate ≤ E'.translate
+  | _, _, _, _, .ty d, hwf => by
+      rw [ESub.translate.eq_def]
+      exact .plain (d.translate_typed hwf)
+  | _, _, _, _, @ESub.pack _ _ C _ _ _ f d, hwf => by
+      rw [ESub.translate.eq_def]
+      refine .pack (f.translate_typed hwf) ?_
+      have h := d.translate_typed (hwf.scopeInst C)
+      rwa [Ctx.translate_scopeInst, Ty.translate_weaken, Ty.translate_weaken,
+        Ty.translate_underRoot] at h
+  | _, _, _, _, .exist f d, hwf => by
+      rw [ESub.translate.eq_def]
+      refine .cong (f.translate_typed hwf) ?_
+      have h := d.translate_typed hwf.scope
+      rwa [Ctx.translate_scope, Ty.translate_underRoot, Ty.translate_underRoot] at h
+  termination_by _ _ _ _ d _ => sizeOf d
+
 theorem HasTy.translateAtom_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s}
-    {y : BVar s .var} {T : Ty s} (h : HasTy U Γ (.path (.var y)) T), Γ.Wf →
+    {y : BVar s .var} {T : Ty s} (h : HasTy U Γ (.path (.var y)) (.ty T)), Γ.Wf →
     Γ.translate ⊢ₐ h.translateAtom : T.translate
   | _, _, Γ, y, _, .var, hwf => by
       have ha := Ctx.varAtom_typed Γ hwf y
@@ -1537,7 +1589,7 @@ theorem HasTy.translateAtom_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s
       rw [HasTy.translateAtom, Ty.translate_capt, Shape.translate_and]
       exact .both i1 i2
         (by simp [HasTy.translateAtom_root h₁, HasTy.translateAtom_root h₂])
-  | _, _, _, _, _, .sub h d _, hwf => by
+  | _, _, _, _, _, .sub h (.ty d) _, hwf => by
       rw [HasTy.translateAtom]
       exact .cast (HasTy.translateAtom_typed h hwf) (d.translate_typed hwf)
   termination_by _ _ _ _ _ h _ => sizeOf h

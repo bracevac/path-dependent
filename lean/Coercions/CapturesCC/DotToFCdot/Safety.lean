@@ -1,6 +1,7 @@
 import Coercions.CapturesCC.DotToFCdot.TermsTyped
 import Coercions.CapturesCC.DotToFCdot.Erasure
 import Coercions.CapturesCC.FCdot.Progress
+import Coercions.CapturesCC.FCdot.ErasureMetatheory
 
 namespace CapturesCC
 
@@ -85,6 +86,7 @@ theorem final_reflect {s : Sig} {st : State s} (h : st.erase.Final) : st.Final :
   · cases K with
     | nil => rfl
     | cons _ _ => simp [State.erase, Cont.erase] at hK
+    | consE _ _ => simp [State.erase, Cont.erase] at hK
   · cases t with
     | val v => exact Or.inl ⟨v, rfl⟩
     | path p => exact Or.inr ⟨p, rfl⟩
@@ -98,6 +100,9 @@ theorem final_reflect {s : Sig} {st : State s} (h : st.erase.Final) : st.Final :
         simp only [State.erase, Tm.erase] at ht
         exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
     | unbox _ _ =>
+        simp only [State.erase, Tm.erase] at ht
+        exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
+    | letex _ _ =>
         simp only [State.erase, Tm.erase] at ht
         exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
 
@@ -126,10 +131,11 @@ def Simulated {s : Sig} (st : State s) : Prop :=
 
 /-- The initial state of a closed well-typed term is simulated by the
 initial state of its translation. -/
-theorem simulated_init {U : CaptureSet []} {t : Tm []} {T : Ty []} (d : HasTy U .nil t T) :
+theorem simulated_init {U : CaptureSet []} {t : Tm []} {T : Ty []}
+    (d : HasTy U .nil t (.ty T)) :
     Simulated (⟨.nil, .nil, t⟩ : State []) :=
   ⟨⟨.nil, .nil, d.translate⟩, T.translate,
-    ⟨.nil, T.translate, .nil, d.translate_typed .nil, .nil⟩, by
+    ⟨.nil, .ty T.translate, .nil, d.translate_typed .nil, .nil⟩, by
       simp only [FCdot.State.erase, State.erase, FCdot.Store.erase, Store.erase,
         FCdot.Cont.erase, Cont.erase, HasTy.translate_erase d]⟩
 
@@ -142,7 +148,7 @@ theorem Simulated.step {s s' : Sig} {st : State s} {st' : State s'}
   obtain ⟨Γ, T, hσ, ht, hK⟩ := hU
   have hr : Runtime.Step u.erase st'.erase := by
     rw [he]; exact erase_step hstep
-  obtain ⟨u', hsteps, he'⟩ := FCdot.erase_reflect' hσ ⟨T, ht⟩ hr
+  obtain ⟨u', hsteps, he'⟩ := FCdot.erase_reflect' hσ ⟨T, U, ht, hK⟩ hr
   obtain ⟨U', hU'⟩ := FCdot.State.Typed.steps ⟨U, ⟨Γ, T, hσ, ht, hK⟩⟩ hsteps
   exact ⟨u', U', hU', he'⟩
 
@@ -179,13 +185,14 @@ theorem Simulated.progress {s : Sig} {st : State s} (hsim : Simulated st) :
 term, every reachable state is final or steps: the source machine never gets
 stuck.  Nothing is proved about DOT-MNF directly; the whole content is the
 translation, its typedness, and its erasure. -/
-theorem dot_safety {U : CaptureSet []} {t : Tm []} {T : Ty []} (d : HasTy U .nil t T)
+theorem dot_safety {U : CaptureSet []} {t : Tm []} {T : Ty []} (d : HasTy U .nil t (.ty T))
     {s : Sig} {st : State s} (run : Steps (⟨.nil, .nil, t⟩ : State []) st) :
     st.Final ∨ ∃ (s' : Sig) (st' : State s'), Step st st' :=
   ((simulated_init d).steps run).progress
 
 /-- No state reachable from a closed well-typed term is stuck. -/
-theorem dot_not_stuck {U : CaptureSet []} {t : Tm []} {T : Ty []} (d : HasTy U .nil t T)
+theorem dot_not_stuck {U : CaptureSet []} {t : Tm []} {T : Ty []}
+    (d : HasTy U .nil t (.ty T))
     {s : Sig} {st : State s} (run : Steps (⟨.nil, .nil, t⟩ : State []) st) :
     ¬ st.Stuck := by
   intro ⟨hnf, hns⟩

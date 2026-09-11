@@ -1,5 +1,9 @@
 import Coercions.CapturesCC.FCdot.FormTyping
-import Coercions.CapturesCC.FCdot.Preservation
+-- `FormAlgebra` reads `Subst.Typed` and `LeCo.HasType.subst` and nothing else
+-- of the machine, so it imports `TypingSubst` rather than `Preservation`.
+-- `CanonicalForms`, the one module that imports this one, still sees
+-- `Preservation` through `ErasureMetatheory`, so no later module loses a name.
+import Coercions.CapturesCC.FCdot.TypingSubst
 
 namespace CapturesCC
 
@@ -97,6 +101,10 @@ theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : L
   capInner := by
     simp only [CapAtom.subst_selfCast]
     exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot _)
+  capInst := by
+    intro a C h
+    simp only [CapAtom.subst_selfCast, CaptureSet.subst_selfCast]
+    exact (Ctx.instOf_cons_eq Γ (.opaque T) (.opaque S₀) a C).mp h
 
 section
 variable {σ : Store s} {Γ : Ctx s}
@@ -877,7 +885,7 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
                 rw [hM] at hp
                 obtain ⟨rfl, rfl⟩ := Shape.pi.inj hp
                 refine ⟨_, ?_, .pi hS hT (.trans hd₂ hd) (.trans
-                  (by simpa using LeCo.HasType.subst (Subst.Typed.selfCastOpaque hd₂) hc) hc₂)⟩
+                  (by simpa using ELeCo.HasType.subst (Subst.Typed.selfCastOpaque hd₂) hc) hc₂)⟩
                 simp [Form.combine]
             | obj ho _ _ => rw [hM] at ho; exact absurd ho (by simp)
             | boxed hb _ _ => rw [hM] at hb; exact absurd hb (by simp)

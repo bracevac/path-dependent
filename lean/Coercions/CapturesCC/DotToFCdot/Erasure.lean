@@ -48,11 +48,11 @@ mutual
 
 /-- Erasure of the translation of a typing derivation is the source term's
 own erasure. -/
-theorem HasTy.translate_erase : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
-    (h : HasTy U Γ t T) → ⌊h.translate⌋ = Tm.erase t
+theorem HasTy.translate_erase : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm s} → {E : ETy s} →
+    (h : HasTy U Γ t E) → ⌊h.translate⌋ = Tm.erase t
   | _, Γ, _, _, @HasTy.var _ _ x => by
-      simp only [HasTy.translate, FCdot.Tm.erase, FCdot.Atom.root, Ctx.varAtom_root Γ x,
-        Tm.erase, Path.root]
+      simp only [HasTy.translate, FCdot.Tm.erase, FCdot.PAtom.root_plain, FCdot.Atom.root,
+        Ctx.varAtom_root Γ x, Tm.erase, Path.root]
   | _, _, .val (.lam S _), _, .lam h _ => by
       simp only [HasTy.translate, FCdot.Tm.erase, FCdot.Value.erase, Tm.erase, Value.erase,
         HasTy.translate_erase h]
@@ -65,7 +65,7 @@ theorem HasTy.translate_erase : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm 
   | _, _, _, _, .box h => by
       simp only [HasTy.translate, FCdot.Tm.erase, FCdot.Value.erase, Tm.erase, Value.erase,
         HasTy.translateAtom_root h]
-  | _, _, .proj _ a, T, .proj h => by
+  | _, _, .proj _ a, _, .proj h => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, HasTy.translateAtom_root h]
   | _, _, _, _, .let h₁ h₂ _ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase,
@@ -75,13 +75,16 @@ theorem HasTy.translate_erase : {U : CaptureSet s} → {Γ : Ctx s} → {t : Tm 
         HasTy.translateAtom_root h]
   | _, _, _, _, .recI h₁ h₂ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
-        HasTy.translateAtom_root (.recI h₁ h₂)]
+        FCdot.PAtom.root_plain, HasTy.translateAtom_root (.recI h₁ h₂)]
   | _, _, _, _, .recE h₁ h₂ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
-        HasTy.translateAtom_root (.recE h₁ h₂)]
+        FCdot.PAtom.root_plain, HasTy.translateAtom_root (.recE h₁ h₂)]
   | _, _, _, _, .andI h₁ h₂ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
-        HasTy.translateAtom_root (.andI h₁ h₂)]
+        FCdot.PAtom.root_plain, HasTy.translateAtom_root (.andI h₁ h₂)]
+  | _, _, _, _, .letex h₁ _ h₂ => by
+      simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase,
+        HasTy.translate_erase h₁, HasTy.translate_erase h₂]
   | _, _, _, _, .sub h _ _ => by
       simp only [HasTy.translate, FCdot.Tm.erase, HasTy.translate_erase h]
 
@@ -104,8 +107,8 @@ end
 
 /-- The two typing derivations of the same term translate to target terms
 with the same runtime observation. -/
-theorem coherence {U₁ U₂ : CaptureSet s} {Γ : Ctx s} {t : Tm s} {T₁ T₂ : Ty s}
-    (d₁ : HasTy U₁ Γ t T₁) (d₂ : HasTy U₂ Γ t T₂) :
+theorem coherence {U₁ U₂ : CaptureSet s} {Γ : Ctx s} {t : Tm s} {E₁ E₂ : ETy s}
+    (d₁ : HasTy U₁ Γ t E₁) (d₂ : HasTy U₂ Γ t E₂) :
     ⌊d₁.translate⌋ = ⌊d₂.translate⌋ := by
   rw [HasTy.translate_erase d₁, HasTy.translate_erase d₂]
 

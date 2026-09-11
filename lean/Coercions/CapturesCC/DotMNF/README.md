@@ -1,14 +1,14 @@
-# DotMNF, at stage B1 of captures the compiler's way
+# DotMNF, at stage B2 of captures the compiler's way
 
 DOT-MNF^cc, the capturing source of the translation in `../DotToFCdot`.
 
 | module | contents |
 |---|---|
 | `Syntax` | paths, capture atoms (`{x} {κ} {x.C}`) and capture sets with union, decidable inclusion and pointwise renaming; shapes (`⊤ ⊥ {A:S..S} {a:T} {C:c..c} p.A μ ∀ ∧ □`) and types `S ^ C`; terms with the unboxing `C ⊸ x`, values with the box `□ x`, definitions with the capture member `{C = c}`; `Defs.labels`, `lookupTyp`, `lookupCap`, `lookupTrm`; `Shape.Decl` and its decision procedure `Shape.isDecl`, `Shape.Wf` and `Ty.Wf`, `Distinct` across the three definition kinds; `Tm.inspects` |
-| `Typing` | contexts (`cons`, `consSelf` carrying the definitions, the self shape and the assigned use set, `consC` for a platform capture binder); `Subcap`, `SubShape`, `Sub`, `HasTy` with the use set as its first index, `DefsTy`, all Type-valued in one mutual block; the derived rules `Sub.refl`, `Subcap.empty`, `Subcap.ofVar`, `HasTy.widen`, `DefsTy.widen`; intersections are unrestricted (`And₁`, `And₂`, `And`, `And-I` and `Wf.and` carry no `Decl` premise); `Decl` still restricts the body of a `μ` (`Wf.mu`, `Rec-I`, `Rec-E`); `{}-I` admits same-block aliases (alias-tolerant resolution on the target side, no self-alias restriction here) |
-| `Machine` | store with a data-free capture slot (`consC`), continuations, `Step` with the `unbox` step, `Steps`, `Final`, `Stuck`, `State.inspects`, the platform prefix and its initial store |
+| `Typing` | contexts (`cons`, `consSelf` carrying the definitions, the self shape and the assigned use set, `consC` for a platform capture binder, `consRoot` for a scope root, `consInst` for an instance binding); `Subcap`, `SubShape`, `Sub`, `ESub`, `HasTy` with the use set as its first index and an answer as its type index, `DefsTy`, all Type-valued in one mutual block; the derived rules `Sub.refl`, `Subcap.empty`, `Subcap.ofVar`, `HasTy.widen`, `DefsTy.widen`; intersections are unrestricted (`And₁`, `And₂`, `And`, `And-I` and `Wf.and` carry no `Decl` premise); `Decl` still restricts the body of a `μ` (`Wf.mu`, `Rec-I`, `Rec-E`); `{}-I` admits same-block aliases (alias-tolerant resolution on the target side, no self-alias restriction here) |
+| `Machine` | store with a data-free capture slot (`consC`), continuations with the unpacking frame `consE`, `Step` with the `unbox`, `letex`, `unpack` and `allocE` steps, `Steps`, `Final`, `Stuck`, `State.inspects`, the platform prefix and its initial store |
 | `Erasure` | erasure to `Runtime`, a box becoming the runtime's inert box and an unboxing the runtime's `unbox`; `erase_step`, `erase_reflect`, `Tm.inspects_erase`, `State.inspects_erase` |
-| `Examples` | E1 to E8 as `HasTy` derivations, restated at pure types and empty use sets; E8 is the refinement of an abstract type, `x.A ∧ {a : ⊤}`, with two derivations of its projection and an `And-I` derivation; the capture examples S3, C2 and C7 over the platform prefix of two capture binders; the `any` examples S1, S2 and C5, each written with `any`, expanded at the platform set, and typed at the expanded type |
+| `Examples` | E1 to E8 as `HasTy` derivations, restated at pure types and empty use sets; E8 is the refinement of an abstract type, `x.A ∧ {a : ⊤}`, with two derivations of its projection and an `And-I` derivation; the capture examples S3, C2 and C7 over the platform prefix of two capture binders; the `any` examples S1, S2 and C5, each written with `any`, expanded at the platform set, and typed at the expanded type, and the `fresh` examples Z1, Z2 and Z3, each written with `fresh`, decided `FreshOk`, expanded by `rfl` and typed at the expanded type, with a caller for Z1 that unpacks by `letex` |
 
 Stage A3a replays on the source the split stage A0 made on the target: what the vanilla line called a
 type is a shape, and a type is a shape with a capture set beside it.  Beyond the split the source gains
@@ -221,7 +221,8 @@ no theorem, no example and no line of this directory moved.
 
 B1 moves the source, because the source arrow has to bind the same binders in the same places
 as the target's.  That is what keeps the translation homomorphic on types and erasure equality
-free.  `Shape.all` becomes `Ty (Sig.dom s) → Ty (Sig.cod s) → Shape s`, so a source arrow
+free.  `Shape.all` becomes `Ty (Sig.dom s) → Ty (Sig.cod s) → Shape s`, which B2 re-sorts to
+`Ty (Sig.dom s) → ETy (Sig.cod s) → Shape s`, so a source arrow
 carries the parameter's `any` as one capture binder for the whole domain, and a lambda body and
 an object body are scopes with a root of their own.
 
@@ -264,7 +265,8 @@ Nothing was weakened, and no rule gained a hypothesis.
 ```
 DotMNF.Shape.all                 : Ty (Sig.dom s) → Ty (Sig.cod s) → Shape s
                                      the arrow gains the parameter's any as one capture
-                                     binder, in the target's position
+                                     binder, in the target's position.  B2 re-sorts the
+                                     codomain to ETy (Sig.cod s)
 DotMNF.Shape.rename, .expand     : one lift per binder, the same set carried further out
 DotMNF.Shape.noAny_all, .anyOk_all : the same propositions at the arrow's new arities
 DotMNF.Value.lam, .obj           : the body root and the class root as binders of the value,
@@ -301,3 +303,147 @@ Every example of A3a and A3b is here, rewritten for the new arrow and otherwise 
 `any` examples S1, S2 and C5 are still written with `any`, expanded at the platform set by
 `rfl`, and typed at the expanded type, so `S2_expand` still reads the result `any` as `{fs, u}`.
 That concrete set is what the target's `S2_level` and `C5a_level` put below a scope root.
+
+## Stage B2
+
+B2 gives the source a result `fresh` and the reading that expands it.  `fresh` is a capture
+atom, inert: no rule of `Subcap`, `SubShape`, `Sub`, `ESub`, `HasTy` or `DefsTy` mentions it,
+and the translation drops it as it drops `any`.  What reads it is `Ty.expandFresh`, a function
+run before typing, exactly as `expand` reads `any`.  A result `fresh` becomes an existential
+bounded by what the function can hold: its own assigned capture set united with its parameter.
+That bound is decision 18, and it is exactly the set the callee's own closing evidence proves,
+so every pack the examples need types with `refl`, `elem` and one instance step.
+
+The source's answer sort mirrors the target's, binder for binder.  `Shape.all` re-sorts its
+codomain to `ETy (Sig.cod s)`, `Cod` follows, and `ETy` has the same two constructors with the
+same declared bound.  `Ctx` gains an instance binding, `Ctx.consInst`, which is Capless's
+`CBinding.inst`, and `Ctx.scopeInst` opens a root of its own and then the instance binder, as
+the target's does.  `Subcap` gains one rule, `inst`, which is Capless's `cinstr` and is the
+source twin of the target's `CapEq.instC`.  `ESub` is inclusion between answers, with `ty`,
+`pack` and `exist`.  Packing is subsumption on the source side, which is decision 19: there is
+no source term former for a pack, and `HasTy.sub` carries it.  `Tm` gains `letex` and `HasTy`
+gains the matching rule, with the declared use set of D6 and the avoidance of Capless.
+
+`FreshOk` is a `Bool`-valued test, so `decide` closes it, and `expandFresh` computes, so the
+expanded type is stated and checked by `rfl`.  A `fresh` is allowed in exactly one position,
+the top-level capture set of the result of the very arrow that carries it, and `Ty.freshOk`
+refuses every other.  A `fresh` in a parameter is refused, which is checked.
+
+| module | what B2 changed |
+|---|---|
+| `Syntax` | `ETy` with `∃ᶜ[C] T`, its traversals, its `expand`, `noAny`, `anyOk` and `Wf`, and `Cod s = ETy (Sig.cod s)` with `Shape.all` spelling the same type out.  `Cod.underRoot` one sort up.  `CapAtom.fresh`, with one clause each in `CapAtom.rename`, `CapAtom.subst`, `CaptureSet.expand` and `CaptureSet.noAny`.  The `fresh` machinery: `CaptureSet.noFresh`, `CaptureSet.substFresh`, the three `noFresh` and three `substFresh` traversals, `ETy.codFreshOk`, `Shape.freshOk`, `Ty.freshOk`, `Ty.NoFresh`, `Ty.FreshOk` and `Ty.expandFresh`.  `Tm.letex` with one clause in each term traversal |
+| `Typing` | `Ctx.consInst` with one clause in `Ctx.lookup`, `Ctx.instSet?`, `abbrev Ctx.InstOf`, `Ctx.scopeInst`.  `Subcap.inst`.  `ESub` with `ty`, `pack` and `exist`, and `ESub.refl` beside `Sub.refl`.  `SubShape.all`'s codomain premise at the answer sort.  `HasTy` indexed by `ETy s`, with `abbrev HasTyP` for a plain answer, `HasTy.sub` at `ESub`, and the new rule `HasTy.letex` |
+| `Machine` | `Cont.consE` with one clause in `Cont.rename`, `Cont.weakenC`, and the three steps `Step.letex`, `Step.unpack` and `Step.allocE`.  `State.Final` and `State.Stuck` are untouched |
+| `Erasure` | `Tm.erase` and `Cont.erase` gain the `letex` and `consE` clauses, so the source and the target erase a `letex` to the same runtime term.  `erase_step` gains three cases and `erase_reflect` ten, and neither gains a hypothesis |
+| `Examples` | the three `fresh` examples Z1, Z2 and Z3 with their `FreshOk`, `expandFresh` and `NoFresh` statements, the callee of each typed at the expanded type, and a caller for Z1 that unpacks by `letex`.  Every older derivation keeps its name and its conclusion, with `HasTy` at a plain answer spelled `HasTyP` and arrow codomains spelled `.ty` |
+
+### The rules
+
+```
+DotMNF.Subcap.inst    : Ctx.InstOf Γ κ C → Subcap Γ C [.cvar κ]
+DotMNF.ESub.ty        : Sub Γ T T' → ESub Γ (.ty T) (.ty T')
+DotMNF.ESub.pack      : Subcap Γ C C₀ →
+                        Sub (Γ.scopeInst C) ((T'↑)↑) (Dom.underRoot T) →
+                        ESub Γ (.ty T') (∃ᶜ[C₀] T)
+DotMNF.ESub.exist     : Subcap Γ C₀ C₀' →
+                        Sub Γ.scope (Dom.underRoot T) (Dom.underRoot T') →
+                        ESub Γ (∃ᶜ[C₀] T) (∃ᶜ[C₀'] T')
+DotMNF.HasTy.sub      : HasTy U Γ t E → ESub Γ E E' → Subcap Γ U U' → HasTy U' Γ t E'
+DotMNF.HasTy.letex    : HasTy U₁ Γ t (∃ᶜ[C₀] T) → Subcap Γ C₀ U₂ →
+                        HasTy ((U₂↑)↑ ∪ [.cvar (.there .here)]) ((Γ.consC).cons T) u ((E↑)↑) →
+                        HasTy (U₁ ∪ U₂) Γ (.letex t u) E
+DotMNF.Step.letex     : ⟨σ, K, .letex t u⟩ ⟶ ⟨σ, K.consE u, t⟩
+DotMNF.Step.unpack    : the frame is opened at a variable, the store pushes consC
+DotMNF.Step.allocE    : the same at a value, allocated first
+```
+
+### Statements restated
+
+Nothing was weakened, and no rule gained a hypothesis.
+
+```
+DotMNF.Shape.all            : Ty (Sig.dom s) → ETy (Sig.cod s) → Shape s
+                                the constructor keeps its arity and both positions, only the
+                                sort of the second widens, and a plain codomain is .ty T
+DotMNF.Cod, .Cod.underRoot  : the codomain is an ETy, the same renaming one sort up
+DotMNF.Shape.rename, .subst, .expand, .noAny, .anyOk : .all clauses letter for letter, with
+                                the codomain call resolving to the ETy twin
+DotMNF.Shape.noAny_all, .anyOk_all, .expand_of_noAny, .noAny_expand, .expand_rename,
+  .subst_ofRename, .rename_inj : statements unchanged, the .all case citing the ETy twin
+DotMNF.Shape.Wf.all         : the same obligation on the same two sides, the codomain read at
+                                the answer sort, where ETy.Wf (.ty T) is Ty.Wf T
+DotMNF.SubShape.all         : codomain premise at the answer sort, mirroring the target's
+                                ShapeCo.HasType.pi
+DotMNF.CapAtom              : one constructor more, fresh, additive and inert
+DotMNF.Ctx, DotMNF.Ctx.lookup : one constructor more, consInst, additive
+DotMNF.Subcap               : one rule more, inst, additive
+DotMNF.Tm                   : one former more, letex, additive
+DotMNF.HasTy                : indexed by ETy s, with HasTyP U Γ t T = HasTy U Γ t (.ty T)
+                                every rule keeps its text with .ty written round its plain
+                                type, so every statement written HasTy U Γ t T at a type is
+                                HasTyP U Γ t T, which is the proposition it was
+DotMNF.HasTy.sub            : the answer premise is an ESub
+                                at a plain answer ESub.ty d is the old premise, so the rule is
+                                the rule it was
+DotMNF.HasTy.widen          : stated at an answer, which is forced by the index and not chosen
+DotMNF.DefsTy.trm           : premise at .ty T, which is the old premise
+DotMNF.Subcap.ofVar         : argument at .ty (S ^ C), and the dependent match excludes the
+                                two ESub constructors with an existential right endpoint
+DotMNF.Tm.erase, .Cont.erase : one clause each, and a source letex erases to the runtime letex
+DotMNF.erase_step, .erase_reflect : unchanged, with three and ten cases more
+DotMNF.dot_safety, .dot_not_stuck, .reachable_consistent, .reachable_realized,
+DotMNF.dot_capture_prediction, .dot_effect_safety : unchanged, at a plain answer
+```
+
+### New definitions and lemmas
+
+```
+DotMNF.ETy, with rename, subst, weaken, substVar, expand, noAny, anyOk, NoAny, AnyOk, Wf
+DotMNF.ETy.expand_of_noAny, .noAny_expand, .expand_rename, .subst_ofRename
+DotMNF.CapAtom.fresh
+DotMNF.CaptureSet.noFresh, .substFresh
+DotMNF.Shape.noFresh, .Ty.noFresh, .ETy.noFresh
+DotMNF.Shape.substFresh, .Ty.substFresh, .ETy.substFresh
+DotMNF.ETy.codFreshOk, .Shape.freshOk, .Ty.freshOk, .Ty.NoFresh, .Ty.FreshOk
+DotMNF.Ty.expandFresh
+DotMNF.Ctx.consInst, .Ctx.instSet?, .Ctx.InstOf, .Ctx.scopeInst
+DotMNF.Subcap.inst, .ESub, .ESub.refl, .HasTyP, .HasTy.letex
+DotMNF.Tm.letex, .Cont.consE, .Cont.weakenC
+DotMNF.Step.letex, .Step.unpack, .Step.allocE
+DotMNF.Tm.erase_letex, .Cont.erase_weakenC, .reflect_letex
+```
+
+### The examples
+
+Every example of A3a, A3b, B0 and B1 is here and unchanged in meaning.  Three are new, and each
+is written with `fresh`, decided `FreshOk`, expanded by `rfl` to a stated `fresh`-free type,
+and then typed at that type.
+
+```
+DotMNF.Examples.Z1_freshOk     : (Z1TyF k1).FreshOk
+DotMNF.Examples.Z1_expandFresh : (Z1TyF k1).expandFresh = Z1Ty k1
+DotMNF.Examples.Z1_noFresh     : (Z1Ty k1).NoFresh
+DotMNF.Examples.Z1_typed       : HasTyP [] Γ Z1Tm (Z1Ty fs)
+DotMNF.Examples.Z1_caller      : HasTyP (Z1Use ∪ Z1Use) Z1Ctx
+                                   (.letex (.app (.there .here) .here) (.let ... unitTm)) unitTy
+DotMNF.Examples.Z2_freshOk, .Z2_expandFresh, .Z2_noFresh, .Z2_typed
+DotMNF.Examples.Z3_freshOk, .Z3_expandFresh, .Z3_noFresh, .Z3_typed
+DotMNF.Examples.Z1_plat, .Z2_plat, .Z3_plat : the three callees over the platform prefix
+```
+
+**Z1, `freshCell`.**  The callee is `λ(u : ⊤). let c = ν(f. {read = λ(v). v}) in c`, written at
+`(∀(u : ⊤) (Cell ^ {fresh})) ^ {fs}`.  `expandFresh` reads the result `fresh` as `{fs, u}`, the
+callee's own assigned set with its parameter, and the pack's witness is `{u}`, the set the
+literal was allocated at.  The residual inclusion of the pack is `sc-inst`, which is the one
+new `Subcap` rule.  The caller unpacks by `letex`, charges the read of the unpacked cell to the
+opened binder itself, and hands back a pure closure.  No root is named anywhere in it, which is
+what the declared bound buys.
+
+**Z2, `makeLogger`.**  The parameter is a capability at the arrow's own capture binder and the
+callee is pure, so `expandFresh` reads the result `fresh` as `{x}`, the parameter alone.  The
+witness is the parameter and not a platform binder, and that is the example's point.
+
+**Z3, C5b.**  S2's `mk` with the result declared `fresh` instead of `any`.  The capture member
+packs the literal's `{fs}`, exactly as it did at A3b, and the existential packs the whole
+result on top of it.  `expandFresh` reads the bound as `{fs, u}`, which is the same concrete
+set S2's `any` expanded to.

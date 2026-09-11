@@ -60,6 +60,55 @@ twice over on the real binder order of a lambda: the premise of the level rule i
 the root outside the call, and no member-free evidence at all puts the file below that root, because
 the file's binder set resolves to the arrow binder whose level is the body root.
 
+Stage B2 makes a result `fresh` a per-call existential.  An arrow's codomain and the type index of
+term typing move to an answer sort, which is either a plain type or a type under one capture binder
+bounded by a capture set of the enclosing scope.  An answer occurs in those two places and nowhere
+else: not in a domain, not in a telescope, not in a proposition, not in a capture set, not under a
+`μ` and not under a box.  So the normal forms of the stage are B1's with one component re-sorted,
+and every telescope function and every view is untouched.  The bound is what makes the existential
+usable.  Without it the only rule that lowers the binder a `letex` opens is the level rule, whose
+right side is a root, so a lambda containing such a `letex` cannot close and a top-level one puts the
+universal root into the program's use set.  With the bound the body's use of the unpacked variable is
+charged to an ordinary capture set of the caller's scope, and no root enters any use set.
+
+Packing is syntactic and it is a coercion.  A packed value and a packed atom are wrappers carrying
+the witness, the evidence that the witness is below the declared bound, and one residual type
+inclusion, and the relation `ELeCo` between answers has `plain`, `pack`, `cong` and `trans`.  So a
+plain answer is widened to an existential wherever a coercion goes, the codomain of an arrow
+included, which is what makes the third widening step of the page's own `withFile` derivation
+expressible.  Value typing has no rule for a pack, so a packed value has an existential answer and no
+other, and a packed value is never stored, because store typing premises value typing.  The pack rule
+opens a root of its own and reads its residual under an instance binding for the witness, and the
+unpack collapses that root by one substitution.  Neither unpack step has a premise and neither takes
+fuel, and that is what the syntactic wrapper buys.
+
+The unpacking former is `letex`, and its opened capture binder is rigid with no scope of its own, so
+two `letex`es open two incomparable binders.  The answer-cast frame holds the coercion itself and not
+a head form, because the two cast-redex theorems are stated over untyped states and a step with a
+normalisation premise at an answer-cast focus would make both false.  What composes instead is
+`applyE`, total and structural on the coercion.  The pack rule cannot be typed without one new
+capture equality, an instance rule that says an instance binder stands for the set it was opened at,
+and that rule is the one place the stage pays for the compiler's instantiation.  Its price is one
+more capture field on renamings and substitutions, which every instance the tree builds proves by one
+weakening commutation.
+
+`letex` does not erase to `let`.  The runtime gains an unpacking term, an unpacking continuation
+frame and three steps, and the two unpacking steps push a data-free capture slot onto the runtime
+store, which the store already had and no step produced.  A pack erases to what it wraps, so the
+erasure cannot tell a packed atom from a plain one, and what tells them apart is the continuation
+that accepts the focus.  On the source side `fresh` is a capture atom that no rule mentions, read
+before typing by a function that expands a result `fresh` to the callee's own assigned capture set
+united with its parameter, exactly as `any` is read by `expand`.  The source gains the same answer
+sort, the same instance binding, the same `letex` and a subsumption rule that carries the pack.
+
+Four departures of B2 are recorded as decisions.  The existential carries a declared bound, which
+neither Capless nor the sketch has, and without it D6's relaxed `letex` is unusable.  Packing is a
+subtyping step and not a term former, which is what lets a plain codomain be widened under an arrow.
+The pack rule opens a root of its own, without which the type-sort block's renaming theorem is false
+and not merely unproven.  And the answer-cast frame holds the coercion rather than a head form, so
+the stage has no answer-form normalizer, no answer-form typedness and no fifth field on the form
+invariant of the store.
+
 **`FCdot/`** is the target, FCdot^cc.  Its README lists the modules, what each stage changed in them,
 the notation, and the theorems.  B0 reached it everywhere and B1 reached it again.  `Syntax` carries
 the arrow's new binders and the whole substitution block, `Context` the levels and the three scope
@@ -70,7 +119,14 @@ substitutions and the one crossing of a fresh root, `Machine` the four steps tha
 `Preservation` the inversion lemmas restated at the new binders with `preservation` unchanged, and
 `Examples` every old example re-indexed beside the new ones: the C2 literal with the class root
 outside the self, the escape rejected, the counterfactual order, and the two acceptance tests that
-put a concrete assigned set below a scope root.
+put a concrete assigned set below a scope root.  B2 reached it again.  `Syntax` carries the answer
+sort with its declared bound, the two wrapper families and the two new term formers, `Context` the
+instance scope and the instance reader, `Typing` the answer-inclusion judgment with its three thin
+wrappers and the instance rule, `Machine` the answer-cast frame, the unpacking frame and the six
+steps, `Preservation` isolation, the two canonical-forms theorems at an existential answer and the
+two unpack cases, `Prediction` the one lemma that consumes the declared bound, `ErasureMetatheory`
+the typed invariant the backward simulation now needs, and `Examples` the five programs Y1 to Y5
+with the store that makes Y1's negative theorem non-vacuous.
 
 **`DotMNF/`** is the source, `DOT-MNF^cc`, with `any` by position since A3b.  A shape is the vanilla
 type former, a type is a shape with a capture set, and the new shapes are the capture member and the
@@ -80,7 +136,10 @@ source arrow in step with the target's, because the two calculi have to bind the
 same places: the source gains a scope root constructor beside its rigid capture binder, its own three
 scope contexts, and its own substitution with an atom-valued capture component, which writes `any`
 where the target writes `⊤ᶜ`.  Every derivation of the example file keeps its name and its
-conclusion.
+conclusion.  B2 gives the source `fresh`, the answer sort with the same declared bound, an instance
+binding, the `letex` former with its three machine steps, and a subsumption rule that carries the
+pack.  `FreshOk` decides and `expandFresh` computes, so a written type is checked and its reading is
+stated by `rfl`, exactly as `AnyOk` and `expand` are at A3b.
 
 **`DotToFCdot/`** is the translation.  A source type is a shape with a capture set and so is a target
 type, so the translation splits the same way, and use sets are carried by the derivation, so the
@@ -91,13 +150,18 @@ computation.  B1 changed almost nothing, which was the point of moving the sourc
 translation of an arrow is textually what it was, the translation at a lambda and at an application
 did not have to be rewritten, and `Ctx.translate` gained one clause for the source's scope root.  The
 one new file says that the type translation commutes with substitution and not only with renaming,
-which is what the application case now needs.
+which is what the application case now needs.  B2 changed three things and nothing else: the answer
+translation, the answer-inclusion translation, and one clause of the context translation for the
+source's instance binding.  A source `fresh` is dropped as `any` is, which is sound because the
+source gives it no power and vacuous on expanded programs.
 
 **`Runtime.lean`** is the shared untyped runtime with a data-free capture slot in its store, an
 inspected root on its terms, and an inert box that both calculi erase their boxes to.  B0 changed
 nothing here, since levels are static.  B1 reshaped a runtime lambda and a runtime object to take
 bodies over the target's signatures, added a map of term variables with its traversal, and let the
-two step rules that enter a body continue at that map.
+two step rules that enter a body continue at that map.  B2 added an unpacking term, an unpacking
+continuation frame and three steps, and the two unpacking steps are the first to push the store's
+data-free capture slot.
 
 Identifiers the plan spells with a `ᶜ` suffix carry the ASCII suffix `C` here (`Ctx.consC`,
 `Store.consC`, `Subst.liftC`, `Ctx.lookupDefC`, `Proposition.leC`, `CapEq.defC`, `SideC`, `HoleC`),
@@ -109,8 +173,6 @@ Axioms throughout: `propext` and `Quot.sound`.  No `sorry`, `axiom`, `partial`, 
 
 ## What is not here yet
 
-`fresh` as a per-call existential, stage B2: an answer sort, packing as a wrapper whose premise is an
-instance binding, and a `letex` binder that is rootless by design.  Then stage B3, the source
-`DOT-MNF^cc'` with `any` by position the compiler's way, its translation, and the mandatory examples,
-among them the four worked programs of the compiler's own write-up, the two halves of C5, and two
-calls whose capabilities are incomparable.
+Stage B3, the source `DOT-MNF^cc'` with `any` by position the compiler's way, its translation, and
+the mandatory examples of that stage, among them the four worked programs of the compiler's own
+write-up read on the source side.
