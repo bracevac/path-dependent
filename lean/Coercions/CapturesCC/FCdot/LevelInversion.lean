@@ -39,6 +39,48 @@ theorem Ctx.mem_caps_root (Γ : Ctx s) (n : Nat) {r : CapAtom s} (hr : Γ.IsRoot
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | name x l => simp [Ctx.IsRoot, Ctx.isRootB] at hr
 
+
+/-! ### Member-freeness is closed under renaming
+
+**T-B3.4, step 1.**  Renaming rewrites the arguments of each former and
+changes no former, so the two families are carried along one for one.  The
+one case with content is `Atom.MemberFree.cast`, whose coercion is matched
+at `.capt e f`: `LeCo.rename` at `.capt` reduces (`FCdot/Syntax.lean:597`),
+so the induction hypothesis on the capture half applies.
+
+They live here because `Ctx.varAtom` of the translation weakens at every
+`.there` binder, and a weakening is a renaming (decision 33). -/
+
+mutual
+
+theorem CapCo.MemberFree.rename {s1 s2 : Sig} :
+    ∀ {f : CapCo s1} (_ : f.MemberFree) (ρ : Rename s1 s2), (f.rename ρ).MemberFree
+  | _, .refl C, ρ => .refl (C.rename ρ)
+  | _, .trans hf hg, ρ => .trans (hf.rename ρ) (hg.rename ρ)
+  | _, .elem C D, ρ => .elem (C.rename ρ) (D.rename ρ)
+  | _, .union hf hg, ρ => .union (hf.rename ρ) (hg.rename ρ)
+  | _, .capvar ha, ρ => .capvar (ha.rename ρ)
+  | _, .level e r, ρ => .level (e.rename ρ) (r.rename ρ)
+
+theorem Atom.MemberFree.rename {s1 s2 : Sig} :
+    ∀ {a : Atom s1} (_ : a.MemberFree) (ρ : Rename s1 s2), (a.rename ρ).MemberFree
+  | _, .var x, ρ => .var (ρ.var x)
+  | .cast _ (.capt _ _), .cast ha hf, ρ => .cast (ha.rename ρ) (hf.rename ρ)
+  | _, .recap ha hf, ρ => .recap (ha.rename ρ) (hf.rename ρ)
+  | _, .foldSelf Tel ha, ρ => .foldSelf (Tel.rename ρ.lift) (ha.rename ρ)
+  | _, .unfoldSelf ha, ρ => .unfoldSelf (ha.rename ρ)
+  | _, .both Tel₁ Tel₂ ha hb, ρ =>
+      .both (Tel₁.rename ρ.lift) (Tel₂.rename ρ.lift) (ha.rename ρ) (hb.rename ρ)
+
+end
+
+/-- The weakening instance, which is what a context lookup produces. -/
+theorem CapCo.MemberFree.weaken {s : Sig} {f : CapCo s} (h : f.MemberFree) :
+    (CapCo.weaken (k := k) f).MemberFree := h.rename _
+
+/-- The weakening instance on atoms. -/
+theorem Atom.MemberFree.weaken {s : Sig} {a : Atom s} (h : a.MemberFree) :
+    (Atom.weaken (k := k) a).MemberFree := h.rename _
 /-! ### The two halves of the inversion, one for capture evidence and one for
 the atoms it reaches -/
 

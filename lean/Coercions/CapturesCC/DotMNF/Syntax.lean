@@ -360,35 +360,17 @@ theorem CaptureSet.noAny_expand {s : Sig} {D : CaptureSet s} (hD : D.NoAny)
       · exact CaptureSet.noAny_append hD ih
       · exact CaptureSet.noAny_cons_of_ne (by simp) ih
 
-/-- The set an arrow or an object reads `any` as under its own binder is its
-own set weakened, with the binder itself; renaming commutes with that. -/
-theorem CaptureSet.self_rename {s1 s2 : Sig} (D : CaptureSet s1) (ρ : Rename s1 s2) :
-    CaptureSet.rename (D.weaken (k := .var) ∪ [CapAtom.var .here]) ρ.lift
-      = (CaptureSet.rename D ρ).weaken ∪ [CapAtom.var .here] := by
-  simp only [CaptureSet.union_def, CaptureSet.rename_append, CaptureSet.weaken_rename D ρ,
-    CaptureSet.rename_cons, CaptureSet.rename_nil, CapAtom.rename, Rename.lift_here]
+/-- The reading of a position holds no `any`, and the singleton reading an
+arrow's domain gets is one of those. -/
+theorem CaptureSet.noAny_cvar {s : Sig} (κ : BVar s .cap) :
+    CaptureSet.NoAny [CapAtom.cvar κ] :=
+  CaptureSet.noAny_cons_of_ne (by simp) CaptureSet.noAny_nil
 
-theorem CaptureSet.noAny_self {s : Sig} {D : CaptureSet s} (h : D.NoAny) :
-    CaptureSet.NoAny (D.weaken (k := .var) ∪ [CapAtom.var .here]) :=
-  CaptureSet.noAny_append (CaptureSet.noAny_weaken h)
-    (CaptureSet.noAny_cons_of_ne (by simp) CaptureSet.noAny_nil)
-
-/-- The same set under an arrow's two binders: the arrow's capture binder is
-in the way, so the set is weakened twice. -/
-theorem CaptureSet.selfC_rename {s1 s2 : Sig} (D : CaptureSet s1) (ρ : Rename s1 s2) :
-    CaptureSet.rename
-        (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D) ∪ [CapAtom.var .here])
-        ρ.lift.lift
-      = CaptureSet.weaken (CaptureSet.weaken (k := .cap) (CaptureSet.rename D ρ))
-          ∪ [CapAtom.var .here] := by
-  simp only [CaptureSet.union_def, CaptureSet.rename_append, CaptureSet.weaken_rename,
-    CaptureSet.rename_cons, CaptureSet.rename_nil, CapAtom.rename, Rename.lift_here]
-
-theorem CaptureSet.noAny_selfC {s : Sig} {D : CaptureSet s} (h : D.NoAny) :
-    CaptureSet.NoAny
-      (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D) ∪ [CapAtom.var .here]) :=
-  CaptureSet.noAny_append (CaptureSet.noAny_weaken (CaptureSet.noAny_weaken h))
-    (CaptureSet.noAny_cons_of_ne (by simp) CaptureSet.noAny_nil)
+/-- Renaming leaves the reading an arrow's domain gets alone, because the
+binder it names is the one the lift keeps in place. -/
+@[simp] theorem CaptureSet.cvar_here_rename {s1 s2 : Sig} (ρ : Rename s1 s2) :
+    CaptureSet.rename [CapAtom.cvar .here] (ρ.lift (k := .cap))
+      = [CapAtom.cvar (.here : BVar (s2,c) .cap)] := rfl
 
 /-! ## Shapes and types
 
@@ -541,15 +523,19 @@ abbrev Cod.underRoot (E : Cod s) : ETy (Sig.body s) := E.rename Rename.succ.lift
 /-! ## Expansion of `any` in a type
 
 `expand` gives every `any` of a type the reading its position prescribes.
-The reading set `D₀` of a shape is the capture set of the type the shape
-sits in.  An arrow reads the `any` of its codomain as its own set with the
-parameter, an object reads the `any` of a field type or of a capture-member
-upper bound as its own set with the self, and each former resets the
-reading for what is under it.  Four positions get no reading and are given
-the empty set instead, because a program is well formed there only if it
-holds no `any` at all (`AnyOk`): the outer set of a parameter type, a
-type-member bound, the lower bound of a capture member, and everything
-under a box. -/
+The reading is one capture set threaded down from the position the type is
+written at.  That set is the innermost scope root enclosing the position,
+and it is the program's platform set where the context has no root at all
+(`Ctx.reading`).  The reading passes under a field, under an intersection,
+under a `μ` body and under an arrow's codomain unchanged, weakened once for
+each binder it passes.  So a result `any` reads as the root enclosing the
+*arrow*, and a class member `any` reads as the root enclosing the object
+type.  It is reset at exactly two kinds of place.  An arrow's domain reads
+`any` as the arrow's own capture binder, which is the parameter `any`.  And
+the positions where `any` is forbidden get the empty set instead, because a
+program is well formed there only if it holds no `any` at all (`AnyOk`): a
+type-member bound, the lower bound of a capture member, everything under a
+box, and both components of an existential. -/
 
 mutual
 
@@ -562,18 +548,20 @@ def Shape.expand : Shape s → CaptureSet s → Shape s
   | .fld a T, D₀ => .fld a (T.expand D₀)
   | .cap A c1 c2, D₀ =>
       .cap A (CaptureSet.expand c1 []) (CaptureSet.expand c2 D₀)
-  | .mu S, D₀ => .mu (S.expand (CaptureSet.weaken D₀ ∪ [CapAtom.var .here]))
+  | .mu S, D₀ => .mu (S.expand (CaptureSet.weaken D₀))
   | .all T1 T2, D₀ =>
-      .all (T1.expand [])
+      .all (T1.expand [CapAtom.cvar .here])
         (ETy.expand T2
-          (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D₀) ∪ [CapAtom.var .here]))
+          (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D₀)))
   | .and S T, D₀ => .and (S.expand D₀) (T.expand D₀)
   | .box T, _ => .box (T.expand [])
 
-/-- `T.expand D`, where `D` is the set the enclosing former reads `any` as:
-the type's own set is expanded first, and is the reading set of its shape. -/
+/-- `T.expand D`, where `D` is the set the enclosing former reads `any` as.
+The type's own set and its shape are read at the same set, because the
+reading of a position is the root that encloses it and not the type written
+there. -/
 def Ty.expand : Ty s → CaptureSet s → Ty s
-  | .capt C S, D => .capt (CaptureSet.expand C D) (S.expand (CaptureSet.expand C D))
+  | .capt C S, D => .capt (CaptureSet.expand C D) (S.expand D)
 
 /-- `E.expand D` on an answer.  A plain answer is its type; an existential
 resets the reading for what is under it, as a type-member bound does, since
@@ -591,11 +579,13 @@ def Shape.expandSelf (S : Shape (s,x)) (D : CaptureSet (s,x)) : Shape (s,x) := S
 @[simp] theorem Shape.expandSelf_eq {s : Sig} (S : Shape (s,x)) (D : CaptureSet (s,x)) :
     S.expandSelf D = S.expand D := rfl
 
-/-- The `μ` clause in the plan's words: the body is expanded by the object's
-own set, weakened, with the self. -/
+/-- The `μ` clause in the plan's words: the body is expanded by the reading
+of the object type's own position, weakened past the self.  A `μ` type binds
+only the self, so the class root is not nameable in it and the self is not
+part of the reading.  A field whose value captures the self writes
+`{self}`. -/
 theorem Shape.expand_mu {s : Sig} (S : Shape (s,x)) (D₀ : CaptureSet s) :
-    (Shape.mu S).expand D₀
-      = .mu (S.expandSelf (CaptureSet.weaken D₀ ∪ [CapAtom.var .here])) := rfl
+    (Shape.mu S).expand D₀ = .mu (S.expandSelf (CaptureSet.weaken D₀)) := rfl
 
 /-! ## No `any`, and `any` only where it is read
 
@@ -640,7 +630,7 @@ def Shape.anyOk : Shape s → Bool
   | .fld _ T => T.anyOk
   | .cap _ c1 _ => CaptureSet.noAny c1
   | .mu S => S.anyOk
-  | .all (.capt C1 S1) T2 => CaptureSet.noAny C1 && S1.anyOk && ETy.anyOk T2
+  | .all (.capt _ S1) T2 => S1.noAny && ETy.anyOk T2
   | .and S T => S.anyOk && T.anyOk
   | .box T => T.noAny
 
@@ -748,8 +738,8 @@ instance Ty.AnyOk.instDecidable {s : Sig} (T : Ty s) : Decidable T.AnyOk :=
 
 @[simp] theorem Shape.anyOk_all {s : Sig} (C1 : CaptureSet (Sig.dom s)) (S1 : Shape (Sig.dom s))
     (T2 : Cod s) :
-    Shape.AnyOk (.all (S1 ^ C1) T2) ↔ C1.NoAny ∧ S1.AnyOk ∧ T2.AnyOk := by
-  simp [Shape.AnyOk, Ty.AnyOk, ETy.AnyOk, CaptureSet.NoAny, Shape.anyOk, and_assoc]
+    Shape.AnyOk (.all (S1 ^ C1) T2) ↔ S1.NoAny ∧ T2.AnyOk := by
+  simp [Shape.AnyOk, Shape.NoAny, ETy.AnyOk, Shape.anyOk]
 
 @[simp] theorem Shape.anyOk_and {s : Sig} (S T : Shape s) :
     Shape.AnyOk (.and S T) ↔ S.AnyOk ∧ T.AnyOk := by simp [Shape.AnyOk, Shape.anyOk]
@@ -852,14 +842,17 @@ theorem Shape.noAny_expand {s : Sig} :
   | .mu S, D₀, h, hD => by
       rw [Shape.anyOk_mu] at h
       rw [Shape.expand, Shape.noAny_mu]
-      exact Shape.noAny_expand S _ h (CaptureSet.noAny_self hD)
+      exact Shape.noAny_expand S _ h (CaptureSet.noAny_weaken hD)
   | .all (.capt C1 S1) T2, D₀, h, hD => by
       rw [Shape.anyOk_all] at h
       rw [Shape.expand, Shape.noAny_all]
-      refine ⟨Ty.noAny_expand (S1 ^ C1) [] ?_ CaptureSet.noAny_nil,
-        ETy.noAny_expand T2 _ h.2.2 (CaptureSet.noAny_selfC hD)⟩
-      rw [Ty.anyOk_capt]
-      exact h.2.1
+      refine ⟨?_, ETy.noAny_expand T2 _ h.2
+        (CaptureSet.noAny_weaken (CaptureSet.noAny_weaken hD))⟩
+      -- The domain is read at the arrow's own capture binder, and `AnyOk`
+      -- gives its shape `NoAny` rather than `AnyOk`, so the shape half is
+      -- the identity of expansion and not `Ty.noAny_expand`.
+      rw [Ty.expand, Ty.noAny_capt, Shape.expand_of_noAny S1 h.1]
+      exact ⟨CaptureSet.noAny_expand (CaptureSet.noAny_cvar _) C1, h.1⟩
   | .and S T, D₀, h, hD => by
       rw [Shape.anyOk_and] at h
       rw [Shape.expand, Shape.noAny_and]
@@ -875,8 +868,7 @@ theorem Ty.noAny_expand {s : Sig} :
   | .capt C S, D, h, hD => by
       rw [Ty.anyOk_capt] at h
       rw [Ty.expand, Ty.noAny_capt]
-      exact ⟨CaptureSet.noAny_expand hD C,
-        Shape.noAny_expand S _ h (CaptureSet.noAny_expand hD C)⟩
+      exact ⟨CaptureSet.noAny_expand hD C, Shape.noAny_expand S D h hD⟩
 
 /-- Expanding an `AnyOk` answer by a set with no `any` leaves no `any`. -/
 theorem ETy.noAny_expand {s : Sig} :
@@ -913,11 +905,12 @@ theorem Shape.expand_rename {s1 s2 : Sig} :
       simp only [Shape.expand, Shape.rename, CaptureSet.expand_rename, CaptureSet.rename_nil]
   | .mu S, D₀, ρ => by
       simp only [Shape.expand, Shape.rename, Shape.expand_rename S _ ρ.lift,
-        CaptureSet.self_rename D₀ ρ]
+        CaptureSet.weaken_rename D₀ ρ]
   | .all T1 T2, D₀, ρ => by
-      simp only [Shape.expand, Shape.rename, Ty.expand_rename T1 [] ρ.lift,
-        ETy.expand_rename T2 _ ρ.lift.lift, CaptureSet.selfC_rename D₀ ρ,
-        CaptureSet.rename_nil]
+      simp only [Shape.expand, Shape.rename,
+        Ty.expand_rename T1 [CapAtom.cvar .here] ρ.lift,
+        ETy.expand_rename T2 _ ρ.lift.lift, CaptureSet.cvar_here_rename,
+        CaptureSet.weaken_rename, CaptureSet.weaken_rename D₀ ρ]
   | .and S T, D₀, ρ => by
       simp only [Shape.expand, Shape.rename, Shape.expand_rename S D₀ ρ,
         Shape.expand_rename T D₀ ρ]
@@ -967,7 +960,14 @@ type, and not under a further arrow.  So every `fresh` is gone after
 expansion and an expanded program is a program of the `fresh`-free fragment.
 
 `substFresh` is the exact twin of the `any` machinery: it replaces every
-`fresh` by a given set, weakened as it passes under a binder. -/
+`fresh` by a given set, weakened as it passes under a binder.
+
+The two expansions do not commute, and the order is fixed: `any` is
+expanded first, then `fresh` (decision 31).  `Ty.expandFresh` copies the
+arrow's assigned capture set `A` into the existential's bound, so `A` must
+already be read.  `AnyOk` agrees with that order, since `ETy.anyOk` at an
+existential asks for `NoAny` on both components, so a written type is
+`AnyOk` before the `fresh` expansion and `any` free after it. -/
 
 /-- No `fresh` occurs in the set. -/
 def CaptureSet.noFresh : CaptureSet s → Bool
@@ -1155,6 +1155,220 @@ def Defs.weaken (d : Defs s) : Defs (s,,k) := d.rename Rename.succ
 def Tm.substVar (t : Tm (s,x)) (y : BVar s .var) : Tm s := t.rename (Rename.subst y)
 def Value.substVar (v : Value (s,x)) (y : BVar s .var) : Value s := v.rename (Rename.subst y)
 def Defs.substVar (d : Defs (s,x)) (y : BVar s .var) : Defs s := d.rename (Rename.subst y)
+
+/-! ## `any` in a term
+
+A source term writes a type in three places.  A lambda's domain annotation
+(`Value.lam`), an unbox's capture set (`Tm.unbox`), and a definition's shape
+or capture set (`Defs.typ` and `Defs.cap`).  A lambda's domain is read at
+the arrow's own capture binder, which is position determined and needs no
+ambient reading.  An unbox's set must be the boxed type's set, and `AnyOk`
+forbids `any` under a box.  A literal's definitions hold no `any` at all
+(decision 28), because they are checked against the type the literal is
+given and every `any` of that type has already been read.  So the term-level
+expansion takes no reading set.
+
+`Tm.expand` recurses at `let`, at `letex` and into a lambda's body, and it
+must: `Tm.anyOk` recurses at all three, so an expansion that stopped at the
+outermost value would leave an `any` in an `AnyOk` term.  `Tm.noAny_expand`
+is what holds it to that. -/
+
+/-- Every `any` of a domain annotation is in the position the arrow's own
+capture binder is read at, which is the annotation's outer capture set. -/
+def Ty.domAnyOk : Ty s → Bool
+  | .capt _ S => S.noAny
+
+/-- Every `any` of a domain annotation is read, as a proposition.  An
+`abbrev`, so `decide` closes it. -/
+abbrev Ty.DomAnyOk (T : Ty s) : Prop := T.domAnyOk = true
+
+mutual
+
+/-- No `any` anywhere in the definitions. -/
+def Defs.noAny : Defs s → Bool
+  | .typ _ S => S.noAny
+  | .cap _ c => CaptureSet.noAny c
+  | .trm _ t => t.noAny
+  | .and d e => d.noAny && e.noAny
+
+/-- No `any` anywhere in the value. -/
+def Value.noAny : Value s → Bool
+  | .obj d => d.noAny
+  | .lam T t => T.noAny && t.noAny
+  | .box _ => true
+
+/-- No `any` anywhere in the term. -/
+def Tm.noAny : Tm s → Bool
+  | .path _ => true
+  | .app _ _ => true
+  | .proj _ _ => true
+  | .val v => v.noAny
+  | .let t u => t.noAny && u.noAny
+  | .unbox C _ => CaptureSet.noAny C
+  | .letex t u => t.noAny && u.noAny
+
+end
+
+mutual
+
+/-- Every `any` of the value is in a position `Value.expand` reads.  A
+literal's definitions hold none. -/
+def Value.anyOk : Value s → Bool
+  | .obj d => d.noAny
+  | .lam T t => T.domAnyOk && t.anyOk
+  | .box _ => true
+
+/-- Every `any` of the term is in a position `Tm.expand` reads. -/
+def Tm.anyOk : Tm s → Bool
+  | .path _ => true
+  | .app _ _ => true
+  | .proj _ _ => true
+  | .val v => v.anyOk
+  | .let t u => t.anyOk && u.anyOk
+  | .unbox C _ => CaptureSet.noAny C
+  | .letex t u => t.anyOk && u.anyOk
+
+end
+
+/-- No `any` anywhere in the definitions, as a proposition. -/
+abbrev Defs.NoAny (d : Defs s) : Prop := d.noAny = true
+
+/-- No `any` anywhere in the value, as a proposition. -/
+abbrev Value.NoAny (v : Value s) : Prop := v.noAny = true
+
+/-- No `any` anywhere in the term, as a proposition. -/
+abbrev Tm.NoAny (t : Tm s) : Prop := t.noAny = true
+
+/-- Every `any` of the value is read, as a proposition.  An `abbrev`, so
+`decide` closes it. -/
+abbrev Value.AnyOk (v : Value s) : Prop := v.anyOk = true
+
+/-- Every `any` of the term is read, as a proposition.  An `abbrev`, so
+`decide` closes it. -/
+abbrev Tm.AnyOk (t : Tm s) : Prop := t.anyOk = true
+
+mutual
+
+/-- Expansion of a value: the only type a value writes is a lambda's domain
+annotation, and it is read at the arrow's own capture binder. -/
+def Value.expand : Value s → Value s
+  | .obj d => .obj d
+  | .lam T t => .lam (T.expand [CapAtom.cvar .here]) t.expand
+  | .box x => .box x
+
+/-- Expansion of a term: it descends at `let`, at `letex` and into a value,
+and so into a lambda's body. -/
+def Tm.expand : Tm s → Tm s
+  | .path p => .path p
+  | .app x y => .app x y
+  | .proj x a => .proj x a
+  | .val v => .val v.expand
+  | .let t u => .let t.expand u.expand
+  | .unbox C x => .unbox C x
+  | .letex t u => .letex t.expand u.expand
+
+end
+
+/-- A domain annotation read at a capture binder holds no `any` afterwards:
+its outer set is expanded by a reading that holds none, and `DomAnyOk` gives
+its shape no `any` to begin with. -/
+theorem Ty.noAny_expand_dom {s : Sig} {T : Ty s} (κ : BVar s .cap) (h : T.DomAnyOk) :
+    Ty.NoAny (T.expand [CapAtom.cvar κ]) := by
+  cases T with
+  | capt C S =>
+      have hS : Shape.NoAny S := h
+      rw [Ty.expand, Ty.noAny_capt, Shape.expand_of_noAny S hS]
+      exact ⟨CaptureSet.noAny_expand (CaptureSet.noAny_cvar κ) C, hS⟩
+
+mutual
+
+/-- Expansion is the identity on a value with no `any`. -/
+theorem Value.expand_of_noAny {s : Sig} : ∀ (v : Value s), v.NoAny → v.expand = v
+  | .obj _, _ => rfl
+  | .box _, _ => rfl
+  | .lam T t, h => by
+      have h' := Bool.and_eq_true .. |>.mp h
+      rw [Value.expand, Ty.expand_of_noAny T h'.1, Tm.expand_of_noAny t h'.2]
+
+/-- Expansion is the identity on a term with no `any`. -/
+theorem Tm.expand_of_noAny {s : Sig} : ∀ (t : Tm s), t.NoAny → t.expand = t
+  | .path _, _ => rfl
+  | .app _ _, _ => rfl
+  | .proj _ _, _ => rfl
+  | .unbox _ _, _ => rfl
+  | .val v, h => by rw [Tm.expand, Value.expand_of_noAny v h]
+  | .let t u, h => by
+      have h' := Bool.and_eq_true .. |>.mp h
+      rw [Tm.expand, Tm.expand_of_noAny t h'.1, Tm.expand_of_noAny u h'.2]
+  | .letex t u, h => by
+      have h' := Bool.and_eq_true .. |>.mp h
+      rw [Tm.expand, Tm.expand_of_noAny t h'.1, Tm.expand_of_noAny u h'.2]
+
+end
+
+mutual
+
+/-- Expanding an `AnyOk` value leaves no `any`. -/
+theorem Value.noAny_expand {s : Sig} : ∀ (v : Value s), v.AnyOk → Value.NoAny v.expand
+  | .obj _, h => h
+  | .box _, _ => rfl
+  | .lam T t, h => by
+      have h' := Bool.and_eq_true .. |>.mp h
+      rw [Value.expand]
+      exact Bool.and_eq_true .. |>.mpr
+        ⟨Ty.noAny_expand_dom .here h'.1, Tm.noAny_expand t h'.2⟩
+
+/-- Expanding an `AnyOk` term leaves no `any`.  This is what holds
+`Tm.expand` to descending at `let`, at `letex` and into a lambda's body. -/
+theorem Tm.noAny_expand {s : Sig} : ∀ (t : Tm s), t.AnyOk → Tm.NoAny t.expand
+  | .path _, _ => rfl
+  | .app _ _, _ => rfl
+  | .proj _ _, _ => rfl
+  | .unbox _ _, h => h
+  | .val v, h => Value.noAny_expand v h
+  | .let t u, h => by
+      have h' := Bool.and_eq_true .. |>.mp h
+      rw [Tm.expand]
+      exact Bool.and_eq_true .. |>.mpr ⟨Tm.noAny_expand t h'.1, Tm.noAny_expand u h'.2⟩
+  | .letex t u, h => by
+      have h' := Bool.and_eq_true .. |>.mp h
+      rw [Tm.expand]
+      exact Bool.and_eq_true .. |>.mpr ⟨Tm.noAny_expand t h'.1, Tm.noAny_expand u h'.2⟩
+
+end
+
+mutual
+
+/-- Expansion of a value commutes with renaming.  There is no reading set to
+rename, because the reading a domain annotation gets is the binder the lift
+keeps in place. -/
+theorem Value.expand_rename {s1 s2 : Sig} :
+    ∀ (v : Value s1) (ρ : Rename s1 s2), v.expand.rename ρ = (v.rename ρ).expand
+  | .obj _, _ => rfl
+  | .box _, _ => rfl
+  | .lam T t, ρ => by
+      simp only [Value.expand, Value.rename, Ty.expand_rename T [CapAtom.cvar .here] ρ.lift,
+        CaptureSet.cvar_here_rename, Tm.expand_rename t ρ.lift.lift.lift]
+
+/-- Expansion of a term commutes with renaming. -/
+theorem Tm.expand_rename {s1 s2 : Sig} :
+    ∀ (t : Tm s1) (ρ : Rename s1 s2), t.expand.rename ρ = (t.rename ρ).expand
+  | .path _, _ => rfl
+  | .app _ _, _ => rfl
+  | .proj _ _, _ => rfl
+  | .unbox _ _, _ => rfl
+  | .val v, ρ => by simp only [Tm.expand, Tm.rename, Value.expand_rename v ρ]
+  | .let t u, ρ => by
+      simp only [Tm.expand, Tm.rename, Tm.expand_rename t ρ, Tm.expand_rename u ρ.lift]
+  | .letex t u, ρ => by
+      simp only [Tm.expand, Tm.rename, Tm.expand_rename t ρ, Tm.expand_rename u ρ.lift.lift]
+
+end
+
+/-- Expansion of a term commutes with weakening. -/
+theorem Tm.expand_weaken {s : Sig} {k : Kind} (t : Tm s) :
+    t.expand.weaken (k := k) = (t.weaken).expand :=
+  Tm.expand_rename t Rename.succ
 
 /-! ## Substitution
 

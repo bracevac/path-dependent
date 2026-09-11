@@ -1,4 +1,4 @@
-# DotToFCdot, at stage B2 of captures the compiler's way
+# DotToFCdot, at stage B3 of captures the compiler's way
 
 The translation of DOT-MNF^cc into FCdot^cc (Plan III §8, milestones M3 to
 M5), namespace `DotMNF`.  Derivations are `Type`-valued, so the translation
@@ -627,3 +627,110 @@ They live in `FCdot/Examples.lean`, beside the older `S1_translated`, `S2_transl
 `C2_translated`, `C7_translated` and `S3_translated`, which are unchanged.  Each is
 `HasTy.translate_typed` at the source derivation and `HasTy.translate_erase` at the same
 derivation, and neither is decided by the checker.
+
+## Stage B3
+
+B3 keeps the translation homomorphic once more.  The source gains one subcapturing rule and one
+predicate, and the translation gains one clause for the rule, one case for its typedness, the five
+spine commutations that clause consumes, and T17.  Nothing else moves.  The type translation is
+untouched, byte for byte: `CapAtom.translate?`, `CaptureSet.translate`, `Ctx.translate`,
+`CaptureSet.top_not_mem_translate` and `Platform.root_iff` have no new clause and no new premise,
+which is decision 23 in the diff.  The source names no universal root, so no source capture set
+translates to one, and `dot_effect_safety` keeps the premise it had.
+
+The clause itself is B3.6.  A source `Subcap.level` becomes the target's `CapCo.level`, and the
+translation matches on the atom: the three real atoms become the target's own, and the two notations,
+`any` and `fresh`, translate to the empty set, so their case is given evidence rather than an
+absurdity and the clause stays a plain match with no dependent elimination.  The clause is a leaf of
+`Subcap.translate`, so it adds no obligation to the block and the termination measure is still plain
+`sizeOf`.
+
+T-B3.2 is what makes the clause typed: `Ctx.translate` commutes with `Ctx.root?`, with `Ctx.lvl`
+and with `Ctx.rootB`, so `Ctx.IsRoot` and `Ctx.LvlLe` transport to the target.  The `LvlLe`
+commutation is a five-way case on the atom whose two notation cases are closed by decision 30: a
+notation is below no root on the source side.
+
+T17 is the theorem of the stage and it is one line.  `source_lvl_safety` says that member-free source
+subcapturing never lowers a level, through the translation.  It needs `Subcap.MemberFree`, the
+source's own member-free predicate, its translation into the target's, and `Ctx.varAtom_memberFree`,
+which says that the evidence the translation builds at a variable is member-free.  Two rename lemmas
+for the target's `MemberFree` families live in `FCdot/LevelInversion.lean`, the one target file
+besides `Examples` that B3 touches, which is decision 33.
+
+| module | what B3 changed |
+|---|---|
+| `Types` | nothing.  Not one line |
+| `TypesLemmas` | T-B3.2: `Ctx.translate_root?`, `Ctx.translate_lvl`, `Ctx.translate_rootB`, `Ctx.IsRoot.translate` and `Ctx.LvlLe.translate`, after `Shape.translate_underRoot`.  One import line, `FCdot.Levels` |
+| `TypesSubst` | nothing |
+| `Evidence` | `Subcap.MemberFree`, the six member-free source rules.  `Ctx.varAtom_memberFree`.  `Subcap.translate_memberFree`.  One clause, `level`, in `Subcap.translate`.  One import line, `FCdot.LevelInversion` |
+| `EvidenceTyped` | one case, `level`, in `Subcap.translate_typed`.  `source_lvl_safety`, which is T17 |
+| `Terms`, `TermsTyped`, `Erasure` | nothing.  `HasTy.translate` gains no clause, so `coherence`, `translate_uses` and `translate_erase` keep their proofs |
+| `Safety`, `Consistency`, `Prediction` | nothing |
+
+### Statements restated
+
+Nothing was weakened and no statement gained a hypothesis.
+
+```
+DotMNF.Subcap.translate         : one clause, level, a leaf inside the existing
+                                    termination_by _ _ _ d => sizeOf d and its decreasing_by
+                                    block.  Additive, and the measure is still plain sizeOf
+DotMNF.Subcap.translate_typed   : statement kept, one case.  The case is cases on the atom and
+                                    then the two T-B3.2 transports for the three real atoms,
+                                    and .elem at the empty subset for the two notations, since
+                                    a notation translates to the empty set
+DotMNF.CapAtom.translate?, .CaptureSet.translate, .Ctx.translate,
+DotMNF.CaptureSet.top_not_mem_translate, .Platform.root_iff, .dot_effect_safety
+                                : textually unchanged, which is decision 23 in the diff
+DotMNF.HasTy.translate, .translateAtom, .Shape.translate, .ETy.translate, .ESub.translate
+                                : untouched
+DotMNF.Sub.translate_typed, .HasTy.translate_typed, .translate_uses, .translate_erase,
+DotMNF.coherence, .dot_safety, .dot_not_stuck, .reachable_consistent, .reachable_realized,
+DotMNF.dot_capture_prediction   : form and proof kept, which is T18
+```
+
+### New in this stage
+
+```
+DotMNF.Ctx.translate_root?, .Ctx.translate_lvl, .Ctx.translate_rootB          T-B3.2
+DotMNF.Ctx.IsRoot.translate, .Ctx.LvlLe.translate                             T-B3.2
+DotMNF.Subcap.MemberFree                                                      T-B3.4 step 3
+DotMNF.Ctx.varAtom_memberFree                                                 T-B3.4 step 2
+DotMNF.Subcap.translate_memberFree                                            T-B3.4 step 4
+DotMNF.source_lvl_safety                                                      T17
+FCdot.CapCo.MemberFree.rename, FCdot.Atom.MemberFree.rename                   T-B3.4 step 1
+FCdot.CapCo.MemberFree.weaken, FCdot.Atom.MemberFree.weaken
+```
+
+`Subcap.MemberFree` excludes `inst`, `selLower` and `selUpper`, and those three are exactly the
+source rules whose translation is `eqToLe` or `member`, which are exactly the two target rules
+`FCdot.CapCo.MemberFree` excludes.  So `Subcap.translate_memberFree` is a case-for-case walk of
+`Subcap.translate` and needs no termination argument of its own: it is structural on the
+member-free proof.
+
+### The examples
+
+The examples of this directory are the source's, read through the translation, and every one keeps
+its name and its conclusion.  Five are new.
+
+```
+FCdot.Examples.W2_translated       : a parameter any stays one arrow in the target
+FCdot.Examples.W2_call_translated  : one source application, one target application
+FCdot.Examples.W2_erase            : the translation runs the source program
+FCdot.Examples.W3_translated       : makeLogger with the parameter written any, which reads as
+                                     Z2TyF, so this is Z2_translated
+FCdot.Examples.W4_translated       : freshCell read the compiler's way, which is Z1_translated
+FCdot.Examples.W5_caps             : the source twin of X4_caps, at every fuel
+FCdot.Examples.W5_no_escape        : T17 at r = ⊤ᶜ, on the translated body context
+```
+
+`W2_translated` is the erasure argument of the stage in one theorem.  A parameter `any` is a capture
+binder on the arrow, so the callee's type stays one arrow and the translated term is one lambda.
+The member encoding the DOT way would have needed puts one extra application per call into the
+target term, and `W2_erase` is what that would have lost.
+
+`W5_no_escape` is T17 instantiated where the source cannot state it itself: no member-free source
+subcapturing puts the callback's parameter below the platform capability, because the parameter's
+binder set resolves to the arrow binder, whose level is the body root, while the platform capability
+sits at the outermost level.  The source-side half of the same example, `W5_no_level`, is in
+`../DotMNF/README.md`.

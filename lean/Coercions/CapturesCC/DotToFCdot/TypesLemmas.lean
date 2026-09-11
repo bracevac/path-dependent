@@ -1,5 +1,6 @@
 import Coercions.CapturesCC.DotToFCdot.Types
 import Coercions.CapturesCC.FCdot.RenameLemmas
+import Coercions.CapturesCC.FCdot.Levels
 
 namespace CapturesCC
 
@@ -800,6 +801,107 @@ renaming on both sides. -/
 theorem Shape.translate_underRoot {s : Sig} (S : Shape (s,x)) :
     (Shape.underRoot S).translate = S.translate.rename FCdot.Rename.succ.lift :=
   Shape.translate_rename S FCdot.Rename.succ.lift
+
+
+/-! ## The level spine commutes with the translation
+
+**T-B3.2.**  `Ctx.translate` maps `consRoot` to `.consC _ .root` and every
+other capture binder to a non-root capture bound, so the target binder at a
+position is a root exactly when the source binder is.  Each of the five is a
+recursion on the context with one case per constructor. -/
+
+theorem Ctx.translate_root? : ∀ {s : Sig} (Γ : Ctx s), Γ.translate.root? = Γ.root?
+  | _, .nil => rfl
+  | _, .cons Γ _ => by
+      show (FCdot.Ctx.cons Γ.translate _).root? = _
+      rw [FCdot.Ctx.root?, Ctx.root?, Ctx.translate_root? Γ]
+  | _, .consSelf Γ _ _ _ => by
+      show (FCdot.Ctx.cons Γ.translate _).root? = _
+      rw [FCdot.Ctx.root?, Ctx.root?, Ctx.translate_root? Γ]
+  | _, .consC Γ => by
+      show (FCdot.Ctx.consC Γ.translate .star).root? = _
+      rw [FCdot.Ctx.root?_consC_of_not_root _ _ rfl, Ctx.root?, Ctx.translate_root? Γ]
+  | _, .consInst Γ C => by
+      show (FCdot.Ctx.consC Γ.translate (.inst C.translate)).root? = _
+      rw [FCdot.Ctx.root?_consC_of_not_root _ _ rfl, Ctx.root?, Ctx.translate_root? Γ]
+  | _, .consRoot Γ => rfl
+
+theorem Ctx.translate_lvl : ∀ {s : Sig} {k : Kind} (Γ : Ctx s) (y : BVar s k),
+    Γ.translate.lvl y = Γ.lvl y
+  | _, _, .cons Γ _, .here => by
+      show (FCdot.Ctx.cons Γ.translate _).lvl .here = _
+      rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_root? Γ]
+  | _, _, .consSelf Γ _ _ _, .here => by
+      show (FCdot.Ctx.cons Γ.translate _).lvl .here = _
+      rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_root? Γ]
+  | _, _, .consC Γ, .here => by
+      show (FCdot.Ctx.consC Γ.translate .star).lvl .here = _
+      rw [FCdot.Ctx.lvl_consC_here_of_not_root _ _ rfl, Ctx.lvl, Ctx.translate_root? Γ]
+  | _, _, .consInst Γ C, .here => by
+      show (FCdot.Ctx.consC Γ.translate (.inst C.translate)).lvl .here = _
+      rw [FCdot.Ctx.lvl_consC_here_of_not_root _ _ rfl, Ctx.lvl, Ctx.translate_root? Γ]
+  | _, _, .consRoot _, .here => rfl
+  | _, _, .cons Γ _, .there y => by
+      show (FCdot.Ctx.cons Γ.translate _).lvl (.there y) = _
+      rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_lvl Γ y]
+  | _, _, .consSelf Γ _ _ _, .there y => by
+      show (FCdot.Ctx.cons Γ.translate _).lvl (.there y) = _
+      rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_lvl Γ y]
+  | _, _, .consC Γ, .there y => by
+      show (FCdot.Ctx.consC Γ.translate .star).lvl (.there y) = _
+      rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_lvl Γ y]
+  | _, _, .consInst Γ C, .there y => by
+      show (FCdot.Ctx.consC Γ.translate (.inst C.translate)).lvl (.there y) = _
+      rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_lvl Γ y]
+  | _, _, .consRoot Γ, .there y => by
+      show (FCdot.Ctx.consC Γ.translate .root).lvl (.there y) = _
+      rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_lvl Γ y]
+
+theorem Ctx.translate_rootB : ∀ {s : Sig} (Γ : Ctx s) (κ : BVar s .cap),
+    (Γ.translate.lookupCap κ).isRoot = Γ.rootB κ
+  | _, .consRoot _, .here => rfl
+  | _, .consC _, .here => rfl
+  | _, .consInst _ _, .here => rfl
+  | _, .cons Γ _, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).isRoot = _
+      rw [FCdot.CapBound.isRoot_weaken, Ctx.translate_rootB Γ κ]; rfl
+  | _, .consSelf Γ _ _ _, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).isRoot = _
+      rw [FCdot.CapBound.isRoot_weaken, Ctx.translate_rootB Γ κ]; rfl
+  | _, .consC Γ, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).isRoot = _
+      rw [FCdot.CapBound.isRoot_weaken, Ctx.translate_rootB Γ κ]; rfl
+  | _, .consInst Γ _, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).isRoot = _
+      rw [FCdot.CapBound.isRoot_weaken, Ctx.translate_rootB Γ κ]; rfl
+  | _, .consRoot Γ, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).isRoot = _
+      rw [FCdot.CapBound.isRoot_weaken, Ctx.translate_rootB Γ κ]; rfl
+
+theorem Ctx.IsRoot.translate {s : Sig} {Γ : Ctx s} {κ : BVar s .cap}
+    (h : Γ.IsRoot (.cvar κ)) : Γ.translate.IsRoot (FCdot.CapAtom.cvar κ) := by
+  show (Γ.translate.lookupCap κ).isRoot = true
+  rw [Ctx.translate_rootB Γ κ]; exact h
+
+theorem Ctx.LvlLe.translate {s : Sig} {Γ : Ctx s} {e : CapAtom s} {κ : BVar s .cap}
+    {e' : FCdot.CapAtom s} (he : e.translate? = some e')
+    (h : Γ.LvlLe e (.cvar κ)) :
+    Γ.translate.LvlLe e' (FCdot.CapAtom.cvar κ) := by
+  cases e with
+  | var x =>
+      cases he
+      show FCdot.depthGe ((Γ.translate.lvl x).map FCdot.BVar.depth) (some κ.depth) = true
+      rw [Ctx.translate_lvl Γ x]; exact h
+  | cvar ν =>
+      cases he
+      show FCdot.depthGe ((Γ.translate.lvl ν).map FCdot.BVar.depth) (some κ.depth) = true
+      rw [Ctx.translate_lvl Γ ν]; exact h
+  | sel x A =>
+      cases he
+      show FCdot.depthGe ((Γ.translate.lvl x).map FCdot.BVar.depth) (some κ.depth) = true
+      rw [Ctx.translate_lvl Γ x]; exact h
+  | any => exact absurd h (by simp [Ctx.LvlLe, Ctx.lvlLeB])
+  | fresh => exact absurd h (by simp [Ctx.LvlLe, Ctx.lvlLeB])
 
 end DotMNF
 

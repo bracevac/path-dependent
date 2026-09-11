@@ -1152,6 +1152,19 @@ the expanded type. -/
 of S1 and S2, is `κ₁`. -/
 def platSet : CaptureSet ([],c,c) := [CapAtom.cvar k1, CapAtom.cvar k2]
 
+/-- The platform set read one term binder deeper, and so on.  `expand`
+weakens the reading under every binder it passes, so a program that opens
+five `let` binders reads a top-level `any` as these sets. -/
+def platSet1 : CaptureSet ([],c,c,x) := CaptureSet.weaken platSet
+/-- … two binders deeper. -/
+def platSet2 : CaptureSet ([],c,c,x,x) := CaptureSet.weaken platSet1
+/-- … three binders deeper. -/
+def platSet3 : CaptureSet ([],c,c,x,x,x) := CaptureSet.weaken platSet2
+/-- … four binders deeper. -/
+def platSet4 : CaptureSet ([],c,c,x,x,x,x) := CaptureSet.weaken platSet3
+/-- … five binders deeper. -/
+def platSet5 : CaptureSet ([],c,c,x,x,x,x,x) := CaptureSet.weaken platSet4
+
 /-- Subcapturing of a set from its head and its tail: `Subcap.union` at
 `[a] ∪ C`, which is `a :: C`. -/
 def Subcap.consAtom {s : Sig} {Γ : Ctx s} {a : CapAtom s} {C D : CaptureSet s}
@@ -1183,16 +1196,20 @@ withFile : (∀(cp : (μ(c. {C : {}..{fs}})) ^ {})
 ```
 
 with `File := μ(f. {read : (⊤ → ⊤) ^ {f}})`.  The member bound of the
-capture parameter is written out: a member-bound `any` reads as the
-parameter object's own set with its self, which is not what a pure parameter
-object wants, and the user's design for reach capabilities prescribes the
-explicit member here.  The result `any` reads as the inner arrow's own set
-with its binder, `{fs, cp, op}`.
+capture parameter is written out: a member-bound `any` reads as the root
+enclosing the object type and not as the class root, which is decision 26,
+and the user's design for reach capabilities prescribes the explicit member
+here.  The result `any` reads as the root enclosing the position it is
+written at.  `withFile` is written at the top of the program, and the source
+has no universal root, so that reading is the platform set (decision 23).
+That is the one thing stage B3 changes here: A3b read the same `any` as the
+inner arrow's own set with its binder, `{fs, cp, op}`.
 
 The caller allocates `ν(c. {C = {fs}})` at the precise member `{fs}..{fs}`,
 passes it at the abstract member `{}..{fs}`, and passes an `op` declared at
 `{fs}`, which the precise member's *lower* bound puts below `{cp.C}`.  The
-program's use set is `{fs}`. -/
+program's use set is the platform set, because the result the caller hands
+back is read at the platform set. -/
 
 /-- `File := μ(f. {read : (⊤ → ⊤) ^ {f}})`. -/
 def fileS : Shape s := .mu (.fld lread (arrowS ^ [CapAtom.var .here]))
@@ -1234,12 +1251,12 @@ def S1InnerAny (fs : BVar s .cap) : Ty (s,x) :=
   (Shape.all (S1OP (.there (.there fs)) (.there .here)) (.ty (.top ^ [CapAtom.any])))
     ^ [CapAtom.cvar (.there fs), CapAtom.var .here]
 
-/-- The inner arrow at the reading `expand` gives it: the result is
-`⊤ ^ {fs, cp, op}`. -/
-def S1Inner (fs : BVar s .cap) : Ty (s,x) :=
-  (Shape.all (S1OP (.there (.there fs)) (.there .here))
-      (.ty (.top ^ [CapAtom.cvar (.there (.there (.there fs))), CapAtom.var (.there (.there .here)),
-        CapAtom.var .here])))
+/-- The inner arrow at the reading `expand` gives it: the result carries the
+set `R` that its position reads, which is the reading of the whole type
+weakened past the capture binder and the parameter of each of the two
+arrows. -/
+def S1Inner (fs : BVar s .cap) (R : CaptureSet (Sig.cod (s,x))) : Ty (s,x) :=
+  (Shape.all (S1OP (.there (.there fs)) (.there .here)) (.ty (.top ^ R)))
     ^ [CapAtom.cvar (.there fs), CapAtom.var .here]
 
 /-- The type of `withFile` as the program writes it. -/
@@ -1247,20 +1264,48 @@ def S1TyAny (fs : BVar s .cap) : Ty s :=
   (Shape.all (S1CP (.there fs)) (.ty (S1InnerAny (.there fs)))) ^ [CapAtom.cvar fs]
 
 /-- The type of `withFile` at the reading `expand` gives it: a type of stage
-A3a, with no `any` left. -/
-def S1Ty (fs : BVar s .cap) : Ty s :=
-  (Shape.all (S1CP (.there fs)) (.ty (S1Inner (.there fs)))) ^ [CapAtom.cvar fs]
+A3a, with no `any` left.  `R` is the set the result position reads. -/
+def S1Ty (fs : BVar s .cap) (R : CaptureSet (Sig.cod (Sig.cod s))) : Ty s :=
+  (Shape.all (S1CP (.there fs)) (.ty (S1Inner (.there fs) R))) ^ [CapAtom.cvar fs]
+
+/-- A reading weakened past the capture binder and the parameter of one
+arrow. -/
+def readUnder {s : Sig} (D : CaptureSet s) : CaptureSet (Sig.cod s) :=
+  CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) D)
+
+/-- The reading of S1's result position: the reading of the whole type,
+weakened past the capture binder and the parameter of each of the two
+arrows. -/
+def S1ReadAt {s : Sig} (D : CaptureSet s) : CaptureSet (Sig.cod (Sig.cod s)) :=
+  readUnder (readUnder D)
+
+/-- S1's result reading over the platform prefix. -/
+def S1Read : CaptureSet (Sig.cod (Sig.cod ([],c,c))) := S1ReadAt platSet
+
+/-- The A3b reading of the same written type, kept so that the two readings
+can be printed side by side: the result `any` was the inner arrow's own set
+with its binder, `{fs, cp, op}`. -/
+def S1TyA3b (fs : BVar s .cap) : Ty s :=
+  S1Ty fs [CapAtom.cvar (.there (.there (.there (.there fs)))),
+    CapAtom.var (.there (.there .here)), CapAtom.var .here]
 
 /-- **S1, written.**  Every `any` of the written type is in a position
 `expand` reads. -/
 theorem S1_anyOk : (S1TyAny k1).AnyOk := by decide
 
 /-- **S1, expanded.**  At the platform set the written type is the A3a type
-`S1Ty`: the result `any` reads as `{fs, cp, op}`. -/
-theorem S1_expand : (S1TyAny k1).expand platSet = S1Ty k1 := rfl
+`S1Ty k1 S1Read`: the result `any` reads as the platform set, since
+`withFile` is written at the top of the program and the source has no
+universal root. -/
+theorem S1_expand : (S1TyAny k1).expand platSet = S1Ty k1 S1Read := rfl
+
+/-- **S1, the two readings.**  The compiler's reading is not the A3b
+reading: the result is the platform set and no longer the arrow's own set
+with its binders. -/
+theorem S1_readings : S1Ty k1 S1Read ≠ S1TyA3b k1 := by decide
 
 /-- The expanded type holds no `any`, so it is a type of stage A3a. -/
-theorem S1_noAny : (S1Ty k1).NoAny := by decide
+theorem S1_noAny : (S1Ty k1 S1Read).NoAny := by decide
 
 /-! ### `withFile` itself -/
 
@@ -1275,14 +1320,14 @@ def S1withFileTm (fs : BVar s .cap) : Tm s :=
 
 /-- The operation applied to the fresh file.  The file's own use is charged
 to `{fs}`, the set it is allocated at, by `sc-var`. -/
-def S1call {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} :
+def S1call {s : Sig} {Γ : Ctx s} {fs : BVar s .cap}
+    (R : CaptureSet ((Sig.body (Sig.body s)),x)) :
     HasTyP [CapAtom.cvar (.there (up (up fs))), CapAtom.var (.there (up .here)),
         CapAtom.var (.there .here)]
       ((Ctx.body (Ctx.body Γ (S1CP (.there fs))) (S1OP (.there (up fs)) (.there .here))).cons
         (fileS ^ [CapAtom.cvar (up (up fs))]))
       (.app (.there .here) .here)
-      (.top ^ [CapAtom.cvar (.there (up (up fs))),
-        CapAtom.var (.there (up .here)), CapAtom.var (.there .here)]) :=
+      (.top ^ R) :=
   HasTy.captTo
     (.app (T2 := .ty unitTy)
       (HasTy.useSub (varAt (.there .here) rfl) (.elem (sub_one (by simp))))
@@ -1292,25 +1337,27 @@ def S1call {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} :
     (Subcap.empty _)
 
 /-- The body of `withFile`, at the use set the inner arrow charges it. -/
-def S1body {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} :
+def S1body {s : Sig} {Γ : Ctx s} {fs : BVar s .cap}
+    (R : CaptureSet (Sig.body (Sig.body s))) :
     HasTyP [CapAtom.cvar (up (up fs)), CapAtom.var (up .here), CapAtom.var .here]
       (Ctx.body (Ctx.body Γ (S1CP (.there fs))) (S1OP (.there (up fs)) (.there .here)))
       S1bodyTm
-      (.top ^ [CapAtom.cvar (up (up fs)), CapAtom.var (up .here),
-        CapAtom.var .here]) :=
-  .let ((fileLit _).widen _) S1call (.capt .top)
+      (.top ^ R) :=
+  .let ((fileLit _).widen _) (S1call _) (.capt .top)
 
 /-- The inner lambda: `λ(op : OP). <body>`, at `{fs, cp}`. -/
-def S1innerVal {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} :
+def S1innerVal {s : Sig} {Γ : Ctx s} {fs : BVar s .cap}
+    (R : CaptureSet (Sig.cod ((Sig.scope s),x))) :
     HasTyP [] (Ctx.body Γ (S1CP (.there fs)))
       (.val (.lam (S1OP (.there (up fs)) (.there .here)) S1bodyTm))
-      (S1Inner (.there (.there fs))) :=
-  .lam S1body S1OPWf
+      (S1Inner (.there (.there fs)) R) :=
+  .lam (S1body _) S1OPWf
 
 /-- **`withFile`**, at the expanded type. -/
-def S1withFile {s : Sig} {Γ : Ctx s} (fs : BVar s .cap) :
-    HasTyP [] Γ (S1withFileTm fs) (S1Ty fs) :=
-  .lam (S1innerVal.widen _) S1CPWf
+def S1withFile {s : Sig} {Γ : Ctx s} (fs : BVar s .cap)
+    (R : CaptureSet (Sig.cod (Sig.cod s))) :
+    HasTyP [] Γ (S1withFileTm fs) (S1Ty fs R) :=
+  .lam ((S1innerVal _).widen _) S1CPWf
 
 /-! ### The caller of `withFile`
 
@@ -1364,7 +1411,7 @@ def S1op {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} (cp : BVar s .var)
 /-! ### The caller's contexts and its five `let`s -/
 
 /-- `κ₁, κ₂, wf`. -/
-def S1Ctx1 : Ctx ([],c,c,x) := platCtx.cons (S1Ty k1)
+def S1Ctx1 : Ctx ([],c,c,x) := platCtx.cons (S1Ty k1 S1Read)
 /-- … `cp`. -/
 def S1Ctx2 : Ctx ([],c,c,x,x) := S1Ctx1.cons (S1CPPre fs1)
 /-- … `op`. -/
@@ -1374,25 +1421,23 @@ def S1Ctx3 : Ctx ([],c,c,x,x,x) := S1Ctx2.cons (S1OP fs2 .here)
 capture object. -/
 def S1GTy : Ty ([],c,c,x,x,x) :=
   (Shape.all (S1OP (.there fs3) (.there (.there .here)))
-      (.ty (.top ^ [CapAtom.cvar (.there (.there fs3)),
-        CapAtom.var (.there (.there (.there .here))), CapAtom.var .here])))
+      (.ty (.top ^ readUnder platSet3)))
     ^ [CapAtom.cvar fs3, CapAtom.var (.there .here)]
 
 /-- … `g`. -/
 def S1Ctx4 : Ctx ([],c,c,x,x,x,x) := S1Ctx3.cons S1GTy
 
-/-- The type of `r = g op`: `⊤ ^ {fs, cp, op}`, the result `any` at its
+/-- The type of `r = g op`: `⊤ ^ {κ₁, κ₂}`, the result `any` at its
 reading. -/
-def S1RTy : Ty ([],c,c,x,x,x,x) :=
-  .top ^ [CapAtom.cvar fs4, CapAtom.var (.there (.there .here)),
-    CapAtom.var (.there .here)]
+def S1RTy : Ty ([],c,c,x,x,x,x) := .top ^ platSet4
 
 /-- … `r`. -/
 def S1Ctx5 : Ctx ([],c,c,x,x,x,x,x) := S1Ctx4.cons S1RTy
 
 /-- `{fs, cp, op} ⊑ {fs}` at the innermost context: `cp` is pure, and `op`
 is below `{cp.C}`, which the *upper* bound of the precise member puts below
-`{fs}`. -/
+`{fs}`.  The caller still has this step, and it is what keeps `cp` and `op`
+out of every use set below. -/
 def S1sub5 : Subcap S1Ctx5
     [CapAtom.cvar fs5, CapAtom.var (.there (.there (.there .here))),
       CapAtom.var (.there (.there .here))]
@@ -1403,10 +1448,11 @@ def S1sub5 : Subcap S1Ctx5
         (.trans Subcap.var (.selUpper (S1cpOpen (.there (.there (.there .here))) rfl)))
         (Subcap.empty _)))
 
-/-- The answer: the result of the call, at the platform's own set. -/
-def S1answer : HasTyP [CapAtom.cvar fs5] S1Ctx5 (.path (.var .here))
-    (.top ^ [CapAtom.cvar fs5]) :=
-  .sub (varAt .here rfl) (.ty (.capt .refl S1sub5)) (.trans Subcap.var S1sub5)
+/-- The answer: the result of the call, at the set its own `any` reads. -/
+def S1answer : HasTyP platSet5 S1Ctx5 (.path (.var .here))
+    (.top ^ platSet5) :=
+  .sub (varAt .here rfl) (.ty (.capt .refl Subcap.refl))
+    (.trans Subcap.var (.elem (by decide)))
 
 /-- `{fs, cp} ⊑ {fs}` at the context of `g`. -/
 def S1sub4 : Subcap S1Ctx4
@@ -1417,8 +1463,7 @@ def S1sub4 : Subcap S1Ctx4
 /-- `g` at its own type, its use charged to `{fs}`. -/
 def S1gVar : HasTyP [CapAtom.cvar fs4] S1Ctx4 (.path (.var .here))
     ((Shape.all (S1OP (.there fs4) (.there (.there (.there .here))))
-        (.ty (.top ^ [CapAtom.cvar (.there (.there fs4)),
-          CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.var .here])))
+        (.ty (.top ^ readUnder platSet4)))
       ^ [CapAtom.cvar fs4, CapAtom.var (.there (.there .here))]) :=
   HasTy.useSub (varAt .here rfl) (.trans Subcap.var S1sub4)
 
@@ -1429,20 +1474,21 @@ def S1opVar : HasTyP [CapAtom.cvar fs4] S1Ctx4 (.path (.var (.there .here)))
   HasTy.useSub (varAt (.there .here) rfl)
     (.trans Subcap.var (.selUpper (S1cpOpen (.there (.there .here)) rfl)))
 
-/-- `r = g op`. -/
-def S1r : HasTyP [CapAtom.cvar fs4] S1Ctx4 (.app .here (.there .here)) S1RTy :=
-  .app S1gVar S1opVar
+/-- `r = g op`, its use charged to `{fs}` and then widened to the platform
+set, which is what the result's own `any` reads as. -/
+def S1r : HasTyP platSet4 S1Ctx4 (.app .here (.there .here)) S1RTy :=
+  HasTy.widenTo (.app S1gVar S1opVar) (by decide)
 
 /-- `let r = g op in r`. -/
-def S1letR : HasTyP [CapAtom.cvar fs4] S1Ctx4
+def S1letR : HasTyP platSet4 S1Ctx4
     (.let (.app .here (.there .here)) (.path (.var .here)))
-    (.top ^ [CapAtom.cvar fs4]) :=
+    (.top ^ platSet4) :=
   .let S1r S1answer (.capt .top)
 
 /-- `withFile` itself, its use charged to `{fs}`, the set it is declared
 at. -/
 def S1wfVar : HasTyP [CapAtom.cvar fs3] S1Ctx3 (.path (.var (.there (.there .here))))
-    (S1Ty fs3) :=
+    (S1Ty fs3 (S1ReadAt platSet3)) :=
   HasTy.useSub (varAt (.there (.there .here)) rfl) Subcap.var
 
 /-- `g = withFile cp`: the capture object is passed at the abstract
@@ -1452,27 +1498,27 @@ def S1g : HasTyP [CapAtom.cvar fs3] S1Ctx3
   .app S1wfVar (S1cpAbs (.there .here) rfl _)
 
 /-- `let g = withFile cp in …`. -/
-def S1letG : HasTyP [CapAtom.cvar fs3] S1Ctx3
+def S1letG : HasTyP platSet3 S1Ctx3
     (.let (.app (.there (.there .here)) (.there .here))
       (.let (.app .here (.there .here)) (.path (.var .here))))
-    (.top ^ [CapAtom.cvar fs3]) :=
-  .let S1g S1letR (.capt .top)
+    (.top ^ platSet3) :=
+  .let (HasTy.widenTo S1g (by decide)) S1letR (.capt .top)
 
 /-- `let op = … in …`. -/
-def S1letOp : HasTyP [CapAtom.cvar fs2] S1Ctx2
+def S1letOp : HasTyP platSet2 S1Ctx2
     (.let (S1opTm fs2)
       (.let (.app (.there (.there .here)) (.there .here))
         (.let (.app .here (.there .here)) (.path (.var .here)))))
-    (.top ^ [CapAtom.cvar fs2]) :=
+    (.top ^ platSet2) :=
   .let (S1op .here rfl _) S1letG (.capt .top)
 
 /-- `let cp = ν(c. {C = {fs}}) in …`. -/
-def S1letCp : HasTyP [CapAtom.cvar fs1] S1Ctx1
+def S1letCp : HasTyP platSet1 S1Ctx1
     (.let (S1cpTm fs1)
       (.let (S1opTm fs2)
         (.let (.app (.there (.there .here)) (.there .here))
           (.let (.app .here (.there .here)) (.path (.var .here))))))
-    (.top ^ [CapAtom.cvar fs1]) :=
+    (.top ^ platSet1) :=
   .let ((S1cpLit fs1).widen _) S1letOp (.capt .top)
 
 /-- The term of S1. -/
@@ -1483,14 +1529,16 @@ def S1tm : Tm ([],c,c) :=
         (.let (.app (.there (.there .here)) (.there .here))
           (.let (.app .here (.there .here)) (.path (.var .here))))))
 
-/-- The type of S1: the answer avoids `cp` and `op`, so it is `⊤ ^ {fs}`. -/
-def S1ProgTy : Ty ([],c,c) := .top ^ [CapAtom.cvar k1]
+/-- The type of S1: the answer avoids `cp` and `op`, so it is the platform
+set, which is what the result `any` reads as. -/
+def S1ProgTy : Ty ([],c,c) := .top ^ platSet
 
 /-- **S1.**  `withFile` with an explicit capture parameter, at the type
-whose result `any` reads as `{fs, cp, op}`, and a caller whose use set is
-`{fs}`. -/
-def S1_typed : HasTyP [CapAtom.cvar k1] platCtx S1tm S1ProgTy :=
-  .let ((S1withFile k1).widen _) S1letCp (.capt .top)
+whose result `any` reads as the platform set, and a caller that names `cp`
+and `op` nowhere.  The use set is the platform set, because the answer the
+caller hands back is read there. -/
+def S1_typed : HasTyP platSet platCtx S1tm S1ProgTy :=
+  .let ((S1withFile k1 S1Read).widen _) S1letCp (.capt .top)
 
 /-! ## S2: a class with a capture-set parameter and `any` in the result
 
@@ -1499,12 +1547,22 @@ Iterator := μ(i. {C : {}..{fs}} ∧ {next : (∀(v : ⊤) (⊤ ^ {i.C})) ^ {i.C
 mk : (∀(u : ⊤) (Iterator ^ {any})) ^ {fs}
 ```
 
-The result `any` reads as the arrow's own set with its binder, `{fs, u}`.
+The result `any` reads as the root enclosing the position it is written at.
+`mk` is written at the top of the program, and the source has no universal
+root, so that reading is the platform set `{κ₁, κ₂}` (decision 23).  A3b read
+the same `any` as the arrow's own set with its binder, `{fs, u}`, and both
+readings are printed below.
+
 The callee returns a literal that defines `C = {fs}`, retyped at the
-abstract member on its own variable, which is the packing.  The caller types
+abstract member on its own variable, which is the packing.  It types as
+easily as before: `S2Lit` is assigned `[]` and `S2abstract` widens it at an
+arbitrary set through `sc-elem`.  The caller types
 `let it = mk unit in let n = it.next in n unit` against the abstract member:
-its call is charged by `sc-var` and then by the member's *upper* bound, so
-its use set is `{fs}` and `{fs}` is never named at the literal. -/
+its answer is charged by `sc-var` and then by the member's *upper* bound, so
+the program's type is still `⊤ ^ {fs}` and `{fs}` is never named at the
+literal.  What the new reading does change is the caller's use set: `it` is
+declared at the platform set now, so reading `it.next` charges the platform
+set. -/
 
 /-- The iterator's declaration shape at the self `i`, with the abstract
 capture member. -/
@@ -1539,22 +1597,31 @@ theorem S2IterWf {fs : BVar s .cap} {D : CaptureSet s} : Ty.Wf ((S2IterS fs) ^ D
 def S2MkTyAny (fs : BVar s .cap) : Ty s :=
   (Shape.all unitTy (.ty ((S2IterS (up2 fs)) ^ [CapAtom.any]))) ^ [CapAtom.cvar fs]
 
-/-- The type of `mk` at the reading `expand` gives it: the result `any` is
-`{fs, u}`. -/
-def S2MkTy (fs : BVar s .cap) : Ty s :=
-  (Shape.all unitTy
-      (.ty ((S2IterS (up2 fs)) ^ [CapAtom.cvar (up2 fs), CapAtom.var .here])))
-    ^ [CapAtom.cvar fs]
+/-- The type of `mk` at a reading `R` of the result position. -/
+def S2MkTy (fs : BVar s .cap) (R : CaptureSet (Sig.cod s)) : Ty s :=
+  (Shape.all unitTy (.ty ((S2IterS (up2 fs)) ^ R))) ^ [CapAtom.cvar fs]
+
+/-- **S2, the A3b reading.**  `(∀(u : ⊤) (Iterator ^ {fs, u})) ^ {fs}`. -/
+def S2MkTyA3b (fs : BVar s .cap) : Ty s :=
+  S2MkTy fs [CapAtom.cvar (up2 fs), CapAtom.var .here]
+
+/-- **S2, the compiler's reading.**  `(∀(u : ⊤) (Iterator ^ {κ₁, κ₂})) ^ {fs}`. -/
+def S2MkTyCC : Ty ([],c,c) := S2MkTy k1 (readUnder platSet)
 
 /-- **S2, written.** -/
 theorem S2_anyOk : (S2MkTyAny k1).AnyOk := by decide
 
 /-- **S2, expanded.**  At the platform set the written type is the A3a type
-`S2MkTy`: the result `any` reads as `{fs, u}`. -/
-theorem S2_expand : (S2MkTyAny k1).expand platSet = S2MkTy k1 := rfl
+`S2MkTyCC`: the result `any` reads as the platform set. -/
+theorem S2_expand : (S2MkTyAny k1).expand platSet = S2MkTyCC := rfl
+
+/-- **S2, the two readings side by side.**  They are different types: the
+A3b reading names the arrow's own binder, the compiler's reading names the
+platform. -/
+theorem S2_readings : S2MkTyCC ≠ S2MkTyA3b k1 := by decide
 
 /-- The expanded type holds no `any`. -/
-theorem S2_noAny : (S2MkTy k1).NoAny := by decide
+theorem S2_noAny : S2MkTyCC.NoAny := by decide
 
 /-! ### The callee -/
 
@@ -1599,14 +1666,9 @@ def S2mkTm (fs : BVar s .cap) : Tm s :=
   .val (.lam unitTy (.let (.val (.obj (S2Defs (up2 (up fs))))) (.path (.var .here))))
 
 /-- **`mk`**, at the expanded type. -/
-def S2mk {s : Sig} {Γ : Ctx s} (fs : BVar s .cap) :
-    HasTyP [] Γ (S2mkTm fs) (S2MkTy fs) :=
-  .lam
-    (.let ((S2Lit (up fs)).widen _)
-      (S2abstract .here rfl
-        [CapAtom.cvar (.there (up fs)), CapAtom.var (.there .here)])
-      S2IterWf)
-    unitWf
+def S2mk {s : Sig} {Γ : Ctx s} (fs : BVar s .cap) (R : CaptureSet (Sig.cod s)) :
+    HasTyP [] Γ (S2mkTm fs) (S2MkTy fs R) :=
+  .lam (.let ((S2Lit (up fs)).widen _) (S2abstract .here rfl _) S2IterWf) unitWf
 
 /-! ### The caller
 
@@ -1620,13 +1682,13 @@ def unitVal {s : Sig} {Γ : Ctx s} : HasTyP [] Γ (unitTm : Tm s) unitTy :=
   subC (HasTy.lam (T2 := .ty unitTy) ((var' .here rfl).widen _) unitWf) .top
 
 /-- `κ₁, κ₂, mk`. -/
-def S2Ctx1 : Ctx ([],c,c,x) := platCtx.cons (S2MkTy k1)
+def S2Ctx1 : Ctx ([],c,c,x) := platCtx.cons S2MkTyCC
 /-- … `un`. -/
 def S2Ctx2 : Ctx ([],c,c,x,x) := S2Ctx1.cons unitTy
 
-/-- The type of `it = mk un`: the iterator at `{fs, un}`. -/
-def S2ITTy : Ty ([],c,c,x,x) :=
-  (S2IterS fs2) ^ [CapAtom.cvar fs2, CapAtom.var .here]
+/-- The type of `it = mk un`: the iterator at the platform set, which is
+what the result `any` reads as. -/
+def S2ITTy : Ty ([],c,c,x,x) := (S2IterS fs2) ^ platSet2
 
 /-- … `it`. -/
 def S2Ctx3 : Ctx ([],c,c,x,x,x) := S2Ctx2.cons S2ITTy
@@ -1654,42 +1716,43 @@ def S2itCap {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} {D : CaptureSet s} (it : B
       ((Shape.cap lC [] [CapAtom.cvar fs]) ^ [CapAtom.var it]) :=
   subC (.recE (varSelf (S := S2IterS fs) it (by rw [h]; rfl)) S2AbsDecl) .and1
 
-/-- `{it} ⊑ {fs}` at the context of `it`: the iterator is declared at
-`{fs, un}` and `un` is pure. -/
-def S2subIt : Subcap S2Ctx3 [CapAtom.var .here] [CapAtom.cvar fs3] :=
-  .trans Subcap.var
-    (Subcap.consAtom Subcap.refl
-      (Subcap.consAtom (.trans Subcap.var (Subcap.empty _)) (Subcap.empty _)))
+/-- `{it} ⊑ {κ₁, κ₂}` at the context of `it`: the iterator is declared at
+the platform set, which is `sc-var` and nothing more.  Under the A3b reading
+this step ended at `{fs}`, because `it` was declared at `{fs, un}` and `un`
+is pure. -/
+def S2subIt : Subcap S2Ctx3 [CapAtom.var .here] platSet3 := Subcap.var
 
 /-- `n = it.next`, the closure read off the abstract member. -/
-def S2n : HasTyP [CapAtom.cvar fs3] S2Ctx3 (.proj .here lnext) S2NTy :=
+def S2n : HasTyP platSet3 S2Ctx3 (.proj .here lnext) S2NTy :=
   HasTy.useSub (.proj (subC (.recE (varSelf .here rfl) S2AbsDecl) .and2)) S2subIt
 
 /-- `n` at its own type, its use charged to `{fs}` by `sc-var` and the
 member's upper bound. -/
-def S2nVar : HasTyP [CapAtom.cvar fs4] S2Ctx4 (.path (.var .here))
+def S2nVar : HasTyP platSet4 S2Ctx4 (.path (.var .here))
     ((Shape.all unitTy (.ty (.top ^ [CapAtom.sel (.there (.there (.there .here))) lC])))
       ^ [CapAtom.sel (.there .here) lC]) :=
   HasTy.useSub (varAt .here rfl)
-    (.trans Subcap.var (.selUpper (S2itCap (.there .here) rfl)))
+    (.trans Subcap.var
+      (.trans (.selUpper (S2itCap (.there .here) rfl)) (.elem (by decide))))
 
 /-- `un` at `⊤`, its use charged to `{fs}`: it is pure. -/
-def S2unVar : HasTyP [CapAtom.cvar fs4] S2Ctx4 (.path (.var (.there (.there .here))))
+def S2unVar : HasTyP platSet4 S2Ctx4 (.path (.var (.there (.there .here))))
     (unitTy : Ty ([],c,c,x,x,x,x)) :=
   HasTy.useSub (varAt (.there (.there .here)) rfl)
     (.trans Subcap.var (Subcap.empty _))
 
 /-- `r = n un`. -/
-def S2r : HasTyP [CapAtom.cvar fs4] S2Ctx4 (.app .here (.there (.there .here))) S2RTy :=
+def S2r : HasTyP platSet4 S2Ctx4 (.app .here (.there (.there .here))) S2RTy :=
   .app S2nVar S2unVar
 
 /-- The answer: the result of the call, brought to the platform's own set by
 the member's upper bound. -/
-def S2answer : HasTyP [CapAtom.cvar fs5] S2Ctx5 (.path (.var .here))
+def S2answer : HasTyP platSet5 S2Ctx5 (.path (.var .here))
     (.top ^ [CapAtom.cvar fs5]) :=
   .sub (varAt .here rfl)
     (.ty (.capt .refl (.selUpper (S2itCap (.there (.there .here)) rfl))))
-    (.trans Subcap.var (.selUpper (S2itCap (.there (.there .here)) rfl)))
+    (.trans Subcap.var
+      (.trans (.selUpper (S2itCap (.there (.there .here)) rfl)) (.elem (by decide))))
 
 /-- **C5, the existential result at the compiler's reading, on the source
 side.**  The caller of `mk`, at the abstract member: `let n = it.next in
@@ -1697,23 +1760,25 @@ n un`.  Its use set is `{fs}`, and the only step that names `{fs}` is
 `sc-sel-upper` at the member's upper bound, which is what the target reads
 as `member` at the declared bound.  The callee's `{fs}` is never named
 here. -/
-def C5_typed : HasTyP [CapAtom.cvar fs3] S2Ctx3
+def C5_typed : HasTyP platSet3 S2Ctx3
     (.let (.proj .here lnext)
       (.let (.app .here (.there (.there .here))) (.path (.var .here))))
     (.top ^ [CapAtom.cvar fs3]) :=
   .let S2n (.let S2r S2answer (.capt .top)) (.capt .top)
 
 /-- `mk` at its own type, its use charged to `{fs}`. -/
-def S2mkVar : HasTyP [CapAtom.cvar fs2] S2Ctx2 (.path (.var (.there .here))) (S2MkTy fs2) :=
-  HasTy.useSub (varAt (.there .here) rfl) Subcap.var
+def S2mkVar : HasTyP platSet2 S2Ctx2 (.path (.var (.there .here)))
+    (S2MkTy fs2 (readUnder platSet2)) :=
+  HasTy.useSub (varAt (.there .here) rfl) (.trans Subcap.var (.elem (by decide)))
 
 /-- The unit argument, pure. -/
-def S2unArg : HasTyP [CapAtom.cvar fs2] S2Ctx2 (.path (.var .here))
+def S2unArg : HasTyP platSet2 S2Ctx2 (.path (.var .here))
     (unitTy : Ty ([],c,c,x,x)) :=
   HasTy.useSub (varAt .here rfl) (.trans Subcap.var (Subcap.empty _))
 
-/-- `it = mk un`, at the codomain the result `any` reads as `{fs, un}`. -/
-def S2it : HasTyP [CapAtom.cvar fs2] S2Ctx2 (.app (.there .here) .here) S2ITTy :=
+/-- `it = mk un`, at the codomain the result `any` reads as the platform
+set. -/
+def S2it : HasTyP platSet2 S2Ctx2 (.app (.there .here) .here) S2ITTy :=
   .app S2mkVar S2unArg
 
 /-- The term of S2. -/
@@ -1728,9 +1793,10 @@ def S2tm : Tm ([],c,c) :=
 def S2ProgTy : Ty ([],c,c) := .top ^ [CapAtom.cvar k1]
 
 /-- **S2.**  A capture-set parameter as a capture member, a result `any`
-read as `{fs, u}`, and a caller whose use set is `{fs}`. -/
-def S2_typed : HasTyP [CapAtom.cvar k1] platCtx S2tm S2ProgTy :=
-  .let ((S2mk k1).widen _)
+read as the platform set, and a caller whose answer is still `⊤ ^ {fs}`
+because the member's upper bound is what charges it. -/
+def S2_typed : HasTyP platSet platCtx S2tm S2ProgTy :=
+  .let ((S2mk k1 (readUnder platSet)).widen _)
     (.let (unitVal.widen _)
       (.let S2it C5_typed (.capt .top))
       (.capt .top))
@@ -1929,6 +1995,424 @@ def Z2_plat : HasTyP [] platCtx (Z2Tm : Tm ([],c,c)) Z2Ty := Z2_typed
 
 /-- C5b's callee over the platform prefix. -/
 def Z3_plat : HasTyP [] platCtx (S2mkTm k1) (Z3Ty k1) := Z3_typed k1
+
+
+/-! ## Stage B3: the reading of a position, and levels
+
+The worked examples W1 to W6 of B3.9, on the source side.  A3b recomputed
+the reading at every former, so an `any` was read by what stood at its
+position.  The compiler's way threads the root that encloses the position,
+so an `any` is read by where it stands.  `Ctx.reading` is the statement of
+where a reading comes from: the innermost root binder of the context as a
+singleton, and the program's platform set where the context has none.
+
+The level facts are all decided.  The level rule reads only the shape of the
+context, so `Ctx.isRootB` and `Ctx.lvlLeB` settle every side condition in
+the kernel. -/
+
+/-- Over the platform prefix there is no root binder at all, so a top-level
+`any` reads as the platform set.  This is decision 23: the source names no
+universal root. -/
+theorem reading_plat : Ctx.reading platCtx platSet = platSet := rfl
+
+/-- Inside a lambda body the reading is the body root, whatever the
+program's platform set is. -/
+theorem reading_body {s : Sig} (Γ : Ctx s) (T : Dom s) (P : CaptureSet (Sig.body s)) :
+    Ctx.reading (Γ.body T) P = [CapAtom.cvar (.there (.there .here))] := rfl
+
+/-! ### W1: local `any`s and the level hierarchy
+
+`scoped-capabilities.md:89-106`, over two real lambda bodies.  X1, X2 and X3
+state the same hierarchy over a spine written by hand.  Here the nesting is
+the binder order the rules produce.  The reading at the top is the platform
+set, inside the outer body it is the outer body root, inside the inner body
+the inner one. -/
+
+/-- The outer lambda's body context. -/
+def W1Ctx1 : Ctx (Sig.body ([],c,c)) := Ctx.body platCtx unitTy
+
+/-- The inner lambda's body context. -/
+def W1Ctx2 : Ctx (Sig.body (Sig.body ([],c,c))) := Ctx.body W1Ctx1 unitTy
+
+/-- The inner body root. -/
+def W1inRoot : BVar (Sig.body (Sig.body ([],c,c))) .cap := .there (.there .here)
+
+/-- The inner parameter. -/
+def W1inParam : BVar (Sig.body (Sig.body ([],c,c))) .var := .here
+
+/-- The outer body root, read from inside the inner body. -/
+def W1outRoot : BVar (Sig.body (Sig.body ([],c,c))) .cap := up (.there (.there .here))
+
+/-- The outer parameter, read from inside the inner body. -/
+def W1outParam : BVar (Sig.body (Sig.body ([],c,c))) .var := up .here
+
+/-- The reading inside the outer body is the outer body root. -/
+theorem W1_reading1 (P : CaptureSet (Sig.body ([],c,c))) :
+    Ctx.reading W1Ctx1 P = [CapAtom.cvar (.there (.there .here))] := rfl
+
+/-- The reading inside the inner body is the inner body root. -/
+theorem W1_reading2 (P : CaptureSet (Sig.body (Sig.body ([],c,c)))) :
+    Ctx.reading W1Ctx2 P = [CapAtom.cvar W1inRoot] := rfl
+
+/-- Both roots are roots, and neither parameter is. -/
+theorem W1_roots :
+    W1Ctx2.IsRoot (.cvar W1inRoot) ∧ W1Ctx2.IsRoot (.cvar W1outRoot) ∧
+    ¬ W1Ctx2.IsRoot (.var W1inParam) ∧ ¬ W1Ctx2.IsRoot (.var W1outParam) :=
+  ⟨by decide, by decide, by decide, by decide⟩
+
+/-- **W1, inner absorbs outer.**  The outer body root is below the inner
+one.  A `Subcap.level` instance, which is `{any₂} <: {any₃}` of the page at
+a real binder position. -/
+def W1_inner_absorbs_outer :
+    Subcap W1Ctx2 [CapAtom.cvar W1outRoot] [CapAtom.cvar W1inRoot] :=
+  .level (by decide) (by decide)
+
+/-- A binder of the outer body is below the inner root too. -/
+def W1_outer_param_absorbed :
+    Subcap W1Ctx2 [CapAtom.var W1outParam] [CapAtom.cvar W1inRoot] :=
+  .level (by decide) (by decide)
+
+/-- **W1, outer does not absorb inner.**  The inner body root is not below
+the outer one, and neither is a binder of the inner body.  This is the
+failure of `{any₃} <: {any₂}`. -/
+theorem W1_outer_not_inner :
+    ¬ W1Ctx2.LvlLe (.cvar W1inRoot) (.cvar W1outRoot) ∧
+    ¬ W1Ctx2.LvlLe (.var W1inParam) (.cvar W1outRoot) :=
+  ⟨by decide, by decide⟩
+
+/-- The parameter of the inner body is below its own root, which is
+`Ctx.body_lvl_param` read as a rule instance. -/
+def W1_inner_param_absorbed :
+    Subcap W1Ctx2 [CapAtom.var W1inParam] [CapAtom.cvar W1inRoot] :=
+  .level (by decide) (by decide)
+
+/-! ### W2: the parameter `any`
+
+`scoped-capabilities.md:32-35, 264-273, 370-378`.  A parameter written
+`any` reads as the arrow's own capture binder, whatever the enclosing
+reading is (decision 24), which is what makes the arrow a capture-parameter
+arrow with no member encoding.  Inside the body the binder is below the body
+root, and at a call it is instantiated at the argument itself
+(decision 35). -/
+
+/-- `process : (∀(x : File ^ {any}) ⊤) ^ {}`, as the program writes it. -/
+def W2TyAny : Ty s := (Shape.all (fileS ^ [CapAtom.any]) (.ty unitTy)) ^ []
+
+/-- Its reading: `(∀(x : File ^ {κ}) ⊤) ^ {}`. -/
+def W2Ty : Ty s := (Shape.all (fileS ^ [CapAtom.cvar .here]) (.ty unitTy)) ^ []
+
+/-- **W2, written.**  A parameter `any` is legal, which is the clause the
+stage changes. -/
+theorem W2_anyOk : (W2TyAny : Ty ([],c,c)).AnyOk := by decide
+
+/-- **W2, expanded.**  The parameter `any` is the arrow's own capture
+binder, at every reading: the clause does not use the reading it is given. -/
+theorem W2_expand (D : CaptureSet ([],c,c)) :
+    (W2TyAny : Ty ([],c,c)).expand D = W2Ty := rfl
+
+/-- An `any` deeper inside a domain is not legal, which is the other half of
+decision 24. -/
+theorem W2_deep_rejected :
+    ¬ ((Shape.all ((Shape.fld lread (.top ^ [CapAtom.any])) ^ []) (.ty unitTy)) ^ []
+        : Ty ([],c,c)).AnyOk := by decide
+
+/-- The body context of `process`. -/
+def W2BodyCtx : Ctx (Sig.body ([],c,c)) := Ctx.body platCtx (fileS ^ [CapAtom.cvar .here])
+
+/-- **W2, the level step inside the body.**  `{κ} <:ᶜ {κ_body}`, both
+premises decided.  This is `scoped-capabilities.md:376-378`. -/
+def W2_level : Subcap W2BodyCtx [CapAtom.cvar (.there .here)]
+    [CapAtom.cvar (.there (.there .here))] :=
+  .level (by decide) (by decide)
+
+/-- And the parameter itself is at that level. -/
+def W2_level_param : Subcap W2BodyCtx [CapAtom.var .here]
+    [CapAtom.cvar (.there (.there .here))] :=
+  .level (by decide) (by decide)
+
+/-- **W2, the instantiation at a call.**  `HasTy.app` reads the argument at
+`T1.subst (Subst.singleC (.var y))`, so the parameter `any` becomes the
+argument variable itself, one instance per call.  That is decision 35. -/
+theorem W2_arg (y : BVar ([],c,c) .var) :
+    ((fileS ^ [CapAtom.cvar .here] : Ty (Sig.dom ([],c,c))).subst
+        (Subst.singleC (.var y)))
+      = fileS ^ [CapAtom.var y] := rfl
+
+/-- `process` itself: it ignores its argument and hands back a pure
+closure. -/
+def W2Tm : Tm s := .val (.lam (fileS ^ [CapAtom.cvar .here]) unitTm)
+
+/-- **W2, typed** at the expanded type. -/
+def W2_typed {s : Sig} {Γ : Ctx s} : HasTyP [] Γ (W2Tm : Tm s) W2Ty :=
+  .lam (unitVal.widen _) (.capt fileWf)
+
+/-- `κ₁, κ₂, p : process, f : File ^ {κ₁}`. -/
+def W2CallCtx : Ctx ([],c,c,x,x) :=
+  (platCtx.cons (W2Ty : Ty ([],c,c))).cons (fileS ^ [CapAtom.cvar fs1])
+
+/-- `process` at its own type, its use charged to the empty set and widened
+to the argument, since `process` is pure. -/
+def W2pVar : HasTyP [CapAtom.var .here] W2CallCtx (.path (.var (.there .here)))
+    (W2Ty : Ty ([],c,c,x,x)) :=
+  HasTy.widenTo (U := []) (HasTy.useSub (varAt (.there .here) rfl) Subcap.var)
+    (CaptureSet.nil_subset _)
+
+/-- The argument at the refined set `{f}`. -/
+def W2fVar : HasTyP [CapAtom.var .here] W2CallCtx (.path (.var .here))
+    (fileS ^ [CapAtom.var .here]) :=
+  varSelf .here rfl
+
+/-- **W2, the call.**  The argument is read at the refined set `{f}`, which
+is exactly the instance `Subst.singleC` produces. -/
+def W2_call : HasTyP [CapAtom.var .here] W2CallCtx (.app (.there .here) .here)
+    (unitTy : Ty ([],c,c,x,x)) :=
+  .app W2pVar W2fVar
+
+/-! ### W3: `makeLogger` with the parameter written `any`
+
+`scoped-capabilities.md:246-273`.  `Z2TyF` with the parameter written
+`FileSystem ^ {any}` instead of `^ {κ}`.  The expansion lands on `Z2TyF`
+unchanged, so `Z2_expandFresh` and the whole target side are reused byte for
+byte.  The point is the witness: it is the parameter and not a platform
+binder. -/
+
+/-- `makeLogger` with the parameter written `any` and the result `fresh`. -/
+def W3TyAny : Ty s :=
+  (Shape.all (arrowS ^ [CapAtom.any]) (.ty (fileS ^ [CapAtom.fresh]))) ^ []
+
+theorem W3_anyOk : (W3TyAny : Ty ([],c,c)).AnyOk := by decide
+
+theorem W3_freshOk : (W3TyAny : Ty ([],c,c)).FreshOk := by decide
+
+/-- **W3, expanded.**  The parameter `any` is the arrow's capture binder, so
+the written type reads as `Z2TyF`, and `expandFresh` then lands on `Z2Ty`. -/
+theorem W3_expand (D : CaptureSet ([],c,c)) :
+    (W3TyAny : Ty ([],c,c)).expand D = Z2TyF := rfl
+
+theorem W3_expandFresh :
+    ((W3TyAny : Ty ([],c,c)).expand platSet).expandFresh = Z2Ty := rfl
+
+/-- **W3, typed.**  `Z2_typed` at the read type, unchanged. -/
+def W3_typed {s : Sig} {Γ : Ctx s} : HasTyP [] Γ (Z2Tm : Tm s) Z2Ty := Z2_typed
+
+/-! ### W4: `freshCell` read the compiler's way
+
+`scoped-capabilities.md:421-439`.  `Z1TyF` holds no `any`, so the new
+reading leaves it where it stood, at every reading set.  That is the
+regression half of the stage: a type with no notation in it is inert under
+`expand`.  The result `fresh` is the existential of stage B2, and two calls
+open two binders that are incomparable. -/
+
+theorem W4_anyOk : (Z1TyF k1).AnyOk := by decide
+
+/-- **W4, expanded.**  No `any`, so no reading is used. -/
+theorem W4_expand (D : CaptureSet ([],c,c)) : (Z1TyF k1).expand D = Z1TyF k1 := rfl
+
+/-- **W4, the two notations in order**: expanding first and reading `fresh`
+afterwards is `Z1Ty`. -/
+theorem W4_expand_expandFresh : ((Z1TyF k1).expand platSet).expandFresh = Z1Ty k1 := rfl
+
+/-! ### W5: the `withFile` escape at the source
+
+`scoped-capabilities.md:384-420`.  The page writes the example with a type
+argument.  `Shape.anyOk` at `.typ` asks for no `any` at all in a type-member
+bound, so the source renders the example monomorphically, which is
+decision 36.
+
+Two parts.  `W5_no_level` is at a context with an enclosing root: the level
+rule has no instance that puts the callback's parameter below the root of
+the scope outside the call.  Over `platCtx` alone there is no root at all,
+by decision 23, so there is nothing to decide there.  `W5_no_escape` is an
+instance of T17 and is stated on the target side, at `r = ⊤ᶜ`, an atom the
+source cannot name. -/
+
+/-- `File ^ {κ_f}`, the domain of the callback. -/
+def W5File : Dom ([],c,c,c) := fileS ^ [CapAtom.cvar .here]
+
+/-- The callback's body, under a scope root of its own that sits inside an
+older one: `κ_out ⊚, κ_b ⊚, κ_f, f : File ^ {κ_f}`. -/
+def W5Ctx : Ctx (Sig.body ([],c,c,c)) := Ctx.body (platCtx.consRoot) W5File
+
+/-- The callback's parameter. -/
+def W5f : BVar (Sig.body ([],c,c,c)) .var := .here
+/-- The callback's arrow binder. -/
+def W5kf : BVar (Sig.body ([],c,c,c)) .cap := .there .here
+/-- The callback's body root. -/
+def W5kb : BVar (Sig.body ([],c,c,c)) .cap := .there (.there .here)
+/-- The root of the scope outside the call. -/
+def W5kout : BVar (Sig.body ([],c,c,c)) .cap := .there (.there (.there .here))
+
+/-- `f` and `κ_f` are at one level, and that level is the body root.  This
+is T-B3.1 at this context. -/
+theorem W5_scope_order : W5Ctx.lvl W5f = some W5kb ∧ W5Ctx.lvl W5kf = some W5kb :=
+  ⟨rfl, rfl⟩
+
+/-- **W5, no level step.**  The level rule does not fire on `f`, nor on the
+arrow binder, at the root of the scope outside the call: the level of both
+is the body root, and the body root is inside that scope. -/
+theorem W5_no_level :
+    ¬ W5Ctx.LvlLe (.var W5f) (.cvar W5kout) ∧
+    ¬ W5Ctx.LvlLe (.cvar W5kf) (.cvar W5kout) :=
+  ⟨by decide, by decide⟩
+
+/-- It does fire at the callback's own body root, which is the step the
+callback is allowed to take. -/
+def W5_level_own : Subcap W5Ctx [CapAtom.var W5f] [CapAtom.cvar W5kb] :=
+  .level (by decide) (by decide)
+
+/-! ### W6: the counterfactual binder order
+
+The source's own X5.  Under the rejected order `κ_f, f, κ_b`, with the
+parameter bound before the body root, the level of `f` is the innermost root
+older than `f`, and over the platform prefix there is none, so `f` is at the
+outermost level and every root absorbs it.  The level rule fires and the
+escape types.  That is why `Ctx.body` binds the body root first, and it is a
+checked fact and not a claim. -/
+
+/-- The rejected order: `κ_f, f : File ^ {κ_f}, κ_b ⊚`. -/
+def W6Ctx : Ctx ([],c,c,c,x,c) :=
+  ((platCtx.consC).cons (fileS ^ [CapAtom.cvar .here])).consRoot
+
+/-- The parameter under the rejected order. -/
+def W6f : BVar ([],c,c,c,x,c) .var := .there .here
+
+/-- The body root under the rejected order. -/
+def W6kb : BVar ([],c,c,c,x,c) .cap := .here
+
+/-- Its level is the outermost one, because no root binder is older than
+it. -/
+theorem W6_lvl : W6Ctx.lvl W6f = none := by decide
+
+/-- **W6, the counterfactual fires.**  Under the rejected binder order the
+level rule puts the parameter below the body root, which is the escape W5
+rejects. -/
+def W6_fires : Subcap W6Ctx [CapAtom.var W6f] [CapAtom.cvar W6kb] :=
+  .level (by decide) (by decide)
+
+/-! ### C2, C5a and C5b under the new reading
+
+`C2_typed` above is the regression test that the new expansion is inert
+where no notation is written: its type holds no `any`, it expands to itself
+at every reading, and its derivation and its client are unchanged.  C5a is
+S2's packing seen from the target, and C5b is `Z3`.  Both keep their source
+side, which is `S2abstract` and `Z3_typed`. -/
+
+/-- C2's type holds no `any`. -/
+theorem C2_anyOk : (C2Ty).AnyOk := by decide
+
+/-- And the reading leaves it where it stands. -/
+theorem C2_expand (D : CaptureSet ([],c,c)) : C2Ty.expand D = C2Ty := rfl
+
+/-- C5b's written type, `Z3TyF`, holds no `any` either: its notation is
+`fresh`, and `expand` passes it through. -/
+theorem C5b_anyOk : (Z3TyF k1).AnyOk := by decide
+
+theorem C5b_expand (D : CaptureSet ([],c,c)) : (Z3TyF k1).expand D = Z3TyF k1 := rfl
+
+
+/-! ### Two calls of `freshCell`, on the source side
+
+The context the source's two `letex`es build: each call opens a rigid
+capture binder and binds its cell at that binder.  Neither opened binder is
+a root, and the context opens no root at all, so the level rule has no
+instance with either of them on its right.  That is `Z_two_calls_no_level`,
+and it is what the source's own rules decide.
+
+The full incomparability, that no evidence at all relates the two opened
+binders, is a canonical-forms fact and not a level fact.  It goes through
+`cap_canon`, which reads a typed store and a refinement into the transparent
+context the store types, and the source inherits that machinery through
+`Ctx.translate`.  It is `FCdot.Examples.Z_two_calls_incomparable`, over the
+translation of `Z1BodyCtxTop` below.  B2.11's caveat stands either way: at
+run time both opened binders carry `.inst C`, so in the store's own context
+each is below the other.
+
+`Z1BodyCtxTop` is the same two calls with the answer widened to `⊤` before
+each `letex` unpacks it, and the widening is `Z1_widen`, a source subtyping
+derivation.  The widening is not a matter of taste.  A store binds literals,
+a literal has its own precise type, and the precise type of a target literal
+is a telescope of definitions and presences, while the translation of a
+source object type is a telescope of bounds.  So no target literal has the
+type `⟦File ^ C⟧`, no store binds a variable at it, and `cap_canon` is out of
+reach over the translation of `Z1BodyCtxSrc` itself.  That is
+`FCdot.Examples.Z_no_literal_at_file`, proved there beside its use. -/
+
+/-- The context the two source `letex`es build. -/
+def Z1BodyCtxSrc : Ctx ([],c,c,x,x,c,x,c,x) :=
+  (((Z1Ctx.consC).cons (fileS ^ [CapAtom.cvar .here])).consC).cons
+    (fileS ^ [CapAtom.cvar .here])
+
+/-- The binder the first call opened. -/
+def Zk1' : BVar ([],c,c,x,x,c,x,c,x) .cap := .there (.there (.there .here))
+
+/-- The binder the second call opened. -/
+def Zk2' : BVar ([],c,c,x,x,c,x,c,x) .cap := .there .here
+
+/-- The context opens no scope, so every binder of it is at the outermost
+level.  This is Fact 2 on the source side: a running program is the
+outermost scope. -/
+theorem Z_body_no_root : Z1BodyCtxSrc.root? = none := by decide
+
+/-- **Two calls, no level step.**  Neither opened binder is a root, so
+`Subcap.level` has no instance with either of them on its right, in either
+direction.  The two calls are not related by the level order. -/
+theorem Z_two_calls_no_level :
+    ¬ Z1BodyCtxSrc.IsRoot (.cvar Zk1') ∧ ¬ Z1BodyCtxSrc.IsRoot (.cvar Zk2') :=
+  ⟨by decide, by decide⟩
+
+/-- Both opened binders are nonetheless at the outermost level, which is
+what makes the caveat above true: the level order says nothing here, and the
+incomparability is a canonical-forms fact and not a level fact. -/
+theorem Z_two_calls_lvl :
+    Z1BodyCtxSrc.lvl Zk1' = none ∧ Z1BodyCtxSrc.lvl Zk2' = none :=
+  ⟨by decide, by decide⟩
+
+/-! ### The same two calls with the answer widened
+
+`freshCell` at the widened result: the body of the answer is `⊤` and not
+`File`.  Source subtyping gives the widened type from `Z1Ty` by `Z1_widen`,
+so this is the same program and the same two calls, read at a type the
+caller is free to read them at.  The two opened capture binders and their
+two cells sit where they sat, and the incomparability of the two calls is
+stated over the translation of this context. -/
+
+/-- `freshCell` at the widened result, `(∀(u : ⊤) ∃ᶜ[{fs, u}] (⊤ ^ {κ})) ^ {fs}`. -/
+def Z1TyTop (fs : BVar s .cap) : Ty s :=
+  (Shape.all unitTy
+      (∃ᶜ[[CapAtom.cvar (up2 fs), CapAtom.var .here]] (Shape.top ^ [CapAtom.cvar .here])))
+    ^ [CapAtom.cvar fs]
+
+/-- **The widening.**  `Z1Ty <: Z1TyTop`: the domain is unchanged, the
+declared bound of the answer is unchanged, and the body of the answer goes
+from `File` to `⊤` by `<:-Top`. -/
+def Z1_widen {s : Sig} {Γ : Ctx s} (fs : BVar s .cap) : Sub Γ (Z1Ty fs) (Z1TyTop fs) :=
+  .capt (.all (.capt .refl .refl) (.exist .refl (.capt .top .refl))) .refl
+
+/-- `κ₁, κ₂, fc : freshCell at the widened type, un : ⊤`. -/
+def Z1CtxTop : Ctx ([],c,c,x,x) := (platCtx.cons (Z1TyTop k1)).cons unitTy
+
+/-- The context the two source `letex`es build at the widened answer. -/
+def Z1BodyCtxTop : Ctx ([],c,c,x,x,c,x,c,x) :=
+  (((Z1CtxTop.consC).cons (Shape.top ^ [CapAtom.cvar .here])).consC).cons
+    (Shape.top ^ [CapAtom.cvar .here])
+
+/-- The cell the first call handed back. -/
+def Zx1' : BVar ([],c,c,x,x,c,x,c,x) .var := .there (.there .here)
+
+/-- The cell the second call handed back. -/
+def Zx2' : BVar ([],c,c,x,x,c,x,c,x) .var := .here
+
+/-- The widened context opens no scope either, and the same two spine facts
+hold of it, at the same two binders. -/
+theorem Z_top_body_no_root : Z1BodyCtxTop.root? = none := by decide
+
+theorem Z_top_two_calls_no_level :
+    ¬ Z1BodyCtxTop.IsRoot (.cvar Zk1') ∧ ¬ Z1BodyCtxTop.IsRoot (.cvar Zk2') :=
+  ⟨by decide, by decide⟩
+
+theorem Z_top_two_calls_lvl :
+    Z1BodyCtxTop.lvl Zk1' = none ∧ Z1BodyCtxTop.lvl Zk2' = none :=
+  ⟨by decide, by decide⟩
 
 end Examples
 end DotMNF

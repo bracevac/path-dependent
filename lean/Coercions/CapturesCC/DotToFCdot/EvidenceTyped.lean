@@ -1408,6 +1408,14 @@ theorem Subcap.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {C C' : CaptureSet s
   | _, Γ, _, _, @Subcap.inst _ _ κ C hI, _ => by
       rw [Subcap.translate]
       exact .eqToLe (.symm (.instC (Ctx.InstOf.translate hI)))
+  | _, Γ, _, _, @Subcap.level _ _ e κ h₁ h₂, _ => by
+      cases e <;> rw [Subcap.translate] <;>
+        simp only [CaptureSet.translate_cons_var, CaptureSet.translate_cons_cvar,
+          CaptureSet.translate_cons_sel, CaptureSet.translate_cons_any,
+          CaptureSet.translate_cons_fresh, CaptureSet.translate_nil] <;>
+        first
+          | exact .level (Ctx.IsRoot.translate h₁) (Ctx.LvlLe.translate rfl h₂)
+          | exact .elem (fun _ ha => absurd ha (List.not_mem_nil))
   | _, _, _, _, @Subcap.selLower _ Γ _ x A c₁ c₂ _ h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_capt, Shape.translate_cap] at ha
@@ -1595,6 +1603,24 @@ theorem HasTy.translateAtom_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s
   termination_by _ _ _ _ _ h _ => sizeOf h
 
 end
+
+/-! ## T17: member-free source subcapturing never lowers a level
+
+**B3.7.**  The source has no resolution of its own and "confined" is a
+target notion, so the source's scope safety is stated through the
+translation (decision 32).  It is store free, and it asks for no context
+predicate beyond `Ctx.Wf`, which `Subcap.translate_typed` already asks for.
+
+It is not a store-carrying `lvl_safety` because over a typed store the
+context is root free, so the store-carrying form is vacuous
+(`FCdot.Store.Typed.rootFree`), and the content of the sentence lives in
+rooted contexts, which no store types. -/
+
+theorem source_lvl_safety {s : FCdot.Sig} {Γ : Ctx s} {C D : CaptureSet s} (hwf : Γ.Wf)
+    {d : Subcap Γ C D} (hd : d.MemberFree) {r : FCdot.CapAtom s}
+    (hD : ∀ m, Γ.translate.Confined (Γ.translate.caps m D.translate) r) :
+    ∀ n, Γ.translate.Confined (Γ.translate.caps n C.translate) r :=
+  FCdot.level_inversion (d.translate_typed hwf) (Subcap.translate_memberFree hd) hD
 
 end DotMNF
 
