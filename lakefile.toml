@@ -58,3 +58,7 @@ roots = ["Coercions.Captures"]
 [[lean_lib]]
 name = "CapturesCC"
 roots = ["Coercions.CapturesCC"]
+
+[[lean_lib]]
+name = "Frontend"
+roots = ["Coercions.Frontend"]
