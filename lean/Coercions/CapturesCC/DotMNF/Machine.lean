@@ -72,13 +72,20 @@ def Platform.store : Platform s → Store s
 inductive Cont : Sig → Type where
   | nil : Cont s
   | cons : Cont s → Tm (s,x) → Cont s
+  /-- An unpacking frame `letex ⟨κ, x⟩ = □ in u`. -/
+  | consE : Cont s → Tm ((s,c),x) → Cont s
 
 def Cont.rename : Cont s1 → Rename s1 s2 → Cont s2
   | .nil, _ => .nil
   | .cons K u, ρ => .cons (K.rename ρ) (u.rename ρ.lift)
+  | .consE K u, ρ => .consE (K.rename ρ) (u.rename ρ.lift.lift)
 
 /-- Weaken a continuation under a newly allocated store binder. -/
 def Cont.weaken (K : Cont s) : Cont (s,x) := K.rename Rename.succ
+
+/-- Weaken a continuation under the capture binder an unpacking opens.
+`Cont.rename` is kind generic, so this is one line beside `Cont.weaken`. -/
+def Cont.weakenC (K : Cont s) : Cont (s,c) := K.rename Rename.succ
 
 /-! ## States and steps -/
 
@@ -117,6 +124,17 @@ inductive Step : State s → State s' → Prop where
   | unbox :
       σ.lookup x = .box y →
       Step ⟨σ, K, .unbox C x⟩ ⟨σ, K, .path (.var y)⟩
+  /-- Push an unpacking frame. -/
+  | letex : Step ⟨σ, K, .letex t u⟩ ⟨σ, .consE K u, t⟩
+  /-- Unpack a path answer: the store gains a capture slot for the witness
+      and the body is instantiated at the answer's binder. -/
+  | unpack :
+      Step ⟨σ, .consE K u, .path (.var y)⟩ ⟨σ.consC, K.weakenC, u.substVar (.there y)⟩
+  /-- Unpack a value answer: the store gains a capture slot and then the
+      value, as `alloc` does one binder further in. -/
+  | allocE :
+      Step ⟨σ, .consE K u, .val v⟩
+        ⟨(σ.consC).cons (v.weaken (k := .cap)), (K.weakenC).weaken, u⟩
 
 /-- Reflexive transitive closure, across signatures. -/
 inductive Steps : State s → State s' → Prop where

@@ -1,4 +1,4 @@
-# FCdot, at stage B1 of captures the compiler's way
+# FCdot, at stage B2 of captures the compiler's way
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -12,12 +12,12 @@ erasure safe.
 | module | contents |
 |---|---|
 | `Debruijn` | signatures `s`, bound variables `BVar s k`, renamings |
-| `Syntax` | types, propositions, telescopes; evidence (`LeCo`, `EqCo`, `Has`, `Morphism`); atoms; terms and values; renaming, and substitution `Subst` with an atom-valued capture component and the instantiations `singleC`, `arg`, `enter`, `enterC`, `enterObj` |
-| `Context` | bindings, contexts, lookup of types, definitions and fields, levels as positions on the spine, and the three scope contexts `Ctx.scope`, `Ctx.body`, `Ctx.objBody` |
-| `Typing` | the judgments `Γ ⊢ e : S ≤ T`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ`, `Γ ⊢ m : src ⇒ Tel`, `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ[A] F` |
+| `Syntax` | types, propositions, telescopes, the answer sort `ETy` with its declared bound; evidence (`LeCo`, `ELeCo`, `EqCo`, `Has`, `Morphism`); atoms and packed atoms `PAtom`; terms and values; renaming, and substitution `Subst` with an atom-valued capture component and the instantiations `singleC`, `arg`, `enter`, `enterC`, `enterObj`, `instRoot` |
+| `Context` | bindings, contexts, lookup of types, definitions and fields, levels as positions on the spine, the instance reader `Ctx.InstOf`, and the four scope contexts `Ctx.scope`, `Ctx.scopeInst`, `Ctx.body`, `Ctx.objBody` |
+| `Typing` | the judgments `Γ ⊢ e : S ≤ T`, `Γ ⊢ᵉ g : E ≤ E'`, `Γ ⊢ φ : S ≡ T`, `Γ ⊢ h : x ∋ ℓ`, `Γ ⊢ m : src ⇒ Tel`, `Γ ⊢ₐ a : T`, `Γ ⊢ₚ p : E`, `Γ ⊢ t :ᵉ E`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᵥᵉ v : E`, `Γ ⊢ᶠ[A] F` |
 | `Store` | stores, store typing `⊢ σ : Γ` |
 | `Normalizer` | head normal forms of closed evidence, views of atoms, the fuel-indexed normalizer `σ ⊢ e ⇓[n] F` |
-| `Machine` | continuations `Γ ⊢ₖ K : T ⇒ U`, states, the step relation `st ⟶ st'` |
+| `Machine` | continuations `Γ ⊢ₖ K : E ⇒ U`, states, the step relation `st ⟶ st'`, and the answer coercion applied to a value or a packed atom (`Value.applyE`, `PAtom.applyE`) |
 | `Erasure` | erasure `⌊·⌋` into the shared runtime |
 | `RenameLemmas`, `TypingRename`, `Transparency`, `TypingSubst` | renaming and substitution, and their action on typing |
 | `Preservation` | inversion lemmas, `preservation` (modulo the `FormsTyped` obligation) |
@@ -32,7 +32,7 @@ erasure safe.
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
 | `Prediction` | the use-set half of preservation (`step_uses`), `capture_prediction` along a run, `inspects_covered`, `effect_safety`, `returned_capture_bound` |
-| `Examples` | the examples E1 to E8 and the capture examples C3, C4, C1, C6, decided in the kernel; the target side of the A3a source examples S3, C2, C7; and the target side of the A3b ones, `S1_client` (an operation declared at `{fs}` recaptured at `{cp.C}` by the lower bound of a capture member), `S1_translated`, `S1_erase`, `S2_translated`, `S2_erase`, and C5, the packing of an existential result: `C5_capWitnesses`, `C5_witnesses` and `C5_litMorphism` read off the translation, `C5_literal` and `C5_packing` decided by `checkValue` and `checkLe`, and `C5_client`, the caller that reaches `{fs}` only through the member's upper bound; and the B1 examples `scope_order`, `C2_typed` (the literal, with the class root outside the self), `X4_no_level` and `X4_no_escape` (the `withFile` escape rejected, store free), `X5_fires` (the counterfactual binder order), `C5a_level` and `S2_level` (a concrete assigned set below a scope root) |
+| `Examples` | the examples E1 to E8 and the capture examples C3, C4, C1, C6, decided in the kernel; the target side of the A3a source examples S3, C2, C7; and the target side of the A3b ones, `S1_client` (an operation declared at `{fs}` recaptured at `{cp.C}` by the lower bound of a capture member), `S1_translated`, `S1_erase`, `S2_translated`, `S2_erase`, and C5, the packing of an existential result: `C5_capWitnesses`, `C5_witnesses` and `C5_litMorphism` read off the translation, `C5_literal` and `C5_packing` decided by `checkValue` and `checkLe`, and `C5_client`, the caller that reaches `{fs}` only through the member's upper bound; and the B1 examples `scope_order`, `C2_typed` (the literal, with the class root outside the self), `X4_no_level` and `X4_no_escape` (the `withFile` escape rejected, store free), `X5_fires` (the counterfactual binder order), `C5a_level` and `S2_level` (a concrete assigned set below a scope root), and the B2 examples Y1 to Y5 (`freshCell` with two calls whose opened binders are incomparable, `makeLogger` packed at the parameter, C5b, the `withFile` escape rejected by isolation and by the level check, and the `fresh` halves of C5a and S2), with the three source `fresh` examples translated and typed |
 
 ## Notation
 
@@ -733,6 +733,7 @@ FCdot.Dom.underRoot_enterC    : (T.underRoot).subst (Subst.enterC a)
                                   = T.subst (Subst.singleC (.var a.root))
 FCdot.Subst.Typed.singleC     : Γ.IsRoot a ∨ b.isRoot = false →
                                   Subst.Typed (Γ.consC b) (Subst.singleC a) Γ
+                                  B2 adds the premise b.instSet? = none, see its own section
 FCdot.Subst.Typed.scope       : Subst.Typed Γ σ Γ' → Subst.Typed Γ.scope σ.liftC.liftC Γ'.scope
 FCdot.Subst.Typed.arg         : Γ ⊢ₐ b : T.subst (Subst.singleC (.var b.root)) →
                                   Subst.Typed ((Γ.consC .star).cons (.opaque T)) (Subst.arg b) Γ
@@ -828,3 +829,399 @@ B2's.
 Axioms (`#print axioms`): `propext` and `Quot.sound`, or `propext` alone, for every theorem
 above.  The tree contains no `sorry`, `axiom`, `partial`, `unsafe`, or `native_decide`, and no
 Mathlib.
+
+## Stage B2
+
+B2 is the third stage of captures the compiler's way (`plan-5d-captures-cc-stages.md` §B2).
+It makes a result `fresh` a per-call existential.  An arrow's codomain and the type index of
+term typing move to an **answer sort** `ETy`, with two constructors: a plain type, and a type
+under one capture binder bounded by a capture set of the enclosing scope.  Nothing else in the
+tree sees an answer.  Not a domain, not a telescope, not a proposition, not a capture set, not
+the body of a `μ`, and not the body of a box.  So `Form`, the views and every telescope
+function are untouched, and the normal forms of the stage are the normal forms of B1 with one
+component re-sorted.
+
+The existential carries a declared bound, `∃ᶜ[C₀] T`.  Neither Capless nor the sketch has one.
+Capless does not need one, because a Capless `letex` body may not use the unpacked variable at
+all.  D6 relaxes that to a declared use set plus avoidance evidence, and then the body's use of
+the unpacked variable has to be charged to something.  Without a bound the only rule that
+lowers the opened binder is `level`, whose right side is a root, so a lambda containing such a
+`letex` cannot close and a top-level `letex` puts `⊤ᶜ` into the state's use set, which makes
+`effect_safety` vacuous.  With the bound the charge goes to an ordinary capture set of the
+caller's scope and no root enters any use set.
+
+Packing is syntactic and it is a subtyping step.  `Value.pack C h e v` and `PAtom.pack C h e a`
+are wrappers carrying the witness, the evidence that the witness is below the declared bound,
+and one residual type inclusion.  `ELeCo` is the inclusion relation on answers, with `plain`,
+`pack`, `cong` and `trans`.  So a plain answer is widened to an existential wherever a
+coercion goes, the codomain of an arrow included, and that is what makes the third widening
+step of the page's own `withFile` derivation expressible.  `Value.HasType` gains no rule for a
+pack, so a packed value has an existential answer and no other, and a packed value is never
+stored, because `Store.Typed.cons` premises `Γ ⊢ᵥ v : T`.
+
+The pack rule opens a root of its own.  `Ctx.scopeInst Γ C` is `(Γ.consC .root).consC (.inst C↑)`,
+the pack's root and then the witness binder, and the residual inclusion is read there.  Without
+the root the type-sort block's renaming theorem is false and not merely unproven, because every
+judgment of that block is renamed at `Ctx.RenR`, which has no `capInner` field, and a rule that
+opens a bare capture binder reads the level of that binder relative to an outer root.  With the
+root, `Ctx.RenR.scopeInst` is `(h.consRoot).liftC (.inst C↑)`, one line of the tree's own idiom.
+The unpack collapses that root by `Subst.instRoot`, which sends the witness binder to the
+store's instance binder and the pack's root to `⊤ᶜ`, for the reason B1 sends a body root to
+`⊤ᶜ`.
+
+The pack rule cannot be typed without one new capture equality.  `freshCell` needs
+`{κ₁}↑↑ ⊑ᶜ {κ}` under an instance binding `κ := {κ₁}↑↑`, and no rule of `CapCo.HasType` derives
+it.  `capvar` reads an atom's type, `member` and `eqToLe` read a telescope, `level` needs a
+root on the right and an instance binder is not a root, and `elem` is syntactic.  So `CapEq`
+gains `instC a C`, which types when `Γ.instSet? a = some C`, and both directions come from it
+through `symm` and `eqToLe`.  That is finding F-1.  Its price is finding F-2: `Ctx.Ren`,
+`Ctx.RenR` and `Subst.Typed` gain a fourth capture field, `capInst`, which every instance the
+tree builds proves by one weakening commutation of `Ctx.lookupCap`.
+
+The machine grows a frame and six steps.  `Frame.castE g` holds the answer coercion itself and
+not a head form.  It cannot hold a head form: `castRedex_steps` and `castRedex_normalize` are
+stated over untyped states, so a step with a normalisation premise at an answer-cast focus
+makes both false.  So the three answer-cast steps are unconditional, and what composes is
+`Value.applyE` and `PAtom.applyE`, total and structural on the coercion.  There is no `EForm`,
+no `EForm.comp`, no `hnfE`, no answer-form typedness and no fifth `FormsTyped` field.
+`Frame.letex u U h f` is the unpacking frame, and `letex`, `unpackAtom` and `unpackVal` are its
+three steps.  Neither unpack has a premise and neither takes fuel, which is what the syntactic
+wrapper buys.
+
+`letex` does not erase to `let`.  The runtime gains `Runtime.Tm.letex`, `Runtime.Cont.consE`
+and the three steps `Step.letex`, `Step.allocE` and `Step.unpack`, and the unpacking steps push
+a data-free capture slot onto the runtime store, which `Runtime.Store.consC` already had and no
+step produced.  A pack erases to what it wraps, so the erasure cannot tell a packed atom from a
+plain one.  What tells them apart is the continuation that accepts the focus, and that is why
+`erase_reflect` and `erase_reflect'` now take the focus's answer together with the continuation
+that accepts it.
+
+| module | what B2 changed |
+|---|---|
+| `Debruijn` | nothing |
+| `Syntax` | `ETy` with `∃ᶜ[C] T`, its traversals and `Cod s = ETy (Sig.cod s)`, with `Shape.pi` spelling the same type out.  `ELeCo` and `PAtom` in the evidence block, with `PAtom.root`.  `ShapeCo.pi`'s codomain component at `ELeCo (Sig.body s)`.  `Value.pack`, `Tm.atom` at a `PAtom`, `Tm.castE`, `Tm.letex`, `CapEq.instC`.  The `uses` and `inspects` clauses of the two new formers.  `Value.annot` reads through a pack.  `Subst.instRoot` |
+| `RenameLemmas` | the five `Ty` lemmas one sort up as `ETy` lemmas, the `ELeCo` and `PAtom` twins, `PAtom.root_rename` and `PAtom.root_subst`, and the two cancellations `Dom.underRoot_instRoot` and `Ty.weakenC_two_instRoot`.  `Cod.underRoot_enter` keeps its statement one sort up |
+| `Context` | `Ctx.scopeInst`, `CapBound.instSet?`, `Ctx.instSet?`, and the `abbrev Ctx.InstOf`, so that `Decidable` is synthesised and the checker's case decides |
+| `Typing` | `ELeCo.HasType`, `PAtom.HasType`, `Value.HasTypeE`, `CapEq.HasType.instC`.  `Tm.HasType` at `ETy s`, with `abbrev Tm.HasTy` carrying the old notation.  The rules `Tm.HasType.atom`, `.val`, `.let`, `.castE`, `.letex`, and `Value.HasType.lam` at an answer codomain.  `ShapeCo.HasType.pi`'s codomain premise at the answer sort |
+| `TypingRename` | the `capInst` field on `Ctx.Ren` and `Ctx.RenR`, `Ctx.RenR.scopeInst`, `Ctx.Ren.instC`, the `renameR` and `rename` twins of the three new judgments, and the four facts every `capInst` field is proven from |
+| `TypingSubst` | the `capInst` field on `Subst.Typed`, `Subst.Typed.scopeInst`, `Subst.Typed.instRoot`, the `ETy` substitution lemmas, and the `subst` twins of the three new judgments.  `Subst.Typed.singleC` gains one premise.  The `selfCast` block moves here from `Preservation` |
+| `Transparency` | `Ctx.Refines` gains `capInstEq`, with `Ctx.Refines.scopeInst` and `.instOf`, and the three new `refine` twins |
+| `Checker` | `synthTmE`, `checkTmE`, `synthPAtom`, `checkPAtom`, `synthELe`, `checkELe`, `synthValueE`, `checkValueE` with their soundness.  `checkTm Γ t T` is `checkTmE Γ t (.ty T)`.  `ETy.rename?`, `ETy.strengthen?`, `Ty.strengthenC2?`, `ETy.strengthenVC2?`.  `synthCapEqCore` decides `Γ.InstOf`.  `Cod.underRoot?` one sort up |
+| `CheckerCompleteness` | the completeness of the four new judgments and the twelve public `_iff` theorems beside them.  `checkTm_iff` and every older `_iff` keeps its statement |
+| `Normalizer` | `Form.pi`'s codomain component at `ELeCo (Sig.body s)`.  That is the whole diff.  `Form.combine`'s `pi` case is unchanged text |
+| `FormTyping` | `FormTyped.pi`'s codomain premise at the answer sort.  `Value.precView_noBnd` gains one case and `Value.precView` gains no clause |
+| `FormAlgebra` | `Subst.Typed.selfCastOpaque` gains its `capInst` field, and the module imports `TypingSubst` |
+| `Store` | `Value.witnesses`, `Value.capWitnesses` and `Value.fieldLabels` read through a pack.  `Value.IsLiteral` gains no clause.  `Value.isLiteral_rename` and `Store.Typed.lookup_isLiteral` live here now |
+| `Machine` | `Frame.castE` and `Frame.letex`.  `Cont.Typed` accepts an `ETy s` and gains two constructors.  `State.Typed`'s existential witness is an answer and `State.Final` reads a `PAtom`.  `usesK` gains two clauses, `Cont.weakenC` and `usesK_weakenC` stand beside their term twins.  `Value.applyE`, `PAtom.applyE`, `PAtom.root_applyE`.  `appCast` builds a `.castE`, and the six new steps `castEPush`, `castEVal`, `castEAtom`, `letex`, `unpackAtom`, `unpackVal` |
+| `CanonicalForms` | `capeq_canon` gains the `instC` case.  Four theorems gain a packed-stored-value case, each closed by inverting `Value.HasType`.  The module imports `Preservation` and `erase_reflect'` moves out |
+| `Preservation` | `ex_stays_ex`, `no_ex_le_ty`, `pack_canon`, `pack_canon_val`, `Value.HasTypeE.applyE`, `PAtom.HasType.applyE`, the two `ty_inv` inversions, the two `unpackPayload` lemmas, `LeCo.HasType.atScopeInst`, the four answer-sort instantiation lemmas, `preservation_unpackAtom`, `preservation_unpackVal`.  `Cont.Typed.weaken` at the answer sort with `Cont.Typed.weakenC` beside it.  `Tm.HasType.betaCast` at the answer sort.  `preservation` keeps its statement |
+| `Progress` | `closed_pi_inversion` gains one case.  `progress` keeps its statement and decides the new shapes frame kind by frame kind |
+| `Consistency` | nothing beyond what B1 left |
+| `Prediction` | `CapCo.HasType.instHere`, `CaptureSet.letexCharge_substVar`, and the two unpack cases of `step_uses`.  The five prediction theorems keep their statements |
+| `Resolution` | `Ctx.Root_inst`, the instance twin of `Ctx.Root_name` |
+| `Erasure` | `State.CastRedex` gains two disjuncts and `State.isCastRedex` four clauses.  `Tm.erase` gains `.castE` and `.letex`, `Value.erase` a pack, `Cont.erase` the two frames |
+| `ErasureMetatheory` | the three runtime inversions, `Cont.erase_weakenC`, `Value.erase_applyE`, `Store.Typed.lookup_notPack`, the two measure lemmas of the answer cast, `State.CastTyped` with `castRedex_steps_typed` and `castRedex_normalize_typed`, and the three reflection lemmas of the new runtime steps.  `erase_reflect` and `erase_reflect'` take the focus's answer with the continuation that accepts it.  `erase_step` keeps its statement |
+| `Examples` | the five examples Y1 to Y5, the store that types Y1's body context, and the target side of the three source `fresh` examples |
+
+`Runtime.lean` sits outside this directory and B2 reached it too: `Runtime.Tm.letex`,
+`Runtime.Cont.consE`, and the three steps `Step.letex`, `Step.allocE` and `Step.unpack`.
+
+### Notation added by B2
+
+| | |
+|---|---|
+| `∃ᶜ[C] T` | the existential answer with its declared bound |
+| `Γ ⊢ t :ᵉ E` | term typing at an answer.  `Γ ⊢ t : T` is `Tm.HasTy`, which is `Tm.HasType Γ t (.ty T)` |
+| `Γ ⊢ᵉ g : E ≤ E'` | inclusion between answers |
+| `Γ ⊢ₚ p : E` | a packed atom at an answer |
+| `Γ ⊢ᵥᵉ v : E` | a value at an answer |
+
+### The rules
+
+```
+FCdot.CapEq.HasType.instC   : Γ.InstOf a C → Γ ⊢ᶜ .instC a C : [a] ≡ C
+FCdot.ELeCo.HasType.plain   : Γ ⊢ e : T ≤ T' → Γ ⊢ᵉ .plain e : .ty T ≤ .ty T'
+FCdot.ELeCo.HasType.pack    : Γ ⊢ᶜ h : C ⊑ C₀ →
+                              Γ.scopeInst C ⊢ e : (T'↑)↑ ≤ T.underRoot →
+                              Γ ⊢ᵉ .pack C h e : .ty T' ≤ ∃ᶜ[C₀] T
+FCdot.ELeCo.HasType.cong    : Γ ⊢ᶜ h : C₀ ⊑ C₀' →
+                              Γ.scope ⊢ e : T.underRoot ≤ T'.underRoot →
+                              Γ ⊢ᵉ .cong h e : ∃ᶜ[C₀] T ≤ ∃ᶜ[C₀'] T'
+FCdot.ELeCo.HasType.trans   : the transitive closure of the three
+FCdot.PAtom.HasType.plain   : Γ ⊢ₐ a : T → Γ ⊢ₚ .plain a : .ty T
+FCdot.PAtom.HasType.pack    : Γ ⊢ₐ a : S → Γ ⊢ᶜ h : C ⊑ C₀ →
+                              Γ.scopeInst C ⊢ e : (S↑)↑ ≤ T.underRoot →
+                              Γ ⊢ₚ .pack C h e a : ∃ᶜ[C₀] T
+FCdot.Value.HasTypeE.plain  : Γ ⊢ᵥ v : T → Γ ⊢ᵥᵉ v : .ty T
+FCdot.Value.HasTypeE.pack   : the value twin of PAtom.HasType.pack
+FCdot.Tm.HasType.atom       : Γ ⊢ₚ p : E → Γ ⊢ .atom p :ᵉ E
+FCdot.Tm.HasType.val        : Γ ⊢ᵥᵉ v : E → Γ ⊢ .val v :ᵉ E
+FCdot.Tm.HasType.castE      : Γ ⊢ t :ᵉ E → Γ ⊢ᵉ g : E ≤ E' → Γ ⊢ .castE t g :ᵉ E'
+FCdot.Tm.HasType.letex      : Γ ⊢ t :ᵉ ∃ᶜ[C₀] T → Γ ⊢ᶜ h : C₀ ⊑ U' →
+                              (Γ.consC .star).cons (.opaque T) ⊢ u :ᵉ (E↑)↑ →
+                              (Γ.consC .star).cons (.opaque T) ⊢ᶜ f :
+                                u.uses ⊑ (U'↑)↑ ∪ [.cvar (.there .here)] →
+                              Γ ⊢ .letex t u U' h f :ᵉ E
+```
+
+The opened capture binder of a `letex` is `.star`, with no scope of its own.  So it is opaque
+to resolution and two `letex`es open two incomparable binders, which is Y1.  The answer avoids
+both opened binders, which is Capless's `E.cweaken.weaken` verbatim.  The declared use set
+avoids both binders and the body's own use set is put below it by evidence, which is the
+departure D6 names.  And the body may charge a use to the opened binder itself, which is what
+the second premise pays for: the head's bound is already below `U'`, and at run time the opened
+binder resolves to the witness, which is below the bound.  Both facts are consumed by
+`step_uses`.
+
+The six new steps of the machine.
+
+```
+FCdot.Step.castEPush  : ⟨σ, K, .castE t g⟩ ⟶ ⟨σ, K ▹ .castE g, t⟩
+FCdot.Step.castEVal   : ⟨σ, K ▹ .castE g, .val v⟩ ⟶ ⟨σ, K, .val (v.applyE g)⟩
+FCdot.Step.castEAtom  : ⟨σ, K ▹ .castE g, .atom p⟩ ⟶ ⟨σ, K, .atom (p.applyE g)⟩
+FCdot.Step.letex      : ⟨σ, K, .letex t u U h f⟩ ⟶ ⟨σ, K ▹ .letex u U h f, t⟩
+FCdot.Step.unpackAtom : the wrapper is opened, the store gains .inst C, the body is
+                          substituted by the payload atom
+FCdot.Step.unpackVal  : the same with the payload allocated first
+```
+
+### Statements restated
+
+Nothing was weakened.  These are the statements of B0, B1 and the DOT way, restated where B2
+changed the representation, with the reason each means what it meant.
+
+```
+FCdot.Cod, FCdot.Shape.pi   : the codomain is an ETy
+                                a plain codomain is .ty T, Cod is an abbrev, and no proof in
+                                the tree cases on the head of a codomain
+FCdot.Cod.underRoot         : result written ETy (Sig.body s), the same renaming one sort up
+FCdot.ShapeCo.pi, FCdot.Form.pi, FCdot.FormTyped.pi : codomain component at the answer sort
+                                the same contravariant domain and covariant codomain, the
+                                codomain half read at ELeCo where it was read at LeCo
+FCdot.Tm.atom               : takes a PAtom, and every Tm.atom a is spelled Tm.atom (.plain a)
+                                PAtom.root (.plain a) = a.root, so uses and inspects read the
+                                same root and every old term is the term it was
+FCdot.Tm.HasType            : indexed by ETy s, with Tm.HasTy Γ t T = Tm.HasType Γ t (.ty T)
+                                carrying the notation Γ ⊢ t : T, so every statement written
+                                that way is the proposition it was
+FCdot.Tm.HasType.let        : the body may have an answer
+                                a let whose body is plain is the rule as it stands
+FCdot.Value.HasType.lam     : body typed at U.underRoot, an answer
+                                one premise re-sorted, the same obligation on the same body
+FCdot.CapEq, FCdot.CapEq.HasType : one constructor and one rule more, additive
+FCdot.Ctx.Ren, FCdot.Ctx.RenR, FCdot.Subst.Typed : one capture field more, additive
+FCdot.Ctx.Refines           : one field more, capInstEq, additive
+                                refinement never touches the capture spine, so all nine
+                                instances prove it by rfl or one weakening commutation
+FCdot.Value.annot, .witnesses, .capWitnesses, .fieldLabels : one clause each, reading through
+                                a pack, as they read through a cast
+FCdot.Value.core, .coercions, .IsLiteral : no clause, a pack falls into the catch-all
+FCdot.Value.core_isLiteral  : unchanged, with one more rfl case
+                                a packed value is kept out of the store by Store.Typed.cons,
+                                which premises Value.HasType, and Value.HasType has no pack rule
+FCdot.Frame, FCdot.usesK, FCdot.Cont.rename, FCdot.Cont.erase : two constructors more, additive
+FCdot.Cont.Typed            : accepts an ETy s and produces a Ty s
+                                nil accepts .ty T, so a continuation still produces a type and
+                                only what it accepts is widened
+FCdot.State.Typed           : the existential witness is an ETy s, the index U : Ty s is not
+                                so preservation, progress, not_stuck, capture_prediction and
+                                returned_capture_bound keep their statements verbatim
+FCdot.State.Final           : the second disjunct reads a PAtom
+                                in a typed state the answer at nil is plain, so no packed atom
+                                is ever final
+FCdot.Step.appCast          : builds a .castE frame
+                                on a plain codomain the frame applies a .plain coercion and
+                                applyE emits Value.cast or Atom.cast, the same two states
+FCdot.Step.castAtom         : hands back .atom (p.applyE (.plain e))
+                                on a plain wrapper PAtom.applyE at a .plain coercion is
+                                Atom.cast, and the step stays unconditional
+FCdot.Tm.HasType.betaCast   : builds a .castE and its codomain coercion is an ELeCo
+                                the same lemma at the answer sort, it is what appCast now
+                                produces, and its old form has no other caller
+FCdot.Store.Typed.beta, FCdot.Value.HasType.beta : conclusions at an answer, the same map
+FCdot.State.CastRedex, .isCastRedex : two disjuncts more, additive
+                                the predicate still says that the next step erases to no
+                                runtime step
+FCdot.State.CastInv         : first disjunct reads ∃ E, Γ ⊢ st.t :ᵉ E
+                                an answer is what a focus has
+FCdot.Tm.castDepth, FCdot.Cont.castDepth : one counting clause each and one zero clause each
+FCdot.Subst.Typed.singleC   : gains the premise b.instSet? = none
+                                see the finding below
+FCdot.erase_reflect, .erase_reflect' : hty becomes the focus's answer together with the
+                                continuation that accepts it
+                                see the finding below
+FCdot.Value.erase_eq_lam, .erase_eq_obj, .erase_eq_box : gain a premise that the value is not
+                                a pack
+                                see the finding below
+FCdot.Tm.inspects_reflect   : gains a second exclusion, ∀ t₀ g, t ≠ .castE t₀ g
+                                see the finding below
+FCdot.preservation, .preservation', .progress, .not_stuck : unchanged
+FCdot.erase_step, FCdot.final_erase, FCdot.final_reflect : unchanged
+FCdot.castRedex_steps, .castRedex_normalize and their inverses : unchanged
+FCdot.checkTm_iff and the completeness block : unchanged
+FCdot.step_uses, .capture_prediction, .inspects_covered, .effect_safety,
+  .returned_capture_bound : unchanged
+FCdot.cap_canon, .atom_canon, .closed_box_inversion, .closed_pi_inversion : unchanged
+FCdot.lvl_canon, .rigid_canon, .rigid_target, .lvl_safety, .no_inner_escape,
+  .level_inversion : unchanged
+```
+
+**Four findings, each a statement whose form changed for a reason the stage discovered.**
+
+`Subst.Typed.singleC` is false as B1 stated it once `capInst` lands.  The lemma instantiates an
+arbitrary capture binder by an arbitrary atom under the single side condition
+`b.isRoot = false ∨ (Γ.IsRoot a ∧ ∀ e, Γ.LvlLe e a)`.  The bound `.inst C` satisfies
+`isRoot = false`, so the statement covers replacing an instance binder by `⊤ᶜ`, and then
+`capInst` asks for `Γ.InstOf ⊤ᶜ C`, which is `none = some C`.  The counterexample is machine
+checked.  The repair is one premise, `b.instSet? = none`, the exact analogue of B0's
+`b.isRoot = false` on the ten `weakenC` theorems.  Its price is nil: the lemma has no user
+anywhere in the tree, and its five siblings all move `.star` or `.root` and never `.inst`.
+
+`erase_reflect'` is false once an unpacking frame exists.  A typed store with a `letex` frame
+at a plain atom focus satisfies the old hypotheses, the runtime steps by `Step.unpack`, and no
+target step fires.  The erasure cannot tell the three failing shapes apart, because a pack
+erases to what it wraps.  What tells them apart is the continuation's typing, and that is what
+the new hypothesis supplies.  Every caller already holds a `State.Typed` two lines above the
+call and threw the continuation half away.
+
+`Value.erase_eq_lam` and its two siblings are false once a packed value exists, because
+`Value.IsLiteral` gains no clause, so a packed lambda is a literal whose erasure is a runtime
+lambda and which is not a lambda.  The three lemmas ask their value not to be a pack, and
+`Store.Typed.lookup_notPack` discharges the premise at the one place any of them is used.
+
+`Tm.inspects_reflect` needs a second exclusion.  An answer cast erases to its body, so an
+answer cast whose body is an application erases to a term that reads a root, while
+`(Tm.castE t g).inspects` is `none`.  The old hypothesis excluded exactly the one former with
+that property, and B2 adds a second.  Its only caller is `State.inspects_reflect`, whose
+hypothesis is `¬ st.CastRedex`, and `State.CastRedex` already has the `.castE` disjunct.
+
+### New theorems
+
+```
+FCdot.ex_stays_ex        : Γ ⊢ᵉ g : E₁ ≤ E₂ → E₁.isEx = true → E₂.isEx = true
+FCdot.no_ex_le_ty        : Γ ⊢ᵉ g : ∃ᶜ[C₀] T₁ ≤ .ty T₂ → False
+FCdot.pack_canon         : Γ ⊢ₚ p : ∃ᶜ[C₀] T → ∃ C h₀ e a S, p = .pack C h₀ e a ∧
+                             Γ ⊢ₐ a : S ∧ Γ ⊢ᶜ h₀ : C ⊑ C₀ ∧
+                             Γ.scopeInst C ⊢ e : (S↑)↑ ≤ T.underRoot
+FCdot.pack_canon_val     : the value twin
+FCdot.Value.HasTypeE.applyE : Γ ⊢ᵥᵉ v : E → Γ ⊢ᵉ g : E ≤ E' → Γ ⊢ᵥᵉ v.applyE g : E'
+FCdot.PAtom.HasType.applyE  : the atom twin
+FCdot.PAtom.root_applyE  : (p.applyE g).root = p.root
+FCdot.Value.erase_applyE : ⌊v.applyE g⌋ = ⌊v⌋
+FCdot.Ctx.Ren.instC      : Ctx.Ren (Γ.scopeInst C) Rename.id (Γ.scopeInst C) at .inst and .star
+FCdot.Subst.Typed.instRoot : Γ.root? = none →
+                             Subst.Typed (Γ.scopeInst C) Subst.instRoot (Γ.consC (.inst C))
+FCdot.Dom.underRoot_instRoot : (Dom.underRoot T).subst Subst.instRoot = T
+FCdot.Ty.weakenC_two_instRoot : ((T↑)↑).subst Subst.instRoot = T↑
+FCdot.Ctx.RenR.scopeInst : Ctx.RenR Γ ρ Γ' → Ctx.Ren (Γ.scopeInst C) ρ.lift.lift
+                             (Γ'.scopeInst (C.rename ρ))
+FCdot.Ctx.Root_inst      : Γ.InstOf a C → RootsEq Γ [a] C
+FCdot.Cont.Typed.weakenC : the capture-kind twin of Cont.Typed.weaken
+FCdot.CapCo.HasType.instHere : the declared bound, consumed: the opened binder is an instance
+                             of the witness set, the wrapper puts that set below the declared
+                             bound, and the frame puts the declared bound below the set the
+                             body declares
+FCdot.Store.Typed.lookup_notPack : a stored value is never a pack
+FCdot.State.CastTyped    : the typed invariant carried along cast-frame normalisation, with
+                             castRedex_steps_typed and castRedex_normalize_typed
+FCdot.preservation_unpackAtom, .preservation_unpackVal : the two unpack cases, packaged
+FCdot.checkTmE_iff, .checkPAtom_iff, .checkELe_iff, .checkValueE_iff : the four new judgments
+                             are decided, and each is sound and complete
+```
+
+`unpackAtom` is the hardest case of the stage, and it uses every new piece at once.
+Preservation runs in eight steps.  Invert `Cont.Typed.letex` for the three body premises.
+Invert `Tm.HasType.atom` and `pack_canon` for the witness, the bound evidence and the residual,
+with no normalisation and no fuel.  Extend the store by `Store.Typed.consC` at `.inst C`, with
+no obligation to discharge.  Type the payload in the extended scope by `Atom.HasType.weakenC`
+at a non-root bound and by the residual substituted along `Subst.Typed.instRoot`, whose two
+cancellations are `Ty.weakenC_two_instRoot` and `Dom.underRoot_instRoot`.  Transport the body
+and its evidence along `Ctx.Ren.instC` lifted by the payload binder.  Substitute the atom by
+`Subst.Typed.single`, where `((E↑)↑).substVar y = E↑` is the avoidance the rule wrote into its
+premise.  Weaken the continuation by `Cont.Typed.weakenC`.  Assemble `State.Typed` at the
+extended context.  For `step_uses` the embedding is `Store.Ext.consC` at `.inst C`, which
+`.star` could not supply.
+
+### The examples of B2
+
+```
+Examples.Y1_freshCell    : Y1Ctx ⊢ᵥ YFreshCell Y1κ₁ : YFreshCellTy Y1κ₁
+Examples.Y1_caller       : Y1CCtx ⊢ Y1caller : Ty.pure tArrow
+Examples.Y1Store_typed   : ⊢ Y1Store : Y1BodyCtx
+Examples.two_calls_incomparable :
+                           (¬ ∃ f, Y1BodyCtxO ⊢ᶜ f : [cvar κ₁'] ⊑ [cvar κ₂']) ∧
+                           (¬ ∃ f, Y1BodyCtxO ⊢ᶜ f : [var x₁] ⊑ [var x₂])
+Examples.Y2_makeLogger   : Ctx.nil ⊢ᵥ Y2MakeLogger : Y2MakeLoggerTy
+Examples.Y2_client       : Y2Ctx ⊢ᵥ Y2Client : Y2ClientTy
+Examples.Y3_mk           : Ctx.nil ⊢ᵥ Y3Mk : Y3MkTy
+Examples.Y3_caller       : Y3CtxO ⊢ Y3caller : Ty.pure .top
+Examples.c5b_caller_uses : Y3CtxO ⊢ᶜ Y3useCo : Y3caller.uses ⊑ [var fs]
+Examples.c5b_no_witness  : ¬ ∃ f, Y3BodyCtxO ⊢ᶜ f : [cvar κ'] ⊑ [var fs]
+Examples.Y4_pack_under_pi : Y1Ctx ⊢ Y4packUnderPi : (Π(Unit) (.ty (Cell ^ {κ₁}))) ^ {κ₁}
+                              ≤ YFreshCellTy Y1κ₁
+Examples.Y4_isolation    : ¬ ∃ g, X4Ctx ⊢ᵉ g : (∃ᶜ[C₀] T) ≤ .ty T'
+Examples.Y4_no_escape    : ¬ ∃ g, (X4Ctx ⊢ᶜ g : {f} ⊑ {⊤ᶜ}) ∧ g.MemberFree
+Examples.Y5_packed       : C5Ctx ⊢ᵥᵉ Y5ExVal : Y5ExTy
+Examples.Y5_caller       : C5Ctx ⊢ Y5caller : Ty.pure tArrow
+Examples.Z1_translated, .Z2_translated, .Z3_translated : the three source fresh examples,
+                           translated and typed at the translated type
+Examples.Z1_caller_translated : a source letex, translated
+Examples.Z1_erase, .Z1_caller_erase, .Z2_erase, .Z3_erase : the translation runs the source
+                           program
+```
+
+**Y1, `freshCell`, and two calls that are incomparable.**  Under the platform prefix `κ₁`, with
+`Cell = μ(c. {set : (Π(⊤) ⊤) ^ {c}})`, the callee allocates a cell and packs it at the witness
+`{κ₁}`.  The residual inclusion of that pack is the one place the stage needs F-1: its capture
+half is `.eqToLe (.symm (.instC (.cvar .here) {κ₁}↑↑))`, read at `Γ.scopeInst {κ₁}`.  A caller
+unpacks each of two calls where it stands, since the `letex` rule's head premise is on an
+arbitrary term while `Tm.HasType.let`'s is at a plain answer.  In the body's context the two
+opened binders are `.star`, `x₁ : Cell ^ {κ₁'}` and `x₂ : Cell ^ {κ₂'}`, and neither of the two
+inclusions is derivable.  Both halves go through `cap_canon`: an inclusion gives
+`Γ.roots n [cvar κ₁'] ⊆ Γ.roots m [cvar κ₂']`, `Ctx.capsAtom` at a `.star` binder is the binder
+itself and `Ctx.expandAtom` is the identity on a non-root atom, so the two singletons would
+have to be equal.  D11's warning is respected: the argument is stated at `roots`, and
+`Y1_caps_κ₁'` and its three siblings are the named step from `caps` to `roots`.  What is
+**not** claimed: at run time both binders carry `.inst {κ₁}`, so in the store's context each is
+below the other.  That is sound, it is D12's point, and it means Y1 reproduces the page's
+sentence in the compile-time reading only.
+
+`cap_canon` reads a typed store, which is decision 12, so `two_calls_incomparable` needs a
+store for the body's context.  A store types transparent term bindings, and the `letex` rule
+builds opaque ones, so the theorem is stated at the opaque context `Y1BodyCtxO` and transported
+into the transparent `Y1BodyCtx` by `Ctx.Refines`.  A transparent context knows everything the
+opaque one knows, so refusing the inclusion there refuses it in the opaque one.  `Y1Store_typed`
+exhibits the store rather than assuming one, which is what keeps the theorem from being
+vacuous.  The one cost is that the unit of the B2 examples is a pure closure and not `⊤`, since
+`⊤` is not a type a store can hold.
+
+**Y2, `makeLogger`.**  The parameter's `any` is the arrow's own capture binder, which is D7, and
+the result is packed at the witness `{x}`, the parameter itself.  The witness is the parameter
+and not a platform binder, and that is the example's point, "this `any` has to be defined in a
+scope in which `fs` is visible".  `Y2_client` is the caller, written as a closure over `fs`: it
+unpacks, charges its use to `{fs}` and to the callee it called, and closes.  That it closes is
+F-3 in one line, and it is what the declared bound buys.
+
+**Y3, C5b.**  The callee of Y2 with the caller of C5a: the caller unpacks with `letex`, projects
+a field off the unpacked object, applies it through `{κ}`, and charges the use to the
+instantiated bound.  `c5b_caller_uses` says the caller's use set is the argument it passed and
+nothing more.  `c5b_no_witness` says the caller never learns that the witness is the argument,
+and it goes through `cap_canon` over the same kind of exhibited store as Y1.
+
+**Y4, the `withFile` escape, rejected twice over.**  The page widens the callback's inferred
+type in three steps, and all three exist in the target: `capvar`, then `level`, then
+`ELeCo.pack` under `ShapeCo.pi`.  `Y4_pack_under_pi` is the third step, decided by the checker.
+`Y4_isolation` is `no_ex_le_ty`, and it is the step the page names, "the capture checker
+prevents the existentially bound `fresh` from flowing into this outer `any`".  `Y4_no_escape` is
+B1's theorem, unchanged, and it is the level check after a `letex`: even if the caller unpacks,
+the unpacked binder's level is the caller's and the level rule runs only inward.  The page's
+consequence for the program is `escaped().read()`, a use after close.
+
+**Y5, the `fresh` halves of S2 and C5a.**  The same two programs with the callee's result
+declared `fresh`, read through a `letex` instead of through `{κ_S}`.  `Y5_packed` is C5a's
+literal at an existential answer bounded by the concrete assigned set `{fs, u}`, and
+`Y5_caller` is S2's program read through a `letex`: the iterator is unpacked, `next` is read
+off the abstract member, and the call is charged through the member's upper bound.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem above.  The
+tree contains no `sorry`, `axiom`, `partial`, `unsafe`, or `native_decide`, and no Mathlib.

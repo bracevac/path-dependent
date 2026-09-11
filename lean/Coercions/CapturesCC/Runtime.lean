@@ -35,6 +35,12 @@ inductive Tm : Sig → Type where
   | app : BVar s .var → BVar s .var → Tm s
   | proj : BVar s .var → Label → Tm s
   | «let» : Tm s → Tm (s,x) → Tm s
+  /-- Unpacking a head: the body lives under two binders, the capture binder
+      the head opens and the payload.  A capture binder carries no runtime
+      data, so erasure still maps binder to binder.  A `letex` does not erase
+      to a `let`: the unpacking moves the signature from `s` to `(s,c)`, and
+      no other runtime step extends a signature by a capture binder. -/
+  | letex : Tm s → Tm ((s,c),x) → Tm s
   /-- An inert box holding a variable.  It is a value. -/
   | box : BVar s .var → Tm s
   /-- Open a box: read the variable the box at `x` holds. -/
@@ -61,6 +67,7 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .app x y, ρ => .app (ρ.var x) (ρ.var y)
   | .proj x ℓ, ρ => .proj (ρ.var x) ℓ
   | .let t u, ρ => .let (t.rename ρ) (u.rename ρ.lift)
+  | .letex t u, ρ => .letex (t.rename ρ) (u.rename ρ.lift.lift)
   | .box x, ρ => .box (ρ.var x)
   | .unbox x, ρ => .unbox (ρ.var x)
 
@@ -116,6 +123,7 @@ def Tm.map : Tm s1 → VRen s1 s2 → Tm s2
   | .app x y, f => .app (f x) (f y)
   | .proj x ℓ, f => .proj (f x) ℓ
   | .let t u, f => .let (t.map f) (u.map f.lift)
+  | .letex t u, f => .letex (t.map f) (u.map f.liftC.lift)
   | .box x, f => .box (f x)
   | .unbox x, f => .unbox (f x)
 
@@ -152,6 +160,10 @@ theorem Tm.rename_eq_ofRename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
   | .let t u =>
       show Tm.let _ _ = Tm.let _ _
       rw [Tm.rename_eq_ofRename t ρ, Tm.rename_eq_ofRename u ρ.lift, VRen.ofRename_lift]
+  | .letex t u =>
+      show Tm.letex _ _ = Tm.letex _ _
+      rw [Tm.rename_eq_ofRename t ρ, Tm.rename_eq_ofRename u ρ.lift.lift,
+        VRen.ofRename_lift, VRen.ofRename_liftC]
   | .box x => rfl
   | .unbox x => rfl
 
@@ -192,6 +204,8 @@ def Tm.inspects : Tm s → Option (BVar s .var)
 @[simp] theorem Tm.inspects_lam (t : Tm (((s,c),c),x)) : (Tm.lam t).inspects = none := rfl
 @[simp] theorem Tm.inspects_obj (F : Fields ((s,c),x)) : (Tm.obj F).inspects = none := rfl
 @[simp] theorem Tm.inspects_let (t : Tm s) (u : Tm (s,x)) : (Tm.let t u).inspects = none := rfl
+@[simp] theorem Tm.inspects_letex (t : Tm s) (u : Tm ((s,c),x)) :
+    (Tm.letex t u).inspects = none := rfl
 @[simp] theorem Tm.inspects_box (x : BVar s .var) : (Tm.box x).inspects = none := rfl
 @[simp] theorem Tm.inspects_unbox (x : BVar s .var) : (Tm.unbox x).inspects = some x := rfl
 
@@ -204,6 +218,7 @@ theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
   | .app x y => simp [Tm.rename]
   | .proj x ℓ => simp [Tm.rename]
   | .let t u => simp [Tm.rename]
+  | .letex t u => simp [Tm.rename]
   | .box x => simp [Tm.rename]
   | .unbox x => simp [Tm.rename]
 
@@ -236,10 +251,14 @@ def Store.lookup : Store s → BVar s .var → Tm s
 inductive Cont : Sig → Type where
   | nil : Cont s
   | cons : Cont s → Tm (s,x) → Cont s
+  /-- The frame a `letex` pushes.  Its body lives under the capture binder
+      the unpacking opens and the payload. -/
+  | consE : Cont s → Tm ((s,c),x) → Cont s
 
 def Cont.rename : Cont s1 → Rename s1 s2 → Cont s2
   | .nil, _ => .nil
   | .cons K u, ρ => .cons (K.rename ρ) (u.rename ρ.lift)
+  | .consE K u, ρ => .consE (K.rename ρ) (u.rename ρ.lift.lift)
 
 def Cont.weaken (K : Cont s) : Cont (s,,k) := K.rename Rename.succ
 
@@ -258,6 +277,19 @@ inductive Step : State s → State s' → Prop where
   /-- Unboxing: read the box the store holds at `x` and continue at its
       content.  The box is inert, so nothing is substituted. -/
   | unbox : σ.lookup x = .box y → Step ⟨σ, K, .unbox x⟩ ⟨σ, K, .var y⟩
+  /-- Unpacking pushes its own frame. -/
+  | letex : Step ⟨σ, K, .letex t u⟩ ⟨σ, .consE K u, t⟩
+  /-- A value at an unpacking frame: the store gains the data-free capture
+      slot the head opens and then the value. -/
+  | allocE : IsValue v →
+      Step ⟨σ, .consE K u, v⟩
+        ⟨(σ.consC).cons (Tm.weaken (k := .cap) v),
+          Cont.weaken (Cont.weaken (k := .cap) K), u⟩
+  /-- A variable at an unpacking frame: the store gains the data-free
+      capture slot and the payload is the variable itself. -/
+  | unpack :
+      Step ⟨σ, .consE K u, .var y⟩
+        ⟨σ.consC, Cont.weaken (k := .cap) K, u.substVar (.there y)⟩
 
 inductive Steps : State s → State s' → Prop where
   | refl : Steps st st

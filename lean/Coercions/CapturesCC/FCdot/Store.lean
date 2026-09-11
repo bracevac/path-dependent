@@ -36,6 +36,7 @@ def Value.witnesses : Value s → Witnesses (s,x)
   | .obj _ W _ _ => W
   | .box _ => .nil
   | .cast v _ => v.witnesses
+  | .pack _ _ _ v => v.witnesses
 
 /-- Capture witnesses of a value: those of the underlying literal. -/
 def Value.capWitnesses : Value s → CapWitnesses (s,x)
@@ -43,6 +44,7 @@ def Value.capWitnesses : Value s → CapWitnesses (s,x)
   | .obj _ _ Wc _ => Wc
   | .box _ => .nil
   | .cast v _ => v.capWitnesses
+  | .pack _ _ _ v => v.capWitnesses
 
 /-- Field labels of a value: those of the underlying literal. -/
 def Value.fieldLabels : Value s → List Label
@@ -50,6 +52,7 @@ def Value.fieldLabels : Value s → List Label
   | .obj _ _ _ F => F.labels
   | .box _ => []
   | .cast v _ => v.fieldLabels
+  | .pack _ _ _ v => v.fieldLabels
 
 /-- The literal under the cast wrappers. -/
 def Value.core : Value s → Value s
@@ -75,6 +78,16 @@ def Atom.coercions : Atom s → List (LeCo s)
 def Value.IsLiteral : Value s → Prop
   | .cast _ _ => False
   | _ => True
+
+/-- Being a literal is stable under renaming.  A pack falls into the
+catch-all of `Value.IsLiteral`, as a literal does. -/
+theorem Value.isLiteral_rename {s1 s2 : Sig} :
+    ∀ (v : Value s1) (ρ : Rename s1 s2), v.IsLiteral → (v.rename ρ).IsLiteral
+  | .lam _ _ _ _, _, _ => trivial
+  | .obj _ _ _ _, _, _ => trivial
+  | .box _, _, _ => trivial
+  | .pack _ _ _ _, _, _ => trivial
+  | .cast _ _, _, h => h.elim
 
 set_option hygiene false in
 scoped notation:40 "⊢ " σ:51 " : " Γ:51 => Store.Typed σ Γ
@@ -106,6 +119,23 @@ theorem Store.Typed.rootFree (hσ : ⊢ σ : Γ) : Γ.root? = none := by
   | cons _ _ _ ih => rw [Ctx.root?_cons, ih]; rfl
   | consC _ hb ih => rw [Ctx.root?_consC_of_not_root _ _ hb, ih]; rfl
 
+/-- Entries of a typed store are literals, in any scope.  It stands here
+rather than in `ErasureMetatheory.lean`, where the vanilla line keeps it,
+because it reads no erasure and `CanonicalForms.lean` needs it. -/
+theorem Store.Typed.lookup_isLiteral {s : Sig} {σ : Store s} {Γ : Ctx s}
+    (h : ⊢ σ : Γ) : ∀ x : BVar s .var, (σ.lookup x).IsLiteral := by
+  induction h with
+  | nil => intro x; cases x
+  | cons _ hlit _ ih =>
+      intro x
+      cases x with
+      | here => exact Value.isLiteral_rename _ _ hlit
+      | there y => exact Value.isLiteral_rename _ _ (ih y)
+  | consC _ _ ih =>
+      intro x
+      cases x with
+      | there y => exact Value.isLiteral_rename _ _ (ih y)
+
 open Lean PrettyPrinter in
 @[app_unexpander Store.Typed] def Store.Typed.unexpand : Unexpander
   | `($_ $σ $Γ) => `(⊢ $σ : $Γ)
@@ -125,6 +155,7 @@ theorem Value.annot_rename {s1 s2 : Sig} :
   | .obj _ _ _ _, _ => rfl
   | .box _, _ => rfl
   | .cast v _, ρ => Value.annot_rename v ρ
+  | .pack _ _ _ v, ρ => Value.annot_rename v ρ
 
 /-- The annotation of a value travels with a weakening. -/
 @[simp] theorem Value.annot_weaken {k : Kind} (v : Value s) :

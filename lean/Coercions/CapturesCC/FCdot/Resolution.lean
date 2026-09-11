@@ -1891,6 +1891,43 @@ theorem Ctx.Root_name {Γ : Ctx s} {x : BVar s .var} {ℓ : Label} {C : CaptureS
       Ctx.capsAtom_name_some h]
     exact hn
 
+/-- An instance binder has exactly the roots of the set it was opened at.
+This is what `CapEq.HasType.instC` needs, and it is the capture-sort analogue
+of `Ctx.Root_name` at a capture binder rather than at a block name.  An
+instance binder consumes no fuel, so the two directions run at the same
+`n`. -/
+theorem Ctx.Root_inst {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
+    (h : Γ.InstOf a C) : RootsEq Γ [a] C := by
+  cases a with
+  | cvar κ =>
+      have h' : (Γ.lookupCap κ).instSet? = some C := h
+      have hlk : Γ.lookupCap κ = .inst C := by
+        cases hb : Γ.lookupCap κ with
+        | root => rw [hb] at h'; simp [CapBound.instSet?] at h'
+        | star => rw [hb] at h'; simp [CapBound.instSet?] at h'
+        | upper D => rw [hb] at h'; simp [CapBound.instSet?] at h'
+        | inst D =>
+            rw [hb] at h'
+            simp only [CapBound.instSet?, Option.some.injEq] at h'
+            rw [h']
+      intro b
+      constructor
+      · rintro ⟨n, hn⟩
+        refine ⟨n, ?_⟩
+        rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
+          Ctx.capsAtom_cvar, hlk] at hn
+        rw [Ctx.roots_eq_expand_caps]
+        exact hn
+      · rintro ⟨n, hn⟩
+        refine ⟨n, ?_⟩
+        rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
+          Ctx.capsAtom_cvar, hlk]
+        rw [Ctx.roots_eq_expand_caps] at hn
+        exact hn
+  | var _ => simp [Ctx.InstOf, Ctx.instSet?] at h
+  | name _ _ => simp [Ctx.InstOf, Ctx.instSet?] at h
+  | top => simp [Ctx.InstOf, Ctx.instSet?] at h
+
 /-- A capture name with no definition has no roots. -/
 theorem Ctx.Root_name_none {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
     (h : Γ.lookupDefC x ℓ = none) (a : CapAtom s) : ¬ Γ.Root a [CapAtom.name x ℓ] := by

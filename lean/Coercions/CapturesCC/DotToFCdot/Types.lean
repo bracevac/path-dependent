@@ -108,6 +108,7 @@ def CapAtom.translate? : CapAtom s → Option (FCdot.CapAtom s)
   | .cvar κ => some (.cvar κ)
   | .sel x A => some (.name x A)
   | .any => none
+  | .fresh => none
 
 /-- `⟦C⟧` on capture sets: atom by atom, dropping `any`. -/
 def CaptureSet.translate (C : CaptureSet s) : FCdot.CaptureSet s :=
@@ -128,6 +129,11 @@ def CaptureSet.translate (C : CaptureSet s) : FCdot.CaptureSet s :=
 
 @[simp] theorem CaptureSet.translate_cons_any {s : Sig} (C : CaptureSet s) :
     CaptureSet.translate (CapAtom.any :: C) = C.translate := rfl
+
+/-- `fresh` is dropped as `any` is, and for the same reason: the source
+gives it no power, and `Ty.expandFresh` is what a program means by it. -/
+@[simp] theorem CaptureSet.translate_cons_fresh {s : Sig} (C : CaptureSet s) :
+    CaptureSet.translate (CapAtom.fresh :: C) = C.translate := rfl
 
 /-- The source has no universal root, so a translated capture set never
 mentions `⊤ᶜ`. -/
@@ -170,6 +176,7 @@ theorem CapAtom.translate_rename {s s' : Sig} :
   | .cvar _, _ => rfl
   | .sel _ _, _ => rfl
   | .any, _ => rfl
+  | .fresh, _ => rfl
 
 @[simp] theorem CaptureSet.translate_rename {s s' : Sig} (C : CaptureSet s) (ρ : Rename s s') :
     (C.rename ρ).translate = C.translate.rename ρ := by
@@ -180,6 +187,7 @@ theorem CapAtom.translate_rename {s s' : Sig} :
         simp only [DotMNF.CaptureSet.rename_cons, CapAtom.rename,
           CaptureSet.translate_cons_var, CaptureSet.translate_cons_cvar,
           CaptureSet.translate_cons_sel, CaptureSet.translate_cons_any,
+          CaptureSet.translate_cons_fresh,
           FCdot.CaptureSet.rename, List.map_cons, ih] <;>
         rfl
 
@@ -220,8 +228,11 @@ def Shape.translate : Shape s → FCdot.Shape s
   | .top => FCdot.Shape.obj .nil
   | .bot => .bot
   | .sel (.var x) A => .sel x A
-  | .all (.capt C1 S1) (.capt C2 S2) =>
-      .pi (.capt C1.translate S1.translate) (.capt C2.translate S2.translate)
+  | .all (.capt C1 S1) (.ty (.capt C2 S2)) =>
+      .pi (.capt C1.translate S1.translate) (.ty (.capt C2.translate S2.translate))
+  | .all (.capt C1 S1) (.ex C0 (.capt C2 S2)) =>
+      .pi (.capt C1.translate S1.translate)
+        (.ex C0.translate (.capt C2.translate S2.translate))
   | .box (.capt C S) => .box (.capt C.translate S.translate)
   | .typ A S T => .obj (Shape.tel (.typ A S T))
   | .fld a T => .obj (Shape.tel (.fld a T))
@@ -251,10 +262,14 @@ def Shape.tel : Shape s → FCdot.Telescope (s,x)
   | .top => .nil
   | .bot => .cons .nil (.bnd (FCdot.Shape.bot).weaken)
   | .sel (.var y) A => .cons .nil (.bnd (FCdot.Shape.sel y A).weaken)
-  | .all (.capt C1 S1) (.capt C2 S2) =>
+  | .all (.capt C1 S1) (.ty (.capt C2 S2)) =>
       .cons .nil
         (.bnd (FCdot.Shape.pi (.capt C1.translate S1.translate)
-          (.capt C2.translate S2.translate)).weaken)
+          (.ty (.capt C2.translate S2.translate))).weaken)
+  | .all (.capt C1 S1) (.ex C0 (.capt C2 S2)) =>
+      .cons .nil
+        (.bnd (FCdot.Shape.pi (.capt C1.translate S1.translate)
+          (.ex C0.translate (.capt C2.translate S2.translate))).weaken)
   | .box (.capt C S) =>
       .cons .nil
         (.bnd (FCdot.Shape.box (.capt C.translate S.translate)).weaken)
@@ -282,10 +297,14 @@ def Shape.telSelf : Shape (s,x) → FCdot.Telescope (s,x)
   | .top => .nil
   | .bot => .cons .nil (.bnd FCdot.Shape.bot)
   | .sel (.var y) A => .cons .nil (.bnd (FCdot.Shape.sel y A))
-  | .all (.capt C1 S1) (.capt C2 S2) =>
+  | .all (.capt C1 S1) (.ty (.capt C2 S2)) =>
       .cons .nil
         (.bnd (FCdot.Shape.pi (.capt C1.translate S1.translate)
-          (.capt C2.translate S2.translate)))
+          (.ty (.capt C2.translate S2.translate))))
+  | .all (.capt C1 S1) (.ex C0 (.capt C2 S2)) =>
+      .cons .nil
+        (.bnd (FCdot.Shape.pi (.capt C1.translate S1.translate)
+          (.ex C0.translate (.capt C2.translate S2.translate))))
   | .box (.capt C S) =>
       .cons .nil (.bnd (FCdot.Shape.box (.capt C.translate S.translate)))
 
@@ -295,6 +314,19 @@ end
 set. -/
 def Ty.translate : Ty s → FCdot.Ty s
   | .capt C S => FCdot.Ty.capt C.translate S.translate
+
+/-- `⟦E⟧` on answers: a plain answer is its type, an existential keeps its
+bound and its body, each translated.  It is the homomorphism B2.10 asks
+for. -/
+def ETy.translate : ETy s → FCdot.ETy s
+  | .ty T => .ty T.translate
+  | .ex C T => .ex C.translate T.translate
+
+@[simp] theorem ETy.translate_ty {s : Sig} (T : Ty s) :
+    (ETy.ty T).translate = .ty T.translate := rfl
+
+@[simp] theorem ETy.translate_ex {s : Sig} (C : CaptureSet s) (T : Ty (s,c)) :
+    (∃ᶜ[C] T).translate = FCdot.ETy.ex C.translate T.translate := rfl
 
 @[simp] theorem Ty.translate_capt {s : Sig} (C : CaptureSet s) (S : Shape s) :
     (S ^ C).translate = FCdot.Ty.capt C.translate S.translate := rfl
@@ -308,7 +340,10 @@ def Ty.translate : Ty s → FCdot.Ty s
 /-- The arrow shape, one layer up: both sides are capturing types. -/
 theorem Shape.translate_all_eq {s : Sig} (T1 : Dom s) (T2 : Cod s) :
     (Shape.all T1 T2).translate = FCdot.Shape.pi T1.translate T2.translate := by
-  cases T1; cases T2; rw [Shape.translate]; rfl
+  cases T1
+  cases T2 with
+  | ty T => cases T; rw [Shape.translate]; rfl
+  | ex C T => cases T; rw [Shape.translate]; rfl
 
 theorem Shape.translate_box_eq {s : Sig} (T : Ty s) :
     (Shape.box T).translate = FCdot.Shape.box T.translate := by
@@ -333,7 +368,8 @@ theorem Shape.tel_of_not_isObj {s : Sig} :
     ∀ {S : Shape s}, S.isObj = false → S.tel = .cons .nil (.bnd S.translate.weaken)
   | .bot, _ => by simp [Shape.translate, Shape.tel]
   | .sel (.var _) _, _ => by simp [Shape.translate, Shape.tel]
-  | .all (.capt _ _) (.capt _ _), _ => by simp [Shape.translate, Shape.tel]
+  | .all (.capt _ _) (.ty (.capt _ _)), _ => by simp [Shape.translate, Shape.tel]
+  | .all (.capt _ _) (.ex _ (.capt _ _)), _ => by simp [Shape.translate, Shape.tel]
   | .box (.capt _ _), _ => by simp [Shape.translate, Shape.tel]
   | .mu S, h => by
       rw [Shape.isObj] at h
@@ -344,7 +380,8 @@ theorem Shape.telSelf_of_not_isObj {s : Sig} :
     ∀ {S : Shape (s,x)}, S.isObj = false → S.telSelf = .cons .nil (.bnd S.translate)
   | .bot, _ => by simp [Shape.translate, Shape.telSelf]
   | .sel (.var _) _, _ => by simp [Shape.translate, Shape.telSelf]
-  | .all (.capt _ _) (.capt _ _), _ => by simp [Shape.translate, Shape.telSelf]
+  | .all (.capt _ _) (.ty (.capt _ _)), _ => by simp [Shape.translate, Shape.telSelf]
+  | .all (.capt _ _) (.ex _ (.capt _ _)), _ => by simp [Shape.translate, Shape.telSelf]
   | .box (.capt _ _), _ => by simp [Shape.translate, Shape.telSelf]
   | .mu S, h => by
       rw [Shape.isObj] at h
@@ -410,6 +447,7 @@ def Ctx.translate : Ctx s → FCdot.Ctx s
       .cons Γ.translate (.transparent (S.literalTy U) S.witnesses S.capWitnesses S.fieldLabels)
   | .consC Γ => .consC Γ.translate .star
   | .consRoot Γ => .consC Γ.translate .root
+  | .consInst Γ C => .consC Γ.translate (.inst C.translate)
 
 end DotMNF
 

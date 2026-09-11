@@ -86,6 +86,14 @@ beyond what the level rule gives. -/
 /-- A scope: its own root, then the arrow's capture binder. -/
 def scope (Γ : Ctx s) : Ctx ((s,c),c) := (Γ.consC .root).consC .star
 
+/-- The scope a pack opens: the pack's own root, then the witness binder as
+an instance of the witness set.  A rule of the type sort may open a capture
+binder only under a root of its own, because otherwise its premise reads the
+level of the opened binder relative to an outer root and the premise is not
+closed under renaming into a context with a fresh root. -/
+def scopeInst (Γ : Ctx s) (C : CaptureSet s) : Ctx (Sig.scope s) :=
+  (Γ.consC .root).consC (.inst C↑)
+
 /-- A lambda body: a scope, then the parameter at the domain read under the
 body root. -/
 def body (Γ : Ctx s) (T : Dom s) : Ctx (((s,c),c),x) := Γ.scope.cons (.opaque T.underRoot)
@@ -129,6 +137,11 @@ def CapBound.opaque : CapBound s → Bool
 def CapBound.isRoot : CapBound s → Bool
   | .root => true
   | _ => false
+
+/-- The set an instance binder was opened at, if it is one. -/
+def CapBound.instSet? : CapBound s → Option (CaptureSet s)
+  | .inst C => some C
+  | _ => none
 
 @[simp] theorem CapBound.opaque_rename (b : CapBound s1) (ρ : Rename s1 s2) :
     (b.rename ρ).opaque = b.opaque := by
@@ -197,6 +210,17 @@ def isRootB (Γ : Ctx s) : CapAtom s → Bool
 reverse. -/
 def lvlLeB (Γ : Ctx s) (e r : CapAtom s) : Bool :=
   depthGe ((Γ.lvlAtom e).map BVar.depth) (Ctx.rootDepth? r)
+
+/-- The set a capture atom is an instance of, if it is a capture binder with
+an instance bound.  Only a capture binder can be one. -/
+def instSet? (Γ : Ctx s) : CapAtom s → Option (CaptureSet s)
+  | .cvar κ => (Γ.lookupCap κ).instSet?
+  | _ => none
+
+/-- `a` is a binder opened as an instance of `C`.  An `abbrev`, so that
+`Decidable` is synthesised and the checker's case decides. -/
+abbrev InstOf (Γ : Ctx s) (a : CapAtom s) (C : CaptureSet s) : Prop :=
+  Γ.instSet? a = some C
 
 /-- `r` is a scope root of `Γ`.  An `abbrev`, so that `Decidable` is
 synthesised and `by decide` works. -/

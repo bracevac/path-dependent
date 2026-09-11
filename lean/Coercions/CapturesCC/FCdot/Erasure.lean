@@ -21,7 +21,7 @@ namespace FCdot
 mutual
 
 def Tm.erase : Tm s → Runtime.Tm s
-  | .atom a => .var a.root
+  | .atom p => .var p.root
   | .val v => v.erase
   | .app a b => .app a.root b.root
   | .proj a ℓ _ => .proj a.root ℓ
@@ -29,6 +29,12 @@ def Tm.erase : Tm s → Runtime.Tm s
   -- content and vanish.
   | .let t u _ _ => .let t.erase u.erase
   | .cast t _ => t.erase
+  -- An answer cast carries no runtime content either.
+  | .castE t _ => t.erase
+  -- The declared use set and the two evidences of an unpacking vanish, and
+  -- the two binders of its body are the two binders of the runtime's own
+  -- unpacking.
+  | .letex t u _ _ _ => .letex t.erase u.erase
   -- Unboxing opens the runtime box a box erases to.
   | .unbox a _ _ => .unbox a.root
 
@@ -39,6 +45,9 @@ def Value.erase : Value s → Runtime.Tm s
   | .obj _ _ _ F => .obj F.erase
   -- A box is the runtime's inert box holding the boxed atom's root.
   | .box a => .box a.root
+  -- A wrapper carries no runtime content: a packed value erases to its
+  -- payload, as a cast one does.
+  | .pack _ _ _ v => v.erase
   | .cast v _ => v.erase
 
 def Fields.erase : Fields s → Runtime.Fields s
@@ -58,6 +67,8 @@ def Cont.erase : Cont s → Runtime.Cont s
   | .nil => .nil
   | .cons K (.let u _ _) => .cons K.erase u.erase
   | .cons K (.cast _) => K.erase
+  | .cons K (.castE _) => K.erase
+  | .cons K (.letex u _ _ _) => .consE K.erase u.erase
 
 def State.erase (st : State s) : Runtime.State s :=
   ⟨st.σ.erase, st.K.erase, st.t.erase⟩
@@ -82,6 +93,19 @@ atom's root. -/
 @[simp] theorem Tm.erase_unbox (a : Atom s) (U : CaptureSet s) (f : CapCo s) :
     ⌊(Tm.unbox a U f)⌋ = .unbox a.root := rfl
 
+/-! ### The wrapper and the unpacking
+
+A pack is a wrapper, so it erases to the erasure of what it wraps, and an
+unpacking erases to the runtime's own, which is the one runtime step that
+extends a signature by a capture binder. -/
+
+@[simp] theorem Value.erase_pack (C : CaptureSet s) (h : CapCo s) (e : LeCo (Sig.scope s))
+    (v : Value s) : ⌊(Value.pack C h e v)⌋ = ⌊v⌋ := rfl
+
+@[simp] theorem Tm.erase_letex (t : Tm s) (u : Tm ((s,c),x)) (U : CaptureSet s)
+    (h : CapCo s) (f : CapCo ((s,c),x)) :
+    ⌊(Tm.letex t u U h f)⌋ = .letex ⌊t⌋ ⌊u⌋ := rfl
+
 /-! ### Erasure and the inspected root
 
 The root a term reads survives erasure: an application erases to a runtime
@@ -102,6 +126,8 @@ theorem Tm.inspects_erase {s : Sig} {t : Tm s} {x : BVar s .var}
   | val v => exact absurd h (by simp)
   | «let» t u U f => exact absurd h (by simp)
   | cast t e => exact absurd h (by simp)
+  | castE t g => exact absurd h (by simp)
+  | letex t u U hh f => exact absurd h (by simp)
 
 /-- Erasure of a state preserves the root the state reads. -/
 theorem State.inspects_erase {s : Sig} {st : State s} {x : BVar s .var}
@@ -109,17 +135,24 @@ theorem State.inspects_erase {s : Sig} {st : State s} {x : BVar s .var}
   Tm.inspects_erase h
 
 /-- States whose next step only moves a cast frame; such steps erase to no
-runtime step. -/
+runtime step.  The answer cast joins the plain one: its three steps are
+unconditional, so each of them erases to nothing, which is what makes the
+backward simulation reach `erase_reflect_aux`. -/
 def State.CastRedex (st : State s) : Prop :=
   (∃ t e, st.t = .cast t e) ∨
-  (∃ K e, st.K = .cons K (.cast e) ∧ ((∃ v, st.t = .val v) ∨ (∃ a, st.t = .atom a)))
+  (∃ t g, st.t = .castE t g) ∨
+  (∃ K e, st.K = .cons K (.cast e) ∧ ((∃ v, st.t = .val v) ∨ (∃ p, st.t = .atom p))) ∨
+  (∃ K g, st.K = .cons K (.castE g) ∧ ((∃ v, st.t = .val v) ∨ (∃ p, st.t = .atom p)))
 
 /-- The executable test for `State.CastRedex`. -/
 def State.isCastRedex (st : State s) : Bool :=
   match st.t, st.K with
   | .cast _ _, _ => true
+  | .castE _ _, _ => true
   | .val _, .cons _ (.cast _) => true
   | .atom _, .cons _ (.cast _) => true
+  | .val _, .cons _ (.castE _) => true
+  | .atom _, .cons _ (.castE _) => true
   | _, _ => false
 
 theorem State.isCastRedex_iff (st : State s) : st.isCastRedex = true ↔ st.CastRedex := by

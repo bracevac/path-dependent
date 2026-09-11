@@ -1,5 +1,5 @@
 import Coercions.CapturesCC.FCdot.FormAlgebra
-import Coercions.CapturesCC.FCdot.ErasureMetatheory
+import Coercions.CapturesCC.FCdot.Preservation
 
 namespace CapturesCC
 
@@ -115,6 +115,9 @@ theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) : RootViewTyped Γ 
       rw [hT]
       refine ⟨fun Tel h => ?_, by simp⟩
       simp at h
+  -- A packed value is never stored: `Store.Typed.cons` premises
+  -- `Value.HasType`, which has no `pack` rule (`refute-b2.md` F-A).
+  | pack C h e v => rw [hl] at hv; cases hv
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-- Field presence recorded in the context is field presence in the store. -/
@@ -123,12 +126,14 @@ theorem Store.Typed.hasField (hσ : ⊢ σ : Γ) {x : BVar s .var} {Fs : List La
   rw [hσ.lookupFields x] at hF
   obtain rfl := Option.some.inj hF
   have hlit := hσ.lookup_isLiteral x
+  have hv := hσ.lookup x
   cases hl : σ.lookup x with
   | lam A S t g => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
   | obj A W Wc F =>
       rw [hl] at hmem
       exact ⟨A, W, Wc, F, hl, Fields.get?_isSome_of_mem (by simpa [Value.fieldLabels] using hmem)⟩
   | box b => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
+  | pack C h e v => rw [hl] at hv; cases hv
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-! ## Statements -/
@@ -267,6 +272,7 @@ theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
       rw [hl] at hv
       obtain ⟨X, hT, _⟩ := hv.box_inv
       exact Or.inr (Or.inr ⟨_, by rw [hT]; rfl⟩)
+  | pack C h e v => rw [hl] at hv; cases hv
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-- Over a typed store the root's type never resolves to `⊥`, and it never
@@ -427,6 +433,9 @@ theorem capeq_canon {φ : CapEq s} {C D : CaptureSet s} (h : Γ ⊢ᶜ φ : C �
   | .symm hφ => exact (capeq_canon hφ).symm
   | .trans h₁ h₂ => exact (capeq_canon h₁).trans (capeq_canon h₂)
   | .defC hd => exact Ctx.Root_name hd
+  -- An instance binder stands for the set it was opened at, which is
+  -- `Ctx.Root_inst`: no store, no fuel shift.
+  | .instC hI => exact Ctx.Root_inst hI
   | .member (a := a) ha he hAt =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
       obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he
@@ -735,6 +744,7 @@ theorem closed_box_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {T : Ty s} {D : Ca
       obtain ⟨hT, _⟩ := hv.obj_inv
       rw [hT] at hx; simp at hx
   | box b => exact ⟨b, a', n, F, rfl, hF, hform⟩
+  | pack C h e v => rw [hl] at hv; cases hv
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 /-- The canonical-forms obligation of preservation. -/
@@ -810,14 +820,11 @@ theorem preservation' {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
     ∃ ρ : Rename s s', State.Typed st' (U.rename ρ) :=
   preservation (fun _ hσ => hσ.formsTyped) hT step
 
-/-- Backward simulation over typed stores. -/
-theorem erase_reflect' {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.State s'}
-    (hσ : ⊢ st.σ : Γ) (hty : ∃ T, Γ ⊢ st.t : T)
-    (h : Runtime.Step st.erase r) :
-    ∃ st' : State s', Steps st st' ∧ st'.erase = r :=
-  erase_reflect hσ (fun _ _ _ _ ha _ => closedAtomForm_pi hσ ha)
-    (fun _ _ _ hh => closed_has_field hσ hh)
-    (fun _ _ _ ha => closed_box_inversion hσ ha) hty h
+/-! Backward simulation over typed stores lives at the end of
+`ErasureMetatheory.lean`, which is the first module that sees both
+`erase_reflect` and the three canonical-forms hypotheses it takes.  This
+module cannot hold it, because `ErasureMetatheory` reads the answer sort of
+this module's `preservation'` and so must come after it in the import graph. -/
 
 end
 

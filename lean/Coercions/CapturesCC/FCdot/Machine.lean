@@ -40,10 +40,20 @@ inductive Frame : Sig → Type where
       avoidance evidence putting the body's use set below it. -/
   | «let» : Tm (s,x) → CaptureSet s → CapCo (s,x) → Frame s
   | cast : LeCo s → Frame s
+  /-- The answer cast frame.  It holds the coercion itself and not a head
+      form, so its three steps are unconditional. -/
+  | castE : ELeCo s → Frame s
+  /-- `letex ⟨κ, x⟩ = □ in u ⦃U'; h; f⦄`: the body, the use set it declares,
+      the evidence putting the head's bound below that set, and the body's
+      avoidance evidence. -/
+  | letex : Tm ((s,c),x) → CaptureSet s → CapCo s → CapCo ((s,c),x) → Frame s
 
 def Frame.rename : Frame s1 → Rename s1 s2 → Frame s2
   | .let u U f, ρ => .let (u.rename ρ.lift) (U.rename ρ) (f.rename ρ.lift)
   | .cast e, ρ => .cast (e.rename ρ)
+  | .castE g, ρ => .castE (g.rename ρ)
+  | .letex u U h f, ρ =>
+      .letex (u.rename ρ.lift.lift) (U.rename ρ) (h.rename ρ) (f.rename ρ.lift.lift)
 
 /-- Continuation: frames, innermost last. -/
 inductive Cont : Sig → Type where
@@ -56,6 +66,11 @@ def Cont.rename : Cont s1 → Rename s1 s2 → Cont s2
 
 def Cont.weaken (K : Cont s) : Cont (s,x) := K.rename Rename.succ
 
+/-- The capture-kind twin of `Cont.weaken`.  `Cont.rename` is already kind
+generic, so the twin is one line; `Cont.weaken` is not, because its result
+signature names `,x`. -/
+def Cont.weakenC (K : Cont s) : Cont (s,c) := K.rename Rename.succ
+
 scoped postfix:max "↑" => Cont.weaken
 
 scoped infixl:65 " ▹ " => Cont.cons
@@ -63,18 +78,33 @@ scoped infixl:65 " ▹ " => Cont.cons
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ₖ " K:51 " : " T:51 " ⇒ " U:51 => Cont.Typed Γ K T U
 
-/-- `Γ ⊢ₖ K : T ⇒ U`: `K` accepts a value of type `T` and produces `U`. -/
-inductive Cont.Typed : Ctx s → Cont s → Ty s → Ty s → Prop where
-  | nil : Γ ⊢ₖ .nil : T ⇒ T
+/-- `Γ ⊢ₖ K : E ⇒ U`: `K` accepts an answer `E` and produces the type `U`.
+Only what a continuation accepts is widened to an answer; `nil` accepts a
+plain `.ty T` and produces `T`, so a continuation still produces a type. -/
+inductive Cont.Typed : Ctx s → Cont s → ETy s → Ty s → Prop where
+  | nil : Γ ⊢ₖ .nil : .ty T ⇒ T
   | «let» :
-      Γ.cons (.opaque T) ⊢ u : U↑ →
+      Γ.cons (.opaque T) ⊢ u :ᵉ E↑ →
       Γ.cons (.opaque T) ⊢ᶜ f : u.uses ⊑ U'↑ →
-      Γ ⊢ₖ K : U ⇒ V →
-      Γ ⊢ₖ K ▹ .let u U' f : T ⇒ V
+      Γ ⊢ₖ K : E ⇒ V →
+      Γ ⊢ₖ K ▹ .let u U' f : .ty T ⇒ V
   | cast :
       Γ ⊢ e : T ≤ U →
-      Γ ⊢ₖ K : U ⇒ V →
-      Γ ⊢ₖ K ▹ .cast e : T ⇒ V
+      Γ ⊢ₖ K : .ty U ⇒ V →
+      Γ ⊢ₖ K ▹ .cast e : .ty T ⇒ V
+  | castE :
+      Γ ⊢ᵉ g : E ≤ E' →
+      Γ ⊢ₖ K : E' ⇒ V →
+      Γ ⊢ₖ K ▹ .castE g : E ⇒ V
+  | letex {T : Ty (s,c)} {C₀ U' : CaptureSet s} {E : ETy s} :
+      Γ ⊢ᶜ h : C₀ ⊑ U' →
+      ((Γ.consC .star).cons (.opaque T)) ⊢ u :ᵉ
+        (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E)) →
+      ((Γ.consC .star).cons (.opaque T)) ⊢ᶜ f :
+        u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+          ∪ [CapAtom.cvar (.there .here)]) →
+      Γ ⊢ₖ K : E ⇒ V →
+      Γ ⊢ₖ K ▹ .letex u U' h f : ∃ᶜ[C₀] T ⇒ V
 
 open Lean PrettyPrinter in
 @[app_unexpander Cont.Typed] def Cont.Typed.unexpand : Unexpander
@@ -91,11 +121,11 @@ structure State (s : Sig) where
 /-- A state is typed when its store is typed in a transparent context in
 which the term and continuation are typed. -/
 def State.Typed (st : State s) (U : Ty s) : Prop :=
-  ∃ (Γ : Ctx s) (T : Ty s),
-    ⊢ st.σ : Γ ∧ Γ ⊢ st.t : T ∧ Γ ⊢ₖ st.K : T ⇒ U
+  ∃ (Γ : Ctx s) (E : ETy s),
+    ⊢ st.σ : Γ ∧ Γ ⊢ st.t :ᵉ E ∧ Γ ⊢ₖ st.K : E ⇒ U
 
 def State.Final (st : State s) : Prop :=
-  st.K = .nil ∧ (∃ v, st.t = .val v) ∨ st.K = .nil ∧ (∃ a, st.t = .atom a)
+  st.K = .nil ∧ (∃ v, st.t = .val v) ∨ st.K = .nil ∧ (∃ p, st.t = .atom p)
 
 /-! ## Use sets of a continuation and of a state
 
@@ -109,12 +139,19 @@ def usesK : Cont s → CaptureSet s
   | .nil => []
   | K ▹ .let _ U _ => usesK K ∪ U
   | K ▹ .cast _ => usesK K
+  | K ▹ .castE _ => usesK K
+  | K ▹ .letex _ U _ _ => usesK K ∪ U
 
 @[simp] theorem usesK_nil : usesK (.nil : Cont s) = [] := rfl
 @[simp] theorem usesK_let (K : Cont s) (u : Tm (s,x)) (U : CaptureSet s) (f : CapCo (s,x)) :
     usesK (K ▹ .let u U f) = usesK K ∪ U := rfl
 @[simp] theorem usesK_cast (K : Cont s) (e : LeCo s) :
     usesK (K ▹ .cast e) = usesK K := rfl
+@[simp] theorem usesK_castE (K : Cont s) (g : ELeCo s) :
+    usesK (K ▹ .castE g) = usesK K := rfl
+@[simp] theorem usesK_letex (K : Cont s) (u : Tm ((s,c),x)) (U : CaptureSet s)
+    (h : CapCo s) (f : CapCo ((s,c),x)) :
+    usesK (K ▹ .letex u U h f) = usesK K ∪ U := rfl
 
 /-- The use set of a continuation travels with a renaming. -/
 theorem usesK_rename {s1 s2 : Sig} : ∀ (K : Cont s1) (ρ : Rename s1 s2),
@@ -125,8 +162,19 @@ theorem usesK_rename {s1 s2 : Sig} : ∀ (K : Cont s1) (ρ : Rename s1 s2),
         usesK_rename K ρ]
   | K ▹ .cast e, ρ => by
       simp only [Cont.rename, Frame.rename, usesK_cast, usesK_rename K ρ]
+  | K ▹ .castE g, ρ => by
+      simp only [Cont.rename, Frame.rename, usesK_castE, usesK_rename K ρ]
+  | K ▹ .letex u U h f, ρ => by
+      simp only [Cont.rename, Frame.rename, usesK_letex, CaptureSet.rename_union,
+        usesK_rename K ρ]
 
 @[simp] theorem usesK_weaken (K : Cont s) : usesK (K↑) = (usesK K).weaken :=
+  usesK_rename K Rename.succ
+
+/-- The capture-kind twin of `usesK_weaken`, beside it for the same reason
+`Cont.weakenC` sits beside `Cont.weaken`. -/
+@[simp] theorem usesK_weakenC (K : Cont s) :
+    usesK K.weakenC = CaptureSet.weaken (k := .cap) (usesK K) :=
   usesK_rename K Rename.succ
 
 /-- The use set of a state. -/
@@ -164,6 +212,64 @@ def Tm.adjust (u : Tm (s,x)) (v : Value s) : Tm (s,x) :=
   | none => u
   | some E => u.subst (Subst.selfCast E.weaken)
 
+/-! ## Applying an answer coercion to a wrapper
+
+Both functions are total and structural on the coercion, which is what makes
+the three answer-cast steps unconditional.  The `cong` clause composes the
+wrapper's residual, read at `Ctx.scopeInst C`, with the congruence's, read at
+`Ctx.scope`, after transporting the second along `Ctx.Ren.instC` at the
+identity renaming.  The two clauses that hand back their input unchanged are
+the typed-impossible combinations, and preservation closes them by inverting
+the two typings.  No nesting arises in a typed state, because a `pack`
+coercion has a plain left endpoint and a packed value has an existential
+answer. -/
+
+def Value.applyE : Value s → ELeCo s → Value s
+  | v, .plain e => .cast v e
+  | v, .pack D h e => .pack D h e v
+  | .pack C h e v, .cong h' f => .pack C (.trans h h') (e.trans f) v
+  | v, .cong _ _ => v
+  | v, .trans g g' => (v.applyE g).applyE g'
+
+def PAtom.applyE : PAtom s → ELeCo s → PAtom s
+  | .plain a, .plain e => .plain (.cast a e)
+  | .plain a, .pack D h e => .pack D h e a
+  | .pack C h e a, .cong h' f => .pack C (.trans h h') (e.trans f) a
+  -- The three typed-impossible combinations: a plain or a packing coercion
+  -- at a packed atom, and a congruence at a plain one.  `PAtom.pack` carries
+  -- an `Atom` and cannot nest, so each hands back its input, and preservation
+  -- closes each by inverting the two typings.  They stand before the `trans`
+  -- clause so that the `trans` clause is the generic one and reduces by
+  -- definition, as `Value.applyE`'s does.
+  | p@(.pack _ _ _ _), .plain _ => p
+  | p@(.pack _ _ _ _), .pack _ _ _ => p
+  | p@(.plain _), .cong _ _ => p
+  | p, .trans g g' => (p.applyE g).applyE g'
+
+/-- A composite coercion applies in two steps.  It holds by definition at
+`Value.applyE`; at `PAtom.applyE` the three typed-impossible clauses stand
+between, so the equation is proven by one case split on the wrapper. -/
+@[simp] theorem PAtom.applyE_trans (p : PAtom s) (g g' : ELeCo s) :
+    p.applyE (.trans g g') = (p.applyE g).applyE g' := by
+  cases p <;> rfl
+
+@[simp] theorem Value.applyE_trans (v : Value s) (g g' : ELeCo s) :
+    v.applyE (.trans g g') = (v.applyE g).applyE g' := rfl
+
+/-- Applying an answer coercion does not move the root a wrapper reads.  It
+is what keeps the use set of an answer-cast step equal to the use set of the
+state it fires on. -/
+@[simp] theorem PAtom.root_applyE : ∀ (p : PAtom s) (g : ELeCo s),
+    (p.applyE g).root = p.root
+  | .plain _, .plain _ => rfl
+  | .pack _ _ _ _, .plain _ => rfl
+  | .plain _, .pack _ _ _ => rfl
+  | .pack _ _ _ _, .pack _ _ _ => rfl
+  | .plain _, .cong _ _ => rfl
+  | .pack _ _ _ _, .cong _ _ => rfl
+  | p, .trans g g' => by
+      rw [PAtom.applyE_trans, PAtom.root_applyE _ g', PAtom.root_applyE p g]
+
 /-! ## Steps -/
 
 set_option hygiene false in
@@ -180,12 +286,46 @@ inductive Step : State s → State s' → Prop where
       ⟨σ, K, .cast t e⟩ ⟶ ⟨σ, K ▹ .cast e, t⟩
   | castVal :
       ⟨σ, K ▹ .cast e, .val v⟩ ⟶ ⟨σ, K, .val (.cast v e)⟩
+  /-- A plain cast frame at an atom focus.  The wrapper is read through
+      `PAtom.applyE` at the plain coercion, which is `Atom.cast` on a plain
+      atom and the identity on a packed one, so the step stays unconditional
+      and `castRedex_steps`, which has no typing hypothesis, keeps its
+      statement.  A packed atom under a plain cast frame is typed-impossible
+      and preservation closes it by inversion. -/
   | castAtom :
-      ⟨σ, K ▹ .cast e, .atom a⟩ ⟶ ⟨σ, K, .atom (.cast a e)⟩
+      ⟨σ, K ▹ .cast e, .atom p⟩ ⟶ ⟨σ, K, .atom (p.applyE (.plain e))⟩
   | alloc :
       ⟨σ, K ▹ .let u U f, .val v⟩ ⟶ ⟨.cons σ v.core, K.weaken, u.adjust v⟩
   | rename :
-      ⟨σ, K ▹ .let u U f, .atom a⟩ ⟶ ⟨σ, K, u.substAtom a⟩
+      ⟨σ, K ▹ .let u U f, .atom (.plain a)⟩ ⟶ ⟨σ, K, u.substAtom a⟩
+  /-- The answer cast pushes its coercion onto the continuation.  No
+      premise: the frame holds the coercion itself, so the step is a cast
+      redex for erasure. -/
+  | castEPush :
+      ⟨σ, K, .castE t g⟩ ⟶ ⟨σ, K ▹ .castE g, t⟩
+  | castEVal :
+      ⟨σ, K ▹ .castE g, .val v⟩ ⟶ ⟨σ, K, .val (v.applyE g)⟩
+  | castEAtom :
+      ⟨σ, K ▹ .castE g, .atom p⟩ ⟶ ⟨σ, K, .atom (p.applyE g)⟩
+  | letex :
+      ⟨σ, K, .letex t u U h f⟩ ⟶ ⟨σ, K ▹ .letex u U h f, t⟩
+  /-- Unpacking a packed atom: the store gains the witness as an instance
+      binder, the continuation is weakened into the new scope, and the body
+      is substituted by the wrapper's atom read there under the residual
+      coercion collapsed by `Subst.instRoot`.  No premise, no fuel, no head
+      form. -/
+  | unpackAtom :
+      ⟨σ, K ▹ .letex u U h f, .atom (.pack C h₀ e a)⟩ ⟶
+        ⟨σ.consC (.inst C), K.weakenC,
+          u.substAtom (.cast (Atom.weaken (k := .cap) a) (e.subst Subst.instRoot))⟩
+  /-- Unpacking a packed value: the store gains the witness as an instance
+      binder and then the literal, as `alloc` does. -/
+  | unpackVal :
+      ⟨σ, K ▹ .letex u U h f, .val (.pack C h₀ e v)⟩ ⟶
+        ⟨(σ.consC (.inst C)).cons
+            (Value.cast (Value.weaken (k := .cap) v) (e.subst Subst.instRoot)).core,
+          (K.weakenC).weaken,
+          u.adjust (Value.cast (Value.weaken (k := .cap) v) (e.subst Subst.instRoot))⟩
   /-- Application through a bare variable. -/
   | appVar :
       σ.lookup x = .lam A S₀ t₀ g →
@@ -207,8 +347,8 @@ inductive Step : State s → State s' → Prop where
       a ≠ .var a.root →
       σ ⊢ a ⇓ᶜ[n] (a', .pi d c) →
       ⟨σ, K, .app a b⟩ ⟶
-        ⟨σ, K, .cast (t₀.subst (Subst.enter (.cast b (d.subst (Subst.enterC b)))))
-                     (c.subst (Subst.enter b))⟩
+        ⟨σ, K, .castE (t₀.subst (Subst.enter (.cast b (d.subst (Subst.enterC b)))))
+                      (c.subst (Subst.enter b))⟩
   | proj :
       σ.lookup a.root = .obj A W Wc F →
       F.get? ℓ = some t →
@@ -220,14 +360,14 @@ inductive Step : State s → State s' → Prop where
       σ.lookup a.root = .box b →
       σ ⊢ a ⇓ᶜ[n] (a', F) →
       (F = .id ∨ ∃ φ, F = .eqv φ) →
-      ⟨σ, K, .unbox a U f⟩ ⟶ ⟨σ, K, .atom b⟩
+      ⟨σ, K, .unbox a U f⟩ ⟶ ⟨σ, K, .atom (.plain b)⟩
   /-- Unboxing an atom whose casts normalize to a box coercion `boxed d`:
       the boxed atom is handed back under `d`, as `appCast` hands the
       argument to the closure under the domain evidence. -/
   | unboxCast :
       σ.lookup a.root = .box b →
       σ ⊢ a ⇓ᶜ[n] (a', .boxed d) →
-      ⟨σ, K, .unbox a U f⟩ ⟶ ⟨σ, K, .atom (.cast b d)⟩
+      ⟨σ, K, .unbox a U f⟩ ⟶ ⟨σ, K, .atom (.plain (.cast b d))⟩
 
 /-- `st ⟶* st'`: reflexive transitive closure across signatures. -/
 inductive Steps : State s → State s' → Prop where

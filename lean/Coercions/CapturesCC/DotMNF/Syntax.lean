@@ -71,6 +71,12 @@ inductive CapAtom : Sig → Type where
       `elem` compares it syntactically like any other atom, and renaming
       maps it to itself.  `CaptureSet.expand` is what gives it a reading. -/
   | any : CapAtom s
+  /-- `fresh`, the notation of stage B2 read by position in a function
+      result.  It is inert exactly as `any` is: no rule of `Subcap`,
+      `SubShape`, `Sub`, `ESub`, `HasTy` or `DefsTy` mentions it, `elem`
+      compares it syntactically, and renaming maps it to itself.
+      `Ty.expandFresh` is what gives it a reading. -/
+  | fresh : CapAtom s
 deriving DecidableEq, Repr
 
 /-- A capture set: a list of atoms, read as a finite set. -/
@@ -138,6 +144,7 @@ def CapAtom.rename : CapAtom s1 → Rename s1 s2 → CapAtom s2
   | .cvar κ, ρ => .cvar (ρ.var κ)
   | .sel x C, ρ => .sel (ρ.var x) C
   | .any, _ => .any
+  | .fresh, _ => .fresh
 
 /-- Renaming of a capture set is pointwise. -/
 def CaptureSet.rename (C : CaptureSet s1) (ρ : Rename s1 s2) : CaptureSet s2 :=
@@ -209,6 +216,7 @@ def CaptureSet.expand : CaptureSet s → CaptureSet s → CaptureSet s
   | .var x :: C, D => .var x :: CaptureSet.expand C D
   | .cvar κ :: C, D => .cvar κ :: CaptureSet.expand C D
   | .sel x A :: C, D => .sel x A :: CaptureSet.expand C D
+  | .fresh :: C, D => .fresh :: CaptureSet.expand C D
 
 @[simp] theorem CaptureSet.expand_nil {s : Sig} (D : CaptureSet s) :
     CaptureSet.expand [] D = [] := rfl
@@ -226,6 +234,9 @@ def CaptureSet.expand : CaptureSet s → CaptureSet s → CaptureSet s
     (C D : CaptureSet s) :
     CaptureSet.expand (CapAtom.sel x A :: C) D = .sel x A :: CaptureSet.expand C D := rfl
 
+@[simp] theorem CaptureSet.expand_cons_fresh {s : Sig} (C D : CaptureSet s) :
+    CaptureSet.expand (CapAtom.fresh :: C) D = .fresh :: CaptureSet.expand C D := rfl
+
 /-- Expansion leaves every atom other than `any` where it is. -/
 theorem CaptureSet.expand_cons_of_ne {s : Sig} {a : CapAtom s} (h : a ≠ .any)
     (C D : CaptureSet s) :
@@ -235,6 +246,7 @@ theorem CaptureSet.expand_cons_of_ne {s : Sig} {a : CapAtom s} (h : a ≠ .any)
   · rfl
   · rfl
   · exact absurd rfl h
+  · rfl
 
 @[simp] theorem CaptureSet.expand_append {s : Sig} (C C' D : CaptureSet s) :
     CaptureSet.expand (C ++ C') D = CaptureSet.expand C D ++ CaptureSet.expand C' D := by
@@ -263,6 +275,7 @@ def CaptureSet.noAny : CaptureSet s → Bool
   | .var _ :: C => CaptureSet.noAny C
   | .cvar _ :: C => CaptureSet.noAny C
   | .sel _ _ :: C => CaptureSet.noAny C
+  | .fresh :: C => CaptureSet.noAny C
 
 /-- No `any` occurs in the set, as a proposition. -/
 def CaptureSet.NoAny (C : CaptureSet s) : Prop := C.noAny = true
@@ -279,6 +292,7 @@ theorem CaptureSet.noAny_cons_of_ne {s : Sig} {a : CapAtom s} (h : a ≠ .any)
   · exact hC
   · exact hC
   · exact absurd rfl h
+  · exact hC
 
 theorem CaptureSet.noAny_of_cons {s : Sig} {a : CapAtom s} {C : CaptureSet s}
     (h : CaptureSet.NoAny (a :: C)) : C.NoAny := by
@@ -287,6 +301,7 @@ theorem CaptureSet.noAny_of_cons {s : Sig} {a : CapAtom s} {C : CaptureSet s}
   · exact h
   · exact h
   · exact absurd h (by simp [CaptureSet.NoAny, CaptureSet.noAny])
+  · exact h
 
 theorem CaptureSet.noAny_append {s : Sig} {C D : CaptureSet s} (hC : C.NoAny)
     (hD : D.NoAny) : CaptureSet.NoAny (C ++ D) := by
@@ -298,6 +313,7 @@ theorem CaptureSet.noAny_append {s : Sig} {C D : CaptureSet s} (hC : C.NoAny)
       · exact CaptureSet.noAny_cons_of_ne (by simp) (ih (CaptureSet.noAny_of_cons hC))
       · exact CaptureSet.noAny_cons_of_ne (by simp) (ih (CaptureSet.noAny_of_cons hC))
       · exact absurd hC (by simp [CaptureSet.NoAny, CaptureSet.noAny])
+      · exact CaptureSet.noAny_cons_of_ne (by simp) (ih (CaptureSet.noAny_of_cons hC))
 
 theorem CaptureSet.noAny_rename {s1 s2 : Sig} {C : CaptureSet s1} (h : C.NoAny)
     (ρ : Rename s1 s2) : CaptureSet.NoAny (CaptureSet.rename C ρ) := by
@@ -312,6 +328,8 @@ theorem CaptureSet.noAny_rename {s1 s2 : Sig} {C : CaptureSet s1} (h : C.NoAny)
       · exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.rename])
           (ih (CaptureSet.noAny_of_cons h))
       · exact absurd h (by simp [CaptureSet.NoAny, CaptureSet.noAny])
+      · exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.rename])
+          (ih (CaptureSet.noAny_of_cons h))
 
 theorem CaptureSet.noAny_weaken {s : Sig} {k : Kind} {C : CaptureSet s} (h : C.NoAny) :
     CaptureSet.NoAny (C.weaken (k := k)) := CaptureSet.noAny_rename h Rename.succ
@@ -327,6 +345,7 @@ theorem CaptureSet.expand_of_noAny {s : Sig} {C : CaptureSet s} (h : C.NoAny)
       · simp [ih (CaptureSet.noAny_of_cons h)]
       · simp [ih (CaptureSet.noAny_of_cons h)]
       · exact absurd h (by simp [CaptureSet.NoAny, CaptureSet.noAny])
+      · simp [ih (CaptureSet.noAny_of_cons h)]
 
 /-- Expanding by a set with no `any` leaves no `any`. -/
 theorem CaptureSet.noAny_expand {s : Sig} {D : CaptureSet s} (hD : D.NoAny)
@@ -339,6 +358,7 @@ theorem CaptureSet.noAny_expand {s : Sig} {D : CaptureSet s} (hD : D.NoAny)
       · exact CaptureSet.noAny_cons_of_ne (by simp) ih
       · exact CaptureSet.noAny_cons_of_ne (by simp) ih
       · exact CaptureSet.noAny_append hD ih
+      · exact CaptureSet.noAny_cons_of_ne (by simp) ih
 
 /-- The set an arrow or an object reads `any` as under its own binder is its
 own set weakened, with the binder itself; renaming commutes with that. -/
@@ -396,8 +416,11 @@ inductive Shape : Sig → Type where
   /-- Dependent function shape `∀[κ](x : T₁) T₂`, on capturing types.  The
       arrow binds a capture binder `κ` before its parameter, so its domain
       lives in `Sig.dom s` and its codomain in `Sig.cod s`, exactly as the
-      target's `FCdot.Shape.pi` does. -/
-  | all : Ty (Sig.dom s) → Ty (Sig.cod s) → Shape s
+      target's `FCdot.Shape.pi` does.  The two types are spelled out for the
+      reason the target's are: `Dom` and `Cod` are declared after this mutual
+      block, and a mutual block may not mix an abbreviation with an inductive.
+      A change of either sort is a change here and at the abbreviation. -/
+  | all : Ty (Sig.dom s) → ETy (Sig.cod s) → Shape s
   /-- Intersection `S ∧ T`. -/
   | and : Shape s → Shape s → Shape s
   /-- The box former `□ T`.  Inert: not a declaration. -/
@@ -407,13 +430,27 @@ inductive Shape : Sig → Type where
 inductive Ty : Sig → Type where
   | capt : CaptureSet s → Shape s → Ty s
 
+/-- An answer: a type, or a type under one capture binder bounded by a
+capture set of the enclosing scope.  The codomain of an arrow and the type
+index of term typing, and nowhere else, exactly as the target's
+`FCdot.ETy` is placed (B2.1). -/
+inductive ETy : Sig → Type where
+  | ty : Ty s → ETy s
+  /-- `∃ᶜ[C] T`: the witness is bounded by `C`, a capture set of the
+      enclosing scope, and the body is read under the witness binder. -/
+  | ex : CaptureSet s → Ty (s,c) → ETy s
+
 end
 
-deriving instance DecidableEq for Shape, Ty
+deriving instance DecidableEq for Shape, Ty, ETy
 
 /-! ### Notation `S ^ C` -/
 
 scoped notation:75 S:76 " ^ " C:76 => Ty.capt C S
+
+/-- `∃ᶜ[C] T` is the answer `ETy.ex C T`.  (`ᶜ` is not a legal Lean identifier
+character, but it is a legal token of a notation.) -/
+scoped notation:max "∃ᶜ[" C "] " T:max => ETy.ex C T
 
 /-- A shape with the empty capture set. -/
 abbrev Ty.pure (S : Shape s) : Ty s := .capt [] S
@@ -434,11 +471,13 @@ def Ty.captureSet : Ty s → CaptureSet s
 theorem Ty.eta (T : Ty s) : T = T.shape ^ T.captureSet := by cases T; rfl
 
 /-- The domain of an arrow, behind one name.  It sits under the arrow's own
-capture binder, as the target's `FCdot.Dom` does. -/
+capture binder, as the target's `FCdot.Dom` does.  `Shape.all` spells this type
+out, because the constructor is declared before this line and cannot name it. -/
 abbrev Dom (s : Sig) : Type := Ty (Sig.dom s)
 /-- The codomain of an arrow, behind one name: it may mention the arrow's
-capture binder and the parameter. -/
-abbrev Cod (s : Sig) : Type := Ty (Sig.cod s)
+capture binder and the parameter.  `Shape.all` spells this type out for the same
+reason, so a re-sort of the codomain is this line and the constructor. -/
+abbrev Cod (s : Sig) : Type := ETy (Sig.cod s)
 
 mutual
 
@@ -457,14 +496,20 @@ def Shape.rename : Shape s1 → Rename s1 s2 → Shape s2
 def Ty.rename : Ty s1 → Rename s1 s2 → Ty s2
   | .capt C S, ρ => .capt (C.rename ρ) (S.rename ρ)
 
+def ETy.rename : ETy s1 → Rename s1 s2 → ETy s2
+  | .ty T, ρ => .ty (T.rename ρ)
+  | .ex C T, ρ => .ex (C.rename ρ) (T.rename ρ.lift)
+
 end
 
 def Shape.weaken (S : Shape s) : Shape (s,,k) := S.rename Rename.succ
 def Ty.weaken (T : Ty s) : Ty (s,,k) := T.rename Rename.succ
+def ETy.weaken (E : ETy s) : ETy (s,,k) := E.rename Rename.succ
 
 /-- Instantiate the innermost binder of a shape or a type by a variable. -/
 def Shape.substVar (S : Shape (s,,k)) (y : BVar s k) : Shape s := S.rename (Rename.subst y)
 def Ty.substVar (T : Ty (s,,k)) (y : BVar s k) : Ty s := T.rename (Rename.subst y)
+def ETy.substVar (E : ETy (s,,k)) (y : BVar s k) : ETy s := E.rename (Rename.subst y)
 
 /-! ### The domain and the codomain under a scope
 
@@ -479,7 +524,7 @@ abbrev Dom.underRoot (T : Dom s) : Ty ((s,c),c) := T.rename Rename.succ.lift
 /-- The domain as the body's parameter binding reads it. -/
 abbrev Dom.inBody (T : Dom s) : Ty (((s,c),c),x) := T.underRoot.weaken
 /-- The codomain under the body root. -/
-abbrev Cod.underRoot (E : Cod s) : Ty (((s,c),c),x) := E.rename Rename.succ.lift.lift
+abbrev Cod.underRoot (E : Cod s) : ETy (Sig.body s) := E.rename Rename.succ.lift.lift
 
 @[simp] theorem Ty.shape_rename {s1 s2 : Sig} (T : Ty s1) (ρ : Rename s1 s2) :
     (T.rename ρ).shape = T.shape.rename ρ := by cases T; rfl
@@ -520,7 +565,8 @@ def Shape.expand : Shape s → CaptureSet s → Shape s
   | .mu S, D₀ => .mu (S.expand (CaptureSet.weaken D₀ ∪ [CapAtom.var .here]))
   | .all T1 T2, D₀ =>
       .all (T1.expand [])
-        (T2.expand (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D₀) ∪ [CapAtom.var .here]))
+        (ETy.expand T2
+          (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D₀) ∪ [CapAtom.var .here]))
   | .and S T, D₀ => .and (S.expand D₀) (T.expand D₀)
   | .box T, _ => .box (T.expand [])
 
@@ -528,6 +574,13 @@ def Shape.expand : Shape s → CaptureSet s → Shape s
 the type's own set is expanded first, and is the reading set of its shape. -/
 def Ty.expand : Ty s → CaptureSet s → Ty s
   | .capt C S, D => .capt (CaptureSet.expand C D) (S.expand (CaptureSet.expand C D))
+
+/-- `E.expand D` on an answer.  A plain answer is its type; an existential
+resets the reading for what is under it, as a type-member bound does, since
+`FreshOk` and `AnyOk` both keep `any` out of one. -/
+def ETy.expand : ETy s → CaptureSet s → ETy s
+  | .ty T, D => .ty (T.expand D)
+  | .ex C T, _ => .ex (CaptureSet.expand C []) (T.expand [])
 
 end
 
@@ -561,13 +614,18 @@ def Shape.noAny : Shape s → Bool
   | .fld _ T => T.noAny
   | .cap _ c1 c2 => CaptureSet.noAny c1 && CaptureSet.noAny c2
   | .mu S => S.noAny
-  | .all T1 T2 => T1.noAny && T2.noAny
+  | .all T1 T2 => T1.noAny && ETy.noAny T2
   | .and S T => S.noAny && T.noAny
   | .box T => T.noAny
 
 /-- No `any` anywhere in the type. -/
 def Ty.noAny : Ty s → Bool
   | .capt C S => CaptureSet.noAny C && S.noAny
+
+/-- No `any` anywhere in the answer. -/
+def ETy.noAny : ETy s → Bool
+  | .ty T => T.noAny
+  | .ex C T => CaptureSet.noAny C && T.noAny
 
 end
 
@@ -582,13 +640,19 @@ def Shape.anyOk : Shape s → Bool
   | .fld _ T => T.anyOk
   | .cap _ c1 _ => CaptureSet.noAny c1
   | .mu S => S.anyOk
-  | .all (.capt C1 S1) T2 => CaptureSet.noAny C1 && S1.anyOk && T2.anyOk
+  | .all (.capt C1 S1) T2 => CaptureSet.noAny C1 && S1.anyOk && ETy.anyOk T2
   | .and S T => S.anyOk && T.anyOk
   | .box T => T.noAny
 
 /-- Every `any` of the type is in a position `expand` reads. -/
 def Ty.anyOk : Ty s → Bool
   | .capt _ S => S.anyOk
+
+/-- Every `any` of the answer is in a position `expand` reads.  An
+existential holds none. -/
+def ETy.anyOk : ETy s → Bool
+  | .ty T => T.anyOk
+  | .ex C T => CaptureSet.noAny C && T.noAny
 
 end
 
@@ -598,17 +662,29 @@ def Shape.NoAny (S : Shape s) : Prop := S.noAny = true
 /-- No `any` anywhere in the type, as a proposition. -/
 def Ty.NoAny (T : Ty s) : Prop := T.noAny = true
 
+/-- No `any` anywhere in the answer, as a proposition. -/
+def ETy.NoAny (E : ETy s) : Prop := E.noAny = true
+
 /-- Every `any` of the shape is read, as a proposition. -/
 def Shape.AnyOk (S : Shape s) : Prop := S.anyOk = true
 
 /-- Every `any` of the type is read, as a proposition. -/
 def Ty.AnyOk (T : Ty s) : Prop := T.anyOk = true
 
+/-- Every `any` of the answer is read, as a proposition. -/
+def ETy.AnyOk (E : ETy s) : Prop := E.anyOk = true
+
 instance Shape.NoAny.instDecidable {s : Sig} (S : Shape s) : Decidable S.NoAny :=
   decidable_of_iff (S.noAny = true) Iff.rfl
 
 instance Ty.NoAny.instDecidable {s : Sig} (T : Ty s) : Decidable T.NoAny :=
   decidable_of_iff (T.noAny = true) Iff.rfl
+
+instance ETy.NoAny.instDecidable {s : Sig} (E : ETy s) : Decidable E.NoAny :=
+  decidable_of_iff (E.noAny = true) Iff.rfl
+
+instance ETy.AnyOk.instDecidable {s : Sig} (E : ETy s) : Decidable E.AnyOk :=
+  decidable_of_iff (E.anyOk = true) Iff.rfl
 
 instance Shape.AnyOk.instDecidable {s : Sig} (S : Shape s) : Decidable S.AnyOk :=
   decidable_of_iff (S.anyOk = true) Iff.rfl
@@ -639,7 +715,7 @@ instance Ty.AnyOk.instDecidable {s : Sig} (T : Ty s) : Decidable T.AnyOk :=
 
 @[simp] theorem Shape.noAny_all {s : Sig} (T1 : Dom s) (T2 : Cod s) :
     Shape.NoAny (.all T1 T2) ↔ T1.NoAny ∧ T2.NoAny := by
-  simp [Shape.NoAny, Ty.NoAny, Shape.noAny]
+  simp [Shape.NoAny, Ty.NoAny, ETy.NoAny, Shape.noAny]
 
 @[simp] theorem Shape.noAny_and {s : Sig} (S T : Shape s) :
     Shape.NoAny (.and S T) ↔ S.NoAny ∧ T.NoAny := by simp [Shape.NoAny, Shape.noAny]
@@ -673,7 +749,7 @@ instance Ty.AnyOk.instDecidable {s : Sig} (T : Ty s) : Decidable T.AnyOk :=
 @[simp] theorem Shape.anyOk_all {s : Sig} (C1 : CaptureSet (Sig.dom s)) (S1 : Shape (Sig.dom s))
     (T2 : Cod s) :
     Shape.AnyOk (.all (S1 ^ C1) T2) ↔ C1.NoAny ∧ S1.AnyOk ∧ T2.AnyOk := by
-  simp [Shape.AnyOk, Ty.AnyOk, CaptureSet.NoAny, Shape.anyOk, and_assoc]
+  simp [Shape.AnyOk, Ty.AnyOk, ETy.AnyOk, CaptureSet.NoAny, Shape.anyOk, and_assoc]
 
 @[simp] theorem Shape.anyOk_and {s : Sig} (S T : Shape s) :
     Shape.AnyOk (.and S T) ↔ S.AnyOk ∧ T.AnyOk := by simp [Shape.AnyOk, Shape.anyOk]
@@ -683,6 +759,20 @@ instance Ty.AnyOk.instDecidable {s : Sig} (T : Ty s) : Decidable T.AnyOk :=
 
 @[simp] theorem Ty.anyOk_capt {s : Sig} (C : CaptureSet s) (S : Shape s) :
     Ty.AnyOk (S ^ C) ↔ S.AnyOk := by simp [Ty.AnyOk, Shape.AnyOk, Ty.anyOk]
+
+@[simp] theorem ETy.noAny_ty {s : Sig} (T : Ty s) :
+    ETy.NoAny (.ty T) ↔ T.NoAny := by simp [ETy.NoAny, Ty.NoAny, ETy.noAny]
+
+@[simp] theorem ETy.noAny_ex {s : Sig} (C : CaptureSet s) (T : Ty (s,c)) :
+    ETy.NoAny (∃ᶜ[C] T) ↔ C.NoAny ∧ T.NoAny := by
+  simp [ETy.NoAny, Ty.NoAny, CaptureSet.NoAny, ETy.noAny]
+
+@[simp] theorem ETy.anyOk_ty {s : Sig} (T : Ty s) :
+    ETy.AnyOk (.ty T) ↔ T.AnyOk := by simp [ETy.AnyOk, Ty.AnyOk, ETy.anyOk]
+
+@[simp] theorem ETy.anyOk_ex {s : Sig} (C : CaptureSet s) (T : Ty (s,c)) :
+    ETy.AnyOk (∃ᶜ[C] T) ↔ C.NoAny ∧ T.NoAny := by
+  simp [ETy.AnyOk, Ty.NoAny, CaptureSet.NoAny, ETy.anyOk]
 
 /-! ### Expansion is the identity where there is no `any` -/
 
@@ -708,7 +798,7 @@ theorem Shape.expand_of_noAny {s : Sig} :
       simp only [Shape.expand, Shape.expand_of_noAny S h]
   | .all T1 T2, h, D₀ => by
       rw [Shape.noAny_all] at h
-      simp only [Shape.expand, Ty.expand_of_noAny T1 h.1, Ty.expand_of_noAny T2 h.2]
+      simp only [Shape.expand, Ty.expand_of_noAny T1 h.1, ETy.expand_of_noAny T2 h.2]
   | .and S T, h, D₀ => by
       rw [Shape.noAny_and] at h
       simp only [Shape.expand, Shape.expand_of_noAny S h.1, Shape.expand_of_noAny T h.2]
@@ -722,6 +812,17 @@ theorem Ty.expand_of_noAny {s : Sig} :
   | .capt C S, h, D => by
       rw [Ty.noAny_capt] at h
       simp only [Ty.expand, CaptureSet.expand_of_noAny h.1, Shape.expand_of_noAny S h.2]
+
+/-- Expansion is the identity on an answer with no `any`. -/
+theorem ETy.expand_of_noAny {s : Sig} :
+    ∀ (E : ETy s), E.NoAny → ∀ D : CaptureSet s, E.expand D = E
+  | .ty T, h, D => by
+      rw [ETy.noAny_ty] at h
+      simp only [ETy.expand, Ty.expand_of_noAny T h]
+  | .ex C T, h, _ => by
+      rw [ETy.noAny_ex] at h
+      simp only [ETy.expand, CaptureSet.expand_of_noAny h.1,
+        Ty.expand_of_noAny T h.2]
 
 end
 
@@ -756,7 +857,7 @@ theorem Shape.noAny_expand {s : Sig} :
       rw [Shape.anyOk_all] at h
       rw [Shape.expand, Shape.noAny_all]
       refine ⟨Ty.noAny_expand (S1 ^ C1) [] ?_ CaptureSet.noAny_nil,
-        Ty.noAny_expand T2 _ h.2.2 (CaptureSet.noAny_selfC hD)⟩
+        ETy.noAny_expand T2 _ h.2.2 (CaptureSet.noAny_selfC hD)⟩
       rw [Ty.anyOk_capt]
       exact h.2.1
   | .and S T, D₀, h, hD => by
@@ -776,6 +877,19 @@ theorem Ty.noAny_expand {s : Sig} :
       rw [Ty.expand, Ty.noAny_capt]
       exact ⟨CaptureSet.noAny_expand hD C,
         Shape.noAny_expand S _ h (CaptureSet.noAny_expand hD C)⟩
+
+/-- Expanding an `AnyOk` answer by a set with no `any` leaves no `any`. -/
+theorem ETy.noAny_expand {s : Sig} :
+    ∀ (E : ETy s) (D : CaptureSet s), E.AnyOk → D.NoAny → ETy.NoAny (E.expand D)
+  | .ty T, D, h, hD => by
+      rw [ETy.anyOk_ty] at h
+      rw [ETy.expand, ETy.noAny_ty]
+      exact Ty.noAny_expand T D h hD
+  | .ex C T, _, h, _ => by
+      rw [ETy.anyOk_ex] at h
+      rw [ETy.expand, ETy.noAny_ex, CaptureSet.expand_of_noAny h.1,
+        Ty.expand_of_noAny T h.2]
+      exact h
 
 end
 
@@ -802,7 +916,7 @@ theorem Shape.expand_rename {s1 s2 : Sig} :
         CaptureSet.self_rename D₀ ρ]
   | .all T1 T2, D₀, ρ => by
       simp only [Shape.expand, Shape.rename, Ty.expand_rename T1 [] ρ.lift,
-        Ty.expand_rename T2 _ ρ.lift.lift, CaptureSet.selfC_rename D₀ ρ,
+        ETy.expand_rename T2 _ ρ.lift.lift, CaptureSet.selfC_rename D₀ ρ,
         CaptureSet.rename_nil]
   | .and S T, D₀, ρ => by
       simp only [Shape.expand, Shape.rename, Shape.expand_rename S D₀ ρ,
@@ -817,6 +931,16 @@ theorem Ty.expand_rename {s1 s2 : Sig} :
   | .capt C S, D, ρ => by
       simp only [Ty.expand, Ty.rename, CaptureSet.expand_rename, Shape.expand_rename S _ ρ]
 
+/-- Expansion of an answer commutes with renaming, the reading set renamed. -/
+theorem ETy.expand_rename {s1 s2 : Sig} :
+    ∀ (E : ETy s1) (D : CaptureSet s1) (ρ : Rename s1 s2),
+      (E.expand D).rename ρ = (E.rename ρ).expand (CaptureSet.rename D ρ)
+  | .ty T, D, ρ => by
+      simp only [ETy.expand, ETy.rename, Ty.expand_rename T D ρ]
+  | .ex C T, D, ρ => by
+      simp only [ETy.expand, ETy.rename, CaptureSet.expand_rename,
+        Ty.expand_rename T [] ρ.lift, CaptureSet.rename_nil]
+
 end
 
 /-- Expansion of a shape commutes with weakening. -/
@@ -828,6 +952,133 @@ theorem Shape.expand_weaken {s : Sig} {k : Kind} (S : Shape s) (D₀ : CaptureSe
 theorem Ty.expand_weaken {s : Sig} {k : Kind} (T : Ty s) (D : CaptureSet s) :
     (T.expand D).weaken (k := k) = (T.weaken).expand (D.weaken) :=
   Ty.expand_rename T D Rename.succ
+
+/-! ## `fresh` and its expansion (stage B2)
+
+`fresh` is a notation the calculus never interprets, exactly as `any` is: an
+atom like any other, compared syntactically by `elem`, mentioned by no rule.
+Its meaning is by position, and `Ty.expandFresh` is what gives it that
+meaning.  A result `fresh` becomes an existential bounded by what the
+function can hold: its own assigned capture set united with its parameter
+(decision 18).  `FreshOk` allows `fresh` only in the top-level capture set
+of a function result: not in a parameter type, not in a type-member or
+capture-member bound, not under a box, not in the capture set of an object
+type, and not under a further arrow.  So every `fresh` is gone after
+expansion and an expanded program is a program of the `fresh`-free fragment.
+
+`substFresh` is the exact twin of the `any` machinery: it replaces every
+`fresh` by a given set, weakened as it passes under a binder. -/
+
+/-- No `fresh` occurs in the set. -/
+def CaptureSet.noFresh : CaptureSet s → Bool
+  | [] => true
+  | .fresh :: _ => false
+  | .var _ :: C => CaptureSet.noFresh C
+  | .cvar _ :: C => CaptureSet.noFresh C
+  | .sel _ _ :: C => CaptureSet.noFresh C
+  | .any :: C => CaptureSet.noFresh C
+
+/-- `C.substFresh D`: every `fresh` of `C` replaced by the atoms of `D`. -/
+def CaptureSet.substFresh : CaptureSet s → CaptureSet s → CaptureSet s
+  | [], _ => []
+  | .fresh :: C, D => D ++ CaptureSet.substFresh C D
+  | .var x :: C, D => .var x :: CaptureSet.substFresh C D
+  | .cvar κ :: C, D => .cvar κ :: CaptureSet.substFresh C D
+  | .sel x A :: C, D => .sel x A :: CaptureSet.substFresh C D
+  | .any :: C, D => .any :: CaptureSet.substFresh C D
+
+mutual
+
+/-- No `fresh` anywhere in the shape. -/
+def Shape.noFresh : Shape s → Bool
+  | .top => true
+  | .bot => true
+  | .sel _ _ => true
+  | .typ _ S T => S.noFresh && T.noFresh
+  | .fld _ T => T.noFresh
+  | .cap _ c1 c2 => CaptureSet.noFresh c1 && CaptureSet.noFresh c2
+  | .mu S => S.noFresh
+  | .all T1 T2 => T1.noFresh && ETy.noFresh T2
+  | .and S T => S.noFresh && T.noFresh
+  | .box T => T.noFresh
+
+/-- No `fresh` anywhere in the type. -/
+def Ty.noFresh : Ty s → Bool
+  | .capt C S => CaptureSet.noFresh C && S.noFresh
+
+/-- No `fresh` anywhere in the answer. -/
+def ETy.noFresh : ETy s → Bool
+  | .ty T => T.noFresh
+  | .ex C T => CaptureSet.noFresh C && T.noFresh
+
+end
+
+mutual
+
+/-- Every `fresh` of the shape replaced by `D`, weakened under each binder. -/
+def Shape.substFresh : Shape s → CaptureSet s → Shape s
+  | .top, _ => .top
+  | .bot, _ => .bot
+  | .sel p A, _ => .sel p A
+  | .typ A S T, D => .typ A (S.substFresh D) (T.substFresh D)
+  | .fld a T, D => .fld a (T.substFresh D)
+  | .cap A c1 c2, D => .cap A (c1.substFresh D) (c2.substFresh D)
+  | .mu S, D => .mu (S.substFresh (CaptureSet.weaken D))
+  | .all T1 T2, D =>
+      .all (T1.substFresh (CaptureSet.weaken (k := .cap) D))
+        (ETy.substFresh T2 (CaptureSet.weaken (CaptureSet.weaken (k := .cap) D)))
+  | .and S T, D => .and (S.substFresh D) (T.substFresh D)
+  | .box T, D => .box (T.substFresh D)
+
+/-- Every `fresh` of the type replaced by `D`. -/
+def Ty.substFresh : Ty s → CaptureSet s → Ty s
+  | .capt C S, D => .capt (CaptureSet.substFresh C D) (S.substFresh D)
+
+/-- Every `fresh` of the answer replaced by `D`. -/
+def ETy.substFresh : ETy s → CaptureSet s → ETy s
+  | .ty T, D => .ty (T.substFresh D)
+  | .ex C T, D =>
+      .ex (CaptureSet.substFresh C D) (T.substFresh (CaptureSet.weaken (k := .cap) D))
+
+end
+
+/-- The result of an arrow, as `FreshOk` reads it: the top-level capture set
+of a plain answer may hold `fresh`, and nothing else in it may. -/
+def ETy.codFreshOk : ETy s → Bool
+  | .ty (.capt _ S) => S.noFresh
+  | .ex C T => CaptureSet.noFresh C && T.noFresh
+
+/-- Every `fresh` of the shape is in a position `expandFresh` reads: the
+top-level capture set of the result of this very arrow, and nowhere else. -/
+def Shape.freshOk : Shape s → Bool
+  | .all T1 T2 => T1.noFresh && ETy.codFreshOk T2
+  | S => S.noFresh
+
+/-- Every `fresh` of the type is in a position `expandFresh` reads. -/
+def Ty.freshOk : Ty s → Bool
+  | .capt C S => CaptureSet.noFresh C && S.freshOk
+
+/-- No `fresh` anywhere in the type, as a proposition. -/
+abbrev Ty.NoFresh (T : Ty s) : Prop := T.noFresh = true
+
+/-- Every `fresh` of the type is read, as a proposition.  It is an `abbrev`,
+so `decide` closes it. -/
+abbrev Ty.FreshOk (T : Ty s) : Prop := T.freshOk = true
+
+/-- A result `fresh` becomes an existential bounded by what the function can
+hold: its own assigned capture set united with its parameter (decision 18).
+The bound is exactly the set the callee's own closing evidence proves, so
+every pack the examples need types with `refl`, `elem` and one instance
+step. -/
+def Ty.expandFresh : Ty s → Ty s
+  | .capt A (.all T1 (.ty (.capt C S))) =>
+      if CaptureSet.elem C .fresh then
+        .capt A (.all T1
+          (∃ᶜ[CaptureSet.weaken (CaptureSet.weaken (k := .cap) A) ∪ [CapAtom.var .here]]
+            (Ty.substFresh (Ty.rename (.capt C S) (Rename.succ (k := .cap)))
+              [CapAtom.cvar .here])))
+      else .capt A (.all T1 (.ty (.capt C S)))
+  | T => T
 
 /-! ## Terms, values, definitions -/
 
@@ -843,6 +1094,9 @@ inductive Tm : Sig → Type where
   | «let» : Tm s → Tm (s,x) → Tm s
   /-- Unboxing `C ⊸ x`: it charges `C` against the ambient use set. -/
   | unbox : CaptureSet s → BVar s .var → Tm s
+  /-- `letex ⟨κ, x⟩ = t in u`: unpack an existential answer, opening a
+      capture binder for the witness and a term binder for the payload. -/
+  | letex : Tm s → Tm ((s,c),x) → Tm s
 
 /-- Values.  Object literals carry no type annotation. -/
 inductive Value : Sig → Type where
@@ -875,6 +1129,7 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .proj x a, ρ => .proj (ρ.var x) a
   | .let t u, ρ => .let (t.rename ρ) (u.rename ρ.lift)
   | .unbox C x, ρ => .unbox (C.rename ρ) (ρ.var x)
+  | .letex t u, ρ => .letex (t.rename ρ) (u.rename ρ.lift.lift)
 
 def Value.rename : Value s1 → Rename s1 s2 → Value s2
   | .obj d, ρ => .obj (d.rename ρ.lift.lift)
@@ -992,6 +1247,7 @@ def CapAtom.subst : CapAtom s1 → Subst s1 s2 → CapAtom s2
   | .cvar κ, σ => σ.cvar κ
   | .sel x A, σ => .sel (σ.var x) A
   | .any, _ => .any
+  | .fresh, _ => .fresh
 
 def CaptureSet.subst (C : CaptureSet s1) (σ : Subst s1 s2) : CaptureSet s2 :=
   C.map (fun a => a.subst σ)
@@ -1009,12 +1265,16 @@ def Shape.subst : Shape s1 → Subst s1 s2 → Shape s2
   | .cap C c1 c2, σ => .cap C (c1.subst σ) (c2.subst σ)
   | .sel p A, σ => .sel (p.subst σ) A
   | .mu S, σ => .mu (S.subst σ.lift)
-  | .all T1 T2, σ => .all (T1.subst σ.liftC) (T2.subst σ.liftC.lift)
+  | .all T1 T2, σ => .all (T1.subst σ.liftC) (ETy.subst T2 σ.liftC.lift)
   | .and S T, σ => .and (S.subst σ) (T.subst σ)
   | .box T, σ => .box (T.subst σ)
 
 def Ty.subst : Ty s1 → Subst s1 s2 → Ty s2
   | .capt C S, σ => .capt (C.subst σ) (S.subst σ)
+
+def ETy.subst : ETy s1 → Subst s1 s2 → ETy s2
+  | .ty T, σ => .ty (T.subst σ)
+  | .ex C T, σ => .ex (C.subst σ) (T.subst σ.liftC)
 
 end
 
@@ -1027,6 +1287,7 @@ def Tm.subst : Tm s1 → Subst s1 s2 → Tm s2
   | .proj x a, σ => .proj (σ.var x) a
   | .let t u, σ => .let (t.subst σ) (u.subst σ.lift)
   | .unbox C x, σ => .unbox (C.subst σ) (σ.var x)
+  | .letex t u, σ => .letex (t.subst σ) (u.subst σ.liftC.lift)
 
 def Value.subst : Value s1 → Subst s1 s2 → Value s2
   | .obj d, σ => .obj (d.subst σ.liftC.lift)
@@ -1097,7 +1358,7 @@ mutual
         Shape.subst_ofRename S ρ.lift]
   | .all T1 T2 =>
       simp only [Shape.subst, Shape.rename, ← Subst.ofRename_lift, ← Subst.ofRename_liftC,
-        Ty.subst_ofRename T1 ρ.lift, Ty.subst_ofRename T2 ρ.lift.lift]
+        Ty.subst_ofRename T1 ρ.lift, ETy.subst_ofRename T2 ρ.lift.lift]
   | .and S T =>
       simp only [Shape.subst, Shape.rename, Shape.subst_ofRename S ρ, Shape.subst_ofRename T ρ]
   | .box T => simp only [Shape.subst, Shape.rename, Ty.subst_ofRename T ρ]
@@ -1107,6 +1368,14 @@ mutual
   match T with
   | .capt C S =>
       simp only [Ty.subst, Ty.rename, CaptureSet.subst_ofRename, Shape.subst_ofRename S ρ]
+
+@[simp] theorem ETy.subst_ofRename {s1 s2 : Sig} (E : ETy s1) (ρ : Rename s1 s2) :
+    E.subst (Subst.ofRename ρ) = E.rename ρ := by
+  match E with
+  | .ty T => simp only [ETy.subst, ETy.rename, Ty.subst_ofRename T ρ]
+  | .ex C T =>
+      simp only [ETy.subst, ETy.rename, CaptureSet.subst_ofRename,
+        ← Subst.ofRename_liftC, Ty.subst_ofRename T ρ.lift]
 
 end
 
@@ -1125,6 +1394,9 @@ mutual
   | .unbox C x =>
       simp only [Tm.subst, Tm.rename, CaptureSet.subst_ofRename]
       rfl
+  | .letex t u =>
+      simp only [Tm.subst, Tm.rename, ← Subst.ofRename_lift, ← Subst.ofRename_liftC,
+        Tm.subst_ofRename t ρ, Tm.subst_ofRename u ρ.lift.lift]
 
 @[simp] theorem Value.subst_ofRename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
     v.subst (Subst.ofRename ρ) = v.rename ρ := by
@@ -1179,6 +1451,7 @@ theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
   | .proj x ℓ => simp [Tm.rename]
   | .let t u => simp [Tm.rename]
   | .unbox C x => simp [Tm.rename]
+  | .letex t u => simp [Tm.rename, Tm.inspects]
 
 /-! ## Definition lookup -/
 
@@ -1280,7 +1553,7 @@ inductive Shape.Wf : {s : Sig} → Shape s → Prop where
   | fld : Ty.Wf T → Shape.Wf (.fld a T)
   | cap : Shape.Wf (.cap C c1 c2)
   | mu : Shape.Wf S → Shape.Decl S → Shape.Wf (.mu S)
-  | all : Ty.Wf T1 → Ty.Wf T2 → Shape.Wf (.all T1 T2)
+  | all : Ty.Wf T1 → ETy.Wf T2 → Shape.Wf (.all T1 T2)
   | and : Shape.Wf S → Shape.Wf T → Shape.Wf (.and S T)
   | box : Ty.Wf T → Shape.Wf (.box T)
 
@@ -1288,6 +1561,11 @@ inductive Shape.Wf : {s : Sig} → Shape s → Prop where
 well-formedness condition of its own. -/
 inductive Ty.Wf : {s : Sig} → Ty s → Prop where
   | capt : Shape.Wf S → Ty.Wf (S ^ C)
+
+/-- An answer is well formed when the type under it is. -/
+inductive ETy.Wf : {s : Sig} → ETy s → Prop where
+  | ty : Ty.Wf T → ETy.Wf (.ty T)
+  | ex : Ty.Wf T → ETy.Wf (∃ᶜ[C] T)
 
 end
 

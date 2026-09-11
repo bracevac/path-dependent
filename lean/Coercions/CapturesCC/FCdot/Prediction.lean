@@ -38,8 +38,10 @@ inclusion of syntactic sets in `step_uses` is discharged with this. -/
 local macro "mem_uses" : tactic =>
   `(tactic| (intro c hc;
              try simp only [Tm.uses_atom, Tm.uses_val, Tm.uses_app, Tm.uses_proj,
-               Tm.uses_let, Tm.uses_cast, Tm.uses_unbox, usesK_nil, usesK_let,
-               usesK_cast, Atom.root, CaptureSet.weaken, CaptureSet.rename_union,
+               Tm.uses_let, Tm.uses_cast, Tm.uses_castE, Tm.uses_letex,
+               Tm.uses_unbox, usesK_nil, usesK_let,
+               usesK_cast, usesK_castE, usesK_letex, PAtom.root_applyE,
+               PAtom.root_plain, Atom.root, CaptureSet.weaken, CaptureSet.rename_union,
                CaptureSet.rename_nil, CaptureSet.mem_union, List.mem_cons,
                List.not_mem_nil, or_false, false_or] at hc ⊢;
              first
@@ -80,6 +82,7 @@ theorem CaptureSet.closing_subst_enter {s : Sig} (A : CaptureSet s) (b : Atom s)
   | .lam _ _ _ _ => rfl
   | .obj _ _ _ _ => rfl
   | .box _ => rfl
+  | .pack _ _ _ _ => rfl
   | .cast v _ => by simp [Value.core, Value.core_annot v]
 
 /-- A variable has exactly the roots of the annotation of the value stored at
@@ -131,6 +134,38 @@ theorem Store.Typed.proj_uses {s : Sig} {σ : Store s} {Γ : Ctx s} {y : BVar s 
     exact hσ.root_annot y
   exact (cap_canon hσ hg').trans (CapLe.union hA.symm.le (CapLe.refl _ _))
 
+/-! ## The unpack and the binder it opens -/
+
+/-- The charge a `letex` body declares, instantiated at the atom the unpack
+substitutes: the declared set loses one of its two weakenings, and the opened
+binder comes back to the innermost position. -/
+theorem CaptureSet.letexCharge_substVar {s : Sig} (U' : CaptureSet s) (y : BVar (s,c) .var) :
+    CaptureSet.substVar
+        ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+          ∪ [CapAtom.cvar (BVar.there BVar.here)]) y
+      = CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here] := by
+  show CaptureSet.rename _ _ = _
+  rw [CaptureSet.rename_union,
+    show CaptureSet.rename
+        (CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+        (Rename.subst y) = CaptureSet.weaken (k := .cap) U' from
+      CaptureSet.rename_subst_weaken _ y]
+  rfl
+
+/-- **The declared bound, consumed.**  The binder the unpack opens is an
+instance of the witness set, the wrapper puts that set below the declared
+bound, and the frame puts the declared bound below the use set the body
+declares.  So the opened binder brings no root the state did not have.  The
+statement produces evidence rather than subcapturing, so that a caller may
+weaken it into the store's next context. -/
+theorem CapCo.HasType.instHere {s : Sig} {Γ : Ctx s} {C C₀ U' : CaptureSet s}
+    {h₀ h : CapCo s} (hb : Γ ⊢ᶜ h₀ : C ⊑ C₀) (hh : Γ ⊢ᶜ h : C₀ ⊑ U') :
+    ∃ f' : CapCo (s,c), (Γ.consC (.inst C)) ⊢ᶜ f'
+      : [CapAtom.cvar BVar.here] ⊑ CaptureSet.weaken (k := .cap) U' :=
+  ⟨_, (CapCo.HasType.eqToLe (CapEq.HasType.instC (a := CapAtom.cvar BVar.here)
+      (C := CaptureSet.weaken (k := .cap) C) rfl)).trans
+    ((hb.weakenC (.inst C) rfl).trans (hh.weakenC (.inst C) rfl))⟩
+
 /-! ## One step -/
 
 /-- The use set of a state that steps without extending the store. -/
@@ -142,6 +177,127 @@ theorem step_uses_same {s : Sig} {σ : Store s} {Γ : Ctx s} {K K' : Cont s} {t 
   refine ⟨Rename.id, .refl, fun Γ' hσ' => ?_⟩
   obtain rfl := Store.Typed.ctx_unique hσ' hσ
   simpa using h
+
+/-- `unpackAtom`: the use set of the state after the unpack.  The body's
+avoidance evidence, transported to the store's `.inst C` context and
+instantiated at the wrapper's atom, bounds the body's use set by the declared
+set together with the opened binder, and `CapCo.HasType.instHere` puts the
+opened binder below the declared set. -/
+theorem step_uses_unpackAtom {s : Sig} {sigma : Store s} {Gamma : Ctx s} {K : Cont s}
+    {u : Tm ((s,c),x)} {U' : CaptureSet s} {f : CapCo ((s,c),x)}
+    {C C0 : CaptureSet s} {h0 h : CapCo s} {e : LeCo (Sig.scope s)} {a : Atom s}
+    {S : Ty s} {T : Dom s}
+    (hsig : Store.Typed sigma Gamma)
+    (ha : Gamma ⊢ₐ a : S) (hb : Gamma ⊢ᶜ h0 : C ⊑ C0)
+    (he : Gamma.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S))
+      ≤ T.underRoot)
+    (hh : Gamma ⊢ᶜ h : C0 ⊑ U')
+    (hf : ((Gamma.consC .star).cons (.opaque T)) ⊢ᶜ f :
+      u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+        ∪ [CapAtom.cvar (.there .here)])) :
+    ∃ rho : Rename s (s,c),
+      Store.Ext sigma (sigma.consC (.inst C)) rho ∧
+      ∀ Gamma' : Ctx (s,c), Store.Typed (sigma.consC (.inst C)) Gamma' →
+        CapLe Gamma' (State.uses ⟨sigma.consC (.inst C), K.weakenC,
+            u.substAtom (.cast (Atom.weaken (k := .cap) a) (e.subst Subst.instRoot))⟩)
+          ((State.uses ⟨sigma, K ▹ .letex u U' h f, .atom (.pack C h0 e a)⟩).rename rho) := by
+  refine ⟨Rename.succ,
+    by rw [← Rename.id_comp (Rename.succ (k := .cap))]; exact .consC .refl _ rfl,
+    fun Gamma' hsig' => ?_⟩
+  obtain rfl := Store.Typed.ctx_unique hsig' (hsig.consC rfl)
+  obtain ⟨f', hf'⟩ := CapCo.HasType.instHere hb hh
+  have hpay := Atom.HasType.unpackPayload hsig.rootFree ha he
+  have hbody := CapCo.HasType.substAtom
+    (CapCo.HasType.letexCharge_instC (C := C) hf) hpay
+  rw [CaptureSet.letexCharge_substVar, ← Tm.uses_substAtom] at hbody
+  have hle := cap_canon hsig' hbody
+  simp only [State.uses_mk, Tm.uses_atom, PAtom.root_pack, usesK_letex, usesK_weakenC,
+    CaptureSet.rename_union]
+  have hU : CapLe (Gamma.consC (.inst C)) (CaptureSet.weaken (k := .cap) U')
+      (CaptureSet.rename [CapAtom.var a.root] Rename.succ ∪
+        (CaptureSet.weaken (k := .cap) (usesK K) ∪ CaptureSet.rename U' Rename.succ)) :=
+    CapLe.mem (fun c hc =>
+      CaptureSet.mem_union.mpr (Or.inr (CaptureSet.mem_union.mpr (Or.inr hc))))
+  refine CapLe.union (hle.trans (CapLe.union hU ((cap_canon hsig' hf').trans hU)))
+    (CapLe.mem (fun c hc =>
+      CaptureSet.mem_union.mpr (Or.inr (CaptureSet.mem_union.mpr (Or.inl hc)))))
+
+/-- `unpackVal`: the same, with the allocation machinery `CapCo.HasType.adjust`
+already packages.  The evidence is weakened once more, past the binder the
+literal is stored at. -/
+theorem step_uses_unpackVal {s : Sig} {sigma : Store s} {Gamma : Ctx s} {K : Cont s}
+    {u : Tm ((s,c),x)} {U' : CaptureSet s} {f : CapCo ((s,c),x)}
+    {C C0 : CaptureSet s} {h0 h : CapCo s} {e : LeCo (Sig.scope s)} {v : Value s}
+    {S : Ty s} {T : Dom s} {w : Value (s,c)}
+    (hw : w = Value.cast (Value.weaken (k := .cap) v) (e.subst Subst.instRoot))
+    (hsig : Store.Typed sigma Gamma)
+    (hv0 : Gamma ⊢ᵥ v : S) (hb : Gamma ⊢ᶜ h0 : C ⊑ C0)
+    (he : Gamma.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S))
+      ≤ T.underRoot)
+    (hh : Gamma ⊢ᶜ h : C0 ⊑ U')
+    (hf : ((Gamma.consC .star).cons (.opaque T)) ⊢ᶜ f :
+      u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+        ∪ [CapAtom.cvar (.there .here)])) :
+    ∃ rho : Rename s ((s,c),x),
+      Store.Ext sigma ((sigma.consC (.inst C)).cons w.core) rho ∧
+      ∀ Gamma' : Ctx ((s,c),x),
+        Store.Typed ((sigma.consC (.inst C)).cons w.core) Gamma' →
+        CapLe Gamma' (State.uses ⟨(sigma.consC (.inst C)).cons w.core,
+            (K.weakenC).weaken, u.adjust w⟩)
+          ((State.uses ⟨sigma, K ▹ .letex u U' h f, .val (.pack C h0 e v)⟩).rename rho) := by
+  have hwt : (Gamma.consC (.inst C)) ⊢ᵥ w : T := by
+    rw [hw]; exact Value.HasType.unpackPayload hsig.rootFree hv0 he
+  obtain ⟨f', hf'⟩ := CapCo.HasType.instHere hb hh
+  refine ⟨(Rename.succ (k := .cap)).comp (Rename.succ (k := .var)),
+    by rw [← Rename.id_comp (Rename.succ (k := .cap))]
+       exact (Store.Ext.consC .refl _ rfl).cons _,
+    fun Gamma' hsig' => ?_⟩
+  obtain ⟨S0, hcore, hlit, hd⟩ := Value.HasType.coreDecomp w T hwt
+  obtain rfl := Store.Typed.ctx_unique hsig' (Store.Typed.cons (hsig.consC rfl) hlit hcore)
+  have hfc : ((Gamma.consC (.inst C)).cons (.opaque T)) ⊢ᶜ f :
+      u.uses ⊑ CaptureSet.weaken (k := .var)
+        (CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here]) := by
+    have h2 := CapCo.HasType.letexCharge_instC (C := C) hf
+    rwa [show CaptureSet.weaken (k := .var)
+          (CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here])
+        = ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+            ∪ [CapAtom.cvar (.there .here)]) from CaptureSet.rename_union _ _ _]
+  have hle : CapLe ((Gamma.consC (.inst C)).cons (.transparent S0 w.core.witnesses
+        w.core.capWitnesses w.core.fieldLabels))
+      (u.adjust w).uses (CaptureSet.weaken (k := .var)
+      (CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here])) := by
+    rcases hd with ⟨hn, rfl⟩ | ⟨E, hE?, hE⟩
+    · exact cap_canon hsig' (CapCo.HasType.adjust_none hn hfc)
+    · exact cap_canon hsig' (CapCo.HasType.adjust hE? hE hfc)
+  have hf2 := cap_canon hsig' (CapCo.HasType.weaken hf'
+    (Binding.transparent S0 w.core.witnesses w.core.capWitnesses w.core.fieldLabels))
+  have hLeq : State.uses ⟨(sigma.consC (.inst C)).cons w.core,
+        (K.weakenC).weaken, u.adjust w⟩
+      = (u.adjust w).uses
+        ∪ CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) (usesK K)) := by
+    simp only [State.uses_mk, usesK_weaken, usesK_weakenC]
+  have hReq : (State.uses ⟨sigma, K ▹ .letex u U' h f, .val (.pack C h0 e v)⟩).rename
+        ((Rename.succ (k := .cap)).comp (Rename.succ (k := .var)))
+      = CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) (usesK K))
+        ∪ CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U') := by
+    simp only [State.uses_mk, Tm.uses_val, usesK_letex, CaptureSet.weaken,
+      CaptureSet.rename_union, CaptureSet.rename_comp, CaptureSet.rename_nil]
+    rfl
+  have hCharge : CaptureSet.weaken (k := .var)
+        (CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here])
+      = CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U')
+        ∪ CaptureSet.weaken (k := .var) [CapAtom.cvar (BVar.here (k := .cap))] :=
+    CaptureSet.rename_union _ _ _
+  rw [hLeq, hReq]
+  rw [hCharge] at hle
+  have hU : CapLe ((Gamma.consC (.inst C)).cons (.transparent S0 w.core.witnesses
+        w.core.capWitnesses w.core.fieldLabels))
+      (CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+      (CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) (usesK K))
+        ∪ CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U')) :=
+    CapLe.mem (fun c hc => CaptureSet.mem_union.mpr (Or.inr hc))
+  exact CapLe.union (hle.trans (CapLe.union hU (hf2.trans hU)))
+    (CapLe.mem (fun c hc => CaptureSet.mem_union.mpr (Or.inl hc)))
 
 /-- **The use-set half of preservation.**  One step of a typed state embeds
 the old store into the new one, and the roots of the use set do not grow
@@ -161,6 +317,33 @@ theorem step_uses {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s} {U :
       exact step_uses_same hσ (CapLe.mem (by mem_uses))
   case castAtom =>
       exact step_uses_same hσ (CapLe.mem (by mem_uses))
+  -- The answer-cast steps and the `letex` push: the two use sets are equal as
+  -- sets, because an answer cast charges nothing of its own and `applyE`
+  -- moves no root (`PAtom.root_applyE`).
+  case castEPush =>
+      exact step_uses_same hσ (CapLe.mem (by mem_uses))
+  case castEVal =>
+      exact step_uses_same hσ (CapLe.mem (by mem_uses))
+  case castEAtom =>
+      exact step_uses_same hσ (CapLe.mem (by mem_uses))
+  case letex =>
+      exact step_uses_same hσ (CapLe.mem (by mem_uses))
+  -- The two unpacks: the store gains the witness as an instance binder, and
+  -- the binder it opens is charged to the set the frame declares.
+  case unpackAtom =>
+      cases ht with
+      | atom hp =>
+        cases hK with
+        | letex hh hu hf hK' =>
+          cases hp with
+          | pack ha hb he => exact step_uses_unpackAtom hσ ha hb he hh hf
+  case unpackVal =>
+      cases ht with
+      | val hv =>
+        cases hK with
+        | letex hh hu hf hK' =>
+          cases hv with
+          | pack hv0 hb he => exact step_uses_unpackVal rfl hσ hv0 hb he hh hf
   -- Allocation: the let's avoidance evidence, transported into the
   -- transparent context of the freshly stored literal by the substitution
   -- `Tm.adjust` applies to the body.
@@ -170,7 +353,7 @@ theorem step_uses {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s} {U :
       | val hv =>
           cases hK with
           | «let» hu hf hK' =>
-              obtain ⟨S₀, hcore, hlit, hd⟩ := Value.HasType.coreDecomp v T hv
+              obtain ⟨S₀, hcore, hlit, hd⟩ := Value.HasType.coreDecomp v _ hv.ty_inv
               refine ⟨Rename.succ, by rw [← Rename.id_comp Rename.succ]; exact .cons .refl _,
                 fun Γ' hσ' => ?_⟩
               obtain rfl := Store.Typed.ctx_unique hσ' (Store.Typed.cons hσ hlit hcore)
@@ -186,7 +369,9 @@ theorem step_uses {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s} {U :
   -- Renaming: the let's avoidance evidence, instantiated at the atom.
   case rename =>
       cases ht with
-      | atom ha =>
+      | atom hp =>
+        cases hp with
+        | plain ha =>
           cases hK with
           | «let» hu hf hK' =>
               refine step_uses_same hσ ?_
@@ -221,7 +406,7 @@ theorem step_uses {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s} {U :
           obtain ⟨hdom, hcod⟩ := hσ.formsTyped.pi hA hcf (by rw [hTe]; rfl)
           have hle := hσ.app_uses hx hTe (Atom.HasType.castDom hσ.rootFree hdom hb)
           simp only [Atom.root_cast] at hle
-          simp only [Tm.uses_cast]
+          simp only [Tm.uses_castE]
           exact CapLe.union (hle.trans (CapLe.mem (by mem_uses)))
             (CapLe.mem (by mem_uses))
   -- Projection: the field's closing evidence at the object's variable.
@@ -323,7 +508,7 @@ theorem returned_capture_bound_val {s : Sig} {σ : Store s} {Γ : Ctx s} {v : Va
   cases hK
   cases ht with
   | val hv =>
-      obtain ⟨S₀, hcore, hlit, hd⟩ := Value.HasType.coreDecomp v (S ^ C) hv
+      obtain ⟨S₀, hcore, hlit, hd⟩ := Value.HasType.coreDecomp v (S ^ C) hv.ty_inv
       have hann : S₀.captureSet = v.annot := by
         rw [Value.HasType.captureSet_annot hcore hlit, Value.core_annot]
       rcases hd with ⟨-, rfl⟩ | ⟨E, -, hE⟩
@@ -339,13 +524,13 @@ bounded by the capture set of the type it is returned at.  This is item 7 of
 the canonical-forms theorem. -/
 theorem returned_capture_bound_atom {s : Sig} {σ : Store s} {Γ : Ctx s} {a : Atom s}
     {S : Shape s} {C : CaptureSet s}
-    (hT : State.Typed ⟨σ, .nil, .atom a⟩ (S ^ C)) (hσ : ⊢ σ : Γ) :
+    (hT : State.Typed ⟨σ, .nil, .atom (.plain a)⟩ (S ^ C)) (hσ : ⊢ σ : Γ) :
     CapLe Γ [CapAtom.var a.root] C := by
   obtain ⟨Γ₀, T, hσ₀, ht, hK⟩ := hT
   obtain rfl := Store.Typed.ctx_unique hσ hσ₀
   cases hK
   cases ht with
-  | atom ha => simpa using (atom_canon hσ ha).capLe
+  | atom hp => cases hp with | plain ha => simpa using (atom_canon hσ ha).capLe
 
 /-- **The capture set of an answer**, in both halves: the annotation of a
 returned value, and the root of a returned atom, are bounded by the capture
@@ -353,7 +538,7 @@ set of the answer's type. -/
 theorem returned_capture_bound {s : Sig} {σ : Store s} {Γ : Ctx s} {S : Shape s}
     {C : CaptureSet s} (hσ : ⊢ σ : Γ) :
     (∀ v : Value s, State.Typed ⟨σ, .nil, .val v⟩ (S ^ C) → CapLe Γ v.annot C) ∧
-      (∀ a : Atom s, State.Typed ⟨σ, .nil, .atom a⟩ (S ^ C) →
+      (∀ a : Atom s, State.Typed ⟨σ, .nil, .atom (.plain a)⟩ (S ^ C) →
         CapLe Γ [CapAtom.var a.root] C) :=
   ⟨fun _ hT => returned_capture_bound_val hT hσ,
     fun _ hT => returned_capture_bound_atom hT hσ⟩

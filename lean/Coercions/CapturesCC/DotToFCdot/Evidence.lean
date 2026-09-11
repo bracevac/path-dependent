@@ -166,6 +166,7 @@ def Ctx.varAtom : Ctx s → BVar s .var → FCdot.Atom s
   | .consSelf Γ _ _ _, .there y => (Γ.varAtom y).weaken
   | .consC Γ, .there y => (Γ.varAtom y).weaken
   | .consRoot Γ, .there y => (Γ.varAtom y).weaken
+  | .consInst Γ _, .there y => (Γ.varAtom y).weaken
 
 /-! ## The translation -/
 
@@ -178,6 +179,8 @@ def Subcap.translate : {Γ : Ctx s} → {C C' : CaptureSet s} → Subcap Γ C C'
   | _, C₁, C₂, .elem _ => .elem C₁.translate C₂.translate
   | _, _, _, .union f g => .union f.translate g.translate
   | Γ, _, _, @Subcap.var _ _ x => .capvar (Γ.varAtom x)
+  | _, C, _, @Subcap.inst _ _ κ _ _ =>
+      .eqToLe (.symm (.instC (.cvar κ) C.translate))
   | _, _, _, @Subcap.selLower _ _ _ _ A c₁ c₂ _ h =>
       .member h.translateAtom (.refl (Shape.cap A c₁ c₂).translate) 0
   | _, _, _, @Subcap.selUpper _ _ _ _ A c₁ c₂ _ h =>
@@ -230,11 +233,20 @@ def Sub.translate : {Γ : Ctx s} → {T T' : Ty s} → Sub Γ T T' → FCdot.LeC
   | _, _, _, .capt d f => .capt d.translate f.translate
   termination_by _ _ _ d => sizeOf d
 
+/-- `⟦d⟧` on answer inclusions: a plain inclusion is a plain coercion, a
+pack is the target's pack, and the congruence is the target's `cong`.  It is
+the clause list of B2.10 verbatim. -/
+def ESub.translate : {Γ : Ctx s} → {E E' : ETy s} → ESub Γ E E' → FCdot.ELeCo s
+  | _, _, _, .ty d => .plain d.translate
+  | _, _, _, @ESub.pack _ _ C _ _ _ f d => .pack C.translate f.translate d.translate
+  | _, _, _, .exist f d => .cong f.translate d.translate
+  termination_by _ _ _ d => sizeOf d
+
 /-- The atom of a variable typing, rooted at the variable.  `Var` recaptures
 the binder's atom at the singleton `{x}`, which is the capture set the source
 rule concludes at. -/
 def HasTy.translateAtom : {U : CaptureSet s} → {Γ : Ctx s} → {x : BVar s .var} → {T : Ty s} →
-    HasTy U Γ (.path (.var x)) T → FCdot.Atom s
+    HasTy U Γ (.path (.var x)) (.ty T) → FCdot.Atom s
   | _, Γ, x, _, .var => .recap (Γ.varAtom x) (.refl [FCdot.CapAtom.var x])
   | _, _, _, _, @HasTy.recI _ _ _ _ S _ h _ =>
       .foldSelf S.telSelf (.unfoldSelf h.translateAtom)
@@ -242,7 +254,7 @@ def HasTy.translateAtom : {U : CaptureSet s} → {Γ : Ctx s} → {x : BVar s .v
       .foldSelf (Shape.tel (S.substVar x)) (.unfoldSelf h.translateAtom)
   | _, _, _, _, @HasTy.andI _ _ _ _ S₁ S₂ C h₁ h₂ =>
       .both S₁.tel S₂.tel (intoAtom S₁ C h₁.translateAtom) (intoAtom S₂ C h₂.translateAtom)
-  | _, _, _, _, .sub h d _ => .cast h.translateAtom d.translate
+  | _, _, _, _, .sub h (.ty d) _ => .cast h.translateAtom d.translate
   termination_by _ _ _ _ h => sizeOf h
 
 end

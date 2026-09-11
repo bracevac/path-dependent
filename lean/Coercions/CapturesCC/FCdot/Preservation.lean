@@ -41,6 +41,8 @@ theorem Value.witnesses_rename {s1 s2 : Sig} :
   | .box _, _ => by simp [Value.rename, Value.witnesses, Witnesses.rename]
   | .cast v _, ρ => by
       simp [Value.rename, Value.witnesses, Value.witnesses_rename v ρ]
+  | .pack _ _ _ v, ρ => by
+      simp [Value.rename, Value.witnesses, Value.witnesses_rename v ρ]
 
 theorem Value.fieldLabels_rename {s1 s2 : Sig} :
     ∀ (v : Value s1) (ρ : Rename s1 s2), (v.rename ρ).fieldLabels = v.fieldLabels
@@ -48,6 +50,8 @@ theorem Value.fieldLabels_rename {s1 s2 : Sig} :
   | .obj _ _ _ _, _ => by simp [Value.rename, Value.fieldLabels]
   | .box _, _ => by simp [Value.rename, Value.fieldLabels]
   | .cast v _, ρ => by
+      simp [Value.rename, Value.fieldLabels, Value.fieldLabels_rename v ρ]
+  | .pack _ _ _ v, ρ => by
       simp [Value.rename, Value.fieldLabels, Value.fieldLabels_rename v ρ]
 
 /-- Capture witnesses commute with renaming, as block witnesses do. -/
@@ -59,6 +63,8 @@ theorem Value.capWitnesses_rename {s1 s2 : Sig} :
   | .box _, _ => by simp [Value.rename, Value.capWitnesses, CapWitnesses.rename]
   | .cast v _, ρ => by
       simp [Value.rename, Value.capWitnesses, Value.capWitnesses_rename v ρ]
+  | .pack _ _ _ v, ρ => by
+      simp [Value.rename, Value.capWitnesses, Value.capWitnesses_rename v ρ]
 
 theorem Value.core_witnesses {s : Sig} :
     ∀ v : Value s, v.core.witnesses = v.witnesses
@@ -66,6 +72,7 @@ theorem Value.core_witnesses {s : Sig} :
   | .obj _ _ _ _ => rfl
   | .box _ => rfl
   | .cast v _ => by simp [Value.core, Value.witnesses, Value.core_witnesses v]
+  | .pack _ _ _ _ => rfl
 
 theorem Value.core_capWitnesses {s : Sig} :
     ∀ v : Value s, v.core.capWitnesses = v.capWitnesses
@@ -73,6 +80,7 @@ theorem Value.core_capWitnesses {s : Sig} :
   | .obj _ _ _ _ => rfl
   | .box _ => rfl
   | .cast v _ => by simp [Value.core, Value.capWitnesses, Value.core_capWitnesses v]
+  | .pack _ _ _ _ => rfl
 
 theorem Value.core_fieldLabels {s : Sig} :
     ∀ v : Value s, v.core.fieldLabels = v.fieldLabels
@@ -80,12 +88,17 @@ theorem Value.core_fieldLabels {s : Sig} :
   | .obj _ _ _ _ => rfl
   | .box _ => rfl
   | .cast v _ => by simp [Value.core, Value.fieldLabels, Value.core_fieldLabels v]
+  | .pack _ _ _ _ => rfl
 
 theorem Value.core_isLiteral {s : Sig} : ∀ v : Value s, v.core.IsLiteral
   | .lam _ _ _ _ => trivial
   | .obj _ _ _ _ => trivial
   | .box _ => trivial
   | .cast v _ => by simpa [Value.core] using Value.core_isLiteral v
+  -- `Value.IsLiteral` gains no clause, so a pack falls into its catch-all and
+  -- `core` is the identity on it.  A packed value is kept out of a store by
+  -- `Store.Typed.cons`, which premises `Value.HasType`, and that has no pack rule.
+  | .pack _ _ _ _ => trivial
 
 /-! ## Composites of cast wrappers -/
 
@@ -137,6 +150,8 @@ theorem Value.HasType.coreDecomp {s : Sig} {Γ : Ctx s} :
                 exact ⟨.trans (LeCo.composite f fs) e,
                   by simp [Value.composite?, Value.coercions, hc, LeCo.composite_snoc],
                   .trans hE he⟩
+  -- `Value.HasType` has no `pack` rule, so a packed value has no plain type.
+  | .pack _ _ _ _, _, h => nomatch h
 
 /-! ## Store typing -/
 
@@ -246,19 +261,55 @@ theorem Store.Typed.box_of_lookup {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVa
 
 /-! ## Continuation weakening -/
 
-theorem Cont.Typed.weaken {s : Sig} {Γ : Ctx s} {K : Cont s} {T U : Ty s}
-    (h : Γ ⊢ₖ K : T ⇒ U) (b : Binding s) :
-    (Γ.cons b) ⊢ₖ K↑ : T↑ ⇒ U↑ := by
+theorem Cont.Typed.weaken {s : Sig} {Γ : Ctx s} {K : Cont s} {E : ETy s} {U : Ty s}
+    (h : Γ ⊢ₖ K : E ⇒ U) (b : Binding s) :
+    (Γ.cons b) ⊢ₖ K↑ : E↑ ⇒ U↑ := by
   induction h with
   | nil => exact .nil
   | «let» hu hf _ ih =>
       refine Cont.Typed.let ?_ ?_ ih
       · have := hu.rename ((Ctx.Ren.succ b).lift (.opaque _))
-        simpa [Ty.weaken_rename] using this
+        simpa [ETy.weaken_rename] using this
       · have := hf.rename ((Ctx.Ren.succ b).lift (.opaque _))
         rwa [CaptureSet.weaken_rename, ← Tm.uses_rename] at this
   | cast he _ ih =>
       exact Cont.Typed.cast (LeCo.HasType.weaken he b) ih
+  | castE hg _ ih =>
+      exact Cont.Typed.castE (ELeCo.HasType.rename (Ctx.Ren.succ b) hg) ih
+  | letex hh hu hf _ ih =>
+      refine Cont.Typed.letex (CapCo.HasType.weaken hh b) ?_ ?_ ih
+      · have hu' := hu.rename (((Ctx.Ren.succ b).liftC CapBound.star).lift _)
+        rw [ETy.weaken_rename, ETy.weaken_rename] at hu'
+        exact hu'
+      · have hf' := CapCo.HasType.rename (((Ctx.Ren.succ b).liftC CapBound.star).lift _) hf
+        rw [CaptureSet.letexCharge_rename] at hf'
+        simpa only [Tm.uses_rename] using hf'
+
+/-- The capture-kind twin of `Cont.Typed.weaken`.  Its premise is B0.5's, and
+`.inst C`, the bound the unpack appends, satisfies it. -/
+theorem Cont.Typed.weakenC {s : Sig} {Γ : Ctx s} {K : Cont s} {E : ETy s} {U : Ty s}
+    (h : Γ ⊢ₖ K : E ⇒ U) (b : CapBound s) (hb : b.isRoot = false) :
+    (Γ.consC b) ⊢ₖ K.weakenC : ETy.weaken (k := .cap) E ⇒ Ty.weaken (k := .cap) U := by
+  induction h with
+  | nil => exact .nil
+  | «let» hu hf _ ih =>
+      refine Cont.Typed.let ?_ ?_ ih
+      · have := hu.rename ((Ctx.Ren.succC b hb).lift (.opaque _))
+        simpa [ETy.weaken_rename] using this
+      · have := hf.rename ((Ctx.Ren.succC b hb).lift (.opaque _))
+        rwa [CaptureSet.weaken_rename, ← Tm.uses_rename] at this
+  | cast he _ ih =>
+      exact Cont.Typed.cast (LeCo.HasType.weakenC he b hb) ih
+  | castE hg _ ih =>
+      exact Cont.Typed.castE (ELeCo.HasType.rename (Ctx.Ren.succC b hb) hg) ih
+  | letex hh hu hf _ ih =>
+      refine Cont.Typed.letex (CapCo.HasType.weakenC hh b hb) ?_ ?_ ih
+      · have hu' := hu.rename (((Ctx.Ren.succC b hb).liftC CapBound.star).lift _)
+        rw [ETy.weaken_rename, ETy.weaken_rename] at hu'
+        exact hu'
+      · have hf' := CapCo.HasType.rename (((Ctx.Ren.succC b hb).liftC CapBound.star).lift _) hf
+        rw [CaptureSet.letexCharge_rename] at hf'
+        simpa only [Tm.uses_rename] using hf'
 
 /-! ## Inversions -/
 
@@ -274,7 +325,7 @@ parameter.  The last conjunct is the premise the `lam` rule of A2.2 carries;
 `step_uses` reads it at the application steps. -/
 theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s} {S₀ : Dom s}
     {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)} {T : Ty s} (h : Γ ⊢ᵥ .lam A S₀ t₀ g : T) :
-    ∃ T₀ : Cod s, T = (Π(S₀) T₀) ^ A ∧ (Γ.body S₀) ⊢ t₀ : T₀.underRoot ∧
+    ∃ T₀ : Cod s, T = (Π(S₀) T₀) ^ A ∧ (Γ.body S₀) ⊢ t₀ :ᵉ T₀.underRoot ∧
       (Γ.body S₀) ⊢ᶜ g : t₀.uses ⊑ (A↑↑↑ ∪ [CapAtom.var .here]) := by
   cases h with
   | lam ht hg => exact ⟨_, rfl, ht, hg⟩
@@ -326,82 +377,12 @@ theorem Fields.HasType.get {s : Sig} {Γ : Ctx (s,x)} {A : CaptureSet s}
     (hg : F.get? l = some t) : Γ ⊢ t : (.here ∙ l) ^ [CapAtom.name .here l] :=
   (Fields.HasType.getFull F h l t hg).1
 
-/-! ## The two substitution instances the machine uses -/
+/-! ## The two substitution instances the machine uses
 
-@[simp] theorem Subst.selfCast_var_there {s : Sig} (E : LeCo (s,x)) (z : BVar s .var) :
-    (Subst.selfCast E).var (.there z) = .var (.there z) := rfl
-
-@[simp] theorem Subst.selfCast_cvar_there {s : Sig} (E : LeCo (s,x)) (κ : BVar s .cap) :
-    (Subst.selfCast E).cvar (.there κ) = .cvar (.there κ) := rfl
-
-@[simp] theorem Subst.selfCast_rootVar {s : Sig} (E : LeCo (s,x)) (y : BVar (s,x) .var) :
-    (Subst.selfCast E).rootVar y = y := by
-  cases y <;> rfl
-
-/-- The self cast is invisible to the type sort: it changes a term variable
-into a cast around it, and a type reads only the root of that cast.  This is
-the substitution reading of `Subst.selfCast_root` of the vanilla line. -/
-theorem Subst.selfCast_core {s : Sig} (E : LeCo (s,x)) :
-    (Subst.selfCast E).core = Subst.ofRename Rename.id := by
-  apply Subst.funext'
-  · intro y; cases y <;> rfl
-  · intro κ; cases κ with | there y => rfl
-
-@[simp] theorem CapAtom.subst_selfCast {s : Sig} (a : CapAtom (s,x)) (E : LeCo (s,x)) :
-    a.subst (Subst.selfCast E) = a := by
-  rw [CapAtom.subst_core, Subst.selfCast_core, CapAtom.subst_ofRename, CapAtom.rename_id]
-
-@[simp] theorem CaptureSet.subst_selfCast {s : Sig} (C : CaptureSet (s,x)) (E : LeCo (s,x)) :
-    C.subst (Subst.selfCast E) = C := by
-  rw [CaptureSet.subst_core, Subst.selfCast_core, CaptureSet.subst_ofRename, CaptureSet.rename_id]
-
-@[simp] theorem Shape.subst_selfCast {s : Sig} (S : Shape (s,x)) (E : LeCo (s,x)) :
-    S.subst (Subst.selfCast E) = S := by
-  rw [Shape.subst_core, Subst.selfCast_core, Shape.subst_ofRename, Shape.rename_id]
-
-@[simp] theorem Ty.subst_selfCast {s : Sig} (T : Ty (s,x)) (E : LeCo (s,x)) :
-    T.subst (Subst.selfCast E) = T := by
-  rw [Ty.subst_core, Subst.selfCast_core, Ty.subst_ofRename, Ty.rename_id]
-
-/-! ### A term binding is invisible to the capture spine
-
-`Ctx.lookupCap`, `Ctx.root?` and `Ctx.lvl` step past a term binder without
-reading it, so two contexts that append different bindings to the same prefix
-have the same roots and the same levels.  This is what the self-cast
-substitution below needs for its three capture fields, since it changes only
-the binding at the self. -/
-
-theorem Ctx.lookupCap_cons_eq (Γ : Ctx s) (b b' : Binding s) :
-    ∀ κ : BVar (s,x) .cap, (Γ.cons b).lookupCap κ = (Γ.cons b').lookupCap κ
-  | .there _ => rfl
-
-theorem Ctx.lvl_cons_eq (Γ : Ctx s) (b b' : Binding s) {k : Kind} (z : BVar (s,x) k) :
-    (Γ.cons b).lvl z = (Γ.cons b').lvl z := by
-  cases z <;> rfl
-
-theorem Ctx.lvlAtom_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x)) :
-    (Γ.cons b).lvlAtom a = (Γ.cons b').lvlAtom a := by
-  cases a with
-  | top => rfl
-  | var z => exact Ctx.lvl_cons_eq Γ b b' z
-  | cvar z => exact Ctx.lvl_cons_eq Γ b b' z
-  | name z _ => exact Ctx.lvl_cons_eq Γ b b' z
-
-theorem Ctx.isRootB_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x)) :
-    (Γ.cons b).isRootB a = (Γ.cons b').isRootB a := by
-  cases a with
-  | top => rfl
-  | var _ => rfl
-  | name _ _ => rfl
-  | cvar κ => exact congrArg CapBound.isRoot (Ctx.lookupCap_cons_eq Γ b b' κ)
-
-theorem Ctx.lvlLeB_cons_eq (Γ : Ctx s) (b b' : Binding s) (e r : CapAtom (s,x)) :
-    (Γ.cons b).lvlLeB e r = (Γ.cons b').lvlLeB e r := by
-  unfold Ctx.lvlLeB
-  rw [Ctx.lvlAtom_cons_eq Γ b b' e]
-
-theorem Ctx.rootAtom_cons_eq (Γ : Ctx s) (b b' : Binding s) :
-    (Γ.cons b).rootAtom = (Γ.cons b').rootAtom := rfl
+The equations of `Subst.selfCast` and the facts that say a term binding is
+invisible to the capture spine moved to `TypingSubst.lean`, so that
+`FormAlgebra.lean`, which reads them and nothing else of the machine, can
+import `TypingSubst` rather than this module. -/
 
 theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
     {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {Fs : List Label} (hE : Γ ⊢ E : S₀ ≤ T) :
@@ -469,6 +450,10 @@ theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
   capInner := by
     simp only [CapAtom.subst_selfCast]
     exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot _)
+  capInst := by
+    intro a C h
+    simp only [CapAtom.subst_selfCast, CaptureSet.subst_selfCast]
+    exact (Ctx.instOf_cons_eq Γ (.opaque T) (.transparent S₀ W Wc Fs) a C).mp h
 
 /-- The self binder of a stored object literal may be replaced by the
 variable it is stored at. -/
@@ -562,6 +547,136 @@ theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)} {C : Capt
     rw [Ctx.rootAtom_cons Γ (Binding.transparent ((μ Tel) ^ C) W Wc Fs),
       CapAtom.rename_subst_weaken]
     exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot Γ)
+  capInst := by
+    intro a C' hI
+    obtain ⟨a₀, C₀, rfl, rfl, h₀⟩ := Ctx.instOf_cons_cases hI
+    rw [CapAtom.rename_subst_weaken, CaptureSet.rename_subst_weaken']
+    exact h₀
+
+/-! ## The answer sort: isolation, canonical forms, and applying a coercion
+
+**T8, isolation.**  Store free, no fuel, no context predicate.  An existential
+answer cannot be widened to a plain one, which is the target's form of "a
+result `fresh` cannot flow into a local `any`". -/
+
+/-- Whether an answer is an existential. -/
+def ETy.isEx : ETy s → Bool
+  | .ex _ _ => true
+  | .ty _ => false
+
+@[simp] theorem ETy.isEx_ty (T : Ty s) : (ETy.ty T).isEx = false := rfl
+@[simp] theorem ETy.isEx_ex (C : CaptureSet s) (T : Ty (s,c)) : (ETy.ex C T).isEx = true := rfl
+
+/-- **T8.**  An existential stays an existential along answer inclusion. -/
+theorem ex_stays_ex {s : Sig} {Γ : Ctx s} :
+    ∀ (g : ELeCo s) {E₁ E₂ : ETy s}, Γ ⊢ᵉ g : E₁ ≤ E₂ → E₁.isEx = true → E₂.isEx = true
+  | .plain _, _, _, h => by cases h with | plain _ => intro he; exact absurd he (by simp)
+  | .pack _ _ _, _, _, h => by cases h with | pack _ _ => intro _; rfl
+  | .cong _ _, _, _, h => by cases h with | cong _ _ => intro _; rfl
+  | .trans g₁ g₂, _, _, h => by
+      cases h with
+      | trans h₁ h₂ => intro he; exact ex_stays_ex g₂ h₂ (ex_stays_ex g₁ h₁ he)
+
+/-- **T8, the corollary.**  No evidence takes an existential answer to a
+plain one. -/
+theorem no_ex_le_ty {s : Sig} {Γ : Ctx s} {g : ELeCo s} {C₀ : CaptureSet s}
+    {T₁ : Ty (s,c)} {T₂ : Ty s} (h : Γ ⊢ᵉ g : ∃ᶜ[C₀] T₁ ≤ .ty T₂) : False := by
+  have := ex_stays_ex g h rfl
+  simp at this
+
+/-! ### Canonical forms at an existential answer
+
+**T9.**  Both are one inversion on the wrapper: no normalisation, no fuel,
+no store.  They are what the two unpack steps read. -/
+
+/-- **T9.**  A packed atom at an existential answer is a `pack`. -/
+theorem pack_canon {s : Sig} {Γ : Ctx s} {p : PAtom s} {C₀ : CaptureSet s} {T : Dom s}
+    (h : Γ ⊢ₚ p : ∃ᶜ[C₀] T) :
+    ∃ (C : CaptureSet s) (h₀ : CapCo s) (e : LeCo (Sig.scope s)) (a : Atom s) (S : Ty s),
+      p = .pack C h₀ e a ∧ Γ ⊢ₐ a : S ∧ Γ ⊢ᶜ h₀ : C ⊑ C₀ ∧
+        Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S)) ≤ T.underRoot := by
+  cases h with
+  | pack ha hb he => exact ⟨_, _, _, _, _, rfl, ha, hb, he⟩
+
+/-- **T9, the value twin.** -/
+theorem pack_canon_val {s : Sig} {Γ : Ctx s} {v : Value s} {C₀ : CaptureSet s} {T : Dom s}
+    (h : Γ ⊢ᵥᵉ v : ∃ᶜ[C₀] T) :
+    ∃ (C : CaptureSet s) (h₀ : CapCo s) (e : LeCo (Sig.scope s)) (v₀ : Value s) (S : Ty s),
+      v = .pack C h₀ e v₀ ∧ Γ ⊢ᵥ v₀ : S ∧ Γ ⊢ᶜ h₀ : C ⊑ C₀ ∧
+        Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S)) ≤ T.underRoot := by
+  cases h with
+  | pack hv hb he => exact ⟨_, _, _, _, _, rfl, hv, hb, he⟩
+
+/-- A packed atom has no plain answer, so a wrapper at `.ty T` is plain. -/
+theorem PAtom.HasType.ty_inv {s : Sig} {Γ : Ctx s} {p : PAtom s} {T : Ty s}
+    (h : Γ ⊢ₚ p : .ty T) : ∃ a : Atom s, p = .plain a ∧ Γ ⊢ₐ a : T := by
+  cases h with
+  | plain ha => exact ⟨_, rfl, ha⟩
+
+/-- A packed value has no plain answer, so a value at `.ty T` is typed by the
+plain rule.  `Value.HasType` has no `pack` rule, which is why this holds. -/
+theorem Value.HasTypeE.ty_inv {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
+    (h : Γ ⊢ᵥᵉ v : .ty T) : Γ ⊢ᵥ v : T := by
+  cases h with
+  | plain hv => exact hv
+
+/-! ### T-B2.3, coercions apply
+
+`Value.applyE` and `PAtom.applyE` are total and structural on the coercion.
+The clauses that hand back their input are the typed-impossible combinations,
+and each is closed here by inverting the two typings, not by an appeal to
+reachability. -/
+
+/-- The residual of a congruence, read at the wrapper's instance scope.  It is
+`Ctx.Ren.instC` at the identity renaming, which is T-B2.1. -/
+theorem LeCo.HasType.atScopeInst {s : Sig} {Γ : Ctx s} {C : CaptureSet s}
+    {f : LeCo (Sig.scope s)} {X Y : Ty (Sig.scope s)}
+    (h : Γ.scope ⊢ f : X ≤ Y) : Γ.scopeInst C ⊢ f : X ≤ Y := by
+  have := h.rename (Ctx.Ren.instC (Γ := Γ.consC .root) (C := CaptureSet.weaken (k := .cap) C))
+  rwa [LeCo.rename_id, Ty.rename_id, Ty.rename_id] at this
+
+/-- **T-B2.3.**  A typed answer coercion applies to a typed value wrapper. -/
+theorem Value.HasTypeE.applyE {s : Sig} {Γ : Ctx s} :
+    ∀ (g : ELeCo s) {v : Value s} {E E' : ETy s},
+      Γ ⊢ᵥᵉ v : E → Γ ⊢ᵉ g : E ≤ E' → Γ ⊢ᵥᵉ v.applyE g : E'
+  | .plain _, _, _, _, hv, hg => by
+      cases hg with | plain he => exact .plain ((hv.ty_inv).cast he)
+  | .pack _ _ _, _, _, _, hv, hg => by
+      cases hg with | pack hh he => exact .pack hv.ty_inv hh he
+  | .cong _ _, _, _, _, hv, hg => by
+      cases hg with
+      | cong hh hf =>
+          obtain ⟨C, h₀, e, v₀, S, rfl, hv₀, hb, he⟩ := pack_canon_val hv
+          exact .pack hv₀ (.trans hb hh) (he.trans (LeCo.HasType.atScopeInst hf))
+  | .trans g₁ g₂, _, _, _, hv, hg => by
+      cases hg with
+      | trans h₁ h₂ =>
+          exact Value.HasTypeE.applyE g₂ (Value.HasTypeE.applyE g₁ hv h₁) h₂
+
+/-- **T-B2.3, the atom twin.** -/
+theorem PAtom.HasType.applyE {s : Sig} {Γ : Ctx s} :
+    ∀ (g : ELeCo s) {p : PAtom s} {E E' : ETy s},
+      Γ ⊢ₚ p : E → Γ ⊢ᵉ g : E ≤ E' → Γ ⊢ₚ p.applyE g : E'
+  | .plain _, _, _, _, hp, hg => by
+      cases hg with
+      | plain he =>
+          obtain ⟨a, rfl, ha⟩ := hp.ty_inv
+          exact .plain (ha.cast he)
+  | .pack _ _ _, _, _, _, hp, hg => by
+      cases hg with
+      | pack hh he =>
+          obtain ⟨a, rfl, ha⟩ := hp.ty_inv
+          exact .pack ha hh he
+  | .cong _ _, _, _, _, hp, hg => by
+      cases hg with
+      | cong hh hf =>
+          obtain ⟨C, h₀, e, a, S, rfl, ha, hb, he⟩ := pack_canon hp
+          exact .pack ha (.trans hb hh) (he.trans (LeCo.HasType.atScopeInst hf))
+  | .trans g₁ g₂, p, _, _, hp, hg => by
+      cases hg with
+      | trans h₁ h₂ =>
+          rw [PAtom.applyE_trans]
+          exact PAtom.HasType.applyE g₂ (PAtom.HasType.applyE g₁ hp h₁) h₂
 
 /-! ## Preservation -/
 
@@ -573,11 +688,11 @@ sentences for a box atom, whose head form is `boxed d` or the identity.
 Discharged by the canonical-forms theorem (`CanonicalForms.lean`). -/
 structure FormsTyped (σ : Store s) (Γ : Ctx s) : Prop where
   pi : ∀ {a : Atom s} {S : Dom s} {T : Cod s} {C : CaptureSet s} {n : Nat} {a' : Atom s}
-    {d : LeCo (Sig.scope s)} {c : LeCo (Sig.body s)} {S₀ : Dom s} {T₀ : Cod s},
+    {d : LeCo (Sig.scope s)} {c : ELeCo (Sig.body s)} {S₀ : Dom s} {T₀ : Cod s},
     Γ ⊢ₐ a : (Π(S) T) ^ C → σ ⊢ a ⇓ᶜ[n] (a', .pi d c) →
     (Γ.lookupTy a.root).shape = Π(S₀) T₀ →
     Γ.scope ⊢ d : S.underRoot ≤ S₀.underRoot ∧
-      (Γ.body S) ⊢ c : T₀.underRoot ≤ T.underRoot
+      (Γ.body S) ⊢ᵉ c : T₀.underRoot ≤ T.underRoot
   refl : ∀ {a : Atom s} {S : Dom s} {T : Cod s} {C : CaptureSet s} {n : Nat} {a' : Atom s}
     {F : Form s},
     Γ ⊢ₐ a : (Π(S) T) ^ C → σ ⊢ a ⇓ᶜ[n] (a', F) →
@@ -605,7 +720,7 @@ continuation body is adjusted to use the new variable under the composite of
 the stripped casts. -/
 theorem preservation_alloc {s : Sig} {σ : Store s} {Γ : Ctx s} {K : Cont s}
     {u : Tm (s,x)} {U' : CaptureSet s} {f : CapCo (s,x)} {v : Value s} {T U : Ty s}
-    (hσ : ⊢ σ : Γ) (hv : Γ ⊢ᵥ v : T) (hK : Γ ⊢ₖ K ▹ .let u U' f : T ⇒ U) :
+    (hσ : ⊢ σ : Γ) (hv : Γ ⊢ᵥ v : T) (hK : Γ ⊢ₖ K ▹ .let u U' f : .ty T ⇒ U) :
     State.Typed ⟨.cons σ v.core, K↑, u.adjust v⟩ U↑ := by
   cases hK with
   | «let» hu _ hK' =>
@@ -662,9 +777,11 @@ theorem Subst.arg_core_congr {s : Sig} {a a' : Atom s} (h : a.root = a'.root) :
         | here => show CapAtom.var a.root = CapAtom.var a'.root; rw [h]
         | there κ => rfl
 
+/-- The same at the answer sort, which is where a codomain lives.  It is the
+`Ty` lemma one sort up, through `ETy.subst_core`. -/
 theorem Ty.arg_congr {s : Sig} (T : Cod s) {a a' : Atom s} (h : a.root = a'.root) :
     T.subst (Subst.arg a) = T.subst (Subst.arg a') := by
-  rw [Ty.subst_core T (Subst.arg a), Ty.subst_core T (Subst.arg a'),
+  rw [ETy.subst_core T (Subst.arg a), ETy.subst_core T (Subst.arg a'),
     Subst.arg_core_congr h]
 
 /-- β: a closure applied at its own function type.  The step enters the body
@@ -677,7 +794,7 @@ theorem Value.HasType.beta {s : Sig} {Γ : Ctx s} {A : CaptureSet s} {S₀ S : D
     {b : Atom s} (hΓ : Γ.root? = none)
     (hlam : Γ ⊢ᵥ .lam A S₀ t₀ g : (Π(S) T) ^ C)
     (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root))) :
-    Γ ⊢ t₀.subst (Subst.enter b) : T.subst (Subst.arg b) := by
+    Γ ⊢ t₀.subst (Subst.enter b) :ᵉ T.subst (Subst.arg b) := by
   obtain ⟨T₀, hTe, ht₀, -⟩ := Value.HasType.lam_inv hlam
   obtain ⟨-, rfl, rfl⟩ : C = A ∧ S = S₀ ∧ T = T₀ := by
     simpa [Ty.capt.injEq, Shape.pi.injEq] using hTe
@@ -691,7 +808,7 @@ theorem Store.Typed.beta {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVar s .var}
     {T : Cod s} {C : CaptureSet s} {b : Atom s}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup x = .lam A S₀ t₀ g) (hty : Γ.lookupTy x = (Π(S) T) ^ C)
     (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root))) :
-    Γ ⊢ t₀.subst (Subst.enter b) : T.subst (Subst.arg b) :=
+    Γ ⊢ t₀.subst (Subst.enter b) :ᵉ T.subst (Subst.arg b) :=
   (hty ▸ hσ.lam_of_lookup hx).beta hσ.rootFree hb
 
 /-- The body and the closing evidence of a stored closure, read in the
@@ -702,7 +819,7 @@ with the argument. -/
 theorem Store.Typed.lam_closing {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVar s .var}
     {A : CaptureSet s} {S₀ : Dom s} {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup x = .lam A S₀ t₀ g) :
-    ∃ T₀ : Cod s, Γ.lookupTy x = (Π(S₀) T₀) ^ A ∧ (Γ.body S₀) ⊢ t₀ : T₀.underRoot ∧
+    ∃ T₀ : Cod s, Γ.lookupTy x = (Π(S₀) T₀) ^ A ∧ (Γ.body S₀) ⊢ t₀ :ᵉ T₀.underRoot ∧
       (Γ.body S₀) ⊢ᶜ g : t₀.uses ⊑ (A↑↑↑ ∪ [CapAtom.var .here]) :=
   Value.HasType.lam_inv (hσ.lam_of_lookup hx)
 
@@ -725,19 +842,19 @@ theorem Atom.HasType.castDom {s : Sig} {Γ : Ctx s} {S₀ S : Dom s}
 domain evidence read at the argument's root, and the result by the codomain
 evidence read at the argument. -/
 theorem Tm.HasType.betaCast {s : Sig} {Γ : Ctx s} {S₀ S : Dom s} {t₀ : Tm (Sig.body s)}
-    {T₀ T : Cod s} {d : LeCo (Sig.scope s)} {c : LeCo (Sig.body s)} {b : Atom s}
+    {T₀ T : Cod s} {d : LeCo (Sig.scope s)} {c : ELeCo (Sig.body s)} {b : Atom s}
     (hΓ : Γ.root? = none)
-    (ht₀ : (Γ.body S₀) ⊢ t₀ : T₀.underRoot)
+    (ht₀ : (Γ.body S₀) ⊢ t₀ :ᵉ T₀.underRoot)
     (hdom : Γ.scope ⊢ d : S.underRoot ≤ S₀.underRoot)
-    (hcod : (Γ.body S) ⊢ c : T₀.underRoot ≤ T.underRoot)
+    (hcod : (Γ.body S) ⊢ᵉ c : T₀.underRoot ≤ T.underRoot)
     (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root))) :
-    Γ ⊢ .cast (t₀.subst (Subst.enter (.cast b (d.subst (Subst.enterC b)))))
-        (c.subst (Subst.enter b)) : T.subst (Subst.arg b) := by
+    Γ ⊢ .castE (t₀.subst (Subst.enter (.cast b (d.subst (Subst.enterC b)))))
+        (c.subst (Subst.enter b)) :ᵉ T.subst (Subst.arg b) := by
   -- the domain evidence, instantiated at the argument's root
   have hb' := Atom.HasType.castDom hΓ hdom hb
-  have hcod' := hcod.subst (Subst.Typed.enter hΓ hb)
+  have hcod' := ELeCo.HasType.subst (Subst.Typed.enter hΓ hb) hcod
   rw [Cod.underRoot_enter, Cod.underRoot_enter] at hcod'
-  refine Tm.HasType.cast ?_ hcod'
+  refine Tm.HasType.castE ?_ hcod'
   have h := ht₀.subst (Subst.Typed.enter hΓ hb')
   rw [Cod.underRoot_enter, Ty.arg_congr T₀ (a := .cast b (d.subst (Subst.enterC b)))
     (a' := b) rfl] at h
@@ -825,6 +942,45 @@ theorem Tm.HasType.cast_inv {s : Sig} {Γ : Ctx s} {t : Tm s} {e : LeCo s} {U : 
   cases h with
   | cast ht he => exact ⟨_, ht, he⟩
 
+/-! ### Instantiating a binder at the answer sort
+
+A let body and a `letex` body may have an answer, so the two steps that
+substitute an atom into a body read it against an answer.  Each lemma below is
+the plain one of `TypingSubst.lean` one sort up, proven the same way. -/
+
+/-- `Subst.single` on an answer is `substVar` at the atom's root: the answer
+sort reads an atom only through its root, as a type does. -/
+@[simp] theorem ETy.subst_single {s : Sig} (E : ETy (s,x)) (a : Atom s) :
+    E.subst (Subst.single a) = E⟦a.root⟧ := by
+  rw [ETy.subst_core, Subst.single_core, ETy.subst_ofRename]
+  rfl
+
+/-- A weakened answer is unchanged by the instantiation of the binder it
+avoids.  This is the avoidance the `let` and `letex` rules write into their
+body premises. -/
+@[simp] theorem ETy.weaken_substVar {s : Sig} {k : Kind} (E : ETy s) (r : BVar s k) :
+    (E.weaken (k := k))⟦r⟧ = E := by
+  simp only [ETy.weaken, ETy.substVar, ETy.rename_comp]
+  rw [show (Rename.succ.comp (Rename.subst r) : Rename s s) = Rename.id from
+    Rename.funext' (by intro k y; cases k <;> rfl)]
+  exact ETy.rename_id E
+
+/-- `Tm.HasType.substAtom` at the answer sort. -/
+theorem Tm.HasType.substAtomE {s : Sig} {Γ : Ctx s} {T : Ty s} {u : Tm (s,x)} {E : ETy (s,x)}
+    {a : Atom s} (hu : (Γ.cons (.opaque T)) ⊢ u :ᵉ E) (ha : Γ ⊢ₐ a : T) :
+    Γ ⊢ u.substAtom a :ᵉ (E⟦a.root⟧) := by
+  have := hu.subst (Subst.Typed.single ha)
+  simpa [Tm.substAtom] using this
+
+/-- `Tm.HasType.letBody_substAtom` at the answer sort: what `rename` and
+`unpackAtom` produce. -/
+theorem Tm.HasType.letBody_substAtomE {s : Sig} {Γ : Ctx s} {T : Ty s} {E : ETy s}
+    {u : Tm (s,x)} {a : Atom s}
+    (hu : (Γ.cons (.opaque T)) ⊢ u :ᵉ E↑) (ha : Γ ⊢ₐ a : T) :
+    Γ ⊢ u.substAtom a :ᵉ E := by
+  have := Tm.HasType.substAtomE hu ha
+  rwa [ETy.weaken_substVar] at this
+
 /-- `rename`: the body of a let frame, instantiated at the atom the state
 carries, is typed at the frame's result type. -/
 theorem Tm.HasType.letBody_substAtom {s : Sig} {Γ : Ctx s} {T U : Ty s} {u : Tm (s,x)}
@@ -855,6 +1011,115 @@ theorem Store.Typed.unboxCast_result {s : Sig} {σ : Store s} {Γ : Ctx s}
   obtain ⟨X, hshape, hb⟩ := hσ.boxContent hx
   exact hb.cast (hFT.boxed ha hcf hshape)
 
+/-! ## The two unpack steps
+
+The eight steps of B2.12, packaged as two lemmas.  Both extend the store by
+the witness as an instance binder, read the wrapper's payload in the extended
+scope under the residual coercion collapsed by `Subst.instRoot`, transport the
+frame's body along `Ctx.Ren.instC`, and weaken the continuation by
+`Cont.Typed.weakenC`.  Neither reads a form and neither takes fuel. -/
+
+/-- The frame's body, read in the store's `.inst C` context.  This is
+`Ctx.Ren.instC` lifted by the payload binder, at the identity renaming. -/
+theorem Tm.HasType.letexBody_instC {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {T : Dom s}
+    {u : Tm ((s,c),x)} {E : ETy s}
+    (hu : ((Γ.consC .star).cons (.opaque T)) ⊢ u :ᵉ
+      (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E))) :
+    ((Γ.consC (.inst C)).cons (.opaque T)) ⊢ u :ᵉ
+      (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E)) := by
+  have h := hu.rename ((Ctx.Ren.instC (Γ := Γ) (C := C)).lift (.opaque T))
+  simpa [Binding.rename, Rename.lift_id] using h
+
+/-- The frame's avoidance evidence, read in the store's `.inst C` context. -/
+theorem CapCo.HasType.letexCharge_instC {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {T : Dom s}
+    {u : Tm ((s,c),x)} {f : CapCo ((s,c),x)} {U' : CaptureSet s}
+    (hf : ((Γ.consC .star).cons (.opaque T)) ⊢ᶜ f :
+      u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+        ∪ [CapAtom.cvar (.there .here)])) :
+    ((Γ.consC (.inst C)).cons (.opaque T)) ⊢ᶜ f :
+      u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+        ∪ [CapAtom.cvar (.there .here)]) := by
+  have h := CapCo.HasType.rename ((Ctx.Ren.instC (Γ := Γ) (C := C)).lift (.opaque T)) hf
+  simpa [Binding.rename, Rename.lift_id, Tm.uses_rename] using h
+
+/-- The payload of a wrapper, read in the store's `.inst C` context: the
+carried atom weakened past the instance binder, under the residual coercion
+with the pack's own root collapsed by `Subst.instRoot`.  The two cancellations
+are `Ty.weakenC_two_instRoot` and `Dom.underRoot_instRoot`. -/
+theorem Atom.HasType.unpackPayload {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {S : Ty s}
+    {T : Dom s} {e : LeCo (Sig.scope s)} {a : Atom s} (hΓ : Γ.root? = none)
+    (ha : Γ ⊢ₐ a : S)
+    (he : Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S))
+      ≤ T.underRoot) :
+    (Γ.consC (.inst C)) ⊢ₐ .cast (Atom.weaken (k := .cap) a) (e.subst Subst.instRoot) : T := by
+  have he' := he.subst (Subst.Typed.instRoot hΓ C)
+  rw [Ty.weakenC_two_instRoot, Dom.underRoot_instRoot] at he'
+  exact (ha.weakenC (.inst C) rfl).cast he'
+
+/-- The value twin of `Atom.HasType.unpackPayload`. -/
+theorem Value.HasType.unpackPayload {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {S : Ty s}
+    {T : Dom s} {e : LeCo (Sig.scope s)} {v : Value s} (hΓ : Γ.root? = none)
+    (hv : Γ ⊢ᵥ v : S)
+    (he : Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S))
+      ≤ T.underRoot) :
+    (Γ.consC (.inst C)) ⊢ᵥ .cast (Value.weaken (k := .cap) v) (e.subst Subst.instRoot) : T := by
+  have he' := he.subst (Subst.Typed.instRoot hΓ C)
+  rw [Ty.weakenC_two_instRoot, Dom.underRoot_instRoot] at he'
+  exact (hv.weakenC (.inst C) rfl).cast he'
+
+/-- `unpackAtom`: the store gains the witness as an instance binder, the
+continuation is weakened into the new scope, and the body is instantiated at
+the wrapper's atom read there. -/
+theorem preservation_unpackAtom {s : Sig} {σ : Store s} {Γ : Ctx s} {K : Cont s}
+    {u : Tm ((s,c),x)} {U' : CaptureSet s} {h : CapCo s} {f : CapCo ((s,c),x)}
+    {C C₀ : CaptureSet s} {h₀ : CapCo s} {e : LeCo (Sig.scope s)} {a : Atom s}
+    {T : Dom s} {U : Ty s}
+    (hσ : ⊢ σ : Γ) (hp : Γ ⊢ₚ .pack C h₀ e a : ∃ᶜ[C₀] T)
+    (hK : Γ ⊢ₖ K ▹ .letex u U' h f : ∃ᶜ[C₀] T ⇒ U) :
+    State.Typed ⟨σ.consC (.inst C), K.weakenC,
+        u.substAtom (.cast (Atom.weaken (k := .cap) a) (e.subst Subst.instRoot))⟩
+      (Ty.weaken (k := .cap) U) := by
+  cases hK with
+  | letex hh hu hf hK' =>
+      cases hp with
+      | pack ha hb he =>
+          refine ⟨Γ.consC (.inst C), _, hσ.consC rfl, ?_,
+            Cont.Typed.weakenC hK' (.inst C) rfl⟩
+          exact Tm.HasType.letBody_substAtomE (Tm.HasType.letexBody_instC hu)
+            (Atom.HasType.unpackPayload hσ.rootFree ha he)
+
+/-- `unpackVal`: the store gains the witness as an instance binder and then the
+literal, which is what `preservation_alloc` already packages. -/
+theorem preservation_unpackVal {s : Sig} {σ : Store s} {Γ : Ctx s} {K : Cont s}
+    {u : Tm ((s,c),x)} {U' : CaptureSet s} {h : CapCo s} {f : CapCo ((s,c),x)}
+    {C C₀ : CaptureSet s} {h₀ : CapCo s} {e : LeCo (Sig.scope s)} {v : Value s}
+    {T : Dom s} {U : Ty s}
+    (hσ : ⊢ σ : Γ) (hv : Γ ⊢ᵥᵉ .pack C h₀ e v : ∃ᶜ[C₀] T)
+    (hK : Γ ⊢ₖ K ▹ .letex u U' h f : ∃ᶜ[C₀] T ⇒ U) :
+    State.Typed
+      ⟨(σ.consC (.inst C)).cons
+          (Value.cast (Value.weaken (k := .cap) v) (e.subst Subst.instRoot)).core,
+        (K.weakenC).weaken,
+        u.adjust (Value.cast (Value.weaken (k := .cap) v) (e.subst Subst.instRoot))⟩
+      (Ty.weaken (k := .var) (Ty.weaken (k := .cap) U)) := by
+  cases hK with
+  | letex hh hu hf hK' =>
+      cases hv with
+      | pack hv₀ hb he =>
+          have hf' : ((Γ.consC (.inst C)).cons (.opaque T)) ⊢ᶜ f :
+              u.uses ⊑ CaptureSet.weaken (k := .var)
+                (CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here]) := by
+            have h := CapCo.HasType.letexCharge_instC (C := C) hf
+            rwa [show CaptureSet.weaken (k := .var)
+                (CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here])
+              = ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+                  ∪ [CapAtom.cvar (.there .here)]) from
+              CaptureSet.rename_union _ _ _]
+          exact preservation_alloc (hσ.consC rfl)
+            (Value.HasType.unpackPayload hσ.rootFree hv₀ he)
+            (Cont.Typed.let (Tm.HasType.letexBody_instC hu) hf'
+              (Cont.Typed.weakenC hK' (.inst C) rfl))
+
 theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
     (hF : ∀ Γ, ⊢ st.σ : Γ → FormsTyped st.σ Γ)
     (hT : State.Typed st U) (step : Step st st') :
@@ -870,22 +1135,69 @@ theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
       cases ht with
       | val hv =>
           cases hK with
-          | cast he hK' => exact State.Typed.exists_rename_id ⟨Γ, _, hσ, .val (.cast hv he), hK'⟩
+          | cast he hK' =>
+              exact State.Typed.exists_rename_id
+                ⟨Γ, _, hσ, .val (.plain (hv.ty_inv.cast he)), hK'⟩
   case castAtom =>
       cases ht with
-      | atom ha =>
+      | atom hp =>
           cases hK with
-          | cast he hK' => exact State.Typed.exists_rename_id ⟨Γ, _, hσ, .atom (.cast ha he), hK'⟩
+          | cast he hK' =>
+              exact State.Typed.exists_rename_id
+                ⟨Γ, _, hσ, .atom (PAtom.HasType.applyE (.plain _) hp (.plain he)), hK'⟩
   case alloc =>
       cases ht with
-      | val hv => exact ⟨Rename.succ, preservation_alloc hσ hv hK⟩
+      | val hv =>
+          cases hK with
+          | «let» hu hf hK' =>
+              exact ⟨Rename.succ, preservation_alloc hσ hv.ty_inv (.let hu hf hK')⟩
   case rename =>
       cases ht with
-      | atom ha =>
+      | atom hp =>
+          cases hp with
+          | plain ha =>
+              cases hK with
+              | «let» hu _ hK' =>
+                  exact State.Typed.exists_rename_id
+                    ⟨Γ, _, hσ, Tm.HasType.letBody_substAtomE hu ha, hK'⟩
+  -- The three answer-cast steps.  None has a premise, and none reads a head
+  -- form: the frame holds the coercion and `applyE` is total.
+  case castEPush =>
+      cases ht with
+      | castE ht' hg => exact State.Typed.exists_rename_id ⟨Γ, _, hσ, ht', .castE hg hK⟩
+  case castEVal =>
+      cases ht with
+      | val hv =>
           cases hK with
-          | «let» hu _ hK' =>
+          | castE hg hK' =>
               exact State.Typed.exists_rename_id
-                ⟨Γ, _, hσ, Tm.HasType.letBody_substAtom hu ha, hK'⟩
+                ⟨Γ, _, hσ, .val (Value.HasTypeE.applyE _ hv hg), hK'⟩
+  case castEAtom =>
+      cases ht with
+      | atom hp =>
+          cases hK with
+          | castE hg hK' =>
+              exact State.Typed.exists_rename_id
+                ⟨Γ, _, hσ, .atom (PAtom.HasType.applyE _ hp hg), hK'⟩
+  case letex =>
+      cases ht with
+      | letex ht' hh hu hf =>
+          exact State.Typed.exists_rename_id ⟨Γ, _, hσ, ht', .letex hh hu hf hK⟩
+  case unpackAtom =>
+      cases ht with
+      | atom hp =>
+          cases hK with
+          | letex hh hu hf hK' =>
+              exact ⟨Rename.succ,
+                preservation_unpackAtom hσ hp (.letex hh hu hf hK')⟩
+  case unpackVal =>
+      cases ht with
+      | val hv =>
+          cases hK with
+          | letex hh hu hf hK' =>
+              refine ⟨Rename.succ.comp Rename.succ, ?_⟩
+              have h := preservation_unpackVal hσ hv (.letex hh hu hf hK')
+              simpa only [Ty.weaken, Ty.rename_comp] using h
   case appVar hx =>
       cases ht with
       | app ha hb =>
@@ -910,12 +1222,12 @@ theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
       cases ht with
       | unbox ha hf =>
           exact State.Typed.exists_rename_id
-            ⟨Γ, _, hσ, .atom (hσ.unboxRefl_result (hF Γ hσ) hx ha hcf hid), hK⟩
+            ⟨Γ, _, hσ, .atom (.plain (hσ.unboxRefl_result (hF Γ hσ) hx ha hcf hid)), hK⟩
   case unboxCast hx hcf =>
       cases ht with
       | unbox ha hf =>
           exact State.Typed.exists_rename_id
-            ⟨Γ, _, hσ, .atom (hσ.unboxCast_result (hF Γ hσ) hx ha hcf), hK⟩
+            ⟨Γ, _, hσ, .atom (.plain (hσ.unboxCast_result (hF Γ hσ) hx ha hcf)), hK⟩
 
 end FCdot
 

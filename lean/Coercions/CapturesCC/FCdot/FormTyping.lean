@@ -204,7 +204,7 @@ inductive FormTyped {s : Sig} (Γ : Ctx s) :
   | pi {S₁ S₂ : Dom s} {T₁ T₂ : Cod s} :
       Γ.resolveAt? ρ S = Π(S₁) T₁ → Γ.resolveAt? ρ T = Π(S₂) T₂ →
       Γ.scope ⊢ d : S₂.underRoot ≤ S₁.underRoot →
-      Γ.body S₂ ⊢ c : T₁.underRoot ≤ T₂.underRoot →
+      Γ.body S₂ ⊢ᵉ c : T₁.underRoot ≤ T₂.underRoot →
       FormTyped Γ ρ (.pi d c) S T
   | obj : Γ.resolveAt? ρ S = μ Tel₁ → Γ.resolveAt? ρ T = μ Tel₂ →
       EntriesTyped Γ ρ Tel₁ Es Tel₂ → FormTyped Γ ρ (.obj Es) S T
@@ -750,6 +750,7 @@ theorem Value.precView_noBnd (x : BVar s .var) (v : Value s) : (v.precView x).No
   | lam A S t g => exact View.NoBnd.nil
   | box a => exact View.NoBnd.nil
   | cast v e => exact View.NoBnd.nil
+  | pack C h e v => exact View.NoBnd.nil
 
 /-! ## Field presence in a typed store -/
 

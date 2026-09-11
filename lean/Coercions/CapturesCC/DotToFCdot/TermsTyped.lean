@@ -189,7 +189,7 @@ variable.  This is what makes `HasTy.translate_uses` at an atom derivation
 the plan's `{x} ⊑ ⟦U⟧`. -/
 
 theorem HasTy.translate_uses_atom : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s}
-    {y : BVar s .var} {T : Ty s} (h : HasTy U Γ (.path (.var y)) T),
+    {y : BVar s .var} {T : Ty s} (h : HasTy U Γ (.path (.var y)) (.ty T)),
     h.translate.uses = [FCdot.CapAtom.var y]
   | _, _, Γ, y, _, .var => by
       rw [HasTy.translate]; simp [FCdot.Atom.root, Ctx.varAtom_root Γ y]
@@ -202,7 +202,7 @@ theorem HasTy.translate_uses_atom : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s
   | _, _, _, _, _, .andI h₁ h₂ => by
       rw [HasTy.translate]
       simp [HasTy.translateAtom_root (HasTy.andI h₁ h₂)]
-  | _, _, _, _, _, .sub h _ _ => by
+  | _, _, _, _, _, .sub h (.ty _) _ => by
       rw [HasTy.translate]
       simpa using HasTy.translate_uses_atom h
 
@@ -210,19 +210,19 @@ theorem HasTy.translate_uses_atom : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s
 
 mutual
 
-theorem HasTy.translate_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : HasTy U Γ t T), Γ.Wf →
-    FCdot.Tm.HasType Γ.translate h.translate T.translate
+theorem HasTy.translate_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t : Tm s}
+    {E : ETy s} (h : HasTy U Γ t E), Γ.Wf →
+    FCdot.Tm.HasType Γ.translate h.translate E.translate
   | _, _, Γ, _, _, @HasTy.var _ _ x, hwf => by
       have ha := HasTy.translateAtom_typed (@HasTy.var _ Γ x) hwf
       rw [HasTy.translateAtom] at ha
       simp only [HasTy.translate]
-      exact .atom ha
+      exact .atom (.plain ha)
   | _, _, _, _, _, @HasTy.lam _ _ U T1 _ _ h _, hwf => by
-      simp only [HasTy.translate, Ty.translate_capt, Shape.translate_all_eq]
+      simp only [HasTy.translate, ETy.translate, Ty.translate_capt, Shape.translate_all_eq]
       have hb := HasTy.translate_typed h (hwf.body T1)
       rw [Ctx.translate_body, Ty.translate_underRootCod] at hb
-      refine .val (.lam hb ?_)
+      refine .val (.plain (.lam hb ?_))
       have hu := HasTy.translate_uses h (hwf.body T1)
       rw [Ctx.translate_body] at hu
       simpa using hu
@@ -259,13 +259,13 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t
         .obj (by rw [hlab]; exact hf)
       rw [hlab] at hval
       simp only [HasTy.translate]
-      refine .cast (.val hval) ?_
+      refine .cast (.val (.plain hval)) ?_
       simp only [FCdot.ShapeCo.atC, Ty.translate_capt]
       exact .capt (litCo_typed_of_shape hsh hdl) .refl
   | _, _, _, _, _, @HasTy.box _ _ _ _ _ h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
-      simp only [HasTy.translate, Ty.translate_capt, Shape.translate_box_eq]
-      exact .val (.box ha)
+      simp only [HasTy.translate, ETy.translate, Ty.translate_capt, Shape.translate_box_eq]
+      exact .val (.plain (.box ha))
   | _, _, _, _, _, @HasTy.proj _ _ _ _ a (.capt CT ST) _ h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_capt, Shape.translate_fld, Shape.tel_fld] at ha
@@ -276,13 +276,13 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t
       rw [FCdot.CaptureSet.substVar_name_here, FCdot.CaptureSet.weaken_substVar'] at hcap
       simp only [HasTy.translate, Shape.translate_fld, Shape.tel_fld, Ty.translate_capt]
       exact .cast (.proj ha hhas) (.capt hle hcap)
-  | _, _, _, _, _, @HasTy.let _ _ U _ _ _ _ h₁ h₂ _, hwf => by
+  | _, _, _, _, _, @HasTy.let _ _ U _ _ _ T' h₁ h₂ _, hwf => by
       have ih₂ := HasTy.translate_typed h₂ (.cons hwf)
-      rw [Ty.translate_weaken] at ih₂
+      simp only [ETy.translate, Ty.translate_weaken] at ih₂
       have hu := HasTy.translate_uses h₂ (.cons hwf)
       rw [CaptureSet.translate_weaken] at hu
-      simp only [HasTy.translate]
-      exact .let (HasTy.translate_typed h₁ hwf) ih₂ hu
+      simp only [HasTy.translate, ETy.translate]
+      exact .let (E := FCdot.ETy.ty T'.translate) (HasTy.translate_typed h₁ hwf) ih₂ hu
   | _, _, _, _, _, @HasTy.unbox _ _ _ _ _ _ _ h f, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_capt, Shape.translate_box_eq, Ty.translate_capt] at ha
@@ -290,19 +290,28 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t
       exact .unbox ha (f.translate_typed hwf)
   | _, _, _, _, _, .recI h hd, hwf => by
       simp only [HasTy.translate]
-      exact .atom (HasTy.translateAtom_typed (.recI h hd) hwf)
+      exact .atom (.plain (HasTy.translateAtom_typed (.recI h hd) hwf))
   | _, _, _, _, _, .recE h hd, hwf => by
       simp only [HasTy.translate]
-      exact .atom (HasTy.translateAtom_typed (.recE h hd) hwf)
+      exact .atom (.plain (HasTy.translateAtom_typed (.recE h hd) hwf))
   | _, _, _, _, _, .andI h₁ h₂, hwf => by
       simp only [HasTy.translate]
-      exact .atom (HasTy.translateAtom_typed (.andI h₁ h₂) hwf)
+      exact .atom (.plain (HasTy.translateAtom_typed (.andI h₁ h₂) hwf))
+  | _, _, _, _, _, @HasTy.letex _ _ _ U₂ _ _ _ _ E h₁ f h₂, hwf => by
+      have hh := HasTy.translate_typed h₁ hwf
+      have hb := HasTy.translate_typed h₂ (.cons (.consC hwf))
+      have hu := HasTy.translate_uses h₂ (.cons (.consC hwf))
+      rw [ETy.translate_weaken, ETy.translate_weaken] at hb
+      simp only [CaptureSet.translate_union, CaptureSet.translate_weaken,
+        CaptureSet.translate_cons_cvar, CaptureSet.translate_nil] at hu
+      simp only [HasTy.translate]
+      exact .letex hh (f.translate_typed hwf) hb hu
   | _, _, _, _, _, .sub h d _, hwf => by
       simp only [HasTy.translate]
-      exact .cast (HasTy.translate_typed h hwf) (d.translate_typed hwf)
+      exact .castE (HasTy.translate_typed h hwf) (d.translate_typed hwf)
 
-theorem HasTy.translate_uses : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : HasTy U Γ t T), Γ.Wf →
+theorem HasTy.translate_uses : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t : Tm s}
+    {E : ETy s} (h : HasTy U Γ t E), Γ.Wf →
     FCdot.CapCo.HasType Γ.translate h.translateUses h.translate.uses U.translate
   | _, _, Γ, _, _, @HasTy.var _ _ x, _ => by
       rw [HasTy.translateUses, HasTy.translate_uses_atom (@HasTy.var _ Γ x)]
@@ -353,6 +362,15 @@ theorem HasTy.translate_uses : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t 
       rw [HasTy.translate_uses_atom h₁] at hu
       rw [HasTy.translateUses, HasTy.translate]
       simpa [FCdot.Tm.uses, HasTy.translateAtom_root (HasTy.andI h₁ h₂)] using hu
+  | _, _, _, _, _, @HasTy.letex _ _ U₁ U₂ _ _ _ _ _ h₁ _ _, hwf => by
+      rw [HasTy.translateUses, HasTy.translate]
+      refine .union (.trans (HasTy.translate_uses h₁ hwf) (.elem ?_)) (.elem ?_)
+      · rw [CaptureSet.translate_union]
+        intro a ha
+        exact List.mem_append_left _ ha
+      · rw [CaptureSet.translate_union]
+        intro a ha
+        exact List.mem_append_right _ ha
   | _, _, _, _, _, .sub h _ f, hwf => by
       rw [HasTy.translateUses, HasTy.translate]
       exact .trans (HasTy.translate_uses h hwf) (f.translate_typed hwf)
@@ -385,7 +403,7 @@ theorem DefsTy.translateFields_typed : ∀ {s : Sig} {Γ : Ctx s} {U : CaptureSe
         rw [← hcspec]
         exact .eqToLe (.symm (.defC hdefC))
       have hbody : FCdot.Tm.HasType (Γ.consSelf d Sall U).translate (fieldBody a h.translate)
-          ((FCdot.Shape.sel .here a) ^ [FCdot.CapAtom.name .here a]) :=
+          (.ty ((FCdot.Shape.sel .here a) ^ [FCdot.CapAtom.name .here a])) :=
         .cast (HasTy.translate_typed h hwf) (.capt hle hlec)
       have hg := HasTy.translate_uses h hwf
       simp only [DefsTy.translateFields]

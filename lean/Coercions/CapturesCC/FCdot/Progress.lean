@@ -61,6 +61,7 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Dom s} {T : Co
       rw [hl] at hv
       obtain ⟨X, hT, _⟩ := hv.box_inv
       rw [hT] at hlk; simp at hlk
+  | pack C h e v => rw [hl] at hv; cases hv
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
 end
@@ -72,13 +73,31 @@ theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
   obtain ⟨σ, K, t⟩ := st
   simp only at hσ ht hK
   cases t with
-  | atom a =>
+  -- The atom focus, frame kind by frame kind.  At `nil` a packed atom is
+  -- final, as a plain one is.  At a `let` frame `Cont.Typed.let` accepts a
+  -- plain answer while a packed atom has an existential one, so the narrowed
+  -- pattern of `rename` is still complete.  At a `cast` and at a `castE`
+  -- frame `applyE` is total, so the step fires at either wrapper.  At a
+  -- `letex` frame `pack_canon` names the wrapper.
+  | atom p =>
       cases K with
-      | nil => exact Or.inl (Or.inr ⟨rfl, a, rfl⟩)
+      | nil => exact Or.inl (Or.inr ⟨rfl, p, rfl⟩)
       | cons K f =>
           cases f with
-          | «let» u U' f => exact Or.inr ⟨_, _, .rename⟩
+          | «let» u U' f =>
+              cases hK with
+              | «let» _ _ _ =>
+                  cases ht with
+                  | atom hp => cases hp with | plain _ => exact Or.inr ⟨_, _, .rename⟩
           | cast e => exact Or.inr ⟨_, _, .castAtom⟩
+          | castE g => exact Or.inr ⟨_, _, .castEAtom⟩
+          | letex u U' h f =>
+              cases hK with
+              | letex _ _ _ _ =>
+                  cases ht with
+                  | atom hp =>
+                      obtain ⟨C, h₀, e, a, S, rfl, _, _, _⟩ := pack_canon hp
+                      exact Or.inr ⟨_, _, .unpackAtom⟩
   | val v =>
       cases K with
       | nil => exact Or.inl (Or.inl ⟨rfl, v, rfl⟩)
@@ -86,6 +105,14 @@ theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
           cases f with
           | «let» u U' f => exact Or.inr ⟨_, _, .alloc⟩
           | cast e => exact Or.inr ⟨_, _, .castVal⟩
+          | castE g => exact Or.inr ⟨_, _, .castEVal⟩
+          | letex u U' h f =>
+              cases hK with
+              | letex _ _ _ _ =>
+                  cases ht with
+                  | val hv =>
+                      obtain ⟨C, h₀, e, v₀, S, rfl, _, _, _⟩ := pack_canon_val hv
+                      exact Or.inr ⟨_, _, .unpackVal⟩
   | app a b =>
       cases ht with
       | app ha hb =>
@@ -105,6 +132,10 @@ theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
           exact Or.inr ⟨_, _, Step.proj hl hget⟩
   | «let» t u U' f => exact Or.inr ⟨_, _, .let⟩
   | cast t e => exact Or.inr ⟨_, _, .castPush⟩
+  -- The answer cast pushes its coercion onto the continuation with no
+  -- premise: the frame holds the coercion itself, so no head form is read.
+  | castE t g => exact Or.inr ⟨_, _, .castEPush⟩
+  | «letex» t u U' h f => exact Or.inr ⟨_, _, .letex⟩
   -- An `unbox` is a term now: its atom is rooted at a stored box, and the
   -- head form of its casts is one of the three the two steps consume.
   | unbox a U f =>

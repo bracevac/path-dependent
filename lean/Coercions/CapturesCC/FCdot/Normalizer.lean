@@ -87,8 +87,9 @@ inductive Form (s : Sig) : Type where
   /-- Definitional conversion: closed equality evidence between the endpoints. -/
   | eqv : EqCo s → Form s
   /-- Function coercion: closed domain evidence and codomain evidence under
-      the target domain binder. -/
-  | pi : LeCo (Sig.scope s) → LeCo (Sig.body s) → Form s
+      the target domain binder.  The codomain component is an answer
+      inclusion, as `ShapeCo.pi`'s is, since a codomain is an answer. -/
+  | pi : LeCo (Sig.scope s) → ELeCo (Sig.body s) → Form s
   /-- Object coercion: one entry per proposition of the target telescope. -/
   | obj : Entries s → Form s
   /-- Cast by a bound: the source resolves to an object type whose `i`-th

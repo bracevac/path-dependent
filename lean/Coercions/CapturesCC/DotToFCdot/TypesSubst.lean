@@ -130,6 +130,7 @@ theorem CapAtom.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Su
       show some (FCdot.CapAtom.name (σ.var x) A) = some (FCdot.CapAtom.name (σ'.rootVar x) A)
       rw [h.var x]
   | .any => rfl
+  | .fresh => rfl
 
 @[simp] theorem CaptureSet.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2}
     {σ' : FCdot.Subst s1 s2} (h : SubstAgree σ σ') (C : CaptureSet s1) :
@@ -161,6 +162,10 @@ theorem CapAtom.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Su
           show CaptureSet.translate (CapAtom.any :: CaptureSet.subst C σ)
             = FCdot.CaptureSet.subst (CaptureSet.translate (CapAtom.any :: C)) σ'
           rw [CaptureSet.translate_cons_any, CaptureSet.translate_cons_any, ih]
+      | fresh =>
+          show CaptureSet.translate (CapAtom.fresh :: CaptureSet.subst C σ)
+            = FCdot.CaptureSet.subst (CaptureSet.translate (CapAtom.fresh :: C)) σ'
+          rw [CaptureSet.translate_cons_fresh, CaptureSet.translate_cons_fresh, ih]
 
 /-! ## The fragment tests are invariant -/
 
@@ -190,10 +195,17 @@ theorem Shape.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Subs
   | .bot => simp [Shape.subst, Shape.translate, FCdot.Shape.subst]
   | .sel (.var x) A =>
       simp [Shape.subst, Path.subst, Shape.translate, FCdot.Shape.subst, h.var' x]
-  | .all (.capt C1 S1) (.capt C2 S2) =>
-      simp [Shape.subst, Ty.subst, Shape.translate, FCdot.Shape.subst, FCdot.Ty.subst,
+  | .all (.capt C1 S1) (.ty (.capt C2 S2)) =>
+      simp [Shape.subst, Ty.subst, ETy.subst, Shape.translate, FCdot.Shape.subst,
+        FCdot.Ty.subst, FCdot.ETy.subst,
         Shape.translate_subst S1 h.liftC, Shape.translate_subst S2 h.liftC.lift,
         CaptureSet.translate_subst h.liftC, CaptureSet.translate_subst h.liftC.lift]
+  | .all (.capt C1 S1) (.ex C0 (.capt C2 S2)) =>
+      simp [Shape.subst, Ty.subst, ETy.subst, Shape.translate, FCdot.Shape.subst,
+        FCdot.Ty.subst, FCdot.ETy.subst,
+        Shape.translate_subst S1 h.liftC, Shape.translate_subst S2 h.liftC.lift.liftC,
+        CaptureSet.translate_subst h.liftC, CaptureSet.translate_subst h.liftC.lift,
+        CaptureSet.translate_subst h.liftC.lift.liftC]
   | .box (.capt C S0) =>
       simp [Shape.subst, Ty.subst, Shape.translate, FCdot.Shape.subst, FCdot.Ty.subst,
         Shape.translate_subst S0 h, CaptureSet.translate_subst h]
@@ -229,12 +241,19 @@ theorem Shape.tel_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Subst s1 s
   | .sel (.var y) A =>
       simp [Shape.subst, Path.subst, Shape.tel, FCdot.Telescope.subst,
         FCdot.Proposition.subst, FCdot.Shape.weaken_subst, FCdot.Shape.subst, h.var' y]
-  | .all (.capt C1 S1) (.capt C2 S2) =>
-      simp [Shape.subst, Ty.subst, Shape.tel, FCdot.Telescope.subst,
+  | .all (.capt C1 S1) (.ty (.capt C2 S2)) =>
+      simp [Shape.subst, Ty.subst, ETy.subst, Shape.tel, FCdot.Telescope.subst,
         FCdot.Proposition.subst, FCdot.Shape.weaken_subst, FCdot.Shape.subst,
-        FCdot.Ty.subst, Shape.translate_subst S1 h.liftC,
+        FCdot.Ty.subst, FCdot.ETy.subst, Shape.translate_subst S1 h.liftC,
         Shape.translate_subst S2 h.liftC.lift, CaptureSet.translate_subst h.liftC,
         CaptureSet.translate_subst h.liftC.lift]
+  | .all (.capt C1 S1) (.ex C0 (.capt C2 S2)) =>
+      simp [Shape.subst, Ty.subst, ETy.subst, Shape.tel, FCdot.Telescope.subst,
+        FCdot.Proposition.subst, FCdot.Shape.weaken_subst, FCdot.Shape.subst,
+        FCdot.Ty.subst, FCdot.ETy.subst, Shape.translate_subst S1 h.liftC,
+        Shape.translate_subst S2 h.liftC.lift.liftC, CaptureSet.translate_subst h.liftC,
+        CaptureSet.translate_subst h.liftC.lift,
+        CaptureSet.translate_subst h.liftC.lift.liftC]
   | .box (.capt C S0) =>
       simp [Shape.subst, Ty.subst, Shape.tel, FCdot.Telescope.subst,
         FCdot.Proposition.subst, FCdot.Shape.weaken_subst, FCdot.Shape.subst,
@@ -275,11 +294,18 @@ theorem Shape.telSelf_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Subst 
   | .sel (.var y) A =>
       simp [Shape.subst, Path.subst, Shape.telSelf, FCdot.Telescope.subst,
         FCdot.Proposition.subst, FCdot.Shape.subst, h.lift.var' y]
-  | .all (.capt C1 S1) (.capt C2 S2) =>
-      simp [Shape.subst, Ty.subst, Shape.telSelf, FCdot.Telescope.subst,
-        FCdot.Proposition.subst, FCdot.Shape.subst, FCdot.Ty.subst,
+  | .all (.capt C1 S1) (.ty (.capt C2 S2)) =>
+      simp [Shape.subst, Ty.subst, ETy.subst, Shape.telSelf, FCdot.Telescope.subst,
+        FCdot.Proposition.subst, FCdot.Shape.subst, FCdot.Ty.subst, FCdot.ETy.subst,
         Shape.translate_subst S1 h.lift.liftC, Shape.translate_subst S2 h.lift.liftC.lift,
         CaptureSet.translate_subst h.lift.liftC, CaptureSet.translate_subst h.lift.liftC.lift]
+  | .all (.capt C1 S1) (.ex C0 (.capt C2 S2)) =>
+      simp [Shape.subst, Ty.subst, ETy.subst, Shape.telSelf, FCdot.Telescope.subst,
+        FCdot.Proposition.subst, FCdot.Shape.subst, FCdot.Ty.subst, FCdot.ETy.subst,
+        Shape.translate_subst S1 h.lift.liftC,
+        Shape.translate_subst S2 h.lift.liftC.lift.liftC,
+        CaptureSet.translate_subst h.lift.liftC, CaptureSet.translate_subst h.lift.liftC.lift,
+        CaptureSet.translate_subst h.lift.liftC.lift.liftC]
   | .box (.capt C S0) =>
       simp [Shape.subst, Ty.subst, Shape.telSelf, FCdot.Telescope.subst,
         FCdot.Proposition.subst, FCdot.Shape.subst, FCdot.Ty.subst,
@@ -324,6 +350,17 @@ theorem Ty.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Subst s
       simp [Ty.subst, Ty.translate, FCdot.Ty.subst, Shape.translate_subst S h,
         CaptureSet.translate_subst h]
 
+/-- The answer translation commutes with substitution, one clause per
+constructor. -/
+theorem ETy.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Subst s1 s2}
+    (E : ETy s1) (h : SubstAgree σ σ') : (E.subst σ).translate = E.translate.subst σ' := by
+  cases E with
+  | ty T =>
+      simp [ETy.subst, ETy.translate, FCdot.ETy.subst, Ty.translate_subst T h]
+  | ex C T =>
+      simp [ETy.subst, ETy.translate, FCdot.ETy.subst, Ty.translate_subst T h.liftC,
+        CaptureSet.translate_subst h]
+
 /-- The instantiated domain of the source's `All-E`, translated. -/
 theorem Ty.translate_singleC {s : Sig} (T : Dom s) (y : BVar s .var) :
     (T.subst (Subst.singleC (CapAtom.var y))).translate
@@ -336,7 +373,7 @@ right root will do. -/
 theorem Ty.translate_arg {s : Sig} (E : Cod s) (b : FCdot.Atom s) (y : BVar s .var)
     (hb : b.root = y) :
     (E.subst (Subst.arg y)).translate = E.translate.subst (FCdot.Subst.arg b) :=
-  Ty.translate_subst E (SubstAgree.arg b y hb)
+  ETy.translate_subst E (SubstAgree.arg b y hb)
 
 end DotMNF
 

@@ -1,4 +1,4 @@
-# DotToFCdot, at stage B1 of captures the compiler's way
+# DotToFCdot, at stage B2 of captures the compiler's way
 
 The translation of DOT-MNF^cc into FCdot^cc (Plan III §8, milestones M3 to
 M5), namespace `DotMNF`.  Derivations are `Type`-valued, so the translation
@@ -10,11 +10,11 @@ prediction are all transported from FCdot's.
 
 | module | contents |
 |---|---|
-| `Types` | `CapAtom.translate?` and `CaptureSet.translate` (atom by atom, the source's `sel x C` becoming the target's name `x∙C`, `any` dropped), `Shape.translate` and `Ty.translate` (`⟦S ^ C⟧ = ⟦S⟧ ^ ⟦C⟧`), `Shape.tel`/`Shape.telSelf` (a shape as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Shape.isObj` and `Shape.translate_isObj`/`Shape.tel_of_not_isObj`, `Shape.witnesses`, `Shape.capWitnesses`, `Shape.fieldLabels`, `Shape.literalShape`, `Shape.literalTy`, `Ctx.translate` |
+| `Types` | `CapAtom.translate?` and `CaptureSet.translate` (atom by atom, the source's `sel x C` becoming the target's name `x∙C`, `any` and `fresh` dropped), `Shape.translate`, `Ty.translate` (`⟦S ^ C⟧ = ⟦S⟧ ^ ⟦C⟧`) and `ETy.translate`, `Shape.tel`/`Shape.telSelf` (a shape as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Shape.isObj` and `Shape.translate_isObj`/`Shape.tel_of_not_isObj`, `Shape.witnesses`, `Shape.capWitnesses`, `Shape.fieldLabels`, `Shape.literalShape`, `Shape.literalTy`, `Ctx.translate` |
 | `TypesSubst` | the type translation commutes with substitution, and the two agreements `Subst.singleC` and `Subst.arg` that the `app` case of `HasTy.translate_typed` consumes |
 | `TypesLemmas` | renaming and instantiation commute with the translation; `Shape.isDecl_rename`, `Shape.isObj_rename`; `Shape.translate_decl`; `Shape.tel_substVar` (opening a body at the root) |
-| `Evidence` | `Subcap.translate`, `SubShape.translate`, `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `Ctx.varAtom` |
-| `EvidenceTyped` | `Subcap.translate_typed`, `SubShape.translate_typed`, `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `litCo_atC_typed`, `Ctx.varAtom_typed`, `Shape.tel_closedBnds` (every self-bound the translation produces is closed); the well-formedness `Ctx.Wf` of contexts |
+| `Evidence` | `Subcap.translate`, `SubShape.translate`, `Sub.translate`, `ESub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `Ctx.varAtom` |
+| `EvidenceTyped` | `Subcap.translate_typed`, `SubShape.translate_typed`, `Sub.translate_typed`, `ESub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `litCo_atC_typed`, `Ctx.varAtom_typed`, `Shape.tel_closedBnds` (every self-bound the translation produces is closed); the well-formedness `Ctx.Wf` of contexts |
 | `Terms` | `HasTy.translate`, `HasTy.translateUses` (the source's own use-set evidence, read in the target), `DefsTy.translateFields`, `fieldBody` |
 | `TermsTyped` | `HasTy.translate_typed`, `HasTy.translate_uses`, `HasTy.translate_uses_atom`, `DefsTy.translateFields_typed` |
 | `Erasure` | `HasTy.translate_erase` (`⌊h.translate⌋ = ⌊t⌋`), `coherence` |
@@ -508,3 +508,122 @@ them keeps its name and its conclusion.  On the target side `S1_translated`, `S1
 `S3_translated` and `S3_erase` are unchanged, and the two new target-side acceptance tests of
 B1, `S2_level` and `C5a_level`, are written directly in `FCdot/Examples.lean` because they are
 about a scope root and the source has no way to name one yet.
+
+## Stage B2
+
+B2 keeps the translation homomorphic.  Both calculi gain the same answer sort, the same
+declared bound, the same instance binding and the same `letex`, so the translation of an answer
+is defined clause by clause and every older statement keeps its form with `.ty` written round
+its plain type.  The three new pieces are `ETy.translate`, `ESub.translate` and the `consInst`
+clause of `Ctx.translate`.
+
+A source `fresh` is dropped as `any` is.  `CapAtom.translate?` returns `none` on it, which is
+sound because the source gives `fresh` no power and is vacuous on expanded programs, since
+`expandFresh` leaves no `fresh` behind.
+
+Two clause lists grew.  `Shape.translate`, `Shape.tel` and `Shape.telSelf` split their `all`
+clause into a `.ty` case, which is the old clause letter for letter, and an `.ex` case, which
+is the homomorphism.  `Subcap.translate` gains `inst`, which becomes
+`.eqToLe (.symm (.instC ...))` in the target, and that is the one use of finding F-1 in the
+translation.  `HasTy.translate` gains a source `letex`, which becomes the target's `letex` with
+the declared set, the bound evidence and the body's own use-set evidence, and a source
+subsumption at an answer, which becomes `Tm.castE`.
+
+| module | what B2 changed |
+|---|---|
+| `Types` | `ETy.translate` with its two `@[simp]` equations.  `CapAtom.translate?` gains `\| .fresh => none` with `CaptureSet.translate_cons_fresh`.  `Shape.translate`, `Shape.tel` and `Shape.telSelf` split their `all` clause.  `Ctx.translate` gains `\| .consInst Γ C => .consC Γ.translate (.inst C.translate)`, and `Ctx.varAtom` the matching clause |
+| `TypesLemmas` | `ETy.translate_rename` and `ETy.rename_inj`.  `FCdot.CapBound.instSet?_weaken'`, `Ctx.translate_lookupCapInst`, `Ctx.translate_instSet?`, `Ctx.InstOf.translate` and `Ctx.translate_scopeInst`, the four facts the `inst` and `pack` clauses consume.  Every older statement gains the second `all` case and keeps its form |
+| `TypesSubst` | `ETy.translate_subst`, the answer twin of `Ty.translate_subst` |
+| `Evidence` | `ESub.translate`: `.ty` to `.plain`, `pack` to the target's `pack`, `exist` to `cong`.  `Subcap.translate` gains `inst` |
+| `EvidenceTyped` | `ESub.translate_typed`, `ETy.translate_weaken`, `Ctx.Wf.consInst`, `Ctx.Wf.scopeInst`, `Ctx.lookup_consInst_there`, `Ctx.varAtom_consInst_there`.  `Ctx.Wf` gains a `consInst` constructor |
+| `Terms`, `TermsTyped` | `HasTy.translate` and `HasTy.translateUses` at the answer sort, with the `letex` and `sub` clauses.  `HasTy.translate_typed`, `.translate_uses` and `.translate_erase` at the answer sort |
+| `Erasure` | the `letex` and `sub` cases.  `coherence` keeps its statement |
+| `Safety`, `Prediction` | the two call sites of `FCdot.erase_reflect'` pass the continuation half they already hold.  `FCdot.Tm.inspects_reflect` gains a second exclusion, and its one caller supplies it from `State.CastRedex`.  `Safety` imports `FCdot.ErasureMetatheory`, where `erase_reflect'` now lives |
+| `Consistency` | untouched beyond the answer sort on the program's type |
+
+### Statements restated
+
+Nothing was weakened, and one statement gained a hypothesis, which is the finding below.
+
+```
+DotMNF.ETy.translate            : new, the answer twin of Ty.translate
+DotMNF.Shape.translate at all   : two cases, and the .ty case is the old clause letter for
+                                    letter
+DotMNF.Shape.tel, .telSelf      : the same, two cases
+DotMNF.Shape.translate_all_eq, .translate_isObj, .tel_of_not_isObj, .telSelf_of_not_isObj,
+  .tel_closedBnds, .translate_rename, .tel_rename, .telSelf_rename, .tel_weaken_eq,
+  .tel_substVar, .translate_subst, .tel_subst, .telSelf_subst : statements unchanged, each
+                                    with the second all case
+DotMNF.CapAtom.translate?       : one clause, fresh dropped as any is
+DotMNF.Ctx.translate, .Ctx.varAtom, .Ctx.Wf : one clause each at consInst, additive
+DotMNF.Subcap.translate         : one clause, inst to .eqToLe (.symm (.instC ...))
+DotMNF.HasTy.translateAtom, .translateAtom_root, .translateAtom_typed, .translate_uses_atom :
+                                    take a derivation at .ty T
+                                    a variable typing has a plain answer, so the set of
+                                    derivations quantified over is the one they quantified over
+DotMNF.HasTy.translate, .translateUses, .translate_typed, .translate_uses, .translate_erase,
+DotMNF.coherence                : at the answer sort
+                                    on a source derivation whose type is plain, E = .ty T and
+                                    the conclusion is the old one
+DotMNF.Platform.initial_typed, .simulated_init, .translate_initial_typed,
+DotMNF.dot_safety, .dot_not_stuck, .reachable_consistent, .reachable_realized,
+DotMNF.dot_capture_prediction, .dot_effect_safety : take a derivation at .ty T
+                                    a top-level program has a plain answer, because
+                                    Cont.Typed.nil accepts .ty T, which is the target's own
+                                    shape
+DotMNF.Simulated.step, .simulatedRun_aux : pass the continuation half to erase_reflect'
+                                    both sites already hold it, two lines above, from the
+                                    State.Typed they destructure.  Neither statement changes
+FCdot.Tm.inspects_reflect       : gains the hypothesis ∀ t₀ g, t ≠ .castE t₀ g
+                                    see the finding below
+FCdot.State.inspects_reflect, DotMNF.dot_effect_safety, FCdot.effect_safety : unchanged
+DotMNF.Platform.ctx, .store, .targetStore, .capsAtom, .root_iff : unchanged, including B0's
+                                    own premise ⊤ᶜ ∉ C
+```
+
+**The finding.**  `FCdot.Tm.inspects_reflect` is false without a second exclusion, and the
+counterexample is one line: `⌊.castE t g⌋ = ⌊t⌋`, so an answer cast whose body is an
+application erases to a term that reads a root, while `(Tm.castE t g).inspects` is `none`.  The
+old hypothesis excluded exactly the one former with that property, and B2 adds a second.  No
+caller gains an obligation: the only caller is `FCdot.State.inspects_reflect`, whose hypothesis
+is `¬ st.CastRedex`, and `State.CastRedex` already has the `.castE` disjunct.  This is the
+exact analogue of the `State.CastRedex` row, one lemma further in.
+
+### New in this stage
+
+```
+DotMNF.ETy.translate, .ETy.translate_ty, .ETy.translate_ex
+DotMNF.ETy.translate_rename, .ETy.rename_inj, .ETy.translate_subst, .ETy.translate_weaken
+DotMNF.Ctx.translate_lookupCapInst, .Ctx.translate_instSet?, .Ctx.InstOf.translate,
+DotMNF.Ctx.translate_scopeInst
+DotMNF.ESub.translate, .ESub.translate_typed
+DotMNF.Ctx.Wf.consInst, .Ctx.Wf.scopeInst, .Ctx.lookup_consInst_there,
+DotMNF.Ctx.varAtom_consInst_there
+FCdot.CapBound.instSet?_weaken'
+```
+
+`ESub.translate_typed` is the clause list of the stage in one theorem: `.ty` becomes
+`ELeCo.plain`, `pack` becomes `ELeCo.pack` at the translated witness and the translated
+residual, and `exist` becomes `ELeCo.cong`.  The residual of a source `pack` is read at
+`Ctx.scopeInst C` on both sides, and `Ctx.translate_scopeInst` is the one equation that lets
+the target's rule accept it.
+
+### The examples
+
+The examples of this directory are the source's, read through the translation, and every one of
+them keeps its name and its conclusion.  Three are new, and they are the three source `fresh`
+examples of B2.11, translated and typed at the translated type.
+
+```
+FCdot.Examples.Z1_translated       : the callee of freshCell
+FCdot.Examples.Z1_caller_translated : a source letex, translated
+FCdot.Examples.Z2_translated       : makeLogger, packed at the parameter
+FCdot.Examples.Z3_translated       : C5b's callee
+FCdot.Examples.Z1_erase, .Z1_caller_erase, .Z2_erase, .Z3_erase : the translation runs the
+                                     source program
+```
+
+They live in `FCdot/Examples.lean`, beside the older `S1_translated`, `S2_translated`,
+`C2_translated`, `C7_translated` and `S3_translated`, which are unchanged.  Each is
+`HasTy.translate_typed` at the source derivation and `HasTy.translate_erase` at the same
+derivation, and neither is decided by the checker.

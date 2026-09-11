@@ -27,6 +27,9 @@ structure Ctx.Refines {s : Sig} (Γ Γ' : Ctx s) : Prop where
   lvlEq : ∀ {k : Kind} (y : BVar s k), Γ'.lvl y = Γ.lvl y
   /-- And so is the answer to whether a capture binder is a root. -/
   capEq : ∀ κ : BVar s .cap, (Γ'.lookupCap κ).isRoot = (Γ.lookupCap κ).isRoot
+  /-- And so is the set an instance binder was opened at.  It is the fourth
+      capture field, the one `CapEq.HasType.instC` reads. -/
+  capInstEq : ∀ κ : BVar s .cap, (Γ'.lookupCap κ).instSet? = (Γ.lookupCap κ).instSet?
 
 namespace Ctx.Refines
 
@@ -38,6 +41,7 @@ theorem refl {Γ : Ctx s} : Ctx.Refines Γ Γ where
   rootEq := rfl
   lvlEq := fun _ => rfl
   capEq := fun _ => rfl
+  capInstEq := fun _ => rfl
 
 theorem trans {Γ1 Γ2 Γ3 : Ctx s} (h1 : Ctx.Refines Γ1 Γ2) (h2 : Ctx.Refines Γ2 Γ3) :
     Ctx.Refines Γ1 Γ3 where
@@ -48,6 +52,7 @@ theorem trans {Γ1 Γ2 Γ3 : Ctx s} (h1 : Ctx.Refines Γ1 Γ2) (h2 : Ctx.Refines
   rootEq := h2.rootEq.trans h1.rootEq
   lvlEq := fun y => (h2.lvlEq y).trans (h1.lvlEq y)
   capEq := fun κ => (h2.capEq κ).trans (h1.capEq κ)
+  capInstEq := fun κ => (h2.capInstEq κ).trans (h1.capInstEq κ)
 
 theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     Ctx.Refines (Γ.cons b) (Γ'.cons b) where
@@ -113,6 +118,12 @@ theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     | there κ0 =>
         show ((Γ'.lookupCap κ0)↑).isRoot = ((Γ.lookupCap κ0)↑).isRoot
         simp [h.capEq]
+  capInstEq := by
+    intro κ
+    cases κ with
+    | there κ0 =>
+        show ((Γ'.lookupCap κ0)↑ : CapBound (s,x)).instSet? = ((Γ.lookupCap κ0)↑).instSet?
+        rw [CapBound.instSet?_weaken, CapBound.instSet?_weaken, h.capInstEq]
 
 /-- Weakening an opaque binder to the transparent binder of the same type. -/
 theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)}
@@ -145,6 +156,10 @@ theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Wc : CapWitne
     | here => rfl
     | there y0 => rfl
   capEq := by
+    intro κ
+    cases κ with
+    | there κ0 => rfl
+  capInstEq := by
     intro κ
     cases κ with
     | there κ0 => rfl
@@ -214,6 +229,13 @@ theorem consC {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : CapBound s) :
     | there κ0 =>
         show ((Γ'.lookupCap κ0)↑).isRoot = ((Γ.lookupCap κ0)↑).isRoot
         simp [h.capEq]
+  capInstEq := by
+    intro κ
+    cases κ with
+    | here => rfl
+    | there κ0 =>
+        show ((Γ'.lookupCap κ0)↑ : CapBound (s,c)).instSet? = ((Γ.lookupCap κ0)↑).instSet?
+        rw [CapBound.instSet?_weaken, CapBound.instSet?_weaken, h.capInstEq]
 
 /-! ### The scope contexts
 
@@ -222,6 +244,10 @@ lemmas above, so refinement passes under all three. -/
 
 theorem scope {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') : Ctx.Refines Γ.scope Γ'.scope :=
   (h.consC .root).consC .star
+
+theorem scopeInst {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (C : CaptureSet s) :
+    Ctx.Refines (Γ.scopeInst C) (Γ'.scopeInst C) :=
+  (h.consC .root).consC (.inst C↑)
 
 theorem body {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (T : Dom s) :
     Ctx.Refines (Γ.body T) (Γ'.body T) :=
@@ -254,6 +280,17 @@ theorem Ctx.Refines.isRoot {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {r : CapAto
   rw [h.isRootB]
   exact hr
 
+theorem Ctx.Refines.instOf {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {a : CapAtom s}
+    {C : CaptureSet s} (hI : Γ.InstOf a C) : Γ'.InstOf a C := by
+  cases a with
+  | top => simp [Ctx.InstOf, Ctx.instSet?] at hI
+  | var x => simp [Ctx.InstOf, Ctx.instSet?] at hI
+  | name x l => simp [Ctx.InstOf, Ctx.instSet?] at hI
+  | cvar κ =>
+      show (Γ'.lookupCap κ).instSet? = some C
+      rw [h.capInstEq]
+      exact hI
+
 theorem Ctx.Refines.lvlLe {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {e r : CapAtom s}
     (hl : Γ.LvlLe e r) : Γ'.LvlLe e r := by
   unfold Ctx.LvlLe Ctx.lvlLeB
@@ -285,6 +322,7 @@ theorem CapEq.HasType.refine {Γ Γ' : Ctx s} {φ : CapEq s} {C D : CaptureSet s
   | .symm hφ => exact .symm (hφ.refine hR)
   | .trans hφ hψ => exact .trans (hφ.refine hR) (hψ.refine hR)
   | .defC hd => exact .defC (hR.defC _ _ _ hd)
+  | .instC hI => exact .instC (hR.instOf hI)
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
 
 theorem CapStep.HasType.refine {Γ Γ' : Ctx s} {st : CapStep s} {X Y : CaptureSet (s,x)}
@@ -308,7 +346,7 @@ theorem ShapeCo.HasType.refine {Γ Γ' : Ctx s} {e : ShapeCo s} {S T : Shape s}
   | .bot => exact .bot
   | .eqToLe hφ => exact .eqToLe (hφ.refine hR)
   | .pi he hf =>
-      exact .pi (LeCo.HasType.refine hR.scope he) (LeCo.HasType.refine (hR.body _) hf)
+      exact .pi (LeCo.HasType.refine hR.scope he) (ELeCo.HasType.refine (hR.body _) hf)
   | .obj hm => exact .obj (hm.refine hR)
   | .pair he hf => exact .pair (he.refine hR) (hf.refine hR)
   | .bound hAt => exact .bound hAt
@@ -320,6 +358,16 @@ theorem LeCo.HasType.refine {Γ Γ' : Ctx s} {d : LeCo s} {S T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ d : S ≤ T) : Γ' ⊢ d : S ≤ T := by
   match h with
   | .capt he hf => exact .capt (he.refine hR) (hf.refine hR)
+
+theorem ELeCo.HasType.refine {Γ Γ' : Ctx s} {g : ELeCo s} {E E' : ETy s}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᵉ g : E ≤ E') : Γ' ⊢ᵉ g : E ≤ E' := by
+  match h with
+  | .plain he => exact .plain (LeCo.HasType.refine hR he)
+  | .pack hc he =>
+      exact .pack (hc.refine hR) (LeCo.HasType.refine (hR.scopeInst _) he)
+  | .cong hc he =>
+      exact .cong (hc.refine hR) (LeCo.HasType.refine hR.scope he)
+  | .trans hg hh => exact .trans (hg.refine hR) (hh.refine hR)
 
 theorem EqCo.HasType.refine {Γ Γ' : Ctx s} {φ : EqCo s} {S T : Shape s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ φ : S ≡ T) : Γ' ⊢ φ : S ≡ T := by
@@ -372,18 +420,31 @@ theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
 
 end
 
+/-- The packed-atom wrapper premises only judgments of the block above. -/
+theorem PAtom.HasType.refine {Γ Γ' : Ctx s} {p : PAtom s} {E : ETy s}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ₚ p : E) : Γ' ⊢ₚ p : E := by
+  match h with
+  | .plain ha => exact .plain (Atom.HasType.refine hR ha)
+  | .pack ha hc he =>
+      exact .pack (Atom.HasType.refine hR ha) (CapCo.HasType.refine hR hc)
+        (LeCo.HasType.refine (hR.scopeInst _) he)
+
 mutual
 
-theorem Tm.HasType.refine {Γ Γ' : Ctx s} {t : Tm s} {T : Ty s}
-    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ t : T) : Γ' ⊢ t : T := by
+theorem Tm.HasType.refine {Γ Γ' : Ctx s} {t : Tm s} {E : ETy s}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ t :ᵉ E) : Γ' ⊢ t :ᵉ E := by
   match h with
-  | .atom ha => exact .atom (ha.refine hR)
+  | .atom ha => exact .atom (PAtom.HasType.refine hR ha)
   | .val hv => exact .val (hv.refine hR)
   | .app ha hb => exact .app (ha.refine hR) (hb.refine hR)
   | .proj ha hh => exact .proj (ha.refine hR) (hh.refine hR)
   | .let ht hu hf =>
       exact .let (ht.refine hR) (hu.refine (hR.cons _)) (hf.refine (hR.cons _))
   | .cast ht he => exact .cast (ht.refine hR) (LeCo.HasType.refine hR he)
+  | .castE ht hg => exact .castE (ht.refine hR) (ELeCo.HasType.refine hR hg)
+  | .letex ht hc hu hf =>
+      exact .letex (ht.refine hR) (hc.refine hR)
+        (hu.refine ((hR.consC .star).cons _)) (hf.refine ((hR.consC .star).cons _))
   | .unbox ha hf => exact .unbox (ha.refine hR) (hf.refine hR)
 
 theorem Value.HasType.refine {Γ Γ' : Ctx s} {v : Value s} {T : Ty s}
@@ -393,6 +454,13 @@ theorem Value.HasType.refine {Γ Γ' : Ctx s} {v : Value s} {T : Ty s}
   | .obj hF => exact .obj (hF.refine (hR.objBody _ _ _ _))
   | .box ha => exact .box (ha.refine hR)
   | .cast hv he => exact .cast (hv.refine hR) (LeCo.HasType.refine hR he)
+
+theorem Value.HasTypeE.refine {Γ Γ' : Ctx s} {v : Value s} {E : ETy s}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᵥᵉ v : E) : Γ' ⊢ᵥᵉ v : E := by
+  match h with
+  | .plain hv => exact .plain (hv.refine hR)
+  | .pack hv hc he =>
+      exact .pack (hv.refine hR) (hc.refine hR) (LeCo.HasType.refine (hR.scopeInst _) he)
 
 theorem Fields.HasType.refine {Γ Γ' : Ctx (s,x)} {F : Fields (s,x)} {A : CaptureSet s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᶠ[A] F) : Γ' ⊢ᶠ[A] F := by
