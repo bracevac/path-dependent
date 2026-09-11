@@ -1,4 +1,4 @@
-# DotMNF, at stage B2 of captures the compiler's way
+# DotMNF, at stage B3 of captures the compiler's way
 
 DOT-MNF^cc, the capturing source of the translation in `../DotToFCdot`.
 
@@ -24,7 +24,10 @@ own, so a source box and a source object literal never share an erasure and a ru
 erased state names the source step that produced it.
 
 `any` by position is stage A3b, below: it is a notation, expanded before a program is typed, and no
-rule of the calculus mentions it.
+rule of the calculus mentions it.  Stage B3 keeps the notation and changes the reading: a position is
+read by the root that encloses it and no longer by the former it sits in.  The A3b section below is
+the historical record of the first reading, and every clause and every lemma of it that B3 replaced
+is restated in the B3 section at the end.
 
 ## Stage A3a
 
@@ -158,8 +161,9 @@ Shape.expand_weaken,   Ty.expand_weaken   : the same at `Rename.succ`
 with the clause lemmas `CaptureSet.expand_nil`, `expand_cons_any`, `expand_cons_var`,
 `expand_cons_cvar`, `expand_cons_sel`, `expand_cons_of_ne`, `expand_append`, the `NoAny` clauses
 `noAny_nil`, `noAny_cons_of_ne`, `noAny_of_cons`, `noAny_append`, `noAny_rename`, `noAny_weaken`, the
-two facts `CaptureSet.self_rename` and `CaptureSet.noAny_self` about the set an arrow or an object
-reads `any` as under its own binder, the renaming facts `CaptureSet.rename_cons`, `rename_append`,
+two facts about the set an arrow or an object read `any` as under its own binder (deleted in B3, with
+`CaptureSet.noAny_weaken`, `CaptureSet.weaken_rename`, `CaptureSet.noAny_cvar` and
+`CaptureSet.cvar_here_rename` in their place), the renaming facts `CaptureSet.rename_cons`, `rename_append`,
 `rename_rename`, `weaken_rename` and `CapAtom.rename_rename`, `Shape.expandSelf_eq`, `Shape.expand_mu`,
 and the twenty-two clause lemmas `Shape.noAny_*`, `Ty.noAny_capt`, `Shape.anyOk_*`, `Ty.anyOk_capt`,
 which read the four decision procedures as the propositions they stand for.
@@ -235,7 +239,7 @@ a variable its shape at the singleton set `{y}`, which is `T₁⟦κ := {y}⟧` 
 
 | module | what B1 changed |
 |---|---|
-| `Syntax` | `Shape.all` at `Sig.dom s` and `Sig.cod s`, with `Dom`, `Cod`, `Dom.underRoot`, `Dom.inBody`, `Cod.underRoot`, the source's copies of the target's five names.  `Value.obj` at `Defs ((s,c),x)` and `Value.lam` at `Ty (Sig.dom s)` and `Tm (Sig.body s)`.  One lift per binder in `Shape.rename` and `Value.rename`, and `Shape.expand` weakening its carried set once more.  `CaptureSet.selfC_rename` and `CaptureSet.noAny_selfC`, the two-binder twins of the existing pair.  The substitution block: `Subst` with an atom-valued capture component, `Subst.ofRename`, `.lift`, `.liftC`, `.singleC`, `.arg`, `.enter` and `.enterObj` (which write `any` where the target writes `⊤ᶜ`), the eight traversals `CapAtom.subst` to `Defs.subst`, `Subst.funext` and the eight `X.subst_ofRename` |
+| `Syntax` | `Shape.all` at `Sig.dom s` and `Sig.cod s`, with `Dom`, `Cod`, `Dom.underRoot`, `Dom.inBody`, `Cod.underRoot`, the source's copies of the target's five names.  `Value.obj` at `Defs ((s,c),x)` and `Value.lam` at `Ty (Sig.dom s)` and `Tm (Sig.body s)`.  One lift per binder in `Shape.rename` and `Value.rename`, and `Shape.expand` weakening its carried set once more.  the two-binder twins of the A3b self facts, both deleted again in B3.  The substitution block: `Subst` with an atom-valued capture component, `Subst.ofRename`, `.lift`, `.liftC`, `.singleC`, `.arg`, `.enter` and `.enterObj` (which write `any` where the target writes `⊤ᶜ`), the eight traversals `CapAtom.subst` to `Defs.subst`, `Subst.funext` and the eight `X.subst_ofRename` |
 | `Typing` | the context constructor `Ctx.consRoot`, with one clause in `Ctx.lookup`.  `Shape.underRoot`, `Ctx.scope`, `Ctx.body`, `Ctx.objBody`.  The rules `SubShape.all`, `HasTy.lam`, `HasTy.app` and `HasTy.obj` |
 | `Machine` | `Step.app` continues at `t.subst (Subst.enter y)` and `Step.proj` at `t.subst (Subst.enterObj x)`.  `Platform.store`, `alloc`, `rename`, `let` and the two `unbox` steps are untouched |
 | `Erasure` | the `lam` and `obj` clauses of `Value.erase_rename` carry one lift per binder.  The new block "erasure commutes with substitution": `Subst.lift_var`, `Subst.liftC_var`, `Subst.enter_var`, `Subst.enterObj_var`, `appendFields_map`, and the mutual `Tm.erase_subst`, `Value.erase_subst`, `Defs.erase_subst`.  `Tm.erase` keeps its type and every other statement of the file keeps its form |
@@ -289,7 +293,6 @@ DotMNF.erase_step, .erase_reflect : unchanged
 DotMNF.Dom, .Cod, .Dom.underRoot, .Dom.inBody, .Cod.underRoot
 DotMNF.Ctx.consRoot, .Shape.underRoot, .Ctx.scope, .Ctx.body, .Ctx.objBody
 DotMNF.Subst and the eight traversals, with Subst.funext and the eight X.subst_ofRename
-DotMNF.CaptureSet.selfC_rename, .noAny_selfC
 DotMNF.Tm.erase_subst, .Value.erase_subst, .Defs.erase_subst
 ```
 
@@ -447,3 +450,226 @@ witness is the parameter and not a platform binder, and that is the example's po
 packs the literal's `{fs}`, exactly as it did at A3b, and the existential packs the whole
 result on top of it.  `expandFresh` reads the bound as `{fs, u}`, which is the same concrete
 set S2's `any` expanded to.
+
+## Stage B3
+
+B3 is the source read the compiler's way.  The notation `any` is unchanged and no rule of the
+calculus mentions it, but the reading is by position now: `expand` threads the set that the root
+enclosing the position stands for, and passes it under an arrow's codomain and under a `μ` body
+without touching it.  It is reset at exactly two kinds of place, the positions where `any` is
+forbidden and an arrow's domain.  A domain reads `any` as the arrow's own capture binder, which is
+what turns the arrow into a capture-parameter arrow.  A3b recomputed the reading at every former, so
+an `any` was read by what stood at its position.  The compiler's way reads it by where it stands.
+
+The source has no universal root atom, and it must not have one.  A top-level `any` therefore reads
+as the program's platform set.  `Ctx.reading` is the statement of where a reading comes from: the
+innermost root binder of the context as a singleton, and the platform set where the context has
+none.  It is not used by `expand`, which takes the reading as its argument.  It is what an example
+cites when it writes a type at a position.
+
+B3 also gives the source the target's level machinery and one rule.  A level is a position on the
+spine and not a field on a binding: the level of a binder is the innermost root binder of the prefix
+before it, a root is its own level, and `none` is the outermost level.  `Ctx.lvlLeB e r` says that
+the level of `e` is `r` or encloses it, and `Subcap.level` reads that order.  It is the compiler's
+`acceptsLevelOf`.  Because the source names no universal root, a notation is below no root, so
+`lvlLeB` is `false` at `any` and at `fresh` on either side.
+
+The source has never had a term-level expansion, and it has one now.  A lambda's domain annotation
+may hold `any` in its outer set and nowhere else, and `Tm.expand` descends at `let`, at `letex` and
+through a value into a lambda's body, so a notation written inside a program is read and not left
+standing.
+
+| module | what B3 changed |
+|---|---|
+| `Syntax` | three clauses of `Shape.expand` (`.mu`, and the domain and the codomain of `.all`) and one of `Ty.expand`.  The `.all` clause of `Shape.anyOk` and its characterisation `Shape.anyOk_all`.  The proofs, not the statements, of `Shape.noAny_expand`, `Ty.noAny_expand` and `Shape.expand_rename`.  `Shape.expand_mu` restated.  The four A3b self helpers deleted, with `CaptureSet.noAny_cvar` and `CaptureSet.cvar_here_rename` added.  The term level: `Ty.domAnyOk` and `Ty.DomAnyOk`, `Defs.noAny`, `Value.noAny`, `Tm.noAny`, `Value.anyOk`, `Tm.anyOk` with their `abbrev` propositions, `Value.expand` and `Tm.expand`, and `Ty.noAny_expand_dom` |
+| `Typing` | `Ctx.root?` and `Ctx.reading`.  The whole `Levels` section, `Ctx.lvl`, `Ctx.rootB`, `Ctx.isRootB`, `Ctx.lvlLeB`, `Ctx.IsRoot`, `Ctx.LvlLe`, the nine spine facts, the five weakening commutations and the four scope-order facts of T-B3.1.  One rule, `Subcap.level`.  One import line, `FCdot.Context`, for `BVar.depth` and `depthGe`, which are reused and not copied |
+| `Machine`, `Erasure` | nothing, byte for byte B2's |
+| `Examples` | S1 and S2 re-expanded at the new reading, with both readings of each printed side by side.  The worked examples W1 to W6 of the compiler's write-up on the source side.  The two `Ctx.reading` facts.  `C2_anyOk`, `C2_expand`, `C5b_anyOk` and `C5b_expand`, the regression that expansion is inert where no notation is written.  The two-call context `Z1BodyCtxSrc` with its level facts.  The five weakened platform sets `platSet1` to `platSet5` and the two readers `readUnder` and `S1ReadAt` |
+
+### The rules
+
+```
+DotMNF.Subcap.level : Ctx.IsRoot Γ (.cvar κ) → Ctx.LvlLe Γ e (.cvar κ) →
+                      Subcap Γ [e] [.cvar κ]
+```
+
+One rule, additive.  Both premises are `Bool` computable, so every instance is decided in the
+kernel.  The rule is directional where the compiler's test is not, and that is decision 34: the level
+order relates the arrow's capture binder and the body root in both directions, but the rule asks for
+a root on its right and the arrow binder is a `consC`, so only one direction is an instance.
+
+### Statements restated
+
+Nothing was weakened and no rule gained a hypothesis.  What changed is which set a notation stands
+for, and no soundness statement depends on that: no rule of `Subcap`, `SubShape`, `Sub`, `ESub`,
+`HasTy` or `DefsTy` mentions `expand`.
+
+```
+DotMNF.Shape.expand, .mu clause   : S.expand D₀↑ where it was S.expand (D₀↑ ∪ {self})
+                                      decision 26.  A μ binds only the self, so the class root is
+                                      not nameable in it and the self is not part of the reading.
+                                      A field that captures the self writes {self}
+DotMNF.Shape.expand, .all domain  : T₁.expand [κ] where it was T₁.expand []
+                                      decision 24.  The atom is the consC of Ctx.scope, a de Bruijn
+                                      reference into the domain's own signature, so the clause
+                                      produces no root atom and no atom changes its binder
+DotMNF.Shape.expand, .all codomain: the reading is only weakened twice, where it was also united
+                                      with the arrow's set and its parameter
+                                      decision 25.  A source arrow binds no body root, so a result
+                                      any reads as the root enclosing the arrow
+DotMNF.Ty.expand                  : .capt (C.expand D) (S.expand D)
+                                      decision 22.  The reading of a position is the root enclosing
+                                      it and not the type written there, so the type's own set is
+                                      no longer the reading of its shape
+DotMNF.Shape.expand_mu            : the μ clause read as an equation, still by rfl
+DotMNF.Shape.anyOk, .all clause   : S₁.noAny && ETy.anyOk T₂, where it was
+                                      C₁.noAny && S₁.anyOk && ETy.anyOk T₂
+                                      decision 24.  A parameter any becomes legal and an any deeper
+                                      in a domain becomes illegal, both checked by decide.  The
+                                      predicate is still the decision procedure of "every any sits
+                                      in a position expand gives a reading to"
+DotMNF.Shape.anyOk_all            : the new clause read as a proposition, nothing more
+DotMNF.Shape.noAny_expand, .Ty.noAny_expand, .Shape.expand_rename
+                                  : statements kept, proofs rewritten at the new clauses
+DotMNF.ETy.expand                 : textually unchanged, its value moving through Ty.expand
+DotMNF.Examples.S1_expand         : (S1TyAny k1).expand platSet = S1Ty k1 S1Read
+                                      S1Ty gained the reading as a parameter, so the equation names
+                                      the reading it is taken at instead of leaving it implicit
+DotMNF.Examples.S2_expand         : (S2MkTyAny k1).expand platSet = S2MkTyCC, the same
+DotMNF.Examples.S1_typed          : the program's type and use set are the platform set, where
+                                      they were {fs}: the result any it hands back reads as the
+                                      platform set now, which is the observable content of B3
+DotMNF.Examples.S2_typed          : the program's type is still ⊤ ^ {fs}, charged through the
+                                      member's upper bound.  The use set is the platform set, as
+                                      it is declared at the platform set
+DotMNF.Examples.C5_typed          : the same, type kept and use set widened
+```
+
+### New definitions and lemmas
+
+```
+DotMNF.Ctx.root?, .Ctx.reading
+DotMNF.Ctx.lvl, .Ctx.rootB, .Ctx.isRootB, .Ctx.lvlLeB, .Ctx.IsRoot, .Ctx.LvlLe
+DotMNF.Ctx.depthGe_step, .Ctx.depthGe_there
+DotMNF.Ctx.root?_isRoot, .Ctx.lvl_root, .Ctx.lvl_isRoot, .Ctx.root?_min, .Ctx.root?_none
+DotMNF.Ctx.LvlLe.refl_of_root, .Ctx.LvlLe.trans
+DotMNF.Ctx.lvlLeB_weaken, .lvlLeB_weakenSelf, .lvlLeB_weakenC, .lvlLeB_weakenRoot,
+  .lvlLeB_weakenInst                              appending a binder never changes an old comparison
+DotMNF.Ctx.body_lvl_param, .body_lvl_arrow, .body_lvl_root, .body_isRoot     T-B3.1
+DotMNF.Subcap.level
+DotMNF.CaptureSet.noAny_cvar, .CaptureSet.cvar_here_rename
+DotMNF.Ty.domAnyOk, .Ty.DomAnyOk, .Ty.noAny_expand_dom
+DotMNF.Defs.noAny, .Value.noAny, .Tm.noAny, .Defs.NoAny, .Value.NoAny, .Tm.NoAny
+DotMNF.Value.anyOk, .Tm.anyOk, .Value.AnyOk, .Tm.AnyOk
+DotMNF.Value.expand, .Tm.expand
+DotMNF.Value.expand_of_noAny, .Tm.expand_of_noAny
+DotMNF.Value.noAny_expand, .Tm.noAny_expand
+DotMNF.Value.expand_rename, .Tm.expand_rename, .Tm.expand_weaken
+DotMNF.Examples.readUnder, .S1ReadAt, .platSet1 to .platSet5
+```
+
+### The examples
+
+Every example of A3a, A3b, B0, B1 and B2 is here and keeps its name.  S1 and S2 are re-expanded, and
+each is printed under both readings.  W1 to W6 are the four worked programs of the compiler's
+write-up, read on the source side, with the two of them that the target already covered stated at
+real binder positions instead of a spine written by hand.
+
+```
+DotMNF.Examples.reading_plat       : Ctx.reading platCtx platSet = platSet
+DotMNF.Examples.reading_body       : Ctx.reading (Γ.body T) P = [κ_body]
+DotMNF.Examples.S1_anyOk, .S1_expand, .S1_readings, .S1_noAny, .S1_typed
+DotMNF.Examples.S2_anyOk, .S2_expand, .S2_readings, .S2_noAny, .S2_typed, .C5_typed
+DotMNF.Examples.W1_reading1, .W1_reading2, .W1_roots
+DotMNF.Examples.W1_inner_absorbs_outer  : Subcap W1Ctx2 [κ_out] [κ_in]
+DotMNF.Examples.W1_outer_param_absorbed : Subcap W1Ctx2 [x_out] [κ_in]
+DotMNF.Examples.W1_inner_param_absorbed : Subcap W1Ctx2 [x_in]  [κ_in]
+DotMNF.Examples.W1_outer_not_inner      : ¬ LvlLe κ_in κ_out ∧ ¬ LvlLe x_in κ_out
+DotMNF.Examples.W2_anyOk, .W2_expand, .W2_deep_rejected, .W2_arg
+DotMNF.Examples.W2_level, .W2_level_param, .W2_typed, .W2_call
+DotMNF.Examples.W3_anyOk, .W3_freshOk, .W3_expand, .W3_expandFresh, .W3_typed
+DotMNF.Examples.W4_anyOk, .W4_expand, .W4_expand_expandFresh
+DotMNF.Examples.W5_scope_order, .W5_no_level, .W5_level_own
+DotMNF.Examples.W6_lvl, .W6_fires
+DotMNF.Examples.C2_anyOk, .C2_expand, .C5b_anyOk, .C5b_expand
+DotMNF.Examples.Z_body_no_root, .Z_two_calls_no_level, .Z_two_calls_lvl
+DotMNF.Examples.Z1TyTop, .Z1_widen, .Z1CtxTop, .Z1BodyCtxTop, .Zx1', .Zx2'
+DotMNF.Examples.Z_top_body_no_root, .Z_top_two_calls_no_level, .Z_top_two_calls_lvl
+```
+
+**S1, `withFile` with an explicit capture parameter.**  The written type is unchanged.  The member
+bound stays explicit, and decision 26 is what makes it necessary: a member-bound `any` reads as the
+root enclosing the object type and not as the class root.  The result `any` now reads as the
+platform set, because `withFile` is written at the top of the program and the source has no
+universal root, so the caller's answer and the program's use set are the platform set.  `S1_readings`
+prints the two readings apart: A3b read the same `any` as `{fs, cp, op}`.  Everything else of the
+example is as it was, the caller's `Rec-E`, `Cap`, `Rec-I` packing included, and `cp` and `op` are
+named in no use set, through the member's bounds.
+
+**S2, a class with a capture-set parameter and `any` in the result.**  Both readings are printed.
+A3b's is `(∀(u : ⊤) (Iterator ^ {fs, u})) ^ {fs}`, the compiler's is
+`(∀(u : ⊤) (Iterator ^ {κ₁, κ₂})) ^ {fs}`, and the second is checked by `rfl`.  The callee types
+more easily than the reading suggests: its literal is assigned `[]` and the packing widens it at an
+arbitrary set by `sc-elem`.  The caller's answer is still `⊤ ^ {fs}` and the only step that names
+`{fs}` is `sc-sel-upper` at the member's upper bound, so S2's own point survives the change of
+reading.  What the new reading does move is the caller's use set: `it` is declared at the platform
+set now, so reading `it.next` charges the platform set.  These two lines side by side are the single
+most informative output of the stage.
+
+**W1, local `any`s and the level hierarchy.**  A lambda inside a lambda over the platform prefix.
+The outer body root is below the inner one and so is a binder of the outer body.  The inner root is
+not below the outer one and neither is a binder of the inner body.  Two of the four are
+`Subcap.level` instances and two are negations of `Ctx.LvlLe`.  That is `{any₂} <: {any₃}` and its
+failure, at the binder order the rules produce.
+
+**W2, the parameter `any`.**  `process : (∀(x : File ^ {any}) ⊤) ^ {}` reads as
+`(∀(x : File ^ {κ}) ⊤) ^ {}`, at every reading, because the domain clause does not use the reading
+it is given.  An `any` deeper in the domain is refused, which is the other half of decision 24.
+Inside the body the binder is below the body root by `Subcap.level`, and at a call `HasTy.app` reads
+the argument at `T₁.subst (Subst.singleC (.var y))`, so the parameter `any` becomes the argument
+variable itself, one instance per call.  That is more precise than the compiler, which makes a fresh
+capability per call, and decision 35 records the difference.
+
+**W3, `makeLogger` with the parameter written `any`.**  `Z2TyF` with `FileSystem ^ {any}` in place
+of `^ {κ}`.  The expansion lands on `Z2TyF` unchanged, so `Z2_expandFresh` and the whole target side
+are reused byte for byte.  The point is the witness: it is the parameter and not a platform binder.
+
+**W4, `freshCell` read the compiler's way.**  `Z1TyF` holds no `any`, so the reading leaves it where
+it stood, at every reading set.  That is the regression half of the stage.  The result `fresh` is
+B2's existential and two calls open two binders that the level order does not relate.
+
+**W5, the `withFile` escape at the source.**  The page writes the example with a type argument, and
+`Shape.anyOk` refuses `any` in a type-member bound, so the source renders it monomorphically, which
+is decision 36.  `W5_no_level` decides that the level rule fires neither on the callback's parameter
+nor on its arrow binder at the root of the scope outside the call, and `W5_level_own` shows that it
+does fire at the callback's own body root.  The second half, that no member-free evidence at all
+escapes, is T17 and is stated on the target side, because it names `⊤ᶜ`.
+
+**W6, the counterfactual binder order.**  The source's own X5.  Under the rejected order
+`κ_f, f, κ_b`, the level of `f` is the innermost root older than it, and the platform prefix has
+none, so `f` is at the outermost level and the level rule fires at the body root.  The escape types.
+That is why `Ctx.body` binds the body root first.
+
+**Two calls of `freshCell`.**  `Z1BodyCtxSrc` is the context the source's two `letex`es build.  It
+opens no root, so every binder of it is at the outermost level and neither opened binder is a root,
+so `Subcap.level` has no instance with either of them on its right.  That the two are incomparable
+under *all* evidence is a canonical-forms fact and is in the tree, as
+
+```text
+FCdot.Examples.Z_two_calls_incomparable :
+  (¬ ∃ f, ⟦Z1BodyCtxTop⟧ ⊢ᶜ f : [κ₁'] ⊑ [κ₂']) ∧ (¬ ∃ f, ⟦Z1BodyCtxTop⟧ ⊢ᶜ f : [x₁] ⊑ [x₂])
+```
+
+It is the target's own `two_calls_incomparable` redone over a translated source context: a typed
+store `ZStore` for it, a `Ctx.Refines` into the transparent context that store types, the resolution
+of the two opened binders and of the two cells, and `cap_canon`.  `Z1BodyCtxTop` is the same two
+calls with the answer widened from `File` to `⊤` before each `letex` unpacks it, and the widening is
+`Z1_widen`, a source subtyping derivation.  The widening is what makes a store available: a store
+binds literals, a target literal has its own precise type, and that type is a telescope of
+definitions and presences, while the translation of a source object type is a telescope of bounds
+whose newest entry is a capture bound.  So no target literal has the type `⟦File ^ C⟧`, which is
+`FCdot.Examples.Z_no_literal_at_file`, and no store binds a variable at it.  Nothing of the
+statement's content moves with the widening: the two opened capture binders are where they were and
+the two cells are declared at the sets the two calls assigned them.
+
+Axioms (`#print axioms`): none or `propext` for every fact above, `propext` for every derivation.

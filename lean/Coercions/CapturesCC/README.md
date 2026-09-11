@@ -109,6 +109,66 @@ and not merely unproven.  And the answer-cast frame holds the coercion rather th
 the stage has no answer-form normalizer, no answer-form typedness and no fifth field on the form
 invariant of the store.
 
+Stage B3 is the source read the compiler's way, and it is the last stage.  The notation `any` is
+unchanged and no rule of either calculus mentions it, but the reading is by position now.  `expand`
+threads the set that the root enclosing the position stands for, and passes it under an arrow's
+codomain and under a `μ` body untouched.  It is reset at exactly two kinds of place, the positions
+where `any` is forbidden and an arrow's domain, and a domain reads `any` as the arrow's own capture
+binder, which is what turns the arrow into a capture-parameter arrow with no member encoding and no
+extra application in the translated term.  A3b recomputed the reading at every former, so an `any`
+was read by what stood at its position.  The compiler's way reads it by where it stands.
+
+The source has no universal root, and it must not have one.  If a top-level `any` read as `⊤ᶜ`, a
+program could declare its own use set to be `{⊤ᶜ}` by the source's own level rule, and the platform
+premise that `dot_effect_safety` supplies would be lost, because over the platform prefix every
+platform binder is a root of `{⊤ᶜ}` while the membership the theorem reads still holds.  Two halves
+of that are machine checked and the step from there to a false theorem is an argument, but the hard
+constraints forbid the theorem gaining a premise either way, so the source names no `⊤ᶜ` and a
+top-level `any` reads as the program's platform set.  `Ctx.reading` is the statement of where a
+reading comes from: the innermost root binder of the context as a singleton, and the platform set
+where the context has none.
+
+B3 gives the source the target's level machinery and one rule.  A level is a position on the spine
+here too, `Ctx.lvlLeB` is the same order, and `Subcap.level` is the compiler's `acceptsLevelOf` on
+the source side.  Because the source names no universal root, a notation is below no root, so the
+order is false at `any` and at `fresh` on either side.  The source has also never had a term-level
+expansion and has one now: a lambda's domain annotation may hold `any` in its outer set and nowhere
+else, and `Tm.expand` descends at `let`, at `letex` and through a value into a lambda's body, so a
+notation written inside a program is read and not left standing.
+
+The translation gains one clause, its typedness one case, and five spine commutations that say
+`Ctx.translate` commutes with `Ctx.root?`, `Ctx.lvl` and `Ctx.rootB`.  The type translation does not
+move at all, which is the source's lack of a universal root seen in the diff.  T17,
+`source_lvl_safety`, is the theorem of the stage and it is one line on top of `level_inversion`:
+member-free source subcapturing never lowers a level.  It needs the source's own member-free
+predicate, which excludes exactly the three source rules whose translation is `eqToLe` or `member`,
+and those are exactly the two target rules the target's member-free predicate excludes.
+
+### The decisions of B3
+
+**22.**  The reading of `any` is one capture set threaded down, not a set recomputed at every former.
+**23.**  The source has no universal root, and a top-level `any` reads as the program's platform set.
+**24.**  A parameter `any` is the arrow's own capture binder, and it is legal only at the top of a
+domain.  **25.**  A result `any` does not reset the reading, because a source arrow type binds no body
+root.  **26.**  A class member `any` reads as the root enclosing the object type, not the class root of
+the literal, so a field that captures the self writes `{self}`.  **27.**  Terms are expanded, and the
+term-level expansion needs no reading set: `Tm.expand` descends at `let`, at `letex` and through a
+value into a lambda's body, and a lambda's domain is read at the arrow's own binder.  **28.**  A
+literal's definitions hold no `any` (`Defs.noAny`, required by the term-level `AnyOk`).  **29.**  The
+source gains B0's level rule, with its own level machinery over its five context constructors and no
+universal root.  **30.**  A notation is below no root: `Ctx.lvlLeB` is `false` at `any` and at `fresh`
+in either position.  **31.**  `any` is expanded before `fresh`.  **32.**  T17 is stated through the
+translation, as `level_inversion` applied to a translated derivation, and the `withFile` escape at the
+source context is an example.  **33.**  B3 touches one file under `FCdot/` besides `Examples.lean`,
+`LevelInversion.lean`.  **34.**  The level order relates a parameter and its body root in both
+directions, but only one direction is a rule instance, because the rule asks for a root on its right
+and the arrow binder is a rigid capture binder.  **35.**  A call instantiates a parameter `any` with
+the argument variable rather than with a fresh capability, one instance per call, more precise than
+the compiler.  **36.**  `any` is forbidden in a type-member bound, so the page's fourth worked example
+is written monomorphically, and W5's two halves live at two contexts.
+
+## The tree
+
 **`FCdot/`** is the target, FCdot^cc.  Its README lists the modules, what each stage changed in them,
 the notation, and the theorems.  B0 reached it everywhere and B1 reached it again.  `Syntax` carries
 the arrow's new binders and the whole substitution block, `Context` the levels and the three scope
@@ -126,7 +186,10 @@ wrappers and the instance rule, `Machine` the answer-cast frame, the unpacking f
 steps, `Preservation` isolation, the two canonical-forms theorems at an existential answer and the
 two unpack cases, `Prediction` the one lemma that consumes the declared bound, `ErasureMetatheory`
 the typed invariant the backward simulation now needs, and `Examples` the five programs Y1 to Y5
-with the store that makes Y1's negative theorem non-vacuous.
+with the store that makes Y1's negative theorem non-vacuous.  B3 reached two of its files and no
+more: `LevelInversion` gained the renaming of the two member-free families, which the translation's
+reader of a variable weakens with, and `Examples` gained the target side of the source's own worked
+programs, among them T17 at `⊤ᶜ`.
 
 **`DotMNF/`** is the source, `DOT-MNF^cc`, with `any` by position since A3b.  A shape is the vanilla
 type former, a type is a shape with a capture set, and the new shapes are the capture member and the
@@ -139,7 +202,11 @@ where the target writes `⊤ᶜ`.  Every derivation of the example file keeps it
 conclusion.  B2 gives the source `fresh`, the answer sort with the same declared bound, an instance
 binding, the `letex` former with its three machine steps, and a subsumption rule that carries the
 pack.  `FreshOk` decides and `expandFresh` computes, so a written type is checked and its reading is
-stated by `rfl`, exactly as `AnyOk` and `expand` are at A3b.
+stated by `rfl`, exactly as `AnyOk` and `expand` are at A3b.  B3 is this directory's own stage: the
+reading of `any` becomes the root enclosing the position, three clauses of `Shape.expand` and one of
+`Ty.expand` are rewritten, an arrow's domain becomes a legal place for `any` and a place deeper in a
+domain stops being one, the source gains the target's level machinery with one rule, `Subcap.level`,
+and it gains a term-level expansion it never had.
 
 **`DotToFCdot/`** is the translation.  A source type is a shape with a capture set and so is a target
 type, so the translation splits the same way, and use sets are carried by the derivation, so the
@@ -153,7 +220,10 @@ one new file says that the type translation commutes with substitution and not o
 which is what the application case now needs.  B2 changed three things and nothing else: the answer
 translation, the answer-inclusion translation, and one clause of the context translation for the
 source's instance binding.  A source `fresh` is dropped as `any` is, which is sound because the
-source gives it no power and vacuous on expanded programs.
+source gives it no power and vacuous on expanded programs.  B3 changed one clause, one case, and
+added the five commutations that say the context translation commutes with the level machinery, plus
+T17.  The type translation did not move at all, which is the source's lack of a universal root seen
+in the diff.
 
 **`Runtime.lean`** is the shared untyped runtime with a data-free capture slot in its store, an
 inspected root on its terms, and an inert box that both calculi erase their boxes to.  B0 changed
@@ -171,8 +241,74 @@ are unaffected.
 Axioms throughout: `propext` and `Quot.sound`.  No `sorry`, `axiom`, `partial`, `unsafe`, or
 `native_decide`, and no Mathlib.
 
-## What is not here yet
+## What the compiler's way delivers
 
-Stage B3, the source `DOT-MNF^cc'` with `any` by position the compiler's way, its translation, and
-the mandatory examples of that stage, among them the four worked programs of the compiler's own
-write-up read on the source side.
+*Levels, as a judgment.*  The DOT way reads `any` by position and level free, and it has no notion of
+one scope enclosing another.  The compiler's way has one.  `Ctx.lvl` reads the nearest enclosing root
+off the spine, the `level` rule of `Subcap` and of `CapCo` is `acceptsLevelOf`, and `{any₂} <: {any₃}`
+holds while `{any₃} <: {any₂}` does not, in both calculi, decided in the kernel.  X1, X2 and X3 state
+it over a spine written by hand and W1 states it over two real lambda bodies, so the nesting there is
+the binder order the rules produce.  Nothing in the DOT way can state that.
+
+*The escape, rejected by the write-up's own mechanism.*  `withFile[() => File^]("test.txt")(f => () => f)`
+is rejected because the level of `f` is the callback's body root and the expected type names a root
+outside the call, and separately because no member-free evidence at all can lower a level.  X4 and W5
+are the two halves on the two sides, `level_inversion` and `source_lvl_safety` are the store-free
+theorems behind them, and the counterfactual binder order is checked too, X5 and W6, so the rejection
+is a property of the rules and not of one example.  In the DOT way the same program is refused only
+because one set does not hold one atom, which is not the write-up's mechanism and does not survive a
+program that widens on the way out.
+
+*A parameter `any` as a capture parameter.*  The arrow binds it, a call instantiates it at the
+argument, and the callee's type stays one arrow, so erasure equality is free.  W2 is that in four
+theorems: the reading, the level step inside the body, the instantiation at the call, and the erasure
+of the translation.  The member encoding the DOT way would have needed puts one extra application per
+call into the target term.
+
+*A result `any` that two calls share, and a `fresh` that they do not.*  Both readings exist and both
+are checked.  A result `any` reads as the enclosing root, so two calls agree, while a result `fresh`
+is an existential and two calls open binders that nothing relates.  Isolation is the step the
+write-up itself names, and it is `no_ex_le_ty`.  That nothing relates them is
+`FCdot.Examples.two_calls_incomparable` on the target and
+`FCdot.Examples.Z_two_calls_incomparable` on the source, the second over the translation of the
+source's own two-call context `DotMNF.Examples.Z1BodyCtxTop`, with its own typed store, its own
+refinement and `cap_canon`.  The source-side context unpacks each answer at `⊤`, by the source
+subtyping step `Z1_widen`, because no target literal has the translated type of a source object type
+(`FCdot.Examples.Z_no_literal_at_file`) and so no store binds a variable at one.  The two opened
+capture binders and the two cells are unmoved by that widening, and they are what the theorem talks
+about.
+
+*A store that is the outermost scope.*  A store binds capabilities and never scopes, which is what
+makes entering a body sound with no level numbers anywhere and no level data on any binder.
+
+**What it costs.**  *Proof engineering.*  Levels are positions, and positions move.  `Ctx.Ren`,
+`Ctx.RenR` and `Subst.Typed` carry four capture fields, ten `weakenC` theorems gained a premise, and
+one dedicated lemma exists only to cross a freshly opened root.  That is the single largest item of
+the four stages.  *Binders.*  A lambda opens three binders where it opened one, an object literal
+two.  Every example on both sides was re-indexed, the runtime grew by six definitions and five steps,
+and the erasure of a substitution had to be generalised because a substitution's capture component
+has no runtime content.  *The source moved.*  `DotMNF` gained a capture binder on its arrow, three
+context constructors, an answer sort on `HasTy`, `ESub`, `letex`, and now a level rule with its own
+level machinery.  The platform prefix never moved, which is what kept the translation, the platform
+and every A3a example intact.  *Six recorded departures from the compiler.*  The machine sends a
+lambda's body root to `⊤ᶜ` at every call, where the compiler never retargets a level.  The source has
+no universal root, so a top-level `any` reads as the platform set.  A class member `any` reads as the
+root enclosing the object type and not as the class root.  The level order relates a parameter and
+its body root both ways, but only one direction is a rule instance.  A call instantiates a parameter
+`any` at the argument itself rather than at a fresh capability.  And `any` is not allowed in a
+type-member bound, so the write-up's fourth example is written monomorphically.  The first two are
+sound because a running program is the outermost scope.  The third is sound because the rendering is
+stricter than the write-up's.  The last three are restrictions or refinements, so each is sound by
+being narrower.
+
+**What is not claimed.**  Tunneling and outer-bound `fresh` are not modelled.  Neither are the
+`Unscoped` and shared-capability classifiers the level check consults, nor separation checking's
+hidden sets, nor the narrowing step that folds a call's result back into the caller's own
+capabilities, which is type inference and has no place in a calculus.  The argument that a source
+universal root would make effect safety false is an argument and not a checked fact: its two halves
+are checked and the program that would exploit them is not exhibited.
+
+**The one line for the user.**  The DOT way types the same programs and rejects the escape for the
+wrong reason.  The compiler's way costs a level order, four capture fields on every renaming, and two
+binders per lambda, and in exchange the four worked examples of the write-up are theorems in Lean
+with `propext` and `Quot.sound` and nothing else.

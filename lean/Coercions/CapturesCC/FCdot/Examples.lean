@@ -2980,6 +2980,393 @@ theorem Z3_erase :
       = DotMNF.Tm.erase (DotMNF.Examples.S2mkTm DotMNF.Examples.k1) :=
   DotMNF.HasTy.translate_erase _
 
+
+/-! ### The source examples of B3.9 in the target
+
+W2, W3 and W4 are source types read the compiler's way, so their target side
+is the translation of the source derivation.  W5's second half is T17, which
+lives on the target because it names `⊤ᶜ`, an atom the source cannot
+write. -/
+
+/-- The body context of W2 and W5 is well formed. -/
+theorem W2BodyCtxWf : DotMNF.Ctx.Wf DotMNF.Examples.W2BodyCtx :=
+  DotMNF.Ctx.Wf.body platWf _
+
+/-- The calling context of W2 is well formed. -/
+theorem W2CallCtxWf : DotMNF.Ctx.Wf DotMNF.Examples.W2CallCtx := .cons (.cons platWf)
+
+/-- **W2 translated.**  A parameter `any` stays one arrow in the target: the
+arrow binds the capture parameter, so no member encoding and no extra
+application appear in the translated term. -/
+theorem W2_translated : DotMNF.Examples.platCtx.translate ⊢
+    (DotMNF.Examples.W2_typed (Γ := DotMNF.Examples.platCtx)).translate :
+    (DotMNF.Examples.W2Ty : DotMNF.Ty ([],c,c)).translate :=
+  DotMNF.Examples.W2_typed.translate_typed platWf
+
+/-- **W2 erased.**  The source program and its translation run the same
+runtime term, which is the erasure equality a member encoding would have
+lost. -/
+theorem W2_erase :
+    Tm.erase (DotMNF.Examples.W2_typed (Γ := DotMNF.Examples.platCtx)).translate
+      = DotMNF.Tm.erase (DotMNF.Examples.W2Tm : DotMNF.Tm ([],c,c)) :=
+  DotMNF.HasTy.translate_erase _
+
+/-- **W2's call translated.**  One application in the source is one
+application in the target. -/
+theorem W2_call_translated : DotMNF.Examples.W2CallCtx.translate ⊢
+    DotMNF.Examples.W2_call.translate :
+    (DotMNF.Examples.unitTy : DotMNF.Ty ([],c,c,x,x)).translate :=
+  DotMNF.Examples.W2_call.translate_typed W2CallCtxWf
+
+/-- **W3 translated.**  `makeLogger` with the parameter written `any` reads
+as `Z2TyF`, so the target side is `Z2_translated`, byte for byte. -/
+theorem W3_translated : DotMNF.Examples.platCtx.translate ⊢
+    DotMNF.Examples.Z2_plat.translate : DotMNF.Examples.Z2Ty.translate :=
+  Z2_translated
+
+/-- **W4 translated.**  `freshCell` read the compiler's way is `freshCell`,
+so the target side is `Z1_translated`. -/
+theorem W4_translated : DotMNF.Examples.platCtx.translate ⊢
+    DotMNF.Examples.Z1_plat.translate :
+    (DotMNF.Examples.Z1Ty DotMNF.Examples.k1).translate :=
+  Z1_translated
+
+/-! ### W5, the second half: nothing escapes the callback
+
+`W5_caps` is the source twin of `X4_caps`: the binder set of the callback's
+parameter resolves to the arrow binder `κ_f`, whose level is the body root.
+`W5_no_escape` is T17 at `r = ⊤ᶜ`: no member-free source subcapturing puts
+`{f}` below the platform capability `κ₁`, which sits at the outermost level
+because the platform prefix opens no scope.  The page's own consequence for
+the program is `escaped().read()`, a use after close. -/
+
+/-- The callback's parameter in the body context. -/
+abbrev W5Tf : BVar (Sig.body ([],c,c)) .var := .here
+
+/-- The callback's arrow binder there. -/
+abbrev W5Tkf : BVar (Sig.body ([],c,c)) .cap := .there .here
+
+/-- The outer platform capability, read inside the body. -/
+abbrev W5Tk1 : BVar (Sig.body ([],c,c)) .cap :=
+  .there (.there (.there (.there .here)))
+
+/-- **W5, the resolution step.**  The binder set of `f` resolves to the
+arrow binder, at every fuel: the parameter's declared type is `File ^ {κ_f}`
+and `κ_f` is rigid in the translated context. -/
+theorem W5_caps (n : Nat) :
+    DotMNF.Examples.W2BodyCtx.translate.caps n [CapAtom.var W5Tf]
+      = [CapAtom.cvar W5Tkf] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_var, Ctx.caps_nil, List.append_nil]
+  show DotMNF.Examples.W2BodyCtx.translate.caps n [CapAtom.cvar W5Tkf] = _
+  rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+  rfl
+
+/-- **W5, nothing escapes the callback.**  No member-free source
+subcapturing puts `{f}` below the platform capability.  An instance of T17:
+the binder set of `f` is `{κ_f}`, whose level is the body root, so it is not
+at the outermost level, and member-free evidence never lowers a level. -/
+theorem W5_no_escape :
+    ¬ ∃ d : DotMNF.Subcap DotMNF.Examples.W2BodyCtx [DotMNF.CapAtom.var W5Tf]
+        [DotMNF.CapAtom.cvar W5Tk1], d.MemberFree := by
+  rintro ⟨d, hd⟩
+  have hD : ∀ m, DotMNF.Examples.W2BodyCtx.translate.Confined
+      (DotMNF.Examples.W2BodyCtx.translate.caps m
+        (DotMNF.CaptureSet.translate [DotMNF.CapAtom.cvar W5Tk1])) ⊤ᶜ := by
+    intro m
+    rw [show DotMNF.CaptureSet.translate [DotMNF.CapAtom.cvar W5Tk1]
+          = [CapAtom.cvar W5Tk1] from rfl,
+      Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+    show DotMNF.Examples.W2BodyCtx.translate.Confined [CapAtom.cvar W5Tk1] ⊤ᶜ
+    decide
+  have hC := DotMNF.source_lvl_safety W2BodyCtxWf hd hD 0
+  rw [show DotMNF.CaptureSet.translate [DotMNF.CapAtom.var W5Tf]
+        = [CapAtom.var W5Tf] from rfl, W5_caps] at hC
+  exact absurd hC (by decide)
+
+
+/-! ## Two calls of `freshCell`, on the source side
+
+**B3.9 W4, the second half.**  `DotMNF.Examples.Z_two_calls_no_level` says
+that the level order relates neither of the two opened binders to the other.
+The full incomparability is a canonical-forms fact: no capture evidence at
+all relates them.  It is `two_calls_incomparable` above, redone over a
+translated source context, and it needs what that theorem needed, a typed
+store, a refinement into the transparent context the store types, the
+resolution of the two opened binders, and `cap_canon`.
+
+The store is what decides which source context the statement can be made
+over.  A store binds literals, a literal has its own precise type, and the
+precise type of a target literal is `Telescope.ofLiteral`, a telescope of
+definitions and presences.  The translation of a source object type is a
+telescope of bounds, and its newest entry is a capture bound.  So no target
+literal has the type `⟦File ^ C⟧`, and no store binds a variable at it.
+That is `Z_no_literal_at_file`, and it is why the statement is made over the
+translation of `DotMNF.Examples.Z1BodyCtxTop`, the same two calls with the
+answer widened to `⊤` by `DotMNF.Examples.Z1_widen`, and not over the
+translation of `Z1BodyCtxSrc`.
+
+Nothing of the statement's content depends on the widening.  The two opened
+capture binders are where they were, the two cells are declared at the sets
+the two calls assigned them, and what is refuted is evidence between those
+binders and between those cells. -/
+
+/-! ### No literal has a translated object type -/
+
+/-- Presence entries are appended last, so a telescope that ends in no
+capture bound still ends in none after them. -/
+theorem hasEntries_ne_leC {s' : Sig} :
+    ∀ (ls : List Label) (T : Telescope s'),
+      (∀ (Tel : Telescope s') (P Q : CaptureSet s'), T ≠ Tel.cons (.leC P Q)) →
+      ∀ (Tel : Telescope s') (P Q : CaptureSet s'), T.hasEntries ls ≠ Tel.cons (.leC P Q)
+  | [], T, h => h
+  | l :: ls, T, _ => by
+      refine hasEntries_ne_leC ls (T.cons (.has l)) ?_
+      intro Tel P Q hEq
+      simp only [Telescope.cons.injEq] at hEq
+      exact absurd hEq.2 (by simp)
+
+/-- A capture definition is not a capture bound, so the capture-definition
+block of a literal ends in none either. -/
+theorem capEqEntries_ne_leC {s' : Sig} (self : BVar s' .var) (W₀ : CapWitnesses s')
+    (base : Telescope s')
+    (hb : ∀ (Tel : Telescope s') (P Q : CaptureSet s'), base ≠ Tel.cons (.leC P Q)) :
+    ∀ (Wc : CapWitnesses s') (Tel : Telescope s') (P Q : CaptureSet s'),
+      W₀.eqEntriesOf self base Wc ≠ Tel.cons (.leC P Q)
+  | .nil, Tel, P, Q => hb Tel P Q
+  | .cons _ _ _, Tel, P, Q => by
+      intro hEq
+      rw [CapWitnesses.eqEntriesOf] at hEq
+      simp only [Telescope.cons.injEq] at hEq
+      exact absurd hEq.2 (by simp)
+
+/-- And a definition is not a capture bound. -/
+theorem eqEntries_ne_leC {s' : Sig} (self : BVar s' .var) (W₀ : Witnesses s') :
+    ∀ (W : Witnesses s') (Tel : Telescope s') (P Q : CaptureSet s'),
+      W₀.eqEntriesOf self W ≠ Tel.cons (.leC P Q)
+  | .nil, Tel, P, Q => by intro hEq; rw [Witnesses.eqEntriesOf] at hEq; exact absurd hEq (by simp)
+  | .cons _ _ _, Tel, P, Q => by
+      intro hEq
+      rw [Witnesses.eqEntriesOf] at hEq
+      simp only [Telescope.cons.injEq] at hEq
+      exact absurd hEq.2 (by simp)
+
+/-- **The precise telescope of a literal never ends in a capture bound.** -/
+theorem ofLiteral_ne_leC {s : Sig} (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))
+    (ls : List Label) (Tel : Telescope (s,x)) (P Q : CaptureSet (s,x)) :
+    Telescope.ofLiteral W Wc ls ≠ Tel.cons (.leC P Q) :=
+  hasEntries_ne_leC ls _
+    (capEqEntries_ne_leC .here Wc _ (eqEntries_ne_leC .here W W) Wc) Tel P Q
+
+/-- **No literal has an object type whose telescope ends in a capture
+bound.**  A lambda has an arrow type, a box a box type, an object literal
+its own precise type, and a cast is no literal. -/
+theorem no_literal_at_leC {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
+    (hlit : v.IsLiteral) (h : Γ ⊢ᵥ v : T) :
+    ∀ (Tel : Telescope (s,x)) (P Q : CaptureSet (s,x)) (C : CaptureSet s),
+      T ≠ (Shape.obj (Tel.cons (.leC P Q))) ^ C := by
+  cases h with
+  | lam => intro Tel P Q C hEq; simp at hEq
+  | box => intro Tel P Q C hEq; simp at hEq
+  | cast => exact hlit.elim
+  | obj =>
+      intro Tel P Q C hEq
+      simp only [Ty.capt.injEq, Shape.obj.injEq] at hEq
+      exact ofLiteral_ne_leC _ _ _ Tel P Q hEq.2
+
+/-! ### The translated types of the two-call program -/
+
+/-- `⟦⊤⟧`, the empty object shape.  The source's `⊤` is the empty telescope,
+which is also the precise telescope of a literal with no witnesses and no
+fields, so `⊤` is a source type a target store can hold. -/
+def ZTopS : Shape s := .obj .nil
+
+/-- `⟦⊤ ^ []⟧`. -/
+def ZUnit : Ty s := ZTopS ^ []
+
+/-- `⟦⊤ ^ C⟧ = ⟦⊤⟧ ^ ⟦C⟧`. -/
+theorem ZTop_translate {s : Sig} (C : DotMNF.CaptureSet s) :
+    DotMNF.Ty.translate (DotMNF.Ty.capt C .top) = Ty.capt C.translate ZTopS := by
+  rw [DotMNF.Ty.translate, DotMNF.Shape.translate]; rfl
+
+/-- `⟦⊤ ^ []⟧ = ZUnit`. -/
+theorem ZUnit_translate {s : Sig} :
+    DotMNF.Ty.translate (DotMNF.Examples.unitTy (s := s)) = ZUnit := by
+  rw [DotMNF.Examples.unitTy, DotMNF.Ty.translate, DotMNF.Shape.translate]; rfl
+
+/-- The telescope of `⟦File⟧`: a presence, a bound on the field's shape, and
+a bound on the field's capture name.  Its newest entry is a capture bound,
+which is what `no_literal_at_leC` reads. -/
+def ZFileTel : Telescope (s,x) :=
+  ((Telescope.nil.cons (.has DotMNF.Examples.lread)).cons
+      (.le (.sel .here DotMNF.Examples.lread) (Shape.pi ZUnit (.ty ZUnit)))).cons
+    (.leC [CapAtom.name .here DotMNF.Examples.lread] [CapAtom.var .here])
+
+theorem ZFile_translate {s : Sig} (C : DotMNF.CaptureSet s) :
+    DotMNF.Ty.translate (DotMNF.Ty.capt C DotMNF.Examples.fileS)
+      = (Shape.obj ZFileTel) ^ C.translate := by
+  rw [DotMNF.Ty.translate_capt, DotMNF.Examples.fileS, DotMNF.Shape.translate,
+    DotMNF.Shape.telSelf, DotMNF.Examples.arrowS, DotMNF.Shape.translate_all_eq,
+    ZUnit_translate, DotMNF.ETy.translate_ty, ZUnit_translate]
+  rfl
+
+/-- **No target literal has the translated type of the source's `File`.**  A
+store binds literals, so no store binds a variable at `⟦File ^ C⟧`, and the
+two-call statement below is made at the widened context for that reason. -/
+theorem Z_no_literal_at_file {s : Sig} {Γ : Ctx s} {v : Value s} {C : DotMNF.CaptureSet s}
+    (hlit : v.IsLiteral) :
+    ¬ (Γ ⊢ᵥ v : DotMNF.Ty.translate (DotMNF.Ty.capt C DotMNF.Examples.fileS)) :=
+  fun h => no_literal_at_leC hlit h _ _ _ _ (ZFile_translate C)
+
+/-- `⟦Z1TyTop fs⟧`, the translated type of `freshCell` at the widened
+answer. -/
+def ZFreshTy (fs : BVar s .cap) : Ty s :=
+  (Π(ZUnit) (∃ᶜ[[CapAtom.cvar (up2 fs), CapAtom.var .here]] (ZTopS ^ [CapAtom.cvar .here])))
+    ^ [CapAtom.cvar fs]
+
+theorem ZFreshTy_translate {s : Sig} (fs : BVar s .cap) :
+    DotMNF.Ty.translate (DotMNF.Examples.Z1TyTop fs) = ZFreshTy fs := by
+  rw [DotMNF.Examples.Z1TyTop, DotMNF.Ty.translate_capt, DotMNF.Shape.translate_all_eq,
+    ZUnit_translate, DotMNF.ETy.translate_ex, ZTop_translate]
+  rfl
+
+/-! ### The store the argument needs -/
+
+/-- The empty object literal at an assigned capture set. -/
+def ZEmptyLit (A : CaptureSet s) : Value s := .obj A .nil .nil .nil
+
+/-- The unit value: the empty object, pure. -/
+def ZUnitVal : Value s := ZEmptyLit []
+
+/-- The body of `freshCell` at the widened answer: allocate an empty object
+at the arrow's own set, then pack it at the witness the answer declares. -/
+def ZFreshBody (fs : BVar s .cap) : Tm (Sig.body s) :=
+  .let (.val (ZEmptyLit [CapAtom.cvar (up3 fs)]))
+    (.atom (.pack [CapAtom.cvar (up4 fs)]
+        (.elem [CapAtom.cvar (up4 fs)] [CapAtom.cvar (up4 fs), CapAtom.var (.there .here)])
+        (YPackCo [CapAtom.cvar (up4 fs)] ZTopS) (.var .here)))
+    [CapAtom.cvar (up3 fs)] (.capvar (.var .here))
+
+/-- `freshCell` itself, at the widened answer. -/
+def ZFreshCell (fs : BVar s .cap) : Value s :=
+  .lam [CapAtom.cvar fs] ZUnit (ZFreshBody fs)
+    (.elem [CapAtom.cvar (up3 fs)] [CapAtom.cvar (up3 fs), CapAtom.var .here])
+
+/-- The platform prefix of the source examples, translated. -/
+def ZPlat : Ctx ([],c,c) := (Ctx.nil.consC .star).consC .star
+
+example : DotMNF.Examples.platCtx.translate = ZPlat := rfl
+
+/-- `fs` is the source's `κ₁`. -/
+def Zfs : BVar ([],c,c) .cap := .there .here
+
+example : checkValue ZPlat ZUnitVal ZUnit = true := by decide +kernel
+
+example : checkValue ZPlat (ZEmptyLit [CapAtom.cvar Zfs]) (ZTopS ^ [CapAtom.cvar Zfs]) = true := by
+  decide +kernel
+
+example : checkValue ZPlat (ZFreshCell Zfs) (ZFreshTy Zfs) = true := by decide +kernel
+
+/-- The translated two-call context, spelled out.  Every term binder is
+opaque, as the `letex` rule leaves it. -/
+def ZBodyCtxO : Ctx ([],c,c,x,x,c,x,c,x) :=
+  (((((((Ctx.nil.consC .star).consC .star).cons
+    (.opaque (ZFreshTy (.there .here)))).cons (.opaque ZUnit)).consC .star).cons
+    (.opaque (ZTopS ^ [CapAtom.cvar .here]))).consC .star).cons
+    (.opaque (ZTopS ^ [CapAtom.cvar .here]))
+
+theorem ZBodyCtxO_eq : DotMNF.Ctx.translate DotMNF.Examples.Z1BodyCtxTop = ZBodyCtxO := by
+  rw [DotMNF.Examples.Z1BodyCtxTop, DotMNF.Ctx.translate, DotMNF.Ctx.translate,
+    DotMNF.Ctx.translate, DotMNF.Ctx.translate, DotMNF.Examples.Z1CtxTop,
+    DotMNF.Ctx.translate, DotMNF.Ctx.translate, DotMNF.Examples.platCtx,
+    DotMNF.Ctx.translate, DotMNF.Ctx.translate, DotMNF.Ctx.translate,
+    ZTop_translate, ZTop_translate, ZUnit_translate, ZFreshTy_translate]
+  rfl
+
+/-- The same context as a store types it: the four term binders are
+transparent, and none of the four values has a witness or a field. -/
+def ZBodyCtx : Ctx ([],c,c,x,x,c,x,c,x) :=
+  (((((((Ctx.nil.consC .star).consC .star).cons
+    (.transparent (ZFreshTy (.there .here)) .nil .nil [])).cons
+    (.transparent ZUnit .nil .nil [])).consC .star).cons
+    (.transparent (ZTopS ^ [CapAtom.cvar .here]) .nil .nil [])).consC .star).cons
+    (.transparent (ZTopS ^ [CapAtom.cvar .here]) .nil .nil [])
+
+/-- The store itself: the two platform slots, `freshCell`, the unit, and the
+two pairs the two `letex`es opened. -/
+def ZStore : Store ([],c,c,x,x,c,x,c,x) :=
+  .cons (.consC (.cons (.consC (.cons (.cons (.consC (.consC .nil .star) .star)
+    (ZFreshCell (.there .here))) ZUnitVal) .star) (ZEmptyLit [CapAtom.cvar .here])) .star)
+    (ZEmptyLit [CapAtom.cvar .here])
+
+theorem ZStore_typed : ⊢ ZStore : ZBodyCtx :=
+  .cons (.consC (.cons (.consC (.cons (.cons (.consC (.consC .nil rfl) rfl)
+      trivial (checkValue_sound (by decide +kernel)))
+      trivial (checkValue_sound (by decide +kernel))) rfl)
+      trivial (checkValue_sound (by decide +kernel))) rfl)
+      trivial (checkValue_sound (by decide +kernel))
+
+/-- The translated context refines into the store's. -/
+theorem Z_refines : Ctx.Refines ZBodyCtxO ZBodyCtx :=
+  ((((((Ctx.Refines.transparent.cons _).trans Ctx.Refines.transparent).consC _).cons
+    _).trans Ctx.Refines.transparent).consC _).cons _ |>.trans Ctx.Refines.transparent
+
+/-! ### The two opened binders resolve to themselves -/
+
+theorem Z_caps_k1 (n : Nat) :
+    ZBodyCtx.caps n [CapAtom.cvar DotMNF.Examples.Zk1'] = [CapAtom.cvar DotMNF.Examples.Zk1'] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+  rfl
+
+theorem Z_caps_k2 (n : Nat) :
+    ZBodyCtx.caps n [CapAtom.cvar DotMNF.Examples.Zk2'] = [CapAtom.cvar DotMNF.Examples.Zk2'] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+  rfl
+
+theorem Z_caps_x1 (n : Nat) :
+    ZBodyCtx.caps n [CapAtom.var DotMNF.Examples.Zx1'] = [CapAtom.cvar DotMNF.Examples.Zk1'] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_var, Ctx.caps_nil, List.append_nil]
+  show ZBodyCtx.caps n [CapAtom.cvar DotMNF.Examples.Zk1'] = _
+  exact Z_caps_k1 n
+
+theorem Z_caps_x2 (n : Nat) :
+    ZBodyCtx.caps n [CapAtom.var DotMNF.Examples.Zx2'] = [CapAtom.cvar DotMNF.Examples.Zk2'] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_var, Ctx.caps_nil, List.append_nil]
+  show ZBodyCtx.caps n [CapAtom.cvar DotMNF.Examples.Zk2'] = _
+  exact Z_caps_k2 n
+
+/-- **B3.9 W4, two calls are incomparable on the source side.**  Over the
+translation of the source's own two-call context, no capture evidence puts
+the binder the first call opened below the binder the second call opened,
+and none puts the first cell below the second.  The argument is the
+target's: the two binders resolve to themselves, so each is a root of its
+own set and of neither the other's, and `cap_canon` reads any evidence as an
+inclusion of roots.
+
+What is not claimed is what B2.11 records: at run time both opened binders
+carry `.inst C`, so in the store's own context each is below the other. -/
+theorem Z_two_calls_incomparable :
+    (¬ ∃ f, DotMNF.Ctx.translate DotMNF.Examples.Z1BodyCtxTop ⊢ᶜ f :
+      [CapAtom.cvar DotMNF.Examples.Zk1'] ⊑ [CapAtom.cvar DotMNF.Examples.Zk2']) ∧
+    (¬ ∃ f, DotMNF.Ctx.translate DotMNF.Examples.Z1BodyCtxTop ⊢ᶜ f :
+      [CapAtom.var DotMNF.Examples.Zx1'] ⊑ [CapAtom.var DotMNF.Examples.Zx2']) := by
+  rw [ZBodyCtxO_eq]
+  constructor
+  · rintro ⟨f, hf⟩
+    have hr : ZBodyCtx.Root (CapAtom.cvar DotMNF.Examples.Zk1')
+        [CapAtom.cvar DotMNF.Examples.Zk1'] :=
+      ⟨0, by rw [Ctx.roots_eq_expand_caps, Z_caps_k1]; decide⟩
+    obtain ⟨m, hm⟩ := cap_canon ZStore_typed (CapCo.HasType.refine Z_refines hf) _ hr
+    rw [Ctx.roots_eq_expand_caps, Z_caps_k2] at hm
+    exact absurd hm (by decide)
+  · rintro ⟨f, hf⟩
+    have hr : ZBodyCtx.Root (CapAtom.cvar DotMNF.Examples.Zk1')
+        [CapAtom.var DotMNF.Examples.Zx1'] :=
+      ⟨0, by rw [Ctx.roots_eq_expand_caps, Z_caps_x1]; decide⟩
+    obtain ⟨m, hm⟩ := cap_canon ZStore_typed (CapCo.HasType.refine Z_refines hf) _ hr
+    rw [Ctx.roots_eq_expand_caps, Z_caps_x2] at hm
+    exact absurd hm (by decide)
+
+
 end Examples
 end FCdot
 

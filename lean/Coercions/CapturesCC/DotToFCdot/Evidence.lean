@@ -1,4 +1,5 @@
 import Coercions.CapturesCC.DotToFCdot.Types
+import Coercions.CapturesCC.FCdot.LevelInversion
 
 namespace CapturesCC
 
@@ -168,6 +169,50 @@ def Ctx.varAtom : Ctx s → BVar s .var → FCdot.Atom s
   | .consRoot Γ, .there y => (Γ.varAtom y).weaken
   | .consInst Γ _, .there y => (Γ.varAtom y).weaken
 
+/-- **T-B3.4, step 2.**  A variable's atom reads no telescope.  Every
+`.there` clause weakens, which is a renaming, and the one head clause with
+content is the literal's self: `ShapeCo.atC e C` is `.capt e (.refl C)`, so
+the capture half of the cast is `refl` and `Atom.MemberFree.cast` matches.
+This is why `Atom.MemberFree` looks at the capture half of a cast only.  The
+shape half of a literal's coercion does read the telescope, and it never
+becomes capture evidence. -/
+theorem Ctx.varAtom_memberFree : ∀ {s : FCdot.Sig} (Γ : Ctx s) (x : BVar s .var),
+    (Γ.varAtom x).MemberFree
+  | _, .cons _ _, .here => .var _
+  | _, .cons Γ _, .there y => (Ctx.varAtom_memberFree Γ y).weaken
+  | _, .consSelf _ _ _ _, .here => .cast (.var _) (.refl _)
+  | _, .consSelf Γ _ _ _, .there y => (Ctx.varAtom_memberFree Γ y).weaken
+  | _, .consC Γ, .there y => (Ctx.varAtom_memberFree Γ y).weaken
+  | _, .consRoot Γ, .there y => (Ctx.varAtom_memberFree Γ y).weaken
+  | _, .consInst Γ _, .there y => (Ctx.varAtom_memberFree Γ y).weaken
+
+/-! ## Member-free source evidence
+
+**T-B3.4, step 3.**  Source subcapturing that reads no telescope and no
+instance binder: it is `refl`, `trans`, `elem`, `union`, `var` and `level`,
+and it excludes `inst`, `selLower` and `selUpper`.  Those three are exactly
+the rules whose translation is `eqToLe` or `member`, which are exactly the
+two target rules `FCdot.CapCo.MemberFree` excludes, and exactly where a bad
+capture bound can enter (example C3). -/
+
+inductive Subcap.MemberFree : {s : FCdot.Sig} → {Γ : Ctx s} → {C D : CaptureSet s} →
+    Subcap Γ C D → Prop where
+  | refl {s : FCdot.Sig} {Γ : Ctx s} {C : CaptureSet s} :
+      (Subcap.refl (Γ := Γ) (C := C)).MemberFree
+  | trans {s : FCdot.Sig} {Γ : Ctx s} {C1 C2 C3 : CaptureSet s}
+      {d : Subcap Γ C1 C2} {e : Subcap Γ C2 C3} :
+      d.MemberFree → e.MemberFree → (Subcap.trans d e).MemberFree
+  | elem {s : FCdot.Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s}
+      (h : CaptureSet.Subset C1 C2) : (Subcap.elem (Γ := Γ) h).MemberFree
+  | union {s : FCdot.Sig} {Γ : Ctx s} {C1 C2 D : CaptureSet s}
+      {d : Subcap Γ C1 D} {e : Subcap Γ C2 D} :
+      d.MemberFree → e.MemberFree → (Subcap.union d e).MemberFree
+  | var {s : FCdot.Sig} {Γ : Ctx s} {x : BVar s .var} :
+      (Subcap.var (Γ := Γ) (x := x)).MemberFree
+  | level {s : FCdot.Sig} {Γ : Ctx s} {e : CapAtom s} {κ : BVar s .cap}
+      (h₁ : Ctx.IsRoot Γ (.cvar κ)) (h₂ : Ctx.LvlLe Γ e (.cvar κ)) :
+      (Subcap.level h₁ h₂).MemberFree
+
 /-! ## The translation -/
 
 mutual
@@ -181,6 +226,18 @@ def Subcap.translate : {Γ : Ctx s} → {C C' : CaptureSet s} → Subcap Γ C C'
   | Γ, _, _, @Subcap.var _ _ x => .capvar (Γ.varAtom x)
   | _, C, _, @Subcap.inst _ _ κ _ _ =>
       .eqToLe (.symm (.instC (.cvar κ) C.translate))
+  /- **B3.6.**  The level rule translates to the target's level rule at the
+     translated atom.  The two notation cases are unreachable in a typed
+     derivation, and they are given evidence rather than an absurdity, so
+     the clause stays a plain match.  It is a leaf, so it adds no obligation
+     to the `decreasing_by` block below. -/
+  | _, _, _, @Subcap.level _ Γ e κ _ _ =>
+      match e with
+      | .var x => .level (.var x) (.cvar κ)
+      | .cvar ν => .level (.cvar ν) (.cvar κ)
+      | .sel x A => .level (.name x A) (.cvar κ)
+      | .any => .elem [] [.cvar κ]
+      | .fresh => .elem [] [.cvar κ]
   | _, _, _, @Subcap.selLower _ _ _ _ A c₁ c₂ _ h =>
       .member h.translateAtom (.refl (Shape.cap A c₁ c₂).translate) 0
   | _, _, _, @Subcap.selUpper _ _ _ _ A c₁ c₂ _ h =>
@@ -258,6 +315,30 @@ def HasTy.translateAtom : {U : CaptureSet s} → {Γ : Ctx s} → {x : BVar s .v
   termination_by _ _ _ _ h => sizeOf h
 
 end
+
+/-! ## Member-freeness is preserved by the translation
+
+**T-B3.4, step 4.**  An induction following `Subcap.translate`'s own case
+split.  The six member-free rules translate to the six member-free target
+rules, and `var` needs `Ctx.varAtom_memberFree`.  The `level` clause is a
+leaf in both, so the case is a five-way `cases` on the atom. -/
+
+theorem Subcap.translate_memberFree : ∀ {s : FCdot.Sig} {Γ : Ctx s} {C C' : CaptureSet s}
+    {d : Subcap Γ C C'}, d.MemberFree → d.translate.MemberFree
+  | _, _, _, _, _, .refl => by rw [Subcap.translate]; exact .refl _
+  | _, _, _, _, _, .trans hf hg => by
+      rw [Subcap.translate]
+      exact .trans (Subcap.translate_memberFree hf) (Subcap.translate_memberFree hg)
+  | _, _, _, _, _, .elem _ => by rw [Subcap.translate]; exact .elem _ _
+  | _, _, _, _, _, .union hf hg => by
+      rw [Subcap.translate]
+      exact .union (Subcap.translate_memberFree hf) (Subcap.translate_memberFree hg)
+  | _, Γ, _, _, _, .var => by rw [Subcap.translate]; exact .capvar (Ctx.varAtom_memberFree Γ _)
+  | _, _, _, _, @Subcap.level _ _ e _ _ _, .level _ _ => by
+      cases e <;> rw [Subcap.translate] <;>
+        first
+          | exact .level _ _
+          | exact .elem _ _
 
 end DotMNF
 

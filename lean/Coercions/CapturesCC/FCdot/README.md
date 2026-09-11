@@ -1,4 +1,4 @@
-# FCdot, at stage B2 of captures the compiler's way
+# FCdot, at stage B3 of captures the compiler's way
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -1225,3 +1225,76 @@ off the abstract member, and the call is charged through the member's upper boun
 
 Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem above.  The
 tree contains no `sorry`, `axiom`, `partial`, `unsafe`, or `native_decide`, and no Mathlib.
+
+## Stage B3
+
+B3 is the fourth and last stage of captures the compiler's way
+(`plan-5d-captures-cc-stages.md` §B3).  It is the source's stage: the reading of `any` by position,
+the source's own level machinery with one rule, the source's term-level expansion, and T17.  The
+target moves in two files only, and that is decision 33.
+
+`FCdot/LevelInversion.lean` gains the renaming of the two member-free families,
+`CapCo.MemberFree.rename` and `Atom.MemberFree.rename`, with the `Rename.succ` instances beside
+them.  They go there and not into `TypingRename.lean` because that is where the rest of the
+member-free metatheory already lives, next to `level_inversion` itself.  They are one mutual block,
+structural on the member-free proof, and the one case with content is `Atom.MemberFree.cast`, where
+`LeCo.rename` at `.capt` reduces so that the induction hypothesis on the capture half applies.  They
+exist because the translation's `Ctx.varAtom` weakens at every `.there` clause, and
+`Ctx.varAtom_memberFree` has to weaken with it.
+
+`FCdot/Examples.lean` gains the target side of the source examples of B3.9 and nothing else.  No
+rule, no judgment, no normal form and no theorem of the target changed, and `lake build` of every
+other module of this directory is the build it was.
+
+| module | what B3 changed |
+|---|---|
+| `LevelInversion` | `CapCo.MemberFree.rename`, `Atom.MemberFree.rename`, `CapCo.MemberFree.weaken`, `Atom.MemberFree.weaken`, after `Ctx.mem_caps_root` and before the inversion itself |
+| `Examples` | the target side of W2 to W5.  `W5_caps` and `W5_no_escape`, which is T17 at `⊤ᶜ`.  The translations of the two repaired source programs S1 and S2, unchanged in form |
+| every other module | nothing |
+
+### Statements restated
+
+Nothing in this directory was weakened and nothing gained a hypothesis.  `level_inversion`,
+`no_inner_escape`, `lvl_safety`, `cap_canon`, `two_calls_incomparable`, `X1` to `X5` and `Y1` to
+`Y5` are the theorems they were, with the proofs they had.
+
+### New in this stage
+
+```
+FCdot.CapCo.MemberFree.rename, FCdot.Atom.MemberFree.rename
+FCdot.CapCo.MemberFree.weaken, FCdot.Atom.MemberFree.weaken
+FCdot.Examples.W2BodyCtxWf, .W2CallCtxWf
+FCdot.Examples.W2_translated, .W2_call_translated, .W2_erase
+FCdot.Examples.W3_translated, .W4_translated
+FCdot.Examples.W5_caps, .W5_no_escape
+```
+
+### The examples
+
+X1, X2 and X3 state the level hierarchy over a spine written by hand, and the source's W1 states the
+same hierarchy over two real lambda bodies, so the nesting there is the binder order the rules
+produce.  T-B1.8, `scope_order`, is the three `rfl` facts about `Ctx.body`, and the source's W2 is
+the expansion that puts the arrow's capture binder in the parameter's set together with the call
+that instantiates it.  X4 rejects the `withFile` escape and W5 rejects it on the source side, in two
+settings.  X5 is the counterfactual binder order and W6 is the source's own.  Y1 is `freshCell` with
+two calls whose opened binders are incomparable, and W4 is the source callee of it.  Y2 is
+`makeLogger` and W3 is that callee with its parameter written `any`.
+
+```
+FCdot.Examples.W2_translated      : platCtx.translate ⊢ ⟦W2_typed⟧ : ⟦W2Ty⟧
+FCdot.Examples.W2_call_translated : W2CallCtx.translate ⊢ ⟦W2_call⟧ : ⟦⊤ ^ {}⟧
+FCdot.Examples.W2_erase           : ⌊⟦W2_typed⟧⌋ = ⌊W2Tm⌋
+FCdot.Examples.W3_translated      : makeLogger, the witness the parameter
+FCdot.Examples.W4_translated      : freshCell, at the type the result fresh expands to
+FCdot.Examples.W5_caps (n)        : W2BodyCtx.translate.caps n {f} = {κ_f}
+FCdot.Examples.W5_no_escape       : no member-free source subcapturing puts {f} below {κ₁}
+```
+
+**W5 at the target.**  `W5_no_escape` is T17 at `r = ⊤ᶜ`, and it is the twin of `X4_no_escape` one
+calculus over.  The binder set of the callback's parameter resolves to the arrow binder, whose level
+is the body root, so it is not at the outermost level.  The platform capability is, because the
+platform prefix opens no scope.  And member-free evidence never lowers a level.  The statement is on
+the target because it names `⊤ᶜ`, which the source has no atom for, and it is about source evidence,
+which is what T17 is for.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem above.
