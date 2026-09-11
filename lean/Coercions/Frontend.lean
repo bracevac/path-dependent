@@ -5,6 +5,8 @@ import Coercions.Frontend.Resolve
 import Coercions.Frontend.Decide
 import Coercions.Frontend.Search
 import Coercions.Frontend.Typer
+import Coercions.Frontend.Step
+import Coercions.Frontend.StepFC
 
 /-!
 # The vanilla front end
@@ -84,4 +86,27 @@ makes fuel monotonicity an induction.  Its eight checks run `synthTop?` on the
 eight surface programs of F0 and compare the type against the one the hand
 written derivation concludes, in compiled code, at a budget measured per
 example.
+
+`Step.lean` is stage F2.1: the DOT-MNF machine as a function.  The source
+machine needs no search, because every side condition of a rule is a pattern
+match on a total lookup, so `step?` is fuel free and structural and one step is
+a sigma type over signatures, `alloc` being the rule that allocates.  It comes
+with a decided finality test, agreement with the frozen step relation in both
+directions, completeness being the full converse since the relation is
+deterministic, a constructive classification of the states with no step into
+final and stuck, and a driver whose result the relation reaches.  Everything
+here reduces in the kernel, so the ten states that probe the ten branches of the
+function are checked by `rfl`.
+
+`StepFC.lean` is stage F2.2: the FCdot machine as a function.  The target
+machine has one side condition that is not a shape, the head form of an atom's
+chain of casts, which the frozen normalizer computes with fuel.  So this step
+function takes that fuel, the driver takes it beside a step budget, and
+agreement with the frozen relation is three statements: soundness at every fuel,
+monotonicity in the fuel, and completeness up to the existence of a fuel, which
+is the honest statement and is witnessed by the fuel the derivation used.  Ten
+concrete states probe the ten rules.  Nine of them, and the stuck and the final
+shapes, reduce in the kernel by `rfl`.  The one that reaches its head form
+through the composition of forms needs the kernel's own transparency, because
+the frozen composition is defined by well-founded recursion.
 -/
