@@ -1,0 +1,176 @@
+
+namespace Classifiers
+/-!
+# De Bruijn signatures for FCdot
+
+The scoping discipline follows the ModalCapybara mechanization: a signature
+is a list of binder kinds, a bound variable is a position of a given kind,
+and renamings are functions on bound variables with lifting under binders.
+This development has two binder kinds, term variables and capture
+variables; the discipline is kind-generic, so that a further kind would be
+additive.
+-/
+
+namespace FCdot
+
+/-- Member labels.  Type labels and term labels are disjoint. -/
+inductive Label : Type where
+  | typ : Nat → Label
+  | trm : Nat → Label
+deriving DecidableEq, Repr
+
+/-- Binder kinds: term variables and capture variables. -/
+inductive Kind : Type where
+  | var : Kind
+  | cap : Kind
+deriving DecidableEq, Repr
+
+/-- A signature: the shape of a context, newest binder first. -/
+@[reducible]
+def Sig : Type := List Kind
+
+instance Sig.instEmptyCollection : EmptyCollection Sig where
+  emptyCollection := []
+
+/-- Extend a signature with one binder. -/
+@[reducible] def Sig.extend (s : Sig) (k : Kind) : Sig := k :: s
+
+/-- Extend a signature with a term variable. -/
+@[reducible] def Sig.extend_var (s : Sig) : Sig := Sig.extend s .var
+
+/-- Extend a signature with a capture variable. -/
+@[reducible] def Sig.extend_cap (s : Sig) : Sig := Sig.extend s .cap
+
+/-- The signature an arrow's domain lives in.  Every site that spells the
+domain of an arrow reads it through this name.  The arrow binds one capture
+binder for the whole domain, the parameter's `any`, so the domain lives one
+capture binder deep. -/
+@[reducible] def Sig.dom (s : Sig) : Sig := Sig.extend_cap s
+
+/-- The signature an arrow's codomain lives in.  It is the domain's
+signature with the parameter binder on top, so the codomain may mention the
+parameter. -/
+@[reducible] def Sig.cod (s : Sig) : Sig := Sig.extend_var (Sig.dom s)
+
+/-- The signature a *scope* lives in: the body root, then the arrow's capture
+binder.  It is the signature of `Ctx.scope`, and the coercion between two
+arrows lives there, because the scope discipline of the stage puts every
+capture binder opened by a rule of the type sort under a root of its own. -/
+@[reducible] def Sig.scope (s : Sig) : Sig := Sig.extend_cap (Sig.dom s)
+
+/-- The signature a lambda *body* lives in: a scope, then the parameter. -/
+@[reducible] def Sig.body (s : Sig) : Sig := Sig.extend_var (Sig.scope s)
+
+/-- Extend by a block of binders; the head of the block is newest. -/
+def Sig.extendMany : Sig → Sig → Sig
+  | s, [] => s
+  | s, k :: K => (s.extendMany K).extend k
+
+postfix:80 ",x" => Sig.extend_var
+postfix:80 ",c" => Sig.extend_cap
+infixl:65 ",," => Sig.extend
+
+instance Sig.instAppend : Append Sig where
+  append := Sig.extendMany
+
+@[simp] theorem Sig.extendMany_nil (s : Sig) : s.extendMany [] = s := rfl
+@[simp] theorem Sig.extendMany_cons (s : Sig) (k : Kind) (K : Sig) :
+    s.extendMany (k :: K) = (s.extendMany K).extend k := rfl
+
+/-- The two block extensions in the binder notations. -/
+@[simp] theorem Sig.extendMany_var (s : Sig) (K : Sig) :
+    s.extendMany (.var :: K) = (s.extendMany K),x := rfl
+@[simp] theorem Sig.extendMany_cap (s : Sig) (K : Sig) :
+    s.extendMany (.cap :: K) = (s.extendMany K),c := rfl
+
+/-- Bound variables, de Bruijn indexed by position and kind. -/
+inductive BVar : Sig → Kind → Type where
+  | here : BVar (s,,k) k
+  | there : BVar s k → BVar (s,,k0) k
+deriving DecidableEq, Repr
+
+/-- Renamings map bound variables between signatures, kind-preserving. -/
+structure Rename (s1 s2 : Sig) where
+  var : ∀ {k}, BVar s1 k → BVar s2 k
+
+namespace Rename
+
+def id {s : Sig} : Rename s s where
+  var := fun x => x
+
+def comp {s1 s2 s3 : Sig} (f : Rename s1 s2) (g : Rename s2 s3) : Rename s1 s3 where
+  var := fun x => g.var (f.var x)
+
+/-- Lift under one binder: the new binder maps to itself. -/
+def lift {s1 s2 : Sig} (f : Rename s1 s2) {k : Kind} : Rename (s1,,k) (s2,,k) where
+  var := fun
+    | .here => .here
+    | .there x => .there (f.var x)
+
+/-- Weakening: shift every variable under one new binder. -/
+def succ {s : Sig} {k : Kind} : Rename s (s,,k) where
+  var := fun x => .there x
+
+/-- Substitute the innermost binder by a variable of the outer signature. -/
+def subst {s : Sig} {k : Kind} (y : BVar s k) : Rename (s,,k) s where
+  var := fun
+    | .here => y
+    | .there x => x
+
+/-- Swap the two innermost binders. -/
+def swap {s : Sig} {k1 k2 : Kind} : Rename (s,,k1,,k2) (s,,k2,,k1) where
+  var := fun
+    | .here => .there .here
+    | .there .here => .here
+    | .there (.there x) => .there (.there x)
+
+theorem funext' {s1 s2 : Sig} {f g : Rename s1 s2}
+    (h : ∀ {k} (x : BVar s1 k), f.var x = g.var x) : f = g := by
+  cases f; cases g
+  simp only [Rename.mk.injEq]
+  funext k x
+  exact h x
+
+@[simp] theorem id_var {s : Sig} {k : Kind} (x : BVar s k) : (id : Rename s s).var x = x := rfl
+@[simp] theorem comp_var {s1 s2 s3 : Sig} (f : Rename s1 s2) (g : Rename s2 s3) {k} (x : BVar s1 k) :
+    (f.comp g).var x = g.var (f.var x) := rfl
+@[simp] theorem lift_here {s1 s2 : Sig} (f : Rename s1 s2) {k : Kind} :
+    (f.lift (k := k)).var .here = .here := rfl
+@[simp] theorem lift_there {s1 s2 : Sig} (f : Rename s1 s2) {k k0 : Kind} (x : BVar s1 k) :
+    (f.lift (k := k0)).var (.there x) = .there (f.var x) := rfl
+@[simp] theorem succ_var {s : Sig} {k k0 : Kind} (x : BVar s k) :
+    (succ (k := k0)).var x = .there x := rfl
+@[simp] theorem subst_here {s : Sig} {k : Kind} (y : BVar s k) : (subst y).var .here = y := rfl
+@[simp] theorem subst_there {s : Sig} {k k0 : Kind} (y : BVar s k0) (x : BVar s k) :
+    (subst y).var (.there x) = x := rfl
+
+theorem lift_id {s : Sig} {k : Kind} : (id : Rename s s).lift (k := k) = id := by
+  apply funext'; intro k x; cases x <;> rfl
+
+theorem lift_comp {s1 s2 s3 : Sig} (f : Rename s1 s2) (g : Rename s2 s3) {k : Kind} :
+    (f.comp g).lift (k := k) = f.lift.comp g.lift := by
+  apply funext'; intro k x; cases x <;> rfl
+
+theorem succ_lift {s1 s2 : Sig} (f : Rename s1 s2) {k : Kind} :
+    (succ (k := k)).comp f.lift = f.comp succ := by
+  apply funext'; intro k x; rfl
+
+theorem succ_subst {s : Sig} {k : Kind} (y : BVar s k) :
+    (succ (k := k)).comp (subst y) = id := by
+  apply funext'; intro k x; rfl
+
+theorem id_comp {s1 s2 : Sig} (f : Rename s1 s2) : id.comp f = f := by
+  apply funext'; intro k x; rfl
+
+theorem comp_id {s1 s2 : Sig} (f : Rename s1 s2) : f.comp id = f := by
+  apply funext'; intro k x; rfl
+
+theorem comp_assoc {s1 s2 s3 s4 : Sig} (f : Rename s1 s2) (g : Rename s2 s3) (h : Rename s3 s4) :
+    (f.comp g).comp h = f.comp (g.comp h) := by
+  apply funext'; intro k x; rfl
+
+end Rename
+
+end FCdot
+
+end Classifiers
