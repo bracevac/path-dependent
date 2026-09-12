@@ -3492,6 +3492,154 @@ theorem K3x_not_capLe :
   rw [Ctx.roots_eq_expand_caps, K3x_caps] at hm
   exact absurd hm (by decide)
 
+/-! ## K1: kinding evidence and subcapturing through a projection
+
+Two examples of stage K1, both decided through the checker, in the manner of
+X1 to X5.  Every premise of every kinding rule is a `Bool` function, so
+`checkKindCo` and `checkCap` run in the kernel and `decide` closes each
+verdict. -/
+
+/-! ### K4x, the platform capability
+
+`kcls` is Capless(K)'s `k-label` and `k-label-absurd` in one rule.  Over the
+context of K1x, the `Control` capability projected at `only Control` is
+kinded at `only Control` and not at `only ThreadLocal`, and the `IO`
+capability projected at `only Control` is kinded at *every* kind, because its
+own projection already excludes its classifier.  That vacuous branch is
+`k-label-absurd`. -/
+
+/-- The `Control` capability, projected at its own kind. -/
+abbrev K4ctl : CapAtom ([],c,c) := (CapAtom.cvar K1ctl) ↾ Cls.only Cls.Control
+
+/-- The `IO` capability, projected at a kind that excludes it. -/
+abbrev K4io : CapAtom ([],c,c) := (CapAtom.cvar K1io) ↾ Cls.only Cls.Control
+
+/-- `k-label`: the declared classifier is admitted by the target. -/
+theorem K4x_ctl_accept :
+    checkKindCo K1Ctx (.kcls K4ctl) [K4ctl] (Cls.only Cls.Control) = true := by decide
+
+/-- And the same evidence is rejected at a kind the classifier is outside.
+`only ThreadLocal` would accept it, because `Control` lies below
+`ThreadLocal`, so the rejecting kind is `only IO`. -/
+theorem K4x_ctl_reject :
+    checkKindCo K1Ctx (.kcls K4ctl) [K4ctl] (Cls.only Cls.IO) = false := by decide
+
+/-- `k-label-absurd`: the projection already excludes the classifier, so the
+atom is kinded at every kind.  Two witnesses. -/
+theorem K4x_io_absurd_control :
+    checkKindCo K1Ctx (.kcls K4io) [K4io] (Cls.only Cls.Control) = true := by decide
+
+theorem K4x_io_absurd_threadLocal :
+    checkKindCo K1Ctx (.kcls K4io) [K4io] (Cls.only Cls.ThreadLocal) = true := by decide
+
+/-- The kinding judgment behind the first verdict, through `checkKindCo_iff_hasType`. -/
+theorem K4x_ctl_hasType :
+    K1Ctx ⊢ᵏ (KindCo.kcls K4ctl) : [K4ctl] ⊑ᵏ (Cls.only Cls.Control) :=
+  checkKindCo_iff_hasType.mp K4x_ctl_accept
+
+/-! ### K5x, subcapturing through a projection
+
+`CapCo.projC` puts a kinded set below its own projection and `CapCo.unprojC`
+puts a projection below the set it projects, so over K1x's context the
+`Control` capability and its projection at `only Control` have the same
+roots. -/
+
+/-- The kinding evidence `projC` premises: the singleton is kinded at
+`only Control` by `k-label`. -/
+abbrev K5kind : KindCo ([],c,c) := .cons (.kcls (CapAtom.cvar K1ctl)) .nil
+
+/-- The projected set, as `CaptureSet.proj` builds it. -/
+abbrev K5proj : CaptureSet ([],c,c) :=
+  CaptureSet.proj [CapAtom.cvar K1ctl] (Cls.only Cls.Control)
+
+theorem K5x_kind :
+    checkKindCo K1Ctx K5kind [CapAtom.cvar K1ctl] (Cls.only Cls.Control) = true := by decide
+
+/-- `sc-proj`: the set goes below its own projection. -/
+theorem K5x_projC :
+    checkCap K1Ctx (.projC K5kind [CapAtom.cvar K1ctl] (Cls.only Cls.Control))
+      [CapAtom.cvar K1ctl] K5proj = true := by decide
+
+/-- And a projection goes below the set it projects. -/
+theorem K5x_unprojC :
+    checkCap K1Ctx (.unprojC [CapAtom.cvar K1ctl] (Cls.only Cls.Control))
+      K5proj [CapAtom.cvar K1ctl] = true := by decide
+
+theorem K5x_caps_bare (n : Nat) :
+    K1Ctx.caps n [CapAtom.cvar K1ctl] = [CapAtom.cvar K1ctl] := by
+  simp [K1Ctx, Ctx.capsAtom_cvar, Ctx.capsBound,
+    Ctx.lookupCap, CapBound.weaken, CapBound.rename]
+
+/-- So the two sets have the same roots. -/
+theorem K5x_roots : K1Ctx.roots 0 K5proj = K1Ctx.roots 0 [CapAtom.cvar K1ctl] := by
+  show K1Ctx.roots 0 [(CapAtom.cvar K1ctl) ↾ Cls.only Cls.Control]
+    = K1Ctx.roots 0 [CapAtom.cvar K1ctl]
+  rw [Ctx.roots_eq_expand_caps, Ctx.roots_eq_expand_caps, K1x_caps_ctl, K5x_caps_bare]
+  decide
+
+/-! ### K6x, the rigid binder with no declared classifier
+
+The example K1.2 asks for, and the boundary the evidence family cannot
+cross.  A rigid binder that declares no classifier carries the root
+classifier as its own.  `except ThreadLocal` contains the root classifier
+and `only Control` does not, so the canonical form kinds such a binder at
+the first kind and not at the second.  That is decision 9 read on the
+semantics: an unwritten classifier is the root one, and the strict reading
+keeps it out of `only Control`.
+
+No evidence term of K1 derives the first fact, and the gap is forced.
+`kcls` reads a classifier a binder *declares*, and this binder declares
+none.  `kproj` asks that the target kind admit every classifier, which
+`except ThreadLocal` does not.  A rule that read the root classifier off a
+binder with no declaration would not survive `Ctx.Ren.instC`, the
+instantiation lemma T-B2.1, which reads such a binder as an instance of an
+arbitrary set: the fact below is true here and false in the image of that
+map, so the kinding family would lose its renaming lemma.  The two halves
+are machine checked in the K1 g6 counterexample. -/
+
+/-- `κ_tl ⊑ᶜ cls ThreadLocal, κ_p ⊚`: a classified capability, then a rigid
+binder with no declared classifier. -/
+def K6Ctx : Ctx ([],c,c) :=
+  Ctx.consC (Ctx.consC Ctx.nil (.cls Cls.ThreadLocal)) .star
+
+/-- The rigid binder of K6x. -/
+abbrev K6p : CapAtom ([],c,c) := CapAtom.cvar BVar.here
+
+theorem K6x_caps (n : Nat) : K6Ctx.caps n [K6p] = [K6p] := by
+  simp [K6Ctx, Ctx.capsAtom_cvar, Ctx.capsBound, Ctx.lookupCap, CapBound.weaken,
+    CapBound.rename]
+
+theorem K6x_roots (n : Nat) : K6Ctx.roots n [K6p] = [K6p] := by
+  rw [Ctx.roots_eq_expand_caps, K6x_caps]
+  decide
+
+/-- Kinded at `except ThreadLocal`: the one root carries the root
+classifier, which the kind admits. -/
+theorem K6x_kindLe : K6Ctx.KindLe [K6p] (Cls.except Cls.ThreadLocal) := by
+  intro r hr
+  obtain ⟨n, hn⟩ := hr
+  rw [K6x_roots] at hn
+  have hr' : r = K6p := by simpa using hn
+  subst hr'
+  decide
+
+/-- And not kinded at `only Control`. -/
+theorem K6x_not_kindLe : ¬ K6Ctx.KindLe [K6p] (Cls.only Cls.Control) := by
+  intro h
+  have hc := h K6p ⟨0, by rw [K6x_roots]; exact List.mem_cons_self ..⟩
+  revert hc
+  decide
+
+/-- The evidence family stops short of the first fact: the classifier rule
+rejects the binder, because it declares nothing. -/
+theorem K6x_kcls_reject :
+    checkKindCo K6Ctx (.kcls K6p) [K6p] (Cls.except Cls.ThreadLocal) = false := by decide
+
+/-- And the kind rule rejects it, because `except ThreadLocal` does not
+admit every classifier. -/
+theorem K6x_kproj_reject :
+    checkKindCo K6Ctx (.kproj K6p) [K6p] (Cls.except Cls.ThreadLocal) = false := by decide
+
 end Examples
 end FCdot
 

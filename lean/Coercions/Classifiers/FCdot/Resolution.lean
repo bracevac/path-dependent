@@ -2418,6 +2418,109 @@ theorem Ctx.rootsEq_proj_top (Γ : Ctx s) (C : CaptureSet s) :
   rw [Ctx.Root_proj]
   exact ⟨fun h => h.1, fun h => ⟨h, Γ.admitsB_top a⟩⟩
 
+/-- The roots of a singleton are the roots of its base, filtered by the kind
+the atom itself carries.  This is `Ctx.roots_proj` read at one atom and at
+`CapAtom.base`, and it is what lets the kinding rules of K1 speak about a
+general atom rather than only a projected one. -/
+theorem Ctx.roots_of_base (Γ : Ctx s) (n : Nat) : ∀ a : CapAtom s,
+    Γ.roots n [a] = (Γ.roots n [a.base]).filter (fun b => Γ.admitsB b a.kindOf)
+  | .top => by
+      show _ = (Γ.roots n [CapAtom.top]).filter (fun b => Γ.admitsB b Cls.Kind.top)
+      simp only [Γ.admitsB_top]
+      rw [List.filter_eq_self.mpr (fun _ _ => rfl)]
+  | .var x => by
+      show _ = (Γ.roots n [CapAtom.var x]).filter (fun b => Γ.admitsB b Cls.Kind.top)
+      simp only [Γ.admitsB_top]
+      rw [List.filter_eq_self.mpr (fun _ _ => rfl)]
+  | .cvar κ => by
+      show _ = (Γ.roots n [CapAtom.cvar κ]).filter (fun b => Γ.admitsB b Cls.Kind.top)
+      simp only [Γ.admitsB_top]
+      rw [List.filter_eq_self.mpr (fun _ _ => rfl)]
+  | .name x ℓ => by
+      show _ = (Γ.roots n [CapAtom.name x ℓ]).filter (fun b => Γ.admitsB b Cls.Kind.top)
+      simp only [Γ.admitsB_top]
+      rw [List.filter_eq_self.mpr (fun _ _ => rfl)]
+  | .proj c φ => by
+      have ih := Ctx.roots_of_base Γ n c
+      rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
+        Ctx.capsAtom_proj, Ctx.expand_map_proj]
+      rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil] at ih
+      rw [ih, CaptureSet.filter_filter]
+      show _ = (Γ.roots n [c.base]).filter (fun b => Γ.admitsB b (φ.interB c.kindOf))
+      rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil]
+      refine CaptureSet.filter_congr' _ _ (fun b => ?_) _
+      show (c.kindOf.containsB (Γ.classOf b) && φ.containsB (Γ.classOf b))
+        = (φ.interB c.kindOf).containsB (Γ.classOf b)
+      rw [Cls.Kind.contains_inter, Bool.and_comm]
+
+/-- The membership form, the one every consumer uses. -/
+theorem Ctx.Root_of_base {Γ : Ctx s} {r a : CapAtom s} :
+    Γ.Root r [a] ↔ (Γ.Root r [a.base] ∧ Γ.admitsB r a.kindOf = true) := by
+  constructor
+  · rintro ⟨n, hn⟩
+    rw [Ctx.roots_of_base] at hn
+    exact ⟨⟨n, (List.mem_filter.mp hn).1⟩, (List.mem_filter.mp hn).2⟩
+  · rintro ⟨⟨n, hn⟩, hφ⟩
+    refine ⟨n, ?_⟩
+    rw [Ctx.roots_of_base]
+    exact List.mem_filter.mpr ⟨hn, hφ⟩
+
+/-- A capture binder with a declared classifier stands for itself: its bound
+is opaque and is no root, so resolution stops at it and expansion keeps it.
+This is Fact 2 read at a `cls` binder. -/
+theorem Ctx.Root_of_clsOf {Γ : Ctx s} {a r : CapAtom s} {c : Cls.Classifier}
+    (h : Γ.ClsOf a c) (hr : Γ.Root r [a]) : r = a ∧ Γ.classOf a = c := by
+  cases a with
+  | top | var _ | name _ _ | proj _ _ => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | cvar κ =>
+      have hb : (Γ.lookupCap κ).clsOf? = some c := h
+      have hnr : Γ.isRootB (CapAtom.cvar κ) = false := CapBound.isRoot_of_clsOf? hb
+      have hcl : Γ.classOf (CapAtom.cvar κ) = c := CapBound.classifier_of_clsOf? hb
+      refine ⟨?_, hcl⟩
+      obtain ⟨n, hn⟩ := hr
+      rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
+        Ctx.capsAtom_cvar] at hn
+      have hbnd : Γ.capsBound n κ (Γ.lookupCap κ) = [CapAtom.cvar κ] := by
+        cases hβ : Γ.lookupCap κ with
+        | cls c₀ => rfl
+        | root => rw [hβ] at hb; simp [CapBound.clsOf?] at hb
+        | star => rw [hβ] at hb; simp [CapBound.clsOf?] at hb
+        | upper C => rw [hβ] at hb; simp [CapBound.clsOf?] at hb
+        | inst C => rw [hβ] at hb; simp [CapBound.clsOf?] at hb
+      rw [hbnd, Ctx.expand_cons, Ctx.expand_nil, List.append_nil,
+        Ctx.expandAtom_of_not_root hnr rfl] at hn
+      exact List.mem_singleton.mp hn
+
+/-- A capture binder with a declared set resolves to that set: the `upper`
+and the `inst` clause of `Ctx.capsBound` are the same clause, which is what
+`CapBound.setOf?` reads. -/
+theorem Ctx.roots_of_setOf {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
+    (h : Γ.SetOf a C) (n : Nat) : Γ.roots n [a] = Γ.roots n C := by
+  cases a with
+  | top | var _ | name _ _ | proj _ _ => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | cvar κ =>
+      have hb : (Γ.lookupCap κ).setOf? = some C := h
+      have hbnd : Γ.capsBound n κ (Γ.lookupCap κ) = Γ.caps n C := by
+        cases hβ : Γ.lookupCap κ with
+        | upper C₀ =>
+            rw [hβ] at hb
+            obtain rfl : C₀ = C := by simpa [CapBound.setOf?] using hb
+            rfl
+        | inst C₀ =>
+            rw [hβ] at hb
+            obtain rfl : C₀ = C := by simpa [CapBound.setOf?] using hb
+            rfl
+        | root => rw [hβ] at hb; simp [CapBound.setOf?] at hb
+        | star => rw [hβ] at hb; simp [CapBound.setOf?] at hb
+        | cls c => rw [hβ] at hb; simp [CapBound.setOf?] at hb
+      rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.caps_nil, List.append_nil,
+        Ctx.capsAtom_cvar, hbnd, ← Ctx.roots_eq_expand_caps]
+
+theorem Ctx.Root_of_setOf {Γ : Ctx s} {a r : CapAtom s} {C : CaptureSet s}
+    (h : Γ.SetOf a C) : Γ.Root r [a] ↔ Γ.Root r C :=
+  ⟨fun ⟨n, hn⟩ => ⟨n, by rwa [Ctx.roots_of_setOf h n] at hn⟩,
+   fun ⟨n, hn⟩ => ⟨n, by rwa [Ctx.roots_of_setOf h n]⟩⟩
+
 /-- Every root of `C` carries a classifier that `φ` admits.  The classifier
 twin of `CapLe`, stated beside it.  This is the plan's canonical form of
 closed kinding, as a proposition. -/
@@ -2465,6 +2568,13 @@ in K0. -/
 theorem Ctx.KindLe.sub {Γ : Ctx s} {C : CaptureSet s} {φ ψ : Cls.Kind}
     (h : Γ.KindLe C φ) (hs : φ.Subkind ψ) : Γ.KindLe C ψ :=
   fun a ha => Cls.Kind.Subkind.contains hs (h a ha)
+
+/-- The same step at the semantic sub-kind relation, which is what the normal
+forms of K1 carry: it is `Ctx.KindLe.sub` with `Kind.Subkind.contains` already
+applied, and `Kind.Subkind.admits` turns one into the other. -/
+theorem Ctx.KindLe.admits {Γ : Ctx s} {C : CaptureSet s} {φ ψ : Cls.Kind}
+    (h : Γ.KindLe C φ) (hs : φ.Admits ψ) : Γ.KindLe C ψ :=
+  fun a ha => hs _ (h a ha)
 
 /-- **T3.**  A union is kinded when both sides are. -/
 theorem Ctx.KindLe.union {Γ : Ctx s} {C D : CaptureSet s} {φ : Cls.Kind}

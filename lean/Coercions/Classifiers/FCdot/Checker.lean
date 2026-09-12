@@ -367,6 +367,10 @@ def Proposition.rename? : Proposition s1 → PartialRename s1 s2 → Option (Pro
       match C.rename? ρ, D.rename? ρ with
       | some C', some D' => some (.eqC C' D')
       | _, _ => none
+  | .kindC C φ, ρ =>
+      match C.rename? ρ with
+      | some C' => some (.kindC C' φ)
+      | none => none
 
 def Telescope.rename? : Telescope s1 → PartialRename s1 s2 → Option (Telescope s2)
   | .nil, _ => some .nil
@@ -435,6 +439,9 @@ theorem Proposition.rename?_complete :
   | _, _, .eqC C D, ρ, σ, h => by
       simp only [Proposition.rename, Proposition.rename?]
       rw [CaptureSet.rename?_complete C ρ σ h, CaptureSet.rename?_complete D ρ σ h]
+  | _, _, .kindC C φ, ρ, σ, h => by
+      simp only [Proposition.rename, Proposition.rename?]
+      rw [CaptureSet.rename?_complete C ρ σ h]
 
 theorem Telescope.rename?_complete :
     ∀ {s1 s2 : Sig} (Tel : Telescope s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
@@ -612,6 +619,16 @@ theorem Proposition.rename?_sound :
           simp only [Proposition.rename]
           rw [← CaptureSet.rename?_sound C C' ρ σ h hC,
             ← CaptureSet.rename?_sound D D' ρ σ h hD]
+  | _, _, .kindC C φ, Q, ρ, σ, h, hQ => by
+      simp only [Proposition.rename?] at hQ
+      cases hC : C.rename? ρ with
+      | none => rw [hC] at hQ; simp at hQ
+      | some C' =>
+        rw [hC] at hQ
+        simp only [Option.some.injEq] at hQ
+        subst hQ
+        simp only [Proposition.rename]
+        rw [← CaptureSet.rename?_sound C C' ρ σ h hC]
 
 theorem Telescope.rename?_sound :
     ∀ {s1 s2 : Sig} (Tel : Telescope s1) (Tel2 : Telescope s2) (ρ : PartialRename s1 s2)
@@ -820,6 +837,17 @@ structure CapEqChecked {s : Sig} (Γ : Ctx s) (ev : CapEq s) where
   target : CaptureSet s
   typing : Γ ⊢ᶜ ev : source ≡ target
 
+/-- Kinding is the one evidence family of the tree that *checks* instead of
+synthesising, and the reason is in the rules: `nil` holds at every kind,
+`kproj` and `kcls` hold at every kind their premise admits, and `kvar` says
+nothing about the kind its atom carries.  So both the set and the kind are
+inputs, and the result carries only the derivation.  The structure lives in
+`Type` so that `Option` can hold it; its single field is a proof, so two
+results at the same inputs are equal. -/
+structure KindChecked {s : Sig} (Γ : Ctx s) (ev : KindCo s)
+    (C : CaptureSet s) (φ : Cls.Kind) : Type where
+  typing : Γ ⊢ᵏ ev : C ⊑ᵏ φ
+
 /-- A capture-template `pre` chain, checked against the endpoint next to its
 hole: the chain's target is given and its source is synthesised. -/
 structure PreCheckedC {s : Sig} (Γ : Ctx s) (q : SideC s) (X : CaptureSet (s,x)) where
@@ -970,6 +998,31 @@ def capEqMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} (i : Nat)
             match Telescope.getAt? Tel i with
             | some ⟨.eqC C₁ C₂, hAt⟩ =>
                 some ⟨C₁⟦a.root⟧, C₂⟦a.root⟧, .member ha (by subst hs; exact he) hAt⟩
+            | _ => none
+        | _, _ => none
+      else none
+
+/-- `KindCo.kmember`: the same, when the proposition is a kinding
+proposition.  Both outputs are *checked* here, because the kinding family
+checks, so the helper compares the telescope's proposition with the set and
+the kind it is given. -/
+def kindMember {s : Sig} {Γ : Ctx s} {b : Atom s} {e : ShapeCo s} (i : Nat)
+    {Tb : Ty s} (hb : Γ ⊢ₐ b : Tb) {Se Te : Shape s} (he : Γ ⊢ˢ e : Se ≤ Te)
+    (C : CaptureSet s) (φ : Cls.Kind) : Option (KindChecked Γ (.kmember b e i) C φ) :=
+  match Tb, hb with
+  | .capt _ Sb, hb =>
+      if hs : Se = Sb then
+        match Te, he with
+        | .obj Tel, he =>
+            match Telescope.getAt? Tel i with
+            | some ⟨.kindC C₀ φ₀, hAt⟩ =>
+                if hC : C = C₀⟦b.root⟧ then
+                  if hφ : φ = φ₀ then
+                    some ⟨by
+                      subst hC; subst hφ; subst hs
+                      exact .kmember hb he (.kindC hAt)⟩
+                  else none
+                else none
             | _ => none
         | _, _ => none
       else none
@@ -1262,6 +1315,83 @@ def synthCapCore {s : Sig} (Γ : Ctx s) (ev : CapCo s) : Option (CapChecked Γ e
       if h₁ : Γ.isRootB r then
         if h₂ : Γ.lvlLeB e r then some ⟨[e], [r], .level h₁ h₂⟩ else none
       else none
+  | .unprojC C φ => some ⟨C.proj φ, C, .unprojC⟩
+  | .projC g C φ =>
+      match checkKindCore Γ g C φ with
+      | some cg => some ⟨C, C.proj φ, .projC cg.typing⟩
+      | none => none
+  | .projMono f ψ =>
+      match synthCapCore Γ f with
+      | some cf => some ⟨cf.source.proj ψ, cf.target.proj ψ, .projMono cf.typing⟩
+      | none => none
+
+/-- The kinding family: checking, not synthesising, for the reason
+`KindChecked` records.  Every premise of every rule of `KindCo.HasType` is a
+decidable proposition over functions the tree already has, so the body is one
+structural match with no search. -/
+def checkKindCore {s : Sig} (Γ : Ctx s) (ev : KindCo s) (C : CaptureSet s) (φ : Cls.Kind) :
+    Option (KindChecked Γ ev C φ) :=
+  match ev with
+  | .nil => if hC : C = [] then some ⟨by subst hC; exact .nil⟩ else none
+  | .cons g h =>
+      match C with
+      | [] => none
+      | a :: C₀ =>
+          match checkKindCore Γ g [a] φ, checkKindCore Γ h C₀ φ with
+          | some cg, some ch => some ⟨.cons cg.typing ch.typing⟩
+          | _, _ => none
+  | .kproj a =>
+      if hC : C = [a] then
+        if hk : a.kindOf.Subkind φ then some ⟨by subst hC; exact .kproj hk⟩ else none
+      else none
+  | .kcls a =>
+      if hC : C = [a] then
+        match witness? (Γ.clsOf? a.base) with
+        | some ⟨c, hc⟩ =>
+            if hk : a.kindOf.Contains c → φ.Contains c then
+              some ⟨by subst hC; exact .kcls hc hk⟩
+            else none
+        | none => none
+      else none
+  | .kvar b g =>
+      match C with
+      | [a] =>
+          match synthAtomCore Γ b with
+          | some cb =>
+              match cb.type, cb.typing with
+              | .capt C₀ _, hb =>
+                  if hbase : a.base = CapAtom.var b.root then
+                    match checkKindCore Γ g (C₀.proj a.kindOf) φ with
+                    | some cg => some ⟨.kvar hb hbase cg.typing⟩
+                    | none => none
+                  else none
+          | none => none
+      | _ => none
+  | .kcvar a g =>
+      if hC : C = [a] then
+        match witness? (Γ.setOf? a.base) with
+        | some ⟨C₀, hb⟩ =>
+            match checkKindCore Γ g (C₀.proj a.kindOf) φ with
+            | some cg => some ⟨by subst hC; exact .kcvar hb cg.typing⟩
+            | none => none
+        | none => none
+      else none
+  | .kmember b e i =>
+      match synthAtomCore Γ b, synthShapeCore Γ e with
+      | some cb, some ce => kindMember i cb.typing ce.typing C φ
+      | _, _ => none
+  | .kprojS g C₀ ψ =>
+      if hC : C = C₀.proj ψ then
+        match checkKindCore Γ g C₀ φ with
+        | some cg => some ⟨by subst hC; exact .kprojS cg.typing⟩
+        | none => none
+      else none
+  | .ksub g φ₁ =>
+      if hk : φ₁.Subkind φ then
+        match checkKindCore Γ g C φ₁ with
+        | some cg => some ⟨.ksub cg.typing hk⟩
+        | none => none
+      else none
 
 def synthCapEqCore {s : Sig} (Γ : Ctx s) (ev : CapEq s) : Option (CapEqChecked Γ ev) :=
   match ev with
@@ -1467,6 +1597,15 @@ def synthMorCore {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s)
   | .eqC m j b => do
       let cm ← synthMorCore Γ src m
       morEqC j b cm.typing
+  | .kindC m q j φ₂ => do
+      let cm ← synthMorCore Γ src m
+      match Telescope.getAt? src j with
+      | some ⟨.kindC C φ₁, hAt⟩ =>
+          if hsub : φ₁.AdmitsStep φ₂ then do
+            let cq ← checkPreCoreC Γ q C
+            some ⟨cm.tel ▹ cq.source ⊑ᵏ φ₂, .kindC cm.typing hAt cq.typing hsub⟩
+          else none
+      | _ => none
 
 def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a) :=
   match a with
@@ -1735,6 +1874,13 @@ def synthCap {s : Sig} (Γ : Ctx s) (ev : CapCo s) : Option (CapEndpoints s) :=
 def checkCap {s : Sig} (Γ : Ctx s) (ev : CapCo s) (C D : CaptureSet s) : Bool :=
   decide (synthCap Γ ev = some (C, D))
 
+/-- Check a kinding derivation against the set and the kind it claims.  This
+is the public form K1.5 names.  There is no `synthKindCo`: kinding evidence
+determines neither of its two outputs, which is what `KindChecked` records. -/
+def checkKindCo {s : Sig} (Γ : Ctx s) (ev : KindCo s) (C : CaptureSet s) (φ : Cls.Kind) :
+    Bool :=
+  (checkKindCore Γ ev C φ).isSome
+
 /-- Synthesise both capture sets of a capture equality. -/
 def synthCapEq {s : Sig} (Γ : Ctx s) (ev : CapEq s) : Option (CapEndpoints s) :=
   (synthCapEqCore Γ ev).map fun c => (c.source, c.target)
@@ -1864,6 +2010,13 @@ theorem synthCap_sound {s : Sig} {Γ : Ctx s} {ev : CapCo s} {C D : CaptureSet s
 theorem checkCap_sound {s : Sig} {Γ : Ctx s} {ev : CapCo s} {C D : CaptureSet s}
     (h : checkCap Γ ev C D = true) : Γ ⊢ᶜ ev : C ⊑ D :=
   synthCap_sound (of_decide_eq_true h)
+
+theorem checkKindCo_sound {s : Sig} {Γ : Ctx s} {ev : KindCo s} {C : CaptureSet s}
+    {φ : Cls.Kind} (h : checkKindCo Γ ev C φ = true) : Γ ⊢ᵏ ev : C ⊑ᵏ φ := by
+  unfold checkKindCo at h
+  cases hc : checkKindCore Γ ev C φ with
+  | none => rw [hc] at h; simp at h
+  | some c => exact c.typing
 
 theorem synthCapEq_sound {s : Sig} {Γ : Ctx s} {ev : CapEq s} {C D : CaptureSet s}
     (h : synthCapEq Γ ev = some (C, D)) : Γ ⊢ᶜ ev : C ≡ D := by

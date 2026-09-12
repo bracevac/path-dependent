@@ -56,6 +56,9 @@ theorem EntryTyped.bnd_of_bndsOnly {ρ : Option (BVar s .var)} {TelM : Telescope
       | leC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
       | eqC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
       | eqSymC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
+  | kindC hh _ _ =>
+      cases hh with
+      | kindC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
   | eqC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
   | eqSymC hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
 

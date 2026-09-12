@@ -36,6 +36,17 @@ inductive Telescope.HoleAtC (src : Telescope (s,x)) :
   | eqC : src ∋ (j ↦ C₁ ≐ᶜ C₂) → Telescope.HoleAtC src (.eqC j) C₁ C₂
   | eqSymC : src ∋ (j ↦ C₂ ≐ᶜ C₁) → Telescope.HoleAtC src (.eqSymC j) C₁ C₂
 
+/-! ### Reading a kinding proposition at a hole
+
+A kinding hole names one proposition of its source telescope and reads it as
+it stands.  There is no flipped reading, because a kinding proposition is not
+an equality, so the hole is a plain index and not a `HoleC`. -/
+
+/-- `src.HoleAtK j C φ`: the `j`-th proposition of `src` is `C ⊑ᵏ φ`. -/
+inductive Telescope.HoleAtK (src : Telescope (s,x)) :
+    Nat → CaptureSet (s,x) → Cls.Kind → Prop where
+  | kindC : src ∋ (j ↦ C ⊑ᵏ φ) → Telescope.HoleAtK src j C φ
+
 /-! ### Notation for the evidence judgments
 
 Declared before the judgments so that the rules can use them; the
@@ -45,6 +56,8 @@ set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ᶜ " f:51 " : " C:71 " ⊑ " D:71 => CapCo.HasType Γ f C D
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ᶜ " φ:51 " : " C:71 " ≡ " D:71 => CapEq.HasType Γ φ C D
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ᵏ " g:51 " : " C:71 " ⊑ᵏ " φ:71 => KindCo.HasType Γ g C φ
 set_option hygiene false in
 scoped notation:40 Γ:51 " ⊢ˢ " e:51 " : " S:51 " ≤ " T:51 => ShapeCo.HasType Γ e S T
 set_option hygiene false in
@@ -92,6 +105,95 @@ inductive CapCo.HasType : Ctx s → CapCo s → CaptureSet s → CaptureSet s �
       Γ.IsRoot r →
       Γ.LvlLe e r →
       Γ ⊢ᶜ .level e r : [e] ⊑ [r]
+  /-- A projection only drops atoms, so the projected set is below the set it
+      projects.  Capless(K) reads this off its kind aware `CaptureSet.Subset`;
+      a capture set is a plain list here, so it is a rule. -/
+  | unprojC : Γ ⊢ᶜ .unprojC C φ : C.proj φ ⊑ C
+  /-- `sc-proj` (`Subcapt.lean:69`): a set kinded at `φ` is below its own
+      projection at `φ`.  Stated on a set, and the singleton form of
+      Capless(K) is the instance at `C = [a]`.  The set and the kind are on
+      the evidence term, where the checker reads them. -/
+  | projC : Γ ⊢ᵏ g : C ⊑ᵏ φ → Γ ⊢ᶜ .projC g C φ : C ⊑ C.proj φ
+  /-- The congruence, which gives the projection form of every other rule.
+      `sc-var` at a projection is this rule composed with `capvar`, since
+      `[a].proj ψ` is `[a ↾ ψ]`. -/
+  | projMono : Γ ⊢ᶜ f : C ⊑ D → Γ ⊢ᶜ .projMono f ψ : C.proj ψ ⊑ D.proj ψ
+
+/-- `Γ ⊢ᵏ g : C ⊑ᵏ φ`: kinding evidence.  Every capability `C` reaches
+carries a classifier that `φ` admits.  It mentions atoms (`kvar`, `kmember`)
+and shape coercions (`kmember`), and `CapCo.HasType.projC` premises it, so it
+belongs to the mutual block.
+
+Two rules of Capless(K) are merged into one here, and both merges are exact.
+`kproj` is `k-cbound` and `k-absurd` (`Subcapt.lean:50,54`) read through
+`CapAtom.kindOf`, which is `⊤` at a bare atom, so the family covers a bare
+atom exactly as Capless(K) covers a capture, where every capture carries a
+kind by construction.  `kcls` is `k-label` and `k-label-absurd`
+(`Subcapt.lean:51-52`): `k-label` asks `(ψ ∩ φ) ∋ c`, which by
+`Kind.contains_inter` is `ψ ∋ c ∧ φ ∋ c`, and `k-label-absurd` asks
+`¬ ψ ∋ c`, so their disjunction is the implication `ψ ∋ c → φ ∋ c`.
+`kcls` applies at a binder that *declares* a classifier, which is the `cls`
+flavour and nothing else, exactly as Capless(K)'s two label rules apply at a
+label.  A `star` binder declares none: `Ctx.Ren.instC`, the instantiation
+lemma T-B2.1, reads a `star` binder as an instance of an arbitrary set, so a
+rule that read the root classifier off a `star` binder would not survive that
+map.  That is not a matter of taste.  K6x of `FCdot/Examples.lean` exhibits a
+context where such a rule derives a kinding whose canonical form is true, and
+`Ctx.Ren.instC` carries that context to one where the same canonical form is
+false, so the kinding family would lose `KindCo.HasType.renameR`.  The price
+is that the family is not complete at a `star` binder, and K6x decides both
+halves of the gap.  A `star` binder is Capless(K)'s capture variable at the
+kind bound `⊤`, and `kproj` is its rule. -/
+inductive KindCo.HasType : Ctx s → KindCo s → CaptureSet s → Cls.Kind → Prop where
+  /-- k-empty (`Subcapt.lean:55`). -/
+  | nil : Γ ⊢ᵏ .nil : [] ⊑ᵏ φ
+  /-- k-union (`Subcapt.lean:53`). -/
+  | cons : Γ ⊢ᵏ g : [a] ⊑ᵏ φ → Γ ⊢ᵏ h : C ⊑ᵏ φ → Γ ⊢ᵏ .cons g h : (a :: C) ⊑ᵏ φ
+  /-- k-cbound and k-absurd in one (`Subcapt.lean:50,54`): an atom whose own
+      kind is below the target is kinded, whatever it resolves to.  At a bare
+      atom the premise asks that `φ` admit every classifier, which is what a
+      root stands for. -/
+  | kproj : a.kindOf.Subkind φ → Γ ⊢ᵏ .kproj a : [a] ⊑ᵏ φ
+  /-- k-label and k-label-absurd in one (`Subcapt.lean:51-52`): a capability
+      with a declared classifier is kinded when that classifier is admitted
+      by the target as soon as the projection admits it.  The premise is read
+      flavour-wise on the base of the atom, as `CapEq.HasType.instC` reads an
+      instance binder, so that the rule travels along a substitution. -/
+  | kcls :
+      Γ.ClsOf a.base c →
+      (a.kindOf.Contains c → φ.Contains c) →
+      Γ ⊢ᵏ .kcls a : [a] ⊑ᵏ φ
+  /-- k-var (`Subcapt.lean:48`). -/
+  | kvar :
+      Γ ⊢ₐ b : S ^ C →
+      a.base = CapAtom.var b.root →
+      Γ ⊢ᵏ g : C.proj a.kindOf ⊑ᵏ φ →
+      Γ ⊢ᵏ .kvar b g : [a] ⊑ᵏ φ
+  /-- k-cvar (`Subcapt.lean:49`), at both set bounds the tree distinguishes,
+      which is what `Ctx.SetOf` reads.  The evidence carries the atom and the
+      rule reads its binder off `CapAtom.base`, for the reason `CapEq.instC`
+      gives. -/
+  | kcvar :
+      Γ.SetOf a.base C →
+      Γ ⊢ᵏ g : C.proj a.kindOf ⊑ᵏ φ →
+      Γ ⊢ᵏ .kcvar a g : [a] ⊑ᵏ φ
+  /-- The telescope member, the rule Capless(K) has no counterpart for: the
+      `i`-th proposition of the object shape `e` lands in, instantiated at the
+      atom.  Read beside `CapCo.HasType.member`. -/
+  | kmember :
+      Γ ⊢ₐ b : S ^ D →
+      Γ ⊢ˢ e : S ≤ μ Tel →
+      Telescope.HoleAtK Tel i C φ →
+      Γ ⊢ᵏ .kmember b e i : C⟦b.root⟧ ⊑ᵏ φ
+  /-- Projection only shrinks a set, so a kinded set stays kinded under
+      one.  The source set is on the evidence term, where the checker reads
+      it: `CaptureSet.proj` is not invertible. -/
+  | kprojS : Γ ⊢ᵏ g : C ⊑ᵏ φ → Γ ⊢ᵏ .kprojS g C ψ : C.proj ψ ⊑ᵏ φ
+  /-- k-sub (`Subcapt.lean:99-109`), a primitive constructor and not a derived
+      lemma, so that the checker is one structural match.  The kind on the
+      evidence term is the *source* kind `φ₁`: the target is what a checking
+      mode is given, and the source is what it has to be told. -/
+  | ksub : Γ ⊢ᵏ g : C ⊑ᵏ φ₁ → φ₁.Subkind φ₂ → Γ ⊢ᵏ .ksub g φ₁ : C ⊑ᵏ φ₂
 
 /-- `Γ ⊢ᶜ φ : C ≡ D`: equality evidence between capture sets. -/
 inductive CapEq.HasType : Ctx s → CapEq s → CaptureSet s → CaptureSet s → Prop where
@@ -239,6 +341,15 @@ inductive Morphism.HasType : Ctx s → Telescope (s,x) → Morphism s → Telesc
   /-- … possibly flipped. -/
   | eqSymC : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ C₁ ≐ᶜ C₂) →
       Γ ⊢ .eqC m j true : src ⇒ Tel ▹ C₂ ≐ᶜ C₁
+  /-- A target kinding proposition: a side chain lowering the target set to
+      the source set of the `j`-th source kinding proposition, and an
+      admission step from the source kind to the target kind.  The step is
+      `Cls.Kind.AdmitsStep` and not `Cls.Kind.Subkind`, so that the identity
+      template on a kinding proposition is derivable: subkinding is not known
+      to be reflexive, which is decision 6. -/
+  | kindC : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ C ⊑ᵏ φ₁) →
+      SideC.HasType Γ q D C → φ₁.AdmitsStep φ₂ →
+      Γ ⊢ .kindC m q j φ₂ : src ⇒ Tel ▹ D ⊑ᵏ φ₂
 
 /-- `Γ ⊢ₐ a : T`: atoms. -/
 inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where
@@ -290,6 +401,10 @@ end
 open Lean PrettyPrinter in
 @[app_unexpander CapCo.HasType] def CapCo.HasType.unexpand : Unexpander
   | `($_ $Γ $f $C $D) => `($Γ ⊢ᶜ $f : $C ⊑ $D)
+  | _ => throw ()
+open Lean PrettyPrinter in
+@[app_unexpander KindCo.HasType] def KindCo.HasType.unexpand : Unexpander
+  | `($_ $Γ $g $C $φ) => `($Γ ⊢ᵏ $g : $C ⊑ᵏ $φ)
   | _ => throw ()
 open Lean PrettyPrinter in
 @[app_unexpander CapEq.HasType] def CapEq.HasType.unexpand : Unexpander
@@ -357,6 +472,25 @@ inductive CapCo.MemberFree {s : Sig} : CapCo s → Prop where
   | union {f g : CapCo s} : f.MemberFree → g.MemberFree → (CapCo.union f g).MemberFree
   | capvar {a : Atom s} : a.MemberFree → (CapCo.capvar a).MemberFree
   | level (e r : CapAtom s) : (CapCo.level e r).MemberFree
+  | unprojC (C : CaptureSet s) (φ : Cls.Kind) : (CapCo.unprojC C φ).MemberFree
+  | projC {g : KindCo s} (C : CaptureSet s) (φ : Cls.Kind) :
+      g.MemberFree → (CapCo.projC g C φ).MemberFree
+  | projMono {f : CapCo s} (ψ : Cls.Kind) : f.MemberFree → (CapCo.projMono f ψ).MemberFree
+
+/-- Kinding evidence that reads no telescope: no `kmember`, and every atom it
+reaches through `kvar` carries member-free capture evidence in its wrappers.
+It excludes `kmember` exactly as `CapCo.MemberFree` excludes `member`. -/
+inductive KindCo.MemberFree {s : Sig} : KindCo s → Prop where
+  | nil : (KindCo.nil : KindCo s).MemberFree
+  | cons {g h : KindCo s} : g.MemberFree → h.MemberFree → (KindCo.cons g h).MemberFree
+  | kproj (a : CapAtom s) : (KindCo.kproj a).MemberFree
+  | kcls (a : CapAtom s) : (KindCo.kcls a).MemberFree
+  | kvar {b : Atom s} {g : KindCo s} :
+      b.MemberFree → g.MemberFree → (KindCo.kvar b g).MemberFree
+  | kcvar {g : KindCo s} (a : CapAtom s) : g.MemberFree → (KindCo.kcvar a g).MemberFree
+  | kprojS {g : KindCo s} (C : CaptureSet s) (ψ : Cls.Kind) :
+      g.MemberFree → (KindCo.kprojS g C ψ).MemberFree
+  | ksub {g : KindCo s} (φ : Cls.Kind) : g.MemberFree → (KindCo.ksub g φ).MemberFree
 
 /-- An atom whose capture wrappers are member free. -/
 inductive Atom.MemberFree {s : Sig} : Atom s → Prop where

@@ -105,6 +105,15 @@ theorem Subst.Typed.selfCastOpaque {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : L
     intro a C h
     simp only [CapAtom.subst_selfCast, CaptureSet.subst_selfCast]
     exact (Ctx.instOf_cons_eq Γ (.opaque T) (.opaque S₀) a C).mp h
+  capCls := by
+    intro a cl h
+    simp only [CapAtom.subst_selfCast]
+    exact (Ctx.clsOf_cons_eq Γ (.opaque T) (.opaque S₀) a cl).mp h
+  capSet := by
+    intro a C h
+    simp only [CapAtom.subst_selfCast, CaptureSet.subst_selfCast]
+    exact (Ctx.setOf_cons_eq Γ (.opaque T) (.opaque S₀) a C).mp h
+  capProjFree := by intro κ; cases κ with | there y => rfl
 
 section
 variable {σ : Store s} {Γ : Ctx s}
@@ -204,6 +213,12 @@ theorem Telescope.HoleAtC.open (r : BVar s .var) {Tel : Telescope (s,x)} {h : Ho
   | eqC hAt => exact .eqC ((hAt.rename _).rename _)
   | eqSymC hAt => exact .eqSymC ((hAt.rename _).rename _)
 
+theorem Telescope.HoleAtK.open (r : BVar s .var) {Tel : Telescope (s,x)} {j : Nat}
+    {C : CaptureSet (s,x)} {φ : Cls.Kind} (hh : Telescope.HoleAtK Tel j C φ) :
+    Telescope.HoleAtK ((Tel⟦r⟧)↑) j ((C⟦r⟧)↑) φ := by
+  cases hh with
+  | kindC hAt => exact .kindC ((hAt.rename _).rename _)
+
 theorem Telescope.HoleAt.open (r : BVar s .var) {Tel : Telescope (s,x)} {h : Hole}
     {X Y : Shape (s,x)} (hh : Tel.HoleAt h X Y) :
     ((Tel⟦r⟧)↑).HoleAt h ((X⟦r⟧)↑) ((Y⟦r⟧)↑) := by
@@ -289,6 +304,10 @@ theorem EntriesTyped.atRoot {s : Sig} {Γ : Ctx s} (r : BVar s .var)
       simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eqC,
         Proposition.weaken_eqC]
       exact .eqSymC (EntriesTyped.atRoot r h') ((hAt.rename _).rename _)
+  | .kindC h' hh hpre hsub =>
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_kindC,
+        Proposition.weaken_kindC]
+      exact .kindC (EntriesTyped.atRoot r h') (hh.open r) (hpre.open r) hsub
 
 theorem BndsTyped.atRoot {s : Sig} {Γ : Ctx s} (r : BVar s .var) {S : Shape s} {Es : Entries s}
     {Tel : Telescope (s,x)} (h : BndsTyped Γ none S Es Tel) :
@@ -339,6 +358,9 @@ theorem EntryTyped.atRoot {s : Sig} {Γ : Ctx s} (r : BVar s .var) {Tel₁ : Tel
   | .eqSymC hAt =>
       simp only [Proposition.substVar_eqC, Proposition.weaken_eqC]
       exact .eqSymC ((hAt.rename _).rename _)
+  | .kindC hh hpre hsub =>
+      simp only [Proposition.substVar_kindC, Proposition.weaken_kindC]
+      exact .kindC (hh.open r) (hpre.open r) hsub
 
 end
 
@@ -362,6 +384,8 @@ theorem EntriesTyped.length {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesco
   | .leC h' _ _ _ => simp [Entries.length, Telescope.length, h'.length]
   | .eqC h' _ => simp [Entries.length, Telescope.length, h'.length]
   | .eqSymC h' _ => simp [Entries.length, Telescope.length, h'.length]
+
+  | .kindC h' _ _ _ => simp [Entries.length, Telescope.length, h'.length]
 
 /-- The entry at an inclusion of the target is a template. -/
 theorem EntriesTyped.At_le {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescope (s,x)}
@@ -418,6 +442,12 @@ theorem EntriesTyped.At_le {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescop
           obtain ⟨pre, h', post, X, Y, hE, hh', hpre', hpost'⟩ := hEs.At_le hAt'
           exact ⟨pre, h', post, X, Y, .there hE, hh', hpre', hpost'⟩
 
+  | .kindC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh', hpre', hpost'⟩ := hEs.At_le hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh', hpre', hpost'⟩
+
 /-- The entry at an equality of the target reads a source equality, possibly
 flipped. -/
 theorem EntriesTyped.At_eq {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescope (s,x)}
@@ -466,6 +496,11 @@ theorem EntriesTyped.At_eq {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescop
       | there hAt' =>
           obtain ⟨k, b, hE, hk⟩ := hEs.At_eq hAt'; exact ⟨k, b, .there hE, hk⟩
 
+  | .kindC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨k, b, hE, hk⟩ := hEs.At_eq hAt'; exact ⟨k, b, .there hE, hk⟩
+
 /-- The entry at a presence proposition of the target is a presence entry
 pointing at a presence proposition of the source. -/
 theorem EntriesTyped.At_has {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescope (s,x)}
@@ -500,6 +535,10 @@ theorem EntriesTyped.At_has {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesco
       cases hAt with
       | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
   | .eqSymC hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
+
+  | .kindC hEs _ _ _ =>
       cases hAt with
       | there hAt' => obtain ⟨j', hj', hT⟩ := hEs.At_has hAt'; exact ⟨j', .there hj', hT⟩
 
@@ -540,6 +579,10 @@ theorem EntriesTyped.At_bnd {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesco
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hk⟩ := hEs.At_bnd hAt'; exact ⟨G, .there hG, hk⟩
   | .eqSymC hEs _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hk⟩ := hEs.At_bnd hAt'; exact ⟨G, .there hG, hk⟩
+
+  | .kindC hEs _ _ _ =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hk⟩ := hEs.At_bnd hAt'; exact ⟨G, .there hG, hk⟩
 
@@ -612,6 +655,12 @@ theorem EntriesTyped.At_leC {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesco
           obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
           exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
 
+  | .kindC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, h', post, X, Y, hE, hh, hpre, hpost⟩ := hEs.At_leC hAt'
+          exact ⟨pre, h', post, X, Y, .there hE, hh, hpre, hpost⟩
+
 /-- The entry at a capture equality of the target reads a source capture
 equality, possibly flipped. -/
 theorem EntriesTyped.At_eqC {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescope (s,x)}
@@ -650,6 +699,71 @@ theorem EntriesTyped.At_eqC {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesco
       cases hAt with
       | here => exact ⟨_, true, by rw [← hEs.length]; exact .here, Or.inr ⟨rfl, hAt₁⟩⟩
       | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+  | .kindC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' => obtain ⟨k, b, hE, hk⟩ := hEs.At_eqC hAt'; exact ⟨k, b, .there hE, hk⟩
+
+/-- The entry at a kinding proposition of the target is a kinding entry: a
+chain lowering the target set to the source set of the source kinding
+proposition the index names, and an admission step. -/
+theorem EntriesTyped.At_kindC {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telescope (s,x)}
+    {Es : Entries s} (h : EntriesTyped Γ ρ Tel₁ Es Tel₂) {j : Nat} {D : CaptureSet (s,x)}
+    {φ₂ : Cls.Kind} (hAt : Tel₂ ∋ (j ↦ D ⊑ᵏ φ₂)) :
+    ∃ pre k C φ₁, Es ∋ (j ↦ .kindC pre k) ∧ Telescope.HoleAtK Tel₁ k C φ₁ ∧
+      SideTypedC Γ pre D C ∧ φ₁.Admits φ₂ := by
+  match h with
+  | .nil => cases hAt
+  | .le hEs _ _ _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh, hpre, hsub⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh, hpre, hsub⟩
+  | .eq hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh, hpre, hsub⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh, hpre, hsub⟩
+  | .eqSym hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh, hpre, hsub⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh, hpre, hsub⟩
+  | .has hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh, hpre, hsub⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh, hpre, hsub⟩
+  | .bnd hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh, hpre, hsub⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh, hpre, hsub⟩
+  | .bndId hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh, hpre, hsub⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh, hpre, hsub⟩
+  | .leC hEs _ _ _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh, hpre, hsub⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh, hpre, hsub⟩
+  | .eqC hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh, hpre, hsub⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh, hpre, hsub⟩
+  | .eqSymC hEs _ =>
+      cases hAt with
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh, hpre, hsub⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh, hpre, hsub⟩
+  | .kindC hEs hh hpre hsub =>
+      cases hAt with
+      | here => exact ⟨_, _, _, _, by rw [← hEs.length]; exact .here, hh, hpre, hsub⟩
+      | there hAt' =>
+          obtain ⟨pre, k, C, φ₁, hE, hh', hpre', hsub'⟩ := hEs.At_kindC hAt'
+          exact ⟨pre, k, C, φ₁, .there hE, hh', hpre', hsub'⟩
 
 /-- The entries of a coercion into a bounds-only object type, by position. -/
 theorem BndsTyped.length {ρ : Option (BVar s .var)} {S : Shape s} {Es : Entries s}
@@ -1128,6 +1242,18 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
             · rcases hk with ⟨rfl, hk⟩ | ⟨rfl, hk⟩
               · exact .eqSymC hT hk
               · exact .eqC hT hk
+        -- A kinding template composes by concatenating its chain with the
+        -- middle's and composing the two admission steps.
+        | .kindC (pre := pre) h₂' hh hpre hsub =>
+            obtain ⟨Es, hEs, hT⟩ := ihE _ _ _ _ _ (by simp at hn; omega) hop₁ hopM h₁ h₂'
+            cases hh with
+            | kindC hAt =>
+                obtain ⟨pre₁, k, C₁, φ₀, hE, hh₁, hpre₁, hsub₁⟩ := h₁.At_kindC hAt
+                refine ⟨Es ▹ .kindC (pre ++ pre₁) k, ?_,
+                  .kindC hT hh₁ (hpre.append hpre₁) (hsub₁.trans hsub)⟩
+                simp only [Entries.through, hEs]
+                unfold Entry.through
+                simp [hE.get?]
       · intro F Es S M Tel hn hF hB
         match hB with
         | .nil => exact ⟨.nil, by simp [Entries.mapPrefix], .nil⟩
@@ -1198,6 +1324,11 @@ theorem combine_typed_aux {ρ : Option (BVar s .var)} : ∀ n : Nat,
             obtain ⟨Es', hEs'', hT'⟩ := ihP F _ S M _ _ (by simp at hn ⊢; omega) hF hM hEs'
             exact ⟨Es' ▹ .thru F (.eqC j true),
               by simp [Entries.mapPrefix, hEs'', Entry.prefix], .thru hT' hF hM (.eqSymC hAt)⟩
+        | .kindC (pre := pre) (j := j) hEs' hh hpre hsub =>
+            obtain ⟨Es', hEs'', hT'⟩ := ihP F _ S M _ _ (by simp at hn ⊢; omega) hF hM hEs'
+            exact ⟨Es' ▹ .thru F (.kindC pre j),
+              by simp [Entries.mapPrefix, hEs'', Entry.prefix],
+              .thru hT' hF hM (.kindC hh hpre hsub)⟩
 
 theorem Form.combine_typed {ρ : Option (BVar s .var)} {F G : Form s} {S M T : Shape s}
     (hF : FormTyped Γ ρ F S M) (hG : FormTyped Γ ρ G M T) :
@@ -1282,6 +1413,10 @@ theorem Telescope.identityEntries_typed {ρ : Option (BVar s .var)} :
       rw [Telescope.identityEntries]
       exact .eqC (Telescope.identityEntries_typed Tel Tel' fun i P hP => h i P (.there hP))
         (h _ _ .here)
+  | .cons Tel (.kindC C φ), Tel', h => by
+      rw [Telescope.identityEntries]
+      exact .kindC (Telescope.identityEntries_typed Tel Tel' fun i P hP => h i P (.there hP))
+        (.kindC (h _ _ .here)) .nil (Cls.Kind.Admits.refl φ)
 
 theorem Telescope.identityEntries_self {ρ : Option (BVar s .var)} (Tel : Telescope (s,x)) :
     EntriesTyped Γ ρ Tel Tel.identityEntries Tel :=
@@ -1309,6 +1444,9 @@ theorem Telescope.identityEntries_rename : ∀ (Tel : Telescope (s,x)) (ρ : Ren
   | .cons Tel (.eqC _ _), ρ => by
       simp [Telescope.rename, Proposition.rename, Telescope.identityEntries,
         Telescope.identityEntries_rename Tel ρ, Telescope.length_rename]
+  | .cons Tel (.kindC _ _), ρ => by
+      simp [Telescope.rename, Proposition.rename, Telescope.identityEntries,
+        Telescope.identityEntries_rename Tel ρ, Telescope.length_rename]
 
 /-- Positions of the first telescope of a concatenation. -/
 theorem Telescope.At.append_left {Tel : Telescope s'} {i : Nat} {P : Proposition s'}
@@ -1331,6 +1469,7 @@ theorem EntriesTyped.append {ρ : Option (BVar s .var)} {Tel Tel₁ Tel₂ : Tel
   | .leC h₂' hh hpre hpost => exact .leC (h₁.append h₂') hh hpre hpost
   | .eqC h₂' hAt => exact .eqC (h₁.append h₂') hAt
   | .eqSymC h₂' hAt => exact .eqSymC (h₁.append h₂') hAt
+  | .kindC h₂' hh hpre hsub => exact .kindC (h₁.append h₂') hh hpre hsub
 
 theorem BndsTyped.append {ρ : Option (BVar s .var)} {S : Shape s} {Tel₁ Tel₂ : Telescope (s,x)}
     {Es₁ Es₂ : Entries s}
@@ -1497,6 +1636,7 @@ theorem ViewTyped.append {r : BVar s .var} {V₁ V₂ : View s} {Tel₁ Tel₂ :
   | bnd _ hG ih => exact .bnd ih hG
   | leC _ hC ih => exact .leC ih hC
   | eqC _ hC ih => exact .eqC ih hC
+  | kindC _ hK ih => exact .kindC ih hK
 
 /-- A capture-template side instantiated at a root: the roots of its source
 are among the roots of its target.  A closed step is between weakened closed
@@ -1537,6 +1677,7 @@ theorem Telescope.opened_bnd {r : BVar s .var} {Tel : Telescope (s,x)}
   | has _ => simp [Proposition.rename] at hEq
   | leC _ _ => simp [Proposition.rename] at hEq
   | eqC _ _ => simp [Proposition.rename] at hEq
+  | kindC _ _ => simp [Proposition.rename] at hEq
 
 end
 
@@ -1657,6 +1798,10 @@ theorem normalizer_succ : ∀ n : Nat,
             cases hm : entries σ n m with
             | none => simp [entries, hm] at h
             | some Es₀ => simpa [entries, hm, ih2 m Es₀ hm] using h
+        | kindC m q j φ =>
+            cases hm : entries σ n m with
+            | none => simp [entries, hm] at h
+            | some Es₀ => simpa [entries, hm, ih2 m Es₀ hm] using h
       · intro a V h
         cases a with
         | var x => rw [view] at h; rw [view]; exact h
@@ -1769,6 +1914,7 @@ theorem normalizer_succ : ∀ n : Nat,
         | has j => simp only [Entry.at] at h ⊢; exact h
         | leC pre hh post => simp only [Entry.at] at h ⊢; exact h
         | eqC j b => simp only [Entry.at] at h ⊢; exact h
+        | kindC pre j => simp only [Entry.at] at h ⊢; exact h
         | bnd G => simp only [Entry.at] at h ⊢; exact h
         | thru H E =>
             cases hv : viewThrough σ n H a with
@@ -2000,6 +2146,16 @@ theorem EntryTyped.at_typed {r : BVar s .var} {M : Shape s} {TelM : Telescope (s
   | .eqSymC hAt =>
       obtain ⟨hq, heq⟩ := hV.eqC_entry hAt
       exact ⟨1, .eqC, by simp [Entry.at, hq.get?], fun hV₀ => .eqC hV₀ heq.symm⟩
+  -- A kinding slot carries no data either: its typedness is `Ctx.KindLe` at
+  -- the root, put together from the chain, the slot the index names, and the
+  -- admission step.
+  | .kindC hh hpre hsub =>
+      have hpre' := hpre.inst r
+      cases hh with
+      | kindC hAt =>
+          obtain ⟨hq, hk⟩ := hV.kindC_entry hAt
+          exact ⟨1, .kindC, by simp [Entry.at, hq.get?],
+            fun hV₀ => .kindC hV₀ ((hk.mono hpre').admits hsub)⟩
 
 /-- Applying typed view-free entries at a root: the view of the source is
 consulted only through the routes of the entries, which are sub-forms. -/
@@ -2102,6 +2258,13 @@ theorem entriesAt_typed {r : BVar s .var} {Tel₁ : Telescope (s,x)}
   | _, _, .eqSymC hEs' hAt => by
       obtain ⟨m, V', hV', hT⟩ := entriesAt_typed a hC hS hV hEs'
       obtain ⟨m', Q, hQ, hQt⟩ := EntryTyped.at_typed a hC hS hV (.eqSymC hAt)
+      refine ⟨max m m' + 2, V' ▹ Q, ?_, hQt hT⟩
+      have h₁ := entriesAt_le (Nat.le_trans (Nat.le_max_left m m') (Nat.le_succ _)) hV'
+      have h₂ := entryAt_le (Nat.le_trans (Nat.le_max_right m m') (Nat.le_succ _)) hQ
+      simp [entriesAt, h₁, h₂]
+  | _, _, .kindC hEs' hh hpre hsub => by
+      obtain ⟨m, V', hV', hT⟩ := entriesAt_typed a hC hS hV hEs'
+      obtain ⟨m', Q, hQ, hQt⟩ := EntryTyped.at_typed a hC hS hV (.kindC hh hpre hsub)
       refine ⟨max m m' + 2, V' ▹ Q, ?_, hQt hT⟩
       have h₁ := entriesAt_le (Nat.le_trans (Nat.le_max_left m m') (Nat.le_succ _)) hV'
       have h₂ := entryAt_le (Nat.le_trans (Nat.le_max_right m m') (Nat.le_succ _)) hQ

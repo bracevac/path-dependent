@@ -454,6 +454,15 @@ theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
     intro a C h
     simp only [CapAtom.subst_selfCast, CaptureSet.subst_selfCast]
     exact (Ctx.instOf_cons_eq Γ (.opaque T) (.transparent S₀ W Wc Fs) a C).mp h
+  capCls := by
+    intro a cl h
+    simp only [CapAtom.subst_selfCast]
+    exact (Ctx.clsOf_cons_eq Γ (.opaque T) (.transparent S₀ W Wc Fs) a cl).mp h
+  capSet := by
+    intro a C h
+    simp only [CapAtom.subst_selfCast, CaptureSet.subst_selfCast]
+    exact (Ctx.setOf_cons_eq Γ (.opaque T) (.transparent S₀ W Wc Fs) a C).mp h
+  capProjFree := by intro κ; cases κ with | there y => rfl
 
 /-- The self binder of a stored object literal may be replaced by the
 variable it is stored at. -/
@@ -555,6 +564,16 @@ theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)} {C : Capt
   capInst := by
     intro a C' hI
     obtain ⟨a₀, C₀, rfl, rfl, h₀⟩ := Ctx.instOf_cons_cases hI
+    rw [CapAtom.rename_subst_weaken, CaptureSet.rename_subst_weaken']
+    exact h₀
+  capCls := by
+    intro a cl hC'
+    obtain ⟨a₀, rfl, h₀⟩ := Ctx.clsOf_cons_cases hC'
+    rw [CapAtom.rename_subst_weaken]
+    exact h₀
+  capSet := by
+    intro a C' hS
+    obtain ⟨a₀, C₀, rfl, rfl, h₀⟩ := Ctx.setOf_cons_cases hS
     rw [CapAtom.rename_subst_weaken, CaptureSet.rename_subst_weaken']
     exact h₀
 

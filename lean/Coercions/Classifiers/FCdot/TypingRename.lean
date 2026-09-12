@@ -527,6 +527,190 @@ theorem Ctx.InstOf.weakenC {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
       rw [hh]
       rfl
 
+
+/-! ### Declared classifiers and set bounds under a context map
+
+`KindCo.HasType.kcls` reads a declared classifier off the context and
+`KindCo.HasType.kcvar` reads a set bound, so the records below carry two more
+capture fields, of the same shape as `capInst`: the image of a binder with a
+declared classifier is a binder with the same declared classifier, and the
+image of a binder standing below a set stands below the renamed set.  Both
+are stated flavour-wise on the atom, for the reason `capInst` is: a
+substitution sends a capture binder to a capture *atom*.  A classifier is
+closed data, so it rides along unchanged, which is Fact 1. -/
+
+@[simp] theorem CapBound.clsOf?_rename (b : CapBound s1) (ρ : Rename s1 s2) :
+    (b.rename ρ).clsOf? = b.clsOf? := by
+  cases b <;> rfl
+
+@[simp] theorem CapBound.clsOf?_weaken (b : CapBound s) :
+    (CapBound.weaken (k := k) b).clsOf? = b.clsOf? :=
+  CapBound.clsOf?_rename b _
+
+@[simp] theorem CapBound.setOf?_rename (b : CapBound s1) (ρ : Rename s1 s2) :
+    (b.rename ρ).setOf? = (b.setOf?).map (fun C => C.rename ρ) := by
+  cases b <;> rfl
+
+@[simp] theorem CapBound.setOf?_weaken (b : CapBound s) :
+    (CapBound.weaken (k := k) b).setOf? = (b.setOf?).map CaptureSet.weaken := by
+  cases b <;> rfl
+
+/-- A declared classifier of a term-extended context is an older one. -/
+theorem Ctx.clsOf_cons_cases {Γ : Ctx s} {b : Binding s} {a : CapAtom (s,x)}
+    {cl : Cls.Classifier} (h : (Γ.cons b).ClsOf a cl) :
+    ∃ a₀, a = CapAtom.weaken (k := .var) a₀ ∧ Γ.ClsOf a₀ cl := by
+  cases a with
+  | top => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | var x => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | name x l => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | proj a φ => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | cvar κ =>
+      cases κ with
+      | there κ0 =>
+          refine ⟨CapAtom.cvar κ0, rfl, ?_⟩
+          have hh : ((Γ.lookupCap κ0)↑ : CapBound (s,x)).clsOf? = some cl := h
+          rwa [CapBound.clsOf?_weaken] at hh
+
+/-- And of a capture-extended context: the new binder, when it declares one,
+or an older one. -/
+theorem Ctx.clsOf_consC_cases {Γ : Ctx s} {b : CapBound s} {a : CapAtom (s,c)}
+    {cl : Cls.Classifier} (h : (Γ.consC b).ClsOf a cl) :
+    (a = CapAtom.cvar .here ∧ b.clsOf? = some cl) ∨
+    (∃ a₀, a = CapAtom.weaken (k := .cap) a₀ ∧ Γ.ClsOf a₀ cl) := by
+  cases a with
+  | top => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | var x => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | name x l => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | proj a φ => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | cvar κ =>
+      cases κ with
+      | here =>
+          refine Or.inl ⟨rfl, ?_⟩
+          have hh : ((b : CapBound s)↑ : CapBound (s,c)).clsOf? = some cl := h
+          rwa [CapBound.clsOf?_weaken] at hh
+      | there κ0 =>
+          refine Or.inr ⟨CapAtom.cvar κ0, rfl, ?_⟩
+          have hh : ((Γ.lookupCap κ0)↑ : CapBound (s,c)).clsOf? = some cl := h
+          rwa [CapBound.clsOf?_weaken] at hh
+
+/-- A set bound of a term-extended context is an older one, weakened. -/
+theorem Ctx.setOf_cons_cases {Γ : Ctx s} {b : Binding s} {a : CapAtom (s,x)}
+    {C : CaptureSet (s,x)} (h : (Γ.cons b).SetOf a C) :
+    ∃ a₀ C₀, a = CapAtom.weaken (k := .var) a₀ ∧ C = CaptureSet.weaken (k := .var) C₀ ∧
+      Γ.SetOf a₀ C₀ := by
+  cases a with
+  | top => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | var x => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | name x l => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | proj a φ => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | cvar κ =>
+      cases κ with
+      | there κ0 =>
+          have h' : ((Γ.lookupCap κ0).setOf?).map CaptureSet.weaken = some C := by
+            have hh : ((Γ.lookupCap κ0)↑ : CapBound (s,x)).setOf? = some C := h
+            rwa [CapBound.setOf?_weaken] at hh
+          cases hb : (Γ.lookupCap κ0).setOf? with
+          | none => rw [hb] at h'; simp at h'
+          | some C₀ =>
+              rw [hb] at h'
+              simp only [Option.map_some, Option.some.injEq] at h'
+              exact ⟨CapAtom.cvar κ0, C₀, rfl, h'.symm, hb⟩
+
+/-- And of a capture-extended context. -/
+theorem Ctx.setOf_consC_cases {Γ : Ctx s} {b : CapBound s} {a : CapAtom (s,c)}
+    {C : CaptureSet (s,c)} (h : (Γ.consC b).SetOf a C) :
+    (∃ C₀, a = CapAtom.cvar .here ∧ C = CaptureSet.weaken (k := .cap) C₀ ∧
+      b.setOf? = some C₀) ∨
+    (∃ a₀ C₀, a = CapAtom.weaken (k := .cap) a₀ ∧ C = CaptureSet.weaken (k := .cap) C₀ ∧
+      Γ.SetOf a₀ C₀) := by
+  cases a with
+  | top => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | var x => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | name x l => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | proj a φ => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | cvar κ =>
+      cases κ with
+      | here =>
+          have h' : (b.setOf?).map CaptureSet.weaken = some C := by
+            have hh : ((b : CapBound s)↑ : CapBound (s,c)).setOf? = some C := h
+            rwa [CapBound.setOf?_weaken] at hh
+          cases hb : b.setOf? with
+          | none => rw [hb] at h'; simp at h'
+          | some C₀ =>
+              rw [hb] at h'
+              simp only [Option.map_some, Option.some.injEq] at h'
+              exact Or.inl ⟨C₀, rfl, h'.symm, by first | exact hb | rfl⟩
+      | there κ0 =>
+          have h' : ((Γ.lookupCap κ0).setOf?).map CaptureSet.weaken = some C := by
+            have hh : ((Γ.lookupCap κ0)↑ : CapBound (s,c)).setOf? = some C := h
+            rwa [CapBound.setOf?_weaken] at hh
+          cases hb : (Γ.lookupCap κ0).setOf? with
+          | none => rw [hb] at h'; simp at h'
+          | some C₀ =>
+              rw [hb] at h'
+              simp only [Option.map_some, Option.some.injEq] at h'
+              exact Or.inr ⟨CapAtom.cvar κ0, C₀, rfl, h'.symm, hb⟩
+
+/-- A declared classifier survives a term append. -/
+theorem Ctx.ClsOf.weaken {Γ : Ctx s} {a : CapAtom s} {cl : Cls.Classifier}
+    (h : Γ.ClsOf a cl) (b : Binding s) :
+    (Γ.cons b).ClsOf (CapAtom.weaken (k := .var) a) cl := by
+  cases a with
+  | top => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | var x => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | name x l => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | proj a φ => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | cvar κ =>
+      show ((Γ.lookupCap κ)↑ : CapBound (s,x)).clsOf? = _
+      rw [CapBound.clsOf?_weaken]
+      exact h
+
+/-- And a capture append. -/
+theorem Ctx.ClsOf.weakenC {Γ : Ctx s} {a : CapAtom s} {cl : Cls.Classifier}
+    (h : Γ.ClsOf a cl) (b : CapBound s) :
+    (Γ.consC b).ClsOf (CapAtom.weaken (k := .cap) a) cl := by
+  cases a with
+  | top => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | var x => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | name x l => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | proj a φ => simp [Ctx.ClsOf, Ctx.clsOf?] at h
+  | cvar κ =>
+      show ((Γ.lookupCap κ)↑ : CapBound (s,c)).clsOf? = _
+      rw [CapBound.clsOf?_weaken]
+      exact h
+
+/-- A set bound survives a term append. -/
+theorem Ctx.SetOf.weaken {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
+    (h : Γ.SetOf a C) (b : Binding s) :
+    (Γ.cons b).SetOf (CapAtom.weaken (k := .var) a) (CaptureSet.weaken (k := .var) C) := by
+  cases a with
+  | top => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | var x => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | name x l => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | proj a φ => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | cvar κ =>
+      show ((Γ.lookupCap κ)↑ : CapBound (s,x)).setOf? = _
+      rw [CapBound.setOf?_weaken]
+      have hh : (Γ.lookupCap κ).setOf? = some C := h
+      rw [hh]
+      rfl
+
+/-- And a capture append. -/
+theorem Ctx.SetOf.weakenC {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
+    (h : Γ.SetOf a C) (b : CapBound s) :
+    (Γ.consC b).SetOf (CapAtom.weaken (k := .cap) a) (CaptureSet.weaken (k := .cap) C) := by
+  cases a with
+  | top => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | var x => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | name x l => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | proj a φ => simp [Ctx.SetOf, Ctx.setOf?] at h
+  | cvar κ =>
+      show ((Γ.lookupCap κ)↑ : CapBound (s,c)).setOf? = _
+      rw [CapBound.setOf?_weaken]
+      have hh : (Γ.lookupCap κ).setOf? = some C := h
+      rw [hh]
+      rfl
+
 /-! ## Context renamings -/
 
 /-- `Ctx.Ren Γ ρ Γ'`: `ρ` maps `Γ` into `Γ'`, transporting types by `ρ` and
@@ -550,6 +734,12 @@ structure Ctx.Ren {s1 s2 : Sig} (Γ : Ctx s1) (ρ : Rename s1 s2) (Γ' : Ctx s2)
       set.  Stated flavour-wise on the atom, so that `CapEq.rename` stays
       structural. -/
   capInst : ∀ a C, Γ.InstOf a C → Γ'.InstOf (a.rename ρ) (C.rename ρ)
+  /-- The image of a binder with a declared classifier is a binder with the
+      same declared classifier.  It is what `KindCo.HasType.kcls` reads. -/
+  capCls : ∀ a cl, Γ.ClsOf a cl → Γ'.ClsOf (a.rename ρ) cl
+  /-- The image of a binder standing below a set stands below the renamed
+      set.  It is what `KindCo.HasType.kcvar` reads. -/
+  capSet : ∀ a C, Γ.SetOf a C → Γ'.SetOf (a.rename ρ) (C.rename ρ)
 
 namespace Ctx.Ren
 
@@ -564,6 +754,8 @@ theorem id {Γ : Ctx s} : Ctx.Ren Γ Rename.id Γ where
     rw [CapAtom.rename_id]
     exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot _)
   capInst := fun a C h => by rwa [CapAtom.rename_id, CaptureSet.rename_id]
+  capCls := fun a cl h => by rwa [CapAtom.rename_id]
+  capSet := fun a C h => by rwa [CapAtom.rename_id, CaptureSet.rename_id]
 
 theorem lift {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
     (h : Ctx.Ren Γ ρ Γ') (b : Binding s1) :
@@ -639,6 +831,14 @@ theorem lift {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
     obtain ⟨a₀, C₀, rfl, rfl, h₀⟩ := Ctx.instOf_cons_cases hI
     rw [CapAtom.weaken_rename, CaptureSet.weaken_rename]
     exact (h.capInst a₀ C₀ h₀).weaken (b.rename ρ)
+  capCls := fun a cl hC => by
+    obtain ⟨a₀, rfl, h₀⟩ := Ctx.clsOf_cons_cases hC
+    rw [CapAtom.weaken_rename]
+    exact (h.capCls a₀ cl h₀).weaken (b.rename ρ)
+  capSet := fun a C hS => by
+    obtain ⟨a₀, C₀, rfl, rfl, h₀⟩ := Ctx.setOf_cons_cases hS
+    rw [CapAtom.weaken_rename, CaptureSet.weaken_rename]
+    exact (h.capSet a₀ C₀ h₀).weaken (b.rename ρ)
 
 theorem transparent {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2} (h : Ctx.Ren Γ ρ Γ')
     {x : BVar s1 .var} (ht : Γ.IsTransparent x) : Γ'.IsTransparent (ρ.var x) := by
@@ -669,6 +869,8 @@ theorem succ {Γ : Ctx s} (b : Binding s) : Ctx.Ren Γ Rename.succ (Γ.cons b) w
     rw [← Ctx.rootAtom_cons Γ b]
     exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot _)
   capInst := fun a C h => h.weaken b
+  capCls := fun a cl h => h.weaken b
+  capSet := fun a C h => h.weaken b
 
 end Ctx.Ren
 
@@ -725,6 +927,8 @@ theorem Ctx.Ren.succC {Γ : Ctx s} (b : CapBound s) (hb : b.isRoot = false) :
     rw [← Ctx.rootAtom_consC Γ b hb]
     exact Ctx.LvlLe.refl_of_root (Ctx.rootAtom_isRoot _)
   capInst := fun a C h => h.weakenC b
+  capCls := fun a cl h => h.weakenC b
+  capSet := fun a C h => h.weakenC b
 
 /-- Passing a context renaming under a capture binder. -/
 theorem Ctx.Ren.liftC {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
@@ -788,6 +992,20 @@ theorem Ctx.Ren.liftC {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
           rfl
     · rw [CapAtom.weaken_rename, CaptureSet.weaken_rename]
       exact (h.capInst a₀ C₀ h₀).weakenC (b.rename ρ)
+  capCls := fun a cl hC => by
+    rcases Ctx.clsOf_consC_cases hC with ⟨rfl, hb⟩ | ⟨a₀, rfl, h₀⟩
+    · show ((b.rename ρ)↑ : CapBound (s2,c)).clsOf? = some cl
+      rw [CapBound.clsOf?_weaken, CapBound.clsOf?_rename]
+      exact hb
+    · rw [CapAtom.weaken_rename]
+      exact (h.capCls a₀ cl h₀).weakenC (b.rename ρ)
+  capSet := fun a C hS => by
+    rcases Ctx.setOf_consC_cases hS with ⟨C₀, rfl, rfl, hb⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+    · show ((b.rename ρ)↑ : CapBound (s2,c)).setOf? = some ((C₀↑).rename ρ.lift)
+      rw [CapBound.setOf?_weaken, CapBound.setOf?_rename, hb, CaptureSet.weaken_rename]
+      rfl
+    · rw [CapAtom.weaken_rename, CaptureSet.weaken_rename]
+      exact (h.capSet a₀ C₀ h₀).weakenC (b.rename ρ)
 
 /-! ## Context maps that may open a root
 
@@ -814,6 +1032,8 @@ structure Ctx.RenR {s1 s2 : Sig} (Γ : Ctx s1) (ρ : Rename s1 s2) (Γ' : Ctx s2
   capRoot : ∀ r, Γ.IsRoot r → Γ'.IsRoot (r.rename ρ)
   capLvl : ∀ e r, Γ.IsRoot r → Γ.LvlLe e r → Γ'.LvlLe (e.rename ρ) (r.rename ρ)
   capInst : ∀ a C, Γ.InstOf a C → Γ'.InstOf (a.rename ρ) (C.rename ρ)
+  capCls : ∀ a cl, Γ.ClsOf a cl → Γ'.ClsOf (a.rename ρ) cl
+  capSet : ∀ a C, Γ.SetOf a C → Γ'.SetOf (a.rename ρ) (C.rename ρ)
 
 /-- Every context renaming is one. -/
 theorem Ctx.Ren.toRenR {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
@@ -825,6 +1045,8 @@ theorem Ctx.Ren.toRenR {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ct
   capRoot := h.capRoot
   capLvl := h.capLvl
   capInst := h.capInst
+  capCls := h.capCls
+  capSet := h.capSet
 
 theorem Ctx.RenR.comp {s1 s2 s3 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {Γ'' : Ctx s3}
     {ρ : Rename s1 s2} {ρ' : Rename s2 s3}
@@ -849,6 +1071,12 @@ theorem Ctx.RenR.comp {s1 s2 s3 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {Γ'' : Ctx 
   capInst := fun a C hI => by
     have := h'.capInst (a.rename ρ) (C.rename ρ) (h.capInst a C hI)
     rwa [CapAtom.rename_comp, CaptureSet.rename_comp] at this
+  capCls := fun a cl hC => by
+    have := h'.capCls (a.rename ρ) cl (h.capCls a cl hC)
+    rwa [CapAtom.rename_comp] at this
+  capSet := fun a C hS => by
+    have := h'.capSet (a.rename ρ) (C.rename ρ) (h.capSet a C hS)
+    rwa [CapAtom.rename_comp, CaptureSet.rename_comp] at this
 
 /-- Appending any capture binder at the innermost end is a `Ctx.RenR`.  It is
 a `Ctx.Ren` only when the bound is not a root, which is `Ctx.Ren.succC`. -/
@@ -872,6 +1100,8 @@ theorem Ctx.RenR.succC {Γ : Ctx s} (b : CapBound s) : Ctx.RenR Γ Rename.succ (
     show (Γ.consC b).LvlLe (CapAtom.weaken (k := .cap) e) (CapAtom.weaken (k := .cap) r)
     exact (Ctx.lvlLe_weakenC_iff Γ b e r).mpr hl
   capInst := fun a C h => h.weakenC b
+  capCls := fun a cl h => h.weakenC b
+  capSet := fun a C h => h.weakenC b
 
 /-- The level case of `liftC` at a root binder: no `capInner` is needed,
 because a fresh root is its own level and nothing weakened can bound it. -/
@@ -959,6 +1189,16 @@ theorem Ctx.RenR.consRoot {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' :
     · simp [CapBound.instSet?] at hb
     · rw [CapAtom.weaken_rename, CaptureSet.weaken_rename]
       exact (h.capInst a₀ C₀ h₀).weakenC .root
+  capCls := fun a cl hC => by
+    rcases Ctx.clsOf_consC_cases hC with ⟨rfl, hb⟩ | ⟨a₀, rfl, h₀⟩
+    · simp [CapBound.clsOf?] at hb
+    · rw [CapAtom.weaken_rename]
+      exact (h.capCls a₀ cl h₀).weakenC .root
+  capSet := fun a C hS => by
+    rcases Ctx.setOf_consC_cases hS with ⟨C₀, rfl, rfl, hb⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+    · simp [CapBound.setOf?] at hb
+    · rw [CapAtom.weaken_rename, CaptureSet.weaken_rename]
+      exact (h.capSet a₀ C₀ h₀).weakenC .root
 
 /-- A `Ctx.RenR` passes under a scope as a full `Ctx.Ren`. -/
 theorem Ctx.RenR.scope {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
@@ -1044,6 +1284,16 @@ theorem Ctx.Ren.instC {Γ : Ctx s} {C : CaptureSet s} :
     rw [CapAtom.rename_id, CaptureSet.rename_id]
     rcases Ctx.instOf_consC_cases hI with ⟨C₀, rfl, rfl, hb⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
     · simp [CapBound.instSet?] at hb
+    · exact h₀.weakenC (.inst C)
+  capCls := fun a cl hC => by
+    rw [CapAtom.rename_id]
+    rcases Ctx.clsOf_consC_cases hC with ⟨rfl, hb⟩ | ⟨a₀, rfl, h₀⟩
+    · simp [CapBound.clsOf?] at hb
+    · exact h₀.weakenC (.inst C)
+  capSet := fun a C0 hS => by
+    rw [CapAtom.rename_id, CaptureSet.rename_id]
+    rcases Ctx.setOf_consC_cases hS with ⟨C₀, rfl, rfl, hb⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+    · simp [CapBound.setOf?] at hb
     · exact h₀.weakenC (.inst C)
 
 theorem Ctx.RenR.scopeR {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
@@ -1156,6 +1406,7 @@ theorem Proposition.subst_rename {s1 s2 s3 : Sig} (P : Proposition s1) (σ : Sub
   | .bnd T => simp only [Proposition.subst, Proposition.rename, Shape.subst_rename]
   | .leC C D => simp only [Proposition.subst, Proposition.rename, CaptureSet.subst_rename]
   | .eqC C D => simp only [Proposition.subst, Proposition.rename, CaptureSet.subst_rename]
+  | .kindC C φ => simp only [Proposition.subst, Proposition.rename, CaptureSet.subst_rename]
 
 theorem Telescope.subst_rename {s1 s2 s3 : Sig} (Tel : Telescope s1) (σ : Subst s1 s2)
     (ρ : Rename s2 s3) : (Tel.subst σ).rename ρ = Tel.subst (σ.compRen ρ) := by
@@ -1358,6 +1609,36 @@ theorem Telescope.HoleAtC.rename {s1 s2 : Sig} {src : Telescope (s1,x)} {h : Hol
   | eqC hAt => exact .eqC (by simpa [Proposition.rename] using hAt.rename ρ.lift)
   | eqSymC hAt => exact .eqSymC (by simpa [Proposition.rename] using hAt.rename ρ.lift)
 
+/-! ### Projections under a renaming
+
+A kind is closed data, so a renaming passes through a projection untouched
+and leaves the kind an atom carries alone.  This is Fact 1, and each lemma is
+one induction on the atom or one `List.map_map`. -/
+
+@[simp] theorem CapAtom.kindOf_rename : ∀ (a : CapAtom s1) (ρ : Rename s1 s2),
+    (a.rename ρ).kindOf = a.kindOf
+  | .top, _ | .var _, _ | .cvar _, _ | .name _ _, _ => rfl
+  | .proj a φ, ρ => by
+      show φ.interB (a.rename ρ).kindOf = φ.interB a.kindOf
+      rw [CapAtom.kindOf_rename a ρ]
+
+theorem CapAtom.projBy_rename (φ : Cls.Kind) : ∀ (a : CapAtom s1) (ρ : Rename s1 s2),
+    (a.projBy φ).rename ρ = (a.rename ρ).projBy φ
+  | .top, _ | .var _, _ | .cvar _, _ | .name _ _, _ => rfl
+  | .proj _ _, _ => rfl
+
+@[simp] theorem CaptureSet.proj_rename (C : CaptureSet s1) (φ : Cls.Kind) (ρ : Rename s1 s2) :
+    (C.proj φ).rename ρ = (C.rename ρ).proj φ := by
+  simp only [CaptureSet.proj, CaptureSet.rename, List.map_map, Function.comp_def,
+    CapAtom.projBy_rename]
+
+/-- Reading a kinding hole survives renaming. -/
+theorem Telescope.HoleAtK.rename {s1 s2 : Sig} {src : Telescope (s1,x)} {j : Nat}
+    {C : CaptureSet (s1,x)} {φ : Cls.Kind} (hh : src.HoleAtK j C φ) (ρ : Rename s1 s2) :
+    (src.rename ρ.lift).HoleAtK j (C.rename ρ.lift) φ := by
+  cases hh with
+  | kindC hAt => exact .kindC (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+
 /-! ## Evidence and atoms -/
 
 mutual
@@ -1386,6 +1667,66 @@ theorem CapCo.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : R
       simpa [CapCo.rename, CaptureSet.substVar_rename] using this
   | .eqToLe hφ => exact .eqToLe (hφ.renameR hρ)
   | .level h₁ h₂ => exact .level (hρ.capRoot _ h₁) (hρ.capLvl _ _ h₁ h₂)
+  | @CapCo.HasType.unprojC _ _ C₀ φ₀ =>
+      have : Γ' ⊢ᶜ CapCo.unprojC (C₀.rename ρ) φ₀
+          : (C₀.rename ρ).proj φ₀ ⊑ (C₀.rename ρ) := .unprojC
+      simpa [CapCo.rename, CaptureSet.proj_rename] using this
+  | @CapCo.HasType.projC _ _ g₀ C₀ φ₀ hg =>
+      have : Γ' ⊢ᶜ CapCo.projC (g₀.rename ρ) (C₀.rename ρ) φ₀
+          : (C₀.rename ρ) ⊑ (C₀.rename ρ).proj φ₀ := .projC (hg.renameR hρ)
+      simpa [CapCo.rename, CaptureSet.proj_rename] using this
+  | @CapCo.HasType.projMono _ _ f₀ C₀ D₀ ψ₀ hf =>
+      have : Γ' ⊢ᶜ CapCo.projMono (f₀.rename ρ) ψ₀
+          : (C₀.rename ρ).proj ψ₀ ⊑ (D₀.rename ρ).proj ψ₀ := .projMono (hf.renameR hρ)
+      simpa [CapCo.rename, CaptureSet.proj_rename] using this
+
+/-- The kinding family is closed under context renamings.  Every case is the
+congruence of its premises with the `Cls.Kind` arguments carried unchanged,
+which is Fact 1, and the two context readers travel on the two new capture
+fields. -/
+theorem KindCo.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {g : KindCo s1} {C : CaptureSet s1} {φ : Cls.Kind} (hρ : Ctx.RenR Γ ρ Γ')
+    (h : Γ ⊢ᵏ g : C ⊑ᵏ φ) :
+    Γ' ⊢ᵏ (g.rename ρ) : (C.rename ρ) ⊑ᵏ φ := by
+  match h with
+  | .nil => exact .nil
+  | .cons hg hh => exact .cons (hg.renameR hρ) (hh.renameR hρ)
+  | .kproj hk =>
+      refine .kproj ?_
+      rw [CapAtom.kindOf_rename]
+      exact hk
+  | @KindCo.HasType.kcls _ _ a₀ φ₀ cl hc hk =>
+      refine @KindCo.HasType.kcls _ Γ' (a₀.rename ρ) φ₀ cl ?_ ?_
+      · rw [CapAtom.base_rename]
+        exact hρ.capCls _ _ hc
+      · rw [CapAtom.kindOf_rename]
+        exact hk
+  | .kvar ha hb hg =>
+      have ha' := Atom.HasType.renameR hρ ha
+      have hg' := hg.renameR hρ
+      simp only [Ty.rename] at ha'
+      rw [CaptureSet.proj_rename, ← CapAtom.kindOf_rename _ ρ] at hg'
+      refine .kvar ha' ?_ hg'
+      rw [CapAtom.base_rename, hb]
+      show CapAtom.var (ρ.var _) = CapAtom.var _
+      rw [Atom.root_rename]
+  | .kcvar hb hg =>
+      have hg' := hg.renameR hρ
+      rw [CaptureSet.proj_rename, ← CapAtom.kindOf_rename _ ρ] at hg'
+      refine .kcvar ?_ hg'
+      rw [CapAtom.base_rename]
+      exact hρ.capSet _ _ hb
+  | .kmember ha he hAt =>
+      have := KindCo.HasType.kmember
+        (by simpa [Ty.rename] using Atom.HasType.renameR hρ ha)
+        (by simpa [Shape.rename] using he.renameR hρ)
+        (hAt.rename ρ)
+      simpa [KindCo.rename, CaptureSet.substVar_rename] using this
+  | @KindCo.HasType.kprojS _ _ g₀ C₀ φ₀ ψ₀ hg =>
+      have : Γ' ⊢ᵏ KindCo.kprojS (g₀.rename ρ) (C₀.rename ρ) ψ₀
+          : (C₀.rename ρ).proj ψ₀ ⊑ᵏ φ₀ := .kprojS (hg.renameR hρ)
+      simpa [KindCo.rename, CaptureSet.proj_rename] using this
+  | .ksub hg hs => exact .ksub (hg.renameR hρ) hs
 
 theorem CapEq.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {φ : CapEq s1} {C D : CaptureSet s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) :
@@ -1531,6 +1872,9 @@ theorem Morphism.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
       exact .eqC (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
   | .eqSymC hm hAt =>
       exact .eqSymC (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+  | .kindC hm hAt hq hsub =>
+      exact .kindC (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+        (hq.renameR hρ) hsub
 
 theorem Atom.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {a : Atom s1} {T : Ty s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ₐ a : T) :
@@ -1591,6 +1935,12 @@ unchanged. -/
 theorem CapCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {f : CapCo s1} {C D : CaptureSet s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ᶜ f : C ⊑ D) :
     Γ' ⊢ᶜ (f.rename ρ) : (C.rename ρ) ⊑ (D.rename ρ) :=
+  h.renameR hρ.toRenR
+
+theorem KindCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {g : KindCo s1} {C : CaptureSet s1} {φ : Cls.Kind} (hρ : Ctx.Ren Γ ρ Γ')
+    (h : Γ ⊢ᵏ g : C ⊑ᵏ φ) :
+    Γ' ⊢ᵏ (g.rename ρ) : (C.rename ρ) ⊑ᵏ φ :=
   h.renameR hρ.toRenR
 
 theorem CapEq.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}

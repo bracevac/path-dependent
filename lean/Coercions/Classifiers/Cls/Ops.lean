@@ -243,6 +243,48 @@ theorem Subkind.contains {K L : Kind} (h : K.Subkind L) {c : Classifier}
     rw [contains_subtract_of hc hL] at h0
     exact Bool.noConfusion h0
 
+/-- Semantic subkinding: every classifier `K` holds, `L` holds.  This is
+what `Kind.Subkind` gives through `Kind.Subkind.contains`, and it is the
+relation the normal forms of K1 carry, because it is reflexive and
+transitive by definition while `Kind.Subkind` is neither until the converse
+of the subtraction bridge is ported. -/
+def Admits (K L : Kind) : Prop := ∀ c : Classifier, K.Contains c → L.Contains c
+
+theorem Admits.refl (K : Kind) : K.Admits K := fun _ h => h
+
+theorem Admits.trans {K L M : Kind} (h₁ : K.Admits L) (h₂ : L.Admits M) : K.Admits M :=
+  fun c hc => h₂ c (h₁ c hc)
+
+/-- Subkinding gives semantic subkinding, and this is the only consumer of
+`Kind.Subkind.contains` outside K0. -/
+theorem Subkind.admits {K L : Kind} (h : K.Subkind L) : K.Admits L :=
+  fun _ hc => Subkind.contains h hc
+
+/-- The decidable step a morphism template takes from the source kind of the
+proposition it names to the target kind: the two kinds are equal, or
+subkinding decides it.  Equality is a disjunct because `Kind.Subkind` is not
+known to be reflexive without the converse of the subtraction bridge, which
+is decision 6, and the identity template on a kinding proposition needs the
+reflexive step. -/
+def admitsStepB (K L : Kind) : Bool := (K == L) || K.subkindB L
+
+/-- The step as a proposition.  An `abbrev`, so that `Decidable` is
+synthesised and the checker's case decides it. -/
+abbrev AdmitsStep (K L : Kind) : Prop := K.admitsStepB L = true
+
+theorem AdmitsStep.refl (K : Kind) : K.AdmitsStep K := by
+  show ((K == K) || K.subkindB K) = true
+  rw [beq_self_eq_true, Bool.true_or]
+
+/-- And the step gives semantic subkinding, which is what the normal forms
+carry. -/
+theorem AdmitsStep.admits {K L : Kind} (h : K.AdmitsStep L) : K.Admits L := by
+  rcases Bool.or_eq_true_iff.mp h with he | hs
+  · have : K = L := by simpa using he
+    subst this
+    exact Admits.refl K
+  · exact Subkind.admits hs
+
 end Kind
 
 /-! ## The converse, and what it would cost

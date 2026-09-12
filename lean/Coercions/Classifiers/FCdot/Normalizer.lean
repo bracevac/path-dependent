@@ -120,6 +120,11 @@ inductive Entry (s : Sig) : Type where
   /-- A target capture equality: a source capture equality, possibly
       flipped. -/
   | eqC : Nat → Bool → Entry s
+  /-- A target kinding proposition: a side chain lowering the target set to
+      the source set, and the index of the source kinding proposition.  The
+      slot carries no kind: the target kind is read off the target
+      proposition, where the admission step is checked. -/
+  | kindC : SideC s → Nat → Entry s
   /-- A bound entry: a coercion out of the source object type. -/
   | bnd : Form s → Entry s
   /-- A routed entry: the coercion `H` reaches another object type from the
@@ -169,6 +174,9 @@ inductive PropForm (s : Sig) : Type where
   | leC : PropForm s
   /-- A capture equality of the atom's type, likewise data free. -/
   | eqC : PropForm s
+  /-- A kinding proposition of the atom's type, likewise data free: its
+      typedness is the fact `Ctx.KindLe` at the root, not a form. -/
+  | kindC : PropForm s
 
 /-- The form of a bound entry of a view. -/
 def PropForm.bndForm? : PropForm s → Option (Form s)
@@ -362,6 +370,12 @@ def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
       match Es₁.get? j with
       | some (.eqC k b') => some (.eqC k (xor b b'))
       | _ => none
+  -- A kinding template composes by concatenating its chain onto the source
+  -- template's chain, exactly as a capture template does.
+  | .kindC pre j =>
+      match Es₁.get? j with
+      | some (.kindC pre₁ k) => some (.kindC (pre ++ pre₁) k)
+      | _ => none
   | .bnd G => (Form.combine (.obj Es₁) G).map .bnd
   -- Object forms never carry routed entries, so this case does not arise.
   | .thru _ _ => none
@@ -451,6 +465,7 @@ def Telescope.identityEntries : Telescope (s,x) → Entries s
   | .cons Tel (.bnd _) => Tel.identityEntries ▹ .bnd (.bnd Tel.length .id)
   | .cons Tel (.leC _ _) => Tel.identityEntries ▹ .leC .nil (.leC Tel.length) .nil
   | .cons Tel (.eqC _ _) => Tel.identityEntries ▹ .eqC Tel.length false
+  | .cons Tel (.kindC _ _) => Tel.identityEntries ▹ .kindC .nil Tel.length
 
 /-- Concatenation of entries. -/
 def Entries.append : Entries s → Entries s → Entries s
@@ -577,6 +592,12 @@ def Entry.at (σ : Store s) : Nat → Atom s → Form s → View s → Entry s �
       match ← V.get? j with
       | .eqC => pure .eqC
       | _ => none
+  -- A kinding slot carries no data either: the template only has to name a
+  -- kinding proposition of the view.
+  | _ + 1, _, _, V, .kindC _ j => do
+      match ← V.get? j with
+      | .kindC => pure .kindC
+      | _ => none
   | _ + 1, _, C, _, .bnd G => (C.combine G).map PropForm.bnd
   | n + 1, a, C, _, .thru H E => do
       let V' ← viewThrough σ n H a
@@ -660,6 +681,9 @@ def entries (σ : Store s) : Nat → Morphism s → Option (Entries s)
   | n + 1, .eqC m j b => do
       let Es ← entries σ n m
       pure (Es ▹ .eqC j b)
+  | n + 1, .kindC m q j _ => do
+      let Es ← entries σ n m
+      pure (Es ▹ .kindC q j)
 
 /-- The view of a concrete atom at its resolved object type. -/
 def view (σ : Store s) : Nat → Atom s → Option (View s)

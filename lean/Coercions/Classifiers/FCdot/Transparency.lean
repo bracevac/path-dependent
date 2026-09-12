@@ -30,6 +30,11 @@ structure Ctx.Refines {s : Sig} (Γ Γ' : Ctx s) : Prop where
   /-- And so is the set an instance binder was opened at.  It is the fourth
       capture field, the one `CapEq.HasType.instC` reads. -/
   capInstEq : ∀ κ : BVar s .cap, (Γ'.lookupCap κ).instSet? = (Γ.lookupCap κ).instSet?
+  /-- And so is the bound of every capture binder.  A refinement adds block
+      definitions and field labels to *term* binders, so it rewrites no
+      capture binding at all.  This is the field the kinding family reads,
+      through `Ctx.ClsOf` and `Ctx.SetOf`. -/
+  capBoundEq : ∀ κ : BVar s .cap, Γ'.lookupCap κ = Γ.lookupCap κ
 
 namespace Ctx.Refines
 
@@ -42,6 +47,7 @@ theorem refl {Γ : Ctx s} : Ctx.Refines Γ Γ where
   lvlEq := fun _ => rfl
   capEq := fun _ => rfl
   capInstEq := fun _ => rfl
+  capBoundEq := fun _ => rfl
 
 theorem trans {Γ1 Γ2 Γ3 : Ctx s} (h1 : Ctx.Refines Γ1 Γ2) (h2 : Ctx.Refines Γ2 Γ3) :
     Ctx.Refines Γ1 Γ3 where
@@ -53,6 +59,7 @@ theorem trans {Γ1 Γ2 Γ3 : Ctx s} (h1 : Ctx.Refines Γ1 Γ2) (h2 : Ctx.Refines
   lvlEq := fun y => (h2.lvlEq y).trans (h1.lvlEq y)
   capEq := fun κ => (h2.capEq κ).trans (h1.capEq κ)
   capInstEq := fun κ => (h2.capInstEq κ).trans (h1.capInstEq κ)
+  capBoundEq := fun κ => (h2.capBoundEq κ).trans (h1.capBoundEq κ)
 
 theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     Ctx.Refines (Γ.cons b) (Γ'.cons b) where
@@ -124,6 +131,12 @@ theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     | there κ0 =>
         show ((Γ'.lookupCap κ0)↑ : CapBound (s,x)).instSet? = ((Γ.lookupCap κ0)↑).instSet?
         rw [CapBound.instSet?_weaken, CapBound.instSet?_weaken, h.capInstEq]
+  capBoundEq := by
+    intro κ
+    cases κ with
+    | there κ0 =>
+        show ((Γ'.lookupCap κ0)↑ : CapBound (s,x)) = ((Γ.lookupCap κ0)↑)
+        rw [h.capBoundEq]
 
 /-- Weakening an opaque binder to the transparent binder of the same type. -/
 theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)}
@@ -160,6 +173,10 @@ theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Wc : CapWitne
     cases κ with
     | there κ0 => rfl
   capInstEq := by
+    intro κ
+    cases κ with
+    | there κ0 => rfl
+  capBoundEq := by
     intro κ
     cases κ with
     | there κ0 => rfl
@@ -236,6 +253,13 @@ theorem consC {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : CapBound s) :
     | there κ0 =>
         show ((Γ'.lookupCap κ0)↑ : CapBound (s,c)).instSet? = ((Γ.lookupCap κ0)↑).instSet?
         rw [CapBound.instSet?_weaken, CapBound.instSet?_weaken, h.capInstEq]
+  capBoundEq := by
+    intro κ
+    cases κ with
+    | here => rfl
+    | there κ0 =>
+        show ((Γ'.lookupCap κ0)↑ : CapBound (s,c)) = ((Γ.lookupCap κ0)↑)
+        rw [h.capBoundEq]
 
 /-! ### The scope contexts
 
@@ -292,6 +316,30 @@ theorem Ctx.Refines.instOf {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {a : CapAto
       rw [h.capInstEq]
       exact hI
 
+theorem Ctx.Refines.clsOf {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {a : CapAtom s}
+    {cl : Cls.Classifier} (hc : Γ.ClsOf a cl) : Γ'.ClsOf a cl := by
+  cases a with
+  | top => simp [Ctx.ClsOf, Ctx.clsOf?] at hc
+  | var x => simp [Ctx.ClsOf, Ctx.clsOf?] at hc
+  | name x l => simp [Ctx.ClsOf, Ctx.clsOf?] at hc
+  | proj a φ => simp [Ctx.ClsOf, Ctx.clsOf?] at hc
+  | cvar κ =>
+      show (Γ'.lookupCap κ).clsOf? = some cl
+      rw [h.capBoundEq]
+      exact hc
+
+theorem Ctx.Refines.setOf {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {a : CapAtom s}
+    {C : CaptureSet s} (hs : Γ.SetOf a C) : Γ'.SetOf a C := by
+  cases a with
+  | top => simp [Ctx.SetOf, Ctx.setOf?] at hs
+  | var x => simp [Ctx.SetOf, Ctx.setOf?] at hs
+  | name x l => simp [Ctx.SetOf, Ctx.setOf?] at hs
+  | proj a φ => simp [Ctx.SetOf, Ctx.setOf?] at hs
+  | cvar κ =>
+      show (Γ'.lookupCap κ).setOf? = some C
+      rw [h.capBoundEq]
+      exact hs
+
 theorem Ctx.Refines.lvlLe {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {e r : CapAtom s}
     (hl : Γ.LvlLe e r) : Γ'.LvlLe e r := by
   unfold Ctx.LvlLe Ctx.lvlLeB
@@ -315,6 +363,25 @@ theorem CapCo.HasType.refine {Γ Γ' : Ctx s} {f : CapCo s} {C D : CaptureSet s}
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
   | .eqToLe hφ => exact .eqToLe (hφ.refine hR)
   | .level h₁ h₂ => exact .level (hR.isRoot h₁) (hR.lvlLe h₂)
+  | .unprojC => exact .unprojC
+  | .projC hg => exact .projC (hg.refine hR)
+  | .projMono hf => exact .projMono (hf.refine hR)
+
+/-- The kinding family reads a context at `kcls` and `kcvar`, and both read a
+capture binding, which a refinement leaves alone. -/
+theorem KindCo.HasType.refine {Γ Γ' : Ctx s} {g : KindCo s} {C : CaptureSet s}
+    {φ : Cls.Kind} (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᵏ g : C ⊑ᵏ φ) :
+    Γ' ⊢ᵏ g : C ⊑ᵏ φ := by
+  match h with
+  | .nil => exact .nil
+  | .cons hg hh => exact .cons (hg.refine hR) (hh.refine hR)
+  | .kproj hk => exact .kproj hk
+  | .kcls hc hk => exact .kcls (hR.clsOf hc) hk
+  | .kvar ha hb hg => exact .kvar (ha.refine hR) hb (hg.refine hR)
+  | .kcvar hb hg => exact .kcvar (hR.setOf hb) (hg.refine hR)
+  | .kmember ha he hAt => exact .kmember (ha.refine hR) (he.refine hR) hAt
+  | .kprojS hg => exact .kprojS (hg.refine hR)
+  | .ksub hg hs => exact .ksub (hg.refine hR) hs
 
 theorem CapEq.HasType.refine {Γ Γ' : Ctx s} {φ : CapEq s} {C D : CaptureSet s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) : Γ' ⊢ᶜ φ : C ≡ D := by
@@ -408,6 +475,7 @@ theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope (s,x)} {m : Mo
   | .leC hm hh hq hq' => exact .leC (hm.refine hR) hh (hq.refine hR) (hq'.refine hR)
   | .eqC hm hAt => exact .eqC (hm.refine hR) hAt
   | .eqSymC hm hAt => exact .eqSymC (hm.refine hR) hAt
+  | .kindC hm hAt hq hsub => exact .kindC (hm.refine hR) hAt (hq.refine hR) hsub
 
 theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ₐ a : T) : Γ' ⊢ₐ a : T := by
