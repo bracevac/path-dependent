@@ -1,13 +1,16 @@
-# DotMNF, at stage K2 of classifiers
+# DotMNF, at stage K3 of classifiers
 
 DOT-MNF^cc, the capturing source of the translation in `../DotToFCdot`.
 
-**Stages K0 and K1 of classifiers changed nothing here, and K2 is the stage that classifies the
-source.**  Through K1 the source wrote no classifier and no projected capture atom, so no syntax, no
-rule, no judgment and no theorem of this directory moved.  K2 gives the source the projected capture
-atom, the kind-bounded capture member, the classified context binder and its own capture-kinding
-judgment, and the stage's section is the last one below.  Every statement of the stages before it is
-the statement it was, with the proof it had, except the three rows K2 lists.
+**Stages K0 and K1 of classifiers changed nothing here, K2 is the stage that classifies the source,
+and K3 adds only the three mandatory examples.**  Through K1 the source wrote no classifier and no
+projected capture atom, so no syntax, no rule, no judgment and no theorem of this directory moved.
+K2 gives the source the projected capture atom, the kind-bounded capture member, the classified
+context binder and its own capture-kinding judgment.  K3 adds no new form: E1, E2 and E3, each a
+platform, a program typed against it, and the source half of its kinding and prediction facts, are
+appended to `Examples.lean` after C2, and the stage's section is the last one below.  Every statement
+of the stages before K3 is the statement it was, with the proof it had, except the three rows K2
+lists.
 
 | module | contents |
 |---|---|
@@ -824,5 +827,58 @@ The first two are the counterexample of decision 20 and its refusal: without the
 through a projection the shape is `AnyOk`, and the bound would then be read at the empty set.  The
 last two are the other half: a projected `fresh` in a result set is refused and a bare `fresh` stays
 legal where `Ty.expandFresh` reads it.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem of the stage.
+
+## Stage K3
+
+K3 is the closing stage of classifiers (`plan-5f-classifiers-stages.md` §K3), the three mandatory
+examples of `plan-5-extensions.md` §5.  No syntax, no rule, no judgment and no theorem of the stages
+before it moves.  The source half of each example lives here, appended after C2: E1 is `Try.apply`
+of `exceptions.tex:60-66`, whose one field holds its body closure filtered to `only[Control]`.  E2 is
+`Future.apply` of `exceptions.tex:74-92`, whose parameter is filtered to `except[ThreadLocal]`, with
+two total refutations that no argument declared `ThreadLocal` passes.  E3 is C2 retyped at the kind
+bound `{C : only[Control]}` in place of the set bound, with a stability fact over an extended
+platform.  Every verdict is `decide`, `rfl`, or a `CapKind` or `HasTy` term, closed against the
+target through `checkKindCo` on the translation in `../FCdot/Examples.lean`.
+
+```
+DotMNF.Examples.E1_classOf_ctl, .E1_classOf_io, .E1_disjoint
+DotMNF.Examples.E1_only_admits_ctl, .E1_only_excludes_io
+DotMNF.Examples.E1_anyOk, .E1_freshOk, .E1_expand
+DotMNF.Examples.E1_try_anyOk, .E1_try_freshOk, .E1_try_expand
+DotMNF.Examples.E1_field_plat_kind, .E1_field_kind, .E1_kind
+DotMNF.Examples.E1_lit_typed, .E1_typed
+
+DotMNF.Examples.E2_control_le_threadLocal, .E2_only_control_except_empty
+DotMNF.Examples.E2_except_excludes_tl, .E2_except_excludes_ctl
+DotMNF.Examples.E2_except_admits_io, .E2_except_admits_top, .E2_top_not_subkind
+DotMNF.Examples.E2_classOf_tl, .E2_classOf_ctl, .E2_classOf_io
+DotMNF.Examples.E2_anyOk, .E2_freshOk, .E2_expand, .E2_dom_expand, .E2_arg_instance
+DotMNF.Examples.E2_kind, .E2_io_kind, .E2_io_arg_kind, .E2_io_arg, .E2_arg_kind
+DotMNF.Examples.E2_typed
+
+DotMNF.Examples.E3_classOf_k1, .E3_classOf_k2, .E3_clsOf_k1, .E3_clsOf_k2
+DotMNF.Examples.E3_only_admits_control, .E3_only_excludes_io
+DotMNF.Examples.E3AbsDecl, .E3AbsWf, .E3abstract, .E3_cap_kind
+DotMNF.Examples.E3_kind_a, .E3_kind_b, .E3_abstract_a, .E3_abstract_b
+DotMNF.Examples.E3xCap, .E3_client_kind, .E3call, .E3ClientWf
+DotMNF.Examples.E3_anyOk, .E3_freshOk, .E3_expand
+DotMNF.Examples.E3_abs_anyOk, .E3_abs_freshOk, .E3_abs_expand
+DotMNF.Examples.E3_kind, .E3_typed
+DotMNF.Examples.E3_classOf_k3, .E3_stable_clsOf, .E3_stable_classOf
+DotMNF.Examples.E3_third_lit, .E3_kind_c, .E3_abstract_c, .E3_kind3
+```
+
+E1's and E2's effect-safety facts, `E1_effect_safety` and `E2_effect_safety`, instances of
+`dot_classified_effect_safety'` (T9') at `only[Control]` and at `except[ThreadLocal]`, and E3's
+prediction facts, `E3_prediction` and `E3_prediction'`, instances of `dot_classified_prediction` (T8)
+and its primed form, are all stated on the target side, in `../FCdot/Examples.lean`, because both
+theorems read the target's `CapLe` or `State` in their conclusion.
+
+| module | what K3 added |
+|---|---|
+| `Examples` | E1, E2 and E3, each a platform (`E1Plat`, `E2Plat`/`E2PlatIO`, `E3Plat`/`E3Plat3`), a program typed against it, and the source half of its kinding and effect-safety facts, appended after C2 |
+| every other module | nothing |
 
 Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem of the stage.

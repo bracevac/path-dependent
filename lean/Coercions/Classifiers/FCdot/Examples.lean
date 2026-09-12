@@ -3640,6 +3640,962 @@ admit every classifier. -/
 theorem K6x_kproj_reject :
     checkKindCo K6Ctx (.kproj K6p) [K6p] (Cls.except Cls.ThreadLocal) = false := by decide
 
+/-! ## E1, only-control
+
+The target side of `DotMNF.Examples`' E1 (`exceptions.tex:60-66`).  The source
+program is `Try.apply` applied to a body the program allocates, and its declared
+use set is the platform set filtered at `only[Control]`.  Here: the platform
+context as the translation builds it, the resolution of the two platform
+capabilities through the filter, the kinding of the filtered sets by T2, the
+translation of the source evidence, and effect safety at `only[Control]` on both
+sides.
+
+The platform context is K1x's context on the nose, so the two resolution facts
+are K1x over a real program. -/
+
+/-- The platform context of E1, as `Platform.ctx` builds it. -/
+theorem E1_platCtx : DotMNF.Examples.E1Plat.ctx = DotMNF.Examples.E1PlatCtx := rfl
+
+/-- Its translation is K1x's context: `κ_ctl ⊑ᶜ cls Control, κ_io ⊑ᶜ cls IO`. -/
+theorem E1_ctx_translate : DotMNF.Examples.E1Plat.ctx.translate = K1Ctx := rfl
+
+/-- The platform context is well formed. -/
+theorem E1_ctx_wf : DotMNF.Ctx.Wf DotMNF.Examples.E1Plat.ctx :=
+  DotMNF.Platform.ctx_wf _
+
+/-- The body of `Try.apply` is read in a well-formed context. -/
+theorem E1_bodyCtx_wf : DotMNF.Ctx.Wf DotMNF.Examples.E1BodyCtx :=
+  .cons (.consC (.consRoot E1_ctx_wf))
+
+/-! ### The platform verdicts
+
+`Platform.admits_iff` turns the admission test at a platform capability into the
+containment test of the classifier the platform declares, and the kernel decides
+that. -/
+
+/-- The control capability is admitted by `only[Control]`. -/
+theorem E1_admits_ctl :
+    DotMNF.Examples.E1Plat.ctx.translate.admitsB (CapAtom.cvar K1ctl)
+      (Cls.only Cls.Control) = true := by
+  rw [DotMNF.Platform.admits_iff DotMNF.Examples.E1Plat K1ctl]
+  decide
+
+/-- The input-output capability is not. -/
+theorem E1_admits_io :
+    DotMNF.Examples.E1Plat.ctx.translate.admitsB (CapAtom.cvar K1io)
+      (Cls.only Cls.Control) = false := by
+  rw [DotMNF.Platform.admits_iff DotMNF.Examples.E1Plat K1io]
+  decide
+
+/-! ### Resolution through the filter -/
+
+theorem E1_caps_ctl (n : Nat) :
+    DotMNF.Examples.E1Plat.ctx.translate.caps n
+        [(CapAtom.cvar K1ctl) ↾ Cls.only Cls.Control]
+      = [(CapAtom.cvar K1ctl) ↾ Cls.only Cls.Control] := by
+  rw [E1_ctx_translate]
+  simp [K1Ctx, Ctx.capsAtom_proj, Ctx.capsAtom_cvar, Ctx.capsBound,
+    CapBound.weaken, CapBound.rename]
+
+theorem E1_caps_io (n : Nat) :
+    DotMNF.Examples.E1Plat.ctx.translate.caps n
+        [(CapAtom.cvar K1io) ↾ Cls.only Cls.Control]
+      = [(CapAtom.cvar K1io) ↾ Cls.only Cls.Control] := by
+  rw [E1_ctx_translate]
+  simp [K1Ctx, Ctx.capsAtom_proj, Ctx.capsAtom_cvar, Ctx.capsBound,
+    CapBound.weaken, CapBound.rename]
+
+/-- The control capability survives the filter. -/
+theorem E1_roots_ctl :
+    DotMNF.Examples.E1Plat.ctx.translate.roots 0
+        [(CapAtom.cvar K1ctl) ↾ Cls.only Cls.Control] = [CapAtom.cvar K1ctl] := by
+  rw [Ctx.roots_eq_expand_caps, E1_caps_ctl, E1_ctx_translate]
+  decide
+
+/-- The input-output capability does not: this is the sentence E1 makes. -/
+theorem E1_roots_io :
+    DotMNF.Examples.E1Plat.ctx.translate.roots 0
+        [(CapAtom.cvar K1io) ↾ Cls.only Cls.Control] = [] := by
+  rw [Ctx.roots_eq_expand_caps, E1_caps_io, E1_ctx_translate]
+  decide
+
+/-! ### The filtered sets are kinded, by T2
+
+`Ctx.kindLe_proj` kinds a projected set by construction, and the translation of
+a projected source set is the projection of its translation. -/
+
+/-- The program's declared use set is kinded at `only[Control]`. -/
+theorem E1_kindLe_uses :
+    DotMNF.Examples.E1Plat.ctx.translate.KindLe
+      DotMNF.Examples.E1Filt.translate (Cls.only Cls.Control) := by
+  simp only [DotMNF.Examples.E1Filt, DotMNF.CaptureSet.translate_proj]
+  exact Ctx.kindLe_proj _ _ _
+
+/-- And so is the field's set `{x ↾ only[Control]}`, in the body of
+`Try.apply`. -/
+theorem E1_kindLe_field :
+    DotMNF.Examples.E1BodyCtx.translate.KindLe
+      DotMNF.Examples.E1FieldSet.translate (Cls.only Cls.Control) := by
+  simp only [DotMNF.Examples.E1FieldSet, DotMNF.CaptureSet.translate_proj]
+  exact Ctx.kindLe_proj _ _ _
+
+/-! ### The source evidence, through the translation -/
+
+/-- The program's translation is typed at the translated type. -/
+theorem E1_translate_typed :
+    Tm.HasType DotMNF.Examples.E1Plat.ctx.translate DotMNF.Examples.E1_typed.translate
+      (DotMNF.ETy.translate (.ty DotMNF.Examples.E1Ty)) :=
+  DotMNF.HasTy.translate_typed _ E1_ctx_wf
+
+/-- The kinding of the use set translates to target kinding evidence. -/
+theorem E1_kind_translate_typed :
+    DotMNF.Examples.E1Plat.ctx.translate ⊢ᵏ DotMNF.Examples.E1_kind.translate :
+      DotMNF.Examples.E1Filt.translate ⊑ᵏ (Cls.only Cls.Control) :=
+  DotMNF.CapKind.translate_typed _ E1_ctx_wf
+
+/-- And so does the kinding of the field's set, the `kvar` derivation. -/
+theorem E1_field_kind_translate_typed :
+    DotMNF.Examples.E1BodyCtx.translate ⊢ᵏ DotMNF.Examples.E1_field_kind.translate :
+      DotMNF.Examples.E1FieldSet.translate ⊑ᵏ (Cls.only Cls.Control) :=
+  DotMNF.CapKind.translate_typed _ E1_bodyCtx_wf
+
+/-! ### Why the filter is needed
+
+The unfiltered platform set is not kinded at `only[Control]`: the
+input-output capability is one of its roots, and `only[Control]` excludes `IO`.
+That is why `Try.apply` returns its object at the filtered set and not at the
+parameter's own set. -/
+
+theorem E1_caps_platSet (n : Nat) :
+    DotMNF.Examples.E1Plat.ctx.translate.caps n
+        [CapAtom.cvar K1ctl, CapAtom.cvar K1io]
+      = [CapAtom.cvar K1ctl, CapAtom.cvar K1io] := by
+  rw [E1_ctx_translate]
+  simp [K1Ctx, Ctx.capsAtom_cvar, Ctx.capsBound, CapBound.weaken, CapBound.rename]
+
+theorem E1_platSet_not_kindLe :
+    ¬ DotMNF.Examples.E1Plat.ctx.translate.KindLe
+      [CapAtom.cvar K1ctl, CapAtom.cvar K1io] (Cls.only Cls.Control) := by
+  intro h
+  have hc := h (CapAtom.cvar K1io)
+    ⟨0, by rw [Ctx.roots_eq_expand_caps, E1_caps_platSet, E1_ctx_translate]; decide⟩
+  rw [E1_ctx_translate] at hc
+  revert hc
+  decide
+
+/-! ### The checker on the translated evidence
+
+The translation of a source kinding derivation is a well-founded recursion, so
+the kernel does not unfold it and `decide` says nothing about it.  The checker's
+completeness closes the gap: the translation is typed, so the checker accepts
+it.  The decided half is `E1_kcls_ctl` and `E1_kcls_io_absurd`, which are K4x's
+two verdicts at E1's own platform context. -/
+
+/-- `k-label` at the control capability, decided. -/
+theorem E1_kcls_ctl :
+    checkKindCo DotMNF.Examples.E1Plat.ctx.translate (.kcls K4ctl) [K4ctl]
+      (Cls.only Cls.Control) = true := by
+  rw [E1_ctx_translate]
+  decide
+
+/-- `k-label-absurd` at the input-output capability, decided: its own
+projection already excludes its classifier. -/
+theorem E1_kcls_io_absurd :
+    checkKindCo DotMNF.Examples.E1Plat.ctx.translate (.kcls K4io) [K4io]
+      (Cls.only Cls.Control) = true := by
+  rw [E1_ctx_translate]
+  decide
+
+/-- The checker accepts the translation of the field's kinding derivation. -/
+theorem E1_field_kind_checked :
+    checkKindCo DotMNF.Examples.E1BodyCtx.translate
+      DotMNF.Examples.E1_field_kind.translate DotMNF.Examples.E1FieldSet.translate
+      (Cls.only Cls.Control) = true :=
+  checkKindCo_iff_hasType.mpr E1_field_kind_translate_typed
+
+/-- And the translation of the use set's kinding derivation. -/
+theorem E1_kind_checked :
+    checkKindCo DotMNF.Examples.E1Plat.ctx.translate
+      DotMNF.Examples.E1_kind.translate DotMNF.Examples.E1Filt.translate
+      (Cls.only Cls.Control) = true :=
+  checkKindCo_iff_hasType.mpr E1_kind_translate_typed
+
+/-! ### Effect safety at `only[Control]` -/
+
+/-- The initial target state of E1's program. -/
+def E1TgtInit : State ([],c,c) :=
+  ⟨DotMNF.Examples.E1Plat.targetStore, .nil, DotMNF.Examples.E1_typed.translate⟩
+
+/-- Its use set is kinded at `only[Control]`: the declared use set bounds it by
+`cap_canon`, and the declared use set is the filtered platform set. -/
+theorem E1_initial_kindLe :
+    DotMNF.Examples.E1Plat.ctx.translate.KindLe E1TgtInit.uses (Cls.only Cls.Control) := by
+  have hbase : CapLe DotMNF.Examples.E1Plat.ctx.translate E1TgtInit.uses
+      DotMNF.Examples.E1Filt.translate := by
+    simp only [E1TgtInit, State.uses_mk, usesK_nil, CaptureSet.union_def, List.append_nil]
+    exact cap_canon DotMNF.Examples.E1Plat.targetStore_typed
+      (DotMNF.HasTy.translate_uses _ E1_ctx_wf)
+  exact Ctx.KindLe.mono hbase E1_kindLe_uses
+
+/-- **E1 on the target.**  Along any run of the translated program, every root
+of a variable the machine reads carries a classifier `only[Control]` admits.
+This is `classified_effect_safety` at `only Control`. -/
+theorem E1_target_effect_safety {s' : Sig} {st' : State s'} {Γ' : Ctx s'}
+    {x : BVar s' .var} (run : E1TgtInit ⟶* st') (hin : st'.inspects = some x)
+    (hσ' : Store.Typed st'.σ Γ') :
+    ∀ a : CapAtom s', Γ'.Root a [CapAtom.var x] →
+      (Cls.only Cls.Control).Contains (Γ'.classOf a) :=
+  classified_effect_safety
+    (DotMNF.Platform.initial_typed DotMNF.Examples.E1Plat DotMNF.Examples.E1_typed)
+    DotMNF.Examples.E1Plat.targetStore_typed E1_initial_kindLe run hin hσ'
+
+/-- **The run never reads `κ_io`.**  `only[Control]` does not contain `IO`, so
+no root of a read variable is classified `IO`. -/
+theorem E1_never_io {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
+    (run : E1TgtInit ⟶* st') (hin : st'.inspects = some x)
+    (hσ' : Store.Typed st'.σ Γ') (a : CapAtom s') (ha : Γ'.Root a [CapAtom.var x]) :
+    Γ'.classOf a ≠ Cls.IO := by
+  intro h
+  have hc := E1_target_effect_safety run hin hσ' a ha
+  rw [h] at hc
+  exact absurd hc (by decide)
+
+/-- **E1 at the source**, through T9': the source program, its own kinding
+evidence, and any source run.  The matched target state reads only capabilities
+`only[Control]` admits. -/
+theorem E1_effect_safety {s : Sig} {st : DotMNF.State s}
+    (run : DotMNF.Steps
+      (⟨DotMNF.Examples.E1Plat.store, .nil, DotMNF.Examples.E1tm⟩ : DotMNF.State ([],c,c)) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c) s),
+      State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+        Store.Ext DotMNF.Examples.E1Plat.targetStore stt.σ ρ ∧
+          ∀ a : CapAtom s, Γ'.Root a [CapAtom.var x] →
+            (Cls.only Cls.Control).Contains (Γ'.classOf a) :=
+  DotMNF.dot_classified_effect_safety' DotMNF.Examples.E1Plat DotMNF.Examples.E1_typed
+    DotMNF.Examples.E1_kind run hin
+
+/-! ## E2, except-thread-local
+
+The target side of `DotMNF.Examples`' E2 (`exceptions.tex:74-92`).  The source
+program is `Future.apply` applied to a body the program allocates, and its
+declared use set is the platform set filtered at `except[ThreadLocal]`.  Here:
+the platform context as the translation builds it, the two resolution shapes of
+the example, the refutation of a thread-local argument, the verdicts of the
+checker, the kinding of the filtered set by T2, and effect safety at
+`except[ThreadLocal]` on both sides.
+
+The resolution shapes are read over the classified platform of the paper, the
+two capabilities `except[ThreadLocal]` excludes.  Its translation is K2x's
+context on the nose, so the first shape is K2x over a real program, and the
+second is K3x with the body root of `Future.apply` as the scope root.  The
+companions over the program's platform show the input-output capability
+surviving the filter, which is what makes the legal argument legal. -/
+
+section E2
+
+open DotMNF.Examples (E2Plat E2PlatCtx E2PlatIO E2PlatIOCtx E2Dom E2Filt E2ClsBodyCtx
+  E2TlDescent E2tl E2ctl E2io)
+
+/-- The platform context of E2, as `Platform.ctx` builds it. -/
+theorem E2_platCtx : E2Plat.ctx = E2PlatCtx := rfl
+
+/-- And the same for the platform the program runs on. -/
+theorem E2_platIOCtx : E2PlatIO.ctx = E2PlatIOCtx := rfl
+
+/-- The classified platform translates to K2x's context: `κ_tl ⊑ᶜ cls
+ThreadLocal, κ_ctl ⊑ᶜ cls Control`. -/
+theorem E2_ctx_translate : E2Plat.ctx.translate = K2Ctx := rfl
+
+/-- The program's platform on the target. -/
+def E2TCtx : Ctx ([],c,c,c) :=
+  Ctx.consC (Ctx.consC (Ctx.consC Ctx.nil (.cls Cls.ThreadLocal)) (.cls Cls.Control))
+    (.cls Cls.IO)
+
+/-- `κ_tl` on the target. -/
+abbrev E2Ttl : BVar ([],c,c,c) .cap := .there (.there .here)
+/-- `κ_ctl` on the target. -/
+abbrev E2Tctl : BVar ([],c,c,c) .cap := .there .here
+/-- `κ_io` on the target. -/
+abbrev E2Tio : BVar ([],c,c,c) .cap := .here
+
+theorem E2_ctxIO_translate : E2PlatIO.ctx.translate = E2TCtx := rfl
+
+/-- The platform context is well formed. -/
+theorem E2_ctx_wf : DotMNF.Ctx.Wf E2PlatIO.ctx := DotMNF.Platform.ctx_wf _
+
+/-- And so is the context the call is read in. -/
+theorem E2_callCtx_wf : DotMNF.Ctx.Wf DotMNF.Examples.E2CtxF := .cons (.cons E2_ctx_wf)
+
+/-! ### The platform verdicts
+
+`Platform.admits_iff` turns the admission test at a platform capability into the
+containment test of the classifier the platform declares, and the kernel decides
+that. -/
+
+/-- `except[ThreadLocal]` does not admit the thread-local capability. -/
+theorem E2_admits_tl :
+    E2PlatIO.ctx.translate.admitsB (CapAtom.cvar E2Ttl) (Cls.except Cls.ThreadLocal) = false := by
+  rw [DotMNF.Platform.admits_iff E2PlatIO E2Ttl]
+  decide
+
+/-- Nor the control capability, because `Control` lies below `ThreadLocal`. -/
+theorem E2_admits_ctl :
+    E2PlatIO.ctx.translate.admitsB (CapAtom.cvar E2Tctl) (Cls.except Cls.ThreadLocal) = false := by
+  rw [DotMNF.Platform.admits_iff E2PlatIO E2Tctl]
+  decide
+
+/-- And it does admit the input-output capability. -/
+theorem E2_admits_io :
+    E2PlatIO.ctx.translate.admitsB (CapAtom.cvar E2Tio) (Cls.except Cls.ThreadLocal) = true := by
+  rw [DotMNF.Platform.admits_iff E2PlatIO E2Tio]
+  decide
+
+/-! ### The universal root through the filter
+
+`⊤ᶜ` opens into itself and every opaque binder of the context, and the filter
+then keeps only what the kind admits.  Over the classified platform both
+capabilities are excluded, so the universal root projected at
+`except[ThreadLocal]` has itself as its only root. -/
+
+/-- **The roots of the projected universal root**, over the classified
+platform. -/
+theorem E2_roots_top :
+    E2Plat.ctx.translate.roots 0 [⊤ᶜ ↾ Cls.except Cls.ThreadLocal] = [⊤ᶜ] := by
+  rw [E2_ctx_translate]
+  exact K2x_roots
+
+theorem E2_caps_top_io (n : Nat) :
+    E2PlatIO.ctx.translate.caps n [⊤ᶜ ↾ Cls.except Cls.ThreadLocal]
+      = [⊤ᶜ ↾ Cls.except Cls.ThreadLocal] := by
+  rw [E2_ctxIO_translate]
+  simp [E2TCtx, Ctx.capsAtom_proj, Ctx.capsAtom_top]
+
+/-- Over the program's platform the input-output capability survives, and the
+two excluded capabilities still do not.  This is the positive half of the same
+filter. -/
+theorem E2_roots_top_io :
+    E2PlatIO.ctx.translate.roots 0 [⊤ᶜ ↾ Cls.except Cls.ThreadLocal]
+      = [⊤ᶜ, CapAtom.cvar E2Tio] := by
+  rw [Ctx.roots_eq_expand_caps, E2_caps_top_io, E2_ctxIO_translate]
+  decide
+
+/-! ### The scope root of `Future.apply` through the filter
+
+The body of `Future.apply` opens a scope root, and the parameter's declared set
+is the arrow's own capture binder projected at `except[ThreadLocal]`.  The
+projected body root opens into `⊤ᶜ`, the arrow's own capture binder and itself,
+and into neither classified capability.  The arrow's binder survives because it
+declares no classifier and reads as the root classifier, which
+`except[ThreadLocal]` admits.  The two classified capabilities do not survive,
+which is the sentence E2 makes about a program. -/
+
+/-- The body context of `Future.apply` on the target, over the classified
+platform. -/
+def E2TBody : Ctx (Sig.body ([],c,c)) :=
+  Ctx.cons (Ctx.consC (Ctx.consC K2Ctx .root) .star)
+    (.opaque ((E2Dom : DotMNF.Dom ([],c,c)).underRoot.translate))
+
+theorem E2_bodyCtx_translate : E2ClsBodyCtx.translate = E2TBody := rfl
+
+/-- The arrow's own capture binder. -/
+abbrev E2Karrow : BVar (Sig.body ([],c,c)) .cap := .there .here
+/-- The body root of `Future.apply`. -/
+abbrev E2Kroot : BVar (Sig.body ([],c,c)) .cap := .there (.there .here)
+/-- The control capability, read inside the body. -/
+abbrev E2Kctl : BVar (Sig.body ([],c,c)) .cap := .there (.there (.there .here))
+/-- The thread-local capability, read inside the body. -/
+abbrev E2Ktl : BVar (Sig.body ([],c,c)) .cap := .there (.there (.there (.there .here)))
+
+theorem E2_caps_bodyRoot (n : Nat) :
+    E2ClsBodyCtx.translate.caps n [(CapAtom.cvar E2Kroot) ↾ Cls.except Cls.ThreadLocal]
+      = [(CapAtom.cvar E2Kroot) ↾ Cls.except Cls.ThreadLocal] := by
+  rw [E2_bodyCtx_translate]
+  simp [E2TBody, K2Ctx, Ctx.capsAtom_proj, Ctx.capsAtom_cvar, Ctx.capsBound,
+    CapBound.weaken, CapBound.rename]
+
+theorem E2_caps_ctl (n : Nat) :
+    E2ClsBodyCtx.translate.caps n [CapAtom.cvar E2Kctl] = [CapAtom.cvar E2Kctl] := by
+  rw [E2_bodyCtx_translate]
+  simp [E2TBody, K2Ctx, Ctx.capsAtom_cvar, Ctx.capsBound, CapBound.weaken, CapBound.rename]
+
+/-- **The roots of the projected scope root**: the universal root, the arrow's
+own capture binder, the root itself, and neither classified capability. -/
+theorem E2_roots_bodyRoot :
+    E2ClsBodyCtx.translate.roots 0 [(CapAtom.cvar E2Kroot) ↾ Cls.except Cls.ThreadLocal]
+      = [⊤ᶜ, CapAtom.cvar E2Karrow, CapAtom.cvar E2Kroot] := by
+  rw [Ctx.roots_eq_expand_caps, E2_caps_bodyRoot, E2_bodyCtx_translate]
+  decide
+
+/-- **So the control capability is not below the projected scope root.**  A
+`Future` body written `cap.except[ThreadLocal]` does not reach it. -/
+theorem E2_not_capLe :
+    ¬ CapLe E2ClsBodyCtx.translate [CapAtom.cvar E2Kctl]
+      [(CapAtom.cvar E2Kroot) ↾ Cls.except Cls.ThreadLocal] := by
+  intro h
+  obtain ⟨m, hm⟩ := h (CapAtom.cvar E2Kctl)
+    ⟨0, by rw [Ctx.roots_eq_expand_caps, E2_caps_ctl, E2_bodyCtx_translate]; decide⟩
+  rw [Ctx.roots_eq_expand_caps, E2_caps_bodyRoot, E2_bodyCtx_translate] at hm
+  exact absurd hm (by decide)
+
+/-! ### A bare root is kinded only at a kind that admits every classifier
+
+`kproj` at an atom that is its own base asks that `Kind.top` be a subkind of the
+target kind, and `Kind.top` is not a subkind of `except[ThreadLocal]`, even
+though `except[ThreadLocal]` contains the root classifier.  The kinding of
+`cap.except[ThreadLocal]` therefore rides on the projected atom, whose own kind
+is the filter.  Both verdicts are decided. -/
+
+/-- The bare universal root is rejected at `except[ThreadLocal]`. -/
+theorem E2_kproj_root_reject :
+    checkKindCo E2PlatIO.ctx.translate (.kproj ⊤ᶜ) [⊤ᶜ] (Cls.except Cls.ThreadLocal) = false := by
+  rw [E2_ctxIO_translate]
+  decide
+
+/-- And the projected one is accepted. -/
+theorem E2_kproj_projRoot_accept :
+    checkKindCo E2PlatIO.ctx.translate (.kproj (⊤ᶜ ↾ Cls.except Cls.ThreadLocal))
+      [⊤ᶜ ↾ Cls.except Cls.ThreadLocal] (Cls.except Cls.ThreadLocal) = true := by
+  rw [E2_ctxIO_translate]
+  decide
+
+/-! ### The thread-local argument is refused
+
+A body charged to the thread-local capability cannot be passed: the kinding
+premise of `sc-proj` fails.  The checker rejects both rules that could conclude
+it, and no source derivation exists at all, because the semantics of kinding
+refutes it and every source derivation translates into semantics through T5. -/
+
+theorem E2_caps_tl (n : Nat) :
+    E2PlatIO.ctx.translate.caps n [CapAtom.cvar E2Ttl] = [CapAtom.cvar E2Ttl] := by
+  rw [E2_ctxIO_translate]
+  simp [E2TCtx, Ctx.capsAtom_cvar, Ctx.capsBound, CapBound.weaken, CapBound.rename]
+
+/-- The thread-local capability is not kinded at `except[ThreadLocal]`. -/
+theorem E2_tl_not_kindLe :
+    ¬ E2PlatIO.ctx.translate.KindLe [CapAtom.cvar E2Ttl] (Cls.except Cls.ThreadLocal) := by
+  intro h
+  have hc := h (CapAtom.cvar E2Ttl)
+    ⟨0, by rw [Ctx.roots_eq_expand_caps, E2_caps_tl, E2_ctxIO_translate]; decide⟩
+  rw [E2_ctxIO_translate] at hc
+  revert hc
+  decide
+
+/-- **No source derivation kinds it either.**  T5 reads a translated derivation
+as the semantics, and the semantics is refuted. -/
+theorem E2_tl_not_capKind
+    (g : DotMNF.CapKind E2PlatIO.ctx [DotMNF.CapAtom.cvar E2tl] (Cls.except Cls.ThreadLocal)) :
+    False :=
+  E2_tl_not_kindLe (kind_canon E2PlatIO.targetStore_typed (g.translate_typed E2_ctx_wf))
+
+theorem E2_caps_tlDescent (n : Nat) :
+    E2PlatIO.ctx.translate.caps n E2TlDescent.translate = E2TlDescent.translate := by
+  rw [E2_ctxIO_translate]
+  simp [E2TCtx, DotMNF.Examples.E2TlDescent, DotMNF.CaptureSet.translate_proj, CaptureSet.proj,
+    CapAtom.projBy, Ctx.capsAtom_proj, Ctx.capsAtom_cvar, Ctx.capsBound,
+    CapBound.weaken, CapBound.rename]
+
+theorem E2_tlDescent_not_kindLe :
+    ¬ E2PlatIO.ctx.translate.KindLe E2TlDescent.translate (Cls.except Cls.ThreadLocal) := by
+  intro h
+  have hc := h (CapAtom.cvar E2Ttl)
+    ⟨0, by rw [Ctx.roots_eq_expand_caps, E2_caps_tlDescent, E2_ctxIO_translate]; decide⟩
+  rw [E2_ctxIO_translate] at hc
+  revert hc
+  decide
+
+/-- **And the premise `kvar` hands down is refused too**: the set an argument
+declared at the thread-local capability descends to is not kinded at
+`except[ThreadLocal]`, so the one rule that could have reached it fails at its
+own premise. -/
+theorem E2_tl_descent_not_capKind
+    (g : DotMNF.CapKind E2PlatIO.ctx E2TlDescent (Cls.except Cls.ThreadLocal)) : False :=
+  E2_tlDescent_not_kindLe (kind_canon E2PlatIO.targetStore_typed (g.translate_typed E2_ctx_wf))
+
+/-- `k-label` at the thread-local capability, rejected by the checker. -/
+theorem E2_kcls_tl_reject :
+    checkKindCo E2PlatIO.ctx.translate (.kcls (CapAtom.cvar E2Ttl)) [CapAtom.cvar E2Ttl]
+      (Cls.except Cls.ThreadLocal) = false := by
+  rw [E2_ctxIO_translate]
+  decide
+
+/-- And `k-cbound` at it, likewise. -/
+theorem E2_kproj_tl_reject :
+    checkKindCo E2PlatIO.ctx.translate (.kproj (CapAtom.cvar E2Ttl)) [CapAtom.cvar E2Ttl]
+      (Cls.except Cls.ThreadLocal) = false := by
+  rw [E2_ctxIO_translate]
+  decide
+
+/-- The control capability is rejected the same way. -/
+theorem E2_kcls_ctl_reject :
+    checkKindCo E2PlatIO.ctx.translate (.kcls (CapAtom.cvar E2Tctl)) [CapAtom.cvar E2Tctl]
+      (Cls.except Cls.ThreadLocal) = false := by
+  rw [E2_ctxIO_translate]
+  decide
+
+/-! ### The input-output argument goes through -/
+
+/-- `k-label` at the input-output capability, accepted. -/
+theorem E2_kcls_io :
+    checkKindCo E2PlatIO.ctx.translate (.kcls (CapAtom.cvar E2Tio)) [CapAtom.cvar E2Tio]
+      (Cls.except Cls.ThreadLocal) = true := by
+  rw [E2_ctxIO_translate]
+  decide
+
+theorem E2_caps_io (n : Nat) :
+    E2PlatIO.ctx.translate.caps n [CapAtom.cvar E2Tio] = [CapAtom.cvar E2Tio] := by
+  rw [E2_ctxIO_translate]
+  simp [E2TCtx, Ctx.capsAtom_cvar, Ctx.capsBound, CapBound.weaken, CapBound.rename]
+
+theorem E2_roots_io (n : Nat) :
+    E2PlatIO.ctx.translate.roots n [CapAtom.cvar E2Tio] = [CapAtom.cvar E2Tio] := by
+  rw [Ctx.roots_eq_expand_caps, E2_caps_io, E2_ctxIO_translate]
+  decide
+
+/-- And the input-output capability does carry a classifier the kind admits. -/
+theorem E2_kindLe_io :
+    E2PlatIO.ctx.translate.KindLe [CapAtom.cvar E2Tio] (Cls.except Cls.ThreadLocal) := by
+  intro r hr
+  obtain ⟨n, hn⟩ := hr
+  rw [E2_roots_io] at hn
+  have hr' : r = CapAtom.cvar E2Tio := by simpa using hn
+  subst hr'
+  rw [E2_ctxIO_translate]
+  decide
+
+/-! ### The filtered set is kinded, by T2
+
+`Ctx.kindLe_proj` kinds a projected set by construction, and the translation of
+a projected source set is the projection of its translation. -/
+
+/-- The program's declared use set is kinded at `except[ThreadLocal]`. -/
+theorem E2_kindLe_uses :
+    E2PlatIO.ctx.translate.KindLe E2Filt.translate (Cls.except Cls.ThreadLocal) := by
+  simp only [DotMNF.Examples.E2Filt, DotMNF.CaptureSet.translate_proj]
+  exact Ctx.kindLe_proj _ _ _
+
+theorem E2_caps_filt (n : Nat) :
+    E2PlatIO.ctx.translate.caps n E2Filt.translate = E2Filt.translate := by
+  rw [E2_ctxIO_translate]
+  simp [E2TCtx, DotMNF.Examples.E2Filt, DotMNF.CaptureSet.translate_proj, CaptureSet.proj,
+    CapAtom.projBy, Ctx.capsAtom_proj, Ctx.capsAtom_cvar, Ctx.capsBound,
+    CapBound.weaken, CapBound.rename]
+
+/-- **And what it resolves to**: the input-output capability alone.  The program
+reaches no thread-local capability and no control capability. -/
+theorem E2_roots_filt :
+    E2PlatIO.ctx.translate.roots 0 E2Filt.translate = [CapAtom.cvar E2Tio] := by
+  rw [Ctx.roots_eq_expand_caps, E2_caps_filt, E2_ctxIO_translate]
+  decide
+
+/-! ### The source evidence, through the translation -/
+
+/-- The program's translation is typed at the translated type. -/
+theorem E2_translate_typed :
+    Tm.HasType E2PlatIO.ctx.translate DotMNF.Examples.E2_typed.translate
+      (DotMNF.ETy.translate (.ty DotMNF.Examples.E2Ty)) :=
+  DotMNF.HasTy.translate_typed _ E2_ctx_wf
+
+/-- The kinding of the use set translates to target kinding evidence. -/
+theorem E2_kind_translate_typed :
+    E2PlatIO.ctx.translate ⊢ᵏ DotMNF.Examples.E2_kind.translate :
+      E2Filt.translate ⊑ᵏ (Cls.except Cls.ThreadLocal) :=
+  DotMNF.CapKind.translate_typed _ E2_ctx_wf
+
+/-- The translation of a source kinding derivation is a well-founded recursion,
+so the kernel does not unfold it and `decide` says nothing about it.  The
+checker's completeness closes the gap. -/
+theorem E2_kind_checked :
+    checkKindCo E2PlatIO.ctx.translate DotMNF.Examples.E2_kind.translate
+      E2Filt.translate (Cls.except Cls.ThreadLocal) = true :=
+  checkKindCo_iff_hasType.mpr E2_kind_translate_typed
+
+/-- The local premise of the paper's sentence, through the translation: the
+argument the call passes is kinded at `except[ThreadLocal]`. -/
+theorem E2_arg_kind_translate_typed :
+    DotMNF.Examples.E2CtxF.translate ⊢ᵏ DotMNF.Examples.E2_arg_kind.translate :
+      (DotMNF.CaptureSet.translate [DotMNF.CapAtom.var (.there .here)]) ⊑ᵏ
+        (Cls.except Cls.ThreadLocal) :=
+  DotMNF.CapKind.translate_typed _ E2_callCtx_wf
+
+/-- And the checker accepts it. -/
+theorem E2_arg_kind_checked :
+    checkKindCo DotMNF.Examples.E2CtxF.translate DotMNF.Examples.E2_arg_kind.translate
+      (DotMNF.CaptureSet.translate [DotMNF.CapAtom.var (.there .here)])
+      (Cls.except Cls.ThreadLocal) = true :=
+  checkKindCo_iff_hasType.mpr E2_arg_kind_translate_typed
+
+/-! ### Effect safety at `except[ThreadLocal]` -/
+
+/-- The initial target state of E2's program. -/
+def E2TgtInit : State ([],c,c,c) :=
+  ⟨E2PlatIO.targetStore, .nil, DotMNF.Examples.E2_typed.translate⟩
+
+/-- Its use set is kinded at `except[ThreadLocal]`: the declared use set bounds
+it by `cap_canon`, and the declared use set is the filtered platform set. -/
+theorem E2_initial_kindLe :
+    E2PlatIO.ctx.translate.KindLe E2TgtInit.uses (Cls.except Cls.ThreadLocal) := by
+  have hbase : CapLe E2PlatIO.ctx.translate E2TgtInit.uses E2Filt.translate := by
+    simp only [E2TgtInit, State.uses_mk, usesK_nil, CaptureSet.union_def, List.append_nil]
+    exact cap_canon E2PlatIO.targetStore_typed (DotMNF.HasTy.translate_uses _ E2_ctx_wf)
+  exact Ctx.KindLe.mono hbase E2_kindLe_uses
+
+/-- **E2 on the target.**  Along any run of the translated program, every root
+of a variable the machine reads carries a classifier `except[ThreadLocal]`
+admits.  This is `classified_effect_safety` at `except ThreadLocal`. -/
+theorem E2_target_effect_safety {s' : Sig} {st' : State s'} {Γ' : Ctx s'}
+    {x : BVar s' .var} (run : E2TgtInit ⟶* st') (hin : st'.inspects = some x)
+    (hσ' : Store.Typed st'.σ Γ') :
+    ∀ a : CapAtom s', Γ'.Root a [CapAtom.var x] →
+      (Cls.except Cls.ThreadLocal).Contains (Γ'.classOf a) :=
+  classified_effect_safety
+    (DotMNF.Platform.initial_typed E2PlatIO DotMNF.Examples.E2_typed)
+    E2PlatIO.targetStore_typed E2_initial_kindLe run hin hσ'
+
+/-- **The run never reads a thread-local capability.** -/
+theorem E2_never_tl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
+    (run : E2TgtInit ⟶* st') (hin : st'.inspects = some x)
+    (hσ' : Store.Typed st'.σ Γ') (a : CapAtom s') (ha : Γ'.Root a [CapAtom.var x]) :
+    Γ'.classOf a ≠ Cls.ThreadLocal := by
+  intro h
+  have hc := E2_target_effect_safety run hin hσ' a ha
+  rw [h] at hc
+  exact absurd hc (by decide)
+
+/-- And never a control capability, because `Control` lies below
+`ThreadLocal`. -/
+theorem E2_never_ctl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
+    (run : E2TgtInit ⟶* st') (hin : st'.inspects = some x)
+    (hσ' : Store.Typed st'.σ Γ') (a : CapAtom s') (ha : Γ'.Root a [CapAtom.var x]) :
+    Γ'.classOf a ≠ Cls.Control := by
+  intro h
+  have hc := E2_target_effect_safety run hin hσ' a ha
+  rw [h] at hc
+  exact absurd hc (by decide)
+
+/-- **E2 at the source**, through T9': the source program, its own kinding
+evidence, and any source run.  The matched target state reads only capabilities
+`except[ThreadLocal]` admits. -/
+theorem E2_effect_safety {s : Sig} {st : DotMNF.State s}
+    (run : DotMNF.Steps
+      (⟨E2PlatIO.store, .nil, DotMNF.Examples.E2tm⟩ : DotMNF.State ([],c,c,c)) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c,c) s),
+      State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+        Store.Ext E2PlatIO.targetStore stt.σ ρ ∧
+          ∀ a : CapAtom s, Γ'.Root a [CapAtom.var x] →
+            (Cls.except Cls.ThreadLocal).Contains (Γ'.classOf a) :=
+  DotMNF.dot_classified_effect_safety' E2PlatIO DotMNF.Examples.E2_typed
+    DotMNF.Examples.E2_kind run hin
+
+end E2
+
+/-! ## E3, C2 with a kind bound
+
+The target side of `DotMNF.Examples`' E3.  The source is C2 with the capture
+member's set bound `{}..{κ₁,κ₂}` replaced by the kind bound `only[Control]`,
+over a platform whose two capabilities are both classified `Control`.  Here:
+the platform context as the translation builds it, the decided verdicts of the
+checker at both binders, the morphism the `capkI` step compiles to and its
+canonical form, the client's `kmember`, capture prediction at `only[Control]`,
+and the same verdicts again over a platform with a third `Control` capability.
+
+Two things on this page carry the example.  The `capkI` morphism is a
+`Morphism.kindCle` whose hole is the member's own upper bound and whose closed
+kinding is the translation of the source `kcls`, and `mor_canon` reads it as a
+normalized entry list typed at the one-entry telescope a kind-bounded member
+compiles to.  And the client's charge is `KindCo.kmember` at index `0`, the
+target's reading of the source's `ksel`: the closure's set `{x.C}` is kinded by
+the member and is not widened to anything, because a kind bound offers no set to
+widen to. -/
+
+section E3cls
+
+open DotMNF.Examples (E3Plat E3PlatCtx E3Plat3 E3Plat3Ctx E3k1 E3k2 E3k1' E3k2' E3k3
+  E3Uses E3ClientCtx E3ClosureSet E3CtxB E3aSet lC)
+
+/-- The platform context of E3, as `Platform.ctx` builds it. -/
+theorem E3_platCtx : E3Plat.ctx = E3PlatCtx := rfl
+
+/-- And the extended platform's. -/
+theorem E3_plat3Ctx : E3Plat3.ctx = E3Plat3Ctx := rfl
+
+/-- E3's platform on the target: two capture binders, both `cls Control`. -/
+def E3TCtx : Ctx ([],c,c) :=
+  Ctx.consC (Ctx.consC Ctx.nil (.cls Cls.Control)) (.cls Cls.Control)
+
+/-- `κ₁` on the target. -/
+abbrev E3Tk1 : BVar ([],c,c) .cap := .there .here
+/-- `κ₂` on the target. -/
+abbrev E3Tk2 : BVar ([],c,c) .cap := .here
+
+theorem E3_ctx_translate : E3Plat.ctx.translate = E3TCtx := rfl
+
+/-- The extended platform on the target: one more `cls Control` binder. -/
+def E3TCtx3 : Ctx ([],c,c,c) :=
+  Ctx.consC (Ctx.consC (Ctx.consC Ctx.nil (.cls Cls.Control)) (.cls Cls.Control))
+    (.cls Cls.Control)
+
+/-- `κ₁` on the extended target platform. -/
+abbrev E3Tk1' : BVar ([],c,c,c) .cap := .there (.there .here)
+/-- `κ₂` on the extended target platform. -/
+abbrev E3Tk2' : BVar ([],c,c,c) .cap := .there .here
+/-- `κ₃`, the third `Control` capability, on the target. -/
+abbrev E3Tk3 : BVar ([],c,c,c) .cap := .here
+
+theorem E3_ctx3_translate : E3Plat3.ctx.translate = E3TCtx3 := rfl
+
+/-- The platform context is well formed. -/
+theorem E3_ctx_wf : DotMNF.Ctx.Wf E3Plat.ctx := DotMNF.Platform.ctx_wf _
+
+/-- And so is the context the two literals are retyped in. -/
+theorem E3_absCtx_wf : DotMNF.Ctx.Wf E3CtxB := .cons (.cons (.cons E3_ctx_wf))
+
+/-- And so is the client's own context, two lambda bodies and the closure
+binder above the platform. -/
+theorem E3_clientCtx_wf : DotMNF.Ctx.Wf E3ClientCtx :=
+  .cons (.cons (.consC (.consRoot (.cons (.consC (.consRoot E3_ctx_wf))))))
+
+/-! ### The platform verdicts
+
+`Platform.admits_iff` turns the admission test at a platform capability into the
+containment test of the classifier the platform declares, and the kernel decides
+that.  Both binders of E3 are `Control`, so both are admitted. -/
+
+theorem E3_admits_k1 :
+    E3Plat.ctx.translate.admitsB (CapAtom.cvar E3Tk1) (Cls.only Cls.Control) = true := by
+  rw [DotMNF.Platform.admits_iff E3Plat E3Tk1]
+  decide
+
+theorem E3_admits_k2 :
+    E3Plat.ctx.translate.admitsB (CapAtom.cvar E3Tk2) (Cls.only Cls.Control) = true := by
+  rw [DotMNF.Platform.admits_iff E3Plat E3Tk2]
+  decide
+
+/-! ### The checker at the platform binders
+
+`k-label` at each binder, decided in the kernel.  These are the two verdicts the
+literals' `capkI` premises rest on. -/
+
+theorem E3_kcls_k1 :
+    checkKindCo E3Plat.ctx.translate (.kcls (CapAtom.cvar E3Tk1)) [CapAtom.cvar E3Tk1]
+      (Cls.only Cls.Control) = true := by
+  rw [E3_ctx_translate]
+  decide
+
+theorem E3_kcls_k2 :
+    checkKindCo E3Plat.ctx.translate (.kcls (CapAtom.cvar E3Tk2)) [CapAtom.cvar E3Tk2]
+      (Cls.only Cls.Control) = true := by
+  rw [E3_ctx_translate]
+  decide
+
+/-! ### The resolution of the platform set
+
+Both binders survive `only[Control]`, because both are `Control`.  The equation
+for `Ctx.caps` is proved by `simp` over the clause lemmas and the expansion is
+decided, in the manner of K1x. -/
+
+theorem E3_caps_uses (n : Nat) :
+    E3Plat.ctx.translate.caps n [CapAtom.cvar E3Tk1, CapAtom.cvar E3Tk2]
+      = [CapAtom.cvar E3Tk1, CapAtom.cvar E3Tk2] := by
+  rw [E3_ctx_translate]
+  simp [E3TCtx, Ctx.capsAtom_cvar, Ctx.capsBound,
+    CapBound.weaken, CapBound.rename]
+
+theorem E3_roots_uses :
+    E3Plat.ctx.translate.roots 0 [CapAtom.cvar E3Tk1, CapAtom.cvar E3Tk2]
+      = [CapAtom.cvar E3Tk1, CapAtom.cvar E3Tk2] := by
+  rw [Ctx.roots_eq_expand_caps, E3_caps_uses, E3_ctx_translate]
+  decide
+
+/-! ### The source evidence, through the translation -/
+
+/-- The kinding of the program's use set translates to target kinding
+evidence. -/
+theorem E3_kind_translate_typed :
+    E3Plat.ctx.translate ⊢ᵏ DotMNF.Examples.E3_kind.translate :
+      E3Uses.translate ⊑ᵏ (Cls.only Cls.Control) :=
+  DotMNF.CapKind.translate_typed _ E3_ctx_wf
+
+/-- And the checker accepts it. -/
+theorem E3_kind_checked :
+    checkKindCo E3Plat.ctx.translate DotMNF.Examples.E3_kind.translate
+      E3Uses.translate (Cls.only Cls.Control) = true :=
+  checkKindCo_iff_hasType.mpr E3_kind_translate_typed
+
+/-- The `kcls` the first literal's `capkI` premises, translated. -/
+theorem E3_kind_a_translate_typed :
+    E3CtxB.translate ⊢ᵏ DotMNF.Examples.E3_kind_a.translate :
+      E3aSet.translate ⊑ᵏ (Cls.only Cls.Control) :=
+  DotMNF.CapKind.translate_typed _ E3_absCtx_wf
+
+/-- And the checker accepts it. -/
+theorem E3_kind_a_checked :
+    checkKindCo E3CtxB.translate DotMNF.Examples.E3_kind_a.translate
+      E3aSet.translate (Cls.only Cls.Control) = true :=
+  checkKindCo_iff_hasType.mpr E3_kind_a_translate_typed
+
+/-- The whole program's translation is typed at the translated type. -/
+theorem E3_translate_typed :
+    Tm.HasType E3Plat.ctx.translate DotMNF.Examples.E3_typed.translate
+      (DotMNF.ETy.translate (.ty DotMNF.Examples.E3Ty)) :=
+  DotMNF.HasTy.translate_typed _ E3_ctx_wf
+
+/-! ### The `capkI` morphism and its kinding entry
+
+`SubShape.capkI` compiles to an object coercion whose morphism is one
+`Morphism.kindCle`: a chain into the member's own upper bound, the capture hole
+of the two-entry telescope a set-bounded member compiles to, a chain out of it,
+and the closed kinding of the bound.  Its target is the one-entry telescope of a
+kind-bounded member, `[name .here C] ⊑ᵏ only[Control]`.
+
+`mor_canon` is what reads that entry: its `kindCle` case normalizes the two
+chains with `sideC_canon` and the closed kinding with `kind_canon`, and the
+semantic step behind the entry is `kindCle_semantic`. -/
+
+/-- The morphism the first literal's `capkI` step compiles to. -/
+def E3capkIMor : Morphism ([],c,c,x,x,x) :=
+  .kindCle .nil .nil (.leC 1) .nil DotMNF.Examples.E3_kind_a.translate
+    (Cls.only Cls.Control)
+
+/-- **The `capkI` morphism is typed**, from the two-entry telescope of
+`{C : {κ₁}..{κ₁}}` to the one-entry telescope of `{C : only[Control]}`. -/
+theorem E3_capkI_mor :
+    E3CtxB.translate ⊢ E3capkIMor :
+      (DotMNF.Shape.cap lC E3aSet E3aSet).tel ⇒
+        (DotMNF.Shape.capk lC (Cls.only Cls.Control)).tel := by
+  rw [DotMNF.Shape.tel_capk]
+  refine .kindCle .nil ?_ .nil .nil (DotMNF.CapKind.translate_typed _ E3_absCtx_wf)
+  rw [DotMNF.Shape.tel_cap]
+  exact .leC (Telescope.At.one_two _ _)
+
+/-- **The kinding entry, canonically.**  `mor_canon` normalizes the morphism to
+an entry list typed between the two telescopes.  The `kindCle` case is the one
+that runs here, and the semantic step it carries is `kindCle_semantic`. -/
+theorem E3_capkI_mor_canon {σ : Store ([],c,c,x,x,x)}
+    (hσ : Store.Typed σ E3CtxB.translate) :
+    MorConcl σ E3CtxB.translate (DotMNF.Shape.cap lC E3aSet E3aSet).tel E3capkIMor
+      (DotMNF.Shape.capk lC (Cls.only Cls.Control)).tel :=
+  mor_canon hσ E3_capkI_mor
+
+/-! ### The client, charged by `kmember`
+
+The source's `ksel` translates to `KindCo.kmember` at the member's own telescope
+and index `0`, since a kind-bounded member compiles to a one-entry telescope.
+That is the whole of the client's charge: the closure's set `{x.C}` is kinded,
+and no subcapturing step widens it. -/
+
+/-- The translation of the client's kinding is a `kmember`. -/
+theorem E3_client_kind_kmember :
+    DotMNF.Examples.E3_client_kind_plat.translate
+      = KindCo.kmember DotMNF.Examples.E3xCapPlat.translateAtom
+          (.refl (DotMNF.Shape.capk lC (Cls.only Cls.Control)).translate) 0 := by
+  rw [DotMNF.Examples.E3_client_kind_plat, DotMNF.Examples.E3_client_kind,
+    DotMNF.CapKind.translate.eq_def]
+  rfl
+
+/-- And it is typed at the translated set. -/
+theorem E3_client_kind_translate_typed :
+    E3ClientCtx.translate ⊢ᵏ DotMNF.Examples.E3_client_kind_plat.translate :
+      E3ClosureSet.translate ⊑ᵏ (Cls.only Cls.Control) :=
+  DotMNF.CapKind.translate_typed _ E3_clientCtx_wf
+
+/-- And the checker accepts it. -/
+theorem E3_client_kind_checked :
+    checkKindCo E3ClientCtx.translate DotMNF.Examples.E3_client_kind_plat.translate
+      E3ClosureSet.translate (Cls.only Cls.Control) = true :=
+  checkKindCo_iff_hasType.mpr E3_client_kind_translate_typed
+
+/-! ### Capture prediction at `only[Control]` -/
+
+/-- The initial target state of E3's program. -/
+def E3TgtInit : State ([],c,c) :=
+  ⟨E3Plat.targetStore, .nil, DotMNF.Examples.E3_typed.translate⟩
+
+/-- The program's declared use set is kinded at `only[Control]`, semantically:
+`kind_canon` of the translated source evidence. -/
+theorem E3_kindLe_uses :
+    E3Plat.ctx.translate.KindLe E3Uses.translate (Cls.only Cls.Control) :=
+  kind_canon E3Plat.targetStore_typed E3_kind_translate_typed
+
+/-- **E3, capture prediction at `only[Control]`.**  `dot_classified_prediction`
+at E3's platform, its program and its use set: along any source run the matched
+target state's use set is below the declared one and is kinded at
+`only[Control]`. -/
+theorem E3_prediction {s : Sig} {st : DotMNF.State s}
+    (run : DotMNF.Steps
+      (⟨E3Plat.store, .nil, DotMNF.Examples.E3tm⟩ : DotMNF.State ([],c,c)) st) :
+    ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c) s),
+      State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+        Store.Ext E3Plat.targetStore stt.σ ρ ∧
+          CapLe Γ' stt.uses (E3Uses.translate.rename ρ) ∧
+            Γ'.KindLe stt.uses (Cls.only Cls.Control) :=
+  DotMNF.dot_classified_prediction E3Plat DotMNF.Examples.E3_typed E3_kindLe_uses run
+
+/-- The same from the source's own kinding evidence, through T8'. -/
+theorem E3_prediction' {s : Sig} {st : DotMNF.State s}
+    (run : DotMNF.Steps
+      (⟨E3Plat.store, .nil, DotMNF.Examples.E3tm⟩ : DotMNF.State ([],c,c)) st) :
+    ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c) s),
+      State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+        Store.Ext E3Plat.targetStore stt.σ ρ ∧
+          CapLe Γ' stt.uses (E3Uses.translate.rename ρ) ∧
+            Γ'.KindLe stt.uses (Cls.only Cls.Control) :=
+  DotMNF.dot_classified_prediction' E3Plat DotMNF.Examples.E3_typed
+    DotMNF.Examples.E3_kind run
+
+/-! ### Stability over the extended platform
+
+One more `Platform.consCls`, one more `Control` capability, and every decided
+verdict of the page above still holds.  The two platforms are stated side by
+side so that the reader can see that no statement of the left one is rewritten
+for the right one.  A set bound `{}..{κ₁,κ₂}` would have to become
+`{}..{κ₁,κ₂,κ₃}`, and so would every derivation that reads it. -/
+
+/-- **The checker's verdicts stand over both platforms.**  `k-label` at every
+binder of E3's platform, and at every binder of the extended one. -/
+theorem E3_stable_kcls :
+    (checkKindCo E3TCtx (.kcls (CapAtom.cvar E3Tk1)) [CapAtom.cvar E3Tk1]
+        (Cls.only Cls.Control) = true ∧
+      checkKindCo E3TCtx (.kcls (CapAtom.cvar E3Tk2)) [CapAtom.cvar E3Tk2]
+        (Cls.only Cls.Control) = true) ∧
+    (checkKindCo E3TCtx3 (.kcls (CapAtom.cvar E3Tk1')) [CapAtom.cvar E3Tk1']
+        (Cls.only Cls.Control) = true ∧
+      checkKindCo E3TCtx3 (.kcls (CapAtom.cvar E3Tk2')) [CapAtom.cvar E3Tk2']
+        (Cls.only Cls.Control) = true ∧
+      checkKindCo E3TCtx3 (.kcls (CapAtom.cvar E3Tk3)) [CapAtom.cvar E3Tk3]
+        (Cls.only Cls.Control) = true) := by decide
+
+/-- **The admission verdicts stand over both platforms.** -/
+theorem E3_stable_admits :
+    (E3TCtx.admitsB (CapAtom.cvar E3Tk1) (Cls.only Cls.Control) = true ∧
+      E3TCtx.admitsB (CapAtom.cvar E3Tk2) (Cls.only Cls.Control) = true) ∧
+    (E3TCtx3.admitsB (CapAtom.cvar E3Tk1') (Cls.only Cls.Control) = true ∧
+      E3TCtx3.admitsB (CapAtom.cvar E3Tk2') (Cls.only Cls.Control) = true ∧
+      E3TCtx3.admitsB (CapAtom.cvar E3Tk3) (Cls.only Cls.Control) = true) := by decide
+
+/-- The extended platform's set is kinded too, by the same rule one more
+time. -/
+theorem E3_kind3_translate_typed :
+    E3Plat3.ctx.translate ⊢ᵏ DotMNF.Examples.E3_kind3.translate :
+      DotMNF.CaptureSet.translate
+        [DotMNF.CapAtom.cvar E3k1', DotMNF.CapAtom.cvar E3k2', DotMNF.CapAtom.cvar E3k3] ⊑ᵏ
+        (Cls.only Cls.Control) :=
+  DotMNF.CapKind.translate_typed _ (DotMNF.Platform.ctx_wf E3Plat3)
+
+/-- And the third literal's retyping is typed at the target, with no change to
+the member and no change to the client. -/
+theorem E3_third_translate_typed :
+    Tm.HasType DotMNF.Examples.E3CtxD.translate
+      DotMNF.Examples.E3_abstract_c.translate
+      (DotMNF.ETy.translate (.ty (DotMNF.Examples.E3AbsTyAt
+        [DotMNF.CapAtom.cvar (.there (.there (.there .here))),
+          DotMNF.CapAtom.cvar (.there (.there .here)),
+          DotMNF.CapAtom.cvar (.there .here)]))) :=
+  DotMNF.HasTy.translate_typed _ (.cons (DotMNF.Platform.ctx_wf E3Plat3))
+
+end E3cls
+
 end Examples
 end FCdot
 

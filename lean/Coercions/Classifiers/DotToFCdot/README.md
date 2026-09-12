@@ -1,11 +1,15 @@
-# DotToFCdot, at stage K2 of classifiers
+# DotToFCdot, at stage K3 of classifiers
 
-**Stages K0 and K1 of classifiers changed no rule, no judgment and no translation clause here, and
-K2 is the stage that carries the classifier across.**  Through K1 the source wrote no classifier, so
-the translation produced no projected capture atom, and the two lemmas that say so were the only
-lines of this directory those stages touched.  K2 translates the source's projected atoms, its
-kind-bounded capture member, its classified context binder and its whole capture-kinding judgment,
-and it states the source's two classified theorems.  The stage's section is the last one below.
+**Stages K0 and K1 of classifiers changed no rule, no judgment and no translation clause here, K2 is
+the stage that carries the classifier across, and K3 changes nothing here at all.**  Through K1 the
+source wrote no classifier, so the translation produced no projected capture atom, and the two
+lemmas that say so were the only lines of this directory those stages touched.  K2 translates the
+source's projected atoms, its kind-bounded capture member, its classified context binder and its
+whole capture-kinding judgment, and it states the source's two classified theorems, T8 and T9, with
+their primed forms.  K3's three examples read every one of those four theorems, at `only[Control]`
+and at `except[ThreadLocal]`, but instantiate them from `../FCdot/Examples.lean`, the module that
+imports this directory, so no definition and no theorem of K3 lives here.  The stage's section is the
+last one below.
 
 The translation of DOT-MNF^cc into FCdot^cc (Plan III §8, milestones M3 to
 M5), namespace `DotMNF`.  Derivations are `Type`-valued, so the translation
@@ -864,5 +868,25 @@ transported to the matched target state exactly as `dot_effect_safety` transport
 forms take `CapKind P.ctx U φ` and feed
 `FCdot.kind_canon P.targetStore_typed (g.translate_typed P.ctx_wf)` to the unprimed ones.  That is
 the one place a source program consumes K1's canonical form.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound` for every theorem of the stage.
+
+## Stage K3
+
+K3 is the closing stage of classifiers (`plan-5f-classifiers-stages.md` §K3), the three mandatory
+examples of `plan-5-extensions.md` §5.  No module of this directory changes.  E1 and E2 are decided by
+`dot_classified_effect_safety'` (T9'), and E3 by `dot_classified_prediction` (T8) and its primed form,
+each an instance the target page states in `../FCdot/Examples.lean`.
+
+```
+DotMNF.dot_classified_prediction  (T8)   at only[Control], instantiated by E3_prediction
+DotMNF.dot_classified_prediction' (T8')  at only[Control], instantiated by E3_prediction'
+DotMNF.dot_classified_effect_safety  (T9)  at only[Control] and at except[ThreadLocal]
+DotMNF.dot_classified_effect_safety' (T9') instantiated by E1_effect_safety and E2_effect_safety
+```
+
+| module | what K3 added |
+|---|---|
+| every module | nothing.  The three examples read `Platform.ctx` and the four theorems of K2 as they stand |
 
 Axioms (`#print axioms`): `propext` and `Quot.sound` for every theorem of the stage.
