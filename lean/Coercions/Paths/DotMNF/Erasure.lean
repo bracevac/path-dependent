@@ -54,7 +54,7 @@ theorem appendFields_rename {s1 s2 : Sig} (F G : Runtime.Fields s1) (ρ : Rename
 mutual
 
 def Tm.erase : Tm s → Runtime.Tm s
-  | .path p => .var p.root
+  | .path x => .var x
   | .val v => v.erase
   | .app x y => .app x y
   | .proj x a => .proj x a
@@ -90,7 +90,7 @@ mutual
 theorem Tm.erase_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
     (t.rename ρ).erase = t.erase.rename ρ := by
   match t with
-  | .path p => simp only [Tm.rename, Tm.erase, Runtime.Tm.rename, Path.root_rename]
+  | .path x => simp only [Tm.rename, Tm.erase, Runtime.Tm.rename]
   | .val v => simp only [Tm.rename, Tm.erase, Value.erase_rename v ρ]
   | .app x y => simp only [Tm.rename, Tm.erase, Runtime.Tm.rename]
   | .proj x a => simp only [Tm.rename, Tm.erase, Runtime.Tm.rename]
@@ -185,7 +185,7 @@ theorem erase_step {s s' : Sig} {st : State s} {st' : State s'} (h : Step st st'
       simp only [State.erase, Tm.erase, Cont.erase, Store.erase, Cont.erase_weaken]
       exact Runtime.Step.alloc (Value.isValue_erase _)
   | rename =>
-      simp only [State.erase, Tm.erase, Cont.erase, Path.root, Tm.erase_substVar]
+      simp only [State.erase, Tm.erase, Cont.erase, Tm.erase_substVar]
       exact Runtime.Step.rename
   | app hl =>
       simp only [State.erase, Tm.erase, Tm.erase_substVar]
@@ -248,8 +248,8 @@ theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
     ∃ st' : State s', Step st st' ∧ st'.erase = r := by
   obtain ⟨σ, K, t⟩ := st
   match K, t with
-  | .nil, .path (.var x) =>
-      simp only [State.erase, Cont.erase, Tm.erase, Path.root] at h
+  | .nil, .path x =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
       cases h
   | .nil, .val (.lam S t) =>
       simp only [State.erase, Cont.erase, Tm.erase, Value.erase] at h
@@ -269,8 +269,8 @@ theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
       simp only [State.erase, Cont.erase, Tm.erase] at h
       cases h with
       | «let» => exact reflect_let
-  | .cons K u, .path (.var x) =>
-      simp only [State.erase, Cont.erase, Tm.erase, Path.root] at h
+  | .cons K u, .path x =>
+      simp only [State.erase, Cont.erase, Tm.erase] at h
       cases h with
       | alloc hv => cases hv
       | rename =>
