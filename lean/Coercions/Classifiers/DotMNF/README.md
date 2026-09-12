@@ -1,11 +1,13 @@
-# DotMNF, at stage B3 of captures the compiler's way (unchanged in K0)
+# DotMNF, at stage K2 of classifiers
 
 DOT-MNF^cc, the capturing source of the translation in `../DotToFCdot`.
 
-**Stage K0 of classifiers changed nothing here.**  The source writes no classifier and no projected
-capture atom, so no syntax, no rule, no judgment and no theorem of this directory moved, and every
-statement below is the statement it was, with the proof it had.  The classified source is K2's
-subject.
+**Stages K0 and K1 of classifiers changed nothing here, and K2 is the stage that classifies the
+source.**  Through K1 the source wrote no classifier and no projected capture atom, so no syntax, no
+rule, no judgment and no theorem of this directory moved.  K2 gives the source the projected capture
+atom, the kind-bounded capture member, the classified context binder and its own capture-kinding
+judgment, and the stage's section is the last one below.  Every statement of the stages before it is
+the statement it was, with the proof it had, except the three rows K2 lists.
 
 | module | contents |
 |---|---|
@@ -678,3 +680,149 @@ statement's content moves with the widening: the two opened capture binders are 
 the two cells are declared at the sets the two calls assigned them.
 
 Axioms (`#print axioms`): none or `propext` for every fact above, `propext` for every derivation.
+
+## Stage K2
+
+K2 is the stage that classifies the source (`plan-5f-classifiers-stages.md` §K2).  A capture atom may
+be projected by a kind, a capture member may be declared at a kind instead of at a pair of sets, a
+context binder may declare a classifier, and the source gets its own capture-kinding judgment,
+`CapKind`, whose ten rules mirror the target's `KindCo`.
+
+Four sentences fix the shape of the stage.
+
+The kinding judgment is `Type` valued and it lives in the big mutual block that holds `Subcap`,
+`SubShape`, `Sub`, `ESub`, `HasTy` and `DefsTy`.  Two reasons, and both are forced.  `ksel` premises
+`HasTy`, and a Lean mutual inductive block may not mix a `Prop`-valued inductive with `Type`-valued
+ones.  And `CapKind.translate` is a function into the target's `KindCo`, which is `Type`, and a
+ten-constructor `Prop` has no large elimination.  That is the argument that made `Subcap`
+`Type`-valued, and the source side follows it.  The cost is decision 19: two derivations of the same
+kinding judgment are two terms, nothing quantifies over them, and the source has no kinding checker
+of its own, only the target's read through the translation.
+
+A projected `any` is legal and a projected `fresh` is not, which is decision 20.  The asymmetry is
+forced by where the two notations are read.  `any` is read by `CaptureSet.expand`, which pushes the
+reading under a projection, so `{any ↾ except[ThreadLocal]}` in a parameter's capture set expands to
+the arrow's own capture binder projected, which is `cap` with a filter.  `fresh` is read by
+`Ty.expandFresh`, which tests a syntactic membership of the bare atom at the top of a result set, so
+a projected `fresh` would survive expansion and then be dropped by the translation, which would make
+the declared set smaller than the program justifies.  `ETy.codFreshOk` refuses it, and the conjunct
+it gains is vacuously true on every projection-free set.
+
+At the four positions where `any` is forbidden the reading is the empty set, so `noAny` has to
+descend through a projection.  Without the descent `Shape.AnyOk (.typ A (⊤ ^ [any ↾ only Control]) ⊤)`
+is true and the bound expands to `{}`, so the program is typed at a bound it never wrote.  The two
+`decide` facts at the end of `Syntax.lean` are that counterexample and its refusal.
+
+There is no definition form for a kind-bounded capture member, which is decision 17.  A literal's
+capture witnesses are read off its declaration shape, `.capk A φ` carries no set, and a literal
+declared at it would be untypable.  So `Defs`, `Defs.Distinct`, `Defs.labels`, `Defs.erase` and
+`DefsTy` are untouched, a literal writes `Defs.cap A c` as it always did, and `SubShape.capkI`
+retypes it at the kind bound, exactly as C2 already retypes through `Rec-E`, `Cap` and `Rec-I`.
+
+`Ctx.consCls` is a seventh context constructor and not a payload on `consC`, which is decision 10 one
+stage further on.  The price is one clause in each function that recurses on a context, and the
+reward is that every existing example, `Platform.ctx`, `Platform.store` and `Platform.targetStore`
+stay textually unchanged.
+
+| module | what K2 changed |
+|---|---|
+| `Syntax` | the constructors `CapAtom.proj` and `Shape.capk`, with `CapAtom.base`, `CapAtom.kindOf`, `CapAtom.projBy` and `CaptureSet.proj`, the source twins of the target's four.  The four atom-level helpers `CapAtom.expandA`, `noAnyA`, `substFreshA` and `noFreshA`, through which `CaptureSet.expand`, `noAny`, `substFresh` and `noFresh` are restated.  `CapAtom.freshTop` and `CaptureSet.freshTopOk`, the test `ETy.codFreshOk` gains.  The `capk` clauses of `Shape.rename`, `subst`, `expand`, `substFresh`, `noAny`, `anyOk`, `noFresh`, `isDecl`, `Shape.Decl` and `Shape.Wf`.  The two repaired `_cons_of_ne` lemmas, and the two acceptance facts |
+| `Typing` | `Ctx.consCls` with its clauses in `lookup`, `instSet?`, `root?`, `lvl` and `rootB` and in the five spine inductions; `Ctx.clsOfB`, `Ctx.clsOf?` and `Ctx.ClsOf`; `Ctx.lvlLeB`'s projection clause; `CapKind` with its ten rules; three `Subcap` rules and two `SubShape` rules; `CapKind.MemberFree`, mutual with `Subcap.MemberFree`, which moves here from `../DotToFCdot/Evidence.lean` |
+| `Machine` | `Platform.consCls`, whose `store` clause is `.consC`, because a classifier is not runtime content, and `Platform.classOf` |
+| `Erasure`, `Examples` | nothing.  A projection and a kind bound erase to nothing, and no existing example writes either |
+
+### The rules
+
+The ten rules of `CapKind`.  `a` is a general atom throughout: `a.base` is the atom under its
+projections and `a.kindOf` is the intersection of the kinds they carry, which is `Cls.Kind.top` when
+there are none.
+
+```
+nil    : CapKind Γ [] φ
+cons   : CapKind Γ [a] φ → CapKind Γ C φ → CapKind Γ (a :: C) φ
+kproj  : a.kindOf.Subkind φ → CapKind Γ [a] φ
+kcls   : Ctx.ClsOf Γ a.base c → (a.kindOf.Contains c → φ.Contains c) → CapKind Γ [a] φ
+kvar   : a.base = CapAtom.var x →
+           CapKind Γ ((Γ.lookup x).captureSet.proj a.kindOf) φ → CapKind Γ [a] φ
+kcvar  : a.base = CapAtom.cvar κ → Ctx.InstOf Γ κ C →
+           CapKind Γ (C.proj a.kindOf) φ → CapKind Γ [a] φ
+ksel   : HasTy U Γ (.path (.var x)) (.ty ((Shape.capk A φ) ^ D)) → CapKind Γ [.sel x A] φ
+kprojS : CapKind Γ C φ → CapKind Γ (C.proj ψ) φ
+ksub   : CapKind Γ C φ₁ → φ₁.Subkind φ₂ → CapKind Γ C φ₂
+kle    : Subcap Γ C D → CapKind Γ D φ → CapKind Γ C φ
+```
+
+`kcls` reads a classifier at a `consCls` binder alone.  A `consC` binder declares none, so it is
+kinded only by `kproj`, which asks that `φ` admit every classifier: an unwritten classifier means
+unknown, which is the revised decision 9, and it is why the examples write their platform
+capabilities as `consCls` binders.
+
+The three new subcapturing rules and the two new shape rules, all five additive.
+
+```
+Subcap.unproj   : Subcap Γ (C.proj φ) C
+Subcap.proj     : CapKind Γ C φ → Subcap Γ C (C.proj φ)
+Subcap.projMono : Subcap Γ C D → Subcap Γ (C.proj ψ) (D.proj ψ)
+SubShape.capkI  : CapKind Γ c2 φ → SubShape Γ (.cap A c1 c2) (.capk A φ)
+SubShape.capk   : φ₁.Subkind φ₂ → SubShape Γ (.capk A φ₁) (.capk A φ₂)
+```
+
+`sc-var` at a projection is `projMono` composed with `var` and needs no rule of its own, since
+`[a].proj ψ` is `[a ↾ ψ]`.  `capkI` is how a literal reaches a kind bound, and its translation is the
+hardest lemma of the stage, in `../DotToFCdot/README.md`.
+
+### Statements restated
+
+Three, and all three are rows of K2.9.  No theorem gains a hypothesis and no conclusion is weakened.
+
+| statement | change | why the meaning is the same |
+|---|---|---|
+| `CaptureSet.expand_cons_of_ne` | the premise `a ≠ .any` becomes `a.base ≠ .any` | a projected `any` satisfies the old premise and expands like `any`, so the old form is false, and it is machine checked false by the witness `.proj .any Cls.Kind.top`.  On a projection-free atom `base` is the identity and the premise is the old one word for word |
+| `CaptureSet.noAny_cons_of_ne` | the same | the same, with `CapAtom.noAnyA_iff` as the bridge, and the thirteen call sites inside the file each discharge the new premise by `simp [CapAtom.base]` |
+| `ETy.codFreshOk` | the plain-answer clause gains the conjunct `C.freshTopOk` | every atom of a projection-free set is `fresh` or is `noFreshA`, so `freshTopOk` is `true` there and the function is the copied one.  `Ty.expandFresh` is untouched |
+
+Four definitions are restated in the new representation with the same meaning on every copied
+constructor, and no hypothesis is added anywhere.
+
+| definition | change | why the meaning is the same |
+|---|---|---|
+| `CaptureSet.expand`, `CaptureSet.substFresh` | each becomes the append of an atom-level helper over the list | the helper agrees with the copied clause on every copied constructor, and all five `@[simp]` clause lemmas stay `rfl`, because `[a] ++ L` reduces to `a :: L`.  `expand_append` and `expand_rename` keep their statements.  The helper maps with the constructor `CapAtom.proj` and not with `CapAtom.projBy`, because a normalising map makes the repaired `expand_cons_of_ne` false again at a nested projection |
+| `CaptureSet.noAny`, `CaptureSet.noFresh` | each becomes a fold of an atom-level helper that recurses at `proj` | `false && b` is `false` and `true && b` is `b`, both by iota, so every copied clause holds by `rfl` |
+| `CapAtom`, `Shape`, `Ctx` | one constructor each, `proj`, `capk` and `consCls` | additive, and every existing constructor and every existing clause is untouched.  `consC` is `consCls` at no declaration |
+| `Ctx.lvlLeB` | one clause, `.proj a _` reading through to `a` | D8.  The three copied clauses and the wildcard are untouched, no copied atom matches the new clause, and the target reads through a projection on both sides already |
+| `Subcap.MemberFree` | moves here from `../DotToFCdot/Evidence.lean`, keeping its seven constructors word for word and gaining one clause per new rule | a relocation inside one namespace: the full name and every constructor is unchanged, so every reference in `../DotToFCdot/` still resolves.  It has to move, because `Subcap.proj` premises a `CapKind` and `CapKind.kle` premises a `Subcap`, so the two member-free families are mutual and a mutual block lives in one file |
+| `Defs`, `Defs.Distinct`, `Defs.labels`, `Defs.erase`, `DefsTy`, `Ty.expandFresh`, `Machine`, `Erasure` | nothing | there is no new definition form, which is decision 17, and a projection and a kind bound erase to nothing |
+
+### New definitions and lemmas
+
+```
+DotMNF.CapAtom.base, .kindOf, .projBy, DotMNF.CaptureSet.proj    the source twins of the target's
+DotMNF.CapAtom.expandA, .noAnyA, .substFreshA, .noFreshA         the four atom-level helpers
+DotMNF.CapAtom.noAnyA_iff : a.noAnyA = true ↔ a.base ≠ .any      the bridge of the two repaired rows
+DotMNF.CapAtom.freshTop, DotMNF.CaptureSet.freshTopOk            the test codFreshOk gains
+DotMNF.Ctx.clsOfB, .clsOf?, .ClsOf                               the classifier reader, decidable
+DotMNF.Ctx.clsOf_consCls                                         the classifier is read back
+DotMNF.Ctx.rootB_consCls, .root?_consCls                         a classified binder is no scope root
+DotMNF.Ctx.lvlLeB_proj                                           the new clause as an equation
+DotMNF.Ctx.lvlLe_depth_step                                      the inner step of LvlLe.trans
+DotMNF.Ctx.lvlLeB_weakenCls                                      the sixth weakening commutation
+DotMNF.Platform.consCls, .classOf                                the classified platform binder
+```
+
+### The acceptance facts
+
+Four, at the end of `Syntax.lean`, each with the clause it forces.
+
+```
+DotMNF.Shape.anyOk projAnyBound = false                         by decide
+DotMNF.CaptureSet.expand [any ↾ only Control] [] = []           by rfl
+DotMNF.ETy.codFreshOk (.ty (⊤ ^ [fresh ↾ only Control])) = false by decide
+DotMNF.ETy.codFreshOk (.ty (⊤ ^ [fresh])) = true                by decide
+```
+
+The first two are the counterexample of decision 20 and its refusal: without the descent of `noAnyA`
+through a projection the shape is `AnyOk`, and the bound would then be read at the empty set.  The
+last two are the other half: a projected `fresh` in a result set is refused and a bare `fresh` stays
+legal where `Ty.expandFresh` reads it.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem of the stage.

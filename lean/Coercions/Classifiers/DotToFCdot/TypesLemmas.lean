@@ -89,6 +89,13 @@ theorem CapBound.instSet?_weaken' {s : Sig} {k : Kind} (b : CapBound s) :
     (CapBound.weaken (k := k) b).instSet? = (b.instSet?).map (CaptureSet.weaken (k := k)) := by
   cases b <;> rfl
 
+/-- The declared classifier of a weakened capture bound.  A classifier
+mentions no de Bruijn index, which is Fact 1, so nothing is weakened on the
+way out. -/
+theorem CapBound.clsOf?_weaken {s : Sig} {k : Kind} (b : CapBound s) :
+    (CapBound.weaken (k := k) b).clsOf? = b.clsOf? := by
+  cases b <;> rfl
+
 end FCdot
 
 namespace DotMNF
@@ -105,6 +112,7 @@ theorem Shape.isDecl_rename {s s' : Sig} : ∀ (S : Shape s) (ρ : Rename s s'),
   | .typ _ _ _, _ => rfl
   | .fld _ _, _ => rfl
   | .cap _ _ _, _ => rfl
+  | .capk _ _, _ => rfl
   | .box _, _ => rfl
   | .all _ _, _ => rfl
   | .mu S, ρ => by simp [Shape.rename, Shape.isDecl, Shape.isDecl_rename S ρ.lift]
@@ -119,6 +127,7 @@ theorem Shape.isObj_rename {s s' : Sig} : ∀ (S : Shape s) (ρ : Rename s s'),
   | .typ _ _ _, _ => rfl
   | .fld _ _, _ => rfl
   | .cap _ _ _, _ => rfl
+  | .capk _ _, _ => rfl
   | .box _, _ => rfl
   | .all _ _, _ => rfl
   | .and _ _, _ => rfl
@@ -160,6 +169,10 @@ theorem Shape.translate_rename {s s' : Sig} (S : Shape s) (ρ : Rename s s') :
       simp [Shape.rename, Shape.translate, Shape.tel, FCdot.Shape.rename,
         FCdot.Telescope.rename, FCdot.Proposition.rename,
         FCdot.CaptureSet.rename_name_here, FCdot.CaptureSet.weaken_rename]
+  | .capk A φ =>
+      simp [Shape.rename, Shape.translate, FCdot.Shape.rename,
+        FCdot.Telescope.rename, FCdot.Proposition.rename,
+        FCdot.CaptureSet.rename_name_here]
   | .and S1 S2 =>
       simp [Shape.rename, Shape.translate, Shape.tel, FCdot.Shape.rename,
         FCdot.Telescope.append_rename', Shape.tel_rename S1 ρ, Shape.tel_rename S2 ρ]
@@ -203,6 +216,9 @@ theorem Shape.tel_rename {s s' : Sig} (S : Shape s) (ρ : Rename s s') :
       simp [Shape.rename, Shape.tel, FCdot.Telescope.rename, FCdot.Proposition.rename,
         FCdot.CaptureSet.rename_name_here,
         FCdot.CaptureSet.weaken_rename]
+  | .capk A φ =>
+      simp [Shape.rename, FCdot.Telescope.rename, FCdot.Proposition.rename,
+        FCdot.CaptureSet.rename_name_here]
   | .and S1 S2 =>
       simp [Shape.rename, Shape.tel, FCdot.Telescope.append_rename',
         Shape.tel_rename S1 ρ, Shape.tel_rename S2 ρ]
@@ -247,6 +263,9 @@ theorem Shape.telSelf_rename {s s' : Sig} (S : Shape (s,x)) (ρ : Rename s s') :
         FCdot.CaptureSet.rename_name_here, Shape.translate_rename S0 ρ.lift]
   | .cap A c1 c2 =>
       simp [Shape.rename, Shape.telSelf, FCdot.Telescope.rename, FCdot.Proposition.rename,
+        FCdot.CaptureSet.rename_name_here]
+  | .capk A φ =>
+      simp [Shape.rename, FCdot.Telescope.rename, FCdot.Proposition.rename,
         FCdot.CaptureSet.rename_name_here]
   | .and S1 S2 =>
       simp [Shape.rename, Shape.telSelf, FCdot.Telescope.append_rename',
@@ -338,6 +357,7 @@ theorem Shape.tel_eq_telSelf_weaken {s : Sig} (S : Shape s) : S.tel = (S.weaken)
         FCdot.CaptureSet.weaken,
         CaptureSet.translate_rename c1 FCdot.Rename.succ,
         CaptureSet.translate_rename c2 FCdot.Rename.succ]
+  | .capk A φ => simp [Shape.weaken, Shape.rename]
   | .and S1 S2 =>
       simp [Shape.weaken, Shape.rename, Shape.tel, Shape.telSelf,
         Shape.tel_eq_telSelf_weaken S1, Shape.tel_eq_telSelf_weaken S2]
@@ -436,6 +456,10 @@ theorem Shape.tel_substVar {s : Sig} (S : Shape (s,x)) (r : BVar s .var) :
         FCdot.Rename.comp_assoc, FCdot.Rename.succ_subst,
         FCdot.Rename.comp_id, CaptureSet.translate_rename c1 (Rename.subst r),
         CaptureSet.translate_rename c2 (Rename.subst r)]
+  | .capk A φ =>
+      simp [Shape.substVar, Shape.rename,
+        FCdot.Telescope.rename, FCdot.Telescope.weaken, FCdot.Telescope.substVar,
+        FCdot.Proposition.rename]
   | .and S1 S2 =>
       have hS := Shape.tel_substVar S1 r
       have hT := Shape.tel_substVar S2 r
@@ -500,10 +524,21 @@ theorem Path.rename_inj {s1 s2 : Sig} (p p' : Path s1) (ρ : FCdot.Rename s1 s2)
 
 theorem CapAtom.rename_inj {s1 s2 : Sig} (a a' : CapAtom s1) (ρ : FCdot.Rename s1 s2)
     (hρ : ρ.Injective) (h : a.rename ρ = a'.rename ρ) : a = a' := by
-  cases a <;> cases a' <;> simp [CapAtom.rename] at h ⊢
-  · exact hρ _ _ h
-  · exact hρ _ _ h
-  · exact ⟨hρ _ _ h.1, h.2⟩
+  induction a generalizing a' with
+  | var x =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact hρ _ _ h
+  | cvar κ =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact hρ _ _ h
+  | sel x A =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact ⟨hρ _ _ h.1, h.2⟩
+  | any => cases a' <;> simp [CapAtom.rename] at h ⊢
+  | fresh => cases a' <;> simp [CapAtom.rename] at h ⊢
+  | proj b φ ih =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact ⟨ih _ h.1, h.2⟩
 
 theorem CaptureSet.rename_inj {s1 s2 : Sig} (ρ : FCdot.Rename s1 s2) (hρ : ρ.Injective) :
     ∀ (C C' : CaptureSet s1), CaptureSet.rename C ρ = CaptureSet.rename C' ρ → C = C'
@@ -533,6 +568,9 @@ theorem Shape.rename_inj {s1 s2 : Sig} (S S' : Shape s1) (ρ : FCdot.Rename s1 s
   | .cap A c1 c2 =>
       cases S' <;> simp [Shape.rename] at h ⊢
       exact ⟨h.1, CaptureSet.rename_inj ρ hρ c1 _ h.2.1, CaptureSet.rename_inj ρ hρ c2 _ h.2.2⟩
+  | .capk A φ =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact h
   | .mu S0 =>
       cases S' <;> simp [Shape.rename] at h ⊢
       exact Shape.rename_inj S0 _ ρ.lift hρ.lift h
@@ -576,6 +614,7 @@ theorem Shape.witnesses_rename {s s' : Sig} (S : Shape (s,x)) (ρ : Rename s s')
   | .all T1 T2 => simp [Shape.rename, Shape.witnesses, FCdot.Witnesses.rename]
   | .box T => simp [Shape.rename, Shape.witnesses, FCdot.Witnesses.rename]
   | .cap A c1 c2 => simp [Shape.rename, Shape.witnesses, FCdot.Witnesses.rename]
+  | .capk A φ => simp [Shape.rename, Shape.witnesses, FCdot.Witnesses.rename]
   | .typ A S1 S2 =>
       simp [Shape.rename, Shape.witnesses, FCdot.Witnesses.rename,
         Shape.translate_rename S1 ρ.lift]
@@ -596,6 +635,7 @@ theorem Shape.fieldLabels_rename {s s' : Sig} (S : Shape s) (ρ : Rename s s') :
   | .all T1 T2 => simp [Shape.rename, Shape.fieldLabels]
   | .box T => simp [Shape.rename, Shape.fieldLabels]
   | .cap A c1 c2 => simp [Shape.rename, Shape.fieldLabels]
+  | .capk A φ => simp [Shape.rename, Shape.fieldLabels]
   | .typ A S1 S2 => simp [Shape.rename, Shape.fieldLabels]
   | .fld a T => simp [Shape.rename, Shape.fieldLabels]
   | .and S1 S2 =>
@@ -613,6 +653,8 @@ theorem Shape.fieldLabels_rename {s s' : Sig} (S : Shape s) (ρ : Rename s s') :
   | .box T => simp [Shape.rename, Shape.capWitnesses, FCdot.CapWitnesses.rename]
   | .typ A S1 S2 => simp [Shape.rename, Shape.capWitnesses, FCdot.CapWitnesses.rename]
   | .cap A c1 c2 =>
+      simp [Shape.rename, Shape.capWitnesses, FCdot.CapWitnesses.rename]
+  | .capk A φ =>
       simp [Shape.rename, Shape.capWitnesses, FCdot.CapWitnesses.rename]
   | .fld a (.capt C S0) =>
       simp [Shape.rename, Ty.rename, Shape.capWitnesses, FCdot.CapWitnesses.rename]
@@ -646,6 +688,7 @@ theorem Shape.Decl.rename : ∀ {s1 s2 : Sig} {S : Shape s1}, Shape.Decl S → �
   | _, _, _, .top, _ => .top
   | _, _, _, .typ, _ => .typ
   | _, _, _, .cap, _ => .cap
+  | _, _, _, .capk, _ => .capk
   | _, _, _, .fld, _ => .fld
   | _, _, _, .mu h, ρ => .mu (Shape.Decl.rename h ρ.lift)
   | _, _, _, .and hS hT, ρ => .and (Shape.Decl.rename hS ρ) (Shape.Decl.rename hT ρ)
@@ -662,6 +705,7 @@ theorem Shape.Decl.isObj {s : Sig} {S : Shape s} (h : Shape.Decl S) : S.isObj = 
   | top => rfl
   | typ => rfl
   | cap => rfl
+  | capk => rfl
   | fld => rfl
   | and => rfl
   | mu h' => exact (Shape.isDecl_iff _).mpr h'
@@ -738,6 +782,11 @@ theorem Ctx.translate_lookupCapInst {s : Sig} : ∀ (Γ : Ctx s) (κ : BVar s .c
       show (FCdot.CapBound.weaken (FCdot.CapBound.inst C.translate)).instSet? = _
       simp [FCdot.CapBound.weaken, FCdot.CapBound.rename, FCdot.CapBound.instSet?,
         Ctx.instSet?, CaptureSet.translate_weaken, FCdot.CaptureSet.weaken]
+  | .consCls Γ _, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).instSet? = _
+      rw [FCdot.CapBound.instSet?_weaken', Ctx.translate_lookupCapInst Γ κ]
+      simp [Ctx.instSet?, Option.map_map, Function.comp_def, CaptureSet.translate_weaken]
+  | .consCls _ _, .here => rfl
 
 theorem Ctx.translate_instSet? {s : Sig} (Γ : Ctx s) (κ : BVar s .cap) :
     Γ.translate.instSet? (FCdot.CapAtom.cvar κ) = (Γ.instSet? κ).map CaptureSet.translate :=
@@ -749,6 +798,47 @@ theorem Ctx.InstOf.translate {s : Sig} {Γ : Ctx s} {κ : BVar s .cap} {C : Capt
   show Γ.translate.instSet? (FCdot.CapAtom.cvar κ) = _
   rw [Ctx.translate_instSet?, h]
   rfl
+
+/-! ## Classified binders translate to classified binders
+
+The classifier twin of the three lemmas above: `Ctx.translate` sends
+`consCls Γ c` to `.consC _ (.cls c)`, and `.cls c` is the one target bound
+that declares a classifier. -/
+
+theorem Ctx.translate_lookupCapCls {s : Sig} : ∀ (Γ : Ctx s) (κ : BVar s .cap),
+    (Γ.translate.lookupCap κ).clsOf? = Γ.clsOfB κ
+  | .cons Γ _, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).clsOf? = _
+      rw [FCdot.CapBound.clsOf?_weaken, Ctx.translate_lookupCapCls Γ κ]; rfl
+  | .consSelf Γ _ _ _, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).clsOf? = _
+      rw [FCdot.CapBound.clsOf?_weaken, Ctx.translate_lookupCapCls Γ κ]; rfl
+  | .consC Γ, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).clsOf? = _
+      rw [FCdot.CapBound.clsOf?_weaken, Ctx.translate_lookupCapCls Γ κ]; rfl
+  | .consC _, .here => rfl
+  | .consRoot Γ, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).clsOf? = _
+      rw [FCdot.CapBound.clsOf?_weaken, Ctx.translate_lookupCapCls Γ κ]; rfl
+  | .consRoot _, .here => rfl
+  | .consInst Γ _, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).clsOf? = _
+      rw [FCdot.CapBound.clsOf?_weaken, Ctx.translate_lookupCapCls Γ κ]; rfl
+  | .consInst _ _, .here => rfl
+  | .consCls Γ _, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).clsOf? = _
+      rw [FCdot.CapBound.clsOf?_weaken, Ctx.translate_lookupCapCls Γ κ]; rfl
+  | .consCls _ c, .here => by
+      show (FCdot.CapBound.weaken (FCdot.CapBound.cls c)).clsOf? = _
+      rfl
+
+/-- The source classifier fact, read in the target.  It is the classifier
+twin of `Ctx.InstOf.translate`, and it is what `CapKind.kcls` needs. -/
+theorem Ctx.ClsOf.translate {s : Sig} {Γ : Ctx s} {κ : BVar s .cap} {c : Cls.Classifier}
+    (h : Γ.ClsOf (.cvar κ) c) : Γ.translate.ClsOf (FCdot.CapAtom.cvar κ) c := by
+  show (Γ.translate.lookupCap κ).clsOf? = _
+  rw [Ctx.translate_lookupCapCls Γ κ]
+  exact h
 
 /-! ## The scope contexts translate to the target's scope contexts
 
@@ -824,6 +914,9 @@ theorem Ctx.translate_root? : ∀ {s : Sig} (Γ : Ctx s), Γ.translate.root? = �
   | _, .consInst Γ C => by
       show (FCdot.Ctx.consC Γ.translate (.inst C.translate)).root? = _
       rw [FCdot.Ctx.root?_consC_of_not_root _ _ rfl, Ctx.root?, Ctx.translate_root? Γ]
+  | _, .consCls Γ c => by
+      show (FCdot.Ctx.consC Γ.translate (.cls c)).root? = _
+      rw [FCdot.Ctx.root?_consC_of_not_root _ _ rfl, Ctx.root?, Ctx.translate_root? Γ]
   | _, .consRoot Γ => rfl
 
 theorem Ctx.translate_lvl : ∀ {s : Sig} {k : Kind} (Γ : Ctx s) (y : BVar s k),
@@ -840,6 +933,9 @@ theorem Ctx.translate_lvl : ∀ {s : Sig} {k : Kind} (Γ : Ctx s) (y : BVar s k)
   | _, _, .consInst Γ C, .here => by
       show (FCdot.Ctx.consC Γ.translate (.inst C.translate)).lvl .here = _
       rw [FCdot.Ctx.lvl_consC_here_of_not_root _ _ rfl, Ctx.lvl, Ctx.translate_root? Γ]
+  | _, _, .consCls Γ c, .here => by
+      show (FCdot.Ctx.consC Γ.translate (.cls c)).lvl .here = _
+      rw [FCdot.Ctx.lvl_consC_here_of_not_root _ _ rfl, Ctx.lvl, Ctx.translate_root? Γ]
   | _, _, .consRoot _, .here => rfl
   | _, _, .cons Γ _, .there y => by
       show (FCdot.Ctx.cons Γ.translate _).lvl (.there y) = _
@@ -853,6 +949,9 @@ theorem Ctx.translate_lvl : ∀ {s : Sig} {k : Kind} (Γ : Ctx s) (y : BVar s k)
   | _, _, .consInst Γ C, .there y => by
       show (FCdot.Ctx.consC Γ.translate (.inst C.translate)).lvl (.there y) = _
       rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_lvl Γ y]
+  | _, _, .consCls Γ c, .there y => by
+      show (FCdot.Ctx.consC Γ.translate (.cls c)).lvl (.there y) = _
+      rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_lvl Γ y]
   | _, _, .consRoot Γ, .there y => by
       show (FCdot.Ctx.consC Γ.translate .root).lvl (.there y) = _
       rw [FCdot.Ctx.lvl, Ctx.lvl, Ctx.translate_lvl Γ y]
@@ -862,6 +961,7 @@ theorem Ctx.translate_rootB : ∀ {s : Sig} (Γ : Ctx s) (κ : BVar s .cap),
   | _, .consRoot _, .here => rfl
   | _, .consC _, .here => rfl
   | _, .consInst _ _, .here => rfl
+  | _, .consCls _ _, .here => rfl
   | _, .cons Γ _, .there κ => by
       show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).isRoot = _
       rw [FCdot.CapBound.isRoot_weaken, Ctx.translate_rootB Γ κ]; rfl
@@ -872,6 +972,9 @@ theorem Ctx.translate_rootB : ∀ {s : Sig} (Γ : Ctx s) (κ : BVar s .cap),
       show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).isRoot = _
       rw [FCdot.CapBound.isRoot_weaken, Ctx.translate_rootB Γ κ]; rfl
   | _, .consInst Γ _, .there κ => by
+      show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).isRoot = _
+      rw [FCdot.CapBound.isRoot_weaken, Ctx.translate_rootB Γ κ]; rfl
+  | _, .consCls Γ _, .there κ => by
       show (FCdot.CapBound.weaken (Γ.translate.lookupCap κ)).isRoot = _
       rw [FCdot.CapBound.isRoot_weaken, Ctx.translate_rootB Γ κ]; rfl
   | _, .consRoot Γ, .there κ => by
@@ -887,7 +990,7 @@ theorem Ctx.LvlLe.translate {s : Sig} {Γ : Ctx s} {e : CapAtom s} {κ : BVar s 
     {e' : FCdot.CapAtom s} (he : e.translate? = some e')
     (h : Γ.LvlLe e (.cvar κ)) :
     Γ.translate.LvlLe e' (FCdot.CapAtom.cvar κ) := by
-  cases e with
+  induction e generalizing e' with
   | var x =>
       cases he
       show FCdot.depthGe ((Γ.translate.lvl x).map FCdot.BVar.depth) (some κ.depth) = true
@@ -902,6 +1005,13 @@ theorem Ctx.LvlLe.translate {s : Sig} {Γ : Ctx s} {e : CapAtom s} {κ : BVar s 
       rw [Ctx.translate_lvl Γ x]; exact h
   | any => exact absurd h (by simp [Ctx.LvlLe, Ctx.lvlLeB])
   | fresh => exact absurd h (by simp [Ctx.LvlLe, Ctx.lvlLeB])
+  | proj a φ ih =>
+      cases hb : a.translate? with
+      | none => rw [CapAtom.translate?_proj, hb] at he; cases he
+      | some b =>
+          rw [CapAtom.translate?_proj, hb] at he
+          cases he
+          exact FCdot.Ctx.lvlLe_proj_left (ih hb h)
 
 end DotMNF
 

@@ -726,6 +726,35 @@ theorem Shape.strengthenW?_weaken {s : Sig} {k : Kind} (U : Shape s) :
     (U.weaken (k := k)).strengthenW? = some ⟨U, rfl⟩ := by
   simp only [Shape.strengthenW?, witness?_eq_some (Shape.strengthen?_weaken (k := k) U)]
 
+/-- Strengthening a capture set: undo one weakening, if the innermost binder
+does not occur.  `Morphism.kindCle`'s kinding premise is closed at `s` while
+the chain that reaches it ends at `E↑`, so the checker recovers `E` here, as
+`Shape.strengthen?` recovers a closed shape from a weakened one. -/
+def CaptureSet.strengthen? {s : Sig} {k : Kind} (C : CaptureSet (s,,k)) :
+    Option (CaptureSet s) :=
+  C.rename? PartialRename.unshift
+
+theorem CaptureSet.strengthen?_sound {s : Sig} {k : Kind} {C : CaptureSet (s,,k)}
+    {D : CaptureSet s} (h : C.strengthen? = some D) : C = D↑ :=
+  CaptureSet.rename?_sound C D PartialRename.unshift Rename.succ
+    PartialRename.unshift_inverts h
+
+theorem CaptureSet.strengthen?_weaken {s : Sig} {k : Kind} (D : CaptureSet s) :
+    (D.weaken (k := k)).strengthen? = some D :=
+  CaptureSet.rename?_complete D PartialRename.unshift Rename.succ
+    PartialRename.unshift_inverts
+
+/-- Strengthening, carrying the equation it establishes. -/
+def CaptureSet.strengthenW? {s : Sig} {k : Kind} (C : CaptureSet (s,,k)) :
+    Option { D : CaptureSet s // C = D↑ } :=
+  match witness? C.strengthen? with
+  | some ⟨D, hD⟩ => some ⟨D, CaptureSet.strengthen?_sound hD⟩
+  | none => none
+
+theorem CaptureSet.strengthenW?_weaken {s : Sig} {k : Kind} (D : CaptureSet s) :
+    (D.weaken (k := k)).strengthenW? = some ⟨D, rfl⟩ := by
+  simp only [CaptureSet.strengthenW?, witness?_eq_some (CaptureSet.strengthen?_weaken (k := k) D)]
+
 def Ty.strengthen? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option (Ty s) :=
   T.rename? PartialRename.unshift
 
@@ -1392,6 +1421,18 @@ def checkKindCore {s : Sig} (Γ : Ctx s) (ev : KindCo s) (C : CaptureSet s) (φ 
         | some cg => some ⟨.ksub cg.typing hk⟩
         | none => none
       else none
+  -- The evidence form of `Ctx.KindLe.mono`: the capture premise synthesises
+  -- both of its sets, so the source set is checked against the input and the
+  -- kinding premise is checked at the capture premise's target.
+  | .kle f g =>
+      match synthCapCore Γ f with
+      | some cf =>
+          if hC : C = cf.source then
+            match checkKindCore Γ g cf.target φ with
+            | some cg => some ⟨by subst hC; exact .kle cf.typing cg.typing⟩
+            | none => none
+          else none
+      | none => none
 
 def synthCapEqCore {s : Sig} (Γ : Ctx s) (ev : CapEq s) : Option (CapEqChecked Γ ev) :=
   match ev with
@@ -1606,6 +1647,19 @@ def synthMorCore {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s)
             some ⟨cm.tel ▹ cq.source ⊑ᵏ φ₂, .kindC cm.typing hAt cq.typing hsub⟩
           else none
       | _ => none
+  -- A kinding template over a capture hole: the hole and the two chains are
+  -- read as for `leC`, the post chain's target is strengthened to the closed
+  -- set the kinding premise is checked at, and the target kind rides on the
+  -- term, as it does for `kindC`.
+  | .kindCle m q h q' g φ₂ => do
+      let cm ← synthMorCore Γ src m
+      let r ← HoleC.read? src h
+      let cq ← checkPreCoreC Γ q r.val.1
+      let cq' ← checkPostCoreC Γ q' r.val.2
+      let e ← CaptureSet.strengthenW? cq'.target
+      let cg ← checkKindCore Γ g e.val φ₂
+      some ⟨cm.tel ▹ cq.source ⊑ᵏ φ₂,
+        .kindCle cm.typing r.property cq.typing (e.property ▸ cq'.typing) cg.typing⟩
 
 def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a) :=
   match a with

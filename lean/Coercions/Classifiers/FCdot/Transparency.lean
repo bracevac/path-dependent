@@ -382,6 +382,7 @@ theorem KindCo.HasType.refine {Γ Γ' : Ctx s} {g : KindCo s} {C : CaptureSet s}
   | .kmember ha he hAt => exact .kmember (ha.refine hR) (he.refine hR) hAt
   | .kprojS hg => exact .kprojS (hg.refine hR)
   | .ksub hg hs => exact .ksub (hg.refine hR) hs
+  | .kle hf hg => exact .kle (hf.refine hR) (hg.refine hR)
 
 theorem CapEq.HasType.refine {Γ Γ' : Ctx s} {φ : CapEq s} {C D : CaptureSet s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) : Γ' ⊢ᶜ φ : C ≡ D := by
@@ -476,6 +477,8 @@ theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope (s,x)} {m : Mo
   | .eqC hm hAt => exact .eqC (hm.refine hR) hAt
   | .eqSymC hm hAt => exact .eqSymC (hm.refine hR) hAt
   | .kindC hm hAt hq hsub => exact .kindC (hm.refine hR) hAt (hq.refine hR) hsub
+  | .kindCle hm hh hq hq' hg =>
+      exact .kindCle (hm.refine hR) hh (hq.refine hR) (hq'.refine hR) (hg.refine hR)
 
 theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ₐ a : T) : Γ' ⊢ₐ a : T := by

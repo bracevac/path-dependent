@@ -55,16 +55,30 @@ A program is typed under a prefix of capture binders, the platform
 capabilities.  Its initial store is the store of those slots, and nothing
 else: a capture slot carries no value. -/
 
-/-- Evidence that a signature is a prefix of capture binders. -/
+/-- Evidence that a signature is a prefix of capture binders.  A binder is
+either plain, as it was, or declares a classifier, which is the seventh
+context flavour of K2 read at the platform (decision 10 and D7). -/
 inductive Platform : Sig → Type where
   | nil : Platform []
   | cons : Platform s → Platform (s,c)
+  | consCls : Platform s → Cls.Classifier → Platform (s,c)
 
 /-- The initial store over a platform prefix: one data-free slot per
-binder. -/
+binder.  A classifier is not runtime content, so a classified binder gets the
+same slot a plain one gets. -/
 def Platform.store : Platform s → Store s
   | .nil => .nil
   | .cons P => .consC P.store
+  | .consCls P _ => .consC P.store
+
+/-- The classifier a platform binder declares.  A plain binder declares none,
+and reads as the root classifier `⊤`, which is what `FCdot.Ctx.classOf`
+answers at a bound with no declaration. -/
+def Platform.classOf : Platform s → BVar s .cap → Cls.Classifier
+  | .consCls _ c, .here => c
+  | .consCls P _, .there κ => P.classOf κ
+  | .cons P, .there κ => P.classOf κ
+  | .cons _, .here => .top
 
 /-! ## Continuations -/
 

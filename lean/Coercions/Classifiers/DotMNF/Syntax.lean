@@ -1,3 +1,4 @@
+import Coercions.Classifiers.Cls
 import Coercions.Classifiers.FCdot.Debruijn
 
 namespace Classifiers
@@ -77,10 +78,38 @@ inductive CapAtom : Sig → Type where
       compares it syntactically, and renaming maps it to itself.
       `Ty.expandFresh` is what gives it a reading. -/
   | fresh : CapAtom s
+  /-- `θ ↾ φ`, the capture `θ` restricted to the capabilities of kind `φ`.
+      The source twin of `FCdot.CapAtom.proj` (`FCdot/Syntax.lean:39-41`).
+      Nesting is legal syntax, because renaming and substitution are
+      structural and never normalise a projection. -/
+  | proj : CapAtom s → Cls.Kind → CapAtom s
 deriving DecidableEq, Repr
+
+/-- The atom under the projections.  Recursive, because nesting is legal. -/
+def CapAtom.base : CapAtom s → CapAtom s
+  | .proj a _ => a.base
+  | a => a
+
+/-- The kind a projected atom carries.  An unprojected atom carries `⊤`.
+Recursive, so a nested projection reads as the intersection of the kinds it
+carries. -/
+def CapAtom.kindOf : CapAtom s → Cls.Kind
+  | .proj a φ => φ.interB a.kindOf
+  | _ => Cls.Kind.top
+
+/-- The smart constructor: it intersects at the top projection instead of
+nesting one more.  It is not what renaming uses. -/
+def CapAtom.projBy (φ : Cls.Kind) : CapAtom s → CapAtom s
+  | .proj a ψ => .proj a (φ.interB ψ)
+  | a => .proj a φ
 
 /-- A capture set: a list of atoms, read as a finite set. -/
 abbrev CaptureSet (s : Sig) : Type := List (CapAtom s)
+
+/-- A set projected at a kind, atom by atom, through the smart
+constructor. -/
+def CaptureSet.proj (C : CaptureSet s) (φ : Cls.Kind) : CaptureSet s :=
+  C.map (CapAtom.projBy φ)
 
 /-- Union of capture sets is concatenation of the underlying lists. -/
 instance CaptureSet.instUnion : Union (CaptureSet s) := ⟨List.append⟩
@@ -138,13 +167,17 @@ theorem CaptureSet.nil_subset {s : Sig} (C : CaptureSet s) :
   intro a ha; cases ha
 
 /-- Renaming of a capture atom: the three variable forms carry variables
-only, and `any` is mapped to itself. -/
+only, and `any` is mapped to itself.  A projection is renamed structurally:
+the kind is closed data and is carried along, and the smart constructor is
+not used, because normalising here would make renaming by the identity
+differ from the identity at a nested projection. -/
 def CapAtom.rename : CapAtom s1 → Rename s1 s2 → CapAtom s2
   | .var x, ρ => .var (ρ.var x)
   | .cvar κ, ρ => .cvar (ρ.var κ)
   | .sel x C, ρ => .sel (ρ.var x) C
   | .any, _ => .any
   | .fresh, _ => .fresh
+  | .proj a φ, ρ => .proj (a.rename ρ) φ
 
 /-- Renaming of a capture set is pointwise. -/
 def CaptureSet.rename (C : CaptureSet s1) (ρ : Rename s1 s2) : CaptureSet s2 :=
@@ -178,7 +211,13 @@ functions up in `List`. -/
 
 theorem CapAtom.rename_rename {s1 s2 s3 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2)
     (σ : Rename s2 s3) : (a.rename ρ).rename σ = a.rename (ρ.comp σ) := by
-  cases a <;> rfl
+  induction a with
+  | var x => rfl
+  | cvar κ => rfl
+  | sel x A => rfl
+  | any => rfl
+  | fresh => rfl
+  | proj a φ ih => simp only [CapAtom.rename, ih]
 
 theorem CaptureSet.rename_rename {s1 s2 s3 : Sig} (C : CaptureSet s1) (ρ : Rename s1 s2)
     (σ : Rename s2 s3) :
@@ -209,14 +248,23 @@ former resets the reading for what is under it, so nested occurrences are
 read by their own enclosing former and no level is needed.  An expanded set
 holds no `any`, so an expanded program is a program of stage A3a. -/
 
+/-- `a.expandA D`: the reading of one atom.  `any` reads as `D`, a
+projection pushes the reading under itself and carries its kind back over
+every atom the reading produced, and every other atom reads as itself.  The
+map uses the constructor and not the smart constructor: a normalising map
+would send a nested projection to a flattened one, and then expansion would
+not leave a projected atom where it is.  This is the atom-level clause of
+`CaptureSet.expand`, written here so that the list recursion stays
+structural. -/
+def CapAtom.expandA : CapAtom s → CaptureSet s → CaptureSet s
+  | .any, D => D
+  | .proj a φ, D => (a.expandA D).map (CapAtom.proj · φ)
+  | a, _ => [a]
+
 /-- `C.expand D`: every `any` of `C` replaced by the atoms of `D`. -/
 def CaptureSet.expand : CaptureSet s → CaptureSet s → CaptureSet s
   | [], _ => []
-  | .any :: C, D => D ++ CaptureSet.expand C D
-  | .var x :: C, D => .var x :: CaptureSet.expand C D
-  | .cvar κ :: C, D => .cvar κ :: CaptureSet.expand C D
-  | .sel x A :: C, D => .sel x A :: CaptureSet.expand C D
-  | .fresh :: C, D => .fresh :: CaptureSet.expand C D
+  | a :: C, D => a.expandA D ++ CaptureSet.expand C D
 
 @[simp] theorem CaptureSet.expand_nil {s : Sig} (D : CaptureSet s) :
     CaptureSet.expand [] D = [] := rfl
@@ -237,22 +285,67 @@ def CaptureSet.expand : CaptureSet s → CaptureSet s → CaptureSet s
 @[simp] theorem CaptureSet.expand_cons_fresh {s : Sig} (C D : CaptureSet s) :
     CaptureSet.expand (CapAtom.fresh :: C) D = .fresh :: CaptureSet.expand C D := rfl
 
-/-- Expansion leaves every atom other than `any` where it is. -/
-theorem CaptureSet.expand_cons_of_ne {s : Sig} {a : CapAtom s} (h : a ≠ .any)
+@[simp] theorem CaptureSet.expand_cons_proj {s : Sig} (a : CapAtom s) (φ : Cls.Kind)
+    (C D : CaptureSet s) :
+    CaptureSet.expand (CapAtom.proj a φ :: C) D
+      = (a.expandA D).map (CapAtom.proj · φ) ++ CaptureSet.expand C D := rfl
+
+/-- An atom whose base is not `any` reads as itself, at every projection
+depth. -/
+theorem CapAtom.expandA_of_base {s : Sig} {a : CapAtom s} (h : a.base ≠ .any)
+    (D : CaptureSet s) : a.expandA D = [a] := by
+  induction a with
+  | var x => rfl
+  | cvar κ => rfl
+  | sel x A => rfl
+  | any => exact absurd rfl h
+  | fresh => rfl
+  | proj a φ ih =>
+      simp [CapAtom.expandA, ih (by simpa [CapAtom.base] using h)]
+
+/-- Expansion leaves every atom whose base is not `any` where it is.  The
+premise reads the base, because a projected `any` is not `any` and expands
+like one.  On a projection-free atom `base` is the identity and the premise
+is the old one. -/
+theorem CaptureSet.expand_cons_of_ne {s : Sig} {a : CapAtom s} (h : a.base ≠ .any)
     (C D : CaptureSet s) :
     CaptureSet.expand (a :: C) D = a :: CaptureSet.expand C D := by
-  cases a
-  · rfl
-  · rfl
-  · rfl
-  · exact absurd rfl h
-  · rfl
+  simp [CaptureSet.expand, CapAtom.expandA_of_base h]
 
 @[simp] theorem CaptureSet.expand_append {s : Sig} (C C' D : CaptureSet s) :
     CaptureSet.expand (C ++ C') D = CaptureSet.expand C D ++ CaptureSet.expand C' D := by
   induction C with
   | nil => rfl
-  | cons a C ih => cases a <;> simp [ih]
+  | cons a C ih =>
+      simp only [List.cons_append, CaptureSet.expand, ih, List.append_assoc]
+
+/-- Carrying a kind back over a set commutes with renaming, because a
+classifier kind mentions no de Bruijn index. -/
+theorem CaptureSet.rename_map_proj {s1 s2 : Sig} (L : CaptureSet s1) (φ : Cls.Kind)
+    (ρ : Rename s1 s2) :
+    CaptureSet.rename (L.map (CapAtom.proj · φ)) ρ
+      = (CaptureSet.rename L ρ).map (CapAtom.proj · φ) := by
+  induction L with
+  | nil => rfl
+  | cons b L ih =>
+      show CaptureSet.rename (CapAtom.proj b φ :: L.map (CapAtom.proj · φ)) ρ = _
+      rw [CaptureSet.rename_cons, ih]
+      rfl
+
+/-- The atom-level reading commutes with renaming. -/
+theorem CapAtom.expandA_rename {s1 s2 : Sig} (a : CapAtom s1) (D : CaptureSet s1)
+    (ρ : Rename s1 s2) :
+    CaptureSet.rename (a.expandA D) ρ = (a.rename ρ).expandA (CaptureSet.rename D ρ) := by
+  induction a with
+  | var x => rfl
+  | cvar κ => rfl
+  | sel x A => rfl
+  | any => rfl
+  | fresh => rfl
+  | proj a φ ih =>
+      show CaptureSet.rename ((a.expandA D).map (CapAtom.proj · φ)) ρ
+        = ((a.rename ρ).expandA (CaptureSet.rename D ρ)).map (CapAtom.proj · φ)
+      rw [CaptureSet.rename_map_proj, ih]
 
 /-- Expansion commutes with renaming, the reading set renamed too. -/
 theorem CaptureSet.expand_rename {s1 s2 : Sig} (C D : CaptureSet s1) (ρ : Rename s1 s2) :
@@ -260,7 +353,11 @@ theorem CaptureSet.expand_rename {s1 s2 : Sig} (C D : CaptureSet s1) (ρ : Renam
       = CaptureSet.expand (CaptureSet.rename C ρ) (CaptureSet.rename D ρ) := by
   induction C with
   | nil => rfl
-  | cons a C ih => cases a <;> simp [CapAtom.rename, ih]
+  | cons a C ih =>
+      show CaptureSet.rename (a.expandA D ++ CaptureSet.expand C D) ρ
+        = CaptureSet.expand (CaptureSet.rename (a :: C) ρ) (CaptureSet.rename D ρ)
+      rw [CaptureSet.rename_append, ih, CapAtom.expandA_rename, CaptureSet.rename_cons]
+      rfl
 
 /-! ### No `any` at all
 
@@ -268,14 +365,30 @@ theorem CaptureSet.expand_rename {s1 s2 : Sig} (C D : CaptureSet s1) (ρ : Renam
 set, a shape or a type with no `any` is one of stage A3a, and expansion is
 the identity on it. -/
 
+/-- No `any` under the projections of the atom.  A projected `any` is an
+`any` for every purpose `expand` serves, so the test descends. -/
+def CapAtom.noAnyA : CapAtom s → Bool
+  | .any => false
+  | .proj a _ => a.noAnyA
+  | _ => true
+
 /-- No `any` occurs in the set. -/
 def CaptureSet.noAny : CaptureSet s → Bool
   | [] => true
-  | .any :: _ => false
-  | .var _ :: C => CaptureSet.noAny C
-  | .cvar _ :: C => CaptureSet.noAny C
-  | .sel _ _ :: C => CaptureSet.noAny C
-  | .fresh :: C => CaptureSet.noAny C
+  | a :: C => a.noAnyA && CaptureSet.noAny C
+
+/-- `noAnyA` at an atom is exactly the statement that the atom under its
+projections is not `any`.  This is the bridge the two repaired `_cons_of_ne`
+lemmas are stated through. -/
+theorem CapAtom.noAnyA_iff {s : Sig} (a : CapAtom s) :
+    a.noAnyA = true ↔ a.base ≠ .any := by
+  induction a with
+  | var x => simp [CapAtom.noAnyA, CapAtom.base]
+  | cvar κ => simp [CapAtom.noAnyA, CapAtom.base]
+  | sel x A => simp [CapAtom.noAnyA, CapAtom.base]
+  | any => simp [CapAtom.noAnyA, CapAtom.base]
+  | fresh => simp [CapAtom.noAnyA, CapAtom.base]
+  | proj a φ ih => simpa [CapAtom.noAnyA, CapAtom.base] using ih
 
 /-- No `any` occurs in the set, as a proposition. -/
 def CaptureSet.NoAny (C : CaptureSet s) : Prop := C.noAny = true
@@ -285,51 +398,53 @@ instance CaptureSet.NoAny.instDecidable {s : Sig} (C : CaptureSet s) : Decidable
 
 theorem CaptureSet.noAny_nil {s : Sig} : CaptureSet.NoAny ([] : CaptureSet s) := rfl
 
-theorem CaptureSet.noAny_cons_of_ne {s : Sig} {a : CapAtom s} (h : a ≠ .any)
-    {C : CaptureSet s} (hC : C.NoAny) : CaptureSet.NoAny (a :: C) := by
-  cases a
-  · exact hC
-  · exact hC
-  · exact hC
-  · exact absurd rfl h
-  · exact hC
+/-- The two halves of `NoAny` at a cons, as the fold reads them. -/
+theorem CaptureSet.noAny_cons {s : Sig} {a : CapAtom s} {C : CaptureSet s} :
+    CaptureSet.NoAny (a :: C) ↔ a.noAnyA = true ∧ C.NoAny := by
+  simp [CaptureSet.NoAny, CaptureSet.noAny]
+
+/-- A set whose head has no `any` under its projections keeps `NoAny`.  The
+premise reads the base, for the reason `expand_cons_of_ne`'s does.  On a
+projection-free atom it is the old premise. -/
+theorem CaptureSet.noAny_cons_of_ne {s : Sig} {a : CapAtom s} (h : a.base ≠ .any)
+    {C : CaptureSet s} (hC : C.NoAny) : CaptureSet.NoAny (a :: C) :=
+  CaptureSet.noAny_cons.mpr ⟨(CapAtom.noAnyA_iff a).mpr h, hC⟩
 
 theorem CaptureSet.noAny_of_cons {s : Sig} {a : CapAtom s} {C : CaptureSet s}
-    (h : CaptureSet.NoAny (a :: C)) : C.NoAny := by
-  cases a
-  · exact h
-  · exact h
-  · exact h
-  · exact absurd h (by simp [CaptureSet.NoAny, CaptureSet.noAny])
-  · exact h
+    (h : CaptureSet.NoAny (a :: C)) : C.NoAny := (CaptureSet.noAny_cons.mp h).2
+
+/-- The head of a set with no `any` has none under its projections. -/
+theorem CaptureSet.noAnyA_of_cons {s : Sig} {a : CapAtom s} {C : CaptureSet s}
+    (h : CaptureSet.NoAny (a :: C)) : a.base ≠ .any :=
+  (CapAtom.noAnyA_iff a).mp (CaptureSet.noAny_cons.mp h).1
 
 theorem CaptureSet.noAny_append {s : Sig} {C D : CaptureSet s} (hC : C.NoAny)
     (hD : D.NoAny) : CaptureSet.NoAny (C ++ D) := by
   induction C with
   | nil => exact hD
   | cons a C ih =>
-      cases a
-      · exact CaptureSet.noAny_cons_of_ne (by simp) (ih (CaptureSet.noAny_of_cons hC))
-      · exact CaptureSet.noAny_cons_of_ne (by simp) (ih (CaptureSet.noAny_of_cons hC))
-      · exact CaptureSet.noAny_cons_of_ne (by simp) (ih (CaptureSet.noAny_of_cons hC))
-      · exact absurd hC (by simp [CaptureSet.NoAny, CaptureSet.noAny])
-      · exact CaptureSet.noAny_cons_of_ne (by simp) (ih (CaptureSet.noAny_of_cons hC))
+      exact CaptureSet.noAny_cons.mpr
+        ⟨(CaptureSet.noAny_cons.mp hC).1, ih (CaptureSet.noAny_of_cons hC)⟩
+
+/-- Renaming does not change what lies under an atom's projections. -/
+@[simp] theorem CapAtom.noAnyA_rename {s1 s2 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2) :
+    (a.rename ρ).noAnyA = a.noAnyA := by
+  induction a with
+  | var x => rfl
+  | cvar κ => rfl
+  | sel x A => rfl
+  | any => rfl
+  | fresh => rfl
+  | proj a φ ih => simpa [CapAtom.rename, CapAtom.noAnyA] using ih
 
 theorem CaptureSet.noAny_rename {s1 s2 : Sig} {C : CaptureSet s1} (h : C.NoAny)
     (ρ : Rename s1 s2) : CaptureSet.NoAny (CaptureSet.rename C ρ) := by
   induction C with
   | nil => exact CaptureSet.noAny_nil
   | cons a C ih =>
-      cases a
-      · exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.rename])
-          (ih (CaptureSet.noAny_of_cons h))
-      · exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.rename])
-          (ih (CaptureSet.noAny_of_cons h))
-      · exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.rename])
-          (ih (CaptureSet.noAny_of_cons h))
-      · exact absurd h (by simp [CaptureSet.NoAny, CaptureSet.noAny])
-      · exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.rename])
-          (ih (CaptureSet.noAny_of_cons h))
+      refine CaptureSet.noAny_cons.mpr ⟨?_, ih (CaptureSet.noAny_of_cons h)⟩
+      rw [CapAtom.noAnyA_rename]
+      exact (CaptureSet.noAny_cons.mp h).1
 
 theorem CaptureSet.noAny_weaken {s : Sig} {k : Kind} {C : CaptureSet s} (h : C.NoAny) :
     CaptureSet.NoAny (C.weaken (k := k)) := CaptureSet.noAny_rename h Rename.succ
@@ -340,12 +455,30 @@ theorem CaptureSet.expand_of_noAny {s : Sig} {C : CaptureSet s} (h : C.NoAny)
   induction C with
   | nil => rfl
   | cons a C ih =>
-      cases a
-      · simp [ih (CaptureSet.noAny_of_cons h)]
-      · simp [ih (CaptureSet.noAny_of_cons h)]
-      · simp [ih (CaptureSet.noAny_of_cons h)]
-      · exact absurd h (by simp [CaptureSet.NoAny, CaptureSet.noAny])
-      · simp [ih (CaptureSet.noAny_of_cons h)]
+      rw [CaptureSet.expand_cons_of_ne (CaptureSet.noAnyA_of_cons h),
+        ih (CaptureSet.noAny_of_cons h)]
+
+/-- Carrying a kind back over a set leaves no `any`, because a projection
+has an `any` under it exactly when its base has. -/
+theorem CaptureSet.noAny_map_proj {s : Sig} (φ : Cls.Kind) :
+    ∀ {L : CaptureSet s}, L.NoAny → CaptureSet.NoAny (L.map (CapAtom.proj · φ))
+  | [], _ => CaptureSet.noAny_nil
+  | b :: L, h => by
+      show CaptureSet.NoAny (CapAtom.proj b φ :: L.map (CapAtom.proj · φ))
+      exact CaptureSet.noAny_cons.mpr
+        ⟨(CaptureSet.noAny_cons.mp h).1,
+          CaptureSet.noAny_map_proj φ (CaptureSet.noAny_cons.mp h).2⟩
+
+/-- The reading of one atom by a set with no `any` has no `any`. -/
+theorem CapAtom.noAny_expandA {s : Sig} {D : CaptureSet s} (hD : D.NoAny)
+    (a : CapAtom s) : CaptureSet.NoAny (a.expandA D) := by
+  induction a with
+  | var x => exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.base]) CaptureSet.noAny_nil
+  | cvar κ => exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.base]) CaptureSet.noAny_nil
+  | sel x A => exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.base]) CaptureSet.noAny_nil
+  | any => exact hD
+  | fresh => exact CaptureSet.noAny_cons_of_ne (by simp [CapAtom.base]) CaptureSet.noAny_nil
+  | proj a φ ih => exact CaptureSet.noAny_map_proj φ ih
 
 /-- Expanding by a set with no `any` leaves no `any`. -/
 theorem CaptureSet.noAny_expand {s : Sig} {D : CaptureSet s} (hD : D.NoAny)
@@ -353,18 +486,13 @@ theorem CaptureSet.noAny_expand {s : Sig} {D : CaptureSet s} (hD : D.NoAny)
   induction C with
   | nil => exact CaptureSet.noAny_nil
   | cons a C ih =>
-      cases a
-      · exact CaptureSet.noAny_cons_of_ne (by simp) ih
-      · exact CaptureSet.noAny_cons_of_ne (by simp) ih
-      · exact CaptureSet.noAny_cons_of_ne (by simp) ih
-      · exact CaptureSet.noAny_append hD ih
-      · exact CaptureSet.noAny_cons_of_ne (by simp) ih
+      exact CaptureSet.noAny_append (CapAtom.noAny_expandA hD a) ih
 
 /-- The reading of a position holds no `any`, and the singleton reading an
 arrow's domain gets is one of those. -/
 theorem CaptureSet.noAny_cvar {s : Sig} (κ : BVar s .cap) :
     CaptureSet.NoAny [CapAtom.cvar κ] :=
-  CaptureSet.noAny_cons_of_ne (by simp) CaptureSet.noAny_nil
+  CaptureSet.noAny_cons_of_ne (by simp [CapAtom.base]) CaptureSet.noAny_nil
 
 /-- Renaming leaves the reading an arrow's domain gets alone, because the
 binder it names is the one the lift keeps in place. -/
@@ -391,6 +519,12 @@ inductive Shape : Sig → Type where
   /-- Capture declaration `{C : c₁..c₂}`, at a type label, as the compiler
       desugars a capture-set parameter to a type parameter. -/
   | cap : Label → CaptureSet s → CaptureSet s → Shape s
+  /-- Capture declaration `{C : φ}`, bounded by a classifier kind instead of
+      by a pair of capture sets.  It carries no capture set, so every
+      traversal that reads one is trivial here, and it has no definition form
+      of its own: a literal writes `Defs.cap` and is retyped at the kind
+      bound by subtyping. -/
+  | capk : Label → Cls.Kind → Shape s
   /-- Type selection `p.A`. -/
   | sel : Path s → Label → Shape s
   /-- Recursive self shape `μ(x. S)`. -/
@@ -469,6 +603,7 @@ def Shape.rename : Shape s1 → Rename s1 s2 → Shape s2
   | .typ A S T, ρ => .typ A (S.rename ρ) (T.rename ρ)
   | .fld a T, ρ => .fld a (T.rename ρ)
   | .cap C c1 c2, ρ => .cap C (c1.rename ρ) (c2.rename ρ)
+  | .capk C φ, _ => .capk C φ
   | .sel p A, ρ => .sel (p.rename ρ) A
   | .mu S, ρ => .mu (S.rename ρ.lift)
   | .all T1 T2, ρ => .all (T1.rename ρ.lift) (T2.rename ρ.lift.lift)
@@ -548,6 +683,7 @@ def Shape.expand : Shape s → CaptureSet s → Shape s
   | .fld a T, D₀ => .fld a (T.expand D₀)
   | .cap A c1 c2, D₀ =>
       .cap A (CaptureSet.expand c1 []) (CaptureSet.expand c2 D₀)
+  | .capk A φ, _ => .capk A φ
   | .mu S, D₀ => .mu (S.expand (CaptureSet.weaken D₀))
   | .all T1 T2, D₀ =>
       .all (T1.expand [CapAtom.cvar .here])
@@ -603,6 +739,7 @@ def Shape.noAny : Shape s → Bool
   | .typ _ S T => S.noAny && T.noAny
   | .fld _ T => T.noAny
   | .cap _ c1 c2 => CaptureSet.noAny c1 && CaptureSet.noAny c2
+  | .capk _ _ => true
   | .mu S => S.noAny
   | .all T1 T2 => T1.noAny && ETy.noAny T2
   | .and S T => S.noAny && T.noAny
@@ -629,6 +766,7 @@ def Shape.anyOk : Shape s → Bool
   | .typ _ S T => S.noAny && T.noAny
   | .fld _ T => T.anyOk
   | .cap _ c1 _ => CaptureSet.noAny c1
+  | .capk _ _ => true
   | .mu S => S.anyOk
   | .all (.capt _ S1) T2 => S1.noAny && ETy.anyOk T2
   | .and S T => S.anyOk && T.anyOk
@@ -700,6 +838,9 @@ instance Ty.AnyOk.instDecidable {s : Sig} (T : Ty s) : Decidable T.AnyOk :=
     Shape.NoAny (.cap A c1 c2) ↔ c1.NoAny ∧ c2.NoAny := by
   simp [Shape.NoAny, CaptureSet.NoAny, Shape.noAny]
 
+@[simp] theorem Shape.noAny_capk {s : Sig} (A : Label) (φ : Cls.Kind) :
+    Shape.NoAny (.capk A φ : Shape s) := rfl
+
 @[simp] theorem Shape.noAny_mu {s : Sig} (S : Shape (s,x)) :
     Shape.NoAny (.mu S) ↔ S.NoAny := by simp [Shape.NoAny, Shape.noAny]
 
@@ -732,6 +873,9 @@ instance Ty.AnyOk.instDecidable {s : Sig} (T : Ty s) : Decidable T.AnyOk :=
 @[simp] theorem Shape.anyOk_cap {s : Sig} (A : Label) (c1 c2 : CaptureSet s) :
     Shape.AnyOk (.cap A c1 c2) ↔ c1.NoAny := by
   simp [Shape.AnyOk, CaptureSet.NoAny, Shape.anyOk]
+
+@[simp] theorem Shape.anyOk_capk {s : Sig} (A : Label) (φ : Cls.Kind) :
+    Shape.AnyOk (.capk A φ : Shape s) := rfl
 
 @[simp] theorem Shape.anyOk_mu {s : Sig} (S : Shape (s,x)) :
     Shape.AnyOk (.mu S) ↔ S.AnyOk := by simp [Shape.AnyOk, Shape.anyOk]
@@ -783,6 +927,7 @@ theorem Shape.expand_of_noAny {s : Sig} :
   | .cap A c1 c2, h, D₀ => by
       rw [Shape.noAny_cap] at h
       simp only [Shape.expand, CaptureSet.expand_of_noAny h.1, CaptureSet.expand_of_noAny h.2]
+  | .capk A φ, _, _ => rfl
   | .mu S, h, D₀ => by
       rw [Shape.noAny_mu] at h
       simp only [Shape.expand, Shape.expand_of_noAny S h]
@@ -839,6 +984,7 @@ theorem Shape.noAny_expand {s : Sig} :
       rw [Shape.anyOk_cap] at h
       rw [Shape.expand, Shape.noAny_cap, CaptureSet.expand_of_noAny h]
       exact ⟨h, CaptureSet.noAny_expand hD c2⟩
+  | .capk A φ, _, _, _ => rfl
   | .mu S, D₀, h, hD => by
       rw [Shape.anyOk_mu] at h
       rw [Shape.expand, Shape.noAny_mu]
@@ -903,6 +1049,7 @@ theorem Shape.expand_rename {s1 s2 : Sig} :
       simp only [Shape.expand, Shape.rename, Ty.expand_rename T D₀ ρ]
   | .cap A c1 c2, D₀, ρ => by
       simp only [Shape.expand, Shape.rename, CaptureSet.expand_rename, CaptureSet.rename_nil]
+  | .capk A φ, _, _ => rfl
   | .mu S, D₀, ρ => by
       simp only [Shape.expand, Shape.rename, Shape.expand_rename S _ ρ.lift,
         CaptureSet.weaken_rename D₀ ρ]
@@ -969,23 +1116,42 @@ already be read.  `AnyOk` agrees with that order, since `ETy.anyOk` at an
 existential asks for `NoAny` on both components, so a written type is
 `AnyOk` before the `fresh` expansion and `any` free after it. -/
 
+/-- No `fresh` under the projections of the atom.  The test descends, so a
+projected `fresh` is kept out of every position `noFresh` is asked at. -/
+def CapAtom.noFreshA : CapAtom s → Bool
+  | .fresh => false
+  | .proj a _ => a.noFreshA
+  | _ => true
+
 /-- No `fresh` occurs in the set. -/
 def CaptureSet.noFresh : CaptureSet s → Bool
   | [] => true
-  | .fresh :: _ => false
-  | .var _ :: C => CaptureSet.noFresh C
-  | .cvar _ :: C => CaptureSet.noFresh C
-  | .sel _ _ :: C => CaptureSet.noFresh C
-  | .any :: C => CaptureSet.noFresh C
+  | a :: C => a.noFreshA && CaptureSet.noFresh C
+
+/-- May this atom sit in the top-level capture set of an arrow's result?  A
+bare `fresh` may, because `Ty.expandFresh` reads it there.  A projected
+`fresh` may not: `Ty.expandFresh` tests a syntactic membership of the bare
+atom, so it would find nothing, the `fresh` would survive expansion, and the
+translation would drop it. -/
+def CapAtom.freshTop : CapAtom s → Bool
+  | .fresh => true
+  | a => a.noFreshA
+
+/-- Every atom of the set may sit in a result set. -/
+def CaptureSet.freshTopOk (C : CaptureSet s) : Bool := C.all CapAtom.freshTop
+
+/-- `a.substFreshA D`: the reading of one atom.  `fresh` reads as `D`, a
+projection pushes the reading under itself and carries its kind back, and
+every other atom reads as itself. -/
+def CapAtom.substFreshA : CapAtom s → CaptureSet s → CaptureSet s
+  | .fresh, D => D
+  | .proj a φ, D => (a.substFreshA D).map (CapAtom.proj · φ)
+  | a, _ => [a]
 
 /-- `C.substFresh D`: every `fresh` of `C` replaced by the atoms of `D`. -/
 def CaptureSet.substFresh : CaptureSet s → CaptureSet s → CaptureSet s
   | [], _ => []
-  | .fresh :: C, D => D ++ CaptureSet.substFresh C D
-  | .var x :: C, D => .var x :: CaptureSet.substFresh C D
-  | .cvar κ :: C, D => .cvar κ :: CaptureSet.substFresh C D
-  | .sel x A :: C, D => .sel x A :: CaptureSet.substFresh C D
-  | .any :: C, D => .any :: CaptureSet.substFresh C D
+  | a :: C, D => a.substFreshA D ++ CaptureSet.substFresh C D
 
 mutual
 
@@ -997,6 +1163,7 @@ def Shape.noFresh : Shape s → Bool
   | .typ _ S T => S.noFresh && T.noFresh
   | .fld _ T => T.noFresh
   | .cap _ c1 c2 => CaptureSet.noFresh c1 && CaptureSet.noFresh c2
+  | .capk _ _ => true
   | .mu S => S.noFresh
   | .all T1 T2 => T1.noFresh && ETy.noFresh T2
   | .and S T => S.noFresh && T.noFresh
@@ -1023,6 +1190,7 @@ def Shape.substFresh : Shape s → CaptureSet s → Shape s
   | .typ A S T, D => .typ A (S.substFresh D) (T.substFresh D)
   | .fld a T, D => .fld a (T.substFresh D)
   | .cap A c1 c2, D => .cap A (c1.substFresh D) (c2.substFresh D)
+  | .capk A φ, _ => .capk A φ
   | .mu S, D => .mu (S.substFresh (CaptureSet.weaken D))
   | .all T1 T2, D =>
       .all (T1.substFresh (CaptureSet.weaken (k := .cap) D))
@@ -1045,7 +1213,7 @@ end
 /-- The result of an arrow, as `FreshOk` reads it: the top-level capture set
 of a plain answer may hold `fresh`, and nothing else in it may. -/
 def ETy.codFreshOk : ETy s → Bool
-  | .ty (.capt _ S) => S.noFresh
+  | .ty (.capt C S) => C.freshTopOk && S.noFresh
   | .ex C T => CaptureSet.noFresh C && T.noFresh
 
 /-- Every `fresh` of the shape is in a position `expandFresh` reads: the
@@ -1462,6 +1630,7 @@ def CapAtom.subst : CapAtom s1 → Subst s1 s2 → CapAtom s2
   | .sel x A, σ => .sel (σ.var x) A
   | .any, _ => .any
   | .fresh, _ => .fresh
+  | .proj a φ, σ => .proj (a.subst σ) φ
 
 def CaptureSet.subst (C : CaptureSet s1) (σ : Subst s1 s2) : CaptureSet s2 :=
   C.map (fun a => a.subst σ)
@@ -1477,6 +1646,7 @@ def Shape.subst : Shape s1 → Subst s1 s2 → Shape s2
   | .typ A S T, σ => .typ A (S.subst σ) (T.subst σ)
   | .fld a T, σ => .fld a (T.subst σ)
   | .cap C c1 c2, σ => .cap C (c1.subst σ) (c2.subst σ)
+  | .capk C φ, _ => .capk C φ
   | .sel p A, σ => .sel (p.subst σ) A
   | .mu S, σ => .mu (S.subst σ.lift)
   | .all T1 T2, σ => .all (T1.subst σ.liftC) (ETy.subst T2 σ.liftC.lift)
@@ -1540,7 +1710,13 @@ theorem Subst.funext {s1 s2 : Sig} {σ τ : Subst s1 s2}
 
 @[simp] theorem CapAtom.subst_ofRename {s1 s2 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2) :
     a.subst (Subst.ofRename ρ) = a.rename ρ := by
-  cases a <;> rfl
+  induction a with
+  | var x => rfl
+  | cvar κ => rfl
+  | sel x A => rfl
+  | any => rfl
+  | fresh => rfl
+  | proj a φ ih => simp only [CapAtom.subst, CapAtom.rename, ih]
 
 @[simp] theorem CaptureSet.subst_ofRename {s1 s2 : Sig} (C : CaptureSet s1) (ρ : Rename s1 s2) :
     C.subst (Subst.ofRename ρ) = C.rename ρ := by
@@ -1566,6 +1742,7 @@ mutual
       simp only [Shape.subst, Shape.rename, Shape.subst_ofRename S ρ, Shape.subst_ofRename T ρ]
   | .fld a T => simp only [Shape.subst, Shape.rename, Ty.subst_ofRename T ρ]
   | .cap C c1 c2 => simp only [Shape.subst, Shape.rename, CaptureSet.subst_ofRename]
+  | .capk C φ => rfl
   | .sel p A => simp only [Shape.subst, Shape.rename, Path.subst_ofRename]
   | .mu S =>
       simp only [Shape.subst, Shape.rename, ← Subst.ofRename_lift,
@@ -1705,6 +1882,7 @@ inductive Shape.Decl : {s : Sig} → Shape s → Prop where
   | top : Shape.Decl (.top : Shape s)
   | typ : Shape.Decl (.typ A S T)
   | cap : Shape.Decl (.cap C c1 c2)
+  | capk : Shape.Decl (.capk C φ)
   | fld : Shape.Decl (.fld a T)
   | mu : Shape.Decl S → Shape.Decl (.mu S)
   | and : Shape.Decl S → Shape.Decl T → Shape.Decl (.and S T)
@@ -1717,6 +1895,7 @@ def Shape.isDecl : Shape s → Bool
   | .top => true
   | .typ _ _ _ => true
   | .cap _ _ _ => true
+  | .capk _ _ => true
   | .fld _ _ => true
   | .mu S => S.isDecl
   | .and S T => S.isDecl && T.isDecl
@@ -1729,6 +1908,7 @@ theorem Shape.isDecl_iff : ∀ {s : Sig} (S : Shape s), S.isDecl = true ↔ Shap
   | _, .top => ⟨fun _ => .top, fun _ => rfl⟩
   | _, .typ _ _ _ => ⟨fun _ => .typ, fun _ => rfl⟩
   | _, .cap _ _ _ => ⟨fun _ => .cap, fun _ => rfl⟩
+  | _, .capk _ _ => ⟨fun _ => .capk, fun _ => rfl⟩
   | _, .fld _ _ => ⟨fun _ => .fld, fun _ => rfl⟩
   | _, .bot => ⟨fun h => by simp [Shape.isDecl] at h, fun h => by cases h⟩
   | _, .sel _ _ => ⟨fun h => by simp [Shape.isDecl] at h, fun h => by cases h⟩
@@ -1766,6 +1946,7 @@ inductive Shape.Wf : {s : Sig} → Shape s → Prop where
   | typ : Shape.Wf S → Shape.Wf T → Shape.Wf (.typ A S T)
   | fld : Ty.Wf T → Shape.Wf (.fld a T)
   | cap : Shape.Wf (.cap C c1 c2)
+  | capk : Shape.Wf (.capk C φ)
   | mu : Shape.Wf S → Shape.Decl S → Shape.Wf (.mu S)
   | all : Ty.Wf T1 → ETy.Wf T2 → Shape.Wf (.all T1 T2)
   | and : Shape.Wf S → Shape.Wf T → Shape.Wf (.and S T)
@@ -1793,6 +1974,42 @@ inductive Defs.Distinct : {s : Sig} → Defs s → Prop where
       Defs.Distinct d1 → Defs.Distinct d2 →
       (∀ ℓ, ℓ ∈ d1.labels → ℓ ∉ d2.labels) →
       Defs.Distinct (.and d1 d2)
+
+/-! ## The two acceptance facts of the projected atom
+
+Both are decided in the kernel, and each is the counterexample that forces
+one clause of this file.
+
+The first: a projected `any` in a type-member bound is refused.  `anyOk`
+descends through a projection, so the shape below is not well formed.
+Without the descent it would be, and its bound would expand to the empty
+set, which is the bound the program never wrote.
+
+The second: a projected `fresh` in the result set of an arrow is refused.
+`Ty.expandFresh` tests a syntactic membership of the bare atom, so a
+projected `fresh` would survive expansion and the translation would drop it.
+A bare `fresh` in that same position stays legal. -/
+
+/-- The bound whose capture set holds a projected `any`, at the empty
+signature. -/
+private def projAnyBound : Shape ∅ :=
+  .typ (.typ 0) (.cap (.typ 1) [] [CapAtom.proj .any (Cls.only Cls.Control)]) .top
+
+example : Shape.anyOk projAnyBound = false := by decide
+
+/-- And this is what the refusal buys: the bound is read at the empty set,
+so the projected `any` would expand away silently. -/
+example :
+    CaptureSet.expand [CapAtom.proj (.any : CapAtom ∅) (Cls.only Cls.Control)] [] = [] := rfl
+
+/-- A projected `fresh` may not sit in the top-level capture set of a
+result. -/
+example :
+    ETy.codFreshOk (.ty (.capt [CapAtom.proj .fresh (Cls.only Cls.Control)]
+      (.top : Shape ∅))) = false := by decide
+
+/-- A bare `fresh` still may, which is what `Ty.expandFresh` reads. -/
+example : ETy.codFreshOk (.ty (.capt [CapAtom.fresh] (.top : Shape ∅))) = true := by decide
 
 end DotMNF
 

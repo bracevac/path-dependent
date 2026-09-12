@@ -1727,6 +1727,7 @@ theorem KindCo.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : 
           : (C₀.rename ρ).proj ψ₀ ⊑ᵏ φ₀ := .kprojS (hg.renameR hρ)
       simpa [KindCo.rename, CaptureSet.proj_rename] using this
   | .ksub hg hs => exact .ksub (hg.renameR hρ) hs
+  | .kle hf hg => exact .kle (hf.renameR hρ) (hg.renameR hρ)
 
 theorem CapEq.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {φ : CapEq s1} {C D : CaptureSet s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) :
@@ -1875,6 +1876,9 @@ theorem Morphism.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
   | .kindC hm hAt hq hsub =>
       exact .kindC (hm.renameR hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
         (hq.renameR hρ) hsub
+  | .kindCle hm hh hq hq' hg =>
+      exact .kindCle (hm.renameR hρ) (hh.rename ρ) (hq.renameR hρ)
+        (by simpa [CaptureSet.weaken_rename] using hq'.renameR hρ) (hg.renameR hρ)
 
 theorem Atom.HasType.renameR {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {a : Atom s1} {T : Ty s1} (hρ : Ctx.RenR Γ ρ Γ') (h : Γ ⊢ₐ a : T) :

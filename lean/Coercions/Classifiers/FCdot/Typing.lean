@@ -194,6 +194,11 @@ inductive KindCo.HasType : Ctx s → KindCo s → CaptureSet s → Cls.Kind → 
       evidence term is the *source* kind `φ₁`: the target is what a checking
       mode is given, and the source is what it has to be told. -/
   | ksub : Γ ⊢ᵏ g : C ⊑ᵏ φ₁ → φ₁.Subkind φ₂ → Γ ⊢ᵏ .ksub g φ₁ : C ⊑ᵏ φ₂
+  /-- The evidence form of `Ctx.KindLe.mono` (T3): a set below a kinded set
+      is kinded.  It is what the source's `CapKind.kle` translates to.  The
+      set `D` is read off the capture premise, so nothing rides on the
+      constructor. -/
+  | kle : Γ ⊢ᶜ f : C ⊑ D → Γ ⊢ᵏ g : D ⊑ᵏ φ → Γ ⊢ᵏ .kle f g : C ⊑ᵏ φ
 
 /-- `Γ ⊢ᶜ φ : C ≡ D`: equality evidence between capture sets. -/
 inductive CapEq.HasType : Ctx s → CapEq s → CaptureSet s → CaptureSet s → Prop where
@@ -350,6 +355,17 @@ inductive Morphism.HasType : Ctx s → Telescope (s,x) → Morphism s → Telesc
   | kindC : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ C ⊑ᵏ φ₁) →
       SideC.HasType Γ q D C → φ₁.AdmitsStep φ₂ →
       Γ ⊢ .kindC m q j φ₂ : src ⇒ Tel ▹ D ⊑ᵏ φ₂
+  /-- A target kinding proposition read off a *capture* hole: a chain into
+      the hole's left endpoint, a hole naming a source capture proposition,
+      a chain out of its right endpoint into a weakened closed set, and
+      closed kinding evidence for that set.  It is `leC`'s shape with the
+      closed kinding appended, and it is what a set-bounded capture member
+      needs: its telescope carries two capture propositions and no kinding
+      proposition, so `kindC` has no hole to read there. -/
+  | kindCle : Γ ⊢ m : src ⇒ Tel → src.HoleAtC h C₁ C₂ →
+      SideC.HasType Γ q D C₁ → SideC.HasType Γ q' C₂ E↑ →
+      Γ ⊢ᵏ g : E ⊑ᵏ φ →
+      Γ ⊢ .kindCle m q h q' g φ : src ⇒ Tel ▹ D ⊑ᵏ φ
 
 /-- `Γ ⊢ₐ a : T`: atoms. -/
 inductive Atom.HasType : Ctx s → Atom s → Ty s → Prop where
@@ -491,6 +507,10 @@ inductive KindCo.MemberFree {s : Sig} : KindCo s → Prop where
   | kprojS {g : KindCo s} (C : CaptureSet s) (ψ : Cls.Kind) :
       g.MemberFree → (KindCo.kprojS g C ψ).MemberFree
   | ksub {g : KindCo s} (φ : Cls.Kind) : g.MemberFree → (KindCo.ksub g φ).MemberFree
+  /-- `kle` reads no telescope either: its capture premise is member free and
+      so is its kinding premise. -/
+  | kle {f : CapCo s} {g : KindCo s} :
+      f.MemberFree → g.MemberFree → (KindCo.kle f g).MemberFree
 
 /-- An atom whose capture wrappers are member free. -/
 inductive Atom.MemberFree {s : Sig} : Atom s → Prop where

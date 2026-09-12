@@ -109,6 +109,7 @@ def CapAtom.translate? : CapAtom s → Option (FCdot.CapAtom s)
   | .sel x A => some (.name x A)
   | .any => none
   | .fresh => none
+  | .proj a φ => (a.translate?).map (FCdot.CapAtom.proj · φ)
 
 /-- `⟦C⟧` on capture sets: atom by atom, dropping `any`. -/
 def CaptureSet.translate (C : CaptureSet s) : FCdot.CaptureSet s :=
@@ -135,6 +136,17 @@ gives it no power, and `Ty.expandFresh` is what a program means by it. -/
 @[simp] theorem CaptureSet.translate_cons_fresh {s : Sig} (C : CaptureSet s) :
     CaptureSet.translate (CapAtom.fresh :: C) = C.translate := rfl
 
+/-- A projected atom translates to the projection of what it projects, and a
+projected `any` or `fresh` is dropped, because `Option.map` maps `none` to
+`none`. -/
+@[simp] theorem CapAtom.translate?_proj {s : Sig} (a : CapAtom s) (φ : Cls.Kind) :
+    (CapAtom.proj a φ).translate? = (a.translate?).map (FCdot.CapAtom.proj · φ) := rfl
+
+/-- The clause of `translate` at an atom the target drops. -/
+theorem CaptureSet.translate_cons_none {s : Sig} {a : CapAtom s} (h : a.translate? = none)
+    (C : CaptureSet s) : CaptureSet.translate (a :: C) = C.translate := by
+  simp [CaptureSet.translate, h]
+
 /-- The source has no universal root, so a translated capture set never
 mentions `⊤ᶜ`. -/
 theorem CaptureSet.top_not_mem_translate {s : Sig} (C : CaptureSet s) :
@@ -144,15 +156,44 @@ theorem CaptureSet.top_not_mem_translate {s : Sig} (C : CaptureSet s) :
   obtain ⟨a, _, ha⟩ := h
   cases a <;> simp [CapAtom.translate?] at ha
 
-/-- The source writes no projection, so every atom of a translated capture
-set is its own base.  This is the set-wise form of Fact 4 on the source side:
-`CapAtom.translate?` produces `var`, `cvar` and `name` and nothing else. -/
-theorem CaptureSet.base_of_mem_translate {s : Sig} (C : CaptureSet s) :
+/-- A source set that writes no projection: every atom is its own base.  It
+is the source twin of the target's `CapAtom.base`, decided. -/
+def CaptureSet.NoProj (C : CaptureSet s) : Bool := C.all (fun a => a.base == a)
+
+/-- The base of a source atom is never a projection, exactly as on the
+target (`FCdot.CapAtom.base_ne_proj`). -/
+theorem CapAtom.base_ne_proj : ∀ (a b : CapAtom s) (φ : Cls.Kind), a.base ≠ .proj b φ
+  | .var _, _, _ => by simp [CapAtom.base]
+  | .cvar _, _, _ => by simp [CapAtom.base]
+  | .sel _ _, _, _ => by simp [CapAtom.base]
+  | .any, _, _ => by simp [CapAtom.base]
+  | .fresh, _, _ => by simp [CapAtom.base]
+  | .proj a _, b, φ => CapAtom.base_ne_proj a b φ
+
+/-- A projection-free source atom translates to a projection-free target
+atom. -/
+theorem CapAtom.base_of_translate {s : Sig} :
+    ∀ {a : CapAtom s} {b : FCdot.CapAtom s}, a.base = a → a.translate? = some b → b.base = b
+  | .var _, _, _, h => by cases h; rfl
+  | .cvar _, _, _, h => by cases h; rfl
+  | .sel _ _, _, _, h => by cases h; rfl
+  | .any, _, _, h => by cases h
+  | .fresh, _, _, h => by cases h
+  | .proj a φ, _, hb, _ => absurd hb (CapAtom.base_ne_proj a a φ)
+
+/-- On a projection-free source set every atom of the translation is its own
+base.  This is the set-wise form of Fact 4 on the source side:
+`CapAtom.translate?` produces `var`, `cvar` and `name` at such an atom and
+nothing else. -/
+theorem CaptureSet.base_of_mem_translate {s : Sig} (C : CaptureSet s) (hC : C.NoProj) :
     ∀ b ∈ C.translate, b.base = b := by
   intro b hb
   rw [CaptureSet.translate, List.mem_filterMap] at hb
-  obtain ⟨a, _, ha⟩ := hb
-  cases a <;> simp [CapAtom.translate?] at ha <;> rw [← ha] <;> rfl
+  obtain ⟨a, ha, hb⟩ := hb
+  have : a.base = a := by
+    have := List.all_eq_true.mp hC a ha
+    exact of_decide_eq_true (by simpa using this)
+  exact CapAtom.base_of_translate this hb
 
 /-- The A3a `translate_cons`, at an atom that has a target atom: the head is
 translated and the tail follows. -/
@@ -187,19 +228,29 @@ theorem CapAtom.translate_rename {s s' : Sig} :
   | .sel _ _, _ => rfl
   | .any, _ => rfl
   | .fresh, _ => rfl
+  | .proj a φ, ρ => by
+      show ((a.rename ρ).translate?).map (FCdot.CapAtom.proj · φ)
+          = ((a.translate?).map (FCdot.CapAtom.proj · φ)).map (fun b => b.rename ρ)
+      rw [CapAtom.translate_rename a ρ]
+      cases a.translate? <;> rfl
 
 @[simp] theorem CaptureSet.translate_rename {s s' : Sig} (C : CaptureSet s) (ρ : Rename s s') :
     (C.rename ρ).translate = C.translate.rename ρ := by
   induction C with
   | nil => rfl
   | cons a C ih =>
-      cases a <;>
-        simp only [DotMNF.CaptureSet.rename_cons, CapAtom.rename,
-          CaptureSet.translate_cons_var, CaptureSet.translate_cons_cvar,
-          CaptureSet.translate_cons_sel, CaptureSet.translate_cons_any,
-          CaptureSet.translate_cons_fresh,
-          FCdot.CaptureSet.rename, List.map_cons, ih] <;>
-        rfl
+      have ha := CapAtom.translate_rename a ρ
+      show CaptureSet.translate (a.rename ρ :: DotMNF.CaptureSet.rename C ρ) = _
+      cases h : a.translate? with
+      | none =>
+          rw [h] at ha
+          rw [CaptureSet.translate_cons_none (by simpa using ha),
+            CaptureSet.translate_cons_none h, ih]
+      | some b =>
+          rw [h] at ha
+          rw [CaptureSet.translate_cons (by simpa using ha),
+            CaptureSet.translate_cons h, ih]
+          rfl
 
 @[simp] theorem CaptureSet.translate_weaken {s : Sig} {k : Kind} (C : CaptureSet s) :
     (C.weaken (k := k)).translate = FCdot.CaptureSet.weaken (k := k) C.translate :=
@@ -209,6 +260,41 @@ theorem CapAtom.translate_rename {s s' : Sig} :
     (y : BVar s k) :
     (C.substVar y).translate = FCdot.CaptureSet.substVar C.translate y :=
   CaptureSet.translate_rename C (FCdot.Rename.subst y)
+
+/-- The smart constructor commutes with the translation.  A nested
+projection is normalised on both sides, and an atom the target drops stays
+dropped, because `Option.map` maps `none` to `none`. -/
+theorem CapAtom.translate_projBy {s : Sig} (φ : Cls.Kind) :
+    ∀ a : CapAtom s,
+      (CapAtom.projBy φ a).translate? = (a.translate?).map (FCdot.CapAtom.projBy φ)
+  | .var _ => rfl
+  | .cvar _ => rfl
+  | .sel _ _ => rfl
+  | .any => rfl
+  | .fresh => rfl
+  | .proj a ψ => by
+      show ((a.translate?).map (FCdot.CapAtom.proj · (φ.interB ψ)))
+          = ((a.translate?).map (FCdot.CapAtom.proj · ψ)).map (FCdot.CapAtom.projBy φ)
+      cases a.translate? <;> rfl
+
+/-- `⟦C ↾ φ⟧ = ⟦C⟧ ↾ φ`: the translation commutes with projecting a set. -/
+@[simp] theorem CaptureSet.translate_proj {s : Sig} (C : CaptureSet s) (φ : Cls.Kind) :
+    (CaptureSet.proj C φ).translate = FCdot.CaptureSet.proj C.translate φ := by
+  induction C with
+  | nil => rfl
+  | cons a C ih =>
+      have ha := CapAtom.translate_projBy φ a
+      show CaptureSet.translate (CapAtom.projBy φ a :: CaptureSet.proj C φ) = _
+      cases h : a.translate? with
+      | none =>
+          rw [h] at ha
+          rw [CaptureSet.translate_cons_none (by simpa using ha),
+            CaptureSet.translate_cons_none h, ih]
+      | some b =>
+          rw [h] at ha
+          rw [CaptureSet.translate_cons (by simpa using ha),
+            CaptureSet.translate_cons h, ih]
+          rfl
 
 /-! ## Shapes -/
 
@@ -228,6 +314,7 @@ def Shape.isObj : Shape s → Bool
   | .typ _ _ _ => true
   | .fld _ _ => true
   | .cap _ _ _ => true
+  | .capk _ _ => true
   | .and _ _ => true
 
 mutual
@@ -247,6 +334,7 @@ def Shape.translate : Shape s → FCdot.Shape s
   | .typ A S T => .obj (Shape.tel (.typ A S T))
   | .fld a T => .obj (Shape.tel (.fld a T))
   | .cap A c1 c2 => .obj (Shape.tel (.cap A c1 c2))
+  | .capk A φ => .obj (Shape.tel (.capk A φ))
   | .and S T => .obj (Shape.tel (.and S T))
   | .mu S => .obj (Shape.telSelf S)
 
@@ -265,6 +353,7 @@ def Shape.tel : Shape s → FCdot.Telescope (s,x)
   | .cap A c1 c2 =>
       .cons (.cons .nil (.leC (CaptureSet.translate c1).weaken [FCdot.CapAtom.name .here A]))
         (.leC [FCdot.CapAtom.name .here A] (CaptureSet.translate c2).weaken)
+  | .capk A φ => .cons .nil (.kindC [FCdot.CapAtom.name .here A] φ)
   | .and S T => (Shape.tel S).append (Shape.tel T)
   | .mu S =>
       if S.isDecl then Shape.telSelf S
@@ -300,6 +389,7 @@ def Shape.telSelf : Shape (s,x) → FCdot.Telescope (s,x)
   | .cap A c1 c2 =>
       .cons (.cons .nil (.leC (CaptureSet.translate c1) [FCdot.CapAtom.name .here A]))
         (.leC [FCdot.CapAtom.name .here A] (CaptureSet.translate c2))
+  | .capk A φ => .cons .nil (.kindC [FCdot.CapAtom.name .here A] φ)
   | .and S T => (Shape.telSelf S).append (Shape.telSelf T)
   | .mu S =>
       if S.isDecl then (Shape.telSelf S).substVar .here
@@ -319,6 +409,17 @@ def Shape.telSelf : Shape (s,x) → FCdot.Telescope (s,x)
       .cons .nil (.bnd (FCdot.Shape.box (.capt C.translate S.translate)))
 
 end
+
+/-- The telescope of a kind-bounded capture member is the one kinding
+proposition about the member's own name. -/
+@[simp] theorem Shape.tel_capk {s : Sig} (A : Label) (φ : Cls.Kind) :
+    (Shape.capk A φ : Shape s).tel = .cons .nil (.kindC [FCdot.CapAtom.name .here A] φ) := by
+  rw [Shape.tel]
+
+@[simp] theorem Shape.telSelf_capk {s : Sig} (A : Label) (φ : Cls.Kind) :
+    (Shape.capk A φ : Shape (s,x)).telSelf =
+      .cons .nil (.kindC [FCdot.CapAtom.name .here A] φ) := by
+  rw [Shape.telSelf]
 
 /-- `⟦S ^ C⟧ = ⟦S⟧ ^ ⟦C⟧`: the translated shape at the translated capture
 set. -/
@@ -368,6 +469,7 @@ theorem Shape.translate_isObj {s : Sig} :
   | .typ _ _ _, _ => by simp [Shape.translate]
   | .fld _ _, _ => by simp [Shape.translate]
   | .cap _ _ _, _ => by simp [Shape.translate]
+  | .capk _ _, _ => by simp [Shape.translate]
   | .and _ _, _ => by simp [Shape.translate]
   | .mu S, h => by
       rw [Shape.isObj] at h
@@ -380,6 +482,7 @@ theorem Shape.tel_of_not_isObj {s : Sig} :
   | .sel (.var _) _, _ => by simp [Shape.translate, Shape.tel]
   | .all (.capt _ _) (.ty (.capt _ _)), _ => by simp [Shape.translate, Shape.tel]
   | .all (.capt _ _) (.ex _ (.capt _ _)), _ => by simp [Shape.translate, Shape.tel]
+  | .capk _ _, h => by simp [Shape.isObj] at h
   | .box (.capt _ _), _ => by simp [Shape.translate, Shape.tel]
   | .mu S, h => by
       rw [Shape.isObj] at h
@@ -392,6 +495,7 @@ theorem Shape.telSelf_of_not_isObj {s : Sig} :
   | .sel (.var _) _, _ => by simp [Shape.translate, Shape.telSelf]
   | .all (.capt _ _) (.ty (.capt _ _)), _ => by simp [Shape.translate, Shape.telSelf]
   | .all (.capt _ _) (.ex _ (.capt _ _)), _ => by simp [Shape.translate, Shape.telSelf]
+  | .capk _ _, h => by simp [Shape.isObj] at h
   | .box (.capt _ _), _ => by simp [Shape.translate, Shape.telSelf]
   | .mu S, h => by
       rw [Shape.isObj] at h
@@ -458,6 +562,7 @@ def Ctx.translate : Ctx s → FCdot.Ctx s
   | .consC Γ => .consC Γ.translate .star
   | .consRoot Γ => .consC Γ.translate .root
   | .consInst Γ C => .consC Γ.translate (.inst C.translate)
+  | .consCls Γ c => .consC Γ.translate (.cls c)
 
 end DotMNF
 

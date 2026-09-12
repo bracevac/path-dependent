@@ -58,6 +58,7 @@ theorem Morphism.HasType.append {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)}
   | _, _, .eqC h₂ hAt => .eqC (h₁.append h₂) hAt
   | _, _, .eqSymC h₂ hAt => .eqSymC (h₁.append h₂) hAt
   | _, _, .kindC h₂ hAt hq hsub => .kindC (h₁.append h₂) hAt hq hsub
+  | _, _, .kindCle h₂ hAt hq hq' hg => .kindCle (h₁.append h₂) hAt hq hq' hg
 
 
 /-! ## Witnesses: labels, positions, distinctness -/
@@ -344,6 +345,13 @@ theorem Telescope.At.append_left' {s : Sig} {Tel : Telescope s} {i : Nat} {P : P
   | .nil => h
   | .cons Tel' _ => .there (Telescope.At.append_left' h Tel')
 
+theorem Telescope.At.zero_one {s : Sig} (P : Proposition s) :
+    (Telescope.cons .nil P) ∋ (0 ↦ P) := by
+  have h : (Telescope.cons (.nil : Telescope s) P) ∋ ((Telescope.nil : Telescope s).length ↦ P) :=
+    .here
+  rw [Telescope.length_nil] at h
+  exact h
+
 theorem Telescope.At.zero_two {s : Sig} (P Q : Proposition s) :
     (Telescope.cons (Telescope.cons .nil P) Q) ∋ (0 ↦ P) := by
   have h : (Telescope.cons (.nil : Telescope s) P) ∋ ((Telescope.nil : Telescope s).length ↦ P) :=
@@ -410,7 +418,8 @@ end FCdot
 
 namespace DotMNF
 
-open FCdot (Kind Sig BVar Rename Label Morphism ShapeCo CapCo LeCo EqCo ELeCo Has Atom Side)
+open FCdot (Kind Sig BVar Rename Label Morphism ShapeCo CapCo KindCo LeCo EqCo ELeCo Has Atom
+  Side)
 open scoped FCdot
 
 /-! ## Equations for the type translation
@@ -446,6 +455,9 @@ theorem Shape.translate_fld {s : Sig} (a : Label) (T : Ty s) :
 
 theorem Shape.translate_cap {s : Sig} (A : Label) (c₁ c₂ : CaptureSet s) :
     (Shape.cap A c₁ c₂).translate = μ (Shape.cap A c₁ c₂).tel := by simp [Shape.translate]
+
+theorem Shape.translate_capk {s : Sig} (A : Label) (φ : Cls.Kind) :
+    (Shape.capk A φ : Shape s).translate = μ (Shape.capk A φ).tel := by simp [Shape.translate]
 
 theorem Shape.translate_and {s : Sig} (S T : Shape s) :
     (Shape.and S T).translate = μ ((Shape.tel S).append (Shape.tel T)) := by
@@ -569,6 +581,7 @@ theorem Shape.telSelf_noBnd_of_decl {s : Sig} :
   | .typ _ _ _, _ => by simp [Shape.telSelf, FCdot.Telescope.NoBnd]
   | .fld _ (.capt _ _), _ => by simp [Shape.telSelf, FCdot.Telescope.NoBnd]
   | .cap _ _ _, _ => by simp [Shape.telSelf, FCdot.Telescope.NoBnd]
+  | .capk _ _, _ => by simp [FCdot.Telescope.NoBnd]
   | .and S T, h => by
       cases h with
       | and hS hT =>
@@ -595,6 +608,7 @@ theorem Shape.tel_closedBnds {s : Sig} :
   | .typ _ _ _ => by simp only [Shape.tel]; exact .le (.le .nil)
   | .fld _ (.capt _ _) => by simp only [Shape.tel]; exact .leC (.le (.has .nil))
   | .cap _ _ _ => by simp only [Shape.tel]; exact .leC (.leC .nil)
+  | .capk _ _ => by simp only [Shape.tel]; exact .kindC .nil
   | .and S T => by
       simp only [Shape.tel]
       exact (Shape.tel_closedBnds S).append (Shape.tel_closedBnds T)
@@ -763,6 +777,7 @@ theorem Shape.declLabels_rename {s1 s2 : Sig} :
   | .sel _ _, _ => rfl
   | .typ _ _ _, _ => rfl
   | .cap _ _ _, _ => rfl
+  | .capk _ _, _ => rfl
   | .fld _ _, _ => rfl
   | .mu _, _ => rfl
   | .all _ _, _ => rfl
@@ -846,6 +861,7 @@ theorem Shape.mem_witnesses_labels {s : Sig} :
   | .box _, _, h => by simp [Shape.witnesses, FCdot.Witnesses.labels] at h
   | .mu _, _, h => by simp [Shape.witnesses, FCdot.Witnesses.labels] at h
   | .cap _ _ _, _, h => by simp [Shape.witnesses, FCdot.Witnesses.labels] at h
+  | .capk _ _, _, h => by simp [Shape.witnesses, FCdot.Witnesses.labels] at h
   | .typ A S T, _, h => by
       simpa [Shape.witnesses, FCdot.Witnesses.labels, Shape.declLabels] using h
   | .fld a (.capt C S), _, h => by
@@ -864,6 +880,7 @@ theorem Shape.mem_capWitnesses_labels {s : Sig} :
   | .box _, _, h => by simp [Shape.capWitnesses, FCdot.CapWitnesses.labels] at h
   | .mu _, _, h => by simp [Shape.capWitnesses, FCdot.CapWitnesses.labels] at h
   | .typ _ _ _, _, h => by simp [Shape.capWitnesses, FCdot.CapWitnesses.labels] at h
+  | .capk _ _, _, h => by simp [Shape.capWitnesses, FCdot.CapWitnesses.labels] at h
   | .cap A c₁ c₂, _, h => by
       simpa [Shape.capWitnesses, FCdot.CapWitnesses.labels, Shape.declLabels] using h
   | .fld a (.capt C S), _, h => by
@@ -1003,6 +1020,9 @@ theorem litMorphism_offsets {s : Sig} : ∀ (S : Shape (s,x)) (e c h : Nat),
   | .mu _, e, c, h => by
       simp [litMorphism, Shape.witnesses, Shape.capWitnesses, Shape.fieldLabels,
         FCdot.Witnesses.length, FCdot.CapWitnesses.length]
+  | .capk _ _, e, c, h => by
+      simp [litMorphism, Shape.witnesses, Shape.capWitnesses, Shape.fieldLabels,
+        FCdot.Witnesses.length, FCdot.CapWitnesses.length]
   | .typ A S T, e, c, h => by
       simp [litMorphism, Shape.witnesses, Shape.capWitnesses, Shape.fieldLabels,
         FCdot.Witnesses.length, FCdot.CapWitnesses.length]
@@ -1085,6 +1105,7 @@ theorem eqSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distinc
   | .box _, _, _ => by simp [Shape.EqSpec]
   | .mu _, _, _ => by simp [Shape.EqSpec]
   | .cap _ _ _, _, _ => by simp [Shape.EqSpec]
+  | .capk _ _, _, _ => by simp [Shape.EqSpec]
   | .typ A S T', e, hpos => by
       simp only [Shape.witnesses] at hpos
       have h1 := hpos 0 A S.translate FCdot.Witnesses.At.hereNil
@@ -1123,6 +1144,7 @@ theorem hasSpec_of {s : Sig} {src : FCdot.Telescope (s,x)} :
   | .mu _, _, _ => by simp [Shape.HasSpec]
   | .typ _ _ _, _, _ => by simp [Shape.HasSpec]
   | .cap _ _ _, _, _ => by simp [Shape.HasSpec]
+  | .capk _ _, _, _ => by simp [Shape.HasSpec]
   | .fld a T', off, hpos => by
       simp only [Shape.fieldLabels] at hpos
       have h1 := hpos 0 a .here
@@ -1155,6 +1177,7 @@ theorem capSpec_of {s : Sig} (Wall : FCdot.Witnesses (s,x))
   | .box _, _, _ => by simp [Shape.CapSpec]
   | .mu _, _, _ => by simp [Shape.CapSpec]
   | .typ _ _ _, _, _ => by simp [Shape.CapSpec]
+  | .capk _ _, _, _ => by simp [Shape.CapSpec]
   | .cap A c₁ c₂, c, hpos => by
       simp only [Shape.capWitnesses] at hpos
       have h1 := hpos 0 A c₁.translate FCdot.CapWitnesses.At.hereNil
@@ -1242,6 +1265,7 @@ inductive Ctx.Wf : {s : Sig} → Ctx s → Prop where
   | consC : Ctx.Wf Γ → Ctx.Wf (Ctx.consC Γ)
   | consRoot : Ctx.Wf Γ → Ctx.Wf (Ctx.consRoot Γ)
   | consInst : Ctx.Wf Γ → Ctx.Wf (Ctx.consInst Γ C)
+  | consCls : Ctx.Wf Γ → Ctx.Wf (Ctx.consCls Γ c)
 
 /-- A scope is well formed when its context is: it adds a root and a rigid
 capture binder, neither of which carries a literal. -/
@@ -1284,6 +1308,10 @@ theorem Ctx.lookup_consInst_there {s : Sig} (Γ : Ctx s) (C : CaptureSet s)
     (y : BVar s .var) :
     (Ctx.consInst Γ C).lookup (.there y) = (Γ.lookup y).weaken := rfl
 
+theorem Ctx.lookup_consCls_there {s : Sig} (Γ : Ctx s) (c : Cls.Classifier)
+    (y : BVar s .var) :
+    (Ctx.consCls Γ c).lookup (.there y) = (Γ.lookup y).weaken := rfl
+
 theorem Ctx.varAtom_cons_here {s : Sig} (Γ : Ctx s) (T : Ty s) :
     (Γ.cons T).varAtom .here = .var .here := rfl
 
@@ -1309,6 +1337,10 @@ theorem Ctx.varAtom_consInst_there {s : Sig} (Γ : Ctx s) (C : CaptureSet s)
     (y : BVar s .var) :
     (Ctx.consInst Γ C).varAtom (.there y) = (Γ.varAtom y)↑ := rfl
 
+theorem Ctx.varAtom_consCls_there {s : Sig} (Γ : Ctx s) (c : Cls.Classifier)
+    (y : BVar s .var) :
+    (Ctx.consCls Γ c).varAtom (.there y) = (Γ.varAtom y)↑ := rfl
+
 theorem Ctx.varAtom_root {s : Sig} : ∀ (Γ : Ctx s) (y : BVar s .var), (Γ.varAtom y).root = y
   | .cons _ _, .here => by rw [Ctx.varAtom_cons_here]; simp [FCdot.Atom.root]
   | .cons Γ _, .there y => by
@@ -1326,6 +1358,9 @@ theorem Ctx.varAtom_root {s : Sig} : ∀ (Γ : Ctx s) (y : BVar s .var), (Γ.var
       simp [FCdot.Atom.weaken, Ctx.varAtom_root Γ y]
   | .consInst Γ _, .there y => by
       rw [Ctx.varAtom_consInst_there]
+      simp [FCdot.Atom.weaken, Ctx.varAtom_root Γ y]
+  | .consCls Γ _, .there y => by
+      rw [Ctx.varAtom_consCls_there]
       simp [FCdot.Atom.weaken, Ctx.varAtom_root Γ y]
 
 theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar s .var),
@@ -1369,6 +1404,11 @@ theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar 
       | consInst hwf' =>
           rw [Ctx.lookup_consInst_there, Ctx.varAtom_consInst_there, Ty.translate_weaken]
           exact (Ctx.varAtom_typed Γ hwf' y).weakenC (.inst C.translate) rfl
+  | .consCls Γ c, hwf, .there y => by
+      cases hwf with
+      | consCls hwf' =>
+          rw [Ctx.lookup_consCls_there, Ctx.varAtom_consCls_there, Ty.translate_weaken]
+          exact (Ctx.varAtom_typed Γ hwf' y).weakenC (.cls c) rfl
 
 /-! ## The root of a translated variable typing -/
 
@@ -1387,6 +1427,81 @@ theorem HasTy.translateAtom_root : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s}
   | _, _, _, _, _, .sub h (.ty _) _ => by
       rw [HasTy.translateAtom]
       simpa [FCdot.Atom.root] using HasTy.translateAtom_root h
+
+/-! ## The base of a translated atom
+
+`CapKind`'s four one-atom rules read `CapAtom.base` on the source and the
+target rules read it on the target atom, so the two readings have to agree.
+Both are one induction on the source atom, and both are Fact 1: a projection
+carries a kind and the base looks through it. -/
+
+theorem CapAtom.translate?_base {s : Sig} :
+    ∀ {a : CapAtom s} {b : FCdot.CapAtom s},
+      a.translate? = some b → a.base.translate? = some b.base
+  | .var _, _, h => by cases h; rfl
+  | .cvar _, _, h => by cases h; rfl
+  | .sel _ _, _, h => by cases h; rfl
+  | .any, _, h => by cases h
+  | .fresh, _, h => by cases h
+  | .proj a _, b, h => by
+      rw [CapAtom.translate?_proj] at h
+      cases ha : a.translate? with
+      | none => rw [ha] at h; cases h
+      | some b₀ =>
+          rw [ha] at h
+          simp only [Option.map_some] at h
+          cases h
+          exact CapAtom.translate?_base (a := a) (b := b₀) ha
+
+theorem CapAtom.translate?_of_base {s : Sig} :
+    ∀ {a : CapAtom s} {b₀ : FCdot.CapAtom s},
+      a.base.translate? = some b₀ → ∃ b, a.translate? = some b
+  | .var _, _, _ => ⟨_, rfl⟩
+  | .cvar _, _, _ => ⟨_, rfl⟩
+  | .sel _ _, _, _ => ⟨_, rfl⟩
+  | .any, _, h => by cases h
+  | .fresh, _, h => by cases h
+  | .proj a φ, _, h => by
+      obtain ⟨b, hb⟩ := CapAtom.translate?_of_base (a := a) h
+      exact ⟨.proj b φ, by rw [CapAtom.translate?_proj, hb]; rfl⟩
+
+/-- The kind a translated atom carries is the kind the source atom carries:
+`CapAtom.kindOf` reads the projections and nothing else. -/
+theorem CapAtom.translate?_kindOf {s : Sig} :
+    ∀ {a : CapAtom s} {b : FCdot.CapAtom s}, a.translate? = some b → b.kindOf = a.kindOf
+  | .var _, _, h => by cases h; rfl
+  | .cvar _, _, h => by cases h; rfl
+  | .sel _ _, _, h => by cases h; rfl
+  | .any, _, h => by cases h
+  | .fresh, _, h => by cases h
+  | .proj a φ, b, h => by
+      rw [CapAtom.translate?_proj] at h
+      cases ha : a.translate? with
+      | none => rw [ha] at h; cases h
+      | some b₀ =>
+          rw [ha] at h
+          simp only [Option.map_some] at h
+          cases h
+          show φ.interB b₀.kindOf = φ.interB a.kindOf
+          rw [CapAtom.translate?_kindOf ha]
+
+/-- The source's classifier reader answers at a capture binder alone, so the
+premise of `CapKind.kcls` says what the atom's base is. -/
+theorem Ctx.clsOf?_eq_some {s : Sig} {Γ : Ctx s} {a : CapAtom s} {c : Cls.Classifier}
+    (h : Γ.clsOf? a = some c) : ∃ κ : BVar s .cap, a = CapAtom.cvar κ := by
+  cases a with
+  | cvar κ => exact ⟨κ, rfl⟩
+  | var _ => simp [Ctx.clsOf?] at h
+  | sel _ _ => simp [Ctx.clsOf?] at h
+  | any => simp [Ctx.clsOf?] at h
+  | fresh => simp [Ctx.clsOf?] at h
+  | proj _ _ => simp [Ctx.clsOf?] at h
+
+/-- Subkinding gives the step a morphism template takes. -/
+theorem Cls.Kind.Subkind.admitsStep {φ₁ φ₂ : Cls.Kind} (h : φ₁.Subkind φ₂) :
+    φ₁.AdmitsStep φ₂ := by
+  show ((φ₁ == φ₂) || φ₁.subkindB φ₂) = true
+  rw [h, Bool.or_true]
 
 /-! ## Typedness of the evidence and atom translations -/
 
@@ -1418,13 +1533,15 @@ theorem Subcap.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {C C' : CaptureSet s
       rw [Subcap.translate]
       exact .eqToLe (.symm (.instC (Ctx.InstOf.translate hI)))
   | _, Γ, _, _, @Subcap.level _ _ e κ h₁ h₂, _ => by
-      cases e <;> rw [Subcap.translate] <;>
-        simp only [CaptureSet.translate_cons_var, CaptureSet.translate_cons_cvar,
-          CaptureSet.translate_cons_sel, CaptureSet.translate_cons_any,
-          CaptureSet.translate_cons_fresh, CaptureSet.translate_nil] <;>
-        first
-          | exact .level (Ctx.IsRoot.translate h₁) (Ctx.LvlLe.translate rfl h₂)
-          | exact .elem (fun _ ha => absurd ha (List.not_mem_nil))
+      rw [Subcap.translate]
+      unfold levelCo
+      cases he : e.translate? with
+      | none =>
+          rw [CaptureSet.translate_cons_none he, CaptureSet.translate_nil]
+          exact .elem (fun _ ha => absurd ha (List.not_mem_nil))
+      | some b =>
+          rw [CaptureSet.translate_cons he, CaptureSet.translate_nil]
+          exact .level (Ctx.IsRoot.translate h₁) (Ctx.LvlLe.translate he h₂)
   | _, _, _, _, @Subcap.selLower _ Γ _ x A c₁ c₂ _ h, hwf => by
       have ha := HasTy.translateAtom_typed h hwf
       rw [Ty.translate_capt, Shape.translate_cap] at ha
@@ -1447,6 +1564,15 @@ theorem Subcap.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {C C' : CaptureSet s
         FCdot.CaptureSet.substVar_name_here] at hm
       rw [Subcap.translate, Shape.translate_cap]
       simpa [CaptureSet.translate, CapAtom.translate?] using hm
+  | _, _, _, _, @Subcap.unproj _ _ C φ, _ => by
+      rw [Subcap.translate, CaptureSet.translate_proj]
+      exact .unprojC
+  | _, _, _, _, @Subcap.proj _ _ C φ g, hwf => by
+      rw [Subcap.translate, CaptureSet.translate_proj]
+      exact .projC (g.translate_typed hwf)
+  | _, _, _, _, @Subcap.projMono _ _ C D ψ f, hwf => by
+      rw [Subcap.translate, CaptureSet.translate_proj, CaptureSet.translate_proj]
+      exact .projMono (f.translate_typed hwf)
   termination_by _ _ _ _ f _ => sizeOf f
   decreasing_by
     all_goals try simp_wf
@@ -1533,7 +1659,114 @@ theorem SubShape.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {S T : Shape s}
       rw [Ctx.translate_scope, Ty.translate_underRoot, Ty.translate_underRoot] at h₁
       rw [Ctx.translate_body, Ty.translate_underRootCod, Ty.translate_underRootCod] at h₂
       exact .pi h₁ h₂
+  | _, _, _, _, @SubShape.capkI _ _ A c₁ c₂ φ g, hwf => by
+      rw [SubShape.translate, Shape.translate_cap, Shape.translate_capk, Shape.tel_capk]
+      refine .obj (.kindCle .nil ?_ .nil .nil (g.translate_typed hwf))
+      rw [Shape.tel_cap]
+      exact .leC (FCdot.Telescope.At.one_two _ _)
+  | _, _, _, _, @SubShape.capk _ _ A φ₁ φ₂ h, _ => by
+      rw [SubShape.translate, Shape.translate_capk, Shape.translate_capk, Shape.tel_capk,
+        Shape.tel_capk]
+      exact .obj (.kindC .nil (FCdot.Telescope.At.zero_one _) .nil
+        (Cls.Kind.Subkind.admitsStep h))
   termination_by _ _ _ _ d _ => sizeOf d
+
+/-- The kinding half of the evidence translation is typed at the translated
+capture set and at the same kind.  Rule by rule: the atom-carrying rules read
+`CapAtom.translate?`, and at an atom the target drops the translated set is
+empty and `nil` is its kinding. -/
+theorem CapKind.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {φ : Cls.Kind}
+    (g : CapKind Γ C φ), Γ.Wf →
+    Γ.translate ⊢ᵏ g.translate : C.translate ⊑ᵏ φ
+  | _, _, _, _, .nil, _ => by rw [CapKind.translate]; exact .nil
+  | _, _, _, _, @CapKind.cons _ _ a _ _ g h, hwf => by
+      rw [CapKind.translate]
+      unfold kconsCo
+      cases ha : a.translate? with
+      | none =>
+          rw [CaptureSet.translate_cons_none ha]
+          exact h.translate_typed hwf
+      | some b =>
+          rw [CaptureSet.translate_cons ha]
+          have hg := g.translate_typed hwf
+          rw [CaptureSet.translate_cons ha, CaptureSet.translate_nil] at hg
+          exact .cons hg (h.translate_typed hwf)
+  | _, _, _, _, @CapKind.kproj _ _ a _ hk, _ => by
+      rw [CapKind.translate]
+      unfold kprojCo
+      cases ha : a.translate? with
+      | none => rw [CaptureSet.translate_cons_none ha, CaptureSet.translate_nil]; exact .nil
+      | some b =>
+          rw [CaptureSet.translate_cons ha, CaptureSet.translate_nil]
+          exact .kproj (by rw [CapAtom.translate?_kindOf ha]; exact hk)
+  | _, Γ, _, _, @CapKind.kcls _ _ a c _ h₁ h₂, _ => by
+      rw [CapKind.translate]
+      unfold kclsCo
+      cases ha : a.translate? with
+      | none => rw [CaptureSet.translate_cons_none ha, CaptureSet.translate_nil]; exact .nil
+      | some b =>
+          rw [CaptureSet.translate_cons ha, CaptureSet.translate_nil]
+          obtain ⟨κ, hκ⟩ := Ctx.clsOf?_eq_some h₁
+          have hb : b.base = FCdot.CapAtom.cvar κ := by
+            have h := CapAtom.translate?_base ha
+            rw [hκ] at h
+            exact (Option.some.inj h).symm
+          refine .kcls (c := c) ?_ ?_
+          · rw [hb]
+            exact Ctx.ClsOf.translate (by rw [← hκ]; exact h₁)
+          · rw [CapAtom.translate?_kindOf ha]; exact h₂
+  | _, Γ, _, _, @CapKind.kvar _ _ a x _ hb g, hwf => by
+      rw [CapKind.translate]
+      obtain ⟨b, ha⟩ : ∃ b, a.translate? = some b :=
+        CapAtom.translate?_of_base (b₀ := FCdot.CapAtom.var x) (by rw [hb]; rfl)
+      have hbb : b.base = FCdot.CapAtom.var x := by
+        have h := CapAtom.translate?_base ha
+        rw [hb] at h
+        exact (Option.some.inj h).symm
+      rw [CaptureSet.translate_cons ha, CaptureSet.translate_nil]
+      have hat := Ctx.varAtom_typed Γ hwf x
+      rw [Ty.eta (Γ.lookup x), Ty.translate_capt] at hat
+      have hg := g.translate_typed hwf
+      rw [CaptureSet.translate_proj] at hg
+      refine .kvar hat ?_ ?_
+      · rw [hbb, Ctx.varAtom_root Γ x]
+      · rw [CapAtom.translate?_kindOf ha]; exact hg
+  | _, Γ, _, _, @CapKind.kcvar _ _ a κ C _ hb hI g, hwf => by
+      rw [CapKind.translate]
+      unfold kcvarCo
+      cases ha : a.translate? with
+      | none => rw [CaptureSet.translate_cons_none ha, CaptureSet.translate_nil]; exact .nil
+      | some b =>
+          rw [CaptureSet.translate_cons ha, CaptureSet.translate_nil]
+          have hbb : b.base = FCdot.CapAtom.cvar κ := by
+            have h := CapAtom.translate?_base ha
+            rw [hb] at h
+            exact (Option.some.inj h).symm
+          have hg := g.translate_typed hwf
+          rw [CaptureSet.translate_proj] at hg
+          refine .kcvar (C := C.translate) ?_ ?_
+          · rw [hbb]
+            exact FCdot.Ctx.SetOf.of_instOf (Ctx.InstOf.translate hI)
+          · rw [CapAtom.translate?_kindOf ha]; exact hg
+  | _, _, _, _, @CapKind.ksel _ Γ _ x A φ D h, hwf => by
+      have ha := HasTy.translateAtom_typed h hwf
+      rw [Ty.translate_capt, Shape.translate_capk] at ha
+      have hm := FCdot.KindCo.HasType.kmember ha .refl
+        (FCdot.Telescope.HoleAtK.kindC
+          (by rw [Shape.tel_capk]; exact FCdot.Telescope.At.zero_one _))
+      rw [HasTy.translateAtom_root h, FCdot.CaptureSet.substVar_name_here] at hm
+      rw [CapKind.translate, Shape.translate_capk]
+      simpa [CaptureSet.translate, CapAtom.translate?] using hm
+  | _, _, _, _, @CapKind.kprojS _ _ C ψ _ g, hwf => by
+      rw [CapKind.translate, CaptureSet.translate_proj]
+      exact .kprojS (g.translate_typed hwf)
+  | _, _, _, _, @CapKind.ksub _ _ _ _ _ g hk, hwf => by
+      rw [CapKind.translate]
+      exact .ksub (g.translate_typed hwf) hk
+  | _, _, _, _, @CapKind.kle _ _ _ _ _ f g, hwf => by
+      rw [CapKind.translate]
+      exact .kle (f.translate_typed hwf) (g.translate_typed hwf)
+  termination_by _ _ _ _ g _ => sizeOf g
 
 /-- `⟦d⟧` is typed at the translated types: the shape half between the two
 shapes, the capture half between the two capture sets. -/

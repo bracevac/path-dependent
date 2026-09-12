@@ -269,6 +269,16 @@ inductive EntriesTyped {s : Sig} (Γ : Ctx s) :
   | kindC {C D : CaptureSet (s,x)} : EntriesTyped Γ ρ Tel₁ Es Tel₂ →
       Telescope.HoleAtK Tel₁ j C φ₁ → SideTypedC Γ pre D C → φ₁.Admits φ₂ →
       EntriesTyped Γ ρ Tel₁ (Es ▹ .kindC pre j) (Tel₂ ▹ D ⊑ᵏ φ₂)
+  /-- A target kinding proposition read off a source *capture* proposition:
+      a chain into the hole's left endpoint, the hole, a chain out of its
+      right endpoint into a weakened closed set, and the kinding of that
+      closed set.  The kinding is closed at `s`, so no instantiation touches
+      it. -/
+  | kindCle {C₁ C₂ D : CaptureSet (s,x)} {E : CaptureSet s} :
+      EntriesTyped Γ ρ Tel₁ Es Tel₂ →
+      Tel₁.HoleAtC h C₁ C₂ → SideTypedC Γ pre D C₁ → SideTypedC Γ post C₂ E↑ →
+      Ctx.KindLe Γ E φ →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .kindCle pre h post) (Tel₂ ▹ D ⊑ᵏ φ)
 
 /-- `EntryTyped Γ ρ Tel₁ E P`: a single entry proving `P` from the
 propositions of `Tel₁`.  Routes never nest and never end in a general bound
@@ -293,6 +303,10 @@ inductive EntryTyped {s : Sig} (Γ : Ctx s) :
   | kindC {C D : CaptureSet (s,x)} : Telescope.HoleAtK Tel₁ j C φ₁ →
       SideTypedC Γ pre D C → φ₁.Admits φ₂ →
       EntryTyped Γ ρ Tel₁ (.kindC pre j) (D ⊑ᵏ φ₂)
+  | kindCle {C₁ C₂ D : CaptureSet (s,x)} {E : CaptureSet s} :
+      Telescope.HoleAtC Tel₁ h C₁ C₂ →
+      SideTypedC Γ pre D C₁ → SideTypedC Γ post C₂ E↑ → Ctx.KindLe Γ E φ →
+      EntryTyped Γ ρ Tel₁ (.kindCle pre h post) (D ⊑ᵏ φ)
 
 /-- `BndsTyped Γ ρ S Es Tel`: the entries of a coercion from `S` into the
 object type `μ Tel` that do not consult the view of the source. -/

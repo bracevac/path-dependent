@@ -1,4 +1,4 @@
-# FCdot, at stage K1 of classifiers
+# FCdot, at stage K2 of classifiers
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -32,7 +32,7 @@ erasure safe.
 | `CanonicalForms` | the canonical-forms theorem, including item 6 (`cap_canon`) and item 7 (an atom's root is below the capture set of its type); the chain of casts; `closed_box_inversion`; `preservation'`, `erase_reflect'` |
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
-| `Prediction` | the use-set half of preservation (`step_uses`), `capture_prediction` along a run, `inspects_covered`, `effect_safety`, `returned_capture_bound` |
+| `Prediction` | the use-set half of preservation (`step_uses`), `capture_prediction` along a run, `inspects_covered`, `effect_safety`, `classified_prediction` and `classified_effect_safety`, `returned_capture_bound` |
 | `Examples` | the examples E1 to E8 and the capture examples C3, C4, C1, C6, decided in the kernel; the target side of the A3a source examples S3, C2, C7; and the target side of the A3b ones, `S1_client` (an operation declared at `{fs}` recaptured at `{cp.C}` by the lower bound of a capture member), `S1_translated`, `S1_erase`, `S2_translated`, `S2_erase`, and C5, the packing of an existential result: `C5_capWitnesses`, `C5_witnesses` and `C5_litMorphism` read off the translation, `C5_literal` and `C5_packing` decided by `checkValue` and `checkLe`, and `C5_client`, the caller that reaches `{fs}` only through the member's upper bound; and the B1 examples `scope_order`, `C2_typed` (the literal, with the class root outside the self), `X4_no_level` and `X4_no_escape` (the `withFile` escape rejected, store free), `X5_fires` (the counterfactual binder order), `C5a_level` and `S2_level` (a concrete assigned set below a scope root), and the B2 examples Y1 to Y5 (`freshCell` with two calls whose opened binders are incomparable, `makeLogger` packed at the parameter, C5b, the `withFile` escape rejected by isolation and by the level check, and the `fresh` halves of C5a and S2), with the three source `fresh` examples translated and typed |
 
 ## Notation
@@ -1688,3 +1688,106 @@ the row on `KindCo.HasType.kcls` says, so the kinding family is sound and is not
 `star` flavour.
 
 Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem above.
+
+## Stage K2
+
+K2 is the third stage of classifiers (`plan-5f-classifiers-stages.md` §K2).  Its subject is the
+classified source and the translation, and the target's share of it is small: two additive evidence
+rules and the two headline theorems.  Both rules land here rather than in a stage of their own,
+which is decision 18, and the report names them as target additions.
+
+The two theorems are the point of the whole development.  `classified_prediction` says that a
+program whose use set is kinded at `φ` keeps a use set kinded at `φ` along every run, and
+`classified_effect_safety` says that such a program never reads a capability whose classifier lies
+outside `φ`.  Neither needs a new induction.  The first is `capture_prediction` with `Ctx.KindLe`
+carried to the new context by `Store.Ext.kindLe` and pulled back along the predicted inclusion by
+`Ctx.KindLe.mono`, in that order, and the second is the first composed with `inspects_covered`.  The
+reason no case analysis on the step is needed is `State.uses`: a `letex` frame contributes its closed
+declared set at the outer signature, so a program that unpacks demands exactly what one that does not
+demands, and `Store.Ext.consC` accepts only a non-opaque bound, so a run appends no rigid capability
+of any flavour at all.
+
+| module | what K2 changed |
+|---|---|
+| `Syntax` | the constructors `KindCo.kle` and `Morphism.kindCle`, with their `rename` and `subst` clauses |
+| `RenameLemmas` | one case per new constructor in the `KindCo` and `Morphism` traversal lemmas, every statement unchanged.  Each is the congruence of its premises with the `Cls.Kind` and `HoleC` arguments carried, which is Fact 1 |
+| `Typing` | the rules `KindCo.HasType.kle` and `Morphism.HasType.kindCle`, and `KindCo.MemberFree.kle` beside `ksub` |
+| `TypingRename`, `TypingSubst`, `Transparency` | `KindCo.HasType` and `Morphism.HasType` at the two new rules, with `CaptureSet.weaken_rename` and `CaptureSet.weaken_subst` on the post chain |
+| `Normalizer` | the entry `Entry.kindCle`, with the clauses of `Entry.through`, `Entry.at` and `entries` |
+| `FormTyping` | `EntriesTyped.kindCle` and `EntryTyped.kindCle` |
+| `FormAlgebra` | `kindCle_semantic` and one case per existing lemma of the composition and application blocks, including both halves of `EntriesTyped.At_kindC` |
+| `Checker`, `CheckerCompleteness` | `checkKindCore` at `kle`, `synthMorCore` at `kindCle`, `CaptureSet.strengthen?` and `strengthenW?` with their soundness and weakening lemmas, and the two completeness cases |
+| `CanonicalForms` | `kind_canon`'s `kle` case and `mor_canon`'s `kindCle` case |
+| `Consistency` | `EntryTyped.bnd_of_bndsOnly` at the new entry, whose hole names a capture proposition that a bounds-only telescope has none of |
+| `LevelInversion` | `KindCo.MemberFree.rename` at `kle` |
+| `Prediction` | `classified_prediction` and `classified_effect_safety`, stated beside `capture_prediction` and `effect_safety`, neither of which moves |
+
+### The rules
+
+```
+KindCo.HasType.kle      : Γ ⊢ᶜ f : C ⊑ D → Γ ⊢ᵏ g : D ⊑ᵏ φ → Γ ⊢ᵏ .kle f g : C ⊑ᵏ φ
+
+Morphism.HasType.kindCle: Γ ⊢ m : src ⇒ Tel → src.HoleAtC h C₁ C₂ →
+    SideC.HasType Γ q D C₁ → SideC.HasType Γ q' C₂ E↑ → Γ ⊢ᵏ g : E ⊑ᵏ φ →
+    Γ ⊢ .kindCle m q h q' g φ : src ⇒ Tel ▹ D ⊑ᵏ φ
+```
+
+`kle` is subcapturing composed into kinding, whose canonical form is `Ctx.KindLe.mono`.  It makes
+`kprojS` derivable through `unprojC`, and `kprojS` is kept all the same, because the checker reads
+the source set off the evidence term and `CaptureSet.proj` is not invertible.
+
+`kindCle` is the morphism template that produces a kinding entry from a capture hole of the source
+telescope, and it is `Morphism.HasType.leC`'s shape with one closed kinding premise appended.  It is
+the repair the K2 refutation forced: the expansion note wrote a rule carrying a `SideC` chain from
+the target set to a closed set and no hole, and at `SubShape.capkI` the target set is
+`[name .here A]`, a chain out of it must hold that atom in its right end, and the right end is a
+weakened closed set whose every term variable is a `.there _`.  So no such chain exists for any
+context and any bound, which was machine checked before the rule was written.
+
+### Statements restated
+
+Two rows, and nothing else.  No theorem gains a hypothesis and no conclusion is weakened.
+
+| statement | change | why the meaning is the same |
+|---|---|---|
+| `KindCo`, `KindCo.HasType`, `Morphism`, `Morphism.HasType`, `Entry`, `EntriesTyped`, `EntryTyped` | one constructor each | additive: every copied constructor and every copied rule is untouched, and `PropForm` gains nothing, because the slot the new entry produces is the data-free `PropForm.kindC` |
+| `EntriesTyped.At_kindC` | the conclusion becomes a disjunction, whose left disjunct is the K1 conclusion word for word and whose right one says the entry is a `.kindCle` | forced by the new `EntriesTyped.kindCle` constructor and by nothing else.  An inversion lemma over an inductive that gains a constructor enumerates one more way.  On every derivation the K1 tree can build the right disjunct is uninhabited, so the lemma is the K1 one, and its one caller splits on the disjunction and discharges both halves |
+| `Entry.through` | gains a second branch inside the existing `.kindC` clause, beside the new `.kindCle` clause | a `.kindC` template names a kinding proposition of the middle telescope by index, and that proposition may now come from a `.kindCle` entry.  The composite is a `.kindCle` entry whose chain is the concatenation and whose closed kinding is carried through the outer admission step by `Ctx.KindLe.admits`.  Without the branch `Form.combine` is no longer total.  The copied match and the wildcard are untouched, and no copied entry reaches the branch |
+| `capture_prediction`, `effect_safety`, `inspects_covered`, `preservation'`, `progress`, `not_stuck`, `erase_step`, `kind_canon`, `cap_canon`, `atom_canon`, `checkKindCo_iff`, `checkTm_iff` | nothing | the new evidence is inert at run time, it carries no term and erases to nothing, and the two new theorems are stated beside the old ones |
+
+### New in this stage
+
+The checker's two set readers, which the plan did not name.  The `post` chain synthesises its target
+at `(s,x)` while the kinding premise is checked at a closed set at `s`, so the checker has to undo
+one weakening.  Annotating the constructor with the closed set instead would have put a redundant
+annotation on every `kindCle` term.
+
+```
+FCdot.CaptureSet.strengthen?   : undo one weakening on a set, through `PartialRename.unshift`
+FCdot.CaptureSet.strengthenW?  : the same, weakening-aware
+FCdot.kindCle_semantic         : the semantic step the new entry's application takes
+```
+
+### New theorems
+
+**The two headline theorems of the development.**  Both are stated in `Prediction.lean` beside the
+two they refine, and neither of those two moves.
+
+```
+FCdot.classified_prediction :
+  State.Typed st U → ⊢ st.σ : Γ → Γ.KindLe st.uses φ → st ⟶* st' →
+    ∃ ρ, Store.Ext st.σ st'.σ ρ ∧ ∀ Γ', ⊢ st'.σ : Γ' →
+      CapLe Γ' st'.uses (st.uses.rename ρ) ∧ Γ'.KindLe st'.uses φ
+
+FCdot.classified_effect_safety :
+  State.Typed st U → ⊢ st.σ : Γ → Γ.KindLe st.uses φ → st ⟶* st' →
+    st'.inspects = some x → ⊢ st'.σ : Γ' →
+      ∀ a, Γ'.Root a [CapAtom.var x] → φ.Contains (Γ'.classOf a)
+```
+
+Read aloud, this is Capless(K)'s `Eval.capture_prediction` refined by the classifier, whose
+canonical-form half there is `CaptureKind.runtime_labels`.  Where the reference bounds a set of
+runtime labels by a projected set, this bounds the classifier of every root by a kind.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound` for both, and for every theorem of the stages
+above.
