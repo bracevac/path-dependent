@@ -1,4 +1,4 @@
-# FCdot, at stage K2 of classifiers
+# FCdot, at stage K3 of classifiers
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -1791,3 +1791,61 @@ runtime labels by a projected set, this bounds the classifier of every root by a
 
 Axioms (`#print axioms`): `propext` and `Quot.sound` for both, and for every theorem of the stages
 above.
+
+## Stage K3
+
+K3 is the closing stage of classifiers (`plan-5f-classifiers-stages.md` §K3), the three mandatory
+examples of `plan-5-extensions.md` §5.  It adds no evidence rule and no theorem beyond E3's stability
+facts.  The target half of each example lives here, appended after C2: `Platform.ctx` on E1's, E2's
+and E3's platform, matched by `rfl` to the source page's own context, so every resolution row is K1x,
+K2x or K3x of K0.9 read over a real program.  Passing a `ThreadLocal` argument at E2 is refused not
+only at one candidate term but totally, by translating an arbitrary source `CapKind` derivation into
+`kind_canon` at the platform store and refuting the semantic conclusion.  Every checker verdict on a
+translated derivation goes through `checkKindCo_iff_hasType.mpr` of the typed translation and not
+through `decide`, because `CapKind.translate` is a well-founded recursion the kernel does not unfold.
+
+```
+FCdot.Examples.E1_platCtx, .E1_ctx_translate, .E1_ctx_wf, .E1_bodyCtx_wf
+FCdot.Examples.E1_admits_ctl, .E1_admits_io, .E1_caps_ctl, .E1_caps_io, .E1_roots_ctl, .E1_roots_io
+FCdot.Examples.E1_kindLe_uses, .E1_kindLe_field
+FCdot.Examples.E1_kcls_ctl, .E1_kcls_io_absurd
+FCdot.Examples.E1_translate_typed, .E1_kind_translate_typed, .E1_field_kind_translate_typed
+FCdot.Examples.E1_field_kind_checked, .E1_kind_checked
+FCdot.Examples.E1_caps_platSet, .E1_platSet_not_kindLe, .E1_initial_kindLe
+FCdot.Examples.E1_target_effect_safety, .E1_never_io, .E1_effect_safety
+
+FCdot.Examples.E2_platCtx, .E2_platIOCtx, .E2_ctx_translate, .E2_ctxIO_translate
+FCdot.Examples.E2_ctx_wf, .E2_callCtx_wf, .E2_bodyCtx_translate
+FCdot.Examples.E2_admits_tl, .E2_admits_ctl, .E2_admits_io
+FCdot.Examples.E2_roots_top, .E2_roots_top_io, .E2_roots_bodyRoot, .E2_not_capLe
+FCdot.Examples.E2_kproj_root_reject, .E2_kproj_projRoot_accept
+FCdot.Examples.E2_tl_not_kindLe, .E2_tl_not_capKind
+FCdot.Examples.E2_tlDescent_not_kindLe, .E2_tl_descent_not_capKind
+FCdot.Examples.E2_kcls_tl_reject, .E2_kproj_tl_reject, .E2_kcls_ctl_reject, .E2_kcls_io
+FCdot.Examples.E2_roots_io, .E2_kindLe_io, .E2_kindLe_uses, .E2_roots_filt
+FCdot.Examples.E2_translate_typed, .E2_kind_translate_typed, .E2_kind_checked
+FCdot.Examples.E2_arg_kind_translate_typed, .E2_arg_kind_checked, .E2_initial_kindLe
+FCdot.Examples.E2_target_effect_safety, .E2_never_tl, .E2_never_ctl, .E2_effect_safety
+
+FCdot.Examples.E3_platCtx, .E3_plat3Ctx, .E3_ctx_translate, .E3_ctx3_translate
+FCdot.Examples.E3_ctx_wf, .E3_absCtx_wf, .E3_clientCtx_wf
+FCdot.Examples.E3_admits_k1, .E3_admits_k2, .E3_kcls_k1, .E3_kcls_k2
+FCdot.Examples.E3_caps_uses, .E3_roots_uses
+FCdot.Examples.E3_kind_translate_typed, .E3_kind_checked
+FCdot.Examples.E3_kind_a_translate_typed, .E3_kind_a_checked, .E3_translate_typed
+FCdot.Examples.E3capkIMor, .E3_capkI_mor, .E3_capkI_mor_canon
+FCdot.Examples.E3_client_kind_kmember, .E3_client_kind_translate_typed, .E3_client_kind_checked
+FCdot.Examples.E3_kindLe_uses, .E3_prediction, .E3_prediction'
+FCdot.Examples.E3_stable_kcls, .E3_stable_admits, .E3_kind3_translate_typed, .E3_third_translate_typed
+```
+
+`E3_capkI_mor_canon` is the one fact of the three examples that reads a canonical form of a morphism.
+It carries `Store.Typed σ E3CtxB.translate` because `mor_canon` takes the store typing explicitly, and
+what it produces is `kindCle_semantic` read through `EntryTyped.at_typed`.
+
+| module | what K3 added |
+|---|---|
+| `Examples` | the target twin of E1, E2 and E3, appended after C2: the platform's translation, the resolution and kinding facts decided by `checkKindCo`, the checker verdicts closed by `checkKindCo_iff_hasType.mpr`, and the effect-safety and prediction facts of T9' and T8/T8' |
+| every other module | nothing |
+
+Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem of the stage.

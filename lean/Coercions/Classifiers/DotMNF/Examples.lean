@@ -2414,6 +2414,977 @@ theorem Z_top_two_calls_lvl :
     Z1BodyCtxTop.lvl Zk1' = none ∧ Z1BodyCtxTop.lvl Zk2' = none :=
   ⟨by decide, by decide⟩
 
+/-! ## E1, only-control
+
+`exceptions.tex:60-66`, `object Try: def apply[T](body: => T): Try[T]^{body.only[Control]}`.
+The platform declares two classified capabilities, `κ_ctl` at `Control` and
+`κ_io` at `IO`.  `Try.apply` takes the body closure at `{κ_ctl, κ_io}` and
+returns an object literal whose one field holds the body, at the filtered set
+`{x ↾ only[Control]}` with `x` the parameter.
+
+The field is declared at the object's own self, as `fileS` declares `read`, so
+the object carries the set it is allocated at, and that set is the filtered
+one.  The parameter itself cannot be the field's content: `{x}` reaches `κ_io`
+and is therefore not kinded at `only[Control]`, which is the content of the
+kinding facts below.  A pure closure is kinded at every set it is declared at.
+
+The program is `Try.apply` applied to a body the program allocates itself, at
+the filtered platform set, so the whole program's declared use set is
+`{κ_ctl, κ_io} ↾ only[Control]`.  That staging is the one
+`classified_effect_safety` asks for: its hypothesis is about the use set of the
+whole program, and the paper's sentence is about one call.  The target side of
+E1 is in `FCdot/Examples.lean`. -/
+
+/-- Term label `body`, the one field of the `Try` object. -/
+def lbody : Label := .trm 9
+
+/-- The platform of E1: `κ_ctl ⊑ᶜ cls Control, κ_io ⊑ᶜ cls IO`. -/
+def E1Plat : Platform ([],c,c) := (Platform.nil.consCls Cls.Control).consCls Cls.IO
+
+/-- The platform's context: the two classified binders.  `Platform.ctx` itself
+is defined with the translation, one file up, and agrees with this on the nose
+(`FCdot.Examples.E1_platCtx`). -/
+def E1PlatCtx : Ctx ([],c,c) := (Ctx.nil.consCls Cls.Control).consCls Cls.IO
+
+/-- `κ_ctl`, the control capability. -/
+def E1ctl : BVar ([],c,c) .cap := .there .here
+/-- `κ_io`, the input-output capability. -/
+def E1io : BVar ([],c,c) .cap := .here
+
+/-- The platform declares `Control` at the outer binder. -/
+theorem E1_classOf_ctl : E1Plat.classOf E1ctl = Cls.Control := rfl
+
+/-- And `IO` at the inner one. -/
+theorem E1_classOf_io : E1Plat.classOf E1io = Cls.IO := rfl
+
+/-- The two platform classifiers are disjoint. -/
+theorem E1_disjoint : Cls.Classifier.disjointB Cls.Control Cls.IO = true := by decide
+
+/-- `only[Control]` admits the control capability. -/
+theorem E1_only_admits_ctl : Cls.Kind.containsB (Cls.only Cls.Control) Cls.Control = true := by
+  decide
+
+/-- And excludes the input-output one, which is what E1 buys. -/
+theorem E1_only_excludes_io : Cls.Kind.containsB (Cls.only Cls.Control) Cls.IO = false := by
+  decide
+
+/-- The filtered platform set `{κ_ctl, κ_io} ↾ only[Control]`, the declared use
+set of E1's program. -/
+def E1Filt : CaptureSet ([],c,c) :=
+  CaptureSet.proj [CapAtom.cvar E1ctl, CapAtom.cvar E1io] (Cls.only Cls.Control)
+
+/-- The body closure's declared type, `(Unit → Unit) ^ {κ_ctl, κ_io}`, under the
+arrow's own capture binder. -/
+def E1BodyTy (κ1 κ2 : BVar s .cap) : Dom s :=
+  arrowS ^ [CapAtom.cvar (.there κ1), CapAtom.cvar (.there κ2)]
+
+/-- The `Try` object's declaration shape: one field, holding the body, declared
+at the object's own self. -/
+def E1SelfS : Shape (s,x) := .fld lbody (arrowS ^ [CapAtom.var .here])
+
+/-- The result of `apply`: the `Try` object at `{body ↾ only[Control]}`. -/
+def E1Cod : Cod s :=
+  .ty ((Shape.mu E1SelfS) ^ [CapAtom.proj (.var .here) (Cls.only Cls.Control)])
+
+/-- The type of `Try.apply`. -/
+def E1TryTy (κ1 κ2 : BVar s .cap) : Ty s := (Shape.all (E1BodyTy κ1 κ2) E1Cod) ^ []
+
+/-- The literal's definitions: the field holds a closure. -/
+def E1Defs : Defs ((s,c),x) := .trm lbody (.val (.lam unitTy (.path (.var .here))))
+
+/-- The term of `Try.apply`. -/
+def E1TryTm (κ1 κ2 : BVar s .cap) : Tm s := .val (.lam (E1BodyTy κ1 κ2) (.val (.obj E1Defs)))
+
+/-- The identity closure, at any capture set: a pure value carries whatever set
+it is declared at.  This is `fileLit` for an arrow. -/
+def E1IdVal {s : Sig} {Γ : Ctx s} (U : CaptureSet s) :
+    HasTyP [] Γ (.val (.lam unitTy (.path (.var .here)))) (arrowS ^ U) :=
+  .lam ((var' .here rfl).widen _) unitWf
+
+/-- The `Try` literal, at any capture set, `fileLit` at the label `body`. -/
+def E1Lit {s : Sig} {Γ : Ctx s} (U : CaptureSet s) :
+    HasTyP [] Γ (.val (.obj E1Defs)) ((Shape.mu E1SelfS) ^ U) :=
+  .obj (.trm ((HasTy.lam ((var' .here rfl).widen _) unitWf).widen _)) .trm
+
+/-- **`Try.apply`.**  The body closure goes in at `{κ_ctl, κ_io}` and the object
+comes out at `{body ↾ only[Control]}`. -/
+def E1Try {s : Sig} {Γ : Ctx s} (κ1 κ2 : BVar s .cap) :
+    HasTyP [] Γ (E1TryTm κ1 κ2) (E1TryTy κ1 κ2) :=
+  lam' (E1Lit _) arrowWf
+
+/-! ### The kinding of the filtered sets
+
+The field's set is kinded at `only[Control]` by `kvar`, which reads the
+parameter's declared set, and then by `kcls` at each platform binder: the first
+because `Control` is admitted, the second vacuously, because the projection
+already excludes `IO`.  That second branch is `k-label-absurd`. -/
+
+/-- The context of the body of `Try.apply`: the body root, the arrow's capture
+binder, and the parameter. -/
+def E1BodyCtx : Ctx (Sig.body ([],c,c)) := E1PlatCtx.body (E1BodyTy E1ctl E1io)
+
+/-- The field's capture set, `{x ↾ only[Control]}`. -/
+def E1FieldSet : CaptureSet (Sig.body ([],c,c)) :=
+  CaptureSet.proj [CapAtom.var .here] (Cls.only Cls.Control)
+
+/-- **The literal at the filtered set.**  The object `Try.apply` returns is
+allocated at `{x ↾ only[Control]}`, and its field is declared at the object's
+own self, so that set is the whole of what the object carries. -/
+def E1_lit_typed : HasTyP [] E1BodyCtx (.val (.obj E1Defs))
+    ((Shape.mu E1SelfS) ^ E1FieldSet) := E1Lit E1FieldSet
+
+/-- The set `kvar` descends to: the parameter's declared set, projected at the
+kind the field's atom carries. -/
+def E1_field_plat_kind : CapKind E1BodyCtx
+    (CaptureSet.proj [CapAtom.cvar (up E1ctl), CapAtom.cvar (up E1io)]
+      ((Cls.only Cls.Control).interB Cls.Kind.top)) (Cls.only Cls.Control) :=
+  .cons (.kcls (c := Cls.Control) (by decide) (by decide))
+    (.cons (.kcls (c := Cls.IO) (by decide) (by decide)) .nil)
+
+/-- **The kinding of the field's set.**  `kvar` down to the two platform
+binders, then `kcls` twice. -/
+def E1_field_kind : CapKind E1BodyCtx E1FieldSet (Cls.only Cls.Control) :=
+  .kvar (x := .here) rfl E1_field_plat_kind
+
+/-- **The kinding of the program's use set**, by `kcls` twice over the platform
+context itself.  This is the hypothesis T9' takes. -/
+def E1_kind : CapKind E1PlatCtx E1Filt (Cls.only Cls.Control) :=
+  .cons (.kcls (c := Cls.Control) (by decide) (by decide))
+    (.cons (.kcls (c := Cls.IO) (by decide) (by decide)) .nil)
+
+/-! ### The program
+
+```text
+let b = λ(u : Unit). u in
+let f = Try.apply in
+let r = f b in
+r
+```
+
+`b` is declared at the filtered platform set, which a pure closure carries, and
+the call's result is widened from `{b ↾ only[Control]}` to the filtered set
+itself, by `sc-unproj` and `sc-var`, so that it avoids `b`. -/
+
+/-- The context after `let b`. -/
+def E1Ctx1 : Ctx ([],c,c,x) := E1PlatCtx.cons (arrowS ^ E1Filt)
+/-- The context after `let f`. -/
+def E1Ctx2 : Ctx ([],c,c,x,x) := E1Ctx1.cons (E1TryTy (.there E1ctl) (.there E1io))
+
+/-- The type of the call: the `Try` object at `{b ↾ only[Control]}`. -/
+def E1AppTy : Ty ([],c,c,x,x) :=
+  (Shape.mu E1SelfS) ^ CaptureSet.proj [CapAtom.var (.there .here)] (Cls.only Cls.Control)
+
+/-- The context after `let r`. -/
+def E1Ctx3 : Ctx ([],c,c,x,x,x) := E1Ctx2.cons E1AppTy
+
+/-- The `Try` object is well formed. -/
+theorem E1ObjWf {C : CaptureSet s} : Ty.Wf ((Shape.mu E1SelfS) ^ C) :=
+  .capt (.mu (.fld arrowWf) .fld)
+
+/-- The answer `r`, charged to the filtered platform set: `sc-var`, then
+`sc-unproj`, then `sc-var` again. -/
+def E1answer : HasTyP (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken E1Filt)))
+    E1Ctx3 (.path (.var .here)) (Ty.weaken E1AppTy) :=
+  HasTy.useSub (varAt .here rfl)
+    (.trans Subcap.var
+      (.trans (Subcap.unproj (C := [CapAtom.var (.there (.there .here))])
+        (φ := Cls.only Cls.Control)) Subcap.var))
+
+/-- `f b`: the call.  The argument's type is widened from the filtered set to
+the declared domain by `sc-unproj`. -/
+def E1call : HasTyP (CaptureSet.weaken (CaptureSet.weaken E1Filt)) E1Ctx2
+    (.app .here (.there .here)) E1AppTy :=
+  .app (T2 := E1Cod)
+    (HasTy.useSub (varAt .here rfl) (.trans Subcap.var (Subcap.empty _)))
+    (HasTy.useSub
+      (HasTy.captTo (varAt (.there .here) rfl)
+        (Subcap.unproj (C := [CapAtom.cvar (.there (.there E1ctl)),
+          CapAtom.cvar (.there (.there E1io))]) (φ := Cls.only Cls.Control)))
+      Subcap.var)
+
+/-- `let r = f b in r`. -/
+def E1inner : HasTyP (CaptureSet.weaken (CaptureSet.weaken E1Filt)) E1Ctx2
+    (.let (.app .here (.there .here)) (.path (.var .here))) E1AppTy :=
+  .let E1call E1answer E1ObjWf
+
+/-- `let f = Try.apply in let r = f b in r`, with the answer's set widened to
+the filtered platform set, so that it avoids `b`. -/
+def E1outer : HasTyP (CaptureSet.weaken E1Filt) E1Ctx1
+    (.let (E1TryTm (.there E1ctl) (.there E1io))
+      (.let (.app .here (.there .here)) (.path (.var .here))))
+    ((Shape.mu E1SelfS) ^ CaptureSet.weaken E1Filt) :=
+  HasTy.captTo
+    (HasTy.let (T' := (Shape.mu E1SelfS)
+        ^ CaptureSet.proj [CapAtom.var .here] (Cls.only Cls.Control))
+      ((E1Try _ _).widen _) E1inner E1ObjWf)
+    (.trans (Subcap.unproj (C := [CapAtom.var .here]) (φ := Cls.only Cls.Control)) Subcap.var)
+
+/-- The term of E1. -/
+def E1tm : Tm ([],c,c) :=
+  .let (.val (.lam unitTy (.path (.var .here))))
+    (.let (E1TryTm (.there E1ctl) (.there E1io))
+      (.let (.app .here (.there .here)) (.path (.var .here))))
+
+/-- The type of E1: the `Try` object at the filtered platform set. -/
+def E1Ty : Ty ([],c,c) := (Shape.mu E1SelfS) ^ E1Filt
+
+/-- **E1.**  The program allocates a body, calls `Try.apply` on it, and hands
+the object back.  Its declared use set is the filtered platform set. -/
+def E1_typed : HasTyP E1Filt E1PlatCtx E1tm E1Ty :=
+  HasTy.let (T' := E1Ty) ((E1IdVal E1Filt).widen _) E1outer E1ObjWf
+
+/-! ### The written types
+
+Neither type writes `any` or `fresh`, so both are `AnyOk` and `FreshOk` and
+both readings are the identity. -/
+
+theorem E1_anyOk : E1Ty.AnyOk := by decide
+theorem E1_freshOk : E1Ty.FreshOk := by decide
+theorem E1_expand (D : CaptureSet ([],c,c)) : E1Ty.expand D = E1Ty := rfl
+
+theorem E1_try_anyOk : (E1TryTy E1ctl E1io).AnyOk := by decide
+theorem E1_try_freshOk : (E1TryTy E1ctl E1io).FreshOk := by decide
+theorem E1_try_expand (D : CaptureSet ([],c,c)) :
+    (E1TryTy E1ctl E1io).expand D = E1TryTy E1ctl E1io := rfl
+
+/-! ## E2, except-thread-local
+
+`exceptions.tex:74-92`, `object Future: def apply[T](body: ->{cap.except[ThreadLocal]} T):
+Future[T]^{body}`, with `trait Control extends Classifier, ThreadLocal`.
+The parameter's capture set is written `{any ↾ except[ThreadLocal]}`, and the
+arrow clause of `Shape.expand` reads it as the arrow's own capture binder
+projected at that kind.  A `Future` body may capture anything the platform
+offers except a thread-local capability, and `Control` is a subclass of
+`ThreadLocal`, so a control capability is excluded too.
+
+The platform of the paper is the two classified capabilities `κ_tl` at
+`ThreadLocal` and `κ_ctl` at `Control`.  The program adds one more, `κ_io` at
+`IO`, because a legal body has to capture something, and `except[ThreadLocal]`
+admits `IO`.  The resolution facts of the example are read over the two
+classified capabilities alone, and the companions over the program's platform
+show the input-output capability surviving the filter.
+
+**A bare root is kinded only at a kind that admits every classifier.**  `kproj`
+at an atom that is its own base asks `Kind.top.Subkind φ`, and `Kind.top` is not
+a subkind of `except[ThreadLocal]`, even though `except[ThreadLocal]` contains
+the root classifier `⊤`.  So `cap.except[ThreadLocal]` is kinded at
+`except[ThreadLocal]` through the *projected* atom, whose own kind is the
+filter, and not through the bare root.  `E2_top_not_subkind`,
+`E2_proj_root_kind` and the target's `E2_kproj_root_reject` are that sentence.
+
+**`classified_effect_safety` is a whole-program statement.**  Its hypothesis is
+`Γ.KindLe st.uses φ` on the use set of the initial state, while the paper's
+sentence about `Future.apply` is a local guarantee about one parameter.  E2 is
+therefore staged as a program whose whole declared use set is the filtered
+platform set, which is the resolution shape K3x already shows is the right one.
+The page proves the local premise too, as the kinding of the argument the call
+passes, so the example is not read as more than it proves.
+
+The target side of E2 is in `FCdot/Examples.lean`. -/
+
+/-! ### The classifiers
+
+`Control` lies below `ThreadLocal`, so `except[ThreadLocal]` excludes both, and
+`only[Control]` meets `except[ThreadLocal]` emptily.  `IO` is outside the
+subtree of `ThreadLocal` and is admitted.  The root classifier is admitted as
+well, which is the reading decision 2 turns on. -/
+
+/-- `Control` is a subclass of `ThreadLocal` (`exceptions.tex:91`). -/
+theorem E2_control_le_threadLocal :
+    Cls.Classifier.leB Cls.Control Cls.ThreadLocal = true := by decide
+
+/-- **The classifier fact of E2.**  A control capability is excluded by
+`except[ThreadLocal]`: the two kinds meet emptily. -/
+theorem E2_only_control_except_empty :
+    Cls.Kind.isEmptyB ((Cls.only Cls.Control).interB (Cls.except Cls.ThreadLocal)) = true := by
+  decide
+
+theorem E2_except_excludes_tl :
+    Cls.Kind.containsB (Cls.except Cls.ThreadLocal) Cls.ThreadLocal = false := by decide
+
+theorem E2_except_excludes_ctl :
+    Cls.Kind.containsB (Cls.except Cls.ThreadLocal) Cls.Control = false := by decide
+
+/-- And an input-output capability is admitted, which is what makes the legal
+argument legal. -/
+theorem E2_except_admits_io :
+    Cls.Kind.containsB (Cls.except Cls.ThreadLocal) Cls.IO = true := by decide
+
+/-- `except[ThreadLocal]` contains the root classifier. -/
+theorem E2_except_admits_top :
+    Cls.Kind.containsB (Cls.except Cls.ThreadLocal) .top = true := by decide
+
+/-- And `Kind.top` is still not a subkind of it, which is why a bare root is not
+kinded at `except[ThreadLocal]`. -/
+theorem E2_top_not_subkind :
+    Cls.Kind.subkindB Cls.Kind.top (Cls.except Cls.ThreadLocal) = false := by decide
+
+/-! ### The platform -/
+
+/-- The classified platform of the paper: `κ_tl ⊑ᶜ cls ThreadLocal,
+κ_ctl ⊑ᶜ cls Control`. -/
+def E2Plat : Platform ([],c,c) := (Platform.nil.consCls Cls.ThreadLocal).consCls Cls.Control
+
+/-- Its context.  `Platform.ctx` is defined with the translation, one file up,
+and agrees with this on the nose (`FCdot.Examples.E2_platCtx`). -/
+def E2PlatCtx : Ctx ([],c,c) := (Ctx.nil.consCls Cls.ThreadLocal).consCls Cls.Control
+
+/-- `κ_tl` over the classified platform. -/
+abbrev E2tlP : BVar ([],c,c) .cap := .there .here
+/-- `κ_ctl` over the classified platform. -/
+abbrev E2ctlP : BVar ([],c,c) .cap := .here
+
+/-- The platform the program runs on: the two classified capabilities and one
+input-output capability. -/
+def E2PlatIO : Platform ([],c,c,c) := E2Plat.consCls Cls.IO
+
+/-- Its context. -/
+def E2PlatIOCtx : Ctx ([],c,c,c) := E2PlatCtx.consCls Cls.IO
+
+/-- `κ_tl`. -/
+abbrev E2tl : BVar ([],c,c,c) .cap := .there (.there .here)
+/-- `κ_ctl`. -/
+abbrev E2ctl : BVar ([],c,c,c) .cap := .there .here
+/-- `κ_io`. -/
+abbrev E2io : BVar ([],c,c,c) .cap := .here
+
+theorem E2_classOf_tl : E2PlatIO.classOf E2tl = Cls.ThreadLocal := rfl
+theorem E2_classOf_ctl : E2PlatIO.classOf E2ctl = Cls.Control := rfl
+theorem E2_classOf_io : E2PlatIO.classOf E2io = Cls.IO := rfl
+
+/-! ### The arrow, written and read
+
+The domain is written `{any ↾ except[ThreadLocal]}`.  `Shape.expand`'s arrow
+clause reads the domain at the arrow's own capture binder, and `expandA` carries
+the projection along, so the read domain is that binder projected at
+`except[ThreadLocal]`.  Both readings are `rfl`. -/
+
+/-- The written domain, `->{cap.except[ThreadLocal]} T`. -/
+def E2DomAny : Dom s := arrowS ^ [CapAtom.proj CapAtom.any (Cls.except Cls.ThreadLocal)]
+
+/-- Its reading: the arrow's own capture binder, projected. -/
+def E2Dom : Dom s := arrowS ^ [CapAtom.proj (CapAtom.cvar .here) (Cls.except Cls.ThreadLocal)]
+
+/-- The `Future` object's declaration shape: one field, holding the body,
+declared at the object's own self. -/
+def E2SelfS : Shape (s,x) := .fld lbody (arrowS ^ [CapAtom.var .here])
+
+/-- The result of `apply`: `Future[T]^{body}`. -/
+def E2Cod : Cod s := .ty ((Shape.mu E2SelfS) ^ [CapAtom.var .here])
+
+/-- The type of `Future.apply`, as the program writes it. -/
+def E2TyAny : Ty s := (Shape.all E2DomAny E2Cod) ^ []
+
+/-- And as `expand` reads it. -/
+def E2ApplyTy : Ty s := (Shape.all E2Dom E2Cod) ^ []
+
+/-- The written type holds `any` only in a position `expand` reads. -/
+theorem E2_anyOk : (E2TyAny : Ty ([],c,c,c)).AnyOk := by decide
+
+theorem E2_freshOk : (E2TyAny : Ty ([],c,c,c)).FreshOk := by decide
+
+/-- **The domain is read as the projected arrow binder**, at every reading: the
+arrow clause does not use the reading it is given. -/
+theorem E2_expand (D : CaptureSet ([],c,c,c)) :
+    (E2TyAny : Ty ([],c,c,c)).expand D = E2ApplyTy := rfl
+
+/-- The same fact at the domain alone, at the reading the arrow clause hands
+down. -/
+theorem E2_dom_expand :
+    (E2DomAny : Dom ([],c,c,c)).expand [CapAtom.cvar .here] = E2Dom := rfl
+
+/-- At a call the arrow's capture binder becomes the argument itself, so the set
+the argument is read at is `{y ↾ except[ThreadLocal]}`. -/
+theorem E2_arg_instance (y : BVar ([],c,c,c) .var) :
+    ((E2Dom : Dom ([],c,c,c)).subst (Subst.singleC (.var y)))
+      = arrowS ^ [CapAtom.proj (CapAtom.var y) (Cls.except Cls.ThreadLocal)] := rfl
+
+/-! ### The kinding a call has to discharge
+
+Passing `y` to `Future.apply` asks `Subcap Γ {y} {y ↾ except[ThreadLocal]}`,
+which is `sc-proj`, whose premise is `CapKind Γ {y} except[ThreadLocal]`.  That
+premise is where a thread-local argument fails and an input-output argument goes
+through.  `kvar` reads the argument's declared set and `kcls` finishes at the
+platform binders. -/
+
+/-- The context of a legal call: an argument charged to the input-output
+capability. -/
+def E2IoCtx : Ctx ([],c,c,c,x) := E2PlatIOCtx.cons (arrowS ^ [CapAtom.cvar E2io])
+
+/-- **An input-output argument passes the kinding premise.** -/
+def E2_io_arg_kind : CapKind E2IoCtx [CapAtom.var .here] (Cls.except Cls.ThreadLocal) :=
+  .kvar (x := .here) rfl (.cons (.kcls (c := Cls.IO) (by decide) (by decide)) .nil)
+
+/-- So it is below the domain the call reads. -/
+def E2_io_arg : Subcap E2IoCtx [CapAtom.var .here]
+    (CaptureSet.proj [CapAtom.var .here] (Cls.except Cls.ThreadLocal)) :=
+  Subcap.proj E2_io_arg_kind
+
+/-- The input-output capability itself, kinded at `except[ThreadLocal]` by
+`kcls`. -/
+def E2_io_kind : CapKind E2PlatIOCtx [CapAtom.cvar E2io] (Cls.except Cls.ThreadLocal) :=
+  .cons (.kcls (c := Cls.IO) (by decide) (by decide)) .nil
+
+/-- The set `kvar` descends to from an argument charged to the thread-local
+capability.  No derivation kinds it at `except[ThreadLocal]`, which is
+`FCdot.Examples.E2_tl_descent_not_capKind`. -/
+def E2TlDescent : CaptureSet ([],c,c,c) := CaptureSet.proj [CapAtom.cvar E2tl] Cls.Kind.top
+
+/-- A projected root *is* kinded at the filter, by `kproj`: the atom's own kind
+is the filter, and the filter is a subkind of itself.  The bare root is not,
+which `E2_top_not_subkind` says and the target decides. -/
+def E2_proj_root_kind {s : Sig} {Γ : Ctx s} (κ : BVar s .cap) :
+    CapKind Γ [CapAtom.proj (CapAtom.cvar κ) (Cls.except Cls.ThreadLocal)]
+      (Cls.except Cls.ThreadLocal) :=
+  .kproj (show ((Cls.except Cls.ThreadLocal).interB Cls.Kind.top).Subkind
+    (Cls.except Cls.ThreadLocal) by decide)
+
+/-! ### The program
+
+```text
+let b = λ(u : Unit). u in
+let f = Future.apply in
+let r = f b in
+r
+```
+
+`b` is declared at the filtered platform set, which a pure closure carries, so
+the whole program's declared use set is
+`{κ_tl, κ_ctl, κ_io} ↾ except[ThreadLocal]`.  The call's argument is read at
+`{b ↾ except[ThreadLocal]}`, and the step that gets it there is `sc-proj` over
+the kinding of `{b}`. -/
+
+/-- The declared use set of E2's program. -/
+def E2Filt : CaptureSet ([],c,c,c) :=
+  CaptureSet.proj [CapAtom.cvar E2tl, CapAtom.cvar E2ctl, CapAtom.cvar E2io]
+    (Cls.except Cls.ThreadLocal)
+
+/-- **The kinding of the program's use set**, by `kcls` three times: twice
+vacuously, because the projection already excludes the two classifiers the kind
+excludes, and once because `except[ThreadLocal]` admits `IO`.  This is the
+hypothesis T9' takes. -/
+def E2_kind : CapKind E2PlatIOCtx E2Filt (Cls.except Cls.ThreadLocal) :=
+  .cons (.kcls (c := Cls.ThreadLocal) (by decide) (by decide))
+    (.cons (.kcls (c := Cls.Control) (by decide) (by decide))
+      (.cons (.kcls (c := Cls.IO) (by decide) (by decide)) .nil))
+
+/-- The literal's definitions: the field holds a closure. -/
+def E2FutDefs : Defs ((s,c),x) := .trm lbody (.val (.lam unitTy (.path (.var .here))))
+
+/-- The identity closure, at any capture set. -/
+def E2IdVal {s : Sig} {Γ : Ctx s} (U : CaptureSet s) :
+    HasTyP [] Γ (.val (.lam unitTy (.path (.var .here)))) (arrowS ^ U) :=
+  .lam ((var' .here rfl).widen _) unitWf
+
+/-- The `Future` literal, at any capture set. -/
+def E2Lit {s : Sig} {Γ : Ctx s} (U : CaptureSet s) :
+    HasTyP [] Γ (.val (.obj E2FutDefs)) ((Shape.mu E2SelfS) ^ U) :=
+  .obj (.trm ((HasTy.lam ((var' .here rfl).widen _) unitWf).widen _)) .trm
+
+/-- The `Future` object is well formed. -/
+theorem E2ObjWf {C : CaptureSet s} : Ty.Wf ((Shape.mu E2SelfS) ^ C) :=
+  .capt (.mu (.fld arrowWf) .fld)
+
+/-- The term of `Future.apply`. -/
+def E2ApplyTm : Tm s := .val (.lam E2Dom (.val (.obj E2FutDefs)))
+
+/-- **`Future.apply`.**  The body goes in at `{any ↾ except[ThreadLocal]}` and
+the object comes out at `{body}`. -/
+def E2Apply {s : Sig} {Γ : Ctx s} : HasTyP [] Γ (E2ApplyTm : Tm s) E2ApplyTy :=
+  lam' (E2Lit _) arrowWf
+
+/-- The body of `Future.apply`, over the program's platform. -/
+def E2BodyCtx : Ctx (Sig.body ([],c,c,c)) := E2PlatIOCtx.body E2Dom
+
+/-- The body of `Future.apply`, over the classified platform alone.  The
+resolution facts of E2 are read over this context. -/
+def E2ClsBodyCtx : Ctx (Sig.body ([],c,c)) := E2PlatCtx.body E2Dom
+
+/-- **The literal at the parameter's set.**  The object `Future.apply` returns
+is allocated at `{x}`, and its field is declared at the object's own self. -/
+def E2_lit_typed : HasTyP [] E2BodyCtx (.val (.obj E2FutDefs))
+    ((Shape.mu E2SelfS) ^ [CapAtom.var .here]) := E2Lit _
+
+/-- The context after `let b`. -/
+def E2CtxB : Ctx ([],c,c,c,x) := E2PlatIOCtx.cons (arrowS ^ E2Filt)
+/-- The context after `let f`. -/
+def E2CtxF : Ctx ([],c,c,c,x,x) := E2CtxB.cons E2ApplyTy
+/-- The type of the call: the `Future` object at `{b}`. -/
+def E2AppTy : Ty ([],c,c,c,x,x) := (Shape.mu E2SelfS) ^ [CapAtom.var (.there .here)]
+/-- The context after `let r`. -/
+def E2CtxR : Ctx ([],c,c,c,x,x,x) := E2CtxF.cons E2AppTy
+
+/-- The set `kvar` descends to at the call's argument: the argument's declared
+set, projected at the kind its atom carries, which is `⊤`. -/
+def E2_arg_plat_kind : CapKind E2CtxF
+    (CaptureSet.proj (CaptureSet.weaken (CaptureSet.weaken E2Filt)) Cls.Kind.top)
+    (Cls.except Cls.ThreadLocal) :=
+  .cons (.kcls (c := Cls.ThreadLocal) (by decide) (by decide))
+    (.cons (.kcls (c := Cls.Control) (by decide) (by decide))
+      (.cons (.kcls (c := Cls.IO) (by decide) (by decide)) .nil))
+
+/-- **The kinding the call discharges**, the local premise of the paper's
+sentence: the argument is kinded at `except[ThreadLocal]`. -/
+def E2_arg_kind : CapKind E2CtxF [CapAtom.var (.there .here)] (Cls.except Cls.ThreadLocal) :=
+  .kvar (x := .there .here) rfl E2_arg_plat_kind
+
+/-- The answer `r`, charged to the filtered platform set: `sc-var` twice. -/
+def E2answer : HasTyP (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken E2Filt)))
+    E2CtxR (.path (.var .here)) (Ty.weaken E2AppTy) :=
+  HasTy.useSub (varAt .here rfl) (.trans Subcap.var Subcap.var)
+
+/-- `f b`: the call.  The argument is read at `{b}` and put below
+`{b ↾ except[ThreadLocal]}` by `sc-proj`, whose premise is `E2_arg_kind`. -/
+def E2call : HasTyP (CaptureSet.weaken (CaptureSet.weaken E2Filt)) E2CtxF
+    (.app .here (.there .here)) E2AppTy :=
+  .app (T2 := E2Cod)
+    (HasTy.useSub (varAt .here rfl) (.trans Subcap.var (Subcap.empty _)))
+    (HasTy.useSub (HasTy.captTo (varSelf (.there .here) rfl) (Subcap.proj E2_arg_kind))
+      Subcap.var)
+
+/-- `let r = f b in r`. -/
+def E2inner : HasTyP (CaptureSet.weaken (CaptureSet.weaken E2Filt)) E2CtxF
+    (.let (.app .here (.there .here)) (.path (.var .here))) E2AppTy :=
+  .let E2call E2answer E2ObjWf
+
+/-- `let f = Future.apply in let r = f b in r`, with the answer widened to the
+filtered platform set, so that it avoids `b`. -/
+def E2outer : HasTyP (CaptureSet.weaken E2Filt) E2CtxB
+    (.let E2ApplyTm (.let (.app .here (.there .here)) (.path (.var .here))))
+    ((Shape.mu E2SelfS) ^ CaptureSet.weaken E2Filt) :=
+  HasTy.captTo
+    (HasTy.let (T' := (Shape.mu E2SelfS) ^ [CapAtom.var .here])
+      (E2Apply.widen _) E2inner E2ObjWf)
+    Subcap.var
+
+/-- The term of E2. -/
+def E2tm : Tm ([],c,c,c) :=
+  .let (.val (.lam unitTy (.path (.var .here))))
+    (.let E2ApplyTm (.let (.app .here (.there .here)) (.path (.var .here))))
+
+/-- The type of E2: the `Future` object at the filtered platform set. -/
+def E2Ty : Ty ([],c,c,c) := (Shape.mu E2SelfS) ^ E2Filt
+
+/-- **E2.**  The program allocates a body, calls `Future.apply` on it, and hands
+the object back.  Its declared use set is the filtered platform set. -/
+def E2_typed : HasTyP E2Filt E2PlatIOCtx E2tm E2Ty :=
+  HasTy.let (T' := E2Ty) ((E2IdVal E2Filt).widen _) E2outer E2ObjWf
+
+/-! ## E3, C2 with a kind bound
+
+C2 is the capture-polymorphism example of stage A3a: an object with a capture
+member `{C : {}..{κ₁,κ₂}}` and a field `{run : (Unit → Unit) ^ {z.C}}`.  E3 is
+C2 with the set bound replaced by a kind bound, `{C : only[Control]}`, over a
+platform whose two capabilities are both classified `Control`.
+
+The two literals are C2's own: they define `C` as `{κ₁}` and as `{κ₂}` and they
+type at `.cap C c c`.  Each is retyped at `.capk C (only[Control])` by `Rec-E`,
+`Cap` on the member, `SubShape.capkI` and `Rec-I`, and the premise `capkI` asks
+for is `CapKind Γ [cvar κᵢ] (only[Control])`, one `kcls` at the binder's own
+declared classifier.
+
+The client is typed once, against the kind-bounded member.  It reads `run` off
+`x` and calls it, and the closure it calls carries `{x.C}`.  There is no upper
+bound to charge that to, so the call stays at `{x.C}` and the kinding is `ksel`,
+which the translation sends to `kmember`.  That is the difference from C2, where
+`Subcap.selUpper` charged the same call to `{κ₁,κ₂}`.
+
+The last fact is the point of the example.  One more `Platform.consCls` with a
+third `Control` capability leaves every decided fact standing, and a third
+literal defining `C` as `{κ₃}` retypes at the same member.  A set bound
+`{}..{κ₁,κ₂}` would have to be rewritten to admit it.  The target side of E3 is
+in `FCdot/Examples.lean`. -/
+
+/-- The platform of E3: two capabilities, both classified `Control`. -/
+def E3Plat : Platform ([],c,c) := (Platform.nil.consCls Cls.Control).consCls Cls.Control
+
+/-- The platform's context.  `Platform.ctx` is defined with the translation, one
+file up, and agrees with this on the nose (`FCdot.Examples.E3_platCtx`). -/
+def E3PlatCtx : Ctx ([],c,c) := (Ctx.nil.consCls Cls.Control).consCls Cls.Control
+
+/-- `κ₁`, the outer control capability. -/
+def E3k1 : BVar ([],c,c) .cap := .there .here
+/-- `κ₂`, the inner one. -/
+def E3k2 : BVar ([],c,c) .cap := .here
+
+/-- The platform declares `Control` at the outer binder. -/
+theorem E3_classOf_k1 : E3Plat.classOf E3k1 = Cls.Control := rfl
+
+/-- And `Control` at the inner one too: both platform binders are `Control`. -/
+theorem E3_classOf_k2 : E3Plat.classOf E3k2 = Cls.Control := rfl
+
+/-- The context reads the outer binder's classifier back. -/
+theorem E3_clsOf_k1 : Ctx.ClsOf E3PlatCtx (CapAtom.cvar E3k1) Cls.Control := by decide
+
+/-- And the inner one's. -/
+theorem E3_clsOf_k2 : Ctx.ClsOf E3PlatCtx (CapAtom.cvar E3k2) Cls.Control := by decide
+
+/-- `only[Control]` admits `Control`, which is the whole of the `kcls` premise
+at either binder. -/
+theorem E3_only_admits_control :
+    Cls.Kind.containsB (Cls.only Cls.Control) Cls.Control = true := by decide
+
+/-- And excludes the input-output classifier, which is what the kind bound
+buys. -/
+theorem E3_only_excludes_io :
+    Cls.Kind.containsB (Cls.only Cls.Control) Cls.IO = false := by decide
+
+/-! ### The kind-bounded member
+
+`{C : only[Control]}` in place of C2's `{C : {}..{κ₁,κ₂}}`.  The field is
+C2's, at the same self selection `{z.C}`. -/
+
+/-- The abstract declaration shape with a kind bound, with the self at `z`. -/
+def E3AbsAt (z : BVar s .var) : Shape s :=
+  .and (.capk lC (Cls.only Cls.Control)) (.fld lrun (arrowS ^ [CapAtom.sel z lC]))
+
+theorem E3AbsDecl {z : BVar s .var} : Shape.Decl (E3AbsAt z) := .and .capk .fld
+
+/-- The abstract type of the objects, at a capture set the position gives.
+The member is the whole of what the type says, so the capture set is free: it
+is where the object is allocated, and it is what the stability fact varies. -/
+def E3AbsTyAt (C : CaptureSet s) : Ty s := (Shape.mu (E3AbsAt .here)) ^ C
+
+/-- The abstract type at the platform's own capture set. -/
+def E3AbsTy (κ1 κ2 : BVar s .cap) : Ty s := E3AbsTyAt [.cvar κ1, .cvar κ2]
+
+theorem E3AbsWf {C : CaptureSet s} : Ty.Wf (E3AbsTyAt C) :=
+  .capt (.mu (.and .capk (.fld arrowWf)) (.and .capk .fld))
+
+/-- **The kinding a literal's capture member needs.**  One `kcls` at the
+binder's own declared classifier, both premises decided. -/
+def E3_cap_kind {s : Sig} {Γ : Ctx s} {κ : BVar s .cap}
+    (h : Ctx.ClsOf Γ (CapAtom.cvar κ) Cls.Control) :
+    CapKind Γ [CapAtom.cvar κ] (Cls.only Cls.Control) :=
+  .kcls (c := Cls.Control) h (fun _ => by decide)
+
+/-- **The retyping of a literal at the kind bound.**  `Rec-E` opens the
+literal's precise type, `Cap` drops the member's lower bound, `SubShape.capkI`
+turns the remaining set bound `{}..{κ}` into the kind bound `only[Control]`, and
+`Rec-I` closes the object again.  The field rides along by `And`.  This is C2's `C2abstract` with the member's upper bound replaced by its
+kinding. -/
+def E3abstract {s : Sig} {Γ : Ctx s} {U C : CaptureSet s} (x : BVar s .var)
+    {κ : BVar s .cap}
+    (g : CapKind Γ [CapAtom.cvar κ] (Cls.only Cls.Control))
+    (h : Γ.lookup x = C2PreTy κ) :
+    HasTyP U Γ (.path (.var x)) (E3AbsTyAt C) :=
+  .sub
+    (HasTy.recI (S := E3AbsAt .here)
+      (subS (.recE (var' x h) C2PreDecl)
+        (.and
+          (.trans .and1
+            (.trans (.cap (.elem (CaptureSet.nil_subset _)) .refl) (.capkI g)))
+          .and2))
+      E3AbsDecl)
+    (.ty (.capt .refl (.elem (CaptureSet.nil_subset _)))) (Subcap.empty U)
+
+/-! ### The client, charged at `{x.C}`
+
+The client reads `run` off the kind-bounded member and calls it.  The closure
+it reads carries `{x.C}`, and a kind-bounded member has no upper bound, so
+there is nothing to charge that to: the call's use set is `{x.C}` itself, and
+what makes it safe is its kinding, `ksel` at the member.  C2 charged the same
+call to `{κ₁,κ₂}` by `Subcap.selUpper`, which a kind bound does not offer. -/
+
+/-- The client's use set inside its own body: `{x}` for the projection and
+`{x.C}` for the call. -/
+def E3ClientUse {s : Sig} (x : BVar s .var) : CaptureSet s :=
+  [CapAtom.var x, CapAtom.sel x lC]
+
+/-- The abstract object `x`. -/
+def E3CtxX {s : Sig} (Γ : Ctx s) (κ1 κ2 : BVar s .cap) : Ctx (Sig.body s) :=
+  Ctx.body Γ (E3AbsTy (.there κ1) (.there κ2))
+/-- … the unit argument `u`. -/
+def E3CtxU {s : Sig} (Γ : Ctx s) (κ1 κ2 : BVar s .cap) : Ctx (Sig.body (Sig.body s)) :=
+  Ctx.body (E3CtxX Γ κ1 κ2) unitTy
+/-- … the closure `g` the client reads off `x`. -/
+def E3CtxG {s : Sig} (Γ : Ctx s) (κ1 κ2 : BVar s .cap) : Ctx (Sig.body (Sig.body s),x) :=
+  (E3CtxU Γ κ1 κ2).cons (arrowS ^ [CapAtom.sel (up .here) lC])
+
+/-- `x`, opened at the kind-bounded capture member, beside `g`. -/
+def E3xCap {s : Sig} {Γ : Ctx s} {κ1 κ2 : BVar s .cap} :
+    HasTyP [CapAtom.var (.there (up .here))] (E3CtxG Γ κ1 κ2)
+      (.path (.var (.there (up .here))))
+      ((Shape.capk lC (Cls.only Cls.Control)) ^ [CapAtom.var (.there (up .here))]) :=
+  subC (.recE (varSelf (.there (up .here)) rfl) E3AbsDecl) .and1
+
+/-- **The client's kinding, by `ksel`.**  The closure's own capture set `{x.C}`
+is kinded at `only[Control]` by the member's kind bound.  This is the rule the
+translation sends to `FCdot.KindCo.kmember`. -/
+def E3_client_kind {s : Sig} {Γ : Ctx s} {κ1 κ2 : BVar s .cap} :
+    CapKind (E3CtxG Γ κ1 κ2) [CapAtom.sel (.there (up .here)) lC]
+      (Cls.only Cls.Control) :=
+  .ksel E3xCap
+
+/-- `g u`, charged to `{x.C}`: `sc-var` at `g`, and no further step. -/
+def E3call {s : Sig} {Γ : Ctx s} {κ1 κ2 : BVar s .cap} :
+    HasTyP [CapAtom.sel (.there (up .here)) lC]
+      (E3CtxG Γ κ1 κ2) (.app .here (.there .here)) (.top ^ []) :=
+  .app (T2 := .ty unitTy)
+    (.sub (varSelf .here rfl) (.ty (.capt .refl Subcap.var)) Subcap.var)
+    ((var' (.there .here) rfl).widen _)
+
+/-- The client's body: read the closure off the kind-bounded member and call
+it, at the use set `{x, x.C}`. -/
+def E3clientBody {s : Sig} {Γ : Ctx s} {κ1 κ2 : BVar s .cap} :
+    HasTyP (E3ClientUse (up .here)) (E3CtxU Γ κ1 κ2)
+      (.let (.proj (up .here) lrun) (.app .here (.there .here))) (.top ^ []) :=
+  .let
+    (HasTy.widenTo
+      (.proj (subC (.recE (varSelf (up .here) rfl) E3AbsDecl) .and2))
+      (sub_one (List.Mem.head _)))
+    (HasTy.widenTo E3call (sub_one (List.Mem.tail _ (List.Mem.head _))))
+    (.capt .top)
+
+/-- The type of the client. -/
+def E3ClientTy (κ1 κ2 : BVar s .cap) : Ty s :=
+  (Shape.all (E3AbsTy (.there κ1) (.there κ2))
+    (.ty (arrowS ^ E3ClientUse .here))) ^ []
+
+theorem E3ClientWf {κ1 κ2 : BVar s .cap} : Ty.Wf (E3ClientTy κ1 κ2) :=
+  .capt (.all E3AbsWf (.ty arrowWf))
+
+/-- The client's term. -/
+def E3clientTm (κ1 κ2 : BVar s .cap) : Tm s :=
+  .val (.lam (E3AbsTy (.there κ1) (.there κ2))
+    (.val (.lam unitTy (.let (.proj (up .here) lrun) (.app .here (.there .here))))))
+
+/-- **The client, a value.**  It is polymorphic in the member `C`, and the
+closure it returns is declared at `{x, x.C}`. -/
+def E3ClientVal {s : Sig} {Γ : Ctx s} (κ1 κ2 : BVar s .cap) :
+    HasTyP [] Γ (E3clientTm κ1 κ2) (E3ClientTy κ1 κ2) :=
+  .lam ((HasTy.lam (HasTy.widenTo E3clientBody (sub_union_left _ _)) unitWf).widen _) E3AbsWf
+
+/-! ### The program
+
+```text
+let c  = λ(x : μ(z. {C : only[Control]} ∧ {run : (Unit → Unit) ^ {z.C}}) ^ {κ₁,κ₂}).
+           λ(u : Unit). let g = x.run in g u in
+let a  = ν(z. {C = {κ₁}} ∧ {run = λ(u : Unit). u}) in
+let b  = ν(z. {C = {κ₂}} ∧ {run = λ(u : Unit). u}) in
+let ga = c a in
+let gb = c b in
+c
+```
+
+The two literals are C2's, unchanged.  The answer is the client itself, because
+the closures `ga` and `gb` carry `{a, a.C}` and `{b, b.C}`, and a kind-bounded
+member offers no upper bound to widen either to: that is the same sentence the
+client makes, read at the outside of the program.  The declared use set is both
+platform capabilities. -/
+
+/-- The declared use set of E3's program: both platform capabilities. -/
+def E3Uses : CaptureSet ([],c,c) := [CapAtom.cvar E3k1, CapAtom.cvar E3k2]
+
+/-- **The kinding of the program's use set.**  Two `kcls` steps, one per
+platform binder, each at the binder's own declared `Control`.  This is the
+hypothesis T8' takes. -/
+def E3_kind : CapKind E3PlatCtx E3Uses (Cls.only Cls.Control) :=
+  .cons (E3_cap_kind E3_clsOf_k1) (.cons (E3_cap_kind E3_clsOf_k2) .nil)
+
+/-- `κ₁, κ₂, c`. -/
+def E3CtxC : Ctx ([],c,c,x) := E3PlatCtx.cons (E3ClientTy E3k1 E3k2)
+/-- … `a`. -/
+def E3CtxA : Ctx ([],c,c,x,x) := E3CtxC.cons (C2PreTy (.there (.there .here)))
+/-- … `b`. -/
+def E3CtxB : Ctx ([],c,c,x,x,x) := E3CtxA.cons (C2PreTy (.there (.there .here)))
+/-- … `ga = c a`. -/
+def E3CtxGa : Ctx ([],c,c,x,x,x,x) := E3CtxB.cons (arrowS ^ E3ClientUse (.there .here))
+/-- … `gb = c b`. -/
+def E3CtxGb : Ctx ([],c,c,x,x,x,x,x) := E3CtxGa.cons (arrowS ^ E3ClientUse (.there .here))
+
+/-- `κ₁` is declared `Control` where the first literal is retyped. -/
+def E3_kind_a :
+    CapKind E3CtxB [CapAtom.cvar (.there (.there (.there (.there .here))))]
+      (Cls.only Cls.Control) :=
+  E3_cap_kind (by decide)
+
+/-- And `κ₂` where the second is. -/
+def E3_kind_b :
+    CapKind E3CtxGa [CapAtom.cvar (.there (.there (.there (.there .here))))]
+      (Cls.only Cls.Control) :=
+  E3_cap_kind (by decide)
+
+/-- **The first literal at the kind bound.**  `a`, whose member defines `C` as
+`{κ₁}`, read at `{C : only[Control]}`. -/
+def E3_abstract_a {U : CaptureSet ([],c,c,x,x,x)} :
+    HasTyP U E3CtxB (.path (.var (.there .here)))
+      (E3AbsTy (.there (.there (.there (.there .here))))
+        (.there (.there (.there .here)))) :=
+  E3abstract (.there .here) E3_kind_a rfl
+
+/-- **The second literal at the kind bound.**  `b`, whose member defines `C` as
+`{κ₂}`, read at the same `{C : only[Control]}`.  The two retypings differ only
+in the binder the `kcls` step names. -/
+def E3_abstract_b {U : CaptureSet ([],c,c,x,x,x,x)} :
+    HasTyP U E3CtxGa (.path (.var (.there .here)))
+      (E3AbsTy (.there (.there (.there (.there (.there .here)))))
+        (.there (.there (.there (.there .here))))) :=
+  E3abstract (.there .here) E3_kind_b rfl
+
+/-- The answer: the client itself, at the platform's own use set. -/
+def E3answer : HasTyP
+    (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken
+      (CaptureSet.weaken (CaptureSet.weaken E3Uses)))))
+    E3CtxGb (.path (.var (.there (.there (.there (.there .here))))))
+    (Ty.weaken (Ty.weaken (Ty.weaken (Ty.weaken
+      (Ty.weaken (E3ClientTy E3k1 E3k2)))))) :=
+  HasTy.useSub (varAt (.there (.there (.there (.there .here)))) rfl)
+    (.trans Subcap.var (Subcap.empty _))
+
+/-- `gb = c b`: the client at the second literal. -/
+def E3gb : HasTyP
+    (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken E3Uses))))
+    E3CtxGa (.app (.there (.there (.there .here))) (.there .here))
+    (arrowS ^ E3ClientUse (.there .here)) :=
+  .app (T2 := .ty (arrowS ^ E3ClientUse .here))
+    ((var' (.there (.there (.there .here))) rfl).widen _)
+    E3_abstract_b
+
+/-- `ga = c a`: the client at the first literal. -/
+def E3ga : HasTyP
+    (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken E3Uses)))
+    E3CtxB (.app (.there (.there .here)) (.there .here))
+    (arrowS ^ E3ClientUse (.there .here)) :=
+  .app (T2 := .ty (arrowS ^ E3ClientUse .here))
+    ((var' (.there (.there .here)) rfl).widen _)
+    E3_abstract_a
+
+/-- The term of E3. -/
+def E3tm : Tm ([],c,c) :=
+  .let (E3clientTm E3k1 E3k2)
+    (.let (.val (.obj (C2Defs (.there (.there (.there (.there .here)))))))
+      (.let (.val (.obj (C2Defs (.there (.there (.there (.there .here)))))))
+        (.let (.app (.there (.there .here)) (.there .here))
+          (.let (.app (.there (.there (.there .here))) (.there .here))
+            (.path (.var (.there (.there (.there (.there .here))))))))))
+
+/-- The type of E3. -/
+def E3Ty : Ty ([],c,c) := E3ClientTy E3k1 E3k2
+
+/-- **E3.**  One capture-polymorphic client against a kind-bounded member, two
+literals that define the member differently, and a program whose declared use
+set is both platform capabilities. -/
+def E3_typed : HasTyP E3Uses E3PlatCtx E3tm E3Ty :=
+  .let ((E3ClientVal E3k1 E3k2).widen _)
+    (.let ((C2Lit (.there (.there .here))).widen _)
+      (.let ((C2Lit (.there (.there .here))).widen _)
+        (.let E3ga (.let E3gb E3answer E3ClientWf) E3ClientWf) E3ClientWf) E3ClientWf)
+    E3ClientWf
+
+/-! ### The written types
+
+Neither the client's type nor the abstract object's writes `any` or `fresh`, so
+both are `AnyOk` and `FreshOk` and both readings are the identity. -/
+
+theorem E3_anyOk : E3Ty.AnyOk := by decide
+theorem E3_freshOk : E3Ty.FreshOk := by decide
+theorem E3_expand (D : CaptureSet ([],c,c)) : E3Ty.expand D = E3Ty := rfl
+
+theorem E3_abs_anyOk : (E3AbsTy E3k1 E3k2).AnyOk := by decide
+theorem E3_abs_freshOk : (E3AbsTy E3k1 E3k2).FreshOk := by decide
+theorem E3_abs_expand (D : CaptureSet ([],c,c)) :
+    (E3AbsTy E3k1 E3k2).expand D = E3AbsTy E3k1 E3k2 := rfl
+
+/-! ### Stability: one more `Control` capability
+
+The point of the example.  The platform gains a third capability, also
+`Control`, by one more `Platform.consCls`.  Nothing else moves: the member's
+bound is `only[Control]` and says nothing about which capabilities exist, so a
+third literal defining `C` as `{κ₃}` retypes at the same member by the same
+four steps.  A set bound `{}..{κ₁,κ₂}` would have to be rewritten to
+`{}..{κ₁,κ₂,κ₃}`, and every derivation that read the old bound with it. -/
+
+/-- The extended platform: three capabilities, all `Control`. -/
+def E3Plat3 : Platform ([],c,c,c) :=
+  ((Platform.nil.consCls Cls.Control).consCls Cls.Control).consCls Cls.Control
+
+/-- Its context. -/
+def E3Plat3Ctx : Ctx ([],c,c,c) :=
+  ((Ctx.nil.consCls Cls.Control).consCls Cls.Control).consCls Cls.Control
+
+/-- `κ₁` on the extended platform. -/
+def E3k1' : BVar ([],c,c,c) .cap := .there (.there .here)
+/-- `κ₂` on the extended platform. -/
+def E3k2' : BVar ([],c,c,c) .cap := .there .here
+/-- `κ₃`, the third `Control` capability. -/
+def E3k3 : BVar ([],c,c,c) .cap := .here
+
+theorem E3_classOf_k3 : E3Plat3.classOf E3k3 = Cls.Control := rfl
+
+/-- **The decided facts stand over both platforms.**  Every capture binder of
+either platform context is declared `Control`, and `only[Control]` admits it.
+The two-capability platform is the left conjunct and the three-capability one
+the right, and neither statement mentions the other's binders. -/
+theorem E3_stable_clsOf :
+    (Ctx.ClsOf E3PlatCtx (CapAtom.cvar E3k1) Cls.Control ∧
+        Ctx.ClsOf E3PlatCtx (CapAtom.cvar E3k2) Cls.Control) ∧
+      (Ctx.ClsOf E3Plat3Ctx (CapAtom.cvar E3k1') Cls.Control ∧
+        Ctx.ClsOf E3Plat3Ctx (CapAtom.cvar E3k2') Cls.Control ∧
+        Ctx.ClsOf E3Plat3Ctx (CapAtom.cvar E3k3) Cls.Control) := by decide
+
+/-- The extended platform declares `Control` at all three binders. -/
+theorem E3_stable_classOf :
+    (E3Plat.classOf E3k1 = Cls.Control ∧ E3Plat.classOf E3k2 = Cls.Control) ∧
+      (E3Plat3.classOf E3k1' = Cls.Control ∧ E3Plat3.classOf E3k2' = Cls.Control ∧
+        E3Plat3.classOf E3k3 = Cls.Control) := by decide
+
+/-- The kinding of the extended platform's whole set: three `kcls` steps where
+the two-capability platform took two, and no other change. -/
+def E3_kind3 : CapKind E3Plat3Ctx
+    [CapAtom.cvar E3k1', CapAtom.cvar E3k2', CapAtom.cvar E3k3]
+    (Cls.only Cls.Control) :=
+  .cons (E3_cap_kind (by decide))
+    (.cons (E3_cap_kind (by decide)) (.cons (E3_cap_kind (by decide)) .nil))
+
+/-- The third literal's context: the extended platform and `d`, the literal
+whose member defines `C` as `{κ₃}`. -/
+def E3CtxD : Ctx ([],c,c,c,x) := E3Plat3Ctx.cons (C2PreTy E3k3)
+
+/-- The third literal, at its precise type.  It is `C2Lit` at `κ₃`, the same
+literal form the first two use. -/
+def E3_third_lit : HasTyP [] E3Plat3Ctx (.val (.obj (C2Defs (up2 E3k3))))
+    (C2PreTy E3k3) := C2Lit E3k3
+
+/-- `κ₃` is declared `Control` where the third literal is retyped. -/
+def E3_kind_c : CapKind E3CtxD [CapAtom.cvar (.there .here)] (Cls.only Cls.Control) :=
+  E3_cap_kind (by decide)
+
+/-- **The third literal at the kind bound.**  The same four steps as the first
+two, with no change to the member and no change to the client. -/
+def E3_abstract_c :
+    HasTyP [] E3CtxD (.path (.var .here))
+      (E3AbsTyAt [CapAtom.cvar (.there (.there (.there .here))),
+        CapAtom.cvar (.there (.there .here)), CapAtom.cvar (.there .here)]) :=
+  E3abstract .here E3_kind_c rfl
+
+/-! ### The client read at E3's own platform
+
+The client is polymorphic in its context, and the target page reads it at one
+context: E3's platform with the client's three binders on top. -/
+
+/-- The client's context over E3's own platform. -/
+def E3ClientCtx : Ctx (Sig.body (Sig.body ([],c,c)),x) := E3CtxG E3PlatCtx E3k1 E3k2
+
+/-- The capture set of the closure the client calls, `{x.C}`. -/
+def E3ClosureSet : CaptureSet (Sig.body (Sig.body ([],c,c)),x) :=
+  [CapAtom.sel (.there (up .here)) lC]
+
+/-- **The client's `ksel` at E3's own platform.** -/
+def E3_client_kind_plat : CapKind E3ClientCtx E3ClosureSet (Cls.only Cls.Control) :=
+  E3_client_kind
+
+/-- `x`, opened at the kind-bounded member, at E3's own platform. -/
+def E3xCapPlat : HasTyP [CapAtom.var (.there (up .here))] E3ClientCtx
+    (.path (.var (.there (up .here))))
+    ((Shape.capk lC (Cls.only Cls.Control)) ^ [CapAtom.var (.there (up .here))]) :=
+  E3xCap
+
+/-- The capture set the first literal's member defines, `{κ₁}`, read where the
+literal is retyped. -/
+def E3aSet : CaptureSet ([],c,c,x,x,x) :=
+  [CapAtom.cvar (.there (.there (.there (.there .here))))]
+
 end Examples
 end DotMNF
 
