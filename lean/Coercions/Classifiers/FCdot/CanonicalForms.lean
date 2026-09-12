@@ -426,6 +426,63 @@ theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D)
         view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
       exact (hVt'.leC_entry hAt).2
   | .eqToLe hφ => exact (capeq_canon hφ).le
+  -- **T6.**  The three rules of K1.3.  Each is `Ctx.Root_proj` read in one
+  -- direction or the other, and `projC` is where `kind_canon` is consumed.
+  | .unprojC => exact fun a ha => (Ctx.Root_proj.mp ha).1
+  | .projC hg => exact fun a ha => Ctx.Root_proj.mpr ⟨ha, kind_canon hg a ha⟩
+  | .projMono hf =>
+      exact fun a ha =>
+        Ctx.Root_proj.mpr ⟨cap_canon hf a (Ctx.Root_proj.mp ha).1, (Ctx.Root_proj.mp ha).2⟩
+
+/-- **T5**, the canonical form of closed kinding: closed kinding evidence
+says that every root of the set carries a classifier the kind admits.  It
+runs in the mutual induction because `kvar` and `kmember` read `atom_canon`,
+and `cap_canon`'s `projC` case reads it back. -/
+theorem kind_canon {g : KindCo s} {C : CaptureSet s} {φ : Cls.Kind}
+    (h : Γ ⊢ᵏ g : C ⊑ᵏ φ) : Γ.KindLe C φ := by
+  match h with
+  | .nil => exact Ctx.kindLe_of_kinds (by simp)
+  | .cons hg hh =>
+      have hu := Ctx.KindLe.union (kind_canon hg) (kind_canon hh)
+      simpa [CaptureSet.union_def] using hu
+  | .kproj hsub =>
+      refine Ctx.kindLe_of_kinds ?_
+      intro b hb c hc
+      obtain rfl := List.mem_singleton.mp hb
+      exact Cls.Kind.Subkind.contains hsub hc
+  -- `k-label` and `k-label-absurd` in one: a `cls` binder stands for itself,
+  -- so the only root of the singleton is the binder, and its classifier is
+  -- the declared one.
+  | .kcls (a := a) hcls himp =>
+      intro r hr
+      obtain ⟨hbase, hk⟩ := Ctx.Root_of_base.mp hr
+      obtain ⟨rfl, hcl⟩ := Ctx.Root_of_clsOf hcls hbase
+      have hk' : a.kindOf.Contains (Γ.classOf a.base) := hk
+      rw [hcl] at hk' ⊢
+      exact himp hk'
+  | .kvar (b := b) (C := C) ha hbase hg =>
+      intro r hr
+      obtain ⟨hb, hk⟩ := Ctx.Root_of_base.mp hr
+      rw [hbase] at hb
+      have hle : CapLe Γ [CapAtom.var b.root] C := by simpa using (atom_canon ha).capLe
+      exact kind_canon hg r (Ctx.Root_proj.mpr ⟨hle r hb, hk⟩)
+  | .kcvar hset hg =>
+      intro r hr
+      obtain ⟨hb, hk⟩ := Ctx.Root_of_base.mp hr
+      exact kind_canon hg r (Ctx.Root_proj.mpr ⟨(Ctx.Root_of_setOf hset).mp hb, hk⟩)
+  -- The telescope member: `cap_canon`'s `member` case with `ViewTyped.kindC`
+  -- in place of `ViewTyped.leC`.
+  | .kmember (b := b) ha he hAt =>
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
+      obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he
+      obtain ⟨n₃, a₀, C₀, hC, hCt⟩ := closedAtomForm_typed ha
+      obtain ⟨m, V', hV', hVt'⟩ :=
+        view_through_obj (precView_typed hσ b.root) hV hVt hnb hC hCt hFt
+      cases hAt with
+      | kindC hAt' => exact (hVt'.kindC_entry hAt').2
+  | .kprojS hg =>
+      exact Ctx.KindLe.mono (fun a ha => (Ctx.Root_proj.mp ha).1) (kind_canon hg)
+  | .ksub hg hsub => exact (kind_canon hg).sub hsub
 
 /-- The equality analogue of item 6: closed capture equality evidence gives
 equality of roots. -/
@@ -538,6 +595,10 @@ theorem mor_canon {src : Telescope (s,x)} {m : Morphism s} {Tel : Telescope (s,x
   | .eqSymC hm hAt =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, Es ▹ .eqC _ true, by simp [entries, hEs], .eqSymC hT hAt⟩
+  | .kindC hm hAt hq hsub =>
+      obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
+      exact ⟨n + 1, Es ▹ .kindC _ _, by simp [entries, hEs],
+        .kindC hT (.kindC hAt) (sideC_canon hq) (Cls.Kind.AdmitsStep.admits hsub)⟩
   | .bnd hm he =>
       obtain ⟨n₁, Es, hEs, hT⟩ := mor_canon hm
       obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he

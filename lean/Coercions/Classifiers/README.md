@@ -4,9 +4,9 @@ Classifiers on the compiler's way: the third capture project of plan V (`plan-5-
 `plan-5f-classifiers-stages.md`), namespace `Classifiers`.  The tree started as a verbatim copy of
 `lean/Coercions/CapturesCC/` at the commit in `BASE`, the end of captures the compiler's way, and it
 grows the classifier tree and kinds as data, classified platform binders, projected captures, kinding
-on telescopes with its evidence family, and classified prediction.  Stage K0 has landed, and it is
-the target only.  The stages after it, K1 to K3, will add the kinding proposition on telescopes with
-its evidence family, the classified source and translation, and the closing examples.
+on telescopes with its evidence family, and classified prediction.  Stages K0 and K1 have landed,
+and both are the target only.  The stages after them, K2 and K3, will add the classified source and
+translation, classified prediction, and the closing examples.
 
 Stage K0 adds the classifier data and reads it in one place.  A classifier is a tree, a kind is a
 list of subtrees with exclusions, and both are closed data that mention no de Bruijn index, so
@@ -34,7 +34,24 @@ and `except`, each fact closed in the kernel by `decide`.  Only the sound direct
 proved.  The converse needs the whole of Capless(K)'s subtraction file, which does not port without
 Mathlib, and the module records that where the fallback is taken.
 
-`FCdot` is the target calculus, and it is where the stage does its work.  A capture bound gains the
+Stage K1 adds the kinding judgment and keeps it a checking judgment.  A telescope may carry the
+proposition `C :ᶜ φ`, written `C ⊑ᵏ φ`, which says that every capability `C` reaches carries a
+classifier `φ` admits, and closed evidence for it is the family `KindCo` with nine rules.  Every rule
+concludes about a general capture atom and reads it through its base and the kind it carries, which
+is the root kind when it carries none, so the family covers exactly what Capless(K)'s covers rather
+than only projected atoms.  Two of Capless(K)'s four label rules are one rule with an implicational
+premise, whose vacuous branch is the absurd rule.  Subcapturing gains three rules, one that drops a
+projection, one that adds a projection to a kinded set, and the congruence, and object coercions gain
+a template for a target kinding proposition.  The canonical form of the stage is that closed kinding
+evidence for `C ⊑ᵏ φ` says exactly `Ctx.KindLe C φ`, the proposition K0 proved the algebra of, and it
+runs in the same mutual induction as the canonical forms of capture evidence and of atoms, whose
+statements do not move.  The kinding checker decides its judgment in both directions, because the
+premises of the rules are the very `Bool` functions of the kind algebra; what only the sound
+direction of subtraction is needed for is the step from the checker's evidence to the semantic
+reading, and the stage records where.  There is no kind-bounded capture binder: a kind bound on a
+capture member is a proposition, because the binder encoding is empty inside a scope.
+
+`FCdot` is the target calculus, and it is where both stages do their work.  A capture bound gains the
 flavour `cls c`, which is `star` with a classifier written on it, and a capture atom gains the
 projection `a ↾ φ`.  Resolution gains two clauses, one that maps a projection through the resolution
 of its base and one that stops at a classified binder, and expansion gains the clause that consumes
@@ -44,8 +61,9 @@ set are the roots of the set filtered by the kind, a projected set is kinded by 
 is antitone along subcapturing and monotone along subkinding, and kinding travels along a store
 extension.  `FCdot/README.md` has the module table, the notation and the statements.
 
-`DotMNF` is the source calculus and it is unchanged in K0: the source writes no classifier, and the
-classified source is K2's subject.  `DotToFCdot` is the translation, and no rule, judgment or
+`DotMNF` is the source calculus and it is unchanged in K0 and in K1: the source writes no classifier,
+and the classified source is K2's subject.  `DotToFCdot` is the translation, and no rule, judgment or
 translation clause of it changed either.  Two of its lemmas gained the clause or the premise that
-says the source writes no projection, which is what makes its platform prefix behave as it did.
-`Runtime.lean` is shared with the other trees and is untouched.
+says the source writes no projection, which is what makes its platform prefix behave as it did, and
+K1 added the mechanical clause for the new proposition to its telescope predicates and to its
+identity morphism.  `Runtime.lean` is shared with the other trees and is untouched.

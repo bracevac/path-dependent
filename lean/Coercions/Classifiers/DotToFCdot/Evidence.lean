@@ -54,6 +54,7 @@ def _root_.Classifiers.FCdot.Morphism.append : FCdot.Morphism s → FCdot.Morphi
   | m, .bnd m' e => .bnd (m.append m') e
   | m, .leC m' q h q' => .leC (m.append m') q h q'
   | m, .eqC m' j b => .eqC (m.append m') j b
+  | m, .kindC m' q j φ => .kindC (m.append m') q j φ
 
 /-- A telescope with no self-bound propositions at all.  `Shape.telSelf`
 produces one only on a shape that `Wf.mu` excludes. -/
@@ -80,6 +81,8 @@ inductive _root_.Classifiers.FCdot.Telescope.ClosedBnds : {s : FCdot.Sig} → FC
       FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.leC C D))
   | eqC {Tel : FCdot.Telescope (s,x)} {C D : FCdot.CaptureSet (s,x)} :
       FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.eqC C D))
+  | kindC {Tel : FCdot.Telescope (s,x)} {C : FCdot.CaptureSet (s,x)} {φ : Classifiers.Cls.Kind} :
+      FCdot.Telescope.ClosedBnds Tel → FCdot.Telescope.ClosedBnds (.cons Tel (.kindC C φ))
 
 /-- The identity templates of a telescope whose propositions sit at positions
 `off, off + 1, …` of the source `src`.  A self-bound is copied by the cast
@@ -97,6 +100,8 @@ def identityMorphism (src : FCdot.Telescope (s,x)) (off : Nat) :
   | .cons Tel (.leC _ _) =>
       .leC (identityMorphism src off Tel) .nil (.leC (off + Tel.length)) .nil
   | .cons Tel (.eqC _ _) => .eqC (identityMorphism src off Tel) (off + Tel.length) false
+  | .cons Tel (.kindC _ φ) =>
+      .kindC (identityMorphism src off Tel) .nil (off + Tel.length) φ
 
 /-! ## Putting an operand into its telescope -/
 

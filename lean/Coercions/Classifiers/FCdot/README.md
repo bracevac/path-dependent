@@ -1,4 +1,4 @@
-# FCdot, at stage K0 of classifiers
+# FCdot, at stage K1 of classifiers
 
 FCdot is the explicit-evidence coercion target of Plan III
 (`plan-3-dot-mnf-to-fcdot.md`): a DOT-like calculus in which every use of
@@ -1455,5 +1455,236 @@ the roots.  K3x puts a scope root between the two capabilities.  The root opens 
 opaque binder at its level or outside it, the filter then keeps only `⊤ᶜ` and the root itself, and
 the `Control` capability opened inside the scope is therefore not below the projected root.  That is
 the sentence E2 will make about a program.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem above.
+
+---
+
+## Stage K1
+
+K1 is the second stage of classifiers (`plan-5f-classifiers-stages.md` §K1).  It is the target only.
+It adds the capture-kinding proposition `C ⊑ᵏ φ`, the evidence family `KindCo` with its nine rules,
+three new subcapturing rules, the kinding slot of the normal forms, the checker for kinding evidence,
+and the canonical form T5.
+
+The shape of the stage is one sentence: a kinding judgment is a *checking* judgment, and its
+canonical form is `Ctx.KindLe`, whose algebra K0 already proved.  Every rule of the family concludes
+about a **general** atom and reads it through `CapAtom.base` and `CapAtom.kindOf`, which is
+`Kind.top` at an unprojected atom.  That is what makes the family cover exactly what Capless(K)'s
+covers: rules stated at `[a ↾ ψ]` would kind no bare atom at all.  Two of Capless(K)'s four label
+rules are one rule here, `kcls`, whose premise is the implication `a.kindOf ∋ c → φ ∋ c`: the
+non-vacuous branch is `k-label` and the vacuous branch is `k-label-absurd`.
+
+| module | what K1 changed |
+|---|---|
+| `Syntax` | the constructor `Proposition.kindC` with the notation `⊑ᵏ`, the evidence type `KindCo` with its nine constructors and its `rename` and `subst` traversals, three constructors of `CapCo` (`unprojC`, `projC`, `projMono`), and the constructor `Morphism.kindC` with its two traversal clauses |
+| `RenameLemmas` | one match case per new constructor in the `Proposition`, `CapCo`, `KindCo` and `Morphism` traversal lemmas, every statement unchanged |
+| `Context` | `CapBound.clsOf?`, `CapBound.setOf?`, `Ctx.clsOf?`, `Ctx.setOf?`, the two `abbrev` propositions `Ctx.ClsOf` and `Ctx.SetOf`, and the three readings `CapBound.opaque_of_clsOf?`, `isRoot_of_clsOf?`, `classifier_of_clsOf?` |
+| `Typing` | `Telescope.HoleAtK`, the judgment `KindCo.HasType` with the notation `Γ ⊢ᵏ g : C ⊑ᵏ φ`, three rules of `CapCo.HasType`, one rule of `Morphism.HasType`, and `KindCo.MemberFree` beside `CapCo.MemberFree` |
+| `Resolution` | `Ctx.roots_of_base` and `Ctx.Root_of_base`, `Ctx.Root_of_clsOf`, `Ctx.roots_of_setOf` and `Ctx.Root_of_setOf`, and `Ctx.KindLe.admits` |
+| `TypingRename`, `TypingSubst`, `Transparency` | two new fields on `Ctx.Ren` and `Ctx.RenR`, three on `Subst.Typed`, one on `Ctx.Refines`, `Telescope.HoleAtK.rename` and `.subst`, `KindCo.HasType.renameR`, `.rename`, `.subst` and `.refine`, the commutations `CapAtom.kindOf_rename`, `CapAtom.base_subst`, `CaptureSet.proj_rename`, `CaptureSet.proj_subst`, and `Ctx.clsOf_cons_eq` and `Ctx.setOf_cons_eq`, which are the `capCls` and `capSet` fields of every self-cast substitution |
+| `Checker`, `CheckerCompleteness` | `KindChecked`, `kindMember`, `checkKindCore`, `checkKindCo`, `checkKindCo_sound`, `KindCo.HasType.complete`, `checkKindCo_iff` and `checkKindCo_iff_hasType`, three cases of `synthCapCore` and one of `synthMorCore` |
+| `Normalizer` | the entry `Entry.kindC`, the view slot `PropForm.kindC`, one clause each in `Entry.through`, `Entry.at`, `Telescope.identityEntries` and `entries` |
+| `FormTyping` | `EntriesTyped.kindC`, `EntryTyped.kindC`, `ViewTyped.kindC`, `ViewTyped.kindC_entry`, and one case per existing inversion lemma |
+| `FormAlgebra` | `Telescope.HoleAtK.open`, `EntriesTyped.At_kindC`, and one case per existing lemma of the composition and application blocks |
+| `CanonicalForms` | `kind_canon`, three cases of `cap_canon`, one case of `mor_canon` |
+| `Cls/Ops` | `Kind.Admits` with its reflexivity and transitivity, `Kind.Subkind.admits`, and `Kind.admitsStepB` with `Kind.AdmitsStep`, its reflexivity and `AdmitsStep.admits` |
+| `LevelInversion` | three cases of `level_inversion` and of `CapCo.MemberFree.rename`, `KindCo.MemberFree.rename`, and four resolution lemmas about a projection up to the base, every statement unchanged |
+| `Examples` | the two kinding examples K4x and K5x |
+| `Preservation`, `Progress`, `ErasureMetatheory`, `Consistency`, `Prediction` | nothing but the new alternatives of existing case analyses.  The new evidence is inert at run time: it carries no term and erases to nothing |
+
+### Notation
+
+Two tokens are new, both `scoped` in namespace `FCdot`.
+
+| | |
+|---|---|
+| `C ⊑ᵏ φ` | the kinding proposition: every capability `C` reaches carries a classifier `φ` admits.  `infix:70`, beside `⊑ᶜ` and `≐ᶜ` |
+| `Γ ⊢ᵏ g : C ⊑ᵏ φ` | `g` is kinding evidence for `C ⊑ᵏ φ` over `Γ`.  `notation:40`, beside the four judgments of the evidence block |
+
+### The rules
+
+The nine rules of `KindCo.HasType`.  `a` is a general atom throughout: `a.base` is the atom under its
+projections and `a.kindOf` is the intersection of the kinds they carry, which is `Kind.top` when
+there are none.
+
+```
+nil    : Γ ⊢ᵏ .nil : [] ⊑ᵏ φ
+cons   : Γ ⊢ᵏ g : [a] ⊑ᵏ φ → Γ ⊢ᵏ h : C ⊑ᵏ φ → Γ ⊢ᵏ .cons g h : (a :: C) ⊑ᵏ φ
+kproj  : a.kindOf.Subkind φ → Γ ⊢ᵏ .kproj a : [a] ⊑ᵏ φ
+kcls   : Γ.ClsOf a.base c → (a.kindOf.Contains c → φ.Contains c) → Γ ⊢ᵏ .kcls a : [a] ⊑ᵏ φ
+kvar   : Γ ⊢ₐ b : S ^ C → a.base = CapAtom.var b.root →
+           Γ ⊢ᵏ g : C.proj a.kindOf ⊑ᵏ φ → Γ ⊢ᵏ .kvar b g : [a] ⊑ᵏ φ
+kcvar  : Γ.SetOf a.base C → Γ ⊢ᵏ g : C.proj a.kindOf ⊑ᵏ φ → Γ ⊢ᵏ .kcvar a g : [a] ⊑ᵏ φ
+kmember: Γ ⊢ₐ b : S ^ D → Γ ⊢ˢ e : S ≤ μ Tel → Telescope.HoleAtK Tel i C φ →
+           Γ ⊢ᵏ .kmember b e i : C⟦b.root⟧ ⊑ᵏ φ
+kprojS : Γ ⊢ᵏ g : C ⊑ᵏ φ → Γ ⊢ᵏ .kprojS g C ψ : C.proj ψ ⊑ᵏ φ
+ksub   : Γ ⊢ᵏ g : C ⊑ᵏ φ₁ → φ₁.Subkind φ₂ → Γ ⊢ᵏ .ksub g φ₁ : C ⊑ᵏ φ₂
+```
+
+`kproj` at a bare atom asks `Kind.top.Subkind φ`, that is, that `φ` admit every classifier.  That is
+not a weakness, it is the only sound rule: the roots of a bare root atom are `⊤ᶜ` and every opaque
+binder at its level or outside it, whose classifiers are arbitrary and grow under store extension.
+There is no kind-bounded capture binder in this development, for the reason K1.1 gives: the encoding
+`upper [⊤ᶜ ↾ φ]` is empty inside a scope, and a capture member with a kind bound is a proposition.
+
+The three new subcapturing rules of `CapCo.HasType`.
+
+```
+unprojC : Γ ⊢ᶜ .unprojC C φ : C.proj φ ⊑ C
+projC   : Γ ⊢ᵏ g : C ⊑ᵏ φ → Γ ⊢ᶜ .projC g C φ : C ⊑ C.proj φ
+projMono: Γ ⊢ᶜ f : C ⊑ D → Γ ⊢ᶜ .projMono f ψ : C.proj ψ ⊑ D.proj ψ
+```
+
+`sc-var` at a projection is `projMono` composed with `capvar` and needs no rule of its own.
+Capless(K)'s `s-merge` is not carried: it is needed for completeness of algorithmic subcapturing, and
+this development claims none.
+
+And the morphism template for a target kinding proposition.
+
+```
+Morphism.HasType.kindC : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ C ⊑ᵏ φ₁) →
+    SideC.HasType Γ q D C → φ₁.AdmitsStep φ₂ → Γ ⊢ .kindC m q j φ₂ : src ⇒ Tel ▹ D ⊑ᵏ φ₂
+```
+
+### Statements restated
+
+Nothing was weakened, and no theorem that consumes one of the four context-map records gained a
+hypothesis.  Each row is a statement whose form changed, with the sentence that says why its meaning
+is the same.
+
+| statement | change | why the meaning is the same |
+|---|---|---|
+| `Proposition`, `CapCo`, `Entry`, `PropForm`, `Morphism` | new constructors | additive: every old term is still a term of the type and reads the same |
+| `KindCo.HasType.kcls` | the three premises about `Γ.lookupCap` become the one premise `Γ.ClsOf a.base c`, and the rule therefore applies at the `cls` flavour and not at the `star` one | `Γ.ClsOf b c` holds exactly at a capture binder whose bound is `cls c`, and `CapBound.opaque_of_clsOf?`, `isRoot_of_clsOf?` and `classifier_of_clsOf?` recover the three facts.  The `star` binder is covered by `kproj`, which is Capless(K)'s rule for a kind-bounded capture variable.  The `star` flavour cannot be added: `Ctx.Ren.instC`, the instantiation lemma T-B2.1, reads a `star` binder as an instance of an arbitrary set, and K6x of `FCdot/Examples.lean` shows the kinding fact such a rule would derive is true at the source of that map and false at its target, so the kinding family would lose its renaming lemma.  The K1 g6 counterexample checks both halves |
+| `KindCo.HasType.kcvar` | the two premises become the one premise `Γ.SetOf a.base C` | `Ctx.setOf?` is `none` at every atom that is not a capture binder, and `CapBound.setOf?` is `some C` exactly at `.upper C` and at `.inst C`, which is the disjunction |
+| `CapCo.projC`, `KindCo.kprojS`, `KindCo.ksub` | each evidence term carries the data the checker has to be told: the source set, the source kind | the *rules* are unchanged premise for premise and conclusion for conclusion, so the set of derivable judgments is the same.  Without the annotation `CapCo.HasType.endpoints_unique` is false |
+| `Ctx.Ren`, `Ctx.RenR` | two new fields, `capCls` and `capSet` | a strengthening of the record, of the shape the `capInst` field already has.  Every construction the tree builds proves both, in the lines that already prove `capInst` |
+| `Subst.Typed` | three new fields, `capCls`, `capSet`, `capProjFree` | the first two as above.  `capProjFree` says a substitution puts a capability, and never a *filtered* capability, at a capture binder, which every substitution the tree builds does |
+| `Subst.Typed.singleC` | three new premises, `b.clsOf? = none`, `b.setOf? = none`, `a.base = a` | the same premise the B1 stage's `b.instSet? = none` is, one flavour further.  Each intended instantiation supplies a `star` or `root` binder and a projection-free atom |
+| `Ctx.Refines` | one new field, `capBoundEq` | a refinement adds block definitions and field labels to term binders and rewrites no capture binding, which is what the three existing capture fields already say piecewise |
+| `Entry.kindC` | carries a `SideC` as well as the index | `EntriesTyped` types an entry between *closed* telescopes over the self binder, where `CapLe Γ` cannot be stated, so the chain lowering the target set to the source set rides on the entry exactly as `Entry.leC`'s two chains do.  The slot still carries no kind, which is what makes it data free |
+| `EntriesTyped.kindC`, `EntryTyped.kindC` | the admission step is `Cls.Kind.Admits`, not `Cls.Kind.Subkind` | `Kind.Admits φ ψ` is `∀ c, φ ∋ c → ψ ∋ c`, which `Kind.Subkind.admits` derives from subkinding.  Composing two entries composes two admission steps, and `Kind.Subkind` is not known to be transitive without the converse of the subtraction bridge, which is decision 6 |
+| `Morphism.HasType.kindC` | the step is `Cls.Kind.AdmitsStep`, the disjunction of equality and subkinding | the same reason at reflexivity: the identity template on a kinding proposition needs `φ.AdmitsStep φ`, and `Kind.Subkind` is not known to be reflexive either.  The disjunct is decidable, so the checker still decides the rule |
+| `cap_canon` | statement kept, three cases added, and it joins a mutual recursion with `kind_canon` | the recursion is on evidence size, as the block already was |
+| `level_inversion`, `CapCo.MemberFree.rename`, `CapCo.HasType.renameR`, `.subst`, `.refine`, `Proposition.subst_rename`, `checkTm_iff`, `CapCo.HasType.complete`, `CapCo.HasType.endpoints_unique` | statements unchanged, cases added | additive, one case per new constructor |
+| `preservation'`, `progress`, `not_stuck`, `erase_step`, `erase_reflect'`, `closed_le_shapes` | nothing | the new evidence is inert at run time: it carries no term and erases to nothing |
+
+### New in this stage
+
+The proposition, the hole reader and the member-free predicate.
+
+```
+FCdot.Proposition.kindC       : CaptureSet s → Cls.Kind → Proposition s        -- C ⊑ᵏ φ
+FCdot.Telescope.HoleAtK       : src ∋ (j ↦ C ⊑ᵏ φ) → Telescope.HoleAtK src j C φ
+FCdot.KindCo.MemberFree       : kinding evidence that reads no telescope
+```
+
+The readers of a capture bound, which is what the rules premise.
+
+```
+FCdot.CapBound.clsOf?         : some c at `.cls c`, none elsewhere
+FCdot.CapBound.setOf?         : some C at `.upper C` and at `.inst C`, none elsewhere
+FCdot.Ctx.ClsOf Γ a c         : Γ.clsOf? a = some c
+FCdot.Ctx.SetOf Γ a C         : Γ.setOf? a = some C
+```
+
+The resolution facts the canonical form needs, all in `Resolution.lean` beside T1.
+
+```
+FCdot.Ctx.roots_of_base       : Γ.roots n [a] = (Γ.roots n [a.base]).filter (Γ.admitsB · a.kindOf)
+FCdot.Ctx.Root_of_base        : Γ.Root r [a] ↔ (Γ.Root r [a.base] ∧ Γ.admitsB r a.kindOf = true)
+FCdot.Ctx.Root_of_clsOf       : Γ.ClsOf a c → Γ.Root r [a] → r = a ∧ Γ.classOf a = c
+FCdot.Ctx.roots_of_setOf      : Γ.SetOf a C → Γ.roots n [a] = Γ.roots n C
+FCdot.Ctx.KindLe.admits       : Γ.KindLe C φ → φ.Admits ψ → Γ.KindLe C ψ
+```
+
+`Ctx.roots_of_base` is T1 read at one atom and at `CapAtom.base`, and it is the fact that lets every
+rule of the family speak about a general atom.
+
+The checker.
+
+```
+FCdot.checkKindCo Γ g C φ     : Bool, one structural match, no search
+FCdot.checkKindCo_sound       : checkKindCo Γ g C φ = true → Γ ⊢ᵏ g : C ⊑ᵏ φ
+FCdot.checkKindCo_iff         : checkKindCo Γ g C φ = true ↔ ∃ _ : Γ ⊢ᵏ g : C ⊑ᵏ φ, True
+FCdot.checkKindCo_iff_hasType : checkKindCo Γ g C φ = true ↔ Γ ⊢ᵏ g : C ⊑ᵏ φ
+```
+
+Both directions hold, and decision 6's hedge does not bite here: the premises of the kinding *rules*
+are `Kind.Subkind` and `Kind.Contains`, which are `abbrev`s over the `Bool` functions `subkindB` and
+`containsB`, and the checker calls those very functions.  The subtraction bridge stands between
+`Kind.Subkind` and the *semantic* `Ctx.KindLe`, which is T5's business and not the checker's, and
+that is where only the sound direction is proved, as `Kind.Subkind.contains`.  Kinding is also the
+one evidence family that checks rather than synthesises: there is no `synthKindCo`, because `nil`
+holds at every kind and `kvar`'s conclusion leaves the kind the atom carries free.
+
+### New theorems
+
+**T5, the canonical form of closed kinding.**  Every root of a kinded set carries a classifier the
+kind admits.  It runs in the `CanonicalForms` mutual block, because `kvar` and `kmember` read
+`atom_canon` and `cap_canon`'s `projC` case reads it back.
+
+```
+FCdot.kind_canon : ⊢ σ : Γ → Γ ⊢ᵏ g : C ⊑ᵏ φ → Γ.KindLe C φ
+```
+
+Case by case: `nil` is vacuous, `cons` is `Ctx.KindLe.union`, `kproj` is `Ctx.kindLe_of_kinds` with
+`Kind.Subkind.contains`, `kcls` is `Ctx.Root_of_clsOf`, since a `cls` binder is opaque and is no root
+and therefore stands for itself, so the only root of the singleton is the binder, `kvar` is
+`atom_canon`'s capture conjunct with `Ctx.Root_of_base` and `Ctx.Root_proj`, `kcvar` is the same
+through `Ctx.Root_of_setOf`, `kmember` is `cap_canon`'s `member` case with `ViewTyped.kindC` in place
+of `ViewTyped.leC`, `kprojS` is `Ctx.KindLe.mono` along `unprojC`, and `ksub` is `Ctx.KindLe.sub`.
+
+**T6, the three new capture rules are sound.**  `cap_canon` keeps its statement and gains three
+cases: `unprojC` is `Ctx.Root_proj` forwards, `projC` is `Ctx.Root_proj` backwards with `kind_canon`,
+and `projMono` is `Ctx.Root_proj` on both sides.
+
+```
+FCdot.cap_canon   : ⊢ σ : Γ → Γ ⊢ᶜ f : C ⊑ D → CapLe Γ C D            -- statement unchanged
+FCdot.atom_canon  : ⊢ σ : Γ → Γ ⊢ₐ a : S → AtomConcl σ Γ a S          -- statement unchanged
+FCdot.preservation', FCdot.progress, FCdot.not_stuck                  -- statements unchanged
+```
+
+**T7, kinding is decidable evidence.**  `checkKindCo_iff` above.
+
+### The examples
+
+Three: two decided through the checker in the kernel, and one that marks the boundary of the
+evidence family.
+
+```
+FCdot.Examples.K4x_ctl_accept        : checkKindCo K1Ctx (.kcls K4ctl) [K4ctl] (only Control) = true
+FCdot.Examples.K4x_ctl_reject        : checkKindCo K1Ctx (.kcls K4ctl) [K4ctl] (only IO) = false
+FCdot.Examples.K4x_io_absurd_control : checkKindCo K1Ctx (.kcls K4io) [K4io] (only Control) = true
+FCdot.Examples.K4x_io_absurd_threadLocal : the same evidence at `only ThreadLocal`, also true
+FCdot.Examples.K4x_ctl_hasType       : K1Ctx ⊢ᵏ .kcls K4ctl : [K4ctl] ⊑ᵏ only Control
+
+FCdot.Examples.K5x_kind    : checkKindCo K1Ctx K5kind [cvar κ_ctl] (only Control) = true
+FCdot.Examples.K5x_projC   : checkCap K1Ctx (.projC K5kind ..) [cvar κ_ctl] K5proj = true
+FCdot.Examples.K5x_unprojC : checkCap K1Ctx (.unprojC ..) K5proj [cvar κ_ctl] = true
+FCdot.Examples.K5x_roots   : K1Ctx.roots 0 K5proj = K1Ctx.roots 0 [cvar κ_ctl]
+
+FCdot.Examples.K6x_kindLe       : K6Ctx.KindLe [κ_p] (except ThreadLocal)
+FCdot.Examples.K6x_not_kindLe   : ¬ K6Ctx.KindLe [κ_p] (only Control)
+FCdot.Examples.K6x_kcls_reject  : checkKindCo K6Ctx (.kcls κ_p) [κ_p] (except ThreadLocal) = false
+FCdot.Examples.K6x_kproj_reject : checkKindCo K6Ctx (.kproj κ_p) [κ_p] (except ThreadLocal) = false
+```
+
+K4x is `kcls` over the context of K1x.  The `Control` capability projected at `only Control` is
+kinded at `only Control`, and it is *also* kinded at `only ThreadLocal`, because `Control` lies below
+`ThreadLocal`, so the rejecting kind is `only IO`.  The `IO` capability projected at `only Control`
+is kinded at every kind, because the projection it carries already excludes its own classifier: that
+vacuous branch of the implication is Capless(K)'s `k-label-absurd`, and it is what the write-up's
+single rule could not express.  K5x is subcapturing through a projection: `projC` puts the kinded
+singleton below its own projection, `unprojC` puts the projection back below the set, and the two
+sets therefore have the same roots.
+
+K6x is the rigid binder that declares no classifier.  Its classifier is the root one, so the
+canonical form kinds it at `except ThreadLocal`, which contains the root classifier, and not at
+`only Control`, which does not: that is decision 9 read on the semantics.  No evidence term reaches
+the first fact, and the last two lines decide that in the kernel.  The gap is forced by T-B2.1, as
+the row on `KindCo.HasType.kcls` says, so the kinding family is sound and is not complete for the
+`star` flavour.
 
 Axioms (`#print axioms`): `propext` and `Quot.sound`, or less, for every theorem above.

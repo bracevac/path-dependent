@@ -263,6 +263,12 @@ inductive EntriesTyped {s : Sig} (Γ : Ctx s) :
   | eqSymC {C₁ C₂ : CaptureSet (s,x)} : EntriesTyped Γ ρ Tel₁ Es Tel₂ →
       Tel₁ ∋ (j ↦ C₁ ≐ᶜ C₂) →
       EntriesTyped Γ ρ Tel₁ (Es ▹ .eqC j true) (Tel₂ ▹ C₂ ≐ᶜ C₁)
+  /-- A target kinding proposition, by a chain lowering the target set to the
+      source set of the source kinding proposition the index names, and an
+      admission step from the source kind to the target kind. -/
+  | kindC {C D : CaptureSet (s,x)} : EntriesTyped Γ ρ Tel₁ Es Tel₂ →
+      Telescope.HoleAtK Tel₁ j C φ₁ → SideTypedC Γ pre D C → φ₁.Admits φ₂ →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .kindC pre j) (Tel₂ ▹ D ⊑ᵏ φ₂)
 
 /-- `EntryTyped Γ ρ Tel₁ E P`: a single entry proving `P` from the
 propositions of `Tel₁`.  Routes never nest and never end in a general bound
@@ -284,6 +290,9 @@ inductive EntryTyped {s : Sig} (Γ : Ctx s) :
       EntryTyped Γ ρ Tel₁ (.eqC j false) (C₁ ≐ᶜ C₂)
   | eqSymC {C₁ C₂ : CaptureSet (s,x)} : Tel₁ ∋ (j ↦ C₁ ≐ᶜ C₂) →
       EntryTyped Γ ρ Tel₁ (.eqC j true) (C₂ ≐ᶜ C₁)
+  | kindC {C D : CaptureSet (s,x)} : Telescope.HoleAtK Tel₁ j C φ₁ →
+      SideTypedC Γ pre D C → φ₁.Admits φ₂ →
+      EntryTyped Γ ρ Tel₁ (.kindC pre j) (D ⊑ᵏ φ₂)
 
 /-- `BndsTyped Γ ρ S Es Tel`: the entries of a coercion from `S` into the
 object type `μ Tel` that do not consult the view of the source. -/
@@ -330,6 +339,8 @@ abbrev ChainTyped (Γ : Ctx s) (r : BVar s .var) (F : Form s) (S T : Shape s) : 
     (C ⊑ᶜ D).weaken (k := k) = C↑ ⊑ᶜ D↑ := rfl
 @[simp] theorem Proposition.weaken_eqC (C D : CaptureSet s) {k : Kind} :
     (C ≐ᶜ D).weaken (k := k) = C↑ ≐ᶜ D↑ := rfl
+@[simp] theorem Proposition.weaken_kindC (C : CaptureSet s) (φ : Cls.Kind) {k : Kind} :
+    (C ⊑ᵏ φ).weaken (k := k) = C↑ ⊑ᵏ φ := rfl
 
 /-- Instantiating a weakened capture set gives the set back. -/
 theorem CaptureSet.weaken_substVar {k : Kind} (C : CaptureSet s) (r : BVar s k) :
@@ -343,6 +354,8 @@ theorem CaptureSet.weaken_substVar {k : Kind} (C : CaptureSet s) (r : BVar s k) 
     (C ⊑ᶜ D).substVar r = C⟦r⟧ ⊑ᶜ D⟦r⟧ := rfl
 @[simp] theorem Proposition.substVar_eqC (C D : CaptureSet (s,x)) (r : BVar s .var) :
     (C ≐ᶜ D).substVar r = C⟦r⟧ ≐ᶜ D⟦r⟧ := rfl
+@[simp] theorem Proposition.substVar_kindC (C : CaptureSet (s,x)) (φ : Cls.Kind)
+    (r : BVar s .var) : (C ⊑ᵏ φ).substVar r = C⟦r⟧ ⊑ᵏ φ := rfl
 
 /-! ## Typed views -/
 
@@ -374,6 +387,11 @@ inductive ViewTyped {s : Sig} (Γ : Ctx s) (r : BVar s .var) (σ : Store s) :
       two sets have the same roots. -/
   | eqC {C₁ C₂ : CaptureSet (s,x)} : Γ ⊨[r, σ] V : Tel → RootsEq Γ (C₁⟦r⟧) (C₂⟦r⟧) →
       Γ ⊨[r, σ] V ▹ .eqC : Tel ▹ C₁ ≐ᶜ C₂
+  /-- A kinding proposition of the atom's type, instantiated at the root:
+      every root of the set carries a classifier the kind admits.  The slot
+      carries no data. -/
+  | kindC {C : CaptureSet (s,x)} : Γ ⊨[r, σ] V : Tel → Ctx.KindLe Γ (C⟦r⟧) φ →
+      Γ ⊨[r, σ] V ▹ .kindC : Tel ▹ C ⊑ᵏ φ
 
 open Lean PrettyPrinter in
 @[app_unexpander ViewTyped] def ViewTyped.unexpand : Unexpander
@@ -456,6 +474,7 @@ theorem ViewTyped.length {V : View s} {Tel : Telescope (s,x)}
   | bnd _ _ ih => simp [View.length, Telescope.length, ih]
   | leC _ _ ih => simp [View.length, Telescope.length, ih]
   | eqC _ _ ih => simp [View.length, Telescope.length, ih]
+  | kindC _ _ ih => simp [View.length, Telescope.length, ih]
 
 /-- The entry of a typed view at an inclusion proposition is a typed coercion
 form. -/
@@ -481,6 +500,9 @@ theorem ViewTyped.le_entry {V : View s} {Tel : Telescope (s,x)}
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
   | eqC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+  | kindC _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
 
@@ -510,6 +532,9 @@ theorem ViewTyped.eq_entry {V : View s} {Tel : Telescope (s,x)}
   | eqC _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | kindC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
 
 /-- The entry of a typed view at a presence proposition names the root and a
 field the object at the root has. -/
@@ -537,6 +562,9 @@ theorem ViewTyped.has_entry {V : View s} {Tel : Telescope (s,x)}
   | eqC _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | kindC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
 
 /-- The entry of a typed view at a bound is a form from the root's type to
 the bound's type, instantiated at the root. -/
@@ -562,6 +590,9 @@ theorem ViewTyped.bnd_entry {V : View s} {Tel : Telescope (s,x)}
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
   | eqC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+  | kindC _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
 
@@ -592,6 +623,9 @@ theorem ViewTyped.leC_entry {V : View s} {Tel : Telescope (s,x)}
   | eqC _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | kindC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
 
 /-- The entry of a typed view at a capture equality is the data-free `eqC`
 slot, and the two sets have the same roots at the root. -/
@@ -620,6 +654,41 @@ theorem ViewTyped.eqC_entry {V : View s} {Tel : Telescope (s,x)}
       cases hAt with
       | here => exact ⟨by rw [← hV'.length]; exact .here, hE⟩
       | there hAt' => obtain ⟨hQ, hE'⟩ := ih hAt'; exact ⟨.there hQ, hE'⟩
+  | kindC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+
+/-- The entry of a typed view at a kinding proposition is the data-free
+`kindC` slot, and every root of the set carries a classifier the kind
+admits, at the root. -/
+theorem ViewTyped.kindC_entry {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {C : CaptureSet (s,x)} {φ : Cls.Kind}
+    (hAt : Tel ∋ (i ↦ C ⊑ᵏ φ)) :
+    V ∋ (i ↦ .kindC) ∧ Ctx.KindLe Γ (C⟦r⟧) φ := by
+  induction hV with
+  | nil => cases hAt
+  | le _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | eq _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | has _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | bnd _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | leC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | eqC _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | kindC hV' hE ih =>
+      cases hAt with
+      | here => exact ⟨by rw [← hV'.length]; exact .here, hE⟩
+      | there hAt' => obtain ⟨hQ, hE'⟩ := ih hAt'; exact ⟨.there hQ, hE'⟩
 
 /-- A typed view has an entry at every telescope position. -/
 theorem ViewTyped.get?_isSome {V : View s} {Tel : Telescope (s,x)}
@@ -632,6 +701,7 @@ theorem ViewTyped.get?_isSome {V : View s} {Tel : Telescope (s,x)}
   | bnd X => obtain ⟨G, hG, _⟩ := hV.bnd_entry h; exact ⟨_, hG.get?⟩
   | leC C₁ C₂ => exact ⟨_, (hV.leC_entry h).1.get?⟩
   | eqC C₁ C₂ => exact ⟨_, (hV.eqC_entry h).1.get?⟩
+  | kindC C φ => exact ⟨_, (hV.kindC_entry h).1.get?⟩
 
 /-! ## Views are stable under folding and unfolding the self block -/
 
@@ -663,6 +733,10 @@ theorem ViewTyped_unfold {V : View s} {Tel : Telescope (s,x)}
       simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eqC,
         Proposition.weaken_eqC]
       exact .eqC ih (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar])
+  | kindC _ hK ih =>
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_kindC,
+        Proposition.weaken_kindC]
+      exact .kindC ih (by rwa [CaptureSet.weaken_substVar])
 
 theorem ViewTyped_fold : ∀ {V : View s} {Tel : Telescope (s,x)},
     Γ ⊨[r, σ] V : ((Tel⟦r⟧)↑) → Γ ⊨[r, σ] V : Tel
@@ -703,6 +777,12 @@ theorem ViewTyped_fold : ∀ {V : View s} {Tel : Telescope (s,x)},
       | eqC hV hC =>
           exact .eqC (ViewTyped_fold hV)
             (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar] at hC)
+  | _, .cons Tel (.kindC C φ), h => by
+      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_kindC,
+        Proposition.weaken_kindC] at h
+      cases h with
+      | kindC hV hK =>
+          exact .kindC (ViewTyped_fold hV) (by rwa [CaptureSet.weaken_substVar] at hK)
 
 end
 

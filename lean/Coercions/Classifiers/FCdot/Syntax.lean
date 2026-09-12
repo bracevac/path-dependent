@@ -177,6 +177,10 @@ inductive Proposition : Sig → Type where
   | leC : CaptureSet s → CaptureSet s → Proposition s
   /-- Equality of capture sets, under the self as well. -/
   | eqC : CaptureSet s → CaptureSet s → Proposition s
+  /-- `C :ᶜ φ`, written `C ⊑ᵏ φ`: every capability `C` reaches carries a
+      classifier the kind `φ` admits.  The kind is closed data, so the
+      proposition is renamed and substituted in its capture set alone. -/
+  | kindC : CaptureSet s → Cls.Kind → Proposition s
 
 /-- Telescope of propositions, oldest first.  Propositions do not bind. -/
 inductive Telescope : Sig → Type where
@@ -233,6 +237,8 @@ scoped prefix:max "∋ " => Proposition.has
 scoped prefix:75 "⊑ " => Proposition.bnd
 scoped infix:70 " ⊑ᶜ " => Proposition.leC
 scoped infix:70 " ≐ᶜ " => Proposition.eqC
+/-- `C ⊑ᵏ φ` is the kinding proposition `Proposition.kindC C φ`. -/
+scoped infix:70 " ⊑ᵏ " => Proposition.kindC
 scoped infixl:65 " ▹ " => Telescope.cons
 
 /-- `∃ᶜ[C] T` is the answer `ETy.ex C T`.  (`ᶜ` is not a legal Lean identifier
@@ -300,6 +306,7 @@ def Proposition.rename : Proposition s1 → Rename s1 s2 → Proposition s2
   | .bnd T, ρ => .bnd (T.rename ρ)
   | .leC C D, ρ => .leC (C.rename ρ) (D.rename ρ)
   | .eqC C D, ρ => .eqC (C.rename ρ) (D.rename ρ)
+  | .kindC C φ, ρ => .kindC (C.rename ρ) φ
 
 def Telescope.rename : Telescope s1 → Rename s1 s2 → Telescope s2
   | .nil, _ => .nil
@@ -446,6 +453,61 @@ inductive CapCo : Sig → Type where
       below that root.  One constructor and not two, because the
       compiler's `acceptsLevelOf` has no branch on its left side. -/
   | level : CapAtom s → CapAtom s → CapCo s
+  /-- A projection only drops atoms, so a projected set is below the set it
+      projects.  Capless(K) reads this off its kind aware `CaptureSet.Subset`
+      (`CaptureSet.lean:83-95`); a capture set is a plain list here, so the
+      step is a rule of its own. -/
+  | unprojC : CaptureSet s → Cls.Kind → CapCo s
+  /-- `sc-proj` (`Subcapt.lean:69`, generalised as `Subcapt.proj_r` at
+      `:427-434`): a set that is kinded at `φ` is below its own projection at
+      `φ`.  Stated on a set; the singleton form is the instance at `C = [a]`.
+      The set and the kind ride on the constructor, because kinding evidence
+      determines neither: `kproj` holds at every kind that admits the atom and
+      `kvar` says nothing about the kind the atom carries.  This is the
+      annotation discipline `ShapeCo.obj` and `Atom.foldSelf` already follow,
+      and it is what makes the endpoints of a capture coercion unique. -/
+  | projC : KindCo s → CaptureSet s → Cls.Kind → CapCo s
+  /-- The congruence: a projection is monotone.  `sc-var` at a projection
+      (`Subcapt.lean:66`) is this rule composed with `capvar`, since
+      `[a].proj ψ` is `[a ↾ ψ]`. -/
+  | projMono : CapCo s → Cls.Kind → CapCo s
+
+/-- Kinding evidence between a capture set and a kind: every capability the
+set reaches carries a classifier the kind admits.  It mentions atoms
+(`kvar`, `kmember`) and shape coercions (`kmember`), so it belongs to the
+mutual block, and `CapCo.projC` premises it. -/
+inductive KindCo : Sig → Type where
+  /-- k-empty (`Subcapt.lean:55`). -/
+  | nil : KindCo s
+  /-- k-union (`Subcapt.lean:53`). -/
+  | cons : KindCo s → KindCo s → KindCo s
+  /-- k-cbound and k-absurd in one (`Subcapt.lean:50,54`), reading the kind
+      the atom carries. -/
+  | kproj : CapAtom s → KindCo s
+  /-- k-label and k-label-absurd in one (`Subcapt.lean:51-52`), reading the
+      classifier of the atom's binder. -/
+  | kcls : CapAtom s → KindCo s
+  /-- k-var (`Subcapt.lean:48`). -/
+  | kvar : Atom s → KindCo s → KindCo s
+  /-- k-cvar (`Subcapt.lean:49`).  The atom and not its capture binder, for
+      the reason `CapEq.instC` gives: a substitution sends a capture variable
+      to an atom, so a clause producing a variable from an atom is not
+      definable, and with an atom the clause is structural.  The binder is
+      read off the atom by the rule's own premise. -/
+  | kcvar : CapAtom s → KindCo s → KindCo s
+  /-- Elimination at an atom: the `i`-th proposition of the target telescope
+      of `e`, instantiated at the root of the atom, when that proposition is a
+      kinding proposition. -/
+  | kmember : Atom s → ShapeCo s → Nat → KindCo s
+  /-- A projection only shrinks a set, so a kinded set stays kinded under
+      one.  The source set rides on the constructor: `CaptureSet.proj` is not
+      invertible, so the checker cannot read it off the conclusion. -/
+  | kprojS : KindCo s → CaptureSet s → Cls.Kind → KindCo s
+  /-- k-sub (`Subcapt.lean:99-109`), a constructor and not a derived lemma.
+      The kind it carries is the kind of its premise, the *source* kind: the
+      target is what the checker is given, and the source is what it has to
+      be told. -/
+  | ksub : KindCo s → Cls.Kind → KindCo s
 
 /-- Equality evidence between capture sets. -/
 inductive CapEq : Sig → Type where
@@ -520,6 +582,12 @@ inductive Morphism : Sig → Type where
   /-- A target capture equality is a source capture equality, possibly
       flipped. -/
   | eqC : Morphism s → Nat → Bool → Morphism s
+  /-- A template for a target kinding proposition: a side chain lowering the
+      target set to the source set, a hole naming a source kinding
+      proposition by index, and the target kind.  The kind is written on the
+      term because the checker synthesises the target telescope and nothing
+      else determines it. -/
+  | kindC : Morphism s → SideC s → Nat → Cls.Kind → Morphism s
 
 /-- Atoms: a variable under wrappers that erase to nothing. -/
 inductive Atom : Sig → Type where
@@ -554,7 +622,7 @@ inductive PAtom : Sig → Type where
 
 end
 
-deriving instance DecidableEq for ShapeCo, CapCo, CapEq, CapStep, SideC, LeCo, EqCo, Has,
+deriving instance DecidableEq for ShapeCo, CapCo, KindCo, CapEq, CapStep, SideC, LeCo, EqCo, Has,
   Side, Morphism, Atom, ELeCo, PAtom
 
 /-- The variable under an atom's wrappers. -/
@@ -611,6 +679,20 @@ def CapCo.rename : CapCo s1 → Rename s1 s2 → CapCo s2
   | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
   | .eqToLe φ, ρ => .eqToLe (φ.rename ρ)
   | .level e r, ρ => .level (e.rename ρ) (r.rename ρ)
+  | .unprojC C φ, ρ => .unprojC (C.rename ρ) φ
+  | .projC g C φ, ρ => .projC (g.rename ρ) (C.rename ρ) φ
+  | .projMono f ψ, ρ => .projMono (f.rename ρ) ψ
+
+def KindCo.rename : KindCo s1 → Rename s1 s2 → KindCo s2
+  | .nil, _ => .nil
+  | .cons g h, ρ => .cons (g.rename ρ) (h.rename ρ)
+  | .kproj a, ρ => .kproj (a.rename ρ)
+  | .kcls a, ρ => .kcls (a.rename ρ)
+  | .kvar b g, ρ => .kvar (b.rename ρ) (g.rename ρ)
+  | .kcvar a g, ρ => .kcvar (a.rename ρ) (g.rename ρ)
+  | .kmember b e i, ρ => .kmember (b.rename ρ) (e.rename ρ) i
+  | .kprojS g C ψ, ρ => .kprojS (g.rename ρ) (C.rename ρ) ψ
+  | .ksub g φ, ρ => .ksub (g.rename ρ) φ
 
 def CapEq.rename : CapEq s1 → Rename s1 s2 → CapEq s2
   | .refl C, ρ => .refl (C.rename ρ)
@@ -654,6 +736,7 @@ def Morphism.rename : Morphism s1 → Rename s1 s2 → Morphism s2
   | .bnd m e, ρ => .bnd (m.rename ρ) (e.rename ρ)
   | .leC m q h q', ρ => .leC (m.rename ρ) (q.rename ρ) h (q'.rename ρ)
   | .eqC m j b, ρ => .eqC (m.rename ρ) j b
+  | .kindC m q j φ, ρ => .kindC (m.rename ρ) (q.rename ρ) j φ
 
 def Atom.rename : Atom s1 → Rename s1 s2 → Atom s2
   | .var x, ρ => .var (ρ.var x)
@@ -1131,6 +1214,7 @@ def Proposition.subst : Proposition s1 → Subst s1 s2 → Proposition s2
   | .bnd T, σ => .bnd (T.subst σ)
   | .leC C D, σ => .leC (C.subst σ) (D.subst σ)
   | .eqC C D, σ => .eqC (C.subst σ) (D.subst σ)
+  | .kindC C φ, σ => .kindC (C.subst σ) φ
 
 def Telescope.subst : Telescope s1 → Subst s1 s2 → Telescope s2
   | .nil, _ => .nil
@@ -1188,6 +1272,20 @@ def CapCo.subst : CapCo s1 → Subst s1 s2 → CapCo s2
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
   | .eqToLe φ, σ => .eqToLe (φ.subst σ)
   | .level e r, σ => .level (e.subst σ) (r.subst σ)
+  | .unprojC C φ, σ => .unprojC (C.subst σ) φ
+  | .projC g C φ, σ => .projC (g.subst σ) (C.subst σ) φ
+  | .projMono f ψ, σ => .projMono (f.subst σ) ψ
+
+def KindCo.subst : KindCo s1 → Subst s1 s2 → KindCo s2
+  | .nil, _ => .nil
+  | .cons g h, σ => .cons (g.subst σ) (h.subst σ)
+  | .kproj a, σ => .kproj (a.subst σ)
+  | .kcls a, σ => .kcls (a.subst σ)
+  | .kvar b g, σ => .kvar (b.subst σ) (g.subst σ)
+  | .kcvar a g, σ => .kcvar (a.subst σ) (g.subst σ)
+  | .kmember b e i, σ => .kmember (b.subst σ) (e.subst σ) i
+  | .kprojS g C ψ, σ => .kprojS (g.subst σ) (C.subst σ) ψ
+  | .ksub g φ, σ => .ksub (g.subst σ) φ
 
 def CapEq.subst : CapEq s1 → Subst s1 s2 → CapEq s2
   | .refl C, σ => .refl (C.subst σ)
@@ -1231,6 +1329,7 @@ def Morphism.subst : Morphism s1 → Subst s1 s2 → Morphism s2
   | .bnd m e, σ => .bnd (m.subst σ) (e.subst σ)
   | .leC m q h q', σ => .leC (m.subst σ) (q.subst σ) h (q'.subst σ)
   | .eqC m j b, σ => .eqC (m.subst σ) j b
+  | .kindC m q j φ, σ => .kindC (m.subst σ) (q.subst σ) j φ
 
 def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
   | .var x, σ => σ.var x

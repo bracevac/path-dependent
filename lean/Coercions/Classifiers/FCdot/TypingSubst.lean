@@ -180,6 +180,10 @@ theorem Proposition.subst_core (P : Proposition s1) (σ : Subst s1 s2) :
       show Proposition.eqC (C.subst σ) (D.subst σ) = _
       rw [CaptureSet.subst_core C σ, CaptureSet.subst_core D σ]
       rfl
+  | .kindC C φ =>
+      show Proposition.kindC (C.subst σ) φ = _
+      rw [CaptureSet.subst_core C σ]
+      rfl
 
 theorem Telescope.subst_core (Tel : Telescope s1) (σ : Subst s1 s2) :
     Tel.subst σ = Tel.subst σ.core := by
@@ -393,6 +397,13 @@ theorem Telescope.HoleAtC.subst {src : Telescope (s1,x)} {h : HoleC}
   | leC hAt => exact .leC (by simpa [Proposition.subst] using hAt.subst σ.lift)
   | eqC hAt => exact .eqC (by simpa [Proposition.subst] using hAt.subst σ.lift)
   | eqSymC hAt => exact .eqSymC (by simpa [Proposition.subst] using hAt.subst σ.lift)
+
+/-- Reading a kinding hole survives substitution. -/
+theorem Telescope.HoleAtK.subst {src : Telescope (s1,x)} {j : Nat}
+    {C : CaptureSet (s1,x)} {φ : Cls.Kind} (hh : src.HoleAtK j C φ) (σ : Subst s1 s2) :
+    (src.subst σ.lift).HoleAtK j (C.subst σ.lift) φ := by
+  cases hh with
+  | kindC hAt => exact .kindC (by simpa [Proposition.subst] using hAt.subst σ.lift)
 
 @[simp] theorem Telescope.append_subst :
     ∀ (Tel Tel' : Telescope s1) (σ : Subst s1 s2),
@@ -1025,6 +1036,10 @@ theorem Proposition.subst_subst (P : Proposition s1) (σ : Subst s1 s2) (τ : Su
       show Proposition.eqC ((C.subst σ).subst τ) ((D.subst σ).subst τ) = _
       rw [CaptureSet.subst_subst C σ τ, CaptureSet.subst_subst D σ τ]
       rfl
+  | .kindC C φ =>
+      show Proposition.kindC ((C.subst σ).subst τ) φ = _
+      rw [CaptureSet.subst_subst C σ τ]
+      rfl
 
 theorem Telescope.subst_subst (Tel : Telescope s1) (σ : Subst s1 s2) (τ : Subst s2 s3) :
     (Tel.subst σ).subst τ = Tel.subst (σ.compT τ) := by
@@ -1160,6 +1175,75 @@ theorem Subst.single_core (a : Atom s) :
   rw [Telescope.subst_core, Subst.single_core, Telescope.subst_ofRename]
   rfl
 
+
+/-! ### Declared classifiers, set bounds, and projections under a substitution
+
+The three readers the kinding family uses travel with a substitution the way
+`Ctx.InstOf` does, flavour-wise on the atom.  The one new demand a
+substitution makes is `capProjFree` below: a substitution replaces a capture
+variable by a capability, never by a *filtered* capability.  Every
+substitution the tree builds does that, and it is what lets the kind an atom
+projects by and the base of an atom cross a substitution unchanged. -/
+
+@[simp] theorem CapBound.clsOf?_subst (b : CapBound s1) (σ : Subst s1 s2) :
+    (b.subst σ).clsOf? = b.clsOf? := by
+  cases b <;> rfl
+
+@[simp] theorem CapBound.setOf?_subst (b : CapBound s1) (σ : Subst s1 s2) :
+    (b.subst σ).setOf? = (b.setOf?).map (fun C => C.subst σ) := by
+  cases b <;> rfl
+
+/-- An atom that is its own base carries no kind. -/
+theorem CapAtom.kindOf_eq_top_of_base {a : CapAtom s} (h : a.base = a) :
+    a.kindOf = Cls.Kind.top := by
+  cases a with
+  | top | var _ | cvar _ | name _ _ => rfl
+  | proj a₀ φ => exact absurd h (CapAtom.base_ne_proj a₀ a₀ φ)
+
+/-- Taking the base commutes with a projection-free substitution. -/
+theorem CapAtom.base_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ) :
+    ∀ a : CapAtom s1, (a.subst σ).base = a.base.subst σ
+  | .top => rfl
+  | .var x => rfl
+  | .name x ℓ => rfl
+  | .cvar κ => hσ κ
+  | .proj a φ => by
+      show (a.subst σ).base = a.base.subst σ
+      exact CapAtom.base_subst hσ a
+
+/-- And so does the kind an atom projects by. -/
+theorem CapAtom.kindOf_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ) :
+    ∀ a : CapAtom s1, (a.subst σ).kindOf = a.kindOf
+  | .top => rfl
+  | .var x => rfl
+  | .name x ℓ => rfl
+  | .cvar κ => CapAtom.kindOf_eq_top_of_base (hσ κ)
+  | .proj a φ => by
+      show φ.interB (a.subst σ).kindOf = φ.interB a.kindOf
+      rw [CapAtom.kindOf_subst hσ a]
+
+/-- The smart projection constructor commutes with a projection-free
+substitution. -/
+theorem CapAtom.projBy_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ)
+    (φ : Cls.Kind) : ∀ a : CapAtom s1, (a.projBy φ).subst σ = (a.subst σ).projBy φ
+  | .top => rfl
+  | .var x => rfl
+  | .name x ℓ => rfl
+  | .cvar κ => by
+      show CapAtom.proj (σ.cvar κ) φ = (σ.cvar κ).projBy φ
+      cases hc : σ.cvar κ with
+      | top | var _ | cvar _ | name _ _ => rfl
+      | proj a₀ ψ =>
+          have := hσ κ
+          rw [hc] at this
+          exact absurd this (CapAtom.base_ne_proj a₀ a₀ ψ)
+  | .proj a ψ => rfl
+
+theorem CaptureSet.proj_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ)
+    (C : CaptureSet s1) (φ : Cls.Kind) : (C.proj φ).subst σ = (C.subst σ).proj φ := by
+  simp only [CaptureSet.proj, CaptureSet.subst, List.map_map, Function.comp_def]
+  exact List.map_congr_left (fun a _ => CapAtom.projBy_subst hσ φ a)
+
 /-! ## Typed substitutions -/
 
 /-- `Subst.Typed Γ σ Γ'`: every variable of `Γ` goes to an atom of the
@@ -1189,6 +1273,18 @@ structure Subst.Typed {s1 s2 : Sig} (Γ : Ctx s1) (σ : Subst s1 s2) (Γ' : Ctx 
       stated flavour-wise on the atom, so that `CapEq.subst` stays
       structural. -/
   capInst : ∀ a C, Γ.InstOf a C → Γ'.InstOf (a.subst σ) (C.subst σ)
+  /-- The image of a binder with a declared classifier is a binder with the
+      same declared classifier.  `KindCo.HasType.kcls` reads it. -/
+  capCls : ∀ a cl, Γ.ClsOf a cl → Γ'.ClsOf (a.subst σ) cl
+  /-- The image of a binder standing below a set stands below the substituted
+      set.  `KindCo.HasType.kcvar` reads it. -/
+  capSet : ∀ a C, Γ.SetOf a C → Γ'.SetOf (a.subst σ) (C.subst σ)
+  /-- A capture variable goes to a capability, never to a *filtered*
+      capability.  Every substitution the tree builds puts a variable, the
+      universal root or another capture binder there, and nothing else, so
+      the kind an atom projects by and the base of an atom cross the
+      substitution unchanged. -/
+  capProjFree : ∀ κ, (σ.cvar κ).base = σ.cvar κ
 
 namespace Subst.Typed
 
@@ -1301,6 +1397,20 @@ theorem lift {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
   capLvl := fun e r hr hl =>
     Ctx.lvlLe_lift_subst h.capRoot h.capLvl h.capInner b (b.subst σ) e r hr hl
   capInner := Ctx.capInner_lift_subst h.capInner b (b.subst σ)
+  capCls := fun a cl hC => by
+    obtain ⟨a₀, rfl, h₀⟩ := Ctx.clsOf_cons_cases hC
+    rw [CapAtom.weaken_subst]
+    exact (h.capCls a₀ cl h₀).weaken (b.subst σ)
+  capSet := fun a C hS => by
+    obtain ⟨a₀, C₀, rfl, rfl, h₀⟩ := Ctx.setOf_cons_cases hS
+    rw [CapAtom.weaken_subst, CaptureSet.weaken_subst]
+    exact (h.capSet a₀ C₀ h₀).weaken (b.subst σ)
+  capProjFree := by
+    intro κ
+    cases κ with
+    | there κ0 =>
+        show ((σ.cvar κ0).rename Rename.succ).base = (σ.cvar κ0).rename Rename.succ
+        rw [CapAtom.base_rename, h.capProjFree κ0]
 
 theorem ofRename {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2} (h : Ctx.Ren Γ ρ Γ') :
     Subst.Typed Γ (Subst.ofRename ρ) Γ' where
@@ -1339,6 +1449,15 @@ theorem ofRename {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2} (h : Ctx.Ren �
     intro a C hI
     rw [CapAtom.subst_ofRename, CaptureSet.subst_ofRename]
     exact h.capInst a C hI
+  capCls := by
+    intro a cl hC
+    rw [CapAtom.subst_ofRename]
+    exact h.capCls a cl hC
+  capSet := by
+    intro a C hS
+    rw [CapAtom.subst_ofRename, CaptureSet.subst_ofRename]
+    exact h.capSet a C hS
+  capProjFree := fun _ => rfl
 
 /-- Instantiating the innermost *opaque* binder by an atom of its type. -/
 theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
@@ -1446,6 +1565,20 @@ theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
     obtain ⟨a₀, C₀, rfl, rfl, h₀⟩ := Ctx.instOf_cons_cases hI
     rw [CapAtom.weaken_subst_single, CaptureSet.weaken_subst_single]
     exact h₀
+  capCls := by
+    intro a0 cl hC
+    obtain ⟨a₀, rfl, h₀⟩ := Ctx.clsOf_cons_cases hC
+    rw [CapAtom.weaken_subst_single]
+    exact h₀
+  capSet := by
+    intro a0 C hS
+    obtain ⟨a₀, C₀, rfl, rfl, h₀⟩ := Ctx.setOf_cons_cases hS
+    rw [CapAtom.weaken_subst_single, CaptureSet.weaken_subst_single]
+    exact h₀
+  capProjFree := by
+    intro κ
+    cases κ with
+    | there κ0 => rfl
 
 /-- Passing under a capture binder that is not a root. -/
 theorem liftC {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
@@ -1528,6 +1661,27 @@ theorem liftC {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
           rfl
     · rw [CapAtom.weaken_substC, CaptureSet.weaken_substC]
       exact (h.capInst a₀ C₀ h₀).weakenC (b.subst σ)
+  capCls := fun a cl hC => by
+    rcases Ctx.clsOf_consC_cases hC with ⟨rfl, hbc⟩ | ⟨a₀, rfl, h₀⟩
+    · show ((b.subst σ)↑ : CapBound (s2,c)).clsOf? = some cl
+      rw [CapBound.clsOf?_weaken, CapBound.clsOf?_subst]
+      exact hbc
+    · rw [CapAtom.weaken_substC]
+      exact (h.capCls a₀ cl h₀).weakenC (b.subst σ)
+  capSet := fun a C hS => by
+    rcases Ctx.setOf_consC_cases hS with ⟨C₀, rfl, rfl, hbs⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+    · show ((b.subst σ)↑ : CapBound (s2,c)).setOf? = some ((C₀↑).subst σ.liftC)
+      rw [CapBound.setOf?_weaken, CapBound.setOf?_subst, hbs, CaptureSet.weaken_substC]
+      rfl
+    · rw [CapAtom.weaken_substC, CaptureSet.weaken_substC]
+      exact (h.capSet a₀ C₀ h₀).weakenC (b.subst σ)
+  capProjFree := by
+    intro κ
+    cases κ with
+    | here => rfl
+    | there κ0 =>
+        show ((σ.cvar κ0).rename Rename.succ).base = (σ.cvar κ0).rename Rename.succ
+        rw [CapAtom.base_rename, h.capProjFree κ0]
 
 /-- Passing under the root binder of a scope.  A root binder needs no side
 condition: `capInner` is restored by the root itself, and an atom derivation
@@ -1606,6 +1760,23 @@ theorem consRoot {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2}
     · simp [CapBound.instSet?] at hbi
     · rw [CapAtom.weaken_substC, CaptureSet.weaken_substC]
       exact (h.capInst a₀ C₀ h₀).weakenC .root
+  capCls := fun a cl hC => by
+    rcases Ctx.clsOf_consC_cases hC with ⟨rfl, hbc⟩ | ⟨a₀, rfl, h₀⟩
+    · simp [CapBound.clsOf?] at hbc
+    · rw [CapAtom.weaken_substC]
+      exact (h.capCls a₀ cl h₀).weakenC .root
+  capSet := fun a C hS => by
+    rcases Ctx.setOf_consC_cases hS with ⟨C₀, rfl, rfl, hbs⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+    · simp [CapBound.setOf?] at hbs
+    · rw [CapAtom.weaken_substC, CaptureSet.weaken_substC]
+      exact (h.capSet a₀ C₀ h₀).weakenC .root
+  capProjFree := by
+    intro κ
+    cases κ with
+    | here => rfl
+    | there κ0 =>
+        show ((σ.cvar κ0).rename Rename.succ).base = (σ.cvar κ0).rename Rename.succ
+        rw [CapAtom.base_rename, h.capProjFree κ0]
 
 /-- A typed substitution passes under a scope. -/
 theorem scope {Γ : Ctx s1} {σ : Subst s1 s2} {Γ' : Ctx s2} (h : Subst.Typed Γ σ Γ') :
@@ -1677,6 +1848,68 @@ theorem CapCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Sub
       simpa [CapCo.subst, CaptureSet.substVar_subst, Subst.rootVar, Atom.root_subst] using this
   | .eqToLe hφ => exact .eqToLe (hφ.subst hσ)
   | .level h₁ h₂ => exact .level (hσ.capRoot _ h₁) (hσ.capLvl _ _ h₁ h₂)
+  | @CapCo.HasType.unprojC _ _ C₀ φ₀ =>
+      have : Γ' ⊢ᶜ CapCo.unprojC (C₀.subst σ) φ₀
+          : (C₀.subst σ).proj φ₀ ⊑ (C₀.subst σ) := .unprojC
+      simpa [CapCo.subst, CaptureSet.proj_subst hσ.capProjFree] using this
+  | @CapCo.HasType.projC _ _ g₀ C₀ φ₀ hg =>
+      have : Γ' ⊢ᶜ CapCo.projC (g₀.subst σ) (C₀.subst σ) φ₀
+          : (C₀.subst σ) ⊑ (C₀.subst σ).proj φ₀ := .projC (hg.subst hσ)
+      simpa [CapCo.subst, CaptureSet.proj_subst hσ.capProjFree] using this
+  | @CapCo.HasType.projMono _ _ f₀ C₀ D₀ ψ₀ hf =>
+      have : Γ' ⊢ᶜ CapCo.projMono (f₀.subst σ) ψ₀
+          : (C₀.subst σ).proj ψ₀ ⊑ (D₀.subst σ).proj ψ₀ := .projMono (hf.subst hσ)
+      simpa [CapCo.subst, CaptureSet.proj_subst hσ.capProjFree] using this
+
+/-- The kinding family is transported by the substitution.  The kind
+arguments ride along unchanged, which is Fact 1, and `capProjFree` is what
+keeps the kind an atom projects by and the base of an atom in place. -/
+theorem KindCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
+    {g : KindCo s1} {C : CaptureSet s1} {φ : Cls.Kind} (hσ : Subst.Typed Γ σ Γ')
+    (h : Γ ⊢ᵏ g : C ⊑ᵏ φ) :
+    Γ' ⊢ᵏ (g.subst σ) : (C.subst σ) ⊑ᵏ φ := by
+  match h with
+  | .nil => exact .nil
+  | .cons hg hh => exact .cons (hg.subst hσ) (hh.subst hσ)
+  | .kproj hk =>
+      refine .kproj ?_
+      rw [CapAtom.kindOf_subst hσ.capProjFree]
+      exact hk
+  | @KindCo.HasType.kcls _ _ a₀ φ₀ cl hc hk =>
+      refine @KindCo.HasType.kcls _ Γ' (a₀.subst σ) φ₀ cl ?_ ?_
+      · rw [CapAtom.base_subst hσ.capProjFree]
+        exact hσ.capCls _ _ hc
+      · rw [CapAtom.kindOf_subst hσ.capProjFree]
+        exact hk
+  | .kvar ha hb hg =>
+      have ha' := Atom.HasType.subst hσ ha
+      have hg' := hg.subst hσ
+      simp only [Ty.subst] at ha'
+      rw [CaptureSet.proj_subst hσ.capProjFree,
+        ← CapAtom.kindOf_subst hσ.capProjFree] at hg'
+      refine .kvar ha' ?_ hg'
+      rw [CapAtom.base_subst hσ.capProjFree, hb]
+      show CapAtom.var (σ.rootVar _) = CapAtom.var _
+      rw [Atom.root_subst]
+  | .kcvar hb hg =>
+      have hg' := hg.subst hσ
+      rw [CaptureSet.proj_subst hσ.capProjFree,
+        ← CapAtom.kindOf_subst hσ.capProjFree] at hg'
+      refine .kcvar ?_ hg'
+      rw [CapAtom.base_subst hσ.capProjFree]
+      exact hσ.capSet _ _ hb
+  | .kmember ha he hAt =>
+      have := KindCo.HasType.kmember
+        (by simpa [Ty.subst] using Atom.HasType.subst hσ ha)
+        (by simpa [Shape.subst] using he.subst hσ)
+        (hAt.subst σ)
+      simpa [KindCo.subst, CaptureSet.substVar_subst, Subst.rootVar,
+        Atom.root_subst] using this
+  | @KindCo.HasType.kprojS _ _ g₀ C₀ φ₀ ψ₀ hg =>
+      have : Γ' ⊢ᵏ KindCo.kprojS (g₀.subst σ) (C₀.subst σ) ψ₀
+          : (C₀.subst σ).proj ψ₀ ⊑ᵏ φ₀ := .kprojS (hg.subst hσ)
+      simpa [KindCo.subst, CaptureSet.proj_subst hσ.capProjFree] using this
+  | .ksub hg hs => exact .ksub (hg.subst hσ) hs
 
 theorem CapEq.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {φ : CapEq s1} {C D : CaptureSet s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) :
@@ -1823,6 +2056,9 @@ theorem Morphism.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
       exact .eqC (hm.subst hσ) (by simpa [Proposition.subst] using hAt.subst σ.lift)
   | .eqSymC hm hAt =>
       exact .eqSymC (hm.subst hσ) (by simpa [Proposition.subst] using hAt.subst σ.lift)
+  | .kindC hm hAt hq hsub =>
+      exact .kindC (hm.subst hσ) (by simpa [Proposition.subst] using hAt.subst σ.lift)
+        (hq.subst hσ) hsub
 
 theorem Atom.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {a : Atom s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ₐ a : T) :
@@ -2149,7 +2385,8 @@ theorem Subst.compRename_succLift_enterObj (y : BVar s .var) :
 not a root, or the atom is a root that absorbs every level of `Γ`, which is
 what the entering substitutions supply. -/
 theorem Subst.Typed.singleC {Γ : Ctx s} {b : CapBound s} (a : CapAtom s)
-    (hi : b.instSet? = none)
+    (hi : b.instSet? = none) (hc : b.clsOf? = none) (hs : b.setOf? = none)
+    (hp : a.base = a)
     (h : b.isRoot = false ∨ (Γ.IsRoot a ∧ ∀ e : CapAtom s, Γ.LvlLe e a)) :
     Subst.Typed (Γ.consC b) (Subst.singleC a) Γ where
   var := by
@@ -2257,6 +2494,23 @@ theorem Subst.Typed.singleC {Γ : Ctx s} {b : CapBound s} (a : CapAtom s)
     · rw [hi] at hbi; simp at hbi
     · rw [CapAtom.weaken_subst_singleC, CaptureSet.weaken_subst_singleC]
       exact h₀
+  capCls := by
+    intro a0 cl hC
+    rcases Ctx.clsOf_consC_cases hC with ⟨rfl, hbc⟩ | ⟨a₀, rfl, h₀⟩
+    · rw [hc] at hbc; simp at hbc
+    · rw [CapAtom.weaken_subst_singleC]
+      exact h₀
+  capSet := by
+    intro a0 C hS
+    rcases Ctx.setOf_consC_cases hS with ⟨C₀, rfl, rfl, hbs⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+    · rw [hs] at hbs; simp at hbs
+    · rw [CapAtom.weaken_subst_singleC, CaptureSet.weaken_subst_singleC]
+      exact h₀
+  capProjFree := by
+    intro κ
+    cases κ with
+    | here => exact hp
+    | there κ0 => rfl
 
 
 /-- What an application does to a codomain: the parameter goes to the
@@ -2397,6 +2651,27 @@ theorem Subst.Typed.arg {Γ : Ctx s} {T : Dom s} {b : Atom s}
     · simp [CapBound.instSet?] at hbi
     · rw [CapAtom.weaken_weaken_subst_arg, CaptureSet.weaken_weaken_subst_arg]
       exact h₀
+  capCls := by
+    intro a cl hC
+    obtain ⟨a₁, rfl, h₁⟩ := Ctx.clsOf_cons_cases hC
+    rcases Ctx.clsOf_consC_cases h₁ with ⟨rfl, hbc⟩ | ⟨a₀, rfl, h₀⟩
+    · simp [CapBound.clsOf?] at hbc
+    · rw [CapAtom.weaken_weaken_subst_arg]
+      exact h₀
+  capSet := by
+    intro a C hS
+    obtain ⟨a₁, C₁, rfl, rfl, h₁⟩ := Ctx.setOf_cons_cases hS
+    rcases Ctx.setOf_consC_cases h₁ with ⟨C₀, rfl, rfl, hbs⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+    · simp [CapBound.setOf?] at hbs
+    · rw [CapAtom.weaken_weaken_subst_arg, CaptureSet.weaken_weaken_subst_arg]
+      exact h₀
+  capProjFree := by
+    intro κ
+    cases κ with
+    | there κ0 =>
+        cases κ0 with
+        | here => rfl
+        | there κ1 => rfl
 
 
 set_option maxHeartbeats 2000000 in
@@ -2520,6 +2795,34 @@ theorem Subst.Typed.enterAux {Γ : Ctx s} {T : Dom s} {b : Atom s}
       · simp [CapBound.instSet?] at hbi
       · rw [CapAtom.weaken3_subst_enter, CaptureSet.weaken3_subst_enter]
         exact h₀
+  capCls := by
+    intro a cl hC
+    obtain ⟨a₂, rfl, h₂⟩ := Ctx.clsOf_cons_cases hC
+    rcases Ctx.clsOf_consC_cases h₂ with ⟨rfl, hbc⟩ | ⟨a₁, rfl, h₁⟩
+    · simp [CapBound.clsOf?] at hbc
+    · rcases Ctx.clsOf_consC_cases h₁ with ⟨rfl, hbc⟩ | ⟨a₀, rfl, h₀⟩
+      · simp [CapBound.clsOf?] at hbc
+      · rw [CapAtom.weaken3_subst_enter]
+        exact h₀
+  capSet := by
+    intro a C hS
+    obtain ⟨a₂, C₂, rfl, rfl, h₂⟩ := Ctx.setOf_cons_cases hS
+    rcases Ctx.setOf_consC_cases h₂ with ⟨C₁, rfl, rfl, hbs⟩ | ⟨a₁, C₁, rfl, rfl, h₁⟩
+    · simp [CapBound.setOf?] at hbs
+    · rcases Ctx.setOf_consC_cases h₁ with ⟨C₀, rfl, rfl, hbs⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+      · simp [CapBound.setOf?] at hbs
+      · rw [CapAtom.weaken3_subst_enter, CaptureSet.weaken3_subst_enter]
+        exact h₀
+  capProjFree := by
+    intro κ
+    cases κ with
+    | there κ0 =>
+        cases κ0 with
+        | here => rfl
+        | there κ1 =>
+            cases κ1 with
+            | here => rfl
+            | there κ2 => rfl
 
 set_option maxHeartbeats 2000000 in
 /-- The same when a projection enters an object body. -/
@@ -2640,6 +2943,27 @@ theorem Subst.Typed.enterObjAux {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)}
     · simp [CapBound.instSet?] at hbi
     · rw [CapAtom.weaken2_subst_enterObj, CaptureSet.weaken2_subst_enterObj]
       exact h₀
+  capCls := by
+    intro a cl hC
+    obtain ⟨a₁, rfl, h₁⟩ := Ctx.clsOf_cons_cases hC
+    rcases Ctx.clsOf_consC_cases h₁ with ⟨rfl, hbc⟩ | ⟨a₀, rfl, h₀⟩
+    · simp [CapBound.clsOf?] at hbc
+    · rw [CapAtom.weaken2_subst_enterObj]
+      exact h₀
+  capSet := by
+    intro a C hS
+    obtain ⟨a₁, C₁, rfl, rfl, h₁⟩ := Ctx.setOf_cons_cases hS
+    rcases Ctx.setOf_consC_cases h₁ with ⟨C₀, rfl, rfl, hbs⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+    · simp [CapBound.setOf?] at hbs
+    · rw [CapAtom.weaken2_subst_enterObj, CaptureSet.weaken2_subst_enterObj]
+      exact h₀
+  capProjFree := by
+    intro κ
+    cases κ with
+    | there κ0 =>
+        cases κ0 with
+        | here => rfl
+        | there κ1 => rfl
 
 /-- **The entering substitution**, at the context of B1.1. -/
 theorem Subst.Typed.enter {Γ : Ctx s} {T : Dom s} {b : Atom s}
@@ -2737,6 +3061,30 @@ theorem Subst.Typed.enterCAux {Γ : Ctx s} {b : Atom s} (hΓ : Γ.root? = none) 
       · simp [CapBound.instSet?] at hbi
       · rw [CapAtom.weaken2_subst_enterC, CaptureSet.weaken2_subst_enterC]
         exact h₀
+  capCls := by
+    intro a cl hC
+    rcases Ctx.clsOf_consC_cases hC with ⟨rfl, hbc⟩ | ⟨a₁, rfl, h₁⟩
+    · simp [CapBound.clsOf?] at hbc
+    · rcases Ctx.clsOf_consC_cases h₁ with ⟨rfl, hbc⟩ | ⟨a₀, rfl, h₀⟩
+      · simp [CapBound.clsOf?] at hbc
+      · rw [CapAtom.weaken2_subst_enterC]
+        exact h₀
+  capSet := by
+    intro a C hS
+    rcases Ctx.setOf_consC_cases hS with ⟨C₁, rfl, rfl, hbs⟩ | ⟨a₁, C₁, rfl, rfl, h₁⟩
+    · simp [CapBound.setOf?] at hbs
+    · rcases Ctx.setOf_consC_cases h₁ with ⟨C₀, rfl, rfl, hbs⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+      · simp [CapBound.setOf?] at hbs
+      · rw [CapAtom.weaken2_subst_enterC, CaptureSet.weaken2_subst_enterC]
+        exact h₀
+  capProjFree := by
+    intro κ
+    cases κ with
+    | here => rfl
+    | there κ0 =>
+        cases κ0 with
+        | here => rfl
+        | there κ1 => rfl
 
 /-- The same at `Ctx.scope`, which is the context the `pi` rule opens. -/
 theorem Subst.Typed.enterC {Γ : Ctx s} {b : Atom s} (hΓ : Γ.root? = none) :
@@ -2890,6 +3238,33 @@ theorem Subst.Typed.instRoot {Γ : Ctx s} (hΓ : Γ.root? = none) (C : CaptureSe
       · simp [CapBound.instSet?] at hbi
       · rw [CapAtom.weakenC_two_instRoot, CaptureSet.weakenC_two_instRoot]
         exact h₀.weakenC (.inst C)
+  capCls := by
+    intro a cl hC
+    rcases Ctx.clsOf_consC_cases hC with ⟨rfl, hbc⟩ | ⟨a₁, rfl, h₁⟩
+    · simp [CapBound.clsOf?] at hbc
+    · rcases Ctx.clsOf_consC_cases h₁ with ⟨rfl, hbc⟩ | ⟨a₀, rfl, h₀⟩
+      · simp [CapBound.clsOf?] at hbc
+      · rw [CapAtom.weakenC_two_instRoot]
+        exact h₀.weakenC (.inst C)
+  capSet := by
+    intro a C0 hS
+    rcases Ctx.setOf_consC_cases hS with ⟨C₁, rfl, rfl, hbs⟩ | ⟨a₁, C₁, rfl, rfl, h₁⟩
+    · have hC : C₁ = C↑ := by simpa [CapBound.setOf?] using hbs.symm
+      subst hC
+      rw [CaptureSet.weakenC_two_instRoot]
+      rfl
+    · rcases Ctx.setOf_consC_cases h₁ with ⟨C₀, rfl, rfl, hbs⟩ | ⟨a₀, C₀, rfl, rfl, h₀⟩
+      · simp [CapBound.setOf?] at hbs
+      · rw [CapAtom.weakenC_two_instRoot, CaptureSet.weakenC_two_instRoot]
+        exact h₀.weakenC (.inst C)
+  capProjFree := by
+    intro κ
+    cases κ with
+    | here => rfl
+    | there κ0 =>
+        cases κ0 with
+        | here => rfl
+        | there κ1 => rfl
 
 /-- And the entering substitution of a projection. -/
 theorem Subst.Typed.enterObj {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)}
@@ -3043,6 +3418,35 @@ theorem Ctx.instOf_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x))
   | proj _ _ => exact Iff.rfl
   | cvar κ =>
       show ((Γ.cons b).lookupCap κ).instSet? = some C ↔ _
+      rw [Ctx.lookupCap_cons_eq Γ b b' κ]
+      exact Iff.rfl
+
+/-- The declared classifier of a capture binder reads the same `lookupCap`,
+so a term binder in front of it makes no difference.  This is the `capCls`
+field of every self-cast substitution instance. -/
+theorem Ctx.clsOf_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x))
+    (cl : Cls.Classifier) : (Γ.cons b).ClsOf a cl ↔ (Γ.cons b').ClsOf a cl := by
+  cases a with
+  | top => exact Iff.rfl
+  | var _ => exact Iff.rfl
+  | name _ _ => exact Iff.rfl
+  | proj _ _ => exact Iff.rfl
+  | cvar κ =>
+      show ((Γ.cons b).lookupCap κ).clsOf? = some cl ↔ _
+      rw [Ctx.lookupCap_cons_eq Γ b b' κ]
+      exact Iff.rfl
+
+/-- And so does the declared set of a capture binder.  This is the `capSet`
+field of every self-cast substitution instance. -/
+theorem Ctx.setOf_cons_eq (Γ : Ctx s) (b b' : Binding s) (a : CapAtom (s,x))
+    (C : CaptureSet (s,x)) : (Γ.cons b).SetOf a C ↔ (Γ.cons b').SetOf a C := by
+  cases a with
+  | top => exact Iff.rfl
+  | var _ => exact Iff.rfl
+  | name _ _ => exact Iff.rfl
+  | proj _ _ => exact Iff.rfl
+  | cvar κ =>
+      show ((Γ.cons b).lookupCap κ).setOf? = some C ↔ _
       rw [Ctx.lookupCap_cons_eq Γ b b' κ]
       exact Iff.rfl
 

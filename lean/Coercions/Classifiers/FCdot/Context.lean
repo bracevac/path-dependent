@@ -155,6 +155,66 @@ def CapBound.instSet? : CapBound s → Option (CaptureSet s)
   | .inst C => some C
   | _ => none
 
+/-- The classifier a capture binder *declares*, if it declares one.  Only the
+`cls` flavour does.  `CapBound.classifier` reads a classifier off every
+bound, with the root classifier `⊤` as the default; this reader says instead
+which bounds carry a declaration a judgment may rely on.  A `star` binder
+carries none, because a context map may read a `star` binder as an instance
+(`Ctx.Ren.instC`), and an instance declares no classifier. -/
+def CapBound.clsOf? : CapBound s → Option Cls.Classifier
+  | .cls c => some c
+  | _ => none
+
+/-- The capture set a capture binder stands below: the bound of an upper
+binder and the set an instance binder was opened at.  These are the two
+flavours whose resolution steps to another set. -/
+def CapBound.setOf? : CapBound s → Option (CaptureSet s)
+  | .upper C => some C
+  | .inst C => some C
+  | _ => none
+
+@[simp] theorem CapBound.clsOf?_of_cls (c : Cls.Classifier) :
+    (CapBound.cls (s := s) c).clsOf? = some c := rfl
+
+@[simp] theorem CapBound.setOf?_of_upper (C : CaptureSet s) :
+    (CapBound.upper C).setOf? = some C := rfl
+
+@[simp] theorem CapBound.setOf?_of_inst (C : CaptureSet s) :
+    (CapBound.inst C).setOf? = some C := rfl
+
+/-- A declared classifier is opaque and is no root, which is what the kinding
+rule `kcls` used to ask for explicitly. -/
+theorem CapBound.opaque_of_clsOf? {b : CapBound s} {c : Cls.Classifier}
+    (h : b.clsOf? = some c) : b.opaque = true := by
+  cases b with
+  | cls c0 => rfl
+  | root | star | upper C | inst C => simp [CapBound.clsOf?] at h
+
+theorem CapBound.isRoot_of_clsOf? {b : CapBound s} {c : Cls.Classifier}
+    (h : b.clsOf? = some c) : b.isRoot = false := by
+  cases b with
+  | cls c0 => rfl
+  | root | star | upper C | inst C => simp [CapBound.clsOf?] at h
+
+theorem CapBound.classifier_of_clsOf? {b : CapBound s} {c : Cls.Classifier}
+    (h : b.clsOf? = some c) : b.classifier = c := by
+  cases b with
+  | cls c0 =>
+      have : c0 = c := by simpa [CapBound.clsOf?] using h
+      rw [this]
+      rfl
+  | root | star | upper C | inst C => simp [CapBound.clsOf?] at h
+
+/-- An instance bound is one of the two set bounds. -/
+theorem CapBound.setOf?_of_instSet? {b : CapBound s} {C : CaptureSet s}
+    (h : b.instSet? = some C) : b.setOf? = some C := by
+  cases b with
+  | inst C0 =>
+      have : C0 = C := by simpa [CapBound.instSet?] using h
+      rw [this]
+      rfl
+  | root | star | upper C1 | cls c => simp [CapBound.instSet?] at h
+
 @[simp] theorem CapBound.opaque_rename (b : CapBound s1) (ρ : Rename s1 s2) :
     (b.rename ρ).opaque = b.opaque := by
   cases b <;> rfl
@@ -245,6 +305,35 @@ def instSet? (Γ : Ctx s) : CapAtom s → Option (CaptureSet s)
 `Decidable` is synthesised and the checker's case decides. -/
 abbrev InstOf (Γ : Ctx s) (a : CapAtom s) (C : CaptureSet s) : Prop :=
   Γ.instSet? a = some C
+
+/-- The classifier an atom's binder declares, if it declares one.  Only a
+capture binder can, which is Fact 2.  Read at the base of an atom, so that a
+projection is transparent to it. -/
+def clsOf? (Γ : Ctx s) : CapAtom s → Option Cls.Classifier
+  | .cvar κ => (Γ.lookupCap κ).clsOf?
+  | _ => none
+
+/-- The capture set an atom's binder stands below, if it has one. -/
+def setOf? (Γ : Ctx s) : CapAtom s → Option (CaptureSet s)
+  | .cvar κ => (Γ.lookupCap κ).setOf?
+  | _ => none
+
+/-- `a` is a binder with declared classifier `c`.  An `abbrev`, so that
+`Decidable` is synthesised and the checker's case decides. -/
+abbrev ClsOf (Γ : Ctx s) (a : CapAtom s) (c : Cls.Classifier) : Prop :=
+  Γ.clsOf? a = some c
+
+/-- `a` is a binder standing below the set `C`. -/
+abbrev SetOf (Γ : Ctx s) (a : CapAtom s) (C : CaptureSet s) : Prop :=
+  Γ.setOf? a = some C
+
+/-- An instance fact is a set fact.  This is the half of `SetOf` that the
+fourth capture field of a context map already carries. -/
+theorem SetOf.of_instOf {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s}
+    (h : Γ.InstOf a C) : Γ.SetOf a C := by
+  cases a with
+  | cvar κ => exact CapBound.setOf?_of_instSet? h
+  | top | var _ | name _ _ | proj _ _ => simp [Ctx.InstOf, Ctx.instSet?] at h
 
 /-- `r` is a scope root of `Γ`.  An `abbrev`, so that `Decidable` is
 synthesised and `by decide` works. -/

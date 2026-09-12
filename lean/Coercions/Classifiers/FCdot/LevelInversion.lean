@@ -63,6 +63,20 @@ theorem CapCo.MemberFree.rename {s1 s2 : Sig} :
   | _, .union hf hg, ρ => .union (hf.rename ρ) (hg.rename ρ)
   | _, .capvar ha, ρ => .capvar (ha.rename ρ)
   | _, .level e r, ρ => .level (e.rename ρ) (r.rename ρ)
+  | _, .unprojC C φ, ρ => .unprojC (C.rename ρ) φ
+  | _, .projC C φ hg, ρ => .projC (C.rename ρ) φ (hg.rename ρ)
+  | _, .projMono ψ hf, ρ => .projMono ψ (hf.rename ρ)
+
+theorem KindCo.MemberFree.rename {s1 s2 : Sig} :
+    ∀ {g : KindCo s1} (_ : g.MemberFree) (ρ : Rename s1 s2), (g.rename ρ).MemberFree
+  | _, .nil, _ => .nil
+  | _, .cons hg hh, ρ => .cons (hg.rename ρ) (hh.rename ρ)
+  | _, .kproj a, ρ => .kproj (a.rename ρ)
+  | _, .kcls a, ρ => .kcls (a.rename ρ)
+  | _, .kvar hb hg, ρ => .kvar (hb.rename ρ) (hg.rename ρ)
+  | _, .kcvar a hg, ρ => .kcvar (a.rename ρ) (hg.rename ρ)
+  | _, .kprojS C ψ hg, ρ => .kprojS (C.rename ρ) ψ (hg.rename ρ)
+  | _, .ksub φ hg, ρ => .ksub φ (hg.rename ρ)
 
 theorem Atom.MemberFree.rename {s1 s2 : Sig} :
     ∀ {a : Atom s1} (_ : a.MemberFree) (ρ : Rename s1 s2), (a.rename ρ).MemberFree
@@ -83,6 +97,51 @@ theorem CapCo.MemberFree.weaken {s : Sig} {f : CapCo s} (h : f.MemberFree) :
 /-- The weakening instance on atoms. -/
 theorem Atom.MemberFree.weaken {s : Sig} {a : Atom s} (h : a.MemberFree) :
     (Atom.weaken (k := k) a).MemberFree := h.rename _
+
+/-! ### Resolution under a projection, up to the base
+
+A projection carries no level of its own: `Ctx.lvlAtom` reads through it
+(`FCdot/Context.lean:207`).  Resolution of a projected set is therefore the
+resolution of the set, atom for atom, once every projection is stripped by
+`CapAtom.base`.  That is all the three new capture rules of K1.3 need, and it
+is what keeps `level_inversion` true on them. -/
+
+/-- The smart constructor resolves to the same atoms as the atom it projects,
+up to the base.  The nested case intersects the two kinds, and the base does
+not read a kind. -/
+theorem Ctx.capsAtom_projBy_base (Γ : Ctx s) (n : Nat) (φ : Cls.Kind) :
+    ∀ a : CapAtom s,
+      (Γ.capsAtom n (CapAtom.projBy φ a)).map CapAtom.base
+        = (Γ.capsAtom n a).map CapAtom.base
+  | .top => by simp [CapAtom.projBy, CapAtom.base]
+  | .var _ => by simp [CapAtom.projBy, CapAtom.base]
+  | .cvar _ => by simp [CapAtom.projBy, CapAtom.base]
+  | .name _ _ => by simp [CapAtom.projBy, CapAtom.base]
+  | .proj _ _ => by simp [CapAtom.projBy, CapAtom.base]
+
+/-- The same, set-wise. -/
+theorem Ctx.caps_proj_base (Γ : Ctx s) (n : Nat) (φ : Cls.Kind) :
+    ∀ C : CaptureSet s,
+      (Γ.caps n (C.proj φ)).map CapAtom.base = (Γ.caps n C).map CapAtom.base
+  | [] => rfl
+  | a :: C => by
+      have h1 : CaptureSet.proj (a :: C) φ = CapAtom.projBy φ a :: CaptureSet.proj C φ := rfl
+      rw [h1, Ctx.caps_cons, Ctx.caps_cons, List.map_append, List.map_append,
+        Ctx.capsAtom_projBy_base Γ n φ a, Ctx.caps_proj_base Γ n φ C]
+
+/-- Two sets with the same atoms up to the base are confined to the same
+roots, because confinement reads `Ctx.lvlAtom` alone, which reads through
+every projection (`Ctx.lvlLe_base_left`, `FCdot/Levels.lean:395`). -/
+theorem Ctx.confined_of_map_base {Γ : Ctx s} {L L' : CaptureSet s} {r : CapAtom s}
+    (h : L.map CapAtom.base = L'.map CapAtom.base) (hc : Γ.Confined L' r) :
+    Γ.Confined L r := by
+  intro a ha
+  have hm : a.base ∈ L'.map CapAtom.base := by
+    rw [← h]; exact List.mem_map.mpr ⟨a, ha, rfl⟩
+  obtain ⟨b, hb, hbe⟩ := List.mem_map.mp hm
+  rw [Ctx.lvlLe_base_left, ← hbe, ← Ctx.lvlLe_base_left]
+  exact hc b hb
+
 /-! ### The two halves of the inversion, one for capture evidence and one for
 the atoms it reaches -/
 
@@ -115,6 +174,18 @@ theorem level_inversion {s : Sig} {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s
           exact h₂)
       have hrr : Γ.LvlLe _ r := hD 0 _ (Ctx.mem_caps_root Γ 0 h₁)
       exact Ctx.LvlLe.trans h₁ (hconf a ha) hrr
+  | .unprojC, .unprojC C₀ φ =>
+      intro n
+      exact Ctx.confined_of_map_base (Γ.caps_proj_base n φ C₀) (hD n)
+  | .projC _, .projC _ _ _ =>
+      intro n
+      exact Ctx.confined_of_map_base (Γ.caps_proj_base n _ _).symm (hD n)
+  | .projMono hg, .projMono ψ hgf =>
+      intro n
+      refine Ctx.confined_of_map_base (Γ.caps_proj_base n ψ _)
+        (level_inversion hg hgf ?_ n)
+      intro m
+      exact Ctx.confined_of_map_base (Γ.caps_proj_base m ψ _).symm (hD m)
 
 theorem atom_level_inversion {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
     {r : CapAtom s} (h : Γ ⊢ₐ a : T) (ha : a.MemberFree)

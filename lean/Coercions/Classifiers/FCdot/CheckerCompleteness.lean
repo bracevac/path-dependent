@@ -135,6 +135,13 @@ theorem capEqMember_eq {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} {i : Nat} {S : 
     capEqMember i ha he = some ⟨C₁⟦a.root⟧, C₂⟦a.root⟧, .member ha he hAt⟩ := by
   simp [capEqMember, Telescope.getAt?_of_At hAt]
 
+theorem kindMember_eq {Γ : Ctx s} {b : Atom s} {e : ShapeCo s} {i : Nat} {S : Shape s}
+    {D : CaptureSet s} {C : CaptureSet (s,x)} {φ : Cls.Kind} {Tel : Telescope (s,x)}
+    (hb : Γ ⊢ₐ b : S ^ D) (he : Γ ⊢ˢ e : S ≤ .obj Tel)
+    (hAt : Tel.At i (.kindC C φ)) :
+    kindMember i hb he (C⟦b.root⟧) φ = some ⟨.kmember hb he (.kindC hAt)⟩ := by
+  simp [kindMember, Telescope.getAt?_of_At hAt]
+
 theorem capVar_eq {Γ : Ctx s} {a : Atom s} {S : Shape s} {C : CaptureSet s}
     (ha : Γ ⊢ₐ a : S ^ C) : capVar ha = ⟨[CapAtom.var a.root], C, .capvar ha⟩ := rfl
 
@@ -185,6 +192,36 @@ theorem CapCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {f : CapCo s} {C D :
       simp [synthCapCore, CapEq.HasType.complete hφ]
   | _, _, _, _, _, .level h₁ h₂ => by
       simp [synthCapCore, h₁, h₂]
+  | _, _, _, _, _, .unprojC => by simp [synthCapCore]
+  | _, _, _, _, _, .projC hg => by
+      simp [synthCapCore, KindCo.HasType.complete hg]
+  | _, _, _, _, _, .projMono hf => by
+      simp [synthCapCore, CapCo.HasType.complete hf]
+
+/-- The kernel accepts every kinding derivation at the set and the kind the
+derivation assigns.  The statement is an equation and not an `isSome` fact,
+as everywhere in this file: `KindChecked` carries one proof field, so two
+results at the same inputs are equal. -/
+theorem KindCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {g : KindCo s} {C : CaptureSet s}
+    {φ : Cls.Kind} (h : Γ ⊢ᵏ g : C ⊑ᵏ φ), checkKindCore Γ g C φ = some ⟨h⟩
+  | _, _, _, _, _, .nil => by simp [checkKindCore]
+  | _, _, _, _, _, .cons hg hh => by
+      simp [checkKindCore, KindCo.HasType.complete hg, KindCo.HasType.complete hh]
+  | _, _, _, _, _, .kproj hk => by
+      simp only [checkKindCore, dif_pos trivial, dif_pos hk]
+  | _, _, _, _, _, .kcls hc hk => by
+      simp only [checkKindCore, dif_pos trivial, witness?_eq_some hc, dif_pos hk]
+  | _, _, _, _, _, .kvar ha hb hg => by
+      simp [checkKindCore, Atom.HasType.complete ha, hb, KindCo.HasType.complete hg]
+  | _, _, _, _, _, .kcvar hb hg => by
+      simp [checkKindCore, witness?_eq_some hb, KindCo.HasType.complete hg]
+  | _, _, _, _, _, .kmember ha he (.kindC hAt) => by
+      simp [checkKindCore, Atom.HasType.complete ha, ShapeCo.HasType.complete he,
+        kindMember_eq ha he hAt]
+  | _, _, _, _, _, .kprojS hg => by
+      simp [checkKindCore, KindCo.HasType.complete hg]
+  | _, _, _, _, _, .ksub hg hk => by
+      simp only [checkKindCore, dif_pos hk, KindCo.HasType.complete hg]
 
 /-- The kernel synthesises both capture sets of every capture-equality
 derivation. -/
@@ -331,6 +368,9 @@ theorem Morphism.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {src : Telescope 
       simp [synthMorCore, Morphism.HasType.complete hm, morEqC_eq hm hAt]
   | _, _, _, _, _, .eqSymC hm hAt => by
       simp [synthMorCore, Morphism.HasType.complete hm, morEqSymC_eq hm hAt]
+  | _, _, _, _, _, .kindC hm hAt hq hsub => by
+      simp only [synthMorCore, Morphism.HasType.complete hm, Telescope.getAt?_of_At hAt,
+        Option.bind_eq_bind, Option.bind, dif_pos hsub, SideC.HasType.completePre hq]
 
 /-- The kernel synthesises the type of every atom derivation. -/
 theorem Atom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
@@ -507,6 +547,25 @@ theorem checkCap_complete {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s} (h : �
 theorem checkCap_iff {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s} :
     checkCap Γ f C D = true ↔ Γ ⊢ᶜ f : C ⊑ D :=
   ⟨checkCap_sound, checkCap_complete⟩
+
+theorem checkKindCo_complete {Γ : Ctx s} {g : KindCo s} {C : CaptureSet s} {φ : Cls.Kind}
+    (h : Γ ⊢ᵏ g : C ⊑ᵏ φ) : checkKindCo Γ g C φ = true := by
+  simp [checkKindCo, KindCo.HasType.complete h]
+
+/-- K1.5's statement, in the form K1.5 writes it.  Every premise of every
+rule of the kinding family is a decidable proposition over functions the tree
+already has, so both directions hold: the kinding checker is a decision
+procedure for the evidence it is given.  The subtraction bridge of K0 is not
+needed here, because `Kind.Subkind` and `Kind.Contains` are `Bool` functions
+that the checker calls, not semantic propositions it has to reconstruct. -/
+theorem checkKindCo_iff {Γ : Ctx s} {g : KindCo s} {C : CaptureSet s} {φ : Cls.Kind} :
+    checkKindCo Γ g C φ = true ↔ ∃ _ : Γ ⊢ᵏ g : C ⊑ᵏ φ, True :=
+  ⟨fun h => ⟨checkKindCo_sound h, trivial⟩, fun ⟨h, _⟩ => checkKindCo_complete h⟩
+
+/-- The same, as the rest of this section states it. -/
+theorem checkKindCo_iff_hasType {Γ : Ctx s} {g : KindCo s} {C : CaptureSet s}
+    {φ : Cls.Kind} : checkKindCo Γ g C φ = true ↔ Γ ⊢ᵏ g : C ⊑ᵏ φ :=
+  ⟨checkKindCo_sound, checkKindCo_complete⟩
 
 theorem synthCapEq_complete {Γ : Ctx s} {φ : CapEq s} {C D : CaptureSet s}
     (h : Γ ⊢ᶜ φ : C ≡ D) : synthCapEq Γ φ = some (C, D) := by

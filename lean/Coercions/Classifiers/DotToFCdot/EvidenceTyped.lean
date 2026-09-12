@@ -57,6 +57,7 @@ theorem Morphism.HasType.append {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)}
   | _, _, .leC h₂ hAt hpre hpost => .leC (h₁.append h₂) hAt hpre hpost
   | _, _, .eqC h₂ hAt => .eqC (h₁.append h₂) hAt
   | _, _, .eqSymC h₂ hAt => .eqSymC (h₁.append h₂) hAt
+  | _, _, .kindC h₂ hAt hq hsub => .kindC (h₁.append h₂) hAt hq hsub
 
 
 /-! ## Witnesses: labels, positions, distinctness -/
@@ -524,6 +525,7 @@ theorem _root_.Classifiers.FCdot.Telescope.NoBnd.append {s' : Sig} {Tel₁ : FCd
   | .cons Tel (.has _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
   | .cons Tel (.leC _ _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
   | .cons Tel (.eqC _ _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
+  | .cons Tel (.kindC _ _), h₂ => FCdot.Telescope.NoBnd.append h₁ Tel h₂
 
 theorem _root_.Classifiers.FCdot.Telescope.NoBnd.rename {s₁ s₂ : Sig} (ρ : FCdot.Rename s₁ s₂) :
     ∀ Tel : FCdot.Telescope s₁, Tel.NoBnd → (Tel.rename ρ).NoBnd
@@ -534,6 +536,7 @@ theorem _root_.Classifiers.FCdot.Telescope.NoBnd.rename {s₁ s₂ : Sig} (ρ : 
   | .cons Tel (.has _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
   | .cons Tel (.leC _ _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
   | .cons Tel (.eqC _ _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
+  | .cons Tel (.kindC _ _), h => FCdot.Telescope.NoBnd.rename ρ Tel h
 
 theorem _root_.Classifiers.FCdot.Telescope.NoBnd.closedBnds {s : Sig} :
     ∀ {Tel : FCdot.Telescope (s,x)}, Tel.NoBnd → Tel.ClosedBnds
@@ -544,6 +547,7 @@ theorem _root_.Classifiers.FCdot.Telescope.NoBnd.closedBnds {s : Sig} :
   | .cons Tel (.has _), h => .has (FCdot.Telescope.NoBnd.closedBnds h)
   | .cons Tel (.leC _ _), h => .leC (FCdot.Telescope.NoBnd.closedBnds h)
   | .cons Tel (.eqC _ _), h => .eqC (FCdot.Telescope.NoBnd.closedBnds h)
+  | .cons Tel (.kindC _ _), h => .kindC (FCdot.Telescope.NoBnd.closedBnds h)
 
 theorem _root_.Classifiers.FCdot.Telescope.ClosedBnds.append {s : Sig} {Tel₁ : FCdot.Telescope (s,x)}
     (h₁ : Tel₁.ClosedBnds) :
@@ -555,6 +559,7 @@ theorem _root_.Classifiers.FCdot.Telescope.ClosedBnds.append {s : Sig} {Tel₁ :
   | _, .bnd h₂ => .bnd (FCdot.Telescope.ClosedBnds.append h₁ h₂)
   | _, .leC h₂ => .leC (FCdot.Telescope.ClosedBnds.append h₁ h₂)
   | _, .eqC h₂ => .eqC (FCdot.Telescope.ClosedBnds.append h₁ h₂)
+  | _, .kindC h₂ => .kindC (FCdot.Telescope.ClosedBnds.append h₁ h₂)
 
 /-- A declaration-shaped body has no self-bounds at all: `Shape.telSelf` only
 produces one on a shape `Wf.mu` excludes. -/
@@ -629,6 +634,10 @@ theorem identityMorphism_typed {s : Sig} {Γ : FCdot.Ctx s} {src : FCdot.Telesco
   | _, .eqC hb, h => by
       have ih := identityMorphism_typed (Γ := Γ) (src := src) off hb (fun i Q hQ => h i Q hQ.there)
       rw [identityMorphism]; exact .eqC ih (h _ _ .here)
+  | _, .kindC hb, h => by
+      have ih := identityMorphism_typed (Γ := Γ) (src := src) off hb (fun i Q hQ => h i Q hQ.there)
+      rw [identityMorphism]
+      exact .kindC ih (h _ _ .here) .nil (Cls.Kind.AdmitsStep.refl _)
 
 /-- `And₁`: the first half of a concatenation sits at the same positions. -/
 theorem identityMorphism_typed_left {s : Sig} {Γ : FCdot.Ctx s}
