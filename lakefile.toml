@@ -66,3 +66,7 @@ roots = ["Coercions.Frontend"]
 [[lean_lib]]
 name = "Classifiers"
 roots = ["Coercions.Classifiers"]
+
+[[lean_lib]]
+name = "Paths"
+roots = ["Coercions.Paths"]
