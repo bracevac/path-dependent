@@ -153,7 +153,7 @@ theorem E1_typed : Ctx.nil ⊢ E1 : E1Ty := checkTm_sound (by decide +kernel)
 
 /-- The source term of `DotMNF.Examples.E1`. -/
 def E1src : DotMNF.Tm [] :=
-  .val (.lam DotMNF.Examples.E1Dom (.let (.path (.var .here)) (.path (.var .here))))
+  .val (.lam DotMNF.Examples.E1Dom (.let (.path .here) (.path .here)))
 
 example : DotMNF.HasTy .nil E1src (.all DotMNF.Examples.E1Dom DotMNF.Examples.E1Res) :=
   DotMNF.Examples.E1
@@ -303,7 +303,7 @@ theorem E3_typed : Ctx.nil ⊢ E3 : E3Ty := checkTm_sound (by decide +kernel)
 /-- The source term of `DotMNF.Examples.E3`. -/
 def E3src : DotMNF.Tm [] :=
   .val (.lam DotMNF.Examples.E3Dom
-    (.val (.lam DotMNF.Examples.E3T2 (.let (.path (.var .here)) (.path (.var .here))))))
+    (.val (.lam DotMNF.Examples.E3T2 (.let (.path .here) (.path .here)))))
 
 example : DotMNF.HasTy .nil E3src
     (.all DotMNF.Examples.E3Dom (.all DotMNF.Examples.E3T2 DotMNF.Examples.E3T1)) :=
@@ -356,7 +356,7 @@ theorem E4_typed : Ctx.nil ⊢ E4 : E4Ty := checkTm_sound (by decide +kernel)
 /-- The source term of `DotMNF.Examples.E4`. -/
 def E4src : DotMNF.Tm [] :=
   .val (.lam DotMNF.Examples.E4X (.val (.lam DotMNF.Examples.E4S (.val (.lam DotMNF.Examples.E4Int
-    (.let (.val (.lam (.sel (.var (.there .here)) DotMNF.Examples.lA) (.path (.var .here))))
+    (.let (.val (.lam (.sel (.var (.there .here)) DotMNF.Examples.lA) (.path .here)))
       (.app .here (.there .here))))))))
 
 example : DotMNF.HasTy .nil E4src

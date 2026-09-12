@@ -66,7 +66,7 @@ inductive Step : State s → State s' → Prop where
   /-- Allocate a value answer in the store. -/
   | alloc : Step ⟨σ, .cons K u, .val v⟩ ⟨.cons σ v, K.weaken, u⟩
   /-- A path answer is consumed by a renaming. -/
-  | rename : Step ⟨σ, .cons K u, .path (.var y)⟩ ⟨σ, K, u.substVar y⟩
+  | rename : Step ⟨σ, .cons K u, .path y⟩ ⟨σ, K, u.substVar y⟩
   /-- Application: look the closure up in the store. -/
   | app : σ.lookup x = .lam S t → Step ⟨σ, K, .app x y⟩ ⟨σ, K, t.substVar y⟩
   /-- Selection: look the object up in the store and instantiate the field's
