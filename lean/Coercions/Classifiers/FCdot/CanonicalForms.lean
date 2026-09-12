@@ -483,6 +483,9 @@ theorem kind_canon {g : KindCo s} {C : CaptureSet s} {φ : Cls.Kind}
   | .kprojS hg =>
       exact Ctx.KindLe.mono (fun a ha => (Ctx.Root_proj.mp ha).1) (kind_canon hg)
   | .ksub hg hsub => exact (kind_canon hg).sub hsub
+  -- **T3** as an evidence rule: the canonical form is `Ctx.KindLe.mono`,
+  -- one line, with `cap_canon` on the capture premise.
+  | .kle hf hg => exact Ctx.KindLe.mono (cap_canon hf) (kind_canon hg)
 
 /-- The equality analogue of item 6: closed capture equality evidence gives
 equality of roots. -/
@@ -599,6 +602,12 @@ theorem mor_canon {src : Telescope (s,x)} {m : Morphism s} {Tel : Telescope (s,x
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, Es ▹ .kindC _ _, by simp [entries, hEs],
         .kindC hT (.kindC hAt) (sideC_canon hq) (Cls.Kind.AdmitsStep.admits hsub)⟩
+  -- `leC`'s case with `sideC_canon` twice and the closed kinding read by
+  -- `kind_canon`.
+  | .kindCle hm hh hq hq' hg =>
+      obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
+      exact ⟨n + 1, Es ▹ .kindCle _ _ _, by simp [entries, hEs],
+        .kindCle hT hh (sideC_canon hq) (sideC_canon hq') (kind_canon hg)⟩
   | .bnd hm he =>
       obtain ⟨n₁, Es, hEs, hT⟩ := mor_canon hm
       obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he

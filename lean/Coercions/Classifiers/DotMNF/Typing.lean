@@ -85,6 +85,12 @@ inductive Ctx : Sig → Type where
       carrying the witness set it stands for.  It is Capless's
       `CBinding.inst`, and it is the one binder `Subcap.inst` reads. -/
   | consInst : Ctx s → CaptureSet s → Ctx (s,c)
+  /-- A platform capture binder with a declared classifier.  `consC` is this
+      binder with no declaration, and it translates to `∗`.  It is a seventh
+      constructor and not a payload on `consC`, so that `Platform.ctx`,
+      `Platform.store` and every existing source example keep their context
+      (decision 10). -/
+  | consCls : Ctx s → Cls.Classifier → Ctx (s,c)
 
 /-- The type of a variable, weakened into the current scope.  The self
 binder of a literal has type `(μ S) ^ U`, weakened, which is the plan's
@@ -97,6 +103,7 @@ def Ctx.lookup : Ctx s → BVar s .var → Ty s
   | .consC Γ, .there y => (Γ.lookup y).weaken
   | .consRoot Γ, .there y => (Γ.lookup y).weaken
   | .consInst Γ _, .there y => (Γ.lookup y).weaken
+  | .consCls Γ _, .there y => (Γ.lookup y).weaken
 
 /-- The set an instance binder stands for, weakened into the current scope,
 if the binder is an instance binder at all. -/
@@ -109,11 +116,52 @@ def Ctx.instSet? : Ctx s → BVar s .cap → Option (CaptureSet s)
   | .consRoot _, .here => none
   | .consInst _ C, .here => some C.weaken
   | .consInst Γ _, .there κ => (Γ.instSet? κ).map CaptureSet.weaken
+  | .consCls _ _, .here => none
+  | .consCls Γ _, .there κ => (Γ.instSet? κ).map CaptureSet.weaken
 
 /-- `κ` is an instance binder standing for `C`.  An `abbrev`, so `Decidable`
 is synthesised and a derivation may discharge it by `decide`. -/
 abbrev Ctx.InstOf (Γ : Ctx s) (κ : BVar s .cap) (C : CaptureSet s) : Prop :=
   Γ.instSet? κ = some C
+
+/-- The classifier a capture binder declares, if it declares one.  Only a
+`consCls` binder does, which is Fact 2 on the source side.  A classifier is
+closed data, so nothing is weakened on the way out. -/
+def Ctx.clsOfB : Ctx s → BVar s .cap → Option Cls.Classifier
+  | .consCls _ c, .here => some c
+  | .consCls Γ _, .there κ => Γ.clsOfB κ
+  | .cons Γ _, .there κ => Γ.clsOfB κ
+  | .consSelf Γ _ _ _, .there κ => Γ.clsOfB κ
+  | .consC Γ, .there κ => Γ.clsOfB κ
+  | .consC _, .here => none
+  | .consRoot Γ, .there κ => Γ.clsOfB κ
+  | .consRoot _, .here => none
+  | .consInst Γ _, .there κ => Γ.clsOfB κ
+  | .consInst _ _, .here => none
+
+/-- The classifier an atom's binder declares.  It answers only at a capture
+binder, mirroring the target's `FCdot.Ctx.clsOf?`. -/
+def Ctx.clsOf? : Ctx s → CapAtom s → Option Cls.Classifier
+  | Γ, .cvar κ => Γ.clsOfB κ
+  | _, _ => none
+
+/-- `a` is a binder with declared classifier `c`.  An `abbrev`, so
+`Decidable` is synthesised and a derivation may discharge it by `decide`,
+which is `Ctx.InstOf`'s discipline. -/
+abbrev Ctx.ClsOf (Γ : Ctx s) (a : CapAtom s) (c : Cls.Classifier) : Prop :=
+  Γ.clsOf? a = some c
+
+/-! ### The classified binder is read back
+
+A declared classifier is read back at the binder, which is the discipline
+`Ctx.InstOf` set.  The other two facts of the new constructor, that it is a
+rigid capture binder and not a scope root, are stated with the level
+machinery below, where `Ctx.rootB` and `Ctx.root?` are in scope. -/
+
+/-- A declared classifier is read back at the binder, by `decide`. -/
+theorem Ctx.clsOf_consCls (c : Cls.Classifier) :
+    (Ctx.nil.consCls c).ClsOf (.cvar .here) c := by
+  simp [Ctx.ClsOf, Ctx.clsOf?, Ctx.clsOfB]
 
 /-! ## Where a written type's reading comes from
 
@@ -132,6 +180,7 @@ def Ctx.root? : Ctx s → Option (BVar s .cap)
   | .consInst Γ _ => Γ.root?.map .there
   | .cons Γ _ => Γ.root?.map .there
   | .consSelf Γ _ _ _ => Γ.root?.map .there
+  | .consCls Γ _ => Γ.root?.map .there
 
 /-- The reading of a position: the innermost root of the context as a
 singleton, and the program's platform set `P` where the context has none.
@@ -166,11 +215,13 @@ def Ctx.lvl : Ctx s → BVar s k → Option (BVar s .cap)
   | .consInst Γ _, .here => Γ.root?.map .there
   | .cons Γ _, .here => Γ.root?.map .there
   | .consSelf Γ _ _ _, .here => Γ.root?.map .there
+  | .consCls Γ _, .here => Γ.root?.map .there
   | .consRoot Γ, .there y => (Γ.lvl y).map .there
   | .consC Γ, .there y => (Γ.lvl y).map .there
   | .consInst Γ _, .there y => (Γ.lvl y).map .there
   | .cons Γ _, .there y => (Γ.lvl y).map .there
   | .consSelf Γ _ _ _, .there y => (Γ.lvl y).map .there
+  | .consCls Γ _, .there y => (Γ.lvl y).map .there
 
 /-- The binder is a scope root.  Only `consRoot` opens one, so a platform
 capture binder and an instance binder are `false` at their own binder. -/
@@ -178,11 +229,13 @@ def Ctx.rootB : Ctx s → BVar s .cap → Bool
   | .consRoot _, .here => true
   | .consC _, .here => false
   | .consInst _ _, .here => false
+  | .consCls _ _, .here => false
   | .consRoot Γ, .there κ => Γ.rootB κ
   | .consC Γ, .there κ => Γ.rootB κ
   | .consInst Γ _, .there κ => Γ.rootB κ
   | .cons Γ _, .there κ => Γ.rootB κ
   | .consSelf Γ _ _ _, .there κ => Γ.rootB κ
+  | .consCls Γ _, .there κ => Γ.rootB κ
 
 /-- The atom is a scope root of the source context.  There is no universal
 root on the source side, so only a capture binder can be one. -/
@@ -196,6 +249,10 @@ def Ctx.lvlLeB (Γ : Ctx s) : CapAtom s → CapAtom s → Bool
   | .var x, .cvar ρ => FCdot.depthGe ((Γ.lvl x).map FCdot.BVar.depth) (some ρ.depth)
   | .cvar κ, .cvar ρ => FCdot.depthGe ((Γ.lvl κ).map FCdot.BVar.depth) (some ρ.depth)
   | .sel x _, .cvar ρ => FCdot.depthGe ((Γ.lvl x).map FCdot.BVar.depth) (some ρ.depth)
+  /- A projection is at the level of what it projects (decision D8 of K2).
+     The target reads through a projection on both sides already, so the
+     clause is added for the two calculi to agree. -/
+  | .proj a _, r => Γ.lvlLeB a r
   | _, _ => false
 
 /-- `r` is a scope root of `Γ`.  An `abbrev`, so that `Decidable` is
@@ -205,6 +262,14 @@ abbrev Ctx.IsRoot (Γ : Ctx s) (r : CapAtom s) : Prop := Γ.isRootB r = true
 /-- `e` is at or outside the level of `r`.  An `abbrev`, for the same
 reason. -/
 abbrev Ctx.LvlLe (Γ : Ctx s) (e r : CapAtom s) : Prop := Γ.lvlLeB e r = true
+
+/-- A classified binder is not a scope root, exactly as `consC` is not. -/
+theorem Ctx.rootB_consCls {s : Sig} (Γ : Ctx s) (c : Cls.Classifier) :
+    (Γ.consCls c).rootB .here = false := rfl
+
+/-- And it does not become the innermost root of its own context. -/
+theorem Ctx.root?_consCls {s : Sig} (Γ : Ctx s) (c : Cls.Classifier) :
+    (Γ.consCls c).root? = Γ.root?.map .there := rfl
 
 /-! ### The spine facts
 
@@ -281,6 +346,15 @@ theorem Ctx.root?_isRoot {s : Sig} (Γ : Ctx s) :
           subst h
           simp only [Ctx.rootB]
           exact ih hr
+  | consCls Γ c ih =>
+      intro ρ h
+      cases hr : Γ.root? with
+      | none => simp [Ctx.root?, hr] at h
+      | some ρ₀ =>
+          simp only [Ctx.root?, hr, Option.map_some, Option.some.injEq] at h
+          subst h
+          simp only [Ctx.rootB]
+          exact ih hr
 
 /-- A root binder is at its own level. -/
 theorem Ctx.lvl_root {s : Sig} (Γ : Ctx s) :
@@ -314,6 +388,13 @@ theorem Ctx.lvl_root {s : Sig} (Γ : Ctx s) :
           simp only [Ctx.rootB] at h
           simp only [Ctx.lvl, ih h, Option.map_some]
   | consInst Γ C ih =>
+      intro κ h
+      cases κ with
+      | here => simp [Ctx.rootB] at h
+      | there κ₀ =>
+          simp only [Ctx.rootB] at h
+          simp only [Ctx.lvl, ih h, Option.map_some]
+  | consCls Γ c ih =>
       intro κ h
       cases κ with
       | here => simp [Ctx.rootB] at h
@@ -418,6 +499,25 @@ theorem Ctx.lvl_isRoot {s : Sig} (Γ : Ctx s) :
               subst h
               simp only [Ctx.rootB]
               exact ih hl
+  | consCls Γ c ih =>
+      intro k y κ₀ h
+      cases y with
+      | here =>
+          cases hr : Γ.root? with
+          | none => simp [Ctx.lvl, hr] at h
+          | some ρ =>
+              simp only [Ctx.lvl, hr, Option.map_some, Option.some.injEq] at h
+              subst h
+              simp only [Ctx.rootB]
+              exact Γ.root?_isRoot hr
+      | there y₀ =>
+          cases hl : Γ.lvl y₀ with
+          | none => simp [Ctx.lvl, hl] at h
+          | some κ₁ =>
+              simp only [Ctx.lvl, hl, Option.map_some, Option.some.injEq] at h
+              subst h
+              simp only [Ctx.rootB]
+              exact ih hl
 
 /-- The innermost root has minimal depth among the roots. -/
 theorem Ctx.root?_min {s : Sig} (Γ : Ctx s) :
@@ -480,6 +580,19 @@ theorem Ctx.root?_min {s : Sig} (Γ : Ctx s) :
               simp only [Ctx.rootB] at hκ
               simp only [FCdot.BVar.depth_there]
               exact Nat.succ_le_succ (ih hr hκ)
+  | consCls Γ c ih =>
+      intro ρ κ h hκ
+      cases κ with
+      | here => simp [Ctx.rootB] at hκ
+      | there κ₀ =>
+          cases hr : Γ.root? with
+          | none => simp [Ctx.root?, hr] at h
+          | some ρ₀ =>
+              simp only [Ctx.root?, hr, Option.map_some, Option.some.injEq] at h
+              subst h
+              simp only [Ctx.rootB] at hκ
+              simp only [FCdot.BVar.depth_there]
+              exact Nat.succ_le_succ (ih hr hκ)
 
 /-- A context with no root binder has every binder at the outermost level. -/
 theorem Ctx.root?_none {s : Sig} (Γ : Ctx s) :
@@ -511,6 +624,12 @@ theorem Ctx.root?_none {s : Sig} (Γ : Ctx s) :
       cases y with
       | here => simp [Ctx.lvl, h]
       | there y₀ => simp [Ctx.lvl, ih y₀ h]
+  | consCls Γ c ih =>
+      intro k y h
+      simp only [Ctx.root?, Option.map_eq_none_iff] at h
+      cases y with
+      | here => simp [Ctx.lvl, h]
+      | there y₀ => simp [Ctx.lvl, ih y₀ h]
 
 /-- A root is at or outside its own level. -/
 theorem Ctx.LvlLe.refl_of_root {s : Sig} {Γ : Ctx s} {r : CapAtom s}
@@ -520,10 +639,29 @@ theorem Ctx.LvlLe.refl_of_root {s : Sig} {Γ : Ctx s} {r : CapAtom s}
   | sel x A => simp [Ctx.IsRoot, Ctx.isRootB] at h
   | any => simp [Ctx.IsRoot, Ctx.isRootB] at h
   | fresh => simp [Ctx.IsRoot, Ctx.isRootB] at h
+  | proj a φ => simp [Ctx.IsRoot, Ctx.isRootB] at h
   | cvar κ =>
       simp only [Ctx.IsRoot, Ctx.isRootB] at h
       have hκ : Γ.lvl κ = some κ := Γ.lvl_root h
       simp [Ctx.LvlLe, Ctx.lvlLeB, hκ, FCdot.depthGe]
+
+/-- A projection is at the level of what it projects.  The clause of
+`Ctx.lvlLeB` read as an equation, and the step every proof below takes at a
+projected atom. -/
+@[simp] theorem Ctx.lvlLeB_proj {s : Sig} (Γ : Ctx s) (a : CapAtom s) (φ : Cls.Kind)
+    (r : CapAtom s) : Γ.lvlLeB (.proj a φ) r = Γ.lvlLeB a r := rfl
+
+/-- A root at a smaller depth is still at or outside the level of `e`.  The
+inner step of transitivity, by induction on `e` because a projection reads
+through to what it projects. -/
+theorem Ctx.lvlLe_depth_step {s : Sig} {Γ : Ctx s} {κ ρ : BVar s .cap} :
+    ∀ {e : CapAtom s}, Γ.LvlLe e (.cvar κ) → ρ.depth ≤ κ.depth → Γ.LvlLe e (.cvar ρ)
+  | .var _, h, hd => Ctx.depthGe_step h hd
+  | .cvar _, h, hd => Ctx.depthGe_step h hd
+  | .sel _ _, h, hd => Ctx.depthGe_step h hd
+  | .any, h, _ => by simp [Ctx.LvlLe, Ctx.lvlLeB] at h
+  | .fresh, h, _ => by simp [Ctx.LvlLe, Ctx.lvlLeB] at h
+  | .proj a _, h, hd => Ctx.lvlLe_depth_step (e := a) h hd
 
 /-- Transitivity through a root. -/
 theorem Ctx.LvlLe.trans {s : Sig} {Γ : Ctx s} {e r r' : CapAtom s}
@@ -533,6 +671,7 @@ theorem Ctx.LvlLe.trans {s : Sig} {Γ : Ctx s} {e r r' : CapAtom s}
   | sel x A => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | any => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | fresh => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | proj a φ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | cvar κ =>
       simp only [Ctx.IsRoot, Ctx.isRootB] at hr
       have hκ : Γ.lvl κ = some κ := Γ.lvl_root hr
@@ -541,17 +680,13 @@ theorem Ctx.LvlLe.trans {s : Sig} {Γ : Ctx s} {e r r' : CapAtom s}
       | sel x A => simp [Ctx.LvlLe, Ctx.lvlLeB] at h₂
       | any => simp [Ctx.LvlLe, Ctx.lvlLeB] at h₂
       | fresh => simp [Ctx.LvlLe, Ctx.lvlLeB] at h₂
+      | proj a φ => simp [Ctx.LvlLe, Ctx.lvlLeB] at h₂
       | cvar ρ =>
           have hd : ρ.depth ≤ κ.depth := by
             simp only [Ctx.LvlLe, Ctx.lvlLeB, hκ, Option.map_some, FCdot.depthGe,
               decide_eq_true_eq] at h₂
             exact h₂
-          cases e with
-          | var x => exact Ctx.depthGe_step h₁ hd
-          | cvar ν => exact Ctx.depthGe_step h₁ hd
-          | sel x A => exact Ctx.depthGe_step h₁ hd
-          | any => simp [Ctx.LvlLe, Ctx.lvlLeB] at h₁
-          | fresh => simp [Ctx.LvlLe, Ctx.lvlLeB] at h₁
+          exact Ctx.lvlLe_depth_step h₁ hd
 
 /-! ### The weakening commutations
 
@@ -563,42 +698,74 @@ and never reads the head binder.  One lemma per appending constructor. -/
 theorem Ctx.lvlLeB_weaken {s : Sig} (Γ : Ctx s) (T : Ty s) (e r : CapAtom s) :
     (Γ.cons T).lvlLeB (CapAtom.weaken (k := .var) e) (CapAtom.weaken (k := .var) r)
       = Γ.lvlLeB e r := by
-  cases e <;> cases r <;> first
-    | rfl
-    | exact Ctx.depthGe_there _ _
+  induction e with
+  | var x => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | cvar κ => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | sel x A => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | any => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | fresh => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | proj a φ ih => first | exact ih | simpa [CapAtom.rename] using ih
 
 /-- The self binder of a literal. -/
 theorem Ctx.lvlLeB_weakenSelf {s : Sig} (Γ : Ctx s) (d : Defs (s,x)) (S : Shape (s,x))
     (U : CaptureSet s) (e r : CapAtom s) :
     (Γ.consSelf d S U).lvlLeB (CapAtom.weaken (k := .var) e) (CapAtom.weaken (k := .var) r)
       = Γ.lvlLeB e r := by
-  cases e <;> cases r <;> first
-    | rfl
-    | exact Ctx.depthGe_there _ _
+  induction e with
+  | var x => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | cvar κ => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | sel x A => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | any => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | fresh => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | proj a φ ih => first | exact ih | simpa [CapAtom.rename] using ih
 
 /-- A rigid capture binder. -/
 theorem Ctx.lvlLeB_weakenC {s : Sig} (Γ : Ctx s) (e r : CapAtom s) :
     (Γ.consC).lvlLeB (CapAtom.weaken (k := .cap) e) (CapAtom.weaken (k := .cap) r)
       = Γ.lvlLeB e r := by
-  cases e <;> cases r <;> first
-    | rfl
-    | exact Ctx.depthGe_there _ _
+  induction e with
+  | var x => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | cvar κ => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | sel x A => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | any => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | fresh => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | proj a φ ih => first | exact ih | simpa [CapAtom.rename] using ih
 
 /-- A scope root. -/
 theorem Ctx.lvlLeB_weakenRoot {s : Sig} (Γ : Ctx s) (e r : CapAtom s) :
     (Γ.consRoot).lvlLeB (CapAtom.weaken (k := .cap) e) (CapAtom.weaken (k := .cap) r)
       = Γ.lvlLeB e r := by
-  cases e <;> cases r <;> first
-    | rfl
-    | exact Ctx.depthGe_there _ _
+  induction e with
+  | var x => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | cvar κ => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | sel x A => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | any => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | fresh => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | proj a φ ih => first | exact ih | simpa [CapAtom.rename] using ih
 
 /-- An instance binder. -/
 theorem Ctx.lvlLeB_weakenInst {s : Sig} (Γ : Ctx s) (C : CaptureSet s) (e r : CapAtom s) :
     (Γ.consInst C).lvlLeB (CapAtom.weaken (k := .cap) e) (CapAtom.weaken (k := .cap) r)
       = Γ.lvlLeB e r := by
-  cases e <;> cases r <;> first
-    | rfl
-    | exact Ctx.depthGe_there _ _
+  induction e with
+  | var x => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | cvar κ => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | sel x A => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | any => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | fresh => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | proj a φ ih => first | exact ih | simpa [CapAtom.rename] using ih
+
+/-- A classified capture binder. -/
+theorem Ctx.lvlLeB_weakenCls {s : Sig} (Γ : Ctx s) (c : Cls.Classifier) (e r : CapAtom s) :
+    (Γ.consCls c).lvlLeB (CapAtom.weaken (k := .cap) e) (CapAtom.weaken (k := .cap) r)
+      = Γ.lvlLeB e r := by
+  induction e with
+  | var x => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | cvar κ => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | sel x A => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | any => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | fresh => cases r <;> first | rfl | exact Ctx.depthGe_there _ _
+  | proj a φ ih => first | exact ih | simpa [CapAtom.rename] using ih
 
 /-! ## The scope contexts
 
@@ -699,6 +866,77 @@ inductive Subcap : {s : Sig} → Ctx s → CaptureSet s → CaptureSet s → Typ
       {A : Label} {c1 c2 D : CaptureSet s} :
       HasTy U Γ (.path (.var x)) (.ty ((Shape.cap A c1 c2) ^ D)) →
       Subcap Γ [.sel x A] c2
+  /-- A projection only drops atoms, so a projected set is below the set it
+      projects.  The source twin of `FCdot.CapCo.HasType.unprojC`. -/
+  | unproj {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {φ : Cls.Kind} :
+      Subcap Γ (CaptureSet.proj C φ) C
+  /-- `sc-proj` (`Subcapt.lean:69`), stated on a set: a set every capability
+      of which carries a classifier `φ` admits loses nothing under the
+      projection at `φ`.  The source twin of `FCdot.CapCo.HasType.projC`. -/
+  | proj {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {φ : Cls.Kind} :
+      CapKind Γ C φ → Subcap Γ C (CaptureSet.proj C φ)
+  /-- The congruence.  `sc-var` at a projection is this rule composed with
+      `var`, since `[a].proj ψ` is `[a ↾ ψ]`.  The source twin of
+      `FCdot.CapCo.HasType.projMono`. -/
+  | projMono {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} {ψ : Cls.Kind} :
+      Subcap Γ C D → Subcap Γ (CaptureSet.proj C ψ) (CaptureSet.proj D ψ)
+
+/-- Capture kinding `Γ ⊢ C :ᶜ φ`: every capability the set `C` reaches
+carries a classifier that `φ` admits.  It is `Type`-valued and it lives in
+this block, because `ksel` premises `HasTy` and because the translation is a
+function into the target's `FCdot.KindCo` (decision D1 of K2).  It mirrors
+`FCdot.KindCo.HasType` rule by rule, with `ksel` in place of `kmember`.
+Every rule concludes about a general atom and reads `CapAtom.base` and
+`CapAtom.kindOf`, which is `Cls.Kind.top` at a bare atom, so the family
+covers a bare atom exactly as Capless(K)'s does. -/
+inductive CapKind : {s : Sig} → Ctx s → CaptureSet s → Cls.Kind → Type where
+  /-- k-empty (`Subcapt.lean:55`). -/
+  | nil {s : Sig} {Γ : Ctx s} {φ : Cls.Kind} : CapKind Γ [] φ
+  /-- k-union (`Subcapt.lean:53`). -/
+  | cons {s : Sig} {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s} {φ : Cls.Kind} :
+      CapKind Γ [a] φ → CapKind Γ C φ → CapKind Γ (a :: C) φ
+  /-- k-cbound and k-absurd in one (`Subcapt.lean:50,54`), read through
+      `CapAtom.kindOf`, which is `⊤` at a bare atom.  At a bare atom the
+      premise asks that `φ` admit every classifier, which is what a root
+      stands for. -/
+  | kproj {s : Sig} {Γ : Ctx s} {a : CapAtom s} {φ : Cls.Kind} :
+      a.kindOf.Subkind φ → CapKind Γ [a] φ
+  /-- k-label and k-label-absurd in one (`Subcapt.lean:51-52`), at a binder
+      that declares a classifier.  A `consC` binder declares none and is
+      kinded only by `kproj`: an unwritten classifier means unknown, which
+      is the K1 addendum and the revised decision 9. -/
+  | kcls {s : Sig} {Γ : Ctx s} {a : CapAtom s} {c : Cls.Classifier} {φ : Cls.Kind} :
+      Ctx.ClsOf Γ a.base c → (a.kindOf.Contains c → φ.Contains c) →
+      CapKind Γ [a] φ
+  /-- k-var (`Subcapt.lean:48`), at the source's own `sc-var`. -/
+  | kvar {s : Sig} {Γ : Ctx s} {a : CapAtom s} {x : BVar s .var} {φ : Cls.Kind} :
+      a.base = CapAtom.var x →
+      CapKind Γ (CaptureSet.proj (Γ.lookup x).captureSet a.kindOf) φ →
+      CapKind Γ [a] φ
+  /-- k-cvar (`Subcapt.lean:49`).  The source's only set-bounded capture
+      binder is the instance binder, so `Ctx.InstOf` is the whole premise. -/
+  | kcvar {s : Sig} {Γ : Ctx s} {a : CapAtom s} {κ : BVar s .cap}
+      {C : CaptureSet s} {φ : Cls.Kind} :
+      a.base = CapAtom.cvar κ → Ctx.InstOf Γ κ C →
+      CapKind Γ (CaptureSet.proj C a.kindOf) φ → CapKind Γ [a] φ
+  /-- The elimination of a kind-bounded capture member `{C : φ}`, beside
+      `Subcap.selUpper`.  It translates to `FCdot.KindCo.kmember`. -/
+  | ksel {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {x : BVar s .var}
+      {A : Label} {φ : Cls.Kind} {D : CaptureSet s} :
+      HasTy U Γ (.path (.var x)) (.ty ((Shape.capk A φ) ^ D)) →
+      CapKind Γ [.sel x A] φ
+  /-- A projection only shrinks a set, so a kinded set stays kinded under
+      one. -/
+  | kprojS {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {ψ φ : Cls.Kind} :
+      CapKind Γ C φ → CapKind Γ (CaptureSet.proj C ψ) φ
+  /-- k-sub (`Subcapt.lean:99-109`), a primitive constructor. -/
+  | ksub {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {φ₁ φ₂ : Cls.Kind} :
+      CapKind Γ C φ₁ → φ₁.Subkind φ₂ → CapKind Γ C φ₂
+  /-- Kinding is antitone along subcapturing.  The source twin of
+      `FCdot.Ctx.KindLe.mono`, and what `SubShape.capkI` needs at a
+      literal. -/
+  | kle {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} {φ : Cls.Kind} :
+      Subcap Γ C D → CapKind Γ D φ → CapKind Γ C φ
 
 /-- Shape subtyping.  Vanilla's subtyping, on shapes, with capturing types
 where vanilla had types, plus `cap` for capture-member declarations and
@@ -743,6 +981,15 @@ inductive SubShape : {s : Sig} → Ctx s → Shape s → Shape s → Type where
       Sub Γ.scope T2.underRoot T1.underRoot →
       ESub (Γ.body T2) U1.underRoot U2.underRoot →
       SubShape Γ (.all T1 U1) (.all T2 U2)
+  /-- Introduction of a kind bound: a set-bounded member whose upper bound
+      is kinded at `φ` is below the member bounded by `φ`.  It is sound by
+      `FCdot.Ctx.KindLe.mono`, and it is how a literal reaches a kind bound,
+      since there is no definition form for `capk` (decision 17). -/
+  | capkI {s : Sig} {Γ : Ctx s} {A : Label} {c1 c2 : CaptureSet s} {φ : Cls.Kind} :
+      CapKind Γ c2 φ → SubShape Γ (.cap A c1 c2) (.capk A φ)
+  /-- Widening of a kind bound. -/
+  | capk {s : Sig} {Γ : Ctx s} {A : Label} {φ₁ φ₂ : Cls.Kind} :
+      φ₁.Subkind φ₂ → SubShape Γ (.capk A φ₁) (.capk A φ₂)
 
 /-- Subtyping on capturing types: `Capt`. -/
 inductive Sub : {s : Sig} → Ctx s → Ty s → Ty s → Type where
@@ -856,6 +1103,83 @@ inductive DefsTy : {s : Sig} → CaptureSet s → Ctx s → Defs s → Shape s �
       HasTy U Γ t (.ty T) → DefsTy U Γ (.trm a t) (.fld a T)
   | and {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {d1 d2 : Defs s} {S1 S2 : Shape s} :
       DefsTy U Γ d1 S1 → DefsTy U Γ d2 S2 → DefsTy U Γ (.and d1 d2) (.and S1 S2)
+
+end
+
+/-! ## Member-free source evidence
+
+**T-B3.4, step 3.**  Source subcapturing that reads no telescope and no
+instance binder: it is `refl`, `trans`, `elem`, `union`, `var` and `level`,
+and now the three projection rules, and it excludes `inst`, `selLower` and
+`selUpper`.  Those three are exactly the rules whose translation is
+`eqToLe` or `member`, which are exactly the two target rules
+`FCdot.CapCo.MemberFree` excludes, and exactly where a bad capture bound can
+enter (example C3).  Kinding evidence that reads no telescope is the same
+restriction on `CapKind`: it excludes `ksel`, exactly as
+`FCdot.KindCo.MemberFree` excludes `kmember`.
+
+The two are one mutual block, because `Subcap.proj` premises a kinding and
+`CapKind.kle` premises a subcapturing.  That is why they sit here, beside
+the judgments, and not in `DotToFCdot/Evidence.lean` where the subcapturing
+half was stated before K2. -/
+
+mutual
+
+/-- Source subcapturing that reads no telescope and no instance binder. -/
+inductive Subcap.MemberFree : {s : Sig} → {Γ : Ctx s} → {C D : CaptureSet s} →
+    Subcap Γ C D → Prop where
+  | refl {s : Sig} {Γ : Ctx s} {C : CaptureSet s} :
+      (Subcap.refl (Γ := Γ) (C := C)).MemberFree
+  | trans {s : Sig} {Γ : Ctx s} {C1 C2 C3 : CaptureSet s}
+      {d : Subcap Γ C1 C2} {e : Subcap Γ C2 C3} :
+      d.MemberFree → e.MemberFree → (Subcap.trans d e).MemberFree
+  | elem {s : Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s}
+      (h : CaptureSet.Subset C1 C2) : (Subcap.elem (Γ := Γ) h).MemberFree
+  | union {s : Sig} {Γ : Ctx s} {C1 C2 D : CaptureSet s}
+      {d : Subcap Γ C1 D} {e : Subcap Γ C2 D} :
+      d.MemberFree → e.MemberFree → (Subcap.union d e).MemberFree
+  | var {s : Sig} {Γ : Ctx s} {x : BVar s .var} :
+      (Subcap.var (Γ := Γ) (x := x)).MemberFree
+  | level {s : Sig} {Γ : Ctx s} {e : CapAtom s} {κ : BVar s .cap}
+      (h₁ : Ctx.IsRoot Γ (.cvar κ)) (h₂ : Ctx.LvlLe Γ e (.cvar κ)) :
+      (Subcap.level h₁ h₂).MemberFree
+  | unproj {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {φ : Cls.Kind} :
+      (Subcap.unproj (Γ := Γ) (C := C) (φ := φ)).MemberFree
+  | proj {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {φ : Cls.Kind}
+      {g : CapKind Γ C φ} : g.MemberFree → (Subcap.proj g).MemberFree
+  | projMono {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} {ψ : Cls.Kind}
+      {d : Subcap Γ C D} : d.MemberFree → (Subcap.projMono (ψ := ψ) d).MemberFree
+
+/-- Source kinding that reads no telescope: no `ksel`. -/
+inductive CapKind.MemberFree : {s : Sig} → {Γ : Ctx s} → {C : CaptureSet s} →
+    {φ : Cls.Kind} → CapKind Γ C φ → Prop where
+  | nil {s : Sig} {Γ : Ctx s} {φ : Cls.Kind} :
+      (CapKind.nil (Γ := Γ) (φ := φ)).MemberFree
+  | cons {s : Sig} {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s} {φ : Cls.Kind}
+      {g : CapKind Γ [a] φ} {h : CapKind Γ C φ} :
+      g.MemberFree → h.MemberFree → (CapKind.cons g h).MemberFree
+  | kproj {s : Sig} {Γ : Ctx s} {a : CapAtom s} {φ : Cls.Kind}
+      (h : a.kindOf.Subkind φ) : (CapKind.kproj (Γ := Γ) (a := a) h).MemberFree
+  | kcls {s : Sig} {Γ : Ctx s} {a : CapAtom s} {c : Cls.Classifier} {φ : Cls.Kind}
+      (h₁ : Ctx.ClsOf Γ a.base c) (h₂ : a.kindOf.Contains c → φ.Contains c) :
+      (CapKind.kcls h₁ h₂).MemberFree
+  | kvar {s : Sig} {Γ : Ctx s} {a : CapAtom s} {x : BVar s .var} {φ : Cls.Kind}
+      (h : a.base = CapAtom.var x)
+      {g : CapKind Γ (CaptureSet.proj (Γ.lookup x).captureSet a.kindOf) φ} :
+      g.MemberFree → (CapKind.kvar h g).MemberFree
+  | kcvar {s : Sig} {Γ : Ctx s} {a : CapAtom s} {κ : BVar s .cap}
+      {C : CaptureSet s} {φ : Cls.Kind}
+      (h : a.base = CapAtom.cvar κ) (hi : Ctx.InstOf Γ κ C)
+      {g : CapKind Γ (CaptureSet.proj C a.kindOf) φ} :
+      g.MemberFree → (CapKind.kcvar h hi g).MemberFree
+  | kprojS {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {ψ φ : Cls.Kind}
+      {g : CapKind Γ C φ} : g.MemberFree → (CapKind.kprojS (ψ := ψ) g).MemberFree
+  | ksub {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {φ₁ φ₂ : Cls.Kind}
+      {g : CapKind Γ C φ₁} (h : φ₁.Subkind φ₂) :
+      g.MemberFree → (CapKind.ksub g h).MemberFree
+  | kle {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} {φ : Cls.Kind}
+      {f : Subcap Γ C D} {g : CapKind Γ D φ} :
+      f.MemberFree → g.MemberFree → (CapKind.kle f g).MemberFree
 
 end
 

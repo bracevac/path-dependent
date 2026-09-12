@@ -508,6 +508,12 @@ inductive KindCo : Sig → Type where
       target is what the checker is given, and the source is what it has to
       be told. -/
   | ksub : KindCo s → Cls.Kind → KindCo s
+  /-- The evidence form of `Ctx.KindLe.mono`: a set below a kinded set is
+      kinded.  It is what the source's own `CapKind.kle` translates to.  It
+      makes `kprojS` derivable through `CapCo.unprojC`, and `kprojS` is kept
+      anyway, because the checker reads the source set off the evidence term
+      and `CaptureSet.proj` is not invertible. -/
+  | kle : CapCo s → KindCo s → KindCo s
 
 /-- Equality evidence between capture sets. -/
 inductive CapEq : Sig → Type where
@@ -588,6 +594,15 @@ inductive Morphism : Sig → Type where
       term because the checker synthesises the target telescope and nothing
       else determines it. -/
   | kindC : Morphism s → SideC s → Nat → Cls.Kind → Morphism s
+  /-- A template for a target kinding proposition that reads a *capture*
+      hole of the source telescope: a side chain, a hole naming a source
+      capture proposition, a side chain into a weakened closed set, closed
+      kinding evidence for that set, and the target kind.  It is `leC`'s
+      shape with a closed kinding appended.  A set-bounded capture member
+      compiles to a telescope with no kinding proposition at all, so
+      `kindC` has no hole to read there and this is the rule that reaches
+      the kind bound. -/
+  | kindCle : Morphism s → SideC s → HoleC → SideC s → KindCo s → Cls.Kind → Morphism s
 
 /-- Atoms: a variable under wrappers that erase to nothing. -/
 inductive Atom : Sig → Type where
@@ -693,6 +708,7 @@ def KindCo.rename : KindCo s1 → Rename s1 s2 → KindCo s2
   | .kmember b e i, ρ => .kmember (b.rename ρ) (e.rename ρ) i
   | .kprojS g C ψ, ρ => .kprojS (g.rename ρ) (C.rename ρ) ψ
   | .ksub g φ, ρ => .ksub (g.rename ρ) φ
+  | .kle f g, ρ => .kle (f.rename ρ) (g.rename ρ)
 
 def CapEq.rename : CapEq s1 → Rename s1 s2 → CapEq s2
   | .refl C, ρ => .refl (C.rename ρ)
@@ -737,6 +753,8 @@ def Morphism.rename : Morphism s1 → Rename s1 s2 → Morphism s2
   | .leC m q h q', ρ => .leC (m.rename ρ) (q.rename ρ) h (q'.rename ρ)
   | .eqC m j b, ρ => .eqC (m.rename ρ) j b
   | .kindC m q j φ, ρ => .kindC (m.rename ρ) (q.rename ρ) j φ
+  | .kindCle m q h q' g φ, ρ =>
+      .kindCle (m.rename ρ) (q.rename ρ) h (q'.rename ρ) (g.rename ρ) φ
 
 def Atom.rename : Atom s1 → Rename s1 s2 → Atom s2
   | .var x, ρ => .var (ρ.var x)
@@ -1286,6 +1304,7 @@ def KindCo.subst : KindCo s1 → Subst s1 s2 → KindCo s2
   | .kmember b e i, σ => .kmember (b.subst σ) (e.subst σ) i
   | .kprojS g C ψ, σ => .kprojS (g.subst σ) (C.subst σ) ψ
   | .ksub g φ, σ => .ksub (g.subst σ) φ
+  | .kle f g, σ => .kle (f.subst σ) (g.subst σ)
 
 def CapEq.subst : CapEq s1 → Subst s1 s2 → CapEq s2
   | .refl C, σ => .refl (C.subst σ)
@@ -1330,6 +1349,8 @@ def Morphism.subst : Morphism s1 → Subst s1 s2 → Morphism s2
   | .leC m q h q', σ => .leC (m.subst σ) (q.subst σ) h (q'.subst σ)
   | .eqC m j b, σ => .eqC (m.subst σ) j b
   | .kindC m q j φ, σ => .kindC (m.subst σ) (q.subst σ) j φ
+  | .kindCle m q h q' g φ, σ =>
+      .kindCle (m.subst σ) (q.subst σ) h (q'.subst σ) (g.subst σ) φ
 
 def Atom.subst : Atom s1 → Subst s1 s2 → Atom s2
   | .var x, σ => σ.var x

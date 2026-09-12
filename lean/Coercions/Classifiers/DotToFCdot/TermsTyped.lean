@@ -114,6 +114,7 @@ theorem defSpec_of {s : Sig} {Wall : FCdot.Witnesses (s,x)} (hdist : Wall.Distin
   | .mu _, _, _ => by simp [Shape.DefSpec]
   | .typ _ _ _, _, _ => by simp [Shape.DefSpec]
   | .cap _ _ _, _, _ => by simp [Shape.DefSpec]
+  | .capk _ _, _, _ => by simp [Shape.DefSpec]
   | .fld a (.capt C S'), e, hpos => by
       simp only [Shape.witnesses] at hpos
       have h1 := hpos 0 a S'.translate FCdot.Witnesses.At.hereNil
@@ -158,6 +159,7 @@ theorem capDefSpec_of {s : Sig} {Wall : FCdot.CapWitnesses (s,x)} (hdist : Wall.
   | .mu _, _, _ => by simp [Shape.CapDefSpec]
   | .typ _ _ _, _, _ => by simp [Shape.CapDefSpec]
   | .cap _ _ _, _, _ => by simp [Shape.CapDefSpec]
+  | .capk _ _, _, _ => by simp [Shape.CapDefSpec]
   | .fld a (.capt C _), e, hpos => by
       simp only [Shape.capWitnesses] at hpos
       have h1 := hpos 0 a C.translate FCdot.CapWitnesses.At.hereNil

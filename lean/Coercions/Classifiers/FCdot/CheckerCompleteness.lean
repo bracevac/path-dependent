@@ -222,6 +222,8 @@ theorem KindCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {g : KindCo s} {C :
       simp [checkKindCore, KindCo.HasType.complete hg]
   | _, _, _, _, _, .ksub hg hk => by
       simp only [checkKindCore, dif_pos hk, KindCo.HasType.complete hg]
+  | _, _, _, _, _, .kle hf hg => by
+      simp [checkKindCore, CapCo.HasType.complete hf, KindCo.HasType.complete hg]
 
 /-- The kernel synthesises both capture sets of every capture-equality
 derivation. -/
@@ -371,6 +373,10 @@ theorem Morphism.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {src : Telescope 
   | _, _, _, _, _, .kindC hm hAt hq hsub => by
       simp only [synthMorCore, Morphism.HasType.complete hm, Telescope.getAt?_of_At hAt,
         Option.bind_eq_bind, Option.bind, dif_pos hsub, SideC.HasType.completePre hq]
+  | _, _, _, _, _, .kindCle hm hh hq hq' hg => by
+      simp [synthMorCore, Morphism.HasType.complete hm, HoleC.read?_of_HoleAtC hh,
+        SideC.HasType.completePre hq, SideC.HasType.completePost hq',
+        CaptureSet.strengthenW?_weaken, KindCo.HasType.complete hg]
 
 /-- The kernel synthesises the type of every atom derivation. -/
 theorem Atom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}

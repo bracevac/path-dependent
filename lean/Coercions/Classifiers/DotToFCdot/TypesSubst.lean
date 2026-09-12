@@ -131,6 +131,11 @@ theorem CapAtom.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Su
       rw [h.var x]
   | .any => rfl
   | .fresh => rfl
+  | .proj a φ => by
+      show ((a.subst σ).translate?).map (FCdot.CapAtom.proj · φ)
+          = ((a.translate?).map (FCdot.CapAtom.proj · φ)).map (fun b => b.subst σ')
+      rw [CapAtom.translate_subst h a]
+      cases a.translate? <;> rfl
 
 @[simp] theorem CaptureSet.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2}
     {σ' : FCdot.Subst s1 s2} (h : SubstAgree σ σ') (C : CaptureSet s1) :
@@ -138,34 +143,18 @@ theorem CapAtom.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Su
   induction C with
   | nil => rfl
   | cons a C ih =>
-      cases a with
-      | var x =>
-          show CaptureSet.translate (CapAtom.var (σ.var x) :: CaptureSet.subst C σ)
-            = FCdot.CaptureSet.subst (CaptureSet.translate (CapAtom.var x :: C)) σ'
-          rw [CaptureSet.translate_cons_var, CaptureSet.translate_cons_var, ih]
-          show FCdot.CapAtom.var (σ.var x) :: _ = FCdot.CapAtom.var (σ'.rootVar x) :: _
-          rw [h.var x]
+      have ha := CapAtom.translate_subst h a
+      show CaptureSet.translate (a.subst σ :: DotMNF.CaptureSet.subst C σ) = _
+      cases hb : a.translate? with
+      | none =>
+          rw [hb] at ha
+          rw [CaptureSet.translate_cons_none (by simpa using ha),
+            CaptureSet.translate_cons_none hb, ih]
+      | some b =>
+          rw [hb] at ha
+          rw [CaptureSet.translate_cons (by simpa using ha),
+            CaptureSet.translate_cons hb, ih]
           rfl
-      | cvar κ =>
-          show CaptureSet.translate ((σ.cvar κ) :: CaptureSet.subst C σ)
-            = FCdot.CaptureSet.subst (CaptureSet.translate (CapAtom.cvar κ :: C)) σ'
-          rw [CaptureSet.translate_cons (h.cvar κ), CaptureSet.translate_cons_cvar, ih]
-          rfl
-      | sel x A =>
-          show CaptureSet.translate (CapAtom.sel (σ.var x) A :: CaptureSet.subst C σ)
-            = FCdot.CaptureSet.subst (CaptureSet.translate (CapAtom.sel x A :: C)) σ'
-          rw [CaptureSet.translate_cons_sel, CaptureSet.translate_cons_sel, ih]
-          show FCdot.CapAtom.name (σ.var x) A :: _ = FCdot.CapAtom.name (σ'.rootVar x) A :: _
-          rw [h.var x]
-          rfl
-      | any =>
-          show CaptureSet.translate (CapAtom.any :: CaptureSet.subst C σ)
-            = FCdot.CaptureSet.subst (CaptureSet.translate (CapAtom.any :: C)) σ'
-          rw [CaptureSet.translate_cons_any, CaptureSet.translate_cons_any, ih]
-      | fresh =>
-          show CaptureSet.translate (CapAtom.fresh :: CaptureSet.subst C σ)
-            = FCdot.CaptureSet.subst (CaptureSet.translate (CapAtom.fresh :: C)) σ'
-          rw [CaptureSet.translate_cons_fresh, CaptureSet.translate_cons_fresh, ih]
 
 /-! ## The fragment tests are invariant -/
 
@@ -177,6 +166,7 @@ theorem Shape.isDecl_subst {s1 s2 : Sig} :
   | .typ _ _ _, _ => rfl
   | .fld _ _, _ => rfl
   | .cap _ _ _, _ => rfl
+  | .capk _ _, _ => rfl
   | .box _, _ => rfl
   | .all _ _, _ => rfl
   | .mu S, σ => by simp [Shape.subst, Shape.isDecl, Shape.isDecl_subst S σ.lift]
@@ -224,6 +214,10 @@ theorem Shape.translate_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Subs
         FCdot.Telescope.subst, FCdot.Proposition.subst,
         FCdot.CaptureSet.subst_name_here, FCdot.CaptureSet.weaken_subst,
         CaptureSet.translate_subst h]
+  | .capk A φ =>
+      simp [Shape.subst, Shape.translate, FCdot.Shape.subst,
+        FCdot.Telescope.subst, FCdot.Proposition.subst,
+        FCdot.CaptureSet.subst_name_here]
   | .and S1 S2 =>
       simp [Shape.subst, Shape.translate, Shape.tel, FCdot.Shape.subst,
         FCdot.Telescope.append_subst', Shape.tel_subst S1 h, Shape.tel_subst S2 h]
@@ -272,6 +266,9 @@ theorem Shape.tel_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Subst s1 s
       simp [Shape.subst, Shape.tel, FCdot.Telescope.subst, FCdot.Proposition.subst,
         FCdot.CaptureSet.subst_name_here, FCdot.CaptureSet.weaken_subst,
         CaptureSet.translate_subst h]
+  | .capk A φ =>
+      simp [Shape.subst, FCdot.Telescope.subst, FCdot.Proposition.subst,
+        FCdot.CaptureSet.subst_name_here]
   | .and S1 S2 =>
       simp [Shape.subst, Shape.tel, FCdot.Telescope.append_subst',
         Shape.tel_subst S1 h, Shape.tel_subst S2 h]
@@ -322,6 +319,9 @@ theorem Shape.telSelf_subst {s1 s2 : Sig} {σ : Subst s1 s2} {σ' : FCdot.Subst 
   | .cap A c1 c2 =>
       simp [Shape.subst, Shape.telSelf, FCdot.Telescope.subst, FCdot.Proposition.subst,
         FCdot.CaptureSet.subst_name_here, CaptureSet.translate_subst h.lift]
+  | .capk A φ =>
+      simp [Shape.subst, FCdot.Telescope.subst, FCdot.Proposition.subst,
+        FCdot.CaptureSet.subst_name_here]
   | .and S1 S2 =>
       simp [Shape.subst, Shape.telSelf, FCdot.Telescope.append_subst',
         Shape.telSelf_subst S1 h, Shape.telSelf_subst S2 h]

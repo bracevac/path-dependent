@@ -4,9 +4,10 @@ Classifiers on the compiler's way: the third capture project of plan V (`plan-5-
 `plan-5f-classifiers-stages.md`), namespace `Classifiers`.  The tree started as a verbatim copy of
 `lean/Coercions/CapturesCC/` at the commit in `BASE`, the end of captures the compiler's way, and it
 grows the classifier tree and kinds as data, classified platform binders, projected captures, kinding
-on telescopes with its evidence family, and classified prediction.  Stages K0 and K1 have landed,
-and both are the target only.  The stages after them, K2 and K3, will add the classified source and
-translation, classified prediction, and the closing examples.
+on telescopes with its evidence family, and classified prediction.  Stages K0, K1 and K2 have landed.
+K0 and K1 are the target only, and K2 is the classified source, the translation that carries the
+classifier across, and the two headline theorems.  The stage after them, K3, will add the closing
+examples.
 
 Stage K0 adds the classifier data and reads it in one place.  A classifier is a tree, a kind is a
 list of subtrees with exclusions, and both are closed data that mention no de Bruijn index, so
@@ -61,9 +62,44 @@ set are the roots of the set filtered by the kind, a projected set is kinded by 
 is antitone along subcapturing and monotone along subkinding, and kinding travels along a store
 extension.  `FCdot/README.md` has the module table, the notation and the statements.
 
-`DotMNF` is the source calculus and it is unchanged in K0 and in K1: the source writes no classifier,
-and the classified source is K2's subject.  `DotToFCdot` is the translation, and no rule, judgment or
-translation clause of it changed either.  Two of its lemmas gained the clause or the premise that
-says the source writes no projection, which is what makes its platform prefix behave as it did, and
-K1 added the mechanical clause for the new proposition to its telescope predicates and to its
-identity morphism.  `Runtime.lean` is shared with the other trees and is untouched.
+Stage K2 classifies the source, carries the classifier across the translation, and states the two
+theorems the whole development is for.  Classified prediction says that a program whose use set is
+kinded at a kind keeps a use set kinded at that kind along every run.  Classified effect safety says
+that such a program never reads a capability whose classifier lies outside the kind.  Neither needs a
+new induction: the first is capture prediction with the kinding carried to the new context by the
+store-extension lemma and pulled back along the predicted inclusion, and the second is the first
+composed with the fact that the root a state reads is covered by its use set.  Read aloud this is
+Capless(K)'s capture prediction refined by the classifier.  Where the reference bounds a set of
+runtime labels by a projected set, this bounds the classifier of every root by a kind.  The source
+side of the stage is a projected capture atom, a capture member declared at a kind, a seventh context
+binder that declares a classifier, and the source's own capture-kinding judgment with ten rules.  The
+target side is two additive evidence rules, one that composes subcapturing into kinding and one
+morphism template that produces a kinding entry from a capture hole.
+
+Five decisions shape K2.  Effect safety at the source takes the semantic hypothesis, that the
+platform capability is not a root of the declared use set, because the syntactic membership form is
+false over a projecting source, and a new platform lemma derives the semantic form from the syntactic
+one on every projection-free program, so the delivered theorem reads the old way on every program the
+copied source could write.  There is no definition form for a kind-bounded capture member: a
+literal's capture witnesses are read off its declaration shape, a kind bound carries no set, and a
+literal declared at one would be untypable, so a literal writes the set-bounded member it always did
+and reaches the kind bound by subtyping.  The two target rules land in this source stage rather than
+in a patch of their own, and the second of them is not the rule the expansion note first wrote: that
+one carried a chain out of the target set and no hole, and no such chain exists where the source rule
+needs it, which was machine checked before the replacement was written.  The source's kinding
+judgment is `Type` valued, because it premises typing and because its translation is a function into
+the target's evidence, so two derivations of the same judgment are two terms and the source has no
+kinding checker of its own, only the target's read through the translation.  And a projected `any` is
+legal while a projected `fresh` is not, because `any` is read by an expansion that pushes the reading
+under a projection and `fresh` by a syntactic membership test at the top of a result set.  The cost
+of the legal side is the one place two copied lemmas change their premise, from an atom that is not
+`any` to an atom whose base is not `any`, which is the same premise on every projection-free atom.
+
+`DotMNF` is the source calculus.  It was unchanged in K0 and in K1, and K2 is where it gains the
+projected atom, the kind bound, the classified binder and the kinding judgment.  `DotToFCdot` is the
+translation.  It was unchanged in K0 and in K1 beyond two lemmas that say the source writes no
+projection, and the mechanical clause K1 added for the new proposition to its telescope predicates
+and its identity morphism.  K2 gives it the atom clause, the shape clause, the context clause, the
+five evidence clauses and the translation of the source's kinding derivations, and it is where the
+source's four prediction theorems are stated.  `Runtime.lean` is shared with the other trees and is
+untouched.

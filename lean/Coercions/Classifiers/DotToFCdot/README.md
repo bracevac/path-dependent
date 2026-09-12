@@ -1,11 +1,11 @@
-# DotToFCdot, at stage B3 of captures the compiler's way (unchanged in K0)
+# DotToFCdot, at stage K2 of classifiers
 
-**Stage K0 of classifiers changed no rule, no judgment and no translation clause here.**  The source
-writes no classifier, so the translation produces no projected capture atom, and the two lemmas that
-say so are the only lines of this directory the stage touched.  `CaptureSet.base_of_mem_translate`
-is new and states it, `Platform.capsAtom` gains the projection alternative, which a translated set
-never reaches, and `Platform.root_iff` carries that premise where it already carried the one about
-the universal root.  Nothing else moved, and the classified translation is K2's subject.
+**Stages K0 and K1 of classifiers changed no rule, no judgment and no translation clause here, and
+K2 is the stage that carries the classifier across.**  Through K1 the source wrote no classifier, so
+the translation produced no projected capture atom, and the two lemmas that say so were the only
+lines of this directory those stages touched.  K2 translates the source's projected atoms, its
+kind-bounded capture member, its classified context binder and its whole capture-kinding judgment,
+and it states the source's two classified theorems.  The stage's section is the last one below.
 
 The translation of DOT-MNF^cc into FCdot^cc (Plan III §8, milestones M3 to
 M5), namespace `DotMNF`.  Derivations are `Type`-valued, so the translation
@@ -27,7 +27,7 @@ prediction are all transported from FCdot's.
 | `Erasure` | `HasTy.translate_erase` (`⌊h.translate⌋ = ⌊t⌋`), `coherence` |
 | `Safety` | the simulation invariant `Simulated`, `dot_safety`, `dot_not_stuck` |
 | `Consistency` | `reachable_consistent`, `reachable_realized` for runs of translated programs |
-| `Prediction` | the platform prefix on both sides (`Platform.ctx`, `Platform.targetStore`, `Platform.store_erase`, `Platform.root_iff`), the matched run `Platform.simulatedRun`, and the two corollaries `dot_capture_prediction` and `dot_effect_safety` |
+| `Prediction` | the platform prefix on both sides (`Platform.ctx`, `Platform.targetStore`, `Platform.store_erase`, `Platform.root_iff`, `Platform.not_root_of_not_mem`, `Platform.classOf_translate`, `Platform.admits_iff`), the matched run `Platform.simulatedRun`, and the four corollaries `dot_capture_prediction`, `dot_effect_safety`, `dot_classified_prediction` and `dot_classified_effect_safety`, each with its primed form where the source writes the hypothesis |
 
 ## The translation
 
@@ -133,10 +133,24 @@ dot_capture_prediction   : HasTy U P.ctx t T → ⟨P.store, ∅, t⟩ ⟶* st �
                              ∃ stt Γ' ρ, ⌊stt⌋ = ⌊st⌋ ∧ ⊢ stt.σ : Γ' ∧
                                Store.Ext P.targetStore stt.σ ρ ∧
                                CapLe Γ' stt.uses (⟦U⟧.rename ρ)
-dot_effect_safety        : HasTy U P.ctx t T → ¬ (cvar κ ∈ ⟦U⟧) → ⟨P.store, ∅, t⟩ ⟶* st →
-                             st.inspects = some x →
+dot_effect_safety        : HasTy U P.ctx t T → ¬ ⟦P.ctx⟧.Root (cvar κ) ⟦U⟧ →
+                             ⟨P.store, ∅, t⟩ ⟶* st → st.inspects = some x →
                              ∃ stt Γ' ρ, … ∧ ¬ Γ'.Root (cvar (ρ.var κ)) [var x]
+dot_classified_prediction: HasTy U P.ctx t T → ⟦P.ctx⟧.KindLe ⟦U⟧ φ → ⟨P.store, ∅, t⟩ ⟶* st →
+                             ∃ stt Γ' ρ, … ∧ CapLe Γ' stt.uses (⟦U⟧.rename ρ) ∧
+                               Γ'.KindLe stt.uses φ
+dot_classified_effect_safety :
+                           HasTy U P.ctx t T → ⟦P.ctx⟧.KindLe ⟦U⟧ φ → ⟨P.store, ∅, t⟩ ⟶* st →
+                             st.inspects = some x →
+                             ∃ stt Γ' ρ, … ∧ ∀ a, Γ'.Root a [var x] → φ.Contains (Γ'.classOf a)
 ```
+
+`dot_effect_safety`'s hypothesis is the semantic one, which is decision 16 and the one row of the
+stage that is not purely additive.  `Platform.not_root_of_not_mem` derives it from the membership
+hypothesis the copied statement carried, so on every projection-free program the theorem reads as it
+did.  With a projection the membership form is false.  `dot_classified_prediction'` and
+`dot_classified_effect_safety'` are the two classified theorems with source kinding evidence
+`CapKind P.ctx U φ` in place of the semantic hypothesis.
 
 Axioms: `propext` and `Quot.sound` everywhere.  No
 `sorry`, `axiom`, `partial`, or `native_decide`.
@@ -741,3 +755,114 @@ subcapturing puts the callback's parameter below the platform capability, becaus
 binder set resolves to the arrow binder, whose level is the body root, while the platform capability
 sits at the outermost level.  The source-side half of the same example, `W5_no_level`, is in
 `../DotMNF/README.md`.
+
+## Stage K2
+
+K2 carries the classifier across (`plan-5f-classifiers-stages.md` §K2).  The translation gains one
+atom clause, one shape clause, one context clause, five evidence clauses and one whole new evidence
+translation, and the directory states the source's two classified theorems.
+
+The atom clause is the one sentence the stage turns on: a projection translates to a projection,
+`(a ↾ φ).translate? = (a.translate?).map (· ↾ φ)`, with the **constructor** and not the smart
+constructor.  That is what makes `translate?` commute with renaming structurally, and it is the same
+reason the source's `expandA` maps with the constructor.  The set lemma it buys is
+`CaptureSet.translate_proj`, `⟦C ↾ φ⟧ = ⟦C⟧ ↾ φ`, and every new evidence case goes through it.  The
+lemma needs a case split on the atom beside the list recursion, because `projBy` normalises a nested
+projection on both sides.
+
+A shape `.capk A φ` is an object shape whose telescope is the single kinding proposition
+`.kindC [name .here A] φ`, at index `0`.  Both `tel` and `telSelf` answer it, and the two `@[simp]`
+unfoldings are what make `ksel`'s hole and `capkI`'s target `rfl`.  A `consCls` binder translates to
+`.consC Γ.translate (.cls c)`, the target's classified capture bound.
+
+The translation of a source kinding derivation meets a partial atom map, and that is the one place
+where it deviates from the plan's clause-by-clause reading.  The target has no atom for `any` and
+none for `fresh`, and three of the four one-atom rules carry the atom on the target evidence term, so
+at a dropped atom there is no term to write.  Each of `kproj`, `kcls`, `kcvar` and `cons` reads
+`a.translate?` and answers `KindCo.nil`, or the tail's translation at `cons`, where the target drops
+the atom.  That is the right answer and not a default: the conclusion there is `⟦[a]⟧ ⊑ᵏ φ`, `⟦[a]⟧`
+is `[]`, and `KindCo.HasType.nil` is the target's rule for the empty set.  `Subcap.translate`'s
+`level` clause already did the same reading by hand on five atoms, and both `translate_memberFree`
+and `translate_typed` split the same way.
+
+| module | what K2 changed |
+|---|---|
+| `Types` | `CapAtom.translate?` at `proj`, `Shape.translate`, `isObj`, `tel` and `telSelf` at `capk` with the two `@[simp]` unfoldings, `Ctx.translate` at `consCls`, `CaptureSet.NoProj`, `CapAtom.translate_projBy` and `CaptureSet.translate_proj`, `CapAtom.base_of_translate`, and the restated `CaptureSet.base_of_mem_translate` |
+| `TypesLemmas`, `TypesSubst` | one `capk` case in each shape traversal lemma and one `consCls` case in each context recursion; `Ctx.translate_lookupCapCls` and `Ctx.ClsOf.translate`, the classifier twins of `Ctx.translate_lookupCapInst` and `Ctx.InstOf.translate`; `FCdot.CapBound.clsOf?_weaken` |
+| `Evidence` | `levelCo` and the four helpers `kprojCo`, `kclsCo`, `kcvarCo`, `kconsCo`; `CapKind.translate` in the mutual block; `Subcap.translate`'s three new clauses and `SubShape.translate`'s two; `Morphism.append` at `kindCle`; `Ctx.varAtom` and `Ctx.varAtom_memberFree` at `consCls`.  `Subcap.MemberFree` moves out, to `../DotMNF/Typing.lean` |
+| `EvidenceTyped` | `CapKind.translate_typed`, `Subcap.translate_typed`'s three new cases and `SubShape.translate_typed`'s two; `Ctx.Wf` at `consCls` with its four lemmas; `CapAtom.translate?_base`, `translate?_of_base` and `translate?_kindOf`; `Ctx.clsOf?_eq_some`; `Cls.Kind.Subkind.admitsStep`; `Telescope.At.zero_one` and `Shape.translate_capk` |
+| `TermsTyped` | one `capk` case in `defSpec_of` and `capDefSpec_of`, both the catch-all answer `True` |
+| `Prediction` | the `consCls` clause of the nine `Platform` functions, `Platform.classOf_translate`, `Platform.admits_iff` and `Platform.not_root_of_not_mem`, the restated `dot_effect_safety`, and the four new theorems |
+
+### The hardest lemma
+
+It is not either headline theorem.  Both of those are corollaries of K0 and K1 machinery.  It is
+`SubShape.capkI`'s translation typedness, the one place where a source rule is discharged by a target
+morphism the tree did not have.
+
+The goal is a morphism from the two-entry telescope a set-bounded capture member compiles to,
+`[ ⟦c1⟧↑ ⊑ᶜ [name .here A], [name .here A] ⊑ᶜ ⟦c2⟧↑ ]`, to the one-entry telescope
+`[ [name .here A] ⊑ᵏ φ ]`.  Four steps.  The hole is one `Telescope.HoleAtC.leC` at the second entry,
+since `Telescope.At.here` indexes by the telescope's length and the upper bound is the second entry.
+Both `SideC` chains are empty.  The closed kinding is `CapKind.translate_typed g hwf` at the closed
+signature, which is `capkI`'s own premise and nothing more.  And the morphism rule is
+`Morphism.HasType.kindCle` over the identity morphism at the empty target telescope, whose conclusion
+is `Shape.tel (.capk A φ)` on the nose.
+
+The second hardest, for the record, is `CapKind.translate_typed`'s `ksel` case, because it is the one
+that meets `Telescope.HoleAtK` for the first time from the source.  It is `Subcap.selUpper`'s case
+with `HoleAtK` in place of `HoleAtC` and index `0` in place of index `1`.
+
+### Statements restated
+
+| statement | change | why the meaning is the same |
+|---|---|---|
+| `dot_effect_safety` | the hypothesis moves from `¬ (cvar κ ∈ ⟦U⟧)` to `¬ ⟦P.ctx⟧.Root (cvar κ) ⟦U⟧` | decision 16, and the one row of the stage that is not purely additive.  Over a platform prefix the two are interderivable by `Platform.root_iff` under `hb`, which `CaptureSet.base_of_mem_translate` discharges on a projection-free program, so on every program the copied source can write the statement is the old one.  With a projection the old form is false, and the two halves of the witness are machine checked.  The body is the copied one with the `Platform.root_iff` step deleted |
+| `CaptureSet.base_of_mem_translate` | gains the premise `C.NoProj` | the source now writes a projection, and a projected atom translates to a projected atom, whose base is not itself.  `NoProj` is decidable and holds of every set the copied source could build, so on the copy the lemma is the old one word for word |
+| `CaptureSet.top_not_mem_translate`, `Platform.root_iff` | nothing | a translated atom is a `var`, a `cvar`, a `name` or a `proj`, and none of them is `⊤ᶜ`.  `root_iff` already carried `hb` from K0, and that premise is exactly what a projecting source needs |
+| `Platform` | one constructor, `consCls` | additive.  `nil` and `cons` are untouched, its `store` clause is `.consC`, because a classifier is not runtime content, and every function on `Platform` gains the `cons` clause with the classifier carried |
+| `Ctx.Wf`, `Ctx.translate`, `Ctx.varAtom`, `Ctx.varAtom_memberFree`, and the seven `TypesLemmas` context recursions | one clause each for `consCls` | each is the `consC` clause with the classifier carried, and a classifier mentions no de Bruijn index, which is Fact 1 |
+| `CapAtom.translate_rename`, `CapAtom.translate_subst` | one clause each, `.proj a φ` | additive, and both are the congruence composed with `Option.map`, which is Fact 1 |
+| `CaptureSet.translate_rename`, `CaptureSet.translate_subst`, `CapAtom.rename_inj`, `Ctx.LvlLe.translate` | the statements are unchanged, the proofs become splits on `translate?` or inductions on the atom where they were case analyses | forced by the new constructor, whose translation recurses.  The split is the same case analysis one layer down: on a copied atom `translate?` is the copied clause, so each branch is the copied proof.  `Ctx.LvlLe.translate`'s new case is `FCdot.Ctx.lvlLe_proj_left` of the induction hypothesis, since both calculi read through a projection on the left |
+| `Subcap.translate`'s `level` clause | the inner five-way match becomes `levelCo e κ`, one match on `e.translate?` | the helper agrees with the copied clause on every copied atom: `var`, `cvar` and `sel` have a target atom and give `CapCo.level` at it, `any` and `fresh` have none and give `CapCo.elem [] [.cvar κ]`, which is exactly what the copied clause wrote |
+| `Subcap.translate_typed`, `SubShape.translate_typed`, `Sub.translate_typed`, `HasTy.translate_erase`, `dot_safety`, `dot_not_stuck`, `dot_capture_prediction` | statements unchanged, cases added where the source gained rules | additive, and a projection and a kind bound erase to nothing, so the run is the copied run |
+
+### New in this stage
+
+```
+DotMNF.CapAtom.translate?, .proj clause      : (a.translate?).map (· ↾ φ), with the constructor
+DotMNF.CaptureSet.translate_proj             : ⟦C ↾ φ⟧ = ⟦C⟧ ↾ φ
+DotMNF.CaptureSet.NoProj                     : the decidable projection-freeness of a source set
+DotMNF.Shape.tel_capk, .telSelf_capk         : the kind bound as one kinding proposition at index 0
+DotMNF.Ctx.ClsOf.translate                   : the classifier reader travels
+DotMNF.CapAtom.translate?_base, _of_base, _kindOf : base and kind commute with the atom map
+DotMNF.Ctx.clsOf?_eq_some                    : the source reader answers at a capture binder alone
+Cls.Kind.Subkind.admitsStep                  : subkinding gives the step a morphism template takes
+DotMNF.CapKind.translate, .translate_typed   : the source's kinding into the target's
+DotMNF.CapKind.translate_memberFree          : and it is member free where the source is
+DotMNF.Platform.consCls, .classOf            : the classified platform binder and its reader
+DotMNF.Platform.classOf_translate, .admits_iff : the two facts the examples decide their verdicts by
+DotMNF.Platform.not_root_of_not_mem          : `Platform.root_iff` read backwards, the D4 repair
+```
+
+### New theorems
+
+```
+DotMNF.CapKind.translate_typed :
+  (g : CapKind Γ C φ) → Γ.Wf → Γ.translate ⊢ᵏ g.translate : ⟦C⟧ ⊑ᵏ φ
+
+DotMNF.dot_classified_prediction  (T8)  : the use set stays kinded at φ along every run
+DotMNF.dot_classified_prediction' (T8') : the same, with source kinding evidence as the hypothesis
+DotMNF.dot_classified_effect_safety  (T9)  : the run reads no capability classified outside φ
+DotMNF.dot_classified_effect_safety' (T9') : the same, with source kinding evidence
+```
+
+T8 is `dot_capture_prediction`'s conclusion with two lines added: `FCdot.Store.Ext.kindLe` of the
+hypothesis along the extension at `P.targetStore_typed`, then `FCdot.Ctx.KindLe.mono` along the
+`CapLe` the theorem already returns.  T9 is `FCdot.classified_effect_safety` with the read root
+transported to the matched target state exactly as `dot_effect_safety` transports it.  The primed
+forms take `CapKind P.ctx U φ` and feed
+`FCdot.kind_canon P.targetStore_typed (g.translate_typed P.ctx_wf)` to the unprimed ones.  That is
+the one place a source program consumes K1's canonical form.
+
+Axioms (`#print axioms`): `propext` and `Quot.sound` for every theorem of the stage.

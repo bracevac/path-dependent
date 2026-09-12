@@ -77,6 +77,7 @@ theorem KindCo.MemberFree.rename {s1 s2 : Sig} :
   | _, .kcvar a hg, ρ => .kcvar (a.rename ρ) (hg.rename ρ)
   | _, .kprojS C ψ hg, ρ => .kprojS (C.rename ρ) ψ (hg.rename ρ)
   | _, .ksub φ hg, ρ => .ksub φ (hg.rename ρ)
+  | _, .kle hf hg, ρ => .kle (hf.rename ρ) (hg.rename ρ)
 
 theorem Atom.MemberFree.rename {s1 s2 : Sig} :
     ∀ {a : Atom s1} (_ : a.MemberFree) (ρ : Rename s1 s2), (a.rename ρ).MemberFree

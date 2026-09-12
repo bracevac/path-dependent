@@ -1910,6 +1910,7 @@ theorem KindCo.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Su
           : (C₀.subst σ).proj ψ₀ ⊑ᵏ φ₀ := .kprojS (hg.subst hσ)
       simpa [KindCo.subst, CaptureSet.proj_subst hσ.capProjFree] using this
   | .ksub hg hs => exact .ksub (hg.subst hσ) hs
+  | .kle hf hg => exact .kle (hf.subst hσ) (hg.subst hσ)
 
 theorem CapEq.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {φ : CapEq s1} {C D : CaptureSet s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ᶜ φ : C ≡ D) :
@@ -2059,6 +2060,9 @@ theorem Morphism.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
   | .kindC hm hAt hq hsub =>
       exact .kindC (hm.subst hσ) (by simpa [Proposition.subst] using hAt.subst σ.lift)
         (hq.subst hσ) hsub
+  | .kindCle hm hh hq hq' hg =>
+      exact .kindCle (hm.subst hσ) (hh.subst σ) (hq.subst hσ)
+        (by simpa [CaptureSet.weaken_subst] using hq'.subst hσ) (hg.subst hσ)
 
 theorem Atom.HasType.subst {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {σ : Subst s1 s2}
     {a : Atom s1} {T : Ty s1} (hσ : Subst.Typed Γ σ Γ') (h : Γ ⊢ₐ a : T) :

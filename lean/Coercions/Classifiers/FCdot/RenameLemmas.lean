@@ -193,6 +193,7 @@ mutual
   | .kmember b e i => simp [KindCo.rename, Atom.rename_id b, ShapeCo.rename_id e]
   | .kprojS g C ψ => simp [KindCo.rename, KindCo.rename_id g]
   | .ksub g φ => simp [KindCo.rename, KindCo.rename_id g]
+  | .kle f g => simp [KindCo.rename, CapCo.rename_id f, KindCo.rename_id g]
 
 @[simp] theorem CapEq.rename_id {s : Sig} (φ : CapEq s) : φ.rename Rename.id = φ := by
   match φ with
@@ -247,6 +248,9 @@ mutual
       simp [Morphism.rename, Morphism.rename_id m, SideC.rename_id q, SideC.rename_id q']
   | .eqC m j b => simp [Morphism.rename, Morphism.rename_id m]
   | .kindC m q j φ => simp [Morphism.rename, Morphism.rename_id m, SideC.rename_id q]
+  | .kindCle m q h q' g φ =>
+      simp [Morphism.rename, Morphism.rename_id m, SideC.rename_id q, SideC.rename_id q',
+        KindCo.rename_id g]
 
 @[simp] theorem Atom.rename_id {s : Sig} (a : Atom s) : a.rename Rename.id = a := by
   match a with
@@ -333,6 +337,7 @@ mutual
   | .kmember b e i => simp [KindCo.rename, Atom.rename_comp b, ShapeCo.rename_comp e]
   | .kprojS g C ψ => simp [KindCo.rename, KindCo.rename_comp g]
   | .ksub g φ => simp [KindCo.rename, KindCo.rename_comp g]
+  | .kle f g => simp [KindCo.rename, CapCo.rename_comp f, KindCo.rename_comp g]
 
 @[simp] theorem CapEq.rename_comp {s1 s2 s3 : Sig} (φ : CapEq s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -403,6 +408,9 @@ mutual
       simp [Morphism.rename, Morphism.rename_comp m, SideC.rename_comp q, SideC.rename_comp q']
   | .eqC m j b => simp [Morphism.rename, Morphism.rename_comp m]
   | .kindC m q j φ => simp [Morphism.rename, Morphism.rename_comp m, SideC.rename_comp q]
+  | .kindCle m q h q' g φ =>
+      simp [Morphism.rename, Morphism.rename_comp m, SideC.rename_comp q, SideC.rename_comp q',
+        KindCo.rename_comp g]
 
 @[simp] theorem Atom.rename_comp {s1 s2 s3 : Sig} (a : Atom s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -961,6 +969,8 @@ mutual
       simp [KindCo.subst, KindCo.rename, Atom.subst_ofRename b, ShapeCo.subst_ofRename e]
   | .kprojS g C ψ => simp [KindCo.subst, KindCo.rename, KindCo.subst_ofRename g]
   | .ksub g φ => simp [KindCo.subst, KindCo.rename, KindCo.subst_ofRename g]
+  | .kle f g =>
+      simp [KindCo.subst, KindCo.rename, CapCo.subst_ofRename f, KindCo.subst_ofRename g]
 
 @[simp] theorem CapEq.subst_ofRename {s1 s2 : Sig} (φ : CapEq s1) (ρ : Rename s1 s2) :
     φ.subst (Subst.ofRename ρ) = φ.rename ρ := by
@@ -1032,6 +1042,9 @@ mutual
   | .eqC m j b => simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m]
   | .kindC m q j φ =>
       simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m, SideC.subst_ofRename q]
+  | .kindCle m q h q' g φ =>
+      simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m, SideC.subst_ofRename q,
+        SideC.subst_ofRename q', KindCo.subst_ofRename g]
 
 @[simp] theorem Atom.subst_ofRename {s1 s2 : Sig} (a : Atom s1) (ρ : Rename s1 s2) :
     a.subst (Subst.ofRename ρ) = a.rename ρ := by

@@ -55,6 +55,7 @@ def _root_.Classifiers.FCdot.Morphism.append : FCdot.Morphism s → FCdot.Morphi
   | m, .leC m' q h q' => .leC (m.append m') q h q'
   | m, .eqC m' j b => .eqC (m.append m') j b
   | m, .kindC m' q j φ => .kindC (m.append m') q j φ
+  | m, .kindCle m' q h q' g φ => .kindCle (m.append m') q h q' g φ
 
 /-- A telescope with no self-bound propositions at all.  `Shape.telSelf`
 produces one only on a shape that `Wf.mu` excludes. -/
@@ -173,6 +174,7 @@ def Ctx.varAtom : Ctx s → BVar s .var → FCdot.Atom s
   | .consC Γ, .there y => (Γ.varAtom y).weaken
   | .consRoot Γ, .there y => (Γ.varAtom y).weaken
   | .consInst Γ _, .there y => (Γ.varAtom y).weaken
+  | .consCls Γ _, .there y => (Γ.varAtom y).weaken
 
 /-- **T-B3.4, step 2.**  A variable's atom reads no telescope.  Every
 `.there` clause weakens, which is a renaming, and the one head clause with
@@ -190,35 +192,58 @@ theorem Ctx.varAtom_memberFree : ∀ {s : FCdot.Sig} (Γ : Ctx s) (x : BVar s .v
   | _, .consC Γ, .there y => (Ctx.varAtom_memberFree Γ y).weaken
   | _, .consRoot Γ, .there y => (Ctx.varAtom_memberFree Γ y).weaken
   | _, .consInst Γ _, .there y => (Ctx.varAtom_memberFree Γ y).weaken
+  | _, .consCls Γ _, .there y => (Ctx.varAtom_memberFree Γ y).weaken
 
 /-! ## Member-free source evidence
 
-**T-B3.4, step 3.**  Source subcapturing that reads no telescope and no
-instance binder: it is `refl`, `trans`, `elem`, `union`, `var` and `level`,
-and it excludes `inst`, `selLower` and `selUpper`.  Those three are exactly
-the rules whose translation is `eqToLe` or `member`, which are exactly the
-two target rules `FCdot.CapCo.MemberFree` excludes, and exactly where a bad
-capture bound can enter (example C3). -/
-
-inductive Subcap.MemberFree : {s : FCdot.Sig} → {Γ : Ctx s} → {C D : CaptureSet s} →
-    Subcap Γ C D → Prop where
-  | refl {s : FCdot.Sig} {Γ : Ctx s} {C : CaptureSet s} :
-      (Subcap.refl (Γ := Γ) (C := C)).MemberFree
-  | trans {s : FCdot.Sig} {Γ : Ctx s} {C1 C2 C3 : CaptureSet s}
-      {d : Subcap Γ C1 C2} {e : Subcap Γ C2 C3} :
-      d.MemberFree → e.MemberFree → (Subcap.trans d e).MemberFree
-  | elem {s : FCdot.Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s}
-      (h : CaptureSet.Subset C1 C2) : (Subcap.elem (Γ := Γ) h).MemberFree
-  | union {s : FCdot.Sig} {Γ : Ctx s} {C1 C2 D : CaptureSet s}
-      {d : Subcap Γ C1 D} {e : Subcap Γ C2 D} :
-      d.MemberFree → e.MemberFree → (Subcap.union d e).MemberFree
-  | var {s : FCdot.Sig} {Γ : Ctx s} {x : BVar s .var} :
-      (Subcap.var (Γ := Γ) (x := x)).MemberFree
-  | level {s : FCdot.Sig} {Γ : Ctx s} {e : CapAtom s} {κ : BVar s .cap}
-      (h₁ : Ctx.IsRoot Γ (.cvar κ)) (h₂ : Ctx.LvlLe Γ e (.cvar κ)) :
-      (Subcap.level h₁ h₂).MemberFree
+**T-B3.4, step 3.**  `Subcap.MemberFree` was stated here before K2.  It now
+sits in `DotMNF/Typing.lean`, beside `CapKind.MemberFree`, because the two
+are mutual: `Subcap.proj` premises a kinding and `CapKind.kle` premises a
+subcapturing.  Its constructors are unchanged and it gained one clause per
+new subcapturing rule. -/
 
 /-! ## The translation -/
+
+/-- The target evidence of the source's level rule at an atom.  On the four
+copied atoms with a target atom it is `CapCo.level` at that atom, which is
+what the copied clause wrote; on `any` and `fresh` the translated set is
+empty and the evidence is the syntactic inclusion, which is what the copied
+clause wrote there too.  A projection reads through `CapAtom.translate?`,
+and the target's own level test reads through a projection. -/
+def levelCo (e : CapAtom s) (κ : BVar s .cap) : FCdot.CapCo s :=
+  match e.translate? with
+  | some b => .level b (.cvar κ)
+  | none => .elem [] [.cvar κ]
+
+/-! ### Kinding evidence at one atom
+
+Four source kinding rules conclude about a single atom, and three of them
+carry that atom.  The target drops `any` and `fresh`, so at such an atom the
+translated set is empty and the evidence is `nil`, which is the target's own
+rule for the empty set.  On every atom the target keeps, each helper is the
+rule the plan writes. -/
+
+def kprojCo (a : CapAtom s) : FCdot.KindCo s :=
+  match a.translate? with
+  | some b => .kproj b
+  | none => .nil
+
+def kclsCo (a : CapAtom s) : FCdot.KindCo s :=
+  match a.translate? with
+  | some b => .kcls b
+  | none => .nil
+
+def kcvarCo (a : CapAtom s) (g : FCdot.KindCo s) : FCdot.KindCo s :=
+  match a.translate? with
+  | some b => .kcvar b g
+  | none => .nil
+
+/-- The head of a kinded set.  An atom the target drops contributes nothing,
+and the reading of the set is the reading of its tail. -/
+def kconsCo (a : CapAtom s) (g h : FCdot.KindCo s) : FCdot.KindCo s :=
+  match a.translate? with
+  | some _ => .cons g h
+  | none => h
 
 mutual
 
@@ -234,15 +259,12 @@ def Subcap.translate : {Γ : Ctx s} → {C C' : CaptureSet s} → Subcap Γ C C'
   /- **B3.6.**  The level rule translates to the target's level rule at the
      translated atom.  The two notation cases are unreachable in a typed
      derivation, and they are given evidence rather than an absurdity, so
-     the clause stays a plain match.  It is a leaf, so it adds no obligation
-     to the `decreasing_by` block below. -/
-  | _, _, _, @Subcap.level _ Γ e κ _ _ =>
-      match e with
-      | .var x => .level (.var x) (.cvar κ)
-      | .cvar ν => .level (.cvar ν) (.cvar κ)
-      | .sel x A => .level (.name x A) (.cvar κ)
-      | .any => .elem [] [.cvar κ]
-      | .fresh => .elem [] [.cvar κ]
+     the clause stays a leaf, and it adds no obligation to the
+     `decreasing_by` block below. -/
+  | _, _, _, @Subcap.level _ Γ e κ _ _ => levelCo e κ
+  | _, _, _, @Subcap.unproj _ _ C φ => .unprojC C.translate φ
+  | _, _, _, @Subcap.proj _ _ C φ g => .projC g.translate C.translate φ
+  | _, _, _, @Subcap.projMono _ _ _ _ ψ f => .projMono f.translate ψ
   | _, _, _, @Subcap.selLower _ _ _ _ A c₁ c₂ _ h =>
       .member h.translateAtom (.refl (Shape.cap A c₁ c₂).translate) 0
   | _, _, _, @Subcap.selUpper _ _ _ _ A c₁ c₂ _ h =>
@@ -288,6 +310,17 @@ def SubShape.translate : {Γ : Ctx s} → {S T : Shape s} → SubShape Γ S T �
   | _, _, _, @SubShape.selLower _ _ _ _ A S T _ h =>
       .member h.translateAtom (.refl (Shape.typ A S T).translate) 0
   | _, _, _, .all d₁ d₂ => .pi d₁.translate d₂.translate
+  /- **K2.8.**  A set-bounded capture member is retyped at a kind bound.
+     The source telescope is the member's two `leC` entries, the hole is its
+     upper bound at index `1`, both chains are empty, and the closed kinding
+     is the rule's own premise. -/
+  | _, _, _, @SubShape.capkI _ _ A c₁ c₂ φ g =>
+      .obj (Shape.tel (.cap A c₁ c₂))
+        (.kindCle .nil .nil (.leC 1) .nil g.translate φ)
+  /- Widening of a kind bound: the identity template at the one kinding
+     proposition of the source telescope, read at the wider kind. -/
+  | _, _, _, @SubShape.capk _ _ A φ₁ φ₂ _ =>
+      .obj (Shape.tel (.capk A φ₁)) (.kindC .nil .nil 0 φ₂)
   termination_by _ _ _ d => sizeOf d
 
 /-- `⟦d⟧ : ⟦S ^ C⟧ ≤ ⟦S' ^ C'⟧`: the pair of the two halves. -/
@@ -302,6 +335,25 @@ def ESub.translate : {Γ : Ctx s} → {E E' : ETy s} → ESub Γ E E' → FCdot.
   | _, _, _, .ty d => .plain d.translate
   | _, _, _, @ESub.pack _ _ C _ _ _ f d => .pack C.translate f.translate d.translate
   | _, _, _, .exist f d => .cong f.translate d.translate
+  termination_by _ _ _ d => sizeOf d
+
+/-- `⟦g⟧` on capture-kinding derivations.  It mirrors `FCdot.KindCo` rule by
+rule, with `ksel` sent to `kmember` exactly as `Subcap.selUpper` is sent to
+`member`: through `HasTy.translateAtom` and the member's own telescope, at
+index `0`, since a kind-bounded member compiles to a one-entry telescope. -/
+def CapKind.translate : {Γ : Ctx s} → {C : CaptureSet s} → {φ : Cls.Kind} →
+    CapKind Γ C φ → FCdot.KindCo s
+  | _, _, _, .nil => .nil
+  | _, _, _, @CapKind.cons _ _ a _ _ g h => kconsCo a g.translate h.translate
+  | _, _, _, @CapKind.kproj _ _ a _ _ => kprojCo a
+  | _, _, _, @CapKind.kcls _ _ a _ _ _ _ => kclsCo a
+  | Γ, _, _, @CapKind.kvar _ _ _ x _ _ g => .kvar (Γ.varAtom x) g.translate
+  | _, _, _, @CapKind.kcvar _ _ a _ _ _ _ _ g => kcvarCo a g.translate
+  | _, _, _, @CapKind.ksel _ _ _ _ A φ _ h =>
+      .kmember h.translateAtom (.refl (Shape.capk A φ).translate) 0
+  | _, _, _, @CapKind.kprojS _ _ C ψ _ g => .kprojS g.translate C.translate ψ
+  | _, _, _, @CapKind.ksub _ _ _ φ₁ _ g _ => .ksub g.translate φ₁
+  | _, _, _, .kle f g => .kle f.translate g.translate
   termination_by _ _ _ d => sizeOf d
 
 /-- The atom of a variable typing, rooted at the variable.  `Var` recaptures
@@ -328,6 +380,8 @@ split.  The six member-free rules translate to the six member-free target
 rules, and `var` needs `Ctx.varAtom_memberFree`.  The `level` clause is a
 leaf in both, so the case is a five-way `cases` on the atom. -/
 
+mutual
+
 theorem Subcap.translate_memberFree : ∀ {s : FCdot.Sig} {Γ : Ctx s} {C C' : CaptureSet s}
     {d : Subcap Γ C C'}, d.MemberFree → d.translate.MemberFree
   | _, _, _, _, _, .refl => by rw [Subcap.translate]; exact .refl _
@@ -340,10 +394,62 @@ theorem Subcap.translate_memberFree : ∀ {s : FCdot.Sig} {Γ : Ctx s} {C C' : C
       exact .union (Subcap.translate_memberFree hf) (Subcap.translate_memberFree hg)
   | _, Γ, _, _, _, .var => by rw [Subcap.translate]; exact .capvar (Ctx.varAtom_memberFree Γ _)
   | _, _, _, _, @Subcap.level _ _ e _ _ _, .level _ _ => by
-      cases e <;> rw [Subcap.translate] <;>
-        first
-          | exact .level _ _
-          | exact .elem _ _
+      rw [Subcap.translate]
+      unfold levelCo
+      cases e.translate?
+      · exact .elem _ _
+      · exact .level _ _
+  | _, _, _, _, _, .unproj => by rw [Subcap.translate]; exact .unprojC _ _
+  | _, _, _, _, _, .proj hg => by
+      rw [Subcap.translate]
+      exact .projC _ _ (CapKind.translate_memberFree hg)
+  | _, _, _, _, _, .projMono hd => by
+      rw [Subcap.translate]
+      exact .projMono _ (Subcap.translate_memberFree hd)
+
+/-- The same for source kinding: the nine member-free rules translate to the
+target's member-free rules, and `ksel` is excluded on both sides. -/
+theorem CapKind.translate_memberFree : ∀ {s : FCdot.Sig} {Γ : Ctx s} {C : CaptureSet s}
+    {φ : Cls.Kind} {g : CapKind Γ C φ}, g.MemberFree → g.translate.MemberFree
+  | _, _, _, _, _, .nil => by rw [CapKind.translate]; exact .nil
+  | _, _, _, _, @CapKind.cons _ _ a _ _ _ _, .cons hg hh => by
+      rw [CapKind.translate]
+      unfold kconsCo
+      cases a.translate?
+      · exact CapKind.translate_memberFree hh
+      · exact .cons (CapKind.translate_memberFree hg) (CapKind.translate_memberFree hh)
+  | _, _, _, _, @CapKind.kproj _ _ a _ _, .kproj _ => by
+      rw [CapKind.translate]
+      unfold kprojCo
+      cases a.translate?
+      · exact .nil
+      · exact .kproj _
+  | _, _, _, _, @CapKind.kcls _ _ a _ _ _ _, .kcls _ _ => by
+      rw [CapKind.translate]
+      unfold kclsCo
+      cases a.translate?
+      · exact .nil
+      · exact .kcls _
+  | _, Γ, _, _, _, .kvar _ hg => by
+      rw [CapKind.translate]
+      exact .kvar (Ctx.varAtom_memberFree Γ _) (CapKind.translate_memberFree hg)
+  | _, _, _, _, @CapKind.kcvar _ _ a _ _ _ _ _ _, .kcvar _ _ hg => by
+      rw [CapKind.translate]
+      unfold kcvarCo
+      cases a.translate?
+      · exact .nil
+      · exact .kcvar _ (CapKind.translate_memberFree hg)
+  | _, _, _, _, _, .kprojS hg => by
+      rw [CapKind.translate]
+      exact .kprojS _ _ (CapKind.translate_memberFree hg)
+  | _, _, _, _, _, .ksub _ hg => by
+      rw [CapKind.translate]
+      exact .ksub _ (CapKind.translate_memberFree hg)
+  | _, _, _, _, _, .kle hf hg => by
+      rw [CapKind.translate]
+      exact .kle (Subcap.translate_memberFree hf) (CapKind.translate_memberFree hg)
+
+end
 
 end DotMNF
 

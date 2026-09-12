@@ -493,6 +493,32 @@ theorem effect_safety {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s}
     hpred Γ' hσ' _ h1
   exact (hE.root_iff hσ hσ' (CapAtom.cvar κ) st.uses).mp h2
 
+/-- **Classified prediction.**  Along any run from a typed state whose use set
+is kinded at `φ`, the use set stays kinded at `φ`.  This is
+`capture_prediction` with the kinding carried to the new context by
+`Store.Ext.kindLe` and pulled back along the predicted inclusion by
+`Ctx.KindLe.mono`. -/
+theorem classified_prediction {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
+    {Γ : Ctx s} {φ : Cls.Kind}
+    (hT : State.Typed st U) (hσ : ⊢ st.σ : Γ) (hk : Γ.KindLe st.uses φ) (run : st ⟶* st') :
+    ∃ ρ : Rename s s', Store.Ext st.σ st'.σ ρ ∧
+      ∀ Γ' : Ctx s', ⊢ st'.σ : Γ' →
+        CapLe Γ' st'.uses ((st.uses).rename ρ) ∧ Γ'.KindLe st'.uses φ := by
+  obtain ⟨ρ, hE, hpred⟩ := capture_prediction hT run
+  refine ⟨ρ, hE, fun Γ' hσ' => ⟨hpred Γ' hσ', ?_⟩⟩
+  exact Ctx.KindLe.mono (hpred Γ' hσ') (hE.kindLe hσ hσ' hk)
+
+/-- **Classified effect safety.**  A program whose use set is kinded at `φ`
+never reads a capability whose classifier lies outside `φ`.  This is
+`classified_prediction` and `inspects_covered`. -/
+theorem classified_effect_safety {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
+    {Γ : Ctx s} {Γ' : Ctx s'} {φ : Cls.Kind} {x : BVar s' .var}
+    (hT : State.Typed st U) (hσ : ⊢ st.σ : Γ) (hk : Γ.KindLe st.uses φ) (run : st ⟶* st')
+    (hin : st'.inspects = some x) (hσ' : ⊢ st'.σ : Γ') :
+    ∀ a : CapAtom s', Γ'.Root a [CapAtom.var x] → φ.Contains (Γ'.classOf a) := by
+  obtain ⟨ρ, hE, hpred⟩ := classified_prediction hT hσ hk run
+  exact Ctx.KindLe.mono (inspects_covered hin) (hpred Γ' hσ').2
+
 /-! ## The capture set of an answer -/
 
 /-- The value half of `returned_capture_bound`: the annotation of a returned

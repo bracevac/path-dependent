@@ -125,6 +125,13 @@ inductive Entry (s : Sig) : Type where
       slot carries no kind: the target kind is read off the target
       proposition, where the admission step is checked. -/
   | kindC : SideC s → Nat → Entry s
+  /-- A target kinding proposition read off a *capture* proposition: a side
+      chain, a hole naming a source capture proposition, and a side chain
+      into a weakened closed set.  The slot carries no kind and no kinding
+      evidence: the target kind is read off the target proposition, and the
+      closed kinding of the morphism is discharged where the entry is
+      typed, exactly as `Entry.leC` carries no capture evidence. -/
+  | kindCle : SideC s → HoleC → SideC s → Entry s
   /-- A bound entry: a coercion out of the source object type. -/
   | bnd : Form s → Entry s
   /-- A routed entry: the coercion `H` reaches another object type from the
@@ -375,7 +382,20 @@ def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
   | .kindC pre j =>
       match Es₁.get? j with
       | some (.kindC pre₁ k) => some (.kindC (pre ++ pre₁) k)
+      -- The source template may itself read a capture hole, and then the
+      -- composite does too: the chains concatenate and the closed kinding
+      -- at the far end is unchanged.
+      | some (.kindCle pre₁ h₁ post₁) => some (.kindCle (pre ++ pre₁) h₁ post₁)
       | _ => none
+  -- A kinding template over a capture hole composes exactly as a capture
+  -- template does: the closed kinding sits at the far end of the post
+  -- chain and the composition does not move it.
+  | .kindCle pre h post =>
+      match Es₁.get? h.index, h with
+      | some (.leC pre₁ h₁ post₁), .leC _ => some (.kindCle (pre ++ pre₁) h₁ (post₁ ++ post))
+      | some (.eqC k b), .eqC _ => some (.kindCle pre (if b then .eqSymC k else .eqC k) post)
+      | some (.eqC k b), .eqSymC _ => some (.kindCle pre (if b then .eqC k else .eqSymC k) post)
+      | _, _ => none
   | .bnd G => (Form.combine (.obj Es₁) G).map .bnd
   -- Object forms never carry routed entries, so this case does not arise.
   | .thru _ _ => none
@@ -598,6 +618,14 @@ def Entry.at (σ : Store s) : Nat → Atom s → Form s → View s → Entry s �
       match ← V.get? j with
       | .kindC => pure .kindC
       | _ => none
+  -- A kinding template over a capture hole produces the same data-free
+  -- kinding slot; it only has to name a capture proposition of the view.
+  | _ + 1, _, _, V, .kindCle _ h _ => do
+      match h, ← V.get? h.index with
+      | .leC _, .leC => pure .kindC
+      | .eqC _, .eqC => pure .kindC
+      | .eqSymC _, .eqC => pure .kindC
+      | _, _ => none
   | _ + 1, _, C, _, .bnd G => (C.combine G).map PropForm.bnd
   | n + 1, a, C, _, .thru H E => do
       let V' ← viewThrough σ n H a
@@ -684,6 +712,9 @@ def entries (σ : Store s) : Nat → Morphism s → Option (Entries s)
   | n + 1, .kindC m q j _ => do
       let Es ← entries σ n m
       pure (Es ▹ .kindC q j)
+  | n + 1, .kindCle m q h q' _ _ => do
+      let Es ← entries σ n m
+      pure (Es ▹ .kindCle q h q')
 
 /-- The view of a concrete atom at its resolved object type. -/
 def view (σ : Store s) : Nat → Atom s → Option (View s)

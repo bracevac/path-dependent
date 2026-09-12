@@ -68,22 +68,26 @@ membership and rootedness agree there. -/
 /-- A platform signature has no term variable. -/
 theorem Platform.noVar : ∀ {s : Sig}, Platform s → BVar s .var → False
   | _, .cons P, .there y => Platform.noVar P y
+  | _, .consCls P _, .there y => Platform.noVar P y
 
 /-- The source context of a platform prefix: one rigid capture binder per
 slot, with no bound. -/
 def Platform.ctx : Platform s → Ctx s
   | .nil => .nil
   | .cons P => .consC P.ctx
+  | .consCls P c => .consCls P.ctx c
 
 /-- The initial target store over a platform prefix: the same slots, at the
 platform's bound `∗`. -/
 def Platform.targetStore : Platform s → FCdot.Store s
   | .nil => .nil
   | .cons P => .consC P.targetStore .star
+  | .consCls P c => .consC P.targetStore (.cls c)
 
 theorem Platform.ctx_wf : ∀ P : Platform s, P.ctx.Wf
   | .nil => .nil
   | .cons P => .consC (Platform.ctx_wf P)
+  | .consCls P _ => .consCls (Platform.ctx_wf P)
 
 /-- The target store of a platform prefix is typed by the translation of the
 source platform context. -/
@@ -91,6 +95,7 @@ theorem Platform.targetStore_typed : ∀ P : Platform s,
     FCdot.Store.Typed P.targetStore P.ctx.translate
   | .nil => .nil
   | .cons P => .consC (Platform.targetStore_typed P) rfl
+  | .consCls P c => FCdot.Store.Typed.consC_cls (Platform.targetStore_typed P) c
 
 /-- The two initial stores have the same erasure: a capture slot carries no
 runtime content on either side. -/
@@ -98,6 +103,9 @@ theorem Platform.store_erase : ∀ P : Platform s,
     (FCdot.Store.erase P.targetStore) = P.store.erase
   | .nil => rfl
   | .cons P => by
+      simp only [Platform.targetStore, Platform.store, FCdot.Store.erase, Store.erase,
+        Platform.store_erase P]
+  | .consCls P _ => by
       simp only [Platform.targetStore, Platform.store, FCdot.Store.erase, Store.erase,
         Platform.store_erase P]
 
@@ -117,6 +125,12 @@ theorem Platform.capsAtom : ∀ {s : Sig} (P : Platform s) (n : Nat) (a : FCdot.
       simp only [Platform.ctx, Ctx.translate, FCdot.Ctx.capsAtom,
         Platform.capsAtom P n (.cvar κ)]
       rfl
+  | _, .consCls _ _, _, .cvar .here => by
+      simp only [Platform.ctx, Ctx.translate, FCdot.Ctx.capsAtom]
+  | _, .consCls P _, n, .cvar (.there κ) => by
+      simp only [Platform.ctx, Ctx.translate, FCdot.Ctx.capsAtom,
+        Platform.capsAtom P n (.cvar κ)]
+      rfl
   | _, P, n, .proj a φ => by
       rw [FCdot.Ctx.capsAtom_proj, Platform.capsAtom P n a]
       rfl
@@ -133,6 +147,10 @@ theorem Platform.rootFree : ∀ {s : Sig} (P : Platform s), P.ctx.translate.root
   | _, .nil => rfl
   | _, .cons P => by
       show (FCdot.Ctx.consC P.ctx.translate FCdot.CapBound.star).root? = none
+      rw [FCdot.Ctx.root?_consC_of_not_root _ _ rfl, Platform.rootFree P]
+      rfl
+  | _, .consCls P c => by
+      show (FCdot.Ctx.consC P.ctx.translate (FCdot.CapBound.cls c)).root? = none
       rw [FCdot.Ctx.root?_consC_of_not_root _ _ rfl, Platform.rootFree P]
       rfl
 
@@ -160,6 +178,39 @@ theorem Platform.root_iff {s : Sig} (P : Platform s) (a : FCdot.CapAtom s)
     rwa [hr n] at hn
   · intro h
     exact ⟨0, by rw [hr 0]; exact h⟩
+
+/-- The classifier the translated platform context declares at a capture
+binder is the classifier the platform declares there.  One induction on `P`,
+with `CapBound.classifier` reading `star` as the root classifier `⊤`, which
+is what a plain platform binder declares. -/
+theorem Platform.classOf_translate : ∀ {s : Sig} (P : Platform s) (κ : BVar s .cap),
+    P.ctx.translate.classOf (FCdot.CapAtom.cvar κ) = P.classOf κ
+  | _, .cons _, .here => rfl
+  | _, .consCls _ _, .here => rfl
+  | _, .cons P, .there κ => by
+      show (FCdot.CapBound.weaken (P.ctx.translate.lookupCap κ)).classifier = _
+      rw [FCdot.CapBound.classifier_weaken]
+      exact Platform.classOf_translate P κ
+  | _, .consCls P _, .there κ => by
+      show (FCdot.CapBound.weaken (P.ctx.translate.lookupCap κ)).classifier = _
+      rw [FCdot.CapBound.classifier_weaken]
+      exact Platform.classOf_translate P κ
+
+/-- The admission test at a platform capability is the containment test of
+the platform's own classifier.  It is what makes the platform verdicts of the
+examples `decide`. -/
+theorem Platform.admits_iff {s : Sig} (P : Platform s) (κ : BVar s .cap) (φ : Cls.Kind) :
+    P.ctx.translate.admitsB (FCdot.CapAtom.cvar κ) φ = φ.containsB (P.classOf κ) := by
+  rw [FCdot.Ctx.admitsB, Platform.classOf_translate P κ]
+
+/-- **D4.**  `Platform.root_iff` read backwards: over a platform prefix, an
+atom outside a projection-free translated set is no root of it.  It is what
+turns the hypothesis a projection-free program writes into the semantic
+hypothesis `dot_effect_safety` now takes. -/
+theorem Platform.not_root_of_not_mem {s : Sig} (P : Platform s) (a : FCdot.CapAtom s)
+    (C : FCdot.CaptureSet s) (hC : FCdot.CapAtom.top ∉ C) (hb : ∀ b ∈ C, b.base = b)
+    (h : a ∉ C) : ¬ P.ctx.translate.Root a C := fun hr =>
+  h ((P.root_iff a C hC hb).mp hr)
 
 /-! ## The inspected root, read through the erasure -/
 
@@ -274,13 +325,15 @@ theorem dot_capture_prediction {s₀ : Sig} (P : Platform s₀) {U : CaptureSet 
   exact (hpred Γ' hσ').trans (hE.capLe P.targetStore_typed hσ' hbase)
 
 /-- **Effect safety for DOT-MNF.**  A closed program typed over a platform
-prefix whose declared use set does not name the platform capability `κ` never
-reads, along any run, a root whose root is `κ`.  The hypothesis is the roots
-condition the target asks for: over a platform prefix every atom is a capture
-variable and every binder is rigid, so a root of a set is a member of it. -/
+prefix whose declared use set does not reach the platform capability `κ`
+never reads, along any run, a root whose root is `κ`.  The hypothesis is the
+roots condition the target asks for.  On a projection-free program it is the
+membership hypothesis the copied statement carried, by
+`Platform.not_root_of_not_mem` under `CaptureSet.base_of_mem_translate`; with
+a projection the membership form is false (K2.0 D4). -/
 theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
     {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {κ : BVar s₀ .cap}
-    (hκ : ¬ (FCdot.CapAtom.cvar κ ∈ U.translate))
+    (hκ : ¬ P.ctx.translate.Root (FCdot.CapAtom.cvar κ) U.translate)
     {s : Sig} {st : State s} (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename s₀ s),
@@ -303,11 +356,96 @@ theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀}
     exact FCdot.cap_canon P.targetStore_typed (d.translate_uses P.ctx_wf)
   have hroot : ¬ P.ctx.translate.Root (FCdot.CapAtom.cvar κ)
       (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s₀).uses := fun hr =>
-    hκ ((P.root_iff _ _ (CaptureSet.top_not_mem_translate U)
-      (CaptureSet.base_of_mem_translate U)).mp (hbase _ hr))
+    hκ (hbase _ hr)
   obtain ⟨ρ, hE, hne⟩ :=
     FCdot.effect_safety (P.initial_typed d) P.targetStore_typed hrun hroot hint hσ'
   exact ⟨stt, Γ', ρ, he, hσ', hE, hne⟩
+
+/-! ## The two classified theorems -/
+
+/-- **T8, classified prediction for DOT-MNF.**  Along any run of a closed
+program typed over a platform prefix whose declared use set is kinded at `φ`,
+the matched target state's use set stays below the translation of the source's
+declared use set and stays kinded at `φ`.  This is `dot_capture_prediction`
+with the kinding carried to the new context by `FCdot.Store.Ext.kindLe` and
+pulled back along the predicted inclusion by `FCdot.Ctx.KindLe.mono`. -/
+theorem dot_classified_prediction {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
+    {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {φ : Cls.Kind}
+    (hk : P.ctx.translate.KindLe U.translate φ)
+    {s : Sig} {st : State s} (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st) :
+    ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename s₀ s),
+      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+        FCdot.Store.Ext P.targetStore stt.σ ρ ∧
+          FCdot.CapLe Γ' stt.uses (U.translate.rename ρ) ∧ Γ'.KindLe stt.uses φ := by
+  obtain ⟨stt, Γ', ρ, he, hσ', hE, hle⟩ := dot_capture_prediction P d run
+  refine ⟨stt, Γ', ρ, he, hσ', hE, hle, ?_⟩
+  exact FCdot.Ctx.KindLe.mono hle (hE.kindLe P.targetStore_typed hσ' hk)
+
+/-- **T8'**, T8 with the hypothesis a source program actually writes: source
+kinding evidence for the declared use set over the platform prefix.  The
+translation of that evidence is target kinding evidence, and `FCdot.kind_canon`
+reads it as the semantic hypothesis T8 takes.  This is the one place a source
+program consumes K1's canonical form. -/
+theorem dot_classified_prediction' {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
+    {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {φ : Cls.Kind} (g : CapKind P.ctx U φ)
+    {s : Sig} {st : State s} (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st) :
+    ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename s₀ s),
+      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+        FCdot.Store.Ext P.targetStore stt.σ ρ ∧
+          FCdot.CapLe Γ' stt.uses (U.translate.rename ρ) ∧ Γ'.KindLe stt.uses φ :=
+  dot_classified_prediction P d
+    (FCdot.kind_canon P.targetStore_typed (g.translate_typed P.ctx_wf)) run
+
+/-- **T9, classified effect safety for DOT-MNF.**  A closed program typed over
+a platform prefix whose declared use set is kinded at `φ` never reads, along
+any run, a capability whose classifier lies outside `φ`.  This is T8 and
+`FCdot.inspects_covered`, with the read root transported to the matched target
+state exactly as `dot_effect_safety` transports it. -/
+theorem dot_classified_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀}
+    {t : Tm s₀} {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {φ : Cls.Kind}
+    (hk : P.ctx.translate.KindLe U.translate φ)
+    {s : Sig} {st : State s} (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename s₀ s),
+      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+        FCdot.Store.Ext P.targetStore stt.σ ρ ∧
+          ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] →
+            φ.Contains (Γ'.classOf a) := by
+  obtain ⟨stt, hrun, he, hnc⟩ := P.simulatedRun d run
+  obtain ⟨V₁, hT₁⟩ := FCdot.State.Typed.steps ⟨_, P.initial_typed d⟩ hrun
+  obtain ⟨Γ', T₁, hσ', ht₁, hK₁⟩ := hT₁
+  -- The root the source reads is the root the matched target state reads.
+  have hint : stt.inspects = some x := by
+    refine FCdot.State.inspects_reflect hnc ?_
+    rw [he]
+    exact State.inspects_erase hin
+  -- The initial use set is kinded at `φ`.
+  have hbase : FCdot.CapLe P.ctx.translate
+      (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s₀).uses U.translate := by
+    simp only [FCdot.State.uses_mk, FCdot.usesK_nil, FCdot.CaptureSet.union_def,
+      List.append_nil]
+    exact FCdot.cap_canon P.targetStore_typed (d.translate_uses P.ctx_wf)
+  have hk₀ : P.ctx.translate.KindLe
+      (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s₀).uses φ :=
+    FCdot.Ctx.KindLe.mono hbase hk
+  have hsafe := FCdot.classified_effect_safety (P.initial_typed d) P.targetStore_typed
+    hk₀ hrun hint hσ'
+  obtain ⟨ρ, hE, -⟩ := FCdot.capture_prediction (P.initial_typed d) hrun
+  exact ⟨stt, Γ', ρ, he, hσ', hE, hsafe⟩
+
+/-- **T9'**, T9 with the hypothesis a source program actually writes. -/
+theorem dot_classified_effect_safety' {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀}
+    {t : Tm s₀} {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {φ : Cls.Kind}
+    (g : CapKind P.ctx U φ)
+    {s : Sig} {st : State s} (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename s₀ s),
+      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+        FCdot.Store.Ext P.targetStore stt.σ ρ ∧
+          ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] →
+            φ.Contains (Γ'.classOf a) :=
+  dot_classified_effect_safety P d
+    (FCdot.kind_canon P.targetStore_typed (g.translate_typed P.ctx_wf)) run hin
 
 end DotMNF
 
