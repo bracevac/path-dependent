@@ -22,10 +22,11 @@ that function, and DOT-MNF's type safety is transported from FCdot's.
 | `WadlerFest` | composed translation, typedness, erasure, and safety for the annotated WadlerFest store machine |
 | `RetainedSafety` | safety for every retained-let reduction order, using the operational correspondence with the annotated machine |
 | `SortedSafety` | typed translation, exact erasure, and retained-let safety for the public WadlerFest syntax with distinct type and term labels |
-| [`RecursiveSubtyping`](RecursiveSubtyping.lean) | experimental target coercions for recursive projection and declaration-shaped width, including dependent-codomain projection; the source subtyping rules are unchanged |
+| [`RecursiveSubtyping`](RecursiveSubtyping.lean) | experimental recursive projection and width coercions, dependent-codomain projection, and a recursive coercion composing two self facts; source subtyping rules are unchanged |
 
 The [recursive-subtyping research note](RecursiveSubtyping.md) states the
-checked principles and the remaining obligation for a general BINDX rule.
+checked principles, the finite-template extension, and the remaining
+correspondence obligation for a general BINDX rule.
 
 ## The translation
 

@@ -47,6 +47,7 @@ theorem Morphism.HasType.append {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)}
   | _, _, .le h₂ hAt hpre hpost => .le (h₁.append h₂) hAt hpre hpost
   | _, _, .leEq h₂ hAt hpre hpost => .leEq (h₁.append h₂) hAt hpre hpost
   | _, _, .leEqSym h₂ hAt hpre hpost => .leEqSym (h₁.append h₂) hAt hpre hpost
+  | _, _, .leTrans h₂ hp hq => .leTrans (h₁.append h₂) hp hq
   | _, _, .eq h₂ hAt => .eq (h₁.append h₂) hAt
   | _, _, .eqSym h₂ hAt => .eqSym (h₁.append h₂) hAt
   | _, _, .has h₂ hAt => .has (h₁.append h₂) hAt

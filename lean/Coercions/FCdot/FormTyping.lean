@@ -21,14 +21,14 @@ any root (`FormTyped.atRoot`, in `FormAlgebra`).
 
 An object form is typed between closed telescopes
 (`EntriesTyped Γ ρ Tel₁ Es Tel₂`): each entry is a template proving a target
-proposition from a source proposition named by index, with closed sides
-(`SideTyped`) between weakened closed types, or -- for a target bound -- a
+proposition by a finite composition of indexed source facts, with closed
+sides (`SideTyped`) between weakened closed types, or -- for a target bound -- a
 closed coercion out of the source object type.  A coercion whose entries do
 not consult the view of the source is typed by `BndsTyped Γ ρ S Es Tel`;
 such entries are either bounds or *routed* (`FreeEntry.thru`), reaching another
 object type by a form out of the source and proving the target proposition
-there (`EntryTyped`).  Templates never eliminate through the self's members,
-which is what keeps everything structural.
+there (`EntryTyped`). Templates read an established receiver view and
+compose its facts; they do not normalize a new coercion under self.
 
 A *view* `Γ ⊨[r, σ] V : Tel` is the telescope of forms of the propositions
 of `Tel`, instantiated at the atom's root `r`: inclusion entries are typed
@@ -191,6 +191,10 @@ inductive EntriesTyped {s : Sig} (Γ : Ctx s) :
   | le : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁.HoleAt h X Y →
       SideTyped Γ pre S X → SideTyped Γ post Y T →
       EntriesTyped Γ ρ Tel₁ (Es ▹ .le pre h post) (Tel₂ ▹ S ⊑ T)
+  | trans : EntriesTyped Γ ρ Tel₁ Es Tel₂ → SideTyped Γ pre S X →
+      EntryTyped Γ ρ Tel₁ E₁ (X ⊑ M) → EntryTyped Γ ρ Tel₁ E₂ (M ⊑ Y) →
+      SideTyped Γ post Y T →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .trans pre E₁ E₂ post) (Tel₂ ▹ S ⊑ T)
   | eq : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁ ∋ (j ↦ X ≐ Y) →
       EntriesTyped Γ ρ Tel₁ (Es ▹ .eq j false) (Tel₂ ▹ X ≐ Y)
   | eqSym : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁ ∋ (j ↦ X ≐ Y) →
@@ -210,6 +214,9 @@ inductive EntryTyped {s : Sig} (Γ : Ctx s) :
     Option (BVar s .var) → Telescope (s,x) → LocalEntry s → Proposition (s,x) → Prop where
   | le : Telescope.HoleAt Tel₁ h X Y → SideTyped Γ pre S X → SideTyped Γ post Y T →
       EntryTyped Γ ρ Tel₁ (.le pre h post) (S ⊑ T)
+  | trans : SideTyped Γ pre S X → EntryTyped Γ ρ Tel₁ E₁ (X ⊑ M) →
+      EntryTyped Γ ρ Tel₁ E₂ (M ⊑ Y) → SideTyped Γ post Y T →
+      EntryTyped Γ ρ Tel₁ (.trans pre E₁ E₂ post) (S ⊑ T)
   | eq : Tel₁ ∋ (j ↦ X ≐ Y) → EntryTyped Γ ρ Tel₁ (.eq j false) (X ≐ Y)
   | eqSym : Tel₁ ∋ (j ↦ X ≐ Y) → EntryTyped Γ ρ Tel₁ (.eq j true) (Y ≐ X)
   | has : Tel₁ ∋ (j ↦ ∋ ℓ) → EntryTyped Γ ρ Tel₁ (.has j) (∋ ℓ)
@@ -229,6 +236,20 @@ inductive BndsTyped {s : Sig} (Γ : Ctx s) :
       BndsTyped Γ ρ S (Es ▹ .thru H E) (Tel ▹ P)
 
 end
+
+/-- A morphism to a singleton inclusion produces one local inclusion recipe. -/
+theorem EntriesTyped.singleton_le {Γ : Ctx s} {ρ : Option (BVar s .var)}
+    {src : Telescope (s,x)} {Es : Entries s} {S T : Ty (s,x)}
+    (h : EntriesTyped Γ ρ src Es (.nil ▹ S ⊑ T)) :
+    ∃ E L, Es = .cons .nil E ∧ E.toLocal? = some L ∧
+      EntryTyped Γ ρ src L (S ⊑ T) := by
+  cases h with
+  | le hn hh hp hq =>
+      cases hn
+      exact ⟨_, _, rfl, rfl, .le hh hp hq⟩
+  | trans hn hp h₁ h₂ hq =>
+      cases hn
+      exact ⟨_, _, rfl, rfl, .trans hp h₁ h₂ hq⟩
 
 /-! ### Notation for typed forms
 

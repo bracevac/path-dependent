@@ -20,6 +20,8 @@ normalizes to typed data:
 The proof is a structural induction on typing derivations.  Object coercions
 are between opened telescopes, so nothing is ever re-normalized at an
 instantiation: the `member` cases take an entry out of the atom's view.
+Composed templates normalize their premise morphisms independently; their
+interpretation then composes forms from the same existing receiver view.
 The view of a cast atom is computed from the view *and the chain* of the
 underlying atom (a bound entry of a view is a form typed from the root).
 One atom conclusion carries both; `atom_canon` and `closedAtomForm_typed`
@@ -301,6 +303,18 @@ theorem mor_canon {src : Telescope (s,x)} {m : Morphism s} {Tel : Telescope (s,x
       simp [entries, entries_le (Nat.le_max_left _ _) hEs,
         sideForm_le (Nat.le_trans (Nat.le_max_left n₂ n₃) (Nat.le_max_right n₁ _)) hF,
         sideForm_le (Nat.le_trans (Nat.le_max_right n₂ n₃) (Nat.le_max_right n₁ _)) hG]
+  | .leTrans hm hp hq =>
+      obtain ⟨n₁, Es, hEs, hT⟩ := mor_canon hm
+      obtain ⟨n₂, Es₁, hEs₁, hT₁⟩ := mor_canon hp
+      obtain ⟨n₃, Es₂, hEs₂, hT₂⟩ := mor_canon hq
+      obtain ⟨E₁, L₁, rfl, hL₁, htL₁⟩ := hT₁.singleton_le
+      obtain ⟨E₂, L₂, rfl, hL₂, htL₂⟩ := hT₂.singleton_le
+      refine ⟨max n₁ (max n₂ n₃) + 1, Es ▹ .trans .id L₁ L₂ .id, ?_,
+        .trans hT .id htL₁ htL₂ .id⟩
+      simp [entries, entries_le (Nat.le_max_left _ _) hEs,
+        entries_le (Nat.le_trans (Nat.le_max_left n₂ n₃) (Nat.le_max_right n₁ _)) hEs₁,
+        entries_le (Nat.le_trans (Nat.le_max_right n₂ n₃) (Nat.le_max_right n₁ _)) hEs₂,
+        hL₁, hL₂]
   | .eq hm hAt =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, Es ▹ .eq _ false, by simp [entries, hEs], .eq hT hAt⟩

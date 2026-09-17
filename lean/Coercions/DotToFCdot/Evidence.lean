@@ -35,6 +35,7 @@ open FCdot (Kind Sig BVar Rename Label)
 def _root_.FCdot.Morphism.append : FCdot.Morphism s → FCdot.Morphism s → FCdot.Morphism s
   | m, .nil => m
   | m, .le m' pre h post => .le (m.append m') pre h post
+  | m, .leTrans m' p q => .leTrans (m.append m') p q
   | m, .eq m' j b => .eq (m.append m') j b
   | m, .has m' j => .has (m.append m') j
   | m, .bnd m' e => .bnd (m.append m') e

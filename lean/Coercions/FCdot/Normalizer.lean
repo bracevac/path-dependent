@@ -4,23 +4,23 @@ import Coercions.FCdot.Store
 # The normalizer: head normal forms of closed evidence
 
 Inclusion evidence over a store normalizes to a head form: `bot`, `top`,
-identity, a definitional conversion, a function coercion with closed domain
+identity, a function coercion with closed domain
 and codomain evidence, or an object coercion given by the normal forms of
-its templates.  A template proves a target proposition as
-`pre ∘ (source proposition j) ∘ post` with closed sides, so the normal form
-of a coercion does not depend on the atom it is applied to: it is a
-telescope of *entries*, one per target proposition, each naming a source
-proposition by index.  Composition substitutes templates into templates;
-application to an atom looks the source proposition up in the atom's view
-and combines the sides with it.
+its templates. Inclusion templates are finite compositions of source facts
+with closed coercion sides. The normal form of a coercion does not depend
+on the atom it is applied to: it is a telescope of entries, one per target
+proposition. Object composition substitutes templates for source facts.
+Application interprets the finite template against a supplied receiver
+view and combines its resulting forms.
 
 The *view* of a concrete atom is the telescope of normal forms of the
 propositions of its (resolved) object type: a location's view is read off
 its literal, and the view of a cast atom is obtained by applying the head
 form of the cast to the view of the underlying atom.  Eliminating a member
-fact looks a view up.  Every recursion is structural in the closed evidence
-term or atom, so the normalizer is a fuel-indexed total function whose fuel
-bound is syntactic.
+fact looks a view up. The executable normalizer uses fuel. Canonical forms
+establish sufficient fuel for well-typed evidence over a store, using
+induction on typing together with the composition and interpretation
+algebra for forms.
 
 Entries and views are telescope-shaped (oldest first, `cons` at the end),
 indexed by an `At` relation mirroring `Telescope.At`, with executable
@@ -96,6 +96,8 @@ inductive Form (s : Sig) : Type where
 coercion out of the source object type. -/
 inductive LocalEntry (s : Sig) : Type where
   | le : Form s → Hole → Form s → LocalEntry s
+  /-- Compose two inclusion templates over the same source view. -/
+  | trans : Form s → LocalEntry s → LocalEntry s → Form s → LocalEntry s
   | eq : Nat → Bool → LocalEntry s
   | has : Nat → LocalEntry s
   | copyBound : Nat → LocalEntry s
@@ -103,6 +105,7 @@ inductive LocalEntry (s : Sig) : Type where
 /-- An entry of an object coercion. Object entries contain no routes. -/
 inductive Entry (s : Sig) : Type where
   | le : Form s → Hole → Form s → Entry s
+  | trans : Form s → LocalEntry s → LocalEntry s → Form s → Entry s
   | eq : Nat → Bool → Entry s
   | has : Nat → Entry s
   | bnd : Form s → Entry s
@@ -228,6 +231,31 @@ def Hole.flip : Hole → Hole
   | .eq j => .eqSym j
   | .eqSym j => .eq j
 
+/-- Embed a local recipe into an object entry. -/
+def LocalEntry.toEntry : LocalEntry s → Entry s
+  | .le pre h post => .le pre h post
+  | .trans pre E₁ E₂ post => .trans pre E₁ E₂ post
+  | .eq j b => .eq j b
+  | .has j => .has j
+  | .copyBound j => .copyBound j
+
+/-- General bounds require the whole source coercion; every other entry is local. -/
+def Entry.toLocal? : Entry s → Option (LocalEntry s)
+  | .le pre h post => some (.le pre h post)
+  | .trans pre E₁ E₂ post => some (.trans pre E₁ E₂ post)
+  | .eq j b => some (.eq j b)
+  | .has j => some (.has j)
+  | .copyBound j => some (.copyBound j)
+  | .bnd _ => none
+
+@[simp] theorem LocalEntry.toLocal?_toEntry (E : LocalEntry s) :
+    E.toEntry.toLocal? = some E := by cases E <;> rfl
+
+/-- A local part is no larger than the object entry containing it. -/
+theorem Entry.toLocal?_sizeOf {E : Entry s} {L : LocalEntry s}
+    (h : E.toLocal? = some L) : sizeOf L ≤ sizeOf E := by
+  cases E <;> simp only [Entry.toLocal?, Option.some.injEq] at h <;> cases h <;> simp
+
 /-- An entry found by lookup is a subterm. -/
 theorem Entries.get?_sizeOf : ∀ {Es : Entries s} {j : Nat} {E : Entry s},
     Es.get? j = some E → sizeOf E < sizeOf Es
@@ -315,19 +343,57 @@ theorem FreeEntries.get?Attach_eq_some {Es : FreeEntries s} {j : Nat} {E : FreeE
 
 mutual
 
-/-- Compose object entries by substituting the first entry for each source
-position used by the second. Inclusion sides compose, copied bounds are
-looked up directly, and general bounds compose with the whole first form. -/
-def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
+/-- Surround an inclusion recipe with closed forms. Its internal composition
+structure is retained, so this operation never evaluates a receiver. -/
+def LocalEntry.surround (pre : Form s) : LocalEntry s → Form s → Option (LocalEntry s)
+  | .le F h G, post => do
+      let F' ← Form.combine pre F
+      let G' ← Form.combine G post
+      pure (.le F' h G')
+  | .trans F E₁ E₂ G, post => do
+      let F' ← Form.combine pre F
+      let G' ← Form.combine G post
+      pure (.trans F' E₁ E₂ G')
+  | _, _ => none
+termination_by E post => sizeOf pre + sizeOf E + sizeOf post
+ decreasing_by all_goals (simp_wf; (try simp at *); (try omega))
+
+/-- Substitute object entries for the source facts of a finite local recipe. -/
+def LocalEntry.through (Es₁ : Entries s) : LocalEntry s → Option (LocalEntry s)
   | .le pre h post =>
       match Es₁.get?Attach h.index, h with
-      | some ⟨.le pre₁ h₁ post₁, _⟩, .le _ =>
-          (Form.combine pre pre₁).bind fun pre' =>
-            (Form.combine post₁ post).bind fun post' =>
-              some (.le pre' h₁ post')
+      | some ⟨E, _⟩, .le _ =>
+          match hL : E.toLocal? with
+          | some L =>
+              have := Entry.toLocal?_sizeOf hL
+              LocalEntry.surround pre L post
+          | none => none
       | some ⟨.eq k b, _⟩, .eq _ => some (.le pre (if b then .eqSym k else .eq k) post)
       | some ⟨.eq k b, _⟩, .eqSym _ => some (.le pre (if b then .eq k else .eqSym k) post)
       | _, _ => none
+  | .trans pre E₁ E₂ post => do
+      let E₁' ← LocalEntry.through Es₁ E₁
+      let E₂' ← LocalEntry.through Es₁ E₂
+      pure (.trans pre E₁' E₂' post)
+  | .eq j b =>
+      match Es₁.get? j with
+      | some (.eq k b') => some (.eq k (xor b b'))
+      | _ => none
+  | .has j =>
+      match Es₁.get? j with
+      | some (.has k) => some (.has k)
+      | _ => none
+  | .copyBound j => (Es₁.get? j).bind Entry.toLocal?
+termination_by E => sizeOf Es₁ + sizeOf E
+ decreasing_by
+  all_goals (simp_wf; (try simp at *))
+  all_goals omega
+
+/-- Compose object entries by substituting finite recipes for source facts. -/
+def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
+  | .le pre h post => (LocalEntry.through Es₁ (.le pre h post)).map LocalEntry.toEntry
+  | .trans pre E₁ E₂ post =>
+      (LocalEntry.through Es₁ (.trans pre E₁ E₂ post)).map LocalEntry.toEntry
   | .eq j b =>
       match Es₁.get? j with
       | some (.eq k b') => some (.eq k (xor b b'))
@@ -339,8 +405,7 @@ def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
   | .bnd G => (Form.combine (.obj Es₁) G).map .bnd
   | .copyBound j => Es₁.get? j
 termination_by E => sizeOf Es₁ + sizeOf E + 1
-decreasing_by
-  all_goals (simp_wf; (try simp at *); (try omega))
+ decreasing_by all_goals (simp_wf; (try simp at *); (try omega))
 
 def Entries.through (Es₁ : Entries s) : Entries s → Option (Entries s)
   | .nil => some .nil
@@ -356,6 +421,7 @@ def Entry.prefix (H : Form s) : Entry s → Option (FreeEntry s)
   | .copyBound j => some (.thru H (.copyBound j))
   | .bnd G => (Form.combine H G).map FreeEntry.bnd
   | .le pre h post => some (.thru H (.le pre h post))
+  | .trans pre E₁ E₂ post => some (.thru H (.trans pre E₁ E₂ post))
   | .eq j b => some (.thru H (.eq j b))
   | .has j => some (.thru H (.has j))
 termination_by E => sizeOf H + sizeOf E
@@ -518,6 +584,13 @@ def LocalEntry.at : View s → LocalEntry s → Option (PropForm s)
       let F ← pre.combine mid
       let G ← F.combine post
       pure (.le G)
+  | V, .trans pre E₁ E₂ post => do
+      let .le F₁ ← LocalEntry.at V E₁ | none
+      let .le F₂ ← LocalEntry.at V E₂ | none
+      let F ← pre.combine F₁
+      let G ← F.combine F₂
+      let H ← G.combine post
+      pure (.le H)
   | V, .eq j _ => do
       match ← V.get? j with
       | .eq => pure .eq
@@ -535,6 +608,7 @@ def LocalEntry.at : View s → LocalEntry s → Option (PropForm s)
 def Entry.at (_σ : Store s) : Nat → Atom s → Form s → View s → Entry s → Option (PropForm s)
   | 0, _, _, _, _ => none
   | _ + 1, _, _, V, .le pre h post => LocalEntry.at V (.le pre h post)
+  | _ + 1, _, _, V, .trans pre E₁ E₂ post => LocalEntry.at V (.trans pre E₁ E₂ post)
   | _ + 1, _, _, V, .eq j b => LocalEntry.at V (.eq j b)
   | _ + 1, _, _, V, .has j => LocalEntry.at V (.has j)
   | _ + 1, _, C, _, .bnd G => (C.combine G).map PropForm.bnd
@@ -612,6 +686,13 @@ def entries (σ : Store s) : Nat → Morphism s → Option (Entries s)
       let F ← sideForm σ n pre
       let G ← sideForm σ n post
       pure (Es ▹ .le F h G)
+  | n + 1, .leTrans m p q => do
+      let Es ← entries σ n m
+      let .cons .nil E₁ ← entries σ n p | none
+      let .cons .nil E₂ ← entries σ n q | none
+      let L₁ ← E₁.toLocal?
+      let L₂ ← E₂.toLocal?
+      pure (Es ▹ .trans .id L₁ L₂ .id)
   | n + 1, .eq m j b => do
       let Es ← entries σ n m
       pure (Es ▹ .eq j b)

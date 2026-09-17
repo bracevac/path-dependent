@@ -253,6 +253,8 @@ theorem Morphism.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
   | .leEqSym hm hAt hpre hpost =>
       exact .leEqSym (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
         (hpre.rename hρ) (hpost.rename hρ)
+  | .leTrans hm hp hq =>
+      exact .leTrans (hm.rename hρ) (hp.rename hρ) (hq.rename hρ)
   | .eq hm hAt =>
       exact .eq (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
   | .eqSym hm hAt =>

@@ -32,3 +32,8 @@ The presentation follows `DotMNF/`, `DotMNF/WadlerFest/`, `FCdot/`, and
 `DotToFCdot/SortedSafety.lean`. Source entities remain blue inside translation
 brackets. Calligraphic letters followed by `::` name derivations; proof-term
 definitions and typing judgments are displayed separately.
+
+This deck records the WadlerFest consolidation at `9aae5a9`. The subsequent
+finite-template experiment on `fcdot-recursive-subtyping` adds composition
+of self facts to the target evidence grammar; its rule and metatheory are
+explained in [the research note](../DotToFCdot/RecursiveSubtyping.md).

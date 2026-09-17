@@ -36,17 +36,20 @@ theorem Telescope.BndsOnly.nil : (Telescope.nil (s := (s,x))).BndsOnly := by
 theorem EntryTyped.bnd_of_bndsOnly {ρ : Option (BVar s .var)} {TelM : Telescope (s,x)}
     {E : LocalEntry s} {P : Proposition (s,x)} (hb : TelM.BndsOnly)
     (hE : EntryTyped Γ ρ TelM E P) : ∃ X : Ty (s,x), P = Proposition.bnd X := by
-  cases hE with
-  | le hh _ _ =>
+  match hE with
+  | .le hh _ _ =>
       cases hh with
       | le hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
       | eq hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
       | eqSym hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
-  | eq hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
-  | eqSym hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
-  | has hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
-  | bnd _ => exact ⟨_, rfl⟩
-  | bndId _ => exact ⟨_, rfl⟩
+  | .trans _ h₁ _ _ =>
+      obtain ⟨_, hP⟩ := EntryTyped.bnd_of_bndsOnly hb h₁
+      cases hP
+  | .eq hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
+  | .eqSym hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
+  | .has hAt => obtain ⟨_, hP⟩ := hb _ _ hAt; exact absurd hP (by simp)
+  | .bnd _ => exact ⟨_, rfl⟩
+  | .bndId _ => exact ⟨_, rfl⟩
 
 mutual
 
