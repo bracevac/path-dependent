@@ -8,11 +8,6 @@ families.  They live in `Type`, not in `Prop`: the translation of Plan III
 §8 is a function on derivations and therefore needs `Type`-valued
 elimination.
 
-Well-formedness appears only as a premise of the two rules that introduce a
-type out of thin air: the domain annotation of a lambda and the result type
-of a `let`.  Everything else is derived from those, so no side predicate on
-derivations is needed.
-
 One deviation from the surface presentation of §3.4: `{}-I` is stated as
 
 ```text
@@ -21,22 +16,18 @@ One deviation from the surface presentation of §3.4: `{}-I` is stated as
 
 rather than with the *opened* self type `T^x` as the binding for `x`.  With
 intrinsic scoping a context entry lives in the signature *before* its own
-binder, so `T^x` cannot be an entry.  The two are interderivable, since
-`Rec-I` and `Rec-E` convert between `x : μ(x. T)` and `x : T^x`, and the
-shape chosen here is the one that matches `FCdot.Ctx` binder for binder.
+binder, so `T^x` cannot be an entry. `Rec-E` derives the opened assumption
+from this recursive binding. `WadlerFest/Correspondence` uses this fact to
+translate derivations with opened self contexts to the representation here,
+which matches `FCdot.Ctx` binder for binder.
 
-The fragment of §3.2 is enforced in the rules that need it (plan §13 items
-8 and 9): `Rec-I` and `Rec-E` carry `Ty.Decl` premises for the bodies they
-open and close, as does `Wf.mu`.  Intersections are *not* restricted:
-`And₁`, `And₂`, `And` and `And-I` apply to arbitrary operands, since a
-non-declaration operand `B` translates to the one-proposition telescope
-`[⊑ ⟦B⟧]` — the self-bound proposition of `FCdot` (plan §13 item 9).  The
-declaration shapes are still the only bodies a `μ` may bind, because a bound
-proposition never mentions the self.  `{}-I` no longer restricts aliasing
-among the definitions: the
-target's alias-tolerant resolution (`FCdot.Ctx.resolve`) admits same-block
-aliases and cycles (a cyclic alias resolves to `⊤`), so the self-alias
-restriction that used to accompany `Defs.Distinct` here is gone.
+Recursive introduction and elimination accept arbitrary bodies, including
+functions, selections, intersections, and nested recursive types. The
+translation enters or exits a self-bound telescope when the body is not a
+declaration shape. Lambda annotations and let result types are unrestricted.
+
+Object definitions may refer to their own self or form alias cycles. The
+target's alias-tolerant resolution handles these witnesses.
 -/
 
 namespace DotMNF
@@ -87,7 +78,7 @@ inductive Sub : {s : Sig} → Ctx s → Ty s → Ty s → Type where
 inductive HasTy : {s : Sig} → Ctx s → Tm s → Ty s → Type where
   | var : HasTy Γ (.path (.var x)) (Γ.lookup x)
   /-- `All-I`. -/
-  | lam : HasTy (Γ.cons S) t T → Ty.Wf S → HasTy Γ (.val (.lam S t)) (.all S T)
+  | lam : HasTy (Γ.cons S) t T → HasTy Γ (.val (.lam S t)) (.all S T)
   /-- `All-E`. -/
   | app :
       HasTy Γ (.path (.var x)) (.all S T) →
@@ -103,15 +94,14 @@ inductive HasTy : {s : Sig} → Ctx s → Tm s → Ty s → Type where
   | «let» :
       HasTy Γ t T →
       HasTy (Γ.cons T) u U.weaken →
-      Ty.Wf U →
       HasTy Γ (.let t u) U
-  /-- `Rec-I`, for declaration-shaped bodies. -/
+  /-- `Rec-I`, for arbitrary recursive bodies. -/
   | recI :
-      HasTy Γ (.path (.var x)) (T.substVar x) → Ty.Decl T →
+      HasTy Γ (.path (.var x)) (T.substVar x) →
       HasTy Γ (.path (.var x)) (.mu T)
-  /-- `Rec-E`, for declaration-shaped bodies. -/
+  /-- `Rec-E`, for arbitrary recursive bodies. -/
   | recE :
-      HasTy Γ (.path (.var x)) (.mu T) → Ty.Decl T →
+      HasTy Γ (.path (.var x)) (.mu T) →
       HasTy Γ (.path (.var x)) (T.substVar x)
   /-- `And-I`, on variables only. -/
   | andI :

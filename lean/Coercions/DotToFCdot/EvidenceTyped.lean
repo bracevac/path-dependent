@@ -339,8 +339,7 @@ theorem _root_.FCdot.Telescope.ClosedBnds.append {s : Sig} {Tel₁ : FCdot.Teles
   | _, .has h₂ => .has (FCdot.Telescope.ClosedBnds.append h₁ h₂)
   | _, .bnd h₂ => .bnd (FCdot.Telescope.ClosedBnds.append h₁ h₂)
 
-/-- A declaration-shaped body has no self-bounds at all: `Ty.telSelf` only
-produces one on a shape `Wf.mu` excludes. -/
+/-- The self telescope of a declaration-shaped body has no self-bounds. -/
 theorem Ty.telSelf_noBnd_of_decl {s : Sig} :
     ∀ {S : Ty (s,x)}, Ty.Decl S → (Ty.telSelf S).NoBnd
   | .top, _ => by simp [Ty.telSelf, FCdot.Telescope.NoBnd]
@@ -443,6 +442,38 @@ theorem Ty.tel_bnd_at {s : Sig} {T : Ty s} (h : T.isObj = false) :
     (Ty.tel T : FCdot.Telescope (s,x)) ∋ (0 ↦ ⊑ T.translate↑) := by
   rw [Ty.tel_of_not_isObj h]
   exact .here
+
+/-! ## Recursive-type adapters -/
+
+/-- Recursive introduction for every source body, including self-dependent
+non-declaration shapes. -/
+theorem recIAtom_typed {s : Sig} {Γ : FCdot.Ctx s} (T : Ty (s,x)) (r : BVar s .var)
+    {a : FCdot.Atom s} (ha : Γ ⊢ₐ a : (T.substVar r).translate) (hr : a.root = r) :
+    Γ ⊢ₐ recIAtom T r a : (Ty.mu T).translate := by
+  have hb := intoAtom_typed ha
+  have hu := FCdot.Atom.HasType.unfoldSelf hb
+  rw [intoAtom_root, hr, Ty.tel_substVar T r] at hu
+  rw [recIAtom, Ty.translate_mu]
+  apply FCdot.Atom.HasType.foldSelf
+  simpa [FCdot.Atom.root, intoAtom_root, hr] using hu
+
+/-- Recursive elimination for every source body; a non-object result is
+read from the opened body's single bound. -/
+theorem recEAtom_typed {s : Sig} {Γ : FCdot.Ctx s} (T : Ty (s,x)) (r : BVar s .var)
+    {a : FCdot.Atom s} (ha : Γ ⊢ₐ a : (Ty.mu T).translate) (hr : a.root = r) :
+    Γ ⊢ₐ recEAtom T r a : (T.substVar r).translate := by
+  rw [Ty.translate_mu] at ha
+  have hu := FCdot.Atom.HasType.unfoldSelf ha
+  rw [hr, ← Ty.tel_substVar T r] at hu
+  have hf : Γ ⊢ₐ .foldSelf (T.substVar r).tel (.unfoldSelf a) : μ (T.substVar r).tel := by
+    apply FCdot.Atom.HasType.foldSelf
+    simpa [FCdot.Atom.root, hr] using hu
+  by_cases hobj : (T.substVar r).isObj = true
+  · rw [recEAtom, if_pos hobj, Ty.translate_isObj hobj]
+    exact hf
+  · have hn : (T.substVar r).isObj = false := by simpa using hobj
+    rw [recEAtom, if_neg hobj]
+    exact .cast hf (.bound (Ty.tel_bnd_at hn))
 
 /-! ## Shapes of the declaration type of a set of definitions -/
 
@@ -780,10 +811,10 @@ theorem Ctx.varAtom_typed {s : Sig} : ∀ (Γ : Ctx s), Γ.Wf → ∀ (y : BVar 
 theorem HasTy.translateAtom_root : ∀ {s : Sig} {Γ : Ctx s} {y : BVar s .var} {T : Ty s}
     (h : HasTy Γ (.path (.var y)) T), h.translateAtom.root = y
   | _, Γ, y, _, .var => by rw [HasTy.translateAtom]; exact Ctx.varAtom_root Γ y
-  | _, _, _, _, .recI h _ => by
+  | _, _, _, _, .recI h => by
       rw [HasTy.translateAtom]
       simpa [FCdot.Atom.root] using HasTy.translateAtom_root h
-  | _, _, _, _, .recE h _ => by
+  | _, _, _, _, .recE h => by
       rw [HasTy.translateAtom]
       simpa [FCdot.Atom.root] using HasTy.translateAtom_root h
   | _, _, _, _, .andI h₁ h₂ => by
@@ -859,28 +890,12 @@ theorem HasTy.translateAtom_typed : ∀ {s : Sig} {Γ : Ctx s} {y : BVar s .var}
   | _, Γ, y, _, .var, hwf => by
       rw [HasTy.translateAtom]
       exact Ctx.varAtom_typed Γ hwf y
-  | _, _, y, _, @HasTy.recI _ _ _ T h hdecl, hwf => by
-      have ih := HasTy.translateAtom_typed h hwf
-      rw [Ty.translate_decl (hdecl.substVar y)] at ih
-      have hroot : (HasTy.translateAtom h).root = y := HasTy.translateAtom_root h
-      have hu := FCdot.Atom.HasType.unfoldSelf ih
-      rw [hroot, Ty.tel_substVar T y] at hu
-      rw [HasTy.translateAtom, Ty.translate_mu]
-      refine FCdot.Atom.HasType.foldSelf ?_
-      rw [show (FCdot.Atom.unfoldSelf (HasTy.translateAtom h)).root = y by
-        simp [FCdot.Atom.root, hroot]]
-      exact hu
-  | _, _, y, _, @HasTy.recE _ _ _ T h hdecl, hwf => by
-      have ih := HasTy.translateAtom_typed h hwf
-      rw [Ty.translate_mu] at ih
-      have hroot : (HasTy.translateAtom h).root = y := HasTy.translateAtom_root h
-      have hu := FCdot.Atom.HasType.unfoldSelf ih
-      rw [hroot, ← Ty.tel_substVar T y] at hu
-      rw [HasTy.translateAtom, Ty.translate_decl (hdecl.substVar y)]
-      refine FCdot.Atom.HasType.foldSelf ?_
-      rw [show (FCdot.Atom.unfoldSelf (HasTy.translateAtom h)).root = y by
-        simp [FCdot.Atom.root, hroot]]
-      exact hu
+  | _, _, y, _, @HasTy.recI _ _ _ T h, hwf => by
+      rw [HasTy.translateAtom]
+      exact recIAtom_typed T y (HasTy.translateAtom_typed h hwf) (HasTy.translateAtom_root h)
+  | _, _, y, _, @HasTy.recE _ _ _ T h, hwf => by
+      rw [HasTy.translateAtom]
+      exact recEAtom_typed T y (HasTy.translateAtom_typed h hwf) (HasTy.translateAtom_root h)
   | _, _, _, _, .andI h₁ h₂, hwf => by
       have i1 := intoAtom_typed (HasTy.translateAtom_typed h₁ hwf)
       have i2 := intoAtom_typed (HasTy.translateAtom_typed h₂ hwf)

@@ -1,10 +1,11 @@
-import Coercions.DotMNF.Typing
+import Coercions.DotMNF.Machine
 
 /-!
 # DOT-MNF examples
 
-The five mandatory examples of Plan III §10, as `HasTy` derivations.  The
-calculus has no base types, so `Int` and `Nat` are replaced by distinct
+Examples of abstract bounds, recursive objects, and unrestricted recursive
+types, as `HasTy` derivations. The calculus has no base types, so `Int` and
+`Nat` are replaced by distinct
 closed types; the point of each example is the *shape* of the derivation,
 in particular which subtyping steps go through a type selection.
 
@@ -63,12 +64,12 @@ def E1x : HasTy E1Ctx (.path (.var .here)) E1Dom := var' .here rfl
 def E1retype : HasTy E1Ctx (.path (.var .here)) E1Res := .sub E1x (badBounds E1x E1Res)
 
 def E1body : HasTy E1Ctx (.let (.path (.var .here)) (.path (.var .here))) E1Res :=
-  .let E1retype (var' .here rfl) (.typ (.fld .top) (.fld .top))
+  .let E1retype (var' .here rfl)
 
 def E1 : HasTy Ctx.nil
     (.val (.lam E1Dom (.let (.path (.var .here)) (.path (.var .here)))))
     (.all E1Dom E1Res) :=
-  .lam E1body (.typ .top .bot)
+  .lam E1body
 
 /-! ## E2: recursive object with a self-referential member
 
@@ -98,12 +99,12 @@ theorem E2Distinct : Defs.Distinct (E2Defs (s := s)) := by
 theorem E2SelfDecl : Ty.Decl (E2Self (s := s)) := .and .typ .fld
 
 def E2DefsTy : DefsTy (Ctx.consSelf Γ E2Defs E2Self) E2Defs E2Self :=
-  .and .typ (.trm (.lam (var' .here rfl) .sel))
+  .and .typ (.trm (.lam (var' .here rfl)))
 
 def E2Ctx1 : Ctx ([],x) := .cons .nil (.mu E2Self)
 
 def E2xMu : HasTy E2Ctx1 (.path (.var .here)) (.mu E2Self) := var' .here rfl
-def E2xOpen : HasTy E2Ctx1 (.path (.var .here)) E2Self := .recE E2xMu E2SelfDecl
+def E2xOpen : HasTy E2Ctx1 (.path (.var .here)) E2Self := .recE E2xMu
 def E2xFld : HasTy E2Ctx1 (.path (.var .here)) (.fld la E2A) := .sub E2xOpen (.and2)
 def E2proj : HasTy E2Ctx1 (.proj .here la) E2A := .proj E2xFld
 
@@ -112,7 +113,7 @@ def E2Ctx2 : Ctx ([],x,x) := .cons E2Ctx1 E2A
 def E2f : HasTy E2Ctx2 (.path (.var .here)) E2A' := var' .here rfl
 def E2xMu2 : HasTy E2Ctx2 (.path (.var (.there .here))) (.mu E2Self) := var' (.there .here) rfl
 def E2xOpen2 : HasTy E2Ctx2 (.path (.var (.there .here)))
-    (.and (.typ lA E2A' E2A') (.fld la E2A')) := .recE E2xMu2 E2SelfDecl
+    (.and (.typ lA E2A' E2A') (.fld la E2A')) := .recE E2xMu2
 /-- `∀(y : x.A) x.A <: x.A`, by the lower bound of the exact member `A`. -/
 def E2fArg : HasTy E2Ctx2 (.path (.var .here)) (.sel (.var (.there .here)) lA) :=
   .sub E2f (.selLower (.sub E2xOpen2 (.and1)))
@@ -124,8 +125,7 @@ def E2app : HasTy E2Ctx2 (.app .here .here) (.sel (.var (.there .here)) lA) :=
 def E2 : HasTy Ctx.nil
     (.let (.val (.obj E2Defs)) (.let (.proj .here la) (.app .here .here))) .top :=
   .let (.obj E2DefsTy E2Distinct)
-    (.let E2proj (.sub E2app .top) .top)
-    .top
+    (.let E2proj (.sub E2app .top))
 
 /-! ## E3: intersection with a shared member
 
@@ -152,17 +152,17 @@ def E3sub : Sub E3Ctx2 E3T2 E3T1 := .trans (.selLower E3xHi) (.selUpper E3xLo)
 def E3z : HasTy E3Ctx2 (.path (.var .here)) E3T1 := .sub (var' .here rfl) E3sub
 
 def E3body : HasTy E3Ctx2 (.let (.path (.var .here)) (.path (.var .here))) E3T1 :=
-  .let E3z (var' .here rfl) (.fld .top)
+  .let E3z (var' .here rfl)
 
 def E3inner : HasTy E3Ctx1
     (.val (.lam E3T2 (.let (.path (.var .here)) (.path (.var .here))))) (.all E3T2 E3T1) :=
-  .lam E3body (.fld .top)
+  .lam E3body
 
 /-- `λ(x : {A : ⊥..T₁} ∧ {A : T₂..⊤}). λ(z : T₂). let y = z in y`. -/
 def E3 : HasTy Ctx.nil
     (.val (.lam E3Dom (.val (.lam E3T2 (.let (.path (.var .here)) (.path (.var .here)))))))
     (.all E3Dom (.all E3T2 E3T1)) :=
-  .lam E3inner (.and (.typ .bot (.fld .top)) (.typ (.fld .top) .top))
+  .lam E3inner
 
 /-! ## E4: the counterexample of §1
 
@@ -201,7 +201,7 @@ def E4wT : HasTy E4Ctx3 (.path (.var (.there .here))) E4T :=
   .sub (var' (.there .here) rfl) E4ST
 def E4g : HasTy E4Ctx3
     (.val (.lam (.sel (.var (.there .here)) lA) (.path (.var .here)))) E4G :=
-  .lam (var' .here rfl) .sel
+  .lam (var' .here rfl)
 
 def E4Ctx4 : Ctx ([],x,x,x,x) := .cons E4Ctx3 E4G
 
@@ -222,7 +222,7 @@ def E4let : HasTy E4Ctx3
     (.let (.val (.lam (.sel (.var (.there .here)) lA) (.path (.var .here))))
       (.app .here (.there .here)))
     (.sel (.var (.there .here)) lA) :=
-  .let E4g E4app .sel
+  .let E4g E4app
 
 /-- `λ(x : {B : S..T}). λ(w : S). λ(n : Int). let g = λ(y : w.A). y in g n`. -/
 def E4 : HasTy Ctx.nil
@@ -230,8 +230,7 @@ def E4 : HasTy Ctx.nil
       (.let (.val (.lam (.sel (.var (.there .here)) lA) (.path (.var .here))))
         (.app .here (.there .here)))))))))
     (.all E4X (.all E4S (.all E4Int (.sel (.var (.there .here)) lA)))) :=
-  .lam (.lam (.lam E4let (.fld .top)) (.typ .bot .top))
-    (.typ (.typ .bot .top) (.typ (.fld .top) .top))
+  .lam (.lam (.lam E4let))
 
 /-! ## E5: an object returned from a function and selected after a `let`
 
@@ -269,7 +268,7 @@ def E5DefsTy : DefsTy E5Ctxz E5Defs E5Self := .trm E5field
 
 def E5ObjTy : HasTy E5Ctxv E5Obj (.mu E5Self) :=
   .obj E5DefsTy .trm
-def E5fVal : HasTy E5Ctx1 (.val (.lam E5AT E5Obj)) E5F := .lam E5ObjTy (.typ .top .top)
+def E5fVal : HasTy E5Ctx1 (.val (.lam E5AT E5Obj)) E5F := .lam E5ObjTy
 
 def E5Ctxf : Ctx ([],x,x) := .cons E5Ctx1 E5F
 
@@ -282,22 +281,22 @@ def E5Ctxo : Ctx ([],x,x,x) := .cons E5Ctxf E5Owned
 
 def E5oMu : HasTy E5Ctxo (.path (.var .here)) E5Owned' := var' .here rfl
 def E5oOpen : HasTy E5Ctxo (.path (.var .here))
-    (.fld la (.sel (.var (.there (.there .here))) lA)) := .recE E5oMu .fld
+    (.fld la (.sel (.var (.there (.there .here))) lA)) := .recE E5oMu
 def E5proj : HasTy E5Ctxo (.proj .here la) (.sel (.var (.there (.there .here))) lA) :=
   .proj E5oOpen
 
 def E5oLet : HasTy E5Ctxf (.let (.app .here (.there .here)) (.proj .here la))
-    (.sel (.var (.there .here)) lA) := .let E5o E5proj .sel
+    (.sel (.var (.there .here)) lA) := .let E5o E5proj
 
 def E5fLet : HasTy E5Ctx1
     (.let (.val (.lam E5AT E5Obj)) (.let (.app .here (.there .here)) (.proj .here la)))
-    (.sel (.var .here) lA) := .let E5fVal E5oLet .sel
+    (.sel (.var .here) lA) := .let E5fVal E5oLet
 
 def E5 : HasTy Ctx.nil
     (.val (.lam E5AT
       (.let (.val (.lam E5AT E5Obj)) (.let (.app .here (.there .here)) (.proj .here la)))))
     (.all E5AT (.sel (.var .here) lA)) :=
-  .lam E5fLet (.typ .top .top)
+  .lam E5fLet
 
 /-! ## E6: a field typed at its own literal's type member
 
@@ -328,7 +327,7 @@ def E6Ctx1 : Ctx ([],x) := .cons .nil E6Int
 def E6Ctxz : Ctx ([],x,x) := .consSelf E6Ctx1 E6Defs E6Self
 
 def E6xMu : HasTy E6Ctxz (.path (.var .here)) (.mu E6Self) := var' .here rfl
-def E6xOpen : HasTy E6Ctxz (.path (.var .here)) E6Self := .recE E6xMu E6SelfDecl
+def E6xOpen : HasTy E6Ctxz (.path (.var .here)) E6Self := .recE E6xMu
 def E6xTyp : HasTy E6Ctxz (.path (.var .here)) (.typ lT E6Int E6Int) :=
   .sub E6xOpen (.and1)
 /-- `n : Int <: x.T`, by the lower bound of the exact member `T`. -/
@@ -370,10 +369,9 @@ def E7 : HasTy Ctx.nil (.val (.obj E7Defs)) (.mu E7Self) := .obj E7DefsTy E7Dist
 
 `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a`, at
 `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : ⊤}) ⊤`.  The left operand of the
-intersection is a type selection, so the type is outside the declaration
-fragment: this is the example the self-bound proposition of `FCdot` buys
-(plan §13 item 9), and `Wf.and` accepts it because it no longer asks for
-declaration-shaped operands.
+intersection is a type selection, so the type is not declaration-shaped:
+this is the example the self-bound proposition of `FCdot` buys
+(plan §13 item 9). Source intersections accept arbitrary operands.
 
 Two derivations of the body, `y.a`: one reads `{a : ⊤}` off the refinement
 by `And₂`, the other reads `x.A` off it by `And₁` and then goes through
@@ -385,12 +383,6 @@ def E8Dom : Ty s := .typ lA .bot (.fld la .top)
 
 /-- `x.A ∧ {a : ⊤}`, the refinement of `x.A`. -/
 def E8Ref (x : BVar s .var) : Ty s := .and (.sel (.var x) lA) (.fld la .top)
-
-theorem E8DomWf : Ty.Wf (E8Dom (s := s)) := .typ .bot (.fld .top)
-
-/-- The refinement is well formed although its left operand is not
-declaration-shaped: `Wf.and` has no `Ty.Decl` premises. -/
-theorem E8RefWf {x : BVar s .var} : Ty.Wf (E8Ref x) := .and .sel (.fld .top)
 
 def E8Ctx1 : Ctx ([],x) := Ctx.nil.cons E8Dom
 def E8Ctx2 : Ctx ([],x,x) := E8Ctx1.cons (E8Ref .here)
@@ -426,12 +418,114 @@ def E8Body1 : HasTy E8Ctx2 (.proj .here la) .top := .proj E8yFld1
 /-- `λ(x). λ(y). y.a`, with the `And₂` derivation of the body. -/
 def E8 : HasTy Ctx.nil (.val (.lam E8Dom (.val (.lam (E8Ref .here) (.proj .here la)))))
     (.all E8Dom (.all (E8Ref .here) .top)) :=
-  .lam (.lam E8Body2 E8RefWf) E8DomWf
+  .lam (.lam E8Body2)
 
 /-- The same term, with the `And₁`-then-`Sel-<:` derivation of the body. -/
 def E8b : HasTy Ctx.nil (.val (.lam E8Dom (.val (.lam (E8Ref .here) (.proj .here la)))))
     (.all E8Dom (.all (E8Ref .here) .top)) :=
-  .lam (.lam E8Body1 E8RefWf) E8DomWf
+  .lam (.lam E8Body1)
+
+/-! ## E9: a function passed through a recursive type
+
+`let f = λ(x : ⊤). x in let g = (let h = f in h) in g g`.
+The inner let returns `μ(z. ∀(x : ⊤) ⊤)`: its body folds a function type,
+and the application opens that type after the result has crossed a let
+binder. Evaluation still returns the original function. -/
+
+def E9Fn : Ty s := .all .top .top
+def E9Rec : Ty s := .mu E9Fn
+def E9Id : Value s := .lam .top (.path (.var .here))
+def E9Ctx : Ctx ([],x) := .cons .nil E9Fn
+
+/-- The nested let has a recursive function type as its result. -/
+def E9Pack : HasTy E9Ctx (.let (.path (.var .here)) (.path (.var .here))) E9Rec :=
+  .let (var' .here rfl) (.recI (var' .here rfl))
+
+def E9CtxG : Ctx ([],x,x) := .cons E9Ctx E9Rec
+
+def E9g : HasTy E9CtxG (.path (.var .here)) E9Rec := var' .here rfl
+
+def E9Open : HasTy E9CtxG (.path (.var .here)) E9Fn :=
+  .recE E9g
+
+def E9Apply : HasTy E9CtxG (.app .here .here) .top :=
+  .app E9Open (.sub (var' .here rfl) .top)
+
+def E9Term : Tm [] :=
+  .let (.val E9Id)
+    (.let (.let (.path (.var .here)) (.path (.var .here))) (.app .here .here))
+
+def E9 : HasTy .nil E9Term .top :=
+  .let (.lam (var' .here rfl)) (.let E9Pack E9Apply)
+
+/-- All recursive wrappers are typing steps: the program returns `f`. -/
+theorem E9_runs : Steps (⟨.nil, .nil, E9Term⟩ : State [])
+    (⟨.cons .nil E9Id, .nil, .path (.var .here)⟩ : State ([],x)) := by
+  have happ : Step (⟨.cons .nil E9Id, .nil, .app .here .here⟩ : State ([],x))
+      (⟨.cons .nil E9Id, .nil, .path (.var .here)⟩ : State ([],x)) :=
+    .app (S := .top) (t := .path (.var .here)) rfl
+  exact .tail (.tail (.tail (.tail (.tail (.tail (.tail .refl
+    .let) .alloc) .let) .let) .rename) .rename) happ
+
+/-! ## E10: a self-dependent intersection under recursion
+
+`λ(x : μ(z. z.A ∧ {a : z.B})). x.a` opens the recursive body before
+projecting the field. The selection operand and the field's declared type
+both depend on the recursive self. -/
+
+def E10Body : Ty (s,x) :=
+  .and (.sel (.var .here) lA) (.fld la (.sel (.var .here) lB))
+def E10Rec : Ty s := .mu E10Body
+def E10Ctx : Ctx ([],x) := .cons .nil E10Rec
+
+def E10x : HasTy E10Ctx (.path (.var .here)) E10Rec := var' .here rfl
+
+def E10Open : HasTy E10Ctx (.path (.var .here)) E10Body :=
+  .recE E10x
+
+def E10Term : Tm [] := .val (.lam E10Rec (.proj .here la))
+
+def E10 : HasTy .nil E10Term (.all E10Rec (.sel (.var .here) lB)) :=
+  .lam (.proj (.sub E10Open .and2))
+
+/-! ## E11: nested recursion with both self binders used
+
+`λ(x : μ(z. μ(w. (w.A ∧ z.B) ∧ {a : w.A}))). x.a` opens both
+recursive binders at the receiver. The inner recursive type is itself a
+non-declaration operand of the outer recursive body. -/
+
+def E11Inner : Ty (s,x,x) :=
+  .and (.and (.sel (.var .here) lA) (.sel (.var (.there .here)) lB))
+    (.fld la (.sel (.var .here) lA))
+def E11Rec : Ty s := .mu (.mu E11Inner)
+def E11Ctx : Ctx ([],x) := .cons .nil E11Rec
+
+def E11x : HasTy E11Ctx (.path (.var .here)) E11Rec := var' .here rfl
+
+def E11First : HasTy E11Ctx (.path (.var .here)) (.mu E11Inner) := .recE E11x
+
+def E11Open : HasTy E11Ctx (.path (.var .here))
+    (.and (.and (.sel (.var .here) lA) (.sel (.var .here) lB))
+      (.fld la (.sel (.var .here) lA))) :=
+  .recE E11First
+
+def E11Term : Tm [] := .val (.lam E11Rec (.proj .here la))
+
+def E11 : HasTy .nil E11Term (.all E11Rec (.sel (.var .here) lA)) :=
+  .lam (.proj (.sub E11Open .and2))
+
+/-! ## E12: opening recursion to a bare self selection
+
+`λ(x : μ(z. z.A)). x` has result type `x.A`. Its recursive body has
+neither a function nor an object declaration at the head. -/
+
+def E12Rec : Ty s := .mu (.sel (.var .here) lA)
+def E12Term : Tm [] := .val (.lam E12Rec (.path (.var .here)))
+
+def E12x : HasTy (Ctx.nil.cons E12Rec) (.path (.var .here)) E12Rec := var' .here rfl
+
+def E12 : HasTy .nil E12Term (.all E12Rec (.sel (.var .here) lA)) :=
+  .lam (.recE E12x)
 
 end Examples
 end DotMNF

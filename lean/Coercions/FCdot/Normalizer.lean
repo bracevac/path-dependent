@@ -78,10 +78,8 @@ mutual
 inductive Form (s : Sig) : Type where
   | bot : Form s
   | top : Form s
-  /-- Syntactic identity: both endpoints are the same type. -/
+  /-- Identity between endpoints with equal resolved shapes. -/
   | id : Form s
-  /-- Definitional conversion: closed equality evidence between the endpoints. -/
-  | eqv : EqCo s → Form s
   /-- Function coercion: closed domain evidence and codomain evidence under
       the target domain binder. -/
   | pi : LeCo s → LeCo (s,x) → Form s
@@ -91,41 +89,45 @@ inductive Form (s : Sig) : Type where
       proposition is a bound, and the rest of the coercion goes on from the
       bound's type. -/
   | bnd : Nat → Form s → Form s
-  /-- Coercion into a bounds-only object type: one bound entry per target
-      proposition. -/
-  | into : Entries s → Form s
+  /-- Coercion into an object type using bounds or routes from the source. -/
+  | into : FreeEntries s → Form s
 
-/-- The normal form of one target proposition of an object coercion: a
-template `pre ∘ (source proposition) ∘ post` with normalized sides (`id` for
-an absent side), a source equality possibly flipped, or an inherited
-presence. -/
+/-- A local template. A copied bound is distinguished from a general
+coercion out of the source object type. -/
+inductive LocalEntry (s : Sig) : Type where
+  | le : Form s → Hole → Form s → LocalEntry s
+  | eq : Nat → Bool → LocalEntry s
+  | has : Nat → LocalEntry s
+  | copyBound : Nat → LocalEntry s
+
+/-- An entry of an object coercion. Object entries contain no routes. -/
 inductive Entry (s : Sig) : Type where
   | le : Form s → Hole → Form s → Entry s
   | eq : Nat → Bool → Entry s
   | has : Nat → Entry s
-  /-- A bound entry: a coercion out of the source object type. -/
   | bnd : Form s → Entry s
-  /-- A routed entry: the coercion `H` reaches another object type from the
-      source, and `E` proves the target proposition there.  `E` is never
-      itself routed (routing composes). -/
-  | thru : Form s → Entry s → Entry s
+  | copyBound : Nat → Entry s
+
+/-- A view-free entry. Routes end in local templates and cannot nest. -/
+inductive FreeEntry (s : Sig) : Type where
+  | bnd : Form s → FreeEntry s
+  | thru : Form s → LocalEntry s → FreeEntry s
 
 /-- Entries of an object coercion, oldest first. -/
 inductive Entries (s : Sig) : Type where
   | nil : Entries s
   | cons : Entries s → Entry s → Entries s
 
+/-- View-free entries, oldest first. -/
+inductive FreeEntries (s : Sig) : Type where
+  | nil : FreeEntries s
+  | cons : FreeEntries s → FreeEntry s → FreeEntries s
+
 end
 
 /-- Decidable tests for the two absorbing forms. -/
 def Form.isBot : Form s → Bool
   | .bot => true
-  | _ => false
-
-/-- The identity template on a source bound, `bnd j id`: the one bound entry
-that `Entry.prefix` keeps routed rather than composing. -/
-def Form.isBndId : Form s → Bool
-  | .bnd _ .id => true
   | _ => false
 
 def Form.isTop : Form s → Bool
@@ -163,9 +165,14 @@ inductive View (s : Sig) : Type where
 are the `i`-th entry and proposition form, counted from the oldest. -/
 
 scoped infixl:65 " ▹ " => Entries.cons
+scoped infixl:65 " ▹ " => FreeEntries.cons
 scoped infixl:65 " ▹ " => View.cons
 
 def Entries.length : Entries s → Nat
+  | .nil => 0
+  | .cons Es _ => Es.length + 1
+
+def FreeEntries.length : FreeEntries s → Nat
   | .nil => 0
   | .cons Es _ => Es.length + 1
 
@@ -178,16 +185,27 @@ inductive Entries.At : Entries s → Nat → Entry s → Prop where
   | here : Entries.At (Es ▹ E) Es.length E
   | there : Entries.At Es i E → Entries.At (Es ▹ E') i E
 
+/-- The entry at an index of a view-free list. -/
+inductive FreeEntries.At : FreeEntries s → Nat → FreeEntry s → Prop where
+  | here : FreeEntries.At (Es ▹ E) Es.length E
+  | there : FreeEntries.At Es i E → FreeEntries.At (Es ▹ E') i E
+
 /-- `V ∋ (i ↦ P)`: the `i`-th proposition form of `V` (from the oldest) is `P`. -/
 inductive View.At : View s → Nat → PropForm s → Prop where
   | here : View.At (V ▹ P) V.length P
   | there : View.At V i P → View.At (V ▹ Q) i P
 
 scoped notation:50 Es:51 " ∋ " "(" i " ↦ " E ")" => Entries.At Es i E
+scoped notation:50 Es:51 " ∋ " "(" i " ↦ " E ")" => FreeEntries.At Es i E
 scoped notation:50 V:51 " ∋ " "(" i " ↦ " P ")" => View.At V i P
 
 /-- Lookup by index, executable. -/
 def Entries.get? : Entries s → Nat → Option (Entry s)
+  | .nil, _ => none
+  | .cons Es E, i => if i = Es.length then some E else Es.get? i
+
+/-- Lookup by index, executable. -/
+def FreeEntries.get? : FreeEntries s → Nat → Option (FreeEntry s)
   | .nil, _ => none
   | .cons Es E, i => if i = Es.length then some E else Es.get? i
 
@@ -252,36 +270,54 @@ theorem Entries.get?Attach_eq_some {Es : Entries s} {j : Nat} {E : Entry s}
       subst this
       exact ⟨hlt, rfl⟩
 
-/-- Lookup of a bound entry, with the size proof composition needs. -/
-def Entries.getBnd?Attach (Es : Entries s) (i : Nat) : Option {G : Form s // sizeOf G < sizeOf Es} :=
-  match Es.get?Attach i with
-  | some ⟨.bnd G, h⟩ => some ⟨G, by simp at h; omega⟩
-  | _ => none
+/-- An entry found by lookup is a subterm. -/
+theorem FreeEntries.get?_sizeOf : ∀ {Es : FreeEntries s} {j : Nat} {E : FreeEntry s},
+    Es.get? j = some E → sizeOf E < sizeOf Es
+  | .nil, _, _, h => by simp [FreeEntries.get?] at h
+  | .cons Es E', j, E, h => by
+      simp only [FreeEntries.get?] at h
+      by_cases hj : j = Es.length
+      · rw [if_pos hj] at h; cases h; simp; omega
+      · rw [if_neg hj] at h
+        have := FreeEntries.get?_sizeOf h
+        simp; omega
 
-theorem Entries.getBnd?Attach_eq_some {Es : Entries s} {i : Nat} {G : Form s}
-    (h : Es.get? i = some (.bnd G)) : ∃ hlt, Es.getBnd?Attach i = some ⟨G, hlt⟩ := by
-  obtain ⟨hlt, hA⟩ := Entries.get?Attach_eq_some h
-  exact ⟨by simp at hlt; omega, by simp [Entries.getBnd?Attach, hA]⟩
+/-- Lookup returning the entry together with the fact that it is a subterm,
+for the termination of composition. -/
+def FreeEntries.get?Attach : (Es : FreeEntries s) → Nat → Option {E : FreeEntry s // sizeOf E < sizeOf Es}
+  | .nil, _ => none
+  | .cons Es E, i =>
+      if i = Es.length then some ⟨E, by simp; omega⟩
+      else (Es.get?Attach i).map fun ⟨E', h⟩ => ⟨E', by simp; omega⟩
 
-theorem Entries.getBnd?Attach_eq_none {Es : Entries s} {i : Nat}
-    (h : ∀ G, Es.get? i ≠ some (.bnd G)) : Es.getBnd?Attach i = none := by
-  cases hA : Es.get?Attach i with
-  | none => simp [Entries.getBnd?Attach, hA]
+theorem FreeEntries.get?Attach_val : ∀ (Es : FreeEntries s) (j : Nat),
+    (Es.get?Attach j).map Subtype.val = Es.get? j
+  | .nil, _ => rfl
+  | .cons Es E, i => by
+      simp only [FreeEntries.get?Attach, FreeEntries.get?]
+      by_cases h : i = Es.length
+      · simp [h]
+      · simp [h, ← FreeEntries.get?Attach_val Es i, Option.map_map]
+
+theorem FreeEntries.get?Attach_eq_some {Es : FreeEntries s} {j : Nat} {E : FreeEntry s}
+    (h : Es.get? j = some E) : ∃ hlt, Es.get?Attach j = some ⟨E, hlt⟩ := by
+  have := FreeEntries.get?Attach_val Es j
+  rw [h] at this
+  cases hA : Es.get?Attach j with
+  | none => rw [hA] at this; simp at this
   | some p =>
-      obtain ⟨E, hlt⟩ := p
-      have hv : Es.get? i = some E := by
-        have := Entries.get?Attach_val Es i; rw [hA] at this; simpa using this.symm
-      cases E with
-      | bnd G => exact absurd hv (h G)
-      | _ => simp [Entries.getBnd?Attach, hA]
+      rw [hA] at this
+      obtain ⟨E', hlt⟩ := p
+      simp at this
+      subst this
+      exact ⟨hlt, rfl⟩
+
 
 mutual
 
-/-- Route an entry of the second coercion through the entries of the first:
-the hole of a template is replaced by the first coercion's template for that
-source proposition, and the sides are composed.  If the source template is
-itself routed, the composite is routed the same way.  A bound entry and a
-routed entry are routed by composing the whole first coercion with them. -/
+/-- Compose object entries by substituting the first entry for each source
+position used by the second. Inclusion sides compose, copied bounds are
+looked up directly, and general bounds compose with the whole first form. -/
 def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
   | .le pre h post =>
       match Es₁.get?Attach h.index, h with
@@ -301,8 +337,7 @@ def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
       | some (.has k) => some (.has k)
       | _ => none
   | .bnd G => (Form.combine (.obj Es₁) G).map .bnd
-  -- Object forms never carry routed entries, so this case does not arise.
-  | .thru _ _ => none
+  | .copyBound j => Es₁.get? j
 termination_by E => sizeOf Es₁ + sizeOf E + 1
 decreasing_by
   all_goals (simp_wf; (try simp at *); (try omega))
@@ -316,20 +351,25 @@ def Entries.through (Es₁ : Entries s) : Entries s → Option (Entries s)
 termination_by Es => sizeOf Es₁ + sizeOf Es + 1
 decreasing_by all_goals simp_wf <;> omega
 
-/-- Prefix an entry with a coercion `H` into the object type its source is:
-a bound entry composes with `H` (the identity template on a source bound is
-kept as a routed entry, so that composing past it stays one step), a routed
-entry composes its route, and every other entry becomes routed through `H`. -/
-def Entry.prefix (H : Form s) : Entry s → Option (Entry s)
-  | .bnd (.bnd j .id) => some (.thru H (.bnd (.bnd j .id)))
-  | .bnd G => (Form.combine H G).map Entry.bnd
-  | .thru H' E => (Form.combine H H').map fun H'' => Entry.thru H'' E
-  | E => some (.thru H E)
+/-- Prefix an object entry. Only local templates become routed. -/
+def Entry.prefix (H : Form s) : Entry s → Option (FreeEntry s)
+  | .copyBound j => some (.thru H (.copyBound j))
+  | .bnd G => (Form.combine H G).map FreeEntry.bnd
+  | .le pre h post => some (.thru H (.le pre h post))
+  | .eq j b => some (.thru H (.eq j b))
+  | .has j => some (.thru H (.has j))
 termination_by E => sizeOf H + sizeOf E
 decreasing_by all_goals (simp_wf; (try simp at *); (try omega))
 
-/-- Prefix every entry of a coercion with a form on the left. -/
-def Entries.mapPrefix (H : Form s) : Entries s → Option (Entries s)
+/-- Prefix a view-free entry by composing its bound or its route. -/
+def FreeEntry.prefix (H : Form s) : FreeEntry s → Option (FreeEntry s)
+  | .bnd G => (Form.combine H G).map FreeEntry.bnd
+  | .thru H' E => (Form.combine H H').map fun H'' => FreeEntry.thru H'' E
+termination_by E => sizeOf H + sizeOf E
+decreasing_by all_goals (simp_wf; (try simp at *); (try omega))
+
+/-- Prefix the entries of an object coercion. -/
+def Entries.mapPrefix (H : Form s) : Entries s → Option (FreeEntries s)
   | .nil => some .nil
   | .cons Es E =>
       (Entries.mapPrefix H Es).bind fun Es' =>
@@ -337,39 +377,38 @@ def Entries.mapPrefix (H : Form s) : Entries s → Option (Entries s)
 termination_by Es => sizeOf H + sizeOf Es
 decreasing_by all_goals simp_wf <;> omega
 
-/-- Combine the head forms of two composable coercions.  Conversions compose
-as equalities and are absorbed into function and object forms; the
-composite of two object coercions is the second, with its templates routed
-through the first. -/
+/-- Prefix view-free entries. -/
+def FreeEntries.mapPrefix (H : Form s) : FreeEntries s → Option (FreeEntries s)
+  | .nil => some .nil
+  | .cons Es E =>
+      (FreeEntries.mapPrefix H Es).bind fun Es' =>
+        (FreeEntry.prefix H E).bind fun E' => some (Es' ▹ E')
+termination_by Es => sizeOf H + sizeOf Es
+decreasing_by all_goals simp_wf <;> omega
+
+/-- Combine the head forms of two composable coercions. Identity forms are
+absorbed; object composition substitutes the first templates into the second. -/
 def Form.combine : Form s → Form s → Option (Form s)
   | .id, F => some F
   | F, .id => some F
   | .bot, _ => some .bot
   | _, .top => some .top
-  | .eqv _, .bot => some .bot
-  | .eqv φ, .eqv ψ => some (.eqv (.trans φ ψ))
-  | .eqv _, .pi d c => some (.pi d c)
-  | .pi d c, .eqv _ => some (.pi d c)
-  | .eqv _, .obj Es => some (.obj Es)
-  | .obj Es, .eqv _ => some (.obj Es)
-  | .eqv _, .bnd i F => some (.bnd i F)
-  | .eqv _, .into Es => some (.into Es)
-  | .into Es, .eqv _ => some (.into Es)
   | .pi d₁ c₁, .pi d₂ c₂ =>
       some (.pi (.trans d₂ d₁) (.trans (c₁.subst (Subst.selfCast d₂↑)) c₂))
   | .obj Es₁, .obj Es₂ => (Entries.through Es₁ Es₂).map .obj
   | .into Es₁, .obj Es₂ => (Entries.mapPrefix (.into Es₁) Es₂).map .into
   | .top, .obj Es => (Entries.mapPrefix .top Es).map .into
-  | F, .into Es => (Entries.mapPrefix F Es).map .into
+  | F, .into Es => (FreeEntries.mapPrefix F Es).map .into
   | .bnd i F, G => (Form.combine F G).map (Form.bnd i)
   | .obj Es, .bnd i F =>
-      match Es.getBnd?Attach i with
-      | some ⟨G, _⟩ => Form.combine G F
-      | none => none
+      match Es.get?Attach i with
+      | some ⟨.bnd G, _⟩ => Form.combine G F
+      | some ⟨.copyBound j, _⟩ => some (.bnd j F)
+      | _ => none
   | .into Es, .bnd i F =>
       match Es.get?Attach i with
       | some ⟨.bnd G, _⟩ => Form.combine G F
-      | some ⟨.thru H (.bnd (.bnd j .id)), _⟩ => Form.combine H (.bnd j F)
+      | some ⟨.thru H (.copyBound j), _⟩ => Form.combine H (.bnd j F)
       | _ => none
   | F, _ => some F
 termination_by F G => sizeOf F + sizeOf G
@@ -383,7 +422,7 @@ def Telescope.identityEntries : Telescope (s,x) → Entries s
   | .cons Tel (.le _ _) => Tel.identityEntries ▹ .le .id (.le Tel.length) .id
   | .cons Tel (.eq _ _) => Tel.identityEntries ▹ .eq Tel.length false
   | .cons Tel (.has _) => Tel.identityEntries ▹ .has Tel.length
-  | .cons Tel (.bnd _) => Tel.identityEntries ▹ .bnd (.bnd Tel.length .id)
+  | .cons Tel (.bnd _) => Tel.identityEntries ▹ .copyBound Tel.length
 
 /-- Concatenation of entries. -/
 def Entries.append : Entries s → Entries s → Entries s
@@ -392,14 +431,20 @@ def Entries.append : Entries s → Entries s → Entries s
 
 instance : Append (Entries s) := ⟨Entries.append⟩
 
+/-- Concatenation of view-free entries. -/
+def FreeEntries.append : FreeEntries s → FreeEntries s → FreeEntries s
+  | Es, .nil => Es
+  | Es, .cons Es' E => (Es.append Es') ▹ E
+
+instance : Append (FreeEntries s) := ⟨FreeEntries.append⟩
+
 /-- The entries of a coercion into an object type with telescope `Tel`, read
-off its head form: an object form gives its entries, a conversion gives the
+off its head form: an object form gives its entries, identity gives the
 identity entries of `Tel`, and so does `top` (its target is `⊤ = μ .nil`, so
 `Tel` is empty). -/
 def Form.toEntries (Tel : Telescope (s,x)) : Form s → Option (Entries s)
   | .obj Es => some Es
   | .id => some Tel.identityEntries
-  | .eqv _ => some Tel.identityEntries
   | .top => some Tel.identityEntries
   | _ => none
 
@@ -407,9 +452,9 @@ def Form.toEntries (Tel : Telescope (s,x)) : Form s → Option (Entries s)
 view of the source: an `into` form gives its entries, a bound cast routes
 its entries through the bound, and any other form routes its entries
 through the identity. -/
-def Form.freeEntries (Tel : Telescope (s,x)) : Form s → Option (Entries s)
+def Form.freeEntries (Tel : Telescope (s,x)) : Form s → Option (FreeEntries s)
   | .into Es => some Es
-  | .bnd i F => (Form.freeEntries Tel F).bind (Entries.mapPrefix (.bnd i .id))
+  | .bnd i F => (Form.freeEntries Tel F).bind (FreeEntries.mapPrefix (.bnd i .id))
   | F => (F.toEntries Tel).bind (Entries.mapPrefix .id)
 
 /-- A form that proves every inclusion out of its source: `bot`, possibly
@@ -462,16 +507,9 @@ def View.append : View s → View s → View s
 
 instance : Append (View s) := ⟨View.append⟩
 
-mutual
-
-/-- Instantiate a template at a view: the hole is replaced by the view's
-form of the source proposition (an equality reads as `id`), then the sides
-are combined.  A bound entry is read through the chain `C` of the atom whose
-view is being computed; a routed entry recomputes the view of the atom
-through its route and reads the inner entry there. -/
-def Entry.at (σ : Store s) : Nat → Atom s → Form s → View s → Entry s → Option (PropForm s)
-  | 0, _, _, _, _ => none
-  | _ + 1, _, _, V, .le pre h post => do
+/-- Interpret a local template using a supplied view. -/
+def LocalEntry.at : View s → LocalEntry s → Option (PropForm s)
+  | V, .le pre h post => do
       let mid ← match h, ← V.get? h.index with
         | .le _, .le F => some F
         | .eq _, .eq => some .id
@@ -480,28 +518,55 @@ def Entry.at (σ : Store s) : Nat → Atom s → Form s → View s → Entry s �
       let F ← pre.combine mid
       let G ← F.combine post
       pure (.le G)
-  | _ + 1, _, _, V, .eq j _ => do
+  | V, .eq j _ => do
       match ← V.get? j with
       | .eq => pure .eq
       | _ => none
-  | _ + 1, _, _, V, .has j => do
+  | V, .has j => do
       match ← V.get? j with
       | .has y ℓ => pure (.has y ℓ)
       | _ => none
-  | _ + 1, _, C, _, .bnd G => (C.combine G).map PropForm.bnd
-  | n + 1, a, C, _, .thru H E => do
-      let V' ← viewThrough σ n H a
-      let C' ← C.combine H
-      Entry.at σ n a C' V' E
+  | V, .copyBound j => do
+      match ← V.get? j with
+      | .bnd G => pure (.bnd G)
+      | _ => none
 
-/-- Instantiate the entries of an object coercion at an atom whose view is
-`V` and whose chain of casts is `C`. -/
+/-- Interpret an object entry using a supplied view and cast chain. -/
+def Entry.at (_σ : Store s) : Nat → Atom s → Form s → View s → Entry s → Option (PropForm s)
+  | 0, _, _, _, _ => none
+  | _ + 1, _, _, V, .le pre h post => LocalEntry.at V (.le pre h post)
+  | _ + 1, _, _, V, .eq j b => LocalEntry.at V (.eq j b)
+  | _ + 1, _, _, V, .has j => LocalEntry.at V (.has j)
+  | _ + 1, _, C, _, .bnd G => (C.combine G).map PropForm.bnd
+  | _ + 1, _, _, V, .copyBound j => LocalEntry.at V (.copyBound j)
+
+/-- Instantiate object entries at a supplied view. -/
 def entriesAt (σ : Store s) : Nat → Atom s → Form s → View s → Entries s → Option (View s)
   | 0, _, _, _, _ => none
   | _ + 1, _, _, _, .nil => some .nil
   | n + 1, a, C, V, .cons Es E => do
       let V' ← entriesAt σ n a C V Es
       let P ← Entry.at σ n a C V E
+      pure (V' ▹ P)
+
+mutual
+
+/-- Interpret a view-free entry. A route is evaluated once, then its local
+endpoint is read from the resulting view. -/
+def FreeEntry.at (σ : Store s) : Nat → Atom s → Form s → FreeEntry s → Option (PropForm s)
+  | 0, _, _, _ => none
+  | _ + 1, _, C, .bnd G => (C.combine G).map PropForm.bnd
+  | n + 1, a, _, .thru H E => do
+      let V' ← viewThrough σ n H a
+      LocalEntry.at V' E
+
+/-- Instantiate view-free entries. -/
+def freeEntriesAt (σ : Store s) : Nat → Atom s → Form s → FreeEntries s → Option (View s)
+  | 0, _, _, _ => none
+  | _ + 1, _, _, .nil => some .nil
+  | n + 1, a, C, .cons Es E => do
+      let V' ← freeEntriesAt σ n a C Es
+      let P ← FreeEntry.at σ n a C E
       pure (V' ▹ P)
 
 /-- The normal form of a template side, with fuel: `id` when absent. -/
@@ -513,10 +578,10 @@ def sideForm (σ : Store s) : Nat → Side s → Option (Form s)
 /-- Head form of closed inclusion evidence, with fuel. -/
 def hnf (σ : Store s) : Nat → LeCo s → Option (Form s)
   | 0, _ => none
-  | _ + 1, .refl T => some (.eqv (.refl T))
+  | _ + 1, .refl _ => some .id
+  | _ + 1, .eqToLe _ => some .id
   | _ + 1, .top _ => some .top
   | _ + 1, .bot _ => some .bot
-  | _ + 1, .eqToLe φ => some (.eqv φ)
   | _ + 1, .pi d c => some (.pi d c)
   | n + 1, .obj _ m => (entries σ n m).map .obj
   | n + 1, .pair Tel₁ Tel₂ e f => do
@@ -576,15 +641,13 @@ def view (σ : Store s) : Nat → Atom s → Option (View s)
 def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
   | 0, _, _ => none
   | n + 1, .id, a => view σ n a
-  | n + 1, .eqv _, a => view σ n a
   | n + 1, .obj Es, a => do
       let V ← view σ n a
-      let (_, C) ← closedAtomForm σ n a
+      let C ← closedAtomForm σ n a
       entriesAt σ n a C V Es
   | n + 1, .into Es, a => do
-      let V ← view σ n a
-      let (_, C) ← closedAtomForm σ n a
-      entriesAt σ n a C V Es
+      let C ← closedAtomForm σ n a
+      freeEntriesAt σ n a C Es
   | n + 1, .bnd i F, a => do
       let V ← view σ n a
       let P ← V.get? i
@@ -608,25 +671,19 @@ def hasView (σ : Store s) : Nat → BVar s .var → Has s → Option (BVar s .v
       | _ => none
 
 /-- The head form of a closed atom's wrappers, from its root. -/
-def closedAtomForm (σ : Store s) : Nat → Atom s → Option (Atom s × Form s)
+def closedAtomForm (σ : Store s) : Nat → Atom s → Option (Form s)
   | 0, _ => none
-  | _ + 1, .var x => some (.var x, .id)
+  | _ + 1, .var _ => some .id
   | n + 1, .cast a e => do
-      let (a', F) ← closedAtomForm σ n a
+      let F ← closedAtomForm σ n a
       let G ← hnf σ n e
-      let H ← F.combine G
-      pure (.cast a' e, H)
-  | n + 1, .foldSelf Tel a => do
-      let (a', F) ← closedAtomForm σ n a
-      pure (.foldSelf Tel a', F)
-  | n + 1, .unfoldSelf a => do
-      let (a', F) ← closedAtomForm σ n a
-      pure (.unfoldSelf a', F)
+      F.combine G
+  | n + 1, .foldSelf _ a => closedAtomForm σ n a
+  | n + 1, .unfoldSelf a => closedAtomForm σ n a
   | n + 1, .both Tel₁ Tel₂ a b => do
-      let (a', F) ← closedAtomForm σ n a
-      let (b', G) ← closedAtomForm σ n b
-      let H ← Form.pair Tel₁ Tel₂ F G
-      pure (.both Tel₁ Tel₂ a' b', H)
+      let F ← closedAtomForm σ n a
+      let G ← closedAtomForm σ n b
+      Form.pair Tel₁ Tel₂ F G
 
 end
 
@@ -640,7 +697,7 @@ scoped notation:40 σ:51 " ⊢ " m:51 " ⇓ₘ[" n "] " Es:51 => entries σ n m 
 scoped notation:40 σ:51 " ⊢ " a:51 " ⇓ᵥ[" n "] " V:51 => view σ n a = some V
 scoped notation:40 σ:51 " ⊢ " x:51 " ; " h:51 " ⇓ₕ[" n "] " P:51 => hasView σ n x h = some P
 
-/-- `σ ⊢ a ⇓ᶜ[n] (a', F)`: the chain of casts of `a` normalizes to `F`. -/
+/-- `σ ⊢ a ⇓ᶜ[n] F`: the chain of casts of `a` normalizes to `F`. -/
 scoped notation:40 σ:51 " ⊢ " a:51 " ⇓ᶜ[" n "] " r:51 => closedAtomForm σ n a = some r
 
 end FCdot

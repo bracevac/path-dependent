@@ -125,7 +125,7 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
   | _, Γ, _, _, @HasTy.var _ _ x, hwf => by
       simp only [HasTy.translate]
       exact .atom (Ctx.varAtom_typed Γ hwf x)
-  | _, _, _, _, .lam h _, hwf => by
+  | _, _, _, _, .lam h, hwf => by
       simp only [HasTy.translate, Ty.translate_all]
       exact .val (.lam (HasTy.translate_typed h (.cons hwf)))
   | _, _, _, _, .app h₁ h₂, hwf => by
@@ -155,17 +155,17 @@ theorem HasTy.translate_typed : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
       rw [FCdot.Ty.substVar_sel_here, FCdot.Ty.weaken_substVar] at hle
       simp only [HasTy.translate, Ty.translate_fld, Ty.tel_fld]
       exact .cast (.proj ha hhas) hle
-  | _, _, _, _, .let h₁ h₂ _, hwf => by
+  | _, _, _, _, .let h₁ h₂, hwf => by
       have ih₂ := HasTy.translate_typed h₂ (.cons hwf)
       rw [Ty.translate_weaken] at ih₂
       simp only [HasTy.translate]
       exact .let (HasTy.translate_typed h₁ hwf) ih₂
-  | _, _, _, _, .recI h hd, hwf => by
+  | _, _, _, _, .recI h, hwf => by
       simp only [HasTy.translate]
-      exact .atom (HasTy.translateAtom_typed (.recI h hd) hwf)
-  | _, _, _, _, .recE h hd, hwf => by
+      exact .atom (HasTy.translateAtom_typed (.recI h) hwf)
+  | _, _, _, _, .recE h, hwf => by
       simp only [HasTy.translate]
-      exact .atom (HasTy.translateAtom_typed (.recE h hd) hwf)
+      exact .atom (HasTy.translateAtom_typed (.recE h) hwf)
   | _, _, _, _, .andI h₁ h₂, hwf => by
       simp only [HasTy.translate]
       exact .atom (HasTy.translateAtom_typed (.andI h₁ h₂) hwf)

@@ -18,7 +18,8 @@ The object rules translate to template morphisms (plan §13 items 8 and 9):
   identity on an object shape, `LeCo.intoBnd` on anything else;
 * `Fld` and `Typ` map each proposition through the translated bound;
 * `Sel-<:`, `<:-Sel` are `member` at the atom, on the exact proposition;
-* `Rec-I`, `Rec-E` unfold at the root and refold at the other telescope;
+* `Rec-I`, `Rec-E` unfold at the root and refold at the other telescope,
+  entering or leaving a one-bound telescope for non-object bodies;
 * a variable bound by an object literal is cast from the literal's precise
   type to its declared type (`litCo`), reading every proposition off the
   literal's definition equalities and field presences.
@@ -38,17 +39,16 @@ def _root_.FCdot.Morphism.append : FCdot.Morphism s → FCdot.Morphism s → FCd
   | m, .has m' j => .has (m.append m') j
   | m, .bnd m' e => .bnd (m.append m') e
 
-/-- A telescope with no self-bound propositions at all.  `Ty.telSelf`
-produces one only on a shape that `Wf.mu` excludes. -/
+/-- A telescope with no self-bound propositions. Declaration-shaped bodies
+have this property; arbitrary recursive bodies need not. -/
 def _root_.FCdot.Telescope.NoBnd : FCdot.Telescope s' → Prop
   | .nil => True
   | .cons _ (.bnd _) => False
   | .cons Tel _ => FCdot.Telescope.NoBnd Tel
 
-/-- A telescope all of whose self-bounds are weakened closed types, which is
-the closedness convention of `FCdot` (plan §13 item 9).  `Ty.tel` produces
-only these (`Ty.tel_closedBnds`), and only these can be copied by identity
-templates. -/
+/-- A telescope whose self-bounds do not mention its fresh self binder.
+`Ty.tel` has this property (`Ty.tel_closedBnds`), which permits copying its
+bounds by identity templates. `Ty.telSelf` need not have this property. -/
 inductive _root_.FCdot.Telescope.ClosedBnds : {s : FCdot.Sig} → FCdot.Telescope (s,x) → Prop where
   | nil : FCdot.Telescope.ClosedBnds (.nil : FCdot.Telescope (s,x))
   | le {Tel : FCdot.Telescope (s,x)} {X Y : FCdot.Ty (s,x)} :
@@ -91,6 +91,29 @@ def intoAtom (T : Ty s) (a : FCdot.Atom s) : FCdot.Atom s :=
     (intoAtom T a).root = a.root := by
   rw [intoAtom]
   split <;> simp [FCdot.Atom.root]
+
+/-! ## Recursive-type adapters -/
+
+/-- Fold an arbitrary recursive body. A non-object operand first enters
+its one-bound telescope; unfolding then identifies its self with the root. -/
+def recIAtom (T : Ty (s,x)) (r : BVar s .var) (a : FCdot.Atom s) : FCdot.Atom s :=
+  .foldSelf T.telSelf (.unfoldSelf (intoAtom (T.substVar r) a))
+
+/-- Unfold an arbitrary recursive body. After changing the self telescope,
+a non-object result is recovered through its single bound. -/
+def recEAtom (T : Ty (s,x)) (r : BVar s .var) (a : FCdot.Atom s) : FCdot.Atom s :=
+  let b := FCdot.Atom.foldSelf (T.substVar r).tel (.unfoldSelf a)
+  if (T.substVar r).isObj then b
+  else .cast b (.bound (T.substVar r).tel 0)
+
+@[simp] theorem recIAtom_root (T : Ty (s,x)) (r : BVar s .var) (a : FCdot.Atom s) :
+    (recIAtom T r a).root = a.root := by
+  simp [recIAtom, FCdot.Atom.root, intoAtom_root]
+
+@[simp] theorem recEAtom_root (T : Ty (s,x)) (r : BVar s .var) (a : FCdot.Atom s) :
+    (recEAtom T r a).root = a.root := by
+  simp only [recEAtom]
+  split <;> rfl
 
 /-- The morphism from a literal's precise telescope to its declaration type,
 with the next unused definition-equality and field-presence positions.
@@ -161,10 +184,8 @@ def Sub.translate : {Γ : Ctx s} → {S T : Ty s} → Sub Γ S T → FCdot.LeCo 
 def HasTy.translateAtom : {Γ : Ctx s} → {x : BVar s .var} → {T : Ty s} →
     HasTy Γ (.path (.var x)) T → FCdot.Atom s
   | Γ, x, _, .var => Γ.varAtom x
-  | _, x, _, @HasTy.recI _ _ _ T h _ =>
-      .foldSelf T.telSelf (.unfoldSelf h.translateAtom)
-  | _, x, _, @HasTy.recE _ _ _ T h _ =>
-      .foldSelf (Ty.tel (T.substVar x)) (.unfoldSelf h.translateAtom)
+  | _, x, _, @HasTy.recI _ _ _ T h => recIAtom T x h.translateAtom
+  | _, x, _, @HasTy.recE _ _ _ T h => recEAtom T x h.translateAtom
   | _, _, _, @HasTy.andI _ _ _ T U h₁ h₂ =>
       .both T.tel U.tel (intoAtom T h₁.translateAtom) (intoAtom U h₂.translateAtom)
   | _, _, _, .sub h d => .cast h.translateAtom d.translate

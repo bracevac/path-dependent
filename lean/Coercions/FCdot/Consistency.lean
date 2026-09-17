@@ -34,7 +34,7 @@ theorem Telescope.BndsOnly.nil : (Telescope.nil (s := (s,x))).BndsOnly := by
 
 /-- An entry over a bounds-only telescope proves a bound. -/
 theorem EntryTyped.bnd_of_bndsOnly {ρ : Option (BVar s .var)} {TelM : Telescope (s,x)}
-    {E : Entry s} {P : Proposition (s,x)} (hb : TelM.BndsOnly)
+    {E : LocalEntry s} {P : Proposition (s,x)} (hb : TelM.BndsOnly)
     (hE : EntryTyped Γ ρ TelM E P) : ∃ X : Ty (s,x), P = Proposition.bnd X := by
   cases hE with
   | le hh _ _ =>
@@ -52,7 +52,7 @@ mutual
 
 /-- View-free entries out of a source that is neither `⊥` nor an object type
 can only prove bounds. -/
-theorem BndsTyped.bndsOnly {ρ : Option (BVar s .var)} {S : Ty s} {Es : Entries s}
+theorem BndsTyped.bndsOnly {ρ : Option (BVar s .var)} {S : Ty s} {Es : FreeEntries s}
     {Tel : Telescope (s,x)} (hb : Γ.resolveAt? ρ S ≠ ⊥)
     (ho : ∀ Tel₁ : Telescope (s,x), Γ.resolveAt? ρ S ≠ μ Tel₁)
     (h : BndsTyped Γ ρ S Es Tel) : Tel.BndsOnly := by
@@ -82,7 +82,6 @@ theorem FormTyped.bndsOnly_target {ρ : Option (BVar s .var)} {S M : Ty s} {H : 
       obtain rfl := Ty.obj.inj (by simpa using hT : (μ TelM : Ty s) = μ .nil)
       exact Telescope.BndsOnly.nil
   | .id hres => exact absurd (hres.trans hM) (ho TelM)
-  | .eqv hres => exact absurd (hres.trans hM) (ho TelM)
   | .pi _ hT _ _ => rw [hM] at hT; exact absurd hT (by simp)
   | .obj hS _ _ => exact absurd hS (ho _)
   | .bnd hS _ _ => exact absurd hS (ho _)
@@ -112,7 +111,6 @@ theorem closed_le_shapes (hσ : ⊢ σ : Γ) {e : LeCo s} {S T : Ty s} (h : Γ �
   | bot hS => exact Or.inl hS
   | top hT => exact Or.inr (Or.inl hT)
   | id hres => exact Or.inr (Or.inr (Or.inl hres))
-  | eqv hres => exact Or.inr (Or.inr (Or.inl hres))
   | pi hS hT _ _ => exact Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, _, _, hS, hT⟩)))
   | obj hS hT _ => exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, hS, hT⟩))))
   | bnd hS hAt hF' =>

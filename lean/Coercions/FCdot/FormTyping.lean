@@ -25,7 +25,7 @@ proposition from a source proposition named by index, with closed sides
 (`SideTyped`) between weakened closed types, or -- for a target bound -- a
 closed coercion out of the source object type.  A coercion whose entries do
 not consult the view of the source is typed by `BndsTyped Γ ρ S Es Tel`;
-such entries are either bounds or *routed* (`Entry.thru`), reaching another
+such entries are either bounds or *routed* (`FreeEntry.thru`), reaching another
 object type by a form out of the source and proving the target proposition
 there (`EntryTyped`).  Templates never eliminate through the self's members,
 which is what keeps everything structural.
@@ -147,8 +147,8 @@ inductive Telescope.HoleAt (Tel : Telescope (s,x)) : Hole → Ty (s,x) → Ty (s
 `FormTyped Γ ρ F S T` types a coercion form with the shapes of mode `ρ`;
 `Γ ⊨ F : S ≤ T` is the plain mode, `Γ ⊨[r] F : S ≤ T` the mode at a root.
 `EntriesTyped Γ ρ Tel₁ Es Tel₂` types the entries of an object form between
-closed telescopes, and `BndsTyped Γ ρ S Es Tel` the bound entries of a
-coercion into a bounds-only object type. -/
+closed telescopes, and `BndsTyped Γ ρ S Es Tel` the view-free entries of a
+coercion into an object type. -/
 
 mutual
 
@@ -160,7 +160,6 @@ inductive FormTyped {s : Sig} (Γ : Ctx s) :
   | bot : Γ.resolveAt? ρ S = ⊥ → FormTyped Γ ρ .bot S T
   | top : Γ.resolveAt? ρ T = ⊤ → FormTyped Γ ρ .top S T
   | id : Γ.resolveAt? ρ S = Γ.resolveAt? ρ T → FormTyped Γ ρ .id S T
-  | eqv : Γ.resolveAt? ρ S = Γ.resolveAt? ρ T → FormTyped Γ ρ (.eqv φ) S T
   | pi : Γ.resolveAt? ρ S = Π(S₁) T₁ → Γ.resolveAt? ρ T = Π(S₂) T₂ →
       Γ ⊢ d : S₂ ≤ S₁ → Γ.cons (.opaque S₂) ⊢ c : T₁ ≤ T₂ →
       FormTyped Γ ρ (.pi d c) S T
@@ -169,12 +168,13 @@ inductive FormTyped {s : Sig} (Γ : Ctx s) :
   /-- Cast by a bound of the source object type. -/
   | bnd : Γ.resolveAt? ρ S = μ Tel → Tel ∋ (i ↦ ⊑ T↑) → FormTyped Γ ρ F T U →
       FormTyped Γ ρ (.bnd i F) S U
-  /-- Coercion into a bounds-only object type. -/
+  /-- Coercion into an object type using bounds or routes from the source. -/
   | into : Γ.resolveAt? ρ T = μ Tel → BndsTyped Γ ρ S Es Tel →
       FormTyped Γ ρ (.into Es) S T
 
-/-- A template side as a form: `id` leaves the endpoint unchanged; any other
-form is a closed coercion between weakened closed types. -/
+/-- A template side is either identity at identical endpoints, or a closed
+form between weakened endpoints. A closed form may itself be `id` when the
+endpoints have equal resolved shapes. -/
 inductive SideTyped {s : Sig} (Γ : Ctx s) : Form s → Ty (s,x) → Ty (s,x) → Prop where
   | id : SideTyped Γ .id X X
   | closed : FormTyped Γ none F A B → SideTyped Γ F A↑ B↑
@@ -201,26 +201,26 @@ inductive EntriesTyped {s : Sig} (Γ : Ctx s) :
       EntriesTyped Γ ρ Tel₁ (Es ▹ .bnd G) (Tel₂ ▹ ⊑ T↑)
   /-- The identity template on a source bound, whatever its type. -/
   | bndId : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁ ∋ (j ↦ ⊑ X) →
-      EntriesTyped Γ ρ Tel₁ (Es ▹ .bnd (.bnd j .id)) (Tel₂ ▹ ⊑ X)
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .copyBound j) (Tel₂ ▹ ⊑ X)
 
 /-- `EntryTyped Γ ρ Tel₁ E P`: a single entry proving `P` from the
 propositions of `Tel₁`.  Routes never nest and never end in a general bound
 entry, so this covers exactly the entries a route can end in. -/
 inductive EntryTyped {s : Sig} (Γ : Ctx s) :
-    Option (BVar s .var) → Telescope (s,x) → Entry s → Proposition (s,x) → Prop where
+    Option (BVar s .var) → Telescope (s,x) → LocalEntry s → Proposition (s,x) → Prop where
   | le : Telescope.HoleAt Tel₁ h X Y → SideTyped Γ pre S X → SideTyped Γ post Y T →
       EntryTyped Γ ρ Tel₁ (.le pre h post) (S ⊑ T)
   | eq : Tel₁ ∋ (j ↦ X ≐ Y) → EntryTyped Γ ρ Tel₁ (.eq j false) (X ≐ Y)
   | eqSym : Tel₁ ∋ (j ↦ X ≐ Y) → EntryTyped Γ ρ Tel₁ (.eq j true) (Y ≐ X)
   | has : Tel₁ ∋ (j ↦ ∋ ℓ) → EntryTyped Γ ρ Tel₁ (.has j) (∋ ℓ)
   | bnd : FormTyped Γ ρ (.bnd j .id) (μ Tel₁) T →
-      EntryTyped Γ ρ Tel₁ (.bnd (.bnd j .id)) (⊑ T↑)
-  | bndId : Tel₁ ∋ (j ↦ ⊑ X) → EntryTyped Γ ρ Tel₁ (.bnd (.bnd j .id)) (⊑ X)
+      EntryTyped Γ ρ Tel₁ (.copyBound j) (⊑ T↑)
+  | bndId : Tel₁ ∋ (j ↦ ⊑ X) → EntryTyped Γ ρ Tel₁ (.copyBound j) (⊑ X)
 
 /-- `BndsTyped Γ ρ S Es Tel`: the entries of a coercion from `S` into the
 object type `μ Tel` that do not consult the view of the source. -/
 inductive BndsTyped {s : Sig} (Γ : Ctx s) :
-    Option (BVar s .var) → Ty s → Entries s → Telescope (s,x) → Prop where
+    Option (BVar s .var) → Ty s → FreeEntries s → Telescope (s,x) → Prop where
   | nil : BndsTyped Γ ρ S .nil .nil
   | cons : BndsTyped Γ ρ S Es Tel → FormTyped Γ ρ F S T →
       BndsTyped Γ ρ S (Es ▹ .bnd F) (Tel ▹ ⊑ T↑)
@@ -301,6 +301,12 @@ theorem Entries.At.lt {Es : Entries s} {i : Nat} {E : Entry s}
   | here => simp [Entries.length]
   | there _ ih => simp [Entries.length]; omega
 
+theorem FreeEntries.At.lt {Es : FreeEntries s} {i : Nat} {E : FreeEntry s}
+    (h : Es ∋ (i ↦ E)) : i < Es.length := by
+  induction h with
+  | here => simp [FreeEntries.length]
+  | there _ ih => simp [FreeEntries.length]; omega
+
 theorem View.At.lt {V : View s} {i : Nat} {P : PropForm s}
     (h : V ∋ (i ↦ P)) : i < V.length := by
   induction h with
@@ -326,6 +332,26 @@ theorem Entries.get?_At : ∀ {Es : Entries s} {i : Nat} {E : Entry s},
 theorem Entries.get?_eq_some_iff_At {Es : Entries s} {i : Nat} {E : Entry s} :
     Es.get? i = some E ↔ Es ∋ (i ↦ E) :=
   ⟨Entries.get?_At, Entries.At.get?⟩
+
+/-- Executable lookup of entries agrees with the `At` relation. -/
+theorem FreeEntries.At.get? {Es : FreeEntries s} {i : Nat} {E : FreeEntry s}
+    (h : Es ∋ (i ↦ E)) : Es.get? i = some E := by
+  induction h with
+  | here => simp [FreeEntries.get?]
+  | there h' ih => simp [FreeEntries.get?, Nat.ne_of_lt h'.lt, ih]
+
+theorem FreeEntries.get?_At : ∀ {Es : FreeEntries s} {i : Nat} {E : FreeEntry s},
+    Es.get? i = some E → Es ∋ (i ↦ E)
+  | .nil, _, _, h => by simp [FreeEntries.get?] at h
+  | .cons Es E', i, E, h => by
+      simp only [FreeEntries.get?] at h
+      by_cases hi : i = Es.length
+      · subst hi; rw [if_pos rfl] at h; cases h; exact .here
+      · rw [if_neg hi] at h; exact .there (FreeEntries.get?_At h)
+
+theorem FreeEntries.get?_eq_some_iff_At {Es : FreeEntries s} {i : Nat} {E : FreeEntry s} :
+    Es.get? i = some E ↔ Es ∋ (i ↦ E) :=
+  ⟨FreeEntries.get?_At, FreeEntries.At.get?⟩
 
 /-- Executable lookup of views agrees with the `At` relation. -/
 theorem View.At.get? {V : View s} {i : Nat} {P : PropForm s}
