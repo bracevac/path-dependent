@@ -11,6 +11,7 @@ import Coercions.DotToFCdot.WadlerFest
 import Coercions.DotToFCdot.RetainedSafety
 import Coercions.DotToFCdot.SortedSafety
 import Coercions.DotToFCdot.Examples
+import Coercions.DotToFCdot.RecursiveSubtyping
 /-!
 Import root for the translation from DOT-MNF to FCdot (Plan III §8).
 -/
