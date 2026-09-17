@@ -10,6 +10,7 @@ import Coercions.DotMNF.WadlerFest.Examples
 import Coercions.DotMNF.WadlerFest.OperationalCorrespondence
 import Coercions.DotMNF.WadlerFest.ReductionProgress
 import Coercions.DotMNF.WadlerFest.OperationalExamples
+import Coercions.DotMNF.WadlerFest.Sorted
 /-!
 Import root for DOT-MNF, the source calculus of Plan III (milestone M2).
 -/

@@ -9,6 +9,7 @@ import Coercions.DotToFCdot.Safety
 import Coercions.DotToFCdot.Consistency
 import Coercions.DotToFCdot.WadlerFest
 import Coercions.DotToFCdot.RetainedSafety
+import Coercions.DotToFCdot.SortedSafety
 import Coercions.DotToFCdot.Examples
 /-!
 Import root for the translation from DOT-MNF to FCdot (Plan III §8).

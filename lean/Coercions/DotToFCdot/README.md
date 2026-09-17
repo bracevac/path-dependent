@@ -21,6 +21,7 @@ that function, and DOT-MNF's type safety is transported from FCdot's.
 | `Examples` | translated typedness and erasure regressions for E9 to E12 |
 | `WadlerFest` | composed translation, typedness, erasure, and safety for the annotated WadlerFest store machine |
 | `RetainedSafety` | safety for every retained-let reduction order, using the operational correspondence with the annotated machine |
+| `SortedSafety` | typed translation, exact erasure, and retained-let safety for the public WadlerFest syntax with distinct type and term labels |
 
 ## The translation
 

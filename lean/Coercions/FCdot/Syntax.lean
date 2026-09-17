@@ -29,9 +29,10 @@ inductive Proposition : Sig → Type where
   | le : Ty s → Ty s → Proposition s
   | eq : Ty s → Ty s → Proposition s
   | has : Label → Proposition s
-  /-- Self-bound: the object itself is included in the type.  By convention
-      the type is always a weakened closed type, so a bound never mentions
-      the self block. -/
+  /-- Self-bound: the object itself is included in the type. A recursive
+      telescope may mention its self block here. The `LeCo.bound` rule
+      extracts a bound only when its type is weakened under that block;
+      self-dependent bounds are opened at an atom's root first. -/
   | bnd : Ty s → Proposition s
 
 /-- Telescope of propositions, oldest first.  Propositions do not bind. -/

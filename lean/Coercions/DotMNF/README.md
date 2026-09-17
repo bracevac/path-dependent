@@ -72,11 +72,26 @@ operational correspondence without a source type-preservation proof.
 nested-let application whose overlapping reduction orders reconverge. Its
 machine run reads back to the same retained answer.
 
-Two representational details remain explicit. Scoping is intrinsic; there
-is no formal conversion from named syntax modulo alpha-equivalence. Also,
-constructors accept the shared `Label` type without checking its tag. The
-paper's disjoint type-label and term-label syntax embeds using `.typ` and
-`.trm`, respectively; the raw formal syntax admits additional label choices.
+### Public syntax with separate label categories
+
+`WadlerFest/Sorted` exposes types, terms, definitions, contexts, and stores
+whose constructors distinguish `TypeLabel` from `TermLabel`. This frontend
+uses subtypes of the internal syntax. `WadlerFest/LabelSorted` establishes
+closure under renaming, substitution, and retained-let reduction.
+
+Public typing and subtyping derivations carry a recursive certificate that
+checks every context and intermediate type, including those introduced by
+transitivity and subsumption. Thus sorted endpoints cannot conceal an
+ill-sorted intermediate judgment. Every source rule has a public constructor.
+`../DotToFCdot/SortedSafety` supplies the typed, exactly erasing translation
+and retained-let safety for this frontend. Its safety conclusion quantifies
+over public terms, so reduction stays within the sorted syntax.
+
+The public examples construct and type a self-dependent object, check its
+projection step, and reject labels used in the wrong category. The internal
+syntax still uses a shared `Label` representation to reuse the existing
+proofs. Scoping is intrinsic; a conversion from named syntax modulo
+alpha-equivalence is not formalized.
 
 ## Further extensions
 
