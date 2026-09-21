@@ -31,7 +31,7 @@ implicit becomes explicit.
   premise of every rule. The reference states about forty of them; none of
   them carries content that intrinsic indexing does not.
 * **`TVarB` is gone** (`dot.v:23`). A bound variable is an abstract variable of
-  an extended scope, so `open 0 u T` (`dot.v:136`) is `Ty.substVr T u` and every
+  an extended scope, so `open 0 u T` (`dot.v:135`) is `Ty.substVr T u` and every
   `T' = open 0 (TVar false (length GH)) T` side condition disappears. `stp_bindx`
   shrinks from eight lines to three.
 * **The derivation-size index is gone** (`dot.v:219`, `:263`, `:285`, `:375`).
@@ -67,7 +67,7 @@ the labels `n-1, ..., 0`.
 
 `DotMNF.Ctx.cons` takes a `Ty s` and therefore cannot hold an opened self type;
 `DotMNF` binds the folded `μ(x. T)` and recovers the opened body by `Rec-E`.
-The reference does the opposite. `stp_bindx` (`dot.v:339-346`) and `T_Obj`
+The reference does the opposite. `stp_bindx` (`dot.v:335-341`) and `T_Obj`
 (`dot.v:241-245`) push `open 0 (TVar false (length GH)) T`, which mentions the
 variable it introduces, and `Htp` has no rule that folds an abstract variable
 back up. So `Ctx.cons` here takes a `Ty σ (s,x)`. A hypothesis that does not
@@ -75,8 +75,8 @@ mention its own binder — the parameter of `stp_fun` and `D_Fun` — is a
 weakening.
 
 The extrinsic shadow of this is visible in the reference: `htp_var` and
-`htp_unpack` require `closed (S x) ...`, not `closed x ...` (`dot.v:382`,
-`dot.v:386`).
+`htp_unpack` require `closed (S x) ...`, not `closed x ...` (`dot.v:378`,
+`dot.v:382`).
 
 ### The context truncation of `htp_sub` becomes scoping
 

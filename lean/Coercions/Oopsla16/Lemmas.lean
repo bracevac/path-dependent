@@ -16,7 +16,7 @@ The reference proves this by induction on a *fuel* bound over a type-size
 measure: `stpd_refl_aux` (`dot.v:874`) takes `tsize T1 < n`, because
 `stp_bindx` compares the **opened** bodies and opening replaces a bound
 variable by a free one, so the recursive call is not on a structural subterm.
-It therefore needs `tsize` (`dot.v:856`), `open_preserves_size` (`dot.v:866`),
+It therefore needs `tsize` (`dot.v:856`), `open_preserves_size` (`dot.v:868`),
 and, in the `fun` and `bind` cases, `closed_open` and `closed_upgrade_gh` from
 the closedness family — about fifty-five lines together, on top of that family.
 

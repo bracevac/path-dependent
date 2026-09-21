@@ -9,7 +9,7 @@ are forced by the reference.
 **Context entries may mention their own binder.**  `DotMNF.Ctx.cons` takes a
 `Ty s` and therefore cannot hold an opened self type; `DotMNF` instead binds
 the folded `μ(x. T)` and recovers the opened body by `Rec-E`.  The reference
-does the opposite: `stp_bindx` (`dot.v:339-346`) and `T_Obj` (`dot.v:241-245`)
+does the opposite: `stp_bindx` (`dot.v:335-341`) and `T_Obj` (`dot.v:241-245`)
 push the *opened* body `open 0 (TVar false (length GH)) T`, which mentions the
 variable it introduces, and there is no rule that folds an abstract variable
 back up inside `Htp`.  That asymmetry is what the reference's recursive
@@ -18,10 +18,10 @@ that does not mention its own binder — the parameter of `stp_fun`, `D_Fun` —
 is a weakening.
 
 The extrinsic shadow of this is visible in the reference: `htp_var` and
-`htp_unpack` require `closed (S x) …`, not `closed x …` (`dot.v:382`,
-`dot.v:386`), i.e. the type of the variable at `x` may mention `x`.
+`htp_unpack` require `closed (S x) …`, not `closed x …` (`dot.v:378`,
+`dot.v:382`), i.e. the type of the variable at `x` may mention `x`.
 
-**Every variable determines a context prefix.**  `htp_sub` (`dot.v:389-395`)
+**Every variable determines a context prefix.**  `htp_sub` (`dot.v:384-393`)
 runs its subtyping step in a context `GL` with `length GL = S x` and `GH = GU
 ++ GL`: only the hypotheses introduced no later than `x` may widen `x`'s type,
 so the self assumption of an enclosing `stp_bindx` cannot.  With absolute
@@ -70,7 +70,7 @@ inductive Ctx : Sig → Sig → Type where
   | cons : Ctx σ s → Ty σ (s,x) → Ctx σ (s,x)
 
 /-- The type of `x` in the prefix at `x`, exactly as recorded.  This is
-`index x GH = Some TX` together with `closed (S x) … TX` (`dot.v:381-382`). -/
+`index x GH = Some TX` together with `closed (S x) … TX` (`dot.v:377-378`). -/
 def Ctx.lookupAt : Ctx σ s → (x : BVar s .var) → Ty σ (scopeUpTo x)
   | .cons _ T, .here => T
   | .cons Γ _, .there y => Γ.lookupAt y

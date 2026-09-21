@@ -11,7 +11,7 @@ one.  Three deviations follow from that choice and are recorded once here.
 * The reference's `closed i j k T` predicate (`dot.v:100-127`) and every
   `closed` premise of every rule disappear: scoping is the indexing.
 * The reference's `TVarB` (`dot.v:23`) disappears: a bound variable is an
-  abstract variable of an extended scope, so `open 0 u T` (`dot.v:136`) is
+  abstract variable of an extended scope, so `open 0 u T` (`dot.v:135`) is
   `Ty.substVr T u`.
 * The derivation-size index of `dot.v:219-393` is dropped.  It exists for the
   reference's transitivity-pushback and narrowing inductions; derivations here
@@ -87,10 +87,10 @@ restricted to a variable, so the calculus is not in normal form. -/
 inductive Tm : Sig → Sig → Type where
   /-- `tvar b x`, `dot.v:41`. -/
   | tvar : Vr σ s → Tm σ s
-  /-- `tobj ds`, `dot.v:42`.  The reference's self is the next slot of the
+  /-- `tobj ds`, `dot.v:43`.  The reference's self is the next slot of the
   abstract context; here it is the binder of `ds`. -/
   | tobj : Dms σ (s,x) → Tm σ s
-  /-- `tapp t l u`, `dot.v:43`. -/
+  /-- `tapp t l u`, `dot.v:44`. -/
   | tapp : Tm σ s → Lb → Tm σ s → Tm σ s
 
 /-- Member definitions, `dot.v:46-51`.  The label is the position in the

@@ -1,19 +1,44 @@
 import Coercions.Oopsla16.Lemmas
 
-/-!
-# `Htp` must have no packing rule
+set_option autoImplicit false
 
-`HasType` has both `T_VarPack` and `T_VarUnpack` (`dot.v:231-240`), but `Htp`
-has only `htp_unpack` (`dot.v:385-388`).  This module shows that the asymmetry
-is load-bearing: in an isolated extension that adds the missing packing rule,
-and changes nothing else, a two-object store admits a closed subtyping
-derivation between two recursive types that gives an ordinary object the
-bottom type.
+/-!
+# Recursive subtyping and packing in `Htp` are jointly unsound
+
+`HasType` has both `T_VarPack` and `T_VarUnpack` (`dot.v:231-240`), but `Htp`,
+the judgment that subtyping's type selections go through, has only
+`htp_unpack` (`dot.v:380-383`).  Section 3 of the paper calls this the first of
+two contractiveness restrictions, says both are "necessary for the proofs",
+and conjectures that they "could be lifted without breaking soundness".
+
+This module adds the missing rule and nothing else.  Over a two-object store,
+the result is a closed program that is well typed at `⊤`, is not an answer, and
+cannot step.
+
+Three things about the scope of the result.
+
+* **The second restriction is kept, and is satisfied.**  `htp_sub` still widens
+  in `Γ.upTo x`.  Every use of it here is at the self introduced by
+  `stp_bindx`, which is the newest binder, so `Γ.upTo z = Γ` and the reference's
+  `length GL = S x` holds with `GU = []`.  The restriction is not stressed —
+  it never constrains a selection on the innermost self — but neither is it
+  lifted.
+* **Most of the derivation needs no new rule.**  `dSubPlain` below derives
+  `D <: D'` under `z : p.B` in the *unmodified* calculus.  `htp_pack` buys
+  exactly one step: packing that same `z` so that `z.K` becomes readable.
+* **The culprit is the interaction, not packing alone.**  WadlerFest DOT and
+  pDOT take the `Sel` premise from ordinary typing, with recursive introduction
+  available, and are sound — they have no `stp_bindx`.  What is unsound is
+  recursive subtyping together with a packing rule in the selection judgment.
+
+The extension is not a conservative extension: it proves `μ(_.p.B) <: μ(_.p.C)`,
+which is a statement of the old vocabulary.  It is a *subsystem* of "Oopsla16
+with `htp_pack`": every constructor below is either an existing rule with the
+same indices, `htp_pack`, or an embedding of an existing derivation.  Nothing
+in `Oopsla16` itself is changed.
 
 The construction is the one of `DotToFCdot/RecursiveSelectionCounterexample`,
-transported to the reference calculus.  Everything except `htp_pack` is an
-existing rule, and every existing derivation is reused through the `old`
-constructors, so the extension is conservative over `Oopsla16` by construction.
+transported from the WadlerFest extension to the reference calculus.
 -/
 
 namespace Oopsla16.PackingCounterexample
@@ -22,53 +47,63 @@ open FCdot (Kind Sig BVar Rename)
 
 /-! ## The isolated extension
 
-Only `Stp`, `Htp` and `HasType` are re-declared, each embedding the existing
-judgment through `old`, and only the rules the construction uses are repeated.
-`htp_pack` is the single new rule; it is the exact mirror of `T_VarPack`. -/
+Only the rules the construction uses are repeated; `old` embeds any existing
+derivation.  `htp_pack` is the single new rule, and it is the exact converse of
+`htp_unpack`: same `TX : Ty σ (scopeUpTo x,x)`, which is the reference's
+`closed (S x) (length G1) 1 TX` (`dot.v:382`). -/
 
 mutual
 
 /-- Subtyping, extended only by being able to call the extended `Htp`. -/
 inductive StpP : {σ s : Sig} → Store σ σ → Ctx σ s → Ty σ s → Ty σ s → Type where
   /-- Any existing derivation. -/
-  | old : Stp G Γ T1 T2 → StpP G Γ T1 T2
-  | stp_typ : StpP G Γ T3 T1 → StpP G Γ T2 T4 → StpP G Γ (.TTyp l T1 T2) (.TTyp l T3 T4)
-  | stp_sel1 {x : BVar s .var} {T2 : Ty σ (scopeUpTo x)} :
+  | old {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {T1 T2 : Ty σ s} :
+      Stp G Γ T1 T2 → StpP G Γ T1 T2
+  | stp_typ {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {l : Lb} {T1 T2 T3 T4 : Ty σ s} :
+      StpP G Γ T3 T1 → StpP G Γ T2 T4 → StpP G Γ (.TTyp l T1 T2) (.TTyp l T3 T4)
+  | stp_sel1 {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {l : Lb} {x : BVar s .var}
+      {T2 : Ty σ (scopeUpTo x)} :
       HtpP G Γ x (.TTyp l .TBot T2) →
       StpP G Γ (.TSel (.abs x) l) (T2.rename (renameUpTo x))
-  | stp_sel2 {x : BVar s .var} {T1 : Ty σ (scopeUpTo x)} :
+  | stp_sel2 {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {l : Lb} {x : BVar s .var}
+      {T1 : Ty σ (scopeUpTo x)} :
       HtpP G Γ x (.TTyp l T1 .TTop) →
       StpP G Γ (T1.rename (renameUpTo x)) (.TSel (.abs x) l)
-  | stp_bindx : StpP G (Γ.cons T1) T1 T2 → StpP G Γ (.TBind T1) (.TBind T2)
-  | stp_trans : StpP G Γ T1 T2 → StpP G Γ T2 T3 → StpP G Γ T1 T3
+  | stp_bindx {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {T1 T2 : Ty σ (s,x)} :
+      StpP G (Γ.cons T1) T1 T2 → StpP G Γ (.TBind T1) (.TBind T2)
+  | stp_trans {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {T1 T2 T3 : Ty σ s} :
+      StpP G Γ T1 T2 → StpP G Γ T2 T3 → StpP G Γ T1 T3
 
 /-- Variable typing for selections, with the packing rule added. -/
 inductive HtpP : {σ s : Sig} → Store σ σ → Ctx σ s → (x : BVar s .var) →
     Ty σ (scopeUpTo x) → Type where
-  | htp_var : HtpP G Γ x (Γ.lookupAt x)
-  | htp_unpack {x : BVar s .var} {TX : Ty σ (scopeUpTo x,x)} :
+  | htp_var {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {x : BVar s .var} :
+      HtpP G Γ x (Γ.lookupAt x)
+  | htp_unpack {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {x : BVar s .var}
+      {TX : Ty σ (scopeUpTo x,x)} :
       HtpP G Γ x (.TBind TX) → HtpP G Γ x (TX.substVr (.abs (varUpTo x)))
-  /-- **The new rule.**  The mirror of `T_VarPack` (`dot.v:231-235`), which the
-  reference deliberately omits from `htp`. -/
-  | htp_pack {x : BVar s .var} {TX : Ty σ (scopeUpTo x,x)} :
+  /-- **The new rule**, the converse of `htp_unpack` and the mirror of
+  `T_VarPack` (`dot.v:231-235`), which the reference omits from `htp`. -/
+  | htp_pack {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {x : BVar s .var}
+      {TX : Ty σ (scopeUpTo x,x)} :
       HtpP G Γ x (TX.substVr (.abs (varUpTo x))) → HtpP G Γ x (.TBind TX)
-  | htp_sub {x : BVar s .var} {T1 T2 : Ty σ (scopeUpTo x)} :
+  | htp_sub {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {x : BVar s .var}
+      {T1 T2 : Ty σ (scopeUpTo x)} :
       HtpP G Γ x T1 → StpP G (Γ.upTo x) T1 T2 → HtpP G Γ x T2
 
 end
 
 /-! ## The store
 
-One namespace object `p` with two type members, and one ordinary object `q`
-with a single type member.  Labels are positional, so in `p` the member `B`
-has label `0` and `C` has label `1`.
-
 ```text
 p.B = {A : D .. D'}
 p.C = {K : p.B .. p.C} ∧ ({missing : ∀(_:⊤) ⊤} ∧ ⊥)
-D   = μ _. p.B          D' = μ _. p.C
-q.A = D
-``` -/
+D   = μ _. p.B          D' = μ _. p.C          q.A = D
+```
+
+Labels are positional, so in `p` the member `B` has label `0` and `C` has
+label `1`.  Both `D` and `D'` ignore their self binder, which is why the result
+does not depend on the closedness index a packing mirror is given. -/
 
 /-- The label of `p`'s first type member. -/
 abbrev B : Lb := 0
@@ -90,25 +125,25 @@ abbrev p : BVar S2 .var := .there .here
 abbrev q : BVar S2 .var := .here
 
 /-- `p.B`. -/
-abbrev pB : Ty S2 s := .TSel (.conc p) B
+abbrev pB {s : Sig} : Ty S2 s := .TSel (.conc p) B
 /-- `p.C`. -/
-abbrev pC : Ty S2 s := .TSel (.conc p) C
+abbrev pC {s : Sig} : Ty S2 s := .TSel (.conc p) C
 
 /-- `D = μ _. p.B`, a recursive type whose body ignores its self. -/
-abbrev D : Ty S2 s := .TBind pB
+abbrev D {s : Sig} : Ty S2 s := .TBind pB
 /-- `D' = μ _. p.C`. -/
-abbrev D' : Ty S2 s := .TBind pC
+abbrev D' {s : Sig} : Ty S2 s := .TBind pC
 
 /-- The body of `p.B`. -/
-abbrev Bbody : Ty S2 s := .TTyp A D D'
+abbrev Bbody {s : Sig} : Ty S2 s := .TTyp A D D'
 /-- The body of `p.C`. -/
-abbrev Cbody : Ty S2 s :=
+abbrev Cbody {s : Sig} : Ty S2 s :=
   .TAnd (.TTyp K pB pC) (.TAnd (.TFun missing .TTop .TTop) .TBot)
 
 /-- `p`'s definitions: `B` at position `0`, `C` at position `1`. -/
-abbrev pDefs : Dms S2 s := .dcons (.dty Cbody) (.dcons (.dty Bbody) .dnil)
+abbrev pDefs {s : Sig} : Dms S2 s := .dcons (.dty Cbody) (.dcons (.dty Bbody) .dnil)
 /-- `q`'s single definition, `A = D`. -/
-abbrev qDefs : Dms S2 s := .dcons (.dty D) .dnil
+abbrev qDefs {s : Sig} : Dms S2 s := .dcons (.dty D) .dnil
 
 /-- The store. -/
 abbrev G : Store S2 S2 := .cons (.cons .nil pDefs) qDefs
@@ -118,39 +153,40 @@ example : (G.lookup p).get? C = some (.dty Cbody) := rfl
 example : (G.lookup q).get? A = some (.dty D) := rfl
 example : (G.lookup q).get? missing = none := rfl
 
-/-! ## The derivation
+/-! ## What the unmodified calculus already proves
 
-Under the self assumption `z : p.B`, the bounds of `z.A` give `D <: D'`.  The
-packing step then turns `z : p.B` into `z : D`, subsumption gives `z : D'`, and
-unpacking gives `z : p.C`.  Reading the bounds of `z.K` proves `p.B <: p.C`,
-which `stp_bindx` abstracts to `D <: D'` in the empty context. -/
+Under the self assumption `z : p.B`, the bounds of `z.A` already give
+`D <: D'`.  No new rule is involved; this is the reference calculus. -/
 
 /-- The context of the `stp_bindx` premise: the self at its opened type. -/
 abbrev Gz : Ctx S2 ([],x) := Ctx.nil.cons pB
-/-- The self. -/
+/-- The self, the newest binder. -/
 abbrev z : BVar ([],x) .var := .here
 
 /-- `z : {A : D .. D'}`, from `p`'s definition of `B`. -/
-def bMember : HtpP G Gz z Bbody :=
-  .htp_sub .htp_var (.old (.stp_strong_sel1 (T2 := Bbody) rfl (Stp.refl _)))
+def bMemberPlain : Htp G Gz z Bbody :=
+  .htp_sub .htp_var (.stp_strong_sel1 (T2 := Bbody) rfl (Stp.refl _))
 
 /-- `D <: z.A`. -/
-def dLower : StpP G Gz D (.TSel (.abs z) A) :=
-  .stp_sel2 (.htp_sub bMember (.stp_typ (.old (Stp.refl _)) (.old .stp_top)))
+def dLowerPlain : Stp G Gz D (.TSel (.abs z) A) :=
+  .stp_sel2 (.htp_sub bMemberPlain (.stp_typ (Stp.refl _) .stp_top))
 
 /-- `z.A <: D'`. -/
-def dUpper : StpP G Gz (.TSel (.abs z) A) D' :=
-  .stp_sel1 (.htp_sub bMember (.stp_typ (.old .stp_bot) (.old (Stp.refl _))))
+def dUpperPlain : Stp G Gz (.TSel (.abs z) A) D' :=
+  .stp_sel1 (.htp_sub bMemberPlain (.stp_typ .stp_bot (Stp.refl _)))
 
-/-- `D <: D'`, under the self assumption. -/
-def dSub : StpP G Gz D D' := .stp_trans dLower dUpper
+/-- `D <: D'` under the self assumption, in the **unmodified** calculus. -/
+def dSubPlain : Stp G Gz D D' := .stp_trans dLowerPlain dUpperPlain
 
-/-- **The step the reference forbids.**  `z : p.B` becomes `z : D`, inside the
-judgment that subtyping's type selections go through. -/
+/-! ## What the packing rule adds
+
+One step: `z : p.B` becomes `z : D`.  Everything after it follows. -/
+
+/-- **The step the reference forbids.** -/
 def zPacked : HtpP G Gz z D := .htp_pack .htp_var
 
-/-- and then `z : p.C`. -/
-def zAsC : HtpP G Gz z pC := .htp_unpack (.htp_sub zPacked dSub)
+/-- Subsuming by `dSubPlain` and unpacking gives `z : p.C`. -/
+def zAsC : HtpP G Gz z pC := .htp_unpack (.htp_sub zPacked (.old dSubPlain))
 
 /-- `z : {K : p.B .. p.C}`. -/
 def kMember : HtpP G Gz z (.TTyp K pB pC) :=
@@ -167,20 +203,23 @@ def premise : StpP G Gz pB pC :=
 /-- `μ _. p.B <: μ _. p.C`, in the empty context, over an ordinary store. -/
 def bad : StpP G Ctx.nil D D' := .stp_bindx premise
 
-/-! ## A stuck program
-
-Term typing needs only three of its rules on top of the existing judgment. -/
+/-! ## A stuck program -/
 
 /-- Term typing over the extended subtyping. -/
 inductive HasTypeP : {σ s : Sig} → Store σ σ → Ctx σ s → Tm σ s → Ty σ s → Type where
   /-- Any existing derivation. -/
-  | old : HasType G Γ t T → HasTypeP G Γ t T
-  | T_VarPack : HasTypeP G Γ (.tvar v) (T.substVr v) → HasTypeP G Γ (.tvar v) (.TBind T)
-  | T_VarUnpack : HasTypeP G Γ (.tvar v) (.TBind T) → HasTypeP G Γ (.tvar v) (T.substVr v)
-  | T_App :
+  | old {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {t : Tm σ s} {T : Ty σ s} :
+      HasType G Γ t T → HasTypeP G Γ t T
+  | T_VarPack {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {v : Vr σ s} {T : Ty σ (s,x)} :
+      HasTypeP G Γ (.tvar v) (T.substVr v) → HasTypeP G Γ (.tvar v) (.TBind T)
+  | T_VarUnpack {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {v : Vr σ s} {T : Ty σ (s,x)} :
+      HasTypeP G Γ (.tvar v) (.TBind T) → HasTypeP G Γ (.tvar v) (T.substVr v)
+  | T_App {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {l : Lb} {T1 T2 : Ty σ s}
+      {t1 t2 : Tm σ s} :
       HasTypeP G Γ t1 (.TFun l T1 T2.weaken) → HasTypeP G Γ t2 T1 →
       HasTypeP G Γ (.tapp t1 l t2) T2
-  | T_Sub : HasTypeP G Γ t T1 → StpP G Γ T1 T2 → HasTypeP G Γ t T2
+  | T_Sub {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {t : Tm σ s} {T1 T2 : Ty σ s} :
+      HasTypeP G Γ t T1 → StpP G Γ T1 T2 → HasTypeP G Γ t T2
 
 /-- `q` at its precise type, by the ordinary rule for a stored object. -/
 def qTyped : HasType G Ctx.nil (.tvar (.conc q)) (.TAnd (.TTyp A D D) .TTop) :=
@@ -215,7 +254,7 @@ def badTerm_typed : HasTypeP G Ctx.nil badTerm .TTop :=
     (.T_Sub qBottom (.old (.stp_bot (T := .TFun missing .TTop .TTop))))
     (.T_Sub qBottom (.old (.stp_bot (T := .TTop))))
 
-/-- It is not an answer. -/
+/-- It is not an answer: it is an application, not a concrete variable. -/
 theorem badTerm_not_answer : ¬ badTerm.IsAnswer := by
   intro h; exact h
 
@@ -232,9 +271,11 @@ theorem badTerm_stuck :
   | ST_App1 h => cases h
   | ST_App2 h => cases h
 
-/-- Adding the packing rule to `Htp` breaks type safety: over an ordinary
+/-- Adding the packing rule to `Htp` breaks type safety.  Over an ordinary
 store, a closed program is well typed at `⊤`, is not an answer, and cannot
-step.  Every rule but `htp_pack` is a rule of `Oopsla16`. -/
+step, so the progress half of the reference's `type_safety`
+(`dot_soundness.v:1131`) fails.  Every rule but `htp_pack` is a rule of
+`Oopsla16`, and `htp_pack` is used exactly once, at `zPacked`. -/
 theorem packing_is_unsound :
     Nonempty (HasTypeP G Ctx.nil badTerm .TTop) ∧
       ¬ badTerm.IsAnswer ∧

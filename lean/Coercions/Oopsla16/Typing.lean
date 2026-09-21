@@ -20,7 +20,7 @@ against the Coq.
 * `Htp` types a variable at a type of **its own prefix scope**, `Ty σ
   (scopeUpTo x)`, and `htp_sub` widens in `Γ.upTo x`.  That is the whole of
   the reference's `stp GL G1 T1 T2`, `length GL = S x`, `GH = GU ++ GL`
-  (`dot.v:389-395`): hypotheses introduced after `x` — in particular the self
+  (`dot.v:384-393`): hypotheses introduced after `x` — in particular the self
   assumption of an enclosing `stp_bindx` — are not in scope for the widening,
   and here they are not in scope in the ordinary sense of the word.
 * `Htp` has `htp_unpack` and **no packing rule**, while `HasType` has both
@@ -80,7 +80,7 @@ inductive HasType : {σ s : Sig} → Store σ σ → Ctx σ s → Tm σ s → Ty
       HasType G Γ t1 (.TFun l T1 T2) →
       HasType G Γ (.tvar v) T1 →
       HasType G Γ (.tapp t1 l (.tvar v)) (T2.substVr v)
-  /-- `T_Sub`, `dot.v:257-260`. -/
+  /-- `T_Sub`, `dot.v:257-262`. -/
   | T_Sub : HasType G Γ t T1 → Stp G Γ T1 T2 → HasType G Γ t T2
 
 /-- `dms_has_type`, `dot.v:263-282`.  A definition list has a right-nested
@@ -93,7 +93,7 @@ inductive DmsHasType : {σ s : Sig} → Store σ σ → Ctx σ s → Dms σ s �
   | D_Typ :
       DmsHasType G Γ ds TS →
       DmsHasType G Γ (.dcons (.dty T11) ds) (.TAnd (.TTyp ds.length T11 T11) TS)
-  /-- `D_Fun`, `dot.v:272-282`: a method member.  The body is typed under the
+  /-- `D_Fun`, `dot.v:272-284`: a method member.  The body is typed under the
   parameter, which does not mention itself, hence the weakening. -/
   | D_Fun :
       DmsHasType G Γ ds TS →
@@ -103,78 +103,78 @@ inductive DmsHasType : {σ s : Sig} → Store σ σ → Ctx σ s → Dms σ s �
       DmsHasType G Γ (.dcons (.dfun OT11 OT12 t12) ds)
         (.TAnd (.TFun ds.length T11 T12) TS)
 
-/-- `stp`, `dot.v:285-377`. -/
+/-- `stp`, `dot.v:285-374`. -/
 inductive Stp : {σ s : Sig} → Store σ σ → Ctx σ s → Ty σ s → Ty σ s → Type where
   /-- `stp_bot`, `dot.v:286-288`. -/
   | stp_bot : Stp G Γ .TBot T
   /-- `stp_top`, `dot.v:289-291`. -/
   | stp_top : Stp G Γ T .TTop
-  /-- `stp_fun`, `dot.v:292-300`.  The codomains are compared under the *new*
+  /-- `stp_fun`, `dot.v:292-299`.  The codomains are compared under the *new*
   domain. -/
   | stp_fun :
       Stp G Γ T3 T1 →
       Stp G (Γ.cons T3.weaken) T2 T4 →
       Stp G Γ (.TFun l T1 T2) (.TFun l T3 T4)
-  /-- `stp_typ`, `dot.v:301-304`. -/
+  /-- `stp_typ`, `dot.v:300-303`. -/
   | stp_typ :
       Stp G Γ T3 T1 → Stp G Γ T2 T4 → Stp G Γ (.TTyp l T1 T2) (.TTyp l T3 T4)
-  /-- `stp_strong_sel1`, `dot.v:306-311`: a selection on a concrete receiver,
+  /-- `stp_strong_sel1`, `dot.v:305-309`: a selection on a concrete receiver,
   resolved precisely against the stored definition, in the *empty* local
   scope. -/
   | stp_strong_sel1 {x : BVar σ .var} {TX T2 : Ty σ []} :
       (G.lookup x).get? l = some (.dty TX) →
       Stp G .nil TX T2 →
       Stp G Γ (.TSel (.conc x) l) (T2.rename renameNil)
-  /-- `stp_strong_sel2`, `dot.v:312-317`. -/
+  /-- `stp_strong_sel2`, `dot.v:310-314`. -/
   | stp_strong_sel2 {x : BVar σ .var} {T1 TX : Ty σ []} :
       (G.lookup x).get? l = some (.dty TX) →
       Stp G .nil T1 TX →
       Stp G Γ (T1.rename renameNil) (.TSel (.conc x) l)
-  /-- `stp_sel1`, `dot.v:319-321`: a selection on an abstract receiver,
+  /-- `stp_sel1`, `dot.v:316-318`: a selection on an abstract receiver,
   resolved through the packing-free judgment `Htp`.  Its conclusion lives in
   the receiver's prefix scope and is weakened back. -/
   | stp_sel1 {x : BVar s .var} {T2 : Ty σ (scopeUpTo x)} :
       Htp G Γ x (.TTyp l .TBot T2) →
       Stp G Γ (.TSel (.abs x) l) (T2.rename (renameUpTo x))
-  /-- `stp_sel2`, `dot.v:323-325`. -/
+  /-- `stp_sel2`, `dot.v:320-322`. -/
   | stp_sel2 {x : BVar s .var} {T1 : Ty σ (scopeUpTo x)} :
       Htp G Γ x (.TTyp l T1 .TTop) →
       Stp G Γ (T1.rename (renameUpTo x)) (.TSel (.abs x) l)
-  /-- `stp_selx`, `dot.v:327-329`. -/
+  /-- `stp_selx`, `dot.v:324-326`. -/
   | stp_selx : Stp G Γ (.TSel p l) (.TSel p l)
-  /-- `stp_bind1`, `dot.v:331-337`: a recursive type on the left only.  The
+  /-- `stp_bind1`, `dot.v:328-333`: a recursive type on the left only.  The
   reference's `z ∉ FV(T2)` is the weakening. -/
   | stp_bind1 : Stp G (Γ.cons T1) T1 T2.weaken → Stp G Γ (.TBind T1) T2
-  /-- `stp_bindx`, `dot.v:339-346`: recursive subtyping.  The self is assumed
+  /-- `stp_bindx`, `dot.v:335-341`: recursive subtyping.  The self is assumed
   at the *left* body; there is no symmetric rule. -/
   | stp_bindx : Stp G (Γ.cons T1) T1 T2 → Stp G Γ (.TBind T1) (.TBind T2)
-  /-- `stp_and11`, `dot.v:348-351`. -/
+  /-- `stp_and11`, `dot.v:343-346`. -/
   | stp_and11 : Stp G Γ T1 T → Stp G Γ (.TAnd T1 T2) T
-  /-- `stp_and12`, `dot.v:352-355`. -/
+  /-- `stp_and12`, `dot.v:347-350`. -/
   | stp_and12 : Stp G Γ T2 T → Stp G Γ (.TAnd T1 T2) T
-  /-- `stp_and2`, `dot.v:356-359`. -/
+  /-- `stp_and2`, `dot.v:351-354`. -/
   | stp_and2 : Stp G Γ T T1 → Stp G Γ T T2 → Stp G Γ T (.TAnd T1 T2)
-  /-- `stp_or21`, `dot.v:361-364`. -/
+  /-- `stp_or21`, `dot.v:356-359`. -/
   | stp_or21 : Stp G Γ T T1 → Stp G Γ T (.TOr T1 T2)
-  /-- `stp_or22`, `dot.v:365-368`. -/
+  /-- `stp_or22`, `dot.v:360-363`. -/
   | stp_or22 : Stp G Γ T T2 → Stp G Γ T (.TOr T1 T2)
-  /-- `stp_or1`, `dot.v:369-372`. -/
+  /-- `stp_or1`, `dot.v:364-367`. -/
   | stp_or1 : Stp G Γ T1 T → Stp G Γ T2 T → Stp G Γ (.TOr T1 T2) T
-  /-- `stp_trans`, `dot.v:374-377`. -/
+  /-- `stp_trans`, `dot.v:369-374`. -/
   | stp_trans : Stp G Γ T1 T2 → Stp G Γ T2 T3 → Stp G Γ T1 T3
 
-/-- `htp`, `dot.v:380-395`, written `:!` in the paper.  It types abstract
+/-- `htp`, `dot.v:375-393`, written `:!` in the paper.  It types abstract
 variables only, at a type of the variable's own prefix scope. -/
 inductive Htp : {σ s : Sig} → Store σ σ → Ctx σ s → (x : BVar s .var) →
     Ty σ (scopeUpTo x) → Type where
-  /-- `htp_var`, `dot.v:381-384`.  The reference's `index x GH = Some TX` and
+  /-- `htp_var`, `dot.v:376-379`.  The reference's `index x GH = Some TX` and
   `closed (S x) … TX` are both `Ctx.lookupAt`. -/
   | htp_var : Htp G Γ x (Γ.lookupAt x)
-  /-- `htp_unpack`, `dot.v:385-388`: recursive elimination at `x`, opened at
+  /-- `htp_unpack`, `dot.v:380-383`: recursive elimination at `x`, opened at
   `x` itself.  There is deliberately no packing counterpart. -/
   | htp_unpack {x : BVar s .var} {TX : Ty σ (scopeUpTo x,x)} :
       Htp G Γ x (.TBind TX) → Htp G Γ x (TX.substVr (.abs (varUpTo x)))
-  /-- `htp_sub`, `dot.v:389-395`.  The reference restricts the context of the
+  /-- `htp_sub`, `dot.v:384-393`.  The reference restricts the context of the
   subtyping step to `GL` with `length GL = S x` and `GH = GU ++ GL`; here that
   context is `Γ.upTo x` and the restriction is the judgment's own scope. -/
   | htp_sub {x : BVar s .var} {T1 T2 : Ty σ (scopeUpTo x)} :

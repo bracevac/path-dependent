@@ -57,7 +57,7 @@ def ofStore (ρ : Rename σ1 σ2) : Subst σ1 s σ2 s where
   conc := fun x => ρ.var x
   abs := .abs
 
-/-- `open 0 v`, `dot.v:136`: instantiate the innermost binder by `v`. -/
+/-- `open 0 v`, `dot.v:135`: instantiate the innermost binder by `v`. -/
 def one (v : Vr σ s) : Subst σ (s,x) σ s where
   conc := fun x => x
   abs := fun | .here => v | .there y => .abs y
@@ -109,7 +109,7 @@ abbrev Ty.weaken (T : Ty σ s) : Ty σ (s,x) := T.rename Rename.succ
 abbrev Ty.renameStore (T : Ty σ1 s) (ρ : Rename σ1 σ2) : Ty σ2 s := T.subst (.ofStore ρ)
 /-- Weaken under one newly allocated location. -/
 abbrev Ty.weakenStore (T : Ty σ s) : Ty (σ,x) s := T.renameStore Rename.succ
-/-- `open 0 v T`, `dot.v:136`. -/
+/-- `open 0 v T`, `dot.v:135`. -/
 abbrev Ty.substVr (T : Ty σ (s,x)) (v : Vr σ s) : Ty σ s := T.subst (.one v)
 
 /-- `subst_tm`, `dot.v:172`, at the innermost binder. -/
@@ -119,7 +119,7 @@ abbrev Tm.weakenStore (t : Tm σ s) : Tm (σ,x) s := t.subst (.ofStore Rename.su
 /-- Rename the store scope. -/
 abbrev Tm.renameStore (t : Tm σ1 s) (ρ : Rename σ1 σ2) : Tm σ2 s := t.subst (.ofStore ρ)
 
-/-- `subst_dms`, `dot.v:185`, at the innermost binder. -/
+/-- `subst_dms`, `dot.v:184`, at the innermost binder. -/
 abbrev Dms.substVr (ds : Dms σ (s,x)) (v : Vr σ s) : Dms σ s := ds.subst (.one v)
 /-- Weaken under one newly allocated location. -/
 abbrev Dms.weakenStore (ds : Dms σ s) : Dms (σ,x) s := ds.subst (.ofStore Rename.succ)
