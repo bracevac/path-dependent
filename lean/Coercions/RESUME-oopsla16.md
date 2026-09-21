@@ -66,6 +66,35 @@ extended calculus (Coq's `extend_all` already does the latter).
    Next design round must answer: what does substitution do to prefix-scoped
    observation evidence? Everything else is downstream of that.
 
+## Built so far
+
+| module | state |
+|---|---|
+| `Oopsla16/{Syntax,Structural,SubstLemmas,Context,Semantics,Typing,Lemmas,Examples}` | done |
+| `Oopsla16/PackingCounterexample` + `coq/oopsla16-packing/` | done, verified, mechanized |
+| `FCdotR/Prefix` | milestone 1 done |
+| `FCdotR/{Syntax,Typing,Examples}` | milestone 2 done — `recursive_typed` is closed evidence for the coercion the old target cannot express |
+| `FCdotR/Structural` | milestone 3 partial: `Mono`, `star_ty`, `Mono.id` |
+
+Build: 97 jobs green. `PLAN.md` in `FCdotR/` has the design and milestones 4-8.
+
+## The current obstruction
+
+`Mono.lift`. Pushing a prefix-respecting substitution under a binder must
+supply, at `.there y`, a substitution at `scopeAt ((θ.abs y).weaken)`.
+`scopeAt_weaken` says that is `scopeAt (θ.abs y)`, so `m.res y` is the witness
+— but only after a transport, and `star` for the lifted substitution then has
+to be proved underneath it.
+
+Per constructor the equation is definitional (`(.abs x).weaken` is
+`.abs (.there x)` and `tailBelow (.there x)` reduces to `tailBelow x`;
+`(.conc l).weaken` is `.conc l`). It is opaque only because `θ.abs y` is a
+neutral term. So the fix is to case on `θ.abs y` where the restriction is
+*built*, not transport after the fact: index `res` by a `Vr` rather than a
+`BVar`, and split `Mono` so the two zones are separate fields. That also
+matches Lemma 1, whose subject is a `Vr` and at `conc l` has `[]` on both
+sides.
+
 ## Next
 
 - Finish (1), then state the counterexample's scope in `Oopsla16/README.md`.

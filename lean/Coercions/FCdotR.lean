@@ -1,4 +1,5 @@
 import Coercions.FCdotR.Prefix
+import Coercions.FCdotR.Structural
 import Coercions.FCdotR.Syntax
 import Coercions.FCdotR.Typing
 import Coercions.FCdotR.Examples
