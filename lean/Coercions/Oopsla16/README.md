@@ -18,7 +18,9 @@ shares only `FCdot/Debruijn.lean`, which is generic scoping infrastructure.
 | `Context` | `scopeUpTo`/`renameUpTo`/`varUpTo`, the prefix at a variable; contexts with self-referential entries; `Ctx.lookupAt`, `Ctx.lookup`, `Ctx.upTo` |
 | `Semantics` | store growth `Grows`; `Step` (`ST_Obj`, `ST_AppAbs`, `ST_App1`, `ST_App2`), `Steps`, `Tm.IsAnswer` |
 | `Typing` | `EqSome`; the mutual family `HasType`, `DmsHasType`, `Stp`, `Htp` with the reference's 8 + 3 + 18 + 3 rules and rule names |
+| `Lemmas` | `Stp.refl`, reflexivity by structural recursion on the type |
 | `Examples` | `ex0`; `FunctionField`, a self-dependent method under `stp_bindx`; `forgetSelf`, a `stp_bind1` instance |
+| `PackingCounterexample` | an isolated extension adding the packing rule to `Htp`, and a well-typed stuck program |
 
 ## Design
 
@@ -131,7 +133,7 @@ starts from the empty context. The restriction is therefore exactly the set of
 contexts the reference's rules construct, and it is what makes `Ctx.lookupAt`,
 and with it the `Htp` indexing below, well typed.
 
-### No packing in `Htp`
+### No packing in `Htp`, and why that is not a proof device
 
 `Htp` has `htp_unpack` and no packing rule, while `HasType` has both
 `T_VarPack` and `T_VarUnpack`. A type selection used inside subtyping may
@@ -139,6 +141,47 @@ therefore not be justified by first packing its receiver into a `TBind`. That
 is exactly the step `DotToFCdot/RecursiveSelectionCounterexample.lean` uses to
 break the corresponding WadlerFest extension, and it is why that counterexample
 is not an attack on the calculus formalized here.
+
+Section 3 of the paper calls this the first of two contractiveness
+restrictions, says both are "necessary for the proofs", and conjectures that
+they "could be lifted without breaking soundness, since we can always construct
+explicit conversion functions that use rules (VARPACK) and (VARUNPACK) on
+proper term bindings". Of the second restriction it says separately that it is
+"not just a technical device, it seems reasonable for soundness".
+
+`PackingCounterexample` adds the first restriction's missing rule and nothing
+else. Over a two-object store with
+
+```text
+p.B = {A : D .. D'}
+p.C = {K : p.B .. p.C} ∧ ({missing : ∀(_:⊤) ⊤} ∧ ⊥)
+D   = μ _. p.B          D' = μ _. p.C          q.A = D
+```
+
+`packing_is_unsound` exhibits a closed program that is well typed at `⊤`, is
+not an answer, and cannot step, so the progress half of the reference's
+`type_safety` fails. Three points fix the scope of that result.
+
+* The **second** restriction is kept and satisfied: `htp_sub` still widens in
+  `Γ.upTo x`, and every use of it is at the self introduced by `stp_bindx`,
+  which is the newest binder, so `Γ.upTo z = Γ` and `length GL = S x` holds
+  with `GU` empty. The restriction is not stressed — it never constrains a
+  selection on the innermost self — but it is not lifted either.
+* Most of the derivation needs no new rule. `dSubPlain` derives `D <: D'` under
+  `z : p.B` in the unmodified calculus, from the bounds of `z.A`. The packing
+  rule buys exactly one step, packing that same `z` so that `z.K` becomes
+  readable.
+* The culprit is the interaction. WadlerFest DOT and pDOT take the `Sel`
+  premise from ordinary typing, with recursive introduction available, and are
+  sound; they have no `stp_bindx`. What is unsound is recursive subtyping
+  together with a packing rule in the selection judgment.
+
+Both recursive types ignore their self binder, so the result does not depend on
+which closedness index a packing mirror is given. The extension is not a
+conservative extension — it proves `μ(_.p.B) <: μ(_.p.C)`, a statement of the
+old vocabulary — but it is a subsystem of `Oopsla16` with `htp_pack`: every
+constructor is an existing rule with the same indices, `htp_pack`, or an
+embedding of an existing derivation.
 
 ## Correspondence with `dot.v`
 
