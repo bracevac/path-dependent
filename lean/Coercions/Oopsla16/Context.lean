@@ -36,11 +36,20 @@ open FCdot (Kind Sig BVar Rename)
 
 /-! ## The prefix at a variable -/
 
+/-- The binders strictly older than `x`. -/
+def tailBelow : {s : Sig} → BVar s .var → Sig
+  | _ :: s, .here => s
+  | _ :: _, .there y => tailBelow y
+
 /-- The scope consisting of `x` and every binder older than `x`.  The
-reference's `GL` with `length GL = S x` (`dot.v:391`). -/
-def scopeUpTo : {s : Sig} → BVar s .var → Sig
-  | _ :: s, .here => s,x
-  | _ :: _, .there y => scopeUpTo y
+reference's `GL` with `length GL = S x` (`dot.v:391`).
+
+It is stated as `(tailBelow x),x` rather than by its own recursion so that
+`x`'s own binder is *syntactically* the newest one of its prefix.  That makes
+`varUpTo x` literally `.here`, and makes `scopeUpTo (varUpTo x) = scopeUpTo x`
+hold definitionally, which is what keeps the prefix apparatus usable as an
+index of a judgment. -/
+abbrev scopeUpTo {s : Sig} (x : BVar s .var) : Sig := (tailBelow x),x
 
 /-- The prefix at `x` embeds into the full scope; the reference's `GH = GU ++
 GL` (`dot.v:392`) is this weakening. -/
@@ -49,9 +58,10 @@ def renameUpTo : {s : Sig} → (x : BVar s .var) → Rename (scopeUpTo x) s
   | _ :: _, .there y => (renameUpTo y).comp Rename.succ
 
 /-- `x` itself, as a variable of its own prefix: the newest binder there. -/
-def varUpTo : {s : Sig} → (x : BVar s .var) → BVar (scopeUpTo x) .var
-  | _ :: _, .here => .here
-  | _ :: _, .there y => varUpTo y
+abbrev varUpTo {s : Sig} (x : BVar s .var) : BVar (scopeUpTo x) .var := .here
+
+@[simp] theorem scopeUpTo_varUpTo {s : Sig} (x : BVar s .var) :
+    scopeUpTo (varUpTo x) = scopeUpTo x := rfl
 
 @[simp] theorem renameUpTo_varUpTo : {s : Sig} → (x : BVar s .var) →
     (renameUpTo x).var (varUpTo x) = x

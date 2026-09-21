@@ -102,6 +102,8 @@ end
 /-! ## The instances the rules use -/
 
 /-- Rename the local scope. -/
+abbrev Vr.rename (v : Vr σ s1) (ρ : Rename s1 s2) : Vr σ s2 := v.subst (.ofRename ρ)
+/-- Rename the local scope. -/
 abbrev Ty.rename (T : Ty σ s1) (ρ : Rename s1 s2) : Ty σ s2 := T.subst (.ofRename ρ)
 /-- Weaken under one new local binder. -/
 abbrev Ty.weaken (T : Ty σ s) : Ty σ (s,x) := T.rename Rename.succ
