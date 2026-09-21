@@ -177,7 +177,13 @@ not an answer, and cannot step, so the progress half of the reference's
   together with a packing rule in the selection judgment.
 
 Both recursive types ignore their self binder, so the result does not depend on
-which closedness index a packing mirror is given. The extension is not a
+which closedness index a packing mirror is given.
+
+The same result is mechanized in Coq at `../../../coq/oopsla16-packing/`, in
+the artifact's own definitions and carrying `closed`, `TVarB` and the size
+index. Its specification is byte-identical to `dot.v:14-399` and its extended
+judgment block differs from `dot.v:219-393` by one character, so the result
+does not depend on the choices this port makes. The extension is not a
 conservative extension — it proves `μ(_.p.B) <: μ(_.p.C)`, a statement of the
 old vocabulary — but it is a subsystem of `Oopsla16` with `htp_pack`: every
 constructor is an existing rule with the same indices, `htp_pack`, or an

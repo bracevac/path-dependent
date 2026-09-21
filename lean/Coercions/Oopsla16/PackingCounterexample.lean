@@ -39,6 +39,14 @@ in `Oopsla16` itself is changed.
 
 The construction is the one of `DotToFCdot/RecursiveSelectionCounterexample`,
 transported from the WadlerFest extension to the reference calculus.
+
+The same result is mechanized in Coq, in the artifact's own definitions, at
+`coq/oopsla16-packing/`.  There the specification is byte-identical to
+`dot.v:14-399`, the extended judgment block differs from `dot.v:219-393` by one
+character, and `closed`, `TVarB` and the derivation size index are all carried.
+No `closed` premise obstructs the construction: both recursive types ignore
+their self binder, so no `TVarB` occurs and every obligation holds for all
+indices.  Nothing here depends on the intrinsic encoding.
 -/
 
 namespace Oopsla16.PackingCounterexample
