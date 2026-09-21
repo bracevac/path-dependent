@@ -50,6 +50,29 @@ every store reachable by a translated program.
 **`Runtime.lean`** is the untyped language both machines erase into, with
 objects that keep their term members.
 
+## A second source: the reference calculus with recursive subtyping
+
+**`Oopsla16/`** is the Rompf--Amin calculus of *Type Soundness for Dependent
+Object Types* (OOPSLA 2016), transcribed from the authors' pinned Coq artifact
+`TiarkRompf/minidot` at `ef1143dc1875d389c47083cd324971b1b86686d1`,
+`oopsla16/dot.v`. It is the source specification for recursive subtyping,
+which WadlerFest DOT deliberately omits: it has `stp_bindx` and `stp_bind1`,
+and its soundness is proved in the artifact. The port is intrinsically scoped
+in the discipline of `FCdot/Debruijn.lean`, which removes the reference's
+`closed` predicate, its locally nameless bound variables, and its derivation
+size index. It keeps what carries the soundness: two variable zones, positional
+labels, context entries that may mention their own binder, and a variable
+typing judgment `Htp` with no packing rule.
+
+The reference's context truncation in `htp_sub` — `length GL = S x` and
+`GH = GU ++ GL`, the restriction that makes recursive subtyping sound — becomes
+the *type* of `Htp`, which records a variable at a type of its own prefix
+scope. The rule then has no side conditions at all.
+
+This library is independent of the main line above, and has no metatheory of
+its own; it is the fixed source against which a target with explicit recursive
+evidence is being designed.
+
 Axioms throughout: `propext` and `Quot.sound`.  No `sorry`, `axiom`, `partial`,
 or `native_decide` in the main line; the mandatory examples E1–E5 and the
 acceptance test E8 (the refinement `x.A ∧ {a : ⊤}` of an abstract type) are
