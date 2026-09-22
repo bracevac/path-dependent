@@ -2,6 +2,7 @@ import Coercions.FCdotR.Prefix
 import Coercions.FCdotR.Structural
 import Coercions.FCdotR.Syntax
 import Coercions.FCdotR.Typing
+import Coercions.FCdotR.Locality
 import Coercions.FCdotR.Examples
 /-!
 Import root for FCdotR, the explicit-evidence target with first-class

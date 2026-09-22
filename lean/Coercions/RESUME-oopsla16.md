@@ -75,6 +75,7 @@ extended calculus (Coq's `extend_all` already does the latter).
 | `FCdotR/Prefix` | milestone 1 done |
 | `FCdotR/{Syntax,Typing,Examples}` | milestone 2 done — `recursive_typed` is closed evidence for the coercion the old target cannot express |
 | `FCdotR/Structural` | milestone 3 done: `Mono`, `star_ty`, `id`, `lift`, `comp`, `oneConc` |
+| `FCdotR/Locality` | milestone 4 done: `VcTy.strengthen`, `VcTy.ofLoc` |
 
 Build: 97 jobs green. `PLAN.md` in `FCdotR/` has the design and milestones 4-8.
 

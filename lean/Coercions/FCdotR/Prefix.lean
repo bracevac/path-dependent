@@ -65,6 +65,21 @@ theorem upTo_upTo : {σ s : Sig} → (Γ : Ctx σ s) → (x : BVar s .var) →
   | _, _, .cons _ _, .here, _ => HEq.rfl
   | _, _, .cons Γ _, .there x', y => upTo_upTo Γ x' y
 
+/-- Reading a variable in its own prefix is reading it directly.  The `y`
+instance of `lookupAt_upTo` that the locality lemma needs, stated without a
+transport because `varUpTo x` is `.here` and `scopeUpTo (varUpTo x)` is
+`scopeUpTo x` definitionally. -/
+theorem lookupAt_upTo_self : {σ s : Sig} → (Γ : Ctx σ s) → (x : BVar s .var) →
+    (Γ.upTo x).lookupAt (varUpTo x) = Γ.lookupAt x
+  | _, _, .cons _ _, .here => rfl
+  | _, _, .cons Γ _, .there y => lookupAt_upTo_self Γ y
+
+/-- Truncating a prefix at its own newest binder changes nothing. -/
+theorem upTo_upTo_self : {σ s : Sig} → (Γ : Ctx σ s) → (x : BVar s .var) →
+    (Γ.upTo x).upTo (varUpTo x) = Γ.upTo x
+  | _, _, .cons _ _, .here => rfl
+  | _, _, .cons Γ _, .there y => upTo_upTo_self Γ y
+
 /-! ## The prefix at a two-zone variable -/
 
 /-- The prefix scope at a variable.  A location is in scope in every prefix,
