@@ -96,6 +96,30 @@ variable older than the image has nowhere to go. The location case is what the
 machine produces — `ST_Obj` and `ST_AppAbs` substitute a `Vr.conc`, and a
 running term has an empty local scope.
 
+## The open item for milestone 5
+
+`Le.subst` must send `selL p a v` to `selL (m.image p) a (v.subst _)` with the
+inner substitution `m.at' p`. Since `v` may contain `vcSub T₁ e w`, whose `e`
+is inclusion evidence, substituting `v` needs a `Mono (m.at' p)` — so **`Mono`
+must be closed under restriction**. The design round listed the coherence
+condition `(θ↾x)↾y = θ↾((renameUpTo x).var y)` but did not connect it to this.
+
+Closure cannot be had by making the requirement recursive in the type: a field
+`resMono : ∀ x, Mono (res x)` is not an inductive definition, and there is no
+descent to recurse on, since `scopeUpTo .here` is the whole scope and the
+restriction there is `θ` itself.
+
+The fix: carry coherence as data, alongside `res` and `star`. Closure under
+restriction then becomes a definition — `Mono (m.res x)` is built from `m` by
+taking its restriction at `y` to be `m`'s at `(renameUpTo x).var y` — and the
+scope mismatches are exactly `scopeUpTo_renameUpTo`, already proved in
+`Prefix`. `id`, `lift`, `comp` and `oneConc` then each need a coherence proof.
+
+`MonoAt.image`/`restrict`/`image_eq`/`star` and `Mono.image`/`at'` are in place
+and are what keep the scopes definitional: speaking through `image` rather than
+`θ.abs x` means the restriction's codomain is `scopeAt image`, and `scopeAt`
+computes on a constructor.
+
 ## Next
 
 - Finish (1), then state the counterexample's scope in `Oopsla16/README.md`.

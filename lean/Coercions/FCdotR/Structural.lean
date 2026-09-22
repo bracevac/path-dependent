@@ -75,6 +75,63 @@ inductive MonoAt {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) (x : BVar s1 .
 abbrev Mono {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) : Type :=
   (x : BVar s1 .var) → MonoAt θ x
 
+namespace MonoAt
+
+/-- The image subject, read off the constructor.  Speaking through `image`
+rather than through `θ.abs x` is what keeps the scopes definitional: the
+restriction's codomain is `scopeAt image`, and `scopeAt` computes on a
+constructor. -/
+def image {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} {x : BVar s1 .var} :
+    MonoAt θ x → Vr σ2 s2
+  | .toAbs z _ _ _ => .abs z
+  | .toConc l _ _ _ => .conc l
+
+/-- The restriction itself. -/
+def restrict {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} {x : BVar s1 .var} :
+    (a : MonoAt θ x) → Subst σ1 (scopeUpTo x) σ2 (scopeAt a.image)
+  | .toAbs _ r _ _ => r
+  | .toConc _ r _ _ => r
+
+/-- The image is the substitution's action, as it must be. -/
+theorem image_eq {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} {x : BVar s1 .var} :
+    (a : MonoAt θ x) → a.image = θ.abs x
+  | .toAbs _ _ h _ => h.symm
+  | .toConc _ _ h _ => h.symm
+
+/-- The defining equation, in terms of `image` and `restrict`. -/
+theorem star {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} {x : BVar s1 .var} :
+    (a : MonoAt θ x) →
+    (Subst.ofRename (renameUpTo x)).comp θ
+      = a.restrict.comp (Subst.ofRename (renameAt a.image))
+  | .toAbs _ _ _ hs => hs
+  | .toConc _ _ _ hs => hs
+
+end MonoAt
+
+namespace Mono
+
+/-- The image of a subject of either zone. -/
+def image {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} (m : Mono θ) :
+    Vr σ1 s1 → Vr σ2 s2
+  | .abs x => (m x).image
+  | .conc l => .conc (θ.conc l)
+
+/-- The restriction at a subject of either zone.  At a location this is the
+substitution's store part alone, because a location's prefix is the empty local
+scope. -/
+def at' {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} (m : Mono θ) :
+    (p : Vr σ1 s1) → Subst σ1 (scopeAt p) σ2 (scopeAt (m.image p))
+  | .abs x => (m x).restrict
+  | .conc _ => Subst.atNil θ
+
+@[simp] theorem image_eq {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2}
+    (m : Mono θ) (p : Vr σ1 s1) : m.image p = p.subst θ := by
+  cases p with
+  | abs x => exact (m x).image_eq
+  | conc l => rfl
+
+end Mono
+
 namespace Mono
 
 /-- The identity respects prefixes. -/
@@ -169,6 +226,37 @@ def oneConc {σ : Sig} (l : BVar σ .var) :
           | here => rfl
           | there y => cases y)
   | there y => cases y
+
+/-! ## What the substitution action still needs
+
+`Le.subst` must send `selL p a v` to `selL (m.image p) a (v.subst _)`, where the
+inner substitution is `m.at' p`.  But `v` may contain `vcSub T₁ e w`, whose `e`
+is itself inclusion evidence, so substituting `v` needs a `Mono (m.at' p)` and
+not merely the substitution `m.at' p`.  **`Mono` therefore has to be closed
+under restriction**, which the design round listed as the coherence condition
+
+```text
+(θ↾x)↾y = θ↾((renameUpTo x).var y)
+```
+
+but did not connect to this consequence.
+
+That closure cannot be had by making the requirement recursive in the type —
+`structure Mono θ where res : … ; resMono : ∀ x, Mono (res x)` is not an
+inductive definition, and there is no descent to recurse on either, since
+`scopeUpTo .here` is the whole scope and the restriction there is `θ` itself.
+
+The fix is the coherence condition as *data*: carry, alongside `res` and
+`star`, the equation identifying a restriction's own restrictions with `res` at
+the corresponding variables.  Closure under restriction is then a
+**definition** rather than a recursive type — `Mono (m.res x)` is built from
+`m` by taking its restriction at `y` to be `m`'s at `(renameUpTo x).var y` —
+and the scope mismatches are exactly `scopeUpTo_renameUpTo`, which `Prefix`
+already proves.
+
+Until that field is added, `Mono` supports the closure operations above but not
+the substitution action, and the theorem stated against it is not yet provable.
+-/
 
 end Mono
 
