@@ -86,10 +86,10 @@ inductive Vc : Sig → Sig → Type where
   | vcVar {σ s : Sig} : Vc σ s
   /-- The type of a stored object, the observation counterpart of `T_Vary`. -/
   | vcLoc {σ s : Sig} (l : BVar σ .var) : Vc σ s
-  /-- **Packing, at a location only.**  The typing rule's subject index is
-  `Vr.conc`, so packing an abstract variable is not merely absent but
-  unwritable — which is what `Oopsla16/PackingCounterexample` shows it must
-  be. -/
+  /-- **Packing, at a location only.**  As syntax this node can be written at
+  any scope; the typing rule's subject index is `Vr.conc`, so at an abstract
+  variable it has no typing rule at all — which is what
+  `Oopsla16/PackingCounterexample` shows it must not have. -/
   | vcPack {σ s : Sig} (T : Ty σ (s,x)) (v : Vc σ s) : Vc σ s
   /-- `htp_unpack`. -/
   | vcUnfold {σ s : Sig} (T : Ty σ (s,x)) (v : Vc σ s) : Vc σ s

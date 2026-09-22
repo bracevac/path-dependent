@@ -20,8 +20,8 @@ Three things are worth reading against the source.
   is what makes the substitution theorem structure-preserving: substitution
   sends an abstract subject to either zone, and the reference's own proof
   splits into `htp` and `htpy` at exactly that point.
-* **`vcPack`'s subject index is `Vr.conc`.**  Packing an abstract variable is
-  therefore not merely absent from the judgment, it is unwritable.  That is the
+* **`vcPack`'s subject index is `Vr.conc`.**  The syntax node exists at every
+  scope, but at an abstract variable there is no rule that types it.  That is the
   target's form of the restriction whose necessity
   `Oopsla16/PackingCounterexample` and `coq/oopsla16-packing/` establish.
   Packing is still available on *atoms*, where the source allows it
