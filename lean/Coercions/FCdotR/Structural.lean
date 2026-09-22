@@ -25,6 +25,15 @@ it is stated on substitutions rather than quantified over syntax.
 Note what is *not* required: that `(Γ.upTo x)[θ↾x]` be `Γ'.upTo (θ.abs x)`.
 Substitution moves a hypothesis's type, so that equality fails, and the
 substitution theorem does not need it.
+
+The restriction is carried by an *inductive* `MonoAt`, one constructor per zone
+of the image, each naming the image subject and the equation that identifies
+it.  That is not bureaucracy: writing the restriction's codomain as
+`scopeAt (θ.abs x)` makes it depend on a neutral term, and every closure
+operation then needs a transport along `scopeAt_weaken` with its equation
+proved underneath.  Naming the image makes each branch's scopes match
+definitionally — `(.abs z).weaken` is `.abs (.there z)` and `tailBelow`
+discards the `.there` — so `lift` is a case analysis and no transport occurs.
 -/
 
 namespace FCdotR
@@ -37,52 +46,129 @@ looks only at the `.there` spine, which weakening extends. -/
 @[simp] theorem scopeAt_weaken {σ s : Sig} (v : Vr σ s) :
     scopeAt v.weaken = scopeAt v := by cases v <;> rfl
 
-/-- A substitution together with its action on prefixes. -/
-structure Mono {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) : Type where
-  /-- The restriction of `θ` to the prefix at `x`. -/
-  res : (x : BVar s1 .var) → Subst σ1 (scopeUpTo x) σ2 (scopeAt (θ.abs x))
-  /-- Weakening out of the prefix commutes with substituting. -/
-  star : ∀ x : BVar s1 .var,
+/-- Weakening after a renaming is a renaming. -/
+@[simp] theorem Vr.weaken_subst_ofRename {σ s1 s2 : Sig} (v : Vr σ s1)
+    (ρ : Rename s1 s2) :
+    (v.subst (Subst.ofRename ρ)).weaken
+      = v.subst (Subst.ofRename (ρ.comp (Rename.succ (k := .var)))) := by
+  cases v <;> rfl
+
+/-- The restriction of `θ` at one variable, with the image subject named.  The
+two constructors are the two zones the image can be in. -/
+inductive MonoAt {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) (x : BVar s1 .var) :
+    Type where
+  /-- The image is an abstract variable `z`, and the prefix at `x` substitutes
+  into the prefix at `z`. -/
+  | toAbs (z : BVar s2 .var) (r : Subst σ1 (scopeUpTo x) σ2 (scopeUpTo z)) :
+      θ.abs x = .abs z →
       (Subst.ofRename (renameUpTo x)).comp θ
-        = (res x).comp (Subst.ofRename (renameAt (θ.abs x)))
+        = r.comp (Subst.ofRename (renameUpTo z)) →
+      MonoAt θ x
+  /-- The image is a location, whose prefix is the empty local scope. -/
+  | toConc (l : BVar σ2 .var) (r : Subst σ1 (scopeUpTo x) σ2 []) :
+      θ.abs x = .conc l →
+      (Subst.ofRename (renameUpTo x)).comp θ
+        = r.comp (Subst.ofRename Oopsla16.renameNil) →
+      MonoAt θ x
+
+/-- A substitution that respects prefixes at every variable. -/
+abbrev Mono {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) : Type :=
+  (x : BVar s1 .var) → MonoAt θ x
 
 namespace Mono
 
-/-- The law at types, by fusion. -/
-theorem star_ty {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} (m : Mono θ)
-    (x : BVar s1 .var) (T : Ty σ1 (scopeUpTo x)) :
-    (T.rename (renameUpTo x)).subst θ
-      = (T.subst (m.res x)).rename (renameAt (θ.abs x)) := by
-  simp only [Ty.rename, Ty.subst_comp, m.star x]
-
 /-- The identity respects prefixes. -/
-def id {σ s : Sig} : Mono (Subst.id (σ := σ) (s := s)) where
-  res := fun _ => Subst.id
-  star := fun x => by
-    apply Subst.ext <;> intro y <;> rfl
+def id {σ s : Sig} : Mono (Subst.id (σ := σ) (s := s)) := fun x =>
+  .toAbs x Subst.id rfl (by apply Subst.ext <;> intro y <;> rfl)
 
-/-! ## What closure under `lift` needs
+/-- A prefix-respecting substitution can be pushed under a binder.  Each
+branch's scopes agree definitionally, so there is no transport. -/
+def lift {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} (m : Mono θ) :
+    Mono θ.lift
+  | .here =>
+      .toAbs .here θ.lift rfl (by
+        apply Subst.ext <;> intro w
+        · rfl
+        · show θ.lift.abs w = (θ.lift.abs w).subst Subst.id
+          exact (Vr.subst_id _).symm)
+  | .there y =>
+      match m y with
+      | .toAbs z r h hs =>
+          .toAbs (.there z) r
+            (by simp only [Subst.lift, h]; rfl)
+            (by
+              apply Subst.ext <;> intro w
+              · have hc : θ.conc w = r.conc w :=
+                  congrArg (fun t => Subst.conc t w) hs
+                exact hc
+              · have hw : θ.abs ((renameUpTo y).var w)
+                    = (r.abs w).subst (Subst.ofRename (renameUpTo z)) :=
+                  congrArg (fun t => Subst.abs t w) hs
+                show (θ.abs ((renameUpTo y).var w)).weaken
+                    = (r.abs w).subst
+                        (Subst.ofRename ((renameUpTo z).comp Rename.succ))
+                rw [hw, Vr.weaken_subst_ofRename])
+      | .toConc l r h hs =>
+          .toConc l r
+            (by simp only [Subst.lift, h]; rfl)
+            (by
+              apply Subst.ext <;> intro w
+              · have hc : θ.conc w = r.conc w :=
+                  congrArg (fun t => Subst.conc t w) hs
+                exact hc
+              · have hw : θ.abs ((renameUpTo y).var w)
+                    = (r.abs w).subst (Subst.ofRename Oopsla16.renameNil) :=
+                  congrArg (fun t => Subst.abs t w) hs
+                show (θ.abs ((renameUpTo y).var w)).weaken
+                    = (r.abs w).subst (Subst.ofRename Oopsla16.renameNil)
+                rw [hw]
+                cases hv : r.abs w with
+                | conc c => rfl
+                | abs u => exact nomatch u)
 
-`Mono.lift` is the next step and is not yet proved.  The obstruction is
-concrete and worth stating, because it is the "dependent-index ergonomics" risk
-of the design in its sharpest form.
+/-- Prefix-respecting substitutions compose.  At each variable the image's
+zone is read off the two restrictions, and associativity does the rest. -/
+def comp {σ1 σ2 σ3 s1 s2 s3 : Sig} {θ : Subst σ1 s1 σ2 s2}
+    {φ : Subst σ2 s2 σ3 s3} (m : Mono θ) (n : Mono φ) : Mono (θ.comp φ) :=
+  fun x =>
+    match m x with
+    | .toAbs z r h hs =>
+        match n z with
+        | .toAbs z' r' h' hs' =>
+            .toAbs z' (r.comp r')
+              (by simp only [Subst.comp_abs, h, Vr.subst, h'])
+              (by rw [← Subst.comp_assoc, hs, Subst.comp_assoc, hs',
+                    ← Subst.comp_assoc])
+        | .toConc l' r' h' hs' =>
+            .toConc l' (r.comp r')
+              (by simp only [Subst.comp_abs, h, Vr.subst, h'])
+              (by rw [← Subst.comp_assoc, hs, Subst.comp_assoc, hs',
+                    ← Subst.comp_assoc])
+    | .toConc l r h hs =>
+        .toConc (φ.conc l) (r.comp (Subst.atNil φ))
+          (by simp only [Subst.comp_abs, h, Vr.subst])
+          (by rw [← Subst.comp_assoc, hs, Subst.comp_assoc, Subst.nil_comp,
+                ← Subst.comp_assoc])
 
-Pushing `θ` under a binder must supply, at `.there y`, a substitution of type
-`Subst σ1 (scopeUpTo y) σ2 (scopeAt (θ.lift.abs (.there y)))`, i.e. at
-`scopeAt ((θ.abs y).weaken)`.  `scopeAt_weaken` says that scope *is*
-`scopeAt (θ.abs y)`, so `m.res y` is the witness — but only after a transport,
-and `star` for the lifted substitution then has to be proved underneath it.
+/-- Substituting the single binder of `([],x)` by a location respects
+prefixes.  This is the case the machine produces: `ST_Obj` and `ST_AppAbs`
+substitute a `Vr.conc`, and a running term has an empty local scope.
 
-Per constructor the equation is definitional: `(.abs x).weaken` is
-`.abs (.there x)` and `tailBelow (.there x)` reduces to `tailBelow x`;
-`(.conc l).weaken` is `.conc l`.  It is opaque only because `θ.abs y` is a
-neutral term.  So the fix is to case on `θ.abs y` where the restriction is
-*built*, not to transport after the fact — which means `res` should be indexed
-by a `Vr` rather than a `BVar`, and `Mono` should be stated so that the two
-zones are separate fields.  That reshaping is the next tick's work; it also
-matches what Lemma 1 will need, since the substitution theorem's subject is a
-`Vr` and at `conc l` both prefixes are `[]`.
--/
+There is no general `Mono` for `Subst.one`.  At an abstract image the
+restriction would have to map the *whole* scope `s,x` into the prefix at that
+image, and a variable older than the image has nowhere to go. -/
+def oneConc {σ : Sig} (l : BVar σ .var) :
+    Mono (Subst.one (σ := σ) (s := []) (.conc l)) := by
+  intro x
+  cases x with
+  | here =>
+      exact .toConc l (Subst.one (.conc l)) rfl (by
+        apply Subst.ext <;> intro w
+        · rfl
+        · cases w with
+          | here => rfl
+          | there y => cases y)
+  | there y => cases y
 
 end Mono
 

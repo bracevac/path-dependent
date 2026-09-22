@@ -74,26 +74,26 @@ extended calculus (Coq's `extend_all` already does the latter).
 | `Oopsla16/PackingCounterexample` + `coq/oopsla16-packing/` | done, verified, mechanized |
 | `FCdotR/Prefix` | milestone 1 done |
 | `FCdotR/{Syntax,Typing,Examples}` | milestone 2 done — `recursive_typed` is closed evidence for the coercion the old target cannot express |
-| `FCdotR/Structural` | milestone 3 partial: `Mono`, `star_ty`, `Mono.id` |
+| `FCdotR/Structural` | milestone 3 done: `Mono`, `star_ty`, `id`, `lift`, `comp`, `oneConc` |
 
 Build: 97 jobs green. `PLAN.md` in `FCdotR/` has the design and milestones 4-8.
 
-## The current obstruction
+## How the transport was avoided
 
-`Mono.lift`. Pushing a prefix-respecting substitution under a binder must
-supply, at `.there y`, a substitution at `scopeAt ((θ.abs y).weaken)`.
-`scopeAt_weaken` says that is `scopeAt (θ.abs y)`, so `m.res y` is the witness
-— but only after a transport, and `star` for the lifted substitution then has
-to be proved underneath it.
+`Mono` carries its restriction in an *inductive* `MonoAt`, one constructor per
+zone of the image, each naming the image subject and the equation identifying
+it. Writing the codomain as `scopeAt (θ.abs x)` makes it depend on a neutral
+term, so every closure operation needs a transport along `scopeAt_weaken` with
+its equation proved underneath. Naming the image makes each branch's scopes
+match definitionally — `(.abs z).weaken` is `.abs (.there z)` and `tailBelow`
+discards the `.there` — so `lift` is a case analysis and no transport occurs.
 
-Per constructor the equation is definitional (`(.abs x).weaken` is
-`.abs (.there x)` and `tailBelow (.there x)` reduces to `tailBelow x`;
-`(.conc l).weaken` is `.conc l`). It is opaque only because `θ.abs y` is a
-neutral term. So the fix is to case on `θ.abs y` where the restriction is
-*built*, not transport after the fact: index `res` by a `Vr` rather than a
-`BVar`, and split `Mono` so the two zones are separate fields. That also
-matches Lemma 1, whose subject is a `Vr` and at `conc l` has `[]` on both
-sides.
+`oneConc` is the only single-binder instance, and deliberately so: there is no
+general `Mono` for `Subst.one`, because at an abstract image the restriction
+would have to map the whole scope `s,x` into the prefix at that image and a
+variable older than the image has nowhere to go. The location case is what the
+machine produces — `ST_Obj` and `ST_AppAbs` substitute a `Vr.conc`, and a
+running term has an empty local scope.
 
 ## Next
 

@@ -55,6 +55,9 @@ theorem ext {σ1 σ2 s1 s2 : Sig} {θ φ : Subst σ1 s1 σ2 s2}
     (φ : Subst σ1 s1 σ2 s2) : (v.weaken).subst φ.lift = (v.subst φ).weaken := by
   cases v <;> rfl
 
+@[simp] theorem ofRename_id {σ s : Sig} :
+    Subst.ofRename (σ := σ) (Rename.id (s := s)) = id := rfl
+
 @[simp] theorem lift_id {σ s : Sig} : (id (σ := σ) (s := s)).lift = id := by
   apply ext <;> intro y
   · rfl
@@ -70,10 +73,41 @@ theorem lift_comp {σ1 σ2 σ3 s1 s2 s3 : Sig} (θ : Subst σ1 s1 σ2 s2)
 
 end Subst
 
-/-! ## The identity law -/
-
 @[simp] theorem Vr.subst_id {σ s : Sig} (v : Vr σ s) : v.subst Subst.id = v := by
   cases v <;> rfl
+
+@[simp] theorem Vr.subst_comp {σ1 σ2 σ3 s1 s2 s3 : Sig} (v : Vr σ1 s1)
+    (θ : Subst σ1 s1 σ2 s2) (φ : Subst σ2 s2 σ3 s3) :
+    (v.subst θ).subst φ = v.subst (θ.comp φ) := by
+  cases v <;> rfl
+
+namespace Subst
+
+/-- Composition is associative. -/
+theorem comp_assoc {σ1 σ2 σ3 σ4 s1 s2 s3 s4 : Sig} (θ : Subst σ1 s1 σ2 s2)
+    (φ : Subst σ2 s2 σ3 s3) (ψ : Subst σ3 s3 σ4 s4) :
+    (θ.comp φ).comp ψ = θ.comp (φ.comp ψ) := by
+  apply ext <;> intro y
+  · rfl
+  · exact Vr.subst_comp _ _ _
+
+/-- The action of a substitution on the empty local scope: only its store
+part survives, because `BVar [] .var` is uninhabited. -/
+def atNil {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) : Subst σ1 [] σ2 [] where
+  conc := θ.conc
+  abs := fun y => nomatch y
+
+/-- Weakening out of the empty local scope commutes with substituting. -/
+theorem nil_comp {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) :
+    (ofRename (renameNil (s := s1))).comp θ
+      = (atNil θ).comp (ofRename (renameNil (s := s2))) := by
+  apply ext <;> intro y
+  · rfl
+  · exact nomatch y
+
+end Subst
+
+/-! ## The identity law -/
 
 @[simp] theorem Ty.subst_id : {σ s : Sig} → (T : Ty σ s) → T.subst Subst.id = T
   | _, _, .TBot => rfl
@@ -106,11 +140,6 @@ mutual
 end
 
 /-! ## The fusion law -/
-
-@[simp] theorem Vr.subst_comp {σ1 σ2 σ3 s1 s2 s3 : Sig} (v : Vr σ1 s1)
-    (θ : Subst σ1 s1 σ2 s2) (φ : Subst σ2 s2 σ3 s3) :
-    (v.subst θ).subst φ = v.subst (θ.comp φ) := by
-  cases v <;> rfl
 
 @[simp] theorem Ty.subst_comp : {σ1 σ2 σ3 s1 s2 s3 : Sig} → (T : Ty σ1 s1) →
     (θ : Subst σ1 s1 σ2 s2) → (φ : Subst σ2 s2 σ3 s3) →
