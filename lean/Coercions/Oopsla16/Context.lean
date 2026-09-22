@@ -94,4 +94,22 @@ def Ctx.upTo : Ctx σ s → (x : BVar s .var) → Ctx σ (scopeUpTo x)
   | .cons Γ T, .here => .cons Γ T
   | .cons Γ _, .there y => Γ.upTo y
 
+/-! ## Renaming the store scope
+
+Allocation extends the store scope, so a context has to be weakened along with
+everything else.  The store scope and the local scope are separate indices, so
+this is entrywise and no local index moves.
+
+It belongs here, next to `Ctx` itself, so that it is available by dot notation
+(`Γ.renameStore ρ`) wherever a context is in hand. -/
+
+/-- Rename every entry's store scope. -/
+def Ctx.renameStore : {σ1 σ2 s : Sig} → Ctx σ1 s → Rename σ1 σ2 → Ctx σ2 s
+  | _, _, _, .nil, _ => .nil
+  | _, _, _, .cons Γ T, ρ => .cons (Γ.renameStore ρ) (T.renameStore ρ)
+
+/-- Weaken a context under one newly allocated location. -/
+abbrev Ctx.weakenStore {σ s : Sig} (Γ : Ctx σ s) : Ctx (σ,x) s :=
+  Γ.renameStore Rename.succ
+
 end Oopsla16

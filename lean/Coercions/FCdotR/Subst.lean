@@ -508,6 +508,79 @@ theorem restrict_unique {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2}
       congrArg (fun t => Subst.abs t w) h
     exact Vr.rename_renameAt_inj q ha
 
+/-! ## Restriction at an iterated prefix
+
+`Prefix`'s composition laws, carried through a generated substitution.  Two
+statements, and they are what `SubstTyping`'s Lemma R rests on:
+
+* `MonoSyn.image_restrict` — the image of a variable of `x`'s prefix, weakened
+  out of the image of `x`'s prefix, is the image of that variable seen in the
+  ambient scope.  It is **homogeneous**, because both sides are `Vr σ2 s2`.
+* `MonoSyn.restrict_coh` (in `SubstTyping`, where `restrict_conc` lives) — the
+  restriction of the restriction is the restriction, heterogeneously.
+
+The route is the one `restrict_unique` was proved for: no induction over
+generators occurs in either. -/
+
+/-- Two substitutions whose domain and codomain scopes agree and which agree
+on both zones are heterogeneously equal.  The scope equalities are explicit
+arguments rather than consequences of the `HEq`, so that `subst` applies. -/
+theorem heq_subst {σ1 σ2 A B C D : Sig} (hAB : A = B) (hCD : C = D)
+    {f : Subst σ1 A σ2 C} {g : Subst σ1 B σ2 D}
+    (hc : ∀ l, f.conc l = g.conc l)
+    (ha : ∀ (a : BVar A .var) (b : BVar B .var), HEq a b → HEq (f.abs a) (g.abs b)) :
+    HEq f g := by
+  subst hAB
+  subst hCD
+  exact heq_of_eq (Subst.ext hc (fun a => eq_of_heq (ha a a HEq.rfl)))
+
+/-- Substituting respects heterogeneous equality in both arguments. -/
+theorem heq_ty_subst {σ1 σ2 A B C D : Sig} (hAB : A = B) (hCD : C = D)
+    {T : Ty σ1 A} {T' : Ty σ1 B} (hT : HEq T T')
+    {f : Subst σ1 A σ2 C} {g : Subst σ1 B σ2 D} (hf : HEq f g) :
+    HEq (T.subst f) (T'.subst g) := by
+  subst hAB
+  subst hCD
+  rw [eq_of_heq hT, eq_of_heq hf]
+
+/-- **The star law on a single variable.**  The restriction's value at a
+variable of the subject's prefix, weakened out of the image's prefix, is the
+substitution's value at that variable weakened out of the subject's prefix. -/
+theorem MonoSyn.restrict_abs_rename {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2}
+    (m : MonoSyn θ) (p : Vr σ1 s1) (a : BVar (scopeAt p) .var) :
+    ((m.restrict p).abs a).rename (renameAt (m.image p))
+      = θ.abs ((renameAt p).var a) := by
+  show ((m.restrict p).abs a).subst
+      (Subst.ofRename (renameAt (m.image p))) = _
+  rw [← Subst.comp_abs, ← m.star p]
+  rfl
+
+/-- **The image of an iterated prefix.**  Substituting a variable `y` of `x`'s
+prefix inside the prefix and then weakening out of the image's prefix is
+substituting the variable `y` names in the ambient scope.  Homogeneous, because
+both sides live in the ambient codomain scope. -/
+theorem MonoSyn.image_restrict {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2}
+    (m : MonoSyn θ) (x : BVar s1 .var) (y : BVar (scopeUpTo x) .var) :
+    m.image (.abs ((renameUpTo x).var y))
+      = ((m.resSyn (.abs x)).image (.abs y)).rename
+          (renameAt (m.image (.abs x))) := by
+  have h1 : m.image (Vr.abs ((renameUpTo x).var y)) = θ.abs ((renameUpTo x).var y) :=
+    MonoSyn.image_eq m (.abs ((renameUpTo x).var y))
+  have h2 : (m.resSyn (Vr.abs x)).image (Vr.abs y) = (m.restrict (.abs x)).abs y :=
+    MonoSyn.image_eq (m.resSyn (.abs x)) (.abs y)
+  rw [h1, h2]
+  exact (m.restrict_abs_rename (.abs x) y).symm
+
+/-- The scope level of `MonoSyn.image_restrict`: the two prefixes an iterated
+restriction lands in agree. -/
+theorem MonoSyn.scopeAt_image_restrict {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2}
+    (m : MonoSyn θ) (x : BVar s1 .var) (y : BVar (scopeUpTo x) .var) :
+    scopeAt ((m.resSyn (Vr.abs x)).image (.abs y))
+      = scopeAt (m.image (Vr.abs ((renameUpTo x).var y))) :=
+  ((congrArg scopeAt (m.image_restrict x y)).trans
+    (scopeAt_rename_renameAt (m.image (.abs x))
+      ((m.resSyn (.abs x)).image (.abs y)))).symm
+
 /-! ## The substitution action
 
 `Vc` is scope-uniform — every premise of every former lives in the same local

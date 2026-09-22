@@ -1,5 +1,6 @@
 import Coercions.FCdotR.Syntax
 import Coercions.FCdotR.Structural
+import Coercions.FCdotR.Subst
 import Coercions.Oopsla16.Semantics
 
 /-!
@@ -26,11 +27,18 @@ recording: a stored `dfun`'s body is what the machine runs after an
 invocation, so if the store held erased definitions, `app` would produce an
 `Oopsla16.Tm` and the target machine would leave its own language after one
 method call.  The store therefore holds **target** definitions, `Defs σ []`,
-and the sharing is by erasure instead: `FCdotR.Store.erase` (in `Erasure`) is
+and the sharing is by erasure instead: `FCdotR.MachineStore.erase` (in `Erasure`) is
 an `Oopsla16.Store σ σ`, it commutes with every operation the machine performs
 on the store, and — because the type translation is the identity — a type
 member is carried across *unchanged*, so `LeTy.defL`/`defR`, which read the
 source store, read exactly the members this store holds.
+
+It is called `MachineStore`, not `Store`.  The rest of the library writes
+`open Oopsla16 (… Store …)` inside `namespace FCdotR`, and in a module that
+imports this one as well the enclosing namespace would win over the `open`
+*silently*, with no ambiguity error: bare `Store` would become the machine's.
+A preservation module needs both stores at once, so the machine's is given a
+name of its own and bare `Store` always means `Oopsla16.Store`.
 
 ## What the machine substitutes, and what it drops
 
@@ -45,13 +53,25 @@ taken and the limitation recorded here.
 
 `Inst` below is the only substitution the machine performs: a store location
 for the **oldest** binder of the local scope, i.e. `Subst.one (.conc y)` and
-its lifts.  It is given its own inductive rather than being taken from
-`Structural.Mono` because `Mono` does not yet support a substitution action on
-evidence — the closure condition its last section describes is missing — while
-this family is closed under restriction outright: the restriction of
-`lift^(n+1) (one (.conc y))` at a variable is `lift^k (one (.conc y))` for some
-`k ≤ n`, or `one (.conc y)` itself at the binder being instantiated.  That is
-`Inst.at`, and it is what makes `Le.inst` definable at all.
+its lifts.  It is given its own inductive so that the traversals recurse on the
+instantiation *structurally* and their equations hold definitionally, which is
+what makes a machine run compute.  `Inst.at` is its closure under restriction.
+
+**`Inst` is a `MonoSyn`.**  `MonoSyn.ofInst` below sends `.base` to
+`MonoSyn.oneConc` and `.lift` to `MonoSyn.lift`, so every substitution this
+machine performs is one of `Subst`'s generated substitutions and is therefore
+covered by `SubstTyping`'s and `TermSubst`'s substitution theorems: the
+`rename`, `alloc` and `app` rules all substitute at `MonoSyn.oneConc y`.
+
+What is **not** established here is that the *syntactic* actions agree, i.e.
+that `Le.inst e ι y` is `e.subst (MonoSyn.ofInst ι y)`.  They do not agree, and
+deliberately: `Vc.inst` sends `vcVar` at the instantiated binder to `vcLoc y`,
+because the image is a location and `htp_var` cannot justify it, whereas
+`Vc.subst` keeps `vcVar` — `Vc.subst` is the erasure-preserving action on
+syntax and `VcTy.substEv` is the semantic one.  `Le.inst` likewise leaves a
+`defL`/`defR`'s sub-evidence alone where `Le.subst` re-traverses it through
+`atNil`.  What *is* established, in `Erasure`, is that the two agree after
+erasure (`Tm.erase_inst_subst`), which is all a runtime statement needs.
 
 This module contains no typing judgment, no preservation or progress result,
 and no erasure; erasure and the simulation are `FCdotR.Erasure`.
@@ -80,6 +100,25 @@ def Inst.toSubst {σ : Sig} : {s1 s2 : Sig} → Inst s1 s2 → BVar σ .var →
     Subst σ s1 σ s2
   | _, _, .base, y => Subst.one (.conc y)
   | _, _, .lift ι, y => (ι.toSubst y).lift
+
+/-- **The machine's substitution is a generated substitution.**  `base` is
+`MonoSyn.oneConc`, which is the generator `Subst` introduced for exactly this
+family, and `lift` is `MonoSyn.lift`.  So `SubstTyping.LeTy.substEv`,
+`SubstTyping.VcTy.substEv` and `TermSubst.TmTy.substEv` all apply to what the
+machine does, with no second substitution machinery. -/
+def MonoSyn.ofInst {σ : Sig} : {s1 s2 : Sig} → (ι : Inst s1 s2) →
+    (y : BVar σ .var) → MonoSyn (ι.toSubst y)
+  | _, _, .base, y => .oneConc y
+  | _, _, .lift ι, y => .lift (MonoSyn.ofInst ι y)
+
+/-- At the binder the machine actually instantiates, the generated
+substitution is `MonoSyn.oneConc` on the nose. -/
+@[simp] theorem MonoSyn.ofInst_base {σ : Sig} (y : BVar σ .var) :
+    MonoSyn.ofInst .base y = MonoSyn.oneConc y := rfl
+
+/-- And pushing under a binder is `MonoSyn.lift`. -/
+@[simp] theorem MonoSyn.ofInst_lift {σ s1 s2 : Sig} (ι : Inst s1 s2)
+    (y : BVar σ .var) : MonoSyn.ofInst ι.lift y = (MonoSyn.ofInst ι y).lift := rfl
 
 /-- Instantiate a type.  A type of FCdotR *is* a type of `Oopsla16`, so this
 is the source's own traversal. -/
@@ -304,25 +343,25 @@ abbrev Defs.weakenStore {σ s : Sig} (ds : Defs σ s) : Defs (σ,x) s :=
 /-- A store fragment: one definition list per binder of `σ'`, each living in
 the full store scope `σ`, exactly as `Oopsla16.Store`.  Entries may mention
 locations allocated after them, because the reference's store does. -/
-inductive Store : Sig → Sig → Type where
+inductive MachineStore : Sig → Sig → Type where
   /-- The empty fragment. -/
-  | nil {σ : Sig} : Store σ []
+  | nil {σ : Sig} : MachineStore σ []
   /-- One more location. -/
-  | cons {σ σ' : Sig} : Store σ σ' → Defs σ [] → Store σ (σ',x)
+  | cons {σ σ' : Sig} : MachineStore σ σ' → Defs σ [] → MachineStore σ (σ',x)
 
 /-- The definitions stored at a location. -/
-def Store.lookup {σ : Sig} : {σ' : Sig} → Store σ σ' → BVar σ' .var → Defs σ []
+def MachineStore.lookup {σ : Sig} : {σ' : Sig} → MachineStore σ σ' → BVar σ' .var → Defs σ []
   | _, .cons _ ds, .here => ds
   | _, .cons G _, .there z => G.lookup z
 
 /-- Rename every entry's store scope, which is what allocation needs. -/
-def Store.renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
-    {σ3 : Sig} → Store σ1 σ3 → Store σ2 σ3
+def MachineStore.renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
+    {σ3 : Sig} → MachineStore σ1 σ3 → MachineStore σ2 σ3
   | _, .nil => .nil
   | _, .cons G ds => .cons (G.renameStore ρ) (ds.renameStore ρ)
 
 /-- Weaken a store under one newly allocated location. -/
-abbrev Store.weakenStore {σ σ' : Sig} (G : Store σ σ') : Store (σ,x) σ' :=
+abbrev MachineStore.weakenStore {σ σ' : Sig} (G : MachineStore σ σ') : MachineStore (σ,x) σ' :=
   G.renameStore Rename.succ
 
 /-- The method at a label: its domain, its codomain and its body.  Labels
@@ -392,7 +431,7 @@ abbrev Cont.weakenStore {σ : Sig} (K : Cont σ) : Cont (σ,x) :=
 local scope. -/
 structure State (σ : Sig) where
   /-- The store. -/
-  G : Store σ σ
+  G : MachineStore σ σ
   /-- The continuation. -/
   K : Cont σ
   /-- The running term. -/
@@ -404,22 +443,22 @@ and `let`, `castPush`, `castAtom` and `rename` are the only rules that change
 the continuation. -/
 inductive Step : {σ1 σ2 : Sig} → Grows σ1 σ2 → State σ1 → State σ2 → Prop where
   /-- Push a `let` frame. -/
-  | «let» {σ : Sig} {G : Store σ σ} {K : Cont σ} {t : Tm σ []} {u : Tm σ ([],x)} :
+  | «let» {σ : Sig} {G : MachineStore σ σ} {K : Cont σ} {t : Tm σ []} {u : Tm σ ([],x)} :
       Step .refl ⟨G, K, .let t u⟩ ⟨G, K ▹ .let u, t⟩
   /-- Push a coercion frame. -/
-  | castPush {σ : Sig} {G : Store σ σ} {K : Cont σ} {t : Tm σ []} {e : Le σ []} :
+  | castPush {σ : Sig} {G : MachineStore σ σ} {K : Cont σ} {t : Tm σ []} {e : Le σ []} :
       Step .refl ⟨G, K, .cast t e⟩ ⟨G, K ▹ .cast e, t⟩
   /-- A coercion frame over an atom is absorbed into the atom: evidence never
   blocks and never fires. -/
-  | castAtom {σ : Sig} {G : Store σ σ} {K : Cont σ} {a : Atom σ []} {e : Le σ []} :
+  | castAtom {σ : Sig} {G : MachineStore σ σ} {K : Cont σ} {a : Atom σ []} {e : Le σ []} :
       Step .refl ⟨G, K ▹ .cast e, .atom a⟩ ⟨G, K, .atom (.cast a e)⟩
   /-- A `let` frame over an atom substitutes the atom's root location. -/
-  | rename {σ : Sig} {G : Store σ σ} {K : Cont σ} {u : Tm σ ([],x)} {a : Atom σ []} :
+  | rename {σ : Sig} {G : MachineStore σ σ} {K : Cont σ} {u : Tm σ ([],x)} {a : Atom σ []} :
       Step .refl ⟨G, K ▹ .let u, .atom a⟩ ⟨G, K, u.inst .base (Vr.loc a.root)⟩
   /-- Allocate, substituting the object's own new location for its self.  This
   is `Oopsla16.Step.ST_Obj`, with the self type discarded: the machine does not
   read it. -/
-  | alloc {σ : Sig} {G : Store σ σ} {K : Cont σ} {T : Ty σ ([],x)}
+  | alloc {σ : Sig} {G : MachineStore σ σ} {K : Cont σ} {T : Ty σ ([],x)}
       {ds : Defs σ ([],x)} :
       Step (.snoc .refl) ⟨G, K, .new T ds⟩
         ⟨G.weakenStore.cons (ds.weakenStore.inst .base .here), K.weakenStore,
@@ -427,7 +466,7 @@ inductive Step : {σ1 σ2 : Sig} → Grows σ1 σ2 → State σ1 → State σ2 �
   /-- Invoke a method of a stored object.  The self was substituted at
   allocation, so only the argument's root is substituted.  This is
   `Oopsla16.Step.ST_AppAbs`. -/
-  | app {σ : Sig} {G : Store σ σ} {K : Cont σ} {a b : Atom σ []} {l : Lb}
+  | app {σ : Sig} {G : MachineStore σ σ} {K : Cont σ} {a b : Atom σ []} {l : Lb}
       {S : Ty σ []} {U : Ty σ ([],x)} {t : Tm σ ([],x)} :
       (G.lookup (Vr.loc a.root)).fun? l = some (S, U, t) →
       Step .refl ⟨G, K, .app a l b⟩ ⟨G, K, t.inst .base (Vr.loc b.root)⟩

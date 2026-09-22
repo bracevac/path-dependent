@@ -33,8 +33,12 @@ honest fragment, and it is stated as such rather than patched.
 
 * `Tm.erase_inst`, `Defs.erase_inst`: erasure commutes with the machine's
   substitution, `(t.inst ι y).erase = t.erase.subst (ι.toSubst y)`.
-* `Tm.erase_renameStore`, `Store.erase_renameStore`: and with allocation's
+* `Tm.erase_renameStore`, `MachineStore.erase_renameStore`: and with allocation's
   store weakening.
+* `Tm.erase_subst`, `Defs.erase_subst`: the same for `Subst`'s *generated*
+  substitution, and `Tm.erase_inst_subst`, which says the machine's traversal
+  and that one erase to the same source term.  `Machine.MonoSyn.ofInst` is what
+  makes the two comparable.
 * `Step.simulate`: one machine step erases to **zero or one** source step, at
   the very same `Grows` index — zero for the three administrative rules, one
   for `alloc` (`ST_Obj`) and `app` (`ST_AppAbs`).
@@ -115,7 +119,7 @@ end
 
 /-- A store erases entrywise.  This is the sharing the brief asked for: the
 machine's store *is* the source's, up to this map. -/
-def Store.erase {σ : Sig} : {σ' : Sig} → Store σ σ' → Oopsla16.Store σ σ'
+def MachineStore.erase {σ : Sig} : {σ' : Sig} → MachineStore σ σ' → Oopsla16.Store σ σ'
   | _, .nil => .nil
   | _, .cons G ds => .cons G.erase ds.erase
 
@@ -213,6 +217,75 @@ mutual
 
 end
 
+/-! ### … and with the generated substitution
+
+`Machine.MonoSyn.ofInst` exhibits the machine's `Inst` as one of `Subst`'s
+generated substitutions, so `Subst`'s own traversal has the same laws.  The two
+traversals are *not* the same function — `Machine`'s header says where and why
+they differ on evidence — but the pair of results below says they agree after
+erasure, which is all a runtime statement can see, and the second of each pair
+is what a preservation proof will use, because it is the traversal
+`SubstTyping` and `TermSubst` are stated about. -/
+
+/-- Erasure commutes with the generated substitution, at an atom. -/
+theorem Atom.erase_subst {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2}
+    (a : Atom σ1 s1) (m : MonoSyn θ) : (a.subst m).erase = a.erase.subst θ := by
+  show Oopsla16.Tm.tvar _ = Oopsla16.Tm.tvar _
+  rw [Atom.root_subst]
+
+mutual
+
+/-- Erasure commutes with the generated substitution, at a term. -/
+theorem Tm.erase_subst {σ1 σ2 : Sig} : {s1 s2 : Sig} →
+    {θ : Subst σ1 s1 σ2 s2} → (t : Tm σ1 s1) → (m : MonoSyn θ) →
+    (t.subst m).erase = t.erase.subst θ
+  | _, _, _, .atom a, m => by
+      simp only [Tm.subst, Tm.erase, Atom.erase_subst]
+  | _, _, _, .new _ ds, m => by
+      simp only [Tm.subst, Tm.erase, Oopsla16.Tm.subst, Defs.erase_subst ds m.lift]
+  | _, _, _, .app a l b, m => by
+      simp only [Tm.subst, Tm.erase, Oopsla16.Tm.subst, Atom.erase_subst]
+  | _, _, _, .let t u, m => by
+      simp only [Tm.subst, Tm.erase, letEncode_subst, Tm.erase_subst t m,
+        Tm.erase_subst u m.lift]
+  | _, _, _, .cast t _, m => by
+      simp only [Tm.subst, Tm.erase, Tm.erase_subst t m]
+
+/-- Erasure commutes with the generated substitution, at a definition list. -/
+theorem Defs.erase_subst {σ1 σ2 : Sig} : {s1 s2 : Sig} →
+    {θ : Subst σ1 s1 σ2 s2} → (ds : Defs σ1 s1) → (m : MonoSyn θ) →
+    (ds.subst m).erase = ds.erase.subst θ
+  | _, _, _, .dnil, _ => rfl
+  | _, _, _, .dty T ds, m => by
+      simp only [Defs.subst, Defs.erase, Oopsla16.Dms.subst, Oopsla16.Dm.subst,
+        Defs.erase_subst ds m]
+  | _, _, _, .dfun S U t ds, m => by
+      simp only [Defs.subst, Defs.erase, Oopsla16.Dms.subst, Oopsla16.Dm.subst,
+        Option.map_some, Defs.erase_subst ds m, Tm.erase_subst t m.lift]
+
+end
+
+/-- **The machine's traversal and `Subst`'s erase to the same term**, at an
+atom. -/
+theorem Atom.erase_inst_subst {σ s1 s2 : Sig} (a : Atom σ s1) (ι : Inst s1 s2)
+    (y : BVar σ .var) :
+    (a.inst ι y).erase = (a.subst (MonoSyn.ofInst ι y)).erase := by
+  rw [Atom.erase_inst, Atom.erase_subst]
+
+/-- The same, at a term.  This is the sense in which the machine's `rename`,
+`alloc` and `app` rules perform the substitution `TermSubst.TmTy.substEv` is
+stated about. -/
+theorem Tm.erase_inst_subst {σ s1 s2 : Sig} (t : Tm σ s1) (ι : Inst s1 s2)
+    (y : BVar σ .var) :
+    (t.inst ι y).erase = (t.subst (MonoSyn.ofInst ι y)).erase := by
+  rw [Tm.erase_inst, Tm.erase_subst]
+
+/-- The same, at a definition list. -/
+theorem Defs.erase_inst_subst {σ s1 s2 : Sig} (ds : Defs σ s1) (ι : Inst s1 s2)
+    (y : BVar σ .var) :
+    (ds.inst ι y).erase = (ds.subst (MonoSyn.ofInst ι y)).erase := by
+  rw [Defs.erase_inst, Defs.erase_subst]
+
 /-! ## Erasure commutes with allocation's store weakening -/
 
 /-- Renaming the store does not move an atom's root, beyond renaming it. -/
@@ -275,19 +348,19 @@ mutual
 end
 
 /-- Erasure commutes with store renaming, at a store. -/
-@[simp] theorem Store.erase_renameStore : {σ1 σ2 σ3 : Sig} →
-    (G : Store σ1 σ3) → (ρ : Rename σ1 σ2) →
+@[simp] theorem MachineStore.erase_renameStore : {σ1 σ2 σ3 : Sig} →
+    (G : MachineStore σ1 σ3) → (ρ : Rename σ1 σ2) →
     (G.renameStore ρ).erase = G.erase.renameStore ρ
   | _, _, _, .nil, _ => rfl
   | _, _, _, .cons G ds, ρ => by
-      simp only [Store.renameStore, Store.erase, Oopsla16.Store.renameStore,
-        Store.erase_renameStore G ρ, Defs.erase_renameStore ds ρ]
+      simp only [MachineStore.renameStore, MachineStore.erase, Oopsla16.Store.renameStore,
+        MachineStore.erase_renameStore G ρ, Defs.erase_renameStore ds ρ]
 
 /-- Erasure commutes with lookup. -/
-@[simp] theorem Store.erase_lookup {σ : Sig} : {σ' : Sig} → (G : Store σ σ') →
+@[simp] theorem MachineStore.erase_lookup {σ : Sig} : {σ' : Sig} → (G : MachineStore σ σ') →
     (z : BVar σ' .var) → (G.lookup z).erase = G.erase.lookup z
   | _, .cons _ _, .here => rfl
-  | _, .cons G _, .there z => Store.erase_lookup G z
+  | _, .cons G _, .there z => MachineStore.erase_lookup G z
 
 /-- Erasure preserves the number of members, hence every label. -/
 @[simp] theorem Defs.erase_length {σ s : Sig} : (ds : Defs σ s) →
@@ -396,7 +469,7 @@ theorem Step.simulate {σ1 σ2 : Sig} {g : Grows σ1 σ2} {st : State σ1}
           show (State.eraseStore ⟨G.weakenStore.cons (ds.weakenStore.inst .base .here),
               K.weakenStore, .atom (.var (.conc .here))⟩)
             = G.erase.weakenStore.cons (ds.erase.weakenStore.substVr (.conc .here)) from by
-            simp only [State.eraseStore, Store.erase, Store.erase_renameStore,
+            simp only [State.eraseStore, MachineStore.erase, MachineStore.erase_renameStore,
               Defs.erase_inst, Defs.erase_renameStore]
             rfl]
       exact .ST_Obj
@@ -414,7 +487,7 @@ theorem Step.simulate {σ1 σ2 : Sig} {g : Grows σ1 σ2} {st : State σ1}
         rw [Cont.plug_of_evidential K hK]
         exact Tm.erase_inst t .base _
       rw [e1, e2]
-      exact .ST_AppAbs (Store.erase_lookup G (Vr.loc a.root)
+      exact .ST_AppAbs (MachineStore.erase_lookup G (Vr.loc a.root)
         ▸ Defs.erase_fun? (G.lookup (Vr.loc a.root)) l hf)
 
 /-! ## The let-free fragment
@@ -485,22 +558,22 @@ theorem Defs.letFree_renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
 end
 
 /-- Stores whose objects have no `let` in a method body. -/
-def Store.LetFree {σ : Sig} : {σ' : Sig} → Store σ σ' → Prop
+def MachineStore.LetFree {σ : Sig} : {σ' : Sig} → MachineStore σ σ' → Prop
   | _, .nil => True
   | _, .cons G ds => G.LetFree ∧ ds.LetFree
 
 /-- A stored object of a `let`-free store is `let`-free. -/
-theorem Store.letFree_lookup {σ : Sig} : {σ' : Sig} → (G : Store σ σ') →
+theorem MachineStore.letFree_lookup {σ : Sig} : {σ' : Sig} → (G : MachineStore σ σ') →
     (z : BVar σ' .var) → G.LetFree → (G.lookup z).LetFree
   | _, .cons _ _, .here, h => h.2
-  | _, .cons G _, .there z, h => Store.letFree_lookup G z h.1
+  | _, .cons G _, .there z, h => MachineStore.letFree_lookup G z h.1
 
 /-- Allocation's weakening preserves a `let`-free store. -/
-theorem Store.letFree_renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
-    {σ3 : Sig} → (G : Store σ1 σ3) → G.LetFree → (G.renameStore ρ).LetFree
+theorem MachineStore.letFree_renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
+    {σ3 : Sig} → (G : MachineStore σ1 σ3) → G.LetFree → (G.renameStore ρ).LetFree
   | _, .nil, _ => trivial
   | _, .cons G ds, h =>
-      ⟨Store.letFree_renameStore ρ G h.1, Defs.letFree_renameStore ρ ds h.2⟩
+      ⟨MachineStore.letFree_renameStore ρ G h.1, Defs.letFree_renameStore ρ ds h.2⟩
 
 /-- A method of a `let`-free definition list has a `let`-free body. -/
 theorem Defs.letFree_fun? {σ s : Sig} : (ds : Defs σ s) → (l : Lb) →
@@ -534,11 +607,11 @@ theorem Step.letFree {σ1 σ2 : Sig} {g : Grows σ1 σ2} {st : State σ1}
   | rename => exact hK.elim
   | @alloc G K _ ds =>
       exact ⟨Cont.evidential_renameStore _ K hK, trivial,
-        Store.letFree_renameStore _ G hG,
+        MachineStore.letFree_renameStore _ G hG,
         Defs.letFree_inst _ .base .here (Defs.letFree_renameStore _ ds ht)⟩
   | @app G _ _ _ l _ _ t hf =>
       exact ⟨hK, Tm.letFree_inst t .base _
-        (Defs.letFree_fun? _ l (Store.letFree_lookup G _ hG) hf), hG⟩
+        (Defs.letFree_fun? _ l (MachineStore.letFree_lookup G _ hG) hf), hG⟩
 
 /-- A run stays in the fragment. -/
 theorem Steps.letFree {σ1 σ2 : Sig} {g : Grows σ1 σ2} {st : State σ1}
@@ -683,7 +756,7 @@ theorem badRun :
   · rintro ⟨σ', g, st', hstep⟩
     cases hstep with
     | app hf =>
-        rw [show ((Store.lookup _ _).fun? missing) = none from rfl] at hf
+        rw [show ((MachineStore.lookup _ _).fun? missing) = none from rfl] at hf
         cases hf
 
 end Counterexample
