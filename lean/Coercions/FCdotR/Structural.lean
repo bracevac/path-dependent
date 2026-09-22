@@ -227,35 +227,20 @@ def oneConc {σ : Sig} (l : BVar σ .var) :
           | there y => cases y)
   | there y => cases y
 
-/-! ## What the substitution action still needs
+/-! ## Closure under restriction
 
-`Le.subst` must send `selL p a v` to `selL (m.image p) a (v.subst _)`, where the
-inner substitution is `m.at' p`.  But `v` may contain `vcSub T₁ e w`, whose `e`
-is itself inclusion evidence, so substituting `v` needs a `Mono (m.at' p)` and
-not merely the substitution `m.at' p`.  **`Mono` therefore has to be closed
-under restriction**, which the design round listed as the coherence condition
+`Le.subst` must send `selL p a v` to `selL (m.image p) a (v.subst _)` with the
+inner substitution the restriction at `p`, and `v` may contain `vcSub T₁ e w`
+whose `e` is itself inclusion evidence — so the restriction must itself be
+prefix-respecting.  `Mono` as defined here is not closed under restriction: a
+recursive field would have no finite inhabitants, since at `.here` the
+restriction of `lift` is `lift` again.
 
-```text
-(θ↾x)↾y = θ↾((renameUpTo x).var y)
-```
-
-but did not connect to this consequence.
-
-That closure cannot be had by making the requirement recursive in the type —
-`structure Mono θ where res : … ; resMono : ∀ x, Mono (res x)` is not an
-inductive definition, and there is no descent to recurse on either, since
-`scopeUpTo .here` is the whole scope and the restriction there is `θ` itself.
-
-The fix is the coherence condition as *data*: carry, alongside `res` and
-`star`, the equation identifying a restriction's own restrictions with `res` at
-the corresponding variables.  Closure under restriction is then a
-**definition** rather than a recursive type — `Mono (m.res x)` is built from
-`m` by taking its restriction at `y` to be `m`'s at `(renameUpTo x).var y` —
-and the scope mismatches are exactly `scopeUpTo_renameUpTo`, which `Prefix`
-already proves.
-
-Until that field is added, `Mono` supports the closure operations above but not
-the substitution action, and the theorem stated against it is not yet provable.
+`Subst.lean` resolves this with `MonoSyn`, an inductive syntax of substitutions
+built from generators (`id`, `weaken`, `ofStore`, `atNil`, `lift`, `comp`,
+`oneConc`), whose restriction is defined by recursion on the generator tree
+and is therefore a generator tree again.  `MonoSyn.toMono` embeds it into
+`Mono`.  The substitution action and its typing theorem live there.
 -/
 
 end Mono
