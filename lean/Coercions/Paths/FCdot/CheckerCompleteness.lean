@@ -1,4 +1,5 @@
 import Coercions.Paths.FCdot.Checker
+import Coercions.Paths.FCdot.Transparency
 
 namespace Paths
 
@@ -55,6 +56,65 @@ theorem hasMember_eq {Γ : Ctx s} {a : Atom s} {e : LeCo s} {i : Nat} {S : Ty s}
     (hAt : Tel.At i (.has ℓ)) :
     hasMember i a.root ha he = some ⟨ℓ, .member ha he hAt⟩ := by
   simp [hasMember, Telescope.getAt?_of_At hAt]
+
+theorem leMemberP_eq {Γ : Ctx s} {P : PathCo s} {e : LeCo s} {i : Nat} {S : Ty s}
+    {S' T' : Ty (s,x)} {Tel : Telescope (s,x)} (hP : Γ ⊢ᵖ P : S) (he : Γ ⊢ e : S ≤ .obj Tel)
+    (hAt : Tel.At i (.le S' T')) :
+    leMemberP i hP he = some ⟨S'.substPath P.path, T'.substPath P.path, .memberP hP he hAt⟩ := by
+  simp [leMemberP, Telescope.getAt?_of_At hAt]
+
+theorem eqMemberP_eq {Γ : Ctx s} {P : PathCo s} {e : LeCo s} {i : Nat} {S : Ty s}
+    {S' T' : Ty (s,x)} {Tel : Telescope (s,x)} (hP : Γ ⊢ᵖ P : S) (he : Γ ⊢ e : S ≤ .obj Tel)
+    (hAt : Tel.At i (.eq S' T')) :
+    eqMemberP i hP he = some ⟨S'.substPath P.path, T'.substPath P.path, .memberP hP he hAt⟩ := by
+  simp [eqMemberP, Telescope.getAt?_of_At hAt]
+
+theorem hasMemberP_eq {Γ : Ctx s} {P : PathCo s} {e : LeCo s} {i : Nat} {S : Ty s} {ℓ : Label}
+    {Tel : Telescope (s,x)} (hP : Γ ⊢ᵖ P : S) (he : Γ ⊢ e : S ≤ .obj Tel)
+    (hAt : Tel.At i (.has ℓ)) :
+    hasMemberP i P.path hP he = some ⟨ℓ, .memberP hP he hAt⟩ := by
+  simp [hasMemberP, Telescope.getAt?_of_At hAt]
+
+theorem aliasMember_eq {Γ : Ctx s} {P : PathCo s} {e : LeCo s} {i : Nat} {S : Ty s}
+    {q : Path (s,x)} {Tel : Telescope (s,x)} (hP : Γ ⊢ᵖ P : S) (he : Γ ⊢ e : S ≤ .obj Tel)
+    (hAt : Tel.At i (.alias q)) :
+    aliasMember i hP he = some ⟨P.path, q.substPath P.path, .member hP he hAt⟩ := by
+  simp [aliasMember, Telescope.getAt?_of_At hAt]
+
+theorem pathSel_eq {Γ : Ctx s} {P : PathCo s} {a : Label} {i : Nat}
+    {Tel : Telescope (s,x)} (hP : Γ ⊢ᵖ P : .obj Tel) (hAt : Tel.At i (.hasVal a)) :
+    pathSel a i hP = some ⟨P.path ∙ a, .sel hP hAt⟩ := by
+  simp [pathSel, Telescope.getAt?_of_At hAt]
+
+theorem pathNode_eq {Γ : Ctx s} {p : Path s} {W : Witnesses (s,x)} {ls vls : List Label}
+    {ch : Children s} (hs : p.isSel = true)
+    (hn : Γ.nodeBlock p = some (.obj (W.substPath p) ls vls ch)) :
+    pathNode Γ p W ls vls = some ⟨μ (Telescope.ofLiteral W ls vls), .node hs hn⟩ := by
+  unfold pathNode
+  rw [dif_pos hs]
+  split
+  · next W' ls' vls' ch' h =>
+      rw [hn] at h
+      simp only [Option.some.injEq, Block.obj.injEq] at h
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := h
+      simp
+  · next h => rw [hn] at h; exact absurd rfl (h _ _ _ _)
+
+theorem morHasVal_eq {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {j : Nat} {ℓ : Label}
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) (hAt : src.At j (.hasVal ℓ)) :
+    morHasVal j hm = some ⟨Tel ▹ ∋ᵛ ℓ, .hasVal hm hAt⟩ := by
+  simp [morHasVal, Telescope.getAt?_of_At hAt]
+
+theorem morHasOfVal_eq {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {j : Nat} {ℓ : Label}
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) (hAt : src.At j (.hasVal ℓ)) :
+    morHasOfVal j hm = some ⟨Tel ▹ ∋ ℓ, .hasOfVal hm hAt⟩ := by
+  simp [morHasOfVal, Telescope.getAt?_of_At hAt]
+
+theorem morAliasCopy_eq {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {j : Nat}
+    {q : Path (s,x)} {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel)
+    (hAt : src.At j (.alias q)) :
+    morAliasCopy j hm = some ⟨Tel ▹ ≈ q, .aliasCopy hm hAt⟩ := by
+  simp [morAliasCopy, Telescope.getAt?_of_At hAt]
 
 theorem morHas_eq {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {j : Nat} {ℓ : Label}
     {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) (hAt : src.At j (.has ℓ)) :
@@ -135,6 +195,9 @@ theorem LeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {e : LeCo s} {S T : T
   | _, _, _, _, _, .member ha he hAt => by
       simp [synthLeCore, Atom.HasType.complete ha, LeCo.HasType.complete he,
         leMember_eq ha he hAt]
+  | _, _, _, _, _, .memberP hP he hAt => by
+      simp [synthLeCore, PathCo.HasType.complete hP, LeCo.HasType.complete he,
+        leMemberP_eq hP he hAt]
 
 /-- The kernel synthesises the endpoints of every equality derivation. -/
 theorem EqCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {φ : EqCo s} {S T : Ty s}
@@ -146,16 +209,24 @@ theorem EqCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {φ : EqCo s} {S T : 
       simp [synthEqCore, EqCo.HasType.complete hφ, EqCo.HasType.complete hψ]
   | _, _, _, _, _, .def hd => by
       simp [synthEqCore, witness?_eq_some hd]
+  | _, _, _, _, _, .defP hd => by
+      simp [synthEqCore, witness?_eq_some hd]
   | _, _, _, _, _, .member ha he hAt => by
       simp [synthEqCore, Atom.HasType.complete ha, LeCo.HasType.complete he,
         eqMember_eq ha he hAt]
+  | _, _, _, _, _, .memberP hP he hAt => by
+      simp [synthEqCore, PathCo.HasType.complete hP, LeCo.HasType.complete he,
+        eqMemberP_eq hP he hAt]
 
 /-- The kernel synthesises the label of every field-presence derivation. -/
-theorem Has.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {hv : Has s} {y : BVar s .var} {ℓ : Label}
+theorem Has.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {hv : Has s} {y : Path s} {ℓ : Label}
     (h : Has.HasType Γ hv y ℓ), synthHasCore Γ hv y = some ⟨ℓ, h⟩
   | _, _, _, _, _, .member ha he hAt => by
       simp [synthHasCore, Atom.HasType.complete ha, LeCo.HasType.complete he,
         hasMember_eq ha he hAt]
+  | _, _, _, _, _, .memberP hP he hAt => by
+      simp [synthHasCore, PathCo.HasType.complete hP, LeCo.HasType.complete he,
+        hasMemberP_eq hP he hAt]
   | _, _, _, _, _, .field hf hm => by
       simp [synthHasCore, witness?_eq_some hf, hm]
 
@@ -164,6 +235,8 @@ synthesises the outer one. -/
 theorem Side.HasType.completePre : ∀ {s : Sig} {Γ : Ctx s} {side : Side s} {S X : Ty (s,x)}
     (h : Side.HasType Γ side S X), checkPreCore Γ side X = some ⟨S, h⟩
   | _, _, _, _, _, .none => by simp [checkPreCore]
+  | _, _, _, _, _, .bot => by simp [checkPreCore]
+  | _, _, _, _, _, .top => by simp [checkPreCore]
   | _, _, _, _, _, .some he => by
       simp [checkPreCore, LeCo.HasType.complete he]
 
@@ -171,6 +244,8 @@ theorem Side.HasType.completePre : ∀ {s : Sig} {Γ : Ctx s} {side : Side s} {S
 theorem Side.HasType.completePost : ∀ {s : Sig} {Γ : Ctx s} {side : Side s} {Y T : Ty (s,x)}
     (h : Side.HasType Γ side Y T), checkPostCore Γ side Y = some ⟨T, h⟩
   | _, _, _, _, _, .none => by simp [checkPostCore]
+  | _, _, _, _, _, .bot => by simp [checkPostCore]
+  | _, _, _, _, _, .top => by simp [checkPostCore]
   | _, _, _, _, _, .some he => by
       simp [checkPostCore, LeCo.HasType.complete he]
 
@@ -197,6 +272,12 @@ theorem Morphism.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {src : Telescope 
   | _, _, _, _, _, .bnd hm he => by
       simp [synthMorCore, Morphism.HasType.complete hm, LeCo.HasType.complete he,
         morBnd_eq hm he]
+  | _, _, _, _, _, .hasVal hm hAt => by
+      simp [synthMorCore, Morphism.HasType.complete hm, morHasVal_eq hm hAt]
+  | _, _, _, _, _, .hasOfVal hm hAt => by
+      simp [synthMorCore, Morphism.HasType.complete hm, morHasOfVal_eq hm hAt]
+  | _, _, _, _, _, .aliasCopy hm hAt => by
+      simp [synthMorCore, Morphism.HasType.complete hm, morAliasCopy_eq hm hAt]
 
 /-- The kernel synthesises the type of every atom derivation. -/
 theorem Atom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
@@ -211,6 +292,43 @@ theorem Atom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty 
   | _, _, _, _, .both ha hb hr => by
       simp [synthAtomCore, Atom.HasType.complete ha, Atom.HasType.complete hb,
         atomBoth_eq ha hb hr]
+  | _, _, _, _, .sngl hb hα => by
+      simp [synthAtomCore, Atom.HasType.complete hb, AliasCo.HasType.complete hα]
+
+/-- The kernel synthesises the type of every stable-path derivation. -/
+theorem PathCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {P : PathCo s} {T : Ty s}
+    (h : Γ ⊢ᵖ P : T), synthPathCore Γ P = some ⟨T, h⟩
+  | _, _, _, _, .var => by simp [synthPathCore]
+  | _, _, _, _, .sel hP hAt => by
+      simp [synthPathCore, PathCo.HasType.complete hP, pathSel_eq hP hAt]
+  | _, _, _, _, .cast hQ he => by
+      simp [synthPathCore, PathCo.HasType.complete hQ, LeCo.HasType.complete he]
+  | _, _, _, _, .alias hα hQ => by
+      simp [synthPathCore, AliasCo.HasType.complete hα, PathCo.HasType.complete hQ]
+  | _, _, _, _, .unfoldSelf hQ => by
+      simp [synthPathCore, PathCo.HasType.complete hQ]
+  | _, _, _, _, .foldSelf hQ => by
+      simp [synthPathCore, PathCo.HasType.complete hQ]
+  | _, _, _, _, .both hQ hR hr => by
+      simp [synthPathCore, PathCo.HasType.complete hQ, PathCo.HasType.complete hR, hr]
+  | _, _, _, _, .sngl hQ hα => by
+      simp [synthPathCore, PathCo.HasType.complete hQ, AliasCo.HasType.complete hα]
+  | _, _, _, _, .node hs hn => by
+      simp [synthPathCore, pathNode_eq hs hn]
+
+/-- The kernel synthesises both paths of every alias derivation. -/
+theorem AliasCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {α : AliasCo s} {p q : Path s}
+    (h : Γ ⊢ α : p ≋ q), synthAliasCore Γ α = some ⟨p, q, h⟩
+  | _, _, _, _, _, .refl => by simp [synthAliasCore]
+  | _, _, _, _, _, .symm hβ => by
+      simp [synthAliasCore, AliasCo.HasType.complete hβ]
+  | _, _, _, _, _, .trans hβ hγ => by
+      simp [synthAliasCore, AliasCo.HasType.complete hβ, AliasCo.HasType.complete hγ]
+  | _, _, _, _, _, .sel hβ => by
+      simp [synthAliasCore, AliasCo.HasType.complete hβ]
+  | _, _, _, _, _, .member hP he hAt => by
+      simp [synthAliasCore, PathCo.HasType.complete hP, LeCo.HasType.complete he,
+        aliasMember_eq hP he hAt]
 
 end
 
@@ -222,39 +340,72 @@ plain equations, with no side condition. -/
 
 mutual
 
-/-- The kernel synthesises the type of every term derivation. -/
-theorem Tm.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
-    (h : Γ ⊢ t : T), synthTmCore Γ t = some ⟨T, h⟩
-  | _, _, _, _, .atom ha => by
-      simp [synthTmCore, Atom.HasType.complete ha]
-  | _, _, _, _, .val hv => by
-      simp [synthTmCore, Value.HasType.complete hv]
-  | _, _, _, _, .app ha hb => by
+/-- The body of a `Tm.HasType.let` derivation is typed under the binder the
+checker picks: an opaque binder knows nothing, so any binder of its type
+refines it. -/
+theorem Tm.HasType.forLet_body {s : Sig} {Γ : Ctx s} {T : Ty s} {u : Tm (s,x)} {U : Ty (s,x)}
+    (hu : Γ.cons (.opaque T) ⊢ u : U) : Γ.cons (Binding.forLet T) ⊢ u : U :=
+  hu.refine (by
+    have hr := Ctx.Refines.ofOpaque (Γ := Γ) (Binding.forLet T)
+    rwa [Binding.ty_forLet] at hr)
+
+/-- The binder the checker picks at a singleton is the forwarding binder. -/
+theorem Binding.forLet_snglOf {s : Sig} (q : Path s) :
+    Binding.forLet (Ty.snglOf q) = Binding.fwdAt q := by
+  simp [Binding.forLet, Ty.sngl?_snglOf]
+
+/-- The body of a `Tm.HasType.letPath` derivation is already typed under the
+binder the checker picks. -/
+theorem Tm.HasType.forLet_body_sngl {s : Sig} {Γ : Ctx s} {q : Path s} {u : Tm (s,x)}
+    {U : Ty (s,x)} (hu : Γ.cons (Binding.fwdAt q) ⊢ u : U) :
+    Γ.cons (Binding.forLet (Ty.snglOf q)) ⊢ u : U := by
+  rw [Binding.forLet_snglOf]; exact hu
+
+/-- The kernel synthesises the type of every term derivation.  The recursion is
+on the term and not on the derivation: at a `let` whose term has a singleton
+type the checker takes the forwarding binder, and the body of a
+`Tm.HasType.let` derivation is carried there by `Ctx.Refines.ofOpaque` before
+the recursive call.  That call is on the same body, which is a strict subterm
+of the `let`, so the measure is the term. -/
+theorem Tm.HasType.complete {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
+    (h : Γ ⊢ t : T) : synthTmCore Γ t = some ⟨T, h⟩ := by
+  match t, h with
+  | _, .atom ha => simp [synthTmCore, Atom.HasType.complete ha]
+  | _, .val hv => simp [synthTmCore, Value.HasType.complete hv]
+  | _, .app ha hb =>
       simp [synthTmCore, Atom.HasType.complete ha, Atom.HasType.complete hb, tmApp_eq ha hb]
-  | _, _, _, _, .proj ha hh => by
+  | _, .proj ha hh =>
       simp [synthTmCore, Atom.HasType.complete ha, Has.HasType.complete hh]
-  | _, _, _, _, .let ht hu => by
-      simp [synthTmCore, Tm.HasType.complete ht, Tm.HasType.complete hu,
+  | .let t0 u0, .let ht hu =>
+      have hu' := Tm.HasType.forLet_body hu
+      simp [synthTmCore, Tm.HasType.complete ht, Tm.HasType.complete hu',
         Ty.strengthenW?_weaken]
-  | _, _, _, _, .cast ht he => by
+  | .let t0 u0, .letPath ht hu =>
+      have hu' := Tm.HasType.forLet_body_sngl hu
+      simp [synthTmCore, Tm.HasType.complete ht, Tm.HasType.complete hu',
+        Ty.strengthenW?_weaken]
+  | _, .cast ht he =>
       simp [synthTmCore, Tm.HasType.complete ht, LeCo.HasType.complete he]
+termination_by sizeOf t
 
 /-- The kernel synthesises the type of every value derivation. -/
-theorem Value.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
-    (h : Γ ⊢ᵥ v : T), synthValueCore Γ v = some ⟨T, h⟩
-  | _, _, _, _, .lam ht => by
-      simp [synthValueCore, Tm.HasType.complete ht]
-  | _, _, _, _, .obj hF => by
-      simp [synthValueCore, Fields.HasType.complete hF]
-  | _, _, _, _, .cast hv he => by
+theorem Value.HasType.complete {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
+    (h : Γ ⊢ᵥ v : T) : synthValueCore Γ v = some ⟨T, h⟩ := by
+  match v, h with
+  | _, .lam ht => simp [synthValueCore, Tm.HasType.complete ht]
+  | _, .obj hF => simp [synthValueCore, Fields.HasType.complete hF]
+  | _, .cast hv he =>
       simp [synthValueCore, Value.HasType.complete hv, LeCo.HasType.complete he]
+termination_by sizeOf v
 
 /-- The kernel accepts every field block derivation. -/
-theorem Fields.HasType.complete : ∀ {s : Sig} {Γ : Ctx (s,x)} {F : Fields (s,x)}
-    (h : Γ ⊢ᶠ F), checkFieldsCore Γ F = some ⟨h⟩
-  | _, _, _, .nil => by simp [checkFieldsCore]
-  | _, _, _, .cons hF ht => by
+theorem Fields.HasType.complete {s : Sig} {Γ : Ctx (s,x)} {F : Fields (s,x)}
+    (h : Γ ⊢ᶠ F) : checkFieldsCore Γ F = some ⟨h⟩ := by
+  match F, h with
+  | _, .nil => simp [checkFieldsCore]
+  | _, .cons hF ht =>
       simp [checkFieldsCore, Fields.HasType.complete hF, Tm.HasType.complete ht]
+termination_by sizeOf F
 
 end
 
@@ -438,47 +589,79 @@ the type as `a.root.ℓ` whatever evidence it used. -/
 
 mutual
 
-theorem Tm.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T T' : Ty s},
-    Γ ⊢ t : T → Γ ⊢ t : T' → T = T'
-  | _, _, _, _, _, .atom ha, h' => by
+/-- The measure is the term, as in `Tm.HasType.complete`: the two `let` rules
+agree on a `let` at a singleton only after the opaque body is carried to the
+forwarding binder, and that body is a strict subterm. -/
+theorem Tm.HasType.type_unique {s : Sig} {Γ : Ctx s} {t : Tm s} {T T' : Ty s}
+    (h : Γ ⊢ t : T) (h' : Γ ⊢ t : T') : T = T' := by
+  match t, h with
+  | _, .atom ha =>
       cases h' with
       | atom ha' => exact ha.type_unique ha'
-  | _, _, _, _, _, .val hv, h' => by
+  | _, .val hv =>
       cases h' with
       | val hv' => exact Value.HasType.type_unique hv hv'
-  | _, _, _, _, _, .app ha hb, h' => by
+  | _, .app ha hb =>
       cases h' with
       | app ha' hb' =>
           have hp := ha.type_unique ha'
           injection hp with _ _ hT
           rw [hT]
-  | _, _, _, _, _, .proj _ _, h' => by
+  | _, .proj _ _ =>
       cases h' with
       | proj _ _ => rfl
-  | _, _, _, _, _, .let ht hu, h' => by
+  | .let t0 u0, .let ht hu =>
       cases h' with
       | «let» ht' hu' =>
           have hT := Tm.HasType.type_unique ht ht'
           subst hT
           have hU := Tm.HasType.type_unique hu hu'
-          have := congrArg Ty.strengthen? hU
-          rw [Ty.strengthen?_weaken, Ty.strengthen?_weaken] at this
-          exact Option.some.inj this
-  | _, _, _, _, _, .cast _ he, h' => by
+          have hs := congrArg Ty.strengthen? hU
+          rw [Ty.strengthen?_weaken, Ty.strengthen?_weaken] at hs
+          exact Option.some.inj hs
+      | letPath ht' hu' =>
+          have hT := Tm.HasType.type_unique ht ht'
+          subst hT
+          have hU := Tm.HasType.type_unique (Tm.HasType.forLet_body hu)
+            (Tm.HasType.forLet_body_sngl hu')
+          have hs := congrArg Ty.strengthen? hU
+          rw [Ty.strengthen?_weaken, Ty.strengthen?_weaken] at hs
+          exact Option.some.inj hs
+  | .let t0 u0, .letPath ht hu =>
+      cases h' with
+      | «let» ht' hu' =>
+          have hT := Tm.HasType.type_unique ht' ht
+          subst hT
+          have hU := Tm.HasType.type_unique (Tm.HasType.forLet_body_sngl hu)
+            (Tm.HasType.forLet_body hu')
+          have hs := congrArg Ty.strengthen? hU
+          rw [Ty.strengthen?_weaken, Ty.strengthen?_weaken] at hs
+          exact Option.some.inj hs
+      | letPath ht' hu' =>
+          have hT := Tm.HasType.type_unique ht ht'
+          obtain rfl := Ty.snglOf_inj hT
+          have hU := Tm.HasType.type_unique hu hu'
+          have hs := congrArg Ty.strengthen? hU
+          rw [Ty.strengthen?_weaken, Ty.strengthen?_weaken] at hs
+          exact Option.some.inj hs
+  | _, .cast _ he =>
       cases h' with
       | cast _ he' => exact (he.endpoints_unique he').2
+termination_by sizeOf t
 
-theorem Value.HasType.type_unique : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T T' : Ty s},
-    Γ ⊢ᵥ v : T → Γ ⊢ᵥ v : T' → T = T'
-  | _, _, _, _, _, .lam ht, h' => by
+theorem Value.HasType.type_unique {s : Sig} {Γ : Ctx s} {v : Value s} {T T' : Ty s}
+    (h : Γ ⊢ᵥ v : T) (h' : Γ ⊢ᵥ v : T') : T = T' := by
+  match v, h with
+  | _, .lam ht =>
       cases h' with
       | lam ht' => rw [Tm.HasType.type_unique ht ht']
-  | _, _, _, _, _, .obj _, h' => by
+  | _, .obj _ =>
       cases h' with
       | obj _ => rfl
-  | _, _, _, _, _, .cast _ he, h' => by
+  | _, .cast _ he =>
       cases h' with
       | cast _ he' => exact (he.endpoints_unique he').2
+termination_by sizeOf v
 
 end
 

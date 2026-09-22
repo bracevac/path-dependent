@@ -18,26 +18,25 @@ namespace FCdot
 
 def Binding.rename : Binding s1 → Rename s1 s2 → Binding s2
   | .opaque T, ρ => .opaque (T.rename ρ)
-  | .transparent T W Fs, ρ => .transparent (T.rename ρ) (W.rename ρ.lift) Fs
+  | .transparent T B, ρ => .transparent (T.rename ρ) (B.rename ρ.lift)
 
 @[simp] theorem Binding.rename_opaque (T : Ty s1) (ρ : Rename s1 s2) :
     (Binding.opaque T).rename ρ = .opaque (T.rename ρ) := rfl
 
-@[simp] theorem Binding.rename_transparent (T : Ty s1) (W : Witnesses (s1,x))
-    (Fs : List Label) (ρ : Rename s1 s2) :
-    (Binding.transparent T W Fs).rename ρ = .transparent (T.rename ρ) (W.rename ρ.lift) Fs := rfl
+@[simp] theorem Binding.rename_transparent (T : Ty s1) (B : Block (s1,x))
+    (ρ : Rename s1 s2) :
+    (Binding.transparent T B).rename ρ = .transparent (T.rename ρ) (B.rename ρ.lift) := rfl
 
 @[simp] theorem Binding.ty_rename (b : Binding s1) (ρ : Rename s1 s2) :
     (b.rename ρ).ty = b.ty.rename ρ := by
   cases b <;> rfl
 
-/-! ## Auxiliary invariants -/
+/-- The forwarding binder of a let over a path renames as its path does. -/
+@[simp] theorem Binding.rename_fwdAt (q : Path s1) (ρ : Rename s1 s2) :
+    (Binding.fwdAt q).rename ρ = Binding.fwdAt (q.rename ρ) := by
+  simp [Binding.fwdAt, Binding.rename, Block.rename, Path.weaken_rename]
 
-@[simp] theorem Fields.labels_rename {s1 s2 : Sig} :
-    ∀ (F : Fields s1) (ρ : Rename s1 s2), (F.rename ρ).labels = F.labels
-  | .nil, _ => rfl
-  | .cons F l t, ρ => by
-      simp [Fields.rename, Fields.labels, Fields.labels_rename F ρ]
+/-! ## Auxiliary invariants -/
 
 /-! ## Context lookups, unfolded -/
 
@@ -51,24 +50,34 @@ def Binding.rename : Binding s1 → Rename s1 s2 → Binding s2
     (Γ.cons (.opaque T)).lookupDef .here l = none := rfl
 
 @[simp] theorem Ctx.lookupDef_here_transparent (Γ : Ctx s) (T : Ty s)
-    (W : Witnesses (s,x)) (Fs : List Label) (l : Label) :
-    (Γ.cons (.transparent T W Fs)).lookupDef .here l = some (W.get l) := rfl
+    (W : Witnesses (s,x)) (Fs Vs : List Label) (ch : Children (s,x)) (l : Label) :
+    (Γ.cons (.transparent T (.obj W Fs Vs ch))).lookupDef .here l = some (W.get l) := rfl
+
+@[simp] theorem Ctx.lookupDef_here_fwd (Γ : Ctx s) (T : Ty s) (q : Path (s,x)) (l : Label) :
+    (Γ.cons (.transparent T (.fwd q))).lookupDef .here l = none := rfl
 
 @[simp] theorem Ctx.lookupDef_there (Γ : Ctx s) (b : Binding s) (y : BVar s .var)
     (l : Label) :
     (Γ.cons b).lookupDef (.there y) l = (Γ.lookupDef y l).map Ty.weaken := by
-  cases b <;> rfl
+  cases b with
+  | «opaque» T => rfl
+  | transparent T B => cases B <;> rfl
 
 @[simp] theorem Ctx.lookupFields_here_opaque (Γ : Ctx s) (T : Ty s) :
     (Γ.cons (.opaque T)).lookupFields .here = none := rfl
 
 @[simp] theorem Ctx.lookupFields_here_transparent (Γ : Ctx s) (T : Ty s)
-    (W : Witnesses (s,x)) (Fs : List Label) :
-    (Γ.cons (.transparent T W Fs)).lookupFields .here = some Fs := rfl
+    (W : Witnesses (s,x)) (Fs Vs : List Label) (ch : Children (s,x)) :
+    (Γ.cons (.transparent T (.obj W Fs Vs ch))).lookupFields .here = some Fs := rfl
+
+@[simp] theorem Ctx.lookupFields_here_fwd (Γ : Ctx s) (T : Ty s) (q : Path (s,x)) :
+    (Γ.cons (.transparent T (.fwd q))).lookupFields .here = none := rfl
 
 @[simp] theorem Ctx.lookupFields_there (Γ : Ctx s) (b : Binding s) (y : BVar s .var) :
     (Γ.cons b).lookupFields (.there y) = Γ.lookupFields y := by
-  cases b <;> rfl
+  cases b with
+  | «opaque» T => rfl
+  | transparent T B => cases B <;> rfl
 
 /-! ## Transparency of a binder -/
 
@@ -89,8 +98,8 @@ theorem Ctx.IsTransparent.of_lookup {Γ : Ctx s} {x : BVar s .var} {Fs : List La
   rw [Ctx.lookupFields_there]
 
 @[simp] theorem Ctx.isTransparent_here_transparent (Γ : Ctx s) (T : Ty s)
-    (W : Witnesses (s,x)) (Fs : List Label) :
-    (Γ.cons (.transparent T W Fs)).IsTransparent .here := by
+    (W : Witnesses (s,x)) (Fs Vs : List Label) (ch : Children (s,x)) :
+    (Γ.cons (.transparent T (.obj W Fs Vs ch))).IsTransparent .here := by
   unfold Ctx.IsTransparent
   simp
 
@@ -107,13 +116,37 @@ structure Ctx.Ren {s1 s2 : Sig} (Γ : Ctx s1) (ρ : Rename s1 s2) (Γ' : Ctx s2)
   ty : ∀ x, Γ'.lookupTy (ρ.var x) = (Γ.lookupTy x).rename ρ
   def_ : ∀ x l W, Γ.lookupDef x l = some W → Γ'.lookupDef (ρ.var x) l = some (W.rename ρ)
   fields : ∀ x Fs, Γ.lookupFields x = some Fs → Γ'.lookupFields (ρ.var x) = some Fs
+  /-- The whole binder table is carried, which is what makes the walk through
+      the forest survive the renaming. -/
+  blocks : ∀ x B, Γ.blockAt x = some B → Γ'.blockAt (ρ.var x) = some (B.rename ρ)
 
 namespace Ctx.Ren
+
+/-- The block of a path survives a context renaming. -/
+theorem lookupB {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.Ren Γ ρ Γ') {p : Path s1} {B : Block s1} (hp : Γ.lookupBlock p = some B) :
+    Γ'.lookupBlock (p.rename ρ) = some (B.rename ρ) :=
+  Ctx.lookupBlock_rename h.blocks hp
+
+/-- The definition of a block name survives a context renaming.  This is the
+`def_` field one level down, at a path in place of a binder. -/
+theorem defP {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.Ren Γ ρ Γ') {p : Path s1} {l : Label} {W : Ty s1}
+    (hd : Γ.lookupDefP p l = some W) :
+    Γ'.lookupDefP (p.rename ρ) l = some (W.rename ρ) :=
+  Ctx.lookupDefP_rename h.blocks hd
+
+/-- The node of a path survives a context renaming. -/
+theorem nodeB {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
+    (h : Ctx.Ren Γ ρ Γ') {p : Path s1} {B : Block s1} (hp : Γ.nodeBlock p = some B) :
+    Γ'.nodeBlock (p.rename ρ) = some (B.rename ρ) :=
+  Ctx.nodeBlock_rename h.blocks hp
 
 theorem id {Γ : Ctx s} : Ctx.Ren Γ Rename.id Γ where
   ty := fun x => by simp
   def_ := fun x l W h => by simpa using h
   fields := fun x Fs h => h
+  blocks := fun x B hB => by simpa using hB
 
 theorem lift {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
     (h : Ctx.Ren Γ ρ Γ') (b : Binding s1) :
@@ -133,11 +166,14 @@ theorem lift {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
     | here =>
         cases b with
         | «opaque» T => simp at hW
-        | transparent T W' Fs =>
-            have hWe : W = W'.get l := by simpa using hW.symm
-            subst hWe
-            simp only [Rename.lift_here, Binding.rename_transparent,
-              Ctx.lookupDef_here_transparent, Witnesses.get_rename]
+        | transparent T B =>
+            cases B with
+            | fwd q => simp at hW
+            | obj W' Fs' Vs' ch' =>
+                have hWe : W = W'.get l := by simpa using hW.symm
+                subst hWe
+                simp only [Rename.lift_here, Binding.rename_transparent, Block.rename,
+                  Ctx.lookupDef_here_transparent, Witnesses.get_rename]
     | there y =>
         rw [Ctx.lookupDef_there] at hW
         rw [Rename.lift_there, Ctx.lookupDef_there]
@@ -155,11 +191,32 @@ theorem lift {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2}
     | here =>
         cases b with
         | «opaque» T => simp at hFs
-        | transparent T W' Fs' => simpa using hFs
+        | transparent T B =>
+            cases B with
+            | fwd q => simp at hFs
+            | obj W' Fs' Vs' ch' => simpa [Block.rename] using hFs
     | there y =>
         rw [Ctx.lookupFields_there] at hFs
         rw [Rename.lift_there, Ctx.lookupFields_there]
         exact h.fields y Fs hFs
+  blocks := by
+    intro x B hB
+    cases x with
+    | here =>
+        cases b with
+        | «opaque» T => simp at hB
+        | transparent T B0 =>
+            rw [Ctx.blockAt_here_transparent] at hB
+            obtain rfl : B0 = B := by simpa using hB
+            rfl
+    | there y =>
+        have hsl : (Rename.succ.comp ρ.lift : Rename s1 (s2,x))
+            = ρ.comp Rename.succ :=
+          Rename.funext' (by intro k z; cases k; rfl)
+        rw [Ctx.blockAt_there] at hB
+        obtain ⟨B0, hB0, rfl⟩ := Option.map_eq_some_iff.mp hB
+        rw [Rename.lift_there, Ctx.blockAt_there, h.blocks y B0 hB0]
+        simp only [Option.map_some, Block.weaken, Block.rename_comp, hsl]
 
 theorem transparent {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' : Ctx s2} (h : Ctx.Ren Γ ρ Γ')
     {x : BVar s1 .var} (ht : Γ.IsTransparent x) : Γ'.IsTransparent (ρ.var x) := by
@@ -174,6 +231,7 @@ theorem succ {Γ : Ctx s} (b : Binding s) : Ctx.Ren Γ Rename.succ (Γ.cons b) w
   fields := fun x Fs hf => by
     rw [Rename.succ_var, Ctx.lookupFields_there]
     exact hf
+  blocks := fun x B hB => by rw [Rename.succ_var, Ctx.blockAt_there, hB]; rfl
 
 end Ctx.Ren
 
@@ -206,6 +264,10 @@ theorem LeCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Ren
       have := LeCo.HasType.member (a := a.rename ρ) (ha.rename hρ)
         (he.rename hρ) (hAt.rename ρ.lift)
       simpa [LeCo.rename, Ty.substVar_rename, Atom.root_rename] using this
+  | @LeCo.HasType.memberP _ _ P S e Tel i S' T' hP he hAt =>
+      have := LeCo.HasType.memberP (P := P.rename ρ) (hP.rename hρ)
+        (by simpa [Ty.rename] using he.rename hρ) (hAt.rename ρ.lift)
+      simpa [LeCo.rename, Ty.substPath_rename, PathCo.path_rename] using this
 
 theorem EqCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {φ : EqCo s1} {S T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ φ : S ≡ T) :
@@ -215,20 +277,31 @@ theorem EqCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Ren
   | .symm hφ => exact .symm (hφ.rename hρ)
   | .trans hφ hψ => exact .trans (hφ.rename hρ) (hψ.rename hρ)
   | .def hd => exact .def (hρ.def_ _ _ _ hd)
+  | .defP hd =>
+      have := EqCo.HasType.defP (hρ.defP hd)
+      simpa [EqCo.rename, Ty.rename] using this
   | @EqCo.HasType.member _ _ a S e Tel i S' T' ha he hAt =>
       have := EqCo.HasType.member (a := a.rename ρ) (ha.rename hρ)
         (he.rename hρ) (hAt.rename ρ.lift)
       simpa [EqCo.rename, Ty.substVar_rename, Atom.root_rename] using this
+  | @EqCo.HasType.memberP _ _ P S e Tel i S' T' hP he hAt =>
+      have := EqCo.HasType.memberP (P := P.rename ρ) (hP.rename hρ)
+        (by simpa [Ty.rename] using he.rename hρ) (hAt.rename ρ.lift)
+      simpa [EqCo.rename, Ty.substPath_rename, PathCo.path_rename] using this
 
 theorem Has.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
-    {hh : Has s1} {x : BVar s1 .var} {l : Label}
-    (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ hh : x ∋ l) :
-    Γ' ⊢ (hh.rename ρ) : (ρ.var x) ∋ l := by
+    {hh : Has s1} {p : Path s1} {l : Label}
+    (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ hh : p ∋ l) :
+    Γ' ⊢ (hh.rename ρ) : (p.rename ρ) ∋ l := by
   match h with
   | @Has.HasType.member _ _ a S e Tel i l ha he hAt =>
       have := Has.HasType.member (a := a.rename ρ) (ha.rename hρ)
         (he.rename hρ) (hAt.rename ρ.lift)
-      simpa [Has.rename, Atom.root_rename] using this
+      simpa [Has.rename, Atom.root_rename, Path.rename] using this
+  | @Has.HasType.memberP _ _ P S e Tel i l hP he hAt =>
+      have := Has.HasType.memberP (P := P.rename ρ) (hP.rename hρ)
+        (by simpa [Ty.rename] using he.rename hρ) (hAt.rename ρ.lift)
+      simpa [Has.rename, PathCo.path_rename] using this
   | .field hf hm => exact .field (hρ.fields _ _ hf) hm
 
 theorem Side.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
@@ -236,6 +309,8 @@ theorem Side.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Ren
     Side.HasType Γ' (σ.rename ρ) (X.rename ρ.lift) (Y.rename ρ.lift) := by
   match h with
   | .none => exact .none
+  | .bot => exact .bot
+  | .top => exact .top
   | .some he =>
       have := Side.HasType.some (he.rename hρ)
       simpa [Side.rename, Ty.weaken_rename] using this
@@ -264,6 +339,12 @@ theorem Morphism.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2}
   | .bnd hm he =>
       have := Morphism.HasType.bnd (hm.rename hρ) (by simpa [Ty.rename] using he.rename hρ)
       simpa [Morphism.rename, Telescope.rename, Proposition.rename, Ty.weaken_rename] using this
+  | .hasVal hm hAt =>
+      exact .hasVal (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+  | .hasOfVal hm hAt =>
+      exact .hasOfVal (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+  | .aliasCopy hm hAt =>
+      exact .aliasCopy (hm.rename hρ) (by simpa [Proposition.rename] using hAt.rename ρ.lift)
 
 theorem Atom.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
     {a : Atom s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ₐ a : T) :
@@ -288,6 +369,66 @@ theorem Atom.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Ren
       have := Atom.HasType.both (ha.rename hρ) (hb.rename hρ)
         (by simp [Atom.root_rename, hr])
       simpa [Atom.rename, Ty.rename, Telescope.append_rename] using this
+  | .sngl ha hα =>
+      have := Atom.HasType.sngl (ha.rename hρ)
+        (by simpa [Path.rename, Atom.root_rename] using hα.rename hρ)
+      simpa [Atom.rename] using this
+
+theorem PathCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {P : PathCo s1} {T : Ty s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ᵖ P : T) :
+    Γ' ⊢ᵖ (P.rename ρ) : (T.rename ρ) := by
+  match h with
+  | @PathCo.HasType.var _ _ x =>
+      rw [← hρ.ty x]
+      exact .var
+  | @PathCo.HasType.sel _ _ P Tel i a hP hAt =>
+      have := PathCo.HasType.sel (P := P.rename ρ) (a := a)
+        (by simpa [Ty.rename] using hP.rename hρ)
+        (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+      simpa [PathCo.rename, Ty.rename, PathCo.path_rename] using this
+  | .cast hP he => exact .cast (hP.rename hρ) (he.rename hρ)
+  | @PathCo.HasType.alias _ _ α p P T hα hP =>
+      exact .alias (by simpa [PathCo.path_rename] using hα.rename hρ) (hP.rename hρ)
+  | @PathCo.HasType.unfoldSelf _ _ P Tel hP =>
+      have := PathCo.HasType.unfoldSelf (Tel := Tel.rename ρ.lift) (P := P.rename ρ)
+        (by simpa [Ty.rename] using hP.rename hρ)
+      simpa [PathCo.rename, Ty.rename, PathCo.path_rename, Telescope.weaken_rename,
+        Telescope.substPath_rename] using this
+  | @PathCo.HasType.foldSelf _ _ P Tel hP =>
+      have hP' := hP.rename hρ
+      simp only [Ty.rename, Telescope.weaken_rename, Telescope.substPath_rename] at hP'
+      have := PathCo.HasType.foldSelf (Tel := Tel.rename ρ.lift) (P := P.rename ρ)
+        (by simpa [PathCo.path_rename] using hP')
+      simpa [PathCo.rename, Ty.rename] using this
+  | .both hP hQ hr =>
+      have := PathCo.HasType.both (hP.rename hρ) (hQ.rename hρ)
+        (by simp [PathCo.path_rename, hr])
+      simpa [PathCo.rename, Ty.rename, Telescope.append_rename] using this
+  | .sngl hP hα =>
+      have := PathCo.HasType.sngl (hP.rename hρ)
+        (by simpa [PathCo.path_rename] using hα.rename hρ)
+      simpa [PathCo.rename] using this
+  | @PathCo.HasType.node _ _ p W ls vls ch hs hn =>
+      have hn' := hρ.nodeB hn
+      simp only [Block.rename, Witnesses.substPath_rename] at hn'
+      have := PathCo.HasType.node (Γ := Γ') (by rw [Path.isSel_rename]; exact hs) hn'
+      simpa [PathCo.rename, Ty.rename, Telescope.ofLiteral_rename] using this
+
+theorem AliasCo.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
+    {α : AliasCo s1} {p q : Path s1} (hρ : Ctx.Ren Γ ρ Γ') (h : Γ ⊢ α : p ≋ q) :
+    Γ' ⊢ (α.rename ρ) : (p.rename ρ) ≋ (q.rename ρ) := by
+  match h with
+  | .refl => exact .refl
+  | .symm hα => exact .symm (hα.rename hρ)
+  | .trans hα hβ => exact .trans (hα.rename hρ) (hβ.rename hρ)
+  | @AliasCo.HasType.sel _ _ α p q a hα =>
+      have := AliasCo.HasType.sel (a := a) (hα.rename hρ)
+      simpa [AliasCo.rename, Path.rename] using this
+  | @AliasCo.HasType.member _ _ P S e Tel i q hP he hAt =>
+      have := AliasCo.HasType.member (P := P.rename ρ) (hP.rename hρ)
+        (by simpa [Ty.rename] using he.rename hρ)
+        (by simpa [Proposition.rename] using hAt.rename ρ.lift)
+      simpa [AliasCo.rename, PathCo.path_rename, Path.substPath_rename] using this
 
 end
 
@@ -313,6 +454,10 @@ theorem Tm.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Renam
       refine .let (ht.rename hρ) ?_
       have := hu.rename (hρ.lift _)
       simpa [Ty.weaken_rename] using this
+  | .letPath ht hu =>
+      refine .letPath (by simpa using ht.rename hρ) ?_
+      have := hu.rename (hρ.lift (Binding.fwdAt _))
+      simpa [Ty.weaken_rename] using this
   | .cast ht he => exact .cast (ht.rename hρ) (he.rename hρ)
 
 theorem Value.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Rename s1 s2}
@@ -323,7 +468,8 @@ theorem Value.HasType.rename {s1 s2 : Sig} {Γ : Ctx s1} {Γ' : Ctx s2} {ρ : Re
   | @Value.HasType.obj _ F0 _ W0 hF =>
       have hF' := Fields.HasType.rename (hρ.lift _) hF
       have := Value.HasType.obj (Γ := Γ') (W := W0.rename ρ.lift) (F := F0.rename ρ.lift)
-        (by simpa [Binding.rename, Ty.rename, Telescope.ofLiteral_rename] using hF')
+        (by simpa [Binding.rename, Ty.rename, Telescope.ofLiteral_rename, Block.rename,
+          Fields.children_self_rename] using hF')
       simpa [Value.rename, Ty.rename, Telescope.ofLiteral_rename] using this
   | .cast hv he => exact .cast (hv.rename hρ) (he.rename hρ)
 
@@ -352,9 +498,19 @@ theorem EqCo.HasType.weaken {Γ : Ctx s} {φ : EqCo s} {S T : Ty s}
     (Γ.cons b) ⊢ (φ.rename Rename.succ) : S↑ ≡ T↑ :=
   h.rename (Ctx.Ren.succ b)
 
-theorem Has.HasType.weaken {Γ : Ctx s} {hh : Has s} {x : BVar s .var} {l : Label}
-    (h : Γ ⊢ hh : x ∋ l) (b : Binding s) :
-    Γ.cons b ⊢ hh.rename Rename.succ : (.there x) ∋ l :=
+theorem Has.HasType.weaken {Γ : Ctx s} {hh : Has s} {p : Path s} {l : Label}
+    (h : Γ ⊢ hh : p ∋ l) (b : Binding s) :
+    Γ.cons b ⊢ hh.rename Rename.succ : (p.rename Rename.succ) ∋ l :=
+  h.rename (Ctx.Ren.succ b)
+
+theorem PathCo.HasType.weaken {Γ : Ctx s} {P : PathCo s} {T : Ty s}
+    (h : Γ ⊢ᵖ P : T) (b : Binding s) :
+    (Γ.cons b) ⊢ᵖ P.rename Rename.succ : T↑ :=
+  h.rename (Ctx.Ren.succ b)
+
+theorem AliasCo.HasType.weaken {Γ : Ctx s} {α : AliasCo s} {p q : Path s}
+    (h : Γ ⊢ α : p ≋ q) (b : Binding s) :
+    (Γ.cons b) ⊢ α.rename Rename.succ : (p.rename Rename.succ) ≋ (q.rename Rename.succ) :=
   h.rename (Ctx.Ren.succ b)
 
 theorem Side.HasType.weaken {Γ : Ctx s} {σ : Side s} {X Y : Ty (s,x)}

@@ -204,11 +204,44 @@ theorem unshift_inverts {s : Sig} {k : Kind} :
 
 end PartialRename
 
+/-- A path under a partial renaming: every step survives or the path does
+not. -/
+def Path.rename? : Path s1 → PartialRename s1 s2 → Option (Path s2)
+  | .var x, ρ => (ρ.var x).map Path.var
+  | .sel p a, ρ => (p.rename? ρ).map (Path.sel · a)
+
+theorem Path.rename?_complete :
+    ∀ {s1 s2 : Sig} (p : Path s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+      ρ.Inverts σ → (p.rename σ).rename? ρ = some p
+  | _, _, .var x, ρ, σ, h => by
+      simp only [Path.rename, Path.rename?]
+      rw [(h (σ.var x) x).mpr rfl]
+      rfl
+  | _, _, .sel p a, ρ, σ, h => by
+      simp only [Path.rename, Path.rename?, Path.rename?_complete p ρ σ h]
+      rfl
+
+theorem Path.rename?_sound :
+    ∀ {s1 s2 : Sig} (p : Path s1) (q : Path s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
+      ρ.Inverts σ → p.rename? ρ = some q → p = q.rename σ
+  | _, _, .var x, q, ρ, σ, h, hq => by
+      simp only [Path.rename?, Option.map_eq_some_iff] at hq
+      obtain ⟨y, hy, hq⟩ := hq
+      subst hq
+      simp only [Path.rename]
+      rw [(h x y).mp hy]
+  | _, _, .sel p a, q, ρ, σ, h, hq => by
+      simp only [Path.rename?, Option.map_eq_some_iff] at hq
+      obtain ⟨p', hp', hq⟩ := hq
+      subst hq
+      simp only [Path.rename]
+      rw [← Path.rename?_sound p p' ρ σ h hp']
+
 mutual
 
 def Ty.rename? : Ty s1 → PartialRename s1 s2 → Option (Ty s2)
   | .bot, _ => some .bot
-  | .sel x ℓ, ρ => (ρ.var x).map (fun y => .sel y ℓ)
+  | .sel p ℓ, ρ => (p.rename? ρ).map (fun q => .sel q ℓ)
   | .pi S T, ρ =>
       match S.rename? ρ, T.rename? ρ.lift with
       | some S', some T' => some (.pi S' T')
@@ -232,6 +265,8 @@ def Proposition.rename? : Proposition s1 → PartialRename s1 s2 → Option (Pro
       match T.rename? ρ with
       | some T' => some (.bnd T')
       | none => none
+  | .hasVal ℓ, _ => some (.hasVal ℓ)
+  | .alias q, ρ => (q.rename? ρ).map Proposition.alias
 
 def Telescope.rename? : Telescope s1 → PartialRename s1 s2 → Option (Telescope s2)
   | .nil, _ => some .nil
@@ -248,9 +283,8 @@ theorem Ty.rename?_complete :
     ∀ {s1 s2 : Sig} (U : Ty s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
       ρ.Inverts σ → (U.rename σ).rename? ρ = some U
   | _, _, .bot, _, _, _ => by simp [Ty.rename, Ty.rename?]
-  | _, _, .sel x ℓ, ρ, σ, h => by
-      simp only [Ty.rename, Ty.rename?]
-      rw [(h (σ.var x) x).mpr rfl]
+  | _, _, .sel p ℓ, ρ, σ, h => by
+      simp only [Ty.rename, Ty.rename?, Path.rename?_complete p ρ σ h]
       rfl
   | _, _, .pi S T, ρ, σ, h => by
       simp only [Ty.rename, Ty.rename?]
@@ -272,6 +306,10 @@ theorem Proposition.rename?_complete :
   | _, _, .bnd T, ρ, σ, h => by
       simp only [Proposition.rename, Proposition.rename?]
       rw [Ty.rename?_complete T ρ σ h]
+  | _, _, .hasVal ℓ, _, _, _ => by simp [Proposition.rename, Proposition.rename?]
+  | _, _, .alias q, ρ, σ, h => by
+      simp only [Proposition.rename, Proposition.rename?, Path.rename?_complete q ρ σ h]
+      rfl
 
 theorem Telescope.rename?_complete :
     ∀ {s1 s2 : Sig} (Tel : Telescope s2) (ρ : PartialRename s1 s2) (σ : Rename s2 s1),
@@ -292,12 +330,12 @@ theorem Ty.rename?_sound :
   | _, _, .bot, U, _, _, _, hU => by
       simp only [Ty.rename?, Option.some.injEq] at hU
       subst hU; rfl
-  | _, _, .sel x ℓ, U, ρ, σ, h, hU => by
+  | _, _, .sel p ℓ, U, ρ, σ, h, hU => by
       simp only [Ty.rename?, Option.map_eq_some_iff] at hU
-      obtain ⟨y, hy, hU⟩ := hU
+      obtain ⟨q, hq, hU⟩ := hU
       subst hU
       simp only [Ty.rename]
-      rw [(h x y).mp hy]
+      rw [← Path.rename?_sound p q ρ σ h hq]
   | _, _, .pi S T, U, ρ, σ, h, hU => by
       simp only [Ty.rename?] at hU
       cases hS : S.rename? ρ with
@@ -364,6 +402,15 @@ theorem Proposition.rename?_sound :
         subst hQ
         simp only [Proposition.rename]
         rw [← Ty.rename?_sound T T' ρ σ h hT]
+  | _, _, .hasVal ℓ, Q, _, _, _, hQ => by
+      simp only [Proposition.rename?, Option.some.injEq] at hQ
+      subst hQ; rfl
+  | _, _, .alias q, Q, ρ, σ, h, hQ => by
+      simp only [Proposition.rename?, Option.map_eq_some_iff] at hQ
+      obtain ⟨q', hq', hQ⟩ := hQ
+      subst hQ
+      simp only [Proposition.rename]
+      rw [← Path.rename?_sound q q' ρ σ h hq']
 
 theorem Telescope.rename?_sound :
     ∀ {s1 s2 : Sig} (Tel : Telescope s1) (Tel2 : Telescope s2) (ρ : PartialRename s1 s2)
@@ -411,6 +458,66 @@ theorem Ty.strengthen?_some_iff {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s} 
     T.strengthen? = some U ↔ T = U↑ :=
   Ty.strengthen?_eq_some_iff
 
+/-- Strengthening for paths: undo one weakening. -/
+def Path.strengthen? {s : Sig} {k : Kind} (p : Path (s,,k)) : Option (Path s) :=
+  p.rename? PartialRename.unshift
+
+theorem Path.strengthen?_sound {s : Sig} {k : Kind} {p : Path (s,,k)} {q : Path s}
+    (h : p.strengthen? = some q) : p = q.weaken :=
+  Path.rename?_sound p q PartialRename.unshift Rename.succ PartialRename.unshift_inverts h
+
+theorem Path.strengthen?_weaken {s : Sig} {k : Kind} (q : Path s) :
+    (q.weaken (k := k)).strengthen? = some q :=
+  Path.rename?_complete q PartialRename.unshift Rename.succ PartialRename.unshift_inverts
+
+/-- Is this type the singleton object type of a path?  The checker asks it to
+pick the binder a `let` introduces. -/
+def Ty.sngl? {s : Sig} (T : Ty s) : Option (Path s) :=
+  match T with
+  | .obj (.cons .nil (.alias p)) => p.strengthen?
+  | _ => none
+
+theorem Ty.sngl?_sound {s : Sig} {T : Ty s} {q : Path s} (h : T.sngl? = some q) :
+    T = Ty.snglOf q := by
+  unfold Ty.sngl? at h
+  split at h
+  · next p =>
+      rw [Ty.snglOf, ← Path.strengthen?_sound h]
+  · exact absurd h (by simp)
+
+@[simp] theorem Ty.sngl?_snglOf {s : Sig} (q : Path s) : (Ty.snglOf q).sngl? = some q := by
+  simp [Ty.sngl?, Ty.snglOf, Path.strengthen?_weaken]
+
+/-- The binder a `let` introduces: at a singleton the forwarding binder of the
+let over a path, elsewhere the opaque binder.  `Tm.HasType.letPath` is the more
+permissive of the two rules at a singleton, and `Tm.HasType.let` there is its
+opaque twin through `Ctx.Refines.transparent`, so the checker always takes the
+forwarding binder when it can. -/
+def Binding.forLet {s : Sig} (T : Ty s) : Binding s :=
+  match T.sngl? with
+  | some q => Binding.fwdAt q
+  | none => .opaque T
+
+@[simp] theorem Binding.ty_forLet {s : Sig} (T : Ty s) : (Binding.forLet T).ty = T := by
+  unfold Binding.forLet
+  cases hq : T.sngl? with
+  | none => rfl
+  | some q =>
+      simp only [Binding.fwdAt, Binding.ty]
+      exact (Ty.sngl?_sound hq).symm
+
+/-- Either `let` rule, read off the binder the checker picks. -/
+theorem Tm.HasType.letOf {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s} {u : Tm (s,x)}
+    {U : Ty s} (ht : Γ ⊢ t : T) (hu : Γ.cons (Binding.forLet T) ⊢ u : U↑) :
+    Γ ⊢ .let t u : U := by
+  unfold Binding.forLet at hu
+  cases hq : T.sngl? with
+  | none => simp only [hq] at hu; exact .let ht hu
+  | some q =>
+      simp only [hq] at hu
+      obtain rfl := Ty.sngl?_sound hq
+      exact .letPath ht hu
+
 /-- Strengthening, carrying the equation it establishes. -/
 def Ty.strengthenW? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option { U : Ty s // T = U↑ } :=
   match witness? T.strengthen? with
@@ -436,9 +543,9 @@ structure EqChecked {s : Sig} (Γ : Ctx s) (ev : EqCo s) where
   target : Ty s
   typing : Γ ⊢ ev : source ≡ target
 
-structure HasChecked {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) where
+structure HasChecked {s : Sig} (Γ : Ctx s) (ev : Has s) (p : Path s) where
   label : Label
-  typing : Γ ⊢ ev : y ∋ label
+  typing : Γ ⊢ ev : p ∋ label
 
 /-- A morphism is checked against its *source* telescope (closed, over the self
 binder): holes and presence propositions are read from it by index.  The target
@@ -463,6 +570,17 @@ structure PostChecked {s : Sig} (Γ : Ctx s) (side : Side s) (Y : Ty (s,x)) wher
 structure AtomChecked {s : Sig} (Γ : Ctx s) (a : Atom s) where
   type : Ty s
   typing : Γ ⊢ₐ a : type
+
+/-- A stable path synthesises its type, as an atom does. -/
+structure PathChecked {s : Sig} (Γ : Ctx s) (P : PathCo s) where
+  type : Ty s
+  typing : Γ ⊢ᵖ P : type
+
+/-- Alias evidence synthesises both of its paths. -/
+structure AliasChecked {s : Sig} (Γ : Ctx s) (α : AliasCo s) where
+  source : Path s
+  target : Path s
+  typing : Γ ⊢ α : source ≋ target
 
 structure TmChecked {s : Sig} (Γ : Ctx s) (t : Tm s) where
   type : Ty s
@@ -513,12 +631,98 @@ def eqMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat)
     | _, _ => none
   else none
 
+/-- `LeCo.memberP`: elimination at a stable path, at an inclusion. -/
+def leMemberP {s : Sig} {Γ : Ctx s} {P : PathCo s} {e : LeCo s} (i : Nat)
+    {Sa : Ty s} (hP : Γ ⊢ᵖ P : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
+    Option (LeChecked Γ (.memberP P e i)) :=
+  if hs : Se = Sa then
+    match Te, he with
+    | .obj Tel, he =>
+        match Telescope.getAt? Tel i with
+        | some ⟨.le S' T', hAt⟩ =>
+            some ⟨S'.substPath P.path, T'.substPath P.path,
+              .memberP hP (by subst hs; exact he) hAt⟩
+        | _ => none
+    | _, _ => none
+  else none
+
+/-- `EqCo.memberP`: the same, when the proposition is an equality. -/
+def eqMemberP {s : Sig} {Γ : Ctx s} {P : PathCo s} {e : LeCo s} (i : Nat)
+    {Sa : Ty s} (hP : Γ ⊢ᵖ P : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
+    Option (EqChecked Γ (.memberP P e i)) :=
+  if hs : Se = Sa then
+    match Te, he with
+    | .obj Tel, he =>
+        match Telescope.getAt? Tel i with
+        | some ⟨.eq S' T', hAt⟩ =>
+            some ⟨S'.substPath P.path, T'.substPath P.path,
+              .memberP hP (by subst hs; exact he) hAt⟩
+        | _ => none
+    | _, _ => none
+  else none
+
+/-- `Has.memberP`: the same, at a presence proposition. -/
+def hasMemberP {s : Sig} {Γ : Ctx s} {P : PathCo s} {e : LeCo s} (i : Nat) (r : Path s)
+    {Sa : Ty s} (hP : Γ ⊢ᵖ P : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
+    Option (HasChecked Γ (.memberP P e i) r) :=
+  if hx : P.path = r then
+    if hs : Se = Sa then
+      match Te, he with
+      | .obj Tel, he =>
+          match Telescope.getAt? Tel i with
+          | some ⟨.has ℓ, hAt⟩ =>
+              some ⟨ℓ, by subst hx; exact .memberP hP (by subst hs; exact he) hAt⟩
+          | _ => none
+      | _, _ => none
+    else none
+  else none
+
+/-- `AliasCo.member`: the alias a view carries. -/
+def aliasMember {s : Sig} {Γ : Ctx s} {P : PathCo s} {e : LeCo s} (i : Nat)
+    {Sa : Ty s} (hP : Γ ⊢ᵖ P : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
+    Option (AliasChecked Γ (.member P e i)) :=
+  if hs : Se = Sa then
+    match Te, he with
+    | .obj Tel, he =>
+        match Telescope.getAt? Tel i with
+        | some ⟨.alias q, hAt⟩ =>
+            some ⟨P.path, q.substPath P.path, .member hP (by subst hs; exact he) hAt⟩
+        | _ => none
+    | _, _ => none
+  else none
+
+/-- `PathCo.sel`: one field step, licensed by a stable presence. -/
+def pathSel {s : Sig} {Γ : Ctx s} {P : PathCo s} (a : Label) (i : Nat)
+    {Sa : Ty s} (hP : Γ ⊢ᵖ P : Sa) : Option (PathChecked Γ (.sel P a i)) :=
+  match Sa, hP with
+  | .obj Tel, hP =>
+      match Telescope.getAt? Tel i with
+      | some ⟨.hasVal a', hAt⟩ =>
+          if h : a' = a then some ⟨P.path ∙ a, by subst h; exact .sel hP hAt⟩ else none
+      | _ => none
+  | _, _ => none
+
+/-- `PathCo.node`: the premise is decided by reading `Ctx.nodeBlock` and
+comparing the node's witnesses and labels, which blocks have decidable
+equality for.  The path must be a field step. -/
+def pathNode {s : Sig} (Γ : Ctx s) (p : Path s) (W : Witnesses (s,x)) (ls vls : List Label) :
+    Option (PathChecked Γ (.node p W ls vls)) :=
+  if hs : p.isSel = true then
+    match h : Γ.nodeBlock p with
+    | some (.obj W' ls' vls' ch) =>
+        if hW : W' = W.substPath p ∧ ls' = ls ∧ vls' = vls then
+          some ⟨μ (Telescope.ofLiteral W ls vls), .node (ch := ch) hs (by
+            rw [h, hW.1, hW.2.1, hW.2.2])⟩
+        else none
+    | _ => none
+  else none
+
 /-- `Has.member`: the same, when the proposition is a field declaration.  The
-subject variable is checked, the label synthesised. -/
-def hasMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat) (y : BVar s .var)
+subject path is checked, the label synthesised. -/
+def hasMember {s : Sig} {Γ : Ctx s} {a : Atom s} {e : LeCo s} (i : Nat) (y : Path s)
     {Sa : Ty s} (ha : Γ ⊢ₐ a : Sa) {Se Te : Ty s} (he : Γ ⊢ e : Se ≤ Te) :
     Option (HasChecked Γ (.member a e i) y) :=
-  if hx : a.root = y then
+  if hx : (Path.var a.root) = y then
     if hs : Se = Sa then
       match Te, he with
       | .obj Tel, he =>
@@ -558,6 +762,30 @@ def morBnd {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {e : 
   if hs : Se = μ src then
     some ⟨Tel ▹ ⊑ Te↑, .bnd hm (by rw [← hs]; exact he)⟩
   else none
+
+/-- `Morphism.hasVal`: a stable presence copied from the source by index. -/
+def morHasVal {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} (j : Nat)
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) :
+    Option (MorChecked Γ src (.hasVal m j)) :=
+  match Telescope.getAt? src j with
+  | some ⟨.hasVal ℓ, hAt⟩ => some ⟨Tel ▹ ∋ᵛ ℓ, .hasVal hm hAt⟩
+  | _ => none
+
+/-- `Morphism.hasOfVal`: a presence read off a source stable presence. -/
+def morHasOfVal {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} (j : Nat)
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) :
+    Option (MorChecked Γ src (.hasOfVal m j)) :=
+  match Telescope.getAt? src j with
+  | some ⟨.hasVal ℓ, hAt⟩ => some ⟨Tel ▹ ∋ ℓ, .hasOfVal hm hAt⟩
+  | _ => none
+
+/-- `Morphism.aliasCopy`: an alias copied from the source by index. -/
+def morAliasCopy {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} (j : Nat)
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel) :
+    Option (MorChecked Γ src (.aliasCopy m j)) :=
+  match Telescope.getAt? src j with
+  | some ⟨.alias q, hAt⟩ => some ⟨Tel ▹ ≈ q, .aliasCopy hm hAt⟩
+  | _ => none
 
 /-- `Morphism.eq`: the target repeats the `j`-th proposition of the source
 telescope, which must be an equality, flipped when `b` is set. -/
@@ -700,6 +928,10 @@ def synthLeCore {s : Sig} (Γ : Ctx s) (ev : LeCo s) : Option (LeChecked Γ ev) 
       let ca ← synthAtomCore Γ a
       let ce ← synthLeCore Γ e
       leMember i ca.typing ce.typing
+  | .memberP P e i => do
+      let cP ← synthPathCore Γ P
+      let ce ← synthLeCore Γ e
+      leMemberP i cP.typing ce.typing
 
 def synthEqCore {s : Sig} (Γ : Ctx s) (ev : EqCo s) : Option (EqChecked Γ ev) :=
   match ev with
@@ -721,18 +953,33 @@ def synthEqCore {s : Sig} (Γ : Ctx s) (ev : EqCo s) : Option (EqChecked Γ ev) 
       let ca ← synthAtomCore Γ a
       let ce ← synthLeCore Γ e
       eqMember i ca.typing ce.typing
+  | .defP p ℓ =>
+      match witness? (Γ.lookupDefP p ℓ) with
+      | some ⟨W, hW⟩ => some ⟨.sel p ℓ, W, .defP hW⟩
+      | none => none
+  | .memberP P e i => do
+      let cP ← synthPathCore Γ P
+      let ce ← synthLeCore Γ e
+      eqMemberP i cP.typing ce.typing
 
-def synthHasCore {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) :
+def synthHasCore {s : Sig} (Γ : Ctx s) (ev : Has s) (y : Path s) :
     Option (HasChecked Γ ev y) :=
   match ev with
   | .member a e i => do
       let ca ← synthAtomCore Γ a
       let ce ← synthLeCore Γ e
       hasMember i y ca.typing ce.typing
+  | .memberP P e i => do
+      let cP ← synthPathCore Γ P
+      let ce ← synthLeCore Γ e
+      hasMemberP i y cP.typing ce.typing
   | .field ℓ =>
-      match witness? (Γ.lookupFields y) with
-      | some ⟨Fs, hF⟩ => if hm : ℓ ∈ Fs then some ⟨ℓ, .field hF hm⟩ else none
-      | none => none
+      match y with
+      | .var z =>
+          match witness? (Γ.lookupFields z) with
+          | some ⟨Fs, hF⟩ => if hm : ℓ ∈ Fs then some ⟨ℓ, .field hF hm⟩ else none
+          | none => none
+      | .sel _ _ => none
 
 /-- A `pre` side, checked against the hole's left endpoint `X`: `none` leaves
 it in place, `some e` needs `e` to land in the closed type `X` weakens. -/
@@ -740,6 +987,8 @@ def checkPreCore {s : Sig} (Γ : Ctx s) (side : Side s) (X : Ty (s,x)) :
     Option (PreChecked Γ side X) :=
   match side with
   | .none => some ⟨X, .none⟩
+  | .bot X' => if h : X = X' then some ⟨⊥, by subst h; exact .bot⟩ else none
+  | .top X' => if h : X = ⊤ then some ⟨X', by subst h; exact .top⟩ else none
   | .some e => do
       let ce ← synthLeCore Γ e
       if h : X = ce.target↑ then some ⟨ce.source↑, by subst h; exact .some ce.typing⟩
@@ -750,6 +999,8 @@ def checkPostCore {s : Sig} (Γ : Ctx s) (side : Side s) (Y : Ty (s,x)) :
     Option (PostChecked Γ side Y) :=
   match side with
   | .none => some ⟨Y, .none⟩
+  | .bot X' => if h : Y = ⊥ then some ⟨X', by subst h; exact .bot⟩ else none
+  | .top X' => if h : Y = X' then some ⟨⊤, by subst h; exact .top⟩ else none
   | .some e => do
       let ce ← synthLeCore Γ e
       if h : Y = ce.source↑ then some ⟨ce.target↑, by subst h; exact .some ce.typing⟩
@@ -776,6 +1027,15 @@ def synthMorCore {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s)
       let cm ← synthMorCore Γ src m
       let ce ← synthLeCore Γ e
       morBnd cm.typing ce.typing
+  | .hasVal m j => do
+      let cm ← synthMorCore Γ src m
+      morHasVal j cm.typing
+  | .hasOfVal m j => do
+      let cm ← synthMorCore Γ src m
+      morHasOfVal j cm.typing
+  | .aliasCopy m j => do
+      let cm ← synthMorCore Γ src m
+      morAliasCopy j cm.typing
 
 def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a) :=
   match a with
@@ -798,6 +1058,85 @@ def synthAtomCore {s : Sig} (Γ : Ctx s) (a : Atom s) : Option (AtomChecked Γ a
       let ca ← synthAtomCore Γ a
       let cb ← synthAtomCore Γ b
       atomBoth Tel₁ Tel₂ ca.typing cb.typing
+  | .sngl b q α => do
+      let cb ← synthAtomCore Γ b
+      let cα ← synthAliasCore Γ α
+      if h1 : cα.source = Path.var b.root then
+        if h2 : cα.target = q then
+          some ⟨Ty.snglOf q, .sngl cb.typing (by rw [← h1, ← h2]; exact cα.typing)⟩
+        else none
+      else none
+
+def synthPathCore {s : Sig} (Γ : Ctx s) (P : PathCo s) : Option (PathChecked Γ P) :=
+  match P with
+  | .var y => some ⟨Γ.lookupTy y, .var⟩
+  | .sel Q a i => do
+      let cQ ← synthPathCore Γ Q
+      pathSel a i cQ.typing
+  | .cast Q e => do
+      let cQ ← synthPathCore Γ Q
+      let ce ← synthLeCore Γ e
+      if h : ce.source = cQ.type then
+        some ⟨ce.target, .cast cQ.typing (by rw [← h]; exact ce.typing)⟩
+      else none
+  | .alias α p Q => do
+      let cα ← synthAliasCore Γ α
+      let cQ ← synthPathCore Γ Q
+      if h1 : cα.source = p then
+        if h2 : cα.target = Q.path then
+          some ⟨cQ.type, .alias (by rw [← h1, ← h2]; exact cα.typing) cQ.typing⟩
+        else none
+      else none
+  | .unfoldSelf Q => do
+      let cQ ← synthPathCore Γ Q
+      match cQ.type, cQ.typing with
+      | .obj Tel, hQ => some ⟨.obj ((Tel.substPath Q.path)↑), .unfoldSelf hQ⟩
+      | _, _ => none
+  | .foldSelf Tel Q => do
+      let cQ ← synthPathCore Γ Q
+      if h : cQ.type = .obj ((Tel.substPath Q.path)↑) then
+        some ⟨.obj Tel, .foldSelf (by rw [← h]; exact cQ.typing)⟩
+      else none
+  | .both Tel₁ Tel₂ Q R => do
+      let cQ ← synthPathCore Γ Q
+      let cR ← synthPathCore Γ R
+      if h1 : cQ.type = μ Tel₁ then
+        if h2 : cR.type = μ Tel₂ then
+          if hr : R.path = Q.path then
+            some ⟨μ (Tel₁ ++ Tel₂), by
+              exact .both (h1 ▸ cQ.typing) (h2 ▸ cR.typing) hr⟩
+          else none
+        else none
+      else none
+  | .sngl Q q α => do
+      let cQ ← synthPathCore Γ Q
+      let cα ← synthAliasCore Γ α
+      if h1 : cα.source = Q.path then
+        if h2 : cα.target = q then
+          some ⟨Ty.snglOf q, .sngl cQ.typing (by rw [← h1, ← h2]; exact cα.typing)⟩
+        else none
+      else none
+  | .node p W ls vls => pathNode Γ p W ls vls
+
+def synthAliasCore {s : Sig} (Γ : Ctx s) (α : AliasCo s) : Option (AliasChecked Γ α) :=
+  match α with
+  | .refl p => some ⟨p, p, .refl⟩
+  | .symm β => do
+      let cβ ← synthAliasCore Γ β
+      some ⟨cβ.target, cβ.source, .symm cβ.typing⟩
+  | .trans β γ => do
+      let cβ ← synthAliasCore Γ β
+      let cγ ← synthAliasCore Γ γ
+      if h : cβ.target = cγ.source then
+        some ⟨cβ.source, cγ.target, .trans cβ.typing (by rw [h]; exact cγ.typing)⟩
+      else none
+  | .sel β a => do
+      let cβ ← synthAliasCore Γ β
+      some ⟨.sel cβ.source a, .sel cβ.target a, .sel cβ.typing⟩
+  | .member P e i => do
+      let cP ← synthPathCore Γ P
+      let ce ← synthLeCore Γ e
+      aliasMember i cP.typing ce.typing
 
 end
 
@@ -819,15 +1158,15 @@ def synthTmCore {s : Sig} (Γ : Ctx s) (t : Tm s) : Option (TmChecked Γ t) :=
       tmApp ca.typing cb.typing
   | .proj a ℓ h => do
       let ca ← synthAtomCore Γ a
-      let ch ← synthHasCore Γ h a.root
+      let ch ← synthHasCore Γ h (Path.var a.root)
       if hl : ch.label = ℓ then
-        some ⟨.sel a.root ℓ, .proj ca.typing (by rw [← hl]; exact ch.typing)⟩
+        some ⟨.sel (Path.var a.root) ℓ, .proj ca.typing (by rw [← hl]; exact ch.typing)⟩
       else none
   | .let t u => do
       let ct ← synthTmCore Γ t
-      let cu ← synthTmCore (Γ.cons (.opaque ct.type)) u
+      let cu ← synthTmCore (Γ.cons (Binding.forLet ct.type)) u
       match cu.type.strengthenW? with
-      | some ⟨U, hU⟩ => some ⟨U, .let ct.typing (by rw [← hU]; exact cu.typing)⟩
+      | some ⟨U, hU⟩ => some ⟨U, .letOf ct.typing (by rw [← hU]; exact cu.typing)⟩
       | none => none
   | .cast t e => do
       let ct ← synthTmCore Γ t
@@ -842,8 +1181,10 @@ def synthValueCore {s : Sig} (Γ : Ctx s) (v : Value s) : Option (ValueChecked �
       let ct ← synthTmCore (Γ.cons (.opaque S)) t
       some ⟨.pi S ct.type, .lam ct.typing⟩
   | .obj W F => do
-      let Tel := Telescope.ofLiteral W F.labels
-      let pF ← checkFieldsCore (Γ.cons (.transparent (.obj Tel) W F.labels)) F
+      let Tel := Telescope.ofLiteral W F.labels F.valLabels
+      let pF ← checkFieldsCore
+        (Γ.cons (.transparent (.obj Tel)
+          (.obj W F.labels F.valLabels (F.children (.var .here))))) F
       some ⟨.obj Tel, .obj pF.down⟩
   | .cast v e => do
       let cv ← synthValueCore Γ v
@@ -859,7 +1200,7 @@ def checkFieldsCore {s : Sig} (Γ : Ctx (s,x)) (F : Fields (s,x)) :
   | .cons F ℓ t => do
       let pF ← checkFieldsCore Γ F
       let ct ← synthTmCore Γ t
-      if h : ct.type = .sel .here ℓ then
+      if h : ct.type = .sel (Path.var .here) ℓ then
         some ⟨.cons pF.down (by rw [← h]; exact ct.typing)⟩
       else none
 
@@ -884,11 +1225,25 @@ def checkEq {s : Sig} (Γ : Ctx s) (ev : EqCo s) (S T : Ty s) : Bool :=
   decide (synthEq Γ ev = some (S, T))
 
 /-- Synthesise the label a field-presence proof establishes for `y`. -/
-def synthHas {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) : Option Label :=
+def synthHas {s : Sig} (Γ : Ctx s) (ev : Has s) (y : Path s) : Option Label :=
   (synthHasCore Γ ev y).map HasChecked.label
 
-def checkHas {s : Sig} (Γ : Ctx s) (ev : Has s) (y : BVar s .var) (ℓ : Label) : Bool :=
+def checkHas {s : Sig} (Γ : Ctx s) (ev : Has s) (y : Path s) (ℓ : Label) : Bool :=
   decide (synthHas Γ ev y = some ℓ)
+
+/-- Synthesise the type of a stable path. -/
+def synthPath {s : Sig} (Γ : Ctx s) (P : PathCo s) : Option (Ty s) :=
+  (synthPathCore Γ P).map PathChecked.type
+
+def checkPath {s : Sig} (Γ : Ctx s) (P : PathCo s) (T : Ty s) : Bool :=
+  decide (synthPath Γ P = some T)
+
+/-- Synthesise both paths of an alias. -/
+def synthAlias {s : Sig} (Γ : Ctx s) (α : AliasCo s) : Option (Path s × Path s) :=
+  (synthAliasCore Γ α).map fun c => (c.source, c.target)
+
+def checkAlias {s : Sig} (Γ : Ctx s) (α : AliasCo s) (p q : Path s) : Bool :=
+  decide (synthAlias Γ α = some (p, q))
 
 /-- Synthesise the target telescope of a morphism, given its source telescope. -/
 def synthMorphism {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s) :
@@ -1064,8 +1419,9 @@ private def smokeW : Witnesses ([],x) := .cons .nil smokeLabel .top
 /-- An object literal with one witnessed field. -/
 private def smokeObj : Value [] := .obj smokeW (.cons .nil smokeLabel smokeField)
 
-/-- The literal's precise type: one definition entry, one presence entry. -/
-private def smokeObjTy : Ty [] := .obj (Telescope.ofLiteral smokeW [smokeLabel])
+/-- The literal's precise type: one definition entry, one presence entry.  The field
+holds a lambda, so it is not stable and there is no `∋ᵛ` entry (decision 24). -/
+private def smokeObjTy : Ty [] := .obj (Telescope.ofLiteral smokeW [smokeLabel] [])
 
 /-- A context whose only binder declares the field `ℓ`. -/
 private def smokeCtx : Ctx ([],x) := Ctx.nil.cons (.opaque (.obj (.cons .nil (.has smokeLabel))))
@@ -1086,14 +1442,16 @@ private def smokeHas : Has ([],x) :=
 
 /-- A context whose only binder is transparent and declares the field. -/
 private def smokeCtxTrans : Ctx ([],x) :=
-  Ctx.nil.cons (.transparent .top (.cons .nil smokeLabel .top) [smokeLabel])
+  Ctx.nil.cons (.transparent .top (.obj (.cons .nil smokeLabel .top) [smokeLabel] [] .nil))
 
-#guard checkTm smokeCtx (.proj (.var .here) smokeLabel smokeHas) (.sel .here smokeLabel)
-#guard !checkTm smokeCtx (.proj (.var .here) (.trm 1) smokeHas) (.sel .here (.trm 1))
+example : checkTm smokeCtx (.proj (.var .here) smokeLabel smokeHas)
+    (.sel (Path.var .here) smokeLabel) = true := by decide +kernel
+example : checkTm smokeCtx (.proj (.var .here) (.trm 1) smokeHas)
+    (.sel (Path.var .here) (.trm 1)) = false := by decide +kernel
 #guard checkTm smokeCtxTrans (.proj (.var .here) smokeLabel (.field smokeLabel))
-    (.sel .here smokeLabel)
+    (.sel (Path.var .here) smokeLabel)
 #guard !checkTm smokeCtx (.proj (.var .here) smokeLabel (.field smokeLabel))
-    (.sel .here smokeLabel)
+    (.sel (Path.var .here) smokeLabel)
 #guard checkTm smokeCtx (.let (.atom (.var .here)) (.atom (.var (.there .here))))
     (.obj (.cons .nil (.has smokeLabel)))
 

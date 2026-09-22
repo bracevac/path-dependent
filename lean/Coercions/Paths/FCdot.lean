@@ -9,7 +9,9 @@ import Coercions.Paths.FCdot.Erasure
 import Coercions.Paths.FCdot.TypingRename
 import Coercions.Paths.FCdot.Transparency
 import Coercions.Paths.FCdot.TypingSubst
+import Coercions.Paths.FCdot.TypingPathSubst
 import Coercions.Paths.FCdot.Preservation
+import Coercions.Paths.FCdot.FieldCo
 import Coercions.Paths.FCdot.ErasureMetatheory
 import Coercions.Paths.FCdot.Checker
 import Coercions.Paths.FCdot.CheckerCompleteness

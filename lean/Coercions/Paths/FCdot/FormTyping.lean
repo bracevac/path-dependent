@@ -12,7 +12,7 @@ its pieces of evidence are typed and the two endpoints have the shapes the
 form promises.  Shapes are read off `Γ.resolve`, which follows transparent
 definitions to a non-name head.
 
-Typedness has a *mode* `ρ : Option (BVar s .var)`: shapes are read off
+Typedness has a *mode* `ρ : Option (Path s)`: shapes are read off
 `Ctx.resolveAt? ρ`, which is `Γ.resolve` in the plain mode `none` and
 `Γ.resolveAt r` (resolution with the self block opened at `r`) in the mode
 `some r`.  `Γ ⊨ F : S ≤ T` is the plain mode; `Γ ⊨[r] F : S ≤ T`
@@ -46,29 +46,40 @@ namespace FCdot
 def Store.HasField (σ : Store s) (x : BVar s .var) (ℓ : Label) : Prop :=
   ∃ W F, σ.lookup x = .obj W F ∧ (F.get? ℓ).isSome
 
+/-- Field presence at a path, read off the block the store gives that path.
+At a depth-zero path this is `Store.HasField` (`Store.hasField_of_hasFieldP`),
+which is the sentence that says the meaning is unchanged. -/
+def Store.HasFieldP (σ : Store s) (p : Path s) (ℓ : Label) : Prop :=
+  ∃ W Fs vls ch, σ.blockOf p = some (.obj W Fs vls ch) ∧ ℓ ∈ Fs
+
+/-- Stable field presence at a path: the block lists `ℓ` among the fields
+whose body is stable (decision 1). -/
+def Store.HasValFieldP (σ : Store s) (p : Path s) (ℓ : Label) : Prop :=
+  ∃ W Fs vls ch, σ.blockOf p = some (.obj W Fs vls ch) ∧ ℓ ∈ vls
+
 /-! ## Shapes: resolve, and open the self block at a root -/
 
 /-- Open the self block of an object type at a root; other types unchanged.
 Idempotent, and invisible to `foldSelf`/`unfoldSelf`. -/
-def Ty.unfoldAt (r : BVar s .var) : Ty s → Ty s
-  | .obj Tel => .obj ((Tel.substVar r).weaken)
+def Ty.unfoldAt (r : Path s) : Ty s → Ty s
+  | .obj Tel => .obj ((Tel.substPath r).weaken)
   | T => T
 
-@[simp] theorem Ty.unfoldAt_top (r : BVar s .var) : (⊤ : Ty s).unfoldAt r = ⊤ := rfl
-@[simp] theorem Ty.unfoldAt_bot (r : BVar s .var) : (⊥ : Ty s).unfoldAt r = ⊥ := rfl
-@[simp] theorem Ty.unfoldAt_sel (r x : BVar s .var) (ℓ : Label) : (x ∙ ℓ).unfoldAt r = x ∙ ℓ := rfl
-@[simp] theorem Ty.unfoldAt_pi (r : BVar s .var) (S : Ty s) (T : Ty (s,x)) :
+@[simp] theorem Ty.unfoldAt_top (r : Path s) : (⊤ : Ty s).unfoldAt r = ⊤ := rfl
+@[simp] theorem Ty.unfoldAt_bot (r : Path s) : (⊥ : Ty s).unfoldAt r = ⊥ := rfl
+@[simp] theorem Ty.unfoldAt_sel (r p : Path s) (ℓ : Label) : (p ∙ ℓ).unfoldAt r = p ∙ ℓ := rfl
+@[simp] theorem Ty.unfoldAt_pi (r : Path s) (S : Ty s) (T : Ty (s,x)) :
     (Π(S) T).unfoldAt r = Π(S) T := rfl
-@[simp] theorem Ty.unfoldAt_obj (r : BVar s .var) (Tel : Telescope (s,x)) :
-    (μ Tel).unfoldAt r = μ ((Tel⟦r⟧)↑) := rfl
+@[simp] theorem Ty.unfoldAt_obj (r : Path s) (Tel : Telescope (s,x)) :
+    (μ Tel).unfoldAt r = μ ((Tel.substPath r)↑) := rfl
 
 /-- The shape of a type at a root: its resolution with the self block opened
 at the root.  The chain of casts of an atom is typed at the atom's root, so
 that folding and unfolding the self block are invisible. -/
-def Ctx.resolveAt (Γ : Ctx s) (r : BVar s .var) (T : Ty s) : Ty s := (Γ.resolve T).unfoldAt r
+def Ctx.resolveAt (Γ : Ctx s) (r : Path s) (T : Ty s) : Ty s := (Γ.resolve T).unfoldAt r
 
 /-- The shape at a root is the plain shape, opened. -/
-theorem Ctx.resolveAt_of_resolve {Γ : Ctx s} {S U : Ty s} (r : BVar s .var)
+theorem Ctx.resolveAt_of_resolve {Γ : Ctx s} {S U : Ty s} (r : Path s)
     (h : Γ.resolve S = U) : Γ.resolveAt r S = U.unfoldAt r := by rw [Ctx.resolveAt, h]
 
 /-! ### Modes
@@ -77,44 +88,44 @@ Typedness of a form is read in one of two *modes*: plainly (`none`), or at a
 root (`some r`), where the self block of an object shape is opened at `r`. -/
 
 /-- Shapes in a mode: plain resolution, or resolution opened at a root. -/
-def Ctx.resolveAt? (Γ : Ctx s) (ρ : Option (BVar s .var)) (T : Ty s) : Ty s :=
+def Ctx.resolveAt? (Γ : Ctx s) (ρ : Option (Path s)) (T : Ty s) : Ty s :=
   match ρ with
   | none => Γ.resolve T
   | some r => Γ.resolveAt r T
 
 /-- A telescope opened in a mode. -/
-def Telescope.openAt? (ρ : Option (BVar s .var)) (Tel : Telescope (s,x)) : Telescope (s,x) :=
+def Telescope.openAt? (ρ : Option (Path s)) (Tel : Telescope (s,x)) : Telescope (s,x) :=
   match ρ with
   | none => Tel
-  | some r => (Tel⟦r⟧)↑
+  | some r => (Tel.substPath r)↑
 
 @[simp] theorem Ctx.resolveAt?_none (Γ : Ctx s) (T : Ty s) : Γ.resolveAt? none T = Γ.resolve T := rfl
-@[simp] theorem Ctx.resolveAt?_some (Γ : Ctx s) (r : BVar s .var) (T : Ty s) :
+@[simp] theorem Ctx.resolveAt?_some (Γ : Ctx s) (r : Path s) (T : Ty s) :
     Γ.resolveAt? (some r) T = Γ.resolveAt r T := rfl
 @[simp] theorem Telescope.openAt?_none (Tel : Telescope (s,x)) :
     Telescope.openAt? none Tel = Tel := rfl
-@[simp] theorem Telescope.openAt?_some (r : BVar s .var) (Tel : Telescope (s,x)) :
-    Telescope.openAt? (some r) Tel = (Tel⟦r⟧)↑ := rfl
+@[simp] theorem Telescope.openAt?_some (r : Path s) (Tel : Telescope (s,x)) :
+    Telescope.openAt? (some r) Tel = (Tel.substPath r)↑ := rfl
 
-@[simp] theorem Ctx.resolveAt?_obj (Γ : Ctx s) (ρ : Option (BVar s .var)) (Tel : Telescope (s,x)) :
+@[simp] theorem Ctx.resolveAt?_obj (Γ : Ctx s) (ρ : Option (Path s)) (Tel : Telescope (s,x)) :
     Γ.resolveAt? ρ (μ Tel) = μ (Telescope.openAt? ρ Tel) := by
   cases ρ <;> simp [Ctx.resolveAt?, Ctx.resolveAt, Telescope.openAt?]
 
-@[simp] theorem Ctx.resolveAt?_bot (Γ : Ctx s) (ρ : Option (BVar s .var)) :
+@[simp] theorem Ctx.resolveAt?_bot (Γ : Ctx s) (ρ : Option (Path s)) :
     Γ.resolveAt? ρ (⊥ : Ty s) = ⊥ := by cases ρ <;> simp [Ctx.resolveAt?, Ctx.resolveAt]
 
-@[simp] theorem Ctx.resolveAt?_pi (Γ : Ctx s) (ρ : Option (BVar s .var)) (S : Ty s) (T : Ty (s,x)) :
+@[simp] theorem Ctx.resolveAt?_pi (Γ : Ctx s) (ρ : Option (Path s)) (S : Ty s) (T : Ty (s,x)) :
     Γ.resolveAt? ρ (Π(S) T) = Π(S) T := by cases ρ <;> simp [Ctx.resolveAt?, Ctx.resolveAt]
 
 /-- Opening a telescope in a mode is idempotent. -/
-@[simp] theorem Telescope.openAt?_idem (ρ : Option (BVar s .var)) (Tel : Telescope (s,x)) :
+@[simp] theorem Telescope.openAt?_idem (ρ : Option (Path s)) (Tel : Telescope (s,x)) :
     Telescope.openAt? ρ (Telescope.openAt? ρ Tel) = Telescope.openAt? ρ Tel := by
   cases ρ with
   | none => rfl
-  | some r => simp [Telescope.openAt?]
+  | some r => simp [Telescope.openAt?, Telescope.weaken_substPath]
 
 /-- A shape read in a mode is already open in that mode. -/
-theorem Ctx.resolveAt?_opened {Γ : Ctx s} {ρ : Option (BVar s .var)} {S : Ty s}
+theorem Ctx.resolveAt?_opened {Γ : Ctx s} {ρ : Option (Path s)} {S : Ty s}
     {Tel : Telescope (s,x)} (h : Γ.resolveAt? ρ S = μ Tel) : Telescope.openAt? ρ Tel = Tel := by
   cases ρ with
   | none => rfl
@@ -125,13 +136,13 @@ theorem Ctx.resolveAt?_opened {Γ : Ctx s} {ρ : Option (BVar s .var)} {S : Ty s
           rw [hres] at h
           simp only [Ty.unfoldAt_obj] at h
           obtain rfl := Ty.obj.inj h
-          simp [Telescope.openAt?]
+          simp [Telescope.openAt?, Telescope.weaken_substPath]
       | bot => rw [hres] at h; simp [Ty.unfoldAt] at h
       | sel x l => rw [hres] at h; simp [Ty.unfoldAt] at h
       | pi S₀ T₀ => rw [hres] at h; simp [Ty.unfoldAt] at h
 
 /-- A shape read in a mode: the resolved object type is stable. -/
-theorem Ctx.resolveAt?_obj_self {Γ : Ctx s} {ρ : Option (BVar s .var)} {S : Ty s}
+theorem Ctx.resolveAt?_obj_self {Γ : Ctx s} {ρ : Option (Path s)} {S : Ty s}
     {Tel : Telescope (s,x)} (h : Γ.resolveAt? ρ S = μ Tel) : Γ.resolveAt? ρ (μ Tel) = μ Tel := by
   rw [Ctx.resolveAt?_obj, Ctx.resolveAt?_opened h]
 
@@ -158,7 +169,7 @@ mutual
 with shapes read off `Γ.resolveAt? ρ`.  Object forms are between closed
 telescopes. -/
 inductive FormTyped {s : Sig} (Γ : Ctx s) :
-    Option (BVar s .var) → Form s → Ty s → Ty s → Prop where
+    Option (Path s) → Form s → Ty s → Ty s → Prop where
   | bot : Γ.resolveAt? ρ S = ⊥ → FormTyped Γ ρ .bot S T
   | top : Γ.resolveAt? ρ T = ⊤ → FormTyped Γ ρ .top S T
   | id : Γ.resolveAt? ρ S = Γ.resolveAt? ρ T → FormTyped Γ ρ .id S T
@@ -176,10 +187,23 @@ inductive FormTyped {s : Sig} (Γ : Ctx s) :
       FormTyped Γ ρ (.into Es) S T
 
 /-- A template side as a form: `id` leaves the endpoint unchanged; any other
-form is a closed coercion between weakened closed types. -/
+form is a closed coercion between weakened closed types.  The two constant
+sides of `Side` leave one endpoint free, and the form is typed at every type
+that endpoint can take: `bot` proves every target out of its closed source,
+`top` reads nothing of its source and lands in a closed target. -/
 inductive SideTyped {s : Sig} (Γ : Ctx s) : Form s → Ty (s,x) → Ty (s,x) → Prop where
   | id : SideTyped Γ .id X X
   | closed : FormTyped Γ none F A B → SideTyped Γ F A↑ B↑
+  /-- The shape of `Side.bot`: the target is free. -/
+  | bot {F : Form s} {A : Ty s} {X : Ty (s,x)} :
+      (∀ T : Ty s, FormTyped Γ none F A T) → SideTyped Γ F A↑ X
+  /-- The shape of `Side.top`: the source is free. -/
+  | top {F : Form s} {B : Ty s} {X : Ty (s,x)} :
+      (∀ S : Ty s, FormTyped Γ none F S B) → SideTyped Γ F X B↑
+  /-- Both endpoints free, which is what a `bot` side after a `top` side
+      composes to. -/
+  | free {F : Form s} {X Y : Ty (s,x)} :
+      (∀ S T : Ty s, FormTyped Γ none F S T) → SideTyped Γ F X Y
 
 /-- `EntriesTyped Γ ρ Tel₁ Es Tel₂`: each entry of `Es` proves the
 corresponding proposition of the target `Tel₂` from a proposition of the
@@ -188,7 +212,7 @@ equality, an equality from a source equality, a presence from a source
 presence, a bound by a closed coercion out of the source object type or by
 copying a source bound. -/
 inductive EntriesTyped {s : Sig} (Γ : Ctx s) :
-    Option (BVar s .var) → Telescope (s,x) → Entries s → Telescope (s,x) → Prop where
+    Option (Path s) → Telescope (s,x) → Entries s → Telescope (s,x) → Prop where
   | nil : EntriesTyped Γ ρ Tel₁ .nil .nil
   | le : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁.HoleAt h X Y →
       SideTyped Γ pre S X → SideTyped Γ post Y T →
@@ -204,12 +228,26 @@ inductive EntriesTyped {s : Sig} (Γ : Ctx s) :
   /-- The identity template on a source bound, whatever its type. -/
   | bndId : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁ ∋ (j ↦ ⊑ X) →
       EntriesTyped Γ ρ Tel₁ (Es ▹ .bnd (.bnd j .id)) (Tel₂ ▹ ⊑ X)
+  /-- A stable presence, inherited by index, as a presence is. -/
+  | hasVal : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁ ∋ (j ↦ ∋ᵛ ℓ) →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .hasVal j) (Tel₂ ▹ ∋ᵛ ℓ)
+  /-- A presence read off a source stable presence, by index. -/
+  | hasOfVal : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁ ∋ (j ↦ ∋ᵛ ℓ) →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .has j) (Tel₂ ▹ ∋ ℓ)
+  /-- An alias, inherited by index. -/
+  | alias : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁ ∋ (j ↦ ≈ q) →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .alias j) (Tel₂ ▹ ≈ q)
+  /-- A constant alias: the entry names the receiver `p` it is sound at, the
+      mode is read at that receiver, and the alias is an identity
+      (decision 24). -/
+  | aliasTo : EntriesTyped Γ ρ Tel₁ Es Tel₂ → ρ = some p → p = q →
+      EntriesTyped Γ ρ Tel₁ (Es ▹ .aliasTo p q) (Tel₂ ▹ ≈ (q.weaken))
 
 /-- `EntryTyped Γ ρ Tel₁ E P`: a single entry proving `P` from the
 propositions of `Tel₁`.  Routes never nest and never end in a general bound
 entry, so this covers exactly the entries a route can end in. -/
 inductive EntryTyped {s : Sig} (Γ : Ctx s) :
-    Option (BVar s .var) → Telescope (s,x) → Entry s → Proposition (s,x) → Prop where
+    Option (Path s) → Telescope (s,x) → Entry s → Proposition (s,x) → Prop where
   | le : Telescope.HoleAt Tel₁ h X Y → SideTyped Γ pre S X → SideTyped Γ post Y T →
       EntryTyped Γ ρ Tel₁ (.le pre h post) (S ⊑ T)
   | eq : Tel₁ ∋ (j ↦ X ≐ Y) → EntryTyped Γ ρ Tel₁ (.eq j false) (X ≐ Y)
@@ -218,17 +256,28 @@ inductive EntryTyped {s : Sig} (Γ : Ctx s) :
   | bnd : FormTyped Γ ρ (.bnd j .id) (μ Tel₁) T →
       EntryTyped Γ ρ Tel₁ (.bnd (.bnd j .id)) (⊑ T↑)
   | bndId : Tel₁ ∋ (j ↦ ⊑ X) → EntryTyped Γ ρ Tel₁ (.bnd (.bnd j .id)) (⊑ X)
+  | hasVal : Tel₁ ∋ (j ↦ ∋ᵛ ℓ) → EntryTyped Γ ρ Tel₁ (.hasVal j) (∋ᵛ ℓ)
+  | hasOfVal : Tel₁ ∋ (j ↦ ∋ᵛ ℓ) → EntryTyped Γ ρ Tel₁ (.has j) (∋ ℓ)
+  | alias : Tel₁ ∋ (j ↦ ≈ q) → EntryTyped Γ ρ Tel₁ (.alias j) (≈ q)
+  /-- The constant alias, read at its own receiver, with the identity
+      condition of P1.6. -/
+  | aliasTo : ρ = some p → p = q →
+      EntryTyped Γ ρ Tel₁ (.aliasTo p q) (≈ (q.weaken))
 
 /-- `BndsTyped Γ ρ S Es Tel`: the entries of a coercion from `S` into the
 object type `μ Tel` that do not consult the view of the source. -/
 inductive BndsTyped {s : Sig} (Γ : Ctx s) :
-    Option (BVar s .var) → Ty s → Entries s → Telescope (s,x) → Prop where
+    Option (Path s) → Ty s → Entries s → Telescope (s,x) → Prop where
   | nil : BndsTyped Γ ρ S .nil .nil
   | cons : BndsTyped Γ ρ S Es Tel → FormTyped Γ ρ F S T →
       BndsTyped Γ ρ S (Es ▹ .bnd F) (Tel ▹ ⊑ T↑)
   | thru : BndsTyped Γ ρ S Es Tel → FormTyped Γ ρ H S M →
       Γ.resolveAt? ρ M = μ TelM → EntryTyped Γ ρ TelM E P →
       BndsTyped Γ ρ S (Es ▹ .thru H E) (Tel ▹ P)
+  /-- The chain form of a `sngl` step: a constant alias entry, which reads
+      nothing of the source and is read at its own receiver. -/
+  | aliasTo : BndsTyped Γ ρ S Es Tel → ρ = some p → p = q →
+      BndsTyped Γ ρ S (Es ▹ .aliasTo p q) (Tel ▹ ≈ (q.weaken))
 
 end
 
@@ -243,7 +292,7 @@ scoped notation:40 Γ:51 " ⊨[" r "] " F:51 " : " S:51 " ≤ " T:51 => FormType
 scoped notation:40 Γ:51 " ⊨ " Es:51 " : " Tel₁:51 " ⇒ " Tel₂:51 => EntriesTyped Γ none Tel₁ Es Tel₂
 
 /-- The chain of casts of an atom rooted at `r` is a form typed at the root. -/
-abbrev ChainTyped (Γ : Ctx s) (r : BVar s .var) (F : Form s) (S T : Ty s) : Prop :=
+abbrev ChainTyped (Γ : Ctx s) (r : Path s) (F : Form s) (S T : Ty s) : Prop :=
   FormTyped Γ (some r) F S T
 
 /-! ## Instantiation and weakening of propositions and telescopes -/
@@ -268,19 +317,30 @@ scoped notation:40 Γ:51 " ⊨[" r ", " σ "] " V:51 " : " Tel:51 => ViewTyped �
 
 /-- `Γ ⊨[r, σ] V : Tel`: over the store `σ`, the view `V` of an atom rooted
 at `r` is typed against `Tel` instantiated at `r`. -/
-inductive ViewTyped {s : Sig} (Γ : Ctx s) (r : BVar s .var) (σ : Store s) :
+inductive ViewTyped {s : Sig} (Γ : Ctx s) (r : Path s) (σ : Store s) :
     View s → Telescope (s,x) → Prop where
   | nil : Γ ⊨[r, σ] .nil : .nil
-  | le {S T : Ty (s,x)} : Γ ⊨[r, σ] V : Tel → Γ ⊨ F : S⟦r⟧ ≤ T⟦r⟧ →
+  | le {S T : Ty (s,x)} : Γ ⊨[r, σ] V : Tel → Γ ⊨ F : S.substPath r ≤ T.substPath r →
       Γ ⊨[r, σ] V ▹ .le F : Tel ▹ S ⊑ T
-  | eq {S T : Ty (s,x)} : Γ ⊨[r, σ] V : Tel → Γ.resolve (S⟦r⟧) = Γ.resolve (T⟦r⟧) →
+  | eq {S T : Ty (s,x)} : Γ ⊨[r, σ] V : Tel →
+      Γ.resolve (S.substPath r) = Γ.resolve (T.substPath r) →
       Γ ⊨[r, σ] V ▹ .eq : Tel ▹ S ≐ T
-  | has : Γ ⊨[r, σ] V : Tel → σ.HasField r ℓ →
+  | has : Γ ⊨[r, σ] V : Tel → σ.HasFieldP r ℓ →
       Γ ⊨[r, σ] V ▹ .has r ℓ : Tel ▹ ∋ ℓ
-  /-- A bound of the atom's type, instantiated at the root: a form typed from
-      the root's type at the root. -/
+  /-- A stable presence: the block at the root lists `ℓ` among its stable
+      fields, which is what one field step of a `PathCo` consumes. -/
+  | hasVal : Γ ⊨[r, σ] V : Tel → σ.HasValFieldP r ℓ →
+      Γ ⊨[r, σ] V ▹ .hasVal ℓ : Tel ▹ ∋ᵛ ℓ
+  /-- An alias: the root and the named path are one path (decision 24).
+      This is the condition `AliasCo.HasType.member` consumes. -/
+  | alias {q : Path (s,x)} : Γ ⊨[r, σ] V : Tel →
+      r = q.substPath r →
+      Γ ⊨[r, σ] V ▹ .alias (q.substPath r) : Tel ▹ ≈ q
+  /-- A bound of the root's type, instantiated at the root: a form typed at
+      the root from the type the root's chain starts at, which is the node's
+      type (decision 24). -/
   | bnd {X : Ty (s,x)} : Γ ⊨[r, σ] V : Tel →
-      FormTyped Γ (some r) G (Γ.lookupTy r) (X⟦r⟧) →
+      FormTyped Γ (some r) G (Γ.nodeTy r) (X.substPath r) →
       Γ ⊨[r, σ] V ▹ .bnd G : Tel ▹ ⊑ X
 
 open Lean PrettyPrinter in
@@ -352,7 +412,7 @@ theorem View.get?_eq_some_iff_At {V : View s} {i : Nat} {P : PropForm s} :
 /-! ## Entries of typed views -/
 
 section
-variable {σ : Store s} {Γ : Ctx s} {r : BVar s .var}
+variable {σ : Store s} {Γ : Ctx s} {r : Path s}
 
 theorem ViewTyped.length {V : View s} {Tel : Telescope (s,x)}
     (hV : Γ ⊨[r, σ] V : Tel) : V.length = Tel.length := by
@@ -361,13 +421,15 @@ theorem ViewTyped.length {V : View s} {Tel : Telescope (s,x)}
   | le _ _ ih => simp [View.length, Telescope.length, ih]
   | eq _ _ ih => simp [View.length, Telescope.length, ih]
   | has _ _ ih => simp [View.length, Telescope.length, ih]
+  | hasVal _ _ ih => simp [View.length, Telescope.length, ih]
+  | alias _ _ ih => simp [View.length, Telescope.length, ih]
   | bnd _ _ ih => simp [View.length, Telescope.length, ih]
 
 /-- The entry of a typed view at an inclusion proposition is a typed coercion
 form. -/
 theorem ViewTyped.le_entry {V : View s} {Tel : Telescope (s,x)}
     (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {S' T' : Ty (s,x)} (hAt : Tel ∋ (i ↦ S' ⊑ T')) :
-    ∃ G, V ∋ (i ↦ .le G) ∧ Γ ⊨ G : S'⟦r⟧ ≤ T'⟦r⟧ := by
+    ∃ G, V ∋ (i ↦ .le G) ∧ Γ ⊨ G : S'.substPath r ≤ T'.substPath r := by
   induction hV with
   | nil => cases hAt
   | le hV' hF ih =>
@@ -380,6 +442,12 @@ theorem ViewTyped.le_entry {V : View s} {Tel : Telescope (s,x)}
   | has _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+  | hasVal _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+  | alias _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
   | bnd _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
@@ -388,7 +456,7 @@ theorem ViewTyped.le_entry {V : View s} {Tel : Telescope (s,x)}
 sides resolve equally. -/
 theorem ViewTyped.eq_entry {V : View s} {Tel : Telescope (s,x)}
     (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {S' T' : Ty (s,x)} (hAt : Tel ∋ (i ↦ S' ≐ T')) :
-    V ∋ (i ↦ .eq) ∧ Γ.resolve (S'⟦r⟧) = Γ.resolve (T'⟦r⟧) := by
+    V ∋ (i ↦ .eq) ∧ Γ.resolve (S'.substPath r) = Γ.resolve (T'.substPath r) := by
   induction hV with
   | nil => cases hAt
   | le _ _ ih =>
@@ -401,6 +469,12 @@ theorem ViewTyped.eq_entry {V : View s} {Tel : Telescope (s,x)}
   | has _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | hasVal _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
+  | alias _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
   | bnd _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
@@ -409,7 +483,7 @@ theorem ViewTyped.eq_entry {V : View s} {Tel : Telescope (s,x)}
 field the object at the root has. -/
 theorem ViewTyped.has_entry {V : View s} {Tel : Telescope (s,x)}
     (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {ℓ : Label} (hAt : Tel ∋ (i ↦ ∋ ℓ)) :
-    V ∋ (i ↦ .has r ℓ) ∧ σ.HasField r ℓ := by
+    V ∋ (i ↦ .has r ℓ) ∧ σ.HasFieldP r ℓ := by
   induction hV with
   | nil => cases hAt
   | le _ _ ih =>
@@ -422,15 +496,75 @@ theorem ViewTyped.has_entry {V : View s} {Tel : Telescope (s,x)}
       cases hAt with
       | here => exact ⟨by rw [← hV'.length]; exact .here, hH⟩
       | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | hasVal _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | alias _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
   | bnd _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
 
-/-- The entry of a typed view at a bound is a form from the root's type to
+/-- The entry of a typed view at a stable presence names the field, and the
+block at the root lists it among its stable fields. -/
+theorem ViewTyped.hasVal_entry {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {ℓ : Label} (hAt : Tel ∋ (i ↦ ∋ᵛ ℓ)) :
+    V ∋ (i ↦ .hasVal ℓ) ∧ σ.HasValFieldP r ℓ := by
+  induction hV with
+  | nil => cases hAt
+  | le _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | eq _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | has _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | hasVal hV' hH ih =>
+      cases hAt with
+      | here => exact ⟨by rw [← hV'.length]; exact .here, hH⟩
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | alias _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | bnd _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+
+/-- The entry of a typed view at an alias names the path, and the root is
+that path.  This is what T2 consumes. -/
+theorem ViewTyped.alias_entry {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {q : Path (s,x)} (hAt : Tel ∋ (i ↦ ≈ q)) :
+    V ∋ (i ↦ .alias (q.substPath r)) ∧ r = q.substPath r := by
+  induction hV with
+  | nil => cases hAt
+  | le _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | eq _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | has _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | hasVal _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | alias hV' hH ih =>
+      cases hAt with
+      | here => exact ⟨by rw [← hV'.length]; exact .here, hH⟩
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+  | bnd _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
+
+/-- The entry of a typed view at a bound is a form from the node's type to
 the bound's type, instantiated at the root. -/
 theorem ViewTyped.bnd_entry {V : View s} {Tel : Telescope (s,x)}
     (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {X : Ty (s,x)} (hAt : Tel ∋ (i ↦ ⊑ X)) :
-    ∃ G, V ∋ (i ↦ .bnd G) ∧ FormTyped Γ (some r) G (Γ.lookupTy r) (X⟦r⟧) := by
+    ∃ G, V ∋ (i ↦ .bnd G) ∧ FormTyped Γ (some r) G (Γ.nodeTy r) (X.substPath r) := by
   induction hV with
   | nil => cases hAt
   | le _ _ ih =>
@@ -440,6 +574,12 @@ theorem ViewTyped.bnd_entry {V : View s} {Tel : Telescope (s,x)}
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
   | has _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+  | hasVal _ _ ih =>
+      cases hAt with
+      | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
+  | alias _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
   | bnd hV' hG ih =>
@@ -455,56 +595,82 @@ theorem ViewTyped.get?_isSome {V : View s} {Tel : Telescope (s,x)}
   | le S' T' => obtain ⟨G, hG, _⟩ := hV.le_entry h; exact ⟨_, hG.get?⟩
   | eq S' T' => exact ⟨_, (hV.eq_entry h).1.get?⟩
   | has ℓ => exact ⟨_, (hV.has_entry h).1.get?⟩
+  | hasVal ℓ => exact ⟨_, (hV.hasVal_entry h).1.get?⟩
+  | alias q => exact ⟨_, (hV.alias_entry h).1.get?⟩
   | bnd X => obtain ⟨G, hG, _⟩ := hV.bnd_entry h; exact ⟨_, hG.get?⟩
 
 /-! ## Views are stable under folding and unfolding the self block -/
 
 theorem ViewTyped_unfold {V : View s} {Tel : Telescope (s,x)}
-    (h : Γ ⊨[r, σ] V : Tel) : Γ ⊨[r, σ] V : ((Tel⟦r⟧)↑) := by
+    (h : Γ ⊨[r, σ] V : Tel) : Γ ⊨[r, σ] V : ((Tel.substPath r)↑) := by
   induction h with
   | nil => exact .nil
   | le _ hF ih =>
-      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_le,
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_le,
         Proposition.weaken_le]
-      exact .le ih (by rwa [Ty.weaken_substVar, Ty.weaken_substVar])
+      exact .le ih (by rwa [Ty.weaken_substPath, Ty.weaken_substPath])
   | eq _ hE ih =>
-      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eq,
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_eq,
         Proposition.weaken_eq]
-      exact .eq ih (by rwa [Ty.weaken_substVar, Ty.weaken_substVar])
+      exact .eq ih (by rwa [Ty.weaken_substPath, Ty.weaken_substPath])
   | has _ hH ih =>
-      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_has,
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_has,
         Proposition.weaken_has]
       exact .has ih hH
+  | hasVal _ hH ih =>
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_hasVal,
+        Proposition.weaken_hasVal]
+      exact .hasVal ih hH
+  | @alias _ Tel₀ q _ hA ih =>
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_alias,
+        Proposition.weaken_alias]
+      have hgoal := ViewTyped.alias (q := (q.substPath r).weaken) ih
+        (by rw [Path.weaken_substPath]; exact hA)
+      rwa [Path.weaken_substPath] at hgoal
   | bnd _ hG ih =>
-      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_bnd,
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_bnd,
         Proposition.weaken_bnd]
-      exact .bnd ih (by rwa [Ty.weaken_substVar])
+      exact .bnd ih (by rwa [Ty.weaken_substPath])
 
 theorem ViewTyped_fold : ∀ {V : View s} {Tel : Telescope (s,x)},
-    Γ ⊨[r, σ] V : ((Tel⟦r⟧)↑) → Γ ⊨[r, σ] V : Tel
+    Γ ⊨[r, σ] V : ((Tel.substPath r)↑) → Γ ⊨[r, σ] V : Tel
   | _, .nil, h => by cases h; exact .nil
   | _, .cons Tel (.le S T), h => by
-      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_le,
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_le,
         Proposition.weaken_le] at h
       cases h with
       | le hV hF =>
-          exact .le (ViewTyped_fold hV) (by rwa [Ty.weaken_substVar, Ty.weaken_substVar] at hF)
+          exact .le (ViewTyped_fold hV) (by rwa [Ty.weaken_substPath, Ty.weaken_substPath] at hF)
   | _, .cons Tel (.eq S T), h => by
-      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eq,
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_eq,
         Proposition.weaken_eq] at h
       cases h with
       | eq hV hE =>
-          exact .eq (ViewTyped_fold hV) (by rwa [Ty.weaken_substVar, Ty.weaken_substVar] at hE)
+          exact .eq (ViewTyped_fold hV) (by rwa [Ty.weaken_substPath, Ty.weaken_substPath] at hE)
   | _, .cons Tel (.has ℓ), h => by
-      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_has,
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_has,
         Proposition.weaken_has] at h
       cases h with
       | has hV hH => exact .has (ViewTyped_fold hV) hH
+  | _, .cons Tel (.hasVal ℓ), h => by
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_hasVal,
+        Proposition.weaken_hasVal] at h
+      cases h with
+      | hasVal hV hH => exact .hasVal (ViewTyped_fold hV) hH
+  | _, .cons Tel (.alias q), h => by
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_alias,
+        Proposition.weaken_alias] at h
+      cases h with
+      | @alias _ _ q' hV hA =>
+          have hA' : r = q.substPath r := by
+            rwa [Path.weaken_substPath] at hA
+          rw [Path.weaken_substPath]
+          exact ViewTyped.alias (q := q) (ViewTyped_fold hV) hA'
   | _, .cons Tel (.bnd X), h => by
-      simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_bnd,
+      simp only [Telescope.substPath_cons, Telescope.weaken_cons, Proposition.substPath_bnd,
         Proposition.weaken_bnd] at h
       cases h with
-      | bnd hV hG => exact .bnd (ViewTyped_fold hV) (by rwa [Ty.weaken_substVar] at hG)
+      | bnd hV hG => exact .bnd (ViewTyped_fold hV) (by rwa [Ty.weaken_substPath] at hG)
 
 end
 
@@ -529,17 +695,26 @@ theorem Witnesses.eqForms_noBnd : ∀ W : Witnesses (s,x), W.eqForms.NoBnd
       rw [Witnesses.eqForms]
       exact (Witnesses.eqForms_noBnd W).cons (by intro G h; cases h)
 
-theorem Fields.hasForms_noBnd (x : BVar s .var) :
-    ∀ (ls : List Label) (V : View s), V.NoBnd → (Fields.hasForms x V ls).NoBnd
+theorem Fields.hasForms_noBnd (p : Path s) :
+    ∀ (ls : List Label) (V : View s), V.NoBnd → (Fields.hasForms p V ls).NoBnd
   | [], V, hV => hV
   | _ :: ls, V, hV => by
       rw [Fields.hasForms]
-      exact Fields.hasForms_noBnd x ls _ (hV.cons (by intro G h; cases h))
+      exact Fields.hasForms_noBnd p ls _ (hV.cons (by intro G h; cases h))
+
+theorem Fields.hasValForms_noBnd :
+    ∀ (ls : List Label) (V : View s), V.NoBnd → (Fields.hasValForms V ls).NoBnd
+  | [], V, hV => hV
+  | _ :: ls, V, hV => by
+      rw [Fields.hasValForms]
+      exact Fields.hasValForms_noBnd ls _ (hV.cons (by intro G h; cases h))
 
 /-- A literal's precise view has only equality and presence entries. -/
-theorem Value.precView_noBnd (x : BVar s .var) (v : Value s) : (v.precView x).NoBnd := by
+theorem Value.precView_noBnd (p : Path s) (v : Value s) : (v.precView p).NoBnd := by
   cases v with
-  | obj W F => exact Fields.hasForms_noBnd x F.labels _ (Witnesses.eqForms_noBnd W)
+  | obj W F =>
+      exact Fields.hasValForms_noBnd F.valLabels _
+        (Fields.hasForms_noBnd p F.labels _ (Witnesses.eqForms_noBnd W))
   | lam S t => exact View.NoBnd.nil
   | cast v e => exact View.NoBnd.nil
 

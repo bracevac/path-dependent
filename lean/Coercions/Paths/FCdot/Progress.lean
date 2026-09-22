@@ -7,9 +7,13 @@ namespace Paths
 
 A typed state is final or steps.  The two places where typing has to say
 something about the store are application and projection: a function atom
-is rooted at a closure (`closed_pi_inversion`), and presence evidence names
-a field that the object at the root actually has (`has_canon`).  Both are
-consequences of the canonical-forms theorem.
+is rooted at a closure (`closed_pi_inversion_of`), and presence evidence
+names a field that the object at the root actually has (`has_canon_of`).
+Both are consequences of the canonical-forms theorem, and like it the `_of`
+statements take the field forms of the store (`Store.FieldForms`,
+`FieldFormsHold`).  Every typed store has them (`fieldFormsHold`), so the
+base's `closed_pi_inversion`, `closed_has_field`, `progress` and `not_stuck`
+are one-line corollaries, each stated beside its twin.
 -/
 
 namespace FCdot
@@ -18,9 +22,9 @@ section
 variable {σ : Store s} {Γ : Ctx s}
 
 /-- A function atom is rooted at a closure. -/
-theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
-    (h : Γ ⊢ₐ a : .pi S T) : ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
-  obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
+theorem closed_pi_inversion_of (hσ : ⊢ σ : Γ) (hF : σ.FieldForms Γ) {a : Atom s} {S : Ty s}
+    {T : Ty (s,x)} (h : Γ ⊢ₐ a : .pi S T) : ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
+  obtain ⟨n, a', F, hF₁, hFt⟩ := closedAtomForm_typed_of hσ hF h
   have hlk : ∃ S₀ T₀, Γ.lookupTy a.root = .pi S₀ T₀ := by
     rcases hσ.lookupTy_shape a.root with hp | ⟨Tel, ho⟩
     · exact hp
@@ -34,9 +38,9 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
       | obj _ ho' _ => simp [Ctx.resolveAt] at ho'
       | into ho' _ => simp [Ctx.resolveAt] at ho'
       | bnd hS hAt _ =>
-          obtain ⟨hrv, _⟩ := (precView_typed hσ a.root).opened
+          obtain ⟨hrv, _⟩ := (hσ.precView_typed a.root).opened
           obtain ⟨G, hG, _⟩ := (hrv _ hS).bnd_entry hAt
-          exact Value.precView_noBnd a.root _ _ _ hG
+          exact Value.precView_noBnd _ _ _ _ hG
   obtain ⟨S₀, T₀, hlk⟩ := hlk
   have hv := hσ.lookup a.root
   have hlit := hσ.lookup_isLiteral a.root
@@ -48,21 +52,35 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty 
       rw [hlk] at hT; simp at hT
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
+/-- A function atom is rooted at a closure. -/
+theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
+    (h : Γ ⊢ₐ a : .pi S T) : ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ :=
+  closed_pi_inversion_of hσ hσ.fieldForms h
+
 /-- Presence evidence at a location names a field of the object stored there. -/
-theorem closed_has_field (hσ : ⊢ σ : Γ) {h : Has s} {x : BVar s .var} {ℓ : Label}
-    (hh : Has.HasType Γ h x ℓ) : ∃ W F t, σ.lookup x = .obj W F ∧ F.get? ℓ = some t := by
-  obtain ⟨_, _, W, F, hl, hget⟩ := has_canon hσ hh
+theorem closed_has_field_of (hσ : ⊢ σ : Γ) (hF : σ.FieldForms Γ) {h : Has s}
+    {x : BVar s .var} {ℓ : Label} (hh : Γ ⊢ h : (Path.var x) ∋ ℓ) :
+    ∃ W F t, σ.lookup x = .obj W F ∧ F.get? ℓ = some t := by
+  obtain ⟨_, _, W, F, hl, hget⟩ := has_canon_of hσ hF hh
   obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp hget
   exact ⟨W, F, t, hl, ht⟩
 
+/-- Presence evidence at a location names a field of the object stored there. -/
+theorem closed_has_field (hσ : ⊢ σ : Γ) {h : Has s} {x : BVar s .var} {ℓ : Label}
+    (hh : Γ ⊢ h : (Path.var x) ∋ ℓ) : ∃ W F t, σ.lookup x = .obj W F ∧ F.get? ℓ = some t :=
+  closed_has_field_of hσ hσ.fieldForms hh
+
 end
 
-/-- A typed state is final or steps. -/
-theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
+/-- A typed state is final or steps, when typed stores have their field
+forms. -/
+theorem progress_of (hFF : FieldFormsHold) {s : Sig} {st : State s} {U : Ty s}
+    (hT : State.Typed st U) :
     st.Final ∨ ∃ (s' : Sig) (st' : State s'), Step st st' := by
   obtain ⟨Γ, T, hσ, ht, hK⟩ := hT
   obtain ⟨σ, K, t⟩ := st
   simp only at hσ ht hK
+  have hF := hFF σ Γ hσ
   cases t with
   | atom a =>
       cases K with
@@ -81,29 +99,38 @@ theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
   | app a b =>
       cases ht with
       | app ha hb =>
-          obtain ⟨S₀, t₀, hl⟩ := closed_pi_inversion hσ ha
+          obtain ⟨S₀, t₀, hl⟩ := closed_pi_inversion_of hσ hF ha
           by_cases hne : a = .var a.root
           · obtain ⟨x, rfl⟩ : ∃ x, a = .var x := ⟨_, hne⟩
             exact Or.inr ⟨_, _, Step.appVar hl⟩
-          · obtain ⟨n, a', F, hF, hFs⟩ := closedAtomForm_pi hσ ha
+          · obtain ⟨n, a', F, hF₁, hFs⟩ := closedAtomForm_pi_of hσ hF ha
             rcases hFs with hid | ⟨φ, hφ⟩ | ⟨d, c, hpi⟩
-            · exact Or.inr ⟨_, _, Step.appCastRefl hl hne hF (Or.inl hid)⟩
-            · exact Or.inr ⟨_, _, Step.appCastRefl hl hne hF (Or.inr ⟨φ, hφ⟩)⟩
-            · subst hpi; exact Or.inr ⟨_, _, Step.appCast hl hne hF⟩
+            · exact Or.inr ⟨_, _, Step.appCastRefl hl hne hF₁ (Or.inl hid)⟩
+            · exact Or.inr ⟨_, _, Step.appCastRefl hl hne hF₁ (Or.inr ⟨φ, hφ⟩)⟩
+            · subst hpi; exact Or.inr ⟨_, _, Step.appCast hl hne hF₁⟩
   | proj a ℓ h =>
       cases ht with
       | proj _ hh =>
-          obtain ⟨W, F, t, hl, hget⟩ := closed_has_field hσ hh
+          obtain ⟨W, F, t, hl, hget⟩ := closed_has_field_of hσ hF hh
           exact Or.inr ⟨_, _, Step.proj hl hget⟩
   | «let» t u => exact Or.inr ⟨_, _, .let⟩
   | cast t e => exact Or.inr ⟨_, _, .castPush⟩
 
-/-- A typed state is never stuck. -/
-theorem not_stuck {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) : ¬ st.Stuck := by
+/-- A typed state is final or steps. -/
+theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
+    st.Final ∨ ∃ (s' : Sig) (st' : State s'), Step st st' := progress_of fieldFormsHold hT
+
+/-- A typed state is never stuck, when typed stores have their field forms. -/
+theorem not_stuck_of (hFF : FieldFormsHold) {s : Sig} {st : State s} {U : Ty s}
+    (hT : State.Typed st U) : ¬ st.Stuck := by
   intro ⟨hnf, hns⟩
-  rcases progress hT with hf | hs
+  rcases progress_of hFF hT with hf | hs
   · exact hnf hf
   · exact hns hs
+
+/-- A typed state is never stuck. -/
+theorem not_stuck {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) : ¬ st.Stuck :=
+  not_stuck_of fieldFormsHold hT
 
 end FCdot
 

@@ -37,11 +37,16 @@ def Ctx.length : Ctx s → Nat
   | .nil => 0
   | .cons Γ _ => Γ.length + 1
 
-/-- One alias step: `some W` if the head of the type is a name defined by a
-transparent binder, `none` if the type is settled (a shape, or a name whose
-binder is opaque). -/
+/-- One alias step: `some W` if the head of the type is a block name defined
+by the forest, `none` if the type is settled (a shape, or a name whose block
+is opaque). -/
 def Ctx.next (Γ : Ctx s) : Ty s → Option (Ty s)
-  | .sel x ℓ => Γ.lookupDef x ℓ
+  | .sel p ℓ => Γ.lookupDefP p ℓ
+  | _ => none
+
+/-- The head name of a type, if it has one. -/
+def Ty.headName? : Ty s → Option (Path s × Label)
+  | .sel p ℓ => some (p, ℓ)
   | _ => none
 
 /-- Follow definitions at the head of a type, with fuel.  Aliases within a
@@ -58,19 +63,62 @@ def Ctx.resolveFuel (Γ : Ctx s) : Nat → Ty s → Ty s
       | none => T
       | some W => Γ.resolveFuel n W
 
-/-- All defined names of the context, as pairs of binder and label: the
-labels of the witnesses of each transparent binder. -/
-def Ctx.defPairs : Ctx s → List (BVar s .var × Label)
+/-! ### The nodes of the forest
+
+`Ctx.defPairs` enumerates the forest, not the context spine.  Each node
+contributes the pairs of its own labels at its own path and the head name of
+each of its witnesses.  The second half is what a chain stands at after one
+step: the type a step produces is a witness of a node, so if it is a name at
+all it is one of the listed head names. -/
+
+/-- The head names of a list of witnesses. -/
+def Witnesses.headNames : Witnesses s → List (Path s × Label)
+  | .nil => []
+  | .cons W _ T => T.headName?.toList ++ W.headNames
+
+mutual
+/-- Every node of a block, with the path it sits at. -/
+def Block.nodes : Block s → Path s → List (Path s × Block s)
+  | .obj W ls vls ch, p => (p, .obj W ls vls ch) :: ch.nodes p
+  | .fwd r, p => [(p, .fwd r)]
+
+/-- Every node of a child list, with the path it sits at. -/
+def Children.nodes : Children s → Path s → List (Path s × Block s)
+  | .nil, _ => []
+  | .cons ch a b, p => b.nodes (.sel p a) ++ ch.nodes p
+end
+
+/-- The pairs one node contributes: its own labels at its own path, and the
+head name of each of its witnesses.  A forwarding node contributes none: the
+walk follows it, and the node it reaches contributes for it. -/
+def Block.pairsAt : Block s → Path s → List (Path s × Label)
+  | .obj W _ _ _, p => W.labels.map (fun ℓ => (p, ℓ)) ++ W.headNames
+  | .fwd _, _ => []
+
+/-- The pairs of a list of nodes. -/
+def nodePairs : List (Path s × Block s) → List (Path s × Label)
+  | [] => []
+  | n :: ns => n.2.pairsAt n.1 ++ nodePairs ns
+
+/-- Every node of the context's forest, with the path it sits at.  The nodes
+of the spine are weakened through the binder that extends it, as
+`Ctx.blockAt` weakens the block it reads. -/
+def Ctx.nodes : Ctx s → List (Path s × Block s)
   | .nil => []
   | .cons Γ b =>
-      (Ctx.defPairs Γ).map (fun p => (BVar.there p.1, p.2)) ++
+      (Ctx.nodes Γ).map (fun n => (n.1.weaken, n.2.weaken)) ++
         (match b with
-         | .transparent _ W _ => W.labels.map (fun ℓ => (BVar.here, ℓ))
+         | .transparent _ B => B.nodes (.var .here)
          | .opaque _ => [])
 
-/-- Resolution with enough fuel for any alias chain in the context: a chain
-longer than the number of defined names repeats a name, hence is cyclic. -/
-def Ctx.resolve (Γ : Ctx s) (T : Ty s) : Ty s := Γ.resolveFuel (Γ.defPairs.length + 1) T
+/-- Every pair a chain can stand at after its first step, and every name the
+forest defines. -/
+def Ctx.defPairs (Γ : Ctx s) : List (Path s × Label) := nodePairs Γ.nodes
+
+/-- Resolution with enough fuel for any alias chain in the context, plus one
+step of slack for a first name that is not itself listed: a chain longer than
+the list of pairs stands twice at one block and label, hence is cyclic. -/
+def Ctx.resolve (Γ : Ctx s) (T : Ty s) : Ty s := Γ.resolveFuel (Γ.defPairs.length + 2) T
 
 /-! ## Forms, entries, views -/
 
@@ -111,6 +159,16 @@ inductive Entry (s : Sig) : Type where
       source, and `E` proves the target proposition there.  `E` is never
       itself routed (routing composes). -/
   | thru : Form s → Entry s → Entry s
+  /-- An inherited stable presence: the target `∋ᵛ ℓ` is the source
+      proposition of that index. -/
+  | hasVal : Nat → Entry s
+  /-- An inherited alias: the target `≈ q` is the source proposition of that
+      index. -/
+  | alias : Nat → Entry s
+  /-- A constant alias, the normal form of `LeCo.intoSngl`: the receiver is
+      the path `p`, whose block is the block of `q`.  It reads nothing of the
+      source, as `Side.bot` and `Side.top` do. -/
+  | aliasTo : Path s → Path s → Entry s
 
 /-- Entries of an object coercion, oldest first. -/
 inductive Entries (s : Sig) : Type where
@@ -118,6 +176,8 @@ inductive Entries (s : Sig) : Type where
   | cons : Entries s → Entry s → Entries s
 
 end
+
+deriving instance DecidableEq for Form, Entry, Entries
 
 /-- Decidable tests for the two absorbing forms. -/
 def Form.isBot : Form s → Bool
@@ -144,10 +204,15 @@ theorem Form.isTop_eq_true {F : Form s} : F.isTop = true ↔ F = .top := by
 inductive PropForm (s : Sig) : Type where
   | le : Form s → PropForm s
   | eq : PropForm s
-  /-- Field `ℓ` is present at binder `x`. -/
-  | has : BVar s .var → Label → PropForm s
+  /-- Field `ℓ` is present at the block of the path `p`. -/
+  | has : Path s → Label → PropForm s
   /-- A bound of the atom's type: a form typed from the root's type. -/
   | bnd : Form s → PropForm s
+  /-- Field `ℓ` is present and holds a stable body.  The block it is read at
+      is the root of the atom whose view this is. -/
+  | hasVal : Label → PropForm s
+  /-- The block of the atom is the block of the path `q`. -/
+  | alias : Path s → PropForm s
 
 /-- The form of a bound entry of a view. -/
 def PropForm.bndForm? : PropForm s → Option (Form s)
@@ -158,6 +223,8 @@ def PropForm.bndForm? : PropForm s → Option (Form s)
 inductive View (s : Sig) : Type where
   | nil : View s
   | cons : View s → PropForm s → View s
+
+deriving instance DecidableEq for PropForm, View
 
 /-! ### Notation for entries and views
 
@@ -301,7 +368,20 @@ def Entry.through (Es₁ : Entries s) : Entry s → Option (Entry s)
   | .has j =>
       match Es₁.get? j with
       | some (.has k) => some (.has k)
+      -- A presence inherited from a stable presence reads that entry.
+      | some (.hasVal k) => some (.has k)
       | _ => none
+  | .hasVal j =>
+      match Es₁.get? j with
+      | some (.hasVal k) => some (.hasVal k)
+      | _ => none
+  | .alias j =>
+      match Es₁.get? j with
+      | some (.alias k) => some (.alias k)
+      -- An alias inherited from a constant alias is that constant alias.
+      | some (.aliasTo p q) => some (.aliasTo p q)
+      | _ => none
+  | .aliasTo p q => some (.aliasTo p q)
   | .bnd G => (Form.combine (.obj Es₁) G).map .bnd
   -- Object forms never carry routed entries, so this case does not arise.
   | .thru _ _ => none
@@ -326,6 +406,9 @@ def Entry.prefix (H : Form s) : Entry s → Option (Entry s)
   | .bnd (.bnd j .id) => some (.thru H (.bnd (.bnd j .id)))
   | .bnd G => (Form.combine H G).map Entry.bnd
   | .thru H' E => (Form.combine H H').map fun H'' => Entry.thru H'' E
+  -- A constant alias reads nothing of the source, so a prefix leaves it as
+  -- it is, exactly as `Entry.through` does.
+  | .aliasTo p q => some (.aliasTo p q)
   | E => some (.thru H E)
 termination_by E => sizeOf H + sizeOf E
 decreasing_by all_goals (simp_wf; (try simp at *); (try omega))
@@ -386,6 +469,8 @@ def Telescope.identityEntries : Telescope (s,x) → Entries s
   | .cons Tel (.eq _ _) => Tel.identityEntries ▹ .eq Tel.length false
   | .cons Tel (.has _) => Tel.identityEntries ▹ .has Tel.length
   | .cons Tel (.bnd _) => Tel.identityEntries ▹ .bnd (.bnd Tel.length .id)
+  | .cons Tel (.hasVal _) => Tel.identityEntries ▹ .hasVal Tel.length
+  | .cons Tel (.alias _) => Tel.identityEntries ▹ .alias Tel.length
 
 /-- Concatenation of entries. -/
 def Entries.append : Entries s → Entries s → Entries s
@@ -438,22 +523,60 @@ def Form.pair (Tel₁ Tel₂ : Telescope (s,x)) : Form s → Form s → Option (
 
 /-! ## The view of a literal -/
 
-/-- Presence forms for the fields of a literal at binder `x`, appended to a
+/-- Presence forms for the fields of a literal at the path `p`, appended to a
 view (as `Telescope.hasEntries`). -/
-def Fields.hasForms (x : BVar s .var) : View s → List Label → View s
+def Fields.hasForms (p : Path s) : View s → List Label → View s
   | V, [] => V
-  | V, ℓ :: ls => Fields.hasForms x (V ▹ .has x ℓ) ls
+  | V, ℓ :: ls => Fields.hasForms p (V ▹ .has p ℓ) ls
+
+/-- Stable-presence forms for the stable fields of a literal, appended to a
+view (as `Telescope.hasValEntries`).  A stable presence carries no block: it
+is read at the root of the view it sits in. -/
+def Fields.hasValForms : View s → List Label → View s
+  | V, [] => V
+  | V, ℓ :: ls => Fields.hasValForms (V ▹ .hasVal ℓ) ls
 
 /-- Equation forms for the witnesses of a literal. -/
 def Witnesses.eqForms : Witnesses (s,x) → View s
   | .nil => .nil
   | .cons W _ _ => W.eqForms ▹ .eq
 
+/-- Equation forms for the witnesses of a node of the forest, which are
+written at absolute paths. -/
+def Witnesses.eqFormsAt : Witnesses s → View s
+  | .nil => .nil
+  | .cons W _ _ => W.eqFormsAt ▹ .eq
+
 /-- The view of a stored literal at its precise type: one entry per
-proposition of `Telescope.ofLiteral`. -/
-def Value.precView (x : BVar s .var) : Value s → View s
-  | .obj W F => Fields.hasForms x W.eqForms F.labels
+proposition of `Telescope.ofLiteral`, the stable presences last. -/
+def Value.precView (p : Path s) : Value s → View s
+  | .obj W F => Fields.hasValForms (Fields.hasForms p W.eqForms F.labels) F.valLabels
   | _ => .nil
+
+/-- The view of a node of the forest, read at the path the node sits at: one
+entry per proposition of the telescope the node's literal has. -/
+def Block.precView : Block s → Path s → Option (View s)
+  | .obj W ls vls _, p => some (Fields.hasValForms (Fields.hasForms p W.eqFormsAt ls) vls)
+  | .fwd _, _ => none
+
+/-- The block a path denotes over the store.  A field holding an atom gets a
+forwarding to that atom's root, and the block of a stored value is never a
+forwarding, so following is one step and the walk is structural on the path.
+Over a typed store this is `Ctx.lookupBlock` (invariant A of P1.8). -/
+def Store.blockOf (σ : Store s) : Path s → Option (Block s)
+  | .var x => some ((σ.lookup x).blocksAt (.var x))
+  | .sel p a =>
+      match σ.blockOf p with
+      | some (.obj _ _ _ ch) =>
+          match ch.at? a with
+          | some (.fwd (.var y)) => some ((σ.lookup y).blocksAt (.var y))
+          | some (.fwd (.sel _ _)) => none
+          | b => b
+      | _ => none
+
+/-- The view of the block a path denotes. -/
+def Store.blockView (σ : Store s) (p : Path s) : Option (View s) :=
+  (σ.blockOf p).bind (fun B => B.precView p)
 
 /-! ## The normalizer -/
 
@@ -486,10 +609,22 @@ def Entry.at (σ : Store s) : Nat → Atom s → Form s → View s → Entry s �
       match ← V.get? j with
       | .eq => pure .eq
       | _ => none
-  | _ + 1, _, _, V, .has j => do
+  | _ + 1, a, _, V, .has j => do
       match ← V.get? j with
       | .has y ℓ => pure (.has y ℓ)
+      -- A stable presence is a presence, read at the atom's own block.
+      | .hasVal ℓ => pure (.has (.var a.root) ℓ)
       | _ => none
+  | _ + 1, _, _, V, .hasVal j => do
+      match ← V.get? j with
+      | .hasVal ℓ => pure (.hasVal ℓ)
+      | _ => none
+  | _ + 1, _, _, V, .alias j => do
+      match ← V.get? j with
+      | .alias q => pure (.alias q)
+      | _ => none
+  | _ + 1, a, _, _, .aliasTo p q =>
+      if p = (Path.var a.root) then some (.alias q) else none
   | _ + 1, _, C, _, .bnd G => (C.combine G).map PropForm.bnd
   | n + 1, a, C, _, .thru H E => do
       let V' ← viewThrough σ n H a
@@ -511,6 +646,8 @@ def sideForm (σ : Store s) : Nat → Side s → Option (Form s)
   | 0, _ => none
   | _ + 1, .none => some .id
   | n + 1, .some e => hnf σ n e
+  | _ + 1, .bot _ => some .bot
+  | _ + 1, .top _ => some .top
 
 /-- Head form of closed inclusion evidence, with fuel. -/
 def hnf (σ : Store s) : Nat → LeCo s → Option (Form s)
@@ -539,6 +676,12 @@ def hnf (σ : Store s) : Nat → LeCo s → Option (Form s)
       match V.get? i with
       | some (.le G) => some G
       | _ => none
+  | n + 1, .memberP P e i => do
+      let F ← hnf σ n e
+      let V ← pathViewThrough σ n F P
+      match V.get? i with
+      | some (.le G) => some G
+      | _ => none
 
 /-- Entries of a morphism: the normal forms of its templates. -/
 def entries (σ : Store s) : Nat → Morphism s → Option (Entries s)
@@ -559,11 +702,20 @@ def entries (σ : Store s) : Nat → Morphism s → Option (Entries s)
       let Es ← entries σ n m
       let F ← hnf σ n e
       pure (Es ▹ .bnd F)
+  | n + 1, .hasVal m j => do
+      let Es ← entries σ n m
+      pure (Es ▹ .hasVal j)
+  | n + 1, .hasOfVal m j => do
+      let Es ← entries σ n m
+      pure (Es ▹ .has j)
+  | n + 1, .aliasCopy m j => do
+      let Es ← entries σ n m
+      pure (Es ▹ .alias j)
 
 /-- The view of a concrete atom at its resolved object type. -/
 def view (σ : Store s) : Nat → Atom s → Option (View s)
   | 0, _ => none
-  | _ + 1, .var x => some ((σ.lookup x).precView x)
+  | _ + 1, .var x => some ((σ.lookup x).precView (.var x))
   | n + 1, .cast a e => do
       let F ← hnf σ n e
       viewThrough σ n F a
@@ -573,6 +725,8 @@ def view (σ : Store s) : Nat → Atom s → Option (View s)
       let V ← view σ n a
       let V' ← view σ n b
       pure (V ++ V')
+  -- A `sngl` step knows one proposition of its block, the alias.
+  | _ + 1, .sngl _ q _ => some (.nil ▹ .alias q)
 
 /-- The view of an atom through a head form applied to it. -/
 def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
@@ -598,13 +752,19 @@ def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
   | _ + 1, .top, _ => some .nil
   | _ + 1, .bot, _ => some .nil
 
-/-- Field presence witnessed by `has` evidence at the expected binder `x`. -/
-def hasView (σ : Store s) : Nat → BVar s .var → Has s → Option (BVar s .var × Label)
+/-- Field presence witnessed by `has` evidence at the expected path `p`. -/
+def hasView (σ : Store s) : Nat → Path s → Has s → Option (Path s × Label)
   | 0, _, _ => none
-  | _ + 1, x, .field ℓ => some (x, ℓ)
+  | _ + 1, p, .field ℓ => some (p, ℓ)
   | n + 1, _, .member a e i => do
       let F ← hnf σ n e
       let V ← viewThrough σ n F a
+      match V.get? i with
+      | some (.has y ℓ) => some (y, ℓ)
+      | _ => none
+  | n + 1, _, .memberP P e i => do
+      let F ← hnf σ n e
+      let V ← pathViewThrough σ n F P
       match V.get? i with
       | some (.has y ℓ) => some (y, ℓ)
       | _ => none
@@ -629,6 +789,164 @@ def closedAtomForm (σ : Store s) : Nat → Atom s → Option (Atom s × Form s)
       let (b', G) ← closedAtomForm σ n b
       let H ← Form.pair Tel₁ Tel₂ F G
       pure (.both Tel₁ Tel₂ a' b', H)
+  -- The chain form of a `sngl` step is the constant alias, composed in.
+  | n + 1, .sngl a q α => do
+      let (a', F) ← closedAtomForm σ n a
+      let H ← F.combine (.into (.nil ▹ .aliasTo (.var a.root) q))
+      pure (.sngl a' q α, H)
+
+/-- Instantiate a template at the view of a stable path.  The atom family's
+`Entry.at`, with the receiver a path in place of an atom: the two differ only
+in what a stable presence and a routed entry are read at.  `C` is the chain of
+the path, from the node's type to the type whose view `V` is. -/
+def pathEntryAt (σ : Store s) :
+    Nat → Path s → Form s → View s → Entry s → Option (PropForm s)
+  | 0, _, _, _, _ => none
+  | _ + 1, _, _, V, .le pre h post => do
+      let mid ← match h, ← V.get? h.index with
+        | .le _, .le F => some F
+        | .eq _, .eq => some .id
+        | .eqSym _, .eq => some .id
+        | _, _ => none
+      let F ← pre.combine mid
+      let G ← F.combine post
+      pure (.le G)
+  | _ + 1, _, _, V, .eq j _ => do
+      match ← V.get? j with
+      | .eq => pure .eq
+      | _ => none
+  | _ + 1, r, _, V, .has j => do
+      match ← V.get? j with
+      | .has y ℓ => pure (.has y ℓ)
+      | .hasVal ℓ => pure (.has r ℓ)
+      | _ => none
+  | _ + 1, _, _, V, .hasVal j => do
+      match ← V.get? j with
+      | .hasVal ℓ => pure (.hasVal ℓ)
+      | _ => none
+  | _ + 1, _, _, V, .alias j => do
+      match ← V.get? j with
+      | .alias q => pure (.alias q)
+      | _ => none
+  | _ + 1, r, _, _, .aliasTo p q => if p = r then some (.alias q) else none
+  | _ + 1, _, C, _, .bnd G => (C.combine G).map PropForm.bnd
+  -- A routed entry reads the block at `r` through the chain composed with the
+  -- route.  The route starts at the path's type and the block's view at the
+  -- node's type, and the chain `C` goes from the second to the first, so the
+  -- view is read through `C` then `H`.  At a node root the chain is `.id` and
+  -- this is the route alone.
+  | n + 1, r, C, _, .thru H E => do
+      let C' ← C.combine H
+      let V' ← pathViewThroughPath σ n C' r
+      pathEntryAt σ n r C' V' E
+
+/-- Instantiate the entries of an object coercion at a stable path. -/
+def pathEntriesAt (σ : Store s) :
+    Nat → Path s → Form s → View s → Entries s → Option (View s)
+  | 0, _, _, _, _ => none
+  | _ + 1, _, _, _, .nil => some .nil
+  | n + 1, r, C, V, .cons Es E => do
+      let V' ← pathEntriesAt σ n r C V Es
+      let P ← pathEntryAt σ n r C V E
+      pure (V' ▹ P)
+
+/-- The view of the block of a path through a head form applied to it. -/
+def pathViewThroughPath (σ : Store s) : Nat → Form s → Path s → Option (View s)
+  | 0, _, _ => none
+  | _ + 1, .id, r => σ.blockView r
+  | _ + 1, .eqv _, r => σ.blockView r
+  | n + 1, .obj Es, r => do
+      let V ← σ.blockView r
+      pathEntriesAt σ n r .id V Es
+  | n + 1, .into Es, r => do
+      let V ← σ.blockView r
+      pathEntriesAt σ n r .id V Es
+  | n + 1, .bnd i F, r => do
+      let V ← σ.blockView r
+      let P ← V.get? i
+      let G ← P.bndForm?
+      let H ← G.combine F
+      pathViewThroughPath σ n H r
+  | _ + 1, .pi _ _, _ => some .nil
+  | _ + 1, .top, _ => some .nil
+  | _ + 1, .bot, _ => some .nil
+
+/-- The view of a stable path: the forms of the propositions known of the
+block at that path, with the casts of the `PathCo` applied.  `view`
+generalized from an atom to a stable path (P1.6). -/
+def pathView (σ : Store s) : Nat → PathCo s → Option (View s)
+  | 0, _ => none
+  | _ + 1, .var x => some ((σ.lookup x).precView (.var x))
+  -- One field step: the precise view of the child node, read through the
+  -- coercion of the field, which the store closes over its scope.
+  | n + 1, .sel P a _ => do
+      let E ← σ.fieldCo P.path a
+      let F ← hnf σ n E
+      pathViewThroughPath σ n F (.sel P.path a)
+  | n + 1, .cast P e => do
+      let F ← hnf σ n e
+      pathViewThrough σ n F P
+  -- Two names of one block have one view.
+  | n + 1, .alias _ _ P => pathView σ n P
+  | n + 1, .foldSelf _ P => pathView σ n P
+  | n + 1, .unfoldSelf P => pathView σ n P
+  | n + 1, .both _ _ P Q => do
+      let V ← pathView σ n P
+      let V' ← pathView σ n Q
+      pure (V ++ V')
+  -- A `sngl` step knows one proposition of its block, the alias.
+  | _ + 1, .sngl _ q _ => some (.nil ▹ .alias q)
+  -- A node is read at its precise view.
+  | _ + 1, .node p _ _ _ => σ.blockView p
+
+/-- The view of a stable path through a head form applied to it. -/
+def pathViewThrough (σ : Store s) : Nat → Form s → PathCo s → Option (View s)
+  | 0, _, _ => none
+  | n + 1, .id, P => pathView σ n P
+  | n + 1, .eqv _, P => pathView σ n P
+  | n + 1, .obj Es, P => do
+      let V ← pathView σ n P
+      let C ← pathChainForm σ n P
+      pathEntriesAt σ n P.path C V Es
+  | n + 1, .into Es, P => do
+      let V ← pathView σ n P
+      let C ← pathChainForm σ n P
+      pathEntriesAt σ n P.path C V Es
+  | n + 1, .bnd i F, P => do
+      let V ← pathView σ n P
+      let Q ← V.get? i
+      let G ← Q.bndForm?
+      let H ← G.combine F
+      pathViewThroughPath σ n H P.path
+  | _ + 1, .pi _ _, _ => some .nil
+  | _ + 1, .top, _ => some .nil
+  | _ + 1, .bot, _ => some .nil
+
+/-- The head form of the casts a stable path carries, from its block. -/
+def pathChainForm (σ : Store s) : Nat → PathCo s → Option (Form s)
+  | 0, _ => none
+  | _ + 1, .var _ => some .id
+  -- The chain of a field step is the coercion of the field.
+  | n + 1, .sel P a _ => do
+      let E ← σ.fieldCo P.path a
+      hnf σ n E
+  | n + 1, .cast P e => do
+      let F ← pathChainForm σ n P
+      let G ← hnf σ n e
+      F.combine G
+  | n + 1, .alias _ _ P => pathChainForm σ n P
+  | n + 1, .foldSelf _ P => pathChainForm σ n P
+  | n + 1, .unfoldSelf P => pathChainForm σ n P
+  | n + 1, .both Tel₁ Tel₂ P Q => do
+      let F ← pathChainForm σ n P
+      let G ← pathChainForm σ n Q
+      Form.pair Tel₁ Tel₂ F G
+  -- The chain form of a `sngl` step is the constant alias, composed in.
+  | n + 1, .sngl P q _ => do
+      let F ← pathChainForm σ n P
+      F.combine (.into (.nil ▹ .aliasTo P.path q))
+  -- A node starts its own chain.
+  | _ + 1, .node _ _ _ _ => some .id
 
 end
 

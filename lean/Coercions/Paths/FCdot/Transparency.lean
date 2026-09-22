@@ -19,19 +19,72 @@ structure Ctx.Refines {s : Sig} (Γ Γ' : Ctx s) : Prop where
   ty : ∀ x, Γ'.lookupTy x = Γ.lookupTy x
   def_ : ∀ x l W, Γ.lookupDef x l = some W → Γ'.lookupDef x l = some W
   fields : ∀ x Fs, Γ.lookupFields x = some Fs → Γ'.lookupFields x = some Fs
+  /-- The whole binder table is kept. -/
+  blocks : ∀ x B, Γ.blockAt x = some B → Γ'.blockAt x = some B
 
 namespace Ctx.Refines
+
+/-- The block of a path is kept by a refinement. -/
+theorem lookupB {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {p : Path s} {B : Block s}
+    (hp : Γ.lookupBlock p = some B) : Γ'.lookupBlock p = some B := by
+  have := Ctx.lookupBlock_rename (ρ := Rename.id)
+    (fun x B' hB' => by simpa using h.blocks x B' hB') hp
+  simpa using this
+
+/-- The definition of a block name is kept by a refinement. -/
+theorem defP {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {p : Path s} {l : Label} {W : Ty s}
+    (hd : Γ.lookupDefP p l = some W) : Γ'.lookupDefP p l = some W := by
+  have := Ctx.lookupDefP_rename (ρ := Rename.id)
+    (fun x B' hB' => by simpa using h.blocks x B' hB') hd
+  simpa using this
+
+/-- The node of a path is kept by a refinement: making a binder transparent
+only adds nodes, and the walk that follows no forwarding reads the table
+only. -/
+theorem nodeB {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {p : Path s} {B : Block s}
+    (hp : Γ.nodeBlock p = some B) : Γ'.nodeBlock p = some B := by
+  have := Ctx.nodeBlock_rename (ρ := Rename.id)
+    (fun x B' hB' => by simpa using h.blocks x B' hB') hp
+  simpa using this
 
 theorem refl {Γ : Ctx s} : Ctx.Refines Γ Γ where
   ty := fun _ => rfl
   def_ := fun _ _ _ h => h
   fields := fun _ _ h => h
+  blocks := fun _ _ h => h
+
+/-- An opaque binder knows nothing, so any binder of the same type refines
+it.  This is what carries a body typed under the opaque binder of a `let` to
+the forwarding binder of a let over a path. -/
+theorem ofOpaque {Γ : Ctx s} (b : Binding s) :
+    Ctx.Refines (Γ.cons (.opaque b.ty)) (Γ.cons b) where
+  ty := by
+    intro x
+    cases x with
+    | here => rfl
+    | there y => rfl
+  def_ := by
+    intro x l W h
+    cases x with
+    | here => simp at h
+    | there y => rw [Ctx.lookupDef_there] at h ⊢; exact h
+  fields := by
+    intro x Fs h
+    cases x with
+    | here => simp at h
+    | there y => rw [Ctx.lookupFields_there] at h ⊢; exact h
+  blocks := by
+    intro x B h
+    cases x with
+    | here => simp at h
+    | there y => rw [Ctx.blockAt_there] at h ⊢; exact h
 
 theorem trans {Γ1 Γ2 Γ3 : Ctx s} (h1 : Ctx.Refines Γ1 Γ2) (h2 : Ctx.Refines Γ2 Γ3) :
     Ctx.Refines Γ1 Γ3 where
   ty := fun x => (h2.ty x).trans (h1.ty x)
   def_ := fun x l W h => h2.def_ x l W (h1.def_ x l W h)
   fields := fun x Fs h => h2.fields x Fs (h1.fields x Fs h)
+  blocks := fun x B h => h2.blocks x B (h1.blocks x B h)
 
 theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     Ctx.Refines (Γ.cons b) (Γ'.cons b) where
@@ -46,7 +99,7 @@ theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     | here =>
         cases b with
         | «opaque» T => simp at hW
-        | transparent T W' Fs => exact hW
+        | transparent T B => cases B <;> exact hW
     | there y =>
         rw [Ctx.lookupDef_there] at hW ⊢
         cases hd : Γ.lookupDef y l with
@@ -63,14 +116,26 @@ theorem cons {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') (b : Binding s) :
     | here =>
         cases b with
         | «opaque» T => simp at hFs
-        | transparent T W' Fs' => exact hFs
+        | transparent T B => cases B <;> exact hFs
     | there y =>
         rw [Ctx.lookupFields_there] at hFs ⊢
         exact h.fields y Fs hFs
+  blocks := by
+    intro x B hB
+    cases x with
+    | here =>
+        cases b with
+        | «opaque» T => simpa using hB
+        | transparent T B0 => simpa using hB
+    | there y =>
+        rw [Ctx.blockAt_there] at hB ⊢
+        obtain ⟨B0, hB0, rfl⟩ := Option.map_eq_some_iff.mp hB
+        rw [h.blocks y B0 hB0]
+        rfl
 
 /-- Weakening an opaque binder to the transparent binder of the same type. -/
-theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Fs : List Label} :
-    Ctx.Refines (Γ.cons (.opaque T)) (Γ.cons (.transparent T W Fs)) where
+theorem transparent {Γ : Ctx s} {T : Ty s} {B : Block (s,x)} :
+    Ctx.Refines (Γ.cons (.opaque T)) (Γ.cons (.transparent T B)) where
   ty := by
     intro x
     cases x with
@@ -86,6 +151,11 @@ theorem transparent {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)} {Fs : List Lab
     cases x with
     | here => simp at hFs
     | there y => rw [Ctx.lookupFields_there] at hFs ⊢; exact hFs
+  blocks := by
+    intro x B' hB
+    cases x with
+    | here => simp at hB
+    | there y => rw [Ctx.blockAt_there] at hB ⊢; exact hB
 
 theorem transparentOf {Γ Γ' : Ctx s} (h : Ctx.Refines Γ Γ') {x : BVar s .var}
     (ht : Γ.IsTransparent x) : Γ'.IsTransparent x := by
@@ -112,6 +182,7 @@ theorem LeCo.HasType.refine {Γ Γ' : Ctx s} {e : LeCo s} {S T : Ty s}
   | .bound hAt => exact .bound hAt
   | .intoBnd he => exact .intoBnd (he.refine hR)
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
+  | .memberP hP he hAt => exact .memberP (hP.refine hR) (he.refine hR) hAt
 
 theorem EqCo.HasType.refine {Γ Γ' : Ctx s} {φ : EqCo s} {S T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ φ : S ≡ T) : Γ' ⊢ φ : S ≡ T := by
@@ -120,12 +191,15 @@ theorem EqCo.HasType.refine {Γ Γ' : Ctx s} {φ : EqCo s} {S T : Ty s}
   | .symm hφ => exact .symm (hφ.refine hR)
   | .trans hφ hψ => exact .trans (hφ.refine hR) (hψ.refine hR)
   | .def hd => exact .def (hR.def_ _ _ _ hd)
+  | .defP hd => exact .defP (hR.defP hd)
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
+  | .memberP hP he hAt => exact .memberP (hP.refine hR) (he.refine hR) hAt
 
-theorem Has.HasType.refine {Γ Γ' : Ctx s} {hh : Has s} {x : BVar s .var} {l : Label}
-    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ hh : x ∋ l) : Γ' ⊢ hh : x ∋ l := by
+theorem Has.HasType.refine {Γ Γ' : Ctx s} {hh : Has s} {p : Path s} {l : Label}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ hh : p ∋ l) : Γ' ⊢ hh : p ∋ l := by
   match h with
   | .member ha he hAt => exact .member (ha.refine hR) (he.refine hR) hAt
+  | .memberP hP he hAt => exact .memberP (hP.refine hR) (he.refine hR) hAt
   | .field hf hm => exact .field (hR.fields _ _ hf) hm
 
 theorem Side.HasType.refine {Γ Γ' : Ctx s} {σ : Side s} {X Y : Ty (s,x)}
@@ -133,6 +207,8 @@ theorem Side.HasType.refine {Γ Γ' : Ctx s} {σ : Side s} {X Y : Ty (s,x)}
   match h with
   | .none => exact .none
   | .some he => exact .some (he.refine hR)
+  | .bot => exact .bot
+  | .top => exact .top
 
 theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope (s,x)} {m : Morphism s}
     {Tel : Telescope (s,x)}
@@ -148,6 +224,9 @@ theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope (s,x)} {m : Mo
   | .eqSym hm hAt => exact .eqSym (hm.refine hR) hAt
   | .has hm hAt => exact .has (hm.refine hR) hAt
   | .bnd hm he => exact .bnd (hm.refine hR) (he.refine hR)
+  | .hasVal hm hAt => exact .hasVal (hm.refine hR) hAt
+  | .hasOfVal hm hAt => exact .hasOfVal (hm.refine hR) hAt
+  | .aliasCopy hm hAt => exact .aliasCopy (hm.refine hR) hAt
 
 theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
     (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ₐ a : T) : Γ' ⊢ₐ a : T := by
@@ -157,6 +236,29 @@ theorem Atom.HasType.refine {Γ Γ' : Ctx s} {a : Atom s} {T : Ty s}
   | .unfoldSelf ha => exact .unfoldSelf (ha.refine hR)
   | .foldSelf ha => exact .foldSelf (ha.refine hR)
   | .both ha hb hr => exact .both (ha.refine hR) (hb.refine hR) hr
+  | .sngl ha hα => exact .sngl (ha.refine hR) (hα.refine hR)
+
+theorem PathCo.HasType.refine {Γ Γ' : Ctx s} {P : PathCo s} {T : Ty s}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ᵖ P : T) : Γ' ⊢ᵖ P : T := by
+  match h with
+  | @PathCo.HasType.var _ _ x => rw [← hR.ty x]; exact .var
+  | .sel hP hAt => exact .sel (hP.refine hR) hAt
+  | .cast hP he => exact .cast (hP.refine hR) (he.refine hR)
+  | .alias hα hP => exact .alias (hα.refine hR) (hP.refine hR)
+  | .unfoldSelf hP => exact .unfoldSelf (hP.refine hR)
+  | .foldSelf hP => exact .foldSelf (hP.refine hR)
+  | .both hP hQ hr => exact .both (hP.refine hR) (hQ.refine hR) hr
+  | .sngl hP hα => exact .sngl (hP.refine hR) (hα.refine hR)
+  | .node hs hn => exact .node hs (hR.nodeB hn)
+
+theorem AliasCo.HasType.refine {Γ Γ' : Ctx s} {α : AliasCo s} {p q : Path s}
+    (hR : Ctx.Refines Γ Γ') (h : Γ ⊢ α : p ≋ q) : Γ' ⊢ α : p ≋ q := by
+  match h with
+  | .refl => exact .refl
+  | .symm hα => exact .symm (hα.refine hR)
+  | .trans hα hβ => exact .trans (hα.refine hR) (hβ.refine hR)
+  | .sel hα => exact .sel (hα.refine hR)
+  | .member hP he hAt => exact .member (hP.refine hR) (he.refine hR) hAt
 
 end
 
@@ -170,6 +272,7 @@ theorem Tm.HasType.refine {Γ Γ' : Ctx s} {t : Tm s} {T : Ty s}
   | .app ha hb => exact .app (ha.refine hR) (hb.refine hR)
   | .proj ha hh => exact .proj (ha.refine hR) (hh.refine hR)
   | .let ht hu => exact .let (ht.refine hR) (hu.refine (hR.cons _))
+  | .letPath ht hu => exact .letPath (ht.refine hR) (hu.refine (hR.cons _))
   | .cast ht he => exact .cast (ht.refine hR) (he.refine hR)
 
 theorem Value.HasType.refine {Γ Γ' : Ctx s} {v : Value s} {T : Ty s}

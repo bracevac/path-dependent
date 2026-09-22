@@ -53,6 +53,14 @@ inductive Cont.Typed : Ctx s → Cont s → Ty s → Ty s → Prop where
       Γ.cons (.opaque T) ⊢ u : U↑ →
       Γ ⊢ₖ K : U ⇒ V →
       Γ ⊢ₖ K ▹ .let u : T ⇒ V
+  /-- The frame of a let over a path.  The incoming type is the singleton, so
+      the frame pins the block of the atom that arrives, by the canonical fact
+      of P1.8.  With the path's own type here the frame pins nothing, which is
+      `forwarding_subst_false`. -/
+  | letPath :
+      Γ.cons (Binding.fwdAt q) ⊢ u : U↑ →
+      Γ ⊢ₖ K : U ⇒ V →
+      Γ ⊢ₖ K ▹ .let u : Ty.snglOf q ⇒ V
   | cast :
       Γ ⊢ e : T ≤ U →
       Γ ⊢ₖ K : U ⇒ V →
@@ -78,11 +86,6 @@ def State.Typed (st : State s) (U : Ty s) : Prop :=
 
 def State.Final (st : State s) : Prop :=
   st.K = .nil ∧ (∃ v, st.t = .val v) ∨ st.K = .nil ∧ (∃ a, st.t = .atom a)
-
-/-- Fold a nonempty list of coercions into one, oldest first. -/
-def LeCo.composite (e : LeCo s) : List (LeCo s) → LeCo s
-  | [] => e
-  | f :: fs => LeCo.composite (.trans e f) fs
 
 /-- The composite of a value's wrappers, if any. -/
 def Value.composite? (v : Value s) : Option (LeCo s) :=
