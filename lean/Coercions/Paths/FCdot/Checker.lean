@@ -1429,13 +1429,13 @@ private def smokeCtx : Ctx ([],x) := Ctx.nil.cons (.opaque (.obj (.cons .nil (.h
 /-- A context whose only binder has the empty object type. -/
 private def smokeCtxNil : Ctx ([],x) := Ctx.nil.cons (.opaque (.obj .nil))
 
-#guard checkValue Ctx.nil smokeObj smokeObjTy
-#guard synthValue Ctx.nil smokeObj = some smokeObjTy
-#guard !checkValue Ctx.nil smokeObj (.obj .nil)
-#guard !checkValue Ctx.nil smokeObj (.obj (.cons .nil (.has smokeLabel)))
-#guard checkTm smokeCtx smokeId (.pi .top .top)
-#guard !checkTm smokeCtx smokeId (.pi .top .bot)
-#guard checkLe Ctx.nil (.trans (.refl .top) (.top .top)) .top .top
+example : (checkValue Ctx.nil smokeObj smokeObjTy) = true := by decide +kernel
+example : synthValue Ctx.nil smokeObj = some smokeObjTy := by decide +kernel
+example : (checkValue Ctx.nil smokeObj (.obj .nil)) = false := by decide +kernel
+example : (checkValue Ctx.nil smokeObj (.obj (.cons .nil (.has smokeLabel)))) = false := by decide +kernel
+example : (checkTm smokeCtx smokeId (.pi .top .top)) = true := by decide +kernel
+example : (checkTm smokeCtx smokeId (.pi .top .bot)) = false := by decide +kernel
+example : (checkLe Ctx.nil (.trans (.refl .top) (.top .top)) .top .top) = true := by decide +kernel
 /-- Field evidence read off the binder's own object type. -/
 private def smokeHas : Has ([],x) :=
   .member (.var .here) (.refl (.obj (.cons .nil (.has smokeLabel)))) 0
@@ -1448,91 +1448,91 @@ example : checkTm smokeCtx (.proj (.var .here) smokeLabel smokeHas)
     (.sel (Path.var .here) smokeLabel) = true := by decide +kernel
 example : checkTm smokeCtx (.proj (.var .here) (.trm 1) smokeHas)
     (.sel (Path.var .here) (.trm 1)) = false := by decide +kernel
-#guard checkTm smokeCtxTrans (.proj (.var .here) smokeLabel (.field smokeLabel))
-    (.sel (Path.var .here) smokeLabel)
-#guard !checkTm smokeCtx (.proj (.var .here) smokeLabel (.field smokeLabel))
-    (.sel (Path.var .here) smokeLabel)
-#guard checkTm smokeCtx (.let (.atom (.var .here)) (.atom (.var (.there .here))))
-    (.obj (.cons .nil (.has smokeLabel)))
+example : (checkTm smokeCtxTrans (.proj (.var .here) smokeLabel (.field smokeLabel))
+    (.sel (Path.var .here) smokeLabel)) = true := by decide +kernel
+example : (checkTm smokeCtx (.proj (.var .here) smokeLabel (.field smokeLabel))
+    (.sel (Path.var .here) smokeLabel)) = false := by decide +kernel
+example : (checkTm smokeCtx (.let (.atom (.var .here)) (.atom (.var (.there .here))))
+    (.obj (.cons .nil (.has smokeLabel)))) = true := by decide +kernel
 
 -- The annotated object coercion synthesises both endpoints.
-#guard checkLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) .nil)
-    (.obj (.cons .nil (.has smokeLabel))) (.obj .nil)
-#guard synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) .nil) =
-    some (.obj (.cons .nil (.has smokeLabel)), .obj .nil)
+example : (checkLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) .nil)
+    (.obj (.cons .nil (.has smokeLabel))) (.obj .nil)) = true := by decide +kernel
+example : synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) .nil) =
+    some (.obj (.cons .nil (.has smokeLabel)), .obj .nil) := by decide +kernel
 
 -- A presence proposition is inherited from the source telescope by index.
-#guard synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 0)) =
-    some (.obj (.cons .nil (.has smokeLabel)), .obj (.cons .nil (.has smokeLabel)))
-#guard synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 1)) = none
+example : synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 0)) =
+    some (.obj (.cons .nil (.has smokeLabel)), .obj (.cons .nil (.has smokeLabel))) := by decide +kernel
+example : synthLe smokeCtx (.obj (.cons .nil (.has smokeLabel)) (.has .nil 1)) = none := by decide +kernel
 
 -- The annotated `Rec-I` synthesises its type.
-#guard checkAtom smokeCtxNil (.foldSelf .nil (.var .here)) (.obj .nil)
-#guard synthAtom smokeCtxNil (.foldSelf .nil (.var .here)) = some (.obj .nil)
+example : (checkAtom smokeCtxNil (.foldSelf .nil (.var .here)) (.obj .nil)) = true := by decide +kernel
+example : synthAtom smokeCtxNil (.foldSelf .nil (.var .here)) = some (.obj .nil) := by decide +kernel
 
 /-- A source telescope with one inclusion and one equality. -/
 private def smokeSrc : Telescope ([],x,x) := .nil ▹ ⊤ ⊑ ⊤ ▹ ⊤ ≐ ⊥
 
 -- A template with empty sides copies the hole.
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊤))
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊤)) := by decide +kernel
 -- A hole must name an inclusion (`le`) or an equality (`eq`, `eqSym`).
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 1) .none)) = none
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eq 0) .none)) = none
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eq 1) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊥))
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤))
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 2) .none)) = none
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 1) .none)) = none := by decide +kernel
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eq 0) .none)) = none := by decide +kernel
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eq 1) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊤ ⊑ ⊥)) := by decide +kernel
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤)) := by decide +kernel
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 2) .none)) = none := by decide +kernel
 -- A closed side composes with the hole at a weakened closed type.
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil (.some (.top ⊥)) (.le 0) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤))
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) (.some (.top ⊤)))) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤))
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil (.some (.refl ⊥)) (.le 0) .none)) = none
-#guard synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) (.some (.bot ⊤)))) = none
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil (.some (.top ⊥)) (.le 0) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤)) := by decide +kernel
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.eqSym 1) (.some (.top ⊤)))) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ⊑ ⊤)) := by decide +kernel
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil (.some (.refl ⊥)) (.le 0) .none)) = none := by decide +kernel
+example : synthLe smokeCtx (.obj smokeSrc (.le .nil .none (.le 0) (.some (.bot ⊤)))) = none := by decide +kernel
 -- Equalities are copied, possibly flipped; inclusions are not equalities.
-#guard synthLe smokeCtx (.obj smokeSrc (.eq .nil 1 false)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊤ ≐ ⊥))
-#guard synthLe smokeCtx (.obj smokeSrc (.eq .nil 1 true)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤))
-#guard synthLe smokeCtx (.obj smokeSrc (.eq .nil 0 false)) = none
+example : synthLe smokeCtx (.obj smokeSrc (.eq .nil 1 false)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊤ ≐ ⊥)) := by decide +kernel
+example : synthLe smokeCtx (.obj smokeSrc (.eq .nil 1 true)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤)) := by decide +kernel
+example : synthLe smokeCtx (.obj smokeSrc (.eq .nil 0 false)) = none := by decide +kernel
 -- Templates accumulate, oldest first.
-#guard synthLe smokeCtx (.obj smokeSrc (.le (.eq .nil 1 true) .none (.le 0) .none)) =
-    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤ ▹ ⊤ ⊑ ⊤))
+example : synthLe smokeCtx (.obj smokeSrc (.le (.eq .nil 1 true) .none (.le 0) .none)) =
+    some (μ smokeSrc, μ (.nil ▹ ⊥ ≐ ⊤ ▹ ⊤ ⊑ ⊤)) := by decide +kernel
 
 /-- The smoke binder's telescope. -/
 private def smokeTel : Telescope ([],x,x) := .nil ▹ ∋ smokeLabel
 
 -- Pairing concatenates the targets of two coercions with the same source.
-#guard synthLe smokeCtx
+example : synthLe smokeCtx
     (.pair .nil smokeTel (.obj smokeTel .nil) (.obj smokeTel (.has .nil 0))) =
-    some (μ smokeTel, μ smokeTel)
-#guard synthLe smokeCtx
+    some (μ smokeTel, μ smokeTel) := by decide +kernel
+example : synthLe smokeCtx
     (.pair smokeTel smokeTel (.obj smokeTel (.has .nil 0)) (.obj smokeTel (.has .nil 0))) =
-    some (μ smokeTel, μ (smokeTel ▹ ∋ smokeLabel))
+    some (μ smokeTel, μ (smokeTel ▹ ∋ smokeLabel)) := by decide +kernel
 -- The annotations must match the targets, and the sources must agree.
-#guard synthLe smokeCtx
-    (.pair smokeTel .nil (.obj smokeTel .nil) (.obj smokeTel (.has .nil 0))) = none
-#guard synthLe smokeCtx
-    (.pair .nil smokeTel (.obj .nil .nil) (.obj smokeTel (.has .nil 0))) = none
+example : synthLe smokeCtx
+    (.pair smokeTel .nil (.obj smokeTel .nil) (.obj smokeTel (.has .nil 0))) = none := by decide +kernel
+example : synthLe smokeCtx
+    (.pair .nil smokeTel (.obj .nil .nil) (.obj smokeTel (.has .nil 0))) = none := by decide +kernel
 
 -- `And-I` concatenates two typings of the same root.
-#guard synthAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here)) =
-    some (μ (smokeTel ▹ ∋ smokeLabel))
-#guard checkAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here))
-    (μ (smokeTel ▹ ∋ smokeLabel))
-#guard synthAtom smokeCtx (.both .nil smokeTel (.var .here) (.var .here)) = none
+example : synthAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here)) =
+    some (μ (smokeTel ▹ ∋ smokeLabel)) := by decide +kernel
+example : (checkAtom smokeCtx (.both smokeTel smokeTel (.var .here) (.var .here))
+    (μ (smokeTel ▹ ∋ smokeLabel))) = true := by decide +kernel
+example : synthAtom smokeCtx (.both .nil smokeTel (.var .here) (.var .here)) = none := by decide +kernel
 
 /-- Two binders of the same object type. -/
 private def smokeCtx2 : Ctx ([],x,x) :=
   smokeCtx.cons (.opaque (μ (.nil ▹ ∋ smokeLabel)))
 
-#guard synthAtom smokeCtx2
+example : synthAtom smokeCtx2
     (.both (.nil ▹ ∋ smokeLabel) (.nil ▹ ∋ smokeLabel) (.var .here) (.var .here)) =
-    some (μ (.nil ▹ ∋ smokeLabel ▹ ∋ smokeLabel))
-#guard synthAtom smokeCtx2
-    (.both (.nil ▹ ∋ smokeLabel) (.nil ▹ ∋ smokeLabel) (.var .here) (.var (.there .here))) = none
+    some (μ (.nil ▹ ∋ smokeLabel ▹ ∋ smokeLabel)) := by decide +kernel
+example : synthAtom smokeCtx2
+    (.both (.nil ▹ ∋ smokeLabel) (.nil ▹ ∋ smokeLabel) (.var .here) (.var (.there .here))) = none := by decide +kernel
 
 end SmokeTests
 
