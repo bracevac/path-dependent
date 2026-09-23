@@ -27,7 +27,10 @@ scopes then differ.  So the simulation theorem below carries the hypothesis
 `st.K.Evidential`: the continuation holds coercion frames only.  Under that
 hypothesis every rule is covered, `rename` included (it cannot fire), and the
 hypothesis holds throughout the run of a term with no `let` in it.  That is the
-honest fragment, and it is stated as such rather than patched.
+honest fragment, and it is stated as such rather than patched.  The simulation
+for every state, `let` frames included, is `Simulation.Rel.reflect_step`, over
+`Correspondence.Rel` rather than erasure; `Simulation.Rel.of_letFree` shows this
+module's fragment is a special case of it.
 
 ## What is proved
 

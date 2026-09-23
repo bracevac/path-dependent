@@ -28,7 +28,8 @@ the fragment or the elaboration was designed for it.
   erases to `tapp` of two variables, which is the source term on the nose.
   Without the restriction the elaboration would introduce `Tm.let`, whose
   erasure is `letEncode` — an object allocation — and the equation would be
-  false, not merely unproved.
+  false, not merely unproved.  Off the fragment, `ElaborationFull` relates the
+  elaborated term to its source by `Correspondence.Corr` instead.
 * **`DmFrag` demands both annotations.**  `Defs.dfun` carries a domain and a
   codomain outright and erases them to `some`, while the source's `dfun` may
   carry `none` (`EqSome`, `dot.v:216`).  On the fragment the source's

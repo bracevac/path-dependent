@@ -5,8 +5,11 @@ import Coercions.FCdotR.Examples
 # Elaboration: `Oopsla16` derivations become FCdotR evidence and terms
 
 The translation R1 of `PLAN.md` §E, as functions on derivations.  Every
-function here is a structural recursion over the source's `Type`-valued
-derivations, so the source's proof *is* the target's evidence, computed.
+function here recurses over the source's `Type`-valued derivations, so the
+source's proof *is* the target's evidence, computed.  All but `elabAtom` are
+compiled as structural recursions; Lean compiles `elabAtom` by well-founded
+recursion, so it is irreducible by default and a `rfl` computation through it
+needs `unseal elabAtom in` (as in `ElaborationFull.CurryCall`).
 
 ```text
 Oopsla16.Stp     G Γ S T          ↦  (e : Le σ s)     × LeTy G W Γ e S T
@@ -50,17 +53,19 @@ converse bridge, from `varConc` back to a source `T_Vary`, and
 
 `TmTy.app` takes two **atoms**; the source's `tapp` takes two arbitrary terms.
 Elaborating a general `tapp` means A-normalising it — binding each operand with
-`Tm.let` and proving the operational correspondence — and that is not done
-here, nor anywhere else in this library.  So term elaboration is restricted to
-the fragment `TmFrag`, in which every application has variable operands.  On
-that fragment the elaborated term contains no `let` at all, which is also the
+`Tm.let` and proving the operational correspondence.  That is not done here.
+`ElaborationFull.elabTm` does it, over the operational correspondence of
+`Correspondence`.  So term elaboration *in this module* is restricted to the
+fragment `TmFrag`, in which every application has variable operands.  On that
+fragment the elaborated term contains no `let` at all, which is also the
 fragment on which `Erasure.Steps.simulate` holds.
 
 `TmFrag` carries a second restriction, for erasure rather than for typing: a
 source `dfun` may leave either annotation absent (`EqSome`, `dot.v:216`), while
 `Defs.dfun` carries both, so an unannotated source method would elaborate to an
 annotated target method and `ElaborationErasure`'s equality would fail on the
-nose.  `TmFrag` therefore asks for Church-style definitions.
+nose.  `TmFrag` therefore asks for Church-style definitions.  `ElaborationFull`
+drops this restriction too, because its correspondence ignores annotations.
 
 ## The acceptance test
 
@@ -188,8 +193,9 @@ structurally, so that a derivation over `t` can be elaborated by recursion:
   erases back to it on the nose.
 
 Neither is a restriction on the *calculus*; both are restrictions on this
-translation, and `PLAN.md` §E records the first as the MNF lemma that is still
-owed. -/
+translation.  `PLAN.md` §E records the first as the MNF lemma that was owed.
+`ElaborationFull` now pays it, and elaborates every source typing with neither
+restriction. -/
 
 mutual
 
@@ -295,8 +301,9 @@ the fragment `TmFrag`.
 `T_App` and `T_AppVar` both become `TmTy.app` — the non-dependent one through
 `TmTy.appWeaken` — because on this fragment both operands are already
 variables, hence atoms.  Off the fragment the function is not defined: a
-general `tapp t1 l t2` needs its operands bound by `Tm.let` first, and the
-operational correspondence for that binding is proved nowhere in this library.
+general `tapp t1 l t2` needs its operands bound by `Tm.let` first.
+`ElaborationFull.elabTm` does that binding for every source typing, and
+`Correspondence` proves the operational correspondence for it.
 
 Like `elabAtom`, this takes **no hypothesis**, and `W` is arbitrary.  The
 earlier statement took `VaryEv G W`; it is replaced, not weakened — see the

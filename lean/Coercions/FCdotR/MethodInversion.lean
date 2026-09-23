@@ -21,7 +21,9 @@ lookup (`defsTy_erase_of_conjunct`), positional labels doing the work.
 
 What this module does **not** contain: anything about the source machine;
 `Preservation`'s and `Progress`'s own restrictions (the let-free fragment of the
-simulation, the elaborable fragment of source terms) are unchanged.
+simulation, the elaborable fragment of source terms) are unchanged here.  The
+transport to `Oopsla16`'s machine, with neither restriction, is
+`Correspondence`, `ElaborationFull`, `Simulation` and `SourceSafety`.
 -/
 
 namespace FCdotR
@@ -133,8 +135,10 @@ theorem safety' {W : StoreTy []} {t : Tm [] []} {T : Ty [] []}
 hypothesis**: `Progress.safety_of_source` at `appInversion`.  A source term
 typed over an honest source store, the term and every stored witness in the
 elaborable fragment (`TmFrag`/`DmsFrag`), starts a machine run that never
-reaches a stuck *target* state.  This is not yet safety of `Oopsla16`'s own
-semantics: that needs `Erasure`'s simulation beyond the let-free fragment. -/
+reaches a stuck *target* state.  This is not by itself safety of `Oopsla16`'s
+own semantics.  That is `SourceSafety`'s `Oopsla16.oopsla16_safety`, through the
+correspondence of `Correspondence` rather than `Erasure`'s let-free
+simulation. -/
 theorem safety_of_source' {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
     (h : Store.Honest G W) (hf : ∀ l, DmsFrag (h.at' l).defs)
     {t : Oopsla16.Tm σ []} {T : Ty σ []} (ht : Oopsla16.HasType G Ctx.nil t T)

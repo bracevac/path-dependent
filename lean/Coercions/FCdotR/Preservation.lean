@@ -93,7 +93,9 @@ erased store.  `MachineStore.Honest.alloc` extends honesty along `alloc`.
 What this module does **not** contain: progress (`Progress`), any proof of
 `AppInversion` (that is `MethodInversion.appInversion`, which imports this
 module), and any simulation up to the skeleton beyond what `Erasure` already
-proves for the let-free fragment.
+proves for the let-free fragment (the general one is `Correspondence` and
+`Simulation`, which relate states by `Correspondence.Rel`, a property of
+skeletons).
 -/
 
 namespace FCdotR

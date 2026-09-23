@@ -34,9 +34,10 @@ evidence-level content `ObsFunInversion`.
 What this module does **not** contain: any proof of `AppInversion` (that is
 `MethodInversion.appInversion`, which imports this module and restates
 `progress`, `not_stuck`, `safety` and `safety_of_source` without the
-hypothesis), and any transport of safety to `Oopsla16` (that needs the
-simulation of `Erasure` beyond its let-free fragment, and the elaboration of
-general `tapp`; `STATUS.md` items 5–7).
+hypothesis), and any transport of safety to `Oopsla16` (that is
+`Correspondence`, `ElaborationFull`, `Simulation` and `SourceSafety`, which
+relate the machine to the source by `Correspondence.Corr` instead of
+`Erasure`'s let-free simulation).
 -/
 
 namespace FCdotR
