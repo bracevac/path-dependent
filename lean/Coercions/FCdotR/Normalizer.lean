@@ -21,6 +21,9 @@ the second one stops.
   at the location — evidence that is *not* a subderivation.  That contraction is
   this module's one hypothesis, the structure `Contract`.  **Nothing in this
   module inhabits `Contract`**, and everything that depends on it says so.
+  Downstream, `Inversion.Store.Honest.contract` inhabits it over every honest
+  store, and `Inversion.Store.Honest.canon` is `VcTy.canon` with the hypothesis
+  discharged.
 
   Given `Contract`, the rest is proved here, and it settles `PLAN.md` §I's open
   question in the affirmative: the measure is `Vc.spinePacks`, the number of
@@ -33,15 +36,15 @@ the second one stops.
   the measure counts.  `Contract.step` is therefore asked only for
   `u.spinePacks ≤ w.spinePacks`, which is what a structure-preserving
   substitution gives along the `bindx` route, where the contracted observation
-  is the packed one widened by the instantiated premise.  Whether every other
-  route through which `μT ≤ μT'` could have been derived — a chain through a
-  concrete selection, say — also respects the bound is part of what inhabiting
-  `Contract` has to establish; it is not proved here and is not assumed
-  anywhere else.
+  is the packed one widened by the instantiated premise.  That every other route
+  through which `μT ≤ μT'` could have been derived — a chain through a concrete
+  selection, say — respects the bound too is not proved here; it is
+  `Inversion.Store.Honest.invBind`, which shows that over an honest store every
+  such route normalizes to `bindx` or `bind1`.
 
 This module contains no inversion of inclusion evidence.  Eliminating `trans`
 from a closed `LeTy` is the other half of canonical forms and is not here; see
-`CanonicalForms`.
+`Inversion`.
 -/
 
 namespace FCdotR
@@ -171,17 +174,19 @@ unfolding-over-packing redex at a location: given a closed observation of the
 opened body `T` at `ℓ`, and a closed inclusion `μT ≤ μT'`, an observation of the
 opened body `T'` at `ℓ`, with no more packs on its spine.
 
-Two ingredients inhabit it.  The inclusion has to be inverted to a `bindx` —
-that is transitivity elimination for closed inclusion evidence, the other half
-of canonical forms, and it does **not** exist yet — and that `bindx`'s premise,
-which lives under the self hypothesis, has to be instantiated at `ℓ` — that is
-the substitution theorem, `SubstTyping.LeTy.substEv`, which **is** available
-unconditionally (its former hypothesis `LemmaR` is discharged by
-`SubstTyping.lemmaR`).  So only the inversion is missing.  The bound `u.spinePacks ≤ w.spinePacks` is what a
-structure-preserving substitution gives along the `bindx` route: it copies
-observations, but every copy observes a different subject and so does not land
-on this spine.  Establishing it for every route by which `μT ≤ μT'` can be
-derived is part of inhabiting this structure. -/
+Two ingredients inhabit it.  The inclusion has to be inverted to a `bindx` (or
+a `bind1`) — that is transitivity elimination for closed inclusion evidence, the
+other half of canonical forms, which `Inversion.Store.Honest.invBind` supplies
+over an honest store — and that premise, which lives under the self hypothesis,
+has to be instantiated at `ℓ` — that is the substitution theorem,
+`SubstTyping.LeTy.substEv`, which is available unconditionally.  The bound
+`u.spinePacks ≤ w.spinePacks` is what a structure-preserving substitution gives
+along both routes: it copies observations, but every copy observes a different
+subject and so does not land on this spine.
+
+**Inhabited over every honest store** by `Inversion.Store.Honest.contract`;
+this module does not import that proof, so the results below still take the
+structure as an argument. -/
 structure Contract {σ : Sig} (G : Store σ σ) (W : StoreTy σ) : Type where
   /-- Contract one redex. -/
   step : ∀ {l : BVar σ .var} {T T' : Ty σ ([],x)} {w : Vc σ []} {e : Le σ []},
@@ -249,9 +254,10 @@ This is the theorem `PLAN.md` §I asks for, and it answers the question there:
 the pack count on the spine *is* a well-founded measure for `vc_canon`, and no
 count of derivation size is needed alongside it beyond the structural one.
 
-**It is stated with an unproved hypothesis.**  `c : Contract G W` is the
-contraction of a redex through a widening, and nothing inhabits it; see
-`Contract`. -/
+**It is stated with a hypothesis.**  `c : Contract G W` is the contraction of
+a redex through a widening.  It is discharged over every honest store by
+`Inversion.Store.Honest.contract`, and `Inversion.Store.Honest.canon` is this
+theorem with the hypothesis gone. -/
 def VcTy.canon {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {l : BVar σ .var}
     (c : Contract G W) : (n : Nat) → (v : Vc σ []) → {T : Ty σ []} →
     VcTy G W .nil (.conc l) v T → v.spinePacks ≤ n → VcRf G W l v T

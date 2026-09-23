@@ -44,15 +44,24 @@ honest fragment, and it is stated as such rather than patched.
   for `alloc` (`ST_Obj`) and `app` (`ST_AppAbs`).
 * `State.LetFree` and `Step.letFree`: the fragment the hypothesis describes is
   closed under stepping, and `Steps.simulate` iterates the simulation on it.
+* The **evidence skeleton** `Tm.skel`/`Defs.skel`/`Cont.skel` and its
+  substituted form `skelSubst`: the machine's instantiation, a store renaming
+  and the generated substitution all have the substituted skeleton
+  (`Tm.skel_inst`, `Tm.skel_renameStore`, `Tm.skel_subst`), the skeleton
+  commutes with method and member lookup (`Defs.fun?_skel`, `Defs.ty?_skel`),
+  and erasure factors through it (`Tm.erase_skel`).  This is what
+  `Preservation` types a state up to.
 * `badRun`: the two-object store of `Oopsla16.PackingCounterexample` as an
   FCdotR program that allocates both objects and runs to a stuck state whose
   store erases to that counterexample's `G`, whose term erases to its
   `badTerm`, and whose erasure is stuck for the reason that module proves.
+  The program is untyped in FCdotR: the source typing it imitates needs packing
+  at an abstract variable.
 
 What is **not** here: any typing property.  The machine drops an atom's
 coercions when it substitutes (see `Machine`), so the erasure results below are
-runtime statements only, and a preservation theorem would need the substitution
-theorem `Structural` is still missing.
+runtime statements only; `Preservation` is where the machine meets typing, up
+to the skeleton defined here.
 -/
 
 namespace FCdotR

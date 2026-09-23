@@ -34,18 +34,26 @@ vacuous.  The two that are not are `selL` and `selR`, and they are exactly the
 two that read an observation of a location.  So the whole of consistency sits on
 the hypothesis `BoundsVacuous`: a closed observation of `ℓ` at `{a : S..U}`
 brackets the *stored* member — `S` is vacuous if `ℓ.a` is, and `ℓ.a` is vacuous
-if `U` is.  **Nothing here inhabits `BoundsVacuous`**, and both `consistency` and
-`obs_conc_admissible`'s hard half say so.  `BoundsVacuous` is the `Vacuous`
-shadow of `ObsConcAdmissible`; the two cannot be derived from each other here,
-because getting from the inclusions `S ≤ TX ≤ U` that `ObsConcAdmissible` hands
-back to a `Vacuous` fact needs `vacuousMono` at those inclusions, and they are
-not subderivations of anything.  Closing the gap needs the inversion of a closed
-inclusion at a `TTyp` — transitivity elimination — which needs `Normalizer`'s
-`Contract`, which needs the substitution theorem.  That is the chain, and it is
-why item 2 of `STATUS.md` is not independent of item 1.
+if `U` is.  **Nothing in this module inhabits `BoundsVacuous`**, and the results
+that take it say so.  `BoundsVacuous` is the `Vacuous` shadow of
+`ObsConcAdmissible`; getting from the inclusions `S ≤ TX ≤ U` that
+`ObsConcAdmissible` hands back to a `Vacuous` fact needs `vacuousMono` at those
+inclusions, and they are not subderivations of anything.
 
-One case is unconditional: over the **empty store** there are no locations, so
-`BoundsVacuous` holds vacuously and `consistency` is a theorem
+**Downstream the gap is closed.**  `Inversion` eliminates transitivity from
+closed inclusions over an honest store, by strengthening arbitrary evidence to
+evidence with no concrete `selL`/`selR` (a pack-count induction) and pushing
+back `trans` in that.  The inclusions `ObsConcAdmissible` asks for then come out
+*strong*, and strong inclusions run downhill for vacuity with no hypothesis
+(`Inversion.LeTy.vacuousStrong`).  So `Inversion.Store.Honest.boundsVacuous`
+inhabits `BoundsVacuous` over every honest store,
+`Inversion.obs_conc_admissible` inhabits `ObsConcAdmissible`, and
+`Inversion.consistency_honest` is consistency with honesty as its only
+hypothesis.  This module stays below `Inversion` in the import order, so its
+own statements keep the hypothesis as an argument.
+
+One case needs no store at all: over the **empty store** there are no
+locations, so `BoundsVacuous` holds vacuously and `consistency` is a theorem
 (`consistency_nil`).
 -/
 
@@ -185,9 +193,9 @@ at a type member brackets the member the store records there, in the sense of
 `Vacuous`: the lower bound is vacuous if the selection is, and the selection is
 vacuous if the upper bound is.
 
-This is the `Vacuous` shadow of `ObsConcAdmissible`.  **Nothing in this
-development inhabits it.**  It is what `Store.Honest` should buy, and buying it
-needs the inversion of a closed inclusion at a `TTyp`, i.e. transitivity
+This is the `Vacuous` shadow of `ObsConcAdmissible`.  Nothing in this module
+inhabits it; it is what `Store.Honest` buys, and
+`Inversion.Store.Honest.boundsVacuous` is the proof, by transitivity
 elimination — see the module header. -/
 structure BoundsVacuous {σ : Sig} (G : Store σ σ) (W : StoreTy σ) : Prop where
   /-- A vacuous selection forces a vacuous lower bound. -/
@@ -209,8 +217,9 @@ The recursion is on the size of the evidence, not on its structure, because
 `LeTy` and `VcTy` are mutually inductive and only the inclusion half is
 traversed.
 
-**Stated with an unproved hypothesis:** `hb : BoundsVacuous G W`, which nothing
-inhabits. -/
+**Stated with a hypothesis:** `hb : BoundsVacuous G W`, discharged over every
+honest store by `Inversion.Store.Honest.boundsVacuous`.  For strong evidence no
+hypothesis is needed (`Inversion.LeTy.vacuousStrong`). -/
 theorem LeTy.vacuousMono {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
     (hb : BoundsVacuous G W) :
     {e : Le σ []} → {S T : Ty σ []} → LeTy G W .nil e S T →
@@ -255,10 +264,11 @@ theorem LeTy.vacuousMono {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
 /-- **Consistency over an honest store.**  No closed evidence includes `⊤` in
 `⊥`.
 
-**Stated with an unproved hypothesis.**  `hb : BoundsVacuous G W` is the
-soundness of the bounds a closed observation of a location can report, and
-nothing in this development inhabits it; the module header says what closing it
-needs.  The honesty of the store is carried because it is what should buy `hb`,
+**Stated with a hypothesis.**  `hb : BoundsVacuous G W` is the soundness of the
+bounds a closed observation of a location can report.  It is discharged over
+every honest store by `Inversion.Store.Honest.boundsVacuous`, and
+`Inversion.consistency_honest` is this theorem with honesty as its only
+hypothesis.  The honesty of the store is carried because it is what buys `hb`,
 but the proof below does not use it. -/
 theorem consistency {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {e : Le σ []}
     (_hG : Store.Honest G W) (hb : BoundsVacuous G W)
@@ -335,7 +345,9 @@ theorem Store.Honest.not_vacuous {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
 /-- **No closed inclusion empties a location.**  A corollary of the previous two
 results; it is `consistency` read at a location's own type instead of at `⊤`.
 
-**Stated with an unproved hypothesis:** `hb : BoundsVacuous G W`. -/
+**Stated with a hypothesis:** `hb : BoundsVacuous G W`, discharged over every
+honest store by `Inversion.Store.Honest.boundsVacuous`
+(`Inversion.Store.Honest.no_loc_le_bot`). -/
 theorem no_loc_le_bot {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {e : Le σ []}
     (hG : Store.Honest G W) (hb : BoundsVacuous G W) (l : BVar σ .var)
     (h : LeTy G W .nil e (tyOf W l) .TBot) : False :=
@@ -453,7 +465,8 @@ end DishonestStore
 /-- **The statement of `obs_conc_admissible`.**  A closed observation of a
 location at a type member is bracketed by the definition the store holds: there
 is a stored `dty TX` at that label, and closed inclusions `S ≤ TX` and
-`TX ≤ U`. -/
+`TX ≤ U`.  Inhabited over every honest store by `Inversion.obs_conc_admissible`,
+which moreover makes both inclusions strong. -/
 def ObsConcAdmissible {σ : Sig} (G : Store σ σ) (W : StoreTy σ) : Type :=
   ∀ {l : BVar σ .var} {a : Lb} {S U : Ty σ []} {v : Vc σ []},
     VcTy G W .nil (.conc l) v (.TTyp a S U) →
@@ -475,7 +488,7 @@ def obs_conc_easy {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s
 subsumed by a `selL`, because the exact bounds the store records can be widened
 to `⊥..TX` and observed.  So the concrete selection rules `selL`/`selR` really
 are the more permissive pair, as `PLAN.md` §I says; `obs_conc_admissible` is the
-claim that they are no *more* permissive. -/
+claim that they are no *more* permissive, proved in `Inversion`. -/
 def Store.Honest.defL_as_selL {σ s : Sig} {G : Store σ σ} {W : StoreTy σ}
     {Γ : Ctx σ s} (hG : Store.Honest G W) (l : BVar σ .var) {a : Lb}
     {TX : Ty σ []} (hg : (G.lookup l).get? a = some (.dty TX)) :

@@ -44,10 +44,14 @@ name of its own and bare `Store` always means `Oopsla16.Store`.
 
 `rename` and `app` substitute the **root location** of an atom, not the atom.
 Dropping the atom's casts is sound at runtime, since erasure drops them too
-(`Erasure.Atom.erase`), but it is not type-preserving: `FCdot.Machine` keeps
-them with `Tm.adjust`, and a preservation theorem for this machine would have
-to do the same.  This module proves no typing property, so the simpler rule is
-taken and the limitation recorded here.
+(`Erasure.Atom.erase`), but it does not preserve typing *on the nose*:
+`Preservation.OnTheNose` is a state typed as it stands whose `rename` step is
+untypable.  `FCdot.Machine` keeps the casts with `Tm.adjust`; here that would
+not suffice, because the body's observation evidence would also have to be
+rebuilt from the atom, and an atom does not record the types its evidence
+needs.  The rules are therefore kept, and `Preservation` types a state **up to
+evidence** — some typed term with its skeleton — which the typed substitution
+theorem delivers for the reduct of both rules.
 
 ## The substitution
 
@@ -74,7 +78,8 @@ syntax and `VcTy.substEv` is the semantic one.  `Le.inst` likewise leaves a
 erasure (`Tm.erase_inst_subst`), which is all a runtime statement needs.
 
 This module contains no typing judgment, no preservation or progress result,
-and no erasure; erasure and the simulation are `FCdotR.Erasure`.
+and no erasure; erasure and the simulation are `FCdotR.Erasure`, preservation
+and progress are `FCdotR.Preservation` and `FCdotR.Progress`.
 -/
 
 namespace FCdotR

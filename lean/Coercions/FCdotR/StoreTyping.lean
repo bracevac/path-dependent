@@ -58,7 +58,11 @@ inhabited by something with cross-referencing entries and positional labels.
 What this module does **not** contain: any typing of the target's own terms
 (that is `TermTyping`), any operational semantics for FCdotR, and any
 completeness claim — `Store.Honest` is an invariant a machine maintains, not a
-characterisation of the stores `Typing` admits.
+characterisation of the stores `Typing` admits.  It is the invariant of a
+*source* store.  The FCdotR machine's own store is kept honest by a different
+invariant, `Preservation.MachineStore.Honest`, which types the stored target
+literals instead; `Preservation` says why the two differ and proves how they
+are connected (`Store.Honest.toMachine`).
 -/
 
 namespace FCdotR

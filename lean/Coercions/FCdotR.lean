@@ -12,10 +12,14 @@ import Coercions.FCdotR.StoreTyping
 import Coercions.FCdotR.Forms
 import Coercions.FCdotR.Normalizer
 import Coercions.FCdotR.CanonicalForms
+import Coercions.FCdotR.Inversion
 import Coercions.FCdotR.TermTyping
 import Coercions.FCdotR.TermSubst
 import Coercions.FCdotR.Elaboration
 import Coercions.FCdotR.ElaborationErasure
+import Coercions.FCdotR.Preservation
+import Coercions.FCdotR.Progress
+import Coercions.FCdotR.MethodInversion
 /-!
 Import root for FCdotR, the explicit-evidence target with first-class
 recursive types, designed against the `Coercions.Oopsla16` source.

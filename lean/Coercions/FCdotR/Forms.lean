@@ -4,10 +4,11 @@ import Coercions.FCdotR.StoreTyping
 # Forms: the shape of closed evidence, and the measures that reach it
 
 This module is the vocabulary the canonical-forms argument needs, and nothing
-more.  It contains no inversion and no normalization: `Normalizer` does the
-first, `CanonicalForms` the second.
+more.  It contains no inversion and no normalization: `Normalizer` normalizes
+observations, `CanonicalForms` reads off what the head shapes force, and
+`Inversion` eliminates transitivity from closed inclusions.
 
-Three things live here.
+Five things live here.
 
 * **Measures.**  `Le.size`/`Vc.size` count nodes across the two mutually
   inductive evidence sorts.  `Le.packs`/`Vc.packs` count `vcPack` nodes
@@ -37,9 +38,17 @@ Three things live here.
   consumes a `vcPack` through at most one widening; those are the redexes the
   pack measure counts down.
 
+* **Pack bounds.**  `Le.PackBound k` says every selection on a location, at any
+  depth, observes it through fewer than `k` packings; `Le.Strong` is
+  `PackBound 0`, evidence whose concrete selections are all `defL`/`defR`.
+
+* **Normal forms of closed inclusions.**  `LeNf`/`LeNfHead`, the target's
+  precise subtyping `stpp`, with strong premises `SLe`.
+
 What this module does **not** contain: any claim that a form exists for a given
-derivation.  Every definition here is on raw evidence, so nothing in it
-presumes the store is honest or the evidence well typed.
+derivation.  Every definition here is on raw evidence or is a datatype, so
+nothing in it presumes the store is honest or the evidence well typed.
+`Inversion.SLe.nf` and `Inversion.Store.Honest.nf` are the existence results.
 -/
 
 namespace FCdotR
@@ -297,6 +306,7 @@ def Vc.pushSub {σ s : Sig} (T1 : Ty σ s) (e : Le σ s) : Vc σ s → Vc σ s
   | .vcSub T0 d w => .vcSub T0 (.trans T1 d e) w
   | w => .vcSub T1 e w
 
+/-- Merging a widening moves no packing: `pushSub` only rebuilds a `vcSub`. -/
 @[simp] theorem Vc.spinePacks_pushSub {σ s : Sig} (T1 : Ty σ s) (e : Le σ s)
     (w : Vc σ s) : (Vc.pushSub T1 e w).spinePacks = w.spinePacks := by
   cases w <;> rfl
@@ -343,9 +353,10 @@ constraint on the inclusions their observations carry.
 
 `PackBound 0` forbids concrete `selL`/`selR` altogether; that is `Le.Strong`,
 named after the source rules it leaves.  Strong closed evidence is what
-transitivity elimination (`Inversion.pushback`) runs on, and turning arbitrary
-evidence into strong evidence (`Inversion.LeTy.strong`) is where the pack count
-is spent: a concrete selection is replaced by `defL`/`defR` after its
+transitivity elimination (`Inversion.LeTy.pushback`) runs on, and turning
+arbitrary evidence into strong evidence (`Inversion.LeTy.strengthenAt`, and
+`Inversion.Store.Honest.strengthen` over an honest store) is where the pack
+count is spent: a concrete selection is replaced by `defL`/`defR` after its
 observation has been inverted, which needs the substitution theorem at fewer
 packs. -/
 
@@ -500,7 +511,8 @@ The premises of `sel1`, `and11`, `and12` and `or1` are themselves forms, as in
 premise is a **strong** inclusion `SLe`, which may contain `trans` but no
 selection that observes a location.  That the premises are strong is what lets
 a premise of `bind1`/`bindx` be instantiated at a location and strengthened
-again at a smaller pack count (`Inversion.substAt`).
+again at a smaller pack count (`Inversion.LeTy.substB`, used by
+`Inversion.ObsInv.bindStep`).
 
 No `selL`/`selR` form exists: a closed selection is on a location, and in a
 normal form it is read against the store.  This is the precise sense in which
