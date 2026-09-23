@@ -561,9 +561,9 @@ that has allocated nothing at `x.a`.
 
 `Fld-E` is stated on a stable member, `PathTy.sel`, and this literal declares
 no stable member.  The page proves that by inversion, twice.  `X2_defsShape`
-inverts definition typing: the three stable rules ask for an object literal, a
-lambda or a variable body, the body here is the projection `x.a`, so every
-derivation of these definitions types `a` as a computation member.
+inverts definition typing: the one stable rule, `trmObj`, asks for an object
+literal body (P2 g0, decision 27), the body here is the projection `x.a`, so
+every derivation of these definitions types `a` as a computation member.
 `X2_noVfld` reads the declaration type with `Ty.lookupVfldDecl` and gets
 `none`.  `X2_noSubDecl` inverts the abstract view: `Typ-Abs` cannot widen the
 literal's type to one with a stable member at `a` either.
@@ -607,9 +607,9 @@ def X2_lit {Γ : Ctx s} : HasTy Γ (.val (.obj X2_Defs)) (.mu X2_Self) :=
   .obj X2_DefsTy .trm
 
 /-- Inversion of definition typing at this body: every type these definitions
-can be given declares `a` as a computation member.  `trmObj`, `trmLam` and
-`trmSngl` ask for an object literal, a lambda and a variable body, and the
-body is the projection `x.a`, so `trm` is the only rule that applies. -/
+can be given declares `a` as a computation member.  `trmObj` asks for an
+object literal body, and the body is the projection `x.a`, so `trm` is the
+only rule that applies. -/
 def X2_defsShape {Γ : Ctx (s,x)} {U : Ty (s,x)} (h : DefsTy Γ X2_Defs U) :
     (T : Ty (s,x)) × PLift (U = .fld la T) := by
   cases h with
@@ -633,13 +633,16 @@ theorem X2_noSubDecl {Γ : Ctx s} {T : Ty (s,x)}
 /-! ## X3: `let y = x.a in y.b`, the two-hop program
 
 Decision 2 keeps term position in monadic normal form, so a path of length
-two is written with a `let`.  `HasTy.letSngl` binds `y` at the singleton
-`(x.a).type` rather than opaquely, and that is what relates the binder to the
-prefix it names: under the singleton, `Sngl-Trans` carries `x.a`'s stable
-member to `y`, and `Fld-E` then reads `y.b`.
+two is written with a `let`.  `x : {val a : {val b : ⊤}}`, both members stable,
+since `Fld-E` reads stable members only (X2).
 
-`x : {val a : {val b : ⊤}}`, both members stable, since `Fld-E` reads stable
-members only (X2). -/
+After P2 g0 the derived `HasTy.letSngl` applies only over a field declared at a
+singleton (decision 23), and `a` is declared at `{val b : ⊤}`.  So `X3` types
+the program with the opaque `let`, and both projections read a path typing of
+the receiver through `HasTy.projP` (decision 28).  The body keeps its
+derivation under the singleton binder: in `X3_CtxY` the binder `y` is bound at
+`(x.a).type`, `Sngl-Trans` carries `x.a`'s stable member to `y`, and `Fld-E`
+then reads `y.b`.  That is `X3_body` and `X3_yb`. -/
 
 /-- `{val b : ⊤}`, the type of `x.a`. -/
 def X3_B : Ty s := .vfld lb .top
@@ -671,19 +674,17 @@ def X3_yB : PathTy X3_CtxY (.var .here) X3_B := X3_y.snglTrans X3_xaW
 /-- `Fld-E` under the singleton: `y.b : ⊤`, the second hop. -/
 def X3_yb : PathTy X3_CtxY (.sel (.var .here) lb) .top := X3_yB.sel
 
-/-- The body as a term, `y.b`, through `Fld` on the stable member. -/
+/-- The body as a term, `y.b`, under the singleton binder: `HasTy.projP` reads
+the stable member of `y` as a member (decision 28). -/
 def X3_body : HasTy X3_CtxY (.proj .here lb) .top :=
-  .proj (.path (X3_yB.sub .vfldToFld))
+  .projP (X3_yB.sub .vfldToFld)
 
-/-- `let y = x.a in y.b`, typed by `letSngl`. -/
+/-- `let y = x.a in y.b`, typed by the opaque `let` (decision 23): the field
+`a` is declared at `{val b : ⊤}`, not at a singleton, so the derived
+`letSngl` does not apply.  This is the former `X3_opaque`. -/
 def X3 : HasTy X3_Ctx (.let (.proj .here la) (.proj .here lb)) .top :=
-  .letSngl X3_xa X3_body .top
-
-/-- The same program with the opaque `let`: `HasTy.let` stands beside
-`letSngl`, and it also types this term, since `⊤` needs no singleton. -/
-def X3_opaque : HasTy X3_Ctx (.let (.proj .here la) (.proj .here lb)) .top :=
-  .let (.proj (.path (X3_x.sub .vfldToFld)))
-    (.proj (.path ((pvar' (.here) rfl).sub .vfldToFld))) .top
+  .let (.projP (X3_x.sub .vfldToFld))
+    (.projP ((pvar' (.here) rfl).sub .vfldToFld)) .top
 
 /-! ## X4: gDOT Fig. 2, the `types` literal, and T9
 
@@ -703,8 +704,9 @@ types = νtypes. {
 The page is that literal, with the enclosing module `pcore` a context binder
 rather than a second literal, since nothing here eliminates a member of
 `pcore`.  `pcore.symbols.Symbol` is the length-two path selection, the shape
-WadlerFest DOT cannot write.  The two lambda fields are stable, by
-`DefsTy.trmLam`, and `newTypeRef` allocates `ν(_. {symb = s})`, binds it with
+WadlerFest DOT cannot write.  The two lambda fields are plain, typed by
+`DefsTy.trm`, since after P2 g0 only an object literal body makes a field
+stable (decision 27).  `newTypeRef` allocates `ν(_. {symb = s})`, binds it with
 a `let` and returns it at `types.TypeRef`.
 
 T9, `DefsTy.typ_exact`, is the statement that replaces pDOT's `tight_bounds`:
@@ -744,18 +746,19 @@ as. -/
 def X4_RefBody (t p : BVar s .var) : Ty s := .and (X4_TypeSel t) (.fld X4_lsymb (X4_Sym p))
 
 /-- The declared type of the `types` literal, with the self at `t` and the
-enclosing module at `p`.  Both lambda fields are stable members. -/
+enclosing module at `p`.  Both lambda fields are plain members (decision
+27). -/
 def X4_Body (t p : BVar s .var) : Ty s :=
   .and (.and (.and (.and
     (.typ X4_lType .top .top)
     (.typ X4_lTypeTop (X4_TypeSel t) (X4_TypeSel t)))
-    (.vfld X4_lnewTypeTop (.all .top (X4_TopSel (.there t)))))
+    (.fld X4_lnewTypeTop (.all .top (X4_TopSel (.there t)))))
     (.typ X4_lTypeRef (X4_RefBody t p) (X4_RefBody t p)))
-    (.vfld X4_lnewTypeRef (.all (X4_Sym p) (X4_RefSel (.there t))))
+    (.fld X4_lnewTypeRef (.all (X4_Sym p) (X4_RefSel (.there t))))
 
 /-- The declaration type is declaration-shaped. -/
 theorem X4_BodyDecl (t p : BVar s .var) : Ty.Decl (X4_Body t p) :=
-  .and (.and (.and (.and .typ .typ) .vfld) .typ) .vfld
+  .and (.and (.and (.and .typ .typ) .fld) .typ) .fld
 
 /-- The literal's definitions.  `newTypeTop` returns its own argument, which
 is `⊤` and therefore below `types.Type` and below `types.TypeTop`;
@@ -844,8 +847,8 @@ def X4_newTypeRef {Γ : Ctx s} (p : BVar s .var) :
 /-- The five members of the `types` literal. -/
 def X4_DefsTy {Γ : Ctx s} (p : BVar s .var) :
     DefsTy (X4_CtxSelf (Γ := Γ) p) (X4_Defs .here (.there p)) (X4_Body .here (.there p)) :=
-  .and (.and (.and (.and .typ .typ) (.trmLam (X4_newTypeTop p))) .typ)
-    (.trmLam (X4_newTypeRef p))
+  .and (.and (.and (.and .typ .typ) (.trm (X4_newTypeTop p))) .typ)
+    (.trm (X4_newTypeRef p))
 
 /-- The `types` literal of gDOT Fig. 2. -/
 def X4_lit {Γ : Ctx s} (p : BVar s .var) :

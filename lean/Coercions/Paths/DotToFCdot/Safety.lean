@@ -62,7 +62,7 @@ theorem final_erase {s : Sig} {st : State s} (h : st.Final) : st.erase.Final := 
     · simp only at hv; subst hv
       exact Or.inl (Value.isValue_erase v)
     · simp only at hp; subst hp
-      exact Or.inr ⟨p.root, rfl⟩
+      exact Or.inr ⟨p, rfl⟩
 
 /-- Conversely, a source state whose erasure is final is itself final.
 Unlike in FCdot there is no pending-cast-frame caveat: the source machine

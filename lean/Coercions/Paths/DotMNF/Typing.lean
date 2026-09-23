@@ -10,13 +10,20 @@ inductive families.  They live in `Type`, not in `Prop`: the translation of
 Plan III §8 is a function on derivations and therefore needs `Type`-valued
 elimination.
 
-Path typing is pDOT's `Γ ⊢ p : T`.  It carries the four rules that used to be
-stated on variables inside term typing, `T-Var`, `Rec-I`, `Rec-E` and `And-I`,
-and it carries the singleton rules.  Term typing reaches it through the single
-bridge rule `HasTy.path`, and `HasTy.toPathTy` reads the bridge backwards.  The
-four base rules are therefore derivable exactly where they were, with the same
-premises and no premise added, and they are restated below as `HasTy.var`,
-`HasTy.recI`, `HasTy.recE` and `HasTy.andI`.
+Path typing is pDOT's `Γ ⊢ p : T`.  It carries `T-Var`, `Rec-I`, `Rec-E` and
+`And-I` at a path, and it carries the singleton rules.  The four base rules at a
+variable are term typing's: `HasTy.var`, `HasTy.recI`, `HasTy.recE` and
+`HasTy.andI` are constructors with the base's statements (P2 g0, decision 28).
+Term typing reads path typing at two places only.  The bridge `HasTy.sngl` types
+a variable at a singleton, and `HasTy.projP` projects a field out of a receiver
+typed as a path.  `HasTy.toPathTy` maps every term typing at a variable to a
+path typing.
+
+P2 g0 restricts four P0 rules (P2.0).  The subtyping rules `repl` and `replSym`
+are removed (decision 29), and `Ty.ReplOne` stays unused.  `HasTy.letSngl` is a derived
+`let` over a field declared at a singleton (decision 23).  `DefsTy.trmLam` and
+`DefsTy.trmSngl` are derived forms at a plain field, so `DefsTy.trmObj` is the
+only rule that declares a stable field (decision 27).
 
 Well-formedness appears only as a premise of the two rules that introduce a
 type out of thin air: the domain annotation of a lambda and the result type
@@ -74,9 +81,12 @@ def Ctx.lookup : Ctx s → BVar s .var → Ty s
 
 /-! ## Path replacement
 
-pDOT's `repl_typ` (`Definitions.v:895-906`), the relation the two singleton
-subtyping rules carry.  `Ty.ReplOne p q T T'` says that `T'` is `T` with
-exactly one occurrence of `p`, as a path prefix, rewritten to `q`. -/
+pDOT's `repl_typ` (`Definitions.v:895-906`), the relation pDOT's two
+singleton subtyping rules carry.  `Ty.ReplOne p q T T'` says that `T'` is `T`
+with exactly one occurrence of `p`, as a path prefix, rewritten to `q`.  P2 g0
+removes those two rules, `repl` and `replSym` of `Sub` (decision 29), and the
+relation and its decision procedure stay unused, as the place a later stage
+would reinstate replacement. -/
 
 /-- Rewrite the prefix `p` of a path to `q`.  The answer is `none` when `p`
 is not a prefix.  A path has at most one prefix of a given depth, so the
@@ -272,16 +282,7 @@ inductive Sub : {s : Sig} → Ctx s → Ty s → Ty s → Type where
   self being in scope: the rule is used through `PathTy.sub` or `HasTy.sub`,
   at a point where the self is about to be instantiated at a path. -/
   | mu : SubDecl Γ D D' → Ty.Decl D → Ty.Decl D' → Sub Γ (.mu D) (.mu D')
-  /-- `Sngl-<:`, pDOT `subtyp_sngl_pq` (`Definitions.v:895-906`), with pDOT's
-  own two restrictions: the aliased path `q` is well typed, and exactly one
-  occurrence is replaced. -/
-  | repl :
-      PathTy Γ p (.sngl q) → PathTy Γ q U → Ty.ReplOne p q T T' →
-      Sub Γ T T'
-  /-- `<:-Sngl`, pDOT `subtyp_sngl_qp`, the same two restrictions. -/
-  | replSym :
-      PathTy Γ p (.sngl q) → PathTy Γ q U → Ty.ReplOne p q T T' →
-      Sub Γ T' T
+  -- P2 g0 (decision 29): `repl` and `replSym` are removed.
 
 /-- Path typing.  pDOT's `Γ ⊢ p : T` for the fragment plan V §4 keeps. -/
 inductive PathTy : {s : Sig} → Ctx s → Path s → Ty s → Type where
@@ -316,9 +317,16 @@ inductive PathTy : {s : Sig} → Ctx s → Path s → Ty s → Type where
 
 /-- Term typing. -/
 inductive HasTy : {s : Sig} → Ctx s → Tm s → Ty s → Type where
-  /-- The bridge into path typing.  It replaces the base's `T-Var`, `Rec-I`,
-  `Rec-E` and `And-I`, which are restated below as derived rules. -/
-  | path : PathTy Γ (.var x) T → HasTy Γ (.path x) T
+  /-- `T-Var`, the base's rule (decision 28). -/
+  | var : HasTy Γ (.path x) (Γ.lookup x)
+  /-- `Rec-I`, the base's rule. -/
+  | recI : HasTy Γ (.path x) (T.substVar x) → Ty.Decl T → HasTy Γ (.path x) (.mu T)
+  /-- `Rec-E`, the base's rule. -/
+  | recE : HasTy Γ (.path x) (.mu T) → Ty.Decl T → HasTy Γ (.path x) (T.substVar x)
+  /-- `And-I`, the base's rule. -/
+  | andI : HasTy Γ (.path x) T → HasTy Γ (.path x) U → HasTy Γ (.path x) (.and T U)
+  /-- The bridge from path typing, at a singleton only (decision 28). -/
+  | sngl : PathTy Γ (.var x) (.sngl q) → HasTy Γ (.path x) (.sngl q)
   /-- `All-I`. -/
   | lam : HasTy (Γ.cons S) t T → Ty.Wf S → HasTy Γ (.val (.lam S t)) (.all S T)
   /-- `All-E`. -/
@@ -333,20 +341,14 @@ inductive HasTy : {s : Sig} → Ctx s → Tm s → Ty s → Type where
       HasTy Γ (.val (.obj d)) (.mu T)
   /-- `{}-E`. -/
   | proj : HasTy Γ (.path x) (.fld a T) → HasTy Γ (.proj x a) T
+  /-- `{}-E` with the receiver typed as a path (decision 28). -/
+  | projP : PathTy Γ (.var x) (.fld a T) → HasTy Γ (.proj x a) T
   | «let» :
       HasTy Γ t T →
       HasTy (Γ.cons T) u U.weaken →
       Ty.Wf U →
       HasTy Γ (.let t u) U
-  /-- `let y = x.a in u`, with `y` bound at the singleton of the path it
-  names.  Without it the binder `y` and the prefix `x.a` are two unrelated
-  names and nothing relates them.  `HasTy.let` stands beside it, so a `let`
-  over a projection may still bind opaquely. -/
-  | letSngl :
-      PathTy Γ (.sel (.var x) a) T →
-      HasTy (Γ.cons (.sngl (.sel (.var x) a))) u U.weaken →
-      Ty.Wf U →
-      HasTy Γ (.let (.proj x a) u) U
+  -- P2 g0 (decision 23): `letSngl` is a derived form below.
   | sub : HasTy Γ t T → Sub Γ T U → HasTy Γ t U
 
 /-- Definition typing. -/
@@ -362,17 +364,7 @@ inductive DefsTy : {s : Sig} → Ctx s → Defs s → Ty s → Type where
   | trmObj :
       DefsTy (Γ.consSelf d' T') d' T' → Defs.Distinct d' →
       DefsTy Γ (.trm a (.val (.obj d'))) (.vfld a (.mu T'))
-  /-- A field whose body is a lambda is stable.  A lambda has no members, so
-  no block of its own, and subsumption here is harmless. -/
-  | trmLam :
-      HasTy Γ (.val (.lam S t)) T →
-      DefsTy Γ (.trm a (.val (.lam S t))) (.vfld a T)
-  /-- `D-Path-Sngl` of pDOT, `D-Path` of gDOT
-  (`gdot-fulltext.txt:700-704`): a field whose body is a variable gets that
-  variable's singleton type. -/
-  | trmSngl :
-      PathTy Γ (.var y) T →
-      DefsTy Γ (.trm a (.path y)) (.vfld a (.sngl (.var y)))
+  -- P2 g0 (decision 27): `trmLam` and `trmSngl` are derived forms below.
   | and : DefsTy Γ d1 T1 → DefsTy Γ d2 T2 → DefsTy Γ (.and d1 d2) (.and T1 T2)
 
 /-- The self-free steps a declared bound may take.  The source image of
@@ -405,46 +397,52 @@ inductive SubDecl : {s : Sig} → Ctx s → Ty (s,x) → Ty (s,x) → Type where
 
 end
 
-/-! ## Reflection, and the four base rules it derives -/
+/-! ## Reflection, and the derived forms of P2 g0 -/
 
-/-- A term derivation at a path term is a path derivation.  Only `path` and
-`sub` conclude at a `.path` term. -/
+/-- A term derivation at a path term is a path derivation. -/
 def HasTy.toPathTy : {s : Sig} → {Γ : Ctx s} → {x : BVar s .var} → {T : Ty s} →
     HasTy Γ (.path x) T → PathTy Γ (.var x) T
-  | _, _, _, _, .path d => d
+  | _, _, _, _, .var => .var
+  | _, _, _, _, .recI d hd => .recI (by rw [Ty.substPath_var]; exact d.toPathTy) hd
+  | _, _, _, _, .recE d hd => by rw [← Ty.substPath_var]; exact .recE d.toPathTy hd
+  | _, _, _, _, .andI d e => .andI d.toPathTy e.toPathTy
+  | _, _, _, _, .sngl d => d
   | _, _, _, _, .sub d h => .sub d.toPathTy h
 
-/-- `T-Var` (`DotMNF/Typing.lean:88`), derived through the bridge. -/
-def HasTy.var {s : Sig} {Γ : Ctx s} {x : BVar s .var} :
-    HasTy Γ (.path x) (Γ.lookup x) :=
-  .path .var
+/-- `let y = x.a in u` over a field declared at a singleton (decision 23),
+derived from `HasTy.let` and `HasTy.projP`. -/
+def HasTy.letSngl {s : Sig} {Γ : Ctx s} {x : BVar s .var} {a : Label} {q : Path s}
+    {u : Tm (s,x)} {U : Ty s} (hx : PathTy Γ (.var x) (.fld a (.sngl q)))
+    (hu : HasTy (Γ.cons (.sngl q)) u U.weaken) (hU : Ty.Wf U) :
+    HasTy Γ (.let (.proj x a) u) U :=
+  .let (.projP hx) hu hU
 
-/-- `Rec-I` (`DotMNF/Typing.lean:110-113`), derived through the bridge, with
-the base's premises. -/
-def HasTy.recI {s : Sig} {Γ : Ctx s} {x : BVar s .var} {T : Ty (s,x)}
-    (d : HasTy Γ (.path x) (T.substVar x)) (hd : Ty.Decl T) :
-    HasTy Γ (.path x) (.mu T) :=
-  .path (.recI (by rw [Ty.substPath_var]; exact d.toPathTy) hd)
+/-- Decision 23's premise, a field declared stable, is an instance. -/
+def HasTy.letSnglVal {s : Sig} {Γ : Ctx s} {x : BVar s .var} {a : Label} {q : Path s}
+    {u : Tm (s,x)} {U : Ty s} (hx : PathTy Γ (.var x) (.vfld a (.sngl q)))
+    (hu : HasTy (Γ.cons (.sngl q)) u U.weaken) (hU : Ty.Wf U) :
+    HasTy Γ (.let (.proj x a) u) U :=
+  HasTy.letSngl (.sub hx .vfldToFld) hu hU
 
-/-- `Rec-E` (`DotMNF/Typing.lean:114-117`), derived through the bridge, with
-the base's premises. -/
-def HasTy.recE {s : Sig} {Γ : Ctx s} {x : BVar s .var} {T : Ty (s,x)}
-    (d : HasTy Γ (.path x) (.mu T)) (hd : Ty.Decl T) :
-    HasTy Γ (.path x) (T.substVar x) :=
-  .path (by rw [← Ty.substPath_var]; exact .recE d.toPathTy hd)
+/-- `D-Path-Sngl`, derived at a plain field (decision 27). -/
+def DefsTy.trmSngl {s : Sig} {Γ : Ctx s} {y : BVar s .var} {T : Ty s} {a : Label}
+    (h : PathTy Γ (.var y) T) :
+    DefsTy Γ (.trm a (.path y)) (.fld a (.sngl (.var y))) :=
+  .trm (.sngl (.snglRefl h))
 
-/-- `And-I` (`DotMNF/Typing.lean:118-122`), derived through the bridge, with
-the base's premises. -/
-def HasTy.andI {s : Sig} {Γ : Ctx s} {x : BVar s .var} {T U : Ty s}
-    (d : HasTy Γ (.path x) T) (e : HasTy Γ (.path x) U) :
-    HasTy Γ (.path x) (.and T U) :=
-  .path (.andI d.toPathTy e.toPathTy)
+/-- A lambda field, derived at a plain field (decision 27). -/
+def DefsTy.trmLam {s : Sig} {Γ : Ctx s} {S T : Ty s} {t : Tm (s,x)} {a : Label}
+    (h : HasTy Γ (.val (.lam S t)) T) :
+    DefsTy Γ (.trm a (.val (.lam S t))) (.fld a T) :=
+  .trm h
 
 /-! ## Exactness of a literal's declared type
 
 The two theorems that replace pDOT's `tight_bounds`.  The first says that
-`{}-I` never introduces an abstract type member, the second reads the three
-shapes a stable field can have off the declaration type.
+`{}-I` never introduces an abstract type member, the second reads the shapes a
+stable field can have off the declaration type.  After P2 g0 `trmObj` is the
+only rule that declares a stable field, and `DefsTy.vfld_exact_obj` states the
+one shape left.
 
 `DefsTy` is a member of a mutual block, so the `induction` tactic is not
 available on it and every proof below recurses through the equation compiler
@@ -460,7 +458,7 @@ theorem Option.or_eq_some_cases {α : Type _} {x y : Option α} {z : α}
   | none => exact .inr ⟨rfl, h⟩
 
 /-- A definition list of one term member answers about it.  It is what the
-three stable-field rules need to turn a declared label into a definition. -/
+stable-field rule `trmObj` needs to turn a declared label into a definition. -/
 theorem Defs.lookupTrm_trm_self {s : Sig} (a : Label) (t : Tm s) :
     (Defs.trm a t).lookupTrm a = some t := by
   rw [Defs.lookupTrm, if_pos rfl]
@@ -478,8 +476,6 @@ theorem DefsTy.typ_exact : ∀ {s : Sig} {Γ : Ctx s} {d : Defs s} {T : Ty s},
       · exact absurd hA (by simp)
   | _, _, _, _, .trm _, _, _, _, hA => by simp [Ty.lookupTypDecl] at hA
   | _, _, _, _, .trmObj _ _, _, _, _, hA => by simp [Ty.lookupTypDecl] at hA
-  | _, _, _, _, .trmLam _, _, _, _, hA => by simp [Ty.lookupTypDecl] at hA
-  | _, _, _, _, .trmSngl _, _, _, _, hA => by simp [Ty.lookupTypDecl] at hA
   | _, _, _, _, .and h1 h2, _, _, _, hA => by
       rw [Ty.lookupTypDecl] at hA
       rcases Option.or_eq_some_cases hA with h | ⟨_, h⟩
@@ -492,16 +488,6 @@ theorem DefsTy.mem_labels_of_lookupVfldDecl : ∀ {s : Sig} {Γ : Ctx s} {d : De
   | _, _, _, _, .typ, _, _, hU => by simp [Ty.lookupVfldDecl] at hU
   | _, _, _, _, .trm _, _, _, hU => by simp [Ty.lookupVfldDecl] at hU
   | _, _, _, _, .trmObj _ _, _, _, hU => by
-      rw [Ty.lookupVfldDecl] at hU
-      split at hU
-      · subst_vars; simp [Defs.labels]
-      · exact absurd hU (by simp)
-  | _, _, _, _, .trmLam _, _, _, hU => by
-      rw [Ty.lookupVfldDecl] at hU
-      split at hU
-      · subst_vars; simp [Defs.labels]
-      · exact absurd hU (by simp)
-  | _, _, _, _, .trmSngl _, _, _, hU => by
       rw [Ty.lookupVfldDecl] at hU
       split at hU
       · subst_vars; simp [Defs.labels]
@@ -526,8 +512,11 @@ theorem Defs.lookupTrm_eq_none : ∀ {s : Sig} {d : Defs s} {a : Label},
       rw [Defs.lookupTrm, Defs.lookupTrm_eq_none ha.2, Defs.lookupTrm_eq_none ha.1]
       rfl
 
-/-- Exactness of a stable field: the three shapes a `∋ᵛ` field can have, read
-off the declaration type.
+/-- Exactness of a stable field: the three shapes a `∋ᵛ` field could have at
+P0, read off the declaration type.  The statement is P0's.  After P2 g0 only
+`trmObj` declares a stable field (decision 27), so the second and third
+disjuncts are no longer inhabited, and `DefsTy.vfld_exact_obj` states the first
+alone.
 
 The `Defs.Distinct d` premise is not in P0.8, and it is not optional.  Without
 it the right conjunct of the definitions may define the label with a
@@ -551,18 +540,6 @@ theorem DefsTy.vfld_exact : ∀ {s : Sig} {Γ : Ctx s} {d : Defs s} {T : Ty s},
         simp only [Option.some.injEq] at hU
         exact .inl ⟨_, _, hU.symm, Defs.lookupTrm_trm_self _ _, ⟨hd'⟩⟩
       · exact absurd hU (by simp)
-  | _, _, _, _, .trmLam _, _, _, _, hU => by
-      rw [Ty.lookupVfldDecl] at hU
-      split at hU
-      · subst_vars
-        exact .inr (.inr ⟨_, _, Defs.lookupTrm_trm_self _ _⟩)
-      · exact absurd hU (by simp)
-  | _, _, _, _, .trmSngl _, _, _, _, hU => by
-      rw [Ty.lookupVfldDecl] at hU
-      split at hU
-      · simp only [Option.some.injEq] at hU
-        exact .inr (.inl ⟨_, hU.symm⟩)
-      · exact absurd hU (by simp)
   | _, _, _, _, .and h1 h2, hd, a, _, hU => by
       cases hd with
       | and hd1 hd2 hdis =>
@@ -580,6 +557,34 @@ theorem DefsTy.vfld_exact : ∀ {s : Sig} {Γ : Ctx s} {d : Defs s} {T : Ty s},
         · exact .inl ⟨d', T', rfl, by rw [Defs.lookupTrm, hnone, Option.none_or, he], hn⟩
         · exact .inr (.inl ⟨y, rfl⟩)
         · exact .inr (.inr ⟨S0, t0, by rw [Defs.lookupTrm, hnone, Option.none_or, he]⟩)
+
+/-- T10 in its sharp form (P2 g0): a stable field of a literal holds an object
+literal, since `trmObj` is the only rule that declares one. -/
+theorem DefsTy.vfld_exact_obj : ∀ {s : Sig} {Γ : Ctx s} {d : Defs s} {T : Ty s},
+    DefsTy Γ d T → Defs.Distinct d → ∀ {a : Label} {U : Ty s},
+    T.lookupVfldDecl a = some U →
+    ∃ d' T', U = .mu T' ∧ d.lookupTrm a = some (.val (.obj d')) ∧
+        Nonempty (DefsTy (Γ.consSelf d' T') d' T')
+  | _, _, _, _, .typ, _, _, _, hU => by simp [Ty.lookupVfldDecl] at hU
+  | _, _, _, _, .trm _, _, _, _, hU => by simp [Ty.lookupVfldDecl] at hU
+  | _, _, _, _, .trmObj hd' _, _, _, _, hU => by
+      rw [Ty.lookupVfldDecl] at hU
+      split at hU
+      · subst_vars
+        simp only [Option.some.injEq] at hU
+        exact ⟨_, _, hU.symm, Defs.lookupTrm_trm_self _ _, ⟨hd'⟩⟩
+      · exact absurd hU (by simp)
+  | _, _, _, _, .and h1 h2, hd, a, _, hU => by
+      cases hd with
+      | and hd1 hd2 hdis =>
+      rw [Ty.lookupVfldDecl] at hU
+      rcases Option.or_eq_some_cases hU with h | ⟨_, h⟩
+      · obtain ⟨d', T', rfl, he, hn⟩ := h2.vfld_exact_obj hd2 h
+        exact ⟨d', T', rfl, by rw [Defs.lookupTrm, he]; rfl, hn⟩
+      · have hnone : _ = none :=
+          Defs.lookupTrm_eq_none (hdis a (h1.mem_labels_of_lookupVfldDecl h))
+        obtain ⟨d', T', rfl, he, hn⟩ := h1.vfld_exact_obj hd1 h
+        exact ⟨d', T', rfl, by rw [Defs.lookupTrm, hnone, Option.none_or, he], hn⟩
 
 end DotMNF
 

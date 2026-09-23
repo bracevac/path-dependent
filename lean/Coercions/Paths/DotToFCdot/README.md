@@ -1,97 +1,101 @@
-# DotToFCdot
+# DotToFCdot, at stage P2 of paths
 
-The translation of DOT-MNF into FCdot (Plan III §8, milestones M3 to M5),
-namespace `DotMNF`.  Derivations are `Type`-valued, so the translation is a
-function on derivations; typedness and erasure equality are theorems about
-that function, and DOT-MNF's type safety is transported from FCdot's.
+The translation of DOT-MNF with paths (`../DotMNF`) into FCdot with path-keyed blocks (`../FCdot`),
+namespace `Paths.DotMNF`, stage P2 of `plan-5g-paths-stages.md`.  The translation is a function on
+`Type`-valued derivations, and DOT-MNF's type safety is transported from FCdot's.  Every translation
+function is structural (decision 31), so `decide +kernel` unfolds a translation and checks its image.
+
+## Main theorems
+
+```
+Sub.translate_typed         : Γ.Wf → Γ.translate ⊢ d.translate : S.translate ≤ T.translate
+PathTy.translatePath_typed  : Γ.Wf → Γ.translate ⊢ᵖ d.translatePath : T.translate ∧
+                                d.translatePath.path = p.translate
+HasTy.translateAtom_typed   : Γ.Wf → Γ.translate ⊢ₐ h.translateAtom : T.translate
+HasTy.translate_typed       : Γ.Wf → Γ.translate ⊢ h.translate : T.translate
+DefsTy.blocks_translate     : Defs.Distinct d →
+                                T.blocks d = (Value.obj T.witnesses (h.translateFields .here Tself e)).blockSelf
+let_sngl_typed_letPath      : Γ' ⊢ t : snglOf q → Γ'.cons (.opaque (snglOf q)) ⊢ u : U↑ → Γ' ⊢ let t u : U
+HasTy.translate_erase       : ⌊h.translate⌋ = ⌊t⌋
+coherence                   : ⌊d₁.translate⌋ = ⌊d₂.translate⌋
+dot_safety                  : HasTy .nil t T → ⟨∅, ∅, t⟩ ⟶* st → st.Final ∨ ∃ st', st ⟶ st'
+reachable_consistent        : HasTy .nil t T → ⟨∅, ∅, d.translate⟩ ⟶* st →
+                                ∃ Γ, ⊢ st.σ : Γ ∧ ¬ ∃ e, Γ ⊢ e : ⊤ ≤ ⊥
+```
+
+Beside them: `SelfFree.translate_typed`, `SubDecl.translate_typed`, `HasTy.translateAtom_root`,
+`litCo_typed`, `Ctx.varAtom_typed`, `DefsTy.translateFields_typed`, `dot_not_stuck`,
+`reachable_realized`.  `HasTy.translate_typed`, `HasTy.translate_erase`, `coherence`, `dot_safety`,
+`dot_not_stuck`, `reachable_consistent` and `reachable_realized` keep vanilla's statements.
 
 ## Modules
 
 | module | contents |
 |---|---|
-| `Types` | `Ty.translate`, `Ty.tel`/`Ty.telSelf` (a type as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Ty.isObj` and `Ty.translate_isObj`/`Ty.tel_of_not_isObj`, `Ty.witnesses`, `Ty.fieldLabels`, `Ty.literalTy`, `Ctx.translate` |
-| `TypesLemmas` | renaming and instantiation commute with the translation; `Ty.isDecl_rename`, `Ty.isObj_rename`; `Ty.translate_decl`; `Ty.tel_substVar` (opening a body at the root) |
-| `Evidence` | `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `Ctx.varAtom` |
-| `EvidenceTyped` | `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `Ctx.varAtom_typed`, `Ty.tel_closedBnds` (every self-bound the translation produces is closed); the well-formedness `Ctx.Wf` of contexts |
+| `Types` | `Path.translate`, `Ty.translate`, `Ty.tel`, `Ty.telSelfAt`, `Ty.isObj`, `Ty.witnesses`, `Ty.fieldLabels`, `Ty.valLabels`, `Ty.literalTy`.  The block builder `Defs.childrenOver`, `Tm.childOf`, `Value.childOf`, `Ty.blocks`.  `Ctx.translate` |
+| `TypesLemmas` | renaming, substitution and path substitution commute with the translation |
+| `Evidence` | `identityMorphism` at any signature, `intoPath`, `aliasOf`, `litMorphism` and `litCo`, `Ty.typIdx`, `Ty.fldIdx`, `Ty.vfldIdx`.  `SelfFree.translate`, `SubDecl.translate`, `Sub.translate`, `PathTy.translatePath`, `HasTy.translateAtomAt` |
+| `EvidenceTyped` | the typing of `Evidence`.  `Ty.EqSpec`, `Ty.HasSpec`, `Ty.ValSpec`, `litMorphism_tableOnly`, `Ctx.Wf` |
 | `Terms` | `HasTy.translate`, `DefsTy.translateFields` |
-| `TermsTyped` | `HasTy.translate_typed`, `DefsTy.translateFields_typed` |
-| `Erasure` | `HasTy.translate_erase` (`⌊h.translate⌋ = ⌊t⌋`), `coherence` |
-| `Safety` | the simulation invariant `Simulated`, `dot_safety`, `dot_not_stuck` |
-| `Consistency` | `reachable_consistent`, `reachable_realized` for runs of translated programs |
+| `Blocks` | `DefsTy.blocks_translate` from its three parts, `translateFields_labels`, `_valLabels`, `_children` |
+| `TermsTyped` | `HasTy.translate_typed`, `DefsTy.translateFields_typed`, `let_sngl_typed_letPath` |
+| `Erasure` | `HasTy.translate_erase`, `DefsTy.translateFields_erase`, `coherence` |
+| `Safety` | `Simulated`, `dot_safety`, `dot_not_stuck` |
+| `Consistency` | `reachable_consistent`, `reachable_realized` |
+| `Examples` | Z1 to Z9, facts about images decided in the kernel, and the erasure equations of Z1, Z2, Z3, Z7 |
 
-## The translation
+## The translation of types
 
 ```text
-⊤            ↦  μ []                    (the empty object type)
-⊥            ↦  ⊥
-p.A          ↦  x ∙ A
-∀(x : S) T   ↦  Π(⟦S⟧) ⟦T⟧
-{A : S..T}   ↦  μ [ ⟦S⟧↑ ⊑ self∙A , self∙A ⊑ ⟦T⟧↑ ]
-{a : T}      ↦  μ [ ∋ a , self∙a ⊑ ⟦T⟧↑ ]
-S ∧ T        ↦  μ (tel S ++ tel T)
-μ(x. T)      ↦  μ (telSelf T)         (the body's self is the object's self)
-
-tel B        =  [ ⊑ ⟦B⟧↑ ]            B a selection, a function type, ⊥,
-                                      or a μ whose body is not a declaration
+⊤              ↦  μ []
+⊥              ↦  ⊥
+p.A            ↦  p ∙ A                   (A in the block of the path p)
+∀(x : S) T     ↦  Π(⟦S⟧) ⟦T⟧
+{A : S..T}     ↦  μ [ ⟦S⟧↑ ⊑ self∙A , self∙A ⊑ ⟦T⟧↑ ]
+{a : T}        ↦  μ [ ∋ a , self∙a ⊑ ⟦T⟧↑ ]
+{val a : T}    ↦  μ [ ∋ a , ∋ᵛ a , self∙a ⊑ ⟦T⟧↑ ]
+p.type         ↦  μ [ ≈ p↑ ]
+S ∧ T          ↦  μ (tel S ++ tel T)
+μ(x. T)        ↦  μ (telSelf T)
 ```
 
-Intersections are unrestricted: an operand that is not an object shape
-contributes the single *self-bound* proposition `⊑ ⟦B⟧` of FCdot (plan §13
-item 9).  `Ty.isObj` is the shape test that decides between the two: it
-holds exactly when `⟦T⟧ = μ (tel T)`, and fails exactly when `tel T` is the
-one-bound telescope above.  The bodies of `μ` stay restricted to `Ty.Decl`,
-because a bound never mentions the self.
+`Ty.translate` reads the type only (decision 30).  A binder of `cons` is opaque.  The self binder of
+`consSelf d T` is transparent at `T.literalTy` with the block `T.blocks d`.
 
-Subtyping: `Top/Bot/Refl/Trans` to the corresponding evidence; `And₁`,
-`And₂` to object coercions with identity templates on one half when the
-operand is an object shape (a self-bound of the source is copied by
-`Morphism.bnd` over `LeCo.bound`), and to the bound cast `LeCo.bound` itself
-when it is not; `And` to `pair`, each component first put into its
-telescope by `into` (the identity on an object shape, `LeCo.intoBnd`
-otherwise); `Fld`, `Typ` to object coercions whose templates route the
-source proposition through the translated bound; `Sel-<:`, `<:-Sel` to
-`member` at the atom on the exact proposition of the declaration; `All` to
-`pi`.
+## The block of a literal
 
-Variable typings: `Var` is the variable, cast by `litCo` when the binder is a
-literal's self; `Rec-I`/`Rec-E` unfold at the root and refold at the other
-telescope; `And-I` is `both` on the two operands put into their telescopes
-by `intoAtom` (a cast, so the root is unchanged); `Sub` is a cast.  Terms
-follow the syntax; a projection carries its presence evidence and is cast
-to the declared field type; an object literal becomes a literal with the witnesses of its
-declaration type, each field cast to its block name by the literal's own
-definition equality, the whole cast by `litCo`.
+`Ty.blocks T d` is the witnesses, the field labels, the stable labels, and one child per field that
+gives one.  It reads the definitions, since a field that holds a variable `y` gets the child
+`.fwd (.var y)` whatever it is declared at.  A `trmObj` field gives the inner literal's block at
+`p.a`, and a `trm` field gives no other child.  `DefsTy.blocks_translate` equates it with the block
+the store builds from the translated fields.  Its premise `Defs.Distinct d` is there because
+`Fields.valLabels` drops a label a later field repeats and `Ty.valLabels` does not.
 
-## Side conditions
+## Decision 26's cast
 
-Typedness holds for well-formed contexts, `Ctx.Wf`: a literal's self binder
-(`Ctx.consSelf`) carries a declaration type of literal shape (exact type
-members) with distinct labels, which is what `{}-I` produces.  The initial
-context is empty, so `dot_safety` has no side condition.
+A `trm` field is cast by `eqToLe (symm (member (var self) (refl Tself) e))`, where `e` is the field's
+`≐` entry in the literal's precise telescope.  It reads the equation `def self a` reads, so the field
+has the same type and erasure, but it eliminates, so the target does not call the body stable.  A
+`trmObj` field is the inner literal cast by `litCo` and `eqToLe (symm (def self a))`, both
+table-only, so it is stable.  Stability in the target is `trmObj` in the source.  With `def` at a
+`trm` literal body the two block builders disagree (`Z1.FPuniform_disagrees`).
 
-The self-alias restriction is gone: `{}-I` no longer restricts which members'
-witnesses may be a bare selection on the object's own self.  FCdot's
-alias-tolerant resolution (`FCdot.Ctx.resolve`) follows same-block aliases —
-a field typed `x.A` inside its own literal makes `x∙a` an alias of `x∙A`,
-which now resolves like any other alias — and a cyclic alias resolves to `⊤`.
+## The four source restrictions
 
-Fields of an intersection are translated with the right conjunct outermost,
-matching DOT-MNF's shadowing and its erasure.
+P2 restricts four rules of P0 that have no image here (`../DotMNF/README.md`, P2.0).
 
-## Main theorems
+- **R1, decision 23.**  `letSngl` is a derived `let` over a field declared at `{a : q.type}`.  Loses a
+  `let` over any other field with the binder at the singleton of the field's path.
+- **R2, decision 27.**  `trmSngl` and `trmLam` are derived at a plain field, and only `trmObj`
+  declares `{val a : _}`.  Loses `{val a = y}` at `{val a : y.type}`, `{val f = λ…}` at
+  `{val f : ∀…}`, and every path typing at `x.a` and below for such a field.
+- **R3, decision 28.**  The base's variable rules are term rules, the bridge is `HasTy.sngl` at a
+  singleton, and `projP` projects from a path typing.  Loses a singleton-typed variable used as a
+  term at a type of its alias that is not a singleton (`Z9.no_le_out_of_sngl`).
+- **R4, decision 29.**  `Sub.repl` and `Sub.replSym` are removed.  Loses `p.type <: q.type` and
+  `p.A <: q.A` at an abstract member (`Z9.alias_template_fixed`).  At an exact member it stays
+  (`Z7.E3_checks`).
 
-```
-Sub.translate_typed      : Γ.Wf → Γ.translate ⊢ d.translate : S.translate ≤ T.translate
-HasTy.translateAtom_typed: Γ.Wf → Γ.translate ⊢ₐ h.translateAtom : T.translate
-HasTy.translateAtom_root : h.translateAtom.root = x
-HasTy.translate_typed    : Γ.Wf → Γ.translate ⊢ h.translate : T.translate
-HasTy.translate_erase    : ⌊h.translate⌋ = ⌊t⌋
-coherence                : ⌊d₁.translate⌋ = ⌊d₂.translate⌋
-dot_safety               : HasTy .nil t T → ⟨∅, ∅, t⟩ ⟶* st → st.Final ∨ ∃ st', st ⟶ st'
-reachable_consistent     : HasTy .nil t T → ⟨∅, ∅, d.translate⟩ ⟶* st →
-                             ∃ Γ, ⊢ st.σ : Γ ∧ ¬ ∃ e, Γ ⊢ e : ⊤ ≤ ⊥
-reachable_realized       : … ∧ ∀ x ℓ, ∃ W, Γ.lookupDef x ℓ = some W ∧ Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W
-```
+## Axioms
 
-Axioms: `propext` and `Quot.sound` everywhere.  No
-`sorry`, `axiom`, `partial`, or `native_decide`.
+`propext` and `Quot.sound` everywhere.  No `sorry`, `axiom`, `partial`, `unsafe` or `native_decide`.

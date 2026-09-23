@@ -14,6 +14,12 @@ under `FCdot.Tm.erase`, and what is left is exactly the source term with
 paths reduced to their root variable, which is what `DotMNF.Tm.erase`
 produces directly.  The two typing derivations of the same term therefore
 translate to observationally identical target terms (`coherence`).
+
+P2 adds three cases.  `HasTy.sngl` gives the variable's atom, which erases
+to its root.  `HasTy.projP` projects out of `Γ.varAtom x`, which erases to
+`x`.  A `trmObj` field is the inner literal under two casts, which erase.
+`DefsTy.translateFields_erase` takes the self binder, the self's type and the
+equality counter, as the function does.
 -/
 
 namespace FCdot
@@ -44,7 +50,7 @@ own erasure. -/
 theorem HasTy.translate_erase : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
     (h : HasTy Γ t T) → ⌊h.translate⌋ = Tm.erase t
   | Γ, _, _, @HasTy.var _ _ x => by
-      simp only [HasTy.translate, FCdot.Tm.erase, Ctx.varAtom_root Γ x, Tm.erase, Path.root]
+      simp only [HasTy.translate, FCdot.Tm.erase, Ctx.varAtom_root Γ x, Tm.erase]
   | _, .val (.lam S _), _, .lam h _ => by
       simp only [HasTy.translate, FCdot.Tm.erase, FCdot.Value.erase, Tm.erase, Value.erase,
         HasTy.translate_erase h]
@@ -60,26 +66,35 @@ theorem HasTy.translate_erase : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase,
         HasTy.translate_erase h₁, HasTy.translate_erase h₂]
   | _, _, _, .recI h₁ h₂ => by
-      simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
+      simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase,
         HasTy.translateAtom_root (.recI h₁ h₂)]
   | _, _, _, .recE h₁ h₂ => by
-      simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
+      simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase,
         HasTy.translateAtom_root (.recE h₁ h₂)]
   | _, _, _, .andI h₁ h₂ => by
-      simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
+      simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase,
         HasTy.translateAtom_root (.andI h₁ h₂)]
+  | _, _, _, .sngl h => by
+      simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase,
+        HasTy.translateAtom_root (.sngl h)]
+  | Γ, .proj x a, T, .projP _ => by
+      simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Ctx.varAtom_root Γ x]
   | _, _, _, .sub h _ => by
       simp only [HasTy.translate, FCdot.Tm.erase, HasTy.translate_erase h]
 
 /-- Erasure of the translated fields of a literal is the source definition
 list's own erasure. -/
 theorem DefsTy.translateFields_erase : {Γ : Ctx (s,x)} → {d : Defs (s,x)} → {T : Ty (s,x)} →
-    (h : DefsTy Γ d T) → h.translateFields.erase = Defs.erase d
-  | _, _, _, .typ => by simp only [DefsTy.translateFields, FCdot.Fields.erase, Defs.erase]
-  | _, .trm a _, _, .trm h => by
+    (h : DefsTy Γ d T) → (self : BVar (s,x) .var) → (Tself : FCdot.Ty (s,x)) → (e : Nat) →
+    (h.translateFields self Tself e).erase = Defs.erase d
+  | _, _, _, .typ, _, _, _ => by simp only [DefsTy.translateFields, FCdot.Fields.erase, Defs.erase]
+  | _, .trm a _, _, .trm h, _, _, _ => by
       simp only [DefsTy.translateFields, FCdot.Fields.erase, FCdot.Tm.erase, Defs.erase,
         HasTy.translate_erase h]
-  | _, _, _, .and h₁ h₂ => by
+  | _, .trm a _, _, .trmObj h _, _, _, _ => by
+      simp only [DefsTy.translateFields, FCdot.Fields.erase, FCdot.Tm.erase, FCdot.Value.erase,
+        Defs.erase, Tm.erase, Value.erase, DefsTy.translateFields_erase h]
+  | _, _, _, .and h₁ h₂, _, _, _ => by
       simp only [DefsTy.translateFields, FCdot.Fields.append_erase, Defs.erase,
         DefsTy.translateFields_erase h₁, DefsTy.translateFields_erase h₂]
 

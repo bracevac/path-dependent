@@ -1,7 +1,7 @@
 name = "path-dependent"
 version = "0.1.0"
 srcDir = "lean"
-defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC", "LambdaPFCI", "LambdaPCCI", "FCsub", "DotFC", "ManySortedFC", "FCdot", "Runtime", "DotMNF", "DotToFCdot", "Captures", "CapturesCC", "Classifiers"]
+defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC", "LambdaPFCI", "LambdaPCCI", "FCsub", "DotFC", "ManySortedFC", "FCdot", "Runtime", "DotMNF", "DotToFCdot", "Captures", "CapturesCC", "Classifiers", "Paths"]
 
 [leanOptions]
 pp.unicode.fun = true
