@@ -70,3 +70,7 @@ roots = ["Coercions.Classifiers"]
 [[lean_lib]]
 name = "Paths"
 roots = ["Coercions.Paths"]
+
+[[lean_lib]]
+name = "Separation"
+roots = ["Coercions.Separation"]
