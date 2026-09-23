@@ -283,8 +283,9 @@ theorem consistency_nil {G : Store [] []} {W : StoreTy []} {e : Le [] []}
 
 /-! ## What an honest store offers the induction
 
-Two unconditional facts about the type a location carries.  They are the base
-case of the induction `obs_conc_admissible` needs — the `vcLoc` clause — and they
+Unconditional facts about the type a location carries.  They are the base
+cases of the induction `obs_conc_admissible` needs — the `vcLoc` clause, and the
+`vcLocAny` clause, whose witness is itself a `DmsHasType` derivation — and they
 are proved outright, without canonical forms, because `DmsHasType` concludes at
 only three shapes. -/
 
@@ -341,15 +342,44 @@ theorem no_loc_le_bot {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {e : Le σ [
   hG.not_vacuous l (LeTy.vacuousMono hb h .bot)
 
 
+/-- **A witnessed location never carries a type member at its head either.**
+The base case `vcLocAny` reports the type its own `T_Vary` witness derives, and
+that witness is a `DmsHasType` derivation, so `dmsHasType_head` applies to it
+directly.  Unlike `Store.Honest.head_tyOf` this needs no store invariant: the
+witness is carried by the evidence. -/
+theorem VcTy.vcLocAny_head {σ : Sig} {G : Store σ σ} {l : BVar σ .var}
+    {T : Ty σ ([],x)} {ds : Dms σ ([],x)}
+    (hd : DmsHasType G (Ctx.nil.cons T) ds T) :
+    headOf (T.substVr (.conc l)) = .top ∨ headOf (T.substVr (.conc l)) = .and :=
+  dmsHasType_head hd (Subst.one (.conc l))
+
+/-- **The type a witnessed location reports is never vacuous.**  The
+`vcLocAny` counterpart of `Store.Honest.not_vacuous`, and likewise
+unconditional; it needs no honesty because the witness is part of the
+evidence. -/
+theorem VcTy.vcLocAny_not_vacuous {σ : Sig} {G : Store σ σ} {l : BVar σ .var}
+    {T : Ty σ ([],x)} {ds : Dms σ ([],x)}
+    (hd : DmsHasType G (Ctx.nil.cons T) ds T) :
+    ¬ Vacuous G (T.substVr (.conc l)) :=
+  dmsHasType_not_vacuous hd (Subst.one (.conc l))
+
 /-- **Every closed observation of a location stands on that location.**  The
-spine of a typed observation at `conc ℓ` has `vcLoc ℓ` at its foot: `vcVar` is
-the only other base and it has no rule at a concrete subject.  This is the part
-of `vc_canon` that needs nothing — no store invariant, no normalization, no
-hypothesis. -/
+spine of a typed observation at `conc ℓ` has a location node for `ℓ` at its
+foot — `vcLoc ℓ`, or `vcLocAny ℓ T ds` for some witness — since `vcVar` is the
+only other base and it has no rule at a concrete subject.  This is the part of
+`vc_canon` that needs nothing — no store invariant, no normalization, no
+hypothesis.
+
+**The statement is replaced.**  It used to conclude `v.base = .vcLoc ℓ`, which
+became false when `VcTy.vcLocAny` was added: that rule is a second base at a
+location.  The disjunction is the exact replacement. -/
 theorem VcTy.base_conc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
     {l : BVar σ .var} : {v : Vc σ []} → {T : Ty σ []} →
-    VcTy G W Γ (.conc l) v T → v.base = .vcLoc l
-  | _, _, .vcLoc => rfl
+    VcTy G W Γ (.conc l) v T →
+      v.base = .vcLoc l ∨ ∃ (T0 : Ty σ ([],x)) (ds : Dms σ ([],x)),
+        v.base = .vcLocAny l T0 ds
+  | _, _, .vcLoc => Or.inl rfl
+  | _, _, .vcLocAny (T := T0) (ds := ds) _ _ => Or.inr ⟨T0, ds, rfl⟩
   | _, _, .vcPack (v := v0) h => VcTy.base_conc (v := v0) h
   | _, _, .vcUnfold (v := v0) h => VcTy.base_conc (v := v0) h
   | _, _, .vcSub (v := v0) _ h _ => VcTy.base_conc (v := v0) h

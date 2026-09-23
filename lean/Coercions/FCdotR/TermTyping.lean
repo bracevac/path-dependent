@@ -31,9 +31,17 @@ The block is *separate* from `LeTy`/`VcTy` and depends on it in one direction
 only.  That is the structural fact the whole design rests on: FCdotR's
 evidence contains no atoms, so atoms may contain evidence.
 
-`AtomTy.varConc` reads a location's type off `StoreTy` rather than re-deriving
-it; `StoreTyping.Store.Honest.vary` is what says that is the reference's
-`T_Vary` and not a new power.
+A location is typed by **two** rules.  `AtomTy.varConc` reads its type off
+`StoreTy` rather than re-deriving it; `StoreTyping.Store.Honest.vary` is what
+says that is the reference's `T_Vary` and not a new power.
+`AtomTy.varConcAny` is `T_Vary` verbatim: it carries the source's two premises
+and types the location at *any* type its stored literal has under its own
+self.  The second is what the elaboration of `T_Vary` uses, because the source
+may re-type a literal at a type `W` does not record and that is not even
+comparable with it; the first is the instance of the second at `W ℓ` over an
+honest store (`Store.Honest.varConc_of_varConcAny` below).  The atom syntax is
+the same for both, `var (conc ℓ)`: the witness lives in the derivation, and
+`AtomTy.toVc` moves it into the `Vc.vcLocAny` node.
 
 The last result here is the target's reading of the reference's
 `hastp_to_htpy` (`dot_soundness.v:249`): at the **empty local scope** an atom
@@ -55,7 +63,7 @@ substitution or renaming lemma for these judgments, and any elaboration from
 namespace FCdotR
 
 open FCdot (Kind Sig BVar Rename)
-open Oopsla16 (Vr Ty Lb Ctx Store Subst renameNil renameUpTo)
+open Oopsla16 (Vr Ty Lb Ctx Store Subst Dms DmsHasType renameNil renameUpTo)
 
 /-! ## The judgments -/
 
@@ -76,6 +84,16 @@ inductive AtomTy : {σ s : Sig} → Store σ σ → StoreTy σ → Ctx σ s → 
   | varConc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
       {l : BVar σ .var} :
       AtomTy G W Γ (.var (.conc l)) ((tyOf W l).rename renameNil)
+  /-- `T_Vary`, `dot.v:220-226`, **verbatim**: the stored literal re-typed
+  under its own self at a type `T` of the derivation's choosing, with the two
+  premises of the source rule unchanged.  Nothing ties `T` to `W`; this is the
+  rule the elaboration of `T_Vary` lands on, and `varConc` is its instance at
+  `W ℓ` over an honest store (`Store.Honest.varConc_of_varConcAny`). -/
+  | varConcAny {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
+      {l : BVar σ .var} {T : Ty σ ([],x)} {ds : Dms σ ([],x)} :
+      DmsHasType G (Ctx.nil.cons T) ds T →
+      ds.substVr (.conc l) = G.lookup l →
+      AtomTy G W Γ (.var (.conc l)) ((T.substVr (.conc l)).rename renameNil)
   /-- `T_Sub` at a variable. -/
   | cast {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
       {a : Atom σ s} {e : Le σ s} {S T : Ty σ s} :
@@ -196,7 +214,9 @@ The evidence is produced, not merely asserted, so the result is a function on
 derivations: `cast` becomes `vcSub` (its inclusion is already checked in the
 empty context, which is `ctxAt Γ (conc ℓ)`), `pack` becomes `vcPack` (legal
 here, because the subject is a location), and `unpack` becomes `vcUnfold` (the
-subject's self is the location itself).
+subject's self is the location itself).  The two base rules go to the two base
+nodes: `varConc` to `vcLoc`, and `varConcAny` to `vcLocAny`, carrying its
+witness into the evidence.
 
 Stated only at `s = []`; see the module header. -/
 def AtomTy.toVc {σ : Sig} {G : Store σ σ} {W : StoreTy σ} :
@@ -204,6 +224,8 @@ def AtomTy.toVc {σ : Sig} {G : Store σ σ} {W : StoreTy σ} :
     (v : Vc σ []) × VcTy G W Ctx.nil (.conc a.rootLoc) v T
   | _, _, .varConc (l := l) =>
       ⟨.vcLoc l, by rw [Ty.rename_renameNil_nil]; exact VcTy.vcLoc⟩
+  | _, _, .varConcAny (l := l) (T := T0) (ds := ds) hd hs =>
+      ⟨.vcLocAny l T0 ds, by rw [Ty.rename_renameNil_nil]; exact VcTy.vcLocAny hd hs⟩
   | _, _, .cast (a := a) (S := S) (e := e) ha he =>
       let ⟨v, hv⟩ := ha.toVc
       ⟨.vcSub S e v, VcTy.vcSub (Γ := Ctx.nil) (p := .conc a.rootLoc) S hv he⟩
@@ -213,6 +235,18 @@ def AtomTy.toVc {σ : Sig} {G : Store σ σ} {W : StoreTy σ} :
   | _, _, .unpack (a := a) (T := T) ha =>
       let ⟨v, hv⟩ := ha.toVc
       ⟨.vcUnfold T v, by rw [Atom.root_eq_rootLoc a]; exact VcTy.vcUnfold hv⟩
+
+/-! ## The two location rules agree over an honest store -/
+
+/-- **Over an honest store `varConc` is an instance of `varConcAny`.**  The
+honesty witness at `ℓ` is exactly a pair of `T_Vary` premises at the recorded
+type `W ℓ`, and `tyOf W ℓ` is `(W ℓ).substVr (conc ℓ)` by definition, so the
+two rules type `var (conc ℓ)` at the same type.  The atom-level counterpart of
+`Store.Honest.vcLoc_of_vcLocAny`. -/
+def Store.Honest.varConc_of_varConcAny {σ s : Sig} {G : Store σ σ}
+    {W : StoreTy σ} {Γ : Ctx σ s} (h : Store.Honest G W) (l : BVar σ .var) :
+    AtomTy G W Γ (.var (.conc l)) ((tyOf W l).rename renameNil) :=
+  .varConcAny (h.at' l).typed (h.at' l).stored
 
 /-! ## An object literal at a self-referential type
 

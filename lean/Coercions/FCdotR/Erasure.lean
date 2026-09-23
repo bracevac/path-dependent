@@ -652,6 +652,411 @@ theorem Steps.simulate {σ1 σ2 : Sig} {g : Grows σ1 σ2} {st : State σ1}
   | tail hs hstep ih =>
       exact srcStepsTrans (ih hL) (hstep.simulate (hs.letFree hL).1)
 
+/-! ## The evidence skeleton
+
+Erasure forgets evidence, and it also forgets the target's own term structure:
+a `let` becomes an application and a coercion frame becomes the identity
+context.  `Preservation` needs something finer, a map that forgets exactly what
+a typing derivation is free to choose and nothing the machine reads.  That is
+the **skeleton**:
+
+* an atom becomes its root variable, so its casts, packs and unpacks go;
+* a term-level `cast` node goes;
+* every other node, every type annotation and every root is kept.
+
+Nothing the machine does depends on what the skeleton forgets: the rules match
+on term and frame constructors, read roots (`rename`, `app`), and read a stored
+method through `Defs.fun?`, which the skeleton commutes with
+(`Defs.fun?_skel`).  And the skeleton loses nothing erasure keeps
+(`Tm.erase_skel`).
+
+`skelSubst` is the skeleton with a substitution applied to its roots and types.
+The machine's instantiation, a store renaming and `Subst`'s generated
+substitution all have the same skeleton (`Tm.skel_inst`, `Tm.skel_renameStore`,
+`Tm.skel_subst`), although they differ on evidence — which is the whole reason
+the skeleton is needed.  `Preservation.TmTy.substEv_skel` adds the typed
+substitution theorem's own output to that list. -/
+
+mutual
+
+/-- The skeleton of a term: atoms read as their roots, term-level casts
+dropped, everything else kept. -/
+def Tm.skel {σ : Sig} : {s : Sig} → Tm σ s → Tm σ s
+  | _, .atom a => .atom (.var a.root)
+  | _, .new T ds => .new T ds.skel
+  | _, .app a l b => .app (.var a.root) l (.var b.root)
+  | _, .let t u => .let t.skel u.skel
+  | _, .cast t _ => t.skel
+
+/-- The skeleton of a definition list: every annotation kept, every method
+body replaced by its skeleton. -/
+def Defs.skel {σ : Sig} : {s : Sig} → Defs σ s → Defs σ s
+  | _, .dnil => .dnil
+  | _, .dty T ds => .dty T ds.skel
+  | _, .dfun S U t ds => .dfun S U t.skel ds.skel
+
+end
+
+mutual
+
+/-- The skeleton of a term with a substitution applied to its roots and to its
+types.  It does not look at evidence, so it is one function for every way of
+substituting that agrees on roots and types. -/
+def Tm.skelSubst {σ1 σ2 : Sig} : {s1 s2 : Sig} → Tm σ1 s1 →
+    Subst σ1 s1 σ2 s2 → Tm σ2 s2
+  | _, _, .atom a, θ => .atom (.var (a.root.subst θ))
+  | _, _, .new T ds, θ => .new (T.subst θ.lift) (ds.skelSubst θ.lift)
+  | _, _, .app a l b, θ => .app (.var (a.root.subst θ)) l (.var (b.root.subst θ))
+  | _, _, .let t u, θ => .let (t.skelSubst θ) (u.skelSubst θ.lift)
+  | _, _, .cast t _, θ => t.skelSubst θ
+
+/-- The same, at a definition list. -/
+def Defs.skelSubst {σ1 σ2 : Sig} : {s1 s2 : Sig} → Defs σ1 s1 →
+    Subst σ1 s1 σ2 s2 → Defs σ2 s2
+  | _, _, .dnil, _ => .dnil
+  | _, _, .dty T ds, θ => .dty (T.subst θ) (ds.skelSubst θ)
+  | _, _, .dfun S U t ds, θ =>
+      .dfun (S.subst θ) (U.subst θ.lift) (t.skelSubst θ.lift) (ds.skelSubst θ)
+
+end
+
+mutual
+
+/-- `skelSubst` reads only the skeleton. -/
+theorem Tm.skelSubst_skel {σ1 σ2 : Sig} : {s1 s2 : Sig} → (t : Tm σ1 s1) →
+    (θ : Subst σ1 s1 σ2 s2) → t.skel.skelSubst θ = t.skelSubst θ
+  | _, _, .atom _, _ => rfl
+  | _, _, .new _ ds, θ => by
+      simp only [Tm.skel, Tm.skelSubst, Defs.skelSubst_skel ds θ.lift]
+  | _, _, .app _ _ _, _ => rfl
+  | _, _, .let t u, θ => by
+      simp only [Tm.skel, Tm.skelSubst, Tm.skelSubst_skel t θ,
+        Tm.skelSubst_skel u θ.lift]
+  | _, _, .cast t _, θ => by
+      simp only [Tm.skel, Tm.skelSubst, Tm.skelSubst_skel t θ]
+
+/-- `skelSubst` reads only the skeleton, at a definition list. -/
+theorem Defs.skelSubst_skel {σ1 σ2 : Sig} : {s1 s2 : Sig} → (ds : Defs σ1 s1) →
+    (θ : Subst σ1 s1 σ2 s2) → ds.skel.skelSubst θ = ds.skelSubst θ
+  | _, _, .dnil, _ => rfl
+  | _, _, .dty _ ds, θ => by
+      simp only [Defs.skel, Defs.skelSubst, Defs.skelSubst_skel ds θ]
+  | _, _, .dfun _ _ t ds, θ => by
+      simp only [Defs.skel, Defs.skelSubst, Defs.skelSubst_skel ds θ,
+        Tm.skelSubst_skel t θ.lift]
+
+end
+
+/-- Two terms with one skeleton have one substituted skeleton. -/
+theorem Tm.skelSubst_congr {σ1 σ2 s1 s2 : Sig} {t1 t2 : Tm σ1 s1}
+    (h : t1.skel = t2.skel) (θ : Subst σ1 s1 σ2 s2) :
+    t1.skelSubst θ = t2.skelSubst θ := by
+  rw [← Tm.skelSubst_skel t1, h, Tm.skelSubst_skel]
+
+/-- Two definition lists with one skeleton have one substituted skeleton. -/
+theorem Defs.skelSubst_congr {σ1 σ2 s1 s2 : Sig} {d1 d2 : Defs σ1 s1}
+    (h : d1.skel = d2.skel) (θ : Subst σ1 s1 σ2 s2) :
+    d1.skelSubst θ = d2.skelSubst θ := by
+  rw [← Defs.skelSubst_skel d1, h, Defs.skelSubst_skel]
+
+mutual
+
+/-- **The machine's instantiation has the substituted skeleton.** -/
+theorem Tm.skel_inst {σ : Sig} : {s1 s2 : Sig} → (t : Tm σ s1) →
+    (ι : Inst s1 s2) → (y : BVar σ .var) →
+    (t.inst ι y).skel = t.skelSubst (ι.toSubst y)
+  | _, _, .atom a, ι, y => by
+      simp only [Tm.inst, Tm.skel, Tm.skelSubst, Atom.root_inst, Vr.inst_eq]
+  | _, _, .new _ ds, ι, y => by
+      simp only [Tm.inst, Tm.skel, Tm.skelSubst, Defs.skel_inst ds ι.lift y]
+      rfl
+  | _, _, .app a _ b, ι, y => by
+      simp only [Tm.inst, Tm.skel, Tm.skelSubst, Atom.root_inst, Vr.inst_eq]
+  | _, _, .let t u, ι, y => by
+      simp only [Tm.inst, Tm.skel, Tm.skelSubst, Tm.skel_inst t ι y,
+        Tm.skel_inst u ι.lift y]
+      rfl
+  | _, _, .cast t _, ι, y => by
+      simp only [Tm.inst, Tm.skel, Tm.skelSubst, Tm.skel_inst t ι y]
+
+/-- The same, at a definition list. -/
+theorem Defs.skel_inst {σ : Sig} : {s1 s2 : Sig} → (ds : Defs σ s1) →
+    (ι : Inst s1 s2) → (y : BVar σ .var) →
+    (ds.inst ι y).skel = ds.skelSubst (ι.toSubst y)
+  | _, _, .dnil, _, _ => rfl
+  | _, _, .dty _ ds, ι, y => by
+      simp only [Defs.inst, Defs.skel, Defs.skelSubst, Defs.skel_inst ds ι y]
+  | _, _, .dfun _ _ t ds, ι, y => by
+      simp only [Defs.inst, Defs.skel, Defs.skelSubst, Defs.skel_inst ds ι y,
+        Tm.skel_inst t ι.lift y]
+      rfl
+
+end
+
+mutual
+
+/-- **`Subst`'s generated substitution has the substituted skeleton.**  So the
+two traversals `Machine`'s header distinguishes agree on skeletons, which is
+strictly more than `Tm.erase_inst_subst` says. -/
+theorem Tm.skel_subst {σ1 σ2 : Sig} : {s1 s2 : Sig} →
+    {θ : Subst σ1 s1 σ2 s2} → (t : Tm σ1 s1) → (m : MonoSyn θ) →
+    (t.subst m).skel = t.skelSubst θ
+  | _, _, _, .atom a, m => by
+      simp only [Tm.subst, Tm.skel, Tm.skelSubst, Atom.root_subst]
+  | _, _, _, .new _ ds, m => by
+      simp only [Tm.subst, Tm.skel, Tm.skelSubst, Defs.skel_subst ds m.lift]
+  | _, _, _, .app a _ b, m => by
+      simp only [Tm.subst, Tm.skel, Tm.skelSubst, Atom.root_subst]
+  | _, _, _, .let t u, m => by
+      simp only [Tm.subst, Tm.skel, Tm.skelSubst, Tm.skel_subst t m,
+        Tm.skel_subst u m.lift]
+  | _, _, _, .cast t _, m => by
+      simp only [Tm.subst, Tm.skel, Tm.skelSubst, Tm.skel_subst t m]
+
+/-- The same, at a definition list. -/
+theorem Defs.skel_subst {σ1 σ2 : Sig} : {s1 s2 : Sig} →
+    {θ : Subst σ1 s1 σ2 s2} → (ds : Defs σ1 s1) → (m : MonoSyn θ) →
+    (ds.subst m).skel = ds.skelSubst θ
+  | _, _, _, .dnil, _ => rfl
+  | _, _, _, .dty _ ds, m => by
+      simp only [Defs.subst, Defs.skel, Defs.skelSubst, Defs.skel_subst ds m]
+  | _, _, _, .dfun _ _ t ds, m => by
+      simp only [Defs.subst, Defs.skel, Defs.skelSubst, Defs.skel_subst ds m,
+        Tm.skel_subst t m.lift]
+
+end
+
+/-- The machine's instantiation and `Subst`'s traversal have one skeleton. -/
+theorem Tm.skel_inst_subst {σ s1 s2 : Sig} (t : Tm σ s1) (ι : Inst s1 s2)
+    (y : BVar σ .var) :
+    (t.inst ι y).skel = (t.subst (MonoSyn.ofInst ι y)).skel := by
+  rw [Tm.skel_inst, Tm.skel_subst]
+
+mutual
+
+/-- **A store renaming has the substituted skeleton.** -/
+theorem Tm.skel_renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
+    {s : Sig} → (t : Tm σ1 s) →
+    (t.renameStore ρ).skel = t.skelSubst (Subst.ofStore ρ)
+  | _, .atom a => by
+      simp only [Tm.renameStore, Tm.skel, Tm.skelSubst, Atom.root_renameStore]
+  | _, .new _ ds => by
+      simp only [Tm.renameStore, Tm.skel, Tm.skelSubst, Subst.lift_ofStore,
+        Defs.skel_renameStore ρ ds]
+  | _, .app a _ b => by
+      simp only [Tm.renameStore, Tm.skel, Tm.skelSubst, Atom.root_renameStore]
+  | _, .let t u => by
+      simp only [Tm.renameStore, Tm.skel, Tm.skelSubst, Subst.lift_ofStore,
+        Tm.skel_renameStore ρ t, Tm.skel_renameStore ρ u]
+  | _, .cast t _ => by
+      simp only [Tm.renameStore, Tm.skel, Tm.skelSubst, Tm.skel_renameStore ρ t]
+
+/-- The same, at a definition list. -/
+theorem Defs.skel_renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
+    {s : Sig} → (ds : Defs σ1 s) →
+    (ds.renameStore ρ).skel = ds.skelSubst (Subst.ofStore ρ)
+  | _, .dnil => rfl
+  | _, .dty _ ds => by
+      simp only [Defs.renameStore, Defs.skel, Defs.skelSubst,
+        Defs.skel_renameStore ρ ds]
+  | _, .dfun _ _ t ds => by
+      simp only [Defs.renameStore, Defs.skel, Defs.skelSubst, Subst.lift_ofStore,
+        Defs.skel_renameStore ρ ds, Tm.skel_renameStore ρ t]
+
+end
+
+mutual
+
+/-- **The skeleton loses nothing erasure keeps.** -/
+theorem Tm.erase_skel {σ : Sig} : {s : Sig} → (t : Tm σ s) → t.skel.erase = t.erase
+  | _, .atom _ => rfl
+  | _, .new _ ds => by
+      simp only [Tm.skel, Tm.erase, Defs.erase_skel ds]
+  | _, .app _ _ _ => rfl
+  | _, .let t u => by
+      simp only [Tm.skel, Tm.erase, Tm.erase_skel t, Tm.erase_skel u]
+  | _, .cast t _ => by
+      simp only [Tm.skel, Tm.erase, Tm.erase_skel t]
+
+/-- The same, at a definition list. -/
+theorem Defs.erase_skel {σ : Sig} : {s : Sig} → (ds : Defs σ s) →
+    ds.skel.erase = ds.erase
+  | _, .dnil => rfl
+  | _, .dty _ ds => by
+      simp only [Defs.skel, Defs.erase, Defs.erase_skel ds]
+  | _, .dfun _ _ t ds => by
+      simp only [Defs.skel, Defs.erase, Defs.erase_skel ds, Tm.erase_skel t]
+
+end
+
+/-- So two terms with one skeleton have one erasure. -/
+theorem Tm.erase_of_skel {σ s : Sig} {t1 t2 : Tm σ s} (h : t1.skel = t2.skel) :
+    t1.erase = t2.erase := by
+  rw [← Tm.erase_skel t1, h, Tm.erase_skel]
+
+/-- And two definition lists with one skeleton have one erasure. -/
+theorem Defs.erase_of_skel {σ s : Sig} {d1 d2 : Defs σ s} (h : d1.skel = d2.skel) :
+    d1.erase = d2.erase := by
+  rw [← Defs.erase_skel d1, h, Defs.erase_skel]
+
+/-- The skeleton keeps every member, hence every label. -/
+@[simp] theorem Defs.length_skel {σ s : Sig} : (ds : Defs σ s) →
+    ds.skel.length = ds.length
+  | .dnil => rfl
+  | .dty _ ds => congrArg (· + 1) (Defs.length_skel ds)
+  | .dfun _ _ _ ds => congrArg (· + 1) (Defs.length_skel ds)
+
+/-- **The skeleton commutes with method lookup**: the same annotations, and
+the body's skeleton.  This is why the `app` rule cannot tell a definition
+list from its skeleton. -/
+theorem Defs.fun?_skel {σ s : Sig} : (ds : Defs σ s) → (a : Lb) →
+    ds.skel.fun? a = (ds.fun? a).map (fun p => (p.1, p.2.1, p.2.2.skel))
+  | .dnil, _ => rfl
+  | .dty _ ds, a => by
+      simp only [Defs.skel, Defs.fun?, Defs.length_skel]
+      split
+      · rfl
+      · exact Defs.fun?_skel ds a
+  | .dfun _ _ _ ds, a => by
+      simp only [Defs.skel, Defs.fun?, Defs.length_skel]
+      split
+      · rfl
+      · exact Defs.fun?_skel ds a
+
+/-- A definition list with the skeleton of another has, at each label where the
+other has a method, a method with the same annotations and the body's
+skeleton. -/
+theorem Defs.fun?_of_skel {σ s : Sig} {d1 d2 : Defs σ s} (h : d1.skel = d2.skel)
+    {a : Lb} {S : Ty σ s} {U : Ty σ (s,x)} {t : Tm σ (s,x)}
+    (hf : d2.fun? a = some (S, U, t)) :
+    ∃ t1 : Tm σ (s,x), d1.fun? a = some (S, U, t1) ∧ t1.skel = t.skel := by
+  have h2 := Defs.fun?_skel d2 a
+  rw [hf, ← h, Defs.fun?_skel d1 a] at h2
+  cases hf1 : d1.fun? a with
+  | none => rw [hf1] at h2; cases h2
+  | some p =>
+      rw [hf1] at h2
+      obtain ⟨S1, U1, t1⟩ := p
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h2
+      obtain ⟨rfl, rfl, h3⟩ := h2
+      exact ⟨t1, rfl, h3⟩
+
+/-- The skeleton keeps every type member. -/
+theorem Defs.ty?_skel {σ s : Sig} : (ds : Defs σ s) → (a : Lb) →
+    ds.skel.ty? a = ds.ty? a
+  | .dnil, _ => rfl
+  | .dty _ ds, a => by
+      simp only [Defs.skel, Defs.ty?, Defs.length_skel, Defs.ty?_skel ds a]
+  | .dfun _ _ _ ds, a => by
+      simp only [Defs.skel, Defs.ty?, Defs.length_skel, Defs.ty?_skel ds a]
+
+/-- The converse of `Defs.erase_ty?`: a type member the source reads off an
+erased definition list is one the target list defines. -/
+theorem Defs.ty?_of_erase {σ s : Sig} : (ds : Defs σ s) → (a : Lb) →
+    {T : Ty σ s} → ds.erase.get? a = some (.dty T) → ds.ty? a = some T
+  | .dnil, _, _, h => by cases h
+  | .dty T0 ds, a, T, h => by
+      simp only [Defs.erase, Oopsla16.Dms.get?, Defs.erase_length] at h
+      simp only [Defs.ty?]
+      split
+      · rename_i heq
+        rw [if_pos heq] at h
+        cases h
+        rfl
+      · rename_i hne
+        rw [if_neg hne] at h
+        exact Defs.ty?_of_erase ds a h
+  | .dfun _ _ _ ds, a, T, h => by
+      simp only [Defs.erase, Oopsla16.Dms.get?, Defs.erase_length] at h
+      simp only [Defs.ty?]
+      split
+      · rename_i heq
+        rw [if_pos heq] at h
+        cases h
+      · rename_i hne
+        rw [if_neg hne] at h
+        exact Defs.ty?_of_erase ds a h
+
+/-- The converse of `Defs.erase_fun?`: a method the source reads off an erased
+definition list is one the target list defines, with both annotations present
+and the body erased.  This is what relates a source `T_Vary` witness's method
+member to the method the machine runs. -/
+theorem Defs.fun?_of_erase {σ s : Sig} : (ds : Defs σ s) → (a : Lb) →
+    {o1 : Option (Ty σ s)} → {o2 : Option (Ty σ (s,x))} →
+    {t' : Oopsla16.Tm σ (s,x)} →
+    ds.erase.get? a = some (.dfun o1 o2 t') →
+    ∃ (S : Ty σ s) (U : Ty σ (s,x)) (t : Tm σ (s,x)),
+      ds.fun? a = some (S, U, t) ∧ o1 = some S ∧ o2 = some U ∧ t' = t.erase
+  | .dnil, _, _, _, _, h => by cases h
+  | .dty _ ds, a, _, _, _, h => by
+      simp only [Defs.erase, Oopsla16.Dms.get?, Defs.erase_length] at h
+      simp only [Defs.fun?]
+      split
+      · rename_i heq
+        rw [if_pos heq] at h
+        cases h
+      · rename_i hne
+        rw [if_neg hne] at h
+        exact Defs.fun?_of_erase ds a h
+  | .dfun S U t ds, a, _, _, _, h => by
+      simp only [Defs.erase, Oopsla16.Dms.get?, Defs.erase_length] at h
+      simp only [Defs.fun?]
+      split
+      · rename_i heq
+        rw [if_pos heq] at h
+        cases h
+        exact ⟨S, U, t, rfl, rfl, rfl, rfl⟩
+      · rename_i hne
+        rw [if_neg hne] at h
+        exact Defs.fun?_of_erase ds a h
+
+/-- Looking a location up in a renamed store is looking it up and renaming. -/
+theorem MachineStore.lookup_renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
+    {σ' : Sig} → (G : MachineStore σ1 σ') → (l : BVar σ' .var) →
+    (G.renameStore ρ).lookup l = (G.lookup l).renameStore ρ
+  | _, .cons _ _, .here => rfl
+  | _, .cons G _, .there l => MachineStore.lookup_renameStore ρ G l
+
+/-! ### Continuations
+
+A continuation's skeleton keeps its `let` frames, each body by its skeleton,
+and drops its coercion frames — the frame-level counterpart of dropping a
+term-level `cast`. -/
+
+/-- The skeleton of a continuation. -/
+def Cont.skel {σ : Sig} : Cont σ → Cont σ
+  | .nil => .nil
+  | .cons K (.let u) => .cons K.skel (.let u.skel)
+  | .cons K (.cast _) => K.skel
+
+/-- The skeleton of a continuation with a store renaming applied, which is what
+allocation does to the continuation. -/
+def Cont.skelStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) : Cont σ1 → Cont σ2
+  | .nil => .nil
+  | .cons K (.let u) => .cons (K.skelStore ρ) (.let (u.skelSubst (Subst.ofStore ρ)))
+  | .cons K (.cast _) => K.skelStore ρ
+
+/-- A store renaming has the renamed skeleton. -/
+theorem Cont.skel_renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
+    (K : Cont σ1) → (K.renameStore ρ).skel = K.skelStore ρ
+  | .nil => rfl
+  | .cons K (.let u) => by
+      simp only [Cont.renameStore, Frame.renameStore, Cont.skel, Cont.skelStore,
+        Cont.skel_renameStore ρ K, Tm.skel_renameStore]
+  | .cons K (.cast _) => by
+      simp only [Cont.renameStore, Frame.renameStore, Cont.skel, Cont.skelStore,
+        Cont.skel_renameStore ρ K]
+
+/-- `skelStore` reads only the skeleton. -/
+theorem Cont.skelStore_skel {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
+    (K : Cont σ1) → K.skel.skelStore ρ = K.skelStore ρ
+  | .nil => rfl
+  | .cons K (.let u) => by
+      simp only [Cont.skel, Cont.skelStore, Cont.skelStore_skel ρ K,
+        Tm.skelSubst_skel]
+  | .cons K (.cast _) => by
+      simp only [Cont.skel, Cont.skelStore, Cont.skelStore_skel ρ K]
+
 /-! ## The counterexample store, as a program that builds it
 
 `Oopsla16.PackingCounterexample` is stated over a *given* two-object store.

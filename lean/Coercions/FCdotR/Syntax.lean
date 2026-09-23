@@ -19,6 +19,12 @@ Four sorts, in two groups.
   typing.  Atoms have `pack`, the image of `T_VarPack`; observation evidence
   has `vcPack`, whose subject is a *location* only.
 
+A location is observed by **two** nodes, not one: `vcLoc`, which reads the type
+off the store typing, and `vcLocAny`, which carries a source witness — a
+literal and a self type — and is `T_Vary` verbatim.  `vcLoc` is the instance of
+the latter at the recorded type over an honest store; both are kept because
+every earlier result is stated at `vcLoc`.
+
 `Vc` is indexed by its subject's **prefix** scope, so `selL p _` takes a
 `Vc σ (scopeAt p)`.  The reference's `length GL = S x` and `GH = GU ++ GL`
 (`dot.v:391-392`) are therefore the index, here as in `Oopsla16`.
@@ -29,7 +35,7 @@ This module is syntax only; every well-formedness condition is in `Typing`.
 namespace FCdotR
 
 open FCdot (Kind Sig BVar Rename)
-open Oopsla16 (Vr Ty Lb)
+open Oopsla16 (Vr Ty Lb Dms)
 
 mutual
 
@@ -84,8 +90,17 @@ or by the typing judgment. -/
 inductive Vc : Sig → Sig → Type where
   /-- `htp_var`: the subject's own hypothesis. -/
   | vcVar {σ s : Sig} : Vc σ s
-  /-- The type of a stored object, the observation counterpart of `T_Vary`. -/
+  /-- The type of a stored object, as the store typing records it: the
+  observation counterpart of `T_Vary` at the *recorded* type. -/
   | vcLoc {σ s : Sig} (l : BVar σ .var) : Vc σ s
+  /-- The type of a stored object, as a **source witness** derives it:
+  `T_Vary` (`dot.v:220-226`) verbatim, at any type the stored literal has under
+  its own self.  The literal `ds` and the self type `T` are carried as syntax
+  because substitution has to move them; they live in `([],x)` whatever the
+  ambient local scope is, since a stored literal has no free abstract
+  variable. -/
+  | vcLocAny {σ s : Sig} (l : BVar σ .var) (T : Ty σ ([],x))
+      (ds : Dms σ ([],x)) : Vc σ s
   /-- **Packing, at a location only.**  As syntax this node can be written at
   any scope; the typing rule's subject index is `Vr.conc`, so at an abstract
   variable it has no typing rule at all — which is what

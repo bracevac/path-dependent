@@ -9,7 +9,7 @@ turns a target term back into a source term.  This module proves that the round
 trip is the identity on the fragment `TmFrag`:
 
 ```text
-(elabHasType V h f).1.erase = t        (elabDms V h f).defs.erase = ds
+(elabHasType W h f).1.erase = t        (elabDms W h f).defs.erase = ds
 ```
 
 That is the `⌊h.translate⌋ = ⌊t⌋` of the finished line (`DotToFCdot`'s erasure
@@ -39,9 +39,11 @@ For `Stp` and `Htp` there is nothing to state: inclusion and observation
 evidence have no erasure, because they are not terms.  That is the point of the
 target — the coercions of a derivation are the part that vanishes.
 
-The closing section runs the theorem on three source derivations: the empty
-object of `Oopsla16.Examples.ex0`, an object with an annotated method, and a
-method invocation with variable operands.
+The closing section runs the theorem on four source derivations: the empty
+object of `Oopsla16.Examples.ex0`, an object with an annotated method, a
+method invocation with variable operands, and a `T_Vary` over the non-empty
+store of `Oopsla16.PackingCounterexample`, elaborated at a store typing that
+records nothing about it.
 
 This module proves no typing property; `Elaboration` already carries the
 typings, as the second components of its results.
@@ -53,70 +55,78 @@ open FCdot (Kind Sig BVar Rename)
 open Oopsla16 (Vr Ty Lb Dm Dms Ctx HasType DmsHasType EqSome)
 
 /-- **An elaborated atom erases to its source variable.**  `Atom.erase` is the
-root, and `AtomElab.root` says the root is the variable the source typed. -/
-theorem elabAtom_erase {σ s : Sig} {G : Oopsla16.Store σ σ} {W : StoreTy σ}
-    (V : VaryEv G W) {Γ : Ctx σ s} {p : Vr σ s} {T : Ty σ s}
+root, and `AtomElab.root` says the root is the variable the source typed.
+
+The statement is replaced, not weakened: it used to take `V : VaryEv G W`,
+which `elabAtom` no longer takes; it now holds at every store typing `W`. -/
+theorem elabAtom_erase {σ s : Sig} {G : Oopsla16.Store σ σ} (W : StoreTy σ)
+    {Γ : Ctx σ s} {p : Vr σ s} {T : Ty σ s}
     (h : HasType G Γ (.tvar p) T) :
-    (elabAtom V h).atom.erase = .tvar p :=
-  congrArg Oopsla16.Tm.tvar (elabAtom V h).root
+    (elabAtom W h).atom.erase = .tvar p :=
+  congrArg Oopsla16.Tm.tvar (elabAtom W h).root
 
 mutual
 
 /-- **An elaborated term erases to the source term it came from.**  By
 structural recursion on the derivation, one clause per rule of `HasType`, on
-the fragment `TmFrag`.  It inherits `elabHasType`'s unproved hypothesis
-`VaryEv`, but uses nothing of it: the clause for `T_Vary` needs only that the
-elaborated atom is rooted where the source's variable is. -/
-theorem elabHasType_erase {σ s : Sig} {G : Oopsla16.Store σ σ} {W : StoreTy σ}
-    (V : VaryEv G W) {Γ : Ctx σ s} :
+the fragment `TmFrag`, at every store typing `W`.  The clause for `T_Vary`
+needs only that the elaborated atom is rooted where the source's variable is.
+
+The statement is replaced, not weakened: it used to take `V : VaryEv G W`,
+inherited from `elabHasType`, and used nothing of it; that hypothesis is gone
+from `elabHasType` and so from here. -/
+theorem elabHasType_erase {σ s : Sig} {G : Oopsla16.Store σ σ} (W : StoreTy σ)
+    {Γ : Ctx σ s} :
     {t : Oopsla16.Tm σ s} → {T : Ty σ s} → (h : HasType G Γ t T) →
-    (f : TmFrag t) → (elabHasType V h f).1.erase = t
+    (f : TmFrag t) → (elabHasType W h f).1.erase = t
   | _, _, .T_Vary hds heq, _ => by
       simp only [elabHasType, Tm.erase]
-      exact elabAtom_erase V (.T_Vary hds heq)
+      exact elabAtom_erase W (.T_Vary hds heq)
   | _, _, .T_Varz, _ => by simp only [elabHasType, Tm.erase, Atom.erase, Atom.root]
   | _, _, .T_VarPack h, _ => by
       simp only [elabHasType, Tm.erase]
-      exact elabAtom_erase V (.T_VarPack h)
+      exact elabAtom_erase W (.T_VarPack h)
   | _, _, .T_VarUnpack h, _ => by
       simp only [elabHasType, Tm.erase]
-      exact elabAtom_erase V (.T_VarUnpack h)
+      exact elabAtom_erase W (.T_VarUnpack h)
   | _, _, .T_Obj hds, .tobj f => by
       simp only [elabHasType, Tm.erase]
-      exact congrArg Oopsla16.Tm.tobj (elabDms_erase V hds f)
+      exact congrArg Oopsla16.Tm.tobj (elabDms_erase W hds f)
   | _, _, .T_App h1 h2, .tapp => by
       simp only [elabHasType, Tm.erase]
-      rw [elabAtom_erase V h1, elabAtom_erase V h2]
+      rw [elabAtom_erase W h1, elabAtom_erase W h2]
   | _, _, .T_AppVar h1 h2, .tapp => by
       simp only [elabHasType, Tm.erase]
-      rw [elabAtom_erase V h1, elabAtom_erase V h2]
+      rw [elabAtom_erase W h1, elabAtom_erase W h2]
   | _, _, .T_Sub h hs, f => by
       simp only [elabHasType, Tm.erase]
-      exact elabHasType_erase V h f
+      exact elabHasType_erase W h f
 
 /-- **An elaborated definition list erases to the source list it came from.**
 The `dfun` clause is where the fragment's Church-style annotations and
-`D_Fun`'s `EqSome` premises meet. -/
-theorem elabDms_erase {σ s : Sig} {G : Oopsla16.Store σ σ} {W : StoreTy σ}
-    (V : VaryEv G W) {Γ : Ctx σ s} :
+`D_Fun`'s `EqSome` premises meet.  Like `elabHasType_erase`, its statement no
+longer takes `VaryEv G W` and holds at every store typing `W`. -/
+theorem elabDms_erase {σ s : Sig} {G : Oopsla16.Store σ σ} (W : StoreTy σ)
+    {Γ : Ctx σ s} :
     {ds : Dms σ s} → {T : Ty σ s} → (h : DmsHasType G Γ ds T) →
-    (f : DmsFrag ds) → (elabDms V h f).defs.erase = ds
+    (f : DmsFrag ds) → (elabDms W h f).defs.erase = ds
   | _, _, .D_Nil, _ => by simp only [elabDms, Defs.erase]
   | _, _, .D_Typ hds, .dcons _ f => by
       simp only [elabDms, Defs.erase]
-      exact congrArg _ (elabDms_erase V hds f)
+      exact congrArg _ (elabDms_erase W hds f)
   | _, _, .D_Fun hds hb hS hU, .dcons (.dfun fb) f => by
       have eS := Or.resolve_left hS (by simp)
       have eU := Or.resolve_left hU (by simp)
-      simp only [elabDms, Defs.erase, eS, eU, elabHasType_erase V hb fb,
-        elabDms_erase V hds f]
+      simp only [elabDms, Defs.erase, eS, eU, elabHasType_erase W hb fb,
+        elabDms_erase W hds f]
 
 end
 
 /-! ## Instances
 
-Three source derivations run through the theorem.  All three live over the
-empty store, where `VaryEv` is free. -/
+Four source derivations run through the theorem.  The first three live over
+the empty store, which is a convenience: the theorem holds at every store.  The
+fourth is a `T_Vary` over a two-object store. -/
 
 namespace ErasureInstances
 
@@ -126,15 +136,12 @@ abbrev G0 : Oopsla16.Store ([] : Sig) [] := .nil
 /-- Its literal typing: there are no locations to type. -/
 def W0 : StoreTy [] := fun l => nomatch l
 
-/-- And so the `T_Vary` bridge is free. -/
-def V0 : VaryEv G0 W0 := VaryEv.empty
-
 /-- `Oopsla16.Examples.ex0`, the empty object at `⊤`, erases back to
 `{ z => }`.  Its derivation ends in `T_Sub`, so the elaborated term is a
 `Tm.cast`, and the cast is what vanishes. -/
-theorem ex0 : (elabHasType V0 (Γ := Ctx.nil) Oopsla16.Examples.ex0
+theorem ex0 : (elabHasType W0 (Γ := Ctx.nil) Oopsla16.Examples.ex0
     (.tobj .dnil)).1.erase = .tobj .dnil :=
-  elabHasType_erase V0 _ _
+  elabHasType_erase W0 _ _
 
 /-- The self type of a one-method object: `{f : ∀(_ : ⊤) ⊤} ∧ ⊤`, the trailing
 `⊤` being `D_Nil`'s. -/
@@ -164,8 +171,8 @@ def methodFrag : TmFrag (Oopsla16.Tm.tobj methodDefs) :=
 the types the source rule checked, erases to the source's `some`
 annotations. -/
 theorem methodObj_erase :
-    (elabHasType V0 methodObj methodFrag).1.erase = .tobj methodDefs :=
-  elabHasType_erase V0 _ _
+    (elabHasType W0 methodObj methodFrag).1.erase = .tobj methodDefs :=
+  elabHasType_erase W0 _ _
 
 /-- A context holding a method object and an argument. -/
 abbrev Gamma : Ctx [] ([],x,x) :=
@@ -182,9 +189,33 @@ erasing to its root, so the application is the source's on the nose.  This is
 the clause that a general `tapp` would break, because its operands would have
 to be `let`-bound first. -/
 theorem invocation_erase :
-    (elabHasType V0 invocation .tapp).1.erase
+    (elabHasType W0 invocation .tapp).1.erase
       = .tapp (.tvar (.abs (.there .here))) 0 (.tvar (.abs .here)) :=
-  elabHasType_erase V0 _ _
+  elabHasType_erase W0 _ _
+
+/-- A store typing for the two-object store of
+`Oopsla16.PackingCounterexample` that records nothing: `⊤` at every location.
+It is not honest, since `q`'s literal has a type member and `⊤` has none; the
+elaboration does not care. -/
+def Wtop : StoreTy Oopsla16.PackingCounterexample.S2 := fun _ => .TTop
+
+/-- **`T_Vary` at a store typing that disagrees with the source.**
+`PackingCounterexample.qTyped` re-types the literal stored at `q` at its exact
+type `{A : D .. D} ∧ ⊤`, while `Wtop` records `⊤` there.  The elaboration lands
+on `AtomTy.varConcAny`, so it goes through at `Wtop` with nothing to show — it
+is the bare variable, and the typing is the source witness carried over.  The
+former route through `varConc` would have needed `⊤ ≤ {A : D .. D} ∧ ⊤` as
+target evidence, which is what `VaryEv` asked for. -/
+example :
+    (elabHasType Wtop Oopsla16.PackingCounterexample.qTyped .tvar).1
+      = .atom (.var (.conc Oopsla16.PackingCounterexample.q)) := by
+  simp only [Oopsla16.PackingCounterexample.qTyped, elabHasType, elabAtom]
+
+/-- And it erases back to the source variable. -/
+theorem qTyped_erase :
+    (elabHasType Wtop Oopsla16.PackingCounterexample.qTyped .tvar).1.erase
+      = .tvar (.conc Oopsla16.PackingCounterexample.q) :=
+  elabHasType_erase Wtop _ _
 
 end ErasureInstances
 

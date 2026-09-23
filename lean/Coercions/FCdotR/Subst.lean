@@ -622,6 +622,9 @@ def Vc.subst {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} :
     Vc σ1 s1 → MonoSyn θ → Vc σ2 s2
   | .vcVar, _ => .vcVar
   | .vcLoc l, _ => .vcLoc (θ.conc l)
+  | .vcLocAny l T ds, _ =>
+      .vcLocAny (θ.conc l) (T.subst (Subst.atNil θ).lift)
+        (ds.subst (Subst.atNil θ).lift)
   | .vcPack T v, m => .vcPack (T.subst θ.lift) (v.subst m)
   | .vcUnfold T v, m => .vcUnfold (T.subst θ.lift) (v.subst m)
   | .vcSub T1 e v, m => .vcSub (T1.subst θ) (e.subst m) (v.subst m)

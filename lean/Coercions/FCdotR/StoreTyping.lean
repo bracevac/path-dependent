@@ -42,6 +42,15 @@ stable under a store renaming that transports lookups** (`StoreMap`), which is
 the intrinsic-scoping cost of `dot.v:21-22` and is reused by every later
 preservation argument.
 
+**`VcTy.vcLocAny` needs none of this.**  It carries its own `T_Vary` witness,
+so the facts above hold of it with no store invariant: `varyMember` and
+`varyObs` are the witness-level versions of `Store.Honest.member` and
+`Store.Honest.obs` (`member` is now `varyMember` at the honesty witness), and
+`Store.Honest.vcLoc_of_vcLocAny` says that over an honest store `vcLoc` is
+`vcLocAny` at the recorded type.  The section *A substitution's store part*
+moves such a witness along a substitution, which is what the `vcLocAny` and
+`AtomTy.varConcAny` clauses of the two substitution theorems use.
+
 The module closes with `Store.Honest` instantiated at the two-object store of
 `Oopsla16/PackingCounterexample`, so that the invariant is known to be
 inhabited by something with cross-referencing entries and positional labels.
@@ -148,21 +157,26 @@ def Store.Honest.vary {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx 
     HasType G Γ (.tvar (.conc l)) ((tyOf W l).rename renameNil) :=
   .T_Vary (h.at' l).typed (h.at' l).stored
 
-/-- **The store typing agrees with what `defL`/`defR` read.**  If the literal
-stored at `ℓ` defines the type member `a` to be `TX` — the premise of
-`LeTy.defL` and `LeTy.defR`, and the reference's `stp_strong_sel1/2`
-(`dot.v:305-314`) — then `tyOf W ℓ` has `{a : TX .. TX}` among its conjuncts. -/
-def Store.Honest.member {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
-    (h : Store.Honest G W) (l : BVar σ .var) {a : Lb} {TX : Ty σ []}
+/-- **A `T_Vary` witness agrees with what `defL`/`defR` read.**  If a literal
+`ds` has type `T` under its own self and instantiates to what `ℓ` stores — the
+two premises of `T_Vary`, and of `VcTy.vcLocAny` — and the stored literal
+defines the type member `a` to be `TX`, then `T` instantiated at `ℓ` has
+`{a : TX .. TX}` among its conjuncts.  `D_Typ` makes the member exact whatever
+type the witness picks, so this needs no store invariant: it is the fact about
+`vcLocAny` that the consistency argument would consume, and
+`Store.Honest.member` is its instance at the recorded type. -/
+def varyMember {σ : Sig} {G : Store σ σ} {l : BVar σ .var} {T : Ty σ ([],x)}
+    {ds : Dms σ ([],x)} (hd : DmsHasType G (Ctx.nil.cons T) ds T)
+    (hs : ds.substVr (.conc l) = G.lookup l) {a : Lb} {TX : Ty σ []}
     (hg : (G.lookup l).get? a = some (.dty TX)) :
-    Conjunct (tyOf W l) (.TTyp a TX TX) := by
-  have hg2 : ((h.at' l).defs.substVr (.conc l)).get? a = some (.dty TX) := by
-    rw [(h.at' l).stored]; exact hg
+    Conjunct (T.substVr (.conc l)) (.TTyp a TX TX) := by
+  have hg2 : (ds.substVr (.conc l)).get? a = some (.dty TX) := by
+    rw [hs]; exact hg
   rw [Dms.get?_subst] at hg2
-  cases hd : (h.at' l).defs.get? a with
-  | none => rw [hd] at hg2; simp at hg2
+  cases hget : ds.get? a with
+  | none => rw [hget] at hg2; simp at hg2
   | some d =>
-      rw [hd] at hg2
+      rw [hget] at hg2
       cases d with
       | dfun _ _ _ => simp [Dm.subst] at hg2
       | dty TX0 =>
@@ -171,10 +185,21 @@ def Store.Honest.member {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
             injection hg2 with e
             injection e
           have hc := Conjunct.subst (Subst.one (Vr.conc l))
-            (DmsHasType.conjunct (h.at' l).typed hd)
+            (DmsHasType.conjunct hd hget)
           simp only [Ty.subst] at hc
           rw [show Ty.subst TX0 (Subst.one (Vr.conc l)) = TX from hTX] at hc
           exact hc
+
+/-- **The store typing agrees with what `defL`/`defR` read.**  If the literal
+stored at `ℓ` defines the type member `a` to be `TX` — the premise of
+`LeTy.defL` and `LeTy.defR`, and the reference's `stp_strong_sel1/2`
+(`dot.v:305-314`) — then `tyOf W ℓ` has `{a : TX .. TX}` among its conjuncts.
+The instance of `varyMember` at the honesty witness. -/
+def Store.Honest.member {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
+    (h : Store.Honest G W) (l : BVar σ .var) {a : Lb} {TX : Ty σ []}
+    (hg : (G.lookup l).get? a = some (.dty TX)) :
+    Conjunct (tyOf W l) (.TTyp a TX TX) :=
+  varyMember (h.at' l).typed (h.at' l).stored hg
 
 /-- The observation of a location that `selL`/`selR` consume, built from the
 definition `defL`/`defR` read.  Over an honest store the two ways of resolving
@@ -187,6 +212,33 @@ def Store.Honest.obs {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx �
   let c := h.member l hg
   ⟨.vcSub (tyOf W l) c.ev (.vcLoc l),
     VcTy.vcSub (Γ := Γ) (p := .conc l) (tyOf W l) VcTy.vcLoc c.typed⟩
+
+/-- The observation `selL`/`selR` consume, built through a `T_Vary` witness
+rather than through the store typing: `vcLocAny` widened to the member by
+`varyMember`.  The `vcLocAny` counterpart of `Store.Honest.obs`, with no
+honesty hypothesis. -/
+def varyObs {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
+    {l : BVar σ .var} {T : Ty σ ([],x)} {ds : Dms σ ([],x)}
+    (hd : DmsHasType G (Ctx.nil.cons T) ds T)
+    (hs : ds.substVr (.conc l) = G.lookup l) {a : Lb} {TX : Ty σ []}
+    (hg : (G.lookup l).get? a = some (.dty TX)) :
+    (v : Vc σ []) × VcTy G W Γ (.conc l) v (.TTyp a TX TX) :=
+  let c := varyMember hd hs hg
+  ⟨.vcSub (T.substVr (.conc l)) c.ev (.vcLocAny l T ds),
+    VcTy.vcSub (Γ := Γ) (p := .conc l) (T.substVr (.conc l))
+      (VcTy.vcLocAny hd hs) c.typed⟩
+
+/-- **Over an honest store `vcLoc` is an instance of `vcLocAny`.**  The
+honesty witness at `ℓ` is a pair of `T_Vary` premises at the recorded type
+`W ℓ`, and `tyOf W ℓ` is `(W ℓ).substVr (conc ℓ)` by definition, so
+`VcTy.vcLocAny` with that witness observes `ℓ` at exactly the type `VcTy.vcLoc`
+reads off `W`.  So adding `vcLocAny` added no power over an honest store that
+`vcLoc` did not already have at `W ℓ`; what it adds is the observation at
+*other* types the literal has, which is what the source's `T_Vary` licenses. -/
+def Store.Honest.vcLoc_of_vcLocAny {σ s : Sig} {G : Store σ σ} {W : StoreTy σ}
+    {Γ : Ctx σ s} (h : Store.Honest G W) (l : BVar σ .var) :
+    VcTy G W Γ (.conc l) (.vcLocAny l (W l) (h.at' l).defs) (tyOf W l) :=
+  .vcLocAny (h.at' l).typed (h.at' l).stored
 
 /-! ## Store renaming
 
@@ -414,6 +466,90 @@ def Htp.renameStore {σ1 σ2 : Sig} {G1 : Store σ1 σ1} {G2 : Store σ2 σ2}
 
 end
 
+/-! ## A substitution's store part
+
+`Subst.conc` maps locations to locations (`Oopsla16.Structural`): the reference
+never substitutes for a concrete variable.  So the store part of *any*
+substitution is a renaming of the store scope, and the judgment-renaming
+results above apply to it.  That is what carries a `T_Vary` witness — the two
+premises of `VcTy.vcLocAny` and `AtomTy.varConcAny` — along a substitution, and
+it is what `SubstTyping` and `TermSubst` consume in those clauses.
+
+Written prefix rather than as `Subst.storeRen`, for the reason
+`Ctx.renameStore` above gives: dot notation on an `Oopsla16.Subst` would look
+for the name in `Oopsla16`. -/
+
+/-- The store part of a substitution, read as a renaming of the store scope. -/
+def storeRen {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) : Rename σ1 σ2 where
+  var := fun {k} => match k with | .var => θ.conc
+
+/-- On the empty local scope a substitution *is* its store renaming: there is
+no local variable left for the two to differ at. -/
+theorem atNil_eq_ofStore {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) :
+    Subst.atNil θ = Subst.ofStore (s := []) (storeRen θ) :=
+  Subst.ext (fun _ => rfl) (fun y => nomatch y)
+
+/-- The same one binder in, which is where a stored literal and its self type
+live. -/
+theorem atNil_lift_eq_ofStore {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) :
+    (Subst.atNil θ).lift = Subst.ofStore (s := ([],x)) (storeRen θ) := by
+  rw [atNil_eq_ofStore, Subst.lift_ofStore]
+
+/-- **A substitution's store part is a store map**, as soon as the two stores
+agree at every location in the sense `SubstTyping.MonoSyn.Ev`'s `defs` field
+states.  The agreement is taken here as a bare hypothesis, so that this
+definition sits below `SubstTyping` in the import order. -/
+def StoreMap.ofSubst {σ1 σ2 s1 s2 : Sig} {G : Store σ1 σ1} {G' : Store σ2 σ2}
+    (θ : Subst σ1 s1 σ2 s2)
+    (hG : ∀ l : BVar σ1 .var,
+      G'.lookup (θ.conc l) = (G.lookup l).subst (Subst.atNil θ)) :
+    StoreMap G G' where
+  ren := storeRen θ
+  lookup := fun l => by
+    show (G.lookup l).renameStore (storeRen θ) = G'.lookup (θ.conc l)
+    rw [hG l, atNil_eq_ofStore]
+
+/-- **The typing half of a transported `T_Vary` witness.**  A literal that has
+the type `T` under its own self still does after its store scope is renamed by
+the substitution's store part. -/
+def varyTyped {σ1 σ2 s1 s2 : Sig} {G : Store σ1 σ1} {G' : Store σ2 σ2}
+    (θ : Subst σ1 s1 σ2 s2)
+    (hG : ∀ l : BVar σ1 .var,
+      G'.lookup (θ.conc l) = (G.lookup l).subst (Subst.atNil θ))
+    {T : Ty σ1 ([],x)} {ds : Dms σ1 ([],x)}
+    (hd : DmsHasType G (Ctx.nil.cons T) ds T) :
+    DmsHasType G' (Ctx.nil.cons (T.renameStore (storeRen θ)))
+      (ds.renameStore (storeRen θ)) (T.renameStore (storeRen θ)) :=
+  DmsHasType.renameStore (StoreMap.ofSubst θ hG) hd
+
+/-- **The stored half of a transported `T_Vary` witness.**  Instantiating the
+renamed literal's self by the image location gives what the image store holds:
+`Dms.renameStore_substVr` composed with the store agreement. -/
+theorem varyStored {σ1 σ2 s1 s2 : Sig} {G : Store σ1 σ1} {G' : Store σ2 σ2}
+    (θ : Subst σ1 s1 σ2 s2)
+    (hG : ∀ l : BVar σ1 .var,
+      G'.lookup (θ.conc l) = (G.lookup l).subst (Subst.atNil θ))
+    {l : BVar σ1 .var} {ds : Dms σ1 ([],x)}
+    (hs : ds.substVr (.conc l) = G.lookup l) :
+    (ds.renameStore (storeRen θ)).substVr (.conc (θ.conc l))
+      = G'.lookup (θ.conc l) := by
+  have h : (G.lookup l).renameStore (storeRen θ) = G'.lookup (θ.conc l) :=
+    (StoreMap.ofSubst θ hG).lookup l
+  show (ds.renameStore (storeRen θ)).substVr
+      ((Vr.conc l).subst (Subst.ofStore (storeRen θ))) = G'.lookup (θ.conc l)
+  rw [← Dms.renameStore_substVr, hs, h]
+
+/-- **The type a transported witness reports.**  Substituting the type a
+`T_Vary` witness gives at `ℓ` is instantiating the renamed self type at the
+image location.  This is the equation the `vcLocAny`/`varConcAny` clauses of
+the two substitution theorems close with. -/
+theorem varyTy {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) (l : BVar σ1 .var)
+    (T : Ty σ1 ([],x)) :
+    (T.substVr (.conc l)).subst (Subst.atNil θ)
+      = (T.renameStore (storeRen θ)).substVr (.conc (θ.conc l)) := by
+  rw [atNil_eq_ofStore]
+  exact Ty.renameStore_substVr T (.conc l) (storeRen θ)
+
 /-! ## Allocation
 
 `ST_Obj` (`Semantics.lean`, `dot.v:199-200`) allocates one location and
@@ -430,6 +566,22 @@ def StoreMap.alloc {σ : Sig} (G : Store σ σ) (d : Dms (σ,x) []) :
 def StoreTy.alloc {σ : Sig} (W : StoreTy σ) (TD : Ty σ ([],x)) : StoreTy (σ,x)
   | .here => TD.weakenStore
   | .there l => (W l).weakenStore
+
+/-- At the newly allocated location the recorded type is the literal's type,
+weakened, with its self instantiated there. -/
+theorem tyOf_alloc_here {σ : Sig} (W : StoreTy σ) (TD : Ty σ ([],x)) :
+    tyOf (StoreTy.alloc W TD) .here = TD.weakenStore.substVr (.conc .here) := rfl
+
+/-- At an old location the recorded type is the old one, weakened.  This is the
+`tys` field of a store-weakening hypothesis structure, and the target machine's
+honesty invariant (`Preservation.MachineStore.Honest.alloc`) consumes it. -/
+theorem tyOf_alloc_there {σ : Sig} (W : StoreTy σ) (TD : Ty σ ([],x))
+    (l : BVar σ .var) :
+    tyOf (StoreTy.alloc W TD) (.there l) = (tyOf W l).weakenStore := by
+  show ((W l).weakenStore).substVr (.conc (.there l))
+      = ((W l).substVr (.conc l)).renameStore Rename.succ
+  rw [Ty.renameStore_substVr]
+  rfl
 
 /-- **Honesty is preserved by allocation.**  The statement mirrors
 `Step.ST_Obj`: from a literal that is well typed under its own self over the

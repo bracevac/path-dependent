@@ -27,22 +27,24 @@ mentions a location.  Two rules are derived rather than primitive, exactly as
 `PLAN.md` §E says: `stp_selx` is `refl` at the selection, and `stp_bind1` is
 `bindx` into the weakened right body followed by `muDrop`.
 
-## Where a hypothesis *is* needed: `T_Vary`
+## `T_Vary` needs no hypothesis either
 
 The source's `T_Vary` (`dot.v:220-226`) re-types the stored literal at a type
-`T` of its own choosing; the target's `AtomTy.varConc` reads the type off the
-store typing `W`.  Nothing forces the two to agree, and nothing can: a
-literal's type is not determined by the literal, because `D_Fun` types the
-method body with `HasType` and `HasType` has `T_Sub`.  So the elaboration of a
-term takes a `VaryEv G W` — the statement that at every location the store
-typing's own entry is *included* in whatever type the source derived there —
-and `T_Vary` becomes `AtomTy.varConc` followed by that inclusion.
+`T` of its own choosing.  The target has that rule verbatim,
+`AtomTy.varConcAny`, with the same two premises, so `T_Vary` elaborates to it
+directly and the term elaboration, like the evidence elaboration, holds at an
+**arbitrary** store typing `W`.
 
-`StoreTyping.Store.Honest.vary` is the **converse** implication: it turns the
-target's rule back into a source derivation, so it shows that reading `W` is
-not a new power.  It does not discharge `VaryEv`, and this module does not
-pretend that it does.  `VaryEv.empty` inhabits the hypothesis over the empty
-store, which is where the `FunctionField` instantiation at the end lives.
+It used to go through `AtomTy.varConc`, which reads the type off `W`, and so
+needed a hypothesis `VaryEv G W`: that `W`'s entry at every location is
+included in whatever type the source derived there.  That hypothesis was
+**removed**, not discharged, because it is false in general — a literal has no
+principal type (`D_Fun` types a method body with `HasType`, which has `T_Sub`),
+so two `T_Vary` derivations at one location can give incomparable types, and no
+single entry of `W` is below both.  `StoreTyping.Store.Honest.vary` remains the
+converse bridge, from `varConc` back to a source `T_Vary`, and
+`Store.Honest.varConc_of_varConcAny` says `varConc` is the instance of
+`varConcAny` at `W ℓ` over an honest store.
 
 ## The fragment: applications with variable operands
 
@@ -175,46 +177,6 @@ def elabHtp {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) {Γ : Ctx σ s}
 
 end
 
-/-! ## The `T_Vary` bridge
-
-The one thing the elaboration of terms needs that `Typing` does not already
-give. -/
-
-/-- **What elaboration asks of a store typing.**  Whenever the source types a
-location by re-typing the literal stored there — the two premises of `T_Vary`,
-`dot.v:220-226` — the type the store typing records for that location is
-*included* in the type the source derived, and the inclusion is available as
-target evidence in whatever local scope the use sits in.
-
-This is a **hypothesis**: this module proves nothing that inhabits it in
-general, and `Store.Honest` does not imply it.  Honesty says the store typing
-tells *a* truth about each stored literal; `VaryEv` says it tells a truth at
-least as precise as any the source can derive about it, and that is a strictly
-stronger demand, because `D_Fun` types a method body with `HasType` and
-`HasType` has `T_Sub`, so a literal has no principal type.
-
-The field is stated at an arbitrary local scope `s` rather than at `[]`, where
-both of its types actually live before their `renameNil`.  That is not
-generality for its own sake: `LeTy` has no weakening lemma stated, so evidence
-derived at `[]` cannot be moved to `s`.  That is now a gap of convenience
-rather than of substance — `SubstTyping.LeTy.substEv` is unconditional and
-`TermSubst.MonoSyn.Ev.weaken` is its weakening instance, so the lemma is
-derivable; this module simply sits below `TermSubst` in the import order and
-does not see it.  Once `LeTy` weakening is stated, the `s = []` instance of
-this field will suffice. -/
-structure VaryEv {σ : Sig} (G : Store σ σ) (W : StoreTy σ) : Type where
-  /-- The inclusion, from the recorded type to the derived one. -/
-  le : {s : Sig} → {Γ : Ctx σ s} → {l : BVar σ .var} → {T : Ty σ ([],x)} →
-    {ds : Dms σ ([],x)} → DmsHasType G (Ctx.nil.cons T) ds T →
-    ds.substVr (.conc l) = G.lookup l →
-    (e : Le σ s) × LeTy G W Γ e ((tyOf W l).rename renameNil)
-      ((T.substVr (.conc l)).rename renameNil)
-
-/-- Over the empty store the hypothesis is free: there is no location to make a
-demand about.  This is what the `FunctionField` instantiation uses. -/
-def VaryEv.empty {G : Store [] []} {W : StoreTy []} : VaryEv G W where
-  le := fun {_ _ l} _ _ => nomatch l
-
 /-! ## The elaborable fragment
 
 `TmFrag t` says two things about the source term `t`, and says them
@@ -278,34 +240,32 @@ structure AtomElab {σ s : Sig} (G : Store σ σ) (W : StoreTy σ) (Γ : Ctx σ 
   typed : AtomTy G W Γ atom T
 
 /-- **A source typing of a variable elaborates to an atom rooted at it.**
-`T_Varz` and `T_Vary` become the two variable rules, `T_Sub` becomes a `cast`,
-`T_VarPack` and `T_VarUnpack` become `pack` and `unpack`; the three rules whose
-subject is not a variable cannot conclude at `.tvar p`, and the match discards
-them.
+`T_Varz` and `T_Vary` become the variable rules `varAbs` and `varConcAny`,
+`T_Sub` becomes a `cast`, `T_VarPack` and `T_VarUnpack` become `pack` and
+`unpack`; the three rules whose subject is not a variable cannot conclude at
+`.tvar p`, and the match discards them.
 
-`T_Vary` is where `VaryEv` is consumed, and the only place in this module where
-anything beyond the source derivation is used.  **`VaryEv` is an unproved
-hypothesis**: nothing in this library inhabits it except over the empty store,
-so this function is a translation *relative to* an agreement between the source
-and the store typing that no one has established in general. -/
-def elabAtom {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} (V : VaryEv G W)
+**No hypothesis.**  `T_Vary` lands on `AtomTy.varConcAny`, which has the source
+rule's premises verbatim, so nothing beyond the source derivation is used and
+`W` is arbitrary.  This replaces the earlier statement, which took the
+hypothesis `VaryEv G W` and elaborated `T_Vary` to `varConc` followed by a cast;
+see the module header for why that hypothesis was false in general. -/
+def elabAtom {σ s : Sig} {G : Store σ σ} (W : StoreTy σ)
     {Γ : Ctx σ s} : {p : Vr σ s} → {T : Ty σ s} → HasType G Γ (.tvar p) T →
     AtomElab G W Γ p T
-  | _, _, .T_Vary (x := l) hds heq =>
-      let ⟨e, he⟩ := V.le (Γ := Γ) (l := l) hds heq
-      ⟨.cast (.var (.conc l)) e, rfl, .cast .varConc he⟩
+  | _, _, .T_Vary (x := l) hds heq => ⟨.var (.conc l), rfl, .varConcAny hds heq⟩
   | _, _, .T_Varz (x := y) => ⟨.var (.abs y), rfl, .varAbs⟩
   | p, _, .T_VarPack (T := T) h =>
-      let r := elabAtom V h
+      let r := elabAtom W h
       ⟨.pack T r.atom, r.root, .pack (by rw [r.root]; exact r.typed)⟩
   | p, _, .T_VarUnpack (T := T) h =>
-      let r := elabAtom V h
+      let r := elabAtom W h
       ⟨.unpack T r.atom, r.root, by
         have hu := AtomTy.unpack (T := T) r.typed
         rw [r.root] at hu
         exact hu⟩
   | _, _, .T_Sub h hs =>
-      let r := elabAtom V h
+      let r := elabAtom W h
       let ⟨e, he⟩ := elabStp W hs
       ⟨.cast r.atom e, r.root, .cast r.typed he⟩
 
@@ -338,36 +298,38 @@ variables, hence atoms.  Off the fragment the function is not defined: a
 general `tapp t1 l t2` needs its operands bound by `Tm.let` first, and the
 operational correspondence for that binding is proved nowhere in this library.
 
-Like `elabAtom`, this takes the **unproved hypothesis** `VaryEv`; see there. -/
-def elabHasType {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} (V : VaryEv G W)
+Like `elabAtom`, this takes **no hypothesis**, and `W` is arbitrary.  The
+earlier statement took `VaryEv G W`; it is replaced, not weakened — see the
+module header. -/
+def elabHasType {σ s : Sig} {G : Store σ σ} (W : StoreTy σ)
     {Γ : Ctx σ s} : {t : Oopsla16.Tm σ s} → {T : Ty σ s} → HasType G Γ t T →
     TmFrag t → (t' : Tm σ s) × TmTy G W Γ t' T
   | _, _, .T_Vary hds heq, _ =>
-      let r := elabAtom V (.T_Vary hds heq)
+      let r := elabAtom W (.T_Vary hds heq)
       ⟨.atom r.atom, .atom r.typed⟩
   | _, _, .T_Varz (x := y), _ => ⟨.atom (.var (.abs y)), .atom .varAbs⟩
   | _, _, .T_VarPack h, _ =>
-      let r := elabAtom V (.T_VarPack h)
+      let r := elabAtom W (.T_VarPack h)
       ⟨.atom r.atom, .atom r.typed⟩
   | _, _, .T_VarUnpack h, _ =>
-      let r := elabAtom V (.T_VarUnpack h)
+      let r := elabAtom W (.T_VarUnpack h)
       ⟨.atom r.atom, .atom r.typed⟩
   | _, _, .T_Obj (T := T) hds, .tobj f =>
-      let r := elabDms V hds f
+      let r := elabDms W hds f
       ⟨.new T r.defs, .new T r.typed⟩
   | _, _, .T_App (l := l) h1 h2, .tapp =>
-      let r1 := elabAtom V h1
-      let r2 := elabAtom V h2
+      let r1 := elabAtom W h1
+      let r2 := elabAtom W h2
       ⟨.app r1.atom l r2.atom, .appWeaken r1.typed r2.typed⟩
   | _, _, .T_AppVar (l := l) h1 h2, .tapp =>
-      let r1 := elabAtom V h1
-      let r2 := elabAtom V h2
+      let r1 := elabAtom W h1
+      let r2 := elabAtom W h2
       ⟨.app r1.atom l r2.atom, by
         have ha := TmTy.app (l := l) r1.typed r2.typed
         rw [r2.root] at ha
         exact ha⟩
   | _, _, .T_Sub h hs, f =>
-      let ⟨t', ht'⟩ := elabHasType V h f
+      let ⟨t', ht'⟩ := elabHasType W h f
       let ⟨e, he⟩ := elabStp W hs
       ⟨.cast t' e, .cast ht' he⟩
 
@@ -376,18 +338,19 @@ def elabHasType {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} (V : VaryEv G W)
 the length equation, and `D_Fun`'s target annotations are the types the source
 rule checked, which the fragment's `some` annotations agree with.
 
-Like `elabAtom`, this takes the **unproved hypothesis** `VaryEv`; see there. -/
-def elabDms {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} (V : VaryEv G W)
+Like `elabAtom`, this takes **no hypothesis**; the earlier statement took
+`VaryEv G W` and is replaced. -/
+def elabDms {σ s : Sig} {G : Store σ σ} (W : StoreTy σ)
     {Γ : Ctx σ s} : {ds : Dms σ s} → {T : Ty σ s} → DmsHasType G Γ ds T →
     DmsFrag ds → DefsElab G W Γ ds T
   | _, _, .D_Nil, _ => ⟨.dnil, rfl, .dnil⟩
   | _, _, .D_Typ (T11 := T11) hds, .dcons _ f =>
-      let r := elabDms V hds f
+      let r := elabDms W hds f
       ⟨.dty T11 r.defs, by simp [Defs.length, r.length],
         by rw [← r.length]; exact .dty r.typed⟩
   | _, _, .D_Fun (T11 := T11) (T12 := T12) hds hb _ _, .dcons (.dfun fb) f =>
-      let r := elabDms V hds f
-      let ⟨t', ht'⟩ := elabHasType V hb fb
+      let r := elabDms W hds f
+      let ⟨t', ht'⟩ := elabHasType W hb fb
       ⟨.dfun T11 T12 t' r.defs, by simp [Defs.length, r.length],
         by rw [← r.length]; exact .dfun r.typed ht'⟩
 
@@ -408,7 +371,8 @@ equivalent one, the same one — so the hand-written example is exactly what the
 translation computes.  `DotToFCdot.RecursiveSubtyping.FunctionField.no_coercion`
 proves the previous target has no closed inclusion with these endpoints at all.
 
-The store is empty here, so no `VaryEv` is involved; `elabStp` never needs one. -/
+The store is empty here, though nothing depends on that: `elabStp` holds at
+every store typing. -/
 
 /-- The observation of the self's `A` member that the source's `htp_sub` builds
 is `Examples.aMember`. -/

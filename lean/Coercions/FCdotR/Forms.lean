@@ -78,6 +78,7 @@ inclusions its widenings carry. -/
 def Vc.size {σ s : Sig} : Vc σ s → Nat
   | .vcVar => 1
   | .vcLoc _ => 1
+  | .vcLocAny _ _ _ => 1
   | .vcPack _ v => v.size + 1
   | .vcUnfold _ v => v.size + 1
   | .vcSub _ e v => e.size + v.size + 1
@@ -115,6 +116,7 @@ inclusions its widenings carry. -/
 def Vc.packs {σ s : Sig} : Vc σ s → Nat
   | .vcVar => 0
   | .vcLoc _ => 0
+  | .vcLocAny _ _ _ => 0
   | .vcPack _ v => v.packs + 1
   | .vcUnfold _ v => v.packs
   | .vcSub _ e v => e.packs + v.packs
@@ -129,6 +131,7 @@ are not counted. -/
 def Vc.spinePacks {σ s : Sig} : Vc σ s → Nat
   | .vcVar => 0
   | .vcLoc _ => 0
+  | .vcLocAny _ _ _ => 0
   | .vcPack _ v => v.spinePacks + 1
   | .vcUnfold _ v => v.spinePacks
   | .vcSub _ _ v => v.spinePacks
@@ -138,6 +141,7 @@ chain of widenings, packings and unfoldings stands on. -/
 def Vc.base {σ s : Sig} : Vc σ s → Vc σ s
   | .vcVar => .vcVar
   | .vcLoc l => .vcLoc l
+  | .vcLocAny l T ds => .vcLocAny l T ds
   | .vcPack _ v => v.base
   | .vcUnfold _ v => v.base
   | .vcSub _ _ v => v.base
@@ -147,6 +151,7 @@ steps of the normalizer against the pack measure. -/
 def Vc.spineLen {σ s : Sig} : Vc σ s → Nat
   | .vcVar => 0
   | .vcLoc _ => 0
+  | .vcLocAny _ _ _ => 0
   | .vcPack _ v => v.spineLen + 1
   | .vcUnfold _ v => v.spineLen + 1
   | .vcSub _ _ v => v.spineLen + 1
@@ -158,6 +163,11 @@ def Vc.spineLen {σ s : Sig} : Vc σ s → Nat
 /-- A location carries no packing. -/
 @[simp] theorem Vc.spinePacks_vcLoc {σ s : Sig} (l : BVar σ .var) :
     (Vc.vcLoc (s := s) l).spinePacks = 0 := rfl
+
+/-- A location observed through a source witness carries no packing either. -/
+@[simp] theorem Vc.spinePacks_vcLocAny {σ s : Sig} (l : BVar σ .var)
+    (T : Ty σ ([],x)) (ds : Dms σ ([],x)) :
+    (Vc.vcLocAny (s := s) l T ds).spinePacks = 0 := rfl
 
 /-- Packing adds one to the spine count. -/
 @[simp] theorem Vc.spinePacks_vcPack {σ s : Sig} (T : Ty σ (s,x)) (v : Vc σ s) :
@@ -178,6 +188,7 @@ term.  Stated so that a bound on `packs` is also a bound on `spinePacks`. -/
 theorem Vc.spinePacks_le_packs {σ s : Sig} : (v : Vc σ s) → v.spinePacks ≤ v.packs
   | .vcVar => Nat.le_refl 0
   | .vcLoc _ => Nat.le_refl 0
+  | .vcLocAny _ _ _ => Nat.le_refl 0
   | .vcPack _ v => Nat.succ_le_succ (Vc.spinePacks_le_packs v)
   | .vcUnfold _ v => Vc.spinePacks_le_packs v
   | .vcSub _ e v => Nat.le_trans (Vc.spinePacks_le_packs v) (Nat.le_add_left _ e.packs)
@@ -265,6 +276,9 @@ inductive Vc.InNf {σ : Sig} : {s : Sig} → Vc σ s → Prop where
   | vcVar {s : Sig} : Vc.InNf (.vcVar (σ := σ) (s := s))
   /-- A location is normal. -/
   | vcLoc {s : Sig} {l : BVar σ .var} : Vc.InNf (.vcLoc (σ := σ) (s := s) l)
+  /-- A location observed through a source witness is normal. -/
+  | vcLocAny {s : Sig} {l : BVar σ .var} {T : Ty σ ([],x)} {ds : Dms σ ([],x)} :
+      Vc.InNf (.vcLocAny (σ := σ) (s := s) l T ds)
   /-- Packing preserves normality. -/
   | vcPack {s : Sig} {T : Ty σ (s,x)} {v : Vc σ s} :
       Vc.InNf v → Vc.InNf (.vcPack T v)
@@ -302,6 +316,9 @@ inductive Vc.RedexFree {σ : Sig} : {s : Sig} → Vc σ s → Prop where
   | vcVar {s : Sig} : Vc.RedexFree (.vcVar (σ := σ) (s := s))
   /-- A location is redex-free. -/
   | vcLoc {s : Sig} {l : BVar σ .var} : Vc.RedexFree (.vcLoc (σ := σ) (s := s) l)
+  /-- A location observed through a source witness is redex-free. -/
+  | vcLocAny {s : Sig} {l : BVar σ .var} {T : Ty σ ([],x)} {ds : Dms σ ([],x)} :
+      Vc.RedexFree (.vcLocAny (σ := σ) (s := s) l T ds)
   /-- Packing preserves redex-freedom. -/
   | vcPack {s : Sig} {T : Ty σ (s,x)} {v : Vc σ s} :
       Vc.RedexFree v → Vc.RedexFree (.vcPack T v)
@@ -311,5 +328,252 @@ inductive Vc.RedexFree {σ : Sig} : {s : Sig} → Vc σ s → Prop where
   /-- Widening preserves redex-freedom. -/
   | vcSub {s : Sig} {T1 : Ty σ s} {e : Le σ s} {v : Vc σ s} :
       Vc.RedexFree v → Vc.RedexFree (.vcSub T1 e v)
+
+
+/-! ## How far a concrete selection may observe
+
+`LeTy.selL`/`LeTy.selR` read a location through an *observation*, which may
+itself have been widened, packed and unfolded; `LeTy.defL`/`LeTy.defR` read the
+stored definition exactly.  The source has only the second pair for a location
+(`stp_strong_sel1/2`, `dot.v:305-314`).  `PackBound k` grades evidence by how
+much of the first pair it uses: every selection **on a location**, at any
+depth, observes that location with fewer than `k` packings on its spine.
+Selections on an abstract variable are unconstrained, apart from the
+constraint on the inclusions their observations carry.
+
+`PackBound 0` forbids concrete `selL`/`selR` altogether; that is `Le.Strong`,
+named after the source rules it leaves.  Strong closed evidence is what
+transitivity elimination (`Inversion.pushback`) runs on, and turning arbitrary
+evidence into strong evidence (`Inversion.LeTy.strong`) is where the pack count
+is spent: a concrete selection is replaced by `defL`/`defR` after its
+observation has been inverted, which needs the substitution theorem at fewer
+packs. -/
+
+mutual
+
+/-- Every selection on a location inside the inclusion evidence — including
+inside the observations its selections carry — observes that location through
+fewer than `k` packings on its spine. -/
+def Le.PackBound {σ s : Sig} (k : Nat) : Le σ s → Prop
+  | .refl _ => True
+  | .trans _ e f => e.PackBound k ∧ f.PackBound k
+  | .top _ => True
+  | .bot _ => True
+  | .dtyp _ e f => e.PackBound k ∧ f.PackBound k
+  | .dfun _ e f => e.PackBound k ∧ f.PackBound k
+  | .andI _ _ e f => e.PackBound k ∧ f.PackBound k
+  | .andE1 _ e => e.PackBound k
+  | .andE2 _ e => e.PackBound k
+  | .orI1 _ e => e.PackBound k
+  | .orI2 _ e => e.PackBound k
+  | .orE _ _ e f => e.PackBound k ∧ f.PackBound k
+  | .defL _ _ e => e.PackBound k
+  | .defR _ _ e => e.PackBound k
+  | .selL p _ v => v.PackBound k ∧ (zone p = .concrete → v.spinePacks < k)
+  | .selR p _ v => v.PackBound k ∧ (zone p = .concrete → v.spinePacks < k)
+  | .bindx _ _ e => e.PackBound k
+  | .muDrop _ => True
+
+/-- The observation counterpart: every inclusion a widening on the spine carries
+satisfies `Le.PackBound k`.  The spine's *own* packings are not constrained
+here; the enclosing selection constrains them when its subject is a location. -/
+def Vc.PackBound {σ s : Sig} (k : Nat) : Vc σ s → Prop
+  | .vcVar => True
+  | .vcLoc _ => True
+  | .vcLocAny _ _ _ => True
+  | .vcPack _ v => v.PackBound k
+  | .vcUnfold _ v => v.PackBound k
+  | .vcSub _ e v => e.PackBound k ∧ v.PackBound k
+
+end
+
+/-- **Strong** inclusion evidence: no selection on a location goes through an
+observation.  Every concrete selection is a `defL`/`defR`, as in the source. -/
+abbrev Le.Strong {σ s : Sig} (e : Le σ s) : Prop := e.PackBound 0
+
+/-- An observation whose widenings carry strong inclusions only. -/
+abbrev Vc.Strong {σ s : Sig} (v : Vc σ s) : Prop := v.PackBound 0
+
+mutual
+
+/-- A larger bound is a weaker requirement. -/
+theorem Le.PackBound.mono {σ s : Sig} {j k : Nat} (hjk : j ≤ k) :
+    (e : Le σ s) → e.PackBound j → e.PackBound k
+  | .refl _, _ => trivial
+  | .trans _ e f, h | .dtyp _ e f, h | .dfun _ e f, h | .andI _ _ e f, h
+  | .orE _ _ e f, h => by
+      simp only [Le.PackBound] at h ⊢
+      exact ⟨Le.PackBound.mono hjk e h.1, Le.PackBound.mono hjk f h.2⟩
+  | .top _, _ => trivial
+  | .bot _, _ => trivial
+  | .andE1 _ e, h | .andE2 _ e, h | .orI1 _ e, h | .orI2 _ e, h
+  | .defL _ _ e, h | .defR _ _ e, h | .bindx _ _ e, h => by
+      simp only [Le.PackBound] at h ⊢
+      exact Le.PackBound.mono hjk e h
+  | .selL _ _ v, h | .selR _ _ v, h => by
+      simp only [Le.PackBound] at h ⊢
+      exact ⟨Vc.PackBound.mono hjk v h.1, fun hz => Nat.lt_of_lt_of_le (h.2 hz) hjk⟩
+  | .muDrop _, _ => trivial
+
+/-- A larger bound is a weaker requirement, for observations. -/
+theorem Vc.PackBound.mono {σ s : Sig} {j k : Nat} (hjk : j ≤ k) :
+    (v : Vc σ s) → v.PackBound j → v.PackBound k
+  | .vcVar, _ => trivial
+  | .vcLoc _, _ => trivial
+  | .vcLocAny _ _ _, _ => trivial
+  | .vcPack _ v, h | .vcUnfold _ v, h => by
+      simp only [Vc.PackBound] at h ⊢
+      exact Vc.PackBound.mono hjk v h
+  | .vcSub _ e v, h => by
+      simp only [Vc.PackBound] at h ⊢
+      exact ⟨Le.PackBound.mono hjk e h.1, Vc.PackBound.mono hjk v h.2⟩
+
+end
+
+mutual
+
+/-- **Every piece of evidence has a pack bound**: one more than the number of
+packings it contains anywhere.  Every observation a selection carries is part
+of the term, so its spine is counted by `Le.packs`. -/
+theorem Le.packBound_of_packs {σ s : Sig} {k : Nat} :
+    (e : Le σ s) → e.packs < k → e.PackBound k
+  | .refl _, _ => trivial
+  | .trans _ e f, h | .dtyp _ e f, h | .dfun _ e f, h | .andI _ _ e f, h
+  | .orE _ _ e f, h => by
+      simp only [Le.packs] at h
+      simp only [Le.PackBound]
+      exact ⟨Le.packBound_of_packs e (by omega), Le.packBound_of_packs f (by omega)⟩
+  | .top _, _ => trivial
+  | .bot _, _ => trivial
+  | .andE1 _ e, h | .andE2 _ e, h | .orI1 _ e, h | .orI2 _ e, h
+  | .defL _ _ e, h | .defR _ _ e, h | .bindx _ _ e, h => by
+      simp only [Le.packs] at h
+      simp only [Le.PackBound]
+      exact Le.packBound_of_packs e h
+  | .selL _ _ v, h | .selR _ _ v, h => by
+      simp only [Le.packs] at h
+      simp only [Le.PackBound]
+      exact ⟨Vc.packBound_of_packs v h,
+        fun _ => Nat.lt_of_le_of_lt (Vc.spinePacks_le_packs v) h⟩
+  | .muDrop _, _ => trivial
+
+/-- The observation counterpart of `Le.packBound_of_packs`. -/
+theorem Vc.packBound_of_packs {σ s : Sig} {k : Nat} :
+    (v : Vc σ s) → v.packs < k → v.PackBound k
+  | .vcVar, _ => trivial
+  | .vcLoc _, _ => trivial
+  | .vcLocAny _ _ _, _ => trivial
+  | .vcPack _ v, h => by
+      simp only [Vc.packs] at h
+      simp only [Vc.PackBound]
+      exact Vc.packBound_of_packs v (by omega)
+  | .vcUnfold _ v, h => by
+      simp only [Vc.packs] at h
+      simp only [Vc.PackBound]
+      exact Vc.packBound_of_packs v h
+  | .vcSub _ e v, h => by
+      simp only [Vc.packs] at h
+      simp only [Vc.PackBound]
+      exact ⟨Le.packBound_of_packs e (by omega), Vc.packBound_of_packs v (by omega)⟩
+
+end
+
+/-! ## Normal forms of closed inclusion evidence
+
+`LeNf G W S T` is a closed inclusion `S ≤ T` whose **outermost rule is not
+`trans`** and is determined by the head of `S` or of `T`.  It is the target's
+counterpart of the reference's precise subtyping `stpp`
+(`dot_soundness.v:10-86`), in two layers.
+
+* `LeNf` holds the forms decided by the **right** head: `⊤`, an intersection
+  (`and2`), a union (`or21`/`or22`) and a selection on a location (`sel2`,
+  read against the stored definition).  Each of them can absorb any inclusion
+  on its left by one `trans` into its premises, which is why transitivity
+  elimination handles them before looking at the left.
+* `LeNfHead` holds the forms decided by the **left** head: `⊥`, the two member
+  congruences, a selection on a location (`sel1`), reflexivity at a selection
+  (`selx`), the two recursive forms `bind1`/`bindx`, and the three
+  intersection-and-union eliminations.
+
+The premises of `sel1`, `and11`, `and12` and `or1` are themselves forms, as in
+`stpp` ("not stp! for leverage in pushback", `dot_soundness.v:32`); every other
+premise is a **strong** inclusion `SLe`, which may contain `trans` but no
+selection that observes a location.  That the premises are strong is what lets
+a premise of `bind1`/`bindx` be instantiated at a location and strengthened
+again at a smaller pack count (`Inversion.substAt`).
+
+No `selL`/`selR` form exists: a closed selection is on a location, and in a
+normal form it is read against the store.  This is the precise sense in which
+`obs_conc_admissible` says the concrete `selL`/`selR` add no power. -/
+
+/-- A **strong** inclusion: evidence, its typing, and the fact that it makes no
+selection on a location through an observation. -/
+structure SLe {σ s : Sig} (G : Store σ σ) (W : StoreTy σ) (Γ : Ctx σ s)
+    (S T : Ty σ s) : Type where
+  /-- The evidence. -/
+  ev : Le σ s
+  /-- Its typing. -/
+  typed : LeTy G W Γ ev S T
+  /-- It is strong. -/
+  strong : ev.Strong
+
+mutual
+
+/-- A closed inclusion in normal form, the forms decided by the right head
+first.  See the section header. -/
+inductive LeNf {σ : Sig} (G : Store σ σ) (W : StoreTy σ) :
+    Ty σ [] → Ty σ [] → Type where
+  /-- Everything is below `⊤`. -/
+  | top (T : Ty σ []) : LeNf G W T .TTop
+  /-- `stp_and2`. -/
+  | and2 {T T1 T2 : Ty σ []} :
+      SLe G W .nil T T1 → SLe G W .nil T T2 → LeNf G W T (.TAnd T1 T2)
+  /-- `stp_or21`. -/
+  | or21 {T T1 T2 : Ty σ []} : SLe G W .nil T T1 → LeNf G W T (.TOr T1 T2)
+  /-- `stp_or22`. -/
+  | or22 {T T1 T2 : Ty σ []} : SLe G W .nil T T2 → LeNf G W T (.TOr T1 T2)
+  /-- `stp_strong_sel2`: below a selection on a location is below its stored
+  definition. -/
+  | sel2 {l : BVar σ .var} {a : Lb} {TX T : Ty σ []} :
+      (G.lookup l).get? a = some (.dty TX) → SLe G W .nil T TX →
+      LeNf G W T (.TSel (.conc l) a)
+  /-- A form decided by the left head. -/
+  | head {S T : Ty σ []} : LeNfHead G W S T → LeNf G W S T
+
+/-- A closed inclusion in normal form whose rule is decided by the left head. -/
+inductive LeNfHead {σ : Sig} (G : Store σ σ) (W : StoreTy σ) :
+    Ty σ [] → Ty σ [] → Type where
+  /-- `⊥` is below everything. -/
+  | bot (T : Ty σ []) : LeNfHead G W .TBot T
+  /-- `stp_fun`. -/
+  | fn {a : Lb} {S1 S2 : Ty σ []} {U1 U2 : Ty σ ([],x)} :
+      SLe G W .nil S2 S1 → SLe G W (Ctx.nil.cons S2.weaken) U1 U2 →
+      LeNfHead G W (.TFun a S1 U1) (.TFun a S2 U2)
+  /-- `stp_typ`. -/
+  | typ {a : Lb} {S1 U1 S2 U2 : Ty σ []} :
+      SLe G W .nil S2 S1 → SLe G W .nil U1 U2 →
+      LeNfHead G W (.TTyp a S1 U1) (.TTyp a S2 U2)
+  /-- `stp_strong_sel1`, its premise a form. -/
+  | sel1 {l : BVar σ .var} {a : Lb} {TX T : Ty σ []} :
+      (G.lookup l).get? a = some (.dty TX) → LeNf G W TX T →
+      LeNfHead G W (.TSel (.conc l) a) T
+  /-- `stp_selx`: reflexivity at a selection. -/
+  | selx (p : Vr σ []) (a : Lb) : LeNfHead G W (.TSel p a) (.TSel p a)
+  /-- `stp_bind1`: a recursive type on the left only, the self assumed at the
+  opened left body. -/
+  | bind1 {T1 : Ty σ ([],x)} {T2 : Ty σ []} :
+      SLe G W (Ctx.nil.cons T1) T1 T2.weaken → LeNfHead G W (.TBind T1) T2
+  /-- `stp_bindx`. -/
+  | bindx {T1 T2 : Ty σ ([],x)} :
+      SLe G W (Ctx.nil.cons T1) T1 T2 → LeNfHead G W (.TBind T1) (.TBind T2)
+  /-- `stp_and11`, its premise a form. -/
+  | and11 {T1 T2 T : Ty σ []} : LeNf G W T1 T → LeNfHead G W (.TAnd T1 T2) T
+  /-- `stp_and12`, its premise a form. -/
+  | and12 {T1 T2 T : Ty σ []} : LeNf G W T2 T → LeNfHead G W (.TAnd T1 T2) T
+  /-- `stp_or1`, both premises forms. -/
+  | or1 {T1 T2 T : Ty σ []} :
+      LeNf G W T1 T → LeNf G W T2 T → LeNfHead G W (.TOr T1 T2) T
+
+end
 
 end FCdotR

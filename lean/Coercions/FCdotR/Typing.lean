@@ -1,4 +1,5 @@
 import Coercions.FCdotR.Syntax
+import Coercions.Oopsla16.Typing
 
 /-!
 # Typing of FCdotR evidence
@@ -37,6 +38,15 @@ The store's literal types are carried as a *function* `StoreTy`, not as a
 derivation, so that `tyOf` is data and its stability under allocation is that
 function's extension.
 
+**A location is observed by two rules.**  `vcLoc` reads the type off that
+function; `vcLocAny` is the source's `T_Vary` verbatim, carrying the literal
+and the self type it was derived at, so a location may be observed at *any*
+type its stored literal has under its own self.  The second is what the
+elaboration of `T_Vary` uses, and it is why that elaboration needs no agreement
+between `W` and the source.  The first is kept because every result downstream
+is stated at it, and over an honest store it is an instance of the second
+(`StoreTyping.Store.Honest.vcLoc_of_vcLocAny`).
+
 Terms, atoms and definitions are not typed here yet; the milestone this module
 closes is that an `Oopsla16` recursive-subtyping derivation elaborates to
 closed evidence.
@@ -50,7 +60,7 @@ pass it: `VcTy.vcSub (p := …)`.
 namespace FCdotR
 
 open FCdot (Kind Sig BVar Rename)
-open Oopsla16 (Vr Ty Lb Ctx Store renameNil)
+open Oopsla16 (Vr Ty Lb Ctx Store Dms DmsHasType renameNil)
 
 /-- The type of each stored literal, before its self is instantiated. -/
 abbrev StoreTy (σ : Sig) : Type := (l : BVar σ .var) → Ty σ ([],x)
@@ -143,10 +153,23 @@ inductive VcTy : {σ s : Sig} → Store σ σ → StoreTy σ → Ctx σ s →
   | vcVar {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
       {x : BVar s .var} :
       VcTy G W Γ (.abs x) .vcVar (Γ.lookupAt x)
-  /-- The stored literal's type, the observation counterpart of `T_Vary`. -/
+  /-- The stored literal's type **as the store typing records it**, the
+  observation counterpart of `T_Vary` at that one type.  Over an honest store
+  it is the instance of `vcLocAny` at `W l`
+  (`StoreTyping.Store.Honest.vcLoc_of_vcLocAny`). -/
   | vcLoc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
       {l : BVar σ .var} :
       VcTy G W Γ (.conc l) (.vcLoc l) (tyOf W l)
+  /-- The stored literal's type **as a source witness derives it**: `T_Vary`
+  (`dot.v:220-226`) verbatim, with its two premises unchanged.  Any type the
+  stored literal has under its own self may be observed at the location, not
+  merely the one `StoreTy` records — which is what the source's rule licenses
+  and what makes the elaboration of `T_Vary` unconditional. -/
+  | vcLocAny {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
+      {l : BVar σ .var} {T : Ty σ ([],x)} {ds : Dms σ ([],x)} :
+      DmsHasType G (Ctx.nil.cons T) ds T →
+      ds.substVr (.conc l) = G.lookup l →
+      VcTy G W Γ (.conc l) (.vcLocAny l T ds) (T.substVr (.conc l))
   /-- **Packing, at a location only.**  The subject index is `Vr.conc`, so
   there is no instance of this rule at an abstract variable. -/
   | vcPack {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
