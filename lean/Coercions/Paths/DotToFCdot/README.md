@@ -1,4 +1,4 @@
-# DotToFCdot, at stage P2 of paths
+# DotToFCdot, at stage P3 of paths
 
 The translation of DOT-MNF with paths (`../DotMNF`) into FCdot with path-keyed blocks (`../FCdot`),
 namespace `Paths.DotMNF`, stage P2 of `plan-5g-paths-stages.md`.  The translation is a function on
@@ -21,12 +21,18 @@ coherence                   : ⌊d₁.translate⌋ = ⌊d₂.translate⌋
 dot_safety                  : HasTy .nil t T → ⟨∅, ∅, t⟩ ⟶* st → st.Final ∨ ∃ st', st ⟶ st'
 reachable_consistent        : HasTy .nil t T → ⟨∅, ∅, d.translate⟩ ⟶* st →
                                 ∃ Γ, ⊢ st.σ : Γ ∧ ¬ ∃ e, Γ ⊢ e : ⊤ ≤ ⊥
+acceptance_gdot3            : ¬ Nonempty (HasTy .nil (.val (.obj (.typ A S))) (.mu (.typ A .top .bot)))
+acceptance_gdot3_any        : ¬ Nonempty (HasTy .nil (.val (.obj d)) (.mu (.typ A .top .bot)))
+acceptance_fig2             : FCdot.checkTm FCdot.Ctx.nil Examples.Fig2_prog_ty.translate Ty.top.translate = true
 ```
 
 Beside them: `SelfFree.translate_typed`, `SubDecl.translate_typed`, `HasTy.translateAtom_root`,
 `litCo_typed`, `Ctx.varAtom_typed`, `DefsTy.translateFields_typed`, `dot_not_stuck`,
 `reachable_realized`.  `HasTy.translate_typed`, `HasTy.translate_erase`, `coherence`, `dot_safety`,
 `dot_not_stuck`, `reachable_consistent` and `reachable_realized` keep vanilla's statements.
+`diverging_at_bad_bounds`, `div_reach` and `div_loop` are the extent of `acceptance_gdot3_any`
+beyond the sketch's own statement: a closed term at the bad type exists and never allocates one.
+`acceptance_fig1` and its three companions are P1e's twins of `acceptance_fig2`.
 
 ## Modules
 
@@ -43,6 +49,8 @@ Beside them: `SelfFree.translate_typed`, `SubDecl.translate_typed`, `HasTy.trans
 | `Safety` | `Simulated`, `dot_safety`, `dot_not_stuck` |
 | `Consistency` | `reachable_consistent`, `reachable_realized` |
 | `Examples` | Z1 to Z9, facts about images decided in the kernel, and the erasure equations of Z1, Z2, Z3, Z7 |
+| `Pages` | P3's `E1p` to `E8p`, `E9`, `E10`, `E11`, `P2e`, `P3e` moved onto the target, one sub-namespace per example, each checking `../DotMNF/Examples.lean`'s source pages |
+| `Acceptance` | P3's two acceptance tests: gDOT Fig. 2 with the `Option` encoding (`acceptance_fig2`) and its pDOT twin P1e (`acceptance_fig1`), and gDOT's Sec. 3 counterexample refuted for every literal (`acceptance_gdot3`, `acceptance_gdot3_any`), with the diverging closed term that never allocates one |
 
 ## The translation of types
 

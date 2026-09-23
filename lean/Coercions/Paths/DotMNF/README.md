@@ -1,4 +1,4 @@
-# DotMNF, at stage P2 of paths
+# DotMNF, at stage P3 of paths
 
 WadlerFest DOT in monadic normal form, the source of the translation in `../DotToFCdot`.
 
@@ -25,7 +25,7 @@ stable field.  Each restriction and what it loses is the section "What P2 restri
 | `Typing` | contexts (`cons`, `consSelf`).  `Sub`, `PathTy`, `HasTy`, `DefsTy`, `SelfFree` and `SubDecl` as one mutual block (Type-valued).  `HasTy.sngl` the bridge at a singleton, `HasTy.projP` the projection from a path typing, and `HasTy.toPathTy` from term typing at a variable to path typing.  The derived forms `HasTy.letSngl`, `HasTy.letSnglVal`, `DefsTy.trmSngl` and `DefsTy.trmLam`.  `Ty.ReplOne` with its decision procedure, unused since P2.  The exactness theorems `DefsTy.typ_exact`, `DefsTy.vfld_exact` and `DefsTy.vfld_exact_obj`.  Intersections are unrestricted (`And₁`, `And₂`, `And`, `And-I` and `Wf.and` carry no `Decl` premise).  `Decl` still restricts the body of a `μ` (`Wf.mu`, `Rec-I`, `Rec-E`, `Sub.mu`).  `{}-I` admits same-block aliases (alias-tolerant resolution on the target side, no self-alias restriction here) |
 | `Machine` | store, continuations, `Step`, `Steps`, `Final`, `Stuck` |
 | `Erasure` | erasure to `Runtime`; `erase_step`, `erase_reflect`.  `final_erase` and `final_reflect` are named by T11 as well and live in `../DotToFCdot/Safety.lean`, not here |
-| `Examples` | E1 to E8 as `HasTy` derivations, unchanged; E8 is the refinement of an abstract type, `x.A ∧ {a : ⊤}`, with two derivations of its projection and an `And-I` derivation.  X1 to X4 are the path pages, below |
+| `Examples` | E1 to E8 as `HasTy` derivations, unchanged; E8 is the refinement of an abstract type, `x.A ∧ {a : ⊤}`, with two derivations of its projection and an `And-I` derivation.  X1 to X4 are the path pages, below.  P3 adds E1p to E8p, E9 to E11, P2e, P3e, and the Fig. 2 and Fig. 1 (P1e) sources, in the section "The P3 pages" below |
 
 ## What P0 changed
 
@@ -206,3 +206,54 @@ the literal's declared type, and the three type members are found by `decide` th
 `Ty.lookupTypDecl`, each with equal bounds.  `X4_abs` and `X4_muAbs` are the other half: Fig. 2's
 abstract reading, `TypeRef >: ⊥ <: …`, derived from the exact declaration by `Typ-Abs`, which is the
 step pDOT's precise self types refuse.
+
+## The P3 pages
+
+Stage P3 (`plan-5g-paths-stages.md` §P3, decisions 35 to 44) adds source pages after X4.  Every
+page keeps the base's rules and adds no new one: each derivation reads `PathTy.sel` at a stable
+field the way X1 and X4 already do.  E1 to E8, X1 to X4, Y1 to Y9 and Z1 to Z9 keep every name,
+statement and derivation.  The full account, with the target's matching facts, the two acceptance
+tests and every restriction with what it loses, is `notes-paths-p3/paths-report.md`.
+
+**E1p to E8p.**  The receiver of each base example becomes a stable field one hop deeper: where E1
+takes a lambda argument `w : {A : ⊤..⊥}`, E1p takes `w : {val f : {A : ⊤..⊥}}` and reads the bound
+through `w.f`.  The originals stay as the regression, and two pages show by `rfl` that the hop
+changes no runtime term, since erasure drops types (`E1p_erase_E1`, `E4p_erase_E4`).
+
+**E9, a forwarding definition.**  `let y = x.a in y.B`, with the prefix `x.a` bound outside the
+literal by a plain `let`, so `y` forwards to the block of `x`'s field `a`.  `E9_forLet` shows the
+checker's binder for a `let` at a singleton, `Binding.forLet`, is the forwarding binder
+`Binding.fwdAt` (decision 32), and `E9_one_definition` states the one fact `y`, `x.a` and `q`
+agree on, over the typed store.
+
+**E10 and P2e.**  E10 is X2 read as a path page: the literal has no stable member at `a`, so `x.a`
+carries no block and the two no-path facts hold below the telescope's own length.  P2e is X1 read
+the same way: the cycle between `x.c ∙ A` and `x ∙ B` resolves to `⊤` on both routes.  Neither gets
+a second source page, since X1 and X2 already state their literals.
+
+**E11, a singleton field.**  `let z = ν(z. {C = ⊤}) in ν(x. {val a = ν(_. {A = ⊤})} ∧ {b = z})`, a
+stable field and a forwarding field in one literal.  `a` is `val` by `trmObj`, and `b` is plain by
+the derived `trmSngl` at `{b : z.type}`, not at `{val b : z.type}` (decision 27), the one shape
+`DefsTy.trmSngl` can be written at.  `x.b`'s forwarding child comes from the block builder, and the
+store gives `x.b` and `z` one definition for `C`.
+
+**P2e and P3e, the two pDOT literals.**  P2e is above.  P3e is `ν(x. {a = x.a} ∧ {b = λ(y : ⊤). y})`,
+declared at the honest type `{a : {C : ∀(y : ⊤)⊤..{c : ⊤}}} ∧ {b : ∀(y : ⊤)⊤}`: both fields are
+plain, `a` holds a projection and `b` a lambda, so `Fld-E` has no premise at `x.a` and the field
+carries no path image.  `P3e_noVfld` inverts definition typing exactly as `X2_noVfld` does: the one
+stable rule, `trmObj`, asks for an object literal body, and the bodies here are a projection and a
+lambda, so no derivation of these definitions declares `{val a : _}`.
+
+**Fig. 2 and P1e, the two Option-encoded programs.**  Fig. 2 is gDOT's Fig. 2 written as the paper
+writes it, with `options`, `pcore` with its two nested literals `types` and `symbols` naming each
+other through the outer self `p`, and the client that opens both.  Four changes from the paper
+(decision 37).  `Nat` is the closed stand-in `{n : ⊤}`, since the calculus has no base types.
+`options` is `ν(o. {Option = ⊤})`, since Fig. 2 elides the module and nothing reads its member.
+`newTypeTop` returns its argument, since `Defs` has no empty definition list for `ν_. {}`.  Each
+constructor let-binds its literal before returning it, since `Rec-E` is the only rule that opens a
+`μ` and the literal's type is one.  Left out: Fig. 1's unchecked cast and its assertion, Fig. 12's
+primitive booleans, singleton types of literals and union types, and the semantic typing of
+`newTypeRef` behind its class invariant, which the paper itself says is not syntactic.  P1e is the
+same program with `Symbol`'s `tpe` field at `p.types.Type` in place of the `Option` encoding,
+pDOT's own Fig. 1.  Its point is that `core.symbols.Symbol` is a path of length two, which is
+Fig. 2's own step 5.

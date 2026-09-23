@@ -144,6 +144,18 @@ twin (`le_canon_of`, `eq_canon_of`, and so on), which stays in the tree beside i
 namespace `Paths.FCdot`.  The tree contains no `sorry`, `axiom`, `partial`, `native_decide`, or
 Mathlib.
 
+## The P3 pages
+
+Stage P3 (`plan-5g-paths-stages.md` §P3) checks translated terms of the source pages in
+`../DotToFCdot/Pages.lean` and `../DotToFCdot/Acceptance.lean`.  No file of this directory changes:
+every judgment and theorem above already covers the checked terms, since the P3 pages read the
+same `checkTm`, `checkLe` and `checkPath` this directory states and decides.  `Examples.lean`'s Y3
+and Y5 stay the hand-written twins of P3's E7p and E1p: each is the same program written directly
+at `Paths.FCdot`, ahead of the source page.  The one difference is an index: Y5's hand-written telescope lists
+the bound entry before `∋ᵛ lf`, while E1p's page reads its telescope through `Ty.translate`, whose
+`vfld` clause lists `∋ᵛ` before the bound.  Both telescopes hold the same three entries, and the
+order is a presentation choice `Ty.translate` makes for every `{val a : T}` alike.
+
 ## What is not here
 
 `Paths/DotToFCdot/` does not build until P2, since the translation reads this target and the two
