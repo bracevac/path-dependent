@@ -50,7 +50,7 @@ every store reachable by a translated program.
 **`Runtime.lean`** is the untyped language both machines erase into, with
 objects that keep their term members.
 
-## A second source: the reference calculus with recursive subtyping
+## The second line: Oopsla16 → FCdotR
 
 **`Oopsla16/`** is the Rompf--Amin calculus of *Type Soundness for Dependent
 Object Types* (OOPSLA 2016), transcribed from the authors' pinned Coq artifact
@@ -69,12 +69,23 @@ The reference's context truncation in `htp_sub` — `length GL = S x` and
 the *type* of `Htp`, which records a variable at a type of its own prefix
 scope. The rule then has no side conditions at all.
 
-This library is independent of the main line above, and has no metatheory of
-its own; it is the fixed source against which a target with explicit recursive
-evidence is being designed.
+**`FCdotR/`** is its explicit-evidence target.  It keeps `Oopsla16`'s types
+unchanged and turns subtyping, and the variable typings that type selections
+rely on, into evidence: observation evidence scoped at its subject's prefix,
+packing only at store locations, and recursive subtyping over the opened body.
+Every source typing elaborates into a typed FCdotR term.  The FCdotR machine
+has preservation up to evidence, progress, and canonical forms of closed
+evidence, obtained by eliminating transitivity with an induction on packings.
+An operational correspondence between the two machines carries safety back:
+`Oopsla16.oopsla16_safety` says a closed program typed over the empty store
+never gets stuck on `Oopsla16`'s own substitution machine, with no hypothesis.
+There is no checker yet.  The line is independent of the main line above and
+shares only `FCdot/Debruijn.lean` with it; see
+[`FCdotR/README.md`](FCdotR/README.md) and [`FCdotR/STATUS.md`](FCdotR/STATUS.md).
+
 
 Axioms throughout: `propext` and `Quot.sound`.  No `sorry`, `axiom`, `partial`,
-or `native_decide` in the main line; the mandatory examples E1–E5 and the
+or `native_decide` in either line; the mandatory examples E1–E5 and the
 acceptance test E8 (the refinement `x.A ∧ {a : ⊤}` of an abstract type) are
 decided in the kernel on both sides and have equal erasures.
 

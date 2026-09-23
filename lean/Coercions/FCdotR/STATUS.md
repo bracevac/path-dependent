@@ -6,14 +6,15 @@ the `Coercions.Oopsla16` source (Rompf–Amin OOPSLA'16 DOT, which has
 recursive subtyping).  It is a *second* target: the WadlerFest→FCdot chain in
 `DotMNF`/`DotToFCdot`/`FCdot` is not reused, only imitated.
 
-`lake build FCdot DotMNF DotToFCdot Oopsla16 FCdotR` completes in **118 jobs**.
+`lake build FCdot DotMNF DotToFCdot Oopsla16 FCdotR` completes in **119 jobs**.
 Its only warning is the pre-existing unused `termination_by` at
 `FCdot/Syntax.lean:221`, outside this library.  There is no `sorry`, `admit`,
 `axiom`, `native_decide` or `partial` anywhere in `FCdotR/` or `Oopsla16/`
 outside comments.  An environment-wide audit of every constant defined in
-`Coercions.FCdotR.*` and `Coercions.Oopsla16.*` reports `checked 6258
+`Coercions.FCdotR.*` and `Coercions.Oopsla16.*` reports `checked 6323
 constants; offending: 0`: nothing uses an axiom beyond `propext` and
-`Quot.sound`.
+`Quot.sound`.  At commit `aa7ca71` the figures were 118 jobs and 6258
+constants; `Deliverables.lean` adds one job and 65 constants.
 
 **Type safety of `Oopsla16`'s own substitution machine is proved with no
 hypothesis**, for every closed term typed over the empty store: arbitrary
@@ -68,6 +69,33 @@ was typed from must lie in `DmsFrag` (see *Restrictions*).
 `ElaborationFull.oopsla16_progress` are the same two statements, proved in that
 module; `SourceSafety` restates them in the source's namespace.
 
+### What the headline does not say
+
+The adversarial review at integration found no defect that makes
+`oopsla16_safety` prove less than its statement says.  It found two limits.
+Both can be read off the statement, and no doc comment overstates either.
+
+* **No preservation for the source.**  The reference's `type_safety`
+  (`dot_soundness.v:1131`) also re-types the stepped term at the same type `T`.
+  The Lean conclusion never mentions `T`: it says "typable at some type,
+  therefore never stuck".  Nothing in FCdotR proves that a reached source
+  term, or the final answer, has type `T` in `Oopsla16`.  *Preservation* in
+  this file always means the FCdotR machine's, up to evidence.  The closest
+  source-side statement is `Oopsla16.reachable_related`: the target state
+  related to a reached configuration is typed at `T`, moved along the
+  allocations.  WadlerFest's `DotMNF.dot_safety` has the same shape.
+* **The run starts from the empty store.**  The reference's statement is one
+  step over any store; it implies the Lean headline by iteration, but not the
+  other way round.  For a closed program nothing is lost: a `Tm [] []` cannot
+  mention a location, and every configuration reachable from it, allocations
+  included, is covered.  But safety cannot be restarted from an arbitrary
+  typed configuration over an arbitrary store.  A store holding one object
+  with a Curry-style identity method, and the term `id.0(id)`, is typed by
+  `T_Vary` and steps, so the reference covers it; the headline needs the empty
+  store, and the honest-store versions cannot be applied, because every honest
+  witness at that location is Curry style and so outside `DmsFrag` (review
+  scratch file `R4Store.lean`, not in the library).
+
 ## Hypotheses
 
 Every hypothesis structure still in the code is **inhabited**.  Each is kept as
@@ -121,6 +149,7 @@ inhabited by `SubstTyping.lemmaR`.
 
 | Module | What it establishes |
 | --- | --- |
+| `README.md` | What the library is, its modules in reading order, the main theorems, and the design points. |
 | `PLAN.md` | The design: substitution via prefix restriction, the elaboration of 32 source rules, the metatheory order, and the open questions.  Not code. |
 | `Prefix.lean` | The prefix apparatus at a two-zone variable: `scopeAt`, `renameAt`, `selfAt`, `ctxAt`, `Zone`, the `upTo`/`renameUpTo` transport laws, and `renameUpTo_comp` (weakenings out of iterated prefixes compose) with its transport helpers. |
 | `Syntax.lean` | The five grammars — inclusion evidence `Le`, observation evidence `Vc` (indexed at its subject's prefix scope), `Atom`, `Tm`, `Defs` — plus `Atom.root` and `Defs.length`.  A location has two `Vc` nodes: `vcLoc ℓ`, and `vcLocAny ℓ T ds`, which carries a `T_Vary` witness's self type and literal as syntax. |
@@ -148,6 +177,35 @@ inhabited by `SubstTyping.lemmaR`.
 | `ElaborationFull.lean` | **Elaboration of every source typing.**  `TmElab`/`DefsElabC` (term, typing, correspondence); `TmElab.app` (`T_App` binds both operands), `TmElab.appVar` (`T_AppVar` binds only the receiver, keeping the dependent result type); unannotated `dfun` takes `D_Fun`'s types; `elabTm`/`elabDefs` over all 8 + 3 rules at any store typing; **`elabSpecGen`, `elabSpec`**, `oopsla16Safety_holds`, `oopsla16_safety'`, `oopsla16_progress`, all without hypothesis.  Worked example `CurryCall` (outside `TmFrag`). |
 | `Simulation.lean` | **The backward simulation and its consequences.**  `Rel.alloc_reflect`, `Rel.app_reflect`, `Rel.reflect_step`, `Rel.reflect_steps` (each target step is zero or one source step at the same `Grows` index); `Rel.steps'`, `sim_step_plus` (no stuttering); `Rel.final_tm`, `final_run`, `answer_run`, `answer_iff_final`; `Rel.stuck_reflect`, `stuck_iff`, `safe_iff`; `Rel.focused_reflect`, `Rel.progress_reflect`; the invariant `Simulated` with `step`, `steps`, `progress`, `not_stuck`, `reachable_progress`, `of_typed`, `of_frag`, and `of_elab`/`elab_adequacy` under `ElabSpec`; `Rel.of_letFree`. |
 | `SourceSafety.lean` | **The end of the line.**  `Simulated.init`, `elab_adequacy'` (the `ElabSpec` theorems at `elabSpec`); `StoreCorr.ofHonest`, `Simulated.of_honest`; **`Oopsla16.oopsla16_safety`, `oopsla16_not_stuck`**, `oopsla16_safety_honest`, `oopsla16_not_stuck_honest`.  Worked instances `ex0_safe`, `RecursiveArg` (a method demanding `μz.T(z)` applied to a literal typed by two `stp_bindx`; the source run, both headline theorems, and the target run reaching a final state), `HonestCall` (over `TwoObjectStore`). |
+| `Deliverables.lean` | **The WadlerFest deliverables that were missing**, each a short corollary, none with a hypothesis.  `reachable_consistent`, `elab_reachable_consistent` (every machine store a typed program reaches is honest and proves no closed `⊤ ≤ ⊥`); `reachable_realized`, `elab_reachable_realized` (stored type members are exactly the recorded ones); `MachineStore.Honest.nf`, `consistent`, `realized`; `Oopsla16.reachable_simulated`, `Oopsla16.reachable_related` (every reachable source configuration is related to a typed, consistent target state that the elaboration reaches); `litStoreTy`, `closedStp_nf`, **`Oopsla16.stp_consistent`** (no source store derives `⊤ <: ⊥`); `Corr.coherent`, `Corr.final_iff`, `elab_coherence`, `elab_final_iff` (coherence as equal answers). |
+
+## WadlerFest deliverables
+
+What the WadlerFest line (`DotToFCdot/README.md`, `FCdot/README.md`) proves,
+and its counterpart here.  Names are in namespace `FCdotR` unless they start
+with `Oopsla16.`.  **New** marks what `Deliverables.lean` adds.
+
+| WadlerFest | Here |
+| --- | --- |
+| Typedness: `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translate_typed` | `elabStp`, `elabHtp`, `elabAtom` (`AtomElab.typed`), `elabTm` (`TmElab.typed`), `elabDefs` (`DefsElabC.typed`): the typing is part of the result |
+| `HasTy.translateAtom_root` | `AtomElab.root` |
+| Erasure equality `HasTy.translate_erase` | Not applicable beyond the fragment: a `let` erases to an object encoding.  `TmElab.corr` (`Corr`) takes its place.  On the fragment: `elabHasType_erase`, `elabDms_erase` |
+| `coherence` (equal erasures) | Equal erasures are false (`T_App` and `T_AppVar` bind different operands; a Curry-style method gets the types its typing chose).  **New**: `elab_coherence`, `elab_final_iff` (same answers), from `Corr.coherent`, `Corr.final_iff` |
+| `dot_safety` (positive form) | `Oopsla16.oopsla16_not_stuck` |
+| `dot_not_stuck` (negative form) | `Oopsla16.oopsla16_safety` |
+| `simulated_init`, `Simulated.steps`, `Simulated.progress` | `Simulated.init`, `Simulated.steps`, `Simulated.progress`; **new** `Oopsla16.reachable_simulated`, `Oopsla16.reachable_related` |
+| `final_erase`, `final_reflect` | `Rel.final_tm`, `Rel.final`, `Rel.answer_final`, `Rel.answer_iff_final` |
+| `reachable_consistent` (`DotMNF`, `FCdot`) | **New**: `reachable_consistent`, `elab_reachable_consistent`, and the last conjunct of `Oopsla16.reachable_related`.  Source side, for every store: **new** `Oopsla16.stp_consistent` |
+| `reachable_realized` | **New**: `reachable_realized`, `elab_reachable_realized` (a location stores `a = TX` exactly when its recorded type has `{a : TX..TX}`).  FCdotR has no equality evidence; `defL`/`defR` read the store directly |
+| Checker with completeness (`FCdot.checkTm_iff` and friends) | **Missing** (see *What remains*) |
+| `preservation` | `preservation'`, `preservation_steps'`, `preservation_init'`, up to evidence; on-the-nose preservation is false (`OnTheNose`) |
+| `progress`, `not_stuck` | `progress'`, `not_stuck'`, `safety'` |
+| Erasure simulation, target to runtime (`erase_step`) | `Rel.reflect_step`, `Rel.reflect_steps` (each target step is zero or one source step); on the nose only without `let` frames: `Step.simulate`, `Steps.simulate` |
+| Erasure simulation, runtime to target (`erase_reflect`) | `sim_step`, `Rel.steps'`, `sim_step_plus`, `sim_stuck` |
+| Canonical forms of closed evidence | `Store.Honest.nf`, `RecordedLit.nf`, `Store.Honest.obsTyp`/`obsBind`/`obsFun`, `Store.Honest.canon`, `appInversion`; **new** `MachineStore.Honest.nf`, `closedStp_nf` |
+| No closed `⊤ ≤ ⊥`; shapes of closed inclusions | `consistency_honest`, `RecordedLit.consistency`, `LeTy.headPair_of_not_trans`, `top_le_bot_is_trans`; **new** `MachineStore.Honest.consistent` |
+| `WadlerFest`, `RetainedSafety`, `SortedSafety` | Not applicable: they cover other presentations of the WadlerFest source (annotated machine, reduction orders, sorted labels).  `Oopsla16` has one machine |
+| Examples E1 to E12 decided in the kernel | Not applicable without a checker.  Worked instances instead: `SourceSafety.ex0_safe`, `RecursiveArg`, `HonestCall`, `ElaborationFull.CurryCall`, the four in `ElaborationErasure` |
 
 ## Road to a WadlerFest-style safety theorem
 
@@ -161,8 +219,9 @@ In dependency order.
    observations of a location at type members, recursive types and method
    types.  Transitivity is eliminated in the empty local context only, as in
    the reference.
-3. **Preservation** — **done**, up to evidence: `preservation'`,
-   `preservation_steps'`.
+3. **Preservation** — **done** for the FCdotR machine, up to evidence:
+   `preservation'`, `preservation_steps'`.  There is no preservation for the
+   `Oopsla16` machine (see *What the headline does not say*).
 4. **Progress** — **done**: `progress'`, `not_stuck'`, `safety'`.
 5. **Elaboration from `Oopsla16.Stp`/`HasType`** — **done**:
    `ElaborationFull.elabTm`/`elabDefs` elaborate every source typing, general
@@ -181,14 +240,62 @@ In dependency order.
 
 ## What remains
 
+* **A checker with completeness.**  Not attempted.  The two location rules
+  `VcTy.vcLocAny` and `AtomTy.varConcAny` take a *source* derivation
+  (`DmsHasType`) as premise, and that derivation is not in the evidence
+  syntax.  Checking them would mean deciding `Oopsla16` typing, which has
+  subsumption and a primitive transitivity rule.  The premise must first be
+  carried as target evidence in the syntax; the checker itself is then of the
+  size of FCdot's (`Checker`, `CheckerCompleteness`: about 1700 lines).
 * **Honest-store safety for general stored witnesses.**  Needs a translation
   of target typing back into source typing, so that source honesty survives
   the elaboration of `let`-bearing method bodies.  `obs_conc_admissible` is the
   selection case of it; the translation is not built.  `T_Vary` witnesses read
-  whole stored literals, so matching type members alone is not enough.
+  whole stored literals, so matching type members alone is not enough.  The
+  reference covers such stores; a one-object store with a Curry-style method is
+  an example outside every theorem here.
+* **Preservation for the source.**  No theorem says a reached `Oopsla16` term
+  has the program's type.  Either a direct proof in the source, as the
+  reference gives, or the translation of target typing back into source typing
+  from the item above would supply it.
 * No determinism theorem for either machine (the simulation uses only
   `ECtx.plug_inv`, determinism at a focused redex), and no statement about
   divergence (`sim_step_plus` is the piece it would use).
+
+## Adversarial review
+
+Run at integration, against the working tree with `Deliverables.lean`.  Its
+probe files are scratch files outside the library; each compiles with
+`propext` and `Quot.sound` only.
+
+* **The calculus matches `dot.v:197-393`.**  Every rule of `HasType` (8),
+  `DmsHasType` (3), `Stp` (18), `Htp` (3) and `Step` (4) was printed and
+  compared with the Coq rule; each matches once the documented scoping
+  changes are applied.  Every dropped `closed` side condition is supplied by
+  the indexing; no typing rule is tighter than the Coq one and no reduction
+  rule looser.  Coq's `subst` and the Lean single-binder substitution agree at
+  the top level, where the machine runs, so `ST_Obj` and `ST_AppAbs` agree.
+* **Nothing changed underneath the headline.**  `Oopsla16/Typing.lean`,
+  `Semantics.lean` and `Syntax.lean` are unchanged since commit `08b8a75`.
+  `Context.lean` changed afterwards: `scopeUpTo` and `varUpTo` were redefined
+  in `5823790`, and a scratch proof shows the old and new definitions give the
+  same scope, the same variable and the same weakening.  The headline refers
+  only to `HasType`, `Steps`, `Step` and `Tm.IsAnswer`, and no automatic
+  implicit variable entered its statement.
+* **Not vacuous, and it rules programs out.**  `caller2.0(ff)`, a new program
+  whose method has no type annotations and whose argument is typed through two
+  uses of `stp_bindx`, is typed at `⊤` and runs four steps (two allocations, two
+  method calls) to an answer; `oopsla16_not_stuck` produces a step at its third
+  configuration.  An object with a type member at label 0, called at that
+  label, gets stuck after three steps, and `(new{}).0(new{})` gets stuck too, so
+  the theorem refutes every typing of either program.
+* **Limits, not defects**: no preservation for the source, and the run starts
+  from the empty store; see *What the headline does not say*.
+* **Stale documents**, now corrected: `Oopsla16/README.md` said no soundness
+  proof existed, and the top-level `README.md` said `Oopsla16` had no
+  metatheory and its target was still being designed.
+* No `sorry`, `axiom`, `native_decide`, `implemented_by`, `extern`, `unsafe`
+  or debugging option in `FCdotR/` or `Oopsla16/`.
 
 ## Integration notes
 

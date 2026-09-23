@@ -1,128 +1,55 @@
-# Resume state
+# Resume state: Oopsla16 → FCdotR
 
-Branch `fcdot-recursive-subtyping`, commits `f24cc45`, `66acc08`, `8bc4322`.
-Build: `lake -d <tmp> build FCdot DotMNF DotToFCdot Oopsla16` — 89 jobs, green.
-Temp lake project: `<scratchpad>/build` (lakefile with absolute `srcDir`).
-Builds need `dangerouslyDisableSandbox`: `~/.elan` is outside the sandbox.
+Branch `fcdot-recursive-subtyping`.  The line is finished up to the checker.
+Last commit of the line: `aa7ca71` (type safety of `Oopsla16`, transported from
+FCdotR).  `FCdotR/Deliverables.lean` and the documentation pass came after it.
 
 ## Done
 
-`Oopsla16/` — the Rompf–Amin OOPSLA'16 source, intrinsically scoped. 265 code
-lines of spec against `dot.v:17-399`'s 309. `Htp` is indexed at
-`Ty σ (scopeUpTo x)` so the artifact's `length GL = S x ∧ GH = GU ++ GL`
-truncation is the judgment's type. `Stp.refl` is 8 lines against 55.
-`PackingCounterexample` adds the mirror of `T_VarPack` to `Htp`, keeps every
-other restriction, and produces a well-typed stuck program.
+* `Oopsla16/`: the Rompf--Amin OOPSLA'16 calculus with recursive subtyping,
+  intrinsically scoped, ported from the Coq artifact; `PackingCounterexample`,
+  also mechanized in Coq at `coq/oopsla16-packing/`.
+* `FCdotR/`: the explicit-evidence target.  Elaboration of every source typing;
+  substitution; canonical forms of closed evidence (transitivity elimination by
+  pack count); preservation of the FCdotR machine up to evidence; progress; the
+  simulation between the two machines in both directions.
+* **The headline**, in `FCdotR/SourceSafety.lean`, namespace `Oopsla16`, with no
+  hypothesis: `oopsla16_safety` (a closed program typed over the empty store
+  never reaches a stuck configuration of `Oopsla16`'s machine) and
+  `oopsla16_not_stuck` (every configuration it reaches is an answer or steps).
+* The remaining WadlerFest counterparts, in `FCdotR/Deliverables.lean`:
+  consistency and recorded type members along runs, `Oopsla16.reachable_related`,
+  `Oopsla16.stp_consistent`, coherence as equal answers.
 
-## Settled
+## Open
 
-**The packing result stands.** Six independent attacks failed
-(`<scratchpad>/VERIFY-verdict.md`, run `wf_7ac7e30a-406`). It is mechanized in
-Coq at `coq/oopsla16-packing/`: `dot_spec.v` byte-identical to `dot.v:14-399`,
-the extended judgment block one character from `dot.v:219-393`, `htp_sub`
-unweakened, `htp_pack` used once, `Print Assumptions` closed. No `closed`
-premise obstructs it, so the intrinsic port hid nothing.
+A checker with completeness (blocked on carrying the source premise of
+`vcLocAny`/`varConcAny` as target evidence); preservation for the source; safety
+from a store whose objects are outside `DmsFrag`; determinism.  Details in
+`FCdotR/STATUS.md`, *What remains*.
 
-Corrections applied: `dSubPlain` isolates what the rule adds (one step); the
-extension is a subsystem, not a conservative extension; the second restriction
-is kept and satisfied, not stressed; the culprit is the interaction with
-`stp_bindx`, not packing alone (WadlerFest and pDOT allow packing in `Sel` and
-are sound); 39 of 90 `dot.v` citations were wrong and are now all verified.
+## Where to read
 
-Still optional, not needed for the claim: reachability of the store from a
-closed source program, and a Lean embedding of the subsystem into the full
-extended calculus (Coq's `extend_all` already does the latter).
+`FCdotR/README.md` (overview, modules, main theorems, design),
+`FCdotR/STATUS.md` (full inventory, WadlerFest comparison, review findings),
+`Oopsla16/README.md` (the source and its correspondence with `dot.v`).
 
-## In flight
+## How to build
 
-2. **FCdotR target design** — workflow `wf_85586d5e-49d`. Recovered to
-   `<scratchpad>/DESIGN-scout.md`, `DESIGN-1-*.md`, `DESIGN-2-*.md`,
-   `DESIGN-judge-{1,2,3}.md`. Two of four designs blew the 64k output cap and
-   the final synthesis hit the session limit; no plan was produced.
+From the repository root:
 
-   Design 1 — delete the receiver binder from object telescopes so `mu` is the
-   only self binder; `mu` rigid with congruence-only `BIND`/`BIND1`, no
-   `S ≤ mu S`; fold/unfold on subjects only; a fold-free `Path` sort for
-   observations inside inclusions. Scores 6/6/6. Its consistency story survived
-   every attack, but it drops both of the source's soundness carriers and the
-   three union rules of `Stp` do not elaborate.
+```
+lake build FCdot DotMNF DotToFCdot Oopsla16 FCdotR
+```
 
-   Design 2 — keep Oopsla16's type language verbatim; three evidence sorts
-   `LeCo`/`Vc`/`Atom`; `bindx` over the opened body; `Vc` indexed at
-   `scopeUpTo x`. Scores 9 (soundness), 9 (translatability, all 32 rules
-   elaborate), 5 (proof cost).
+Sessions have used a copy of the root `lakefile.toml` in a scratch directory,
+with `srcDir` set to the absolute path of `lean/`, run as
+`lake -d <scratch> build …` so that build output stays out of the repository.
+Either way the build needs the sandbox disabled, since `~/.elan` is outside it.
+It completes in 119 jobs; the only warning is the pre-existing unused
+`termination_by` at `FCdot/Syntax.lean:221`.
 
-   **The shared blocker, found independently by all three judges: substitution.**
-   `FCdot/TypingSubst.lean:35` is
-   `Subst.Typed.var : ∀ x, Γ' ⊢ₐ σ.var x : (Γ.lookupTy x).rename σ.root` — every
-   substituted variable is supplied by an ATOM. Both designs add a second
-   subject sort for observations inside inclusions and neither says what
-   substitution does to it. Design 1 declares the lemma unnecessary; it is not.
-   Design 2 makes it harder, because `Vc Γ x T` is indexed at `scopeUpTo x` and
-   preservation must replace an abstract variable by a store location.
-   Design 2's own stated crux is separate: `interp`/`apply` over the view
-   environment has no termination measure.
-
-   Next design round must answer: what does substitution do to prefix-scoped
-   observation evidence? Everything else is downstream of that.
-
-## Built so far
-
-| module | state |
-|---|---|
-| `Oopsla16/{Syntax,Structural,SubstLemmas,Context,Semantics,Typing,Lemmas,Examples}` | done |
-| `Oopsla16/PackingCounterexample` + `coq/oopsla16-packing/` | done, verified, mechanized |
-| `FCdotR/Prefix` | milestone 1 done |
-| `FCdotR/{Syntax,Typing,Examples}` | milestone 2 done — `recursive_typed` is closed evidence for the coercion the old target cannot express |
-| `FCdotR/Structural` | milestone 3 done: `Mono`, `star_ty`, `id`, `lift`, `comp`, `oneConc` |
-| `FCdotR/Locality` | milestone 4 done: `VcTy.strengthen`, `VcTy.ofLoc` |
-
-Build: 97 jobs green. `PLAN.md` in `FCdotR/` has the design and milestones 4-8.
-
-## How the transport was avoided
-
-`Mono` carries its restriction in an *inductive* `MonoAt`, one constructor per
-zone of the image, each naming the image subject and the equation identifying
-it. Writing the codomain as `scopeAt (θ.abs x)` makes it depend on a neutral
-term, so every closure operation needs a transport along `scopeAt_weaken` with
-its equation proved underneath. Naming the image makes each branch's scopes
-match definitionally — `(.abs z).weaken` is `.abs (.there z)` and `tailBelow`
-discards the `.there` — so `lift` is a case analysis and no transport occurs.
-
-`oneConc` is the only single-binder instance, and deliberately so: there is no
-general `Mono` for `Subst.one`, because at an abstract image the restriction
-would have to map the whole scope `s,x` into the prefix at that image and a
-variable older than the image has nowhere to go. The location case is what the
-machine produces — `ST_Obj` and `ST_AppAbs` substitute a `Vr.conc`, and a
-running term has an empty local scope.
-
-## The open item for milestone 5
-
-`Le.subst` must send `selL p a v` to `selL (m.image p) a (v.subst _)` with the
-inner substitution `m.at' p`. Since `v` may contain `vcSub T₁ e w`, whose `e`
-is inclusion evidence, substituting `v` needs a `Mono (m.at' p)` — so **`Mono`
-must be closed under restriction**. The design round listed the coherence
-condition `(θ↾x)↾y = θ↾((renameUpTo x).var y)` but did not connect it to this.
-
-Closure cannot be had by making the requirement recursive in the type: a field
-`resMono : ∀ x, Mono (res x)` is not an inductive definition, and there is no
-descent to recurse on, since `scopeUpTo .here` is the whole scope and the
-restriction there is `θ` itself.
-
-The fix: carry coherence as data, alongside `res` and `star`. Closure under
-restriction then becomes a definition — `Mono (m.res x)` is built from `m` by
-taking its restriction at `y` to be `m`'s at `(renameUpTo x).var y` — and the
-scope mismatches are exactly `scopeUpTo_renameUpTo`, already proved in
-`Prefix`. `id`, `lift`, `comp` and `oneConc` then each need a coherence proof.
-
-`MonoAt.image`/`restrict`/`image_eq`/`star` and `Mono.image`/`at'` are in place
-and are what keep the scopes definitional: speaking through `image` rather than
-`θ.abs x` means the restriction's codomain is `scopeAt image`, and `scopeAt`
-computes on a constructor.
-
-## Next
-
-- Finish (1), then state the counterexample's scope in `Oopsla16/README.md`.
-- Finish (2), then write `FCdotR/Syntax.lean` as milestone 1.
-- Open: no correspondence between `Oopsla16` and `DotMNF`; no soundness proof
-  ported; `dot_exs.v`'s `ex1`/`ex2`/`paper_lst` not ported.
+The axiom audit is a scratch file that imports `Coercions.FCdotR` and
+`Coercions.Oopsla16`, runs `Lean.collectAxioms` on every constant whose module
+is under either prefix, and reports those using anything beyond `propext` and
+`Quot.sound`.  Its current output is `checked 6323 constants; offending: 0`.

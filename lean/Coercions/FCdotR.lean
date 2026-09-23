@@ -24,6 +24,7 @@ import Coercions.FCdotR.Correspondence
 import Coercions.FCdotR.ElaborationFull
 import Coercions.FCdotR.Simulation
 import Coercions.FCdotR.SourceSafety
+import Coercions.FCdotR.Deliverables
 /-!
 Import root for FCdotR, the explicit-evidence target with first-class
 recursive types, designed against the `Coercions.Oopsla16` source.

@@ -10,11 +10,14 @@ and its `type_safety` (`dot_soundness.v:1131`) is proved.
 
 The library is independent of `../DotMNF`, `../FCdot` and `../DotToFCdot`. It
 shares only `FCdot/Debruijn.lean`, which is generic scoping infrastructure.
+Its explicit-evidence target is [`../FCdotR`](../FCdotR/README.md), which
+proves its type safety (see *What is not here*).
 
 | module | contents |
 |---|---|
 | `Syntax` | labels `Lb := Nat`; two-zone variables `Vr σ s` (`conc` for the store, `abs` for hypotheses and binders); types `⊥ ⊤ {def l(x:S):U} {type l:S..U} p.l {z=>T} ∧ ∨`; terms, definitions `dfun`/`dty`, definition lists `Dms`; positional member lookup `Dms.get?`; stores `Store σ σ'` |
 | `Structural` | renaming of the local scope and of the store scope; `Subst` and `substVr` (`open 0 v`); weakenings; `Store.lookup` |
+| `SubstLemmas` | identity, composition and fusion laws for `Subst`, covering renaming, store renaming, weakening and `open 0 v` at once |
 | `Context` | `scopeUpTo`/`renameUpTo`/`varUpTo`, the prefix at a variable; contexts with self-referential entries; `Ctx.lookupAt`, `Ctx.lookup`, `Ctx.upTo` |
 | `Semantics` | store growth `Grows`; `Step` (`ST_Obj`, `ST_AppAbs`, `ST_App1`, `ST_App2`), `Steps`, `Tm.IsAnswer` |
 | `Typing` | `EqSome`; the mutual family `HasType`, `DmsHasType`, `Stp`, `Htp` with the reference's 8 + 3 + 18 + 3 rules and rule names |
@@ -220,11 +223,29 @@ and lemmas use this development's `Subject.camelCase` convention.
 
 ## What is not here
 
-* **No soundness proof.** `dot_soundness.v` is 1261 lines on top of `dot.v`'s
-  2093, and its architecture — a precise subtyping relation `stpp`, a
-  pack-counted variable typing `htpy`, narrowing, substitution, and
-  transitivity pushback — is the baseline an evidence target is meant to
-  replace, not reproduce. `type_safety` is cited, not re-derived.
+* **No soundness proof inside this library; one is transported from
+  `../FCdotR`.** `dot_soundness.v` is 1261 lines on top of `dot.v`'s 2093, and
+  its architecture — a precise subtyping relation `stpp`, a pack-counted
+  variable typing `htpy`, narrowing, substitution, and transitivity pushback —
+  is not reproduced here. Instead every typing of this calculus elaborates into
+  the explicit-evidence calculus FCdotR, whose machine is proved safe, and a
+  correspondence between the two machines carries safety back.
+  * `Oopsla16.oopsla16_safety` and `Oopsla16.oopsla16_not_stuck`
+    (`../FCdotR/SourceSafety.lean`): a closed term typed over the empty store
+    never reaches a stuck configuration of this library's `Step`; every
+    configuration it reaches is an answer or takes a step. No hypothesis; the
+    statements mention only `HasType`, `Steps`, `Step` and `Tm.IsAnswer`.
+  * `Oopsla16.stp_consistent` (`../FCdotR/Deliverables.lean`): no store derives
+    `⊤ <: ⊥` in the empty context.
+  * Two parts of `type_safety` have no counterpart. It re-types the stepped
+    term at the same type; nothing here re-types a source term after a step.
+    And it holds over any store, whereas these theorems start from the empty
+    store, or, in the `_honest` versions, from a store whose objects were typed
+    from literals with variable operands and annotated methods.
+
+  FCdotR's `Inversion` is where the reference's pushback and pack count
+  reappear, as transitivity elimination for closed evidence. See
+  `../FCdotR/README.md` and `../FCdotR/STATUS.md`.
 * **No correspondence with `../DotMNF`.** The two calculi differ in more than
   presentation: methods versus first-class functions, unions, general
   applications, positional versus nominal labels, two zones versus one, a
