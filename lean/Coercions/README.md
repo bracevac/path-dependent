@@ -73,6 +73,56 @@ or `native_decide` in the main line; the mandatory examples E1–E5 and the
 acceptance test E8 (the refinement `x.A ∧ {a : ⊤}` of an abstract type) are
 decided in the kernel on both sides and have equal erasures.
 
+## Extensions
+
+Each extension has the shape of the main line, a source, a target, a translation and a runtime, in
+a namespace of its own.  It starts as a copy of its base at the commit its `BASE` file names, and it
+keeps every theorem of the base, restated where the representation changed and never weakened.  The
+axioms are the same, `propext` and `Quot.sound`.
+
+**`Captures/`** is capture checking the DOT way, a copy of the main line.  A type is a shape with a
+capture set, `S ^ C`, and a capture-set parameter is a capture member `{C : c₁..c₂}` of an object, as
+a type parameter is a type member.  The target gains an inert box, the source reads Scala's `any` by
+its position, and terms carry use sets.  Its results are `cap_canon`, item 7 of `atom_canon`,
+`closed_box_inversion`, and the prediction theorems `capture_prediction`, `inspects_covered`,
+`effect_safety` and `returned_capture_bound`, which the source inherits as `dot_capture_prediction`
+and `dot_effect_safety`.  It builds as the library `Captures`, a default target.  Its README says what
+it does not read: a parameter `any` in the style of Decap, and tunneling.
+
+**`CapturesCC/`** is capture checking the compiler's way, a copy of `Captures/`.  A lambda body and
+an object body are scopes with a root of their own, a level is a position on the binder spine, and
+one evidence rule, `level`, is the compiler's `acceptsLevelOf`.  A parameter `any` is a capture
+binder on the arrow, and a result `fresh` is a per-call existential opened by `letex`.  Its results
+are `level_inversion` and `no_inner_escape`, which reject the `withFile` escape by the compiler's own
+mechanism, `source_lvl_safety` on the source, `two_calls_incomparable`, and every prediction theorem
+of `Captures/`.  It builds as the library `CapturesCC`, a default target.  Its README ends with what
+the compiler's way costs and what it does not claim.
+
+**`Classifiers/`** is a copy of `CapturesCC/` with the classifiers of Capless(K).  A classifier is a
+closed tree, a kind is a list of subtrees with exclusions, and a capture atom can be projected by a
+kind, as in `cap.only[Control]`.  The projection is filtered at the end of expansion, so roots and
+subcapturing do not move.  Telescopes carry a kinding proposition `C ⊑ᵏ φ`, with closed evidence and
+a checker that is sound and not proved complete.  Its results are `classified_prediction` and
+`classified_effect_safety` on the target, and `dot_classified_prediction` and
+`dot_classified_effect_safety` on the source.  It builds as the library `Classifiers`, a default
+target.  Its README lists what it leaves out, first of all control effects.
+
+**`Paths/`** is a copy of the main line with paths `x.a.b`.  The source types a path by a judgment
+of its own with pDOT's singleton rules.  The target keys blocks by paths, and an alias is a
+forwarding node of a block forest.  Its results are canonical forms at every depth, with
+`le_canon_ne` needing no store, `Store.Typed.pathView`, `alias_eq`, `dot_safety` in its old
+statement, and two acceptance tests: `acceptance_fig2` types gDOT's Fig. 2 with no later modality,
+and `acceptance_gdot3_any` shows that no literal has the bad bounds of gDOT's Sec. 3.  It builds as
+the library `Paths`, a default target.  It is combined with none of the capture extensions, and its
+README lists the pDOT and gDOT rules it gives up.
+
+Separation, after CoreCapybara, is parked on the branch `separation` and is not on this branch.  Its
+soundness needs an invariant on a mutable store whose locations a `consume` masks, and canonical
+forms do not give that.  Its first stage proved that invariant, then found machine-checked
+counterexamples to the typing rules around it: an argument can escape through a closure the callee
+returns, and a substitution lemma fails past a claimed name.  So its canonical forms and
+preservation do not build there.
+
 ## Earlier targets, standalone
 
 **`FCsub/`** is System F-sub with explicit coercions, telescope-constrained
