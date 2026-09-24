@@ -25,6 +25,13 @@ A capture atom is a term binder `{x}`, a capture binder `{κ}`, or the
 capture name `ℓ` of the block of a term binder, `{x∙ℓ}`.  A capture set is a
 list of atoms, read as the finite set of its members. -/
 
+/-- A mode on a capture atom (plan-5h S0.1): read-only access or consumption.
+The absence of a wrapper is the plain mode `ε`. -/
+inductive Mode where
+  | ro
+  | consume
+deriving DecidableEq, Repr
+
 inductive CapAtom : Sig → Type where
   /-- `{x}`, the capability of a term binder. -/
   | var : BVar s .var → CapAtom s
@@ -35,11 +42,61 @@ inductive CapAtom : Sig → Type where
   /-- The universal root: the local root of the whole program, the
       compiler's `caps.any` read as a constant. -/
   | top : CapAtom s
+  /-- `ro a` or `consume a`.  A recursive wrapper, after the projection of
+      the classifier line: renaming is structural, so nesting is legal
+      syntax, and `base` and `effMode` absorb it. -/
+  | mode : Mode → CapAtom s → CapAtom s
 deriving DecidableEq, Repr
 
 /-- The universal root, written `⊤ᶜ`.  (`ᶜ` is not a legal Lean identifier
 character, so the constructor carries the plain name `top`.) -/
 scoped notation "⊤ᶜ" => CapAtom.top
+
+/-- The atom under the modes. -/
+def CapAtom.base : CapAtom s → CapAtom s
+  | .mode _ a => a.base
+  | a => a
+
+/-- The effective mode of an atom: `ro < ε < consume`. -/
+inductive EMode where
+  | ro
+  | eps
+  | consume
+deriving DecidableEq, Repr
+
+def EMode.rank : EMode → Nat
+  | .ro => 0
+  | .eps => 1
+  | .consume => 2
+
+instance : LE EMode := ⟨fun m m' => m.rank ≤ m'.rank⟩
+instance (m m' : EMode) : Decidable (m ≤ m') := Nat.decLe m.rank m'.rank
+
+/-- The effective mode.  `ro` dominates `consume`. -/
+def CapAtom.effMode : CapAtom s → EMode
+  | .mode .ro _ => .ro
+  | .mode .consume a => if a.effMode = .ro then .ro else .consume
+  | _ => .eps
+
+/-- Wrapping is a meet: an atom that is already read-only stays read-only
+under `consume` (plan-5h decision 7).  It replaces the overwriting wrapper of
+the design, which made `consume (ro ℓ)` read-only as an atom and consuming
+after resolution. -/
+def CapAtom.withMode : Mode → CapAtom s → CapAtom s
+  | .ro, a => .mode .ro a.base
+  | .consume, a => if a.effMode = .ro then a else .mode .consume a.base
+
+/-- The base of `a` at the effective mode `m`. -/
+def CapAtom.atMode (a : CapAtom s) : EMode → CapAtom s
+  | .ro => .mode .ro a.base
+  | .eps => a.base
+  | .consume => .mode .consume a.base
+
+/-- Re-apply the modes of `a`, innermost first, to an atom of the same
+signature. -/
+def CapAtom.reapply : CapAtom s → CapAtom s → CapAtom s
+  | .mode m a, x => CapAtom.withMode m (a.reapply x)
+  | _, x => x
 
 /-- A capture set: a list of atoms, read as a finite set. -/
 abbrev CaptureSet (s : Sig) : Type := List (CapAtom s)
@@ -100,10 +157,23 @@ def CapAtom.rename : CapAtom s1 → Rename s1 s2 → CapAtom s2
   | .cvar κ, ρ => .cvar (ρ.var κ)
   | .name x ℓ, ρ => .name (ρ.var x) ℓ
   | .top, _ => .top
+  | .mode m a, ρ => .mode m (a.rename ρ)
 
 /-- Renaming of a capture set is pointwise. -/
 def CaptureSet.rename (C : CaptureSet s1) (ρ : Rename s1 s2) : CaptureSet s2 :=
   C.map (fun a => a.rename ρ)
+
+/-- The read-only view of a set, pointwise through the meet. -/
+def CaptureSet.ro (C : CaptureSet s) : CaptureSet s := C.map (CapAtom.withMode .ro)
+
+/-- The consuming view of a set, pointwise through the meet. -/
+def CaptureSet.consume (C : CaptureSet s) : CaptureSet s := C.map (CapAtom.withMode .consume)
+
+/-- Every atom of the set is read-only. -/
+def CaptureSet.AllRo (C : CaptureSet s) : Prop := ∀ a ∈ C, a.effMode = .ro
+
+instance CaptureSet.instDecidableAllRo (C : CaptureSet s) : Decidable C.AllRo := by
+  unfold CaptureSet.AllRo; infer_instance
 
 /-! ## Shapes, types, propositions, telescopes -/
 
@@ -125,6 +195,10 @@ inductive Shape : Sig → Type where
   | obj : Telescope (s,x) → Shape s
   /-- The box former: inert, neither a proposition nor a telescope entry. -/
   | box : Ty s → Shape s
+  /-- `Ref[T]`, a mutable cell holding a `T`.  Invariant in `T`. -/
+  | cell : Ty s → Shape s
+  /-- `ro Ref[T]`, a read-only view of a cell.  Covariant in `T`. -/
+  | reader : Ty s → Shape s
 
 /-- A type is a shape with a capture set, written `S ^ C`. -/
 inductive Ty : Sig → Type where
@@ -158,6 +232,10 @@ inductive ETy : Sig → Type where
   /-- `∃ᶜ[C] T`: the witness is bounded by `C`, a capture set of the
       enclosing scope, and the body is read under the witness binder. -/
   | ex : CaptureSet s → Ty (s,c) → ETy s
+  /-- `∃ᶠ T`: `caps.fresh`, an owned existential with no declared bound.
+      The body is read under the witness binder, which the unpacking opens
+      as a location that claims what the head consumed. -/
+  | fresh : Ty (s,c) → ETy s
 
 end
 
@@ -178,6 +256,13 @@ included in it, and it says nothing about its inhabitants. -/
 
 /-- A shape with the empty capture set. -/
 abbrev Ty.pure (S : Shape s) : Ty s := .capt [] S
+
+/-- The unit type `⊤ ^ []`, the answer of a write. -/
+abbrev Ty.unit : Ty s := .capt [] .top
+
+/-- `S` is a cell or a read-only view of a cell holding a `T`: what `read`
+reads through. -/
+def Shape.IsRefOf (S : Shape s) (T : Ty s) : Prop := S = .cell T ∨ S = .reader T
 
 /-! ### Notation for shapes and types
 
@@ -204,6 +289,9 @@ scoped infixl:65 " ▹ " => Telescope.cons
 /-- `∃ᶜ[C] T` is the answer `ETy.ex C T`.  (`ᶜ` is not a legal Lean identifier
 character, but it is a legal token of a notation.) -/
 scoped notation:max "∃ᶜ[" C "] " T:max => ETy.ex C T
+
+/-- `∃ᶠ T` is the fresh existential `ETy.fresh T`. -/
+scoped notation:max "∃ᶠ " T:max => ETy.fresh T
 
 /-- The shape of a type: a type is a shape with a capture set beside it, and
 this is the shape.  The vanilla line's `Ty` is exactly this shape; a
@@ -255,6 +343,8 @@ def Shape.rename : Shape s1 → Rename s1 s2 → Shape s2
   | .pi S T, ρ => .pi (S.rename ρ.lift) (T.rename ρ.lift.lift)
   | .obj Tel, ρ => .obj (Tel.rename ρ.lift)
   | .box T, ρ => .box (T.rename ρ)
+  | .cell T, ρ => .cell (T.rename ρ)
+  | .reader T, ρ => .reader (T.rename ρ)
 
 def Ty.rename : Ty s1 → Rename s1 s2 → Ty s2
   | .capt C S, ρ => .capt (C.rename ρ) (S.rename ρ)
@@ -274,6 +364,7 @@ def Telescope.rename : Telescope s1 → Rename s1 s2 → Telescope s2
 def ETy.rename : ETy s1 → Rename s1 s2 → ETy s2
   | .ty T, ρ => .ty (T.rename ρ)
   | .ex C T, ρ => .ex (C.rename ρ) (T.rename ρ.lift)
+  | .fresh T, ρ => .fresh (T.rename ρ.lift)
 
 end
 
@@ -392,6 +483,10 @@ inductive ShapeCo : Sig → Type where
   | member : Atom s → ShapeCo s → Nat → ShapeCo s
   /-- The box former is covariant in the boxed type. -/
   | boxed : LeCo s → ShapeCo s
+  /-- `cell T ≤ reader T`: a cell is read as its read-only view. -/
+  | toReader : Ty s → ShapeCo s
+  /-- `reader T ≤ reader T'` from `T ≤ T'`. -/
+  | readerCov : LeCo s → ShapeCo s
 
 /-- Inclusion evidence between capture sets. -/
 inductive CapCo : Sig → Type where
@@ -412,6 +507,14 @@ inductive CapCo : Sig → Type where
       below that root.  One constructor and not two, because the
       compiler's `acceptsLevelOf` has no branch on its left side. -/
   | level : CapAtom s → CapAtom s → CapCo s
+  /-- `{a at m} ⊑ {a at m'}` when `m ≤ m'`: `{ro a} ⊑ {a} ⊑ {consume a}`. -/
+  | modeLe : CapAtom s → EMode → EMode → CapCo s
+  /-- The read-only view of an inclusion. -/
+  | roMap : CapCo s → CapCo s
+  /-- What an heir owns is below the heir: `W ⊑ {h}`.  The evidence names
+      the heir by its atom, as `CapEq.instC` does, so that substitution stays
+      structural. -/
+  | ownLe : CapAtom s → CaptureSet s → CapCo s
 
 /-- Equality evidence between capture sets. -/
 inductive CapEq : Sig → Type where
@@ -511,12 +614,19 @@ inductive ELeCo : Sig → Type where
       scope of their own. -/
   | cong : CapCo s → LeCo (Sig.scope s) → ELeCo s
   | trans : ELeCo s → ELeCo s → ELeCo s
+  /-- A fresh pack: the witness names, and the residual read in a scope that
+      opens a root and then an heir of the witness. -/
+  | packF : CaptureSet s → LeCo (Sig.scope s) → ELeCo s
+  /-- Congruence of `∃ᶠ`, under a scope with a location as its binder. -/
+  | congF : LeCo (Sig.scope s) → ELeCo s
 
 /-- Packed atoms: an atom, or an atom under a witness, a bound evidence and
 one residual type inclusion.  Never nested in a typed term. -/
 inductive PAtom : Sig → Type where
   | plain : Atom s → PAtom s
   | pack : CaptureSet s → CapCo s → LeCo (Sig.scope s) → Atom s → PAtom s
+  /-- An atom under a fresh pack: the witness names and the residual. -/
+  | packF : CaptureSet s → LeCo (Sig.scope s) → Atom s → PAtom s
 
 end
 
@@ -538,11 +648,15 @@ before. -/
 def PAtom.root : PAtom s → BVar s .var
   | .plain a => a.root
   | .pack _ _ _ a => a.root
+  | .packF _ _ a => a.root
 
 @[simp] theorem PAtom.root_plain (a : Atom s) : (PAtom.plain a).root = a.root := rfl
 
 @[simp] theorem PAtom.root_pack (C : CaptureSet s) (h : CapCo s) (e : LeCo (Sig.scope s))
     (a : Atom s) : (PAtom.pack C h e a).root = a.root := rfl
+
+@[simp] theorem PAtom.root_packF (W : CaptureSet s) (e : LeCo (Sig.scope s)) (a : Atom s) :
+    (PAtom.packF W e a).root = a.root := rfl
 
 /-- Concatenation of capture-template sides. -/
 def SideC.append : SideC s → SideC s → SideC s
@@ -567,6 +681,8 @@ def ShapeCo.rename : ShapeCo s1 → Rename s1 s2 → ShapeCo s2
   | .intoBnd e, ρ => .intoBnd (e.rename ρ)
   | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
   | .boxed d, ρ => .boxed (d.rename ρ)
+  | .toReader T, ρ => .toReader (T.rename ρ)
+  | .readerCov d, ρ => .readerCov (d.rename ρ)
 
 def CapCo.rename : CapCo s1 → Rename s1 s2 → CapCo s2
   | .refl C, ρ => .refl (C.rename ρ)
@@ -577,6 +693,9 @@ def CapCo.rename : CapCo s1 → Rename s1 s2 → CapCo s2
   | .member a e i, ρ => .member (a.rename ρ) (e.rename ρ) i
   | .eqToLe φ, ρ => .eqToLe (φ.rename ρ)
   | .level e r, ρ => .level (e.rename ρ) (r.rename ρ)
+  | .modeLe a m m', ρ => .modeLe (a.rename ρ) m m'
+  | .roMap f, ρ => .roMap (f.rename ρ)
+  | .ownLe a W, ρ => .ownLe (a.rename ρ) (W.rename ρ)
 
 def CapEq.rename : CapEq s1 → Rename s1 s2 → CapEq s2
   | .refl C, ρ => .refl (C.rename ρ)
@@ -635,11 +754,14 @@ def ELeCo.rename : ELeCo s1 → Rename s1 s2 → ELeCo s2
   | .pack C h e, ρ => .pack (C.rename ρ) (h.rename ρ) (e.rename ρ.lift.lift)
   | .cong h e, ρ => .cong (h.rename ρ) (e.rename ρ.lift.lift)
   | .trans g h, ρ => .trans (g.rename ρ) (h.rename ρ)
+  | .packF W e, ρ => .packF (W.rename ρ) (e.rename ρ.lift.lift)
+  | .congF e, ρ => .congF (e.rename ρ.lift.lift)
 
 def PAtom.rename : PAtom s1 → Rename s1 s2 → PAtom s2
   | .plain a, ρ => .plain (a.rename ρ)
   | .pack C h e a, ρ =>
       .pack (C.rename ρ) (h.rename ρ) (e.rename ρ.lift.lift) (a.rename ρ)
+  | .packF W e a, ρ => .packF (W.rename ρ) (e.rename ρ.lift.lift) (a.rename ρ)
 
 end
 
@@ -701,6 +823,17 @@ inductive Tm : Sig → Type where
       the boxed capture set against the declared set `U` by the evidence
       `f`. -/
   | unbox : Atom s → CaptureSet s → CapCo s → Tm s
+  /-- `newLet ⟨ℓ, r⟩ = new a in u ⦃U'; f⦄`: allocate a location and a cell
+      at it holding `a`.  The body is read under the location and the cell
+      binder, declares the use set `U'`, and carries the avoidance evidence
+      `f`. -/
+  | newLet : Atom s → Tm ((s,c),x) → CaptureSet s → CapCo ((s,c),x) → Tm s
+  /-- Read the content of the cell a cell or a reader atom stands for. -/
+  | read : Atom s → Tm s
+  /-- `write a b`: append `b` as the new content of the cell at `a`. -/
+  | write : Atom s → Atom s → Tm s
+  /-- `letexF ⟨κ, x⟩ = t in u ⦃U'; f⦄`, the unpacking of `∃ᶠ`. -/
+  | letexF : Tm s → Tm ((s,c),x) → CaptureSet s → CapCo ((s,c),x) → Tm s
 
 inductive Value : Sig → Type where
   /-- `λ^A(x : T). t ⦃g⦄`: the assigned capture set `A`, the parameter type,
@@ -721,6 +854,19 @@ inductive Value : Sig → Type where
   | pack : CaptureSet s → CapCo s → LeCo (Sig.scope s) → Value s → Value s
   /-- Adapted value: a wrapper, not a computation. -/
   | cast : Value s → LeCo s → Value s
+  /-- A cell: its location and its first content.  A cell lives in a store,
+      at a term binder declared `cell T ^ {ℓ}`, and its content is the newest
+      write record for that binder (`Store.content`).  The location is held as
+      a capture atom, which the typing rule asks to be a location binder
+      (`Ctx.LocOf`), so that a substitution, which sends a capture binder to a
+      capture atom, carries a cell to a cell. -/
+  | cell : CapAtom s → Atom s → Value s
+  /-- A read-only view of the cell at a term binder (Capybara's `ro x`).  It
+      holds the bare cell binder, so it reads the cell's own content type. -/
+  | reader : BVar s .var → Value s
+  /-- A value under a fresh pack: the witness names and the residual.
+      `Value.HasType` has no rule for it, so it is never stored. -/
+  | packF : CaptureSet s → LeCo (Sig.scope s) → Value s → Value s
 
 /-- Block witnesses.  A type witness defines a block name, which is a shape. -/
 inductive Witnesses : Sig → Type where
@@ -779,6 +925,9 @@ def Value.annot : Value s → CaptureSet s
   | .box _ => []
   | .cast v _ => v.annot
   | .pack _ _ _ v => v.annot
+  | .cell c _ => [c]
+  | .reader r => [.mode .ro (.var r)]
+  | .packF _ _ v => v.annot
 
 @[simp] theorem Value.annot_lam (A : CaptureSet s) (T : Dom s) (t : Tm (((s,c),c),x))
     (g : CapCo (((s,c),c),x)) : (Value.lam A T t g).annot = A := rfl
@@ -794,21 +943,109 @@ def Value.annot : Value s → CaptureSet s
 @[simp] theorem Value.annot_pack (C : CaptureSet s) (h : CapCo s) (e : LeCo (Sig.scope s))
     (v : Value s) : (Value.pack C h e v).annot = v.annot := rfl
 
+@[simp] theorem Value.annot_cell (c : CapAtom s) (a : Atom s) :
+    (Value.cell c a).annot = [c] := rfl
+
+@[simp] theorem Value.annot_reader (r : BVar s .var) :
+    (Value.reader r).annot = [.mode .ro (.var r)] := rfl
+
+@[simp] theorem Value.annot_packF (W : CaptureSet s) (e : LeCo (Sig.scope s)) (v : Value s) :
+    (Value.packF W e v).annot = v.annot := rfl
+
+/-! ### Charges
+
+A fresh pack consumes its witness names: its charge is the witness read at
+the `consume` mode.  Every other coercion, packed atom and value charges
+nothing, so on a base program every charge is `[]`.  The charge wraps each
+witness atom in `consume` directly.  A typed pack's witness is a list of
+capture binders, on which this is `CaptureSet.consume`
+(`CaptureSet.charged_of_isNames`), and the direct wrapper commutes with every
+substitution, which the meet does not. -/
+
+/-- The witness of a fresh pack at the `consume` mode. -/
+def CaptureSet.charged (W : CaptureSet s) : CaptureSet s := W.map (CapAtom.mode .consume)
+
+/-- The charge of an answer coercion. -/
+def ELeCo.charge : ELeCo s → CaptureSet s
+  | .packF W _ => W.charged
+  | .trans g h => g.charge ∪ h.charge
+  | _ => []
+
+/-- The charge of a packed atom. -/
+def PAtom.charge : PAtom s → CaptureSet s
+  | .packF W _ _ => W.charged
+  | _ => []
+
+/-- The charge of a value. -/
+def Value.charge : Value s → CaptureSet s
+  | .packF W _ _ => W.charged
+  | _ => []
+
+@[simp] theorem ELeCo.charge_plain (e : LeCo s) : (ELeCo.plain e).charge = [] := rfl
+@[simp] theorem ELeCo.charge_pack (C : CaptureSet s) (h : CapCo s) (e : LeCo (Sig.scope s)) :
+    (ELeCo.pack C h e).charge = [] := rfl
+@[simp] theorem ELeCo.charge_cong (h : CapCo s) (e : LeCo (Sig.scope s)) :
+    (ELeCo.cong h e).charge = [] := rfl
+@[simp] theorem ELeCo.charge_trans (g h : ELeCo s) :
+    (ELeCo.trans g h).charge = g.charge ∪ h.charge := rfl
+@[simp] theorem ELeCo.charge_packF (W : CaptureSet s) (e : LeCo (Sig.scope s)) :
+    (ELeCo.packF W e).charge = W.charged := rfl
+@[simp] theorem ELeCo.charge_congF (e : LeCo (Sig.scope s)) :
+    (ELeCo.congF e).charge = [] := rfl
+
+@[simp] theorem PAtom.charge_plain (a : Atom s) : (PAtom.plain a).charge = [] := rfl
+@[simp] theorem PAtom.charge_pack (C : CaptureSet s) (h : CapCo s) (e : LeCo (Sig.scope s))
+    (a : Atom s) : (PAtom.pack C h e a).charge = [] := rfl
+@[simp] theorem PAtom.charge_packF (W : CaptureSet s) (e : LeCo (Sig.scope s)) (a : Atom s) :
+    (PAtom.packF W e a).charge = W.charged := rfl
+
+@[simp] theorem Value.charge_lam (A : CaptureSet s) (T : Dom s) (t : Tm (((s,c),c),x))
+    (g : CapCo (((s,c),c),x)) : (Value.lam A T t g).charge = [] := rfl
+@[simp] theorem Value.charge_obj (A : CaptureSet s) (W : Witnesses (s,x))
+    (Wc : CapWitnesses (s,x)) (F : Fields ((s,c),x)) : (Value.obj A W Wc F).charge = [] := rfl
+@[simp] theorem Value.charge_box (a : Atom s) : (Value.box a).charge = [] := rfl
+@[simp] theorem Value.charge_pack (C : CaptureSet s) (h : CapCo s) (e : LeCo (Sig.scope s))
+    (v : Value s) : (Value.pack C h e v).charge = [] := rfl
+@[simp] theorem Value.charge_cast (v : Value s) (e : LeCo s) : (Value.cast v e).charge = [] :=
+  rfl
+@[simp] theorem Value.charge_cell (c : CapAtom s) (a : Atom s) : (Value.cell c a).charge = [] :=
+  rfl
+@[simp] theorem Value.charge_reader (r : BVar s .var) : (Value.reader r).charge = [] := rfl
+@[simp] theorem Value.charge_packF (W : CaptureSet s) (e : LeCo (Sig.scope s)) (v : Value s) :
+    (Value.packF W e v).charge = W.charged := rfl
+
+/-- No cell sits in the value, under casts and packs.  A cell is created by
+`newLet` alone, so a program value is cell free. -/
+def Value.cellFree : Value s → Bool
+  | .cell _ _ => false
+  | .cast v _ => v.cellFree
+  | .pack _ _ _ v => v.cellFree
+  | .packF _ _ v => v.cellFree
+  | _ => true
+
+/-- `Value.cellFree` as a proposition, the premise of `Tm.HasType.val`. -/
+abbrev Value.CellFree (v : Value s) : Prop := v.cellFree = true
+
 /-- The use set of a term: the capabilities the term may still read.  It is
-total and structural, because every set a binder declares is data. -/
+total and structural, because every set a binder declares is data.  A fresh
+pack charges its witness at the `consume` mode. -/
 def Tm.uses : Tm s → CaptureSet s
-  | .atom p => [.var p.root]
-  | .val _ => []
+  | .atom p => [.var p.root] ∪ p.charge
+  | .val v => v.charge
   | .app a b => [.var a.root, .var b.root]
   | .proj a _ _ => [.var a.root]
   | .let t _ U _ => t.uses ∪ U
   | .cast t _ => t.uses
-  | .castE t _ => t.uses
+  | .castE t g => t.uses ∪ g.charge
   | .letex t _ U _ _ => t.uses ∪ U
   | .unbox a U _ => [.var a.root] ∪ U
+  | .newLet a _ U _ => [.var a.root] ∪ U
+  | .read a => [.mode .ro (.var a.root)]
+  | .write a b => [.var a.root, .var b.root]
+  | .letexF t _ U _ => t.uses ∪ U
 
-@[simp] theorem Tm.uses_atom (p : PAtom s) : (Tm.atom p).uses = [.var p.root] := rfl
-@[simp] theorem Tm.uses_val (v : Value s) : (Tm.val v).uses = [] := rfl
+@[simp] theorem Tm.uses_atom (p : PAtom s) : (Tm.atom p).uses = [.var p.root] ∪ p.charge := rfl
+@[simp] theorem Tm.uses_val (v : Value s) : (Tm.val v).uses = v.charge := rfl
 @[simp] theorem Tm.uses_app (a b : Atom s) :
     (Tm.app a b).uses = [.var a.root, .var b.root] := rfl
 @[simp] theorem Tm.uses_proj (a : Atom s) (ℓ : Label) (h : Has s) :
@@ -816,20 +1053,33 @@ def Tm.uses : Tm s → CaptureSet s
 @[simp] theorem Tm.uses_let (t : Tm s) (u : Tm (s,x)) (U : CaptureSet s) (f : CapCo (s,x)) :
     (Tm.let t u U f).uses = t.uses ∪ U := rfl
 @[simp] theorem Tm.uses_cast (t : Tm s) (e : LeCo s) : (Tm.cast t e).uses = t.uses := rfl
-@[simp] theorem Tm.uses_castE (t : Tm s) (g : ELeCo s) : (Tm.castE t g).uses = t.uses := rfl
+@[simp] theorem Tm.uses_castE (t : Tm s) (g : ELeCo s) :
+    (Tm.castE t g).uses = t.uses ∪ g.charge := rfl
 @[simp] theorem Tm.uses_letex (t : Tm s) (u : Tm ((s,c),x)) (U : CaptureSet s) (h : CapCo s)
     (f : CapCo ((s,c),x)) : (Tm.letex t u U h f).uses = t.uses ∪ U := rfl
 @[simp] theorem Tm.uses_unbox (a : Atom s) (U : CaptureSet s) (f : CapCo s) :
     (Tm.unbox a U f).uses = [.var a.root] ∪ U := rfl
+@[simp] theorem Tm.uses_newLet (a : Atom s) (u : Tm ((s,c),x)) (U : CaptureSet s)
+    (f : CapCo ((s,c),x)) : (Tm.newLet a u U f).uses = [.var a.root] ∪ U := rfl
+@[simp] theorem Tm.uses_read (a : Atom s) : (Tm.read a).uses = [.mode .ro (.var a.root)] := rfl
+@[simp] theorem Tm.uses_write (a b : Atom s) :
+    (Tm.write a b).uses = [.var a.root, .var b.root] := rfl
+@[simp] theorem Tm.uses_letexF (t : Tm s) (u : Tm ((s,c),x)) (U : CaptureSet s)
+    (f : CapCo ((s,c),x)) : (Tm.letexF t u U f).uses = t.uses ∪ U := rfl
 
-/-- The root a term reads when it steps: the function of an application, the
-receiver of a projection, the box of an unboxing.  Every other term reads no
-stored value. -/
-def Tm.inspects : Tm s → Option (BVar s .var)
-  | .app a _ => some a.root
-  | .proj a _ _ => some a.root
-  | .unbox a _ _ => some a.root
+/-- The atom whose root a term reads when it steps: the function of an
+application, the receiver of a projection, the box of an unboxing, and the
+cell of a read or a write.  Every other term reads no stored value. -/
+def Tm.inspectsAt : Tm s → Option (Atom s)
+  | .app a _ => some a
+  | .proj a _ _ => some a
+  | .unbox a _ _ => some a
+  | .read a => some a
+  | .write a _ => some a
   | _ => none
+
+/-- The root a term reads when it steps, the root of `Tm.inspectsAt`. -/
+def Tm.inspects (t : Tm s) : Option (BVar s .var) := t.inspectsAt.map Atom.root
 
 @[simp] theorem Tm.inspects_app (a b : Atom s) : (Tm.app a b).inspects = some a.root := rfl
 @[simp] theorem Tm.inspects_proj (a : Atom s) (ℓ : Label) (h : Has s) :
@@ -845,21 +1095,36 @@ def Tm.inspects : Tm s → Option (BVar s .var)
     (Tm.castE t g).inspects = none := rfl
 @[simp] theorem Tm.inspects_letex (t : Tm s) (u : Tm ((s,c),x)) (U : CaptureSet s)
     (h : CapCo s) (f : CapCo ((s,c),x)) : (Tm.letex t u U h f).inspects = none := rfl
+@[simp] theorem Tm.inspects_newLet (a : Atom s) (u : Tm ((s,c),x)) (U : CaptureSet s)
+    (f : CapCo ((s,c),x)) : (Tm.newLet a u U f).inspects = none := rfl
+@[simp] theorem Tm.inspects_read (a : Atom s) : (Tm.read a).inspects = some a.root := rfl
+@[simp] theorem Tm.inspects_write (a b : Atom s) :
+    (Tm.write a b).inspects = some a.root := rfl
+@[simp] theorem Tm.inspects_letexF (t : Tm s) (u : Tm ((s,c),x)) (U : CaptureSet s)
+    (f : CapCo ((s,c),x)) : (Tm.letexF t u U f).inspects = none := rfl
 
-/-- An inspected root is used.  This is the bridge between the prediction
-theorem, which is about use sets, and the steps, which read roots. -/
+/-- An inspected root is used, plainly or read only.  This is the bridge
+between the prediction theorem, which is about use sets, and the steps, which
+read roots.  A read charges its cell read only, and every other term that
+inspects charges its root plainly, so on a base program the second disjunct
+is empty. -/
 theorem Tm.inspects_mem_uses {s : Sig} {t : Tm s} {x : BVar s .var}
-    (h : t.inspects = some x) : CapAtom.var x ∈ t.uses := by
+    (h : t.inspects = some x) :
+    CapAtom.var x ∈ t.uses ∨ CapAtom.mode .ro (CapAtom.var x) ∈ t.uses := by
   cases t with
   | app a b => cases h; simp
   | proj a ℓ hh => cases h; simp
   | unbox a U f => cases h; simp
+  | read a => cases h; simp
+  | write a b => cases h; simp
   | atom a => simp at h
   | val v => simp at h
   | «let» t u U f => simp at h
   | cast t e => simp at h
   | castE t g => simp at h
   | letex t u U hh f => simp at h
+  | newLet a u U f => simp at h
+  | letexF t u U f => simp at h
 
 /-- Definition entries of a literal's witnesses: one `self ∙ ℓ ≐ W₀.get ℓ` per
 listed label (a shadowed label gets the outer definition, so every entry is
@@ -909,6 +1174,12 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
       .letex (t.rename ρ) (u.rename ρ.lift.lift) (U.rename ρ) (h.rename ρ)
         (f.rename ρ.lift.lift)
   | .unbox a U f, ρ => .unbox (a.rename ρ) (U.rename ρ) (f.rename ρ)
+  | .newLet a u U f, ρ =>
+      .newLet (a.rename ρ) (u.rename ρ.lift.lift) (U.rename ρ) (f.rename ρ.lift.lift)
+  | .read a, ρ => .read (a.rename ρ)
+  | .write a b, ρ => .write (a.rename ρ) (b.rename ρ)
+  | .letexF t u U f, ρ =>
+      .letexF (t.rename ρ) (u.rename ρ.lift.lift) (U.rename ρ) (f.rename ρ.lift.lift)
 
 def Value.rename : Value s1 → Rename s1 s2 → Value s2
   | .lam A S t g, ρ =>
@@ -919,6 +1190,9 @@ def Value.rename : Value s1 → Rename s1 s2 → Value s2
   | .cast v e, ρ => .cast (v.rename ρ) (e.rename ρ)
   | .pack C h e v, ρ =>
       .pack (C.rename ρ) (h.rename ρ) (e.rename ρ.lift.lift) (v.rename ρ)
+  | .cell c a, ρ => .cell (c.rename ρ) (a.rename ρ)
+  | .reader r, ρ => .reader (ρ.var r)
+  | .packF W e v, ρ => .packF (W.rename ρ) (e.rename ρ.lift.lift) (v.rename ρ)
 
 def Witnesses.rename : Witnesses s1 → Rename s1 s2 → Witnesses s2
   | .nil, _ => .nil
@@ -1073,6 +1347,7 @@ def CapAtom.subst : CapAtom s1 → Subst s1 s2 → CapAtom s2
   | .cvar κ, σ => σ.cvar κ
   | .name x ℓ, σ => .name (σ.rootVar x) ℓ
   | .top, _ => .top
+  | .mode m a, σ => .mode m (a.subst σ)
 
 def CaptureSet.subst (C : CaptureSet s1) (σ : Subst s1 s2) : CaptureSet s2 :=
   C.map (fun a => a.subst σ)
@@ -1085,6 +1360,8 @@ def Shape.subst : Shape s1 → Subst s1 s2 → Shape s2
   | .pi S T, σ => .pi (S.subst σ.liftC) (T.subst σ.liftC.lift)
   | .obj Tel, σ => .obj (Tel.subst σ.lift)
   | .box T, σ => .box (T.subst σ)
+  | .cell T, σ => .cell (T.subst σ)
+  | .reader T, σ => .reader (T.subst σ)
 
 def Ty.subst : Ty s1 → Subst s1 s2 → Ty s2
   | .capt C S, σ => .capt (C.subst σ) (S.subst σ)
@@ -1104,6 +1381,7 @@ def Telescope.subst : Telescope s1 → Subst s1 s2 → Telescope s2
 def ETy.subst : ETy s1 → Subst s1 s2 → ETy s2
   | .ty T, σ => .ty (T.subst σ)
   | .ex C T, σ => .ex (C.subst σ) (T.subst σ.liftC)
+  | .fresh T, σ => .fresh (T.subst σ.liftC)
 
 end
 
@@ -1143,6 +1421,8 @@ def ShapeCo.subst : ShapeCo s1 → Subst s1 s2 → ShapeCo s2
   | .intoBnd e, σ => .intoBnd (e.subst σ)
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
   | .boxed d, σ => .boxed (d.subst σ)
+  | .toReader T, σ => .toReader (T.subst σ)
+  | .readerCov d, σ => .readerCov (d.subst σ)
 
 def CapCo.subst : CapCo s1 → Subst s1 s2 → CapCo s2
   | .refl C, σ => .refl (C.subst σ)
@@ -1153,6 +1433,9 @@ def CapCo.subst : CapCo s1 → Subst s1 s2 → CapCo s2
   | .member a e i, σ => .member (a.subst σ) (e.subst σ) i
   | .eqToLe φ, σ => .eqToLe (φ.subst σ)
   | .level e r, σ => .level (e.subst σ) (r.subst σ)
+  | .modeLe a m m', σ => .modeLe (a.subst σ) m m'
+  | .roMap f, σ => .roMap (f.subst σ)
+  | .ownLe a W, σ => .ownLe (a.subst σ) (W.subst σ)
 
 def CapEq.subst : CapEq s1 → Subst s1 s2 → CapEq s2
   | .refl C, σ => .refl (C.subst σ)
@@ -1211,11 +1494,14 @@ def ELeCo.subst : ELeCo s1 → Subst s1 s2 → ELeCo s2
   | .pack C h e, σ => .pack (C.subst σ) (h.subst σ) (e.subst σ.liftC.liftC)
   | .cong h e, σ => .cong (h.subst σ) (e.subst σ.liftC.liftC)
   | .trans g h, σ => .trans (g.subst σ) (h.subst σ)
+  | .packF W e, σ => .packF (W.subst σ) (e.subst σ.liftC.liftC)
+  | .congF e, σ => .congF (e.subst σ.liftC.liftC)
 
 def PAtom.subst : PAtom s1 → Subst s1 s2 → PAtom s2
   | .plain a, σ => .plain (a.subst σ)
   | .pack C h e a, σ =>
       .pack (C.subst σ) (h.subst σ) (e.subst σ.liftC.liftC) (a.subst σ)
+  | .packF W e a, σ => .packF (W.subst σ) (e.subst σ.liftC.liftC) (a.subst σ)
 
 end
 
@@ -1234,6 +1520,12 @@ def Tm.subst : Tm s1 → Subst s1 s2 → Tm s2
       .letex (t.subst σ) (u.subst σ.liftC.lift) (U.subst σ) (h.subst σ)
         (f.subst σ.liftC.lift)
   | .unbox a U f, σ => .unbox (a.subst σ) (U.subst σ) (f.subst σ)
+  | .newLet a u U f, σ =>
+      .newLet (a.subst σ) (u.subst σ.liftC.lift) (U.subst σ) (f.subst σ.liftC.lift)
+  | .read a, σ => .read (a.subst σ)
+  | .write a b, σ => .write (a.subst σ) (b.subst σ)
+  | .letexF t u U f, σ =>
+      .letexF (t.subst σ) (u.subst σ.liftC.lift) (U.subst σ) (f.subst σ.liftC.lift)
 
 def Value.subst : Value s1 → Subst s1 s2 → Value s2
   | .lam A S t g, σ =>
@@ -1245,6 +1537,9 @@ def Value.subst : Value s1 → Subst s1 s2 → Value s2
   | .cast v e, σ => .cast (v.subst σ) (e.subst σ)
   | .pack C h e v, σ =>
       .pack (C.subst σ) (h.subst σ) (e.subst σ.liftC.liftC) (v.subst σ)
+  | .cell c a, σ => .cell (c.subst σ) (a.subst σ)
+  | .reader r, σ => .reader (σ.rootVar r)
+  | .packF W e v, σ => .packF (W.subst σ) (e.subst σ.liftC.liftC) (v.subst σ)
 
 def Fields.subst : Fields s1 → Subst s1 s2 → Fields s2
   | .nil, _ => .nil

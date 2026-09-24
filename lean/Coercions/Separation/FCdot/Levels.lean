@@ -110,7 +110,7 @@ theorem Ctx.root?_isRoot {s : Sig} (Γ : Ctx s) :
       intro ρ h
       cases b with
       | root => simp only [Ctx.root?_consC_root, Option.some.injEq] at h; subst h; rfl
-      | star | upper C | inst C =>
+      | star | upper C | inst C | loc _ C | own _ C | param _ =>
           rw [Ctx.root?_consC_of_not_root Γ _ rfl] at h
           cases hr : Γ.root? with
           | none => simp [hr] at h
@@ -153,7 +153,7 @@ theorem Ctx.lvl_isRoot {s : Sig} (Γ : Ctx s) :
           | root =>
               simp only [Ctx.lvl_consC_root_here, Option.some.injEq] at h
               subst h; rfl
-          | star | upper C | inst C =>
+          | star | upper C | inst C | loc _ C | own _ C | param _ =>
               rw [Ctx.lvl_consC_here_of_not_root Γ _ rfl] at h
               cases hr : Γ.root? with
               | none => simp [hr] at h
@@ -195,7 +195,7 @@ theorem Ctx.root?_min {s : Sig} (Γ : Ctx s) :
           simp only [Ctx.root?_consC_root, Option.some.injEq] at h
           subst h
           simp
-      | star | upper C | inst C =>
+      | star | upper C | inst C | loc _ C | own _ C | param _ =>
           rw [Ctx.root?_consC_of_not_root Γ _ rfl] at h
           cases hr : Γ.root? with
           | none => simp [hr] at h
@@ -225,7 +225,7 @@ theorem Ctx.root?_none {s : Sig} (Γ : Ctx s) :
       intro k y h
       cases b with
       | root => simp at h
-      | star | upper C | inst C =>
+      | star | upper C | inst C | loc _ C | own _ C | param _ =>
           rw [Ctx.root?_consC_of_not_root Γ _ rfl] at h
           simp only [Option.map_eq_none_iff] at h
           cases y with
@@ -238,6 +238,7 @@ theorem Ctx.LvlLe.refl_of_root {Γ : Ctx s} {r : CapAtom s} (h : Γ.IsRoot r) : 
   | top => rfl
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at h
   | name x ℓ => simp [Ctx.IsRoot, Ctx.isRootB] at h
+  | mode m a => simp [Ctx.IsRoot, Ctx.isRootB] at h
   | cvar κ =>
       have hκ : Γ.lvl κ = some κ := Γ.lvl_root h
       simp [Ctx.LvlLe, Ctx.lvlLeB, Ctx.lvlAtom, hκ, depthGe]
@@ -248,6 +249,7 @@ theorem Ctx.LvlLe.trans {Γ : Ctx s} {e r r' : CapAtom s}
   cases r with
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | name x ℓ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | mode m a => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | top =>
       -- `LvlLe e ⊤ᶜ` forces `e` to have no level, and such an `e` is below everything.
       have e₁ : depthGe ((Γ.lvlAtom e).map BVar.depth) none = true := h₁
@@ -303,6 +305,9 @@ theorem Ctx.root?_none_isRoot {s : Sig} (Γ : Ctx s) :
           | star => simp [CapBound.isRoot] at hb
           | upper C => simp [CapBound.isRoot] at hb
           | inst C => simp [CapBound.isRoot] at hb
+          | loc _ C => simp [CapBound.isRoot] at hb
+          | own _ C => simp [CapBound.isRoot] at hb
+          | param _ => simp [CapBound.isRoot] at hb
       | false =>
           rw [Ctx.root?_consC_of_not_root Γ b hb, Option.map_eq_none_iff] at h
           cases κ with
@@ -357,14 +362,32 @@ theorem Ctx.lvl_le_rootAtom_name (Γ : Ctx s) (x : BVar s .var) (ℓ : Label) :
     Γ.LvlLe (.name x ℓ) Γ.rootAtom :=
   Γ.lvl_le_rootAtom_core x
 
+/-- L0 at a moded atom.  A moded atom is at the level of its base, so it is
+at or outside whatever its base is at or outside of. -/
+theorem Ctx.lvlLe_mode_left {Γ : Ctx s} {a r : CapAtom s} {m : Mode}
+    (h : Γ.LvlLe a r) : Γ.LvlLe (.mode m a) r := h
+
+/-- A level comparison reads through every mode, because `Ctx.lvlAtom`
+does. -/
+theorem Ctx.lvlAtom_base (Γ : Ctx s) : ∀ a : CapAtom s, Γ.lvlAtom a.base = Γ.lvlAtom a
+  | .top | .var _ | .cvar _ | .name _ _ => rfl
+  | .mode _ a => Γ.lvlAtom_base a
+
+theorem Ctx.lvlLe_base_left {Γ : Ctx s} {e r : CapAtom s} :
+    Γ.LvlLe e r ↔ Γ.LvlLe e.base r := by
+  unfold Ctx.LvlLe Ctx.lvlLeB
+  rw [Γ.lvlAtom_base e]
+
 /-- L0 on a whole capture set. -/
 theorem Ctx.confined_rootAtom (Γ : Ctx s) (C : CaptureSet s) : Γ.Confined C Γ.rootAtom := by
-  intro a _
-  cases a with
+  intro a ha
+  clear ha
+  induction a with
   | var x => exact Γ.lvl_le_rootAtom_var x
   | cvar κ => exact Γ.lvl_le_rootAtom κ
   | name x ℓ => exact Γ.lvl_le_rootAtom_name x ℓ
   | top => rfl
+  | mode m a ih => exact Ctx.lvlLe_mode_left ih
 
 /-! ## Weakening commutations
 
@@ -389,12 +412,14 @@ theorem Ctx.lvl_weakenC (Γ : Ctx s) (b : CapBound s) (y : BVar s k) :
 
 theorem Ctx.lvlAtom_weaken (Γ : Ctx s) (b : Binding s) (a : CapAtom s) :
     (Γ.cons b).lvlAtom (CapAtom.weaken (k := .var) a) = (Γ.lvlAtom a).map .there := by
-  cases a <;> rfl
+  induction a with
+  | mode m a ih => exact ih
+  | var x | cvar κ | name x ℓ | top => rfl
 
 theorem Ctx.lvlAtom_weakenC (Γ : Ctx s) (b : CapBound s) (a : CapAtom s) :
     (Γ.consC b).lvlAtom (CapAtom.weaken (k := .cap) a) = (Γ.lvlAtom a).map .there := by
-  cases a <;>
-    simp [Ctx.lvlAtom, CapAtom.weaken, CapAtom.rename, Ctx.lvl_consC_there]
+  induction a <;>
+    simp_all [Ctx.lvlAtom, CapAtom.weaken, CapAtom.rename, Ctx.lvl_consC_there]
 
 theorem Ctx.lvlLeB_weaken (Γ : Ctx s) (b : Binding s) (e r : CapAtom s) :
     (Γ.cons b).lvlLeB (CapAtom.weaken (k := .var) e) (CapAtom.weaken (k := .var) r)
@@ -440,6 +465,16 @@ theorem Ctx.lvlLe_of_rootDepth_none {Γ : Ctx s} {e r r' : CapAtom s}
   rw [Ctx.lvlLeB_congr_right Γ e r' r (by rw [hr, hr'])]
   exact h
 
+/-- Every level an atom has is a root binder.  The atom cases of
+`Ctx.lvl_isRoot` gathered, with a moded atom reading the level of its base. -/
+theorem Ctx.lvlAtom_isRoot (Γ : Ctx s) : ∀ {a : CapAtom s} {κ : BVar s .cap},
+    Γ.lvlAtom a = some κ → (Γ.lookupCap κ).isRoot = true
+  | .top, _, h => by simp [Ctx.lvlAtom] at h
+  | .var _, _, h => Γ.lvl_isRoot h
+  | .cvar _, _, h => Γ.lvl_isRoot h
+  | .name _ _, _, h => Γ.lvl_isRoot h
+  | .mode _ a, _, h => Γ.lvlAtom_isRoot (a := a) h
+
 /-- A level is where its own binder is. -/
 @[simp] theorem Ctx.lvlAtom_lvlOf (Γ : Ctx s) (a : CapAtom s) :
     Γ.lvlAtom (Γ.lvlOf a) = Γ.lvlAtom a := by
@@ -447,12 +482,7 @@ theorem Ctx.lvlLe_of_rootDepth_none {Γ : Ctx s} {e r r' : CapAtom s}
   cases h : Γ.lvlAtom a with
   | none => rfl
   | some κ =>
-      have hr : (Γ.lookupCap κ).isRoot = true := by
-        cases a with
-        | top => simp [Ctx.lvlAtom] at h
-        | var x => exact Γ.lvl_isRoot h
-        | cvar κ₀ => exact Γ.lvl_isRoot h
-        | name x ℓ => exact Γ.lvl_isRoot h
+      have hr : (Γ.lookupCap κ).isRoot = true := Γ.lvlAtom_isRoot h
       simp only [Option.elim, Ctx.lvlAtom, Γ.lvl_root hr]
 
 /-- A level is a root. -/
@@ -461,12 +491,7 @@ theorem Ctx.lvlOf_isRoot (Γ : Ctx s) (a : CapAtom s) : Γ.IsRoot (Γ.lvlOf a) :
   cases h : Γ.lvlAtom a with
   | none => rfl
   | some κ =>
-      have hr : (Γ.lookupCap κ).isRoot = true := by
-        cases a with
-        | top => simp [Ctx.lvlAtom] at h
-        | var x => exact Γ.lvl_isRoot h
-        | cvar κ₀ => exact Γ.lvl_isRoot h
-        | name x ℓ => exact Γ.lvl_isRoot h
+      have hr : (Γ.lookupCap κ).isRoot = true := Γ.lvlAtom_isRoot h
       exact hr
 
 /-- An atom is at its own level. -/

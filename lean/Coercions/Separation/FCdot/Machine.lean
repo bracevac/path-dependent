@@ -47,6 +47,9 @@ inductive Frame : Sig → Type where
       the evidence putting the head's bound below that set, and the body's
       avoidance evidence. -/
   | letex : Tm ((s,c),x) → CaptureSet s → CapCo s → CapCo ((s,c),x) → Frame s
+  /-- `letexF ⟨κ, x⟩ = □ in u ⦃U'; f⦄`: the body, the use set it declares, and
+      the body's avoidance evidence. -/
+  | letexF : Tm ((s,c),x) → CaptureSet s → CapCo ((s,c),x) → Frame s
 
 def Frame.rename : Frame s1 → Rename s1 s2 → Frame s2
   | .let u U f, ρ => .let (u.rename ρ.lift) (U.rename ρ) (f.rename ρ.lift)
@@ -54,6 +57,7 @@ def Frame.rename : Frame s1 → Rename s1 s2 → Frame s2
   | .castE g, ρ => .castE (g.rename ρ)
   | .letex u U h f, ρ =>
       .letex (u.rename ρ.lift.lift) (U.rename ρ) (h.rename ρ) (f.rename ρ.lift.lift)
+  | .letexF u U f, ρ => .letexF (u.rename ρ.lift.lift) (U.rename ρ) (f.rename ρ.lift.lift)
 
 /-- Continuation: frames, innermost last. -/
 inductive Cont : Sig → Type where
@@ -76,39 +80,84 @@ scoped postfix:max "↑" => Cont.weaken
 scoped infixl:65 " ▹ " => Cont.cons
 
 set_option hygiene false in
-scoped notation:40 Γ:51 " ⊢ₖ " K:51 " : " T:51 " ⇒ " U:51 => Cont.Typed Γ K T U
+scoped notation:40 Γ:51 " ⊢ₖ[" A "] " K:51 " : " T:51 " ⇒ " U:51 => Cont.Typed Γ A K T U
 
-/-- `Γ ⊢ₖ K : E ⇒ U`: `K` accepts an answer `E` and produces the type `U`.
-Only what a continuation accepts is widened to an answer; `nil` accepts a
-plain `.ty T` and produces `T`, so a continuation still produces a type. -/
-inductive Cont.Typed : Ctx s → Cont s → ETy s → Ty s → Prop where
-  | nil : Γ ⊢ₖ .nil : .ty T ⇒ T
-  | «let» :
-      Γ.cons (.opaque T) ⊢ u :ᵉ E↑ →
-      Γ.cons (.opaque T) ⊢ᶜ f : u.uses ⊑ U'↑ →
-      Γ ⊢ₖ K : E ⇒ V →
-      Γ ⊢ₖ K ▹ .let u U' f : .ty T ⇒ V
+set_option hygiene false in
+scoped notation:40 Γ:51 " ⊢ₖ " K:51 " : " T:51 " ⇒ " U:51 => Cont.Typed Γ [] K T U
+
+/-- The running term's clause (plan-5h decision 38): every masked leaf it
+consumes is killed in its ghost. -/
+def Ctx.MaskKilled (Γ : Ctx s) (D : List (BVar s .cap)) (C : CaptureSet s) : Prop :=
+  ∀ κ ∈ Γ.consumedLeaves C, Γ.Masked κ → κ ∈ D
+
+/-- A frame's clause: every leaf its declared set `V` consumes that is masked,
+or consumed above the frame (`A`), is killed in the frame's ghost `D`. -/
+def Ctx.FrameKilled (Γ : Ctx s) (A D : List (BVar s .cap)) (V : CaptureSet s) : Prop :=
+  ∀ κ ∈ Γ.consumedLeaves V, (Γ.Masked κ ∨ κ ∈ A) → κ ∈ D
+
+/-- What the clause reads of a running term: its uses, except that an answer
+is read at its own charge.  An answer's root is read again only where a frame
+substitutes it, and the frame's declared set covers it there. -/
+def Tm.maskUses : Tm s → CaptureSet s
+  | .atom p => p.charge
+  | .val v => v.charge
+  | t => t.uses
+
+/-- `Γ ⊢ₖ[A] K : E ⇒ U`: `K` accepts an answer `E` and produces the type `U`,
+and `A` is what the computation above `K` consumes as leaves.  Only what a
+continuation accepts is widened to an answer; `nil` accepts a plain `.ty T`
+and produces `T`, so a continuation still produces a type.  A frame that
+reads a body or evidence after its head keeps the kill context it was typed
+with, the ghost `D`, hands it to the running term when it resumes, keeps its
+clause `Ctx.FrameKilled`, and passes its own leaves down (plan-5h S0.5,
+decision 38).  `Γ ⊢ₖ K : E ⇒ U` is the index `[]`, and a base frame takes
+`D = []`. -/
+inductive Cont.Typed : Ctx s → List (BVar s .cap) → Cont s → ETy s → Ty s → Prop where
+  | nil : Γ ⊢ₖ[A] .nil : .ty T ⇒ T
+  | «let» {D : List (BVar s .cap)} :
+      (Γ.killNames D).cons (.opaque T) ⊢ u :ᵉ E↑ →
+      (Γ.killNames D).cons (.opaque T) ⊢ᶜ f : u.uses ⊑ U'↑ →
+      Γ.FrameKilled A D U' →
+      Γ ⊢ₖ[A ++ Γ.consumedLeaves U'] K : E ⇒ V →
+      Γ ⊢ₖ[A] K ▹ .let u U' f : .ty T ⇒ V
   | cast :
       Γ ⊢ e : T ≤ U →
-      Γ ⊢ₖ K : .ty U ⇒ V →
-      Γ ⊢ₖ K ▹ .cast e : .ty T ⇒ V
-  | castE :
-      Γ ⊢ᵉ g : E ≤ E' →
-      Γ ⊢ₖ K : E' ⇒ V →
-      Γ ⊢ₖ K ▹ .castE g : E ⇒ V
-  | letex {T : Ty (s,c)} {C₀ U' : CaptureSet s} {E : ETy s} :
-      Γ ⊢ᶜ h : C₀ ⊑ U' →
-      ((Γ.consC .star).cons (.opaque T)) ⊢ u :ᵉ
+      Γ ⊢ₖ[A] K : .ty U ⇒ V →
+      Γ ⊢ₖ[A] K ▹ .cast e : .ty T ⇒ V
+  | castE {D : List (BVar s .cap)} :
+      Γ.killNames D ⊢ᵉ g : E ≤ E' →
+      Γ.FrameKilled A D g.charge →
+      Γ ⊢ₖ[A ++ Γ.consumedLeaves g.charge] K : E' ⇒ V →
+      Γ ⊢ₖ[A] K ▹ .castE g : E ⇒ V
+  | letex {D : List (BVar s .cap)} {T : Ty (s,c)} {C₀ U' : CaptureSet s} {E : ETy s} :
+      Γ.killNames D ⊢ᶜ h : C₀ ⊑ U' →
+      (Γ.killNames D).KillOk U' →
+      (Γ.killNames D).ArgSep C₀ U' →
+      (Γ.killNames D).Accessible C₀ →
+      (((Γ.killNames D).consC .star).cons (.opaque T)) ⊢ u :ᵉ
         (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E)) →
-      ((Γ.consC .star).cons (.opaque T)) ⊢ᶜ f :
+      (((Γ.killNames D).consC .star).cons (.opaque T)) ⊢ᶜ f :
         u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
           ∪ [CapAtom.cvar (.there .here)]) →
-      Γ ⊢ₖ K : E ⇒ V →
-      Γ ⊢ₖ K ▹ .letex u U' h f : ∃ᶜ[C₀] T ⇒ V
+      Γ.FrameKilled A D U' →
+      Γ ⊢ₖ[A ++ Γ.consumedLeaves U'] K : E ⇒ V →
+      Γ ⊢ₖ[A] K ▹ .letex u U' h f : ∃ᶜ[C₀] T ⇒ V
+  /-- The frame of an unpacking of `∃ᶠ`: its body is read with the kills of
+      its activation and an opened name that claims `Cl`. -/
+  | letexF {D : List (BVar s .cap)} {Cl : CaptureSet s} {T : Ty (s,c)} {E : ETy s}
+      {U' : CaptureSet s} :
+      (((Γ.killNames D).consC (.loc true Cl)).cons (.opaque T)) ⊢ u :ᵉ
+        (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E)) →
+      (((Γ.killNames D).consC (.loc true Cl)).cons (.opaque T)) ⊢ᶜ f :
+        u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+          ∪ [CapAtom.mode .consume (CapAtom.cvar (.there .here))]) →
+      Γ.FrameKilled A D U' →
+      Γ ⊢ₖ[A ++ Γ.consumedLeaves U'] K : E ⇒ V →
+      Γ ⊢ₖ[A] K ▹ .letexF u U' f : ∃ᶠ T ⇒ V
 
 open Lean PrettyPrinter in
 @[app_unexpander Cont.Typed] def Cont.Typed.unexpand : Unexpander
-  | `($_ $Γ $K $T $U) => `($Γ ⊢ₖ $K : $T ⇒ $U)
+  | `($_ $Γ $A $K $T $U) => `($Γ ⊢ₖ[$A] $K : $T ⇒ $U)
   | _ => throw ()
 
 /-! ## States -/
@@ -118,11 +167,20 @@ structure State (s : Sig) where
   K : Cont s
   t : Tm s
 
-/-- A state is typed when its store is typed in a transparent context in
-which the term and continuation are typed. -/
-def State.Typed (st : State s) (U : Ty s) : Prop :=
+/-- A state is typed at a kill context `D`, the ghost of the activation the
+running term belongs to: its store is typed in a transparent context that
+satisfies the store invariant, the term is typed there with the names of `D`
+killed, every masked leaf the running term consumes is killed in `D`, and
+the continuation is typed there at the index of the running term's leaves
+(plan-5h S0.5, decision 38). -/
+def State.TypedAt (st : State s) (D : List (BVar s .cap)) (U : Ty s) : Prop :=
   ∃ (Γ : Ctx s) (E : ETy s),
-    ⊢ st.σ : Γ ∧ Γ ⊢ st.t :ᵉ E ∧ Γ ⊢ₖ st.K : E ⇒ U
+    ⊢ st.σ : Γ ∧ Γ.SepInv ∧ Γ.killNames D ⊢ st.t :ᵉ E ∧
+    Γ.MaskKilled D st.t.maskUses ∧
+    Γ ⊢ₖ[Γ.consumedLeaves st.t.maskUses] st.K : E ⇒ U
+
+/-- A state is typed when it is typed at some kill context. -/
+def State.Typed (st : State s) (U : Ty s) : Prop := ∃ D, st.TypedAt D U
 
 def State.Final (st : State s) : Prop :=
   st.K = .nil ∧ (∃ v, st.t = .val v) ∨ st.K = .nil ∧ (∃ p, st.t = .atom p)
@@ -139,8 +197,9 @@ def usesK : Cont s → CaptureSet s
   | .nil => []
   | K ▹ .let _ U _ => usesK K ∪ U
   | K ▹ .cast _ => usesK K
-  | K ▹ .castE _ => usesK K
+  | K ▹ .castE g => usesK K ∪ g.charge
   | K ▹ .letex _ U _ _ => usesK K ∪ U
+  | K ▹ .letexF _ U _ => usesK K ∪ U
 
 @[simp] theorem usesK_nil : usesK (.nil : Cont s) = [] := rfl
 @[simp] theorem usesK_let (K : Cont s) (u : Tm (s,x)) (U : CaptureSet s) (f : CapCo (s,x)) :
@@ -148,10 +207,12 @@ def usesK : Cont s → CaptureSet s
 @[simp] theorem usesK_cast (K : Cont s) (e : LeCo s) :
     usesK (K ▹ .cast e) = usesK K := rfl
 @[simp] theorem usesK_castE (K : Cont s) (g : ELeCo s) :
-    usesK (K ▹ .castE g) = usesK K := rfl
+    usesK (K ▹ .castE g) = usesK K ∪ g.charge := rfl
 @[simp] theorem usesK_letex (K : Cont s) (u : Tm ((s,c),x)) (U : CaptureSet s)
     (h : CapCo s) (f : CapCo ((s,c),x)) :
     usesK (K ▹ .letex u U h f) = usesK K ∪ U := rfl
+@[simp] theorem usesK_letexF (K : Cont s) (u : Tm ((s,c),x)) (U : CaptureSet s)
+    (f : CapCo ((s,c),x)) : usesK (K ▹ .letexF u U f) = usesK K ∪ U := rfl
 
 /-- The use set of a continuation travels with a renaming. -/
 theorem usesK_rename {s1 s2 : Sig} : ∀ (K : Cont s1) (ρ : Rename s1 s2),
@@ -163,9 +224,13 @@ theorem usesK_rename {s1 s2 : Sig} : ∀ (K : Cont s1) (ρ : Rename s1 s2),
   | K ▹ .cast e, ρ => by
       simp only [Cont.rename, Frame.rename, usesK_cast, usesK_rename K ρ]
   | K ▹ .castE g, ρ => by
-      simp only [Cont.rename, Frame.rename, usesK_castE, usesK_rename K ρ]
+      simp only [Cont.rename, Frame.rename, usesK_castE, CaptureSet.rename_union,
+        usesK_rename K ρ, ELeCo.charge_rename]
   | K ▹ .letex u U h f, ρ => by
       simp only [Cont.rename, Frame.rename, usesK_letex, CaptureSet.rename_union,
+        usesK_rename K ρ]
+  | K ▹ .letexF u U f, ρ => by
+      simp only [Cont.rename, Frame.rename, usesK_letexF, CaptureSet.rename_union,
         usesK_rename K ρ]
 
 @[simp] theorem usesK_weaken (K : Cont s) : usesK (K↑) = (usesK K).weaken :=
@@ -189,10 +254,12 @@ def State.inspects (st : State s) : Option (BVar s .var) := st.t.inspects
 @[simp] theorem State.inspects_mk (σ : Store s) (K : Cont s) (t : Tm s) :
     State.inspects ⟨σ, K, t⟩ = t.inspects := rfl
 
-/-- An inspected root of a state is in its use set. -/
+/-- An inspected root of a state is in its use set, plainly or read only. -/
 theorem State.inspects_mem_uses {st : State s} {x : BVar s .var}
-    (h : st.inspects = some x) : CapAtom.var x ∈ st.uses :=
-  List.mem_append.mpr (Or.inl (Tm.inspects_mem_uses h))
+    (h : st.inspects = some x) :
+    CapAtom.var x ∈ st.uses ∨ CapAtom.mode .ro (CapAtom.var x) ∈ st.uses :=
+  (Tm.inspects_mem_uses h).imp (fun hm => List.mem_append.mpr (Or.inl hm))
+    (fun hm => List.mem_append.mpr (Or.inl hm))
 
 /-- Fold a nonempty list of coercions into one, oldest first. -/
 def LeCo.composite (e : LeCo s) : List (LeCo s) → LeCo s
@@ -229,21 +296,34 @@ def Value.applyE : Value s → ELeCo s → Value s
   | v, .pack D h e => .pack D h e v
   | .pack C h e v, .cong h' f => .pack C (.trans h h') (e.trans f) v
   | v, .cong _ _ => v
+  | v, .packF W e => .packF W e v
+  | .packF W e v, .congF f => .packF W (e.trans f) v
+  | v, .congF _ => v
   | v, .trans g g' => (v.applyE g).applyE g'
 
 def PAtom.applyE : PAtom s → ELeCo s → PAtom s
   | .plain a, .plain e => .plain (.cast a e)
   | .plain a, .pack D h e => .pack D h e a
   | .pack C h e a, .cong h' f => .pack C (.trans h h') (e.trans f) a
-  -- The three typed-impossible combinations: a plain or a packing coercion
-  -- at a packed atom, and a congruence at a plain one.  `PAtom.pack` carries
-  -- an `Atom` and cannot nest, so each hands back its input, and preservation
-  -- closes each by inverting the two typings.  They stand before the `trans`
-  -- clause so that the `trans` clause is the generic one and reduces by
-  -- definition, as `Value.applyE`'s does.
+  | .plain a, .packF W e => .packF W e a
+  | .packF W e a, .congF f => .packF W (e.trans f) a
+  -- The typed-impossible combinations: a plain or a packing coercion at a
+  -- packed atom, and a congruence at a plain one or at a pack of the other
+  -- existential.  `PAtom.pack` and `PAtom.packF` carry an `Atom` and cannot
+  -- nest, so each hands back its input, and preservation closes each by
+  -- inverting the two typings.  They stand before the `trans` clause so that
+  -- the `trans` clause is the generic one and reduces by definition, as
+  -- `Value.applyE`'s does.
   | p@(.pack _ _ _ _), .plain _ => p
   | p@(.pack _ _ _ _), .pack _ _ _ => p
   | p@(.plain _), .cong _ _ => p
+  | p@(.pack _ _ _ _), .packF _ _ => p
+  | p@(.pack _ _ _ _), .congF _ => p
+  | p@(.plain _), .congF _ => p
+  | p@(.packF _ _ _), .plain _ => p
+  | p@(.packF _ _ _), .pack _ _ _ => p
+  | p@(.packF _ _ _), .cong _ _ => p
+  | p@(.packF _ _ _), .packF _ _ => p
   | p, .trans g g' => (p.applyE g).applyE g'
 
 /-- A composite coercion applies in two steps.  It holds by definition at
@@ -267,6 +347,15 @@ state it fires on. -/
   | .pack _ _ _ _, .pack _ _ _ => rfl
   | .plain _, .cong _ _ => rfl
   | .pack _ _ _ _, .cong _ _ => rfl
+  | .plain _, .packF _ _ => rfl
+  | .packF _ _ _, .congF _ => rfl
+  | .pack _ _ _ _, .packF _ _ => rfl
+  | .pack _ _ _ _, .congF _ => rfl
+  | .plain _, .congF _ => rfl
+  | .packF _ _ _, .plain _ => rfl
+  | .packF _ _ _, .pack _ _ _ => rfl
+  | .packF _ _ _, .cong _ _ => rfl
+  | .packF _ _ _, .packF _ _ => rfl
   | p, .trans g g' => by
       rw [PAtom.applyE_trans, PAtom.root_applyE _ g', PAtom.root_applyE p g]
 
@@ -427,12 +516,27 @@ theorem Rename.InjectiveOnAtoms.id {s : Sig} :
 theorem Rename.InjectiveOnAtoms.comp_succ {s1 s2 : Sig} {ρ : Rename s1 s2}
     (h : ρ.InjectiveOnAtoms) {k : Kind} :
     (ρ.comp (Rename.succ (k := k))).InjectiveOnAtoms := by
+  have key : ∀ a b : CapAtom s1,
+      a.rename (ρ.comp (Rename.succ (k := k)))
+          = b.rename (ρ.comp (Rename.succ (k := k))) →
+        a.rename ρ = b.rename ρ := by
+    intro a
+    induction a with
+    | var x | cvar x | name x l | top =>
+        intro b hab
+        cases b <;>
+          simp only [CapAtom.rename, Rename.comp_var, Rename.succ_var,
+            CapAtom.var.injEq, CapAtom.cvar.injEq, CapAtom.name.injEq] at hab ⊢ <;>
+          simp_all
+    | mode m a iha =>
+        intro b hab
+        cases b with
+        | mode m' b =>
+            simp only [CapAtom.rename, CapAtom.mode.injEq] at hab ⊢
+            exact ⟨hab.1, iha b hab.2⟩
+        | top | var _ | cvar _ | name _ _ => simp [CapAtom.rename] at hab
   intro a b hab
-  refine h a b ?_
-  cases a <;> cases b <;>
-    simp only [CapAtom.rename, Rename.comp_var, Rename.succ_var,
-      CapAtom.var.injEq, CapAtom.cvar.injEq, CapAtom.name.injEq] at hab ⊢ <;>
-    simp_all
+  exact h a b (key a b hab)
 
 /-- The embedding of a store extension is injective on capture atoms. -/
 theorem Store.Ext.injective {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
@@ -471,9 +575,12 @@ theorem Store.Typed.ctx_unique {s : Sig} {σ : Store s} {Γ Γ' : Ctx s}
           have hΓ := ih store'
           subst hΓ
           rw [Value.HasType.type_unique value value']
-  | consC _ _ ih =>
+  | consC _ _ _ ih =>
       cases h' with
-      | consC store' _ => rw [ih store']
+      | consC store' _ _ => rw [ih store']
+  | write _ _ _ ih =>
+      cases h' with
+      | write store' _ _ => exact ih store'
 
 /-! ### Resolution commutes with the embedding -/
 
@@ -503,7 +610,7 @@ theorem Store.Ext.roots {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Renam
   | @consC s1 σ0 σ1 ρ0 hE0 b hb ih =>
       intro Γ' hσ' n C
       cases hσ' with
-      | consC store' _ =>
+      | consC store' _ _ =>
           show Ctx.expand _ (Ctx.caps _ n (C.rename (ρ0.comp Rename.succ))) = _
           rw [show C.rename (ρ0.comp Rename.succ) = (C.rename ρ0).weaken by
                 simp [CaptureSet.weaken]]
@@ -540,6 +647,217 @@ theorem Store.Ext.capLe {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Renam
   refine ⟨m, ?_⟩
   rw [hE.roots hσ hσ' m D]
   exact (CaptureSet.mem_rename_iff hE.injective b (Γ.roots m D)).mpr hm
+
+/-! ### Store growth (plan-5h Fact 5 and S0.7)
+
+A run of the separation machine appends locations and write records beside the
+entries of `Store.Ext`.  A location is opaque, so it adds itself to the roots of
+the old sets that resolve to `⊤ᶜ` (`mem_roots_weakenC_opaque`), which is why
+`Store.Ext` asks `b.opaque = false` of a capture slot.  `Store.Grow` is the
+wider relation.  A write record binds nothing, so it keeps the embedding. -/
+
+/-- `Store.Grow σ σ' ρ`: `σ'` grows `σ` by entries, locations and write
+records, and `ρ` embeds the old scope. -/
+inductive Store.Grow : Store s → Store s' → Rename s s' → Prop where
+  | refl {σ : Store s} : Store.Grow σ σ Rename.id
+  | cons {σ : Store s} {σ' : Store s'} {ρ : Rename s s'} :
+      Store.Grow σ σ' ρ → ∀ v : Value s', Store.Grow σ (σ'.cons v) (ρ.comp Rename.succ)
+  | consC {σ : Store s} {σ' : Store s'} {ρ : Rename s s'} :
+      Store.Grow σ σ' ρ → ∀ b : CapBound s', b.opaque = false →
+        Store.Grow σ (σ'.consC b) (ρ.comp Rename.succ)
+  | loc {σ : Store s} {σ' : Store s'} {ρ : Rename s s'} :
+      Store.Grow σ σ' ρ → Store.Grow σ (σ'.consC (.loc true [])) (ρ.comp Rename.succ)
+  | write {σ : Store s} {σ' : Store s'} {ρ : Rename s s'} :
+      Store.Grow σ σ' ρ → ∀ (r : BVar s' .var) (a : Atom s'), Store.Grow σ (σ'.write r a) ρ
+
+/-- Every extension is a growth. -/
+theorem Store.Ext.toGrow {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
+    (h : Store.Ext σ σ' ρ) : Store.Grow σ σ' ρ := by
+  induction h with
+  | refl => exact .refl
+  | cons _ v ih => exact ih.cons v
+  | consC _ b hb ih => exact ih.consC b hb
+
+/-- A store with no location slot and no write record, as every store of the
+copied base. -/
+def Store.Plain : Store s → Prop
+  | .nil => True
+  | .cons σ _ => σ.Plain
+  | .consC σ b => σ.Plain ∧ ∀ k C, b ≠ .loc k C
+  | .write _ _ _ => False
+
+/-- A growth into a store with no location and no write record is an
+extension.  On a run of the copied base the two relations coincide (plan-5h
+S0.11, the rows of `step_uses` and `effect_safety`). -/
+theorem Store.Grow.ext_of_noLoc {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
+    (h : Store.Grow σ σ' ρ) (hp : σ'.Plain) : Store.Ext σ σ' ρ := by
+  revert hp
+  induction h with
+  | refl => intro _; exact .refl
+  | cons _ v ih => intro hp; exact (ih hp).cons v
+  | consC _ b hb ih => intro hp; exact (ih hp.1).consC b hb
+  | loc _ _ => intro hp; exact absurd rfl (hp.2 true [])
+  | write _ _ _ _ => intro hp; exact hp.elim
+
+/-- Growth composes. -/
+theorem Store.Grow.comp {s1 s2 s3 : Sig} {σ1 : Store s1} {σ2 : Store s2} {σ3 : Store s3}
+    {ρ : Rename s1 s2} {ρ' : Rename s2 s3}
+    (h : Store.Grow σ1 σ2 ρ) (h' : Store.Grow σ2 σ3 ρ') :
+    Store.Grow σ1 σ3 (ρ.comp ρ') := by
+  induction h' with
+  | refl => rw [Rename.comp_id]; exact h
+  | cons _ v ih => rw [← Rename.comp_assoc]; exact (ih h).cons v
+  | consC _ b hb ih => rw [← Rename.comp_assoc]; exact (ih h).consC b hb
+  | loc _ ih => rw [← Rename.comp_assoc]; exact (ih h).loc
+  | write _ r a ih => exact (ih h).write r a
+
+/-- Along a growth an old binder keeps its stored value, up to the embedding.
+A write record changes the content of a cell and not the value at its binder. -/
+theorem Store.Grow.lookup {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
+    (h : Store.Grow σ σ' ρ) (x : BVar s .var) :
+    σ'.lookup (ρ.var x) = (σ.lookup x).rename ρ := by
+  induction h with
+  | refl => exact (Value.rename_id _).symm
+  | cons _ v ih =>
+      show ((Store.lookup _ _).weaken : Value _) = _
+      rw [ih, Value.weaken, Value.rename_comp]
+  | consC _ b _ ih =>
+      show ((Store.lookup _ _).weaken : Value _) = _
+      rw [ih, Value.weaken, Value.rename_comp]
+  | loc _ ih =>
+      show ((Store.lookup _ _).weaken : Value _) = _
+      rw [ih, Value.weaken, Value.rename_comp]
+  | write _ r a ih => exact ih
+
+/-- The roots of an old set, read at old atoms, do not move along a growth.
+An appended location adds itself to some roots, and it is no image of the
+embedding. -/
+theorem Store.Grow.root_iff_aux {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
+    (hE : Store.Grow σ σ' ρ) {Γ : Ctx s} (hσ : ⊢ σ : Γ) :
+    ∀ {Γ' : Ctx s'}, (⊢ σ' : Γ') → ∀ (a : CapAtom s) (C : CaptureSet s),
+      Γ'.Root (a.rename ρ) (C.rename ρ) ↔ Γ.Root a C := by
+  induction hE with
+  | refl =>
+      intro Γ' hσ' a C
+      cases Store.Typed.ctx_unique hσ hσ'
+      simp
+  | @cons s1 σ0 σ1 ρ0 hE0 v ih =>
+      intro Γ' hσ' a C
+      cases hσ' with
+      | cons store' _ _ =>
+          rw [← CapAtom.rename_comp, ← CaptureSet.rename_comp]
+          exact (Ctx.Root_weaken_old _ _ _ _).trans (ih hσ store' a C)
+  | @consC s1 σ0 σ1 ρ0 hE0 b hb ih =>
+      intro Γ' hσ' a C
+      cases hσ' with
+      | consC store' hbr _ =>
+          rw [← CapAtom.rename_comp, ← CaptureSet.rename_comp]
+          exact (Root_weakenC_old store'.rootFree hbr _ _).trans (ih hσ store' a C)
+  | @loc s1 σ0 σ1 ρ0 hE0 ih =>
+      intro Γ' hσ' a C
+      cases hσ' with
+      | consC store' hbr _ =>
+          rw [← CapAtom.rename_comp, ← CaptureSet.rename_comp]
+          exact (Root_weakenC_old store'.rootFree hbr _ _).trans (ih hσ store' a C)
+  | write _ r a₀ ih =>
+      intro Γ' hσ' a C
+      cases hσ' with
+      | write store' _ _ => exact ih hσ store' a C
+
+/-- `Store.Ext.root_iff`'s statement over the wider relation. -/
+theorem Store.Grow.root_iff {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
+    (hE : Store.Grow σ σ' ρ) {Γ : Ctx s} {Γ' : Ctx s'}
+    (hσ : ⊢ σ : Γ) (hσ' : ⊢ σ' : Γ') (a : CapAtom s) (C : CaptureSet s) :
+    Γ'.Root (a.rename ρ) (C.rename ρ) ↔ Γ.Root a C :=
+  hE.root_iff_aux hσ hσ' a C
+
+/-- A fresh location stays fresh under a term binder. -/
+theorem Ctx.FreshLoc.weaken {Γ' : Ctx s'} {ρ : Rename s s'} {a : CapAtom s'}
+    (h : Γ'.FreshLoc ρ a) (b : Binding s') :
+    (Γ'.cons b).FreshLoc (ρ.comp Rename.succ) (CapAtom.weaken (k := .var) a) := by
+  refine ⟨(Ctx.isLocAtom_weaken_iff Γ' b a).mpr h.1, fun κ he => h.2 κ ?_⟩
+  rw [CapAtom.weaken, CapAtom.base_rename] at he
+  exact CapAtom.weaken_inj (k := .var) he
+
+/-- A fresh location stays fresh under a capture binder. -/
+theorem Ctx.FreshLoc.weakenC {Γ' : Ctx s'} {ρ : Rename s s'} {a : CapAtom s'}
+    (h : Γ'.FreshLoc ρ a) (b : CapBound s') :
+    (Γ'.consC b).FreshLoc (ρ.comp Rename.succ) (CapAtom.weaken (k := .cap) a) := by
+  refine ⟨(Ctx.isLocAtom_weakenC_iff Γ' b a).mpr h.1, fun κ he => h.2 κ ?_⟩
+  rw [CapAtom.weaken, CapAtom.base_rename] at he
+  exact CapAtom.weaken_inj (k := .cap) he
+
+/-- Subcapturing travels along a growth up to fresh locations: every root of a
+renamed old set is the image of an old root or a location the growth
+appended. -/
+theorem Store.Grow.capLe_aux {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
+    (hE : Store.Grow σ σ' ρ) {Γ : Ctx s} (hσ : ⊢ σ : Γ) {C D : CaptureSet s}
+    (h : CapLe Γ C D) :
+    ∀ {Γ' : Ctx s'}, (⊢ σ' : Γ') → CapLeFresh ρ Γ' (C.rename ρ) (D.rename ρ) := by
+  induction hE with
+  | refl =>
+      intro Γ' hσ'
+      cases Store.Typed.ctx_unique hσ hσ'
+      simpa using CapLe.fresh h Rename.id
+  | @cons s1 σ0 σ1 ρ0 hE0 v ih =>
+      intro Γ' hσ'
+      cases hσ' with
+      | cons store' _ _ =>
+          intro x hx
+          rw [← CaptureSet.rename_comp] at hx
+          obtain ⟨a, rfl, ha⟩ := Ctx.Root_cons_old _ _ hx
+          rcases ih hσ store' a ha with hD | hF
+          · left
+            rw [← CaptureSet.rename_comp]
+            exact (Ctx.Root_weaken_old _ _ _ _).mpr hD
+          · exact Or.inr (hF.weaken _)
+  | @consC s1 σ0 σ1 ρ0 hE0 b hb ih =>
+      intro Γ' hσ'
+      cases hσ' with
+      | consC store' hbr _ =>
+          intro x hx
+          rw [← CaptureSet.rename_comp] at hx
+          obtain ⟨n, hn⟩ := hx
+          have hn' : x ∈ (_ : Ctx (s1,c)).roots n (CaptureSet.weaken (k := .cap) (C.rename ρ0)) :=
+            hn
+          rw [Ctx.roots_weakenC_nonopaque _ hb] at hn'
+          clear hn
+          have hn := hn'
+          obtain ⟨a, ha, rfl⟩ := CaptureSet.mem_weaken.mp hn
+          rcases ih hσ store' a ⟨n, ha⟩ with hD | hF
+          · left
+            rw [← CaptureSet.rename_comp]
+            exact (Root_weakenC_old store'.rootFree hbr _ _).mpr hD
+          · exact Or.inr (hF.weakenC _)
+  | @loc s1 σ0 σ1 ρ0 hE0 ih =>
+      intro Γ' hσ'
+      cases hσ' with
+      | consC store' hbr _ =>
+          intro x hx
+          rw [← CaptureSet.rename_comp] at hx
+          obtain ⟨n, hn⟩ := hx
+          rcases (mem_roots_weakenC_opaque store'.rootFree rfl hbr n _ x).mp hn with
+            ⟨a, ha, rfl⟩ | ⟨rfl, -⟩
+          · rcases ih hσ store' a ⟨n, ha⟩ with hD | hF
+            · left
+              rw [← CaptureSet.rename_comp]
+              exact (Root_weakenC_old store'.rootFree hbr _ _).mpr hD
+            · exact Or.inr (hF.weakenC _)
+          · right
+            refine ⟨⟨.here, true, rfl, rfl⟩, fun κ he => ?_⟩
+            simp [CapAtom.base, Rename.comp] at he
+  | write _ r a₀ ih =>
+      intro Γ' hσ'
+      cases hσ' with
+      | write store' _ _ => exact ih hσ store'
+
+/-- **Subcapturing travels along a growth up to fresh locations** (plan-5h
+Fact 5 and S0.7). -/
+theorem Store.Grow.capLe {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}
+    (hE : Store.Grow σ σ' ρ) {Γ : Ctx s} {Γ' : Ctx s'}
+    (hσ : ⊢ σ : Γ) (hσ' : ⊢ σ' : Γ') {C D : CaptureSet s} (h : CapLe Γ C D) :
+    CapLeFresh ρ Γ' (C.rename ρ) (D.rename ρ) :=
+  hE.capLe_aux hσ h hσ'
 
 end FCdot
 

@@ -45,6 +45,11 @@ inductive Tm : Sig → Type where
   | box : BVar s .var → Tm s
   /-- Open a box: read the variable the box at `x` holds. -/
   | unbox : BVar s .var → Tm s
+  /-- A cell holding its first content, a variable.  It is a value, and a
+      store holds it (plan-5h S0.10). -/
+  | cell : BVar s .var → Tm s
+  /-- A read-only view of the cell at a variable.  It is a value. -/
+  | reader : BVar s .var → Tm s
 
 inductive Fields : Sig → Type where
   | nil : Fields s
@@ -70,6 +75,8 @@ def Tm.rename : Tm s1 → Rename s1 s2 → Tm s2
   | .letex t u, ρ => .letex (t.rename ρ) (u.rename ρ.lift.lift)
   | .box x, ρ => .box (ρ.var x)
   | .unbox x, ρ => .unbox (ρ.var x)
+  | .cell x, ρ => .cell (ρ.var x)
+  | .reader x, ρ => .reader (ρ.var x)
 
 def Fields.rename : Fields s1 → Rename s1 s2 → Fields s2
   | .nil, _ => .nil
@@ -126,6 +133,8 @@ def Tm.map : Tm s1 → VRen s1 s2 → Tm s2
   | .letex t u, f => .letex (t.map f) (u.map f.liftC.lift)
   | .box x, f => .box (f x)
   | .unbox x, f => .unbox (f x)
+  | .cell x, f => .cell (f x)
+  | .reader x, f => .reader (f x)
 
 def Fields.map : Fields s1 → VRen s1 s2 → Fields s2
   | .nil, _ => .nil
@@ -166,6 +175,8 @@ theorem Tm.rename_eq_ofRename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
         VRen.ofRename_lift, VRen.ofRename_liftC]
   | .box x => rfl
   | .unbox x => rfl
+  | .cell x => rfl
+  | .reader x => rfl
 
 theorem Fields.rename_eq_ofRename {s1 s2 : Sig} (F : Fields s1) (ρ : Rename s1 s2) :
     F.rename ρ = F.map (VRen.ofRename ρ) := by
@@ -221,6 +232,8 @@ theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
   | .letex t u => simp [Tm.rename]
   | .box x => simp [Tm.rename]
   | .unbox x => simp [Tm.rename]
+  | .cell x => rfl
+  | .reader x => rfl
 
 theorem Tm.inspects_substVar {s : Sig} {k : Kind} (t : Tm (s,,k)) (y : BVar s k) :
     (t.substVar y).inspects = t.inspects.map (Rename.subst y).var :=
@@ -234,6 +247,8 @@ inductive IsValue : Tm s → Prop where
   | lam : IsValue (.lam t)
   | obj : IsValue (.obj F)
   | box : IsValue (.box x)
+  | cell : IsValue (.cell x)
+  | reader : IsValue (.reader x)
 
 /-- A store: one slot per term binder, and a data-free slot per capture
 binder.  (`consᶜ` of the plan: `ᶜ` is not a legal Lean identifier character,
@@ -242,11 +257,16 @@ inductive Store : Sig → Type where
   | nil : Store []
   | cons : Store s → Tm s → Store (s,x)
   | consC : Store s → Store (s,c)
+  /-- A write record: the cell and its new content.  It binds nothing, and the
+      runtime keeps a record per write, so erasure stays slot for slot
+      (plan-5h decision 29). -/
+  | write : Store s → BVar s .var → BVar s .var → Store s
 
 def Store.lookup : Store s → BVar s .var → Tm s
   | .cons _ v, .here => v.weaken
   | .cons σ _, .there y => (σ.lookup y).weaken
   | .consC σ, .there y => (σ.lookup y).weaken
+  | .write σ _ _, y => σ.lookup y
 
 inductive Cont : Sig → Type where
   | nil : Cont s

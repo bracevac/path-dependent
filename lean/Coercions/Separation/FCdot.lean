@@ -9,6 +9,7 @@ import Coercions.Separation.FCdot.Erasure
 import Coercions.Separation.FCdot.TypingRename
 import Coercions.Separation.FCdot.Transparency
 import Coercions.Separation.FCdot.TypingSubst
+import Coercions.Separation.FCdot.Retyping
 import Coercions.Separation.FCdot.Preservation
 import Coercions.Separation.FCdot.ErasureMetatheory
 import Coercions.Separation.FCdot.Checker
@@ -17,12 +18,15 @@ import Coercions.Separation.FCdot.Normalizer
 import Coercions.Separation.FCdot.Resolution
 import Coercions.Separation.FCdot.LevelInversion
 import Coercions.Separation.FCdot.Levels
+import Coercions.Separation.FCdot.ModeBounds
 import Coercions.Separation.FCdot.FormTyping
 import Coercions.Separation.FCdot.FormAlgebra
 import Coercions.Separation.FCdot.CanonicalForms
 import Coercions.Separation.FCdot.Progress
 import Coercions.Separation.FCdot.Consistency
 import Coercions.Separation.FCdot.Prediction
+import Coercions.Separation.FCdot.ModeExamples
+import Coercions.Separation.FCdot.TermExamples
 import Coercions.Separation.FCdot.Examples
 /-!
 Import root for FCdot, the explicit-evidence coercion target of Plan III.

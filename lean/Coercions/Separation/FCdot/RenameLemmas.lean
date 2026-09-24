@@ -21,12 +21,22 @@ namespace FCdot
 /-! ## `rename_id` and `rename_comp` for capture atoms and capture sets -/
 
 @[simp] theorem CapAtom.rename_id {s : Sig} (a : CapAtom s) : a.rename Rename.id = a := by
-  cases a <;> simp [CapAtom.rename]
+  induction a with
+  | var x => simp [CapAtom.rename]
+  | cvar κ => simp [CapAtom.rename]
+  | name x ℓ => simp [CapAtom.rename]
+  | top => simp [CapAtom.rename]
+  | mode m a ih => simp [CapAtom.rename, ih]
 
 @[simp] theorem CapAtom.rename_comp {s1 s2 s3 : Sig} (a : CapAtom s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
     (a.rename ρ).rename ρ' = a.rename (ρ.comp ρ') := by
-  cases a <;> simp [CapAtom.rename]
+  induction a with
+  | var x => simp [CapAtom.rename]
+  | cvar κ => simp [CapAtom.rename]
+  | name x ℓ => simp [CapAtom.rename]
+  | top => simp [CapAtom.rename]
+  | mode m a ih => simp [CapAtom.rename, ih]
 
 @[simp] theorem CaptureSet.rename_id {s : Sig} :
     ∀ C : CaptureSet s, C.rename Rename.id = C
@@ -55,6 +65,8 @@ mutual
   | .pi S T => simp [Shape.rename, Rename.lift_id, Ty.rename_id S, ETy.rename_id T]
   | .obj Tel => simp [Shape.rename, Rename.lift_id, Telescope.rename_id Tel]
   | .box T => simp [Shape.rename, Ty.rename_id T]
+  | .cell T => simp [Shape.rename, Ty.rename_id T]
+  | .reader T => simp [Shape.rename, Ty.rename_id T]
 
 @[simp] theorem Ty.rename_id {s : Sig} (T : Ty s) : T.rename Rename.id = T := by
   match T with
@@ -80,6 +92,7 @@ mutual
   match E with
   | .ty T => simp [ETy.rename, Ty.rename_id T]
   | .ex C T => simp [ETy.rename, Rename.lift_id, CaptureSet.rename_id C, Ty.rename_id T]
+  | .fresh T => simp [ETy.rename, Rename.lift_id, Ty.rename_id T]
 
 end
 
@@ -98,6 +111,8 @@ mutual
   | .obj Tel =>
       simp [Shape.rename, Rename.lift_comp, Telescope.rename_comp Tel]
   | .box T => simp [Shape.rename, Ty.rename_comp T]
+  | .cell T => simp [Shape.rename, Ty.rename_comp T]
+  | .reader T => simp [Shape.rename, Ty.rename_comp T]
 
 @[simp] theorem Ty.rename_comp {s1 s2 s3 : Sig} (T : Ty s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -131,6 +146,7 @@ mutual
   | .ty T => simp [ETy.rename, Ty.rename_comp T]
   | .ex C T =>
       simp [ETy.rename, Rename.lift_comp, CaptureSet.rename_comp C, Ty.rename_comp T]
+  | .fresh T => simp [ETy.rename, Rename.lift_comp, Ty.rename_comp T]
 
 end
 
@@ -155,6 +171,8 @@ mutual
   | .intoBnd e => simp [ShapeCo.rename, ShapeCo.rename_id e]
   | .member a e i => simp [ShapeCo.rename, Atom.rename_id a, ShapeCo.rename_id e]
   | .boxed d => simp [ShapeCo.rename, LeCo.rename_id d]
+  | .toReader T => simp [ShapeCo.rename, Ty.rename_id T]
+  | .readerCov d => simp [ShapeCo.rename, LeCo.rename_id d]
 
 @[simp] theorem CapCo.rename_id {s : Sig} (f : CapCo s) : f.rename Rename.id = f := by
   match f with
@@ -166,6 +184,9 @@ mutual
   | .member a e i => simp [CapCo.rename, Atom.rename_id a, ShapeCo.rename_id e]
   | .eqToLe φ => simp [CapCo.rename, CapEq.rename_id φ]
   | .level e r => simp [CapCo.rename, CapAtom.rename_id e, CapAtom.rename_id r]
+  | .modeLe a m m' => simp [CapCo.rename, CapAtom.rename_id a]
+  | .roMap f => simp [CapCo.rename, CapCo.rename_id f]
+  | .ownLe a W => simp [CapCo.rename, CapAtom.rename_id a]
 
 @[simp] theorem CapEq.rename_id {s : Sig} (φ : CapEq s) : φ.rename Rename.id = φ := by
   match φ with
@@ -241,6 +262,9 @@ mutual
   | .cong h e =>
       simp [ELeCo.rename, Rename.lift_id, CapCo.rename_id h, LeCo.rename_id e]
   | .trans g h => simp [ELeCo.rename, ELeCo.rename_id g, ELeCo.rename_id h]
+  | .packF W e =>
+      simp [ELeCo.rename, Rename.lift_id, CaptureSet.rename_id W, LeCo.rename_id e]
+  | .congF e => simp [ELeCo.rename, Rename.lift_id, LeCo.rename_id e]
 
 @[simp] theorem PAtom.rename_id {s : Sig} (p : PAtom s) : p.rename Rename.id = p := by
   match p with
@@ -248,6 +272,9 @@ mutual
   | .pack C h e a =>
       simp [PAtom.rename, Rename.lift_id, CaptureSet.rename_id C, CapCo.rename_id h,
         LeCo.rename_id e, Atom.rename_id a]
+  | .packF W e a =>
+      simp [PAtom.rename, Rename.lift_id, CaptureSet.rename_id W, LeCo.rename_id e,
+        Atom.rename_id a]
 
 end
 
@@ -275,6 +302,8 @@ mutual
   | .intoBnd e => simp [ShapeCo.rename, ShapeCo.rename_comp e]
   | .member a e i => simp [ShapeCo.rename, Atom.rename_comp a, ShapeCo.rename_comp e]
   | .boxed d => simp [ShapeCo.rename, LeCo.rename_comp d]
+  | .toReader T => simp [ShapeCo.rename, Ty.rename_comp T]
+  | .readerCov d => simp [ShapeCo.rename, LeCo.rename_comp d]
 
 @[simp] theorem CapCo.rename_comp {s1 s2 s3 : Sig} (f : CapCo s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -288,6 +317,9 @@ mutual
   | .member a e i => simp [CapCo.rename, Atom.rename_comp a, ShapeCo.rename_comp e]
   | .eqToLe φ => simp [CapCo.rename, CapEq.rename_comp φ]
   | .level e r => simp [CapCo.rename, CapAtom.rename_comp e, CapAtom.rename_comp r]
+  | .modeLe a m m' => simp [CapCo.rename, CapAtom.rename_comp a]
+  | .roMap f => simp [CapCo.rename, CapCo.rename_comp f]
+  | .ownLe a W => simp [CapCo.rename, CapAtom.rename_comp a]
 
 @[simp] theorem CapEq.rename_comp {s1 s2 s3 : Sig} (φ : CapEq s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -383,6 +415,9 @@ mutual
   | .cong h e =>
       simp [ELeCo.rename, Rename.lift_comp, CapCo.rename_comp h, LeCo.rename_comp e]
   | .trans g h => simp [ELeCo.rename, ELeCo.rename_comp g, ELeCo.rename_comp h]
+  | .packF W e =>
+      simp [ELeCo.rename, Rename.lift_comp, CaptureSet.rename_comp W, LeCo.rename_comp e]
+  | .congF e => simp [ELeCo.rename, Rename.lift_comp, LeCo.rename_comp e]
 
 @[simp] theorem PAtom.rename_comp {s1 s2 s3 : Sig} (p : PAtom s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -392,6 +427,9 @@ mutual
   | .pack C h e a =>
       simp [PAtom.rename, Rename.lift_comp, CaptureSet.rename_comp C, CapCo.rename_comp h,
         LeCo.rename_comp e, Atom.rename_comp a]
+  | .packF W e a =>
+      simp [PAtom.rename, Rename.lift_comp, CaptureSet.rename_comp W, LeCo.rename_comp e,
+        Atom.rename_comp a]
 
 end
 
@@ -429,6 +467,13 @@ mutual
       simp [Tm.rename, Rename.lift_id, Tm.rename_id t, Tm.rename_id u,
         CaptureSet.rename_id U, CapCo.rename_id h]
   | .unbox a U f => simp [Tm.rename, CaptureSet.rename_id U]
+  | .newLet a u U f =>
+      simp [Tm.rename, Rename.lift_id, Tm.rename_id u, CaptureSet.rename_id U]
+  | .read a => simp [Tm.rename]
+  | .write a b => simp [Tm.rename]
+  | .letexF t u U f =>
+      simp [Tm.rename, Rename.lift_id, Tm.rename_id t, Tm.rename_id u,
+        CaptureSet.rename_id U]
 
 @[simp] theorem Value.rename_id {s : Sig} (v : Value s) : v.rename Rename.id = v := by
   match v with
@@ -439,9 +484,14 @@ mutual
         Fields.rename_id F, CaptureSet.rename_id A]
   | .box a => simp [Value.rename]
   | .cast v e => simp [Value.rename, Value.rename_id v]
+  | .cell ℓ a => simp [Value.rename]
+  | .reader r => simp [Value.rename]
   | .pack C h e v =>
       simp [Value.rename, Rename.lift_id, CaptureSet.rename_id C, CapCo.rename_id h,
         LeCo.rename_id e, Value.rename_id v]
+  | .packF W e v =>
+      simp [Value.rename, Rename.lift_id, CaptureSet.rename_id W, LeCo.rename_id e,
+        Value.rename_id v]
 
 @[simp] theorem Witnesses.rename_id {s : Sig} (W : Witnesses s) : W.rename Rename.id = W := by
   match W with
@@ -476,6 +526,13 @@ mutual
       simp [Tm.rename, Rename.lift_comp, Tm.rename_comp t, Tm.rename_comp u,
         CaptureSet.rename_comp U, CapCo.rename_comp h]
   | .unbox a U f => simp [Tm.rename, CaptureSet.rename_comp U]
+  | .newLet a u U f =>
+      simp [Tm.rename, Rename.lift_comp, Tm.rename_comp u, CaptureSet.rename_comp U]
+  | .read a => simp [Tm.rename]
+  | .write a b => simp [Tm.rename]
+  | .letexF t u U f =>
+      simp [Tm.rename, Rename.lift_comp, Tm.rename_comp t, Tm.rename_comp u,
+        CaptureSet.rename_comp U]
 
 @[simp] theorem Value.rename_comp {s1 s2 s3 : Sig} (v : Value s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -488,9 +545,14 @@ mutual
         Fields.rename_comp F, CaptureSet.rename_comp A]
   | .box a => simp [Value.rename]
   | .cast v e => simp [Value.rename, Value.rename_comp v]
+  | .cell ℓ a => simp [Value.rename]
+  | .reader r => simp [Value.rename]
   | .pack C h e v =>
       simp [Value.rename, Rename.lift_comp, CaptureSet.rename_comp C, CapCo.rename_comp h,
         LeCo.rename_comp e, Value.rename_comp v]
+  | .packF W e v =>
+      simp [Value.rename, Rename.lift_comp, CaptureSet.rename_comp W, LeCo.rename_comp e,
+        Value.rename_comp v]
 
 @[simp] theorem Witnesses.rename_comp {s1 s2 s3 : Sig} (W : Witnesses s1)
     (ρ : Rename s1 s2) (ρ' : Rename s2 s3) :
@@ -611,7 +673,12 @@ substitution, and the two agree. -/
 
 @[simp] theorem CapAtom.subst_ofRename {s1 s2 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2) :
     a.subst (Subst.ofRename ρ) = a.rename ρ := by
-  cases a <;> simp [CapAtom.subst, CapAtom.rename]
+  induction a with
+  | var x => simp [CapAtom.subst, CapAtom.rename]
+  | cvar κ => simp [CapAtom.subst, CapAtom.rename]
+  | name x ℓ => simp [CapAtom.subst, CapAtom.rename]
+  | top => simp [CapAtom.subst, CapAtom.rename]
+  | mode m a ih => simp [CapAtom.subst, CapAtom.rename, ih]
 
 @[simp] theorem CaptureSet.subst_ofRename {s1 s2 : Sig} (C : CaptureSet s1)
     (ρ : Rename s1 s2) : C.subst (Subst.ofRename ρ) = C.rename ρ := by
@@ -628,6 +695,8 @@ mutual
       simp [Shape.subst, Shape.rename, Ty.subst_ofRename S, ETy.subst_ofRename T]
   | .obj Tel => simp [Shape.subst, Shape.rename, Telescope.subst_ofRename Tel]
   | .box T => simp [Shape.subst, Shape.rename, Ty.subst_ofRename T]
+  | .cell T => simp [Shape.subst, Shape.rename, Ty.subst_ofRename T]
+  | .reader T => simp [Shape.subst, Shape.rename, Ty.subst_ofRename T]
 
 @[simp] theorem Ty.subst_ofRename {s1 s2 : Sig} (T : Ty s1) (ρ : Rename s1 s2) :
     T.subst (Subst.ofRename ρ) = T.rename ρ := by
@@ -661,6 +730,7 @@ mutual
   match E with
   | .ty T => simp [ETy.subst, ETy.rename, Ty.subst_ofRename T]
   | .ex C T => simp [ETy.subst, ETy.rename, Ty.subst_ofRename T]
+  | .fresh T => simp [ETy.subst, ETy.rename, Ty.subst_ofRename T]
 
 end
 
@@ -707,7 +777,12 @@ end Subst
 
 theorem CapAtom.rename_subst {s1 s2 s3 : Sig} (a : CapAtom s1) (ρ : Rename s1 s2)
     (σ : Subst s2 s3) : (a.rename ρ).subst σ = a.subst (Subst.compRename ρ σ) := by
-  cases a <;> rfl
+  induction a with
+  | var x => rfl
+  | cvar κ => rfl
+  | name x ℓ => rfl
+  | top => rfl
+  | mode m a ih => simp [CapAtom.rename, CapAtom.subst, ih]
 
 theorem CaptureSet.rename_subst {s1 s2 s3 : Sig} (C : CaptureSet s1) (ρ : Rename s1 s2)
     (σ : Subst s2 s3) : (C.rename ρ).subst σ = C.subst (Subst.compRename ρ σ) := by
@@ -727,6 +802,8 @@ theorem Shape.rename_subst {s1 s2 s3 : Sig} (S : Shape s1) (ρ : Rename s1 s2)
   | .obj Tel =>
       simp only [Shape.rename, Shape.subst, Telescope.rename_subst, Subst.compRename_lift]
   | .box T => simp only [Shape.rename, Shape.subst, Ty.rename_subst]
+  | .cell T => simp only [Shape.rename, Shape.subst, Ty.rename_subst]
+  | .reader T => simp only [Shape.rename, Shape.subst, Ty.rename_subst]
 
 theorem Ty.rename_subst {s1 s2 s3 : Sig} (T : Ty s1) (ρ : Rename s1 s2)
     (σ : Subst s2 s3) : (T.rename ρ).subst σ = T.subst (Subst.compRename ρ σ) := by
@@ -759,6 +836,7 @@ theorem ETy.rename_subst {s1 s2 s3 : Sig} (E : ETy s1) (ρ : Rename s1 s2)
   | .ex C T =>
       simp only [ETy.rename, ETy.subst, CaptureSet.rename_subst, Ty.rename_subst,
         Subst.compRename_liftC]
+  | .fresh T => simp only [ETy.rename, ETy.subst, Ty.rename_subst, Subst.compRename_liftC]
 
 end
 
@@ -871,6 +949,8 @@ mutual
   | .member a e i =>
       simp [ShapeCo.subst, ShapeCo.rename, Atom.subst_ofRename a, ShapeCo.subst_ofRename e]
   | .boxed d => simp [ShapeCo.subst, ShapeCo.rename, LeCo.subst_ofRename d]
+  | .toReader T => simp [ShapeCo.subst, ShapeCo.rename, Ty.subst_ofRename T]
+  | .readerCov d => simp [ShapeCo.subst, ShapeCo.rename, LeCo.subst_ofRename d]
 
 @[simp] theorem CapCo.subst_ofRename {s1 s2 : Sig} (f : CapCo s1) (ρ : Rename s1 s2) :
     f.subst (Subst.ofRename ρ) = f.rename ρ := by
@@ -884,6 +964,9 @@ mutual
       simp [CapCo.subst, CapCo.rename, Atom.subst_ofRename a, ShapeCo.subst_ofRename e]
   | .eqToLe φ => simp [CapCo.subst, CapCo.rename, CapEq.subst_ofRename φ]
   | .level e r => simp [CapCo.subst, CapCo.rename]
+  | .modeLe a m m' => simp [CapCo.subst, CapCo.rename]
+  | .roMap f => simp [CapCo.subst, CapCo.rename, CapCo.subst_ofRename f]
+  | .ownLe a W => simp [CapCo.subst, CapCo.rename]
 
 @[simp] theorem CapEq.subst_ofRename {s1 s2 : Sig} (φ : CapEq s1) (ρ : Rename s1 s2) :
     φ.subst (Subst.ofRename ρ) = φ.rename ρ := by
@@ -975,6 +1058,8 @@ mutual
       simp [ELeCo.subst, ELeCo.rename, CapCo.subst_ofRename h, LeCo.subst_ofRename e]
   | .trans g h =>
       simp [ELeCo.subst, ELeCo.rename, ELeCo.subst_ofRename g, ELeCo.subst_ofRename h]
+  | .packF W e => simp [ELeCo.subst, ELeCo.rename, LeCo.subst_ofRename e]
+  | .congF e => simp [ELeCo.subst, ELeCo.rename, LeCo.subst_ofRename e]
 
 @[simp] theorem PAtom.subst_ofRename {s1 s2 : Sig} (p : PAtom s1) (ρ : Rename s1 s2) :
     p.subst (Subst.ofRename ρ) = p.rename ρ := by
@@ -983,6 +1068,8 @@ mutual
   | .pack C h e a =>
       simp [PAtom.subst, PAtom.rename, CapCo.subst_ofRename h, LeCo.subst_ofRename e,
         Atom.subst_ofRename a]
+  | .packF W e a =>
+      simp [PAtom.subst, PAtom.rename, LeCo.subst_ofRename e, Atom.subst_ofRename a]
 
 end
 
@@ -1005,6 +1092,14 @@ mutual
         CapCo.subst_ofRename h, CapCo.subst_ofRename f]
   | .unbox a U f =>
       simp [Tm.subst, Tm.rename, Atom.subst_ofRename a, CapCo.subst_ofRename f]
+  | .newLet a u U f =>
+      simp [Tm.subst, Tm.rename, Atom.subst_ofRename a, Tm.subst_ofRename u,
+        CapCo.subst_ofRename f]
+  | .read a => simp [Tm.subst, Tm.rename, Atom.subst_ofRename a]
+  | .write a b => simp [Tm.subst, Tm.rename, Atom.subst_ofRename a, Atom.subst_ofRename b]
+  | .letexF t u U f =>
+      simp [Tm.subst, Tm.rename, Tm.subst_ofRename t, Tm.subst_ofRename u,
+        CapCo.subst_ofRename f]
 
 @[simp] theorem Value.subst_ofRename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
     v.subst (Subst.ofRename ρ) = v.rename ρ := by
@@ -1014,10 +1109,14 @@ mutual
   | .obj A W Wc F =>
       simp [Value.subst, Value.rename, Fields.subst_ofRename F]
   | .box a => simp [Value.subst, Value.rename, Atom.subst_ofRename a]
+  | .cell c a => simp [Value.subst, Value.rename, Atom.subst_ofRename a]
+  | .reader r => simp [Value.subst, Value.rename, Subst.rootVar, Subst.ofRename]
   | .cast v e => simp [Value.subst, Value.rename, Value.subst_ofRename v, LeCo.subst_ofRename e]
   | .pack C h e v =>
       simp [Value.subst, Value.rename, CapCo.subst_ofRename h, LeCo.subst_ofRename e,
         Value.subst_ofRename v]
+  | .packF W e v =>
+      simp [Value.subst, Value.rename, LeCo.subst_ofRename e, Value.subst_ofRename v]
 
 @[simp] theorem Fields.subst_ofRename {s1 s2 : Sig} (F : Fields s1) (ρ : Rename s1 s2) :
     F.subst (Subst.ofRename ρ) = F.rename ρ := by
@@ -1271,10 +1370,20 @@ theorem Rename.succ_injective {s : Sig} {k : Kind} : (Rename.succ (s := s) (k :=
 
 theorem CapAtom.rename_inj {s1 s2 : Sig} (a a' : CapAtom s1) (ρ : Rename s1 s2)
     (hρ : ρ.Injective) (h : a.rename ρ = a'.rename ρ) : a = a' := by
-  cases a <;> cases a' <;> simp [CapAtom.rename] at h ⊢
-  · exact hρ _ _ h
-  · exact hρ _ _ h
-  · exact ⟨hρ _ _ h.1, h.2⟩
+  induction a generalizing a' with
+  | var x =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact hρ _ _ h
+  | cvar κ =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact hρ _ _ h
+  | name x ℓ =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact ⟨hρ _ _ h.1, h.2⟩
+  | top => cases a' <;> simp [CapAtom.rename] at h ⊢
+  | mode m a ih =>
+      cases a' <;> simp [CapAtom.rename] at h ⊢
+      exact ⟨h.1, ih _ h.2⟩
 
 theorem CaptureSet.rename_inj {s1 s2 : Sig} (ρ : Rename s1 s2) (hρ : ρ.Injective) :
     ∀ (C C' : CaptureSet s1), C.rename ρ = C'.rename ρ → C = C'
@@ -1302,6 +1411,12 @@ theorem Shape.rename_inj {s1 s2 : Sig} (S S' : Shape s1) (ρ : Rename s1 s2) (h�
       cases S' <;> simp [Shape.rename] at h ⊢
       exact Telescope.rename_inj Tel _ ρ.lift hρ.lift h
   | .box T =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact Ty.rename_inj T _ ρ hρ h
+  | .cell T =>
+      cases S' <;> simp [Shape.rename] at h ⊢
+      exact Ty.rename_inj T _ ρ hρ h
+  | .reader T =>
       cases S' <;> simp [Shape.rename] at h ⊢
       exact Ty.rename_inj T _ ρ hρ h
 
@@ -1349,6 +1464,9 @@ theorem ETy.rename_inj {s1 s2 : Sig} (E E' : ETy s1) (ρ : Rename s1 s2)
   | .ex C T =>
       cases E' <;> simp [ETy.rename] at h ⊢
       exact ⟨CaptureSet.rename_inj ρ hρ C _ h.1, Ty.rename_inj T _ ρ.lift hρ.lift h.2⟩
+  | .fresh T =>
+      cases E' <;> simp [ETy.rename] at h ⊢
+      exact Ty.rename_inj T _ ρ.lift hρ.lift h
 
 end
 
@@ -1424,50 +1542,169 @@ theorem CaptureSet.subst_union {s1 s2 : Sig} (C D : CaptureSet s1) (σ : Subst s
     (C ∪ D).subst σ = C.subst σ ∪ D.subst σ := by
   simp [CaptureSet.subst, CaptureSet.union_def]
 
+/-- The charged witness travels with a renaming. -/
+theorem CaptureSet.charged_rename {s1 s2 : Sig} (W : CaptureSet s1) (ρ : Rename s1 s2) :
+    W.charged.rename ρ = (W.rename ρ).charged := by
+  simp [CaptureSet.charged, CaptureSet.rename, CapAtom.rename]
+
+/-- The charged witness travels with a substitution: the wrapper is direct. -/
+theorem CaptureSet.charged_subst {s1 s2 : Sig} (W : CaptureSet s1) (σ : Subst s1 s2) :
+    W.charged.subst σ = (W.subst σ).charged := by
+  simp [CaptureSet.charged, CaptureSet.subst, CapAtom.subst]
+
+theorem ELeCo.charge_rename {s1 s2 : Sig} (g : ELeCo s1) (ρ : Rename s1 s2) :
+    (g.rename ρ).charge = g.charge.rename ρ := by
+  match g with
+  | .plain e => rfl
+  | .pack C h e => rfl
+  | .cong h e => rfl
+  | .trans g h =>
+      simp only [ELeCo.rename, ELeCo.charge_trans, CaptureSet.rename_union,
+        ELeCo.charge_rename g, ELeCo.charge_rename h]
+  | .packF W e => simp only [ELeCo.rename, ELeCo.charge_packF, CaptureSet.charged_rename]
+  | .congF e => rfl
+
+theorem ELeCo.charge_subst {s1 s2 : Sig} (g : ELeCo s1) (σ : Subst s1 s2) :
+    (g.subst σ).charge = g.charge.subst σ := by
+  match g with
+  | .plain e => rfl
+  | .pack C h e => rfl
+  | .cong h e => rfl
+  | .trans g h =>
+      simp only [ELeCo.subst, ELeCo.charge_trans, CaptureSet.subst_union,
+        ELeCo.charge_subst g, ELeCo.charge_subst h]
+  | .packF W e => simp only [ELeCo.subst, ELeCo.charge_packF, CaptureSet.charged_subst]
+  | .congF e => rfl
+
+theorem PAtom.charge_rename {s1 s2 : Sig} (p : PAtom s1) (ρ : Rename s1 s2) :
+    (p.rename ρ).charge = p.charge.rename ρ := by
+  cases p with
+  | plain a => rfl
+  | pack C h e a => rfl
+  | packF W e a => simp only [PAtom.rename, PAtom.charge_packF, CaptureSet.charged_rename]
+
+theorem PAtom.charge_subst {s1 s2 : Sig} (p : PAtom s1) (σ : Subst s1 s2) :
+    (p.subst σ).charge = p.charge.subst σ := by
+  cases p with
+  | plain a => rfl
+  | pack C h e a => rfl
+  | packF W e a => simp only [PAtom.subst, PAtom.charge_packF, CaptureSet.charged_subst]
+
+theorem Value.charge_rename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
+    (v.rename ρ).charge = v.charge.rename ρ := by
+  cases v with
+  | packF W e v => simp only [Value.rename, Value.charge_packF, CaptureSet.charged_rename]
+  | lam => rfl
+  | obj => rfl
+  | box => rfl
+  | pack => rfl
+  | cast => rfl
+  | cell => rfl
+  | reader => rfl
+
+theorem Value.charge_subst {s1 s2 : Sig} (v : Value s1) (σ : Subst s1 s2) :
+    (v.subst σ).charge = v.charge.subst σ := by
+  cases v with
+  | packF W e v => simp only [Value.subst, Value.charge_packF, CaptureSet.charged_subst]
+  | lam => rfl
+  | obj => rfl
+  | box => rfl
+  | pack => rfl
+  | cast => rfl
+  | cell => rfl
+  | reader => rfl
+
+/-- Cell freedom travels with a renaming. -/
+@[simp] theorem Value.cellFree_rename {s1 s2 : Sig} :
+    ∀ (v : Value s1) (ρ : Rename s1 s2), (v.rename ρ).cellFree = v.cellFree
+  | .cast v _, ρ => Value.cellFree_rename v ρ
+  | .pack _ _ _ v, ρ => Value.cellFree_rename v ρ
+  | .packF _ _ v, ρ => Value.cellFree_rename v ρ
+  | .lam _ _ _ _, _ => rfl
+  | .obj _ _ _ _, _ => rfl
+  | .box _, _ => rfl
+  | .cell _ _, _ => rfl
+  | .reader _, _ => rfl
+
+/-- Cell freedom travels with a substitution. -/
+@[simp] theorem Value.cellFree_subst {s1 s2 : Sig} :
+    ∀ (v : Value s1) (σ : Subst s1 s2), (v.subst σ).cellFree = v.cellFree
+  | .cast v _, σ => Value.cellFree_subst v σ
+  | .pack _ _ _ v, σ => Value.cellFree_subst v σ
+  | .packF _ _ v, σ => Value.cellFree_subst v σ
+  | .lam _ _ _ _, _ => rfl
+  | .obj _ _ _ _, _ => rfl
+  | .box _, _ => rfl
+  | .cell _ _, _ => rfl
+  | .reader _, _ => rfl
+
 theorem Tm.uses_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
     (t.rename ρ).uses = t.uses.rename ρ := by
   match t with
-  | .atom a => simp [Tm.rename, CaptureSet.rename, CapAtom.rename]
-  | .val v => simp [Tm.rename, CaptureSet.rename]
+  | .atom a =>
+      simp only [Tm.rename, Tm.uses_atom, CaptureSet.rename_union, PAtom.charge_rename]
+      simp [CaptureSet.rename, CapAtom.rename]
+  | .val v => simp only [Tm.rename, Tm.uses_val, Value.charge_rename]
   | .app a b => simp [Tm.rename, CaptureSet.rename, CapAtom.rename]
   | .proj a ℓ h => simp [Tm.rename, CaptureSet.rename, CapAtom.rename]
   | .let t u U f =>
       simp only [Tm.rename, Tm.uses_let, CaptureSet.rename_union, Tm.uses_rename t]
   | .cast t e => simp only [Tm.rename, Tm.uses_cast, Tm.uses_rename t]
-  | .castE t g => simp only [Tm.rename, Tm.uses_castE, Tm.uses_rename t]
+  | .castE t g =>
+      simp only [Tm.rename, Tm.uses_castE, CaptureSet.rename_union, Tm.uses_rename t,
+        ELeCo.charge_rename]
   | .letex t u U h f =>
       simp only [Tm.rename, Tm.uses_letex, CaptureSet.rename_union, Tm.uses_rename t]
   | .unbox a U f =>
       simp only [Tm.rename, Tm.uses_unbox, CaptureSet.rename_union, Atom.root_rename]
       simp [CaptureSet.rename, CapAtom.rename]
+  | .newLet a u U f =>
+      simp only [Tm.rename, Tm.uses_newLet, CaptureSet.rename_union, Atom.root_rename]
+      simp [CaptureSet.rename, CapAtom.rename]
+  | .read a => simp [Tm.rename, CaptureSet.rename, CapAtom.rename]
+  | .write a b => simp [Tm.rename, CaptureSet.rename, CapAtom.rename]
+  | .letexF t u U f =>
+      simp only [Tm.rename, Tm.uses_letexF, CaptureSet.rename_union, Tm.uses_rename t]
 
 theorem Tm.uses_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
     (t.subst σ).uses = t.uses.subst σ := by
   match t with
-  | .atom a => simp [Tm.subst, CaptureSet.subst, CapAtom.subst]
-  | .val v => simp [Tm.subst, CaptureSet.subst]
+  | .atom a =>
+      simp only [Tm.subst, Tm.uses_atom, CaptureSet.subst_union, PAtom.charge_subst]
+      simp [CaptureSet.subst, CapAtom.subst]
+  | .val v => simp only [Tm.subst, Tm.uses_val, Value.charge_subst]
   | .app a b => simp [Tm.subst, CaptureSet.subst, CapAtom.subst]
   | .proj a ℓ h => simp [Tm.subst, CaptureSet.subst, CapAtom.subst]
   | .let t u U f =>
       simp only [Tm.subst, Tm.uses_let, CaptureSet.subst_union, Tm.uses_subst t]
   | .cast t e => simp only [Tm.subst, Tm.uses_cast, Tm.uses_subst t]
-  | .castE t g => simp only [Tm.subst, Tm.uses_castE, Tm.uses_subst t]
+  | .castE t g =>
+      simp only [Tm.subst, Tm.uses_castE, CaptureSet.subst_union, Tm.uses_subst t,
+        ELeCo.charge_subst]
   | .letex t u U h f =>
       simp only [Tm.subst, Tm.uses_letex, CaptureSet.subst_union, Tm.uses_subst t]
   | .unbox a U f =>
       simp only [Tm.subst, Tm.uses_unbox, CaptureSet.subst_union, Atom.root_subst]
       simp [CaptureSet.subst, CapAtom.subst]
+  | .newLet a u U f =>
+      simp only [Tm.subst, Tm.uses_newLet, CaptureSet.subst_union, Atom.root_subst]
+      simp [CaptureSet.subst, CapAtom.subst]
+  | .read a => simp [Tm.subst, CaptureSet.subst, CapAtom.subst]
+  | .write a b => simp [Tm.subst, CaptureSet.subst, CapAtom.subst]
+  | .letexF t u U f =>
+      simp only [Tm.subst, Tm.uses_letexF, CaptureSet.subst_union, Tm.uses_subst t]
 
 /-- On a capture atom, instantiating the innermost term binder by an atom is
 instantiating it by that atom's root: a capture atom sees a term variable
 only through its root. -/
 theorem CapAtom.subst_single {s : Sig} (b : CapAtom (s,x)) (a : Atom s) :
     b.subst (Subst.single a) = b.rename (Rename.subst a.root) := by
-  match b with
-  | .var x => cases x <;> rfl
-  | .cvar κ => cases κ; rfl
-  | .name x ℓ => cases x <;> rfl
-  | .top => rfl
+  induction b with
+  | var x => cases x <;> rfl
+  | cvar κ => cases κ; rfl
+  | name x ℓ => cases x <;> rfl
+  | top => rfl
+  | mode m b ih => simp [CapAtom.subst, CapAtom.rename, ih]
 
 /-- Instantiating the innermost binder of a term by an atom instantiates its
 use set at the atom's root. -/
@@ -1489,6 +1726,10 @@ theorem Tm.inspects_rename {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
   | .castE t g => simp [Tm.rename]
   | .letex t u U h f => simp [Tm.rename]
   | .unbox a U f => simp [Tm.rename]
+  | .newLet a u U f => simp [Tm.rename]
+  | .read a => simp [Tm.rename]
+  | .write a b => simp [Tm.rename]
+  | .letexF t u U f => simp [Tm.rename]
 
 theorem Tm.inspects_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
     (t.subst σ).inspects = t.inspects.map σ.rootVar := by
@@ -1502,6 +1743,204 @@ theorem Tm.inspects_subst {s1 s2 : Sig} (t : Tm s1) (σ : Subst s1 s2) :
   | .castE t g => simp [Tm.subst]
   | .letex t u U h f => simp [Tm.subst]
   | .unbox a U f => simp [Tm.subst]
+  | .newLet a u U f => simp [Tm.subst]
+  | .read a => simp [Tm.subst]
+  | .write a b => simp [Tm.subst]
+  | .letexF t u U f => simp [Tm.subst]
+
+/-! ## Modes under renaming and substitution
+
+A renaming is structural on the mode wrapper and never touches a mode, so
+`base`, `effMode`, the meet `withMode`, `atMode` and `reapply` commute with it.
+A substitution replaces a capture binder by an atom, so the same laws hold
+for a substitution whose capture images carry no mode, which is every
+substitution the tree builds (`Subst.Typed.capModeFree`). -/
+
+@[simp] theorem CapAtom.base_mode (m : Mode) (a : CapAtom s) :
+    (CapAtom.mode m a).base = a.base := rfl
+
+/-- A base carries no mode. -/
+theorem CapAtom.base_ne_mode : ∀ (a : CapAtom s) (m : Mode) (b : CapAtom s),
+    a.base ≠ .mode m b
+  | .var _, _, _ => by simp [CapAtom.base]
+  | .cvar _, _, _ => by simp [CapAtom.base]
+  | .name _ _, _, _ => by simp [CapAtom.base]
+  | .top, _, _ => by simp [CapAtom.base]
+  | .mode _ a, m, b => CapAtom.base_ne_mode a m b
+
+@[simp] theorem CapAtom.base_base : ∀ a : CapAtom s, a.base.base = a.base
+  | .var _ => rfl
+  | .cvar _ => rfl
+  | .name _ _ => rfl
+  | .top => rfl
+  | .mode _ a => CapAtom.base_base a
+
+/-- An atom that is its own base has the plain mode. -/
+theorem CapAtom.effMode_of_base {a : CapAtom s} (h : a.base = a) : a.effMode = .eps := by
+  cases a with
+  | var _ | cvar _ | name _ _ | top => rfl
+  | mode m a₀ => exact absurd h (CapAtom.base_ne_mode a₀ m a₀)
+
+@[simp] theorem CapAtom.effMode_base (a : CapAtom s) : a.base.effMode = .eps :=
+  CapAtom.effMode_of_base (CapAtom.base_base a)
+
+@[simp] theorem CapAtom.base_withMode (m : Mode) (a : CapAtom s) :
+    (CapAtom.withMode m a).base = a.base := by
+  cases m with
+  | ro => exact CapAtom.base_base a
+  | consume =>
+      simp only [CapAtom.withMode]
+      split <;> simp
+
+@[simp] theorem CapAtom.effMode_withMode_ro (a : CapAtom s) :
+    (CapAtom.withMode .ro a).effMode = .ro := rfl
+
+/-- The meet keeps a read-only atom read-only. -/
+theorem CapAtom.effMode_withMode_of_ro {m : Mode} {a : CapAtom s} (h : a.effMode = .ro) :
+    (CapAtom.withMode m a).effMode = .ro := by
+  cases m with
+  | ro => rfl
+  | consume => simp [CapAtom.withMode, h]
+
+@[simp] theorem CapAtom.base_atMode (a : CapAtom s) (m : EMode) : (a.atMode m).base = a.base := by
+  cases m <;> simp [CapAtom.atMode]
+
+@[simp] theorem CapAtom.effMode_atMode (a : CapAtom s) (m : EMode) : (a.atMode m).effMode = m := by
+  cases m with
+  | ro => rfl
+  | eps => simp [CapAtom.atMode]
+  | consume => simp [CapAtom.atMode, CapAtom.effMode]
+
+@[simp] theorem CapAtom.base_reapply : ∀ (a x : CapAtom s), (a.reapply x).base = x.base
+  | .var _, _ => rfl
+  | .cvar _, _ => rfl
+  | .name _ _, _ => rfl
+  | .top, _ => rfl
+  | .mode m a, x => by
+      show (CapAtom.withMode m (a.reapply x)).base = x.base
+      rw [CapAtom.base_withMode, CapAtom.base_reapply a x]
+
+@[simp] theorem CapAtom.base_rename (a : CapAtom s1) (ρ : Rename s1 s2) :
+    (a.rename ρ).base = a.base.rename ρ := by
+  induction a with
+  | var x => rfl
+  | cvar κ => rfl
+  | name x ℓ => rfl
+  | top => rfl
+  | mode m a ih => exact ih
+
+@[simp] theorem CapAtom.effMode_rename (a : CapAtom s1) (ρ : Rename s1 s2) :
+    (a.rename ρ).effMode = a.effMode := by
+  induction a with
+  | var x => rfl
+  | cvar κ => rfl
+  | name x ℓ => rfl
+  | top => rfl
+  | mode m a ih =>
+      cases m with
+      | ro => rfl
+      | consume => simp [CapAtom.rename, CapAtom.effMode, ih]
+
+theorem CapAtom.withMode_rename (m : Mode) (a : CapAtom s1) (ρ : Rename s1 s2) :
+    (CapAtom.withMode m a).rename ρ = CapAtom.withMode m (a.rename ρ) := by
+  cases m with
+  | ro => simp [CapAtom.withMode, CapAtom.rename]
+  | consume =>
+      simp only [CapAtom.withMode, CapAtom.effMode_rename]
+      split <;> simp [CapAtom.rename]
+
+theorem CapAtom.atMode_rename (a : CapAtom s1) (m : EMode) (ρ : Rename s1 s2) :
+    (a.atMode m).rename ρ = (a.rename ρ).atMode m := by
+  cases m <;> simp [CapAtom.atMode, CapAtom.rename]
+
+theorem CapAtom.reapply_rename (a x : CapAtom s1) (ρ : Rename s1 s2) :
+    (a.reapply x).rename ρ = (a.rename ρ).reapply (x.rename ρ) := by
+  induction a with
+  | var y => rfl
+  | cvar κ => rfl
+  | name y ℓ => rfl
+  | top => rfl
+  | mode m a ih =>
+      show (CapAtom.withMode m (a.reapply x)).rename ρ
+        = CapAtom.withMode m ((a.rename ρ).reapply (x.rename ρ))
+      rw [CapAtom.withMode_rename, ih]
+
+theorem CaptureSet.ro_rename (C : CaptureSet s1) (ρ : Rename s1 s2) :
+    C.ro.rename ρ = (C.rename ρ).ro := by
+  simp only [CaptureSet.ro, CaptureSet.rename, List.map_map, Function.comp_def]
+  exact List.map_congr_left (fun a _ => CapAtom.withMode_rename .ro a ρ)
+
+theorem CaptureSet.consume_rename (C : CaptureSet s1) (ρ : Rename s1 s2) :
+    C.consume.rename ρ = (C.rename ρ).consume := by
+  simp only [CaptureSet.consume, CaptureSet.rename, List.map_map, Function.comp_def]
+  exact List.map_congr_left (fun a _ => CapAtom.withMode_rename .consume a ρ)
+
+theorem CaptureSet.allRo_rename {C : CaptureSet s1} (ρ : Rename s1 s2) :
+    (C.rename ρ).AllRo ↔ C.AllRo := by
+  simp [CaptureSet.AllRo, CaptureSet.rename]
+
+/-- Taking the base commutes with a substitution whose capture images carry
+no mode. -/
+theorem CapAtom.base_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ) :
+    ∀ a : CapAtom s1, (a.subst σ).base = a.base.subst σ
+  | .top => rfl
+  | .var _ => rfl
+  | .name _ _ => rfl
+  | .cvar κ => hσ κ
+  | .mode _ a => CapAtom.base_subst hσ a
+
+/-- And so does the effective mode. -/
+theorem CapAtom.effMode_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ) :
+    ∀ a : CapAtom s1, (a.subst σ).effMode = a.effMode
+  | .top => rfl
+  | .var _ => rfl
+  | .name _ _ => rfl
+  | .cvar κ => CapAtom.effMode_of_base (hσ κ)
+  | .mode .ro _ => rfl
+  | .mode .consume a => by
+      simp [CapAtom.subst, CapAtom.effMode, CapAtom.effMode_subst hσ a]
+
+theorem CapAtom.withMode_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ)
+    (m : Mode) (a : CapAtom s1) :
+    (CapAtom.withMode m a).subst σ = CapAtom.withMode m (a.subst σ) := by
+  cases m with
+  | ro => simp [CapAtom.withMode, CapAtom.subst, CapAtom.base_subst hσ]
+  | consume =>
+      simp only [CapAtom.withMode, CapAtom.effMode_subst hσ]
+      split <;> simp [CapAtom.subst, CapAtom.base_subst hσ]
+
+theorem CapAtom.atMode_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ)
+    (a : CapAtom s1) (m : EMode) : (a.atMode m).subst σ = (a.subst σ).atMode m := by
+  cases m <;> simp [CapAtom.atMode, CapAtom.subst, CapAtom.base_subst hσ]
+
+theorem CapAtom.reapply_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ)
+    (a x : CapAtom s1) : (a.reapply x).subst σ = (a.subst σ).reapply (x.subst σ) := by
+  induction a with
+  | var y => rfl
+  | cvar κ =>
+      show x.subst σ = (σ.cvar κ).reapply (x.subst σ)
+      cases hc : σ.cvar κ with
+      | var _ | cvar _ | name _ _ | top => rfl
+      | mode m₀ a₀ =>
+          have := hσ κ
+          rw [hc] at this
+          exact absurd this (CapAtom.base_ne_mode a₀ m₀ a₀)
+  | name y ℓ => rfl
+  | top => rfl
+  | mode m a ih =>
+      show (CapAtom.withMode m (a.reapply x)).subst σ
+        = CapAtom.withMode m ((a.subst σ).reapply (x.subst σ))
+      rw [CapAtom.withMode_subst hσ, ih]
+
+theorem CaptureSet.ro_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ)
+    (C : CaptureSet s1) : C.ro.subst σ = (C.subst σ).ro := by
+  simp only [CaptureSet.ro, CaptureSet.subst, List.map_map, Function.comp_def]
+  exact List.map_congr_left (fun a _ => CapAtom.withMode_subst hσ .ro a)
+
+theorem CaptureSet.consume_subst {σ : Subst s1 s2} (hσ : ∀ κ, (σ.cvar κ).base = σ.cvar κ)
+    (C : CaptureSet s1) : C.consume.subst σ = (C.subst σ).consume := by
+  simp only [CaptureSet.consume, CaptureSet.subst, List.map_map, Function.comp_def]
+  exact List.map_congr_left (fun a _ => CapAtom.withMode_subst hσ .consume a)
 
 end FCdot
 

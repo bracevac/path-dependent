@@ -1,5 +1,5 @@
 import Coercions.Separation.FCdot.FormAlgebra
-import Coercions.Separation.FCdot.Preservation
+import Coercions.Separation.FCdot.Retyping
 
 namespace Separation
 
@@ -65,14 +65,17 @@ theorem capEqForms_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) {Wc₀ : CapWitne
   | .nil => by simp only [CapWitnesses.eqFormsC, CapWitnesses.eqEntriesOf]; exact hbase
   | .cons Wc ℓ C => by
       simp only [CapWitnesses.eqFormsC, CapWitnesses.eqEntriesOf]
-      refine .eqC (capEqForms_typed hσ x hW hbase Wc) ?_
-      show RootsEq Γ ([CapAtom.name (BVar.here) ℓ]⟦x⟧) ((Wc₀.get ℓ)⟦x⟧)
       have hd : Γ.lookupDefC x ℓ = some ((Wc₀.get ℓ)⟦x⟧) := by
         rw [hσ.lookupDefC x ℓ, hW]
       have he : ([CapAtom.name (BVar.here) ℓ]⟦x⟧ : CaptureSet s) = [CapAtom.name x ℓ] := by
         simp [CaptureSet.substVar, CaptureSet.rename, CapAtom.rename, Rename.subst]
-      rw [he]
-      exact Ctx.Root_name hd
+      refine .eqC (capEqForms_typed hσ x hW hbase Wc) ?_ ?_
+      · show RootsEq Γ ([CapAtom.name (BVar.here) ℓ]⟦x⟧) ((Wc₀.get ℓ)⟦x⟧)
+        rw [he]
+        exact Ctx.Root_name hd
+      · show Γ.ModeEq ([CapAtom.name (BVar.here) ℓ]⟦x⟧) ((Wc₀.get ℓ)⟦x⟧)
+        rw [he]
+        exact Ctx.modeEq_defC _ _ _ _ hd
 
 theorem hasForms_typed (x : BVar s .var) :
     ∀ (ls : List Label) (V : View s) (Tel : Telescope (s,x)),
@@ -115,6 +118,18 @@ theorem precView_typed (hσ : ⊢ σ : Γ) (x : BVar s .var) : RootViewTyped Γ 
       rw [hT]
       refine ⟨fun Tel h => ?_, by simp⟩
       simp at h
+  | cell ℓ b =>
+      rw [hl] at hv
+      obtain ⟨X, hT, _⟩ := hv.cell_inv
+      rw [hT]
+      refine ⟨fun Tel h => ?_, by simp⟩
+      simp at h
+  | reader r =>
+      rw [hl] at hv
+      obtain ⟨X, hT, _⟩ := hv.reader_inv
+      rw [hT]
+      refine ⟨fun Tel h => ?_, by simp⟩
+      simp at h
   -- A packed value is never stored: `Store.Typed.cons` premises
   -- `Value.HasType`, which has no `pack` rule (`refute-b2.md` F-A).
   | pack C h e v => rw [hl] at hv; cases hv
@@ -133,6 +148,8 @@ theorem Store.Typed.hasField (hσ : ⊢ σ : Γ) {x : BVar s .var} {Fs : List La
       rw [hl] at hmem
       exact ⟨A, W, Wc, F, hl, Fields.get?_isSome_of_mem (by simpa [Value.fieldLabels] using hmem)⟩
   | box b => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
+  | cell ℓ b => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
+  | reader r => rw [hl] at hmem; simp [Value.fieldLabels] at hmem
   | pack C h e v => rw [hl] at hv; cases hv
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
@@ -253,10 +270,11 @@ theorem ChainTyped.pair {r : BVar s .var} {F G : Form s} {S : Shape s} {Tel₁ T
 
 /-- The type recorded for a location has the shape of the literal stored
 there: a function shape, an object shape, or -- since a box is now a stored
-value -- a box shape. -/
+value -- a box shape, or a cell or a reader shape (plan-5h S0.4). -/
 theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
     (∃ S T, (Γ.lookupTy x).shape = Π(S) T) ∨ (∃ Tel, (Γ.lookupTy x).shape = μ Tel) ∨
-      ∃ X, (Γ.lookupTy x).shape = □ X := by
+      (∃ X, (Γ.lookupTy x).shape = □ X) ∨ (∃ X, (Γ.lookupTy x).shape = .cell X) ∨
+      ∃ X, (Γ.lookupTy x).shape = .reader X := by
   have hv := hσ.lookup x
   have hlit := hσ.lookup_isLiteral x
   cases hl : σ.lookup x with
@@ -271,7 +289,15 @@ theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
   | box b =>
       rw [hl] at hv
       obtain ⟨X, hT, _⟩ := hv.box_inv
-      exact Or.inr (Or.inr ⟨_, by rw [hT]; rfl⟩)
+      exact Or.inr (Or.inr (Or.inl ⟨_, by rw [hT]; rfl⟩))
+  | cell ℓ b =>
+      rw [hl] at hv
+      obtain ⟨X, hT, _⟩ := hv.cell_inv
+      exact Or.inr (Or.inr (Or.inr (Or.inl ⟨_, by rw [hT]; rfl⟩)))
+  | reader r =>
+      rw [hl] at hv
+      obtain ⟨X, hT, _⟩ := hv.reader_inv
+      exact Or.inr (Or.inr (Or.inr (Or.inr ⟨_, by rw [hT]; rfl⟩)))
   | pack C h e v => rw [hl] at hv; cases hv
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
@@ -308,12 +334,16 @@ theorem Ctx.caps_of_isRoot {Γ : Ctx s} {r : CapAtom s} (hr : Γ.IsRoot r) (n : 
   | top => rw [Ctx.caps_cons, Ctx.caps_nil, Ctx.capsAtom_top]; rfl
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | name x ℓ => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | mode m a => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | cvar κ =>
       have hb : Γ.lookupCap κ = .root := by
         have hi : (Γ.lookupCap κ).isRoot = true := hr
         cases h : Γ.lookupCap κ with
         | root => rfl
         | star => rw [h] at hi; simp [CapBound.isRoot] at hi
+        | loc _ _ => rw [h] at hi; simp [CapBound.isRoot] at hi
+        | own _ _ => rw [h] at hi; simp [CapBound.isRoot] at hi
+        | param _ => rw [h] at hi; simp [CapBound.isRoot] at hi
         | upper C => rw [h] at hi; simp [CapBound.isRoot] at hi
         | inst C => rw [h] at hi; simp [CapBound.isRoot] at hi
       rw [Ctx.caps_cons, Ctx.caps_nil, Ctx.capsAtom_cvar, hb]
@@ -343,6 +373,12 @@ theorem shape_canon {e : ShapeCo s} {S T : Shape s} (h : Γ ⊢ˢ e : S ≤ T) :
   | .pi hd hc => exact ⟨1, _, rfl, .pi (by simp) (by simp) hd hc⟩
   | .boxed (d := d) hd =>
       exact ⟨1, .boxed d, by simp [hnfShape], .boxed (by simp) (by simp) hd⟩
+  | .toReader (T := T) =>
+      exact ⟨1, .reader (LeCo.reflAt T), by simp [hnfShape],
+        FormTyped.reader (X := T) (Y := T) (Or.inl (by simp)) (by simp) (LeCo.HasType.reflAt T)⟩
+  | .readerCov (T := T) (T' := T') (d := d) hd =>
+      exact ⟨1, .reader d, by simp [hnfShape],
+        FormTyped.reader (X := T) (Y := T') (Or.inr (by simp)) (by simp) hd⟩
   | .obj hm =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, .obj Es, by simp [hnfShape, hEs], .obj (by simp) (by simp) hT⟩
@@ -400,7 +436,7 @@ theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D)
   | .elem hsub => exact CapLe.of_subset hsub
   | .union hf hg => exact CapLe.union (cap_canon hf) (cap_canon hg)
   | .capvar ha => exact (atom_canon ha).capLe
-  | .level (e := e) (r := r) hr hle =>
+  | .level (e := e) (r := r) hr hle _ =>
       -- the four steps of the level case: `mem_expand`, `caps_opaque`,
       -- `caps_confined`, `expandAtom_mono`.  It uses no store.
       intro a ha
@@ -414,7 +450,7 @@ theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D)
       have hbr : Γ.LvlLe b r := Ctx.caps_confined Γ n [e] r hconf b hb
       refine ⟨0, ?_⟩
       rw [Ctx.roots_of_isRoot hr]
-      exact Ctx.expandAtom_mono hr (Ctx.caps_opaque hb) hbr a hab
+      exact Ctx.expandAtom_mono_base hr (Ctx.caps_opaque hb) hbr a hab
   | .member (a := a) ha he hAt =>
       obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
       obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he
@@ -423,6 +459,70 @@ theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D)
         view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
       exact (hVt'.leC_entry hAt).2
   | .eqToLe hφ => exact (capeq_canon hφ).le
+  -- a mode changes no root: expansion strips it
+  | .modeLe _ => exact (Ctx.rootsEq_atMode Γ _ _ _).le
+  | .roMap hf =>
+      exact ((Ctx.rootsEq_ro Γ _).le.trans (cap_canon hf)).trans (Ctx.rootsEq_ro Γ _).symm.le
+  -- an heir has the roots of what it owns
+  | .ownLe hO _ => exact (Ctx.Root_own hO).symm.le
+
+/-- **T0.4, the second half: closed capture evidence keeps every mode bound**
+in a store.  The structural rules are the algebra of `Ctx.ModeLe`
+(`Names.lean`), `level` and `ownLe` read their premises, `var` reads that a
+store binds no parameter, and the `member` rules read the mode half of the
+capture entries of the atom's view, as `cap_canon` reads their roots. -/
+theorem modeLe_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D) :
+    Γ.ModeLe C D := by
+  match h with
+  | .refl => exact Ctx.ModeLe.refl _ _
+  | .trans hf hg => exact (modeLe_canon hf).trans (modeLe_canon hg)
+  | .elem hsub => exact Ctx.ModeLe.of_subset hsub
+  | .union hf hg => exact (modeLe_canon hf).union (modeLe_canon hg)
+  | .capvar ha => exact atom_modeLe_canon ha
+  | .member (a := a) ha he hAt =>
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
+      obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he
+      obtain ⟨n₃, a₀, C₀, hC, hCt⟩ := closedAtomForm_typed ha
+      obtain ⟨m, V', hV', hVt'⟩ :=
+        view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
+      exact hVt'.leC_modeLe hAt
+  | .eqToLe hφ => exact (modeEq_canon hφ).1
+  | .level hr _ he => exact Ctx.modeLe_level hr he
+  | .modeLe hm => exact Ctx.modeLe_modeLe _ hm
+  | .roMap _ => exact Ctx.modeLe_roMap _ _ _
+  | .ownLe hO hW => exact Ctx.modeLe_ownLe hO hW
+
+/-- The equality twin of `modeLe_canon`. -/
+theorem modeEq_canon {φ : CapEq s} {C D : CaptureSet s} (h : Γ ⊢ᶜ φ : C ≡ D) :
+    Γ.ModeEq C D := by
+  match h with
+  | .refl => exact Ctx.ModeEq.refl _ _
+  | .symm hφ => exact (modeEq_canon hφ).symm
+  | .trans h₁ h₂ => exact (modeEq_canon h₁).trans (modeEq_canon h₂)
+  | .defC hd => exact Ctx.modeEq_defC _ _ _ _ hd
+  | .instC hI => exact Ctx.modeEq_instC hI
+  | .member (a := a) ha he hAt =>
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
+      obtain ⟨n₂, F, hF, hFt⟩ := shape_canon he
+      obtain ⟨n₃, a₀, C₀, hC, hCt⟩ := closedAtomForm_typed ha
+      obtain ⟨m, V', hV', hVt'⟩ :=
+        view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
+      exact hVt'.eqC_modeEq hAt
+
+/-- The root of a closed atom has the mode bounds of the atom's capture set:
+a store binder is no parameter, so it has the bounds of its declared set. -/
+theorem atom_modeLe_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) :
+    Γ.ModeLe [CapAtom.var a.root] S.captureSet := by
+  match h with
+  | @Atom.HasType.var _ _ x =>
+      intro m hD
+      rw [Ctx.setBound_singleton]
+      exact (Γ.modeBound_var x (Ctx.isFormalVar_of_formalFree hσ.formalFree x) m).mpr hD
+  | .cast hb (.capt _ hg) => exact (atom_modeLe_canon hb).trans (modeLe_canon hg)
+  | .recap _ hg => exact modeLe_canon hg
+  | .unfoldSelf hb => have := atom_modeLe_canon hb; exact this
+  | .foldSelf hb => have := atom_modeLe_canon hb; exact this
+  | .both hb _ _ => have := atom_modeLe_canon hb; exact this
 
 /-- The equality analogue of item 6: closed capture equality evidence gives
 equality of roots. -/
@@ -449,7 +549,7 @@ evidence by item 6, a syntactic inclusion by itself. -/
 theorem capstep_canon {st : CapStep s} {X Y : CaptureSet (s,x)}
     (h : CapStep.HasType Γ st X Y) : CapStepTyped Γ st X Y := by
   match h with
-  | .closed hf => exact .closed (cap_canon hf)
+  | .closed hf => exact .closed (cap_canon hf) (modeLe_canon hf)
   | .incl hsub => exact .incl hsub
 
 /-- A capture-template side is a typed chain, step by step. -/
@@ -657,10 +757,13 @@ theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Dom s} {T : Cod 
   refine ⟨n, a', F, hF, ?_⟩
   cases hFt with
   | bot hb =>
-      rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩
+      rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩ | ⟨X, hc⟩ |
+          ⟨X, hr⟩
       · simp [hp] at hb
       · simp [ho] at hb
       · simp [hx] at hb
+      · simp [hc] at hb
+      · simp [hr] at hb
   | top ht => simp at ht
   | id _ => exact Or.inl rfl
   | eqv _ => exact Or.inr (Or.inl ⟨_, rfl⟩)
@@ -668,6 +771,7 @@ theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Dom s} {T : Cod 
   | obj _ ho _ => simp at ho
   | into ho _ => simp at ho
   | boxed _ hb _ => simp at hb
+  | reader _ hb _ => simp at hb
   | bnd hS hAt _ => exact absurd (hσ.root_no_bnd a.root hS hAt) (by simp)
 
 /-- Presence evidence at a location names a field of the object stored
@@ -694,10 +798,13 @@ theorem closed_box_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {T : Ty s} {D : Ca
   have hform : F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d, F = .boxed d := by
     cases hFt with
     | bot hb =>
-        rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩
+        rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩ | ⟨X, hc⟩ |
+            ⟨X, hr⟩
         · simp [hp] at hb
         · simp [ho] at hb
         · simp [hx] at hb
+        · simp [hc] at hb
+        · simp [hr] at hb
     | top ht => simp at ht
     | id _ => exact Or.inl rfl
     | eqv _ => exact Or.inr (Or.inl ⟨_, rfl⟩)
@@ -705,9 +812,10 @@ theorem closed_box_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {T : Ty s} {D : Ca
     | obj _ hT _ => simp at hT
     | into hT _ => simp at hT
     | boxed _ _ _ => exact Or.inr (Or.inr ⟨_, rfl⟩)
+    | reader _ hT _ => simp at hT
     | bnd hS hAt _ => exact absurd (hσ.root_no_bnd a.root hS hAt) (by simp)
   have hshape : ∃ X : Ty s, (Γ.lookupTy a.root).shape = □ X := by
-    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | hbx
+    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | hbx | ⟨X, hc⟩ | ⟨X, hr⟩
     · exfalso
       cases hFt with
       | bot hb => simp [hp] at hb
@@ -718,6 +826,7 @@ theorem closed_box_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {T : Ty s} {D : Ca
       | obj _ hT _ => simp at hT
       | into hT _ => simp at hT
       | boxed hS _ _ => simp [hp] at hS
+      | reader _ hT _ => simp at hT
       | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
     · exfalso
       cases hFt with
@@ -729,8 +838,33 @@ theorem closed_box_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {T : Ty s} {D : Ca
       | obj _ hT _ => simp at hT
       | into hT _ => simp at hT
       | boxed hS _ _ => simp [ho] at hS
+      | reader _ hT _ => simp at hT
       | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
     · exact hbx
+    · exfalso
+      cases hFt with
+      | bot hb => simp [hc] at hb
+      | top ht => simp at ht
+      | id hres => simp [hc] at hres
+      | eqv hres => simp [hc] at hres
+      | pi _ hT _ _ => simp at hT
+      | obj _ hT _ => simp at hT
+      | into hT _ => simp at hT
+      | boxed hS _ _ => simp [hc] at hS
+      | reader _ hT _ => simp at hT
+      | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
+    · exfalso
+      cases hFt with
+      | bot hb => simp [hr] at hb
+      | top ht => simp at ht
+      | id hres => simp [hr] at hres
+      | eqv hres => simp [hr] at hres
+      | pi _ hT _ _ => simp at hT
+      | obj _ hT _ => simp at hT
+      | into hT _ => simp at hT
+      | boxed hS _ _ => simp [hr] at hS
+      | reader _ hT _ => simp at hT
+      | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
   obtain ⟨X, hx⟩ := hshape
   have hv := hσ.lookup a.root
   have hlit := hσ.lookup_isLiteral a.root
@@ -744,11 +878,26 @@ theorem closed_box_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {T : Ty s} {D : Ca
       obtain ⟨hT, _⟩ := hv.obj_inv
       rw [hT] at hx; simp at hx
   | box b => exact ⟨b, a', n, F, rfl, hF, hform⟩
+  | cell ℓ b =>
+      rw [hl] at hv
+      obtain ⟨X₀, hT, _⟩ := hv.cell_inv
+      rw [hT] at hx; simp at hx
+  | reader r =>
+      rw [hl] at hv
+      obtain ⟨X₀, hT, _⟩ := hv.reader_inv
+      rw [hT] at hx; simp at hx
   | pack C h e v => rw [hl] at hv; cases hv
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
+/-- **Closed evidence keeps every mode bound in a store** (plan-5h T0.4).
+The statement g3 proposed, in the contexts where it is true. -/
+theorem Ctx.modeSound_store (hσ : ⊢ σ : Γ) : Γ.ModeSound :=
+  fun _ _ _ h => modeLe_canon hσ h
+
 /-- The canonical-forms obligation of preservation. -/
 theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
+  modeSound := Ctx.modeSound_store hσ
+  modeSoundC := fun _ hb => Ctx.modeSound_store (hσ.consC hb)
   pi := by
     intro a S T C n a' d c S₀ T₀ ha hF hlk
     obtain ⟨n', a'', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
@@ -775,12 +924,14 @@ theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
       rcases hid with rfl | ⟨φ, rfl⟩
       · cases hFt with | id h => exact h
       · cases hFt with | eqv h => exact h
-    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩
+    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩ | ⟨X, hc⟩ | ⟨X, hr⟩
     · simp only [Ctx.resolveAt, hp, Ctx.resolve_pi, Shape.unfoldAt_pi] at hres
       obtain ⟨rfl, rfl⟩ := Shape.pi.inj hres
       exact hp
     · simp [Ctx.resolveAt, ho] at hres
     · simp [Ctx.resolveAt, hx] at hres
+    · simp [Ctx.resolveAt, hc] at hres
+    · simp [Ctx.resolveAt, hr] at hres
   boxed := by
     intro a X T D n a' d ha hF hlk
     obtain ⟨n', a'', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
@@ -807,18 +958,14 @@ theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
       rcases hid with rfl | ⟨φ, rfl⟩
       · cases hFt with | id h => exact h
       · cases hFt with | eqv h => exact h
-    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩
+    rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩ | ⟨X, hx⟩ | ⟨X, hc⟩ | ⟨X, hr⟩
     · simp [Ctx.resolveAt, hp] at hres
     · simp [Ctx.resolveAt, ho] at hres
     · simp only [Ctx.resolveAt, hx, Ctx.resolve_box, Shape.unfoldAt_box] at hres
       obtain rfl := Shape.box.inj hres
       exact hx
-
-/-- Preservation over typed states. -/
-theorem preservation' {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
-    (hT : State.Typed st U) (step : Step st st') :
-    ∃ ρ : Rename s s', State.Typed st' (U.rename ρ) :=
-  preservation (fun _ hσ => hσ.formsTyped) hT step
+    · simp [Ctx.resolveAt, hc] at hres
+    · simp [Ctx.resolveAt, hr] at hres
 
 /-! Backward simulation over typed stores lives at the end of
 `ErasureMetatheory.lean`, which is the first module that sees both

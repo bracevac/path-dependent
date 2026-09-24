@@ -34,10 +34,14 @@ theorem Ctx.mem_caps_root (Γ : Ctx s) (n : Nat) {r : CapAtom s} (hr : Γ.IsRoot
       cases hbb : Γ.lookupCap κ with
       | root => simp [Ctx.capsBound]
       | star => rw [hbb] at hb; simp [CapBound.isRoot] at hb
+      | loc _ _ => rw [hbb] at hb; simp [CapBound.isRoot] at hb
+      | own _ _ => rw [hbb] at hb; simp [CapBound.isRoot] at hb
+      | param _ => rw [hbb] at hb; simp [CapBound.isRoot] at hb
       | upper C => rw [hbb] at hb; simp [CapBound.isRoot] at hb
       | inst C => rw [hbb] at hb; simp [CapBound.isRoot] at hb
   | var x => simp [Ctx.IsRoot, Ctx.isRootB] at hr
   | name x l => simp [Ctx.IsRoot, Ctx.isRootB] at hr
+  | mode m a => simp [Ctx.IsRoot, Ctx.isRootB] at hr
 
 
 /-! ### Member-freeness is closed under renaming
@@ -61,6 +65,9 @@ theorem CapCo.MemberFree.rename {s1 s2 : Sig} :
   | _, .union hf hg, ρ => .union (hf.rename ρ) (hg.rename ρ)
   | _, .capvar ha, ρ => .capvar (ha.rename ρ)
   | _, .level e r, ρ => .level (e.rename ρ) (r.rename ρ)
+  | _, .modeLe a m m', ρ => .modeLe (a.rename ρ) m m'
+  | _, .roMap hf, ρ => .roMap (hf.rename ρ)
+  | _, .ownLe a W, ρ => .ownLe (a.rename ρ) (W.rename ρ)
 
 theorem Atom.MemberFree.rename {s1 s2 : Sig} :
     ∀ {a : Atom s1} (_ : a.MemberFree) (ρ : Rename s1 s2), (a.rename ρ).MemberFree
@@ -81,6 +88,51 @@ theorem CapCo.MemberFree.weaken {s : Sig} {f : CapCo s} (h : f.MemberFree) :
 /-- The weakening instance on atoms. -/
 theorem Atom.MemberFree.weaken {s : Sig} {a : Atom s} (h : a.MemberFree) :
     (Atom.weaken (k := k) a).MemberFree := h.rename _
+/-! ### Modes and levels
+
+A moded atom is at the level of its base, and resolution carries a mode
+through the meet, so the bases of a resolution do not depend on the modes of
+the set resolved.  Confinement reads `Ctx.lvlAtom` alone, which reads through
+every mode. -/
+
+/-- The bases of the resolution of an atom are the bases of the resolution of
+its base. -/
+theorem Ctx.capsAtom_map_base (Γ : Ctx s) (n : Nat) : ∀ a : CapAtom s,
+    (Γ.capsAtom n a).map CapAtom.base = (Γ.capsAtom n a.base).map CapAtom.base
+  | .top | .var _ | .cvar _ | .name _ _ => rfl
+  | .mode m a => by
+      rw [Ctx.capsAtom_mode, CaptureSet.map_base_modeWrap, CapAtom.base_mode,
+        ← Ctx.capsAtom_map_base Γ n a]
+
+/-- Two atoms with the same base resolve to the same bases. -/
+theorem Ctx.capsAtom_map_base_congr (Γ : Ctx s) (n : Nat) {a b : CapAtom s}
+    (h : a.base = b.base) :
+    (Γ.capsAtom n a).map CapAtom.base = (Γ.capsAtom n b).map CapAtom.base := by
+  rw [Γ.capsAtom_map_base n a, Γ.capsAtom_map_base n b, h]
+
+/-- The meet changes no base of a resolution, set-wise. -/
+theorem Ctx.caps_map_withMode_base (Γ : Ctx s) (n : Nat) (m : Mode) : ∀ C : CaptureSet s,
+    (Γ.caps n (C.map (CapAtom.withMode m))).map CapAtom.base
+      = (Γ.caps n C).map CapAtom.base
+  | [] => rfl
+  | a :: C => by
+      rw [List.map_cons, Ctx.caps_cons, Ctx.caps_cons, List.map_append, List.map_append,
+        Γ.capsAtom_map_base_congr n (CapAtom.base_withMode m a),
+        Ctx.caps_map_withMode_base Γ n m C]
+
+/-- Two sets with the same atoms up to the base are confined to the same
+roots, because confinement reads `Ctx.lvlAtom` alone, which reads through
+every mode (`Ctx.lvlLe_base_left`). -/
+theorem Ctx.confined_of_map_base {Γ : Ctx s} {L L' : CaptureSet s} {r : CapAtom s}
+    (h : L.map CapAtom.base = L'.map CapAtom.base) (hc : Γ.Confined L' r) :
+    Γ.Confined L r := by
+  intro a ha
+  have hm : a.base ∈ L'.map CapAtom.base := by
+    rw [← h]; exact List.mem_map.mpr ⟨a, ha, rfl⟩
+  obtain ⟨b, hb, hbe⟩ := List.mem_map.mp hm
+  rw [Ctx.lvlLe_base_left, ← hbe, ← Ctx.lvlLe_base_left]
+  exact hc b hb
+
 /-! ### The two halves of the inversion, one for capture evidence and one for
 the atoms it reaches -/
 
@@ -104,7 +156,7 @@ theorem level_inversion {s : Sig} {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s
       · exact level_inversion hk hkf hD n a ha
   | .capvar ha, .capvar haf =>
       exact atom_level_inversion ha haf hD
-  | .level h₁ h₂, _ =>
+  | .level h₁ h₂ _, _ =>
       intro n a ha
       have hconf : Γ.Confined (Γ.caps n [_]) _ :=
         Ctx.caps_confined Γ n _ _ (by
@@ -113,6 +165,21 @@ theorem level_inversion {s : Sig} {Γ : Ctx s} {f : CapCo s} {C D : CaptureSet s
           exact h₂)
       have hrr : Γ.LvlLe _ r := hD 0 _ (Ctx.mem_caps_root Γ 0 h₁)
       exact Ctx.LvlLe.trans h₁ (hconf a ha) hrr
+  | @CapCo.HasType.modeLe _ m m' _ a _, _ =>
+      intro n
+      refine Ctx.confined_of_map_base ?_ (hD n)
+      simp only [Ctx.caps_cons, Ctx.caps_nil, List.append_nil]
+      exact Γ.capsAtom_map_base_congr n (by rw [CapAtom.base_atMode, CapAtom.base_atMode])
+  | .roMap hg, .roMap hgf =>
+      intro n
+      refine Ctx.confined_of_map_base (Γ.caps_map_withMode_base n .ro _)
+        (level_inversion hg hgf ?_ n)
+      intro m
+      exact Ctx.confined_of_map_base (Γ.caps_map_withMode_base m .ro _).symm (hD m)
+  | .ownLe hO _, _ =>
+      intro n
+      rw [← Ctx.caps_own hO n]
+      exact hD n
 
 theorem atom_level_inversion {s : Sig} {Γ : Ctx s} {a : Atom s} {T : Ty s}
     {r : CapAtom s} (h : Γ ⊢ₐ a : T) (ha : a.MemberFree)

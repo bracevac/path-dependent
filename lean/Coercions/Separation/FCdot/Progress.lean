@@ -24,7 +24,7 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Dom s} {T : Co
   obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
   rw [Ty.shape_capt] at hFt
   have hlk : ∃ S₀ T₀, (Γ.lookupTy a.root).shape = Π(S₀) T₀ := by
-    rcases hσ.lookupTy_shape a.root with hp | ⟨Tel, ho⟩ | ⟨X, hx⟩
+    rcases hσ.lookupTy_shape a.root with hp | ⟨Tel, ho⟩ | ⟨X, hx⟩ | ⟨X, hx⟩ | ⟨X, hx⟩
     · exact hp
     · exfalso
       cases hFt with
@@ -36,6 +36,7 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Dom s} {T : Co
       | obj _ ho' _ => simp [Ctx.resolveAt] at ho'
       | into ho' _ => simp [Ctx.resolveAt] at ho'
       | boxed _ hb _ => simp at hb
+      | reader _ hb _ => simp at hb
       | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
     · exfalso
       cases hFt with
@@ -47,6 +48,31 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Dom s} {T : Co
       | obj _ ho' _ => simp [Ctx.resolveAt] at ho'
       | into ho' _ => simp [Ctx.resolveAt] at ho'
       | boxed _ hb _ => simp at hb
+      | reader _ hb _ => simp at hb
+      | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
+    · exfalso
+      cases hFt with
+      | bot hb => simp [hx] at hb
+      | top ht => simp at ht
+      | id hres => simp [hx] at hres
+      | eqv hres => simp [hx] at hres
+      | pi hp _ _ _ => simp [hx] at hp
+      | obj _ ho' _ => simp at ho'
+      | into ho' _ => simp at ho'
+      | boxed _ hb _ => simp at hb
+      | reader _ hb _ => simp at hb
+      | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
+    · exfalso
+      cases hFt with
+      | bot hb => simp [hx] at hb
+      | top ht => simp at ht
+      | id hres => simp [hx] at hres
+      | eqv hres => simp [hx] at hres
+      | pi hp _ _ _ => simp [hx] at hp
+      | obj _ ho' _ => simp at ho'
+      | into ho' _ => simp at ho'
+      | boxed _ hb _ => simp at hb
+      | reader _ hb _ => simp at hb
       | bnd hS hAt _ => exact hσ.root_no_bnd a.root hS hAt
   obtain ⟨S₀, T₀, hlk⟩ := hlk
   have hv := hσ.lookup a.root
@@ -60,6 +86,14 @@ theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Dom s} {T : Co
   | box b =>
       rw [hl] at hv
       obtain ⟨X, hT, _⟩ := hv.box_inv
+      rw [hT] at hlk; simp at hlk
+  | cell ℓ b =>
+      rw [hl] at hv
+      obtain ⟨X, hT, _⟩ := hv.cell_inv
+      rw [hT] at hlk; simp at hlk
+  | reader r =>
+      rw [hl] at hv
+      obtain ⟨X, hT, _⟩ := hv.reader_inv
       rw [hT] at hlk; simp at hlk
   | pack C h e v => rw [hl] at hv; cases hv
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])

@@ -1,4 +1,5 @@
 import Coercions.Separation.FCdot.CanonicalForms
+import Coercions.Separation.FCdot.Preservation
 
 namespace Separation
 
@@ -97,6 +98,7 @@ theorem FormTyped.bndsOnly_target {ρ : Option (BVar s .var)} {S M : Shape s} {H
   | .pi _ hT _ _ => rw [hM] at hT; exact absurd hT (by simp)
   | .obj hS _ _ => exact absurd hS (ho _)
   | .boxed _ hT _ => rw [hM] at hT; exact absurd hT (by simp)
+  | .reader _ hT _ => rw [hM] at hT; exact absurd hT (by simp)
   | .bnd hS _ _ => exact absurd hS (ho _)
   | .into hT hB =>
       rw [hM] at hT
@@ -112,12 +114,14 @@ shape, or the source resolves to an object type with a bound whose type is
 below the target, or the target resolves to an object type that is
 bounds-only unless the source is an object type too.  Shapes are what
 resolution reads, so every disjunct is about the shape of an endpoint; the
-box disjunct is the one the box former adds. -/
+box disjunct is the one the box former adds, and the reader disjunct the one
+the reader coercion adds (plan-5h S0.4). -/
 theorem closed_le_shapes (hσ : ⊢ σ : Γ) {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) :
     Γ.resolve S.shape = ⊥ ∨ Γ.resolve T.shape = ⊤ ∨ Γ.resolve S.shape = Γ.resolve T.shape ∨
     (∃ S₁ T₁ S₂ T₂, Γ.resolve S.shape = Π(S₁) T₁ ∧ Γ.resolve T.shape = Π(S₂) T₂) ∨
     (∃ Tel₁ Tel₂, Γ.resolve S.shape = μ Tel₁ ∧ Γ.resolve T.shape = μ Tel₂) ∨
     (∃ Y : Ty s, Γ.resolve T.shape = □ Y) ∨
+    (∃ Y : Ty s, Γ.resolve T.shape = .reader Y) ∨
     (∃ (Tel₁ : Telescope (s,x)) (i : Nat) (T' : Shape s) (F : Form s),
       Γ.resolve S.shape = μ Tel₁ ∧ Tel₁ ∋ (i ↦ ⊑ T'↑) ∧ Γ ⊨ F : T' ≤ T.shape) ∨
     (∃ Tel₂ : Telescope (s,x), Γ.resolve T.shape = μ Tel₂ ∧
@@ -132,25 +136,40 @@ theorem closed_le_shapes (hσ : ⊢ σ : Γ) {e : LeCo s} {S T : Ty s} (h : Γ �
   | obj hS hT _ => exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, hS, hT⟩))))
   | boxed _ hT _ =>
       exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, hT⟩)))))
+  | reader _ hT _ =>
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, hT⟩))))))
   | bnd hS hAt hF' =>
-      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
-        (Or.inl ⟨_, _, _, _, hS, hAt, hF'⟩))))))
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+        (Or.inl ⟨_, _, _, _, hS, hAt, hF'⟩)))))))
   | into hT hB =>
       cases hres : Γ.resolve S.shape with
       | bot => exact Or.inl rfl
       | obj Tel₁ =>
-          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
-            ⟨_, hT, Or.inl ⟨Tel₁, rfl⟩⟩))))))
+          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+            ⟨_, hT, Or.inl ⟨Tel₁, rfl⟩⟩)))))))
       | sel y ℓ =>
-          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, hT, Or.inr ?_⟩))))))
+          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+            ⟨_, hT, Or.inr ?_⟩)))))))
           exact BndsTyped.bndsOnly (ρ := none) (by rw [Ctx.resolveAt?_none, hres]; simp)
             (fun Tel₁ h' => by rw [Ctx.resolveAt?_none, hres] at h'; simp at h') hB
       | pi S₀ T₀ =>
-          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, hT, Or.inr ?_⟩))))))
+          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+            ⟨_, hT, Or.inr ?_⟩)))))))
           exact BndsTyped.bndsOnly (ρ := none) (by rw [Ctx.resolveAt?_none, hres]; simp)
             (fun Tel₁ h' => by rw [Ctx.resolveAt?_none, hres] at h'; simp at h') hB
       | box X =>
-          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, hT, Or.inr ?_⟩))))))
+          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+            ⟨_, hT, Or.inr ?_⟩)))))))
+          exact BndsTyped.bndsOnly (ρ := none) (by rw [Ctx.resolveAt?_none, hres]; simp)
+            (fun Tel₁ h' => by rw [Ctx.resolveAt?_none, hres] at h'; simp at h') hB
+      | cell X =>
+          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+            ⟨_, hT, Or.inr ?_⟩)))))))
+          exact BndsTyped.bndsOnly (ρ := none) (by rw [Ctx.resolveAt?_none, hres]; simp)
+            (fun Tel₁ h' => by rw [Ctx.resolveAt?_none, hres] at h'; simp at h') hB
+      | reader X =>
+          refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+            ⟨_, hT, Or.inr ?_⟩)))))))
           exact BndsTyped.bndsOnly (ρ := none) (by rw [Ctx.resolveAt?_none, hres]; simp)
             (fun Tel₁ h' => by rw [Ctx.resolveAt?_none, hres] at h'; simp at h') hB
 
@@ -159,8 +178,9 @@ theorem Store.Typed.no_top_le_bot (hσ : ⊢ σ : Γ) :
     ¬ ∃ (e : LeCo s) (C C' : CaptureSet s), Γ ⊢ e : ⊤ ^ C ≤ ⊥ ^ C' := by
   rintro ⟨e, C, C', h⟩
   rcases closed_le_shapes hσ h with
-    h | h | h | ⟨_, _, _, _, h, _⟩ | ⟨_, _, _, h⟩ | ⟨_, h⟩ |
+    h | h | h | ⟨_, _, _, _, h, _⟩ | ⟨_, _, _, h⟩ | ⟨_, h⟩ | ⟨_, h⟩ |
       ⟨Tel₁, i, T', F, hS, hAt, _⟩ | ⟨_, h, _⟩
+  · simp at h
   · simp at h
   · simp at h
   · simp at h
@@ -178,8 +198,9 @@ theorem Store.Typed.no_obj_le_pi (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S 
     ¬ ∃ (e : LeCo s) (C C' : CaptureSet s), Γ ⊢ e : (μ Tel) ^ C ≤ (Π(S) T) ^ C' := by
   rintro ⟨e, C, C', h⟩
   rcases closed_le_shapes hσ h with
-    h | h | h | ⟨_, _, _, _, h, _⟩ | ⟨_, _, _, h⟩ | ⟨_, h⟩ |
+    h | h | h | ⟨_, _, _, _, h, _⟩ | ⟨_, _, _, h⟩ | ⟨_, h⟩ | ⟨_, h⟩ |
       ⟨Tel₁, i, T', F, hS, hAt, _⟩ | ⟨_, h, _⟩
+  · simp at h
   · simp at h
   · simp at h
   · simp at h
@@ -199,12 +220,13 @@ theorem Store.Typed.no_pi_le_obj (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S 
     ¬ ∃ (e : LeCo s) (C C' : CaptureSet s), Γ ⊢ e : (Π(S) T) ^ C ≤ (μ Tel) ^ C' := by
   rintro ⟨e, C, C', h⟩
   rcases closed_le_shapes hσ h with
-    h | h | h | ⟨_, _, _, _, _, h⟩ | ⟨_, _, h, _⟩ | ⟨_, h⟩ |
+    h | h | h | ⟨_, _, _, _, _, h⟩ | ⟨_, _, h, _⟩ | ⟨_, h⟩ | ⟨_, h⟩ |
       ⟨_, _, _, _, h, _⟩ | ⟨Tel₂, hT, hd⟩
   · simp at h
   · rw [Ty.shape_capt, Ctx.resolve_obj] at h
     obtain rfl := Shape.obj.inj (by simpa using h : (μ Tel : Shape s) = μ .nil)
     cases hAt
+  · simp at h
   · simp at h
   · simp at h
   · simp at h
@@ -264,8 +286,11 @@ theorem Ctx.caps_of_opaque {Γ : Ctx s} {κ : BVar s .cap}
   cases h : Γ.lookupCap κ with
   | root => rfl
   | star => rfl
+  | loc _ _ => rfl
+  | param _ => rfl
   | upper C => rw [h] at hκ; simp [CapBound.opaque] at hκ
   | inst C => rw [h] at hκ; simp [CapBound.opaque] at hκ
+  | own _ C => rw [h] at hκ; simp [CapBound.opaque] at hκ
 
 /-! **T-B0.7**, `Store.Typed.rootFree`, is proved in `FCdot/Store.lean`,
 beside the judgement it inducts on, because the four entering steps of the
@@ -294,19 +319,21 @@ theorem lvl_canon (hσ : ⊢ σ : Γ) {f : CapCo s} {C₁ C₂ : CaptureSet s} {
     (h : Γ ⊢ᶜ f : C₁ ⊑ C₂) (n : Nat)
     (h₂ : ∀ m, Γ.Confined (Γ.caps m C₂) r) : Γ.Confined (Γ.caps n C₁) r := by
   intro a ha
-  obtain ⟨m, hm⟩ := cap_canon hσ h a (Ctx.Root.of_mem_caps ha)
+  obtain ⟨m, hm⟩ := cap_canon hσ h a.base (Ctx.Root.of_mem_caps ha)
   rw [Ctx.roots_eq_expand_caps] at hm
   obtain ⟨b, hb, hab⟩ := Ctx.mem_expand.mp hm
-  have hbr : Γ.LvlLe b r := h₂ m b hb
-  cases hrb : Γ.isRootB b with
+  rw [← Γ.expandAtom_base_eq b] at hab
+  have hbr : Γ.LvlLe b.base r := Ctx.lvlLe_base_left.mp (h₂ m b hb)
+  rw [Ctx.lvlLe_base_left]
+  cases hrb : Γ.isRootB b.base with
   | false =>
-      rw [Ctx.expandAtom_of_not_root hrb] at hab
+      rw [Ctx.expandAtom_of_not_root hrb (CapAtom.base_base b)] at hab
       rw [List.mem_singleton.mp hab]
       exact hbr
   | true =>
-      rcases Ctx.mem_expandAtom_root hrb hab with rfl | ⟨κ, rfl, _, hκ⟩
-      · exact Ctx.top_lvlLe _ _
-      · exact Ctx.LvlLe.trans hrb hκ hbr
+      rcases Ctx.mem_expandAtom_root hrb hab with h0 | ⟨κ, h0, _, hκ⟩
+      · rw [h0]; exact Ctx.top_lvlLe _ _
+      · rw [h0]; exact Ctx.LvlLe.trans hrb hκ hbr
 
 /-- **T11, `rigid_canon`.**  A rigid binder is a root of every set closed
 evidence puts it below. -/
@@ -315,15 +342,19 @@ theorem rigid_canon (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : Ca
     Γ.Root (.cvar κ) C :=
   cap_canon hσ h _ (Ctx.Root_cvar_rigid (Or.inr hκ))
 
-/-- **T11', `rigid_target`.**  Nothing else resolves below a rigid binder. -/
+/-- **T11', `rigid_target`.**  Nothing else resolves below a rigid binder.
+Restated with `base` (plan-5h S0.11, after plan-5f K0.8): `{ro κ} ⊑ {κ}` by
+`modeLe`, so a resolution below `κ` may carry a mode, and what sits under the
+mode is `κ`.  On a set of a base program `base` is the identity. -/
 theorem rigid_target (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : CaptureSet s}
     (hκ : Γ.lookupCap κ = .star) (h : Γ ⊢ᶜ f : C ⊑ [CapAtom.cvar κ]) (n : Nat) :
-    (Γ.caps n C).Subset [CapAtom.cvar κ] := by
-  intro a ha
-  obtain ⟨m, hm⟩ := cap_canon hσ h a (Ctx.Root.of_mem_caps ha)
+    ((Γ.caps n C).map CapAtom.base).Subset [CapAtom.cvar κ] := by
+  intro a' ha'
+  obtain ⟨a, ha, rfl⟩ := List.mem_map.mp ha'
+  obtain ⟨m, hm⟩ := cap_canon hσ h a.base (Ctx.Root.of_mem_caps ha)
   rw [Ctx.roots_eq_expand_caps,
     Ctx.caps_of_opaque (by rw [hκ]; rfl), Ctx.expand_cons, Ctx.expand_nil,
-    List.append_nil, Ctx.expandAtom_of_not_root (by rw [Ctx.isRootB, hκ]; rfl)] at hm
+    List.append_nil, Ctx.expandAtom_of_not_root (by rw [Ctx.isRootB, hκ]; rfl) rfl] at hm
   exact hm
 
 /-- **T12, scope safety.**  What closed evidence puts below a scope root

@@ -1,4 +1,4 @@
-import Coercions.Separation.FCdot.Context
+import Coercions.Separation.FCdot.Names
 
 namespace Separation
 
@@ -86,12 +86,24 @@ inductive CapCo.HasType : Ctx s → CapCo s → CaptureSet s → CaptureSet s �
       Γ ⊢ᶜ .member a e i : C₁⟦a.root⟧ ⊑ C₂⟦a.root⟧
   | eqToLe : Γ ⊢ᶜ φ : C₁ ≡ C₂ → Γ ⊢ᶜ .eqToLe φ : C₁ ⊑ C₂
   /-- `Γ ⊢ᶜ level e r : {e} ⊑ᶜ {r}` when `r` is a scope root and the level of
-      `e` is `r` or encloses it.  Both sides are singletons.  A set shaped
-      conclusion is a `union` of instances. -/
+      `e` is `r` or encloses it, and `e` is access-only: consumption never
+      goes below a root (plan-5h S0.3, decisions 6 and 37).  The premise
+      reads the mode reading of names, in which a parameter is a plain leaf.
+      Both sides are singletons.  A set shaped conclusion is a `union` of
+      instances. -/
   | level :
       Γ.IsRoot r →
       Γ.LvlLe e r →
+      Γ.AccessOnly [e] →
       Γ ⊢ᶜ .level e r : [e] ⊑ [r]
+  /-- `{a at m} ⊑ {a at m'}` when `m ≤ m'`: `{ro a} ⊑ {a} ⊑ {consume a}`. -/
+  | modeLe : m ≤ m' → Γ ⊢ᶜ .modeLe a m m' : [a.atMode m] ⊑ [a.atMode m']
+  /-- The read-only view of an inclusion. -/
+  | roMap : Γ ⊢ᶜ f : C ⊑ D → Γ ⊢ᶜ .roMap f : C.ro ⊑ D.ro
+  /-- `W ⊑ {h}` for an heir `h` of `W`, when what the heir owns is
+      access-only (decision 37).  There is deliberately no rule for the other
+      direction. -/
+  | ownLe : Γ.OwnOf a W → Γ.AccessOnly W → Γ ⊢ᶜ .ownLe a W : W ⊑ [a]
 
 /-- `Γ ⊢ᶜ φ : C ≡ D`: equality evidence between capture sets. -/
 inductive CapEq.HasType : Ctx s → CapEq s → CaptureSet s → CaptureSet s → Prop where
@@ -133,10 +145,13 @@ inductive ShapeCo.HasType : Ctx s → ShapeCo s → Shape s → Shape s → Prop
   | eqToLe : Γ ⊢ φ : S ≡ T → Γ ⊢ˢ .eqToLe φ : S ≤ T
   /-- Contravariant domain, covariant codomain; both are type inclusions.
       Both arrows' capture binders are opened at one scope, and that scope
-      has a root of its own, which is the scope discipline of the stage. -/
+      has a root of its own, which is the scope discipline of the stage.  The
+      codomain evidence charges nothing: a fresh pack under an arrow packs
+      no name (plan-5h decision 38). -/
   | pi {T1 T2 : Dom s} {U1 U2 : Cod s} :
       Γ.scope ⊢ e : T2.underRoot ≤ T1.underRoot →
       Γ.body T2 ⊢ᵉ f : U1.underRoot ≤ U2.underRoot →
+      f.charge = [] →
       Γ ⊢ˢ .pi e f : Π(T1) U1 ≤ Π(T2) U2
   /-- Object coercion between closed telescopes: the morphism proves each target
       proposition by a template over a source proposition. -/
@@ -165,6 +180,13 @@ inductive ShapeCo.HasType : Ctx s → ShapeCo s → Shape s → Shape s → Prop
   | boxed :
       Γ ⊢ d : T ≤ T' →
       Γ ⊢ˢ .boxed d : □ T ≤ □ T'
+  /-- A cell is read as its read-only view.  A cell itself is invariant: it
+      has no rule but `refl`, `trans`, `top`, `bot` and `eqToLe`. -/
+  | toReader : Γ ⊢ˢ .toReader T : Shape.cell T ≤ Shape.reader T
+  /-- A read-only view is covariant in the content type. -/
+  | readerCov :
+      Γ ⊢ d : T ≤ T' →
+      Γ ⊢ˢ .readerCov d : Shape.reader T ≤ Shape.reader T'
 
 /-- `Γ ⊢ d : T ≤ T'`: inclusion evidence between types, a shape inclusion
 paired with a capture inclusion. -/
@@ -276,6 +298,7 @@ inductive ELeCo.HasType : Ctx s → ELeCo s → ETy s → ETy s → Prop where
   | pack {T : Dom s} :
       Γ ⊢ᶜ h : C ⊑ C₀ →
       Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) T')) ≤ T.underRoot →
+      Γ.AccessOnly C →
       Γ ⊢ᵉ .pack C h e : .ty T' ≤ ∃ᶜ[C₀] T
   /-- Congruence: the bound is covariant and both bodies are read under a
       scope of their own. -/
@@ -284,6 +307,20 @@ inductive ELeCo.HasType : Ctx s → ELeCo s → ETy s → ETy s → Prop where
       Γ.scope ⊢ e : T.underRoot ≤ T'.underRoot →
       Γ ⊢ᵉ .cong h e : ∃ᶜ[C₀] T ≤ ∃ᶜ[C₀'] T'
   | trans : Γ ⊢ᵉ g : E₁ ≤ E₂ → Γ ⊢ᵉ h : E₂ ≤ E₃ → Γ ⊢ᵉ .trans g h : E₁ ≤ E₃
+  /-- A fresh pack: the witness is a list of distinct consumable names, and
+      the residual inclusion is read in a scope that opens a root and then an
+      heir of the witness.  The pack charges its witness at the `consume`
+      mode (`ELeCo.charge`). -/
+  | packF {Γ : Ctx s} {W : CaptureSet s} {e : LeCo (Sig.scope s)} {T' : Ty s} {T : Dom s} :
+      CaptureSet.IsNames W → List.Nodup W →
+      (∀ κ : BVar s .cap, CapAtom.cvar κ ∈ W → Ctx.Consumable Γ κ) →
+      Γ.scopeOwn W ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) T')) ≤ T.underRoot →
+      Γ ⊢ᵉ .packF W e : .ty T' ≤ ∃ᶠ T
+  /-- Congruence of `∃ᶠ`: both bodies are read under a scope whose binder is
+      a location. -/
+  | congF {Γ : Ctx s} {e : LeCo (Sig.scope s)} {T T' : Dom s} :
+      ((Γ.consC .root).consC (.loc true [])) ⊢ e : T.underRoot ≤ T'.underRoot →
+      Γ ⊢ᵉ .congF e : ∃ᶠ T ≤ ∃ᶠ T'
 
 end
 
@@ -332,7 +369,16 @@ inductive PAtom.HasType : Ctx s → PAtom s → ETy s → Prop where
       Γ ⊢ₐ a : S →
       Γ ⊢ᶜ h : C ⊑ C₀ →
       Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S)) ≤ T.underRoot →
+      Γ.AccessOnly C →
       Γ ⊢ₚ .pack C h e a : ∃ᶜ[C₀] T
+  /-- The twin of `pack` for `∃ᶠ`, with the premises of `ELeCo.HasType.packF`. -/
+  | packF {Γ : Ctx s} {a : Atom s} {S : Ty s} {W : CaptureSet s} {e : LeCo (Sig.scope s)}
+      {T : Dom s} :
+      Γ ⊢ₐ a : S →
+      CaptureSet.IsNames W → List.Nodup W →
+      (∀ κ : BVar s .cap, CapAtom.cvar κ ∈ W → Ctx.Consumable Γ κ) →
+      Γ.scopeOwn W ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S)) ≤ T.underRoot →
+      Γ ⊢ₚ .packF W e a : ∃ᶠ T
 
 open Lean PrettyPrinter in
 @[app_unexpander PAtom.HasType] def PAtom.HasType.unexpand : Unexpander
@@ -357,6 +403,9 @@ inductive CapCo.MemberFree {s : Sig} : CapCo s → Prop where
   | union {f g : CapCo s} : f.MemberFree → g.MemberFree → (CapCo.union f g).MemberFree
   | capvar {a : Atom s} : a.MemberFree → (CapCo.capvar a).MemberFree
   | level (e r : CapAtom s) : (CapCo.level e r).MemberFree
+  | modeLe (a : CapAtom s) (m m' : EMode) : (CapCo.modeLe a m m').MemberFree
+  | roMap {f : CapCo s} : f.MemberFree → (CapCo.roMap f).MemberFree
+  | ownLe (a : CapAtom s) (W : CaptureSet s) : (CapCo.ownLe a W).MemberFree
 
 /-- An atom whose capture wrappers are member free. -/
 inductive Atom.MemberFree {s : Sig} : Atom s → Prop where
@@ -390,54 +439,111 @@ mutual
 the plain reading, which carries the notation `Γ ⊢ t : T`. -/
 inductive Tm.HasType : Ctx s → Tm s → ETy s → Prop where
   | atom : Γ ⊢ₚ p : E → Γ ⊢ .atom p :ᵉ E
-  | val : Γ ⊢ᵥᵉ v : E → Γ ⊢ .val v :ᵉ E
+  /-- A program value holds no cell: a cell is created by `newLet` alone. -/
+  | val : Γ ⊢ᵥᵉ v : E → Value.CellFree v → Γ ⊢ .val v :ᵉ E
   /-- The argument is checked at the *instantiated* domain: the arrow's
       capture binder goes to the argument's root.  A caller reaches it with
       `recap` and reflexivity.  The result is the codomain with the parameter
-      at the argument and the capture binder at its root. -/
+      at the argument and the capture binder at its root.  The callee's set
+      is accessible and what it consumes is consumable, the argument is
+      access-only and accessible where it crosses into the callee (plan-5h
+      decision 39), and the argument names nothing the callee consumes. -/
   | app {T : Dom s} {U : Cod s} :
       Γ ⊢ₐ a : (Π(T) U) ^ C →
       Γ ⊢ₐ b : T.subst (Subst.singleC (.var b.root)) →
+      Γ.Accessible C → Γ.ConsumeOk C →
+      Γ.AccessOnly [.var b.root] →
+      Γ.Accessible [.var b.root] →
+      Γ.ArgSep [.var b.root] C →
       Γ ⊢ .app a b :ᵉ U.subst (Subst.arg b)
   /-- A field's result is the block name `ℓ` of the atom's root, captured at
       the capture name of the same label.  The capture witness `Wᶜ(ℓ)` of a
       literal is the declared capture set of the field's result, read by
-      `defC` and resolved by `capsAtom`. -/
+      `defC` and resolved by `capsAtom`.  The receiver's set is accessible and
+      what it consumes is consumable. -/
   | proj :
       Γ ⊢ₐ a : T →
       Γ ⊢ h : a.root ∋ ℓ →
+      Γ.Accessible T.captureSet → Γ.ConsumeOk T.captureSet →
       Γ ⊢ .proj a ℓ h :ᵉ .ty ((a.root ∙ ℓ) ^ [CapAtom.name a.root ℓ])
   /-- The body of a let declares the use set `U'`, and the avoidance evidence
       `f` puts the body's use set below it.  `U'` does not mention the bound
       variable, so the use set of the let is structural.  The body may have an
-      answer; a let whose body is plain is the rule as it stands. -/
+      answer; a let whose body is plain is the rule as it stands.  The body is
+      read with the head's consumed names killed, and those are consumable
+      binders (`Ctx.KillOk`, plan-5h decision 38). -/
   | «let» :
       Γ ⊢ t :ᵉ .ty T →
-      Γ.cons (.opaque T) ⊢ u :ᵉ E↑ →
-      Γ.cons (.opaque T) ⊢ᶜ f : u.uses ⊑ U'↑ →
+      Γ.KillOk t.uses →
+      (Γ.killFor t.uses).cons (.opaque T) ⊢ u :ᵉ E↑ →
+      (Γ.killFor t.uses).cons (.opaque T) ⊢ᶜ f : u.uses ⊑ U'↑ →
       Γ ⊢ .let t u U' f :ᵉ E
   | cast : Γ ⊢ t :ᵉ .ty T → Γ ⊢ e : T ≤ T' → Γ ⊢ .cast t e :ᵉ .ty T'
-  /-- The answer cast: the same former at the answer sort. -/
-  | castE : Γ ⊢ t :ᵉ E → Γ ⊢ᵉ g : E ≤ E' → Γ ⊢ .castE t g :ᵉ E'
+  /-- The answer cast: the same former at the answer sort.  The evidence is
+      read after the term, with the term's consumed names killed, and those
+      are consumable binders. -/
+  | castE : Γ ⊢ t :ᵉ E → Γ.KillOk t.uses → Γ.killFor t.uses ⊢ᵉ g : E ≤ E' →
+      Γ ⊢ .castE t g :ᵉ E'
   /-- The head's bound is charged to the declared use set, the answer avoids
       both opened binders, and the body may name the opened binder in its
       charge.  The opened capture binder is rigid: it has no scope of its
-      own, so two `letex`es open two incomparable binders. -/
+      own, so two `letex`es open two incomparable binders.  The bound names
+      nothing the declared set consumes, and the body is read with the
+      head's consumed names killed.  Both kill sets, the head's uses and the
+      declared set, consume only consumable binders.  The bound is accessible
+      in the body's kill context, since the unpack instantiates the opened
+      binder at it (plan-5h decision 39). -/
   | letex {T : Ty (s,c)} {C₀ U' : CaptureSet s} {E : ETy s} :
       Γ ⊢ t :ᵉ ∃ᶜ[C₀] T →
-      Γ ⊢ᶜ h : C₀ ⊑ U' →
-      ((Γ.consC .star).cons (.opaque T)) ⊢ u :ᵉ
+      Γ.KillOk t.uses →
+      Γ ⊢ᶜ h : C₀ ⊑ U' → Γ.KillOk U' →
+      Γ.ArgSep C₀ U' →
+      (Γ.killFor t.uses).Accessible C₀ →
+      (((Γ.killFor t.uses).consC .star).cons (.opaque T)) ⊢ u :ᵉ
         (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E)) →
-      ((Γ.consC .star).cons (.opaque T)) ⊢ᶜ f :
+      (((Γ.killFor t.uses).consC .star).cons (.opaque T)) ⊢ᶜ f :
         u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
           ∪ [CapAtom.cvar (.there .here)]) →
       Γ ⊢ .letex t u U' h f :ᵉ E
   /-- Unboxing, charged with the boxed capture set against the use set `U`
-      the term declares. -/
+      the term declares.  The box's own set is accessible. -/
   | unbox :
       Γ ⊢ₐ a : (□ (S ^ C)) ^ D →
       Γ ⊢ᶜ f : C ⊑ U →
+      Γ.Accessible D →
       Γ ⊢ .unbox a U f :ᵉ .ty (S ^ C)
+  /-- Allocation of a cell at a fresh location: the content is pure, and the
+      body is read under the location and the cell binder.  The body may
+      consume its own location, and the declared set `U'` avoids it, so a
+      fresh location is charged to nothing outside. -/
+  | newLet {T : Ty s} {E : ETy s} {U' : CaptureSet s} :
+      Γ ⊢ₐ a : T → T.captureSet = [] →
+      Γ.cellCtx T ⊢ u :ᵉ (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E)) →
+      Γ.cellCtx T ⊢ᶜ f :
+        u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+          ∪ [CapAtom.mode .consume (CapAtom.cvar (.there .here))]) →
+      Γ ⊢ .newLet a u U' f :ᵉ E
+  /-- A read through a cell or a reader, whose set is accessible. -/
+  | read {S : Shape s} {C : CaptureSet s} {T : Ty s} :
+      Γ ⊢ₐ a : S ^ C → S.IsRefOf T → Γ.Accessible C →
+      Γ ⊢ .read a :ᵉ .ty T
+  /-- A write of a value of the content type into a cell whose set is
+      accessible. -/
+  | write {T : Ty s} {C : CaptureSet s} :
+      Γ ⊢ₐ a : (Shape.cell T) ^ C → Γ ⊢ₐ b : T → Γ.Accessible C →
+      Γ ⊢ .write a b :ᵉ .ty Ty.unit
+  /-- The unpacking of `∃ᶠ`: the body is read with the head's consumed names
+      killed, which are consumable binders, and with an opened name that
+      claims them.  The body may consume
+      its opened name, and the declared set `U'` avoids it. -/
+  | letexF {T : Ty (s,c)} {E : ETy s} {U' : CaptureSet s} :
+      Γ ⊢ t :ᵉ ∃ᶠ T →
+      Γ.KillOk t.uses →
+      Γ.freshCtx t.uses T ⊢ u :ᵉ (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E)) →
+      Γ.freshCtx t.uses T ⊢ᶜ f :
+        u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+          ∪ [CapAtom.mode .consume (CapAtom.cvar (.there .here))]) →
+      Γ ⊢ .letexF t u U' f :ᵉ E
 
 /-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is empty in
 this stage. -/
@@ -452,8 +558,13 @@ inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
   /-- An object literal has its precise type, generated from its witnesses and
       fields, at the capture set `A` it carries.  Fields are typed with the
       self binder at that type, against the same `A`. -/
-  | obj :
+  | obj {A : CaptureSet s} {F : Fields ((s,c),x)} {Γ : Ctx s} {W : Witnesses (s,x)}
+      {Wc : CapWitnesses (s,x)} :
       Γ.objBody ((μ (Telescope.ofLiteral W Wc F.labels)) ^ A) W Wc F.labels ⊢ᶠ[A↑] F →
+      (∀ ℓ : Label, ℓ ∈ CapWitnesses.labels Wc →
+        Ctx.AccessOnly (Ctx.cons Γ (Binding.transparent
+          ((μ (Telescope.ofLiteral W Wc (Fields.labels F))) ^ A) W Wc (Fields.labels F)))
+          [CapAtom.name .here ℓ]) →
       Γ ⊢ᵥ .obj A W Wc F : (μ (Telescope.ofLiteral W Wc F.labels)) ^ A
   /-- Boxing is pure: the box shape hides the captured set.  A box is a
       literal with no witnesses and no fields. -/
@@ -461,6 +572,20 @@ inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
       Γ ⊢ₐ a : T →
       Γ ⊢ᵥ .box a : (□ T) ^ []
   | cast : Γ ⊢ᵥ v : T → Γ ⊢ e : T ≤ T' → Γ ⊢ᵥ .cast v e : T'
+  /-- A cell sits at a location that claims nothing, and holds pure
+      content: a capability is stored boxed (plan-5h decision 13). -/
+  | cell {Γ : Ctx s} {c : CapAtom s} {b : Bool} {a : Atom s} {T : Ty s} :
+      Ctx.LocOf Γ c b →
+      Γ ⊢ₐ a : T →
+      Ty.captureSet T = [] →
+      Γ ⊢ᵥ .cell c a : (Shape.cell T) ^ [c]
+  /-- A read-only view of the cell at a transparent binder.  In a store every
+      term binder is transparent, and a transparent binder keeps its declared
+      type across a substitution, so the view keeps its type there. -/
+  | reader {Γ : Ctx s} {r : BVar s .var} {T : Ty s} {C : CaptureSet s} :
+      Ctx.IsTransparent Γ r →
+      Ctx.lookupTy Γ r = (Shape.cell T) ^ C →
+      Γ ⊢ᵥ .reader r : (Shape.reader T) ^ [CapAtom.mode .ro (CapAtom.var r)]
 
 /-- `Γ ⊢ᵥᵉ v : E`: values at the answer sort.  `Value.HasType` has no `pack`
 rule, so a packed value has an existential answer and no other, and a packed
@@ -471,7 +596,16 @@ inductive Value.HasTypeE : Ctx s → Value s → ETy s → Prop where
       Γ ⊢ᵥ v : S →
       Γ ⊢ᶜ h : C ⊑ C₀ →
       Γ.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S)) ≤ T.underRoot →
+      Γ.AccessOnly C →
       Γ ⊢ᵥᵉ .pack C h e v : ∃ᶜ[C₀] T
+  /-- The twin of `pack` for `∃ᶠ`, with the premises of `ELeCo.HasType.packF`. -/
+  | packF {Γ : Ctx s} {v : Value s} {S : Ty s} {W : CaptureSet s} {e : LeCo (Sig.scope s)}
+      {T : Dom s} :
+      Γ ⊢ᵥ v : S →
+      CaptureSet.IsNames W → List.Nodup W →
+      (∀ κ : BVar s .cap, CapAtom.cvar κ ∈ W → Ctx.Consumable Γ κ) →
+      Γ.scopeOwn W ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S)) ≤ T.underRoot →
+      Γ ⊢ᵥᵉ .packF W e v : ∃ᶠ T
 
 /-- `Γ ⊢ᶠ[A] F`: each field `ℓ = t` has type `(self ∙ ℓ) ^ {self ∙ ℓ}`, and
 its closing evidence puts its use set below the literal's assigned set `A`
@@ -486,6 +620,50 @@ inductive Fields.HasType : Ctx (s,x) → CaptureSet s → Fields (s,x) → Prop 
       Γ ⊢ᶠ[A] .cons F ℓ t g
 
 end
+
+/-! ### The base rules of the reshaped formers
+
+A head that consumes nothing kills nothing (`Ctx.killFor_of_noConsume`), and a
+declared set that consumes nothing is separated from every bound
+(`Ctx.argSep_of_noConsume`).  So on a base program, where no set consumes, the
+reshaped `let`, `castE` and `letex` are the rules of the copied base
+(plan-5h S0.11). -/
+
+theorem Tm.HasType.let_of_noConsume {Γ : Ctx s} {t : Tm s} {T : Ty s} {u : Tm (s,x)}
+    {E : ETy s} {f : CapCo (s,x)} {U' : CaptureSet s}
+    (ht : Γ ⊢ t :ᵉ .ty T) (hn : Γ.NoConsume t.uses)
+    (hu : Γ.cons (.opaque T) ⊢ u :ᵉ E↑) (hf : Γ.cons (.opaque T) ⊢ᶜ f : u.uses ⊑ U'↑) :
+    Γ ⊢ .let t u U' f :ᵉ E := by
+  have hk := Ctx.killFor_of_noConsume hn
+  refine .let ht (Ctx.KillOk.of_noConsume hn) ?_ ?_ <;> rw [hk]
+  · exact hu
+  · exact hf
+
+theorem Tm.HasType.castE_of_noConsume {Γ : Ctx s} {t : Tm s} {E E' : ETy s} {g : ELeCo s}
+    (ht : Γ ⊢ t :ᵉ E) (hn : Γ.NoConsume t.uses) (hg : Γ ⊢ᵉ g : E ≤ E') :
+    Γ ⊢ .castE t g :ᵉ E' := by
+  have hk := Ctx.killFor_of_noConsume hn
+  refine .castE ht (Ctx.KillOk.of_noConsume hn) ?_
+  rw [hk]
+  exact hg
+
+theorem Tm.HasType.letex_of_noConsume {Γ : Ctx s} {t : Tm s} {h : CapCo s}
+    {u : Tm ((s,c),x)} {f : CapCo ((s,c),x)} {T : Ty (s,c)} {C₀ U' : CaptureSet s}
+    {E : ETy s}
+    (ht : Γ ⊢ t :ᵉ ∃ᶜ[C₀] T) (hn : Γ.NoConsume t.uses) (hU : Γ.NoConsume U')
+    (hc : Γ ⊢ᶜ h : C₀ ⊑ U') (hacc : Γ.Accessible C₀)
+    (hu : ((Γ.consC .star).cons (.opaque T)) ⊢ u :ᵉ
+      (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E)))
+    (hf : ((Γ.consC .star).cons (.opaque T)) ⊢ᶜ f :
+      u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
+        ∪ [CapAtom.cvar (.there .here)])) :
+    Γ ⊢ .letex t u U' h f :ᵉ E := by
+  have hk := Ctx.killFor_of_noConsume hn
+  refine .letex ht (Ctx.KillOk.of_noConsume hn) hc (Ctx.KillOk.of_noConsume hU)
+    (Ctx.argSep_of_noConsume hU) ?_ ?_ ?_ <;> rw [hk]
+  · exact hacc
+  · exact hu
+  · exact hf
 
 /-- The plain reading of term typing.  It carries the notation `Γ ⊢ t : T`,
 so every statement written that way is the proposition it was before the

@@ -45,6 +45,8 @@ theorem Tm.rename_id {s : Sig} (t : Tm s) : t.rename Rename.id = t := by
   | .letex t u => simp [Tm.rename, Rename.lift_id, Tm.rename_id t, Tm.rename_id u]
   | .box x => simp [Tm.rename]
   | .unbox x => simp [Tm.rename]
+  | .cell x => simp [Tm.rename]
+  | .reader x => simp [Tm.rename]
 
 theorem Fields.rename_id {s : Sig} (F : Fields s) : F.rename Rename.id = F := by
   match F with
@@ -195,6 +197,8 @@ theorem Value.erase_rename {s1 s2 : Sig} (v : Value s1) (ρ : Rename s1 s2) :
   | .obj A W Wc F =>
       simp [Value.rename, Value.erase, Runtime.Tm.rename, Fields.erase_rename F]
   | .box a => simp [Value.rename, Value.erase, Runtime.Tm.rename, Atom.root_rename]
+  | .cell c a => simp [Value.rename, Value.erase, Runtime.Tm.rename, Atom.root_rename]
+  | .reader r => simp [Value.rename, Value.erase, Runtime.Tm.rename]
   | .pack C h e v => simp [Value.rename, Value.erase, Value.erase_rename v]
   | .cast v e => simp [Value.rename, Value.erase, Value.erase_rename v]
 
@@ -296,6 +300,8 @@ theorem Value.erase_subst {s1 s2 : Sig} (v : Value s1) (σ : Subst s1 s2) :
       simp [Value.subst, Value.erase, Runtime.Tm.map, Fields.erase_subst F,
         Subst.rootVar_lift, Subst.rootVar_liftC]
   | .box a => simp [Value.subst, Value.erase, Runtime.Tm.map, Atom.root_subst]
+  | .cell c a => simp [Value.subst, Value.erase, Runtime.Tm.map, Atom.root_subst]
+  | .reader r => simp [Value.subst, Value.erase, Runtime.Tm.map, Subst.rootVar]
   | .pack C h e v => simp [Value.subst, Value.erase, Value.erase_subst v]
   | .cast v e => simp [Value.subst, Value.erase, Value.erase_subst v]
 
@@ -366,6 +372,8 @@ theorem Value.erase_core {s : Sig} : ∀ v : Value s, v.core.erase = v.erase
   | .lam _ _ _ _ => rfl
   | .obj _ _ _ _ => rfl
   | .box _ => rfl
+  | .cell _ _ => rfl
+  | .reader _ => rfl
   -- `Value.core` reads through no pack, so it is the identity here.
   | .pack _ _ _ _ => rfl
   | .cast v _ => by simp [Value.core, Value.erase, Value.erase_core v]
@@ -381,6 +389,8 @@ and all of them erase to nothing. -/
   | .lam _ _ _ _, .cong _ _ => rfl
   | .obj _ _ _ _, .cong _ _ => rfl
   | .box _, .cong _ _ => rfl
+  | .cell _ _, .cong _ _ => rfl
+  | .reader _, .cong _ _ => rfl
   | .pack _ _ _ _, .cong _ _ => rfl
   | .cast _ _, .cong _ _ => rfl
   | v, .trans g g' => by
@@ -397,6 +407,8 @@ theorem Store.lookup_erase {s : Sig} :
   | .consC σ _, .there y => by
       simp [Store.erase, Store.lookup, Runtime.Store.lookup, Value.erase_weaken,
         Store.lookup_erase σ y]
+  | .write σ _ _, y => by
+      simp [Store.erase, Store.lookup, Runtime.Store.lookup, Store.lookup_erase σ y]
 
 /-- Field lookup commutes with erasure. -/
 theorem Fields.erase_get? {s : Sig} :
@@ -411,6 +423,8 @@ theorem Value.erase_isValue {s : Sig} : ∀ v : Value s, Runtime.IsValue v.erase
   | .lam _ _ _ _ => .lam
   | .obj _ _ _ _ => .obj
   | .box _ => .box
+  | .cell _ _ => .cell
+  | .reader _ => .reader
   | .pack _ _ _ v => by simpa [Value.erase] using Value.erase_isValue v
   | .cast v _ => by simpa [Value.erase] using Value.erase_isValue v
 

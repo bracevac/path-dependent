@@ -49,6 +49,11 @@ def Value.erase : Value s → Runtime.Tm s
   -- payload, as a cast one does.
   | .pack _ _ _ v => v.erase
   | .cast v _ => v.erase
+  -- A cell erases to the runtime's cell at the root of its first content, and
+  -- a reader to the runtime's reader at the same binder.  A location is a
+  -- capture binder and has no runtime content.
+  | .cell _ a => .cell a.root
+  | .reader r => .reader r
 
 def Fields.erase : Fields s → Runtime.Fields s
   | .nil => .nil
@@ -62,6 +67,7 @@ def Store.erase : Store s → Runtime.Store s
   | .nil => .nil
   | .cons σ v => .cons σ.erase v.erase
   | .consC σ _ => .consC σ.erase
+  | .write σ r a => .write σ.erase r a.root
 
 def Cont.erase : Cont s → Runtime.Cont s
   | .nil => .nil

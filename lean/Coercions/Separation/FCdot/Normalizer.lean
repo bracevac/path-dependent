@@ -67,7 +67,8 @@ def Ctx.defPairs : Ctx s → List (BVar s .var × Label)
       (Ctx.defPairs Γ).map (fun p => (BVar.there p.1, p.2)) ++
         (match b with
          | .transparent _ W _ _ => W.labels.map (fun ℓ => (BVar.here, ℓ))
-         | .opaque _ => [])
+         | .opaque _ => []
+         | .formal _ => [])
   | .consC Γ _ => (Ctx.defPairs Γ).map (fun p => (BVar.there p.1, p.2))
 
 /-- Resolution with enough fuel for any alias chain in the context: a chain
@@ -104,6 +105,11 @@ inductive Form (s : Sig) : Type where
       coercion keeps its domain and codomain evidence, and the `unbox` step
       of the machine hands the stored atom back under it. -/
   | boxed : LeCo s → Form s
+  /-- Reader coercion: closed evidence between the content types.  A cell is
+      read as its view, and a view is covariant, so `toReader` normalizes to
+      `reader` of the identity and `readerCov d` to `reader d`
+      (plan-5h S0.7). -/
+  | reader : LeCo s → Form s
 
 /-- The normal form of one target proposition of an object coercion: a
 template `pre ∘ (source proposition) ∘ post` with normalized sides (`id` for
@@ -234,6 +240,15 @@ theorem LeCo.HasType.trans {Γ : Ctx s} {d e : LeCo s} {T U V : Ty s}
   | capt hd₁ hd₂ =>
       cases he with
       | capt he₁ he₂ => exact .capt (.trans hd₁ he₁) (.trans hd₂ he₂)
+
+/-- The identity inclusion of a type: `refl` on the shape and on the capture
+set.  The normal form of `toReader T` carries it. -/
+def LeCo.reflAt : Ty s → LeCo s
+  | .capt C S => .capt (.refl S) (.refl C)
+
+theorem LeCo.HasType.reflAt {Γ : Ctx s} (T : Ty s) : Γ ⊢ LeCo.reflAt T : T ≤ T := by
+  cases T with
+  | capt C S => exact .capt .refl .refl
 
 /-- The index named by a hole. -/
 def Hole.index : Hole → Nat
@@ -414,6 +429,8 @@ def Form.combine : Form s → Form s → Option (Form s)
   | .pi d c, .eqv _ => some (.pi d c)
   | .eqv _, .boxed d => some (.boxed d)
   | .boxed d, .eqv _ => some (.boxed d)
+  | .eqv _, .reader d => some (.reader d)
+  | .reader d, .eqv _ => some (.reader d)
   | .eqv _, .obj Es => some (.obj Es)
   | .obj Es, .eqv _ => some (.obj Es)
   | .eqv _, .bnd i F => some (.bnd i F)
@@ -422,6 +439,7 @@ def Form.combine : Form s → Form s → Option (Form s)
   | .pi d₁ c₁, .pi d₂ c₂ =>
       some (.pi (d₂.trans d₁) ((c₁.subst (Subst.selfCast d₂↑)).trans c₂))
   | .boxed d₁, .boxed d₂ => some (.boxed (d₁.trans d₂))
+  | .reader d₁, .reader d₂ => some (.reader (d₁.trans d₂))
   | .obj Es₁, .obj Es₂ => (Entries.through Es₁ Es₂).map .obj
   | .into Es₁, .obj Es₂ => (Entries.mapPrefix (.into Es₁) Es₂).map .into
   | .top, .obj Es => (Entries.mapPrefix .top Es).map .into
@@ -615,6 +633,8 @@ def hnfShape (σ : Store s) : Nat → ShapeCo s → Option (Form s)
   | _ + 1, .eqToLe φ => some (.eqv φ)
   | _ + 1, .pi d c => some (.pi d c)
   | _ + 1, .boxed d => some (.boxed d)
+  | _ + 1, .toReader T => some (.reader (LeCo.reflAt T))
+  | _ + 1, .readerCov d => some (.reader d)
   | n + 1, .obj _ m => (entries σ n m).map .obj
   | n + 1, .pair Tel₁ Tel₂ e f => do
       let F ← hnfShape σ n e
@@ -699,6 +719,7 @@ def viewThrough (σ : Store s) : Nat → Form s → Atom s → Option (View s)
   -- A non-object target has no telescope: its view is empty.
   | _ + 1, .pi _ _, _ => some .nil
   | _ + 1, .boxed _, _ => some .nil
+  | _ + 1, .reader _, _ => some .nil
   | _ + 1, .top, _ => some .nil
   | _ + 1, .bot, _ => some .nil
 

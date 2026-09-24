@@ -83,6 +83,8 @@ theorem CaptureSet.closing_subst_enter {s : Sig} (A : CaptureSet s) (b : Atom s)
   | .obj _ _ _ _ => rfl
   | .box _ => rfl
   | .pack _ _ _ _ => rfl
+  | .cell _ _ => rfl
+  | .reader _ => rfl
   | .cast v _ => by simp [Value.core, Value.core_annot v]
 
 /-- A variable has exactly the roots of the annotation of the value stored at
@@ -105,13 +107,14 @@ theorem Store.Typed.app_uses {s : Sig} {σ : Store s} {Γ : Ctx s} {x : BVar s .
     {T : Cod s} {C : CaptureSet s} {b : Atom s}
     (hσ : ⊢ σ : Γ) (hx : σ.lookup x = .lam A S₀ t₀ g)
     (hty : Γ.lookupTy x = (Π(S) T) ^ C)
-    (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root))) :
+    (hb : Γ ⊢ₐ b : S.subst (Subst.singleC (.var b.root)))
+    (hacc : Γ.AccessOnly [CapAtom.var b.root]) :
     CapLe Γ (t₀.subst (Subst.enter b)).uses ([CapAtom.var x] ∪ [CapAtom.var b.root]) := by
   obtain ⟨T₀, hlk, ht₀, hg⟩ := hσ.lam_closing hx
   rw [hty] at hlk
   obtain ⟨hC, hpi⟩ := Ty.capt.inj hlk
   obtain ⟨rfl, -⟩ := Shape.pi.inj hpi
-  have hsub := hg.subst (Subst.Typed.enter hσ.rootFree hb)
+  have hsub := hg.subst (Subst.Typed.enter hσ.rootFree hb hacc (hσ.names_accessOnly b.root))
   rw [CaptureSet.closing_subst_enter, ← Tm.uses_subst] at hsub
   have hA : RootsEq Γ [CapAtom.var x] A := by
     rw [show A = (σ.lookup x).annot by rw [hx]; rfl]
@@ -190,7 +193,7 @@ theorem step_uses_unpackAtom {s : Sig} {sigma : Store s} {Gamma : Ctx s} {K : Co
     (hsig : Store.Typed sigma Gamma)
     (ha : Gamma ⊢ₐ a : S) (hb : Gamma ⊢ᶜ h0 : C ⊑ C0)
     (he : Gamma.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S))
-      ≤ T.underRoot)
+      ≤ T.underRoot) (hA : Gamma.AccessOnly C)
     (hh : Gamma ⊢ᶜ h : C0 ⊑ U')
     (hf : ((Gamma.consC .star).cons (.opaque T)) ⊢ᶜ f :
       u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
@@ -208,7 +211,8 @@ theorem step_uses_unpackAtom {s : Sig} {sigma : Store s} {Gamma : Ctx s} {K : Co
   obtain ⟨f', hf'⟩ := CapCo.HasType.instHere hb hh
   have hpay := Atom.HasType.unpackPayload hsig.rootFree ha he
   have hbody := CapCo.HasType.substAtom
-    (CapCo.HasType.letexCharge_instC (C := C) hf) hpay
+    (CapCo.HasType.letexCharge_instC (C := C) hA hf) hpay
+    (Ctx.modeMap_single (Ctx.modeSound_store hsig') hpay (hsig'.names_accessOnly _))
   rw [CaptureSet.letexCharge_substVar, ← Tm.uses_substAtom] at hbody
   have hle := cap_canon hsig' hbody
   simp only [State.uses_mk, Tm.uses_atom, PAtom.root_pack, usesK_letex, usesK_weakenC,
@@ -233,7 +237,7 @@ theorem step_uses_unpackVal {s : Sig} {sigma : Store s} {Gamma : Ctx s} {K : Con
     (hsig : Store.Typed sigma Gamma)
     (hv0 : Gamma ⊢ᵥ v : S) (hb : Gamma ⊢ᶜ h0 : C ⊑ C0)
     (he : Gamma.scopeInst C ⊢ e : (Ty.weaken (k := .cap) (Ty.weaken (k := .cap) S))
-      ≤ T.underRoot)
+      ≤ T.underRoot) (hA : Gamma.AccessOnly C)
     (hh : Gamma ⊢ᶜ h : C0 ⊑ U')
     (hf : ((Gamma.consC .star).cons (.opaque T)) ⊢ᶜ f :
       u.uses ⊑ ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
@@ -257,7 +261,7 @@ theorem step_uses_unpackVal {s : Sig} {sigma : Store s} {Gamma : Ctx s} {K : Con
   have hfc : ((Gamma.consC (.inst C)).cons (.opaque T)) ⊢ᶜ f :
       u.uses ⊑ CaptureSet.weaken (k := .var)
         (CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here]) := by
-    have h2 := CapCo.HasType.letexCharge_instC (C := C) hf
+    have h2 := CapCo.HasType.letexCharge_instC (C := C) hA hf
     rwa [show CaptureSet.weaken (k := .var)
           (CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here])
         = ((CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) U'))
@@ -266,9 +270,11 @@ theorem step_uses_unpackVal {s : Sig} {sigma : Store s} {Gamma : Ctx s} {K : Con
         w.core.capWitnesses w.core.fieldLabels))
       (u.adjust w).uses (CaptureSet.weaken (k := .var)
       (CaptureSet.weaken (k := .cap) U' ∪ [CapAtom.cvar BVar.here])) := by
+    have hWc := hcore.obj_names_accessOnly hlit
     rcases hd with ⟨hn, rfl⟩ | ⟨E, hE?, hE⟩
-    · exact cap_canon hsig' (CapCo.HasType.adjust_none hn hfc)
-    · exact cap_canon hsig' (CapCo.HasType.adjust hE? hE hfc)
+    · exact cap_canon hsig' (CapCo.HasType.adjust_none hn hWc hfc)
+    · exact cap_canon hsig' (CapCo.HasType.adjust hE? hE
+        (Ctx.modeSound_store (hsig.consC rfl)) hWc hfc)
   have hf2 := cap_canon hsig' (CapCo.HasType.weaken hf'
     (Binding.transparent S0 w.core.witnesses w.core.capWitnesses w.core.fieldLabels))
   have hLeq : State.uses ⟨(sigma.consC (.inst C)).cons w.core,
@@ -336,14 +342,14 @@ theorem step_uses {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s} {U :
         cases hK with
         | letex hh hu hf hK' =>
           cases hp with
-          | pack ha hb he => exact step_uses_unpackAtom hσ ha hb he hh hf
+          | pack ha hb he hA => exact step_uses_unpackAtom hσ ha hb he hA hh hf
   case unpackVal =>
       cases ht with
       | val hv =>
         cases hK with
         | letex hh hu hf hK' =>
           cases hv with
-          | pack hv0 hb he => exact step_uses_unpackVal rfl hσ hv0 hb he hh hf
+          | pack hv0 hb he hA => exact step_uses_unpackVal rfl hσ hv0 hb he hA hh hf
   -- Allocation: the let's avoidance evidence, transported into the
   -- transparent context of the freshly stored literal by the substitution
   -- `Tm.adjust` applies to the body.
@@ -357,13 +363,15 @@ theorem step_uses {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s} {U :
               refine ⟨Rename.succ, by rw [← Rename.id_comp Rename.succ]; exact .cons .refl _,
                 fun Γ' hσ' => ?_⟩
               obtain rfl := Store.Typed.ctx_unique hσ' (Store.Typed.cons hσ hlit hcore)
+              have hWc := hcore.obj_names_accessOnly hlit
               have hle : CapLe (Γ.cons (.transparent S₀ v.core.witnesses v.core.capWitnesses
                   v.core.fieldLabels)) (u.adjust v).uses (U'↑) := by
                 rcases hd with ⟨hn, rfl⟩ | ⟨E, hE?, hE⟩
                 · exact cap_canon hσ' (CapCo.HasType.adjust_none (W := v.core.witnesses)
-                    (Wc := v.core.capWitnesses) (Fs := v.core.fieldLabels) hn hf)
+                    (Wc := v.core.capWitnesses) (Fs := v.core.fieldLabels) hn hWc hf)
                 · exact cap_canon hσ' (CapCo.HasType.adjust (W := v.core.witnesses)
-                    (Wc := v.core.capWitnesses) (Fs := v.core.fieldLabels) hE? hE hf)
+                    (Wc := v.core.capWitnesses) (Fs := v.core.fieldLabels) hE? hE
+                    (Ctx.modeSound_store hσ) hWc hf)
               simp only [State.uses_mk, Tm.uses_val, usesK_weaken, CaptureSet.rename_union]
               exact CapLe.union (hle.trans (CapLe.mem (by mem_uses))) (CapLe.mem (by mem_uses))
   -- Renaming: the let's avoidance evidence, instantiated at the atom.
@@ -375,7 +383,8 @@ theorem step_uses {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s} {U :
           cases hK with
           | «let» hu hf hK' =>
               refine step_uses_same hσ ?_
-              have hle := cap_canon hσ (hf.letBody_substAtom ha)
+              have hle := cap_canon hσ (hf.letBody_substAtom ha
+                (Ctx.modeMap_single (Ctx.modeSound_store hσ) ha (hσ.names_accessOnly _)))
               exact CapLe.union (hle.trans (CapLe.mem (by mem_uses)))
                 (CapLe.mem (by mem_uses))
   -- The three application steps: the closure's closing evidence at the
@@ -383,28 +392,28 @@ theorem step_uses {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s} {U :
   case appVar =>
       rename_i hx
       cases ht with
-      | app ha hb =>
+      | app ha hb hacc =>
           refine step_uses_same hσ ?_
-          have hle := hσ.app_uses hx (Atom.HasType.var_inv ha).symm hb
+          have hle := hσ.app_uses hx (Atom.HasType.var_inv ha).symm hb hacc
           exact CapLe.union (hle.trans (CapLe.mem (by mem_uses)))
             (CapLe.mem (by mem_uses))
   case appCastRefl =>
       rename_i hx hne hcf hid
       cases ht with
-      | app hA hb =>
+      | app hA hb hacc =>
           refine step_uses_same hσ ?_
           obtain ⟨C₀, hty⟩ := Ty.shape_eq_iff.mp (hσ.formsTyped.refl hA hcf hid)
-          have hle := hσ.app_uses hx hty hb
+          have hle := hσ.app_uses hx hty hb hacc
           exact CapLe.union (hle.trans (CapLe.mem (by mem_uses)))
             (CapLe.mem (by mem_uses))
   case appCast =>
       rename_i hx hne hcf
       cases ht with
-      | app hA hb =>
+      | app hA hb hacc =>
           refine step_uses_same hσ ?_
           obtain ⟨T₀, hTe, ht₀, -⟩ := Value.HasType.lam_inv (hσ.lam_of_lookup hx)
           obtain ⟨hdom, hcod⟩ := hσ.formsTyped.pi hA hcf (by rw [hTe]; rfl)
-          have hle := hσ.app_uses hx hTe (Atom.HasType.castDom hσ.rootFree hdom hb)
+          have hle := hσ.app_uses hx hTe (Atom.HasType.castDom hσ.rootFree hdom hb hacc) hacc
           simp only [Atom.root_cast] at hle
           simp only [Tm.uses_castE]
           exact CapLe.union (hle.trans (CapLe.mem (by mem_uses)))

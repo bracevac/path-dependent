@@ -111,15 +111,29 @@ theorem atomFold_eq {Γ : Ctx s} {b : Atom s} {Tel : Telescope (s,x)} {C : Captu
   simp [atomFold]
 
 theorem tmUnbox_eq {Γ : Ctx s} {a : Atom s} {f : CapCo s} {S : Shape s}
-    {C D U : CaptureSet s} (ha : Γ ⊢ₐ a : (□ (S ^ C)) ^ D) (hf : Γ ⊢ᶜ f : C ⊑ U) :
-    tmUnbox U ha hf = some ⟨.ty (S ^ C), .unbox ha hf⟩ := by
-  simp [tmUnbox]
+    {C D U : CaptureSet s} (ha : Γ ⊢ₐ a : (□ (S ^ C)) ^ D) (hf : Γ ⊢ᶜ f : C ⊑ U)
+    (hA : Γ.Accessible D) :
+    tmUnbox U ha hf = some ⟨.ty (S ^ C), .unbox ha hf hA⟩ := by
+  simp [tmUnbox, hA]
 
 theorem tmApp_eq {Γ : Ctx s} {a b : Atom s} {C : CaptureSet s} {T : Dom s} {U : Cod s}
     (ha : Γ ⊢ₐ a : (Π(T) U) ^ C)
-    (hb : Γ ⊢ₐ b : T.subst (Subst.singleC (CapAtom.var b.root))) :
-    tmApp ha hb = some ⟨U.subst (Subst.arg b), .app ha hb⟩ := by
-  simp [tmApp]
+    (hb : Γ ⊢ₐ b : T.subst (Subst.singleC (CapAtom.var b.root)))
+    (hA : Γ.Accessible C) (hK : Γ.ConsumeOk C)
+    (hacc : Γ.AccessOnly [CapAtom.var b.root]) (hbA : Γ.Accessible [CapAtom.var b.root])
+    (hsep : Γ.ArgSep [CapAtom.var b.root] C) :
+    tmApp ha hb = some ⟨U.subst (Subst.arg b), .app ha hb hA hK hacc hbA hsep⟩ := by
+  simp [tmApp, hA, hK, hacc, hbA, hsep]
+
+theorem tmRead_eq {Γ : Ctx s} {a : Atom s} {S : Shape s} {C : CaptureSet s} {T : Ty s}
+    (ha : Γ ⊢ₐ a : S ^ C) (hS : S.IsRefOf T) (hA : Γ.Accessible C) :
+    tmRead ha = some ⟨.ty T, .read ha hS hA⟩ := by
+  rcases hS with rfl | rfl <;> simp [tmRead, hA]
+
+theorem tmWrite_eq {Γ : Ctx s} {a b : Atom s} {T : Ty s} {C : CaptureSet s}
+    (ha : Γ ⊢ₐ a : (Shape.cell T) ^ C) (hb : Γ ⊢ₐ b : T) (hA : Γ.Accessible C) :
+    tmWrite ha hb = some ⟨.ty Ty.unit, .write ha hb hA⟩ := by
+  simp [tmWrite, hA]
 
 theorem capMember_eq {Γ : Ctx s} {a : Atom s} {e : ShapeCo s} {i : Nat} {S : Shape s}
     {D : CaptureSet s} {C₁ C₂ : CaptureSet (s,x)} {Tel : Telescope (s,x)}
@@ -183,8 +197,14 @@ theorem CapCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {f : CapCo s} {C D :
         capMember_eq ha he hAt]
   | _, _, _, _, _, .eqToLe hφ => by
       simp [synthCapCore, CapEq.HasType.complete hφ]
-  | _, _, _, _, _, .level h₁ h₂ => by
-      simp [synthCapCore, h₁, h₂]
+  | _, _, _, _, _, .level h₁ h₂ h₃ => by
+      simp [synthCapCore, h₁, h₂, h₃]
+  | _, _, _, _, _, .modeLe hm => by
+      simp [synthCapCore, hm]
+  | _, _, _, _, _, .roMap hf => by
+      simp [synthCapCore, CapCo.HasType.complete hf]
+  | _, _, _, _, _, .ownLe hO hW => by
+      simp only [synthCapCore, dif_pos hO, dif_pos hW]
 
 /-- The kernel synthesises both capture sets of every capture-equality
 derivation. -/
@@ -234,7 +254,7 @@ theorem ShapeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {e : ShapeCo s} {S
       simp [synthShapeCore, EqCo.HasType.complete hφ]
   | _, _, _, _, _, .trans he hf => by
       simp [synthShapeCore, ShapeCo.HasType.complete he, ShapeCo.HasType.complete hf]
-  | _, _, _, _, _, .pi he hf => by
+  | _, _, _, _, _, .pi he hf hc => by
       simp only [synthShapeCore]
       simp only [LeCo.HasType.complete he]
       simp only [Option.bind_eq_bind, Option.bind]
@@ -242,6 +262,7 @@ theorem ShapeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {e : ShapeCo s} {S
       simp only [witness?_some, Option.bind_eq_bind, Option.bind,
         ELeCo.HasType.complete hf]
       rw [witness_underRootCod, witness_underRootCod]
+      simp [hc]
   | _, _, _, _, _, .obj hm => by
       simp [synthShapeCore, Morphism.HasType.complete hm]
   | _, _, _, _, _, .pair he hf => by
@@ -255,6 +276,9 @@ theorem ShapeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {e : ShapeCo s} {S
       simp [synthShapeCore, Atom.HasType.complete ha, ShapeCo.HasType.complete he,
         leMember_eq ha he hAt]
   | _, _, _, _, _, .boxed hd => by
+      simp [synthShapeCore, LeCo.HasType.complete hd]
+  | _, _, _, _, _, .toReader => by simp [synthShapeCore]
+  | _, _, _, _, _, .readerCov hd => by
       simp [synthShapeCore, LeCo.HasType.complete hd]
 
 /-- The kernel synthesises the endpoints of every type-inclusion derivation. -/
@@ -353,19 +377,28 @@ theorem ELeCo.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {g : ELeCo s} {E E' 
     (h : Γ ⊢ᵉ g : E ≤ E'), synthELeCore Γ g = some ⟨E, E', h⟩
   | _, _, _, _, _, .plain he => by
       simp [synthELeCore, LeCo.HasType.complete he]
-  | _, _, _, _, _, .pack hc he => by
+  | _, _, _, _, _, .pack hc he hA => by
       simp only [synthELeCore, CapCo.HasType.complete hc, LeCo.HasType.complete he,
         Option.bind_eq_bind, Option.bind]
       rw [witness_underRootDom]
       simp only [witness?_some, Option.bind_eq_bind, Option.bind]
       rw [Ty.strengthenC2?_weaken]
-      simp
+      simp [hA]
   | _, _, _, _, _, .cong hc he => by
       simp only [synthELeCore, CapCo.HasType.complete hc, LeCo.HasType.complete he,
         Option.bind_eq_bind, Option.bind]
       rw [witness_underRootDom, witness_underRootDom]
   | _, _, _, _, _, .trans hg hh => by
       simp [synthELeCore, ELeCo.HasType.complete hg, ELeCo.HasType.complete hh]
+  | _, _, _, _, _, .packF hN hD hc he => by
+      simp only [synthELeCore, LeCo.HasType.complete he, Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom]
+      rw [Ty.strengthenC2?_weaken]
+      simp [hN, hD]
+      exact hc
+  | _, _, _, _, _, .congF he => by
+      simp only [synthELeCore, LeCo.HasType.complete he, Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom, witness_underRootDom]
 
 end
 
@@ -374,11 +407,17 @@ theorem PAtom.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {p : PAtom s} {E : E
     (h : Γ ⊢ₚ p : E), synthPAtomCore Γ p = some ⟨E, h⟩
   | _, _, _, _, .plain ha => by
       simp [synthPAtomCore, Atom.HasType.complete ha]
-  | _, _, _, _, .pack ha hc he => by
+  | _, _, _, _, .pack ha hc he hA => by
       simp only [synthPAtomCore, Atom.HasType.complete ha, CapCo.HasType.complete hc,
         LeCo.HasType.complete he, Option.bind_eq_bind, Option.bind]
       rw [witness_underRootDom]
-      simp
+      simp [hA]
+  | _, _, _, _, .packF ha hN hD hc he => by
+      simp only [synthPAtomCore, Atom.HasType.complete ha, LeCo.HasType.complete he,
+        Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom]
+      simp [hN, hD]
+      exact hc
 
 /-! ## Completeness for terms
 
@@ -393,36 +432,65 @@ theorem Tm.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {E : ETy s}
     (h : Γ ⊢ t :ᵉ E), synthTmCore Γ t = some ⟨E, h⟩
   | _, _, _, _, .atom ha => by
       simp [synthTmCore, PAtom.HasType.complete ha]
-  | _, _, .val (.lam _ _ _ _), _, .val (.plain hv') => by
+  | _, _, .val (.lam _ _ _ _), _, .val (.plain hv') hcf => by
       simp [synthTmCore, Value.HasType.complete hv']
-  | _, _, .val (.obj _ _ _ _), _, .val (.plain hv') => by
+      exact hcf
+  | _, _, .val (.obj _ _ _ _), _, .val (.plain hv') hcf => by
       simp [synthTmCore, Value.HasType.complete hv']
-  | _, _, .val (.box _), _, .val (.plain hv') => by
+      exact hcf
+  | _, _, .val (.box _), _, .val (.plain hv') hcf => by
       simp [synthTmCore, Value.HasType.complete hv']
-  | _, _, .val (.cast _ _), _, .val (.plain hv') => by
+      exact hcf
+  | _, _, .val (.cast _ _), _, .val (.plain hv') hcf => by
       simp [synthTmCore, Value.HasType.complete hv']
-  | _, _, .val (.pack _ _ _ _), _, .val (.pack hv' hc he) => by
-      simp only [synthTmCore, Value.HasType.complete hv', CapCo.HasType.complete hc,
+      exact hcf
+  | _, _, .val (.cell _ _), _, .val (.plain _) hcf => by
+      simp [Value.CellFree, Value.cellFree] at hcf
+  | _, _, .val (.reader _), _, .val (.plain hv') hcf => by
+      simp [synthTmCore, Value.HasType.complete hv']
+      exact hcf
+  | _, _, .val (.pack _ _ _ v0), _, .val (.pack hv' hc he hA) hcf => by
+      have hcf' : Value.CellFree v0 := hcf
+      simp only [synthTmCore, dif_pos hcf', Value.HasType.complete hv',
+        CapCo.HasType.complete hc, LeCo.HasType.complete he, Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom]
+      simp [hA]
+  | _, _, .val (.packF _ _ v0), _, .val (.packF hv' hN hD hc he) hcf => by
+      have hcf' : Value.CellFree v0 := hcf
+      simp only [synthTmCore, dif_pos hcf', Value.HasType.complete hv',
         LeCo.HasType.complete he, Option.bind_eq_bind, Option.bind]
       rw [witness_underRootDom]
-      simp
-  | _, _, _, _, .app ha hb => by
-      simp [synthTmCore, Atom.HasType.complete ha, Atom.HasType.complete hb, tmApp_eq ha hb]
-  | _, _, _, _, .proj ha hh => by
-      simp [synthTmCore, Atom.HasType.complete ha, Has.HasType.complete hh]
-  | _, _, _, _, .let ht hu hf => by
-      simp [synthTmCore, Tm.HasType.complete ht, Tm.HasType.complete hu,
+      simp [hN, hD]
+      exact hc
+  | _, _, _, _, .app ha hb hA hK hacc hbA hsep => by
+      simp [synthTmCore, Atom.HasType.complete ha, Atom.HasType.complete hb,
+        tmApp_eq ha hb hA hK hacc hbA hsep]
+  | _, _, _, _, .proj ha hh hA hK => by
+      simp [synthTmCore, Atom.HasType.complete ha, Has.HasType.complete hh, hA, hK]
+  | _, _, _, _, .let ht hk hu hf => by
+      simp [synthTmCore, Tm.HasType.complete ht, hk, Tm.HasType.complete hu,
         CapCo.HasType.complete hf, ETy.strengthenW?_weaken]
   | _, _, _, _, .cast ht he => by
       simp [synthTmCore, Tm.HasType.complete ht, LeCo.HasType.complete he]
-  | _, _, _, _, .castE ht hg => by
-      simp [synthTmCore, Tm.HasType.complete ht, ELeCo.HasType.complete hg]
-  | _, _, _, _, .letex ht hc hu hf => by
-      simp [synthTmCore, Tm.HasType.complete ht, CapCo.HasType.complete hc,
+  | _, _, _, _, .castE ht hk hg => by
+      simp [synthTmCore, Tm.HasType.complete ht, hk, ELeCo.HasType.complete hg]
+  | _, _, _, _, .letex ht hk hc hkU hsep hbA hu hf => by
+      simp [synthTmCore, Tm.HasType.complete ht, hk, hkU, CapCo.HasType.complete hc, hsep, hbA,
         Tm.HasType.complete hu, CapCo.HasType.complete hf, ETy.strengthenVC2?_weaken]
-  | _, _, _, _, .unbox ha hf => by
+  | _, _, _, _, .unbox ha hf hA => by
       simp [synthTmCore, Atom.HasType.complete ha, CapCo.HasType.complete hf,
-        tmUnbox_eq ha hf]
+        tmUnbox_eq ha hf hA]
+  | _, _, _, _, .newLet ha hT hu hf => by
+      simp [synthTmCore, Atom.HasType.complete ha, hT, Tm.HasType.complete hu,
+        CapCo.HasType.complete hf, ETy.strengthenVC2?_weaken]
+  | _, _, _, _, .read ha hS hA => by
+      simp [synthTmCore, Atom.HasType.complete ha, tmRead_eq ha hS hA]
+  | _, _, _, _, .write ha hb hA => by
+      simp [synthTmCore, Atom.HasType.complete ha, Atom.HasType.complete hb,
+        tmWrite_eq ha hb hA]
+  | _, _, _, _, .letexF ht hk hu hf => by
+      simp [synthTmCore, Tm.HasType.complete ht, hk, Tm.HasType.complete hu,
+        CapCo.HasType.complete hf, ETy.strengthenVC2?_weaken]
 
 /-- The kernel synthesises the type of every value derivation. -/
 theorem Value.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
@@ -431,12 +499,32 @@ theorem Value.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {T : T
       simp only [synthValueCore, Tm.HasType.complete ht, Option.bind_eq_bind, Option.bind]
       rw [witness_underRootCod]
       simp [CapCo.HasType.complete hg]
-  | _, _, _, _, .obj hF => by
-      simp [synthValueCore, Fields.HasType.complete hF]
+  | _, _, .obj _ _ _ _, _, .obj hF hW => by
+      simp only [synthValueCore, Fields.HasType.complete hF, Option.bind_eq_bind,
+        Option.bind, dif_pos hW]
   | _, _, _, _, .box ha => by
       simp [synthValueCore, Atom.HasType.complete ha, valueBox]
   | _, _, _, _, .cast hv he => by
       simp [synthValueCore, Value.HasType.complete hv, LeCo.HasType.complete he]
+  | _, _, _, _, .cell hℓ ha hT => by
+      simp only [synthValueCore, Atom.HasType.complete ha, Option.bind_eq_bind, Option.bind]
+      split
+      · simp [hT]
+      · rename_i hn
+        rw [hℓ] at hn
+        cases hn
+  | _, _, _, _, .reader htr hty => by
+      simp only [synthValueCore]
+      split
+      · split
+        · rename_i heq
+          rw [hty] at heq
+          cases heq
+          rfl
+        · rename_i hn
+          exact absurd hty (hn _ _)
+      · rename_i hn
+        exact absurd htr hn
 
 /-- The kernel accepts every field block derivation. -/
 theorem Fields.HasType.complete : ∀ {s : Sig} {Γ : Ctx (s,x)} {A : CaptureSet s}
@@ -461,11 +549,21 @@ theorem Value.HasTypeE.complete : ∀ {s : Sig} {Γ : Ctx s} {v : Value s} {E : 
       simp [synthValueECore, Value.HasType.complete hv]
   | _, _, .cast _ _, _, .plain hv => by
       simp [synthValueECore, Value.HasType.complete hv]
-  | _, _, .pack _ _ _ _, _, .pack hv hc he => by
+  | _, _, .cell _ _, _, .plain hv => by
+      simp [synthValueECore, Value.HasType.complete hv]
+  | _, _, .reader _, _, .plain hv => by
+      simp [synthValueECore, Value.HasType.complete hv]
+  | _, _, .pack _ _ _ _, _, .pack hv hc he hA => by
       simp only [synthValueECore, Value.HasType.complete hv, CapCo.HasType.complete hc,
         LeCo.HasType.complete he, Option.bind_eq_bind, Option.bind]
       rw [witness_underRootDom]
-      simp
+      simp [hA]
+  | _, _, .packF _ _ _, _, .packF hv hN hD hc he => by
+      simp only [synthValueECore, Value.HasType.complete hv, LeCo.HasType.complete he,
+        Option.bind_eq_bind, Option.bind]
+      rw [witness_underRootDom]
+      simp [hN, hD]
+      exact hc
 
 
 /-! ## Public interface

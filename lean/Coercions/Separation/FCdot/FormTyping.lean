@@ -1,6 +1,7 @@
 import Coercions.Separation.FCdot.Normalizer
 import Coercions.Separation.FCdot.Resolution
 import Coercions.Separation.FCdot.Typing
+import Coercions.Separation.FCdot.ModeBounds
 
 namespace Separation
 
@@ -63,6 +64,10 @@ def Shape.unfoldAt (r : BVar s .var) : Shape s → Shape s
 @[simp] theorem Shape.unfoldAt_pi (r : BVar s .var) (S : Dom s) (T : Cod s) :
     (Π(S) T).unfoldAt r = Π(S) T := rfl
 @[simp] theorem Shape.unfoldAt_box (r : BVar s .var) (T : Ty s) : (□ T).unfoldAt r = □ T := rfl
+@[simp] theorem Shape.unfoldAt_cell (r : BVar s .var) (T : Ty s) :
+    (Shape.cell T).unfoldAt r = .cell T := rfl
+@[simp] theorem Shape.unfoldAt_reader (r : BVar s .var) (T : Ty s) :
+    (Shape.reader T).unfoldAt r = .reader T := rfl
 @[simp] theorem Shape.unfoldAt_obj (r : BVar s .var) (Tel : Telescope (s,x)) :
     (μ Tel).unfoldAt r = μ ((Tel⟦r⟧)↑) := rfl
 
@@ -115,6 +120,13 @@ def Telescope.openAt? (ρ : Option (BVar s .var)) (Tel : Telescope (s,x)) : Tele
 @[simp] theorem Ctx.resolveAt?_box (Γ : Ctx s) (ρ : Option (BVar s .var)) (T : Ty s) :
     Γ.resolveAt? ρ (□ T) = □ T := by cases ρ <;> simp [Ctx.resolveAt?, Ctx.resolveAt]
 
+@[simp] theorem Ctx.resolveAt?_cell (Γ : Ctx s) (ρ : Option (BVar s .var)) (T : Ty s) :
+    Γ.resolveAt? ρ (.cell T) = .cell T := by cases ρ <;> simp [Ctx.resolveAt?, Ctx.resolveAt]
+
+@[simp] theorem Ctx.resolveAt?_reader (Γ : Ctx s) (ρ : Option (BVar s .var)) (T : Ty s) :
+    Γ.resolveAt? ρ (.reader T) = .reader T := by
+  cases ρ <;> simp [Ctx.resolveAt?, Ctx.resolveAt]
+
 /-- Opening a telescope in a mode is idempotent. -/
 @[simp] theorem Telescope.openAt?_idem (ρ : Option (BVar s .var)) (Tel : Telescope (s,x)) :
     Telescope.openAt? ρ (Telescope.openAt? ρ Tel) = Telescope.openAt? ρ Tel := by
@@ -139,6 +151,8 @@ theorem Ctx.resolveAt?_opened {Γ : Ctx s} {ρ : Option (BVar s .var)} {S : Shap
       | sel x l => rw [hres] at h; simp [Shape.unfoldAt] at h
       | pi S₀ T₀ => rw [hres] at h; simp [Shape.unfoldAt] at h
       | box T₀ => rw [hres] at h; simp [Shape.unfoldAt] at h
+      | cell T₀ => rw [hres] at h; simp [Shape.unfoldAt] at h
+      | reader T₀ => rw [hres] at h; simp [Shape.unfoldAt] at h
 
 /-- A shape read in a mode: the resolved object type is stable. -/
 theorem Ctx.resolveAt?_obj_self {Γ : Ctx s} {ρ : Option (BVar s .var)} {S : Shape s}
@@ -159,10 +173,12 @@ inductive Telescope.HoleAt (Tel : Telescope (s,x)) :
 
 A capture template's sides are chains of steps.  A step is typed
 *semantically*: a closed step by the fact `CapLe Γ A B` between its closed
-endpoints, an inclusion step by the syntactic inclusion of its two sets.
-The closed step keeps the evidence it carries but reads its typedness as the
-inclusion of roots, which is what the composition lemmas of `FormAlgebra`
-need and what `cap_canon` supplies at the closed steps of a typed morphism. -/
+endpoints, with `Γ.ModeLe A B` beside it, an inclusion step by the syntactic
+inclusion of its two sets.  The closed step keeps the evidence it carries but
+reads its typedness as the inclusion of roots and the order of mode bounds,
+which is what the composition lemmas of `FormAlgebra` need and what
+`cap_canon` and `modeLe_canon` supply at the closed steps of a typed morphism
+(plan-5h T0.4, decision 37). -/
 
 /-- One step of a typed capture-template side.  A closed step relates two
 weakened closed sets in the inclusion of roots; an inclusion step relates two
@@ -172,7 +188,7 @@ its own normal form -- so the endpoints of an inclusion step are the sets it
 is typed between, which is what lets a side be opened at a root. -/
 inductive CapStepTyped {s : Sig} (Γ : Ctx s) :
     CapStep s → CaptureSet (s,x) → CaptureSet (s,x) → Prop where
-  | closed : CapLe Γ A B → CapStepTyped Γ (.closed f) A↑ B↑
+  | closed : CapLe Γ A B → Γ.ModeLe A B → CapStepTyped Γ (.closed f) A↑ B↑
   | incl : CaptureSet.Subset X Y → CapStepTyped Γ (.incl C D) X Y
 
 /-- `SideTypedC Γ q X Y`: the chain `q` takes `X` to `Y`, step by step; the
@@ -213,6 +229,11 @@ inductive FormTyped {s : Sig} (Γ : Ctx s) :
       codomain evidence. -/
   | boxed : Γ.resolveAt? ρ S = □ X → Γ.resolveAt? ρ T = □ Y →
       Γ ⊢ d : X ≤ Y → FormTyped Γ ρ (.boxed d) S T
+  /-- A reader coercion: from a cell or a view of `X` to a view of `Y`, by
+      closed evidence between the content types (plan-5h S0.7). -/
+  | reader : (Γ.resolveAt? ρ S = .cell X ∨ Γ.resolveAt? ρ S = .reader X) →
+      Γ.resolveAt? ρ T = .reader Y →
+      Γ ⊢ d : X ≤ Y → FormTyped Γ ρ (.reader d) S T
   /-- Cast by a bound of the source object type. -/
   | bnd : Γ.resolveAt? ρ S = μ Tel → Tel ∋ (i ↦ ⊑ T↑) → FormTyped Γ ρ F T U →
       FormTyped Γ ρ (.bnd i F) S U
@@ -366,13 +387,16 @@ inductive ViewTyped {s : Sig} (Γ : Ctx s) (r : BVar s .var) (σ : Store s) :
       FormTyped Γ (some r) G (Γ.lookupTy r).shape (X⟦r⟧) →
       Γ ⊨[r, σ] V ▹ .bnd G : Tel ▹ ⊑ X
   /-- A subcapturing proposition of the atom's type, instantiated at the
-      root: the roots of the left set are among the roots of the right one.
-      The slot carries no data. -/
+      root: the roots of the left set are among the roots of the right one,
+      and every mode bound of the right set is one of the left set.  The slot
+      carries no data. -/
   | leC {C₁ C₂ : CaptureSet (s,x)} : Γ ⊨[r, σ] V : Tel → CapLe Γ (C₁⟦r⟧) (C₂⟦r⟧) →
+      Γ.ModeLe (C₁⟦r⟧) (C₂⟦r⟧) →
       Γ ⊨[r, σ] V ▹ .leC : Tel ▹ C₁ ⊑ᶜ C₂
   /-- A capture equality of the atom's type, instantiated at the root: the
-      two sets have the same roots. -/
+      two sets have the same roots and the same mode bounds. -/
   | eqC {C₁ C₂ : CaptureSet (s,x)} : Γ ⊨[r, σ] V : Tel → RootsEq Γ (C₁⟦r⟧) (C₂⟦r⟧) →
+      Γ.ModeEq (C₁⟦r⟧) (C₂⟦r⟧) →
       Γ ⊨[r, σ] V ▹ .eqC : Tel ▹ C₁ ≐ᶜ C₂
 
 open Lean PrettyPrinter in
@@ -454,8 +478,8 @@ theorem ViewTyped.length {V : View s} {Tel : Telescope (s,x)}
   | eq _ _ ih => simp [View.length, Telescope.length, ih]
   | has _ _ ih => simp [View.length, Telescope.length, ih]
   | bnd _ _ ih => simp [View.length, Telescope.length, ih]
-  | leC _ _ ih => simp [View.length, Telescope.length, ih]
-  | eqC _ _ ih => simp [View.length, Telescope.length, ih]
+  | leC _ _ _ ih => simp [View.length, Telescope.length, ih]
+  | eqC _ _ _ ih => simp [View.length, Telescope.length, ih]
 
 /-- The entry of a typed view at an inclusion proposition is a typed coercion
 form. -/
@@ -477,10 +501,10 @@ theorem ViewTyped.le_entry {V : View s} {Tel : Telescope (s,x)}
   | bnd _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
-  | leC _ _ ih =>
+  | leC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
-  | eqC _ _ ih =>
+  | eqC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
 
@@ -504,10 +528,10 @@ theorem ViewTyped.eq_entry {V : View s} {Tel : Telescope (s,x)}
   | bnd _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
-  | leC _ _ ih =>
+  | leC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
-  | eqC _ _ ih =>
+  | eqC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
 
@@ -531,10 +555,10 @@ theorem ViewTyped.has_entry {V : View s} {Tel : Telescope (s,x)}
   | bnd _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
-  | leC _ _ ih =>
+  | leC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
-  | eqC _ _ ih =>
+  | eqC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
 
@@ -558,10 +582,10 @@ theorem ViewTyped.bnd_entry {V : View s} {Tel : Telescope (s,x)}
       cases hAt with
       | here => exact ⟨_, by rw [← hV'.length]; exact .here, hG⟩
       | there hAt' => obtain ⟨G, hG', hGt⟩ := ih hAt'; exact ⟨G, .there hG', hGt⟩
-  | leC _ _ ih =>
+  | leC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
-  | eqC _ _ ih =>
+  | eqC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨G, hG, hGt⟩ := ih hAt'; exact ⟨G, .there hG, hGt⟩
 
@@ -585,11 +609,11 @@ theorem ViewTyped.leC_entry {V : View s} {Tel : Telescope (s,x)}
   | bnd _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
-  | leC hV' hE ih =>
+  | leC hV' hE _ ih =>
       cases hAt with
       | here => exact ⟨by rw [← hV'.length]; exact .here, hE⟩
       | there hAt' => obtain ⟨hQ, hE'⟩ := ih hAt'; exact ⟨.there hQ, hE'⟩
-  | eqC _ _ ih =>
+  | eqC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
 
@@ -613,13 +637,47 @@ theorem ViewTyped.eqC_entry {V : View s} {Tel : Telescope (s,x)}
   | bnd _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
-  | leC _ _ ih =>
+  | leC _ _ _ ih =>
       cases hAt with
       | there hAt' => obtain ⟨hQ, hE⟩ := ih hAt'; exact ⟨.there hQ, hE⟩
-  | eqC hV' hE ih =>
+  | eqC hV' hE _ ih =>
       cases hAt with
       | here => exact ⟨by rw [← hV'.length]; exact .here, hE⟩
       | there hAt' => obtain ⟨hQ, hE'⟩ := ih hAt'; exact ⟨.there hQ, hE'⟩
+
+/-- The mode half of `ViewTyped.leC_entry`: every mode bound of the right set
+is one of the left set, at the root. -/
+theorem ViewTyped.leC_modeLe {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {C₁ C₂ : CaptureSet (s,x)}
+    (hAt : Tel ∋ (i ↦ C₁ ⊑ᶜ C₂)) : Γ.ModeLe (C₁⟦r⟧) (C₂⟦r⟧) := by
+  induction hV with
+  | nil => cases hAt
+  | le _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+  | eq _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+  | has _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+  | bnd _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+  | leC _ _ hM ih =>
+      cases hAt with
+      | here => exact hM
+      | there hAt' => exact ih hAt'
+  | eqC _ _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+
+/-- The mode half of `ViewTyped.eqC_entry`: the two sets have the same mode
+bounds at the root. -/
+theorem ViewTyped.eqC_modeEq {V : View s} {Tel : Telescope (s,x)}
+    (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {C₁ C₂ : CaptureSet (s,x)}
+    (hAt : Tel ∋ (i ↦ C₁ ≐ᶜ C₂)) : Γ.ModeEq (C₁⟦r⟧) (C₂⟦r⟧) := by
+  induction hV with
+  | nil => cases hAt
+  | le _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+  | eq _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+  | has _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+  | bnd _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+  | leC _ _ _ ih => cases hAt with | there hAt' => exact ih hAt'
+  | eqC _ _ hM ih =>
+      cases hAt with
+      | here => exact hM
+      | there hAt' => exact ih hAt'
 
 /-- A typed view has an entry at every telescope position. -/
 theorem ViewTyped.get?_isSome {V : View s} {Tel : Telescope (s,x)}
@@ -655,14 +713,16 @@ theorem ViewTyped_unfold {V : View s} {Tel : Telescope (s,x)}
       simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_bnd,
         Proposition.weaken_bnd]
       exact .bnd ih (by rwa [Shape.weaken_substVar])
-  | leC _ hC ih =>
+  | leC _ hC hM ih =>
       simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_leC,
         Proposition.weaken_leC]
       exact .leC ih (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar])
-  | eqC _ hC ih =>
+        (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar])
+  | eqC _ hC hM ih =>
       simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eqC,
         Proposition.weaken_eqC]
       exact .eqC ih (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar])
+        (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar])
 
 theorem ViewTyped_fold : ∀ {V : View s} {Tel : Telescope (s,x)},
     Γ ⊨[r, σ] V : ((Tel⟦r⟧)↑) → Γ ⊨[r, σ] V : Tel
@@ -693,16 +753,18 @@ theorem ViewTyped_fold : ∀ {V : View s} {Tel : Telescope (s,x)},
       simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_leC,
         Proposition.weaken_leC] at h
       cases h with
-      | leC hV hC =>
+      | leC hV hC hM =>
           exact .leC (ViewTyped_fold hV)
             (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar] at hC)
+            (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar] at hM)
   | _, .cons Tel (.eqC C D), h => by
       simp only [Telescope.substVar_cons, Telescope.weaken_cons, Proposition.substVar_eqC,
         Proposition.weaken_eqC] at h
       cases h with
-      | eqC hV hC =>
+      | eqC hV hC hM =>
           exact .eqC (ViewTyped_fold hV)
             (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar] at hC)
+            (by rwa [CaptureSet.weaken_substVar, CaptureSet.weaken_substVar] at hM)
 
 end
 
@@ -749,8 +811,11 @@ theorem Value.precView_noBnd (x : BVar s .var) (v : Value s) : (v.precView x).No
         (CapWitnesses.eqFormsC_noBnd _ Wc (Witnesses.eqForms_noBnd W))
   | lam A S t g => exact View.NoBnd.nil
   | box a => exact View.NoBnd.nil
+  | cell ℓ a => exact View.NoBnd.nil
+  | reader r => exact View.NoBnd.nil
   | cast v e => exact View.NoBnd.nil
   | pack C h e v => exact View.NoBnd.nil
+  | packF W e v => exact View.NoBnd.nil
 
 /-! ## Field presence in a typed store -/
 
