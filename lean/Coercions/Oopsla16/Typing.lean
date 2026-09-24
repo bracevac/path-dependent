@@ -17,7 +17,7 @@ equation: intrinsic scoping discharges them.  Most are well-scopedness, which
 the indexing supplies, or redundant; three become explicit weakenings; the two
 that constrain the context, `T_Varz`'s and `htp_var`'s (`dot.v:229`,
 `dot.v:378`), become the prefix indexing of `Ctx`, which is a real restriction
-(`README.md`, *Deviations from `dot.v`*, item 8).  Three places carry the
+(`DEVIATIONS.md`, item 8).  Three places carry the
 calculus's soundness and are worth reading against the Coq.
 
 * `Htp` types a variable at a type of **its own prefix scope**, `Ty σ

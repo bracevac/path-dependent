@@ -72,8 +72,7 @@ What this module does **not** contain: anything about the target's other rules.
 It does not translate target *evidence* back into `Stp`, so it does not show
 that FCdotR as a whole derives nothing `Oopsla16` cannot.  `selL`/`selR` at a
 location, and the observation rules `vcPack`, `vcUnfold` and `vcSub` built on a
-location node, are not covered; `README.md` (*Where FCdotR is not a
-rule-for-rule image of `Oopsla16`*) lists what remains.
+location node, are not covered; `DEVIATIONS.md` lists what remains.
 -/
 
 namespace FCdotR

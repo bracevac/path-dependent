@@ -211,8 +211,8 @@ returns its argument.  `ex2` applies a variable `y : polyId` to an object with
 the type member `0 = ⊤`, at `∀(x : ⊤) ⊤`.
 
 The reference writes the method parameter as `TVarB 0` in the result
-annotation and as an absolute position in the body (`Oopsla16/README.md`,
-*Deviations from `dot.v`*, item 2); here it is one binder.  The reference
+annotation and as an absolute position in the body (`Oopsla16/DEVIATIONS.md`,
+item 2); here it is one binder.  The reference
 proves both examples with its tactic `crush`; the derivations below are
 written by hand.  `ex1` is in the fragment, so its fragment elaboration erases
 back to it; `ex2` applies a variable to an object literal, which only

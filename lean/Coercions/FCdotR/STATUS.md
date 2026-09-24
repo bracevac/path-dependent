@@ -338,8 +338,7 @@ In dependency order.
   (`Admissibility`).  `selL`/`selR` at a location, and observations built on a
   location node by `vcPack`, `vcUnfold` and `vcSub`, are not translated back
   into `Stp`/`HasType`; `obs_conc_admissible` gives their bounds only as
-  target inclusions.  The README's *Where FCdotR is not a rule-for-rule image
-  of `Oopsla16`* lists every such rule with its status.
+  target inclusions.  `DEVIATIONS.md` lists every such rule with its status.
 * **Preservation for the source.**  No theorem says a reached `Oopsla16` term
   has the program's type.  Either a direct proof in the source, as the
   reference gives, or the translation of target typing back into source typing
@@ -370,7 +369,7 @@ no safety theorem covers (`Coverage.CurryGap`).
   premise, as well-scopedness, as an explicit weakening or as the prefix
   indexing of `Ctx` (`Oopsla16/README.md`, *Design*).  For contexts, stores
   and syntax it imposes a stronger condition than the reference does
-  (`Oopsla16/README.md`, *Deviations from `dot.v`*, items 8-10): a `Ctx`
+  (`Oopsla16/DEVIATIONS.md`, items 8-10): a `Ctx`
   entry may mention only its own variable and older ones, where `T_Varz`
   needs only `closed (length GH) (length G1) 0 T` (`dot.v:229`); a stored
   object has every variable in range, where `venv` constrains nothing; and a
@@ -383,7 +382,7 @@ no safety theorem covers (`Coverage.CurryGap`).
   relation it was also tested, which is not a proof either: both step
   relations, transcribed to Python, agree at every step of 160,000 random
   configurations (`coq/oopsla16-deviations/step_differential.py`, seeds 0 to
-  7; `Oopsla16/README.md`, *Deviations from `dot.v`*, item 6).
+  7; `Oopsla16/DEVIATIONS.md`, item 6).
 * **Nothing changed underneath the headline.**  The definitions in
   `Oopsla16/Typing.lean`, `Semantics.lean` and `Syntax.lean` are unchanged
   since commit `08b8a75`; only comments were edited since, in `Typing.lean`

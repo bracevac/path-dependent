@@ -12,7 +12,7 @@ reference's own definitions:
 | `Htp` is typed in the prefix scope of `x` | `htp_closed_Sx` | every type `htp` assigns to `x` is closed at `S x` |
 | stored objects have all variables in range | `store_restriction_is_real` | the reference types closed terms over stores the Lean port cannot express |
 
-These are items 8, 4 and 9 of the deviation audit of the Lean port. The
+These are items 8, 4 and 9 of `lean/Coercions/Oopsla16/DEVIATIONS.md`. The
 directory also holds a differential test of item 6, the step relation, in
 Python (`step_differential.py`, below). It is a test, not a proof.
 
