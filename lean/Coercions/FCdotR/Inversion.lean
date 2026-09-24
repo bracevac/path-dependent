@@ -747,7 +747,7 @@ def LitMatch.toLitTy {σ : Sig} {g : Lb → Option (Dm σ [])} :
     {B : Ty σ []} → LitMatch g B → LitTy g B
   | _, .top => .top
   | _, .typ h r => .typ h r.toLitTy
-  | _, .fn _ _ _ r => .fn r.toLitTy
+  | _, .fn _ r => .fn r.toLitTy
 
 /-- **A literal type into a type member** reads the stored definition: a normal
 form `B ≤ {a : S..U}` out of a literal type finds `dty TX` at `a` together with
@@ -840,13 +840,19 @@ def LitTy.fnInv {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {g : Lb → Option
 
 /-- **A typed definition list has a literal type**, under any substitution `θ`
 into the empty scope and relative to any lookup `g` that finds every member of
-the list, substituted: `StoreTyping.dmsLitMatch`, with the method annotations
-forgotten. -/
+the list, substituted.  The shape `StoreTyping.dmsLitMatch` proves, without its
+method case: a literal type records a method by its type only, so no annotation
+is asked for, and the list need not be annotated. -/
 def dmsLitTy {σ s1 : Sig} {G : Store σ σ} {Γ : Ctx σ s1} (θ : Subst σ s1 σ [])
     (g : Lb → Option (Dm σ [])) :
     {ds : Dms σ s1} → {T : Ty σ s1} → DmsHasType G Γ ds T →
-    (∀ a d, ds.get? a = some d → g a = some (d.subst θ)) → LitTy g (T.subst θ) :=
-  fun hd hg => (dmsLitMatch θ g hd hg).toLitTy
+    (∀ a d, ds.get? a = some d → g a = some (d.subst θ)) → LitTy g (T.subst θ)
+  | _, _, .D_Nil, _ => .top
+  | _, _, .D_Typ (ds := ds) (T11 := T11) hds, hg =>
+      .typ (hg ds.length (.dty T11) (dms_get?_head _ ds))
+        (dmsLitTy θ g hds (fun a d h => hg a d (dms_get?_tail _ h)))
+  | _, _, .D_Fun hds _ _ _, hg =>
+      .fn (dmsLitTy θ g hds (fun a d h => hg a d (dms_get?_tail _ h)))
 
 /-- **A `T_Vary` witness gives a literal type**: a literal typed at `T` under its
 own self, instantiating to what `ℓ` stores, has type `T[ℓ]` of literal shape

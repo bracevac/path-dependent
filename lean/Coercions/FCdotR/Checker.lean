@@ -53,7 +53,7 @@ in `CheckerCompleteness`.
 namespace FCdotR
 
 open FCdot (Kind Sig BVar Rename)
-open Oopsla16 (Vr Ty Lb Ctx Store Dm EqSome renameNil)
+open Oopsla16 (Vr Ty Lb Ctx Store Dm renameNil)
 
 /-! ## Lookups that carry their equation -/
 
@@ -72,19 +72,9 @@ theorem witness?_eq_some {α : Type} {o : Option α} {a : α} (h : o = some a) :
 
 `LitMatch g B` asks one thing of each conjunct of `B` and nothing of any method
 body, so it is decided by one pass over `B`: a type member must be what `g`
-defines at its label, exactly; a method member must find a stored method there
-whose annotations agree with it (`EqSome`, decided by `eqSomeB`). -/
-
-/-- `EqSome`, decided: an absent annotation agrees with every type, a present
-one only with itself. -/
-def eqSomeB {α : Type} [DecidableEq α] : Option α → α → Bool
-  | none, _ => true
-  | some b, a => decide (b = a)
-
-/-- `eqSomeB` decides `EqSome`. -/
-theorem eqSomeB_iff {α : Type} [DecidableEq α] {o : Option α} {a : α} :
-    eqSomeB o a = true ↔ EqSome o a := by
-  cases o <;> simp [eqSomeB, EqSome]
+defines at its label, exactly; a method member must find there a method stored
+with both annotations, and those annotations must be the member's two types,
+exactly.  A method stored without an annotation is refused. -/
 
 /-- One conjunct against the stored literal's member lookup `g`. -/
 def memberMatchB {σ : Sig} (g : Lb → Option (Dm σ [])) : Ty σ [] → Bool
@@ -94,7 +84,7 @@ def memberMatchB {σ : Sig} (g : Lb → Option (Dm σ [])) : Ty σ [] → Bool
       | _ => false
   | .TFun b S U =>
       match g b with
-      | some (.dfun OS OU _) => eqSomeB OS S && eqSomeB OU U
+      | some (.dfun (some S') (some U') _) => decide (S = S') && decide (U = U')
       | _ => false
   | _ => false
 
@@ -156,9 +146,10 @@ def litMatchB_sound {σ : Sig} (g : Lb → Option (Dm σ [])) :
       | TFun b S U =>
           simp only [memberMatchB] at hM
           split at hM
-          · rename_i OS OU t hgb
-            simp only [Bool.and_eq_true, eqSomeB_iff] at hM
-            exact .fn hgb hM.1 hM.2 r
+          · rename_i S' U' t hgb
+            simp only [Bool.and_eq_true, decide_eq_true_eq] at hM
+            obtain ⟨rfl, rfl⟩ := hM
+            exact .fn hgb r
           · cases hM
       | TBot => simp [memberMatchB] at hM
       | TTop => simp [memberMatchB] at hM
@@ -180,13 +171,13 @@ theorem litMatchB_complete {σ : Sig} {g : Lb → Option (Dm σ [])} :
   | _, .typ h r => by
       simp only [litMatchB_TAnd, memberMatchB, h, decide_true, Bool.and_self, Bool.true_and]
       exact litMatchB_complete r
-  | _, .fn h e1 e2 r => by
-      simp only [litMatchB_TAnd, memberMatchB, h, eqSomeB_iff.mpr e1, eqSomeB_iff.mpr e2,
-        Bool.and_self, Bool.true_and]
+  | _, .fn h r => by
+      simp only [litMatchB_TAnd, memberMatchB, h, decide_true, Bool.and_self, Bool.true_and]
       exact litMatchB_complete r
 
 /-- A match is unique: the type fixes the constructor at every conjunct, the
-lookup fixes the stored member, and the remaining premises are propositions. -/
+lookup fixes the stored member (a method's body included), and the remaining
+premises are propositions. -/
 instance LitMatch.instSubsingleton {σ : Sig} {g : Lb → Option (Dm σ [])} {B : Ty σ []} :
     Subsingleton (LitMatch g B) := by
   constructor
@@ -194,12 +185,11 @@ instance LitMatch.instSubsingleton {σ : Sig} {g : Lb → Option (Dm σ [])} {B 
   induction h1 with
   | top => cases h2; rfl
   | typ h r ih => cases h2 with | typ h' r' => rw [ih r']
-  | fn h e1 e2 r ih =>
+  | fn h r ih =>
       cases h2 with
-      | fn h' e1' e2' r' =>
+      | fn h' r' =>
           rw [h] at h'
-          simp only [Option.some.injEq, Dm.dfun.injEq] at h'
-          obtain ⟨rfl, rfl, rfl⟩ := h'
+          cases h'
           rw [ih r']
 
 /-- `litMatchB` decides `LitMatch`. -/

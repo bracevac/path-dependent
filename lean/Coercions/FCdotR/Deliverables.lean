@@ -321,7 +321,9 @@ elaboration reaches, at the same allocation index, a state that is
 
 The forward simulation (`FCdotR.Rel.steps'`) gives the state, preservation
 (`FCdotR.preservation_init'`) types it, and `Inversion`'s consistency argument
-refutes `⊤ ≤ ⊥`.  No hypothesis. -/
+refutes `⊤ ≤ ⊥`.  No hypothesis: `FCdotR.elabTm` needs its store annotated
+(`FCdotR.Store.Annotated`), and at the empty store instance resolution supplies
+that (`FCdotR.Store.Annotated.nil`), so the statement does not mention it. -/
 theorem reachable_related {t : Tm [] []} {T : Ty [] []} (ht : HasType Store.nil Ctx.nil t T)
     (W : FCdotR.StoreTy []) {σ : Sig} {g : Grows [] σ} {G' : Store σ σ} {t' : Tm σ []}
     (run : Steps g Store.nil t G' t') :

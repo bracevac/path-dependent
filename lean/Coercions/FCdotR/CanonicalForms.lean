@@ -375,7 +375,7 @@ theorem VcTy.vcLocAny_not_vacuous {σ : Sig} {G : Store σ σ}
   | _, .top => Vacuous.not_top
   | _, .typ _ r => fun h =>
       (Vacuous.and_inv h).elim Vacuous.not_typ (VcTy.vcLocAny_not_vacuous r)
-  | _, .fn _ _ _ r => fun h =>
+  | _, .fn _ r => fun h =>
       (Vacuous.and_inv h).elim Vacuous.not_fun (VcTy.vcLocAny_not_vacuous r)
 
 /-- **Every closed observation of a location stands on that location.**  The

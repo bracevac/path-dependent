@@ -80,7 +80,7 @@ inductive HasType : {σ s : Sig} → Store σ σ → Ctx σ s → Tm σ s → Ty
       HasType G Γ t1 (.TFun l T1 T2) →
       HasType G Γ (.tvar v) T1 →
       HasType G Γ (.tapp t1 l (.tvar v)) (T2.substVr v)
-  /-- `T_Sub`, `dot.v:257-262`. -/
+  /-- `T_Sub`, `dot.v:257-260`. -/
   | T_Sub : HasType G Γ t T1 → Stp G Γ T1 T2 → HasType G Γ t T2
 
 /-- `dms_has_type`, `dot.v:263-282`.  A definition list has a right-nested
@@ -93,7 +93,7 @@ inductive DmsHasType : {σ s : Sig} → Store σ σ → Ctx σ s → Dms σ s �
   | D_Typ :
       DmsHasType G Γ ds TS →
       DmsHasType G Γ (.dcons (.dty T11) ds) (.TAnd (.TTyp ds.length T11 T11) TS)
-  /-- `D_Fun`, `dot.v:272-284`: a method member.  The body is typed under the
+  /-- `D_Fun`, `dot.v:272-282`: a method member.  The body is typed under the
   parameter, which does not mention itself, hence the weakening. -/
   | D_Fun :
       DmsHasType G Γ ds TS →
@@ -103,7 +103,7 @@ inductive DmsHasType : {σ s : Sig} → Store σ σ → Ctx σ s → Dms σ s �
       DmsHasType G Γ (.dcons (.dfun OT11 OT12 t12) ds)
         (.TAnd (.TFun ds.length T11 T12) TS)
 
-/-- `stp`, `dot.v:285-374`. -/
+/-- `stp`, `dot.v:285-372`. -/
 inductive Stp : {σ s : Sig} → Store σ σ → Ctx σ s → Ty σ s → Ty σ s → Type where
   /-- `stp_bot`, `dot.v:286-288`. -/
   | stp_bot : Stp G Γ .TBot T
@@ -160,7 +160,7 @@ inductive Stp : {σ s : Sig} → Store σ σ → Ctx σ s → Ty σ s → Ty σ 
   | stp_or22 : Stp G Γ T T2 → Stp G Γ T (.TOr T1 T2)
   /-- `stp_or1`, `dot.v:364-367`. -/
   | stp_or1 : Stp G Γ T1 T → Stp G Γ T2 T → Stp G Γ (.TOr T1 T2) T
-  /-- `stp_trans`, `dot.v:369-374`. -/
+  /-- `stp_trans`, `dot.v:369-372`. -/
   | stp_trans : Stp G Γ T1 T2 → Stp G Γ T2 T3 → Stp G Γ T1 T3
 
 /-- `htp`, `dot.v:375-393`, written `:!` in the paper.  It types abstract

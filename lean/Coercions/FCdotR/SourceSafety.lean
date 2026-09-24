@@ -141,7 +141,7 @@ theorem StoreCorr.ofHonest {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
     StoreCorr G (h.toMachine hf) := fun l => by
   show DmsCorr (G.lookup l) ((MachineStore.ofShape G _).lookup l)
   rw [MachineStore.lookup_ofShape, ← (h.at' l).stored]
-  exact DmsCorr.inst (elabDms_corr W (h.at' l).typed (hf l)) .base l
+  exact DmsCorr.inst (elabDms_corr (hA := h.annotated hf) W (h.at' l).typed (hf l)) .base l
 
 /-- **A source configuration over an honest store is simulated.**  The term
 `t` is arbitrary, so it need not be in `TmFrag`.  The witness each location was
@@ -150,13 +150,15 @@ typed from must be in `DmsFrag`.
 The machine store is `Store.Honest.toMachine`, honest by
 `Store.Honest.toMachine_honest`, and it corresponds to `G` by
 `StoreCorr.ofHonest`.  The running term is `ElaborationFull.elabTm`'s
-elaboration of `t`.  It is typed over the source store, which is the machine
-store's erasure (`Store.Honest.toMachine_erase`).  So the initial state is
-typed on the nose, with the empty continuation.  No hypothesis. -/
+elaboration of `t`, whose hypothesis `Store.Annotated G` the fragment
+witnesses supply (`Store.Honest.annotated`).  It is typed over the source
+store, which is the machine store's erasure (`Store.Honest.toMachine_erase`).
+So the initial state is typed on the nose, with the empty continuation.  No
+hypothesis beyond `h` and `hf`. -/
 theorem Simulated.of_honest {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
     (h : Store.Honest G W) (hf : ∀ l, DmsFrag (h.at' l).defs) {t : Oopsla16.Tm σ []}
     {T : Ty σ []} (ht : HasType G Ctx.nil t T) : Simulated G t := by
-  have r := elabTm W ht
+  have r := elabTm (hA := h.annotated hf) W ht
   have d : TmTy (h.toMachine hf).erase W Ctx.nil r.tm T := by
     rw [h.toMachine_erase hf]
     exact r.typed

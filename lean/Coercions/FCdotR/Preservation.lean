@@ -1114,10 +1114,10 @@ theorem DefsTy.fun?_of_conjunct {σ s : Sig} {G : Store σ σ} {W : StoreTy σ}
           exact ht
 
 /-- **A method conjunct of a matched type is a method of the machine store**,
-at the conjunct's own types.  `LitMatch` finds a stored method at the
-conjunct's label whose annotations agree with it by `EqSome`, and the erased
-machine store carries both annotations (`Defs.fun?_of_erase`), so there
-`EqSome` is equality. -/
+at the conjunct's own types.  `LitMatch` finds at the conjunct's label a method
+stored with exactly the conjunct's two types as its annotations, and a method
+of the erased machine store is the target method with those annotations
+(`Defs.fun?_of_erase`). -/
 theorem LitMatch.method {σ : Sig} {G : MachineStore σ σ} {ℓ : BVar σ .var} :
     {B : Ty σ []} → LitMatch (G.erase.lookup ℓ).get? B →
     {l : Lb} → {S : Ty σ []} → {U : Ty σ ([],x)} →
@@ -1126,26 +1126,21 @@ theorem LitMatch.method {σ : Sig} {G : MachineStore σ σ} {ℓ : BVar σ .var}
   | _, .typ _ r, _, _, _, c => by
       cases c with
       | there c => exact LitMatch.method r c
-  | _, .fn (b := b) hg e1 e2 r, _, _, _, c => by
+  | _, .fn (b := b) hg r, _, _, _, c => by
       cases c with
       | here =>
           rw [← MachineStore.erase_lookup] at hg
           obtain ⟨S', U', t', hf, hS, hU, _⟩ := Defs.fun?_of_erase _ b hg
           refine ⟨t', ?_⟩
           rw [hf]
-          rcases e1 with e1 | e1 <;> rcases e2 with e2 | e2
-          · rw [e1] at hS; cases hS
-          · rw [e1] at hS; cases hS
-          · rw [e2] at hU; cases hU
-          · rw [e1] at hS; rw [e2] at hU
-            cases hS; cases hU; rfl
+          cases hS; cases hU; rfl
       | there c => exact LitMatch.method r c
 
 /-- **A location node's method conjunct is the stored method.**  For `vcLoc`
 by honesty (`DefsTy.fun?_of_conjunct` on the witness, moved along the skeleton
 by `Defs.fun?_of_skel`); for `vcLocAny` by its premise (`LitMatch.method`),
-whose `EqSome` annotations meet the machine store's, which are always present
-(`Defs.fun?_of_erase`). -/
+whose method members are the stored annotations, which in an erased machine
+store are the target method's types (`Defs.fun?_of_erase`). -/
 theorem LocType.method {σ : Sig} {G : MachineStore σ σ} {W : StoreTy σ}
     (h : MachineStore.Honest G W) {ℓ : BVar σ .var} {B : Ty σ []}
     (hB : LocType G.erase W ℓ B) {l : Lb} {S : Ty σ []} {U : Ty σ ([],x)}
@@ -1506,11 +1501,13 @@ theorem MachineStore.erase_ofShape {σ : Sig} : {σ' : Sig} → (G : Store σ σ
       rw [MachineStore.erase_ofShape G (fun l => f (.there l)) (fun l => hf (.there l))]
       exact congrArg _ (hf .here)
 
-/-- The elaborated literal at a location, before its self is instantiated. -/
+/-- The elaborated literal at a location, before its self is instantiated.  The
+elaboration's hypothesis `Store.Annotated G` is supplied by the fragment
+witnesses (`Store.Honest.annotated`). -/
 def Store.Honest.elabAt {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
     (h : Store.Honest G W) (hf : ∀ l, DmsFrag (h.at' l).defs) (l : BVar σ .var) :
     DefsElab G W (Ctx.nil.cons (W l)) (h.at' l).defs (W l) :=
-  elabDms W (h.at' l).typed (hf l)
+  elabDms (hA := h.annotated hf) W (h.at' l).typed (hf l)
 
 /-- **The machine store of an honest source store**: each witness elaborated,
 with its self instantiated at its own location, as `Machine.Step.alloc` would
@@ -1528,7 +1525,7 @@ theorem Store.Honest.toMachine_erase {σ : Sig} {G : Store σ σ} {W : StoreTy �
   rw [Defs.erase_inst]
   show ((h.elabAt hf l).defs.erase).substVr (.conc l) = _
   rw [show (h.elabAt hf l).defs.erase = (h.at' l).defs from
-    elabDms_erase W (h.at' l).typed (hf l)]
+    elabDms_erase (hA := h.annotated hf) W (h.at' l).typed (hf l)]
   exact (h.at' l).stored
 
 /-- **It is honest**, at the same store typing.  At each location the witness
@@ -1565,6 +1562,7 @@ def StateTy.ofSource {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
     (st : State σ) × MachineStore.Honest st.G W × StateTy st W T ×
       PLift (st.G.erase = G ∧ st.eraseTm = t) := by
   have e := h.toMachine_erase hf
+  have : Store.Annotated G := h.annotated hf
   refine ⟨⟨h.toMachine hf, .nil, (elabHasType W ht ft).1⟩, h.toMachine_honest hf,
     ⟨T, (elabHasType W ht ft).1, ?_, rfl, .nil, .nil, rfl⟩, ⟨e, ?_⟩⟩
   · show TmTy (h.toMachine hf).erase W Ctx.nil _ T

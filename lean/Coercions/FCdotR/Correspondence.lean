@@ -97,10 +97,11 @@ with `SrcStuck G t := ¬ t.IsAnswer ∧ ¬ ∃ σ' g G' t', Oopsla16.Step g G t 
   `ElabSpec`.  `ElaborationFull.elabSpec` discharges it downstream, so
   `ElaborationFull.oopsla16Safety_holds` and `SourceSafety`'s
   `Oopsla16.oopsla16_safety` hold with no hypothesis.  The natural
-  route is the compositional `ElabSpecGen` (every `HasType` derivation, at any
-  store, store typing, context and scope, elaborates to a `TmTy` derivation at
-  the same type whose term corresponds), which `ElabSpecGen.toElabSpec`
-  reduces to `ElabSpec`.  The tools it needs are here: the introduction rules
+  route is the compositional `ElabSpecGen` (every `HasType` derivation, over
+  any store whose stored methods carry both annotations, at any store typing,
+  context and scope, elaborates to a `TmTy` derivation at the same type whose
+  term corresponds), which `ElabSpecGen.toElabSpec` reduces to `ElabSpec` at
+  the empty store.  The tools it needs are here: the introduction rules
   `Corr.var_of_root`, `Corr.obj`, `Corr.app_of_root`, `Corr.let_`,
   `Corr.cast`, `DmsCorr.dnil`/`dty`/`dfun` (annotations free), the three
   A-normal shapes `Corr.anf_app`/`anf_recv`/`anf_arg`, and `Corr.substEv`,
@@ -962,18 +963,31 @@ abbrev ElabSpec : Prop :=
       Nonempty (TmTy Store.nil W Ctx.nil d T') ∧ Rel Store.nil t ⟨MachineStore.nil, .nil, d⟩
 
 /-- **The compositional form of `ElabSpec`**, which an elaboration by
-recursion on derivations would produce: every source typing, at any store,
+recursion on derivations would produce: every source typing, at any store
+whose stored methods all carry both annotations (`Store.Annotated`), and at any
 store typing, context and scope, elaborates to a target typing at the same
-type whose term corresponds.  A strengthening, not an obligation;
-`ElabSpecGen.toElabSpec` is the reduction. -/
+type whose term corresponds.  A strengthening of `ElabSpec`, not an
+obligation; `ElabSpecGen.toElabSpec` is the reduction, at the empty store,
+which is annotated.
+
+**Stated with a hypothesis**, `Store.Annotated G`, for the `T_Vary` case.  Over
+a store holding a method without both annotations, a `T_Vary` typing of that
+location lists the method, and the target's location rules refuse it
+(`Typing.LitMatch`; `Admissibility.varConcAny_not_vary`).  `AtomTy.varConc`
+types the location at `tyOf W ℓ` only, which is a `T_Vary` type when `W` is
+honest, while this statement quantifies over every `W`.  That the hypothesis is
+necessary for the statement is argued, not proved. -/
 abbrev ElabSpecGen : Type :=
   ∀ {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) {Γ : Ctx σ s} {t : Oopsla16.Tm σ s}
-    {T : Ty σ s}, HasType G Γ t T → (d : Tm σ s) × TmTy G W Γ d T × PLift (Corr t d)
+    {T : Ty σ s}, Store.Annotated G → HasType G Γ t T →
+      (d : Tm σ s) × TmTy G W Γ d T × PLift (Corr t d)
 
-/-- The compositional form implies the closed one. -/
+/-- The compositional form implies the closed one: the empty store is
+annotated (`Store.Annotated.nil`). -/
 theorem ElabSpecGen.toElabSpec (E : ElabSpecGen) : ElabSpec := fun ht =>
-  ⟨emptyStoreTy, (E emptyStoreTy ht).1, _, ⟨(E emptyStoreTy ht).2.1⟩,
-    Rel.init (E emptyStoreTy ht).2.2.down⟩
+  ⟨emptyStoreTy, (E emptyStoreTy Store.Annotated.nil ht).1, _,
+    ⟨(E emptyStoreTy Store.Annotated.nil ht).2.1⟩,
+    Rel.init (E emptyStoreTy Store.Annotated.nil ht).2.2.down⟩
 
 /-- **Track SIM's first obligation**: every source step from a related
 configuration is matched by a target run, at the **same** `Grows` index, to a
@@ -1308,9 +1322,10 @@ theorem oopsla16_safety (hE : ElabSpec) {t : Oopsla16.Tm [] []} {T : Ty [] []}
 mutual
 
 /-- **The fragment elaboration corresponds to its source**, at every store
-typing: an elaborated atom is rooted at the source's variable, and the
-elaboration introduces no `let`. -/
-theorem elabHasType_corr {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) {Γ : Ctx σ s} :
+typing, over every annotated store: an elaborated atom is rooted at the
+source's variable, and the elaboration introduces no `let`. -/
+theorem elabHasType_corr {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) [hA : Store.Annotated G]
+    {Γ : Ctx σ s} :
     {t : Oopsla16.Tm σ s} → {T : Ty σ s} → (h : HasType G Γ t T) → (f : TmFrag t) →
     Corr t (elabHasType W h f).1
   | _, _, .T_Vary hds heq, _ => by
@@ -1337,7 +1352,8 @@ theorem elabHasType_corr {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) {Γ : C
       exact elabHasType_corr W h f
 
 /-- The same, at a definition list; the annotations play no part. -/
-theorem elabDms_corr {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) {Γ : Ctx σ s} :
+theorem elabDms_corr {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) [hA : Store.Annotated G]
+    {Γ : Ctx σ s} :
     {ds : Dms σ s} → {T : Ty σ s} → (h : DmsHasType G Γ ds T) → (f : DmsFrag ds) →
     DmsCorr ds (elabDms W h f).defs
   | _, _, .D_Nil, _ => by simp only [elabDms]; rfl

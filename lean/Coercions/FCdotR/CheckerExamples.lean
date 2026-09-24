@@ -1,5 +1,6 @@
 import Coercions.FCdotR.CheckerCompleteness
 import Coercions.FCdotR.SourceSafety
+import Coercions.FCdotR.Admissibility
 
 /-!
 # The checker, run by the kernel
@@ -41,9 +42,21 @@ examples say so.
   through `vcLocAny`, and a lie about a bound rejected there, while a store
   typing that tells such a lie is believed through `vcLoc`
   (`CanonicalForms.DishonestStore`).
+* **Unannotated stored methods**, over `Admissibility.CurryStore`, which holds
+  `{def 0(y) = y}` with no annotation: `loc ℓ` is rejected at the two method
+  types tried, the one `T_Vary` gives included, and so is `ℓ.0(ℓ)` at `⊥`; it
+  is accepted at `⊤`, which leaves the method out.  That `loc ℓ` is rejected
+  at every type with a method member is a theorem, not a verdict here
+  (`StoreTyping.LitMatch.storedMethod`, `LitMatch.no_unannotated_method`).
+  The atom `var (conc ℓ)`, typed off the store typing, is accepted at the type
+  `T_Vary` gives when the store typing records it, and `ℓ.0(ℓ)` through it at
+  `⊤`; at a store typing recording `⊤` it is accepted at `⊤` and rejected at
+  the type `T_Vary` gives.  The same method stored with both annotations is
+  accepted at exactly them and rejected at another codomain.
 * **`T_Vary` at any store typing**: the elaboration of
   `PackingCounterexample.qTyped` accepted at its source type, at the honest and
-  at a dishonest store typing.
+  at a dishonest store typing.  The store holds type members only, so it is
+  annotated, which the elaboration takes as its hypothesis.
 * **The worked programs** of `ElaborationFull`, `ElaborationErasure` and
   `SourceSafety`, elaborated and accepted at their source types.
 -/
@@ -564,13 +577,132 @@ example : synthVc DishonestStore.G DishonestStore.W Ctx.nil (.conc DishonestStor
 
 end Locations
 
+/-! ## Unannotated stored methods
+
+The location rules read a method member's types off the stored method's
+annotations (`Typing.LitMatch`), and a stored method without them matches no
+method member (`StoreTyping.LitMatch.no_unannotated_method`).  Over
+`Admissibility.CurryStore`, whose one location holds the Curry-style identity
+`{def 0(y) = y}`, the atom `loc ℓ` is therefore rejected at the type `T_Vary`
+gives the location, `{0 : ⊤ → ⊤} ∧ ⊤` (`CurryStore.varyTyped`), and at
+`{0 : ⊤ → ⊥} ∧ ⊤`, with which `ℓ.0(ℓ)` would have type `⊥`; these are the two
+method types tried here, and `CurryStore.loc_untypable` proves the first
+rejection at every store typing.  It is accepted at `⊤`, which the source
+admits (`CurryStore.topTyped`).  The store typing plays no part in these rules.
+
+The atom `var (conc ℓ)` is typed by `varConc`, which reads the store typing.
+At the honest `CurryStore.W` it is accepted at `{0 : ⊤ → ⊤} ∧ ⊤`, the type
+`T_Vary` gives (`CurryStore.varConcTyped`), so that `T_Vary` typing has an
+image, and `ℓ.0(ℓ)` through it is accepted at `⊤`.  At a store typing that
+records `⊤` (`WtopCurry`, which is not honest: `wtopCurry_not_honest`) it is
+accepted at `⊤` and rejected at `{0 : ⊤ → ⊤} ∧ ⊤`.
+
+Over the store holding the same method with both annotations `⊤`, `loc ℓ` is
+accepted at `{0 : ⊤ → ⊤} ∧ ⊤` and rejected at `{0 : ⊤ → ⊥} ∧ ⊤`. -/
+
+section Unannotated
+
+open CurryStore (S1 l G W)
+
+/-- `{0 : ⊤ → ⊤} ∧ ⊤`, the identity's type, as a self type. -/
+abbrev Tid : Ty S1 ([],x) := .TAnd (.TFun 0 .TTop .TTop) .TTop
+
+/-- `{0 : ⊤ → ⊥} ∧ ⊤`, with which `ℓ.0(ℓ)` would have type `⊥`. -/
+abbrev Tbot : Ty S1 ([],x) := .TAnd (.TFun 0 .TTop .TBot) .TTop
+
+/-- **The location at the type `T_Vary` gives it is rejected**: the stored
+method has no annotations to match `⊤ → ⊤` against. -/
+example : synthAtom G W Ctx.nil (.loc l Tid) = none := by decide +kernel
+
+/-- **So is the location at `{0 : ⊤ → ⊥} ∧ ⊤`.** -/
+example : synthAtom G W Ctx.nil (.loc l Tbot) = none := by decide +kernel
+
+/-- So `loc ℓ Tbot` has no derivation at that type. -/
+theorem curry_loc_bot_untypable :
+    ¬ Nonempty (AtomTy G W Ctx.nil (.loc l Tbot) (.TAnd (.TFun 0 .TTop .TBot) .TTop)) :=
+  checkAtom_eq_false_iff.mp (by decide +kernel)
+
+/-- The observation node is rejected there as well. -/
+example : synthVc G W Ctx.nil (.conc l) (.vcLocAny l Tbot) = none := by decide +kernel
+
+/-- `ℓ.0(ℓ)`, the receiver observed at `{0 : ⊤ → ⊥}`: the term that would have
+type `⊥`. -/
+abbrev appBot : Tm S1 [] :=
+  .app (.cast (.loc l Tbot) (.andE1 .TTop (.refl (.TFun 0 .TTop .TBot)))) 0 (.loc l .TTop)
+
+/-- **`ℓ.0(ℓ)` at `⊥` is rejected.** -/
+example : synthTm G W Ctx.nil appBot = none := by decide +kernel
+
+/-- So it has no derivation at `⊥`. -/
+theorem appBot_untypable : ¬ Nonempty (TmTy G W Ctx.nil appBot .TBot) :=
+  checkTm_eq_false_iff.mp (by decide +kernel)
+
+/-- **The location at `⊤`, which leaves the method out, is accepted.** -/
+example : checkAtom G W Ctx.nil (.loc l .TTop) .TTop = true := by decide +kernel
+
+/-- **`var (conc ℓ)` at the type `T_Vary` gives is accepted** at the honest
+store typing, which records that type (`CurryStore.varConcTyped`). -/
+example : checkAtom G W Ctx.nil (.var (.conc l))
+    (.TAnd (.TFun 0 .TTop .TTop) .TTop) = true := by
+  decide +kernel
+
+/-- `ℓ.0(ℓ)` through `var (conc ℓ)`, at the recorded method type, is accepted at
+`⊤`; the argument is `var (conc ℓ)` cast to the parameter type `⊤`. -/
+example : checkTm G W Ctx.nil
+    (.app (.cast (.var (.conc l)) (.andE1 .TTop (.refl (.TFun 0 .TTop .TTop)))) 0
+      (.cast (.var (.conc l)) (.top (.TAnd (.TFun 0 .TTop .TTop) .TTop))))
+    .TTop = true := by
+  decide +kernel
+
+/-- A store typing recording `⊤` at the location. -/
+abbrev WtopCurry : StoreTy S1 := fun _ => .TTop
+
+/-- `WtopCurry` is not honest: `DmsHasType` types a nonempty list only at an
+intersection, and the stored list is not empty. -/
+theorem wtopCurry_not_honest (h : Store.Honest G WtopCurry) : False := by
+  obtain ⟨ds, typed, stored⟩ := h.at' l
+  cases typed with
+  | D_Nil => cases stored
+
+/-- **At `WtopCurry`, `var (conc ℓ)` is rejected at the type `T_Vary`
+gives** ... -/
+example : checkAtom G WtopCurry Ctx.nil (.var (.conc l))
+    (.TAnd (.TFun 0 .TTop .TTop) .TTop) = false := by
+  decide +kernel
+
+/-- ... **and accepted at `⊤`, the type `WtopCurry` records.** -/
+example : checkAtom G WtopCurry Ctx.nil (.var (.conc l)) .TTop = true := by decide +kernel
+
+/-- The identity with both annotations, `{def 0(y : ⊤) : ⊤ = y}`. -/
+abbrev churchDefs : Oopsla16.Dms S1 [] :=
+  .dcons (.dfun (some .TTop) (some .TTop) (.tvar (.abs .here))) .dnil
+
+/-- The store holding it. -/
+abbrev Gch : Store S1 S1 := .cons .nil churchDefs
+
+/-- **With both annotations present, the location is accepted at them** ... -/
+example : checkAtom Gch W Ctx.nil (.loc l Tid) (.TAnd (.TFun 0 .TTop .TTop) .TTop) = true := by
+  decide +kernel
+
+/-- ... **and rejected at another codomain**. -/
+example : synthAtom Gch W Ctx.nil (.loc l Tbot) = none := by decide +kernel
+
+/-- `ℓ.0(ℓ)` over the annotated store, at the annotated codomain `⊤`. -/
+example : checkTm Gch W Ctx.nil
+    (.app (.cast (.loc l Tid) (.andE1 .TTop (.refl (.TFun 0 .TTop .TTop)))) 0 (.loc l .TTop))
+    .TTop = true := by
+  decide +kernel
+
+end Unannotated
+
 /-! ## `T_Vary` at any store typing
 
 `PackingCounterexample.qTyped` types `q` by `T_Vary` at its exact type.  Its
 elaboration is `loc q T` for the source's self type `T`, typed by
 `varConcAny`, so it is accepted at the source type whatever the store typing:
 at the honest `TwoObjectStore.W`, and at `ElaborationErasure`'s `Wtop`, which
-records `⊤` everywhere. -/
+records `⊤` everywhere.  The elaboration takes the hypothesis that the store
+is annotated; this one stores type members only (`TwoObjectStore.annotated`). -/
 
 section Vary
 

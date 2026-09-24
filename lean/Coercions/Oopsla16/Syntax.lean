@@ -9,13 +9,18 @@ discipline of `FCdot.Debruijn` rather than the reference's locally nameless
 one.  Three deviations follow from that choice and are recorded once here.
 
 * The reference's `closed i j k T` predicate (`dot.v:100-127`) and every
-  `closed` premise of every rule disappear: scoping is the indexing.
+  `closed` premise of every rule disappear: scoping is the indexing.  Three of
+  those premises say that a type does not mention a variable; they become
+  explicit weakenings.  Two constrain the context; they become the prefix
+  indexing of `Ctx`, which is a restriction (`README.md`).
 * The reference's `TVarB` (`dot.v:23`) disappears: a bound variable is an
   abstract variable of an extended scope, so `open 0 u T` (`dot.v:135`) is
   `Ty.substVr T u`.
-* The derivation-size index of `dot.v:219-393` is dropped.  It exists for the
-  reference's transitivity-pushback and narrowing inductions; derivations here
-  are `Type`-valued data and carry their own structural measure.
+* The derivation-size index of `dot.v:219-393` is dropped.  The reference
+  uses it for its inductions on derivation size (transitivity pushback and
+  narrowing, and also `all_extend`, `all_closed`, `stp_splice_aux`,
+  `stp_upgrade_gh_aux`, `subst_aux`, `hastp_subst_aux`); derivations here are
+  `Type`-valued data and carry their own structural measure.
 
 What does **not** change is the part of the reference that carries its
 soundness.  Variables still have **two zones**, and the distinction is
@@ -139,7 +144,8 @@ def Dms.get? : Dms σ s → Lb → Option (Dm σ s)
 
 A value is an allocated object.  The reference substitutes the object's own
 new location into its definitions at allocation (`dot.v:199-200`), so a stored
-definition list has no free abstract variable.
+definition list that `step` builds from a well-scoped term has no free
+abstract variable.
 
 `venv := list vl` (`dot.v:69`) is otherwise unconstrained: there is no store
 well-formedness predicate anywhere in the artifact, every stored object is
@@ -149,7 +155,18 @@ location allocated *after* it, and two objects may mention each other.  So the
 store is indexed *twice*: `Store σ σ'` holds the objects at the binders of
 `σ'`, each living in the full store scope `σ`, and a complete store is
 `Store σ σ`.  Indexing the entries by their own prefix instead would be
-strictly stronger than the reference. -/
+strictly stronger than the reference.
+
+**`Store` is nonetheless a restriction of `venv`.**  Each entry is a
+`Dms σ []`, so every variable in a stored object is in range: it mentions no
+abstract variable, no dangling `TVarB` and no location outside the store.
+`venv` admits objects that break each of the three, and the reference derives
+judgments over such stores, since `stp_strong_sel1`/`stp_strong_sel2` read the
+one member they select (`coq/oopsla16-deviations/store_restriction.v`,
+`store_restriction_is_real`).  So `type_safety` speaks about configurations no
+`Store` can express.  In the reference, every store reached by running a
+closed, well-scoped term from the empty store has all its variables in range,
+so no reachable configuration is lost; that is argued, not proved. -/
 
 /-- A store fragment: one object per binder of `σ'`, each well scoped in the
 full store scope `σ`.  A complete store is `Store σ σ`.  `venv`, `dot.v:69`. -/

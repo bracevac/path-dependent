@@ -37,11 +37,13 @@ A location is typed by **two** rules, on two atoms.  `AtomTy.varConc` types
 and not a new power.  `AtomTy.varConcAny` types `loc ℓ T` at the self type `T`
 instantiated at `ℓ`, whenever that instance matches the stored literal
 (`Typing.LitMatch`), the premise of `VcTy.vcLocAny`; `Typing`'s module header
-says what it admits and why that is sound.  Every source `T_Vary` gives the
-match (`StoreTyping.varyLitMatch`), so the second rule is what the elaboration
-of `T_Vary` uses: the source may re-type a literal at a type `W` does not
-record and that is not even comparable with it.  Over an honest store the
-second rule at `W ℓ` reports the type the first reads off `W`
+says what it admits, that it is not `T_Vary`, and why it is sound.  A source
+`T_Vary` gives the match when the stored literal's methods are annotated
+(`StoreTyping.varyLitMatch`), so the second rule is what the elaboration of
+`T_Vary` uses: the source may re-type a literal at a type `W` does not record
+and that is not even comparable with it.  Over an honest store every typing by
+the second rule is a source typing (`Admissibility`), and at an annotated
+location the second rule at `W ℓ` reports the type the first reads off `W`
 (`Store.Honest.varConc_of_varConcAny` below).  Each atom has exactly one rule,
 and `AtomTy.toVc` turns the typing of `loc ℓ T` into the `Vc.vcLocAny ℓ T`
 node.
@@ -87,13 +89,18 @@ inductive AtomTy : {σ s : Sig} → Store σ σ → StoreTy σ → Ctx σ s → 
   | varConc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
       {l : BVar σ .var} :
       AtomTy G W Γ (.var (.conc l)) ((tyOf W l).rename renameNil)
-  /-- `T_Vary`, `dot.v:220-226`, at a self type `T` the atom carries: the
-  location at `T` instantiated there, whenever that instance matches the stored
-  literal (`LitMatch`), the premise of `VcTy.vcLocAny`.  Nothing ties `T` to
-  `W`.  Every source `T_Vary` gives the match (`StoreTyping.varyLitMatch`), so
-  this is the rule the elaboration of `T_Vary` lands on; the converse fails,
-  since the premise re-types no method body.  Over an honest store it reports,
-  at `W ℓ`, the type `varConc` does (`Store.Honest.varConc_of_varConcAny`). -/
+  /-- A location at a self type `T` the atom carries: the location at `T`
+  instantiated there, whenever that instance matches the stored literal
+  (`LitMatch`), the premise of `VcTy.vcLocAny`.  This is the rule the
+  elaboration of `T_Vary` (`dot.v:220-226`) lands on, but it is not `T_Vary`:
+  its premise re-types no method body, and nothing ties `T` to `W`.  A source
+  `T_Vary` gives the match when the literal stored at `l` has both annotations
+  on every method (`StoreTyping.varyLitMatch`), and only then
+  (`StoreTyping.varyLitMatch_annotated`).  Over an honest store every
+  typing by this rule is a source typing
+  (`Admissibility.Store.Honest.varConcAny_admissible`), and at an annotated
+  location it reports, at `W ℓ`, the type `varConc` does
+  (`Store.Honest.varConc_of_varConcAny`). -/
   | varConcAny {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
       {l : BVar σ .var} {T : Ty σ ([],x)} :
       LitMatch (G.lookup l).get? (T.substVr (.conc l)) →
@@ -137,7 +144,7 @@ inductive TmTy : {σ s : Sig} → Store σ σ → StoreTy σ → Ctx σ s → Tm
       {t : Tm σ s} {u : Tm σ (s,x)} {S T : Ty σ s} :
       TmTy G W Γ t S → TmTy G W (Γ.cons S.weaken) u T.weaken →
       TmTy G W Γ (.let t u) T
-  /-- `T_Sub`, `dot.v:257-262`. -/
+  /-- `T_Sub`, `dot.v:257-260`. -/
   | cast {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
       {t : Tm σ s} {e : Le σ s} {S T : Ty σ s} :
       TmTy G W Γ t S → LeTy G W Γ e S T → TmTy G W Γ (.cast t e) T
@@ -155,7 +162,7 @@ inductive DefsTy : {σ s : Sig} → Store σ σ → StoreTy σ → Ctx σ s → 
       {T : Ty σ s} {ds : Defs σ s} {TS : Ty σ s} :
       DefsTy G W Γ ds TS →
       DefsTy G W Γ (.dty T ds) (.TAnd (.TTyp ds.length T T) TS)
-  /-- `D_Fun`, `dot.v:272-284`.  The parameter does not mention itself, hence
+  /-- `D_Fun`, `dot.v:272-282`.  The parameter does not mention itself, hence
   the weakening; the reference's two `EqSome` premises disappear because
   FCdotR's `Defs.dfun` carries both annotations outright. -/
   | dfun {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
@@ -242,16 +249,21 @@ def AtomTy.toVc {σ : Sig} {G : Store σ σ} {W : StoreTy σ} :
 
 /-! ## The two location rules agree over an honest store -/
 
-/-- **Over an honest store the two location rules agree at the recorded type.**
-The honesty witness at `ℓ` is exactly a pair of `T_Vary` premises at the
-recorded type `W ℓ`, so `varyLitMatch` gives the match there, and `tyOf W ℓ` is
-`(W ℓ).substVr (conc ℓ)` by definition: `loc ℓ (W ℓ)` has the type `varConc`
-gives `var (conc ℓ)`.  The atom-level counterpart of
-`Store.Honest.vcLoc_of_vcLocAny`. -/
+/-- **Over an honest store the two location rules agree at the recorded type,
+wherever the stored literal is annotated.**  The honesty witness at `ℓ` is
+exactly a pair of `T_Vary` premises at the recorded type `W ℓ`, so with the
+literal stored at `ℓ` annotated `varyLitMatch` gives the match there, and
+`tyOf W ℓ` is `(W ℓ).substVr (conc ℓ)` by definition: `loc ℓ (W ℓ)` has the
+type `varConc` gives `var (conc ℓ)`.  At a location whose literal has a method
+without both annotations no `loc ℓ T` with `T[ℓ] = tyOf W ℓ` has a typing,
+since `tyOf W ℓ` lists the method and `LitMatch` refuses it
+(`Admissibility.varConcAny_not_vary` at the honesty witness).  The atom-level
+counterpart of `Store.Honest.vcLoc_of_vcLocAny`. -/
 def Store.Honest.varConc_of_varConcAny {σ s : Sig} {G : Store σ σ}
-    {W : StoreTy σ} {Γ : Ctx σ s} (h : Store.Honest G W) (l : BVar σ .var) :
+    {W : StoreTy σ} {Γ : Ctx σ s} (h : Store.Honest G W) (l : BVar σ .var)
+    (ha : Dms.Annotated (G.lookup l)) :
     AtomTy G W Γ (.loc l (W l)) ((tyOf W l).rename renameNil) :=
-  .varConcAny (varyLitMatch (h.at' l).typed (h.at' l).stored)
+  .varConcAny (varyLitMatch (h.at' l).typed (h.at' l).stored ha)
 
 /-! ## An object literal at a self-referential type
 

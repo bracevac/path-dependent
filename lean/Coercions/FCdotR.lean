@@ -14,6 +14,7 @@ import Coercions.FCdotR.Normalizer
 import Coercions.FCdotR.CanonicalForms
 import Coercions.FCdotR.Inversion
 import Coercions.FCdotR.TermTyping
+import Coercions.FCdotR.Admissibility
 import Coercions.FCdotR.TermSubst
 import Coercions.FCdotR.Elaboration
 import Coercions.FCdotR.ElaborationErasure

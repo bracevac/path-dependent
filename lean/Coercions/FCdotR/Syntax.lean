@@ -23,10 +23,10 @@ A location is observed by **two** nodes, not one: `vcLoc`, which reads the type
 off the store typing, and `vcLocAny`, which carries a self type and observes the
 location at it, instantiated there — the node the elaboration of `T_Vary`
 produces.  Atoms have the same pair: `var (conc ℓ)` at the recorded type, and
-`loc ℓ T` at a carried self type.  `vcLoc` is the instance of `vcLocAny` at the
-recorded type over an honest store; both are kept because every earlier result
-is stated at `vcLoc`.  With the self type in the syntax, every node has exactly
-one typing rule.
+`loc ℓ T` at a carried self type.  Over an honest store `vcLoc` is the instance
+of `vcLocAny` at the recorded type wherever the stored literal's methods are
+annotated; both are kept because every earlier result is stated at `vcLoc`.
+With the self type in the syntax, every node has exactly one typing rule.
 
 `Vc` is indexed by its subject's **prefix** scope, so `selL p _` takes a
 `Vc σ (scopeAt p)`.  The reference's `length GL = S x` and `GH = GU ++ GL`
@@ -99,9 +99,10 @@ inductive Vc : Sig → Sig → Type where
   /-- The type of a stored object at a **self type the node carries**,
   instantiated at the location: what the elaboration of `T_Vary`
   (`dot.v:220-226`) produces, typed when that instance matches the stored
-  literal (`Typing.LitMatch`).  The self type is carried as syntax because
-  substitution has to move it; it lives in `([],x)` whatever the ambient local
-  scope is, since a stored literal has no free abstract variable. -/
+  literal (`Typing.LitMatch`), which is not `T_Vary`'s premise.  The self type
+  is carried as syntax because substitution has to move it; it lives in
+  `([],x)` whatever the ambient local scope is, since a stored literal has no
+  free abstract variable. -/
   | vcLocAny {σ s : Sig} (l : BVar σ .var) (T : Ty σ ([],x)) : Vc σ s
   /-- **Packing, at a location only.**  As syntax this node can be written at
   any scope; the typing rule's subject index is `Vr.conc`, so at an abstract

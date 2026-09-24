@@ -1,17 +1,31 @@
 import Coercions.FCdotR.Correspondence
 
 /-!
-# Elaboration of every `Oopsla16` typing, and type safety of `Oopsla16`
+# Elaboration of every `Oopsla16` typing over an annotated store, and type safety of `Oopsla16`
 
 `Elaboration.elabHasType` elaborates a source typing only on the fragment
 `TmFrag`: variable operands at every application, both annotations on every
-method.  This module drops both restrictions.  Every `Oopsla16.HasType`
-derivation, at any store, store typing, context and scope, becomes a typed
-FCdotR term that corresponds to the source term in the sense of
-`Correspondence.Corr`, and every `DmsHasType` derivation becomes a typed
-definition list that corresponds in the sense of `DmsCorr`.  That inhabits
-`Correspondence.ElabSpecGen`, hence `ElabSpec`, the one hypothesis
-`Correspondence.oopsla16_safety` took.
+method.  This module drops both restrictions on the term.  Every
+`Oopsla16.HasType` derivation, over any store whose *stored* literals are
+annotated (`StoreTyping.Store.Annotated`, an instance argument), at any store
+typing, context and scope, becomes a typed FCdotR term that corresponds to the
+source term in the sense of `Correspondence.Corr`, and every `DmsHasType`
+derivation becomes a typed definition list that corresponds in the sense of
+`DmsCorr`.  That inhabits `Correspondence.ElabSpecGen`, hence `ElabSpec`, the
+one hypothesis `Correspondence.oopsla16_safety` took.
+
+The store hypothesis is there for `T_Vary` alone.  The location rule it lands
+on reads each stored method's annotations (`Typing.LitMatch`), and at a
+location holding a method without both annotations the location rules give the
+location no type `T_Vary` gives it (`Admissibility.varConcAny_not_vary`).
+`AtomTy.varConc` still types `var (conc ℓ)` at `tyOf W ℓ`, a `T_Vary` type
+when `W` is honest (`Store.Honest.vary`), but at no other type, and
+`ElabSpecGen` asks for every store typing and every `T_Vary` typing.  So the
+hypothesis is taken; that it is needed is argued, not proved.
+Method literals *in the term* may be unannotated, since they are not read by a
+location rule until they are stored.  The empty store is annotated
+(`Store.Annotated.nil`), so `elabSpec` and every theorem starting from the
+empty store take no hypothesis.
 
 ## The two rules the fragment excluded
 
@@ -49,7 +63,8 @@ never has to be read back off the definition.
 
 ## What follows
 
-* `elabSpecGen : ElabSpecGen` and `elabSpec : ElabSpec`, with no hypothesis.
+* `elabSpecGen : ElabSpecGen`, which takes `Store.Annotated G` as
+  `ElabSpecGen` does, and `elabSpec : ElabSpec`, with no hypothesis.
 * `oopsla16Safety_holds : Oopsla16Safety` and `oopsla16_safety'`: no
   configuration reachable from a closed source term typed over the empty
   store is stuck.  Both are `Correspondence.transport` at `elabSpec` and
@@ -220,14 +235,18 @@ def TmElab.appVar {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s
 
 mutual
 
-/-- **Every source term typing elaborates to a typed, corresponding target
-term.**  One clause per rule of `HasType`, all 8 of them, at an arbitrary
-store typing `W`, with **no hypothesis** and no restriction on the term.
+/-- **Every source term typing over an annotated store elaborates to a typed,
+corresponding target term.**  One clause per rule of `HasType`, all 8 of them,
+at an arbitrary store typing `W`, with no restriction on the term and **one
+hypothesis** on the store, the instance `Store.Annotated G`: every stored
+method carries both annotations.  `T_Vary` uses it (`Elaboration.elabAtom`);
+the empty store has it.
 
 `T_App` and `T_AppVar` are A-normalised (`TmElab.app`, `TmElab.appVar`).  The
 four rules that conclude only at a variable go through `elabAtom`.  `T_Obj` is
 `new` at the source's self type, and `T_Sub` is a term-level `cast`. -/
-def elabTm {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) {Γ : Ctx σ s} :
+def elabTm {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) [hA : Store.Annotated G]
+    {Γ : Ctx σ s} :
     {t : Oopsla16.Tm σ s} → {T : Ty σ s} → HasType G Γ t T → TmElab G W Γ t T
   | _, _, .T_Vary hds heq => .ofAtom (elabAtom W (.T_Vary hds heq))
   | _, _, .T_Varz => .ofAtom (elabAtom W .T_Varz)
@@ -243,12 +262,15 @@ def elabTm {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) {Γ : Ctx σ s} :
       let e := elabStp W hs
       ⟨.cast r.tm e.1, .cast r.typed e.2, Corr.cast e.1 r.corr⟩
 
-/-- **Every source definition-list typing elaborates to a typed,
-corresponding target list.**  `D_Nil`, `D_Typ` and `D_Fun`, with **no
-restriction on annotations**.  A method is elaborated at the domain `T11` and
-codomain `T12` that `D_Fun` checks, and the source's optional annotations
-play no part.  The positional label is moved along by `DefsElabC.length`. -/
-def elabDefs {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) {Γ : Ctx σ s} :
+/-- **Every source definition-list typing over an annotated store elaborates
+to a typed, corresponding target list.**  `D_Nil`, `D_Typ` and `D_Fun`, with **no
+restriction on the list's annotations**.  A method is elaborated at the domain
+`T11` and codomain `T12` that `D_Fun` checks, and the source's optional
+annotations play no part.  The positional label is moved along by
+`DefsElabC.length`.  Like `elabTm`, it takes `Store.Annotated G`, which is
+about the store, not about this list. -/
+def elabDefs {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) [hA : Store.Annotated G]
+    {Γ : Ctx σ s} :
     {ds : Dms σ s} → {T : Ty σ s} → DmsHasType G Γ ds T → DefsElabC G W Γ ds T
   | _, _, .D_Nil => ⟨.dnil, .dnil, DmsCorr.dnil⟩
   | _, _, .D_Typ (T11 := T11) hds =>
@@ -265,16 +287,17 @@ end
 /-! ## The specification, inhabited -/
 
 /-- **`ElabSpecGen` holds**: the compositional elaboration obligation of
-`Correspondence`, by `elabTm`.  No hypothesis. -/
-def elabSpecGen : ElabSpecGen := @fun _ _ _ W _ _ _ h =>
-  let r := elabTm W h
+`Correspondence`, by `elabTm`, under `ElabSpecGen`'s own hypothesis that the
+store is annotated (`Store.Annotated G`). -/
+def elabSpecGen : ElabSpecGen := @fun _ _ _ W _ _ _ hA h =>
+  let r := elabTm (hA := hA) W h
   ⟨r.tm, r.typed, ⟨r.corr⟩⟩
 
 /-- **`ElabSpec` holds**: every closed source typing over the empty store
 yields a closed typed target term whose initial state is related to the
-source's initial configuration.  No hypothesis.  This supersedes
-`Correspondence.elabSpec_frag`, which is the same statement restricted to
-`TmFrag`. -/
+source's initial configuration.  No hypothesis: the empty store is annotated.
+This supersedes `Correspondence.elabSpec_frag`, which is the same statement
+restricted to `TmFrag`. -/
 theorem elabSpec : ElabSpec := elabSpecGen.toElabSpec
 
 /-- **Type safety of `Oopsla16`, as the proposition `Oopsla16Safety`.**  It

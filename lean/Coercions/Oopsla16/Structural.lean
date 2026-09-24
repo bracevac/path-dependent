@@ -132,7 +132,7 @@ abbrev Dms.renameStore (ds : Dms σ1 s) (ρ : Rename σ1 σ2) : Dms σ2 s := ds.
 
 /-- The definitions stored at a location.  Every entry already lives in the
 full store scope, so there is nothing to weaken.  This is
-`index x G1 = Some (vobj ds)` of `dot.v:203`, made total. -/
+`index x G1 = Some (vobj ds)` (`dot.v:202`, `221`, `306`, `311`), made total. -/
 def Store.lookup : Store σ σ' → BVar σ' .var → Dms σ []
   | .cons _ ds, .here => ds
   | .cons G _, .there y => G.lookup y
