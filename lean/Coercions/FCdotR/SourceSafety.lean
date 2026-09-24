@@ -11,7 +11,7 @@ without any source-side preservation or canonical-forms argument.  The typing
 work is all done in the target, as in the WadlerFest line
 (`DotToFCdot/Safety.lean`, `DotMNF.dot_safety`).
 
-## The headline results, none with a hypothesis
+## The headline results, none with an unproved hypothesis
 
 * `Oopsla16.oopsla16_safety`: a closed source term typed over the empty store
   never reaches a stuck configuration (`FCdotR.SrcStuck`: not an answer and
@@ -68,7 +68,8 @@ This module also restates `Simulation`'s two theorems that took
   subtyping.  That subtyping is `Oopsla16.Examples.FunctionField.recursive`
   (`stp_bindx`).  Its WadlerFest counterpart has no closed inclusion evidence
   in FCdot (`DotMNF.RecursiveSubtyping.FunctionField.no_coercion`, in
-  `DotToFCdot/RecursiveSubtypingSeparation.lean`).  The instance
+  `DotToFCdot/RecursiveSubtypingSeparation.lean`, a file of uncommitted work:
+  `README.md`, *References to uncommitted work*).  The instance
   exhibits the source run: two allocations and one invocation, ending in an
   answer.  It also applies both headline theorems.
 * `SourceSafety.HonestCall`: an identity method applied to a location of the
@@ -91,6 +92,8 @@ This module also restates `Simulation`'s two theorems that took
   method annotations, and the machine store annotates a Curry-style method
   with the types its honesty witness checked, so a store with the same type
   members is not enough.  `STATUS.md` records that translation as not built.
+  `Coverage.CurryGap` is a store where this matters: a typed configuration over
+  it steps, and no witness there is in `DmsFrag`.
   Stores reached by running are unaffected: a run from the empty store keeps
   the invariant by preservation, whatever the allocated literals are, which is
   why `oopsla16_safety` has no fragment restriction.
@@ -212,13 +215,15 @@ theorem oopsla16_not_stuck {t : Tm [] []} {T : Ty [] []} (ht : HasType Store.nil
 /-- **Type safety from an honest initial store.**  A term typed over an honest
 source store `G` never reaches a stuck configuration.
 
-**Restriction, not a hypothesis:** the literal each location of `G` was typed
-from, `(h.at' l).defs`, must be in the elaborable fragment `FCdotR.DmsFrag`.
-The term `t` is unrestricted.  The module header says why the restriction is
-there.  The empty store satisfies it vacuously.
+Besides the typing and the run, the theorem takes two hypotheses about the
+initial store: that it is honest, `h`, and that the literal each location of
+`G` was typed from, `(h.at' l).defs`, is in the elaborable fragment
+`FCdotR.DmsFrag`, `hf`.  The second is a restriction of the theorem, not of
+the calculus; the module header says why it is there.  The empty store
+satisfies both vacuously.  The term `t` is unrestricted.
 
 By `FCdotR.Simulated.of_honest`, `Simulated.steps` and `Simulated.not_stuck`.
-No hypothesis. -/
+No unproved proposition is assumed: `h` and `hf` are about the given store. -/
 theorem oopsla16_safety_honest {σ : Sig} {G : Store σ σ} {W : FCdotR.StoreTy σ}
     (h : FCdotR.Store.Honest G W) (hf : ∀ l, FCdotR.DmsFrag (h.at' l).defs)
     {t : Tm σ []} {T : Ty σ []} (ht : HasType G Ctx.nil t T)
@@ -227,8 +232,9 @@ theorem oopsla16_safety_honest {σ : Sig} {G : Store σ σ} {W : FCdotR.StoreTy 
   ((FCdotR.Simulated.of_honest h hf ht).steps run).not_stuck
 
 /-- **Progress from an honest initial store**: the positive form of
-`oopsla16_safety_honest`, with the same restriction on the stored witnesses
-(`FCdotR.DmsFrag`) and no hypothesis. -/
+`oopsla16_safety_honest`, with the same two hypotheses about the initial
+store, `h` and the fragment condition `hf` on its witnesses
+(`FCdotR.DmsFrag`), and no unproved proposition. -/
 theorem oopsla16_not_stuck_honest {σ : Sig} {G : Store σ σ} {W : FCdotR.StoreTy σ}
     (h : FCdotR.Store.Honest G W) (hf : ∀ l, FCdotR.DmsFrag (h.at' l).defs)
     {t : Tm σ []} {T : Ty σ []} (ht : HasType G Ctx.nil t T)

@@ -38,7 +38,9 @@ same indices, `htp_pack`, or an embedding of an existing derivation.  Nothing
 in `Oopsla16` itself is changed.
 
 The construction is the one of `DotToFCdot/RecursiveSelectionCounterexample`,
-transported from the WadlerFest extension to the reference calculus.
+transported from the WadlerFest extension to the reference calculus.  That
+file is uncommitted work at the time of writing (`FCdotR/README.md`,
+*References to uncommitted work*); nothing here depends on it.
 
 The same result is mechanized in Coq, in the artifact's own definitions, at
 `coq/oopsla16-packing/`.  There lines 25-410 of the specification `dot_spec.v`

@@ -12,16 +12,21 @@ T(z) =                                   {f : ∀(_ : ⊤) z.B}
 μ z. S(z)  <:  μ z. T(z)
 ```
 
-in the reference calculus.  `DotToFCdot.RecursiveSubtyping.FunctionField.no_coercion`
-proves that the *present* FCdot target has no closed inclusion with these
-endpoints — not for lack of a big enough template, but because every inclusion
-its grammar generates has a right endpoint that is either independent of the
-self or already a source endpoint, and `∀(_ : ⊤) z.B` is neither.
+in the reference calculus.  Its WadlerFest counterpart, with a field of
+function type in place of the method, has no closed inclusion evidence in the
+*present* FCdot target: that is
+`DotMNF.RecursiveSubtyping.FunctionField.no_coercion`, in
+`DotToFCdot/RecursiveSubtypingSeparation.lean`, whose proof rests on the fact
+that every inclusion the FCdot grammar generates has a right endpoint that is
+either independent of the self or already a source endpoint, and
+`∀(_ : ⊤) z.B` is neither.  That file is uncommitted work of the WadlerFest
+line (`README.md`, *References to uncommitted work*); until it is committed,
+the repository does not prove the separation.
 
-Here the same statement is a closed evidence term.  The two steps that the old
-target could not take are `selL`, whose subject may be the self of an enclosing
-`bindx` because observation evidence is scoped at that subject's prefix, and
-`bindx` itself, whose hypothesis is the opened body.
+Here the same statement is a closed evidence term.  Two steps carry it:
+`selL`, whose subject may be the self of an enclosing `bindx` because
+observation evidence is scoped at that subject's prefix, and `bindx` itself,
+whose hypothesis is the opened body.
 -/
 
 namespace FCdotR.Examples
@@ -91,9 +96,10 @@ def premise_typed :
     LeTy (σ := []) .nil W0 (Ctx.nil.cons Sbody) premise Sbody Tbody :=
   .andE2 aDecl (.andE2 bDecl methodCovariant_typed)
 
-/-- `μ z. S(z) ≤ μ z. T(z)`, as a closed evidence term over the empty store —
-the judgment `RecursiveSubtypingSeparation.no_coercion` proves the present
-FCdot target cannot express. -/
+/-- `μ z. S(z) ≤ μ z. T(z)`, as a closed evidence term over the empty store.
+Its WadlerFest counterpart is the judgment that
+`DotMNF.RecursiveSubtyping.FunctionField.no_coercion`, in uncommitted work,
+shows the present FCdot target cannot express (module header). -/
 def recursive : Le [] [] := .bindx Sbody Tbody premise
 
 def recursive_typed :

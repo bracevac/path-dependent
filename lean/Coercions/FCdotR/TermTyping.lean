@@ -33,8 +33,10 @@ evidence contains no atoms, so atoms may contain evidence.
 
 A location is typed by **two** rules, on two atoms.  `AtomTy.varConc` types
 `var (conc ℓ)`, reading its type off `StoreTy` rather than re-deriving it;
-`StoreTyping.Store.Honest.vary` is what says that is the reference's `T_Vary`
-and not a new power.  `AtomTy.varConcAny` types `loc ℓ T` at the self type `T`
+`StoreTyping.Store.Honest.vary` is what says that over an honest store that
+type is one the reference's `T_Vary` gives, so not a new power there.  (Only
+that one type: other `T_Vary` types of the location have no image through
+`varConc`.)  `AtomTy.varConcAny` types `loc ℓ T` at the self type `T`
 instantiated at `ℓ`, whenever that instance matches the stored literal
 (`Typing.LitMatch`), the premise of `VcTy.vcLocAny`; `Typing`'s module header
 says what it admits, that it is not `T_Vary`, and why it is sound.  A source
@@ -85,7 +87,8 @@ inductive AtomTy : {σ s : Sig} → Store σ σ → StoreTy σ → Ctx σ s → 
       AtomTy G W Γ (.var (.abs x)) (Γ.lookup x)
   /-- `T_Vary`, `dot.v:220-226`, read off the store typing instead of off a
   re-typing of the stored literal.  `StoreTyping.Store.Honest` is what ties the
-  two together. -/
+  two together, in one direction: over an honest store the type read off `W`
+  is a `T_Vary` type (`StoreTyping.Store.Honest.vary`). -/
   | varConc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
       {l : BVar σ .var} :
       AtomTy G W Γ (.var (.conc l)) ((tyOf W l).rename renameNil)
@@ -93,7 +96,10 @@ inductive AtomTy : {σ s : Sig} → Store σ σ → StoreTy σ → Ctx σ s → 
   instantiated there, whenever that instance matches the stored literal
   (`LitMatch`), the premise of `VcTy.vcLocAny`.  This is the rule the
   elaboration of `T_Vary` (`dot.v:220-226`) lands on, but it is not `T_Vary`:
-  its premise re-types no method body, and nothing ties `T` to `W`.  A source
+  its premise re-types no method body, and nothing ties `T` to `W`.  It takes
+  the stored method annotations on trust: without an honest store typing it
+  can type what the source does not (`Coverage.UncheckedBody`,
+  `Coverage.noVary_not_admissible`).  A source
   `T_Vary` gives the match when the literal stored at `l` has both annotations
   on every method (`StoreTyping.varyLitMatch`), and only then
   (`StoreTyping.varyLitMatch_annotated`).  Over an honest store every
@@ -282,8 +288,9 @@ outright: its exact type is `Sexact`, with `A = z.B` and `B = ⊤` and a trailin
 widening is a `bindx` premise.  Second, the method body has to produce a value
 of `z.A`, a member of the self it is being defined in, and it does so by
 casting its parameter through two `selR`s whose subject is the self of the
-enclosing `bindx`.  That is exactly the step `FCdot/ReceiverCounterexample`
-shows the previous target could not take.
+enclosing `bindx`.  That is exactly the step that `FCdot/ReceiverCounterexample`
+shows the previous target could not take; that file is uncommitted work of the
+WadlerFest line (`README.md`, *References to uncommitted work*).
 
 Each stage is a pair of the evidence or term and its derivation, so that the
 syntax is inferred from the typing rather than written twice. -/

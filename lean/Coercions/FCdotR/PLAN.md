@@ -1,5 +1,12 @@
 # THE PLAN — FCdotR
 
+This is the design the library was built from, kept as it was written; it is
+not a description of the current code (`README.md`, `STATUS.md`).  Its
+references to `FCdot/RecursiveEvidence.lean`, `FCdot/ReceiverCounterexample.lean`,
+`FCdot/RecursiveTypes.lean` and `RecursiveSubtypingSeparation.no_coercion`
+point at uncommitted work of the WadlerFest line (`README.md`, *References to
+uncommitted work*); what they claim is not proved in the committed repository.
+
 ## A. DECISION
 
 Build **Design 2 with the observation sort's subject generalised from `BVar s .var` to Oopsla16's two-zone `Vr σ s`** (proposal *within-2*), because it is the only one of the three whose substitution lemma has a true statement, and because generalising the subject is exactly the unification of the reference's own case split (`subst_aux` sends `htp` at the substituted head to `htpy`, at every other head to `htp`). Grafted in: from *FCdotR-Z*, the zone lattice `abs x ⊑ conc ℓ` proved first, the closure list of constructible substitutions with its deliberately excluded case, and the typed-restriction shape (F1) in place of within-2's false context-equality (M); from *FCdotR-B*, the union formers `orI`/`orE` with their `combine` matrix. Rejected: *FCdotR-B* outright — `Γ.upTo (root a) ⊢ e : S ≤ T` does not typecheck under intrinsic scoping, and its `BIND` at `S := (p.B)^` reproduces the packing counterexample through the context entry; *FCdotR-Z* outright — its `O-Base` substitution clause is false, and repairing it reintroduces within-2's witness field, at which point it *is* within-2 with the subject erased.

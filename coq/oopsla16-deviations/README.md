@@ -12,7 +12,9 @@ reference's own definitions:
 | `Htp` is typed in the prefix scope of `x` | `htp_closed_Sx` | every type `htp` assigns to `x` is closed at `S x` |
 | stored objects have all variables in range | `store_restriction_is_real` | the reference types closed terms over stores the Lean port cannot express |
 
-These are items 8, 4 and 9 of the deviation audit of the Lean port.
+These are items 8, 4 and 9 of the deviation audit of the Lean port. The
+directory also holds a differential test of item 6, the step relation, in
+Python (`step_differential.py`, below). It is a test, not a proof.
 
 What is proved here is proved about the Coq reference alone. The link to the
 Lean port is that `ctx_ok` and `store_types_ok` (below) are the Coq images of
@@ -28,6 +30,7 @@ the two systems cannot be related formally.
 | `check_block.sh` | checks that the restricted judgments are the reference's rules plus one premise |
 | `check_statements.sh` | checks that the lemmas of `regularity.v` keep the reference's statements |
 | `build.sh` | builds everything and runs `check_block.sh` |
+| `step_differential.py` | runs the reference's `step` and the Lean `Step`, both transcribed to Python, side by side on random configurations |
 
 The specification of the reference is `../oopsla16-packing/dot_spec.v`,
 compiled from that directory (see Building). It is not copied here.
@@ -236,6 +239,29 @@ What this does **not** prove: that such stores never arise when a program
 runs from the empty store. The Lean documentation relies on this to call the
 restriction harmless for its empty-store theorem. It is argued there, and it is
 proved neither here nor in the Lean development.
+
+## The step relation (item 6), tested
+
+The Lean `Step` (`Oopsla16/Semantics.lean`) replaces the reference's absolute
+positions and locally nameless binders (`dot.v:130-212`) by de Bruijn indices
+in two scopes, and records each allocation in a `Grows` index. That the two
+step relations agree is argued in the Lean port, not proved.
+`step_differential.py` tests it. It transcribes, by hand, the reference's
+`open`, `subst`, `subst_tm`, `index` and `step` and the Lean `Subst`,
+`Dms.get?` and `Step`, together with the translation from levels to indices.
+For each seed it generates 20,000 random configurations, a store and a closed
+term, and runs both relations side by side for up to 25 steps. After every
+step it checks that both relations agree on whether a step exists, on the
+number of allocations and on answers, and that the translated Coq
+configuration is the Lean one:
+
+```sh
+for s in 0 1 2 3 4 5 6 7; do python3 step_differential.py "$s"; done
+```
+
+Seeds 0 to 7 check 160,000 configurations, and all agree. This is evidence,
+not a proof: the transcriptions are themselves unchecked, and the generator
+covers only terms of bounded size.
 
 ## Building
 

@@ -26,7 +26,7 @@ In reading order; each module imports only the FCdotR modules above it.
 | `Syntax` | inclusion evidence `Le` (the image of `Stp`), observation evidence `Vc` (the image of `Htp`, scoped at its subject's prefix), atoms (with `loc ℓ T`, a location at a carried self type), terms with `let`, definition lists; `Atom.root` |
 | `Typing` | the store typing `StoreTy`/`tyOf`; `LitMatch`, a decidable match of a type against a stored literal (type members exact, method members at a stored method's two annotations); the evidence judgments `LeTy` and `VcTy`; two location rules, `vcLoc` (the recorded type) and `vcLocAny` (a carried self type matching the stored literal, which is not `T_Vary`) |
 | `Locality` | an observation depends only on its subject's prefix: `VcTy.strengthen`, `VcTy.ofLoc` |
-| `Examples` | `FunctionField` as closed evidence (`recursive_typed`), a recursive coercion FCdot cannot express |
+| `Examples` | `FunctionField` as closed evidence (`recursive_typed`); that FCdot cannot express its WadlerFest counterpart is proved only in uncommitted work (*References to uncommitted work*, below) |
 | `Structural` | `Mono`, substitutions that respect prefixes, as a record |
 | `Subst` | `MonoSyn`, the inductive syntax of the substitutions the metatheory performs, closed under restriction; its action on all five sorts |
 | `StoreTyping` | `Store.Honest` (every location holds a literal typed at its recorded type); `Dms.Annotated`, `Store.Annotated` (every stored method carries both annotations); `varyLitMatch` and its converse `varyLitMatch_annotated` (a `T_Vary` premise pair gives `LitMatch` exactly at an annotated location); `LitMatch.no_unannotated_method`; `Store.Honest.member`/`method`; store renaming for the source judgments; `TwoObjectStore` |
@@ -50,9 +50,10 @@ In reading order; each module imports only the FCdotR modules above it.
 | `Simulation` | the backward simulation `Rel.reflect_step`; answers and stuck states agree across `Rel`; the invariant `Simulated` |
 | `SourceSafety` | **`Oopsla16.oopsla16_safety`, `Oopsla16.oopsla16_not_stuck`**, and the honest-store versions; worked instances `ex0_safe`, `RecursiveArg`, `HonestCall` |
 | `Deliverables` | the remaining WadlerFest counterparts: consistency and recorded type members along runs, `Oopsla16.reachable_related`, `Oopsla16.stp_consistent`, coherence as equal answers |
+| `Coverage` | what the safety theorems reach: `NonVacuity` (they refute typings of programs that get stuck); `CurryGap` (a typed configuration over a store with a Curry-style method that no Lean safety theorem covers); `UncheckedBody` (the location rules trust stored annotations: over the annotated store holding `{def 0(y : ⊤) : ⊥ = y}`, which has no honest store typing, the target types `ℓ.0(ℓ)` at `⊥` at every `W`, and `Oopsla16` types it at nothing); `noVary_not_admissible` (without a `T_Vary` typing at a location, the location rules are not admissible there); `HasType.varyWitness`, `DmsFrag.ofSubst` |
 | `Checker` | an executable checker for the five judgments: `litMatchB` decides `LitMatch`; `Ty.strengthen?` strengthens a type by a partial renaming; the kernels `synthLeCore`, `synthVcCore`, `synthAtomCore`, `synthTmCore`, `synthDefsCore` return the derivation they validate; `synth…`/`check…` with their soundness |
 | `CheckerCompleteness` | the kernels return every derivation (`LeTy.complete`, …), so each judgment has at most one (`LeTy.unique`, …); the decision procedures `checkLe_iff`, `checkVc_iff`, `checkAtom_iff`, `checkTm_iff`, `checkDefs_iff`; types determined by the syntax |
-| `CheckerExamples` | the checker run by the kernel: the elaborated `Oopsla16` examples, the hand-written FCdotR examples, the calculus's restrictions as rejections, locations over `TwoObjectStore`, locations whose stored method has no annotations, the worked programs |
+| `CheckerExamples` | the checker run by the kernel: the elaborated `Oopsla16` examples and the reference's `ex1`, `ex2` and `paper_lst` (`dot_exs.v`), the hand-written FCdotR examples, the calculus's restrictions as rejections, locations over `TwoObjectStore`, locations whose stored method has no annotations, stored annotations taken on trust, the worked programs |
 
 `PLAN.md` is the design the library was built from; `STATUS.md` is its
 current state.
@@ -68,8 +69,10 @@ Oopsla16.oopsla16_not_stuck : HasType Store.nil Ctx.nil t T → Steps g Store.ni
                                 t'.IsAnswer ∨ ∃ σ' g' G'' t'', Step g' G' t' G'' t''
 ```
 
-`SrcStuck G t` is `¬ t.IsAnswer ∧ ¬ ∃ σ' g G' t', Step g G t G' t'`.  Both
-statements use only `Oopsla16`'s `HasType`, `Steps`, `Step` and `IsAnswer`.
+`SrcStuck G t` is `¬ t.IsAnswer ∧ ¬ ∃ σ' g G' t', Step g G t G' t'`.  It is a
+definition in namespace `FCdotR` (`Correspondence.SrcStuck`), and its body uses
+only `Oopsla16`'s `IsAnswer` and `Step`.  Apart from it, both statements use
+only `Oopsla16`'s `HasType`, `Steps`, `Step` and `IsAnswer`.
 
 * `Oopsla16.oopsla16_safety`: a closed program typed over the empty store
   never reaches a configuration that is neither an answer nor able to step.
@@ -77,7 +80,8 @@ statements use only `Oopsla16`'s `HasType`, `Steps`, `Step` and `IsAnswer`.
   configuration it reaches is an answer or takes a step.
 * `Oopsla16.oopsla16_safety_honest`, `Oopsla16.oopsla16_not_stuck_honest`: the
   same from a nonempty store, provided each stored object was typed from a
-  literal in the fragment `DmsFrag`.
+  literal in the fragment `DmsFrag`.  That proviso is an explicit hypothesis,
+  `hf`, next to the honest store `h`; neither is an unproved proposition.
 * `Oopsla16.stp_consistent`: no store, reachable or not, lets source
   subtyping derive `⊤ <: ⊥` in the empty context.
 * `Oopsla16.reachable_related`: every configuration a typed program reaches is
@@ -101,6 +105,15 @@ statements use only `Oopsla16`'s `HasType`, `Steps`, `Step` and `IsAnswer`.
   So at a location holding a method without both annotations the location
   rules give no type `T_Vary` gives (`varConcAny_not_vary`,
   `vcLocAny_not_vary`).
+* `Coverage.UncheckedBody.appBot_typed`, `app_untypable`: the location rules
+  take a stored method's annotations on trust.  Over the annotated store
+  holding `{def 0(y : ⊤) : ⊥ = y}`, the target types `ℓ.0(ℓ)` at `⊥` at every
+  store typing, and `Oopsla16` types it at no type; that store has no honest
+  store typing (`not_honest`).  So the admissibility above needs honesty,
+  although the location rules do not read `W`.
+* `Coverage.NonVacuity.ill_untypable`, `badTerm_untypable`: two programs that
+  get stuck, one from the empty store and one from an honest store, whose
+  every `Oopsla16` typing the safety theorems refute.
 * `safety'`, `progress'`, `preservation'`: a closed typed FCdotR program never
   gets stuck; a typed state over an honest store is final or can step; a step
   keeps a state typed, up to evidence.
@@ -122,8 +135,10 @@ statements use only `Oopsla16`'s `HasType`, `Steps`, `Step` and `IsAnswer`.
   checker in the kernel.
 
 Axioms: `propext` and `Quot.sound` for every constant of `FCdotR` and
-`Oopsla16` (an audit of the whole environment checks 7336 constants).  No
-`sorry`, `axiom`, `admit`, `partial` or `native_decide`.
+`Oopsla16`.  The audit `audit/AxiomAudit.lean`, which no library builds, checks
+all 7565 of them (`STATUS.md`, *Reproducing the checks*); `audit/` also holds
+a fingerprint of `Oopsla16`'s constants.  No `sorry`, `axiom`, `admit`,
+`partial` or `native_decide`.
 
 ## Design
 
@@ -172,7 +187,14 @@ Axioms: `propext` and `Quot.sound` for every constant of `FCdotR` and
   re-typed and members may be left out, so the rules accept types `T_Vary`
   does not give: `⊤` at every location, for one.  Over an honest store they
   are admissible in the source all the same (`Store.Honest.litMatch_stp`,
-  `litMatch_hasType`).  A source `T_Vary` gives the match exactly when the
+  `litMatch_hasType`).  They do not read `W`, but they take the stored
+  annotations on trust, as `vcLoc` takes `W`: over the annotated store
+  holding `{def 0(y : ⊤) : ⊥ = y}`, which has no honest store typing, they
+  type `ℓ.0(ℓ)` at `⊥` at every `W`, and `Oopsla16` does not type it at all
+  (`Coverage.UncheckedBody`).  So
+  admissibility needs an honest store: at a location without a `T_Vary`
+  typing, `loc ℓ ⊤` is typed at every `W` while the source types `ℓ` at
+  nothing (`Coverage.noVary_not_admissible`).  A source `T_Vary` gives the match exactly when the
   methods stored at `ℓ` carry both annotations (`varyLitMatch`,
   `varyLitMatch_annotated`).  At a location holding a method without them the
   location rules give no type `T_Vary` gives (`varConcAny_not_vary`,
@@ -185,7 +207,7 @@ Axioms: `propext` and `Quot.sound` for every constant of `FCdotR` and
   witnesses are in `DmsFrag`, and both are annotated.  The rules are sound
   because every result is proved for them as stated, and the body the machine
   runs is typed by the machine store's honesty invariant, whose erased store
-  annotates every method.  The match is decidable, and every syntax node has
+  annotates every method with the types its body was checked at.  The match is decidable, and every syntax node has
   exactly one typing rule, which is what makes typing decidable (`Checker`,
   `CheckerCompleteness`).
 * **The two machines are related, not equated by erasure.**  The target applies
@@ -207,7 +229,16 @@ rules, with the same premises plus the store-typing index `W`:
   (`stp_strong_sel1`/`2`), `bindx`, the ∧ and ∨ rules and `trans`;
 * `selL`/`selR`, `vcVar`, `vcUnfold` and `vcSub` when the subject is an
   abstract variable;
-* the term rules `varAbs`, `pack`, `unpack`, `new`, `dnil` and `dty`.
+* the term rules `varAbs`, `pack`, `unpack`, `new`, `dnil` and `dty`, and
+  `AtomTy.cast` and `TmTy.cast`, which are `T_Sub` at an atom and at a term.
+
+Being an image concerns the premises and the conclusion.  The nodes of these
+rules also carry as syntax what the source rule leaves implicit: a `cast`
+carries its coercion (subsumption is a node, not a rule), `pack`, `unpack`
+and `vcUnfold` their bodies, and `new` its self type (item 21).  `TmTy.atom`,
+which makes an atom a term, has no source rule behind it: the source has one
+sort of terms, and a variable is one of them.  It belongs with the other
+changes to the term syntax, item 21.
 
 Everything else is listed below, continuing the numbering of the deviations of
 the source (`../Oopsla16/README.md`, *Deviations from `dot.v`*).  Each item has
@@ -232,19 +263,22 @@ argue it) or **NEITHER** (nothing does; the item records a gap).
     the source's `Htp` observes abstract variables only and cannot pack.  The
     set mirrors the reference's proof-internal `htpy`
     (`dot_soundness.v:215-236`), except at its base: `htpy`'s `TY_Vary` is
-    `T_Vary`, while `vcLocAny` takes `LitMatch` (item 27).  That `vcPack` has no typing at an abstract
-    variable: **PROVED** (`CanonicalForms.no_pack_at_abs`).  Over an honest
-    store, `vcLoc` is `T_Vary` at the honesty witness (**PROVED**,
-    `Store.Honest.vary`) and `vcLocAny` is admissible in the source
+    `T_Vary`, while `vcLocAny` takes `LitMatch` (item 27).  That `vcPack` has
+    no typing at an abstract variable: **PROVED**
+    (`CanonicalForms.no_pack_at_abs`).  Over an honest store, the type `vcLoc`
+    gives is a `T_Vary` type, at the honesty witness (**PROVED**,
+    `Store.Honest.vary`), and `vcLocAny` is admissible in the source
     (**PROVED**, item 27); observations built on them with `vcPack`,
     `vcUnfold` and `vcSub`, read back as source typings: **NEITHER**.
 20. **`varConc` types a location at the type `W` records.**  No source rule
-    does.  Over an honest store it is `T_Vary` at the honesty witness:
-    **PROVED** (`Store.Honest.vary`).
-21. **Terms are in A-normal form.**  Applications take atoms, and `T_App` and
-    `T_AppVar` become one rule (`TmTy.app`, with `TmTy.appWeaken`).  `let` is
-    a rule with no source counterpart, and `new` carries the self type.  A
-    general application elaborates through `let` (`TmElab.app`,
+    does.  Over an honest store that type is a `T_Vary` type, at the honesty
+    witness: **PROVED** (`Store.Honest.vary`).  It is the only type `varConc`
+    gives; other `T_Vary` types have no image through it.
+21. **Terms are in A-normal form.**  Atoms and terms are two sorts, and
+    `TmTy.atom` makes an atom a term.  Applications take atoms, and `T_App`
+    and `T_AppVar` become one rule (`TmTy.app`, with `TmTy.appWeaken`).
+    `let` is a rule with no source counterpart, and `new` carries the self
+    type.  A general application elaborates through `let` (`TmElab.app`,
     `TmElab.appVar`).  Source to target, typed and corresponding, over an
     annotated store: **PROVED** (`elabTm`, `Corr`).  Target to source:
     **NEITHER**.
@@ -275,8 +309,12 @@ argue it) or **NEITHER** (nothing does; the item records a gap).
 26. **In general only source-to-target typing is proved.**  Every source
     evidence derivation elaborates, and every source term typing does over an
     annotated store (`elabStp`, `elabHtp`, `elabTm`).  That the target proves
-    no more than the source: **NEITHER** in general, and false over a lying
-    store typing (item 18).  Over an honest store it is **PROVED** for the
+    no more than the source: **NEITHER** in general.  It is false over a lying
+    store typing (item 18), and false at every store typing over a store with
+    a location that has no `T_Vary` typing, which every store without an
+    honest store typing has, classically (item 27,
+    `Coverage.noVary_not_admissible`; `Coverage.UncheckedBody` is an annotated
+    instance).  Over an honest store it is **PROVED** for the
     location rules (item 27) and for `refl` and `muDrop` (item 17); it is
     open for `selL`/`selR` at a location (item 18) and for the observations
     built on a location node (item 19).
@@ -297,6 +335,19 @@ argue it) or **NEITHER** (nothing does; the item records a gap).
       over a store holding `{def 0(y) = y}`, `ℓ.0(ℓ)` had type `⊥` (shown by
       an audit probe against that commit, not kept in the repository).  The
       same term is now rejected (`CheckerExamples.appBot_untypable`).
+    * What the rules trust: the stored annotations, as `vcLoc` trusts `W`.  The
+      store typing plays no part in them, but a method member is accepted at
+      the annotations whether or not the stored body has the annotated type.
+      Over the store holding `{def 0(y : ⊤) : ⊥ = y}`, which is annotated, the
+      target types `ℓ.0(ℓ)` at `⊥` at every store typing, while `Oopsla16`
+      types neither `ℓ.0(ℓ)` nor `ℓ` at any type, and the store has no honest
+      store typing: **PROVED** (`Coverage.UncheckedBody.appBot_typed`,
+      `app_untypable`, `loc_untypable`, `not_honest`; `CheckerExamples`
+      accepts the term at two store typings).  So the admissibility of the
+      next bullet needs an honest store: over this store it fails at every
+      `W`, and so it does at every location that has no `T_Vary` typing,
+      where `loc ℓ ⊤` is typed and the source types `ℓ` at nothing
+      (**PROVED**, `Coverage.noVary_not_admissible`).
     * Over an honest store the rules are admissible in the source: every
       conjunct of a matched type is a conjunct of the recorded type, so
       `Oopsla16` proves `tyOf W ℓ <: B` and types `ℓ` at `B` by `T_Vary` and
@@ -313,7 +364,10 @@ argue it) or **NEITHER** (nothing does; the item records a gap).
       `T'[ℓ]` a `T_Vary` type has a typing.  **PROVED**
       (`Admissibility.varConcAny_not_vary`, `Admissibility.vcLocAny_not_vary`,
       and `CurryStore.loc_untypable` for `Admissibility.CurryStore`;
-      `CheckerExamples` rejects two such types there).  Another target rule
+      `CheckerExamples` rejects the `T_Vary` type there, and also
+      `{0 : ⊤ → ⊥} ∧ ⊤`; that the latter is not a `T_Vary` type either,
+      since `D_Fun` would have to type the body `y : ⊤` at `⊥`, is
+      **ARGUED** only).  Another target rule
       can still give such a typing an image: `varConc` types `var (conc ℓ)`
       at `tyOf W ℓ`, which over an honest `W` is a `T_Vary` type
       (`Store.Honest.vary`; `CurryStore.varConcTyped`, accepted in
@@ -327,17 +381,25 @@ argue it) or **NEITHER** (nothing does; the item records a gap).
       witnesses are in `DmsFrag`, which are annotated
       (`Store.Honest.annotated`).  Their statements did not change.
     * Soundness of the target with the rules as stated: **PROVED** (`safety'`,
-      `preservation'`, `progress'`).  At run time the erased machine store
-      annotates every method, so a matched method member is the stored
-      method's type (`Preservation.LitMatch.method`).
+      `preservation'`, `progress'`).  These theorems assume an honest machine
+      store, whose invariant types every stored body at the method's
+      annotations, so there the trust described above is justified; at run
+      time the erased machine store annotates every method, and a matched
+      method member is the stored method's type (`Preservation.LitMatch.method`).
 
 ## What is not here
 
 * **The checker decides FCdotR typing, nothing more.**  It checks fully
   annotated evidence and terms, such as the elaboration produces; it does not
-  decide `Oopsla16` typing.  Like the rules it decides, it takes the store
-  typing on trust: `vcLoc` and `var (conc ℓ)` read their types off `W`, and
-  whether `W` tells the truth is the separate invariant `Store.Honest`.
+  decide `Oopsla16` typing.  Like the rules it decides, it takes two things on
+  trust.  `vcLoc` and `var (conc ℓ)` read their types off the store typing
+  `W`.  The location rules `vcLocAny` and `loc ℓ T` read a method member's
+  types off the stored method's annotations and do not type its body.  That
+  `W` tells the truth, and that each stored body has its annotated type, is
+  the separate invariant `Store.Honest`.  Over the annotated store holding
+  `{def 0(y : ⊤) : ⊥ = y}`, which has no honest store typing, the checker
+  accepts `ℓ.0(ℓ)` at `⊥` at every `W`, where `Oopsla16` types it at nothing
+  (`Coverage.UncheckedBody`, `CheckerExamples`).
 * **No source-side preservation.**  The headline theorems say a reached
   configuration is never stuck.  They do not say it, or the final answer, has
   the program's type in `Oopsla16`.  The closest statement is
@@ -347,8 +409,9 @@ argue it) or **NEITHER** (nothing does; the item records a gap).
   reference's `type_safety` is a one-step statement over any store.  Here a run
   must start from the empty store, or from a store whose objects were typed from
   `DmsFrag` literals; a store holding a method without type annotations, for
-  example, is not covered, and over such a store the term elaboration's
-  hypothesis `Store.Annotated G` fails.  Lifting the fragment restriction would
+  example, is not covered (`Coverage.CurryGap` has a typed configuration over
+  such a store that no theorem here reaches), and over such a store the term
+  elaboration's hypothesis `Store.Annotated G` fails.  Lifting the fragment restriction would
   take target typing carried back into source typing.  Covering unannotated
   stored methods would take a location rule that types them: the rule of
   commit `5324088`, whose premises were `T_Vary`'s own, did, and its
@@ -361,3 +424,23 @@ argue it) or **NEITHER** (nothing does; the item records a gap).
 * No determinism theorem for either machine, and no statement about
   divergence.
 * No correspondence with `../DotMNF` or `../FCdot`.
+
+## References to uncommitted work
+
+Some comments here and in `../Oopsla16` compare FCdotR with results of the
+WadlerFest line that live in files **not committed** to the repository at the
+time of writing (none of them is in commit `d3fd166`):
+`DotToFCdot/RecursiveSubtypingSeparation.lean` and
+`DotToFCdot/RecursiveSubtypingLimit.lean`,
+`DotToFCdot/RecursiveSelectionCounterexample.lean`,
+`DotToFCdot/RecursiveTranslationCounterexample.lean`,
+`FCdot/RecursiveEvidence.lean`, `FCdot/ReceiverCounterexample.lean` and
+`FCdot/RecursiveTypes.lean`; the discussion of `FunctionField` in
+`DotToFCdot/RecursiveSubtyping.md` is an uncommitted edit as well.  No FCdotR
+or `Oopsla16` module imports them, and no result here depends on them.  Each
+comparison is motivation, not a result of this library.  In particular, that
+FCdot has no closed inclusion evidence for the WadlerFest counterpart of
+`Oopsla16.Examples.FunctionField` (a field of function type in place of the
+method) is the theorem `DotMNF.RecursiveSubtyping.FunctionField.no_coercion`
+of `RecursiveSubtypingSeparation.lean`; until that file is committed, the
+repository does not prove it.

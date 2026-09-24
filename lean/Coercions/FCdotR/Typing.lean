@@ -28,9 +28,11 @@ Three things are worth reading against the source.
   Packing is still available on *atoms*, where the source allows it
   (`T_VarPack`, `dot.v:231-235`).
 * **`bindx`'s hypothesis is the opened body**, `Γ.cons S`, never the folded
-  `μ S`.  The folded assumption is what `FCdot/RecursiveEvidence.lean`'s
-  composition prototype takes, and it hands back the packing power the source
-  forbids.  The only inclusion that mentions `μ` on the right with a non-`μ`
+  `μ S`.  The folded assumption is what the composition prototype of
+  `FCdot/RecursiveEvidence.lean` takes, and it hands back the packing power the
+  source forbids; that file is uncommitted work of the WadlerFest line
+  (`README.md`, *References to uncommitted work*).  The only inclusion that
+  mentions `μ` on the right with a non-`μ`
   left would be a `stp_bind2`, which the source does not have and this
   calculus does not add; `muDrop`'s target is a weakening for the same reason.
 
@@ -77,12 +79,23 @@ matches no method member (`StoreTyping.LitMatch.no_unannotated_method`).
   the hypothesis is argued here, not proved.  The empty store satisfies it
   trivially, and so does every store of the honest-store theorems, whose
   witnesses are in `Elaboration.DmsFrag`.
+* **It takes the stored annotations on trust**, as `vcLoc` takes the store
+  typing.  A method member is accepted at the stored method's two annotations
+  whether or not the stored body has that type, and `W` plays no part.  Over a
+  store whose annotated methods do not have their annotated types there is no
+  honest store typing, and the rule types terms the source does not type at
+  all: over `{def 0(y : ⊤) : ⊥ = y}` the target types `ℓ.0(ℓ)` at `⊥` at every
+  store typing, and `Oopsla16` types it at no type
+  (`Coverage.UncheckedBody.appBot_typed`, `app_untypable`, `not_honest`).  So
+  the admissibility of the second point needs an honest store, and where there
+  is none no store typing helps (`Coverage.noVary_not_admissible`).
 * **It is sound.**  Every result downstream is proved for the rule as stated.
   Nothing reads a method body off the premise: at run time the body the
   machine invokes is typed by the machine store's honesty invariant
   (`Preservation.MachineStore.Honest`), and the erasure of a machine store
   annotates every method, so there a matched method member is the stored
-  method's own type.
+  method's own type.  That invariant is what justifies, in the safety
+  theorems, the trust of the previous point.
 * **It is decidable**: one pass over the type, comparing each member with what
   the literal stores by the equality of types `Oopsla16.Ty` derives
   (`Checker.litMatchB`).  That is what a checker needs.  `T_Vary`'s premises

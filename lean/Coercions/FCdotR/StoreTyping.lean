@@ -21,9 +21,12 @@ That is `T_Vary`'s two premises (`dot.v:220-226`) lifted out of the rule and
 made an invariant of the pair `(G, W)`.  Three things follow, and they are what
 the module proves.
 
-* **`AtomTy.varConc` is `T_Vary`.**  `Store.Honest.vary` produces the source
-  derivation the target's rule asserts, so reading a location's type off `W`
-  is not a new power.
+* **Over an honest store, `AtomTy.varConc`'s type is a `T_Vary` type.**
+  `Store.Honest.vary` produces the source derivation of the one type the
+  target's rule asserts, so over an honest store reading a location's type off
+  `W` is not a new power.  The statement goes one way: `varConc` gives that
+  type only, not every type `T_Vary` gives, and over a store typing that is
+  not honest nothing ties it to the source (`CanonicalForms.DishonestStore`).
 * **`W` agrees with what `defL`/`defR` read.**  `DmsHasType` only ever concludes
   at a right-nested intersection — `TAnd (TTyp ..) (TAnd .. TTop)` — and
   `D_Typ` makes a type member *exact*.  So if the stored literal defines `a` to
@@ -44,7 +47,10 @@ preservation argument.
 
 **The other location rule needs none of this.**  `VcTy.vcLocAny` (and
 `AtomTy.varConcAny`) observes a location at any self type whose instance
-matches the stored literal (`Typing.LitMatch`), with no store invariant.  A
+matches the stored literal (`Typing.LitMatch`), with no store invariant.  It
+takes the stored method annotations on trust instead: without an honest store
+typing it can type what the source does not (`Coverage.UncheckedBody`,
+`Coverage.noVary_not_admissible`).  A
 match asks a method member for the stored method's two annotations, so the
 section *Annotated literals* defines `Dms.Annotated` (every method of a list
 carries both annotations) and `Store.Annotated` (every stored literal is
@@ -496,9 +502,12 @@ structure Store.Honest {σ : Sig} (G : Store σ σ) (W : StoreTy σ) : Type wher
   /-- The witness at each location. -/
   at' : (l : BVar σ .var) → HonestAt G W l
 
-/-- **`AtomTy.varConc` is the reference's `T_Vary`.**  Over an honest store the
-type the target reads off `W` is one the source assigns to the location, so
-indexing by a function rather than by a derivation costs nothing. -/
+/-- **Over an honest store, `AtomTy.varConc`'s type is a `T_Vary` type.**  The
+type the target reads off `W` is one the source assigns to the location, by
+`T_Vary` at the honesty witness, so over an honest store indexing by a function
+rather than by a derivation adds no typing.  The converse does not hold:
+`varConc` gives this one type, and a `T_Vary` typing at another type has no
+image through it. -/
 def Store.Honest.vary {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
     (h : Store.Honest G W) (l : BVar σ .var) :
     HasType G Γ (.tvar (.conc l)) ((tyOf W l).rename renameNil) :=

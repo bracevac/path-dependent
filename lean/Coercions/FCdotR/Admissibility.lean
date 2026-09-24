@@ -11,6 +11,15 @@ proves that over an **honest** store (`StoreTyping.Store.Honest`) the two rules
 are nevertheless admissible in `Oopsla16`: whatever type they give a location,
 the source gives it too.
 
+Honesty is needed although the two rules never read the store typing `W`.
+They take a stored method's annotations on trust, and honesty is what says the
+stored body has the annotated type.  Over the annotated store holding
+`{def 0(y : ⊤) : ⊥ = y}`, which has no honest store typing, they type `ℓ.0(ℓ)`
+at `⊥` at every store typing, and the source types it at no type
+(`Coverage.UncheckedBody`).  More simply, at any location without a `T_Vary`
+typing they type `loc ℓ ⊤` at `⊤`, where the source types `ℓ` at no type
+(`Coverage.noVary_not_admissible`).
+
 ```text
 Store.Honest G W,  LitMatch (G ℓ).get? B  ⟹  ⊢ tyOf W ℓ <: B     (Store.Honest.litMatch_stp)
 Store.Honest G W,  LitMatch (G ℓ).get? B  ⟹  ⊢ ℓ : B             (Store.Honest.litMatch_hasType)
@@ -37,7 +46,8 @@ the argument below would then break, and the target would type `ℓ.0(ℓ)` at
 every method member at such a location: a method member needs a method stored
 with both annotations at its label (`StoreTyping.LitMatch.storedMethod`,
 `LitMatch.no_unannotated_method`).  `CheckerExamples` (section *Unannotated
-stored methods*) runs two instances.
+stored methods*) runs two instances, at `{0 : ⊤ → ⊤} ∧ ⊤` and at
+`{0 : ⊤ → ⊥} ∧ ⊤`.
 
 So `stp_and2`, `stp_and11`/`stp_and12`, reflexivity (`Oopsla16.Stp.refl`) and
 `stp_top` build `tyOf W ℓ <: B` in the source, and `T_Vary` at the honesty
@@ -223,11 +233,16 @@ typing `W`.  The location rules give it no type with a method member: a method
 member needs a method stored with both annotations at its label
 (`LitMatch.storedMethod`), and the one stored method has none
 (`LitMatch.no_unannotated_method`).  In particular `loc ℓ` at the identity's
-type has no typing at any store typing (`loc_untypable`), and
-`CheckerExamples` runs two such rejections.  They give it `⊤`, and that typing
-is admitted by the source.  The atom `var (conc ℓ)` is typed by `varConc` at
-the recorded type, which is the type `T_Vary` gives (`varConcTyped`).  The
-store is not annotated, so the elaboration of `T_Vary` does not apply to it. -/
+type has no typing at any store typing (`loc_untypable`).  `CheckerExamples`
+rejects `loc ℓ` at that type, which is the one `T_Vary` gives, and at
+`{0 : ⊤ → ⊥} ∧ ⊤`, which we argue, without a proof, is not a `T_Vary` type
+either (`D_Fun` would have to type the body `y : ⊤` at `⊥`).  The location
+rules give the location `⊤`, and that typing is admitted by the source.  The atom
+`var (conc ℓ)` is typed by `varConc` at the recorded type, which is the type
+`T_Vary` gives (`varConcTyped`).  The store is not annotated, so the
+elaboration of `T_Vary` does not apply to it, and no honesty witness at the
+location is in `DmsFrag`, so the honest-store safety theorems do not apply
+either (`Coverage.CurryGap`). -/
 
 namespace CurryStore
 

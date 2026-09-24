@@ -1,6 +1,7 @@
 import Coercions.FCdotR.CheckerCompleteness
 import Coercions.FCdotR.SourceSafety
 import Coercions.FCdotR.Admissibility
+import Coercions.FCdotR.Coverage
 
 /-!
 # The checker, run by the kernel
@@ -30,6 +31,10 @@ examples say so.
 * **The `Oopsla16` examples, elaborated.**  Every derivation of
   `Oopsla16/Examples.lean`, run through `elabTm`, `elabHasType`, `elabStp` or
   `elabHtp` over the empty store and checked at its source type and context.
+  Also the reference's own `ex1`, `ex2` and `paper_lst` (`dot_exs.v:180-322`):
+  the polymorphic identity, its instance at `⊤`, and the paper's list module,
+  written here as `Oopsla16` derivations (`Oopsla16/Examples.lean` is left as
+  it is), elaborated and checked the same way.
 * **The hand-written FCdotR examples**: `FCdotR/Examples.lean` and
   `TermTyping.FunctionFieldObject`, each accepted at its type and rejected at a
   wrong one; the function-field literal cast to `μz. T(z)`.
@@ -53,6 +58,12 @@ examples say so.
   `⊤`; at a store typing recording `⊤` it is accepted at `⊤` and rejected at
   the type `T_Vary` gives.  The same method stored with both annotations is
   accepted at exactly them and rejected at another codomain.
+* **Stored annotations, taken on trust**, over `Coverage.UncheckedBody.G`,
+  which holds `{def 0(y : ⊤) : ⊥ = y}`: both annotations are present and the
+  body does not have the declared codomain.  The store is annotated, and
+  `ℓ.0(ℓ)` is accepted at `⊥` at two store typings; `Coverage` proves that it
+  is typed at `⊥` at every store typing and that `Oopsla16` types it at no
+  type.
 * **`T_Vary` at any store typing**: the elaboration of
   `PackingCounterexample.qTyped` accepted at its source type, at the honest and
   at a dishonest store typing.  The store holds type members only, so it is
@@ -189,6 +200,459 @@ example : checkLe G0 emptyStoreTy (Ctx.nil.cons Tbody)
   decide +kernel
 
 end Source
+
+/-! ## The reference's `ex1` and `ex2`
+
+`dot_exs.v:180-208`, written here as `Oopsla16` derivations; they are not
+added to `Oopsla16/Examples.lean`, whose constants are kept fixed.  `polyId` is
+the type of the polymorphic identity, `∀(t : {0 : ⊥..⊤}) ∀(x : t.0) t.0`.
+`ex1` types at `polyId` an object whose method returns an object whose method
+returns its argument.  `ex2` applies a variable `y : polyId` to an object with
+the type member `0 = ⊤`, at `∀(x : ⊤) ⊤`.
+
+The reference writes the method parameter as `TVarB 0` in the result
+annotation and as an absolute position in the body (`Oopsla16/README.md`,
+*Deviations from `dot.v`*, item 2); here it is one binder.  The reference
+proves both examples with its tactic `crush`; the derivations below are
+written by hand.  `ex1` is in the fragment, so its fragment elaboration erases
+back to it; `ex2` applies a variable to an object literal, which only
+`elabTm` elaborates, through a `let`. -/
+
+namespace DotExs
+
+open Oopsla16 (HasType Stp)
+
+/-- `polyId`, `dot_exs.v:180`: `∀(t : {0 : ⊥..⊤}) ∀(x : t.0) t.0`, in any
+scopes. -/
+abbrev polyId {σ s : Sig} : Ty σ s :=
+  .TFun 0 (.TTyp 0 .TBot .TTop) (.TFun 0 (.TSel (.abs .here) 0) (.TSel (.abs (.there .here)) 0))
+
+/-- The object `ex1`'s method returns, `new { def 0(x : t.0) : t.0 = x }`, in
+the scope of the outer self and the parameter `t`. -/
+abbrev idObj : Oopsla16.Tm [] ([],x,x) :=
+  .tobj (.dcons (.dfun (some (.TSel (.abs (.there .here)) 0))
+    (some (.TSel (.abs (.there (.there .here))) 0)) (.tvar (.abs .here))) .dnil)
+
+/-- `ex1`'s term, `dot_exs.v:182-185`:
+`new { def 0(t : {0 : ⊥..⊤}) : ∀(x : t.0) t.0 = idObj }`. -/
+abbrev ex1Tm : Oopsla16.Tm [] [] :=
+  .tobj (.dcons (.dfun (some (.TTyp 0 .TBot .TTop))
+    (some (.TFun 0 (.TSel (.abs .here) 0) (.TSel (.abs (.there .here)) 0))) idObj) .dnil)
+
+/-- `idObj`'s self type, `{0 : t.0 → t.0} ∧ ⊤`. -/
+abbrev idSelf : Ty [] ([],x,x,x) :=
+  .TAnd (.TFun 0 (.TSel (.abs (.there .here)) 0) (.TSel (.abs (.there (.there .here))) 0)) .TTop
+
+/-- `ex1`'s self type, `polyId ∧ ⊤`. -/
+abbrev outerSelf : Ty [] ([],x) := .TAnd polyId .TTop
+
+/-- `idObj` at `∀(x : t.0) t.0`: `T_Obj` at its self type, whose method body
+is the parameter by `T_Varz`, and the self forgotten by `stp_bind1`. -/
+def idObjTy : HasType Store.nil ((Ctx.nil.cons outerSelf).cons (Ty.TTyp 0 .TBot .TTop).weaken)
+    idObj (.TFun 0 (.TSel (.abs .here) 0) (.TSel (.abs (.there .here)) 0)) :=
+  .T_Sub (.T_Obj (T := idSelf)
+    (.D_Fun (T11 := .TSel (.abs (.there .here)) 0) (T12 := .TSel (.abs (.there (.there .here))) 0)
+      .D_Nil .T_Varz (Or.inr rfl) (Or.inr rfl)))
+    (.stp_bind1 (.stp_and11 (Oopsla16.Stp.refl _)))
+
+/-- **`ex1`**, `dot_exs.v:182-191`: the object at `polyId`. -/
+def ex1 : HasType Store.nil Ctx.nil ex1Tm polyId :=
+  .T_Sub (.T_Obj (T := outerSelf)
+    (.D_Fun (T11 := .TTyp 0 .TBot .TTop)
+      (T12 := .TFun 0 (.TSel (.abs .here) 0) (.TSel (.abs (.there .here)) 0))
+      .D_Nil idObjTy (Or.inr rfl) (Or.inr rfl)))
+    (.stp_bind1 (.stp_and11 (Oopsla16.Stp.refl _)))
+
+/-- `ex1` is in the fragment `TmFrag`: both methods carry both annotations. -/
+def ex1Frag : TmFrag ex1Tm := .tobj (.dcons (.dfun (.tobj (.dcons (.dfun .tvar) .dnil))) .dnil)
+
+/-- `ex2`'s context, `y : polyId`. -/
+abbrev Γy : Ctx [] ([],x) := Ctx.nil.cons polyId
+
+/-- `ex2`'s term, `dot_exs.v:194`: `y.0(new { type 0 = ⊤ })`. -/
+abbrev ex2Tm : Oopsla16.Tm [] ([],x) :=
+  .tapp (.tvar (.abs .here)) 0 (.tobj (.dcons (.dty .TTop) .dnil))
+
+/-- `⊤ <: t.0` under `t : {0 : ⊤..⊤}`, by `stp_sel2` at `htp_var`. -/
+def topLeT : Stp Store.nil (Γy.cons (Ty.TTyp 0 .TTop .TTop).weaken) .TTop (.TSel (.abs .here) 0) :=
+  .stp_sel2 (x := .here) (l := 0) (T1 := .TTop) .htp_var
+
+/-- **`ex2`**, `dot_exs.v:194-208`: `y` narrowed to
+`∀(t : {0 : ⊤..⊤}) ∀(x : ⊤) ⊤` by `stp_fun` twice, and applied by `T_App` to
+the object, which is at `{0 : ⊤..⊤}` by `T_Obj` and `stp_bind1`. -/
+def ex2 : HasType Store.nil Γy ex2Tm (.TFun 0 .TTop .TTop) :=
+  .T_App (T1 := .TTyp 0 .TTop .TTop) (T2 := .TFun 0 .TTop .TTop)
+    (.T_Sub .T_Varz (.stp_fun (.stp_typ .stp_bot .stp_top) (.stp_fun topLeT .stp_top)))
+    (.T_Sub (.T_Obj (T := .TAnd (.TTyp 0 .TTop .TTop) .TTop) (.D_Typ .D_Nil))
+      (.stp_bind1 (.stp_and11 (Oopsla16.Stp.refl _))))
+
+/-- **`ex1`, elaborated by `elabTm`, is accepted at `polyId`** ... -/
+example : checkTm G0 emptyStoreTy Ctx.nil (elabTm emptyStoreTy ex1).tm polyId = true := by
+  decide +kernel
+
+/-- ... and not at `⊤`: the source's `T_Sub` to `polyId` is a cast, and
+nothing widens further. -/
+example : checkTm G0 emptyStoreTy Ctx.nil (elabTm emptyStoreTy ex1).tm .TTop = false := by
+  decide +kernel
+
+/-- `ex1`'s fragment elaboration is accepted at `polyId` too ... -/
+example : checkTm G0 emptyStoreTy Ctx.nil (elabHasType emptyStoreTy ex1 ex1Frag).1 polyId = true := by
+  decide +kernel
+
+/-- ... and erases to `ex1`'s term (`ElaborationErasure.elabHasType_erase`). -/
+example : (elabHasType emptyStoreTy ex1 ex1Frag).1.erase = ex1Tm :=
+  elabHasType_erase emptyStoreTy ex1 ex1Frag
+
+/-- **`ex2`, elaborated by `elabTm`, is accepted at `∀(x : ⊤) ⊤`** in the
+context `y : polyId` ... -/
+example : checkTm G0 emptyStoreTy Γy (elabTm emptyStoreTy ex2).tm (.TFun 0 .TTop .TTop) = true := by
+  decide +kernel
+
+/-- ... and not at `polyId`. -/
+example : checkTm G0 emptyStoreTy Γy (elabTm emptyStoreTy ex2).tm polyId = false := by
+  decide +kernel
+
+/-- Its typing, read off the checker's verdict. -/
+def ex2_typed : TmTy G0 emptyStoreTy Γy (elabTm emptyStoreTy ex2).tm (.TFun 0 .TTop .TTop) :=
+  checkTm_sound (by decide +kernel)
+
+/-- The elaboration corresponds to `ex2`'s term (`Correspondence.Corr`); it
+binds the operands with `let`s (`ElaborationFull.TmElab.app`). -/
+example : Corr ex2Tm (elabTm emptyStoreTy ex2).tm := (elabTm emptyStoreTy ex2).corr
+
+end DotExs
+
+/-! ## The reference's `paper_lst`
+
+`dot_exs.v:211-322`, the list module of the paper's §2, written as an
+`Oopsla16` derivation.  In the reference's own notation:
+
+```text
+listModule = new { m =>
+  def nil(_ : ⊤) : m.List ∧ {Elem : ⊥..⊥} = new { this =>
+    def head(_ : ⊤) : ⊥ = this.head(_)      def tail(_ : ⊤) : ⊥ = this.tail(_)
+    type Elem = ⊥ }
+  def cons(t : {T : ⊥..⊤}) : ∀(hd : t.T) ∀(tl : m.List ∧ {Elem <: t.T}) m.List ∧ {Elem : t.T..t.T}
+    = new { def 0(hd : t.T) = new { def 0(tl : m.List ∧ {Elem <: t.T}) = new { this =>
+        def head(_ : ⊤) : t.T = hd     def tail(_ : ⊤) : m.List ∧ {Elem <: t.T} = tl
+        type Elem = t.T } } }
+  type List = TLst m ⊥ ⊤ }
+TLst m ⊥ ⊤ = μ this. {head : ⊤ → this.Elem} ∧ {tail : ⊤ → m.List ∧ {Elem <: this.Elem}} ∧ {Elem : ⊥..⊤}
+```
+
+typed at the module type `μ m. {nil : …} ∧ {cons : … ∀(tl : …) m.List ∧ {Elem <: t.T}} ∧ {List : ⊥..TLst m ⊥ ⊤}`.
+Every method carries both annotations; those of the two objects inside `cons`
+are left out above.  Labels are positions: `nil = 2`, `cons = 1`, `List = 0`,
+and in a list cell `head = 2`, `tail = 1`, `Elem = 0`.  The variables below
+are de Bruijn indices; each type is written at the scope it is used in.
+
+The derivation is written by hand; the reference's proof is its tactic
+`crush`.  `T_Obj` types the module at its precise type, where `List` is
+exactly `TLst m ⊥ ⊤` and `cons` returns `{Elem : t.T..t.T}`, and one
+`stp_bindx` widens it to the module type.  Each list cell reaches `m.List`
+through its lower bound: a `stp_bindx` into `TLst m ⊥ ⊤`, then `stp_sel2`
+through `htp_sub` on the module self.  Inside the `stp_bindx` of a `cons`
+cell, `t.T <: this.Elem` is `stp_sel2` on the cell's own self.  The
+elaboration is checked by the kernel, and so is the fragment elaboration,
+which erases back to the term. -/
+
+namespace PaperLst
+
+open Oopsla16 (HasType DmsHasType Stp Htp)
+
+/-- `TLst m ⊥ ⊤`, `dot_exs.v:255-263`, in the scope of the module self `m`. -/
+abbrev TLm : Ty [] ([],x) :=
+  .TBind (.TAnd (.TFun 2 .TTop (.TSel (.abs (.there .here)) 0))
+    (.TAnd (.TFun 1 .TTop (.TAnd (.TSel (.abs (.there (.there .here))) 0)
+        (.TTyp 0 .TBot (.TSel (.abs (.there .here)) 0))))
+      (.TTyp 0 .TBot .TTop)))
+
+/-- `nil`'s result, `m.List ∧ {Elem : ⊥..⊥}`, under `m` and `nil`'s
+parameter. -/
+abbrev NilRes : Ty [] ([],x,x) := .TAnd (.TSel (.abs (.there .here)) 0) (.TTyp 0 .TBot .TBot)
+
+/-- `cons`'s annotated result, under `m` and `t`:
+`∀(hd : t.T) ∀(tl : m.List ∧ {Elem <: t.T}) m.List ∧ {Elem : t.T..t.T}`. -/
+abbrev ConsRes : Ty [] ([],x,x) :=
+  .TFun 0 (.TSel (.abs .here) 0)
+    (.TFun 0 (.TAnd (.TSel (.abs (.there (.there .here))) 0) (.TTyp 0 .TBot (.TSel (.abs (.there .here)) 0)))
+      (.TAnd (.TSel (.abs (.there (.there (.there .here)))) 0)
+        (.TTyp 0 (.TSel (.abs (.there (.there .here))) 0) (.TSel (.abs (.there (.there .here))) 0))))
+
+/-- `cons`'s result in the module type, with `{Elem : ⊥..t.T}`. -/
+abbrev ConsDecl : Ty [] ([],x,x) :=
+  .TFun 0 (.TSel (.abs .here) 0)
+    (.TFun 0 (.TAnd (.TSel (.abs (.there (.there .here))) 0) (.TTyp 0 .TBot (.TSel (.abs (.there .here)) 0)))
+      (.TAnd (.TSel (.abs (.there (.there (.there .here)))) 0)
+        (.TTyp 0 .TBot (.TSel (.abs (.there (.there .here))) 0))))
+
+/-- The module's precise self type, as `D_Fun`, `D_Typ` and `D_Nil` give it. -/
+abbrev Pm : Ty [] ([],x) :=
+  .TAnd (.TFun 2 .TTop NilRes)
+    (.TAnd (.TFun 1 (.TTyp 0 .TBot .TTop) ConsRes) (.TAnd (.TTyp 0 TLm TLm) .TTop))
+
+/-- The body of the module type, `dot_exs.v:305-314`. -/
+abbrev DeclBody : Ty [] ([],x) :=
+  .TAnd (.TFun 2 .TTop NilRes)
+    (.TAnd (.TFun 1 (.TTyp 0 .TBot .TTop) ConsDecl) (.TTyp 0 .TBot TLm))
+
+/-- The module self's context. -/
+abbrev Γm : Ctx [] ([],x) := Ctx.nil.cons Pm
+
+/-! ### `nil` -/
+
+/-- The list cell `nil` returns, under `m` and `nil`'s parameter: both methods
+call themselves on their argument. -/
+abbrev NilObj : Oopsla16.Dms [] ([],x,x,x) :=
+  .dcons (.dfun (some .TTop) (some .TBot) (.tapp (.tvar (.abs (.there .here))) 2 (.tvar (.abs .here))))
+    (.dcons (.dfun (some .TTop) (some .TBot) (.tapp (.tvar (.abs (.there .here))) 1 (.tvar (.abs .here))))
+      (.dcons (.dty .TBot) .dnil))
+
+/-- Its precise self type. -/
+abbrev PNil : Ty [] ([],x,x,x) :=
+  .TAnd (.TFun 2 .TTop .TBot) (.TAnd (.TFun 1 .TTop .TBot) (.TAnd (.TTyp 0 .TBot .TBot) .TTop))
+
+/-- `nil`'s body's context, `m, _ : ⊤`. -/
+abbrev Γn : Ctx [] ([],x,x) := Γm.cons (Ty.TTop).weaken
+
+/-- A method body's context in the `nil` cell: `m, _, this, _ : ⊤`. -/
+abbrev Γny : Ctx [] ([],x,x,x,x) := (Γn.cons PNil).cons (Ty.TTop).weaken
+
+/-- `this.head(_)` at `⊥`. -/
+def nilHeadTy :
+    HasType Store.nil Γny (.tapp (.tvar (.abs (.there .here))) 2 (.tvar (.abs .here))) .TBot :=
+  .T_App (T1 := .TTop) (T2 := .TBot) (.T_Sub .T_Varz (.stp_and11 (Oopsla16.Stp.refl _))) .T_Varz
+
+/-- `this.tail(_)` at `⊥`. -/
+def nilTailTy :
+    HasType Store.nil Γny (.tapp (.tvar (.abs (.there .here))) 1 (.tvar (.abs .here))) .TBot :=
+  .T_App (T1 := .TTop) (T2 := .TBot) (.T_Sub .T_Varz (.stp_and12 (.stp_and11 (Oopsla16.Stp.refl _))))
+    .T_Varz
+
+/-- The `nil` cell at its precise type. -/
+def nilObjDms : DmsHasType Store.nil (Γn.cons PNil) NilObj PNil :=
+  .D_Fun (T11 := .TTop) (T12 := .TBot)
+    (.D_Fun (T11 := .TTop) (T12 := .TBot) (.D_Typ .D_Nil) nilTailTy (Or.inr rfl) (Or.inr rfl))
+    nilHeadTy (Or.inr rfl) (Or.inr rfl)
+
+/-- The module self, seen from `nil`'s body, at `List`'s lower bound. -/
+def nilSelf : Htp Store.nil Γn (.there .here) (.TTyp 0 TLm .TTop) :=
+  .htp_sub .htp_var (.stp_and12 (.stp_and12 (.stp_and11 (.stp_typ (Oopsla16.Stp.refl _) .stp_top))))
+
+/-- `TLst m ⊥ ⊤`, seen from `nil`'s body. -/
+abbrev TLmNil : Ty [] ([],x,x) :=
+  TLm.rename (Oopsla16.renameUpTo (FCdot.BVar.there FCdot.BVar.here : FCdot.BVar ([],x,x) .var))
+
+/-- The `nil` cell below `TLst m ⊥ ⊤`, by `stp_bindx`: `⊥` is below every
+method result and every bound. -/
+def nilLst : Stp Store.nil Γn (.TBind PNil) TLmNil :=
+  .stp_bindx (.stp_and2 (.stp_and11 (.stp_fun .stp_top .stp_bot))
+    (.stp_and2 (.stp_and12 (.stp_and11 (.stp_fun .stp_top .stp_bot)))
+      (.stp_and12 (.stp_and12 (.stp_and11 (.stp_typ .stp_bot .stp_top))))))
+
+/-- `nil`'s body at `m.List ∧ {Elem : ⊥..⊥}`. -/
+def nilTy : HasType Store.nil Γn (.tobj NilObj) NilRes :=
+  .T_Sub (.T_Obj nilObjDms)
+    (.stp_and2 (.stp_trans nilLst (.stp_sel2 nilSelf))
+      (.stp_bind1 (.stp_and12 (.stp_and12 (.stp_and11 (Oopsla16.Stp.refl _))))))
+
+/-! ### `cons` -/
+
+/-- `cons`'s body's context, `m, t : {T : ⊥..⊤}`. -/
+abbrev Γc : Ctx [] ([],x,x) := Γm.cons (Ty.TTyp 0 .TBot .TTop).weaken
+
+/-- The inner method type of the first object `cons` returns, under
+`m, t, o1, hd`. -/
+abbrev R1 : Ty [] ([],x,x,x,x) :=
+  .TFun 0 (.TAnd (.TSel (.abs (.there (.there (.there .here)))) 0)
+      (.TTyp 0 .TBot (.TSel (.abs (.there (.there .here))) 0)))
+    (.TAnd (.TSel (.abs (.there (.there (.there (.there .here))))) 0)
+      (.TTyp 0 (.TSel (.abs (.there (.there (.there .here)))) 0)
+        (.TSel (.abs (.there (.there (.there .here)))) 0)))
+
+/-- The first object's precise self type, `{0 : t.T → R1} ∧ ⊤`. -/
+abbrev P1 : Ty [] ([],x,x,x) := .TAnd (.TFun 0 (.TSel (.abs (.there .here)) 0) R1) .TTop
+
+/-- `tl`'s type, `m.List ∧ {Elem <: t.T}`, under `m, t, o1, hd, o2`. -/
+abbrev D2 : Ty [] ([],x,x,x,x,x) :=
+  .TAnd (.TSel (.abs (.there (.there (.there (.there .here))))) 0)
+    (.TTyp 0 .TBot (.TSel (.abs (.there (.there (.there .here)))) 0))
+
+/-- The cell's type, `m.List ∧ {Elem : t.T..t.T}`, under `m, t, o1, hd, o2, tl`. -/
+abbrev R2 : Ty [] ([],x,x,x,x,x,x) :=
+  .TAnd (.TSel (.abs (.there (.there (.there (.there (.there .here)))))) 0)
+    (.TTyp 0 (.TSel (.abs (.there (.there (.there (.there .here))))) 0)
+      (.TSel (.abs (.there (.there (.there (.there .here))))) 0))
+
+/-- The second object's precise self type, `{0 : D2 → R2} ∧ ⊤`. -/
+abbrev P2 : Ty [] ([],x,x,x,x,x) := .TAnd (.TFun 0 D2 R2) .TTop
+
+/-- `tail`'s result in the cell, `m.List ∧ {Elem <: t.T}`, under the cell's
+self and the method parameter. -/
+abbrev TailR : Ty [] ([],x,x,x,x,x,x,x,x) :=
+  .TAnd (.TSel (.abs (.there (.there (.there (.there (.there (.there (.there .here)))))))) 0)
+    (.TTyp 0 .TBot (.TSel (.abs (.there (.there (.there (.there (.there (.there .here))))))) 0))
+
+/-- The cell's precise self type,
+`{head : ⊤ → t.T} ∧ {tail : ⊤ → m.List ∧ {Elem <: t.T}} ∧ {Elem : t.T..t.T} ∧ ⊤`. -/
+abbrev P3 : Ty [] ([],x,x,x,x,x,x,x) :=
+  .TAnd (.TFun 2 .TTop (.TSel (.abs (.there (.there (.there (.there (.there (.there .here))))))) 0))
+    (.TAnd (.TFun 1 .TTop TailR)
+      (.TAnd (.TTyp 0 (.TSel (.abs (.there (.there (.there (.there (.there .here)))))) 0)
+        (.TSel (.abs (.there (.there (.there (.there (.there .here)))))) 0)) .TTop))
+
+/-- The cell: `head` returns `hd`, `tail` returns `tl`, `Elem = t.T`. -/
+abbrev Obj3 : Oopsla16.Dms [] ([],x,x,x,x,x,x,x) :=
+  .dcons (.dfun (some .TTop) (some (.TSel (.abs (.there (.there (.there (.there (.there (.there .here))))))) 0))
+      (.tvar (.abs (.there (.there (.there (.there .here)))))))
+    (.dcons (.dfun (some .TTop) (some TailR) (.tvar (.abs (.there (.there .here)))))
+      (.dcons (.dty (.TSel (.abs (.there (.there (.there (.there (.there .here)))))) 0)) .dnil))
+
+/-- The second object, whose method takes `tl` and returns the cell. -/
+abbrev Obj2 : Oopsla16.Dms [] ([],x,x,x,x,x) := .dcons (.dfun (some D2) (some R2) (.tobj Obj3)) .dnil
+
+/-- The first object, whose method takes `hd`. -/
+abbrev Obj1 : Oopsla16.Dms [] ([],x,x,x) :=
+  .dcons (.dfun (some (.TSel (.abs (.there .here)) 0)) (some R1) (.tobj Obj2)) .dnil
+
+/-- Contexts: `m, t, o1`, then `hd`, `o2`, `tl`, the cell's self, and a
+method parameter. -/
+abbrev Γ1 : Ctx [] ([],x,x,x) := Γc.cons P1
+abbrev Γ1h : Ctx [] ([],x,x,x,x) := Γ1.cons (Ty.TSel (.abs (.there .here)) 0).weaken
+abbrev Γ2 : Ctx [] ([],x,x,x,x,x) := Γ1h.cons P2
+abbrev Γ2t : Ctx [] ([],x,x,x,x,x,x) := Γ2.cons D2.weaken
+abbrev Γ3 : Ctx [] ([],x,x,x,x,x,x,x) := Γ2t.cons P3
+abbrev Γ3y : Ctx [] ([],x,x,x,x,x,x,x,x) := Γ3.cons (Ty.TTop).weaken
+
+/-- `head`'s body, `hd`, at `t.T`. -/
+def headTy : HasType Store.nil Γ3y (.tvar (.abs (.there (.there (.there (.there .here))))))
+    (.TSel (.abs (.there (.there (.there (.there (.there (.there .here))))))) 0) := .T_Varz
+
+/-- `tail`'s body, `tl`, at `m.List ∧ {Elem <: t.T}`. -/
+def tailTy : HasType Store.nil Γ3y (.tvar (.abs (.there (.there .here)))) TailR := .T_Varz
+
+/-- The cell at its precise type. -/
+def obj3Dms : DmsHasType Store.nil Γ3 Obj3 P3 :=
+  .D_Fun (T11 := .TTop) (T12 := .TSel (.abs (.there (.there (.there (.there (.there (.there .here))))))) 0)
+    (.D_Fun (T11 := .TTop) (T12 := TailR) (.D_Typ .D_Nil) tailTy (Or.inr rfl) (Or.inr rfl))
+    headTy (Or.inr rfl) (Or.inr rfl)
+
+/-- `t.T <: this.Elem` for the cell's self `this`, under a method parameter:
+`stp_sel2` through the cell's `Elem = t.T`. -/
+def tElem : Stp Store.nil Γ3y (.TSel (.abs (.there (.there (.there (.there (.there (.there .here))))))) 0)
+    (.TSel (.abs (.there .here)) 0) :=
+  .stp_sel2 (x := (FCdot.BVar.there FCdot.BVar.here : FCdot.BVar ([],x,x,x,x,x,x,x,x) .var)) (l := 0)
+    (T1 := .TSel (.abs (.there (.there (.there (.there (.there .here)))))) 0)
+    (.htp_sub .htp_var (.stp_and12 (.stp_and12 (.stp_and11 (.stp_typ (Oopsla16.Stp.refl _) .stp_top)))))
+
+/-- The `stp_bindx` premise that puts the cell below `TLst m ⊥ ⊤`. -/
+def cellPremise : Stp Store.nil Γ3 P3
+    (.TAnd (.TFun 2 .TTop (.TSel (.abs (.there .here)) 0))
+      (.TAnd (.TFun 1 .TTop
+          (.TAnd (.TSel (.abs (.there (.there (.there (.there (.there (.there (.there .here)))))))) 0)
+            (.TTyp 0 .TBot (.TSel (.abs (.there .here)) 0))))
+        (.TTyp 0 .TBot .TTop))) :=
+  .stp_and2 (.stp_and11 (.stp_fun .stp_top tElem))
+    (.stp_and2 (.stp_and12 (.stp_and11 (.stp_fun .stp_top
+        (.stp_and2 (.stp_and11 (Oopsla16.Stp.refl _)) (.stp_and12 (.stp_typ .stp_bot tElem))))))
+      (.stp_and12 (.stp_and12 (.stp_and11 (.stp_typ .stp_bot .stp_top)))))
+
+/-- The module self, seen from the cell's context, at `List`'s lower bound. -/
+def cellSelf : Htp Store.nil Γ2t (.there (.there (.there (.there (.there .here))))) (.TTyp 0 TLm .TTop) :=
+  .htp_sub .htp_var (.stp_and12 (.stp_and12 (.stp_and11 (.stp_typ (Oopsla16.Stp.refl _) .stp_top))))
+
+/-- `TLst m ⊥ ⊤`, seen from the cell's context. -/
+abbrev TLmCell : Ty [] ([],x,x,x,x,x,x) :=
+  TLm.rename (Oopsla16.renameUpTo
+    (FCdot.BVar.there (FCdot.BVar.there (FCdot.BVar.there (FCdot.BVar.there (FCdot.BVar.there FCdot.BVar.here))))
+      : FCdot.BVar ([],x,x,x,x,x,x) .var))
+
+/-- The cell below `TLst m ⊥ ⊤`. -/
+def cellLst : Stp Store.nil Γ2t (.TBind P3) TLmCell := .stp_bindx cellPremise
+
+/-- The cell at `m.List ∧ {Elem : t.T..t.T}`. -/
+def cellTy : HasType Store.nil Γ2t (.tobj Obj3) R2 :=
+  .T_Sub (.T_Obj obj3Dms)
+    (.stp_and2 (.stp_trans cellLst (.stp_sel2 cellSelf))
+      (.stp_bind1 (.stp_and12 (.stp_and12 (.stp_and11 (Oopsla16.Stp.refl _))))))
+
+/-- The second object at its precise type. -/
+def obj2Dms : DmsHasType Store.nil Γ2 Obj2 P2 :=
+  .D_Fun (T11 := D2) (T12 := R2) .D_Nil cellTy (Or.inr rfl) (Or.inr rfl)
+
+/-- The second object at `R1`, its self forgotten. -/
+def obj2Ty : HasType Store.nil Γ1h (.tobj Obj2) R1 :=
+  .T_Sub (.T_Obj obj2Dms) (.stp_bind1 (.stp_and11 (Oopsla16.Stp.refl _)))
+
+/-- The first object at its precise type. -/
+def obj1Dms : DmsHasType Store.nil Γ1 Obj1 P1 :=
+  .D_Fun (T11 := .TSel (.abs (.there .here)) 0) (T12 := R1) .D_Nil obj2Ty (Or.inr rfl) (Or.inr rfl)
+
+/-- `cons`'s body at its annotated result. -/
+def consTy : HasType Store.nil Γc (.tobj Obj1) ConsRes :=
+  .T_Sub (.T_Obj obj1Dms) (.stp_bind1 (.stp_and11 (Oopsla16.Stp.refl _)))
+
+/-! ### The module -/
+
+/-- The module's definitions: `nil`, `cons`, `List`. -/
+abbrev Dmod : Oopsla16.Dms [] ([],x) :=
+  .dcons (.dfun (some .TTop) (some NilRes) (.tobj NilObj))
+    (.dcons (.dfun (some (.TTyp 0 .TBot .TTop)) (some ConsRes) (.tobj Obj1))
+      (.dcons (.dty TLm) .dnil))
+
+/-- `paper_lst`'s term, `dot_exs.v:270-296`. -/
+abbrev lstTm : Oopsla16.Tm [] [] := .tobj Dmod
+
+/-- The module at its precise type. -/
+def modDms : DmsHasType Store.nil Γm Dmod Pm :=
+  .D_Fun (T11 := .TTop) (T12 := NilRes)
+    (.D_Fun (T11 := .TTyp 0 .TBot .TTop) (T12 := ConsRes) (.D_Typ .D_Nil) consTy (Or.inr rfl) (Or.inr rfl))
+    nilTy (Or.inr rfl) (Or.inr rfl)
+
+/-- `cons`'s precise type below its declared one: `{Elem : t.T..t.T}` below
+`{Elem : ⊥..t.T}`, under three `stp_fun`. -/
+def consSub :
+    Stp Store.nil Γm (.TFun 1 (.TTyp 0 .TBot .TTop) ConsRes) (.TFun 1 (.TTyp 0 .TBot .TTop) ConsDecl) :=
+  .stp_fun (Oopsla16.Stp.refl _) (.stp_fun (Oopsla16.Stp.refl _) (.stp_fun (Oopsla16.Stp.refl _)
+    (.stp_and2 (.stp_and11 (Oopsla16.Stp.refl _)) (.stp_and12 (.stp_typ .stp_bot (Oopsla16.Stp.refl _))))))
+
+/-- The `stp_bindx` premise from the precise type to the module type. -/
+def modPremise : Stp Store.nil Γm Pm DeclBody :=
+  .stp_and2 (.stp_and11 (Oopsla16.Stp.refl _))
+    (.stp_and2 (.stp_and12 (.stp_and11 consSub))
+      (.stp_and12 (.stp_and12 (.stp_and11 (.stp_typ .stp_bot (Oopsla16.Stp.refl _))))))
+
+/-- **`paper_lst`**, `dot_exs.v:266-322`: the list module at the module
+type. -/
+def paper_lst : HasType Store.nil Ctx.nil lstTm (.TBind DeclBody) :=
+  .T_Sub (.T_Obj modDms) (.stp_bindx modPremise)
+
+/-- The term is in the fragment: every method is annotated and every call has
+variable operands. -/
+def lstFrag : TmFrag lstTm :=
+  .tobj (.dcons (.dfun (.tobj (.dcons (.dfun .tapp) (.dcons (.dfun .tapp) (.dcons .dty .dnil)))))
+    (.dcons (.dfun (.tobj (.dcons (.dfun (.tobj (.dcons (.dfun (.tobj (.dcons (.dfun .tvar)
+      (.dcons (.dfun .tvar) (.dcons .dty .dnil))))) .dnil))) .dnil))) (.dcons .dty .dnil)))
+
+/-- **`paper_lst`, elaborated by `elabTm`, is accepted at the module type**
+... -/
+example : checkTm G0 emptyStoreTy Ctx.nil (elabTm emptyStoreTy paper_lst).tm (.TBind DeclBody) = true := by
+  decide +kernel
+
+/-- ... and not at `⊤`. -/
+example : checkTm G0 emptyStoreTy Ctx.nil (elabTm emptyStoreTy paper_lst).tm .TTop = false := by
+  decide +kernel
+
+/-- The fragment elaboration is accepted at the module type ... -/
+example : checkTm G0 emptyStoreTy Ctx.nil (elabHasType emptyStoreTy paper_lst lstFrag).1
+    (.TBind DeclBody) = true := by
+  decide +kernel
+
+/-- ... and erases to the term (`ElaborationErasure.elabHasType_erase`). -/
+example : (elabHasType emptyStoreTy paper_lst lstFrag).1.erase = lstTm :=
+  elabHasType_erase emptyStoreTy paper_lst lstFrag
+
+end PaperLst
 
 /-! ## The hand-written FCdotR examples
 
@@ -364,9 +828,11 @@ end Packing
 
 `Le.muDrop T` proves `μ(T↑) ≤ T`, whose body does not mention its self, and
 `bindx` relates two recursive types; no rule concludes `μT ≤ T{x}` for a body
-that mentions its self.  That is the inclusion `FCdot/ReceiverCounterexample`
-turns into bottom.  Unfolding at a variable is an observation of that
-variable, `vcUnfold`, not an inclusion. -/
+that mentions its self.  That is the inclusion that
+`FCdot/ReceiverCounterexample`, uncommitted work of the WadlerFest line
+(`README.md`, *References to uncommitted work*), turns into bottom.
+Unfolding at a variable is an observation of that variable, `vcUnfold`, not
+an inclusion. -/
 
 section Unfold
 
@@ -486,8 +952,10 @@ Over the two-object store of `Oopsla16.PackingCounterexample`, whose store typin
 `TwoObjectStore.W` is honest.  `q` stores `{ type A = D }`, so its literal type is
 `{A : D .. D} ∧ ⊤`; `p` stores the two type members `B` and `C`.  The location
 rules check the carried self type against the stored literal (`litMatchB`), so
-the store typing plays no part in them; `vcLoc` and `var (conc ℓ)` read the
-store typing instead, and trust it. -/
+the store typing plays no part in them, but they trust a stored method's
+annotations without typing its body (section *Stored annotations, taken on
+trust*); `vcLoc` and `var (conc ℓ)` read the store typing instead, and trust
+it. -/
 
 section Locations
 
@@ -694,6 +1162,53 @@ example : checkTm Gch W Ctx.nil
   decide +kernel
 
 end Unannotated
+
+/-! ## Stored annotations, taken on trust
+
+`Coverage.UncheckedBody.G` holds `{def 0(y : ⊤) : ⊥ = y}`: both annotations
+present, and a body that does not have the declared codomain.  The store is
+annotated, so the location rules read the method's type `⊤ → ⊥` off the
+annotations, and they do not look at the body.  `ℓ.0(ℓ)`, the term that
+`appBot_untypable` rejects over `CurryStore`, is accepted here at `⊥`, at the
+store typing recording `{0 : ⊤ → ⊤} ∧ ⊤` and at the one recording `⊤`.
+`Coverage` proves more than these two verdicts: the term has type `⊥` at every
+store typing (`UncheckedBody.appBot_typed`), `Oopsla16` types its erasure at
+no type (`UncheckedBody.app_untypable`), and the store has no honest store
+typing (`UncheckedBody.not_honest`), so neither verdict contradicts a safety
+theorem: each starts from an honest store. -/
+
+section Trust
+
+/-- The same term as `appBot` of the previous section. -/
+example : appBot = UncheckedBody.appBot := rfl
+
+/-- The store is annotated, by the decision procedure for `Store.Annotated`. -/
+example : Store.Annotated UncheckedBody.G := by decide
+
+/-- **`loc ℓ` is accepted at `{0 : ⊤ → ⊥} ∧ ⊤`**, the type the annotations
+declare. -/
+example : checkAtom UncheckedBody.G CurryStore.W Ctx.nil (.loc UncheckedBody.l Tbot)
+    (.TAnd (.TFun 0 .TTop .TBot) .TTop) = true := by
+  decide +kernel
+
+/-- **`ℓ.0(ℓ)` is accepted at `⊥`** at the store typing recording
+`{0 : ⊤ → ⊤} ∧ ⊤` ... -/
+example : checkTm UncheckedBody.G CurryStore.W Ctx.nil UncheckedBody.appBot .TBot = true := by
+  decide +kernel
+
+/-- ... **and at the one recording `⊤`.** -/
+example : checkTm UncheckedBody.G WtopCurry Ctx.nil UncheckedBody.appBot .TBot = true := by
+  decide +kernel
+
+/-- The typing at the store typing recording `⊤`, read off the verdict. -/
+def appBot_trusted : TmTy UncheckedBody.G WtopCurry Ctx.nil UncheckedBody.appBot .TBot :=
+  checkTm_sound (by decide +kernel)
+
+/-- It is `UncheckedBody.appBot_typed` there, since typings are unique. -/
+theorem appBot_trusted_eq : appBot_trusted = UncheckedBody.appBot_typed WtopCurry :=
+  Subsingleton.elim _ _
+
+end Trust
 
 /-! ## `T_Vary` at any store typing
 

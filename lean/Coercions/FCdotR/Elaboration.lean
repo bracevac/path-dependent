@@ -92,11 +92,14 @@ drops this restriction too, because its correspondence ignores annotations.
 
 ## The acceptance test
 
-The last section runs the elaboration on `Oopsla16.Examples.FunctionField`, the
-recursive-subtyping derivation the present FCdot target provably cannot express
-(`DotToFCdot.RecursiveSubtyping.FunctionField.no_coercion`), and checks that it
-computes the evidence `FCdotR/Examples.lean` writes out by hand — not up to
-anything, but on the nose, by `rfl`.
+The last section runs the elaboration on `Oopsla16.Examples.FunctionField`, a
+recursive-subtyping derivation, and checks that it computes the evidence
+`FCdotR/Examples.lean` writes out by hand — not up to anything, but on the
+nose, by `rfl`.  Its WadlerFest counterpart has no closed inclusion evidence in
+the present FCdot target by `DotMNF.RecursiveSubtyping.FunctionField.no_coercion`
+(`DotToFCdot/RecursiveSubtypingSeparation.lean`), which is uncommitted work of
+the WadlerFest line (`README.md`, *References to uncommitted work*); until
+that file is committed, the repository does not prove it.
 
 ## What this module does not contain
 
@@ -429,8 +432,11 @@ T(z) =                                   {f : ∀(_ : ⊤) z.B}
 and `FCdotR/Examples.lean` writes the corresponding evidence by hand.  Running
 `elabStp` on the source derivation produces that same evidence term — not an
 equivalent one, the same one — so the hand-written example is exactly what the
-translation computes.  `DotToFCdot.RecursiveSubtyping.FunctionField.no_coercion`
-proves the previous target has no closed inclusion with these endpoints at all.
+translation computes.  For the WadlerFest counterpart of these endpoints, a
+field of function type in place of the method, the previous target has no
+closed inclusion at all: `DotMNF.RecursiveSubtyping.FunctionField.no_coercion`,
+in uncommitted work of the WadlerFest line (`README.md`, *References to
+uncommitted work*).
 
 The store is empty here, though nothing depends on that: `elabStp` holds at
 every store typing. -/

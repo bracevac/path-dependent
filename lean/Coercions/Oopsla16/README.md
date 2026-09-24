@@ -183,7 +183,9 @@ makes `Ctx.lookupAt`, and with it the `Htp` indexing below, well typed.
 therefore not be justified by first packing its receiver into a `TBind`. That
 is exactly the step `DotToFCdot/RecursiveSelectionCounterexample.lean` uses to
 break the corresponding WadlerFest extension, and it is why that counterexample
-is not an attack on the calculus formalized here.
+is not an attack on the calculus formalized here. That file is uncommitted
+work at the time of writing (`../FCdotR/README.md`, *References to uncommitted
+work*); `PackingCounterexample` below makes the point within this library.
 
 Section 3 of the paper calls this the first of two contractiveness
 restrictions, says both are "necessary for the proofs", and conjectures that
@@ -303,7 +305,7 @@ the rewriting is faithful.
    `stp_bind1`) become `.weaken`, and so does `stp_fun`'s pushed domain.
    `renameNil` and `renameUpTo` move a type out of the empty context or out of
    a prefix; absolute positions need neither.
-   Lean `Typing.lean:58, 60, 74, 100, 116, 127, 132, 138, 142, 147`. Coq
+   Lean `Typing.lean:63, 65, 79, 105, 121, 132, 137, 143, 147, 152`. Coq
    `dot.v:249, 276, 298, 308, 313, 316-322, 332`. **ARGUED** (each rule's doc
    comment).
 4. **`htp`'s truncated context is a prefix scope.** `GH = GU ++ GL` with
@@ -311,7 +313,7 @@ the rewriting is faithful.
    `Ty σ (scopeUpTo x)`. That is faithful only because every type the
    reference's `htp` assigns to `x` is closed at `S x`, a fact the reference
    does not prove (*The context truncation of `htp_sub` becomes scoping*).
-   Lean `Typing.lean:168-181`, `Context.lean:52-95`. Coq `dot.v:375-393`,
+   Lean `Typing.lean:173-186`, `Context.lean:52-95`. Coq `dot.v:375-393`,
    `dot.v:781-789`. The closedness fact is **PROVED** on the reference's
    definitions (`htp_closed_Sx`,
    `../../../coq/oopsla16-deviations/ctx_restriction.v`); that `Htp` and `htp`
@@ -319,16 +321,17 @@ the rewriting is faithful.
 5. **The size index is dropped, and the judgments are `Type`-valued.** No rule
    constrains the index, and the reference quantifies it away wherever it
    states a result (`has_typed`, `stpd`, `htpd`, `type_safety`).
-   Lean `Typing.lean:51, 88, 107, 168`. Coq `dot.v:219, 263, 285, 375,
+   Lean `Typing.lean:56, 93, 112, 173`. Coq `dot.v:219, 263, 285, 375,
    395-399`. **ARGUED** (*Design*).
 6. **Reduction bookkeeping.** `Step` carries a `Grows` index recording the `G'`
    of `G' ++ G`; `ST_Obj` weakens the old store, and `ST_App1`/`ST_App2` rename
    the operand they do not reduce.
    Lean `Semantics.lean:30-77`. Coq `dot.v:197-212`, `dot_soundness.v:1134`.
-   **ARGUED** (`Semantics.lean:16-19`). It was also tested, not proved: during
-   the audit both step relations were transcribed to Python and agreed at
-   every step of 160,000 random configurations. The test is not part of this
-   repository.
+   **ARGUED** (`Semantics.lean:16-19`). It was also tested, not proved:
+   `../../../coq/oopsla16-deviations/step_differential.py` transcribes both
+   step relations to Python and runs them side by side on random
+   configurations, and on seeds 0 to 7, 160,000 configurations, they agree at
+   every step (that directory's README says how to run it).
 7. **Lookup and answers.** The `vobj` wrapper is gone, store and context lookup
    are total, `Dms.get?` is the recursion of `index l (dms_to_list ds)`, and
    the answer condition `∃ ds, index x G = Some ds` holds automatically.
@@ -385,7 +388,7 @@ The reference's theorem is `type_safety` (`dot_soundness.v:1131-1134`): for any
 store `G`, a closed term typed at `T` is a location or steps to a term typed at
 `T` over an extended store. The Lean theorems are `Oopsla16.oopsla16_safety`,
 `oopsla16_not_stuck`, `oopsla16_safety_honest` and `oopsla16_not_stuck_honest`
-(`../FCdotR/SourceSafety.lean:190`, `:205`, `:222`, `:232`).
+(`../FCdotR/SourceSafety.lean:193`, `:208`, `:227`, `:238`).
 
 12. **No preservation.** No Lean theorem says that a reached source term, or
     the final answer, has type `T`. The nearest is `Oopsla16.reachable_related`
@@ -397,9 +400,9 @@ store `G`, a closed term typed at `T` is a location or steps to a term typed at
     allows any store. Not covered: a location with no `T_Vary` typing, and a
     location typable only through a method without annotations or through a
     general application in a method body. Lean
-    `../FCdotR/SourceSafety.lean:222` (`oopsla16_safety_honest`),
-    `../FCdotR/StoreTyping.lean:495` (`Store.Honest`),
-    `../FCdotR/Elaboration.lean:244` (`DmsFrag`). Coq `dot_soundness.v:1131`.
+    `../FCdotR/SourceSafety.lean:227` (`oopsla16_safety_honest`),
+    `../FCdotR/StoreTyping.lean:501` (`Store.Honest`),
+    `../FCdotR/Elaboration.lean:247` (`DmsFrag`). Coq `dot_soundness.v:1131`.
     **NEITHER**, for the stores not covered.
 14. **Every run versus one step.** The Lean theorems cover every configuration
     of every run; the reference gives one step from any typed configuration.
@@ -413,10 +416,15 @@ store `G`, a closed term typed at `T` is a location or steps to a term typed at
     other stores.
 16. **Reference lemmas not restated for the source.** Substitution, narrowing,
     canonical forms and transitivity pushback (`dot_soundness.v:201-1129`,
-    `dot.v:2049`) have no source-level Lean statement, and `dot_exs.v`'s `ex1`,
-    `ex2` and `paper_lst` are not ported. `Oopsla16.stp_consistent`
-    (`../FCdotR/Deliverables.lean:346`) is an extra result with no reference
-    counterpart. **NEITHER**.
+    `dot.v:2049`) have no source-level Lean statement. **NEITHER**.
+    `dot_exs.v`'s `ex0` is `Examples.ex0`; `ex1`, `ex2` and `paper_lst` are
+    derivations in `../FCdotR/CheckerExamples.lean` (namespaces
+    `FCdotR.CheckerExamples.DotExs` and `FCdotR.CheckerExamples.PaperLst`),
+    outside this library, whose constants are kept fixed. That they state the
+    reference's examples, through the translation of items 1 and 2, is
+    **ARGUED**; the Lean derivations themselves are checked by Lean, and
+    their elaborations by the kernel. `Oopsla16.stp_consistent` (`../FCdotR/Deliverables.lean:346`)
+    is an extra result with no reference counterpart.
 
 ## What is not here
 
@@ -432,8 +440,10 @@ store `G`, a closed term typed at `T` is a location or steps to a term typed at
   * `Oopsla16.oopsla16_safety` and `Oopsla16.oopsla16_not_stuck`
     (`../FCdotR/SourceSafety.lean`): a closed term typed over the empty store
     never reaches a stuck configuration of this library's `Step`; every
-    configuration it reaches is an answer or takes a step. No hypothesis; the
-    statements mention only `HasType`, `Steps`, `Step` and `Tm.IsAnswer`.
+    configuration it reaches is an answer or takes a step. No hypothesis. The
+    statements mention only `HasType`, `Steps`, `Step` and `Tm.IsAnswer`, and,
+    in `oopsla16_safety`, `FCdotR.SrcStuck`, a definition in `FCdotR` whose
+    body uses only `Tm.IsAnswer` and `Step`.
   * `Oopsla16.stp_consistent` (`../FCdotR/Deliverables.lean`): no store derives
     `⊤ <: ⊥` in the empty context.
   * Two parts of `type_safety` have no counterpart. It re-types the stepped
@@ -453,6 +463,7 @@ store `G`, a closed term typed at `T` is a location or steps to a term typed at
   relating them needs an explicit translation.
 * **No examples for unions.** `stp_or1`, `stp_or21` and `stp_or22` are
   unexercised in `dot_exs.v` as well.
-* `dot_exs.v`'s `ex1`, `ex2` and `paper_lst` are not ported.
+* `dot_exs.v`'s `ex1`, `ex2` and `paper_lst` are ported only outside this
+  library, in `../FCdotR/CheckerExamples.lean`.
 
 The Coq sources were read; the historical Coq 8.4pl6 build was not rerun.
