@@ -16,9 +16,9 @@ Every `closed` premise of the reference is gone, and with it every `open`
 equation: intrinsic scoping discharges them.  Most are well-scopedness, which
 the indexing supplies, or redundant; three become explicit weakenings; the two
 that constrain the context, `T_Varz`'s and `htp_var`'s (`dot.v:229`,
-`dot.v:378`), become the prefix indexing of `Ctx`, which is a real restriction
-(`DEVIATIONS.md`, item 8).  Three places carry the
-calculus's soundness and are worth reading against the Coq.
+`dot.v:378`), become the prefix indexing of `Ctx`, which is a real
+restriction.  Three places carry the calculus's soundness and are worth reading
+against the Coq.
 
 * `Htp` types a variable at a type of **its own prefix scope**, `Ty σ
   (scopeUpTo x)`, and `htp_sub` widens in `Γ.upTo x`.  That is the whole of
@@ -28,11 +28,8 @@ calculus's soundness and are worth reading against the Coq.
   and here they are not in scope in the ordinary sense of the word.
 * `Htp` has `htp_unpack` and **no packing rule**, while `HasType` has both
   `T_VarPack` and `T_VarUnpack`.  A type selection used in subtyping may
-  therefore not be justified by first packing its receiver.  This is the rule
-  whose absence `DotToFCdot/RecursiveSelectionCounterexample.lean` exploits in
-  the WadlerFest extension; that file is uncommitted work at the time of
-  writing (`FCdotR/README.md`, *References to uncommitted work*).
-  `PackingCounterexample` makes the same point in this calculus.
+  therefore not be justified by first packing its receiver.
+  `PackingCounterexample` shows that adding packing here is unsound.
 * `stp_strong_sel1` and `stp_strong_sel2` check the stored definition's bound
   in the **empty** local scope, and their endpoint is weakened by `renameNil`.
 

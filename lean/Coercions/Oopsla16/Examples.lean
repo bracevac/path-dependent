@@ -15,13 +15,7 @@ All three are written as `Oopsla16` derivations in
 library's constants are kept fixed.
 
 `FunctionField` is not in `dot_exs.v`.  It is modelled on the premise
-`z : S(z) ⊢ S(z) <: T(z)` of the function-field example of the WadlerFest
-line, whose FCdot target has no closed inclusion evidence for the
-corresponding conclusion (`DotMNF.RecursiveSubtyping.FunctionField.no_coercion`
-in `DotToFCdot/RecursiveSubtypingSeparation.lean`, discussed in
-`DotToFCdot/RecursiveSubtyping.md`).  That theorem and that discussion are
-uncommitted work at the time of writing (`FCdotR/README.md`, *References to
-uncommitted work*), so the repository does not yet prove the separation.
+`z : S(z) ⊢ S(z) <: T(z)` of the function-field example of the WadlerFest line.
 Here the premise is an ordinary `stp_bindx` derivation, with a method in place
 of the WadlerFest field of function type.
 -/

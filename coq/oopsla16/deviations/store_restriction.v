@@ -1,5 +1,5 @@
 (** Stores: the reference types closed terms over stores the Lean port cannot
-    express (DEV item 9).
+    express.
 
     The reference's store is [venv := list vl] (dot.v:69), with no
     well-formedness condition, and [type_safety] (dot_soundness.v:1131) is

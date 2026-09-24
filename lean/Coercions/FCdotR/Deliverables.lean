@@ -4,8 +4,7 @@ import Coercions.FCdotR.SourceSafety
 # The WadlerFest deliverables, for `Oopsla16 → FCdotR`
 
 The WadlerFest line (`DotToFCdot`, `FCdot`) proves a fixed list of results.
-Most of them already have a counterpart in this line; the table in `STATUS.md`
-(*WadlerFest deliverables*) gives each one's Lean name.  This module adds the
+Most of them already have a counterpart in this line.  This module adds the
 counterparts that were missing and follow directly from what exists.  None of
 them takes a hypothesis.
 

@@ -27,7 +27,7 @@ help either, because the body's *evidence* mentions the bound variable too: a
 and that evidence is not a function of the atom's syntax — `cast a e` does not
 record its source type, which `vcSub` needs.
 
-So the rules are **kept as they are** (option (b)), and a state is typed when
+So the rules are **kept as they are**, and a state is typed when
 some typed term and some typed continuation have its **skeleton** (`Erasure`,
 *The evidence skeleton*): the same term and frame structure, the same roots and
 the same type annotations, with atom wrappers, term-level casts and coercion
@@ -45,7 +45,7 @@ skeleton of one typed by `DefsTy`, over the erased store, at `tyOf W ℓ`.  It
 is **not** `Store.Honest G.erase W`: that asks for *source* typings of the
 erased literals, and allocation could only maintain it by erasing target
 typing into source typing, which needs a concrete `selL` to be admissible as
-`stp_strong_sel1` (`PLAN.md` §I's `obs_conc_admissible`) and a translation of
+`stp_strong_sel1` (`obs_conc_admissible`) and a translation of
 target typing derivations back into source ones.  `Inversion.obs_conc_admissible`
 now proves the first over an honest source store; the second is not built.  The
 two invariants are connected in both directions that are provable:

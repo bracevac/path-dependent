@@ -1,5 +1,5 @@
-(** Contexts: the Lean port's restriction changes no judgment (DEV item 8), and
-    the fact the Lean port's [Htp] indexing relies on (DEV item 4).
+(** Contexts: the Lean port's restriction changes no judgment, and the fact
+    the Lean port's [Htp] indexing relies on.
 
     The Lean port represents a context as [Ctx σ s] (Oopsla16/Context.lean): the
     entry for a variable lives in the scope of that variable and the older ones.

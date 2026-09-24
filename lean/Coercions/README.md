@@ -52,39 +52,14 @@ objects that keep their term members.
 
 ## The second line: Oopsla16 → FCdotR
 
-**`Oopsla16/`** is the Rompf--Amin calculus of *Type Soundness for Dependent
-Object Types* (OOPSLA 2016), transcribed from the authors' pinned Coq artifact
-`TiarkRompf/minidot` at `ef1143dc1875d389c47083cd324971b1b86686d1`,
-`oopsla16/dot.v`. It is the source specification for recursive subtyping,
-which WadlerFest DOT deliberately omits: it has `stp_bindx` and `stp_bind1`,
-and its soundness is proved in the artifact. The port is intrinsically scoped
-in the discipline of `FCdot/Debruijn.lean`, which removes the reference's
-`closed` predicate, its locally nameless bound variables, and its derivation
-size index. It keeps what carries the soundness: two variable zones, positional
-labels, context entries that may mention their own binder, and a variable
-typing judgment `Htp` with no packing rule.
-
-The reference's context truncation in `htp_sub` — `length GL = S x` and
-`GH = GU ++ GL`, the restriction that makes recursive subtyping sound — becomes
-the *type* of `Htp`, which records a variable at a type of its own prefix
-scope. The rule then has no side conditions at all.
-
-**`FCdotR/`** is its explicit-evidence target.  It keeps `Oopsla16`'s types
-unchanged and turns subtyping, and the variable typings that type selections
-rely on, into evidence: observation evidence scoped at its subject's prefix,
-packing only at store locations, and recursive subtyping over the opened body.
-Every source typing elaborates into a typed FCdotR term.  The FCdotR machine
-has preservation up to evidence, progress, and canonical forms of closed
-evidence, obtained by eliminating transitivity with an induction on packings.
-An operational correspondence between the two machines carries safety back:
-`Oopsla16.oopsla16_safety` says a closed program typed over the empty store
-never gets stuck on `Oopsla16`'s own substitution machine, with no hypothesis.
-An executable checker decides FCdotR typing, with soundness and completeness
-proved and examples decided in the kernel.  Where either calculus departs from
-the reference is summarised in [`Oopsla16/README.md`](Oopsla16/README.md) and
-[`FCdotR/README.md`](FCdotR/README.md).  The line is independent of the main line above and
-shares only `FCdot/Debruijn.lean` with it; see
-[`FCdotR/README.md`](FCdotR/README.md) and [`FCdotR/STATUS.md`](FCdotR/STATUS.md).
+**`Oopsla16/`** ports the Rompf–Amin OOPSLA 2016 DOT calculus, which has
+recursive subtyping, from its Coq artifact (`minidot`, `oopsla16/dot.v`).
+**`FCdotR/`** is its explicit-evidence target, with `Oopsla16`'s own types.
+Headline: `Oopsla16.oopsla16_safety`, a closed program typed over the empty
+store never gets stuck, proved through elaboration into FCdotR.  An executable
+checker decides FCdotR typing, proved sound and complete.  The line shares only
+`FCdot/Debruijn.lean` with the main line.  See
+[`Oopsla16/README.md`](Oopsla16/README.md) and [`FCdotR/README.md`](FCdotR/README.md).
 
 
 Axioms throughout: `propext` and `Quot.sound`.  No `sorry`, `axiom`, `partial`,
@@ -103,6 +78,6 @@ capture sorts: syntax, checked logical evidence, sound and complete
 checkers, theory models and maps, consistency models, and a classifier-kind
 algebra.  It has no operational semantics.
 
-Each directory's README lists its modules.
+Each directory has a README.
 
 **`paper/`** is the write-up of the main line (acmart, `latexmk -pdf main.tex`), with a table mapping its results to the Lean declarations.

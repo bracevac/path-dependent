@@ -210,13 +210,12 @@ the type of the polymorphic identity, `∀(t : {0 : ⊥..⊤}) ∀(x : t.0) t.0`
 returns its argument.  `ex2` applies a variable `y : polyId` to an object with
 the type member `0 = ⊤`, at `∀(x : ⊤) ⊤`.
 
-The reference writes the method parameter as `TVarB 0` in the result
-annotation and as an absolute position in the body (`Oopsla16/DEVIATIONS.md`,
-item 2); here it is one binder.  The reference
-proves both examples with its tactic `crush`; the derivations below are
-written by hand.  `ex1` is in the fragment, so its fragment elaboration erases
-back to it; `ex2` applies a variable to an object literal, which only
-`elabTm` elaborates, through a `let`. -/
+The reference writes the method parameter as `TVarB 0` in the result annotation
+and as an absolute position in the body; here it is one binder.  The reference
+proves both examples with its tactic `crush`; the derivations below are written
+by hand.  `ex1` is in the fragment, so its fragment elaboration erases back to
+it; `ex2` applies a variable to an object literal, which only `elabTm`
+elaborates, through a `let`. -/
 
 namespace DotExs
 
@@ -828,11 +827,8 @@ end Packing
 
 `Le.muDrop T` proves `μ(T↑) ≤ T`, whose body does not mention its self, and
 `bindx` relates two recursive types; no rule concludes `μT ≤ T{x}` for a body
-that mentions its self.  That is the inclusion that
-`FCdot/ReceiverCounterexample`, uncommitted work of the WadlerFest line
-(`README.md`, *References to uncommitted work*), turns into bottom.
-Unfolding at a variable is an observation of that variable, `vcUnfold`, not
-an inclusion. -/
+that mentions its self.  Unfolding at a variable is an observation of that
+variable, `vcUnfold`, not an inclusion. -/
 
 section Unfold
 

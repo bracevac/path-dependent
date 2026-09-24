@@ -4,13 +4,9 @@ import Coercions.FCdotR.Prefix
 # Syntax of FCdotR
 
 Evidence, atoms, terms and definitions.  Types, contexts and stores are
-`Oopsla16`'s verbatim: the type translation is the identity, which is what
-makes the collapse of recursive layers in
-`DotToFCdot/RecursiveTranslationCounterexample` have no counterpart here —
-`Ty.TBind` is a constructor of the source's own grammar and nothing identifies
-it with an object type.  That file, and the two FCdot files named below, are
-uncommitted work of the WadlerFest line (`README.md`, *References to
-uncommitted work*).
+`Oopsla16`'s verbatim: the type translation is the identity.  `Ty.TBind` is a
+constructor of the source's own grammar and nothing identifies it with an
+object type.
 
 Four sorts, in two groups.
 
@@ -83,13 +79,10 @@ inductive Le : Sig → Sig → Type where
   /-- `stp_sel2`. -/
   | selR {σ s : Sig} (p : Vr σ s) (a : Lb) (v : Vc σ (scopeAt p)) : Le σ s
   /-- `stp_bindx`.  The hypothesis is the **opened body**, never the folded
-  type; that is the single correction to `FCdot/RecursiveEvidence.lean`
-  (uncommitted work of the WadlerFest line). -/
+  type. -/
   | bindx {σ s : Sig} (S T : Ty σ (s,x)) (e : Le σ (s,x)) : Le σ s
-  /-- `μ(T↑) ≤ T`, the target of which is a **weakening**.  `μ T ≤ T{x}` would
-  be an unsoundness, not an optimisation: it is the fold-exposing inclusion
-  that `FCdot/ReceiverCounterexample` (uncommitted work of the WadlerFest line)
-  turns into bottom. -/
+  /-- `μ(T↑) ≤ T`, the target of which is a **weakening**.  There is no
+  fold-exposing `μ T ≤ T{x}`. -/
   | muDrop {σ s : Sig} (T : Ty σ s) : Le σ s
 
 /-- Observation evidence, the image of `Oopsla16.Htp`.  Its scope index is its

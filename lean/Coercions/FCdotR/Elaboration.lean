@@ -4,7 +4,7 @@ import Coercions.FCdotR.Examples
 /-!
 # Elaboration: `Oopsla16` derivations become FCdotR evidence and terms
 
-The translation R1 of `PLAN.md` §E, as functions on derivations.  Every
+The translation from `Oopsla16` to FCdotR, as functions on derivations.  Every
 function here recurses over the source's `Type`-valued derivations, so the
 source's proof *is* the target's evidence, computed.  All but `elabAtom` are
 compiled as structural recursions; Lean compiles `elabAtom` by well-founded
@@ -26,9 +26,9 @@ typing `W`: `Store.Honest` is not needed anywhere in `elabStp`/`elabHtp`.  The
 reason is that the two rules which read the store, `stp_strong_sel1` and
 `stp_strong_sel2`, have target counterparts `LeTy.defL`/`LeTy.defR` with
 *literally the same* premises — they read `G`, not `W` — and no other rule
-mentions a location.  Two rules are derived rather than primitive, exactly as
-`PLAN.md` §E says: `stp_selx` is `refl` at the selection, and `stp_bind1` is
-`bindx` into the weakened right body followed by `muDrop`.
+mentions a location.  Two rules are derived rather than primitive: `stp_selx` is
+`refl` at the selection, and `stp_bind1` is `bindx` into the weakened right body
+followed by `muDrop`.
 
 ## `T_Vary`, and the one hypothesis of the term elaboration
 
@@ -95,11 +95,7 @@ drops this restriction too, because its correspondence ignores annotations.
 The last section runs the elaboration on `Oopsla16.Examples.FunctionField`, a
 recursive-subtyping derivation, and checks that it computes the evidence
 `FCdotR/Examples.lean` writes out by hand — not up to anything, but on the
-nose, by `rfl`.  Its WadlerFest counterpart has no closed inclusion evidence in
-the present FCdot target by `DotMNF.RecursiveSubtyping.FunctionField.no_coercion`
-(`DotToFCdot/RecursiveSubtypingSeparation.lean`), which is uncommitted work of
-the WadlerFest line (`README.md`, *References to uncommitted work*); until
-that file is committed, the repository does not prove it.
+nose, by `rfl`.
 
 ## What this module does not contain
 
@@ -128,7 +124,7 @@ hypothesis, because `defL`/`defR` read the same store the source rules read.
 
 Two rules have no primitive counterpart and are derived: `stp_selx` is `refl`
 at the selection itself, and `stp_bind1` is `bindx` into the weakened right
-body composed with `muDrop`, which is `PLAN.md` §E's entry for it. -/
+body composed with `muDrop`. -/
 def elabStp {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) {Γ : Ctx σ s} :
     {S T : Ty σ s} → Stp G Γ S T → (e : Le σ s) × LeTy G W Γ e S T
   | _, T, .stp_bot => ⟨.bot T, .bot T⟩
@@ -219,8 +215,7 @@ structurally, so that a derivation over `t` can be elaborated by recursion:
   erases back to it on the nose.
 
 Neither is a restriction on the *calculus*; both are restrictions on this
-translation.  `PLAN.md` §E records the first as the MNF lemma that was owed.
-`ElaborationFull` now pays it, and elaborates every source typing over an
+translation.  `ElaborationFull` elaborates every source typing over an
 annotated store with neither restriction. -/
 
 mutual
@@ -432,11 +427,7 @@ T(z) =                                   {f : ∀(_ : ⊤) z.B}
 and `FCdotR/Examples.lean` writes the corresponding evidence by hand.  Running
 `elabStp` on the source derivation produces that same evidence term — not an
 equivalent one, the same one — so the hand-written example is exactly what the
-translation computes.  For the WadlerFest counterpart of these endpoints, a
-field of function type in place of the method, the previous target has no
-closed inclusion at all: `DotMNF.RecursiveSubtyping.FunctionField.no_coercion`,
-in uncommitted work of the WadlerFest line (`README.md`, *References to
-uncommitted work*).
+translation computes.
 
 The store is empty here, though nothing depends on that: `elabStp` holds at
 every store typing. -/

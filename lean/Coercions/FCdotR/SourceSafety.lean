@@ -66,12 +66,8 @@ This module also restates `Simulation`'s two theorems that took
 * `SourceSafety.RecursiveArg`: a method that accepts only objects of type
   `μz. T(z)`, applied to an object literal whose typing needs recursive
   subtyping.  That subtyping is `Oopsla16.Examples.FunctionField.recursive`
-  (`stp_bindx`).  Its WadlerFest counterpart has no closed inclusion evidence
-  in FCdot (`DotMNF.RecursiveSubtyping.FunctionField.no_coercion`, in
-  `DotToFCdot/RecursiveSubtypingSeparation.lean`, a file of uncommitted work:
-  `README.md`, *References to uncommitted work*).  The instance
-  exhibits the source run: two allocations and one invocation, ending in an
-  answer.  It also applies both headline theorems.
+  (`stp_bindx`).  The instance exhibits the source run: two allocations and
+  one invocation, ending in an answer.  It also applies both headline theorems.
 * `SourceSafety.HonestCall`: an identity method applied to a location of the
   honest two-object store `StoreTyping.TwoObjectStore`, through
   `oopsla16_safety_honest`.
@@ -91,7 +87,7 @@ This module also restates `Simulation`'s two theorems that took
   (`varConcAny`, `Typing.LitMatch`) reads a stored literal's type members and
   method annotations, and the machine store annotates a Curry-style method
   with the types its honesty witness checked, so a store with the same type
-  members is not enough.  `STATUS.md` records that translation as not built.
+  members is not enough.  That translation is not built.
   `Coverage.CurryGap` is a store where this matters: a typed configuration over
   it steps, and no witness there is in `DmsFrag`.
   Stores reached by running are unaffected: a run from the empty store keeps

@@ -4,10 +4,10 @@
     scripts use [omega] and SfLib's [Case], which Coq 8.19 no longer provides,
     so this file re-proves it together with the helper lemmas it needs.
 
-    Every lemma below except [beq_nat_true_iff] and [beq_nat_false_iff] has
-    the statement of the dot.v lemma of the same name, token for token (the
-    README gives the check); only the proof scripts are new.  The two
-    [beq_nat] lemmas are the Coq 8.4 standard library's ([Arith.EqNat]),
+    Every lemma below except [beq_nat_true_iff] and [beq_nat_false_iff] has the
+    statement of the dot.v lemma of the same name, token for token
+    ([check_statements.sh] checks this); only the proof scripts are new.  The
+    two [beq_nat] lemmas are the Coq 8.4 standard library's ([Arith.EqNat]),
     re-proved for the local [beq_nat] of [dot_spec.v]. *)
 Require Import dot_spec.
 Require Import Lia.

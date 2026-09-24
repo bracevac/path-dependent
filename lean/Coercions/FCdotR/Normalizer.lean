@@ -16,31 +16,29 @@ the second one stops.
 
 * **Redex elimination** (`VcTy.canon`).  A redex is an unfolding that consumes
   a packing, either directly or through one widening.  Contracting it is the
-  step that `PLAN.md` §I worries about, because the widening in the middle has
-  to be inverted to a `bindx` and that `bindx`'s premise has to be instantiated
-  at the location — evidence that is *not* a subderivation.  That contraction is
-  this module's one hypothesis, the structure `Contract`.  **Nothing in this
-  module inhabits `Contract`**, and everything that depends on it says so.
-  Downstream, `Inversion.Store.Honest.contract` inhabits it over every honest
-  store, and `Inversion.Store.Honest.canon` is `VcTy.canon` with the hypothesis
-  discharged.
+  hard step, because the widening in the middle has to be inverted to a `bindx`
+  and that `bindx`'s premise has to be instantiated at the location — evidence
+  that is *not* a subderivation.  That contraction is this module's one
+  hypothesis, the structure `Contract`.  **Nothing in this module inhabits
+  `Contract`**, and everything that depends on it says so. Downstream,
+  `Inversion.Store.Honest.contract` inhabits it over every honest store, and
+  `Inversion.Store.Honest.canon` is `VcTy.canon` with the hypothesis discharged.
 
-  Given `Contract`, the rest is proved here, and it settles `PLAN.md` §I's open
-  question in the affirmative: the measure is `Vc.spinePacks`, the number of
-  `vcPack` nodes on the spine over one subject, ordered lexicographically
-  against the size of the evidence, and `VcTy.canon` terminates on it.  The
-  reason it works, and the reason the *total* count `Vc.packs` would not, is
-  that a contraction substitutes a location into a `bindx` premise: that copies
-  whatever observations the premise carries, but every one of them observes a
-  *different* subject, so it lands inside an inclusion and never on the spine
-  the measure counts.  `Contract.step` is therefore asked only for
-  `u.spinePacks ≤ w.spinePacks`, which is what a structure-preserving
-  substitution gives along the `bindx` route, where the contracted observation
-  is the packed one widened by the instantiated premise.  That every other route
-  through which `μT ≤ μT'` could have been derived — a chain through a concrete
-  selection, say — respects the bound too is not proved here; it is
-  `Inversion.Store.Honest.invBind`, which shows that over an honest store every
-  such route normalizes to `bindx` or `bind1`.
+  Given `Contract`, the rest is proved here: the measure is `Vc.spinePacks`, the
+  number of `vcPack` nodes on the spine over one subject, ordered
+  lexicographically against the size of the evidence, and `VcTy.canon`
+  terminates on it.  The reason it works, and the reason the *total* count
+  `Vc.packs` would not, is that a contraction substitutes a location into a
+  `bindx` premise: that copies whatever observations the premise carries, but
+  every one of them observes a *different* subject, so it lands inside an
+  inclusion and never on the spine the measure counts.  `Contract.step` is
+  therefore asked only for `u.spinePacks ≤ w.spinePacks`, which is what a
+  structure-preserving substitution gives along the `bindx` route, where the
+  contracted observation is the packed one widened by the instantiated premise.
+  That every other route through which `μT ≤ μT'` could have been derived — a
+  chain through a concrete selection, say — respects the bound too is not proved
+  here; it is `Inversion.Store.Honest.invBind`, which shows that over an honest
+  store every such route normalizes to `bindx` or `bind1`.
 
 This module contains no inversion of inclusion evidence.  Eliminating `trans`
 from a closed `LeTy` is the other half of canonical forms and is not here; see
@@ -250,9 +248,8 @@ lexicographic on the pair (remaining pack budget, size of the evidence): the
 structural steps shrink the second component, and the one step that restarts
 the traversal — contracting a redex — shrinks the first, by `unfoldStep`.
 
-This is the theorem `PLAN.md` §I asks for, and it answers the question there:
-the pack count on the spine *is* a well-founded measure for `vc_canon`, and no
-count of derivation size is needed alongside it beyond the structural one.
+So the pack count on the spine *is* a well-founded measure for `vc_canon`, and
+no count of derivation size is needed alongside it beyond the structural one.
 
 **It is stated with a hypothesis.**  `c : Contract G W` is the contraction of
 a redex through a widening.  It is discharged over every honest store by

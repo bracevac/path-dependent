@@ -489,7 +489,7 @@ def obs_conc_easy {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s
 /-- **A consequence of the easy half**: over an honest store every `defL` is
 subsumed by a `selL`, because the exact bounds the store records can be widened
 to `⊥..TX` and observed.  So the concrete selection rules `selL`/`selR` really
-are the more permissive pair, as `PLAN.md` §I says; `obs_conc_admissible` is the
+are the more permissive pair; `obs_conc_admissible` is the
 claim that they are no *more* permissive, proved in `Inversion`. -/
 def Store.Honest.defL_as_selL {σ s : Sig} {G : Store σ σ} {W : StoreTy σ}
     {Γ : Ctx σ s} (hG : Store.Honest G W) (l : BVar σ .var) {a : Lb}

@@ -1569,7 +1569,7 @@ theorem consistency_honest' {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {e : L
 /-- **`obs_conc_admissible`**, the converse of `obs_conc_easy`: over an honest
 store, every closed observation of a location at a type member is bracketed by
 the definition the store holds.  So the concrete `selL`/`selR` add no power over
-`defL`/`defR`, which is the soundness debt `PLAN.md` §I records. -/
+`defL`/`defR`. -/
 def obs_conc_admissible {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
     (hG : Store.Honest G W) : ObsConcAdmissible G W :=
   hG.recordedLit.obsConcAdmissible

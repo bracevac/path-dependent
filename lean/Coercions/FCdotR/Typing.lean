@@ -28,11 +28,7 @@ Three things are worth reading against the source.
   Packing is still available on *atoms*, where the source allows it
   (`T_VarPack`, `dot.v:231-235`).
 * **`bindx`'s hypothesis is the opened body**, `Γ.cons S`, never the folded
-  `μ S`.  The folded assumption is what the composition prototype of
-  `FCdot/RecursiveEvidence.lean` takes, and it hands back the packing power the
-  source forbids; that file is uncommitted work of the WadlerFest line
-  (`README.md`, *References to uncommitted work*).  The only inclusion that
-  mentions `μ` on the right with a non-`μ`
+  `μ S`.  The only inclusion that mentions `μ` on the right with a non-`μ`
   left would be a `stp_bind2`, which the source does not have and this
   calculus does not add; `muDrop`'s target is a weakening for the same reason.
 

@@ -19,9 +19,8 @@ output: the number of rows, and a digest of all of them.
 Comments and doc strings do not enter, so a documentation edit leaves the
 output unchanged; a change to a statement, a rule, a type or a definition
 changes a row, and a new or removed constant changes the count.  The hashes are
-those of the pinned toolchain.  `STATUS.md` records the count and the digest
-of the `Oopsla16` the safety theorems are about, and says at which commits they
-were taken.
+those of the pinned toolchain.  For the `Oopsla16` the safety theorems are
+about, the output ends with `total 1015` and `digest 1836387099973842417`.
 -/
 
 open Lean Elab Command

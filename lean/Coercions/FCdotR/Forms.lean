@@ -15,11 +15,10 @@ Five things live here.
   *anywhere*, including inside the observations that `selL`/`selR` carry.
   `Vc.spinePacks` counts them on the **observation spine only** — the chain of
   `vcSub`/`vcPack`/`vcUnfold` nodes above one subject, not descending into the
-  inclusion evidence a `vcSub` carries.  `PLAN.md` §I asks for this measure and
-  asks whether it is the one the normalizer decreases.  `Normalizer.VcTy.canon`
-  proves that it is: redex elimination terminates on the lexicographic pair
-  (`spinePacks`, size of the evidence).  The reason the spine count and not the
-  total count is the right one is a fact about the calculus: a `selL`/`selR`
+  inclusion evidence a `vcSub` carries.  `Normalizer.VcTy.canon` proves that the
+  normalizer decreases it: redex elimination terminates on the lexicographic
+  pair (`spinePacks`, size of the evidence).  The reason the spine count and not
+  the total count is the right one is a fact about the calculus: a `selL`/`selR`
   inside an inclusion observes a **different subject**, so substituting a
   location into a `bindx` premise — which is what contracting a redex does —
   copies observations, but every copy lands inside an inclusion and never on the

@@ -20,8 +20,8 @@ substituting an abstract variable by a location replaces `htp_var` by whatever
 observes the store.  `Le.subst` and `Vc.subst` remain the erasure-preserving
 action on syntax; this module is the semantic content.
 
-`MonoSyn.Ev` is the plan's `Subst.Ev` (§B.3).  Its three fields are the minimal
-agreement the induction consumes, and no more:
+`MonoSyn.Ev` says what evidence substitution consumes.  Its three fields are the
+minimal agreement the induction consumes, and no more:
 
 * `defs` — the stored definitions agree: `G'.lookup (θ.conc ℓ)` is
   `G.lookup ℓ` substituted.  `defL`/`defR` read it through `Dms.get?_subst`,
@@ -46,7 +46,7 @@ equality fails and is not needed.
 
 The `vcSub` clause needs the inclusion premise transported *inside the
 subject's prefix*, so it needs a `MonoSyn.Ev` for the restricted substitution
-over the restricted contexts.  That is the plan's **Lemma R** (§B.4).  It used
+over the restricted contexts.  That is **Lemma R**.  It used
 to be an explicit hypothesis of the theorem; it is now proved, so
 `LeTy.substEv` and `VcTy.substEv` take no hypothesis beyond `MonoSyn.Ev`.
 
@@ -68,8 +68,7 @@ discharges that in two independent halves:
   is the only transport in the whole argument, and it is discharged against
   the coherence at the end.
 
-`VcTy.toFull` below is the other half of the plan's Lemma 0, kept because it
-is the weakening direction `Locality` does not state.
+`VcTy.toFull` below is the weakening direction `Locality` does not state.
 -/
 
 namespace FCdotR
@@ -114,7 +113,7 @@ that variable's prefix.  The converse — that it re-enters the full context —
 is what Lemma R's proof needs, and it is the same one-line recursion. -/
 
 /-- An observation over a prefix re-enters the full context.  With
-`VcTy.strengthen` this is the plan's Lemma 0 as an isomorphism. -/
+`VcTy.strengthen` it gives both directions. -/
 def VcTy.toFull {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
     {x : BVar s .var} : {v : Vc σ (scopeUpTo x)} → {T : Ty σ (scopeUpTo x)} →
     VcTy G W (Γ.upTo x) (.abs (varUpTo x)) v T → VcTy G W Γ (.abs x) v T
@@ -150,7 +149,7 @@ def VcTy.strengthenCons {σ s : Sig} {G : Store σ σ} {W : StoreTy σ}
 
 /-! ## The hypothesis structure -/
 
-/-- The plan's `Subst.Ev`: what evidence substitution consumes.  Store
+/-- What evidence substitution consumes.  Store
 agreement in both components, and observation evidence for the image of every
 abstract variable at its substituted lookup type. -/
 structure MonoSyn.Ev {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2}

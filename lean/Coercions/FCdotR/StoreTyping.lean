@@ -613,8 +613,8 @@ def Store.Honest.method {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
 
 /-- The observation of a location that `selL`/`selR` consume, built from the
 definition `defL`/`defR` read.  Over an honest store the two ways of resolving
-a concrete type selection therefore agree, which is the easy half of the
-`obs_conc_admissible` question `PLAN.md` leaves open. -/
+a concrete type selection therefore agree, which is the easy half of
+`obs_conc_admissible` (the other half is in `Inversion`). -/
 def Store.Honest.obs {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
     (h : Store.Honest G W) (l : BVar σ .var) {a : Lb} {TX : Ty σ []}
     (hg : (G.lookup l).get? a = some (.dty TX)) :
