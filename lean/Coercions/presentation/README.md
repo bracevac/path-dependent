@@ -15,7 +15,7 @@ every retained reduction order through FCdot. The scope slide records the
 intrinsic-scoping boundary and the absence of recursive subtyping and field
 paths.
 
-The rendered deck is [dot-mnf-fcdot.pdf](../output/pdf/dot-mnf-fcdot.pdf).
+The rendered deck is not kept in the repository; build it as below.
 The [LaTeX source](dot-mnf-fcdot.tex) contains only slide content.
 [Speaker cues and Lean references](speaker-notes.md) are separate.
 
