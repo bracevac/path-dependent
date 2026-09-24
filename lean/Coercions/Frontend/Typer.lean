@@ -215,8 +215,8 @@ mutual
 
 - a variable returns `Ctx.lookup` and `HasTy.var` (`Typing.lean:88`), exact,
   nothing guessed;
-- `λ(x : S). t` decides `Ty.Wf S` with F1.1 and synthesizes the body under
-  `Γ.cons S` against a table rebuilt there (`Typing.lean:90`);
+- `λ(x : S). t` synthesizes the body under `Γ.cons S` against a table rebuilt
+  there.  Upstream `HasTy.lam` has no premise on the annotation `S`.
 - `ν(x : T. d)` checks the definitions under `Γ.consSelf d.erase T` against a
   table rebuilt there and decides `Defs.Distinct` (`Typing.lean:97-101`);
 - `x y` reads the first function view of `x` off the closure and checks `y`
@@ -232,10 +232,8 @@ def synth? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
       ((match a with
         | .path (.var x) => some ⟨Ctx.lookup Γ x, .var⟩
         | .lam S t =>
-            if hwf : Ty.Wf S then
-              (synth? (decls b (Γ.cons S)) b (n + 1) t).map (fun c =>
-                ⟨.all S c.ty, .lam c.deriv hwf⟩)
-            else none
+            (synth? (decls b (Γ.cons S)) b (n + 1) t).map (fun c =>
+              ⟨.all S c.ty, .lam c.deriv⟩)
         | .obj T d =>
             (checkDefs? (decls b (Γ.consSelf d.erase T)) b (n + 1) d T).bind (fun hd =>
               if hdist : Defs.Distinct d.erase then some ⟨.mu T, .obj hd hdist⟩
@@ -250,21 +248,18 @@ def synth? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
               -- rung one: the surface annotation
               ((match ann with
                 | some U =>
-                    (check? (decls b (Γ.cons c1.ty)) b (n + 1) u U.weaken).bind (fun h2 =>
-                      if hwf : Ty.Wf U then some ⟨U, .let c1.deriv h2 hwf⟩ else none)
+                    (check? (decls b (Γ.cons c1.ty)) b (n + 1) u U.weaken).map (fun h2 =>
+                      ⟨U, .let c1.deriv h2⟩)
                 | none => none) :
                   Option (Synth Γ (ATm.let ann t u).erase)).orElse fun _ =>
               ((synth? (decls b (Γ.cons c1.ty)) b (n + 1) u).bind (fun c2 =>
                 -- rung two: the strengthening of the body's type
                 ((match tyStrengthenW? c2.ty with
-                  | some w =>
-                      if hwf : Ty.Wf w.val then
-                        some ⟨w.val, .let c1.deriv (w.property ▸ c2.deriv) hwf⟩
-                      else none
+                  | some w => some ⟨w.val, .let c1.deriv (w.property ▸ c2.deriv)⟩
                   | none => none) :
                     Option (Synth Γ (ATm.let ann t u).erase)).orElse fun _ =>
                 -- rung three: `⊤`, which always applies and always loses
-                some ⟨.top, .let c1.deriv (weaken_top ▸ HasTy.sub c2.deriv Sub.top) .top⟩) :
+                some ⟨.top, .let c1.deriv (weaken_top ▸ HasTy.sub c2.deriv Sub.top)⟩) :
                   Option (Synth Γ (ATm.let ann t u).erase)))
         : Option (Synth Γ a.erase))).orElse fun _ => synth? D b n a
 termination_by (n, sizeATm a, 1)
@@ -288,8 +283,7 @@ termination_by (n, sizeATm a, 2)
 1. an intersection goal splits by `HasTy.andI` (`Typing.lean:117-120`), the one
    rule that combines two typings of a single variable; it recurses at a
    strictly smaller type;
-2. a `μ` goal whose body is declaration shaped folds by `HasTy.recI`
-   (`Typing.lean:109-111`).  `Sub` has no rule for `μ` (`Typing.lean:69`), so a
+2. a `μ` goal folds by `HasTy.recI`, whose body is unrestricted upstream.  `Sub` has no rule for `μ` (`Typing.lean:69`), so a
    `μ` goal is otherwise unreachable from an opened type.  `Ty.substVar` is a
    renaming, so the type does not shrink and the fuel must;
 3. otherwise the closure is consulted, first for a view at exactly the goal and
@@ -302,10 +296,7 @@ def checkVar? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
           (checkVar? D b n x T2).map (fun h2 => .andI h1 h2))
     | _ => none) : Option (HasTy Γ (.path (.var x)) T)).orElse fun _ =>
   ((match n, T with
-    | m + 1, .mu U =>
-        if hd : Ty.Decl U then
-          (checkVar? D b m x (U.substVar x)).map (fun h => .recI h hd)
-        else none
+    | m + 1, .mu U => (checkVar? D b m x (U.substVar x)).map (fun h => .recI h)
     | _, _ => none) : Option (HasTy Γ (.path (.var x)) T)).orElse fun _ =>
   (viewAt T (views D b x)).orElse fun _ => viewSub D b.sub T (views D b x)
 termination_by (n, 0, sizeTy T)

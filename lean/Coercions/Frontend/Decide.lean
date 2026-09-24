@@ -4,13 +4,19 @@ import Coercions.FCdot.Checker
 /-!
 # The decided side conditions
 
-Stage F1.1 of `plan-5e-frontend-stages.md`.  The typer of F1.4 discharges four
-kinds of side condition.  `DotMNF.Ty.Decl` is already decided in the frozen tree
-by `Ty.isDecl`, `Ty.isDecl_iff` and its instance
-(`lean/Coercions/DotMNF/Syntax.lean`), so nothing is added for it.  The other
-three are here: well-formedness of a type, distinctness of the labels of a
+Stage F1.1 of `plan-5e-frontend-stages.md`.  The typer of F1.4 discharges two
+kinds of side condition, and both are here: distinctness of the labels of a
 definition block, and strengthening, the inverse of `DotMNF.Ty.weaken`, which
 the avoidance ladder of F1.4 climbs.
+
+The stage first decided two more.  Well-formedness of a type, `DotMNF.Ty.Wf`,
+was a premise of `HasTy.lam` and `HasTy.let`, and `DotMNF.Ty.Decl` was a
+premise of `HasTy.recI` and `HasTy.recE`.  Upstream (PR #56) removed both
+premises: lambda annotations, `let` result types and recursive bodies are
+unrestricted, and `Ty.Wf` is gone.  So the decision procedure `tyWf?` and its
+`tyWf?_iff` are gone with it.  `Ty.Decl` stays upstream as a classifier of the
+translation, decided there by `Ty.isDecl` and `Ty.isDecl_iff`, and the typer no
+longer consults it.
 
 Strengthening reuses the target's partial renaming machinery verbatim rather
 than rewriting it: `FCdot.PartialRename`, `PartialRename.lift`,
@@ -36,70 +42,6 @@ namespace Frontend
 
 open FCdot (Kind Sig BVar Rename Label PartialRename witness?)
 open DotMNF (Path Ty Defs Ctx)
-
-/-! ## Well-formedness of a type
-
-`tyWf?` mirrors `DotMNF.Ty.Wf` clause for clause, including the `Ty.Decl`
-premise of `Wf.mu` and the absence of any relation between the bounds in
-`Wf.typ`: `{A : S..T}` is well formed with bad bounds. -/
-
-/-- The decision procedure for `DotMNF.Ty.Wf`. -/
-def tyWf? : Ty s → Bool
-  | .top | .bot | .sel _ _ => true
-  | .typ _ S T => tyWf? S && tyWf? T
-  | .fld _ T => tyWf? T
-  | .mu T => tyWf? T && T.isDecl
-  | .all S T => tyWf? S && tyWf? T
-  | .and S T => tyWf? S && tyWf? T
-
-theorem tyWf?_iff : ∀ {s : Sig} (T : Ty s), tyWf? T = true ↔ Ty.Wf T
-  | _, .top => ⟨fun _ => .top, fun _ => rfl⟩
-  | _, .bot => ⟨fun _ => .bot, fun _ => rfl⟩
-  | _, .sel _ _ => ⟨fun _ => .sel, fun _ => rfl⟩
-  | _, .typ _ S T =>
-      ⟨fun h => by
-        rw [tyWf?, Bool.and_eq_true] at h
-        exact .typ ((tyWf?_iff S).mp h.1) ((tyWf?_iff T).mp h.2),
-       fun h => by
-        cases h with
-        | typ hS hT =>
-            rw [tyWf?, Bool.and_eq_true]
-            exact ⟨(tyWf?_iff S).mpr hS, (tyWf?_iff T).mpr hT⟩⟩
-  | _, .fld _ T =>
-      ⟨fun h => by rw [tyWf?] at h; exact .fld ((tyWf?_iff T).mp h),
-       fun h => by
-        cases h with
-        | fld hT => rw [tyWf?]; exact (tyWf?_iff T).mpr hT⟩
-  | _, .mu T =>
-      ⟨fun h => by
-        rw [tyWf?, Bool.and_eq_true] at h
-        exact .mu ((tyWf?_iff T).mp h.1) ((Ty.isDecl_iff T).mp h.2),
-       fun h => by
-        cases h with
-        | mu hT hD =>
-            rw [tyWf?, Bool.and_eq_true]
-            exact ⟨(tyWf?_iff T).mpr hT, (Ty.isDecl_iff T).mpr hD⟩⟩
-  | _, .all S T =>
-      ⟨fun h => by
-        rw [tyWf?, Bool.and_eq_true] at h
-        exact .all ((tyWf?_iff S).mp h.1) ((tyWf?_iff T).mp h.2),
-       fun h => by
-        cases h with
-        | all hS hT =>
-            rw [tyWf?, Bool.and_eq_true]
-            exact ⟨(tyWf?_iff S).mpr hS, (tyWf?_iff T).mpr hT⟩⟩
-  | _, .and S T =>
-      ⟨fun h => by
-        rw [tyWf?, Bool.and_eq_true] at h
-        exact .and ((tyWf?_iff S).mp h.1) ((tyWf?_iff T).mp h.2),
-       fun h => by
-        cases h with
-        | and hS hT =>
-            rw [tyWf?, Bool.and_eq_true]
-            exact ⟨(tyWf?_iff S).mpr hS, (tyWf?_iff T).mpr hT⟩⟩
-
-instance instDecidableTyWf {s : Sig} (T : Ty s) : Decidable (Ty.Wf T) :=
-  decidable_of_iff _ (tyWf?_iff T)
 
 /-! ## Distinctness of the labels of a definition block
 
@@ -367,12 +309,6 @@ drawn here, at the last structural module. -/
 section Tests
 
 open FCdot (Label)
-
-example : tyWf? (Ty.mu (Ty.fld (Label.trm 0) Ty.top) : Ty []) = true := by decide
-example : tyWf? (Ty.mu (Ty.all Ty.top Ty.top) : Ty []) = false := by decide
-/-- Bad bounds are well formed: `Wf.typ` relates the two sides not at all. -/
-example : Ty.Wf (Ty.typ (Label.typ 0) Ty.top Ty.bot : Ty []) := by decide
-example : ¬ Ty.Wf (Ty.mu Ty.bot : Ty []) := by decide
 
 example : Defs.Distinct
     (Defs.and (Defs.typ (Label.typ 0) Ty.top) (Defs.typ (Label.typ 1) Ty.top) : Defs []) := by

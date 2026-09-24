@@ -187,7 +187,7 @@ def noSub {s : Sig} {Γ : Ctx s} : SubSearch Γ := fun _ _ => none
 
 | step | condition on `v.ty` | new view | rule |
 |---|---|---|---|
-| open | `.mu T` and `Ty.Decl T` | `T.substVar x` | `HasTy.recE` (`Typing.lean:113-115`) |
+| open | `.mu T` | `T.substVar x` | `HasTy.recE`, whose body is unrestricted upstream |
 | left | `.and S T` | `S` | `HasTy.sub` with `Sub.and1` (`Typing.lean:75,121`) |
 | right | `.and S T` | `T` | `HasTy.sub` with `Sub.and2` (`Typing.lean:76,121`) |
 | upper | `v.ty = y.A` at a `d` of the table | `d.hi` | `HasTy.sub` with `Sub.selUpper` (`Typing.lean:81`) |
@@ -198,8 +198,7 @@ condition.  Without it the term is ill typed, which is the refuter's C3. -/
 def viewStepOf {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (D : DeclTable Γ) : ViewStep Γ :=
   fun x v =>
     (match hv : v.ty with
-      | .mu T =>
-          if hd : Ty.Decl T then [⟨T.substVar x, .recE (hv ▸ v.deriv) hd⟩] else []
+      | .mu T => [⟨T.substVar x, .recE (hv ▸ v.deriv)⟩]
       | .and S T =>
           [⟨S, .sub (hv ▸ v.deriv) .and1⟩, ⟨T, .sub (hv ▸ v.deriv) .and2⟩]
       | _ => [])

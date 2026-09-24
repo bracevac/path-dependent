@@ -44,12 +44,11 @@ order.  Two helpers carry the two rules whose side conditions are lookups, so
 that the equations the proofs rewrite by stay short. -/
 
 /-- The dispatch of the two application rules on a wrapped atom, on the head
-form of the atom's casts.  `id` and `eqv` are the two shapes of `appCastRefl`,
-`pi` is `appCast`, and every other form is stuck. -/
+form of the atom's casts.  `id` is `appCastRefl`, `pi` is `appCast`, and every
+other form is stuck. -/
 def fcAppForm? (σ : Store s) (K : Cont s) (t₀ : Tm (s,x)) (b : Atom s) :
     Form s → Option ((s' : Sig) × State s')
   | .id => some ⟨s, ⟨σ, K, t₀.substAtom b⟩⟩
-  | .eqv _ => some ⟨s, ⟨σ, K, t₀.substAtom b⟩⟩
   | .pi d c =>
       some ⟨s, ⟨σ, K, .cast (t₀.substAtom (.cast b d)) (c.subst (Subst.single b))⟩⟩
   | _ => none
@@ -63,7 +62,7 @@ def fcApp? (n : Nat) (σ : Store s) (K : Cont s) (a b : Atom s) :
   match σ.lookup a.root with
   | .lam _ t₀ =>
       if a = .var a.root then some ⟨s, ⟨σ, K, t₀.substAtom b⟩⟩
-      else (closedAtomForm σ n a).bind (fun r => fcAppForm? σ K t₀ b r.2)
+      else (closedAtomForm σ n a).bind (fun F => fcAppForm? σ K t₀ b F)
   | _ => none
 
 /-- The projection rule.  The store must hold an object literal at the atom's
@@ -126,22 +125,19 @@ theorem fcApp?_of_var (n : Nat) {σ : Store s} (K : Cont s) {a b : Atom s} {S₀
   rw [if_pos ha]
 
 /-- The application clause with the premises of `appCastRefl` supplied. -/
-theorem fcApp?_of_castRefl {n : Nat} {σ : Store s} (K : Cont s) {a b a' : Atom s}
-    {S₀ : Ty s} {t₀ : Tm (s,x)} {F : Form s} (hl : σ.lookup a.root = .lam S₀ t₀)
-    (ha : a ≠ .var a.root) (hcf : closedAtomForm σ n a = some (a', F))
-    (hF : F = .id ∨ ∃ φ, F = .eqv φ) :
+theorem fcApp?_of_castRefl {n : Nat} {σ : Store s} (K : Cont s) {a b : Atom s}
+    {S₀ : Ty s} {t₀ : Tm (s,x)} (hl : σ.lookup a.root = .lam S₀ t₀)
+    (ha : a ≠ .var a.root) (hcf : closedAtomForm σ n a = some .id) :
     fcApp? n σ K a b = some ⟨s, ⟨σ, K, t₀.substAtom b⟩⟩ := by
   simp only [fcApp?, hl]
   rw [if_neg ha, hcf]
-  cases hF with
-  | inl hid => cases hid; rfl
-  | inr hev => obtain ⟨φ, hev⟩ := hev; cases hev; rfl
+  rfl
 
 /-- The application clause with the premises of `appCast` supplied. -/
-theorem fcApp?_of_cast {n : Nat} {σ : Store s} (K : Cont s) {a b a' : Atom s}
+theorem fcApp?_of_cast {n : Nat} {σ : Store s} (K : Cont s) {a b : Atom s}
     {S₀ : Ty s} {t₀ : Tm (s,x)} {d : LeCo s} {c : LeCo (s,x)}
     (hl : σ.lookup a.root = .lam S₀ t₀) (ha : a ≠ .var a.root)
-    (hcf : closedAtomForm σ n a = some (a', .pi d c)) :
+    (hcf : closedAtomForm σ n a = some (.pi d c)) :
     fcApp? n σ K a b
       = some ⟨s, ⟨σ, K, .cast (t₀.substAtom (.cast b d)) (c.subst (Subst.single b))⟩⟩ := by
   simp only [fcApp?, hl]
@@ -197,12 +193,10 @@ theorem fcApp?_sound {n : Nat} {σ : Store s} {K : Cont s} {a b : Atom s}
       · rw [if_neg ha] at h
         cases hcf : closedAtomForm σ n a with
         | none => rw [hcf] at h; nomatch h
-        | some p =>
-            obtain ⟨a', F⟩ := p
+        | some F =>
             rw [hcf] at h
             cases F with
-            | id => exact fcStep_of_some h (.appCastRefl hl ha hcf (.inl rfl))
-            | eqv φ => exact fcStep_of_some h (.appCastRefl hl ha hcf (.inr ⟨φ, rfl⟩))
+            | id => exact fcStep_of_some h (.appCastRefl hl ha hcf)
             | pi d c => exact fcStep_of_some h (.appCast hl ha hcf)
             | bot => nomatch h
             | top => nomatch h
@@ -306,8 +300,8 @@ theorem fcStep?_complete {st : State s} {st' : State s'}
   | alloc => exact ⟨0, rfl⟩
   | rename => exact ⟨0, rfl⟩
   | appVar hl => exact ⟨0, by rw [fcStep?_app_eq]; exact fcApp?_of_var 0 _ hl rfl⟩
-  | appCastRefl hl ha hcf hF =>
-      exact ⟨_, by rw [fcStep?_app_eq]; exact fcApp?_of_castRefl _ hl ha hcf hF⟩
+  | appCastRefl hl ha hcf =>
+      exact ⟨_, by rw [fcStep?_app_eq]; exact fcApp?_of_castRefl _ hl ha hcf⟩
   | appCast hl ha hcf =>
       exact ⟨_, by rw [fcStep?_app_eq]; exact fcApp?_of_cast _ hl ha hcf⟩
   | proj hl hf => exact ⟨0, by rw [fcStep?_proj_eq]; exact fcProj?_of_field _ hl hf⟩
@@ -338,8 +332,8 @@ One example per rule of `FCdot.Step`, on a state small enough to read, then the
 stuck and final shapes.  The clause order is tested by the kernel and not only
 proved.
 
-Nine of the ten are closed by `rfl`.  The tenth, `appCast`, and the `eqv` half
-of `appCastRefl` reach their head form through `FCdot.Form.combine`, which the
+Nine of the ten are closed by `rfl`.  The tenth, `appCast`, and the cast by an
+equality conversion reach their head form through `FCdot.Form.combine`, which the
 frozen tree defines by well-founded recursion and which is therefore
 irreducible to the elaborator.  The kernel does reduce it, so those examples are
 closed by `with_unfolding_all rfl`, which is the same `Eq.refl` term with the
@@ -410,7 +404,9 @@ example :
     fcStep? 2 (s := sig1) ⟨stoLam, .nil, .app (.unfoldSelf (.var .here)) (.var .here)⟩
       = some ⟨sig1, ⟨stoLam, .nil, exAns⟩⟩ := by rfl
 
-/-- Rule `appCastRefl` again, with a conversion as the head form. -/
+/-- Rule `appCastRefl` again, through a cast by an equality conversion.  Upstream
+an equality conversion normalizes to the identity form, so the head form is
+`id`. -/
 example :
     fcStep? 2 (s := sig1)
         ⟨stoLam, .nil, .app (.cast (.var .here) (.eqToLe (.refl .top))) (.var .here)⟩

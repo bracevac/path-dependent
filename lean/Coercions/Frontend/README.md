@@ -15,7 +15,9 @@ Resolution is total on scoped, well-labelled programs: `resolveTy_isSome`, `reso
 with erasure: `ATm.erase_rename`, `ADefs.erase_rename`.
 
 The side conditions the typer discharges by computation are decided, each with its own `iff`:
-`tyWf?_iff`, `defsDistinct?_iff`, `tyStrengthen?_iff`, `tyStrengthenW?_weaken`.
+`defsDistinct?_iff`, `tyStrengthen?_iff`, `tyStrengthenW?_weaken`.  Upstream PR #56 removed
+`DotMNF.Ty.Wf` and the `Ty.Decl` premises of `Rec-I` and `Rec-E`, so `tyWf?` and `tyWf?_iff` are gone
+and the typer and the view closure fold and open every `μ`.
 
 The search grows with its budget and never loses ground: `views_mono`, `decls_mono`, `sub?_le`,
 `synth?_le`.  There is no soundness theorem, because soundness is the result type, and no completeness
@@ -81,7 +83,7 @@ that needs a sharper result writes the annotation.
 | `Notation` | the syntax categories `dotTy`, `dotTm`, `dotDefs` and the entry points `dotTy%`, `dot%`, `dotDefs%`; the paper's notation, with `{type A = T}` for a type member definition and a dotted name split inside the macro |
 | `Ann` | `ATm` and `ADefs`, DOT-MNF with the two annotations; `erase`, `rename`, `erase_rename`, `sizeATm` |
 | `Resolve` | `NameEnv`, `Spine`, `atomize`, `resolveTy`, `resolveTm`, `resolveDefs`; totality on scoped well-labelled programs; the ten surface programs E1 to E10 with their resolutions |
-| `Decide` | `tyWf?`, `defsDistinct?`, `tyStrengthen?`, each with an `iff` and a `Decidable` instance; `ctxVars` |
+| `Decide` | `defsDistinct?`, `tyStrengthen?`, each with an `iff` and a `Decidable` instance; `ctxVars` |
 | `Search` | `View`, `Decl`, `DeclTable`, `Budget`; the view closure and the declaration table in rounds with deduplication; `sub?`, the eleven-rule subtyping search; round and fuel monotonicity |
 | `Typer` | `Synth`; `synth?`, `check?`, `checkVar?`, `checkDefs?` and `synthTop?`; the avoidance ladder; fuel monotonicity; the measured budget of E1 to E8 |
 | `Step` | the DOT-MNF machine as `step?`, with `final?`, agreement in both directions, the classification of the states with no step, and the driver `run` |
