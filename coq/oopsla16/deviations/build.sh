@@ -5,9 +5,9 @@
 #        COQC=/path/to/coqc ./build.sh
 #        ./build.sh clean
 #
-# dot_spec.v is not copied here: it is compiled from ../oopsla16-packing with
+# dot_spec.v is not copied here: it is compiled from ../packing with
 # its output written into this directory (`-o`), so nothing is written to
-# ../oopsla16-packing.
+# ../packing.
 set -euo pipefail
 cd "$(dirname "$0")"
 COQC=${COQC:-coqc}
@@ -17,7 +17,7 @@ if [ "${1:-}" = clean ]; then
   exit 0
 fi
 
-"$COQC" -Q . "" -o dot_spec.vo ../oopsla16-packing/dot_spec.v
+"$COQC" -Q . "" -o dot_spec.vo ../packing/dot_spec.v
 for f in regularity ctx_restriction store_restriction assumptions; do
   "$COQC" -Q . "" "$f.v"
 done

@@ -76,7 +76,7 @@ store (`dot.v:308`).
 **Labels are positional and share one namespace.** `Lb := Nat` indexes both
 `TFun` and `TTyp`, a member's label is the length of its tail (`dot.v:269`,
 `dot.v:278`), and lookup is by position. There is no type/term label category,
-so the `WadlerFest/LabelSorted` discipline of `../DotMNF` has no analogue here,
+so the `WadlerFest/LabelSorted` discipline of `../DotMNF` (PR #56) has no analogue here,
 and no distinctness condition is needed: an object with `n` members has exactly
 the labels `n-1, ..., 0`.
 
@@ -129,7 +129,7 @@ closed at `S x`, i.e. mentions only `x` and older variables. The reference does
 not prove that. It proves `htp_closed` (`dot.v:781-784`), closedness at
 `length GH`, and `htp_closed1` (`dot.v:786-789`), `x < length GH`. The `S x`
 version is proved, on the reference's own definitions, as `htp_closed_Sx` in
-`../../../coq/oopsla16-deviations/ctx_restriction.v`. That the Lean `Htp`
+`../../../coq/oopsla16/deviations/ctx_restriction.v`. That the Lean `Htp`
 derives exactly what the reference's `htp` derives is argued rule by rule, not
 proved.
 
@@ -150,7 +150,7 @@ location outside the store. `venv` admits all three, and the reference derives
 judgments over such stores: `stp_strong_sel1`/`stp_strong_sel2` read only the
 member they select, so a closed term is typed over a store whose other member
 is ill scoped (`store_restriction_is_real` in
-`../../../coq/oopsla16-deviations/store_restriction.v`). The reference's
+`../../../coq/oopsla16/deviations/store_restriction.v`). The reference's
 `type_safety` therefore covers configurations no Lean `Store` can express.
 The Lean theorems start from the empty store, and in the reference every store
 reached by running a closed, well-scoped term from the empty store has all its
@@ -167,7 +167,7 @@ context pushes an entry closed at its own position or below: `stp_fun` and
 `stp_closed1`, `dot.v:830`, not by a premise), `stp_bind1`, `stp_bindx` and
 `T_Obj` push the opened body, `T_Vary` starts a fresh `[T']`, and `htp_sub`
 passes to a suffix. This is **proved** on the reference's own rules in
-`../../../coq/oopsla16-deviations/ctx_restriction.v`: the 32 rules with the
+`../../../coq/oopsla16/deviations/ctx_restriction.v`: the 32 rules with the
 premise "the context is prefix-closed" added to each derive, from every
 prefix-closed context, exactly the judgments of the reference at the same size
 index (`restriction_harmless`), in particular from the empty context
@@ -224,7 +224,7 @@ not an answer, and cannot step, so the progress half of the reference's
 Both recursive types ignore their self binder, so the result does not depend on
 which closedness index a packing mirror is given.
 
-The same result is mechanized in Coq at `../../../coq/oopsla16-packing/`, in
+The same result is mechanized in Coq at `../../../coq/oopsla16/packing/`, in
 the artifact's own definitions and carrying `closed`, `TVarB` and the size
 index. Lines 25-410 of its specification `dot_spec.v` are byte-identical to
 `dot.v:14-399`; its lines 10-24 replace the `SfLib`/`Arith` imports. Its
@@ -276,7 +276,7 @@ each item (PROVED, ARGUED or NEITHER), is [`DEVIATIONS.md`](DEVIATIONS.md).
   scope; the size index is dropped; `Step` carries a store-growth index. That
   this is faithful is argued, not proved: Coq and Lean definitions cannot be
   related formally. The step relation is also tested against a transcription
-  of the reference (`../../../coq/oopsla16-deviations/step_differential.py`).
+  of the reference (`../../../coq/oopsla16/deviations/step_differential.py`).
 * **Lean admits less, in three places.** Contexts may mention only older
   variables (harmless: proved in Coq on the reference's own rules). Stored
   objects must be well scoped (the reference covers stores the port cannot

@@ -53,7 +53,7 @@ the rewriting is faithful.
    Lean `Typing.lean:173-186`, `Context.lean:52-95`. Coq `dot.v:375-393`,
    `dot.v:781-789`. The closedness fact is **PROVED** on the reference's
    definitions (`htp_closed_Sx`,
-   `../../../coq/oopsla16-deviations/ctx_restriction.v`); that `Htp` and `htp`
+   `../../../coq/oopsla16/deviations/ctx_restriction.v`); that `Htp` and `htp`
    derive the same judgments is **ARGUED**.
 5. **The size index is dropped, and the judgments are `Type`-valued.** No rule
    constrains the index, and the reference quantifies it away wherever it
@@ -65,7 +65,7 @@ the rewriting is faithful.
    the operand they do not reduce.
    Lean `Semantics.lean:30-77`. Coq `dot.v:197-212`, `dot_soundness.v:1134`.
    **ARGUED** (`Semantics.lean:16-19`). It was also tested, not proved:
-   `../../../coq/oopsla16-deviations/step_differential.py` transcribes both
+   `../../../coq/oopsla16/deviations/step_differential.py` transcribes both
    step relations to Python and runs them side by side on random
    configurations, and on seeds 0 to 7, 160,000 configurations, they agree at
    every step (that directory's README says how to run it).
@@ -86,7 +86,7 @@ the rewriting is faithful.
    on the reference's rules (`restriction_harmless`,
    `restriction_harmless_empty`), and that the restriction is real is
    **PROVED** there too (`ctx_restriction_is_real`), both in
-   `../../../coq/oopsla16-deviations/ctx_restriction.v`. That prefix-closed Coq
+   `../../../coq/oopsla16/deviations/ctx_restriction.v`. That prefix-closed Coq
    contexts are exactly the Lean `Ctx` values is **ARGUED**.
 9. **Stored objects have every variable in range.** A store entry is a
    `Dms σ []`: it mentions no abstract variable, no dangling `TVarB` and no
@@ -96,7 +96,7 @@ the rewriting is faithful.
    Lean `Syntax.lean:173-177`. Coq `dot.v:69`, `dot_soundness.v:1131`. That
    the reference derives judgments over such stores is **PROVED**
    (`store_restriction_is_real`,
-   `../../../coq/oopsla16-deviations/store_restriction.v`). That the
+   `../../../coq/oopsla16/deviations/store_restriction.v`). That the
    restriction costs the empty-store theorems nothing, because every store the
    reference reaches from the empty store has all variables in range, is
    **ARGUED** (`Syntax.lean:143-169`).

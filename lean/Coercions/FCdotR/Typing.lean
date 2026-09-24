@@ -24,7 +24,7 @@ Three things are worth reading against the source.
 * **`vcPack`'s subject index is `Vr.conc`.**  The syntax node exists at every
   scope, but at an abstract variable there is no rule that types it.  That is the
   target's form of the restriction whose necessity
-  `Oopsla16/PackingCounterexample` and `coq/oopsla16-packing/` establish.
+  `Oopsla16/PackingCounterexample` and `coq/oopsla16/packing/` establish.
   Packing is still available on *atoms*, where the source allows it
   (`T_VarPack`, `dot.v:231-235`).
 * **`bindx`'s hypothesis is the opened body**, `Γ.cons S`, never the folded

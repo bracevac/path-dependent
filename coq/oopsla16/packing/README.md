@@ -1,7 +1,7 @@
 # Packing in `htp` and recursive subtyping are jointly unsound
 
 A Coq mechanization, in the reference calculus's own definitions, of the result
-that `../../lean/Coercions/Oopsla16/PackingCounterexample.lean` proves in an
+that `../../../lean/Coercions/Oopsla16/PackingCounterexample.lean` proves in an
 intrinsically scoped Lean port.
 
 Rompf and Amin, *Type Soundness for Dependent Object Types*, OOPSLA 2016,

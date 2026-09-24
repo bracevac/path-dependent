@@ -43,7 +43,7 @@ file is uncommitted work at the time of writing (`FCdotR/README.md`,
 *References to uncommitted work*); nothing here depends on it.
 
 The same result is mechanized in Coq, in the artifact's own definitions, at
-`coq/oopsla16-packing/`.  There lines 25-410 of the specification `dot_spec.v`
+`coq/oopsla16/packing/`.  There lines 25-410 of the specification `dot_spec.v`
 are byte-identical to `dot.v:14-399`, and its lines 10-24 replace the
 `SfLib`/`Arith` imports; the extended judgment block differs from
 `dot.v:219-393` by one character, and `closed`, `TVarB` and the derivation size

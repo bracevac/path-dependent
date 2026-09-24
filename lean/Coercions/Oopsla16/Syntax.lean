@@ -162,7 +162,7 @@ strictly stronger than the reference.
 abstract variable, no dangling `TVarB` and no location outside the store.
 `venv` admits objects that break each of the three, and the reference derives
 judgments over such stores, since `stp_strong_sel1`/`stp_strong_sel2` read the
-one member they select (`coq/oopsla16-deviations/store_restriction.v`,
+one member they select (`coq/oopsla16/deviations/store_restriction.v`,
 `store_restriction_is_real`).  So `type_safety` speaks about configurations no
 `Store` can express.  In the reference, every store reached by running a
 closed, well-scoped term from the empty store has all its variables in range,

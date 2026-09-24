@@ -5,7 +5,7 @@
 #
 # Usage: ./check_block.sh [path/to/dot.v]
 # Without an argument the reference text is taken from
-# ../oopsla16-packing/dot_spec.v, whose lines 25-410 are byte-identical to
+# ../packing/dot_spec.v, whose lines 25-410 are byte-identical to
 # dot.v lines 14-399, so dot.v:219-393 is dot_spec.v:230-404.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -16,7 +16,7 @@ trap 'rm -rf "$tmp"' EXIT
 if [ $# -ge 1 ]; then
   sed -n '219,393p' "$1" > "$tmp/ref"
 else
-  sed -n '230,404p' ../oopsla16-packing/dot_spec.v > "$tmp/ref"
+  sed -n '230,404p' ../packing/dot_spec.v > "$tmp/ref"
 fi
 
 # The block: from `Inductive has_type_r` to the end of `htp_sub_r`.

@@ -268,7 +268,7 @@ with `Oopsla16.`.  **New** marks what `Deliverables.lean` and the checker
 | Erasure simulation, runtime to target (`erase_reflect`) | `sim_step`, `Rel.steps'`, `sim_step_plus`, `sim_stuck` |
 | Canonical forms of closed evidence | `Store.Honest.nf`, `RecordedLit.nf`, `Store.Honest.obsTyp`/`obsBind`/`obsFun`, `Store.Honest.canon`, `appInversion`; **new** `MachineStore.Honest.nf`, `closedStp_nf` |
 | No closed `⊤ ≤ ⊥`; shapes of closed inclusions | `consistency_honest`, `RecordedLit.consistency`, `LeTy.headPair_of_not_trans`, `top_le_bot_is_trans`; **new** `MachineStore.Honest.consistent` |
-| `WadlerFest`, `RetainedSafety`, `SortedSafety` | Not applicable: they cover other presentations of the WadlerFest source (annotated machine, reduction orders, sorted labels).  `Oopsla16` has one machine |
+| `WadlerFest`, `RetainedSafety`, `SortedSafety` (in PR #56) | Not applicable: they cover other presentations of the WadlerFest source (annotated machine, reduction orders, sorted labels).  `Oopsla16` has one machine |
 | Examples E1 to E8 decided in the kernel (`FCdot/Examples.lean`), each with an erasure link to its source term | **New**: `CheckerExamples`, decided by `decide +kernel`: the elaborated `Oopsla16` examples, the reference's own `ex1`, `ex2` and `paper_lst` (`dot_exs.v`, as `Oopsla16` derivations in `CheckerExamples.DotExs` and `CheckerExamples.PaperLst`; the fragment elaborations of `ex1` and `paper_lst` erase back to them, `ex2`'s elaboration corresponds to it by `Corr`), the hand-written FCdotR examples, the restrictions as rejections, locations, stored annotations taken on trust, and the worked programs `SourceSafety.RecursiveArg`, `HonestCall`, `ElaborationFull.CurryCall` and those of `ElaborationErasure`.  **Not done**: no `Oopsla16` counterpart of E1 to E8 is written |
 
 ## Road to a WadlerFest-style safety theorem
@@ -381,7 +381,7 @@ no safety theorem covers (`Coverage.CurryGap`).
   and `ST_AppAbs` agree.  That too is argued, not proved.  For the step
   relation it was also tested, which is not a proof either: both step
   relations, transcribed to Python, agree at every step of 160,000 random
-  configurations (`coq/oopsla16-deviations/step_differential.py`, seeds 0 to
+  configurations (`coq/oopsla16/deviations/step_differential.py`, seeds 0 to
   7; `Oopsla16/DEVIATIONS.md`, item 6).
 * **Nothing changed underneath the headline.**  The definitions in
   `Oopsla16/Typing.lean`, `Semantics.lean` and `Syntax.lean` are unchanged
@@ -436,9 +436,9 @@ FCdotR`:
   fingerprint does not hash proofs of theorems; comparing the `Oopsla16`
   sources with their comments removed shows that nothing but comments has
   changed since `aa7ca71` either.
-* `COQC=/path/to/coqc coq/oopsla16-deviations/build.sh` builds the Coq proofs
+* `COQC=/path/to/coqc coq/oopsla16/deviations/build.sh` builds the Coq proofs
   about the reference's own rules and runs their block check; the step
-  relation's differential test is `coq/oopsla16-deviations/step_differential.py`
+  relation's differential test is `coq/oopsla16/deviations/step_differential.py`
   (its README says how to run it).
 * A job count is only a count of the commit when the build runs on a clean
   export (`git archive <commit> lean lean-toolchain lakefile.toml

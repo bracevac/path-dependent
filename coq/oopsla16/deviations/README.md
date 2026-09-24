@@ -1,7 +1,7 @@
 # Two restrictions of the Lean port, checked in the reference's own definitions
 
 The Lean port of Rompf and Amin's OOPSLA 2016 DOT
-(`../../lean/Coercions/Oopsla16/`) has fewer contexts and fewer stores than the
+(`../../../lean/Coercions/Oopsla16/`) has fewer contexts and fewer stores than the
 Coq reference, and it relies on one closedness fact that the reference never
 proves. This directory mechanizes these three points in Coq, using the
 reference's own definitions:
@@ -32,7 +32,7 @@ the two systems cannot be related formally.
 | `build.sh` | builds everything and runs `check_block.sh` |
 | `step_differential.py` | runs the reference's `step` and the Lean `Step`, both transcribed to Python, side by side on random configurations |
 
-The specification of the reference is `../oopsla16-packing/dot_spec.v`,
+The specification of the reference is `../packing/dot_spec.v`,
 compiled from that directory (see Building). It is not copied here.
 
 ## Provenance
@@ -42,7 +42,7 @@ The reference is `TiarkRompf/minidot` at commit
 (definitions and regularity) and `dot_soundness.v` (`type_safety`, line 1131).
 The artifact targets Coq 8.4pl6. Everything here was compiled with Coq 8.19.2.
 
-`../oopsla16-packing/dot_spec.v` lines 25–410 are byte-identical to `dot.v`
+`../packing/dot_spec.v` lines 25–410 are byte-identical to `dot.v`
 lines 14–399, as that directory's README explains. Its only change is the
 preamble: `Require Export SfLib` and the `Arith` imports are replaced by
 `Require Export List` and a local definition of `beq_nat`, which Coq 8.19 no
@@ -92,7 +92,7 @@ judgments and the rules.
 3. After deleting those 32 lines and the `_r` suffixes, `diff` against
    `dot.v:219-393` is empty.
 
-`./check_block.sh` takes the reference text from `../oopsla16-packing/dot_spec.v`
+`./check_block.sh` takes the reference text from `../packing/dot_spec.v`
 lines 230–404. `./check_block.sh dot.v` uses the fetched `dot.v` directly. Both
 report `OK`. The check was tested on four altered copies of the block, and it
 rejected each one: `htp_var`'s `closed (S x)` weakened to `closed (length GH)`,
@@ -271,9 +271,9 @@ COQC=/Users/oliver/apps/coq/bin/coqc ./build.sh
 ./build.sh clean
 ```
 
-`build.sh` compiles `../oopsla16-packing/dot_spec.v` with
+`build.sh` compiles `../packing/dot_spec.v` with
 `coqc -Q . "" -o dot_spec.vo`. This writes `dot_spec.vo` into this directory
-and nothing into `../oopsla16-packing`. It then compiles `regularity.v`,
+and nothing into `../packing`. It then compiles `regularity.v`,
 `ctx_restriction.v`, `store_restriction.v` and `assumptions.v`, and runs
 `check_block.sh`. The only warnings are `dot_spec.v`'s three deprecated
 `Hint Unfold` / `Hint Immediate` lines, which come from the reference.

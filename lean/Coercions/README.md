@@ -79,7 +79,10 @@ evidence, obtained by eliminating transitivity with an induction on packings.
 An operational correspondence between the two machines carries safety back:
 `Oopsla16.oopsla16_safety` says a closed program typed over the empty store
 never gets stuck on `Oopsla16`'s own substitution machine, with no hypothesis.
-There is no checker yet.  The line is independent of the main line above and
+An executable checker decides FCdotR typing, with soundness and completeness
+proved and examples decided in the kernel.  Where either calculus departs from
+the reference is summarised in [`Oopsla16/README.md`](Oopsla16/README.md) and
+[`FCdotR/README.md`](FCdotR/README.md).  The line is independent of the main line above and
 shares only `FCdot/Debruijn.lean` with it; see
 [`FCdotR/README.md`](FCdotR/README.md) and [`FCdotR/STATUS.md`](FCdotR/STATUS.md).
 
