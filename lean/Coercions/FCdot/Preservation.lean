@@ -310,14 +310,13 @@ between the atom's function type and its closure's type; whenever it is the
 identity form, the two function types coincide.  Discharged by the
 canonical-forms theorem (`CanonicalForms.lean`). -/
 structure FormsTyped (σ : Store s) (Γ : Ctx s) : Prop where
-  pi : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {d : LeCo s}
+  pi : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {d : LeCo s}
     {c : LeCo (s,x)} {S₀ : Ty s} {T₀ : Ty (s,x)},
-    Γ ⊢ₐ a : .pi S T → σ ⊢ a ⇓ᶜ[n] (a', .pi d c) →
+    Γ ⊢ₐ a : .pi S T → σ ⊢ a ⇓ᶜ[n] (.pi d c) →
     Γ.lookupTy a.root = .pi S₀ T₀ →
     Γ ⊢ d : S ≤ S₀ ∧ (Γ.cons (.opaque S)) ⊢ c : T₀ ≤ T
-  refl : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat} {a' : Atom s} {F : Form s},
-    Γ ⊢ₐ a : .pi S T → σ ⊢ a ⇓ᶜ[n] (a', F) →
-    (F = .id ∨ ∃ φ, F = .eqv φ) →
+  refl : ∀ {a : Atom s} {S : Ty s} {T : Ty (s,x)} {n : Nat},
+    Γ ⊢ₐ a : .pi S T → σ ⊢ a ⇓ᶜ[n] .id →
     Γ.lookupTy a.root = .pi S T
 
 /-- A step that does not allocate keeps the signature: the result type is
@@ -429,11 +428,11 @@ theorem preservation {s s' : Sig} {st : State s} {st' : State s'} {U : Ty s}
       | app ha hb =>
           exact State.Typed.exists_rename_id
             ⟨Γ, _, hσ, hσ.beta hx (Atom.HasType.var_inv ha).symm hb, hK⟩
-  case appCastRefl hx _ hcf hid =>
+  case appCastRefl hx _ hcf =>
       cases ht with
       | app ha hb =>
           exact State.Typed.exists_rename_id
-            ⟨Γ, _, hσ, hσ.beta hx ((hF Γ hσ).refl ha hcf hid) hb, hK⟩
+            ⟨Γ, _, hσ, hσ.beta hx ((hF Γ hσ).refl ha hcf) hb, hK⟩
   case appCast hx _ hcf =>
       cases ht with
       | app ha hb =>

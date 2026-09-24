@@ -17,8 +17,8 @@ body is not declaration-shaped — is read as the *single self-bound
 proposition* `[⊑ ⟦B⟧]` (plan §13 item 9), so that `tel` is total and an
 intersection may have arbitrary operands.  `Ty.isObj` is the shape test that
 separates the two: `⟦T⟧ = μ (tel T)` when it holds, and `tel T = [⊑ ⟦T⟧↑]`
-when it does not.  A bound proposition never mentions the self, which is why
-the body of a `μ` is still restricted to `Ty.Decl`.
+when it does not. This is a translation classification, not a restriction
+on source recursive bodies.
 
 Two telescope functions: `tel T` reads a type over `s` as propositions about
 a fresh self, `telSelf T` reads a type over `(s,x)` whose self is already the
@@ -89,9 +89,9 @@ def Ty.tel : Ty s → FCdot.Telescope (s,x)
   | .all S T => .cons .nil (.bnd (FCdot.Ty.pi (Ty.translate S) (Ty.translate T)).weaken)
 
 /-- A type over `(s,x)` whose self is the innermost binder, as propositions
-about that binder.  The self-bound of a non-object shape is *not* weakened
-here and may therefore mention the self; `Wf.mu` keeps such bodies out of
-well-formed types, but the function is total. -/
+about that binder. The self-bound of a non-object shape is not weakened
+here and may mention the self. Recursive elimination first opens this
+telescope at the receiver, then extracts the opened bound. -/
 def Ty.telSelf : Ty (s,x) → FCdot.Telescope (s,x)
   | .typ A S T =>
       .cons (.cons .nil (.le (Ty.translate S) (.sel .here A)))

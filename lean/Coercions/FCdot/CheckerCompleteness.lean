@@ -71,6 +71,12 @@ theorem morEqSym_eq {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} {j : N
     morEq j true hm = some ⟨Tel ▹ Y ≐ X, .eqSym hm hAt⟩ := by
   simp [morEq, Telescope.getAt?_of_At hAt]
 
+theorem morLeTrans_eq {Γ : Ctx s} {src Tel : Telescope (s,x)} {m p q : Morphism s}
+    {S M T : Ty (s,x)} (hm : Γ ⊢ m : src ⇒ Tel)
+    (hp : Γ ⊢ p : src ⇒ .nil ▹ S ⊑ M) (hq : Γ ⊢ q : src ⇒ .nil ▹ M ⊑ T) :
+    morLeTrans hm hp hq = some ⟨Tel ▹ S ⊑ T, .leTrans hm hp hq⟩ := by
+  simp [morLeTrans]
+
 theorem leBound_eq {Γ : Ctx s} {Tel : Telescope (s,x)} {i : Nat} {T : Ty s}
     (hAt : Tel ∋ (i ↦ ⊑ T↑)) :
     leBound (Γ := Γ) Tel i = some ⟨μ Tel, T, .bound hAt⟩ := by
@@ -186,6 +192,9 @@ theorem Morphism.HasType.complete : ∀ {s : Sig} {Γ : Ctx s} {src : Telescope 
   | _, _, _, _, _, .leEqSym hm hAt hpre hpost => by
       simp [synthMorCore, Morphism.HasType.complete hm, Hole.read?_of_Reads (.eqSym hAt),
         Side.HasType.completePre hpre, Side.HasType.completePost hpost]
+  | _, _, _, _, _, .leTrans hm hp hq => by
+      simp [synthMorCore, Morphism.HasType.complete hm, Morphism.HasType.complete hp,
+        Morphism.HasType.complete hq, morLeTrans_eq hm hp hq]
   | _, _, _, _, _, .eq hm hAt => by
       simp [synthMorCore, Morphism.HasType.complete hm, morEq_eq hm hAt]
   | _, _, _, _, _, .eqSym hm hAt => by

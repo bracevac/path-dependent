@@ -569,6 +569,19 @@ def morEq {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m : Morphism s} (j : N
       | true => some ⟨Tel ▹ Y ≐ X, .eqSym hm hAt⟩
   | _ => none
 
+/-- Compose two singleton inclusion templates over the same source. -/
+def morLeTrans {s : Sig} {Γ : Ctx s} {src : Telescope (s,x)} {m p q : Morphism s}
+    {Tel : Telescope (s,x)} (hm : Γ ⊢ m : src ⇒ Tel)
+    {TelP : Telescope (s,x)} (hp : Γ ⊢ p : src ⇒ TelP)
+    {TelQ : Telescope (s,x)} (hq : Γ ⊢ q : src ⇒ TelQ) :
+    Option (MorChecked Γ src (.leTrans m p q)) :=
+  match TelP, hp, TelQ, hq with
+  | .cons .nil (.le S M), hp, .cons .nil (.le M' T), hq =>
+      if h : M = M' then
+        some ⟨Tel ▹ S ⊑ T, .leTrans hm hp (by rw [h]; exact hq)⟩
+      else none
+  | _, _, _, _ => none
+
 /-! ### Holes
 
 A hole names a proposition of the source telescope and reads it as an
@@ -764,6 +777,11 @@ def synthMorCore {s : Sig} (Γ : Ctx s) (src : Telescope (s,x)) (m : Morphism s)
       let cpost ← checkPostCore Γ post r.val.2
       some ⟨cm.tel ▹ cpre.source ⊑ cpost.target,
         cm.typing.leOfReads r.property cpre.typing cpost.typing⟩
+  | .leTrans m p q => do
+      let cm ← synthMorCore Γ src m
+      let cp ← synthMorCore Γ src p
+      let cq ← synthMorCore Γ src q
+      morLeTrans cm.typing cp.typing cq.typing
   | .eq m j b => do
       let cm ← synthMorCore Γ src m
       morEq j b cm.typing

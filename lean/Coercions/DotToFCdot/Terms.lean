@@ -32,16 +32,16 @@ mutual
 /-- `⟦h⟧ : ⟦T⟧`. -/
 def HasTy.translate : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} → HasTy Γ t T → FCdot.Tm s
   | Γ, _, _, @HasTy.var _ _ x => .atom (Γ.varAtom x)
-  | _, .val (.lam S _), _, .lam h _ => .val (.lam S.translate h.translate)
+  | _, .val (.lam S _), _, .lam h => .val (.lam S.translate h.translate)
   | _, _, _, .app h₁ h₂ => .app h₁.translateAtom h₂.translateAtom
   | _, _, _, @HasTy.obj _ _ T _ h _ =>
       .cast (.val (.obj T.witnesses h.translateFields)) (litCo T)
   | _, .proj _ a, T, .proj h =>
       .cast (.proj h.translateAtom a (.member h.translateAtom (.refl (Ty.translate (.fld a T))) 0))
         (.member h.translateAtom (.refl (Ty.translate (.fld a T))) 1)
-  | _, _, _, .let h₁ h₂ _ => .let h₁.translate h₂.translate
-  | _, _, _, h@(.recI _ _) => .atom h.translateAtom
-  | _, _, _, h@(.recE _ _) => .atom h.translateAtom
+  | _, _, _, .let h₁ h₂ => .let h₁.translate h₂.translate
+  | _, _, _, h@(.recI _) => .atom h.translateAtom
+  | _, _, _, h@(.recE _) => .atom h.translateAtom
   | _, _, _, h@(.andI _ _) => .atom h.translateAtom
   | _, _, _, .sub h d => .cast h.translate d.translate
 
