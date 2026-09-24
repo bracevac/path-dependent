@@ -53,8 +53,8 @@ subtyping `stpp`, the pushback lemma, and a pack-counted variable typing
    `S ≤ TX ≤ U`, one into a method type ends at a method conjunct, and none
    leads into a recursive type (`LitTy.typInv`, `fnInv`, `bindInv`).  This is
    the only place a store invariant is read: for `vcLoc` through
-   `RecordedLit`, for `vcLocAny` through the witness it carries
-   (`varyLitTy`).
+   `RecordedLit`, for `vcLocAny` through the premise it carries, which forgets
+   to a `LitTy` (`LitMatch.toLitTy`).
 3. **The pack-count tower.**  Arbitrary evidence may contain concrete
    `selL`/`selR`.  `ObsInv G W k` inverts clean observations with fewer than `k`
    packings on the spine; given it, `LeTy.strengthenAt` turns evidence with
@@ -385,13 +385,13 @@ def VcTy.substB {k : Nat} {σ1 s1 : Sig} {G : Store σ1 σ1} {W : StoreTy σ1}
   | .vcLoc (l := l), _, _ =>
       ⟨.vcLoc (θ.conc l), (E.tys l) ▸ VcTy.vcLoc,
         ⟨trivial, fun _ => rfl, fun h => nomatch h⟩⟩
-  | .vcLocAny (l := l) (T := T0) (ds := ds) hd hs, _, _ =>
-      ⟨.vcLocAny (θ.conc l) (T0.subst (Subst.atNil θ).lift)
-          (ds.subst (Subst.atNil θ).lift), by
-        have h := VcTy.vcLocAny (G := G') (W := W') (Γ := Γ')
-          (varyTyped θ E.defs hd) (varyStored θ E.defs hs)
-        rw [← varyTy θ l T0, Ty.renameStore, Dms.renameStore,
-          ← atNil_lift_eq_ofStore] at h
+  | .vcLocAny (l := l) (T := T0) h0, _, _ =>
+      ⟨.vcLocAny (θ.conc l) (T0.subst (Subst.atNil θ).lift), by
+        have h := VcTy.vcLocAny (G := G') (W := W') (Γ := Γ') (l := θ.conc l)
+          (T := T0.renameStore (storeRen θ)) (by
+            rw [← varyTy θ l T0]
+            exact LitMatch.subst (Subst.atNil θ) (defs_get? θ (E.defs l)) h0)
+        rw [← varyTy θ l T0, Ty.renameStore, ← atNil_lift_eq_ofStore] at h
         exact h, ⟨trivial, fun _ => rfl, fun h => nomatch h⟩⟩
   | .vcPack (l := l) (T := T0) dv, hv, hp =>
       let r := VcTy.substB dv hv (fun _ => Nat.lt_of_succ_lt (hp rfl)) E
@@ -709,11 +709,13 @@ def SLe.nf {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {S T : Ty σ []}
 /-! ## A stored literal's type, inverted
 
 The base of every observation spine at a location is the type of its stored
-literal — `tyOf W ℓ` for `vcLoc`, the witness's own `T.substVr ℓ` for
-`vcLocAny` — and `DmsHasType` concludes only at `⊤` or a right-nested
-intersection of members whose type members are exact (`D_Typ`).  `LitTy g B`
-names that shape, relative to a member lookup `g` (the stored literal's
-`Dms.get?`): each type member is exact and is what `g` finds at its label.
+literal — `tyOf W ℓ` for `vcLoc`, a self type `T.substVr ℓ` that matches the
+stored literal for `vcLocAny` — and both `DmsHasType` and `LitMatch` conclude
+only at `⊤` or a right-nested intersection of members whose type members are
+exact (`D_Typ`).  `LitTy g B` names that shape, relative to a member lookup `g`
+(the stored literal's `Dms.get?`): each type member is exact and is what `g`
+finds at its label.  It is `LitMatch` with the method annotations forgotten
+(`LitMatch.toLitTy`).
 Out of such a type, a normal form into a type member is a chain of
 `and11`/`and12` ending in the congruence `typ`, whose bounds are the stored
 definition; into a method type it ends in the congruence `fn` at a method
@@ -724,20 +726,6 @@ conjunct; and into a recursive type there is none.
 location.  `Store.Honest` gives it (`Store.Honest.recordedLit`), and so can any
 other invariant that types the stored literals — a machine store's, say — by
 proving the same shape. -/
-
-/-- A member found by `Dms.get?` has a label below the length of the list.
-Labels are positional, so this is what separates the head member of a list from
-the members of its tail. -/
-theorem dmsTyp_label_lt {σ s : Sig} : (ds : Dms σ s) → {a : Lb} → {d : Dm σ s} →
-    ds.get? a = some d → a < ds.length
-  | .dnil, _, _, h => by simp [Dms.get?] at h
-  | .dcons d0 ds, a, d, h => by
-      show a < ds.length + 1
-      by_cases hc : a = ds.length
-      · rw [hc]; exact Nat.lt_succ_self _
-      · have h' : (if a = ds.length then some d0 else ds.get? a) = some d := h
-        rw [if_neg hc] at h'
-        exact Nat.lt_succ_of_lt (dmsTyp_label_lt ds h')
 
 /-- **The type of a stored literal**, relative to its member lookup `g`: `⊤`, or
 an intersection of a member with the type of the rest.  A type member is exact
@@ -752,6 +740,14 @@ inductive LitTy {σ : Sig} (g : Lb → Option (Dm σ [])) : Ty σ [] → Type wh
   /-- A method member. -/
   | fn {b : Lb} {S : Ty σ []} {U : Ty σ ([],x)} {B : Ty σ []} :
       LitTy g B → LitTy g (.TAnd (.TFun b S U) B)
+
+/-- **The location rules' premise gives a literal type**: a type that matches
+the stored literal has its shape, the method annotations forgotten. -/
+def LitMatch.toLitTy {σ : Sig} {g : Lb → Option (Dm σ [])} :
+    {B : Ty σ []} → LitMatch g B → LitTy g B
+  | _, .top => .top
+  | _, .typ h r => .typ h r.toLitTy
+  | _, .fn _ _ _ r => .fn r.toLitTy
 
 /-- **A literal type into a type member** reads the stored definition: a normal
 form `B ≤ {a : S..U}` out of a literal type finds `dty TX` at `a` together with
@@ -844,33 +840,19 @@ def LitTy.fnInv {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {g : Lb → Option
 
 /-- **A typed definition list has a literal type**, under any substitution `θ`
 into the empty scope and relative to any lookup `g` that finds every member of
-the list, substituted.  Positional labels (`dmsTyp_label_lt`) are what let the
-tail of the list keep the same lookup. -/
+the list, substituted: `StoreTyping.dmsLitMatch`, with the method annotations
+forgotten. -/
 def dmsLitTy {σ s1 : Sig} {G : Store σ σ} {Γ : Ctx σ s1} (θ : Subst σ s1 σ [])
     (g : Lb → Option (Dm σ [])) :
     {ds : Dms σ s1} → {T : Ty σ s1} → DmsHasType G Γ ds T →
-    (∀ a d, ds.get? a = some d → g a = some (d.subst θ)) → LitTy g (T.subst θ)
-  | _, _, .D_Nil, _ => .top
-  | _, _, .D_Typ (ds := ds) (T11 := T11) hds, hg =>
-      .typ (hg ds.length (.dty T11) (by
-          show (if ds.length = ds.length then some (Dm.dty T11) else ds.get? ds.length)
-            = some (.dty T11)
-          rw [if_pos rfl]))
-        (dmsLitTy θ g hds (fun a d h => hg a d (by
-          show (if a = ds.length then some (Dm.dty T11) else ds.get? a) = some d
-          rw [if_neg (Nat.ne_of_lt (dmsTyp_label_lt ds h))]
-          exact h)))
-  | _, _, .D_Fun (ds := ds) (OT11 := OT11) (OT12 := OT12) (t12 := t12) hds _ _ _, hg =>
-      .fn (dmsLitTy θ g hds (fun a d h => hg a d (by
-          show (if a = ds.length then some (Dm.dfun OT11 OT12 t12) else ds.get? a)
-            = some d
-          rw [if_neg (Nat.ne_of_lt (dmsTyp_label_lt ds h))]
-          exact h)))
+    (∀ a d, ds.get? a = some d → g a = some (d.subst θ)) → LitTy g (T.subst θ) :=
+  fun hd hg => (dmsLitMatch θ g hd hg).toLitTy
 
 /-- **A `T_Vary` witness gives a literal type**: a literal typed at `T` under its
 own self, instantiating to what `ℓ` stores, has type `T[ℓ]` of literal shape
-relative to the stored lookup.  No store invariant is used: this is the base
-case `vcLocAny` carries. -/
+relative to the stored lookup.  No store invariant is used;
+`Store.Honest.recordedLit` applies it to the honesty witness at each
+location. -/
 def varyLitTy {σ : Sig} {G : Store σ σ} {l : BVar σ .var} {T : Ty σ ([],x)}
     {ds : Dms σ ([],x)} (hd : DmsHasType G (Ctx.nil.cons T) ds T)
     (hs : ds.substVr (.conc l) = G.lookup l) :
@@ -906,23 +888,18 @@ def Store.Honest.recordedLit {σ : Sig} {G : Store σ σ} {W : StoreTy σ}
   fun l => varyLitTy (hG.at' l).typed (hG.at' l).stored
 
 /-- The type a location node of an observation spine reports: the recorded one
-(`vcLoc`), or a `T_Vary` witness's (`vcLocAny`).  Kept as data so that a
-consumer can read a conjunct of it back as a stored member. -/
+(`vcLoc`), or a self type that matches the stored literal (`vcLocAny`).  Kept
+as data so that a consumer can read a conjunct of it back as a stored
+member. -/
 inductive LocBase {σ : Sig} (G : Store σ σ) (W : StoreTy σ) (l : BVar σ .var) :
     Ty σ [] → Type where
   /-- `vcLoc`'s: the store typing's entry. -/
   | recorded : LocBase G W l (tyOf W l)
-  /-- `vcLocAny`'s: a witness's self type, instantiated at the location. -/
-  | witness {T : Ty σ ([],x)} {ds : Dms σ ([],x)} :
-      DmsHasType G (Ctx.nil.cons T) ds T → ds.substVr (.conc l) = G.lookup l →
+  /-- `vcLocAny`'s: a self type, instantiated at the location, with the match
+  that is the rule's premise. -/
+  | witness {T : Ty σ ([],x)} :
+      LitMatch (G.lookup l).get? (T.substVr (.conc l)) →
       LocBase G W l (T.substVr (.conc l))
-
-/-- Either location node reports a literal type, given that the store typing
-records literal types. -/
-def LocBase.litTy {σ : Sig} {G : Store σ σ} {W : StoreTy σ} (hR : RecordedLit G W)
-    {l : BVar σ .var} : {B : Ty σ []} → LocBase G W l B → LitTy (G.lookup l).get? B
-  | _, .recorded => hR l
-  | _, .witness hd hs => varyLitTy hd hs
 
 /-! ## Substituting a location for the self of a recursive form
 
@@ -988,7 +965,8 @@ a recursive type, a type member and a method type.  Given it:
 Level `0` is vacuous, so every level exists (`RecordedLit.obsInv`), and every
 piece of evidence has *some* pack bound (`Le.packBound_of_packs`).  Only the
 base cases of the observation inversion read the store, through `LitTy`: for
-`vcLoc` by `RecordedLit`, for `vcLocAny` by its own witness. -/
+`vcLoc` by `RecordedLit`, for `vcLocAny` by its own premise
+(`LitMatch.toLitTy`). -/
 
 /-- What a clean closed observation of `ℓ` below a method type `{a : S0 → U0}`
 inverts to: the type its location node reports, a method conjunct of that type
@@ -1142,7 +1120,7 @@ def VcTy.cleanAt {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {k : Nat}
   match d, hv with
   | .vcVar (x := x0), _ => ⟨.vcVar, .vcVar, ⟨trivial, rfl⟩⟩
   | .vcLoc (l := l0), _ => ⟨_, .vcLoc, ⟨trivial, rfl⟩⟩
-  | .vcLocAny (l := l0) hd hs, _ => ⟨_, .vcLocAny hd hs, ⟨trivial, rfl⟩⟩
+  | .vcLocAny (l := l0) (T := T0) h, _ => ⟨.vcLocAny l0 T0, .vcLocAny h, ⟨trivial, rfl⟩⟩
   | .vcPack (T := T0) dv, hv =>
       let r := VcTy.cleanAt O dv hv
       ⟨.vcPack T0 r.1, .vcPack r.2.1,
@@ -1179,7 +1157,7 @@ def ObsInv.bindStep {σ : Sig} {G : Store σ σ} {W : StoreTy σ} (hR : Recorded
       PLift (u.Strong ∧ u.spinePacks < v.spinePacks) :=
   match dv, hv, hk, d with
   | .vcLoc, _, _, d => (LitTy.bindInv (hR l) d.nf).elim
-  | .vcLocAny hd hs, _, _, d => (LitTy.bindInv (varyLitTy hd hs) d.nf).elim
+  | .vcLocAny h, _, _, d => (LitTy.bindInv h.toLitTy d.nf).elim
   | .vcSub T1 dv' de, hv, hk, d =>
       let r := ObsInv.bindStep hR O dv' hv.2 hk (SLe.trans ⟨_, de, hv.1⟩ d)
       ⟨r.1, r.2.1, ⟨r.2.2.down.1, r.2.2.down.2⟩⟩
@@ -1221,7 +1199,7 @@ def ObsInv.typStep {σ : Sig} {G : Store σ σ} {W : StoreTy σ} (hR : RecordedL
       SLe G W .nil S TX × SLe G W .nil TX U :=
   match dv, hv, hk, d with
   | .vcLoc, _, _, d => LitTy.typInv (hR l) d.nf
-  | .vcLocAny hd hs, _, _, d => LitTy.typInv (varyLitTy hd hs) d.nf
+  | .vcLocAny h, _, _, d => LitTy.typInv h.toLitTy d.nf
   | .vcSub T1 dv' de, hv, hk, d =>
       ObsInv.typStep hR O dv' hv.2 hk (SLe.trans ⟨_, de, hv.1⟩ d)
   | .vcUnfold (T := T') dv', hv, hk, d =>
@@ -1251,9 +1229,9 @@ def ObsInv.fnStep {σ : Sig} {G : Store σ σ} {W : StoreTy σ} (hR : RecordedLi
   | .vcLoc, _, _, d =>
       let r := LitTy.fnInv (hR l) d.nf
       ⟨_, .recorded, r.1, r.2.1, r.2.2.1, r.2.2.2.1, r.2.2.2.2⟩
-  | .vcLocAny hd hs, _, _, d =>
-      let r := LitTy.fnInv (varyLitTy hd hs) d.nf
-      ⟨_, .witness hd hs, r.1, r.2.1, r.2.2.1, r.2.2.2.1, r.2.2.2.2⟩
+  | .vcLocAny h, _, _, d =>
+      let r := LitTy.fnInv h.toLitTy d.nf
+      ⟨_, .witness h, r.1, r.2.1, r.2.2.1, r.2.2.2.1, r.2.2.2.2⟩
   | .vcSub T1 dv' de, hv, hk, d =>
       ObsInv.fnStep hR O dv' hv.2 hk (SLe.trans ⟨_, de, hv.1⟩ d)
   | .vcUnfold (T := T') dv', hv, hk, d =>

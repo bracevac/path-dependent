@@ -295,8 +295,8 @@ theorem consistency_nil {G : Store [] []} {W : StoreTy []} {e : Le [] []}
 
 Unconditional facts about the type a location carries.  They are the base
 cases of the induction `obs_conc_admissible` needs — the `vcLoc` clause, and the
-`vcLocAny` clause, whose witness is itself a `DmsHasType` derivation — and they
-are proved outright, without canonical forms, because `DmsHasType` concludes at
+`vcLocAny` clause, whose premise is a `LitMatch` — and they are proved outright,
+without canonical forms, because `DmsHasType` and `LitMatch` each conclude at
 only three shapes. -/
 
 /-- A definition list's type is `⊤` or a right-nested intersection, and stays so
@@ -354,30 +354,33 @@ theorem no_loc_le_bot {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {e : Le σ [
   hG.not_vacuous l (LeTy.vacuousMono hb h .bot)
 
 
-/-- **A witnessed location never carries a type member at its head either.**
-The base case `vcLocAny` reports the type its own `T_Vary` witness derives, and
-that witness is a `DmsHasType` derivation, so `dmsHasType_head` applies to it
-directly.  Unlike `Store.Honest.head_tyOf` this needs no store invariant: the
-witness is carried by the evidence. -/
-theorem VcTy.vcLocAny_head {σ : Sig} {G : Store σ σ} {l : BVar σ .var}
-    {T : Ty σ ([],x)} {ds : Dms σ ([],x)}
-    (hd : DmsHasType G (Ctx.nil.cons T) ds T) :
-    headOf (T.substVr (.conc l)) = .top ∨ headOf (T.substVr (.conc l)) = .and :=
-  dmsHasType_head hd (Subst.one (.conc l))
+/-- **The other location rule never reports a type member at its head
+either.**  The base case `vcLocAny` reports a type its premise matches against
+the stored literal, and `LitMatch` concludes only at `⊤` or an intersection.
+Unlike `Store.Honest.head_tyOf` this needs no store invariant: the premise is
+part of the rule. -/
+theorem VcTy.vcLocAny_head {σ : Sig} {g : Lb → Option (Dm σ [])} {B : Ty σ []}
+    (h : LitMatch g B) : headOf B = .top ∨ headOf B = .and := by
+  cases h with
+  | top => exact Or.inl rfl
+  | typ => exact Or.inr rfl
+  | fn => exact Or.inr rfl
 
-/-- **The type a witnessed location reports is never vacuous.**  The
+/-- **The type the other location rule reports is never vacuous.**  The
 `vcLocAny` counterpart of `Store.Honest.not_vacuous`, and likewise
-unconditional; it needs no honesty because the witness is part of the
-evidence. -/
-theorem VcTy.vcLocAny_not_vacuous {σ : Sig} {G : Store σ σ} {l : BVar σ .var}
-    {T : Ty σ ([],x)} {ds : Dms σ ([],x)}
-    (hd : DmsHasType G (Ctx.nil.cons T) ds T) :
-    ¬ Vacuous G (T.substVr (.conc l)) :=
-  dmsHasType_not_vacuous hd (Subst.one (.conc l))
+unconditional: a type that matches a literal has type and method members for
+conjuncts, which are never vacuous, and its spine ends in `⊤`. -/
+theorem VcTy.vcLocAny_not_vacuous {σ : Sig} {G : Store σ σ}
+    {g : Lb → Option (Dm σ [])} : {B : Ty σ []} → LitMatch g B → ¬ Vacuous G B
+  | _, .top => Vacuous.not_top
+  | _, .typ _ r => fun h =>
+      (Vacuous.and_inv h).elim Vacuous.not_typ (VcTy.vcLocAny_not_vacuous r)
+  | _, .fn _ _ _ r => fun h =>
+      (Vacuous.and_inv h).elim Vacuous.not_fun (VcTy.vcLocAny_not_vacuous r)
 
 /-- **Every closed observation of a location stands on that location.**  The
 spine of a typed observation at `conc ℓ` has a location node for `ℓ` at its
-foot — `vcLoc ℓ`, or `vcLocAny ℓ T ds` for some witness — since `vcVar` is the
+foot — `vcLoc ℓ`, or `vcLocAny ℓ T` for some self type — since `vcVar` is the
 only other base and it has no rule at a concrete subject.  This is the part of
 `vc_canon` that needs nothing — no store invariant, no normalization, no
 hypothesis.
@@ -388,10 +391,9 @@ location.  The disjunction is the exact replacement. -/
 theorem VcTy.base_conc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
     {l : BVar σ .var} : {v : Vc σ []} → {T : Ty σ []} →
     VcTy G W Γ (.conc l) v T →
-      v.base = .vcLoc l ∨ ∃ (T0 : Ty σ ([],x)) (ds : Dms σ ([],x)),
-        v.base = .vcLocAny l T0 ds
+      v.base = .vcLoc l ∨ ∃ T0 : Ty σ ([],x), v.base = .vcLocAny l T0
   | _, _, .vcLoc => Or.inl rfl
-  | _, _, .vcLocAny (T := T0) (ds := ds) _ _ => Or.inr ⟨T0, ds, rfl⟩
+  | _, _, .vcLocAny (T := T0) _ => Or.inr ⟨T0, rfl⟩
   | _, _, .vcPack (v := v0) h => VcTy.base_conc (v := v0) h
   | _, _, .vcUnfold (v := v0) h => VcTy.base_conc (v := v0) h
   | _, _, .vcSub (v := v0) _ h _ => VcTy.base_conc (v := v0) h

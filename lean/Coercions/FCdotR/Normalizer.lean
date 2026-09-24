@@ -59,7 +59,7 @@ theorem Vc.InNf.pushSub {σ s : Sig} {T1 : Ty σ s} {e : Le σ s} :
     {w : Vc σ s} → Vc.InNf w → Vc.InNf (Vc.pushSub T1 e w)
   | .vcVar, h => .vcSub h rfl
   | .vcLoc _, h => .vcSub h rfl
-  | .vcLocAny _ _ _, h => .vcSub h rfl
+  | .vcLocAny _ _, h => .vcSub h rfl
   | .vcPack _ _, h => .vcSub h rfl
   | .vcUnfold _ _, h => .vcSub h rfl
   | .vcSub _ _ _, .vcSub hz hs => .vcSub hz hs
@@ -69,7 +69,7 @@ theorem Vc.RedexFree.pushSub {σ s : Sig} {T1 : Ty σ s} {e : Le σ s} :
     {w : Vc σ s} → Vc.RedexFree w → Vc.RedexFree (Vc.pushSub T1 e w)
   | .vcVar, h => .vcSub h
   | .vcLoc _, h => .vcSub h
-  | .vcLocAny _ _ _, h => .vcSub h
+  | .vcLocAny _ _, h => .vcSub h
   | .vcPack _ _, h => .vcSub h
   | .vcUnfold _ _, h => .vcSub h
   | .vcSub _ _ _, .vcSub hz => .vcSub hz
@@ -91,7 +91,7 @@ def VcTy.pushSubConc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx �
     VcTy G W Γ (.conc l) w T1 → LeTy G W .nil e T1 T2 →
     VcTy G W Γ (.conc l) (Vc.pushSub T1 e w) T2
   | _, _, _, _, .vcLoc, he => .vcSub _ .vcLoc he
-  | _, _, _, _, .vcLocAny hd hs, he => .vcSub _ (.vcLocAny hd hs) he
+  | _, _, _, _, .vcLocAny h, he => .vcSub _ (.vcLocAny h) he
   | _, _, _, _, .vcPack h, he => .vcSub _ (.vcPack h) he
   | _, _, _, _, .vcUnfold h, he => .vcSub _ (.vcUnfold h) he
   | _, _, _, _, .vcSub T0 h hd, he => .vcSub T0 h (.trans _ hd he)
@@ -143,7 +143,7 @@ def VcTy.toNfConc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s
     {l : BVar σ .var} : {v : Vc σ []} → {T : Ty σ []} →
     (d : VcTy G W Γ (.conc l) v T) → VcNf G W Γ (.conc l) v T
   | _, _, .vcLoc => ⟨.vcLoc _, .vcLoc, .vcLoc, rfl⟩
-  | _, _, .vcLocAny hd hs => ⟨.vcLocAny _ _ _, .vcLocAny hd hs, .vcLocAny, rfl⟩
+  | _, _, .vcLocAny h => ⟨.vcLocAny _ _, .vcLocAny h, .vcLocAny, rfl⟩
   | _, _, .vcPack h =>
       let r := VcTy.toNfConc h
       ⟨.vcPack _ r.ev, .vcPack r.typed, .vcPack r.normal, by
@@ -214,11 +214,11 @@ def VcTy.unfoldStep {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {l : BVar σ .
     (c : Contract G W) {T0 : Ty σ ([],x)} :
     {w : Vc σ []} → VcTy G W .nil (.conc l) w (.TBind T0) → UnfoldOut G W l w T0
   | .vcLoc _, _ => .keep rfl
-  | .vcLocAny _ _ _, _ => .keep rfl
+  | .vcLocAny _ _, _ => .keep rfl
   | .vcUnfold _ _, _ => .keep rfl
   | .vcPack _ _, .vcPack h => .contracted _ h (Nat.le_refl _)
   | .vcSub _ _ (.vcLoc _), _ => .keep rfl
-  | .vcSub _ _ (.vcLocAny _ _ _), _ => .keep rfl
+  | .vcSub _ _ (.vcLocAny _ _), _ => .keep rfl
   | .vcSub _ _ (.vcUnfold _ _), _ => .keep rfl
   | .vcSub _ _ (.vcSub _ _ _), _ => .keep rfl
   | .vcSub _ _ (.vcPack _ _), .vcSub _ (.vcPack hz) hd =>
@@ -262,8 +262,7 @@ def VcTy.canon {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {l : BVar σ .var}
     (c : Contract G W) : (n : Nat) → (v : Vc σ []) → {T : Ty σ []} →
     VcTy G W .nil (.conc l) v T → v.spinePacks ≤ n → VcRf G W l v T
   | _, _, _, .vcLoc, _ => ⟨.vcLoc _, .vcLoc, .vcLoc, Nat.le_refl _⟩
-  | _, _, _, .vcLocAny hd hs, _ =>
-      ⟨.vcLocAny _ _ _, .vcLocAny hd hs, .vcLocAny, Nat.le_refl _⟩
+  | _, _, _, .vcLocAny h, _ => ⟨.vcLocAny _ _, .vcLocAny h, .vcLocAny, Nat.le_refl _⟩
   | n, _, _, .vcSub T1 h he, hn =>
       let r := VcTy.canon c n _ h (by simpa using hn)
       ⟨Vc.pushSub T1 _ r.ev, VcTy.pushSubConc r.typed he, r.redexFree.pushSub, by

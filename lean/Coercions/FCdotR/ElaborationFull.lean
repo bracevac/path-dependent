@@ -40,12 +40,12 @@ definition list that corresponds in the sense of `DmsCorr`.  That inhabits
 
 The other rules are as in `Elaboration`.  `T_Vary`, `T_Varz`, `T_VarPack` and
 `T_VarUnpack` become an atom by `elabAtom`, rooted at the source's variable;
-`T_Vary` lands on `AtomTy.varConcAny`.  The argument of `T_AppVar` becomes an
-atom the same way, its `T_Sub` steps turning into atom casts.  `T_Obj` becomes
-`new`, and `T_Sub` at any other position becomes a term-level `cast`.  The
-correspondence is carried as a field of the result (`TmElab.corr`,
-`DefsElabC.corr`) and built clause by clause, so it never has to be read back
-off the definition.
+`T_Vary` lands on the atom `loc ℓ T`, typed by `AtomTy.varConcAny`.  The
+argument of `T_AppVar` becomes an atom the same way, its `T_Sub` steps turning
+into atom casts.  `T_Obj` becomes `new`, and `T_Sub` at any other position
+becomes a term-level `cast`.  The correspondence is carried as a field of the
+result (`TmElab.corr`, `DefsElabC.corr`) and built clause by clause, so it
+never has to be read back off the definition.
 
 ## What follows
 

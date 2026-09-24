@@ -22,8 +22,8 @@ In reading order; each module imports only the FCdotR modules above it.
 | module | contents |
 |---|---|
 | `Prefix` | the prefix at a variable of either zone: `scopeAt` (with `scopeAt (conc ℓ) = []`), `renameAt`, `selfAt`, `ctxAt`, and their transport laws |
-| `Syntax` | inclusion evidence `Le` (the image of `Stp`), observation evidence `Vc` (the image of `Htp`, scoped at its subject's prefix), atoms, terms with `let`, definition lists; `Atom.root` |
-| `Typing` | the store typing `StoreTy`/`tyOf`; the evidence judgments `LeTy` and `VcTy`; two location rules, `vcLoc` (the recorded type) and `vcLocAny` (`T_Vary` verbatim) |
+| `Syntax` | inclusion evidence `Le` (the image of `Stp`), observation evidence `Vc` (the image of `Htp`, scoped at its subject's prefix), atoms (with `loc ℓ T`, a location at a carried self type), terms with `let`, definition lists; `Atom.root` |
+| `Typing` | the store typing `StoreTy`/`tyOf`; `LitMatch`, a decidable match of a type against a stored literal; the evidence judgments `LeTy` and `VcTy`; two location rules, `vcLoc` (the recorded type) and `vcLocAny` (a carried self type matching the stored literal) |
 | `Locality` | an observation depends only on its subject's prefix: `VcTy.strengthen`, `VcTy.ofLoc` |
 | `Examples` | `FunctionField` as closed evidence (`recursive_typed`), a recursive coercion FCdot cannot express |
 | `Structural` | `Mono`, substitutions that respect prefixes, as a record |
@@ -48,6 +48,9 @@ In reading order; each module imports only the FCdotR modules above it.
 | `Simulation` | the backward simulation `Rel.reflect_step`; answers and stuck states agree across `Rel`; the invariant `Simulated` |
 | `SourceSafety` | **`Oopsla16.oopsla16_safety`, `Oopsla16.oopsla16_not_stuck`**, and the honest-store versions; worked instances `ex0_safe`, `RecursiveArg`, `HonestCall` |
 | `Deliverables` | the remaining WadlerFest counterparts: consistency and recorded type members along runs, `Oopsla16.reachable_related`, `Oopsla16.stp_consistent`, coherence as equal answers |
+| `Checker` | an executable checker for the five judgments: `litMatchB` decides `LitMatch`; `Ty.strengthen?` strengthens a type by a partial renaming; the kernels `synthLeCore`, `synthVcCore`, `synthAtomCore`, `synthTmCore`, `synthDefsCore` return the derivation they validate; `synth…`/`check…` with their soundness |
+| `CheckerCompleteness` | the kernels return every derivation (`LeTy.complete`, …), so each judgment has at most one (`LeTy.unique`, …); the decision procedures `checkLe_iff`, `checkVc_iff`, `checkAtom_iff`, `checkTm_iff`, `checkDefs_iff`; types determined by the syntax |
+| `CheckerExamples` | the checker run by the kernel: the elaborated `Oopsla16` examples, the hand-written FCdotR examples, the calculus's restrictions as rejections, locations over `TwoObjectStore`, the worked programs |
 
 `PLAN.md` is the design the library was built from; `STATUS.md` is its
 current state.
@@ -96,9 +99,15 @@ statements use only `Oopsla16`'s `HasType`, `Steps`, `Step` and `IsAnswer`.
   members exactly.
 * `elab_coherence`, `elab_final_iff`: two elaborations of one source term
   reach a final state together, with the same answer location.
+* `checkLe_iff`, `checkVc_iff`, `checkAtom_iff`, `checkTm_iff`,
+  `checkDefs_iff`: the checker decides each typing judgment of FCdotR, for
+  example `checkTm G W Γ t T = true ↔ Nonempty (TmTy G W Γ t T)`.
+  `LeTy.complete` and its siblings say the kernel returns every derivation, so
+  each judgment has at most one (`LeTy.unique`, …).  `CheckerExamples` runs the
+  checker in the kernel.
 
 Axioms: `propext` and `Quot.sound` for every constant of `FCdotR` and
-`Oopsla16` (an audit of the whole environment checks 6323 constants).  No
+`Oopsla16` (an audit of the whole environment checks 7179 constants).  No
 `sorry`, `axiom`, `admit`, `partial` or `native_decide`.
 
 ## Design
@@ -139,6 +148,20 @@ Axioms: `propext` and `Quot.sound` for every constant of `FCdotR` and
   annotations, with casts forgotten (`StateTy`, `Tm.skel`).  The substitution
   theorem supplies that term, and the machine reads nothing the skeleton
   forgets.
+* **A location is observed at any type that matches its literal.**  The
+  location rules `VcTy.vcLocAny` and `AtomTy.varConcAny` observe `ℓ` at a self
+  type the syntax carries, instantiated at `ℓ`, when that instance matches the
+  stored literal (`LitMatch`): `⊤` or an intersection whose type members are
+  the stored ones, exact, and whose method members agree with the stored
+  methods' annotations.  Every source `T_Vary` gives such a match
+  (`varyLitMatch`), so `T_Vary` elaborates at any store typing.  The converse
+  fails, since no method body is re-typed: a location may also be observed at
+  `⊤`, or at an unannotated stored method with any method type.  That is
+  sound, because every result is proved for the rules as stated and the body
+  the machine runs is typed by the machine store's honesty invariant, whose
+  erased store annotates every method.  The match is decidable, and every
+  syntax node has exactly one typing rule, which is what makes typing decidable
+  (`Checker`, `CheckerCompleteness`).
 * **The two machines are related, not equated by erasure.**  The target applies
   atoms and has `let`; the source applies arbitrary terms and has no `let`, so
   an elaborated term does not erase to its source.  `Corr` relates them: an atom
@@ -150,10 +173,11 @@ Axioms: `propext` and `Quot.sound` for every constant of `FCdotR` and
 
 ## What is not here
 
-* **No checker.**  The location rules `VcTy.vcLocAny` and `AtomTy.varConcAny`
-  take a source typing derivation as premise, and that derivation is not part
-  of the evidence.  Checking them would mean deciding `Oopsla16` typing, so the
-  premise has to be carried as target evidence first.
+* **The checker decides FCdotR typing, nothing more.**  It checks fully
+  annotated evidence and terms, such as the elaboration produces; it does not
+  decide `Oopsla16` typing.  Like the rules it decides, it takes the store
+  typing on trust: `vcLoc` and `var (conc ℓ)` read their types off `W`, and
+  whether `W` tells the truth is the separate invariant `Store.Honest`.
 * **No source-side preservation.**  The headline theorems say a reached
   configuration is never stuck.  They do not say it, or the final answer, has
   the program's type in `Oopsla16`.  The closest statement is

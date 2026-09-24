@@ -42,14 +42,18 @@ stable under a store renaming that transports lookups** (`StoreMap`), which is
 the intrinsic-scoping cost of `dot.v:21-22` and is reused by every later
 preservation argument.
 
-**`VcTy.vcLocAny` needs none of this.**  It carries its own `T_Vary` witness,
-so the facts above hold of it with no store invariant: `varyMember` and
-`varyObs` are the witness-level versions of `Store.Honest.member` and
-`Store.Honest.obs` (`member` is now `varyMember` at the honesty witness), and
+**The other location rule needs none of this.**  `VcTy.vcLocAny` (and
+`AtomTy.varConcAny`) observes a location at any self type whose instance
+matches the stored literal (`Typing.LitMatch`), with no store invariant.  The
+section *Matching a stored literal* shows that every pair of `T_Vary` premises
+gives that match (`varyLitMatch`).  `varyMember` and `varyObs` are the
+witness-level versions of `Store.Honest.member` and `Store.Honest.obs`
+(`member` is `varyMember` at the honesty witness), and
 `Store.Honest.vcLoc_of_vcLocAny` says that over an honest store `vcLoc` is
 `vcLocAny` at the recorded type.  The section *A substitution's store part*
-moves such a witness along a substitution, which is what the `vcLocAny` and
-`AtomTy.varConcAny` clauses of the two substitution theorems use.
+moves the match along a substitution (`LitMatch.subst`), which is what the
+`vcLocAny` and `AtomTy.varConcAny` clauses of the two substitution theorems
+use.
 
 The module closes with `Store.Honest` instantiated at the two-object store of
 `Oopsla16/PackingCounterexample`, so that the invariant is known to be
@@ -130,6 +134,81 @@ def DmsHasType.conjunct {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} :
       · rw [if_neg h] at hg'
         exact .there (DmsHasType.conjunct hds hg')
 
+/-! ## Matching a stored literal
+
+`Typing.LitMatch` is the premise of the two location rules.  A source `T_Vary`
+derives it: a literal typed at `T` under its own self, instantiating to what
+`ℓ` stores, has `T[ℓ]` matching the stored literal, because `D_Typ` makes each
+type member exact and `D_Fun` checks each method's annotations by `EqSome`.
+`D_Fun`'s typing of the method body is not needed, which is why the converse
+fails. -/
+
+/-- A member found by `Dms.get?` has a label below the length of the list.
+Labels are positional, so this is what separates the head member of a list from
+the members of its tail. -/
+theorem dmsTyp_label_lt {σ s : Sig} : (ds : Dms σ s) → {a : Lb} → {d : Dm σ s} →
+    ds.get? a = some d → a < ds.length
+  | .dnil, _, _, h => by simp [Dms.get?] at h
+  | .dcons d0 ds, a, d, h => by
+      show a < ds.length + 1
+      by_cases hc : a = ds.length
+      · rw [hc]; exact Nat.lt_succ_self _
+      · have h' : (if a = ds.length then some d0 else ds.get? a) = some d := h
+        rw [if_neg hc] at h'
+        exact Nat.lt_succ_of_lt (dmsTyp_label_lt ds h')
+
+/-- An optional annotation's agreement with a checked type survives a map;
+this is what `D_Fun`'s two `EqSome` premises need (`dot.v:216`). -/
+theorem eqSome_map {α β : Type} (f : α → β) {o : Option α} {a : α}
+    (h : EqSome o a) : EqSome (o.map f) (f a) := by
+  cases h with
+  | inl h => exact Or.inl (by rw [h]; rfl)
+  | inr h => exact Or.inr (by rw [h]; rfl)
+
+/-- **A typed definition list's type matches the list**, under any
+substitution `θ` into the empty scope and relative to any lookup `g` that finds
+every member of the list, substituted.  Positional labels (`dmsTyp_label_lt`)
+are what let the tail of the list keep the same lookup; `D_Fun`'s `EqSome`
+premises survive the substitution by `eqSome_map`, and its typing of the method
+body is not used. -/
+def dmsLitMatch {σ s1 : Sig} {G : Store σ σ} {Γ : Ctx σ s1} (θ : Subst σ s1 σ [])
+    (g : Lb → Option (Dm σ [])) :
+    {ds : Dms σ s1} → {T : Ty σ s1} → DmsHasType G Γ ds T →
+    (∀ a d, ds.get? a = some d → g a = some (d.subst θ)) → LitMatch g (T.subst θ)
+  | _, _, .D_Nil, _ => .top
+  | _, _, .D_Typ (ds := ds) (T11 := T11) hds, hg =>
+      .typ (hg ds.length (.dty T11) (by
+          show (if ds.length = ds.length then some (Dm.dty T11) else ds.get? ds.length)
+            = some (.dty T11)
+          rw [if_pos rfl]))
+        (dmsLitMatch θ g hds (fun a d h => hg a d (by
+          show (if a = ds.length then some (Dm.dty T11) else ds.get? a) = some d
+          rw [if_neg (Nat.ne_of_lt (dmsTyp_label_lt ds h))]
+          exact h)))
+  | _, _, .D_Fun (ds := ds) (OT11 := OT11) (OT12 := OT12) (t12 := t12) hds _ e1 e2, hg =>
+      .fn (hg ds.length (.dfun OT11 OT12 t12) (by
+          show (if ds.length = ds.length then some (Dm.dfun OT11 OT12 t12)
+            else ds.get? ds.length) = some (.dfun OT11 OT12 t12)
+          rw [if_pos rfl]))
+        (eqSome_map _ e1) (eqSome_map _ e2)
+        (dmsLitMatch θ g hds (fun a d h => hg a d (by
+          show (if a = ds.length then some (Dm.dfun OT11 OT12 t12) else ds.get? a)
+            = some d
+          rw [if_neg (Nat.ne_of_lt (dmsTyp_label_lt ds h))]
+          exact h)))
+
+/-- **Every pair of `T_Vary` premises gives the location rules' premise**: a
+literal typed at `T` under its own self, instantiating to what `ℓ` stores, has
+`T[ℓ]` matching the stored literal.  So every type a source `T_Vary` gives a
+location, `VcTy.vcLocAny` and `AtomTy.varConcAny` give it too; this is what the
+elaboration of `T_Vary` uses.  No store invariant is needed. -/
+def varyLitMatch {σ : Sig} {G : Store σ σ} {l : BVar σ .var} {T : Ty σ ([],x)}
+    {ds : Dms σ ([],x)} (hd : DmsHasType G (Ctx.nil.cons T) ds T)
+    (hs : ds.substVr (.conc l) = G.lookup l) :
+    LitMatch (G.lookup l).get? (T.substVr (.conc l)) :=
+  dmsLitMatch (Subst.one (.conc l)) _ hd (fun a d h => by
+    rw [← hs, Dms.get?_subst, h]; rfl)
+
 /-! ## Honest stores -/
 
 /-- What honesty asks at one location: the store typing's entry is a type the
@@ -163,12 +242,12 @@ def Store.Honest.vary {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx 
 
 /-- **A `T_Vary` witness agrees with what `defL`/`defR` read.**  If a literal
 `ds` has type `T` under its own self and instantiates to what `ℓ` stores — the
-two premises of `T_Vary`, and of `VcTy.vcLocAny` — and the stored literal
-defines the type member `a` to be `TX`, then `T` instantiated at `ℓ` has
-`{a : TX .. TX}` among its conjuncts.  `D_Typ` makes the member exact whatever
-type the witness picks, so this needs no store invariant: it is the fact about
-`vcLocAny` that the consistency argument would consume, and
-`Store.Honest.member` is its instance at the recorded type. -/
+two premises of `T_Vary` — and the stored literal defines the type member `a`
+to be `TX`, then `T` instantiated at `ℓ` has `{a : TX .. TX}` among its
+conjuncts.  `D_Typ` makes the member exact whatever type the witness picks, so
+this needs no store invariant; `Store.Honest.member` is its instance at the
+recorded type.  A type that merely matches the stored literal (`LitMatch`) need
+not have the conjunct, since it may leave members out. -/
 def varyMember {σ : Sig} {G : Store σ σ} {l : BVar σ .var} {T : Ty σ ([],x)}
     {ds : Dms σ ([],x)} (hd : DmsHasType G (Ctx.nil.cons T) ds T)
     (hs : ds.substVr (.conc l) = G.lookup l) {a : Lb} {TX : Ty σ []}
@@ -218,9 +297,9 @@ def Store.Honest.obs {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx �
     VcTy.vcSub (Γ := Γ) (p := .conc l) (tyOf W l) VcTy.vcLoc c.typed⟩
 
 /-- The observation `selL`/`selR` consume, built through a `T_Vary` witness
-rather than through the store typing: `vcLocAny` widened to the member by
-`varyMember`.  The `vcLocAny` counterpart of `Store.Honest.obs`, with no
-honesty hypothesis. -/
+rather than through the store typing: `vcLocAny` at the witness's self type
+(its premise by `varyLitMatch`), widened to the member by `varyMember`.  The
+`vcLocAny` counterpart of `Store.Honest.obs`, with no honesty hypothesis. -/
 def varyObs {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
     {l : BVar σ .var} {T : Ty σ ([],x)} {ds : Dms σ ([],x)}
     (hd : DmsHasType G (Ctx.nil.cons T) ds T)
@@ -228,21 +307,22 @@ def varyObs {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
     (hg : (G.lookup l).get? a = some (.dty TX)) :
     (v : Vc σ []) × VcTy G W Γ (.conc l) v (.TTyp a TX TX) :=
   let c := varyMember hd hs hg
-  ⟨.vcSub (T.substVr (.conc l)) c.ev (.vcLocAny l T ds),
+  ⟨.vcSub (T.substVr (.conc l)) c.ev (.vcLocAny l T),
     VcTy.vcSub (Γ := Γ) (p := .conc l) (T.substVr (.conc l))
-      (VcTy.vcLocAny hd hs) c.typed⟩
+      (VcTy.vcLocAny (varyLitMatch hd hs)) c.typed⟩
 
 /-- **Over an honest store `vcLoc` is an instance of `vcLocAny`.**  The
 honesty witness at `ℓ` is a pair of `T_Vary` premises at the recorded type
-`W ℓ`, and `tyOf W ℓ` is `(W ℓ).substVr (conc ℓ)` by definition, so
-`VcTy.vcLocAny` with that witness observes `ℓ` at exactly the type `VcTy.vcLoc`
-reads off `W`.  So adding `vcLocAny` added no power over an honest store that
-`vcLoc` did not already have at `W ℓ`; what it adds is the observation at
-*other* types the literal has, which is what the source's `T_Vary` licenses. -/
+`W ℓ`, so `varyLitMatch` gives the match at `(W ℓ).substVr (conc ℓ)`, which is
+`tyOf W ℓ` by definition, and `VcTy.vcLocAny` at `W ℓ` observes `ℓ` at exactly
+the type `VcTy.vcLoc` reads off `W`.  So over an honest store `vcLoc` has no
+power `vcLocAny` lacks; what `vcLocAny` adds is the observation at *other*
+types that match the literal — every type the source's `T_Vary` licenses, and
+more (`Typing.VcTy.vcLocAny`). -/
 def Store.Honest.vcLoc_of_vcLocAny {σ s : Sig} {G : Store σ σ} {W : StoreTy σ}
     {Γ : Ctx σ s} (h : Store.Honest G W) (l : BVar σ .var) :
-    VcTy G W Γ (.conc l) (.vcLocAny l (W l) (h.at' l).defs) (tyOf W l) :=
-  .vcLocAny (h.at' l).typed (h.at' l).stored
+    VcTy G W Γ (.conc l) (.vcLocAny l (W l)) (tyOf W l) :=
+  .vcLocAny (varyLitMatch (h.at' l).typed (h.at' l).stored)
 
 /-! ## Store renaming
 
@@ -296,14 +376,6 @@ theorem Ctx.renameStore_consWeaken {σ1 σ2 s : Sig} (Γ : Ctx σ1 s) (T : Ty σ
       = (Ctx.renameStore Γ ρ).cons ((T.renameStore ρ).weaken) := by
   show (Ctx.renameStore Γ ρ).cons (T.weaken.renameStore ρ) = _
   rw [Ty.renameStore_weaken]
-
-/-- An optional annotation's agreement with a checked type survives a map;
-this is what `D_Fun`'s two `EqSome` premises need (`dot.v:216`). -/
-theorem eqSome_map {α β : Type} (f : α → β) {o : Option α} {a : α}
-    (h : EqSome o a) : EqSome (o.map f) (f a) := by
-  cases h with
-  | inl h => exact Or.inl (by rw [h]; rfl)
-  | inr h => exact Or.inr (by rw [h]; rfl)
 
 /-- A renaming of the store scope that transports every lookup.  Allocation is
 the instance `StoreMap.alloc`. -/
@@ -474,10 +546,14 @@ end
 
 `Subst.conc` maps locations to locations (`Oopsla16.Structural`): the reference
 never substitutes for a concrete variable.  So the store part of *any*
-substitution is a renaming of the store scope, and the judgment-renaming
-results above apply to it.  That is what carries a `T_Vary` witness — the two
-premises of `VcTy.vcLocAny` and `AtomTy.varConcAny` — along a substitution, and
-it is what `SubstTyping` and `TermSubst` consume in those clauses.
+substitution is a renaming of the store scope, and on the empty local scope,
+where a stored literal lives, a substitution *is* that renaming.  That is what
+moves the location rules' premise along a substitution.  `LitMatch` reads the
+stored literal only through `Dms.get?`, so the store agreement of
+`SubstTyping.MonoSyn.Ev`, read at one label (`defs_get?`), carries it
+(`LitMatch.subst`), and `varyTy` is the equation on the type the rules report.
+Those three are what the `vcLocAny` and `AtomTy.varConcAny` clauses of the two
+substitution theorems consume.
 
 Written prefix rather than as `Subst.storeRen`, for the reason
 `Ctx.renameStore` above gives: dot notation on an `Oopsla16.Subst` would look
@@ -499,52 +575,37 @@ theorem atNil_lift_eq_ofStore {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) :
     (Subst.atNil θ).lift = Subst.ofStore (s := ([],x)) (storeRen θ) := by
   rw [atNil_eq_ofStore, Subst.lift_ofStore]
 
-/-- **A substitution's store part is a store map**, as soon as the two stores
-agree at every location in the sense `SubstTyping.MonoSyn.Ev`'s `defs` field
-states.  The agreement is taken here as a bare hypothesis, so that this
-definition sits below `SubstTyping` in the import order. -/
-def StoreMap.ofSubst {σ1 σ2 s1 s2 : Sig} {G : Store σ1 σ1} {G' : Store σ2 σ2}
-    (θ : Subst σ1 s1 σ2 s2)
-    (hG : ∀ l : BVar σ1 .var,
-      G'.lookup (θ.conc l) = (G.lookup l).subst (Subst.atNil θ)) :
-    StoreMap G G' where
-  ren := storeRen θ
-  lookup := fun l => by
-    show (G.lookup l).renameStore (storeRen θ) = G'.lookup (θ.conc l)
-    rw [hG l, atNil_eq_ofStore]
+/-- **The store agreement, read at one label.**  If the image store holds at
+the image of `ℓ` the literal at `ℓ`, substituted — the sense of
+`SubstTyping.MonoSyn.Ev`'s `defs` field, taken here as a bare hypothesis so
+that this sits below `SubstTyping` in the import order — then every member it
+has there is the member at `ℓ`, substituted. -/
+theorem defs_get? {σ1 σ2 s1 s2 : Sig} {G : Store σ1 σ1} {G' : Store σ2 σ2}
+    (θ : Subst σ1 s1 σ2 s2) {l : BVar σ1 .var}
+    (h : G'.lookup (θ.conc l) = (G.lookup l).subst (Subst.atNil θ)) (a : Lb) :
+    (G'.lookup (θ.conc l)).get? a
+      = ((G.lookup l).get? a).map (fun d => d.subst (Subst.atNil θ)) := by
+  rw [h, Dms.get?_subst]
 
-/-- **The typing half of a transported `T_Vary` witness.**  A literal that has
-the type `T` under its own self still does after its store scope is renamed by
-the substitution's store part. -/
-def varyTyped {σ1 σ2 s1 s2 : Sig} {G : Store σ1 σ1} {G' : Store σ2 σ2}
-    (θ : Subst σ1 s1 σ2 s2)
-    (hG : ∀ l : BVar σ1 .var,
-      G'.lookup (θ.conc l) = (G.lookup l).subst (Subst.atNil θ))
-    {T : Ty σ1 ([],x)} {ds : Dms σ1 ([],x)}
-    (hd : DmsHasType G (Ctx.nil.cons T) ds T) :
-    DmsHasType G' (Ctx.nil.cons (T.renameStore (storeRen θ)))
-      (ds.renameStore (storeRen θ)) (T.renameStore (storeRen θ)) :=
-  DmsHasType.renameStore (StoreMap.ofSubst θ hG) hd
+/-- **A match survives a substitution of the empty local scope**, relative to
+two member lookups that agree up to it.  Each member moves by `Dm.subst`, and
+each `EqSome` by `eqSome_map`.  The substitution theorems use it at
+`Subst.atNil θ`, with `defs_get?` for the lookups. -/
+def LitMatch.subst {σ1 σ2 : Sig} (θ : Subst σ1 [] σ2 [])
+    {g : Lb → Option (Dm σ1 [])} {g' : Lb → Option (Dm σ2 [])}
+    (hg : ∀ a, g' a = (g a).map (fun d => d.subst θ)) :
+    {B : Ty σ1 []} → LitMatch g B → LitMatch g' (B.subst θ)
+  | _, .top => .top
+  | _, .typ (b := b) h r => .typ (by rw [hg b, h]; rfl) (LitMatch.subst θ hg r)
+  | _, .fn (b := b) (OS := OS) (OU := OU) (t := t) h e1 e2 r =>
+      .fn (OS := OS.map (fun T => T.subst θ)) (OU := OU.map (fun T => T.subst θ.lift))
+        (t := t.subst θ.lift) (by rw [hg b, h]; rfl)
+        (eqSome_map (fun T => T.subst θ) e1) (eqSome_map (fun T => T.subst θ.lift) e2)
+        (LitMatch.subst θ hg r)
 
-/-- **The stored half of a transported `T_Vary` witness.**  Instantiating the
-renamed literal's self by the image location gives what the image store holds:
-`Dms.renameStore_substVr` composed with the store agreement. -/
-theorem varyStored {σ1 σ2 s1 s2 : Sig} {G : Store σ1 σ1} {G' : Store σ2 σ2}
-    (θ : Subst σ1 s1 σ2 s2)
-    (hG : ∀ l : BVar σ1 .var,
-      G'.lookup (θ.conc l) = (G.lookup l).subst (Subst.atNil θ))
-    {l : BVar σ1 .var} {ds : Dms σ1 ([],x)}
-    (hs : ds.substVr (.conc l) = G.lookup l) :
-    (ds.renameStore (storeRen θ)).substVr (.conc (θ.conc l))
-      = G'.lookup (θ.conc l) := by
-  have h : (G.lookup l).renameStore (storeRen θ) = G'.lookup (θ.conc l) :=
-    (StoreMap.ofSubst θ hG).lookup l
-  show (ds.renameStore (storeRen θ)).substVr
-      ((Vr.conc l).subst (Subst.ofStore (storeRen θ))) = G'.lookup (θ.conc l)
-  rw [← Dms.renameStore_substVr, hs, h]
-
-/-- **The type a transported witness reports.**  Substituting the type a
-`T_Vary` witness gives at `ℓ` is instantiating the renamed self type at the
+/-- **The type a location rule reports, moved along a substitution.**
+Substituting `T[ℓ]`, the type `VcTy.vcLocAny` and `AtomTy.varConcAny` report
+at `ℓ` for the self type `T`, is instantiating the renamed self type at the
 image location.  This is the equation the `vcLocAny`/`varConcAny` clauses of
 the two substitution theorems close with. -/
 theorem varyTy {σ1 σ2 s1 s2 : Sig} (θ : Subst σ1 s1 σ2 s2) (l : BVar σ1 .var)

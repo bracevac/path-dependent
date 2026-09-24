@@ -6,15 +6,18 @@ the `Coercions.Oopsla16` source (Rompf–Amin OOPSLA'16 DOT, which has
 recursive subtyping).  It is a *second* target: the WadlerFest→FCdot chain in
 `DotMNF`/`DotToFCdot`/`FCdot` is not reused, only imitated.
 
-`lake build FCdot DotMNF DotToFCdot Oopsla16 FCdotR` completes in **119 jobs**.
+`lake build FCdot DotMNF DotToFCdot Oopsla16 FCdotR` completes in **122 jobs**.
 Its only warning is the pre-existing unused `termination_by` at
 `FCdot/Syntax.lean:221`, outside this library.  There is no `sorry`, `admit`,
 `axiom`, `native_decide` or `partial` anywhere in `FCdotR/` or `Oopsla16/`
 outside comments.  An environment-wide audit of every constant defined in
-`Coercions.FCdotR.*` and `Coercions.Oopsla16.*` reports `checked 6323
+`Coercions.FCdotR.*` and `Coercions.Oopsla16.*` reports `checked 7179
 constants; offending: 0`: nothing uses an axiom beyond `propext` and
 `Quot.sound`.  At commit `aa7ca71` the figures were 118 jobs and 6258
-constants; `Deliverables.lean` adds one job and 65 constants.
+constants; `Deliverables.lean` adds one job and 65 constants, the `LitMatch`
+premise of the location rules (`Typing.LitMatch`) 47 more, and the checker
+(`Checker`, `CheckerCompleteness`, `CheckerExamples`) three jobs and 809
+constants.
 
 **Type safety of `Oopsla16`'s own substitution machine is proved with no
 hypothesis**, for every closed term typed over the empty store: arbitrary
@@ -116,8 +119,9 @@ discharged.
 hypothesis — nothing takes it as an argument — and `Inversion.obs_conc_admissible`
 proves it over every honest store.  `VaryEv` and `LemmaR`, hypotheses of
 earlier rounds, are gone: `VaryEv` was false and was removed when the target
-acquired `T_Vary` verbatim (`VcTy.vcLocAny`, `AtomTy.varConcAny`); `LemmaR` is
-inhabited by `SubstTyping.lemmaR`.
+acquired location rules at every type the source's `T_Vary` gives
+(`VcTy.vcLocAny`, `AtomTy.varConcAny`, whose premise is now `LitMatch`);
+`LemmaR` is inhabited by `SubstTyping.lemmaR`.
 
 ## Restrictions that are not hypotheses
 
@@ -152,38 +156,42 @@ inhabited by `SubstTyping.lemmaR`.
 | `README.md` | What the library is, its modules in reading order, the main theorems, and the design points. |
 | `PLAN.md` | The design: substitution via prefix restriction, the elaboration of 32 source rules, the metatheory order, and the open questions.  Not code. |
 | `Prefix.lean` | The prefix apparatus at a two-zone variable: `scopeAt`, `renameAt`, `selfAt`, `ctxAt`, `Zone`, the `upTo`/`renameUpTo` transport laws, and `renameUpTo_comp` (weakenings out of iterated prefixes compose) with its transport helpers. |
-| `Syntax.lean` | The five grammars — inclusion evidence `Le`, observation evidence `Vc` (indexed at its subject's prefix scope), `Atom`, `Tm`, `Defs` — plus `Atom.root` and `Defs.length`.  A location has two `Vc` nodes: `vcLoc ℓ`, and `vcLocAny ℓ T ds`, which carries a `T_Vary` witness's self type and literal as syntax. |
-| `Typing.lean` | `StoreTy`/`tyOf` and the two evidence judgments `LeTy` (inclusion) and `VcTy` (observation).  `VcTy` has two location rules: `vcLoc` at the recorded type `tyOf W ℓ`, and `vcLocAny`, the source's `T_Vary` verbatim.  No term typing here. |
+| `Syntax.lean` | The five grammars — inclusion evidence `Le`, observation evidence `Vc` (indexed at its subject's prefix scope), `Atom`, `Tm`, `Defs` — plus `Atom.root` and `Defs.length`.  A location has two `Vc` nodes, `vcLoc ℓ` and `vcLocAny ℓ T`, the second carrying a self type as syntax, and two atoms, `var (conc ℓ)` and `loc ℓ T`. |
+| `Typing.lean` | `StoreTy`/`tyOf`; `LitMatch`, the decidable premise of the location rules (a type matches a stored literal member by member); the two evidence judgments `LeTy` (inclusion) and `VcTy` (observation).  `VcTy` has two location rules: `vcLoc` at the recorded type `tyOf W ℓ`, and `vcLocAny` at a carried self type whose instance matches the stored literal.  No term typing here. |
 | `Structural.lean` | `MonoAt`/`Mono`: a substitution carrying a per-variable image and restriction satisfying the star law.  `Mono` is not closed under restriction; `Subst.lean`'s `MonoSyn` is the answer, and `MonoSyn.toMono` embeds it. |
 | `Locality.lean` | Lemma 0, the locality of observation evidence: `VcTy.strengthen` and `VcTy.ofLoc`. |
 | `Examples.lean` | The `FunctionField` example elaborated by hand: a closed `bindx` derivation whose method body uses a `selL` under the enclosing self — the judgment `DotToFCdot/RecursiveSubtypingSeparation` shows current FCdot cannot express. |
 | `Subst.lean` | `MonoSyn`, the inductive syntax of generated substitutions, closed under restriction (`resSyn`).  The substitution action on all five sorts, the star laws, `toMono`, `restrict_unique`, and the image/restriction laws for iterated prefixes. |
 | `SubstTyping.lean` | `MonoSyn.Ev` with `refl`/`lift`/`atNil`; `VcTy.toFull`/`weakenVar`/`strengthenCons`; `MonoSyn.restrict_coh`; `VcTy.descendAbs`/`descend`; `lemmaRVc`/`lemmaR`; and the **unconditional** substitution theorem `LeTy.substEv`/`VcTy.substEv`, one premise, `MonoSyn.Ev`. |
 | `TermSubst.lean` | `MonoSyn.Ev.weaken`; `MonoSyn.EvA` (`Ev` plus an atom at each abstract variable) with `refl`/`weaken`/`lift`; `AtomTy.weakenVar`; and the substitution theorem for the three term judgments, `AtomTy.substEv`/`TmTy.substEv`/`DefsTy.substEv`. |
-| `StoreTyping.lean` | `Conjunct` and `DmsHasType.conjunct`; `Store.Honest` (every location holds a literal typed at its store type) with `vary`, `member`, `obs`, `alloc`; `varyMember`/`varyObs` for a bare `T_Vary` witness; `Store.Honest.vcLoc_of_vcLocAny`; store renaming for the four source judgments and a substitution's store part as a store renaming.  `TwoObjectStore`. |
-| `TermTyping.lean` | The three term judgments `AtomTy` (6 rules), `TmTy` (5), `DefsTy` (3), with two location rules `varConc`/`varConcAny`.  `TmTy.appWeaken`, `AtomTy.toVc`, `Store.Honest.varConc_of_varConcAny`; `FunctionFieldObject`. |
+| `StoreTyping.lean` | `Conjunct` and `DmsHasType.conjunct`; `Store.Honest` (every location holds a literal typed at its store type) with `vary`, `member`, `obs`, `alloc`; `dmsLitMatch`/`varyLitMatch` (every `T_Vary` premise pair gives `LitMatch`); `varyMember`/`varyObs` for a bare `T_Vary` witness; `Store.Honest.vcLoc_of_vcLocAny`; store renaming for the four source judgments; a substitution's store part, with `defs_get?`, `LitMatch.subst` and `varyTy` moving `LitMatch` along it.  `TwoObjectStore`. |
+| `TermTyping.lean` | The three term judgments `AtomTy` (6 rules), `TmTy` (5), `DefsTy` (3), one rule per syntax node, with two location rules: `varConc` on `var (conc ℓ)` and `varConcAny` on `loc ℓ T`.  `TmTy.appWeaken`, `AtomTy.toVc`, `Store.Honest.varConc_of_varConcAny`; `FunctionFieldObject`. |
 | `Machine.lean` | The runtime: `Inst` and its action on all five sorts, `MachineStore`, `Frame`/`Cont`/`State`, `Step`/`Steps` indexed by `Oopsla16.Grows`, six rules, `State.Final`/`State.Stuck`.  `MonoSyn.ofInst` makes `Inst` a `MonoSyn` at the typing level. |
 | `Erasure.lean` | `Tm.erase`/`Defs.erase`/`MachineStore.erase` into `Oopsla16` and its commutation laws; the **evidence skeleton** `Tm.skel`/`Defs.skel`/`Cont.skel` (roots, annotations and term structure kept, casts and atom wrappers forgotten) with `Tm.skel_inst`, `Tm.erase_skel`; `Step.simulate`/`Steps.simulate` under `Cont.Evidential`.  `Counterexample.badRun`. |
 | `Forms.lean` | Measures (`Le.size`, `packs`, `Vc.spinePacks`); head shapes `TyHead`/`headOf`/`HeadPair`; `Vc.InNf`, `pushSub`, `RedexFree`, `exposesPack`, `base`; pack bounds `Le.PackBound k` and `Le.Strong` (`PackBound 0`: every concrete selection is `defL`/`defR`); normal forms `LeNf`/`LeNfHead` with strong premises `SLe`, the target's `stpp`.  Definitions and their syntactic laws; no typing result. |
 | `Normalizer.lean` | `VcTy.toNf`: spine normalization, structural, no hypothesis.  `VcTy.unfoldStep`/`VcTy.canon`: redex elimination, terminating on `(spinePacks, size)`, under `Contract` (discharged in `Inversion`). |
 | `CanonicalForms.lean` | Unconditional: `no_pack_at_abs`, the head table `LeTy.headPair_of_not_trans`, `typ_le_bind_is_trans`, `top_le_bot_is_trans`, `VcTy.base_conc`, `dmsHasType_head`, `Store.Honest.head_tyOf`/`not_vacuous`, `VcTy.vcLocAny_head`/`vcLocAny_not_vacuous`, `obs_conc_easy`, `Store.Honest.defL_as_selL`, `Vacuous`/`LeTy.vacuousMono`, `consistency_nil`.  `consistency`/`no_loc_le_bot` under `BoundsVacuous` (discharged in `Inversion`).  `DishonestStore.topLeBot`. |
-| `Inversion.lean` | **Transitivity elimination for closed inclusions.**  `EvB`/`LeTy.substB` (substitution keeping a pack bound); `LeTy.pushback`, `LeNf.precompose`, `SLe.nf` with soundness `LeNf.toSLe`; `LitTy`/`RecordedLit` (the only store fact used) with `typInv`/`fnInv`/`bindInv`, `dmsLitTy`, `varyLitTy`, `defsLitTy`; the pack-count tower `ObsInv`/`ObsInv.step`/`LeTy.strengthenAt`.  Results, each at `RecordedLit` and at `Store.Honest`: `nf`, `strengthen`, `clean`, `invTyp`, `invTypTyp`, `invIntoBind`, `invBind`, `obsTyp`, `obsBind`, `obsFun`, `contract`, `canon`, `boundsVacuous`, `no_loc_le_bot`, `consistency_honest` (and `consistency_honest'` via vacuity), `obs_conc_admissible`.  Examples over `TwoObjectStore`. |
-| `Preservation.lean` | `TmTy.substEv_skel`/`DefsTy.substEv_skel`; `ContTy`, `StateTy` (typing up to evidence), `MachineStore.Honest` with `nil`/`member`/`obs`/`method`/`alloc`; the views `viewLet`/`viewNew`/`viewApp`/`viewAtom`; the six step cases `StateTy.let_`/`castPush`/`castAtom`/`rename`/`alloc` (no hypothesis) and `StateTy.app` (under `AppInversion`); `AppInversion`, `ObsFunInversion`, `AppInversion.ofObs`, `LocType.method`; `StateTy.erase_eq`; `preservation`, `preservation_steps`, `preservation_init`; the counterexample `OnTheNose`/`MachineStore.Honest.app_var_untypable`; the bridge `Store.Honest.toMachine`/`toMachine_erase`/`toMachine_honest`/`StateTy.ofSource`. |
+| `Inversion.lean` | **Transitivity elimination for closed inclusions.**  `EvB`/`LeTy.substB` (substitution keeping a pack bound); `LeTy.pushback`, `LeNf.precompose`, `SLe.nf` with soundness `LeNf.toSLe`; `LitTy`/`RecordedLit` (the only store fact used) with `typInv`/`fnInv`/`bindInv`, `LitMatch.toLitTy`, `dmsLitTy`, `varyLitTy`, `defsLitTy`; the pack-count tower `ObsInv`/`ObsInv.step`/`LeTy.strengthenAt`.  Results, each at `RecordedLit` and at `Store.Honest`: `nf`, `strengthen`, `clean`, `invTyp`, `invTypTyp`, `invIntoBind`, `invBind`, `obsTyp`, `obsBind`, `obsFun`, `contract`, `canon`, `boundsVacuous`, `no_loc_le_bot`, `consistency_honest` (and `consistency_honest'` via vacuity), `obs_conc_admissible`.  Examples over `TwoObjectStore`. |
+| `Preservation.lean` | `TmTy.substEv_skel`/`DefsTy.substEv_skel`; `ContTy`, `StateTy` (typing up to evidence), `MachineStore.Honest` with `nil`/`member`/`obs`/`method`/`alloc`; the views `viewLet`/`viewNew`/`viewApp`/`viewAtom`; the six step cases `StateTy.let_`/`castPush`/`castAtom`/`rename`/`alloc` (no hypothesis) and `StateTy.app` (under `AppInversion`); `AppInversion`, `ObsFunInversion`, `AppInversion.ofObs`, `LitMatch.method`, `LocType.method`; `StateTy.erase_eq`; `preservation`, `preservation_steps`, `preservation_init`; the counterexample `OnTheNose`/`MachineStore.Honest.app_var_untypable`; the bridge `Store.Honest.toMachine`/`toMachine_erase`/`toMachine_honest`/`StateTy.ofSource`. |
 | `Progress.lean` | `State.CanStep`; `progress_of_not_app` (no typing, no store invariant); `progress_app`, `progress`, `not_stuck`, `safety`, `safety_of_source`, all under `AppInversion`. |
 | `MethodInversion.lean` | `defsTy_erase_of_conjunct`, `MachineStore.Honest.recordedLit`, `LocBase.toLocType`; **`obsFunInversion` and `appInversion`**, inhabiting the two hypotheses; and the hypothesis-free `preservation'`, `preservation_steps'`, `preservation_init'`, `progress'`, `not_stuck'`, `safety'`, `safety_of_source'`. |
-| `Elaboration.lean` | `elabStp`/`elabHtp`: all 18 `Stp` rules and all 3 `Htp` rules, at an arbitrary `StoreTy`, no hypothesis.  `elabAtom`/`elabHasType`/`elabDms` on the fragment `TmFrag`/`DmsFrag` (variable operands at every `tapp`, both annotations on every `dfun`), no hypothesis; `T_Vary` becomes `AtomTy.varConcAny`.  `elab_recursive`.  `elabAtom` is compiled by well-founded recursion (irreducible by default). |
+| `Elaboration.lean` | `elabStp`/`elabHtp`: all 18 `Stp` rules and all 3 `Htp` rules, at an arbitrary `StoreTy`, no hypothesis.  `elabAtom`/`elabHasType`/`elabDms` on the fragment `TmFrag`/`DmsFrag` (variable operands at every `tapp`, both annotations on every `dfun`), no hypothesis; `T_Vary` becomes the atom `loc ℓ T`, typed by `AtomTy.varConcAny`.  `elab_recursive`.  `elabAtom` is compiled by well-founded recursion (irreducible by default). |
 | `ElaborationErasure.lean` | `elabHasType_erase`/`elabDms_erase`: the fragment elaboration erases to the source term, on the nose, at every store typing.  Four worked instances. |
 | `Correspondence.lean` | **The operational correspondence.**  Source evaluation contexts `ECtx` with `ECtx.step`, `ECtx.plug_inv`; `Corr` (by recursion on the target term: atoms are roots, `cast` transparent, `let d u` is `E[r0]`; annotations never read, type members compared exactly), `DmsCorr`, `StoreCorr`, `KCorr`, `Cont.fill`, `corr_fill_iff`, `Rel`; `Corr.skel_iff`, `Rel.of_skel`, `StateTy.corr_witness`; the A-normal shapes `Corr.anf_app`/`anf_recv`/`anf_arg`; commutation with every substitution (`Corr.substEv` etc.); `Rel.init`/`init_iff`, `Rel.final`, `Rel.answer_final`; `SrcStuck`.  The specs `ElabSpec`, `ElabSpecGen` (with `toElabSpec`), `SimStepSpec`, `SimStuckSpec`, `SimSpec`, `Oopsla16Safety`; `transport`, `transport_from`; `normalize` (administrative steps terminate at a focused state); **`sim_step`, `sim_stuck`, `sim_spec`**, no hypothesis; `oopsla16_safety` under `ElabSpec`; `elabSpec_frag`, `oopsla16_safety_frag`.  `LiteralReflection.literal_reflection_false`: "a related target state that steps has a source that steps" is false. |
 | `ElaborationFull.lean` | **Elaboration of every source typing.**  `TmElab`/`DefsElabC` (term, typing, correspondence); `TmElab.app` (`T_App` binds both operands), `TmElab.appVar` (`T_AppVar` binds only the receiver, keeping the dependent result type); unannotated `dfun` takes `D_Fun`'s types; `elabTm`/`elabDefs` over all 8 + 3 rules at any store typing; **`elabSpecGen`, `elabSpec`**, `oopsla16Safety_holds`, `oopsla16_safety'`, `oopsla16_progress`, all without hypothesis.  Worked example `CurryCall` (outside `TmFrag`). |
 | `Simulation.lean` | **The backward simulation and its consequences.**  `Rel.alloc_reflect`, `Rel.app_reflect`, `Rel.reflect_step`, `Rel.reflect_steps` (each target step is zero or one source step at the same `Grows` index); `Rel.steps'`, `sim_step_plus` (no stuttering); `Rel.final_tm`, `final_run`, `answer_run`, `answer_iff_final`; `Rel.stuck_reflect`, `stuck_iff`, `safe_iff`; `Rel.focused_reflect`, `Rel.progress_reflect`; the invariant `Simulated` with `step`, `steps`, `progress`, `not_stuck`, `reachable_progress`, `of_typed`, `of_frag`, and `of_elab`/`elab_adequacy` under `ElabSpec`; `Rel.of_letFree`. |
 | `SourceSafety.lean` | **The end of the line.**  `Simulated.init`, `elab_adequacy'` (the `ElabSpec` theorems at `elabSpec`); `StoreCorr.ofHonest`, `Simulated.of_honest`; **`Oopsla16.oopsla16_safety`, `oopsla16_not_stuck`**, `oopsla16_safety_honest`, `oopsla16_not_stuck_honest`.  Worked instances `ex0_safe`, `RecursiveArg` (a method demanding `μz.T(z)` applied to a literal typed by two `stp_bindx`; the source run, both headline theorems, and the target run reaching a final state), `HonestCall` (over `TwoObjectStore`). |
 | `Deliverables.lean` | **The WadlerFest deliverables that were missing**, each a short corollary, none with a hypothesis.  `reachable_consistent`, `elab_reachable_consistent` (every machine store a typed program reaches is honest and proves no closed `⊤ ≤ ⊥`); `reachable_realized`, `elab_reachable_realized` (stored type members are exactly the recorded ones); `MachineStore.Honest.nf`, `consistent`, `realized`; `Oopsla16.reachable_simulated`, `Oopsla16.reachable_related` (every reachable source configuration is related to a typed, consistent target state that the elaboration reaches); `litStoreTy`, `closedStp_nf`, **`Oopsla16.stp_consistent`** (no source store derives `⊤ <: ⊥`); `Corr.coherent`, `Corr.final_iff`, `elab_coherence`, `elab_final_iff` (coherence as equal answers). |
+| `Checker.lean` | **An executable checker for the five judgments.**  `eqSomeB`, `memberMatchB`, `litMatchB` (structural, through `litMatchBAux` at a variable scope index) with `litMatchB_sound`, `litMatchB_complete`, `litMatchB_iff` and `LitMatch.instSubsingleton`; a local `PartialRename` with `Ty.rename?` (sound and complete for renamings it inverts), `Ty.strengthen?`, `Ty.strengthenW?`; `witness?`; the result structures `LeChecked`, `VcChecked`, `AtomChecked`, `TmChecked`, `DefsChecked`, which carry the derivation; the kernels `synthLeCore`/`synthVcCore` (well-founded on the evidence's size, reduced by the kernel) and `synthAtomCore`, `synthTmCore`/`synthDefsCore` (structural), at every store scope, store, store typing, context and subject; `synthLe`, `checkLe`, `synthVc`, `checkVc`, `synthAtom`, `checkAtom`, `synthTm`, `checkTm`, `synthDefs`, `checkDefs`, each with a soundness function returning the derivation (`synthLe_sound`, `checkLe_sound`, …). |
+| `CheckerCompleteness.lean` | **Completeness, and uniqueness of derivations.**  `LeTy.complete`, `VcTy.complete`, `AtomTy.complete`, `TmTy.complete`, `DefsTy.complete`: the kernel returns every derivation itself, `synthLeCore G W Γ e = some ⟨S, T, h⟩`.  Hence `LeTy.unique`, `VcTy.unique`, `AtomTy.unique`, `TmTy.unique`, `DefsTy.unique` and `Subsingleton` instances: each judgment has at most one derivation.  `synth…_complete`, `synth…_iff`, `check…_complete`, `check…_iff` (against `Nonempty`), `check…_eq_false_iff`; `LeTy.endpoints_unique`, `VcTy.type_unique`, `AtomTy.type_unique`, `TmTy.type_unique`, `DefsTy.type_unique`.  No hypothesis and no acceptance predicate. |
+| `CheckerExamples.lean` | **The checker run by the kernel** (`decide +kernel`): every derivation of `Oopsla16/Examples.lean`, elaborated and checked at its source type; `FCdotR/Examples.lean` and `TermTyping.FunctionFieldObject`, each accepted and rejected at a wrong type, and the literal at `μz. T(z)`; rejections for packing at an abstract variable (`PackingCounterexample`'s `bad`, `badEv_untypable`), the fold-exposing `μT ≤ T{x}`, an escaping `let`, and non-defining bounds; locations over `TwoObjectStore` (`loc` exact and at `⊤`, rejected at inexact bounds and at an absent method, `selQ` through `vcLocAny`, the lie `lieEv` rejected while the same lie through `vcLoc` over `DishonestStore` is accepted); the elaboration of `qTyped` at the honest and a dishonest store typing; the worked programs `CurryCall`, `RecursiveArg`, `HonestCall` and those of `ElaborationErasure`.  84 verdicts, 50 accepted and 34 rejected, plus 7 derivations read off accepted verdicts (`ex0_typed`, `recursive_checked`, …) and 5 untypability theorems read off rejected ones; the whole file builds in about 3 s, the slowest verdict (`RecursiveArg`) taking about 0.25 s in the kernel. |
 
 ## WadlerFest deliverables
 
 What the WadlerFest line (`DotToFCdot/README.md`, `FCdot/README.md`) proves,
 and its counterpart here.  Names are in namespace `FCdotR` unless they start
-with `Oopsla16.`.  **New** marks what `Deliverables.lean` adds.
+with `Oopsla16.`.  **New** marks what `Deliverables.lean` and the checker
+(`Checker`, `CheckerCompleteness`, `CheckerExamples`) add.
 
 | WadlerFest | Here |
 | --- | --- |
@@ -197,7 +205,7 @@ with `Oopsla16.`.  **New** marks what `Deliverables.lean` adds.
 | `final_erase`, `final_reflect` | `Rel.final_tm`, `Rel.final`, `Rel.answer_final`, `Rel.answer_iff_final` |
 | `reachable_consistent` (`DotMNF`, `FCdot`) | **New**: `reachable_consistent`, `elab_reachable_consistent`, and the last conjunct of `Oopsla16.reachable_related`.  Source side, for every store: **new** `Oopsla16.stp_consistent` |
 | `reachable_realized` | **New**: `reachable_realized`, `elab_reachable_realized` (a location stores `a = TX` exactly when its recorded type has `{a : TX..TX}`).  FCdotR has no equality evidence; `defL`/`defR` read the store directly |
-| Checker with completeness (`FCdot.checkTm_iff` and friends) | **Missing** (see *What remains*) |
+| Checker with completeness (`FCdot.checkTm_iff` and friends) | **New**: `checkLe_iff`, `checkVc_iff`, `checkAtom_iff`, `checkTm_iff`, `checkDefs_iff` (against `Nonempty`, the judgments being `Type`-valued), with soundness `check…_sound` and completeness `LeTy.complete` and siblings, which return the derivation itself; derivations are unique (`LeTy.unique`, …) and types are determined by the syntax (`LeTy.endpoints_unique`, …).  The checker decides FCdotR typing of fully annotated terms, not `Oopsla16` typing |
 | `preservation` | `preservation'`, `preservation_steps'`, `preservation_init'`, up to evidence; on-the-nose preservation is false (`OnTheNose`) |
 | `progress`, `not_stuck` | `progress'`, `not_stuck'`, `safety'` |
 | Erasure simulation, target to runtime (`erase_step`) | `Rel.reflect_step`, `Rel.reflect_steps` (each target step is zero or one source step); on the nose only without `let` frames: `Step.simulate`, `Steps.simulate` |
@@ -205,7 +213,7 @@ with `Oopsla16.`.  **New** marks what `Deliverables.lean` adds.
 | Canonical forms of closed evidence | `Store.Honest.nf`, `RecordedLit.nf`, `Store.Honest.obsTyp`/`obsBind`/`obsFun`, `Store.Honest.canon`, `appInversion`; **new** `MachineStore.Honest.nf`, `closedStp_nf` |
 | No closed `⊤ ≤ ⊥`; shapes of closed inclusions | `consistency_honest`, `RecordedLit.consistency`, `LeTy.headPair_of_not_trans`, `top_le_bot_is_trans`; **new** `MachineStore.Honest.consistent` |
 | `WadlerFest`, `RetainedSafety`, `SortedSafety` | Not applicable: they cover other presentations of the WadlerFest source (annotated machine, reduction orders, sorted labels).  `Oopsla16` has one machine |
-| Examples E1 to E12 decided in the kernel | Not applicable without a checker.  Worked instances instead: `SourceSafety.ex0_safe`, `RecursiveArg`, `HonestCall`, `ElaborationFull.CurryCall`, the four in `ElaborationErasure` |
+| Examples E1 to E8 decided in the kernel (`FCdot/Examples.lean`) | **New**: `CheckerExamples`, decided by `decide +kernel`: the elaborated `Oopsla16` examples, the hand-written FCdotR examples, the restrictions as rejections, locations, and the worked programs `SourceSafety.RecursiveArg`, `HonestCall`, `ElaborationFull.CurryCall` and those of `ElaborationErasure`.  `Oopsla16/Examples.lean` ports none of E1 to E8 |
 
 ## Road to a WadlerFest-style safety theorem
 
@@ -240,18 +248,13 @@ In dependency order.
 
 ## What remains
 
-* **A checker with completeness.**  Not attempted.  The two location rules
-  `VcTy.vcLocAny` and `AtomTy.varConcAny` take a *source* derivation
-  (`DmsHasType`) as premise, and that derivation is not in the evidence
-  syntax.  Checking them would mean deciding `Oopsla16` typing, which has
-  subsumption and a primitive transitivity rule.  The premise must first be
-  carried as target evidence in the syntax; the checker itself is then of the
-  size of FCdot's (`Checker`, `CheckerCompleteness`: about 1700 lines).
 * **Honest-store safety for general stored witnesses.**  Needs a translation
   of target typing back into source typing, so that source honesty survives
   the elaboration of `let`-bearing method bodies.  `obs_conc_admissible` is the
-  selection case of it; the translation is not built.  `T_Vary` witnesses read
-  whole stored literals, so matching type members alone is not enough.  The
+  selection case of it; the translation is not built.  The location rules read
+  a stored literal's type members and method annotations (`LitMatch`), and the
+  machine store annotates a Curry-style method with the types its honesty
+  witness checked, so matching type members alone is not enough.  The
   reference covers such stores; a one-object store with a Curry-style method is
   an example outside every theorem here.
 * **Preservation for the source.**  No theorem says a reached `Oopsla16` term
@@ -313,12 +316,11 @@ probe files are scratch files outside the library; each compiles with
   `Elaboration`) were corrected during integration; the edits are doc-only.
 * **Duplicates to fold later.**  `Inversion.LocBase` and
   `Preservation.LocType` are the same two location nodes
-  (`LocBase.toLocType` bridges them); `Inversion.dmsTyp_label_lt` and
-  `Preservation.dms_get?_lt` are the same lemma, on separate import branches;
-  `FCdotR.Ctx.renameStore` in `StoreTyping.lean` still shadows
-  `Oopsla16.Ctx.renameStore`.  `Preservation`'s `TmTy.Core`, `TmTy.core` and
-  `Tm.skel_eq_*` compile but are unused.  `ElaborationFull.oopsla16_safety'`
-  and `Oopsla16.oopsla16_safety`, and `ElaborationFull.oopsla16_progress` and
+  (`LocBase.toLocType` bridges them); `FCdotR.Ctx.renameStore` in
+  `StoreTyping.lean` still shadows `Oopsla16.Ctx.renameStore`.
+  `Preservation`'s `TmTy.Core`, `TmTy.core` and `Tm.skel_eq_*` compile but
+  are unused.  `ElaborationFull.oopsla16_safety'` and
+  `Oopsla16.oopsla16_safety`, and `ElaborationFull.oopsla16_progress` and
   `Oopsla16.oopsla16_not_stuck`, state the same things.  None was folded:
   each fold either deletes a theorem or moves a definition across import
   branches.

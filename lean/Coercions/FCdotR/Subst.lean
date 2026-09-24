@@ -622,9 +622,7 @@ def Vc.subst {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} :
     Vc σ1 s1 → MonoSyn θ → Vc σ2 s2
   | .vcVar, _ => .vcVar
   | .vcLoc l, _ => .vcLoc (θ.conc l)
-  | .vcLocAny l T ds, _ =>
-      .vcLocAny (θ.conc l) (T.subst (Subst.atNil θ).lift)
-        (ds.subst (Subst.atNil θ).lift)
+  | .vcLocAny l T, _ => .vcLocAny (θ.conc l) (T.subst (Subst.atNil θ).lift)
   | .vcPack T v, m => .vcPack (T.subst θ.lift) (v.subst m)
   | .vcUnfold T v, m => .vcUnfold (T.subst θ.lift) (v.subst m)
   | .vcSub T1 e v, m => .vcSub (T1.subst θ) (e.subst m) (v.subst m)
@@ -633,11 +631,14 @@ end
 
 mutual
 
-/-- Substitution on atoms.  A variable goes to its image, so an atom's root
-moves the way the substitution moves it (`Atom.root_subst`). -/
+/-- Substitution on atoms.  A variable goes to its image, and a carried
+location to its image with the self type moved as `Vc.subst` moves
+`vcLocAny`'s, so an atom's root moves the way the substitution moves it
+(`Atom.root_subst`). -/
 def Atom.subst {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} :
     Atom σ1 s1 → MonoSyn θ → Atom σ2 s2
   | .var p, _ => .var (p.subst θ)
+  | .loc l T, _ => .loc (θ.conc l) (T.subst (Subst.atNil θ).lift)
   | .cast a e, m => .cast (a.subst m) (e.subst m)
   | .pack T a, m => .pack (T.subst θ.lift) (a.subst m)
   | .unpack T a, m => .unpack (T.subst θ.lift) (a.subst m)
@@ -667,6 +668,7 @@ makes `app a l b`'s codomain instantiation `U{root b}` stable. -/
 @[simp] theorem Atom.root_subst {σ1 σ2 s1 s2 : Sig} {θ : Subst σ1 s1 σ2 s2} :
     (a : Atom σ1 s1) → (m : MonoSyn θ) → (a.subst m).root = a.root.subst θ
   | .var _, _ => rfl
+  | .loc _ _, _ => rfl
   | .cast a _, m => Atom.root_subst a m
   | .pack _ a, m => Atom.root_subst a m
   | .unpack _ a, m => Atom.root_subst a m

@@ -74,7 +74,7 @@ nodes. -/
 def LocBase.toLocType {σ : Sig} {G : Store σ σ} {W : StoreTy σ} {l : BVar σ .var} :
     {B : Ty σ []} → LocBase G W l B → LocType G W l B
   | _, .recorded => .recorded
-  | _, .witness hd hs => .witness hd hs
+  | _, .witness h => .witness h
 
 /-- **`Preservation.ObsFunInversion` is inhabited**: canonical forms for method
 observations over an honest machine store, by `RecordedLit.obsFun`. -/

@@ -106,7 +106,8 @@ theorem letEncode_subst {σ1 σ2 s1 s2 : Sig} (t : Oopsla16.Tm σ1 s1)
 
 /-! ## Erasure -/
 
-/-- An atom erases to its root: every coercion, pack and unpack is a no-op. -/
+/-- An atom erases to its root: every coercion, pack and unpack is a no-op, and
+so is the self type `loc ℓ T` carries. -/
 def Atom.erase {σ s : Sig} (a : Atom σ s) : Oopsla16.Tm σ s := .tvar a.root
 
 mutual
@@ -184,6 +185,7 @@ def State.eraseTm {σ : Sig} (st : State σ) : Oopsla16.Tm σ [] :=
     (ι : Inst s1 s2) → (y : BVar σ .var) →
     (a.inst ι y).root = Vr.inst a.root ι y
   | _, _, .var _, _, _ => rfl
+  | _, _, .loc _ _, _, _ => rfl
   | _, _, .cast a _, ι, y => Atom.root_inst a ι y
   | _, _, .pack _ a, ι, y => Atom.root_inst a ι y
   | _, _, .unpack _ a, ι, y => Atom.root_inst a ι y
@@ -305,6 +307,7 @@ theorem Defs.erase_inst_subst {σ s1 s2 : Sig} (ds : Defs σ s1) (ι : Inst s1 s
     (a : Atom σ1 s) → (ρ : Rename σ1 σ2) →
     (a.renameStore ρ).root = a.root.subst (Subst.ofStore ρ)
   | _, _, _, .var _, _ => rfl
+  | _, _, _, .loc _ _, _ => rfl
   | _, _, _, .cast a _, ρ => Atom.root_renameStore a ρ
   | _, _, _, .pack _ a, ρ => Atom.root_renameStore a ρ
   | _, _, _, .unpack _ a, ρ => Atom.root_renameStore a ρ
@@ -991,8 +994,9 @@ theorem Defs.ty?_of_erase {σ s : Sig} : (ds : Defs σ s) → (a : Lb) →
 
 /-- The converse of `Defs.erase_fun?`: a method the source reads off an erased
 definition list is one the target list defines, with both annotations present
-and the body erased.  This is what relates a source `T_Vary` witness's method
-member to the method the machine runs. -/
+and the body erased.  This is what relates a method member the location rules'
+premise (`Typing.LitMatch`) finds in an erased machine store to the method the
+machine runs. -/
 theorem Defs.fun?_of_erase {σ s : Sig} : (ds : Defs σ s) → (a : Lb) →
     {o1 : Option (Ty σ s)} → {o2 : Option (Ty σ (s,x))} →
     {t' : Oopsla16.Tm σ (s,x)} →

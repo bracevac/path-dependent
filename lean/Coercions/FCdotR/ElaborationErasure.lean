@@ -203,13 +203,16 @@ def Wtop : StoreTy Oopsla16.PackingCounterexample.S2 := fun _ => .TTop
 /-- **`T_Vary` at a store typing that disagrees with the source.**
 `PackingCounterexample.qTyped` re-types the literal stored at `q` at its exact
 type `{A : D .. D} ∧ ⊤`, while `Wtop` records `⊤` there.  The elaboration lands
-on `AtomTy.varConcAny`, so it goes through at `Wtop` with nothing to show — it
-is the bare variable, and the typing is the source witness carried over.  The
-former route through `varConc` would have needed `⊤ ≤ {A : D .. D} ∧ ⊤` as
-target evidence, which is what `VaryEv` asked for. -/
+on `AtomTy.varConcAny`, so it goes through at `Wtop` with nothing to show: it
+is `q` at the source's self type, and its premise is the source witness's match
+(`StoreTyping.varyLitMatch`).  The former route through `varConc` would have
+needed `⊤ ≤ {A : D .. D} ∧ ⊤` as target evidence, which is what `VaryEv` asked
+for. -/
 example :
     (elabHasType Wtop Oopsla16.PackingCounterexample.qTyped .tvar).1
-      = .atom (.var (.conc Oopsla16.PackingCounterexample.q)) := by
+      = .atom (.loc Oopsla16.PackingCounterexample.q
+          (.TAnd (.TTyp Oopsla16.PackingCounterexample.A Oopsla16.PackingCounterexample.D
+            Oopsla16.PackingCounterexample.D) .TTop)) := by
   simp only [Oopsla16.PackingCounterexample.qTyped, elabHasType, elabAtom]
 
 /-- And it erases back to the source variable. -/

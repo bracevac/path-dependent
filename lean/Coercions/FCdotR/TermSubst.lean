@@ -189,13 +189,13 @@ def AtomTy.weakenVar {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx �
               (Rename.succ (k := .var)))
         rw [Ty.renameNil_rename]
         exact .varConc⟩
-  | _, _, .varConcAny (l := l) (T := T0) hd hs =>
-      ⟨.var (.conc l), rfl, by
-        show AtomTy G W (Γ.cons S) (.var (.conc l))
+  | _, _, .varConcAny (l := l) (T := T0) h0 =>
+      ⟨.loc l T0, rfl, by
+        show AtomTy G W (Γ.cons S) (.loc l T0)
             (((T0.substVr (.conc l)).rename (renameNil (s := s))).rename
               (Rename.succ (k := .var)))
         rw [Ty.renameNil_rename]
-        exact .varConcAny hd hs⟩
+        exact .varConcAny h0⟩
   | _, _, .cast (e := e) ha he =>
       match AtomTy.weakenVar S ha with
       | ⟨b, hroot, hd⟩ =>
@@ -314,12 +314,14 @@ def AtomTy.substEv {σ1 s1 : Sig} {G : Store σ1 σ1} {W : StoreTy σ1}
             (((tyOf W l).rename (renameNil (s := s1))).subst θ)
         rw [Ty.renameNil_subst, ← E.ev.tys l]
         exact .varConc⟩
-  | .varConcAny (l := l) (T := T0) hd hs =>
-      ⟨.var (.conc (θ.conc l)), rfl, by
-        show AtomTy G' W' Γ' (.var (.conc (θ.conc l)))
+  | .varConcAny (l := l) (T := T0) h0 =>
+      ⟨.loc (θ.conc l) (T0.renameStore (storeRen θ)), rfl, by
+        show AtomTy G' W' Γ' (.loc (θ.conc l) (T0.renameStore (storeRen θ)))
             (((T0.substVr (.conc l)).rename (renameNil (s := s1))).subst θ)
         rw [Ty.renameNil_subst, varyTy θ l T0]
-        exact .varConcAny (varyTyped θ E.ev.defs hd) (varyStored θ E.ev.defs hs)⟩
+        exact .varConcAny (by
+          rw [← varyTy θ l T0]
+          exact LitMatch.subst (Subst.atNil θ) (defs_get? θ (E.ev.defs l)) h0)⟩
   | .cast (e := e) ha he =>
       match AtomTy.substEv ha E with
       | ⟨b, hroot, hd⟩ =>

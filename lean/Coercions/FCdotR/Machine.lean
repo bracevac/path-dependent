@@ -205,14 +205,14 @@ def Le.inst {σ : Sig} : {s1 s2 : Sig} → Le σ s1 → Inst s1 s2 → BVar σ .
 being instantiated, so its own hypothesis `vcVar` becomes the stored literal's
 type `vcLoc`: the observation counterpart of the source's `T_Vary` at the
 recorded type.  It is `vcLoc` and not `vcLocAny` because the instantiation has
-no literal or self type to put in a witness; a `vcLocAny` node already carries
-both, lives at the empty local scope, and is left alone. -/
+no self type to put in the node; a `vcLocAny` node already carries one, lives
+at the empty local scope, and is left alone. -/
 def Vc.inst {σ : Sig} : {s1 s2 : Sig} → Vc σ s1 → Inst s1 s2 → BVar σ .var →
     Vc σ s2
   | _, _, .vcVar, .base, y => .vcLoc y
   | _, _, .vcVar, .lift _, _ => .vcVar
   | _, _, .vcLoc c, _, _ => .vcLoc c
-  | _, _, .vcLocAny c T ds, _, _ => .vcLocAny c T ds
+  | _, _, .vcLocAny c T, _, _ => .vcLocAny c T
   | _, _, .vcPack T v, ι, y => .vcPack (Ty.inst T ι.lift y) (v.inst ι y)
   | _, _, .vcUnfold T v, ι, y => .vcUnfold (Ty.inst T ι.lift y) (v.inst ι y)
   | _, _, .vcSub T1 e v, ι, y =>
@@ -224,10 +224,12 @@ end
 
 mutual
 
-/-- Instantiate an atom. -/
+/-- Instantiate an atom.  A carried location mentions no local variable, so
+it is left alone, as `Vc.inst` leaves `vcLocAny`. -/
 def Atom.inst {σ : Sig} : {s1 s2 : Sig} → Atom σ s1 → Inst s1 s2 →
     BVar σ .var → Atom σ s2
   | _, _, .var p, ι, y => .var (Vr.inst p ι y)
+  | _, _, .loc c T, _, _ => .loc c T
   | _, _, .cast a e, ι, y => .cast (a.inst ι y) (e.inst ι y)
   | _, _, .pack T a, ι, y => .pack (Ty.inst T ι.lift y) (a.inst ι y)
   | _, _, .unpack T a, ι, y => .unpack (Ty.inst T ι.lift y) (a.inst ι y)
@@ -298,8 +300,7 @@ def Le.renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) : {s : Sig} → Le σ1 
 def Vc.renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) : {s : Sig} → Vc σ1 s → Vc σ2 s
   | _, .vcVar => .vcVar
   | _, .vcLoc c => .vcLoc (ρ.var c)
-  | _, .vcLocAny c T ds =>
-      .vcLocAny (ρ.var c) (T.renameStore ρ) (ds.renameStore ρ)
+  | _, .vcLocAny c T => .vcLocAny (ρ.var c) (T.renameStore ρ)
   | _, .vcPack T v => .vcPack (T.renameStore ρ) (v.renameStore ρ)
   | _, .vcUnfold T v => .vcUnfold (T.renameStore ρ) (v.renameStore ρ)
   | _, .vcSub T1 e v =>
@@ -313,6 +314,7 @@ mutual
 def Atom.renameStore {σ1 σ2 : Sig} (ρ : Rename σ1 σ2) :
     {s : Sig} → Atom σ1 s → Atom σ2 s
   | _, .var p => .var (p.subst (Subst.ofStore ρ))
+  | _, .loc c T => .loc (ρ.var c) (T.renameStore ρ)
   | _, .cast a e => .cast (a.renameStore ρ) (e.renameStore ρ)
   | _, .pack T a => .pack (T.renameStore ρ) (a.renameStore ρ)
   | _, .unpack T a => .unpack (T.renameStore ρ) (a.renameStore ρ)

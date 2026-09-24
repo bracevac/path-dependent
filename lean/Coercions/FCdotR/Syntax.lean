@@ -20,10 +20,13 @@ Four sorts, in two groups.
   has `vcPack`, whose subject is a *location* only.
 
 A location is observed by **two** nodes, not one: `vcLoc`, which reads the type
-off the store typing, and `vcLocAny`, which carries a source witness — a
-literal and a self type — and is `T_Vary` verbatim.  `vcLoc` is the instance of
-the latter at the recorded type over an honest store; both are kept because
-every earlier result is stated at `vcLoc`.
+off the store typing, and `vcLocAny`, which carries a self type and observes the
+location at it, instantiated there — the node the elaboration of `T_Vary`
+produces.  Atoms have the same pair: `var (conc ℓ)` at the recorded type, and
+`loc ℓ T` at a carried self type.  `vcLoc` is the instance of `vcLocAny` at the
+recorded type over an honest store; both are kept because every earlier result
+is stated at `vcLoc`.  With the self type in the syntax, every node has exactly
+one typing rule.
 
 `Vc` is indexed by its subject's **prefix** scope, so `selL p _` takes a
 `Vc σ (scopeAt p)`.  The reference's `length GL = S x` and `GH = GU ++ GL`
@@ -35,7 +38,7 @@ This module is syntax only; every well-formedness condition is in `Typing`.
 namespace FCdotR
 
 open FCdot (Kind Sig BVar Rename)
-open Oopsla16 (Vr Ty Lb Dms)
+open Oopsla16 (Vr Ty Lb)
 
 mutual
 
@@ -93,14 +96,13 @@ inductive Vc : Sig → Sig → Type where
   /-- The type of a stored object, as the store typing records it: the
   observation counterpart of `T_Vary` at the *recorded* type. -/
   | vcLoc {σ s : Sig} (l : BVar σ .var) : Vc σ s
-  /-- The type of a stored object, as a **source witness** derives it:
-  `T_Vary` (`dot.v:220-226`) verbatim, at any type the stored literal has under
-  its own self.  The literal `ds` and the self type `T` are carried as syntax
-  because substitution has to move them; they live in `([],x)` whatever the
-  ambient local scope is, since a stored literal has no free abstract
-  variable. -/
-  | vcLocAny {σ s : Sig} (l : BVar σ .var) (T : Ty σ ([],x))
-      (ds : Dms σ ([],x)) : Vc σ s
+  /-- The type of a stored object at a **self type the node carries**,
+  instantiated at the location: what the elaboration of `T_Vary`
+  (`dot.v:220-226`) produces, typed when that instance matches the stored
+  literal (`Typing.LitMatch`).  The self type is carried as syntax because
+  substitution has to move it; it lives in `([],x)` whatever the ambient local
+  scope is, since a stored literal has no free abstract variable. -/
+  | vcLocAny {σ s : Sig} (l : BVar σ .var) (T : Ty σ ([],x)) : Vc σ s
   /-- **Packing, at a location only.**  As syntax this node can be written at
   any scope; the typing rule's subject index is `Vr.conc`, so at an abstract
   variable it has no typing rule at all — which is what
@@ -122,6 +124,10 @@ forbids inside subtyping. -/
 inductive Atom : Sig → Sig → Type where
   /-- A variable of either zone. -/
   | var {σ s : Sig} (p : Vr σ s) : Atom σ s
+  /-- A location observed at a self type the node carries: the atom
+  counterpart of `Vc.vcLocAny`, and what the elaboration of `T_Vary` produces.
+  The self type lives in `([],x)`, as `vcLocAny`'s does. -/
+  | loc {σ s : Sig} (l : BVar σ .var) (T : Ty σ ([],x)) : Atom σ s
   /-- `T_Sub` at a variable. -/
   | cast {σ s : Sig} (a : Atom σ s) (e : Le σ s) : Atom σ s
   /-- `T_VarPack`. -/
@@ -151,10 +157,12 @@ inductive Defs : Sig → Sig → Type where
 
 end
 
-/-- The variable an atom is rooted at.  Casts, packs and unpacks do not move
-it, which is what makes an atom's runtime meaning its root's. -/
+/-- The variable an atom is rooted at: `loc ℓ T` at `ℓ`.  Casts, packs and
+unpacks do not move it, which is what makes an atom's runtime meaning its
+root's. -/
 def Atom.root {σ s : Sig} : Atom σ s → Vr σ s
   | .var p => p
+  | .loc l _ => .conc l
   | .cast a _ => a.root
   | .pack _ a => a.root
   | .unpack _ a => a.root

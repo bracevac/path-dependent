@@ -55,7 +55,7 @@ def VcTy.ofLoc {σ s s' : Sig} {G : Store σ σ} {W : StoreTy σ}
     {v : Vc σ []} → {T : Ty σ []} →
     VcTy G W Γ (.conc l) v T → VcTy G W Γ' (.conc l) v T
   | _, _, .vcLoc => .vcLoc
-  | _, _, .vcLocAny hd hs => .vcLocAny hd hs
+  | _, _, .vcLocAny h => .vcLocAny h
   | _, _, .vcPack d => .vcPack (ofLoc d)
   | _, _, .vcUnfold d => .vcUnfold (ofLoc d)
   | _, _, .vcSub T1 d e => .vcSub (Γ := Γ') (p := .conc l) T1 (ofLoc d) e

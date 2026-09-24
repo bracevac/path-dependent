@@ -25,10 +25,7 @@ Substituting the whole atom instead (`FCdot`'s `Tm.adjust` route) does not
 help either, because the body's *evidence* mentions the bound variable too: a
 `vcVar` at it must become observation evidence for the atom at the bound type,
 and that evidence is not a function of the atom's syntax — `cast a e` does not
-record its source type, which `vcSub` needs, and `var ℓ` typed by
-`varConcAny` needs the witness's self type and literal, which live in the
-derivation only.  Two derivations of one atom can need incomparable evidence
-(the reason `VaryEv` was false), so no syntactic rule fits both.
+record its source type, which `vcSub` needs.
 
 So the rules are **kept as they are** (option (b)), and a state is typed when
 some typed term and some typed continuation have its **skeleton** (`Erasure`,
@@ -64,8 +61,10 @@ two invariants are connected in both directions that are provable:
 
 Throughout, the typing is over `G.erase`, so `TermTyping`'s two location rules
 apply to running programs verbatim: `varConc` at `W`'s entry, which honesty
-justifies by `DefsTy`, and `varConcAny` at any `T_Vary` witness over the
-erased store.  `MachineStore.Honest.alloc` extends honesty along `alloc`.
+justifies by `DefsTy`, and `varConcAny` at any self type that matches the
+erased store's literal.  The erasure annotates every method, so that match
+fixes each method member's types.  `MachineStore.Honest.alloc` extends honesty
+along `alloc`.
 
 ## What is proved
 
@@ -82,7 +81,7 @@ erased store.  `MachineStore.Honest.alloc` extends honesty along `alloc`.
   observation of a location at a method type inverts to a method conjunct of
   a location node's type), and `AppInversion.ofObs`, which derives the one
   from the other with no further hypothesis (`LocType.method`,
-  `DefsTy.fun?_of_conjunct`, `dmsHasType_fun_of_conjunct`).
+  `DefsTy.fun?_of_conjunct`, `LitMatch.method`).
 * `StateTy.erase_eq`: the typed witness erases to the state it types.
 * `preservation`, `preservation_steps`, `preservation_init`, all under
   `AppInversion`, which only the `app` case uses.
@@ -101,7 +100,7 @@ skeletons).
 namespace FCdotR
 
 open FCdot (Kind Sig BVar Rename)
-open Oopsla16 (Vr Ty Lb Ctx Store Subst Dms Grows renameNil)
+open Oopsla16 (Vr Ty Lb Ctx Store Subst Grows renameNil)
 
 /-! ## The substitution theorem, read on skeletons -/
 
@@ -989,8 +988,8 @@ over every honest machine store.  Discharging it is the receiver-side instance o
 `AtomTy.toVc` turns the atom into a closed observation of its root,
 `Normalizer`'s `VcTy.toNf`/`VcTy.canon` bring that observation to a location
 node (`vcLoc` or `vcLocAny`) under a normalized spine, and the remaining
-closed inclusion from the location's type — a right-nested intersection of the
-stored members, by `DefsTy` or by the `T_Vary` witness's `DmsHasType` — to
+closed inclusion from the location's type — a right-nested intersection of
+stored members, by `DefsTy` or by `vcLocAny`'s `LitMatch` premise — to
 `{l : S0 → U0}` must be inverted to the conjunct at `l`.  Reading that
 conjunct back as the stored method is proved here (`LocType.method`,
 positional labels); the inversion is `Inversion.RecordedLit.obsFun`, the method
@@ -1014,25 +1013,26 @@ structure AppInversion : Type where
 `AppInversion` speaks about the machine store and about evidence at once.  Its
 content is at the evidence level alone, and `ObsFunInversion` states it there:
 a closed observation of a location at a method type stands on a **location
-node** — `vcLoc`, reporting `tyOf W ℓ`, or `vcLocAny`, reporting a `T_Vary`
-witness's type (`LocType`) — whose reported type has a method conjunct at the
-same label, related to the observed method type by closed inclusions.  That is
-the statement a normalizer produces: normalize the spine, read the base, invert
-the closed inclusion from the base's type.  `AppInversion.ofObs` derives
-`AppInversion` from it **with no further hypothesis**: `AtomTy.toVc` supplies
-the observation, and reading the conjunct back as the stored method is proved
-here for both kinds of location node (`LocType.method`), positional labels
-doing the work. -/
+node** — `vcLoc`, reporting `tyOf W ℓ`, or `vcLocAny`, reporting a self type
+that matches the stored literal (`LocType`) — whose reported type has a method
+conjunct at the same label, related to the observed method type by closed
+inclusions.  That is the statement a normalizer produces: normalize the spine,
+read the base, invert the closed inclusion from the base's type.
+`AppInversion.ofObs` derives `AppInversion` from it **with no further
+hypothesis**: `AtomTy.toVc` supplies the observation, and reading the conjunct
+back as the stored method is proved here for both kinds of location node
+(`LocType.method`), positional labels doing the work for `vcLoc`. -/
 
 /-- The type a location node reports for `ℓ`: the recorded one (`vcLoc`), or a
-`T_Vary` witness's (`vcLocAny`). -/
+self type that matches the stored literal (`vcLocAny`). -/
 inductive LocType {σ : Sig} (G : Store σ σ) (W : StoreTy σ) (ℓ : BVar σ .var) :
     Ty σ [] → Type where
   /-- `vcLoc`'s: the store typing's entry. -/
   | recorded : LocType G W ℓ (tyOf W ℓ)
-  /-- `vcLocAny`'s: a witness's self type, instantiated at `ℓ`. -/
-  | witness {T : Ty σ ([],x)} {ds : Dms σ ([],x)} :
-      Oopsla16.DmsHasType G (Ctx.nil.cons T) ds T → ds.substVr (.conc ℓ) = G.lookup ℓ →
+  /-- `vcLocAny`'s: a self type, instantiated at `ℓ`, with the match that is
+  the rule's premise. -/
+  | witness {T : Ty σ ([],x)} :
+      LitMatch (G.lookup ℓ).get? (T.substVr (.conc ℓ)) →
       LocType G W ℓ (T.substVr (.conc ℓ))
 
 /-- What a closed observation of `ℓ` at `{l : S0 → U0}` inverts to. -/
@@ -1113,59 +1113,39 @@ theorem DefsTy.fun?_of_conjunct {σ s : Sig} {G : Store σ σ} {W : StoreTy σ}
           rw [if_neg (Nat.ne_of_lt hlt)]
           exact ht
 
-/-- A member found at a label is below the length, in the source. -/
-theorem dms_get?_lt {σ s : Sig} : (ds : Dms σ s) → {l : Lb} → {d : Oopsla16.Dm σ s} →
-    ds.get? l = some d → l < ds.length
-  | .dnil, _, _, h => by cases h
-  | .dcons _ ds, l, _, h => by
-      simp only [Oopsla16.Dms.get?] at h
-      split at h
-      · rename_i heq
-        rw [heq]
-        exact Nat.lt_succ_self _
-      · exact Nat.lt_succ_of_lt (dms_get?_lt ds h)
-
-/-- **A method conjunct of a typed source list's type, under any substitution,
-is a method of the list**: its annotations are the ones `D_Fun` checked, up to
-`EqSome`.  Written prefix, for the reason `dmsHasType_objShape` gives. -/
-theorem dmsHasType_fun_of_conjunct {σ1 σ2 s1 s2 : Sig} {G : Store σ1 σ1}
-    {Γ : Ctx σ1 s1} (θ : Subst σ1 s1 σ2 s2) :
-    {ds : Dms σ1 s1} → {T : Ty σ1 s1} → Oopsla16.DmsHasType G Γ ds T →
-    {l : Lb} → {S : Ty σ2 s2} → {U : Ty σ2 (s2,x)} →
-    Conjunct (T.subst θ) (.TFun l S U) →
-    ∃ (T11 : Ty σ1 s1) (T12 : Ty σ1 (s1,x)) (OS : Option (Ty σ1 s1))
-      (OU : Option (Ty σ1 (s1,x))) (t : Oopsla16.Tm σ1 (s1,x)),
-      ds.get? l = some (.dfun OS OU t) ∧ Oopsla16.EqSome OS T11 ∧
-      Oopsla16.EqSome OU T12 ∧ T11.subst θ = S ∧ T12.subst θ.lift = U
-  | _, _, .D_Nil, _, _, _, c => nomatch c
-  | _, _, .D_Typ (ds := ds) hds, l, _, _, c => by
+/-- **A method conjunct of a matched type is a method of the machine store**,
+at the conjunct's own types.  `LitMatch` finds a stored method at the
+conjunct's label whose annotations agree with it by `EqSome`, and the erased
+machine store carries both annotations (`Defs.fun?_of_erase`), so there
+`EqSome` is equality. -/
+theorem LitMatch.method {σ : Sig} {G : MachineStore σ σ} {ℓ : BVar σ .var} :
+    {B : Ty σ []} → LitMatch (G.erase.lookup ℓ).get? B →
+    {l : Lb} → {S : Ty σ []} → {U : Ty σ ([],x)} →
+    Conjunct B (.TFun l S U) → ∃ t, (G.lookup ℓ).fun? l = some (S, U, t)
+  | _, .top, _, _, _, c => nomatch c
+  | _, .typ _ r, _, _, _, c => by
       cases c with
-      | there c =>
-          obtain ⟨T11, T12, OS, OU, t, hg, h1, h2, h3, h4⟩ :=
-            dmsHasType_fun_of_conjunct θ hds c
-          have hlt := dms_get?_lt ds hg
-          refine ⟨T11, T12, OS, OU, t, ?_, h1, h2, h3, h4⟩
-          simp only [Oopsla16.Dms.get?]
-          rw [if_neg (Nat.ne_of_lt hlt)]
-          exact hg
-  | _, _, .D_Fun (ds := ds) (T11 := T11) (T12 := T12) (OT11 := OS) (OT12 := OU)
-      (t12 := t) hds _ e1 e2, l, _, _, c => by
+      | there c => exact LitMatch.method r c
+  | _, .fn (b := b) hg e1 e2 r, _, _, _, c => by
       cases c with
-      | here => exact ⟨T11, T12, OS, OU, t, by simp [Oopsla16.Dms.get?], e1, e2, rfl, rfl⟩
-      | there c =>
-          obtain ⟨T11', T12', OS', OU', t', hg, h1, h2, h3, h4⟩ :=
-            dmsHasType_fun_of_conjunct θ hds c
-          have hlt := dms_get?_lt ds hg
-          refine ⟨T11', T12', OS', OU', t', ?_, h1, h2, h3, h4⟩
-          simp only [Oopsla16.Dms.get?]
-          rw [if_neg (Nat.ne_of_lt hlt)]
-          exact hg
+      | here =>
+          rw [← MachineStore.erase_lookup] at hg
+          obtain ⟨S', U', t', hf, hS, hU, _⟩ := Defs.fun?_of_erase _ b hg
+          refine ⟨t', ?_⟩
+          rw [hf]
+          rcases e1 with e1 | e1 <;> rcases e2 with e2 | e2
+          · rw [e1] at hS; cases hS
+          · rw [e1] at hS; cases hS
+          · rw [e2] at hU; cases hU
+          · rw [e1] at hS; rw [e2] at hU
+            cases hS; cases hU; rfl
+      | there c => exact LitMatch.method r c
 
 /-- **A location node's method conjunct is the stored method.**  For `vcLoc`
 by honesty (`DefsTy.fun?_of_conjunct` on the witness, moved along the skeleton
-by `Defs.fun?_of_skel`); for `vcLocAny` by the witness itself
-(`dmsHasType_fun_of_conjunct`), whose `EqSome` premises meet the machine
-store's annotations, which are always present (`Defs.fun?_of_erase`). -/
+by `Defs.fun?_of_skel`); for `vcLocAny` by its premise (`LitMatch.method`),
+whose `EqSome` annotations meet the machine store's, which are always present
+(`Defs.fun?_of_erase`). -/
 theorem LocType.method {σ : Sig} {G : MachineStore σ σ} {W : StoreTy σ}
     (h : MachineStore.Honest G W) {ℓ : BVar σ .var} {B : Ty σ []}
     (hB : LocType G.erase W ℓ B) {l : Lb} {S : Ty σ []} {U : Ty σ ([],x)}
@@ -1175,23 +1155,7 @@ theorem LocType.method {σ : Sig} {G : MachineStore σ σ} {W : StoreTy σ}
       obtain ⟨t0, ht0⟩ := DefsTy.fun?_of_conjunct (h.at' ℓ).typed c
       obtain ⟨t1, ht1, _⟩ := Defs.fun?_of_skel (h.at' ℓ).skel.symm ht0
       exact ⟨t1, ht1⟩
-  | witness hd hs =>
-      obtain ⟨T11, T12, OS, OU, t, hg, e1, e2, h3, h4⟩ :=
-        dmsHasType_fun_of_conjunct (Subst.one (.conc ℓ)) hd c
-      have hg' : (G.lookup ℓ).erase.get? l
-          = some (.dfun (OS.map (fun T => T.subst (Subst.one (.conc ℓ))))
-              (OU.map (fun T => T.subst (Subst.one (.conc ℓ)).lift))
-              (t.subst (Subst.one (.conc ℓ)).lift)) := by
-        rw [MachineStore.erase_lookup, ← hs, Oopsla16.Dms.get?_subst, hg]
-        rfl
-      obtain ⟨S', U', t', hf, hS, hU, _⟩ := Defs.fun?_of_erase _ l hg'
-      refine ⟨t', ?_⟩
-      rw [hf]
-      rcases e1 with e1 | e1 <;> rcases e2 with e2 | e2 <;> subst e1 <;> subst e2 <;>
-        simp at hS hU
-      subst hS
-      subst hU
-      rw [h3, h4]
+  | witness h0 => exact LitMatch.method h0 c
 
 /-- The location an atom of empty local scope is rooted at, read either way. -/
 theorem locOf_eq_loc {σ : Sig} : (p : Vr σ []) → locOf p = Vr.loc p
@@ -1370,14 +1334,14 @@ atom's root and drops its coercions, produces states that are **not** typable
 as they stand, so that no preservation theorem with the running term itself
 typed can hold for this machine.  Here is the claim, machine-checked.
 
-A location's own type is the type of a definition list — `⊤` or an
-intersection, by `DefsTy` over an honest machine store and by `DmsHasType`
-for a `T_Vary` witness — so a **bare** location is never typed at a method
-type, and an invocation whose receiver is a bare location is untypable
-(`MachineStore.Honest.app_var_untypable`).  `OnTheNose` exhibits a state typed
-on the nose — witness *equal* to the running term and continuation — whose
-`rename` step produces exactly such an invocation, while `StateTy.rename`
-still types it up to evidence. -/
+A **bare** location `var ℓ` is typed only by `varConc`, at the type the store
+typing records, which is the type of a definition list — `⊤` or an
+intersection, by `DefsTy` over an honest machine store — so it is never typed
+at a method type, and an invocation whose receiver is a bare location is
+untypable (`MachineStore.Honest.app_var_untypable`).  `OnTheNose` exhibits a
+state typed on the nose — witness *equal* to the running term and
+continuation — whose `rename` step produces exactly such an invocation, while
+`StateTy.rename` still types it up to evidence. -/
 
 /-- The shape a definition list's type has: `⊤` or an intersection.  Written
 prefix, not as `Ty.ObjShape`: dot notation on an `Oopsla16.Ty` would look for
@@ -1404,18 +1368,10 @@ theorem DefsTy.objShape {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ct
   | _, _, .dty _ => Or.inr ⟨_, _, rfl⟩
   | _, _, .dfun _ _ => Or.inr ⟨_, _, rfl⟩
 
-/-- So does a typed source definition list.  Written prefix: dot notation on an
-`Oopsla16` judgment would look for the name in `Oopsla16`. -/
-theorem dmsHasType_objShape {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} :
-    {ds : Dms σ s} → {T : Ty σ s} → Oopsla16.DmsHasType G Γ ds T → ObjShape T
-  | _, _, .D_Nil => Or.inl rfl
-  | _, _, .D_Typ _ => Or.inr ⟨_, _, rfl⟩
-  | _, _, .D_Fun _ _ _ _ => Or.inr ⟨_, _, rfl⟩
-
 /-- **Over an honest machine store a bare location has no method type.**  The
-two location rules report a definition list's type — the store typing's, which
-honesty types by `DefsTy`, or a `T_Vary` witness's — and neither is a
-`TFun`. -/
+only rule for `var ℓ` is `varConc`, which reports the store typing's type, and
+honesty types that by `DefsTy`: it is not a `TFun`.  The other location rule
+types the atom `loc ℓ T`, not `var ℓ`. -/
 theorem MachineStore.Honest.var_not_fun {σ : Sig} {G : MachineStore σ σ}
     {W : StoreTy σ} (h : MachineStore.Honest G W) {ℓ : BVar σ .var} {l : Lb}
     {S : Ty σ []} {U : Ty σ ([],x)}
@@ -1427,8 +1383,7 @@ theorem MachineStore.Honest.var_not_fun {σ : Sig} {G : MachineStore σ σ}
   | varConc =>
       rename_i l'
       exact (((h.at' l').typed.objShape.subst _).ne_fun) hT.symm
-  | varConcAny hd _ =>
-      exact ((((dmsHasType_objShape hd).subst _).subst _).ne_fun) hT.symm
+  | varConcAny => cases ha
   | cast => cases ha
   | pack => cases ha
   | unpack => cases ha

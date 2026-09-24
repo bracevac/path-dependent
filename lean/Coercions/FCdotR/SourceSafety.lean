@@ -86,8 +86,10 @@ This module also restates `Simulation`'s two theorems that took
   `let`s in its method bodies.  Those erase to object encodings
   (`Erasure.letEncode`), so the erased machine store is not the source store.
   Retyping the elaboration over it would need target typing carried back
-  through erasure into source typing.  `T_Vary` witnesses (`varConcAny`) read
-  whole stored literals, method bodies included, so a store with the same type
+  through erasure into source typing.  The location rules' premise
+  (`varConcAny`, `Typing.LitMatch`) reads a stored literal's type members and
+  method annotations, and the machine store annotates a Curry-style method
+  with the types its honesty witness checked, so a store with the same type
   members is not enough.  `STATUS.md` records that translation as not built.
   Stores reached by running are unaffected: a run from the empty store keeps
   the invariant by preservation, whatever the allocated literals are, which is

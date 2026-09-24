@@ -25,13 +25,15 @@ agreement the induction consumes, and no more:
 
 * `defs` — the stored definitions agree: `G'.lookup (θ.conc ℓ)` is
   `G.lookup ℓ` substituted.  `defL`/`defR` read it through `Dms.get?_subst`,
-  and `vcLocAny` reads it through `StoreTyping.StoreMap.ofSubst`: a `T_Vary`
-  witness is moved by the substitution's store part, which is a store renaming
-  (`varyTyped`, `varyStored`, `varyTy`).
+  and so does `vcLocAny`, whose premise compares its type with the stored
+  literal's members: `StoreTyping.defs_get?` reads the agreement at one label,
+  `StoreTyping.LitMatch.subst` moves the premise along it, and
+  `StoreTyping.varyTy` moves the type it reports.
 * `tys` — the stored literals' *types* agree at the same location.  Only
-  `vcLoc` reads it; `vcLocAny` does not, since it carries its own type.  It is stated at `tyOf`, i.e. after the self has been
-  instantiated, because that is the only form any rule mentions; requiring
-  `W' (θ.conc ℓ) = (W ℓ)[…]` would be strictly stronger and is not needed.
+  `vcLoc` reads it; `vcLocAny` does not, since it carries its own type.  It is
+  stated at `tyOf`, i.e. after the self has been instantiated, because that is
+  the only form any rule mentions; requiring `W' (θ.conc ℓ) = (W ℓ)[…]` would
+  be strictly stronger and is not needed.
 * `vc` — for each abstract variable, observation evidence for its image at its
   substituted lookup type.  This is the reference's `Definition Subst`
   (`dot_soundness.v:262`), whose hypothesis is an `htpy` and not a `has_type`.
@@ -524,13 +526,13 @@ def VcTy.substEv {σ1 s1 : Sig} {G : Store σ1 σ1} {W : StoreTy σ1}
   match d with
   | .vcVar (x := x) => E.vc x
   | .vcLoc (l := l) => ⟨.vcLoc (θ.conc l), (E.tys l) ▸ VcTy.vcLoc⟩
-  | .vcLocAny (l := l) (T := T0) (ds := ds) hd hs =>
-      ⟨.vcLocAny (θ.conc l) (T0.subst (Subst.atNil θ).lift)
-          (ds.subst (Subst.atNil θ).lift), by
-        have h := VcTy.vcLocAny (G := G') (W := W') (Γ := Γ')
-          (varyTyped θ E.defs hd) (varyStored θ E.defs hs)
-        rw [← varyTy θ l T0, Ty.renameStore, Dms.renameStore,
-          ← atNil_lift_eq_ofStore] at h
+  | .vcLocAny (l := l) (T := T0) h0 =>
+      ⟨.vcLocAny (θ.conc l) (T0.subst (Subst.atNil θ).lift), by
+        have h := VcTy.vcLocAny (G := G') (W := W') (Γ := Γ') (l := θ.conc l)
+          (T := T0.renameStore (storeRen θ)) (by
+            rw [← varyTy θ l T0]
+            exact LitMatch.subst (Subst.atNil θ) (defs_get? θ (E.defs l)) h0)
+        rw [← varyTy θ l T0, Ty.renameStore, ← atNil_lift_eq_ofStore] at h
         exact h⟩
   | .vcPack (l := l) (T := T0) dv =>
       ⟨.vcPack (T0.subst (Subst.atNil θ).lift) (VcTy.substEv dv E).1,

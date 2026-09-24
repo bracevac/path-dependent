@@ -39,12 +39,34 @@ derivation, so that `tyOf` is data and its stability under allocation is that
 function's extension.
 
 **A location is observed by two rules.**  `vcLoc` reads the type off that
-function; `vcLocAny` is the source's `T_Vary` verbatim, carrying the literal
-and the self type it was derived at, so a location may be observed at *any*
-type its stored literal has under its own self.  The second is what the
-elaboration of `T_Vary` uses, and it is why that elaboration needs no agreement
-between `W` and the source.  The first is kept because every result downstream
-is stated at it, and over an honest store it is an instance of the second
+function.  `vcLocAny` observes the location at a self type `T` its node
+carries, instantiated at the location, whenever that instance **matches** the
+stored literal (`LitMatch`): it is `⊤` or a right-nested intersection whose
+type members are exactly what the literal defines at their labels and whose
+method members agree with the stored methods' annotations.
+
+* **Every source `T_Vary` gives the match** (`StoreTyping.varyLitMatch`), so
+  a location may be observed at any type its stored literal has under its own
+  self.  That is what the elaboration of `T_Vary` uses, and why that
+  elaboration needs no agreement between `W` and the source.
+* **The converse fails.**  The match re-types no method body, and a member of
+  the literal may be left out, so the rule accepts types `T_Vary` does not
+  give: a location at `⊤`, say, or an unannotated stored method at any method
+  type.
+* **That is sound.**  Every result downstream is proved for the rule as stated.
+  Nothing reads a method body off the premise: at run time the body the
+  machine invokes is typed by the machine store's honesty invariant
+  (`Preservation.MachineStore.Honest`), and the erasure of a machine store
+  annotates every method, so there the match fixes each method member's types
+  exactly.
+* **It is decidable**: one pass over the type, comparing each member with what
+  the literal stores by the equality of types `Oopsla16.Ty` derives.  That is
+  what a checker needs.  The premise it replaced was a source re-typing of the
+  stored literal, method bodies included, and checking that would have meant
+  deciding `Oopsla16` typing.
+
+The first rule is kept because every result downstream is stated at it, and
+over an honest store it is an instance of the second
 (`StoreTyping.Store.Honest.vcLoc_of_vcLocAny`).
 
 Terms, atoms and definitions are not typed here yet; the milestone this module
@@ -60,7 +82,7 @@ pass it: `VcTy.vcSub (p := …)`.
 namespace FCdotR
 
 open FCdot (Kind Sig BVar Rename)
-open Oopsla16 (Vr Ty Lb Ctx Store Dms DmsHasType renameNil)
+open Oopsla16 (Vr Ty Lb Ctx Store Dm EqSome renameNil)
 
 /-- The type of each stored literal, before its self is instantiated. -/
 abbrev StoreTy (σ : Sig) : Type := (l : BVar σ .var) → Ty σ ([],x)
@@ -70,6 +92,29 @@ location itself.  The counterpart of `T_Vary`'s `substt x T'`
 (`dot.v:220-226`). -/
 def tyOf {σ : Sig} (W : StoreTy σ) (l : BVar σ .var) : Ty σ [] :=
   (W l).substVr (.conc l)
+
+/-- **A type matches a stored literal**, relative to the literal's member
+lookup `g` (its `Dms.get?`): it is `⊤`, or a right-nested intersection of a
+member with a matching rest.  A type member is exact and is what `g` finds at
+its label; a method member `{b : S → U}` finds a method at `b` whose
+annotations agree with `S` and `U` by `EqSome` (`dot.v:216`), so an absent
+annotation agrees with any type.  Nothing is asked of a method's body, and a
+member of the literal may be left out.
+
+This is the premise of the two location rules, `VcTy.vcLocAny` and
+`TermTyping.AtomTy.varConcAny`.  Whether it holds is decided by one pass over
+the type. -/
+inductive LitMatch {σ : Sig} (g : Lb → Option (Dm σ [])) : Ty σ [] → Type where
+  /-- `⊤` matches every literal. -/
+  | top : LitMatch g .TTop
+  /-- A type member, exact, as `g` defines it at its label. -/
+  | typ {b : Lb} {TX B : Ty σ []} :
+      g b = some (.dty TX) → LitMatch g B → LitMatch g (.TAnd (.TTyp b TX TX) B)
+  /-- A method member, at types the stored method's annotations allow. -/
+  | fn {b : Lb} {S : Ty σ []} {U : Ty σ ([],x)} {B : Ty σ []}
+      {OS : Option (Ty σ [])} {OU : Option (Ty σ ([],x))} {t : Oopsla16.Tm σ ([],x)} :
+      g b = some (.dfun OS OU t) → EqSome OS S → EqSome OU U →
+      LitMatch g B → LitMatch g (.TAnd (.TFun b S U) B)
 
 mutual
 
@@ -160,16 +205,18 @@ inductive VcTy : {σ s : Sig} → Store σ σ → StoreTy σ → Ctx σ s →
   | vcLoc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
       {l : BVar σ .var} :
       VcTy G W Γ (.conc l) (.vcLoc l) (tyOf W l)
-  /-- The stored literal's type **as a source witness derives it**: `T_Vary`
-  (`dot.v:220-226`) verbatim, with its two premises unchanged.  Any type the
-  stored literal has under its own self may be observed at the location, not
-  merely the one `StoreTy` records — which is what the source's rule licenses
-  and what makes the elaboration of `T_Vary` unconditional. -/
+  /-- The stored literal's type **at a self type the node carries**: `T`,
+  instantiated at the location, whenever that instance matches the stored
+  literal (`LitMatch`).  Every source `T_Vary` (`dot.v:220-226`) gives such a
+  match (`StoreTyping.varyLitMatch`), so any type the stored literal has under
+  its own self may be observed at the location, not merely the one `StoreTy`
+  records — which is what makes the elaboration of `T_Vary` unconditional.
+  The converse fails: the premise re-types no method body, so the rule also
+  observes a location at types `T_Vary` does not give it, such as `⊤`. -/
   | vcLocAny {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
-      {l : BVar σ .var} {T : Ty σ ([],x)} {ds : Dms σ ([],x)} :
-      DmsHasType G (Ctx.nil.cons T) ds T →
-      ds.substVr (.conc l) = G.lookup l →
-      VcTy G W Γ (.conc l) (.vcLocAny l T ds) (T.substVr (.conc l))
+      {l : BVar σ .var} {T : Ty σ ([],x)} :
+      LitMatch (G.lookup l).get? (T.substVr (.conc l)) →
+      VcTy G W Γ (.conc l) (.vcLocAny l T) (T.substVr (.conc l))
   /-- **Packing, at a location only.**  The subject index is `Vr.conc`, so
   there is no instance of this rule at an abstract variable. -/
   | vcPack {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}

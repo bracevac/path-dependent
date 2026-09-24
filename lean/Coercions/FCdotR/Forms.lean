@@ -54,7 +54,7 @@ nothing in it presumes the store is honest or the evidence well typed.
 namespace FCdotR
 
 open FCdot (Kind Sig BVar Rename)
-open Oopsla16 (Vr Ty Lb Ctx Store Dm Dms renameNil)
+open Oopsla16 (Vr Ty Lb Ctx Store Dm renameNil)
 
 /-! ## Measures on evidence -/
 
@@ -87,7 +87,7 @@ inclusions its widenings carry. -/
 def Vc.size {σ s : Sig} : Vc σ s → Nat
   | .vcVar => 1
   | .vcLoc _ => 1
-  | .vcLocAny _ _ _ => 1
+  | .vcLocAny _ _ => 1
   | .vcPack _ v => v.size + 1
   | .vcUnfold _ v => v.size + 1
   | .vcSub _ e v => e.size + v.size + 1
@@ -125,7 +125,7 @@ inclusions its widenings carry. -/
 def Vc.packs {σ s : Sig} : Vc σ s → Nat
   | .vcVar => 0
   | .vcLoc _ => 0
-  | .vcLocAny _ _ _ => 0
+  | .vcLocAny _ _ => 0
   | .vcPack _ v => v.packs + 1
   | .vcUnfold _ v => v.packs
   | .vcSub _ e v => e.packs + v.packs
@@ -140,7 +140,7 @@ are not counted. -/
 def Vc.spinePacks {σ s : Sig} : Vc σ s → Nat
   | .vcVar => 0
   | .vcLoc _ => 0
-  | .vcLocAny _ _ _ => 0
+  | .vcLocAny _ _ => 0
   | .vcPack _ v => v.spinePacks + 1
   | .vcUnfold _ v => v.spinePacks
   | .vcSub _ _ v => v.spinePacks
@@ -150,7 +150,7 @@ chain of widenings, packings and unfoldings stands on. -/
 def Vc.base {σ s : Sig} : Vc σ s → Vc σ s
   | .vcVar => .vcVar
   | .vcLoc l => .vcLoc l
-  | .vcLocAny l T ds => .vcLocAny l T ds
+  | .vcLocAny l T => .vcLocAny l T
   | .vcPack _ v => v.base
   | .vcUnfold _ v => v.base
   | .vcSub _ _ v => v.base
@@ -160,7 +160,7 @@ steps of the normalizer against the pack measure. -/
 def Vc.spineLen {σ s : Sig} : Vc σ s → Nat
   | .vcVar => 0
   | .vcLoc _ => 0
-  | .vcLocAny _ _ _ => 0
+  | .vcLocAny _ _ => 0
   | .vcPack _ v => v.spineLen + 1
   | .vcUnfold _ v => v.spineLen + 1
   | .vcSub _ _ v => v.spineLen + 1
@@ -173,10 +173,9 @@ def Vc.spineLen {σ s : Sig} : Vc σ s → Nat
 @[simp] theorem Vc.spinePacks_vcLoc {σ s : Sig} (l : BVar σ .var) :
     (Vc.vcLoc (s := s) l).spinePacks = 0 := rfl
 
-/-- A location observed through a source witness carries no packing either. -/
+/-- A location observed at a carried self type carries no packing either. -/
 @[simp] theorem Vc.spinePacks_vcLocAny {σ s : Sig} (l : BVar σ .var)
-    (T : Ty σ ([],x)) (ds : Dms σ ([],x)) :
-    (Vc.vcLocAny (s := s) l T ds).spinePacks = 0 := rfl
+    (T : Ty σ ([],x)) : (Vc.vcLocAny (s := s) l T).spinePacks = 0 := rfl
 
 /-- Packing adds one to the spine count. -/
 @[simp] theorem Vc.spinePacks_vcPack {σ s : Sig} (T : Ty σ (s,x)) (v : Vc σ s) :
@@ -197,7 +196,7 @@ term.  Stated so that a bound on `packs` is also a bound on `spinePacks`. -/
 theorem Vc.spinePacks_le_packs {σ s : Sig} : (v : Vc σ s) → v.spinePacks ≤ v.packs
   | .vcVar => Nat.le_refl 0
   | .vcLoc _ => Nat.le_refl 0
-  | .vcLocAny _ _ _ => Nat.le_refl 0
+  | .vcLocAny _ _ => Nat.le_refl 0
   | .vcPack _ v => Nat.succ_le_succ (Vc.spinePacks_le_packs v)
   | .vcUnfold _ v => Vc.spinePacks_le_packs v
   | .vcSub _ e v => Nat.le_trans (Vc.spinePacks_le_packs v) (Nat.le_add_left _ e.packs)
@@ -285,9 +284,9 @@ inductive Vc.InNf {σ : Sig} : {s : Sig} → Vc σ s → Prop where
   | vcVar {s : Sig} : Vc.InNf (.vcVar (σ := σ) (s := s))
   /-- A location is normal. -/
   | vcLoc {s : Sig} {l : BVar σ .var} : Vc.InNf (.vcLoc (σ := σ) (s := s) l)
-  /-- A location observed through a source witness is normal. -/
-  | vcLocAny {s : Sig} {l : BVar σ .var} {T : Ty σ ([],x)} {ds : Dms σ ([],x)} :
-      Vc.InNf (.vcLocAny (σ := σ) (s := s) l T ds)
+  /-- A location observed at a carried self type is normal. -/
+  | vcLocAny {s : Sig} {l : BVar σ .var} {T : Ty σ ([],x)} :
+      Vc.InNf (.vcLocAny (σ := σ) (s := s) l T)
   /-- Packing preserves normality. -/
   | vcPack {s : Sig} {T : Ty σ (s,x)} {v : Vc σ s} :
       Vc.InNf v → Vc.InNf (.vcPack T v)
@@ -326,9 +325,9 @@ inductive Vc.RedexFree {σ : Sig} : {s : Sig} → Vc σ s → Prop where
   | vcVar {s : Sig} : Vc.RedexFree (.vcVar (σ := σ) (s := s))
   /-- A location is redex-free. -/
   | vcLoc {s : Sig} {l : BVar σ .var} : Vc.RedexFree (.vcLoc (σ := σ) (s := s) l)
-  /-- A location observed through a source witness is redex-free. -/
-  | vcLocAny {s : Sig} {l : BVar σ .var} {T : Ty σ ([],x)} {ds : Dms σ ([],x)} :
-      Vc.RedexFree (.vcLocAny (σ := σ) (s := s) l T ds)
+  /-- A location observed at a carried self type is redex-free. -/
+  | vcLocAny {s : Sig} {l : BVar σ .var} {T : Ty σ ([],x)} :
+      Vc.RedexFree (.vcLocAny (σ := σ) (s := s) l T)
   /-- Packing preserves redex-freedom. -/
   | vcPack {s : Sig} {T : Ty σ (s,x)} {v : Vc σ s} :
       Vc.RedexFree v → Vc.RedexFree (.vcPack T v)
@@ -391,7 +390,7 @@ here; the enclosing selection constrains them when its subject is a location. -/
 def Vc.PackBound {σ s : Sig} (k : Nat) : Vc σ s → Prop
   | .vcVar => True
   | .vcLoc _ => True
-  | .vcLocAny _ _ _ => True
+  | .vcLocAny _ _ => True
   | .vcPack _ v => v.PackBound k
   | .vcUnfold _ v => v.PackBound k
   | .vcSub _ e v => e.PackBound k ∧ v.PackBound k
@@ -431,7 +430,7 @@ theorem Vc.PackBound.mono {σ s : Sig} {j k : Nat} (hjk : j ≤ k) :
     (v : Vc σ s) → v.PackBound j → v.PackBound k
   | .vcVar, _ => trivial
   | .vcLoc _, _ => trivial
-  | .vcLocAny _ _ _, _ => trivial
+  | .vcLocAny _ _, _ => trivial
   | .vcPack _ v, h | .vcUnfold _ v, h => by
       simp only [Vc.PackBound] at h ⊢
       exact Vc.PackBound.mono hjk v h
@@ -473,7 +472,7 @@ theorem Vc.packBound_of_packs {σ s : Sig} {k : Nat} :
     (v : Vc σ s) → v.packs < k → v.PackBound k
   | .vcVar, _ => trivial
   | .vcLoc _, _ => trivial
-  | .vcLocAny _ _ _, _ => trivial
+  | .vcLocAny _ _, _ => trivial
   | .vcPack _ v, h => by
       simp only [Vc.packs] at h
       simp only [Vc.PackBound]

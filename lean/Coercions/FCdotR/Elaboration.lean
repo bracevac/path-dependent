@@ -33,10 +33,12 @@ mentions a location.  Two rules are derived rather than primitive, exactly as
 ## `T_Vary` needs no hypothesis either
 
 The source's `T_Vary` (`dot.v:220-226`) re-types the stored literal at a type
-`T` of its own choosing.  The target has that rule verbatim,
-`AtomTy.varConcAny`, with the same two premises, so `T_Vary` elaborates to it
-directly and the term elaboration, like the evidence elaboration, holds at an
-**arbitrary** store typing `W`.
+`T` of its own choosing.  The target's `AtomTy.varConcAny` types the atom
+`loc ℓ T` at that same type, and its premise, that `T[ℓ]` matches the stored
+literal (`Typing.LitMatch`), follows from `T_Vary`'s two
+(`StoreTyping.varyLitMatch`).  So `T_Vary` elaborates to it directly and the
+term elaboration, like the evidence elaboration, holds at an **arbitrary**
+store typing `W`.
 
 It used to go through `AtomTy.varConc`, which reads the type off `W`, and so
 needed a hypothesis `VaryEv G W`: that `W`'s entry at every location is
@@ -46,8 +48,8 @@ principal type (`D_Fun` types a method body with `HasType`, which has `T_Sub`),
 so two `T_Vary` derivations at one location can give incomparable types, and no
 single entry of `W` is below both.  `StoreTyping.Store.Honest.vary` remains the
 converse bridge, from `varConc` back to a source `T_Vary`, and
-`Store.Honest.varConc_of_varConcAny` says `varConc` is the instance of
-`varConcAny` at `W ℓ` over an honest store.
+`Store.Honest.varConc_of_varConcAny` says that over an honest store
+`varConcAny` at `W ℓ` reports the type `varConc` does.
 
 ## The fragment: applications with variable operands
 
@@ -246,20 +248,22 @@ structure AtomElab {σ s : Sig} (G : Store σ σ) (W : StoreTy σ) (Γ : Ctx σ 
   typed : AtomTy G W Γ atom T
 
 /-- **A source typing of a variable elaborates to an atom rooted at it.**
-`T_Varz` and `T_Vary` become the variable rules `varAbs` and `varConcAny`,
-`T_Sub` becomes a `cast`, `T_VarPack` and `T_VarUnpack` become `pack` and
-`unpack`; the three rules whose subject is not a variable cannot conclude at
-`.tvar p`, and the match discards them.
+`T_Varz` becomes the variable rule `varAbs`, `T_Vary` at the self type `T`
+becomes the atom `loc ℓ T` typed by `varConcAny`, `T_Sub` becomes a `cast`,
+`T_VarPack` and `T_VarUnpack` become `pack` and `unpack`; the three rules whose
+subject is not a variable cannot conclude at `.tvar p`, and the match discards
+them.
 
-**No hypothesis.**  `T_Vary` lands on `AtomTy.varConcAny`, which has the source
-rule's premises verbatim, so nothing beyond the source derivation is used and
-`W` is arbitrary.  This replaces the earlier statement, which took the
+**No hypothesis.**  `T_Vary` lands on `AtomTy.varConcAny`, whose premise its
+two premises give (`varyLitMatch`), so nothing beyond the source derivation is
+used and `W` is arbitrary.  This replaces the earlier statement, which took the
 hypothesis `VaryEv G W` and elaborated `T_Vary` to `varConc` followed by a cast;
 see the module header for why that hypothesis was false in general. -/
 def elabAtom {σ s : Sig} {G : Store σ σ} (W : StoreTy σ)
     {Γ : Ctx σ s} : {p : Vr σ s} → {T : Ty σ s} → HasType G Γ (.tvar p) T →
     AtomElab G W Γ p T
-  | _, _, .T_Vary (x := l) hds heq => ⟨.var (.conc l), rfl, .varConcAny hds heq⟩
+  | _, _, .T_Vary (x := l) (T := T0) hds heq =>
+      ⟨.loc l T0, rfl, .varConcAny (varyLitMatch hds heq)⟩
   | _, _, .T_Varz (x := y) => ⟨.var (.abs y), rfl, .varAbs⟩
   | p, _, .T_VarPack (T := T) h =>
       let r := elabAtom W h
