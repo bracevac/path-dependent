@@ -50,8 +50,20 @@ every store reachable by a translated program.
 **`Runtime.lean`** is the untyped language both machines erase into, with
 objects that keep their term members.
 
+## The second line: Oopsla16 → FCdotR
+
+**`Oopsla16/`** ports the Rompf–Amin OOPSLA 2016 DOT calculus, which has
+recursive subtyping, from its Coq artifact (`minidot`, `oopsla16/dot.v`).
+**`FCdotR/`** is its explicit-evidence target, with `Oopsla16`'s own types.
+Headline: `Oopsla16.oopsla16_safety`, a closed program typed over the empty
+store never gets stuck, proved through elaboration into FCdotR.  An executable
+checker decides FCdotR typing, proved sound and complete.  The line shares only
+`FCdot/Debruijn.lean` with the main line.  See
+[`Oopsla16/README.md`](Oopsla16/README.md) and [`FCdotR/README.md`](FCdotR/README.md).
+
+
 Axioms throughout: `propext` and `Quot.sound`.  No `sorry`, `axiom`, `partial`,
-or `native_decide` in the main line; the mandatory examples E1–E5 and the
+or `native_decide` in either line; the mandatory examples E1–E5 and the
 acceptance test E8 (the refinement `x.A ∧ {a : ⊤}` of an abstract type) are
 decided in the kernel on both sides and have equal erasures.
 
@@ -66,6 +78,6 @@ capture sorts: syntax, checked logical evidence, sound and complete
 checkers, theory models and maps, consistency models, and a classifier-kind
 algebra.  It has no operational semantics.
 
-Each directory's README lists its modules.
+Each directory has a README.
 
 **`paper/`** is the write-up of the main line (acmart, `latexmk -pdf main.tex`), with a table mapping its results to the Lean declarations.
