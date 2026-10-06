@@ -20,10 +20,9 @@ occur in the state only because they occur in the syntax.
 
 ## What the store holds, and why it is not the source's
 
-The brief for this module asked for a machine over an `Oopsla16.Store σ σ`,
-i.e. over *erased* definition lists, so that the source machine and the target
-machine share one store.  That cannot be closed, and the reason is worth
-recording: a stored `dfun`'s body is what the machine runs after an
+A machine over an `Oopsla16.Store σ σ`, i.e. over *erased* definition lists,
+would let the source machine and the target machine share one store.  That
+does not close: a stored `dfun`'s body is what the machine runs after an
 invocation, so if the store held erased definitions, `app` would produce an
 `Oopsla16.Tm` and the target machine would leave its own language after one
 method call.  The store therefore holds **target** definitions, `Defs σ []`,

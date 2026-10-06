@@ -17,8 +17,7 @@ Three results are unconditional.
   relates types whose outermost formers stand in one of ten named relations.
 * Its corollaries `typ_le_bind_is_trans` and `top_le_bot_is_trans`: an inclusion
   from a type member to a recursive type, or from `⊤` to `⊥`, can only be a
-  transitivity chain.  These are the two inversions the red team proved by cases
-  on one example store; here they hold over every store and in every context.
+  transitivity chain, over every store and in every context.
 
 Then consistency itself, which is **not** unconditional.  `Vacuous` is a
 syntactic over-approximation of "no value of this store inhabits this type":
@@ -385,9 +384,9 @@ only other base and it has no rule at a concrete subject.  This is the part of
 `vc_canon` that needs nothing — no store invariant, no normalization, no
 hypothesis.
 
-**The statement is replaced.**  It used to conclude `v.base = .vcLoc ℓ`, which
-became false when `VcTy.vcLocAny` was added: that rule is a second base at a
-location.  The disjunction is the exact replacement. -/
+**The disjunction, not a plain equality.**  `v.base = .vcLoc ℓ` alone is false:
+`VcTy.vcLocAny` is a second base rule at a location, so the disjunction covers
+both bases exactly. -/
 theorem VcTy.base_conc {σ s : Sig} {G : Store σ σ} {W : StoreTy σ} {Γ : Ctx σ s}
     {l : BVar σ .var} : {v : Vc σ []} → {T : Ty σ []} →
     VcTy G W Γ (.conc l) v T →

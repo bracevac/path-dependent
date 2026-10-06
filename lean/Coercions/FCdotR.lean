@@ -25,7 +25,7 @@ import Coercions.FCdotR.Correspondence
 import Coercions.FCdotR.ElaborationFull
 import Coercions.FCdotR.Simulation
 import Coercions.FCdotR.SourceSafety
-import Coercions.FCdotR.Deliverables
+import Coercions.FCdotR.Counterparts
 import Coercions.FCdotR.Coverage
 import Coercions.FCdotR.Checker
 import Coercions.FCdotR.CheckerCompleteness

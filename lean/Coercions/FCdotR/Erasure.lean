@@ -130,8 +130,8 @@ def Defs.erase {σ s : Sig} : Defs σ s → Oopsla16.Dms σ s
 
 end
 
-/-- A store erases entrywise.  This is the sharing the brief asked for: the
-machine's store *is* the source's, up to this map. -/
+/-- A store erases entrywise: the machine's store *is* the source's, up to
+this map. -/
 def MachineStore.erase {σ : Sig} : {σ' : Sig} → MachineStore σ σ' → Oopsla16.Store σ σ'
   | _, .nil => .nil
   | _, .cons G ds => .cons G.erase ds.erase

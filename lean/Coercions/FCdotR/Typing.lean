@@ -104,9 +104,9 @@ second at the recorded type (`StoreTyping.Store.Honest.vcLoc_of_vcLocAny`);
 at a location whose literal has an unannotated method it is not an instance
 of the second at all (`StoreTyping.Store.Honest.not_vcLocAny_tyOf`).
 
-Terms, atoms and definitions are not typed here yet; the milestone this module
-closes is that an `Oopsla16` recursive-subtyping derivation elaborates to
-closed evidence.
+Terms, atoms and definitions are not typed here; this module covers the two
+evidence judgments, under which an `Oopsla16` recursive-subtyping derivation
+elaborates to closed evidence.
 
 One ergonomic consequence of indexing by a prefix: `scopeAt` is not injective —
 `scopeAt (conc ℓ)` is `[]` for every `ℓ` — so a subject cannot be recovered

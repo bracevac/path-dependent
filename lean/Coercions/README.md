@@ -68,22 +68,33 @@ term, the synthesized type, and the checker's verdict on the translation.  It
 builds as the library `Frontend`, which is not a default target, so the
 metatheory does not wait on it.
 
-## The second line: Oopsla16 → FCdotR
+## The second line: OOPSLA 2016 DOT and FCdotR
 
-**`Oopsla16/`** ports the Rompf–Amin OOPSLA 2016 DOT calculus, which has
-recursive subtyping, from its Coq artifact (`minidot`, `oopsla16/dot.v`).
-**`FCdotR/`** is its explicit-evidence target, with `Oopsla16`'s own types.
-Headline: `Oopsla16.oopsla16_safety`, a closed program typed over the empty
-store never gets stuck, proved through elaboration into FCdotR.  An executable
-checker decides FCdotR typing, proved sound and complete.  The line shares only
-`FCdot/Debruijn.lean` with the main line.  See
-[`Oopsla16/README.md`](Oopsla16/README.md) and [`FCdotR/README.md`](FCdotR/README.md).
+**`Oopsla16/`** ports the DOT calculus of Rompf and Amin (OOPSLA 2016) from its Coq artifact
+(`minidot`, `oopsla16/dot.v`).  Unlike the WadlerFest DOT of the main line, it has recursive
+subtyping: `stp_bindx` proves `μ(z. S) <: μ(z. T)` from `S <: T` under the assumption `z : S`.
+WadlerFest DOT only packs a variable into a recursive type or unpacks it.  Objects hold methods,
+types include unions, and terms are not in normal form.  Type selections in subtyping go through a
+variable typing, `htp`, with no packing rule, and `PackingCounterexample` shows that adding one is
+unsound.
 
+**`FCdotR/`** is its target with explicit evidence.  It keeps `Oopsla16`'s types, so the type
+translation is the identity, and its coercion `bindx` is checked under the self assumption that
+`stp_bindx` needs.  The main line's target FCdot has no rule that checks a coercion under an assumption
+about the self, so this line has a target of its own.  The headline is
+`Oopsla16.oopsla16_safety`: a closed program typed over the empty store never gets stuck on
+`Oopsla16`'s own machine.  It is proved by elaborating the program into FCdotR and simulating the
+run there.  An executable checker decides FCdotR typing and is proved sound and complete.  The
+line shares only `FCdot/Debruijn.lean` with the main line.  See [`Oopsla16/README.md`](Oopsla16/README.md)
+and [`FCdotR/README.md`](FCdotR/README.md).
 
-Axioms throughout: `propext` and `Quot.sound`.  No `sorry`, `axiom`, `partial`,
-or `native_decide` in either line; the mandatory examples E1–E5 and the
-acceptance test E8 (the refinement `x.A ∧ {a : ⊤}` of an abstract type) are
-decided in the kernel on both sides and have equal erasures.
+**`coq/oopsla16/`** at the repository root proves, in the reference's own Coq definitions, that
+packing in `htp` is unsound and what the port's restrictions cost.
+
+Axioms throughout: `propext` and `Quot.sound`.  Neither line contains `sorry`, `axiom`, `partial`
+or `native_decide`.  The main line's examples E1 to E5 and its acceptance test E8 (the refinement
+`x.A ∧ {a : ⊤}` of an abstract type) are decided in the kernel on both sides and have equal
+erasures.
 
 ## Extensions
 

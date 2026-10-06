@@ -1,12 +1,12 @@
 import Coercions.FCdotR.SourceSafety
 
 /-!
-# The WadlerFest deliverables, for `Oopsla16 → FCdotR`
+# Counterparts of the WadlerFest line's results, for `Oopsla16 → FCdotR`
 
 The WadlerFest line (`DotToFCdot`, `FCdot`) proves a fixed list of results.
-Most of them already have a counterpart in this line.  This module adds the
-counterparts that were missing and follow directly from what exists.  None of
-them takes a hypothesis.
+Most of them already have a counterpart elsewhere in this line.  This module
+adds the remaining counterparts, each following directly from what exists.
+None of them takes a hypothesis.
 
 ## What is here
 
@@ -350,7 +350,7 @@ end Oopsla16
 
 /-! ## Worked instance -/
 
-namespace FCdotR.Deliverables
+namespace FCdotR.Counterparts
 
 open FCdot (Kind Sig BVar Rename)
 open Oopsla16 (Ty Store Grows Ctx)
@@ -366,4 +366,4 @@ example {σ : Sig} {g : Grows [] σ} {G' : Store σ σ} {t' : Oopsla16.Tm σ []}
   match Oopsla16.reachable_related SourceSafety.RecursiveArg.progTy emptyStoreTy run with
   | ⟨st, trun, hr, _⟩ => ⟨st, trun, hr⟩
 
-end FCdotR.Deliverables
+end FCdotR.Counterparts

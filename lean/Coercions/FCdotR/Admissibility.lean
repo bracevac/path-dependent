@@ -42,9 +42,9 @@ an annotation absent, `EqSome` fixes nothing.  Over a store holding
 `{0 : ⊤ → ⊤} ∧ ⊤`, and a match that accepted any method type there would accept
 `{0 : ⊤ → ⊥} ∧ ⊤`, whose method member is not a conjunct of the recorded type;
 the argument below would then break, and the target would type `ℓ.0(ℓ)` at
-`⊥`.  An earlier version of `LitMatch` did accept it.  The match now refuses
-every method member at such a location: a method member needs a method stored
-with both annotations at its label (`StoreTyping.LitMatch.storedMethod`,
+`⊥`.  The match refuses every method member at such a location: a method
+member needs a method stored with both annotations at its label
+(`StoreTyping.LitMatch.storedMethod`,
 `LitMatch.no_unannotated_method`).  `CheckerExamples` (section *Unannotated
 stored methods*) runs two instances, at `{0 : ⊤ → ⊤} ∧ ⊤` and at
 `{0 : ⊤ → ⊥} ∧ ⊤`.

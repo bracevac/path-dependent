@@ -56,7 +56,7 @@ therefore stated as what the transport needs — a stuck source configuration
 has a target run from any related state to a stuck state (`SimStuckSpec`) —
 and the answer direction separately (`Rel.final`).
 
-## INTERFACE FOR THE NEXT STAGES
+## THE SPECIFICATIONS THAT ELABORATION AND SIMULATION MEET
 
 The statements, verbatim from the declarations below (`Store`, `Ctx`, `Ty`,
 `Grows` and `HasType` are `Oopsla16`'s; `Tm`, `State`, `Steps`, `TmTy`,
@@ -944,7 +944,8 @@ theorem State.stuck_app {σ : Sig} {Gt : MachineStore σ σ} {K : Cont σ} {a b 
 
 /-! ## The specifications
 
-The statements the later stages inhabit, and the statement they combine to.
+The three specifications stated above, restated as declarations: `ElabSpec`
+and the two halves of `SimSpec`, and the statement they combine to.
 `ElabSpec` is the one this module does **not** prove (`ElaborationFull.elabSpec`
 does); `SimStepSpec` and `SimStuckSpec` are proved below (`sim_step`,
 `sim_stuck`). -/

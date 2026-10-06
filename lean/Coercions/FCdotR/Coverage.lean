@@ -5,8 +5,7 @@ import Coercions.FCdotR.Admissibility
 # What the safety theorems reach, and what the location rules trust
 
 Three groups of results about the reach of `SourceSafety`'s theorems and of the
-location rules.  In earlier rounds each was checked only by a scratch file
-outside the repository, or only argued.
+location rules.
 
 * **The headline theorems rule programs out** (`NonVacuity`).  The stuck
   predicate `SrcStuck` is inhabited (`badTerm_stuck`).  The ill-typed closed

@@ -61,9 +61,9 @@ open Oopsla16 (Vr Ty Lb Dm Dms Ctx HasType DmsHasType EqSome)
 /-- **An elaborated atom erases to its source variable.**  `Atom.erase` is the
 root, and `AtomElab.root` says the root is the variable the source typed.
 
-The statement is replaced, not weakened: it used to take `V : VaryEv G W`,
-which `elabAtom` no longer takes; it now holds at every store typing `W`, over
-every annotated store (`Store.Annotated`, the hypothesis `elabAtom` takes). -/
+The statement holds at every store typing `W`, over every annotated store
+(`Store.Annotated`, the hypothesis `elabAtom` takes), with no hypothesis about
+how `W` relates to the source derivation. -/
 theorem elabAtom_erase {σ s : Sig} {G : Oopsla16.Store σ σ} (W : StoreTy σ)
     [hA : Store.Annotated G] {Γ : Ctx σ s} {p : Vr σ s} {T : Ty σ s}
     (h : HasType G Γ (.tvar p) T) :
@@ -77,10 +77,8 @@ structural recursion on the derivation, one clause per rule of `HasType`, on
 the fragment `TmFrag`, at every store typing `W`.  The clause for `T_Vary`
 needs only that the elaborated atom is rooted where the source's variable is.
 
-The statement is replaced, not weakened: it used to take `V : VaryEv G W`,
-inherited from `elabHasType`, and used nothing of it; that hypothesis is gone
-from `elabHasType` and so from here.  It takes `elabHasType`'s instance
-`Store.Annotated G` and uses nothing of it either. -/
+It takes `elabHasType`'s instance `Store.Annotated G` and uses nothing of it
+either: the hypothesis is there only because `elabHasType` takes it. -/
 theorem elabHasType_erase {σ s : Sig} {G : Oopsla16.Store σ σ} (W : StoreTy σ)
     [hA : Store.Annotated G] {Γ : Ctx σ s} :
     {t : Oopsla16.Tm σ s} → {T : Ty σ s} → (h : HasType G Γ t T) →
@@ -110,9 +108,8 @@ theorem elabHasType_erase {σ s : Sig} {G : Oopsla16.Store σ σ} (W : StoreTy �
 
 /-- **An elaborated definition list erases to the source list it came from.**
 The `dfun` clause is where the fragment's Church-style annotations and
-`D_Fun`'s `EqSome` premises meet.  Like `elabHasType_erase`, its statement no
-longer takes `VaryEv G W` and holds at every store typing `W`, over every
-annotated store. -/
+`D_Fun`'s `EqSome` premises meet.  Like `elabHasType_erase`, the statement
+holds at every store typing `W`, over every annotated store. -/
 theorem elabDms_erase {σ s : Sig} {G : Oopsla16.Store σ σ} (W : StoreTy σ)
     [hA : Store.Annotated G] {Γ : Ctx σ s} :
     {ds : Dms σ s} → {T : Ty σ s} → (h : DmsHasType G Γ ds T) →
@@ -212,8 +209,8 @@ type `{A : D .. D} ∧ ⊤`, while `Wtop` records `⊤` there.  The elaboration 
 on `AtomTy.varConcAny`, so it goes through at `Wtop` with nothing to show about
 `Wtop`: it is `q` at the source's self type, and its premise is the source
 witness's match (`StoreTyping.varyLitMatch`), available because the store holds
-type members only (`TwoObjectStore.annotated`).  The former route through
-`varConc` would have needed `⊤ ≤ {A : D .. D} ∧ ⊤` as target evidence, which is
+type members only (`TwoObjectStore.annotated`).  Going through `varConc`
+instead would have needed `⊤ ≤ {A : D .. D} ∧ ⊤` as target evidence, which is
 what `VaryEv` asked for. -/
 example :
     (elabHasType Wtop Oopsla16.PackingCounterexample.qTyped .tvar).1

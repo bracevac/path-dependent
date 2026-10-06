@@ -290,7 +290,7 @@ of `z.A`, a member of the self it is being defined in, and it does so by
 casting its parameter through two `selR`s whose subject is the self of the
 enclosing `bindx`.
 
-Each stage is a pair of the evidence or term and its derivation, so that the
+Each step is a pair of the evidence or term and its derivation, so that the
 syntax is inferred from the typing rather than written twice. -/
 
 namespace FunctionFieldObject

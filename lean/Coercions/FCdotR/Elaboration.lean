@@ -59,14 +59,13 @@ typing; the next paragraph says why going through `varConc` fails in general.
 That no elaboration of that generality exists without the hypothesis is argued
 here, not proved.
 
-The elaboration used to go through `AtomTy.varConc`, which reads the type off
-`W`, and so needed a hypothesis `VaryEv G W`: that `W`'s entry at every
-location is included in whatever type the source derived there.  That
-hypothesis was **removed**, not discharged, because it fails in general, by an
-argument that is not a Lean proof: a literal has no principal type (`D_Fun`
-types a method body with `HasType`, which has `T_Sub`), so two `T_Vary`
-derivations at one location can give incomparable types, and no entry of `W`
-that is itself a type of the literal is below both.
+Going through `AtomTy.varConc` instead, which reads the type off `W`, would
+need a hypothesis `VaryEv G W`: that `W`'s entry at every location is included
+in whatever type the source derived there.  That hypothesis fails in general,
+by an argument that is not a Lean proof: a literal has no principal type
+(`D_Fun` types a method body with `HasType`, which has `T_Sub`), so two
+`T_Vary` derivations at one location can give incomparable types, and no entry
+of `W` that is itself a type of the literal is below both.
 `StoreTyping.Store.Honest.vary` remains the converse bridge, from `varConc`
 back to a source `T_Vary`, and `Store.Honest.varConc_of_varConcAny` says that
 over an honest store `varConcAny` at `W ℓ` reports the type `varConc` does
@@ -300,11 +299,10 @@ them.
 **One hypothesis, `Store.Annotated G`**, an instance argument: `T_Vary` lands
 on `AtomTy.varConcAny`, whose premise its two premises give once the literal
 stored at the location is annotated (`varyLitMatch`).  Nothing else beyond the
-source derivation is used, and `W` is arbitrary.  This replaces the earlier
-statement, which took the hypothesis `VaryEv G W` and elaborated `T_Vary` to
-`varConc` followed by a cast; the module header argues why that hypothesis
-fails in general, and why this one is used instead.  Neither argument is a
-Lean proof. -/
+source derivation is used, and `W` is arbitrary.  Going through `varConc`
+followed by a cast would instead need the hypothesis `VaryEv G W`.  The module
+header argues why that hypothesis fails in general, and why this one is used
+instead.  Neither argument is a Lean proof. -/
 def elabAtom {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) [hA : Store.Annotated G]
     {Γ : Ctx σ s} : {p : Vr σ s} → {T : Ty σ s} → HasType G Γ (.tvar p) T →
     AtomElab G W Γ p T
@@ -357,8 +355,8 @@ annotated store, and `Correspondence` proves the operational correspondence
 for it.
 
 Like `elabAtom`, this takes **one hypothesis**, `Store.Annotated G`, for its
-`T_Vary` clauses, and `W` is arbitrary.  The earlier statement took
-`VaryEv G W`; it is replaced, not weakened — see the module header. -/
+`T_Vary` clauses, and `W` is arbitrary.  Going through `varConc` would instead
+need `VaryEv G W`.  See the module header. -/
 def elabHasType {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) [hA : Store.Annotated G]
     {Γ : Ctx σ s} : {t : Oopsla16.Tm σ s} → {T : Ty σ s} → HasType G Γ t T →
     TmFrag t → (t' : Tm σ s) × TmTy G W Γ t' T
@@ -397,8 +395,8 @@ the length equation, and `D_Fun`'s target annotations are the types the source
 rule checked, which the fragment's `some` annotations agree with.
 
 Like `elabAtom`, this takes the one hypothesis `Store.Annotated G`, for the
-`T_Vary` typings inside method bodies; the earlier statement took `VaryEv G W`
-and is replaced. -/
+`T_Vary` typings inside method bodies.  Going through `varConc` would instead
+need `VaryEv G W`. -/
 def elabDms {σ s : Sig} {G : Store σ σ} (W : StoreTy σ) [hA : Store.Annotated G]
     {Γ : Ctx σ s} : {ds : Dms σ s} → {T : Ty σ s} → DmsHasType G Γ ds T →
     DmsFrag ds → DefsElab G W Γ ds T

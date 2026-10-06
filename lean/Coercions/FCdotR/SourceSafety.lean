@@ -28,7 +28,7 @@ work is all done in the target, as in the WadlerFest line
 
 ## How they are assembled
 
-The ingredients are the three stages before this one.
+The proof draws on three parts.
 
 1. **Elaboration** (`ElaborationFull.elabTm`, `elabSpec : ElabSpec`).  Every
    source typing becomes a typed FCdotR term that corresponds to the source
@@ -41,8 +41,8 @@ The ingredients are the three stages before this one.
    a closed typed term never gets stuck.
 
 `oopsla16_safety` is `Correspondence.transport` at `elabSpec` and `sim_spec`.
-`transport` is the stage-1 argument: simulate the source run, carry a stuck
-source configuration to a stuck target state, and let `safety'` refute it.
+`transport` simulates the source run, carries a stuck source configuration to
+a stuck target state, and lets `safety'` refute it.
 
 The positive form is not a corollary of the negative one here.  Getting
 `answer ∨ step` from `¬ stuck` needs classical logic, and this module uses
@@ -181,7 +181,7 @@ configuration reachable under `Oopsla16.Steps` from a closed term typed over
 the empty store is stuck.  There is no restriction on the term: applications
 may have arbitrary operands, and methods may be written in Curry style.
 
-This is `FCdotR.transport`, the stage-1 argument, at the two inhabitants.
+This is `FCdotR.transport` at the two inhabitants below.
 `FCdotR.elabSpec` elaborates the typing into a typed, related target term.
 `FCdotR.sim_spec` simulates the source run from it, and runs a stuck source
 configuration into a stuck target state.  `FCdotR.safety'`

@@ -42,13 +42,13 @@ There is deliberately **no** field relating `Γ'` to `Γ` pointwise, and none
 requiring `(Γ.upTo x)[θ↾x] = Γ'.upTo (θ.abs x)`; `Structural` records why that
 equality fails and is not needed.
 
-## Lemma R, and why it is now unconditional
+## Lemma R, unconditional
 
 The `vcSub` clause needs the inclusion premise transported *inside the
 subject's prefix*, so it needs a `MonoSyn.Ev` for the restricted substitution
-over the restricted contexts.  That is **Lemma R**.  It used
-to be an explicit hypothesis of the theorem; it is now proved, so
-`LeTy.substEv` and `VcTy.substEv` take no hypothesis beyond `MonoSyn.Ev`.
+over the restricted contexts.  That is **Lemma R**, proved below rather than
+assumed, so `LeTy.substEv` and `VcTy.substEv` take no hypothesis beyond
+`MonoSyn.Ev`.
 
 `LemmaR.ofVc` reduces Lemma R to its variable field `LemmaRVc`, and `lemmaRVc`
 discharges that in two independent halves:
