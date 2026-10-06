@@ -739,7 +739,7 @@ end
 /-! ## Renaming then substituting
 
 A renaming followed by a substitution is one substitution, `Subst.compRename`.
-The two cancellation lemmas of the stage are this fusion plus a case split on
+The two cancellation lemmas below are this fusion plus a case split on
 the four binder positions of a body. -/
 
 namespace Subst
@@ -864,8 +864,8 @@ theorem Dom.underRoot_enterC {s : Sig} (T : Dom s) (a : Atom s) :
 
 /-- Entering a body cancels the reading of the codomain under the body root:
 the result is what the application rule does to the codomain.  The codomain
-is an answer, so both sides are `ETy s`; the proof is the old one, one sort
-up. -/
+is an answer, so both sides are `ETy s`; the proof follows the same pattern
+as `Dom.inBody_enter`, one sort up. -/
 theorem Cod.underRoot_enter {s : Sig} (E : Cod s) (a : Atom s) :
     (Cod.underRoot E).subst (Subst.enter a) = E.subst (Subst.arg a) := by
   have h : Subst.compRename Rename.succ.lift.lift (Subst.enter a) = Subst.arg a := by

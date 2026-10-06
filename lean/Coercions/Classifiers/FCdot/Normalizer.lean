@@ -238,8 +238,8 @@ def View.get? : View s → Nat → Option (PropForm s)
 
 /-- Transitivity of a type inclusion: the shape parts compose and the
 capture parts compose.  `LeCo` has one constructor, so transitivity is a
-definition rather than a constructor; at `[]` on both sides it is vanilla's
-`LeCo.trans`. -/
+definition rather than a constructor; with the empty capture set on both
+sides it reduces to `ShapeCo.trans`. -/
 def LeCo.trans : LeCo s → LeCo s → LeCo s
   | .capt e f, .capt e' f' => .capt (.trans e e') (.trans f f')
 

@@ -6,7 +6,7 @@ namespace CapturesCC
 /-!
 # Substitution for the type translation
 
-B1 gives the source arrow a capture binder, so the source's `All-E` reads
+The source arrow has a capture binder, so the source's `All-E` reads
 its argument at the instantiated domain and concludes at the instantiated
 codomain, exactly as the target's `app` does.  The translation therefore
 needs the substitution twin of `Shape.translate_rename`: the type

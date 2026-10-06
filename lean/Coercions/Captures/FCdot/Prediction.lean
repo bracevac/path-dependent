@@ -3,7 +3,7 @@ import Coercions.Captures.FCdot.Consistency
 namespace Captures
 
 /-!
-# Capture prediction (stage A2.5)
+# Capture prediction
 
 The use-set half of preservation, and what follows from it along a run.
 

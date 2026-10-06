@@ -1856,8 +1856,8 @@ theorem CapLe.weaken {Γ : Ctx s} {C D : CaptureSet s} (b : Binding s)
 
 /-- Weakening by a capture binder whose bound is not opaque.  An opaque
 binder appended to a root-free context enlarges the expansion of `⊤ᶜ`, so the
-premise is what makes the two sides agree; B0.7 forbids a store to append
-one, and the theorem has no other caller. -/
+premise is what makes the two sides agree; `Store.Typed.rootFree` forbids a
+store to append one, and the theorem has no other caller. -/
 theorem CapLe.weakenC {Γ : Ctx s} {C D : CaptureSet s} (b : CapBound s)
     (hb : b.opaque = false)
     (h : CapLe Γ C D) : CapLe (Ctx.consC Γ b) C.weaken D.weaken := by
@@ -1937,15 +1937,15 @@ theorem Ctx.Root_name_none {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
   | zero => rw [Ctx.capsAtom_name_zero, Ctx.expand_nil] at hn; simp at hn
   | succ n => rw [Ctx.capsAtom_name_none h, Ctx.expand_nil] at hn; simp at hn
 
-/-! ### Item 6 of the canonical-forms theorem
+/-! ### `cap_canon` moves to the canonical-forms theorem
 
 `cap_canon`, the statement that closed capture evidence includes roots, no
 longer fits here: `CapCo.HasType` is now mutual with atom typing, so `capvar`
-needs item 7 of the theorem and `member` needs the view of an atom.  The
-statement moves, unchanged, into the mutual induction of `CanonicalForms.lean`
-(plan-5c A1.6); the four constructors it had in A0 are still discharged by
+needs the canonical form of an atom and `member` needs its view.  The
+statement moves, unchanged, into the mutual induction of
+`CanonicalForms.lean`; the four constructors it discharges are still
 `CapLe.refl`, `CapLe.trans`, `CapLe.of_subset` and `CapLe.union`, and `defC`
-by `Ctx.Root_name` above. -/
+is discharged by `Ctx.Root_name` above. -/
 
 end FCdot
 

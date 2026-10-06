@@ -248,10 +248,8 @@ theorem Cont.erase_weakenC {s : Sig} (K : Cont s) :
 
 An atom erases to its root variable, and a capture atom has no runtime
 content at all, so substituting erases to the map of term variables the
-substitution induces on roots.  The vanilla line read the right side as a
-renaming.  A substitution is no longer kind preserving, so the right side is
-`Runtime.Tm.map` at `Subst.rootVar`, which is the same map of the same
-variables. -/
+substitution induces on roots.  A substitution is not kind preserving, so
+that map is `Runtime.Tm.map` at `Subst.rootVar`, not a renaming. -/
 
 theorem Subst.rootVar_lift {s1 s2 : Sig} (σ : Subst s1 s2) :
     σ.lift.rootVar = Runtime.VRen.lift σ.rootVar := by
@@ -446,9 +444,9 @@ theorem Value.erase_eq_lam {s : Sig} :
   | .pack _ _ _ _, _, _, hnp, _ => absurd rfl (hnp _ _ _ _)
   | .cast _ _, _, hlit, _, _ => hlit.elim
 
-/-- A literal whose erasure is a runtime object is an object.  A box now
-erases to the runtime's box, not to an object, so the box disjunct stage A2
-carried here is gone. -/
+/-- A literal whose erasure is a runtime object is an object.  A box erases
+to the runtime's box, not to an object, so there is no separate box case to
+rule out here. -/
 theorem Value.erase_eq_obj {s : Sig} :
     ∀ (v : Value s) (F' : Runtime.Fields ((s,c),x)), v.IsLiteral →
       (∀ C h₀ e v₀, v ≠ .pack C h₀ e v₀) → v.erase = .obj F' →
@@ -776,10 +774,10 @@ theorem castRedex_normalize_inv {s : Sig} (st : State s) (Γ : Ctx s)
 
 /-! ### Carrying the frame's answer through cast-frame normalization
 
-`State.CastInv` says what the vanilla line needed: at a `let` frame the
-focus is a value or an atom, and both steps fire.  The two frames of this
-stage read more.  An unpacking frame steps only at a packed focus, a `let`
-frame only at a plain one, and the erasure tells the two apart nowhere,
+`State.CastInv` says that at a `let` frame the focus is a value or an atom,
+and both steps fire.  The two frames here read more.  An unpacking frame
+steps only at a packed focus, a `let` frame only at a plain one, and the
+erasure tells the two apart nowhere,
 since a pack erases to what it wraps.  So the backward simulation needs the
 focus to match the frame, and what says so is the continuation's typing,
 which cast-frame steps carry exactly as `preservation` does.  The store is
@@ -1210,10 +1208,9 @@ theorem final_reflect {s : Sig} {st : State s} {Γ : Ctx s} (hσ : ⊢ st.σ : �
   | cast t e => exact Or.inr (Or.inl ⟨t, e, rfl⟩)
   | castE t g => exact Or.inr (Or.inr (Or.inl ⟨t, g, rfl⟩))
 
-/-- Backward simulation over typed stores.  It stands here rather than at the
-end of `CanonicalForms.lean`, where the vanilla line keeps it, because this
-module now imports that one: `erase_reflect` reads the answer sort, so
-`CanonicalForms` has to be green before it.  The statement is unchanged. -/
+/-- Backward simulation over typed stores.  It is stated here rather than at
+the end of `CanonicalForms.lean`, because `erase_reflect` reads the answer
+sort, and this module already imports `CanonicalForms.lean`. -/
 theorem erase_reflect' {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.State s'}
     (hσ : ⊢ st.σ : Γ)
     (hty : ∃ (E : ETy s) (V : Ty s), Γ ⊢ st.t :ᵉ E ∧ Γ ⊢ₖ st.K : E ⇒ V)

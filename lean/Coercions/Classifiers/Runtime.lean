@@ -177,8 +177,7 @@ theorem Fields.rename_eq_ofRename {s1 s2 : Sig} (F : Fields s1) (ρ : Rename s1 
 
 end
 
-/-- The form B1.6 states: renaming is the map of the renaming's action on
-term variables. -/
+/-- Renaming is the map of the renaming's action on term variables. -/
 theorem Tm.rename_eq_map {s1 s2 : Sig} (t : Tm s1) (ρ : Rename s1 s2) :
     t.rename ρ = t.map (fun x => ρ.var x) :=
   Tm.rename_eq_ofRename t ρ
@@ -236,8 +235,8 @@ inductive IsValue : Tm s → Prop where
   | box : IsValue (.box x)
 
 /-- A store: one slot per term binder, and a data-free slot per capture
-binder.  (`consᶜ` of the plan: `ᶜ` is not a legal Lean identifier character,
-so the capture-sort twin of a name carries the suffix `C`.) -/
+binder.  (`ᶜ` is not a legal Lean identifier character, so the capture-sort
+twin of a name carries the suffix `C`.) -/
 inductive Store : Sig → Type where
   | nil : Store []
   | cons : Store s → Tm s → Store (s,x)

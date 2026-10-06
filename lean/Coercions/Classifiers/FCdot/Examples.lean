@@ -12,11 +12,12 @@ namespace Classifiers
 /-!
 # FCdot examples
 
-The mandatory examples of Plan III §10 (E1 to E7) and the acceptance test for
-self-bound propositions (E8), as `FCdot` terms accepted by the structural
-checker of `Coercions.FCdot.Checker`.  Each example comes with
+Examples E1 to E7 cover the core translation, and E8 is the acceptance test
+for self-bound propositions.  Each is given as an `FCdot` term accepted by
+the structural checker of `Coercions.FCdot.Checker`.  Each example comes
+with
 
-* the term and its type, built from the type translation of §5.1;
+* the term and its type, built from the type translation below;
 * the checker's verdict on it;
 * a typing derivation `Eᵢ_typed : Ctx.nil ⊢ Eᵢ : EᵢTy`;
 * the erasure equation against the source term of `Coercions.DotMNF.Examples`,
@@ -56,8 +57,7 @@ There is no subsumption rule, so every source `Sub` step is an explicit
 proof.  Three idioms recur:
 
 * `LeCo.member (.var x) (.refl X) i` — the `i`-th proposition of `x`'s own
-  object type `X`, opened at `x`.  This is the `Var`-instance of §5.4 and it
-  covers both `Sel-<:` and `<:-Sel`.
+  object type `X`, opened at `x`.  This covers both `Sel-<:` and `<:-Sel`.
 * `LeCo.member a e i` with `a` a *cast* atom — the same at a type reached
   through a bound.  This is what E4 needs.
 * `EqCo.def x ℓ` — the definition of a transparent binder's block name,
@@ -100,7 +100,7 @@ example : lv = DotMNF.Examples.lv := rfl
 
 /-! ## Pure types and pure evidence
 
-Every type in this stage carries the empty capture set, so a shape `S` is
+Every type in these examples carries the empty capture set, so a shape `S` is
 used as the type `S ^ []` (`Ty.pure`), and a shape inclusion `e` is used as
 the type inclusion `.capt e (.refl [])` (`co`). -/
 
@@ -220,7 +220,7 @@ field selected and applied to itself.
 Two things are specific to the target.  First, a field's type is its block
 name `x.a`, so the literal must *define* `a` in its witnesses; the definition
 entry `x.a ≃ ∀(y : x.A) x.A` is what lets the projected field be applied at
-all (Plan III §12, risk 4).  Second, no `Rec` block is needed: the witness
+all.  Second, no `Rec` block is needed: the witness
 `∀(y : self.A) self.A` mentions the self binder directly, and the literal's
 precise type `Telescope.ofLiteral` binds it.  `unfoldSelf` is likewise
 unnecessary, because `member` already opens the telescope at the atom's
@@ -403,16 +403,15 @@ example : DotMNF.HasTyP [] .nil E3src
 
 theorem E3_erase : E3.erase = E3src.erase := rfl
 
-/-! ## E4: the counterexample of §1
+/-! ## E4: a function selecting a member through a cast
 
 `λ(x : {B : S..T}). λ(w : S). λ(n : Int). let g = λ(y : w.A). y in g n`, with
 `S = {A : ⊥..⊤}` and `T = {A : Int..⊤}`.
 
 This is the acceptance test.  The step `S ≤ x.B ≤ T` has no realizer, so `w`'s
 view of its own member `A` is not the one its binding gives; the target reaches
-`Int ≤ w.A` by eliminating at the *cast* atom `w ▹ (S ≤ T)`, which is the
-general form of §5.4 and the reason `member` takes an arbitrary inclusion
-rather than a context lookup. -/
+`Int ≤ w.A` by eliminating at the *cast* atom `w ▹ (S ≤ T)`.  This is the
+reason `member` takes an arbitrary inclusion rather than a context lookup. -/
 
 /-- `S = {A : ⊥..⊤}`. -/
 def E4S : Shape s := tTyp lA .bot .top
@@ -924,10 +923,9 @@ theorem C3_no_store {s : Sig} {σ : Store s} {Γ : Ctx s} (hσ : ⊢ σ : Γ)
 `capvar` reads the capture set of an atom's *type* and concludes about the
 atom's *root*; `member` in the capture sort instantiates a telescope entry at
 the same root.  Both fire at a wrapped atom -- a `recap` under a `cast` --
-and they agree, because every wrapper keeps the root (plan-5a §2.3).  This is
-the example the design correction of the stage makes true: with `box` and
-`unbox` moved to the value and term sorts, no atom's capture set can disagree
-with its root. -/
+and they agree, because every wrapper keeps the root.  This holds because
+`box` and `unbox` live at the value and term sorts, not as atom wrappers, so
+no atom's capture set can disagree with its root. -/
 
 /-- `μ(y. [{y} ⊑ᶜ {κ}])`: the self's own capability is below `κ`. -/
 def C4Dom (κ : BVar s .cap) : Shape s :=
@@ -968,7 +966,7 @@ theorem C4_member :
 
 /-! ## C1 and C6: the platform, use sets, and a run
 
-The two examples of stage A2.6.  Both live over the platform prefix of two
+Both examples live over the platform prefix of two
 rigid capture binders, `κ₁ ⊑ᶜ ∗` and `κ₂ ⊑ᶜ ∗`, with `Unit := ⊤` and two
 closures standing for the capabilities: `log`, annotated `{κ₁}`, and
 `console`, annotated `{κ₂}`.  A capability is the identity closure; what
@@ -1337,7 +1335,7 @@ theorem C6_safe {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
   effect_safety C6st0'_typed C6_store run C6_no_kappa2 hin hΓ'
 
 
-/-! ## S3, C2 and C7: the capture examples of stage A3a
+/-! ## S3, C2 and C7: the capture examples translated from the source
 
 The three source derivations of `DotMNF.Examples` over the platform prefix
 of two rigid capture binders, on this side of the translation.  Each comes
@@ -1613,7 +1611,7 @@ theorem C2_erase :
     Tm.erase DotMNF.Examples.C2_typed.translate = DotMNF.Tm.erase DotMNF.Examples.C2tm :=
   DotMNF.HasTy.translate_erase _
 
-/-! ## S1, S2 and C5: the examples of stage A3b
+/-! ## S1, S2 and C5: existential types translated from the source
 
 The two source derivations of `DotMNF.Examples` that are written with `any`
 and typed at the expanded type, on this side of the translation, and the
@@ -1621,7 +1619,7 @@ packing of S2 seen from the target.
 
 `any` never reaches the target: it is a source notation, expanded before the
 program is typed, so the translated types below are the translations of the
-expanded types.  The parts are the ones A3a used.  `Sᵢ_translated` is
+expanded types.  The parts are the same three used above.  `Sᵢ_translated` is
 `HasTy.translate_typed` at the source derivation and `Sᵢ_erase` is
 `HasTy.translate_erase`; neither is decided, because `Shape.translate` and
 `HasTy.translate` are compiled by well-founded recursion and do not reduce
@@ -1894,7 +1892,7 @@ theorem C5_client : C5CCtx ⊢ C5clientTm : C5clientTy := checkTm_sound (by deci
 
 /-! ## X1, X2 and X3: levels and the universal root
 
-The three examples of stage B0.  They use no term former.  The level rule
+The three examples below use no term former.  The level rule
 reads only the shape of the context, so `Ctx.isRootB` and `Ctx.lvlLeB` decide
 every side condition in the kernel, and every verdict below is a `decide`.
 
@@ -2016,12 +2014,12 @@ evidence at all, and not only no `level` step, puts the binder introduced
 inside the scope below the enclosing root.
 
 The three level premises are decided.  The fourth premise is a typed store,
-and at stage B0 no store types this context: a store binds capabilities and
-never scopes, so a store context has no root binder
-(`Store.Typed.rootFree`), and X2's context has one.  That is the second part
-below, and it is why X3 holds vacuously here.  The escape gets its content in
-stage B1, where a lambda body becomes a scope and a store slot can sit under
-a root the run itself provides.  The argument run there is this one. -/
+and no store types this context: a store binds capabilities and never
+scopes, so a store context has no root binder (`Store.Typed.rootFree`), and
+X2's context has one.  That is the second part below, and it is why X3
+holds vacuously here.  The escape gets real content once a lambda body is a
+scope and a store slot can sit under a root the run itself provides, which
+is where this argument is reused. -/
 
 /-- **X3, nothing escapes a scope.**  Over any store that types the nested
 context, no capture evidence puts the rigid binder introduced inside the
@@ -2030,7 +2028,7 @@ theorem X3_no_escape {σ : Store ([],c,c,c)} (hσ : ⊢ σ : X2Ctx) :
     ¬ ∃ f : CapCo ([],c,c,c), X2Ctx ⊢ᶜ f : [CapAtom.cvar X2κ₂] ⊑ [⊤ᶜ] :=
   no_inner_escape hσ (by decide) (by decide) (by decide)
 
-/-- **X3, the second part.**  At stage B0 the hypothesis of `X3_no_escape` is
+/-- **X3, the second part.**  The hypothesis of `X3_no_escape` is
 unavailable for this context: a store context has no scope root, and X2's
 context opens one. -/
 theorem X3_no_store : ¬ ∃ σ : Store ([],c,c,c), ⊢ σ : X2Ctx := by
@@ -2040,9 +2038,9 @@ theorem X3_no_store : ¬ ∃ σ : Store ([],c,c,c), ⊢ σ : X2Ctx := by
 
 
 
-/-! ## B1: the arrow, the scope and the escape
+/-! ## The arrow, the scope and the escape
 
-The examples of stage B1.  A lambda body is a scope now: `Ctx.body Γ T`
+A lambda body is a scope: `Ctx.body Γ T`
 binds the body root, then the arrow's capture binder, then the parameter,
 so the parameter and the arrow binder are at one level and that level is
 the body root.  Everything below reads off that one fact.
@@ -2054,7 +2052,7 @@ and `C5a_level` are the two acceptance tests, the caller's side and the
 callee's side, of the level step that puts a concrete assigned set below a
 scope root. -/
 
-/-- **T-B1.8, scope order.**  In `Γ.body T` the parameter is `.here`, the
+/-- **Scope order.**  In `Γ.body T` the parameter is `.here`, the
 arrow's capture binder is `.there .here` and the body root is
 `.there (.there .here)`.  The parameter and the arrow binder are at one
 level, and that level is the body root.  Both sides compute, so this is
@@ -2214,8 +2212,8 @@ theorem X4_no_escape :
 Under the rejected order `κ_f, f, κ_b`, with the parameter bound before the
 body root, the level of `f` is the nearest root older than `f`, which at the
 top level is the outermost one.  So the level rule fires and the escape
-types.  This is why B1.1 binds the body root first, and it is a checked
-fact here rather than a claim. -/
+types.  This is why the body root is bound before the parameter, and it is
+a checked fact here rather than a claim. -/
 
 /-- The rejected order: `κ_f ⊑ᶜ ∗, f : File ^ {κ_f}, κ_b ⊚`. -/
 def X5Ctx : Ctx ([],c,x,c) :=
@@ -2242,10 +2240,10 @@ example : checkCap X5Ctx (.level (.var X5f) ⊤ᶜ) [CapAtom.var X5f] [⊤ᶜ] =
 
 Both examples are written with the concrete assigned set `{fs, u}` in the
 result type, which is what the source's result `any` expands to.  The step
-that puts that set below a scope root `{κ_S}` is `level`, and B0 supplies
-it: `fs` is bound outside the scope, so its level encloses `κ_S`, and `u`
-is bound inside the scope, so its level is `κ_S` itself.  The `fresh`
-halves of both are stage B2's.
+that puts that set below a scope root `{κ_S}` is `level`: `fs` is bound
+outside the scope, so its level encloses `κ_S`, and `u` is bound inside the
+scope, so its level is `κ_S` itself.  The `fresh` halves of both appear
+further below.
 
 The contexts below are the contexts of C5 with the second capture binder
 read as a scope root instead of a rigid capability.  Nothing else moves. -/
@@ -2318,10 +2316,10 @@ the concrete set `{fs, u}`, is read at the enclosing scope's root.  The one
 step that does it is `level`. -/
 theorem S2_level : S2aCtx ⊢ S2aTm : S2aTy := checkTm_sound (by decide +kernel)
 
-/-! ## Stage B2: `fresh` as an existential
+/-! ## `fresh` as an existential
 
-The five examples Y1 to Y5 of B2.11.  They use the answer sort `ETy`, the
-syntactic pack, the answer-cast coercion `ELeCo` and the `letex` former.
+Five examples, Y1 to Y5, using the answer sort `ETy`, the syntactic pack,
+the answer-cast coercion `ELeCo` and the `letex` former.
 
 Y1 is `freshCell` and two calls whose opened binders are incomparable.  Y2 is
 `makeLogger`, packed at the parameter.  Y3 is C5b, whose caller charges its
@@ -2330,7 +2328,7 @@ use to the instantiated bound and never learns the witness.  Y4 is the
 `fresh` half of C5a and S2.
 
 Two of the theorems are negative, and both go through `cap_canon`, which
-reads a typed store (decision 12).  So each of them is stated at the context
+reads a typed store.  So each of them is stated at the context
 the `letex` rules build, transported into the transparent context a store
 types by `Ctx.Refines`: a transparent context knows everything the opaque
 one knows, so refusing the inclusion there refuses it in the opaque one, and
@@ -2402,7 +2400,7 @@ def YFreshCellTy (κ1 : BVar s .cap) : Ty s :=
   (Π(YUnit) (YExTy (up2 κ1))) ^ [CapAtom.cvar κ1]
 
 /-- The residual inclusion of the pack: the shape is the same and the
-capture half is the instance rule of B2.4, read backwards. -/
+capture half is `CapEq.instC` read backwards. -/
 def YPackCo (C : CaptureSet s) (S : Shape (Sig.scope s)) : LeCo (Sig.scope s) :=
   .capt (.refl S)
     (.eqToLe (.symm (.instC (.cvar .here)
@@ -2437,9 +2435,9 @@ example : checkValue Y1Ctx (YCellLit [CapAtom.cvar Y1κ₁]) (YCellLitTy [CapAto
 
 example : checkValue Y1Ctx (YFreshCell Y1κ₁) (YFreshCellTy Y1κ₁) = true := by decide +kernel
 
-/-- **Y1, `freshCell`.**  The one example of the stage that needs the
-instance rule of B2.4: the pack's residual reads the witness binder off its
-own instance binding. -/
+/-- **Y1, `freshCell`.**  The one example here that needs `CapEq.instC`:
+the pack's residual reads the witness binder off its own instance
+binding. -/
 theorem Y1_freshCell : Y1Ctx ⊢ᵥ YFreshCell Y1κ₁ : YFreshCellTy Y1κ₁ :=
   checkValue_sound (by decide +kernel)
 
@@ -2819,9 +2817,9 @@ theorem c5b_no_witness :
 
 /-! ## Y4: the `withFile` escape, rejected twice over -/
 
-/-- **Y4, the third widening step of the page.**  A plain codomain is widened
+/-- **Y4, widening under an arrow.**  A plain codomain is widened
 to an existential under `ShapeCo.pi`, which is what `ELeCo.pack` being a
-coercion buys (decision 19). -/
+coercion buys. -/
 def Y4packUnderPi : LeCo ([],c) :=
   .capt (.pi (.capt (.refl tArrow) (.refl []))
     (YPackELe [CapAtom.cvar (up3 Y1κ₁)] YCell)) (.refl [CapAtom.cvar Y1κ₁])
@@ -2830,7 +2828,7 @@ example : checkLe Y1Ctx Y4packUnderPi
     ((Π(YUnit) (.ty (YCell ^ [CapAtom.cvar (up2 Y1κ₁)]))) ^ [CapAtom.cvar Y1κ₁])
     (YFreshCellTy Y1κ₁) = true := by decide +kernel
 
-/-- **Y4, packing under an arrow.**  The page's third widening step. -/
+/-- **Y4, packing under an arrow.**  The checked instance of `Y4packUnderPi`. -/
 theorem Y4_pack_under_pi : Y1Ctx ⊢ Y4packUnderPi :
     ((Π(YUnit) (.ty (YCell ^ [CapAtom.cvar (up2 Y1κ₁)]))) ^ [CapAtom.cvar Y1κ₁])
       ≤ YFreshCellTy Y1κ₁ :=
@@ -2838,16 +2836,16 @@ theorem Y4_pack_under_pi : Y1Ctx ⊢ Y4packUnderPi :
 
 /-- **Y4, isolation.**  No coercion takes an existential answer back to a
 plain one, so the existentially bound capability cannot flow into an outer
-`any`.  This is `no_ex_le_ty`, T8's isolation half. -/
+`any`.  This is `no_ex_le_ty`. -/
 theorem Y4_isolation {C₀ : CaptureSet (Sig.body [])} {T : Ty ((Sig.body []),c)}
     {T' : Ty (Sig.body [])} :
     ¬ ∃ g, X4Ctx ⊢ᵉ g : (∃ᶜ[C₀] T) ≤ .ty T' := by
   rintro ⟨g, hg⟩
   exact no_ex_le_ty hg
 
-/-- **Y4, the level check after a `letex`.**  B1's theorem, unchanged: even
-if the caller unpacks, the unpacked binder's level is the caller's and the
-level rule runs only inward. -/
+/-- **Y4, the level check after a `letex`.**  Even if the caller unpacks,
+the unpacked binder's level is the caller's and the level rule runs only
+inward. -/
 theorem Y4_no_escape :
     ¬ ∃ g : CapCo (Sig.body []),
         (X4Ctx ⊢ᶜ g : [CapAtom.var X4f] ⊑ [⊤ᶜ]) ∧ g.MemberFree :=
@@ -2918,7 +2916,7 @@ theorem Y5_caller : C5Ctx ⊢ Y5caller : Ty.pure tArrow :=
   checkTm_sound (by decide +kernel)
 
 
-/-! ### The source examples of B2.11 in the target
+/-! ### The source examples Z1 to Z4, in the target
 
 `Zᵢ_translated` is `HasTy.translate_typed` at the source derivation: the
 translated term has the translated type in the translated context.  It is
@@ -2984,12 +2982,12 @@ theorem Z3_erase :
   DotMNF.HasTy.translate_erase _
 
 
-/-! ### The source examples of B3.9 in the target
+/-! ### The source examples W2, W3 and W4, in the target
 
 W2, W3 and W4 are source types read the compiler's way, so their target side
-is the translation of the source derivation.  W5's second half is T17, which
-lives on the target because it names `⊤ᶜ`, an atom the source cannot
-write. -/
+is the translation of the source derivation.  W5's second half is stated
+here because it needs `source_lvl_safety`, which names `⊤ᶜ`, an atom the
+source cannot write. -/
 
 /-- The body context of W2 and W5 is well formed. -/
 theorem W2BodyCtxWf : DotMNF.Ctx.Wf DotMNF.Examples.W2BodyCtx :=
@@ -3038,10 +3036,10 @@ theorem W4_translated : DotMNF.Examples.platCtx.translate ⊢
 
 `W5_caps` is the source twin of `X4_caps`: the binder set of the callback's
 parameter resolves to the arrow binder `κ_f`, whose level is the body root.
-`W5_no_escape` is T17 at `r = ⊤ᶜ`: no member-free source subcapturing puts
-`{f}` below the platform capability `κ₁`, which sits at the outermost level
-because the platform prefix opens no scope.  The page's own consequence for
-the program is `escaped().read()`, a use after close. -/
+`W5_no_escape` is `source_lvl_safety` at `r = ⊤ᶜ`: no member-free source
+subcapturing puts `{f}` below the platform capability `κ₁`, which sits at
+the outermost level because the platform prefix opens no scope.  The
+consequence for the program is `escaped().read()`, a use after close. -/
 
 /-- The callback's parameter in the body context. -/
 abbrev W5Tf : BVar (Sig.body ([],c,c)) .var := .here
@@ -3065,9 +3063,10 @@ theorem W5_caps (n : Nat) :
   rfl
 
 /-- **W5, nothing escapes the callback.**  No member-free source
-subcapturing puts `{f}` below the platform capability.  An instance of T17:
-the binder set of `f` is `{κ_f}`, whose level is the body root, so it is not
-at the outermost level, and member-free evidence never lowers a level. -/
+subcapturing puts `{f}` below the platform capability.  An instance of
+`source_lvl_safety`: the binder set of `f` is `{κ_f}`, whose level is the
+body root, so it is not at the outermost level, and member-free evidence
+never lowers a level. -/
 theorem W5_no_escape :
     ¬ ∃ d : DotMNF.Subcap DotMNF.Examples.W2BodyCtx [DotMNF.CapAtom.var W5Tf]
         [DotMNF.CapAtom.cvar W5Tk1], d.MemberFree := by
@@ -3089,7 +3088,7 @@ theorem W5_no_escape :
 
 /-! ## Two calls of `freshCell`, on the source side
 
-**B3.9 W4, the second half.**  `DotMNF.Examples.Z_two_calls_no_level` says
+`DotMNF.Examples.Z_two_calls_no_level` says
 that the level order relates neither of the two opened binders to the other.
 The full incomparability is a canonical-forms fact: no capture evidence at
 all relates them.  It is `two_calls_incomparable` above, redone over a
@@ -3337,7 +3336,7 @@ theorem Z_caps_x2 (n : Nat) :
   show ZBodyCtx.caps n [CapAtom.cvar DotMNF.Examples.Zk2'] = _
   exact Z_caps_k2 n
 
-/-- **B3.9 W4, two calls are incomparable on the source side.**  Over the
+/-- **Two calls are incomparable on the source side.**  Over the
 translation of the source's own two-call context, no capture evidence puts
 the binder the first call opened below the binder the second call opened,
 and none puts the first cell below the second.  The argument is the
@@ -3345,8 +3344,9 @@ target's: the two binders resolve to themselves, so each is a root of its
 own set and of neither the other's, and `cap_canon` reads any evidence as an
 inclusion of roots.
 
-What is not claimed is what B2.11 records: at run time both opened binders
-carry `.inst C`, so in the store's own context each is below the other. -/
+What is not claimed is the fact the `Y` examples above record: at run time
+both opened binders carry `.inst C`, so in the store's own context each is
+below the other. -/
 theorem Z_two_calls_incomparable :
     (¬ ∃ f, DotMNF.Ctx.translate DotMNF.Examples.Z1BodyCtxTop ⊢ᶜ f :
       [CapAtom.cvar DotMNF.Examples.Zk1'] ⊑ [CapAtom.cvar DotMNF.Examples.Zk2']) ∧
@@ -3370,7 +3370,7 @@ theorem Z_two_calls_incomparable :
     exact absurd hm (by decide)
 
 
-/-! ## K0.9: the three classifier examples
+/-! ## Three classifier examples
 
 Three contexts of classified capabilities, and what a projected capture atom
 resolves to over each.  Every verdict is read off an equation for `Ctx.caps`,
@@ -3420,11 +3420,11 @@ theorem K1x_roots_io :
 
 /-! ### K2x, a root filter
 
-The shape the adversarial check broke.  The universal root projected at
-`except ThreadLocal` has the single root `⊤ᶜ`: `Control` lies below
-`ThreadLocal`, so both classified binders are excluded, while `⊤ᶜ` itself is
-admitted.  The refuted design derived the same kinding and kept the
-`ThreadLocal` binder among the roots. -/
+The universal root projected at `except ThreadLocal` has the single root
+`⊤ᶜ`: `Control` lies below `ThreadLocal`, so both classified binders are
+excluded, while `⊤ᶜ` itself is admitted.  A projection that filtered the
+kind but not the roots would derive the same kinding fact while still
+listing `ThreadLocal` as a root; `K2x_roots` below rules that out. -/
 
 /-- `κ_tl ⊑ᶜ cls ThreadLocal, κ_ctl ⊑ᶜ cls Control`, with no scope root. -/
 def K2Ctx : Ctx ([],c,c) :=
@@ -3440,8 +3440,8 @@ theorem K2x_roots : K2Ctx.roots 0 [⊤ᶜ ↾ Cls.except Cls.ThreadLocal] = [⊤
   rw [Ctx.roots_eq_expand_caps, K2x_caps]
   decide
 
-/-- And the projected set is kinded by construction, which is T2.  This is
-what the refuted design could not have. -/
+/-- And the projected set is kinded by construction, for free from
+`Ctx.kindLe_proj`, with no case analysis on this particular set. -/
 theorem K2x_kindLe :
     K2Ctx.KindLe [⊤ᶜ ↾ Cls.except Cls.ThreadLocal] (Cls.except Cls.ThreadLocal) :=
   Ctx.kindLe_proj K2Ctx [⊤ᶜ] (Cls.except Cls.ThreadLocal)
@@ -3492,9 +3492,9 @@ theorem K3x_not_capLe :
   rw [Ctx.roots_eq_expand_caps, K3x_caps] at hm
   exact absurd hm (by decide)
 
-/-! ## K1: kinding evidence and subcapturing through a projection
+/-! ## Kinding evidence and subcapturing through a projection
 
-Two examples of stage K1, both decided through the checker, in the manner of
+Two more examples, both decided through the checker, in the manner of
 X1 to X5.  Every premise of every kinding rule is a `Bool` function, so
 `checkKindCo` and `checkCap` run in the kernel and `decide` closes each
 verdict. -/
@@ -3579,23 +3579,21 @@ theorem K5x_roots : K1Ctx.roots 0 K5proj = K1Ctx.roots 0 [CapAtom.cvar K1ctl] :=
 
 /-! ### K6x, the rigid binder with no declared classifier
 
-The example K1.2 asks for, and the boundary the evidence family cannot
-cross.  A rigid binder that declares no classifier carries the root
-classifier as its own.  `except ThreadLocal` contains the root classifier
-and `only Control` does not, so the canonical form kinds such a binder at
-the first kind and not at the second.  That is decision 9 read on the
-semantics: an unwritten classifier is the root one, and the strict reading
+The boundary the evidence family cannot cross.  A rigid binder that
+declares no classifier carries the root classifier as its own.
+`except ThreadLocal` contains the root classifier and `only Control` does
+not, so the canonical form kinds such a binder at the first kind and not at
+the second: an unwritten classifier is the root one, and the strict reading
 keeps it out of `only Control`.
 
-No evidence term of K1 derives the first fact, and the gap is forced.
-`kcls` reads a classifier a binder *declares*, and this binder declares
-none.  `kproj` asks that the target kind admit every classifier, which
+No evidence term derives the first fact, and the gap is forced.  `kcls`
+reads a classifier a binder *declares*, and this binder declares none.
+`kproj` asks that the target kind admit every classifier, which
 `except ThreadLocal` does not.  A rule that read the root classifier off a
-binder with no declaration would not survive `Ctx.Ren.instC`, the
-instantiation lemma T-B2.1, which reads such a binder as an instance of an
-arbitrary set: the fact below is true here and false in the image of that
-map, so the kinding family would lose its renaming lemma.  The two halves
-are machine checked in the K1 g6 counterexample. -/
+binder with no declaration would not survive `Ctx.Ren.instC`, which reads
+such a binder as an instance of an arbitrary set: the fact below is true
+here and false in the image of that map, so the kinding family would lose
+its renaming lemma.  Both halves are machine checked below. -/
 
 /-- `κ_tl ⊑ᶜ cls ThreadLocal, κ_p ⊚`: a classified capability, then a rigid
 binder with no declared classifier. -/
@@ -3646,9 +3644,9 @@ The target side of `DotMNF.Examples`' E1 (`exceptions.tex:60-66`).  The source
 program is `Try.apply` applied to a body the program allocates, and its declared
 use set is the platform set filtered at `only[Control]`.  Here: the platform
 context as the translation builds it, the resolution of the two platform
-capabilities through the filter, the kinding of the filtered sets by T2, the
-translation of the source evidence, and effect safety at `only[Control]` on both
-sides.
+capabilities through the filter, the kinding of the filtered sets by
+`Ctx.kindLe_proj`, the translation of the source evidence, and effect
+safety at `only[Control]` on both sides.
 
 The platform context is K1x's context on the nose, so the two resolution facts
 are K1x over a real program. -/
@@ -3719,7 +3717,7 @@ theorem E1_roots_io :
   rw [Ctx.roots_eq_expand_caps, E1_caps_io, E1_ctx_translate]
   decide
 
-/-! ### The filtered sets are kinded, by T2
+/-! ### The filtered sets are kinded
 
 `Ctx.kindLe_proj` kinds a projected set by construction, and the translation of
 a projected source set is the projection of its translation. -/
@@ -3860,9 +3858,9 @@ theorem E1_never_io {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var
   rw [h] at hc
   exact absurd hc (by decide)
 
-/-- **E1 at the source**, through T9': the source program, its own kinding
-evidence, and any source run.  The matched target state reads only capabilities
-`only[Control]` admits. -/
+/-- **E1 at the source**, through `DotMNF.dot_classified_effect_safety'`: the
+source program, its own kinding evidence, and any source run.  The matched
+target state reads only capabilities `only[Control]` admits. -/
 theorem E1_effect_safety {s : Sig} {st : DotMNF.State s}
     (run : DotMNF.Steps
       (⟨DotMNF.Examples.E1Plat.store, .nil, DotMNF.Examples.E1tm⟩ : DotMNF.State ([],c,c)) st)
@@ -3882,10 +3880,10 @@ program is `Future.apply` applied to a body the program allocates, and its
 declared use set is the platform set filtered at `except[ThreadLocal]`.  Here:
 the platform context as the translation builds it, the two resolution shapes of
 the example, the refutation of a thread-local argument, the verdicts of the
-checker, the kinding of the filtered set by T2, and effect safety at
-`except[ThreadLocal]` on both sides.
+checker, the kinding of the filtered set by `Ctx.kindLe_proj`, and effect
+safety at `except[ThreadLocal]` on both sides.
 
-The resolution shapes are read over the classified platform of the paper, the
+The resolution shapes are read over the classified platform, the
 two capabilities `except[ThreadLocal]` excludes.  Its translation is K2x's
 context on the nose, so the first shape is K2x over a real program, and the
 second is K3x with the body root of `Future.apply` as the scope root.  The
@@ -4064,7 +4062,8 @@ theorem E2_kproj_projRoot_accept :
 A body charged to the thread-local capability cannot be passed: the kinding
 premise of `sc-proj` fails.  The checker rejects both rules that could conclude
 it, and no source derivation exists at all, because the semantics of kinding
-refutes it and every source derivation translates into semantics through T5. -/
+refutes it and every source derivation translates into semantics through
+`CapKind.translate_typed`. -/
 
 theorem E2_caps_tl (n : Nat) :
     E2PlatIO.ctx.translate.caps n [CapAtom.cvar E2Ttl] = [CapAtom.cvar E2Ttl] := by
@@ -4081,8 +4080,9 @@ theorem E2_tl_not_kindLe :
   revert hc
   decide
 
-/-- **No source derivation kinds it either.**  T5 reads a translated derivation
-as the semantics, and the semantics is refuted. -/
+/-- **No source derivation kinds it either.**  `CapKind.translate_typed`
+reads a translated derivation as the semantics, and the semantics is
+refuted. -/
 theorem E2_tl_not_capKind
     (g : DotMNF.CapKind E2PlatIO.ctx [DotMNF.CapAtom.cvar E2tl] (Cls.except Cls.ThreadLocal)) :
     False :=
@@ -4163,7 +4163,7 @@ theorem E2_kindLe_io :
   rw [E2_ctxIO_translate]
   decide
 
-/-! ### The filtered set is kinded, by T2
+/-! ### The filtered set is kinded
 
 `Ctx.kindLe_proj` kinds a projected set by construction, and the translation of
 a projected source set is the projection of its translation. -/
@@ -4273,9 +4273,9 @@ theorem E2_never_ctl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .va
   rw [h] at hc
   exact absurd hc (by decide)
 
-/-- **E2 at the source**, through T9': the source program, its own kinding
-evidence, and any source run.  The matched target state reads only capabilities
-`except[ThreadLocal]` admits. -/
+/-- **E2 at the source**, through `DotMNF.dot_classified_effect_safety'`:
+the source program, its own kinding evidence, and any source run.  The
+matched target state reads only capabilities `except[ThreadLocal]` admits. -/
 theorem E2_effect_safety {s : Sig} {st : DotMNF.State s}
     (run : DotMNF.Steps
       (⟨E2PlatIO.store, .nil, DotMNF.Examples.E2tm⟩ : DotMNF.State ([],c,c,c)) st)
@@ -4532,7 +4532,8 @@ theorem E3_prediction {s : Sig} {st : DotMNF.State s}
             Γ'.KindLe stt.uses (Cls.only Cls.Control) :=
   DotMNF.dot_classified_prediction E3Plat DotMNF.Examples.E3_typed E3_kindLe_uses run
 
-/-- The same from the source's own kinding evidence, through T8'. -/
+/-- The same from the source's own kinding evidence, through
+`DotMNF.dot_classified_prediction'`. -/
 theorem E3_prediction' {s : Sig} {st : DotMNF.State s}
     (run : DotMNF.Steps
       (⟨E3Plat.store, .nil, DotMNF.Examples.E3tm⟩ : DotMNF.State ([],c,c)) st) :

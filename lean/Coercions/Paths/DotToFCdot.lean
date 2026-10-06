@@ -12,8 +12,7 @@ import Coercions.Paths.DotToFCdot.Examples
 import Coercions.Paths.DotToFCdot.Pages
 import Coercions.Paths.DotToFCdot.Acceptance
 /-!
-Import root for the translation from DOT-MNF to FCdot (Plan III §8), at stage P3 of paths
-(`plan-5g-paths-stages.md` §P3).  `Examples` holds Z1 to Z9 of P2.9.  `Pages` holds the
-target side of the P3 pages and is imported after it.  `Acceptance` holds the two gDOT
-acceptance tests and P1e, and is imported last.
+Import root for the translation from DOT-MNF to FCdot, extended with paths.
+`Examples` holds the examples Z1 to Z9.  `Pages` holds the target-side pages and is
+imported after it.  `Acceptance` holds the gDOT acceptance tests and is imported last.
 -/

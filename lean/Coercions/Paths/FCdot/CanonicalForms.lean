@@ -18,21 +18,23 @@ normalizes to typed data:
   telescope `S` resolves to, and `S` does not resolve to `⊥`.
 * `closedAtomForm_typed_of`: the chain of casts of a closed atom normalizes
   to a form typed from the root's type to the atom's type, at the root.
-* `path_canon_of`: T1 of P1.8 with its two companions, the view of a stable
-  path, the chain of its casts from the node's type, and the node at its path.
-* `alias_eq_of`: T2 of P1.8, an alias is an identity.
+* `path_canon_of`: the path-view guarantee, with its two companions, the view
+  of a stable path, the chain of its casts from the node's type, and the
+  node at its path.
+* `alias_eq_of`: an alias is an identity.
 
 Each takes, beside `⊢ σ : Γ`, the hypothesis `σ.FieldForms Γ`: the coercion
-of every stable field of a node normalizes to a typed form.  T1's `sel` case
-reads the view of the child through that coercion, and the coercion is
-evidence of the store, not a sub-derivation of the path's typing, so the
-block cannot recur into it.  The hypothesis follows from store typing
-(`Store.Typed.fieldForms`, `fieldFormsHold`).  The coercion of a stable field
-is table-only (`Store.Typed.fieldCo_tableOnly`), and `le_canon_ne` normalizes
-table-only evidence with no store hypothesis.  The base's statements
-(`le_canon`, `eq_canon`, `has_canon`, `mor_canon`, `atom_canon`,
-`closedAtomForm_typed`) and the plan statements of T1 and T2 are one-line
-corollaries, each stated beside its twin.
+of every stable field of a node normalizes to a typed form.  The `sel` case
+of the path-view guarantee reads the view of the child through that
+coercion, and the coercion is evidence of the store, not a sub-derivation of
+the path's typing, so the block cannot recur into it.  The hypothesis
+follows from store typing (`Store.Typed.fieldForms`, `fieldFormsHold`).  The
+coercion of a stable field is table-only (`Store.Typed.fieldCo_tableOnly`),
+and `le_canon_ne` normalizes table-only evidence with no store hypothesis.
+The base's statements (`le_canon`, `eq_canon`, `has_canon`, `mor_canon`,
+`atom_canon`, `closedAtomForm_typed`) and the path-view guarantee and
+alias-identity fact above are one-line corollaries, each stated beside its
+twin.
 
 Everything else is a structural induction on typing derivations.  Object
 coercions are between opened telescopes, so nothing is ever re-normalized at
@@ -106,7 +108,7 @@ def LeConcl (σ : Store s) (Γ : Ctx s) (e : LeCo s) (S T : Ty s) : Prop :=
 def EqConcl (Γ : Ctx s) (S T : Ty s) : Prop := Γ.resolve S = Γ.resolve T
 
 /-- The base's `HasConcl`, with the normal form read at the depth-zero path
-`.var x`, since `hasView` takes a path (P1.9). -/
+`.var x`, since `hasView` takes a path. -/
 def HasConcl (σ : Store s) (h : Has s) (x : BVar s .var) (ℓ : Label) : Prop :=
   ∃ n, σ ⊢ (Path.var x) ; h ⇓ₕ[n] (Path.var x, ℓ) ∧ σ.HasField x ℓ
 
@@ -120,14 +122,14 @@ def AtomConcl (σ : Store s) (Γ : Ctx s) (a : Atom s) (S : Ty s) : Prop :=
     (∀ Tel : Telescope (s,x), Γ.resolve S = μ Tel → Γ ⊨[Path.var a.root, σ] V : Tel) ∧
     Γ.resolve S ≠ ⊥
 
-/-- T1 of P1.8, in the shape of `AtomConcl`. -/
+/-- The path-view guarantee, in the shape of `AtomConcl`. -/
 def PathViewConcl (σ : Store s) (Γ : Ctx s) (P : PathCo s) (T : Ty s) : Prop :=
   ∃ n V, pathView σ n P = some V ∧
     (∀ Tel : Telescope (s,x), Γ.resolve T = μ Tel → Γ ⊨[P.path, σ] V : Tel) ∧
     Γ.resolve T ≠ ⊥
 
-/-- T1 with its two companions: the view, the chain of casts from the node's
-type, and the node the table wrote at the path. -/
+/-- The path-view guarantee with its two companions: the view, the chain of
+casts from the node's type, and the node the table wrote at the path. -/
 def PathConcl (σ : Store s) (Γ : Ctx s) (P : PathCo s) (T : Ty s) : Prop :=
   PathViewConcl σ Γ P T ∧
     (∃ n F, pathChainForm σ n P = some F ∧ Γ ⊨[P.path] F : Γ.nodeTy P.path ≤ T) ∧
@@ -136,8 +138,8 @@ def PathConcl (σ : Store s) (Γ : Ctx s) (P : PathCo s) (T : Ty s) : Prop :=
 /-- **The field forms.**  The coercion of every stable field of a node
 normalizes to a form typed from its source to the parent's name.  This is
 `le_canon` at the field coercions that `Store.Typed.fieldCo` produces, which
-T1's `sel` case reads and which are not sub-derivations of the path's
-typing. -/
+the `sel` case of the path-view guarantee reads and which are not
+sub-derivations of the path's typing. -/
 def Store.FieldForms (σ : Store s) (Γ : Ctx s) : Prop :=
   ∀ (p : Path s) (a : Label) (W : Witnesses s) (ls vls : List Label) (ch : Children s),
     Γ.nodeBlock p = some (.obj W ls vls ch) → a ∈ vls →
@@ -173,7 +175,7 @@ theorem AtomConcl.of_opened {a : Atom s} {S : Ty s} {n : Nat} {V : View s}
   · exact ViewTyped_fold (hVt _ (by simp only [Ctx.resolveAt?_some, Ctx.resolveAt, h]; rfl))
   · simp only [Ctx.resolveAt?_some, Ctx.resolveAt, hb]; rfl
 
-/-- T1, read at the shapes opened at the path. -/
+/-- The path-view guarantee, read at the shapes opened at the path. -/
 theorem PathViewConcl.opened {P : PathCo s} {T : Ty s} {V : View s}
     (hVt : ∀ Tel : Telescope (s,x), Γ.resolve T = μ Tel → Γ ⊨[P.path, σ] V : Tel)
     (hnb : Γ.resolve T ≠ ⊥) :
@@ -243,7 +245,7 @@ theorem path_view_through_obj {P : PathCo s} {S : Ty s} {Tel : Telescope (s,x)} 
     (Atom.sngl a q α).root = a.root := rfl
 
 /-- Opening the self block at the root is invisible to `foldSelf`.  The root
-is a path (P1.9, `Ctx.resolveAt`). -/
+is a path (`Ctx.resolveAt`). -/
 theorem Ctx.resolveAt_fold (Γ : Ctx s) (r : Path s) (Tel : Telescope (s,x)) :
     Γ.resolveAt r (μ Tel) = Γ.resolveAt r (μ ((Tel.substPath r)↑)) := by
   show Γ.resolveAt? (some r) (μ Tel) = Γ.resolveAt? (some r) (μ ((Tel.substPath r)↑))
@@ -678,7 +680,7 @@ theorem closedAtomForm_typed_of {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) :
       · simp [closedAtomForm, hF₁, hH]
       · simpa using hHt
 
-/-- **T1 with its two companions**, as P1.8 states them: the view of a typed
+/-- **The path-view guarantee with its two companions**: the view of a typed
 stable path, typed at every telescope its type resolves to, the chain of its
 casts typed from the node's type, and the node at its path. -/
 theorem path_canon_of {P : PathCo s} {T : Ty s} (h : Γ ⊢ᵖ P : T) : PathConcl σ Γ P T := by
@@ -785,7 +787,7 @@ theorem path_canon_of {P : PathCo s} {T : Ty s} (h : Γ ⊢ᵖ P : T) : PathConc
       rw [hTel] at this
       exact ViewTyped_fold this
 
-/-- **T2, block identity in its strong form**: over a typed store an alias is
+/-- **Block identity, in its strong form**: over a typed store an alias is
 an identity. -/
 theorem alias_eq_of {α : AliasCo s} {p q : Path s} (h : Γ ⊢ α : p ≋ q) : p = q := by
   match h with
@@ -829,12 +831,12 @@ theorem mor_canon (hσ : ⊢ σ : Γ) {src : Telescope (s,x)} {m : Morphism s} {
 theorem atom_canon (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) :
     AtomConcl σ Γ a S := atom_canon_of hσ hσ.fieldForms h
 
-/-- The root is `Path.var a.root` (P1.9 row). -/
+/-- The root is `Path.var a.root`. -/
 theorem closedAtomForm_typed (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) :
     ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧ Γ ⊨[Path.var a.root] F : (Γ.lookupTy a.root) ≤ S :=
   closedAtomForm_typed_of hσ hσ.fieldForms h
 
-/-- **T2**, strong form. -/
+/-- Block identity, strong form. -/
 theorem alias_eq (hσ : ⊢ σ : Γ) {α : AliasCo s} {p q : Path s} (h : Γ ⊢ α : p ≋ q) : p = q :=
   alias_eq_of hσ hσ.fieldForms h
 
@@ -878,9 +880,9 @@ theorem has_canon_of {hh : Has s} {x : BVar s .var} {ℓ : Label}
   obtain ⟨n, hv, hHF⟩ := has_canonP_of hσ hF h
   exact ⟨n, hv, hσ.hasField_of_hasFieldP hHF⟩
 
-/-! ## The plan statements of T1 and T2, and the canonical fact -/
+/-! ## The path-view guarantee, block identity, and the canonical fact -/
 
-/-- **T1** (`Store.Typed.pathView` of P1.8). -/
+/-- **The path-view guarantee** (`Store.Typed.pathView`). -/
 theorem Store.Typed.pathView_of {P : PathCo s} {T : Ty s} (h : Γ ⊢ᵖ P : T) :
     ∃ (n : Nat) (V : View s), pathView σ n P = some V ∧
       (∀ Tel : Telescope (s,x), Γ.resolve T = μ Tel → Γ ⊨[P.path, σ] V : Tel) ∧
@@ -898,12 +900,12 @@ theorem PathCo.HasType.root_node_of {P : PathCo s} {T : Ty s} (h : Γ ⊢ᵖ P :
     ∃ W ls vls ch, Γ.nodeBlock P.path = some (.obj W ls vls ch) :=
   (path_canon_of hσ hF h).2.2
 
-/-- **T2** (`alias_blocks` of P1.8), a corollary of `alias_eq_of`. -/
+/-- **Block identity** (`alias_blocks`), a corollary of `alias_eq_of`. -/
 theorem alias_blocks_of {α : AliasCo s} {p q : Path s} (h : Γ ⊢ α : p ≋ q) :
     Γ.lookupBlock p = Γ.lookupBlock q := by
   rw [alias_eq_of hσ hF h]
 
-/-- The equality between the blocks of two aliased names (P1.5), `EqCo.refl`
+/-- The equality between the blocks of two aliased names, `EqCo.refl`
 after `alias_eq_of`. -/
 theorem EqCo.ofAlias_derivable_of {α : AliasCo s} {p q : Path s} (h : Γ ⊢ α : p ≋ q)
     (ℓ : Label) (_hd : (Γ.lookupDefP p ℓ).isSome) :
@@ -926,11 +928,11 @@ end
 section
 variable {σ : Store s} {Γ : Ctx s}
 
-/-- `HasConcl` read at `.var x` (P1.9 row). -/
+/-- `HasConcl` read at `.var x`. -/
 theorem has_canon (hσ : ⊢ σ : Γ) {hh : Has s} {x : BVar s .var} {ℓ : Label}
     (h : Γ ⊢ hh : (Path.var x) ∋ ℓ) : HasConcl σ hh x ℓ := has_canon_of hσ hσ.fieldForms h
 
-/-- **T1**, `Store.Typed.pathView` as P1.8 states it. -/
+/-- **The path-view guarantee**, `Store.Typed.pathView`. -/
 theorem Store.Typed.pathView (hσ : ⊢ σ : Γ) {P : PathCo s} {T : Ty s} (h : Γ ⊢ᵖ P : T) :
     ∃ (n : Nat) (V : View s), pathView σ n P = some V ∧
       (∀ Tel : Telescope (s,x), Γ.resolve T = μ Tel → Γ ⊨[P.path, σ] V : Tel) ∧

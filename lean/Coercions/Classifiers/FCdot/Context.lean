@@ -21,8 +21,9 @@ def Fields.labels : Fields s → List Label
 
 /-- What a capture binder stands for.  `root` is a scope root, `star` a rigid
 capability that subsumes nothing, `upper C` a bounded binder, `inst C` an
-instance, and `cls c` a rigid capability with a declared classifier.  All five
-are present from the start; this stage reads none of them. -/
+instance, and `cls c` a rigid capability with a declared classifier.  All
+five constructors are defined here; `cls` and `inst` are used by later
+files. -/
 inductive CapBound : Sig → Type where
   | root : CapBound s
   | star : CapBound s
@@ -62,9 +63,9 @@ def Binding.ty : Binding s → Ty s
   | .opaque T => T
   | .transparent T _ _ _ => T
 
-/-- A context: term binders and capture binders, newest first.  (`consᶜ` of
-the plan: `ᶜ` is not a legal Lean identifier character, so the capture-sort
-twin of a name carries the suffix `C`.) -/
+/-- A context: term binders and capture binders, newest first.  `ᶜ` is not a
+legal Lean identifier character, so the capture-sort twin of a name carries
+the suffix `C` instead. -/
 inductive Ctx : Sig → Type where
   | nil : Ctx []
   | cons : Ctx s → Binding s → Ctx (s,x)
@@ -125,7 +126,7 @@ A level is a position on the spine, not a field on a binding.  The level of a
 binder is the innermost root binder of the prefix that precedes it, and a
 root is its own level.  `none` means the outermost level, the universal root
 `⊤ᶜ`.  Everything here is `Bool` valued, so that `decide` closes the
-examples of the stage. -/
+examples below. -/
 
 /-- Age of a bound variable.  Older is deeper. -/
 def BVar.depth : BVar s k → Nat
@@ -274,7 +275,7 @@ def classOf (Γ : Ctx s) : CapAtom s → Cls.Classifier
   | _ => .top
 
 /-- The kind `φ` admits the atom `a`: the classifier of `a` is a member of
-`φ`.  `Bool` valued, so that `decide` closes the examples of the stage. -/
+`φ`.  `Bool` valued, so that `decide` closes the examples below. -/
 def admitsB (Γ : Ctx s) (a : CapAtom s) (φ : Cls.Kind) : Bool := φ.containsB (Γ.classOf a)
 
 /-- Depth of a root atom, with the universal root at infinity. -/
@@ -362,7 +363,7 @@ def lookupDef : Ctx s → BVar s .var → Label → Option (Shape s)
 
 /-- Definition of a block's capture name, if its binder is transparent.  As
 `lookupDef`, the capture witness already lives in the scope that includes the
-binder, so it is read at the binder itself.  (`lookupDefᶜ` of the plan.) -/
+binder, so it is read at the binder itself. -/
 def lookupDefC : Ctx s → BVar s .var → Label → Option (CaptureSet s)
   | .cons _ (.transparent _ _ Wc _), .here, ℓ => some (Wc.get ℓ)
   | .cons _ (.opaque _), .here, _ => none
@@ -381,11 +382,11 @@ def IsTransparent (Γ : Ctx s) (x : BVar s .var) : Prop := (Γ.lookupFields x).i
 
 /-! ### Scope order
 
-**T-B1.8.**  In a lambda body the parameter and the arrow's capture binder
-have the same level, and that level is the body root.  This is the sentence
-"parameter `any`s are at the same level as the function's local `any`" in the
-target, and it is what rejects an escape out of a scope.  Both sides compute,
-so each proof is `rfl`. -/
+In a lambda body the parameter and the arrow's capture binder have the same
+level, and that level is the body root.  This says that parameter capture
+names are at the same level as the function's own local capture name, and it
+is what rejects an escape out of a scope.  Both sides compute, so each proof
+is `rfl`. -/
 
 /-- The parameter of a body is at the level of the body root. -/
 theorem body_lvl_param (Γ : Ctx s) (T : Dom s) :

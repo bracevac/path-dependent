@@ -270,7 +270,7 @@ theorem Atom.HasType.var_inv {s : Sig} {Γ : Ctx s} {x : BVar s .var} {T : Ty s}
 /-- Inversion of a closure.  The type is the arrow at the closure's own
 annotation `A`, the body is typed under the parameter, and the closing
 evidence puts the body's use set below `A` weakened united with the
-parameter.  The last conjunct is the premise the `lam` rule of A2.2 carries;
+parameter.  The last conjunct is the premise the `lam` rule carries;
 `step_uses` reads it at the application steps. -/
 theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s} {S₀ : Ty s}
     {t₀ : Tm (s,x)} {g : CapCo (s,x)} {T : Ty s} (h : Γ ⊢ᵥ .lam A S₀ t₀ g : T) :
@@ -288,7 +288,7 @@ theorem Value.HasType.box_inv {s : Sig} {Γ : Ctx s} {b : Atom s} {T : Ty s}
 
 /-- Inversion of an object literal.  The type is the precise object type at
 the literal's own annotation `A`, and the fields are typed against that same
-`A`, which is the index of the fields judgement of A2.2. -/
+`A`, which is the index of the fields judgement. -/
 theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s}
     {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {F : Fields (s,x)} {T : Ty s}
     (h : Γ ⊢ᵥ .obj A W Wc F : T) :
@@ -302,7 +302,7 @@ theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s}
 /-- Inversion of a field list at a label: the field's body has the field's
 result type, the capture name of its own label at the self, and its closing
 evidence puts its use set below the literal's assigned set weakened united
-with the self.  The second conjunct is the premise the `fields` rule of A2.2
+with the self.  The second conjunct is the premise the `fields` rule
 carries; `step_uses` reads it at the projection step. -/
 theorem Fields.HasType.getFull {s : Sig} {Γ : Ctx (s,x)} {A : CaptureSet s} :
     ∀ (F : Fields (s,x)), Γ ⊢ᶠ[A] F → ∀ (l : Label) (t : Tm (s,x)),

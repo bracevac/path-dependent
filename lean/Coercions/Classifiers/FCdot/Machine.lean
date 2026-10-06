@@ -13,7 +13,8 @@ Casts on values are wrappers: allocation strips them, stores the literal at
 its own type, and rewrites the continuation so that the new variable is used
 under the composite cast.  A `recap a f` carries no type inclusion, so
 `Atom.coercions` steps past it and `Tm.adjust` strips it exactly as it strips
-casts.  The application steps are the vanilla ones.  Application on a coerced
+casts.  The application steps are unchanged from a calculus with no capture
+tracking.  Application on a coerced
 closure reads the domain and codomain evidence off the head normal form of
 the atom's casts (`Normalizer.lean`).  A box is a value, allocated by the
 same `alloc` step as any other literal, and `unbox` is a term whose steps
@@ -556,7 +557,7 @@ theorem Store.Ext.capLe {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Renam
   rw [hE.roots hσ hσ' m D]
   exact (CaptureSet.mem_rename_iff hE.injective b (Γ.roots m D)).mpr hm
 
-/-! ## K0.7: classified capabilities and the store
+/-! ## Classified capabilities and the store
 
 A classified capability is rigid, so it lives in the platform prefix and a run
 never appends one.  What a run does append carries the root classifier `⊤`. -/
@@ -619,7 +620,7 @@ theorem Store.Ext.classOf {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Ren
           rw [Ctx.classOf_weakenC]
           exact ih hσ store' a
 
-/-- **T4.**  Kinding travels along a store extension.  The twin of
+/-- Kinding travels along a store extension.  The twin of
 `Store.Ext.capLe`: roots are carried by `Store.Ext.roots` and classifiers by
 `Store.Ext.classOf`. -/
 theorem Store.Ext.kindLe {s s' : Sig} {σ : Store s} {σ' : Store s'} {ρ : Rename s s'}

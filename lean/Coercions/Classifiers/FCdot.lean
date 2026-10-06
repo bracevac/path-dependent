@@ -25,5 +25,6 @@ import Coercions.Classifiers.FCdot.Consistency
 import Coercions.Classifiers.FCdot.Prediction
 import Coercions.Classifiers.FCdot.Examples
 /-!
-Import root for FCdot, the explicit-evidence coercion target of Plan III.
+Import root for FCdot, the explicit-evidence coercion calculus that DOT-MNF
+translates into.
 -/

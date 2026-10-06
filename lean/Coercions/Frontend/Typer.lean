@@ -5,8 +5,8 @@ import Coercions.Frontend.Search
 /-!
 # The derivation producing typer
 
-Stages F1.4 and F1.5 of `plan-5e-frontend-stages.md`.  This is the module that
-replaces the hand assembly of `lean/Coercions/DotMNF/Examples.lean`.  It is fuel
+This is the module that replaces the hand assembly of
+`lean/Coercions/DotMNF/Examples.lean`.  It is fuel
 bounded, `Option` valued, and sound by construction: `synth?` returns a `Synth`,
 whose second field *is* the `DotMNF.HasTy` derivation, so soundness is the result
 type and there is no soundness theorem to prove.  This is the shape the target's
@@ -15,8 +15,9 @@ own checker already uses, `FCdot.TmChecked`
 
 It is incomplete by necessity, since DOT subtyping is undecidable.  No
 completeness theorem is attempted or claimed.  What the typer will not find is a
-list, not a theorem: a subtyping whose middle is outside the one family of F1.3,
-a `Rec-I` folding other than the goal's own body, an `And-I` at a position where
+list, not a theorem: a subtyping whose middle is outside the one family the
+search tries, a `Rec-I` folding other than the goal's own body, an `And-I`
+at a position where
 neither conjunct is separately checkable, an avoidance result other than the
 annotation, the strengthening or `⊤`, an object literal without a self
 annotation, an application whose function variable reaches `∀` only through a
@@ -31,8 +32,9 @@ by subsumption: `And-I` and `Rec-I` (`lean/Coercions/DotMNF/Typing.lean:109-120`
 `checkDefs?` matches a definition list against a type in lockstep, which is what
 `DefsTy` does (`Typing.lean:124-127`).
 
-The block is well-founded on `(fuel, size, tag)`, lexicographically, the second
-and last well-founded site of the stage.  `check?` calls `synth?` on the same
+The block is well-founded on `(fuel, size, tag)`, lexicographically, the
+second and last well-founded definition in this library.  `check?` calls
+`synth?` on the same
 term at a lower tag, `synth?` calls `check?` on proper subterms at a smaller
 size, `checkDefs?` calls `check?` on a field body which is smaller than the
 definition list that holds it, `check?` and `synth?` call `checkVar?` at second
@@ -50,7 +52,7 @@ derivation does at its outer `let` (`Examples.lean:124-129`).
 ## The kernel
 
 `synth?` and its three companions are well-founded, so they do not reduce in the
-kernel, exactly as `sub?` does not (F1.7).  The checks at the end of this module
+kernel, exactly as `sub?` does not.  The checks at the end of this module
 run compiled code through `expect`, never `by decide` and never `by rfl`.
 -/
 
@@ -140,7 +142,7 @@ theorem weaken_top {s : Sig} {k : Kind} : (Ty.top : Ty s).weaken (k := k) = .top
 
 /-! ## Reading a view
 
-Four ways the typer consults the closure of F1.2.  All four walk a list with
+Four ways the typer consults the view closure.  All four walk a list with
 `List.findSome?`, none of them recurses, and none is part of the well-founded
 block. -/
 
@@ -332,8 +334,8 @@ def synthTop? {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) : Option (Synth Γ
 
 /-! ## Fuel monotonicity
 
-The theorem of F1.5 for this module, so that a caller may raise the typer's fuel
-without redoing the argument.  It is the shape the target already uses for its
+This theorem lets a caller raise the typer's fuel without redoing the
+argument.  It is the shape the target already uses for its
 normalizer, `FCdot.closedAtomForm_le`
 (`lean/Coercions/FCdot/FormAlgebra.lean:1472-1473`).  The statement is about
 `isSome` and not about derivations, because more fuel may find another
@@ -350,7 +352,7 @@ theorem synth?_succ {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} {n : 
   rw [synth?.eq_def]
   exact isSome_orElse_right h
 
-/-- More fuel never loses an answer (F1.5). -/
+/-- More fuel never loses an answer. -/
 theorem synth?_le {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} :
     ∀ {n n' : Nat}, n ≤ n' → ∀ {a : ATm s},
       (synth? D b n a).isSome → (synth? D b n' a).isSome := by
@@ -370,22 +372,22 @@ theorem synth?_le {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} :
           subst hn
           exact hs
 
-/-! ## The eight programs of F1.8
+/-! ## Eight example programs
 
-The deliverable of this group.  `synthTop? b .nil` is run on each of the eight
-surface programs of F0, resolved by `Frontend.resolve`
+`synthTop? b .nil` is run on each of eight example surface programs,
+resolved by `Frontend.resolve`
 (`lean/Coercions/Frontend/Resolve.lean`), and the type it returns is compared
 against the type the hand written derivation of
 `lean/Coercions/DotMNF/Examples.lean` concludes.  The typer returns the
 derivation, so a success here is a `DotMNF.HasTy` and not an answer.
 
 None of these is a `decide` or a `rfl`.  The typer is well-founded and does not
-reduce in the kernel (F1.7), so every check runs compiled code through `expect`,
+reduce in the kernel, so every check runs compiled code through `expect`,
 where a false result throws and fails the build.
 
 The budget of each is the smallest at which it passes, measured over all
 budgets with `decls` and `views` in `0..3`, `sub` in `0..4` and `typer` in
-`1..3`, ordered by the sum.  The stage report carries the table and the timings.
+`1..3`, ordered by the sum.
 Every one of the eight also passes at the single budget
 `(decls 2, views 2, sub 2, typer 2)`, where the slowest is E4 at about two and a
 half milliseconds.  The nominal defaults of `Budget` are not that budget and
@@ -408,8 +410,8 @@ def synthsAt {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) (T : Ty s) : Bool :
   | some c => decide (c.ty = T)
   | none => false
 
-/-- The whole front end so far, end to end: a surface program is resolved by
-F0.5 and then typed by F1.4, and the type is compared against the vanilla one.
+/-- The whole front end so far, end to end: a surface program is resolved and
+then typed, and the type is compared against the vanilla one.
 `Resolve.lean` proves `resolve exampleTable E1src = some E1ann` and its seven
 companions by `rfl`, so this runs on exactly the resolutions named there. -/
 def compilesAt (b : Budget) (tbl : LabelTable) (e : STm) (T : Ty []) : Bool :=
@@ -449,7 +451,7 @@ def bE2 : Budget := { decls := 1, views := 2, sub := 2, typer := 1 }
 
 /-- E3, the intersection with a shared member.  The annotated `let` is checked
 against `{a : ⊤}` through the two declarations of one variable at one label,
-which is rule 11 of F1.3 with `d₁ ≠ d₂` and the chain of `E3sub`
+which is rule 11 with `d₁ ≠ d₂` and the chain of `E3sub`
 (`Examples.lean:151`).  The type is `E3`'s (`Examples.lean:162-166`). -/
 def bE3 : Budget := { decls := 1, views := 1, sub := 2, typer := 1 }
 
@@ -487,7 +489,7 @@ def bE5 : Budget := { decls := 1, views := 1, sub := 2, typer := 1 }
 /-- E6, a field typed at its own literal's type member.  The surface program is
 `E6` under the lambda that binds the `n` its context holds, so the type is
 `E6`'s conclusion under one `∀` (`Examples.lean:341-342`).  The field `v` is
-checked against `x.T` by rule 9 of F1.3 through the self binder's own member,
+checked against `x.T` by rule 9 through the self binder's own member,
 which is `E6nT` (`Examples.lean:335-337`). -/
 def bE6 : Budget := { decls := 1, views := 2, sub := 2, typer := 1 }
 

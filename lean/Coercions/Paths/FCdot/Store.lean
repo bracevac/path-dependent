@@ -158,10 +158,10 @@ open Lean PrettyPrinter in
 
 /-! ## The forest is the store
 
-Invariant A of P1.8: over a typed store the block of every binder is the
-block the stored value defines at that binder's path.  A value's block is
-always an object node, never a forwarding, so the path lookup at a variable
-path agrees with the base's binder lookup. -/
+Over a typed store the block of every binder is the block the stored value
+defines at that binder's path.  A value's block is always an object node,
+never a forwarding, so the path lookup at a variable path agrees with the
+base's binder lookup. -/
 
 /-- A value's block is an object node. -/
 theorem Value.blocksAt_obj {s : Sig} :

@@ -4,7 +4,7 @@ import Coercions.Captures.DotToFCdot.EvidenceTyped
 namespace Captures
 
 /-!
-# Typedness of the term translation (Plan III §8.2, M4; stage A3a)
+# Typedness of the term translation
 
 Every typing derivation of DOT-MNF^cc translates to an FCdot term of the
 translated type, its use-set evidence is typed at the translated use set, and
@@ -185,7 +185,7 @@ theorem Shape.capDefSpec_self {s : Sig} (S : Shape (s,x)) (hdl : Shape.DistinctL
 Every rule that concludes at a variable produces an atom, possibly under
 casts, so the use set of the translated term is the singleton of the
 variable.  This is what makes `HasTy.translate_uses` at an atom derivation
-the plan's `{x} ⊑ ⟦U⟧`. -/
+produce the capture evidence `{x} ⊑ ⟦U⟧`. -/
 
 theorem HasTy.translate_uses_atom : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s}
     {y : BVar s .var} {T : Ty s} (h : HasTy U Γ (.path (.var y)) T),

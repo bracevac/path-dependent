@@ -5,7 +5,7 @@ import Coercions.Paths.FCdot.Progress
 namespace Paths
 
 /-!
-# Type safety for DOT-MNF, transported from FCdot (Plan III §8.2, M4)
+# Type safety for DOT-MNF, transported from FCdot
 
 The source calculus has no metatheory of its own: safety is *borrowed* from
 the target through the translation.  The bridge is the shared untyped

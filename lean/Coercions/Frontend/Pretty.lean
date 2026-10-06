@@ -4,8 +4,8 @@ import Coercions.DotMNF.Machine
 /-!
 # The pretty printer
 
-Stage F3.2 of `plan-5e-frontend-stages.md`.  An unparser from the three
-syntaxes of this library back into the paper's notation
+An unparser from the three syntaxes of this library back into the paper's
+notation
 (`lean/Coercions/paper/sections/source.tex`, `lean/Coercions/paper/macros.tex`),
 so that an `#eval` of a compilation or of a run is readable.  The frozen
 inductives carry no `Repr` instance and cannot gain one, since the vanilla tree
@@ -21,7 +21,7 @@ is claimed.
 A label of the frozen syntax is a sort and a number
 (`lean/Coercions/FCdot/Debruijn.lean`), so a name comes back only through a
 `LabelTable`.  The table carrying functions are the primitives and their names
-end in `With`.  F3.2 writes the three entry points without a table, as
+end in `With`.  The three entry points without a table are written as
 `ppTy : NameEnv s → Ty s → String` and so on, and those are the same functions
 at the empty table, where a label prints as its sort and its number, `A0` for
 the first type label and `a0` for the first term label.
@@ -156,7 +156,7 @@ termination_by structural T
 /-- A type in the paper's notation, with a label table. -/
 def ppTyWith (Λ : LabelTable) (nv : NameEnv s) (T : Ty s) : String := ppTyAt Λ 0 nv T
 
-/-- A type in the paper's notation.  The entry point F3.2 writes.  Labels print
+/-- A type in the paper's notation, with no label table.  Labels print
 as their sort and their number. -/
 def ppTy (nv : NameEnv s) (T : Ty s) : String := ppTyWith [] nv T
 
@@ -193,7 +193,7 @@ def ppValueAt (Λ : LabelTable) {s : Sig} (p : Nat) (nv : NameEnv s) (v : Value 
           ++ ppTmAt Λ 0 (NameEnv.cons nv y) t)
 termination_by structural v
 /-- A definition list in the paper's notation.  The type member definition is
-written with the keyword of F0.3. -/
+written with the `type` keyword. -/
 def ppDefsWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (d : Defs s) : String :=
   match d with
   | .typ A T => "{type " ++ ppLabel Λ A ++ " = " ++ ppTyWith Λ nv T ++ "}"
@@ -209,13 +209,13 @@ def ppTmWith (Λ : LabelTable) (nv : NameEnv s) (t : Tm s) : String := ppTmAt Λ
 def ppValueWith (Λ : LabelTable) (nv : NameEnv s) (v : Value s) : String :=
   ppValueAt Λ 0 nv v
 
-/-- A term in the paper's notation.  The entry point F3.2 writes. -/
+/-- A term in the paper's notation, with no label table. -/
 def ppTm (nv : NameEnv s) (t : Tm s) : String := ppTmWith [] nv t
 
 /-- A value in the paper's notation. -/
 def ppValue (nv : NameEnv s) (v : Value s) : String := ppValueWith [] nv v
 
-/-- A definition list in the paper's notation.  The entry point F3.2 writes. -/
+/-- A definition list in the paper's notation, with no label table. -/
 def ppDefs (nv : NameEnv s) (d : Defs s) : String := ppDefsWith [] nv d
 
 /-! ## Annotated terms
@@ -376,8 +376,8 @@ def ppRun (Λ : LabelTable) : Option ((s : Sig) × State s) → String
   | none => "did not compile"
   | some ⟨s, st⟩ => ppStateWith Λ (defaultNames s) st
 
-/-- The term of the answer of `compileAndRun`, which is what the run tests of
-F3.3 read. -/
+/-- The term of the answer of `compileAndRun`, which is what the run tests
+read. -/
 def ppRunTm (Λ : LabelTable) : Option ((s : Sig) × State s) → String
   | none => "did not compile"
   | some ⟨s, ⟨_, _, t⟩⟩ => ppTmWith Λ (defaultNames s) t
@@ -406,7 +406,7 @@ example :
     ppATm .nil E1ann
       = "λ(x : {A0 : ⊤ .. ⊥}). let y : {A1 : {a0 : ⊤} .. {a0 : ⊤}} = x in y" := rfl
 
-/-- E10, the one program of F3.3 that let insertion changes.  The surface
+/-- E10, the one example program that let insertion changes.  The surface
 program is direct style. -/
 example : ppSTm E10src = "λ(f : ⊤). λ(g : ⊤). f (g f)" := rfl
 
@@ -465,7 +465,7 @@ example :
           .path (.var .here)⟩⟩)
       = "⟨x0 = λ(x : ⊤). x | · | x0⟩" := rfl
 
-/-- The term alone, which is what the run tests of F3.3 read. -/
+/-- The term alone, which is what the run tests read. -/
 example :
     ppRunTm exampleTable
         (some ⟨[Kind.var], ⟨.cons .nil (.lam .top (.path (.var .here))), .nil,

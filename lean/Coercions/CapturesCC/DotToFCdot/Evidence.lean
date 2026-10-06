@@ -4,7 +4,7 @@ import Coercions.CapturesCC.FCdot.LevelInversion
 namespace CapturesCC
 
 /-!
-# Translation of evidence and of variable typings (Plan III §8.1, M3)
+# Translation of evidence and of variable typings
 
 A subtyping derivation becomes closed inclusion evidence; a subcapturing
 derivation becomes closed capture evidence; a typing derivation of a variable
@@ -12,7 +12,7 @@ becomes an atom rooted at that variable.  The three are mutual: `Sel-<:`,
 `<:-Sel`, `sc-sel-lower` and `sc-sel-upper` have typing premises, and a
 variable typing can go through subsumption.
 
-The object rules translate to template morphisms (plan §13 items 8 and 9):
+The object rules translate to template morphisms:
 
 * `And₁`, `And₂` project by identity templates on the first or second half
   when the operand is an object shape, and by the self-bound cast
@@ -63,7 +63,7 @@ def _root_.CapturesCC.FCdot.Telescope.NoBnd : FCdot.Telescope s' → Prop
   | .cons Tel _ => FCdot.Telescope.NoBnd Tel
 
 /-- A telescope all of whose self-bounds are weakened closed types, which is
-the closedness convention of `FCdot` (plan §13 item 9).  `Shape.tel` produces
+the closedness convention of `FCdot`.  `Shape.tel` produces
 only these (`Shape.tel_closedBnds`), and only these can be copied by identity
 templates. -/
 inductive _root_.CapturesCC.FCdot.Telescope.ClosedBnds : {s : FCdot.Sig} → FCdot.Telescope (s,x) → Prop where
@@ -169,7 +169,7 @@ def Ctx.varAtom : Ctx s → BVar s .var → FCdot.Atom s
   | .consRoot Γ, .there y => (Γ.varAtom y).weaken
   | .consInst Γ _, .there y => (Γ.varAtom y).weaken
 
-/-- **T-B3.4, step 2.**  A variable's atom reads no telescope.  Every
+/-- A variable's atom reads no telescope.  Every
 `.there` clause weakens, which is a renaming, and the one head clause with
 content is the literal's self: `ShapeCo.atC e C` is `.capt e (.refl C)`, so
 the capture half of the cast is `refl` and `Atom.MemberFree.cast` matches.
@@ -188,7 +188,7 @@ theorem Ctx.varAtom_memberFree : ∀ {s : FCdot.Sig} (Γ : Ctx s) (x : BVar s .v
 
 /-! ## Member-free source evidence
 
-**T-B3.4, step 3.**  Source subcapturing that reads no telescope and no
+Source subcapturing that reads no telescope and no
 instance binder: it is `refl`, `trans`, `elem`, `union`, `var` and `level`,
 and it excludes `inst`, `selLower` and `selUpper`.  Those three are exactly
 the rules whose translation is `eqToLe` or `member`, which are exactly the
@@ -226,11 +226,11 @@ def Subcap.translate : {Γ : Ctx s} → {C C' : CaptureSet s} → Subcap Γ C C'
   | Γ, _, _, @Subcap.var _ _ x => .capvar (Γ.varAtom x)
   | _, C, _, @Subcap.inst _ _ κ _ _ =>
       .eqToLe (.symm (.instC (.cvar κ) C.translate))
-  /- **B3.6.**  The level rule translates to the target's level rule at the
-     translated atom.  The two notation cases are unreachable in a typed
-     derivation, and they are given evidence rather than an absurdity, so
-     the clause stays a plain match.  It is a leaf, so it adds no obligation
-     to the `decreasing_by` block below. -/
+  /- The level rule translates to the target's level rule at the
+     translated atom.  The two placeholder-notation cases are unreachable in
+     a typed derivation, and they are given evidence rather than an
+     absurdity, so the clause stays a plain match.  It is a leaf, so it adds
+     no obligation to the `decreasing_by` block below. -/
   | _, _, _, @Subcap.level _ Γ e κ _ _ =>
       match e with
       | .var x => .level (.var x) (.cvar κ)
@@ -291,8 +291,7 @@ def Sub.translate : {Γ : Ctx s} → {T T' : Ty s} → Sub Γ T T' → FCdot.LeC
   termination_by _ _ _ d => sizeOf d
 
 /-- `⟦d⟧` on answer inclusions: a plain inclusion is a plain coercion, a
-pack is the target's pack, and the congruence is the target's `cong`.  It is
-the clause list of B2.10 verbatim. -/
+pack is the target's pack, and the congruence is the target's `cong`. -/
 def ESub.translate : {Γ : Ctx s} → {E E' : ETy s} → ESub Γ E E' → FCdot.ELeCo s
   | _, _, _, .ty d => .plain d.translate
   | _, _, _, @ESub.pack _ _ C _ _ _ f d => .pack C.translate f.translate d.translate
@@ -318,7 +317,7 @@ end
 
 /-! ## Member-freeness is preserved by the translation
 
-**T-B3.4, step 4.**  An induction following `Subcap.translate`'s own case
+An induction following `Subcap.translate`'s own case
 split.  The six member-free rules translate to the six member-free target
 rules, and `var` needs `Ctx.varAtom_memberFree`.  The `level` clause is a
 leaf in both, so the case is a five-way `cases` on the atom. -/

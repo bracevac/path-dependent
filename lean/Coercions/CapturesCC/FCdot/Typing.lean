@@ -133,7 +133,7 @@ inductive ShapeCo.HasType : Ctx s → ShapeCo s → Shape s → Shape s → Prop
   | eqToLe : Γ ⊢ φ : S ≡ T → Γ ⊢ˢ .eqToLe φ : S ≤ T
   /-- Contravariant domain, covariant codomain; both are type inclusions.
       Both arrows' capture binders are opened at one scope, and that scope
-      has a root of its own, which is the scope discipline of the stage. -/
+      has a root of its own, which is the scope discipline. -/
   | pi {T1 T2 : Dom s} {U1 U2 : Cod s} :
       Γ.scope ⊢ e : T2.underRoot ≤ T1.underRoot →
       Γ.body T2 ⊢ᵉ f : U1.underRoot ≤ U2.underRoot →
@@ -439,8 +439,7 @@ inductive Tm.HasType : Ctx s → Tm s → ETy s → Prop where
       Γ ⊢ᶜ f : C ⊑ U →
       Γ ⊢ .unbox a U f :ᵉ .ty (S ^ C)
 
-/-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is empty in
-this stage. -/
+/-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is empty. -/
 inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
   /-- A lambda carries the capture set `A` its rule assigns to it, and the
       closing evidence `g` puts the body's use set below `A` weakened united

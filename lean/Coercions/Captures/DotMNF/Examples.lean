@@ -5,8 +5,8 @@ namespace Captures
 /-!
 # DOT-MNF^cc examples
 
-The mandatory examples of Plan III §10, as `HasTy` derivations, restated on
-the judgments of stage A3a.  The calculus has no base types, so `Int` and
+A set of worked examples, as `HasTy` derivations, restated on the capture
+judgments of this calculus.  The calculus has no base types, so `Int` and
 `Nat` are replaced by distinct closed types; the point of each example is the
 *shape* of the derivation, in particular which subtyping steps go through a
 type selection.
@@ -19,8 +19,8 @@ a `μ`), and the pure type `S ^ {}` wherever the vanilla derivation used it as
 a type (a field's result, a function's domain and result, a context entry).
 Both forms of a name are kept, the shape carrying the suffix `S`.
 
-Three further examples, S3, C2 and C7, are the capture examples of stage
-A3a.  They live over the platform prefix of two rigid capture binders and
+Three further examples, S3, C2 and C7, exercise the capture extension
+specifically.  They live over the platform prefix of two rigid capture binders and
 their use sets are not empty: a boxed capturing type in a type member (S3),
 explicit capture polymorphism through a capture member (C2), and a pure
 container of boxed capabilities whose elements charge their own set when
@@ -231,13 +231,13 @@ def E3 : HasTy [] Ctx.nil
   lam' E3inner
     (.capt (.and (.typ .bot (.fld (.capt .top))) (.typ (.fld (.capt .top)) .top)))
 
-/-! ## E4: the counterexample of §1
+/-! ## E4: typing with no realizer for an abstract bound
 
 `Γ = x : {B : S..T}, w : S` with `S = {A : ⊥..⊤}` and `T = {A : Int..⊤}`.
 `S <: x.B <: T` gives `w : T`, hence `Int <: w.A`, hence `g n : w.A` for
 `g = λ(y : w.A). y` and `n : Int`.  No realizer for `x` exists, and the
-derivation is nonetheless well formed: this is why the target of Plan III
-needs `member` through `trans`. -/
+derivation is nonetheless well formed: this is why FCdot needs `member`
+through `trans`. -/
 
 /-- `{a : ⊤}`, standing for `Int`. -/
 def E4IntS : Shape s := .fld la (.top ^ [])
@@ -458,9 +458,9 @@ def E7 : HasTy [] Ctx.nil (.val (.obj E7Defs)) ((Shape.mu E7Self) ^ []) :=
 `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a`, at
 `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : ⊤}) ⊤`.  The left operand of the
 intersection is a type selection, so the type is outside the declaration
-fragment: this is the example the self-bound proposition of `FCdot` buys
-(plan §13 item 9), and `Wf.and` accepts it because it no longer asks for
-declaration-shaped operands.
+fragment: this is the example the self-bound proposition of `FCdot` buys,
+and `Wf.and` accepts it because it no longer asks for declaration-shaped
+operands.
 
 Two derivations of the body, `y.a`: one reads `{a : ⊤}` off the refinement
 by `And₂`, the other reads `x.A` off it by `And₁` and then goes through
@@ -528,7 +528,7 @@ def E8b : HasTy [] Ctx.nil
     ((Shape.all E8Dom ((Shape.all (E8Ref .here) (.top ^ [])) ^ [])) ^ []) :=
   lam' (lam' E8Body1 E8RefWf) E8DomWf
 
-/-! ## The platform prefix of stage A3a
+/-! ## The platform prefix for the capture examples
 
 S3, C2 and C7 live over a prefix of two rigid capture binders, the platform
 capabilities `κ₁` and `κ₂`.  The prefix is `Platform.cons (Platform.cons
@@ -1106,15 +1106,15 @@ def C2_typed : HasTy [CapAtom.cvar k1, CapAtom.cvar k2] platCtx C2tm C2Ty :=
       (.let ((C2Lit (.there (.there .here))).widen _)
         (.let C2ga (.let C2gb C2answer arrowWf) arrowWf) arrowWf) arrowWf) arrowWf
 
-/-! ## Stage A3b: `any` by position
+/-! ## Examples using `any` by position
 
 The examples below are written with `any` and expanded before they are
 typed.  `any` is a notation: it stands for the capture set its position
 reads, which is the set of the enclosing arrow or object together with that
 former's own binder, and at the top of a program the platform's own set.
 `AnyOk` is decided on the written type, `expand` at the platform set is
-computed, and the derivation that follows is a derivation of stage A3a at
-the expanded type. -/
+computed, and the derivation that follows is a derivation at the expanded
+type, which holds no `any`. -/
 
 /-- The platform set: the two rigid capture binders.  `fs`, the file system
 of S1 and S2, is `κ₁`. -/
@@ -1136,7 +1136,7 @@ def HasTy.captTo {s : Sig} {Γ : Ctx s} {U C C' : CaptureSet s} {t : Tm s} {S : 
     (h : HasTy U Γ t (S ^ C)) (f : Subcap Γ C C') : HasTy U Γ t (S ^ C') :=
   .sub h (.capt .refl f) .refl
 
-/-! ## Labels of the A3b examples -/
+/-! ## Labels used by the `any` examples -/
 
 /-- Term label `read`. -/
 def lread : Label := .trm 7
@@ -1214,8 +1214,8 @@ def S1Inner (fs : BVar s .cap) : Ty (s,x) :=
 def S1TyAny (fs : BVar s .cap) : Ty s :=
   (Shape.all (S1CP fs) (S1InnerAny fs)) ^ [CapAtom.cvar fs]
 
-/-- The type of `withFile` at the reading `expand` gives it: a type of stage
-A3a, with no `any` left. -/
+/-- The type of `withFile` at the reading `expand` gives it, with no `any`
+left. -/
 def S1Ty (fs : BVar s .cap) : Ty s :=
   (Shape.all (S1CP fs) (S1Inner fs)) ^ [CapAtom.cvar fs]
 
@@ -1223,11 +1223,11 @@ def S1Ty (fs : BVar s .cap) : Ty s :=
 `expand` reads. -/
 theorem S1_anyOk : (S1TyAny k1).AnyOk := by decide
 
-/-- **S1, expanded.**  At the platform set the written type is the A3a type
+/-- **S1, expanded.**  At the platform set the written type expands to
 `S1Ty`: the result `any` reads as `{fs, cp, op}`. -/
 theorem S1_expand : (S1TyAny k1).expand platSet = S1Ty k1 := rfl
 
-/-- The expanded type holds no `any`, so it is a type of stage A3a. -/
+/-- The expanded type holds no `any`. -/
 theorem S1_noAny : (S1Ty k1).NoAny := by decide
 
 /-! ### `withFile` itself -/
@@ -1513,7 +1513,7 @@ def S2MkTy (fs : BVar s .cap) : Ty s :=
 /-- **S2, written.** -/
 theorem S2_anyOk : (S2MkTyAny k1).AnyOk := by decide
 
-/-- **S2, expanded.**  At the platform set the written type is the A3a type
+/-- **S2, expanded.**  At the platform set the written type expands to
 `S2MkTy`: the result `any` reads as `{fs, u}`. -/
 theorem S2_expand : (S2MkTyAny k1).expand platSet = S2MkTy k1 := rfl
 

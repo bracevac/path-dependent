@@ -109,19 +109,19 @@ inductive Store.Typed : Store s → Ctx s → Prop where
       (hb : b.isRoot = false) :
       ⊢ .consC σ b : .consC Γ b
 
-/-- **T-B0.7.**  A store context has no scope root: a store binds
-capabilities, never scopes.  This is O9's reserved slot, used for the first
-time by the premise of `Store.Typed.consC`.  It lives beside the judgement it
-inducts on, because the four entering steps of the machine consume it. -/
+/-- A store context has no scope root: a store binds capabilities, never
+scopes.  This is exactly the premise `Store.Typed.consC` asks for.  It lives
+beside the judgement it inducts on, because the four entering steps of the
+machine consume it. -/
 theorem Store.Typed.rootFree (hσ : ⊢ σ : Γ) : Γ.root? = none := by
   induction hσ with
   | nil => rfl
   | cons _ _ _ ih => rw [Ctx.root?_cons, ih]; rfl
   | consC _ hb ih => rw [Ctx.root?_consC_of_not_root _ _ hb, ih]; rfl
 
-/-- Entries of a typed store are literals, in any scope.  It stands here
-rather than in `ErasureMetatheory.lean`, where the vanilla line keeps it,
-because it reads no erasure and `CanonicalForms.lean` needs it. -/
+/-- Entries of a typed store are literals, in any scope.  It is stated here
+rather than in `ErasureMetatheory.lean`, because it reads no erasure and
+`CanonicalForms.lean` needs it. -/
 theorem Store.Typed.lookup_isLiteral {s : Sig} {σ : Store s} {Γ : Ctx s}
     (h : ⊢ σ : Γ) : ∀ x : BVar s .var, (σ.lookup x).IsLiteral := by
   induction h with

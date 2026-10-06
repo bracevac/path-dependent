@@ -4,9 +4,9 @@ import Coercions.Frontend.Pretty
 /-!
 # The examples end to end
 
-Stage F3.3 of `plan-5e-frontend-stages.md`.  The ten surface programs of
-`Resolve.lean` are taken through the whole front end and compared against the
-hand written derivations of `lean/Coercions/DotMNF/Examples.lean`.
+The ten surface programs of `Resolve.lean` are taken through the whole
+front end and compared against the hand written derivations of
+`lean/Coercions/DotMNF/Examples.lean`.
 
 ## What is compared
 
@@ -15,8 +15,7 @@ the typer synthesizes, and the verdict of the target checker on the translation
 of the derivation.  Derivations themselves are not compared.  `DotMNF.HasTy` is
 `Type` valued data with no decidable equality
 (`lean/Coercions/DotMNF/Typing.lean:7-9`), and the typer legitimately reaches
-the same judgment by another route in three places, which the stage report
-lists.
+the same judgment by another route in three places.
 
 The comparison never transcribes a vanilla term or a vanilla type.  `vanillaTm`
 and `vanillaTy` read the subject and the conclusion off the vanilla derivation
@@ -35,14 +34,13 @@ nothing.  E10 is the opposite case and is compared against its let expanded
 form.
 
 The second and the third run compiled code through `expect`, because the typer
-is well-founded and does not reduce in the kernel (F1.7).  They are the
+is well-founded and does not reduce in the kernel.  They are the
 synthesized type and the checker's verdict.  The verdict is run and not only
-proved, which is what F3.1 asks for: the checker and the translation are seen to
-agree.  A run of the checker also subsumes the plan's third check that the
-program compiles at all, since `compiledVerdict` is false when the typer
-returns nothing.
+proved, so the checker and the translation are seen to actually agree.
+Running the checker also covers checking that the program compiles at all,
+since `compiledVerdict` is false when the typer returns nothing.
 
-The fourth is `Ek_checks`, the pipeline theorem of F3.1 at this program.  It is
+The fourth is `Ek_checks`, the pipeline theorem at this program.  It is
 stated in the hypothetical form, with the hypothesis supplied by the `#eval`
 beside it rather than by a kernel reduction through the typer.
 
@@ -60,8 +58,8 @@ not a function type, so the typer returns nothing and must return nothing.  Its
 two compiled checks are therefore negative, and the second of them raises every
 counter to show that the failure is the program and not the budget.
 
-That leaves decision 12 of the plan, the end to end test of let insertion,
-without a program that reaches the typer.  `E10tsrc` is E10 with its two binders
+That still leaves the end to end test of let insertion without a program
+that reaches the typer.  `E10tsrc` is E10 with its two binders
 at `∀(x : ⊤) ⊤` instead of `⊤`.  It resolves to the same shape with the same
 inserted binding, it typechecks, and its translation passes the target checker.
 It carries the same four checks and is the eleventh program, beside the ten.
@@ -69,8 +67,7 @@ It carries the same four checks and is the eleventh program, beside the ten.
 ## The run tests
 
 The file closes with the machine.  `compileAndRun` at a step budget of 32, and
-`ppRun` of the answer.  One correction to F3.3, which calls E2 and E5 "the two
-examples that actually reduce".  E5 is a lambda at the top level, so its initial
+`ppRun` of the answer.  E5 is a lambda at the top level, so its initial
 state is already final and the run gives the program back at zero steps.  Only
 E2 reduces, in six steps.  A third run is printed beside them, E11, which is
 E10t applied to the identity twice.  It is the one program here that runs
@@ -133,7 +130,7 @@ example : compiledTm exampleTable E1src = some (vanillaTm E1) := by decide
 #eval expect (compiledVerdict bE1 exampleTable E1src)
   "E1: the target checker rejects the translation"
 
-/-- The pipeline theorem of F3.1 at E1. -/
+/-- The pipeline theorem at E1. -/
 theorem E1_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE1 exampleTable E1src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
@@ -151,14 +148,14 @@ example : compiledTm exampleTable E2src = some (vanillaTm E2) := by decide
 #eval expect (compiledVerdict bE2 exampleTable E2src)
   "E2: the target checker rejects the translation"
 
-/-- The pipeline theorem of F3.1 at E2. -/
+/-- The pipeline theorem at E2. -/
 theorem E2_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE2 exampleTable E2src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
 
 /-! ## E3: an intersection with a shared member
 
-Rule 11 of F1.3 with two declarations of one variable at one label.  The vanilla
+Rule 11 with two declarations of one variable at one label.  The vanilla
 derivation is `E3` (`:162-166`). -/
 
 example : compiledTm exampleTable E3src = some (vanillaTm E3) := by decide
@@ -169,7 +166,7 @@ example : compiledTm exampleTable E3src = some (vanillaTm E3) := by decide
 #eval expect (compiledVerdict bE3 exampleTable E3src)
   "E3: the target checker rejects the translation"
 
-/-- The pipeline theorem of F3.1 at E3. -/
+/-- The pipeline theorem at E3. -/
 theorem E3_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE3 exampleTable E3src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
@@ -187,7 +184,7 @@ example : compiledTm exampleTable E4src = some (vanillaTm E4) := by decide
 #eval expect (compiledVerdict bE4 exampleTable E4src)
   "E4: the target checker rejects the translation"
 
-/-- The pipeline theorem of F3.1 at E4. -/
+/-- The pipeline theorem at E4. -/
 theorem E4_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE4 exampleTable E4src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
@@ -195,8 +192,7 @@ theorem E4_checks {a : ATm []} {c : Compiled a.erase}
 /-! ## E5: an object returned from a function and selected after a `let`
 
 Both `let`s take the second rung.  The vanilla derivation is `E5` (`:296-301`).
-Its field body goes another way than the search does, which the stage report
-records. -/
+Its field body goes another way than the search does. -/
 
 example : compiledTm exampleTable E5src = some (vanillaTm E5) := by decide
 
@@ -206,7 +202,7 @@ example : compiledTm exampleTable E5src = some (vanillaTm E5) := by decide
 #eval expect (compiledVerdict bE5 exampleTable E5src)
   "E5: the target checker rejects the translation"
 
-/-- The pipeline theorem of F3.1 at E5. -/
+/-- The pipeline theorem at E5. -/
 theorem E5_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE5 exampleTable E5src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
@@ -226,7 +222,7 @@ example : compiledTm exampleTable E6src = some (.val (.lam E6Int (vanillaTm E6))
 #eval expect (compiledVerdict bE6 exampleTable E6src)
   "E6: the target checker rejects the translation"
 
-/-- The pipeline theorem of F3.1 at E6. -/
+/-- The pipeline theorem at E6. -/
 theorem E6_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE6 exampleTable E6src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
@@ -246,7 +242,7 @@ example : compiledTm exampleTable E7src = some (vanillaTm E7) := by decide
 #eval expect (compiledVerdict bE7 exampleTable E7src)
   "E7: the target checker rejects the translation"
 
-/-- The pipeline theorem of F3.1 at E7. -/
+/-- The pipeline theorem at E7. -/
 theorem E7_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE7 exampleTable E7src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
@@ -255,8 +251,7 @@ theorem E7_checks {a : ATm []} {c : Compiled a.erase}
 
 One round of the closure takes the right operand of the intersection.  The
 vanilla derivation is `E8` (`:427-429`), which goes the same way.  The vanilla
-file also has `E8b`, the other route, and the stage report says why the search
-cannot reach it. -/
+file also has `E8b`, the other route, which the search here does not reach. -/
 
 example : compiledTm exampleTable E8src = some (vanillaTm E8) := by decide
 
@@ -266,7 +261,7 @@ example : compiledTm exampleTable E8src = some (vanillaTm E8) := by decide
 #eval expect (compiledVerdict bE8 exampleTable E8src)
   "E8: the target checker rejects the translation"
 
-/-- The pipeline theorem of F3.1 at E8. -/
+/-- The pipeline theorem at E8. -/
 theorem E8_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE8 exampleTable E8src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
@@ -275,8 +270,8 @@ theorem E8_checks {a : ATm []} {c : Compiled a.erase}
 
 New here, and the only mandatory example of the upper view step: `y : x.A` and
 the field is read off the upper bound of `x`'s member `A`.  Deduplication takes
-that route away from E8, which is why E9 exists (decision 12).  There is no
-vanilla derivation, so the term and the type are written out. -/
+that route away from E8, which is why E9 exists as its own example.  There is
+no vanilla derivation, so the term and the type are written out. -/
 
 /-- `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A). y.a`, erased. -/
 def E9tm : Tm [] :=
@@ -306,7 +301,7 @@ example : compiledTm exampleTable E9src = some E9tm := by decide
 #eval expect (! (compile { bE9 with views := 0 } exampleTable E9src).isSome)
   "E9: the typer succeeds at no round of the closure, so the budget is not measured"
 
-/-- The pipeline theorem of F3.1 at E9. -/
+/-- The pipeline theorem at E9. -/
 theorem E9_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE9 exampleTable E9src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
@@ -340,7 +335,7 @@ example : compiledTm exampleTable E10src = some E10tm := by decide
     exampleTable E10src == none)
   "E10: the typer applies a variable at ⊤ once the budget is large enough"
 
-/-- The pipeline theorem of F3.1 at E10.  True and empty, since E10 does not
+/-- The pipeline theorem at E10.  True and empty, since E10 does not
 compile.  It is written because the ten programs carry the same four checks. -/
 theorem E10_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE10 exampleTable E10src = some ⟨a, c⟩) :
@@ -349,7 +344,7 @@ theorem E10_checks {a : ATm []} {c : Compiled a.erase}
 /-! ## E10t: the same program with a function type at its binders
 
 The eleventh program, beside the ten.  E10 is the only end to end test of let
-insertion the plan has, and the typer cannot reach it, so nothing downstream of
+insertion among the ten, and the typer cannot reach it, so nothing downstream of
 resolution is exercised there.  E10t is E10 with `∀(x : ⊤) ⊤` at both binders.
 It inserts the same binding, it typechecks, and the target checker accepts the
 translation.  So the inserted `let` is carried through the typer, the
@@ -387,7 +382,7 @@ example : compiledTm exampleTable E10tsrc = some E10ttm := by decide
 #eval expect (! (compile { bE10t with sub := 0 } exampleTable E10tsrc).isSome)
   "E10t: the typer succeeds at search fuel 0, so the budget is not measured"
 
-/-- The pipeline theorem of F3.1 at E10t. -/
+/-- The pipeline theorem at E10t. -/
 theorem E10t_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE10t exampleTable E10tsrc = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
@@ -398,8 +393,8 @@ The twelfth program, and the only one of them all whose top level term is not a
 value.  It is E10t applied twice to the identity, in direct style, so the
 resolver atomizes the operator as well as the operand and the machine then
 reduces through the bindings it inserted.  It exists for the run tests below.
-E2 is the only one of the plan's ten that reduces at all, and what it reduces is
-an object literal and a projection. -/
+E2 is the only one of the ten example programs that reduces at all, and what
+it reduces is an object literal and a projection. -/
 
 /-- `let i = λ(x : ⊤). x in (λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)) i i`. -/
 def E11src : STm :=
@@ -415,20 +410,19 @@ def bE11 : Budget := { decls := 0, views := 0, sub := 1, typer := 1 }
 #eval expect (compiledVerdict bE11 exampleTable E11src)
   "E11: the target checker rejects the translation"
 
-/-- The pipeline theorem of F3.1 at E11. -/
+/-- The pipeline theorem at E11. -/
 theorem E11_checks {a : ATm []} {c : Compiled a.erase}
     (h : compile bE11 exampleTable E11src = some ⟨a, c⟩) :
     FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
 
 /-! ## The run tests
 
-`compileAndRun` at a step budget of 32, printed by the unparser of F3.2.  Each
-run is printed and then pinned at the step count it needs, so that a change to
-the machine or to the printer fails the build rather than changing a line of the
-log.
+`compileAndRun` at a step budget of 32, printed by the unparser of
+`Pretty.lean`.  Each run is printed and then pinned at the step count it
+needs, so that a change to the machine or to the printer fails the build
+rather than changing a line of the log.
 
-One correction to F3.3, which calls E2 and E5 "the two examples that actually
-reduce".  E5 is a lambda at the top level, so its state is final at once and its
+E5 is a lambda at the top level, so its state is final at once and its
 run gives the program back at zero steps.  It is a printer test.  E2 is the one
 program of the ten that reduces, and it takes six steps.  E11 takes twelve and
 is the one that runs through an inserted binding. -/

@@ -562,7 +562,7 @@ def Block.precView : Block s → Path s → Option (View s)
 /-- The block a path denotes over the store.  A field holding an atom gets a
 forwarding to that atom's root, and the block of a stored value is never a
 forwarding, so following is one step and the walk is structural on the path.
-Over a typed store this is `Ctx.lookupBlock` (invariant A of P1.8). -/
+Over a typed store this agrees with `Ctx.lookupBlock`. -/
 def Store.blockOf (σ : Store s) : Path s → Option (Block s)
   | .var x => some ((σ.lookup x).blocksAt (.var x))
   | .sel p a =>
@@ -873,7 +873,7 @@ def pathViewThroughPath (σ : Store s) : Nat → Form s → Path s → Option (V
 
 /-- The view of a stable path: the forms of the propositions known of the
 block at that path, with the casts of the `PathCo` applied.  `view`
-generalized from an atom to a stable path (P1.6). -/
+generalized from an atom to a stable path. -/
 def pathView (σ : Store s) : Nat → PathCo s → Option (View s)
   | 0, _ => none
   | _ + 1, .var x => some ((σ.lookup x).precView (.var x))

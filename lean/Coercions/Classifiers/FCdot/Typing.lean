@@ -11,14 +11,14 @@ subsumption; every inclusion is an explicit `cast`.  Elimination at an atom
 block.
 
 A type is a shape with a capture set, so inclusion of types splits into two
-families: the *shape* family `Γ ⊢ˢ e : S ≤ S'`, which is the vanilla family
-read at the shape sort, and the *capture* family `Γ ⊢ᶜ f : C ⊑ C'`.  A type
-inclusion `Γ ⊢ capt e f : S ^ C ≤ S' ^ C'` is the pair of the two.  Capture
-equality `Γ ⊢ᶜ φ : C ≡ C'` sits beside them, and both capture families
-mention atoms (`capvar`, `member`), so they live in the mutual block.  An
-atom's own capability is the capability of its root: a box is a *value* and
-an unboxing a *term*, not atom wrappers, so every rule that opens a self
-binder at an atom opens it at `a.root`, as in the vanilla line.
+families: the *shape* family `Γ ⊢ˢ e : S ≤ S'`, which is the ordinary
+subtyping family read at the shape sort, and the *capture* family
+`Γ ⊢ᶜ f : C ⊑ C'`.  A type inclusion `Γ ⊢ capt e f : S ^ C ≤ S' ^ C'` is the
+pair of the two.  Capture equality `Γ ⊢ᶜ φ : C ≡ C'` sits beside them, and
+both capture families mention atoms (`capvar`, `member`), so they live in
+the mutual block.  An atom's own capability is the capability of its root:
+a box is a *value* and an unboxing a *term*, not atom wrappers, so every
+rule that opens a self binder at an atom opens it at `a.root`.
 -/
 
 namespace FCdot
@@ -134,8 +134,8 @@ kind by construction.  `kcls` is `k-label` and `k-label-absurd`
 `¬ ψ ∋ c`, so their disjunction is the implication `ψ ∋ c → φ ∋ c`.
 `kcls` applies at a binder that *declares* a classifier, which is the `cls`
 flavour and nothing else, exactly as Capless(K)'s two label rules apply at a
-label.  A `star` binder declares none: `Ctx.Ren.instC`, the instantiation
-lemma T-B2.1, reads a `star` binder as an instance of an arbitrary set, so a
+label.  A `star` binder declares none: `Ctx.Ren.instC` reads a `star`
+binder as an instance of an arbitrary set, so a
 rule that read the root classifier off a `star` binder would not survive that
 map.  That is not a matter of taste.  K6x of `FCdot/Examples.lean` exhibits a
 context where such a rule derives a kinding whose canonical form is true, and
@@ -194,7 +194,7 @@ inductive KindCo.HasType : Ctx s → KindCo s → CaptureSet s → Cls.Kind → 
       evidence term is the *source* kind `φ₁`: the target is what a checking
       mode is given, and the source is what it has to be told. -/
   | ksub : Γ ⊢ᵏ g : C ⊑ᵏ φ₁ → φ₁.Subkind φ₂ → Γ ⊢ᵏ .ksub g φ₁ : C ⊑ᵏ φ₂
-  /-- The evidence form of `Ctx.KindLe.mono` (T3): a set below a kinded set
+  /-- The evidence form of `Ctx.KindLe.mono`: a set below a kinded set
       is kinded.  It is what the source's `CapKind.kle` translates to.  The
       set `D` is read off the capture premise, so nothing rides on the
       constructor. -/
@@ -240,7 +240,7 @@ inductive ShapeCo.HasType : Ctx s → ShapeCo s → Shape s → Shape s → Prop
   | eqToLe : Γ ⊢ φ : S ≡ T → Γ ⊢ˢ .eqToLe φ : S ≤ T
   /-- Contravariant domain, covariant codomain; both are type inclusions.
       Both arrows' capture binders are opened at one scope, and that scope
-      has a root of its own, which is the scope discipline of the stage. -/
+      has a root of its own, as every opened capture binder does. -/
   | pi {T1 T2 : Dom s} {U1 U2 : Cod s} :
       Γ.scope ⊢ e : T2.underRoot ≤ T1.underRoot →
       Γ.body T2 ⊢ᵉ f : U1.underRoot ≤ U2.underRoot →
@@ -351,7 +351,7 @@ inductive Morphism.HasType : Ctx s → Telescope (s,x) → Morphism s → Telesc
       admission step from the source kind to the target kind.  The step is
       `Cls.Kind.AdmitsStep` and not `Cls.Kind.Subkind`, so that the identity
       template on a kinding proposition is derivable: subkinding is not known
-      to be reflexive, which is decision 6. -/
+      to be reflexive. -/
   | kindC : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ C ⊑ᵏ φ₁) →
       SideC.HasType Γ q D C → φ₁.AdmitsStep φ₂ →
       Γ ⊢ .kindC m q j φ₂ : src ⇒ Tel ▹ D ⊑ᵏ φ₂
@@ -593,8 +593,8 @@ inductive Tm.HasType : Ctx s → Tm s → ETy s → Prop where
       Γ ⊢ᶜ f : C ⊑ U →
       Γ ⊢ .unbox a U f :ᵉ .ty (S ^ C)
 
-/-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is empty in
-this stage. -/
+/-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is always
+empty. -/
 inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
   /-- A lambda carries the capture set `A` its rule assigns to it, and the
       closing evidence `g` puts the body's use set below `A` weakened united

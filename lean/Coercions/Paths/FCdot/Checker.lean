@@ -1420,7 +1420,7 @@ private def smokeW : Witnesses ([],x) := .cons .nil smokeLabel .top
 private def smokeObj : Value [] := .obj smokeW (.cons .nil smokeLabel smokeField)
 
 /-- The literal's precise type: one definition entry, one presence entry.  The field
-holds a lambda, so it is not stable and there is no `∋ᵛ` entry (decision 24). -/
+holds a lambda, so it is not stable and there is no `∋ᵛ` entry. -/
 private def smokeObjTy : Ty [] := .obj (Telescope.ofLiteral smokeW [smokeLabel] [])
 
 /-- A context whose only binder declares the field `ℓ`. -/

@@ -11,11 +11,11 @@ namespace Captures
 /-!
 # FCdot examples
 
-The mandatory examples of Plan III §10 (E1 to E7) and the acceptance test for
+A set of worked examples (E1 to E7) and an acceptance test for
 self-bound propositions (E8), as `FCdot` terms accepted by the structural
 checker of `Coercions.FCdot.Checker`.  Each example comes with
 
-* the term and its type, built from the type translation of §5.1;
+* the term and its type, built from the type translation;
 * the checker's verdict on it;
 * a typing derivation `Eᵢ_typed : Ctx.nil ⊢ Eᵢ : EᵢTy`;
 * the erasure equation against the source term of `Coercions.DotMNF.Examples`,
@@ -55,8 +55,8 @@ There is no subsumption rule, so every source `Sub` step is an explicit
 proof.  Three idioms recur:
 
 * `LeCo.member (.var x) (.refl X) i` — the `i`-th proposition of `x`'s own
-  object type `X`, opened at `x`.  This is the `Var`-instance of §5.4 and it
-  covers both `Sel-<:` and `<:-Sel`.
+  object type `X`, opened at `x`.  This is the case where the premise is a
+  plain variable typing, and it covers both `Sel-<:` and `<:-Sel`.
 * `LeCo.member a e i` with `a` a *cast* atom — the same at a type reached
   through a bound.  This is what E4 needs.
 * `EqCo.def x ℓ` — the definition of a transparent binder's block name,
@@ -99,7 +99,7 @@ example : lv = DotMNF.Examples.lv := rfl
 
 /-! ## Pure types and pure evidence
 
-Every type in this stage carries the empty capture set, so a shape `S` is
+Every type in these examples carries the empty capture set, so a shape `S` is
 used as the type `S ^ []` (`Ty.pure`), and a shape inclusion `e` is used as
 the type inclusion `.capt e (.refl [])` (`co`). -/
 
@@ -205,7 +205,7 @@ field selected and applied to itself.
 Two things are specific to the target.  First, a field's type is its block
 name `x.a`, so the literal must *define* `a` in its witnesses; the definition
 entry `x.a ≃ ∀(y : x.A) x.A` is what lets the projected field be applied at
-all (Plan III §12, risk 4).  Second, no `Rec` block is needed: the witness
+all.  Second, no `Rec` block is needed: the witness
 `∀(y : self.A) self.A` mentions the self binder directly, and the literal's
 precise type `Telescope.ofLiteral` binds it.  `unfoldSelf` is likewise
 unnecessary, because `member` already opens the telescope at the atom's
@@ -388,16 +388,16 @@ example : DotMNF.HasTy [] .nil E3src
 
 theorem E3_erase : E3.erase = E3src.erase := rfl
 
-/-! ## E4: the counterexample of §1
+/-! ## E4: typing with no realizer for an abstract bound
 
 `λ(x : {B : S..T}). λ(w : S). λ(n : Int). let g = λ(y : w.A). y in g n`, with
 `S = {A : ⊥..⊤}` and `T = {A : Int..⊤}`.
 
 This is the acceptance test.  The step `S ≤ x.B ≤ T` has no realizer, so `w`'s
 view of its own member `A` is not the one its binding gives; the target reaches
-`Int ≤ w.A` by eliminating at the *cast* atom `w ▹ (S ≤ T)`, which is the
-general form of §5.4 and the reason `member` takes an arbitrary inclusion
-rather than a context lookup. -/
+`Int ≤ w.A` by eliminating at the *cast* atom `w ▹ (S ≤ T)`, which is
+exactly why `member` takes an arbitrary inclusion rather than a context
+lookup. -/
 
 /-- `S = {A : ⊥..⊤}`. -/
 def E4S : Shape s := tTyp lA .bot .top
@@ -894,10 +894,9 @@ theorem C3_no_store {s : Sig} {σ : Store s} {Γ : Ctx s} (hσ : ⊢ σ : Γ)
 `capvar` reads the capture set of an atom's *type* and concludes about the
 atom's *root*; `member` in the capture sort instantiates a telescope entry at
 the same root.  Both fire at a wrapped atom -- a `recap` under a `cast` --
-and they agree, because every wrapper keeps the root (plan-5a §2.3).  This is
-the example the design correction of the stage makes true: with `box` and
-`unbox` moved to the value and term sorts, no atom's capture set can disagree
-with its root. -/
+and they agree, because every wrapper keeps the root.  This example checks
+that fact: with `box` and `unbox` moved to the value and term sorts, no
+atom's capture set can disagree with its root. -/
 
 /-- `μ(y. [{y} ⊑ᶜ {κ}])`: the self's own capability is below `κ`. -/
 def C4Dom (κ : BVar s .cap) : Shape s :=
@@ -938,7 +937,7 @@ theorem C4_member :
 
 /-! ## C1 and C6: the platform, use sets, and a run
 
-The two examples of stage A2.6.  Both live over the platform prefix of two
+Both examples live over the platform prefix of two
 rigid capture binders, `κ₁ ⊑ᶜ ∗` and `κ₂ ⊑ᶜ ∗`, with `Unit := ⊤` and two
 closures standing for the capabilities: `log`, annotated `{κ₁}`, and
 `console`, annotated `{κ₂}`.  A capability is the identity closure; what
@@ -1301,7 +1300,7 @@ theorem C6_safe {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
   effect_safety C6st0'_typed C6_store run C6_no_kappa2 hin hΓ'
 
 
-/-! ## S3, C2 and C7: the capture examples of stage A3a
+/-! ## S3, C2 and C7: capture examples carried across the translation
 
 The three source derivations of `DotMNF.Examples` over the platform prefix
 of two rigid capture binders, on this side of the translation.  Each comes
@@ -1577,7 +1576,7 @@ theorem C2_erase :
     Tm.erase DotMNF.Examples.C2_typed.translate = DotMNF.Tm.erase DotMNF.Examples.C2tm :=
   DotMNF.HasTy.translate_erase _
 
-/-! ## S1, S2 and C5: the examples of stage A3b
+/-! ## S1, S2 and C5: the `any` examples carried across the translation
 
 The two source derivations of `DotMNF.Examples` that are written with `any`
 and typed at the expanded type, on this side of the translation, and the
@@ -1585,7 +1584,8 @@ packing of S2 seen from the target.
 
 `any` never reaches the target: it is a source notation, expanded before the
 program is typed, so the translated types below are the translations of the
-expanded types.  The parts are the ones A3a used.  `Sᵢ_translated` is
+expanded types.  The parts are the same ones used above for S3, C2 and C7.
+`Sᵢ_translated` is
 `HasTy.translate_typed` at the source derivation and `Sᵢ_erase` is
 `HasTy.translate_erase`; neither is decided, because `Shape.translate` and
 `HasTy.translate` are compiled by well-founded recursion and do not reduce
@@ -1676,7 +1676,7 @@ def C5NextShape : Shape (s,x) :=
 
 /-- The capture witnesses of the callee's literal, read off the source
 declaration shape by the translation: the member's definition and the
-field's declared capture set.  This is the plan's
+field's declared capture set,
 `Wᶜ = [C ↦ {fs}, next ↦ {self∙C}]`. -/
 theorem C5_capWitnesses {s : Sig} (fs : BVar s .cap) :
     (DotMNF.Examples.S2PreAt (s := (s,x)) .here (.there fs)).capWitnesses

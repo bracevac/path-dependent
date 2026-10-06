@@ -4,5 +4,6 @@ import Coercions.Classifiers.DotMNF.Machine
 import Coercions.Classifiers.DotMNF.Erasure
 import Coercions.Classifiers.DotMNF.Examples
 /-!
-Import root for DOT-MNF, the source calculus of Plan III (milestone M2).
+Import root for DOT-MNF, the source calculus that this development
+translates from.
 -/

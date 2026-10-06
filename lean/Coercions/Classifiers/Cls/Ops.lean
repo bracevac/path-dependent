@@ -22,8 +22,8 @@ The semantic content is one lemma, `Kind.contains_subtract_of`, the sound
 direction of the subtraction bridge, and its consumer `Kind.Subkind.contains`.
 The converse is not proved here.  See the note before the examples.
 
-The file closes with the example classifiers of the plan and their `decide`
-facts, which is the acceptance of the classifier data.
+The file closes with example classifiers and `decide` facts about them, which
+serve as acceptance tests for the classifier data.
 -/
 
 namespace Cls
@@ -245,9 +245,9 @@ theorem Subkind.contains {K L : Kind} (h : K.Subkind L) {c : Classifier}
 
 /-- Semantic subkinding: every classifier `K` holds, `L` holds.  This is
 what `Kind.Subkind` gives through `Kind.Subkind.contains`, and it is the
-relation the normal forms of K1 carry, because it is reflexive and
-transitive by definition while `Kind.Subkind` is neither until the converse
-of the subtraction bridge is ported. -/
+relation needed wherever kind annotations have to compose, because it is
+reflexive and transitive by definition while `Kind.Subkind` is neither until
+the converse of the subtraction bridge is ported. -/
 def Admits (K L : Kind) : Prop := ∀ c : Classifier, K.Contains c → L.Contains c
 
 theorem Admits.refl (K : Kind) : K.Admits K := fun _ h => h
@@ -255,17 +255,16 @@ theorem Admits.refl (K : Kind) : K.Admits K := fun _ h => h
 theorem Admits.trans {K L M : Kind} (h₁ : K.Admits L) (h₂ : L.Admits M) : K.Admits M :=
   fun c hc => h₂ c (h₁ c hc)
 
-/-- Subkinding gives semantic subkinding, and this is the only consumer of
-`Kind.Subkind.contains` outside K0. -/
+/-- Subkinding gives semantic subkinding, and this is the only other place
+that consumes `Kind.Subkind.contains`. -/
 theorem Subkind.admits {K L : Kind} (h : K.Subkind L) : K.Admits L :=
   fun _ hc => Subkind.contains h hc
 
 /-- The decidable step a morphism template takes from the source kind of the
 proposition it names to the target kind: the two kinds are equal, or
 subkinding decides it.  Equality is a disjunct because `Kind.Subkind` is not
-known to be reflexive without the converse of the subtraction bridge, which
-is decision 6, and the identity template on a kinding proposition needs the
-reflexive step. -/
+known to be reflexive without the converse of the subtraction bridge, and the
+identity template on a kinding proposition needs the reflexive step. -/
 def admitsStepB (K L : Kind) : Bool := (K == L) || K.subkindB L
 
 /-- The step as a proposition.  An `abbrev`, so that `Decidable` is
@@ -299,20 +298,19 @@ Capless(K) (`Subkind.lean:37-46`, through `Subkind.semantics`).  That
 direction of `isEmpty_iff` builds a classifier no exclusion of the kind covers
 out of the child indices the exclusion lists use, and the converse of the
 bridge is the bulk of `Classifier/Subtract.lean`, 991 lines with 17 `aesop`
-calls.  This tree allows neither `aesop` nor Mathlib, so the port is a
-development of its own, and K0 does not need it: `Subkind.contains` is the
-sound direction and it is the only fact the stage consumes.  This is decision
-6 of plan V-C.
+calls.  This tree allows neither `aesop` nor Mathlib, so porting that proof
+is a development of its own, and it is not needed here: `Subkind.contains` is
+the sound direction, and it is the only fact used below.
 
-The fallback for `refl` and `trans`, if a later stage wants them, is a direct
+A fallback for `refl` and `trans`, if they turn out to be needed, is a direct
 induction on the shape of `subtractB`.  The cost of not having the converse is
-that the kinding checker of K1 is stated sound and not stated complete. -/
+that a kinding checker built on this data is sound but not known complete. -/
 
 /-! ## The example classifiers
 
 `exceptions.tex:91` of the write-up: `Control` is a subclass of `ThreadLocal`.
-`IO` is disjoint from both.  These are the classifiers the K0.9 and K3
-examples use, and the `decide` facts below are the acceptance of the data. -/
+`IO` is disjoint from both.  These classifiers are used throughout the
+examples below, and the `decide` facts are acceptance tests for the data. -/
 
 /-- The thread-local classifier. -/
 def ThreadLocal : Classifier := .child 1 .top
@@ -347,14 +345,14 @@ example : Classifier.disjointB IO Control = true := by decide
 example : Kind.top.containsB .top = true := by decide
 example : Kind.top.containsB Control = true := by decide
 
--- Membership, the K1x shape: `only Control` admits `Control` and nothing else here.
+-- Membership: `only Control` admits `Control` and nothing else here.
 example : Kind.containsB (only Control) Control = true := by decide
 example : Kind.containsB (only Control) IO = false := by decide
 example : Kind.containsB (only Control) .top = false := by decide
 example : Kind.containsB (only ThreadLocal) Control = true := by decide
 
--- Membership, the K2x shape: `except ThreadLocal` excludes `Control`, because
--- `Control` lies below `ThreadLocal`, and it still admits `⊤`.
+-- Membership: `except ThreadLocal` excludes `Control`, because `Control`
+-- lies below `ThreadLocal`, and it still admits `⊤`.
 example : Kind.containsB (except ThreadLocal) Control = false := by decide
 example : Kind.containsB (except ThreadLocal) ThreadLocal = false := by decide
 example : Kind.containsB (except ThreadLocal) IO = true := by decide
@@ -369,8 +367,8 @@ example : Kind.subkindB (only Control) (only ThreadLocal) = true := by decide
 example : Kind.subkindB (only ThreadLocal) (only Control) = false := by decide
 example : Kind.Subkind Kind.top Kind.top := by decide
 example : Kind.subkindB (only Control) (except ThreadLocal) = false := by decide
--- Decision 2: a root is kinded only at a kind that admits every classifier,
--- and `Kind.top` is not a subkind of an `except` kind.
+-- A root is kinded only at a kind that admits every classifier, so
+-- `Kind.top` is not a subkind of an `except` kind.
 example : Kind.subkindB Kind.top (except ThreadLocal) = false := by decide
 
 -- Union is list append, and membership reads it as a union.

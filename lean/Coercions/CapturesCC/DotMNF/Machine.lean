@@ -11,7 +11,7 @@ two steps that enter a body enter three binders and two binders at once, so
 they use the substitution of `DotMNF.Subst`; every other step still moves by
 a renaming.
 
-This is Plan III §3.5 plus the unboxing step of stage A3a:
+The reduction rules, including the unboxing step:
 
 ```text
 ⟨σ, K, let x = t in u⟩                       ⟶  ⟨σ, K ▹ (x. u), t⟩
@@ -34,7 +34,7 @@ open FCdot (Kind Sig BVar Rename Label)
 /-! ## Stores -/
 
 /-- A store: one value per term binder of the signature, and a data-free
-slot per capture binder.  (`consᶜ` of the plan: `ᶜ` is not a legal Lean
+slot per capture binder.  (Conceptually `consᶜ`: `ᶜ` is not a legal Lean
 identifier character, so the capture-sort twin of a name carries the suffix
 `C`.) -/
 inductive Store : Sig → Type where

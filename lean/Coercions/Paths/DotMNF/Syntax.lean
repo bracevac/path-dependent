@@ -9,7 +9,7 @@ WadlerFest DOT in monadic normal form: `let` right-hand sides are arbitrary
 terms, application and selection take variables.  The scoping discipline is
 the one of `FCdot.Debruijn`, reused verbatim: signatures, bound variables,
 renamings, and the label type are shared with the target so that the
-translation of Plan III §8 is the identity on signatures.
+translation to FCdot is the identity on signatures.
 
 A path is a variable followed by field selections.  Types mention paths.
 Terms do not: `Tm.path` takes a variable, and a deep path in term position is
@@ -388,8 +388,8 @@ instance Ty.Decl.instDecidable {s : Sig} (T : Ty s) : Decidable (Ty.Decl T) :=
 
 /-- Well-formedness.  Structural, except that the body of a recursive type is
 restricted to declaration shapes.  Intersections are unrestricted: a
-non-declaration operand translates to a self-bound proposition (plan §13
-item 9).  Bounds are arbitrary: `Wf {A : S..T}` does not ask for `S <: T`. -/
+non-declaration operand translates to a self-bound proposition.  Bounds are
+arbitrary: `Wf {A : S..T}` does not ask for `S <: T`. -/
 inductive Ty.Wf : {s : Sig} → Ty s → Prop where
   | top : Ty.Wf (.top : Ty s)
   | bot : Ty.Wf (.bot : Ty s)

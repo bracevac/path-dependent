@@ -3,25 +3,24 @@ import Coercions.DotMNF.Machine
 /-!
 # The executable DOT-MNF machine
 
-Stage F2.1 of `plan-5e-frontend-stages.md`.  The frozen tree gives the source
-machine as a relation (`lean/Coercions/DotMNF/Machine.lean`).  This module gives
-it as a function, so that a resolved program runs.
+The frozen tree gives the source machine as a relation
+(`lean/Coercions/DotMNF/Machine.lean`).  This module gives it as a function,
+so that a resolved program runs.
 
 The source machine needs no search.  Every side condition of a rule is a pattern
 match on a total lookup, `DotMNF.Store.lookup` for the store and
 `DotMNF.Defs.lookupTrm` for the members of an object.  So `step?` is fuel free
 and structural, and it reduces in the kernel.  That is why the examples at the
 end of the module are closed by `rfl` and not by the `expect` helper that the
-search of F1 needs.
+subtyping search needs.
 
 `alloc` is the only rule that extends the signature, which is why the result of
 one step is a sigma type over signatures.
 
 Finality is decided by `final?` rather than by a case split on the proposition
 `DotMNF.State.Final`.  A classification proof that went through `Classical.em`
-would leave `Classical.choice` in the axiom list of `step?_none_classify`, which
-the head constraint of the plan forbids.  With `final?` and `final?_iff` the
-classification is constructive.
+would leave `Classical.choice` in the axiom list of `step?_none_classify`.
+With `final?` and `final?_iff` the classification stays constructive instead.
 
 Everything here lives in `namespace Frontend`.  No definition is placed in the
 `DotMNF` or `FCdot` namespaces, and no file of the frozen trees is touched.

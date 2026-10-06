@@ -3,7 +3,7 @@ import Coercions.Paths.FCdot.CheckerCompleteness
 import Coercions.Paths.DotMNF.Examples
 
 /-!
-# The translation on concrete derivations (P2.9, Z1 to Z9)
+# The translation on concrete derivations
 
 Each example is a source derivation and a fact about its translation.  The
 kernel decides every fact: a checker verdict `checkTm`, `checkLe`, `checkPath`
@@ -11,13 +11,12 @@ or `checkAtom` on the image, an equation between computed images, or an
 erasure equation.  Nothing here is proved by a lemma about the translation,
 except the typings read off a verdict by `FCdot.checkTm_sound` and the two
 facts of Z9, which are proof terms over the target's templates.  So a fact
-holds only if the translation unfolds in the kernel, which is decision 31.
+holds only if the translation unfolds in the kernel, which holds because every
+translation function is structural.
 
-The rows are the namespaces `Z1` to `Z9`.  The text is the design round's
-Parts D, R, E and K (`Scratch_P2_Final.lean.txt`), stated on the real names.
+The rows are the namespaces `Z1` to `Z9`.
 
-* `Z1`: decision 26 on one literal body, declared plain by `trm` and stable
-  by `trmObj`.
+* `Z1`: a literal body, declared plain by `trm` and stable by `trmObj`.
 * `Z2`: a field that holds a variable, and a field that holds the literal's
   own self.
 * `Z3`: the counters of `litMorphism` on three fields in one intersection,
@@ -27,11 +26,10 @@ Parts D, R, E and K (`Scratch_P2_Final.lean.txt`), stated on the real names.
   reads.
 * `Z6`: `Sub.vfld`, `Sub.vfldToFld`, a projection by `proj` and by `projP`,
   the derived `letSngl`.
-* `Z7`: decision 28 on its images, and X3 of P0.
-* `Z8`: the kernel evaluates the translations of X1 and X4 of P0 and of
-  `And₁`.
-* `Z9`: why decisions 28 and 29.  No template reads an inclusion out of a
-  singleton, and none rewrites an alias.
+* `Z7`: term typing's variable rules on their images, and X3.
+* `Z8`: the kernel evaluates the translations of X1 and X4 and of `And₁`.
+* `Z9`: why no template reads an inclusion out of a singleton, and none
+  rewrites an alias.
 
 Each term derivation of Z1, Z2, Z3 and Z7 has its erasure equation
 `⌊h.translate⌋ = Tm.erase t`, by `decide +kernel`.  `HasTy.translate_erase`
@@ -84,7 +82,7 @@ def hwOpen : PathTy Γw (.var .here) (.vfld la (.mu TIn)) :=
   (show (TOutS.rename FCdot.Rename.succ.lift).substPath (.var .here) = .vfld la (.mu TIn)
     from rfl) ▸ hw.recE (by decide)
 
-/-! ## Z1.  Decision 26: a literal body, plain by `trm`, stable by `trmObj`
+/-! ## Z1.  A literal body, plain by `trm`, stable by `trmObj`
 
 `ν(x. {a = ν(y. {A = ⊤})})`, declared `{a : μ(y. {A : ⊤..⊤})}` by `trm` and
 `{val a : μ(y. {A : ⊤..⊤})}` by `trmObj`.  The image of the plain field ends in
@@ -161,8 +159,8 @@ theorem blocks_P : TOutP.blocks dOut = (FCdot.Value.obj TOutP.witnesses FP).bloc
 theorem blocks_S : TOutS.blocks dOut = (FCdot.Value.obj TOutS.witnesses FS).blockSelf := by
   decide +kernel
 
-/-- Without decision 26, the uniform clause `def here a` at a `trm` literal
-body makes the field stable in the target while the source says `fld`, and
+/-- Using the uniform clause `def here a` at a `trm` literal body instead
+would make the field stable in the target while the source says `fld`, and
 the two builders disagree. -/
 def FPuniform : FCdot.Fields ([],x) :=
   .cons .nil la (.cast innerImage (.eqToLe (.symm (.def .here la))))
@@ -170,7 +168,8 @@ theorem FPuniform_disagrees :
     (FCdot.Value.obj TOutP.witnesses FPuniform).blockSelf ≠ TOutP.blocks dOut := by
   decide +kernel
 
-/-- Both literals type in the P1 checker at the translated declared type. -/
+/-- Both literals type in the decidable checker at the translated declared
+type. -/
 theorem litP_checks :
     FCdot.checkTm FCdot.Ctx.nil litP.translate (Ty.mu TOutP).translate = true := by
   decide +kernel
@@ -194,8 +193,8 @@ end Z1
 /-! ## Z2.  A field that holds a variable, or the literal's own self
 
 A field that holds a variable gets a forwarding child whatever type it is
-declared at.  So `Ty.blocks` reads the definitions, not the declaration
-(decision 30).  `ν(x. {a = z})` is declared `{a : ⊤}` and `{a : z.type}`, the
+declared at.  So `Ty.blocks` reads the definitions, not the declaration.
+`ν(x. {a = z})` is declared `{a : ⊤}` and `{a : z.type}`, the
 second by the derived `trmSngl`.  `ν(x. {a = x})` is declared at `{a : ⊤}` and
 at `{a : x.type}`. -/
 
@@ -472,9 +471,9 @@ end Z5
 
 `Sub.vfld` and `Sub.vfldToFld` translate to object coercions that check.  The
 projection `w.a` types by `projP` from a path typing of the receiver and by the
-base's `proj`.  The image of the second is vanilla's term, `member` at the
-receiver's atom (decision 28 (c)).  The derived `letSngl` over a field declared
-at a singleton translates to the opaque `let` (decision 32), and the checker
+base's `proj`.  The image of the second is the usual term, `member` at the
+receiver's atom.  The derived `letSngl` over a field declared
+at a singleton translates to the opaque `let`, and the checker
 binds the forwarding binder by `Binding.forLet`. -/
 
 namespace Z6
@@ -539,14 +538,14 @@ theorem R4_checks :
 
 end Z6
 
-/-! ## Z7.  Decision 28 on its images, and X3
+/-! ## Z7.  Term typing's variable rules on their images, and X3
 
 Term typing keeps the base's variable rules, the bridge from path typing is
 at a singleton, and a projection may read a path typing.  What that keeps is
 checked here on the image.  The singleton at a variable through `snglTrans`.
 Projection and bounds through a singleton-typed variable.  The self-free
 replacement case at an opaque variable, with no `repl`.  E9's shape through the
-derived `letSngl`.  The base's variable rules as atoms.  X3 of P0. -/
+derived `letSngl`.  The base's variable rules as atoms.  X3. -/
 
 namespace Z7
 
@@ -640,7 +639,7 @@ theorem E5_sngl :
       = true := by
   decide +kernel
 
-/-- X3 of P0, `let y = x.a in y.b`, with its body under the singleton binder.
+/-- X3, `let y = x.a in y.b`, with its body under the singleton binder.
 Both are the derivations of `DotMNF/Examples.lean`. -/
 theorem X3E_body_checks :
     FCdot.checkTm Examples.X3_CtxY.translate Examples.X3_body.translate
@@ -670,10 +669,10 @@ end Z7
 
 /-! ## Z8.  The kernel evaluates translations
 
-Every translation function is structural (decision 31), so `decide +kernel`
+Every translation function is structural, so `decide +kernel`
 unfolds the image of `And₁`, which reads `identityMorphism`, and the images of
-X1 and X4 of P0.  `And₁` and X4 are the probes on which the vanilla shapes
-failed. -/
+X1 and X4.  `And₁` and X4 are examples where a non-structural definition
+would fail to reduce by `decide +kernel`. -/
 
 namespace Z8
 
@@ -687,7 +686,7 @@ theorem K1_fixed :
     FCdot.checkLe FCdot.Ctx.nil and1Src.translate (Ty.and S0 T0).translate S0.translate = true := by
   decide +kernel
 
-/-- X4 of P0, gDOT Fig. 2's `types` literal with its two lambda fields plain. -/
+/-- X4, gDOT Fig. 2's `types` literal with its two lambda fields plain. -/
 theorem K2_fixed :
     FCdot.checkTm Examples.X4_Ctx.translate Examples.X4_lit0.translate
       (Ty.mu Examples.X4_Body0).translate = true := by
@@ -701,7 +700,7 @@ theorem K3_recE :
     FCdot.checkTm Γk.translate recEk.translate (Ty.fld la .top).translate = true := by
   decide +kernel
 
-/-- X1 of P0, pDOT Sec. 2.2: the literal, and both routes between `x.c.A` and
+/-- X1, pDOT Sec. 2.2: the literal, and both routes between `x.c.A` and
 `x.B`. -/
 theorem KX1_lit :
     FCdot.checkTm FCdot.Ctx.nil (Examples.X1_lit (Γ := Ctx.nil)).translate
@@ -720,7 +719,7 @@ theorem KX1_BA :
 
 end Z8
 
-/-! ## Z9.  Why decisions 28 and 29
+/-! ## Z9.  Why no template crosses a singleton or an alias
 
 The image of a term at a variable is an atom rooted there.  A variable of
 singleton type used at a type of its alias that is not a singleton would need
@@ -732,7 +731,7 @@ namespace Z9
 
 /-- No template proves an inclusion proposition out of the singleton
 telescope.  Every `le` template names a source `⊑` or `≐` entry, and `[≈ q]`
-has none (decision 28). -/
+has none. -/
 theorem no_le_out_of_sngl {s : Sig} {Γ : FCdot.Ctx s} {q : FCdot.Path (s,x)}
     {m : FCdot.Morphism s} {S T : FCdot.Ty (s,x)} :
     ¬ FCdot.Morphism.HasType Γ (.cons .nil (.alias q)) m (.cons .nil (.le S T)) := by
@@ -743,7 +742,7 @@ theorem no_le_out_of_sngl {s : Sig} {Γ : FCdot.Ctx s} {q : FCdot.Path (s,x)}
   | leEqSym _ hj _ _ => cases hj with | there h' => cases h'
 
 /-- A template copies an alias and never rewrites it.  Out of `[≈ q]` it
-proves `≈ q'` only at `q' = q` (decision 29). -/
+proves `≈ q'` only at `q' = q`. -/
 theorem alias_template_fixed {s : Sig} {Γ : FCdot.Ctx s} {q q' : FCdot.Path (s,x)}
     {m : FCdot.Morphism s}
     (h : FCdot.Morphism.HasType Γ (.cons .nil (.alias q)) m (.cons .nil (.alias q'))) :

@@ -53,7 +53,7 @@ def Store.HasFieldP (σ : Store s) (p : Path s) (ℓ : Label) : Prop :=
   ∃ W Fs vls ch, σ.blockOf p = some (.obj W Fs vls ch) ∧ ℓ ∈ Fs
 
 /-- Stable field presence at a path: the block lists `ℓ` among the fields
-whose body is stable (decision 1). -/
+whose body is stable. -/
 def Store.HasValFieldP (σ : Store s) (p : Path s) (ℓ : Label) : Prop :=
   ∃ W Fs vls ch, σ.blockOf p = some (.obj W Fs vls ch) ∧ ℓ ∈ vls
 
@@ -238,8 +238,7 @@ inductive EntriesTyped {s : Sig} (Γ : Ctx s) :
   | alias : EntriesTyped Γ ρ Tel₁ Es Tel₂ → Tel₁ ∋ (j ↦ ≈ q) →
       EntriesTyped Γ ρ Tel₁ (Es ▹ .alias j) (Tel₂ ▹ ≈ q)
   /-- A constant alias: the entry names the receiver `p` it is sound at, the
-      mode is read at that receiver, and the alias is an identity
-      (decision 24). -/
+      mode is read at that receiver, and the alias is an identity. -/
   | aliasTo : EntriesTyped Γ ρ Tel₁ Es Tel₂ → ρ = some p → p = q →
       EntriesTyped Γ ρ Tel₁ (Es ▹ .aliasTo p q) (Tel₂ ▹ ≈ (q.weaken))
 
@@ -259,8 +258,8 @@ inductive EntryTyped {s : Sig} (Γ : Ctx s) :
   | hasVal : Tel₁ ∋ (j ↦ ∋ᵛ ℓ) → EntryTyped Γ ρ Tel₁ (.hasVal j) (∋ᵛ ℓ)
   | hasOfVal : Tel₁ ∋ (j ↦ ∋ᵛ ℓ) → EntryTyped Γ ρ Tel₁ (.has j) (∋ ℓ)
   | alias : Tel₁ ∋ (j ↦ ≈ q) → EntryTyped Γ ρ Tel₁ (.alias j) (≈ q)
-  /-- The constant alias, read at its own receiver, with the identity
-      condition of P1.6. -/
+  /-- The constant alias, read at its own receiver, with its identity
+      condition. -/
   | aliasTo : ρ = some p → p = q →
       EntryTyped Γ ρ Tel₁ (.aliasTo p q) (≈ (q.weaken))
 
@@ -331,14 +330,14 @@ inductive ViewTyped {s : Sig} (Γ : Ctx s) (r : Path s) (σ : Store s) :
       fields, which is what one field step of a `PathCo` consumes. -/
   | hasVal : Γ ⊨[r, σ] V : Tel → σ.HasValFieldP r ℓ →
       Γ ⊨[r, σ] V ▹ .hasVal ℓ : Tel ▹ ∋ᵛ ℓ
-  /-- An alias: the root and the named path are one path (decision 24).
-      This is the condition `AliasCo.HasType.member` consumes. -/
+  /-- An alias: the root and the named path are one path.  This is the
+      condition `AliasCo.HasType.member` consumes. -/
   | alias {q : Path (s,x)} : Γ ⊨[r, σ] V : Tel →
       r = q.substPath r →
       Γ ⊨[r, σ] V ▹ .alias (q.substPath r) : Tel ▹ ≈ q
   /-- A bound of the root's type, instantiated at the root: a form typed at
       the root from the type the root's chain starts at, which is the node's
-      type (decision 24). -/
+      type. -/
   | bnd {X : Ty (s,x)} : Γ ⊨[r, σ] V : Tel →
       FormTyped Γ (some r) G (Γ.nodeTy r) (X.substPath r) →
       Γ ⊨[r, σ] V ▹ .bnd G : Tel ▹ ⊑ X
@@ -534,7 +533,7 @@ theorem ViewTyped.hasVal_entry {V : View s} {Tel : Telescope (s,x)}
       | there hAt' => obtain ⟨hQ, hH⟩ := ih hAt'; exact ⟨.there hQ, hH⟩
 
 /-- The entry of a typed view at an alias names the path, and the root is
-that path.  This is what T2 consumes. -/
+that path.  This is what the proof of block identity consumes. -/
 theorem ViewTyped.alias_entry {V : View s} {Tel : Telescope (s,x)}
     (hV : Γ ⊨[r, σ] V : Tel) {i : Nat} {q : Path (s,x)} (hAt : Tel ∋ (i ↦ ≈ q)) :
     V ∋ (i ↦ .alias (q.substPath r)) ∧ r = q.substPath r := by

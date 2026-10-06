@@ -5,7 +5,7 @@ import Coercions.CapturesCC.DotToFCdot.TypesSubst
 namespace CapturesCC
 
 /-!
-# Typedness of the term translation (Plan III §8.2, M4; stage A3a)
+# Typedness of the term translation
 
 Every typing derivation of DOT-MNF^cc translates to an FCdot term of the
 translated type, its use-set evidence is typed at the translated use set, and

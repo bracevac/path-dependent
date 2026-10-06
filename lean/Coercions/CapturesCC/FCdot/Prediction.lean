@@ -3,7 +3,7 @@ import Coercions.CapturesCC.FCdot.Consistency
 namespace CapturesCC
 
 /-!
-# Capture prediction (stage A2.5)
+# Capture prediction
 
 The use-set half of preservation, and what follows from it along a run.
 
@@ -70,7 +70,7 @@ theorem CaptureSet.closing_substVar {s : Sig} (A : CaptureSet s) (y : BVar s .va
 /-- The closing set of a body, read at the argument: the substitution a step
 performs when it enters a closure's body cancels the three weakenings and
 sends the parameter to the argument's root.  This is
-`CaptureSet.closing_substVar` in the representation of the stage. -/
+`CaptureSet.closing_substVar` in the current representation. -/
 theorem CaptureSet.closing_subst_enter {s : Sig} (A : CaptureSet s) (b : Atom s) :
     ((A↑↑↑ : CaptureSet (Sig.body s)) ∪ [CapAtom.var .here]).subst (Subst.enter b)
       = A ∪ [CapAtom.var b.root] := by

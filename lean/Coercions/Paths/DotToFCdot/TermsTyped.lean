@@ -4,7 +4,7 @@ import Coercions.Paths.FCdot.Transparency
 namespace Paths
 
 /-!
-# Typedness of the term translation (Plan III §8.2, M4, and P2.4)
+# Typedness of the term translation
 
 Every typing derivation of DOT-MNF translates to an FCdot term of the translated type,
 and the definitions of an object literal translate to fields of the literal's own block
@@ -22,7 +22,7 @@ Four cases carry the content:
   agree by `DefsTy.blocks_translate` (`Blocks.lean`), at the `Defs.Distinct d` that
   `HasTy.obj` carries.
 * A plain field's body is typed at its declared type but must be typed at the block
-  name `self ∙ a`.  Decision 26 casts it by `EqCo.member` at the self, reading the
+  name `self ∙ a`.  It is cast by `EqCo.member` at the self, reading the
   equation `self ∙ a ≐ W.get a` at the position `e` of the self's precise telescope.
   `Ty.EqSpec` at `e` says that entry is there.
 * A stable field's body is the inner literal under `litCo`, cast to `self ∙ a` by the
@@ -158,7 +158,7 @@ theorem Ty.defSpec_self {s : Sig} (T : Ty (s,x)) (hdl : Ty.DistinctLabels T) :
     rw [Nat.zero_add]; exact hAt)
 
 /-- The equations `Ty.EqSpec` places in a literal's telescope name the witnesses, so
-they give `Ty.DefSpec` (P2.8). -/
+they give `Ty.DefSpec`. -/
 theorem Ty.EqSpec.defSpec {s : Sig} {Wall : FCdot.Witnesses (s,x)} {ls vls : List Label} :
     ∀ {T : Ty (s,x)} {e : Nat},
       Ty.EqSpec (FCdot.Telescope.ofLiteral Wall ls vls) T e → Ty.DefSpec Wall T
@@ -189,7 +189,7 @@ theorem Ty.eqSpec_self {s : Sig} (T : Ty (s,x)) (hdl : Ty.DistinctLabels T) :
     (fun i l X hAt => by rw [Nat.zero_add]; exact hAt)
 
 /-- The translated context of a literal's self binder is the one the value rule
-types the literal's fields in (P2.2, `DefsTy.blocks_translate`). -/
+types the literal's fields in (`DefsTy.blocks_translate`). -/
 theorem Ctx.translate_consSelf_obj {s : Sig} {Γ : Ctx s} {d : Defs (s,x)} {T : Ty (s,x)}
     {Γ₀ : Ctx (s,x)} (hd : DefsTy Γ₀ d T) (hdist : Defs.Distinct d) :
     (Γ.consSelf d T).translate =
@@ -339,7 +339,7 @@ end
 /-! ## The let at a singleton
 
 The image of the derived `letSngl`, and of every `let` at a singleton, is the opaque
-`let` (decision 32).  The same term is typed by `letPath` as well, with the forwarding
+`let`.  The same term is typed by `letPath` as well, with the forwarding
 binder in scope: the body typed under the opaque binder refines to the forwarding
 binder (`Ctx.Refines.ofOpaque`, `FCdot/Transparency.lean`). -/
 

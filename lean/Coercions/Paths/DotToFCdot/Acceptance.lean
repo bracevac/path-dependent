@@ -3,13 +3,13 @@ import Coercions.Paths.FCdot.CheckerCompleteness
 import Coercions.Paths.DotMNF.Examples
 
 /-!
-# The gDOT acceptance tests, and P1e (P3.1, P3.2, P3.3)
+# The gDOT acceptance tests, and pDOT Fig. 1
 
 **Test B, gDOT Sec. 3 refuted.**  `ν(x. {A = S})` has no type
 `μ(x. {A : ⊤..⊥})` in the empty source context, for any `S`
 (`acceptance_gdot3`), and no closed literal has that type
-(`acceptance_gdot3_any`).  The proof reads no source inversion (decisions 15
-and 35).  It translates the derivation (`HasTy.translate_typed`), peels the
+(`acceptance_gdot3_any`).  The proof reads no source inversion.  It
+translates the derivation (`HasTy.translate_typed`), peels the
 casts of the image down to the literal (`translate_tower`, `CastTower.typed`),
 allocates the literal as the one entry of a typed store, reads `⊤ ≤ x ∙ A` and
 `x ∙ A ≤ ⊥` off the cast atom at the store binder by `LeCo.member`, and refutes
@@ -27,9 +27,9 @@ verdict on the whole program at `⊤`, `acceptance_fig2_typed` its typing by
 `FCdot.checkTm_sound`, and the two erasure facts state the same equation by
 `decide +kernel` and by `HasTy.translate_erase`.
 
-**P1e, pDOT Fig. 1.**  The page `Fig1` of `DotMNF/Examples.lean`, Fig2 with
-`tpe : p.types.Type`, gets the same facts under `Fig1_` (decision 41).
-`Fig1_abs_is_abstract` reads the view of `types`, which P1e shares with Fig2,
+**pDOT Fig. 1.**  The page `Fig1` of `DotMNF/Examples.lean`, Fig2 with
+`tpe : p.types.Type`, gets the same facts under `Fig1_`.
+`Fig1_abs_is_abstract` reads the view of `types`, which this page shares with Fig2,
 so its statement is that of `Fig2_abs_is_abstract`.
 
 All names of source pages and labels are those of `DotMNF.Examples`, written
@@ -228,7 +228,7 @@ theorem acceptance_fig2_erase' :
     ⌊Examples.Fig2_prog_ty.translate⌋ = Tm.erase Examples.Fig2_prog :=
   HasTy.translate_erase Examples.Fig2_prog_ty
 
-/-! ## P1e: pDOT Fig. 1 -/
+/-! ## pDOT Fig. 1 -/
 
 theorem Fig1_pBody_labels :
     Examples.Fig1_pBody.fieldLabels = [Examples.X4_lsymbols, Examples.Fig2_ltypes] ∧
@@ -279,7 +279,7 @@ theorem Fig1_pcAbs_checks :
       (Ty.mu Examples.Fig1_pAbs).translate = true := by
   decide +kernel
 
-/-- P1e: the whole program checks at `⊤` in the empty context. -/
+/-- The whole program checks at `⊤` in the empty context. -/
 theorem acceptance_fig1 :
     FCdot.checkTm FCdot.Ctx.nil Examples.Fig1_prog_ty.translate Ty.top.translate = true := by
   decide +kernel

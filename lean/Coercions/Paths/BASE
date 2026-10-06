@@ -1,1 +1,1 @@
-lean/Coercions/{DotMNF,FCdot,DotToFCdot,Runtime.lean} @ 83079d4 (main, 2026-09-06; copied at captures 6e17696, before #56, which the copy does not follow)
+lean/Coercions/{DotMNF,FCdot,DotToFCdot,Runtime.lean} @ 83079d4 (main, 2026-09-06: the vanilla line before PR #56, whose simplifications this copy does not follow), copied on branch captures at 6e17696

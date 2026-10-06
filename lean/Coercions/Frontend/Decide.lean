@@ -4,19 +4,19 @@ import Coercions.FCdot.Checker
 /-!
 # The decided side conditions
 
-Stage F1.1 of `plan-5e-frontend-stages.md`.  The typer of F1.4 discharges two
-kinds of side condition, and both are here: distinctness of the labels of a
-definition block, and strengthening, the inverse of `DotMNF.Ty.weaken`, which
-the avoidance ladder of F1.4 climbs.
+The typer discharges two kinds of side condition, and both are here:
+distinctness of the labels of a definition block, and strengthening, the
+inverse of `DotMNF.Ty.weaken`, which the typer's avoidance ladder climbs.
 
-The stage first decided two more.  Well-formedness of a type, `DotMNF.Ty.Wf`,
-was a premise of `HasTy.lam` and `HasTy.let`, and `DotMNF.Ty.Decl` was a
-premise of `HasTy.recI` and `HasTy.recE`.  Upstream (PR #56) removed both
-premises: lambda annotations, `let` result types and recursive bodies are
-unrestricted, and `Ty.Wf` is gone.  So the decision procedure `tyWf?` and its
-`tyWf?_iff` are gone with it.  `Ty.Decl` stays upstream as a classifier of the
-translation, decided there by `Ty.isDecl` and `Ty.isDecl_iff`, and the typer no
-longer consults it.
+Two more side conditions once belonged here but do not any more.
+Well-formedness of a type, `DotMNF.Ty.Wf`, was a premise of `HasTy.lam` and
+`HasTy.let`, and `DotMNF.Ty.Decl` was a premise of `HasTy.recI` and
+`HasTy.recE`.  Both premises were removed upstream: lambda annotations,
+`let` result types and recursive bodies are unrestricted, and `Ty.Wf` is
+gone.  So the decision procedure `tyWf?` and its `tyWf?_iff` are gone with
+it.  `Ty.Decl` stays upstream as a classifier of the translation, decided
+there by `Ty.isDecl` and `Ty.isDecl_iff`, and the typer no longer consults
+it.
 
 Strengthening reuses the target's partial renaming machinery verbatim rather
 than rewriting it: `FCdot.PartialRename`, `PartialRename.lift`,
@@ -28,14 +28,13 @@ over `DotMNF.Ty` is new, and it copies the shape of the target's own
 
 Every name here is a plain name in `namespace Frontend`, never a member of
 `DotMNF.Ty`, `DotMNF.Defs` or `DotMNF.Ctx`, so the functions are written as
-applications and not as dot notation (decision 14 of the plan).  Nothing of this
-module is part of the metatheory and no definition lives in the `DotMNF` or
-`FCdot` namespaces.
+applications and not as dot notation.  Nothing of this module is part of
+the metatheory and no definition lives in the `DotMNF` or `FCdot` namespaces.
 
 Everything here is structural.  No function of this module uses well-founded
-recursion, so all of it reduces in the kernel and `by decide` works on it.  The
-well-founded sites of the library are the two the plan names, `sub?` and the
-typer's mutual block, both in later modules.
+recursion, so all of it reduces in the kernel and `by decide` works on it.
+The well-founded sites of the library are `sub?` and the typer's mutual
+block, both in later modules.
 -/
 
 namespace Frontend
@@ -260,7 +259,7 @@ theorem tyStrengthen?_iff {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s} :
   · intro h; subst h; exact tyStrengthen?_weaken U
 
 /-- Strengthening, carrying the equation it establishes.  This is the form the
-avoidance ladder of F1.4 needs: rung two rewrites the body's typing along the
+typer's avoidance ladder needs: rung two rewrites the body's typing along the
 equation, so the equation has to come back with the type. -/
 def tyStrengthenW? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option { U : Ty s // T = U.weaken } :=
   match witness? (tyStrengthen? T) with
@@ -303,7 +302,7 @@ def ctxVars : Ctx s → List (BVar s .var)
 
 Every test below is `by decide`, which is the repo's own idiom and which the
 later modules cannot use: `sub?` and the typer are well founded, so they do not
-reduce and their tests go through `Frontend.expect` instead (F1.7).  The line is
+reduce and their tests go through `Frontend.expect` instead.  The line is
 drawn here, at the last structural module. -/
 
 section Tests

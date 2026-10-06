@@ -11,10 +11,9 @@ its root, `member` becomes `memberP`, and `def` becomes `defP`.  This module
 proves that the substitution preserves typing, as one mutual induction over
 the seven evidence judgments (`LeCo.HasType.psubst`, `Atom.HasType.psubst`
 and their five companions).  It is what closes the coercion of a field of a
-nested literal over the store (decision 24, P1.5 amendment): the self of the
-literal at a variable goes to that variable, and the self of the literal at a
-deeper path goes to the node the table wrote there.  Terms and values are
-never substituted (Fact 1).
+nested literal over the store: the self of the literal at a variable goes to
+that variable, and the self of the literal at a deeper path goes to the node
+the table wrote there.  Terms and values are never substituted.
 
 The types are substituted by `Ty.subst` through `PSub.paths`, so the module
 opens with the composition law of path substitutions and its consequences for

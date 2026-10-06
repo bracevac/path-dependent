@@ -5,7 +5,7 @@ import Coercions.Paths.FCdot.TypingPathSubst
 namespace Paths
 
 /-!
-# Renaming and path substitution for the type translation (Plan III §8.1, M3, and P2.7)
+# Renaming and path substitution for the type translation
 
 The type translation `Ty.translate`, `Ty.tel`, `Ty.telSelfAt` (`DotToFCdot/Types.lean`) is a
 mutual recursion over the shape of `Ty`.  This file proves that it commutes with path

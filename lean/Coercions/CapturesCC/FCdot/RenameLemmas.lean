@@ -679,7 +679,7 @@ end
 /-! ## Renaming then substituting
 
 A renaming followed by a substitution is one substitution, `Subst.compRename`.
-The two cancellation lemmas of the stage are this fusion plus a case split on
+The two cancellation lemmas below are this fusion plus a case split on
 the four binder positions of a body. -/
 
 namespace Subst

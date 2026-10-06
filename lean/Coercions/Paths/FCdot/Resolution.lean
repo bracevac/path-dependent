@@ -558,7 +558,7 @@ theorem Ctx.blockFuel_sel_of_fwd {Γ : Ctx s} {p r : Path s} {a : Label} (n : Na
 /-- The walk never returns a forwarding node: it follows one.  The special
 case of `Ctx.lookupBlock_sel` where both the prefix and the child are object
 nodes, kept under its own name since the general equation now carries that
-name (P1.8, T2). -/
+name. -/
 theorem Ctx.lookupBlock_sel_obj {Γ : Ctx s} {p : Path s} {W : Witnesses s}
     {ls vls : List Label} {ch : Children s} {a : Label}
     {W' : Witnesses s} {ls' vls' : List Label} {ch' : Children s}

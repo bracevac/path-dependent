@@ -457,8 +457,8 @@ theorem single {Γ : Ctx s} {T : Ty s} {a : Atom s} (ha : Γ ⊢ₐ a : T) :
           Block.rename_comp, hid, Block.rename_id]
 
 /-- Instantiating the innermost *forwarding* binder of a let over a path by an
-atom typed at the singleton.  The block field is the canonical fact of P1.8:
-over a typed store an atom at `μ [≈ q↑]` is rooted at the block of `q`.  It is
+atom typed at the singleton.  The block field is the canonical fact that over
+a typed store an atom at `μ [≈ q↑]` is rooted at the block of `q`.  It is
 the only thing the store typing is used for, and `FormsTyped.sngl` is what
 `preservation` hands over. -/
 theorem singleFwd {Γ : Ctx s} {q : Path s} {a : Atom s}
@@ -816,8 +816,8 @@ theorem Value.HasType.substAtom {Γ : Ctx s} {T : Ty s} {v : Value (s,x)} {U : T
 /-! ## Instantiating the forwarding binder of a let over a path
 
 The substitution lemma the `rename` step of the machine needs under a
-`letPath` frame.  The hypothesis `hb` is the canonical fact of P1.8, which a
-typed store gives and which `preservation` reads off `FormsTyped.sngl`.  The
+`letPath` frame.  The hypothesis `hb` is the canonical fact that a typed
+store gives, and which `preservation` reads off `FormsTyped.sngl`.  The
 version with the incoming type free is refuted (`forwarding_subst_false`). -/
 
 theorem substAtom_fwd {Γ : Ctx s} {q : Path s} {u : Tm (s,x)} {U : Ty (s,x)} {a : Atom s}

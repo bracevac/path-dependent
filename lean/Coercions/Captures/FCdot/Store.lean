@@ -16,8 +16,8 @@ namespace FCdot
 /-! ## Stores -/
 
 /-- A store: a literal per term binder, a capture bound per capture binder.
-(`consᶜ` of the plan: `ᶜ` is not a legal Lean identifier character, so the
-capture-sort twin of a name carries the suffix `C`.) -/
+(`ᶜ` is not a legal Lean identifier character, so the capture-sort twin
+of a name carries the suffix `C` instead.) -/
 inductive Store : Sig → Type where
   | nil : Store []
   | cons : Store s → Value s → Store (s,x)

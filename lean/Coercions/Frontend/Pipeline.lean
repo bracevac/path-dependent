@@ -6,17 +6,16 @@ import Coercions.FCdot.CheckerCompleteness
 /-!
 # The pipeline
 
-Stage F3.1 of `plan-5e-frontend-stages.md`.  One function takes a surface
-program through the whole front end, and five theorems say what the result is
-worth.  Every one of the five is a composition of a result of the frozen tree.
-That is the point of the module.  The front end proves nothing about the
-calculus.
+One function takes a surface program through the whole front end, and five
+theorems say what the result is worth.  Every one of the five is a
+composition of a result of the frozen tree.  That is the point of the
+module.  The front end proves nothing about the calculus.
 
-`compile` runs the resolver of F0.5 and then the typer of F1.4.  It returns the
-annotated term and a `Compiled`, which is the synthesized type together with the
+`compile` runs the resolver and then the typer.  It returns the annotated
+term and a `Compiled`, which is the synthesized type together with the
 `DotMNF.HasTy` derivation.  The derivation is a field, so a caller holds the
-typing and not an answer.  `compileAndRun` follows with the machine of F2.1 at a
-step budget.
+typing and not an answer.  `compileAndRun` follows with the machine defined
+in `Step.lean` at a step budget.
 
 Where the five theorems come from.
 
@@ -36,14 +35,15 @@ the checker's verdict on the translation is a theorem and not a run.
 `compile_safe` is `DotMNF.dot_safety` (`lean/Coercions/DotToFCdot/Safety.lean:161-164`)
 and `compile_not_stuck` is `DotMNF.dot_not_stuck` (`:167-173`).
 
-`compile_run_progress` is `compile_safe` at the state the driver reaches, plus
-the machine agreement of F2.1: `run_steps` puts that state in the reflexive
-transitive closure, and `step?_eq_none_iff` turns the existence of a step into
-the driver's own `isSome`.  It is the executable reading of safety.  The driver
+`compile_run_progress` is `compile_safe` at the state the driver reaches,
+plus the step function's agreement with the step relation, proved in
+`Step.lean`: `run_steps` puts that state in the reflexive transitive
+closure, and `step?_eq_none_iff` turns the existence of a step into the
+driver's own `isSome`.  It is the executable reading of safety.  The driver
 never answers with a state the machine is stuck at.
 
 The hypothesis `compile b Λ e = some ⟨a, c⟩` is written in every statement
-because F3.1 writes it, and because it is what a caller has.  It is not what
+because `compile` writes it, and because it is what a caller has.  It is not what
 carries the content.  The content is carried by the type of `c`, whose `deriv`
 field is a derivation of `DotMNF.HasTy .nil a.erase c.ty` by construction.
 
@@ -59,8 +59,9 @@ open DotMNF (Ty Tm Ctx HasTy State Step Steps)
 /-! ## The result of a compilation -/
 
 /-- A closed term with a type and the derivation that it has it.  This is the
-`Synth` of `Typer.lean` at the empty context, restated as F3.1 writes it, so
-that the pipeline's own result type does not mention the typer. -/
+`Synth` of `Typer.lean` at the empty context, restated the way `compile`
+writes it, so that the pipeline's own result type does not mention the
+typer. -/
 structure Compiled (t : Tm []) where
   /-- The synthesized type. -/
   ty : Ty []
@@ -75,14 +76,14 @@ and that term is not known before the resolver runs. -/
 
 /-- The front end end to end: resolve, then type.  `none` is returned when the
 program is out of scope, out of the label table, or out of the typer's reach.
-A failure carries no reason, per F3.6. -/
+A failure carries no reason. -/
 def compile (b : Budget) (Λ : LabelTable) (e : STm) :
     Option ((a : ATm []) × Compiled a.erase) := do
   let a ← resolve Λ e
   let c ← synthTop? b Ctx.nil a
   pure ⟨a, ⟨c.ty, c.deriv⟩⟩
 
-/-- The front end followed by the machine of F2.1 at a step budget `m`. -/
+/-- The front end followed by the machine of `Step.lean` at a step budget `m`. -/
 def compileAndRun (b : Budget) (m : Nat) (Λ : LabelTable) (e : STm) :
     Option ((s : Sig) × State s) :=
   (compile b Λ e).map fun r => run m [] ⟨.nil, .nil, r.1.erase⟩
@@ -90,8 +91,8 @@ def compileAndRun (b : Budget) (m : Nat) (Λ : LabelTable) (e : STm) :
 /-! ## The five theorems -/
 
 -- Four of the five theorems never look at `h`.  The hypothesis is written
--- because F3.1 writes it and because it is what a caller holds, while the
--- content rides on the type of `c`, whose `deriv` field is the derivation.
+-- because `compile` writes it and because it is what a caller holds, while
+-- the content rides on the type of `c`, whose `deriv` field is the derivation.
 set_option linter.unusedVariables false
 
 section

@@ -138,8 +138,8 @@ theorem Store.Typed.hasField (hσ : ⊢ σ : Γ) {x : BVar s .var} {Fs : List La
 
 /-! ## Statements -/
 
-/-- The vanilla conclusion, at the shape sort: the vanilla `Ty` is this
-`Shape`, and a capture set is not a resolvable head. -/
+/-- The canonical-forms conclusion for a shape inclusion: a capture set is
+not a resolvable head, so this is where the conclusion lives. -/
 def ShapeLeConcl (σ : Store s) (Γ : Ctx s) (e : ShapeCo s) (S T : Shape s) : Prop :=
   ∃ n F, σ ⊢ e ⇓ˢ[n] F ∧ Γ ⊨ F : S ≤ T
 
@@ -391,9 +391,9 @@ theorem le_canon_cap {d : LeCo s} {S T : Ty s} (h : Γ ⊢ d : S ≤ T) :
   match h with
   | .capt _ hf => exact cap_canon hf
 
-/-- Item 6 of the theorem: closed capture evidence includes roots.  In A0 the
-statement lived in `Resolution.lean` with four constructors; `capvar` and
-`member` mention atoms, so it now runs in the mutual induction, unchanged. -/
+/-- Item 6 of the theorem: closed capture evidence includes roots.  `capvar`
+and `member` mention atoms, so this runs in the mutual induction below,
+rather than beside the other constructors in `Resolution.lean`. -/
 theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D) :
     CapLe Γ C D := by
   match h with
@@ -426,7 +426,7 @@ theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D)
         view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
       exact (hVt'.leC_entry hAt).2
   | .eqToLe hφ => exact (capeq_canon hφ).le
-  -- **T6.**  The three rules of K1.3.  Each is `Ctx.Root_proj` read in one
+  -- The three rules about projection.  Each is `Ctx.Root_proj` read in one
   -- direction or the other, and `projC` is where `kind_canon` is consumed.
   | .unprojC => exact fun a ha => (Ctx.Root_proj.mp ha).1
   | .projC hg => exact fun a ha => Ctx.Root_proj.mpr ⟨ha, kind_canon hg a ha⟩
@@ -434,7 +434,7 @@ theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D)
       exact fun a ha =>
         Ctx.Root_proj.mpr ⟨cap_canon hf a (Ctx.Root_proj.mp ha).1, (Ctx.Root_proj.mp ha).2⟩
 
-/-- **T5**, the canonical form of closed kinding: closed kinding evidence
+/-- The canonical form of closed kinding: closed kinding evidence
 says that every root of the set carries a classifier the kind admits.  It
 runs in the mutual induction because `kvar` and `kmember` read `atom_canon`,
 and `cap_canon`'s `projC` case reads it back. -/
@@ -483,7 +483,7 @@ theorem kind_canon {g : KindCo s} {C : CaptureSet s} {φ : Cls.Kind}
   | .kprojS hg =>
       exact Ctx.KindLe.mono (fun a ha => (Ctx.Root_proj.mp ha).1) (kind_canon hg)
   | .ksub hg hsub => exact (kind_canon hg).sub hsub
-  -- **T3** as an evidence rule: the canonical form is `Ctx.KindLe.mono`,
+  -- As an evidence rule, the canonical form is `Ctx.KindLe.mono`,
   -- one line, with `cap_canon` on the capture premise.
   | .kle hf hg => exact Ctx.KindLe.mono (cap_canon hf) (kind_canon hg)
 

@@ -1928,9 +1928,9 @@ def synthCap {s : Sig} (Γ : Ctx s) (ev : CapCo s) : Option (CapEndpoints s) :=
 def checkCap {s : Sig} (Γ : Ctx s) (ev : CapCo s) (C D : CaptureSet s) : Bool :=
   decide (synthCap Γ ev = some (C, D))
 
-/-- Check a kinding derivation against the set and the kind it claims.  This
-is the public form K1.5 names.  There is no `synthKindCo`: kinding evidence
-determines neither of its two outputs, which is what `KindChecked` records. -/
+/-- Check a kinding derivation against the set and the kind it claims.  There
+is no `synthKindCo`: kinding evidence determines neither of its two outputs,
+which is what `KindChecked` records. -/
 def checkKindCo {s : Sig} (Γ : Ctx s) (ev : KindCo s) (C : CaptureSet s) (φ : Cls.Kind) :
     Bool :=
   (checkKindCore Γ ev C φ).isSome

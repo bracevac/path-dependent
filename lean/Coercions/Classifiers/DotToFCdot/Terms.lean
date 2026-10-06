@@ -3,7 +3,7 @@ import Coercions.Classifiers.DotToFCdot.Evidence
 namespace Classifiers
 
 /-!
-# Translation of terms (Plan III §8.2, M4; stage A3a)
+# Translation of terms
 
 A typing derivation becomes an FCdot term with the same erasure.  Variables
 become atoms (`HasTy.translateAtom`), subsumption becomes a cast, a
@@ -19,7 +19,7 @@ and the translation brings it to the field's *declared* set by the capture
 entry `{self∙ℓ} ⊑ᶜ ⟦C⟧` of the declared telescope of a field, read at the
 receiver by `member` in the capture sort.
 
-Use sets are the other half of the stage.  The source now carries a use set
+Use sets are the other part of this translation.  The source carries a use set
 of its own, so a second function on derivations, `HasTy.translateUses`,
 produces the capture evidence that the target's binders ask for.  It is typed
 at `uses ⟦h⟧ ⊑ ⟦U⟧`.  A translated lambda declares the assigned set `⟦U⟧` of
@@ -27,8 +27,8 @@ its type and takes the body's evidence as its closing evidence, a translated
 literal declares `⟦U⟧` and each field takes its body's evidence, a translated
 let declares `⟦U⟧` and takes the body's evidence as its avoidance evidence,
 and a translated unboxing declares `⟦U⟧` and takes the translated
-subcapturing premise.  The stage A2 stand-ins `pureEvidence` and
-`closingEvidence` are gone with the purity they assumed.
+subcapturing premise.  The earlier stand-ins `pureEvidence` and
+`closingEvidence`, which assumed purity, are gone.
 -/
 
 namespace DotMNF

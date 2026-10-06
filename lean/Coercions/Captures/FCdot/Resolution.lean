@@ -1013,8 +1013,9 @@ theorem Ctx.capsAtom_cvar : ∀ {s : Sig} (Γ : Ctx s) (n : Nat) (κ : BVar s .c
 
 /-! ### Roots and subcapturing -/
 
-/-- The roots of a capture set at a given fuel.  In this stage `roots` is
-`caps`; the compiler's line redefines it as `expand ∘ caps`. -/
+/-- The roots of a capture set at a given fuel.  Here `roots` is `caps`
+itself; a scheme that also expands abstract capture members would define
+it instead as `expand ∘ caps`. -/
 def Ctx.roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s) : CaptureSet s := Γ.caps n C
 
 @[simp] theorem Ctx.roots_eq_caps (Γ : Ctx s) (n : Nat) (C : CaptureSet s) :
@@ -1129,15 +1130,16 @@ theorem Ctx.Root_name_none {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
   | zero => rw [Ctx.capsAtom_name_zero] at hn; simp at hn
   | succ n => rw [Ctx.capsAtom_name_none h] at hn; simp at hn
 
-/-! ### Item 6 of the canonical-forms theorem
+/-! ### Closed capture evidence includes roots
 
-`cap_canon`, the statement that closed capture evidence includes roots, no
-longer fits here: `CapCo.HasType` is now mutual with atom typing, so `capvar`
-needs item 7 of the theorem and `member` needs the view of an atom.  The
-statement moves, unchanged, into the mutual induction of `CanonicalForms.lean`
-(plan-5c A1.6); the four constructors it had in A0 are still discharged by
-`CapLe.refl`, `CapLe.trans`, `CapLe.of_subset` and `CapLe.union`, and `defC`
-by `Ctx.Root_name` above. -/
+The statement that closed capture evidence includes roots (`cap_canon`)
+does not fit here: `CapCo.HasType` is mutual with atom typing, so the
+`capvar` case needs the fact that an atom's type bounds its capture set,
+and the `member` case needs the view of an atom.  The statement is proved
+instead in the mutual induction of `CanonicalForms.lean`, where `refl`,
+`trans`, a syntactic inclusion and `union` are discharged by `CapLe.refl`,
+`CapLe.trans`, `CapLe.of_subset` and `CapLe.union`, and `defC` by
+`Ctx.Root_name` above. -/
 
 end FCdot
 

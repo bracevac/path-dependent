@@ -3,9 +3,9 @@ import Coercions.CapturesCC.FCdot.Resolution
 namespace CapturesCC
 
 /-!
-# T-B1.10: member-free capture evidence never lowers a level
+# Member-free capture evidence never lowers a level
 
-`level_inversion` is the store-free half of T10 of the note.  Over a typed
+`level_inversion` is the half of `lvl_canon` that needs no typed store.  Over a typed
 store the context is root free, so `lvl_safety` and `no_inner_escape` hold
 vacuously; what has content in a rooted context is this inversion, and it is
 true exactly because `member` and `eqToLe` are excluded.  Bad capture bounds
@@ -42,14 +42,14 @@ theorem Ctx.mem_caps_root (Γ : Ctx s) (n : Nat) {r : CapAtom s} (hr : Γ.IsRoot
 
 /-! ### Member-freeness is closed under renaming
 
-**T-B3.4, step 1.**  Renaming rewrites the arguments of each former and
-changes no former, so the two families are carried along one for one.  The
-one case with content is `Atom.MemberFree.cast`, whose coercion is matched
-at `.capt e f`: `LeCo.rename` at `.capt` reduces (`FCdot/Syntax.lean:597`),
-so the induction hypothesis on the capture half applies.
+Renaming rewrites the arguments of each former and changes no former, so
+the two families are carried along one for one.  The one case with content
+is `Atom.MemberFree.cast`, whose coercion is matched at `.capt e f`:
+`LeCo.rename` at `.capt` reduces (`FCdot/Syntax.lean:597`), so the induction
+hypothesis on the capture half applies.
 
 They live here because `Ctx.varAtom` of the translation weakens at every
-`.there` binder, and a weakening is a renaming (decision 33). -/
+`.there` binder, and a weakening is a renaming. -/
 
 mutual
 

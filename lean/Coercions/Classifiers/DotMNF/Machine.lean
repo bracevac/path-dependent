@@ -11,7 +11,7 @@ two steps that enter a body enter three binders and two binders at once, so
 they use the substitution of `DotMNF.Subst`; every other step still moves by
 a renaming.
 
-This is Plan III §3.5 plus the unboxing step of stage A3a:
+These are the small-step rules, plus the unboxing step:
 
 ```text
 ⟨σ, K, let x = t in u⟩                       ⟶  ⟨σ, K ▹ (x. u), t⟩
@@ -34,7 +34,7 @@ open FCdot (Kind Sig BVar Rename Label)
 /-! ## Stores -/
 
 /-- A store: one value per term binder of the signature, and a data-free
-slot per capture binder.  (`consᶜ` of the plan: `ᶜ` is not a legal Lean
+slot per capture binder.  (`ᶜ` is not a legal Lean
 identifier character, so the capture-sort twin of a name carries the suffix
 `C`.) -/
 inductive Store : Sig → Type where
@@ -56,8 +56,8 @@ capabilities.  Its initial store is the store of those slots, and nothing
 else: a capture slot carries no value. -/
 
 /-- Evidence that a signature is a prefix of capture binders.  A binder is
-either plain, as it was, or declares a classifier, which is the seventh
-context flavour of K2 read at the platform (decision 10 and D7). -/
+either plain, as it was, or declares a classifier, which is read at the
+platform the same way as at any other binder. -/
 inductive Platform : Sig → Type where
   | nil : Platform []
   | cons : Platform s → Platform (s,c)

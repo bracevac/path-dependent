@@ -4,7 +4,7 @@ import Coercions.Classifiers.FCdot.LevelInversion
 namespace Classifiers
 
 /-!
-# Translation of evidence and of variable typings (Plan III §8.1, M3)
+# Translation of evidence and of variable typings
 
 A subtyping derivation becomes closed inclusion evidence; a subcapturing
 derivation becomes closed capture evidence; a typing derivation of a variable
@@ -12,7 +12,7 @@ becomes an atom rooted at that variable.  The three are mutual: `Sel-<:`,
 `<:-Sel`, `sc-sel-lower` and `sc-sel-upper` have typing premises, and a
 variable typing can go through subsumption.
 
-The object rules translate to template morphisms (plan §13 items 8 and 9):
+The object rules translate to template morphisms:
 
 * `And₁`, `And₂` project by identity templates on the first or second half
   when the operand is an object shape, and by the self-bound cast
@@ -65,7 +65,7 @@ def _root_.Classifiers.FCdot.Telescope.NoBnd : FCdot.Telescope s' → Prop
   | .cons Tel _ => FCdot.Telescope.NoBnd Tel
 
 /-- A telescope all of whose self-bounds are weakened closed types, which is
-the closedness convention of `FCdot` (plan §13 item 9).  `Shape.tel` produces
+the closedness convention of `FCdot`.  `Shape.tel` produces
 only these (`Shape.tel_closedBnds`), and only these can be copied by identity
 templates. -/
 inductive _root_.Classifiers.FCdot.Telescope.ClosedBnds : {s : FCdot.Sig} → FCdot.Telescope (s,x) → Prop where
@@ -176,7 +176,7 @@ def Ctx.varAtom : Ctx s → BVar s .var → FCdot.Atom s
   | .consInst Γ _, .there y => (Γ.varAtom y).weaken
   | .consCls Γ _, .there y => (Γ.varAtom y).weaken
 
-/-- **T-B3.4, step 2.**  A variable's atom reads no telescope.  Every
+/-- A variable's atom reads no telescope.  Every
 `.there` clause weakens, which is a renaming, and the one head clause with
 content is the literal's self: `ShapeCo.atC e C` is `.capt e (.refl C)`, so
 the capture half of the cast is `refl` and `Atom.MemberFree.cast` matches.
@@ -196,11 +196,10 @@ theorem Ctx.varAtom_memberFree : ∀ {s : FCdot.Sig} (Γ : Ctx s) (x : BVar s .v
 
 /-! ## Member-free source evidence
 
-**T-B3.4, step 3.**  `Subcap.MemberFree` was stated here before K2.  It now
-sits in `DotMNF/Typing.lean`, beside `CapKind.MemberFree`, because the two
-are mutual: `Subcap.proj` premises a kinding and `CapKind.kle` premises a
-subcapturing.  Its constructors are unchanged and it gained one clause per
-new subcapturing rule. -/
+`Subcap.MemberFree` sits in `DotMNF/Typing.lean`, beside
+`CapKind.MemberFree`, because the two are mutual: `Subcap.proj` premises a
+kinding and `CapKind.kle` premises a subcapturing.  Its constructors include
+one clause per subcapturing rule. -/
 
 /-! ## The translation -/
 
@@ -221,7 +220,7 @@ Four source kinding rules conclude about a single atom, and three of them
 carry that atom.  The target drops `any` and `fresh`, so at such an atom the
 translated set is empty and the evidence is `nil`, which is the target's own
 rule for the empty set.  On every atom the target keeps, each helper is the
-rule the plan writes. -/
+corresponding target rule. -/
 
 def kprojCo (a : CapAtom s) : FCdot.KindCo s :=
   match a.translate? with
@@ -256,7 +255,7 @@ def Subcap.translate : {Γ : Ctx s} → {C C' : CaptureSet s} → Subcap Γ C C'
   | Γ, _, _, @Subcap.var _ _ x => .capvar (Γ.varAtom x)
   | _, C, _, @Subcap.inst _ _ κ _ _ =>
       .eqToLe (.symm (.instC (.cvar κ) C.translate))
-  /- **B3.6.**  The level rule translates to the target's level rule at the
+  /- The level rule translates to the target's level rule at the
      translated atom.  The two notation cases are unreachable in a typed
      derivation, and they are given evidence rather than an absurdity, so
      the clause stays a leaf, and it adds no obligation to the
@@ -310,7 +309,7 @@ def SubShape.translate : {Γ : Ctx s} → {S T : Shape s} → SubShape Γ S T �
   | _, _, _, @SubShape.selLower _ _ _ _ A S T _ h =>
       .member h.translateAtom (.refl (Shape.typ A S T).translate) 0
   | _, _, _, .all d₁ d₂ => .pi d₁.translate d₂.translate
-  /- **K2.8.**  A set-bounded capture member is retyped at a kind bound.
+  /- A set-bounded capture member is retyped at a kind bound.
      The source telescope is the member's two `leC` entries, the hole is its
      upper bound at index `1`, both chains are empty, and the closed kinding
      is the rule's own premise. -/
@@ -330,7 +329,7 @@ def Sub.translate : {Γ : Ctx s} → {T T' : Ty s} → Sub Γ T T' → FCdot.LeC
 
 /-- `⟦d⟧` on answer inclusions: a plain inclusion is a plain coercion, a
 pack is the target's pack, and the congruence is the target's `cong`.  It is
-the clause list of B2.10 verbatim. -/
+the same clause list as the capture-free development, verbatim. -/
 def ESub.translate : {Γ : Ctx s} → {E E' : ETy s} → ESub Γ E E' → FCdot.ELeCo s
   | _, _, _, .ty d => .plain d.translate
   | _, _, _, @ESub.pack _ _ C _ _ _ f d => .pack C.translate f.translate d.translate
@@ -375,7 +374,7 @@ end
 
 /-! ## Member-freeness is preserved by the translation
 
-**T-B3.4, step 4.**  An induction following `Subcap.translate`'s own case
+An induction following `Subcap.translate`'s own case
 split.  The six member-free rules translate to the six member-free target
 rules, and `var` needs `Ctx.varAtom_memberFree`.  The `level` clause is a
 leaf in both, so the case is a five-way `cases` on the atom. -/

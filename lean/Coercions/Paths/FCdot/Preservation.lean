@@ -330,7 +330,7 @@ theorem Subst.Typed.selfCast {s : Sig} {Γ : Ctx s} {S₀ T : Ty s} {E : LeCo s}
 
 /-- The self binder of a stored object literal may be replaced by the
 variable it is stored at.  The binder's block is the block the store gives
-the variable, written at the binder, which is invariant A of P1.8. -/
+the variable, written at the binder. -/
 theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)}
     {B : Block (s,x)} {y : BVar s .var}
     (hty : Γ.lookupTy y = .obj Tel)
@@ -401,8 +401,9 @@ structure FormsTyped (σ : Store s) (Γ : Ctx s) : Prop where
     (F = .id ∨ ∃ φ, F = .eqv φ) →
     Γ.lookupTy a.root = .pi S T
   /-- The canonical fact for atoms at singletons: over a typed store an atom
-      typed at `μ [≈ q↑]` is rooted at the block of `q`.  This is T2 at one
-      alias, and it is what `Step.rename` under a `letPath` frame needs. -/
+      typed at `μ [≈ q↑]` is rooted at the block of `q`.  This is block
+      identity at one alias, and it is what `Step.rename` under a `letPath`
+      frame needs. -/
   sngl : ∀ {a : Atom s} {q : Path s}, Γ ⊢ₐ a : Ty.snglOf q →
     Γ.lookupBlock (.var a.root) = Γ.lookupBlock q
   /-- No value is typed at a singleton.  A fresh object is never an alias,

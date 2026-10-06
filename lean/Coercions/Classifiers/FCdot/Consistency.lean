@@ -3,7 +3,7 @@ import Coercions.Classifiers.FCdot.CanonicalForms
 namespace Classifiers
 
 /-!
-# Consistency of typed stores (Plan III §8.3, the target side of M5)
+# Consistency of typed stores
 
 Over a typed store, closed inclusion evidence relates types of compatible
 shapes only; in particular there is no closed `⊤ ≤ ⊥`, no closed inclusion
@@ -277,15 +277,15 @@ theorem Ctx.caps_of_opaque {Γ : Ctx s} {κ : BVar s .cap}
   | inst C => rw [h] at hκ; simp [CapBound.opaque] at hκ
   | cls c => rfl
 
-/-! **T-B0.7**, `Store.Typed.rootFree`, is proved in `FCdot/Store.lean`,
-beside the judgement it inducts on, because the four entering steps of the
-machine consume it and `FCdot/Preservation.lean` comes before this file. -/
+/-! `Store.Typed.rootFree` is proved in `FCdot/Store.lean`, beside the
+judgement it inducts on, because the four entering steps of the machine
+consume it and `FCdot/Preservation.lean` comes before this file. -/
 
-/-- **T13, consistency at the top.**  At run time every capability is at the
-outermost level.  This is L0 read at `rootAtom = ⊤ᶜ`, which is what a
-root-free context has.  `h` is not needed for the proof: on a root-free
-context `⊤ᶜ` bounds every atom, `⊤ᶜ` included.  It is kept because it is the
-form the statement was specified in. -/
+/-- At run time every capability is at the outermost level.  This reads
+`Ctx.confined_rootAtom` at `rootAtom = ⊤ᶜ`, which is what a root-free
+context has.  `h` is not needed for the proof: on a root-free context `⊤ᶜ`
+bounds every atom, `⊤ᶜ` included.  It is kept because it is the form the
+statement was specified in. -/
 theorem Store.Typed.confined (hσ : ⊢ σ : Γ) (C : CaptureSet s)
     (h : CapAtom.top ∉ C) : Γ.Confined C ⊤ᶜ := by
   have hr : Γ.rootAtom = ⊤ᶜ := by
@@ -295,11 +295,11 @@ theorem Store.Typed.confined (hσ : ⊢ σ : Γ) (C : CaptureSet s)
   rw [← hr]
   exact Γ.confined_rootAtom C
 
-/-- **T10, `lvl_canon`.**  Closed capture evidence never lowers the level: if
-every resolution of the target is at or outside `r`, so is every resolution
-of the source.  A corollary of item 6 over a typed store, not an induction on
-the evidence: as an induction on `f` alone the `capvar` case is false, since
-bad capture bounds are derivable under a lambda (example C3). -/
+/-- Closed capture evidence never lowers the level: if every resolution of
+the target is at or outside `r`, so is every resolution of the source.  A
+corollary of item 6 over a typed store, not an induction on the evidence: as
+an induction on `f` alone the `capvar` case is false, since bad capture
+bounds are derivable under a lambda (example `C3`). -/
 theorem lvl_canon (hσ : ⊢ σ : Γ) {f : CapCo s} {C₁ C₂ : CaptureSet s} {r : CapAtom s}
     (h : Γ ⊢ᶜ f : C₁ ⊑ C₂) (n : Nat)
     (h₂ : ∀ m, Γ.Confined (Γ.roots m C₂) r) : Γ.Confined (Γ.roots n C₁) r := by
@@ -307,14 +307,13 @@ theorem lvl_canon (hσ : ⊢ σ : Γ) {f : CapCo s} {C₁ C₂ : CaptureSet s} {
   obtain ⟨m, hm⟩ := cap_canon hσ h a ⟨n, ha⟩
   exact h₂ m a hm
 
-/-- **T11, `rigid_canon`.**  A rigid binder is a root of every set closed
-evidence puts it below. -/
+/-- A rigid binder is a root of every set closed evidence puts it below. -/
 theorem rigid_canon (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : CaptureSet s}
     (hκ : Γ.lookupCap κ = .star) (h : Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ C) :
     Γ.Root (.cvar κ) C :=
   cap_canon hσ h _ (Ctx.Root_cvar_rigid (Or.inr hκ))
 
-/-- **T11', `rigid_target`.**  Nothing else resolves below a rigid binder. -/
+/-- Nothing else resolves below a rigid binder. -/
 theorem rigid_target (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : CaptureSet s}
     (hκ : Γ.lookupCap κ = .star) (h : Γ ⊢ᶜ f : C ⊑ [CapAtom.cvar κ]) (n : Nat) :
     (Γ.roots n C).Subset [CapAtom.cvar κ] := by
@@ -325,8 +324,8 @@ theorem rigid_target (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : C
     List.append_nil, Ctx.expandAtom_of_not_root (by rw [Ctx.isRootB, hκ]; rfl) rfl] at hm
   exact hm
 
-/-- **T12, scope safety.**  What closed evidence puts below a scope root
-resolves to capabilities at or outside that root. -/
+/-- What closed evidence puts below a scope root resolves to capabilities at
+or outside that root. -/
 theorem lvl_safety (hσ : ⊢ σ : Γ) {r : CapAtom s} {f : CapCo s} {C : CaptureSet s}
     (hr : Γ.IsRoot r) (h : Γ ⊢ᶜ f : C ⊑ [r]) (n : Nat) :
     Γ.Confined (Γ.roots n C) r :=
@@ -337,8 +336,8 @@ theorem lvl_safety (hσ : ⊢ σ : Γ) {r : CapAtom s} {f : CapCo s} {C : Captur
     · exact Ctx.top_lvlLe _ _
     · exact hκ)
 
-/-- **T12, the escape form.**  No closed derivation puts a capability
-introduced strictly inside a scope below that scope's root.  The conclusion
+/-- No closed derivation puts a capability introduced strictly inside a
+scope below that scope's root.  The conclusion
 is about what `C` resolves to and not about its syntactic atoms: a pure inner
 binder is below every set by `capvar` and `elem`, so the syntactic reading is
 false and the resolved reading is what holds. -/

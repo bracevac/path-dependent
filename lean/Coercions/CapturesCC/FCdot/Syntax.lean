@@ -418,8 +418,9 @@ inductive CapEq : Sig → Type where
   | refl : CaptureSet s → CapEq s
   | symm : CapEq s → CapEq s
   | trans : CapEq s → CapEq s → CapEq s
-  /-- Definition of a transparent binder's capture name.  (`defᶜ` of the
-      plan: `ᶜ` is not a legal Lean identifier character.) -/
+  /-- Definition of a transparent binder's capture name.  (Named `defC`
+      rather than `defᶜ` because `ᶜ` is not a legal Lean identifier
+      character.) -/
   | defC : BVar s .var → Label → CapEq s
   /-- An instance binder stands for the capture set it was opened at.  Its
       left side is an atom and not a capture variable, for the reason
@@ -430,8 +431,8 @@ inductive CapEq : Sig → Type where
   | member : Atom s → ShapeCo s → Nat → CapEq s
 
 /-- One step of a capture-template side: closed capture evidence, weakened
-under the self, or a syntactic inclusion of sets that may mention the self
-(plan-5a (c-2′)). -/
+under the self, or a syntactic inclusion of sets that may mention the
+self. -/
 inductive CapStep : Sig → Type where
   | closed : CapCo s → CapStep s
   | incl : CaptureSet (s,x) → CaptureSet (s,x) → CapStep s

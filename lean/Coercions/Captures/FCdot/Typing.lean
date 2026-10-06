@@ -327,8 +327,8 @@ inductive Tm.HasType : Ctx s → Tm s → Ty s → Prop where
       Γ ⊢ᶜ f : C ⊑ U →
       Γ ⊢ .unbox a U f : S ^ C
 
-/-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is empty in
-this stage. -/
+/-- `Γ ⊢ᵥ v : T`: values.  A value is pure: its type's capture set is
+always empty. -/
 inductive Value.HasType : Ctx s → Value s → Ty s → Prop where
   /-- A lambda carries the capture set `A` its rule assigns to it, and the
       closing evidence `g` puts the body's use set below `A` weakened united

@@ -5,7 +5,7 @@ import Coercions.Captures.FCdot.TypingRename
 namespace Captures
 
 /-!
-# Typedness of the evidence translation (Plan III §8.1, M3)
+# Typedness of the evidence translation
 
 Every subcapturing derivation of DOT-MNF^cc translates to capture-inclusion
 evidence with the translated endpoints, every subtyping derivation to
@@ -139,9 +139,9 @@ theorem Witnesses.Distinct.append {s : Sig} {W : Witnesses s} (hW : W.Distinct) 
 
 /-! ## Capture witnesses: the same block, for the capture sort
 
-Stage A3a: a declaration shape has capture witnesses of its own, one per
-field and one per capture member, collected by `CapWitnesses.append`.  These
-are the twins of the `Witnesses` facts just above. -/
+A declaration shape has capture witnesses of its own, one per field and
+one per capture member, collected by `CapWitnesses.append`.  These are the
+twins of the `Witnesses` facts just above. -/
 
 theorem CapWitnesses.length_append {s : Sig} :
     ∀ (W W' : CapWitnesses s), (W.append W').length = W.length + W'.length
@@ -574,7 +574,7 @@ theorem Shape.telSelf_noBnd_of_decl {s : Sig} :
           exact FCdot.Telescope.NoBnd.rename _ _ (Shape.telSelf_noBnd_of_decl hT)
 
 /-- Every self-bound the translation of a shape carries is a weakened closed
-shape: this is the closedness convention of `FCdot` (plan §13 item 9). -/
+shape: this is the closedness convention of `FCdot`. -/
 theorem Shape.tel_closedBnds {s : Sig} :
     ∀ S : Shape s, (Shape.tel S : FCdot.Telescope (s,x)).ClosedBnds
   | .top => by simp only [Shape.tel]; exact .nil

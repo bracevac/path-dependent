@@ -625,7 +625,7 @@ theorem CaptureSet.Subset.mapProj {C D : CaptureSet s} (h : C.Subset D) (φ : Cl
     Γ.capsAtom n (a ↾ φ) = (Γ.capsAtom n a).map (CapAtom.proj · φ) := by
   cases Γ <;> cases n <;> simp [Ctx.capsAtom]
 
-/-- **L3.**  Every atom resolution produces carries a kind below the atom's
+/-- Every atom resolution produces carries a kind below the atom's
 own.  The bare atom carries `⊤`, which contains everything. -/
 theorem Ctx.capsAtom_kindOf (Γ : Ctx s) (n : Nat) : ∀ (a : CapAtom s),
     ∀ b ∈ Γ.capsAtom n a, ∀ c : Cls.Classifier, b.kindOf.Contains c → a.kindOf.Contains c
@@ -1160,7 +1160,7 @@ def Ctx.expandAtom (Γ : Ctx s) : CapAtom s → CaptureSet s
 /-- Expansion of a capture set. -/
 def Ctx.expand (Γ : Ctx s) (C : CaptureSet s) : CaptureSet s := C.flatMap Γ.expandAtom
 
-/-- **L1.**  Expansion consumes a projection as a filter. -/
+/-- Expansion consumes a projection as a filter. -/
 @[simp] theorem Ctx.expandAtom_proj (Γ : Ctx s) (a : CapAtom s) (φ : Cls.Kind) :
     Γ.expandAtom (a ↾ φ) = (Γ.expandAtom a).filter (fun b => Γ.admitsB b φ) := rfl
 
@@ -1177,8 +1177,8 @@ theorem CaptureSet.filter_congr' (p q : CapAtom s → Bool) (h : ∀ b, p b = q 
   | [] => rfl
   | b :: l => by simp [List.filter_cons, h b, CaptureSet.filter_congr' p q h l]
 
-/-- **L2.**  And expansion consumes the smart constructor the same way.  The
-one use of the kind algebra in the stage: an intersection admits exactly what
+/-- Expansion consumes the smart constructor the same way.  This is the one
+place the kind algebra is used here: an intersection admits exactly what
 both sides admit. -/
 theorem Ctx.expandAtom_projBy (Γ : Ctx s) (a : CapAtom s) (φ : Cls.Kind) :
     Γ.expandAtom (CapAtom.projBy φ a) = (Γ.expandAtom a).filter (fun b => Γ.admitsB b φ) := by
@@ -1284,7 +1284,7 @@ theorem Ctx.expandAtom_subset_base (Γ : Ctx s) (a : CapAtom s) :
   intro b hb
   exact Γ.mem_expandAtom_base a b hb
 
-/-- **L4.**  Every atom an expansion produces is admitted by the kind the
+/-- Every atom an expansion produces is admitted by the kind the
 atom it came from carried.  At a bare atom that kind is `⊤`. -/
 theorem Ctx.expandAtom_kinded (Γ : Ctx s) : ∀ (a : CapAtom s),
     ∀ b ∈ Γ.expandAtom a, a.kindOf.Contains (Γ.classOf b)
@@ -2262,8 +2262,8 @@ theorem CapLe.weaken {Γ : Ctx s} {C D : CaptureSet s} (b : Binding s)
 
 /-- Weakening by a capture binder whose bound is not opaque.  An opaque
 binder appended to a root-free context enlarges the expansion of `⊤ᶜ`, so the
-premise is what makes the two sides agree; B0.7 forbids a store to append
-one, and the theorem has no other caller. -/
+premise is what makes the two sides agree; a typed store never appends an
+opaque capture binder, and the theorem has no other caller. -/
 theorem CapLe.weakenC {Γ : Ctx s} {C D : CaptureSet s} (b : CapBound s)
     (hb : b.opaque = false)
     (h : CapLe Γ C D) : CapLe (Ctx.consC Γ b) C.weaken D.weaken := by
@@ -2346,15 +2346,15 @@ theorem Ctx.Root_name_none {Γ : Ctx s} {x : BVar s .var} {ℓ : Label}
   | succ n => rw [Ctx.capsAtom_name_none h, Ctx.expand_nil] at hn; simp at hn
 
 
-/-! ## K0.5 and K0.6: projected sets and the kinding of a resolved set
+/-! ## Projected sets and the kinding of a resolved set
 
 The filter a projection carries is consumed inside `Ctx.expandAtom`, and
 `Ctx.roots` is `Ctx.expand` of `Ctx.caps`, so the roots of a projected set are
-the roots of the set filtered by the kind.  That is T1, and everything else of
-the stage reads off it. -/
+the roots of the set filtered by the kind (`Ctx.roots_proj` below), and
+everything else in this section builds on that fact. -/
 
-/-- Expansion of a mapped projection is the filtered expansion.  This is L1
-read on a whole list, and it is the engine of T1. -/
+/-- Expansion of a mapped projection is the filtered expansion: the fact
+above read on a whole list, and the key step toward `Ctx.roots_proj`. -/
 theorem Ctx.expand_map_proj (Γ : Ctx s) (φ : Cls.Kind) : ∀ L : CaptureSet s,
     Γ.expand (L.map (CapAtom.proj · φ)) = (Γ.expand L).filter (fun b => Γ.admitsB b φ)
   | [] => rfl
@@ -2362,9 +2362,9 @@ theorem Ctx.expand_map_proj (Γ : Ctx s) (φ : Cls.Kind) : ∀ L : CaptureSet s,
       rw [List.map_cons, Ctx.expand_cons, Ctx.expand_cons, Ctx.expandAtom_proj,
         Ctx.expand_map_proj Γ φ L, List.filter_append]
 
-/-- The one-atom form of T1: resolving and expanding a projected atom is
+/-- The one-atom form: resolving and expanding a projected atom is
 resolving and expanding the atom and then filtering.  Two cases, and the
-projected one is the only place the kind algebra is used in K0. -/
+projected one is the only place the kind algebra is used above. -/
 theorem Ctx.expand_capsAtom_projBy (Γ : Ctx s) (n : Nat) (φ : Cls.Kind) (a : CapAtom s) :
     Γ.expand (Γ.capsAtom n (CapAtom.projBy φ a))
       = (Γ.expand (Γ.capsAtom n a)).filter (fun b => Γ.admitsB b φ) := by
@@ -2381,7 +2381,7 @@ theorem Ctx.expand_capsAtom_projBy (Γ : Ctx s) (n : Nat) (φ : Cls.Kind) (a : C
         = (ψ.containsB (Γ.classOf b) && φ.containsB (Γ.classOf b))
       rw [Cls.Kind.contains_inter, Bool.and_comm]
 
-/-- **T1.**  The roots of a projected set are the roots of the set that the
+/-- The roots of a projected set are the roots of the set that the
 kind admits.  No induction on the context and none on the fuel: both sides are
 `flatMap`s over `C`, and `List.filter` distributes over `++`. -/
 theorem Ctx.roots_proj (Γ : Ctx s) (n : Nat) : ∀ (C : CaptureSet s) (φ : Cls.Kind),
@@ -2396,7 +2396,7 @@ theorem Ctx.roots_proj (Γ : Ctx s) (n : Nat) : ∀ (C : CaptureSet s) (φ : Cls
       rw [Ctx.roots_eq_expand_caps, Ctx.roots_eq_expand_caps] at ih
       rw [ih]
 
-/-- **T1**, membership form.  A root of a projected set is a root of the set
+/-- Membership form: a root of a projected set is a root of the set
 that the kind admits, and conversely. -/
 theorem Ctx.Root_proj {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s} {φ : Cls.Kind} :
     Γ.Root a (CaptureSet.proj C φ) ↔ (Γ.Root a C ∧ Γ.admitsB a φ = true) := by
@@ -2409,9 +2409,9 @@ theorem Ctx.Root_proj {Γ : Ctx s} {a : CapAtom s} {C : CaptureSet s} {φ : Cls.
     rw [Ctx.roots_proj]
     exact List.mem_filter.mpr ⟨hn, hφ⟩
 
-/-- **T1** at the root kind: projecting by `⊤` changes no root.  This is
-Capless(K)'s `CaptureSet.proj_top`, which is an equation there and is an
-equality of roots here. -/
+/-- Projecting by `⊤` changes no root.  This is Capless(K)'s
+`CaptureSet.proj_top`, which is an equation there and is an equality of
+roots here. -/
 theorem Ctx.rootsEq_proj_top (Γ : Ctx s) (C : CaptureSet s) :
     RootsEq Γ (CaptureSet.proj C Cls.Kind.top) C := by
   intro a
@@ -2420,7 +2420,7 @@ theorem Ctx.rootsEq_proj_top (Γ : Ctx s) (C : CaptureSet s) :
 
 /-- The roots of a singleton are the roots of its base, filtered by the kind
 the atom itself carries.  This is `Ctx.roots_proj` read at one atom and at
-`CapAtom.base`, and it is what lets the kinding rules of K1 speak about a
+`CapAtom.base`, and it is what lets the kinding rules below speak about a
 general atom rather than only a projected one. -/
 theorem Ctx.roots_of_base (Γ : Ctx s) (n : Nat) : ∀ a : CapAtom s,
     Γ.roots n [a] = (Γ.roots n [a.base]).filter (fun b => Γ.admitsB b a.kindOf)
@@ -2522,13 +2522,13 @@ theorem Ctx.Root_of_setOf {Γ : Ctx s} {a r : CapAtom s} {C : CaptureSet s}
    fun ⟨n, hn⟩ => ⟨n, by rwa [Ctx.roots_of_setOf h n]⟩⟩
 
 /-- Every root of `C` carries a classifier that `φ` admits.  The classifier
-twin of `CapLe`, stated beside it.  This is the plan's canonical form of
-closed kinding, as a proposition. -/
+twin of `CapLe`, stated beside it, and the canonical form of closed kinding
+as a proposition. -/
 def Ctx.KindLe (Γ : Ctx s) (C : CaptureSet s) (φ : Cls.Kind) : Prop :=
   ∀ a : CapAtom s, Γ.Root a C → φ.Contains (Γ.classOf a)
 
 /-- Every atom resolution produces carries a kind below the kind of an atom of
-the set it came from.  L3 on a whole capture set. -/
+the set it came from.  `Ctx.capsAtom_kindOf` on a whole capture set. -/
 theorem Ctx.caps_kindOf (Γ : Ctx s) (n : Nat) : ∀ (C : CaptureSet s),
     ∀ b ∈ Γ.caps n C, ∃ a ∈ C, ∀ c : Cls.Classifier,
       b.kindOf.Contains c → a.kindOf.Contains c
@@ -2540,10 +2540,10 @@ theorem Ctx.caps_kindOf (Γ : Ctx s) (n : Nat) : ∀ (C : CaptureSet s),
       · obtain ⟨d, hd, hkd⟩ := Γ.caps_kindOf n C b hb
         exact ⟨d, List.mem_cons_of_mem a hd, hkd⟩
 
-/-- **T2.**  A set whose atoms all carry kinds inside `φ` is kinded by `φ`.
-L3 followed by L4: a root is an atom of the expansion of an atom of
-`Γ.caps n C`, L3 bounds that atom's kind by the kind of the atom of `C` it
-came from, and L4 says the root is admitted by it. -/
+/-- A set whose atoms all carry kinds inside `φ` is kinded by `φ`.  A root is
+an atom of the expansion of an atom of `Γ.caps n C`; `Ctx.capsAtom_kindOf`
+bounds that atom's kind by the kind of the atom of `C` it came from, and
+`Ctx.expandAtom_kinded` says the root is admitted by it. -/
 theorem Ctx.kindLe_of_kinds {Γ : Ctx s} {C : CaptureSet s} {φ : Cls.Kind}
     (h : ∀ a ∈ C, ∀ c : Cls.Classifier, a.kindOf.Contains c → φ.Contains c) :
     Γ.KindLe C φ := by
@@ -2553,30 +2553,29 @@ theorem Ctx.kindLe_of_kinds {Γ : Ctx s} {C : CaptureSet s} {φ : Cls.Kind}
   obtain ⟨d, hd, hkd⟩ := Γ.caps_kindOf n C b hb
   exact h d hd (Γ.classOf a) (hkd (Γ.classOf a) (Γ.expandAtom_kinded b a hab))
 
-/-- **T2**, the form the stage uses: a projected set is kinded by construction,
-whatever the set was.  This is what the refuted design lost. -/
+/-- A projected set is kinded by construction, whatever the set was. -/
 theorem Ctx.kindLe_proj (Γ : Ctx s) (C : CaptureSet s) (φ : Cls.Kind) :
     Γ.KindLe (CaptureSet.proj C φ) φ := fun _ ha => (Ctx.Root_proj.mp ha).2
 
-/-- **T3.**  Kinding is antitone along subcapturing. -/
+/-- Kinding is antitone along subcapturing. -/
 theorem Ctx.KindLe.mono {Γ : Ctx s} {C D : CaptureSet s} {φ : Cls.Kind}
     (hle : CapLe Γ C D) (h : Γ.KindLe D φ) : Γ.KindLe C φ :=
   fun a ha => h a (hle a ha)
 
-/-- **T3.**  And monotone along subkinding.  The only consumer of subkinding
-in K0. -/
+/-- And monotone along subkinding.  The only consumer of subkinding
+in this file. -/
 theorem Ctx.KindLe.sub {Γ : Ctx s} {C : CaptureSet s} {φ ψ : Cls.Kind}
     (h : Γ.KindLe C φ) (hs : φ.Subkind ψ) : Γ.KindLe C ψ :=
   fun a ha => Cls.Kind.Subkind.contains hs (h a ha)
 
-/-- The same step at the semantic sub-kind relation, which is what the normal
-forms of K1 carry: it is `Ctx.KindLe.sub` with `Kind.Subkind.contains` already
-applied, and `Kind.Subkind.admits` turns one into the other. -/
+/-- The same step at the semantic sub-kind relation: it is `Ctx.KindLe.sub`
+with `Kind.Subkind.contains` already applied, and `Kind.Subkind.admits` turns
+one into the other. -/
 theorem Ctx.KindLe.admits {Γ : Ctx s} {C : CaptureSet s} {φ ψ : Cls.Kind}
     (h : Γ.KindLe C φ) (hs : φ.Admits ψ) : Γ.KindLe C ψ :=
   fun a ha => hs _ (h a ha)
 
-/-- **T3.**  A union is kinded when both sides are. -/
+/-- A union is kinded when both sides are. -/
 theorem Ctx.KindLe.union {Γ : Ctx s} {C D : CaptureSet s} {φ : Cls.Kind}
     (h₁ : Γ.KindLe C φ) (h₂ : Γ.KindLe D φ) : Γ.KindLe (C ∪ D) φ := by
   rintro a ⟨n, ha⟩
@@ -2588,13 +2587,12 @@ theorem Ctx.KindLe.union {Γ : Ctx s} {C D : CaptureSet s} {φ : Cls.Kind}
 
 /-! ### Item 6 of the canonical-forms theorem
 
-`cap_canon`, the statement that closed capture evidence includes roots, no
-longer fits here: `CapCo.HasType` is now mutual with atom typing, so `capvar`
-needs item 7 of the theorem and `member` needs the view of an atom.  The
-statement moves, unchanged, into the mutual induction of `CanonicalForms.lean`
-(plan-5c A1.6); the four constructors it had in A0 are still discharged by
-`CapLe.refl`, `CapLe.trans`, `CapLe.of_subset` and `CapLe.union`, and `defC`
-by `Ctx.Root_name` above. -/
+`cap_canon`, the statement that closed capture evidence includes roots, does
+not fit here: `CapCo.HasType` is mutual with atom typing, so `capvar` needs
+item 7 of the theorem and `member` needs the view of an atom.  The statement
+lives instead in the mutual induction of `CanonicalForms.lean`.  Four of its
+constructors are discharged there by `CapLe.refl`, `CapLe.trans`,
+`CapLe.of_subset` and `CapLe.union`, and `defC` by `Ctx.Root_name` above. -/
 
 end FCdot
 

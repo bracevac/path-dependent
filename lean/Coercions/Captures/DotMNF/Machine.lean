@@ -10,7 +10,7 @@ term, all indexed by one signature.  Allocation extends the signature; every
 substitution performed by the machine is a renaming, so no substitution
 operation beyond `rename` is needed.
 
-This is Plan III §3.5 plus the unboxing step of stage A3a:
+The reduction rules, with the unboxing step added for the capture extension:
 
 ```text
 ⟨σ, K, let x = t in u⟩                       ⟶  ⟨σ, K ▹ (x. u), t⟩
@@ -33,9 +33,8 @@ open FCdot (Kind Sig BVar Rename Label)
 /-! ## Stores -/
 
 /-- A store: one value per term binder of the signature, and a data-free
-slot per capture binder.  (`consᶜ` of the plan: `ᶜ` is not a legal Lean
-identifier character, so the capture-sort twin of a name carries the suffix
-`C`.) -/
+slot per capture binder.  (`ᶜ` is not a legal Lean identifier character,
+so the capture-sort twin of a name carries the suffix `C` instead.) -/
 inductive Store : Sig → Type where
   | nil : Store []
   | cons : Store s → Value s → Store (s,x)

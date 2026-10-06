@@ -3,7 +3,7 @@ import Coercions.Paths.DotToFCdot.Evidence
 namespace Paths
 
 /-!
-# Translation of terms (Plan III §8.2, M4, and P2.4)
+# Translation of terms
 
 A typing derivation becomes an FCdot term with the same erasure.  Variables
 become atoms (`HasTy.translateAtom`), subsumption becomes a cast, a
@@ -14,16 +14,16 @@ its declaration type, each field cast from its translated type to its block
 name by the literal's own definition equality, the whole cast from the
 precise type to `⟦μ(x. T)⟧`.
 
-P2 adds three clauses and changes one.  `HasTy.sngl` gives the variable's
+The path extension adds three clauses and changes one.  `HasTy.sngl` gives the variable's
 own atom under `Atom.sngl`.  `HasTy.projP` reads the presence and the bound
 by `memberP` at the path image of the receiver, as `HasTy.proj` reads them
-by `member` at its atom (decision 33).  A `let` at a singleton is the opaque
-`let` (decision 32).  `DefsTy.translateFields` takes the self binder, the
+by `member` at its atom.  A `let` at a singleton is the opaque
+`let`.  `DefsTy.translateFields` takes the self binder, the
 self's type and the equality counter `e` as arguments, so that it is
-structural (decision 31).  A `trm` field is cast by `EqCo.member` at `e`,
+structural.  A `trm` field is cast by `EqCo.member` at `e`,
 which eliminates, so the field is plain.  A `trmObj` field is the inner
 literal under `litCo` and `EqCo.def`, both table-only, so the field is
-stable (decision 26).
+stable.
 -/
 
 namespace DotMNF
@@ -65,7 +65,7 @@ def HasTy.translate : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} → HasTy Γ t 
 
 /-- The fields of a literal under its self binder `self`.  `Tself` is the
 self's type in the translated context, `T.literalTy.weaken` of the enclosing
-literal.  `e` is the equality counter of decision 26: the position of the
+literal.  `e` is the equality counter: the position of the
 field's `≐` entry in the self's precise telescope.  A `trm` field is cast by
 `member` at `e`, which eliminates, so the field is plain.  A `trmObj` field
 keeps `def`, which is table-only, so the field is stable. -/

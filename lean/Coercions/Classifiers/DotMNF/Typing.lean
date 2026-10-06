@@ -8,7 +8,7 @@ namespace Classifiers
 
 Subcapturing, shape subtyping, subtyping, term typing and definition typing,
 as five mutually inductive families.  They live in `Type`, not in `Prop`:
-the translation of Plan III §8 is a function on derivations and therefore
+the translation into FCdot is a function on derivations and therefore
 needs `Type`-valued elimination.
 
 Term typing carries a use set as its first index, `U; Γ ⊢ t : T`, as in
@@ -22,7 +22,8 @@ type out of thin air: the domain annotation of a lambda and the result type
 of a `let`.  Everything else is derived from those, so no side predicate on
 derivations is needed.
 
-One deviation from the surface presentation of §3.4: `{}-I` is stated as
+One deviation from the usual surface presentation of object-literal
+introduction: `{}-I` is stated as
 
 ```text
 Γ, x : (μ(x. S)) ^ U ⊢ d : S   ⟹   Γ ⊢ ν(x. d) : (μ(x. S)) ^ U
@@ -34,12 +35,12 @@ binder, so `S^x` cannot be an entry.  The two are interderivable, since
 `Rec-I` and `Rec-E` convert between `x : μ(x. S)` and `x : S^x`, and the
 shape chosen here is the one that matches `FCdot.Ctx` binder for binder.
 
-The fragment of §3.2 is enforced in the rules that need it (plan §13 items
-8 and 9): `Rec-I` and `Rec-E` carry `Shape.Decl` premises for the bodies
+The restriction to declaration shapes is enforced in the rules that need it:
+`Rec-I` and `Rec-E` carry `Shape.Decl` premises for the bodies
 they open and close, as does `Wf.mu`.  Intersections are *not* restricted:
 `And₁`, `And₂`, `And` and `And-I` apply to arbitrary operands, since a
 non-declaration operand `B` translates to the one-proposition telescope
-`[⊑ ⟦B⟧]` -- the self-bound proposition of `FCdot` (plan §13 item 9).  The
+`[⊑ ⟦B⟧]` -- the self-bound proposition of `FCdot`.  The
 declaration shapes are still the only bodies a `μ` may bind, because a bound
 proposition never mentions the self.  `{}-I` no longer restricts aliasing
 among the definitions: the target's alias-tolerant resolution
@@ -68,8 +69,8 @@ open FCdot (Kind Sig BVar Rename Label)
 /-- A context is a list of types, newest binder first.  A binder introduced
 by an object literal remembers the literal's definitions and the capture set
 assigned to the literal (`consSelf`); its type is `(μ(x. S)) ^ U` like any
-other binder, and `lookup` does not distinguish the two.  The translation of
-Plan III §8 does: such a binder is typed at the literal's precise type in the
+other binder, and `lookup` does not distinguish the two.  The translation into
+FCdot does: such a binder is typed at the literal's precise type in the
 target.  A platform capture binder (`consC`) carries no bound: it is rigid. -/
 inductive Ctx : Sig → Type where
   | nil : Ctx []
@@ -86,15 +87,14 @@ inductive Ctx : Sig → Type where
       `CBinding.inst`, and it is the one binder `Subcap.inst` reads. -/
   | consInst : Ctx s → CaptureSet s → Ctx (s,c)
   /-- A platform capture binder with a declared classifier.  `consC` is this
-      binder with no declaration, and it translates to `∗`.  It is a seventh
+      binder with no declaration, and it translates to `∗`.  It is a separate
       constructor and not a payload on `consC`, so that `Platform.ctx`,
       `Platform.store` and every existing source example keep their context
-      (decision 10). -/
+      unchanged. -/
   | consCls : Ctx s → Cls.Classifier → Ctx (s,c)
 
 /-- The type of a variable, weakened into the current scope.  The self
-binder of a literal has type `(μ S) ^ U`, weakened, which is the plan's
-`U↑`. -/
+binder of a literal has type `(μ S) ^ U`, weakened, written `U↑`. -/
 def Ctx.lookup : Ctx s → BVar s .var → Ty s
   | .cons _ T, .here => T.weaken
   | .cons Γ _, .there y => (Γ.lookup y).weaken
@@ -167,7 +167,7 @@ theorem Ctx.clsOf_consCls (c : Cls.Classifier) :
 
 `Shape.expand` threads one capture set down a written type, and this is
 where that set comes from at the position the type is written at.  The
-source has no universal root atom (decision 23), so a position with no
+source has no universal root atom, so a position with no
 enclosing root binder reads `any` as the program's platform set.  The rest
 of the source's level machinery is the `Levels` section below. -/
 
@@ -194,7 +194,7 @@ def Ctx.reading (Γ : Ctx s) (P : CaptureSet s) : CaptureSet s :=
 
 /-! ## Levels
 
-**B3.4.**  The target's level machinery (`FCdot/Context.lean:169-231`) over
+The target's level machinery (`FCdot/Context.lean:169-231`) over
 the source's five context constructors that append a binder.  A level is a
 position on the spine and not a field on a binding.  The level of a binder
 is the innermost root binder of the prefix that precedes it, and a root is
@@ -204,8 +204,8 @@ root.  That is the compiler's unscoped reading.
 
 `FCdot.BVar.depth` and `FCdot.depthGe` are reused and not copied, because
 the source already reads `FCdot`'s `BVar`.  The source names no universal
-root atom (decision 23), so the outermost level is named by no atom here,
-and a notation is below no root (decision 30). -/
+root atom, so the outermost level is named by no atom here,
+and a notation is below no root. -/
 
 /-- The level of a binder: the innermost root of the prefix before it, and
 itself when the binder is a root.  `none` is the outermost level. -/
@@ -244,12 +244,12 @@ def Ctx.isRootB (Γ : Ctx s) : CapAtom s → Bool
   | _ => false
 
 /-- `e` is at or outside the level of `r`.  A notation is below no root, so
-the function is `false` there on either side (decision 30). -/
+the function is `false` there on either side. -/
 def Ctx.lvlLeB (Γ : Ctx s) : CapAtom s → CapAtom s → Bool
   | .var x, .cvar ρ => FCdot.depthGe ((Γ.lvl x).map FCdot.BVar.depth) (some ρ.depth)
   | .cvar κ, .cvar ρ => FCdot.depthGe ((Γ.lvl κ).map FCdot.BVar.depth) (some ρ.depth)
   | .sel x _, .cvar ρ => FCdot.depthGe ((Γ.lvl x).map FCdot.BVar.depth) (some ρ.depth)
-  /- A projection is at the level of what it projects (decision D8 of K2).
+  /- A projection is at the level of what it projects.
      The target reads through a projection on both sides already, so the
      clause is added for the two calculi to agree. -/
   | .proj a _, r => Γ.lvlLeB a r
@@ -794,7 +794,7 @@ def Ctx.objBody (Γ : Ctx s) (d : Defs ((s,c),x)) (S : Shape (s,x)) (U : Capture
     Ctx ((s,c),x) :=
   (Γ.consRoot).consSelf d S.underRoot U.weaken
 
-/-! ### T-B3.1, the scope order on the source side
+/-! ### The scope order on the source side
 
 In a lambda body the parameter and the arrow's capture binder have the same
 level, and that level is the body root.  This is the target's
@@ -842,14 +842,14 @@ inductive Subcap : {s : Sig} → Ctx s → CaptureSet s → CaptureSet s → Typ
       residual reads. -/
   | inst {s : Sig} {Γ : Ctx s} {κ : BVar s .cap} {C : CaptureSet s} :
       Ctx.InstOf Γ κ C → Subcap Γ C [.cvar κ]
-  /-- **B3.5.**  `Γ ⊢ {e} <:ᶜ {κ}` when `κ` is a scope root and the level of
-      `e` is `κ` or encloses it.  B0's rule on the source, with a capture
-      binder on the right and no universal root (decision 23).  Both sides
+  /-- `Γ ⊢ {e} <:ᶜ {κ}` when `κ` is a scope root and the level of
+      `e` is `κ` or encloses it, mirroring the target's analogous rule, with
+      a capture binder on the right and no universal root.  Both sides
       are singletons, both premises are `Bool` computable, and a set-shaped
       conclusion is a `union` of instances.
 
-      The rule is directional where the compiler's test is not, and that is
-      decision 34: the level order relates the arrow's capture binder and
+      The rule is directional where the compiler's test is not: the level
+      order relates the arrow's capture binder and
       the body root in both directions, but this rule asks for a root on its
       right and the arrow binder is a `consC`, so only the direction from
       the arrow binder to the body root is an instance. -/
@@ -884,7 +884,7 @@ inductive Subcap : {s : Sig} → Ctx s → CaptureSet s → CaptureSet s → Typ
 /-- Capture kinding `Γ ⊢ C :ᶜ φ`: every capability the set `C` reaches
 carries a classifier that `φ` admits.  It is `Type`-valued and it lives in
 this block, because `ksel` premises `HasTy` and because the translation is a
-function into the target's `FCdot.KindCo` (decision D1 of K2).  It mirrors
+function into the target's `FCdot.KindCo`.  It mirrors
 `FCdot.KindCo.HasType` rule by rule, with `ksel` in place of `kmember`.
 Every rule concludes about a general atom and reads `CapAtom.base` and
 `CapAtom.kindOf`, which is `Cls.Kind.top` at a bare atom, so the family
@@ -903,8 +903,7 @@ inductive CapKind : {s : Sig} → Ctx s → CaptureSet s → Cls.Kind → Type w
       a.kindOf.Subkind φ → CapKind Γ [a] φ
   /-- k-label and k-label-absurd in one (`Subcapt.lean:51-52`), at a binder
       that declares a classifier.  A `consC` binder declares none and is
-      kinded only by `kproj`: an unwritten classifier means unknown, which
-      is the K1 addendum and the revised decision 9. -/
+      kinded only by `kproj`: an unwritten classifier means unknown. -/
   | kcls {s : Sig} {Γ : Ctx s} {a : CapAtom s} {c : Cls.Classifier} {φ : Cls.Kind} :
       Ctx.ClsOf Γ a.base c → (a.kindOf.Contains c → φ.Contains c) →
       CapKind Γ [a] φ
@@ -984,7 +983,7 @@ inductive SubShape : {s : Sig} → Ctx s → Shape s → Shape s → Type where
   /-- Introduction of a kind bound: a set-bounded member whose upper bound
       is kinded at `φ` is below the member bounded by `φ`.  It is sound by
       `FCdot.Ctx.KindLe.mono`, and it is how a literal reaches a kind bound,
-      since there is no definition form for `capk` (decision 17). -/
+      since there is no definition form for `capk`. -/
   | capkI {s : Sig} {Γ : Ctx s} {A : Label} {c1 c2 : CaptureSet s} {φ : Cls.Kind} :
       CapKind Γ c2 φ → SubShape Γ (.cap A c1 c2) (.capk A φ)
   /-- Widening of a kind bound. -/
@@ -998,14 +997,14 @@ inductive Sub : {s : Sig} → Ctx s → Ty s → Ty s → Type where
 
 /-- Inclusion between answers.  `pack` widens a plain answer at a witness,
 which is the compiler's own widening step and is subsumption on the source
-side, so no source term former for a pack is needed (decision 19).  `exist`
+side, so no source term former for a pack is needed.  `exist`
 is Capless's `EType` congruence (`Capless/Subtyping.lean:22-24`) with the
 source's own rigid binder under a scope root. -/
 inductive ESub : {s : Sig} → Ctx s → ETy s → ETy s → Type where
   | ty {s : Sig} {Γ : Ctx s} {T T' : Ty s} : Sub Γ T T' → ESub Γ (.ty T) (.ty T')
   /-- Packing: the witness is below the declared bound, and the residual
       inclusion is read under an instance binding for the witness, under a
-      root of its own (decision 20). -/
+      root of its own. -/
   | pack {s : Sig} {Γ : Ctx s} {C C₀ : CaptureSet s} {T' : Ty s} {T : Ty (s,c)} :
       Subcap Γ C C₀ →
       Sub (Γ.scopeInst C) ((T'.weaken (k := .cap)).weaken (k := .cap)) (Dom.underRoot T) →
@@ -1018,7 +1017,7 @@ inductive ESub : {s : Sig} → Ctx s → ETy s → ETy s → Type where
       ESub Γ (∃ᶜ[C₀] T) (∃ᶜ[C₀'] T')
 
 /-- Term typing `U; Γ ⊢ t : E`, the use set first.  The type index is an
-answer (B2.10); a term with a plain type is indexed at `.ty T`. -/
+answer; a term with a plain type is indexed at `.ty T`. -/
 inductive HasTy : {s : Sig} → CaptureSet s → Ctx s → Tm s → ETy s → Type where
   | var {s : Sig} {Γ : Ctx s} {x : BVar s .var} :
       HasTy [.var x] Γ (.path (.var x)) (.ty ((Γ.lookup x).shape ^ [.var x]))
@@ -1108,9 +1107,9 @@ end
 
 /-! ## Member-free source evidence
 
-**T-B3.4, step 3.**  Source subcapturing that reads no telescope and no
+Source subcapturing that reads no telescope and no
 instance binder: it is `refl`, `trans`, `elem`, `union`, `var` and `level`,
-and now the three projection rules, and it excludes `inst`, `selLower` and
+and the three projection rules, and it excludes `inst`, `selLower` and
 `selUpper`.  Those three are exactly the rules whose translation is
 `eqToLe` or `member`, which are exactly the two target rules
 `FCdot.CapCo.MemberFree` excludes, and exactly where a bad capture bound can
@@ -1120,8 +1119,8 @@ restriction on `CapKind`: it excludes `ksel`, exactly as
 
 The two are one mutual block, because `Subcap.proj` premises a kinding and
 `CapKind.kle` premises a subcapturing.  That is why they sit here, beside
-the judgments, and not in `DotToFCdot/Evidence.lean` where the subcapturing
-half was stated before K2. -/
+the judgments, and not in `DotToFCdot/Evidence.lean`, which states the
+subcapturing half without capture kinds. -/
 
 mutual
 
@@ -1185,13 +1184,13 @@ end
 
 /-- Term typing at a plain answer.  Every statement that was written
 `HasTy U Γ t T` with `T` a type is this one: the index of `HasTy` is an
-answer since B2.10, and a plain answer is `.ty T`. -/
+answer, and a plain answer is `.ty T`. -/
 abbrev HasTyP {s : Sig} (U : CaptureSet s) (Γ : Ctx s) (t : Tm s) (T : Ty s) : Type :=
   HasTy U Γ t (.ty T)
 
 /-! ## Derived rules
 
-Four rules the plan's rule list uses in derived form.  None of them is
+Four rules used in derived form.  None of them is
 primitive; all four are definitions on derivations, so a translation may use
 them. -/
 
@@ -1208,7 +1207,7 @@ def ESub.refl {s : Sig} {Γ : Ctx s} : (E : ETy s) → ESub Γ E E
 def Subcap.empty {s : Sig} {Γ : Ctx s} (C : CaptureSet s) : Subcap Γ [] C :=
   .elem (CaptureSet.nil_subset C)
 
-/-- `sc-var` in the form the plan lists it: from *any* typing of the
+/-- `sc-var` stated as an admissible rule: from *any* typing of the
 variable at a capture set, the variable is below that set.  Admissible by
 induction on the typing derivation: `Var` concludes at `{x}` itself, the
 three variable rules pass the capture set through, and `sub` composes the

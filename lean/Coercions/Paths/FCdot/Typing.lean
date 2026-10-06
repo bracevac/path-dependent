@@ -192,8 +192,8 @@ atom rules, one field step through a stable presence, and aliasing. -/
 inductive PathCo.HasType : Ctx s → PathCo s → Ty s → Prop where
   | var : Γ ⊢ᵖ .var x : Γ.lookupTy x
   /-- One field step, licensed by a stable presence of the path's own type.
-      This is decision 1: a field that holds a computation gives `∋ a` and no
-      step, so a name below it is opaque. -/
+      A field that holds a computation gives `∋ a` and no step, so a name
+      below it is opaque. -/
   | sel :
       Γ ⊢ᵖ P : μ Tel →
       Tel ∋ (i ↦ ∋ᵛ a) →
@@ -227,7 +227,7 @@ inductive PathCo.HasType : Ctx s → PathCo s → Ty s → Prop where
   /-- A node of the forest, at the precise type of the literal whose block the
       table wrote at `p`.  The premise reads `Ctx.nodeBlock`, the walk that
       follows no forwarding, so a path whose walk passes a forwarding is no
-      node (decision 24).  The path is a field step: a binder is typed by
+      node.  The path is a field step: a binder is typed by
       `var` at its declared type, and the block of a closure's binder is
       `obj nil [] [] nil`, whose literal type is not the closure's. -/
   | node :
@@ -237,8 +237,10 @@ inductive PathCo.HasType : Ctx s → PathCo s → Ty s → Prop where
 
 /-- `Γ ⊢ α : p ≋ q`: the two paths name one block of the forest.  A view's
 alias is read by `member`, and the rest are the laws of an equality.  No rule
-reads the table or the store, which is why T2 is an induction.  A forwarding
-node of the table serves resolution only (decision 24). -/
+reads the table or the store, which is why block identity (that an alias is
+an identity on blocks) has to be proved by induction on this typing, rather
+than read off directly.  A forwarding node of the table serves resolution
+only. -/
 inductive AliasCo.HasType : Ctx s → AliasCo s → Path s → Path s → Prop where
   | refl : Γ ⊢ .refl p : p ≋ p
   | symm : Γ ⊢ α : p ≋ q → Γ ⊢ .symm α : q ≋ p
@@ -255,9 +257,8 @@ inductive AliasCo.HasType : Ctx s → AliasCo s → Path s → Path s → Prop w
 end
 
 /-- Every typed atom is a typed stable path of depth zero, under the same
-wrappers.  This is row 1 of table P1.9 on the evidence side: a binder is the
-path of depth zero, and `Telescope.substPath_var` bridges the two
-instantiations. -/
+wrappers: a binder is the path of depth zero, and `Telescope.substPath_var`
+bridges the two instantiations. -/
 theorem PathCo.HasType.ofAtom {s : Sig} {Γ : Ctx s} :
     ∀ {a : Atom s} {T : Ty s}, Γ ⊢ₐ a : T → Γ ⊢ᵖ a.toPathCo : T
   | _, _, .var => .var

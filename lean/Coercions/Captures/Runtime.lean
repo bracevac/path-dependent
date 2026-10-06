@@ -119,8 +119,8 @@ inductive IsValue : Tm s → Prop where
   | box : IsValue (.box x)
 
 /-- A store: one slot per term binder, and a data-free slot per capture
-binder.  (`consᶜ` of the plan: `ᶜ` is not a legal Lean identifier character,
-so the capture-sort twin of a name carries the suffix `C`.) -/
+binder.  (`ᶜ` is not a legal Lean identifier character, so the
+capture-sort twin of a name carries the suffix `C` instead.) -/
 inductive Store : Sig → Type where
   | nil : Store []
   | cons : Store s → Tm s → Store (s,x)

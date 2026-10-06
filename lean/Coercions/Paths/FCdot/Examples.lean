@@ -11,11 +11,11 @@ namespace Paths
 /-!
 # FCdot examples
 
-The mandatory examples of Plan III §10 (E1 to E7) and the acceptance test for
-self-bound propositions (E8), as `FCdot` terms accepted by the structural
-checker of `Coercions.FCdot.Checker`.  Each example comes with
+Worked examples E1 to E7, and the acceptance test for self-bound
+propositions (E8), as `FCdot` terms accepted by the structural checker of
+`Coercions.FCdot.Checker`.  Each example comes with
 
-* the term and its type, built from the type translation of §5.1;
+* the term and its type, built from the translation of DOT types into FCdot;
 * the checker's verdict on it;
 * a typing derivation `Eᵢ_typed : Ctx.nil ⊢ Eᵢ : EᵢTy`;
 * the erasure equation against the source term of `Coercions.DotMNF.Examples`,
@@ -23,14 +23,14 @@ checker of `Coercions.FCdot.Checker`.  Each example comes with
   calculi erase into `Coercions.Runtime`, so the equation is an equality of
   `Runtime.Tm` and holds by `rfl`.
 
-The examples of the path stage, Y1 to Y9 of P1.10, follow E8.  They are
-about the block forest, the field coercion, and the stores the repairs of P1
-reject or keep.
+The examples Y1 to Y9, which follow E8, concern paths.  They are about the
+block forest, the field coercion, and which stores are accepted or rejected
+under path resolution.
 
-## The port to paths
+## Porting the examples to paths
 
-E1 to E8 keep their names and statements.  Two forms change, each by a row
-of table P1.9.  A block name `x ∙ ℓ` is written `.sel (.var x) ℓ`, since the
+E1 to E8 keep their names and statements.  Two forms change.  A block name
+`x ∙ ℓ` is written `.sel (.var x) ℓ`, since the
 first argument of `Ty.sel` is a path and a binder is the path of depth zero.
 `Telescope.ofLiteral` takes a third list, the stable field labels, and every
 literal here passes `[]`: the fields of E2 are a lambda under a cast, those
@@ -71,8 +71,8 @@ There is no subsumption rule, so every source `Sub` step is an explicit
 proof.  Three idioms recur:
 
 * `LeCo.member (.var x) (.refl X) i` — the `i`-th proposition of `x`'s own
-  object type `X`, opened at `x`.  This is the `Var`-instance of §5.4 and it
-  covers both `Sel-<:` and `<:-Sel`.
+  object type `X`, opened at `x`.  This is the case where the member rule is
+  read off a variable directly, and it covers both `Sel-<:` and `<:-Sel`.
 * `LeCo.member a e i` with `a` a *cast* atom — the same at a type reached
   through a bound.  This is what E4 needs.
 * `EqCo.def x ℓ` — the definition of a transparent binder's block name,
@@ -187,7 +187,7 @@ field selected and applied to itself.
 Two things are specific to the target.  First, a field's type is its block
 name `x.a`, so the literal must *define* `a` in its witnesses; the definition
 entry `x.a ≃ ∀(y : x.A) x.A` is what lets the projected field be applied at
-all (Plan III §12, risk 4).  Second, no `Rec` block is needed: the witness
+all.  Second, no `Rec` block is needed: the witness
 `∀(y : self.A) self.A` mentions the self binder directly, and the literal's
 precise type `Telescope.ofLiteral` binds it.  `unfoldSelf` is likewise
 unnecessary, because `member` already opens the telescope at the atom's
@@ -330,16 +330,15 @@ example : DotMNF.HasTy .nil E3src
 
 theorem E3_erase : E3.erase = E3src.erase := rfl
 
-/-! ## E4: the counterexample of §1
+/-! ## E4: a motivating counterexample
 
 `λ(x : {B : S..T}). λ(w : S). λ(n : Int). let g = λ(y : w.A). y in g n`, with
 `S = {A : ⊥..⊤}` and `T = {A : Int..⊤}`.
 
 This is the acceptance test.  The step `S ≤ x.B ≤ T` has no realizer, so `w`'s
 view of its own member `A` is not the one its binding gives; the target reaches
-`Int ≤ w.A` by eliminating at the *cast* atom `w ▹ (S ≤ T)`, which is the
-general form of §5.4 and the reason `member` takes an arbitrary inclusion
-rather than a context lookup. -/
+`Int ≤ w.A` by eliminating at the *cast* atom `w ▹ (S ≤ T)`.  This is why
+`member` takes an arbitrary inclusion rather than a context lookup. -/
 
 /-- `S = {A : ⊥..⊤}`. -/
 def E4S : Ty s := tTyp lA .bot .top
@@ -683,18 +682,19 @@ theorem E8_both : E8Ctx ⊢ₐ
 
 /-! ## The path examples Y1 to Y9
 
-The examples of P1.10: the block forest, resolution through it, elimination
-at a path, the field coercion, and the stores the repairs of P1 reject or
-keep.  Each fact is closed by `decide +kernel`, by `checkTm` through
+These examples cover the block forest, resolution through it, elimination at
+a path, the field coercion, and which stores path resolution accepts or
+rejects.  Each fact is closed by `decide +kernel`, by `checkTm` through
 `checkTm_sound`, or by a theorem of the development applied to a store the
 checker typed.
 
 A field whose body is an object literal is stable only when its casts are
-table-only (decision 26).  Every literal field of Y1, Y3, Y7 and Y8 is cast
-by `eqToLe (symm (def z ℓ))`, sometimes after `top`, which is table-only, and
-each keeps its `∋ᵛ` entry.  The one field of those four examples that is plain
-is `b` of Y8's `x`, whose body is the atom `y`: it is meant to be plain,
-since it is the forwarding child the example is about. -/
+table-only, meaning each is an instance of the lookup table's own equations.
+Every literal field of Y1, Y3, Y7 and Y8 is cast by `eqToLe (symm (def z
+ℓ))`, sometimes after `top`, which is table-only, and each keeps its `∋ᵛ`
+entry.  The one field of those four examples that is plain is `b` of Y8's
+`x`, whose body is the atom `y`: it is meant to be plain, since it is the
+forwarding child the example is about. -/
 
 /-- Type label `C`. -/
 def lC : Label := .typ 3
@@ -764,12 +764,12 @@ theorem Y1_hop : Y1Ctx.lookupDefP Y1xa lA = some (Ty.sel (.var .here) lB) := by 
 /-- **Y1.**  `x.a ∙ A` resolves through the forest to `⊤`. -/
 theorem Y1_resolve : Y1Ctx.resolve (Ty.sel Y1xa lA) = ⊤ := by decide +kernel
 
-/-! ### Y2: the repaired counterexample
+/-! ### Y2: a forwarding child
 
-The literal `ν(x. {A = ⊥} ∧ {val b = x})` of `refute-paths.md` S1.  The field
-`b` holds an atom, so it is plain and its child forwards to `x`: the names
-`x.b ∙ A` and `x ∙ A` read one block, and `x.b` is no node.  The body is the
-self at its singleton, cast to `z ∙ b` by the definition of `b`. -/
+The literal `ν(x. {A = ⊥} ∧ {val b = x})`.  The field `b` holds an atom, so
+it is plain and its child forwards to `x`: the names `x.b ∙ A` and `x ∙ A`
+read one block, and `x.b` is no node.  The body is the self at its
+singleton, cast to `z ∙ b` by the definition of `b`. -/
 
 def Y2Wit : Witnesses ([],x) := (Witnesses.nil.cons lA ⊥).cons lb (Ty.snglOf (.var .here))
 def Y2Body : Tm ([],x) :=
@@ -796,11 +796,10 @@ theorem Y2_one_block :
 /-- `x.b` is no node: its walk meets the forwarding child. -/
 theorem Y2_no_node : Y2Ctx.nodeBlock Y2xb = none := by decide +kernel
 
-/-! The g6 store of `p1-g6-counterexample.lean`: `ν(z. {A = ⊥})` at the
-outer binder `x`, `ν(z. {A = ⊤})` at the inner binder `y`.  An atom at `y`,
-cast to `⊤`, was typed at the singleton of `x` through `LeCo.intoSngl`.  The
-rule is gone, and `Atom.sngl` asks for an alias at the atom's root, so the
-atom is typed at no singleton of `x`. -/
+/-! A store with `ν(z. {A = ⊥})` at the outer binder `x` and `ν(z. {A = ⊤})`
+at the inner binder `y`.  An atom at `y`, cast to `⊤`, is not typed at the
+singleton of `x`: `Atom.sngl` asks for an alias at the atom's root, and here
+there is none. -/
 
 def Y2WBot : Witnesses (s,x) := .cons .nil lA .bot
 def Y2WTop : Witnesses (s,x) := .cons .nil lA .top
@@ -827,7 +826,7 @@ def Y2aSngl : Atom (([],x),x) := .sngl Y2aTop (.var Y2xVar) (.refl (.var Y2yVar)
 
 theorem Y2_aTop : synthAtom Y2Gamma Y2aTop = some ⊤ := by decide +kernel
 
-/-- **Y2**, the g6 store.  The atom at `y` is not typed at the singleton of
+/-- **Y2**, continued.  The atom at `y` is not typed at the singleton of
 `x`. -/
 theorem Y2_sngl_rejected : synthAtom Y2Gamma Y2aSngl = none := by decide +kernel
 
@@ -882,13 +881,12 @@ theorem Y3_resolve :
 
 /-! ### Y4: forwarding
 
-The literal `ν(x. {val a = x} ∧ {val b = x.a})` of P1.10.  A field body that
-is a path is an atom rooted at `x`, and an atom's child forwards to its root
+The literal `ν(x. {val a = x} ∧ {val b = x.a})`.  A field body that is a
+path is an atom rooted at `x`, and an atom's child forwards to its root
 (`Tm.childAt`), so both bodies are written as the atom `x`.  Both children
-forward to the binder itself, and the walk settles.  P1.10 said this walk runs
-out of budget, which the forest cannot do here: following a child forwarding
-lands on a binder, whose block is an object node (report of P1 g4).  A
-forwarding cycle needs forwarding nodes that name each other, and the second
+forward to the binder itself, and the walk settles: following a child
+forwarding lands on a binder, whose block is an object node.  A forwarding
+cycle needs forwarding nodes that name each other instead, and the second
 half of Y4 builds one by hand.  There the walk runs out of budget and the
 name is opaque. -/
 
@@ -990,7 +988,7 @@ theorem Y6_budget : Y3Ctx.defPairs.length + 2 = 7 ∧ Y3Ctx.aliasBudget = 1 := b
 /-- **Y6.**  The resolution of Y3 at the computed budget. -/
 theorem Y6_resolveFuel : Y3Ctx.resolveFuel 7 (Ty.sel Y3xc lA) = ⊤ := by decide +kernel
 
-/-! ### Y7: the F1 store, the field coercion, and the view at `x.a.b`
+/-! ### Y7: the field coercion, and the view at `x.a.b`
 
 `ν(x. {val a = ν(z. {B = ⊤} ∧ {val b = ν(w. {E = ⊤})})})`.  Both fields are
 stable.  `Store.fieldCo` at `x.a` and `b` closes the coercion of `b` over
@@ -1071,7 +1069,7 @@ theorem Y7_resolve : Y7Ctx.resolve (Ty.sel Y7xa lb) = ⊤ := by decide +kernel
 /-- **Y7**, the view at `x.a.b`: the view of `⊤`, which has no entry. -/
 theorem Y7_pathView : pathView Y7σ 5 Y7Pab = some .nil := by decide +kernel
 
-/-- T1 at `x.a.b`, by `Store.Typed.pathView`. -/
+/-- The path-view guarantee at `x.a.b`, by `Store.Typed.pathView`. -/
 theorem Y7_t1 :
     ∃ (n : Nat) (V : View ([],x)), pathView Y7σ n Y7Pab = some V ∧
       (∀ Tel : Telescope (([],x),x), Y7Ctx.resolve (Ty.sel Y7xa lb) = μ Tel →
@@ -1080,11 +1078,11 @@ theorem Y7_t1 :
 
 /-! ### Y8: a forwarding child is no node
 
-The refutation's store of the T1 note: `y = ν(z. {val c = ν(w. {C = ⊤} ∧
-{A = Π(w.C) ⊤})})` and `x = ν(u. {val b = y})`.  The field `b` of `x` holds
-the atom `y`, so it is plain and its child forwards to `y`.  The name
-`x.b ∙ c` resolves through that child to `y ∙ c`, and `x.b` is no node, so
-the `node` rule types nothing at `x.b` (decision 24). -/
+The store `y = ν(z. {val c = ν(w. {C = ⊤} ∧ {A = Π(w.C) ⊤})})` and
+`x = ν(u. {val b = y})`.  The field `b` of `x` holds the atom `y`, so it is
+plain and its child forwards to `y`.  The name `x.b ∙ c` resolves through
+that child to `y ∙ c`, and `x.b` is no node, so the `node` rule types
+nothing at `x.b`. -/
 
 def Y8CWit : Witnesses (([],x),x) := (Witnesses.nil.cons lC ⊤).cons lA (.pi (Ty.sel (.var .here) lC) ⊤)
 def Y8C : Value ([],x) := .obj Y8CWit .nil
@@ -1155,14 +1153,14 @@ theorem Y8_node_untyped (W : Witnesses ((([],x),x),x)) (ls vls : List Label)
       rw [Y8_no_node] at hn
       cases hn
 
-/-! ### Y9: the store of g9b rejected, and the abstract witness kept
+/-! ### Y9: a self-justifying field is rejected, a stable one is kept
 
 `x = ν(z. {a = ν(w. {C = ⊤}) ▷ E_a})`, `a` declared at `μ[self ∙ C ⊑ ⊥]`.
 The cast `E_a` eliminates at `z.a` through the declared type of `a`, so the
-field justified its own declaration, and over the store `⊤ ≤ ⊥` was
-derivable (`p1-g9b-counterexample.lean`).  After decision 26 the field is not
-stable, `a` gets no `∋ᵛ` entry, `z.a` is no stable path, and the checker
-rejects the literal.  By completeness it types at no type. -/
+field would justify its own declaration, and over the store `⊤ ≤ ⊥` would be
+derivable.  This is why such a field is not stable: `a` gets no `∋ᵛ` entry,
+`z.a` is no stable path, and the checker rejects the literal.  By
+completeness it types at no type. -/
 
 def Y9Wi : Witnesses (([],x),x) := Witnesses.nil.cons lC .top
 def Y9vi : Value ([],x) := .obj Y9Wi .nil
@@ -1175,8 +1173,9 @@ def Y9ePost : LeCo ([],x) :=
 def Y9mA : Morphism ([],x) := .le .nil .none (.eq 0) (.some Y9ePost)
 def Y9Ea : LeCo ([],x) :=
   .trans (.obj (Telescope.ofLiteral Y9Wi [] []) Y9mA) (.eqToLe (.symm (.def .here la)))
-/-- The field `a`: a literal under a cast that eliminates.  Plain by
-decision 26, which is the point of the example. -/
+/-- The field `a`: a literal under a cast that eliminates.  It is plain
+because an eliminating cast is not table-only, which is the point of the
+example. -/
 def Y9Fo : Fields ([],x) := Fields.nil.cons la (.cast (.val Y9vi) Y9Ea)
 def Y9vo : Value [] := .obj Y9Wo Y9Fo
 
@@ -1202,11 +1201,12 @@ theorem Y9_store_untyped (Γ : Ctx ([],x)) : ¬ ⊢ (Store.cons .nil Y9vo) : Γ 
       cases h0
       exact Y9_untyped _ hv
 
-/-! The abstract witness kept (`Scratch_FF_Design.lean.txt:713-824`):
+/-! By contrast, a stable field is kept:
 `x = ν(z. {a = ν(w. {C = ⊥}) ▷ E})` with `a` declared at `μ[self ∙ C ⊑ ⊤]`.
 The cast `E` proves the declared bound from the literal's `C = ⊥` by the
 constant side `top`, eliminates nowhere, and the field stays stable.  The
-store is typed, and T1 at `x.a` and consistency hold by the base theorems. -/
+store is typed, and the path-view guarantee at `x.a` and consistency hold by
+the base theorems. -/
 
 def Y9Wi2 : Witnesses (([],x),x) := Witnesses.nil.cons lC .bot
 def Y9vi2 : Value ([],x) := .obj Y9Wi2 .nil
@@ -1239,7 +1239,7 @@ theorem Y9_P2_typed : Y9Γ2 ⊢ᵖ Y9P2 : Ty.sel (.var .here) la := synthPath_so
 
 theorem Y9_pathView : (pathView Y9σ2 8 Y9P2).isSome = true := by decide +kernel
 
-/-- **Y9**, T1 at `x.a`, by `Store.Typed.pathView`. -/
+/-- **Y9**, the path-view guarantee at `x.a`, by `Store.Typed.pathView`. -/
 theorem Y9_t1 :
     ∃ (n : Nat) (V : View ([],x)), pathView Y9σ2 n Y9P2 = some V ∧
       (∀ Tel : Telescope (([],x),x), Y9Γ2.resolve (Ty.sel (.var .here) la) = μ Tel →

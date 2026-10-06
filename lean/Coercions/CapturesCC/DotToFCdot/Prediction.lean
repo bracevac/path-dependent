@@ -5,7 +5,7 @@ import Coercions.CapturesCC.FCdot.Prediction
 namespace CapturesCC
 
 /-!
-# Capture prediction for DOT-MNF, transported from FCdot (stage A3a.7)
+# Capture prediction for DOT-MNF, transported from FCdot
 
 The source has no use-set metatheory of its own, as it has no safety of its
 own: both are borrowed from the target through the translation.  What the

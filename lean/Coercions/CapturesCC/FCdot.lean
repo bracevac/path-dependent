@@ -25,5 +25,6 @@ import Coercions.CapturesCC.FCdot.Consistency
 import Coercions.CapturesCC.FCdot.Prediction
 import Coercions.CapturesCC.FCdot.Examples
 /-!
-Import root for FCdot, the explicit-evidence coercion target of Plan III.
+Import root for FCdot, the coercion calculus with explicit, erasable evidence
+that is the translation's target.
 -/

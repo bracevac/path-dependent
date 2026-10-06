@@ -120,8 +120,9 @@ theorem chain : ∀ {a b c : Classifier}, leB a b = true → leB a c = true →
         · exact Or.inr (by simp [leB, h1])
         · exact chain h1 h2
 
-/-- Disjoint classifiers have no common subclass, which is the chain lemma
-read as a refutation. -/
+/-- Disjoint classifiers have no common subclass.  This follows from the chain
+lemma: any two superclasses of a common subclass would have to be related by
+the subclass order, so they cannot be disjoint. -/
 theorem not_disjoint_of_le {a b c : Classifier} (h1 : leB a b = true) (h2 : leB a c = true) :
     disjointB b c = false := by
   rcases chain h1 h2 with h | h <;> simp [disjointB, h]

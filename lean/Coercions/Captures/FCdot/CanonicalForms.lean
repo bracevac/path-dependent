@@ -356,9 +356,9 @@ theorem le_canon_cap {d : LeCo s} {S T : Ty s} (h : Γ ⊢ d : S ≤ T) :
   match h with
   | .capt _ hf => exact cap_canon hf
 
-/-- Item 6 of the theorem: closed capture evidence includes roots.  In A0 the
-statement lived in `Resolution.lean` with four constructors; `capvar` and
-`member` mention atoms, so it now runs in the mutual induction, unchanged. -/
+/-- Closed capture evidence includes roots.  `capvar` and `member` mention
+atoms, so this runs in the mutual induction together with the other
+canonical-forms facts. -/
 theorem cap_canon {f : CapCo s} {C D : CaptureSet s} (h : Γ ⊢ᶜ f : C ⊑ D) :
     CapLe Γ C D := by
   match h with

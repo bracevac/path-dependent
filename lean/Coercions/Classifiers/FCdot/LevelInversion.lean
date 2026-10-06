@@ -3,15 +3,15 @@ import Coercions.Classifiers.FCdot.Resolution
 namespace Classifiers
 
 /-!
-# T-B1.10: member-free capture evidence never lowers a level
+# Member-free capture evidence never lowers a level
 
-`level_inversion` is the store-free half of T10 of the note.  Over a typed
-store the context is root free, so `lvl_safety` and `no_inner_escape` hold
-vacuously; what has content in a rooted context is this inversion, and it is
-true exactly because `member` and `eqToLe` are excluded.  Bad capture bounds
-enter capture evidence only through those two rules, which is example C3 of
-`FCdot/Examples.lean`, so member-free evidence is the largest fragment on
-which the sentence holds.
+`level_inversion` says that member-free capture evidence never lowers a
+level.  Over a typed store the context is root free, so `lvl_safety` and
+`no_inner_escape` hold vacuously; what has content in a rooted context is
+this inversion, and it is true exactly because `member` and `eqToLe` are
+excluded.  Bad capture bounds enter capture evidence only through those two
+rules (example `C3` of `FCdot/Examples.lean`), so member-free evidence is
+the largest fragment on which the statement holds.
 
 The file sits after `Resolution.lean` because the statement is about
 `Ctx.caps`, which is defined there; `MemberFree` itself is in
@@ -44,14 +44,14 @@ theorem Ctx.mem_caps_root (Γ : Ctx s) (n : Nat) {r : CapAtom s} (hr : Γ.IsRoot
 
 /-! ### Member-freeness is closed under renaming
 
-**T-B3.4, step 1.**  Renaming rewrites the arguments of each former and
-changes no former, so the two families are carried along one for one.  The
-one case with content is `Atom.MemberFree.cast`, whose coercion is matched
-at `.capt e f`: `LeCo.rename` at `.capt` reduces (`FCdot/Syntax.lean:597`),
-so the induction hypothesis on the capture half applies.
+Renaming rewrites the arguments of each former and changes no former, so the
+two families are carried along one for one.  The one case with content is
+`Atom.MemberFree.cast`, whose coercion is matched at `.capt e f`:
+`LeCo.rename` at `.capt` reduces (`FCdot/Syntax.lean:597`), so the induction
+hypothesis on the capture half applies.
 
-They live here because `Ctx.varAtom` of the translation weakens at every
-`.there` binder, and a weakening is a renaming (decision 33). -/
+These lemmas live here because `Ctx.varAtom` of the translation weakens at
+every `.there` binder, and a weakening is a renaming. -/
 
 mutual
 
@@ -104,8 +104,8 @@ theorem Atom.MemberFree.weaken {s : Sig} {a : Atom s} (h : a.MemberFree) :
 A projection carries no level of its own: `Ctx.lvlAtom` reads through it
 (`FCdot/Context.lean:207`).  Resolution of a projected set is therefore the
 resolution of the set, atom for atom, once every projection is stripped by
-`CapAtom.base`.  That is all the three new capture rules of K1.3 need, and it
-is what keeps `level_inversion` true on them. -/
+`CapAtom.base`.  That is all the capture rules that mention projection need,
+and it is what keeps `level_inversion` true on them. -/
 
 /-- The smart constructor resolves to the same atoms as the atom it projects,
 up to the base.  The nested case intersects the two kinds, and the base does

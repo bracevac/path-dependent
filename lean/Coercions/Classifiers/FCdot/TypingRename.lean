@@ -1018,8 +1018,7 @@ block is proved over `Ctx.RenR`, the same record without `capInner`, and the
 one rule that extends the context, `ShapeCo.HasType.pi`, gets a full
 `Ctx.Ren` back from `Ctx.RenR.scope`: passing a root binder restores
 `capInner`, because the innermost root of the source and of the target are
-then the two freshly opened ones, at matching positions.  This is the scope
-discipline of B1.1 in force. -/
+then the two freshly opened ones, at matching positions. -/
 
 /-- `Ctx.RenR Γ ρ Γ'`: `Ctx.Ren` without `capInner`. -/
 structure Ctx.RenR {s1 s2 : Sig} (Γ : Ctx s1) (ρ : Rename s1 s2) (Γ' : Ctx s2) : Prop where
@@ -1218,7 +1217,7 @@ theorem Ctx.RenR.scopeInst {s1 s2 : Sig} {Γ : Ctx s1} {ρ : Rename s1 s2} {Γ' 
   rw [hC] at hb
   exact hb
 
-/-- **T-B2.1, the instantiation lemma.**  Reading a rigid capture binder as an
+/-- Reading a rigid capture binder as an
 instance of `C` is the identity renaming: no lookup of the term sort reads a
 capture bound, and neither `.star` nor `.inst C` is a root, so every level
 fact is the same on the two contexts. -/
@@ -1254,7 +1253,7 @@ theorem Ctx.lvlLeB_inst_star (Γ : Ctx s) (C : CaptureSet s) (e r : CapAtom (s,c
 theorem Ctx.rootAtom_inst_star (Γ : Ctx s) (C : CaptureSet s) :
     (Γ.consC (CapBound.inst C)).rootAtom = (Γ.consC CapBound.star).rootAtom := rfl
 
-/-- **T-B2.1, the instantiation lemma.**  Reading a rigid capture binder as an
+/-- Reading a rigid capture binder as an
 instance of `C` is the identity renaming: no lookup of the term sort reads a
 capture bound, and neither `.star` nor `.inst C` is a root, so `Ctx.IsRoot`,
 `Ctx.LvlLe` and `Ctx.rootAtom` agree on the two contexts, and the fourth

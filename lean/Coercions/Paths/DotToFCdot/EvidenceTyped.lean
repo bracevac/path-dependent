@@ -5,13 +5,13 @@ import Coercions.Paths.FCdot.TypingRename
 namespace Paths
 
 /-!
-# Typedness of the evidence translation (Plan III §8.1, M3)
+# Typedness of the evidence translation
 
 Every subtyping derivation of DOT-MNF translates to inclusion evidence with the
 translated endpoints, and every typing derivation of a variable translates to an atom of
 the translated type rooted at that variable.
 
-Stage P2.3 adds path typing.  Every path typing translates to path evidence of the
+Path typing translates to path evidence of the
 translated type at the translated path (`PathTy.translatePath_typed`), and `Sub.mu`
 translates to a template morphism typed by `SubDecl.translate_typed`.  The positions a
 template reads are `Ty.typIdx_spec`, `Ty.fldIdx_spec` and `Ty.vfldIdx_spec`.  A literal's
@@ -475,7 +475,7 @@ theorem Ty.telSelf_noBnd_of_decl {s : Sig} :
           exact FCdot.Telescope.NoBnd.rename _ _ (Ty.telSelf_noBnd_of_decl hT)
 
 /-- Every self-bound the translation of a type carries is a weakened closed
-type: this is the closedness convention of `FCdot` (plan §13 item 9). -/
+type: this is the closedness convention of `FCdot`. -/
 theorem Ty.tel_closedBnds {s : Sig} :
     ∀ S : Ty s, (Ty.tel S : FCdot.Telescope (s,x)).ClosedBnds
   | .top => by simp only [Ty.tel]; exact .nil

@@ -558,12 +558,12 @@ theorem checkKindCo_complete {Γ : Ctx s} {g : KindCo s} {C : CaptureSet s} {φ 
     (h : Γ ⊢ᵏ g : C ⊑ᵏ φ) : checkKindCo Γ g C φ = true := by
   simp [checkKindCo, KindCo.HasType.complete h]
 
-/-- K1.5's statement, in the form K1.5 writes it.  Every premise of every
-rule of the kinding family is a decidable proposition over functions the tree
-already has, so both directions hold: the kinding checker is a decision
-procedure for the evidence it is given.  The subtraction bridge of K0 is not
-needed here, because `Kind.Subkind` and `Kind.Contains` are `Bool` functions
-that the checker calls, not semantic propositions it has to reconstruct. -/
+/-- Every premise of every rule of the kinding family is a decidable
+proposition over functions the tree already has, so both directions hold:
+the kinding checker is a decision procedure for the evidence it is given.
+No bridging lemma is needed here, because `Kind.Subkind` and `Kind.Contains`
+are `Bool` functions that the checker calls, not semantic propositions it
+has to reconstruct. -/
 theorem checkKindCo_iff {Γ : Ctx s} {g : KindCo s} {C : CaptureSet s} {φ : Cls.Kind} :
     checkKindCo Γ g C φ = true ↔ ∃ _ : Γ ⊢ᵏ g : C ⊑ᵏ φ, True :=
   ⟨fun h => ⟨checkKindCo_sound h, trivial⟩, fun ⟨h, _⟩ => checkKindCo_complete h⟩

@@ -2,7 +2,7 @@ import Coercions.Paths.DotToFCdot.Examples
 import Coercions.Paths.FCdot.Examples
 
 /-!
-# The P3 pages on the target side (P3.3 and P3.4)
+# The path-extension pages on the target side
 
 Each source page of `DotMNF/Examples.lean` after X4 gets its target facts
 here, one namespace per example.  E10 and P2e read X2 and X1 and have no
@@ -21,7 +21,7 @@ type a store from checker verdicts through `FCdot.Examples.value_of_check`.
   bound, so the two terms differ in their indices.
 * `E2p`: a path-keyed block whose witness names its own path.
 * `E3p`: two propositions about one block name.
-* `E4p`: the counterexample of §1 at a path.
+* `E4p`: the subtyping step with no realizer, at a path.
 * `E5p`: an object returned from a function and selected through a stable
   field.
 * `E6p`: a field typed at a member of its own literal's stable field.
@@ -29,7 +29,7 @@ type a store from checker verdicts through `FCdot.Examples.value_of_check`.
 * `E8p`: refining an abstract type at a path, by `And₁` and by `And₂`.
 * `E9`: a `let` at a singleton.  The checker binds `y` at the forwarding node
   to `q`.  Over the store of `q` and `x`, `y ∙ B`, `x.a ∙ B` and `q ∙ B` have
-  one definition (decision 39).
+  one definition.
 * `E10`: X2's literal.  The translated self lists no `∋ᵛ`, and `x.a` has no
   path image at any index of its telescope.
 * `E11`: a stable field and a forwarding field in one literal.  Over the store
@@ -73,7 +73,7 @@ theorem E1p_erase_E1 :
   rfl
 
 /-- The parameter's type translates to `μ[∋ f, ∋ᵛ f, self ∙ f ⊑ {A : ⊤..⊥}]`, with `∋ᵛ`
-second.  P1's hand-written Y5 lists the bound second, so its indices differ. -/
+second.  The hand-written Y5 lists the bound second, so its indices differ. -/
 theorem Dom_translate :
     (Examples.E1p_Dom : Ty []).translate
       = .obj (((FCdot.Telescope.nil ▹ ∋ Examples.lf) ▹ ∋ᵛ Examples.lf) ▹
@@ -259,7 +259,7 @@ theorem E9_typed : FCdot.Tm.HasType FCdot.Ctx.nil Examples.E9.translate Ty.top.t
 
 theorem E9_erase : ⌊Examples.E9.translate⌋ = Tm.erase Examples.E9_term := by decide +kernel
 
-/-- The let at the singleton translates to the opaque `let` (decision 32), and
+/-- The let at the singleton translates to the opaque `let`, and
 the checker binds `y` at the forwarding node to `q` (`Binding.forLet`). -/
 theorem E9_forLet :
     FCdot.Binding.forLet (Ty.sngl (.var (.there .here)) : Ty (([],x),x)).translate
@@ -303,7 +303,7 @@ theorem E9_one_definition :
         = some (Examples.E9_N : Ty (((([],x),x),x))).translate := by
   decide +kernel
 
-/-- `x.a` is plain and no node: the forwarding serves resolution only (decision 24). -/
+/-- `x.a` is plain and no node: the forwarding serves resolution only. -/
 theorem E9_xa_plain :
     Examples.E9_xBody.valLabels = [] ∧ Γσ.nodeBlock (.sel (.var .here) Examples.la) = none := by
   decide +kernel

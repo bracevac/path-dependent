@@ -6,8 +6,8 @@ namespace Paths
 The scoping discipline follows the ModalCapybara mechanization: a signature
 is a list of binder kinds, a bound variable is a position of a given kind,
 and renamings are functions on bound variables with lifting under binders.
-This plan has a single binder kind; the discipline is kept so that further
-kinds (capture variables, later) are additive.
+FCdot has a single binder kind here; the discipline is kept general so that
+further kinds, such as capture variables, could be added additively.
 -/
 
 namespace FCdot

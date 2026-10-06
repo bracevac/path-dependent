@@ -51,7 +51,8 @@ def Store.HasField (σ : Store s) (x : BVar s .var) (ℓ : Label) : Prop :=
 /-- Open the self block of an object shape at a root; other shapes
 unchanged.  Idempotent, and invisible to `foldSelf`/`unfoldSelf`.  A capture
 set is not a resolvable head, so this and every function below live at the
-shape sort, which is where the vanilla line's `Ty` now sits. -/
+shape sort, where a type's shape carries all the information resolution
+needs. -/
 def Shape.unfoldAt (r : BVar s .var) : Shape s → Shape s
   | .obj Tel => .obj ((Tel.substVar r).weaken)
   | S => S

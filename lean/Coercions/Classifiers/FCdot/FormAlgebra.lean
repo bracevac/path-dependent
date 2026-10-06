@@ -740,8 +740,8 @@ theorem EntriesTyped.At_eqC {ρ : Option (BVar s .var)} {Tel₁ Tel₂ : Telesco
 
 /-- The entry at a kinding proposition of the target is a kinding entry.
 Either it is a chain lowering the target set to the source set of the source
-kinding proposition the index names, together with an admission step, which
-is the left disjunct and is the K1 statement word for word; or it is a chain
+kinding proposition the index names, together with an admission step
+(the left disjunct); or it is a chain
 into a source *capture* proposition, a chain out of it into a weakened closed
 set, and the kinding of that closed set, which is the right disjunct and is
 inhabited only by a derivation that uses `EntriesTyped.kindCle`.  The second
@@ -2190,8 +2190,7 @@ theorem RootViewTyped.opened (hroot : RootViewTyped Γ σ r) :
 /-- The semantic side of `EntryTyped.kindCle`, and of `Morphism.kindCle`
 through it: a chain into the hole's left end, the hole, a chain out of its
 right end into a weakened closed set, and a closed kinding of that set.  The
-kinding is closed at `s`, so no instantiation touches it.  This is K2's
-acceptance step, `kindCle_semantic` of the K2 prototype. -/
+kinding is closed at `s`, so no instantiation touches it. -/
 theorem kindCle_semantic {Γ : Ctx s} {σ : Store s} {r : BVar s .var}
     {V : View s} {Tel : Telescope (s,x)} {h : HoleC}
     {D C₁ C₂ : CaptureSet (s,x)} {E : CaptureSet s} {φ : Cls.Kind}
@@ -2301,10 +2300,10 @@ theorem EntryTyped.at_typed {r : BVar s .var} {M : Shape s} {TelM : Telescope (s
           obtain ⟨hq, hk⟩ := hV.kindC_entry hAt
           exact ⟨1, .kindC, by simp [Entry.at, hq.get?],
             fun hV₀ => .kindC hV₀ ((hk.mono hpre').admits hsub)⟩
-  -- The K2 entry: the same data-free kinding slot, but the chain that
-  -- justifies it runs through a *capture* proposition of the view and ends
-  -- in a weakened closed set whose kinding the morphism carried.  The
-  -- semantic side is `kindCle_semantic`, the K2 prototype's step.
+  -- The other kinding entry: the same data-free kinding slot, but the chain
+  -- that justifies it runs through a *capture* proposition of the view and
+  -- ends in a weakened closed set whose kinding the morphism carried.  The
+  -- semantic side is `kindCle_semantic`.
   | .kindCle hh hpre hpost hK =>
       cases hh with
       | leC hAt =>

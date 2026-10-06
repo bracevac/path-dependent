@@ -7,7 +7,7 @@ namespace Paths
 /-!
 # The invariants at nodes, and the field coercion
 
-Three invariants of P1.8 over a typed store, at the nodes of the forest.
+Three invariants that hold over a typed store, at the nodes of the forest.
 
 * *Invariant A at nodes* (`Store.Typed.blockOf_node`).  The block the table
   writes at a node is the block the store gives the path.
@@ -817,8 +817,8 @@ a node `p` is read off the store and typed from the child's precise type to
 the parent's name `p ∙ a`.  The source is stated up to the opening at the
 child, since the substituted precise type names its self where
 `Γ.nodeTy` names the child's path.  The premise is the node at `p`, which is
-what T1's `sel` case has by `root_node`.  With `σ.HasValFieldP p a` in its
-place the statement is false (`invC_false`, `Plan:667`). -/
+what the `sel` case of the path-view guarantee has by `root_node`.  With
+`σ.HasValFieldP p a` in its place the statement is false (`invC_false`). -/
 theorem Store.Typed.fieldCo {s : Sig} {σ : Store s} {Γ : Ctx s} (hσ : ⊢ σ : Γ) {p : Path s}
     {a : Label} {W : Witnesses s} {ls vls : List Label} {ch : Children s}
     (hp : Γ.nodeBlock p = some (.obj W ls vls ch)) (ha : a ∈ vls) :
@@ -874,9 +874,9 @@ theorem Store.Typed.fieldCo {s : Sig} {σ : Store s} {Γ : Ctx s} (hσ : ⊢ σ 
 
 /-! ## The field coercion is table-only
 
-The chosen repair of the field forms (design-fieldforms.md): a stable body's
-casts eliminate nowhere, so the coercion `Store.fieldCo` reads off a stable
-field of a node is table-only, and its normal form reads no view. -/
+A stable body's casts eliminate nowhere, so the coercion `Store.fieldCo`
+reads off a stable field of a node is table-only, and its normal form reads
+no view. -/
 
 mutual
 theorem LeCo.tableOnly_psubst : ∀ (e : LeCo s1) (σ : PSub s1 s2),

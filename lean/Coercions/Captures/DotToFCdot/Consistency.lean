@@ -4,7 +4,7 @@ import Coercions.Captures.FCdot.Consistency
 namespace Captures
 
 /-!
-# Consistency corollaries for translated programs (Plan III §8.3, M5)
+# Consistency corollaries for translated programs
 
 Every store reachable by running the translation of a closed well-typed
 DOT-MNF program is typed, and therefore consistent: its context has no

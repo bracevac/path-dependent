@@ -5,7 +5,7 @@ import Coercions.Classifiers.FCdot.Prediction
 namespace Classifiers
 
 /-!
-# Capture prediction for DOT-MNF, transported from FCdot (stage A3a.7)
+# Capture prediction for DOT-MNF, transported from FCdot
 
 The source has no use-set metatheory of its own, as it has no safety of its
 own: both are borrowed from the target through the translation.  What the
@@ -330,7 +330,7 @@ never reads, along any run, a root whose root is `κ`.  The hypothesis is the
 roots condition the target asks for.  On a projection-free program it is the
 membership hypothesis the copied statement carried, by
 `Platform.not_root_of_not_mem` under `CaptureSet.base_of_mem_translate`; with
-a projection the membership form is false (K2.0 D4). -/
+a projection the membership form is false. -/
 theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
     {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {κ : BVar s₀ .cap}
     (hκ : ¬ P.ctx.translate.Root (FCdot.CapAtom.cvar κ) U.translate)
@@ -363,7 +363,7 @@ theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀}
 
 /-! ## The two classified theorems -/
 
-/-- **T8, classified prediction for DOT-MNF.**  Along any run of a closed
+/-- **Classified prediction for DOT-MNF.**  Along any run of a closed
 program typed over a platform prefix whose declared use set is kinded at `φ`,
 the matched target state's use set stays below the translation of the source's
 declared use set and stays kinded at `φ`.  This is `dot_capture_prediction`
@@ -381,11 +381,12 @@ theorem dot_classified_prediction {s₀ : Sig} (P : Platform s₀) {U : CaptureS
   refine ⟨stt, Γ', ρ, he, hσ', hE, hle, ?_⟩
   exact FCdot.Ctx.KindLe.mono hle (hE.kindLe P.targetStore_typed hσ' hk)
 
-/-- **T8'**, T8 with the hypothesis a source program actually writes: source
-kinding evidence for the declared use set over the platform prefix.  The
-translation of that evidence is target kinding evidence, and `FCdot.kind_canon`
-reads it as the semantic hypothesis T8 takes.  This is the one place a source
-program consumes K1's canonical form. -/
+/-- The same theorem with the hypothesis a source program actually writes:
+source kinding evidence for the declared use set over the platform prefix.
+The translation of that evidence is target kinding evidence, and
+`FCdot.kind_canon` reads it as the semantic hypothesis
+`dot_classified_prediction` takes.  This is the one place a source program
+consumes a canonical form for capture kinds. -/
 theorem dot_classified_prediction' {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
     {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {φ : Cls.Kind} (g : CapKind P.ctx U φ)
     {s : Sig} {st : State s} (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st) :
@@ -396,11 +397,12 @@ theorem dot_classified_prediction' {s₀ : Sig} (P : Platform s₀) {U : Capture
   dot_classified_prediction P d
     (FCdot.kind_canon P.targetStore_typed (g.translate_typed P.ctx_wf)) run
 
-/-- **T9, classified effect safety for DOT-MNF.**  A closed program typed over
+/-- **Classified effect safety for DOT-MNF.**  A closed program typed over
 a platform prefix whose declared use set is kinded at `φ` never reads, along
-any run, a capability whose classifier lies outside `φ`.  This is T8 and
-`FCdot.inspects_covered`, with the read root transported to the matched target
-state exactly as `dot_effect_safety` transports it. -/
+any run, a capability whose classifier lies outside `φ`.  This is
+`dot_classified_prediction` and `FCdot.inspects_covered`, with the read root
+transported to the matched target state exactly as `dot_effect_safety`
+transports it. -/
 theorem dot_classified_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀}
     {t : Tm s₀} {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {φ : Cls.Kind}
     (hk : P.ctx.translate.KindLe U.translate φ)
@@ -433,7 +435,7 @@ theorem dot_classified_effect_safety {s₀ : Sig} (P : Platform s₀) {U : Captu
   obtain ⟨ρ, hE, -⟩ := FCdot.capture_prediction (P.initial_typed d) hrun
   exact ⟨stt, Γ', ρ, he, hσ', hE, hsafe⟩
 
-/-- **T9'**, T9 with the hypothesis a source program actually writes. -/
+/-- The same theorem with the hypothesis a source program actually writes. -/
 theorem dot_classified_effect_safety' {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀}
     {t : Tm s₀} {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {φ : Cls.Kind}
     (g : CapKind P.ctx U φ)

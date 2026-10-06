@@ -285,8 +285,8 @@ theorem Cont.Typed.weaken {s : Sig} {Γ : Ctx s} {K : Cont s} {E : ETy s} {U : T
         rw [CaptureSet.letexCharge_rename] at hf'
         simpa only [Tm.uses_rename] using hf'
 
-/-- The capture-kind twin of `Cont.Typed.weaken`.  Its premise is B0.5's, and
-`.inst C`, the bound the unpack appends, satisfies it. -/
+/-- The capture-kind twin of `Cont.Typed.weaken`.  Its premise is the same
+one, and `.inst C`, the bound the unpack appends, satisfies it. -/
 theorem Cont.Typed.weakenC {s : Sig} {Γ : Ctx s} {K : Cont s} {E : ETy s} {U : Ty s}
     (h : Γ ⊢ₖ K : E ⇒ U) (b : CapBound s) (hb : b.isRoot = false) :
     (Γ.consC b) ⊢ₖ K.weakenC : ETy.weaken (k := .cap) E ⇒ Ty.weaken (k := .cap) U := by
@@ -321,7 +321,7 @@ theorem Atom.HasType.var_inv {s : Sig} {Γ : Ctx s} {x : BVar s .var} {T : Ty s}
 /-- Inversion of a closure.  The type is the arrow at the closure's own
 annotation `A`, the body is typed under the parameter, and the closing
 evidence puts the body's use set below `A` weakened united with the
-parameter.  The last conjunct is the premise the `lam` rule of A2.2 carries;
+parameter.  The last conjunct is the premise the `lam` constructor carries;
 `step_uses` reads it at the application steps. -/
 theorem Value.HasType.lam_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s} {S₀ : Dom s}
     {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)} {T : Ty s} (h : Γ ⊢ᵥ .lam A S₀ t₀ g : T) :
@@ -339,7 +339,7 @@ theorem Value.HasType.box_inv {s : Sig} {Γ : Ctx s} {b : Atom s} {T : Ty s}
 
 /-- Inversion of an object literal.  The type is the precise object type at
 the literal's own annotation `A`, and the fields are typed against that same
-`A`, which is the index of the fields judgement of A2.2. -/
+`A`, which is the index `Fields.HasType` carries. -/
 theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s}
     {W : Witnesses (s,x)} {Wc : CapWitnesses (s,x)} {F : Fields ((s,c),x)} {T : Ty s}
     (h : Γ ⊢ᵥ .obj A W Wc F : T) :
@@ -353,8 +353,8 @@ theorem Value.HasType.obj_inv {s : Sig} {Γ : Ctx s} {A : CaptureSet s}
 /-- Inversion of a field list at a label: the field's body has the field's
 result type, the capture name of its own label at the self, and its closing
 evidence puts its use set below the literal's assigned set weakened united
-with the self.  The second conjunct is the premise the `fields` rule of A2.2
-carries; `step_uses` reads it at the projection step. -/
+with the self.  The second conjunct is the premise the `Fields.HasType.cons`
+constructor carries; `step_uses` reads it at the projection step. -/
 theorem Fields.HasType.getFull {s : Sig} {Γ : Ctx (s,x)} {A : CaptureSet s} :
     ∀ (F : Fields (s,x)), Γ ⊢ᶠ[A] F → ∀ (l : Label) (t : Tm (s,x)),
       F.get? l = some t →
@@ -579,7 +579,7 @@ theorem Ctx.Ren.selfObj {s : Sig} {Γ : Ctx s} {Tel : Telescope (s,x)} {C : Capt
 
 /-! ## The answer sort: isolation, canonical forms, and applying a coercion
 
-**T8, isolation.**  Store free, no fuel, no context predicate.  An existential
+Isolation needs no store, no fuel, and no context predicate: an existential
 answer cannot be widened to a plain one, which is the target's form of "a
 result `fresh` cannot flow into a local `any`". -/
 
@@ -591,7 +591,7 @@ def ETy.isEx : ETy s → Bool
 @[simp] theorem ETy.isEx_ty (T : Ty s) : (ETy.ty T).isEx = false := rfl
 @[simp] theorem ETy.isEx_ex (C : CaptureSet s) (T : Ty (s,c)) : (ETy.ex C T).isEx = true := rfl
 
-/-- **T8.**  An existential stays an existential along answer inclusion. -/
+/-- An existential stays an existential along answer inclusion. -/
 theorem ex_stays_ex {s : Sig} {Γ : Ctx s} :
     ∀ (g : ELeCo s) {E₁ E₂ : ETy s}, Γ ⊢ᵉ g : E₁ ≤ E₂ → E₁.isEx = true → E₂.isEx = true
   | .plain _, _, _, h => by cases h with | plain _ => intro he; exact absurd he (by simp)
@@ -601,8 +601,7 @@ theorem ex_stays_ex {s : Sig} {Γ : Ctx s} :
       cases h with
       | trans h₁ h₂ => intro he; exact ex_stays_ex g₂ h₂ (ex_stays_ex g₁ h₁ he)
 
-/-- **T8, the corollary.**  No evidence takes an existential answer to a
-plain one. -/
+/-- No evidence takes an existential answer to a plain one. -/
 theorem no_ex_le_ty {s : Sig} {Γ : Ctx s} {g : ELeCo s} {C₀ : CaptureSet s}
     {T₁ : Ty (s,c)} {T₂ : Ty s} (h : Γ ⊢ᵉ g : ∃ᶜ[C₀] T₁ ≤ .ty T₂) : False := by
   have := ex_stays_ex g h rfl
@@ -610,10 +609,10 @@ theorem no_ex_le_ty {s : Sig} {Γ : Ctx s} {g : ELeCo s} {C₀ : CaptureSet s}
 
 /-! ### Canonical forms at an existential answer
 
-**T9.**  Both are one inversion on the wrapper: no normalisation, no fuel,
-no store.  They are what the two unpack steps read. -/
+Both of the following are one inversion on the wrapper: no normalisation,
+no fuel, no store.  They are what the two unpack steps read. -/
 
-/-- **T9.**  A packed atom at an existential answer is a `pack`. -/
+/-- A packed atom at an existential answer is a `pack`. -/
 theorem pack_canon {s : Sig} {Γ : Ctx s} {p : PAtom s} {C₀ : CaptureSet s} {T : Dom s}
     (h : Γ ⊢ₚ p : ∃ᶜ[C₀] T) :
     ∃ (C : CaptureSet s) (h₀ : CapCo s) (e : LeCo (Sig.scope s)) (a : Atom s) (S : Ty s),
@@ -622,7 +621,7 @@ theorem pack_canon {s : Sig} {Γ : Ctx s} {p : PAtom s} {C₀ : CaptureSet s} {T
   cases h with
   | pack ha hb he => exact ⟨_, _, _, _, _, rfl, ha, hb, he⟩
 
-/-- **T9, the value twin.** -/
+/-- The value twin of `pack_canon`. -/
 theorem pack_canon_val {s : Sig} {Γ : Ctx s} {v : Value s} {C₀ : CaptureSet s} {T : Dom s}
     (h : Γ ⊢ᵥᵉ v : ∃ᶜ[C₀] T) :
     ∃ (C : CaptureSet s) (h₀ : CapCo s) (e : LeCo (Sig.scope s)) (v₀ : Value s) (S : Ty s),
@@ -644,7 +643,7 @@ theorem Value.HasTypeE.ty_inv {s : Sig} {Γ : Ctx s} {v : Value s} {T : Ty s}
   cases h with
   | plain hv => exact hv
 
-/-! ### T-B2.3, coercions apply
+/-! ### Coercions apply
 
 `Value.applyE` and `PAtom.applyE` are total and structural on the coercion.
 The clauses that hand back their input are the typed-impossible combinations,
@@ -652,14 +651,14 @@ and each is closed here by inverting the two typings, not by an appeal to
 reachability. -/
 
 /-- The residual of a congruence, read at the wrapper's instance scope.  It is
-`Ctx.Ren.instC` at the identity renaming, which is T-B2.1. -/
+`Ctx.Ren.instC` at the identity renaming. -/
 theorem LeCo.HasType.atScopeInst {s : Sig} {Γ : Ctx s} {C : CaptureSet s}
     {f : LeCo (Sig.scope s)} {X Y : Ty (Sig.scope s)}
     (h : Γ.scope ⊢ f : X ≤ Y) : Γ.scopeInst C ⊢ f : X ≤ Y := by
   have := h.rename (Ctx.Ren.instC (Γ := Γ.consC .root) (C := CaptureSet.weaken (k := .cap) C))
   rwa [LeCo.rename_id, Ty.rename_id, Ty.rename_id] at this
 
-/-- **T-B2.3.**  A typed answer coercion applies to a typed value wrapper. -/
+/-- A typed answer coercion applies to a typed value wrapper. -/
 theorem Value.HasTypeE.applyE {s : Sig} {Γ : Ctx s} :
     ∀ (g : ELeCo s) {v : Value s} {E E' : ETy s},
       Γ ⊢ᵥᵉ v : E → Γ ⊢ᵉ g : E ≤ E' → Γ ⊢ᵥᵉ v.applyE g : E'
@@ -677,7 +676,7 @@ theorem Value.HasTypeE.applyE {s : Sig} {Γ : Ctx s} :
       | trans h₁ h₂ =>
           exact Value.HasTypeE.applyE g₂ (Value.HasTypeE.applyE g₁ hv h₁) h₂
 
-/-- **T-B2.3, the atom twin.** -/
+/-- The atom twin of `Value.HasTypeE.applyE`. -/
 theorem PAtom.HasType.applyE {s : Sig} {Γ : Ctx s} :
     ∀ (g : ELeCo s) {p : PAtom s} {E E' : ETy s},
       Γ ⊢ₚ p : E → Γ ⊢ᵉ g : E ≤ E' → Γ ⊢ₚ p.applyE g : E'
@@ -812,7 +811,7 @@ theorem Ty.arg_congr {s : Sig} (T : Cod s) {a a' : Atom s} (h : a.root = a'.root
 by one substitution, which instantiates the parameter at the argument, the
 arrow's capture binder at the argument's root and the body root at the
 universal root, and the last of the three is what asks the context to bind no
-root of its own (B1.5, discharged at the machine by `Store.Typed.rootFree`). -/
+root of its own, which `Store.Typed.rootFree` discharges at the machine. -/
 theorem Value.HasType.beta {s : Sig} {Γ : Ctx s} {A : CaptureSet s} {S₀ S : Dom s}
     {t₀ : Tm (Sig.body s)} {g : CapCo (Sig.body s)} {T : Cod s} {C : CaptureSet s}
     {b : Atom s} (hΓ : Γ.root? = none)
@@ -1037,11 +1036,12 @@ theorem Store.Typed.unboxCast_result {s : Sig} {σ : Store s} {Γ : Ctx s}
 
 /-! ## The two unpack steps
 
-The eight steps of B2.12, packaged as two lemmas.  Both extend the store by
-the witness as an instance binder, read the wrapper's payload in the extended
-scope under the residual coercion collapsed by `Subst.instRoot`, transport the
-frame's body along `Ctx.Ren.instC`, and weaken the continuation by
-`Cont.Typed.weakenC`.  Neither reads a form and neither takes fuel. -/
+Preservation for `unpack` and `allocE`, packaged as two lemmas.  Both extend
+the store by the witness as an instance binder, read the wrapper's payload
+in the extended scope under the residual coercion collapsed by
+`Subst.instRoot`, transport the frame's body along `Ctx.Ren.instC`, and
+weaken the continuation by `Cont.Typed.weakenC`.  Neither reads a form and
+neither takes fuel. -/
 
 /-- The frame's body, read in the store's `.inst C` context.  This is
 `Ctx.Ren.instC` lifted by the payload binder, at the identity renaming. -/

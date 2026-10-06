@@ -1,56 +1,29 @@
-# DotToFCdot, at stage P3 of paths
+# DotToFCdot with paths
 
-The translation of DOT-MNF with paths (`../DotMNF`) into FCdot with path-keyed blocks (`../FCdot`),
-namespace `Paths.DotMNF`, stage P2 of `plan-5g-paths-stages.md`.  The translation is a function on
-`Type`-valued derivations, and DOT-MNF's type safety is transported from FCdot's.  Every translation
-function is structural (decision 31), so `decide +kernel` unfolds a translation and checks its image.
-
-## Main theorems
-
-```
-Sub.translate_typed         : Γ.Wf → Γ.translate ⊢ d.translate : S.translate ≤ T.translate
-PathTy.translatePath_typed  : Γ.Wf → Γ.translate ⊢ᵖ d.translatePath : T.translate ∧
-                                d.translatePath.path = p.translate
-HasTy.translateAtom_typed   : Γ.Wf → Γ.translate ⊢ₐ h.translateAtom : T.translate
-HasTy.translate_typed       : Γ.Wf → Γ.translate ⊢ h.translate : T.translate
-DefsTy.blocks_translate     : Defs.Distinct d →
-                                T.blocks d = (Value.obj T.witnesses (h.translateFields .here Tself e)).blockSelf
-let_sngl_typed_letPath      : Γ' ⊢ t : snglOf q → Γ'.cons (.opaque (snglOf q)) ⊢ u : U↑ → Γ' ⊢ let t u : U
-HasTy.translate_erase       : ⌊h.translate⌋ = ⌊t⌋
-coherence                   : ⌊d₁.translate⌋ = ⌊d₂.translate⌋
-dot_safety                  : HasTy .nil t T → ⟨∅, ∅, t⟩ ⟶* st → st.Final ∨ ∃ st', st ⟶ st'
-reachable_consistent        : HasTy .nil t T → ⟨∅, ∅, d.translate⟩ ⟶* st →
-                                ∃ Γ, ⊢ st.σ : Γ ∧ ¬ ∃ e, Γ ⊢ e : ⊤ ≤ ⊥
-acceptance_gdot3            : ¬ Nonempty (HasTy .nil (.val (.obj (.typ A S))) (.mu (.typ A .top .bot)))
-acceptance_gdot3_any        : ¬ Nonempty (HasTy .nil (.val (.obj d)) (.mu (.typ A .top .bot)))
-acceptance_fig2             : FCdot.checkTm FCdot.Ctx.nil Examples.Fig2_prog_ty.translate Ty.top.translate = true
-```
-
-Beside them: `SelfFree.translate_typed`, `SubDecl.translate_typed`, `HasTy.translateAtom_root`,
-`litCo_typed`, `Ctx.varAtom_typed`, `DefsTy.translateFields_typed`, `dot_not_stuck`,
-`reachable_realized`.  `HasTy.translate_typed`, `HasTy.translate_erase`, `coherence`, `dot_safety`,
-`dot_not_stuck`, `reachable_consistent` and `reachable_realized` keep vanilla's statements.
-`diverging_at_bad_bounds`, `div_reach` and `div_loop` are the extent of `acceptance_gdot3_any`
-beyond the sketch's own statement: a closed term at the bad type exists and never allocates one.
-`acceptance_fig1` and its three companions are P1e's twins of `acceptance_fig2`.
+The translation of DOT-MNF with paths (`../DotMNF`) into FCdot with path-keyed blocks
+(`../FCdot`), in namespace `Paths.DotMNF`. As in the base, derivations are `Type`-valued, the
+translation is a function on derivations, and DOT-MNF's type safety is transported from FCdot's.
+New here: path typings translate to path evidence, a literal's binder gets the block forest its
+definitions describe, and two acceptance tests from gDOT run on the result. Every translation
+function is structurally recursive, so `decide +kernel` unfolds a translation and checks its image.
 
 ## Modules
 
 | module | contents |
 |---|---|
-| `Types` | `Path.translate`, `Ty.translate`, `Ty.tel`, `Ty.telSelfAt`, `Ty.isObj`, `Ty.witnesses`, `Ty.fieldLabels`, `Ty.valLabels`, `Ty.literalTy`.  The block builder `Defs.childrenOver`, `Tm.childOf`, `Value.childOf`, `Ty.blocks`.  `Ctx.translate` |
-| `TypesLemmas` | renaming, substitution and path substitution commute with the translation |
-| `Evidence` | `identityMorphism` at any signature, `intoPath`, `aliasOf`, `litMorphism` and `litCo`, `Ty.typIdx`, `Ty.fldIdx`, `Ty.vfldIdx`.  `SelfFree.translate`, `SubDecl.translate`, `Sub.translate`, `PathTy.translatePath`, `HasTy.translateAtomAt` |
-| `EvidenceTyped` | the typing of `Evidence`.  `Ty.EqSpec`, `Ty.HasSpec`, `Ty.ValSpec`, `litMorphism_tableOnly`, `Ctx.Wf` |
+| `Types` | `Path.translate`, `Ty.translate`, `Ty.tel`, `Ty.telSelfAt`, `Ty.literalTy`, the block of a literal `Ty.blocks`, `Ctx.translate` |
+| `TypesLemmas` | renaming and path substitution commute with the translation |
+| `Evidence` | `Sub.translate`, `PathTy.translatePath`, `HasTy.translateAtom`, the literal coercion `litCo`, the alias reader `aliasOf` |
 | `Terms` | `HasTy.translate`, `DefsTy.translateFields` |
-| `Blocks` | `DefsTy.blocks_translate` from its three parts, `translateFields_labels`, `_valLabels`, `_children` |
+| `Blocks` | `DefsTy.blocks_translate`: the source's block of a literal is the block the target builds |
+| `EvidenceTyped` | typedness of `Evidence`, the context condition `Ctx.Wf` |
 | `TermsTyped` | `HasTy.translate_typed`, `DefsTy.translateFields_typed`, `let_sngl_typed_letPath` |
-| `Erasure` | `HasTy.translate_erase`, `DefsTy.translateFields_erase`, `coherence` |
-| `Safety` | `Simulated`, `dot_safety`, `dot_not_stuck` |
+| `Erasure` | `HasTy.translate_erase`, `coherence` |
+| `Safety` | the simulation invariant `Simulated`, `dot_safety`, `dot_not_stuck` |
 | `Consistency` | `reachable_consistent`, `reachable_realized` |
-| `Examples` | Z1 to Z9, facts about images decided in the kernel, and the erasure equations of Z1, Z2, Z3, Z7 |
-| `Pages` | P3's `E1p` to `E8p`, `E9`, `E10`, `E11`, `P2e`, `P3e` moved onto the target, one sub-namespace per example, each checking `../DotMNF/Examples.lean`'s source pages |
-| `Acceptance` | P3's two acceptance tests: gDOT Fig. 2 with the `Option` encoding (`acceptance_fig2`) and its pDOT twin P1e (`acceptance_fig1`), and gDOT's Sec. 3 counterexample refuted for every literal (`acceptance_gdot3`, `acceptance_gdot3_any`), with the diverging closed term that never allocates one |
+| `Examples` | Z1 to Z9: facts about translated derivations, decided in the kernel |
+| `Pages` | the target side of the path examples of `../DotMNF/Examples.lean`, one namespace each |
+| `Acceptance` | the two gDOT acceptance tests and the pDOT twin of the first |
 
 ## The translation of types
 
@@ -67,43 +40,50 @@ S ∧ T          ↦  μ (tel S ++ tel T)
 μ(x. T)        ↦  μ (telSelf T)
 ```
 
-`Ty.translate` reads the type only (decision 30).  A binder of `cons` is opaque.  The self binder of
-`consSelf d T` is transparent at `T.literalTy` with the block `T.blocks d`.
+`Ty.translate` reads the type only. The block of a literal's binder, `Ty.blocks T d`, also reads
+the definitions: a field that holds a variable `y` gets a forwarding child to `y`, whatever its
+declared type. A `trmObj` field gets the inner literal's block as a child.
 
-## The block of a literal
+## Stable fields
 
-`Ty.blocks T d` is the witnesses, the field labels, the stable labels, and one child per field that
-gives one.  It reads the definitions, since a field that holds a variable `y` gets the child
-`.fwd (.var y)` whatever it is declared at.  A `trmObj` field gives the inner literal's block at
-`p.a`, and a `trm` field gives no other child.  `DefsTy.blocks_translate` equates it with the block
-the store builds from the translated fields.  Its premise `Defs.Distinct d` is there because
-`Fields.valLabels` drops a label a later field repeats and `Ty.valLabels` does not.
+A plain field (`trm`) is cast to its block name by `EqCo.member` at the literal's self. That
+evidence eliminates, so the target does not call the field stable. A stable field (`trmObj`) is
+the inner literal cast by `litCo` and `EqCo.def`, which are table-only, so the target lists it.
+Stability in the target is exactly `trmObj` in the source. `DefsTy.blocks_translate` checks that
+the two block builders agree, under `Defs.Distinct d`.
 
-## Decision 26's cast
+## Main theorems
 
-A `trm` field is cast by `eqToLe (symm (member (var self) (refl Tself) e))`, where `e` is the field's
-`≐` entry in the literal's precise telescope.  It reads the equation `def self a` reads, so the field
-has the same type and erasure, but it eliminates, so the target does not call the body stable.  A
-`trmObj` field is the inner literal cast by `litCo` and `eqToLe (symm (def self a))`, both
-table-only, so it is stable.  Stability in the target is `trmObj` in the source.  With `def` at a
-`trm` literal body the two block builders disagree (`Z1.FPuniform_disagrees`).
+- `Sub.translate_typed`: a subtyping derivation becomes inclusion evidence between the images.
+- `PathTy.translatePath_typed`: a path typing becomes path evidence at the translated path.
+- `HasTy.translateAtom_typed`: a variable typing becomes an atom of the translated type.
+- `HasTy.translate_typed`: a term typing becomes a typed FCdot term.
+- `DefsTy.blocks_translate`: a literal's source block equals the block of its translation.
+- `HasTy.translate_erase`, `coherence`: the image erases to the source term, so two derivations
+  of one term behave the same.
+- `dot_safety`, `dot_not_stuck`: a closed well-typed DOT-MNF program never gets stuck.
+- `reachable_consistent`, `reachable_realized`: reachable stores are typed, have no closed
+  `⊤ ≤ ⊥`, and define every block name.
+- `acceptance_fig2`: the FCdot checker accepts the translation of gDOT's Fig. 2.
+- `acceptance_gdot3`, `acceptance_gdot3_any`: no closed literal has type `μ(x. {A : ⊤..⊥})`.
 
-## The four source restrictions
+Each of these that the base also proves keeps the base's statement.
 
-P2 restricts four rules of P0 that have no image here (`../DotMNF/README.md`, P2.0).
+## The gDOT acceptance tests
 
-- **R1, decision 23.**  `letSngl` is a derived `let` over a field declared at `{a : q.type}`.  Loses a
-  `let` over any other field with the binder at the singleton of the field's path.
-- **R2, decision 27.**  `trmSngl` and `trmLam` are derived at a plain field, and only `trmObj`
-  declares `{val a : _}`.  Loses `{val a = y}` at `{val a : y.type}`, `{val f = λ…}` at
-  `{val f : ∀…}`, and every path typing at `x.a` and below for such a field.
-- **R3, decision 28.**  The base's variable rules are term rules, the bridge is `HasTy.sngl` at a
-  singleton, and `projP` projects from a path typing.  Loses a singleton-typed variable used as a
-  term at a type of its alias that is not a singleton (`Z9.no_le_out_of_sngl`).
-- **R4, decision 29.**  `Sub.repl` and `Sub.replSym` are removed.  Loses `p.type <: q.type` and
-  `p.A <: q.A` at an abstract member (`Z9.alias_template_fixed`).  At an exact member it stays
-  (`Z7.E3_checks`).
+`acceptance_fig2` runs the checker on the translation of `Fig2_prog`, a fragment of the Dotty
+compiler from gDOT's Fig. 2. Two nested literals, `types` and `symbols`, name each other through
+the enclosing module. `acceptance_fig1` and its companions check the pDOT variant `Fig1_prog`.
 
-## Axioms
+`acceptance_gdot3_any` refutes gDOT's Sec. 3 counterexample for every closed literal. The source
+has no inversion lemmas, so the proof translates the derivation, allocates the literal in a typed
+store, and applies `Store.Typed.no_top_le_bot`. The claim is about literals, not terms:
+`diverging_at_bad_bounds` is a closed term at the bad type, but its run reaches a state that
+steps to itself (`div_reach`, `div_loop`), so it never allocates a literal at that type.
 
-`propext` and `Quot.sound` everywhere.  No `sorry`, `axiom`, `partial`, `unsafe` or `native_decide`.
+## Examples
+
+Z1 to Z9 are kernel-decided facts about translated derivations. Z9 shows why the source leaves out
+replacement and non-singleton uses of a singleton variable: no template reads an inclusion out of
+a singleton (`no_le_out_of_sngl`) or rewrites an alias (`alias_template_fixed`). `Pages` checks
+the translations of E1p to E8p, E9, E10, E11, P2e and P3e.

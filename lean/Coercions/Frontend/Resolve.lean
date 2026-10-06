@@ -4,9 +4,9 @@ import Coercions.Frontend.Notation
 /-!
 # Name resolution and let insertion
 
-Stage F0.5 of `plan-5e-frontend-stages.md`.  Three functions take a surface
-phrase to the annotated de Bruijn syntax of `Ann.lean`, and they are the only
-place where a surface name becomes an index.
+Three functions take a surface phrase to the annotated de Bruijn syntax of
+`Ann.lean`, and they are the only place where a surface name becomes an
+index.
 
 Name environments are innermost binder first, one name per binder of the
 signature, so shadowing is innermost wins by construction.  User names are
@@ -24,16 +24,16 @@ Monadic normal form is by construction and needs no predicate: `ATm.app` and
 `ATm.proj` take bare variables, exactly as `DotMNF.Tm.app` and `DotMNF.Tm.proj`
 do.  What is stated below is totality on scoped well labelled programs, the two
 spine equations, and the no insertion property.  No semantic relation between
-the surface program and the term it resolves to is claimed here.  That is the
-direct style calculus with its own type preservation theorem, parked by
-`plan-5-extensions.md` §7 as a development of its own.
+the surface program and the term it resolves to is claimed here.  A direct
+style calculus with its own type preservation theorem would be a separate
+development, not covered here.
 
 This module imports `Notation.lean`, for the ten example programs at the end,
 and Lean's token table is global.  So the words `type`, `let`, `in` and the
 single letters that `Notation.lean` made atoms, among them the Greek nu that
 opens an object literal, are keywords here and none of them can be a local
-name.  The plan writes the name environment `ν`.  It is written `nv` below,
-for that reason and no other.
+name.  The Greek nu would be the natural name for a name environment, but it
+is already a keyword, so it is written `nv` below instead.
 
 Nothing in this module is part of the metatheory.  No definition here lives in
 the `DotMNF` or `FCdot` namespaces.
@@ -533,9 +533,9 @@ brought into variable position with no binding inserted. -/
 theorem atomize_var {s : Sig} (nv : NameEnv s) (i : BVar s .var) :
     atomize nv (.path (.var i)) = ⟨s, .nil, nv, i⟩ := rfl
 
-/-! ## The ten programs of F3.3
+/-! ## Ten example programs
 
-The deliverable of F0.7.  Each program is written once in the surface notation
+Each program is written once in the surface notation
 of `Notation.lean` and once as a hand written `ATm []`, and the two are compared
 by `rfl`.  Resolution is structural, so the kernel reduces it and no compiled
 evaluation is needed.
@@ -546,14 +546,14 @@ and the resolved term is the hand written one on the nose.  That is
 `atomize_var` at work.  E10 is the opposite case, a nested application in direct
 style, and it is compared against its let expanded form.
 
-The label table reproduces the one of the vanilla examples, so a later stage can
+The label table reproduces the one of the vanilla examples, so a later step can
 compare the erasures against the hand written `DotMNF.Tm`s there.
 
-One correction to the plan's table of F3.3.  It prints E2's self type as
-`{A : ∀(y : s.A) s.A} ∧ {a : ∀(y : s.A) s.A}`.  A type member declaration needs
-two bounds, and the single bound form is the field declaration `{a : T}`, whose
-name would then be looked up at the term sort and fail.  The vanilla file has
-`.typ lA E2A E2A`, both bounds, so the surface program below writes both. -/
+E2's self type needs both bounds written out,
+`{A : ∀(y : s.A) s.A .. ∀(y : s.A) s.A}`, and not the single bound field form
+`{a : T}`, whose name would then be looked up at the term sort and fail.  The
+vanilla file has `.typ lA E2A E2A`, both bounds, so the surface program below
+writes both. -/
 
 /-- Type label `A` of the vanilla examples. -/
 private def lA : Label := .typ 0

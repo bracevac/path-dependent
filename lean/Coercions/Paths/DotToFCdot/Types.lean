@@ -4,7 +4,7 @@ import Coercions.Paths.FCdot.Context
 namespace Paths
 
 /-!
-# Translation of types (Plan III §8.1, M3, and stage P2.1 of plan-5g)
+# Translation of types
 
 Paths translate by shape, and types translate homomorphically on paths.
 Declaration-shaped types become object types over a fresh self block.  A type
@@ -18,7 +18,7 @@ declaration-shaped type, `⊤` included, is `μ (tel T)`.
 
 The other shapes are `⊥`, a type selection `p.A`, a function type, and a `μ`
 whose body is not declaration-shaped.  Each is read as the single self-bound
-proposition `[⊑ ⟦B⟧]` (plan §13 item 9), so that `tel` is total and an
+proposition `[⊑ ⟦B⟧]`, so that `tel` is total and an
 intersection may have arbitrary operands.  `Ty.isObj` is the shape test that
 separates the two.  `⟦T⟧ = μ (tel T)` when it holds, and `tel T = [⊑ ⟦T⟧↑]`
 when it does not.  A bound proposition never mentions the self, which is why
@@ -29,14 +29,14 @@ a fresh self.  `telSelfAt self T` reads a type over `s` whose self is the
 variable `self`, and `telSelf T` is `telSelfAt .here T`.  They agree on
 weakened types (`tel_eq_telSelf_weaken`).
 
-Every function of this module is structural (decision 31), so that the kernel
+Every function of this module is structural, so that the kernel
 unfolds a translation and `decide +kernel` evaluates it.  For that,
 `Ty.translate` spells out one level of `Ty.tel` at an object shape, and the
 self of `telSelfAt` is an explicit variable.  `Ty.translate_isObj` states the
 agreement with `tel`.
 
 The block a literal's self binder carries reads the literal's definitions,
-not only its declaration type (decision 30).  A field that holds a variable
+not only its declaration type.  A field that holds a variable
 gives a forwarding child whatever type it is declared at.  `Ty.blocks` and
 its three helpers build it, and `Ctx.translate` stays a function of the
 source context, since `Ctx.consSelf` carries the definitions.
@@ -222,7 +222,7 @@ def Ty.valLabels : Ty s → List Label
 def Ty.literalTy (T : Ty (s,x)) : FCdot.Ty s :=
   .obj (FCdot.Telescope.ofLiteral T.witnesses T.fieldLabels T.valLabels)
 
-/-! ## The block of a literal (P2.2)
+/-! ## The block of a literal
 
 `Defs.childrenOver` mirrors `FCdot.Fields.children` on the translated fields.
 The translation of `d₁ ∧ d₂` puts the fields of `d₂` outermost, so `d₂` is
@@ -230,7 +230,7 @@ processed over the children of `d₁`.  A field that gives no child drops its
 label, as `Fields.children` does.  A field that holds a variable gives the
 forwarding `.fwd (.var y)`, whatever type it is declared at.  A `trmObj`
 field gives the inner literal's block written at `p.a`.  A `trm` field whose
-body is a literal gives none, by decision 26. -/
+body is a literal gives none. -/
 
 mutual
 
@@ -267,7 +267,7 @@ def Value.childOf : Value s → Ty s → FCdot.Path s → Option (FCdot.Block s)
 end
 
 /-- The block a literal's definitions `d` and declaration type `T` give its
-self binder.  It reads the definitions, not only the type (decision 30).  The
+self binder.  It reads the definitions, not only the type.  The
 block at a path `p` is `Block.substPath` of this one. -/
 def Ty.blocks (T : Ty (s,x)) (d : Defs (s,x)) : FCdot.Block (s,x) :=
   .obj T.witnesses T.fieldLabels T.valLabels (Defs.childrenOver d T .nil (.var .here))

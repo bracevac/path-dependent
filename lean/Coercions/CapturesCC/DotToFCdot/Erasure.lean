@@ -6,7 +6,7 @@ import Coercions.CapturesCC.DotMNF.Erasure
 namespace CapturesCC
 
 /-!
-# Erasure of the term translation (Plan III §8.2, M4; stage A3a)
+# Erasure of the term translation
 
 `HasTy.translate` erases (into the shared runtime) to the same term as the
 source DOT-MNF typing derivation: types, evidence, annotations, use sets and
@@ -16,10 +16,10 @@ source term with paths reduced to their root variable, which is what
 term therefore translate to observationally identical target terms
 (`coherence`).
 
-Stage A3a adds two clauses.  A source box `□ x` erases to the runtime's own
-inert box at `x`, and so does the target box its translation is; a source
-unboxing `C ⊸ x` erases to the runtime's unboxing at `x`, and so does the
-target unboxing.  Both clauses close once the atom's root is read
+Two of the cases cover boxes.  A source box `□ x` erases to the runtime's
+own inert box at `x`, and so does the target box its translation is; a
+source unboxing `C ⊸ x` erases to the runtime's unboxing at `x`, and so
+does the target unboxing.  Both cases close once the atom's root is read
 (`HasTy.translateAtom_root`).
 -/
 

@@ -3,7 +3,7 @@ import Coercions.Captures.DotToFCdot.Types
 namespace Captures
 
 /-!
-# Translation of evidence and of variable typings (Plan III §8.1, M3)
+# Translation of evidence and of variable typings
 
 A subtyping derivation becomes closed inclusion evidence; a subcapturing
 derivation becomes closed capture evidence; a typing derivation of a variable
@@ -11,7 +11,7 @@ becomes an atom rooted at that variable.  The three are mutual: `Sel-<:`,
 `<:-Sel`, `sc-sel-lower` and `sc-sel-upper` have typing premises, and a
 variable typing can go through subsumption.
 
-The object rules translate to template morphisms (plan §13 items 8 and 9):
+The object rules translate to template morphisms:
 
 * `And₁`, `And₂` project by identity templates on the first or second half
   when the operand is an object shape, and by the self-bound cast
@@ -62,7 +62,7 @@ def _root_.Captures.FCdot.Telescope.NoBnd : FCdot.Telescope s' → Prop
   | .cons Tel _ => FCdot.Telescope.NoBnd Tel
 
 /-- A telescope all of whose self-bounds are weakened closed types, which is
-the closedness convention of `FCdot` (plan §13 item 9).  `Shape.tel` produces
+the closedness convention of `FCdot`.  `Shape.tel` produces
 only these (`Shape.tel_closedBnds`), and only these can be copied by identity
 templates. -/
 inductive _root_.Captures.FCdot.Telescope.ClosedBnds : {s : FCdot.Sig} → FCdot.Telescope (s,x) → Prop where

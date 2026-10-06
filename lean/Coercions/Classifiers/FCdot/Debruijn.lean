@@ -54,8 +54,8 @@ parameter. -/
 
 /-- The signature a *scope* lives in: the body root, then the arrow's capture
 binder.  It is the signature of `Ctx.scope`, and the coercion between two
-arrows lives there, because the scope discipline of the stage puts every
-capture binder opened by a rule of the type sort under a root of its own. -/
+arrows lives there, because every capture binder that a typing rule opens is
+placed under a root of its own. -/
 @[reducible] def Sig.scope (s : Sig) : Sig := Sig.extend_cap (Sig.dom s)
 
 /-- The signature a lambda *body* lives in: a scope, then the parameter. -/

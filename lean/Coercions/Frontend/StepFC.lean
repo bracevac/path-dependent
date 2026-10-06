@@ -4,9 +4,9 @@ import Coercions.FCdot.FormAlgebra
 /-!
 # The executable FCdot machine
 
-Stage F2.2 of `plan-5e-frontend-stages.md`.  The frozen tree gives the target
-machine as a relation (`lean/Coercions/FCdot/Machine.lean`).  This module gives
-it as a function, so that a compiled program runs.
+The frozen tree gives the target machine as a relation
+(`lean/Coercions/FCdot/Machine.lean`).  This module gives it as a function,
+so that a compiled program runs.
 
 Unlike the source machine of `Step.lean`, the target machine has a side
 condition that is not a pattern match on a total lookup.  The two application

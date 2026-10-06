@@ -10,5 +10,5 @@ import Coercions.CapturesCC.DotToFCdot.Safety
 import Coercions.CapturesCC.DotToFCdot.Consistency
 import Coercions.CapturesCC.DotToFCdot.Prediction
 /-!
-Import root for the translation from DOT-MNF to FCdot (Plan III §8).
+Import root for the translation from DOT-MNF to FCdot.
 -/

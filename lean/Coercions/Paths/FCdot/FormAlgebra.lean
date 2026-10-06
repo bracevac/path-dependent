@@ -145,9 +145,9 @@ theorem FormTyped.tgtRes {s : Sig} {Γ : Ctx s} {ρ : Option (Path s)} {F : Form
 /-- A form stays typed when its source is replaced by one of the same shape
 in its mode.  Every clause of `FormTyped` reads its source through
 `Γ.resolveAt? ρ`, apart from `into`, whose `BndsTyped` passes the source on to
-`FormTyped`.  This is `FormTyped.srcRes` read forwards.  T1's `sel` case uses
-it to move the chain's source to `Γ.nodeTy (p.a)` by the third conjunct of
-`Store.Typed.fieldCo` (P1.8). -/
+`FormTyped`.  This is `FormTyped.srcRes` read forwards.  The `sel` case of
+the path-view guarantee uses it to move the chain's source to
+`Γ.nodeTy (p.a)` by the third conjunct of `Store.Typed.fieldCo`. -/
 theorem FormTyped.congr_src {s : Sig} {Γ : Ctx s} {ρ : Option (Path s)} {F : Form s}
     {S S' T : Ty s} (h : Γ.resolveAt? ρ S = Γ.resolveAt? ρ S') (hF : FormTyped Γ ρ F S T) :
     FormTyped Γ ρ F S' T :=
@@ -2367,7 +2367,7 @@ theorem RootViewTyped.opened (hroot : RootViewTyped Γ σ r) :
   exact ViewTyped_unfold (hroot.1 Tel₀ h₀)
 
 /-- The constant alias entry, read into a view at the receiver it names, which
-is the path it names (decision 24). -/
+is the path it names. -/
 theorem ViewTyped.aliasTo {r : Path s} {V : View s} {Tel : Telescope (s,x)} {q : Path s}
     (hV : Γ ⊨[r, σ] V : Tel) (hb : r = q) :
     Γ ⊨[r, σ] V ▹ .alias q : Tel ▹ ≈ (q.weaken) := by
@@ -2721,7 +2721,7 @@ end
 
 The twins of `EntryTyped.at_typed`, `entriesAtBnds_typed`, `entriesAt_typed`,
 `viewThroughVar_typed` and `viewThrough_typed` for `pathEntryAt`,
-`pathEntriesAt`, `pathViewThroughPath` and `pathViewThrough` (P1.8).  The
+`pathEntriesAt`, `pathViewThroughPath` and `pathViewThrough`, where the
 receiver is a path.  A routed entry reads the block at the root through the
 chain and the route (`pathEntryAt`), so the one fact the routes need is the
 view of the block at a node through a form typed from the node's type

@@ -5,10 +5,10 @@ import Coercions.DotMNF.Examples
 /-!
 # Views, the declaration table, and the subtyping search
 
-Stages F1.2 and F1.3 of `plan-5e-frontend-stages.md`.  The typer of F1.4 needs
-two things this module provides.  A *view* of a context variable is a type the
-variable has, carried with its derivation, so the typer may read a field or a
-member off a variable whose declared type does not display it.  A *declaration*
+The typer needs two things this module provides.  A *view* of a context
+variable is a type the variable has, carried with its derivation, so the
+typer may read a field or a member off a variable whose declared type does
+not display it.  A *declaration*
 is a type member a context variable has, again with its derivation, and the
 *declaration table* of a context is the family of middles the subtyping search
 is allowed to try for `Sub.trans`, whose middle is otherwise undetermined
@@ -22,33 +22,33 @@ theorem is claimed.
 
 Four counters live in `Budget`.  `decls` counts rounds of the table, `views`
 counts rounds of the view closure, `sub` is the fuel of `sub?`, and `typer` is
-the fuel of F1.4.  The refuter measured the unbounded closure of the design at
-`V(n+1) ~ 1 + 3*V(n) + 2*k*V(n)^2` and found fuel four already past the machine
-(`notes-frontend-design/refute-frontend.md`, F3).  The three repairs it named
-are all taken here: duplicates are dropped after every round, the table is
-computed once per context and passed as a parameter rather than recomputed
-inside the search, and the closure and the table have small round counters of
-their own, separate from the fuel of `sub?`.  The numbers of F1.2 are a
-starting point.  The measured ones are in the stage report.
+the fuel of the typer.  An unbounded version of this closure grows roughly
+like `V(n+1) ~ 1 + 3*V(n) + 2*k*V(n)^2`, which blows up past a small fuel.
+Three things keep it in check here: duplicates are dropped after every
+round, the table is computed once per context and passed as a parameter
+rather than recomputed inside the search, and the closure and the table have
+small round counters of their own, separate from the fuel of `sub?`.  The
+defaults below are a starting point.  The budget that makes each probe below
+pass is measured individually.
 
 ## The order of definition
 
 `viewStep` calls `sub?` in its detour step, and rule 8 of `sub?` calls the table
-builder under an extended context.  Taken literally that is a cycle.  It is cut
-the way F1.2 says, by making the table a parameter, plus one further step: the
+builder under an extended context.  Taken literally that is a cycle.  It is
+cut by making the table a parameter, plus one further step: the
 five view steps are written once, in `viewStepOf`, against an abstract
 `SubSearch`, the search the detour step consults.  `sub?` is defined against
 `viewStepOf noSub`, the detour free step, so its own definition mentions no
-search but its own.  The public `viewStep` of F1.2 instantiates the same body at
+search but its own.  The public `viewStep` instantiates the same body at
 the real `sub? D n`.  So there is one copy of every definition, the block of
 well-founded definitions is `sub?` and its two list walkers and nothing else,
-and the deviation is confined to one place, named in the stage report: the table
+and the one approximation is confined to one place: the table
 that rule 8 builds under `Γ.cons S2` is detour free.
 
 ## The kernel
 
 `sub?` is well-founded, so it does not reduce in the kernel and no `decide` or
-`rfl` may mention it (F1.7).  The probes of F1.6 at the end of this module run
+`rfl` may mention it.  The probes at the end of this module run
 through `expect` and `#eval`, which run compiled code.
 -/
 
@@ -94,8 +94,9 @@ def declLower {s : Sig} {Γ : Ctx s} (d : Decl Γ) : Sub Γ d.lo (declSel d) :=
 def declUpper {s : Sig} {Γ : Ctx s} (d : Decl Γ) : Sub Γ (declSel d) d.hi :=
   Sub.selUpper d.deriv
 
-/-- The four counters of F1.2.  The defaults are the plan's starting point, not
-a measurement.  The stage report gives the measured budget of every probe. -/
+/-- The four counters used by the search.  The defaults are a starting point,
+not a measurement.  The budget that makes each probe below pass is measured
+individually. -/
 structure Budget where
   /-- Rounds of the declaration table. -/
   decls : Nat := 3
@@ -103,7 +104,7 @@ structure Budget where
   views : Nat := 3
   /-- Fuel of the subtyping search. -/
   sub : Nat := 6
-  /-- Fuel of the typer of F1.4. -/
+  /-- Fuel of the typer. -/
   typer : Nat := 8
 deriving Repr, Inhabited
 
@@ -164,7 +165,8 @@ def dedupDecls {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) : DeclTable Γ :=
 /-! ## The view closure
 
 A step of the closure takes one view of a variable to the views reachable from
-it in one rule.  The five steps are the table of F1.2.  `open` and the two
+it in one rule.  The five steps are tabulated in the docstring of
+`viewStepOf` below.  `open` and the two
 `and` steps read the rules off the derivation alone.  The `upper` step and the
 `detour` step consult the table, and the detour step consults a subtyping
 search as well, which is why the step is written against an abstract search:
@@ -183,7 +185,7 @@ table under an extended context, where calling the real search would be
 circular. -/
 def noSub {s : Sig} {Γ : Ctx s} : SubSearch Γ := fun _ _ => none
 
-/-- The five view steps of F1.2, against an abstract search.
+/-- The five view steps, against an abstract search.
 
 | step | condition on `v.ty` | new view | rule |
 |---|---|---|---|
@@ -194,7 +196,7 @@ def noSub {s : Sig} {Γ : Ctx s} : SubSearch Γ := fun _ _ => none
 | detour | `sub v.ty d.lo` succeeds at a `d` | `d.hi` | `HasTy.sub` with `Sub.trans` (`Typing.lean:74,81,83`) |
 
 The detour step's derivation carries the evidence `e` of its own side
-condition.  Without it the term is ill typed, which is the refuter's C3. -/
+condition.  Without it the term is ill typed. -/
 def viewStepOf {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (D : DeclTable Γ) : ViewStep Γ :=
   fun x v =>
     (match hv : v.ty with
@@ -245,7 +247,7 @@ def declsOf {s : Sig} {Γ : Ctx s} (stf : DeclTable Γ → ViewStep Γ) (m : Nat
 
 /-- The detour free table, the one rule 8 of `sub?` builds under the context it
 extends.  Building the full table there would make `sub?` mutual with the view
-closure, which F1.2 cuts on purpose. -/
+closure, which this design avoids on purpose. -/
 def baseDecls {s : Sig} (b : Budget) (Γ : Ctx s) : DeclTable Γ :=
   declsOf (fun D => viewStepOf noSub D) b.views b.decls
 
@@ -256,8 +258,8 @@ written either as a decidable equality on a constructed shape or as a `match`
 whose fall-through branch is `none`, never as a `match` whose fall-through
 branch returns a derivation: a `match` on `S` or on `T` inside a function whose
 result type mentions them generalizes them in the motive, and a fall-through
-that is not `none` then does not typecheck.  The refuter recorded the exact
-error on that shape.
+that is not `none` then fails to typecheck, with Lean reporting that the
+motive is not type correct.
 
 The three helpers below move a derivation across a decided equality of labels or
 of a selection.  They are written with `cases` rather than with `▸` because the
@@ -305,7 +307,7 @@ def allBudget : Budget := { decls := 1, views := 2, sub := 0, typer := 0 }
 mutual
 
 /-- The subtyping search.  `sub? D 0 S T` is `none`.  `sub? D (n+1) S T` tries
-the eleven rules of F1.3 in order and returns the first success.
+the eleven rules below in order and returns the first success.
 
 1. `S = T`, `Sub.refl` (`lean/Coercions/DotMNF/Typing.lean:73`).
 2. `T = ⊤`, `Sub.top` (`Typing.lean:71`).
@@ -422,10 +424,10 @@ end
 
 /-! ## The closure at the real search
 
-The names of F1.2.  Each is the generic body above at `viewStep D n`, the five
-view steps with the detour step consulting `sub? D n`. -/
+Each of these instantiates the generic body above at `viewStep D n`, the
+five view steps with the detour step consulting `sub? D n`. -/
 
-/-- The five view steps of F1.2 at the real search. -/
+/-- The five view steps at the real search. -/
 def viewStep {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (n : Nat) : ViewStep Γ :=
   viewStepOf (sub? D n) D
 
@@ -529,7 +531,7 @@ theorem viewsOf_mono {s : Sig} {Γ : Ctx s} (st : ViewStep Γ) {m m' : Nat}
           subst hm
           exact viewsLe_refl _
 
-/-- More rounds of the view closure never lose a type (F1.5). -/
+/-- More rounds of the view closure never lose a type. -/
 theorem views_mono {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b b' : Budget}
     (h : b.views ≤ b'.views) (hs : b.sub = b'.sub) (x : BVar s .var) :
     ∀ v ∈ views D b x, ∃ w ∈ views D b' x, w.ty = v.ty := by
@@ -643,7 +645,7 @@ theorem declsOf_mono {s : Sig} {Γ : Ctx s} (stf : DeclTable Γ → ViewStep Γ)
           subst hk
           exact declsLe_refl _
 
-/-- More rounds of the table never lose a declaration (F1.5). -/
+/-- More rounds of the table never lose a declaration. -/
 theorem decls_mono {s : Sig} {Γ : Ctx s} {b b' : Budget} (h : b.decls ≤ b'.decls)
     (hv : b.views = b'.views) (hs : b.sub = b'.sub) :
     ∀ d ∈ decls b Γ, ∃ d' ∈ decls b' Γ,
@@ -674,7 +676,7 @@ theorem sub?_succ {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {n : Nat} {S T : Ty 
   iterate 11 refine isSome_orElse_right ?_
   exact h
 
-/-- More fuel never loses an answer (F1.5). -/
+/-- More fuel never loses an answer. -/
 theorem sub?_le {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} : ∀ {n n' : Nat}, n ≤ n' →
     ∀ {S T : Ty s}, (sub? D n S T).isSome → (sub? D n' S T).isSome := by
   intro n n'
@@ -693,17 +695,17 @@ theorem sub?_le {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} : ∀ {n n' : Nat}, n 
           subst hn
           exact hs
 
-/-! ## The probes of F1.6
+/-! ## The probes
 
 Four probes of `sub?` and two of `views`, each naming the chain of
 `lean/Coercions/DotMNF/Examples.lean` it reproduces.  None of them is a
-`decide` or a `rfl`: `sub?` is well-founded and does not reduce in the kernel
-(F1.7), so every probe runs compiled code through `expect`, where a false
+`decide` or a `rfl`: `sub?` is well-founded and does not reduce in the
+kernel, so every probe runs compiled code through `expect`, where a false
 result throws and fails the build.
 
 The budget of each probe is the smallest at which it passes, measured, not
-guessed.  The stage report carries the table and the timings.  The measurement
-also says what the nominal defaults of `Budget` cost: building `decls {} E4Ctx4`
+guessed.  The measurement also says what the nominal defaults of `Budget`
+cost: building `decls {} E4Ctx4`
 at `sub := 6` takes about 3.7 seconds on this machine, against 0.44 milliseconds
 at `sub := 2`, so a caller that does not need the deeper search should pass a
 small budget rather than the default. -/

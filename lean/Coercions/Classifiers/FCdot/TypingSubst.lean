@@ -641,9 +641,9 @@ theorem CapWitnesses.underRoot_subst (W : CapWitnesses (s1,x)) (σ : Subst s1 s2
     ← Subst.compRen_lift, Subst.compRename_succ_liftC]
 
 /-- A context with no root binder puts every atom at the outermost level, so
-every level comparison in it holds.  This is `Store.Typed.confined` of B0 read
-as a fact about `Ctx.LvlLe`, and it is what makes the entering substitutions
-of the stage typed. -/
+every level comparison in it holds.  This restates `Store.Typed.confined` as
+a fact about `Ctx.LvlLe`, and it is what makes the entering substitutions
+below typed. -/
 theorem Ctx.lvlLe_of_root?_none {Γ : Ctx s} (h : Γ.root? = none) (e r : CapAtom s) :
     Γ.LvlLe e r := by
   have he : Γ.lvlAtom e = none := by
@@ -1260,7 +1260,7 @@ structure Subst.Typed {s1 s2 : Sig} (Γ : Ctx s1) (σ : Subst s1 s2) (Γ' : Ctx 
   defC : ∀ x l (C : CaptureSet s1), Γ.lookupDefC x l = some C →
       Γ'.lookupDefC (σ.rootVar x) l = some (C.subst σ)
   fields : ∀ x Fs, Γ.lookupFields x = some Fs → Γ'.lookupFields (σ.rootVar x) = some Fs
-  /-- A root goes to a root.  At this stage `Subst.cvar` is still a variable
+  /-- A root goes to a root.  Here `Subst.cvar` is still a variable
       map, so a capture atom travels along `σ.root`. -/
   capRoot : ∀ r, Γ.IsRoot r → Γ'.IsRoot (r.subst σ)
   /-- A level fact survives. -/
@@ -2233,7 +2233,7 @@ end
 
 /-! ## Instantiating a capture binder, and entering a body
 
-The four typed substitutions of B1.5.  `singleC` instantiates an arrow's
+Four typed substitutions.  `singleC` instantiates an arrow's
 capture binder, `arg` is what an application does to a codomain, and `enter`
 and `enterObj` are what a machine step does when it enters a lambda body or
 an object body.  The last two ask that the context bind no root, which is
@@ -2679,7 +2679,7 @@ theorem Subst.Typed.arg {Γ : Ctx s} {T : Dom s} {b : Atom s}
 
 
 set_option maxHeartbeats 2000000 in
-/-- **The hardest lemma of the stage.**  What a step does when it enters a
+/-- What a step does when it enters a
 lambda body: the parameter goes to the argument, the arrow's binder to the
 argument's root, and the body root to the universal root.  The context binds
 no root, which is `Store.Typed.rootFree` at every machine step, so the root
@@ -2969,7 +2969,7 @@ theorem Subst.Typed.enterObjAux {Γ : Ctx s} {T : Ty s} {W : Witnesses (s,x)}
         | here => rfl
         | there κ1 => rfl
 
-/-- **The entering substitution**, at the context of B1.1. -/
+/-- The entering substitution, restated at the body context `Γ.body T`. -/
 theorem Subst.Typed.enter {Γ : Ctx s} {T : Dom s} {b : Atom s}
     (hΓ : Γ.root? = none)
     (hb : Γ ⊢ₐ b : T.subst (Subst.singleC (CapAtom.var b.root))) :
@@ -3133,7 +3133,7 @@ theorem Subst.compRename_succ_succ_instRoot {s : Sig} :
     Shape.subst_ofRename]
   rfl
 
-/-- **T-B2.2, the instance substitution.**  The root atoms of a pack's scope
+/-- The instance substitution.  The root atoms of a pack's scope
 are `⊤ᶜ` and the pack's own root and no others, because `hΓ` excludes a root
 in `Γ` and the witness binder is an instance; both go to `⊤ᶜ`.  The `var`
 field is not vacuous: the scope keeps every term binder of `Γ` two binders
@@ -3339,8 +3339,7 @@ of the machine, so it imports this module in place of `Preservation`. -/
   cases y <;> rfl
 
 /-- The self cast is invisible to the type sort: it changes a term variable
-into a cast around it, and a type reads only the root of that cast.  This is
-the substitution reading of `Subst.selfCast_root` of the vanilla line. -/
+into a cast around it, and a type reads only the root of that cast. -/
 theorem Subst.selfCast_core {s : Sig} (E : LeCo (s,x)) :
     (Subst.selfCast E).core = Subst.ofRename Rename.id := by
   apply Subst.funext'

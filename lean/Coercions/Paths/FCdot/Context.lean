@@ -267,7 +267,7 @@ def lookupValFieldsP (Γ : Ctx s) (p : Path s) : Option (List Label) :=
 
 /-- The block written at `p`: the walk that follows no forwarding.  Its answer
 is never a forwarding node.  A path whose walk meets a forwarding, at its
-binder or at a child, has no node (decision 24). -/
+binder or at a child, has no node. -/
 def nodeBlock (Γ : Ctx s) (p : Path s) : Option (Block s) := Γ.blockPass (fun _ => none) p
 
 /-- The type a root's chain starts at: the binder's declared type at a
@@ -284,8 +284,8 @@ def nodeTy (Γ : Ctx s) : Path s → Ty s
 
 /-! ### The walk, unfolded
 
-The two clauses of the walk that P1.3 writes with a lexicographic measure.
-They hold by `rfl` on the structural definition above. -/
+The two clauses of the walk, written elsewhere with a lexicographic measure
+for termination.  They hold by `rfl` on the structural definition above. -/
 
 @[simp] theorem blockFuel_zero (Γ : Ctx s) (p : Path s) : Γ.blockFuel 0 p = none := rfl
 
@@ -373,7 +373,7 @@ theorem lookupBlock_var_none (Γ : Ctx s) (x : BVar s .var) (h : Γ.blockAt x = 
   show Γ.blockFuel (Γ.fwdCount + 1) (.var x) = _
   rw [blockFuel_var, h]
 
-/-- The one-unfolding lemma of P1.9.  At a binder whose block is not a
+/-- The one-unfolding lemma: at a binder whose block is not a
 forwarding node, the path lookup is the base's binder lookup. -/
 theorem lookupDefP_var (Γ : Ctx s) (x : BVar s .var) (ℓ : Label)
     (h : ∀ q, Γ.blockAt x ≠ some (.fwd q)) :
@@ -469,7 +469,7 @@ theorem blockFuel_mono (Γ : Ctx s) {m n : Nat} (hmn : m ≤ n) {p : Path s} {B 
 
 /-! ### The budget suffices
 
-The pigeonhole P1.3 promises.  The walk spends one unit of fuel exactly when
+A pigeonhole argument.  The walk spends one unit of fuel exactly when
 it follows a forwarding node, and the target of that node is one of the paths
 the context names.  If the walk answers at fuel `n+1` and not at fuel `n`,
 then one of those targets answers at `n` and not at `n-1`: the walk of a
@@ -658,8 +658,8 @@ theorem exists_gap (Γ : Ctx s) : ∀ (n k : Nat) (p : Path s) (B : Block s),
           exact ⟨m, by omega, hm0, hm1⟩
 
 /-- **The budget suffices.**  A block the walk finds at any fuel is the block
-`Ctx.lookupBlock` finds.  This is the pigeonhole of P1.3, and it is what a
-context map into a context with a smaller budget needs. -/
+`Ctx.lookupBlock` finds.  This is the pigeonhole argument above, and it is
+what a context map into a context with a smaller budget needs. -/
 theorem blockFuel_budget (Γ : Ctx s) {n : Nat} {p : Path s} {B : Block s}
     (h : Γ.blockFuel n p = some B) : Γ.lookupBlock p = some B := by
   show Γ.blockFuel Γ.aliasBudget p = some B
@@ -790,7 +790,7 @@ theorem lookupDefP_weaken (Γ : Ctx s) (b : Binding s) {p : Path s} {l : Label} 
   Ctx.lookupDefP_rename (Γ' := Γ.cons b) (ρ := Rename.succ)
     (fun x B' hB' => by rw [Rename.succ_var, Ctx.blockAt_there, hB']; rfl) h
 
-/-- L1 of P1.4.  A name whose lookup follows a forwarding has the same
+/-- A name whose lookup follows a forwarding has the same
 definition as the name it forwards to.  This is what makes every alias
 equality an instance of `EqCo.def`. -/
 theorem lookupDefP_fwd (Γ : Ctx s) {p q : Path s} (h : Γ.lookupBlock p = Γ.lookupBlock q) :
@@ -810,8 +810,9 @@ theorem fwdAt_not_transparent (Γ : Ctx s) (q : Path s) :
 `Ctx.follow` is the last step of the walk: an object node is the answer, and a
 forwarding node hands the walk on to its target.  With it the walk has two
 equations, one at a binder and one at a field step, and both hold at the
-budget.  The field-step equation is what an alias under one field step reads
-(T2 of P1.8) and what a context map over a forwarding binder reads. -/
+budget.  The field-step equation is what an alias under one field step
+reads, in the proof of block identity, and what a context map over a
+forwarding binder reads. -/
 
 /-- The answer the walk gives once it stands on a node. -/
 def follow (Γ : Ctx s) : Block s → Option (Block s)
@@ -856,7 +857,7 @@ theorem lookupBlock_var_eq (Γ : Ctx s) (x : BVar s .var) :
           exact Γ.target_blockFuel (Γ.blockAt_targets x _ hx r (by simp [Block.targets]))
 
 /-- The walk at a field step: walk the prefix, read the child, then follow
-it.  This is the `sel` case of T2. -/
+it.  This is the `sel` case of block identity. -/
 theorem lookupBlock_sel (Γ : Ctx s) (p : Path s) (a : Label) :
     Γ.lookupBlock (.sel p a) =
       ((Γ.lookupBlock p).bind (fun B => B.childAt? a)).bind Γ.follow := by

@@ -17,8 +17,8 @@ is the runtime's `unbox` at the same variable, exactly as in the target
 (`FCdot.Value.erase`, `FCdot.Tm.erase`), so that the translation's erasure
 equation `⌊⟦h⟧⌋ = ⌊t⌋` is again an identity.
 
-The two theorems of milestone M2 are `DotMNF.erase_step` and
-`DotMNF.erase_reflect`: the machine of §3.5 and the runtime machine of §4
+The two main theorems are `DotMNF.erase_step` and
+`DotMNF.erase_reflect`: the source machine and the runtime machine
 are in lockstep, in both directions, with no administrative equivalence and
 no side condition.  A box is no longer confusable with an object literal
 after erasure, so `erase_reflect` carries no obligation about the state it
@@ -191,8 +191,8 @@ theorem Cont.erase_weakenC {s : Sig} (K : Cont s) :
 
 /-! ## Erasure commutes with substitution
 
-`Tm.erase_subst` is the source's copy of the target's `FCdot.Tm.erase_subst`
-(B1.6): a substitution's capture component has no runtime content, so what
+`Tm.erase_subst` is the source's copy of the target's `FCdot.Tm.erase_subst`:
+a substitution's capture component has no runtime content, so what
 survives erasure is its term component alone, which is a `Runtime.VRen`. -/
 
 @[simp] theorem Subst.lift_var {s1 s2 : Sig} (σ : Subst s1 s2) :

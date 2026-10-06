@@ -109,10 +109,10 @@ inductive Store.Typed : Store s → Ctx s → Prop where
       (hb : b.isRoot = false) :
       ⊢ .consC σ b : .consC Γ b
 
-/-- **T-B0.7.**  A store context has no scope root: a store binds
-capabilities, never scopes.  This is O9's reserved slot, used for the first
-time by the premise of `Store.Typed.consC`.  It lives beside the judgement it
-inducts on, because the four entering steps of the machine consume it. -/
+/-- A store context has no scope root: a store binds capabilities, never
+scopes.  This is used for the first time by the premise of
+`Store.Typed.consC`.  It lives beside the judgement it inducts on, because
+the four entering steps of the machine consume it. -/
 theorem Store.Typed.rootFree (hσ : ⊢ σ : Γ) : Γ.root? = none := by
   induction hσ with
   | nil => rfl

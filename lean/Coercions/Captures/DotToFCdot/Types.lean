@@ -4,7 +4,7 @@ import Coercions.Captures.FCdot.Context
 namespace Captures
 
 /-!
-# Translation of types (Plan III §8.1, M3; stage A3a)
+# Translation of types
 
 Types translate homomorphically.  Declaration-shaped shapes become object
 types over a fresh self block: a type member `{A : S..T}` is the pair of
@@ -18,7 +18,7 @@ included, is `μ (tel S)`.
 
 Everything else, that is `⊥`, a type selection, a function shape, a box, and
 a `μ` whose body is not declaration-shaped, is read as the *single self-bound
-proposition* `[⊑ ⟦B⟧]` (plan §13 item 9), so that `tel` is total and an
+proposition* `[⊑ ⟦B⟧]`, so that `tel` is total and an
 intersection may have arbitrary operands.  `Shape.isObj` is the shape test
 that separates the two: `⟦S⟧ = μ (tel S)` when it holds, and
 `tel S = [⊑ ⟦S⟧↑]` when it does not.  A bound proposition never mentions the
@@ -52,16 +52,15 @@ def Witnesses.length : Witnesses s → Nat
 
 /-- Length of a capture-witness list: the number of capture-definition
 entries the literal's precise telescope carries between its type block and
-its presence block (stage A1). -/
+its presence block. -/
 def CapWitnesses.length : CapWitnesses s → Nat
   | .nil => 0
   | .cons W _ _ => W.length + 1
 
 /-- Concatenation of capture witnesses (second appended after the first),
-the twin of `Witnesses.append`.  Stage A3a: a declaration shape now has
-capture witnesses of its own, one per field and one per capture member, so
-they are collected by the same structural recursion as the type
-witnesses. -/
+the twin of `Witnesses.append`.  A declaration shape has capture witnesses
+of its own, one per field and one per capture member, and they are
+collected by the same structural recursion as the type witnesses. -/
 def CapWitnesses.append : CapWitnesses s → CapWitnesses s → CapWitnesses s
   | W, .nil => W
   | W, .cons W' ℓ C => .cons (W.append W') ℓ C
@@ -96,7 +95,7 @@ open FCdot (Kind Sig BVar Rename Label)
 A source capture atom is a term binder, a capture binder, the capture member
 of a term binder, or `any`; the target has the first three atoms, with `name`
 for what the source calls `sel`, and no atom for `any`.  So `⟦C⟧` maps `C`
-atom by atom and drops every `any` (stage A3b).  An unexpanded `any` is thus
+atom by atom and drops every `any`.  An unexpanded `any` is thus
 read by the target as nothing at all, which is sound because the source
 gives it no power: no rule mentions it.  The reading a program intends is
 the one `CaptureSet.expand` puts in place before typing. -/
@@ -129,7 +128,7 @@ def CaptureSet.translate (C : CaptureSet s) : FCdot.CaptureSet s :=
 @[simp] theorem CaptureSet.translate_cons_any {s : Sig} (C : CaptureSet s) :
     CaptureSet.translate (CapAtom.any :: C) = C.translate := rfl
 
-/-- The A3a `translate_cons`, at an atom that has a target atom: the head is
+/-- `translate_cons`, at an atom that has a target atom: the head is
 translated and the tail follows. -/
 theorem CaptureSet.translate_cons {s : Sig} {a : CapAtom s} {b : FCdot.CapAtom s}
     (h : a.translate? = some b) (C : CaptureSet s) :
@@ -252,7 +251,7 @@ def Shape.tel : Shape s → FCdot.Telescope (s,x)
 
 /-- A shape over `(s,x)` whose self is the innermost binder, as propositions
 about that binder.  The capture sets of a field and of a capture member are
-already under the self here, so they are not weakened (plan-5a (c-1)).  The
+already under the self here, so they are not weakened.  The
 self-bound of a non-object shape is *not* weakened either and may therefore
 mention the self; `Wf.mu` keeps such bodies out of well-formed types, but the
 function is total. -/
@@ -355,8 +354,7 @@ def Shape.witnesses : Shape (s,x) → FCdot.Witnesses (s,x)
 /-- The capture witnesses of a literal, read off its declaration shape: the
 *declared capture set* of each field and the *definition* of each capture
 member.  This is the single place a translated literal's capture
-declarations come from (stage A3a; stage A2 had one empty witness per field
-label).  The order is the structural one, the left conjunct of an
+declarations come from.  The order is the structural one, the left conjunct of an
 intersection at the lower positions, as `Shape.witnesses` already is. -/
 def Shape.capWitnesses : Shape (s,x) → FCdot.CapWitnesses (s,x)
   | .fld a (.capt C _) => .cons .nil a C.translate

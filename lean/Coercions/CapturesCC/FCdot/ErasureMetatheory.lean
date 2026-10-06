@@ -446,9 +446,8 @@ theorem Value.erase_eq_lam {s : Sig} :
   | .pack _ _ _ _, _, _, hnp, _ => absurd rfl (hnp _ _ _ _)
   | .cast _ _, _, hlit, _, _ => hlit.elim
 
-/-- A literal whose erasure is a runtime object is an object.  A box now
-erases to the runtime's box, not to an object, so the box disjunct stage A2
-carried here is gone. -/
+/-- A literal whose erasure is a runtime object is an object.  A box erases
+to the runtime's box, not to an object, so no box case is needed here. -/
 theorem Value.erase_eq_obj {s : Sig} :
     ∀ (v : Value s) (F' : Runtime.Fields ((s,c),x)), v.IsLiteral →
       (∀ C h₀ e v₀, v ≠ .pack C h₀ e v₀) → v.erase = .obj F' →
@@ -777,8 +776,8 @@ theorem castRedex_normalize_inv {s : Sig} (st : State s) (Γ : Ctx s)
 /-! ### Carrying the frame's answer through cast-frame normalization
 
 `State.CastInv` says what the vanilla line needed: at a `let` frame the
-focus is a value or an atom, and both steps fire.  The two frames of this
-stage read more.  An unpacking frame steps only at a packed focus, a `let`
+focus is a value or an atom, and both steps fire.  The two frames here read
+more.  An unpacking frame steps only at a packed focus, a `let`
 frame only at a plain one, and the erasure tells the two apart nowhere,
 since a pack erases to what it wraps.  So the backward simulation needs the
 focus to match the frame, and what says so is the continuation's typing,

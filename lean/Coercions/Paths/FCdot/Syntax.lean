@@ -562,13 +562,13 @@ inductive PathCo : Sig → Type where
   /-- The node of the forest at `p`, at the precise type of the literal whose
       block the table wrote there: its witnesses with the self still bound,
       its field labels and its stable field labels.  The typing rule reads the
-      walk that follows no forwarding (decision 24). -/
+      walk that follows no forwarding. -/
   | node : Path s → Witnesses (s,x) → List Label → List Label → PathCo s
 
 /-- Block identity evidence: `p ≈ q` says that the two paths name one block
 of the forest.  A view carries the alias of a `≈` proposition, and the rest
 are the laws of an equality.  No evidence reads a forwarding node of the
-table: a forwarding serves resolution only (decision 24). -/
+table: a forwarding serves resolution only. -/
 inductive AliasCo : Sig → Type where
   | refl : Path s → AliasCo s
   | symm : AliasCo s → AliasCo s
@@ -910,8 +910,8 @@ theorem Value.isObjLit_of_isStableLit : ∀ {v : Value s}, v.isStableLit = true 
       exact Value.isObjLit_of_isStableLit (v := v) h.1
   | .lam _ _, h => by simp [Value.isStableLit] at h
 
-/-- A term body is stable when it is an object literal under casts
-(decision 24).  A stable body is what a `∋ᵛ` proposition promises, and it is
+/-- A term body is stable when it is an object literal under casts.  A
+stable body is what a `∋ᵛ` proposition promises, and it is
 what gets an object child in the block forest.  A field whose body is an atom
 or a lambda is a plain field. -/
 def Tm.isStable : Tm s → Bool
@@ -923,8 +923,8 @@ def Tm.isStable : Tm s → Bool
   | .let _ _ => false
 
 /-- Labels of the fields whose body is stable.  A literal may list one label
-twice, and then the last field at the label decides, as `Fields.get?` reads it
-(decision 25).  So a later field that is not stable removes the label. -/
+twice, and then the last field at the label decides, as `Fields.get?` reads
+it.  So a later field that is not stable removes the label. -/
 def Fields.valLabels : Fields s → List Label
   | .nil => []
   | .cons F ℓ t => if t.isStable then ℓ :: F.valLabels else F.valLabels.filter (· ≠ ℓ)
@@ -1041,8 +1041,8 @@ def Value.blockSelf : Value s → Block (s,x)
 
 /-- The children a field list contributes to the block at `p`: one per field
 whose body gives a child.  The last field at a label decides, as
-`Fields.get?` reads it (decision 25): a later field that gives no child
-removes the earlier entries at its label. -/
+`Fields.get?` reads it: a later field that gives no child removes the
+earlier entries at its label. -/
 def Fields.children : Fields s → Path s → Children s
   | .nil, _ => .nil
   | .cons F ℓ t, p =>
@@ -1052,8 +1052,7 @@ def Fields.children : Fields s → Path s → Children s
 
 /-- The child a field body contributes at the child's own path: an object
 literal gives its own block, an atom gives a forwarding to the atom's path,
-for resolution only, and anything else, a lambda included, gives no child
-(decision 24). -/
+for resolution only, and anything else, a lambda included, gives no child. -/
 def Tm.childAt : Tm s → Path s → Option (Block s)
   | .val v, p => if v.isStableLit then some (v.blockSelf.substPath p) else none
   | .atom a, _ => some (.fwd (.var a.root))
@@ -1069,9 +1068,9 @@ def Value.blocksAt (v : Value s) (p : Path s) : Block s := v.blockSelf.substPath
 /-! ### A stable field label is an object child
 
 `Fields.valLabels` and `Fields.children` are two readings of one list, and
-both read the last field at each label, as `Fields.get?` does (decision 25).
-After decision 24 a field whose body is an atom still gives a child, a
-forwarding for resolution only, and no stable label.  So a stable label is
+both read the last field at each label, as `Fields.get?` does.  A field
+whose body is an atom still gives a child, a forwarding for resolution
+only, but no stable label.  So a stable label is
 exactly a label whose child at the walk is an object node, with no hypothesis
 on the literal.  This is the coherence the `∋ᵛ` propositions of a literal's
 telescope rest on. -/
@@ -1356,9 +1355,9 @@ A path substitution on evidence sends each variable to a `PathCo`.  Types see
 the paths the `PathCo`s name, through `PSub.paths`.  An atom becomes the
 `PathCo` of its root under the same wrappers, so elimination at an atom
 becomes elimination at a path: `member` goes to `memberP`, and `def` to
-`defP`.  It maps evidence to evidence and never touches a term or a value
-(Fact 1).  This is what closes the coercion of a field of a nested literal
-over the store (decision 24, P1.5). -/
+`defP`.  It maps evidence to evidence and never touches a term or a value.
+This is what closes the coercion of a field of a nested literal over the
+store. -/
 
 /-- A path substitution on evidence: one `PathCo` per term variable. -/
 structure PSub (s1 s2 : Sig) where

@@ -7,8 +7,8 @@ namespace Classifiers
 # FCdot syntax
 
 Types mention binder blocks `x.ℓ` and nothing else about terms.  A type is a
-*shape* with a *capture set* beside it, `S ^ C`; shapes are what the vanilla
-line called types, plus the inert box former `□ T`.  Object shapes are
+*shape* with a *capture set* beside it, `S ^ C`; a shape is a type without
+its capture set, plus the inert box former `□ T`.  Object shapes are
 telescopes of propositions over a self block.  Evidence is a proof-term
 language whose endpoints are assigned by typing: `ShapeCo` between shapes,
 `CapCo` between capture sets, and `LeCo` the pair of the two.  Terms are in
@@ -143,7 +143,7 @@ def CaptureSet.proj (C : CaptureSet s) (φ : Cls.Kind) : CaptureSet s :=
 
 mutual
 
-/-- Shapes: what the vanilla line called types, plus the box former. -/
+/-- Shapes: a type without its capture set, plus the box former. -/
 inductive Shape : Sig → Type where
   | bot : Shape s
   /-- The `ℓ`-name of the block of term binder `x`. -/
@@ -246,8 +246,7 @@ character, but it is a legal token of a notation.) -/
 scoped notation:max "∃ᶜ[" C "] " T:max => ETy.ex C T
 
 /-- The shape of a type: a type is a shape with a capture set beside it, and
-this is the shape.  The vanilla line's `Ty` is exactly this shape; a
-statement that read a vanilla type reads this projection. -/
+this is the shape. -/
 def Ty.shape : Ty s → Shape s
   | .capt _ S => S
 
@@ -520,8 +519,8 @@ inductive CapEq : Sig → Type where
   | refl : CaptureSet s → CapEq s
   | symm : CapEq s → CapEq s
   | trans : CapEq s → CapEq s → CapEq s
-  /-- Definition of a transparent binder's capture name.  (`defᶜ` of the
-      plan: `ᶜ` is not a legal Lean identifier character.) -/
+  /-- Definition of a transparent binder's capture name.  (`ᶜ` is not a
+      legal Lean identifier character, so the name is `defC`.) -/
   | defC : BVar s .var → Label → CapEq s
   /-- An instance binder stands for the capture set it was opened at.  Its
       left side is an atom and not a capture variable, for the reason
@@ -532,8 +531,7 @@ inductive CapEq : Sig → Type where
   | member : Atom s → ShapeCo s → Nat → CapEq s
 
 /-- One step of a capture-template side: closed capture evidence, weakened
-under the self, or a syntactic inclusion of sets that may mention the self
-(plan-5a (c-2′)). -/
+under the self, or a syntactic inclusion of sets that may mention the self. -/
 inductive CapStep : Sig → Type where
   | closed : CapCo s → CapStep s
   | incl : CaptureSet (s,x) → CaptureSet (s,x) → CapStep s
@@ -781,7 +779,7 @@ end
 /-! ## Terms and values -/
 
 /-- Capture witnesses of an object literal: one capture set per label.  An
-absent label reads as the empty set.  (`Wᶜ` of the plan.) -/
+absent label reads as the empty set. -/
 inductive CapWitnesses : Sig → Type where
   | nil : CapWitnesses s
   | cons : CapWitnesses s → Label → CaptureSet s → CapWitnesses s
@@ -1095,9 +1093,9 @@ structure Subst (s1 s2 : Sig) where
 
 namespace Subst
 
-/-- The map on root variables induced by a substitution.  It replaces the
-`Subst.root` renaming of the vanilla line: a substitution is no longer kind
-preserving, so only its term component is a map of variables. -/
+/-- The map on root variables induced by a substitution.  A substitution is
+not kind preserving, so only its term component is a map of variables, and
+this is how a root is read off that component. -/
 def rootVar (σ : Subst s1 s2) (x : BVar s1 .var) : BVar s2 .var := (σ.var x).root
 
 def lift (σ : Subst s1 s2) : Subst (s1,x) (s2,x) where
@@ -1107,9 +1105,8 @@ def lift (σ : Subst s1 s2) : Subst (s1,x) (s2,x) where
   cvar := fun
     | .there κ => (σ.cvar κ).rename Rename.succ
 
-/-- Pass under a capture binder.  (`liftᶜ` of the plan: `ᶜ` is not a legal
-Lean identifier character, so the capture-sort twin of a name carries the
-suffix `C`.) -/
+/-- Pass under a capture binder.  (`ᶜ` is not a legal Lean identifier
+character, so the capture-sort twin of a name carries the suffix `C`.) -/
 def liftC (σ : Subst s1 s2) : Subst (s1,c) (s2,c) where
   var := fun
     | .there x => (σ.var x).weaken

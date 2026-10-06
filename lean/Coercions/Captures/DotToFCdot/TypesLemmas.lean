@@ -4,13 +4,13 @@ import Coercions.Captures.FCdot.RenameLemmas
 namespace Captures
 
 /-!
-# Renaming for the type translation (Plan III §8.1, M3)
+# Renaming for the type translation
 
 The type translation `Shape.translate`/`Shape.tel`/`Shape.telSelf`
 (`DotToFCdot/Types.lean`) is a mutual recursion mirroring the shape of
 `Shape`.  This file proves it commutes with renaming, mirroring
 `Coercions.FCdot.RenameLemmas`, and derives the context-lookup facts the
-typedness proofs (M3 second half) need.
+typedness proofs need.
 -/
 
 namespace FCdot

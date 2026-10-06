@@ -3,8 +3,8 @@ import Coercions.FCdot.Debruijn
 /-!
 # The surface syntax of the vanilla front end
 
-Stage F0.1 of `plan-5e-frontend-stages.md`.  The elaborator of `Notation.lean`
-produces a value of one of the three first-order, unindexed inductives below
+The elaborator of `Notation.lean` produces a value of one of the three
+first-order, unindexed inductives below
 and nothing else.  Every `Sig`-indexed construction happens afterwards, in the
 ordinary Lean functions of `Resolve.lean`.  Interposing this surface term is
 what buys resolution, let-insertion and typing as ordinary functions with
@@ -18,15 +18,16 @@ type label and anything else a term label, which is the paper's own convention
 (`lean/Coercions/paper/sections/source.tex`).
 
 `Scoped` and `LabelsIn` are the two decidable side conditions under which
-resolution is total, which is the totality theorem of F0.6 proved in
-`Resolve.lean`.  Both are `Bool` valued, so they are decidable by construction
-and need no instance.
+resolution is total, which is the totality theorem proved in `Resolve.lean`.
+Both are `Bool` valued, so they are decidable by construction and need no
+instance.
 
 Every mutual block here carries `termination_by structural`.  Lean infers
-structural recursion for all three without it, which was measured, but F1.7
-turns on these functions reducing in the kernel, so the annotation is written
-out: a later edit that would make Lean fall back to well founded recursion
-fails the build instead of silently costing `by decide` and `by rfl`.
+structural recursion for all three without it, which was measured, but later
+tests rely on these functions reducing in the kernel, so the annotation is
+written out: a later edit that would make Lean fall back to well founded
+recursion fails the build instead of silently costing `by decide` and `by
+rfl`.
 
 Nothing in this module is part of the metatheory.  No definition here lives in
 the `DotMNF` or `FCdot` namespaces.
@@ -77,7 +78,7 @@ inductive STm : Type where
   /-- `t.a`, direct style. -/
   | proj (t : STm) (a : String)
   /-- `let x = t in u`, with an optional result type.  The annotation is the
-  first rung of the avoidance ladder of F1.4. -/
+  first rung of the typer's avoidance ladder. -/
   | «let» (x : String) (ann : Option SType) (t u : STm)
 /-- Surface definition members. -/
 inductive SDefs : Type where
@@ -188,7 +189,8 @@ def labelsOfProgram (e : STm) : LabelTable :=
 /-! ## Scoping
 
 `Scoped Γ` holds when every free name of the phrase is in `Γ`.  Innermost
-binder first, matching the `NameEnv` of F0.5.  The self binder of `ν(x : T. d)`
+binder first, matching the `NameEnv` used in `Resolve.lean`.  The self binder
+of `ν(x : T. d)`
 scopes over its own annotation, as `Defs (s,x)` requires
 (`lean/Coercions/DotMNF/Syntax.lean`).  The binder of a `let` does not scope
 over the `let`'s annotation, matching the `U.weaken` of the rule
@@ -266,13 +268,14 @@ def SDefs.LabelsIn (Λ : LabelTable) (d : SDefs) : Bool :=
 termination_by structural d
 end
 
-/-! ## The test helper of F1.7
+/-! ## The test helper
 
-The search of F1 is defined by well founded recursion, so it does not reduce in
-the kernel and `by decide` is unavailable on it.  Tests that touch it run
-compiled code through `#eval expect ...` instead, where a false result throws
-and so fails the build.  The tests of F0 are the opposite case: resolution is
-structural and reduces, so those stay `by rfl` and `by decide`. -/
+The subtyping search is defined by well founded recursion, so it does not
+reduce in the kernel and `by decide` is unavailable on it.  Tests that touch
+it run compiled code through `#eval expect ...` instead, where a false
+result throws and so fails the build.  The tests of this module are the
+opposite case: resolution is structural and reduces, so those stay `by rfl`
+and `by decide`. -/
 
 /-- Fail the build, from `#eval`, when a check comes out false. -/
 def expect (b : Bool) (msg : String) : IO Unit :=

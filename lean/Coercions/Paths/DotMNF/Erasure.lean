@@ -11,9 +11,9 @@ variables, object literals keep their term members only, and the store and
 the continuation are erased pointwise.  Erasure is the identity on
 signatures.
 
-The two theorems of milestone M2 are `DotMNF.erase_step` and
-`DotMNF.erase_reflect`: the machine of §3.5 and the runtime machine of §4
-are in lockstep, in both directions, with no administrative equivalence.
+The two main theorems are `DotMNF.erase_step` and `DotMNF.erase_reflect`:
+the source machine and the runtime machine are in lockstep, in both
+directions, with no administrative equivalence.
 -/
 
 namespace DotMNF

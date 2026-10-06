@@ -6,7 +6,7 @@ import Coercions.Paths.DotMNF.Erasure
 namespace Paths
 
 /-!
-# Erasure of the term translation (Plan III §8.2, M4)
+# Erasure of the term translation
 
 `HasTy.translate` erases (into the shared runtime) to the same term as the
 source DOT-MNF typing derivation: types, evidence, and cast frames vanish
@@ -15,7 +15,7 @@ paths reduced to their root variable, which is what `DotMNF.Tm.erase`
 produces directly.  The two typing derivations of the same term therefore
 translate to observationally identical target terms (`coherence`).
 
-P2 adds three cases.  `HasTy.sngl` gives the variable's atom, which erases
+The path extension adds three cases.  `HasTy.sngl` gives the variable's atom, which erases
 to its root.  `HasTy.projP` projects out of `Γ.varAtom x`, which erases to
 `x`.  A `trmObj` field is the inner literal under two casts, which erase.
 `DefsTy.translateFields_erase` takes the self binder, the self's type and the

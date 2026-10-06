@@ -9,19 +9,19 @@ WadlerFest DOT in monadic normal form, with capture sets.  `let` right-hand
 sides are arbitrary terms, application and selection take variables.  The
 scoping discipline is the one of `FCdot.Debruijn`, reused verbatim:
 signatures, bound variables, renamings, and the label type are shared with
-the target so that the translation of Plan III §8 is the identity on
-signatures.
+the target, so the translation to FCdot is the identity on signatures.
 
-Stage A3a splits what the vanilla line called a type, exactly as stage A0
-did for the target: a *shape* is the vanilla type former, and a *type* is a
-shape with a capture set beside it, written `S ^ C`.  Shapes gain a capture
+What the type-free DOT development calls a type splits here into two
+layers: a *shape* is the plain type former, and a *type* is a shape
+together with a capture set, written `S ^ C`.  Shapes gain a capture
 member `{C : c₁..c₂}` and the box former `□ T`; terms gain the unboxing
 `C ⊸ x` and values the box `□ x`.  Type-member bounds are shapes, so a
 capturing type enters a type member through a box.
 
-`Path` is an inductive with a single constructor.  Every judgment that
-mentions a receiver takes a `Path`, so that pDOT (§9) can add `sel` without
-restructuring anything here.
+`Path` is an inductive with a single constructor, a variable. Every
+judgment that mentions a receiver takes a `Path` rather than a bare
+variable, so that a future extension to pDOT paths can add field selection
+(`sel`) without restructuring anything here.
 -/
 
 namespace DotMNF
@@ -54,7 +54,7 @@ def Path.substVar (p : Path (s,,k)) (y : BVar s k) : Path s := p.rename (Rename.
 /-! ## Capture sets
 
 A capture atom is a term binder `{x}`, a capture binder `{κ}`, the capture
-member `C` of a term binder, `{x.C}`, or the inert `any` of stage A3b.  A
+member `C` of a term binder, `{x.C}`, or the inert placeholder `any`.  A
 capture set is a list of atoms, read as the finite set of its members.  This mirrors the target's
 `FCdot.CapAtom` and `FCdot.CaptureSet`, with `sel` for what the target calls
 `name`. -/
@@ -66,10 +66,11 @@ inductive CapAtom : Sig → Type where
   | cvar : BVar s .cap → CapAtom s
   /-- `{x.C}`, the capture member `C` of the object `x`. -/
   | sel : BVar s .var → Label → CapAtom s
-  /-- `any`, the notation read by position (stage A3b).  It is inert: no
-      rule of `Subcap`, `SubShape`, `Sub`, `HasTy` or `DefsTy` mentions it,
-      `elem` compares it syntactically like any other atom, and renaming
-      maps it to itself.  `CaptureSet.expand` is what gives it a reading. -/
+  /-- `any`, a placeholder atom whose reading depends on where it occurs.
+      It is inert: no rule of `Subcap`, `SubShape`, `Sub`, `HasTy` or
+      `DefsTy` mentions it, `elem` compares it syntactically like any
+      other atom, and renaming maps it to itself.  `CaptureSet.expand` is
+      what gives it a reading. -/
   | any : CapAtom s
 deriving DecidableEq, Repr
 
@@ -200,7 +201,7 @@ capture-member upper bound of an object reads it as the object's set with
 the self, and the top of a program reads it as the platform set.  Each
 former resets the reading for what is under it, so nested occurrences are
 read by their own enclosing former and no level is needed.  An expanded set
-holds no `any`, so an expanded program is a program of stage A3a. -/
+holds no `any`, so an expanded program holds no `any` either. -/
 
 /-- `C.expand D`: every `any` of `C` replaced by the atoms of `D`. -/
 def CaptureSet.expand : CaptureSet s → CaptureSet s → CaptureSet s
@@ -253,8 +254,7 @@ theorem CaptureSet.expand_rename {s1 s2 : Sig} (C D : CaptureSet s1) (ρ : Renam
 /-! ### No `any` at all
 
 `noAny` is the decision procedure and `NoAny` the proposition it decides.  A
-set, a shape or a type with no `any` is one of stage A3a, and expansion is
-the identity on it. -/
+set, a shape or a type with no `any` is left unchanged by expansion. -/
 
 /-- No `any` occurs in the set. -/
 def CaptureSet.noAny : CaptureSet s → Bool
@@ -488,24 +488,24 @@ def Ty.expand : Ty s → CaptureSet s → Ty s
 
 end
 
-/-- The body of a `μ`, whose reading set is already under the self: the
-plan's `expandSelf`, which is `expand` at the self's signature. -/
+/-- Expansion for the body of a `μ`, whose reading set is already under
+the self: `expand` at the self's signature. -/
 def Shape.expandSelf (S : Shape (s,x)) (D : CaptureSet (s,x)) : Shape (s,x) := S.expand D
 
 @[simp] theorem Shape.expandSelf_eq {s : Sig} (S : Shape (s,x)) (D : CaptureSet (s,x)) :
     S.expandSelf D = S.expand D := rfl
 
-/-- The `μ` clause in the plan's words: the body is expanded by the object's
-own set, weakened, with the self. -/
+/-- Expanding a recursive shape `μ S`: the body is expanded by the object's
+own set, weakened, with the self added. -/
 theorem Shape.expand_mu {s : Sig} (S : Shape (s,x)) (D₀ : CaptureSet s) :
     (Shape.mu S).expand D₀
       = .mu (S.expandSelf (CaptureSet.weaken D₀ ∪ [CapAtom.var .here])) := rfl
 
 /-! ## No `any`, and `any` only where it is read
 
-`NoAny` says a shape or a type holds no `any` at all, so that it is a shape
-or a type of stage A3a.  `AnyOk` says every `any` it holds is in a position
-`expand` gives a reading to.  Both are decided. -/
+`NoAny` says a shape or a type holds no `any` at all.  `AnyOk` says every
+`any` it holds is in a position `expand` gives a reading to.  Both are
+decided. -/
 
 mutual
 
@@ -970,8 +970,8 @@ instance Shape.Decl.instDecidable {s : Sig} (S : Shape s) : Decidable (Shape.Dec
 
 /-! Well-formedness.  Structural, except that the body of a recursive shape
 is restricted to declaration shapes.  Intersections are unrestricted: a
-non-declaration operand translates to a self-bound proposition (plan §13
-item 9).  Bounds are arbitrary: `Wf {A : S..T}` does not ask for `S <: T`.
+non-declaration operand translates to a self-bound proposition.
+Bounds are arbitrary: `Wf {A : S..T}` does not ask for `S <: T`.
 A capture member is well formed outright, its parts being capture sets, and
 a box is well formed when the type inside it is. -/
 mutual

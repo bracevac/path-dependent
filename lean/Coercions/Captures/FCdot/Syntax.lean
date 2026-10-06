@@ -357,14 +357,15 @@ inductive CapEq : Sig → Type where
   | refl : CaptureSet s → CapEq s
   | symm : CapEq s → CapEq s
   | trans : CapEq s → CapEq s → CapEq s
-  /-- Definition of a transparent binder's capture name.  (`defᶜ` of the
-      plan: `ᶜ` is not a legal Lean identifier character.) -/
+  /-- Definition of a transparent binder's capture name.  (`ᶜ` is not a
+      legal Lean identifier character, so the name carries the suffix
+      `C` instead.) -/
   | defC : BVar s .var → Label → CapEq s
   | member : Atom s → ShapeCo s → Nat → CapEq s
 
 /-- One step of a capture-template side: closed capture evidence, weakened
-under the self, or a syntactic inclusion of sets that may mention the self
-(plan-5a (c-2′)). -/
+under the self, or a syntactic inclusion of sets that may mention the
+self. -/
 inductive CapStep : Sig → Type where
   | closed : CapCo s → CapStep s
   | incl : CaptureSet (s,x) → CaptureSet (s,x) → CapStep s
@@ -535,7 +536,7 @@ end
 /-! ## Terms and values -/
 
 /-- Capture witnesses of an object literal: one capture set per label.  An
-absent label reads as the empty set.  (`Wᶜ` of the plan.) -/
+absent label reads as the empty set. -/
 inductive CapWitnesses : Sig → Type where
   | nil : CapWitnesses s
   | cons : CapWitnesses s → Label → CaptureSet s → CapWitnesses s
@@ -827,9 +828,9 @@ def lift (σ : Subst s1 s2) : Subst (s1,x) (s2,x) where
   cvar := fun
     | .there x => .there (σ.cvar x)
 
-/-- Pass under a capture binder.  (`liftᶜ` of the plan: `ᶜ` is not a legal
-Lean identifier character, so the capture-sort twin of a name carries the
-suffix `C`.) -/
+/-- Pass under a capture binder.  (`ᶜ` is not a legal Lean identifier
+character, so the capture-sort twin of a name carries the suffix `C`
+instead.) -/
 def liftC (σ : Subst s1 s2) : Subst (s1,c) (s2,c) where
   var := fun
     | .there x => (σ.var x).weaken

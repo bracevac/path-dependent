@@ -5,13 +5,13 @@ import Coercions.CapturesCC.FCdot.Levels
 namespace CapturesCC
 
 /-!
-# Renaming for the type translation (Plan III §8.1, M3)
+# Renaming for the type translation
 
 The type translation `Shape.translate`/`Shape.tel`/`Shape.telSelf`
 (`DotToFCdot/Types.lean`) is a mutual recursion mirroring the shape of
 `Shape`.  This file proves it commutes with renaming, mirroring
 `Coercions.FCdot.RenameLemmas`, and derives the context-lookup facts the
-typedness proofs (M3 second half) need.
+typedness proofs need.
 -/
 
 namespace FCdot
@@ -486,7 +486,7 @@ open FCdot (Kind Sig BVar Rename Label)
 
 /-! ## Injectivity of renaming on source shapes
 
-The `obj` rule of B1.7 types a literal's definitions against its declaration
+The `{}-I` rule types a literal's definitions against its declaration
 shape read under the class root, so the facts the translation needs about
 that shape have to travel back through one renaming.  Renaming a source
 shape by an injective renaming is injective, exactly as it is in the target
@@ -753,7 +753,7 @@ theorem Ctx.InstOf.translate {s : Sig} {Γ : Ctx s} {κ : BVar s .cap} {C : Capt
 /-! ## The scope contexts translate to the target's scope contexts
 
 The source binds the same binders in the same places, so `Ctx.translate` is
-a homomorphism on the three scope contexts of B1.1. -/
+a homomorphism on the three scope contexts below. -/
 
 theorem Ty.translate_underRoot {s : Sig} (T : Dom s) :
     (Dom.underRoot T).translate = FCdot.Dom.underRoot T.translate :=
@@ -805,7 +805,7 @@ theorem Shape.translate_underRoot {s : Sig} (S : Shape (s,x)) :
 
 /-! ## The level spine commutes with the translation
 
-**T-B3.2.**  `Ctx.translate` maps `consRoot` to `.consC _ .root` and every
+`Ctx.translate` maps `consRoot` to `.consC _ .root` and every
 other capture binder to a non-root capture bound, so the target binder at a
 position is a root exactly when the source binder is.  Each of the five is a
 recursion on the context with one case per constructor. -/

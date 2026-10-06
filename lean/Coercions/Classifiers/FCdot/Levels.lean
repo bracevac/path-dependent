@@ -16,9 +16,9 @@ The reading of `⊤ᶜ` is the whole point.  `Ctx.lvlAtom ⊤ᶜ = none` says th
 is inside no scope, while `Γ.LvlLe ⊤ᶜ r` holds for every `r`, which is an
 inner root absorbing the outer one.
 
-The theorems of the stage that need resolution, a store or canonical forms
-are added to this file by the later groups.  It imports `Context.lean` only,
-which is all the spine lemmas need.
+Theorems that need resolution, a store, or canonical forms live in other
+files that import this one.  This file imports `Context.lean` only, which is
+all the spine lemmas need.
 -/
 
 namespace FCdot

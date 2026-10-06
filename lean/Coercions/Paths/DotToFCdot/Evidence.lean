@@ -3,7 +3,7 @@ import Coercions.Paths.DotToFCdot.Types
 namespace Paths
 
 /-!
-# Translation of evidence and of variable typings (Plan III §8.1, M3, and stage P2.3 of plan-5g)
+# Translation of evidence and of variable typings
 
 A subtyping derivation becomes closed inclusion evidence.  A path typing
 becomes path evidence whose path is the translated path.  A typing derivation
@@ -11,7 +11,7 @@ of a variable becomes an atom rooted at that variable.  Subtyping and path
 typing are mutual: `Sel-<:` and `<:-Sel` have path typing premises, and a path
 typing can go through subsumption.
 
-The object rules translate to template morphisms (plan §13 items 8 and 9).
+The object rules translate to template morphisms.
 
 * `And₁`, `And₂` project by identity templates on the first or second half
   when the operand is an object shape. They project by the self-bound cast
@@ -22,7 +22,7 @@ The object rules translate to template morphisms (plan §13 items 8 and 9).
 * `Fld`, the stable `Fld` and `Typ` map each proposition through the
   translated bound. `Sub.vfldToFld` forgets the stable presence.
 * `Sel-<:`, `<:-Sel` are `memberP` at the path image, on the exact
-  proposition (decision 33).
+  proposition.
 * `Rec-I`, `Rec-E` unfold at the root and refold at the other telescope.
 * `Sub.mu` is the template morphism of its `SubDecl`, whose sides are the
   self-free steps.
@@ -32,7 +32,7 @@ The object rules translate to template morphisms (plan §13 items 8 and 9).
   type to its declared type (`litCo`), reading every proposition off the
   literal's definition equalities, field presences and stable presences.
 
-Every function of this module is structural (decision 31), so that the kernel
+Every function of this module is structural, so that the kernel
 unfolds a translation.
 -/
 
@@ -61,7 +61,7 @@ def _root_.Paths.FCdot.Telescope.NoBnd : FCdot.Telescope s' → Prop
   | .cons Tel _ => FCdot.Telescope.NoBnd Tel
 
 /-- A telescope all of whose self-bounds are weakened closed types, which is
-the closedness convention of `FCdot` (plan §13 item 9).  `Ty.tel` produces
+the closedness convention of `FCdot`.  `Ty.tel` produces
 only these (`Ty.tel_closedBnds`), and only these can be copied by identity
 templates.  A stable presence and an alias are copied by index, so they may
 occur anywhere. -/
@@ -86,7 +86,7 @@ of the source object type through the source's own bound at that position,
 which is why the source telescope is an argument.  A stable presence and an
 alias are copied by index.
 
-The telescope is taken at any signature (decision 31).  The templates read
+The telescope is taken at any signature.  The templates read
 only its shape, and at the signature `(s,x)` this is the vanilla function.
 Taken at `(s,x)` only, Lean compiles the recursion as well-founded, and the
 kernel does not unfold it. -/
@@ -213,8 +213,7 @@ def Ty.vfldIdx (self : BVar s .var) : Ty s → Label → Nat → Option Nat
 
 Subtyping and path typing are one mutual block, since `Sel-<:` and `<:-Sel`
 read a path typing and a path typing may go through subsumption.  The atom
-image of a variable typing is on term typing and comes after the block
-(decision 31). -/
+image of a variable typing is on term typing and comes after the block. -/
 
 mutual
 
@@ -324,7 +323,7 @@ def HasTy.translateAtomAt (x0 : BVar s .var) : {Γ : Ctx s} → {t : Tm s} → {
   | _, _, _, _ => .var x0
 
 /-- The atom of a variable typing, rooted at the variable.  The vanilla name
-and signature, with the subject `.path x` (P0.9, row 1). -/
+and signature, with the subject `.path x`. -/
 def HasTy.translateAtom {Γ : Ctx s} {x : BVar s .var} {T : Ty s}
     (h : HasTy Γ (.path x) T) : FCdot.Atom s :=
   h.translateAtomAt x

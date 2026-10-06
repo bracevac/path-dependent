@@ -24,5 +24,5 @@ import Coercions.Paths.FCdot.Progress
 import Coercions.Paths.FCdot.Consistency
 import Coercions.Paths.FCdot.Examples
 /-!
-Import root for FCdot, the explicit-evidence coercion target of Plan III.
+Import root for FCdot, the explicit-evidence coercion target.
 -/

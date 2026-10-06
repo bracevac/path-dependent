@@ -3,8 +3,8 @@ import Coercions.Frontend.Surface
 /-!
 # The surface notation of the vanilla front end
 
-Stages F0.2 and F0.3 of `plan-5e-frontend-stages.md`.  Three syntax categories,
-`dotTy`, `dotTm` and `dotDefs`, hold the paper's notation
+Three syntax categories, `dotTy`, `dotTm` and `dotDefs`, hold the paper's
+notation
 (`lean/Coercions/paper/sections/source.tex`, `lean/Coercions/paper/macros.tex`).
 Three term level entry points, `dotTy%`, `dot%` and `dotDefs%`, expand a piece
 of that notation into a constructor application of `SType`, `STm` or `SDefs`.
@@ -19,7 +19,7 @@ Application is left leaning at 70, projection binds tighter at 80, `∧` is righ
 leaning at 65, and `λ`, `ν`, `μ`, `∀`, `let` extend as far right as they can.
 The closed forms and the parenthesis forms sit at `max`.
 
-## The one departure from the paper, F0.3
+## The one departure from the paper
 
 A type member definition is written `{type A = T}`, not `{A = T}`.  The paper
 writes the two definition forms alike and separates them by the label's case,
@@ -28,7 +28,7 @@ rather than at the elaborator.  Adding `type` to Lean's token table makes the
 bare word `type` a keyword in every module that imports this one, so the rest
 of the front end does not use it as an identifier.
 
-## Dotted identifiers, F0.2
+## Dotted identifiers
 
 Lean's lexer reads `x.a` as a single `ident` whose `Name` has two components, so
 a rule shaped `ident "." ident` never fires on it.  The macro therefore takes
@@ -84,7 +84,8 @@ syntax:max "let" ident (" : " dotTy)? " = " dotTm " in " dotTm:60 : dotTm
 /-- Parentheses. -/
 syntax:max "(" dotTm ")" : dotTm
 
-/-- `{type A = T}`, a type member definition.  The departure of F0.3. -/
+/-- `{type A = T}`, a type member definition.  This is the one departure from
+the paper, noted above. -/
 syntax:max "{" "type" ident " = " dotTy "}" : dotDefs
 /-- `{a = t}`, a term member definition. -/
 syntax:max "{" ident " = " dotTm "}" : dotDefs
@@ -101,8 +102,8 @@ syntax:max "dotDefs% " dotDefs : term
 /-! ## Taking a hierarchical identifier apart
 
 The decision each of the two categories makes about a name is a pure function,
-`nameParts` and `tySelName`, so that the probes of F0.2 can test it with
-`decide` like every other check of this stage.  The two `MacroM` wrappers only
+`nameParts` and `tySelName`, so that the probes below can test it with
+`decide` like every other check in this module.  The two `MacroM` wrappers only
 turn the answer into syntax, or report a bad name with `Macro.throwErrorAt`,
 which points at the offending identifier rather than at the whole production. -/
 
@@ -182,7 +183,7 @@ macro_rules
 /-! ## One check per surface form
 
 All of it reduces in the kernel, so `by decide` is the right tactic here, as it
-is in `Surface.lean`.  The search of F1 is the opposite case. -/
+is in `Surface.lean`.  The subtyping search is the opposite case. -/
 
 /-! ### Types -/
 
@@ -270,7 +271,7 @@ example :
       SDefs.and (.trm "a" (.var "x")) (.and (.trm "b" (.var "y")) (.trm "c" (.var "z"))) := by
   decide
 
-/-! ### The six probes of F0.2
+/-! ### Six probes of how a dotted name parses
 
 How Lean v4.29.1 actually parses a dotted name.  The first three go through one
 `ident` token each, whatever the number of dots, and the macro splits it.  The

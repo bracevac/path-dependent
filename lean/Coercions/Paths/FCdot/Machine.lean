@@ -54,8 +54,9 @@ inductive Cont.Typed : Ctx s → Cont s → Ty s → Ty s → Prop where
       Γ ⊢ₖ K : U ⇒ V →
       Γ ⊢ₖ K ▹ .let u : T ⇒ V
   /-- The frame of a let over a path.  The incoming type is the singleton, so
-      the frame pins the block of the atom that arrives, by the canonical fact
-      of P1.8.  With the path's own type here the frame pins nothing, which is
+      the frame pins the block of the atom that arrives, by the canonical
+      fact that an atom typed at a singleton is rooted at that block.  With
+      the path's own type here the frame pins nothing, which is
       `forwarding_subst_false`. -/
   | letPath :
       Γ.cons (Binding.fwdAt q) ⊢ u : U↑ →

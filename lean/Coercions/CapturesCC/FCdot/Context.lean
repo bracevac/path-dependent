@@ -21,8 +21,8 @@ def Fields.labels : Fields s → List Label
 
 /-- What a capture binder stands for.  `root` is a scope root, `star` a rigid
 capability that subsumes nothing, `upper C` a bounded binder, and `inst C` an
-instance.  All four are present from the start; this stage reads none of
-them. -/
+instance.  All four are present from the start, though not every one of
+them is read yet. -/
 inductive CapBound : Sig → Type where
   | root : CapBound s
   | star : CapBound s
@@ -114,7 +114,7 @@ A level is a position on the spine, not a field on a binding.  The level of a
 binder is the innermost root binder of the prefix that precedes it, and a
 root is its own level.  `none` means the outermost level, the universal root
 `⊤ᶜ`.  Everything here is `Bool` valued, so that `decide` closes the
-examples of the stage. -/
+examples. -/
 
 /-- Age of a bound variable.  Older is deeper. -/
 def BVar.depth : BVar s k → Nat
@@ -268,7 +268,7 @@ def IsTransparent (Γ : Ctx s) (x : BVar s .var) : Prop := (Γ.lookupFields x).i
 
 /-! ### Scope order
 
-**T-B1.8.**  In a lambda body the parameter and the arrow's capture binder
+**Scope order.**  In a lambda body the parameter and the arrow's capture binder
 have the same level, and that level is the body root.  This is the sentence
 "parameter `any`s are at the same level as the function's local `any`" in the
 target, and it is what rejects an escape out of a scope.  Both sides compute,

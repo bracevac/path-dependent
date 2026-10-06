@@ -5,7 +5,7 @@ import Coercions.Classifiers.FCdot.TypingRename
 namespace Classifiers
 
 /-!
-# Typedness of the evidence translation (Plan III §8.1, M3)
+# Typedness of the evidence translation
 
 Every subcapturing derivation of DOT-MNF^cc translates to capture-inclusion
 evidence with the translated endpoints, every subtyping derivation to
@@ -141,7 +141,7 @@ theorem Witnesses.Distinct.append {s : Sig} {W : Witnesses s} (hW : W.Distinct) 
 
 /-! ## Capture witnesses: the same block, for the capture sort
 
-Stage A3a: a declaration shape has capture witnesses of its own, one per
+A declaration shape has capture witnesses of its own, one per
 field and one per capture member, collected by `CapWitnesses.append`.  These
 are the twins of the `Witnesses` facts just above. -/
 
@@ -596,7 +596,7 @@ theorem Shape.telSelf_noBnd_of_decl {s : Sig} :
           exact FCdot.Telescope.NoBnd.rename _ _ (Shape.telSelf_noBnd_of_decl hT)
 
 /-- Every self-bound the translation of a shape carries is a weakened closed
-shape: this is the closedness convention of `FCdot` (plan §13 item 9). -/
+shape: this is the closedness convention of `FCdot`. -/
 theorem Shape.tel_closedBnds {s : Sig} :
     ∀ S : Shape s, (Shape.tel S : FCdot.Telescope (s,x)).ClosedBnds
   | .top => by simp only [Shape.tel]; exact .nil
@@ -727,8 +727,9 @@ inductive Shape.DistinctLabels : {s : Sig} → Shape s → Prop where
 
 /-! ### The two label facts travel back through a renaming
 
-B1.7 types a literal's definitions against its declaration shape read under
-the class root, so `DefsTy.literalShape` and `DefsTy.distinctLabels` land at
+`DefsTy` types a literal's definitions against its declaration shape read
+under the class root, so `DefsTy.literalShape` and `DefsTy.distinctLabels`
+land at
 `S.underRoot` while the literal's coercion is built from `S`.  Both facts
 come back, the first through injectivity of renaming and the second through
 the invariance of `declLabels`. -/
@@ -1846,11 +1847,11 @@ theorem HasTy.translateAtom_typed : ∀ {s : Sig} {U : CaptureSet s} {Γ : Ctx s
 
 end
 
-/-! ## T17: member-free source subcapturing never lowers a level
+/-! ## Member-free source subcapturing never lowers a level
 
-**B3.7.**  The source has no resolution of its own and "confined" is a
+The source has no resolution of its own and "confined" is a
 target notion, so the source's scope safety is stated through the
-translation (decision 32).  It is store free, and it asks for no context
+translation.  It is store free, and it asks for no context
 predicate beyond `Ctx.Wf`, which `Subcap.translate_typed` already asks for.
 
 It is not a store-carrying `lvl_safety` because over a typed store the

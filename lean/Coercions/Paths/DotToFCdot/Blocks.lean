@@ -4,7 +4,7 @@ import Coercions.Paths.DotToFCdot.EvidenceTyped
 namespace Paths
 
 /-!
-# The block of a translated literal (P2.2)
+# The block of a translated literal
 
 `Ty.blocks T d` is the block the source gives a literal's self binder.  It reads
 the declaration type and the definitions.  `Value.blockSelf` is the block the
@@ -14,7 +14,7 @@ witnesses `T.witnesses`, so it is three equalities.
 
 1. The labels.  `DefsTy.translateFields_labels`.
 2. The stable labels.  `DefsTy.translateFields_valLabels`.  A `trm` field is cast
-   by `member` (decision 26), which is not table-only, so it is not listed.  A
+   by `member`, which is not table-only, so it is not listed.  A
    `trmObj` field is a literal under `litCo` and `def`, both table-only, so it is
    listed.  `Fields.valLabels` removes a label that a later field repeats, so the
    lemma asks for `Defs.Distinct d`.
@@ -24,7 +24,7 @@ witnesses `T.witnesses`, so it is three equalities.
    literal.
 
 Each lemma is first proved at an arbitrary self binder (the `…At` forms), since a
-recursion over `DefsTy` at the index `Ctx (s,x)` is not structural.  The plan's
+recursion over `DefsTy` at the index `Ctx (s,x)` is not structural.  The intended
 statements are those forms at `.here`.
 -/
 
@@ -170,7 +170,7 @@ theorem DefsTy.translateFields_valLabelsAt : ∀ {s : Sig} {Γ : Ctx s} {d : Def
           exact hdis ℓ (h₁.mem_labels_of_fieldLabels hℓ') (h₂.mem_labels_of_fieldLabels hℓ)
 
 /-- The stable labels of the translated fields are the declared ones, given distinct
-labels (decision 30). -/
+labels. -/
 theorem DefsTy.translateFields_valLabels {s : Sig} {Γ : Ctx (s,x)} {d : Defs (s,x)}
     {T : Ty (s,x)} (h : DefsTy Γ d T) (hd : Defs.Distinct d) (Tself : FCdot.Ty (s,x))
     (e : Nat) :
@@ -218,7 +218,7 @@ theorem HasTy.translate_plainChild : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T' :
       rw [FCdot.Tm.plainChild_cast]
       exact h.translate_plainChild a U q
 
-/-- The child a translated `trm` field gives: decision 26's cast `E` is not
+/-- The child a translated `trm` field gives: the cast `E` is not
 table-only, so a stable body gives none and any other body gives its own. -/
 theorem HasTy.translate_childAt {s : Sig} {Γ : Ctx s} {t : Tm s} {T' : Ty s}
     (h : HasTy Γ t T') {E : FCdot.LeCo s} (hE : E.tableOnly = false) (a : Label)
@@ -266,7 +266,7 @@ theorem DefsTy.translateFields_children {s : Sig} {Γ : Ctx (s,x)} {d : Defs (s,
 
 /-! ## The coherence lemma -/
 
-/-- P2.2's coherence lemma: the block the source gives a literal's self binder is the
+/-- The coherence lemma: the block the source gives a literal's self binder is the
 block the target builds from the translated literal.  `Tself` and `e` are arbitrary,
 since stability does not read them. -/
 theorem DefsTy.blocks_translate {s : Sig} {Γ : Ctx (s,x)} {d : Defs (s,x)} {T : Ty (s,x)}

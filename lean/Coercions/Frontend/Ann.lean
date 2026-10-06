@@ -3,9 +3,9 @@ import Coercions.DotMNF.Syntax
 /-!
 # Annotated DOT-MNF terms
 
-Stage F0.4 of `plan-5e-frontend-stages.md`.  `ATm` is `DotMNF.Tm`
-(`lean/Coercions/DotMNF/Syntax.lean`) with two extra fields and nothing else:
-the self type of an object literal, and the optional result type of a `let`.
+`ATm` is `DotMNF.Tm` (`lean/Coercions/DotMNF/Syntax.lean`) with two extra
+fields and nothing else: the self type of an object literal, and the
+optional result type of a `let`.
 
 Why the self type has to be carried.  `DotMNF.HasTy.obj` types the definitions
 of a literal against a context entry that already holds the self type
@@ -14,17 +14,17 @@ from the definitions, and a `DefsTy` that synthesized it would be circular.
 `DotMNF.Value.obj` has no slot for it and the vanilla tree is frozen.  So the
 annotation lives here, in a front end only term syntax whose erasure is `Tm`.
 
-Why the `let` type is optional.  It is the first rung of the avoidance ladder of
-F1.4: an annotated `let` is checked at the annotation, an unannotated one has
+Why the `let` type is optional.  It is the first rung of the typer's avoidance
+ladder: an annotated `let` is checked at the annotation, an unannotated one has
 its type strengthened or widened to `⊤`.
 
 `ATm.erase` of `.obj _ d` is `.val (.obj d.erase)`, which is exactly the term
 `HasTy.obj` concludes about.  Nothing of this module is part of the metatheory
 and no definition here lives in the `DotMNF` or `FCdot` namespaces.
 
-The size functions are the measure F1's typer recurses on.  They are stated and
-proved positive here, beside the definition, because the typer is in another
-module and a measure with no lower bound is useless there.
+The size functions are the measure the typer recurses on.  They are stated
+and proved positive here, beside the definition, because the typer is in
+another module and a measure with no lower bound is useless there.
 -/
 
 namespace Frontend
@@ -114,8 +114,8 @@ def ATm.weaken (t : ATm s) : ATm (s,x) := t.rename Rename.succ
 
 /-! ## Erasure commutes with renaming
 
-The one lemma of F0.6 about `ATm`.  It is what lets a later stage move between
-the two syntaxes under a renaming without a second induction. -/
+The one lemma about `ATm` needed later to move between the two syntaxes
+under a renaming without a second induction. -/
 
 mutual
 /-- Erasure commutes with renaming. -/
@@ -147,7 +147,7 @@ end
 
 /-! ## The size measure
 
-F1's typer recurses on the term, and its `let` clause has to call itself on a
+The typer recurses on the term, and its `let` clause has to call itself on a
 strictly smaller subterm after a rename, so the measure is on the syntax and not
 on the signature.  Both functions are at least one everywhere, and the body of a
 term member is strictly smaller than the definition list that holds it. -/

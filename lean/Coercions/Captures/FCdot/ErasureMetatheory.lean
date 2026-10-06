@@ -316,9 +316,9 @@ theorem Value.erase_eq_lam {s : Sig} :
   | .box _, t', _, h => by simp [Value.erase] at h
   | .cast _ _, _, hlit, _ => hlit.elim
 
-/-- A literal whose erasure is a runtime object is an object.  A box now
-erases to the runtime's box, not to an object, so the box disjunct stage A2
-carried here is gone. -/
+/-- A literal whose erasure is a runtime object is an object.  A box
+erases to the runtime's box, not to an object, so no separate box case is
+needed here. -/
 theorem Value.erase_eq_obj {s : Sig} :
     ∀ (v : Value s) (F' : Runtime.Fields (s,x)), v.IsLiteral → v.erase = .obj F' →
       ∃ (A : CaptureSet s) (W : Witnesses (s,x)) (Wc : CapWitnesses (s,x))

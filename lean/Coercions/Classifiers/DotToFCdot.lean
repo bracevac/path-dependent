@@ -10,5 +10,5 @@ import Coercions.Classifiers.DotToFCdot.Safety
 import Coercions.Classifiers.DotToFCdot.Consistency
 import Coercions.Classifiers.DotToFCdot.Prediction
 /-!
-Import root for the translation from DOT-MNF to FCdot (Plan III §8).
+Import root for the translation from DOT-MNF to FCdot.
 -/

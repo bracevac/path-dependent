@@ -5,22 +5,21 @@ namespace CapturesCC
 /-!
 # DOT-MNF^cc examples
 
-The mandatory examples of Plan III §10, as `HasTy` derivations, restated on
-the judgments of stage A3a.  The calculus has no base types, so `Int` and
-`Nat` are replaced by distinct closed types; the point of each example is the
-*shape* of the derivation, in particular which subtyping steps go through a
-type selection.
+Example programs, as `HasTy` derivations, for DOT-MNF with capture sets.
+The calculus has no base types, so `Int` and `Nat` are replaced by distinct
+closed types; the point of each example is the *shape* of the derivation,
+in particular which subtyping steps go through a type selection.
 
-Every type of E1 to E8 is pure and every use set of them is empty: they are
-the vanilla examples, and the vanilla source has no capture set to speak of.
-What was a vanilla `Ty` is a `Shape` wherever the vanilla derivation used it
-as one (a bound of a type member, an operand of an intersection, the body of
-a `μ`), and the pure type `S ^ {}` wherever the vanilla derivation used it as
-a type (a field's result, a function's domain and result, a context entry).
-Both forms of a name are kept, the shape carrying the suffix `S`.
+Every type of E1 to E8 is pure and every use set of them is empty: they
+could equally be written in plain DOT, which has no capture set to speak
+of.  What would be a plain `Ty` is here a `Shape` wherever the derivation
+uses it as one (a bound of a type member, an operand of an intersection,
+the body of a `μ`), and the pure type `S ^ {}` wherever the derivation uses
+it as a type (a field's result, a function's domain and result, a context
+entry).  Both forms of a name are kept, the shape carrying the suffix `S`.
 
-Three further examples, S3, C2 and C7, are the capture examples of stage
-A3a.  They live over the platform prefix of two rigid capture binders and
+Three further examples, S3, C2 and C7, exercise capture sets directly.
+They live over the platform prefix of two rigid capture binders and
 their use sets are not empty: a boxed capturing type in a type member (S3),
 explicit capture polymorphism through a capture member (C2), and a pure
 container of boxed capabilities whose elements charge their own set when
@@ -247,12 +246,12 @@ def E3 : HasTyP [] Ctx.nil
   lam' E3inner
     (.capt (.and (.typ .bot (.fld (.capt .top))) (.typ (.fld (.capt .top)) .top)))
 
-/-! ## E4: the counterexample of §1
+/-! ## E4: bad bounds without a realizer
 
 `Γ = x : {B : S..T}, w : S` with `S = {A : ⊥..⊤}` and `T = {A : Int..⊤}`.
 `S <: x.B <: T` gives `w : T`, hence `Int <: w.A`, hence `g n : w.A` for
 `g = λ(y : w.A). y` and `n : Int`.  No realizer for `x` exists, and the
-derivation is nonetheless well formed: this is why the target of Plan III
+derivation is nonetheless well formed: this is why the target (FCdot)
 needs `member` through `trans`. -/
 
 /-- `{a : ⊤}`, standing for `Int`. -/
@@ -475,9 +474,9 @@ def E7 : HasTyP [] Ctx.nil (.val (.obj E7Defs)) ((Shape.mu E7Self) ^ []) :=
 `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a`, at
 `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : ⊤}) ⊤`.  The left operand of the
 intersection is a type selection, so the type is outside the declaration
-fragment: this is the example the self-bound proposition of `FCdot` buys
-(plan §13 item 9), and `Wf.and` accepts it because it no longer asks for
-declaration-shaped operands.
+fragment: this is the example the self-bound proposition of `FCdot` buys,
+and `Wf.and` accepts it because it no longer asks for declaration-shaped
+operands.
 
 Two derivations of the body, `y.a`: one reads `{a : ⊤}` off the refinement
 by `And₂`, the other reads `x.A` off it by `And₁` and then goes through
@@ -545,7 +544,7 @@ def E8b : HasTyP [] Ctx.nil
     ((Shape.all E8Dom (.ty ((Shape.all (E8Ref (.there .here)) (.ty (.top ^ []))) ^ []))) ^ []) :=
   lam' (lam' E8Body1 E8RefWf) E8DomWf
 
-/-! ## The platform prefix of stage A3a
+/-! ## The platform prefix
 
 S3, C2 and C7 live over a prefix of two rigid capture binders, the platform
 capabilities `κ₁` and `κ₂`.  The prefix is `Platform.cons (Platform.cons
@@ -1138,15 +1137,14 @@ def C2_typed : HasTyP [CapAtom.cvar k1, CapAtom.cvar k2] platCtx C2tm C2Ty :=
       (.let ((C2Lit (.there (.there .here))).widen _)
         (.let C2ga (.let C2gb C2answer arrowWf) arrowWf) arrowWf) arrowWf) arrowWf
 
-/-! ## Stage A3b: `any` by position
+/-! ## `any` by position
 
 The examples below are written with `any` and expanded before they are
 typed.  `any` is a notation: it stands for the capture set its position
 reads, which is the set of the enclosing arrow or object together with that
 former's own binder, and at the top of a program the platform's own set.
 `AnyOk` is decided on the written type, `expand` at the platform set is
-computed, and the derivation that follows is a derivation of stage A3a at
-the expanded type. -/
+computed, and the derivation that follows is on the expanded type. -/
 
 /-- The platform set: the two rigid capture binders.  `fs`, the file system
 of S1 and S2, is `κ₁`. -/
@@ -1181,7 +1179,7 @@ def HasTy.captTo {s : Sig} {Γ : Ctx s} {U C C' : CaptureSet s} {t : Tm s} {S : 
     (h : HasTyP U Γ t (S ^ C)) (f : Subcap Γ C C') : HasTyP U Γ t (S ^ C') :=
   .sub h (.ty (.capt .refl f)) .refl
 
-/-! ## Labels of the A3b examples -/
+/-! ## Labels used in the examples below -/
 
 /-- Term label `read`. -/
 def lread : Label := .trm 7
@@ -1197,13 +1195,11 @@ withFile : (∀(cp : (μ(c. {C : {}..{fs}})) ^ {})
 
 with `File := μ(f. {read : (⊤ → ⊤) ^ {f}})`.  The member bound of the
 capture parameter is written out: a member-bound `any` reads as the root
-enclosing the object type and not as the class root, which is decision 26,
-and the user's design for reach capabilities prescribes the explicit member
-here.  The result `any` reads as the root enclosing the position it is
-written at.  `withFile` is written at the top of the program, and the source
-has no universal root, so that reading is the platform set (decision 23).
-That is the one thing stage B3 changes here: A3b read the same `any` as the
-inner arrow's own set with its binder, `{fs, cp, op}`.
+enclosing the object type and not as the class root, and the design for
+reach capabilities prescribes the explicit member here.  The result `any`
+reads as the root enclosing the position it is written at.  `withFile` is
+written at the top of the program, and the source has no universal root,
+so that reading is the platform set.
 
 The caller allocates `ν(c. {C = {fs}})` at the precise member `{fs}..{fs}`,
 passes it at the abstract member `{}..{fs}`, and passes an `op` declared at
@@ -1263,8 +1259,8 @@ def S1Inner (fs : BVar s .cap) (R : CaptureSet (Sig.cod (s,x))) : Ty (s,x) :=
 def S1TyAny (fs : BVar s .cap) : Ty s :=
   (Shape.all (S1CP (.there fs)) (.ty (S1InnerAny (.there fs)))) ^ [CapAtom.cvar fs]
 
-/-- The type of `withFile` at the reading `expand` gives it: a type of stage
-A3a, with no `any` left.  `R` is the set the result position reads. -/
+/-- The type of `withFile` at the reading `expand` gives it, with no `any`
+left.  `R` is the set the result position reads. -/
 def S1Ty (fs : BVar s .cap) (R : CaptureSet (Sig.cod (Sig.cod s))) : Ty s :=
   (Shape.all (S1CP (.there fs)) (.ty (S1Inner (.there fs) R))) ^ [CapAtom.cvar fs]
 
@@ -1282,9 +1278,10 @@ def S1ReadAt {s : Sig} (D : CaptureSet s) : CaptureSet (Sig.cod (Sig.cod s)) :=
 /-- S1's result reading over the platform prefix. -/
 def S1Read : CaptureSet (Sig.cod (Sig.cod ([],c,c))) := S1ReadAt platSet
 
-/-- The A3b reading of the same written type, kept so that the two readings
-can be printed side by side: the result `any` was the inner arrow's own set
-with its binder, `{fs, cp, op}`. -/
+/-- An alternative reading of the same written type, kept so that the two
+readings can be printed side by side: here the result `any` is read as the
+inner arrow's own set with its binder, `{fs, cp, op}`, instead of as the
+platform set. -/
 def S1TyA3b (fs : BVar s .cap) : Ty s :=
   S1Ty fs [CapAtom.cvar (.there (.there (.there (.there fs)))),
     CapAtom.var (.there (.there .here)), CapAtom.var .here]
@@ -1293,18 +1290,18 @@ def S1TyA3b (fs : BVar s .cap) : Ty s :=
 `expand` reads. -/
 theorem S1_anyOk : (S1TyAny k1).AnyOk := by decide
 
-/-- **S1, expanded.**  At the platform set the written type is the A3a type
+/-- **S1, expanded.**  At the platform set the written type expands to
 `S1Ty k1 S1Read`: the result `any` reads as the platform set, since
 `withFile` is written at the top of the program and the source has no
 universal root. -/
 theorem S1_expand : (S1TyAny k1).expand platSet = S1Ty k1 S1Read := rfl
 
-/-- **S1, the two readings.**  The compiler's reading is not the A3b
-reading: the result is the platform set and no longer the arrow's own set
-with its binders. -/
+/-- **S1, the two readings.**  The compiler's reading is not the alternative
+reading above: the result is the platform set and no longer the arrow's own
+set with its binders. -/
 theorem S1_readings : S1Ty k1 S1Read ≠ S1TyA3b k1 := by decide
 
-/-- The expanded type holds no `any`, so it is a type of stage A3a. -/
+/-- The expanded type holds no `any`. -/
 theorem S1_noAny : (S1Ty k1 S1Read).NoAny := by decide
 
 /-! ### `withFile` itself -/
@@ -1549,9 +1546,9 @@ mk : (∀(u : ⊤) (Iterator ^ {any})) ^ {fs}
 
 The result `any` reads as the root enclosing the position it is written at.
 `mk` is written at the top of the program, and the source has no universal
-root, so that reading is the platform set `{κ₁, κ₂}` (decision 23).  A3b read
-the same `any` as the arrow's own set with its binder, `{fs, u}`, and both
-readings are printed below.
+root, so that reading is the platform set `{κ₁, κ₂}`.  An alternative
+reading would take the same `any` as the arrow's own set with its binder,
+`{fs, u}`, and both readings are printed below.
 
 The callee returns a literal that defines `C = {fs}`, retyped at the
 abstract member on its own variable, which is the packing.  It types as
@@ -1601,7 +1598,7 @@ def S2MkTyAny (fs : BVar s .cap) : Ty s :=
 def S2MkTy (fs : BVar s .cap) (R : CaptureSet (Sig.cod s)) : Ty s :=
   (Shape.all unitTy (.ty ((S2IterS (up2 fs)) ^ R))) ^ [CapAtom.cvar fs]
 
-/-- **S2, the A3b reading.**  `(∀(u : ⊤) (Iterator ^ {fs, u})) ^ {fs}`. -/
+/-- **S2, the alternative reading.**  `(∀(u : ⊤) (Iterator ^ {fs, u})) ^ {fs}`. -/
 def S2MkTyA3b (fs : BVar s .cap) : Ty s :=
   S2MkTy fs [CapAtom.cvar (up2 fs), CapAtom.var .here]
 
@@ -1611,13 +1608,13 @@ def S2MkTyCC : Ty ([],c,c) := S2MkTy k1 (readUnder platSet)
 /-- **S2, written.** -/
 theorem S2_anyOk : (S2MkTyAny k1).AnyOk := by decide
 
-/-- **S2, expanded.**  At the platform set the written type is the A3a type
+/-- **S2, expanded.**  At the platform set the written type expands to
 `S2MkTyCC`: the result `any` reads as the platform set. -/
 theorem S2_expand : (S2MkTyAny k1).expand platSet = S2MkTyCC := rfl
 
 /-- **S2, the two readings side by side.**  They are different types: the
-A3b reading names the arrow's own binder, the compiler's reading names the
-platform. -/
+alternative reading names the arrow's own binder, the compiler's reading
+names the platform. -/
 theorem S2_readings : S2MkTyCC ≠ S2MkTyA3b k1 := by decide
 
 /-- The expanded type holds no `any`. -/
@@ -1717,9 +1714,9 @@ def S2itCap {s : Sig} {Γ : Ctx s} {fs : BVar s .cap} {D : CaptureSet s} (it : B
   subC (.recE (varSelf (S := S2IterS fs) it (by rw [h]; rfl)) S2AbsDecl) .and1
 
 /-- `{it} ⊑ {κ₁, κ₂}` at the context of `it`: the iterator is declared at
-the platform set, which is `sc-var` and nothing more.  Under the A3b reading
-this step ended at `{fs}`, because `it` was declared at `{fs, un}` and `un`
-is pure. -/
+the platform set, which is `sc-var` and nothing more.  Under the
+alternative reading this step ended at `{fs}`, because `it` was declared at
+`{fs, un}` and `un` is pure. -/
 def S2subIt : Subcap S2Ctx3 [CapAtom.var .here] platSet3 := Subcap.var
 
 /-- `n = it.next`, the closure read off the abstract member. -/
@@ -1802,20 +1799,20 @@ def S2_typed : HasTyP platSet platCtx S2tm S2ProgTy :=
       (.capt .top))
     (.capt .top)
 
-/-! ## Stage B2: `fresh` as an existential
+/-! ## `fresh` as an existential
 
-The three source examples of B2.11, written with `fresh`, with `FreshOk`
-decided and the expansion `expandFresh` gives them stated and checked by
-`rfl`, then typed at the expanded type.  The expansion is decision 18: a
-result `fresh` becomes an existential bounded by the callee's own assigned
-capture set united with its parameter, which is exactly the bound the
-callee's own closing evidence proves.
+Three source examples written with `fresh`, with `FreshOk` decided and the
+expansion `expandFresh` gives them stated and checked by `rfl`, then typed
+at the expanded type.  The expansion: a result `fresh` becomes an
+existential bounded by the callee's own assigned capture set united with
+its parameter, which is exactly the bound the callee's own closing
+evidence proves.
 
 `Z1` is `freshCell`, with a caller that unpacks by `letex`.  `Z2` is
 `makeLogger`, whose bound is the parameter alone because the callee is pure.
 `Z3` is C5b, S2's `mk` with the result declared `fresh` instead of `any`.
 Each pack reads the witness binder off its own instance binding, which is
-`sc-inst`, the one new `Subcap` rule of the stage. -/
+`sc-inst`. -/
 
 /-- `sc-var` with the declared capture set written out. -/
 def subVarAt {s : Sig} {Γ : Ctx s} (x : BVar s .var) {C : CaptureSet s}
@@ -1997,22 +1994,23 @@ def Z2_plat : HasTyP [] platCtx (Z2Tm : Tm ([],c,c)) Z2Ty := Z2_typed
 def Z3_plat : HasTyP [] platCtx (S2mkTm k1) (Z3Ty k1) := Z3_typed k1
 
 
-/-! ## Stage B3: the reading of a position, and levels
+/-! ## The reading of a position, and levels
 
-The worked examples W1 to W6 of B3.9, on the source side.  A3b recomputed
-the reading at every former, so an `any` was read by what stood at its
-position.  The compiler's way threads the root that encloses the position,
-so an `any` is read by where it stands.  `Ctx.reading` is the statement of
-where a reading comes from: the innermost root binder of the context as a
-singleton, and the program's platform set where the context has none.
+Worked examples W1 to W6, on the source side.  An earlier, rejected
+alternative recomputed the reading at every former, so an `any` was read by
+what stood at its position.  The compiler's way threads the root that
+encloses the position, so an `any` is read by where it stands.
+`Ctx.reading` is the statement of where a reading comes from: the innermost
+root binder of the context as a singleton, and the program's platform set
+where the context has none.
 
 The level facts are all decided.  The level rule reads only the shape of the
 context, so `Ctx.isRootB` and `Ctx.lvlLeB` settle every side condition in
 the kernel. -/
 
 /-- Over the platform prefix there is no root binder at all, so a top-level
-`any` reads as the platform set.  This is decision 23: the source names no
-universal root. -/
+`any` reads as the platform set, since the source names no universal
+root. -/
 theorem reading_plat : Ctx.reading platCtx platSet = platSet := rfl
 
 /-- Inside a lambda body the reading is the body root, whatever the
@@ -2090,10 +2088,9 @@ def W1_inner_param_absorbed :
 
 `scoped-capabilities.md:32-35, 264-273, 370-378`.  A parameter written
 `any` reads as the arrow's own capture binder, whatever the enclosing
-reading is (decision 24), which is what makes the arrow a capture-parameter
-arrow with no member encoding.  Inside the body the binder is below the body
-root, and at a call it is instantiated at the argument itself
-(decision 35). -/
+reading is, which is what makes the arrow a capture-parameter arrow with no
+member encoding.  Inside the body the binder is below the body root, and at
+a call it is instantiated at the argument itself. -/
 
 /-- `process : (∀(x : File ^ {any}) ⊤) ^ {}`, as the program writes it. -/
 def W2TyAny : Ty s := (Shape.all (fileS ^ [CapAtom.any]) (.ty unitTy)) ^ []
@@ -2101,8 +2098,7 @@ def W2TyAny : Ty s := (Shape.all (fileS ^ [CapAtom.any]) (.ty unitTy)) ^ []
 /-- Its reading: `(∀(x : File ^ {κ}) ⊤) ^ {}`. -/
 def W2Ty : Ty s := (Shape.all (fileS ^ [CapAtom.cvar .here]) (.ty unitTy)) ^ []
 
-/-- **W2, written.**  A parameter `any` is legal, which is the clause the
-stage changes. -/
+/-- **W2, written.**  A parameter `any` is legal. -/
 theorem W2_anyOk : (W2TyAny : Ty ([],c,c)).AnyOk := by decide
 
 /-- **W2, expanded.**  The parameter `any` is the arrow's own capture
@@ -2110,8 +2106,7 @@ binder, at every reading: the clause does not use the reading it is given. -/
 theorem W2_expand (D : CaptureSet ([],c,c)) :
     (W2TyAny : Ty ([],c,c)).expand D = W2Ty := rfl
 
-/-- An `any` deeper inside a domain is not legal, which is the other half of
-decision 24. -/
+/-- An `any` deeper inside a domain is not legal. -/
 theorem W2_deep_rejected :
     ¬ ((Shape.all ((Shape.fld lread (.top ^ [CapAtom.any])) ^ []) (.ty unitTy)) ^ []
         : Ty ([],c,c)).AnyOk := by decide
@@ -2132,7 +2127,7 @@ def W2_level_param : Subcap W2BodyCtx [CapAtom.var .here]
 
 /-- **W2, the instantiation at a call.**  `HasTy.app` reads the argument at
 `T1.subst (Subst.singleC (.var y))`, so the parameter `any` becomes the
-argument variable itself, one instance per call.  That is decision 35. -/
+argument variable itself, one instance per call. -/
 theorem W2_arg (y : BVar ([],c,c) .var) :
     ((fileS ^ [CapAtom.cvar .here] : Ty (Sig.dom ([],c,c))).subst
         (Subst.singleC (.var y)))
@@ -2198,10 +2193,10 @@ def W3_typed {s : Sig} {Γ : Ctx s} : HasTyP [] Γ (Z2Tm : Tm s) Z2Ty := Z2_type
 /-! ### W4: `freshCell` read the compiler's way
 
 `scoped-capabilities.md:421-439`.  `Z1TyF` holds no `any`, so the new
-reading leaves it where it stood, at every reading set.  That is the
-regression half of the stage: a type with no notation in it is inert under
-`expand`.  The result `fresh` is the existential of stage B2, and two calls
-open two binders that are incomparable. -/
+reading leaves it where it stood, at every reading set: a type with no
+notation in it is inert under `expand`.  The result `fresh` is the
+existential introduced above, and two calls open two binders that are
+incomparable. -/
 
 theorem W4_anyOk : (Z1TyF k1).AnyOk := by decide
 
@@ -2216,15 +2211,14 @@ theorem W4_expand_expandFresh : ((Z1TyF k1).expand platSet).expandFresh = Z1Ty k
 
 `scoped-capabilities.md:384-420`.  The page writes the example with a type
 argument.  `Shape.anyOk` at `.typ` asks for no `any` at all in a type-member
-bound, so the source renders the example monomorphically, which is
-decision 36.
+bound, so the source renders the example monomorphically.
 
 Two parts.  `W5_no_level` is at a context with an enclosing root: the level
 rule has no instance that puts the callback's parameter below the root of
 the scope outside the call.  Over `platCtx` alone there is no root at all,
-by decision 23, so there is nothing to decide there.  `W5_no_escape` is an
-instance of T17 and is stated on the target side, at `r = ⊤ᶜ`, an atom the
-source cannot name. -/
+since the source names no universal root, so there is nothing to decide
+there.  `W5_no_escape` is an instance of `source_lvl_safety` and is stated
+on the target side, at `r = ⊤ᶜ`, an atom the source cannot name. -/
 
 /-- `File ^ {κ_f}`, the domain of the callback. -/
 def W5File : Dom ([],c,c,c) := fileS ^ [CapAtom.cvar .here]
@@ -2243,7 +2237,7 @@ def W5kb : BVar (Sig.body ([],c,c,c)) .cap := .there (.there .here)
 def W5kout : BVar (Sig.body ([],c,c,c)) .cap := .there (.there (.there .here))
 
 /-- `f` and `κ_f` are at one level, and that level is the body root.  This
-is T-B3.1 at this context. -/
+is the scope order fact above, at this context. -/
 theorem W5_scope_order : W5Ctx.lvl W5f = some W5kb ∧ W5Ctx.lvl W5kf = some W5kb :=
   ⟨rfl, rfl⟩
 
@@ -2323,9 +2317,9 @@ binders, is a canonical-forms fact and not a level fact.  It goes through
 `cap_canon`, which reads a typed store and a refinement into the transparent
 context the store types, and the source inherits that machinery through
 `Ctx.translate`.  It is `FCdot.Examples.Z_two_calls_incomparable`, over the
-translation of `Z1BodyCtxTop` below.  B2.11's caveat stands either way: at
-run time both opened binders carry `.inst C`, so in the store's own context
-each is below the other.
+translation of `Z1BodyCtxTop` below.  Even so, at run time both opened
+binders carry `.inst C`, so in the store's own context each is below the
+other.
 
 `Z1BodyCtxTop` is the same two calls with the answer widened to `⊤` before
 each `letex` unpacks it, and the widening is `Z1_widen`, a source subtyping

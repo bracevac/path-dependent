@@ -21,8 +21,8 @@ def Fields.labels : Fields s → List Label
 
 /-- What a capture binder stands for.  `root` is a scope root, `star` a rigid
 capability that subsumes nothing, `upper C` a bounded binder, and `inst C` an
-instance.  All four are present from the start; this stage reads none of
-them. -/
+instance.  Only `root` and `star` are read by resolution so far; `upper` and
+`inst` are carried for future use. -/
 inductive CapBound : Sig → Type where
   | root : CapBound s
   | star : CapBound s
@@ -51,9 +51,9 @@ def Binding.ty : Binding s → Ty s
   | .opaque T => T
   | .transparent T _ _ _ => T
 
-/-- A context: term binders and capture binders, newest first.  (`consᶜ` of
-the plan: `ᶜ` is not a legal Lean identifier character, so the capture-sort
-twin of a name carries the suffix `C`.) -/
+/-- A context: term binders and capture binders, newest first.  (`ᶜ` is
+not a legal Lean identifier character, so the capture-sort twin of a name
+carries the suffix `C` instead.) -/
 inductive Ctx : Sig → Type where
   | nil : Ctx []
   | cons : Ctx s → Binding s → Ctx (s,x)
@@ -83,7 +83,7 @@ def lookupDef : Ctx s → BVar s .var → Label → Option (Shape s)
 
 /-- Definition of a block's capture name, if its binder is transparent.  As
 `lookupDef`, the capture witness already lives in the scope that includes the
-binder, so it is read at the binder itself.  (`lookupDefᶜ` of the plan.) -/
+binder, so it is read at the binder itself. -/
 def lookupDefC : Ctx s → BVar s .var → Label → Option (CaptureSet s)
   | .cons _ (.transparent _ _ Wc _), .here, ℓ => some (Wc.get ℓ)
   | .cons _ (.opaque _), .here, _ => none

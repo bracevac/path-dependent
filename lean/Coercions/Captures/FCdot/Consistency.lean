@@ -3,7 +3,7 @@ import Coercions.Captures.FCdot.CanonicalForms
 namespace Captures
 
 /-!
-# Consistency of typed stores (Plan III §8.3, the target side of M5)
+# Consistency of typed stores
 
 Over a typed store, closed inclusion evidence relates types of compatible
 shapes only; in particular there is no closed `⊤ ≤ ⊥`, no closed inclusion

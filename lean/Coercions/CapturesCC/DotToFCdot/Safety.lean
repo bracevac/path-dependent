@@ -6,7 +6,7 @@ import Coercions.CapturesCC.FCdot.ErasureMetatheory
 namespace CapturesCC
 
 /-!
-# Type safety for DOT-MNF, transported from FCdot (Plan III §8.2, M4; stage A3a)
+# Type safety for DOT-MNF, transported from FCdot
 
 The source calculus has no metatheory of its own: safety is *borrowed* from
 the target through the translation.  The bridge is the shared untyped
@@ -42,16 +42,15 @@ and `HasTy.translate_erase`, and is preserved by every source step:
 erasure, `FCdot.erase_reflect'` realizes that runtime step by a target run,
 and preservation retypes its endpoint.
 
-## The box, in stage A3a
+## The box
 
-Stage A3a adds a box to the source.  It erases to the runtime's own inert
-box, `Runtime.Tm.box`, and an unboxing erases to the runtime's unboxing,
-which reads a box out of the store in one step.  Nothing else of either
-calculus erases to a runtime box, so the erasure of a source state says
-which head form the store holds at the slot an unboxing reads, and the
-backward simulation `DotMNF.erase_reflect` carries no side condition.  The
-statements below are therefore the stage A2 statements, on the whole source
-of stage A3a.
+The source has a box.  It erases to the runtime's own inert box,
+`Runtime.Tm.box`, and an unboxing erases to the runtime's unboxing, which
+reads a box out of the store in one step.  Nothing else of either calculus
+erases to a runtime box, so the erasure of a source state says which head
+form the store holds at the slot an unboxing reads, and the backward
+simulation `DotMNF.erase_reflect` carries no side condition.  The
+statements below cover the whole source calculus, box included.
 -/
 
 namespace DotMNF
@@ -159,11 +158,11 @@ theorem Simulated.steps {s s' : Sig} {st : State s} {st' : State s'}
   | refl => exact hsim
   | tail _ hstep ih => exact (ih hsim).step hstep
 
-/-- A simulated state is final or steps.  The source unbox case is the new
-one of stage A3a, and it needs nothing beyond the simulation: the target
-state that matches has the same erasure, so its store holds a runtime box at
-the slot the unboxing reads, and only a source box erases to one.  That is
-what `erase_reflect` reads off the erasure. -/
+/-- A simulated state is final or steps.  The source unbox case needs
+nothing beyond the simulation: the target state that matches has the same
+erasure, so its store holds a runtime box at the slot the unboxing reads,
+and only a source box erases to one.  That is what `erase_reflect` reads
+off the erasure. -/
 theorem Simulated.progress {s : Sig} {st : State s} (hsim : Simulated st) :
     st.Final ∨ ∃ (s' : Sig) (st' : State s'), Step st st' := by
   obtain ⟨u, U, hU, he⟩ := hsim

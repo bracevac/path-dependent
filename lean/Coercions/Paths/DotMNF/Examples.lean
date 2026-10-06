@@ -5,7 +5,7 @@ namespace Paths
 /-!
 # DOT-MNF examples
 
-The five mandatory examples of Plan III §10, as `HasTy` derivations.  The
+A set of representative examples, as `HasTy` derivations.  The
 calculus has no base types, so `Int` and `Nat` are replaced by distinct
 closed types; the point of each example is the *shape* of the derivation,
 in particular which subtyping steps go through a type selection.
@@ -166,13 +166,13 @@ def E3 : HasTy Ctx.nil
     (.all E3Dom (.all E3T2 E3T1)) :=
   .lam E3inner (.and (.typ .bot (.fld .top)) (.typ (.fld .top) .top))
 
-/-! ## E4: the counterexample of §1
+/-! ## E4: a subtyping step with no realizer
 
 `Γ = x : {B : S..T}, w : S` with `S = {A : ⊥..⊤}` and `T = {A : Int..⊤}`.
 `S <: x.B <: T` gives `w : T`, hence `Int <: w.A`, hence `g n : w.A` for
 `g = λ(y : w.A). y` and `n : Int`.  No realizer for `x` exists, and the
-derivation is nonetheless well formed: this is why the target of Plan III
-needs `member` through `trans`. -/
+derivation is nonetheless well formed: this is why the target needs
+`member` through `trans`. -/
 
 /-- `{a : ⊤}`, standing for `Int`. -/
 def E4Int : Ty s := .fld la .top
@@ -373,9 +373,9 @@ def E7 : HasTy Ctx.nil (.val (.obj E7Defs)) (.mu E7Self) := .obj E7DefsTy E7Dist
 `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a`, at
 `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : ⊤}) ⊤`.  The left operand of the
 intersection is a type selection, so the type is outside the declaration
-fragment: this is the example the self-bound proposition of `FCdot` buys
-(plan §13 item 9), and `Wf.and` accepts it because it no longer asks for
-declaration-shaped operands.
+fragment: this is the example the self-bound proposition of `FCdot` buys,
+and `Wf.and` accepts it because it no longer asks for declaration-shaped
+operands.
 
 Two derivations of the body, `y.a`: one reads `{a : ⊤}` off the refinement
 by `And₂`, the other reads `x.A` off it by `And₁` and then goes through
@@ -438,8 +438,8 @@ def E8b : HasTy Ctx.nil (.val (.lam E8Dom (.val (.lam (E8Ref .here) (.proj .here
 
 /-! ## The path pages X1 to X4
 
-Four pages for the path extension, added by P0 g5.  The eight examples above
-are the regression: the extension weakens nothing, and each of them keeps its
+Four pages for the path extension.  The eight examples above still go
+through unchanged: the extension weakens nothing, and each of them keeps its
 name, its statement and its derivation.  `.path (.var x)` reads `.path x`
 there, because a term carries a variable, and `.sel (.var x) A` is the base's
 type selection at a path of length one. -/
@@ -452,7 +452,7 @@ def pvar' {s : Sig} {Γ : Ctx s} (x : BVar s .var) {T : Ty s} (h : Γ.lookup x =
 /-! ## X1: pDOT Sec. 2.2, the length-two path
 
 `ν(z. {val c = ν(w. {A = z.B})} ∧ {B = z.c.A})`, the example pDOT Sec. 2.2
-names as the shape WadlerFest DOT cannot write (`survey-pdot.md` §3).  The
+names as the shape WadlerFest DOT cannot write (`survey-pdot.md`).  The
 field `c` holds a nested literal whose type member `A` is the outer self's
 `B`, and the outer self's `B` is the nested literal's `A`, read through the
 path `z.c` of length two.
@@ -553,8 +553,7 @@ def X1_ACfromB : Sub X1_Ctx (.sel (.sel (.var .here) X1_lc) lA) (.sel (.var .her
 
 /-! ## X2: E10, a computation field is not a prefix
 
-`ν(x. {a = x.a})`, the literal Fact 2 of the plan machine checks as
-`DotMNF.badLit`: it types at `μ(x. {a : {A : ⊤..⊥}})`, whose field `a` holds a
+`ν(x. {a = x.a})` types at `μ(x. {a : {A : ⊤..⊥}})`, whose field `a` holds a
 computation with bad bounds.  A rule eliminating the members of `x.a` at the
 path `x.a`, with no premise about the field, would read `⊤ <: ⊥` off a store
 that has allocated nothing at `x.a`.
@@ -562,16 +561,16 @@ that has allocated nothing at `x.a`.
 `Fld-E` is stated on a stable member, `PathTy.sel`, and this literal declares
 no stable member.  The page proves that by inversion, twice.  `X2_defsShape`
 inverts definition typing: the one stable rule, `trmObj`, asks for an object
-literal body (P2 g0, decision 27), the body here is the projection `x.a`, so
-every derivation of these definitions types `a` as a computation member.
+literal body, the body here is the projection `x.a`, so every derivation of
+these definitions types `a` as a computation member.
 `X2_noVfld` reads the declaration type with `Ty.lookupVfldDecl` and gets
 `none`.  `X2_noSubDecl` inverts the abstract view: `Typ-Abs` cannot widen the
 literal's type to one with a stable member at `a` either.
 
 What is left unproved is the unqualified sentence "for every `T` there is no
 derivation of `PathTy Γ x.a T`".  Its remaining cases go through `PathTy.sub`
-and `PathTy.snglInv`, and refuting those is an inversion of `Sub`, which P0
-does not have. -/
+and `PathTy.snglInv`, and refuting those would need an inversion of `Sub`
+that this development does not have. -/
 
 /-- `{A : ⊤..⊥}`, the bad bounds the field holds. -/
 def X2_Bad : Ty s := .typ lA .top .bot
@@ -632,14 +631,14 @@ theorem X2_noSubDecl {Γ : Ctx s} {T : Ty (s,x)}
 
 /-! ## X3: `let y = x.a in y.b`, the two-hop program
 
-Decision 2 keeps term position in monadic normal form, so a path of length
+Monadic normal form keeps term position to variables, so a path of length
 two is written with a `let`.  `x : {val a : {val b : ⊤}}`, both members stable,
 since `Fld-E` reads stable members only (X2).
 
-After P2 g0 the derived `HasTy.letSngl` applies only over a field declared at a
-singleton (decision 23), and `a` is declared at `{val b : ⊤}`.  So `X3` types
+The derived `HasTy.letSngl` applies only over a field declared at a
+singleton, and `a` is declared at `{val b : ⊤}`.  So `X3` types
 the program with the opaque `let`, and both projections read a path typing of
-the receiver through `HasTy.projP` (decision 28).  The body keeps its
+the receiver through `HasTy.projP`.  The body keeps its
 derivation under the singleton binder: in `X3_CtxY` the binder `y` is bound at
 `(x.a).type`, `Sngl-Trans` carries `x.a`'s stable member to `y`, and `Fld-E`
 then reads `y.b`.  That is `X3_body` and `X3_yb`. -/
@@ -675,20 +674,20 @@ def X3_yB : PathTy X3_CtxY (.var .here) X3_B := X3_y.snglTrans X3_xaW
 def X3_yb : PathTy X3_CtxY (.sel (.var .here) lb) .top := X3_yB.sel
 
 /-- The body as a term, `y.b`, under the singleton binder: `HasTy.projP` reads
-the stable member of `y` as a member (decision 28). -/
+the stable member of `y` as a member. -/
 def X3_body : HasTy X3_CtxY (.proj .here lb) .top :=
   .projP (X3_yB.sub .vfldToFld)
 
-/-- `let y = x.a in y.b`, typed by the opaque `let` (decision 23): the field
+/-- `let y = x.a in y.b`, typed by the opaque `let`: the field
 `a` is declared at `{val b : ⊤}`, not at a singleton, so the derived
 `letSngl` does not apply.  This is the former `X3_opaque`. -/
 def X3 : HasTy X3_Ctx (.let (.proj .here la) (.proj .here lb)) .top :=
   .let (.projP (X3_x.sub .vfldToFld))
     (.projP ((pvar' (.here) rfl).sub .vfldToFld)) .top
 
-/-! ## X4: gDOT Fig. 2, the `types` literal, and T9
+/-! ## X4: gDOT Fig. 2, the `types` literal, and exactness
 
-gDOT Fig. 2 (`survey-gdot.md` §2) writes the Dotty fragment of Fig. 1 in pDOT
+gDOT Fig. 2 (`survey-gdot.md`) writes the Dotty fragment of Fig. 1 in pDOT
 syntax.  Its `types` literal is
 
 ```text
@@ -705,11 +704,11 @@ The page is that literal, with the enclosing module `pcore` a context binder
 rather than a second literal, since nothing here eliminates a member of
 `pcore`.  `pcore.symbols.Symbol` is the length-two path selection, the shape
 WadlerFest DOT cannot write.  The two lambda fields are plain, typed by
-`DefsTy.trm`, since after P2 g0 only an object literal body makes a field
-stable (decision 27).  `newTypeRef` allocates `ν(_. {symb = s})`, binds it with
+`DefsTy.trm`, since only an object literal body makes a field
+stable.  `newTypeRef` allocates `ν(_. {symb = s})`, binds it with
 a `let` and returns it at `types.TypeRef`.
 
-T9, `DefsTy.typ_exact`, is the statement that replaces pDOT's `tight_bounds`:
+`DefsTy.typ_exact` is the statement that replaces pDOT's `tight_bounds`:
 every bound this literal's declaration type gives a type member is an
 equality.  The three members are read with `Ty.lookupTypDecl` by `decide` and
 each is exact.  `X4_abs` is the other half: the abstract view of Fig. 2,
@@ -855,7 +854,7 @@ def X4_lit {Γ : Ctx s} (p : BVar s .var) :
     HasTy Γ (.val (.obj (X4_Defs .here (.there p)))) (.mu (X4_Body .here (.there p))) :=
   .obj (X4_DefsTy p) (X4_Distinct _ _)
 
-/-! ### T9 on the `types` literal
+/-! ### Exactness on the `types` literal
 
 The literal at a concrete context: `pcore` is one binder, typed `⊤`, since
 nothing eliminates a member of it.  Everything below is closed, so the reader
@@ -875,7 +874,7 @@ def X4_DefsTy0 :
 def X4_lit0 : HasTy X4_Ctx (.val (.obj (X4_Defs .here (.there .here)))) (.mu X4_Body0) :=
   X4_lit .here
 
-/-- T9 on gDOT Fig. 2's `types`: every type member of the literal's
+/-- Exactness on gDOT Fig. 2's `types`: every type member of the literal's
 declaration type has equal bounds.  It is the statement that replaces pDOT's
 `tight_bounds`, and it is what makes the literal's own self usable. -/
 theorem X4_exact {A : Label} {S U : Ty (([],x),x)}
@@ -894,12 +893,12 @@ theorem X4_lookupTypeRef :
 /-- `Symbol` is declared by the other module, not by this literal. -/
 theorem X4_lookupSymbol : X4_Body0.lookupTypDecl X4_lSymbol = none := by decide
 
-/-- T9 at `Type`. -/
+/-- Exactness at `Type`. -/
 theorem X4_exactType : (Ty.top : Ty (([],x),x)) = .top := X4_exact X4_lookupType
-/-- T9 at `TypeTop`. -/
+/-- Exactness at `TypeTop`. -/
 theorem X4_exactTypeTop :
     X4_TypeSel (.here : BVar (([],x),x) .var) = X4_TypeSel .here := X4_exact X4_lookupTypeTop
-/-- T9 at `TypeRef`. -/
+/-- Exactness at `TypeRef`. -/
 theorem X4_exactTypeRef :
     X4_RefBody (.here : BVar (([],x),x) .var) (.there .here)
       = X4_RefBody .here (.there .here) := X4_exact X4_lookupTypeRef
@@ -924,9 +923,9 @@ def X4_muAbs {Γ : Ctx s} {p : BVar s .var} :
       (.mu (.typ X4_lTypeRef .bot (X4_RefBody .here (.there p)))) :=
   .mu X4_abs (X4_BodyDecl _ _) .typ
 
-/-! ## The P3 pages: labels
+/-! ## Labels for the path-extension pages
 
-The P3 pages reuse the labels of E1 to E8 above and declare the rest once,
+The pages below reuse the labels of E1 to E8 above and declare the rest once,
 here.  `lf` and `lc` serve the hop pages, `lC` serves E11 and P3e, and the
 `Fig2_` labels serve Fig. 2 in X4's naming.  Two names may share a value, since a label is
 compared only inside one literal.  `lC` and `X4_lType` are both `.typ 3`, and
@@ -955,7 +954,8 @@ def Fig2_ln : Label := .trm 12
 
 `λ(w : {val f : {A : ⊤..⊥}}). let y = w in y` at `∀(w : …) {B : {a : ⊤}..{a : ⊤}}`.
 E1 with the receiver one hop deeper.  `f` is `val` in a binder's declared
-type, which decision 27 (a) keeps.  The bounds are read at the path `w.f`
+type: a context entry may declare a field stable directly, apart from the
+literal rule `trmObj`.  The bounds are read at the path `w.f`
 through `Fld-E` at the parameter, whose root is opaque.  So the context has no
 block for `w.f`, and the target reads the `∋ᵛ f` off the declared type. -/
 
@@ -1069,7 +1069,7 @@ def E3p : HasTy Ctx.nil E3p_term (.all E3p_Dom (.all E3T2 E3T1)) :=
   .lam (.lam (.let (.sub (var' .here rfl) E3p_sub) (var' .here rfl) (.fld .top)) (.fld .top))
     (.vfld (.and (.typ .bot (.fld .top)) (.typ (.fld .top) .top)))
 
-/-! ## E4p: the counterexample of §1, the receiver of the two bounds at `x.f`
+/-! ## E4p: no realizer, the receiver of the two bounds at `x.f`
 
 `λ(x : {val f : {B : S..T}}). λ(w : S). λ(n : Int). let g = λ(y : w.A). y in g n`
 at `∀ ∀ ∀ w.A`, with `S <: x.f.B <: T` the step with no realizer.  E4's
@@ -1177,9 +1177,9 @@ def E5p_roPath : PathTy E5p_Ctxr (.sel (.var .here) lb) E5p_oTy :=
 
 `λ(n : Int). ν(x. {val c = ν(z. {T = Int})} ∧ {v = n})` at
 `∀(n) μ(x. {val c : μ(z. {T : Int..Int})} ∧ {v : x.c.T})`.  `c` is `val`, `v`
-plain.  After decision 27 the sketch's `{val v : x.c.T}` is `{v : x.c.T}`,
-since `v` holds a variable.  `Fld-E` at the self while its own fields are
-typed. -/
+plain: `v`'s declared type is `{v : x.c.T}`, not `{val v : x.c.T}`, since `v`
+holds a variable and only `trmObj` can declare a stable field inside a
+literal.  `Fld-E` at the self while its own fields are typed. -/
 
 def E6p_innerT : Ty s := .typ lT E6Int E6Int
 def E6p_innerD : Defs s := .typ lT E6Int
@@ -1268,7 +1268,7 @@ at `⊤`, with `N = {b : ⊤}`.  `a` is plain, declared `{a : q.type}` by the
 derived `DefsTy.trmSngl`.  The `let y = x.a` is the derived `HasTy.letSngl`,
 whose premise is `PathTy.var` and `recE` at `x`, and whose binder is
 `y : q.type`.  The body reads `y.B <: N` by `Sel-<:` over `Sngl-Trans` at `y`
-and `Rec-E` at `q`.  That is decision 28's kept case. -/
+and `Rec-E` at `q`. -/
 
 /-- `N`, the closed stand-in `{b : ⊤}`. -/
 def E9_N : Ty s := .fld lb .top
@@ -1337,7 +1337,7 @@ source page.  Their target facts are in `DotToFCdot/Pages.lean`. -/
 `let z = ν(z. {C = ⊤}) in ν(x. {val a = ν(_. {A = ⊤})} ∧ {b = z})` at `⊤`, the
 inner literal declared `{val a : μ(_. {A : ⊤..⊤})} ∧ {b : z.type}`.  `a` is
 `val` by `trmObj`.  `b` is plain by the derived `trmSngl`, at `{b : z.type}`
-and not at `{val b : z.type}` (decision 27).  A stable field and a forwarding
+and not at `{val b : z.type}`.  A stable field and a forwarding
 field in one literal. -/
 
 /-- `z = ν(z. {C = ⊤})`, the outer literal the singleton field names. -/
@@ -1444,11 +1444,11 @@ pcore
 
 `types` and `symbols` are `val`, by `DefsTy.trmObj`.  `newTypeTop`,
 `newTypeRef` and `newSymbol` hold lambdas, and `symb`, `tpe` and `id` hold
-variables, so all six are plain (decision 27).  The `types` literal is X4,
+variables, so all six are plain.  The `types` literal is X4,
 reused unchanged.  The two modules refer to each other through the outer self
 `p`: `p.symbols.Symbol` inside `types`, and `p.types.Type` inside `symbols`.
 
-Four changes against Fig. 2 (decision 37).  `Nat` is the closed stand-in
+Four changes against Fig. 2.  `Nat` is the closed stand-in
 `{n : ⊤}`.  `options` is the closed literal `ν(o. {Option = ⊤})`, which Fig. 2
 elides.  `newTypeTop` returns its argument, as in X4, since `Defs` has no empty
 list for `ν_. {}`.  The two constructors let-bind their literal, since `Rec-E`
@@ -1462,7 +1462,7 @@ elimination through a stable field of the outer self from inside a sibling
 (`Fig2_crossUpperT`), and the abstract view of a nested literal after
 allocation.  The view is taken at the selection per module
 (`Fig2_pcTypesAbs`, `Fig2_pcSymbolsAbs`) and at the let-bound `pcore` for both
-(`Fig2_pcAbs`), never at the value (decision 36).  The target facts are in
+(`Fig2_pcAbs`), never at the value.  The target facts are in
 `DotToFCdot/Acceptance.lean`. -/
 
 /-! ### The `options` module -/
@@ -1694,13 +1694,13 @@ def Fig2_prog : Tm [] :=
 def Fig2_prog_ty : HasTy Ctx.nil Fig2_prog .top :=
   .let Fig2_oLit (.let Fig2_pLit (.sub Fig2_pcAbs .top) .top) .top
 
-/-! ## Fig1: pDOT Fig. 1, the Dotty modules (P1e)
+/-! ## Fig1: pDOT Fig. 1, the Dotty modules
 
 Fig2 with `Symbol = {tpe : p.types.Type} ∧ {id : Nat}`, the Scala of Fig. 1
 without the `Option`.  The derivation is Fig2's with the `tpe` type replaced.
 Its point, that `pcore.symbols.Symbol` is a path of length two, is Fig2's
 step 5.  This page is a second copy of Fig2's `symbols` module, `pcore` and
-program (decision 41).  It shares Fig2's labels, the `options` module,
+program.  It shares Fig2's labels, the `options` module,
 `Fig2_NatT`, the inner literal `Fig2_SymLitDefs`, and the view of `types`
 (`Fig2_TAbs`, `Fig2_sdTypes`), none of which mention the `tpe` type.  `o` is
 then unused in `Fig1_OptT`, so two steps give it as `.here` by hand. -/
@@ -1883,7 +1883,7 @@ def Fig1_pcSymbolsAbs : PathTy Fig1_Γc (.sel (.var .here) X4_lsymbols)
 def Fig1_prog : Tm [] :=
   .let (.val (.obj Fig2_oDefs)) (.let (.val (.obj Fig1_pDefs)) (.path .here))
 
-/-- P1e, source.  The program types at `⊤` in the empty context. -/
+/-- Fig. 1's program, source.  The program types at `⊤` in the empty context. -/
 def Fig1_prog_ty : HasTy Ctx.nil Fig1_prog .top :=
   .let Fig2_oLit (.let Fig1_pLit (.sub Fig1_pcAbs .top) .top) .top
 

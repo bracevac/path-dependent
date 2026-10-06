@@ -10,7 +10,7 @@ term, all indexed by one signature.  Allocation extends the signature; every
 substitution performed by the machine is a renaming, so no substitution
 operation beyond `rename` is needed.
 
-This is Plan III §3.5 verbatim:
+The reduction rules are:
 
 ```text
 ⟨σ, K, let x = t in u⟩                       ⟶  ⟨σ, K ▹ (x. u), t⟩

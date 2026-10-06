@@ -7,7 +7,7 @@ namespace Captures
 
 Subcapturing, shape subtyping, subtyping, term typing and definition typing,
 as five mutually inductive families.  They live in `Type`, not in `Prop`:
-the translation of Plan III §8 is a function on derivations and therefore
+the translation to FCdot is a function on derivations and therefore
 needs `Type`-valued elimination.
 
 Term typing carries a use set as its first index, `U; Γ ⊢ t : T`, as in
@@ -21,7 +21,7 @@ type out of thin air: the domain annotation of a lambda and the result type
 of a `let`.  Everything else is derived from those, so no side predicate on
 derivations is needed.
 
-One deviation from the surface presentation of §3.4: `{}-I` is stated as
+One deviation from the usual surface presentation: `{}-I` is stated as
 
 ```text
 Γ, x : (μ(x. S)) ^ U ⊢ d : S   ⟹   Γ ⊢ ν(x. d) : (μ(x. S)) ^ U
@@ -33,12 +33,13 @@ binder, so `S^x` cannot be an entry.  The two are interderivable, since
 `Rec-I` and `Rec-E` convert between `x : μ(x. S)` and `x : S^x`, and the
 shape chosen here is the one that matches `FCdot.Ctx` binder for binder.
 
-The fragment of §3.2 is enforced in the rules that need it (plan §13 items
-8 and 9): `Rec-I` and `Rec-E` carry `Shape.Decl` premises for the bodies
-they open and close, as does `Wf.mu`.  Intersections are *not* restricted:
-`And₁`, `And₂`, `And` and `And-I` apply to arbitrary operands, since a
-non-declaration operand `B` translates to the one-proposition telescope
-`[⊑ ⟦B⟧]` -- the self-bound proposition of `FCdot` (plan §13 item 9).  The
+The restriction that a recursive shape may only bind a declaration shape
+is enforced in the rules that need it: `Rec-I` and `Rec-E` carry
+`Shape.Decl` premises for the bodies they open and close, as does `Wf.mu`.
+Intersections are *not* restricted: `And₁`, `And₂`, `And` and `And-I` apply
+to arbitrary operands, since a non-declaration operand `B` translates to
+the one-proposition telescope `[⊑ ⟦B⟧]` -- the self-bound proposition of
+`FCdot`.  The
 declaration shapes are still the only bodies a `μ` may bind, because a bound
 proposition never mentions the self.  `{}-I` no longer restricts aliasing
 among the definitions: the target's alias-tolerant resolution
@@ -67,8 +68,8 @@ open FCdot (Kind Sig BVar Rename Label)
 /-- A context is a list of types, newest binder first.  A binder introduced
 by an object literal remembers the literal's definitions and the capture set
 assigned to the literal (`consSelf`); its type is `(μ(x. S)) ^ U` like any
-other binder, and `lookup` does not distinguish the two.  The translation of
-Plan III §8 does: such a binder is typed at the literal's precise type in the
+other binder, and `lookup` does not distinguish the two.  The translation
+to FCdot does: such a binder is typed at the literal's precise type in the
 target.  A platform capture binder (`consC`) carries no bound: it is rigid. -/
 inductive Ctx : Sig → Type where
   | nil : Ctx []
@@ -77,8 +78,7 @@ inductive Ctx : Sig → Type where
   | consC : Ctx s → Ctx (s,c)
 
 /-- The type of a variable, weakened into the current scope.  The self
-binder of a literal has type `(μ S) ^ U`, weakened, which is the plan's
-`U↑`. -/
+binder of a literal has type `(μ S) ^ U`, weakened. -/
 def Ctx.lookup : Ctx s → BVar s .var → Ty s
   | .cons _ T, .here => T.weaken
   | .cons Γ _, .there y => (Γ.lookup y).weaken
@@ -235,9 +235,8 @@ end
 
 /-! ## Derived rules
 
-Four rules the plan's rule list uses in derived form.  None of them is
-primitive; all four are definitions on derivations, so a translation may use
-them. -/
+Four convenience rules, none of them primitive: all four are definitions
+on derivations, so a translation may use them. -/
 
 /-- Reflexivity of subtyping, from the two reflexivities it pairs. -/
 def Sub.refl {s : Sig} {Γ : Ctx s} : (T : Ty s) → Sub Γ T T
@@ -247,7 +246,7 @@ def Sub.refl {s : Sig} {Γ : Ctx s} : (T : Ty s) → Sub Γ T T
 def Subcap.empty {s : Sig} {Γ : Ctx s} (C : CaptureSet s) : Subcap Γ [] C :=
   .elem (CaptureSet.nil_subset C)
 
-/-- `sc-var` in the form the plan lists it: from *any* typing of the
+/-- `sc-var` in the general form: from *any* typing of the
 variable at a capture set, the variable is below that set.  Admissible by
 induction on the typing derivation: `Var` concludes at `{x}` itself, the
 three variable rules pass the capture set through, and `sub` composes the
