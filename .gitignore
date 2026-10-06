@@ -38,3 +38,14 @@ lambda_p.synctex.gz
 *.swp
 *.swo
 *~
+# rendered documents, and the presentation's LaTeX outputs
+*.pdf
+/lean/Coercions/presentation/*.aux
+/lean/Coercions/presentation/*.log
+/lean/Coercions/presentation/*.fls
+/lean/Coercions/presentation/*.fdb_latexmk
+/lean/Coercions/presentation/*.nav
+/lean/Coercions/presentation/*.snm
+/lean/Coercions/presentation/*.toc
+/lean/Coercions/presentation/*.out
+/lean/Coercions/presentation/*.vrb

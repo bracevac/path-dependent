@@ -5,8 +5,8 @@ import Coercions.FCdot.Progress
 /-!
 # Type safety for DOT-MNF, transported from FCdot (Plan III §8.2, M4)
 
-The source calculus has no metatheory of its own: safety is *borrowed* from
-the target through the translation.  The bridge is the shared untyped
+Source safety is transported from the target through the translation,
+without a source preservation or canonical-forms proof. The bridge is the shared untyped
 runtime, into which both machines erase in lockstep (`DotMNF.erase_step` /
 `DotMNF.erase_reflect` and `FCdot.erase_step` / `FCdot.erase_reflect'`).
 
@@ -156,8 +156,8 @@ theorem Simulated.progress {s : Sig} {st : State s} (hsim : Simulated st) :
 
 /-- **Safety of DOT-MNF.**  From the initial state of a closed well-typed
 term, every reachable state is final or steps: the source machine never gets
-stuck.  Nothing is proved about DOT-MNF directly; the whole content is the
-translation, its typedness, and its erasure. -/
+stuck. The proof uses translation typedness, erasure, and target safety;
+it does not require source preservation. -/
 theorem dot_safety {t : Tm []} {T : Ty []} (d : HasTy .nil t T)
     {s : Sig} {st : State s} (run : Steps (⟨.nil, .nil, t⟩ : State []) st) :
     st.Final ∨ ∃ (s' : Sig) (st' : State s'), Step st st' :=

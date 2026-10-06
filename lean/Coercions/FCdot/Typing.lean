@@ -95,7 +95,8 @@ inductive Side.HasType : Ctx s → Side s → Ty (s,x) → Ty (s,x) → Prop whe
 
 /-- `Γ ⊢ m : src ⇒ Tel`: `m` proves every proposition of the closed telescope
 `Tel` from the propositions of the closed source telescope `src`, one
-template per target proposition. -/
+finite template per target proposition. Inclusion templates may compose
+several source facts. -/
 inductive Morphism.HasType : Ctx s → Telescope (s,x) → Morphism s → Telescope (s,x) → Prop where
   | nil : Γ ⊢ .nil : src ⇒ .nil
   | le : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ X ⊑ Y) →
@@ -107,6 +108,10 @@ inductive Morphism.HasType : Ctx s → Telescope (s,x) → Morphism s → Telesc
   | leEqSym : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ Y ≐ X) →
       Side.HasType Γ pre S X → Side.HasType Γ post Y T →
       Γ ⊢ .le m pre (.eqSym j) post : src ⇒ Tel ▹ S ⊑ T
+  /-- Both premise templates read the same source telescope. -/
+  | leTrans : Γ ⊢ m : src ⇒ Tel →
+      Γ ⊢ p : src ⇒ .nil ▹ S ⊑ M → Γ ⊢ q : src ⇒ .nil ▹ M ⊑ T →
+      Γ ⊢ .leTrans m p q : src ⇒ Tel ▹ S ⊑ T
   | eq : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ X ≐ Y) →
       Γ ⊢ .eq m j false : src ⇒ Tel ▹ X ≐ Y
   | eqSym : Γ ⊢ m : src ⇒ Tel → src ∋ (j ↦ X ≐ Y) →

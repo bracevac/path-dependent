@@ -20,9 +20,12 @@ normalizes to typed data:
 The proof is a structural induction on typing derivations.  Object coercions
 are between opened telescopes, so nothing is ever re-normalized at an
 instantiation: the `member` cases take an entry out of the atom's view.
+Composed templates normalize their premise morphisms independently; their
+interpretation then composes forms from the same existing receiver view.
 The view of a cast atom is computed from the view *and the chain* of the
-underlying atom (a bound entry of a view is a form typed from the root), so
-`atom_canon` and `closedAtomForm_typed` are proven together.
+underlying atom (a bound entry of a view is a form typed from the root).
+One atom conclusion carries both; `atom_canon` and `closedAtomForm_typed`
+are its projections.
 
 `closedAtomForm_typed` discharges the `FormsTyped` obligation of
 `preservation` and the canonical-forms hypothesis of `erase_reflect`
@@ -114,6 +117,12 @@ def AtomConcl (σ : Store s) (Γ : Ctx s) (a : Atom s) (S : Ty s) : Prop :=
     (∀ Tel : Telescope (s,x), Γ.resolve S = μ Tel → Γ ⊨[a.root, σ] V : Tel) ∧
     Γ.resolve S ≠ ⊥
 
+/-- The mutually established atom invariant: its view, non-bottom shape,
+and the typed chain from its root.  The computations may use different fuel. -/
+def AtomCanonConcl (σ : Store s) (Γ : Ctx s) (a : Atom s) (S : Ty s) : Prop :=
+  AtomConcl σ Γ a S ∧
+    ∃ n F, σ ⊢ a ⇓ᶜ[n] F ∧ Γ ⊨[a.root] F : Γ.lookupTy a.root ≤ S
+
 /-- The view of an atom, read at the shapes opened at its root: the same
 statement, since opening and folding a telescope at the root is invisible to
 a view. -/
@@ -138,13 +147,13 @@ theorem AtomConcl.of_opened {a : Atom s} {S : Ty s} {n : Nat} {V : View s}
 
 /-- The view of an atom through a coercion to an object type, from the view
 and the chain of the atom and the normal form of the coercion. -/
-theorem view_through_obj {a a' : Atom s} {S : Ty s} {Tel : Telescope (s,x)} {V : View s}
+theorem view_through_obj {a : Atom s} {S : Ty s} {Tel : Telescope (s,x)} {V : View s}
     {F C : Form s} {n₁ n₃ : Nat}
     (hroot : RootViewTyped Γ σ a.root)
     (hV : σ ⊢ a ⇓ᵥ[n₁] V)
     (hVt : ∀ Tel : Telescope (s,x), Γ.resolveAt? (some a.root) S = μ Tel → Γ ⊨[a.root, σ] V : Tel)
     (hnb : Γ.resolveAt? (some a.root) S ≠ ⊥)
-    (hC : σ ⊢ a ⇓ᶜ[n₃] (a', C))
+    (hC : σ ⊢ a ⇓ᶜ[n₃] C)
     (hCt : Γ ⊨[a.root] C : Γ.lookupTy a.root ≤ S)
     (hFt : Γ ⊨ F : S ≤ μ Tel) :
     ∃ m V', viewThrough σ m F a = some V' ∧ Γ ⊨[a.root, σ] V' : Tel := by
@@ -182,15 +191,14 @@ theorem ChainTyped.pair {r : BVar s .var} {F G : Form s} {S : Ty s} {Tel₁ Tel�
   have hop : ∀ Tel : Telescope (s,x),
       Γ.resolveAt? (some r) (μ ((Tel⟦r⟧)↑)) = μ ((Tel⟦r⟧)↑) := by
     intro Tel
-    simp [Ctx.resolveAt?_obj, Telescope.weaken_substVar]
+    simp [Ctx.resolveAt?_obj]
   have hF' : Γ ⊨[r] F : S ≤ μ ((Tel₁⟦r⟧)↑) := ChainTyped.tgtRes (Ctx.resolveAt_fold Γ r Tel₁) hF
   have hG' : Γ ⊨[r] G : S ≤ μ ((Tel₂⟦r⟧)↑) := ChainTyped.tgtRes (Ctx.resolveAt_fold Γ r Tel₂) hG
   obtain ⟨H, hH, hHt⟩ :=
     Form.pair_typed hF' hG' (hop Tel₁) (hop Tel₂) (hI Tel₁) (hI Tel₂)
   refine ⟨H, hH, ChainTyped.tgtRes ?_ hHt⟩
   show Γ.resolveAt? (some r) _ = Γ.resolveAt? (some r) _
-  simp [Ctx.resolveAt?_obj, Telescope.openAt?_append, Telescope.weaken_substVar,
-    Telescope.append_rename]
+  simp [Ctx.resolveAt?_obj, Telescope.openAt?_append]
 
 /-! ## Canonical forms -/
 
@@ -202,10 +210,10 @@ mutual
 
 theorem le_canon {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) : LeConcl σ Γ e S T := by
   match h with
-  | .refl => exact ⟨1, _, rfl, .eqv rfl⟩
+  | .refl => exact ⟨1, _, rfl, .id rfl⟩
   | .top => exact ⟨1, _, rfl, .top (by simp)⟩
   | .bot => exact ⟨1, _, rfl, .bot (by simp)⟩
-  | .eqToLe hφ => exact ⟨1, _, rfl, .eqv (eq_canon hφ)⟩
+  | .eqToLe hφ => exact ⟨1, _, rfl, .id (eq_canon hφ)⟩
   | .pi hd hc => exact ⟨1, _, rfl, .pi (by simp) (by simp) hd hc⟩
   | .obj hm =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
@@ -228,9 +236,9 @@ theorem le_canon {e : LeCo s} {S T : Ty s} (h : Γ ⊢ e : S ≤ T) : LeConcl σ
       refine ⟨max n₁ n₂ + 1, H, ?_, hHt⟩
       simp [hnf, hnf_le (Nat.le_max_left n₁ n₂) hF, hnf_le (Nat.le_max_right n₁ n₂) hG, hH]
   | .member (a := a) ha he hAt =>
-      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
+      obtain ⟨haV, n₃, C, hC, hCt⟩ := atom_canon_all ha
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := haV.opened
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨n₃, a₀, C, hC, hCt⟩ := closedAtomForm_typed ha
       obtain ⟨m, V', hV', hVt'⟩ :=
         view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
       obtain ⟨G, hG, hGt⟩ := hVt'.le_entry hAt
@@ -245,9 +253,9 @@ theorem eq_canon {φ : EqCo s} {S T : Ty s} (h : Γ ⊢ φ : S ≡ T) : EqConcl 
   | .trans h₁ h₂ => exact (eq_canon h₁).trans (eq_canon h₂)
   | .def hdef => exact Ctx.resolve_sel_some hdef
   | .member (a := a) ha he hAt =>
-      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
+      obtain ⟨haV, n₃, C, hC, hCt⟩ := atom_canon_all ha
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := haV.opened
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨n₃, a₀, C, hC, hCt⟩ := closedAtomForm_typed ha
       obtain ⟨m, V', hV', hVt'⟩ :=
         view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
       exact (hVt'.eq_entry hAt).2
@@ -257,9 +265,9 @@ theorem has_canon {hh : Has s} {x : BVar s .var} {ℓ : Label} (h : Γ ⊢ hh : 
   match h with
   | .field hF hmem => exact ⟨1, rfl, hσ.hasField hF hmem⟩
   | .member (a := a) ha he hAt =>
-      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
+      obtain ⟨haV, n₃, C, hC, hCt⟩ := atom_canon_all ha
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := haV.opened
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨n₃, a₀, C, hC, hCt⟩ := closedAtomForm_typed ha
       obtain ⟨m, V', hV', hVt'⟩ :=
         view_through_obj (precView_typed hσ a.root) hV hVt hnb hC hCt hFt
       obtain ⟨hq, hHF⟩ := hVt'.has_entry hAt
@@ -295,6 +303,18 @@ theorem mor_canon {src : Telescope (s,x)} {m : Morphism s} {Tel : Telescope (s,x
       simp [entries, entries_le (Nat.le_max_left _ _) hEs,
         sideForm_le (Nat.le_trans (Nat.le_max_left n₂ n₃) (Nat.le_max_right n₁ _)) hF,
         sideForm_le (Nat.le_trans (Nat.le_max_right n₂ n₃) (Nat.le_max_right n₁ _)) hG]
+  | .leTrans hm hp hq =>
+      obtain ⟨n₁, Es, hEs, hT⟩ := mor_canon hm
+      obtain ⟨n₂, Es₁, hEs₁, hT₁⟩ := mor_canon hp
+      obtain ⟨n₃, Es₂, hEs₂, hT₂⟩ := mor_canon hq
+      obtain ⟨E₁, L₁, rfl, hL₁, htL₁⟩ := hT₁.singleton_le
+      obtain ⟨E₂, L₂, rfl, hL₂, htL₂⟩ := hT₂.singleton_le
+      refine ⟨max n₁ (max n₂ n₃) + 1, Es ▹ .trans .id L₁ L₂ .id, ?_,
+        .trans hT .id htL₁ htL₂ .id⟩
+      simp [entries, entries_le (Nat.le_max_left _ _) hEs,
+        entries_le (Nat.le_trans (Nat.le_max_left n₂ n₃) (Nat.le_max_right n₁ _)) hEs₁,
+        entries_le (Nat.le_trans (Nat.le_max_right n₂ n₃) (Nat.le_max_right n₁ _)) hEs₂,
+        hL₁, hL₂]
   | .eq hm hAt =>
       obtain ⟨n, Es, hEs, hT⟩ := mor_canon hm
       exact ⟨n + 1, Es ▹ .eq _ false, by simp [entries, hEs], .eq hT hAt⟩
@@ -320,80 +340,72 @@ theorem side_canon {p : Side s} {X Y : Ty (s,x)} (h : Side.HasType Γ p X Y) :
       obtain ⟨n, F, hF, hFt⟩ := le_canon he
       exact ⟨n + 1, F, by simp [sideForm, hF], .closed hFt⟩
 
-theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ Γ a S := by
+/-- Views and root chains are obtained by one induction on atom typing. -/
+theorem atom_canon_all {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) :
+    AtomCanonConcl σ Γ a S := by
   match h with
   | .var =>
       obtain ⟨hV, hnb⟩ := precView_typed hσ _
-      exact ⟨1, _, rfl, hV, hnb⟩
+      exact ⟨⟨1, _, rfl, hV, hnb⟩, 1, .id, rfl, .id rfl⟩
   | .cast (a := a) (e := e) ha he =>
-      obtain ⟨n₁, V, hV, hVt, hnb⟩ := (atom_canon ha).opened
+      obtain ⟨haV, n₃, C, hC, hCt⟩ := atom_canon_all ha
+      obtain ⟨n₁, V, hV, hVt, hnb⟩ := haV.opened
       obtain ⟨n₂, F, hF, hFt⟩ := le_canon he
-      obtain ⟨n₃, a₀, C, hC, hCt⟩ := closedAtomForm_typed ha
       obtain ⟨m, V', hV', hVt', hnb'⟩ :=
         viewThrough_typed (precView_typed hσ a.root) (hFt.atRoot _)
           (view_le (Nat.le_max_left n₁ n₃) hV)
           (closedAtomForm_le (Nat.le_max_right n₁ n₃) hC) hCt hVt hnb
-      refine AtomConcl.of_opened (n := max n₂ m + 1) (V := V') ?_ hVt' hnb'
-      simp [view, hnf_le (Nat.le_max_left n₂ m) hF, viewThrough_le (Nat.le_max_right n₂ m) hV']
-  | .unfoldSelf ha =>
-      obtain ⟨n, V, hV, hVt, hnb⟩ := atom_canon ha
-      refine ⟨n + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩
-      rw [Ctx.resolve_obj] at h
-      obtain rfl := Ty.obj.inj h
-      exact ViewTyped_unfold (hVt _ (Ctx.resolve_obj _ _))
-  | .foldSelf ha =>
-      obtain ⟨n, V, hV, hVt, hnb⟩ := atom_canon ha
-      refine ⟨n + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩
-      rw [Ctx.resolve_obj] at h
-      obtain rfl := Ty.obj.inj h
-      exact ViewTyped_fold (hVt _ (Ctx.resolve_obj _ _))
-  | .both ha hb hroot =>
-      obtain ⟨n₁, V₁, hV₁, hVt₁, _⟩ := atom_canon ha
-      obtain ⟨n₂, V₂, hV₂, hVt₂, _⟩ := atom_canon hb
-      refine ⟨max n₁ n₂ + 1, V₁ ++ V₂, ?_, fun Tel' h => ?_, by simp⟩
-      · simp [view, view_le (Nat.le_max_left n₁ n₂) hV₁, view_le (Nat.le_max_right n₁ n₂) hV₂]
+      obtain ⟨H, hH, hHt⟩ := ChainTyped.combine hCt (hFt.atRoot _)
+      refine ⟨AtomConcl.of_opened (n := max n₂ m + 1) (V := V') ?_ hVt' hnb',
+        max n₃ n₂ + 1, H, ?_, hHt⟩
+      · simp [view, hnf_le (Nat.le_max_left n₂ m) hF,
+          viewThrough_le (Nat.le_max_right n₂ m) hV']
+      · simp [closedAtomForm, closedAtomForm_le (Nat.le_max_left n₃ n₂) hC,
+          hnf_le (Nat.le_max_right n₃ n₂) hF, hH]
+  | .unfoldSelf (Tel := Tel) ha =>
+      obtain ⟨⟨n₁, V, hV, hVt, _⟩, n₂, F, hF, hFt⟩ := atom_canon_all ha
+      refine ⟨⟨n₁ + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩,
+        n₂ + 1, F, by simp [closedAtomForm, hF], ?_⟩
+      · rw [Ctx.resolve_obj] at h
+        obtain rfl := Ty.obj.inj h
+        exact ViewTyped_unfold (hVt _ (Ctx.resolve_obj _ _))
+      · exact hFt.tgtRes (Ctx.resolveAt_fold Γ _ Tel)
+  | .foldSelf (Tel := Tel) ha =>
+      obtain ⟨⟨n₁, V, hV, hVt, _⟩, n₂, F, hF, hFt⟩ := atom_canon_all ha
+      refine ⟨⟨n₁ + 1, V, by simp [view, hV], fun Tel' h => ?_, by simp⟩,
+        n₂ + 1, F, by simp [closedAtomForm, hF], ?_⟩
+      · rw [Ctx.resolve_obj] at h
+        obtain rfl := Ty.obj.inj h
+        exact ViewTyped_fold (hVt _ (Ctx.resolve_obj _ _))
+      · exact hFt.tgtRes (Ctx.resolveAt_fold Γ _ Tel).symm
+  | .both (Tel₁ := Tel₁) (Tel₂ := Tel₂) ha hb hroot =>
+      obtain ⟨⟨n₁, V₁, hV₁, hVt₁, _⟩, m₁, F, hF, hFt⟩ := atom_canon_all ha
+      obtain ⟨⟨n₂, V₂, hV₂, hVt₂, _⟩, m₂, G, hG, hGt⟩ := atom_canon_all hb
+      rw [hroot] at hGt
+      obtain ⟨H, hH, hHt⟩ := ChainTyped.pair hFt hGt
+      refine ⟨⟨max n₁ n₂ + 1, V₁ ++ V₂, ?_, fun Tel' h => ?_, by simp⟩,
+        max m₁ m₂ + 1, H, ?_, hHt⟩
+      · simp [view, view_le (Nat.le_max_left n₁ n₂) hV₁,
+          view_le (Nat.le_max_right n₁ n₂) hV₂]
       · rw [Ctx.resolve_obj] at h
         obtain rfl := Ty.obj.inj h
         have h₂ := hVt₂ _ (Ctx.resolve_obj _ _)
         rw [hroot] at h₂
         exact (hVt₁ _ (Ctx.resolve_obj _ _)).append h₂
+      · simp [closedAtomForm, closedAtomForm_le (Nat.le_max_left m₁ m₂) hF,
+          closedAtomForm_le (Nat.le_max_right m₁ m₂) hG, hH]
+
+end
+
+/-- The view and non-bottom shape of a closed typed atom. -/
+theorem atom_canon {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) : AtomConcl σ Γ a S :=
+  (atom_canon_all hσ h).1
 
 /-- The chain of casts of a closed atom normalizes to a form typed from the
 root's type to the atom's type, at the root. -/
 theorem closedAtomForm_typed {a : Atom s} {S : Ty s} (h : Γ ⊢ₐ a : S) :
-    ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
-      Γ ⊨[a.root] F : (Γ.lookupTy a.root) ≤ S := by
-  match h with
-  | .var => exact ⟨1, _, .id, rfl, .id rfl⟩
-  | .cast (e := e) ha he =>
-      obtain ⟨n₁, a', F, hF, hFt⟩ := closedAtomForm_typed ha
-      obtain ⟨n₂, G, hG, hGt⟩ := le_canon he
-      obtain ⟨H, hH, hHt⟩ := ChainTyped.combine hFt (hGt.atRoot _)
-      refine ⟨max n₁ n₂ + 1, .cast a' e, H, ?_, ?_⟩
-      · simp [closedAtomForm, closedAtomForm_le (Nat.le_max_left n₁ n₂) hF,
-          hnf_le (Nat.le_max_right n₁ n₂) hG, hH]
-      · simp only [Atom.root_cast]; exact hHt
-  | .unfoldSelf (Tel := Tel) ha =>
-      obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed ha
-      refine ⟨n + 1, .unfoldSelf a', F, by simp [closedAtomForm, hF], ?_⟩
-      simp only [Atom.root_unfoldSelf]
-      exact hFt.tgtRes (Ctx.resolveAt_fold Γ _ Tel)
-  | .foldSelf (Tel := Tel) ha =>
-      obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed ha
-      refine ⟨n + 1, .foldSelf Tel a', F, by simp [closedAtomForm, hF], ?_⟩
-      simp only [Atom.root_foldSelf]
-      exact hFt.tgtRes (Ctx.resolveAt_fold Γ _ Tel).symm
-  | .both (Tel₁ := Tel₁) (Tel₂ := Tel₂) ha hb hroot =>
-      obtain ⟨n₁, a', F, hF, hFt⟩ := closedAtomForm_typed ha
-      obtain ⟨n₂, b', G, hG, hGt⟩ := closedAtomForm_typed hb
-      rw [hroot] at hGt
-      obtain ⟨H, hH, hHt⟩ := ChainTyped.pair hFt hGt
-      refine ⟨max n₁ n₂ + 1, .both Tel₁ Tel₂ a' b', H, ?_, ?_⟩
-      · simp [closedAtomForm, closedAtomForm_le (Nat.le_max_left n₁ n₂) hF,
-          closedAtomForm_le (Nat.le_max_right n₁ n₂) hG, hH]
-      · simpa [Atom.root] using hHt
-
-end
+    ∃ n F, σ ⊢ a ⇓ᶜ[n] F ∧ Γ ⊨[a.root] F : Γ.lookupTy a.root ≤ S :=
+  (atom_canon_all hσ h).2
 
 end
 
@@ -418,25 +430,22 @@ theorem Store.Typed.lookupTy_shape (hσ : ⊢ σ : Γ) (x : BVar s .var) :
       exact Or.inr ⟨_, hT⟩
   | cast v e => rw [hl] at hlit; exact absurd hlit (by simp [Value.IsLiteral])
 
-/-- The head form of a function atom's casts is the identity, an equality, or
-a `pi` form. -/
+/-- The head form of a function atom's casts is the identity or a `pi` form. -/
 theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
     (h : Γ ⊢ₐ a : Π(S) T) :
-    ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
-      (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) := by
-  obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
-  refine ⟨n, a', F, hF, ?_⟩
+    ∃ n F, σ ⊢ a ⇓ᶜ[n] F ∧ (F = .id ∨ ∃ d c, F = .pi d c) := by
+  obtain ⟨n, F, hF, hFt⟩ := closedAtomForm_typed hσ h
+  refine ⟨n, F, hF, ?_⟩
   cases hFt with
   | bot hb =>
       rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩
-      · simp [Ctx.resolveAt, hp] at hb
-      · simp [Ctx.resolveAt, ho] at hb
-  | top ht => simp [Ctx.resolveAt] at ht
+      · simp [hp] at hb
+      · simp [ho] at hb
+  | top ht => simp at ht
   | id _ => exact Or.inl rfl
-  | eqv _ => exact Or.inr (Or.inl ⟨_, rfl⟩)
-  | pi _ _ _ _ => exact Or.inr (Or.inr ⟨_, _, rfl⟩)
-  | obj _ ho _ => simp [Ctx.resolveAt] at ho
-  | into ho _ => simp [Ctx.resolveAt] at ho
+  | pi _ _ _ _ => exact Or.inr ⟨_, _, rfl⟩
+  | obj _ ho _ => simp at ho
+  | into ho _ => simp at ho
   | bnd hS hAt _ =>
       obtain ⟨hrv, _⟩ := (precView_typed hσ a.root).opened
       obtain ⟨G, hG, _⟩ := (hrv _ hS).bnd_entry hAt
@@ -445,10 +454,10 @@ theorem closedAtomForm_pi (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s
 /-- The canonical-forms obligation of preservation. -/
 theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
   pi := by
-    intro a S T n a' d c S₀ T₀ ha hF hlk
-    obtain ⟨n', a'', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
+    intro a S T n d c S₀ T₀ ha hF hlk
+    obtain ⟨n', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
     have hd := closedAtomForm_det hF hF'
-    have hFe : F' = .pi d c := (Prod.mk.inj hd).2.symm
+    have hFe : F' = .pi d c := hd.symm
     subst hFe
     cases hFt with
     | pi hS hT hd hc =>
@@ -458,15 +467,12 @@ theorem Store.Typed.formsTyped (hσ : ⊢ σ : Γ) : FormsTyped σ Γ where
         obtain ⟨rfl, rfl⟩ := Ty.pi.inj hT
         exact ⟨hd, hc⟩
   refl := by
-    intro a S T n a' F ha hF hid
-    obtain ⟨n', a'', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
-    have hd := closedAtomForm_det hF hF'
-    have hFe : F' = F := (Prod.mk.inj hd).2.symm
+    intro a S T n ha hF
+    obtain ⟨n', F', hF', hFt⟩ := closedAtomForm_typed hσ ha
+    have hFe : F' = .id := (closedAtomForm_det hF hF').symm
     subst hFe
     have hres : Γ.resolveAt a.root (Γ.lookupTy a.root) = Γ.resolveAt a.root (Π(S) T) := by
-      rcases hid with rfl | ⟨φ, rfl⟩
-      · cases hFt with | id h => exact h
-      · cases hFt with | eqv h => exact h
+      cases hFt with | id h => exact h
     rcases hσ.lookupTy_shape a.root with ⟨S₀, T₀, hp⟩ | ⟨Tel, ho⟩
     · simp only [Ctx.resolveAt, hp, Ctx.resolve_pi, Ty.unfoldAt_pi] at hres
       obtain ⟨rfl, rfl⟩ := Ty.pi.inj hres

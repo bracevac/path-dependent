@@ -18,19 +18,18 @@ variable {σ : Store s} {Γ : Ctx s}
 /-- A function atom is rooted at a closure. -/
 theorem closed_pi_inversion (hσ : ⊢ σ : Γ) {a : Atom s} {S : Ty s} {T : Ty (s,x)}
     (h : Γ ⊢ₐ a : .pi S T) : ∃ S₀ t₀, σ.lookup a.root = .lam S₀ t₀ := by
-  obtain ⟨n, a', F, hF, hFt⟩ := closedAtomForm_typed hσ h
+  obtain ⟨n, F, hF, hFt⟩ := closedAtomForm_typed hσ h
   have hlk : ∃ S₀ T₀, Γ.lookupTy a.root = .pi S₀ T₀ := by
     rcases hσ.lookupTy_shape a.root with hp | ⟨Tel, ho⟩
     · exact hp
     · exfalso
       cases hFt with
-      | bot hb => simp [Ctx.resolveAt, ho] at hb
-      | top ht => simp [Ctx.resolveAt] at ht
-      | id hres => simp [Ctx.resolveAt, ho] at hres
-      | eqv hres => simp [Ctx.resolveAt, ho] at hres
-      | pi hp _ _ _ => simp [Ctx.resolveAt, ho] at hp
-      | obj _ ho' _ => simp [Ctx.resolveAt] at ho'
-      | into ho' _ => simp [Ctx.resolveAt] at ho'
+      | bot hb => simp [ho] at hb
+      | top ht => simp at ht
+      | id hres => simp [ho] at hres
+      | pi hp _ _ _ => simp [ho] at hp
+      | obj _ ho' _ => simp at ho'
+      | into ho' _ => simp at ho'
       | bnd hS hAt _ =>
           obtain ⟨hrv, _⟩ := (precView_typed hσ a.root).opened
           obtain ⟨G, hG, _⟩ := (hrv _ hS).bnd_entry hAt
@@ -83,10 +82,9 @@ theorem progress {s : Sig} {st : State s} {U : Ty s} (hT : State.Typed st U) :
           by_cases hne : a = .var a.root
           · obtain ⟨x, rfl⟩ : ∃ x, a = .var x := ⟨_, hne⟩
             exact Or.inr ⟨_, _, Step.appVar hl⟩
-          · obtain ⟨n, a', F, hF, hFs⟩ := closedAtomForm_pi hσ ha
-            rcases hFs with hid | ⟨φ, hφ⟩ | ⟨d, c, hpi⟩
-            · exact Or.inr ⟨_, _, Step.appCastRefl hl hne hF (Or.inl hid)⟩
-            · exact Or.inr ⟨_, _, Step.appCastRefl hl hne hF (Or.inr ⟨φ, hφ⟩)⟩
+          · obtain ⟨n, F, hF, hFs⟩ := closedAtomForm_pi hσ ha
+            rcases hFs with hid | ⟨d, c, hpi⟩
+            · subst hid; exact Or.inr ⟨_, _, Step.appCastRefl hl hne hF⟩
             · subst hpi; exact Or.inr ⟨_, _, Step.appCast hl hne hF⟩
   | proj a ℓ h =>
       cases ht with

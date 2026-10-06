@@ -11,13 +11,22 @@ that function, and DOT-MNF's type safety is transported from FCdot's.
 |---|---|
 | `Types` | `Ty.translate`, `Ty.tel`/`Ty.telSelf` (a type as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Ty.isObj` and `Ty.translate_isObj`/`Ty.tel_of_not_isObj`, `Ty.witnesses`, `Ty.fieldLabels`, `Ty.literalTy`, `Ctx.translate` |
 | `TypesLemmas` | renaming and instantiation commute with the translation; `Ty.isDecl_rename`, `Ty.isObj_rename`; `Ty.translate_decl`; `Ty.tel_substVar` (opening a body at the root) |
-| `Evidence` | `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `Ctx.varAtom` |
-| `EvidenceTyped` | `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `Ctx.varAtom_typed`, `Ty.tel_closedBnds` (every self-bound the translation produces is closed); the well-formedness `Ctx.Wf` of contexts |
+| `Evidence` | `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `recIAtom`/`recEAtom` (arbitrary recursive bodies), `Ctx.varAtom` |
+| `EvidenceTyped` | `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `Ctx.varAtom_typed`, `Ty.tel_closedBnds` (bounds in `tel` are weakened under its fresh self); the well-formedness `Ctx.Wf` of contexts |
 | `Terms` | `HasTy.translate`, `DefsTy.translateFields` |
 | `TermsTyped` | `HasTy.translate_typed`, `DefsTy.translateFields_typed` |
 | `Erasure` | `HasTy.translate_erase` (`⌊h.translate⌋ = ⌊t⌋`), `coherence` |
 | `Safety` | the simulation invariant `Simulated`, `dot_safety`, `dot_not_stuck` |
 | `Consistency` | `reachable_consistent`, `reachable_realized` for runs of translated programs |
+| `Examples` | translated typedness and erasure regressions for E9 to E12 |
+| `WadlerFest` | composed translation, typedness, erasure, and safety for the annotated WadlerFest store machine |
+| `RetainedSafety` | safety for every retained-let reduction order, using the operational correspondence with the annotated machine |
+| `SortedSafety` | typed translation, exact erasure, and retained-let safety for the public WadlerFest syntax with distinct type and term labels |
+| [`RecursiveSubtyping`](RecursiveSubtyping.lean) | experimental recursive projection and width coercions, dependent-codomain projection, and a recursive coercion composing two self facts; source subtyping rules are unchanged |
+
+The [recursive-subtyping research note](RecursiveSubtyping.md) states the
+checked principles, the finite-template extension, and the remaining
+correspondence obligation for a general BINDX rule.
 
 ## The translation
 
@@ -39,8 +48,20 @@ Intersections are unrestricted: an operand that is not an object shape
 contributes the single *self-bound* proposition `⊑ ⟦B⟧` of FCdot (plan §13
 item 9).  `Ty.isObj` is the shape test that decides between the two: it
 holds exactly when `⟦T⟧ = μ (tel T)`, and fails exactly when `tel T` is the
-one-bound telescope above.  The bodies of `μ` stay restricted to `Ty.Decl`,
-because a bound never mentions the self.
+one-bound telescope above. Neither test restricts the source language.
+In particular, recursive bodies may be functions, selections, arbitrary
+intersections, or nested recursive types.
+
+The distinction between `tel` and `telSelf` matters here. A bound in `tel B`
+is weakened under a fresh self binder. A bound in `telSelf T` can mention
+the recursive self. To translate recursive elimination at a variable `x`,
+`recEAtom` opens the recursive telescope at `x`, refolds it as `tel (T[x/z])`,
+and extracts its bound when the result is not an object shape. Recursive
+introduction reverses this construction: `recIAtom` puts the operand into
+its telescope before changing the self binder. `Ty.tel_substVar` proves
+that the two opened telescopes agree. Both adapters preserve the root and
+erase to the original operand. This extension uses the existing target
+typing rules and safety proof.
 
 Subtyping: `Top/Bot/Refl/Trans` to the corresponding evidence; `And₁`,
 `And₂` to object coercions with identity templates on one half when the
@@ -54,8 +75,8 @@ source proposition through the translated bound; `Sel-<:`, `<:-Sel` to
 `pi`.
 
 Variable typings: `Var` is the variable, cast by `litCo` when the binder is a
-literal's self; `Rec-I`/`Rec-E` unfold at the root and refold at the other
-telescope; `And-I` is `both` on the two operands put into their telescopes
+literal's self; `Rec-I`/`Rec-E` use the adapters above; `And-I` is `both` on
+the two operands put into their telescopes
 by `intoAtom` (a cast, so the root is unchanged); `Sub` is a cast.  Terms
 follow the syntax; a projection carries its presence evidence and is cast
 to the declared field type; an object literal becomes a literal with the witnesses of its

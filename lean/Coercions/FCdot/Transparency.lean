@@ -142,6 +142,7 @@ theorem Morphism.HasType.refine {Γ Γ' : Ctx s} {src : Telescope (s,x)} {m : Mo
   | .leEq hm hAt hpre hpost => exact .leEq (hm.refine hR) hAt (hpre.refine hR) (hpost.refine hR)
   | .leEqSym hm hAt hpre hpost =>
       exact .leEqSym (hm.refine hR) hAt (hpre.refine hR) (hpost.refine hR)
+  | .leTrans hm hp hq => exact .leTrans (hm.refine hR) (hp.refine hR) (hq.refine hR)
   | .eq hm hAt => exact .eq (hm.refine hR) hAt
   | .eqSym hm hAt => exact .eqSym (hm.refine hR) hAt
   | .has hm hAt => exact .has (hm.refine hR) hAt

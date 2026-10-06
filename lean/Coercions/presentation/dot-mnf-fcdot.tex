@@ -1,0 +1,1388 @@
+% A visual introduction with full core grammars, followed by reference slides.
+% Build: latexmk -pdf -interaction=nonstopmode -halt-on-error dot-mnf-fcdot.tex
+% Presenter commentary and Lean references are in speaker-notes.md.
+\documentclass[aspectratio=169,12pt]{beamer}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern,amsmath,amssymb,mathtools,stmaryrd,booktabs}
+\usefonttheme{professionalfonts}
+\definecolor{ink}{HTML}{182B3A}
+\definecolor{source}{HTML}{225FA0}
+\definecolor{target}{HTML}{A34428}
+\definecolor{muted}{HTML}{53616B}
+\setbeamercolor{normal text}{fg=ink,bg=white}
+\setbeamercolor{frametitle}{fg=ink}
+\setbeamercolor{structure}{fg=ink}
+\setbeamerfont{frametitle}{size=\large,series=\bfseries}
+\setbeamerfont{footline}{size=\scriptsize}
+\setbeamersize{text margin left=10mm,text margin right=10mm}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{frametitle}{\vspace{4mm}\insertframetitle\par\vspace{2mm}}
+\setbeamertemplate{footline}{\hfill\insertframenumber\hspace{10mm}\vspace{3mm}}
+\title{DOT-MNF to FCdot}
+\author{}
+\date{}
+\pdfstringdefDisableCommands{\def\translate#1{#1}}
+\hypersetup{pdftitle={DOT-MNF to FCdot},pdfauthor={},
+  pdfsubject={The calculi, translation, and safety for WadlerFest DOT},
+  colorlinks=true,urlcolor=source}
+
+\newcommand{\src}[1]{{\color{source}#1}}
+\newcommand{\tgt}[1]{{\color{target}#1}}
+% The brackets belong to the target; their argument belongs to the source.
+\newcommand{\tr}[1]{\tgt{\llbracket\src{#1}\rrbracket}}
+\newcommand{\tel}[1]{\tgt{\mathsf{tel}(\src{#1})}}
+\newcommand{\tels}[2]{\tgt{\mathsf{tel}_{\src{#1}}(\src{#2})}}
+\newcommand{\ann}[1]{\src{\mathsf{strip}(#1)}}
+\newcommand{\er}[1]{{\color{ink}\lfloor#1\rfloor}}
+\newcommand{\sub}{\mathrel{<:}}
+\newcommand{\mem}[3]{\{#1:#2\mathinner{.\!.}#3\}}
+\newcommand{\fld}[2]{\{#1:#2\}}
+\newcommand{\obj}[2]{\mu(#1.\,#2)}
+\newcommand{\nm}[2]{#1\mathbin{\cdot}#2}
+\newcommand{\cast}[2]{\mathsf{cast}(#1,#2)}
+\newcommand{\proj}[3]{\mathsf{proj}(#1,#2,#3)}
+\newcommand{\has}[1]{\mathsf{has}\;#1}
+\newcommand{\bnd}[1]{\mathsf{bnd}\;#1}
+\newcommand{\rt}[1]{\mathsf{root}(#1)}
+\newcommand{\readp}[2]{\mathsf{read}(#1,#2)}
+\newcommand{\kw}[1]{\mathsf{#1}}
+\newcommand{\gap}{\par\vspace{3mm}}
+\newcommand{\captionline}[1]{\par\vspace{2mm}{\small\color{muted}#1}\par}
+
+\begin{document}
+
+\begin{frame}{DOT-MNF to FCdot}
+  \vspace{2mm}
+  {\Large Type safety through explicit evidence}
+  \vspace{7mm}
+  \[
+  \begin{array}{c@{\quad}c@{\quad}c}
+    \src{\mathcal{H}\mathrel{::}\Gamma\vdash t:T}&\longmapsto&\tgt{\tr{\Gamma}\vdash\tr{\mathcal{H}}:\tr{T}}\\[2mm]
+    \text{\src{implicit subtyping}}&&\text{\tgt{explicit casts}}\\[5mm]
+    \multicolumn{3}{c}{\er{\tr{\mathcal{H}}}=\er{\src{t}}}
+  \end{array}
+  \]
+  \gap
+  Translate a typing derivation \src{$\mathcal{H}$}. Reuse the target's safety proof.
+  \captionline{Erasure $\er{\,\cdot\,}$ removes types and evidence.\\
+  The result covers the annotated WadlerFest rules and every retained-let reduction order.\\
+  \src{Blue}: source.\quad\tgt{Rust}: target.}
+\end{frame}
+
+\begin{frame}{DOT: fields and abstract type members}
+  \begin{center}
+  \begin{tabular}{@{}ll@{}}
+    $\src{\mem{A}{S}{T}}$ & type member with bounds $\src{S}$ and $\src{T}$\\[2mm]
+    $\src{\fld{a}{T}}$ & field of type $\src{T}$\\[2mm]
+    $\src{x.A}$ & the type member of variable $\src{x}$
+  \end{tabular}
+  \end{center}
+  \gap
+  \textbf{Example}, assuming $\src{n:R}$:
+  \[
+    \src{\kw{let}\ x=\underbrace{\nu(z.a=n)}_{\text{object}}\ \kw{in}\
+      \underbrace{x.a}_{\text{projection}}:R}
+  \]
+  \captionline{$\src{z}$ names self.
+  MNF: applications and projections use variables; a \texttt{let} names a computation.}
+\end{frame}
+
+\begin{frame}{DOT-MNF syntax: types}
+  \textbf{Types}
+  \[
+  \src{\begin{aligned}
+    S,T&::=\top\mid\bot\mid\mem{A}{S}{T}\mid\fld{a}{T}\mid x.A\\[2mm]
+       &\quad\mid\forall(x:S)T\mid\mu(z.T)\mid S\wedge T
+  \end{aligned}}
+  \]
+  \gap
+  \textbf{Recursive introduction and elimination}
+  \[
+    \src{\frac{\Gamma\vdash x:T[x/z]}{\Gamma\vdash x:\mu(z.T)}}
+    \qquad
+    \src{\frac{\Gamma\vdash x:\mu(z.T)}{\Gamma\vdash x:T[x/z]}}
+  \]
+  \captionline{The body $\src{T}$ is arbitrary: selections, functions,
+  intersections, and nested recursion are all admitted.
+  $\src{A,B}$ are type labels; $\src{a,b}$ are field labels.}
+\end{frame}
+
+\begin{frame}{DOT-MNF syntax: terms and definitions}
+  \[
+  \begin{array}{r@{\;\src{::=}\;}l@{\qquad}l}
+    \src{t,u}&\src{x\mid v\mid x\,y\mid x.a\mid\kw{let}\ x=t\ \kw{in}\ u}
+      &\text{terms}\\[5mm]
+    \src{v}&\src{\lambda(x:S).t\mid\nu(z.d)}&\text{values}\\[5mm]
+    \src{d}&\src{A=T\mid a=t\mid d\wedge d}&\text{definitions}
+  \end{array}
+  \]
+  \gap
+  Applications and projections use variables. Field bodies may compute.
+  \captionline{The object binds self $\src{z}$ in all its definitions.
+  Well-typed literals have distinct labels.}
+\end{frame}
+
+\begin{frame}{The annotated WadlerFest frontend}
+  The published object syntax records its self type:
+  \[
+    \src{v::=\lambda(x:S).t\mid\nu(z:T)d}.
+  \]
+  Types, terms, and definitions otherwise have the preceding grammars.
+  \gap
+  Its object rule checks definitions under an \textbf{opened self assumption}:
+  \[
+    \src{\frac{\Gamma,z:T\vdash d:T}
+      {\Gamma\vdash\nu(z:T)d:\mu(z.T)}}.
+  \]
+  \captionline{Here $\src{T}$ may mention $\src{z}$.
+  Definition typing requires disjoint labels across conjunctions.
+  The public frontend enforces distinct type-label and field-label categories.}
+\end{frame}
+
+\begin{frame}{Opened self is represented by recursive elimination}
+  DOT-MNF removes the annotation and remembers the literal at self:
+  \[
+    \ann{\nu(z:T)d}=\src{\nu(z.\kw{strip}(d))}.
+  \]
+  The local self assumption is recursive. One rule recovers the opened type:
+  \[
+    \src{z:\mu(z.T):=d\quad\Longrightarrow\quad z:T}.
+  \]
+  \gap
+  \textbf{Typing correspondence.} Every closed annotated derivation yields
+  \[
+    \src{\varnothing\vdash_{\!W}t:T}
+      \quad\Longrightarrow\quad
+    \src{\varnothing\vdash_{\!D}\kw{strip}(t):T}.
+  \]
+  \captionline{$\src{W}$ denotes the annotated rules, $\src{D}$ DOT-MNF.
+  No good-bounds or inertness premise is needed.}
+\end{frame}
+
+\begin{frame}{Bad bounds hide a term's runtime shape}
+  \[
+    \src{\frac{\Gamma\vdash x:\mem{A}{S}{T}}
+      {\Gamma\vdash S\sub x.A\qquad\Gamma\vdash x.A\sub T}}
+  \]
+  \gap
+  For a hypothetical parameter $\src{x:\mem{A}{\top}{\bot}}$:
+  \[
+    \src{\underbrace{U\sub\top}_{\text{any }U}
+      \sub x.A\sub
+      \underbrace{\bot\sub V}_{\text{any }V}}
+  \]
+  \gap
+  Subsumption can now assign any type to an already typed term.
+  \captionline{These assumptions are legal under a lambda.
+  A typed runtime store cannot realize them.}
+\end{frame}
+
+\begin{frame}{FCdot syntax: types and propositions}
+  \textbf{Types and telescopes}
+  \[
+  \tgt{\begin{aligned}
+    \tau,\sigma&::=\bot\mid\nm{x}{\ell}\mid\Pi(x:\tau)\sigma\mid\obj{z}{\Phi}\\[2mm]
+    \Phi,\Psi&::=[\,]\mid\Phi,P
+  \end{aligned}}
+  \]
+  \gap
+  \textbf{Propositions about self}
+  \[
+    \tgt{P::=\tau\sqsubseteq\sigma\mid\tau\doteq\sigma
+      \mid\has{a}\mid\bnd{\tau}}
+  \]
+  \captionline{$\tgt{x,y,z}$ are variables.
+  $\tgt{\obj{z}{\Phi}}$ binds $\tgt{z}$ throughout $\tgt{\Phi}$.
+  $\tgt{\top:=\obj{z}{[\,]}}$.\\
+  $\tgt{\bnd{\tau}}$ includes self in $\tgt{\tau}$.
+  Its type may mention self; recursive unfolding will open that dependency.}
+\end{frame}
+
+\begin{frame}{FCdot: member type names}
+  $\tgt{\nm{x}{\ell}}$ is a type name attached to variable $\tgt{x}$ and label $\tgt{\ell}$.
+  \gap
+  \[
+  \begin{array}{l@{\qquad}l}
+    \tgt{\nm{x}{A}}&\text{the type named by member }\tgt{A}\\[4mm]
+    \tgt{\nm{x}{a}}&\text{the result type of field }\tgt{a}
+  \end{array}
+  \]
+  \gap
+  \[
+    \tr{x.A}=\tgt{\nm{x}{A}}.
+  \]
+  \captionline{An object gives these names bounds or exact definitions.
+  Field presence is a separate fact.}
+\end{frame}
+
+\begin{frame}{FCdot: member names and object facts}
+  The self variable $\tgt{z}$ can occur in the types inside $\tgt{P}$:
+  \gap
+  \[
+    \tgt{\nm{z}{a}}\quad\text{is an instance of the type grammar's }\tgt{\nm{x}{\ell}}.
+  \]
+  \[
+    \tgt{\obj{z}{[\underbrace{\has{a}}_{\text{self has field }a},\
+      \underbrace{\nm{z}{a}\sqsubseteq\tau}_{\text{bound on its type}}]}}
+  \]
+  \captionline{Inclusion and equality mention self through their types.
+  $\tgt{\has{a}}$ and $\tgt{\bnd{\tau}}$ refer to the enclosing self implicitly.}
+\end{frame}
+
+\begin{frame}{Evidence, judgments, and derivations}
+  \begin{center}
+  \begin{tabular}{@{}ll@{}}
+    Proposition syntax & $\tgt{\tau\sqsubseteq\tau}$\\[5mm]
+    Proof-term definition & $\tgt{e:=\kw{refl}(\tau)}$\\[5mm]
+    Typing judgment & $\tgt{\Delta\vdash e:\tau\leq\tau}$\\[5mm]
+    Derivation of that judgment
+      & $\tgt{\mathcal{E}\mathrel{::}\Delta\vdash e:\tau\leq\tau}$
+  \end{tabular}
+  \end{center}
+  \gap
+  A cast contains the proof term $\tgt{e}$.
+  \captionline{The derivation $\tgt{\mathcal{E}}$ establishes its typing judgment.
+  A telescope contains proposition syntax.}
+\end{frame}
+
+\begin{frame}{Each use of subsumption becomes an explicit cast}
+  \[
+    \src{\frac{\Gamma\vdash t:S\qquad\Gamma\vdash S\sub T}
+      {\Gamma\vdash t:T}}
+  \]
+  \vspace{3mm}
+  \begin{center}The subtyping derivation translates to a proof term $\tgt{e}$\end{center}
+  \vspace{3mm}
+  \[
+    \tgt{\frac{\Delta\vdash u:\tau\qquad
+        \Delta\vdash e:\tau\leq\sigma}
+      {\Delta\vdash\cast{u}{e}:\sigma}}
+  \]
+  \captionline{$\tgt{\Delta}$ is the target context.
+  The premise $\tgt{\Delta\vdash e:\tau\leq\sigma}$ checks its evidence argument.}
+\end{frame}
+
+\begin{frame}{FCdot syntax: atoms}
+  An atom is a variable under wrappers:
+  \[
+  \tgt{\begin{aligned}
+    r,s&::=x\mid\cast{r}{e}\\[2mm]
+       &\quad\mid\kw{fold}(z.\Phi,r)\mid\kw{unfold}(r)\\[2mm]
+       &\quad\mid\kw{both}(z.\Phi,z.\Psi,r,s)
+  \end{aligned}}
+  \]
+  \captionline{Fold/unfold introduce/eliminate a recursive self type.
+  Both combines two views of the same variable.}
+\end{frame}
+
+\begin{frame}{The root of an atom: all cases}
+  \[
+  \tgt{\begin{aligned}
+    \rt{x}&=x\\[3mm]
+    \rt{\cast{r}{e}}&=\rt{r}\\[3mm]
+    \rt{\kw{fold}(z.\Phi,r)}&=\rt{r}\\[3mm]
+    \rt{\kw{unfold}(r)}&=\rt{r}\\[3mm]
+    \rt{\kw{both}(z.\Phi,z.\Psi,r,s)}&=\rt{r}
+  \end{aligned}}
+  \]
+  \gap
+  \captionline{Root traverses atom wrappers; it does not inspect object definitions.\\
+  For $\tgt{\kw{both}}$, it uses the first operand; typing requires $\tgt{\rt{r}=\rt{s}}$.}
+\end{frame}
+
+\begin{frame}{FCdot syntax: terms and values}
+  \textbf{Terms}
+  \[
+  \tgt{\begin{aligned}
+    u,w&::=r\mid v\mid r\,s\mid\proj{r}{a}{p}\\[2mm]
+       &\quad\mid\kw{let}\ x=u\ \kw{in}\ w\mid\cast{u}{e}
+  \end{aligned}}
+  \]
+  \gap
+  \textbf{Values}
+  \[
+    \tgt{v::=\lambda(x:\tau).u\mid\kw{obj}(z;W;F)\mid\cast{v}{e}}
+  \]
+  \captionline{Applications and projections use atoms.
+  $\tgt{e}$ is inclusion evidence; $\tgt{p}$ is field-presence evidence.
+  A cast value remains a value.}
+\end{frame}
+
+\begin{frame}{FCdot syntax: object definitions}
+  \[
+  \begin{array}{r@{\;\tgt{::=}\;}l@{\qquad}l}
+    \tgt{W}&\tgt{[\,]\mid W,\ell=\tau}&\text{type witnesses}\\[4mm]
+    \tgt{F}&\tgt{[\,]\mid F,a=u}&\text{field bodies}
+  \end{array}
+  \]
+  \gap
+  The object $\tgt{\kw{obj}(z;W;F)}$ binds self in both lists.
+  \gap
+  \[
+    \tgt{W=[a=\tau]},\qquad\tgt{F=[a=u]}.
+  \]
+  \captionline{Here, $\tgt{\nm{z}{a}}$ names $\tgt{\tau}$ and the field body is $\tgt{u}$.}
+\end{frame}
+
+\begin{frame}{Declarations translate to the facts they provide}
+  \[
+  \begin{aligned}
+    \tr{\mem{A}{S}{T}}
+      &=\tgt{\obj{z}{[
+         \underbrace{\tr{S}\sqsubseteq\nm{z}{A}}_{\text{lower bound}},\
+         \underbrace{\nm{z}{A}\sqsubseteq\tr{T}}_{\text{upper bound}}]}}
+         \\[9mm]
+    \tr{\fld{a}{T}}
+      &=\tgt{\obj{z}{[
+         \underbrace{\has{a}}_{\text{presence}},\
+         \underbrace{\nm{z}{a}\sqsubseteq\tr{T}}_{\text{result type}}]}}
+  \end{aligned}
+  \]
+  \vspace{6mm}
+  Reading a fact replaces self $\tgt{z}$ by the receiver's variable.
+\end{frame}
+
+\begin{frame}{The remaining type constructors}
+  \[
+  \begin{aligned}
+    \tr{\top}&=\tgt{\obj{z}{[\,]}},\qquad
+      \tr{\bot}=\tgt{\bot},\qquad \tr{x.A}=\tgt{\nm{x}{A}}\\[5mm]
+    \tr{\forall(x:S)T}&=\tgt{\Pi(x:\tr{S})\tr{T}}\\[5mm]
+    \tr{S\wedge T}&=\tgt{\obj{z}{\tel{S}\mathbin{+\!+}\tel{T}}}\\[5mm]
+    \tr{\mu(z.T)}&=\tgt{\obj{z}{\tels{z}{T}}}
+  \end{aligned}
+  \]
+  \captionline{$\tel{T}$ describes a type under a fresh self binder.
+  $\tels{z}{T}$ describes a body whose self is already $\src{z}$.}
+\end{frame}
+
+\begin{frame}{Intersections include arbitrary operands}
+  Declarations contribute their member facts. An operand with another shape
+  contributes a bound on the object itself:
+  \[
+    \tel{x.A}=\tgt{[\bnd{\nm{x}{A}}]}.
+  \]
+  \[
+    \tr{x.A\wedge\fld{a}{T}}
+      =\tgt{\obj{z}{[\bnd{\nm{x}{A}},\has{a},\nm{z}{a}\sqsubseteq\tr{T}]}}.
+  \]
+  \gap
+  The first fact supports projection back to $\tgt{\nm{x}{A}}$.
+  \captionline{Functions, bottom, and recursive types with nondeclaration bodies
+  use the same one-bound representation as operands.\
+  Every bound in $\tel{T}$ is independent of its fresh self.}
+\end{frame}
+
+\begin{frame}{Arbitrary recursive bodies retain their self dependency}
+  A recursive body can be a bare self selection:
+  \[
+    \tr{\mu(z.z.A)}=\tgt{\obj{z}{[\bnd{\nm{z}{A}}]}}.
+  \]
+  For an atom $\tgt{r}$ of this type with $\tgt{\rt{r}=x}$:
+  \[
+  \tgt{\begin{array}{c}
+    r:\obj{z}{[\bnd{\nm{z}{A}}]}\\[1mm]
+    \downarrow\ \kw{unfold}\\[1mm]
+    \kw{unfold}(r):\obj{w}{[\bnd{\nm{x}{A}}]}\\[1mm]
+    \downarrow\ \text{cast through the bound}\\[1mm]
+    \text{result type }\nm{x}{A}
+  \end{array}}
+  \]
+  \captionline{Opening replaces self by the root before extracting the bound.
+  Recursive introduction reverses the construction.
+  Both adapters preserve the root and erase to the original atom.}
+\end{frame}
+
+\begin{frame}{Replace self by the receiver's variable}
+  Suppose the receiver has this type and root:
+  \[
+    \tgt{\Delta\vdash r:\obj{z}{[\has{a},\nm{z}{a}\sqsubseteq\tau]}},\qquad
+    \tgt{\rt{r}=x}.
+  \]
+  \gap
+  The type makes two promises about $\tgt{x}$:
+  \begin{center}
+  \begin{tabular}{@{}ll@{}}
+    $\tgt{\has{a}}$ & field $\tgt{a}$ is available at $\tgt{x}$\\[4mm]
+    $\tgt{\nm{z}{a}\sqsubseteq\tau}$
+      & its named type $\tgt{\nm{x}{a}}$ is included in $\tgt{\tau[x/z]}$
+  \end{tabular}
+  \end{center}
+  \captionline{Substitute $\tgt{x}$ for $\tgt{z}$ throughout, including inside $\tgt{\tau}$.
+  No field body is evaluated here.}
+\end{frame}
+
+\begin{frame}{Reading a fact produces evidence}
+  Assume $\tgt{\Delta\vdash r:\obj{z}{\Phi}}$ and $\tgt{\rt{r}=x}$, with
+  \[
+    \tgt{\Phi=[\has{a},\nm{z}{a}\sqsubseteq\tau]},
+  \]
+  \begin{center}
+  \begin{tabular}{@{}l@{\hspace{9mm}}l@{}}
+    \textbf{Proof-term definitions}&\textbf{Typing judgments}\\[3mm]
+    $\tgt{p:=\readp{r}{0}}$&$\tgt{\Delta\vdash p:x\ni a}$\\[4mm]
+    $\tgt{e:=\readp{r}{1}}$&$\tgt{\Delta\vdash e:\nm{x}{a}\leq\tau[x/z]}$
+  \end{tabular}
+  \end{center}
+  \gap
+  \[
+    \tgt{\readp{r}{i}:=\kw{member}(r,\kw{refl}(\obj{z}{\Phi}),i)}.
+  \]
+  \captionline{Here $\tgt{\kw{refl}}$ is the identity coercion; indices start at zero.}
+\end{frame}
+
+\begin{frame}{One projection, two obligations}
+  Source: $\src{\Gamma\vdash x:\fld{a}{T}}$ gives $\src{\Gamma\vdash x.a:T}$.
+  \captionline{Let $\tgt{r}$ be the translated receiver, with root $\tgt{x}$.}
+  \[
+  \begin{array}{c@{\qquad}c}
+    \tgt{\Delta\vdash p:x\ni a}&\tgt{\Delta\vdash e:\nm{x}{a}\leq\tr{T}}\\[1mm]
+    \text{field presence}&\text{result conversion}
+  \end{array}
+  \]
+  \gap
+  \[
+    \tgt{\Delta\vdash\cast{\underbrace{\proj{r}{a}{p}}_{\text{type }\nm{x}{a}}}{e}
+      :\tr{T}}
+  \]
+  \captionline{Access the field at its named type, then cast to the declared type.
+  These are the two facts supplied by the translated declaration.}
+\end{frame}
+
+\begin{frame}{A stronger view still refers to the same member}
+  \[
+    \src{S=\mem{A}{\bot}{\top}},\quad
+    \src{T=\mem{A}{R}{\top}},\quad
+    \src{\Gamma=x:\mem{B}{S}{T},\ w:S}.
+  \]
+  \begin{columns}[T,onlytextwidth]
+  \begin{column}{0.45\textwidth}
+    \textbf{Source}
+    \[
+      \src{S\sub x.B\sub T}
+    \]
+    \[
+      \src{w:T\quad\Longrightarrow\quad R\sub w.A}.
+    \]
+  \end{column}
+  \begin{column}{0.51\textwidth}
+    \textbf{Target proof terms}
+    \[
+    \tgt{\begin{aligned}
+      e&:=\kw{trans}(\readp{x}{0},\readp{x}{1})\\[2mm]
+      r&:=\cast{w}{e}
+    \end{aligned}}
+    \]
+    \[
+      \tgt{\tr{\Gamma}\vdash\readp{r}{0}:\tr{R}\leq\nm{w}{A}}.
+    \]
+  \end{column}
+  \end{columns}
+  \gap
+  Reading at the cast atom uses its root $\tgt{w}$.
+  \captionline{A total translation must handle these hypothetical assumptions.
+  Opening a coerced package at a fresh type name would lose this connection.}
+\end{frame}
+
+\begin{frame}{Object coercions use fixed recipes}
+  Given $\tgt{\Delta\vdash e:\tau\leq\sigma}$, transform the object's facts:
+  \[
+  \tgt{
+  \begin{array}{c@{\quad\longmapsto\quad}c}
+    [\has{a},\ \nm{z}{a}\sqsubseteq\tau]
+      &[\has{a},\ \nm{z}{a}\sqsubseteq\sigma]\\[4mm]
+    [p_a,\ e_a]&[p_a,\ e_a;e]
+  \end{array}}
+  \]
+  \captionline{Copy the presence proof. Compose the field-type proof with $\tgt{e}$.}
+  \vspace{5mm}
+  These \textbf{template morphisms} use numbered facts and evidence independent of self.
+  \gap
+  Their composition substitutes evidence for numbered facts.
+  \captionline{$\tgt{e_a;e}$ means composition.}
+\end{frame}
+
+\begin{frame}{The store keeps exact definitions}
+  For a literal with witness $\tgt{W=[a=\tau]}$ and field $\tgt{a}$:
+  \[
+    \tgt{\Delta\vdash\chi:
+      \underbrace{\obj{z}{[\nm{z}{a}\doteq\tau,\has{a}]}}_{\text{precise literal type}}}
+    \quad\leq\quad
+    \tgt{\underbrace{\obj{z}{[\has{a},\nm{z}{a}\sqsubseteq\tau]}}_{\text{advertised field type}}}.
+  \]
+  \captionline{Equality supplies the advertised bound. Field presence stays unchanged.}
+  \gap
+  A \textbf{typed store} keeps bare lambdas and object literals at their own types.
+  \gap
+  \textbf{Inertness remains an invariant: allocation stores the literal and moves casts to its uses.}
+\end{frame}
+
+\begin{frame}{Worked example: an object containing identity}
+  \[
+    \src{R:=\forall(y:\top)\top},\qquad
+    \tgt{\rho:=\tr{R}=\Pi(y:\top)\top}.
+  \]
+  \gap
+  \[
+  \src{\begin{aligned}
+    t={}&\kw{let}\ x=\nu(z.\,a=\lambda(y:\top).y)\\[2mm]
+       &\kw{in}\ x.a
+  \end{aligned}}
+  \]
+  \[
+    \src{\mathcal{H}\mathrel{::}\varnothing\vdash t:R}.
+  \]
+  \captionline{The program returns the identity function stored in field $\src{a}$.
+  The projection opens $\src{x}$'s recursive object type.}
+\end{frame}
+
+\begin{frame}{The field body is cast to its named type}
+  $\tgt{\Delta_z}$ records literal self $\tgt{z}$ with witness $\tgt{a=\rho}$.
+  \begin{center}
+  \begin{tabular}{@{}l@{\qquad}l@{}}
+    \textbf{Proof-term definitions}&\textbf{Typing judgments}\\[3mm]
+    $\tgt{\delta_z:=\kw{def}(z,a)}$
+      &$\tgt{\Delta_z\vdash\delta_z:\nm{z}{a}\equiv\rho}$\\[4mm]
+    $\tgt{\kappa_z:=\kw{eqToLe}(\kw{symm}(\delta_z))}$
+      &$\tgt{\Delta_z\vdash\kappa_z:\rho\leq\nm{z}{a}}$
+  \end{tabular}
+  \end{center}
+  \gap
+  \[
+  \tgt{\begin{aligned}
+    W&=[a=\rho]\\[3mm]
+    F&=[a=\cast{\lambda(y:\top).y}{\kappa_z}]
+  \end{aligned}}
+  \]
+  \captionline{The identity has type $\tgt{\rho}$.
+  Its cast gives the stored field body type $\tgt{\nm{z}{a}}$.}
+\end{frame}
+
+\begin{frame}{The literal's exact facts imply its declared type}
+  \[
+  \tgt{\begin{aligned}
+    \Psi&=[\underbrace{\nm{z}{a}\doteq\rho}_{\text{fact 0}},\
+             \underbrace{\has{a}}_{\text{fact 1}}]\\[3mm]
+    \Phi&=[\underbrace{\has{a}}_{\text{fact 0}},\
+             \underbrace{\nm{z}{a}\sqsubseteq\rho}_{\text{fact 1}}]
+  \end{aligned}}
+  \]
+  \captionline{Copy presence from fact 1. Use equality at fact 0 as an upper bound.}
+  \gap
+  \begin{center}
+  \begin{tabular}{@{}l@{\qquad}l@{}}
+    \textbf{Proof terms}
+      &$\tgt{m:=\kw{le}(\kw{has}(\kw{nil},1),\kw{none},\kw{eq}(0),\kw{none})}$\\[3mm]
+      &$\tgt{\chi:=\kw{obj}(\Psi,m)}$\\[5mm]
+    \textbf{Typing judgment}
+      &$\tgt{\varnothing\vdash\chi:\obj{z}{\Psi}\leq\obj{z}{\Phi}}$
+  \end{tabular}
+  \end{center}
+\end{frame}
+
+\begin{frame}{The complete translated program}
+  Inside the let body, abbreviate the receiver and its two proofs:
+  \[
+  \tgt{\begin{aligned}
+    r_x&:=\kw{fold}(z.\Phi,\kw{unfold}(x))\\[1mm]
+    p_x&:=\readp{r_x}{0},\qquad e_x:=\readp{r_x}{1}
+  \end{aligned}}
+  \]
+  \gap
+  \[
+  \begin{aligned}
+    \tgt{u}:=\tr{\mathcal{H}}=\tgt{\kw{let}\ x={}}&\tgt{\kw{cast}(\kw{obj}(z;[a=\rho];}\\[1mm]
+       &\tgt{\qquad[a=\cast{\lambda(y:\top).y}{\kappa_z}]),\chi)}\\[2mm]
+    \tgt{\kw{in}\quad}&\tgt{\cast{\proj{r_x}{a}{p_x}}{e_x}}
+  \end{aligned}
+  \]
+  \[
+    \tgt{\varnothing\vdash u:\rho}.
+  \]
+\end{frame}
+
+\begin{frame}{The source store machine}
+  A state $\src{\langle\sigma,K,t\rangle}$ contains stored values,
+  pending let frames, and the current term.
+  \[
+  \src{\begin{aligned}
+    \langle\sigma,K,\kw{let}\ x=t\ \kw{in}\ u\rangle
+      &\longrightarrow\langle\sigma,K\mathbin{\triangleright}(x.u),t\rangle\\[3mm]
+    \langle\sigma,K\mathbin{\triangleright}(x.u),v\rangle
+      &\longrightarrow\langle\sigma[x\mapsto v],K,u\rangle\\[3mm]
+    \langle\sigma,K\mathbin{\triangleright}(x.u),y\rangle
+      &\longrightarrow\langle\sigma,K,u[y/x]\rangle
+  \end{aligned}}
+  \]
+  \gap
+  Application looks up a lambda. Projection looks up a field body and
+  substitutes the receiver for self.
+  \captionline{Final states have no pending frames and return a value or variable.
+  The annotated machine retains self annotations and otherwise uses the same rules.
+  Fresh-variable renaming is implicit above.}
+\end{frame}
+
+\begin{frame}{Two proofs carry different runtime invariants}
+  \textbf{Direct:} retain source typing under an inert runtime context.
+  \[
+    \src{I_D(s_D):=\exists\Gamma,R.\
+      \kw{Inert}(\Gamma)\land\kw{Typed}_D(\Gamma,s_D,R)}.
+  \]
+  \gap
+  \textbf{Via translation:} retain a typed target state with the same erasure.
+  \[
+    \kw{Sim}(\src{s_D}):=\exists\tgt{s_F,\tau}.\
+      \tgt{\kw{Typed}_F(s_F,\tau)}\land\er{\tgt{s_F}}=\er{\src{s_D}}.
+  \]
+  \gap
+  Both must recover a lambda for application and a field for projection.
+  \captionline{Direct baseline: \href{https://arxiv.org/pdf/1706.03814}{Rapoport et al. (2017)}.
+  Its invariant is adapted schematically to store notation; only the
+  translation route is mechanized here.}
+\end{frame}
+
+\begin{frame}{Direct proof: inert contexts and precise typing}
+  An inert context assigns only these types:
+  \[
+    \src{I::=\forall(x:S)T\mid\mu(z.D_=)}
+  \]
+  \[
+    \src{D_=::=\mem{A}{T}{T}\mid\fld{a}{T}\mid D_=\wedge D_=}.
+  \]
+  \captionline{Type labels are distinct. Field types and function domains may be arbitrary.}
+  \gap
+  \textbf{Precise variable typing} $\src{\Gamma\vdash_!x:T}$ starts at
+  $\src{\Gamma(x)}$ and uses only:
+  \[
+    \text{lookup}\quad\longrightarrow\quad
+    \text{recursive unfolding / intersection projection}.
+  \]
+  \captionline{It exposes the declarations actually recorded in the context.}
+\end{frame}
+
+\begin{frame}{Direct proof: recover bounds through an exact member}
+  Tight selection requires a precise member with equal bounds:
+  \[
+    \src{\frac{\Gamma\vdash_!x:\mem{A}{R}{R}}
+      {\Gamma\vdash_\#R\sub x.A\qquad\Gamma\vdash_\#x.A\sub R}}.
+  \]
+  \gap
+  Under inert $\src{\Gamma}$, inversion of tight typing gives
+  \[
+    \src{\Gamma\vdash_\#x:\mem{A}{S}{T}}
+    \quad\Longrightarrow\quad
+    \exists\src{R}.\
+    \begin{cases}
+      \src{\Gamma\vdash_!x:\mem{A}{R}{R}}\\[2mm]
+      \src{\Gamma\vdash_\#S\sub R,\quad\Gamma\vdash_\#R\sub T}.
+    \end{cases}
+  \]
+  \captionline{Compose these relations to recover both general selection rules.
+  This is the key selection-replacement argument.}
+  \gap
+  Tight typing retains transitivity and general premises under new binders.
+\end{frame}
+
+\begin{frame}{Direct proof: how the inversion theorems are used}
+  For a variable in inert $\src{\Gamma}$:
+  \[
+  \begin{array}{c@{\quad\Longrightarrow\quad}c@{\quad\Longrightarrow\quad}c}
+    \src{\Gamma\vdash x:T}&\src{\Gamma\vdash_\#x:T}&\src{\Gamma\vdash_{\#\#}x:T}\\[2mm]
+    \text{general}&\text{tight}&\text{invertible}
+  \end{array}
+  \]
+  \gap
+  Invertible typing starts from precise typing, then adds introductions.
+  \captionline{Eliminations and introductions are separated, so induction recovers the base.}
+  \gap
+  For example, field inversion yields some $\src{S}$ with
+  \[
+    \src{\Gamma\vdash x:\fld{a}{T}}
+    \quad\Longrightarrow\quad
+    \src{\Gamma\vdash_!x:\fld{a}{S}\quad\land\quad\Gamma\vdash S\sub T}.
+  \]
+  \captionline{Value inversion then connects the context entry to the stored value.}
+\end{frame}
+
+\begin{frame}{Head forms expose the action of a coercion}
+  \[
+  \tgt{\begin{aligned}
+    F,G::={}&\kw{bot}\mid\kw{top}\mid\kw{id}\mid\kw{pi}(e,x.f)\\[2mm]
+      &\mid\kw{obj}(\vec E)\mid\kw{bnd}(i,F)\mid\kw{into}(\vec Q)
+  \end{aligned}}
+  \]
+  \begin{center}
+  \begin{tabular}{@{}ll@{}}
+    $\tgt{\kw{id}}$ & endpoints have the same resolved shape\\[2mm]
+    $\tgt{\kw{pi}(e,x.f)}$ & argument and result coercions\\[2mm]
+    $\tgt{\kw{obj}(\vec E)}$ & one recipe per target proposition\\[2mm]
+    $\tgt{\kw{bnd}(i,F)}$ & follow bound $\tgt{i}$, then $\tgt{F}$\\[2mm]
+    $\tgt{\kw{into}(\vec Q)}$ & establish an object type by bounds or routes
+  \end{tabular}
+  \end{center}
+  \captionline{Resolution follows transparent type definitions.
+  Equality-to-inclusion evidence normalizes to $\tgt{\kw{id}}$.}
+\end{frame}
+
+\begin{frame}{Local templates and object entries}
+  A local template refers to a numbered source proposition:
+  \[
+  \tgt{\begin{aligned}
+    L::={}&\kw{le}(F,H,G)\mid\kw{eq}(i,b)\mid\kw{has}(i)\\[2mm]
+      &\mid\kw{copyBound}(i).
+  \end{aligned}}
+  \]
+  Object entries add a coercion from the whole source object:
+  \[
+  \tgt{\begin{aligned}
+    E::={}&\kw{le}(F,H,G)\mid\kw{eq}(i,b)\mid\kw{has}(i)\\[2mm]
+      &\mid\kw{copyBound}(i)\mid\kw{bnd}(F)\\[2mm]
+    \vec E::={}&[\,]\mid\vec E,E.
+  \end{aligned}}
+  \]
+  \captionline{$\tgt{H}$ reads an inclusion or either direction of an equality.
+  $\tgt{b}$ chooses an equality's direction.
+  Copied bounds remain indexed, so a later bound elimination finds them.}
+\end{frame}
+
+\begin{frame}{Routes end at a local template}
+  Pairing may obtain facts through a different object type.
+  Its entries therefore record how to reach that type:
+  \[
+  \tgt{\begin{aligned}
+    Q&::=\kw{bnd}(F)\mid\kw{thru}(F,L)\\[3mm]
+    \vec Q&::=[\,]\mid\vec Q,Q.
+  \end{aligned}}
+  \]
+  \gap
+  $\tgt{\kw{thru}(F,L)}$ first follows $\tgt{F}$, then applies
+  the local template $\tgt{L}$ to the resulting view.
+  \gap
+  Object entries contain no routes. A route ends at a local template,
+  so routes cannot nest as entries.
+  \captionline{These separate grammars make the structure used by composition explicit.
+  $\tgt{\kw{into}(\vec Q)}$ can start from a type without a source telescope.}
+\end{frame}
+
+\begin{frame}{A view contains normalized evidence for each fact}
+  \[
+  \tgt{\begin{aligned}
+    P^\circ&::=\kw{le}(F)\mid\kw{eq}\mid\kw{has}(x,a)\mid\kw{bnd}(F)\\[3mm]
+    V&::=[\,]\mid V,P^\circ.
+  \end{aligned}}
+  \]
+  \gap
+  For the precise type $\tgt{\obj{z}{[\nm{z}{a}\doteq\rho,\has{a}]}}$,
+  the stored literal at $\tgt{x}$ supplies
+  \[
+    \tgt{V=[\kw{eq},\kw{has}(x,a)]}.
+  \]
+  \gap
+  A cast transforms this view using its normalized recipes.
+  Reading a member selects the resulting entry.
+  \captionline{An equality entry asserts equal resolved shapes.
+  A presence entry identifies a field at an actual location.}
+\end{frame}
+
+\begin{frame}{Closed evidence has typed head forms}
+  Assume a typed store $\tgt{\vdash\Sigma:\Delta}$.
+  \[
+    \tgt{\Delta\vdash e:\tau\leq\sigma}
+    \quad\Longrightarrow\quad
+    \tgt{\exists F.\ N_\Sigma(e)=F\ \land\ \Delta\models F:\tau\leq\sigma}.
+  \]
+  \captionline{$\tgt{N_\Sigma}$ is head normalization.
+  $\tgt{\Delta\models F:\tau\leq\sigma}$ checks the form against resolved endpoint shapes.}
+  \gap
+  The proof is mutual structural induction on evidence and atom typing.
+  It uses typed composition and produces typed views at the same time.
+  \gap
+  Function forms retain evidence under their parameter binder.
+  \captionline{Only evidence closed over the store is normalized here.
+  The theorem does not assert termination of programs.}
+\end{frame}
+
+\begin{frame}{Evidence recovers shapes in typed stores}
+  The target must still prove \textbf{canonical forms} over a typed store:
+  \gap
+  \[
+  \begin{array}{c@{\quad\Longrightarrow\quad}l}
+    \tgt{\Delta\vdash r:\Pi(x:\tau)\sigma}
+      &\text{a lambda at }\tgt{\rt{r}}\\[4mm]
+    \tgt{\Delta\vdash p:x\ni a}
+      &\text{field }\tgt{a}\text{ exists at }\tgt{x}
+  \end{array}
+  \]
+  \gap
+  Application reaches a lambda. Projection reaches an existing field.
+  \captionline{The forms also supply typed argument/result casts.
+    This recovers the runtime shapes that direct DOT proofs obtain through
+    tight and invertible typing.}
+\end{frame}
+
+\begin{frame}{Allocation: keep the precise type at the new location}
+  \textbf{Direct proof:} recover inert $\src{P}$ with $\src{\Gamma\vdash P\sub T}$.
+  \[
+    \src{\Gamma,x:T\vdash t:R}
+    \quad\xRightarrow{\text{narrowing}}\quad
+    \src{\Gamma,x:P\vdash t:R}.
+  \]
+  Store the value at $\src{P}$; the continuation syntax stays $\src{t}$.
+  \gap
+  \textbf{Target:} the literal has type $\tgt{\tau_0}$ and a cast supplies
+  $\tgt{\Delta\vdash e:\tau_0\leq\tau}$.
+  \[
+    \tgt{u':=u[x\mapsto\cast{x}{e}]}.
+  \]
+  \[
+    \tgt{\Delta,x:\tau\vdash u:\rho}
+    \quad\xRightarrow{\text{typed substitution}}\quad
+    \tgt{\Delta,x:\tau_0\vdash u':\rho}.
+  \]
+  \captionline{Store the bare literal at $\tgt{\tau_0}$ and continue with $\tgt{u'}$.
+  Its transparent binding records witnesses and field labels.}
+\end{frame}
+
+\begin{frame}{Application: the direct preservation argument}
+  Under $\src{I_D}$, the call has $\src{\Gamma\vdash f:\forall(x:S)T}$ and $\src{\Gamma\vdash y:S}$.
+  \gap
+  Inversion and store typing recover
+  \[
+  \src{\begin{gathered}
+    \sigma(f)=\lambda(x:S_0).t_0,\qquad\Gamma,x:S_0\vdash t_0:T_0,\\[2mm]
+    \Gamma\vdash S\sub S_0,\qquad\Gamma,x:S\vdash T_0\sub T.
+  \end{gathered}}
+  \]
+  \gap
+  Narrow the body to $\src{x:S}$; subsume its result to $\src{T}$:
+  \[
+    \src{\Gamma,x:S\vdash t_0:T}
+    \quad\xRightarrow{\text{substitute }\src{y}}\quad
+    \src{\Gamma\vdash t_0[y/x]:T[y/x]}.
+  \]
+  \captionline{The source step is simply $\src{f\,y\longrightarrow t_0[y/x]}$.
+  The proof reconstructs why this body meets the advertised type.}
+\end{frame}
+
+\begin{frame}{Application: the target executes the recovered evidence}
+  Assume $\tgt{\vdash\Sigma:\Delta}$, with $\tgt{\Delta\vdash r:\Pi(x:\tau)\sigma}$ and $\tgt{\Delta\vdash s:\tau}$.
+  Canonical forms yield:
+  \[
+  \tgt{\begin{gathered}
+    \Sigma(\rt{r})=\lambda(x:\tau_0).u_0,\qquad
+      \Delta,x:\tau_0\vdash u_0:\sigma_0,\\[2mm]
+    \Delta\vdash d:\tau\leq\tau_0,\qquad
+      \Delta,x:\tau\vdash c:\sigma_0\leq\sigma.
+  \end{gathered}}
+  \]
+  \gap
+  The function-coercion case executes
+  \[
+    \tgt{r\,s\longrightarrow
+      \cast{u_0[x\mapsto\cast{s}{d}]}{c[x\mapsto s]}}.
+  \]
+  \captionline{Cast the argument, substitute into the closure, then cast the result.}
+  \[
+    \tgt{\rt{\cast{s}{d}}=\rt{s}}
+    \quad\Longrightarrow\quad
+    \text{body and cast agree at }\tgt{\sigma_0[\rt{s}/x]}.
+  \]
+\end{frame}
+
+\begin{frame}{Projection: split field existence from result conversion}
+  \textbf{Direct ($\src{I_D}$):} from $\src{\Gamma\vdash x:\fld{a}{T}}$,
+  recover field body $\src{t_a}$ and type $\src{S}$:
+  \[
+    \src{\Gamma\vdash t_a[x/z]:S},\qquad\src{\Gamma\vdash S\sub T}.
+  \]
+  \captionline{Variable and value inversion justify lookup; substitution and subsumption
+  type the source reduct.}
+  \gap
+  \textbf{Target ($\tgt{\vdash\Sigma:\Delta}$):} the translated projection carries
+  \[
+    \tgt{\Delta\vdash p:x\ni a},\qquad
+    \tgt{\Delta\vdash e:\nm{x}{a}\leq\tr{T}}.
+  \]
+  Presence canonical forms locate the field. Its stored typing gives
+  \[
+    \tgt{\Delta\vdash u_a[x/z]:\nm{x}{a}}.
+  \]
+  \captionline{The pending cast $\tgt{e}$ supplies the advertised result type.
+  No source field-subtyping inversion is used by the target step.}
+\end{frame}
+
+\begin{frame}{Transitivity still needs a composition theorem}
+  Over $\tgt{\vdash\Sigma:\Delta}$, well-typed evidence has \textbf{head forms}:
+  \[
+    \tgt{N_\Sigma(\kw{trans}(e,f))
+      =\kw{combine}(N_\Sigma(e),N_\Sigma(f))}.
+  \]
+  \gap
+  Here $\tgt{N_\Sigma}$ denotes head normalization; $\tgt{\models}$ types its forms.
+  \[
+    \tgt{\frac{\Delta\models F:\tau\leq\sigma\qquad
+      \Delta\models G:\sigma\leq\rho}
+      {\exists H.\ \kw{combine}(F,G)=H\ \land\ \Delta\models H:\tau\leq\rho}}
+  \]
+  \gap
+  Composition: induction on the sizes of forms.\\[2mm]
+  Canonical forms: induction on evidence typing, using composition.
+  \captionline{Function forms retain typed argument/result evidence.
+  Head normalization does not eliminate transitivity inside that evidence.}
+\end{frame}
+
+\begin{frame}{Templates make object composition structural}
+  Given $\tgt{\Delta\vdash e:\tau\leq\sigma}$ and
+  $\tgt{\Delta\vdash f:\sigma\leq\rho}$, let
+  \[
+    \tgt{\Phi_\theta=[\has{a},\nm{z}{a}\sqsubseteq\theta]}.
+  \]
+  \begin{center}
+  \begin{tabular}{@{}l@{\qquad}l@{}}
+    \textbf{Object conversion}&\textbf{Recipe for fact 1}\\[3mm]
+    $\tgt{\obj{z}{\Phi_\tau}\longrightarrow\obj{z}{\Phi_\sigma}}$
+      &$\tgt{H_1\longmapsto H_1;e}$\\[3mm]
+    $\tgt{\obj{z}{\Phi_\sigma}\longrightarrow\obj{z}{\Phi_\rho}}$
+      &$\tgt{H_1\longmapsto H_1;f}$\\[5mm]
+    \textbf{Composite}&$\tgt{H_1\longmapsto H_1;(e;f)}$
+  \end{tabular}
+  \end{center}
+  \captionline{$\tgt{H_1}$ names source fact 1; presence at fact 0 is copied.
+  Normalize the side proofs first, then compose their forms.}
+  \gap
+  Crucially, $\tgt{e,f}$ are typed in $\tgt{\Delta}$,
+  \textbf{before adding self} $\tgt{z}$.
+\end{frame}
+
+\begin{frame}{Why forbid arbitrary evidence under self?}
+  An unrestricted object morphism could contain an evidence body
+  \[
+    \tgt{\Delta,z:\obj{w}{\Phi}\vdash k:\tau\leq\sigma}.
+  \]
+  To use it at a receiver $\tgt{r}$, one would substitute:
+  \[
+    \tgt{k':=k[z\mapsto r]}.
+  \]
+  \begin{center}
+  \begin{tabular}{@{}l@{\qquad}l@{}}
+    Before substitution & $\tgt{z}$ is hypothetical: no stored literal.\\[3mm]
+    After substitution & $\tgt{k'}$ need not be smaller than $\tgt{k}$.
+  \end{tabular}
+  \end{center}
+  \captionline{The closed-store induction gives no hypothesis for this new body,
+  which may perform further member eliminations through the receiver.}
+  \gap
+  Templates reduce instantiation to \textbf{fact lookup and form composition}.
+\end{frame}
+
+\begin{frame}{Narrowing-like work becomes cast substitution}
+  Suppose
+  \[
+    \tgt{\Delta\vdash e:\tau'\leq\tau},\qquad
+    \tgt{\Delta,x:\tau\vdash f:\sigma\leq\rho}.
+  \]
+  \gap
+  \begin{center}
+  \begin{tabular}{@{}l@{\qquad}l@{}}
+    \textbf{New proof term}
+      &$\tgt{f':=f[x\mapsto\cast{x}{e}]}$\\[5mm]
+    \textbf{Typing judgment}
+      &$\tgt{\Delta,x:\tau'\vdash f':\sigma\leq\rho}$
+  \end{tabular}
+  \end{center}
+  \gap
+  \[
+    \tgt{\rt{\cast{x}{e}}=x}
+    \quad\Longrightarrow\quad
+    \text{names such as }\tgt{\nm{x}{A}}\text{ stay unchanged.}
+  \]
+  \captionline{Typed substitution is proved before normalization.
+  Function-coercion composition uses it to adapt codomain evidence,
+  without normalizing under the binder.}
+\end{frame}
+
+\begin{frame}{Bad bounds remain possible hypothetically}
+  In the hypothetical context
+  \[
+    \tgt{\Delta_{\kw{bad}}=x:\obj{z}{[
+      \top\sqsubseteq\nm{z}{A},\nm{z}{A}\sqsubseteq\bot]}},
+  \]
+  the two member facts yield
+  \[
+    \tgt{\Delta_{\kw{bad}}\vdash
+      \kw{trans}(\readp{x}{0},\readp{x}{1}):\top\leq\bot}.
+  \]
+  \gap
+  For a \textbf{typed store}, canonical forms instead imply
+  \[
+    \tgt{\vdash\Sigma:\Delta}
+    \quad\Longrightarrow\quad
+    \tgt{\neg\exists e.\ (\Delta\vdash e:\top\leq\bot)}.
+  \]
+  \captionline{Every such $\tgt{e}$ would have a typed head form;
+  no form fits these endpoints.
+  Consistency follows from store typing and canonical forms.}
+\end{frame}
+
+\begin{frame}{Both proofs separate structural lemmas from shape recovery}
+  \begin{center}
+  \renewcommand{\arraystretch}{0.9}
+  \begin{tabular}{@{}c@{\hspace{10mm}}c@{}}
+    \textbf{Direct (2017)}&\textbf{FCdot and translation}\\[1mm]
+    Narrowing and precise-type facts&Atom substitution and resolution\\
+    $\Downarrow$&$\Downarrow$\\
+    Tight to invertible&Typed form composition / application\\
+    $\Downarrow$&$\Downarrow$\\
+    Selection replacement&Precise views and canonical forms\\
+    $\Downarrow$&$\Downarrow$\\
+    General to tight&Target preservation and progress\\
+    $\Downarrow$&$\Downarrow$\\
+    Canonical forms&Translation and erasure simulations\\
+    $\Downarrow$&$\Downarrow$\\
+    Source preservation and progress&Source safety
+  \end{tabular}
+  \end{center}
+  \captionline{Construction order, distinct from the order of use. Both arguments are acyclic.}
+\end{frame}
+
+\begin{frame}{The translation preserves typing}
+  For well-formed $\src{\Gamma}$:
+  \gap
+  \[
+  \begin{aligned}
+    \src{\mathcal{D}\mathrel{::}\Gamma\vdash S\sub T}
+      &\Longrightarrow
+        \tgt{\tr{\Gamma}\vdash\tr{\mathcal{D}}:\tr{S}\leq\tr{T}}\\[3mm]
+    \src{\mathcal{H}\mathrel{::}\Gamma\vdash t:T}
+      &\Longrightarrow
+        \tgt{\tr{\Gamma}\vdash\tr{\mathcal{H}}:\tr{T}}
+  \end{aligned}
+  \]
+  \captionline{Context well-formedness checks exact literal definitions and distinct labels.
+  Ordinary assumptions may contain bad bounds and arbitrary recursive types.}
+  \gap
+  The translation follows the source derivation.
+  \captionline{The source needs no preservation proof at this stage.}
+\end{frame}
+
+\begin{frame}{All derivations give the same erased program}
+  For every typing derivation $\src{\mathcal{H}\mathrel{::}\Gamma\vdash t:T}$:
+  \[
+    \underbrace{\er{\tr{\mathcal{H}}}=\er{\src{t}}}_{\text{same erased program}}
+  \]
+  \gap
+  \[
+    \er{\tgt{\cast{u}{e}}}=\er{\tgt{u}}.
+  \]
+  \gap
+  \textbf{Coherence:} different derivations of the same term erase identically.
+  \captionline{Erasure removes types, type members, and evidence.}
+\end{frame}
+
+\begin{frame}{Source safety follows through the shared runtime}
+  After a source step, preserve the \emph{existence} of a typed target witness:
+  \[
+  \begin{array}{c@{\qquad}c@{\qquad}c@{\quad}l}
+    \src{s_D}&\src{\longrightarrow}&\src{s_D'}&\text{\src{source}}\\[0mm]
+    \downarrow&&\downarrow&\\[0mm]
+    q&\longrightarrow&q'&\text{erased runtime}\\[0mm]
+    \uparrow&&\uparrow&\\[0mm]
+    \tgt{s_F}&\tgt{\longrightarrow^*}&\tgt{s_F'}&\text{\tgt{typed target}}
+  \end{array}
+  \]
+  \captionline{Erase the source step; reflect it to a target run; apply target preservation.}
+  \gap
+  This establishes $\kw{Sim}(\src{s_D'})$ without retyping $\src{s_D'}$.
+  \captionline{For progress, first exhaust the finite sequence of erased cast steps;
+  target progress then yields a source step or a final state.}
+\end{frame}
+
+\begin{frame}{DOT-MNF machine safety is a corollary}
+  Every state reachable from a closed well-typed program is final or can step:
+  \[
+  \begin{gathered}
+    \src{\varnothing\vdash t:T,\quad\langle\varnothing,\varnothing,t\rangle\longrightarrow^*s}\\[3mm]
+    \Longrightarrow\quad\src{\kw{Final}(s)\ \lor\ \exists s'.\,s\longrightarrow s'}
+  \end{gathered}
+  \]
+  \captionline{Final: a value or variable with no pending continuation.}
+  \gap
+  Shape reasoning uses normalized target evidence.\\[2mm]
+  The invariant is a typed target state with the same erasure.
+  \captionline{No separate source preservation proof.
+  Target substitution, composition, and canonical forms carry the shape reasoning.}
+\end{frame}
+
+\begin{frame}{Retained-let reduction keeps bindings in the term}
+  The paper's semantics retains allocated values:
+  \[
+    \src{\kw{let}\ x=v\ \kw{in}\ t}.
+  \]
+  Write $\src{\sigma\vdash t\rightsquigarrow u}$ for reduction under
+  the surrounding value bindings $\src{\sigma}$.
+  \[
+  \src{\begin{aligned}
+    x\,y&\rightsquigarrow t[y/z]
+      &&\text{if }\sigma(x)=\lambda(z:S).t\\[3mm]
+    x.a&\rightsquigarrow t[x/z]
+      &&\text{if }\sigma(x)=\nu(z:T)d,\ a=t\in d\\[3mm]
+    \kw{let}\ x=y\ \kw{in}\ t&\rightsquigarrow t[y/x].
+  \end{aligned}}
+  \]
+  \captionline{Projection uses relational membership in the definitions.
+  Distinct labels make this agree with deterministic machine lookup.}
+\end{frame}
+
+\begin{frame}{Retained reduction allows overlapping orders}
+  Both evaluation contexts are available:
+  \[
+    \src{\frac{\sigma\vdash t\rightsquigarrow t'}
+      {\sigma\vdash\kw{let}\ x=t\ \kw{in}\ u
+        \rightsquigarrow\kw{let}\ x=t'\ \kw{in}\ u}}
+  \]
+  \[
+    \src{\frac{\sigma[x\mapsto v]\vdash t\rightsquigarrow t'}
+      {\sigma\vdash\kw{let}\ x=v\ \kw{in}\ t
+        \rightsquigarrow\kw{let}\ x=v\ \kw{in}\ t'}}.
+  \]
+  Reassociation can also apply:
+  \[
+  \src{\begin{aligned}
+    \kw{let}\ x=(\kw{let}\ y=t\ \kw{in}\ u)\ \kw{in}\ w
+      \quad\rightsquigarrow\quad{}\\[-1mm]
+    \kw{let}\ y=t\ \kw{in}\ \kw{let}\ x=u\ \kw{in}\ w.
+  \end{aligned}}
+  \]
+  \captionline{There is no priority between reassociation and reduction inside the right-hand side.
+  Bound variables are renamed to avoid capture.}
+\end{frame}
+
+\begin{frame}{Readback reconstructs retained lets}
+  Readback replaces the machine's store and continuation by enclosing lets:
+  \[
+    \src{\kw{rb}(\langle\sigma,K,t\rangle)
+      :=\kw{close}_{\sigma}(\kw{plug}_{K}(t))}.
+  \]
+  For example,
+  \[
+    \src{\langle[x\mapsto v],[y.u],t\rangle}
+      \quad\longmapsto\quad
+    \src{\kw{let}\ x=v\ \kw{in}\ \kw{let}\ y=t\ \kw{in}\ u}.
+  \]
+  \gap
+  Every machine step gives a finite retained-let reduction:
+  \[
+    \src{s\longrightarrow s'}\quad\Longrightarrow\quad
+    \src{\kw{rb}(s)\rightsquigarrow^*\kw{rb}(s')}.
+  \]
+  \captionline{Pushing a frame leaves readback unchanged.
+  Allocation may reassociate a value binding across several frames.}
+\end{frame}
+
+\begin{frame}{Answers retain all enclosing value bindings}
+  The retained-let answers are
+  \[
+    \src{q::=x\mid v\mid\kw{let}\ x=v\ \kw{in}\ q}.
+  \]
+  A stuck term is neither an answer nor able to reduce.
+  \gap
+  A final machine state reads back to an answer, including its store:
+  \[
+    \src{\langle[x\mapsto v],\varnothing,x\rangle}
+      \quad\longmapsto\quad
+    \src{\kw{let}\ x=v\ \kw{in}\ x}.
+  \]
+  \captionline{Observations are exact annotated terms with retained bindings.
+  No quotient by garbage collection or binding reordering is used.}
+\end{frame}
+
+\begin{frame}{The converse preserves finite behavior backwards}
+  Assume distinct labels throughout $\src{\sigma}$ and $\src{t}$,
+  and $\src{\sigma\vdash t\rightsquigarrow u}$.
+  \[
+    \src{\frac{\langle\sigma,K,u\rangle\Downarrow o}
+      {\langle\sigma,K,t\rangle\Downarrow o}}
+    \qquad\text{for every continuation }\src{K}.
+  \]
+  \captionline{$\src{s\Downarrow o}$ means a finite machine run observing $\src{o}$:
+  an exact retained answer, or stuckness.}
+  \gap
+  \begin{center}
+  \begin{tabular}{@{}l@{\qquad}l@{}}
+    \textbf{Retained step}&\textbf{Machine argument}\\[3mm]
+    Reassociation&Fuse pending let frames\\[3mm]
+    Under a value binding&Allocate that value
+  \end{tabular}
+  \end{center}
+  \captionline{Typing supplies label distinctness; reduction preserves it.
+  No source type preservation or inert-context theorem is needed.}
+\end{frame}
+
+\begin{frame}{Exact finite-answer and stuckness correspondence}
+  For a closed term $\src{t}$ with distinct object labels throughout,
+  and a retained answer $\src{q}$:
+  \[
+  \src{t\rightsquigarrow^*q}
+  \quad\Longleftrightarrow\quad
+  \src{\exists s.\ \kw{init}(t)\longrightarrow^*s
+    \land\kw{Final}(s)\land\kw{rb}(s)=q}.
+  \]
+  \gap
+  Stuckness also agrees:
+  \[
+  \src{\exists u.\ t\rightsquigarrow^*u\land\kw{Stuck}(u)}
+  \quad\Longleftrightarrow\quad
+  \src{\exists s.\ \kw{init}(t)\longrightarrow^*s\land\kw{Stuck}(s)}.
+  \]
+  \captionline{These theorems cover every finite retained reduction order.
+  The same exact answer appears on both sides of the first equivalence.}
+\end{frame}
+
+\begin{frame}{Safety for every retained-let reduction order}
+  For every closed annotated typing derivation and every retained run:
+  \[
+    \src{\varnothing\vdash_{\!W}t:T},\qquad
+    \src{t\rightsquigarrow^*u}
+    \quad\Longrightarrow\quad
+    \src{\kw{Answer}(u)\ \lor\ \exists v.\ u\rightsquigarrow v}.
+  \]
+  \gap
+  A stuck retained reduct would give a stuck annotated machine execution.
+  Annotation erasure and the FCdot translation rule out that execution.
+  \gap
+  The proof therefore covers all choices of retained reduction order.
+  \captionline{The source contributes label distinctness and operational correspondence.
+  The target contributes preservation, canonical forms, and progress.}
+\end{frame}
+
+\begin{frame}{Mechanized scope}
+  The public source distinguishes type labels $\src{A,B}$ from field labels
+  $\src{a,b}$ throughout syntax and typing derivations.
+  \gap
+  It admits arbitrary recursive bodies, unrestricted intersections,
+  and same-block aliases.
+  \gap
+  Paths are variables. Scoping is intrinsic; the slides use named notation
+  for the binders.
+  \captionline{A conversion from named syntax modulo alpha-equivalence is not formalized.
+  Stable field paths and recursive subtyping require separate extensions.}
+\end{frame}
+
+\appendix
+\begin{frame}{Reference: key DOT-MNF rules}
+  \[
+    \src{\frac{\Gamma\vdash t:S\quad\Gamma\vdash S\sub T}{\Gamma\vdash t:T}}
+    \qquad
+    \src{\frac{\Gamma\vdash x:\fld{a}{T}}{\Gamma\vdash x.a:T}}
+  \]
+  \[
+    \src{\frac{\Gamma\vdash x:\mu(z.T)}
+      {\Gamma\vdash x:T[x/z]}}
+    \qquad
+    \src{\Gamma\vdash(A=T):\mem{A}{T}{T}}
+  \]
+  \captionline{Recursive introduction and elimination accept every body $\src{T}$.
+  A type definition supplies equal lower and upper bounds.}
+\end{frame}
+
+\begin{frame}{Reference: inclusion, equality, and presence evidence}
+  \[
+  \tgt{\begin{aligned}
+    e,f&::=\kw{refl}(\tau)\mid\kw{trans}(e,f)\mid\kw{top}(\tau)\mid\kw{bot}(\tau)\\[1mm]
+      &\quad\mid\kw{eqToLe}(\varphi)\mid\kw{pi}(e,x.f)\mid\kw{obj}(\Phi,m)\\[1mm]
+      &\quad\mid\kw{pair}(\Phi,\Psi,e,f)\mid\kw{bound}(\Phi,i)\\[1mm]
+      &\quad\mid\kw{intoBnd}(e)\mid\kw{member}(r,e,i)\\[3mm]
+    \varphi&::=\kw{refl}(\tau)\mid\kw{symm}(\varphi)
+      \mid\kw{trans}(\varphi,\varphi)\\[1mm]
+      &\quad\mid\kw{def}(x,\ell)\mid\kw{member}(r,e,i)\\[3mm]
+    p&::=\kw{field}(a)\mid\kw{member}(r,e,i)
+  \end{aligned}}
+  \]
+  \captionline{The parameter $\tgt{x}$ scopes over the codomain evidence in $\tgt{\kw{pi}(e,x.f)}$.
+  A telescope annotation has its own self binder.}
+\end{frame}
+
+\begin{frame}{Reference: object morphisms and their judgments}
+  \[
+  \tgt{\begin{aligned}
+    H&::=\kw{le}(j)\mid\kw{eq}(j)\mid\kw{eqSym}(j)\\[2mm]
+    q&::=\kw{none}\mid\kw{some}(e)\\[2mm]
+    m&::=\kw{nil}\mid\kw{le}(m,q,H,q)\mid\kw{eq}(m,j,b)\\[2mm]
+      &\quad\mid\kw{has}(m,j)\mid\kw{bnd}(m,e)
+  \end{aligned}}
+  \]
+  \captionline{$\tgt{H}$ names a fact; $\tgt{q}$ is an optional side;
+  $\tgt{b}$ reverses equality. Present sides are checked before adding self.}
+  \gap
+  \[
+  \begin{array}{cc}
+  \tgt{\Delta\vdash e:\tau\leq\sigma}&
+  \tgt{\Delta\vdash\varphi:\tau\equiv\sigma}\\[2mm]
+  \tgt{\Delta\vdash p:x\ni a}&
+  \tgt{\Delta\vdash m:\Phi\Rightarrow\Psi}
+  \end{array}
+  \]
+\end{frame}
+
+\begin{frame}{Reference: the two telescope translations}
+  Let $\src{D}$ range over top, declarations, their intersections,
+  and recursively declaration-shaped types.
+  \[
+  \begin{aligned}
+    \tel{\top}&=\tgt{[\,]}\qquad
+    \tel{S\wedge T}=\tgt{\tel{S}\mathbin{+\!+}\tel{T}}\\[2mm]
+    \tel{\mem{A}{S}{T}}&=\tgt{[\tr{S}\sqsubseteq\nm{z}{A},\nm{z}{A}\sqsubseteq\tr{T}]}\\[2mm]
+    \tel{\fld{a}{T}}&=\tgt{[\has{a},\nm{z}{a}\sqsubseteq\tr{T}]}\\[2mm]
+    \tel{\mu(z.D)}&=\tels{z}{D}\\[2mm]
+    \tel{B}&=\tgt{[\bnd{\tr{B}}]}\qquad\text{for every other shape }\src{B}.
+  \end{aligned}
+  \]
+  \captionline{In $\tel{T}$, translated endpoints are weakened under fresh self $\tgt{z}$.
+  $\tels{z}{T}$ uses the body's existing self instead, so its bounds can mention $\src{z}$.
+  These shape cases organize translation and do not restrict source typing.}
+\end{frame}
+
+\begin{frame}{Reference: recursive adapters and precise types}
+  For a source body $\src{T}$, root $\tgt{x}$, and translated atom $\tgt{r}$:
+  \[
+    \tgt{\kw{recI}(r)=\kw{fold}(z.\tels{z}{T},
+      \kw{unfold}(\kw{into}_{\src{T[x/z]}}(r)))}.
+  \]
+  \[
+    \tgt{r':=\kw{fold}(w.\tel{T[x/z]},\kw{unfold}(r))}.
+  \]
+  Recursive elimination returns $\tgt{r'}$, extracting its single bound
+  when the opened body is not an object shape.
+  \captionline{$\tgt{\kw{into}_{\src{U}}}$ is the identity for object shapes.
+  Otherwise it casts into $\tgt{\obj{w}{[\bnd{\tr{U}}]}}$.
+  Every wrapper preserves the root.}
+  \[
+    \tgt{W=[a=\tau],\quad F=[a=u]}
+    \quad\Longrightarrow\quad
+    \tgt{\kw{precise}(W,F)=\obj{z}{[\nm{z}{a}\doteq\tau,\has{a}]}}.
+  \]
+  \captionline{In general: an equality per witness, presence per field.
+  A typed store keeps bare literals at these types; casts remain at their uses.}
+\end{frame}
+
+\begin{frame}{Reference: pushback is a different direct strategy}
+  \href{https://namin.seas.harvard.edu/files/soundness_oopsla16.pdf}{Rompf--Amin (2016)}
+  study a larger DOT with recursive subtyping.
+  \[
+  \begin{array}{c}
+    \text{primitive transitivity supports structural narrowing}\\[1mm]
+    \Downarrow\\[1mm]
+    \text{pushback in concrete runtime contexts}\\[1mm]
+    \Downarrow\\[1mm]
+    \text{subtyping inversion}
+  \end{array}
+  \]
+  \captionline{Pushback is required only when the abstract context is empty.}
+  \gap
+  Our source has variable Rec-I/Rec-E and no recursive subtyping rule.
+  \captionline{The main comparison uses Rapoport et al. (2017),
+  whose proof instead passes through tight and invertible typing.}
+\end{frame}
+
+\end{document}

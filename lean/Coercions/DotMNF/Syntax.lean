@@ -57,7 +57,7 @@ inductive Ty : Sig → Type where
   | mu : Ty (s,x) → Ty s
   /-- Dependent function type `∀(x : S) T`. -/
   | all : Ty s → Ty (s,x) → Ty s
-  /-- Intersection `S ∧ T`; restricted to declarations by `Ty.Wf`. -/
+  /-- Unrestricted intersection `S ∧ T`. -/
   | and : Ty s → Ty s → Ty s
 deriving DecidableEq
 
@@ -152,9 +152,10 @@ def Defs.lookupTrm : Defs s → Label → Option (Tm s)
   | .trm a t, ℓ => if ℓ = a then some t else none
   | .and d1 d2, ℓ => (d2.lookupTrm ℓ).or (d1.lookupTrm ℓ)
 
-/-! ## The fragment: declaration shapes, well-formedness, distinctness -/
+/-! ## Translation shape classification and distinctness -/
 
-/-- Declaration-shaped types: the shapes a `μ` may bind. -/
+/-- Declaration-shaped types, used to classify the telescope translation.
+This predicate does not restrict source types or recursive typing rules. -/
 inductive Ty.Decl : {s : Sig} → Ty s → Prop where
   | top : Ty.Decl (.top : Ty s)
   | typ : Ty.Decl (.typ A S T)
@@ -162,10 +163,8 @@ inductive Ty.Decl : {s : Sig} → Ty s → Prop where
   | mu : Ty.Decl T → Ty.Decl (.mu T)
   | and : Ty.Decl S → Ty.Decl T → Ty.Decl (.and S T)
 
-/-- The decision procedure for `Ty.Decl` (`Ty.isDecl_iff`).  It is what
-`Ty.tel` consults on the body of a `μ`, and it makes `Ty.Decl` decidable, so
-that a derivation may discharge the premises of `Wf.mu`, `Rec-I` and `Rec-E`
-by `decide`. -/
+/-- The decision procedure for `Ty.Decl` (`Ty.isDecl_iff`). The translation
+uses it to choose whether a recursive operand needs a self-bound wrapper. -/
 def Ty.isDecl : Ty s → Bool
   | .top => true
   | .typ _ _ _ => true
@@ -198,20 +197,6 @@ theorem Ty.isDecl_iff : ∀ {s : Sig} (T : Ty s), T.isDecl = true ↔ Ty.Decl T
 
 instance Ty.Decl.instDecidable {s : Sig} (T : Ty s) : Decidable (Ty.Decl T) :=
   decidable_of_iff _ (Ty.isDecl_iff T)
-
-/-- Well-formedness.  Structural, except that the body of a recursive type is
-restricted to declaration shapes.  Intersections are unrestricted: a
-non-declaration operand translates to a self-bound proposition (plan §13
-item 9).  Bounds are arbitrary: `Wf {A : S..T}` does not ask for `S <: T`. -/
-inductive Ty.Wf : {s : Sig} → Ty s → Prop where
-  | top : Ty.Wf (.top : Ty s)
-  | bot : Ty.Wf (.bot : Ty s)
-  | sel : Ty.Wf (.sel p A)
-  | typ : Ty.Wf S → Ty.Wf T → Ty.Wf (.typ A S T)
-  | fld : Ty.Wf T → Ty.Wf (.fld a T)
-  | mu : Ty.Wf T → Ty.Decl T → Ty.Wf (.mu T)
-  | all : Ty.Wf S → Ty.Wf T → Ty.Wf (.all S T)
-  | and : Ty.Wf S → Ty.Wf T → Ty.Wf (.and S T)
 
 /-- The labels of a definition list are pairwise distinct. -/
 inductive Defs.Distinct : {s : Sig} → Defs s → Prop where

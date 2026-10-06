@@ -29,9 +29,10 @@ inductive Proposition : Sig → Type where
   | le : Ty s → Ty s → Proposition s
   | eq : Ty s → Ty s → Proposition s
   | has : Label → Proposition s
-  /-- Self-bound: the object itself is included in the type.  By convention
-      the type is always a weakened closed type, so a bound never mentions
-      the self block. -/
+  /-- Self-bound: the object itself is included in the type. A recursive
+      telescope may mention its self block here. The `LeCo.bound` rule
+      extracts a bound only when its type is weakened under that block;
+      self-dependent bounds are opened at an atom's root first. -/
   | bnd : Ty s → Proposition s
 
 /-- Telescope of propositions, oldest first.  Propositions do not bind. -/
@@ -154,8 +155,8 @@ inductive LeCo : Sig → Type where
   /-- Contravariant domain, covariant codomain under the parameter binder. -/
   | pi : LeCo s → LeCo (s,x) → LeCo s
   /-- Object coercion between closed telescopes: the source telescope is
-      annotated; the morphism proves each target proposition by a *template*
-      (a closed coercion, a source proposition, a closed coercion). -/
+      annotated; the morphism proves each target proposition by a finite
+      template that reads source propositions and composes inclusions. -/
   | obj : Telescope (s,x) → Morphism s → LeCo s
   /-- Pairing: two coercions into object types give one into the
       concatenation of their telescopes. -/
@@ -189,13 +190,16 @@ inductive Side : Sig → Type where
   | some : LeCo s → Side s
 
 /-- A morphism into a telescope: one template per target proposition, oldest
-first.  An inclusion is proven as `pre ∘ (source proposition) ∘ post` where
-the source proposition is named by a `Hole`; an equality is a source
-equality, possibly flipped; a field-presence proposition is inherited from
-the source telescope by index. -/
+first. An inclusion template reads a `Hole` between closed coercion sides,
+or composes two inclusion templates over the same source telescope.
+An equality is a source equality, possibly flipped; a field-presence
+proposition is inherited from the source telescope by index. -/
 inductive Morphism : Sig → Type where
   | nil : Morphism s
   | le : Morphism s → Side s → Hole → Side s → Morphism s
+  /-- Compose two inclusion templates over the same source telescope. The
+      second and third morphisms each prove a singleton inclusion telescope. -/
+  | leTrans : Morphism s → Morphism s → Morphism s → Morphism s
   | eq : Morphism s → Nat → Bool → Morphism s
   | has : Morphism s → Nat → Morphism s
   /-- A template for a target bound: a closed coercion out of the source
@@ -215,6 +219,12 @@ inductive Atom : Sig → Type where
 end
 
 deriving instance DecidableEq for LeCo, EqCo, Has, Side, Morphism, Atom
+
+/-- A singleton inclusion template reading one source proposition. -/
+def Morphism.inclusion (h : Hole) : Morphism s := .le .nil .none h .none
+
+/-- Compose singleton inclusion templates over the same source. -/
+def Morphism.composeInclusions (p q : Morphism s) : Morphism s := .leTrans .nil p q
 
 /-- The variable under an atom's wrappers. -/
 def Atom.root : Atom s → BVar s .var
@@ -257,6 +267,7 @@ def Side.rename : Side s1 → Rename s1 s2 → Side s2
 def Morphism.rename : Morphism s1 → Rename s1 s2 → Morphism s2
   | .nil, _ => .nil
   | .le m pre h post, ρ => .le (m.rename ρ) (pre.rename ρ) h (post.rename ρ)
+  | .leTrans m p q, ρ => .leTrans (m.rename ρ) (p.rename ρ) (q.rename ρ)
   | .eq m j b, ρ => .eq (m.rename ρ) j b
   | .has m j, ρ => .has (m.rename ρ) j
   | .bnd m e, ρ => .bnd (m.rename ρ) (e.rename ρ)
@@ -455,6 +466,7 @@ def Side.subst : Side s1 → Subst s1 s2 → Side s2
 def Morphism.subst : Morphism s1 → Subst s1 s2 → Morphism s2
   | .nil, _ => .nil
   | .le m pre h post, σ => .le (m.subst σ) (pre.subst σ) h (post.subst σ)
+  | .leTrans m p q, σ => .leTrans (m.subst σ) (p.subst σ) (q.subst σ)
   | .eq m j b, σ => .eq (m.subst σ) j b
   | .has m j, σ => .has (m.subst σ) j
   | .bnd m e, σ => .bnd (m.subst σ) (e.subst σ)

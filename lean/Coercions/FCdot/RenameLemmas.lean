@@ -118,6 +118,8 @@ mutual
   | .nil => simp [Morphism.rename]
   | .le m pre h post =>
       simp [Morphism.rename, Morphism.rename_id m, Side.rename_id pre, Side.rename_id post]
+  | .leTrans m p q =>
+      simp [Morphism.rename, Morphism.rename_id m, Morphism.rename_id p, Morphism.rename_id q]
   | .eq m j b => simp [Morphism.rename, Morphism.rename_id m]
   | .has m j => simp [Morphism.rename, Morphism.rename_id m]
   | .bnd m e => simp [Morphism.rename, Morphism.rename_id m, LeCo.rename_id e]
@@ -189,6 +191,8 @@ mutual
   | .nil => simp [Morphism.rename]
   | .le m pre h post =>
       simp [Morphism.rename, Morphism.rename_comp m, Side.rename_comp pre, Side.rename_comp post]
+  | .leTrans m p q =>
+      simp [Morphism.rename, Morphism.rename_comp m, Morphism.rename_comp p, Morphism.rename_comp q]
   | .eq m j b => simp [Morphism.rename, Morphism.rename_comp m]
   | .has m j => simp [Morphism.rename, Morphism.rename_comp m]
   | .bnd m e => simp [Morphism.rename, Morphism.rename_comp m, LeCo.rename_comp e]
@@ -392,6 +396,9 @@ mutual
   | .le m pre h post =>
       simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m, Side.subst_ofRename pre,
         Side.subst_ofRename post]
+  | .leTrans m p q =>
+      simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m,
+        Morphism.subst_ofRename p, Morphism.subst_ofRename q]
   | .eq m j b => simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m]
   | .has m j => simp [Morphism.subst, Morphism.rename, Morphism.subst_ofRename m]
   | .bnd m e =>

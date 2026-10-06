@@ -30,6 +30,7 @@ erasure safe.
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions; no closed `⊤ ≤ ⊥`; block names are defined; stores stay typed along runs (`reachable_consistent`) |
 | `Examples` | the examples E1 to E8, decided in the kernel |
+| `TemplateExamples` | nested composition of self facts; rejection of mismatched endpoints and malformed premise certificates |
 
 ## Notation
 
@@ -46,7 +47,7 @@ All notation is `scoped` in namespace `FCdot`.
 | `Γ ⊢ₐ a : T`, `Γ ⊢ t : T`, `Γ ⊢ᵥ v : T`, `Γ ⊢ᶠ F` | atoms, terms, values, fields |
 | `⊢ σ : Γ`, `Γ ⊢ₖ K : T ⇒ U` | stores and continuations |
 | `st ⟶ st'`, `st ⟶* st'`, `⌊st⌋` | steps and erasure |
-| `σ ⊢ e ⇓[n] F`, `σ ⊢ m ⇓ₘ[n] Es`, `σ ⊢ a ⇓ᵥ[n] V`, `σ ⊢ x ; h ⇓ₕ[n] (y, ℓ)`, `σ ⊢ a ⇓ᶜ[n] (a', F)` | normalization with fuel `n` |
+| `σ ⊢ e ⇓[n] F`, `σ ⊢ m ⇓ₘ[n] Es`, `σ ⊢ a ⇓ᵥ[n] V`, `σ ⊢ x ; h ⇓ₕ[n] (y, ℓ)`, `σ ⊢ a ⇓ᶜ[n] F` | normalization with fuel `n` |
 | `Γ ⊨ F : S ≤ T`, `Γ ⊨[r] F : S ≤ T` | typed coercion form; typed chain of casts at root `r` |
 | `Γ ⊨ Es : Tel₁ ⇒ Tel₂`, `Γ ⊨[r, σ] V : Tel` | typed template entries between closed telescopes; typed view |
 
@@ -65,17 +66,19 @@ All notation is `scoped` in namespace `FCdot`.
   else must repeat within `Γ.defPairs.length` steps (pigeonhole on the
   context's finitely many defined names), and a cyclic alias resolves to
   `⊤` (the empty object type).
-* **Object coercions are template morphisms.**  `obj Tel m : μ Tel ≤ μ Tel'`
-  compares two closed telescopes; each target proposition is proven by a
-  *template* `pre ∘ (source proposition j) ∘ post` with closed sides typed
-  in `Γ`, or is a source equality (possibly flipped), or inherits a
-  presence by index.  A template never eliminates through the self's
-  members, which is what keeps normalization structural: the normal form
-  of a coercion does not depend on the atom it is applied to, composition
-  substitutes templates into templates, and application looks the source
-  proposition up in the atom's view.  `pair` intersects two coercions into
-  object types; the atom `both` intersects two typings of one root
-  (`And-I`).  `⊤` is the empty object type `μ .nil`.
+* **Object coercions are template morphisms.** `obj Tel m : μ Tel ≤ μ Tel'`
+  compares two closed telescopes. Each target inclusion is proved by a
+  finite composition of source facts, with coercion sides typed in `Γ`
+  independently of self. `Morphism.leTrans m p q` composes two singleton
+  inclusion morphisms over the same source telescope. Their endpoints
+  may depend on self. Equalities and field presence are inherited by index.
+  The normal form is independent of the receiver: object composition
+  substitutes templates for source facts, and application interprets the
+  resulting finite tree against an already established receiver view.
+  Interpretation uses form composition and does not restart evidence
+  normalization under a self assumption. `pair` intersects two coercions
+  into object types; the atom `both` combines two typings of one root.
+  `⊤` is the empty object type `μ .nil`.
 * **Self-bound propositions.**  A telescope may also carry `⊑ T`: the object
   itself is included in `T`.  This is what lets an intersection whose
   operand is not a declaration (a type selection, a function type, `⊥`)
@@ -84,13 +87,24 @@ All notation is `scoped` in namespace `FCdot`.
   `Morphism.bnd` proves a target bound by a coercion out of the source
   object type.  On normal forms: `Form.bnd i F` is "through bound `i`, then
   `F`", `Form.into Es` is a coercion whose entries do not consult the view
-  of the source, and `Entry.thru H E` is an entry *routed* through `H` --
-  the entry `E` reads the object type `H` reaches from the source rather
-  than the source itself.  Routes never nest and are always sub-forms of the
-  form that carries them, so applying a form to a view stays structural in
-  the form.  Pairing produces an `into` form (`Form.freeEntries` routes each
-  component's entries through the identity, or through the bound it goes
-  under).
+  of the source, and `FreeEntry.thru H E` is an entry *routed* through `H`:
+  it reads facts from the object type reached by `H`. The grammar separates
+  local entries (`LocalEntry`), object entries (`Entry`, used by `Form.obj`),
+  and entries that carry their own route (`FreeEntry`, used by `Form.into`).
+  Local inclusion entries include finite composition trees. A route ends
+  in a local entry, so routes cannot nest. Copying a source
+  bound is the explicit constructor `copyBound`; a general bound entry
+  carries a coercion form. Pairing produces an `into` form. Evaluation of
+  a bound returns to the root with a composed coercion; its proof uses the
+  absence of bounds in the precise view of a stored literal.
+* **Identity forms.** `Form.id` covers equal resolved endpoint types.
+  Reflexivity and equality conversion both normalize to this form; equality
+  evidence remains in the checked language but has no separate head form.
+  The normalizer for an atom's cast chain returns only its coercion form.
+* **One canonical-forms result for atoms.** `atom_canon_all` jointly proves
+  existence of a typed view, non-bottomness, and existence of a typed cast
+  chain from the root. `atom_canon` and `closedAtomForm_typed` are its
+  projections. Views and chains retain separate fuel witnesses.
 * **Two modes of typedness.**  Coercion forms and views are typed with plain
   shapes (`Γ.resolve`).  Only the chain of casts of an atom is typed at the
   atom's root, where the self block is opened at that root, so `foldSelf`
@@ -107,7 +121,7 @@ atom_canon         : ⊢ σ : Γ → Γ ⊢ₐ a : S → ∃ n V, σ ⊢ a ⇓�
                        (∀ Tel, Γ.resolve S = μ Tel → Γ ⊨[a.root, σ] V : Tel) ∧ Γ.resolve S ≠ ⊥
 has_canon          : ⊢ σ : Γ → Γ ⊢ h : x ∋ ℓ → ∃ n, σ ⊢ x ; h ⇓ₕ[n] (x, ℓ) ∧ σ.HasField x ℓ
 closedAtomForm_typed : ⊢ σ : Γ → Γ ⊢ₐ a : S →
-                       ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧ Γ ⊨[a.root] F : Γ.lookupTy a.root ≤ S
+                       ∃ n F, σ ⊢ a ⇓ᶜ[n] F ∧ Γ ⊨[a.root] F : Γ.lookupTy a.root ≤ S
 preservation'      : st.Typed U → st ⟶ st' → ∃ ρ, st'.Typed (U.rename ρ)
 progress           : st.Typed U → st.Final ∨ ∃ s' (st' : State s'), st ⟶ st'
 erase_step         : st ⟶ st' → (cast-frame step ∧ ⌊st⌋ = ⌊st'⌋) ∨ Runtime.Step ⌊st⌋ ⌊st'⌋
@@ -129,3 +143,8 @@ tree contains no `sorry`, `axiom`, `partial`, or `native_decide`.
 No open-evidence normalization: the machine only ever normalizes closed
 evidence over the store, and that is all the metatheory needs.  The
 translation from `DotMNF` lives in `lean/Coercions/DotToFCdot/`.
+
+The [recursive-subtyping experiment](../DotToFCdot/RecursiveSubtyping.md)
+uses finite template composition to derive a recursive field coercion from
+two facts about self. General recursive subtyping still requires a source
+derivation-to-template translation theorem.

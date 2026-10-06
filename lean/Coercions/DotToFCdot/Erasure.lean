@@ -35,6 +35,16 @@ namespace DotMNF
 open FCdot (Kind Sig BVar Rename Label)
 open scoped FCdot
 
+/-- Recursive introduction only adds erasure-invisible atom wrappers. -/
+@[simp] theorem recIAtom_erase (T : Ty (s,x)) (r : BVar s .var) (a : FCdot.Atom s) :
+    (FCdot.Tm.atom (recIAtom T r a)).erase = (FCdot.Tm.atom a).erase := by
+  simp [FCdot.Tm.erase]
+
+/-- Recursive elimination only adds erasure-invisible atom wrappers. -/
+@[simp] theorem recEAtom_erase (T : Ty (s,x)) (r : BVar s .var) (a : FCdot.Atom s) :
+    (FCdot.Tm.atom (recEAtom T r a)).erase = (FCdot.Tm.atom a).erase := by
+  simp [FCdot.Tm.erase]
+
 mutual
 
 /-- Erasure of the translation of a typing derivation is the source term's
@@ -43,7 +53,7 @@ theorem HasTy.translate_erase : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
     (h : HasTy Γ t T) → ⌊h.translate⌋ = Tm.erase t
   | Γ, _, _, @HasTy.var _ _ x => by
       simp only [HasTy.translate, FCdot.Tm.erase, Ctx.varAtom_root Γ x, Tm.erase, Path.root]
-  | _, .val (.lam S _), _, .lam h _ => by
+  | _, .val (.lam S _), _, .lam h => by
       simp only [HasTy.translate, FCdot.Tm.erase, FCdot.Value.erase, Tm.erase, Value.erase,
         HasTy.translate_erase h]
   | _, _, _, .app h₁ h₂ => by
@@ -54,15 +64,15 @@ theorem HasTy.translate_erase : {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
         DefsTy.translateFields_erase h]
   | _, .proj _ a, T, .proj h => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, HasTy.translateAtom_root h]
-  | _, _, _, .let h₁ h₂ _ => by
+  | _, _, _, .let h₁ h₂ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase,
         HasTy.translate_erase h₁, HasTy.translate_erase h₂]
-  | _, _, _, .recI h₁ h₂ => by
+  | _, _, _, .recI h₁ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
-        HasTy.translateAtom_root (.recI h₁ h₂)]
-  | _, _, _, .recE h₁ h₂ => by
+        HasTy.translateAtom_root (.recI h₁)]
+  | _, _, _, .recE h₁ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
-        HasTy.translateAtom_root (.recE h₁ h₂)]
+        HasTy.translateAtom_root (.recE h₁)]
   | _, _, _, .andI h₁ h₂ => by
       simp only [HasTy.translate, FCdot.Tm.erase, Tm.erase, Path.root,
         HasTy.translateAtom_root (.andI h₁ h₂)]

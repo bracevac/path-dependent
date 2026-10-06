@@ -325,7 +325,7 @@ theorem erase_step {s s' : Sig} {st : State s} {st' : State s'} (h : Step st st'
       refine Or.inr ?_
       simp only [State.erase, Tm.erase, Atom.root, Tm.erase_substAtom]
       exact Runtime.Step.app (by rw [Store.lookup_erase, hl]; rfl)
-  | appCastRefl hl hne hform hF =>
+  | appCastRefl hl hne hform =>
       refine Or.inr ?_
       simp only [State.erase, Tm.erase, Tm.erase_substAtom]
       exact Runtime.Step.app (by rw [Store.lookup_erase, hl]; rfl)
@@ -504,18 +504,15 @@ theorem castRedex_normalize_inv {s : Sig} (st : State s) (Γ : Ctx s)
 /-- The FCdot step realizing a runtime application step at a wrapped atom,
 given the head form of the atom's casts. -/
 theorem app_step_of_form {s : Sig} {σ : Store s} {K : Cont s} {a b : Atom s}
-    {S₀ : Ty s} {t₀ : Tm (s,x)} {n : Nat} {a' : Atom s} {F : Form s}
+    {S₀ : Ty s} {t₀ : Tm (s,x)} {n : Nat} {F : Form s}
     (hv : σ.lookup a.root = .lam S₀ t₀) (hne : a ≠ .var a.root)
-    (hform : σ ⊢ a ⇓ᶜ[n] (a', F))
-    (hF : F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) :
+    (hform : σ ⊢ a ⇓ᶜ[n] F)
+    (hF : F = .id ∨ ∃ d c, F = .pi d c) :
     ∃ st' : State s, Step (⟨σ, K, .app a b⟩ : State s) st' ∧
       st'.erase = (⟨σ.erase, K.erase, t₀.erase.substVar (b.root)⟩ : Runtime.State s) := by
-  rcases hF with hF | ⟨φ, hF⟩ | ⟨d, c, hF⟩
+  rcases hF with hF | ⟨d, c, hF⟩
   · subst hF
-    exact ⟨_, Step.appCastRefl hv hne hform (Or.inl rfl), by
-      simp [State.erase, Tm.erase_substAtom]⟩
-  · subst hF
-    exact ⟨_, Step.appCastRefl hv hne hform (Or.inr ⟨φ, rfl⟩), by
+    exact ⟨_, Step.appCastRefl hv hne hform, by
       simp [State.erase, Tm.erase_substAtom]⟩
   · subst hF
     exact ⟨_, Step.appCast hv hne hform, by
@@ -551,8 +548,8 @@ wrapped atom by `app_step_of_form` once `hcf` supplies the head form of its
 casts. -/
 theorem erase_reflect_app {s s' : Sig} {σ : Store s} {K : Cont s} {a b : Atom s}
     {Γ : Ctx s} {r : Runtime.State s'} (hσ : ⊢ σ : Γ)
-    (hcf : a ≠ .var a.root → ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
-      (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c))
+    (hcf : a ≠ .var a.root → ∃ n F, σ ⊢ a ⇓ᶜ[n] F ∧
+      (F = .id ∨ ∃ d c, F = .pi d c))
     (h : Runtime.Step ⌊(⟨σ, K, .app a b⟩ : State s)⌋ r) :
     ∃ st' : State s', (⟨σ, K, .app a b⟩ : State s) ⟶ st' ∧ ⌊st'⌋ = r := by
   simp only [State.erase, Tm.erase] at h
@@ -566,7 +563,7 @@ theorem erase_reflect_app {s s' : Sig} {σ : Store s} {K : Cont s} {a b : Atom s
       Step.appVar hv
     rw [← hne] at hstep
     exact ⟨_, hstep, by simp [State.erase, Tm.erase_substAtom]⟩
-  · obtain ⟨n, a', F, hform, hF⟩ := hcf hne
+  · obtain ⟨n, F, hform, hF⟩ := hcf hne
     exact app_step_of_form (K := K) (b := b) hv hne hform hF
 
 /-- Reflection of a runtime `proj` step: the store entry at the root is a
@@ -604,8 +601,8 @@ that a residual application is applied to a typed function atom. -/
 theorem erase_reflect_aux {s s' : Sig} {σ : Store s} {K : Cont s} {t : Tm s} {Γ : Ctx s}
     {r : Runtime.State s'} (hσ : ⊢ σ : Γ)
     (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T →
-      a ≠ .var a.root → ∃ n a' F, σ ⊢ a ⇓ᶜ[n] (a', F) ∧
-        (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c))
+      a ≠ .var a.root → ∃ n F, σ ⊢ a ⇓ᶜ[n] F ∧
+        (F = .id ∨ ∃ d c, F = .pi d c))
     (hat : ∀ a b : Atom s, t = .app a b →
       ∃ (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T)
     (hnc : ¬ (State.CastRedex ⟨σ, K, t⟩))
@@ -639,8 +636,8 @@ cast-frame steps. -/
 theorem erase_reflect {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.State s'}
     (hσ : ⊢ st.σ : Γ)
     (hcf : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T →
-      a ≠ .var a.root → ∃ n a' F, st.σ ⊢ a ⇓ᶜ[n] (a', F) ∧
-        (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c))
+      a ≠ .var a.root → ∃ n F, st.σ ⊢ a ⇓ᶜ[n] F ∧
+        (F = .id ∨ ∃ d c, F = .pi d c))
     (hty : ∃ T, Γ ⊢ st.t : T)
     (h : Runtime.Step st.erase r) :
     ∃ st' : State s', Steps st st' ∧ st'.erase = r := by
@@ -648,8 +645,8 @@ theorem erase_reflect {s s' : Sig} {st : State s} {Γ : Ctx s} {r : Runtime.Stat
     castRedex_normalize_inv st Γ (Or.inl hty)
   have hσ1 : ⊢ st1.σ : Γ := by rw [hstore]; exact hσ
   have hcf1 : ∀ (a : Atom s) (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T →
-      a ≠ .var a.root → ∃ n a' F, st1.σ ⊢ a ⇓ᶜ[n] (a', F) ∧
-        (F = .id ∨ (∃ φ, F = .eqv φ) ∨ ∃ d c, F = .pi d c) := by
+      a ≠ .var a.root → ∃ n F, st1.σ ⊢ a ⇓ᶜ[n] F ∧
+        (F = .id ∨ ∃ d c, F = .pi d c) := by
     rw [hstore]; exact hcf
   have hat : ∀ a b : Atom s, st1.t = .app a b →
       ∃ (S : Ty s) (T : Ty (s,x)), Γ ⊢ₐ a : .pi S T := by
