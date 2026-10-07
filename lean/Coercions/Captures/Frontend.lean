@@ -2,6 +2,12 @@ import Coercions.Captures.Frontend.Surface
 import Coercions.Captures.Frontend.Notation
 import Coercions.Captures.Frontend.Ann
 import Coercions.Captures.Frontend.Resolve
+import Coercions.Captures.Frontend.Decide
+import Coercions.Captures.Frontend.Search
+import Coercions.Captures.Frontend.Adapt
+import Coercions.Captures.Frontend.Typer
+import Coercions.Captures.Frontend.Step
+import Coercions.Captures.Frontend.StepFC
 
 /-!
 # The front end of `Captures`
