@@ -1,3 +1,8 @@
+import Coercions.Paths.Frontend.Surface
+import Coercions.Paths.Frontend.Notation
+import Coercions.Paths.Frontend.Ann
+import Coercions.Paths.Frontend.Resolve
+
 /-!
 # The front end of `Paths`
 
