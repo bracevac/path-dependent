@@ -125,7 +125,10 @@ certificate at the goal its typer reached.
 library can classify its capabilities, say as `Control`, and `cap.only[Control]` then stands for
 the capabilities of that class alone.  `classified_effect_safety` says that a program whose use set
 has kind `φ` never reads a capability classified outside `φ`, and the source inherits it as
-`dot_classified_effect_safety`.  Library `Classifiers`, see [Classifiers/README.md](Classifiers/README.md).
+`dot_classified_effect_safety`.  Library `Classifiers`, see [Classifiers/README.md](Classifiers/README.md).  Its front end, the library
+`ClassifiersFrontend` in [Classifiers/Frontend/](Classifiers/Frontend/README.md), writes, types,
+checks and runs programs over classified platforms in the paper's notation, and proves of
+`Try.apply` that a run reads only `Control` capabilities.
 
 **`Paths/`** adds pDOT's paths `x.a.b` and singleton types to a copy of the main line.  Scala types
 mention such paths all the time, as in `x.a.T`, while WadlerFest DOT selects types on variables

@@ -78,7 +78,7 @@ Supporting results:
 - No completeness theorem for the typer. E10, `λ(f : ⊤). λ(g : ⊤). f (g f)`, is rejected because `f` is not a function. Its variant `E10t` at `∀(x : ⊤) ⊤` is accepted.
 - No semantic statement for let insertion. The meaning of a surface program is the term the resolver returns.
 - The typer and the search are well-founded definitions, so the kernel does not reduce them. Their tests run compiled code through `expect`. Resolution, the decision procedures and the DOT-MNF machine are structural, and their tests are `by decide` or `rfl`.
-- Only the vanilla calculus. The extensions have no front end.
+- Only the vanilla calculus. Each version has a front end of its own in its `Frontend/` folder: `Captures`, `CapturesCC`, `Classifiers`, `Paths` and `Oopsla16`.
 
 ## Building
 
