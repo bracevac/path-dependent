@@ -7,6 +7,9 @@ import Coercions.Oopsla16.Frontend.Search
 import Coercions.Oopsla16.Frontend.Typer
 import Coercions.Oopsla16.Frontend.Step
 import Coercions.Oopsla16.Frontend.StepFC
+import Coercions.Oopsla16.Frontend.Pipeline
+import Coercions.Oopsla16.Frontend.Pretty
+import Coercions.Oopsla16.Frontend.Examples
 
 /-!
 # The front end of `Oopsla16`
@@ -20,3 +23,5 @@ run.  The source is `Oopsla16`, elaborated into FCdotR.
 The library imports the version and changes nothing in it.  It is not a
 default target.
 -/
+
+#assert_no_wf Oopsla16Frontend
