@@ -8,6 +8,9 @@ import Coercions.Paths.Frontend.Search
 import Coercions.Paths.Frontend.Typer
 import Coercions.Paths.Frontend.Step
 import Coercions.Paths.Frontend.StepFC
+import Coercions.Paths.Frontend.Pipeline
+import Coercions.Paths.Frontend.Pretty
+import Coercions.Paths.Frontend.Examples
 
 /-!
 # The front end of `Paths`
@@ -21,3 +24,5 @@ run.  The source is DOT-MNF with paths, translated to FCdot.
 The library imports the version and changes nothing in it.  It is not a
 default target.
 -/
+
+#assert_no_wf PathsFrontend
