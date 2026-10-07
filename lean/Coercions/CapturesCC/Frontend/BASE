@@ -1,1 +1,2 @@
 lean/Coercions/Captures/Frontend/ @ 5d74d85 plus the Captures front end's surface, notation and resolution modules, Surface.lean copied, renamed and adapted: fresh, shapes, types and answers apart, arrow binders, letex
+lean/Coercions/Captures/Frontend/ @ 4ef54f6 plus the Captures front end's machines (notes-frontends-ca2/ca2-g2.patch applied), Step.lean and StepFC.lean copied, renamed and adapted: entry by substitution, letex, unpack, allocE, answer casts, unpackAtom, unpackVal, appCast at a scoped domain

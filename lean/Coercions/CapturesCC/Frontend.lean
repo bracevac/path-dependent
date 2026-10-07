@@ -2,6 +2,8 @@ import Coercions.CapturesCC.Frontend.Surface
 import Coercions.CapturesCC.Frontend.Notation
 import Coercions.CapturesCC.Frontend.Ann
 import Coercions.CapturesCC.Frontend.Resolve
+import Coercions.CapturesCC.Frontend.Step
+import Coercions.CapturesCC.Frontend.StepFC
 
 /-!
 # The front end of `CapturesCC`
