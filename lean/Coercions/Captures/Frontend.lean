@@ -8,6 +8,9 @@ import Coercions.Captures.Frontend.Adapt
 import Coercions.Captures.Frontend.Typer
 import Coercions.Captures.Frontend.Step
 import Coercions.Captures.Frontend.StepFC
+import Coercions.Captures.Frontend.Pipeline
+import Coercions.Captures.Frontend.Pretty
+import Coercions.Captures.Frontend.Examples
 
 /-!
 # The front end of `Captures`
