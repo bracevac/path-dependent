@@ -2,6 +2,11 @@ import Coercions.Oopsla16.Frontend.Surface
 import Coercions.Oopsla16.Frontend.Notation
 import Coercions.Oopsla16.Frontend.Ann
 import Coercions.Oopsla16.Frontend.Resolve
+import Coercions.Oopsla16.Frontend.Decide
+import Coercions.Oopsla16.Frontend.Search
+import Coercions.Oopsla16.Frontend.Typer
+import Coercions.Oopsla16.Frontend.Step
+import Coercions.Oopsla16.Frontend.StepFC
 
 /-!
 # The front end of `Oopsla16`
