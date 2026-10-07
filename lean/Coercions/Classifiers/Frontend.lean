@@ -1,3 +1,8 @@
+import Coercions.Classifiers.Frontend.Surface
+import Coercions.Classifiers.Frontend.Notation
+import Coercions.Classifiers.Frontend.Ann
+import Coercions.Classifiers.Frontend.Resolve
+
 /-!
 # The front end of `Classifiers`
 
@@ -10,3 +15,6 @@ run.  The source is DOT-MNF with classifiers, translated to FCdot.
 The library imports the version and changes nothing in it.  It is not a
 default target.
 -/
+
+/-! Every definition of the front end is structural, so the kernel reduces it. -/
+#assert_no_wf ClassifiersFrontend

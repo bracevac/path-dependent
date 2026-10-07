@@ -1,0 +1,1 @@
+lean/Coercions/CapturesCC/Frontend/ @ 5d74d85 plus the CapturesCC front end's surface, notation and resolution modules, copied with CapturesCC renamed to Classifiers, then the classifier delta of plan-6-frontends.md Part C
