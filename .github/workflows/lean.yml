@@ -33,4 +33,4 @@ jobs:
         with:
           auto-config: false
           build: false
-      - run: lake build Frontend
+      - run: lake build Frontend CapturesFrontend PathsFrontend Oopsla16Frontend

@@ -76,7 +76,9 @@ subtyping: `stp_bindx` proves `μ(z. S) <: μ(z. T)` from `S <: T` under the ass
 WadlerFest DOT only packs a variable into a recursive type or unpacks it.  Objects hold methods,
 types include unions, and terms are not in normal form.  Type selections in subtyping go through a
 variable typing, `htp`, with no packing rule, and `PackingCounterexample` shows that adding one is
-unsound.
+unsound.  Its front end, the library `Oopsla16Frontend` in
+[Oopsla16/Frontend/](Oopsla16/Frontend/README.md), writes, types, elaborates, checks and runs
+programs in the paper's notation.
 
 **`FCdotR/`** is its target with explicit evidence.  It keeps `Oopsla16`'s types, so the type
 translation is the identity, and its coercion `bindx` is checked under the self assumption that
@@ -105,7 +107,10 @@ every theorem of that base, and is a default target.
 set, `S ^ C`, and a capture parameter is a capture member of an object.  The target proves that a
 run reads only what its use set predicts (`capture_prediction`) and that a capability left out of
 the use set is never read (`effect_safety`).  The source inherits both as `dot_capture_prediction`
-and `dot_effect_safety`.  Library `Captures`, see [Captures/README.md](Captures/README.md).
+and `dot_effect_safety`.  Library `Captures`, see [Captures/README.md](Captures/README.md).  Its front end, the library
+`CapturesFrontend` in [Captures/Frontend/](Captures/Frontend/README.md), writes, types, checks and
+runs programs in the paper's notation, and its typer inserts the boxes and unboxings a program
+leaves out.
 
 **`CapturesCC/`** models capture checking the way the Scala 3 compiler does it, with scopes, levels
 and fresh capabilities, as a copy of `Captures/`.  `no_inner_escape` says that no capability leaves
@@ -121,7 +126,9 @@ has kind `φ` never reads a capability classified outside `φ`, and the source i
 **`Paths/`** adds pDOT's paths `x.a.b` and singleton types to a copy of the main line.  Scala types
 mention such paths all the time, as in `x.a.T`, while WadlerFest DOT selects types on variables
 only.  It keeps `dot_safety` and passes two of gDOT's tests, `acceptance_fig2` and
-`acceptance_gdot3_any`.  Library `Paths`, see [Paths/README.md](Paths/README.md).
+`acceptance_gdot3_any`.  Library `Paths`, see [Paths/README.md](Paths/README.md).  Its front end,
+the library `PathsFrontend` in [Paths/Frontend/](Paths/Frontend/README.md), writes, types, checks
+and runs programs in pDOT's notation, gDOT's Fig. 2 among them.
 
 ## Earlier targets, standalone
 
