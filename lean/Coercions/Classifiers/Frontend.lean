@@ -2,6 +2,11 @@ import Coercions.Classifiers.Frontend.Surface
 import Coercions.Classifiers.Frontend.Notation
 import Coercions.Classifiers.Frontend.Ann
 import Coercions.Classifiers.Frontend.Resolve
+import Coercions.Classifiers.Frontend.Decide
+import Coercions.Classifiers.Frontend.Kind
+import Coercions.Classifiers.Frontend.Search
+import Coercions.Classifiers.Frontend.Adapt
+import Coercions.Classifiers.Frontend.Typer
 import Coercions.Classifiers.Frontend.Step
 import Coercions.Classifiers.Frontend.StepFC
 
