@@ -64,6 +64,26 @@ name = "Frontend"
 roots = ["Coercions.Frontend"]
 
 [[lean_lib]]
+name = "CapturesFrontend"
+roots = ["Coercions.Captures.Frontend"]
+
+[[lean_lib]]
+name = "CapturesCCFrontend"
+roots = ["Coercions.CapturesCC.Frontend"]
+
+[[lean_lib]]
+name = "ClassifiersFrontend"
+roots = ["Coercions.Classifiers.Frontend"]
+
+[[lean_lib]]
+name = "PathsFrontend"
+roots = ["Coercions.Paths.Frontend"]
+
+[[lean_lib]]
+name = "Oopsla16Frontend"
+roots = ["Coercions.Oopsla16.Frontend"]
+
+[[lean_lib]]
 name = "Classifiers"
 roots = ["Coercions.Classifiers"]
 
