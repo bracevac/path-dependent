@@ -1,1 +1,2 @@
 lean/Coercions/CapturesCC/Frontend/ @ 5d74d85 plus the CapturesCC front end's surface, notation and resolution modules, copied with CapturesCC renamed to Classifiers, then the classifier delta of plan-6-frontends.md Part C
+lean/Coercions/CapturesCC/Frontend/ @ 4ef54f6 plus the CapturesCC front end's machines (notes-frontends-cc2/cc2-g2.patch applied), Step.lean and StepFC.lean copied with CapturesCC renamed to Classifiers and no other change: capability classifiers reach no step of either machine

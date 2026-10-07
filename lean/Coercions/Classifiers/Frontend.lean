@@ -2,6 +2,8 @@ import Coercions.Classifiers.Frontend.Surface
 import Coercions.Classifiers.Frontend.Notation
 import Coercions.Classifiers.Frontend.Ann
 import Coercions.Classifiers.Frontend.Resolve
+import Coercions.Classifiers.Frontend.Step
+import Coercions.Classifiers.Frontend.StepFC
 
 /-!
 # The front end of `Classifiers`
