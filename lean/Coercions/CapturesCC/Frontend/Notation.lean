@@ -474,8 +474,8 @@ def EscSrc : STm :=
       = λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}). λ(u : ⊤). f
     in cb
 
-/-- **A, the capture parameter that is called**
-(`refute-capturescc.md:183`), a plain use of a capture-parameter arrow. -/
+/-- **A capture parameter that is called**, a plain use of a capture-parameter
+arrow. -/
 def P1src : STm :=
   cc% λ(h : (∀(u : ⊤) ⊤) ^ {any}). let z = unit in h z
 
