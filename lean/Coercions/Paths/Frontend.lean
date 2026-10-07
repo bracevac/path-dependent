@@ -2,6 +2,12 @@ import Coercions.Paths.Frontend.Surface
 import Coercions.Paths.Frontend.Notation
 import Coercions.Paths.Frontend.Ann
 import Coercions.Paths.Frontend.Resolve
+import Coercions.Paths.Frontend.Decide
+import Coercions.Paths.Frontend.Table
+import Coercions.Paths.Frontend.Search
+import Coercions.Paths.Frontend.Typer
+import Coercions.Paths.Frontend.Step
+import Coercions.Paths.Frontend.StepFC
 
 /-!
 # The front end of `Paths`
