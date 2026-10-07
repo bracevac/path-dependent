@@ -113,9 +113,13 @@ runs programs in the paper's notation, and its typer inserts the boxes and unbox
 leaves out.
 
 **`CapturesCC/`** models capture checking the way the Scala 3 compiler does it, with scopes, levels
-and fresh capabilities, as a copy of `Captures/`.  `no_inner_escape` says that no capability leaves
-the scope that introduced it, which rejects the `withFile` escape.  Every prediction theorem of
-`Captures/` still holds.  Library `CapturesCC`, see [CapturesCC/README.md](CapturesCC/README.md).
+and fresh capabilities, as a copy of `Captures/`.  `source_lvl_safety` says that
+source subcapturing that reads no capture bound never lowers a capability's level, and its instance
+`W5_no_escape` rules out the `withFile` escape.  Every prediction theorem of
+`Captures/` still holds.  Library `CapturesCC`, see [CapturesCC/README.md](CapturesCC/README.md).  Its front end, the library
+`CapturesCCFrontend` in [CapturesCC/Frontend/](CapturesCC/Frontend/README.md), writes, types,
+checks and runs programs in the paper's notation, and rejects the `withFile` escape with a
+certificate at the goal its typer reached.
 
 **`Classifiers/`** adds the capability classifiers of Capless(K) to a copy of `CapturesCC/`.  A
 library can classify its capabilities, say as `Control`, and `cap.only[Control]` then stands for
