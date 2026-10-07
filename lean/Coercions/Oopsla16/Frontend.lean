@@ -1,3 +1,8 @@
+import Coercions.Oopsla16.Frontend.Surface
+import Coercions.Oopsla16.Frontend.Notation
+import Coercions.Oopsla16.Frontend.Ann
+import Coercions.Oopsla16.Frontend.Resolve
+
 /-!
 # The front end of `Oopsla16`
 
