@@ -1,3 +1,8 @@
+import Coercions.Captures.Frontend.Surface
+import Coercions.Captures.Frontend.Notation
+import Coercions.Captures.Frontend.Ann
+import Coercions.Captures.Frontend.Resolve
+
 /-!
 # The front end of `Captures`
 
@@ -10,3 +15,6 @@ run.  The source is DOT-MNF with capture sets, translated to FCdot.
 The library imports the version and changes nothing in it.  It is not a
 default target.
 -/
+
+/-! Every definition of the front end is structural, so the kernel reduces it. -/
+#assert_no_wf CapturesFrontend
