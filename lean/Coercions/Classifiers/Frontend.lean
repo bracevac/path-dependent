@@ -9,6 +9,9 @@ import Coercions.Classifiers.Frontend.Adapt
 import Coercions.Classifiers.Frontend.Typer
 import Coercions.Classifiers.Frontend.Step
 import Coercions.Classifiers.Frontend.StepFC
+import Coercions.Classifiers.Frontend.Pipeline
+import Coercions.Classifiers.Frontend.Pretty
+import Coercions.Classifiers.Frontend.Examples
 
 /-!
 # The front end of `Classifiers`

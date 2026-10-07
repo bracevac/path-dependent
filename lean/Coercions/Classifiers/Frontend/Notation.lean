@@ -702,8 +702,8 @@ def EscSrc : STm :=
       = λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}). λ(u : ⊤). f
     in cb
 
-/-- **A, the capture parameter that is called**
-(`refute-capturescc.md:183`), a plain use of a capture-parameter arrow. -/
+/-- **A capture parameter that is called**, a plain use of a capture-parameter
+arrow. -/
 def P1src : STm :=
   cls% λ(h : (∀(u : ⊤) ⊤) ^ {any}). let z = unit in h z
 
@@ -719,32 +719,35 @@ is not a surface form, so every occurrence is written out. -/
 
 /-- **CE1**, `Try.apply`: a declared use set and kind, both the
 projection of the platform to `Control`, and a codomain whose own member
-is bounded by the same projection. -/
+is bounded by the same projection.  The types of `b` and `f` are written
+as ascriptions of the bound terms, since a `let` annotation is the answer
+of the whole `let`. -/
 def CE1src : SProg :=
   clsProg% classifiers IO, ThreadLocal, Control extends ThreadLocal
     platform [ctl : Control, io : IO]
     uses {ctl, io}.only[Control]
     kind only[Control]
-    let b : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io}.only[Control] = λ(u : ⊤ ^ {}). u in
-    let f : (∀(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io})
-               μ(z. {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}) ^ {body.only[Control]}) ^ {} =
-              λ(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io}).
-                ν(z : {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}. {body = λ(u : ⊤ ^ {}). u}) in
+    let b = ((λ(u : ⊤ ^ {}). u) : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io}.only[Control]) in
+    let f = ((λ(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io}).
+                ν(z : {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}. {body = λ(u : ⊤ ^ {}). u})) :
+              (∀(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io})
+                μ(z. {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}) ^ {body.only[Control]}) ^ {}) in
     let r = f b in
     r
 
 /-- **CE2**, `Future.apply`: the domain writes `any` under a filter, read
-as the arrow's own binder under the same filter once resolved. -/
+as the arrow's own binder under the same filter once resolved.  The types
+of `b` and `f` are ascriptions, as in CE1. -/
 def CE2src : SProg :=
   clsProg% classifiers IO, ThreadLocal, Control extends ThreadLocal
     platform [tl : ThreadLocal, ctl : Control, io : IO]
     uses {tl, ctl, io}.except[ThreadLocal]
     kind except[ThreadLocal]
-    let b : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {tl, ctl, io}.except[ThreadLocal] = λ(u : ⊤ ^ {}). u in
-    let f : (∀(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {any.except[ThreadLocal]})
-               μ(z. {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}) ^ {body}) ^ {} =
-              λ(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {any.except[ThreadLocal]}).
-                ν(z : {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}. {body = λ(u : ⊤ ^ {}). u}) in
+    let b = ((λ(u : ⊤ ^ {}). u) : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {tl, ctl, io}.except[ThreadLocal]) in
+    let f = ((λ(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {any.except[ThreadLocal]}).
+                ν(z : {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}. {body = λ(u : ⊤ ^ {}). u})) :
+              (∀(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {any.except[ThreadLocal]})
+                μ(z. {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}) ^ {body}) ^ {}) in
     let r = f b in
     r
 
