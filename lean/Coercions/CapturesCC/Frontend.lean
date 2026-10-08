@@ -5,6 +5,8 @@ import Coercions.CapturesCC.Frontend.Resolve
 import Coercions.CapturesCC.Frontend.Decide
 import Coercions.CapturesCC.Frontend.Search
 import Coercions.CapturesCC.Frontend.Look
+import Coercions.CapturesCC.Frontend.Sub
+import Coercions.CapturesCC.Frontend.Alg
 import Coercions.CapturesCC.Frontend.Adapt
 import Coercions.CapturesCC.Frontend.Typer
 import Coercions.CapturesCC.Frontend.Step

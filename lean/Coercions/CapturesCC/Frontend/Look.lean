@@ -303,7 +303,7 @@ def lookAt {s : Sig} (Γ : Ctx s) (x : BVar s .var) (k : Key) (n : Nat := defaul
   (r.1.map (·.ty), r.2)
 
 /-- The type members of `p` at `A`, with the tank left. -/
-def declsAt {s : Sig} (Γ : Ctx s) (p : BVar s .var) (A : Label) (n : Nat := defaultFuel) :
+def tyDeclsAt {s : Sig} (Γ : Ctx s) (p : BVar s .var) (A : Label) (n : Nat := defaultFuel) :
     List (Shape s × Shape s) × Tank :=
   let r := decls Γ n p A ⟨n, false⟩
   (r.1.map fun d => (d.1, d.2.1), r.2)
@@ -326,8 +326,8 @@ def E7Ctx : Ctx ([],x) := Ctx.nil.cons ((Shape.mu E7Self) ^ [])
 def CycCtx : Ctx ([],c,c,x) := platCtx.cons ((Shape.mu (.cap lC [] [CapAtom.sel .here lC])) ^ [])
 
 -- E6: the type member `T` of the self binder, through `μ` and the left operand.
-example : (declsAt E6Ctxz .here lT).1 = [(E6IntS, E6IntS)] := by decide +kernel
-example : (declsAt E6Ctxz .here lT).2.out = false := by decide +kernel
+example : (tyDeclsAt E6Ctxz .here lT).1 = [(E6IntS, E6IntS)] := by decide +kernel
+example : (tyDeclsAt E6Ctxz .here lT).2.out = false := by decide +kernel
 -- E6: the field `v`, declared at the self's own member `z.T`.
 example : (lookAt E6Ctxz .here (.fld lv)).1 = [.fld lv ((Shape.sel (.var .here) lT) ^ [])] := by
   decide +kernel
@@ -336,7 +336,7 @@ example : (lookAt E8Ctx2 .here (.fld la)).1 = [.fld la (.top ^ []), .fld la (.to
   decide +kernel
 example : (lookAt E8Ctx2 .here (.fld la)).2.out = false := by decide +kernel
 -- E8: the members of `x` at `A`, one, `⊥ .. {a : ⊤}`.
-example : (declsAt E8Ctx2 (up .here) lA).1 = [(.bot, .fld la (.top ^ []))] := by decide +kernel
+example : (tyDeclsAt E8Ctx2 (up .here) lA).1 = [(.bot, .fld la (.top ^ []))] := by decide +kernel
 -- P4: the field `a` four steps down `x.A`'s upper bound.
 example : (lookAt P4Ctx .here (.fld la)).1 = [.fld la (.top ^ [])] := by decide +kernel
 example : (lookAt P4Ctx .here (.fld la)).2.out = false := by decide +kernel
@@ -358,7 +358,7 @@ example : (capDeclsAt (C2CtxG platCtx k1 k2) (.there (up .here)) lC).2.out = fal
 example : (capDeclsAt CycCtx .here lC).1 = [([], [CapAtom.sel .here lC])] := by decide +kernel
 example : (capDeclsAt CycCtx .here lC).2.out = false := by decide +kernel
 -- `C` of `z` is a capture member, so `z` has no type member `C`.
-example : (declsAt CycCtx .here lC).1.length = 0 := by decide +kernel
+example : (tyDeclsAt CycCtx .here lC).1.length = 0 := by decide +kernel
 
 end LookChecks
 
