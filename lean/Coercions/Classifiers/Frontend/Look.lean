@@ -338,19 +338,19 @@ def lookAt {s : Sig} (Γ : Ctx s) (x : BVar s .var) (k : Key) (n : Nat := defaul
   (r.1.map (·.ty), r.2)
 
 /-- The type members of `p` at `A`, with the tank left. -/
-def typsAt {s : Sig} (Γ : Ctx s) (p : BVar s .var) (A : Label) (n : Nat := defaultFuel) :
+def typsFull {s : Sig} (Γ : Ctx s) (p : BVar s .var) (A : Label) (n : Nat := defaultFuel) :
     List (Shape s × Shape s) × Tank :=
   let r := typs Γ n p A ⟨n, false⟩
   (r.1.map fun d => (d.1, d.2.1), r.2)
 
 /-- The capture members of `p` at `A` bounded by sets, with the tank left. -/
-def capsAt {s : Sig} (Γ : Ctx s) (p : BVar s .var) (A : Label) (n : Nat := defaultFuel) :
+def capsFull {s : Sig} (Γ : Ctx s) (p : BVar s .var) (A : Label) (n : Nat := defaultFuel) :
     List (CaptureSet s × CaptureSet s) × Tank :=
   let r := caps Γ n p A ⟨n, false⟩
   (r.1.map fun d => (d.1, d.2.1), r.2)
 
 /-- The capture members of `p` at `A` bounded by a kind, with the tank left. -/
-def capksAt {s : Sig} (Γ : Ctx s) (p : BVar s .var) (A : Label) (n : Nat := defaultFuel) :
+def capksFull {s : Sig} (Γ : Ctx s) (p : BVar s .var) (A : Label) (n : Nat := defaultFuel) :
     List Cls.Kind × Tank :=
   let r := capks Γ n p A ⟨n, false⟩
   (r.1.map (·.1), r.2)
@@ -397,12 +397,12 @@ example : (lookAt P5Ctx (.there .here) .fn).2.out = false := by decide +kernel
 example : (lookAt B1Ctx .here (.fld lb)).1.length = 0 := by decide +kernel
 example : (lookAt B1Ctx .here (.fld lb)).2.out = false := by decide +kernel
 -- E6: the type member `T` of the self binder, through `μ` and the left operand.
-example : (typsAt E6Ctxz .here lT).1 = [(E6IntS, E6IntS)] := by decide +kernel
-example : (typsAt E6Ctxz .here lT).2.out = false := by decide +kernel
+example : (typsFull E6Ctxz .here lT).1 = [(E6IntS, E6IntS)] := by decide +kernel
+example : (typsFull E6Ctxz .here lT).2.out = false := by decide +kernel
 -- E8: the field `a` of `y` through `x.A`'s upper bound, then the written one.
 example : (lookAt E8Ctx2 .here (.fld la)).1 = [.fld la (.top ^ []), .fld la (.top ^ [])] := by
   decide +kernel
-example : (typsAt E8Ctx2 (up .here) lA).1 = [(.bot, .fld la (.top ^ []))] := by decide +kernel
+example : (typsFull E8Ctx2 (up .here) lA).1 = [(.bot, .fld la (.top ^ []))] := by decide +kernel
 -- E7: the field `a` through the alias cycle `x.A = x.B`, `x.B = x.A`.  The key repeats, so there
 -- is no answer, and the tank stays unmarked.
 example : (look E7Ctx defaultFuel [] .here (.sel (.var .here) lA) (.fld la)
@@ -410,19 +410,19 @@ example : (look E7Ctx defaultFuel [] .here (.sel (.var .here) lA) (.fld la)
 example : (look E7Ctx defaultFuel [] .here (.sel (.var .here) lA) (.fld la)
     ⟨defaultFuel, false⟩).1.length = 0 := by decide +kernel
 -- C2: the capture member `C` of the abstract object `x`, bounded by sets.
-example : (capsAt (C2CtxG E3PlatCtx E3k1 E3k2) (.there (up .here)) lC).1 =
+example : (capsFull (C2CtxG E3PlatCtx E3k1 E3k2) (.there (up .here)) lC).1 =
     [([], [.cvar (.there (up (up E3k1))), .cvar (.there (up (up E3k2)))])] := by decide +kernel
-example : (capsAt (C2CtxG E3PlatCtx E3k1 E3k2) (.there (up .here)) lC).2.out = false := by
+example : (capsFull (C2CtxG E3PlatCtx E3k1 E3k2) (.there (up .here)) lC).2.out = false := by
   decide +kernel
 -- C2's member is bounded by sets, so it is no member bounded by a kind.
-example : (capksAt (C2CtxG E3PlatCtx E3k1 E3k2) (.there (up .here)) lC).1.length = 0 := by
+example : (capksFull (C2CtxG E3PlatCtx E3k1 E3k2) (.there (up .here)) lC).1.length = 0 := by
   decide +kernel
 -- CE4: the capture member `C` of `x`, bounded by `only[Control]`, the premise of `ksel`.
-example : (capksAt E3ClientCtx (.there (up .here)) lC).1 = [Cls.only Cls.Control] := by
+example : (capksFull E3ClientCtx (.there (up .here)) lC).1 = [Cls.only Cls.Control] := by
   decide +kernel
-example : (capksAt E3ClientCtx (.there (up .here)) lC).2.out = false := by decide +kernel
+example : (capksFull E3ClientCtx (.there (up .here)) lC).2.out = false := by decide +kernel
 -- CE4's member is bounded by a kind, so it is no member bounded by sets.
-example : (capsAt E3ClientCtx (.there (up .here)) lC).1.length = 0 := by decide +kernel
+example : (capsFull E3ClientCtx (.there (up .here)) lC).1.length = 0 := by decide +kernel
 
 end LookChecks
 
