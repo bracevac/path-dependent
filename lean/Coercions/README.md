@@ -131,7 +131,9 @@ has kind `φ` never reads a capability classified outside `φ`, and the source i
 `dot_classified_effect_safety`.  Library `Classifiers`, see [Classifiers/README.md](Classifiers/README.md).  Its front end, the library
 `ClassifiersFrontend` in [Classifiers/Frontend/](Classifiers/Frontend/README.md), writes, types,
 checks and runs programs over classified platforms in the paper's notation, and proves of
-`Try.apply` that a run reads only `Control` capabilities.
+`Try.apply` that a run reads only `Control` capabilities.  The typer follows the subtype checker,
+the subcapturing and the levels of the Scala 3 compiler, searches kinds by the same algorithm, and
+is complete up to its recursion limit.
 
 **`Paths/`** adds pDOT's paths `x.a.b` and singleton types to a copy of the main line.  Scala types
 mention such paths all the time, as in `x.a.T`, while WadlerFest DOT selects types on variables
