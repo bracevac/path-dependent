@@ -72,12 +72,12 @@ structure Compiled (t : Oopsla16.Tm [] []) where
 /-- Resolve, then type, then decide the fragment.  The result is a dependent
 pair, since the derivation is about the erasure of the resolved term.  `none`
 means the program is out of scope, out of the label table, or out of the
-typer's reach at the budget `b`. -/
+typer's reach at the fuel of the budget `b`. -/
 def compile (b : Budget) (Λ : LabelTable) (e : STm) :
     Option ((a : ATm []) × Compiled a.erase) := do
   let a ← resolve Λ e
   let c ← synthTop? b a
-  pure ⟨a, ⟨c.1, c.2, frag? a.erase⟩⟩
+  pure ⟨a, ⟨c.ty, c.deriv, frag? a.erase⟩⟩
 
 /-- The target term of a compiled program: `FCdotR.elabTm` at the empty store. -/
 def elaborate {t : Oopsla16.Tm [] []} (c : Compiled t) : FCdotR.Tm [] [] :=
@@ -255,7 +255,7 @@ theorem compile_checks_get {b : Budget} {Λ : LabelTable} {e : STm}
 
 The recursive argument example `FCdotR.SourceSafety.RecursiveArg.prog`, written
 as `recArgSrc` in `Notation.lean`, runs end to end in the kernel.  It compiles
-at the budget `(2, 6, 6)` at type `⊤`.  The checker accepts its elaboration,
+at the default fuel at type `⊤`.  The checker accepts its elaboration,
 the source driver answers in three steps, and the target driver reaches a final
 state in thirteen.  It is outside the fragment, which calls variables on
 variables only. -/
@@ -263,35 +263,35 @@ variables only. -/
 section Checks
 
 /-- `RecursiveArg` compiles, at `⊤`. -/
-example : ((compile { views := 2, sub := 6, typer := 6 } recArgTable recArgSrc).map
+example : ((compile {} recArgTable recArgSrc).map
     (·.2.ty)) = some .TTop := by
   decide +kernel
 
 /-- The checker accepts the elaboration of `RecursiveArg`. -/
 example : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate ((compile { views := 2, sub := 6, typer := 6 } recArgTable recArgSrc).get
+    (elaborate ((compile {} recArgTable recArgSrc).get
       (by decide +kernel)).2)
-    ((compile { views := 2, sub := 6, typer := 6 } recArgTable recArgSrc).get
+    ((compile {} recArgTable recArgSrc).get
       (by decide +kernel)).2.ty = true :=
   compile_checks_get _
 
 /-- `RecursiveArg` is outside the fragment. -/
-example : ((compile { views := 2, sub := 6, typer := 6 } recArgTable recArgSrc).map
+example : ((compile {} recArgTable recArgSrc).map
     (·.2.frag.isSome)) = some false := by
   decide +kernel
 
 /-- The source driver answers in three steps and not in two. -/
-example : (compileAndRun { views := 2, sub := 6, typer := 6 } 3 recArgTable recArgSrc).map
+example : (compileAndRun {} 3 recArgTable recArgSrc).map
       (fun n => isAnswer n.t') = some true ∧
-    (compileAndRun { views := 2, sub := 6, typer := 6 } 2 recArgTable recArgSrc).map
+    (compileAndRun {} 2 recArgTable recArgSrc).map
       (fun n => isAnswer n.t') = some false := by
   decide +kernel
 
 /-- The target driver reaches a final state in thirteen steps and not in
 twelve.  The extra steps are `let` and coercion steps. -/
-example : (compileAndRunFC { views := 2, sub := 6, typer := 6 } 13 recArgTable recArgSrc).map
+example : (compileAndRunFC {} 13 recArgTable recArgSrc).map
       (fun n => fcFinal? n.st') = some true ∧
-    (compileAndRunFC { views := 2, sub := 6, typer := 6 } 12 recArgTable recArgSrc).map
+    (compileAndRunFC {} 12 recArgTable recArgSrc).map
       (fun n => fcFinal? n.st') = some false := by
   decide +kernel
 

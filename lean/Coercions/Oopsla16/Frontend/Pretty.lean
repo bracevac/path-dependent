@@ -342,7 +342,7 @@ example : (resolve recArgTable recArgSrc).map (ppATmWith recArgTable .nil) = som
 /-- The recursive argument example answers in three steps.  The caller
 allocates at `ℓ0`, the argument at `ℓ1`, and the call returns `ℓ1`. -/
 example : ppRun recArgTable
-    (compileAndRun { views := 2, sub := 6, typer := 6 } 3 recArgTable recArgSrc)
+    (compileAndRun {} 3 recArgTable recArgSrc)
     = "⟨ℓ0 = {def apply#0(x) = x}, ℓ1 = {type A#2 = ℓ1.B#1  type B#1 = ⊤  "
       ++ "def apply#0(x) = x} | ℓ1⟩" := by
   decide +kernel

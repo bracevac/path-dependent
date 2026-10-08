@@ -27,8 +27,7 @@ A program in the fragment `FCdotR.TmFrag` also gets `<program>_frag_erase` and
 `<program>_frag_checks`.  Every closed program runs on both machines, at the
 first step count where the machine finishes.
 
-Each program is compiled at a budget `{ views := k, sub := m, typer := n }`
-at which the typer answers.  It is not a threshold.
+Each program is compiled at the default fuel, the budget `{}`.
 
 `ex2` is open in `y : polyId`, and the steps of `FunctionField` are open in the
 self `z`.  They have no `compile` and no run.  They use `resolveIn`,
@@ -37,7 +36,8 @@ their elaborations there.
 
 Seven programs of `Typer.lean` exercise the typer's rules for a call and for
 a packed variable.  The repository holds no derivation of Oopsla16 for them,
-so their types are compared with the types `Typer.lean` states.
+so their types are compared with the types `Typer.lean` states.  Two of them,
+a receiver at a union and a receiver at `⊥`, have no type.
 
 Surface programs are closed over the empty store.  The examples that start
 from a store with locations (`TwoObjectStore`, `HonestCall` and the like) and
@@ -132,46 +132,43 @@ theorem compile_frag_checks_get {b : Budget} {Λ : LabelTable} {e : STm}
 `new {z ⇒ }` at `μ(z. ⊤)`, by `T_Obj` and `D_Nil`.  Oopsla16's
 derivation is `Oopsla16.Examples.ex0_precise`. -/
 
-/-- The budget `ex0` is found at. -/
-def bEx0 : Budget := { views := 0, sub := 0, typer := 2 }
-
 example : compiledTm [] ex0src = some (versionTm Oopsla16.Examples.ex0_precise) := rfl
 
-example : compiledTy bEx0 [] ex0src = some (versionTy Oopsla16.Examples.ex0_precise) := by
+example : compiledTy {} [] ex0src = some (versionTy Oopsla16.Examples.ex0_precise) := by
   decide +kernel
 
-#eval expect (compiledVerdict bEx0 [] ex0src) "ex0: the checker rejects the elaboration"
+#eval expect (compiledVerdict {} [] ex0src) "ex0: the checker rejects the elaboration"
 
 /-- `ex0` compiles. -/
-theorem ex0_compiles : (compile bEx0 [] ex0src).isSome = true := by decide +kernel
+theorem ex0_compiles : (compile {} [] ex0src).isSome = true := by decide +kernel
 
 /-- The checker accepts the elaboration of `ex0`. -/
 theorem ex0_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bEx0 [] ex0src ex0_compiles).2)
-    (compiledGet bEx0 [] ex0src ex0_compiles).2.ty = true :=
+    (elaborate (compiledGet {} [] ex0src ex0_compiles).2)
+    (compiledGet {} [] ex0src ex0_compiles).2.ty = true :=
   compile_checks_get ex0_compiles
 
 /-- `ex0` is in the fragment. -/
-theorem ex0_inFrag : (compiledGet bEx0 [] ex0src ex0_compiles).2.frag.isSome = true := by
+theorem ex0_inFrag : (compiledGet {} [] ex0src ex0_compiles).2.frag.isSome = true := by
   decide +kernel
 
 /-- The fragment elaboration of `ex0` erases to `ex0`. -/
 theorem ex0_frag_erase :
-    (FCdotR.elabHasType FCdotR.emptyStoreTy (compiledGet bEx0 [] ex0src ex0_compiles).2.deriv
-      ((compiledGet bEx0 [] ex0src ex0_compiles).2.frag.get ex0_inFrag)).1.erase
-      = (compiledGet bEx0 [] ex0src ex0_compiles).1.erase :=
+    (FCdotR.elabHasType FCdotR.emptyStoreTy (compiledGet {} [] ex0src ex0_compiles).2.deriv
+      ((compiledGet {} [] ex0src ex0_compiles).2.frag.get ex0_inFrag)).1.erase
+      = (compiledGet {} [] ex0src ex0_compiles).1.erase :=
   compile_frag_erase_get ex0_compiles ex0_inFrag
 
 /-- The checker accepts the fragment elaboration of `ex0`. -/
 theorem ex0_frag_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (FCdotR.elabHasType FCdotR.emptyStoreTy (compiledGet bEx0 [] ex0src ex0_compiles).2.deriv
-      ((compiledGet bEx0 [] ex0src ex0_compiles).2.frag.get ex0_inFrag)).1
-    (compiledGet bEx0 [] ex0src ex0_compiles).2.ty = true :=
+    (FCdotR.elabHasType FCdotR.emptyStoreTy (compiledGet {} [] ex0src ex0_compiles).2.deriv
+      ((compiledGet {} [] ex0src ex0_compiles).2.frag.get ex0_inFrag)).1
+    (compiledGet {} [] ex0src ex0_compiles).2.ty = true :=
   compile_frag_checks_get ex0_compiles ex0_inFrag
 
 /-- The literal allocates in one step, on both machines. -/
-example : answersAt bEx0 1 [] ex0src = true ∧ answersAt bEx0 0 [] ex0src = false ∧
-    finalAt bEx0 1 [] ex0src = true ∧ finalAt bEx0 0 [] ex0src = false := by
+example : answersAt {} 1 [] ex0src = true ∧ answersAt {} 0 [] ex0src = false ∧
+    finalAt {} 1 [] ex0src = true ∧ finalAt {} 0 [] ex0src = false := by
   decide +kernel
 
 /-! ## `ex0` ascribed
@@ -179,29 +176,26 @@ example : answersAt bEx0 1 [] ex0src = true ∧ answersAt bEx0 0 [] ex0src = fal
 `(new {z ⇒ } : ⊤)` at `⊤`, by `T_Sub` and `stp_top`.  The ascription erases
 to its term.  Oopsla16's derivation is `Oopsla16.Examples.ex0`. -/
 
-/-- The budget the ascribed `ex0` is found at. -/
-def bEx0Asc : Budget := { views := 0, sub := 1, typer := 3 }
-
 example : compiledTm [] ex0AscSrc = some (versionTm Oopsla16.Examples.ex0) := rfl
 
-example : compiledTy bEx0Asc [] ex0AscSrc = some (versionTy Oopsla16.Examples.ex0) := by
+example : compiledTy {} [] ex0AscSrc = some (versionTy Oopsla16.Examples.ex0) := by
   decide +kernel
 
-#eval expect (compiledVerdict bEx0Asc [] ex0AscSrc) "ex0 ascribed: the checker rejects the elaboration"
+#eval expect (compiledVerdict {} [] ex0AscSrc) "ex0 ascribed: the checker rejects the elaboration"
 
 /-- The ascribed `ex0` compiles. -/
-theorem ex0Asc_compiles : (compile bEx0Asc [] ex0AscSrc).isSome = true := by decide +kernel
+theorem ex0Asc_compiles : (compile {} [] ex0AscSrc).isSome = true := by decide +kernel
 
 /-- The checker accepts the elaboration of the ascribed `ex0`. -/
 theorem ex0Asc_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bEx0Asc [] ex0AscSrc ex0Asc_compiles).2)
-    (compiledGet bEx0Asc [] ex0AscSrc ex0Asc_compiles).2.ty = true :=
+    (elaborate (compiledGet {} [] ex0AscSrc ex0Asc_compiles).2)
+    (compiledGet {} [] ex0AscSrc ex0Asc_compiles).2.ty = true :=
   compile_checks_get ex0Asc_compiles
 
 /-- The source machine allocates in one step.  The target machine also runs
 the coercion to `⊤`, in three. -/
-example : answersAt bEx0Asc 1 [] ex0AscSrc = true ∧ answersAt bEx0Asc 0 [] ex0AscSrc = false ∧
-    finalAt bEx0Asc 3 [] ex0AscSrc = true ∧ finalAt bEx0Asc 2 [] ex0AscSrc = false := by
+example : answersAt {} 1 [] ex0AscSrc = true ∧ answersAt {} 0 [] ex0AscSrc = false ∧
+    finalAt {} 3 [] ex0AscSrc = true ∧ finalAt {} 2 [] ex0AscSrc = false := by
   decide +kernel
 
 /-! ## `RecursiveArg`: a Curry style call with a recursive argument
@@ -211,40 +205,37 @@ to a literal whose type is below the parameter type by `stp_bindx` and two
 `stp_sel2`.  Oopsla16's derivation is
 `FCdotR.SourceSafety.RecursiveArg.progTy`. -/
 
-/-- The budget `RecursiveArg` is found at. -/
-def bRecArg : Budget := { views := 2, sub := 6, typer := 6 }
-
 example : compiledTm recArgTable recArgSrc
     = some (versionTm FCdotR.SourceSafety.RecursiveArg.progTy) := rfl
 
-example : compiledTy bRecArg recArgTable recArgSrc
+example : compiledTy {} recArgTable recArgSrc
     = some (versionTy FCdotR.SourceSafety.RecursiveArg.progTy) := by
   decide +kernel
 
-#eval expect (compiledVerdict bRecArg recArgTable recArgSrc)
+#eval expect (compiledVerdict {} recArgTable recArgSrc)
   "RecursiveArg: the checker rejects the elaboration"
 
 /-- `RecursiveArg` compiles. -/
-theorem recArg_compiles : (compile bRecArg recArgTable recArgSrc).isSome = true := by
+theorem recArg_compiles : (compile {} recArgTable recArgSrc).isSome = true := by
   decide +kernel
 
 /-- The checker accepts the elaboration of `RecursiveArg`. -/
 theorem recArg_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bRecArg recArgTable recArgSrc recArg_compiles).2)
-    (compiledGet bRecArg recArgTable recArgSrc recArg_compiles).2.ty = true :=
+    (elaborate (compiledGet {} recArgTable recArgSrc recArg_compiles).2)
+    (compiledGet {} recArgTable recArgSrc recArg_compiles).2.ty = true :=
   compile_checks_get recArg_compiles
 
 /-- The receiver and the argument are literals, so the program is outside the
 fragment. -/
-example : (compiledGet bRecArg recArgTable recArgSrc recArg_compiles).2.frag.isSome = false := by
+example : (compiledGet {} recArgTable recArgSrc recArg_compiles).2.frag.isSome = false := by
   decide +kernel
 
 /-- Three source steps: two allocations and the call.  Thirteen target
 steps, the extra ones being the `let` and coercion steps of the elaboration. -/
-example : answersAt bRecArg 3 recArgTable recArgSrc = true ∧
-    answersAt bRecArg 2 recArgTable recArgSrc = false ∧
-    finalAt bRecArg 13 recArgTable recArgSrc = true ∧
-    finalAt bRecArg 12 recArgTable recArgSrc = false := by
+example : answersAt {} 3 recArgTable recArgSrc = true ∧
+    answersAt {} 2 recArgTable recArgSrc = false ∧
+    finalAt {} 13 recArgTable recArgSrc = true ∧
+    finalAt {} 12 recArgTable recArgSrc = false := by
   decide +kernel
 
 /-! ## `CurryCall`: a call whose operands are literals
@@ -252,38 +243,35 @@ example : answersAt bRecArg 3 recArgTable recArgSrc = true ∧
 `T_AppVar` with a literal receiver, and `T_App` with literal operands.  Oopsla16's derivation is
 `FCdotR.CurryCall.progTy`. -/
 
-/-- The budget `CurryCall` is found at. -/
-def bCurry : Budget := { views := 0, sub := 3, typer := 7 }
-
 example : compiledTm curryCallTable curryCallSrc = some (versionTm FCdotR.CurryCall.progTy) := rfl
 
-example : compiledTy bCurry curryCallTable curryCallSrc
+example : compiledTy {} curryCallTable curryCallSrc
     = some (versionTy FCdotR.CurryCall.progTy) := by
   decide +kernel
 
-#eval expect (compiledVerdict bCurry curryCallTable curryCallSrc)
+#eval expect (compiledVerdict {} curryCallTable curryCallSrc)
   "CurryCall: the checker rejects the elaboration"
 
 /-- `CurryCall` compiles. -/
-theorem curryCall_compiles : (compile bCurry curryCallTable curryCallSrc).isSome = true := by
+theorem curryCall_compiles : (compile {} curryCallTable curryCallSrc).isSome = true := by
   decide +kernel
 
 /-- The checker accepts the elaboration of `CurryCall`. -/
 theorem curryCall_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bCurry curryCallTable curryCallSrc curryCall_compiles).2)
-    (compiledGet bCurry curryCallTable curryCallSrc curryCall_compiles).2.ty = true :=
+    (elaborate (compiledGet {} curryCallTable curryCallSrc curryCall_compiles).2)
+    (compiledGet {} curryCallTable curryCallSrc curryCall_compiles).2.ty = true :=
   compile_checks_get curryCall_compiles
 
 /-- Outside the fragment. -/
-example : (compiledGet bCurry curryCallTable curryCallSrc curryCall_compiles).2.frag.isSome
+example : (compiledGet {} curryCallTable curryCallSrc curryCall_compiles).2.frag.isSome
     = false := by
   decide +kernel
 
-/-- Five source steps, seventeen target steps. -/
-example : answersAt bCurry 5 curryCallTable curryCallSrc = true ∧
-    answersAt bCurry 4 curryCallTable curryCallSrc = false ∧
-    finalAt bCurry 17 curryCallTable curryCallSrc = true ∧
-    finalAt bCurry 16 curryCallTable curryCallSrc = false := by
+/-- Five source steps, nineteen target steps. -/
+example : answersAt {} 5 curryCallTable curryCallSrc = true ∧
+    answersAt {} 4 curryCallTable curryCallSrc = false ∧
+    finalAt {} 19 curryCallTable curryCallSrc = true ∧
+    finalAt {} 18 curryCallTable curryCallSrc = false := by
   decide +kernel
 
 /-! ## `ex1`: the polymorphic identity
@@ -294,73 +282,67 @@ that depends on the parameter.  Oopsla16's derivation
 synthesizes the self type `selfOf?` computes, `μ(z. polyId ∧ ⊤)`, and checks
 the program at `polyId`. -/
 
-/-- The budget `ex1` is found at. -/
-def bEx1 : Budget := { views := 0, sub := 3, typer := 5 }
-
 example : compiledTm ex1Table ex1src = some (versionTm FCdotR.CheckerExamples.DotExs.ex1) := rfl
 
-example : compiledTy bEx1 ex1Table ex1src
+example : compiledTy {} ex1Table ex1src
     = some (.TBind FCdotR.CheckerExamples.DotExs.outerSelf) := by
   decide +kernel
 
 /-- The resolved program checks at the conclusion of Oopsla16's
 derivation. -/
 example : ((resolve ex1Table ex1src).map fun a =>
-    checksIn bEx1 Ctx.nil a (versionTy FCdotR.CheckerExamples.DotExs.ex1)) = some true := by
+    checksIn {} Ctx.nil a (versionTy FCdotR.CheckerExamples.DotExs.ex1)) = some true := by
   decide +kernel
 
-#eval expect (compiledVerdict bEx1 ex1Table ex1src) "ex1: the checker rejects the elaboration"
+#eval expect (compiledVerdict {} ex1Table ex1src) "ex1: the checker rejects the elaboration"
 
 /-- `ex1` compiles. -/
-theorem ex1_compiles : (compile bEx1 ex1Table ex1src).isSome = true := by decide +kernel
+theorem ex1_compiles : (compile {} ex1Table ex1src).isSome = true := by decide +kernel
 
 /-- The checker accepts the elaboration of `ex1`. -/
 theorem ex1_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bEx1 ex1Table ex1src ex1_compiles).2)
-    (compiledGet bEx1 ex1Table ex1src ex1_compiles).2.ty = true :=
+    (elaborate (compiledGet {} ex1Table ex1src ex1_compiles).2)
+    (compiledGet {} ex1Table ex1src ex1_compiles).2.ty = true :=
   compile_checks_get ex1_compiles
 
 /-- `ex1` is in the fragment. -/
-theorem ex1_inFrag : (compiledGet bEx1 ex1Table ex1src ex1_compiles).2.frag.isSome = true := by
+theorem ex1_inFrag : (compiledGet {} ex1Table ex1src ex1_compiles).2.frag.isSome = true := by
   decide +kernel
 
 /-- The fragment elaboration of `ex1` erases to `ex1`. -/
 theorem ex1_frag_erase :
-    (FCdotR.elabHasType FCdotR.emptyStoreTy (compiledGet bEx1 ex1Table ex1src ex1_compiles).2.deriv
-      ((compiledGet bEx1 ex1Table ex1src ex1_compiles).2.frag.get ex1_inFrag)).1.erase
-      = (compiledGet bEx1 ex1Table ex1src ex1_compiles).1.erase :=
+    (FCdotR.elabHasType FCdotR.emptyStoreTy (compiledGet {} ex1Table ex1src ex1_compiles).2.deriv
+      ((compiledGet {} ex1Table ex1src ex1_compiles).2.frag.get ex1_inFrag)).1.erase
+      = (compiledGet {} ex1Table ex1src ex1_compiles).1.erase :=
   compile_frag_erase_get ex1_compiles ex1_inFrag
 
 /-- The checker accepts the fragment elaboration of `ex1`. -/
 theorem ex1_frag_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (FCdotR.elabHasType FCdotR.emptyStoreTy (compiledGet bEx1 ex1Table ex1src ex1_compiles).2.deriv
-      ((compiledGet bEx1 ex1Table ex1src ex1_compiles).2.frag.get ex1_inFrag)).1
-    (compiledGet bEx1 ex1Table ex1src ex1_compiles).2.ty = true :=
+    (FCdotR.elabHasType FCdotR.emptyStoreTy (compiledGet {} ex1Table ex1src ex1_compiles).2.deriv
+      ((compiledGet {} ex1Table ex1src ex1_compiles).2.frag.get ex1_inFrag)).1
+    (compiledGet {} ex1Table ex1src ex1_compiles).2.ty = true :=
   compile_frag_checks_get ex1_compiles ex1_inFrag
 
 /-- One step on each machine. -/
-example : answersAt bEx1 1 ex1Table ex1src = true ∧ answersAt bEx1 0 ex1Table ex1src = false ∧
-    finalAt bEx1 1 ex1Table ex1src = true ∧ finalAt bEx1 0 ex1Table ex1src = false := by
+example : answersAt {} 1 ex1Table ex1src = true ∧ answersAt {} 0 ex1Table ex1src = false ∧
+    finalAt {} 1 ex1Table ex1src = true ∧ finalAt {} 0 ex1Table ex1src = false := by
   decide +kernel
 
 /-! ## `ex2`: a call on a variable, open in `y : polyId`
 
 `y.apply(new {o ⇒ type T = ⊤})` at `{def apply(x : ⊤) : ⊤}`.  The codomain of
-`polyId` mentions its parameter, so the call takes the narrowing rung of the
-typer's call rule.  Oopsla16's derivation is
+`polyId` mentions its parameter, and the argument is not a variable, so the
+parameter is approximated away.  Oopsla16's derivation is
 `FCdotR.CheckerExamples.DotExs.ex2`, in the context
 `FCdotR.CheckerExamples.DotExs.Γy`. -/
 
 section Ex2
 open FCdotR.CheckerExamples.DotExs (Γy)
 
-/-- The budget `ex2` is found at. -/
-def bEx2 : Budget := { views := 1, sub := 4, typer := 4 }
-
 example : (resolveIn ex2Table (NameEnv.nil.cons "y") ex2src).map ATm.erase
     = some (versionTm FCdotR.CheckerExamples.DotExs.ex2) := rfl
 
-example : (resolveIn ex2Table (NameEnv.nil.cons "y") ex2src).bind (typeIn? bEx2 Γy)
+example : (resolveIn ex2Table (NameEnv.nil.cons "y") ex2src).bind (typeIn? {} Γy)
     = some (versionTy FCdotR.CheckerExamples.DotExs.ex2) := by
   decide +kernel
 
@@ -373,12 +355,12 @@ abbrev ex2Ann : ATm ([],x) := (resolveIn ex2Table (NameEnv.nil.cons "y") ex2src)
 
 /-- The typer finds `ex2` at the conclusion of Oopsla16's derivation. -/
 theorem ex2_types :
-    (checkIn? bEx2 Γy ex2Ann (versionTy FCdotR.CheckerExamples.DotExs.ex2)).isSome = true := by
+    (checkIn? {} Γy ex2Ann (versionTy FCdotR.CheckerExamples.DotExs.ex2)).isSome = true := by
   decide +kernel
 
 /-- The derivation the typer returns for `ex2`. -/
 def ex2Found : HasType Store.nil Γy ex2Ann.erase (versionTy FCdotR.CheckerExamples.DotExs.ex2) :=
-  (checkIn? bEx2 Γy ex2Ann (versionTy FCdotR.CheckerExamples.DotExs.ex2)).get ex2_types
+  (checkIn? {} Γy ex2Ann (versionTy FCdotR.CheckerExamples.DotExs.ex2)).get ex2_types
 
 /-- The checker accepts the elaboration of `ex2` in `y : polyId`. -/
 theorem ex2_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Γy
@@ -398,60 +380,57 @@ A module with a type member `List` and the two constructors `nil` and `cons`,
 ascribed at its module type.  Oopsla16's derivation is
 `FCdotR.CheckerExamples.PaperLst.paper_lst`. -/
 
-/-- The budget `paper_lst` is found at. -/
-def bLst : Budget := { views := 3, sub := 12, typer := 13 }
-
 example : compiledTm paperLstTable paperLstSrc
     = some (versionTm FCdotR.CheckerExamples.PaperLst.paper_lst) := rfl
 
-example : compiledTy bLst paperLstTable paperLstSrc
+example : compiledTy {} paperLstTable paperLstSrc
     = some (versionTy FCdotR.CheckerExamples.PaperLst.paper_lst) := by
   decide +kernel
 
-#eval expect (compiledVerdict bLst paperLstTable paperLstSrc)
+#eval expect (compiledVerdict {} paperLstTable paperLstSrc)
   "paper_lst: the checker rejects the elaboration"
 
 /-- `paper_lst` compiles. -/
-theorem paperLst_compiles : (compile bLst paperLstTable paperLstSrc).isSome = true := by
+theorem paperLst_compiles : (compile {} paperLstTable paperLstSrc).isSome = true := by
   decide +kernel
 
 /-- The checker accepts the elaboration of `paper_lst`.  The statement spells
 out `compiledGet`, since unfolding it against this program exceeds the
 elaborator's recursion depth. -/
 theorem paperLst_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate ((compile bLst paperLstTable paperLstSrc).get paperLst_compiles).2)
-    ((compile bLst paperLstTable paperLstSrc).get paperLst_compiles).2.ty = true :=
+    (elaborate ((compile {} paperLstTable paperLstSrc).get paperLst_compiles).2)
+    ((compile {} paperLstTable paperLstSrc).get paperLst_compiles).2.ty = true :=
   compile_checks_get paperLst_compiles
 
 /-- `paper_lst` is in the fragment. -/
 theorem paperLst_inFrag :
-    (compiledGet bLst paperLstTable paperLstSrc paperLst_compiles).2.frag.isSome = true := by
+    (compiledGet {} paperLstTable paperLstSrc paperLst_compiles).2.frag.isSome = true := by
   decide +kernel
 
 /-- The fragment elaboration of `paper_lst` erases to `paper_lst`. -/
 theorem paperLst_frag_erase :
     (FCdotR.elabHasType FCdotR.emptyStoreTy
-      (compiledGet bLst paperLstTable paperLstSrc paperLst_compiles).2.deriv
-      ((compiledGet bLst paperLstTable paperLstSrc paperLst_compiles).2.frag.get
+      (compiledGet {} paperLstTable paperLstSrc paperLst_compiles).2.deriv
+      ((compiledGet {} paperLstTable paperLstSrc paperLst_compiles).2.frag.get
         paperLst_inFrag)).1.erase
-      = (compiledGet bLst paperLstTable paperLstSrc paperLst_compiles).1.erase :=
+      = (compiledGet {} paperLstTable paperLstSrc paperLst_compiles).1.erase :=
   compile_frag_erase_get paperLst_compiles paperLst_inFrag
 
 /-- The checker accepts the fragment elaboration of `paper_lst`. -/
 theorem paperLst_frag_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
     (FCdotR.elabHasType FCdotR.emptyStoreTy
-      (compiledGet bLst paperLstTable paperLstSrc paperLst_compiles).2.deriv
-      ((compiledGet bLst paperLstTable paperLstSrc paperLst_compiles).2.frag.get
+      (compiledGet {} paperLstTable paperLstSrc paperLst_compiles).2.deriv
+      ((compiledGet {} paperLstTable paperLstSrc paperLst_compiles).2.frag.get
         paperLst_inFrag)).1
-    (compiledGet bLst paperLstTable paperLstSrc paperLst_compiles).2.ty = true :=
+    (compiledGet {} paperLstTable paperLstSrc paperLst_compiles).2.ty = true :=
   compile_frag_checks_get paperLst_compiles paperLst_inFrag
 
 /-- The module allocates in one source step.  The target machine also runs
 the coercion of the ascription, in three. -/
-example : answersAt bLst 1 paperLstTable paperLstSrc = true ∧
-    answersAt bLst 0 paperLstTable paperLstSrc = false ∧
-    finalAt bLst 3 paperLstTable paperLstSrc = true ∧
-    finalAt bLst 2 paperLstTable paperLstSrc = false := by
+example : answersAt {} 1 paperLstTable paperLstSrc = true ∧
+    answersAt {} 0 paperLstTable paperLstSrc = false ∧
+    finalAt {} 3 paperLstTable paperLstSrc = true ∧
+    finalAt {} 2 paperLstTable paperLstSrc = false := by
   decide +kernel
 
 /-! ## `FunctionField` and `forgetSelf`: types and subtyping
@@ -462,7 +441,7 @@ types `Sbody` and `Tbody` of `Notation.lean` resolve to the two sides, and
 the search finds each step at the context Oopsla16 uses. -/
 
 section FunctionField
-open Oopsla16.Examples.FunctionField (Γz sBound selMember selUnder methodCovariant premise recursive)
+open Oopsla16.Examples.FunctionField (Γz A sBound selMember selUnder methodCovariant premise recursive)
 
 /-- `μ(z. S(z))` and `μ(z. T(z))` resolve to the two sides of `recursive`. -/
 example : resolveTy functionFieldTable .nil (.mu "z" Sbody) = some (versionLower recursive) ∧
@@ -472,36 +451,36 @@ example : resolveTy functionFieldTable .nil (.mu "z" Sbody) = some (versionLower
 /-- `recursive`, from the resolved surface types. -/
 example : ((resolveTy functionFieldTable .nil (.mu "z" Sbody)).bind fun S =>
     (resolveTy functionFieldTable .nil (.mu "z" Tbody)).map fun T =>
-      (sub? { views := 1 } 5 Ctx.nil S T).isSome) = some true := by
+      (Core.sub? Ctx.nil S T).1.isSome) = some true := by
   decide +kernel
 
 /-- The search finds `sBound`. -/
-example : (sub? { views := 0 } 3 Γz (versionLower sBound) (versionUpper sBound)).isSome = true := by
+example : (Core.sub? Γz (versionLower sBound) (versionUpper sBound)).1.isSome = true := by
   decide +kernel
 
-/-- `selMember`: a view of the self under the parameter. -/
-example : ((hviews 1 (Γz.cons .TTop) (.there .here)).any
-    fun v => decide (v.ty = versionView selMember)) = true := by
+/-- `selMember`: a member the lookup finds for the self under the parameter. -/
+example : ((Core.lookAt (Γz.cons .TTop) (.there .here) (.typ A)).1.any
+    fun T => decide (T = versionView selMember)) = true := by
   decide +kernel
 
 /-- The search finds `selUnder`. -/
-example : (sub? { views := 1 } 2 (Γz.cons .TTop) (versionLower selUnder)
-    (versionUpper selUnder)).isSome = true := by
+example : (Core.sub? (Γz.cons .TTop) (versionLower selUnder)
+    (versionUpper selUnder)).1.isSome = true := by
   decide +kernel
 
 /-- The search finds `methodCovariant`. -/
-example : (sub? { views := 1 } 3 Γz (versionLower methodCovariant)
-    (versionUpper methodCovariant)).isSome = true := by
+example : (Core.sub? Γz (versionLower methodCovariant)
+    (versionUpper methodCovariant)).1.isSome = true := by
   decide +kernel
 
 /-- The search finds `premise`. -/
-example : (sub? { views := 1 } 5 Γz (versionLower premise) (versionUpper premise)).isSome
+example : (Core.sub? Γz (versionLower premise) (versionUpper premise)).1.isSome
     = true := by
   decide +kernel
 
 /-- The derivation the search returns for `premise`. -/
 def premiseFound : Stp Store.nil Γz (versionLower premise) (versionUpper premise) :=
-  (sub? { views := 1 } 5 Γz (versionLower premise) (versionUpper premise)).get (by decide +kernel)
+  (Core.sub? Γz (versionLower premise) (versionUpper premise)).1.get (by decide +kernel)
 
 /-- The checker accepts the elaboration of the found `premise`, in `Γz`. -/
 example : FCdotR.checkLe Store.nil FCdotR.emptyStoreTy Γz
@@ -510,7 +489,7 @@ example : FCdotR.checkLe Store.nil FCdotR.emptyStoreTy Γz
   decide +kernel
 
 /-- `z` in `Γz` checks at the right side of `sBound`, through `checkIn?`. -/
-example : checksIn { views := 0, sub := 3, typer := 1 } Γz (.var .here) (versionUpper sBound)
+example : checksIn {} Γz (.var .here) (versionUpper sBound)
     = true := by
   decide +kernel
 
@@ -522,39 +501,37 @@ example : resolveTy [("B", 1)] .nil (o16Ty% μ(z. ⊤ ∧ { type B : ⊥ .. ⊤ 
       = some (versionLower Oopsla16.Examples.forgetSelf) ∧
     resolveTy [("B", 1)] .nil (o16Ty% ⊤ ∧ { type B : ⊥ .. ⊤ })
       = some (versionUpper Oopsla16.Examples.forgetSelf) ∧
-    (sub? { views := 0 } 3 Ctx.nil (versionLower Oopsla16.Examples.forgetSelf)
-      (versionUpper Oopsla16.Examples.forgetSelf)).isSome = true := by
+    (Core.sub? Ctx.nil (versionLower Oopsla16.Examples.forgetSelf)
+      (versionUpper Oopsla16.Examples.forgetSelf)).1.isSome = true := by
   decide +kernel
 
 /-! ## A call on a literal whose method type mentions its self
 
-`(new {z ⇒ def f(y : ⊤) : z.A = y   type A = ⊤}).f(new {w ⇒ })` at `⊤`.  No
-method type reads off the receiver, and the widening candidate is below the
-receiver by `stp_bind1`. -/
+`(new {z ⇒ def f(y : ⊤) : z.A = y   type A = ⊤}).f(new {w ⇒ })` at `⊤`.  The
+method is looked up under the receiver's self, and the self is approximated
+away, so `z.A` becomes `⊤`.  `stp_bind1` takes the receiver to the method
+type. -/
 
-/-- The budget the call on a literal is found at. -/
-def bSelfCall : Budget := { views := 2, sub := 4, typer := 5 }
+example : compiledTy {} selfCallTable selfCallSrc = some .TTop := by decide +kernel
 
-example : compiledTy bSelfCall selfCallTable selfCallSrc = some .TTop := by decide +kernel
-
-#eval expect (compiledVerdict bSelfCall selfCallTable selfCallSrc)
+#eval expect (compiledVerdict {} selfCallTable selfCallSrc)
   "selfCall: the checker rejects the elaboration"
 
 /-- The call on a literal compiles. -/
-theorem selfCall_compiles : (compile bSelfCall selfCallTable selfCallSrc).isSome = true := by
+theorem selfCall_compiles : (compile {} selfCallTable selfCallSrc).isSome = true := by
   decide +kernel
 
 /-- The checker accepts the elaboration of the call on a literal. -/
 theorem selfCall_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bSelfCall selfCallTable selfCallSrc selfCall_compiles).2)
-    (compiledGet bSelfCall selfCallTable selfCallSrc selfCall_compiles).2.ty = true :=
+    (elaborate (compiledGet {} selfCallTable selfCallSrc selfCall_compiles).2)
+    (compiledGet {} selfCallTable selfCallSrc selfCall_compiles).2.ty = true :=
   compile_checks_get selfCall_compiles
 
-/-- Three source steps, eleven target steps. -/
-example : answersAt bSelfCall 3 selfCallTable selfCallSrc = true ∧
-    answersAt bSelfCall 2 selfCallTable selfCallSrc = false ∧
-    finalAt bSelfCall 11 selfCallTable selfCallSrc = true ∧
-    finalAt bSelfCall 10 selfCallTable selfCallSrc = false := by
+/-- Three source steps, thirteen target steps. -/
+example : answersAt {} 3 selfCallTable selfCallSrc = true ∧
+    answersAt {} 2 selfCallTable selfCallSrc = false ∧
+    finalAt {} 13 selfCallTable selfCallSrc = true ∧
+    finalAt {} 12 selfCallTable selfCallSrc = false := by
   decide +kernel
 
 /-! ## A call on a variable whose type is a selection
@@ -562,30 +539,27 @@ example : answersAt bSelfCall 3 selfCallTable selfCallSrc = true ∧
 `new {c ⇒ type L = {def f(y : ⊤) : ⊤}   def g(x : c.L) : ⊤ = x.f(x)}`.  The
 receiver `x : c.L` widens to the upper bound of `L`. -/
 
-/-- The budget the call on a selection is found at. -/
-def bSelCall : Budget := { views := 1, sub := 1, typer := 5 }
-
-example : compiledTy bSelCall selCallTable selCallSrc = some (.TBind SearchChecks.selfC) := by
+example : compiledTy {} selCallTable selCallSrc = some (.TBind selfC) := by
   decide +kernel
 
-#eval expect (compiledVerdict bSelCall selCallTable selCallSrc)
+#eval expect (compiledVerdict {} selCallTable selCallSrc)
   "selCall: the checker rejects the elaboration"
 
 /-- The call on a selection compiles. -/
-theorem selCall_compiles : (compile bSelCall selCallTable selCallSrc).isSome = true := by
+theorem selCall_compiles : (compile {} selCallTable selCallSrc).isSome = true := by
   decide +kernel
 
 /-- The checker accepts the elaboration of the call on a selection. -/
 theorem selCall_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bSelCall selCallTable selCallSrc selCall_compiles).2)
-    (compiledGet bSelCall selCallTable selCallSrc selCall_compiles).2.ty = true :=
+    (elaborate (compiledGet {} selCallTable selCallSrc selCall_compiles).2)
+    (compiledGet {} selCallTable selCallSrc selCall_compiles).2.ty = true :=
   compile_checks_get selCall_compiles
 
 /-- One step on each machine. -/
-example : answersAt bSelCall 1 selCallTable selCallSrc = true ∧
-    answersAt bSelCall 0 selCallTable selCallSrc = false ∧
-    finalAt bSelCall 1 selCallTable selCallSrc = true ∧
-    finalAt bSelCall 0 selCallTable selCallSrc = false := by
+example : answersAt {} 1 selCallTable selCallSrc = true ∧
+    answersAt {} 0 selCallTable selCallSrc = false ∧
+    finalAt {} 1 selCallTable selCallSrc = true ∧
+    finalAt {} 0 selCallTable selCallSrc = false := by
   decide +kernel
 
 /-! ## Two candidates: the first candidate's answer fails the goal
@@ -593,86 +567,40 @@ example : answersAt bSelCall 1 selCallTable selCallSrc = true ∧
 `x` has two method types at `f`.  Checking the body tries the second when the
 first answers `⊤`, which is not below the goal. -/
 
-/-- The budget the two candidates are found at. -/
-def bTwoCand : Budget := { views := 0, sub := 6, typer := 4 }
-
-example : compiledTy bTwoCand twoCandTable twoCandSrc = some (.TBind twoCandSelf) := by
+example : compiledTy {} twoCandTable twoCandSrc = some (.TBind twoCandSelf) := by
   decide +kernel
 
-#eval expect (compiledVerdict bTwoCand twoCandTable twoCandSrc)
+#eval expect (compiledVerdict {} twoCandTable twoCandSrc)
   "twoCand: the checker rejects the elaboration"
 
 /-- The program with two candidates compiles. -/
-theorem twoCand_compiles : (compile bTwoCand twoCandTable twoCandSrc).isSome = true := by
+theorem twoCand_compiles : (compile {} twoCandTable twoCandSrc).isSome = true := by
   decide +kernel
 
 /-- The checker accepts the elaboration of the program with two candidates. -/
 theorem twoCand_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bTwoCand twoCandTable twoCandSrc twoCand_compiles).2)
-    (compiledGet bTwoCand twoCandTable twoCandSrc twoCand_compiles).2.ty = true :=
+    (elaborate (compiledGet {} twoCandTable twoCandSrc twoCand_compiles).2)
+    (compiledGet {} twoCandTable twoCandSrc twoCand_compiles).2.ty = true :=
   compile_checks_get twoCand_compiles
 
 /-- One step on each machine. -/
-example : answersAt bTwoCand 1 twoCandTable twoCandSrc = true ∧
-    answersAt bTwoCand 0 twoCandTable twoCandSrc = false ∧
-    finalAt bTwoCand 1 twoCandTable twoCandSrc = true ∧
-    finalAt bTwoCand 0 twoCandTable twoCandSrc = false := by
+example : answersAt {} 1 twoCandTable twoCandSrc = true ∧
+    answersAt {} 0 twoCandTable twoCandSrc = false ∧
+    finalAt {} 1 twoCandTable twoCandSrc = true ∧
+    finalAt {} 0 twoCandTable twoCandSrc = false := by
   decide +kernel
 
 /-! ## A receiver at a union and a receiver at `⊥`
 
-The method type is found below the union by `stp_or1`, and below `⊥` by
-`stp_bot`. -/
+Neither receiver has a method type.  A union has no members, as the
+compiler's join of two structural types keeps none.  `⊥` has no members,
+as in the compiler.  So both programs are rejected, as scalac rejects
+them. -/
 
-/-- The budget the union receiver is found at. -/
-def bUnion : Budget := { views := 0, sub := 2, typer := 4 }
-
-/-- The budget the receiver at `⊥` is found at. -/
-def bBot : Budget := { views := 0, sub := 1, typer := 4 }
-
-example : compiledTy bUnion unionCallTable unionCallSrc
-    = some (.TBind (.TAnd (.TFun 0 (.TOr SearchChecks.F SearchChecks.F) .TTop) .TTop)) := by
+example : compiledTy {} unionCallTable unionCallSrc = none := by
   decide +kernel
 
-example : compiledTy bBot unionCallTable botCallSrc
-    = some (.TBind (.TAnd (.TFun 0 .TBot .TTop) .TTop)) := by
-  decide +kernel
-
-#eval expect (compiledVerdict bUnion unionCallTable unionCallSrc)
-  "unionCall: the checker rejects the elaboration"
-
-#eval expect (compiledVerdict bBot unionCallTable botCallSrc)
-  "botCall: the checker rejects the elaboration"
-
-/-- The union receiver compiles. -/
-theorem unionCall_compiles : (compile bUnion unionCallTable unionCallSrc).isSome = true := by
-  decide +kernel
-
-/-- The checker accepts the elaboration of the union receiver. -/
-theorem unionCall_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bUnion unionCallTable unionCallSrc unionCall_compiles).2)
-    (compiledGet bUnion unionCallTable unionCallSrc unionCall_compiles).2.ty = true :=
-  compile_checks_get unionCall_compiles
-
-/-- The receiver at `⊥` compiles. -/
-theorem botCall_compiles : (compile bBot unionCallTable botCallSrc).isSome = true := by
-  decide +kernel
-
-/-- The checker accepts the elaboration of the receiver at `⊥`. -/
-theorem botCall_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bBot unionCallTable botCallSrc botCall_compiles).2)
-    (compiledGet bBot unionCallTable botCallSrc botCall_compiles).2.ty = true :=
-  compile_checks_get botCall_compiles
-
-/-- One step on each machine, for both. -/
-example : answersAt bUnion 1 unionCallTable unionCallSrc = true ∧
-    answersAt bUnion 0 unionCallTable unionCallSrc = false ∧
-    finalAt bUnion 1 unionCallTable unionCallSrc = true ∧
-    finalAt bUnion 0 unionCallTable unionCallSrc = false ∧
-    answersAt bBot 1 unionCallTable botCallSrc = true ∧
-    answersAt bBot 0 unionCallTable botCallSrc = false ∧
-    finalAt bBot 1 unionCallTable botCallSrc = true ∧
-    finalAt bBot 0 unionCallTable botCallSrc = false := by
+example : compiledTy {} unionCallTable botCallSrc = none := by
   decide +kernel
 
 /-! ## Packing below a selection and below an intersection
@@ -680,60 +608,54 @@ example : answersAt bUnion 1 unionCallTable unionCallSrc = true ∧
 A variable checks at a goal `m.L` through the lower bound of `L`, and at a
 goal `μ(w. {A : ⊤..⊤}) ∧ ⊤` conjunct by conjunct, packing each time. -/
 
-/-- The budget the selection goal is found at. -/
-def bPackSel : Budget := { views := 1, sub := 1, typer := 4 }
-
-/-- The budget the intersection goal is found at. -/
-def bPackAnd : Budget := { views := 1, sub := 2, typer := 3 }
-
 /-- The label table of the intersection goal. -/
 def packAndTable : LabelTable := [("A", 0), ("g", 0)]
 
 example : labelsOfProgram [("A", 0)] packAndSrc = some packAndTable := by decide
 
-example : compiledTy bPackSel packSelTable packSelSrc = some (.TBind SearchChecks.selfP) := by
+example : compiledTy {} packSelTable packSelSrc = some (.TBind Core.selfP) := by
   decide +kernel
 
-example : compiledTy bPackAnd packAndTable packAndSrc
+example : compiledTy {} packAndTable packAndSrc
     = some (.TBind (.TAnd (.TFun 0 (.TTyp 0 .TTop .TTop) (.TAnd (.TBind (.TTyp 0 .TTop .TTop)) .TTop))
         .TTop)) := by
   decide +kernel
 
-#eval expect (compiledVerdict bPackSel packSelTable packSelSrc)
+#eval expect (compiledVerdict {} packSelTable packSelSrc)
   "packSel: the checker rejects the elaboration"
 
-#eval expect (compiledVerdict bPackAnd packAndTable packAndSrc)
+#eval expect (compiledVerdict {} packAndTable packAndSrc)
   "packAnd: the checker rejects the elaboration"
 
 /-- The selection goal compiles. -/
-theorem packSel_compiles : (compile bPackSel packSelTable packSelSrc).isSome = true := by
+theorem packSel_compiles : (compile {} packSelTable packSelSrc).isSome = true := by
   decide +kernel
 
 /-- The checker accepts the elaboration of the selection goal. -/
 theorem packSel_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bPackSel packSelTable packSelSrc packSel_compiles).2)
-    (compiledGet bPackSel packSelTable packSelSrc packSel_compiles).2.ty = true :=
+    (elaborate (compiledGet {} packSelTable packSelSrc packSel_compiles).2)
+    (compiledGet {} packSelTable packSelSrc packSel_compiles).2.ty = true :=
   compile_checks_get packSel_compiles
 
 /-- The intersection goal compiles. -/
-theorem packAnd_compiles : (compile bPackAnd packAndTable packAndSrc).isSome = true := by
+theorem packAnd_compiles : (compile {} packAndTable packAndSrc).isSome = true := by
   decide +kernel
 
 /-- The checker accepts the elaboration of the intersection goal. -/
 theorem packAnd_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
-    (elaborate (compiledGet bPackAnd packAndTable packAndSrc packAnd_compiles).2)
-    (compiledGet bPackAnd packAndTable packAndSrc packAnd_compiles).2.ty = true :=
+    (elaborate (compiledGet {} packAndTable packAndSrc packAnd_compiles).2)
+    (compiledGet {} packAndTable packAndSrc packAnd_compiles).2.ty = true :=
   compile_checks_get packAnd_compiles
 
 /-- One step on each machine, for both. -/
-example : answersAt bPackSel 1 packSelTable packSelSrc = true ∧
-    answersAt bPackSel 0 packSelTable packSelSrc = false ∧
-    finalAt bPackSel 1 packSelTable packSelSrc = true ∧
-    finalAt bPackSel 0 packSelTable packSelSrc = false ∧
-    answersAt bPackAnd 1 packAndTable packAndSrc = true ∧
-    answersAt bPackAnd 0 packAndTable packAndSrc = false ∧
-    finalAt bPackAnd 1 packAndTable packAndSrc = true ∧
-    finalAt bPackAnd 0 packAndTable packAndSrc = false := by
+example : answersAt {} 1 packSelTable packSelSrc = true ∧
+    answersAt {} 0 packSelTable packSelSrc = false ∧
+    finalAt {} 1 packSelTable packSelSrc = true ∧
+    finalAt {} 0 packSelTable packSelSrc = false ∧
+    answersAt {} 1 packAndTable packAndSrc = true ∧
+    answersAt {} 0 packAndTable packAndSrc = false ∧
+    finalAt {} 1 packAndTable packAndSrc = true ∧
+    finalAt {} 0 packAndTable packAndSrc = false := by
   decide +kernel
 
 /-! ## A program with no label table
