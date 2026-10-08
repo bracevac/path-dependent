@@ -78,7 +78,8 @@ types include unions, and terms are not in normal form.  Type selections in subt
 variable typing, `htp`, with no packing rule, and `PackingCounterexample` shows that adding one is
 unsound.  Its front end, the library `Oopsla16Frontend` in
 [Oopsla16/Frontend/](Oopsla16/Frontend/README.md), writes, types, elaborates, checks and runs
-programs in the paper's notation.
+programs in the paper's notation.  Its typer follows the subtype checker of the Scala 3 compiler
+and is complete up to its recursion limit.
 
 **`FCdotR/`** is its target with explicit evidence.  It keeps `Oopsla16`'s types, so the type
 translation is the identity, and its coercion `bindx` is checked under the self assumption that
