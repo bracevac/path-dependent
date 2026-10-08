@@ -3,15 +3,13 @@
 A way to write, type and run programs of the `Captures` version without
 assembling derivations by hand. `Captures` is DOT with capture checking. A type
 `S ^ C` says that a value of shape `S` may use the capabilities in the capture
-set `C`. A program is written in the paper's notation inside `cap%`. It may also
-use capture members `{C^ : c₁..c₂}`, boxes `□ T` and unboxings `C ⊸ x`. The front end resolves names and inserts `let`s to reach
-monadic normal form, where every intermediate result is named. It finds a
-typing derivation with its use set, the capabilities the term may use. It
-translates the derivation to FCdot, the target calculus with explicit evidence,
-and runs the program. Unlike the vanilla front end in `../../Frontend`, it also
-inserts the boxes and unboxings a program leaves out. It proves nothing new
-about the calculi. It imports `../DotMNF`, `../FCdot`, `../DotToFCdot` and
-`../Runtime.lean` and changes none of them.
+set `C`. A program is written in the paper's notation inside `cap%`, with
+capture members `{C^ : c₁..c₂}`, boxes `□ T` and unboxings `C ⊸ x`. The front
+end resolves names and inserts `let`s, finds a typing derivation with its use
+set, the capabilities the term may use, translates it to FCdot, checks the
+translation and runs the program. Unlike the vanilla front end in
+`../../Frontend`, it inserts the boxes and unboxings a program leaves out. It
+proves nothing new about the calculi and changes nothing in the version.
 
 ```lean
 def C7scalaSrc : STm :=
@@ -25,11 +23,11 @@ This is a container of two capabilities, written as in Scala, with no box.
 The typer boxes `f1` and `f2` where the fields ask for a box and unboxes `e`
 before the call. The type it finds charges `{k1}` to the innermost function only.
 
-A program runs over a platform: one capture binder per capability it may use.
-The platform `πc` names two, `k1` and `k2`. `compile` runs the resolver and then
-the typer over the platform. It returns the resolved term and a `Compiled`,
-which holds the elaborated term, its use set, its type and the `DotMNF.HasTy`
-derivation. `compileAndRun` adds the machine at a step budget.
+A program runs over a platform, a capture binder per capability it may use, as
+`πc` with `k1` and `k2`. `compile b Λ π e` resolves over `π` and types at the
+fuel of `b : Budget`, by default `defaultFuel = 2 ^ 15`. It returns the
+resolved term and a `Compiled`: the elaborated term, its use set, its type and
+the `DotMNF.HasTy` derivation. `compileAndRun` adds the machine.
 
 ## Modules
 
@@ -38,78 +36,78 @@ derivation. `compileAndRun` adds the machine at a step budget.
 | `Surface` | the named surface syntax, the label table, the test helper `expect` and the command `#assert_no_wf` |
 | `Notation` | the entry points `capCap%`, `capTy%`, `cap%`, `capDefs%` for the paper's notation |
 | `Ann` | DOT-MNF terms with the annotations the typer needs, their erasure and their skeleton |
-| `Resolve` | name resolution, let insertion, and platforms |
-| `Decide` | decision procedures for the typing side conditions |
-| `Search` | the `Budget` and the search for subtyping and subcapturing |
-| `Adapt` | box inference at a variable |
-| `Typer` | `synth?`, `check?` and the entry points `synthTop?` and `synthIn?` |
+| `Resolve` | name resolution, let insertion, platforms, and their totality |
+| `Decide` | decision procedures for the side conditions (`tyWf?`, `defsDistinct?`, `tyStrengthen?`) |
+| `Search` | the first view of a variable (`View`, `pureVar`, `varView`) |
+| `Look` | `cost`, `defaultFuel`, and member lookup on demand (`look`, `decls`, `capDecls`), on the tank of `../../Frontend/Fuel.lean` |
+| `Sub` | the algorithm in the compiler's case order, with three goals (`shape?`, `subcap?`, `sub?`, `var?`) |
+| `Alg` | the algorithmic judgment `Alg`, completeness up to the recursion limit, and its soundness |
+| `Avoid` | avoidance at a `let` (`up`, `down`, `capUp`, `capDown`, `avoidLet`, `avoidUses`) |
+| `Adapt` | the result types of the typer and box inference at a variable (`adaptVarF`) |
+| `Typer` | `Budget`, the candidate lists, `inferF`, the object fixpoint `objFixF` and the entry points `synthTop?` and `synthIn?` |
 | `Step` | the DOT-MNF machine as a function, `step?`, with the driver `run` |
 | `StepFC` | the FCdot machine as a function, `fcStep?`, with the driver `fcRun` |
 | `Pipeline` | `Compiled`, `compile`, `compileAndRun` and the pipeline theorems |
 | `Pretty` | printers back to the paper's notation, no theorems |
-| `Examples` | 23 programs taken end to end and compared with the hand written derivations |
+| `Examples` | the programs taken end to end, each with its verdict in the kernel |
 
 ## The typer
 
-The typer is sound by construction. Every result carries the `DotMNF.HasTy`
-derivation of the term it typed. So soundness is the result type, and there
-is no soundness theorem to state. The typer is incomplete, since DOT
-subtyping is undecidable and subcapturing goes through it. It runs on a
-`Budget` of fuel counters. The middle type of a transitivity step is always
-one the context declares, so the typer never invents a `μ`. A program fails
-to compile when it needs a middle type the context lacks or the budget runs out.
+The typer follows the subtype checker of the Scala 3 compiler,
+`TypeComparer`, in its case order, and the compiler's subcapturing,
+`subCaptures` and `subsumes`, and takes no middle type from the context.
+It runs on one fuel tank for the whole typing and reports a recursion limit
+when the tank runs short, which is never a rejection by the rules. It is
+complete up to that limit with respect to its algorithmic judgment `Alg`.
+The capture set of an object literal with no written set is a least
+fixpoint, grown by the atoms its definitions use that the set does not
+account for, as the compiler solves a class's use set. It rejects E1, E3,
+E4, B1, A1 and the converse of P1cc as scalac does, and E1s and E3s, which
+write the middle type, compile.
 
-The typer looks for the smallest use sets. A variable declared at the empty set
-is used at `{}`, any other variable at `{x}`. Without its ascription, S1 types
-at `{}` where the version's derivation says `{k1}`, and C2 at `{k2}` where it
-says `{k1, k2}`.
-
-Box inference is part of the typer. Where a variable does not fit its goal,
-or a function or a receiver is a box, the typer inserts `□ x` or `C ⊸ x`.
-So the elaborated term can differ from the written one. `compile` accepts
-it only if the two have the same skeleton. The skeleton forgets
-annotations, capture sets, boxes, unboxings and ascriptions, and it inlines a
-`let` of a variable.
-
-The user writes a few annotations. A lambda carries its domain type. An
-object literal carries its self type. A `let` may carry its result type,
-and an ascription `(t : T)` may name the type of a bound term. A capturing type
-written as a type member bound is boxed by the resolver, as Scala boxes a type
-argument.
+The algorithm has three goals: `shape` on shapes, `cap` on capture sets, and
+`var`, which keeps a variable while it widens its shape. `Sub.lean` lists
+where the version's rules force a route other than the compiler's. The typer
+returns the `DotMNF.HasTy` derivation, so it is sound by construction. It
+finds the least use set the rules allow. Synthesis returns a list of
+candidates. An application tries every function type the lookup finds, and a
+projection returns every field. A written `let` annotation binds. Without one,
+the body's type and use set are approximated by ones free of the binder, as
+the compiler's `avoid` does. Where a variable does not fit its goal, or a
+function or a receiver is a box, the typer inserts `□ x` or `C ⊸ x`, as the
+compiler's `adaptBoxed` does, and `compile` checks that the skeleton is the
+written one. The passes of the object fixpoint are bounded by `objBound`, a
+size of the program not proved to suffice, and a pass that reaches it marks
+the tank.
 
 ## Main theorems
 
-The pipeline theorems take a successful `compile` and apply results of the
-`Captures` version to the derivation it returned.
+- `compile_checks`, `compile_uses_checks`, `compile_checks_get`: the FCdot checker accepts the translated derivation and the use set evidence.
+- `compile_erase`, `compile_faithful`: the translation erases to the compiled term, which has the skeleton of the resolved one.
+- `compile_safe`, `compile_not_stuck`, `compile_run_progress`: every reachable state is final or can step, none is stuck, and `run` stops at a final state or at one that still steps.
+- `compile_capture_prediction`: along any run, the matched FCdot state uses no more than the translated use set, up to a renaming.
+- `compile_effect_safety`, `compile_effect_safety_get`: a run never reads a variable rooted at a platform capability outside that use set.
+- `shape?_complete`, `subcap?_complete`, `sub?_complete`, `var?_complete`: a goal `Alg` derives is answered at every fuel at which the run ends with the tank unmarked.
+- `shape?_reject`, `subcap?_reject`, `sub?_reject`, `var?_reject`: a rejection with the tank unmarked means `Alg` derives no such goal.
+- `Alg.sound_shape`, `Alg.sound_cap`: a goal `Alg` derives has a `SubShape` or `Subcap` derivation. Both are corollaries of `Alg.answer`.
+- `shape?_mono`, `subcap?_mono`, `sub?_mono`, `var?_mono`, `synthTop?_mono`, `synthTop?_stable`: an answer, or a rejection with the tank unmarked, stays the same at more fuel.
+- `avoidLet_strengthen`: where the body's type strengthens past the binder, avoidance returns that type.
+- `objFix_progress`: a pass of the object fixpoint that goes on adds an atom the set does not account for, or other definitions.
+- In `Examples`: `Ek_type` and `Ek_checks` for each accepted program, `Ek_rejected` for each rejected one with `Ek_not_alg` where it fails at one core goal, `LPlet_limit`, `LPasc_limit`, `LPw2_limit` and `Doubled12k2_limit` at the recursion limit, and `S1_never_reads_fs` and `C2_never_reads_k1`, which say that a run of S1 or of C2 never reads a variable rooted at `k1`.
 
-- `compile_checks`: the FCdot checker accepts the translated derivation.
-- `compile_uses_checks`: the FCdot checker accepts the use set evidence the translation emits.
-- `compile_erase`: the translation erases to the compiled term.
-- `compile_faithful`: the elaborated term has the skeleton of the resolved term.
-- `compile_safe`: every state reachable from the platform's initial store is final or can step.
-- `compile_not_stuck`: no reachable state is stuck.
-- `compile_run_progress`: at any step budget, `run` stops at a final state or at one where `step?` still has a step.
-- `compile_capture_prediction`: along any run, the matched FCdot state uses no more than the translated use set the typer found, up to a renaming.
-- `compile_effect_safety`: in the matched FCdot state, a run never reads a variable rooted at a platform capability (one that holds it) outside that use set.
-- `compile_checks_get`, `compile_effect_safety_get`: the same two for a program whose compile succeeds by a decided test.
-- `E1_checks` to `S2_checks`, `C5_checks`: the checker accepts the translation of each example the typer accepts, with no hypothesis.
-- `S1_never_reads_fs`: a run of the version's `S1tm` never reads a variable rooted at `k1`, the file system. The use set the typer finds for S1 is `{}`.
-- `C2_never_reads_k1`: a run of the version's `C2tm` never reads a variable rooted at `k1`. The use set the typer finds for C2 is `{k2}`.
-
-Supporting results:
-
-- `resolveT_isSome`, `resolveTm_isSome`, `resolveDefs_isSome`: resolution succeeds on scoped programs whose labels are in the table and whose `any` and capturing types sit where the version allows.
-- `tyWf?_iff`, `defsDistinct?_iff`, `tyStrengthen?_iff`: the side conditions are decided.
-- `views_mono`, `decls_mono`, `sub?_le`, `subcap?_le`, `synth?_le`: more fuel never loses an answer.
-- `step?_sound`, `step?_complete`, `step?_none_classify`: `step?` agrees with the DOT-MNF step relation, and a state with no step is final or stuck. `fcStep?_sound`, `fcStep?_complete` and `fcStep?_none_classify` say the same of `fcStep?` and FCdot.
+Supporting results: resolution is total (`resolveTm_isSome`), the side
+conditions are decided (`tyWf?_iff`, `defsDistinct?_iff`, `tyStrengthen?_iff`),
+and the machines agree with the step relations (`step?_sound`, `fcStep?_sound`).
 
 ## What it leaves out
 
-- No completeness theorem for the typer. E10, `λ(f : ⊤). λ(g : ⊤). f (g f)`, is rejected because `f` is not a function. Its variant `E10t` at `∀(x : ⊤) ⊤` is accepted.
-- No semantic statement for let insertion or box inference. The skeleton equation is what relates the written and the elaborated term.
-- No safety theorem at an open context. C5 is typed and checked at the version's open context only.
-- `any` in the outer set of a parameter type, and reach capabilities. The resolver rejects them.
-- Scopes, levels and fresh capabilities. They are the `CapturesCC` version.
+- A derivation through a middle type the program does not write, as in E1, E3, E4 and B1.
+- A merge of two members of one name. The version has no rule for it, so the typer tries each.
+- A judgment whose search needs more than the fuel. LP, ascribed or through a written `let` type, LPw2 and the doubled alias chain of twelve links at `{k2}` end at the recursion limit. Scalac rejects LP at its cyclic members and stops on LPw2 at its own recursion limit.
+- A lookup through a cyclic member, which is cut as the compiler's cyclic reference. So member premises are phrased through the lookup, and no inductive judgment of lookup comes with a completeness theorem: the cut can remove an answer that a different answer of the same key needed.
+- A completeness theorem for the typer as a whole. E10, `λ(f : ⊤). λ(g : ⊤). f (g f)`, is rejected because `f` is not a function.
+- A semantic statement for let insertion or box inference, and a safety theorem at an open context such as C5's.
+- `any` in the outer set of a parameter type, and reach capabilities. The resolver rejects them. Scopes, levels and fresh capabilities are the `CapturesCC` version.
 
 ## Building
 

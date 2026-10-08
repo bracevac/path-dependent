@@ -22,8 +22,8 @@ import Coercions.Captures.Frontend.Examples
 The root of the `CapturesFrontend` library.  A program in the version's
 notation (capture checking the DOT way) is resolved, typed by a typer that
 returns the version's derivation, translated to FCdot, checked and run.  The
-typer follows the Scala compiler's subtyping, member lookup and avoidance, on
-one fuel tank.  The source is DOT-MNF with capture sets.
+typer follows the Scala compiler's subtyping, subcapturing, member lookup and
+avoidance, on one fuel tank.  The source is DOT-MNF with capture sets.
 
 The library imports the version and changes nothing in it.  It is not a
 default target.

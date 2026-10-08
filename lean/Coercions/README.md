@@ -111,7 +111,8 @@ the use set is never read (`effect_safety`).  The source inherits both as `dot_c
 and `dot_effect_safety`.  Library `Captures`, see [Captures/README.md](Captures/README.md).  Its front end, the library
 `CapturesFrontend` in [Captures/Frontend/](Captures/Frontend/README.md), writes, types, checks and
 runs programs in the paper's notation, and its typer inserts the boxes and unboxings a program
-leaves out.
+leaves out.  The typer follows the subtype checker and the subcapturing of the Scala 3 compiler and
+is complete up to its recursion limit.
 
 **`CapturesCC/`** models capture checking the way the Scala 3 compiler does it, with scopes, levels
 and fresh capabilities, as a copy of `Captures/`.  `source_lvl_safety` says that
