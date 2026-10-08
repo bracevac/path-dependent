@@ -136,7 +136,8 @@ mention such paths all the time, as in `x.a.T`, while WadlerFest DOT selects typ
 only.  It keeps `dot_safety` and passes two of gDOT's tests, `acceptance_fig2` and
 `acceptance_gdot3_any`.  Library `Paths`, see [Paths/README.md](Paths/README.md).  Its front end,
 the library `PathsFrontend` in [Paths/Frontend/](Paths/Frontend/README.md), writes, types, checks
-and runs programs in pDOT's notation, gDOT's Fig. 2 among them.
+and runs programs in pDOT's notation, gDOT's Fig. 2 among them.  Its typer follows the subtype
+checker of the Scala 3 compiler and is complete up to its recursion limit.
 
 ## Earlier targets, standalone
 

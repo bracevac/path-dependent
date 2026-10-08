@@ -11,8 +11,8 @@ already decided in the version (`Ty.isDecl`).  This module decides three more.
   `tyWf?`.
 - Distinctness of the labels of a definition block, a premise of `HasTy.obj`
   and `DefsTy.trmObj`: `defsDistinct?`.
-- Strengthening, the inverse of `Ty.weaken`: `tyStrengthen?`.  The typer's
-  avoidance ladder uses it when a `let` body's type mentions the bound
+- Strengthening, the inverse of `Ty.weaken`: `tyStrengthen?`.  Avoidance at
+  a `let` (`Avoid.lean`) uses it to take a body's type past the bound
   variable.
 
 Strengthening also decides the one premise of `SelfFree` that is not a syntactic
@@ -360,7 +360,7 @@ theorem tyStrengthen?_iff {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s} :
   · exact tyStrengthen?_sound
   · intro h; subst h; exact tyStrengthen?_weaken U
 
-/-- Strengthening, with the equation it establishes.  The avoidance ladder
+/-- Strengthening, with the equation it establishes.  Avoidance at a `let`
 rewrites the body's typing along that equation. -/
 def tyStrengthenW? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option { U : Ty s // T = U.weaken } :=
   match witness? (tyStrengthen? T) with
@@ -378,8 +378,7 @@ theorem tyStrengthenW?_none {s : Sig} {k : Kind} {T : Ty (s,,k)}
   rw [tyStrengthenW?_weaken] at h
   cases h
 
-/-- Being a weakening is decided by `tyStrengthen?`.  The strengthening rung of
-the avoidance ladder tests it. -/
+/-- Being a weakening is decided by `tyStrengthen?`. -/
 instance instDecidableIsWeakening {s : Sig} {k : Kind} (T : Ty (s,,k)) :
     Decidable (∃ U : Ty s, T = U.weaken) :=
   decidable_of_iff ((tyStrengthen? T).isSome = true)
