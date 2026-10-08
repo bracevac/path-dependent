@@ -6,17 +6,12 @@ import Coercions.FCdot.Checker
 
 The typer discharges two kinds of side condition, and both are here:
 distinctness of the labels of a definition block, and strengthening, the
-inverse of `DotMNF.Ty.weaken`, which the typer's avoidance ladder climbs.
+inverse of `DotMNF.Ty.weaken`, which avoidance at a `let` uses when the
+body's type does not mention the binder.
 
-Two more side conditions once belonged here but do not any more.
-Well-formedness of a type, `DotMNF.Ty.Wf`, was a premise of `HasTy.lam` and
-`HasTy.let`, and `DotMNF.Ty.Decl` was a premise of `HasTy.recI` and
-`HasTy.recE`.  Both premises were removed upstream: lambda annotations,
-`let` result types and recursive bodies are unrestricted, and `Ty.Wf` is
-gone.  So the decision procedure `tyWf?` and its `tyWf?_iff` are gone with
-it.  `Ty.Decl` stays upstream as a classifier of the translation, decided
-there by `Ty.isDecl` and `Ty.isDecl_iff`, and the typer no longer consults
-it.
+No other side condition needs a decision.  The typing rules ask for no
+well-formedness of a type, and `DotMNF.Ty.Decl` is decided by the version
+itself (`Ty.isDecl`, `Ty.isDecl_iff`).
 
 Strengthening reuses the target's partial renaming machinery verbatim rather
 than rewriting it: `FCdot.PartialRename`, `PartialRename.lift`,
@@ -33,8 +28,7 @@ the metatheory and no definition lives in the `DotMNF` or `FCdot` namespaces.
 
 Everything here is structural.  No function of this module uses well-founded
 recursion, so all of it reduces in the kernel and `by decide` works on it.
-The well-founded sites of the library are `sub?` and the typer's mutual
-block, both in later modules.
+The same holds for every definition of the library.
 -/
 
 namespace Frontend
@@ -259,8 +253,8 @@ theorem tyStrengthen?_iff {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s} :
   · intro h; subst h; exact tyStrengthen?_weaken U
 
 /-- Strengthening, carrying the equation it establishes.  This is the form the
-typer's avoidance ladder needs: rung two rewrites the body's typing along the
-equation, so the equation has to come back with the type. -/
+typer needs at a `let`: the body's typing is rewritten along the equation,
+so the equation comes back with the type. -/
 def tyStrengthenW? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option { U : Ty s // T = U.weaken } :=
   match witness? (tyStrengthen? T) with
   | some ⟨U, hU⟩ => some ⟨U, tyStrengthen?_sound hU⟩
@@ -271,7 +265,7 @@ theorem tyStrengthenW?_weaken {s : Sig} {k : Kind} (U : Ty s) :
   simp only [tyStrengthenW?, FCdot.witness?_eq_some (tyStrengthen?_weaken (k := k) U)]
 
 /-- A weakened type is one that strengthens.  The third instance: the
-proposition the second rung of the avoidance ladder tests, decided by
+proposition that a type strengthens past a binder, decided by
 `tyStrengthen?`. -/
 instance instDecidableIsWeakening {s : Sig} {k : Kind} (T : Ty (s,,k)) :
     Decidable (∃ U : Ty s, T = U.weaken) :=

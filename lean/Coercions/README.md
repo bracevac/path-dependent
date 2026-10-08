@@ -53,20 +53,20 @@ objects that keep their term members.
 **`Frontend/`** is a front end for the source language and is not part of the
 metatheory.  A program is written in the paper's notation inside a `dot%`
 quotation.  Name resolution and let-insertion turn it into DOT-MNF in monadic
-normal form, a budgeted typer returns the `DotMNF.HasTy` derivation rather than
-an answer, and the pipeline sends that derivation through the translation, past
+normal form, a typer returns the `DotMNF.HasTy` derivation rather than an
+answer, and the pipeline sends that derivation through the translation, past
 the target's checker, and into either machine written as a function.  What the
-front end proves is that composition and nothing about the calculus.  Its own
-results are the totality of resolution, decision procedures for the side
-conditions a derivation carries, monotonicity of the search in its budget, and
-agreement of both executable machines with the frozen step relations.  The typer
-is sound by construction, because it returns the derivation, and incomplete by
-necessity, because DOT subtyping is undecidable.  The examples of
-`DotMNF/Examples.lean` are written again as surface programs and compared
-against the hand-written derivations on three decidable things: the resolved
-term, the synthesized type, and the checker's verdict on the translation.  It
-builds as the library `Frontend`, which is not a default target, so the
-metatheory does not wait on it.
+front end proves is that composition and nothing about the calculus.  The typer
+follows the subtype checker of the Scala 3 compiler in its case order and takes
+no middle type from the context.  It runs on one fuel tank and reports a
+recursion limit when the tank runs short.  It is sound by construction, because
+it returns the derivation, and complete up to that limit with respect to its
+algorithmic judgment.  It rejects the examples E1, E3 and E4, as scalac does,
+and their variants E1s and E3s, which write the middle type, compile.
+Every definition is structural, so each example's verdict is a theorem the
+kernel checks.  It builds as the library `Frontend`, which is not a default
+target, so the metatheory does not wait on it.  See
+[Frontend/README.md](Frontend/README.md).
 
 ## The second line: OOPSLA 2016 DOT and FCdotR
 

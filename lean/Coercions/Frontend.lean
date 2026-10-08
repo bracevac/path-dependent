@@ -24,8 +24,9 @@ The root of the `Frontend` library.  It imports the modules of
 
 `Surface.lean` holds the named abstract syntax the elaborator produces, the
 label table that interns surface names as target labels, the scoping and
-labelling predicates under which resolution is total, and the `expect` helper
-that later tests use in place of `by decide`.
+labelling predicates under which resolution is total, the `expect` helper for
+checks run as compiled code, and the command `#assert_no_wf`, which fails if a
+definition of a namespace uses well-founded recursion.
 
 `Notation.lean` holds the three syntax categories `dotTy`, `dotTm` and
 `dotDefs` that hold the paper's notation, and the three term level entry
@@ -39,59 +40,83 @@ token that the macro takes apart.  Importing this module makes the bare word
 annotations a front end needs: the self type of an object literal and the
 optional result type of a `let`.  Their erasure to `DotMNF.Tm` and
 `DotMNF.Defs` drops exactly those two fields.  The module also carries the
-renaming, the lemma that erasure commutes with it, and the size measure the
-typer recurses on.
+renaming, the lemma that erasure commutes with it, and a size measure of
+terms.
 
 `Resolve.lean` defines name environments, the spine of inserted bindings,
 `atomize`, and the three resolvers from the surface syntax to `ATm`.
-Resolution is total on scoped, well labelled programs, which is proved here,
-and it is structural, so the ten example programs of `Examples.lean` are
-checked against hand written terms by `rfl` at the end of the module.  Let
-insertion has no semantic statement attached: a direct style calculus and its
-type preservation theorem would be a separate development, not covered here.
+Resolution is total on scoped, well labelled programs, which is proved here.
+It is structural, so the ten example programs at the end of the module are
+checked against hand written terms by `rfl`.  Let insertion has no semantic
+statement attached.  A direct style calculus with its own type preservation
+theorem would be a separate development.
 
-`Decide.lean` holds the side conditions the typer discharges by computation.
-`DotMNF.Ty.Decl` is already decided in the frozen tree, so three more are
-added here.  Well-formedness of a type and distinctness of the labels of a
-definition block are decision procedures, each with an `iff` and a
-`Decidable` instance.  Strengthening, the inverse of `DotMNF.Ty.weaken`, is
-the action of the target's own partial renaming, reused verbatim from
-`lean/Coercions/FCdot/Checker.lean`, over a new traversal of `DotMNF.Ty`.  The
-module also holds the variables of a context, which the subtyping search
-walks.  Everything here is structural and reduces in the kernel.
+`Decide.lean` holds the side conditions the typer discharges by computation:
+distinctness of the labels of a definition block, and strengthening, the
+inverse of `DotMNF.Ty.weaken`.  Each is a decision procedure with an `iff`.
+Strengthening is the target's own partial renaming, reused from
+`lean/Coercions/FCdot/Checker.lean`, over a traversal of `DotMNF.Ty`.
 
-`Search.lean` holds views of a context variable, the declaration table of a
-context, and the subtyping search.  A view and a declaration each carry the
-derivation that justifies them, so the search returns evidence rather than an
-answer and has no separate soundness theorem to prove.  Four counters live in
-`Budget`: two for the rounds of the two closures, one for the fuel of the
-search, and one for the typer.  The closures drop duplicates after every
-round, by type for views and by the four data fields for declarations, and
-two monotonicity theorems say that more rounds lose neither.  The search
-tries eleven rules in a fixed order, the last three of them the type
-selections and one family of transitivity middles, and then retries itself at
-the previous fuel, which is what makes fuel monotonicity an induction rather
-than a walk through the eleven rules.
-The search is well-founded, so unlike everything before it in this library it
-does not reduce in the kernel: its six probes run compiled code through
-`expect` at measured budgets.
+`Fuel.lean` holds the tank, the one fuel of a typing.  The tank is threaded
+from each goal to the next, so it counts the work of the whole run.  A goal
+that finds it short marks it, and a marked tank is the recursion limit, the
+compiler's `RecursionOverflow`, never a rejection by the rules.  The run keeps
+the goals pending along a branch and fails a goal that repeats one of them
+exactly, as the compiler does.  Three facts hold for any step that is framed
+and dominated, which the combinators of the module give.  A run that ends unmarked gives the same answer
+with more fuel (`run_frame`) and with a larger index (`run_index`), and the
+cut never loses a success of the run without it (`cut_complete`).  The module
+imports only Lean core, so the other front ends share it.
 
-`Typer.lean` holds the typer that replaces the hand assembly of
-`lean/Coercions/DotMNF/Examples.lean`.  Four mutually recursive functions
-synthesize a type for a term, check a term against a type, check a variable
-against a type, and check a definition list against a type in lockstep.  Each
-returns the `DotMNF` derivation, so soundness is the result type and there is
-no separate soundness theorem; incompleteness is necessary, since DOT
-subtyping is undecidable, and what the typer will not find is written out as
-a list in the module and not as a theorem.  The `let` rule is where a typer
-for a dependently typed language makes its one ad hoc choice, made by a
-ladder of three rungs: the surface annotation, the strengthening of the
-body's type, and `⊤`.  The typer uses well-founded recursion on the fuel, the
-size of the term and a tag, and it ends its fuel level with a retry that
-makes fuel monotonicity an induction.  Its eight checks run `synthTop?` on
-eight example surface programs and compare the result against the type the
-hand written derivation concludes, in compiled code, at a budget measured per
-example.
+`Look.lean` fixes the cost of a goal, `cost k = k + 1` at `k` pending goals,
+and `defaultFuel = 2 ^ 15`.  It holds member lookup on demand, after the
+compiler's `findMember`: a recursive type is opened at the variable, both
+operands of an intersection are searched, and a selection continues in the
+upper bounds of its members.  The lookup returns every member it finds, each
+with its derivation, since DOT-MNF has no rule that merges two members of
+one name.  A key that repeats along a branch has no answer, the compiler's
+cyclic reference.
+
+`Sub.lean` holds the subtyping algorithm.  Its two goals ask `S <: T` and
+whether a variable seen at `V` has the type `T`.  Each goal tries its
+alternatives in the order of the compiler's `TypeComparer`, and each
+alternative emits the DOT-MNF derivation.  The middle of every transitivity
+step is a bound of a member or an operand of an intersection, read off a
+type the algorithm already holds, so no middle is chosen from the context.
+The step is framed and dominated, so the facts of `Fuel.lean` hold, and an
+answer stays at more fuel (`sub?_mono`, `var?_mono`).
+
+`Alg.lean` states the algorithmic judgment `Alg`, one constructor per
+alternative, with no fuel and no pending goals.  Completeness holds up to the
+recursion limit: a goal `Alg` derives is answered at every fuel at which the
+run ends unmarked (`sub?_complete`, `var?_complete`).  So a rejection with the
+tank unmarked means `Alg` derives no such goal (`sub?_reject`,
+`var?_reject`).  The form that some fuel suffices is false.  The alternatives
+share the tank, and an alternative that never ends, tried first, marks every
+tank (`LP_alg`).  `Alg.answer` builds the derivation each constructor emits,
+and `Alg.sound` is its corollary for subtyping.
+
+`Limit.lean` states the goals that end at the recursion limit: a loop through
+`∀` bodies, Pierce's divergence of bounded quantification written with type
+members, and an alias chain whose work doubles per link.  The kernel checks
+each at `defaultFuel`.
+
+`Avoid.lean` approximates the type of a `let` body by a type free of the
+binder, as the compiler's `avoid` does.  A selection on the binder at a
+covariant position becomes the meet of the avoided upper bounds of all its
+members, and at a contravariant position the avoided lower bound of the
+first.  Each step returns its `DotMNF.Sub` derivation.  A type that does not
+mention the binder comes back strengthened (`avoidLet_strengthen`).
+
+`Typer.lean` holds the typer, structural on the term and threading one tank
+through every subtyping goal, lookup and avoidance it asks.  Synthesis
+returns a list of candidates, each a type with its derivation.  An
+application tries every function type the lookup finds, a projection returns
+every field, and an unannotated `let` keeps every pair of candidates.  A
+written `let` annotation binds.  The derivation is a field of the result, so
+soundness is the result type.  A typing that ends unmarked gives the same
+verdict at more fuel (`synthTop?_mono`, `synthTop?_stable`).  The typer as a
+whole has no completeness theorem.
 
 `Step.lean` defines the DOT-MNF machine as a function.  The source machine
 needs no search, because every side condition of a rule is a pattern match on
@@ -110,26 +135,26 @@ of casts, which the frozen normalizer computes with fuel.  So this step
 function takes that fuel, the driver takes it beside a step budget, and
 agreement with the frozen relation is three statements: soundness at every
 fuel, monotonicity in the fuel, and completeness up to the existence of a
-fuel, which is the honest statement and is witnessed by the fuel the
-derivation used.  Ten concrete states probe the ten rules.  Nine of them, and
-the stuck and the final shapes, reduce in the kernel by `rfl`.  The one that
-reaches its head form through the composition of forms needs the kernel's own
-transparency, because the frozen composition is defined by well-founded
-recursion.
+fuel, witnessed by the fuel the derivation used.  Ten concrete states probe
+the ten rules.  Nine of them, and the stuck and the final shapes, reduce in
+the kernel by `rfl`.  The one that reaches its head form through the
+composition of forms needs the kernel's own transparency, because the frozen
+composition is defined by well-founded recursion.
 
 `Pipeline.lean` puts the front end together end to end.  `compile` resolves a
-surface program and types it, and returns the annotated term beside the
-synthesized type and its derivation.  `compileAndRun` follows with the source
-machine at a step budget.  Five theorems say what a compiled program is
-worth, and not one of them is about the calculus: the target checker accepts
-the translation of the derivation, the translation erases to the source
-term, every reachable state is final or steps, no reachable state is stuck,
-and the driver never answers at a state the machine is stuck at.  The first
-four are the frozen results of
+surface program and types it at the fuel of a `Budget`, and returns the
+annotated term beside the synthesized type and its derivation.
+`compileAndRun` follows with the source machine at a step budget.  Five
+theorems say what a compiled program is worth, and not one of them is about
+the calculus: the target checker accepts the translation of the derivation,
+the translation erases to the source term, every reachable state is final or
+steps, no reachable state is stuck, and the driver never answers at a state
+the machine is stuck at.  The first four are the frozen results of
 `lean/Coercions/FCdot/CheckerCompleteness.lean` and
 `lean/Coercions/DotToFCdot/` applied to the derivation the typer returned.
 The fifth adds the step function's agreement with the step relation, proved
-in `Step.lean`, which is what makes safety executable.
+in `Step.lean`.  `compile_checks_get` restates the first for a `compile`
+that succeeds, so that an example needs no hypothesis.
 
 `Pretty.lean` is the way back out.  The frozen inductives carry no `Repr`
 instance and cannot gain one, so an unparser into the paper's notation is the
@@ -142,21 +167,18 @@ the environment does not already hold.  The module carries no theorem.  Its
 checks are the printer output on the programs of `Resolve.lean`, and they
 reduce in the kernel.
 
-`Examples.lean` takes the ten surface programs of `Resolve.lean` through the
-whole front end and compares them against the hand written derivations of
-`lean/Coercions/DotMNF/Examples.lean`.  Three things are compared, all of
-them decidable: the term the resolver returns, the type the typer
-synthesizes, and the verdict of the target checker on the translation of the
-derivation.  Derivations themselves are not, since `DotMNF.HasTy` is `Type`
-valued with no decidable equality, and the typer reaches the same judgment by
-another route in three places.  Each program carries four checks, one
-decided by the kernel, two run as compiled code through `expect` at a budget
-measured per program, and one the pipeline theorem at that program.  Two
-further programs are the file's own.  E10t is E10 at a function type, which
-is what carries an inserted binding through the typer and the checker, and
-E11 is E10t applied to the identity, which is what carries one through the
-machine.  The file closes with three runs of `compileAndRun`, printed by the
-unparser and pinned at the step count each needs.
+`Examples.lean` takes the programs through the whole front end at
+`defaultFuel`, each verdict a `decide +kernel` theorem.  An accepted program
+has its type and the tank left (`Ek_type`) and the checker's acceptance of
+its translation (`Ek_checks`).  It is compared with the hand written
+derivation of `lean/Coercions/DotMNF/Examples.lean` where there is one.  A
+rejected program has no type at any budget (`Ek_rejected`).  Where it fails
+at one goal of the subtyping core, `Alg` does not derive that goal
+(`Ek_not_alg`).  E1, E3 and E4 need a middle type the program does not write,
+and scalac rejects them too.  E1s and E3s write that middle type and
+compile.  LP, PF and the doubled alias chain end at the recursion limit
+(`Ek_limit`).  The file closes with three runs of `compileAndRun`, printed by
+the unparser and pinned at the step count each needs.
 -/
 
 #assert_no_wf Frontend

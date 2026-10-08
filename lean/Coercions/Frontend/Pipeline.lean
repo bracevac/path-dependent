@@ -146,4 +146,21 @@ theorem compile_run_progress (h : compile b Λ e = some ⟨a, c⟩) (m : Nat) :
 
 end
 
+/-! ## At a decided compile
+
+For a concrete program the kernel decides whether the compile succeeds.  This
+form of `compile_checks` takes that test and speaks of the record the compile
+returns, so a caller needs no hypothesis about a record. -/
+
+section
+variable {b : Budget} {Λ : LabelTable} {e : STm}
+
+/-- **The target checker accepts the translation of a program that compiles.** -/
+theorem compile_checks_get (h : (compile b Λ e).isSome = true) :
+    FCdot.checkTm .nil ((compile b Λ e).get h).2.deriv.translate
+      ((compile b Λ e).get h).2.ty.translate = true :=
+  compile_checks (Option.some_get h).symm
+
+end
+
 end Frontend

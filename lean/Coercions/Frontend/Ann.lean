@@ -14,9 +14,9 @@ from the definitions, and a `DefsTy` that synthesized it would be circular.
 `DotMNF.Value.obj` has no slot for it and the vanilla tree is frozen.  So the
 annotation lives here, in a front end only term syntax whose erasure is `Tm`.
 
-Why the `let` type is optional.  It is the first rung of the typer's avoidance
-ladder: an annotated `let` is checked at the annotation, an unannotated one has
-its type strengthened or widened to `⊤`.
+Why the `let` type is optional.  An annotated `let` is checked at the
+annotation.  An unannotated one gets the body's type with the binder avoided
+(`Avoid.lean`).
 
 `ATm.erase` of `.obj _ d` is `.val (.obj d.erase)`, which is exactly the term
 `HasTy.obj` concludes about.  Nothing of this module is part of the metatheory

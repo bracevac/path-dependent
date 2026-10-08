@@ -78,8 +78,8 @@ inductive STm : Type where
   | app (t u : STm)
   /-- `t.a`, direct style. -/
   | proj (t : STm) (a : String)
-  /-- `let x = t in u`, with an optional result type.  The annotation is the
-  first rung of the typer's avoidance ladder. -/
+  /-- `let x = t in u`, with an optional result type.  A written type is
+  binding: the `let` is checked at it. -/
   | «let» (x : String) (ann : Option SType) (t u : STm)
 /-- Surface definition members. -/
 inductive SDefs : Type where
