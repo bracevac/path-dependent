@@ -1,4 +1,5 @@
 import Coercions.FCdot.Debruijn
+import Lean
 
 /-!
 # The surface syntax of the vanilla front end
@@ -326,5 +327,27 @@ example : STm.Scoped [] (.obj "s" (.sel "s" "A") (.typ "B" .top)) = true := by d
 example :
     STm.Scoped [] (.«let» "x" (some (.sel "x" "A")) (.var "y") (.var "x")) = false := by
   decide
+
+/-! ## `#assert_no_wf`
+
+Every recursive definition of the front end is structural, so the kernel
+reduces it.  Lean can fall back to well-founded recursion silently.  This
+command catches that at build time. -/
+
+open Lean Elab Command in
+/-- Fails when a definition under the namespace `ns` is compiled by
+well-founded recursion.  Lean picks a combinator specialised to the measure,
+such as `WellFounded.Nat.fix`, so the test is membership in the `WellFounded`
+namespace. -/
+elab "#assert_no_wf " ns:ident : command => do
+  let env ← getEnv
+  let bad := env.constants.fold (init := #[]) fun acc n ci =>
+    match ci with
+    | .defnInfo d =>
+      if ns.getId.isPrefixOf n && d.value.getUsedConstants.any (`WellFounded).isPrefixOf then
+        acc.push n
+      else acc
+    | _ => acc
+  unless bad.isEmpty do throwError "well-founded definitions: {bad}"
 
 end Frontend

@@ -3,6 +3,8 @@ import Coercions.Frontend.Notation
 import Coercions.Frontend.Ann
 import Coercions.Frontend.Resolve
 import Coercions.Frontend.Decide
+import Coercions.Frontend.Fuel
+import Coercions.Frontend.Look
 import Coercions.Frontend.Search
 import Coercions.Frontend.Typer
 import Coercions.Frontend.Step
