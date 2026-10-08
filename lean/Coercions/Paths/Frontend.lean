@@ -6,8 +6,7 @@ import Coercions.Paths.Frontend.Decide
 import Coercions.Paths.Frontend.Look
 import Coercions.Paths.Frontend.Sub
 import Coercions.Paths.Frontend.Alg
-import Coercions.Paths.Frontend.Table
-import Coercions.Paths.Frontend.Search
+import Coercions.Paths.Frontend.Avoid
 import Coercions.Paths.Frontend.Typer
 import Coercions.Paths.Frontend.Step
 import Coercions.Paths.Frontend.StepFC
