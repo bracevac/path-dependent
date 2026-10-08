@@ -1,6 +1,7 @@
 import Coercions.Paths.Frontend.Table
 import Coercions.Paths.Frontend.Surface
 import Coercions.Paths.DotMNF.Examples
+import Coercions.Paths.Frontend.Look
 
 /-!
 # The subtyping search, the term views and path checking
@@ -29,13 +30,15 @@ Three rules go beyond DOT without paths: `Sub.vfld` (stable field against stable
 field), `Sub.vfldToFld` (stable field against plain field) and `Sub.mu` (`μ`
 against `μ`).  `Sub.mu` reads the members of the left body one by one and asks for
 a self-free step between the bounds.  That step may need a subtyping at the
-outer context, so `selfFree?` takes the search as an argument.
+outer context.  The walker of this view is `Core.subDecl?` of `Look.lean`,
+which takes that subtyping as an argument on the tank.  The search hands it
+`sub?` as a computation that draws nothing, and runs it from an empty tank.
 
 ## Fuel
 
 `sub?` is structural on its fuel.  Every rule that needs another subtyping calls
-`sub?` at the fuel one below.  The walkers of the selection rules, `subDecl?`
-and `selfFree?` take that call as a function argument, so each is structural on
+`sub?` at the fuel one below.  The walkers of the selection rules and of the
+abstract view take that call as a function argument, so each is structural on
 its own list or type.  The module reduces in the kernel, and the checks at the
 end are `decide +kernel` facts.
 
@@ -151,65 +154,6 @@ def pickPair {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) :
        else none).orElse fun _ => pickPair sub ps S T
 termination_by structural ps => ps
 
-/-! ## The abstract view of a declaration
-
-`SubDecl Γ L R` says that the body `L` of a `μ` has every member that `R`
-declares, each widened by a self-free step.  `R` is `⊤`, a type member, a
-field, a stable field, or an intersection of those.  Each member is looked up
-in `L` by `Ty.lookupTypDecl`, `Ty.lookupFldDecl` and `Ty.lookupVfldDecl`.  A
-plain field of `R` is matched by a plain field of `L` first, then by a stable
-field.
-
-The bodies have type `Ty (s,x)`.  Structural recursion does not apply to a
-type whose index is not a variable, so the descent through the intersections of
-`R` runs on the fuel `andDepth R`. -/
-
-/-- The nesting depth of intersections in a type. -/
-def andDepth {s : Sig} : Ty s → Nat
-  | .and S T => max (andDepth S) (andDepth T) + 1
-  | _ => 0
-termination_by structural T => T
-
-/-- The abstract view at one member of `R`, not an intersection. -/
-def subDeclLeaf? {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (L : Ty (s,x)) :
-    (R : Ty (s,x)) → Option (SubDecl Γ L R)
-  | .top => some .top
-  | .typ A S2 T2 =>
-      match h : L.lookupTypDecl A with
-      | some (S1, T1) => do
-          let e1 ← selfFree? sub S2 S1
-          let e2 ← selfFree? sub T1 T2
-          some (.typ h e1 e2)
-      | none => none
-  | .fld a T2 =>
-      (match h : L.lookupFldDecl a with
-       | some T1 => (selfFree? sub T1 T2).map (SubDecl.fld h)
-       | none => none).orElse fun _ =>
-      (match h : L.lookupVfldDecl a with
-       | some T1 => (selfFree? sub T1 T2).map (SubDecl.vfldToFld h)
-       | none => none)
-  | .vfld a T2 =>
-      match h : L.lookupVfldDecl a with
-      | some T1 => (selfFree? sub T1 T2).map (SubDecl.vfld h)
-      | none => none
-  | _ => none
-
-/-- The abstract view, descending at most `n` intersections of `R`. -/
-def subDeclAt {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (L : Ty (s,x)) :
-    Nat → (R : Ty (s,x)) → Option (SubDecl Γ L R)
-  | n + 1, .and R1 R2 => do
-      let e1 ← subDeclAt sub L n R1
-      let e2 ← subDeclAt sub L n R2
-      some (.and e1 e2)
-  | _, R => subDeclLeaf? sub L R
-termination_by structural n => n
-
-/-- Search the abstract view of `L` at `R`, with `sub` answering the
-subtyping that a self-free step needs. -/
-def subDecl? {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (L R : Ty (s,x)) :
-    Option (SubDecl Γ L R) :=
-  subDeclAt sub L (andDepth R) R
-
 /-! ## The subtyping search
 
 Each rule is a decided equality or a `match` whose fall-through is `none`.  A
@@ -236,7 +180,7 @@ at fuel `n`.
 8. `∀(x : S1) T1` against `∀(x : S2) T2`, `Sub.all`, with the codomains
    compared under `Γ.cons S2` against a table rebuilt there.
 9. `μ(z. L)` against `μ(z. R)`, both declaration shaped, `Sub.mu` with the
-   abstract view `subDecl?`.
+   abstract view `Core.subDecl?`.
 10. `T = p.A` at a declaration, `Sub.selLower`.
 11. `S = p.A` at a declaration, `Sub.selUpper`.
 12. A pair of declarations of one path at one label, `S <: d1.lo <: p.A <:
@@ -296,7 +240,9 @@ def sub? {s : Sig} {Γ : Ctx s} (D : List (PDecl Γ)) :
       ((match S, T with
         | .mu L, .mu R =>
             if hL : Ty.Decl L then
-              if hR : Ty.Decl R then (subDecl? (sub? D n) L R).map (fun e => Sub.mu e hL hR)
+              if hR : Ty.Decl R then
+                (Core.subDecl? (fun S' T' => Frontend.Fuel.Fu.ret (sub? D n S' T')) L R
+                  ⟨0, false⟩).1.map (fun e => Sub.mu e hL hR)
               else none
             else none
         | _, _ => none : Option (Sub Γ S T))).orElse fun _ =>
