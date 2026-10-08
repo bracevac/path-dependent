@@ -5,6 +5,9 @@ import Coercions.Frontend.Resolve
 import Coercions.Frontend.Decide
 import Coercions.Frontend.Fuel
 import Coercions.Frontend.Look
+import Coercions.Frontend.Sub
+import Coercions.Frontend.Alg
+import Coercions.Frontend.Limit
 import Coercions.Frontend.Search
 import Coercions.Frontend.Typer
 import Coercions.Frontend.Step

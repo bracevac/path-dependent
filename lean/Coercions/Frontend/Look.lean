@@ -44,7 +44,11 @@ def cost (k : Nat) : Nat := k + 1
 
 theorem costOk : CostOk cost := costOk_succ
 
-/-- The fuel every entry point starts from. -/
+/-- The fuel every entry point starts from.  It is the largest power of two at
+which the interpreter runs every divergent goal of `Limit.lean` to the end.  At
+`2 ^ 16` the search for Pierce's divergence nests deep enough to overflow the
+interpreter's stack.  The kernel needs about 3.5 s for such a goal at this fuel.
+The alias chains of `Sub.lean` use at most 625 units. -/
 def defaultFuel : Nat := 2 ^ 15
 
 /-- A variable at a type. -/
