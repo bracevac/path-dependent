@@ -4,6 +4,8 @@ import Coercions.Paths.Frontend.Ann
 import Coercions.Paths.Frontend.Resolve
 import Coercions.Paths.Frontend.Decide
 import Coercions.Paths.Frontend.Look
+import Coercions.Paths.Frontend.Sub
+import Coercions.Paths.Frontend.Alg
 import Coercions.Paths.Frontend.Table
 import Coercions.Paths.Frontend.Search
 import Coercions.Paths.Frontend.Typer
