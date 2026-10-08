@@ -8,6 +8,7 @@ import Coercions.Classifiers.Frontend.Search
 import Coercions.Classifiers.Frontend.Look
 import Coercions.Classifiers.Frontend.Sub
 import Coercions.Classifiers.Frontend.Alg
+import Coercions.Classifiers.Frontend.Avoid
 import Coercions.Classifiers.Frontend.Adapt
 import Coercions.Classifiers.Frontend.Typer
 import Coercions.Classifiers.Frontend.Step
@@ -22,9 +23,10 @@ import Coercions.Classifiers.Frontend.Examples
 The root of the `ClassifiersFrontend` library.  It lets one write, type and run
 programs of the `Classifiers` version (capability classifiers) without
 assembling derivations by hand.  A program in the version's notation is
-resolved, typed by a search that returns the version's derivation, translated
-to FCdot, checked and run.  The library only imports the version.  It is not a
-default build target.
+resolved, typed by a typer that returns the version's derivation, translated
+to FCdot, checked and run.  The typer follows the compiler's algorithm on one
+tank of fuel.  The library only imports the version.  It is not a default
+build target.
 -/
 
 /-! Every definition is structural, so the kernel reduces it. -/

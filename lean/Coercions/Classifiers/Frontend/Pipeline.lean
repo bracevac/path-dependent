@@ -27,22 +27,23 @@ variable, and does not tell `let` from `letex`.  So equal skeletons say that
 the elaborated program is the written one up to what the typer adds.
 
 The typer synthesizes the least use set it can.  A declared use set is
-binding.  When the program declares `uses C`, `compile` searches for a
-subcapturing from the synthesized set to `C` and widens the derivation by one
-`sub`.  The search takes projection steps, so a declared set `{..}.only[K]` is
-reached from a synthesized set that is not written as a projection.
+binding.  When the program declares `uses C`, `compile` asks the
+subcapturing goal from the synthesized set to `C` and widens the derivation by
+one `sub`.  The goal takes projection steps, so a declared set `{..}.only[K]`
+is reached from a synthesized set that is not written as a projection.
 
 `compile` returns the typer's `Verdict`.  `ok` carries the resolved program and
 the record.  `rejected` carries a reason with its proof.  `unknown` says that
-nothing was found.  A declared use set that the search does not reach is
+no answer and no reason was found, or that the typer reached the recursion
+limit.  A declared use set that the subcapturing goal does not reach is
 rejected when the certificate builder finds a level escape for that goal, and
 is `unknown` otherwise.  A program that does not resolve is `unknown`.
 
-`compileKinded` follows `compile` with the kinding search at a kind `φ`.  It
+`compileKinded` follows `compile` with the kinding goal at a kind `φ`.  It
 returns a `CapKind` of the use set at `φ`.  `compileFiltered` asks instead that
 the use set be a projection at `φ`, written `{..}.only[K]` or `{..}.except[K]`.
 `Ctx.kindLe_proj` kinds a projection at `φ` in FCdot, so this route needs
-no kinding search.  `compileAndRun` follows `compile` with the machine of
+no kinding goal.  `compileAndRun` follows `compile` with the machine of
 `Step.lean`, from the platform's initial store, at a step budget.
 
 ## The log of level steps
@@ -402,7 +403,7 @@ def synthPlat? (b : Budget) (π : PlatformNames) (P : Platform π.sig) (a : ATm 
   (synthIn? b P.ctx π.set a).bind fun r =>
     match r.split with
     | .inl _ => .ok r
-    | .inr q => topExistential P.ctx q
+    | .inr q => .rejected (existentialAt P.ctx q)
 
 /-- Type a resolved term over a classified platform and keep the result
 when the skeleton is the term's. -/
@@ -417,16 +418,16 @@ def typeAt (b : Budget) (π : PlatformNames) (P : Platform π.sig) (a : ATm π.s
 
 /-- Move a compiled program to its declared use set, when it declares one.
 The synthesized set is kept when it is the declared one.  Otherwise the
-subcapturing search runs from it to the declared set.  If it finds nothing,
-the goal goes to the certificate builder: a level escape is a rejection and
-anything else is `unknown`. -/
+subcapturing goal runs from it to the declared set, from a full tank of the
+budget's fuel.  If it finds nothing, the goal goes to the certificate builder:
+a level escape is a rejection and anything else is `unknown`. -/
 def atDeclared (b : Budget) {s₀ : Sig} (P : Platform s₀) {a : ATm s₀} (c : Compiled P a) :
     Option (CaptureSet s₀) → Verdict (Compiled P a)
   | none => .ok c
   | some U =>
       if c.use = U then .ok c
       else
-        match subcap? (decls b P.ctx) b.cap c.use U with
+        match (Core.cap? P.ctx c.use U b.fuel).1 with
         | some e => .ok (c.widen U e)
         | none =>
             match certify? P.ctx c.use U with
@@ -444,11 +445,12 @@ def compile (b : Budget) (Λ : LabelTable) (p : SProg) :
       ((typeAt b p.platNames r.plat r.body).bind fun c => atDeclared b r.plat c r.uses).map
         fun c => ⟨r, c⟩
 
-/-- `compile`, then the kinding search for the use set at `φ`. -/
+/-- `compile`, then the kinding goal for the use set at `φ`, from a full tank
+of the budget's fuel. -/
 def compileKinded (b : Budget) (Λ : LabelTable) (p : SProg) (φ : Cls.Kind) :
     Verdict ((r : ResolvedProg p.platNames.sig) × (c : Compiled r.plat r.body) × Kinded c φ) :=
   (compile b Λ p).bind fun rc =>
-    match (decls b rc.1.plat.ctx).kind? rc.2.use φ with
+    match (Core.kind? rc.1.plat.ctx rc.2.use φ b.fuel).1 with
     | some g => .ok ⟨rc.1, rc.2, ⟨g⟩⟩
     | none => .unknown
 
@@ -691,7 +693,7 @@ end
 
 /-! ## The classified theorems
 
-The kinded route: the kinding search found a `CapKind` of the use set at `φ`,
+The kinded route: the kinding goal found a `CapKind` of the use set at `φ`,
 and the primed theorems of the Classifiers development consume it.  The
 filtered route: the use set is a projection at `φ`, so its translation is
 kinded at `φ` by `Ctx.kindLe_proj`, and the unprimed theorems take that. -/
@@ -784,14 +786,14 @@ end
 The log is computed in the kernel, so its length is a decided fact.  Two open
 examples have a non-empty log, so `compile_lvl_safety` says something about
 them: the caller of `freshCell` at `Z1Ctx` and the call `p f` at `W2CallCtx`,
-typed by `synthIn?` at the budgets of `Typer.lean`.
+typed by `synthIn?` at the default fuel.
 
 `Try.apply`, the first classifier example, goes through all three entry
 points.  Its body is the one of `Typer.lean`, with the binders' types written
 as ascriptions of the bound terms.  The header declares the use set
 `{ctl, io}.only[Control]` and the kind `only[Control]`.  The typer synthesizes
 that use set, so `compile` keeps it, and `compileFiltered` reads it as a
-projection.  The kinding search kinds it at fuel 3. -/
+projection.  The kinding goal kinds it at the default fuel. -/
 
 section Checks
 
@@ -805,14 +807,13 @@ theorem W2CallCtx_wf : W2CallCtx.Wf := ctxWf?_sound _ (by decide +kernel)
 
 /-- The caller of `freshCell` logs twenty-three member-free subcapturings,
 among them the unpacking's bound and the steps under the closure's scope. -/
-example : (logOf Z1Ctx_wf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn)).length = 23 := by
+example : (logOf Z1Ctx_wf (synthIn? {} Z1Ctx ps2z Z1callerAnn)).length = 23 := by
   decide +kernel
 
 /-- The call `p f` logs six, the subcapturings of the argument's check at
 the domain. -/
 example : (logOf W2CallCtx_wf
-    (synthIn? { decls := 0, views := 0, sub := 0, cap := 0, typer := 2, obj := 0 }
-      W2CallCtx ps2c (.app (.there .here) .here))).length = 6 := by
+    (synthIn? {} W2CallCtx ps2c (.app (.there .here) .here))).length = 6 := by
   decide +kernel
 
 /-- `Try.apply` as a whole program: the classifiers, the platform
@@ -820,21 +821,19 @@ example : (logOf W2CallCtx_wf
 with ascriptions. -/
 def CE1AscProg : SProg := { CE1src with body := CE1BodySrc }
 
-/-- It compiles at the budget of `Typer.lean`. -/
-example : (compile bCE1 Λk CE1AscProg).isOk = true := by decide +kernel
+/-- It compiles at the default fuel. -/
+example : (compile {} Λk CE1AscProg).isOk = true := by decide +kernel
 
 /-- Its use set is the projection at `only[Control]`. -/
-example : (compileFiltered bCE1 Λk CE1AscProg (Cls.only Cls.Control)).isOk = true := by
+example : (compileFiltered {} Λk CE1AscProg (Cls.only Cls.Control)).isOk = true := by
   decide +kernel
 
-/-- The kinding search kinds it at `only[Control]`, found at kinding
-fuel 3. -/
-example :
-    (compileKinded { bCE1 with kind := 3 } Λk CE1AscProg (Cls.only Cls.Control)).isOk = true := by
+/-- The kinding goal kinds it at `only[Control]`. -/
+example : (compileKinded {} Λk CE1AscProg (Cls.only Cls.Control)).isOk = true := by
   decide +kernel
 
 /-- Its derivation logs fifty-two member-free subcapturings. -/
-example : (compileLog bCE1 Λk CE1AscProg).length = 52 := by decide +kernel
+example : (compileLog {} Λk CE1AscProg).length = 52 := by decide +kernel
 
 end Checks
 
