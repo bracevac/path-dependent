@@ -36,8 +36,7 @@ A program the version types under a context is typed there, through
 capture parameter that is called and the unpackings at `Z1Ctx` are such
 programs.
 
-A `Budget` bounds the search.  The budget of each program is one at which the
-program is found.  It is not claimed least.
+Every program is typed from a full tank of the default fuel, the budget `{}`.
 
 ## Where the typer finds a smaller judgment
 
@@ -45,8 +44,8 @@ Without an ascription that names the version's type, the typer finds the least
 use set and type the rules allow.  C2 types at `{k2}` against the version's
 `{k1, k2}`, C5 at `{it, it.C}` against `{fs, k2}`, and the caller of
 `freshCell` at `{fc, fs, un}` against `{fs, un, fs, un}`.  Each time the
-version's judgment is reached from the typer's by one `sub` that the search
-finds, which `reachesAt` decides.
+version's judgment is reached from the typer's by one `sub` that subcapturing
+and the answer goal find, which `reachesAt` decides.
 
 ## Rejections and levels
 
@@ -55,7 +54,7 @@ carries a certificate that reads `Ctx.caps`, which the kernel does not reduce,
 so the verdict is an `expect` test.  The certificate at the goal the typer
 reached is a theorem of its own, `Esc_rejected'` for the escape and
 `top_escape_rejected` for the escape at the top of a program.  The checks W1
-and W5 ask the subcapturing search for the steps of the level order at the
+and W5 ask subcapturing for the steps of the level order at the
 version's contexts.
 
 ## The run tests
@@ -145,9 +144,9 @@ theorem synthIn_checks_get {s : Sig} {Γ : Ctx s} {b : Budget} {ps : CaptureSet 
       ((synthIn? b Γ ps a).get h).ans.translate = true :=
   FCdot.checkTmE_complete (DotMNF.HasTy.translate_typed _ hwf)
 
-/-- The subcapturing search at a context. -/
+/-- Subcapturing at a context, from a full tank of the budget's fuel. -/
 def subcapFound {s : Sig} (b : Budget) (Γ : Ctx s) (C D : CaptureSet s) : Bool :=
-  (subcap? (decls b Γ) b.cap C D).isSome
+  (Core.subcap? Γ C D b.fuel).1.isSome
 
 /-- Two contexts are equal binder by binder. -/
 def ctxEq {s : Sig} (Γ Δ : Ctx s) : Bool :=
@@ -173,36 +172,26 @@ def escapesAt {α : Type} {s : Sig} (v : Verdict α) (Γ : Ctx s) (C D : Capture
 
 /-! ## E1: bad bounds under a lambda
 
-The annotated `let` is retyped through the bad bounds chain.  The version's
-derivation is `E1`. -/
+The annotated `let` is typed through the bad bounds chain in the version's
+derivation `E1`.  The chain passes the middle `x.A`, which the program does
+not write, so the typer rejects the program, as the Scala compiler does. -/
 
 /-- `λ(x : {A : ⊤..⊥}). let y : {B : {a : ⊤}..{a : ⊤}} = x in y`. -/
 def E1src : STm := cc% λ(x : {A : ⊤..⊥}). let y : {B : {a : ⊤} .. {a : ⊤}} = x in y
 
-/-- The budget of E1. -/
-def bE1 : Budget := { decls := 1, views := 0, sub := 2, cap := 1, typer := 3, obj := 0 }
-
 example : compiledTm Λc .empty E1src = some (tmOfDeriv E1) := by decide
 
-example : compiledJudgment bE1 Λc .empty E1src = some (usesOfDeriv E1, tyOfDeriv E1) := by
-  decide +kernel
+example : (compile {} Λc .empty E1src).isOk = false := by decide +kernel
 
-#eval expect (compiledVerdict bE1 Λc .empty E1src)
-  "E1: the target checker rejects the translation"
-
-#eval expect (compiledUsesVerdict bE1 Λc .empty E1src)
-  "E1: the target checker rejects the use set evidence"
-
-/-- E1 compiles. -/
-theorem E1_compiles : (compile bE1 Λc .empty E1src).isOk = true := by decide +kernel
-
-/-- The target checker accepts the translation of E1. -/
-theorem E1_checks : CheckerAccepts bE1 Λc .empty E1src E1_compiles :=
-  compile_checks_get E1_compiles
+/-- The rejection ends with the tank unmarked, so it holds at every fuel. -/
+example : judgAt .empty E1src = (none, ⟨Core.defaultFuel - 11, false⟩) := by decide +kernel
 
 /-! ## E2: a recursive object with a self referential member
 
-The outer `let` avoids `x.A` at `⊤`.  The version's derivation is `E2`. -/
+The outer `let` has no annotation, and its body's type mentions the bound
+variable.  Avoidance replaces `x.A` by its upper bound with `x` avoided,
+`∀(y : (∀(w : ⊤) ⊥) ^ {}) ⊤`, as the compiler's `avoid` does.  The version's
+derivation `E2` gives `⊤`.  The term is the version's. -/
 
 /-- `let x = ν(s : {A : E2A..E2A} ∧ {a : E2A}. {type A = E2A} ∧ {a = λ(y : s.A). y})
 in let f = x.a in f f`, with `E2A` the shape `∀(y : s.A) s.A`. -/
@@ -211,61 +200,47 @@ def E2src : STm :=
                   {type A = ∀(y : s.A) s.A} ∧ {a = λ(y : s.A). y})
        in let f = x.a in f f
 
-/-- The budget of E2. -/
-def bE2 : Budget := { decls := 1, views := 2, sub := 2, cap := 1, typer := 7, obj := 1 }
-
 example : compiledTm Λc .empty E2src = some (tmOfDeriv E2) := by decide
 
-example : compiledJudgment bE2 Λc .empty E2src = some (usesOfDeriv E2, tyOfDeriv E2) := by
+example : compiledJudgment {} Λc .empty E2src = some (usesOfDeriv E2, Core.E2AvoidedTy) := by
   decide +kernel
 
-#eval expect (compiledVerdict bE2 Λc .empty E2src)
+#eval expect (compiledVerdict {} Λc .empty E2src)
   "E2: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bE2 Λc .empty E2src)
+#eval expect (compiledUsesVerdict {} Λc .empty E2src)
   "E2: the target checker rejects the use set evidence"
 
 /-- E2 compiles. -/
-theorem E2_compiles : (compile bE2 Λc .empty E2src).isOk = true := by decide +kernel
+theorem E2_compiles : (compile {} Λc .empty E2src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of E2. -/
-theorem E2_checks : CheckerAccepts bE2 Λc .empty E2src E2_compiles :=
+theorem E2_checks : CheckerAccepts {} Λc .empty E2src E2_compiles :=
   compile_checks_get E2_compiles
 
 /-! ## E3: an intersection with a shared member
 
-Two declarations of one variable at one label.  The version's derivation is
-`E3`. -/
+Two declarations of one variable at one label.  The version's derivation `E3`
+passes the middle `x.A`, which the program does not write, so the typer
+rejects the program, as the Scala compiler does. -/
 
 /-- `λ(x : {A : ⊥..{a : ⊤}} ∧ {A : {b : ⊤}..⊤}). λ(z : {b : ⊤}). let y : {a : ⊤} = z in y`. -/
 def E3src : STm :=
   cc% λ(x : {A : ⊥ .. {a : ⊤}} ∧ {A : {b : ⊤} .. ⊤}).
          λ(z : {b : ⊤}). let y : {a : ⊤} = z in y
 
-/-- The budget of E3. -/
-def bE3 : Budget := { decls := 1, views := 1, sub := 2, cap := 1, typer := 5, obj := 0 }
-
 example : compiledTm Λc .empty E3src = some (tmOfDeriv E3) := by decide
 
-example : compiledJudgment bE3 Λc .empty E3src = some (usesOfDeriv E3, tyOfDeriv E3) := by
-  decide +kernel
+example : (compile {} Λc .empty E3src).isOk = false := by decide +kernel
 
-#eval expect (compiledVerdict bE3 Λc .empty E3src)
-  "E3: the target checker rejects the translation"
-
-#eval expect (compiledUsesVerdict bE3 Λc .empty E3src)
-  "E3: the target checker rejects the use set evidence"
-
-/-- E3 compiles. -/
-theorem E3_compiles : (compile bE3 Λc .empty E3src).isOk = true := by decide +kernel
-
-/-- The target checker accepts the translation of E3. -/
-theorem E3_checks : CheckerAccepts bE3 Λc .empty E3src E3_compiles :=
-  compile_checks_get E3_compiles
+/-- The rejection ends with the tank unmarked, so it holds at every fuel. -/
+example : judgAt .empty E3src = (none, ⟨Core.defaultFuel - 11, false⟩) := by decide +kernel
 
 /-! ## E4: typing with no realizer
 
-Two rounds of the declaration table.  The version's derivation is `E4`. -/
+The version's derivation `E4` widens `w` to `x.B`, a subsumption through a
+middle the program does not write, so the typer rejects the program, as the
+Scala compiler does. -/
 
 /-- `λ(x : {B : {A : ⊥..⊤}..{A : {a : ⊤}..⊤}}). λ(w : {A : ⊥..⊤}). λ(n : {a : ⊤}).
 let g = λ(y : w.A). y in g n`. -/
@@ -273,26 +248,12 @@ def E4src : STm :=
   cc% λ(x : {B : {A : ⊥ .. ⊤} .. {A : {a : ⊤} .. ⊤}}).
          λ(w : {A : ⊥ .. ⊤}). λ(n : {a : ⊤}). let g = λ(y : w.A). y in g n
 
-/-- The budget of E4. -/
-def bE4 : Budget := { decls := 2, views := 1, sub := 2, cap := 1, typer := 6, obj := 0 }
-
 example : compiledTm Λc .empty E4src = some (tmOfDeriv E4) := by decide
 
-example : compiledJudgment bE4 Λc .empty E4src = some (usesOfDeriv E4, tyOfDeriv E4) := by
-  decide +kernel
+example : (compile {} Λc .empty E4src).isOk = false := by decide +kernel
 
-#eval expect (compiledVerdict bE4 Λc .empty E4src)
-  "E4: the target checker rejects the translation"
-
-#eval expect (compiledUsesVerdict bE4 Λc .empty E4src)
-  "E4: the target checker rejects the use set evidence"
-
-/-- E4 compiles. -/
-theorem E4_compiles : (compile bE4 Λc .empty E4src).isOk = true := by decide +kernel
-
-/-- The target checker accepts the translation of E4. -/
-theorem E4_checks : CheckerAccepts bE4 Λc .empty E4src E4_compiles :=
-  compile_checks_get E4_compiles
+/-- The rejection ends with the tank unmarked, so it holds at every fuel. -/
+example : judgAt .empty E4src = (none, ⟨Core.defaultFuel - 16, false⟩) := by decide +kernel
 
 /-! ## E5: an object returned from a function
 
@@ -306,25 +267,22 @@ def E5src : STm :=
          let f = λ(v : {A : ⊤..⊤}). ν(z : {a : v.A}. {a = v})
          in let o = f w in o.a
 
-/-- The budget of E5. -/
-def bE5 : Budget := { decls := 1, views := 1, sub := 2, cap := 1, typer := 7, obj := 1 }
-
 example : compiledTm Λc .empty E5src = some (tmOfDeriv E5) := by decide
 
-example : compiledJudgment bE5 Λc .empty E5src = some (usesOfDeriv E5, tyOfDeriv E5) := by
+example : compiledJudgment {} Λc .empty E5src = some (usesOfDeriv E5, tyOfDeriv E5) := by
   decide +kernel
 
-#eval expect (compiledVerdict bE5 Λc .empty E5src)
+#eval expect (compiledVerdict {} Λc .empty E5src)
   "E5: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bE5 Λc .empty E5src)
+#eval expect (compiledUsesVerdict {} Λc .empty E5src)
   "E5: the target checker rejects the use set evidence"
 
 /-- E5 compiles. -/
-theorem E5_compiles : (compile bE5 Λc .empty E5src).isOk = true := by decide +kernel
+theorem E5_compiles : (compile {} Λc .empty E5src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of E5. -/
-theorem E5_checks : CheckerAccepts bE5 Λc .empty E5src E5_compiles :=
+theorem E5_checks : CheckerAccepts {} Λc .empty E5src E5_compiles :=
   compile_checks_get E5_compiles
 
 /-! ## E6: a field typed at its own literal's member
@@ -342,29 +300,26 @@ def E6names : NameEnv ([],x) := PlatformNames.empty.names.cons "n"
 /-- E6 as resolved. -/
 def E6ann : ATm ([],x) := (resolveIn Λc E6names E6src).getD (.path (.var .here))
 
-/-- The budget of E6. -/
-def bE6 : Budget := { decls := 1, views := 2, sub := 2, cap := 1, typer := 5, obj := 1 }
-
 /-- `E6Ctx1` is well formed. -/
 theorem E6Ctx1_wf : E6Ctx1.Wf := ctxWf?_sound _ (by decide +kernel)
 
 example : (resolveIn Λc E6names E6src).map ATm.erase = some (tmOfDeriv E6) := by decide
 
-example : judgmentOf (synthIn? bE6 E6Ctx1 [] E6ann) =
+example : judgmentOf (synthIn? {} E6Ctx1 [] E6ann) =
     some (usesOfDeriv E6, .ty (tyOfDeriv E6)) := by
   decide +kernel
 
-#eval expect (openVerdicts (synthIn? bE6 E6Ctx1 [] E6ann) == (true, true))
+#eval expect (openVerdicts (synthIn? {} E6Ctx1 [] E6ann) == (true, true))
   "E6: the target checker rejects the translation or the use set evidence"
 
 /-- E6 is typed at `E6Ctx1`. -/
-theorem E6_compiles : (synthIn? bE6 E6Ctx1 [] E6ann).isOk = true := by decide +kernel
+theorem E6_compiles : (synthIn? {} E6Ctx1 [] E6ann).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of E6 at the translation of
 `E6Ctx1`. -/
 theorem E6_checks :
-    FCdot.checkTmE E6Ctx1.translate ((synthIn? bE6 E6Ctx1 [] E6ann).get E6_compiles).deriv.translate
-      ((synthIn? bE6 E6Ctx1 [] E6ann).get E6_compiles).ans.translate = true :=
+    FCdot.checkTmE E6Ctx1.translate ((synthIn? {} E6Ctx1 [] E6ann).get E6_compiles).deriv.translate
+      ((synthIn? {} E6Ctx1 [] E6ann).get E6_compiles).ans.translate = true :=
   synthIn_checks_get E6Ctx1_wf E6_compiles
 
 /-! ## E7: two type members that name each other
@@ -375,25 +330,22 @@ The version's derivation is `E7`.  Nothing is searched. -/
 def E7src : STm :=
   cc% ν(x : {A : x.B .. x.B} ∧ {B : x.A .. x.A}. {type A = x.B} ∧ {type B = x.A})
 
-/-- The budget of E7. -/
-def bE7 : Budget := { decls := 0, views := 0, sub := 0, cap := 1, typer := 3, obj := 1 }
-
 example : compiledTm Λc .empty E7src = some (tmOfDeriv E7) := by decide
 
-example : compiledJudgment bE7 Λc .empty E7src = some (usesOfDeriv E7, tyOfDeriv E7) := by
+example : compiledJudgment {} Λc .empty E7src = some (usesOfDeriv E7, tyOfDeriv E7) := by
   decide +kernel
 
-#eval expect (compiledVerdict bE7 Λc .empty E7src)
+#eval expect (compiledVerdict {} Λc .empty E7src)
   "E7: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bE7 Λc .empty E7src)
+#eval expect (compiledUsesVerdict {} Λc .empty E7src)
   "E7: the target checker rejects the use set evidence"
 
 /-- E7 compiles. -/
-theorem E7_compiles : (compile bE7 Λc .empty E7src).isOk = true := by decide +kernel
+theorem E7_compiles : (compile {} Λc .empty E7src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of E7. -/
-theorem E7_checks : CheckerAccepts bE7 Λc .empty E7src E7_compiles :=
+theorem E7_checks : CheckerAccepts {} Λc .empty E7src E7_compiles :=
   compile_checks_get E7_compiles
 
 /-! ## E8: refining an abstract type
@@ -404,30 +356,27 @@ judgment.  The typer finds that judgment. -/
 /-- `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a`. -/
 def E8src : STm := cc% λ(x : {A : ⊥ .. {a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a
 
-/-- The budget of E8. -/
-def bE8 : Budget := { decls := 0, views := 1, sub := 0, cap := 1, typer := 3, obj := 0 }
-
 example : compiledTm Λc .empty E8src = some (tmOfDeriv E8) := by decide
 
 example : tmOfDeriv E8b = tmOfDeriv E8 := rfl
 
-example : compiledJudgment bE8 Λc .empty E8src = some (usesOfDeriv E8, tyOfDeriv E8) := by
+example : compiledJudgment {} Λc .empty E8src = some (usesOfDeriv E8, tyOfDeriv E8) := by
   decide +kernel
 
-example : compiledJudgment bE8 Λc .empty E8src = some (usesOfDeriv E8b, tyOfDeriv E8b) := by
+example : compiledJudgment {} Λc .empty E8src = some (usesOfDeriv E8b, tyOfDeriv E8b) := by
   decide +kernel
 
-#eval expect (compiledVerdict bE8 Λc .empty E8src)
+#eval expect (compiledVerdict {} Λc .empty E8src)
   "E8: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bE8 Λc .empty E8src)
+#eval expect (compiledUsesVerdict {} Λc .empty E8src)
   "E8: the target checker rejects the use set evidence"
 
 /-- E8 compiles. -/
-theorem E8_compiles : (compile bE8 Λc .empty E8src).isOk = true := by decide +kernel
+theorem E8_compiles : (compile {} Λc .empty E8src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of E8. -/
-theorem E8_checks : CheckerAccepts bE8 Λc .empty E8src E8_compiles :=
+theorem E8_checks : CheckerAccepts {} Λc .empty E8src E8_compiles :=
   compile_checks_get E8_compiles
 
 /-! ## C7: a container of boxed capabilities, boxes written
@@ -442,29 +391,26 @@ def C7boxSrc : STm :=
                    {e1 = □ f1} ∧ {e2 = □ f2})
         in let e = o.e1 in {k1} ⊸ e
 
-/-- The budget of C7 with its boxes written. -/
-def bC7box : Budget := { decls := 0, views := 2, sub := 1, cap := 2, typer := 8, obj := 1 }
-
 example : compiledTm Λc πc C7boxSrc = some (tmOfDeriv C7_typed) := by decide
 
-example : elaboratedTm bC7box Λc πc C7boxSrc = some (tmOfDeriv C7_typed) := by decide +kernel
+example : elaboratedTm {} Λc πc C7boxSrc = some (tmOfDeriv C7_typed) := by decide +kernel
 
-example : compiledJudgment bC7box Λc πc C7boxSrc =
+example : compiledJudgment {} Λc πc C7boxSrc =
     some (usesOfDeriv C7_typed, tyOfDeriv C7_typed) := by
   decide +kernel
 
-#eval expect (compiledVerdict bC7box Λc πc C7boxSrc)
+#eval expect (compiledVerdict {} Λc πc C7boxSrc)
   "C7: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bC7box Λc πc C7boxSrc)
+#eval expect (compiledUsesVerdict {} Λc πc C7boxSrc)
   "C7: the target checker rejects the use set evidence"
 
 /-- C7 with its boxes written compiles. -/
-theorem C7box_compiles : (compile bC7box Λc πc C7boxSrc).isOk = true := by decide +kernel
+theorem C7box_compiles : (compile {} Λc πc C7boxSrc).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of C7 with its boxes
 written. -/
-theorem C7box_checks : CheckerAccepts bC7box Λc πc C7boxSrc C7box_compiles :=
+theorem C7box_checks : CheckerAccepts {} Λc πc C7boxSrc C7box_compiles :=
   compile_checks_get C7box_compiles
 
 /-! ## C7 with no box in any term
@@ -474,24 +420,24 @@ theorem C7box_checks : CheckerAccepts bC7box Λc πc C7boxSrc C7box_compiles :=
 
 example : compiledTm Λc πc C7src ≠ some (tmOfDeriv C7_typed) := by decide
 
-example : elaboratedTm bC7 Λc πc C7src = some (tmOfDeriv C7_typed) := by decide +kernel
+example : elaboratedTm {} Λc πc C7src = some (tmOfDeriv C7_typed) := by decide +kernel
 
-example : compiledJudgment bC7 Λc πc C7src =
+example : compiledJudgment {} Λc πc C7src =
     some (usesOfDeriv C7_typed, tyOfDeriv C7_typed) := by
   decide +kernel
 
-#eval expect (compiledVerdict bC7 Λc πc C7src)
+#eval expect (compiledVerdict {} Λc πc C7src)
   "C7 with no box: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bC7 Λc πc C7src)
+#eval expect (compiledUsesVerdict {} Λc πc C7src)
   "C7 with no box: the target checker rejects the use set evidence"
 
 /-- C7 with no box in any term compiles. -/
-theorem C7_compiles : (compile bC7 Λc πc C7src).isOk = true := by decide +kernel
+theorem C7_compiles : (compile {} Λc πc C7src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of C7 with no box in any
 term. -/
-theorem C7_checks : CheckerAccepts bC7 Λc πc C7src C7_compiles :=
+theorem C7_checks : CheckerAccepts {} Λc πc C7src C7_compiles :=
   compile_checks_get C7_compiles
 
 /-! ## S3: a type member at a boxed capturing type
@@ -507,26 +453,23 @@ def S3src : STm :=
                    {type A = □((∀(u : ⊤) ⊤) ^ {f})} ∧ {elem = □ f})
         in let e = o.elem in {f} ⊸ e
 
-/-- The budget of S3. -/
-def bS3 : Budget := { decls := 1, views := 2, sub := 2, cap := 1, typer := 7, obj := 1 }
-
 example : compiledTm Λc πc S3src = some (tmOfDeriv S3_typed) := by decide
 
-example : compiledJudgment bS3 Λc πc S3src =
+example : compiledJudgment {} Λc πc S3src =
     some (usesOfDeriv S3_typed, tyOfDeriv S3_typed) := by
   decide +kernel
 
-#eval expect (compiledVerdict bS3 Λc πc S3src)
+#eval expect (compiledVerdict {} Λc πc S3src)
   "S3: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bS3 Λc πc S3src)
+#eval expect (compiledUsesVerdict {} Λc πc S3src)
   "S3: the target checker rejects the use set evidence"
 
 /-- S3 compiles. -/
-theorem S3_compiles : (compile bS3 Λc πc S3src).isOk = true := by decide +kernel
+theorem S3_compiles : (compile {} Λc πc S3src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of S3. -/
-theorem S3_checks : CheckerAccepts bS3 Λc πc S3src S3_compiles :=
+theorem S3_checks : CheckerAccepts {} Λc πc S3src S3_compiles :=
   compile_checks_get S3_compiles
 
 /-! ## C2: capture polymorphism by a capture member
@@ -545,32 +488,29 @@ def C2src : STm :=
                  {C^ = {k2}} ∧ {run = λ(u : ⊤). u}) in
       let ga = c a in let gb = c b in gb
 
-/-- The budget of C2. -/
-def bC2 : Budget := { decls := 1, views := 2, sub := 1, cap := 3, typer := 9, obj := 1 }
-
 example : compiledTm Λc πc C2src = some (tmOfDeriv C2_typed) := by decide
 
-example : elaboratedTm bC2 Λc πc C2src = some (tmOfDeriv C2_typed) := by decide +kernel
+example : elaboratedTm {} Λc πc C2src = some (tmOfDeriv C2_typed) := by decide +kernel
 
-example : compiledJudgment bC2 Λc πc C2src =
+example : compiledJudgment {} Λc πc C2src =
     some ([CapAtom.cvar k2], (Shape.all unitTy (.ty unitTy)) ^ [CapAtom.cvar k2]) := by
   decide +kernel
 
-example : topReaches { bC2 with sub := 2 } πc (resolveTop Λc πc C2src) (usesOfDeriv C2_typed)
+example : topReaches {} πc (resolveTop Λc πc C2src) (usesOfDeriv C2_typed)
     (.ty (tyOfDeriv C2_typed)) = true := by
   decide +kernel
 
-#eval expect (compiledVerdict bC2 Λc πc C2src)
+#eval expect (compiledVerdict {} Λc πc C2src)
   "C2: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bC2 Λc πc C2src)
+#eval expect (compiledUsesVerdict {} Λc πc C2src)
   "C2: the target checker rejects the use set evidence"
 
 /-- C2 compiles. -/
-theorem C2_compiles : (compile bC2 Λc πc C2src).isOk = true := by decide +kernel
+theorem C2_compiles : (compile {} Λc πc C2src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of C2. -/
-theorem C2_checks : CheckerAccepts bC2 Λc πc C2src C2_compiles :=
+theorem C2_checks : CheckerAccepts {} Λc πc C2src C2_compiles :=
   compile_checks_get C2_compiles
 
 /-! ## S1: `withFile` with an explicit capture parameter
@@ -595,26 +535,23 @@ def S1progSrc : STm :=
       let r = g op in
       r
 
-/-- The budget of S1. -/
-def bS1 : Budget := { decls := 0, views := 1, sub := 2, cap := 5, typer := 10, obj := 1 }
-
 example : compiledTm Λc πz S1progSrc = some (tmOfDeriv S1_typed) := by decide
 
-example : compiledJudgment bS1 Λc πz S1progSrc =
+example : compiledJudgment {} Λc πz S1progSrc =
     some (usesOfDeriv S1_typed, tyOfDeriv S1_typed) := by
   decide +kernel
 
-#eval expect (compiledVerdict bS1 Λc πz S1progSrc)
+#eval expect (compiledVerdict {} Λc πz S1progSrc)
   "S1: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bS1 Λc πz S1progSrc)
+#eval expect (compiledUsesVerdict {} Λc πz S1progSrc)
   "S1: the target checker rejects the use set evidence"
 
 /-- S1 compiles. -/
-theorem S1_compiles : (compile bS1 Λc πz S1progSrc).isOk = true := by decide +kernel
+theorem S1_compiles : (compile {} Λc πz S1progSrc).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of S1. -/
-theorem S1_checks : CheckerAccepts bS1 Λc πz S1progSrc S1_compiles :=
+theorem S1_checks : CheckerAccepts {} Λc πz S1progSrc S1_compiles :=
   compile_checks_get S1_compiles
 
 /-! ## S2: a class with a capture set parameter
@@ -632,26 +569,23 @@ def S2src : STm :=
       let un = (λ(y : ⊤). y : ⊤) in
       let it = mk un in let n = it.next in let r = n un in r
 
-/-- The budget of S2. -/
-def bS2 : Budget := { decls := 1, views := 2, sub := 1, cap := 3, typer := 10, obj := 1 }
-
 example : compiledTm Λc πz S2src = some (tmOfDeriv S2_typed) := by decide
 
-example : compiledJudgment bS2 Λc πz S2src =
+example : compiledJudgment {} Λc πz S2src =
     some (usesOfDeriv S2_typed, tyOfDeriv S2_typed) := by
   decide +kernel
 
-#eval expect (compiledVerdict bS2 Λc πz S2src)
+#eval expect (compiledVerdict {} Λc πz S2src)
   "S2: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bS2 Λc πz S2src)
+#eval expect (compiledUsesVerdict {} Λc πz S2src)
   "S2: the target checker rejects the use set evidence"
 
 /-- S2 compiles. -/
-theorem S2_compiles : (compile bS2 Λc πz S2src).isOk = true := by decide +kernel
+theorem S2_compiles : (compile {} Λc πz S2src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of S2. -/
-theorem S2_checks : CheckerAccepts bS2 Λc πz S2src S2_compiles :=
+theorem S2_checks : CheckerAccepts {} Λc πz S2src S2_compiles :=
   compile_checks_get S2_compiles
 
 /-! ## C5: the caller of `mk`, at the version's own context
@@ -669,33 +603,30 @@ def C5names : NameEnv ([],c,c,x,x,x) := ((πz.names.cons "mk").cons "un").cons "
 /-- C5 as resolved. -/
 def C5ann : ATm ([],c,c,x,x,x) := (resolveIn Λc C5names C5src).getD (.path (.var .here))
 
-/-- The budget of C5. -/
-def bC5 : Budget := { decls := 0, views := 2, sub := 0, cap := 3, typer := 4, obj := 0 }
-
 /-- `S2Ctx3` is well formed. -/
 theorem S2Ctx3_wf : S2Ctx3.Wf := ctxWf?_sound _ (by decide +kernel)
 
 example : (resolveIn Λc C5names C5src).map ATm.erase = some (tmOfDeriv C5_typed) := by decide
 
-example : judgmentOf (synthIn? bC5 S2Ctx3 platSet3 C5ann) =
+example : judgmentOf (synthIn? {} S2Ctx3 platSet3 C5ann) =
     some ([CapAtom.var .here, CapAtom.sel .here lC], .ty (Shape.top ^ [CapAtom.sel .here lC])) := by
   decide +kernel
 
-example : reachesAt { bC5 with sub := 1, decls := 1 } S2Ctx3 platSet3 C5ann (usesOfDeriv C5_typed)
+example : reachesAt {} S2Ctx3 platSet3 C5ann (usesOfDeriv C5_typed)
     (.ty (tyOfDeriv C5_typed)) = true := by
   decide +kernel
 
-#eval expect (openVerdicts (synthIn? bC5 S2Ctx3 platSet3 C5ann) == (true, true))
+#eval expect (openVerdicts (synthIn? {} S2Ctx3 platSet3 C5ann) == (true, true))
   "C5: the target checker rejects the translation or the use set evidence"
 
 /-- C5 is typed at `S2Ctx3`. -/
-theorem C5_compiles : (synthIn? bC5 S2Ctx3 platSet3 C5ann).isOk = true := by decide +kernel
+theorem C5_compiles : (synthIn? {} S2Ctx3 platSet3 C5ann).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of C5 at the translation of
 `S2Ctx3`. -/
 theorem C5_checks :
-    FCdot.checkTmE S2Ctx3.translate ((synthIn? bC5 S2Ctx3 platSet3 C5ann).get C5_compiles).deriv.translate
-      ((synthIn? bC5 S2Ctx3 platSet3 C5ann).get C5_compiles).ans.translate = true :=
+    FCdot.checkTmE S2Ctx3.translate ((synthIn? {} S2Ctx3 platSet3 C5ann).get C5_compiles).deriv.translate
+      ((synthIn? {} S2Ctx3 platSet3 C5ann).get C5_compiles).ans.translate = true :=
   synthIn_checks_get S2Ctx3_wf C5_compiles
 
 /-! ## Z1: `freshCell`
@@ -709,12 +640,9 @@ def Z1progSrc : STm :=
   cc% (λ(u : ⊤). let r = ν(f : {read : (∀(v : ⊤) ⊤) ^ {f}}. {read = λ(v : ⊤). v}) in r
         : (∀(u : ⊤) μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {fresh}) ^ {fs})
 
-/-- The budget of Z1. -/
-def bZ1prog : Budget := { decls := 0, views := 0, sub := 1, cap := 1, typer := 9, obj := 1 }
-
 example : compiledTm Λc πz Z1progSrc = some (tmOfDeriv Z1_plat) := by decide
 
-example : compiledJudgment bZ1prog Λc πz Z1progSrc =
+example : compiledJudgment {} Λc πz Z1progSrc =
     some (usesOfDeriv Z1_plat, tyOfDeriv Z1_plat) := by
   decide +kernel
 
@@ -722,51 +650,51 @@ example : compiledJudgment bZ1prog Λc πz Z1progSrc =
 the existential.  This is the version's W4. -/
 example : readAt platCtx platSet (Z1TyF k1) = Z1Ty k1 := by decide
 
-#eval expect (compiledVerdict bZ1prog Λc πz Z1progSrc)
+#eval expect (compiledVerdict {} Λc πz Z1progSrc)
   "Z1: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bZ1prog Λc πz Z1progSrc)
+#eval expect (compiledUsesVerdict {} Λc πz Z1progSrc)
   "Z1: the target checker rejects the use set evidence"
 
 /-- Z1 compiles. -/
-theorem Z1_compiles : (compile bZ1prog Λc πz Z1progSrc).isOk = true := by decide +kernel
+theorem Z1_compiles : (compile {} Λc πz Z1progSrc).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of Z1. -/
-theorem Z1_checks : CheckerAccepts bZ1prog Λc πz Z1progSrc Z1_compiles :=
+theorem Z1_checks : CheckerAccepts {} Λc πz Z1progSrc Z1_compiles :=
   compile_checks_get Z1_compiles
 
 /-! ## The caller of `freshCell`, at `Z1Ctx`
 
-`Z1callerAnn` of `Resolve.lean`, at the budget `bZ1` of `Typer.lean`.  The
+`Z1callerAnn` of `Resolve.lean`, at the default fuel.  The
 `let` becomes a `letex`, and the elaborated term erases to the term of the
 version's `Z1_caller`.  The typer finds `{fc, un}`, and the version's
 `Z1Use ∪ Z1Use` is reached by one `sub`. -/
 
-example : erasedOf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn) = some (tmOfDeriv Z1_caller) := by
+example : erasedOf (synthIn? {} Z1Ctx ps2z Z1callerAnn) = some (tmOfDeriv Z1_caller) := by
   decide +kernel
 
-example : judgmentOf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn) =
+example : judgmentOf (synthIn? {} Z1Ctx ps2z Z1callerAnn) =
     some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here],
       .ty ((Shape.all unitTy (.ty unitTy)) ^ [])) := by
   decide +kernel
 
-example : reachesAt { bZ1 with cap := 4, sub := 1 } Z1Ctx ps2z Z1callerAnn
+example : reachesAt {} Z1Ctx ps2z Z1callerAnn
     (usesOfDeriv Z1_caller) (.ty (tyOfDeriv Z1_caller)) = true := by
   decide +kernel
 
-#eval expect (openVerdicts (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn) == (true, true))
+#eval expect (openVerdicts (synthIn? {} Z1Ctx ps2z Z1callerAnn) == (true, true))
   "the caller of freshCell: the target checker rejects the translation or the use set evidence"
 
 /-- The caller of `freshCell` is typed at `Z1Ctx`. -/
-theorem Z1caller_compiles : (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn).isOk = true := by
+theorem Z1caller_compiles : (synthIn? {} Z1Ctx ps2z Z1callerAnn).isOk = true := by
   decide +kernel
 
 /-- The target checker accepts the translation of the caller of `freshCell`
 at the translation of `Z1Ctx`. -/
 theorem Z1caller_checks :
     FCdot.checkTmE Z1Ctx.translate
-      ((synthIn? bZ1 Z1Ctx ps2z Z1callerAnn).get Z1caller_compiles).deriv.translate
-      ((synthIn? bZ1 Z1Ctx ps2z Z1callerAnn).get Z1caller_compiles).ans.translate = true :=
+      ((synthIn? {} Z1Ctx ps2z Z1callerAnn).get Z1caller_compiles).deriv.translate
+      ((synthIn? {} Z1Ctx ps2z Z1callerAnn).get Z1caller_compiles).ans.translate = true :=
   synthIn_checks_get Z1Ctx_wf Z1caller_compiles
 
 /-! ## An unpacking whose answer is existential, at `Z1Ctx`
@@ -775,46 +703,43 @@ theorem Z1caller_checks :
 second call's existential, moved past the witness and the payload of the
 first. -/
 
-example : judgmentOf (synthIn? bTail Z1Ctx ps2z Z1TailAnn) =
+example : judgmentOf (synthIn? {} Z1Ctx ps2z Z1TailAnn) =
     some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here],
       ∃ᶜ[Z1Use] (fileS ^ [CapAtom.cvar .here])) := by
   decide +kernel
 
-#eval expect (openVerdicts (synthIn? bTail Z1Ctx ps2z Z1TailAnn) == (true, true))
+#eval expect (openVerdicts (synthIn? {} Z1Ctx ps2z Z1TailAnn) == (true, true))
   "the unpacking: the target checker rejects the translation or the use set evidence"
 
 /-- The unpacking is typed at `Z1Ctx`. -/
-theorem Z1tail_compiles : (synthIn? bTail Z1Ctx ps2z Z1TailAnn).isOk = true := by
+theorem Z1tail_compiles : (synthIn? {} Z1Ctx ps2z Z1TailAnn).isOk = true := by
   decide +kernel
 
 /-- The target checker accepts the translation of the unpacking at the
 translation of `Z1Ctx`. -/
 theorem Z1tail_checks :
     FCdot.checkTmE Z1Ctx.translate
-      ((synthIn? bTail Z1Ctx ps2z Z1TailAnn).get Z1tail_compiles).deriv.translate
-      ((synthIn? bTail Z1Ctx ps2z Z1TailAnn).get Z1tail_compiles).ans.translate = true :=
+      ((synthIn? {} Z1Ctx ps2z Z1TailAnn).get Z1tail_compiles).deriv.translate
+      ((synthIn? {} Z1Ctx ps2z Z1TailAnn).get Z1tail_compiles).ans.translate = true :=
   synthIn_checks_get Z1Ctx_wf Z1tail_compiles
 
 /-! ## Two calls of `freshCell`, at `Z1Ctx`
 
 Each call is unpacked by a `letex` of its own, so the body runs under two
-opened capture binders.  Neither is a root, and the search relates neither to
+opened capture binders.  Neither is a root, and subcapturing relates neither to
 the other.  This is the version's `Z_two_calls_no_level`. -/
 
 /-- `let c1 = fc un in let c2 = fc un in un`, as resolved. -/
 def twoCallsAnn : ATm ([],c,c,x,x) :=
   (resolveIn Λc z1Names (cc% let c1 = fc un in let c2 = fc un in un)).getD (.path (.var .here))
 
-/-- The budget of the two calls. -/
-def bTwo : Budget := { decls := 0, views := 0, sub := 0, cap := 1, typer := 4, obj := 0 }
-
-example : erasedOf (synthIn? bTwo Z1Ctx ps2z twoCallsAnn) =
+example : erasedOf (synthIn? {} Z1Ctx ps2z twoCallsAnn) =
     some (.letex (.app (.there .here) .here)
       (.letex (.app (.there (.there (.there .here))) (.there (.there .here)))
         (.path (.var (.there (.there (.there (.there .here)))))))) := by
   decide +kernel
 
-example : (synthIn? bTwo Z1Ctx ps2z twoCallsAnn).toOption.map (·.ans) = some (.ty unitTy) := by
+example : (synthIn? {} Z1Ctx ps2z twoCallsAnn).toOption.map (·.ans) = some (.ty unitTy) := by
   decide +kernel
 
 example : subcapFound {} Z1BodyCtxSrc [CapAtom.cvar Zk1'] [CapAtom.cvar Zk2'] = false := by
@@ -835,30 +760,27 @@ def Z2src : STm :=
           let r = ν(f : {read : (∀(v : ⊤) ⊤) ^ {f}}. {read = λ(v : ⊤). v}) in r
         : (∀(l : (∀(u : ⊤) ⊤) ^ {any}) μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {fresh}) ^ {})
 
-/-- The budget of Z2. -/
-def bZ2 : Budget := { decls := 0, views := 0, sub := 1, cap := 1, typer := 9, obj := 1 }
-
 example : resolveTy Λc πz.names
     (ccTy% (∀(l : (∀(u : ⊤) ⊤) ^ {any}) μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {fresh}) ^ {}) =
       some W3TyAny := by
   decide
 
-example : elaboratedTm bZ2 Λc πz Z2src = some (tmOfDeriv Z2_plat) := by decide +kernel
+example : elaboratedTm {} Λc πz Z2src = some (tmOfDeriv Z2_plat) := by decide +kernel
 
-example : compiledJudgment bZ2 Λc πz Z2src = some (usesOfDeriv Z2_plat, tyOfDeriv Z2_plat) := by
+example : compiledJudgment {} Λc πz Z2src = some (usesOfDeriv Z2_plat, tyOfDeriv Z2_plat) := by
   decide +kernel
 
-#eval expect (compiledVerdict bZ2 Λc πz Z2src)
+#eval expect (compiledVerdict {} Λc πz Z2src)
   "Z2: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bZ2 Λc πz Z2src)
+#eval expect (compiledUsesVerdict {} Λc πz Z2src)
   "Z2: the target checker rejects the use set evidence"
 
 /-- Z2 compiles. -/
-theorem Z2_compiles : (compile bZ2 Λc πz Z2src).isOk = true := by decide +kernel
+theorem Z2_compiles : (compile {} Λc πz Z2src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of Z2. -/
-theorem Z2_checks : CheckerAccepts bZ2 Λc πz Z2src Z2_compiles :=
+theorem Z2_checks : CheckerAccepts {} Λc πz Z2src Z2_compiles :=
   compile_checks_get Z2_compiles
 
 /-! ## Z3: `mk` with a `fresh` result
@@ -876,25 +798,22 @@ def Z3src : STm :=
          : (∀(u : ⊤) μ(i. {C^ : {}..{fs}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}) ^ {fresh})
              ^ {fs})
 
-/-- The budget of Z3. -/
-def bZ3 : Budget := { decls := 0, views := 1, sub := 2, cap := 2, typer := 10, obj := 1 }
-
 example : compiledTm Λc πz Z3src = some (tmOfDeriv Z3_plat) := by decide
 
-example : compiledJudgment bZ3 Λc πz Z3src = some (usesOfDeriv Z3_plat, tyOfDeriv Z3_plat) := by
+example : compiledJudgment {} Λc πz Z3src = some (usesOfDeriv Z3_plat, tyOfDeriv Z3_plat) := by
   decide +kernel
 
-#eval expect (compiledVerdict bZ3 Λc πz Z3src)
+#eval expect (compiledVerdict {} Λc πz Z3src)
   "Z3: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bZ3 Λc πz Z3src)
+#eval expect (compiledUsesVerdict {} Λc πz Z3src)
   "Z3: the target checker rejects the use set evidence"
 
 /-- Z3 compiles. -/
-theorem Z3_compiles : (compile bZ3 Λc πz Z3src).isOk = true := by decide +kernel
+theorem Z3_compiles : (compile {} Λc πz Z3src).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of Z3. -/
-theorem Z3_checks : CheckerAccepts bZ3 Λc πz Z3src Z3_compiles :=
+theorem Z3_checks : CheckerAccepts {} Λc πz Z3src Z3_compiles :=
   compile_checks_get Z3_compiles
 
 /-! ## W2: `process` and its call
@@ -904,50 +823,44 @@ arrow's own binder.  It elaborates to the version's `W2Tm`, and its type
 reaches `W2Ty` by one `sub`.  The call `p f` is typed at the version's
 `W2CallCtx` at the use set `{f}` and the type `⊤`. -/
 
-/-- The budget of `process`. -/
-def bW2 : Budget := { decls := 0, views := 0, sub := 0, cap := 1, typer := 3, obj := 0 }
+example : elaboratedTm {} Λc πc W2defSrc = some W2Tm := by decide +kernel
 
-/-- The budget of the call. -/
-def bW2call : Budget := { decls := 0, views := 0, sub := 0, cap := 0, typer := 2, obj := 0 }
-
-example : elaboratedTm bW2 Λc πc W2defSrc = some W2Tm := by decide +kernel
-
-example : topReaches { bW2 with sub := 2 } πc (resolveTop Λc πc W2defSrc) [] (.ty W2Ty) = true := by
+example : topReaches {} πc (resolveTop Λc πc W2defSrc) [] (.ty W2Ty) = true := by
   decide +kernel
 
-#eval expect (compiledVerdict bW2 Λc πc W2defSrc)
+#eval expect (compiledVerdict {} Λc πc W2defSrc)
   "W2: the target checker rejects the translation"
 
-#eval expect (compiledUsesVerdict bW2 Λc πc W2defSrc)
+#eval expect (compiledUsesVerdict {} Λc πc W2defSrc)
   "W2: the target checker rejects the use set evidence"
 
 /-- `process` compiles. -/
-theorem W2_compiles : (compile bW2 Λc πc W2defSrc).isOk = true := by decide +kernel
+theorem W2_compiles : (compile {} Λc πc W2defSrc).isOk = true := by decide +kernel
 
 /-- The target checker accepts the translation of `process`. -/
-theorem W2_checks : CheckerAccepts bW2 Λc πc W2defSrc W2_compiles :=
+theorem W2_checks : CheckerAccepts {} Λc πc W2defSrc W2_compiles :=
   compile_checks_get W2_compiles
 
-example : judgmentOf (synthIn? bW2call W2CallCtx ps2c (.app (.there .here) .here)) =
+example : judgmentOf (synthIn? {} W2CallCtx ps2c (.app (.there .here) .here)) =
     some (usesOfDeriv W2_call, .ty (tyOfDeriv W2_call)) := by
   decide +kernel
 
-#eval expect (openVerdicts (synthIn? bW2call W2CallCtx ps2c (.app (.there .here) .here)) ==
+#eval expect (openVerdicts (synthIn? {} W2CallCtx ps2c (.app (.there .here) .here)) ==
     (true, true))
   "the call of process: the target checker rejects the translation or the use set evidence"
 
 /-- The call of `process` is typed at `W2CallCtx`. -/
 theorem W2call_compiles :
-    (synthIn? bW2call W2CallCtx ps2c (.app (.there .here) .here)).isOk = true := by
+    (synthIn? {} W2CallCtx ps2c (.app (.there .here) .here)).isOk = true := by
   decide +kernel
 
 /-- The target checker accepts the translation of the call of `process` at
 the translation of `W2CallCtx`. -/
 theorem W2call_checks :
     FCdot.checkTmE W2CallCtx.translate
-      ((synthIn? bW2call W2CallCtx ps2c (.app (.there .here) .here)).get
+      ((synthIn? {} W2CallCtx ps2c (.app (.there .here) .here)).get
         W2call_compiles).deriv.translate
-      ((synthIn? bW2call W2CallCtx ps2c (.app (.there .here) .here)).get
+      ((synthIn? {} W2CallCtx ps2c (.app (.there .here) .here)).get
         W2call_compiles).ans.translate = true :=
   synthIn_checks_get W2CallCtx_wf W2call_compiles
 
@@ -968,53 +881,50 @@ example : (compile {} Λc πc deepSrc).reason?.map Reason.name = some "anyNotOk"
 `P1ann` of `Resolve.lean`, under `unit : ⊤`.  The call is charged to the
 function and to the argument.  The closure is pure. -/
 
-/-- The budget of the call of a capture parameter. -/
-def bP1 : Budget := { decls := 0, views := 0, sub := 0, cap := 1, typer := 4, obj := 0 }
-
 /-- The context of `P1ann`. -/
 def P1Ctx : Ctx ([],c,c,x) := platCtx.cons unitTy
 
 /-- `P1Ctx` is well formed. -/
 theorem P1Ctx_wf : P1Ctx.Wf := ctxWf?_sound _ (by decide +kernel)
 
-example : judgmentOf (synthIn? bP1 P1Ctx (CaptureSet.weaken πc.set) P1ann) =
+example : judgmentOf (synthIn? {} P1Ctx (CaptureSet.weaken πc.set) P1ann) =
     some ([], .ty ((Shape.all ((Shape.all unitTy (.ty unitTy)) ^ [CapAtom.cvar .here])
       (.ty unitTy)) ^ [])) := by
   decide +kernel
 
-#eval expect (openVerdicts (synthIn? bP1 P1Ctx (CaptureSet.weaken πc.set) P1ann) == (true, true))
+#eval expect (openVerdicts (synthIn? {} P1Ctx (CaptureSet.weaken πc.set) P1ann) == (true, true))
   "A: the target checker rejects the translation or the use set evidence"
 
 /-- The call of a capture parameter is typed. -/
-theorem P1_compiles : (synthIn? bP1 P1Ctx (CaptureSet.weaken πc.set) P1ann).isOk = true := by
+theorem P1_compiles : (synthIn? {} P1Ctx (CaptureSet.weaken πc.set) P1ann).isOk = true := by
   decide +kernel
 
 /-- The target checker accepts its translation. -/
 theorem P1_checks :
     FCdot.checkTmE P1Ctx.translate
-      ((synthIn? bP1 P1Ctx (CaptureSet.weaken πc.set) P1ann).get P1_compiles).deriv.translate
-      ((synthIn? bP1 P1Ctx (CaptureSet.weaken πc.set) P1ann).get P1_compiles).ans.translate =
+      ((synthIn? {} P1Ctx (CaptureSet.weaken πc.set) P1ann).get P1_compiles).deriv.translate
+      ((synthIn? {} P1Ctx (CaptureSet.weaken πc.set) P1ann).get P1_compiles).ans.translate =
       true :=
   synthIn_checks_get P1Ctx_wf P1_compiles
 
 /-! ## W1: the levels of two nested bodies
 
-At `W1Ctx2`, the body of a lambda inside the body of another, the search finds
+At `W1Ctx2`, the body of a lambda inside the body of another, subcapturing finds
 the level steps the version's `W1` derives: the outer root below the inner
 one, and both parameters below the inner root.  It does not find the inner
 root below the outer one.  The inner parameter is found below the outer root
 by `sc-var`, since the parameter has the pure type `⊤`, and not by the level
 rule, which `W1_outer_not_inner` denies. -/
 
-example : subcapFound { cap := 1 } W1Ctx2 [CapAtom.cvar W1outRoot] [CapAtom.cvar W1inRoot] =
+example : subcapFound {} W1Ctx2 [CapAtom.cvar W1outRoot] [CapAtom.cvar W1inRoot] =
     true := by
   decide +kernel
 
-example : subcapFound { cap := 1 } W1Ctx2 [CapAtom.var W1outParam] [CapAtom.cvar W1inRoot] =
+example : subcapFound {} W1Ctx2 [CapAtom.var W1outParam] [CapAtom.cvar W1inRoot] =
     true := by
   decide +kernel
 
-example : subcapFound { cap := 1 } W1Ctx2 [CapAtom.var W1inParam] [CapAtom.cvar W1inRoot] =
+example : subcapFound {} W1Ctx2 [CapAtom.var W1inParam] [CapAtom.cvar W1inRoot] =
     true := by
   decide +kernel
 
@@ -1023,7 +933,7 @@ example : subcapFound {} W1Ctx2 [CapAtom.cvar W1inRoot] [CapAtom.cvar W1outRoot]
 
 /-! ## W5: the escape of a callback, at the version's context
 
-At `W5Ctx`, the body of a callback under an older root, the search finds the
+At `W5Ctx`, the body of a callback under an older root, subcapturing finds the
 callback's parameter below its own body root, the version's `W5_level_own`,
 and does not find it below the older root.  The certificate builder rejects
 that goal, and `W5_escape_rejected` is the certificate. -/
@@ -1161,18 +1071,18 @@ theorem C2_never_reads_k1 {s : Sig} {st : State s}
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext πc.plat.targetStore stt.σ ρ ∧
           ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var k1)) [FCdot.CapAtom.var x] := by
-  have he : ((compile bC2 Λc πc C2src).get C2_compiles).2.tm.erase = C2tm := by
+  have he : ((compile {} Λc πc C2src).get C2_compiles).2.tm.erase = C2tm := by
     decide +kernel
   exact compile_effect_safety_get C2_compiles (κ := k1) (by decide +kernel) (he ▸ r) hin
 
 /-! ## The log of a compiled program
 
 `compile_lvl_safety` speaks of each entry of the log `levelSteps` reads off the
-derivation.  C2 has 126 entries and S1 has 92. -/
+derivation.  C2 has 121 entries and S1 has 92. -/
 
-example : (compileLog bC2 Λc πc C2src).length = 126 := by decide +kernel
+example : (compileLog {} Λc πc C2src).length = 121 := by decide +kernel
 
-example : (compileLog bS1 Λc πz S1progSrc).length = 92 := by decide +kernel
+example : (compileLog {} Λc πz S1progSrc).length = 92 := by decide +kernel
 
 /-! ## The run tests
 
@@ -1193,28 +1103,28 @@ def runFinal? (b : Budget) (m : Nat) (π : PlatformNames) (e : STm) : Bool :=
   | .ok r => final? r.2
   | _ => false
 
-#eval ppRunOver Λc ["fs", "k2"] (compileAndRun bS2 runBudget Λc πz S2src)
+#eval ppRunOver Λc ["fs", "k2"] (compileAndRun {} runBudget Λc πz S2src)
 
-example : ppRunTmOver Λc ["fs", "k2"] (compileAndRun bS2 runBudget Λc πz S2src) = "x3" := by
+example : ppRunTmOver Λc ["fs", "k2"] (compileAndRun {} runBudget Λc πz S2src) = "x3" := by
   decide +kernel
 
-example : (runFinal? bS2 15 πz S2src && ! runFinal? bS2 14 πz S2src) = true := by
+example : (runFinal? {} 15 πz S2src && ! runFinal? {} 14 πz S2src) = true := by
   decide +kernel
 
-#eval ppRunOver Λc ["k1", "k2"] (compileAndRun bC2 runBudget Λc πc C2src)
+#eval ppRunOver Λc ["k1", "k2"] (compileAndRun {} runBudget Λc πc C2src)
 
-example : ppRunTmOver Λc ["k1", "k2"] (compileAndRun bC2 runBudget Λc πc C2src) = "x6" := by
+example : ppRunTmOver Λc ["k1", "k2"] (compileAndRun {} runBudget Λc πc C2src) = "x6" := by
   decide +kernel
 
-example : (runFinal? bC2 12 πc C2src && ! runFinal? bC2 11 πc C2src) = true := by
+example : (runFinal? {} 12 πc C2src && ! runFinal? {} 11 πc C2src) = true := by
   decide +kernel
 
-#eval ppRun Λc (compileAndRun bE2 runBudget Λc .empty E2src)
+#eval ppRun Λc (compileAndRun {} runBudget Λc .empty E2src)
 
-example : ppRunTm Λc (compileAndRun bE2 runBudget Λc .empty E2src) = "x1" := by
+example : ppRunTm Λc (compileAndRun {} runBudget Λc .empty E2src) = "x1" := by
   decide +kernel
 
-example : (runFinal? bE2 6 .empty E2src && ! runFinal? bE2 5 .empty E2src) = true := by
+example : (runFinal? {} 6 .empty E2src && ! runFinal? {} 5 .empty E2src) = true := by
   decide +kernel
 
 end Examples

@@ -26,7 +26,7 @@ does not tell `let` from `letex`.  So the check says the elaborated program is
 the written one up to what the typer adds.
 
 `compile` returns the typer's `Verdict`.  `ok` carries the record.  `rejected`
-carries a reason with its proof.  `unknown` says nothing was found.  A program
+carries a reason with its proof.  `unknown` says no answer and no reason was found.  A program
 that does not resolve is `unknown`, and so is a program whose skeleton the
 typer changed.
 
@@ -262,8 +262,8 @@ structure Compiled {s₀ : Sig} (P : Platform s₀) (a : ATm s₀) where
 /-- The front end end to end: resolve over the platform, type at the
 platform's context, and keep the result when the skeleton is the program's.
 A rejection is the typer's, with its reason.  `unknown` is returned when the
-program does not resolve, when the typer finds nothing within its budget, and
-when the typer changed the skeleton.  The result is a dependent pair, since the
+program does not resolve, when the typer finds no answer and no reason, when
+it reaches the recursion limit, and when it changed the skeleton.  The result is a dependent pair, since the
 record speaks of the resolved term. -/
 def compile (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm) :
     Verdict ((a : ATm π.sig) × Compiled π.plat a) :=
@@ -499,7 +499,7 @@ end
 The log is computed in the kernel, so whether it is empty is decided.  Two open
 examples show that `compile_lvl_safety` says something: the caller of
 `freshCell` at `Z1Ctx` and the call `p f` at `W2CallCtx`, typed by `synthIn?`
-at the budgets of `Typer.lean`. -/
+at the default fuel. -/
 
 section Checks
 
@@ -512,14 +512,13 @@ theorem Z1Ctx_wf : Z1Ctx.Wf := ctxWf?_sound _ (by decide +kernel)
 theorem W2CallCtx_wf : W2CallCtx.Wf := ctxWf?_sound _ (by decide +kernel)
 
 /-- The caller of `freshCell` logs twenty-three member-free subcapturings. -/
-example : (logOf Z1Ctx_wf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn)).length = 23 := by
+example : (logOf Z1Ctx_wf (synthIn? {} Z1Ctx ps2z Z1callerAnn)).length = 23 := by
   decide +kernel
 
 /-- The call `p f` logs six subcapturings, those of the argument's check at the
 domain. -/
 example : (logOf W2CallCtx_wf
-    (synthIn? { decls := 0, views := 0, sub := 0, cap := 0, typer := 2, obj := 0 }
-      W2CallCtx ps2c (.app (.there .here) .here))).length = 6 := by
+    (synthIn? {} W2CallCtx ps2c (.app (.there .here) .here))).length = 6 := by
   decide +kernel
 
 end Checks

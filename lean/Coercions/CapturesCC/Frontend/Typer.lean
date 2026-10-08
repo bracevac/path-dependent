@@ -1,97 +1,160 @@
 import Coercions.CapturesCC.Frontend.Adapt
+import Coercions.CapturesCC.Frontend.Alg
 import Coercions.CapturesCC.Frontend.Resolve
 import Coercions.CapturesCC.DotToFCdot.Prediction
 
 /-!
-# The derivation producing typer
+# The typer
 
 The typer reads a use set and an answer off an annotated term and returns the
 derivation of `HasTy` (`lean/Coercions/CapturesCC/DotMNF/Typing.lean`) about
-the erasure of the term it typed.  Every success carries its derivation, so
-soundness is the result type.  The typer is fuel bounded and incomplete,
-since subcapturing goes through subtyping and DOT subtyping is undecidable.
+the erasure of the term it typed.  Every result carries its derivation, so
+the result type is the soundness statement.
 
-## Verdicts
+It runs on the tank of `Fuel.lean`.  One tank is threaded through every goal
+it asks: each subtyping, subcapturing, answer and variable goal of
+`Sub.lean`, each member lookup of `Look.lean`, and each avoidance of
+`Avoid.lean`.  So the fuel counts the work of the whole typing, and a goal
+that finds the tank short marks it.  A marked tank is the recursion limit.
+It is never a rejection by the rules.
 
-A run ends in `ok` with the elaborated term and its derivation, `rejected` with
-a `Reason` that carries a proof of what it claims, or `unknown` when the search
-found nothing within its budget.  There are four reasons.
+## Least sets
 
-- `anyNotOk` and `freshNotOk`: a written type puts `any` or `fresh` where the
-  `CapturesCC` gives it no reading (`Ty.anyOk`, `Ty.freshOk`).
-- `levelEscape`: no member-free subcapturing puts `C` below `D` at the context
-  the typer reached.  The proof is `escape_rejected_at` of `Search.lean`, the
-  contrapositive of `source_lvl_safety`.  It speaks of the goal the typer
-  reached, not of every derivation of the program.
-- `existentialAtTop`: the answer outside every scope is an existential where
-  the program or a `let` asks for a plain type.
+The typer computes the least use set the rules allow.  A variable declared
+at the empty set is used at the empty set and keeps its declared type.  Any
+other variable is used at `{x}` with its declared shape at `{x}`.  A value is
+used at `{}`.  Application, projection and unboxing join the sets of their
+premises with `capJoin`.  At the binders the set is a candidate followed by
+evidence.
 
-## Use sets and written types
+- `λ(x : T). t` drops `{x}` from the body's set, reads `{x.C}` at the upper
+  bound of `x`'s capture member, found by the lookup, and strengthens the
+  result past the arrow's binder and the body's root.
+- `let x = t in u` approximates the body's set from above (`avoidUses`):
+  `{x}` becomes the capture set of `t`'s type (`sc-var`) and `{x.C}` the
+  member's upper bound.
+- `let ⟨c, x⟩ = t in u` charges the bound of the witness, and the body's set
+  without the payload and the witness.
+- `ν(z : S. d)` is typed by a least fixpoint on its capture set (`objFixF`).
 
-The typer computes the least use set the rules allow.  A variable declared at
-the empty set is used at the empty set, any other variable at `{x}`.  A call is
-charged `{x, y}` and a projection `{x}`.  A `let` charges its binder to the set
-the binder is declared at, by `sc-var`.
+## Written types
 
-A written type is read where it is written, after deciding that it is in the
-notation of `CapturesCC`.  A lambda domain reads `any` as the arrow's own capture
+A written type is decided to be in the notation of `CapturesCC` and then read
+where it is written.  A lambda domain reads `any` as the arrow's own capture
 binder (`Value.expand`).  A `let` annotation, an ascription and an object's
 self shape read `any` at `Ctx.reading`: the innermost scope root, or the
 program's platform set if there is none.  A `fresh` in the result of an arrow
-becomes an existential (`Ty.expandFresh`).
+becomes an existential (`Ty.expandFresh`).  The platform set `ps` is an
+argument of the typer for that reason.
 
-## Scopes
+## Candidates
 
-The typer opens scopes only through `Ctx.body` and `Ctx.objBody`, so binder
-levels are those of `CapturesCC`.  A lambda body sits under its body root, its arrow
-binder and its parameter.  An object's definitions sit under its class root
-and its self.
+Synthesis returns a list of candidates, each an elaborated term with its use
+set, its answer and its derivation.  The version has no rule that merges two
+members of one name, which the compiler does (`Types.scala:5759`).  So the
+typer keeps every choice instead.
 
-## The avoidance ladder
-
-`HasTy.let` asks for a plain result type `T'` with the body typed at `T'↑`.  A
-written annotation on a `let` or an ascription is binding: only it is tried,
-and when it fails the typer looks for a rejection at the goal it reached.  An
-existential annotation is reached from the plain `let` by answer inclusion,
-which packs it.  Without an annotation three rungs are tried.
-
-1. The body's type, with the shape strengthened past the binder and the set
-   with the binder replaced by the binder's declared set.
-2. `⊤` at that set.
-3. If the bound term's answer is an existential, the `let` becomes an
-   unpacking `letex`.  The body is renamed past the new witness binder and
-   typed under the witness and the payload.  Its answer leaves their scope by
-   strengthening, or by the level rule into the innermost root, which is the
-   compiler's local `any` absorbing a `fresh`.
-
-The first rung that succeeds wins.  Otherwise the first rejection is the
-verdict, and if there is none the verdict is `unknown`.
+- A variable has its first view.
+- `x y` tries every function type the lookup finds in `x`, and keeps each one
+  whose domain, with the arrow's binder at `y`, `y` meets.  An argument that
+  fails is adapted by box adaptation and bound by a `let`.  A function with a
+  box and no function type is unboxed and bound by a `let`.
+- `x.a` returns every field at `a` the lookup finds.  A receiver with a box
+  and no such field is unboxed and bound by a `let`.
+- `let x = t in u` without annotation returns every pair of a candidate of
+  `t` and a candidate of `u`.  The body's type is approximated by a type free
+  of `x` (`avoidLet`), as the compiler's `avoid` does
+  (`TypeOps.scala:474-509,565-583`).  When the candidate of `t` has an
+  existential answer, the `let` becomes an unpacking: the body is renamed past
+  the witness binder, typed under the witness and the payload, and its answer
+  leaves their scope by `avoidEx`.
+- `let x : A = t in u` has the answer `A`.  The annotation binds.  The body is
+  checked against it and is never approximated.  An existential annotation is
+  reached from the plain `let` by the answer goal, which packs it.
+- `□ x` is the box of the first view, and `C ⊸ x` unboxes every box the
+  lookup finds with the boxed set `C`, read off the first box when none is
+  written.
+- `(t : T)` checks `t` against `T`.
 
 ## Checking
 
-`check?` adds clauses to synthesis followed by answer inclusion.  A `λ` against
-a function type checks its body against the codomain.  A `let` with no
-annotation checks its body against the goal.  A box value against a box goal
-checks the variable against the boxed type.  A variable checked against a goal
-goes through box inference (`adaptVar?` of `Adapt.lean`).
+Synthesis and checking are one function, `inferF`, with an optional goal.  It
+is structural on an index that starts at the size of the term.  Every
+recursive call is at a subterm, or at the body of a `let` renamed past the
+witness binder of an unpacking, which has the same size.  Checking a variable
+goes through box adaptation (`adaptVarF`), whose plain checking is the `var`
+goal.  That goal reaches the rules subsumption does not, `HasTy.andI` and
+`HasTy.recI`.  Three forms are checked against the goal's form first: a `λ`
+against a function type checks its body against the codomain, a `let` with
+no annotation checks its body against the goal, and a box value against a box
+goal checks the variable against the boxed type.  Every other candidate is
+moved to the goal by the answer goal.
 
-## Fuel
+## The object rule
 
-`synth?`, `check?` and `checkDefs?` are one block, structural on the fuel, and
-every call inside is at one unit less.  `synth?` ends each fuel level with a
-retry at the previous level, which changes no answer and makes `synth?_le` an
-induction on the fuel.  The search runs at its own counters, `Budget.cap` for
-sets and `Budget.sub` for shapes.  Typing reduces in the kernel, except that a
-`levelEscape` rejection reads the well-founded `Ctx.caps`, so it is computed by
-compiled code.
+`HasTy.obj` types the definitions of a literal under a class root and a self
+binder that holds the same definitions and the same capture set as the
+conclusion.  Box adaptation changes the definitions, and the set of a literal
+is known only after its definitions are typed.  `objFixF` iterates: it types
+the definitions under a binder at the current definitions and set, and stops
+when the elaborated definitions erase to the ones the binder holds and their
+use set is below the current set and the self variable.  Otherwise the next
+pass takes the elaborated definitions and the current set joined with the
+atoms of the set they used that the current set does not account for: the
+self variable dropped, its capture members read at their upper bounds, and
+the class root strengthened away.  An atom is accounted for when the
+subcapturing goal from it to the current set has an answer.  This is the
+compiler's class use set, a variable grown until it is solved
+(`cc/CheckCaptures.scala:1501-1515`, `cc/CaptureSet.scala:880-912`).  A pass
+that goes on adds an atom the set does not account for, or other
+definitions (`objFix_progress`).  The number of passes is bounded by
+`objBound`, a size of the program.  A pass that reaches the bound marks the
+tank, so the bound never causes a rejection.
+
+## Verdicts
+
+`synthTopF` and `synthInF` return the first candidate with the tank left.
+`synthIn?` and `synthTop?` read that as a verdict, the form `compile` returns.
+A candidate is `ok`.  A marked tank is `unknown`.  A rejection with the tank
+unmarked is `rejected` when a reason with its proof is found, and `unknown`
+otherwise.  `whyF` looks for the reason: a written type outside the notation
+(`anyNotOk`, `freshNotOk`), a body whose answer is an existential outside
+every scope (`existentialAtTop`), or a level escape at the goal an annotation
+or an ascription reached (`levelEscape`).  The last is found by walking the
+synthesized type and the written one as the arrow rule does, and is certified
+by `escape_rejected_at`, the contrapositive of `source_lvl_safety`.  It speaks
+of the goal the typer reached, not of every derivation of the program.
+
+## The theorems
+
+Every computation here is framed: it keeps a marked tank, never adds fuel,
+and does the same with more fuel (`synthF_frame`).  So a typing that ends
+unmarked gives the same answer at every larger fuel (`synthTop?_mono`,
+`synthTop?_stable`).  A rejection that ends unmarked is a rejection at every
+fuel.  The typer has no completeness theorem.  It does not find a derivation
+through a middle type the program does not write, as the compiler does not.
+It does not merge two members, so it tries each.  It does not find a
+judgment whose search needs more than the fuel.  And a lookup through a
+cyclic member is cut, as the compiler's cyclic reference.
+
+Every definition is structural, so the kernel evaluates the typer.  The checks
+at the end of the module type the example programs at `defaultFuel` by
+`decide +kernel`.  A level escape reads the well-founded `Ctx.caps`, so those
+verdicts are computed by compiled code.
 -/
 
 namespace CapturesCCFrontend
 
+open Frontend.Fuel CapturesCCFrontend.Core
 open CapturesCC.FCdot (Kind Sig BVar Rename Label PartialRename witness?)
 open CapturesCC.DotMNF (Path CapAtom CaptureSet Shape Ty ETy Dom Cod Tm Value Defs Ctx Sub
   SubShape Subcap ESub HasTy DefsTy Platform Subst)
 open scoped CapturesCC.DotMNF
+
+/-- The fuel of a typing.  One field, the size of the tank every entry point
+starts from. -/
+structure Budget where
+  fuel : Nat := defaultFuel
 
 /-! ## Reasons and verdicts -/
 
@@ -116,7 +179,7 @@ inductive Verdict (α : Type) : Type where
   | ok : α → Verdict α
   /-- Rejected, with a reason that carries its proof. -/
   | rejected : Reason → Verdict α
-  /-- Not found within the budget. -/
+  /-- No answer, with no reason found, or the recursion limit. -/
   | unknown : Verdict α
 
 namespace Verdict
@@ -137,24 +200,7 @@ def map (f : α → β) (v : Verdict α) : Verdict β :=
   | .rejected r => .rejected r
   | .unknown => .unknown
 
-/-- The ladder rule.  A success wins.  Otherwise the second alternative is
-tried, and a failure keeps the first rejection, if any. -/
-def orElse (v : Verdict α) (w : Unit → Verdict α) : Verdict α :=
-  match v with
-  | .ok a => .ok a
-  | .rejected r =>
-      match w () with
-      | .ok b => .ok b
-      | _ => .rejected r
-  | .unknown => w ()
-
-/-- A second look when nothing was decided: only `unknown` runs `w`. -/
-def whenUnknown (v : Verdict α) (w : Unit → Verdict α) : Verdict α :=
-  match v with
-  | .unknown => w ()
-  | v => v
-
-/-- A search result read as a verdict: nothing found is `unknown`. -/
+/-- An optional result read as a verdict: nothing is `unknown`. -/
 def ofOption (o : Option α) : Verdict α :=
   match o with
   | some a => .ok a
@@ -184,19 +230,6 @@ def reason? (v : Verdict α) : Option Reason :=
   | .rejected r => some r
   | _ => none
 
-/-- A success of the second alternative is kept by the ladder rule. -/
-theorem isOk_orElse_right {v : Verdict α} {w : Unit → Verdict α} (h : (w ()).isOk = true) :
-    (v.orElse w).isOk = true := by
-  cases v with
-  | ok a => rfl
-  | rejected r =>
-      simp only [orElse]
-      cases hw : w () with
-      | ok b => rfl
-      | rejected r' => rw [hw] at h; simp [isOk] at h
-      | unknown => rw [hw] at h; simp [isOk] at h
-  | unknown => simpa [orElse] using h
-
 end Verdict
 
 /-- The name of a reason, for messages. -/
@@ -206,45 +239,15 @@ def Reason.name : Reason → String
   | .levelEscape _ _ _ _ _ => "levelEscape"
   | .existentialAtTop _ _ _ => "existentialAtTop"
 
-/-! ## Typings at a plain and at an existential answer -/
-
-/-- A typing at a plain answer. -/
-structure PElab {s : Sig} (Γ : Ctx s) where
-  /-- The elaborated term. -/
-  tm : ATm s
-  /-- The use set. -/
-  uses : CaptureSet s
-  /-- The type. -/
-  ty : Ty s
-  /-- The derivation. -/
-  deriv : HasTy uses Γ tm.erase (.ty ty)
-
-/-- A typing at an existential answer `∃ᶜ[bnd] body`. -/
-structure XElab {s : Sig} (Γ : Ctx s) where
-  /-- The elaborated term. -/
-  tm : ATm s
-  /-- The use set. -/
-  uses : CaptureSet s
-  /-- The bound of the witness. -/
-  bnd : CaptureSet s
-  /-- The type under the witness binder. -/
-  body : Ty (s,c)
-  /-- The derivation. -/
-  deriv : HasTy uses Γ tm.erase (∃ᶜ[bnd] body)
-
-/-- A synthesized typing split by the form of its answer. -/
-def Elab.split {s : Sig} {Γ : Ctx s} (r : Elab Γ) : PElab Γ ⊕ XElab Γ :=
-  match r with
-  | ⟨tm, uses, .ty T, d⟩ => .inl ⟨tm, uses, T, d⟩
-  | ⟨tm, uses, .ex C T, d⟩ => .inr ⟨tm, uses, C, T, d⟩
-
-/-- A typing at a plain answer read as a synthesized one. -/
-def PElab.toElab {s : Sig} {Γ : Ctx s} (r : PElab Γ) : Elab Γ := ⟨r.tm, r.uses, .ty r.ty, r.deriv⟩
+/-- The rejection of an existential answer outside every scope, where no root
+can absorb its witness. -/
+def existentialAt {s : Sig} (Γ : Ctx s) (q : XElab Γ) : Reason :=
+  .existentialAtTop Γ (∃ᶜ[q.bnd] q.body) (fun _ ⟨e⟩ => by cases e)
 
 /-! ## Written types
 
-A written type is decided to be in the notation of `CapturesCC` and then read at
-the position it is written at.  A lambda domain and a `let` annotation are
+A written type is decided to be in the notation of `CapturesCC` and then read
+at the position it is written at.  A lambda domain and a `let` annotation are
 decided as part of an arrow, since the conditions on them are the arrow
 clauses of `Shape.anyOk` and `Shape.freshOk`. -/
 
@@ -256,19 +259,18 @@ def domArrow {s : Sig} (T : Ty (Sig.dom s)) : Ty s := (Shape.all T (.ty (.top ^ 
 def ansArrow {s : Sig} (E : ETy s) : Ty s :=
   (Shape.all (.top ^ []) (ETy.weaken (k := .var) (ETy.weaken (k := .cap) E))) ^ []
 
-/-- A written type is in the notation of `CapturesCC`: every `any` and `fresh`
-sits where `CapturesCC` reads it. -/
-def written {s : Sig} (T : Ty s) : Verdict Unit :=
-  if h : T.anyOk = false then .rejected (.anyNotOk T h)
-  else if h' : T.freshOk = false then .rejected (.freshNotOk T h')
-  else .ok ()
+/-- Why a written type is not in the notation of `CapturesCC`, if it is not. -/
+def writtenWhy {s : Sig} (T : Ty s) : Option Reason :=
+  if h : T.anyOk = false then some (.anyNotOk T h)
+  else if h' : T.freshOk = false then some (.freshNotOk T h')
+  else none
 
-/-- A written answer is in the notation of `CapturesCC`.  An existential is decided
-as the result of an arrow. -/
-def writtenAns {s : Sig} (E : ETy s) : Verdict Unit :=
+/-- Why a written answer is not in the notation of `CapturesCC`.  An
+existential is decided as the result of an arrow. -/
+def writtenAnsWhy {s : Sig} (E : ETy s) : Option Reason :=
   match E with
-  | .ty T => written T
-  | .ex _ _ => written (ansArrow E)
+  | .ty T => writtenWhy T
+  | .ex _ _ => writtenWhy (ansArrow E)
 
 /-- A written lambda domain read at the arrow's own capture binder
 (`Value.expand`). -/
@@ -289,7 +291,8 @@ def readSelf {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (S : Shape (s,x)) : Shap
 abbrev psBody {s : Sig} (ps : CaptureSet s) : CaptureSet (Sig.body s) :=
   CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) (CaptureSet.weaken (k := .cap) ps))
 
-/-- The platform set under an object's class root and self. -/
+/-- The platform set under an object's class root and self, and under the
+witness and payload of an unpacking. -/
 abbrev psObj {s : Sig} (ps : CaptureSet s) : CaptureSet ((s,c),x) :=
   CaptureSet.weaken (k := .var) (CaptureSet.weaken (k := .cap) ps)
 
@@ -300,13 +303,6 @@ abbrev psVar {s : Sig} (ps : CaptureSet s) : CaptureSet (s,x) := CaptureSet.weak
 
 The label of a member occurs twice in the conclusion of its rule, so these use
 `cases` rather than a rewrite. -/
-
-/-- A field view read at the label the projection asks for. -/
-def hasFldAt {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {x : BVar s .var} {a c : Label}
-    {T : Ty s} {C : CaptureSet s} (h : c = a)
-    (d : HasTy U Γ (.path (.var x)) (.ty ((Shape.fld c T) ^ C))) :
-    HasTy U Γ (.path (.var x)) (.ty ((Shape.fld a T) ^ C)) := by
-  cases h; exact d
 
 /-- A type member definition against a declaration whose bounds are the
 definition's own shape. -/
@@ -326,13 +322,8 @@ def defsTrmAt {s : Sig} {Γ : Ctx s} {V : CaptureSet s} {a c : Label} {t : Tm s}
     (h : a = c) (ht : HasTy V Γ t (.ty T)) : DefsTy V Γ (.trm a t) (.fld c T) := by
   cases h; exact .trm ht
 
-/-- A shape below itself, across a decided equality. -/
-def subShapeOfEq {s : Sig} {Γ : Ctx s} {S T : Shape s} (h : S = T) : SubShape Γ S T := by
-  cases h; exact .refl
-
-/-- `{}-I` for definitions that are the literal's own up to a decided equality:
-the self binder holds the definitions the program wrote, which the typer typed
-under it. -/
+/-- `{}-I` for definitions equal to the ones the self binder holds, which the
+typer typed under it. -/
 def objOf {s : Sig} {Γ : Ctx s} {d e : Defs ((s,c),x)} {S : Shape (s,x)} {U : CaptureSet s}
     (h : e = d)
     (dt : DefsTy (CaptureSet.weaken (CaptureSet.weaken U) ∪ [.var .here]) (Γ.objBody d S U) e
@@ -340,322 +331,659 @@ def objOf {s : Sig} {Γ : Ctx s} {d e : Defs ((s,c),x)} {S : Shape (s,x)} {U : C
     (hd : Defs.Distinct d) : HasTy [] Γ (.val (.obj e)) (.ty ((Shape.mu S) ^ U)) := by
   cases h; exact .obj dt hd
 
-/-- The codomain of a lambda: the body's answer with the body root removed
-(`Cod.underRoot`). -/
-def codOf? {s : Sig} (E : ETy (Sig.body s)) : Option { T : Cod s // E = Cod.underRoot T } :=
-  match witness? (eTyRename? E PartialRename.unshift.lift.lift) with
-  | some ⟨T, h⟩ =>
-      some ⟨T, eTyRename?_sound E T _ _
-        (PartialRename.Inverts.lift (PartialRename.Inverts.lift PartialRename.unshift_inverts)) h⟩
-  | none => none
+/-- Weakening keeps an inclusion of sets. -/
+theorem weaken_subset {s : Sig} {C D : CaptureSet s} (h : CaptureSet.Subset C D) :
+    CaptureSet.Subset (CaptureSet.weaken (k := .var) C) (CaptureSet.weaken (k := .var) D) := by
+  intro a ha
+  simp only [CaptureSet.weaken, CaptureSet.rename, List.mem_map] at ha ⊢
+  obtain ⟨b, hb, rfl⟩ := ha
+  exact ⟨b, h b hb, rfl⟩
 
-/-! ## Reading a view
+/-! ## Pieces the clauses use -/
 
-The typer consults the views of the search in four ways.  None recurses. -/
+/-- Run `c`, and return its answer as a list of at most one, mapped by `f`. -/
+def mapL {α β : Type} (c : Fu (Option α)) (f : α → β) : Fu (List β) :=
+  Fu.bind c fun o => Fu.ret (listO (o.map f))
 
-/-- A function type a variable has, with the derivation. -/
-structure AllView {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
-  /-- The use set. -/
-  uses : CaptureSet s
-  /-- The domain, under the arrow's capture binder. -/
-  dom : Dom s
-  /-- The codomain, under the arrow's capture binder and the parameter. -/
-  cod : Cod s
-  /-- The capture set of the function. -/
-  cs : CaptureSet s
-  /-- The derivation. -/
-  deriv : HasTy uses Γ (.path (.var x)) (.ty ((Shape.all dom cod) ^ cs))
+/-- The candidates of `a`, or those of `b` when `a` has none. -/
+def orElseL {α : Type} (a b : Fu (List α)) : Fu (List α) :=
+  Fu.bind a fun
+    | [] => b
+    | l => Fu.ret l
 
-/-- A field a variable has at a given label, with the derivation. -/
-structure FldView {s : Sig} (Γ : Ctx s) (x : BVar s .var) (a : Label) where
-  /-- The use set. -/
-  uses : CaptureSet s
-  /-- The type of the field. -/
-  ty : Ty s
-  /-- The capture set of the object. -/
-  cs : CaptureSet s
-  /-- The derivation. -/
-  deriv : HasTy uses Γ (.path (.var x)) (.ty ((Shape.fld a ty) ^ cs))
+/-- Keep the first candidate of each use set and answer. -/
+def dedupE {s : Sig} {Γ : Ctx s} : List (Elab Γ) → List (Elab Γ)
+  | [] => []
+  | r :: rs => r :: (dedupE rs).filter fun r' => !decide (r'.uses = r.uses ∧ r'.ans = r.ans)
 
-/-- The first view that is a function type.  Only the first is tried. -/
-def allView {s : Sig} {Γ : Ctx s} {x : BVar s .var} (vs : List (View Γ x)) :
-    Option (AllView Γ x) :=
-  firstSome (fun v =>
-    match hv : v.ty with
-    | .capt C (.all T1 T2) => some ⟨v.uses, T1, T2, C, hv ▸ v.deriv⟩
-    | _ => none) vs
+/-- A candidate at exactly the answer asked for. -/
+def toChecked {s : Sig} {Γ : Ctx s} (r : Elab Γ) (E : ETy s) : Option (Checked Γ E) :=
+  if h : r.ans = E then some ⟨r.tm, r.uses, h ▸ r.deriv⟩ else none
 
-/-- The first view that is a field declaration at the label asked for. -/
-def fldView {s : Sig} {Γ : Ctx s} {x : BVar s .var} (a : Label) (vs : List (View Γ x)) :
-    Option (FldView Γ x a) :=
-  firstSome (fun v =>
-    match hv : v.ty with
-    | .capt C (.fld c T) =>
-        if h : c = a then some ⟨v.uses, T, C, hasFldAt h (hv ▸ v.deriv)⟩ else none
-    | _ => none) vs
+/-- The first candidate at exactly the answer asked for. -/
+def firstChecked {s : Sig} {Γ : Ctx s} (rs : List (Elab Γ)) (E : ETy s) : Option (Checked Γ E) :=
+  rs.findSome? fun r => toChecked r E
 
-/-- The first view at exactly the type asked for. -/
-def viewAt {s : Sig} {Γ : Ctx s} {x : BVar s .var} (T : Ty s) (vs : List (View Γ x)) :
-    Option (VarChecked Γ x T) :=
-  firstSome (fun v => if h : v.ty = T then some ⟨v.uses, h ▸ v.deriv⟩ else none) vs
+/-- The candidates moved to a goal: all of them when there is none, and each
+one the answer goal takes to `E` otherwise. -/
+def finishF {s : Sig} (Γ : Ctx s) (G : Option (ETy s)) (rs : List (Elab Γ)) :
+    Fu (List (Elab Γ)) :=
+  match G with
+  | none => Fu.ret rs
+  | some E => Fu.flatMapL (fun r => mapL (subsumeF Γ r E) Checked.toElab) rs
 
-/-- The first view the subtyping search takes to the type asked for. -/
-def viewSub {s : Sig} {Γ : Ctx s} {x : BVar s .var} (D : DeclTable Γ) (c n : Nat) (T : Ty s)
-    (vs : List (View Γ x)) : Option (VarChecked Γ x T) :=
-  firstSome (fun v => (sub? D c n v.ty T).map fun e =>
-    ⟨v.uses, HasTy.sub v.deriv (.ty e) .refl⟩) vs
+/-! ## The binders of a set
 
-/-! ## Checking a variable -/
+`All-I` and `{}-I` drop the binder `x` from a set over `(s,x)`, and read each
+`{x.C}` at the upper bound of the capture member `C` of `x`. -/
 
-/-- Checking a variable.  Three rules, in order.
+/-- The upper bound of the first capture member of the innermost binder at each
+label `{x.C}` of `V` names, found by the lookup. -/
+def hereBoundsF {s : Sig} (Γ : Ctx (s,x)) (V : CaptureSet (s,x)) :
+    Fu (List (Label × CaptureSet (s,x))) :=
+  Fu.flatMapL (fun a =>
+    match a with
+    | .sel .here C => Fu.bind (capsAt Γ .here C) fun ds =>
+        Fu.ret (listO (ds.head?.map fun d => (C, d.2.1)))
+    | _ => Fu.ret []) V
 
-1. A goal `(S₁ ∧ S₂) ^ C` splits by `HasTy.andI` at the join of the two use
-   sets.
-2. A goal `(μ S) ^ C` whose body is declaration shaped folds by `HasTy.recI`.
-   `SubShape` has no rule for `μ`, so such a goal is otherwise unreachable from
-   an opened view.
-3. Otherwise a view at exactly the goal, and then a view the subtyping search
-   takes there. -/
-def checkVar? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
-    (x : BVar s .var) (T : Ty s) : Option (VarChecked Γ x T) :=
-  match n with
-  | 0 => none
-  | n + 1 =>
-      ((match T with
-        | .capt C (.and S1 S2) =>
-            (checkVar? D b n x (S1 ^ C)).bind fun r1 =>
-              (checkVar? D b n x (S2 ^ C)).map fun r2 =>
-                ⟨capJoin r1.uses r2.uses,
-                  HasTy.andI (widenLeft r1.deriv r2.uses) (widenRight r1.uses r2.deriv)⟩
-        | _ => none) : Option (VarChecked Γ x T)).orElse fun _ =>
-      ((match T with
-        | .capt C (.mu S) =>
-            if hd : Shape.Decl S then
-              (checkVar? D b n x ((S.substVar x) ^ C)).map fun r => ⟨r.uses, HasTy.recI r.deriv hd⟩
-            else none
-        | _ => none) : Option (VarChecked Γ x T)).orElse fun _ =>
-      (viewAt T (views D b x)).orElse fun _ => viewSub D b.cap b.sub T (views D b x)
-termination_by structural n
-
-/-! ## Candidates with their evidence -/
-
-/-- The upper bound of the capture member `C` of the innermost binder, as the
-table under that binder records it.  An atom `{x.C}` is replaced by it when `x`
-goes out of scope. -/
-def hereSel {s : Sig} {Γ : Ctx (s,x)} (D : DeclTable Γ) : Label → Option (CaptureSet (s,x)) :=
-  fun ℓ => firstSome (fun d => if d.vr = .here ∧ d.lbl = ℓ then some d.hi else none) D.caps
+/-- The bound found at a label. -/
+def selOf {s : Sig} (bs : List (Label × CaptureSet s)) (C : Label) : Option (CaptureSet s) :=
+  (bs.find? fun p => decide (p.1 = C)).map (·.2)
 
 /-- The set of a function: the body's set `V` without the parameter,
 strengthened past the arrow binder and the body root, with the evidence
 `V <: U↑↑↑ ∪ {x}` that `All-I` asks for.  A body that uses its arrow binder or
 its body root has no such set. -/
-def lamUses? {s : Sig} {Γ : Ctx s} {T : Dom s} (D : DeclTable (Γ.body T)) (c : Nat)
-    (V : CaptureSet (Sig.body s)) :
-    Option ((U : CaptureSet s) ×
+def lamUsesF {s : Sig} (Γ : Ctx s) (T : Dom s) (V : CaptureSet (Sig.body s)) :
+    Fu (Option ((U : CaptureSet s) ×
       Subcap (Γ.body T) V
-        (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken U)) ∪ [.var .here])) := do
-  let U2 ← capDropHere? (hereSel D) V
-  let U1 ← capStrengthen? (k := .cap) U2
-  let U ← capStrengthen? (k := .cap) U1
-  let e ← subcap? D c V (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken U)) ∪ [.var .here])
-  some ⟨U, e⟩
-
-/-- `All-I` from a synthesized body. -/
-def lamOf? {s : Sig} {Γ : Ctx s} {T : Dom s} (D : DeclTable (Γ.body T)) (c : Nat)
-    (hwf : Ty.Wf T) (r : Elab (Γ.body T)) : Option (Elab Γ) :=
-  match codOf? r.ans with
-  | some ⟨T2, h⟩ =>
-      match lamUses? D c r.uses with
-      | some ⟨U, e⟩ =>
-          some ⟨.lam T r.tm, [], .ty ((Shape.all T T2) ^ U), HasTy.lam (h ▸ widenUses r.deriv e) hwf⟩
-      | none => none
-  | none => none
-
-/-- The set a `let` adds to its bound term's `U₁`: the body's set `V` with `{x}`
-replaced by the capture set of `x`'s type, with evidence that `V` is below the
-join of the two. -/
-def letUses? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (c : Nat)
-    (U1 : CaptureSet s) (V : CaptureSet (s,x)) :
-    Option ((U2 : CaptureSet s) × Subcap (Γ.cons T) V (CaptureSet.weaken (capJoin U1 U2))) := do
-  let U2 ← capAvoid? (CaptureSet.weaken T.captureSet) (hereSel D) V
-  let e ← subcap? D c V (CaptureSet.weaken (capJoin U1 U2))
-  some ⟨U2, e⟩
-
-/-- The first rung of the ladder: the body's shape strengthened and its set
-avoided. -/
-def avoidStrengthen? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (c : Nat) :
-    (W : Ty (s,x)) → Option ((T' : Ty s) × Sub (Γ.cons T) W T'.weaken)
-  | .capt CW SW => do
-      let C' ← capAvoid? (CaptureSet.weaken T.captureSet) (hereSel D) CW
-      let w ← shapeStrengthenW? SW
-      let e ← subcap? D c CW (CaptureSet.weaken C')
-      some ⟨w.val ^ C', Sub.capt (subShapeOfEq w.property) e⟩
-
-/-- The second rung of the ladder: `⊤` at the avoided set. -/
-def avoidTop? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (c : Nat) :
-    (W : Ty (s,x)) → Option ((T' : Ty s) × Sub (Γ.cons T) W T'.weaken)
-  | .capt CW _ => do
-      let C' ← capAvoid? (CaptureSet.weaken T.captureSet) (hereSel D) CW
-      let e ← subcap? D c CW (CaptureSet.weaken C')
-      some ⟨.top ^ C', Sub.capt SubShape.top e⟩
+        (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken U)) ∪ [.var .here]))) :=
+  Fu.bind (hereBoundsF (Γ.body T) V) fun bs =>
+    match capDropHere? (selOf bs) V with
+    | some U2 =>
+        match capStrengthen? (k := .cap) U2 with
+        | some U1 =>
+            match capStrengthen? (k := .cap) U1 with
+            | some U =>
+                mapO (subcapF (Γ.body T) V
+                  (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken U)) ∪ [.var .here]))
+                  fun e => ⟨U, e⟩
+            | none => Fu.ret none
+        | none => Fu.ret none
+    | none => Fu.ret none
 
 /-! ## Assembling a `let` -/
 
-/-- `HasTy.let` at the result type `T'`, with the use set joined and both
-premises widened to it. -/
-def letOf? {s : Sig} {Γ : Ctx s} (r1 : PElab Γ) (D : DeclTable (Γ.cons r1.ty)) (c : Nat)
-    (ann : Option (ETy s)) (T' : Ty s) (r2 : Checked (Γ.cons r1.ty) (.ty (Ty.weaken T'))) :
-    Option (Checked Γ (.ty T')) :=
-  if hwf : Ty.Wf T' then
-    (letUses? D c r1.uses r2.uses).map fun p =>
-      ⟨.let ann r1.tm r2.tm, capJoin r1.uses p.1,
-        HasTy.let (widenLeft r1.deriv p.1) (widenUses r2.deriv p.2) hwf⟩
-  else none
+/-- `HasTy.let` at the result type `A`, with the body's use set approximated
+from above and both premises widened to the join. -/
+def letAtF {s : Sig} (Γ : Ctx s) (ann : Option (ETy s)) (A : Ty s) (p : PElab Γ)
+    (r2 : Checked (Γ.cons p.ty) (.ty A.weaken)) : Fu (Option (Elab Γ)) :=
+  if hwf : Ty.Wf A then
+    mapO (avoidUses Γ p.ty r2.uses) fun q =>
+      ⟨.let ann p.tm r2.tm, capJoin p.uses q.1, .ty A,
+        HasTy.let (widenLeft p.deriv q.1)
+          (widenUses r2.deriv (q.2.trans (.elem (weaken_subset (capJoin_right p.uses q.1))))) hwf⟩
+  else Fu.ret none
 
-/-- The first two rungs of the ladder for a body already synthesized.  A body
-with an existential answer has neither, since `HasTy.let` concludes at a plain
-type. -/
-def letAvoid? {s : Sig} {Γ : Ctx s} (r1 : PElab Γ) (D : DeclTable (Γ.cons r1.ty)) (c : Nat)
-    (ann : Option (ETy s)) (r2 : Elab (Γ.cons r1.ty)) : Option (Elab Γ) :=
+/-- `HasTy.let` at the avoided type of its body.  A body with an existential
+answer has none, since `HasTy.let` concludes at a plain type. -/
+def letFinishF {s : Sig} (Γ : Ctx s) (ann : Option (ETy s)) (p : PElab Γ)
+    (r2 : Elab (Γ.cons p.ty)) : Fu (Option (Elab Γ)) :=
   match r2.split with
   | .inl q =>
-      ((avoidStrengthen? D c q.ty).bind fun p =>
-        (letOf? r1 D c ann p.1 ⟨q.tm, q.uses, HasTy.sub q.deriv (.ty p.2) .refl⟩).map
-          Checked.toElab).orElse fun _ =>
-      (avoidTop? D c q.ty).bind fun p =>
-        (letOf? r1 D c ann p.1 ⟨q.tm, q.uses, HasTy.sub q.deriv (.ty p.2) .refl⟩).map
-          Checked.toElab
-  | .inr _ => none
+      bindO (avoidLet Γ p.ty q.ty) fun a =>
+        letAtF Γ ann a.1 p ⟨q.tm, q.uses, HasTy.sub q.deriv (.ty a.2) .refl⟩
+  | .inr _ => Fu.ret none
+
+/-- Every candidate of a body under the binder of `p`, each closed by
+`letFinishF`. -/
+def letPairsF {s : Sig} (Γ : Ctx s) (ann : Option (ETy s)) (p : PElab Γ)
+    (body : Fu (List (Elab (Γ.cons p.ty)))) : Fu (List (Elab Γ)) :=
+  Fu.bind body fun r2s => Fu.flatMapL (fun r2 => mapL (letFinishF Γ ann p r2) id) r2s
 
 /-! ## Assembling an unpacking
 
 `HasTy.letex` opens the witness binder and the payload binder.  The body's use
 set may name the witness.  Everything else it uses is charged to the declared
-set `U₂`, which is above the witness's bound. -/
+set, which is above the witness's bound. -/
 
 /-- What an unpacking's body uses beyond the witness, with the payload replaced
-by the set it is declared at.  The declared set of the unpacking is the bound
-`C₀` joined with it, and the evidence is `V <: U₂↑↑ ∪ {c}` at that set. -/
-def letexUses? {s : Sig} {Γ : Ctx s} {T : Ty (s,c)} (D : DeclTable ((Γ.consC).cons T))
-    (c : Nat) (C₀ : CaptureSet s) (V : CaptureSet ((s,c),x)) :
-    Option ((res : CaptureSet s) ×
+by the set it is declared at and its capture members by their upper bounds
+(`capUpAt`).  The declared set of the unpacking is the bound `C₀` joined with
+it, and the evidence is `V <: U₂↑↑ ∪ {c}` at that set. -/
+def letexUsesF {s : Sig} (Γ : Ctx s) (T : Ty (s,c)) (C₀ : CaptureSet s)
+    (V : CaptureSet ((s,c),x)) :
+    Fu (Option ((res : CaptureSet s) ×
       Subcap ((Γ.consC).cons T) V
         (CaptureSet.weaken (CaptureSet.weaken (k := .cap) (capJoin C₀ res)) ∪
-          [CapAtom.cvar (.there .here)])) := do
-  let V1 ← capAvoid? (CaptureSet.weaken T.captureSet) (hereSel D) V
-  let res ← capStrengthen? (k := .cap) (V1.filter (fun a => !(decide (a = CapAtom.cvar .here))))
-  let e ← subcap? D c V
-    (CaptureSet.weaken (CaptureSet.weaken (k := .cap) (capJoin C₀ res)) ∪
-      [CapAtom.cvar (.there .here)])
-  some ⟨res, e⟩
+          [CapAtom.cvar (.there .here)]))) :=
+  Fu.bind (capUpAt ((Γ.consC).cons T) .here V) fun r =>
+    match capStrengthen? (k := .var) r.1 with
+    | some V1 =>
+        match capStrengthen? (k := .cap) (V1.filter fun a => !(decide (a = CapAtom.cvar .here))) with
+        | some res =>
+            mapO (subcapF ((Γ.consC).cons T) V
+              (CaptureSet.weaken (CaptureSet.weaken (k := .cap) (capJoin C₀ res)) ∪
+                [CapAtom.cvar (.there .here)])) fun e => ⟨res, e⟩
+        | none => Fu.ret none
+    | none => Fu.ret none
 
 /-- `HasTy.letex` at the answer `E`, the use set widened to the join. -/
-def letexOf? {s : Sig} {Γ : Ctx s} (r1 : XElab Γ) (D : DeclTable ((Γ.consC).cons r1.body))
-    (c : Nat) (E : ETy s)
-    (r2 : Checked ((Γ.consC).cons r1.body) (ETy.weaken (ETy.weaken (k := .cap) E))) :
-    Option (Checked Γ E) :=
-  match letexUses? D c r1.bnd r2.uses with
-  | some ⟨res, e⟩ =>
-      some ⟨.letex r1.tm r2.tm, capJoin r1.uses (capJoin r1.bnd res),
-        widenUses
-          (HasTy.letex r1.deriv (.elem (capJoin_left r1.bnd res)) (widenUses r2.deriv e))
-          (Subcap.union (.elem (capJoin_left r1.uses (capJoin r1.bnd res)))
-            (.elem (capJoin_right r1.uses (capJoin r1.bnd res))))⟩
-  | none => none
+def letexOfF {s : Sig} (Γ : Ctx s) (q : XElab Γ) (E : ETy s)
+    (r2 : Checked ((Γ.consC).cons q.body) (ETy.weaken (ETy.weaken (k := .cap) E))) :
+    Fu (Option (Elab Γ)) :=
+  mapO (letexUsesF Γ q.body q.bnd r2.uses) fun p =>
+    ⟨.letex q.tm r2.tm, capJoin q.uses (capJoin q.bnd p.1), E,
+      widenUses
+        (HasTy.letex q.deriv (.elem (capJoin_left q.bnd p.1)) (widenUses r2.deriv p.2))
+        (Subcap.union (.elem (capJoin_left q.uses (capJoin q.bnd p.1)))
+          (.elem (capJoin_right q.uses (capJoin q.bnd p.1))))⟩
 
-/-- An atom of the witness or the payload of an unpacking, replaced by the root
-`ρ`. -/
-def absorbAtom {s : Sig} (ρ : CapAtom ((s,c),x)) (a : CapAtom ((s,c),x)) : CapAtom ((s,c),x) :=
-  match a with
-  | .var .here => ρ
-  | .sel .here _ => ρ
-  | .cvar (.there .here) => ρ
-  | a => a
+/-- An unpacking at the answer of its body moved past the witness and the
+payload by `avoidEx`. -/
+def letexFinishF {s : Sig} (Γ : Ctx s) (q : XElab Γ) (r2 : Elab ((Γ.consC).cons q.body)) :
+    Fu (Option (Elab Γ)) :=
+  bindO (avoidEx Γ q.body r2.ans) fun a =>
+    letexOfF Γ q a.1 ⟨r2.tm, r2.uses, HasTy.sub r2.deriv a.2 .refl⟩
 
-/-- The answer of an unpacking's body moved out of the scope of the witness and
-the payload.  First by strengthening.  Then, for a plain answer, by the level
-rule: their atoms go to the innermost root of the context, whose level they are
-at.  A context with no root absorbs nothing. -/
-def exAvoid? {s : Sig} {Γ : Ctx s} {T : Ty (s,c)} (D : DeclTable ((Γ.consC).cons T)) (c : Nat)
-    (E : ETy ((s,c),x)) :
-    Option ((E' : ETy s) × ESub ((Γ.consC).cons T) E (ETy.weaken (ETy.weaken (k := .cap) E'))) :=
-  (match eTyStrengthenW? (k := .var) E with
-    | some ⟨F, hF⟩ =>
-        match eTyStrengthenW? (k := .cap) F with
-        | some ⟨E', hE'⟩ => some ⟨E', by rw [hF, hE']; exact ESub.refl _⟩
-        | none => none
-    | none => none :
-      Option ((E' : ETy s) × ESub ((Γ.consC).cons T) E (ETy.weaken (ETy.weaken (k := .cap) E')))).orElse
-    fun _ =>
-  match E, Γ.root? with
-  | .ty (.capt C S), some ρ => do
-      let w1 ← shapeStrengthenW? (k := .var) S
-      let w2 ← shapeStrengthenW? (k := .cap) w1.val
-      let C1 := C.map (absorbAtom (CapAtom.cvar (.there (.there ρ))))
-      let C2 ← capStrengthen? (k := .var) C1
-      let C' ← capStrengthen? (k := .cap) C2
-      let e ← subcap? D c C (CaptureSet.weaken (CaptureSet.weaken (k := .cap) C'))
-      some ⟨.ty (w2.val ^ C'),
-        ESub.ty (Sub.capt (subShapeOfEq
-          (w1.property.trans (congrArg (fun X => Shape.weaken X) w2.property))) e)⟩
-  | _, _ => none
+/-- Every candidate of an unpacking's body, each closed by `letexFinishF`. -/
+def letexPairsF {s : Sig} (Γ : Ctx s) (q : XElab Γ)
+    (body : Fu (List (Elab ((Γ.consC).cons q.body)))) : Fu (List (Elab Γ)) :=
+  Fu.bind body fun r2s => Fu.flatMapL (fun r2 => mapL (letexFinishF Γ q r2) id) r2s
 
-/-- The way out at an existential bound term, for a body already synthesized:
-its answer avoided, then `HasTy.letex`. -/
-def letexAvoid? {s : Sig} {Γ : Ctx s} (r1 : XElab Γ) (D : DeclTable ((Γ.consC).cons r1.body))
-    (c : Nat) (r2 : Elab ((Γ.consC).cons r1.body)) : Option (Elab Γ) :=
-  (exAvoid? D c r2.ans).bind fun p =>
-    (letexOf? r1 D c p.1 ⟨r2.tm, r2.uses, HasTy.sub r2.deriv p.2 .refl⟩).map Checked.toElab
+/-! ## The two kinds of `let`
 
-/-! ## The object rule, in passes
+A `let` whose bound term has a plain answer is `HasTy.let`, and one whose
+bound term has an existential answer is an unpacking.  The body is passed as
+a function of the binder and of an optional goal, so these pieces need no
+typer. -/
 
-`HasTy.obj` types the definitions of a literal under a class root and a self
-binder that holds the same definitions and the same capture set as the
-conclusion.  Box inference changes the definitions, and the capture set is only
-known once they are typed.  So the literal is typed in passes.  A pass types
-the definitions it is given under a self binder that holds them and the current
-set.  It is final when the elaborated definitions erase to the ones the binder
-holds and their use set is below the current set and the self variable.
-Otherwise the next pass takes the elaborated definitions, with their boxes, and
-the set they used, with the self variable dropped, its capture members read at
-their upper bounds, and the class root strengthened away.  The first pass runs
-at the empty set.  `Budget.obj` bounds the passes. -/
+/-- The candidates of a body under the binder of a plain bound term. -/
+abbrev BodyP {s : Sig} (Γ : Ctx s) : Type :=
+  (p : PElab Γ) → Option (ETy (s,x)) → Fu (List (Elab (Γ.cons p.ty)))
 
-/-- One typing of the definitions of a literal under its scope, at the
-definitions and the set the self binder holds. -/
+/-- The candidates of a body under the witness and the payload of an
+existential bound term. -/
+abbrev BodyX {s : Sig} (Γ : Ctx s) : Type :=
+  (q : XElab Γ) → Option (ETy ((s,c),x)) → Fu (List (Elab ((Γ.consC).cons q.body)))
+
+/-- A `let` without annotation, at one candidate of the bound term: every
+candidate of the body, approximated past the binder. -/
+def letBoundF {s : Sig} (Γ : Ctx s) (r1 : Elab Γ) (bp : BodyP Γ) (bx : BodyX Γ) :
+    Fu (List (Elab Γ)) :=
+  match r1.split with
+  | .inl p => letPairsF Γ none p (bp p none)
+  | .inr q => letexPairsF Γ q (bx q none)
+
+/-- A `let` at the answer `E`, at one candidate of the bound term: the body
+checked against `E` under the binder.  A plain bound term with an existential
+`E` has no such body.  An annotation `ann` then types the body, avoids it, and
+packs the plain `let` into `E`. -/
+def letOneF {s : Sig} (Γ : Ctx s) (ann : Option (ETy s)) (E : ETy s) (r1 : Elab Γ)
+    (bp : BodyP Γ) (bx : BodyX Γ) : Fu (Option (Elab Γ)) :=
+  match r1.split, E with
+  | .inl p, .ty G =>
+      if tyWf? G then
+        Fu.bind (bp p (some (.ty G.weaken))) fun r2s =>
+          match firstChecked r2s (.ty G.weaken) with
+          | some r2 => letAtF Γ ann G p r2
+          | none => Fu.ret none
+      else Fu.ret none
+  | .inl p, .ex _ _ =>
+      match ann with
+      | some _ =>
+          Fu.bind (letPairsF Γ ann p (bp p none)) fun rs =>
+            Fu.firstSome (fun r => mapO (subsumeF Γ r E) Checked.toElab) rs
+      | none => Fu.ret none
+  | .inr q, E =>
+      Fu.bind (bx q (some (ETy.weaken (ETy.weaken (k := .cap) E)))) fun r2s =>
+        match firstChecked r2s (ETy.weaken (ETy.weaken (k := .cap) E)) with
+        | some r2 => letexOfF Γ q E r2
+        | none => Fu.ret none
+
+/-! ## Application and projection -/
+
+/-- `x y` at each function type found, the argument checked plainly at the
+domain with the arrow's binder at `y`. -/
+def appWithF {s : Sig} (Γ : Ctx s) {x : BVar s .var} (fs : List (FnView Γ x)) (y : BVar s .var) :
+    Fu (List (Elab Γ)) :=
+  Fu.flatMapL (fun f => mapL (checkVarF Γ y (Ty.subst f.dom (Subst.singleC (.var y)))) fun r =>
+    (⟨.app x y, capJoin f.uses r.uses, ETy.subst f.cod (Subst.arg y),
+      HasTy.app (widenLeft f.deriv r.uses) (widenRight f.uses r.deriv)⟩ : Elab Γ)) fs
+
+/-- `x y` at each function type the lookup finds. -/
+def appCoreF {s : Sig} (Γ : Ctx s) (x y : BVar s .var) : Fu (List (Elab Γ)) :=
+  Fu.bind (fnViewsF Γ x) fun fs => appWithF Γ fs y
+
+/-- `x y` at the function types `fs`.  If no domain takes `y` plainly, `y` is
+adapted against each domain by box adaptation and bound by a `let`. -/
+def appStepWithF {s : Sig} (Γ : Ctx s) (x y : BVar s .var) (fs : List (FnView Γ x)) :
+    Fu (List (Elab Γ)) :=
+  orElseL (appWithF Γ fs y)
+    (Fu.flatMapL (fun f =>
+      Fu.bind (adaptInsertF Γ y (Ty.subst f.dom (Subst.singleC (.var y)))) fun
+        | some r => letPairsF Γ none r.toPElab (appCoreF (Γ.cons r.toPElab.ty) (.there x) .here)
+        | none => Fu.ret []) fs)
+
+/-- `x y` at the function types the lookup finds, with the argument adapted. -/
+def appStepF {s : Sig} (Γ : Ctx s) (x y : BVar s .var) : Fu (List (Elab Γ)) :=
+  Fu.bind (fnViewsF Γ x) fun fs => appStepWithF Γ x y fs
+
+/-- An application.  A function with no function type but a box is unboxed at
+the set of its first box and bound by a `let`. -/
+def appAllF {s : Sig} (Γ : Ctx s) (x y : BVar s .var) : Fu (List (Elab Γ)) :=
+  Fu.bind (fnViewsF Γ x) fun fs =>
+    Fu.bind (match fs with
+      | [] => Fu.bind (boxViewsF Γ x) fun bs =>
+          match firstBoxSet bs with
+          | some C => Fu.flatMapL (fun p =>
+              letPairsF Γ none p (appStepF (Γ.cons p.ty) .here (.there y))) (unboxAll C bs)
+          | none => Fu.ret []
+      | _ => appStepWithF Γ x y fs) fun cs =>
+      Fu.ret (dedupE cs)
+
+/-- The projection at a field found. -/
+def projOf {s : Sig} {Γ : Ctx s} {x : BVar s .var} {a : Label} (f : FldView Γ x a) : Elab Γ :=
+  ⟨.proj x a, f.uses, .ty f.ty, HasTy.proj f.deriv⟩
+
+/-- A projection: one candidate per field the lookup finds.  A receiver with
+no field but a box is unboxed at the set of its first box and bound by a
+`let`. -/
+def projAllF {s : Sig} (Γ : Ctx s) (x : BVar s .var) (a : Label) : Fu (List (Elab Γ)) :=
+  Fu.bind (fldViewsF Γ x a) fun fs =>
+    Fu.bind (match fs with
+      | [] => Fu.bind (boxViewsF Γ x) fun bs =>
+          match firstBoxSet bs with
+          | some C => Fu.flatMapL (fun p =>
+              letPairsF Γ none p (Fu.bind (fldViewsF (Γ.cons p.ty) .here a) fun gs =>
+                Fu.ret (gs.map projOf))) (unboxAll C bs)
+          | none => Fu.ret []
+      | fs => Fu.ret (fs.map projOf)) fun cs =>
+      Fu.ret (dedupE cs)
+
+/-! ## A function -/
+
+/-- The goal's function type, if it is one. -/
+def funGoal? {s : Sig} : Option (ETy s) → Option (CaptureSet s × Dom s × Cod s)
+  | some (.ty (.capt C (.all T1 T2))) => some (C, T1, T2)
+  | _ => none
+
+/-- The domain of a goal below the written one, in the scope `SubShape.all`
+compares domains in.  Equal domains need no goal. -/
+def domSubF {s : Sig} (Γ : Ctx s) (T1' T1 : Dom s) :
+    Fu (Option (Sub Γ.scope (Dom.underRoot T1') (Dom.underRoot T1))) :=
+  if h : T1' = T1 then Fu.ret (some (h ▸ Sub.refl _)) else subF Γ.scope _ _
+
+/-- `λ(x : T). t` from the candidates of its body: the codomain read back past
+the body's root, and the function's set from the body's. -/
+def lamGenF {s : Sig} (Γ : Ctx s) (T : Dom s) (hwf : Ty.Wf T) (rs : List (Elab (Γ.body T))) :
+    Fu (List (Elab Γ)) :=
+  Fu.flatMapL (fun (r : Elab (Γ.body T)) =>
+    match codPast? r.ans with
+    | some ⟨T2, h⟩ =>
+        mapL (lamUsesF Γ T r.uses) fun p =>
+          (⟨.lam T r.tm, [], .ty ((Shape.all T T2) ^ p.1), HasTy.lam (h ▸ widenUses r.deriv p.2) hwf⟩ :
+            Elab Γ)
+    | none => Fu.ret []) rs
+
+/-- `λ(x : T). t` against `(∀(x : T1') T2) ^ C`, from the candidates of its
+body checked against `T2`: the body's set below `C↑↑↑ ∪ {x}`, and `T1'` below
+`T`. -/
+def lamCheckF {s : Sig} (Γ : Ctx s) (T : Dom s) (hwf : Ty.Wf T) (C : CaptureSet s) (T1' : Dom s)
+    (T2 : Cod s) (rs : List (Elab (Γ.body T))) : Fu (List (Elab Γ)) :=
+  match firstChecked rs (Cod.underRoot T2) with
+  | some r =>
+      mapL (bindO (subcapF (Γ.body T) r.uses
+          (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken C)) ∪ [.var .here])) fun e =>
+        mapO (domSubF Γ T1' T) fun eD =>
+          (⟨.lam T r.tm, [], .ty ((Shape.all T1' T2) ^ C),
+            HasTy.sub (HasTy.lam (widenUses r.deriv e) hwf)
+              (.ty (.capt (SubShape.all eD (ESub.refl _)) .refl)) .refl⟩ : Elab Γ)) id
+  | none => Fu.ret []
+
+/-! ## The object rule -/
+
+/-- The definitions of a literal typed under a binder that holds the
+definitions `e` and the set `U`. -/
 abbrev DefsCheck {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) : Type :=
-  (d : ADefs ((s,c),x)) → (U : CaptureSet s) →
-    Verdict (DefsElab (Γ.objBody d.erase S U) S.underRoot)
+  (e : Defs ((s,c),x)) → (U : CaptureSet s) → Fu (Option (DefsElab (Γ.objBody e S U) S.underRoot))
 
-/-- The passes of the object rule.  `chk` types the definitions and `k` counts
-the passes left. -/
-def objPasses? {s : Sig} {Γ : Ctx s} (b : Budget) (S : Shape (s,x)) (chk : DefsCheck Γ S)
-    (k : Nat) (d : ADefs ((s,c),x)) (U : CaptureSet s) : Verdict (Elab Γ) :=
-  match k with
-  | 0 => .unknown
-  | k + 1 =>
-      (chk d U).bind fun r =>
-        let D := decls b (Γ.objBody d.erase S U)
-        (Verdict.ofOption
-          (if hd : r.tm.erase = d.erase then
-            if hdist : Defs.Distinct d.erase then
-              (subcap? D b.cap r.uses (CaptureSet.weaken (CaptureSet.weaken U) ∪ [.var .here])).map
-                fun e => ⟨.obj S r.tm, [], .ty ((Shape.mu S) ^ U), objOf hd (r.deriv _ e) hdist⟩
-            else none
-          else none)).orElse fun _ =>
-        let U' := ((capDropHere? (hereSel D) r.uses).bind fun V => capStrengthen? (k := .cap) V).getD U
-        objPasses? b S chk k r.tm U'
-termination_by structural k
+/-- The final pass of the object rule: the elaborated definitions are the ones
+the binder holds and their set is below the binder's set and the self
+variable. -/
+def objDoneF {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (e : Defs ((s,c),x)) (U : CaptureSet s)
+    (r : DefsElab (Γ.objBody e S U) S.underRoot) : Fu (Option (Elab Γ)) :=
+  if hd : r.tm.erase = e then
+    if hdist : Defs.Distinct e then
+      mapO (subcapF (Γ.objBody e S U) r.uses
+          (CaptureSet.weaken (CaptureSet.weaken U) ∪ [.var .here])) fun ev =>
+        ⟨.obj S r.tm, [], .ty ((Shape.mu S) ^ U), objOf hd (r.deriv _ ev) hdist⟩
+    else Fu.ret none
+  else Fu.ret none
+
+/-- The atom `a` alone if the set `U` does not account for it, and nothing
+otherwise. -/
+def newAtomF {s : Sig} (Γ : Ctx s) (U : CaptureSet s) (a : CapAtom s) : Fu (CaptureSet s) :=
+  if CaptureSet.elem U a then Fu.ret []
+  else Fu.bind (subcapF Γ [a] U) fun
+    | some _ => Fu.ret []
+    | none => Fu.ret [a]
+
+/-- The atoms of `D` that the set `U` does not account for.  An atom of `U` is
+skipped at no cost.  Any other atom `a` is kept when the subcapturing goal
+`{a} <: U` has no answer.  The compiler adds an element to a set variable
+only when the set does not account for it (`tryInclude` and `accountsFor`,
+`cc/CaptureSet.scala:197-198,251-272`). -/
+def newAtomsF {s : Sig} (Γ : Ctx s) (U D : CaptureSet s) : Fu (CaptureSet s) :=
+  Fu.flatMapL (newAtomF Γ U) D
+
+/-- The set of the next pass: the current set, joined with the atoms it does
+not account for of the set the definitions used, with the self variable
+dropped, its capture members read at their upper bounds and the class root
+strengthened away. -/
+def objNextF {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (e : Defs ((s,c),x)) (U : CaptureSet s)
+    (r : DefsElab (Γ.objBody e S U) S.underRoot) : Fu (CaptureSet s) :=
+  Fu.bind (hereBoundsF (Γ.objBody e S U) r.uses) fun bs =>
+    Fu.bind (newAtomsF Γ U (((capDropHere? (selOf bs) r.uses).bind fun V =>
+        capStrengthen? (k := .cap) V).getD [])) fun N =>
+      Fu.ret (capJoin U N)
+
+/-- The object rule as a least fixpoint on the literal's set.  `chk` types the
+definitions under a binder, and the index counts the passes left.  A pass
+that changes neither the set nor the definitions ends with no answer.  The
+last pass marks the tank. -/
+def objFixF {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (chk : DefsCheck Γ S) :
+    Nat → Defs ((s,c),x) → CaptureSet s → Fu (Option (Elab Γ))
+  | 0, _, _ => fun t => (none, { t with out := true })
+  | k + 1, e, U =>
+      bindO (chk e U) fun r =>
+        Fu.orElse (objDoneF Γ S e U r) fun _ =>
+          Fu.bind (objNextF Γ S e U r) fun U' =>
+            if U' = U ∧ r.tm.erase = e then Fu.ret none
+            else objFixF Γ S chk k r.tm.erase U'
+termination_by structural k _ _ => k
+
+/-! ### The bound of the object fixpoint -/
+
+/-- The labels of the capture members a set selects. -/
+def capLabelsC {s : Sig} (C : CaptureSet s) : List Label :=
+  C.filterMap fun a =>
+    match a with
+    | .sel _ A => some A
+    | _ => none
+
+mutual
+/-- The labels of the capture members a shape declares or selects. -/
+def capLabelsS {s : Sig} : Shape s → List Label
+  | .top => []
+  | .bot => []
+  | .typ _ L H => capLabelsS L ++ capLabelsS H
+  | .fld _ T => capLabelsT T
+  | .cap A c1 c2 => A :: (capLabelsC c1 ++ capLabelsC c2)
+  | .sel _ _ => []
+  | .mu B => capLabelsS B
+  | .all T U => capLabelsT T ++ capLabelsE U
+  | .and S T => capLabelsS S ++ capLabelsS T
+  | .box T => capLabelsT T
+/-- The labels of the capture members a type declares or selects. -/
+def capLabelsT {s : Sig} : Ty s → List Label
+  | .capt C S => capLabelsC C ++ capLabelsS S
+/-- The labels of the capture members an answer declares or selects. -/
+def capLabelsE {s : Sig} : ETy s → List Label
+  | .ty T => capLabelsT T
+  | .ex C T => capLabelsC C ++ capLabelsT T
+end
+
+mutual
+/-- The labels of the capture members a term declares or selects. -/
+def capLabelsA {s : Sig} : ATm s → List Label
+  | .path _ => []
+  | .lam T t => capLabelsT T ++ capLabelsA t
+  | .obj S d => capLabelsS S ++ capLabelsD d
+  | .app _ _ => []
+  | .proj _ _ => []
+  | .let ann t u => capLabelsE (ann.getD (.ty (.top ^ []))) ++ capLabelsA t ++ capLabelsA u
+  | .letex t u => capLabelsA t ++ capLabelsA u
+  | .box _ => []
+  | .unbox C _ => capLabelsC (C.getD [])
+  | .asc t T => capLabelsA t ++ capLabelsT T
+/-- The labels of the capture members definitions declare or select. -/
+def capLabelsD {s : Sig} : ADefs s → List Label
+  | .typ _ S => capLabelsS S
+  | .cap A c => A :: capLabelsC c
+  | .trm _ t => capLabelsA t
+  | .and d e => capLabelsD d ++ capLabelsD e
+end
+
+mutual
+/-- The variable occurrences of a term: the sites where box adaptation may
+insert a box or an unboxing. -/
+def occA {s : Sig} : ATm s → Nat
+  | .path _ => 1
+  | .lam _ t => occA t
+  | .obj _ d => occD d
+  | .app _ _ => 2
+  | .proj _ _ => 1
+  | .let _ t u => occA t + occA u
+  | .letex t u => occA t + occA u
+  | .box _ => 1
+  | .unbox _ _ => 1
+  | .asc t _ => occA t
+/-- The variable occurrences of definitions. -/
+def occD {s : Sig} : ADefs s → Nat
+  | .typ _ _ => 0
+  | .cap _ _ => 0
+  | .trm _ t => occA t
+  | .and d e => occD d + occD e
+end
+
+/-- The labels of the capture members a context declares or selects. -/
+def capLabelsCtx {s : Sig} : Ctx s → List Label
+  | .nil => []
+  | .cons Γ T => capLabelsCtx Γ ++ capLabelsT T
+  | .consSelf Γ _ S U => capLabelsCtx Γ ++ capLabelsS S ++ capLabelsC U
+  | .consC Γ => capLabelsCtx Γ
+  | .consRoot Γ => capLabelsCtx Γ
+  | .consInst Γ C => capLabelsCtx Γ ++ capLabelsC C
+
+/-- The number of atoms over `s` a literal's capture set can hold (a term
+variable, a capture binder, or a capture member of a term variable at a label
+of the program), plus the insertion sites of box adaptation, plus two.  It is
+a size of the program, not a fuel. -/
+def objBound {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (d : ADefs ((s,c),x)) : Nat :=
+  let V := (ctxVars Γ).length
+  let K := (ctxCaps Γ).length
+  let L := (capLabelsCtx Γ ++ capLabelsS S ++ capLabelsD d).length
+  V + K + V * L + occD d + 2
+
+/-! ## Synthesis and checking
+
+Two functions, structural on an index that starts at the size of the term.
+`inferF` returns the candidates of a term: every candidate with no goal, and
+every candidate at the goal with one.  `checkDefsF` matches a definition list
+against a declaration shape in lockstep, as `DefsTy` does
+(`DotMNF/Typing.lean`).  At index zero both mark the tank. -/
+
+mutual
+
+/-- The candidates of a term, each with its derivation, on the tank.  With a
+goal `some E`, every candidate is at `E`.  `ps` is the platform set, the
+reading of `any` at a position with no scope root. -/
+def inferF {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) :
+    Nat → (a : ATm s) → (G : Option (ETy s)) → Fu (List (Elab Γ))
+  | 0, _, _ => fun t => ([], { t with out := true })
+  | _ + 1, .path (.var x), G =>
+      match G with
+      | none => Fu.ret [varSynth Γ x]
+      | some (.ty T) => mapL (adaptVarF Γ x T) Checked.toElab
+      | some (.ex C T) => finishF Γ (some (.ex C T)) [varSynth Γ x]
+  | k + 1, .lam T t, G =>
+      if (writtenWhy (domArrow T)).isNone then
+        if hwf : Ty.Wf (readDom T) then
+          orElseL
+            (match funGoal? G with
+              | some (C, T1', T2) =>
+                  Fu.bind (inferF (Γ.body (readDom T)) (psBody ps) k t (some (Cod.underRoot T2)))
+                    (lamCheckF Γ (readDom T) hwf C T1' T2)
+              | none => Fu.ret [])
+            (Fu.bind (inferF (Γ.body (readDom T)) (psBody ps) k t none) fun rs =>
+              Fu.bind (lamGenF Γ (readDom T) hwf rs) (finishF Γ G))
+        else Fu.ret []
+      else Fu.ret []
+  | k + 1, .obj S d, G =>
+      if (writtenWhy ((Shape.mu S) ^ [])).isNone then
+        Fu.bind (objFixF Γ (readSelf Γ ps S)
+            (fun e U => checkDefsF (Γ.objBody e (readSelf Γ ps S) U) (psObj ps) k d
+              (readSelf Γ ps S).underRoot)
+            (objBound Γ (readSelf Γ ps S) d) d.erase []) fun o =>
+          finishF Γ G (listO o)
+      else Fu.ret []
+  | _ + 1, .app x y, G => Fu.bind (appAllF Γ x y) (finishF Γ G)
+  | _ + 1, .proj x a, G => Fu.bind (projAllF Γ x a) (finishF Γ G)
+  | k + 1, .let ann t u, G =>
+      Fu.bind (inferF Γ ps k t none) fun r1s =>
+        match ann with
+        | none =>
+            orElseL
+              (match G with
+                | some E => mapL (Fu.firstSome (fun r1 => letOneF Γ none E r1
+                    (fun p o => inferF (Γ.cons p.ty) (psVar ps) k u o)
+                    (fun q o => inferF ((Γ.consC).cons q.body) (psObj ps) k
+                      (u.rename (Rename.succ (k := .cap)).lift) o)) r1s) id
+                | none => Fu.ret [])
+              (Fu.bind (Fu.flatMapL (fun r1 => letBoundF Γ r1
+                  (fun p o => inferF (Γ.cons p.ty) (psVar ps) k u o)
+                  (fun q o => inferF ((Γ.consC).cons q.body) (psObj ps) k
+                    (u.rename (Rename.succ (k := .cap)).lift) o)) r1s) fun cs =>
+                finishF Γ G (dedupE cs))
+        | some A =>
+            if (writtenAnsWhy A).isNone then
+              Fu.bind (mapL (Fu.firstSome (fun r1 => letOneF Γ (some (readAns Γ ps A))
+                  (readAns Γ ps A) r1
+                  (fun p o => inferF (Γ.cons p.ty) (psVar ps) k u o)
+                  (fun q o => inferF ((Γ.consC).cons q.body) (psObj ps) k
+                    (u.rename (Rename.succ (k := .cap)).lift) o)) r1s) id) (finishF Γ G)
+            else Fu.ret []
+  | k + 1, .letex t u, G =>
+      Fu.bind (inferF Γ ps k t none) fun r1s =>
+        Fu.bind (Fu.flatMapL (fun r1 =>
+            match r1.split with
+            | .inr q => letexPairsF Γ q (inferF ((Γ.consC).cons q.body) (psObj ps) k u none)
+            | .inl _ => Fu.ret []) r1s) fun cs =>
+          finishF Γ G (dedupE cs)
+  | _ + 1, .box x, G =>
+      match G with
+      | some (.ty T) =>
+          orElseL (mapL (boxCheckF Γ x T) fun d => (⟨.box x, [], .ty T, d⟩ : Elab Γ))
+            (finishF Γ G [boxValue Γ x])
+      | some (.ex C T) => finishF Γ (some (.ex C T)) [boxValue Γ x]
+      | none => finishF Γ none [boxValue Γ x]
+  | _ + 1, .unbox C x, G =>
+      Fu.bind (boxViewsF Γ x) fun bs =>
+        match C.orElse fun _ => firstBoxSet bs with
+        | some C' => finishF Γ G ((unboxAll C' bs).map PElab.toElab)
+        | none => Fu.ret []
+  | k + 1, .asc t T, G =>
+      if (writtenWhy T).isNone then
+        Fu.bind (inferF Γ ps k t (some (.ty (readAt Γ ps T)))) fun rs =>
+          finishF Γ G (listO ((firstChecked rs (.ty (readAt Γ ps T))).map fun r =>
+            (⟨.asc r.tm (readAt Γ ps T), r.uses, .ty (readAt Γ ps T), r.deriv⟩ : Elab Γ)))
+      else Fu.ret []
+termination_by structural k _ _ => k
+
+/-- A definition list against a declaration shape, in lockstep: a type member
+against a declaration with its shape on both bounds, a capture member against
+one with its set on both bounds, a term member against a field at the same
+label, an intersection against an intersection.  The result holds the least
+use set and the derivation at every set above it. -/
+def checkDefsF {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) :
+    Nat → (d : ADefs s) → (S : Shape s) → Fu (Option (DefsElab Γ S))
+  | 0, _, _ => fun t => (none, { t with out := true })
+  | _ + 1, .typ A S0, .typ B L U =>
+      Fu.ret (if hA : A = B then
+        if hL : S0 = L then
+          if hU : S0 = U then some ⟨.typ A S0, [], fun _ _ => defsTypAt hA hL hU⟩ else none
+        else none
+      else none)
+  | _ + 1, .cap A c, .cap B c1 c2 =>
+      Fu.ret (if hA : A = B then
+        if h1 : c = c1 then
+          if h2 : c = c2 then some ⟨.cap A c, [], fun _ _ => defsCapAt hA h1 h2⟩ else none
+        else none
+      else none)
+  | k + 1, .trm a t, .fld c T =>
+      if h : a = c then
+        Fu.bind (inferF Γ ps k t (some (.ty T))) fun rs =>
+          Fu.ret ((firstChecked rs (.ty T)).map fun (r : Checked Γ (.ty T)) =>
+            ⟨.trm a r.tm, r.uses, fun _ e => defsTrmAt h (widenUses r.deriv e)⟩)
+      else Fu.ret none
+  | k + 1, .and d1 d2, .and S1 S2 =>
+      bindO (checkDefsF Γ ps k d1 S1) fun r1 =>
+        mapO (checkDefsF Γ ps k d2 S2) fun r2 =>
+          ⟨.and r1.tm r2.tm, capJoin r1.uses r2.uses, fun U e =>
+            DefsTy.and (r1.deriv U (.trans (.elem (capJoin_left r1.uses r2.uses)) e))
+              (r2.deriv U (.trans (.elem (capJoin_right r1.uses r2.uses)) e))⟩
+  | _ + 1, _, _ => Fu.ret none
+termination_by structural k _ _ => k
+
+end
+
+/-- Synthesis on the tank: the candidates of a term with no goal. -/
+def synthF {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s) : Fu (List (Elab Γ)) :=
+  inferF Γ ps (sizeATm a) a none
+
+/-- Checking on the tank: the candidates of a term at the goal `E`. -/
+def checkF {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s) (E : ETy s) :
+    Fu (List (Elab Γ)) :=
+  inferF Γ ps (sizeATm a) a (some E)
+
+/-! ## The entry points on the tank -/
+
+/-- The first candidate, and `none` if the tank ended marked. -/
+def firstCand {α : Type} : List α × Tank → Option α × Tank
+  | (c :: _, t) => if t.out then (none, t) else (some c, t)
+  | ([], t) => (none, t)
+
+/-- The first candidate of a term in `Γ`, from a full tank of `n` units, with
+the tank left. -/
+def synthInF {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s) (n : Nat) :
+    Option (Elab Γ) × Tank :=
+  firstCand (synthF Γ ps a ⟨n, false⟩)
+
+/-- The first candidate of a closed program over a platform, at the
+platform's context, from a full tank of `n` units, with the tank left. -/
+def synthTopF (n : Nat) (π : PlatformNames) (a : ATm π.sig) : Option (Elab π.plat.ctx) × Tank :=
+  synthInF π.plat.ctx π.set a n
+
+/-- An answer below another, by equality or by the answer goal. -/
+def esubEqF {s : Sig} (Γ : Ctx s) (E F : ETy s) : Fu (Option (ESub Γ E F)) :=
+  if h : E = F then Fu.ret (some (h ▸ ESub.refl E)) else esubF Γ E F
+
+/-- The first candidate of a term in `Γ`, then the subcapturing and answer
+goals to a given use set and answer, on the same tank.  The typer returns
+the least sets, and a judgment with larger ones is reached this way. -/
+def checkInF {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s) (U : CaptureSet s)
+    (E : ETy s) : Fu (Option ((t : ATm s) × HasTy U Γ t.erase E)) :=
+  Fu.bind (synthF Γ ps a) fun
+    | r :: _ => bindO (subcapF Γ r.uses U) fun eU =>
+        mapO (esubEqF Γ r.ans E) fun eE => ⟨r.tm, HasTy.sub r.deriv eE eU⟩
+    | [] => Fu.ret none
+
+/-- `checkInF` from a full tank of the budget's fuel. -/
+def checkIn? {s : Sig} (b : Budget) (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s)
+    (U : CaptureSet s) (E : ETy s) : Option ((t : ATm s) × HasTy U Γ t.erase E) :=
+  (checkInF Γ ps a U E ⟨b.fuel, false⟩).1
 
 /-! ## The level escape, decided
 
-When a binding annotation is not reached, the typer walks the synthesized type
-and the annotation in parallel, as the arrow rule of the search does, and
-collects every set goal the search does not find.  For each it tries a
-certificate.  The certificate needs three decided facts: the context is well
-formed (`ctxWf?`), the target set resolves to itself at every depth
-(`selfAtom?`), and at one small depth the source set is not confined to a root
-the target set is confined to.  The last fact reads the well-founded
+When a binding annotation or an ascription is not reached, the typer walks
+the synthesized type and the written one in parallel, as the arrow rule
+does, and collects every set goal that subcapturing does not find.  For each
+it tries a certificate.  The certificate needs three decided facts: the
+context is well formed (`ctxWf?`), the target set resolves to itself at every
+depth (`selfAtom?`), and at one small depth the source set is not confined to
+a root the target set is confined to.  The last fact reads the well-founded
 `Ctx.caps`, so compiled code computes it, not the kernel. -/
 
 /-- Well-formedness of a context, decided.  Only an object's self binder asks
@@ -720,15 +1048,15 @@ below four at which `C` is not confined to it. -/
 def certify? {s : Sig} (Γ : Ctx s) (C D : CaptureSet s) : Option Reason :=
   if hwf : ctxWf? Γ = true then
     if hself : ∀ a ∈ D.translate, selfAtom? Γ.translate a = true then
-      firstSome (fun r =>
+      (CapturesCC.FCdot.CapAtom.top :: D.translate).findSome? fun r =>
         if hr : Γ.translate.Confined D.translate r then
-          firstSome (fun n =>
+          (List.range 4).findSome? fun n =>
             if hn : ¬ Γ.translate.Confined (Γ.translate.caps n C.translate) r then
               some (.levelEscape Γ C D r
                 (escape_rejected_at (ctxWf?_sound Γ hwf) r
                   (fun m => by rw [caps_self _ hself m]; exact hr) n hn))
-            else none) (List.range 4)
-        else none) (CapturesCC.FCdot.CapAtom.top :: D.translate)
+            else none
+        else none
     else none
   else none
 
@@ -743,297 +1071,143 @@ structure Goal where
   /-- The set on the right. -/
   hi : CaptureSet sig
 
-/-- The set goals the search does not find, walking `T <: U` as the search does:
-the two sets, then fields, boxes, and the domains and codomains of arrows under
-the scopes the arrow rule opens.  Structural on the depth `k`. -/
-def escGoals (b : Budget) (k : Nat) {s : Sig} (Γ : Ctx s) (T U : Ty s) : List Goal :=
+/-- The set goals that subcapturing from a full tank of `n` units does not
+find, walking `T <: U` as the arrow rule does: the two sets, then fields,
+boxes, and the domains and codomains of arrows under the scopes the arrow
+rule opens.  Structural on the depth `k`. -/
+def escGoals (n : Nat) (k : Nat) {s : Sig} (Γ : Ctx s) (T U : Ty s) : List Goal :=
   match k with
   | 0 => []
   | k + 1 =>
       match T, U with
       | .capt C S, .capt C' S' =>
-          (if (subcap? (baseDecls allBudget Γ) b.cap C C').isSome then [] else [⟨_, Γ, C, C'⟩]) ++
+          (if (subcap? Γ C C' n).1.isSome then [] else [⟨_, Γ, C, C'⟩]) ++
           match S, S' with
           | .all T1 U1, .all T2 U2 =>
-              escGoals b k Γ.scope (Dom.underRoot T2) (Dom.underRoot T1) ++
+              escGoals n k Γ.scope (Dom.underRoot T2) (Dom.underRoot T1) ++
               (match Cod.underRoot U1, Cod.underRoot U2 with
-                | .ty V1, .ty V2 => escGoals b k (Γ.body T2) V1 V2
+                | .ty V1, .ty V2 => escGoals n k (Γ.body T2) V1 V2
                 | _, _ => [])
-          | .fld a T1, .fld a' T2 => if a = a' then escGoals b k Γ T1 T2 else []
-          | .box T1, .box T2 => escGoals b k Γ T1 T2
+          | .fld a T1, .fld a' T2 => if a = a' then escGoals n k Γ T1 T2 else []
+          | .box T1, .box T2 => escGoals n k Γ T1 T2
           | _, _ => []
 termination_by structural k
 
-/-- The verdict when `T` was not moved to the annotation `U` at `Γ`: a
-rejection at the first goal with a certificate, `unknown` otherwise. -/
-def diagnose {α : Type} (b : Budget) {s : Sig} (Γ : Ctx s) (T U : Ty s) : Verdict α :=
-  match firstSome (fun g => certify? g.ctx g.lo g.hi) (escGoals b b.sub Γ T U) with
-  | some r => .rejected r
-  | none => .unknown
+/-- The reason when `T` was not moved to the written `U` at `Γ`: the first
+goal with a certificate. -/
+def diagnose (n : Nat) {s : Sig} (Γ : Ctx s) (T U : Ty s) : Option Reason :=
+  (escGoals n n Γ T U).findSome? fun g => certify? g.ctx g.lo g.hi
 
-/-- The rejection of an existential answer outside every scope, where no root
-can absorb its witness. -/
-def topExistential {α : Type} {s : Sig} (Γ : Ctx s) (q : XElab Γ) : Verdict α :=
-  .rejected (.existentialAtTop Γ (∃ᶜ[q.bnd] q.body) (fun _ ⟨e⟩ => by cases e))
+/-! ## The reason of a rejection
 
-/-! ## The typer -/
+`whyF` walks a term the typer rejected, along the typer's own first
+candidates, to the place where nothing was found.  It returns the first
+reason it can prove there.  It types subterms with `inferF` on the tank it is
+handed. -/
 
 mutual
 
-/-- Synthesis, clause by clause.  `ps` is the platform set, the reading of
-`any` at a position with no scope root.
-
-- a variable is its first view, `varSynth`
-- `λ(x : T). t` decides and reads the domain, synthesizes the body under
-  `Γ.body T` against a table rebuilt there, and takes the codomain and the
-  function's set from the body by `lamOf?`
-- `ν(z : S. d)` decides and reads the self shape and runs the passes of the
-  object rule, `objPasses?`
-- `x y` reads the first function view of `x` and checks `y` against its domain
-  with the arrow's binder at `y`, at the join of the two sets.  An argument that
-  fails is adapted and bound by a `let`.  A function with no function view and a
-  box view is unboxed and bound by a `let`
-- `x.a` reads the first field view of `x` at `a`.  A receiver with no such view
-  and a box view is unboxed and bound by a `let`
-- `let x (: E)? = t in u` climbs the ladder, or is bound by its annotation.  A
-  body whose answer is an existential is rejected outside every scope, by
-  `topExistential`
-- `let ⟨c, x⟩ = t in u` unpacks the existential answer of `t`
-- `□ x` boxes the first view of `x`, at the empty use set
-- `C ⊸ x` unboxes the first box view of `x` at the set `C`, read off the box
-  type when none is written
-- `(t : T)` decides and reads `T` and checks `t` against it. -/
-def synth? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (ps : CaptureSet s) (n : Nat)
-    (a : ATm s) : Verdict (Elab Γ) :=
-  match n with
-  | 0 => .unknown
-  | n + 1 =>
-      ((match a with
-        | .path (.var x) => .ok (varSynth Γ x)
-        | .lam T t =>
-            (written (domArrow T)).bind fun _ =>
-              let T1 := readDom T
-              if hwf : Ty.Wf T1 then
-                (synth? (decls b (Γ.body T1)) b (psBody ps) n t).bind fun r =>
-                  .ofOption (lamOf? (decls b (Γ.body T1)) b.cap hwf r)
-              else .unknown
-        | .obj S d =>
-            (written ((Shape.mu S) ^ [])).bind fun _ =>
-              let S' := readSelf Γ ps S
-              objPasses? b S'
-                (fun d' U' => checkDefs? (decls b (Γ.objBody d'.erase S' U')) b (psObj ps) n d'
-                  S'.underRoot)
-                b.obj d []
-        | .app x y =>
-            match allView (views D b x) with
-            | some v =>
-                let A := Ty.subst v.dom (Subst.singleC (.var y))
-                (Verdict.ofOption ((checkVar? D b n y A).map fun r =>
-                  (⟨.app x y, capJoin v.uses r.uses, ETy.subst v.cod (Subst.arg y),
-                    HasTy.app (widenLeft v.deriv r.uses) (widenRight v.uses r.deriv)⟩ : Elab Γ))).orElse
-                  fun _ =>
-                -- rules two and three at the argument, bound by a `let`
-                (Verdict.ofOption (adaptInsert? D b.cap b.sub (fun T => checkVar? D b n y T)
-                    (views D b y) A)).bind fun r =>
-                  let p : PElab Γ := ⟨r.tm, r.uses, A, r.deriv⟩
-                  (synth? (decls b (Γ.cons A)) b (psVar ps) n (.app (.there x) .here)).bind fun r2 =>
-                    .ofOption (letAvoid? p (decls b (Γ.cons A)) b.cap none r2)
+/-- The reason a term has no candidate, if one is found.  `n` is the fuel of
+the subcapturing goals of `diagnose`. -/
+def whyF {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (n : Nat) :
+    Nat → ATm s → Fu (Option Reason)
+  | 0, _ => Fu.ret none
+  | k + 1, .lam T t =>
+      match writtenWhy (domArrow T) with
+      | some r => Fu.ret (some r)
+      | none =>
+          if Ty.Wf (readDom T) then whyF (Γ.body (readDom T)) (psBody ps) n k t
+          else Fu.ret none
+  | k + 1, .obj S d =>
+      match writtenWhy ((Shape.mu S) ^ []) with
+      | some r => Fu.ret (some r)
+      | none => whyDefsF (Γ.objBody d.erase (readSelf Γ ps S) []) (psObj ps) n k d
+  | k + 1, .let ann t u =>
+      Fu.bind (inferF Γ ps k t none) fun r1s =>
+        match r1s with
+        | [] => whyF Γ ps n k t
+        | r1 :: _ =>
+            match ann.bind writtenAnsWhy with
+            | some r => Fu.ret (some r)
             | none =>
-                -- rule four at the function, bound by a `let`
-                (Verdict.ofOption (unboxFirst? (views D b x))).bind fun r1 =>
-                  match r1.split with
-                  | .inl p =>
-                      (synth? (decls b (Γ.cons p.ty)) b (psVar ps) n (.app .here (.there y))).bind
-                        fun r2 => .ofOption (letAvoid? p (decls b (Γ.cons p.ty)) b.cap none r2)
-                  | .inr _ => .unknown
-        | .proj x l =>
-            match fldView l (views D b x) with
-            | some v => .ok ⟨.proj x l, v.uses, .ty v.ty, HasTy.proj v.deriv⟩
-            | none =>
-                -- rule four at the receiver, bound by a `let`
-                (Verdict.ofOption (unboxFirst? (views D b x))).bind fun r1 =>
-                  match r1.split with
-                  | .inl p =>
-                      (synth? (decls b (Γ.cons p.ty)) b (psVar ps) n (.proj .here l)).bind fun r2 =>
-                        .ofOption (letAvoid? p (decls b (Γ.cons p.ty)) b.cap none r2)
-                  | .inr _ => .unknown
-        | .let ann t u =>
-            (synth? D b ps n t).bind fun r1 =>
-              match ann with
-              | none =>
-                  match r1.split with
-                  | .inl p =>
-                      (synth? (decls b (Γ.cons p.ty)) b (psVar ps) n u).bind fun r2 =>
-                        match r2.split, Γ.root? with
-                        | .inr q, none => topExistential (Γ.cons p.ty) q
-                        | _, _ => .ofOption (letAvoid? p (decls b (Γ.cons p.ty)) b.cap none r2)
-                  | .inr q =>
-                      (synth? (decls b ((Γ.consC).cons q.body)) b (psObj ps) n
-                          (u.rename (Rename.succ (k := .cap)).lift)).bind fun r2 =>
-                        .ofOption (letexAvoid? q (decls b ((Γ.consC).cons q.body)) b.cap r2)
-              | some A =>
-                  (writtenAns A).bind fun _ =>
-                    let A' := readAns Γ ps A
-                    (match r1.split, A' with
-                      | .inl p, .ty G =>
-                          (check? (decls b (Γ.cons p.ty)) b (psVar ps) n u (.ty (Ty.weaken G))).bind
-                            fun r2 =>
-                              .ofOption ((letOf? p (decls b (Γ.cons p.ty)) b.cap (some A') G r2).map
-                                Checked.toElab)
-                      | .inl p, .ex _ _ =>
-                          (synth? (decls b (Γ.cons p.ty)) b (psVar ps) n u).bind fun r2 =>
-                            .ofOption ((letAvoid? p (decls b (Γ.cons p.ty)) b.cap (some A') r2).bind
-                              fun r => (subsume? D b.cap b.sub r A').map Checked.toElab)
-                      | .inr q, E =>
-                          (check? (decls b ((Γ.consC).cons q.body)) b (psObj ps) n
-                              (u.rename (Rename.succ (k := .cap)).lift)
-                              (ETy.weaken (ETy.weaken (k := .cap) E))).bind fun r2 =>
-                            .ofOption ((letexOf? q (decls b ((Γ.consC).cons q.body)) b.cap E r2).map
-                              Checked.toElab)).whenUnknown fun _ =>
-                    -- the annotation is binding: look for a rejection at the goal reached
-                    match r1.split, A' with
-                    | .inl p, .ty G =>
-                        (synth? (decls b (Γ.cons p.ty)) b (psVar ps) n u).bind fun r2 =>
-                          match r2.split with
-                          | .inl q => diagnose b (Γ.cons p.ty) q.ty (Ty.weaken G)
-                          | .inr _ => .unknown
-                    | _, _ => .unknown
-        | .letex t u =>
-            (synth? D b ps n t).bind fun r1 =>
-              match r1.split with
-              | .inr q =>
-                  (synth? (decls b ((Γ.consC).cons q.body)) b (psObj ps) n u).bind fun r2 =>
-                    .ofOption (letexAvoid? q (decls b ((Γ.consC).cons q.body)) b.cap r2)
-              | .inl _ => .unknown
-        | .box x =>
-            let v := varView Γ x
-            .ok ⟨.box x, [], .ty ((Shape.box v.ty) ^ []), HasTy.box v.deriv⟩
-        | .unbox C x =>
-            .ofOption (match C with
-              | some C => unboxSynth? C (views D b x)
-              | none => unboxFirst? (views D b x))
-        | .asc t T =>
-            (written T).bind fun _ =>
-              let T' := readAt Γ ps T
-              ((check? D b ps n t (.ty T')).map fun r =>
-                (⟨.asc r.tm T', r.uses, .ty T', r.deriv⟩ : Elab Γ)).whenUnknown fun _ =>
-              -- the ascription is binding: look for a rejection at the goal reached
-              (synth? D b ps n t).bind fun r =>
-                match r.split with
-                | .inl q => diagnose b Γ q.ty T'
-                | .inr _ => .unknown)
-        : Verdict (Elab Γ)).orElse fun _ => synth? D b ps n a
-termination_by structural n
-
-/-- Checking against an answer.  A variable against a plain goal goes to box
-inference, `adaptVar?`, with `checkVar?` as plain checker.  Three clauses check
-a term against the goal's own form and fall back to synthesis: a `λ` against a
-function type, an unannotated `let` against any goal, a box value against a
-box.  Everything else is synthesized and moved to the goal by a decided
-equality or by the answer search, which packs a plain answer into an
-existential goal. -/
-def check? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (ps : CaptureSet s) (n : Nat)
-    (a : ATm s) (E : ETy s) : Verdict (Checked Γ E) :=
-  match n with
-  | 0 => .unknown
-  | n + 1 =>
-      let bySynth : Unit → Verdict (Checked Γ E) := fun _ =>
-        (synth? D b ps n a).bind fun r => .ofOption (subsume? D b.cap b.sub r E)
-      match a with
-      | .path (.var x) =>
-          ((match E with
-            | .ty G =>
-                .ofOption (adaptVar? D b.cap b.sub (fun T' => checkVar? D b n x T') (views D b x) G)
-            | .ex _ _ => .unknown) : Verdict (Checked Γ E)).orElse bySynth
-      | .lam T1 t =>
-          ((match E with
-            | .ty (.capt C (.all T1' T2)) =>
-                (written (domArrow T1)).bind fun _ =>
-                  let T1r := readDom T1
-                  if hwf : Ty.Wf T1r then
-                    (check? (decls b (Γ.body T1r)) b (psBody ps) n t (Cod.underRoot T2)).bind fun r =>
-                      .ofOption ((subcap? (decls b (Γ.body T1r)) b.cap r.uses
-                          (CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken C)) ∪
-                            [.var .here])).bind fun e =>
-                        (if h : T1' = T1r then some (h ▸ Sub.refl (Dom.underRoot T1'))
-                          else sub? (baseDecls allBudget Γ.scope) b.cap b.sub
-                            (Dom.underRoot T1') (Dom.underRoot T1r)).map fun eD =>
-                          ⟨.lam T1r r.tm, [],
-                            HasTy.sub (HasTy.lam (widenUses r.deriv e) hwf)
-                              (.ty (.capt (SubShape.all eD (ESub.refl _)) .refl)) .refl⟩)
-                  else .unknown
-            | _ => .unknown) : Verdict (Checked Γ E)).orElse bySynth
-      | .let none t u =>
-          ((synth? D b ps n t).bind fun r1 =>
-            (match r1.split, E with
-              | .inl p, .ty G =>
-                  (check? (decls b (Γ.cons p.ty)) b (psVar ps) n u (.ty (Ty.weaken G))).bind fun r2 =>
-                    .ofOption (letOf? p (decls b (Γ.cons p.ty)) b.cap none G r2)
-              | .inr q, E =>
-                  (check? (decls b ((Γ.consC).cons q.body)) b (psObj ps) n
+                match r1.split with
+                | .inl p =>
+                    Fu.bind (inferF (Γ.cons p.ty) (psVar ps) k u none) fun r2s =>
+                      match r2s with
+                      | [] => whyF (Γ.cons p.ty) (psVar ps) n k u
+                      | r2 :: _ =>
+                          match ann with
+                          | none =>
+                              Fu.ret (match r2.split, Γ.root? with
+                                | .inr q, none => some (existentialAt (Γ.cons p.ty) q)
+                                | _, _ => none)
+                          | some A =>
+                              match readAns Γ ps A with
+                              | .ty G =>
+                                  Fu.bind (inferF (Γ.cons p.ty) (psVar ps) k u
+                                      (some (.ty G.weaken))) fun cs =>
+                                    Fu.ret (match firstChecked cs (.ty G.weaken), r2.split with
+                                      | none, .inl q => diagnose n (Γ.cons p.ty) q.ty G.weaken
+                                      | _, _ => none)
+                              | .ex _ _ => Fu.ret none
+                | .inr q =>
+                    whyF ((Γ.consC).cons q.body) (psObj ps) n k
                       (u.rename (Rename.succ (k := .cap)).lift)
-                      (ETy.weaken (ETy.weaken (k := .cap) E))).bind fun r2 =>
-                    .ofOption (letexOf? q (decls b ((Γ.consC).cons q.body)) b.cap E r2)
-              | .inl _, .ex _ _ => .unknown) : Verdict (Checked Γ E)).orElse bySynth
-      | .box x =>
-          ((match E with
-            | .ty G =>
-                .ofOption ((boxCheck? (fun T' => checkVar? D b n x T') G).map fun d =>
-                  (⟨.box x, [], d⟩ : Checked Γ (.ty G)))
-            | .ex _ _ => .unknown) : Verdict (Checked Γ E)).orElse bySynth
-      | _ => bySynth ()
-termination_by structural n
+  | k + 1, .letex t u =>
+      Fu.bind (inferF Γ ps k t none) fun r1s =>
+        match r1s with
+        | [] => whyF Γ ps n k t
+        | r1 :: _ =>
+            match r1.split with
+            | .inr q => whyF ((Γ.consC).cons q.body) (psObj ps) n k u
+            | .inl _ => Fu.ret none
+  | k + 1, .asc t T =>
+      match writtenWhy T with
+      | some r => Fu.ret (some r)
+      | none =>
+          Fu.bind (inferF Γ ps k t (some (.ty (readAt Γ ps T)))) fun cs =>
+            match firstChecked cs (.ty (readAt Γ ps T)) with
+            | some _ => Fu.ret none
+            | none =>
+                Fu.bind (inferF Γ ps k t none) fun rs =>
+                  match rs with
+                  | [] => whyF Γ ps n k t
+                  | r :: _ =>
+                      Fu.ret (match r.split with
+                        | .inl q => diagnose n Γ q.ty (readAt Γ ps T)
+                        | .inr _ => none)
+  | _ + 1, _ => Fu.ret none
+termination_by structural k _ => k
 
-/-- Checking a definition list.  `DefsTy` is syntax directed on both the
-definitions and the shape, so they are matched in lockstep: a type member
-against a declaration with its own shape on both bounds, a capture member
-against a declaration with its own set on both bounds, a term member against a
-field at the same label, an intersection against an intersection.  The result
-holds the least use set and the derivation at every set above it. -/
-def checkDefs? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (ps : CaptureSet s)
-    (n : Nat) (d : ADefs s) (S : Shape s) : Verdict (DefsElab Γ S) :=
-  match n with
-  | 0 => .unknown
-  | n + 1 =>
-      match d, S with
-      | .typ A S0, .typ B L U =>
-          if hA : A = B then
-            if hL : S0 = L then
-              if hU : S0 = U then .ok ⟨.typ A S0, [], fun _ _ => defsTypAt hA hL hU⟩
-              else .unknown
-            else .unknown
-          else .unknown
-      | .cap A c, .cap B c1 c2 =>
-          if hA : A = B then
-            if h1 : c = c1 then
-              if h2 : c = c2 then .ok ⟨.cap A c, [], fun _ _ => defsCapAt hA h1 h2⟩ else .unknown
-            else .unknown
-          else .unknown
-      | .trm l t, .fld l' T =>
-          if h : l = l' then
-            (check? D b ps n t (.ty T)).map fun (r : Checked Γ (.ty T)) =>
-              ⟨.trm l r.tm, r.uses, fun _ e => defsTrmAt h (widenUses r.deriv e)⟩
-          else .unknown
-      | .and d1 d2, .and S1 S2 =>
-          (checkDefs? D b ps n d1 S1).bind fun (r1 : DefsElab Γ S1) =>
-            (checkDefs? D b ps n d2 S2).map fun (r2 : DefsElab Γ S2) =>
-              ⟨.and r1.tm r2.tm, capJoin r1.uses r2.uses, fun U e =>
-                DefsTy.and (r1.deriv U (.trans (.elem (capJoin_left r1.uses r2.uses)) e))
-                  (r2.deriv U (.trans (.elem (capJoin_right r1.uses r2.uses)) e))⟩
-      | _, _ => .unknown
-termination_by structural n
+/-- The reason definitions have no typing, if one is found. -/
+def whyDefsF {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (n : Nat) :
+    Nat → ADefs s → Fu (Option Reason)
+  | 0, _ => Fu.ret none
+  | k + 1, .trm _ t => whyF Γ ps n k t
+  | k + 1, .and d1 d2 =>
+      Fu.bind (whyDefsF Γ ps n k d1) fun
+        | some r => Fu.ret (some r)
+        | none => whyDefsF Γ ps n k d2
+  | _ + 1, _ => Fu.ret none
+termination_by structural k _ => k
 
 end
 
-/-! ## The entry points -/
+/-! ## The entry points as verdicts -/
 
-/-- The typer at a given context.  It builds the declaration table once and runs
-at `Budget.typer`.  `ps` is the platform set at the context.  This is the entry
-point for a term under a context, as the open examples of `DotMNF/Examples.lean`
-are. -/
+/-- The typer at a given context, as a verdict.  A candidate is `ok`.  A
+marked tank is `unknown`.  Otherwise `whyF` looks for a reason from a full
+tank of its own. -/
 def synthIn? {s : Sig} (b : Budget) (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s) :
     Verdict (Elab Γ) :=
-  synth? (decls b Γ) b ps b.typer a
+  match synthInF Γ ps a b.fuel with
+  | (some r, _) => .ok r
+  | (none, t) =>
+      if t.out then .unknown
+      else
+        match (whyF Γ ps b.fuel (sizeATm a) a ⟨b.fuel, false⟩).1 with
+        | some r => .rejected r
+        | none => .unknown
 
 /-- The typer on a closed program over a platform, at `Platform.ctx`.  A program
 whose answer is an existential is rejected, since `Compiled` asks for a plain
@@ -1042,60 +1216,640 @@ def synthTop? (b : Budget) (π : PlatformNames) (a : ATm π.sig) : Verdict (Elab
   (synthIn? b π.plat.ctx π.set a).bind fun r =>
     match r.split with
     | .inl _ => .ok r
-    | .inr q => topExistential π.plat.ctx q
+    | .inr q => .rejected (existentialAt π.plat.ctx q)
 
-/-- The typer at a given context, followed by one `sub` to a given use set and
-answer, both found by the search.  The typer returns the least sets, and a
-judgment written with larger ones is reached this way. -/
-def checkIn? {s : Sig} (b : Budget) (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s)
-    (U : CaptureSet s) (E : ETy s) : Verdict ((t : ATm s) × HasTy U Γ t.erase E) :=
-  (synthIn? b Γ ps a).bind fun r =>
-    .ofOption ((subcap? (decls b Γ) b.cap r.uses U).bind fun eU =>
-      (if h : r.ans = E then some (h ▸ ESub.refl r.ans)
-        else esub? (decls b Γ) b.cap b.sub r.ans E).map fun eE =>
-          ⟨r.tm, HasTy.sub r.deriv eE eU⟩)
+/-! ## The frame lemmas
 
-/-! ## Fuel monotonicity
+Each clause is built from the combinators of `Fuel.lean` and from framed
+computations of the other modules: the goals of `Sub.lean`, the lookups, box
+adaptation of `Adapt.lean` and avoidance.  So each clause is framed, by
+induction on the index. -/
 
-The statement is about successes, not derivations: more fuel may find another
-derivation of the same judgment, and `HasTy` is `Type`-valued without decidable
-equality.  The retry at the end of `synth?`'s fuel level makes it an induction
-on the fuel.  A rejection is not monotone. -/
+section Frames
 
-/-- One more unit of fuel never loses a success. -/
-theorem synth?_succ {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} {ps : CaptureSet s}
-    {n : Nat} {a : ATm s} (h : (synth? D b ps n a).isOk = true) :
-    (synth? D b ps (n + 1) a).isOk = true := by
-  rw [synth?.eq_def]
-  exact Verdict.isOk_orElse_right h
+variable {α β : Type}
 
-/-- More fuel never loses a success. -/
-theorem synth?_le {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} {ps : CaptureSet s}
-    {n n' : Nat} (h : n ≤ n') (a : ATm s) :
-    (synth? D b ps n a).isOk = true → (synth? D b ps n' a).isOk = true := by
-  induction h with
-  | refl => exact id
-  | step _ ih => exact fun x => synth?_succ (ih x)
+theorem mapL_framed {c : Fu (Option α)} (f : α → β) (hc : Framed c) : Framed (mapL c f) :=
+  bind_framed hc fun _ => ret_framed _
+
+theorem orElseL_framed {a b : Fu (List α)} (ha : Framed a) (hb : Framed b) :
+    Framed (orElseL a b) :=
+  bind_framed ha fun l => by
+    cases l with
+    | nil => exact hb
+    | cons _ _ => exact ret_framed _
+
+theorem finishF_framed {s : Sig} (Γ : Ctx s) (G : Option (ETy s)) (rs : List (Elab Γ)) :
+    Framed (finishF Γ G rs) := by
+  cases G with
+  | none => exact ret_framed _
+  | some E => exact flatMapL_framed (fun _ => mapL_framed _ (subsumeF_framed _ _ _)) _
+
+theorem hereBoundsF_framed {s : Sig} (Γ : Ctx (s,x)) (V : CaptureSet (s,x)) :
+    Framed (hereBoundsF Γ V) := by
+  refine flatMapL_framed (fun a => ?_) V
+  dsimp only
+  split
+  · exact bind_framed (capsAt_framed _ _ _) fun _ => ret_framed _
+  · exact ret_framed _
+
+theorem lamUsesF_framed {s : Sig} (Γ : Ctx s) (T : Dom s) (V : CaptureSet (Sig.body s)) :
+    Framed (lamUsesF Γ T V) := by
+  refine bind_framed (hereBoundsF_framed _ _) fun bs => ?_
+  dsimp only
+  split
+  · split
+    · split
+      · exact mapO_framed _ (subcapF_framed _ _ _)
+      · exact ret_framed _
+    · exact ret_framed _
+  · exact ret_framed _
+
+theorem letAtF_framed {s : Sig} (Γ : Ctx s) (ann : Option (ETy s)) (A : Ty s) (p : PElab Γ)
+    (r2 : Checked (Γ.cons p.ty) (.ty A.weaken)) : Framed (letAtF Γ ann A p r2) :=
+  dite_framed (fun _ => mapO_framed _ (avoidUses_framed _ _ _)) (fun _ => ret_framed _)
+
+theorem letFinishF_framed {s : Sig} (Γ : Ctx s) (ann : Option (ETy s)) (p : PElab Γ)
+    (r2 : Elab (Γ.cons p.ty)) : Framed (letFinishF Γ ann p r2) := by
+  unfold letFinishF
+  split
+  · exact bindO_framed (avoidLet_framed _ _ _) fun _ => letAtF_framed _ _ _ _ _
+  · exact ret_framed _
+
+theorem letPairsF_framed {s : Sig} (Γ : Ctx s) (ann : Option (ETy s)) (p : PElab Γ)
+    {body : Fu (List (Elab (Γ.cons p.ty)))} (hb : Framed body) :
+    Framed (letPairsF Γ ann p body) :=
+  bind_framed hb fun _ => flatMapL_framed (fun _ => mapL_framed _ (letFinishF_framed _ _ _ _)) _
+
+theorem letexUsesF_framed {s : Sig} (Γ : Ctx s) (T : Ty (s,c)) (C₀ : CaptureSet s)
+    (V : CaptureSet ((s,c),x)) : Framed (letexUsesF Γ T C₀ V) := by
+  refine bind_framed (capUpAt_framed _ _ _) fun r => ?_
+  dsimp only
+  split
+  · split
+    · exact mapO_framed _ (subcapF_framed _ _ _)
+    · exact ret_framed _
+  · exact ret_framed _
+
+theorem letexOfF_framed {s : Sig} (Γ : Ctx s) (q : XElab Γ) (E : ETy s)
+    (r2 : Checked ((Γ.consC).cons q.body) (ETy.weaken (ETy.weaken (k := .cap) E))) :
+    Framed (letexOfF Γ q E r2) :=
+  mapO_framed _ (letexUsesF_framed _ _ _ _)
+
+theorem letexFinishF_framed {s : Sig} (Γ : Ctx s) (q : XElab Γ)
+    (r2 : Elab ((Γ.consC).cons q.body)) : Framed (letexFinishF Γ q r2) :=
+  bindO_framed (avoidEx_framed _ _ _) fun _ => letexOfF_framed _ _ _ _
+
+theorem letexPairsF_framed {s : Sig} (Γ : Ctx s) (q : XElab Γ)
+    {body : Fu (List (Elab ((Γ.consC).cons q.body)))} (hb : Framed body) :
+    Framed (letexPairsF Γ q body) :=
+  bind_framed hb fun _ => flatMapL_framed (fun _ => mapL_framed _ (letexFinishF_framed _ _ _)) _
+
+theorem letBoundF_framed {s : Sig} (Γ : Ctx s) (r1 : Elab Γ) {bp : BodyP Γ} {bx : BodyX Γ}
+    (hp : ∀ p o, Framed (bp p o)) (hx : ∀ q o, Framed (bx q o)) :
+    Framed (letBoundF Γ r1 bp bx) := by
+  unfold letBoundF
+  split
+  · exact letPairsF_framed _ _ _ (hp _ _)
+  · exact letexPairsF_framed _ _ (hx _ _)
+
+theorem letOneF_framed {s : Sig} (Γ : Ctx s) (ann : Option (ETy s)) (E : ETy s) (r1 : Elab Γ)
+    {bp : BodyP Γ} {bx : BodyX Γ} (hp : ∀ p o, Framed (bp p o)) (hx : ∀ q o, Framed (bx q o)) :
+    Framed (letOneF Γ ann E r1 bp bx) := by
+  unfold letOneF
+  split
+  · refine ite_framed (bind_framed (hp _ _) fun r2s => ?_) (ret_framed _)
+    dsimp only
+    split
+    · exact letAtF_framed _ _ _ _ _
+    · exact ret_framed _
+  · split
+    · exact bind_framed (letPairsF_framed _ _ _ (hp _ _)) fun _ =>
+        firstSome_framed (fun _ => mapO_framed _ (subsumeF_framed _ _ _)) _
+    · exact ret_framed _
+  · refine bind_framed (hx _ _) fun r2s => ?_
+    dsimp only
+    split
+    · exact letexOfF_framed _ _ _ _
+    · exact ret_framed _
+
+theorem appWithF_framed {s : Sig} (Γ : Ctx s) {x : BVar s .var} (fs : List (FnView Γ x))
+    (y : BVar s .var) : Framed (appWithF Γ fs y) :=
+  flatMapL_framed (fun _ => mapL_framed _ (checkVarF_framed _ _ _)) _
+
+theorem appCoreF_framed {s : Sig} (Γ : Ctx s) (x y : BVar s .var) : Framed (appCoreF Γ x y) :=
+  bind_framed (fnViewsF_framed _ _) fun _ => appWithF_framed _ _ _
+
+theorem appStepWithF_framed {s : Sig} (Γ : Ctx s) (x y : BVar s .var) (fs : List (FnView Γ x)) :
+    Framed (appStepWithF Γ x y fs) := by
+  refine orElseL_framed (appWithF_framed _ _ _) (flatMapL_framed (fun f => ?_) fs)
+  refine bind_framed (adaptInsertF_framed _ _ _) fun o => ?_
+  cases o with
+  | some r => exact letPairsF_framed _ _ _ (appCoreF_framed _ _ _)
+  | none => exact ret_framed _
+
+theorem appStepF_framed {s : Sig} (Γ : Ctx s) (x y : BVar s .var) : Framed (appStepF Γ x y) :=
+  bind_framed (fnViewsF_framed _ _) fun _ => appStepWithF_framed _ _ _ _
+
+theorem appAllF_framed {s : Sig} (Γ : Ctx s) (x y : BVar s .var) : Framed (appAllF Γ x y) := by
+  refine bind_framed (fnViewsF_framed _ _) fun fs => bind_framed ?_ fun _ => ret_framed _
+  cases fs with
+  | nil =>
+    refine bind_framed (boxViewsF_framed _ _) fun bs => ?_
+    dsimp only
+    split
+    · exact flatMapL_framed (fun _ => letPairsF_framed _ _ _ (appStepF_framed _ _ _)) _
+    · exact ret_framed _
+  | cons f fs => exact appStepWithF_framed _ _ _ _
+
+theorem projAllF_framed {s : Sig} (Γ : Ctx s) (x : BVar s .var) (a : Label) :
+    Framed (projAllF Γ x a) := by
+  refine bind_framed (fldViewsF_framed _ _ _) fun fs => bind_framed ?_ fun _ => ret_framed _
+  cases fs with
+  | nil =>
+    refine bind_framed (boxViewsF_framed _ _) fun bs => ?_
+    dsimp only
+    split
+    · exact flatMapL_framed (fun _ => letPairsF_framed _ _ _
+        (bind_framed (fldViewsF_framed _ _ _) fun _ => ret_framed _)) _
+    · exact ret_framed _
+  | cons f fs => exact ret_framed _
+
+theorem domSubF_framed {s : Sig} (Γ : Ctx s) (T1' T1 : Dom s) : Framed (domSubF Γ T1' T1) :=
+  dite_framed (fun _ => ret_framed _) (fun _ => subF_framed _ _ _)
+
+theorem lamGenF_framed {s : Sig} (Γ : Ctx s) (T : Dom s) (hwf : Ty.Wf T)
+    (rs : List (Elab (Γ.body T))) : Framed (lamGenF Γ T hwf rs) := by
+  refine flatMapL_framed (fun r => ?_) rs
+  dsimp only
+  split
+  · exact mapL_framed _ (lamUsesF_framed _ _ _)
+  · exact ret_framed _
+
+theorem lamCheckF_framed {s : Sig} (Γ : Ctx s) (T : Dom s) (hwf : Ty.Wf T) (C : CaptureSet s)
+    (T1' : Dom s) (T2 : Cod s) (rs : List (Elab (Γ.body T))) :
+    Framed (lamCheckF Γ T hwf C T1' T2 rs) := by
+  unfold lamCheckF
+  split
+  · exact mapL_framed _ (bindO_framed (subcapF_framed _ _ _) fun _ =>
+      mapO_framed _ (domSubF_framed _ _ _))
+  · exact ret_framed _
+
+theorem objDoneF_framed {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (e : Defs ((s,c),x))
+    (U : CaptureSet s) (r : DefsElab (Γ.objBody e S U) S.underRoot) :
+    Framed (objDoneF Γ S e U r) :=
+  dite_framed (fun _ => dite_framed (fun _ => mapO_framed _ (subcapF_framed _ _ _))
+    (fun _ => ret_framed _)) (fun _ => ret_framed _)
+
+theorem newAtomF_framed {s : Sig} (Γ : Ctx s) (U : CaptureSet s) (a : CapAtom s) :
+    Framed (newAtomF Γ U a) := by
+  refine ite_framed (ret_framed _) (bind_framed (subcapF_framed _ _ _) fun o => ?_)
+  cases o with
+  | some _ => exact ret_framed _
+  | none => exact ret_framed _
+
+theorem newAtomsF_framed {s : Sig} (Γ : Ctx s) (U D : CaptureSet s) :
+    Framed (newAtomsF Γ U D) :=
+  flatMapL_framed (newAtomF_framed Γ U) D
+
+theorem objNextF_framed {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (e : Defs ((s,c),x))
+    (U : CaptureSet s) (r : DefsElab (Γ.objBody e S U) S.underRoot) :
+    Framed (objNextF Γ S e U r) :=
+  bind_framed (hereBoundsF_framed _ _) fun _ =>
+    bind_framed (newAtomsF_framed _ _ _) fun _ => ret_framed _
+
+theorem objFixF_framed {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) {chk : DefsCheck Γ S}
+    (hchk : ∀ e U, Framed (chk e U)) :
+    ∀ k e U, Framed (objFixF Γ S chk k e U)
+  | 0, e, U => by
+    rw [objFixF]
+    exact zero_framed
+  | k + 1, e, U => by
+    rw [objFixF]
+    exact bindO_framed (hchk _ _) fun r => orElse_framed (objDoneF_framed _ _ _ _ _)
+      (bind_framed (objNextF_framed _ _ _ _ _) fun _ =>
+        ite_framed (ret_framed _) (objFixF_framed Γ S hchk k _ _))
+
+end Frames
+
+mutual
+
+theorem inferF_framed {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) :
+    (k : Nat) → (a : ATm s) → (G : Option (ETy s)) → Framed (inferF Γ ps k a G)
+  | 0, a, G => by
+    rw [inferF.eq_1]
+    exact nil_framed _
+  | k + 1, .path (.var x), G => by
+    rcases G with _ | (T | ⟨C, T⟩)
+    · rw [inferF]; exact ret_framed _
+    · rw [inferF]; exact mapL_framed _ (adaptVarF_framed _ _ _)
+    · rw [inferF]; exact finishF_framed _ _ _
+  | k + 1, .lam T t, G => by
+    rw [inferF]
+    refine ite_framed (dite_framed (fun hwf => orElseL_framed ?_ ?_) (fun _ => ret_framed _))
+      (ret_framed _)
+    · split
+      · exact bind_framed (inferF_framed _ _ k t _) fun _ => lamCheckF_framed _ _ _ _ _ _ _
+      · exact ret_framed _
+    · exact bind_framed (inferF_framed _ _ k t _) fun _ =>
+        bind_framed (lamGenF_framed _ _ _ _) fun _ => finishF_framed _ _ _
+  | k + 1, .obj S d, G => by
+    rw [inferF]
+    exact ite_framed (bind_framed (objFixF_framed _ _
+      (fun _ _ => checkDefsF_framed _ _ k d _) _ _ _) fun _ => finishF_framed _ _ _) (ret_framed _)
+  | k + 1, .app x y, G => by
+    rw [inferF]
+    exact bind_framed (appAllF_framed _ _ _) fun _ => finishF_framed _ _ _
+  | k + 1, .proj x a, G => by
+    rw [inferF]
+    exact bind_framed (projAllF_framed _ _ _) fun _ => finishF_framed _ _ _
+  | k + 1, .let ann t u, G => by
+    rw [inferF]
+    refine bind_framed (inferF_framed _ _ k t _) fun r1s => ?_
+    have hp : ∀ (p : PElab Γ) o, Framed (inferF (Γ.cons p.ty) (psVar ps) k u o) :=
+      fun _ _ => inferF_framed _ _ k u _
+    have hx : ∀ (q : XElab Γ) o, Framed (inferF ((Γ.consC).cons q.body) (psObj ps) k
+        (u.rename (Rename.succ (k := .cap)).lift) o) :=
+      fun _ _ => inferF_framed _ _ k _ _
+    cases ann with
+    | none =>
+      refine orElseL_framed ?_ (bind_framed (flatMapL_framed (fun _ =>
+        letBoundF_framed _ _ hp hx) _) fun _ => finishF_framed _ _ _)
+      cases G with
+      | some E => exact mapL_framed _ (firstSome_framed (fun _ => letOneF_framed _ _ _ _ hp hx) _)
+      | none => exact ret_framed _
+    | some A =>
+      exact ite_framed (bind_framed (mapL_framed _ (firstSome_framed
+        (fun _ => letOneF_framed _ _ _ _ hp hx) _)) fun _ => finishF_framed _ _ _) (ret_framed _)
+  | k + 1, .letex t u, G => by
+    rw [inferF]
+    refine bind_framed (inferF_framed _ _ k t _) fun r1s =>
+      bind_framed (flatMapL_framed (fun r1 => ?_) _) fun _ => finishF_framed _ _ _
+    dsimp only
+    split
+    · exact letexPairsF_framed _ _ (inferF_framed _ _ k u _)
+    · exact ret_framed _
+  | k + 1, .box x, G => by
+    rcases G with _ | (T | ⟨C, T⟩)
+    · rw [inferF]; exact finishF_framed _ _ _
+    · rw [inferF]
+      exact orElseL_framed (mapL_framed _ (boxCheckF_framed _ _ _)) (finishF_framed _ _ _)
+    · rw [inferF]; exact finishF_framed _ _ _
+  | k + 1, .unbox C x, G => by
+    rw [inferF]
+    refine bind_framed (boxViewsF_framed _ _) fun bs => ?_
+    dsimp only
+    split
+    · exact finishF_framed _ _ _
+    · exact ret_framed _
+  | k + 1, .asc t T, G => by
+    rw [inferF]
+    exact ite_framed (bind_framed (inferF_framed _ _ k t _) fun _ => finishF_framed _ _ _)
+      (ret_framed _)
+
+theorem checkDefsF_framed {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) :
+    (k : Nat) → (d : ADefs s) → (S : Shape s) → Framed (checkDefsF Γ ps k d S)
+  | 0, d, S => by
+    rw [checkDefsF.eq_1]
+    exact zero_framed
+  | k + 1, .typ A S0, S => by
+    cases S with
+    | typ B L U => rw [checkDefsF]; exact ret_framed _
+    | _ => exact ret_framed _
+  | k + 1, .cap A c, S => by
+    cases S with
+    | cap B c1 c2 => rw [checkDefsF]; exact ret_framed _
+    | _ => exact ret_framed _
+  | k + 1, .trm a t, S => by
+    cases S with
+    | fld c T =>
+      rw [checkDefsF]
+      exact dite_framed (fun _ => bind_framed (inferF_framed _ _ k t _) fun _ => ret_framed _)
+        (fun _ => ret_framed _)
+    | _ => exact ret_framed _
+  | k + 1, .and d1 d2, S => by
+    cases S with
+    | and S1 S2 =>
+      rw [checkDefsF]
+      exact bindO_framed (checkDefsF_framed _ _ k d1 S1) fun _ =>
+        mapO_framed _ (checkDefsF_framed _ _ k d2 S2)
+    | _ => exact ret_framed _
+
+end
+
+/-- A typing that ends unmarked does the same with more fuel. -/
+theorem synthF_frame {s : Sig} {Γ : Ctx s} {ps : CaptureSet s} {a : ATm s} {t t' : Tank}
+    {r : List (Elab Γ)} (h : synthF Γ ps a t = (r, t')) (ho : t'.out = false) (k : Nat) :
+    synthF Γ ps a (t.add k) = (r, t'.add k) :=
+  (inferF_framed Γ ps _ a none).shift t r t' h ho k
+
+theorem checkF_framed {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s) (E : ETy s) :
+    Framed (checkF Γ ps a E) :=
+  inferF_framed Γ ps _ a (some E)
+
+theorem esubEqF_framed {s : Sig} (Γ : Ctx s) (E F : ETy s) : Framed (esubEqF Γ E F) :=
+  dite_framed (fun _ => ret_framed _) (fun _ => esubF_framed _ _ _)
+
+theorem checkInF_framed {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s) (U : CaptureSet s)
+    (E : ETy s) : Framed (checkInF Γ ps a U E) := by
+  refine bind_framed (inferF_framed Γ ps _ a none) fun rs => ?_
+  cases rs with
+  | cons r _ =>
+    exact bindO_framed (subcapF_framed _ _ _) fun _ => mapO_framed _ (esubEqF_framed _ _ _)
+  | nil => exact ret_framed _
+
+/-- A first candidate leaves the tank unmarked. -/
+theorem firstCand_some {α : Type} {r : List α × Tank} {c : α} (h : (firstCand r).1 = some c) :
+    (firstCand r).2.out = false := by
+  obtain ⟨l, t⟩ := r
+  cases l with
+  | nil => simp [firstCand] at h
+  | cons c' l =>
+    cases ht : t.out with
+    | false => simp [firstCand, ht]
+    | true => simp [firstCand, ht] at h
+
+theorem firstCand_add {α : Type} (l : List α) (t : Tank) (k : Nat) :
+    firstCand (l, t.add k) = ((firstCand (l, t)).1, (firstCand (l, t)).2.add k) := by
+  cases l with
+  | nil => rfl
+  | cons c l => cases ht : t.out <;> simp [firstCand, Tank.add, ht]
+
+/-- The tank `firstCand` leaves is the one it is handed. -/
+theorem firstCand_snd {α : Type} (r : List α × Tank) : (firstCand r).2 = r.2 := by
+  obtain ⟨l, t⟩ := r
+  cases l with
+  | nil => rfl
+  | cons c l => cases ht : t.out <;> simp [firstCand, ht]
+
+theorem synthInF_stable {s : Sig} {Γ : Ctx s} {ps : CaptureSet s} {a : ATm s} {n k : Nat}
+    {r : Option (Elab Γ)} (h : synthInF Γ ps a n = (r, ⟨k, false⟩)) (m : Nat) :
+    (synthInF Γ ps a (n + m)).1 = r := by
+  unfold synthInF at h ⊢
+  cases hs : synthF Γ ps a ⟨n, false⟩ with
+  | mk l t' =>
+    have ht' : t' = ⟨k, false⟩ := by
+      have := firstCand_snd (synthF Γ ps a ⟨n, false⟩)
+      rw [h, hs] at this
+      exact this.symm
+    have hf := synthF_frame hs (by rw [ht']) m
+    have hn : (⟨n + m, false⟩ : Tank) = (⟨n, false⟩ : Tank).add m := rfl
+    rw [hn, hf, firstCand_add]
+    rw [hs] at h
+    rw [h]
+
+theorem synthInF_mono {s : Sig} {Γ : Ctx s} {ps : CaptureSet s} {a : ATm s} {n m : Nat}
+    {c : Elab Γ} (h : (synthInF Γ ps a n).1 = some c) (hnm : n ≤ m) :
+    (synthInF Γ ps a m).1 = some c := by
+  have ho : (synthInF Γ ps a n).2.out = false := firstCand_some h
+  have he : synthInF Γ ps a n = (some c, ⟨(synthInF Γ ps a n).2.left, false⟩) := by
+    rw [← h, ← ho]
+  have := synthInF_stable he (m - n)
+  rw [Nat.add_sub_cancel' hnm] at this
+  exact this
+
+/-- More fuel keeps the answer of a closed typing. -/
+theorem synthTop?_mono {n m : Nat} {π : PlatformNames} {a : ATm π.sig}
+    {c : Elab π.plat.ctx} (h : (synthTopF n π a).1 = some c) (hnm : n ≤ m) :
+    (synthTopF m π a).1 = some c :=
+  synthInF_mono h hnm
+
+/-- A closed typing that ends unmarked gives the same verdict at every larger
+fuel.  So a rejection that ends unmarked is a rejection by the rules. -/
+theorem synthTop?_stable {n k : Nat} {π : PlatformNames} {a : ATm π.sig}
+    {r : Option (Elab π.plat.ctx)} (h : synthTopF n π a = (r, ⟨k, false⟩)) (m : Nat) :
+    (synthTopF (n + m) π a).1 = r :=
+  synthInF_stable h m
+
+/-! ## Progress of the object fixpoint
+
+A pass of `objFixF` that does not stop goes on with the set `objNextF` gives
+and with the definitions it elaborated.  It goes on only when one of the two
+changed.  When the set changed, it gained an atom that the current set does
+not account for: an atom outside the set whose subcapturing goal `{a} <: U`
+ended unmarked with no answer, so that no algorithmic derivation of it exists
+(`subcapF_complete`).
+
+These facts do not bound the number of passes.  A pass elaborates the
+literal's definitions afresh under its own self binder, and box adaptation
+under one binder need not keep the insertions it made under another.  So the
+definitions are not known to grow.  The bound `objBound` is a size of the
+program, and the pass that reaches it marks the tank (`objFixF_zero`).  So a
+literal that runs out of passes is at the recursion limit, never rejected by
+the rules. -/
+
+section Progress
+
+variable {s : Sig} {Γ : Ctx s}
+
+/-- The last pass marks the tank. -/
+theorem objFixF_zero (S : Shape (s,x)) (chk : DefsCheck Γ S) (e : Defs ((s,c),x))
+    (U : CaptureSet s) (t : Tank) :
+    objFixF Γ S chk 0 e U t = (none, { t with out := true }) := rfl
+
+/-- A pass: type the definitions, stop if they are final, else go on at the
+next set and the elaborated definitions unless both are unchanged. -/
+theorem objFixF_succ (S : Shape (s,x)) (chk : DefsCheck Γ S) (k : Nat) (e : Defs ((s,c),x))
+    (U : CaptureSet s) :
+    objFixF Γ S chk (k + 1) e U =
+      bindO (chk e U) fun r =>
+        Fu.orElse (objDoneF Γ S e U r) fun _ =>
+          Fu.bind (objNextF Γ S e U r) fun U' =>
+            if U' = U ∧ r.tm.erase = e then Fu.ret none
+            else objFixF Γ S chk k r.tm.erase U' := by
+  rw [objFixF]
+
+/-- An atom `newAtomF` keeps, on a tank it leaves unmarked, is outside the set
+and has no algorithmic derivation below it. -/
+theorem newAtomF_new {U : CaptureSet s} {b : CapAtom s} {t : Tank} {N : CaptureSet s}
+    {t' : Tank} (h : newAtomF Γ U b t = (N, t')) (ho : t'.out = false) :
+    ∀ a ∈ N, a ∉ U ∧ ¬ Alg ⟨s, Γ, .cap [a] U⟩ := by
+  intro a ha
+  cases he : CaptureSet.elem U b with
+  | true =>
+    have hu : newAtomF Γ U b t = ([], t) := by
+      unfold newAtomF
+      rw [he, if_pos rfl]
+      rfl
+    rw [hu] at h
+    cases h
+    cases ha
+  | false =>
+    have hu : newAtomF Γ U b t =
+        match subcapF Γ [b] U t with
+        | (some _, t1) => ([], t1)
+        | (none, t1) => ([b], t1) := by
+      unfold newAtomF
+      rw [he, if_neg (by decide)]
+      unfold Fu.bind
+      rcases subcapF Γ [b] U t with ⟨_ | _, _⟩ <;> rfl
+    rw [hu] at h
+    rcases hs : subcapF Γ [b] U t with ⟨o, t1⟩
+    rw [hs] at h
+    cases o with
+    | some _ =>
+      cases h
+      cases ha
+    | none =>
+      cases h
+      have hab : a = b := List.mem_singleton.mp ha
+      subst hab
+      refine ⟨fun hm => ?_, fun hA => ?_⟩
+      · rw [(CaptureSet.elem_iff U).mpr hm] at he
+        cases he
+      · have hc := subcapF_complete hA t (by rw [hs]; exact ho)
+        rw [hs] at hc
+        cases hc
+
+/-- Every atom `newAtomsF` keeps, on a tank it leaves unmarked, is outside the
+set and has no algorithmic derivation below it. -/
+theorem newAtomsF_new {U : CaptureSet s} :
+    ∀ (D : CaptureSet s) {t : Tank} {N : CaptureSet s} {t' : Tank},
+      newAtomsF Γ U D t = (N, t') → t'.out = false → ∀ a ∈ N, a ∉ U ∧ ¬ Alg ⟨s, Γ, .cap [a] U⟩
+  | [], t, N, t', h, _, a, ha => by
+    have h0 : newAtomsF Γ U [] t = ([], t) := rfl
+    rw [h0] at h
+    cases h
+    cases ha
+  | b :: D, t, N, t', h, ho, a, ha => by
+    have hu : newAtomsF Γ U (b :: D) t =
+        match newAtomF Γ U b t with
+        | (ys, t1) => match newAtomsF Γ U D t1 with
+          | (zs, t2) => (ys ++ zs, t2) := rfl
+    rw [hu] at h
+    rcases hb : newAtomF Γ U b t with ⟨ys, t1⟩
+    rcases hD : newAtomsF Γ U D t1 with ⟨zs, t2⟩
+    rw [hb] at h
+    dsimp only at h
+    rw [hD] at h
+    cases h
+    have ho1 : t1.out = false := by
+      cases h1 : t1.out with
+      | false => rfl
+      | true =>
+        have hab := (newAtomsF_framed Γ U D).absorbs t1 h1
+        rw [hD] at hab
+        dsimp only at hab
+        rw [hab, h1] at ho
+        cases ho
+    rcases List.mem_append.mp ha with ha | ha
+    · exact newAtomF_new hb ho1 a ha
+    · exact newAtomsF_new D hD ho a ha
+
+/-- The set of the next pass contains the current set.  An atom it adds is
+outside the current set and has no algorithmic derivation below it.  A set
+with no atom outside the current one is the current set. -/
+theorem objNextF_new {S : Shape (s,x)} {e : Defs ((s,c),x)} {U : CaptureSet s}
+    {r : DefsElab (Γ.objBody e S U) S.underRoot} {t : Tank} {U' : CaptureSet s} {t' : Tank}
+    (h : objNextF Γ S e U r t = (U', t')) (ho : t'.out = false) :
+    CaptureSet.Subset U U' ∧ (∀ a ∈ U', a ∉ U → ¬ Alg ⟨s, Γ, .cap [a] U⟩) ∧
+      ((∀ a ∈ U', a ∈ U) → U' = U) := by
+  have hu : objNextF Γ S e U r t =
+      match hereBoundsF (Γ.objBody e S U) r.uses t with
+      | (bs, t1) => match newAtomsF Γ U (((capDropHere? (selOf bs) r.uses).bind fun V =>
+            capStrengthen? (k := .cap) V).getD []) t1 with
+        | (N, t2) => (capJoin U N, t2) := rfl
+  rw [hu] at h
+  rcases hh : hereBoundsF (Γ.objBody e S U) r.uses t with ⟨bs, t1⟩
+  rw [hh] at h
+  dsimp only at h
+  rcases hn : newAtomsF Γ U (((capDropHere? (selOf bs) r.uses).bind fun V =>
+      capStrengthen? (k := .cap) V).getD []) t1 with ⟨N, t2⟩
+  rw [hn] at h
+  cases h
+  have hnew := newAtomsF_new _ hn ho
+  refine ⟨capJoin_left U N, fun a ha hnu => ?_, fun hall => ?_⟩
+  · rcases List.mem_append.mp ha with ha | ha
+    · exact absurd ha hnu
+    · exact (hnew a (List.mem_filter.mp ha).1).2
+  · show U ++ N.filter (fun a => !(CaptureSet.elem U a)) = U
+    cases hf : N.filter (fun a => !(CaptureSet.elem U a)) with
+    | nil => exact List.append_nil U
+    | cons a F =>
+      have hmem : a ∈ N.filter (fun a => !(CaptureSet.elem U a)) := by
+        rw [hf]
+        exact List.mem_cons_self
+      have hin : a ∈ U := hall a (List.mem_append_right U hmem)
+      have hp := (List.mem_filter.mp hmem).2
+      rw [(CaptureSet.elem_iff U).mpr hin] at hp
+      cases hp
+
+/-- A pass of the object fixpoint that does not stop and goes on to another
+pass adds an atom that the current set does not account for, or goes on with
+other definitions.  `h` is the pass's `objNextF`, on a tank it leaves
+unmarked, and `hgo` says the pass goes on (`objFixF_succ`). -/
+theorem objFix_progress {S : Shape (s,x)} {e : Defs ((s,c),x)} {U : CaptureSet s}
+    {r : DefsElab (Γ.objBody e S U) S.underRoot} {t : Tank} {U' : CaptureSet s} {t' : Tank}
+    (h : objNextF Γ S e U r t = (U', t')) (ho : t'.out = false)
+    (hgo : ¬ (U' = U ∧ r.tm.erase = e)) :
+    (∃ a, a ∈ U' ∧ a ∉ U ∧ ¬ Alg ⟨s, Γ, .cap [a] U⟩) ∨ r.tm.erase ≠ e := by
+  obtain ⟨_, hnew, hsame⟩ := objNextF_new h ho
+  cases hd : decide (r.tm.erase = e) with
+  | false => exact Or.inr (of_decide_eq_false hd)
+  | true =>
+    have he := of_decide_eq_true hd
+    refine Or.inl ?_
+    cases hx : U'.find? (fun a => !(CaptureSet.elem U a)) with
+    | some a =>
+      have hp := List.find?_some hx
+      have hnu : a ∉ U := fun hm => by
+        rw [(CaptureSet.elem_iff U).mpr hm] at hp
+        cases hp
+      exact ⟨a, List.mem_of_find?_eq_some hx, hnu, hnew a (List.mem_of_find?_eq_some hx) hnu⟩
+    | none =>
+      have hall : ∀ a ∈ U', a ∈ U := fun a ha => by
+        have hn := List.find?_eq_none.mp hx a ha
+        cases hm : CaptureSet.elem U a with
+        | true => exact (CaptureSet.elem_iff U).mp hm
+        | false =>
+          rw [hm] at hn
+          exact absurd rfl hn
+      exact absurd ⟨hsame hall, he⟩ hgo
+
+end Progress
 
 /-! ## Checks
 
-Each program is resolved with the labels and platform of the examples in
-`lean/Coercions/CapturesCC/DotMNF/Examples.lean` and typed at the program
-context of its platform, or at the context of the example where the example
-is typed open.  A check compares the elaborated term, use set and answer with
-those of the example.  The use set is compared up to `subcap?` both ways where
-the least set is not the one the example wrote.
-
-Each success runs at a budget at which it is found.  A larger typer fuel finds
-the same (`synth?_le`).  A check one unit short shows what a counter measures.
-
-Successes and rejections by a written type or an existential are
-`decide +kernel` facts.  A `levelEscape` rejection reads `Ctx.caps`, which the
-kernel does not reduce, so those verdicts are `#eval expect` tests. -/
+Each program is resolved with the labels and platforms of
+`lean/Coercions/CapturesCC/DotMNF/Examples.lean` and typed at the context of
+its platform, or at the context of the example where the example is typed
+open.  Each check runs from a full tank of `defaultFuel` units in the kernel.
+It states the use set and answer, or that there is none, and the tank left.
+An unmarked tank says that the fuel played no part in the verdict.  A
+rejection with the tank unmarked holds at every fuel (`synthTop?_stable`).
+A rejection by a level escape reads `Ctx.caps`, which the kernel does not
+reduce, so those verdicts are `#eval expect` tests. -/
 
 section Checks
 
 open CapturesCC.DotMNF.Examples
+
+/-- The use set and answer of a closed program over a platform after
+resolution, from a full tank of `n` units, with the tank left. -/
+def judgAt (π : PlatformNames) (e : STm) (n : Nat := defaultFuel) :
+    Option (CaptureSet π.sig × ETy π.sig) × Tank :=
+  match resolveTop Λc π e with
+  | some a => ((synthTopF n π a).1.map fun r => (r.uses, r.ans), (synthTopF n π a).2)
+  | none => (none, ⟨n, true⟩)
+
+/-- The use set and answer of a term in `Γ`, from a full tank of `n` units,
+with the tank left. -/
+def judgIn {s : Sig} (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s) (n : Nat := defaultFuel) :
+    Option (CaptureSet s × ETy s) × Tank :=
+  ((synthInF Γ ps a n).1.map fun r => (r.uses, r.ans), (synthInF Γ ps a n).2)
+
+/-- The erasure of the elaborated program, from a full tank of `n` units. -/
+def elabAt (π : PlatformNames) (e : STm) (n : Nat := defaultFuel) : Option (Tm π.sig) :=
+  (resolveTop Λc π e).bind fun a => (synthTopF n π a).1.map fun r => r.tm.erase
+
+/-- The typer keeps the skeleton of the program. -/
+def keepsSkel (π : PlatformNames) (e : STm) (n : Nat := defaultFuel) : Bool :=
+  match resolveTop Λc π e with
+  | some a =>
+      match (synthTopF n π a).1 with
+      | some r => decide (r.tm.skel = a.skel)
+      | none => false
+  | none => false
 
 /-- The use set and the answer of a success. -/
 def judgmentOf {s : Sig} {Γ : Ctx s} (v : Verdict (Elab Γ)) : Option (CaptureSet s × ETy s) :=
@@ -1105,32 +1859,12 @@ def judgmentOf {s : Sig} {Γ : Ctx s} (v : Verdict (Elab Γ)) : Option (CaptureS
 def erasedOf {s : Sig} {Γ : Ctx s} (v : Verdict (Elab Γ)) : Option (Tm s) :=
   v.toOption.map fun r => r.tm.erase
 
-/-- A success whose elaborated term has the skeleton of the program. -/
-def keepsSkel {s : Sig} {Γ : Ctx s} (a : ATm s) (v : Verdict (Elab Γ)) : Bool :=
-  match v with
-  | .ok r => decide (r.tm.skel = a.skel)
-  | _ => false
-
-/-- A success moved to a given use set and answer by one `sub`, through
-`checkIn?`. -/
+/-- A typing moved to a given use set and answer by `checkIn?`. -/
 def reachesAt {s : Sig} (b : Budget) (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s)
     (U : CaptureSet s) (E : ETy s) : Bool :=
-  (checkIn? b Γ ps a U E).isOk
+  (checkIn? b Γ ps a U E).isSome
 
-/-- Two use sets, each below the other by the subcapturing search. -/
-def subcapBoth {s : Sig} (b : Budget) (Γ : Ctx s) (U V : CaptureSet s) : Bool :=
-  (subcap? (decls b Γ) b.cap U V).isSome && (subcap? (decls b Γ) b.cap V U).isSome
-
-/-- The judgment of a closed program over its platform. -/
-def topJudgment (b : Budget) (π : PlatformNames) (a : Option (ATm π.sig)) :
-    Option (CaptureSet π.sig × ETy π.sig) :=
-  a.bind fun a => judgmentOf (synthTop? b π a)
-
-/-- The erased elaboration of a closed program over its platform. -/
-def topErased (b : Budget) (π : PlatformNames) (a : Option (ATm π.sig)) : Option (Tm π.sig) :=
-  a.bind fun a => erasedOf (synthTop? b π a)
-
-/-- A closed program moved to a given use set and answer by one `sub`. -/
+/-- A closed program moved to a given use set and answer by `checkIn?`. -/
 def topReaches (b : Budget) (π : PlatformNames) (a : Option (ATm π.sig)) (U : CaptureSet π.sig)
     (E : ETy π.sig) : Bool :=
   match a with
@@ -1138,11 +1872,11 @@ def topReaches (b : Budget) (π : PlatformNames) (a : Option (ATm π.sig)) (U : 
   | none => false
 
 /-- The name of the reason a closed program is rejected for. -/
-def topRejected (b : Budget) (π : PlatformNames) (a : Option (ATm π.sig)) : Option String :=
-  a.bind fun a => (synthTop? b π a).reason?.map Reason.name
+def topRejected (b : Budget) (π : PlatformNames) (e : STm) : Option String :=
+  (resolveTop Λc π e).bind fun a => (synthTop? b π a).reason?.map Reason.name
 
-/-- The depth of the context a level escape was decided at, and whether the root
-of its certificate is the universal one. -/
+/-- The depth of the context a level escape was decided at, and whether the
+root of its certificate is the universal one. -/
 def escapeShape? {α : Type} (v : Verdict α) : Option (Nat × Bool) :=
   match v with
   | .rejected (.levelEscape (s := s) _ _ _ r _) => some (s.length, decide (r = .top))
@@ -1155,116 +1889,10 @@ def ps2z : CaptureSet ([],c,c,x,x) := CaptureSet.weaken (CaptureSet.weaken πz.s
 /-- The same over the platform `k1, k2`. -/
 def ps2c : CaptureSet ([],c,c,x,x) := CaptureSet.weaken (CaptureSet.weaken πc.set)
 
-/-! ### W2: the call of a capture-parameter arrow -/
+/-! ### The programs -/
 
-/-- `W2_call`: `p f` at `W2CallCtx` has the use set `{f}` and answer `⊤`.  The
-argument is checked at `File ^ {f}`, the domain with the arrow's binder at the
-argument. -/
-example : judgmentOf (synthIn? { decls := 0, views := 0, sub := 0, cap := 0, typer := 2, obj := 0 }
-    W2CallCtx ps2c (.app (.there .here) .here)) = some ([CapAtom.var .here], .ty unitTy) := by
-  decide +kernel
-
-/-- One unit of typer fuel short. -/
-example : judgmentOf (synthIn? { decls := 0, views := 0, sub := 0, cap := 0, typer := 1, obj := 0 }
-    W2CallCtx ps2c (.app (.there .here) .here)) = none := by
-  decide +kernel
-
-/-- `process` itself, written with its parameter at `any`. -/
+/-- `process`, written with its parameter at `any`. -/
 def W2defSrc : STm := cc% λ(x : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}). λ(u : ⊤). u
-
-/-- It elaborates to `W2Tm`, its parameter's `any` read as the arrow's own
-binder.  Its least answer has the inner closure at its own type, and `W2Ty` is
-reached by one `sub`. -/
-example : topErased {} πc (resolveTop Λc πc W2defSrc) = some W2Tm := by decide +kernel
-
-example : topReaches {} πc (resolveTop Λc πc W2defSrc) [] (.ty W2Ty) = true := by decide +kernel
-
-/-! ### Z1: the caller of `freshCell`, at `Z1Ctx` -/
-
-/-- The budget of the caller. -/
-def bZ1 : Budget := { decls := 0, views := 0, sub := 0, cap := 2, typer := 4, obj := 0 }
-
-/-- The `let` becomes a `letex`, and the elaborated term erases to the term of
-`Z1_caller`. -/
-example : erasedOf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn) =
-    some (.letex (.app (.there .here) .here) (.let (.path (.var .here)) unitTm)) := by
-  decide +kernel
-
-/-- The elaboration keeps the skeleton of the program. -/
-example : keepsSkel Z1callerAnn (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn) = true := by decide +kernel
-
-/-- The least judgment: the call charged `{fc}`, the unpacking its bound
-`{fs, un}`, and the closure it hands back at its own type. -/
-example : judgmentOf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn) =
-    some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here], .ty (arrowS ^ [])) := by
-  decide +kernel
-
-/-- The judgment of `Z1_caller`, `Z1Use ∪ Z1Use` and `⊤`, is reached by one
-`sub`. -/
-example : reachesAt { bZ1 with cap := 4, sub := 1 } Z1Ctx ps2z Z1callerAnn (Z1Use ∪ Z1Use)
-    (.ty unitTy) = true := by
-  decide +kernel
-
-/-- The two use sets are below each other: `{fc}` is below `{fs}` by
-`sc-var`. -/
-example : subcapBoth { bZ1 with cap := 4 } Z1Ctx
-    [CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here] (Z1Use ∪ Z1Use) = true := by
-  decide +kernel
-
-/-- One unit of the set search short: the payload is not charged to its
-witness. -/
-example : (synthIn? { bZ1 with cap := 1 } Z1Ctx ps2z Z1callerAnn).isOk = false := by
-  decide +kernel
-
-/-! ### An unpacking whose answer is existential -/
-
-/-- The budget of `Z1_tail`. -/
-def bTail : Budget := { decls := 0, views := 0, sub := 0, cap := 1, typer := 3, obj := 0 }
-
-/-- `let c1 = fc un in fc un` unpacks the first call, and its answer is the
-second call's existential, strengthened past the witness and the payload.  It
-erases to the term of `Z1_tail`. -/
-example : erasedOf (synthIn? bTail Z1Ctx ps2z Z1TailAnn) =
-    some (.letex (.app (.there .here) .here)
-      (.app (.there (.there (.there .here))) (.there (.there .here)))) := by
-  decide +kernel
-
-example : judgmentOf (synthIn? bTail Z1Ctx ps2z Z1TailAnn) =
-    some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here],
-      ∃ᶜ[Z1Use] (fileS ^ [CapAtom.cvar .here])) := by
-  decide +kernel
-
-example : subcapBoth { bTail with cap := 4 } Z1Ctx
-    [CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here] (Z1Use ∪ Z1Use) = true := by
-  decide +kernel
-
-/-- Inside a scope the payload's type leaves by the level rule: the witness and
-the payload are at the level of the innermost root, so `let x = fc un in x`
-under a lambda is a file captured by that body's root.  This is the compiler's
-local `any` absorbing a `fresh`. -/
-example : (resolveIn Λc (((z1Names.consC "%").consC "%").cons "v") (cc% let x = fc un in x)).bind
-    (fun a => judgmentOf (synthIn? {} (Z1Ctx.body unitTy) (psBody ps2z) a)) =
-    some ([CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.cvar (up fs2),
-        CapAtom.var (.there (.there (.there .here)))],
-      .ty (fileS ^ [CapAtom.cvar (.there (.there .here))])) := by
-  decide +kernel
-
-/-! ### A capture parameter that is called -/
-
-/-- `λ(h : (∀(u : ⊤) ⊤) ^ {any}). let z = unit in h z`, with `unit : ⊤` bound
-outside, is a pure closure whose domain reads `any` as the arrow's own binder.
-The call is charged `{h, z}`, `z` is pure, and `h` leaves with the parameter. -/
-example : judgmentOf (synthIn? { decls := 0, views := 0, sub := 0, cap := 1, typer := 4, obj := 0 }
-    (platCtx.cons unitTy) (CaptureSet.weaken πc.set) P1ann) =
-    some ([], .ty ((Shape.all (arrowS ^ [CapAtom.cvar .here]) (.ty unitTy)) ^ [])) := by
-  decide +kernel
-
-/-- One unit of typer fuel short. -/
-example : (synthIn? { decls := 0, views := 0, sub := 0, cap := 1, typer := 3, obj := 0 }
-    (platCtx.cons unitTy) (CaptureSet.weaken πc.set) P1ann).isOk = false := by
-  decide +kernel
-
-/-! ### `fresh` in a written result, and existential annotations -/
 
 /-- `freshCell` bound by a `let` whose answer is written with `fresh`. -/
 def Z1defSrc : STm :=
@@ -1272,58 +1900,18 @@ def Z1defSrc : STm :=
         λ(u : ⊤). let r = ν(f : {read : (∀(v : ⊤) ⊤) ^ {f}}. {read = λ(v : ⊤). v}) in r
       in fc
 
-/-- The annotation reads `fresh` as `Z1Ty`, the existential bounded by
-`{fs, u}`, and the closure reaches it by the arrow rule, which packs the
-cell. -/
-example : topJudgment { decls := 0, views := 0, sub := 2, cap := 1, typer := 8, obj := 1 } πz
-    (resolveTop Λc πz Z1defSrc) = some ([], .ty (Z1Ty k1)) := by
-  decide +kernel
-
 /-- An existential `let` annotation: the plain `let` is typed and packed into
 the annotation, with the payload's own set `{f}` as witness. -/
 def cov2Src : STm :=
   cc% λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {k1}).
         let r : ∃[c ⊑ {f}] μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {c} = f in r
 
-example : topJudgment { decls := 0, views := 0, sub := 1, cap := 2, typer := 3, obj := 0 } πc
-    (resolveTop Λc πc cov2Src) =
-    some ([], .ty ((Shape.all (fileS ^ [CapAtom.cvar (.there k1)])
-      (∃ᶜ[[CapAtom.var .here]] (fileS ^ [CapAtom.cvar .here]))) ^ [])) := by
-  decide +kernel
-
 /-- A written existential whose binder sits below a field: the payload's
 own set is empty and is no witness, and the written bound `{k1}` is. -/
 def cov4Src : STm := cc% λ(p : {a : ⊤ ^ {k1}}). let r : ∃[c ⊑ {k1}] {a : ⊤ ^ {c}} = p in r
 
-example : topJudgment { decls := 0, views := 0, sub := 2, cap := 2, typer := 3, obj := 0 } πc
-    (resolveTop Λc πc cov4Src) =
-    some ([], .ty ((Shape.all ((Shape.fld la (Shape.top ^ [CapAtom.cvar (.there k1)])) ^ [])
-      (∃ᶜ[[CapAtom.cvar (.there (.there k1))]]
-        ((Shape.fld la (Shape.top ^ [CapAtom.cvar .here])) ^ []))) ^ [])) := by
-  decide +kernel
-
-/-! ### A projection is charged its receiver -/
-
 /-- A closure that projects its parameter. -/
 def cov3Src : STm := cc% λ(o : {a : ⊤ ^ {k1}} ^ {k1}). o.a
-
-/-- It is pure: the body is charged `{o}`, which leaves with the parameter. -/
-example : topJudgment { decls := 0, views := 0, sub := 0, cap := 1, typer := 2, obj := 0 } πc
-    (resolveTop Λc πc cov3Src) =
-    some ([], .ty ((Shape.all ((Shape.fld la (Shape.top ^ [CapAtom.cvar (.there k1)])) ^
-        [CapAtom.cvar (.there k1)])
-      (.ty (Shape.top ^ [CapAtom.cvar (.there (.there k1))]))) ^ [])) := by
-  decide +kernel
-
-/-- The body itself, at its scope: `o.a` is charged `{o}`. -/
-example : judgmentOf (synthIn? { decls := 0, views := 0, sub := 0, cap := 1, typer := 1, obj := 0 }
-    (platCtx.body ((Shape.fld la (Shape.top ^ [CapAtom.cvar (.there k1)])) ^
-      [CapAtom.cvar (.there k1)]))
-    (psBody πc.set) (.proj .here la)) =
-    some ([CapAtom.var .here], .ty (Shape.top ^ [CapAtom.cvar (up k1)])) := by
-  decide +kernel
-
-/-! ### C7: boxes, an unboxing and an object under its class root -/
 
 /-- C7 with no term-level box: the typer inserts `□ f₁`, `□ f₂` and
 `{κ₁} ⊸ e`. -/
@@ -1333,39 +1921,18 @@ def C7src : STm :=
                    {e1 = f1} ∧ {e2 = f2})
         in let e = o.e1 in (e : (∀(u : ⊤) ⊤) ^ {k1})
 
-/-- The budget of C7. -/
-def bC7 : Budget := { decls := 0, views := 2, sub := 1, cap := 2, typer := 8, obj := 2 }
+/-- A literal that uses `f` and `h`, with `h` declared at `{y.C}` and the
+member `C` of `y` bounded by `{}`.  The empty set accounts for `h`, so the
+literal's set is `{f}`. -/
+def accountedSrc : STm :=
+  cc% λ(f : (∀(u : ⊤) ⊤) ^ {k1}). λ(y : {C^ : {}..{}}). λ(h : (∀(u : ⊤) ⊤) ^ {y.C}).
+        ν(z : {a : (∀(u : ⊤) ⊤) ^ {f}} ∧ {b : (∀(u : ⊤) ⊤) ^ {h}}. {a = f} ∧ {b = h})
 
-/-- It elaborates to `C7tm`, with the judgment `C7Ty`, and keeps the skeleton of
-the program. -/
-example : topErased bC7 πc (resolveTop Λc πc C7src) = some C7tm := by decide +kernel
-
-example : topJudgment bC7 πc (resolveTop Λc πc C7src) = some ([], .ty C7Ty) := by decide +kernel
-
-example : (match resolveTop Λc πc C7src with
-    | some a => keepsSkel a (synthTop? bC7 πc a)
-    | none => false) = true := by
-  decide +kernel
-
-/-- One pass of the object rule is not enough: the first pass inserts the boxes,
-and the self binder it ran under holds the definitions without them. -/
-example : topJudgment { bC7 with obj := 1 } πc (resolveTop Λc πc C7src) = none := by
-  decide +kernel
-
-/-! ### Rejections by a written type and by an existential answer -/
+/-- The context `κ, x : ⊤ ^ {κ}`. -/
+def capVarCtx : Ctx ([],c,x) := .cons (.consC .nil) (Ty.capt [CapAtom.cvar .here] .top)
 
 /-- `any` deeper in a domain than its outer set: `W2_deep_rejected`. -/
 def deepSrc : STm := cc% λ(x : {read : ⊤ ^ {any}}). x
-
-example : topRejected {} πc (resolveTop Λc πc deepSrc) = some "anyNotOk" := by decide +kernel
-
-#eval expect (topRejected {} πc (resolveTop Λc πc deepSrc) == some "anyNotOk") "deep any"
-
-/-- `fresh` in a domain, which the resolver refuses, is refused by the typer
-too. -/
-example : (synthIn? {} platCtx πc.set (.lam (.capt [CapAtom.fresh] .top) (.path (.var .here)))).reason?.map
-    Reason.name = some "freshNotOk" := by
-  decide +kernel
 
 /-- A call of `freshCell` as the body of a `let` outside every scope: its answer
 is an existential and no root absorbs the witness. -/
@@ -1374,25 +1941,7 @@ def exTopSrc : STm :=
                   : (∀(u : ⊤) μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {fresh}) ^ {fs}) in
       let un = λ(v : ⊤). v in fc un
 
-example : topRejected { typer := 12 } πz (resolveTop Λc πz exTopSrc) = some "existentialAtTop" := by
-  decide +kernel
-
-#eval expect (topRejected { typer := 12 } πz (resolveTop Λc πz exTopSrc) == some "existentialAtTop")
-  "existential at the top"
-
-/-! ### Rejections by a level escape
-
-Compiled code computes each verdict, since its certificate reads `Ctx.caps`.
-The depth of the context reached and the kind of root are checked too. -/
-
-/- The escape: the callback's result `any` is the root of `λ(g : ⊤)`'s body,
-and the callback returns its parameter.  The goal reached is `{f} <: {κ_g}` in
-the callback's body, in the context that also binds `cb`, nine binders deep.
-The certificate's root is `κ_g`. -/
-#eval expect ((resolveTop Λc πc EscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
-  some (9, false)) "the escape"
-
-/-- The same escape at the top of a program.  The result `any` reads as the
+/-- The escape at the top of a program.  The result `any` reads as the
 platform set, which holds no source root, so the certificate's root is the
 universal one. -/
 def TopEscSrc : STm :=
@@ -1401,9 +1950,6 @@ def TopEscSrc : STm :=
         = λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}). λ(u : ⊤). f
       in cb
 
-#eval expect ((resolveTop Λc πc TopEscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
-  some (6, true)) "the escape at the top"
-
 /-- An ascription is binding too: the escape written as an ascription is
 rejected at the callback's body. -/
 def AscEscSrc : STm :=
@@ -1411,9 +1957,6 @@ def AscEscSrc : STm :=
         ((λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}). λ(u : ⊤). f) :
           (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any})
             (∀(u : ⊤) μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}) ^ {any}) ^ {})
-
-#eval expect ((resolveTop Λc πc AscEscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
-  some (8, false)) "the escape by an ascription"
 
 /-- The same callback, annotated with its result at its own parameter, is
 accepted: what it captures stays inside its own scope. -/
@@ -1424,9 +1967,309 @@ def EscOkSrc : STm :=
       = λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}). λ(u : ⊤). f
     in cb
 
-example : (resolveTop Λc πc EscOkSrc).bind (fun a => (synthTop? {} πc a).toOption.map (·.uses)) =
-    some [] := by
+/-- E1 with the middle written.  A `let` annotation types the whole `let`, so
+`let t : T = x in t` ascribes `T` to `x`. -/
+def E1ssrc : STm :=
+  cc% λ(x : {A : ⊤..⊥}).
+         let y : {B : {a : ⊤} .. {a : ⊤}} = (let u : x.A = (let t : ⊤ = x in t) in u) in y
+
+/-- E3 with the middle written, by the same ascription. -/
+def E3ssrc : STm :=
+  cc% λ(x : {A : ⊥ .. {a : ⊤}} ∧ {A : {b : ⊤} .. ⊤}).
+         λ(z : {b : ⊤}). let y : {a : ⊤} = (let u : x.A = z in u) in y
+
+/-- A function at a member selected through a recursive shape, ascribed at
+the member's upper bound. -/
+def PA1src : STm :=
+  cc% λ(f : ∀(y : μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {A : ⊥ .. {a : ⊤}}))) y.A).
+        (f : ∀(y : μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {A : ⊥ .. {a : ⊤}}))) {a : ⊤})
+
+/-- `y : x.A`, the field `a` four steps down `x.A`'s upper bound. -/
+def P4src : STm := cc% λ(x : {A : ⊥ .. μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {a : ⊤}))}). λ(y : x.A). y.a
+
+/-- A function at an intersection of two function types, applied to an
+argument only the second accepts. -/
+def P5src : STm := cc% λ(f : (∀(x : {a : ⊤}) ⊤) ∧ (∀(x : ⊤) ⊤)). λ(y : ⊤). f y
+
+/-- A projection with two fields, the first through `x.A`'s upper bound.  Only
+the second has the member `b`. -/
+def R1src : STm := cc% λ(x : {A : ⊥ .. {a : ⊤}}). λ(y : x.A ∧ {a : {b : ⊤}}). let z = y.a in z.b
+
+/-- A projection with two written fields.  Only the second has the member `b`. -/
+def R2src : STm := cc% λ(y : {a : ⊤} ∧ {a : {b : ⊤}}). let z = y.a in z.b
+
+/-- The field reached second, at an ascription. -/
+def R3src : STm := cc% λ(y : {a : ⊤} ∧ {a : {b : ⊤}}). (y.a : {b : ⊤})
+
+/-- The same choice under a written `let` type. -/
+def R4src : STm := cc% λ(y : {a : ⊤} ∧ {a : {b : ⊤}}). let z : ⊤ = y.a in z.b
+
+/-- A field reached only through a middle the program does not write:
+`n : {a : ⊤}` below `x.A`, and `x.A` below `{b : ⊤}`. -/
+def B1src : STm := cc% λ(x : {A : {a : ⊤} .. {b : ⊤}}). λ(n : {a : ⊤}). n.b
+
+/-- A written `let` annotation that the bound value does not meet. -/
+def A1src : STm := cc% λ(x : ⊤). let y : {a : ⊤} = x in y
+
+/-- A check through `∀` bodies that never ends, `x : p.A` against `q.B`. -/
+def LPsrc : STm :=
+  cc% λ(p : μ(s. {A : ⊥ .. ∀(y : ⊤) s.A})). λ(q : μ(s. {B : ∀(y : ⊤) s.B .. ⊤})). λ(x : p.A).
+        (x : q.B)
+
+/-- Pierce's divergence of F<:.  The goal comes back under a new binder that
+it names, so no cut ends it, and the tank does. -/
+def PFsrc : STm :=
+  cc% λ(x0 : {A : ⊥ .. ∀(x : {A : ⊥ .. ⊤}) ∀(z : {A : ⊥ .. ∀(y : {A : ⊥ .. x.A})
+          ∀(w : {A : ⊥ .. y.A}) w.A}) z.A}).
+        λ(v : x0.A). (v : ∀(x1 : {A : ⊥ .. x0.A}) ∀(z : {A : ⊥ .. x1.A}) z.A)
+
+/-- An avoided type with a box, at an argument whose domain is another box.
+The inner `let` gives `y` the type `□((∀(u : ⊤) ⊤) ^ {f}) ^ {}`.  Both statuses
+are boxed, so `y` is unboxed first, which fails, and then boxed. -/
+def BX2src : STm :=
+  cc% λ(f : (∀(u : ⊤) ⊤) ^ {k1}). λ(h : (∀(v : □(⊤ ^ {})) ⊤) ^ {}).
+        let y = (let g = f in □ g) in h y
+
+/-- The same at an ascription. -/
+def BXsrc : STm :=
+  cc% λ(f : (∀(u : ⊤) ⊤) ^ {k1}). let y = (let g = f in □ g) in (y : □(⊤ ^ {}))
+
+/-- The last `j` lets `wᵢ = zᵢ.b` of `RK k`, then `wₖ`. -/
+def rkWs (k : Nat) : Nat → STm
+  | 0 => .var ("w" ++ toString k)
+  | j + 1 =>
+      .let ("w" ++ toString (k - j)) none (.proj (.var ("z" ++ toString (k - j))) "b") (rkWs k j)
+termination_by structural j => j
+
+/-- The last `j` lets `zᵢ = y.a` of `RK k`, then the lets of `rkWs`. -/
+def rkZs (k : Nat) : Nat → STm
+  | 0 => rkWs k k
+  | j + 1 => .let ("z" ++ toString (k - j)) none (.proj (.var "y") "a") (rkZs k j)
+termination_by structural j => j
+
+/-- `y : {a : ⊤} ∧ {a : {b : ⊤}}`, then `k` lets `zᵢ = y.a`, then `k` lets
+`wᵢ = zᵢ.b`.  The typer tries both fields at every `zᵢ` and learns which one
+fails only at the `wᵢ`. -/
+def RK (k : Nat) : STm :=
+  match R2src with
+  | .lam κ y T _ => .lam κ y T (rkZs k k)
+  | e => e
+
+/-! ### W2, Z1, the existential annotations and a projection -/
+
+/-- `process` elaborates to `W2Tm`, its parameter's `any` read as the arrow's
+own binder.  Its least answer has the inner closure at its own type, and `W2Ty`
+is reached by one `sub`. -/
+example : elabAt πc W2defSrc = some W2Tm := by decide +kernel
+example : (judgAt πc W2defSrc).2 = ⟨defaultFuel - 2, false⟩ := by decide +kernel
+example : topReaches {} πc (resolveTop Λc πc W2defSrc) [] (.ty W2Ty) = true := by decide +kernel
+
+/-- The annotation of `freshCell` reads `fresh` as `Z1Ty`, the existential
+bounded by `{fs, u}`, and the closure reaches it by the arrow rule, which
+packs the cell. -/
+example : judgAt πz Z1defSrc = (some ([], .ty (Z1Ty k1)), ⟨defaultFuel - 31, false⟩) := by
   decide +kernel
+
+/-- An existential `let` annotation, packed at the payload's own set `{f}`. -/
+example : judgAt πc cov2Src =
+    (some ([], .ty ((Shape.all (fileS ^ [CapAtom.cvar (.there k1)])
+      (∃ᶜ[[CapAtom.var .here]] (fileS ^ [CapAtom.cvar .here]))) ^ [])),
+      ⟨defaultFuel - 14, false⟩) := by decide +kernel
+
+/-- An existential annotation packed at its written bound `{k1}`. -/
+example : judgAt πc cov4Src =
+    (some ([], .ty ((Shape.all ((Shape.fld la (Shape.top ^ [CapAtom.cvar (.there k1)])) ^ [])
+      (∃ᶜ[[CapAtom.cvar (.there (.there k1))]]
+        ((Shape.fld la (Shape.top ^ [CapAtom.cvar .here])) ^ []))) ^ [])),
+      ⟨defaultFuel - 32, false⟩) := by decide +kernel
+
+/-- A projection is charged its receiver, which leaves with the parameter, so
+the closure is pure. -/
+example : judgAt πc cov3Src =
+    (some ([], .ty ((Shape.all ((Shape.fld la (Shape.top ^ [CapAtom.cvar (.there k1)])) ^
+        [CapAtom.cvar (.there k1)])
+      (.ty (Shape.top ^ [CapAtom.cvar (.there (.there k1))]))) ^ [])),
+      ⟨defaultFuel - 2, false⟩) := by decide +kernel
+
+/-! ### C7: boxes, an unboxing and an object under its class root -/
+
+/-- C7 elaborates to `C7tm`, with the judgment `C7Ty`, and keeps the skeleton
+of the program.  The first pass of the object rule inserts the boxes, and the
+second runs under a binder that holds them. -/
+example : elabAt πc C7src = some C7tm := by decide +kernel
+example : judgAt πc C7src = (some ([], .ty C7Ty), ⟨defaultFuel - 80, false⟩) := by decide +kernel
+example : keepsSkel πc C7src = true := by decide +kernel
+
+/-! ### The atoms the object fixpoint adds
+
+An atom the current set accounts for is not added.  `{x}` is below `{κ}`
+when `x` is declared at `{κ}`, and nothing but `{}` is below `{}`.  The
+literal of `accountedSrc` uses `{f, h}`, and its set is `{f}`. -/
+
+example : newAtomsF capVarCtx [CapAtom.cvar (.there .here)]
+    [CapAtom.var .here, CapAtom.cvar (.there .here)] ⟨defaultFuel, false⟩ =
+    ([], ⟨defaultFuel - 3, false⟩) := by decide +kernel
+example : newAtomsF capVarCtx [] [CapAtom.var .here] ⟨defaultFuel, false⟩ =
+    ([CapAtom.var .here], ⟨defaultFuel - 3, false⟩) := by decide +kernel
+example : judgAt πc accountedSrc =
+    (some ([], .ty ((Shape.all (capTy (.there k1))
+      (.ty ((Shape.all ((Shape.cap lC [] []) ^ [])
+        (.ty ((Shape.all (arrowS ^ [CapAtom.sel (.there .here) lC])
+          (.ty ((Shape.mu (.and
+              (.fld la (arrowS ^ [CapAtom.var (.there (.there (.there (.there (.there .here)))))]))
+              (.fld lb (arrowS ^ [CapAtom.var (.there .here)])))) ^
+            [CapAtom.var (.there (.there (.there (.there .here))))]))) ^ []))) ^ []))) ^ [])),
+      ⟨defaultFuel - 36, false⟩) := by decide +kernel
+
+/-! ### The open programs
+
+At the version's contexts.  `Z1callerAnn` becomes an unpacking, and the
+version's `Z1Use ∪ Z1Use` is reached from the least set by one `sub`. -/
+
+/-- The call `p f` at `W2CallCtx`, at the use set `{f}` and the answer `⊤`. -/
+example : judgIn W2CallCtx ps2c (.app (.there .here) .here) =
+    (some ([CapAtom.var .here], .ty unitTy), ⟨defaultFuel - 2, false⟩) := by decide +kernel
+
+/-- The caller of `freshCell`: the call charged `{fc}`, the unpacking its
+bound `{fs, un}`, and the closure it hands back at its own type. -/
+example : judgIn Z1Ctx ps2z Z1callerAnn =
+    (some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here], .ty (arrowS ^ [])),
+      ⟨defaultFuel - 8, false⟩) := by decide +kernel
+example : (synthInF Z1Ctx ps2z Z1callerAnn defaultFuel).1.map (·.tm.erase) =
+    some (.letex (.app (.there .here) .here) (.let (.path (.var .here)) unitTm)) := by
+  decide +kernel
+example : reachesAt {} Z1Ctx ps2z Z1callerAnn (Z1Use ∪ Z1Use) (.ty unitTy) = true := by
+  decide +kernel
+
+/-- An unpacking whose answer is the second call's existential, moved past the
+witness and the payload of the first. -/
+example : judgIn Z1Ctx ps2z Z1TailAnn =
+    (some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here],
+      ∃ᶜ[Z1Use] (fileS ^ [CapAtom.cvar .here])), ⟨defaultFuel - 5, false⟩) := by decide +kernel
+
+/-- `λ(h : (∀(u : ⊤) ⊤) ^ {any}). let z = unit in h z`: a pure closure whose
+domain reads `any` as the arrow's own binder. -/
+example : judgIn (platCtx.cons unitTy) (CaptureSet.weaken πc.set) P1ann =
+    (some ([], .ty ((Shape.all (arrowS ^ [CapAtom.cvar .here]) (.ty unitTy)) ^ [])),
+      ⟨defaultFuel - 4, false⟩) := by decide +kernel
+
+/-- Inside a scope the payload's type leaves an unpacking by the level rule:
+`let x = fc un in x` under a lambda is a file captured by that body's root,
+the compiler's local root absorbing a `fresh`. -/
+example : (resolveIn Λc (((z1Names.consC "%").consC "%").cons "v") (cc% let x = fc un in x)).map
+    (fun a => judgIn (Z1Ctx.body unitTy) (psBody ps2z) a) =
+    some (some ([CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.cvar (up fs2),
+        CapAtom.var (.there (.there (.there .here)))],
+      .ty (fileS ^ [CapAtom.cvar (.there (.there .here))])), ⟨defaultFuel - 7, false⟩) := by
+  decide +kernel
+
+/-! ### Rejections by a written type and by an existential answer -/
+
+/-- `any` deeper in a domain than its outer set, `W2_deep_rejected`, with the
+tank unmarked. -/
+example : judgAt πc deepSrc = (none, ⟨defaultFuel, false⟩) := by decide +kernel
+example : topRejected {} πc deepSrc = some "anyNotOk" := by decide +kernel
+
+/-- `fresh` in a domain. -/
+example : (synthIn? {} platCtx πc.set
+    (.lam (.capt [CapAtom.fresh] .top) (.path (.var .here)))).reason?.map Reason.name =
+    some "freshNotOk" := by decide +kernel
+
+/-- The call of `freshCell` outside every scope: its answer is an existential
+and no root absorbs the witness. -/
+example : judgAt πz exTopSrc = (none, ⟨defaultFuel - 19, false⟩) := by decide +kernel
+example : topRejected {} πz exTopSrc = some "existentialAtTop" := by decide +kernel
+
+/-! ### Rejections by a level escape
+
+Compiled code computes each verdict, since its certificate reads `Ctx.caps`.
+The depth of the context reached and the kind of root are checked too.  The
+rejections themselves are kernel facts with the tank unmarked. -/
+
+example : judgAt πc EscSrc = (none, ⟨defaultFuel - 31, false⟩) := by decide +kernel
+example : judgAt πc TopEscSrc = (none, ⟨defaultFuel - 31, false⟩) := by decide +kernel
+example : judgAt πc AscEscSrc = (none, ⟨defaultFuel - 88, false⟩) := by decide +kernel
+
+/- The escape: the callback's result `any` is the root of `λ(g : ⊤)`'s body,
+and the callback returns its parameter.  The goal reached is `{f} <: {κ_g}` in
+the callback's body, in the context that also binds `cb`, nine binders deep.
+The certificate's root is `κ_g`. -/
+#eval expect ((resolveTop Λc πc EscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
+  some (9, false)) "the escape"
+
+/- At the top the result `any` reads as the platform set, so the
+certificate's root is the universal one. -/
+#eval expect ((resolveTop Λc πc TopEscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
+  some (6, true)) "the escape at the top"
+
+/- The escape written as an ascription is rejected at the callback's body. -/
+#eval expect ((resolveTop Λc πc AscEscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
+  some (8, false)) "the escape by an ascription"
+
+/-- The same callback at its own parameter is accepted. -/
+example : (judgAt πc EscOkSrc).1.map (·.1) = some [] := by decide +kernel
+example : (judgAt πc EscOkSrc).2 = ⟨defaultFuel - 4, false⟩ := by decide +kernel
+
+/-! ### Middles written, every member a candidate, and annotations that bind -/
+
+/-- E1 and E3 with their middle written. -/
+example : judgAt .empty E1ssrc =
+    (some ([], .ty ((Shape.all E1Dom (.ty E1Res)) ^ [])), ⟨defaultFuel - 20, false⟩) := by
+  decide +kernel
+example : judgAt .empty E3ssrc =
+    (some ([], .ty ((Shape.all E3Dom (.ty ((Shape.all E3T2 (.ty E3T1)) ^ []))) ^ [])),
+      ⟨defaultFuel - 18, false⟩) := by decide +kernel
+
+/-- PA1, P4, P5: a member through a recursive shape, a field four steps down,
+the second of two function types. -/
+example : (judgAt πc PA1src).1.map (·.1) = some [] := by decide +kernel
+example : (judgAt πc PA1src).2 = ⟨defaultFuel - 45, false⟩ := by decide +kernel
+example : (judgAt πc P4src).1.map (·.1) = some [] := by decide +kernel
+example : (judgAt πc P4src).2 = ⟨defaultFuel - 28, false⟩ := by decide +kernel
+example : judgAt πc P5src =
+    (some ([], .ty ((Shape.all ((Shape.and (.all ((Shape.fld la unitTy) ^ []) (.ty unitTy))
+      (.all unitTy (.ty unitTy))) ^ []) (.ty ((Shape.all unitTy (.ty unitTy)) ^ []))) ^ [])),
+      ⟨defaultFuel - 13, false⟩) := by decide +kernel
+
+/-- R1 to R4: the field that lets the rest of the program type. -/
+example : (judgAt πc R1src).1.map (·.1) = some [] := by decide +kernel
+example : (judgAt πc R1src).2 = ⟨defaultFuel - 17, false⟩ := by decide +kernel
+example : judgAt πc R2src =
+    (some ([], .ty ((Shape.all ((Shape.and (.fld la unitTy) (.fld la ((Shape.fld lb unitTy) ^ []))) ^ [])
+      (.ty unitTy)) ^ [])), ⟨defaultFuel - 10, false⟩) := by decide +kernel
+example : judgAt πc R3src =
+    (some ([], .ty ((Shape.all ((Shape.and (.fld la unitTy) (.fld la ((Shape.fld lb unitTy) ^ []))) ^ [])
+      (.ty ((Shape.fld lb unitTy) ^ []))) ^ [])), ⟨defaultFuel - 11, false⟩) := by decide +kernel
+example : judgAt πc R4src =
+    (some ([], .ty ((Shape.all ((Shape.and (.fld la unitTy) (.fld la ((Shape.fld lb unitTy) ^ []))) ^ [])
+      (.ty unitTy)) ^ [])), ⟨defaultFuel - 9, false⟩) := by decide +kernel
+
+/-- B1 needs a middle the program does not write, and A1's annotation binds.
+Both are rejected with the tank unmarked. -/
+example : judgAt πc B1src = (none, ⟨defaultFuel - 2, false⟩) := by decide +kernel
+example : judgAt πc A1src = (none, ⟨defaultFuel - 11, false⟩) := by decide +kernel
+
+/-! ### Box adaptation by the box status -/
+
+/-- BX2 and BX: `y` has the avoided type `□((∀(u : ⊤) ⊤) ^ {f}) ^ {}`, and
+the goal is a box too.  Unboxing `y` fails and boxing it succeeds. -/
+example : (judgAt πc BX2src).1.map (·.1) = some [] := by decide +kernel
+example : (judgAt πc BX2src).2 = ⟨defaultFuel - 34, false⟩ := by decide +kernel
+example : judgAt πc BXsrc =
+    (some ([], .ty ((Shape.all (capTy (.there k1)) (.ty ((Shape.box (Shape.top ^ [])) ^ []))) ^ [])),
+      ⟨defaultFuel - 29, false⟩) := by decide +kernel
+
+/-! ### Every field at every `let`, and the recursion limit
+
+RK at ten lets tries both fields at each and pays for it in the tank.  LP and
+PF end with the tank marked. -/
+
+example : (judgAt πc (RK 10)).1.isSome = true := by decide +kernel
+example : (judgAt πc (RK 10)).2 = ⟨defaultFuel - 8205, false⟩ := by decide +kernel
+example : (judgAt πc LPsrc).1 = none := by decide +kernel
+example : (judgAt πc LPsrc).2.out = true := by decide +kernel
+example : (judgAt πc PFsrc).1 = none := by decide +kernel
+example : (judgAt πc PFsrc).2.out = true := by decide +kernel
 
 end Checks
 

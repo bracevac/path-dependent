@@ -7,6 +7,7 @@ import Coercions.CapturesCC.Frontend.Search
 import Coercions.CapturesCC.Frontend.Look
 import Coercions.CapturesCC.Frontend.Sub
 import Coercions.CapturesCC.Frontend.Alg
+import Coercions.CapturesCC.Frontend.Avoid
 import Coercions.CapturesCC.Frontend.Adapt
 import Coercions.CapturesCC.Frontend.Typer
 import Coercions.CapturesCC.Frontend.Step
@@ -21,9 +22,10 @@ import Coercions.CapturesCC.Frontend.Examples
 The root of the `CapturesCCFrontend` library.  It lets one write, type and run
 programs of the `CapturesCC` version, which checks captures the way the Scala 3
 compiler does, without assembling derivations by hand.  A program in the
-version's notation is resolved, typed by a search that returns the version's
-derivation, translated, checked and run.  The source is DOT-MNF with scopes and
-levels, translated to FCdot.
+version's notation is resolved, typed by a typer that returns the version's
+derivation, translated, checked and run.  The typer follows the compiler's
+algorithm on one tank of fuel.  The source is DOT-MNF with scopes and levels,
+translated to FCdot.
 
 The library imports the version and changes nothing in it.  It is not a
 default target.
