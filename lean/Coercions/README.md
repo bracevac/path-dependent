@@ -121,7 +121,8 @@ source subcapturing that reads no capture bound never lowers a capability's leve
 `Captures/` still holds.  Library `CapturesCC`, see [CapturesCC/README.md](CapturesCC/README.md).  Its front end, the library
 `CapturesCCFrontend` in [CapturesCC/Frontend/](CapturesCC/Frontend/README.md), writes, types,
 checks and runs programs in the paper's notation, and rejects the `withFile` escape with a
-certificate at the goal its typer reached.
+certificate at the goal its typer reached.  The typer follows the subtype checker, the
+subcapturing and the levels of the Scala 3 compiler and is complete up to its recursion limit.
 
 **`Classifiers/`** adds the capability classifiers of Capless(K) to a copy of `CapturesCC/`.  A
 library can classify its capabilities, say as `Control`, and `cap.only[Control]` then stands for
