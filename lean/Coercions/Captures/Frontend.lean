@@ -7,6 +7,7 @@ import Coercions.Captures.Frontend.Search
 import Coercions.Captures.Frontend.Look
 import Coercions.Captures.Frontend.Sub
 import Coercions.Captures.Frontend.Alg
+import Coercions.Captures.Frontend.Avoid
 import Coercions.Captures.Frontend.Adapt
 import Coercions.Captures.Frontend.Typer
 import Coercions.Captures.Frontend.Step
@@ -19,9 +20,10 @@ import Coercions.Captures.Frontend.Examples
 # The front end of `Captures`
 
 The root of the `CapturesFrontend` library.  A program in the version's
-notation (capture checking the DOT way) is resolved, typed by a search that
+notation (capture checking the DOT way) is resolved, typed by a typer that
 returns the version's derivation, translated to FCdot, checked and run.  The
-source is DOT-MNF with capture sets.
+typer follows the Scala compiler's subtyping, member lookup and avoidance, on
+one fuel tank.  The source is DOT-MNF with capture sets.
 
 The library imports the version and changes nothing in it.  It is not a
 default target.
