@@ -3,103 +3,91 @@ import Coercions.Classifiers.Frontend.Notation
 import Coercions.Classifiers.DotMNF.Examples
 
 /-!
-# Name resolution and let insertion for the Classifiers front end
+# Name resolution and let insertion
 
-The functions of this module take a surface phrase to the annotated de Bruijn
-syntax of `Ann.lean`: `resolveShape`, `resolveTy` and `resolveAns` for the
-three sorts of type, `resolveTm` for a term and `resolveDefs` for a
-definition list.  They are the only place where a surface name becomes an
-index.
+These functions take a surface phrase to the annotated de Bruijn syntax of
+`Ann.lean`: `resolveShape`, `resolveTy` and `resolveAns` for the three sorts of
+type, `resolveTm` for a term and `resolveDefs` for a definition list.  They are
+the only place where a surface name becomes an index.  The main results are
+totality (a phrase whose names are in scope resolves), `resolve_noAny` (the
+resolver adds no `any`) and `resolve_noNestedProj`.
 
 ## Names of two kinds
 
-A signature of the version has term binders and capture binders.  A name
-environment records one surface name per binder, innermost first, with its
-kind.  A name in term position, the receiver of a type selection `x.A` and
-the receiver of a capture member `x.C` are looked up among the term binders
-only.  A plain name in a capture set takes the innermost binder of either
-kind, and becomes the atom of a term variable or of a capture binder by the
-kind it finds.  The platform capabilities are the outermost capture binders,
-in the order given, so `["k1", "k2"]` gives `k1` at `.there .here` and `k2`
-at `.here`, the version's own `k1` and `k2`
+A signature has term binders and capture binders.  A name environment records
+one surface name per binder, innermost first, with its kind.  A name in term
+position, the receiver of a selection `x.A` and the receiver of a capture
+member `x.C` are looked up among the term binders only.  A plain name in a
+capture set takes the innermost binder of either kind and becomes the atom of
+a term variable or of a capture binder accordingly.  The platform capabilities
+are the outermost capture binders, so `["k1", "k2"]` gives `k1` at
+`.there .here` and `k2` at `.here`, as in the version's examples
 (`lean/Coercions/Classifiers/DotMNF/Examples.lean`).
 
 ## Binders the program does not write
 
-The calculus has binders that no surface phrase writes.  The resolver
-inserts them, so that the name environment stays in step with the
-signature.
+The resolver inserts the binders that no surface phrase writes, so that the
+name environment stays in step with the signature.
 
-- A lambda: the body root, then the arrow's own capture binder, then the
+- A lambda: the body root, then the arrow's capture binder, then the
   parameter.  The domain is read under the arrow binder alone.
 - An arrow type: its capture binder, which scopes over the domain, then the
   parameter, which with it scopes over the codomain.
 - An object: the class root, then the self, over the definitions.  The self
   shape is read under the self alone.
-- An existential answer `∃[c ⊑ C] T`: one capture binder over `T`.  The
-  bound `C` is read outside it.
+- An existential answer `∃[c ⊑ C] T`: one capture binder over `T`.  The bound
+  `C` is read outside it.
 - A written unpacking `let ⟨c, x⟩ = t in u`: the witness binder, then the
   payload, over `u`.
 
-A root and an anonymous arrow binder are named `"%"`, which no identifier of
-the notation can equal.  So no surface name ever refers to a root, and `any`
-is the only way to speak of one, which is the compiler's discipline.  An
-arrow binder the program names, `∀[c]` or `λ[c]`, is in scope under its
-name.
+A root and an anonymous arrow binder are named `"%"`, which no identifier can
+equal.  So no surface name refers to a root, and `any` is the only way to
+speak of one.  An arrow binder the program names, `∀[c]` or `λ[c]`, is in
+scope under its name.
 
 ## The atoms `any` and `fresh`
 
-The resolver does not read `any` and `fresh`.  It turns them into the frozen
-atoms `CapAtom.any` and `CapAtom.fresh` and leaves them where the program
-wrote them.  What each one stands for is a function of the context the typer
-builds, so the typer reads them, with the frozen `Ty.expand`,
-`Ty.expandFresh` and `Ctx.reading`.  One placement is refused here.  A
-lambda domain holding `fresh` does not resolve: the version reads a domain
-by `Value.expand`, which reads `any` only, and its `FreshOk` keeps `fresh`
+The resolver does not interpret `any` and `fresh`.  It turns them into
+`CapAtom.any` and `CapAtom.fresh` where the program wrote them.  Their meaning
+depends on the context the typer builds, so the typer reads them with
+`Ty.expand`, `Ty.expandFresh` and `Ctx.reading`.  One placement is refused.  A
+lambda domain holding `fresh` does not resolve, since the version reads a
+domain by `Value.expand`, which reads `any` only, and `FreshOk` keeps `fresh`
 out of every parameter type.
 
 ## Classifiers
 
-A program declares its classifiers by name.  `clsTableOf` numbers each
-declaration as the next child of its parent, in declaration order, and of
-the root when it extends nothing, so `IO, ThreadLocal, Control extends
-ThreadLocal` gives exactly the version's `Cls.IO`, `Cls.ThreadLocal` and
-`Cls.Control`.  A kind resolves by `resolveKind`: `only` to the union of
-`Cls.only`, `except` to one holed subtree of the root, `∪` to the union
-and `∩` to the version's intersection.  A kind mentions no binder, so it
-needs no name environment.
+`clsTableOf` numbers each declaration as the next child of its parent, or of
+the root when it extends nothing.  So `IO, ThreadLocal, Control extends
+ThreadLocal` gives the version's `Cls.IO`, `Cls.ThreadLocal` and `Cls.Control`.
+`resolveKind` takes `only` to the union of `Cls.only`, `except` to one holed
+subtree of the root, and `∪` and `∩` to the version's union and intersection.
+A kind mentions no binder, so it needs no name environment.
 
-A projected atom resolves through the version's smart constructor
-`CapAtom.projBy`, which intersects with a projection already there instead
-of nesting a second one.  So a projected set `{a, b}.only[K]`, which the
-notation writes as a projection of each atom, resolves to the version's
-`CaptureSet.proj` of the resolved set (`resolveCap_map_proj`), and no
-resolved phrase holds a projection under a projection
-(`resolve_noNestedProj`).  A kind-bounded member `{C^ : K}` resolves to
-`Shape.capk` at the type label of `C`.  A platform binder declared at a
-classifier resolves to `Platform.consCls`, a plain one to `Platform.cons`.
-Either way it opens one capture binder.
+A projected atom resolves through the version's `CapAtom.projBy`, which
+intersects with a projection already there instead of nesting a second one.
+So the projected set `{a, b}.only[K]` resolves to `CaptureSet.proj` of the
+resolved set (`resolveCap_map_proj`), and no resolved phrase holds a
+projection under a projection (`resolve_noNestedProj`).  A kind-bounded member
+`{C^ : K}` resolves to `Shape.capk` at the type label of `C`.  A platform
+binder declared at a classifier resolves to `Platform.consCls` and a plain one
+to `Platform.cons`.  Either way it opens one capture binder.
 
 ## Let insertion
 
-Let insertion uses an explicit spine of bindings, as the vanilla front end
-does, which keeps the resolvers structural on the surface phrase.  The two
-vanilla direct style forms, application and projection, atomize their
-operands, and so do the two box forms, `□ t` and `C ⊸ t`.  The inserted
-binder is named `"%"`.  Every inserted binding is a plain `let`.  Whether a
-`let` unpacks an existential answer is decided by the typer, from the
-answer of the bound term.
-
-An unboxing written with the empty set, `{} ⊸ t`, leaves its set to the
-typer.  With a nonempty set the set is kept as written.
+Let insertion uses an explicit spine of bindings, which keeps the resolvers
+structural on the surface phrase.  Application, projection, `□ t` and `C ⊸ t`
+atomize their operands.  The inserted binder is named `"%"` and every inserted
+binding is a plain `let`.  The typer decides from the bound term's answer
+whether a `let` unpacks.  An unboxing written with the empty set, `{} ⊸ t`,
+leaves its set to the typer.  A nonempty set is kept.
 
 This module imports `Notation.lean` for the programs at the end, and Lean's
 token table is global.  So the Greek nu that opens an object literal is a
-keyword here and cannot be a local name.  The name environment is written
-`nv` below for that reason.
+keyword here and cannot be a local name.  The name environment is written `nv`
+for that reason.
 
-Nothing in this module is part of the metatheory.  No definition here lives
-in a namespace of the version.
+Nothing here belongs to the metatheory.
 -/
 
 namespace ClassifiersFrontend
@@ -153,16 +141,16 @@ def NameEnv.capNames {s : Sig} (nv : NameEnv s) : List String :=
   | .consC nv y => y :: nv.capNames
 termination_by structural nv
 
-/-- The name of a binder the program may leave anonymous: its written name,
-or `"%"`, which no surface identifier equals. -/
+/-- The name of a binder the program may leave anonymous: its written name or
+`"%"`. -/
 def binderName (o : Option String) : String := o.getD "%"
 
 /-! ## The platform
 
 A platform is a prefix of capture binders.  `PlatformNames` carries the
-signature, the version's evidence that it is a platform prefix, the names of
-its capabilities and its own capture set, every capability once, outermost
-first.  That set is the version's `platSet` for `["k1", "k2"]`. -/
+signature, the evidence that it is a platform prefix, the names of its
+capabilities and its own capture set, every capability once, outermost first.
+For `["k1", "k2"]` that set is the version's `platSet`. -/
 
 /-- A platform: its capture binders, their names and their set. -/
 structure PlatformNames where
@@ -195,11 +183,10 @@ def PlatformNames.ofList (ys : List String) : PlatformNames := PlatformNames.emp
 
 /-! ## The classifier table and kinds
 
-`clsTableOf` reads a program's declarations into a `ClsTable`.  The
-classifiers a table holds are paths in an infinite tree, so a declaration
-takes the next free child index of its parent and no two declarations of
-one parent meet.  A parent must be declared before its children.  A name
-declared twice keeps its first entry, which `clsFind?` returns. -/
+`clsTableOf` reads a program's declarations into a `ClsTable`.  A declaration
+takes the next free child index of its parent, so no two declarations of one
+parent meet.  A parent must be declared before its children.  A name declared
+twice keeps its first entry, which `clsFind?` returns. -/
 
 /-- The number of entries of the table that are direct children of `p`. -/
 def childCount (κt : ClsTable) (p : Cls.Classifier) : Nat :=
@@ -208,9 +195,8 @@ def childCount (κt : ClsTable) (p : Cls.Classifier) : Nat :=
     | .child _ q => decide (q = p)
     | .top => false).length
 
-/-- Extend a table by declarations, in order.  Each declaration is the
-next child of its parent, or of the root when it extends nothing.  `none`
-when a parent is declared after its child or not at all. -/
+/-- Extend a table by declarations, in order.  `none` when a parent is declared
+after its child or not at all. -/
 def clsTableOf (κt : ClsTable) (ds : SClsDecls) : Option ClsTable :=
   match ds with
   | [] => some κt
@@ -285,15 +271,13 @@ theorem resolveKind_isSome (κt : ClsTable) (K : SKind) (h : SKind.ClassifiersIn
 
 /-! ## The classified platform
 
-A platform binder declared at a classifier is the version's
-`Platform.consCls`, a plain one its `Platform.cons`.  The signature, the
-names and the platform's own set depend on the binder names alone, so they
-are those of `PlatformNames.ofList`, and only the `Platform` itself reads
-the table. -/
+A binder declared at a classifier is `Platform.consCls` and a plain one is
+`Platform.cons`.  The signature, names and set depend on the binder names
+alone, so they are those of `PlatformNames.ofList`.  Only the `Platform` itself
+reads the table. -/
 
-/-- The platform of a binder list over a given prefix, each binder one more
-capture binder, the first one outermost.  `none` when a binder's
-classifier is not in the table. -/
+/-- The platform of a binder list over a given prefix, the first binder
+outermost.  `none` when a binder's classifier is not in the table. -/
 def platformFrom (κt : ClsTable) (π : PlatformNames) (P : Platform π.sig) (ps : SPlatform) :
     Option (Platform (π.pushAll (ps.map Prod.fst)).sig) :=
   match ps with
@@ -328,13 +312,12 @@ theorem resolvePlatform_isSome (κt : ClsTable) (ps : SPlatform)
     (h : SPlatform.ClassifiersIn κt ps = true) : (resolvePlatform κt ps).isSome = true :=
   platformFrom_isSome κt ps _ _ h
 
-/-! ## Covering, the monotonicity of scoping
+/-! ## Covering
 
-The resolver reads a phrase under an environment that may hold more names
-than the surface scoping asks for: the binders it inserts, `"%"` for a root
-or an anonymous arrow binder, and the binder `atomize` adds.  So the
-totality proof needs scoping to survive larger lists of names, of both
-kinds. -/
+The resolver reads a phrase under an environment that may hold more names than
+the surface scoping asks for, namely the binders it inserts and the binder
+`atomize` adds.  So the totality proof needs scoping to survive larger lists of
+names, of both kinds. -/
 
 /-- Every name of the first list is a name of the second. -/
 def Covers (Γ Γ' : List String) : Prop :=
@@ -536,8 +519,7 @@ theorem NameEnv.find?_isSome : ∀ {s : Sig} (nv : NameEnv s) (x : String),
 
 A `Spine s s'` is a stack of `let` bindings that takes a term of the inner
 signature `s'` back to a term of the outer signature `s`.  `Spine.rename` is
-the weakening that moves a variable of `s` into `s'`.  `Rename.comp f g` is
-`g ∘ f`, so the composition below is in the order it is printed. -/
+the weakening from `s` into `s'`.  `Rename.comp f g` is `g ∘ f`. -/
 
 /-- A stack of inserted `let` bindings. -/
 inductive Spine : Sig → Sig → Type where
@@ -610,11 +592,10 @@ theorem atomize_capNames {s : Sig} (nv : NameEnv s) (t : ATm s) :
 
 /-! ## Capture sets -/
 
-/-- Resolve a capture atom.  A plain name takes the innermost binder of
-either kind, the receiver of `x.C` a term binder.  `any` and `fresh` are
-kept as the frozen atoms.  A projected atom resolves its base and its kind
-and projects through the version's `CapAtom.projBy`, which intersects with
-a projection already there. -/
+/-- Resolve a capture atom.  A plain name takes the innermost binder of either
+kind, the receiver of `x.C` a term binder.  `any` and `fresh` are kept as
+atoms.  A projected atom resolves its base and its kind and projects through
+`CapAtom.projBy`. -/
 def resolveCapAtom {s : Sig} (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (a : SAtom) :
     Option (CapAtom s) :=
   match a with
@@ -661,11 +642,11 @@ theorem resolveCap_map_proj {s : Sig} (Λ : LabelTable) (κt : ClsTable) (nv : N
 
 /-! ## Shapes, types and answers
 
-The three sorts of the surface are the three sorts of the calculus, so each
-is read into its own.  An arrow opens its capture binder, under its written
-name or `"%"`, for the domain, and the parameter on top of it for the
-codomain.  An existential opens its binder for the type and reads its bound
-outside.  A kind-bounded member reads its kind against the table. -/
+Each of the three surface sorts is read into its calculus sort.  An arrow opens
+its capture binder, under its written name or `"%"`, for the domain, and the
+parameter on top of it for the codomain.  An existential opens its binder for
+the type and reads its bound outside.  A kind-bounded member reads its kind
+against the table. -/
 
 mutual
 /-- Resolve a surface shape. -/
@@ -736,17 +717,17 @@ end
 
 /-! ## Terms -/
 
-/-- The set an unboxing keeps: none when the program writes the empty set,
-which leaves it to the typer, else the resolved set. -/
+/-- The set an unboxing keeps: none when the program writes the empty set, else
+the resolved set. -/
 def unboxSet {s : Sig} (C : SCap) (C' : CaptureSet s) : Option (CaptureSet s) :=
   match C with
   | [] => none
   | _ => some C'
 
 mutual
-/-- Resolve a surface term, inserting the binders the program does not
-write and `let` bindings for the four direct style forms.  The result is in
-monadic normal form by construction. -/
+/-- Resolve a surface term, inserting the binders the program does not write and
+`let` bindings for application, projection, boxing and unboxing.  The result is
+in monadic normal form. -/
 def resolveTm {s : Sig} (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (e : STm) :
     Option (ATm s) :=
   match e with
@@ -821,8 +802,7 @@ def resolveDefs {s : Sig} (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (d
 termination_by structural d
 end
 
-/-- Resolve a surface term at a given environment, the entry point for a
-term that sits under a context. -/
+/-- Resolve a surface term at a given environment. -/
 def resolveIn {s : Sig} (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (e : STm) :
     Option (ATm s) :=
   resolveTm Λ κt nv e
@@ -835,17 +815,14 @@ def resolveTop (Λ : LabelTable) (κt : ClsTable) (π : PlatformNames) (e : STm)
 /-! ## Whole programs
 
 A program's header declares its classifiers, its platform binders, and
-optionally the body's use set and kind.  The signature, names and set of
-the platform are those of its binder names, `SProg.platNames`, so the
-resolved body has a type fixed by the program alone. -/
+optionally the body's use set and kind.  The platform's signature, names and
+set are those of `SProg.platNames`. -/
 
 /-- The platform names of a program: its binder names, the first one
 outermost. -/
 def SProg.platNames (p : SProg) : PlatformNames := PlatformNames.ofList (p.platform.map Prod.fst)
 
-/-- A resolved program over the signature `s` of its platform: the
-classifier table its declarations give, the classified platform, the
-declared use set and kind when written, and the body. -/
+/-- A resolved program over the signature `s` of its platform. -/
 structure ResolvedProg (s : Sig) where
   /-- The classifier table of the declarations. -/
   table : ClsTable
@@ -858,9 +835,8 @@ structure ResolvedProg (s : Sig) where
   /-- The body. -/
   body : ATm s
 
-/-- Resolve a whole program: the declarations into a table, the platform,
-the declared use set and kind against that table, and the body over the
-platform. -/
+/-- Resolve a whole program: the declarations into a table, then the platform,
+the declared use set and kind, and the body. -/
 def resolveProg (Λ : LabelTable) (p : SProg) : Option (ResolvedProg p.platNames.sig) := do
   let κt ← clsTableOf [] p.classifiers
   let P ← resolvePlatform κt p.platform
@@ -875,10 +851,9 @@ def resolveProg (Λ : LabelTable) (p : SProg) : Option (ResolvedProg p.platNames
 
 /-! ## Surface side conditions about atoms
 
-`Avoids a` says that the atom `a` occurs in no capture set of the phrase,
-annotations included, also not under a projection.  `FreshPlaced` says that
-no lambda domain of a term holds `fresh`, the one placement the resolver
-refuses. -/
+`Avoids a` says that the atom `a` occurs in no capture set of the phrase, not
+even under a projection.  `FreshPlaced` says that no lambda domain of a term
+holds `fresh`, the one placement the resolver refuses. -/
 
 /-- The atom under the projections of a surface atom. -/
 def SAtom.base (a : SAtom) : SAtom :=
@@ -981,15 +956,12 @@ end
 
 /-! ## Totality
 
-Resolution succeeds on a phrase whose free names are in scope at the kind
-their position needs, whose labels and classifier names are in their
-tables, and, for a term, whose lambda domains hold no `fresh`.  The proof
-is by structural recursion on the surface phrase.  Every binder the
-resolver inserts only adds names, so the written scoping carries over by
-covering.  In the direct style clauses the operand is resolved under the
-environment `atomize` returns, and `atomize_names_covers` carries the
-scoping across.  Classifier names and labels do not depend on the
-environment. -/
+Resolution succeeds on a phrase whose free names are in scope at the kind their
+position needs, whose labels and classifier names are in their tables, and, for
+a term, whose lambda domains hold no `fresh`.  The proof is by structural
+recursion on the surface phrase.  Inserted binders only add names, so covering
+carries the scoping over.  Where an operand is resolved under the environment
+`atomize` returns, `atomize_names_covers` carries the scoping across. -/
 
 /-- Scoping of a nonempty capture set is scoping of its first atom and of
 the rest. -/
@@ -1149,10 +1121,8 @@ end
 
 /-! ## What a resolved type holds of `any` and `fresh`
 
-The resolver turns `any` into `CapAtom.any`, `fresh` into `CapAtom.fresh`,
-a projected atom into the projection of its base, and every other atom
-into a variable atom.  So a resolved phrase holds one of the two, under
-projections or not, only where the written one does. -/
+A resolved phrase holds `any` or `fresh`, under projections or not, only where
+the written phrase does. -/
 
 /-- The smart projection keeps an `any` exactly where the atom has one. -/
 theorem noAnyA_projBy {s : Sig} (φ : Cls.Kind) (a : CapAtom s) :
@@ -1509,9 +1479,9 @@ end
 
 /-! ## No `any` of the resolver's own
 
-The resolver keeps every `any` the program writes and adds none: the binders
-it inserts and the bindings of the spine carry no annotation of their own.
-So a program that writes no `any` resolves to a term with none. -/
+The resolver keeps every `any` the program writes and adds none, since inserted
+binders and spine bindings carry no annotation.  So a program that writes no
+`any` resolves to a term with none. -/
 
 /-- No `any` in the bindings of a spine. -/
 def Spine.NoAnyAnn {s s' : Sig} (sp : Spine s s') : Bool :=
@@ -1677,14 +1647,12 @@ theorem resolve_noAny {s : Sig} {Λ : LabelTable} {κt : ClsTable} {nv : NameEnv
 
 /-! ## No projection under a projection
 
-The version allows a projection to nest, since renaming never normalises
-one.  The resolver never builds such a nesting: a projected atom goes
-through `CapAtom.projBy`, which intersects with a projection already at the
-top.  The statement is about every capture atom of a resolved term,
-annotations, sets and type definitions included.  `ATm.AllAtoms p` says
-that every capture atom of the term satisfies the test `p`, and
-`resolveTm_allAtoms` gives it for any test that every resolved atom
-passes. -/
+The version allows projections to nest, since renaming never normalises one.
+The resolver never builds such a nesting, because a projected atom goes
+through `CapAtom.projBy`.  The statement covers every capture atom of a
+resolved term, including annotations, sets and type definitions.
+`ATm.AllAtoms p` says that every capture atom of the term satisfies `p`, and
+`resolveTm_allAtoms` gives it for any `p` that every resolved atom passes. -/
 
 /-- An atom holds at most one projection, at its top. -/
 def atomProjDepthLe1 {s : Sig} (a : CapAtom s) : Bool :=
@@ -2058,11 +2026,9 @@ theorem atomize_var {s : Sig} (nv : NameEnv s) (i : BVar s .var) :
 
 /-! ## The programs
 
-The programs of `Notation.lean` are resolved with the labels of the
-version's examples and compared with hand-written annotated terms, or with
-the version's own types and terms, by `decide`.  Resolution is structural,
-so the kernel reduces it.  The atoms `any` and `fresh` come out as
-`CapAtom.any` and `CapAtom.fresh`, where the program wrote them. -/
+The programs of `Notation.lean` are resolved with the labels of the version's
+examples and compared by `decide` with hand-written annotated terms or with the
+version's own types and terms. -/
 
 open Classifiers.DotMNF.Examples (k1 k2 platSet fileS unitTy unitTm arrowS lread lC
   W2TyAny W2Ty Z1TyF Z1Ty S1TyAny)
@@ -2182,8 +2148,8 @@ example :
 /-! ### Let insertion
 
 `λ(f : ⊤). λ(g : ⊤). f (g f)`.  The operand `g f` is not a variable, so
-`atomize` binds it.  Between `f` and `g` sit the inner lambda's body root
-and arrow binder. -/
+`atomize` binds it.  The inner lambda's body root and arrow binder sit between
+`f` and `g`. -/
 
 /-- The let expanded form of the nested application. -/
 def nestedAppAnn : ATm πc.sig :=
@@ -2210,8 +2176,8 @@ example :
 /-! ### A capture parameter that is called
 
 `P1src` names `unit`, a term variable bound around it here.  Its domain keeps
-the written `any`.  Erased and read by the version's `Tm.expand`, the domain
-is `(∀(u : ⊤) ⊤) ^ {κ}`, with `κ` the arrow's own binder. -/
+the written `any`, which the version's `Tm.expand` reads as the arrow's own
+binder `κ`. -/
 
 /-- The term `P1src` resolves to, under `unit`. -/
 def P1ann : ATm (πc.sig,x) :=
@@ -2230,7 +2196,7 @@ example :
 /-! ### The escape
 
 `EscSrc` resolves.  Its `let` keeps the written answer with every `any` in
-place, for the typer to read at the scope it opens. -/
+place. -/
 
 /-- The annotation of the escape's `let`. -/
 def EscTy {s : Sig} : Ty s :=
@@ -2255,12 +2221,11 @@ example : (resolveTop Λc [] πc EscSrc).isSome = true :=
 /-! ### Z1, the caller of `freshCell`, and two calls in a row
 
 The version types the caller's body at `Z1Ctx`, the platform with
-`fc : freshCell` and `un : ⊤` on top (`Z1_caller`).  It is resolved there,
-through `resolveIn`, and so is `let c1 = fc un in fc un`, whose answer is the
-second call's existential.  The resolver inserts a plain `let`.  The typer
-makes it a `letex`, whose body is the `let`'s body renamed past the witness
-binder.  That unpacking erases to the term the version types, and its
-skeleton is the `let`'s. -/
+`fc : freshCell` and `un : ⊤` on top (`Z1_caller`).  The body is resolved
+there, and so is `let c1 = fc un in fc un`.  The resolver inserts a plain
+`let`.  The typer makes it a `letex` whose body is the `let`'s body renamed past
+the witness binder.  That unpacking erases to the term the version types and
+has the `let`'s skeleton. -/
 
 /-- The names of `Z1Ctx`. -/
 def z1Names : NameEnv (πz.sig,x,x) := (πz.names.cons "fc").cons "un"
@@ -2308,8 +2273,8 @@ example : (letexOf Z1TailAnn).map ATm.skel = some Z1TailAnn.skel := by decide
 /-! ### The caller as a closed program
 
 `Z1callerSrc` binds `fc` by a lambda whose domain writes `fresh`, so it does
-not resolve.  Written with the domain the version gives `fc`, the
-existential that `fresh` reads as, it does. -/
+not resolve.  With the domain the version gives `fc`, the existential that
+`fresh` reads as, it does. -/
 
 example : (resolveProg Λc Z1callerSrc).isNone = true := by decide
 
@@ -2384,10 +2349,9 @@ theorem resolveProg_isSome (Λ : LabelTable) (p : SProg) {κt : ClsTable}
 
 CE1 to CE3 of `Notation.lean` against the version's E1 to E3
 (`lean/Coercions/Classifiers/DotMNF/Examples.lean`).  The three programs
-declare the same classifiers, and declaration order gives the version's
-own `Cls.IO`, `Cls.ThreadLocal` and `Cls.Control`.  Every comparison is by
-`decide`, except those with the version's `Platform`.  It has no decidable
-equality, so those are by `rfl`. -/
+declare the same classifiers.  Comparisons are by `decide`, except those with
+the version's `Platform`, which has no decidable equality and is compared by
+`rfl`. -/
 
 open Classifiers.DotMNF.Examples (lbody E1Plat E1ctl E1io E1Filt E1Cod E1TryTy E1tm
   E2PlatIO E2Filt E2TyAny E2tm E3Plat E3k1 E3k2 E3AbsTy E3ClientTy E3Uses E3tm)

@@ -3,99 +3,82 @@ import Coercions.Classifiers.Frontend.Resolve
 import Coercions.Classifiers.DotToFCdot.Prediction
 
 /-!
-# The derivation producing typer
+# The typer
 
-The typer reads a use set and an answer off an annotated term and returns
-the version's derivation (`lean/Coercions/Classifiers/DotMNF/Typing.lean`)
-about the erasure of the term it typed.  It is fuel bounded and sound by
-construction: every success carries its `HasTy` derivation, so soundness is
-the result type and there is no soundness theorem to prove.
-
-It is incomplete by necessity, since subcapturing goes through subtyping and
-DOT subtyping is undecidable.  No completeness theorem is claimed.
+The typer reads a use set and an answer off an annotated term and returns the
+version's derivation (`lean/Coercions/Classifiers/DotMNF/Typing.lean`) about
+the erasure of the term it typed.  It is fuel bounded.  Every success carries
+its `HasTy` derivation, so soundness is the result type and there is no
+soundness theorem.  It is incomplete, since subcapturing goes through subtyping
+and DOT subtyping is undecidable.
 
 ## Verdicts
 
-A run of the typer ends in one of three verdicts.  `ok` carries the
-elaborated term with its derivation.  `rejected` carries a `Reason`, and
-every reason carries a proof of what it claims.  `unknown` says the search
-found nothing within its budget.  Four reasons are decided.
+A run ends in one of three verdicts.  `ok` carries the elaborated term with its
+derivation.  `rejected` carries a `Reason` with a proof of what it claims.
+`unknown` says the search found nothing within its budget.  The reasons are:
 
-- `anyNotOk` and `freshNotOk`: a written type puts `any` or `fresh` where
-  the version gives it no reading (`Ty.anyOk`, `Ty.freshOk`).
-- `levelEscape`: no member-free subcapturing puts `C` below `D` at the
-  context the typer reached.  The proof is `escape_rejected_at` of
-  `Search.lean`, the contrapositive of the version's `source_lvl_safety`.
-  It speaks of the goal the typer reached, not of every derivation of the
-  program.
-- `existentialAtTop`: an answer outside every scope is an existential,
-  where the program or a `let` asks for a plain type, and no answer
-  inclusion takes an existential to a plain type.
+- `anyNotOk` and `freshNotOk`: a written type puts `any` or `fresh` where the
+  version gives it no reading (`Ty.anyOk`, `Ty.freshOk`).
+- `levelEscape`: no member-free subcapturing puts `C` below `D` at the context
+  the typer reached.  The proof is `escape_rejected_at` of `Search.lean`, the
+  contrapositive of the version's `source_lvl_safety`.  It speaks of the goal
+  the typer reached and not of every derivation of the program.
+- `existentialAtTop`: an answer outside every scope is an existential, where
+  the program or a `let` asks for a plain type, and no answer inclusion takes
+  an existential to a plain type.
 
-## What is synthesized and what is read
+## Use sets and written types
 
-The typer computes the least use set the rules allow.  A variable declared
-at the empty set is used at the empty set, any other variable at `{x}`.  A
-call is charged its function and its argument, `{x, y}`, and a projection
-its receiver, `{x}`.  A `let` charges its binder to the set the binder is
-declared at, by `sc-var`.
+The typer computes the least use set the rules allow.  A variable declared at
+the empty set is used at the empty set, any other variable at `{x}`.  A call
+is charged `{x, y}` and a projection `{x}`.
 
-Every written type is read where it is written.  A lambda domain reads
-`any` as the arrow's own capture binder, as the version's `Value.expand`
-does.  A `let` annotation, an ascription and an object's self shape read
-`any` at `Ctx.reading`: the innermost scope root, or the program's platform
-set where the context has none.  A `fresh` in the result of an arrow
-becomes an existential, by the version's `Ty.expandFresh`.  Before reading,
-the typer decides that the written type is in the version's notation.
-
-## Scopes
-
-The typer opens a scope only through the version's own `Ctx.body` and
-`Ctx.objBody`, so the levels of binders are the version's and are never
-chosen.  A lambda body sits under its body root, its arrow binder and its
-parameter.  An object's definitions sit under its class root and its self.
+A lambda domain reads `any` as the arrow's own capture binder, as the version's
+`Value.expand` does.  A `let` annotation, an ascription and an object's self
+shape read `any` at `Ctx.reading`, the innermost scope root or the platform set
+where there is none.  A `fresh` in the result of an arrow becomes an
+existential, by `Ty.expandFresh`.  Scopes are opened only through the
+version's `Ctx.body` and `Ctx.objBody`.
 
 ## The avoidance ladder
 
-`HasTy.let` asks for a plain result type `T'` with the body typed at `T'↑`.
-A written annotation is binding: when a `let` or an ascription is annotated
-only the annotation is tried, and when it fails the typer looks for a
-rejection at the goal it reached.  An existential annotation is reached
-from the plain `let` by answer inclusion, which packs it.  Without an
-annotation three rungs are tried.
+`HasTy.let` asks for a plain result type `T'` with the body typed at `T'↑`.  A
+written annotation is binding.  Only the annotation is tried, and if it fails
+the typer looks for a rejection at the goal it reached.  An existential
+annotation is reached from the plain `let` by answer inclusion, which packs it.
+Without an annotation three rungs are tried.
 
-1. The body's type, its shape strengthened past the binder and its set
-   with the binder replaced by the binder's own declared set.  A projected
-   atom of the binder, `{x ↾ φ}`, is replaced the same way, and the
-   evidence reaches the declared set by `unproj` and then `sc-var`.
+1. The body's type, with its shape strengthened past the binder and the binder
+   in its set replaced by the set the binder is declared at.  A projected atom
+   `{x ↾ φ}` is replaced the same way, with evidence by `unproj` and then
+   `sc-var`.
 2. `⊤` at that set.
 3. When the bound term's answer is an existential, the `let` becomes an
-   unpacking `letex`.  The body is renamed past the new witness binder and
-   typed under the witness and the payload.  Its answer leaves their scope
-   by strengthening, or by the level rule into the innermost root, which is
-   the compiler's local `any` absorbing a `fresh`.
+   unpacking `letex`.  The body is renamed past the witness binder and typed
+   under the witness and the payload.  Its answer leaves their scope by
+   strengthening, or by the level rule into the innermost root, which is the
+   compiler's local `any` absorbing a `fresh`.
 
-The first rung that succeeds wins.  If none does, the first rejection is
-the verdict, and otherwise the verdict is `unknown`.
+The first rung that succeeds wins.  If none does, the first rejection is the
+verdict, and otherwise the verdict is `unknown`.
 
 ## Checking
 
-`check?` adds clauses to synthesis followed by answer inclusion.  A `λ`
-against a function type checks its body against the codomain, a `let` with
-no annotation checks its body against the goal, and a box value against a
-box goal checks the variable against the boxed type.  A variable checked
-against a goal goes through box inference (`adaptVar?` of `Adapt.lean`).
+`check?` adds clauses to synthesis followed by answer inclusion.  A `λ` against
+a function type checks its body against the codomain.  A `let` without an
+annotation checks its body against the goal.  A box value against a box goal
+checks the variable against the boxed type.  A variable checked against a goal
+goes through box inference (`adaptVar?` of `Adapt.lean`).
 
 ## Fuel
 
-`synth?`, `check?` and `checkDefs?` are one block, structural on the fuel:
-every call inside the block is at one unit less.  `synth?` ends its fuel
-level with a retry at the previous level, which changes no answer the
-clauses give and makes `synth?_le` an induction on the fuel.  The search is
-called at its own three counters, `Budget.cap` for sets, `Budget.sub` for
-shapes and `Budget.kind` for kindings.  Everything that types a program
-reduces in the kernel.  A rejection by `levelEscape` reads the version's `Ctx.caps`, which is
-well founded, so such a verdict is computed by compiled code.
+`synth?`, `check?` and `checkDefs?` form one block, structural on the fuel.
+`synth?` ends its fuel level with a retry at the previous level, which changes
+no answer and makes `synth?_le` an induction on the fuel.  The search runs at
+its own counters, `Budget.cap`, `Budget.sub` and `Budget.kind`.  Typing reduces
+in the kernel.  A `levelEscape` rejection reads `Ctx.caps`, which is well
+founded, so compiled code computes it.
 -/
 
 namespace ClassifiersFrontend
@@ -107,8 +90,7 @@ open scoped Classifiers.DotMNF
 
 /-! ## Reasons and verdicts -/
 
-/-- Why a program is rejected, with the proof.  Each reason is about the
-type, the goal or the answer it names. -/
+/-- Why a program is rejected, with the proof. -/
 inductive Reason : Type where
   /-- A written type puts `any` where the version reads none. -/
   | anyNotOk {s : Sig} (T : Ty s) (h : T.anyOk = false)
@@ -151,7 +133,7 @@ def map (f : α → β) (v : Verdict α) : Verdict β :=
   | .unknown => .unknown
 
 /-- The ladder rule.  A success wins.  Otherwise the second alternative is
-tried, and a failure keeps the first rejection, if there is one. -/
+tried, and a failure keeps the first rejection. -/
 def orElse (v : Verdict α) (w : Unit → Verdict α) : Verdict α :=
   match v with
   | .ok a => .ok a
@@ -161,8 +143,8 @@ def orElse (v : Verdict α) (w : Unit → Verdict α) : Verdict α :=
       | _ => .rejected r
   | .unknown => w ()
 
-/-- A second look when nothing was decided: a success or a rejection
-stands, and only `unknown` runs `w`. -/
+/-- A second look: a success or a rejection stands, and only `unknown` runs
+`w`. -/
 def whenUnknown (v : Verdict α) (w : Unit → Verdict α) : Verdict α :=
   match v with
   | .unknown => w ()
@@ -257,11 +239,10 @@ def PElab.toElab {s : Sig} {Γ : Ctx s} (r : PElab Γ) : Elab Γ := ⟨r.tm, r.u
 
 /-! ## Written types
 
-A type the program writes is first decided to be in the version's notation
-and then read at the position it is written at.  A lambda domain and a `let`
-annotation are each decided as part of an arrow, since the version's
-conditions on them are the arrow clauses of `Shape.anyOk` and
-`Shape.freshOk`. -/
+A written type is first decided to be in the version's notation and then read
+at its position.  A lambda domain and a `let` annotation are each decided as
+part of an arrow, since the version's conditions on them are the arrow clauses
+of `Shape.anyOk` and `Shape.freshOk`. -/
 
 /-- The arrow with parameter `T` and a pure `⊤` result.  Its `anyOk` is
 `T.domAnyOk`, and its `freshOk` is `T.noFresh`. -/
@@ -313,8 +294,8 @@ abbrev psVar {s : Sig} (ps : CaptureSet s) : CaptureSet (s,x) := CaptureSet.weak
 
 /-! ## Moving a derivation across a decided equality
 
-The label of a member occurs twice in the conclusion of the rule that
-carries it, so these are written with `cases` rather than with a rewrite. -/
+The label of a member occurs twice in the conclusion of its rule, so these use
+`cases` and not a rewrite. -/
 
 /-- A field view read at the label the projection asks for. -/
 def hasFldAt {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {x : BVar s .var} {a c : Label}
@@ -346,8 +327,7 @@ def subShapeOfEq {s : Sig} {Γ : Ctx s} {S T : Shape s} (h : S = T) : SubShape �
   cases h; exact .refl
 
 /-- `{}-I` for definitions that are the literal's own up to a decided
-equality: the self binder holds the definitions the program wrote, and the
-typer typed them under it. -/
+equality. -/
 def objOf {s : Sig} {Γ : Ctx s} {d e : Defs ((s,c),x)} {S : Shape (s,x)} {U : CaptureSet s}
     (h : e = d)
     (dt : DefsTy (CaptureSet.weaken (CaptureSet.weaken U) ∪ [.var .here]) (Γ.objBody d S U) e
@@ -355,8 +335,8 @@ def objOf {s : Sig} {Γ : Ctx s} {d e : Defs ((s,c),x)} {S : Shape (s,x)} {U : C
     (hd : Defs.Distinct d) : HasTy [] Γ (.val (.obj e)) (.ty ((Shape.mu S) ^ U)) := by
   cases h; exact .obj dt hd
 
-/-- The codomain of a lambda: the body's answer with the body root
-removed, which the version's `Cod.underRoot` inserts. -/
+/-- The codomain of a lambda: the body's answer with the body root removed, as
+`Cod.underRoot` inserts it. -/
 def codOf? {s : Sig} (E : ETy (Sig.body s)) : Option { T : Cod s // E = Cod.underRoot T } :=
   match witness? (eTyRename? E PartialRename.unshift.lift.lift) with
   | some ⟨T, h⟩ =>
@@ -366,8 +346,7 @@ def codOf? {s : Sig} (E : ETy (Sig.body s)) : Option { T : Cod s // E = Cod.unde
 
 /-! ## Reading a view
 
-The typer consults the views of the search in four ways.  None of them
-recurses. -/
+The typer consults the views of the search in four ways. -/
 
 /-- A function type a variable has, with the derivation. -/
 structure AllView {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
@@ -425,13 +404,13 @@ def viewSub {s : Sig} {Γ : Ctx s} {x : BVar s .var} (D : DeclTable Γ) (c n : N
 
 /-- Checking a variable.  Three rules, in order.
 
-1. A goal `(S₁ ∧ S₂) ^ C` splits by `HasTy.andI` at the join of the two
-   use sets.
-2. A goal `(μ S) ^ C` whose body is declaration shaped folds by
-   `HasTy.recI`.  `SubShape` has no rule for `μ`, so such a goal is
-   otherwise unreachable from an opened view.
-3. Otherwise the views are consulted, first for a view at exactly the goal
-   and then for a view the subtyping search takes there. -/
+1. A goal `(S₁ ∧ S₂) ^ C` splits by `HasTy.andI` at the join of the two use
+   sets.
+2. A goal `(μ S) ^ C` whose body is declaration shaped folds by `HasTy.recI`.
+   `SubShape` has no rule for `μ`, so such a goal is otherwise unreachable
+   from an opened view.
+3. Otherwise a view at exactly the goal, then a view the subtyping search
+   takes there. -/
 def checkVar? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
     (x : BVar s .var) (T : Ty s) : Option (VarChecked Γ x T) :=
   match n with
@@ -455,16 +434,15 @@ termination_by structural n
 
 /-! ## Candidates with their evidence -/
 
-/-- The upper bound of the capture member `C` of the innermost binder, as the
-table under that binder records it.  It is what an atom `{x.C}` is replaced
-by when `x` goes out of scope. -/
+/-- The upper bound of the capture member `C` of the innermost binder.  An atom
+`{x.C}` is replaced by it when `x` goes out of scope. -/
 def hereSel {s : Sig} {Γ : Ctx (s,x)} (D : DeclTable Γ) : Label → Option (CaptureSet (s,x)) :=
   fun ℓ => firstSome (fun d => if d.vr = .here ∧ d.lbl = ℓ then some d.hi else none) D.caps
 
 /-- The set of a function: the body's set `V` without the parameter,
 strengthened past the arrow binder and the body root, with the evidence
-`V <: U↑↑↑ ∪ {x}` that `All-I` asks for.  A body that uses its arrow binder
-or its body root has no such set. -/
+`V <: U↑↑↑ ∪ {x}` that `All-I` asks for.  A body that uses its arrow binder or
+body root has no such set. -/
 def lamUses? {s : Sig} {Γ : Ctx s} {T : Dom s} (D : DeclTable (Γ.body T)) (c : Nat)
     (V : CaptureSet (Sig.body s)) :
     Option ((U : CaptureSet s) ×
@@ -488,8 +466,8 @@ def lamOf? {s : Sig} {Γ : Ctx s} {T : Dom s} (D : DeclTable (Γ.body T)) (c : N
   | none => none
 
 /-- The set a `let` adds to its bound term's `U₁`: the body's set `V` with
-`{x}` replaced by the capture set of `x`'s type, with the evidence that `V`
-is below the join of the two sets. -/
+`{x}` replaced by the capture set of `x`'s type, with the evidence that `V` is
+below the join. -/
 def letUses? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (c : Nat)
     (U1 : CaptureSet s) (V : CaptureSet (s,x)) :
     Option ((U2 : CaptureSet s) × Subcap (Γ.cons T) V (CaptureSet.weaken (capJoin U1 U2))) := do
@@ -497,8 +475,7 @@ def letUses? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (c : 
   let e ← subcap? D c V (CaptureSet.weaken (capJoin U1 U2))
   some ⟨U2, e⟩
 
-/-- The first rung of the ladder: the body's shape strengthened and its
-set avoided. -/
+/-- The first rung: the body's shape strengthened and its set avoided. -/
 def avoidStrengthen? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (c : Nat) :
     (W : Ty (s,x)) → Option ((T' : Ty s) × Sub (Γ.cons T) W T'.weaken)
   | .capt CW SW => do
@@ -507,7 +484,7 @@ def avoidStrengthen? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T
       let e ← subcap? D c CW (CaptureSet.weaken C')
       some ⟨w.val ^ C', Sub.capt (subShapeOfEq w.property) e⟩
 
-/-- The second rung of the ladder: `⊤` at the avoided set. -/
+/-- The second rung: `⊤` at the avoided set. -/
 def avoidTop? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (c : Nat) :
     (W : Ty (s,x)) → Option ((T' : Ty s) × Sub (Γ.cons T) W T'.weaken)
   | .capt CW _ => do
@@ -517,8 +494,8 @@ def avoidTop? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (c :
 
 /-! ## Assembling a `let` -/
 
-/-- `HasTy.let` at the result type `T'`, with the use set joined and both
-premises widened to it. -/
+/-- `HasTy.let` at the result type `T'`, with both premises widened to the
+joined use set. -/
 def letOf? {s : Sig} {Γ : Ctx s} (r1 : PElab Γ) (D : DeclTable (Γ.cons r1.ty)) (c : Nat)
     (ann : Option (ETy s)) (T' : Ty s) (r2 : Checked (Γ.cons r1.ty) (.ty (Ty.weaken T'))) :
     Option (Checked Γ (.ty T')) :=
@@ -528,10 +505,8 @@ def letOf? {s : Sig} {Γ : Ctx s} (r1 : PElab Γ) (D : DeclTable (Γ.cons r1.ty)
         HasTy.let (widenLeft r1.deriv p.1) (widenUses r2.deriv p.2) hwf⟩
   else none
 
-/-- The first two rungs of the ladder, for a body already synthesized: its
-type with the shape strengthened and the set avoided, and otherwise `⊤` at
-the avoided set.  A body with an existential answer has neither, since
-`HasTy.let` concludes at a plain type. -/
+/-- The first two rungs, for a body already synthesized.  A body with an
+existential answer has neither, since `HasTy.let` concludes at a plain type. -/
 def letAvoid? {s : Sig} {Γ : Ctx s} (r1 : PElab Γ) (D : DeclTable (Γ.cons r1.ty)) (c : Nat)
     (ann : Option (ETy s)) (r2 : Elab (Γ.cons r1.ty)) : Option (Elab Γ) :=
   match r2.split with
@@ -550,11 +525,10 @@ def letAvoid? {s : Sig} {Γ : Ctx s} (r1 : PElab Γ) (D : DeclTable (Γ.cons r1.
 use set may name the witness.  Everything else it uses is charged to the
 declared set `U₂`, which is above the witness's bound. -/
 
-/-- What an unpacking's body uses beyond the witness, the payload replaced
+/-- What an unpacking's body uses beyond the witness, with the payload replaced
 by the set it is declared at.  The witness is dropped with its projections,
-which `unproj` puts below it.  The declared set of the unpacking is the
-bound `C₀` joined with it, and the evidence is `V <: U₂↑↑ ∪ {c}` at that
-set, as the rule asks. -/
+which `unproj` puts below it.  The declared set is the bound `C₀` joined with
+it, and the evidence is `V <: U₂↑↑ ∪ {c}`. -/
 def letexUses? {s : Sig} {Γ : Ctx s} {T : Ty (s,c)} (D : DeclTable ((Γ.consC).cons T))
     (c : Nat) (C₀ : CaptureSet s) (V : CaptureSet ((s,c),x)) :
     Option ((res : CaptureSet s) ×
@@ -568,8 +542,7 @@ def letexUses? {s : Sig} {Γ : Ctx s} {T : Ty (s,c)} (D : DeclTable ((Γ.consC).
       [CapAtom.cvar (.there .here)])
   some ⟨res, e⟩
 
-/-- `HasTy.letex` at the answer `E`, the use set widened to the join of the
-two sets. -/
+/-- `HasTy.letex` at the answer `E`, with the use set widened to the join. -/
 def letexOf? {s : Sig} {Γ : Ctx s} (r1 : XElab Γ) (D : DeclTable ((Γ.consC).cons r1.body))
     (c : Nat) (E : ETy s)
     (r2 : Checked ((Γ.consC).cons r1.body) (ETy.weaken (ETy.weaken (k := .cap) E))) :
@@ -583,9 +556,9 @@ def letexOf? {s : Sig} {Γ : Ctx s} (r1 : XElab Γ) (D : DeclTable ((Γ.consC).c
             (.elem (capJoin_right r1.uses (capJoin r1.bnd res))))⟩
   | none => none
 
-/-- An atom of the witness or of the payload of an unpacking, replaced by
-the root `ρ`.  A projection of such an atom is replaced too: the level rule
-reads a projected atom at the level of the atom under it. -/
+/-- An atom of the witness or the payload of an unpacking, replaced by the root
+`ρ`.  A projection of such an atom is replaced too, since the level rule reads
+a projected atom at the level of its base. -/
 def absorbAtom {s : Sig} (ρ : CapAtom ((s,c),x)) (a : CapAtom ((s,c),x)) : CapAtom ((s,c),x) :=
   match a with
   | .var .here => ρ
@@ -596,11 +569,10 @@ def absorbAtom {s : Sig} (ρ : CapAtom ((s,c),x)) (a : CapAtom ((s,c),x)) : CapA
   | .proj (.cvar (.there .here)) _ => ρ
   | a => a
 
-/-- The answer of an unpacking's body moved out of the scope of the witness
-and the payload.  First by strengthening.  Then, for a plain answer, by the
-level rule: the atoms of the witness and of the payload go to the innermost
-root of the context, whose level they are at.  A context with no root
-absorbs nothing. -/
+/-- The answer of an unpacking's body moved out of the scope of the witness and
+the payload.  First by strengthening.  Then, for a plain answer, by the level
+rule: their atoms go to the innermost root of the context, whose level they
+are at.  A context with no root absorbs nothing. -/
 def exAvoid? {s : Sig} {Γ : Ctx s} {T : Ty (s,c)} (D : DeclTable ((Γ.consC).cons T)) (c : Nat)
     (E : ETy ((s,c),x)) :
     Option ((E' : ETy s) × ESub ((Γ.consC).cons T) E (ETy.weaken (ETy.weaken (k := .cap) E'))) :=
@@ -634,28 +606,27 @@ def letexAvoid? {s : Sig} {Γ : Ctx s} (r1 : XElab Γ) (D : DeclTable ((Γ.consC
 
 /-! ## The object rule, in passes
 
-`HasTy.obj` types the definitions of a literal under a class root and a
-self binder that holds the same definitions and the same capture set the
-conclusion has.  Box inference changes the definitions, and the capture set
-of a literal is only known once its definitions are typed.  So the literal
-is typed in passes.  A pass types the definitions it is given under a self
-binder that holds them and the current set.  It is final when the
-elaborated definitions erase to the ones the binder holds and their use set
-is below the current set and the self variable.  Otherwise the next pass
-takes the elaborated definitions, which hold their boxes, and the set the
-definitions used, with the self variable dropped, its capture members read
-at their upper bounds, and the class root strengthened away.  The first
-pass runs at the empty set.  The number of passes is `Budget.obj`. -/
+`HasTy.obj` types the definitions of a literal under a class root and a self
+binder that holds the same definitions and capture set as the conclusion.  Box
+inference changes the definitions, and the capture set is known only once the
+definitions are typed.  So the literal is typed in passes.
 
-/-- One typing of the definitions of a literal under its scope, at the
-definitions and the set the self binder holds. -/
+A pass types the definitions it is given under a self binder that holds them
+and the current set.  It is final when the elaborated definitions erase to
+those the binder holds and their use set is below the current set and the self
+variable.  Otherwise the next pass takes the elaborated definitions, with their
+boxes, and the set they used, with the self variable dropped, its capture
+members read at their upper bounds, and the class root strengthened away.  The
+first pass runs at the empty set.  There are `Budget.obj` passes. -/
+
+/-- One typing of a literal's definitions under its scope, at the definitions
+and set the self binder holds. -/
 abbrev DefsCheck {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) : Type :=
   (d : ADefs ((s,c),x)) → (U : CaptureSet s) →
     Verdict (DefsElab (Γ.objBody d.erase S U) S.underRoot)
 
-/-- The passes of the object rule.  `chk` types the definitions and `k`
-counts the passes left.  The elaborated literal holds the read self
-shape. -/
+/-- The passes of the object rule.  `chk` types the definitions and `k` counts
+the passes left.  The elaborated literal holds the read self shape. -/
 def objPasses? {s : Sig} {Γ : Ctx s} (b : Budget) (S : Shape (s,x)) (chk : DefsCheck Γ S)
     (k : Nat) (d : ADefs ((s,c),x)) (U : CaptureSet s) : Verdict (Elab Γ) :=
   match k with
@@ -676,19 +647,17 @@ termination_by structural k
 
 /-! ## The level escape, decided
 
-When a binding annotation is not reached, the typer walks the synthesized
-type and the annotation in parallel, the way the arrow rule of the search
-does, and collects every set goal the search does not find.  For each it
-tries a certificate.  The certificate needs three facts the typer decides:
-the context is well formed (`ctxWf?`), the target set resolves to itself
-at every depth (`selfAtom?`), and at one small depth the source set is not
-confined to a root the target set is confined to.  The last fact reads the
-version's `Ctx.caps`, which is well founded, so it is computed by compiled
-code and not by the kernel. -/
+When a binding annotation is not reached, the typer walks the synthesized type
+and the annotation in parallel, as the arrow rule of the search does, and
+collects every set goal the search does not find.  For each it tries a
+certificate.  The certificate needs three decided facts.  The context is well
+formed (`ctxWf?`).  The target set resolves to itself at every depth
+(`selfAtom?`).  At one small depth the source set is not confined to a root
+the target set is confined to.  The last fact reads the version's `Ctx.caps`,
+which is well founded, so compiled code computes it and the kernel does not. -/
 
-/-- Well-formedness of a context, decided.  Only an object's self binder
-asks something, the two conditions `literalShape?` and `distinctLabels?`
-decide. -/
+/-- Well-formedness of a context, decided.  Only an object's self binder asks
+anything, namely `literalShape?` and `distinctLabels?`. -/
 def ctxWf? {s : Sig} (Γ : Ctx s) : Bool :=
   match Γ with
   | .nil => true
@@ -714,8 +683,8 @@ theorem ctxWf?_sound : ∀ {s : Sig} (Γ : Ctx s), ctxWf? Γ = true → Γ.Wf
 
 /-- An atom of the target that resolves to itself at every depth: the
 universal root, a scope root, or a rigid capture binder, with or without a
-declared classifier.  A projected atom resolves through its base, so it is
-not one. -/
+declared classifier.  A projected atom resolves through its base and is not
+one. -/
 def selfAtom? {s : Sig} (Γ : Classifiers.FCdot.Ctx s) (a : Classifiers.FCdot.CapAtom s) : Bool :=
   match a with
   | .top => true
@@ -749,9 +718,9 @@ theorem caps_self {s : Sig} {Γ : Classifiers.FCdot.Ctx s} :
         caps_self D (fun b hb => h b (List.mem_cons_of_mem _ hb)) n]
       rfl
 
-/-- A certificate for the goal `C <: D` at `Γ`: the first root `r`, the
-universal one and then each atom of `D`, that confines `D`, with the first
-depth below four at which `C` is not confined to it. -/
+/-- A certificate for the goal `C <: D` at `Γ`: the first root `r` that
+confines `D`, tried as the universal one and then each atom of `D`, with the
+first depth below four at which `C` is not confined to it. -/
 def certify? {s : Sig} (Γ : Ctx s) (C D : CaptureSet s) : Option Reason :=
   if hwf : ctxWf? Γ = true then
     if hself : ∀ a ∈ D.translate, selfAtom? Γ.translate a = true then
@@ -778,10 +747,9 @@ structure Goal where
   /-- The set on the right. -/
   hi : CaptureSet sig
 
-/-- The set goals the search does not find, walking `T <: U` the way the
-search does: the two sets, then into fields, boxes, and the domains and
-codomains of arrows under the scopes the arrow rule opens.  Structural on
-the depth `k`. -/
+/-- The set goals the search does not find, walking `T <: U` as the search
+does: the two sets, then fields, boxes, and the domains and codomains of
+arrows under the scopes the arrow rule opens.  Structural on the depth `k`. -/
 def escGoals (b : Budget) (k : Nat) {s : Sig} (Γ : Ctx s) (T U : Ty s) : List Goal :=
   match k with
   | 0 => []
@@ -800,16 +768,15 @@ def escGoals (b : Budget) (k : Nat) {s : Sig} (Γ : Ctx s) (T U : Ty s) : List G
           | _, _ => []
 termination_by structural k
 
-/-- The verdict when `T` was not moved to the annotation `U` at `Γ`: a
-rejection at the first goal with a certificate, `unknown` otherwise. -/
+/-- The verdict when `T` was not moved to the annotation `U` at `Γ`.  It is a
+rejection at the first goal with a certificate, and `unknown` otherwise. -/
 def diagnose {α : Type} (b : Budget) {s : Sig} (Γ : Ctx s) (T U : Ty s) : Verdict α :=
   match firstSome (fun g => certify? g.ctx g.lo g.hi) (escGoals b b.sub Γ T U) with
   | some r => .rejected r
   | none => .unknown
 
-/-- The rejection of an existential answer outside every scope, where no
-root can absorb its witness: no answer inclusion takes it to the plain
-type a `let` or a program asks for. -/
+/-- The rejection of an existential answer outside every scope, where no root
+can absorb its witness. -/
 def topExistential {α : Type} {s : Sig} (Γ : Ctx s) (q : XElab Γ) : Verdict α :=
   .rejected (.existentialAtTop Γ (∃ᶜ[q.bnd] q.body) (fun _ ⟨e⟩ => by cases e))
 
@@ -817,8 +784,8 @@ def topExistential {α : Type} {s : Sig} (Γ : Ctx s) (q : XElab Γ) : Verdict �
 
 mutual
 
-/-- Synthesis, clause by clause.  `ps` is the platform set, the reading of
-`any` at a position with no scope root.
+/-- Synthesis, clause by clause.  `ps` is the platform set, which `any` reads
+as where there is no scope root.
 
 - a variable is its first view, `varSynth`
 - `λ(x : T). t` decides and reads the domain, synthesizes the body under
@@ -963,12 +930,11 @@ def synth? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (ps : CaptureS
 termination_by structural n
 
 /-- Checking against an answer.  A variable against a plain goal goes to box
-inference, `adaptVar?`, with `checkVar?` as its plain checker.  Three
-clauses check a term against the goal's own form, each falling back to
-synthesis: a `λ` against a function type, an unannotated `let` against
-any goal, a box value against a box.  Everything else is synthesized and
-moved to the goal by a decided equality or by the answer search, which
-packs a plain answer into an existential goal. -/
+inference, `adaptVar?`, with `checkVar?` as its plain checker.  Three clauses
+check a term against the goal's form and fall back to synthesis: a `λ` against
+a function type, an unannotated `let` against any goal, and a box value against
+a box.  Everything else is synthesized and moved to the goal by equality or by
+the answer search, which packs a plain answer into an existential goal. -/
 def check? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (ps : CaptureSet s) (n : Nat)
     (a : ATm s) (E : ETy s) : Verdict (Checked Γ E) :=
   match n with
@@ -1022,12 +988,11 @@ def check? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (ps : CaptureS
 termination_by structural n
 
 /-- Checking a definition list.  `DefsTy` is syntax directed on both the
-definitions and the shape, so the two are matched in lockstep: a type
-member against a declaration with its own shape on both bounds, a capture
-member against a declaration with its own set on both bounds, a term member
-against a field at the same label, and an intersection against an
-intersection.  The result holds the least use set of the definitions and the
-derivation at every set above it. -/
+definitions and the shape, so they are matched together: a type member against
+a declaration with its own shape on both bounds, a capture member against a
+declaration with its own set on both bounds, a term member against a field at
+the same label, and an intersection against an intersection.  The result holds
+the least use set and the derivation at every set above it. -/
 def checkDefs? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (ps : CaptureSet s)
     (n : Nat) (d : ADefs s) (S : Shape s) : Verdict (DefsElab Γ S) :=
   match n with
@@ -1065,28 +1030,25 @@ end
 
 /-! ## The entry points -/
 
-/-- The typer at a given context.  It builds the declaration table of the
-context once and runs at `Budget.typer`.  `ps` is the platform set at the
-context, the reading of `any` where the context has no scope root.  This is
-the entry point for a term that sits under a context, as the version's open
-examples do. -/
+/-- The typer at a given context, for a term that sits under it.  It builds the
+declaration table once and runs at `Budget.typer`.  `ps` is the platform set,
+which `any` reads as where the context has no scope root. -/
 def synthIn? {s : Sig} (b : Budget) (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s) :
     Verdict (Elab Γ) :=
   synth? (decls b Γ) b ps b.typer a
 
 /-- The typer on a closed program over a platform, at the version's
-`Platform.ctx`.  A program whose answer is an existential is rejected:
-`Compiled` asks for a plain type, and no answer inclusion leaves an
-existential. -/
+`Platform.ctx`.  A program whose answer is an existential is rejected, since
+`Compiled` asks for a plain type. -/
 def synthTop? (b : Budget) (π : PlatformNames) (a : ATm π.sig) : Verdict (Elab π.plat.ctx) :=
   (synthIn? b π.plat.ctx π.set a).bind fun r =>
     match r.split with
     | .inl _ => .ok r
     | .inr q => topExistential π.plat.ctx q
 
-/-- The typer at a given context, followed by one `sub` to a given use set
-and answer, both found by the search.  The typer returns the least sets,
-and a judgment written with larger ones is reached this way. -/
+/-- The typer at a given context, followed by one `sub` to a given use set and
+answer, both found by the search.  The typer returns the least sets, so this
+reaches a judgment written with larger ones. -/
 def checkIn? {s : Sig} (b : Budget) (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s)
     (U : CaptureSet s) (E : ETy s) : Verdict ((t : ATm s) × HasTy U Γ t.erase E) :=
   (synthIn? b Γ ps a).bind fun r =>
@@ -1097,11 +1059,8 @@ def checkIn? {s : Sig} (b : Budget) (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s)
 
 /-! ## Fuel monotonicity
 
-The statement is about successes and not about derivations: more fuel may
-find another derivation of the same judgment, and `HasTy` is `Type` valued
-with no decidable equality.  The retry at the end of `synth?`'s fuel level
-makes it an induction on the fuel alone.  A rejection is not monotone and
-is not claimed to be. -/
+The statement is about successes and not about derivations, since more fuel may
+find another derivation of the same judgment.  A rejection is not monotone. -/
 
 /-- One more unit of fuel never loses a success. -/
 theorem synth?_succ {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} {ps : CaptureSet s}
@@ -1120,22 +1079,19 @@ theorem synth?_le {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} {ps : C
 
 /-! ## Checks
 
-Each program below is resolved with the labels and the platform of the
-version's examples (`lean/Coercions/Classifiers/DotMNF/Examples.lean`) and
-typed at the program context of its platform, or at the version's own
-context where the version types it open.  A success is a derivation, so a
-check compares the elaborated term, the use set and the answer with the
-version's, and the use set up to `subcap?` both ways where the least set is
-not the one the version wrote.
+Each program is resolved with the labels and platform of the version's examples
+(`lean/Coercions/Classifiers/DotMNF/Examples.lean`) and typed at its platform's
+program context, or at the version's own context where the version types it
+open.  A check compares the elaborated term, the use set and the answer with
+the version's.  Where the least use set is not the one the version wrote, it
+compares the use sets up to `subcap?` both ways.
 
-The budget of each success is one at which it is found.  The six counters
-were lowered one at a time from the defaults, the typer's fuel first, so a
-budget is found and not proved least, and a larger typer fuel finds the
-same (`synth?_le`).  A check one unit short shows what a counter measures.
+Each success has a budget at which it is found.  A check one unit short shows
+what a counter measures.
 
-Every success and every rejection by a written type or an existential is a
-`decide +kernel` fact.  A rejection by `levelEscape` reads `Ctx.caps`, which
-the kernel does not reduce, so those verdicts are `#eval expect` tests. -/
+Successes and rejections by a written type or an existential are
+`decide +kernel` facts.  A `levelEscape` rejection reads `Ctx.caps`, which the
+kernel does not reduce, so those verdicts are `#eval expect` tests. -/
 
 section Checks
 
@@ -1155,8 +1111,7 @@ def keepsSkel {s : Sig} {Γ : Ctx s} (a : ATm s) (v : Verdict (Elab Γ)) : Bool 
   | .ok r => decide (r.tm.skel = a.skel)
   | _ => false
 
-/-- A success moved to a given use set and answer by one `sub`, through
-`checkIn?`. -/
+/-- A success moved to a given use set and answer by one `sub`. -/
 def reachesAt {s : Sig} (b : Budget) (Γ : Ctx s) (ps : CaptureSet s) (a : ATm s)
     (U : CaptureSet s) (E : ETy s) : Bool :=
   (checkIn? b Γ ps a U E).isOk
@@ -1185,15 +1140,15 @@ def topReaches (b : Budget) (π : PlatformNames) (a : Option (ATm π.sig)) (U : 
 def topRejected (b : Budget) (π : PlatformNames) (a : Option (ATm π.sig)) : Option String :=
   a.bind fun a => (synthTop? b π a).reason?.map Reason.name
 
-/-- The depth of the context a level escape was decided at, and whether the
-root of its certificate is the universal one. -/
+/-- The depth of the context of a level escape, and whether its certificate's
+root is the universal one. -/
 def escapeShape? {α : Type} (v : Verdict α) : Option (Nat × Bool) :=
   match v with
   | .rejected (.levelEscape (s := s) _ _ _ r _) => some (s.length, decide (r = .top))
   | _ => none
 
-/-- The platform set at the version's contexts with two term binders over
-the platform `fs, k2`. -/
+/-- The platform set at the version's contexts with two term binders over the
+platform `fs, k2`. -/
 def ps2z : CaptureSet ([],c,c,x,x) := CaptureSet.weaken (CaptureSet.weaken πz.set)
 
 /-- The same over the platform `k1, k2`. -/
@@ -1201,9 +1156,7 @@ def ps2c : CaptureSet ([],c,c,x,x) := CaptureSet.weaken (CaptureSet.weaken πc.s
 
 /-! ### W2: the call of a capture-parameter arrow -/
 
-/-- `W2_call`: `p f` at the version's `W2CallCtx` has the version's use set
-`{f}` and answer `⊤`.  The argument is checked at `File ^ {f}`, the domain
-with the arrow's binder at the argument. -/
+/-- `W2_call`: `p f` at `W2CallCtx` has the use set `{f}` and answer `⊤`. -/
 example : judgmentOf (synthIn? { decls := 0, views := 0, sub := 0, cap := 0, typer := 2, obj := 0 }
     W2CallCtx ps2c (.app (.there .here) .here)) = some ([CapAtom.var .here], .ty unitTy) := by
   decide +kernel
@@ -1216,8 +1169,8 @@ example : judgmentOf (synthIn? { decls := 0, views := 0, sub := 0, cap := 0, typ
 /-- `process` itself, written with its parameter at `any`. -/
 def W2defSrc : STm := cls% λ(x : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}). λ(u : ⊤). u
 
-/-- It elaborates to the version's `W2Tm`, its parameter's `any` read as the
-arrow's own binder.  Its least answer has the inner closure at its own
+/-- It elaborates to the version's `W2Tm`, with the parameter's `any` read as
+the arrow's own binder.  Its least answer has the inner closure at its own
 type, and the version's `W2Ty` is reached by one `sub`. -/
 example : topErased {} πc (resolveTop Λc [] πc W2defSrc) = some W2Tm := by decide +kernel
 
@@ -1243,8 +1196,7 @@ example : judgmentOf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn) =
     some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here], .ty (arrowS ^ [])) := by
   decide +kernel
 
-/-- The version's judgment, `Z1Use ∪ Z1Use` and `⊤`, is reached by one
-`sub`. -/
+/-- The version's judgment, `Z1Use ∪ Z1Use` and `⊤`, is reached by one `sub`. -/
 example : reachesAt { bZ1 with cap := 4, sub := 1 } Z1Ctx ps2z Z1callerAnn (Z1Use ∪ Z1Use)
     (.ty unitTy) = true := by
   decide +kernel
@@ -1255,8 +1207,7 @@ example : subcapBoth { bZ1 with cap := 4 } Z1Ctx
     [CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here] (Z1Use ∪ Z1Use) = true := by
   decide +kernel
 
-/-- One unit of the set search short: the payload is not charged to its
-witness. -/
+/-- One unit of set search short: the payload is not charged to its witness. -/
 example : (synthIn? { bZ1 with cap := 1 } Z1Ctx ps2z Z1callerAnn).isOk = false := by
   decide +kernel
 
@@ -1282,10 +1233,10 @@ example : subcapBoth { bTail with cap := 4 } Z1Ctx
     [CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here] (Z1Use ∪ Z1Use) = true := by
   decide +kernel
 
-/-- Inside a scope the payload's type leaves by the level rule: the
-witness and the payload are at the level of the innermost root, so
-`let x = fc un in x` under a lambda is a file captured by that body's
-root.  This is the compiler's local `any` absorbing a `fresh`. -/
+/-- Inside a scope the payload's type leaves by the level rule.  The witness
+and the payload are at the level of the innermost root, so
+`let x = fc un in x` under a lambda is a file captured by that body's root.
+This is the compiler's local `any` absorbing a `fresh`. -/
 example : (resolveIn Λc [] (((z1Names.consC "%").consC "%").cons "v") (cls% let x = fc un in x)).bind
     (fun a => judgmentOf (synthIn? {} (Z1Ctx.body unitTy) (psBody ps2z) a)) =
     some ([CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.cvar (up fs2),
@@ -1295,10 +1246,9 @@ example : (resolveIn Λc [] (((z1Names.consC "%").consC "%").cons "v") (cls% let
 
 /-! ### A capture parameter that is called -/
 
-/-- `λ(h : (∀(u : ⊤) ⊤) ^ {any}). let z = unit in h z`, with `unit : ⊤`
-bound outside, is a pure closure whose domain reads `any` as the arrow's
-own binder.  The call is charged `{h, z}`, `z` is pure, and `h` leaves
-with the parameter. -/
+/-- `λ(h : (∀(u : ⊤) ⊤) ^ {any}). let z = unit in h z`, with `unit : ⊤` bound
+outside, is a pure closure whose domain reads `any` as the arrow's own binder.
+The call is charged `{h, z}`, `z` is pure, and `h` leaves with the parameter. -/
 example : judgmentOf (synthIn? { decls := 0, views := 0, sub := 0, cap := 1, typer := 4, obj := 0 }
     (platCtx.cons unitTy) (CaptureSet.weaken πc.set) P1ann) =
     some ([], .ty ((Shape.all (arrowS ^ [CapAtom.cvar .here]) (.ty unitTy)) ^ [])) := by
@@ -1318,14 +1268,14 @@ def Z1defSrc : STm :=
       in fc
 
 /-- The annotation reads `fresh` as the version's `Z1Ty`, the existential
-bounded by `{fs, u}`, and the closure reaches it by the arrow rule, which
-packs the cell. -/
+bounded by `{fs, u}`.  The closure reaches it by the arrow rule, which packs
+the cell. -/
 example : topJudgment { decls := 0, views := 0, sub := 2, cap := 1, typer := 8, obj := 1 } πz
     (resolveTop Λc [] πz Z1defSrc) = some ([], .ty (Z1Ty k1)) := by
   decide +kernel
 
-/-- An existential `let` annotation: the plain `let` is typed and packed
-into the annotation, the witness the payload's own set `{f}`. -/
+/-- An existential `let` annotation.  The plain `let` is typed and packed into
+the annotation, with the payload's own set `{f}` as witness. -/
 def cov2Src : STm :=
   cls% λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {k1}).
         let r : ∃[c ⊑ {f}] μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {c} = f in r
@@ -1336,8 +1286,8 @@ example : topJudgment { decls := 0, views := 0, sub := 1, cap := 2, typer := 3, 
       (∃ᶜ[[CapAtom.var .here]] (fileS ^ [CapAtom.cvar .here]))) ^ [])) := by
   decide +kernel
 
-/-- A written existential whose binder sits below a field: the payload's
-own set is empty and is no witness, and the written bound `{k1}` is. -/
+/-- A written existential whose binder sits below a field.  The payload's own
+set is empty and is no witness, and the written bound `{k1}` is. -/
 def cov4Src : STm := cls% λ(p : {a : ⊤ ^ {k1}}). let r : ∃[c ⊑ {k1}] {a : ⊤ ^ {c}} = p in r
 
 example : topJudgment { decls := 0, views := 0, sub := 2, cap := 2, typer := 3, obj := 0 } πc
@@ -1352,8 +1302,7 @@ example : topJudgment { decls := 0, views := 0, sub := 2, cap := 2, typer := 3, 
 /-- A closure that projects its parameter. -/
 def cov3Src : STm := cls% λ(o : {a : ⊤ ^ {k1}} ^ {k1}). o.a
 
-/-- It is pure: the body is charged `{o}`, which leaves with the
-parameter. -/
+/-- It is pure: the body is charged `{o}`, which leaves with the parameter. -/
 example : topJudgment { decls := 0, views := 0, sub := 0, cap := 1, typer := 2, obj := 0 } πc
     (resolveTop Λc [] πc cov3Src) =
     some ([], .ty ((Shape.all ((Shape.fld la (Shape.top ^ [CapAtom.cvar (.there k1)])) ^
@@ -1393,9 +1342,8 @@ example : (match resolveTop Λc [] πc C7src with
     | none => false) = true := by
   decide +kernel
 
-/-- One pass of the object rule is not enough: the first pass inserts the
-boxes, and the self binder it ran under holds the definitions without
-them. -/
+/-- One pass of the object rule is not enough.  The first pass inserts the
+boxes, and its self binder holds the definitions without them. -/
 example : topJudgment { bC7 with obj := 1 } πc (resolveTop Λc [] πc C7src) = none := by
   decide +kernel
 
@@ -1430,20 +1378,18 @@ example : topRejected { typer := 12 } πz (resolveTop Λc [] πz exTopSrc) = som
 
 /-! ### Rejections by a level escape
 
-Each verdict below is computed by compiled code, since its certificate
-reads `Ctx.caps`.  The depth of the context reached and the kind of root
-are checked too. -/
+Compiled code computes each verdict, since the certificate reads `Ctx.caps`.
+The depth of the context and the kind of root are checked too. -/
 
-/- The escape: the callback's result `any` is the root of `λ(g : ⊤)`'s
-body, and the callback returns its parameter.  The goal reached is
-`{f} <: {κ_g}` in the callback's body, in the context that also binds `cb`,
-nine binders deep, and the certificate's root is `κ_g`. -/
+/- The escape: the callback's result `any` is the root of `λ(g : ⊤)`'s body,
+and the callback returns its parameter.  The goal is `{f} <: {κ_g}` in the
+callback's body, nine binders deep, and the certificate's root is `κ_g`. -/
 #eval expect ((resolveTop Λc [] πc EscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
   some (9, false)) "the escape"
 
 /-- The same escape at the top of a program.  The result `any` reads as the
-platform set, which holds no source root, and the certificate's root is
-the universal one. -/
+platform set, which holds no source root, so the certificate's root is the
+universal one. -/
 def TopEscSrc : STm :=
   cls% let cb : (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any})
                   (∀(u : ⊤) μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}) ^ {any}) ^ {}
@@ -1480,11 +1426,9 @@ example : (resolveTop Λc [] πc EscOkSrc).bind (fun a => (synthTop? {} πc a).t
 /-! ### Avoiding a projected binder
 
 CE1 binds `b` at the filtered platform set and calls `Try.apply` on it.  The
-call returns the object at `{b ↾ only[Control]}`, and the `let` that binds
-`b` must avoid it.  The avoidance replaces the projected atom by the set
-`b` is declared at, with the evidence `unproj` then `sc-var`, as the
-version's `E1outer` does.  The binders' types are written as ascriptions of
-the bound terms. -/
+call returns the object at `{b ↾ only[Control]}`, which the `let` binding `b`
+must avoid.  Avoidance replaces the projected atom by the set `b` is declared
+at, with evidence `unproj` then `sc-var`, as the version's `E1outer` does. -/
 
 /-- CE1's body, the types of `b` and `f` ascribed. -/
 def CE1BodySrc : STm :=
@@ -1513,9 +1457,9 @@ example : (resolveIn Λk exCls E1Names CE1BodySrc).bind
     (fun a => judgmentOf (synthIn? bCE1 E1PlatCtx psE1 a)) = some (E1Filt, .ty E1Ty) := by
   decide +kernel
 
-/-- One unit of the set search short: `{b ↾ only[Control]}` below the
-weakened filtered set takes the union, `unproj`, `sc-var` and the
-inclusion, four steps. -/
+/-- One unit of set search short.  `{b ↾ only[Control]}` below the weakened
+filtered set takes four steps: the union, `unproj`, `sc-var` and the
+inclusion. -/
 example : (resolveIn Λk exCls E1Names CE1BodySrc).bind
     (fun a => judgmentOf (synthIn? { bCE1 with cap := 3 } E1PlatCtx psE1 a)) = none := by
   decide +kernel

@@ -3,25 +3,25 @@ import Coercions.Oopsla16.Frontend.Decide
 /-!
 # Views and the subtyping search
 
-The typer asks two questions of a context that this module answers, each
-with a derivation of the version's own judgments.
+This module answers two questions of the typer, each with a derivation of an
+Oopsla16 judgment.
 
-* A *view* of a context variable `x` is a type of `x`'s own prefix scope with
-  an `Oopsla16.Htp` derivation.  `Htp` is the judgment the two selection rules
-  `stp_sel1` and `stp_sel2` consult.  It types `x` in the context truncated at
-  `x`, and it has no packing rule.  `hviews` computes the views a fixed number
-  of rounds deep.
+* A *view* of a context variable `x` is a type of `x` in its prefix scope,
+  with an `Oopsla16.Htp` derivation.  `Htp` types `x` in the context truncated
+  at `x` and has no packing rule.  `stp_sel1` and `stp_sel2` consult it.
+  `hviews` computes the views a fixed number of rounds deep.
 * `sub?` searches for an `Oopsla16.Stp` derivation between two types, at a
   fuel.
 
-Everything returns the derivation, so there is no soundness theorem: the
-result type is the statement.  Subtyping in this calculus is undecidable, so
-nothing here is complete and no completeness theorem is claimed.
+Every result is a derivation, so there is no soundness theorem.  Subtyping in
+this calculus is undecidable, so the search is incomplete.  What is proved is
+monotonicity: more rounds never lose the type of a view, and more fuel never
+loses an answer.
 
 ## The view closure
 
-The closure starts at `htp_var`, the recorded type of `x`, and every round
-adds one step from every view it has.
+The closure starts at `htp_var`, the recorded type of `x`.  Each round adds
+one step from every view.
 
 | view | new view | rule |
 |---|---|---|
@@ -29,28 +29,24 @@ adds one step from every view it has.
 | `A ∧ B` | `A` and `B` | `htp_sub` with `stp_and11`, `stp_and12` |
 | `y.L` | the upper bound `U` of a member `{type L : _..U}` of a view of `y` | `htp_sub` with `stp_sel1` |
 
-The selection step reads the bound off the views of `y` in the context
-truncated at `x`, one round shallower.  So the closure recurses on the round
-count and nothing else, and needs no subtyping search.  The truncation is
-the one `htp_sub` demands: a hypothesis younger than `x`, such as the self
-assumption of an enclosing `stp_bindx`, is out of scope there.  The front end
-therefore cannot build the packing derivation that would make the calculus
-unsound (`Oopsla16.PackingCounterexample`), by the types of its functions.
+The selection step reads the views of `y` in the context truncated at `x`, one
+round shallower, so the closure recurses on the round count alone.  The
+truncation is what `htp_sub` demands.  A hypothesis younger than `x`, such as
+the self assumption of an enclosing `stp_bindx`, is out of scope.  So by the
+types of its functions the front end cannot build the packing derivation that
+makes the calculus unsound (`Oopsla16.PackingCounterexample`).
 
-A type member's bounds are not moved by a closure step.  A rule that wants
-`{type L : ⊥..U}` from a view `{type L : S..U}` builds the move itself
-(`lowerBot`, `upperTop`), so one view serves both selection rules.
-
-Duplicates are dropped by type after every round.  Without that the views of
-a variable whose type repeats a selection multiply with every round, and a
-failing branch of the search pays for each copy.
+A closure step leaves type member bounds alone.  A rule that wants
+`{type L : ⊥..U}` from a view `{type L : S..U}` moves the bound itself
+(`lowerBot`, `upperTop`).  Views are deduplicated by type after every round, so repeated
+selections do not multiply them.
 
 ## The search
 
 `sub? b n Γ S T` tries the rules below in order and returns the first
-derivation found.  Each recursive premise is a call at fuel `n - 1`.
+derivation found.  Each premise is a call at fuel `n - 1`.
 
-1. `S = T`: reflexivity, derived by `Oopsla16.Stp.refl`.
+1. `S = T`: reflexivity, by `Oopsla16.Stp.refl`.
 2. `T = ⊤`: `stp_top`.  `S = ⊥`: `stp_bot`.
 3. `T = T₁ ∧ T₂`: `stp_and2`.
 4. `S = μ T₁` and `T = μ T₂`: `stp_bindx`, the bodies under the self assumed
@@ -66,22 +62,13 @@ derivation found.  Each recursive premise is a call at fuel `n - 1`.
 11. `T = x.L`: `stp_sel2` at a view of `x`, after `stp_trans` from `S` unless
     the lower bound is `S`.
 
-Rules 10 and 11 are the one place where `stp_trans` is tried, with a middle
-read off a view.  Rule 4 comes before rule 9, so two recursive types are
-compared body to body before the left self is forgotten.
-
-## Fuel and rounds
+Rules 10 and 11 are the only uses of `stp_trans`, with a middle read off a
+view.  Rule 4 precedes rule 9, so two recursive types are compared body to
+body before the left self is forgotten.
 
 `Budget` holds three counters: rounds of the view closure, fuel of the
-search, fuel of the typer.  Both `hviews` and `sub?` are structural, on the
-round count and on the fuel, so the kernel reduces them, and every check at
-the end of this module is decided by `decide +kernel`.  Their monotonicity is stated below: more rounds
-never lose the type of a view, and more fuel never loses an answer.  The
-second is proved rule by rule, each rule being monotone in the search it
-calls.
-
-Nothing in this module is part of the metatheory and no definition here
-lives in the `Oopsla16` namespace.
+search and fuel of the typer.  Both recursions are structural, so the kernel
+reduces them and the checks at the end are `decide +kernel`.
 -/
 
 namespace Oopsla16Frontend
@@ -91,8 +78,7 @@ open Oopsla16 (Lb Ty Ctx Store Stp Htp scopeUpTo renameUpTo varUpTo)
 
 /-! ## The budget -/
 
-/-- The three counters of the front end.  The defaults are a starting
-point, and the budget each probe is found at is stated beside it. -/
+/-- The three counters of the front end. -/
 structure Budget where
   /-- Rounds of the view closure. -/
   views : Nat := 4
@@ -270,8 +256,7 @@ termination_by structural k
 
 /-! ## The subtyping search -/
 
-/-- A subtyping search at one fuel, the form in which the rules receive their
-recursive calls. -/
+/-- A subtyping search at one fuel, which the rules receive for their premises. -/
 abbrev Search : Type :=
   ∀ {s : Sig} (Γ : Ctx [] s) (S T : Ty [] s), Option (Stp Store.nil Γ S T)
 
@@ -420,17 +405,9 @@ termination_by structural n
 
 /-! ## Monotonicity
 
-More rounds of the closure never lose the type of a view, and more fuel never
-loses an answer of the search.  Both statements speak of types and of
-`isSome`, not of derivations: deduplication keeps the first derivation of a
-type, and more fuel may find another derivation of the same judgment.
-
-The search has no retry clause at the end of its `n + 1` case.  Such a clause
-would make monotonicity a one line induction, but it repeats the whole search
-at fuel `n` whenever fuel `n + 1` fails, and a failing branch then costs a
-factor of about six per two units of fuel where it costs two without it.  So
-monotonicity is proved rule by rule instead: every rule is monotone in the
-search it receives, and so is their chain. -/
+The statements speak of types and of `isSome`, not of derivations, since more
+fuel may find another derivation of the same judgment.  Each rule is monotone
+in the search it receives, and so is their chain. -/
 
 /-- Every type of `l` is the type of a view in `l'`. -/
 def ViewsLe {s : Sig} {Γ : Ctx [] s} {x : BVar s .var} (l l' : List (HView Γ x)) : Prop :=
@@ -666,11 +643,9 @@ theorem sub?_le {b : Budget} {n n' : Nat} (h : n ≤ n') {s : Sig} {Γ : Ctx [] 
 
 /-! ## Checks
 
-Every check below runs in the kernel.  A budget is written as the fields it
-sets: `{ views := k }` is `k` rounds of the view closure, and the second
-argument of `sub?` is the fuel.  Each positive check states the budget the
-answer is found at.  A negative check states a budget it is not found at,
-and says nothing about other budgets. -/
+In `{ views := k }`, `k` is the number of rounds of the view closure.  The
+second argument of `sub?` is the fuel.  A negative check says nothing about
+other budgets. -/
 
 namespace SearchChecks
 
@@ -682,13 +657,13 @@ and the steps of its premise in the context `Γz` of the self. -/
 section FunctionField
 open Oopsla16.Examples.FunctionField (Sbody Tbody Γz A B f)
 
-/-- `recursive` is found at one round and fuel 5. -/
+/-- The search finds `recursive`. -/
 example : (sub? { views := 1 } 5 (Ctx.nil : Ctx [] []) (.TBind Sbody) (.TBind Tbody)).isSome
     = true := by
   decide +kernel
 
-/-- The converse is not found at four rounds and fuel 8.  The left self
-assumption `z : T(z)` gives no member `A`. -/
+/-- The converse is not found.  The left self assumption `z : T(z)` gives no
+member `A`. -/
 example : (sub? { views := 4 } 8 (Ctx.nil : Ctx [] []) (.TBind Tbody) (.TBind Sbody)).isSome
     = false := by
   decide +kernel
@@ -704,42 +679,41 @@ example : FCdotR.checkLe Store.nil FCdotR.emptyStoreTy Ctx.nil
     (FCdotR.elabStp FCdotR.emptyStoreTy recursiveFound).1 (.TBind Sbody) (.TBind Tbody) = true := by
   decide +kernel
 
-/-- `sBound`: `S(z) <: {A : ⊥..z.B}` in `Γz`, found at no rounds and fuel 3. -/
+/-- `sBound`: `S(z) <: {A : ⊥..z.B}` in `Γz`. -/
 example : (sub? { views := 0 } 3 Γz Sbody (.TTyp A .TBot (.TSel (.abs .here) B))).isSome
     = true := by
   decide +kernel
 
 /-- `selMember`: the self has the member `{A : ⊥..z.B}` under the method's
-parameter, a view after one round. -/
+parameter. -/
 example : ((hviews 1 (Γz.cons .TTop) (.there .here)).any
     fun v => decide (v.ty = .TTyp A .TBot (.TSel (.abs .here) B))) = true := by
   decide +kernel
 
-/-- `selUnder`: `z.A <: z.B` under the parameter, found at one round and
-fuel 2. -/
+/-- `selUnder`: `z.A <: z.B` under the parameter. -/
 example : (sub? { views := 1 } 2 (Γz.cons .TTop) (.TSel (.abs (.there .here)) A)
     (.TSel (.abs (.there .here)) B)).isSome = true := by
   decide +kernel
 
-/-- `methodCovariant`, found at one round and fuel 3. -/
+/-- The search finds `methodCovariant`. -/
 example : (sub? { views := 1 } 3 Γz (.TFun f .TTop (.TSel (.abs (.there .here)) A)) Tbody).isSome
     = true := by
   decide +kernel
 
-/-- `premise`: `S(z) <: T(z)` in `Γz`, found at one round and fuel 5. -/
+/-- `premise`: `S(z) <: T(z)` in `Γz`. -/
 example : (sub? { views := 1 } 5 Γz Sbody Tbody).isSome = true := by
   decide +kernel
 
 end FunctionField
 
-/-- `forgetSelf`, by `stp_bind1`: found at no rounds and fuel 3. -/
+/-- `forgetSelf`, by `stp_bind1`. -/
 example : (sub? { views := 0 } 3 (Ctx.nil : Ctx [] [])
     (.TBind (.TAnd .TTop (.TTyp 1 .TBot .TTop))) (.TAnd .TTop (.TTyp 1 .TBot .TTop))).isSome
     = true := by
   decide +kernel
 
 /-- `⊤ <: z.A` in the body of `FCdotR.SourceSafety.RecursiveArg`'s method,
-`⊤ <: z.B <: z.A` by `stp_sel2` twice: found at two rounds and fuel 2. -/
+`⊤ <: z.B <: z.A` by `stp_sel2` twice. -/
 example : (sub? { views := 2 } 2 FCdotR.SourceSafety.RecursiveArg.Γf .TTop
     FCdotR.SourceSafety.RecursiveArg.zA).isSome = true := by
   decide +kernel
@@ -753,7 +727,7 @@ module self after three rounds. -/
 section PaperLst
 open FCdotR.CheckerExamples.PaperLst (Γn PNil Γ2t P3)
 
-/-- The `nil` cell, found at three rounds and fuel 9. -/
+/-- The `nil` cell. -/
 example : (sub? { views := 3 } 9 Γn (.TBind PNil) (.TSel (.abs (.there .here)) 0)).isSome
     = true := by
   decide +kernel
@@ -764,8 +738,8 @@ def consCellFound : Stp Store.nil Γ2t (.TBind P3)
   (sub? { views := 3 } 11 Γ2t (.TBind P3)
     (.TSel (.abs (.there (.there (.there (.there (.there .here)))))) 0)).get (by decide +kernel)
 
-/-- The `cons` cell is found at three rounds and fuel 11, and the checker of
-the target accepts the elaboration of the found derivation. -/
+/-- The checker of the target accepts the elaboration of the derivation found
+for the `cons` cell. -/
 example : FCdotR.checkLe Store.nil FCdotR.emptyStoreTy Γ2t
     (FCdotR.elabStp FCdotR.emptyStoreTy consCellFound).1 (.TBind P3)
     (.TSel (.abs (.there (.there (.there (.there (.there .here)))))) 0) = true := by
@@ -773,8 +747,7 @@ example : FCdotR.checkLe Store.nil FCdotR.emptyStoreTy Γ2t
 
 /-- The parameter `tl : m.List ∧ {Elem : ⊥..t.T}` of `cons` reaches the
 method `head` of the list type: and-elimination, then the selection step
-through the module self, then `htp_unpack`, then and-elimination again.
-Six rounds. -/
+through the module self, then `htp_unpack`, then and-elimination again. -/
 example : ((hviews 6 Γ2t .here).any fun v => match v.ty with
     | .TFun 2 _ _ => true
     | _ => false) = true := by
@@ -795,7 +768,7 @@ abbrev Γu : Ctx [] (([],x),x) :=
   ((Ctx.nil : Ctx [] []).cons (.TAnd (.TFun 0 (.TOr F F) .TTop) .TTop)).cons
     (Ty.TOr F F : Ty [] ([],x)).weaken
 
-/-- `stp_or1`: the union below `F`, found at fuel 2. -/
+/-- `stp_or1`: the union below `F`. -/
 example : (sub? {} 2 Γu (Γu.lookup .here) F).isSome = true := by decide +kernel
 
 /-- A method parameter at `⊥`, under a self. -/
@@ -803,17 +776,17 @@ abbrev Γbot : Ctx [] (([],x),x) :=
   ((Ctx.nil : Ctx [] []).cons (.TAnd (.TFun 0 .TBot .TTop) .TTop)).cons
     (Ty.TBot : Ty [] ([],x)).weaken
 
-/-- `stp_bot`: `⊥` below `F`, found at fuel 1. -/
+/-- `stp_bot`: `⊥` below `F`. -/
 example : (sub? {} 1 Γbot (Γbot.lookup .here) F).isSome = true := by decide +kernel
 
 /-- `stp_or21`: a type below the left side of a union and not below the
-right, found at fuel 2. -/
+right. -/
 example : (sub? {} 2 (Ctx.nil : Ctx [] []) (.TTyp 0 .TBot .TTop)
     (.TOr (.TTyp 0 .TBot .TTop) .TBot)).isSome = true := by
   decide +kernel
 
 /-- `stp_or22`: a type below the right side of a union and not below the
-left, found at fuel 2. -/
+left. -/
 example : (sub? {} 2 (Ctx.nil : Ctx [] []) (.TTyp 0 .TBot .TTop)
     (.TOr .TBot (.TTyp 0 .TBot .TTop))).isSome = true := by
   decide +kernel
@@ -831,7 +804,7 @@ abbrev selfC : Ty [] ([],x) :=
 abbrev Γc : Ctx [] (([],x),x) :=
   ((Ctx.nil : Ctx [] []).cons selfC).cons (Ty.TSel (.abs .here) 1 : Ty [] ([],x)).weaken
 
-/-- `c.L <: F` by `stp_sel1`, found at one round and fuel 1. -/
+/-- `c.L <: F` by `stp_sel1`. -/
 example : (sub? { views := 1 } 1 Γc (Γc.lookup .here) F).isSome = true := by decide +kernel
 
 /-- `F` is a view of `x : c.L` after two rounds, by the selection step. -/
@@ -846,8 +819,8 @@ abbrev selfP : Ty [] ([],x) :=
 abbrev Γp : Ctx [] (([],x),x) :=
   ((Ctx.nil : Ctx [] []).cons selfP).cons (Ty.TTyp 0 .TTop .TTop : Ty [] ([],x)).weaken
 
-/-- `μ(w. {A : ⊤..⊤}) <: m.L` by `stp_sel2` at the lower bound, found at one
-round and fuel 1.  This is the step after packing `x` in the method body. -/
+/-- `μ(w. {A : ⊤..⊤}) <: m.L` by `stp_sel2` at the lower bound.  This is the
+step after packing `x` in the method body. -/
 example : (sub? { views := 1 } 1 Γp (.TBind (.TTyp 0 .TTop .TTop))
     (.TSel (.abs (.there .here)) 1)).isSome = true := by
   decide +kernel
@@ -857,9 +830,9 @@ example : (sub? { views := 1 } 1 Γp (.TBind (.TTyp 0 .TTop .TTop))
 `new {z ⇒ type A = z.A ∧ z.A   def g(x : z.A) : {type C : ⊥..⊤} ∨ ⊤ = x}`.
 The body's goal is `z.A <: {C : ⊥..⊤} ∨ ⊤`.  The search tries `stp_or21`
 first, and that branch unfolds `z.A` through `stp_sel1` and the
-and-eliminations until the fuel runs out.  Then `stp_or22` closes the goal
-by `stp_top`.  With deduplication the self `z` has five views after four
-rounds, and the kernel decides the goal at fuel 16. -/
+and-eliminations until the fuel runs out.  Then `stp_or22` closes the goal by
+`stp_top`.  With deduplication the self `z` has five views after four
+rounds. -/
 
 /-- `z.A`. -/
 abbrev zA : Ty [] ([],x) := .TSel (.abs .here) 1
@@ -874,7 +847,7 @@ abbrev Γz2 : Ctx [] (([],x),x) := ((Ctx.nil : Ctx [] []).cons selfZ).cons zA.we
 /-- Five views of the self after four rounds. -/
 example : (hviews 4 Γz2 (.there .here)).length = 5 := by decide +kernel
 
-/-- The body's goal, found at four rounds and fuel 16. -/
+/-- The body's goal. -/
 example : (sub? { views := 4 } 16 Γz2 (Γz2.lookup .here) Cod).isSome = true := by
   decide +kernel
 

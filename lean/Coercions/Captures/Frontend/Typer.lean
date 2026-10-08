@@ -2,88 +2,79 @@ import Coercions.Captures.Frontend.Adapt
 import Coercions.Captures.Frontend.Resolve
 
 /-!
-# The derivation producing typer
+# The typer
 
 The typer reads a type and a use set off an annotated term and returns the
-version's derivation (`lean/Coercions/Captures/DotMNF/Typing.lean`) about the
-erasure of the term it typed.  It is fuel bounded, `Option` valued, and
-sound by construction: every result carries its `HasTy` derivation, so
-soundness is the result type and there is no soundness theorem to prove.
-
-It is incomplete by necessity, since subcapturing goes through subtyping and
-DOT subtyping is undecidable.  No completeness theorem is claimed.
+calculus's derivation (`DotMNF/Typing.lean`) about the erasure of the term.  It
+is fuel bounded and `Option` valued.  Every result carries its `HasTy`
+derivation, so the result type is the soundness statement.  It is incomplete,
+since subcapturing goes through subtyping and DOT subtyping is undecidable.
 
 ## Least sets
 
-The typer computes the least use set and the least capture set the rules
-allow.  A variable declared at the empty set is used at the empty set and
-keeps its declared type, any other variable is used at `{x}` with its
-declared shape at `{x}`.  A value is used at `{}`.  An application, a
-projection and an unboxing join the sets of their premises with `capJoin`.
-At the three binders the set is a candidate followed by evidence.
+The typer computes the least use set and capture set the rules allow.  A
+variable declared at the empty set is used at the empty set and keeps its
+declared type.  Any other variable is used at `{x}` with its declared shape at
+`{x}`.  A value is used at `{}`.  Application, projection and unboxing join
+the sets of their premises with `capJoin`.  At the three binders the set is a
+candidate followed by evidence.
 
-- `λ(x : T). t` drops `{x}` from the body's set, reads an atom `{x.C}` at the
-  upper bound of `x`'s capture member, and strengthens the rest.  The
-  inclusion the rule asks for is found by the subcapturing search.
+- `λ(x : T). t` drops `{x}` from the body's set, reads `{x.C}` at the upper
+  bound of `x`'s capture member, and strengthens the rest.  The subcapturing
+  search finds the inclusion the rule asks for.
 - `let x = t in u` replaces `{x}` in the body's set by the capture set of
-  `t`'s type, which is what `sc-var` reads at the binder, reads `{x.C}` the
-  same way, and strengthens.  Both premises are widened to the join of the
-  two sets.
-- `ν(z : S. d)` types the definitions under the self binder at the set the
-  literal is written with, or `{}` when none is written.  The definitions'
-  set has to be below that set and `{z}`.  When it is not and no set is
-  written, the definitions are typed again at the set they used, with `{z}`
-  dropped (`objPasses?`).
+  `t`'s type (`sc-var`), reads `{x.C}` the same way, and strengthens.  Both
+  premises are widened to the join of the two sets.
+- `ν(z : S. d)` types the definitions under the self binder at the written
+  set, or `{}`.  Their set has to be below that set and `{z}`.  If it is not
+  and no set is written, the definitions are typed again at the set they used,
+  with `{z}` dropped (`objPasses?`).
 
-## The avoidance ladder
+## Result type of a `let`
 
-`HasTy.let` asks for a result type `T'` with the body typed at `T'↑`.
-Three rungs are tried in order: the annotation of the `let`, the body's
-type with its shape strengthened and its set avoided as above, and `⊤` at
-the avoided set.  A set cannot be dropped, since `Sub` asks for a
-subcapturing on it, so the third rung fails when the set does not avoid.
+`HasTy.let` asks for a result type `T'` with the body typed at `T'↑`.  Three
+choices are tried in order: the annotation of the `let`, the body's type with
+its shape strengthened and its set avoided, and `⊤` at the avoided set.  A set
+cannot be dropped, since `Sub` asks for a subcapturing on it, so the third
+fails when the set does not avoid.
 
 ## Checking
 
 `check?` adds three clauses to synthesis followed by subsumption.  A `λ`
-against a function type checks its body against the codomain, which is how
-an ascribed signature reaches the inside of a function.  A `let` with no
-annotation checks its body against the goal.  A box value against a box
-goal checks the variable against the boxed type.  Each clause falls back to
-synthesis when it fails, so it only adds derivations.
+against a function type checks its body against the codomain, which lets an
+ascribed signature reach the inside of a function.  A `let` with no annotation
+checks its body against the goal.  A box value against a box goal checks the
+variable against the boxed type.  Each clause falls back to synthesis.
 
-A variable checked against a goal goes through box inference
-(`adaptVar?` of `Adapt.lean`): plain checking first, then `□ x` when no view
-of `x` is a box, then `C ⊸ x` at the set of its first box view.  The result
-holds the inserted term in place of `x`.
+A variable checked against a goal goes through box inference (`adaptVar?` of
+`Adapt.lean`): plain checking, then `□ x` when no view of `x` is a box, then
+`C ⊸ x` at the set of its first box view.  These are rules 1 to 3 of
+`Adapt.lean`.  Rule 4 is `unboxFirst?`, used below.
 
-`checkVar?` checks a variable.  It is a separate function because two rules
-of the calculus conclude about a variable and are not reached by
-subsumption: `And-I` and `Rec-I`.  `checkDefs?` matches a definition list
-against a declaration shape in lockstep, as `DefsTy` does, and returns the
-derivation at every use set above the definitions' least one.
+`checkVar?` checks a variable.  It is separate because `And-I` and `Rec-I`
+conclude about a variable and are not reached by subsumption.  `checkDefs?`
+matches a definition list against a declaration shape in lockstep, as
+`DefsTy` does.
 
 ## Insertions bound by a `let`
 
-An argument, a function and a receiver must be variables, so a box or an
-unboxing inserted there is bound by a `let`.  An argument that fails plain
-checking against the domain is adapted as above, and `x y` becomes
-`let y' = □ y in x y'` or `let y' = C ⊸ y in x y'`.  A function or a
-receiver with no function or field view and a box view is unboxed at the set
-of its first box view, and `x y` becomes `let x' = C ⊸ x in x' y`, `x.a`
-becomes `let x' = C ⊸ x in x'.a`.  The body is synthesized under the new
-binder and the `let` takes the second and third rungs of the ladder.  The
-skeleton inlines a `let` of a variable, so the elaborated term has the
-skeleton of the program.
+An argument, a function and a receiver must be variables, so an inserted box
+or unboxing is bound by a `let`.  An argument that fails plain checking
+against the domain is adapted, and `x y` becomes `let y' = □ y in x y'` or
+`let y' = C ⊸ y in x y'`.  A function or receiver with a box view and no
+function or field view is unboxed at the set of its first box view, so `x y`
+becomes `let x' = C ⊸ x in x' y` and `x.a` becomes `let x' = C ⊸ x in x'.a`.
+The body is synthesized under the new binder, and the `let` takes the second
+and third choices above.  The skeleton inlines a `let` of a variable, so the
+elaborated term keeps the program's skeleton.
 
 ## Fuel
 
-The four functions are one block, structural on the fuel: every call inside
-the block is at one unit less.  `synth?` ends its fuel level with a retry at
-the previous level, which changes no answer the clauses give and makes
-`synth?_le` an induction on the fuel.  The search is always called at
-`Budget.sub`, its own counter.  Everything here reduces in the kernel, and
-the checks at the end are `decide +kernel`.
+The four functions form one block, structural on the fuel.  Every call inside
+is at one unit less.  `synth?` ends each fuel level with a retry at the
+previous level, which makes `synth?_le` an induction on the fuel.  The search
+runs at `Budget.sub`, its own counter.  The checks at the end are
+`decide +kernel`.
 -/
 
 namespace CapturesFrontend
@@ -95,8 +86,8 @@ open scoped Captures.DotMNF
 
 /-! ## Moving a derivation across a decided equality
 
-The label of a member occurs twice in the conclusion of the rule that
-carries it, so these are written with `cases` rather than with a rewrite. -/
+The label of a member occurs twice in the conclusion, so these use `cases`
+and not a rewrite. -/
 
 /-- A field view read at the label the projection asks for. -/
 def hasFldAt {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {x : BVar s .var} {a c : Label}
@@ -105,20 +96,17 @@ def hasFldAt {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {x : BVar s .var} {a c : 
     HasTy U Γ (.path (.var x)) ((Shape.fld a T) ^ C) := by
   cases h; exact d
 
-/-- A type member definition against a declaration whose two bounds are the
-definition's own shape. -/
+/-- A type member definition against a declaration with its shape as both bounds. -/
 def defsTypAt {s : Sig} {Γ : Ctx s} {V : CaptureSet s} {A B : Label} {S L U : Shape s}
     (hA : A = B) (hL : S = L) (hU : S = U) : DefsTy V Γ (.typ A S) (.typ B L U) := by
   cases hA; cases hL; cases hU; exact .typ
 
-/-- A capture member definition against a declaration whose two bounds are
-the definition's own set. -/
+/-- A capture member definition against a declaration with its set as both bounds. -/
 def defsCapAt {s : Sig} {Γ : Ctx s} {V : CaptureSet s} {A B : Label} {c c1 c2 : CaptureSet s}
     (hA : A = B) (h1 : c = c1) (h2 : c = c2) : DefsTy V Γ (.cap A c) (.cap B c1 c2) := by
   cases hA; cases h1; cases h2; exact .cap
 
-/-- A term member definition against a field declaration at the same
-label. -/
+/-- A term member definition against a field declaration at the same label. -/
 def defsTrmAt {s : Sig} {Γ : Ctx s} {V : CaptureSet s} {a c : Label} {t : Tm s} {T : Ty s}
     (h : a = c) (ht : HasTy V Γ t T) : DefsTy V Γ (.trm a t) (.fld c T) := by
   cases h; exact .trm ht
@@ -127,9 +115,7 @@ def defsTrmAt {s : Sig} {Γ : Ctx s} {V : CaptureSet s} {a c : Label} {t : Tm s}
 def subShapeOfEq {s : Sig} {Γ : Ctx s} {S T : Shape s} (h : S = T) : SubShape Γ S T := by
   cases h; exact .refl
 
-/-- `{}-I` for definitions that are the literal's own up to a decided
-equality: the self binder holds the definitions the program wrote, and the
-typer typed them under it. -/
+/-- `{}-I` for definitions equal to the ones the self binder holds. -/
 def objOf {s : Sig} {Γ : Ctx s} {d e : Defs (s,x)} {S : Shape (s,x)} {U : CaptureSet s}
     (h : e = d) (dt : DefsTy (CaptureSet.weaken U ∪ [.var .here]) (Γ.consSelf d S U) e S)
     (hd : Defs.Distinct d) : HasTy [] Γ (.val (.obj e)) ((Shape.mu S) ^ U) := by
@@ -137,8 +123,7 @@ def objOf {s : Sig} {Γ : Ctx s} {d e : Defs (s,x)} {S : Shape (s,x)} {U : Captu
 
 /-! ## Reading a view
 
-The typer consults the views of the search in four ways.  None of them
-recurses, and none is part of the block. -/
+None of these recurses. -/
 
 /-- A function type a variable has, with the derivation. -/
 structure AllView {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
@@ -193,14 +178,13 @@ def viewSub {s : Sig} {Γ : Ctx s} {x : BVar s .var} (D : DeclTable Γ) (n : Nat
 
 /-! ## Candidates with their evidence -/
 
-/-- The upper bound of the capture member `C` of the innermost binder, as the
-table under that binder records it.  It is what an atom `{x.C}` is replaced
-by when `x` goes out of scope. -/
+/-- The upper bound of the capture member `C` of the innermost binder, per the
+table.  It replaces `{x.C}` when `x` goes out of scope. -/
 def hereSel {s : Sig} {Γ : Ctx (s,x)} (D : DeclTable Γ) : Label → Option (CaptureSet (s,x)) :=
   fun ℓ => firstSome (fun d => if d.vr = .here ∧ d.lbl = ℓ then some d.hi else none) D.caps
 
-/-- The set of a function: the body's set `V` without the parameter, with
-the evidence `V <: U↑ ∪ {x}` that `All-I` asks for. -/
+/-- The set of a function: the body's set `V` without the parameter, with the
+evidence `V <: U↑ ∪ {x}` that `All-I` asks for. -/
 def lamUses? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (n : Nat)
     (V : CaptureSet (s,x)) :
     Option ((U : CaptureSet s) × Subcap (Γ.cons T) V (CaptureSet.weaken U ∪ [.var .here])) := do
@@ -209,8 +193,8 @@ def lamUses? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (n : 
   some ⟨U, e⟩
 
 /-- The set a `let` adds to its bound term's `U₁`: the body's set `V` with
-`{x}` replaced by the capture set of `x`'s type, with the evidence that `V`
-is below the join of the two sets. -/
+`{x}` replaced by the capture set of `x`'s type, with the evidence that `V` is
+below the join. -/
 def letUses? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (n : Nat)
     (U1 : CaptureSet s) (V : CaptureSet (s,x)) :
     Option ((U2 : CaptureSet s) × Subcap (Γ.cons T) V (CaptureSet.weaken (capJoin U1 U2))) := do
@@ -218,8 +202,7 @@ def letUses? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (n : 
   let e ← subcap? D n V (CaptureSet.weaken (capJoin U1 U2))
   some ⟨U2, e⟩
 
-/-- The second rung of the ladder: the body's shape strengthened and its
-set avoided. -/
+/-- The body's type with the shape strengthened and the set avoided. -/
 def avoidStrengthen? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (n : Nat) :
     (W : Ty (s,x)) → Option ((T' : Ty s) × Sub (Γ.cons T) W T'.weaken)
   | .capt CW SW => do
@@ -228,7 +211,7 @@ def avoidStrengthen? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T
       let e ← subcap? D n CW (CaptureSet.weaken C')
       some ⟨w.val ^ C', Sub.capt (subShapeOfEq w.property) e⟩
 
-/-- The third rung of the ladder: `⊤` at the avoided set. -/
+/-- `⊤` at the avoided set. -/
 def avoidTop? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (n : Nat) :
     (W : Ty (s,x)) → Option ((T' : Ty s) × Sub (Γ.cons T) W T'.weaken)
   | .capt CW _ => do
@@ -238,8 +221,8 @@ def avoidTop? {s : Sig} {Γ : Ctx s} {T : Ty s} (D : DeclTable (Γ.cons T)) (n :
 
 /-! ## Assembling a `let` -/
 
-/-- `HasTy.let` at the result type `T'`, with the use set joined and both
-premises widened to it. -/
+/-- `HasTy.let` at the result type `T'`, with both premises widened to the
+joined use set. -/
 def letOf? {s : Sig} {Γ : Ctx s} (r1 : Elab Γ) (D : DeclTable (Γ.cons r1.ty)) (n : Nat)
     (ann : Option (Ty s)) (T' : Ty s) (r2 : Checked (Γ.cons r1.ty) T'.weaken) :
     Option (Checked Γ T') :=
@@ -249,13 +232,12 @@ def letOf? {s : Sig} {Γ : Ctx s} (r1 : Elab Γ) (D : DeclTable (Γ.cons r1.ty))
         HasTy.let (widenLeft r1.deriv p.1) (widenUses r2.deriv p.2) hwf⟩
   else none
 
-/-- A typing at a given type read as a synthesized one. -/
+/-- A checked typing read as a synthesized one. -/
 def Checked.toElab {s : Sig} {Γ : Ctx s} {T : Ty s} (r : Checked Γ T) : Elab Γ :=
   ⟨r.tm, r.uses, T, r.deriv⟩
 
-/-- The second and third rungs of the ladder, for a body already
-synthesized: its type with the shape strengthened and the set avoided, and
-otherwise `⊤` at the avoided set. -/
+/-- The second and third choices for a body already synthesized: its type with
+the shape strengthened and the set avoided, else `⊤` at the avoided set. -/
 def letAvoid? {s : Sig} {Γ : Ctx s} (r1 : Elab Γ) (D : DeclTable (Γ.cons r1.ty)) (n : Nat)
     (ann : Option (Ty s)) (r2 : Elab (Γ.cons r1.ty)) : Option (Elab Γ) :=
   ((avoidStrengthen? D n r2.ty).bind fun p =>
@@ -264,29 +246,27 @@ def letAvoid? {s : Sig} {Γ : Ctx s} (r1 : Elab Γ) (D : DeclTable (Γ.cons r1.t
   (avoidTop? D n r2.ty).bind fun p =>
     (letOf? r1 D n ann p.1 ⟨r2.tm, r2.uses, HasTy.sub r2.deriv p.2 .refl⟩).map Checked.toElab
 
-/-! ## The object rule, in passes
+/-! ## The object rule
 
-`HasTy.obj` types the definitions of a literal under a self binder that
-holds the same definitions and the same capture set the conclusion has.
-Box inference changes the definitions, and the capture set of a literal
-with no written set is only known once its definitions are typed.  So the
-literal is typed in passes.  A pass types the definitions it is given under
-a self binder that holds them and the current set.  It is final when the
-elaborated definitions erase to the ones the binder holds and their use set
-is below the current set and the self variable.  Otherwise the next pass
-takes the elaborated definitions, which hold their boxes, so the next pass
-inserts nothing, and the set the definitions used, with the self variable
-dropped and its capture members read at their upper bounds.  A written set
-is never changed.  The number of passes is `Budget.obj`. -/
+`HasTy.obj` types the definitions of a literal under a self binder that holds
+the same definitions and capture set as the conclusion.  Box inference changes
+the definitions, and the set of a literal with no written set is known only
+after its definitions are typed.  So the literal is typed in passes.
 
-/-- One typing of the definitions of a literal under its self binder, at the
-definitions and the set the binder holds. -/
+A pass types the definitions under a self binder that holds them and the
+current set.  It is final when the elaborated definitions erase to the ones
+the binder holds and their use set is below the current set and the self
+variable.  Otherwise the next pass takes the elaborated definitions, which
+hold their boxes, and the set they used, with the self variable dropped and
+its capture members read at their upper bounds.  A written set never changes.
+`Budget.obj` bounds the passes. -/
+
+/-- One typing of the definitions of a literal under its self binder. -/
 abbrev DefsCheck {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) : Type :=
   (d : ADefs (s,x)) → (U : CaptureSet s) → Option (DefsElab (Γ.consSelf d.erase S U) S)
 
 /-- The passes of the object rule.  `chk` types the definitions, `fix` says
-whether the set was written, `k` counts the passes left.  The elaborated
-literal records the set it was typed at. -/
+whether the set was written and `k` counts the passes left. -/
 def objPasses? {s : Sig} {Γ : Ctx s} (b : Budget) (S : Shape (s,x)) (fix : Bool)
     (chk : DefsCheck Γ S) (k : Nat) (d : ADefs (s,x)) (U : CaptureSet s) : Option (Elab Γ) :=
   match k with
@@ -313,16 +293,17 @@ mutual
 
 - a variable is its first view, `varSynth`
 - `λ(x : T). t` decides `Ty.Wf T`, synthesizes the body under `Γ.cons T`
-  against a table rebuilt there, and takes the function's set from the
-  body's by `lamUses?`
-- `ν(z : S (^ U)?. d)` runs the passes of the object rule, `objPasses?`
+  against a table rebuilt there, and takes the function's set from the body's
+  by `lamUses?`
+- `ν(z : S (^ U)?. d)` runs `objPasses?`
 - `x y` reads the first function view of `x` and checks `y` against its
-  domain, at the join of the two sets.  An argument that fails is adapted
-  and bound by a `let`.  A function with no function view and a box view is
+  domain at the join of the two sets.  An argument that fails is adapted and
+  bound by a `let`.  A function with a box view and no function view is
   unboxed and bound by a `let`
-- `x.a` reads the first field view of `x` at `a`.  A receiver with no such
-  view and a box view is unboxed and bound by a `let`
-- `let x (: A)? = t in u` climbs the avoidance ladder
+- `x.a` reads the first field view of `x` at `a`.  A receiver with a box view
+  and no such view is unboxed and bound by a `let`
+- `let x (: A)? = t in u` takes the annotation, else the second and third
+  choices for the result type
 - `□ x` boxes the first view of `x`, at the empty use set
 - `C ⊸ x` unboxes the first box view of `x` at the set `C`
 - `(t : T)` checks `t` against `T`. -/
@@ -352,14 +333,14 @@ def synth? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat) (a :
                   (⟨.app x y, capJoin v.uses r.uses, v.cod.substVar y,
                     HasTy.app (widenLeft v.deriv r.uses) (widenRight v.uses r.deriv)⟩ : Elab Γ)).orElse
                   fun _ =>
-                -- rules two and three at the argument, bound by a `let`
+                -- rules 2 and 3 of box inference at the argument, bound by a `let`
                 (adaptInsert? D b.sub (fun T => checkVar? D b n y T) (views D b y) v.dom).bind
                   fun r =>
                     let r1 := r.toElab
                     (synth? (decls b (Γ.cons r1.ty)) b n (.app (.there x) .here)).bind fun r2 =>
                       letAvoid? r1 (decls b (Γ.cons r1.ty)) b.sub none r2
             | none =>
-                -- rule four at the function, bound by a `let`
+                -- rule 4 at the function, bound by a `let`
                 (unboxFirst? (views D b x)).bind fun r1 =>
                   (synth? (decls b (Γ.cons r1.ty)) b n (.app .here (.there y))).bind fun r2 =>
                     letAvoid? r1 (decls b (Γ.cons r1.ty)) b.sub none r2)
@@ -367,19 +348,19 @@ def synth? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat) (a :
             (match fldView a (views D b x) with
             | some v => some ⟨.proj x a, v.uses, v.ty, HasTy.proj v.deriv⟩
             | none =>
-                -- rule four at the receiver, bound by a `let`
+                -- rule 4 at the receiver, bound by a `let`
                 (unboxFirst? (views D b x)).bind fun r1 =>
                   (synth? (decls b (Γ.cons r1.ty)) b n (.proj .here a)).bind fun r2 =>
                     letAvoid? r1 (decls b (Γ.cons r1.ty)) b.sub none r2)
         | .let ann t u =>
             (synth? D b n t).bind fun r1 =>
-              -- rung one: the annotation
+              -- the annotation
               ((match ann with
                 | some A =>
                     (check? (decls b (Γ.cons r1.ty)) b n u A.weaken).bind fun r2 =>
                       (letOf? r1 (decls b (Γ.cons r1.ty)) b.sub ann A r2).map Checked.toElab
                 | none => none) : Option (Elab Γ)).orElse fun _ =>
-              -- rungs two and three
+              -- the second and third choices
               (synth? (decls b (Γ.cons r1.ty)) b n u).bind fun r2 =>
                 letAvoid? r1 (decls b (Γ.cons r1.ty)) b.sub ann r2
         | .box x =>
@@ -390,12 +371,12 @@ def synth? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat) (a :
         : Option (Elab Γ)).orElse fun _ => synth? D b n a
 termination_by structural n
 
-/-- Checking.  A variable goes to box inference, `adaptVar?`, with
-`checkVar?` as its plain checker.  Three clauses check a term
-against the goal's own form, each falling back to synthesis: a `λ` against
-a function type, an unannotated `let` against any goal, a box value against
-a box.  Everything else is synthesized and moved to the goal by a decided
-equality or by the subtyping search. -/
+/-- Checking.  A variable goes to box inference, `adaptVar?`, with `checkVar?`
+as its plain checker.  Three clauses check a term against the goal's form and
+fall back to synthesis: a `λ` against a function type, an unannotated `let`
+against any goal, and a box value against a box.  Everything else is
+synthesized and moved to the goal by a decided equality or the subtyping
+search. -/
 def check? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat) (a : ATm s)
     (T : Ty s) : Option (Checked Γ T) :=
   match n with
@@ -430,15 +411,14 @@ def check? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat) (a :
       | _ => bySynth ()
 termination_by structural n
 
-/-- Checking a variable.  Three rules, in order.
+/-- Checking a variable, by three rules in order.
 
-1. A goal `(S₁ ∧ S₂) ^ C` splits by `HasTy.andI` at the join of the two
-   use sets.
-2. A goal `(μ S) ^ C` whose body is declaration shaped folds by
-   `HasTy.recI`.  `SubShape` has no rule for `μ`, so such a goal is
-   otherwise unreachable from an opened view.
-3. Otherwise the views are consulted, first for a view at exactly the goal
-   and then for a view the subtyping search takes there. -/
+1. A goal `(S₁ ∧ S₂) ^ C` splits by `HasTy.andI` at the join of the two use
+   sets.
+2. A goal `(μ S) ^ C` whose body is a declaration folds by `HasTy.recI`.
+   `SubShape` has no rule for `μ`, so no opened view reaches such a goal.
+3. Otherwise the views are consulted, first for a view at exactly the goal and
+   then for a view the subtyping search takes there. -/
 def checkVar? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
     (x : BVar s .var) (T : Ty s) : Option (VarChecked Γ x T) :=
   match n with
@@ -460,13 +440,12 @@ def checkVar? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
       (viewAt T (views D b x)).orElse fun _ => viewSub D b.sub T (views D b x)
 termination_by structural n
 
-/-- Checking a definition list.  `DefsTy` is syntax directed on both the
-definitions and the shape, so the two are matched in lockstep: a type
-member against a declaration with its own shape on both bounds, a capture
-member against a declaration with its own set on both bounds, a term member
-against a field at the same label, and an intersection against an
-intersection.  The result holds the least use set of the definitions and the
-derivation at every set above it. -/
+/-- Checking a definition list.  `DefsTy` is syntax directed on definitions
+and shape, so they are matched in lockstep: a type member against a
+declaration with its shape on both bounds, a capture member against one with
+its set on both bounds, a term member against a field at the same label, and
+an intersection against an intersection.  The result holds the least use set
+and the derivation at every set above it. -/
 def checkDefs? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat) (d : ADefs s)
     (S : Shape s) : Option (DefsElab Γ S) :=
   match n with
@@ -503,14 +482,13 @@ end
 
 /-! ## The entry points -/
 
-/-- The typer at a given context.  It builds the declaration table of the
-context once and runs at `Budget.typer`.  This is the entry point for a term
-that sits under a context, as the version's open examples do. -/
+/-- The typer at a context.  It builds the declaration table once and runs at
+`Budget.typer`. -/
 def synthIn? {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) : Option (Elab Γ) :=
   synth? (decls b Γ) b b.typer a
 
-/-- The context of a platform: one capture binder per capability, with no
-bound.  It is the version's `Platform.ctx`, clause for clause. -/
+/-- The context of a platform: one capture binder per capability.  It
+mirrors `Platform.ctx`. -/
 def platformCtx {s : Sig} (P : Platform s) : Ctx s :=
   match P with
   | .nil => .nil
@@ -521,9 +499,9 @@ termination_by structural P
 def synthTop? (b : Budget) (π : PlatformNames) (a : ATm π.sig) : Option (Elab (platformCtx π.plat)) :=
   synthIn? b (platformCtx π.plat) a
 
-/-- The typer at a given context, followed by one `sub` to a given use set
-and type, both found by the search.  The typer returns the least sets, and a
-judgment written with larger ones is reached this way. -/
+/-- The typer at a context, then the search to a given use set and type.  The
+typer returns the least sets, and a judgment with larger ones is reached this
+way. -/
 def checkIn? {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) (U : CaptureSet s) (T : Ty s) :
     Option ((t : ATm s) × HasTy U Γ t.erase T) :=
   (synthIn? b Γ a).bind fun r =>
@@ -532,10 +510,9 @@ def checkIn? {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) (U : CaptureSet s) 
 
 /-! ## Fuel monotonicity
 
-The statement is about `isSome` and not about derivations: more fuel may
-find another derivation of the same judgment, and `HasTy` is `Type` valued
-with no decidable equality.  The retry at the end of `synth?`'s fuel level
-makes it an induction on the fuel alone. -/
+The statement speaks of `isSome`, because more fuel may find another
+derivation of the same judgment.  The retry at the end of each fuel level
+makes it an induction on the fuel. -/
 
 /-- One more unit of fuel never loses an answer. -/
 theorem synth?_succ {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} {n : Nat}
@@ -548,20 +525,14 @@ theorem synth?_le {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} {n n' :
     (h : n ≤ n') (a : ATm s) : (synth? D b n a).isSome → (synth? D b n' a).isSome :=
   isSome_of_le (fun n => synth? D b n a) (fun _ => synth?_succ) h
 
-/-! ## The programs with their boxes written
+/-! ## Examples with their boxes written
 
-Every program is resolved over its platform with the labels of the
-version's examples, typed at the empty context or at the platform's, and its
-use set and type are compared with the ones the version's hand written
-derivation concludes (`lean/Coercions/Captures/DotMNF/Examples.lean`).  The
-typer returns the derivation, so a success is a `HasTy` and not an answer.
-The typer is structural, so every comparison is a `decide +kernel`.
-
-The budget of each is one at which it is found.  The four counters were
-lowered one at a time from `(decls 3, views 3, sub 6)` at the least typer
-fuel that succeeds there, so the budget is found, not proved least, and a
-larger typer fuel finds it too (`synth?_le`).  A few checks one unit short
-show that the budget measures the search. -/
+Each program is resolved over its platform with the labels of the calculus's
+examples and typed at the empty context or the platform's.  Its use set and
+type are compared with the ones the hand written derivation of
+`DotMNF/Examples.lean` concludes.  Every comparison is a `decide +kernel`.
+Each budget is one at which the program types, and a larger typer fuel also
+works (`synth?_le`).  Checks one unit short of a budget fail. -/
 
 section Checks
 
@@ -575,10 +546,7 @@ def usesOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
 def tyOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
     (_ : HasTy U Γ t T) : Ty s := T
 
-/-- The check: a resolved term is typed at the context and its use set and
-type are the given ones.  `CaptureSet` and `Ty` have decidable equality, so
-the comparison is a decision on the sets and the type, not on the
-derivation. -/
+/-- A resolved term types at the context with the given use set and type. -/
 def synthsAt {s : Sig} (b : Budget) (Γ : Ctx s) (a : Option (ATm s)) (U : CaptureSet s)
     (T : Ty s) : Bool :=
   match a with
@@ -588,8 +556,8 @@ def synthsAt {s : Sig} (b : Budget) (Γ : Ctx s) (a : Option (ATm s)) (U : Captu
       | some r => decide (r.uses = U ∧ r.ty = T)
       | none => false
 
-/-- The check through `checkIn?`: a resolved term is typed at the context
-and moved to the given use set and type by the search. -/
+/-- A resolved term types at the context and `checkIn?` moves it to the given
+use set and type. -/
 def reachesAt {s : Sig} (b : Budget) (Γ : Ctx s) (a : Option (ATm s)) (U : CaptureSet s)
     (T : Ty s) : Bool :=
   match a with
@@ -602,11 +570,11 @@ def reachesAt {s : Sig} (b : Budget) (Γ : Ctx s) (a : Option (ATm s)) (U : Capt
 example : synthsAt { decls := 1, views := 0, sub := 2, typer := 4 } Ctx.nil
     (resolveTop Λc .empty E1src) (usesOfDeriv E1) (tyOfDeriv E1) = true := by decide +kernel
 
-/-- E1 one unit of the search short: the chain is not found. -/
+/-- E1 with one unit less search fuel. -/
 example : synthsAt { decls := 1, views := 0, sub := 1, typer := 4 } Ctx.nil
     (resolveTop Λc .empty E1src) (usesOfDeriv E1) (tyOfDeriv E1) = false := by decide +kernel
 
-/-- E2, the recursive literal: the outer `let` takes the third rung, `⊤`. -/
+/-- E2, the recursive literal: the outer `let` takes the third choice, `⊤`. -/
 example : synthsAt { decls := 1, views := 2, sub := 2, typer := 7 } Ctx.nil
     (resolveTop Λc .empty E2src) (usesOfDeriv E2) (tyOfDeriv E2) = true := by decide +kernel
 
@@ -618,7 +586,7 @@ example : synthsAt { decls := 1, views := 1, sub := 2, typer := 5 } Ctx.nil
 example : synthsAt { decls := 2, views := 1, sub := 2, typer := 6 } Ctx.nil
     (resolveTop Λc .empty E4src) (usesOfDeriv E4) (tyOfDeriv E4) = true := by decide +kernel
 
-/-- E4 one round of the table short: `w` never reaches `{A : Int..⊤}`. -/
+/-- E4 with one round of the table less: `w` never reaches `{A : Int..⊤}`. -/
 example : synthsAt { decls := 1, views := 1, sub := 2, typer := 6 } Ctx.nil
     (resolveTop Λc .empty E4src) (usesOfDeriv E4) (tyOfDeriv E4) = false := by decide +kernel
 
@@ -627,7 +595,7 @@ example : synthsAt { decls := 1, views := 1, sub := 2, typer := 7 } Ctx.nil
     (resolveTop Λc .empty E5src) (usesOfDeriv E5) (tyOfDeriv E5) = true := by decide +kernel
 
 /-- E6, a field typed at its own literal's member, under the `λ` that binds
-the `n` the version's context holds. -/
+the `n` the calculus's context holds. -/
 example : synthsAt { decls := 1, views := 2, sub := 2, typer := 6 } Ctx.nil
     (resolveTop Λc .empty E6src) [] ((Shape.all E6Int ((Shape.mu E6Self) ^ [])) ^ []) = true := by
   decide +kernel
@@ -640,7 +608,7 @@ example : synthsAt { decls := 0, views := 0, sub := 1, typer := 3 } Ctx.nil
 example : synthsAt { decls := 0, views := 1, sub := 1, typer := 3 } Ctx.nil
     (resolveTop Λc .empty E8src) (usesOfDeriv E8) (tyOfDeriv E8) = true := by decide +kernel
 
-/-! ### The capture examples, with their boxes and ascriptions written -/
+/-! ### Capture examples, with boxes and ascriptions written -/
 
 /-- C7, a pure container of two boxed capabilities.  The fields check by the
 `Box` rule in checking mode, the client unboxes at `{κ₁}`. -/
@@ -648,7 +616,7 @@ example : synthsAt { decls := 0, views := 2, sub := 2, typer := 8 } platCtx
     (resolveTop Λc πc C7src) (usesOfDeriv C7_typed) (tyOfDeriv C7_typed) = true := by
   decide +kernel
 
-/-- C7 one unit of typer fuel short. -/
+/-- C7 with one unit less typer fuel. -/
 example : synthsAt { decls := 0, views := 2, sub := 2, typer := 7 } platCtx
     (resolveTop Λc πc C7src) (usesOfDeriv C7_typed) (tyOfDeriv C7_typed) = false := by
   decide +kernel
@@ -659,15 +627,13 @@ example : synthsAt { decls := 1, views := 2, sub := 2, typer := 7 } platCtx
     (resolveTop Λc πc S3src) (usesOfDeriv S3_typed) (tyOfDeriv S3_typed) = true := by
   decide +kernel
 
-/-- S3 with no round of the table: the member that holds the box is not
-found, so the unboxing has no box view. -/
+/-- S3 with no round of the table: the member that holds the box is not found,
+so the unboxing has no box view. -/
 example : synthsAt { decls := 0, views := 2, sub := 2, typer := 7 } platCtx
     (resolveTop Λc πc S3src) (usesOfDeriv S3_typed) (tyOfDeriv S3_typed) = false := by
   decide +kernel
 
-/-- C2 with the client ascribed at the version's `C2ClientTy`.  The version
-annotates the client by hand, and the program text names that type by an
-ascription. -/
+/-- C2 with the client ascribed at the calculus's `C2ClientTy`. -/
 def C2ascSrc : STm :=
   cap% let c = (λ(x : (μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}})) ^ {k1, k2}).
                   λ(u : ⊤). x.run u
@@ -679,33 +645,33 @@ def C2ascSrc : STm :=
                  {C^ = {k2}} ∧ {run = λ(u : ⊤). u}) in
       let ga = c a in let gb = c b in gb
 
-/-- The ascribed C2 erases to the version's term. -/
+/-- The ascribed C2 erases to the calculus's term. -/
 example : (resolveTop Λc πc C2ascSrc).map ATm.erase = some C2tm := by decide
 
-/-- C2 at the version's judgment, `{κ₁,κ₂}` and `(⊤ → ⊤) ^ {κ₁,κ₂}`: the
+/-- C2 at the calculus's judgment, `{κ₁,κ₂}` and `(⊤ → ⊤) ^ {κ₁,κ₂}`.  The
 client checks against its ascription, so its call is charged to the upper
 bound of the abstract member. -/
 example : synthsAt { decls := 0, views := 2, sub := 4, typer := 9 } platCtx
     (resolveTop Λc πc C2ascSrc) (usesOfDeriv C2_typed) (tyOfDeriv C2_typed) = true := by
   decide +kernel
 
-/-- C2 one unit of the search short. -/
+/-- C2 with one unit less search fuel. -/
 example : synthsAt { decls := 0, views := 2, sub := 3, typer := 9 } platCtx
     (resolveTop Λc πc C2ascSrc) (usesOfDeriv C2_typed) (tyOfDeriv C2_typed) = false := by
   decide +kernel
 
 /-- S1, `withFile` bound by an ascription at its `any` signature, at the
-version's judgment `{fs}` and `⊤ ^ {fs}`. -/
+calculus's judgment `{fs}` and `⊤ ^ {fs}`. -/
 example : synthsAt { decls := 0, views := 1, sub := 5, typer := 10 } platCtx
     (resolveTop Λc πc S1src) (usesOfDeriv S1_typed) (tyOfDeriv S1_typed) = true := by
   decide +kernel
 
-/-- S1 one unit of the search short. -/
+/-- S1 with one unit less search fuel. -/
 example : synthsAt { decls := 0, views := 1, sub := 4, typer := 10 } platCtx
     (resolveTop Λc πc S1src) (usesOfDeriv S1_typed) (tyOfDeriv S1_typed) = false := by
   decide +kernel
 
-/-- S2, `mk` bound by an ascription at its `any` signature, at the version's
+/-- S2, `mk` bound by an ascription at its `any` signature, at the calculus's
 judgment `{fs}` and `⊤ ^ {fs}`.  The literal packs by `Rec-I` against the
 checked `let`, and the caller's `{it.C}` leaves scope at the member's upper
 bound `{fs}`. -/
@@ -713,17 +679,16 @@ example : synthsAt { decls := 1, views := 2, sub := 4, typer := 10 } platCtx
     (resolveTop Λc πc S2src) (usesOfDeriv S2_typed) (tyOfDeriv S2_typed) = true := by
   decide +kernel
 
-/-- S2 one unit of typer fuel short. -/
+/-- S2 with one unit less typer fuel. -/
 example : synthsAt { decls := 1, views := 2, sub := 4, typer := 9 } platCtx
     (resolveTop Λc πc S2src) (usesOfDeriv S2_typed) (tyOfDeriv S2_typed) = false := by
   decide +kernel
 
-/-! ### C5, at the version's own context
+/-! ### C5, at the calculus's context
 
-C5 is the caller of `mk` in S2, typed by the version at `S2Ctx3`, where `it`
-is bound.  The typer finds the least judgment, `{it, it.C}` and
-`⊤ ^ {it.C}`, which the version's `{fs}` and `⊤ ^ {fs}` are above.  One
-`sub`, found by the search, reaches the version's judgment. -/
+C5 is the caller of `mk` in S2, typed in `DotMNF/Examples.lean` at `S2Ctx3`, where `it`
+is bound.  The typer finds the least judgment, `{it, it.C}` and `⊤ ^ {it.C}`.
+The calculus's `{fs}` and `⊤ ^ {fs}` are above it, and the search reaches them. -/
 
 /-- C5 in direct style, `let n = it.next in let r = n un in r`. -/
 def C5src : STm := cap% let n = it.next in let r = n un in r
@@ -735,7 +700,7 @@ def C5names : NameEnv ([],c,c,x,x,x) := ((πc.names.cons "mk").cons "un").cons "
 def C5plat : CaptureSet ([],c,c,x,x,x) :=
   CaptureSet.weaken (CaptureSet.weaken (CaptureSet.weaken πc.set))
 
-/-- C5 resolves to the term of the version's `C5_typed`. -/
+/-- C5 resolves to the term of the calculus's `C5_typed`. -/
 example : (resolveIn Λc C5names C5plat C5src).map ATm.erase =
     some (.let (.proj .here lnext) (.let (.app .here (.there (.there .here))) (.path (.var .here)))) := by
   decide
@@ -746,25 +711,24 @@ example : synthsAt { decls := 0, views := 2, sub := 3, typer := 4 } S2Ctx3
     [CapAtom.var .here, CapAtom.sel .here lC] (.top ^ [CapAtom.sel .here lC]) = true := by
   decide +kernel
 
-/-- The version's judgment of C5, reached from the least one by the
-search: `{it}` by `sc-var` to `{fs, un}` and `un` by `sc-var` to `{}`, and
-`{it.C}` by the upper bound of the member. -/
+/-- The calculus's judgment of C5, reached from the least one: `{it}` by
+`sc-var` to `{fs, un}`, `un` by `sc-var` to `{}`, and `{it.C}` by the upper
+bound of the member. -/
 example : reachesAt { decls := 1, views := 2, sub := 5, typer := 4 } S2Ctx3
     (resolveIn Λc C5names C5plat C5src) (usesOfDeriv C5_typed) (tyOfDeriv C5_typed) = true := by
   decide +kernel
 
-/-- One unit of the search short, the chain from `{it}` is not found. -/
+/-- With one unit less search fuel the chain from `{it}` is not found. -/
 example : reachesAt { decls := 1, views := 2, sub := 4, typer := 4 } S2Ctx3
     (resolveIn Λc C5names C5plat C5src) (usesOfDeriv C5_typed) (tyOfDeriv C5_typed) = false := by
   decide +kernel
 
-/-! ### The least judgments without ascriptions
+/-! ### Least judgments without ascriptions
 
-Without the ascriptions that name the version's types the typer finds
-judgments more precise than the version's.  S1 types at `{}` and `⊤`, since
-its operation never calls the file.  C2 types at `{κ₂}` and
-`(⊤ → ⊤) ^ {κ₂}`, since its answer is the client at `b`, whose member is
-`{κ₂}`. -/
+Without the ascriptions the typer finds judgments more precise than the
+calculus's.  S1 types at `{}` and `⊤`, since its operation never calls the
+file.  C2 types at `{κ₂}` and `(⊤ → ⊤) ^ {κ₂}`, since its answer is the client
+at `b`, whose member is `{κ₂}`. -/
 
 /-- S1 with `withFile` unascribed. -/
 def S1bareSrc : STm :=
@@ -778,7 +742,7 @@ def S1bareSrc : STm :=
       let r = g op in
       r
 
-/-- The unascribed S1 erases to the version's term. -/
+/-- The unascribed S1 erases to the calculus's term. -/
 example : (resolveTop Λc πc S1bareSrc).map ATm.erase = some S1tm := by decide
 
 /-- The least judgment of S1: `{}` and `⊤`. -/
@@ -786,20 +750,18 @@ example : synthsAt { decls := 0, views := 1, sub := 2, typer := 9 } platCtx
     (resolveTop Λc πc S1bareSrc) [] (.top ^ []) = true := by
   decide +kernel
 
-/-- The least judgment of C2, as `Notation.lean` writes it: `{κ₂}` and
-`(⊤ → ⊤) ^ {κ₂}`. -/
+/-- The least judgment of C2: `{κ₂}` and `(⊤ → ⊤) ^ {κ₂}`. -/
 example : synthsAt { decls := 1, views := 2, sub := 3, typer := 9 } platCtx
     (resolveTop Λc πc C2src) [CapAtom.cvar k2] (arrowS ^ [CapAtom.cvar k2]) = true := by
   decide +kernel
 
 /-! ### Box inference
 
-The programs below write no term level box and no unboxing.  The typer
-inserts them, and each check compares the erasure of the elaborated term
-with the version's term or with the term written out here, and the
-elaborated skeleton with the program's.  A literal whose definitions take a
-box needs a second pass of the object rule, so `obj := 1` is one unit
-short for it. -/
+These programs write no box and no unboxing in terms.  The typer inserts
+them.  Each check compares the erasure of the elaborated term with the
+calculus's term or a term written out here, and the elaborated skeleton with
+the program's.  A literal whose definitions take a box needs a second pass of
+the object rule, so `obj := 1` is too little for it. -/
 
 /-- The erasure of the elaborated term, when the typer succeeds. -/
 def elabTm {s : Sig} (b : Budget) (Γ : Ctx s) (a : Option (ATm s)) : Option (Tm s) :=
@@ -814,44 +776,43 @@ def keepsSkel {s : Sig} (b : Budget) (Γ : Ctx s) (a : Option (ATm s)) : Bool :=
       | some r => decide (r.tm.skel = a.skel)
       | none => false
 
-/-- C7 with no term level box elaborates to the version's term: `□ f₁` and
-`□ f₂` at the fields, by the second rule, and `{κ₁} ⊸ e` at the ascription,
-by the third. -/
+/-- C7 with no box in terms elaborates to the calculus's term: `□ f₁` and
+`□ f₂` at the fields by rule 2 of `Adapt.lean`, and `{κ₁} ⊸ e` at the
+ascription by rule 3. -/
 example : elabTm { decls := 0, views := 2, sub := 2, typer := 8 } platCtx
     (resolveTop Λc πc C7nbSrc) = some C7tm := by decide +kernel
 
-/-- Its judgment is the version's. -/
+/-- Its judgment is the calculus's. -/
 example : synthsAt { decls := 0, views := 2, sub := 2, typer := 8 } platCtx
     (resolveTop Λc πc C7nbSrc) (usesOfDeriv C7_typed) (tyOfDeriv C7_typed) = true := by
   decide +kernel
 
-/-- One pass of the object rule is not enough: the first pass inserts the
-boxes, and the binder it ran under holds the definitions without them. -/
+/-- One pass is not enough: the first pass inserts the boxes, and its binder
+holds the definitions without them. -/
 example : synthsAt { decls := 0, views := 2, sub := 2, typer := 8, obj := 1 } platCtx
     (resolveTop Λc πc C7nbSrc) (usesOfDeriv C7_typed) (tyOfDeriv C7_typed) = false := by
   decide +kernel
 
-/-- S3 with no term level box elaborates to the version's term.  The field
-`elem = f` is declared at `z.A`, which is not a box: the box `□ f` reaches it
+/-- S3 with no box in terms elaborates to the calculus's term.  The field
+`elem = f` is declared at `z.A`, which is not a box, and `□ f` reaches it
 through the lower bound of `A`.  The client's ascription unboxes `e` through
 the upper bound of `o.A`. -/
 example : elabTm { decls := 1, views := 2, sub := 2, typer := 7 } platCtx
     (resolveTop Λc πc S3nbSrc) = some S3tm := by decide +kernel
 
-/-- Its judgment is the version's. -/
+/-- Its judgment is the calculus's. -/
 example : synthsAt { decls := 1, views := 2, sub := 2, typer := 7 } platCtx
     (resolveTop Λc πc S3nbSrc) (usesOfDeriv S3_typed) (tyOfDeriv S3_typed) = true := by
   decide +kernel
 
-/-- With no round of the table the member `A` is not found, so neither
-bound reaches the box. -/
+/-- With no round of the table the member `A` is not found. -/
 example : synthsAt { decls := 0, views := 2, sub := 2, typer := 7 } platCtx
     (resolveTop Λc πc S3nbSrc) (usesOfDeriv S3_typed) (tyOfDeriv S3_typed) = false := by
   decide +kernel
 
-/-- C7 in the form a Scala program has: no box written, and the element
-called where it is read, `let e = o.e1 in e u`.  `e` has a box view and no
-function view, so the fourth rule binds `{κ₁} ⊸ e` before the call. -/
+/-- C7 as a Scala program has it: no box written, and the element called where
+it is read, `let e = o.e1 in e u`.  `e` has a box view and no function view,
+so rule 4 binds `{κ₁} ⊸ e` before the call. -/
 def C7scalaSrc : STm :=
   cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). λ(f2 : (∀(u : ⊤) ⊤) ^ {k2}). λ(u : ⊤).
         let o = ν(z : {e1 : □((∀(u : ⊤) ⊤) ^ {k1})} ∧ {e2 : □((∀(u : ⊤) ⊤) ^ {k2})}.
@@ -881,8 +842,8 @@ example : synthsAt { decls := 0, views := 2, sub := 2, typer := 9 } platCtx
       ((Shape.all unitTy unitTy) ^ [CapAtom.cvar (.there (.there (.there .here)))])) ^ [])) ^ []) =
       true := by decide +kernel
 
-/-- An argument that needs a box: `g` takes a boxed capability and `f1` is
-not boxed.  The box is bound by a `let`, `let y = □ f1 in g y`. -/
+/-- An argument that needs a box: `g` takes a boxed capability and `f1` is not
+boxed.  The box is bound by `let y = □ f1 in g y`. -/
 def argBoxSrc : STm :=
   cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}).
         let g = λ(b : □((∀(u : ⊤) ⊤) ^ {k1})). b in g f1
@@ -897,8 +858,8 @@ example : elabTm { decls := 0, views := 0, sub := 2, typer := 5 } platCtx
 example : keepsSkel { decls := 0, views := 0, sub := 2, typer := 5 } platCtx
     (resolveTop Λc πc argBoxSrc) = true := by decide +kernel
 
-/-- An argument that needs an unboxing: `h` takes the capability and `e` is
-its box.  The unboxing is bound by a `let`, `let y = {κ₁} ⊸ e in h y`. -/
+/-- An argument that needs an unboxing: `h` takes the capability and `e` is its
+box.  The unboxing is bound by `let y = {κ₁} ⊸ e in h y`. -/
 def argUnboxSrc : STm :=
   cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}).
         let o = ν(z : {e1 : □((∀(u : ⊤) ⊤) ^ {k1})}. {e1 = f1}) in
@@ -924,7 +885,7 @@ example : synthsAt { decls := 0, views := 1, sub := 2, typer := 7 } platCtx
   decide +kernel
 
 /-- A receiver that is a box: `e.a` with `e` boxed has no field view, so
-the fourth rule binds `let p' = {κ₁} ⊸ e in p'.a`. -/
+rule 4 binds `let p' = {κ₁} ⊸ e in p'.a`. -/
 def recvSrc : STm :=
   cap% λ(p : {a : ⊤} ^ {k1}).
         let o = ν(z : {e1 : □({a : ⊤} ^ {k1})}. {e1 = p}) in
@@ -942,12 +903,12 @@ example : elabTm { decls := 0, views := 1, sub := 2, typer := 6 } platCtx
 example : keepsSkel { decls := 0, views := 1, sub := 2, typer := 6 } platCtx
     (resolveTop Λc πc recvSrc) = true := by decide +kernel
 
-/-! ### The capture set of a literal, in passes
+/-! ### The capture set of a literal
 
-A literal with no written set and a field that uses a capability is typed
-in two passes.  The first runs under the empty set, whose inclusion fails.
-The second runs under the set the first one found.  With a box inserted as
-well, the second pass does both jobs. -/
+A literal with no written set and a field that uses a capability is typed in
+two passes.  The first runs under the empty set, whose inclusion fails.  The
+second runs under the set the first found.  If a box is inserted as well, the
+second pass does both. -/
 
 /-- A literal that holds `f` in a field. -/
 def impureSrc : STm :=
@@ -988,22 +949,20 @@ example : synthsAt { decls := 0, views := 0, sub := 1, typer := 6 } platCtx
 
 /-! ### What box inference rejects
 
-Every result carries its derivation, so an insertion the rules do not
-license is a rejection.  These are the rejections of the cases of
-`Adapt.lean`, made by the typer on whole terms. -/
+An insertion the rules do not license is rejected.  These are the rejections
+of `Adapt.lean`, made by the typer on whole terms. -/
 
 /-- `κ₁` at the signature of `C7Ctxe`. -/
 private abbrev k1e : BVar ([],c,c,x,x,x,x) .cap := .there (.there (.there (.there (.there .here))))
 
-/-- The ascription `(e : (⊤ → ⊤) ^ {κ₁})` at the version's `C7Ctxe`, where
-`e` is the box. -/
+/-- The ascription `(e : (⊤ → ⊤) ^ {κ₁})` at `C7Ctxe`, where `e` is the box. -/
 def C7ascE : ATm ([],c,c,x,x,x,x) := .asc (.path (.var .here)) (capTy k1e)
 
-/-- It elaborates to the version's unboxing `{κ₁} ⊸ e`. -/
+/-- It elaborates to the calculus's unboxing `{κ₁} ⊸ e`. -/
 example : (synthIn? { decls := 0, views := 1, sub := 1, typer := 2 } C7Ctxe C7ascE).map
     (fun r => r.tm.erase) = some (.unbox [CapAtom.cvar k1e] .here) := by decide +kernel
 
-/-- The unboxing charges `{κ₁}`, the use set of the version's `C7unbox`. -/
+/-- The unboxing charges `{κ₁}`, the use set of the calculus's `C7unbox`. -/
 example : reachesAt { decls := 0, views := 1, sub := 1, typer := 2 } C7Ctxe (some C7ascE)
     (usesOfDeriv C7unbox) (tyOfDeriv C7unbox) = true := by decide +kernel
 
@@ -1011,8 +970,8 @@ example : reachesAt { decls := 0, views := 1, sub := 1, typer := 2 } C7Ctxe (som
 example : reachesAt { decls := 3, views := 3, sub := 6, typer := 8 } C7Ctxe (some C7ascE)
     [] (tyOfDeriv C7unbox) = false := by decide +kernel
 
-/-- C7 with the unboxing written at the other capability is rejected: the
-box's set is `{κ₁}`. -/
+/-- C7 with the unboxing at the other capability is rejected: the box's set is
+`{κ₁}`. -/
 example : (elabTm { decls := 3, views := 3, sub := 6, typer := 10 } platCtx
     (resolveTop Λc πc (cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). λ(f2 : (∀(u : ⊤) ⊤) ^ {k2}).
         let o = ν(z : {e1 : □((∀(u : ⊤) ⊤) ^ {k1})} ∧ {e2 : □((∀(u : ⊤) ⊤) ^ {k2})}.
@@ -1024,30 +983,29 @@ example : (elabTm { decls := 3, views := 3, sub := 6, typer := 10 } platCtx
     (resolveTop Λc πc (cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). {k1} ⊸ f1))).isSome = false := by
   decide +kernel
 
-/-- C7 with the fields swapped is rejected: `□ f₂` is not a box of a
-capability below `{κ₁}`. -/
+/-- C7 with the fields swapped is rejected: `□ f₂` is not a box of a capability
+below `{κ₁}`. -/
 example : (elabTm { decls := 3, views := 3, sub := 6, typer := 10 } platCtx
     (resolveTop Λc πc (cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). λ(f2 : (∀(u : ⊤) ⊤) ^ {k2}).
         let o = ν(z : {e1 : □((∀(u : ⊤) ⊤) ^ {k1})} ∧ {e2 : □((∀(u : ⊤) ⊤) ^ {k2})}.
                    {e1 = f2} ∧ {e2 = f1})
         in let e = o.e1 in (e : (∀(u : ⊤) ⊤) ^ {k1})))).isSome = false := by decide +kernel
 
-/-- A capability ascribed at the other capability is rejected: plain
-checking fails, and a box is not a function. -/
+/-- A capability ascribed at the other capability is rejected: plain checking
+fails, and a box is not a function. -/
 example : (elabTm { decls := 3, views := 3, sub := 6, typer := 10 } platCtx
     (resolveTop Λc πc (cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). (f1 : (∀(u : ⊤) ⊤) ^ {k2})))).isSome =
       false := by decide +kernel
 
-/-- An unboxing whose type does not reach the goal is rejected: `{κ₁} ⊸ e`
-is a capability of `κ₁`, not of `κ₂`. -/
+/-- An unboxing whose type does not reach the goal is rejected: `{κ₁} ⊸ e` is
+a capability of `κ₁`, not `κ₂`. -/
 example : (elabTm { decls := 3, views := 3, sub := 6, typer := 10 } platCtx
     (resolveTop Λc πc (cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). λ(f2 : (∀(u : ⊤) ⊤) ^ {k2}).
         let o = ν(z : {e1 : □((∀(u : ⊤) ⊤) ^ {k1})} ∧ {e2 : □((∀(u : ⊤) ⊤) ^ {k2})}.
                    {e1 = f1} ∧ {e2 = f2})
         in let e = o.e1 in (e : (∀(u : ⊤) ⊤) ^ {k2})))).isSome = false := by decide +kernel
 
-/-- A program with its boxes written is not changed by box inference: C7
-elaborates to the version's term. -/
+/-- A program with its boxes written is unchanged by box inference. -/
 example : elabTm { decls := 0, views := 2, sub := 2, typer := 8 } platCtx
     (resolveTop Λc πc C7src) = some C7tm := by decide +kernel
 

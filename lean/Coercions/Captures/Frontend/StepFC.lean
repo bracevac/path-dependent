@@ -4,47 +4,42 @@ import Coercions.Captures.FCdot.FormAlgebra
 /-!
 # The executable FCdot machine with capture sets
 
-The version gives the target machine as a relation
-(`lean/Coercions/Captures/FCdot/Machine.lean`).  This module gives it as a
-function, so that a compiled program runs.  It follows the vanilla
-`lean/Coercions/Frontend/StepFC.lean` and adds what the version adds: the box
-as a third kind of stored literal, and the two unboxing rules.
+The version gives the target machine as a relation (`FCdot/Machine.lean`).
+This module gives it as a function, so that a compiled program runs.  It
+follows the vanilla `Frontend/StepFC.lean` and adds the box as a third kind
+of stored literal and the two unboxing rules.
 
-Unlike the source machine of `Step.lean`, the target machine has side
-conditions that are not a pattern match on a total lookup.  The two
-application rules through a wrapped atom and the two unboxing rules read the
-head form of the atom's chain of casts.  That normalization is itself fuel
-bounded in the version (`FCdot.closedAtomForm`,
-`lean/Coercions/Captures/FCdot/Normalizer.lean`).  So `fcStep?` carries the
-same fuel the rules' premises carry, and `fcRun` takes two numbers, a
-normalization fuel and a step budget.
+Some side conditions are not a lookup.  The two application rules through a
+wrapped atom and the two unboxing rules read the head form of the atom's
+chain of casts, and that normalization is fuel bounded
+(`FCdot.closedAtomForm`).  So `fcStep?` takes a normalization fuel, and
+`fcRun` takes that fuel and a step budget.  Only `alloc` extends the
+signature, so a step returns a sigma type over signatures.
 
-Three things differ from the vanilla target.  `closedAtomForm` returns the
-normalized atom beside the form.  The identity application rule also fires
-when the head form is an equality conversion `eqv`.  And `unbox` reads the
-head form of the unboxed atom: `id` or `eqv` hand back the stored atom, and
-`boxed d` hands it back under the cast `d`.  An unboxing reads the head form
-even of a bare variable, so it needs a fuel of at least one.
+Compared with the vanilla target:
 
-Agreement with the relation is therefore three statements and not two.
-Soundness holds at every fuel, because each side condition of the function
-is literally the premise of its rule, with the function's fuel supplied as
-the rule's own.  Monotonicity in the fuel rests on `FCdot.closedAtomForm_le`.
-Completeness holds only up to the existence of a fuel: the witness is the
-fuel the derivation used.  No determinism lemma is needed for it, since at
-that one fuel the function computes the very form the derivation used.
+- `closedAtomForm` returns the normalized atom beside the form.
+- The identity application rule also fires when the head form is an equality
+  conversion `eqv`.
+- `unbox` reads the head form of the unboxed atom.  `id` or `eqv` hand back
+  the stored atom, and `boxed d` hands it back under the cast `d`.  This
+  holds even for a bare variable, so an unboxing needs fuel of at least one.
 
-A state with no step is then one with no step at any fuel.  `fcFinal?`
-decides finality, so the classification of such a state as final or stuck
-stays constructive, as `step?_none_classify` does for the source machine.
+Agreement with the relation has three parts.
 
-`alloc` is the only rule that extends the signature, which is why the result
-of one step is a sigma type over signatures.
+- Soundness (`fcStep?_sound`) holds at every fuel, because each side
+  condition of the function is the premise of its rule.
+- Monotonicity (`fcStep?_le`) rests on `FCdot.closedAtomForm_le`.
+- Completeness (`fcStep?_complete`) gives a fuel, namely the one the
+  derivation used.
 
-Everything here lives in `namespace CapturesFrontend`.  No definition is
-placed in a namespace of the version, and no file of the version is touched.
+So a state has no step at any fuel exactly when the relation has none
+(`fcStep?_none_iff`).  `fcFinal?` decides finality, which keeps the
+classification of such a state as final or stuck constructive
+(`fcStep?_none_classify`).  `fcRun_steps` shows that `fcRun` follows `Steps`.
+
 The target's states, steps and runs are written `FCdot.State`, `FCdot.Step`
-and `FCdot.Steps`, so that they never read as the source machine's.
+and `FCdot.Steps` to keep them apart from the source machine's.
 -/
 
 namespace CapturesFrontend
@@ -92,13 +87,12 @@ theorem fcFinal?_iff (st : FCdot.State s) : fcFinal? st = true ↔ FCdot.State.F
 
 /-! ## One step
 
-The clauses below mirror the rules of `FCdot.Step` one for one and in their
-order.  Three helpers carry the rules whose side conditions are lookups, so
-that the equations the proofs rewrite by stay short. -/
+The clauses follow the rules of `FCdot.Step` in order.  Helpers carry the rules
+whose side conditions are lookups. -/
 
-/-- The dispatch of the two application rules on a wrapped atom, on the head
-form of the atom's casts.  `id` and `eqv` are the two shapes of
-`appCastRefl`, `pi` is `appCast`, and every other form is stuck. -/
+/-- The two application rules on a wrapped atom, by the head form of its casts.
+`id` and `eqv` are the two shapes of `appCastRefl`, `pi` is `appCast`, and any
+other form is stuck. -/
 def fcAppForm? (σ : Store s) (K : Cont s) (t₀ : Tm (s,x)) (b : Atom s) :
     Form s → Option ((s' : Sig) × FCdot.State s')
   | .id => some ⟨s, ⟨σ, K, t₀.substAtom b⟩⟩
@@ -108,9 +102,8 @@ def fcAppForm? (σ : Store s) (K : Cont s) (t₀ : Tm (s,x)) (b : Atom s) :
   | _ => none
 
 /-- The three application rules.  The store must hold a closure at the atom's
-root.  A bare variable takes `appVar`.  A wrapped atom, which is the decided
-side condition `a ≠ .var a.root` of the other two rules, normalizes its chain
-of casts at the given fuel and dispatches on the head form. -/
+root.  A bare variable takes `appVar`.  A wrapped atom (`a ≠ .var a.root`)
+normalizes its casts at the given fuel and dispatches on the head form. -/
 def fcApp? (n : Nat) (σ : Store s) (K : Cont s) (a b : Atom s) :
     Option ((s' : Sig) × FCdot.State s') :=
   match σ.lookup a.root with
@@ -120,16 +113,16 @@ def fcApp? (n : Nat) (σ : Store s) (K : Cont s) (a b : Atom s) :
   | _ => none
 
 /-- The projection rule.  The store must hold an object literal at the atom's
-root and that literal must define the label. -/
+root, and the literal must define the label. -/
 def fcProj? (σ : Store s) (K : Cont s) (a : Atom s) (ℓ : Label) :
     Option ((s' : Sig) × FCdot.State s') :=
   match σ.lookup a.root with
   | .obj _ _ _ F => (F.get? ℓ).map (fun t => ⟨s, ⟨σ, K, t.selfAt a.root⟩⟩)
   | _ => none
 
-/-- The dispatch of the two unboxing rules, on the head form of the unboxed
-atom's casts.  `id` and `eqv` are the two shapes of `unboxRefl`, `boxed` is
-`unboxCast`, and every other form is stuck. -/
+/-- The two unboxing rules, by the head form of the unboxed atom's casts.  `id`
+and `eqv` are the two shapes of `unboxRefl`, `boxed` is `unboxCast`, and any
+other form is stuck. -/
 def fcUnboxForm? (σ : Store s) (K : Cont s) (b : Atom s) :
     Form s → Option ((s' : Sig) × FCdot.State s')
   | .id => some ⟨s, ⟨σ, K, .atom b⟩⟩
@@ -137,9 +130,8 @@ def fcUnboxForm? (σ : Store s) (K : Cont s) (b : Atom s) :
   | .boxed d => some ⟨s, ⟨σ, K, .atom (.cast b d)⟩⟩
   | _ => none
 
-/-- The two unboxing rules.  The store must hold a box at the atom's root,
-and the atom's chain of casts is normalized at the given fuel, bare variable
-or not. -/
+/-- The two unboxing rules.  The store must hold a box at the atom's root.  The
+atom's casts are normalized at the given fuel, even for a bare variable. -/
 def fcUnbox? (n : Nat) (σ : Store s) (K : Cont s) (a : Atom s) :
     Option ((s' : Sig) × FCdot.State s') :=
   match σ.lookup a.root with
@@ -147,8 +139,7 @@ def fcUnbox? (n : Nat) (σ : Store s) (K : Cont s) (a : Atom s) :
   | _ => none
 
 /-- One step of the target machine at normalization fuel `n`.  The last two
-clauses are the answers with an empty continuation, which are final and not
-stuck. -/
+clauses are answers with an empty continuation, which are final. -/
 def fcStep? (n : Nat) : FCdot.State s → Option ((s' : Sig) × FCdot.State s')
   | ⟨σ, K, .let t u U f⟩ => some ⟨s, ⟨σ, .cons K (.let u U f), t⟩⟩
   | ⟨σ, K, .cast t e⟩ => some ⟨s, ⟨σ, .cons K (.cast e), t⟩⟩
@@ -163,8 +154,8 @@ def fcStep? (n : Nat) : FCdot.State s → Option ((s' : Sig) × FCdot.State s')
   | ⟨_, .nil, .val _⟩ => none
   | ⟨_, .nil, .atom _⟩ => none
 
-/-- The driver.  `n` is the normalization fuel of every step, `m` is a step
-budget, and a state with no step is returned unchanged. -/
+/-- The driver.  `n` is the normalization fuel of every step and `m` is a step
+budget.  A state with no step is returned unchanged. -/
 def fcRun : Nat → Nat → (s : Sig) → FCdot.State s → (s' : Sig) × FCdot.State s'
   | _, 0, s, st => ⟨s, st⟩
   | n, m + 1, s, st =>
@@ -173,11 +164,10 @@ def fcRun : Nat → Nat → (s : Sig) → FCdot.State s → (s' : Sig) × FCdot.
       | none => ⟨s, st⟩
 termination_by structural _ m => m
 
-/-! ## The three clauses whose side conditions are lookups
+/-! ## The clauses with lookups
 
-None of them reduces on its own, because the value the store holds is not a
-constructor until the lookup is known.  These equations name the helper, so
-that the proofs below rewrite by the rule's own premise. -/
+These equations name the helper, so that proofs can rewrite by the rule's
+premise. -/
 
 theorem fcStep?_app_eq (n : Nat) (σ : Store s) (K : Cont s) (a b : Atom s) :
     fcStep? n ⟨σ, K, .app a b⟩ = fcApp? n σ K a b := rfl
@@ -192,9 +182,8 @@ theorem fcStep?_unbox_eq (n : Nat) (σ : Store s) (K : Cont s) (a : Atom s)
 
 /-! ## The clauses with the premises of their rule supplied
 
-Six equations, one per rule whose side conditions are not the shape of the
-state.  Completeness rewrites by them, which is also what makes the fuel of
-the existential the fuel the derivation used. -/
+One equation for each rule whose side conditions are not the shape of the
+state.  Completeness rewrites by them. -/
 
 /-- The application clause with the premise of `appVar` supplied. -/
 theorem fcApp?_of_var (n : Nat) {σ : Store s} (K : Cont s) {x : BVar s .var} {b : Atom s}
@@ -271,9 +260,7 @@ theorem fcUnbox?_of_cast {n : Nat} {σ : Store s} (K : Cont s) {a a' b : Atom s}
 /-! ## Agreement with the relation -/
 
 /-- Transport a step along an equation of the sigma type that `fcStep?`
-returns.  The signature and the state travel together, so the transport
-takes the signature equation by `injection` and the state equation by
-`eq_of_heq`. -/
+returns. -/
 theorem fcStep_of_some {s s' : Sig} {a : FCdot.State s} {b : FCdot.State s'}
     {r : Sig} {c : FCdot.State r}
     (h : (some ⟨s, a⟩ : Option ((z : Sig) × FCdot.State z)) = some ⟨s', b⟩)
@@ -284,10 +271,7 @@ theorem fcStep_of_some {s s' : Sig} {a : FCdot.State s} {b : FCdot.State s'}
   cases eq_of_heq h2
   exact hst
 
-/-- Rule `appVar` with its shape premise as an equation rather than a
-pattern.  The atom of the rule is a bare variable, which is exactly the
-decided condition `a = .var a.root`, so the rule is reached by cases on the
-atom. -/
+/-- Rule `appVar` with its shape premise as the equation `a = .var a.root`. -/
 theorem fcStep_appVar {σ : Store s} {K : Cont s} {a b : Atom s} {A : FCdot.CaptureSet s}
     {S₀ : Ty s} {t₀ : Tm (s,x)} {g : CapCo (s,x)}
     (hl : σ.lookup a.root = .lam A S₀ t₀ g) (ha : a = .var a.root) :
@@ -389,8 +373,8 @@ theorem fcStep?_sound {st : FCdot.State s} {st' : FCdot.State s'}
 
 /-! ## Monotonicity in the normalization fuel
 
-Only the application and unboxing clauses read the fuel, and they read it
-through `FCdot.closedAtomForm`, which is monotone. -/
+Only the application and unboxing clauses read the fuel, through the monotone
+`FCdot.closedAtomForm`. -/
 
 theorem fcApp?_le {n n' : Nat} (h : n ≤ n') {σ : Store s} {K : Cont s} {a b : Atom s}
     {r : (s' : Sig) × FCdot.State s'} (hr : fcApp? n σ K a b = some r) :
@@ -445,8 +429,9 @@ theorem fcStep?_le {n n' : Nat} (h : n ≤ n') {st : FCdot.State s}
 
 /-! ## Completeness up to a fuel
 
-The witness is the fuel the derivation itself used.  The seven rules with no
-normalization premise are answered at fuel zero. -/
+The witness is the fuel the derivation used.  At that fuel the function computes
+the very form the derivation used, so no determinism lemma is needed.  The rules
+with no normalization premise need fuel zero. -/
 
 theorem fcStep?_complete {st : FCdot.State s} {st' : FCdot.State s'}
     (h : FCdot.Step st st') : ∃ n, fcStep? n st = some ⟨s', st'⟩ := by
@@ -470,9 +455,9 @@ theorem fcStep?_complete {st : FCdot.State s} {st' : FCdot.State s'}
 
 /-! ## A state with no step at any fuel
 
-Soundness and completeness together say that the function finds no step at
-any fuel exactly when the relation has none.  With `fcFinal?` such a state is
-then final or stuck, by cases on a Boolean. -/
+Soundness and completeness give: the function finds no step at any fuel
+exactly when the relation has none.  With `fcFinal?` such a state is final or
+stuck, by cases on a Boolean. -/
 
 theorem fcStep?_none_iff {st : FCdot.State s} :
     (∀ n, fcStep? n st = none) ↔ ¬ ∃ (s' : Sig) (st' : FCdot.State s'), FCdot.Step st st' := by
@@ -498,8 +483,7 @@ theorem fcStep?_none_classify {st : FCdot.State s} (h : ∀ n, fcStep? n st = no
 
 /-! ## The driver reaches what the relation reaches -/
 
-/-- Prefix a step to a run.  `FCdot.Steps` appends at the end, so this is the
-missing direction and it is an induction on the run. -/
+/-- Prefix a step to a run.  `FCdot.Steps` appends at the end. -/
 theorem fcSteps_head {st : FCdot.State s} {st' : FCdot.State s'} {st'' : FCdot.State s''}
     (h : FCdot.Step st st') (hs : FCdot.Steps st' st'') : FCdot.Steps st st'' := by
   revert h
@@ -518,30 +502,27 @@ theorem fcRun_steps (n m : Nat) (st : FCdot.State s) : FCdot.Steps st (fcRun n m
 
 /-! ## The machine on concrete states
 
-One example per rule of `FCdot.Step`, on a state small enough to read, then
-the stuck and final shapes and a few runs.  The clause order is tested by the
-kernel and not only proved.
+One example per rule of `FCdot.Step`, then the stuck and final shapes and a
+few runs.
 
-Most are closed by `rfl`.  The ones whose head form goes through a cast,
-`appCast`, `unboxCast` and the conversion shapes of `appCastRefl` and
-`unboxRefl`, reach it through `FCdot.Form.combine`.  The version defines it
-by well-founded recursion, so it is irreducible to the elaborator.  The
-kernel does reduce it, so those examples are closed by
-`with_unfolding_all rfl`, which is the same `Eq.refl` term with the
-transparency setting the elaborator needs to see it. -/
+Most are closed by `rfl`.  The examples whose head form goes through a cast
+(`appCast`, `unboxCast` and the conversion shapes of `appCastRefl` and
+`unboxRefl`) use `FCdot.Form.combine`, which is defined by well-founded
+recursion and is irreducible to the elaborator.  The kernel reduces it, so
+those examples use `with_unfolding_all rfl`. -/
 
 section Examples
 
 /-- The empty signature. -/
 private abbrev sig0 : Sig := []
-/-- The signature with one store binder. -/
+/-- One store binder. -/
 private abbrev sig1 : Sig := sig0,x
-/-- The signature with two store binders. -/
+/-- Two store binders. -/
 private abbrev sig2 : Sig := sig1,x
 
 /-- The pure top type `⊤ ^ {}`. -/
 private def exTop : Ty s := .capt [] .top
-/-- The empty capture inclusion, the use-set evidence of every literal below. -/
+/-- The empty capture inclusion, the use-set evidence of the literals below. -/
 private def exNoCap : CapCo s := .refl []
 /-- `λ(z : ⊤ ^ {}) z`. -/
 private def exLam : Value s := .lam [] exTop (.atom (.var .here)) exNoCap
@@ -557,9 +538,9 @@ private def stoObj : Store sig1 := .cons .nil exObj
 private def σBox : Store sig2 := .cons stoLam exBox
 /-- The identity coercion on `⊤ ^ {}`, used as a wrapper in the examples. -/
 private def exRefl : LeCo s := .capt (.refl .top) exNoCap
-/-- The answer `z` of every application below. -/
+/-- The answer `z` of the applications below. -/
 private def exAns : Tm sig1 := .atom (.var .here)
-/-- The body `x` of every `let` below. -/
+/-- The body `x` of the `let`s below. -/
 private def exBody : Tm (s,x) := .atom (.var .here)
 
 /-! ### One example per rule -/
@@ -620,7 +601,7 @@ example :
       = some ⟨sig1, ⟨stoLam, .nil, exAns⟩⟩ := by rfl
 
 /-- Rule `appCastRefl` through a recapturing wrapper, which carries no type
-inclusion either. -/
+inclusion. -/
 example :
     fcStep? 2 (s := sig1) ⟨stoLam, .nil, .app (.recap (.var .here) exNoCap) (.var .here)⟩
       = some ⟨sig1, ⟨stoLam, .nil, exAns⟩⟩ := by rfl
@@ -647,9 +628,8 @@ example :
     fcStep? 0 (s := sig1) ⟨stoObj, .nil, .proj (.var .here) (.trm 0) (.field (.trm 0))⟩
       = some ⟨sig1, ⟨stoObj, .nil, exAns⟩⟩ := by rfl
 
-/-- Rule `unboxRefl`: the store holds a box, and a bare variable normalizes
-to `id`.  The step hands back the boxed atom, the closure one slot further
-out. -/
+/-- Rule `unboxRefl`: the store holds a box, and a bare variable normalizes to
+`id`.  The step hands back the boxed atom, the closure one slot further out. -/
 example :
     fcStep? 1 (s := sig2) ⟨σBox, .nil, .unbox (.var .here) [] exNoCap⟩
       = some ⟨sig2, ⟨σBox, .nil, .atom (.var (.there .here))⟩⟩ := by rfl
@@ -676,7 +656,7 @@ example :
 example :
     fcStep? 4 (s := sig1) ⟨stoObj, .nil, .app (.var .here) (.var .here)⟩ = none := by rfl
 
-/-- Stuck: application of a box.  A box has to be unboxed before the call. -/
+/-- Stuck: application of a box, which must be unboxed first. -/
 example :
     fcStep? 4 (s := sig2) ⟨σBox, .nil, .app (.var .here) (.var .here)⟩ = none := by rfl
 
@@ -715,14 +695,14 @@ example :
         ⟨σBox, .nil, .unbox (.cast (.var .here) (.capt (.pi exRefl exRefl) exNoCap)) [] exNoCap⟩
       = none := by with_unfolding_all rfl
 
-/-- Stuck at this fuel: the normalization fuel is exhausted, so the head form
-of the casts is unknown and the wrapped application does not step. -/
+/-- Stuck at this fuel: the normalization fuel is zero, so the head form of the
+casts is unknown and the wrapped application does not step. -/
 example :
     fcStep? 0 (s := sig1) ⟨stoLam, .nil, .app (.unfoldSelf (.var .here)) (.var .here)⟩
       = none := by rfl
 
 /-- Stuck at this fuel: an unboxing reads the head form even of a bare
-variable, so at fuel zero it does not step. -/
+variable. -/
 example :
     fcStep? 0 (s := sig2) ⟨σBox, .nil, .unbox (.var .here) [] exNoCap⟩ = none := by rfl
 
@@ -746,8 +726,8 @@ example :
 
 /-! ### Runs -/
 
-/-- The driver runs `let x = λ(z : ⊤ ^ {}) z in x` to its answer in two steps
-and then stays there. -/
+/-- `fcRun` takes `let x = λ(z : ⊤ ^ {}) z in x` to its answer in two steps and
+stays there. -/
 example :
     fcRun 0 2 sig0 ⟨.nil, .nil, .let (.val exLam) exBody [] exNoCap⟩
       = ⟨sig1, ⟨stoLam, .nil, .atom (.var .here)⟩⟩ := by rfl
@@ -757,9 +737,9 @@ example :
       = ⟨sig1, ⟨stoLam, .nil, .atom (.var .here)⟩⟩ := by rfl
 
 /-- Boxing, unboxing, then calling the content, in a store that holds `f`:
-`let b = □ f in let g = unbox b in g f` reaches the answer `f` in six steps:
-`let`, `alloc`, `let`, `unboxRefl`, `rename`, `appVar`.  Five steps stop
-short of it, and a larger budget changes nothing. -/
+`let b = □ f in let g = unbox b in g f` reaches the answer `f` in six steps
+(`let`, `alloc`, `let`, `unboxRefl`, `rename`, `appVar`).  Five steps stop
+short, and a larger budget changes nothing. -/
 private def exBoxRun : Tm sig1 :=
   .let (.val (.box (.var .here)))
     (.let (.unbox (.var .here) [] exNoCap)
@@ -777,8 +757,8 @@ example :
     fcRun 1 9 sig1 ⟨stoLam, .nil, exBoxRun⟩
       = ⟨sig2, ⟨σBox, .nil, .atom (.var (.there .here))⟩⟩ := by rfl
 
-/-- At normalization fuel zero the same run stops at the unboxing, after
-three steps, however large the step budget. -/
+/-- At fuel zero the same run stops at the unboxing, after three steps,
+however large the step budget. -/
 example :
     (fcRun 0 9 sig1 ⟨stoLam, .nil, exBoxRun⟩).2.t = .unbox (.var .here) [] exNoCap := by rfl
 

@@ -5,76 +5,51 @@ import Coercions.Captures.DotMNF.Machine
 # The pretty printer
 
 An unparser from the four syntaxes of this library back into the paper's
-notation, so that an `#eval` of a compilation or of a run is readable.  It
-follows `lean/Coercions/Frontend/Pretty.lean` and adds what the version
-adds: capture sets, the capture member `{C^ : c₁..c₂}`, the box former `□`,
-the unboxing term `C ⊸ x`, and the ascription `(t : T)`.  The frozen
-inductives carry no `Repr` instance and cannot gain one, since the vanilla
-tree does not change, so this module is the only way to look at a
-`Captures.DotMNF.Ty` or a `Captures.DotMNF.Tm` as text.
+notation, so that an `#eval` of a compilation or a run is readable.  It
+follows `Frontend/Pretty.lean` and adds capture sets, the capture member
+`{C^ : c₁..c₂}`, the box former `□`, the unboxing term `C ⊸ x` and the
+ascription `(t : T)`.  The syntax inductives have no `Repr` instance, so this
+module is how a `Captures.DotMNF.Ty` or `Tm` is shown as text.
 
-The module carries no theorem.  The checks at the end are the output of the
-printer on terms already built elsewhere in this front end, decided in the
-kernel, and nothing more is claimed.
+The module has no theorem.  The checks at the end decide the printer's output
+on terms built elsewhere in this front end.
 
-## The split between a shape and a type
+## Shapes and types
 
-The version splits what the vanilla line calls a type into a *shape*, the
-plain type former, and a *type*, a shape with a capture set, written
-`S ^ C` (`lean/Coercions/Captures/DotMNF/Syntax.lean`).  So where the
-vanilla printer has one mutual block for types, this one has two: `ppShapeAt`
-for `Shape`, `ppTyAt` for `Ty`.  A type with the empty set prints as its bare
-shape, so the E1 to E9 examples below, every one of them pure, read exactly
-as the vanilla printer would read their shapes.  A type with a written set
-prints `S ^ C`, at the same precedence the surface grammar gives it
-(`^` at 60, looser than `∧` at 65, `lean/Coercions/Captures/Frontend/Notation.lean`).
-The shape is read one level tighter on the left, so that a `∀` or a further
-`^` there still gets its parentheses.  The vanilla printer uses the same
-device to keep a `∀` out of a following `∧`.
+The version splits a type into a shape, the plain type former, and a type, a
+shape with a capture set written `S ^ C`.  So there are two printers,
+`ppShapeAt` and `ppTyAt`.  A type with the empty set prints as its shape.  A
+type with a written set prints `S ^ C` at precedence 60, as the grammar reads
+it (`^` at 60, looser than `∧` at 65).  The shape is read one level tighter
+on the left, so a `∀` or a further `^` there gets parentheses.
 
-The box former `□ T` and the unboxing `C ⊸ x` are read at the grammar's
-`max` level on both sides, an already closed form on the left of `⊸` and an
-atomic operand on the right of each.  So printing never needs parentheses
-around them, and always adds them around their own operand when it is not
-atomic, at the sentinel level `atomPrec` below.  A term level box and an
-unboxing of the frozen syntax, `Value.box` and `Tm.unbox`, read a bound
-variable, so there printing is never more than a name.  The sentinel is
-needed by the shape level box, `Shape.box : Ty s → Shape s`, whose operand
-can itself be `S ^ C`.
+`□ T` and `C ⊸ x` are closed forms, so they never need parentheses.  Their
+operand is read at the level `atomPrec`, which parenthesizes it unless it is
+atomic.  This matters for the shape-level box `Shape.box : Ty s → Shape s`, whose operand can be
+`S ^ C`.  The term-level `Value.box` and `Tm.unbox` take a variable, so they
+print a name.
 
 ## Two kinds of binder
 
-A name environment of this front end (`Resolve.lean`) holds a name per term
-binder *and* per capture binder, since the version has both.  `NameEnv.nameAt`
-reads a term binder's name off an index, and `NameEnv.capNameAt` reads a
-capture binder's.  The two are separate functions because `BVar` is itself
-kind indexed, so no single match covers both.  `defaultNames` invents a name
-for a signature that never had any, `x0`, `x1`, … for a term binder and
-`k0`, `k1`, … for a capture binder, each counted by its own remaining length.
-A state of the machine starts at a platform of capture binders and only ever
-grows by term binders, so `ppRun` always falls back to these invented names.
-A type or a term resolved at a concrete platform (`πc` of `Resolve.lean`)
-prints with that platform's own names when the caller passes its own
-`NameEnv` instead of `defaultNames`, which is how the examples below read
-`k1` and `k2`.  `ppRunOver` does the same for a run: it takes the platform's
-names as a list and gives them to the outermost binders of the reached
-state.
+A name environment (`Resolve.lean`) holds a name per term binder and per
+capture binder.  `NameEnv.nameAt` reads a term binder's name and
+`NameEnv.capNameAt` a capture binder's.  They are separate functions because
+`BVar` is indexed by kind.  `defaultNames` invents `x0`, `x1`, … for term
+binders and `k0`, `k1`, … for capture binders, each kind counted on its own.
+`ppRun` uses these names.  A caller can pass the names of a concrete platform
+(`πc` of `Resolve.lean`) instead, and `ppRunOver` gives a list of platform
+names to the outermost binders of the state a run reaches.
 
 ## No round trip
 
-The output is the paper's notation for a reader, not a parser input.  The
-same three gaps the vanilla file names apply: a frozen object literal has no
-self type, a let-inserted binder takes an ordinary short name, and a label
-outside the table prints as its sort and its number.  The annotated syntax
-of `Ann.lean` does carry the self type, written set included, and `ppATmWith`
-prints it in full.
+The output is for a reader, not a parser.  As in the vanilla printer, an
+object literal of `Tm` has no self type, a let-inserted binder takes an
+ordinary short name, and a label outside the table prints as its sort and
+number.  The annotated syntax of `Ann.lean` carries the self type with its
+written set, and `ppATmWith` prints it in full.
 
-## Recursion
-
-Every function here is structural and says so, so the printer reduces in the
-kernel and the checks at the end are `rfl`.  Nothing in this module is part
-of the metatheory, and no definition here lives in a namespace of the
-version.
+Every function is structural, so the printer reduces in the kernel and the
+checks are `rfl`.
 -/
 
 namespace CapturesFrontend
@@ -84,14 +59,13 @@ open Captures.DotMNF (Path CapAtom CaptureSet Shape Ty Tm Value Defs Store Cont 
 
 /-! ## Parentheses -/
 
-/-- The result, in parentheses when the position binds tighter than the
-form. -/
+/-- The string, in parentheses when the flag holds. -/
 def parenIf (b : Bool) (str : String) : String :=
   if b then "(" ++ str ++ ")" else str
 
-/-- The level an operand reads at when the position needs it closed: tighter
-than every real precedence below, so a box or an unboxing always closes a
-`∧` or a `^` it wraps. -/
+/-- The level of an operand that must be closed: tighter than every real
+precedence, so a box or an unboxing always parenthesizes a `∧` or a `^` it
+wraps. -/
 def atomPrec : Nat := 100
 
 /-! ## Labels -/
@@ -123,9 +97,7 @@ def freshName (used : List String) : String :=
   | some c => c
   | none => "x" ++ toString used.length
 
-/-- The name of a bound term variable.  Total, because the environment holds
-one name per term binder of the signature.  A capture binder of `nv` is
-skipped on the way. -/
+/-- The name of a bound term variable.  Capture binders are skipped. -/
 def NameEnv.nameAt {s : Sig} (nv : NameEnv s) (i : BVar s .var) : String :=
   match nv, i with
   | .cons _ y, .here => y
@@ -133,8 +105,7 @@ def NameEnv.nameAt {s : Sig} (nv : NameEnv s) (i : BVar s .var) : String :=
   | .consC nv' _, .there i' => NameEnv.nameAt nv' i'
 termination_by structural nv
 
-/-- The name of a bound capture variable, the twin of `nameAt` at the other
-kind. -/
+/-- The name of a bound capture variable. -/
 def NameEnv.capNameAt {s : Sig} (nv : NameEnv s) (i : BVar s .cap) : String :=
   match nv, i with
   | .consC _ y, .here => y
@@ -142,8 +113,8 @@ def NameEnv.capNameAt {s : Sig} (nv : NameEnv s) (i : BVar s .cap) : String :=
   | .consC nv' _, .there i' => NameEnv.capNameAt nv' i'
 termination_by structural nv
 
-/-- Names for a signature that never had any, one short name per binder,
-outermost `x0`/`k0`, each kind counted on its own. -/
+/-- Invented names for a signature, outermost `x0` or `k0`, each kind counted
+on its own. -/
 def defaultNames (s : Sig) : NameEnv s :=
   match s with
   | [] => .nil
@@ -176,10 +147,7 @@ def ppCap {s : Sig} (nv : NameEnv s) (C : CaptureSet s) : String := ppCapWith []
 
 /-! ## Shapes and types
 
-`ppShapeAt` prints a bare type former, `ppTyAt` a shape with its capture set.
-A `Ty` with the empty set prints as its shape alone.  A written set prints
-`S ^ C`, with the shape read one level tighter on the left.  That keeps the
-parentheses around a `∀` on the left of `^`. -/
+`ppShapeAt` prints a shape, `ppTyAt` a shape with its capture set. -/
 
 mutual
 /-- A type, at the precedence of its position. -/
@@ -224,10 +192,10 @@ def ppShapeWith (Λ : LabelTable) (nv : NameEnv s) (S : Shape s) : String := ppS
 /-- A shape in the paper's notation, with no label table. -/
 def ppShape (nv : NameEnv s) (S : Shape s) : String := ppShapeWith [] nv S
 
-/-! ## Terms of the frozen syntax
+/-! ## Terms of the version's syntax
 
-Application, projection and unboxing take variables in monadic normal form,
-so the only forms that can need parentheses are the lambda and the `let`. -/
+Application, projection and unboxing take variables, so only the lambda and
+the `let` can need parentheses. -/
 
 mutual
 /-- A term in the paper's notation, at the precedence of its position. -/
@@ -244,8 +212,8 @@ def ppTmAt (Λ : LabelTable) {s : Sig} (p : Nat) (nv : NameEnv s) (t : Tm s) : S
           ++ ppTmAt Λ 0 (NameEnv.cons nv y) u)
   | .unbox C x => ppCapWith Λ nv C ++ " ⊸ " ++ NameEnv.nameAt nv x
 termination_by structural t
-/-- A value in the paper's notation.  An object literal of the frozen syntax
-has no self type, so the binder stands alone. -/
+/-- A value in the paper's notation.  An object literal has no self type, so
+the binder stands alone. -/
 def ppValueAt (Λ : LabelTable) {s : Sig} (p : Nat) (nv : NameEnv s) (v : Value s) : String :=
   match v with
   | .obj d =>
@@ -258,8 +226,7 @@ def ppValueAt (Λ : LabelTable) {s : Sig} (p : Nat) (nv : NameEnv s) (v : Value 
           ++ ppTmAt Λ 0 (NameEnv.cons nv y) t)
   | .box x => "□ " ++ NameEnv.nameAt nv x
 termination_by structural v
-/-- A definition list in the paper's notation.  The type member and the
-capture member are both written with their own keyword. -/
+/-- A definition list in the paper's notation. -/
 def ppDefsWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (d : Defs s) : String :=
   match d with
   | .typ A S => "{type " ++ ppLabel Λ A ++ " = " ++ ppShapeWith Λ nv S ++ "}"
@@ -287,10 +254,9 @@ def ppDefs (nv : NameEnv s) (d : Defs s) : String := ppDefsWith [] nv d
 
 /-! ## Annotated terms
 
-The syntax of `Ann.lean` is the one a compilation returns, and it is the one
-that prints in full.  The self shape of a literal and its own capture set,
-when written, are printed.  So are the result type of a `let` and the
-ascription. -/
+The syntax of `Ann.lean` is what a compilation returns.  It prints in full:
+the self shape of a literal, its capture set when written, the result type of
+a `let` and the ascription. -/
 
 mutual
 /-- An annotated term in the paper's notation, at the precedence of its
@@ -348,8 +314,8 @@ def ppADefs (nv : NameEnv s) (d : ADefs s) : String := ppADefsWith [] nv d
 
 /-! ## Surface phrases
 
-The surface syntax carries its own names and its own labels, so these need
-neither a table nor an environment. -/
+The surface syntax carries its own names and labels, so these need neither a
+table nor an environment. -/
 
 /-- A surface capture atom. -/
 def ppSCapAtom : SCapAtom → String
@@ -368,7 +334,7 @@ termination_by structural c
 def ppSCap (c : SCap) : String := "{" ++ String.intercalate ", " (ppSCapEntries c) ++ "}"
 
 /-- A surface type in the paper's notation, at the precedence of its
-position.  `^` sits at 60, looser than `∧` at 65, as the grammar reads it. -/
+position. -/
 def ppSTyAt (p : Nat) (T : SType) : String :=
   match T with
   | .top => "⊤"
@@ -428,12 +394,11 @@ def ppSDefs (d : SDefs) : String := ppSDefsAt d
 
 /-! ## States of the source machine
 
-The store is printed outermost binder first, the continuation as its frames
-with a hole, and the term last.  A store slot at a capture binder carries no
-value, the version's data-free platform slot, so it prints its name alone. -/
+The store is printed outermost binder first, then the continuation as frames
+with a hole, then the term.  A capture slot has no value and prints its name
+alone. -/
 
-/-- The store as one entry per binder, outermost first.  A capture slot has
-no value to show. -/
+/-- The store as one entry per binder, outermost first. -/
 def storeEntries (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (σ : Store s) : List String :=
   match nv, σ with
   | .nil, .nil => []
@@ -470,29 +435,25 @@ def ppStateWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (st : State s) : St
       "⟨" ++ ppStoreWith Λ nv σ ++ " | " ++ ppContWith Λ nv K ++ " | "
         ++ ppTmWith Λ nv t ++ "⟩"
 
-/-- The answer of `compileAndRun`, with the names a fresh platform and its
-allocations would be given, in full. -/
+/-- The answer of `compileAndRun`, with invented names. -/
 def ppRun (Λ : LabelTable) : Option ((s : Sig) × State s) → String
   | none => "did not compile"
   | some ⟨s, st⟩ => ppStateWith Λ (defaultNames s) st
 
-/-- The term of the answer of `compileAndRun`, which is what the run tests
-read. -/
+/-- The term of the answer of `compileAndRun`. -/
 def ppRunTm (Λ : LabelTable) : Option ((s : Sig) × State s) → String
   | none => "did not compile"
   | some ⟨s, ⟨_, _, t⟩⟩ => ppTmWith Λ (defaultNames s) t
 
 /-! ## A run over a named platform
 
-A run starts at a platform whose capabilities have names in the program
-text, `k1` and `k2` for `πc`.  The state a run reaches has a longer
-signature, and nothing in its type says that the platform is its outermost
-part.  So the printer takes the platform's names as a list, outermost
-first, and gives them to the outermost binders.  Every binder past the list
-gets the name `defaultNames` would give it. -/
+A run starts at a platform whose capabilities are named in the program text,
+`k1` and `k2` for `πc`.  The state it reaches has a longer signature, so the
+printer takes the platform's names as a list, outermost first.  Binders past
+the list get the names `defaultNames` gives. -/
 
-/-- Names for a signature whose outermost binders are named by `pre`,
-outermost first, and whose other binders take invented names. -/
+/-- Names for a signature whose outermost binders are named by `pre` and whose
+other binders take invented names. -/
 def namesOver (pre : List String) (s : Sig) : NameEnv s :=
   match s with
   | [] => .nil
@@ -500,7 +461,7 @@ def namesOver (pre : List String) (s : Sig) : NameEnv s :=
   | .cap :: s' => .consC (namesOver pre s') (pre.getD s'.length ("k" ++ toString s'.length))
 termination_by structural s
 
-/-- The answer of `compileAndRun` over a platform named by `pre`, in full. -/
+/-- The answer of `compileAndRun` over a platform named by `pre`. -/
 def ppRunOver (Λ : LabelTable) (pre : List String) : Option ((s : Sig) × State s) → String
   | none => "did not compile"
   | some ⟨s, st⟩ => ppStateWith Λ (namesOver pre s) st
@@ -513,16 +474,11 @@ def ppRunTmOver (Λ : LabelTable) (pre : List String) : Option ((s : Sig) × Sta
 
 /-! ## Checks
 
-Everything above is structural, so the printer reduces in the kernel and
-the checks are `rfl`.  The terms are the ones `Resolve.lean` and
-`Notation.lean` already build, so a failure here is a failure of the
-printer and not of resolution.
--/
+The terms are the ones `Resolve.lean` and `Notation.lean` build. -/
 
 section Checks
 
-/-- E1, every one of its capture sets empty, prints exactly as the vanilla
-printer reads its shape. -/
+/-- E1, with every capture set empty, prints as the vanilla printer would. -/
 example :
     ppATmWith Λc .nil E1ann
       = "λ(x : {A : ⊤ .. ⊥}). let y : {B : {a : ⊤} .. {a : ⊤}} = x in y" := rfl
@@ -534,22 +490,20 @@ example :
       = "ν(x : {A : x.B .. x.B} ∧ {B : x.A .. x.A}. "
         ++ "{type A = x.B} ∧ {type B = x.A})" := rfl
 
-/-- Erasure drops the annotations, and the frozen object literal has nowhere
-to put a self type. -/
+/-- Erasure drops the annotations, and an object literal of `Tm` has no self
+type. -/
 example :
     ppTmWith Λc .nil (ATm.erase E7ann)
       = "ν(x. {type A = x.B} ∧ {type B = x.A})" := rfl
 
-/-- E10, the one example where let insertion changes the surface program:
-the inserted binder takes a name of the printer's own. -/
+/-- E10, where let insertion changes the surface program: the inserted binder
+takes a name of the printer's own. -/
 example :
     ppATmWith Λc .nil E10ann
       = "λ(x : ⊤). λ(y : ⊤). let z = y x in x z" := rfl
 
--- C7 with its boxes and its unboxing written by hand: the surface printer
--- reads the two glyphs back, each one closing its operand with the sentinel
--- precedence.  The string is long enough that the default recursion depth of
--- definitional equality is not, hence the local `maxRecDepth`.
+-- C7 with its boxes and unboxing written by hand.  The string is long, so
+-- `maxRecDepth` is raised.
 set_option maxRecDepth 4000 in
 example :
     ppSTm C7src
@@ -557,8 +511,7 @@ example :
         ++ "let o = ν(z : {e1 : □ ((∀(u : ⊤) ⊤) ^ {k1})} ∧ {e2 : □ ((∀(u : ⊤) ⊤) ^ {k2})}. "
         ++ "{e1 = □ f1} ∧ {e2 = □ f2}) in let e = o.e1 in {k1} ⊸ e" := rfl
 
--- S3, a type member at a boxed capturing type: the bound itself prints
--- through `ppSTyAt`, boxed, inside the braces of a type member declaration.
+-- S3, a type member at a boxed capturing type.
 set_option maxRecDepth 4000 in
 example :
     ppSTm S3src
@@ -567,24 +520,22 @@ example :
         ++ "{type A = (∀(u : ⊤) ⊤) ^ {f}} ∧ {elem = □ f}) in let e = o.elem in {f} ⊸ e" := rfl
 
 /-- An object literal with a written self capture set, resolved through the
-platform `πc`: the self binder's shape and its own set both print, and the
-lambda's own domain reads back `k1` through the platform's own name rather
-than an invented one. -/
+platform `πc`.  The self shape and its set both print, and `k1` prints under
+the platform's name. -/
 example :
     ((resolveTop Λc πc (cap% λ(f : ⊤ ^ {k1}). ν(z : {a : ⊤} ^ {f}. {a = f}))).map
         (ppATmWith Λc πc.names))
       = some "λ(x : ⊤ ^ {k1}). ν(y : {a : ⊤} ^ {x}. {a = x})" := rfl
 
-/-- A box over a capturing shape, as the operand of `∧`: the sentinel
-precedence closes the box's own operand, and the box itself needs nothing
-further since it is already closed. -/
+/-- A box over a capturing shape, as the operand of `∧`.  The box's operand is
+parenthesized and the box itself is not. -/
 example :
     ppShape (s := [Kind.cap]) (.consC .nil "k0")
       (.and (.box (Ty.capt [.cvar .here] .top)) .bot)
       = "□ (⊤ ^ {k0}) ∧ ⊥" := rfl
 
-/-- A store mixing both kinds of binder: a term slot prints its value, a
-capture slot its name alone, outermost first. -/
+/-- A store with both kinds of binder: a term slot prints its value, a capture
+slot its name. -/
 example :
     ppRun Λc
         (some ⟨([] : Sig),x,c,
@@ -602,8 +553,8 @@ example :
 /-- Nothing to print. -/
 example : ppRun Λc (none : Option ((s : Sig) × State s)) = "did not compile" := rfl
 
-/-- A state over the platform `k1, k2` with one allocated slot: the two
-capture slots take the platform's names, the term slot an invented one. -/
+/-- A state over the platform `k1, k2` with one allocated slot.  The capture
+slots take the platform's names and the term slot an invented one. -/
 example :
     ppRunOver Λc ["k1", "k2"]
         (some ⟨([] : Sig),c,c,x,

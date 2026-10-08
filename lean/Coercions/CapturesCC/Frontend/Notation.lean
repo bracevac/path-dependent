@@ -6,71 +6,50 @@ import Coercions.CapturesCC.Frontend.Surface
 Six syntax categories, `ccSet`, `ccShape`, `ccTy`, `ccAns`, `ccTm` and
 `ccDefs`, and their entry points `ccSet%`, `ccShape%`, `ccTy%`, `ccAns%`,
 `cc%` and `ccDefs%`, expand the paper's notation into a constructor
-application of `SCap`, `SShape`, `SType`, `SAns`, `STm` or `SDefs`.  A
-whole program is `ccProg% [k₁, …] t`.  Nothing else happens here: names
-stay strings, no label is interned and no de Bruijn index is computed,
-which is `Resolve.lean`'s work.
+application of `SCap`, `SShape`, `SType`, `SAns`, `STm` or `SDefs`.  A whole
+program is `ccProg% [k₁, …] t`.  Names stay strings.  Interning labels and
+computing de Bruijn indices is the work of `Resolve.lean`.
 
-## Three sorts, not one
+## Shapes, types and answers
 
-A shape (`ccShape`) is the plain type former: a declaration, a selection,
-an intersection, an arrow or a box.  A type (`ccTy`) is a shape with a
-written capture set, `S ^ C`.  Writing a bare shape where a type is
-expected elaborates the empty set, the same convention the vanilla
-capture front end already applies at its single `capt` former.  An answer
-(`ccAns`) is a type, or a type read under one capture binder bounded by a
-set of the enclosing scope, `∃[c ⊑ C] T`, the shape an existential reading
-of `fresh` needs.  Only a `let`'s own annotation and an arrow's codomain
-are answer positions.  Every other type position is a plain type: a field,
-a bound, a box operand, an ascription.
+A shape (`ccShape`) is the plain type former: a declaration, a selection, an
+intersection, an arrow or a box.  A type (`ccTy`) is a shape with a written
+capture set, `S ^ C`.  A bare shape where a type is expected gets the empty
+set.  An answer (`ccAns`) is a type, or a type under one capture binder
+bounded by a set of the enclosing scope, `∃[c ⊑ C] T`.  Only a `let`'s
+annotation and an arrow's codomain are answer positions.  Every other type
+position is a plain type.
 
 ## The arrow's own capture binder
 
-An arrow carries an optional name for its own capture binder:
-`∀(x : T) U` leaves it anonymous, `∀[c](x : T) U` names it `c`.  A lambda
-carries the same pair, `λ(x : T). t` and `λ[c](x : T). t`.  `let ⟨c, x⟩ = t
-in u` is the explicit counterpart at term level: it unpacks an existential
-answer by hand, opening a capture binder for the witness and a term binder
-for the payload, both read only in `u`.
+`∀(x : T) U` leaves the arrow's capture binder anonymous.  `∀[c](x : T) U`
+names it `c`.  A lambda takes the same two forms, `λ(x : T). t` and
+`λ[c](x : T). t`.  `let ⟨c, x⟩ = t in u` unpacks an existential answer by
+hand, with a capture binder for the witness and a term binder for the
+payload, both read only in `u`.
 
 ## Precedence
 
-`^` sits looser than the arrow and the box, and the written shape of an
-arrow's codomain or a box's operand needs parentheses to carry a set of
-its own.  `∀(x : ⊤) ⊤ ^ {c}` is an arrow whose codomain carries `{c}`.
-`(∀(x : ⊤) ⊤) ^ {c}` is the whole arrow under `{c}` instead.  `□` takes
-its operand at the tightest level, so a capturing operand needs its own
-parentheses, `□(⊤ ^ {f})`.  A bare `□⊤` is a type formed with no set, the
-box of the capture-free shape `⊤`, written without parentheses for that
-reason alone.  `∧` keeps its vanilla precedence, closing tighter than `^`,
-so `{a : ⊤} ∧ {b : ⊤} ^ {k1}` sets the whole intersection.
+`^` binds looser than the arrow and the box.  So `∀(x : ⊤) ⊤ ^ {c}` is an
+arrow whose codomain carries `{c}`, and `(∀(x : ⊤) ⊤) ^ {c}` puts the whole
+arrow under `{c}`.  `□` takes its operand at the tightest level, so a
+capturing operand needs parentheses, `□(⊤ ^ {f})`.  `∧` closes tighter than
+`^`, so `{a : ⊤} ∧ {b : ⊤} ^ {k1}` sets the whole intersection.
 
-## Capture atoms, no new keyword
+## Capture atoms
 
-A capture set is a comma separated list of identifiers, read apart by
-`nameParts`, the same splitting the vanilla file uses for a dotted name.
-One component named `any` is the atom `any`, naming the receiver's own
-outer set.  One component named `fresh` is the atom `fresh`, naming a
-freshly allocated one.  Any other one component is a plain name.  Two
-components `x.C` are a capture member selection.  Three or more are
-rejected.  Neither `any` nor `fresh` ever enters Lean's token table, so
-`List.any` and every other ordinary use of either word stay available in
-every importing module, and a surface program is free to use them as
-ordinary variable names anywhere outside a capture set.  The member
-spelling `{C^ : lo..hi}` and `{C^ = c}` carries over from the Captures
-front end unchanged, since a capture-set parameter desugars to a type
-parameter at the same label slot.  The only reserved word beyond the
-vanilla `type` is none: `cap`, `unbox` and `letex` are never tokens, since
-the surface and the target both write them as plain identifiers
-(`.cap`, `.unbox`, `.letex`), and a keyword there would break every module
-that imports this one.
+A capture set is a comma separated list of identifiers.  One component named
+`any` is the atom `any`, the receiver's own outer set.  One component named
+`fresh` is the atom `fresh`, a freshly allocated set.  Any other single
+component is a plain name.  Two components `x.C` select a capture member.
+Three or more are rejected.  `any` and `fresh` are not tokens, so `List.any`
+and ordinary variables of those names stay usable.  The member spellings
+`{C^ : lo..hi}` and `{C^ = c}` are as in the Captures front end.
 
 ## The ascription
 
-`(t : T)` is kept from the Captures front end, a checking point with no
-term of its own in either calculus.  It is the parenthesis form of a term
-followed by a colon and a type, read only after the plain parenthesised
-term fails to match.
+`(t : T)` is a checking point with no term of its own in either calculus.  It
+is read only after the plain parenthesised term fails to match.
 -/
 
 namespace CapturesCCFrontend
@@ -114,9 +93,7 @@ syntax:max "□" ccTy:max : ccShape
 /-- Parentheses. -/
 syntax:max "(" ccShape ")" : ccShape
 
-/-- `S ^ C`, a shape under a written capture set, the shape read at the
-tightest level so that a capturing arrow or box needs its own
-parentheses. -/
+/-- `S ^ C`, a shape under a written capture set. -/
 syntax:70 ccShape:max " ^ " ccSet : ccTy
 /-- A bare shape elaborates the empty set. -/
 syntax:60 ccShape:60 : ccTy
@@ -134,8 +111,7 @@ syntax:max ident : ccTm
 syntax:max "λ" "(" ident " : " ccTy ")" "." ccTm:60 : ccTm
 /-- `λ[c](x : T). t`, the arrow's own capture binder named. -/
 syntax:max "λ" "[" ident "]" "(" ident " : " ccTy ")" "." ccTm:60 : ccTm
-/-- `ν(x : S. d)`, an object literal: the self shape and its
-definitions, no capture set of its own. -/
+/-- `ν(x : S. d)`, an object literal.  It has no capture set of its own. -/
 syntax:max "ν" "(" ident " : " ccShape "." ccDefs ")" : ccTm
 /-- `t.a` on a receiver that is not an identifier. -/
 syntax:80 ccTm:80 "." ident : ccTm
@@ -143,8 +119,7 @@ syntax:80 ccTm:80 "." ident : ccTm
 syntax:70 ccTm:70 ccTm:71 : ccTm
 /-- `let x = t in u`, with an optional result answer. -/
 syntax:max "let" ident (" : " ccAns)? " = " ccTm " in " ccTm:60 : ccTm
-/-- `let ⟨c, x⟩ = t in u`, an explicit unpacking: a capture binder for the
-witness, then a term binder for the payload, both read only in `u`. -/
+/-- `let ⟨c, x⟩ = t in u`, an explicit unpacking. -/
 syntax:max "let" "⟨" ident "," ident "⟩" " = " ccTm " in " ccTm:60 : ccTm
 /-- `□ t`, direct style, a box value written by hand. -/
 syntax:max "□" ccTm:max : ccTm
@@ -180,7 +155,7 @@ syntax:max "ccDefs% " ccDefs : term
 and the body. -/
 syntax:max "ccProg% " "[" ident,* "]" ccTm : term
 
-/-! ## Taking a hierarchical identifier apart, as in the vanilla file -/
+/-! ## Taking a hierarchical identifier apart -/
 
 /-- The components of a name, outermost first, as strings. -/
 def nameParts : Name → List String → List String
@@ -188,9 +163,8 @@ def nameParts : Name → List String → List String
   | .str p s, acc => nameParts p (s :: acc)
   | .num p i, acc => nameParts p (toString i :: acc)
 
-/-- The receiver and the label of a name in shape position.  Only a two
-component name is a shape, since the one shape a name can build is the
-selection `x.A`. -/
+/-- The receiver and the label of a name in shape position.  The only shape a
+name builds is the selection `x.A`. -/
 def tySelName (n : Name) : Option (String × String) :=
   match nameParts n [] with
   | [recv, lbl] => some (recv, lbl)
@@ -308,10 +282,7 @@ macro_rules
   | `(ccProg% [ $ps:ident,* ] $t:ccTm) =>
       `(SProg.mk [$(ps.getElems.map str),*] (cc% $t))
 
-/-! ## One check per new or changed surface form
-
-Every check reduces in the kernel, so `by decide` is the right tactic, as
-it is throughout `Surface.lean`. -/
+/-! ## One check per surface form -/
 
 example : (ccSet% {}) = ([] : SCap) := by decide
 
@@ -325,15 +296,15 @@ example : (ccTy% ⊤) = SType.capt SShape.top [] := by decide
 /-- `S ^ C`, a shape under a written set. -/
 example : (ccTy% ⊤ ^ {f}) = SType.capt SShape.top [SAtom.name "f"] := by decide
 
-/-- `∀(x : T) U`, the arrow binder left anonymous, its codomain carrying
-the written set since the arrow itself is not parenthesised. -/
+/-- `∀(x : T) U`, the arrow binder anonymous.  The written set sits on the
+codomain. -/
 example :
     (ccTy% ∀(x : ⊤) ⊤ ^ {c}) =
       SType.capt (SShape.all none "x" (SType.capt SShape.top []) (SAns.ty (SType.capt SShape.top [SAtom.name "c"])))
         [] := by
   decide
 
-/-- The same arrow parenthesised: the set now sits on the whole arrow. -/
+/-- Parenthesised, the set sits on the whole arrow. -/
 example :
     (ccTy% (∀(x : ⊤) ⊤) ^ {c}) =
       SType.capt (SShape.all none "x" (SType.capt SShape.top []) (SAns.ty (SType.capt SShape.top []))) [SAtom.name "c"] := by
@@ -346,8 +317,8 @@ example :
         [] := by
   decide
 
-/-- `∃[c ⊑ C] T`, an existential answer: the binder scopes the type, its
-own bound read in the outer scope. -/
+/-- `∃[c ⊑ C] T`, an existential answer.  The binder scopes the type, not its
+own bound. -/
 example :
     (ccAns% ∃[w ⊑ {fs, u}] ⊤ ^ {w}) =
       SAns.ex "w" [SAtom.name "fs", SAtom.name "u"] (SType.capt SShape.top [SAtom.name "w"]) := by
@@ -356,8 +327,7 @@ example :
 /-- A plain type is an answer too. -/
 example : (ccAns% ⊤ ^ {f}) = SAns.ty (SType.capt SShape.top [SAtom.name "f"]) := by decide
 
-/-- `{C^ : lo..hi}`, a capture member declaration, the Captures front
-end's spelling. -/
+/-- `{C^ : lo..hi}`, a capture member declaration. -/
 example :
     (ccShape% {C^ : {}..{k1, k2}}) =
       SShape.cap "C" [] [SAtom.name "k1", SAtom.name "k2"] := by
@@ -366,8 +336,7 @@ example :
 /-- `{C^ = c}`, a capture member definition. -/
 example : (ccDefs% {C^ = {fs}}) = SDefs.cap "C" [SAtom.name "fs"] := by decide
 
-/-- `□(T ^ {..})`, the box former, its operand parenthesised to carry a
-set of its own. -/
+/-- `□(T ^ {..})`, the box former. -/
 example : (ccShape% □(⊤ ^ {f})) = SShape.box (SType.capt SShape.top [SAtom.name "f"]) := by decide
 
 /-- `□ x`, a box value, direct style. -/
@@ -397,9 +366,7 @@ example :
       SProg.mk ["k1", "fs"] (STm.lam none "x" (SType.capt SShape.top []) (STm.var "x")) := by
   decide
 
-/-- `any` and `fresh` are names to the lexer and atoms to the macro: no
-new keyword, so `List.any` and the word `fresh` stay usable in every
-importing module. -/
+/-- `any` and `fresh` are names to the lexer and atoms to the macro. -/
 example : atomOfName `any = some .any := by decide
 
 example : atomOfName `fresh = some .fresh := by decide
@@ -409,7 +376,7 @@ example : atomOfName `x.C = some (.sel "x" "C") := by decide
 /-- Three or more components are rejected as a capture atom. -/
 example : atomOfName `x.y.z = none := by decide
 
-/-! ### The forms the Captures front end already carries, renamed -/
+/-! ### Forms shared with the Captures front end -/
 
 example : (cc% x) = STm.var "x" := by decide
 
@@ -421,8 +388,7 @@ example : (cc% ( f x ).a) = STm.proj (.app (.var "f") (.var "x")) "a" := by deci
 
 example : (ccShape% x.A) = SShape.sel "x" "A" := by decide
 
-/-- A bare `x` is never a shape: writing `ccShape% x` fails at this
-message. -/
+/-- A bare `x` is not a shape. -/
 example : tySelName `x = none := by decide
 
 example : tySelName `x.a.A = none := by decide
@@ -451,22 +417,21 @@ def W2src : SType :=
 def Z1src : SType :=
   ccTy% (∀(u : ⊤) μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {fresh}) ^ {fs}
 
-/-- **S1**, `withFile` with an explicit capture parameter over the
-platform capability `fs`. -/
+/-- **S1**, `withFile` with an explicit capture parameter over the capability
+`fs`. -/
 def S1src : SType :=
   ccTy% (∀(cp : μ(c. {C^ : {}..{fs}}))
             (∀(op : (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {fs}) ⊤) ^ {cp.C}) ⊤ ^ {any})
               ^ {fs, cp}) ^ {fs}
 
-/-- **The caller of `freshCell`**, a plain `let` the typer reads as a
-`letex`, over the platform `k1, fs`. -/
+/-- **The caller of `freshCell`**, a plain `let` that the typer reads as a
+`letex`. -/
 def Z1callerSrc : SProg :=
   ccProg% [k1, fs] λ(fc : (∀(u : ⊤) μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {fresh}) ^ {fs}).
     λ(un : ⊤). let c = fc un in let w = c in λ(v : ⊤). v
 
-/-- **The `withFile` escape**, written inside an enclosing scope so that
-the callback's result `any` reads as that scope's root, the escape the
-front end rejects. -/
+/-- **The `withFile` escape**.  The callback's result `any` reads as the root of
+the enclosing scope, and the front end rejects it. -/
 def EscSrc : STm :=
   cc% λ(g : ⊤).
     let cb : (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any})
@@ -474,13 +439,11 @@ def EscSrc : STm :=
       = λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}). λ(u : ⊤). f
     in cb
 
-/-- **A capture parameter that is called**, a plain use of a capture-parameter
-arrow. -/
+/-- **A capture parameter that is called**. -/
 def P1src : STm :=
   cc% λ(h : (∀(u : ⊤) ⊤) ^ {any}). let z = unit in h z
 
-/-- **`Z1_tail`**, the capture parameter applied twice through a `let`,
-the `letex` way out at an existential answer. -/
+/-- **`Z1_tail`**, the capture parameter applied twice through a `let`. -/
 def Z1TailSrc : STm :=
   cc% let c1 = fc un in fc un
 

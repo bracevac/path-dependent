@@ -4,75 +4,61 @@ import Coercions.Classifiers.Frontend.Surface
 /-!
 # The kinding search
 
-Capture kinding `Γ ⊢ C :ᶜ φ` says that every capability the set `C` reaches
-carries a classifier the kind `φ` admits.  The version states it as the
-`Type`-valued family `CapKind` (`lean/Coercions/Classifiers/DotMNF/Typing.lean`).
-`Subcap.proj` premises one, and so does the shape rule `SubShape.capkI`.  This
-module searches for one and returns the derivation, so there is no soundness
-theorem.  The result type is the statement.
-
-## The rules, in the order they are tried
+Capture kinding `Γ ⊢ C :ᶜ φ` says that every capability in the set `C` has a
+classifier that the kind `φ` admits.  The Classifiers development states it as
+the `Type`-valued family `CapKind` (`lean/Coercions/Classifiers/DotMNF/Typing.lean`).
+This module searches for a `CapKind` derivation and returns it, so there is no
+soundness theorem.  The result type is the statement.
 
 `capKind?` takes a set apart.  The empty set is `nil`, and `a :: C` is `cons`
-of a kinding of `[a]` and one of `C`.  `atomKind?` kinds one atom `a` at `φ`.
+of a kinding of `[a]` and one of `C`.  `atomKind?` kinds one atom `a` at `φ`
+and tries these rules in order.
 
-1. `kproj`, when the kind `a` carries is a subkind of `φ`.  At a bare atom
-   that kind is `⊤`.
+1. `kproj`, when the kind `a` carries is a subkind of `φ`.  A bare atom has
+   kind `⊤`.
 2. `kcls`, when the binder under `a` declares a classifier and the kind of
    `a` admits it only if `φ` does.
-3. `kvar`, when the binder under `a` is a term variable: the variable's
+3. `kvar`, when the binder under `a` is a term variable.  The variable's
    declared set, projected at the kind of `a`, is kinded at `φ`.
 4. `kcvar`, the same through the set an instance binder stands for.
 5. `ksel`, when `a` is a selection `x.A` and `x` has a member `{A : ψ}`
    bounded by a kind.  `ksub` follows it when `ψ` is not `φ`.
-6. `kprojS`, when `[a]` is a projected set `C₀ ↾ ψ`: `C₀` is kinded at `φ`.
-7. `kle`, along `Subcap.var` at a variable, to its declared set, and along
-   `Subcap.selUpper` at a selection off a member bounded by a set, to that
+6. `kprojS`, when `[a]` is a projected set `C₀ ↾ ψ`.  Then `C₀` is kinded
+   at `φ`.
+7. `kle`, along `Subcap.var` at a variable to its declared set, and along
+   `Subcap.selUpper` at a selection off a member bounded by a set to that
    upper bound.
 
-The last alternative is not a rule.  It retries the whole search at one unit
-of fuel less, as the subcapturing search of the front end does.  It changes
-no answer the rules give, and it makes the monotonicity in the fuel an
+The last alternative is not a rule.  It retries the search with one unit
+less fuel.  It changes no answer and makes monotonicity in the fuel an
 induction on the fuel alone.
 
-`kind?` is the entry point.  It kinds a one-atom goal by the atom's own rule
-and any other set as a `cons` list.  This is how the version writes its
-kindings: a bare `kvar` or `ksel` at one atom, and a list ending in `nil`
-under a `kvar` and at two atoms or more.
+`kind?` is the entry point.  A one-atom goal goes to `atomKind?` and any
+other set to `capKind?`.
 
-## The decided premises
-
-`Kind.Subkind` is `subkindB = true` by definition, and `Ctx.ClsOf` and
-`Ctx.InstOf` are equations on the frozen `Ctx.clsOf?` and `Ctx.instSet?`.  So
-every leaf premise is a `Bool` or `Option` equation, decided by evaluation.
-`Subkind` is not known to be reflexive, so `ksel` at the kind it is
+Every leaf premise is a `Bool` or `Option` equation, so evaluation decides
+it.  `Subkind` is not known to be reflexive, so `ksel` at the kind it is
 declared at is bare, and `ksub` is tried only when the kinds differ.
 
-## The oracle
+`ksel` and `kle` along `Subcap.selUpper` need a typing of `x` at a member.
+Those typings come from the typer, which calls the subcapturing search, which
+calls this one.  `KindOracle` cuts the cycle.  It lists the member typings
+known at each variable and label.  The typer reads it off its declaration
+table, and `KindOracle.empty` knows none.
 
-`ksel` premises a typing of `x` at a member bounded by a kind, and `kle`
-along `Subcap.selUpper` a typing of `x` at a member bounded by a set.  Those
-typings come from the view closure of the front end, which calls the
-subcapturing search, which calls this one at `Subcap.proj`.  The cycle is
-cut by an oracle, `KindOracle`, a parameter of the search that lists the
-member typings known at each variable and label.  The front end reads it
-off its declaration table.  `KindOracle.empty` knows none.
+The search does not find:
 
-## What it will not find
-
-- A subkinding that `subkindB` does not confirm, through `kproj` or `ksub`.
-- `ksub` anywhere but behind `ksel`.  `Subkind` is not known to be
-  transitive, so a chain of two `ksub` steps may kind what one cannot.
-- `kle` with any middle set other than a declared set or an upper bound.
-- `kprojS` at a nested projection.  The search reads a projected set by
-  `unprojSetW?`, which does not recognise one.
-- A member typing the oracle does not list.
-- Anything past the fuel.  A set needs its length plus the depth of its
+- a subkinding that `subkindB` does not confirm,
+- `ksub` anywhere but behind `ksel`, since `Subkind` is not known to be
+  transitive,
+- `kle` through a middle set other than a declared set or an upper bound,
+- `kprojS` at a nested projection, which `unprojSetW?` does not recognise,
+- a member typing the oracle does not list,
+- anything past the fuel.  A set needs its length plus the depth of its
   chain of `kvar`, `kcvar`, `kprojS` and `kle` steps.
 
-Every function here is structural, on the fuel or on a list, so the kernel
-reduces the search, and every success and every failure the tests at the
-end claim is a `decide +kernel` check.
+Every function is structural, on the fuel or on a list, so the kernel
+reduces the search.  The tests at the end are `decide +kernel` checks.
 -/
 
 namespace ClassifiersFrontend
@@ -122,9 +108,8 @@ structure KindOracle {s : Sig} (Γ : Ctx s) where
 /-- The oracle that knows no member typing. -/
 def KindOracle.empty {s : Sig} {Γ : Ctx s} : KindOracle Γ := ⟨fun _ _ => [], fun _ _ => []⟩
 
-/-- The entries of a list that sit at the variable `x` and the label `A`.  A
-table keeps its entries in one list with their variable and label beside
-them, and this reads an oracle off it. -/
+/-- The entries of a list that sit at the variable `x` and the label `A`.  It
+reads an oracle off a table that keeps variable and label beside each entry. -/
 def viewsAt {s : Sig} {V : BVar s .var → Label → Type}
     (es : List ((y : BVar s .var) × (B : Label) × V y B)) (x : BVar s .var) (A : Label) :
     List (V x A) :=
@@ -231,10 +216,9 @@ def kind? {s : Sig} (Γ : Ctx s) (V : KindOracle Γ) (n : Nat) (C : CaptureSet s
 
 /-! ## Fuel monotonicity
 
-The statements are about successes and not about derivations.  More fuel
-may find another derivation of the same judgment, and `CapKind` is `Type`
-valued.  The retry at the end of each fuel level makes each an induction on
-the fuel alone.  A failure is not monotone and is not claimed to be. -/
+The statements are about successes, not derivations.  More fuel may find
+another derivation of the same judgment, and `CapKind` is `Type` valued.  A
+failure is not monotone. -/
 
 /-- An alternative that succeeds makes the `orElse` succeed. -/
 theorem isSome_orElse_right {α : Type} {a : Option α} {b : Unit → Option α}
@@ -289,16 +273,13 @@ theorem kind?_le {s : Sig} {Γ : Ctx s} {V : KindOracle Γ} {n n' : Nat} {C : Ca
 
 /-! ## Checks
 
-Each kinding below is searched at a judgment of the version's examples
-(`lean/Coercions/Classifiers/DotMNF/Examples.lean`).  A success is a
-derivation, so it is checked two ways: against the version's own
-derivation of the same judgment, by equality of the two translations, and
-by the target checker, on the translation.  `FCdot.KindCo` has decidable
-equality, so both are `Bool` tests.  Where the oracle holds no typing they
-are kernel checks, `decide +kernel`.  A typing the oracle holds is a
-derivation of the version whose translation the kernel does not unfold
-quickly, so there the comparison runs as `#eval expect` and the success
-itself stays a kernel check. -/
+Each kinding is searched at a judgment of the Classifiers examples
+(`lean/Coercions/Classifiers/DotMNF/Examples.lean`).  A success is checked
+against the written derivation of the same judgment, by equality of the two
+translations, and by the FCdot checker on the translation.  Both are `Bool`
+tests.  Where the oracle holds no typing they are kernel checks.  Where it
+holds one, the translation is slow to unfold, so the comparison runs as
+`#eval expect` and the success itself stays a kernel check. -/
 
 section Tests
 
@@ -306,7 +287,7 @@ open Classifiers.DotMNF.Examples (E1PlatCtx E1Filt E1_kind E2IoCtx E2_io_arg_kin
   E2Filt E2TlDescent E3PlatCtx E3Uses E3_kind E3ClientCtx E3ClosureSet E3_client_kind_plat
   E3xCapPlat C2CtxG C2xCap E3k1 E3k2 lC up)
 
-/-- The target checker's verdict on the translation of a searched kinding. -/
+/-- The FCdot checker's verdict on the translation of a searched kinding. -/
 private def kindVerdict {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {φ : Cls.Kind}
     (r : Option (CapKind Γ C φ)) : Bool :=
   match r with
@@ -344,9 +325,8 @@ private def kindNoTl : Cls.Kind := Cls.except Cls.ThreadLocal
 
 /-! ### E1, the filtered platform set
 
-A projected atom carries its own kind, so `kproj` is tried first and
-succeeds at both atoms.  The version's `E1_kind` takes `kcls` there.  The two
-derivations differ, and the search agrees with the one written below. -/
+A projected atom carries its own kind, so `kproj` succeeds at both atoms.
+The written `E1_kind` takes `kcls` there, so the two derivations differ. -/
 
 /-- The derivation the search takes for E1's use set. -/
 private def E1_kind_kproj : CapKind E1PlatCtx E1Filt kindCtl :=
@@ -361,10 +341,10 @@ example : kindVerdict (kind? E1PlatCtx .empty 4 E1Filt kindCtl) = true := by
 
 /-! ### E2, an argument charged to the IO capability, and the thread-local one
 
-A bare variable: `kproj` fails, since `⊤` is not a subkind of
-`except[ThreadLocal]`, and `kcls` fails, since the binder is a term
-variable.  `kvar` descends to the declared set, where `kcls` finishes.  This
-is `E2_io_arg_kind` to the letter. -/
+At a bare variable `kproj` fails, since `⊤` is not a subkind of
+`except[ThreadLocal]`, and `kcls` fails, since the binder is a term variable.
+`kvar` descends to the declared set, where `kcls` finishes.  This is
+`E2_io_arg_kind`. -/
 
 example : agreesWith (kind? E2IoCtx .empty 4 [CapAtom.var .here] kindNoTl) E2_io_arg_kind
     = true := by
@@ -372,8 +352,7 @@ example : agreesWith (kind? E2IoCtx .empty 4 [CapAtom.var .here] kindNoTl) E2_io
 example : kindVerdict (kind? E2PlatIOCtx .empty 5 E2Filt kindNoTl) = true := by
   decide +kernel
 
-/-- The set a thread-local argument descends to is not kinded at the
-filter, which the version proves of every derivation
+/-- The set a thread-local argument descends to is not kinded at the filter
 (`E2_tl_descent_not_capKind`).  The search finds none up to fuel 10. -/
 example : (List.range 11).all
     (fun n => (kind? E2PlatIOCtx .empty n E2TlDescent kindNoTl).isNone) = true := by
@@ -386,9 +365,8 @@ example : agreesWith (kind? E3PlatCtx .empty 4 E3Uses kindCtl) E3_kind = true :=
 
 /-! ### E3, the client's closure set, through `ksel`
 
-The oracle holds the version's own typing of `x` at the member bounded by
-`only[Control]`, `E3xCapPlat`.  In the front end that typing is read off the
-declaration table. -/
+The oracle holds the typing `E3xCapPlat` of `x` at the member bounded by
+`only[Control]`. -/
 
 /-- The oracle at the client's context. -/
 private def e3Oracle : KindOracle E3ClientCtx :=
@@ -406,20 +384,17 @@ example : (kind? E3ClientCtx e3Oracle 1 E3ClosureSet (kindCtl ∪ Cls.only Cls.I
     = some ["ksub", "ksel"] := by
   decide +kernel
 
-/-- A test of the oracle, not a refusal of the version, which derives this
-judgment (`E3_client_kind`).  A member bounded by a kind is read only
-through `ksel`, and the empty oracle holds no typing for it. -/
+/-- The member bounded by a kind is read only through `ksel`, and the empty
+oracle holds no typing for it.  The written derivation `E3_client_kind` needs
+that typing. -/
 example : (kind? E3ClientCtx .empty 10 E3ClosureSet kindCtl).isNone = true := by
   decide +kernel
 
 /-! ### The closure `g` at `{x.C}`, under a filtered domain
 
-`g` is declared at `{x.C}`.  Handing it to a domain written
-`{any.only[Control]}` asks for a kinding of `{g}` at `only[Control]`.  `kvar`
-descends to `{x.C ↾ ⊤}`, a projected selection, which `kprojS` takes to
-`{x.C}`, where `ksel` finishes.  The version writes `kvar` over `kprojS` over
-`E3_client_kind`, and the search finds that route with the `cons` lists of a
-set kinding around it. -/
+`g` is declared at `{x.C}`.  Handing it to a domain `{any.only[Control]}` asks
+for a kinding of `{g}` at `only[Control]`.  `kvar` descends to `{x.C ↾ ⊤}`,
+which `kprojS` takes to `{x.C}`, where `ksel` finishes. -/
 
 example : (kind? E3ClientCtx e3Oracle 5 [CapAtom.var .here] kindCtl).isSome = true := by
   decide +kernel
@@ -438,9 +413,9 @@ example : (kind? E3ClientCtx e3Oracle 5 [CapAtom.var .here] kindCtl).map ruleNam
 /-! ### A selection off a member bounded by sets
 
 C2's client read over E3's platform, where both capabilities are `Control`.
-`x` has the member `{C : {}..{κ₁,κ₂}}`, and `g` is declared at `{x.C}`.  The
-version kinds `{x.C}` at `only[Control]` by `kle` along `Subcap.selUpper` over
-two `kcls`, and `{g}` by `kle` along `Subcap.var` over that. -/
+`x` has the member `{C : {}..{κ₁,κ₂}}`, and `g` is declared at `{x.C}`.
+`{x.C}` is kinded at `only[Control]` by `kle` along `Subcap.selUpper` over two
+`kcls`, and `{g}` by `kle` along `Subcap.var` over that. -/
 
 /-- C2's client context over E3's platform. -/
 private abbrev C2OnE3Ctx : Ctx (Sig.body (Sig.body ([],c,c)),x) := C2CtxG E3PlatCtx E3k1 E3k2
@@ -465,8 +440,7 @@ example : (kind? C2OnE3Ctx c2Oracle 4 [CapAtom.sel (.there (up .here)) lC] kindC
     = some ["kle", "cons", "kcls", "cons", "kcls", "nil"] := by
   decide +kernel
 
-/-- A test of the oracle.  The upper bound is read only off a typing the
-oracle holds. -/
+/-- The upper bound is read only off a typing the oracle holds. -/
 example : (kind? C2OnE3Ctx .empty 10 [CapAtom.sel (.there (up .here)) lC] kindCtl).isNone
     = true := by
   decide +kernel

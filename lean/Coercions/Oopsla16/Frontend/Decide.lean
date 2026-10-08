@@ -6,37 +6,22 @@ import Coercions.FCdotR.CheckerExamples
 /-!
 # The decided side conditions
 
-The typer meets three side conditions that are not searched but decided, and
-this module decides them.
+Three side conditions of the typer are decided, not searched.
 
-* `Oopsla16.EqSome o T`, the premise of `D_Fun` that relates a method's
-  optional annotation to the type it is checked at.  It unfolds to
-  `o = none ∨ o = some T`, and `Oopsla16.Ty` derives `DecidableEq`, so the
-  instance is a disjunction of two equalities.
-* Strengthening past the second binder.  A method member `{def l(x : S) : U}`
-  inside the body of a recursive type `μ z. X` has its codomain `U` under two
-  binders, the self `z` outside and the parameter `x` inside.  Reading the
-  member as a method type of the recursive type itself needs `U` free of `z`
-  while it keeps `x`.  `strengthen2?` drops `z` and fails when `z` occurs.
-* Membership of a source term in the fragment `FCdotR.TmFrag`, the terms whose
-  derivations `FCdotR.elabHasType` elaborates.  `frag?` returns the membership
-  proof itself, so a caller that gets `some f` holds the witness and needs no
-  soundness theorem.
+* `Oopsla16.EqSome o T` relates a method's optional annotation to the type it
+  is checked at.  It unfolds to `o = none ∨ o = some T`.
+* `strengthen2?` removes the second binder of a type.  A method member
+  `{def l(x : S) : U}` in the body of `μ z. X` has `U` under the self `z` and
+  the parameter `x`.  Reading the member as a method type of the recursive
+  type needs `U` free of `z`.  `strengthen2?` drops `z` and fails when `z`
+  occurs.  It reuses the partial renamings of `FCdotR.Ty.rename?`, and
+  `strengthen2?_iff` is its specification.
+* `frag?` decides membership in `FCdotR.TmFrag`, the terms that
+  `FCdotR.elabHasType` elaborates.  It returns the membership proof itself, so
+  it needs no soundness theorem.
 
-Two more conditions of the version need nothing here.  A member's label is
-the length of the list below it, a `Nat` equality.  Type equality is the
-derived `DecidableEq` of `Oopsla16.Ty`.
-
-Strengthening reuses the target's partial renamings as they stand:
-`FCdotR.Ty.rename?`, `FCdotR.PartialRename.lift`, `FCdotR.PartialRename.unshift`
-and the two inversion lemmas `Inverts.lift` and `unshift_inverts`.  Its
-specification `strengthen2?_iff` is proved from `FCdotR.Ty.rename?_sound` and
-`FCdotR.Ty.rename?_complete`, the way `FCdotR.Ty.strengthen?_eq_some_iff` is.
-
-Every recursive definition is structural on syntax at a variable index, so
-the kernel reduces all of them and the checks below are `decide`.  Nothing in
-this module is part of the metatheory and no definition here lives in the
-`Oopsla16` or `FCdotR` namespace.
+All definitions are structural recursions, so the checks below are `decide`.
+Nothing here belongs to the metatheory.
 -/
 
 namespace Oopsla16Frontend
@@ -55,10 +40,9 @@ instance instDecidableEqSome {α : Type} [DecidableEq α] (o : Option α) (a : �
 
 /-! ## Strengthening past the second binder
 
-The scope `((s,x),x)` holds the self `z` at the second binder and the
-parameter `x` at the innermost one.  The total renaming that inserts `z` and
-keeps `x` is `Rename.succ.lift`, and its partial inverse is
-`PartialRename.unshift.lift`. -/
+In the scope `((s,x),x)` the self `z` is the second binder and the parameter
+`x` the innermost.  `Rename.succ.lift` inserts `z`, and
+`PartialRename.unshift.lift` is its partial inverse. -/
 
 /-- Drop the second binder of a type, if it does not occur. -/
 def strengthen2? {σ s : Sig} (T : Ty σ ((s,x),x)) : Option (Ty σ (s,x)) :=
@@ -70,7 +54,7 @@ theorem unshift_lift_inverts {s : Sig} :
       (Rename.lift Rename.succ) :=
   PartialRename.Inverts.lift PartialRename.unshift_inverts
 
-/-- What `strengthen2?` returns, inserting the second binder maps back. -/
+/-- Inserting the second binder into the result gives back the input. -/
 theorem strengthen2?_sound {σ s : Sig} {T : Ty σ ((s,x),x)} {U : Ty σ (s,x)}
     (h : strengthen2? T = some U) : T = U.rename (Rename.lift Rename.succ) :=
   FCdotR.Ty.rename?_sound T U _ _ unshift_lift_inverts h
@@ -80,16 +64,14 @@ theorem strengthen2?_rename {σ s : Sig} (U : Ty σ (s,x)) :
     strengthen2? (U.rename (Rename.lift Rename.succ)) = some U :=
   FCdotR.Ty.rename?_complete U _ _ unshift_lift_inverts
 
-/-- **Strengthening past the second binder inverts its insertion**, on the
-nose. -/
+/-- Strengthening past the second binder inverts its insertion. -/
 theorem strengthen2?_iff {σ s : Sig} {T : Ty σ ((s,x),x)} {U : Ty σ (s,x)} :
     strengthen2? T = some U ↔ T = U.rename (Rename.lift Rename.succ) := by
   constructor
   · exact strengthen2?_sound
   · intro h; subst h; exact strengthen2?_rename U
 
-/-- Strengthening past the second binder, carrying the equation it
-establishes. -/
+/-- `strengthen2?` with the equation it establishes. -/
 def strengthen2W? {σ s : Sig} (T : Ty σ ((s,x),x)) :
     Option { U : Ty σ (s,x) // T = U.rename (Rename.lift Rename.succ) } :=
   match FCdotR.witness? (strengthen2? T) with
@@ -109,17 +91,14 @@ theorem strengthen2W?_val {σ s : Sig} (T : Ty σ ((s,x),x)) :
       | some U => rw [FCdotR.witness?_eq_some h] at heq; cases heq
 
 /-- Weakening a method type inserts the new binder below the parameter in the
-codomain.  This is the shape a method member of a recursive body has when its
-type does not mention the self. -/
+codomain. -/
 theorem weaken_TFun {σ s : Sig} (l : Lb) (S : Ty σ s) (U : Ty σ (s,x)) :
     (Ty.TFun l S U).weaken = .TFun l S.weaken (U.rename (Rename.lift Rename.succ)) := by
   show Ty.TFun l (S.subst _) (U.subst (Oopsla16.Subst.ofRename Rename.succ).lift) = _
   rw [FCdotR.ofRename_lift]
 
-/-- A method member of a recursive body strengthens past the self exactly
-when its domain strengthens and its codomain strengthens past the second
-binder.  So `strengthen2?` is the codomain half of `FCdotR.Ty.strengthen?` on
-a method type. -/
+/-- On a method type, `FCdotR.Ty.strengthen?` strengthens the domain and, for
+the codomain, uses `strengthen2?`. -/
 theorem strengthen?_TFun {σ s : Sig} (l : Lb) (S : Ty σ (s,x)) (U : Ty σ ((s,x),x)) :
     FCdotR.Ty.strengthen? (Ty.TFun l S U)
       = match FCdotR.Ty.strengthen? S, strengthen2? U with
@@ -131,8 +110,7 @@ theorem strengthen?_TFun {σ s : Sig} (l : Lb) (S : Ty σ (s,x)) (U : Ty σ ((s,
 `FCdotR.TmFrag` has three term shapes: a variable, a literal whose members are
 in the fragment, and a call of a variable on a variable.  A member is in the
 fragment when it is a type member, or a method with both annotations whose
-body is in the fragment.  Each shape is read off the syntax, so the decision
-is one structural pass. -/
+body is in the fragment. -/
 
 mutual
 /-- The fragment proof of a term, if the term is in the fragment. -/
@@ -201,14 +179,13 @@ example : EqSome (some (Ty.TTop : Ty [] [])) .TTop := by decide
 /-- `EqSome` of a written annotation fails at another type. -/
 example : ¬ EqSome (some (Ty.TBot : Ty [] [])) .TTop := by decide
 
-/-- The codomain of `polyId`'s method, under a self and the parameter `t`,
-does not mention the self, and strengthens to itself one binder down. -/
+/-- The codomain of `polyId`'s method does not mention the self. -/
 example : strengthen2? (s := []) (σ := [])
       (.TFun 0 (.TSel (.abs .here) 0) (.TSel (.abs (.there .here)) 0))
     = some (.TFun 0 (.TSel (.abs .here) 0) (.TSel (.abs (.there .here)) 0)) := by decide
 
 /-- The codomain of `T(z)`'s method `f` selects on the self `z`, so it does
-not strengthen past the self (`Oopsla16.Examples.FunctionField.Tbody`). -/
+not strengthen (`Oopsla16.Examples.FunctionField.Tbody`). -/
 example : strengthen2? (s := []) (σ := []) (.TSel (.abs (.there .here)) 1) = none := by decide
 
 /-- A variable outside the self moves one binder in. -/
@@ -216,8 +193,7 @@ example : strengthen2? (s := ([],x)) (σ := [])
       (.TAnd (.TSel (.abs (.there (.there .here))) 0) (.TSel (.abs .here) 1))
     = some (.TAnd (.TSel (.abs (.there .here)) 0) (.TSel (.abs .here) 1)) := by decide
 
-/-- The method member of `T(z)` does not strengthen past the self as a whole,
-through its codomain. -/
+/-- The method member of `T(z)` does not strengthen, because of its codomain. -/
 example : FCdotR.Ty.strengthen? Tbody = none := by decide
 
 /-- `ex1` is in the fragment: both methods carry both annotations. -/
@@ -226,7 +202,8 @@ example : (frag? ex1Tm).isSome = true := by decide
 example : (frag? lstTm).isSome = true := by decide
 /-- `ex2` calls a method on a literal, which is not a variable. -/
 example : (frag? ex2Tm).isSome = false := by decide
-/-- A Curry style method is outside the fragment. -/
+/-- A Curry style method, one with an annotation missing, is outside the
+fragment. -/
 example : (frag? (Tm.tobj (.dcons (.dfun none (some .TTop) (.tvar (.abs .here))) .dnil)
     : Tm [] [])).isSome = false := by decide
 /-- The program of `FCdotR.SourceSafety.RecursiveArg` has Curry style methods

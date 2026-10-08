@@ -8,28 +8,23 @@ The target calculus FCdotR gives its abstract machine as a relation,
 running term.  This module gives the same machine as a function, so that a
 translated program runs.
 
-The machine has six rules, and none of them has a premise that needs a search
-or a fuel.  The call rule reads the root location of the receiver atom and
-looks the method up in the stored object, which drops every coercion on the
-atom.  So `fcStep?` takes no fuel, it is not recursive at all, and it reduces
-in the kernel.  Its completeness is the full converse of soundness, not a
-statement up to the existence of a fuel.
+The six rules need no search or fuel.  The call rule reads the root location
+of the receiver atom and looks the method up in the stored object, which drops
+every coercion on the atom.  So `fcStep?` is not recursive and reduces in the
+kernel.
 
-One step may allocate, which extends the signature of the store.  So a step
-returns an `FNext`: the new signature, the growth that leads to it, and the new
-state.  The growth is the version's `Oopsla16.Grows`, the same index the source
-machine of `Step.lean` uses.
+A step may allocate, which extends the signature.  So `fcStep?` returns an
+`FNext`: the new signature, the growth that leads to it (`Oopsla16.Grows`, as
+in `Step.lean`) and the new state.
 
-What is stated.  The function finds a step exactly when the relation has one,
-and the step it finds is the only one, so the target machine is deterministic.
-A state with no step is final or stuck, in the sense of `FCdotR.State.Final`
-and `FCdotR.State.Stuck`, by a case split on the continuation and the term and
-without classical reasoning.  `fcFinal?` decides `FCdotR.State.Final`.  Every
-state the driver `fcRun` returns is reachable, and every reachable state is the
-one `fcRun` returns at some number of steps.
-
-Nothing in this module is part of the metatheory.  No definition here lives
-in the `Oopsla16`, `FCdot` or `FCdotR` namespaces.
+Proved:
+* `fcStep?` finds a step exactly when the relation has one (`fcStep?_sound`,
+  `fcStep?_complete`), and that step is the only one (`fcStep_det`).
+* A state with no step is final or stuck, in the sense of
+  `FCdotR.State.Final` and `FCdotR.State.Stuck`, without classical reasoning.
+  `fcFinal?` decides `Final`.
+* The result of the driver `fcRun` is reachable, and every reachable state is
+  the result of `fcRun` at some number of steps.
 -/
 
 namespace Oopsla16Frontend
@@ -52,13 +47,12 @@ structure FNext (σ : Sig) where
 
 /-- One step of `FCdotR.Step`, or `none` when the relation has no step.
 
-The clauses follow the rules.  A `let` and a coercion push a frame.  An atom
-under a coercion frame absorbs the coercion.  An atom under a `let` frame is
-substituted into the body by its root location.  A literal allocates.  A call
-looks the method up in the object stored at the receiver's root and
-substitutes the argument's root into the body.  An atom under the empty
-continuation does not step, and neither does a call to a member the object
-lacks or to a type member. -/
+A `let` and a coercion push a frame.  An atom under a coercion frame absorbs
+the coercion.  An atom under a `let` frame is substituted into the body by its
+root location.  A literal allocates.  A call looks the method up in the object
+stored at the receiver's root and substitutes the argument's root into the
+body.  An atom under the empty continuation does not step, and neither does a
+call to a member the object lacks or to a type member. -/
 def fcStep? {σ : Sig} : State σ → Option (FNext σ)
   | ⟨G, K, .let t u⟩ => some ⟨σ, .refl, ⟨G, .cons K (.let u), t⟩⟩
   | ⟨G, K, .cast t e⟩ => some ⟨σ, .refl, ⟨G, .cons K (.cast e), t⟩⟩
@@ -119,9 +113,8 @@ theorem fcStep?_eq_none_iff {σ : Sig} {st : State σ} :
     | none => rfl
     | some n => exact absurd ⟨n.σ', n.g, n.st', fcStep?_sound st n hs⟩ h
 
-/-- **Determinism of `FCdotR.Step`**.  Two steps from one state agree on the
-signature, the growth and the state.  It follows from completeness, since
-both are the step the function finds. -/
+/-- **Determinism of `FCdotR.Step`**.  It follows from completeness, since both
+steps are the step the function finds. -/
 theorem fcStep_det {σ σ1 σ2 : Sig} {g1 : Grows σ σ1} {g2 : Grows σ σ2} {st : State σ}
     {st1 : State σ1} {st2 : State σ2}
     (h1 : FCdotR.Step g1 st st1) (h2 : FCdotR.Step g2 st st2) :
@@ -142,9 +135,7 @@ theorem fcFinal?_iff {σ : Sig} (st : State σ) : fcFinal? st = true ↔ st.Fina
   rcases st with ⟨G, K, t⟩
   cases t <;> cases K <;> simp [fcFinal?, FCdotR.State.Final]
 
-/-- **Classification**: a state with no step is final or stuck.  The proof
-reads the answer off `fcFinal?`, which matches the continuation and the term,
-so it uses no classical reasoning. -/
+/-- **Classification**: a state with no step is final or stuck. -/
 theorem fcStep?_none_classify {σ : Sig} {st : State σ} (h : fcStep? st = none) :
     st.Final ∨ st.Stuck := by
   have hn := fcStep?_eq_none_iff.mp h
@@ -190,8 +181,7 @@ theorem fcSteps_head {σ1 σ2 σ3 : Sig} {h : Grows σ1 σ2} {st : State σ1} {s
       obtain ⟨g', r'⟩ := fcSteps_head hs r
       exact ⟨_, .tail r' s⟩
 
-/-- **The driver's result is reachable.**  The growth is left existential,
-as for the source driver `run`. -/
+/-- **The driver's result is reachable.**  The growth is existential. -/
 theorem fcRun_steps : (m : Nat) → {σ : Sig} → (st : State σ) →
     ∃ g : Grows σ (fcRun m st).σ', FCdotR.Steps g st (fcRun m st).st'
   | 0, _, _ => ⟨_, .refl⟩
@@ -255,12 +245,9 @@ theorem fcRun_complete {σ1 σ2 : Sig} {g : Grows σ1 σ2} {st : State σ1} {st'
 
 /-! ## Probes
 
-Each rule of the machine, seen through the function, on small states.  The
-equations hold by `rfl` and the tests by `decide +kernel`, so the kernel runs
-`fcStep?` and `fcRun` itself.
-
-`G1` is a store of one location that holds the identity method at label `0`.
-`G0` is a store of one location that holds no member. -/
+Each rule of the machine on small states, by `rfl` or `decide +kernel`.  `G1`
+is a store of one location that holds the identity method at label `0`.  `G0`
+is a store of one location that holds no member. -/
 
 /-- The identity method, alone in a definition list. -/
 private abbrev idDefs : Defs ([],x) [] :=
@@ -320,9 +307,8 @@ example : fcStep? (⟨G0, .nil, .app here 0 here⟩ : State ([],x)) = none ∧
 example : (⟨G0, .nil, .app here 0 here⟩ : State ([],x)).Stuck :=
   stuck_of_fcStep?_none rfl rfl
 
-/-- A whole run: allocate, then call the identity method on the new
-location, through a `let`.  Four steps reach a final state and three do
-not. -/
+/-- A whole run: allocate, then call the identity method on the new location,
+through a `let`. -/
 private abbrev letCall : Tm [] [] :=
   .let (.new .TTop (.dfun .TTop .TTop (.atom (.var (.abs .here))) .dnil))
     (.app (.var (.abs .here)) 0 (.var (.abs .here)))
@@ -331,15 +317,14 @@ example : fcFinal? (fcRun 4 (⟨.nil, .nil, letCall⟩ : State [])).st' = true �
     fcFinal? (fcRun 3 (⟨.nil, .nil, letCall⟩ : State [])).st' = false := by
   decide +kernel
 
-/-- The translation of the version's recursive argument example, by the
-version's elaboration `FCdotR.elabTm` at the empty store typing. -/
+/-- The translation of the recursive argument example of Oopsla16, by
+`FCdotR.elabTm` at the empty store typing. -/
 private abbrev recArgTarget : Tm [] [] :=
   (FCdotR.elabTm FCdotR.emptyStoreTy FCdotR.SourceSafety.RecursiveArg.progTy).tm
 
-/-- Its run reaches a final state in thirteen steps and not in twelve.  The
-version shows that some final state is reached
-(`FCdotR.SourceSafety.RecursiveArg.prog_target_final`), and here the kernel
-finds it. -/
+/-- Its run reaches a final state in thirteen steps and not in twelve.
+`FCdotR.SourceSafety.RecursiveArg.prog_target_final` shows that some final
+state is reached.  Here the kernel finds it. -/
 example : fcFinal? (fcRun 13 (⟨.nil, .nil, recArgTarget⟩ : State [])).st' = true ∧
     fcFinal? (fcRun 12 (⟨.nil, .nil, recArgTarget⟩ : State [])).st' = false := by
   decide +kernel

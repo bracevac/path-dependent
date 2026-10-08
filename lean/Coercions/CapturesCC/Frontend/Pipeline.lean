@@ -6,103 +6,81 @@ import Coercions.CapturesCC.FCdot.CheckerCompleteness
 /-!
 # The pipeline
 
-One function takes a surface program through the whole front end.
-Thirteen theorems say what the result is worth.  Each one composes results
-of the version.  The front end proves nothing about the calculus.
+`compile` takes a surface program through the whole front end.  The theorems
+below state what a successful result guarantees.  Each composes theorems of
+`CapturesCC`.  The front end proves nothing about the calculus itself.
 
 ## The function
 
 `compile` resolves a program over a platform, types it at the platform's
-context and checks that the typer kept the program's skeleton.  A platform
-is a prefix of capture binders, one per capability the program may use.
-The typer elaborates.  Box inference may insert `□ x` and `C ⊸ x`, an
-unpacking `letex` may replace a `let`, and an `unbox` gets its set filled.
-So the typed term is not the resolved one.  `Compiled` holds the elaborated
-term, its use set, its type, the derivation about its erasure, and the proof
-that its skeleton is the skeleton of the resolved term.  `ATm.skel` forgets
-annotations, capture sets, boxes, unboxings, ascriptions and capture
-binders, inlines a `let` of a variable, and does not tell `let` from
-`letex`.  So a check on skeletons says that the elaborated program is the
-written one up to what the typer adds.
+context and checks that the typer kept the program's skeleton.  A platform is
+a prefix of capture binders, one per capability the program may use.
 
-`compile` returns the typer's `Verdict`.  `ok` carries the record.
-`rejected` carries a reason with its proof, about the written type, the goal
-or the answer it names.  `unknown` says that nothing was found.  A program
-that does not resolve is `unknown` too, and so is a program whose answer is
-typed but whose skeleton the typer changed, which the typer never does on
-the examples.
+The typer elaborates.  It may insert `□ x` and `C ⊸ x`, replace a `let` by an
+unpacking `letex`, and fill in the set of an `unbox`.  So the typed term is not
+the resolved one.  `Compiled` holds the elaborated term, its use set, its type,
+the derivation about its erasure and a proof that its skeleton is the skeleton
+of the resolved term.  `ATm.skel` forgets annotations, capture sets, boxes,
+unboxings, ascriptions and capture binders, inlines a `let` of a variable, and
+does not tell `let` from `letex`.  So the check says the elaborated program is
+the written one up to what the typer adds.
+
+`compile` returns the typer's `Verdict`.  `ok` carries the record.  `rejected`
+carries a reason with its proof.  `unknown` says nothing was found.  A program
+that does not resolve is `unknown`, and so is a program whose skeleton the
+typer changed.
 
 `compileAndRun` follows `compile` with the executable source machine of
 `Step.lean`, from the platform's initial store, at a step budget.
 
 ## The log of level steps
 
-`source_lvl_safety` is the version's statement about levels.  It speaks of a
-member-free subcapturing at a well-formed context: one built from `refl`,
-`trans`, `elem`, `union`, `var` and `level`, with no capture member and no
-instance binder.  `levelSteps` reads off the derivation the typer returned
-every such subcapturing it contains, together with the context it sits at
-and the proof that this context is well formed.  It walks the derivation and
-its subtyping premises, and opens a context exactly where the rule does: a
-lambda body, an object body, a `let` and a `letex` body, the domain and the
-codomain of the arrow rule, and the scope of a pack.  At each subcapturing
-premise it decides `memberFree?`.  A member-free premise is logged whole.
-Otherwise the walk goes on into its parts.
+`source_lvl_safety` speaks of member-free subcapturing at a well-formed
+context, built from `refl`, `trans`, `elem`, `union`, `var` and `level`.
+`levelSteps` reads off the typer's derivation every such subcapturing, with
+its context and a proof that the context is well formed.  It walks the
+derivation and its subtyping premises, and opens a context where the rule
+does.  At each subcapturing premise it decides `memberFree?`.  A member-free
+premise is logged whole.  Otherwise the walk continues into its parts.
 
 ## The theorems
 
-Throughout, `h : compile b Λ π e = .ok ⟨a, c⟩` is the successful compile.
-The platform is `π.plat` and the compiled term is `c.tm.erase`.
+Except for `compile_rejected_goal` and the `_get` variants,
+`h : compile b Λ π e = .ok ⟨a, c⟩` is the successful compile.  The platform is
+`π.plat` and the compiled term is `c.tm.erase`.
 
-* `compile_checks`.  The target checker accepts the translation of the
-  derivation.  `FCdot.checkTm_complete` at `HasTy.translate_typed` and
-  `Platform.ctx_wf`.
-* `compile_uses_checks`.  The target checker accepts the use set evidence
-  the translation emits.  `FCdot.checkCap_complete` at
-  `HasTy.translate_uses`.
-* `compile_erase`.  The translation erases to the compiled term.
-  `HasTy.translate_erase`.
-* `compile_faithful`.  The elaborated term has the skeleton of the resolved
-  term.  It is the `skel` field.
-* `compile_safe`.  Every state a run of the compiled term reaches is final
-  or has a step.  `DotMNF.dot_safety` is stated at the empty context only,
-  so this is composed at the platform from `Platform.simulatedRun`,
-  `FCdot.State.Typed.steps`, `Platform.initial_typed` and
-  `Simulated.progress`.
-* `compile_not_stuck`.  No reachable state is stuck.  From `compile_safe`.
-* `compile_run_progress`.  The state the driver `run` returns is final or
-  the executable machine finds a step from it.  From `compile_safe`,
-  `run_steps` and `step?_eq_none_iff`.
-* `compile_capture_prediction`.  Along any run, the matched target state
-  uses no more than the translation of the use set the typer found.
-  `DotMNF.dot_capture_prediction`.
-* `compile_effect_safety`.  A platform capability `κ` that is not in the
-  use set the typer found is never the root of a variable a run reads.
-  `DotMNF.dot_effect_safety`, with `cvar_mem_translate` to state the premise
-  on the source set, where it is decided.
-* `compile_lvl_safety`.  At every member-free subcapturing `lo <: hi` of the
-  derivation of the compiled program, at the context `Γ` it sits at, `lo`
-  is confined to every atom that confines `hi`, at every depth of
-  resolution.  So no set leaves the scope of a root it is checked against.
-  `DotMNF.source_lvl_safety` at each entry of `levelSteps`.
-* `compile_rejected_goal`.  A program rejected by a level escape comes with
-  a goal `C <: D` at the context `Γ` the typer reached, and no member-free
-  subcapturing proves that goal.  The statement is about that goal.  It
-  does not say that no other derivation types the program.
-* `compile_checks_get` and `compile_effect_safety_get`.  The same as
-  `compile_checks` and `compile_effect_safety`, stated for a program whose
-  compile succeeds by a decided test.  For a concrete program the kernel
-  reduces the compile, so `(compile b Λ π e).isOk = true` and the premise
-  on the use set both close by `decide +kernel`.
+* `compile_checks`: the target checker accepts the translation of the
+  derivation.
+* `compile_uses_checks`: the target checker accepts the use set evidence.
+* `compile_erase`: the translation erases to the compiled term.
+* `compile_faithful`: the elaborated term has the skeleton of the resolved
+  term.
+* `compile_safe`: every state a run of the compiled term reaches is final or
+  has a step.  `DotMNF.dot_safety` is stated at the empty context only, so
+  this is composed at the platform.
+* `compile_not_stuck` and `compile_run_progress`: no reachable state is
+  stuck, and the state the driver `run` returns is final or has a step.
+* `compile_capture_prediction`: along a run, the matched target state uses no
+  more than the translation of the typer's use set.
+* `compile_effect_safety`: a platform capability not in the typer's use set
+  is never the root of a variable a run reads.
+* `compile_lvl_safety`: at every member-free subcapturing `lo <: hi` of the
+  derivation, `lo` is confined to every atom that confines `hi`, at every
+  depth of resolution.  So no set leaves the scope of a root it is checked
+  against.
+* `compile_rejected_goal`: a program rejected by a level escape comes with a
+  goal `C <: D` that no member-free subcapturing proves.  This is about that
+  goal, not about every derivation of the program.
+* `compile_checks_get` and `compile_effect_safety_get`: `compile_checks` and
+  `compile_effect_safety` for a program whose compile succeeds by a decided
+  test.  For a concrete program the kernel reduces the compile, so both
+  premises close by `decide +kernel`.
 
-The premise `h` is written in every statement because it is what a caller
-holds.  The content rides on the type of `c`.  The other premises select
-what a theorem speaks of: a run `r`, a read variable `hin`, a capability
-`κ` with `hκ`, a log entry with its atom `ρ` and the premise on `hi`.  None
-of them is a hypothesis about the compiler.
+The premise `h` is what a caller holds.  The content is in the type of `c`.
+The other premises select what a theorem speaks of.  None is a hypothesis
+about the compiler.
 
-Everything here lives in `namespace CapturesCCFrontend`.  No definition is
-placed in a namespace of the version, and no file of the version is touched.
+Everything is in `namespace CapturesCCFrontend`.
 -/
 
 namespace CapturesCCFrontend
@@ -114,9 +92,9 @@ open CapturesCC.DotMNF (CapAtom CaptureSet Shape Ty ETy Dom Cod Tm Defs Ctx HasT
 
 /-! ## Member-free subcapturing, decided -/
 
-/-- A subcapturing derivation uses none of `inst`, `selLower` and
-`selUpper`.  Those three read an instance binder or a capture member, and
-`source_lvl_safety` speaks of the derivations without them. -/
+/-- A subcapturing derivation that uses none of `inst`, `selLower` and
+`selUpper`.  Those read an instance binder or a capture member, which
+`source_lvl_safety` excludes. -/
 def memberFree? {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} (d : Subcap Γ C D) : Bool :=
   match d with
   | .refl => true
@@ -130,7 +108,7 @@ def memberFree? {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} (d : Subcap Γ C D) 
   | .selUpper _ => false
 termination_by structural d
 
-/-- `memberFree?` is sound for the version's `Subcap.MemberFree`. -/
+/-- `memberFree?` is sound for `Subcap.MemberFree`. -/
 theorem memberFree?_sound {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} {d : Subcap Γ C D}
     (h : memberFree? d = true) : d.MemberFree :=
   match d, h with
@@ -186,8 +164,8 @@ def subcapSteps {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} (hwf : Γ.Wf) (d : S
     | .selUpper h => hasTySteps hwf h
 termination_by structural d
 
-/-- The level steps of a shape subtyping.  The arrow rule reads its
-domains under a scope and its codomains under a lambda body. -/
+/-- The level steps of a shape subtyping.  The arrow rule reads domains under
+a scope and codomains under a lambda body. -/
 def subShapeSteps {s : Sig} {Γ : Ctx s} {S T : Shape s} (hwf : Γ.Wf) (d : SubShape Γ S T) :
     List LevelStep :=
   match d with
@@ -215,8 +193,7 @@ def subSteps {s : Sig} {Γ : Ctx s} {T U : Ty s} (hwf : Γ.Wf) (d : Sub Γ T U) 
 termination_by structural d
 
 /-- The level steps of an answer inclusion.  A pack reads its residual
-inclusion under the pack's scope, and the congruence its bodies under a
-scope. -/
+inclusion under the pack's scope. -/
 def eSubSteps {s : Sig} {Γ : Ctx s} {E F : ETy s} (hwf : Γ.Wf) (d : ESub Γ E F) :
     List LevelStep :=
   match d with
@@ -265,10 +242,9 @@ def levelSteps {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t : Tm s} {E : ETy s} 
 
 /-! ## The result of a compilation -/
 
-/-- A program typed over a platform.  The elaborated term, its use set and
-type, the derivation about its erasure under the platform's context, and the
-proof that the elaborated term is the resolved term `a` up to what the typer
-adds. -/
+/-- A program typed over a platform: the elaborated term, its use set and type,
+the derivation about its erasure under the platform's context, and a proof that
+the elaborated term is the resolved term `a` up to what the typer adds. -/
 structure Compiled {s₀ : Sig} (P : Platform s₀) (a : ATm s₀) where
   /-- The elaborated term. -/
   tm : ATm s₀
@@ -286,9 +262,9 @@ structure Compiled {s₀ : Sig} (P : Platform s₀) (a : ATm s₀) where
 /-- The front end end to end: resolve over the platform, type at the
 platform's context, and keep the result when the skeleton is the program's.
 A rejection is the typer's, with its reason.  `unknown` is returned when the
-program does not resolve, when the typer finds nothing within its budget,
-and when the typer changed the program's skeleton.  The result is a
-dependent pair, since the record speaks of the resolved term. -/
+program does not resolve, when the typer finds nothing within its budget, and
+when the typer changed the skeleton.  The result is a dependent pair, since the
+record speaks of the resolved term. -/
 def compile (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm) :
     Verdict ((a : ATm π.sig) × Compiled π.plat a) :=
   match resolveTop Λ π e with
@@ -302,15 +278,14 @@ def compile (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm) :
         | .inr _ => .unknown
 
 /-- The front end followed by the source machine of `Step.lean`, from the
-platform's initial store, at a step budget `m`. -/
+platform's initial store, at step budget `m`. -/
 def compileAndRun (b : Budget) (m : Nat) (Λ : LabelTable) (π : PlatformNames) (e : STm) :
     Verdict ((s : Sig) × State s) :=
   (compile b Λ π e).map fun r => run m π.sig ⟨π.plat.store, .nil, r.2.tm.erase⟩
 
 /-! ## Logs of results
 
-The log of a typing at a well-formed context and the log of a compiled
-program.  A verdict that is not a success has the empty log. -/
+A verdict that is not a success has the empty log. -/
 
 /-- The log of the typer's derivation, when the verdict is a success. -/
 def logOf {s : Sig} {Γ : Ctx s} (hwf : Γ.Wf) (v : Verdict (Elab Γ)) : List LevelStep :=
@@ -338,9 +313,8 @@ theorem Verdict.get_eq {α : Type} : ∀ (v : Verdict α) (h : v.isOk = true), v
 /-! ## A source reading of the effect premise -/
 
 /-- A capability is in the translation of a set only if it is in the set.
-`CaptureSet.translate` keeps the variables and capabilities of a set, maps a
-selection to its own atom and drops `any` and `fresh`, so no capability
-appears that was not there. -/
+`CaptureSet.translate` keeps variables and capabilities, maps a selection to
+its own atom and drops `any` and `fresh`. -/
 theorem cvar_mem_translate {s : Sig} {κ : BVar s .cap} {C : CaptureSet s}
     (h : FCdot.CapAtom.cvar κ ∈ C.translate) : CapAtom.cvar κ ∈ C := by
   induction C with
@@ -371,8 +345,8 @@ theorem cvar_mem_translate {s : Sig} {κ : BVar s .cap} {C : CaptureSet s}
 
 /-! ## The theorems -/
 
--- The premise `h` is read by no proof but the last.  It is written because
--- it is what a caller holds.  The content rides on the type of `c`.
+-- The premise `h` is used only by the last proof.  It is written because it is
+-- what a caller holds.
 set_option linter.unusedVariables false
 
 section
@@ -380,7 +354,7 @@ variable {b : Budget} {Λ : LabelTable} {π : PlatformNames} {e : STm} {a : ATm 
   {c : Compiled π.plat a}
 
 /-- **The target checker accepts the translation.**  `FCdot.checkTm_complete`
-at the typedness of the translation under the platform's context. -/
+at the typedness of the translation. -/
 theorem compile_checks (h : compile b Λ π e = .ok ⟨a, c⟩) :
     FCdot.checkTm π.plat.ctx.translate c.deriv.translate c.ty.translate = true :=
   FCdot.checkTm_complete (DotMNF.HasTy.translate_typed c.deriv (Platform.ctx_wf π.plat))
@@ -398,15 +372,14 @@ theorem compile_erase (h : compile b Λ π e = .ok ⟨a, c⟩) :
     FCdot.Tm.erase c.deriv.translate = Tm.erase c.tm.erase :=
   DotMNF.HasTy.translate_erase c.deriv
 
-/-- **The compiled term is the written one up to what the typer adds.**  The
-elaborated term has the skeleton of the resolved term. -/
+/-- **The compiled term is the written one up to what the typer adds.** -/
 theorem compile_faithful (h : compile b Λ π e = .ok ⟨a, c⟩) : ATm.skel c.tm = ATm.skel a :=
   c.skel
 
-/-- **Safety of the compiled program over its platform.**  The subject is a run
-`r` from the platform's initial store.  Every state it reaches is final or
-has a step.  The matched target run of `Platform.simulatedRun` stays typed by
-`FCdot.State.Typed.steps`, and `Simulated.progress` reads progress back. -/
+/-- **Safety of the compiled program.**  Every state of a run `r` from the
+platform's initial store is final or has a step.  The matched target run of
+`Platform.simulatedRun` stays typed by `FCdot.State.Typed.steps`, and
+`Simulated.progress` reads progress back. -/
 theorem compile_safe (h : compile b Λ π e = .ok ⟨a, c⟩) {s : Sig} {st : State s}
     (r : Steps (⟨π.plat.store, .nil, c.tm.erase⟩ : State π.sig) st) :
     State.Final st ∨ ∃ (s' : Sig) (st' : State s'), Step st st' := by
@@ -414,8 +387,7 @@ theorem compile_safe (h : compile b Λ π e = .ok ⟨a, c⟩) {s : Sig} {st : St
   obtain ⟨U, hU⟩ := FCdot.State.Typed.steps ⟨_, π.plat.initial_typed c.deriv⟩ hrun
   exact DotMNF.Simulated.progress ⟨stt, U, hU, he⟩
 
-/-- **No reachable state of the compiled program is stuck.**  The subject is a
-run `r` from the platform's initial store. -/
+/-- **No reachable state of the compiled program is stuck.** -/
 theorem compile_not_stuck (h : compile b Λ π e = .ok ⟨a, c⟩) {s : Sig} {st : State s}
     (r : Steps (⟨π.plat.store, .nil, c.tm.erase⟩ : State π.sig) st) : ¬ State.Stuck st := by
   intro ⟨hnf, hns⟩
@@ -424,9 +396,7 @@ theorem compile_not_stuck (h : compile b Λ π e = .ok ⟨a, c⟩) {s : Sig} {st
   · exact hns hs
 
 /-- **The driver never answers at a stuck state.**  At every step budget the
-state `run` returns is final or the executable machine finds a step.
-`compile_safe` at the reached state, with `run_steps` for the run and
-`step?_eq_none_iff` for the executable half. -/
+state `run` returns is final or the executable machine finds a step. -/
 theorem compile_run_progress (h : compile b Λ π e = .ok ⟨a, c⟩) (m : Nat) :
     let st := (run m π.sig ⟨π.plat.store, .nil, c.tm.erase⟩).2
     State.Final st ∨ (step? st).isSome := by
@@ -439,11 +409,10 @@ theorem compile_run_progress (h : compile b Λ π e = .ok ⟨a, c⟩) (m : Nat) 
     | some _ => rfl
     | none => exact absurd hstep (step?_eq_none_iff.mp hs)
 
-/-- **Capture prediction of the compiled program.**  The subject is a run `r`
-from the platform's initial store.  A typed target state with the same
-erasure exists, its store extends the platform's along a renaming `ρ`, and
-its use set is below the translation of the use set the typer found, renamed
-by `ρ`.  `DotMNF.dot_capture_prediction`. -/
+/-- **Capture prediction of the compiled program.**  For a run `r`, a typed
+target state with the same erasure exists.  Its store extends the platform's
+along a renaming `ρ`, and its use set is below the translation of the typer's
+use set, renamed by `ρ`.  `DotMNF.dot_capture_prediction`. -/
 theorem compile_capture_prediction (h : compile b Λ π e = .ok ⟨a, c⟩) {s : Sig}
     {st : State s} (r : Steps (⟨π.plat.store, .nil, c.tm.erase⟩ : State π.sig) st) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename π.sig s),
@@ -452,12 +421,12 @@ theorem compile_capture_prediction (h : compile b Λ π e = .ok ⟨a, c⟩) {s :
           FCdot.CapLe Γ' stt.uses (c.use.translate.rename ρ) :=
   DotMNF.dot_capture_prediction π.plat c.deriv r
 
-/-- **Effect safety of the compiled program.**  The subjects are a platform
-capability `κ`, selected by `hκ` as one the use set the typer found does not
-hold, a run `r` from the platform's initial store, and a variable `x` the
-reached state reads.  Then `κ` is not a root of `x` in the matched target
-state.  `DotMNF.dot_effect_safety`, whose premise on the translated set
-follows from `hκ` by `cvar_mem_translate` and `CaptureSet.elem_iff`. -/
+/-- **Effect safety of the compiled program.**  Let `κ` be a platform
+capability that `hκ` selects as absent from the typer's use set, `r` a run, and
+`x` a variable the reached state reads.  Then `κ` is not a root of `x` in the
+matched target state.  `DotMNF.dot_effect_safety`, whose premise on the
+translated set follows from `hκ` by `cvar_mem_translate` and
+`CaptureSet.elem_iff`. -/
 theorem compile_effect_safety (h : compile b Λ π e = .ok ⟨a, c⟩) {κ : BVar π.sig .cap}
     (hκ : c.use.elem (.cvar κ) = false)
     {s : Sig} {st : State s} (r : Steps (⟨π.plat.store, .nil, c.tm.erase⟩ : State π.sig) st)
@@ -471,12 +440,10 @@ theorem compile_effect_safety (h : compile b Λ π e = .ok ⟨a, c⟩) {κ : BVa
   rw [hκ] at hmem
   exact Bool.noConfusion hmem
 
-/-- **Level safety of the compiled program.**  The subjects are an entry
-`ℓ` of the log of the derivation, a member-free subcapturing `lo <: hi` at
-the context it sits at, and an atom `ρ` that confines `hi` at every depth of
-resolution.  Then `ρ` confines `lo` at every depth too.  The log is computed
-from the derivation by `levelSteps`, and each entry is
-`DotMNF.source_lvl_safety` at its own context. -/
+/-- **Level safety of the compiled program.**  Let `ℓ` be an entry of the log,
+a member-free subcapturing `lo <: hi` at its context, and `ρ` an atom that
+confines `hi` at every depth of resolution.  Then `ρ` confines `lo` at every
+depth too.  Each entry is `DotMNF.source_lvl_safety` at its own context. -/
 theorem compile_lvl_safety (h : compile b Λ π e = .ok ⟨a, c⟩) :
     ∀ ℓ ∈ levelSteps (Platform.ctx_wf π.plat) c.deriv, ∀ (ρ : FCdot.CapAtom ℓ.sig),
       (∀ m, ℓ.ctx.translate.Confined (ℓ.ctx.translate.caps m ℓ.hi.translate) ρ) →
@@ -485,11 +452,10 @@ theorem compile_lvl_safety (h : compile b Λ π e = .ok ⟨a, c⟩) :
 
 end
 
-/-- **What a rejection by a level escape says.**  The subject is the goal
-`C <: D` at the context `Γ` the typer reached, which the verdict names.  No
-member-free subcapturing proves it.  The proof is the certificate the reason
-carries, built by `escape_rejected_at` from `source_lvl_safety`.  It is
-about that goal, not about every derivation of the program. -/
+/-- **What a rejection by a level escape says.**  The goal `C <: D` at the
+context `Γ` the typer reached, which the verdict names, is proved by no
+member-free subcapturing.  The proof is the certificate the reason carries,
+built by `escape_rejected_at` from `source_lvl_safety`. -/
 theorem compile_rejected_goal {b : Budget} {Λ : LabelTable} {π : PlatformNames} {e : STm}
     {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} {ρ : FCdot.CapAtom s}
     {cert : ¬ ∃ d : Subcap Γ C D, d.MemberFree}
@@ -499,26 +465,22 @@ theorem compile_rejected_goal {b : Budget} {Λ : LabelTable} {π : PlatformNames
 
 /-! ## The theorems at a decided compile
 
-A concrete program is compiled by the kernel, so its success is a decided
-test and needs no hypothesis.  These two forms take that test and speak of
-the record the compile returns. -/
+The kernel compiles a concrete program, so its success is a decided test and
+needs no hypothesis. -/
 
 section
 variable {b : Budget} {Λ : LabelTable} {π : PlatformNames} {e : STm}
 
 /-- **The target checker accepts the translation of a program that compiles.**
-`compile_checks` at the record `compile` returns.  For a concrete program the
-premise closes by `decide +kernel`. -/
+`compile_checks` at the record `compile` returns. -/
 theorem compile_checks_get (h : (compile b Λ π e).isOk = true) :
     FCdot.checkTm π.plat.ctx.translate ((compile b Λ π e).get h).2.deriv.translate
       ((compile b Λ π e).get h).2.ty.translate = true :=
   compile_checks (Verdict.get_eq _ h)
 
 /-- **Effect safety of a program that compiles.**  `compile_effect_safety` at
-the record `compile` returns.  The subjects are as there: a capability `κ`
-that `hκ` selects as absent from the use set the typer found, a run `r` and a
-read variable `x`.  For a concrete program both `h` and `hκ` close by
-`decide +kernel`. -/
+the record `compile` returns.  For a concrete program both `h` and `hκ` close
+by `decide +kernel`. -/
 theorem compile_effect_safety_get (h : (compile b Λ π e).isOk = true)
     {κ : BVar π.sig .cap} (hκ : ((compile b Λ π e).get h).2.use.elem (.cvar κ) = false)
     {s : Sig} {st : State s}
@@ -534,10 +496,10 @@ end
 
 /-! ## Checks
 
-The log is computed in the kernel, so whether it is empty is a decided
-fact.  Two open examples of the version show that `compile_lvl_safety`
-speaks: the caller of `freshCell` at `Z1Ctx` and the call `p f` at
-`W2CallCtx`, typed by `synthIn?` at the budgets of `Typer.lean`. -/
+The log is computed in the kernel, so whether it is empty is decided.  Two open
+examples show that `compile_lvl_safety` says something: the caller of
+`freshCell` at `Z1Ctx` and the call `p f` at `W2CallCtx`, typed by `synthIn?`
+at the budgets of `Typer.lean`. -/
 
 section Checks
 
@@ -549,13 +511,12 @@ theorem Z1Ctx_wf : Z1Ctx.Wf := ctxWf?_sound _ (by decide +kernel)
 /-- `W2CallCtx` is well formed. -/
 theorem W2CallCtx_wf : W2CallCtx.Wf := ctxWf?_sound _ (by decide +kernel)
 
-/-- The caller of `freshCell` logs twenty-three member-free subcapturings,
-among them the unpacking's bound and the steps under the closure's scope. -/
+/-- The caller of `freshCell` logs twenty-three member-free subcapturings. -/
 example : (logOf Z1Ctx_wf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn)).length = 23 := by
   decide +kernel
 
-/-- The call `p f` logs six, the subcapturings of the argument's check at
-the domain. -/
+/-- The call `p f` logs six subcapturings, those of the argument's check at the
+domain. -/
 example : (logOf W2CallCtx_wf
     (synthIn? { decls := 0, views := 0, sub := 0, cap := 0, typer := 2, obj := 0 }
       W2CallCtx ps2c (.app (.there .here) .here))).length = 6 := by

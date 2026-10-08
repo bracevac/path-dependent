@@ -1,51 +1,40 @@
 import Coercions.Captures.Frontend.Surface
 
 /-!
-# The surface notation of the Captures front end
+# Surface notation
 
 Four syntax categories, `capCap`, `capTy`, `capTm` and `capDefs`, and four
 entry points, `capCap%`, `capTy%`, `cap%` and `capDefs%`, expand the paper's
-notation into a constructor application of `SCap`, `SType`, `STm` or
-`SDefs`.  Nothing else happens here: names stay strings, no label is
-interned and no de Bruijn index is computed, which is `Resolve.lean`'s
-work.  The vanilla rules of `lean/Coercions/Frontend/Notation.lean` are kept
-at their precedences.  The added rules are the capture set, the capture
-member, the box former, the unboxing term and the ascription.
+notation into constructor applications of `SCap`, `SType`, `STm` and
+`SDefs`.  Names stay strings.  Labels and de Bruijn indices are the work of
+`Resolve.lean`.
+
+The rules of `lean/Coercions/Frontend/Notation.lean` are kept at their
+precedences.  New are the capture set, the capture member, the box `□`, the
+unboxing `⊸` and the ascription `(t : T)`, which is a term followed by a
+colon and a type in parentheses.
 
 ## Precedence
 
-`^` sits at 60, looser than `∧` at 65, so an intersection closes first and a
-written set applies to the whole shape: `{a : ⊤} ∧ {b : ⊤} ^ {k1}` puts the
-set on the whole object, which is what a self annotation needs.  If `^` bound
-tighter, the set would land on `b` alone.  A `∀`'s body is read at 60, as in
-the vanilla file, so it reaches as far right as it can: `∀(u : ⊤) ⊤ ^ {f}`
-puts the set on the codomain, and a written `(∀(u : ⊤) ⊤) ^ {f}` needs its
-parentheses to put the set on the whole function instead.
+`^` sits at 60, looser than `∧` at 65, so a written set applies to the whole
+intersection: `{a : ⊤} ∧ {b : ⊤} ^ {k1}` puts the set on the whole object.
+A `∀` body is read at 60, so `∀(u : ⊤) ⊤ ^ {f}` puts the set on the codomain.
+`(∀(u : ⊤) ⊤) ^ {f}` puts it on the function.
 
-## Capture atoms, no new keyword
+## Capture atoms
 
-A capture set is a comma separated list of identifiers, read apart by the
-same `nameParts` the vanilla file uses for a dotted name.  One component
-named `any` is the atom `SCapAtom.any`.  Any other one component is a name.
-Two components `x.C` are a capture member selection.  Three or more are
-rejected.  `any` never enters Lean's token table, so `CapAtom.any` and
-`List.any` stay usable in every importing module, and a surface program is
-free to use `any` as an ordinary variable name anywhere outside a capture
-set.
-
-## The two new glyphs
-
-`□` and `⊸` are the version's own, read at `SType.box`/`STm.box` and
-`STm.unbox`.  The ascription `(t : T)` has no glyph of its own.  It is the
-parenthesis form of a term followed by a colon and a type, which the
-vanilla grammar left unused since the calculus has no such term.
+A capture set is a comma separated list of identifiers.  One component named
+`any` is `SCapAtom.any`, any other single component is a name, and `x.C` is a
+capture member selection.  Longer names are rejected.  `any` is not a keyword,
+so `CapAtom.any` and `List.any` stay usable and a program may call a variable
+`any` outside capture sets.
 -/
 
 namespace CapturesFrontend
 
 open Lean
 
-/-! ## The four categories -/
+/-! ## Categories -/
 
 declare_syntax_cat capCap
 declare_syntax_cat capTy
@@ -69,8 +58,8 @@ syntax:max "{" ident "^" " : " capCap ".." capCap "}" : capTy
 syntax:max ident : capTy
 /-- `μ(x. T)`, a recursive self type. -/
 syntax:max "μ" "(" ident "." capTy ")" : capTy
-/-- `∀(x : S) T`, a dependent function shape.  The body reaches as far
-right as it can, so it is read at 60, the level of `^` below. -/
+/-- `∀(x : S) T`, a dependent function shape.  The body is read at 60, the
+level of `^`. -/
 syntax:max "∀" "(" ident " : " capTy ")" capTy:60 : capTy
 /-- `S ∧ T`, an intersection, right leaning. -/
 syntax:65 capTy:66 " ∧ " capTy:65 : capTy
@@ -102,7 +91,7 @@ syntax:max "(" capTm " : " capTy ")" : capTm
 /-- Parentheses. -/
 syntax:max "(" capTm ")" : capTm
 
-/-- `{type A = T}`, a type member definition, the vanilla departure. -/
+/-- `{type A = T}`, a type member definition. -/
 syntax:max "{" "type" ident " = " capTy "}" : capDefs
 /-- `{C^ = c}`, a capture member definition. -/
 syntax:max "{" ident "^" " = " capCap "}" : capDefs
@@ -120,7 +109,7 @@ syntax:max "cap% " capTm : term
 /-- Expand a `capDefs` into an `SDefs`. -/
 syntax:max "capDefs% " capDefs : term
 
-/-! ## Taking a hierarchical identifier apart, as in the vanilla file -/
+/-! ## Names -/
 
 /-- The components of a name, outermost first, as strings. -/
 def nameParts : Name → List String → List String
@@ -128,16 +117,13 @@ def nameParts : Name → List String → List String
   | .str p s, acc => nameParts p (s :: acc)
   | .num p i, acc => nameParts p (toString i :: acc)
 
-/-- The receiver and the label of a name in type position.  Only a two
-component name is a type, since the one type a name can build is the
-selection `x.A`. -/
+/-- The receiver and label of a name in type position.  Only `x.A` is a type. -/
 def tySelName (n : Name) : Option (String × String) :=
   match nameParts n [] with
   | [recv, lbl] => some (recv, lbl)
   | _ => none
 
-/-- The reading of a name in a capture set: `any`, a plain name, or the
-selection `x.C`.  Longer names are rejected. -/
+/-- The reading of a name in a capture set. -/
 def capAtomName (n : Name) : Option SCapAtom :=
   match nameParts n [] with
   | ["any"] => some .any
@@ -226,10 +212,7 @@ macro_rules
       `(SDefs.trm $(quote a.getId.toString) (cap% $t))
   | `(capDefs% $d:capDefs ∧ $e:capDefs) => `(SDefs.and (capDefs% $d) (capDefs% $e))
 
-/-! ## One check per new surface form, and the vanilla forms renamed
-
-Every check reduces in the kernel, so `by decide` is the right tactic, as it
-is throughout `Surface.lean`. -/
+/-! ## Checks -/
 
 example : (capCap% {}) = ([] : SCap) := by decide
 
@@ -243,21 +226,19 @@ example :
 
 example : capTy% □(⊤ ^ {f}) = SType.box (SType.capt SType.top [SCapAtom.name "f"]) := by decide
 
-/-- `^` is looser than `∧`, so the set sits on the whole intersection, not
-on `b` alone: the fix of the design note's own precedence. -/
+/-- `^` is looser than `∧`, so the set sits on the whole intersection. -/
 example :
     capTy% {a : ⊤} ∧ {b : ⊤} ^ {k1} =
       SType.capt (SType.and (SType.fld "a" SType.top) (SType.fld "b" SType.top))
         [SCapAtom.name "k1"] := by
   decide
 
-/-- A `∀`'s body reaches as far right as it can, so the set lands on the
-codomain. -/
+/-- The set lands on the codomain. -/
 example :
     capTy% ∀(u : ⊤) ⊤ ^ {f} = SType.all "u" SType.top (SType.capt SType.top [SCapAtom.name "f"]) := by
   decide
 
-/-- Parentheses around the whole function put the set there instead. -/
+/-- Parentheses put the set on the function. -/
 example :
     capTy% (∀(u : ⊤) ⊤) ^ {f} =
       SType.capt (SType.all "u" SType.top SType.top) [SCapAtom.name "f"] := by
@@ -271,8 +252,7 @@ example : cap% (e : ⊤) = STm.asc (STm.var "e") SType.top := by decide
 
 example : capDefs% {C^ = {k1}} = SDefs.cap "C" [SCapAtom.name "k1"] := by decide
 
-/-- `any` is a name to the lexer and an atom to the macro: no new keyword,
-so `CapAtom.any` and `List.any` stay usable in every importing module. -/
+/-- `any` is a name to the lexer and an atom to the macro. -/
 example : capAtomName `any = some .any := by decide
 
 example : capAtomName `x.C = some (.sel "x" "C") := by decide
@@ -280,7 +260,7 @@ example : capAtomName `x.C = some (.sel "x" "C") := by decide
 /-- Three or more components are rejected as a capture atom. -/
 example : capAtomName `x.y.z = none := by decide
 
-/-! ### The vanilla forms, renamed -/
+/-! ### Forms of the vanilla notation -/
 
 example : (cap% x) = STm.var "x" := by decide
 
@@ -292,8 +272,7 @@ example : (cap% ( f x ).a) = STm.proj (.app (.var "f") (.var "x")) "a" := by dec
 
 example : (capTy% x.A) = SType.sel "x" "A" := by decide
 
-/-- The rejected undotted name in type position: a bare `x` is never a
-type.  Writing `capTy% x` in a term fails the build at this message. -/
+/-- A bare `x` is never a type. -/
 example : tySelName `x = none := by decide
 
 example : tySelName `x.a.A = none := by decide
@@ -306,31 +285,27 @@ example : nameParts `x.a [] = ["x", "a"] := by decide
 
 example : nameParts `x.a.b [] = ["x", "a", "b"] := by decide
 
-/-! ## The version's programs
+/-! ## Example programs
 
-C7, C2, S3, S1 and S2 of the version's `DotMNF/Examples.lean`, and the ten
-vanilla examples E1 to E10 of the vanilla front end's `Resolve.lean`, with
-the prefix renamed.  Here the programs only have to parse.  Resolution and
-the comparison against the version's own terms are in `Resolve.lean`. -/
+C7, C2, S3, S1 and S2 of `DotMNF/Examples.lean`, and E1 to E10 of the vanilla
+front end.  Here they only have to parse.  `Resolve.lean` resolves them. -/
 
-/-- C7, a container of boxed capabilities, with the term level boxes and
-the unboxing written out by hand. -/
+/-- C7, a container of boxed capabilities, with boxes and unboxing written out. -/
 def C7src : STm :=
   cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). λ(f2 : (∀(u : ⊤) ⊤) ^ {k2}).
         let o = ν(z : {e1 : □((∀(u : ⊤) ⊤) ^ {k1})} ∧ {e2 : □((∀(u : ⊤) ⊤) ^ {k2})}.
                    {e1 = □ f1} ∧ {e2 = □ f2})
         in let e = o.e1 in {k1} ⊸ e
 
-/-- C7 as box inference accepts it: no `□` and no `⊸` in terms, the field
-boxes and the unboxing are left to box inference. -/
+/-- C7 without `□` and `⊸` in terms, left to box inference. -/
 def C7nbSrc : STm :=
   cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). λ(f2 : (∀(u : ⊤) ⊤) ^ {k2}).
         let o = ν(z : {e1 : □((∀(u : ⊤) ⊤) ^ {k1})} ∧ {e2 : □((∀(u : ⊤) ⊤) ^ {k2})}.
                    {e1 = f1} ∧ {e2 = f2})
         in let e = o.e1 in (e : (∀(u : ⊤) ⊤) ^ {k1})
 
-/-- C2, explicit capture polymorphism, the client's call in direct style:
-`x.run u` is let-inserted by `Resolve.lean` into `let % = x.run in % u`. -/
+/-- C2, explicit capture polymorphism.  `Resolve.lean` let-inserts `x.run u`
+as `let % = x.run in % u`. -/
 def C2src : STm :=
   cap% let c = λ(x : (μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}})) ^ {k1, k2}).
                 λ(u : ⊤). x.run u in
@@ -340,17 +315,15 @@ def C2src : STm :=
                  {C^ = {k2}} ∧ {run = λ(u : ⊤). u}) in
       let ga = c a in let gb = c b in gb
 
-/-- S3, a type member at a boxed capturing type, the term level box and
-the unboxing written out by hand. -/
+/-- S3, a type member at a boxed capturing type, with box and unboxing written out. -/
 def S3src : STm :=
   cap% λ(f : (∀(u : ⊤) ⊤) ^ {k1}).
         let o = ν(z : {A : (∀(u : ⊤) ⊤) ^ {f} .. (∀(u : ⊤) ⊤) ^ {f}} ∧ {elem : z.A}.
                    {type A = (∀(u : ⊤) ⊤) ^ {f}} ∧ {elem = □ f})
         in let e = o.elem in {f} ⊸ e
 
-/-- S3 with no term level box: the member's own value is the bare
-capability, and box inference has to recover the box at the field.  The
-checking point is an ascription rather than a written unboxing. -/
+/-- S3 without a term level box.  Box inference recovers it at the field, and
+an ascription is the checking point. -/
 def S3nbSrc : STm :=
   cap% λ(f : (∀(u : ⊤) ⊤) ^ {k1}).
         let o = ν(z : {A : (∀(u : ⊤) ⊤) ^ {f} .. (∀(u : ⊤) ⊤) ^ {f}} ∧ {elem : z.A}.
@@ -359,9 +332,8 @@ def S3nbSrc : STm :=
 
 /-- S1, `withFile` with an explicit capture parameter over the platform
 capability `k1`.  `File := μ(file. {read : (∀(u : ⊤) ⊤) ^ {file}})`.  The
-signature is bound by an ascription, not by a `let` annotation, which
-would type the result of the whole `let`.  The ascription is what a checking
-clause `λ` against `∀` reaches. -/
+signature is an ascription, because a `let` annotation types the result of
+the whole `let`. -/
 def S1src : STm :=
   cap% let withFile =
         (λ(cp : (μ(c. {C^ : {}..{k1}})) ^ {}).
@@ -376,9 +348,8 @@ def S1src : STm :=
       let r = g op in
       r
 
-/-- S2, a class with a capture-set parameter carried as a capture member
-and `any` in the result.  The signature is bound by ascription the same
-way. -/
+/-- S2, a class with a capture-set parameter carried as a capture member and
+`any` in the result.  The signature is an ascription. -/
 def S2src : STm :=
   cap% let mk =
         (λ(u : ⊤). let it = ν(i : {C^ : {k1}..{k1}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}.
@@ -388,7 +359,7 @@ def S2src : STm :=
     let un = (λ(y : ⊤). y : ⊤) in
     let it = mk un in let n = it.next in let r = n un in r
 
-/-! ### E1 to E10, the vanilla examples, prefix renamed -/
+/-! ### E1 to E10 -/
 
 /-- `λ(x : {A : ⊤..⊥}). let y : {B : {a : ⊤}..{a : ⊤}} = x in y`. -/
 def E1src : STm :=
@@ -438,8 +409,7 @@ def E8src : STm :=
 def E9src : STm :=
   cap% λ(x : {A : ⊥ .. {a : ⊤}}). λ(y : x.A). y.a
 
-/-- `λ(f : ⊤). λ(g : ⊤). f (g f)`, not already in monadic normal form: the
-operand `g f` is let-inserted. -/
+/-- `λ(f : ⊤). λ(g : ⊤). f (g f)`, where the operand `g f` is let-inserted. -/
 def E10src : STm :=
   cap% λ(f : ⊤). λ(g : ⊤). f (g f)
 

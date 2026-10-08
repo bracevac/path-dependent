@@ -5,87 +5,71 @@ import Coercions.Captures.Frontend.Pretty
 # The examples end to end
 
 The surface programs of `Notation.lean` and `Typer.lean` are taken through
-the whole front end and compared with the hand written derivations of
-`lean/Coercions/Captures/DotMNF/Examples.lean`.  The pure programs E1 to E11
-run over the empty platform.  The capture programs run over the platform
-`πc` of `Resolve.lean`, two capabilities named `k1` and `k2`, which are the
-version's `κ₁` and `κ₂`.  In S1 and S2, `k1` plays the file system `fs`.
+the whole front end and compared with the hand-written derivations of
+`DotMNF/Examples.lean`.  The pure programs E1 to E11 run over the empty
+platform.  The capture programs run over the platform `πc` of `Resolve.lean`,
+two capabilities `k1` and `k2`, which are the version's `κ₁` and `κ₂`.  In S1
+and S2, `k1` plays the file system `fs`.
 
-## What is compared
-
-Four things, all decidable.  The term the resolver returns, or the term the
-typer elaborated when box inference inserted something.  The use set and
-the type the typer found.  The verdict of the target checker on the
-translation of the derivation.  The verdict of the target checker on the
-use set evidence the translation emits.  Derivations themselves are not
-compared.  `DotMNF.HasTy` is `Type` valued data with no decidable equality,
-and the typer may reach a judgment by another route than the version's
-hand written derivation.
-
-No term, use set or type of the version is copied.  `tmOfDeriv`,
-`usesOfDeriv` and `tyOfDeriv` read them off the version's derivations, so
-the version's examples are the standard of comparison.
-
-## Four checks per program
+## What is checked
 
 Every function of the front end is structural, so the kernel reduces
-resolution, the typer and the machine.
+resolution, the typer and the machine.  For each program:
 
-The first check is the term, by `decide`.  For a program written with its
-boxes it is the resolved term.  For a program that leaves its boxes to box
-inference it is the erasure of the elaborated term, by `decide +kernel`,
-since it runs the typer.  The second check is the use set and the type, by
-`decide +kernel`.  The third runs the target checker on the translation and
-on the use set evidence, through `expect`.  The fourth is the theorem
-`Ek_checks`, which is `compile_checks_get` at the program.  Its premise,
-that the program compiles, is the theorem `Ek_compiles`, closed by
-`decide +kernel`.  So `Ek_checks` holds with no hypothesis.
+- The term, by `decide`.  This is the resolved term, or for a program that
+  leaves its boxes to box inference, the erasure of the elaborated term (by
+  `decide +kernel`, since it runs the typer).
+- The use set and the type the typer found, by `decide +kernel`.
+- The target checker's verdict on the translation of the derivation and on
+  the use set evidence, through `expect`.
+- The theorem `Ek_checks`, which is `compile_checks_get` at the program.  Its
+  premise, that the program compiles, is `Ek_compiles`, closed by
+  `decide +kernel`.  So `Ek_checks` has no hypothesis.
 
-## The budgets
+Derivations are not compared, since `DotMNF.HasTy` is data with no decidable
+equality and the typer may reach a judgment by another route.  No term, use
+set or type is copied from the version: `tmOfDeriv`, `usesOfDeriv` and
+`tyOfDeriv` read them off its derivations.
 
-A budget is one at which the program is found.  The budgets of E1 to E8 and
-of the capture programs are the ones `Typer.lean` found.  The budgets of E9,
-E10t and E11 were found here the same way: the least typer fuel at
-`(decls 3, views 3, sub 6)`, then each other counter lowered on its own.
-A budget is not claimed least.  A check one unit short says only that the
-program is not found there.
+## Budgets
 
-## The rows
+Each program has a budget at which it is found.  The budget is not claimed to
+be least.  A check one unit short says only that the program is not found
+there.
 
-E1 to E8 are the vanilla programs at pure capture sets.  E9 is the upper
-view step.  E10 is let insertion at a nested application, rejected because
-its operator is a variable at `⊤`.  E10t is E10 at function types and is
+## The programs
+
+E1 to E8 are the vanilla programs at pure capture sets.  E9 is the upper view
+step.  E10 is let insertion at a nested application, rejected because its
+operator is a variable at `⊤`.  E10t is E10 at function types and is
 accepted.  E11 applies E10t twice and runs.
 
 C7 is a container of two boxed capabilities.  It is taken three ways: with
-its boxes and its unboxing written, with no box in any term, and in the form
-a Scala program has, where the element is called where it is read.  S3 is a
+its boxes and unboxing written, with no box in any term, and in the form a
+Scala program has, where the element is called where it is read.  S3 is a
 type member at a boxed capturing type, with its box written and without it.
-C2 is capture polymorphism by a capture member.  S1 is `withFile`, a
-function that takes a capture parameter.  S2 is a class with a capture set
-parameter and `any` in its result.  S1 and S2 bind their signatures by an
-ascription.  C2 is taken twice, with its client ascribed at the version's
-type and as `Notation.lean` writes it.  C5 is the caller of S2's `mk`,
-typed at the version's own open context.
+C2 is capture polymorphism by a capture member.  It is taken with its client
+ascribed at the version's type and as `Notation.lean` writes it.  S1 is
+`withFile`, a function that takes a capture parameter.  S2 is a class with a
+capture set parameter and `any` in its result.  S1 and S2 bind their
+signatures by an ascription.  C5 is the caller of S2's `mk`, typed at the
+version's own open context.
 
-## The least judgments and the effect theorems
+## Least judgments and effect theorems
 
 Without the ascriptions that name the version's types, the typer finds the
-least use set.  S1 as `Typer.lean` writes it without an ascription is typed
-at `{}`, since its operation never calls the file.  C2 as `Notation.lean`
-writes it is typed at `{k2}`, since its answer is the client at `b`, whose
-member is `{k2}`.  Both use sets are decided here.  So
-`compile_effect_safety_get` at these programs says that a run of S1 never
-reads a variable rooted at `k1`, the file system, and that a run of C2 never
-reads one rooted at `k1`.  The two theorems state it of the version's own
-terms `S1tm` and `C2tm`, which the elaborated terms equal.
+least use set.  S1 without an ascription is typed at `{}`, since its
+operation never calls the file.  C2 as `Notation.lean` writes it is typed at
+`{k2}`, since its answer is the client at `b`, whose member is `{k2}`.
+`compile_effect_safety_get` at these programs says that a run of S1 or of C2
+never reads a variable rooted at `k1`, which is the file system in S1.  The theorems state this of the
+version's terms `S1tm` and `C2tm`, which the elaborated terms equal.
 
-## The run tests
+## Run tests
 
-The file closes with the machine.  S2 and C2 are run from the platform's
-initial store, printed by the unparser with the platform's own names, and
-pinned at the step count at which they become final.  E11 is run beside them
-over the empty platform.
+S2 and C2 are run from the platform's initial store, printed with the
+platform's names, and pinned at the step count at which they become final.
+E11 is run beside them over the empty platform.
 -/
 
 namespace CapturesFrontend
@@ -102,18 +86,18 @@ open Captures.DotMNF.Examples
 /-! ## Reading a derivation of the version -/
 
 /-- The term a derivation of the version is about.  `usesOfDeriv` and
-`tyOfDeriv` of `Typer.lean` read its use set and its type. -/
+`tyOfDeriv` of `Typer.lean` read its use set and type. -/
 def tmOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
     (_ : HasTy U Γ t T) : Tm s := t
 
 /-! ## The decidable things -/
 
-/-- The resolved term, erased into the frozen syntax. -/
+/-- The resolved term, erased. -/
 def compiledTm (Λ : LabelTable) (π : PlatformNames) (e : STm) : Option (Tm π.sig) :=
   (resolveTop Λ π e).map ATm.erase
 
 /-- The elaborated term, erased.  It differs from the resolved one when box
-inference inserted something. -/
+inference inserts something. -/
 def elaboratedTm (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm) :
     Option (Tm π.sig) :=
   (compile b Λ π e).map fun r => r.2.tm.erase
@@ -123,15 +107,15 @@ def compiledJudgment (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : ST
     Option (CaptureSet π.sig × Ty π.sig) :=
   (compile b Λ π e).map fun r => (r.2.uses, r.2.ty)
 
-/-- The target checker's verdict on the translation of the derivation, and
-`false` when the front end returned nothing. -/
+/-- The target checker's verdict on the translation of the derivation, or
+`false` when the program does not compile. -/
 def compiledVerdict (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm) : Bool :=
   match compile b Λ π e with
   | some r => FCdot.checkTm π.plat.ctx.translate r.2.deriv.translate r.2.ty.translate
   | none => false
 
 /-- The target checker's verdict on the use set evidence the translation
-emits, and `false` when the front end returned nothing. -/
+emits, or `false` when the program does not compile. -/
 def compiledUsesVerdict (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm) : Bool :=
   match compile b Λ π e with
   | some r =>
@@ -139,9 +123,8 @@ def compiledUsesVerdict (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e :
         r.2.uses.translate
   | none => false
 
-/-- What `compile_checks_get` concludes at a program that compiles: the
-target checker accepts the translation of the derivation the compile
-returned. -/
+/-- What `compile_checks_get` concludes at a program that compiles: the target
+checker accepts the translation of its derivation. -/
 def CheckerAccepts (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm)
     (h : (compile b Λ π e).isSome = true) : Prop :=
   FCdot.checkTm π.plat.ctx.translate ((compile b Λ π e).get h).2.deriv.translate
@@ -277,9 +260,9 @@ theorem E5_checks : CheckerAccepts bE5 Λc .empty E5src E5_compiles :=
 
 /-! ## E6: a field typed at its own literal's member
 
-The version types `E6` under the context that binds `n`.  The surface
-program is that term under the `λ` that binds `n`, and the comparison
-carries the same `λ` on both sides. -/
+The version types `E6` under the context that binds `n`.  The surface program
+is that term under a `λ` that binds `n`, and the comparison has the same `λ`
+on both sides. -/
 
 /-- The budget of E6. -/
 def bE6 : Budget := { decls := 1, views := 2, sub := 2, typer := 6 }
@@ -396,13 +379,13 @@ theorem E9_checks : CheckerAccepts bE9 Λc .empty E9src E9_compiles :=
 
 /-! ## E10: let insertion at a nested application
 
-The operand `g f` is not a variable, so `atomize` binds it, and the
-resolved term is the let expanded one.  The typer must reject the program.
-The operator is a variable at `⊤`, and no view of a variable at `⊤` is a
-`∀`.  The second check raises every counter well past the largest budget of
-this file.  E10 has no `_checks` theorem, since it does not compile. -/
+The operand `g f` is not a variable, so `atomize` binds it, and the resolved
+term is the let-expanded one.  The typer rejects the program: the operator is
+a variable at `⊤`, and no view of a variable at `⊤` is a `∀`.  The second
+check raises every counter well past the largest budget of this file.  E10
+has no `_checks` theorem, since it does not compile. -/
 
-/-- The budget E10 is rejected at, the default of `Budget`. -/
+/-- The budget E10 is rejected at, the default `Budget`. -/
 def bE10 : Budget := {}
 
 example : compiledTm Λc .empty E10src = some E10ann.erase := by decide
@@ -414,10 +397,9 @@ example : (compile { decls := 8, views := 8, sub := 16, typer := 24 } Λc .empty
 
 /-! ## E10t: the same program at function types
 
-E10 with `∀(x : ⊤) ⊤` at both binders.  It inserts the same binding, it
-typechecks, and the target checker accepts the translation.  So the
-inserted `let` is carried through the typer, the translation and the
-checker. -/
+E10 with `∀(x : ⊤) ⊤` at both binders.  It inserts the same binding and
+typechecks, and the target checker accepts the translation.  So the inserted
+`let` goes through the typer, the translation and the checker. -/
 
 /-- `λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)`. -/
 def E10tsrc : STm :=
@@ -434,8 +416,7 @@ def E10ttm : Tm [] :=
 /-- `∀(f : ⊤ → ⊤) ∀(g : ⊤ → ⊤) ⊤`, every set empty. -/
 def E10tty : Ty [] := (Shape.all E10tArr ((Shape.all E10tArr unitTy) ^ [])) ^ []
 
-/-- The budget of E10t.  One unit of the search, for the argument of each
-application. -/
+/-- The budget of E10t.  One unit of search per application argument. -/
 def bE10t : Budget := { decls := 0, views := 0, sub := 1, typer := 5 }
 
 example : compiledTm Λc .empty E10tsrc = some E10ttm := by decide
@@ -448,8 +429,7 @@ example : compiledJudgment bE10t Λc .empty E10tsrc = some ([], E10tty) := by de
 #eval expect (compiledUsesVerdict bE10t Λc .empty E10tsrc)
   "E10t: the target checker rejects the use set evidence"
 
-/-- With no unit of the search, the argument is never seen below the
-domain. -/
+/-- With no unit of search, the argument is not seen below the domain. -/
 example : (compile { bE10t with sub := 0 } Λc .empty E10tsrc).isSome = false := by
   decide +kernel
 
@@ -462,9 +442,9 @@ theorem E10t_checks : CheckerAccepts bE10t Λc .empty E10tsrc E10t_compiles :=
 
 /-! ## E11: a pure program that runs
 
-E10t applied twice to the identity, in direct style.  The resolver
-atomizes the operator as well as the operand, and the machine reduces
-through the bindings it inserted. -/
+E10t applied twice to the identity, in direct style.  The resolver atomizes
+the operator as well as the operand, and the machine reduces through the
+inserted bindings. -/
 
 /-- `let i = λ(x : ⊤). x in (λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)) i i`. -/
 def E11src : STm :=
@@ -492,10 +472,10 @@ theorem E11_checks : CheckerAccepts bE11 Λc .empty E11src E11_compiles :=
 /-! ## C7: a container of boxed capabilities, boxes written
 
 The fields check by the box rule, and the client unboxes at `{k1}`.  Box
-inference leaves the program as written.  The version's derivation is
+inference leaves the program unchanged.  The version's derivation is
 `C7_typed`. -/
 
-/-- The budget of C7, in each of its three forms but the Scala one. -/
+/-- The budget of C7, in all forms except the Scala one. -/
 def bC7 : Budget := { decls := 0, views := 2, sub := 2, typer := 8 }
 
 example : compiledTm Λc πc C7src = some (tmOfDeriv C7_typed) := by decide
@@ -523,7 +503,7 @@ theorem C7_checks : CheckerAccepts bC7 Λc πc C7src C7_compiles :=
 
 The fields are written `{e1 = f1}` and `{e2 = f2}` and the client is an
 ascription.  Box inference inserts `□ f1` and `□ f2` at the fields and
-`{k1} ⊸ e` at the ascription, and the elaborated term is the version's. -/
+`{k1} ⊸ e` at the ascription.  The elaborated term is the version's. -/
 
 example : compiledTm Λc πc C7nbSrc ≠ some (tmOfDeriv C7_typed) := by decide
 
@@ -549,10 +529,10 @@ theorem C7nb_checks : CheckerAccepts bC7 Λc πc C7nbSrc C7nb_compiles :=
 
 /-! ## C7 in the form a Scala program has
 
-No box is written, and the element is called where it is read,
-`let e = o.e1 in e u`.  The variable `e` has a box view and no function
-view, so box inference binds `{k1} ⊸ e` before the call.  The version has
-no derivation of this form, so the term and the type are written out. -/
+No box is written, and the element is called where it is read, `let e = o.e1
+in e u`.  The variable `e` has a box view and no function view, so box
+inference binds `{k1} ⊸ e` before the call.  The version has no derivation of
+this form, so the term and type are written out. -/
 
 /-- The elaborated Scala form, erased:
 `λ(f1). λ(f2). λ(u). let o = … in let e = o.e1 in let e' = {k1} ⊸ e in e' u`. -/
@@ -564,8 +544,7 @@ def C7scalaTm : Tm ([],c,c) :=
             .here)
           (.app .here (.there (.there (.there .here))))))))))))
 
-/-- Its type: the innermost function holds `{k1}`, the two outer ones
-nothing. -/
+/-- Its type: the innermost function holds `{k1}`, the two outer ones nothing. -/
 def C7scalaTy : Ty ([],c,c) :=
   (Shape.all (capTy k1) ((Shape.all (capTy (.there .here))
     ((Shape.all unitTy unitTy) ^ [CapAtom.cvar (.there (.there (.there .here)))])) ^ [])) ^ []
@@ -788,12 +767,11 @@ theorem S2_checks : CheckerAccepts bS2 Λc πc S2src S2_compiles :=
 
 /-! ## C5: the caller of `mk`, at the version's own context
 
-C5 is typed by the version at `S2Ctx3`, where `mk`, `un` and `it` are
-bound.  It does not go through `compile`, which is closed over a platform.
-It goes through `synthIn?` at that context.  The typer finds the least
-judgment, `{it, it.C}` and `⊤ ^ {it.C}`.  One `sub`, found by the search,
-reaches the version's judgment.  The checker theorem is composed here from
-the same two results `compile_checks` composes. -/
+The version types C5 at `S2Ctx3`, where `mk`, `un` and `it` are bound.  C5
+does not go through `compile`, which is closed over a platform, but through
+`synthIn?` at that context.  The typer finds the least judgment, `{it, it.C}`
+and `⊤ ^ {it.C}`.  One `sub` reaches the version's judgment.  The checker
+theorem composes the same two results as `compile_checks`. -/
 
 /-- The resolved C5, `let n = it.next in let r = n un in r`. -/
 def C5ann : ATm ([],c,c,x,x,x) :=
@@ -843,12 +821,11 @@ theorem C5_checks :
 
 /-! ## The effect theorems
 
-`compile_effect_safety_get` at S1 unascribed and at C2.  Each subject is a
-run `r` of the version's term from the platform's initial store, and a
-variable `x` the reached state reads.  The capability is `k1`.  Its premise,
-that the use set the typer found does not hold `k1`, is decided by the
-kernel.  The run is moved onto the elaborated term by the decided equation
-between that term and the version's. -/
+`compile_effect_safety_get` at S1 unascribed and at C2.  Each statement is
+about a run of the version's term from the platform's initial store and a
+variable the reached state reads.  The premise, that the use set the typer
+found does not hold `k1`, is decided by the kernel.  The run moves onto the
+elaborated term by the decided equation between it and the version's. -/
 
 /-- **S1 never reads the file system.**  Along any run of `S1tm` from the
 platform's initial store, a variable the reached state reads is not rooted
@@ -880,10 +857,8 @@ theorem C2_never_reads_k1 {s : Sig} {st : State s}
 
 /-! ## The run tests
 
-`compileAndRun` at a step budget of 32, printed by the unparser with the
-platform's own names.  Each run is printed and then pinned at the step count
-at which it becomes final, so that a change to the machine or to the printer
-fails the build rather than changing a line of the log.
+`compileAndRun` at a step budget of 32, printed with the platform's names.
+Each run is pinned at the step count at which it becomes final.
 
 S2 answers with `un`, the identity it passed to the iterator, in fifteen
 steps.  C2 answers with the client at `b` in twelve.  E11 answers with the
@@ -895,8 +870,8 @@ def runBudget : Nat := 32
 /-- The names of `πc`, outermost first. -/
 def πcNames : List String := ["k1", "k2"]
 
-/-- Whether the driver's answer is a final state, and `false` when the
-program did not compile. -/
+/-- Whether the driver's answer is a final state, or `false` when the program
+does not compile. -/
 def runFinal? (b : Budget) (m : Nat) (π : PlatformNames) (e : STm) : Bool :=
   match compileAndRun b m Λc π e with
   | some r => final? r.2

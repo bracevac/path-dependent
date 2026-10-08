@@ -4,66 +4,40 @@ import Coercions.Paths.Frontend.Pretty
 /-!
 # The examples end to end
 
-Every program of `Notation.lean` is taken through the whole front end here
-and compared with the derivations of `lean/Coercions/Paths/DotMNF/Examples.lean`.
-That is the twenty-five programs of the version that the notation can write,
-gDOT's Fig. 2 and pDOT's Fig. 1 among them, and three programs about the
-restrictions of the version, R1, R2 and R7.
+Every program of `Notation.lean` goes through the whole front end and is
+compared with the derivations of `lean/Coercions/Paths/DotMNF/Examples.lean`.
+These are the twenty-five programs of that file that the notation can write,
+gDOT's Fig. 2 and pDOT's Fig. 1 among them, and three more, R1, R2 and R7.
 
-## Four checks per program
+Each program has four checks.
 
-The first is the term the resolver returns, erased, against the version's
-term, by `decide`.  This is also the test of `let` insertion.
+* The erased term the resolver returns equals the term of the reference
+  derivation, by `decide`.  This also tests `let` insertion.
+* The synthesized type equals the type the reference derivation concludes, by
+  `decide +kernel`.  Derivations are not compared, since `HasTy` has no
+  decidable equality and the typer may take another route.  `versionTerm` and
+  `versionTy` read the subject and the conclusion off the reference derivation.
+* The target checker accepts the translation, run through `expect`.
+* `Ek_checks` is the theorem `compile_checks_get` at the program.  It takes no
+  hypothesis.  `Ek_compiles`, that `compile` succeeds, is the one fact it needs.
+  The kernel decides it because the resolver and the typer are structural.
 
-The second is the type the typer synthesizes against the type the version's
-derivation concludes, by `decide +kernel`.  Derivations themselves are not
-compared.  `Paths.DotMNF.HasTy` is `Type` valued data with no decidable
-equality, and the typer reaches the same judgment by another route in
-several places.  `versionTerm` and `versionTy` read the subject and the
-conclusion off the version's derivation, so no term and no type of the
-version is copied into this file.
+Each program runs at the budget measured in `Typer.lean`, `bE1` to `bR2`.
 
-The third is the verdict of the target checker on the translation of the
-derivation, run through `expect`.  It is run and not only proved, so the
-checker and the translation are seen to agree on the concrete program.
+X3, E6 and X4 are typed in `Paths.DotMNF.Examples` under a context.  Here they
+are written closed, the context entry becomes a lambda, and term and type are
+compared under it.
 
-The fourth is `Ek_checks`, the pipeline theorem `compile_checks_get` at the
-program.  It takes no hypothesis.  `Ek_compiles` is the one decided fact it
-needs, that `compile` succeeds, and the kernel decides it because the
-resolver and the typer are structural.
+R1 and R2 are not in `Paths.DotMNF.Examples`.  They pass a variable of type
+`f.type` where its alias's type is wanted, through a type member whose bounds
+are singletons.  No rule replaces a path by its alias, but `Sub.selLower` and
+`Sub.selUpper` relate the two through the member, so both compile.  R7, `h x.a.b`,
+does not.  `let` insertion binds the prefix `x.a` to a fresh variable,
+and the selection read through it no longer matches the function's domain.
 
-## The budgets
-
-Each program runs at the budget `Typer.lean` measured for it, `bE1` to `bR2`.
-There each budget is shown least in each of its counters on its own, with the
-others kept.  That is a fact about the budget found, and it is not a claim that
-the program fails at every smaller budget, since only the typer's own fuel is
-monotone.
-
-## Closed and open
-
-X3, E6 and X4 are typed by the version under a context.  Here they are
-written closed, the context entry becoming a lambda, and the term and the type
-are compared under that one lambda.  `Typer.lean` also types the three bodies
-at the version's own contexts through `synthIn?`.
-
-## The restriction programs
-
-R1 and R2 are not programs of the version.  They pass a variable of singleton
-type `f.type` to a place that wants its alias's type, through a type member
-whose bounds are singletons.  No rule of the version replaces a path by its
-alias, but `Sub.selLower` and `Sub.selUpper` relate the two singletons through
-the member, and the typer finds that chain.  So both compile, and the checker
-accepts both.  R7 is the negative example: `h x.a.b`, where `let` insertion
-binds the prefix `x.a` to a fresh variable and the selection read through it
-is no longer the one the function's domain names.
-
-## The runs
-
-The file closes with both machines.  Six programs reduce, and each runs to a
-final state on the source machine and on the target machine.  Each run is
-pinned at the step count it needs: final there, and not final one step
-before.  The source runs of three of them are also printed.
+The file ends with runs on both machines.  Six programs run to a final state
+on the source and the target machine.  Each run is pinned at the step count it
+needs: final there, not final one step before.
 -/
 
 namespace PathsFrontend
@@ -77,7 +51,7 @@ open Paths.DotMNF.Examples
 
 /-! ## The four checks -/
 
-/-- The resolved term, erased into the frozen syntax. -/
+/-- The resolved term, erased. -/
 def compiledTm (e : STm) : Option (Tm []) :=
   (resolve pathsTable e).map ATm.erase
 
@@ -85,24 +59,21 @@ def compiledTm (e : STm) : Option (Tm []) :=
 def compiledTy (b : Budget) (e : STm) : Option (Ty []) :=
   (compile b pathsTable e).map fun r => r.2.ty
 
-/-- The target checker's verdict on the translation of the derivation, and
-`false` when the front end returns nothing.  `Paths.FCdot.checkTm` takes no
-fuel, so the only search here is the typer's. -/
+/-- The target checker's verdict on the translation, `false` when the program
+does not compile. -/
 def compiledVerdict (b : Budget) (e : STm) : Bool :=
   match compile b pathsTable e with
   | some r => Paths.FCdot.checkTm .nil r.2.deriv.translate r.2.ty.translate
   | none => false
 
-/-- The checker's verdict on the translation, at a program known to compile.
-`Ek_checks` states that it is `true`. -/
+/-- The checker's verdict at a program known to compile. -/
 def checkedAt {b : Budget} {e : STm} (h : (compile b pathsTable e).isSome = true) : Bool :=
   Paths.FCdot.checkTm .nil ((compile b pathsTable e).get h).2.deriv.translate
     ((compile b pathsTable e).get h).2.ty.translate
 
 /-! ## E1: bad bounds at a variable
 
-The annotated `let` is checked through `⊤ <: x.A <: ⊥`, the one declaration of
-`x`.  The version's derivation is `E1`. -/
+The annotated `let` is checked through `⊤ <: x.A <: ⊥`.  The reference derivation is `E1`. -/
 
 example : compiledTm E1_src = some (versionTerm E1) := by decide
 
@@ -118,7 +89,7 @@ theorem E1_checks : checkedAt E1_compiles = true := compile_checks_get E1_compil
 /-! ## E2: a recursive object with a member that names itself
 
 The inner `let` takes the strengthening rung of the ladder, the outer one falls
-to `⊤`.  The version's derivation is `E2`. -/
+to `⊤`.  The reference derivation is `E2`. -/
 
 example : compiledTm E2_src = some (versionTerm E2) := by decide
 
@@ -133,8 +104,7 @@ theorem E2_checks : checkedAt E2_compiles = true := compile_checks_get E2_compil
 
 /-! ## E3: an intersection with a shared member
 
-Two declarations of one variable at one label.  The version's derivation is
-`E3`. -/
+Two declarations of one variable at one label.  The reference derivation is `E3`. -/
 
 example : compiledTm E3_src = some (versionTerm E3) := by decide
 
@@ -149,9 +119,8 @@ theorem E3_checks : checkedAt E3_compiles = true := compile_checks_get E3_compil
 
 /-! ## E4: the detour view step
 
-The detour step of the table gives `w` the member `{A : {a : ⊤}..⊤}`, from
-the lower bound of the member `B` of `x` to its upper bound.  The version's
-derivation is `E4`. -/
+The detour step gives `w` the member `{A : {a : ⊤}..⊤}`, from the lower bound
+of the member `B` of `x` to its upper bound.  The reference derivation is `E4`. -/
 
 example : compiledTm E4_src = some (versionTerm E4) := by decide
 
@@ -166,7 +135,7 @@ theorem E4_checks : checkedAt E4_compiles = true := compile_checks_get E4_compil
 
 /-! ## E5: an object returned from a function and selected after a `let`
 
-Both `let`s take the strengthening rung.  The version's derivation is `E5`. -/
+Both `let`s take the strengthening rung.  The reference derivation is `E5`. -/
 
 example : compiledTm E5_src = some (versionTerm E5) := by decide
 
@@ -181,8 +150,8 @@ theorem E5_checks : checkedAt E5_compiles = true := compile_checks_get E5_compil
 
 /-! ## E6: a field typed at its own literal's member
 
-The version types `E6` under the context that binds `n`, so the surface program
-closes it with a lambda and both sides carry that lambda. -/
+`E6` is typed under a context that binds `n`.  The surface program closes it
+with a lambda and both sides carry the lambda. -/
 
 example : compiledTm E6_src = some (.val (.lam E6Int (versionTerm E6))) := by decide
 
@@ -198,7 +167,7 @@ theorem E6_checks : checkedAt E6_compiles = true := compile_checks_get E6_compil
 /-! ## E7: two type members that name each other
 
 Nothing is searched.  The distinctness of the two labels is decided.  The
-version's derivation is `E7`. -/
+reference derivation is `E7`. -/
 
 example : compiledTm E7_src = some (versionTerm E7) := by decide
 
@@ -213,8 +182,7 @@ theorem E7_checks : checkedAt E7_compiles = true := compile_checks_get E7_compil
 
 /-! ## E8: the right operand of an intersection
 
-One round of the table takes the right operand.  The version's derivation is
-`E8`. -/
+One round of the table takes the right operand.  The reference derivation is `E8`. -/
 
 example : compiledTm E8_src = some (versionTerm E8) := by decide
 
@@ -230,8 +198,7 @@ theorem E8_checks : checkedAt E8_compiles = true := compile_checks_get E8_compil
 /-! ## E1p: bad bounds at a path
 
 E1 with the bad member one stable field away, at `w.f`.  The chain is
-`⊤ <: w.f.A <: ⊥`, a selection at a path of length two.  The version's
-derivation is `E1p`. -/
+`⊤ <: w.f.A <: ⊥`, a selection at a path of length two.  The reference derivation is `E1p`. -/
 
 example : compiledTm E1p_src = some (versionTerm E1p) := by decide
 
@@ -247,7 +214,7 @@ theorem E1p_checks : checkedAt E1p_compiles = true := compile_checks_get E1p_com
 /-! ## E2p: a function at a member keyed by a path, applied to itself
 
 E2 with the recursive object one stable field down, so every selection is at
-`x.c`.  The version's derivation is `E2p`. -/
+`x.c`.  The reference derivation is `E2p`. -/
 
 example : compiledTm E2p_src = some (versionTerm E2p) := by decide
 
@@ -262,7 +229,7 @@ theorem E2p_checks : checkedAt E2p_compiles = true := compile_checks_get E2p_com
 
 /-! ## E3p: E3 one stable field away
 
-The version's derivation is `E3p`. -/
+The reference derivation is `E3p`. -/
 
 example : compiledTm E3p_src = some (versionTerm E3p) := by decide
 
@@ -277,8 +244,7 @@ theorem E3p_checks : checkedAt E3p_compiles = true := compile_checks_get E3p_com
 
 /-! ## E4p: E4 one stable field away
 
-The detour view step through a member at `x.f`.  The version's derivation is
-`E4p`. -/
+The detour view step through a member at `x.f`.  The reference derivation is `E4p`. -/
 
 example : compiledTm E4p_src = some (versionTerm E4p) := by decide
 
@@ -293,7 +259,7 @@ theorem E4p_checks : checkedAt E4p_compiles = true := compile_checks_get E4p_com
 
 /-! ## E5p: E5 with the object behind a stable field
 
-The version's derivation is `E5p`. -/
+The reference derivation is `E5p`. -/
 
 example : compiledTm E5p_src = some (versionTerm E5p) := by decide
 
@@ -309,7 +275,7 @@ theorem E5p_checks : checkedAt E5p_compiles = true := compile_checks_get E5p_com
 /-! ## E6p: E6 with the type member one stable field down
 
 The field `c` holds a literal, so it is declared at `{val c : μ(z. ...)}`, and
-the member is read at `x.c.T`.  The version's derivation is `E6p`. -/
+the member is read at `x.c.T`.  The reference derivation is `E6p`. -/
 
 example : compiledTm E6p_src = some (versionTerm E6p) := by decide
 
@@ -325,7 +291,7 @@ theorem E6p_checks : checkedAt E6p_compiles = true := compile_checks_get E6p_com
 /-! ## E7p: E7 one stable field down
 
 Two type members at `x.c` that name each other through the path.  The
-version's derivation is `E7p_lit`. -/
+reference derivation is `E7p_lit`. -/
 
 example : compiledTm E7p_src = some (versionTerm E7p_lit) := by decide
 
@@ -340,7 +306,7 @@ theorem E7p_checks : checkedAt E7p_compiles = true := compile_checks_get E7p_com
 
 /-! ## E8p: E8 with the selection at `x.f`
 
-The version's derivation is `E8p`. -/
+The reference derivation is `E8p`. -/
 
 example : compiledTm E8p_src = some (versionTerm E8p) := by decide
 
@@ -356,7 +322,7 @@ theorem E8p_checks : checkedAt E8p_compiles = true := compile_checks_get E8p_com
 /-! ## X1: a member reached through the self binder of a nested literal
 
 The outer member `B` and the inner member `A` name each other through the path
-`z.c`.  The version's derivation is `X1_lit`. -/
+`z.c`.  The reference derivation is `X1_lit`. -/
 
 example : compiledTm X1_src = some (versionTerm (X1_lit (Γ := Ctx.nil))) := by decide
 
@@ -373,7 +339,7 @@ theorem X1_checks : checkedAt X1_compiles = true := compile_checks_get X1_compil
 /-! ## X2: a computation field
 
 `a` is a plain field, not a stable one, so no path starts at `x.a`.  The
-version's derivation is `X2_lit`. -/
+reference derivation is `X2_lit`. -/
 
 example : compiledTm X2_src = some (versionTerm (X2_lit (Γ := Ctx.nil))) := by decide
 
@@ -389,8 +355,8 @@ theorem X2_checks : checkedAt X2_compiles = true := compile_checks_get X2_compil
 
 /-! ## X3: a projection through two stable fields
 
-`y.b` with `y` bound to `x.a`, read off the path typing of the receiver.  The
-version types the body under `x`, so both sides carry the lambda. -/
+`y.b` with `y` bound to `x.a`, read off the path typing of the receiver.  It is
+typed under `x`, so both sides carry the lambda. -/
 
 example : compiledTm X3_src = some (.val (.lam X3_A (versionTerm X3))) := by decide
 
@@ -405,7 +371,7 @@ theorem X3_checks : checkedAt X3_compiles = true := compile_checks_get X3_compil
 
 /-! ## X4: the `types` literal of gDOT's Fig. 2 on its own
 
-The version types it under `pcore : ⊤`, so both sides carry a lambda at `⊤`.
+It is typed under `pcore : ⊤`, so both sides carry a lambda at `⊤`.
 Its constructor `newTypeRef` returns `let r = ν(...) in r`, and the type of `r`
 reaches `t.TypeRef` only through the body's view of `r`, which the typer's
 checking clause for `let` keeps. -/
@@ -424,8 +390,7 @@ theorem X4_checks : checkedAt X4_compiles = true := compile_checks_get X4_compil
 /-! ## E9: a singleton at a `let`
 
 The field `a` is declared at `q.type`, so the `let` over `x.a` binds `y` at
-`q.type`, and `y.B` is a selection through that alias.  The version's
-derivation is `E9`. -/
+`q.type`, and `y.B` is a selection through that alias.  The reference derivation is `E9`. -/
 
 example : compiledTm E9_src = some (versionTerm E9) := by decide
 
@@ -440,7 +405,7 @@ theorem E9_checks : checkedAt E9_compiles = true := compile_checks_get E9_compil
 
 /-! ## E11: a stable field beside a singleton field
 
-The version's derivation is `E11`. -/
+The reference derivation is `E11`. -/
 
 example : compiledTm E11_src = some (versionTerm E11) := by decide
 
@@ -457,8 +422,7 @@ theorem E11_checks : checkedAt E11_compiles = true := compile_checks_get E11_com
 
 The literal declares `a` at a type member with the bounds `∀(y : ⊤) ⊤` and
 `{v : ⊤}`, which are unrelated.  `a` is a computation field, so nothing selects
-a type through `x.a` and the bounds are never used.  The version's derivation
-is `P3e_lit`. -/
+a type through `x.a` and the bounds are never used.  The reference derivation is `P3e_lit`. -/
 
 example : compiledTm P3e_src = some (versionTerm P3e_lit) := by decide
 
@@ -471,20 +435,18 @@ theorem P3e_compiles : (compile bP3e pathsTable P3e_src).isSome = true := by dec
 /-- The checker accepts the translation of P3e. -/
 theorem P3e_checks : checkedAt P3e_compiles = true := compile_checks_get P3e_compiles
 
-/-- `compile_no_bad_literal` at P3e.  P3e compiles to an object literal, so the
-premise that selects literals holds, and the type it compiles at is not
-gDOT's bad bounds type `μ(x. {A : ⊤..⊥})` for any label `A`. -/
+/-- `compile_no_bad_literal` at P3e.  P3e compiles to an object literal, so its
+type is not `μ(x. {A : ⊤..⊥})` for any `A`. -/
 theorem P3e_no_bad_literal (A : Label) :
     ((compile bP3e pathsTable P3e_src).get P3e_compiles).2.ty ≠ .mu (.typ A .top .bot) :=
   compile_no_bad_literal (Option.some_get P3e_compiles).symm (d := P3e_dP) (by decide +kernel) A
 
 /-! ## gDOT Fig. 2
 
-The `Option` encoding of gDOT's compiler fragment, with the label `Type` of
-the paper.  The version's derivation is `Fig2_prog_ty`, at `⊤`, through the
-abstract view of `pcore`.  The typer takes another route: the outer `let`
-falls to `⊤` because the body's type mentions the binder of `o`.  The two
-derivations differ and both translations pass the checker. -/
+The `Option` encoding of gDOT's compiler fragment.  The reference derivation is
+`Fig2_prog_ty`, at `⊤`, through the abstract view of `pcore`.  The typer takes
+another route: the outer `let` falls to `⊤` because the body's type mentions
+the binder of `o`.  Both translations pass the checker. -/
 
 example : compiledTm Fig2_src = some Fig2_prog := by decide
 
@@ -508,10 +470,10 @@ theorem Fig2_not_stuck {s : Sig} {st : Paths.DotMNF.State s}
 
 /-! ## pDOT Fig. 1
 
-Fig. 2 with `tpe : p.types.Type` in place of the `Option` field, pDOT's own
-version of the fragment.  Neither `let` binder occurs in the self type of
-`pcore`, so both `let`s take the strengthening rung, and the program compiles
-at that self type, `Fig1_ty`.  The version types it at `⊤`. -/
+Fig. 2 with `tpe : p.types.Type` in place of the `Option` field.  Neither `let`
+binder occurs in the self type of `pcore`, so both `let`s take the
+strengthening rung and the program compiles at `Fig1_ty`.  The reference
+derivation types it at `⊤`. -/
 
 example : compiledTm Fig1_src = some Fig1_prog := by decide
 
@@ -526,8 +488,8 @@ theorem Fig1_checks : checkedAt Fig1_compiles = true := compile_checks_get Fig1_
 
 /-! ## R1 and R2: an alias reached through a type member
 
-Neither is a program of the version, so there is no version's term to compare.
-Their types are written out in `Typer.lean`. -/
+Neither has a reference derivation.  Their types are written out in
+`Typer.lean`. -/
 
 example : compiledTy bR1 R1_src = some R1_ty := by decide +kernel
 
@@ -552,9 +514,9 @@ theorem R2_checks : checkedAt R2_compiles = true := compile_checks_get R2_compil
 `h x.a.b` with `h : ∀(k : x.a.B) ⊤`.  `let` insertion turns it into
 `let z = (let y = x.a in y.b) in h z`.  The field `a` is declared at a self
 type, not at a singleton, so `y` is not bound at `x.a.type`.  Then `y.b` has
-the type `y.B`, which mentions the binder, and the inner `let` falls to `⊤`,
-which is not below `x.a.B`.  The program resolves and does not compile at the
-default budget, which is larger than every budget above in every counter. -/
+type `y.B`, which mentions the binder, and the inner `let` falls to `⊤`, which
+is not below `x.a.B`.  The program resolves and does not compile at the default
+budget, which is larger than every budget above. -/
 
 example : (compiledTm R7_src).isSome = true := by decide
 
@@ -562,26 +524,23 @@ example : compiledTy {} R7_src = none := by decide +kernel
 
 /-! ## The runs
 
-`compileAndRun` drives the source machine and `compileAndRunFC` the target
-machine, at a normalization fuel of 64.  Each pair of checks pins a run at the
-number of steps it needs: final at that count, not final one step before.  The
-programs not listed here are values, or lambdas, at the top, so their source
-run is final at zero steps. -/
+Each pair of checks pins a run at the number of steps it needs: final at that
+count, not final one step before.  The programs not listed here are values at
+the top, so their source run is final at zero steps. -/
 
-/-- Whether the source run of a program at `m` steps ends at a final state,
-and `false` when the program does not compile. -/
+/-- Whether the source run of `m` steps ends at a final state. -/
 def srcFinalAt (b : Budget) (m : Nat) (e : STm) : Bool :=
   match compileAndRun b m pathsTable e with
   | some r => final? r.2
   | none => false
 
-/-- The same for the target run, at normalization fuel `n`. -/
+/-- The same for the target run at normalization fuel `n`. -/
 def tgtFinalAt (b : Budget) (n m : Nat) (e : STm) : Bool :=
   match compileAndRunFC b n m pathsTable e with
   | some r => fcFinal? r.2
   | none => false
 
-/-- The normalization fuel of every target run here. -/
+/-- The normalization fuel of every target run. -/
 def runFuel : Nat := 64
 
 /-! ### E2: six source steps, fourteen target steps -/

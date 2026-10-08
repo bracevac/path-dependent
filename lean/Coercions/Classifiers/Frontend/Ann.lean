@@ -1,46 +1,41 @@
 import Coercions.Classifiers.DotMNF.Syntax
 
 /-!
-# Annotated DOT-MNF terms with scopes and existential answers
+# Annotated DOT-MNF terms
 
 `ATm` is the version's `DotMNF.Tm` (`lean/Coercions/Classifiers/DotMNF/Syntax.lean`)
 with the annotations a front end needs and the calculus does not keep.
 
 - The self shape of an object literal.  `HasTy.obj` types the definitions
-  against a context entry that already holds it
-  (`lean/Coercions/Classifiers/DotMNF/Typing.lean`), so it cannot be
-  synthesized from the definitions.  The object's capture set is not
-  written.  The typer synthesizes it.
-- The optional result answer of a `let`.  It may be existential.
-- The set of an unboxing, optional.  An unboxing with no set leaves the set
-  to the typer, which reads it off the box type.
-- The ascription `(t : T)`, a checking point.  The calculus has no such
-  term and erasure drops it.
+  against a context entry that already holds it, so it cannot be synthesized
+  from the definitions.  The object's capture set is not written.  The typer
+  synthesizes it.
+- The optional result answer of a `let`, which may be existential.
+- The optional set of an unboxing.  Without it the typer reads the set off
+  the box type.
+- The ascription `(t : T)`, a checking point.  Erasure drops it.
 
 Every binder the calculus has and the program does not write is in the
-signature.  A lambda's domain lives under the arrow's own capture binder, at
-`Sig.dom s`.  Its body lives under the body root, the arrow binder and the
-parameter, at `Sig.body s`.  The definitions of an object live under the
-class root and the self.  The self shape lives under the self alone, as
-`HasTy.obj` reads it.  An unpacking `letex` opens a capture binder for the
-witness and a term binder for the payload.  A `let` stays a `let`.  Whether
-it unpacks is the typer's choice, made from the answer of the bound term.
+signature.  A lambda's domain lives at `Sig.dom s`, under the arrow's own
+capture binder.  Its body lives at `Sig.body s`, under the body root, the
+arrow binder and the parameter.  The definitions of an object live under the
+class root and the self.  The self shape lives under the self alone.  An
+unpacking `letex` opens a capture binder for the witness and a term binder
+for the payload.  A `let` stays a `let`, and the typer decides from the
+bound term's answer whether it unpacks.
 
 `ATm.erase` lands in `DotMNF.Tm`.  Application, projection, boxing and
 unboxing take bare variables, so monadic normal form holds by construction.
 
-`ATm.skel` is the skeleton of a term, the part a program and its
-elaboration must agree on.  It forgets type annotations, capture sets,
-capture binders, the box former, the set of an unboxing and ascriptions.  It
-numbers a term variable among the term binders only.  It does not tell a
-`let` from a `letex`, and it inlines either when the bound skeleton is a
-variable.  So the `letex` the typer makes of a `let`, with its body renamed
-past the new witness binder, has the skeleton of the `let`
-(`ATm.skel_rename_succLift`).  `Skel` has decidable equality, so two
-skeletons are compared by `decide`.
+`ATm.skel` is the part of a term that a program and its elaboration must
+agree on.  It forgets type annotations, capture sets, capture binders, the
+box former, the set of an unboxing and ascriptions.  It numbers a term
+variable among the term binders only.  It does not tell a `let` from a
+`letex`, and it inlines either when the bound skeleton is a variable.  So the
+`letex` the typer makes of a `let` has the skeleton of the `let`
+(`ATm.skel_rename_succLift`).  `Skel` has decidable equality.
 
-Nothing of this module is part of the metatheory and no definition here lives
-in a namespace of the version.
+Nothing here belongs to the metatheory.
 -/
 
 namespace ClassifiersFrontend
@@ -55,11 +50,9 @@ mutual
 inductive ATm : Sig → Type where
   /-- A path, which in this calculus is a variable. -/
   | path : Path s → ATm s
-  /-- `λ(x : T). t`: the domain under the arrow's own capture binder, the
-  body under the body root, the arrow binder and the parameter. -/
+  /-- `λ(x : T). t`. -/
   | lam : Ty (Sig.dom s) → ATm (Sig.body s) → ATm s
-  /-- `ν(x : S. d)`: the self shape under the self binder, the definitions
-  under the class root and the self. -/
+  /-- `ν(x : S. d)`. -/
   | obj : Shape (s,x) → ADefs ((s,c),x) → ATm s
   /-- `x y`. -/
   | app : BVar s .var → BVar s .var → ATm s
@@ -67,13 +60,11 @@ inductive ATm : Sig → Type where
   | proj : BVar s .var → Label → ATm s
   /-- `let x (: E)? = t in u`, the result answer optional. -/
   | «let» : Option (ETy s) → ATm s → ATm (s,x) → ATm s
-  /-- `let ⟨c, x⟩ = t in u`, a written unpacking: the witness binder, then
-  the payload. -/
+  /-- `let ⟨c, x⟩ = t in u`, a written unpacking. -/
   | letex : ATm s → ATm ((s,c),x) → ATm s
   /-- `□ x`, a box value. -/
   | box : BVar s .var → ATm s
-  /-- `C ⊸ x`, an unboxing.  With no set the typer reads it off the box
-  type. -/
+  /-- `C ⊸ x`, an unboxing.  Without a set the typer reads it off the box type. -/
   | unbox : Option (CaptureSet s) → BVar s .var → ATm s
   /-- `(t : T)`, a checking point.  Erased. -/
   | asc : ATm s → Ty s → ATm s
@@ -91,12 +82,10 @@ end
 
 deriving instance DecidableEq for ATm, ADefs
 
-/-! ## Erasure to the frozen syntax
+/-! ## Erasure
 
-The annotations and the ascriptions are dropped.  An unboxing with no set
-erases with the empty set.  A `let` erases to a `let`.  This is a function
-for comparisons with the version's terms, not the bridge to a derivation:
-the typer returns the term it typed. -/
+Erasure drops annotations and ascriptions.  An unboxing without a set erases
+with the empty set. -/
 
 mutual
 /-- Drop the annotations of a term. -/
@@ -125,12 +114,10 @@ end
 
 /-! ## Renaming
 
-The clauses mirror `DotMNF.Tm.rename`, `DotMNF.Value.rename` and
-`DotMNF.Defs.rename`, with the annotations renamed at the signature they
-live in.  A domain lives under one capture binder and is renamed with the
-renaming lifted once.  A self shape lives under the self and is renamed with
-the renaming lifted once.  The answer of a `let` and the set of an unboxing
-live outside every binder of the term. -/
+The clauses mirror `DotMNF.Tm.rename`.  Annotations are renamed at the
+signature they live in.  A domain and a self shape each sit under one binder,
+so they take the lifted renaming.  The answer of a `let` and the set of an
+unboxing sit outside every binder of the term. -/
 
 mutual
 /-- Rename the free variables of an annotated term. -/
@@ -201,9 +188,7 @@ end
 
 /-! ## The size measure
 
-The node count of a term, which a typer recursing on the syntax can use.
-Types and capture sets do not count.  Both functions are at least one
-everywhere. -/
+The node count of a term.  Types and capture sets do not count. -/
 
 mutual
 /-- The node count of an annotated term. -/
@@ -240,9 +225,8 @@ theorem sizeADefs_pos {s : Sig} (d : ADefs s) : 0 < sizeADefs d := by
 
 /-! ## Skeletons
 
-A skeleton keeps the binding structure of the term binders, the term
-variables as positions among those binders, the labels of projections and
-definitions, and nothing else.  Capture binders are not in a skeleton. -/
+A skeleton keeps the term binders, the term variables as positions among
+them, and the labels of projections and definitions.  Nothing else. -/
 
 mutual
 /-- The skeleton of a term. -/
@@ -259,9 +243,8 @@ inductive Skel : Type where
   | proj (i : Nat) (ℓ : Label)
   /-- A `let` or an unpacking, one term binder over the body. -/
   | «let» (t u : Skel)
-/-- The skeleton of a definition list.  A capture member definition sits at
-a type label and its value is a set, so its skeleton is that of a type
-definition. -/
+/-- The skeleton of a definition list.  A capture member definition has the
+skeleton of a type definition. -/
 inductive SkelDefs : Type where
   /-- A type or capture member definition. -/
   | typ (ℓ : Label)
@@ -286,10 +269,9 @@ def varPos {s : Sig} {k : Kind} (x : BVar s k) : Nat :=
   | @BVar.there _ _ k0 y => varPos y + Kind.termCount k0
 termination_by structural x
 
-/-- The position after replacing the variable at position `k` by the
-outer position `j`.  Positions below `k` are bound inside and stay, `k`
-itself becomes `j` shifted past the `k` inner binders, and positions above
-`k` lose the binder that was removed. -/
+/-- The position after replacing the variable at position `k` by the outer
+position `j`.  Positions below `k` stay, `k` becomes `j + k`, and positions
+above `k` lose the removed binder. -/
 def Skel.instPos (k j i : Nat) : Nat :=
   if i < k then i else if i = k then j + k else i - 1
 
@@ -321,9 +303,8 @@ def Skel.mkLet (t u : Skel) : Skel :=
   | t => .let t u
 
 mutual
-/-- The skeleton of a term: annotations, capture sets, capture binders,
-boxes, the set of an unboxing and ascriptions forgotten, a `letex` read as a
-`let`, and a `let` of a variable inlined. -/
+/-- The skeleton of a term.  A `letex` reads as a `let`, and a `let` of a
+variable is inlined. -/
 def ATm.skel {s : Sig} (t : ATm s) : Skel :=
   match t with
   | .path (.var x) => .var (varPos x)
@@ -351,17 +332,14 @@ end
 
 A renaming that keeps the position of every term variable among the term
 binders keeps the skeleton.  Weakening past a capture binder is such a
-renaming, and so is every lift of one.  The instance `letex` insertion needs
-is the body of a `let`, renamed past the new witness binder under the
-payload binder. -/
+renaming, and so is every lift of one. -/
 
 /-- The renaming keeps the position of every term variable among the term
 binders. -/
 def KeepsVarPos {s1 s2 : Sig} (ρ : Rename s1 s2) : Prop :=
   ∀ x : BVar s1 .var, varPos (ρ.var x) = varPos x
 
-/-- A lift of a renaming that keeps positions keeps them, at either kind of
-binder. -/
+/-- A lift of a position-keeping renaming keeps positions. -/
 theorem KeepsVarPos.lift {s1 s2 : Sig} {ρ : Rename s1 s2} (h : KeepsVarPos ρ) {k : Kind} :
     KeepsVarPos (ρ.lift (k := k)) := by
   intro x
@@ -422,9 +400,9 @@ theorem ADefs.skel_rename : ∀ {s1 s2 : Sig} (d : ADefs s1) (ρ : Rename s1 s2)
       rw [ADefs.skel_rename d ρ h, ADefs.skel_rename e ρ h]
 end
 
-/-- The body of a `let`, renamed past a new capture binder under its own
-term binder, keeps its skeleton.  This is the renaming that turns
-`let x = t in u` into `let ⟨c, x⟩ = t in u`. -/
+/-- The body of a `let`, renamed past a new capture binder, keeps its
+skeleton.  This is the renaming that turns `let x = t in u` into
+`let ⟨c, x⟩ = t in u`. -/
 theorem ATm.skel_rename_succLift {s : Sig} (t : ATm (s,x)) :
     ATm.skel (t.rename (Rename.succ (k := .cap)).lift) = ATm.skel t :=
   ATm.skel_rename t _ KeepsVarPos.succCap.lift
@@ -437,10 +415,9 @@ theorem ATm.skel_letex_of_let {s : Sig} (ann : Option (ETy s)) (t : ATm s) (u : 
 
 /-! ## No `any` in an annotation
 
-`NoAnyAnn` says that no annotation, capture set or type definition of an
-annotated term holds the atom `any`.  The resolver keeps every `any` the
-program writes, for the typer to read at the context it builds, and adds
-none of its own (`resolve_noAny` of `Resolve.lean`). -/
+`NoAnyAnn` says that no annotation, capture set or type definition of a term
+holds the atom `any`.  The resolver keeps the `any` a program writes and adds
+none (`resolve_noAny` in `Resolve.lean`). -/
 
 mutual
 /-- No `any` in any annotation, set or type definition of the term. -/
@@ -473,14 +450,12 @@ end
 /-- `⊤` as a pure type. -/
 private abbrev pTop {s : Sig} : Ty s := .capt [] .top
 
-/-- A lambda's parameter is position zero in its body.  The body root and
-the arrow binder are not counted. -/
+/-- A lambda's parameter is position zero in its body. -/
 example : (ATm.lam pTop (.path (.var .here)) : ATm []).skel = .lam (.var 0) := by decide
 
 /-- A binding inserted for a box has the skeleton of the plain application:
-`λ(x). λ(y). let y' = □ y in x y'` against `λ(x). λ(y). x y`.  Between `x`
-and `y` sit the body root and the arrow binder of the inner lambda, and
-the skeleton does not count them. -/
+`λ(x). λ(y). let y' = □ y in x y'` against `λ(x). λ(y). x y`.  The body roots and
+arrow binders between `x` and `y` are not counted. -/
 example :
     (ATm.lam pTop (.lam pTop
       (.let none (.box .here) (.app (.there (.there (.there (.there .here)))) .here))) :
@@ -488,8 +463,7 @@ example :
     (ATm.lam pTop (.lam pTop
       (.app (.there (.there (.there .here))) .here)) : ATm []).skel := by decide
 
-/-- An object's self is position zero in its definitions.  The class root
-is not counted. -/
+/-- An object's self is position zero in its definitions. -/
 example :
     (ATm.obj .top (.trm (.trm 0) (.path (.var .here))) : ATm []).skel =
       .obj (.trm (.trm 0) (.var 0)) := by decide

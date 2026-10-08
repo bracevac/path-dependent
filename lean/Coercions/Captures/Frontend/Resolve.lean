@@ -3,7 +3,7 @@ import Coercions.Captures.Frontend.Notation
 import Coercions.Captures.DotMNF.Examples
 
 /-!
-# Name resolution and let insertion for the Captures front end
+# Name resolution and let insertion
 
 Three functions take a surface phrase to the annotated de Bruijn syntax of
 `Ann.lean`: `resolveTy` for a type, `resolveTm` for a term and `resolveDefs`
@@ -12,57 +12,58 @@ an index.
 
 ## Names of two kinds
 
-A signature of the version has term binders and capture binders.  A name
-environment records one surface name per binder, innermost first, with its
-kind.  A name in term position, the receiver of a type selection `x.A` and
-the receiver of a capture member `x.C` are looked up among the term binders
-only.  A plain name in a capture set takes the innermost binder of either
-kind, and becomes the atom of a term variable or of a capture binder by the
-kind it finds.  The platform capabilities are the outermost capture binders,
-in the order given, so `["k1", "k2"]` gives `k1` at `.there .here` and `k2`
-at `.here`, the version's own `k1` and `k2`
-(`lean/Coercions/Captures/DotMNF/Examples.lean`).
+A signature has term binders and capture binders.  A name environment records
+one surface name per binder, innermost first, with its kind.  A name in term
+position, the receiver of a type selection `x.A` and the receiver of a
+capture member `x.C` are looked up among the term binders only.  A plain name
+in a capture set takes the innermost binder of either kind, and becomes a term
+variable atom or a capture binder atom by the kind it finds.  The platform
+capabilities are the outermost capture binders, so `["k1", "k2"]` gives `k1`
+at `.there .here` and `k2` at `.here`, the version's own `k1` and `k2`
+(`DotMNF/Examples.lean`).
 
 ## Types, shapes and boxes
 
 `resolveT` reads a phrase as a type.  A bare shape is pure and `S ^ C`
-carries `C`.  The shape a subphrase stands for at a shape position is read
-off its type.  At a type-member bound and at a type definition, a phrase
+carries `C`.  The shape that a subphrase stands for at a shape position is
+read off its type.  At a type-member bound and at a type definition, a phrase
 written `S ^ C` becomes the box `□(S ^ C)`, the compiler's rule that a type
-argument is boxed.  At every other shape position, the body of a `μ`, an
-operand of `∧` and the shape under a written `^`, a written `S ^ C` is a
-resolution failure.  An explicit `□ T` is accepted everywhere.
+argument is boxed.  At any other shape position (the body of a `μ`, an
+operand of `∧`, the shape under a written `^`) a written `S ^ C` fails to
+resolve.  An explicit `□ T` is accepted everywhere.
 
 ## The atom `any`
 
-Every annotation is tested where it stands and then expanded by the frozen
-`Ty.expand` at the platform set `P`, the reading the version gives the top
-of a program.  A function's domain is tested by the arrow clause of the
-frozen `Shape.anyOk`: no `any` in its own outer set, and its shape `anyOk`.
-A `let` type and an ascription are tested by the frozen `Ty.anyOk`, which
-ignores the type's own outer set.  The self annotation of an object is
-tested as the type `μ S ^ U` it stands for, with `U` empty when it is not
-written, and expanded the same way.  A type definition, the set of an
-unboxing and a capture definition are read nowhere, so they are tested to
-hold no `any` at all.  With a platform set free of `any`, nothing the
-resolver emits holds `any` (`resolve_noAny`).
+Every annotation is tested for `any` where it stands, then expanded by
+`Ty.expand` at the platform set `P`, as the version reads the top of a
+program.
+
+- A function's domain is tested by the arrow clause of `Shape.anyOk`: no `any`
+  in its own outer set, and its shape passes `anyOk`.
+- A `let` type and an ascription are tested by `Ty.anyOk`, which ignores the
+  type's outer set.
+- An object's self annotation is tested as the type `μ S ^ U` it stands for,
+  with `U` empty when not written.
+- A type definition, the set of an unboxing and a capture definition may hold
+  no `any` at all.
+
+If the platform set has no `any`, nothing the resolver emits has one
+(`resolve_noAny`).  Resolution succeeds on every phrase that is in scope, whose
+labels are in the table and whose `any` atoms and capturing types are placed
+(`resolveTm_isSome`).
 
 ## Let insertion
 
 Let insertion uses an explicit spine of bindings, as the vanilla front end
-does, which keeps the three resolvers structural on the surface phrase.  The
-two vanilla direct style forms, application and projection, atomize their
-operands, and so do the two forms of the version, `□ t` and `C ⊸ t`.  The
+does, which keeps the resolvers structural on the surface phrase.
+Application, projection, `□ t` and `C ⊸ t` atomize their operands.  The
 inserted binder is named `"%"`, which no identifier of the notation can
 equal.
 
-This module imports `Notation.lean` for the programs at the end, and Lean's
-token table is global.  So the Greek nu that opens an object literal is a
-keyword here and cannot be a local name.  The name environment is written
-`nv` below for that reason.
-
-Nothing in this module is part of the metatheory.  No definition here lives
-in a namespace of the version.
+This module imports `Notation.lean` for the programs at the end.  Lean's
+token table is global, so the Greek nu that opens an object literal is a
+keyword and cannot be a local name.  The name environment is called `nv` for
+that reason.
 -/
 
 namespace CapturesFrontend
@@ -151,12 +152,11 @@ termination_by structural ys
 /-- The platform of the given capability names, the first one outermost. -/
 def PlatformNames.ofList (ys : List String) : PlatformNames := PlatformNames.empty.pushAll ys
 
-/-! ## Covering, the monotonicity of scoping
+/-! ## Covering
 
-The direct style clauses of `resolveTm` resolve the operand under the
-environment that `atomize` returns, which is the one it was given or that
-one with a single inserted term binder on the front.  So the totality proof
-needs scoping to survive a larger list of term variables. -/
+`atomize` returns the environment it was given, or that one with one inserted
+term binder.  So the totality proof needs scoping to survive a larger list of
+term variables. -/
 
 /-- Every name of the first list is a name of the second. -/
 def Covers (Γ Γ' : List String) : Prop :=
@@ -317,7 +317,7 @@ theorem NameEnv.find?_isSome : ∀ {s : Sig} (nv : NameEnv s) (x : String),
 A `Spine s s'` is a stack of `let` bindings that takes a term of the inner
 signature `s'` back to a term of the outer signature `s`.  `Spine.rename` is
 the weakening that moves a variable of `s` into `s'`.  `Rename.comp f g` is
-`g ∘ f`, so the composition below is in the order it is printed. -/
+`g ∘ f`. -/
 
 /-- A stack of inserted `let` bindings. -/
 inductive Spine : Sig → Sig → Type where
@@ -430,8 +430,7 @@ def asShape? {s : Sig} (T : SType) (T' : Ty s) : Option (Shape s) :=
   | _ => some T'.shape
 
 /-- A surface phrase read as a type.  A bare shape is pure, `S ^ C` carries
-`C`.  Each recursive call is on a direct subphrase, and the shape reading of a
-subphrase is `asBound` or `asShape?`, which do not recurse. -/
+`C`.  Recursive calls are on direct subphrases. -/
 def resolveT {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (T : SType) : Option (Ty s) :=
   match T with
   | .top => some (.capt [] .top)
@@ -478,28 +477,28 @@ def resolveT {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (T : SType) : Option (
       pure (.capt C' S'')
 termination_by structural T
 
-/-- An annotation at a `let` or an ascription: tested by the frozen
-`Ty.anyOk` and expanded at the platform set `P`. -/
+/-- An annotation at a `let` or an ascription: tested by `Ty.anyOk` and
+expanded at the platform set `P`. -/
 def resolveTy {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (P : CaptureSet s) (T : SType) :
     Option (Ty s) := do
   let T' ← resolveT Λ nv T
   if T'.anyOk then pure (T'.expand P) else none
 
-/-- A function's domain: tested by the arrow clause of the frozen
-`Shape.anyOk`, no `any` in its own outer set, and expanded at `P`. -/
+/-- A function's domain: tested by the arrow clause of `Shape.anyOk` and
+expanded at `P`. -/
 def resolveDom {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (P : CaptureSet s) (T : SType) :
     Option (Ty s) := do
   let T' ← resolveT Λ nv T
   if CaptureSet.noAny T'.captureSet && T'.anyOk then pure (T'.expand P) else none
 
-/-- The set an object's self shape reads `any` as: the object's own set
-under the self binder, with the self. -/
+/-- The set that `any` stands for in an object's self shape: the object's own
+set under the self binder, with the self. -/
 def selfRead {s : Sig} (U : CaptureSet s) : CaptureSet (s,x) :=
   CaptureSet.weaken U ∪ [CapAtom.var .here]
 
 /-- The self annotation of `ν(x : T. d)`: the self shape under the binder and
-the object's own set outside it, if written.  It is tested and expanded as
-the type `μ S ^ U` it stands for, at `P`, with `U` empty when not written. -/
+the object's set outside it, if written.  It is tested and expanded as the
+type `μ S ^ U` at `P`, with `U` empty when not written. -/
 def resolveSelf {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (P : CaptureSet s) (x : String)
     (T : SType) : Option (Shape (s,x) × Option (CaptureSet s)) := do
   let S' ← resolveT Λ (nv.cons x) T.selfShape
@@ -515,7 +514,7 @@ def resolveSelf {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (P : CaptureSet s) 
 mutual
 /-- Resolve a surface term under the platform set `P`, inserting `let`
 bindings for the four direct style forms.  The result is in monadic normal
-form by construction. -/
+form. -/
 def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (P : CaptureSet s) (e : STm) :
     Option (ATm s) :=
   match e with
@@ -586,8 +585,7 @@ def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (P : CaptureSet s) 
 termination_by structural d
 end
 
-/-- Resolve a surface term at a given environment and platform set, the
-entry point for a term that sits under a context. -/
+/-- Resolve a surface term at a given environment and platform set. -/
 def resolveIn {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (P : CaptureSet s) (e : STm) :
     Option (ATm s) :=
   resolveTm Λ nv P e
@@ -602,12 +600,11 @@ Resolution succeeds on a phrase whose free names are in scope at the kind
 their position needs, whose labels are in the table, whose `any` atoms are
 where the position test admits them (`AnyPlaced`), and whose written
 capturing types sit where the resolver reads them (`CaptPlaced`).  The proof
-is by structural recursion on the surface phrase.  Two facts about `resolveT`
-carry it: it succeeds on such a phrase, and the type it returns passes the
-frozen `any` tests whenever the phrase passes the surface ones
-(`resolveT_any`).  In the direct style clauses the operand is resolved under
-the environment `atomize` returns, and `atomize_names_covers` carries the
-scoping across. -/
+is by structural recursion on the phrase.  It uses two facts about
+`resolveT`: it succeeds on such a phrase, and its type passes the `any` tests
+whenever the phrase passes the surface ones (`resolveT_any`).  In the direct
+style clauses the operand is resolved under the environment `atomize` returns,
+and `atomize_names_covers` carries the scoping across. -/
 
 /-- A phrase not written `S ^ C` stands for its shape. -/
 theorem asShape?_of_not_capt {s : Sig} {T : SType} (h : T.isCapt = false) (T' : Ty s) :
@@ -660,8 +657,8 @@ theorem resolveCap_noAny : ∀ (c : SCap) {s : Sig} (Λ : LabelTable) (nv : Name
       simpa [CaptureSet.noAny] using resolveCap_noAny c Λ nv c'' hc ha
   | .any :: c, _, _, _, _, _, ha => by simp [SCap.NoAny] at ha
 
-/-- A scoped and labelled phrase whose capturing types are placed resolves
-as a type. -/
+/-- A scoped and labelled phrase with placed capturing types resolves as a
+type. -/
 theorem resolveT_isSome : ∀ (T : SType) {s : Sig} (Λ : LabelTable) (nv : NameEnv s),
     SType.Scoped nv.capNames nv.names T = true → SType.LabelsIn Λ T = true →
     SType.CaptPlaced T = true → (resolveT Λ nv T).isSome = true
@@ -748,7 +745,7 @@ theorem shape_anyOk {s : Sig} {T' : Ty s} (h : T'.anyOk = true) : T'.shape.anyOk
   | capt C S => simp_all [Ty.anyOk, Ty.shape]
 
 /-- What a resolved type says about `any`, read off the written phrase: no
-`any` in the outer set, none at all, and the frozen `Ty.anyOk`. -/
+`any` in the outer set, none at all, and `Ty.anyOk`. -/
 theorem resolveT_any : ∀ (T : SType) {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (T' : Ty s),
     resolveT Λ nv T = some T' →
     (T.outerNoAny = true → CaptureSet.noAny T'.captureSet = true) ∧
@@ -1228,7 +1225,7 @@ theorem resolveDefs_noAny : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (P 
 end
 
 /-- Every annotation the resolver emits holds no `any`, given a platform set
-that holds none.  The expansion step is the frozen `Ty.noAny_expand`. -/
+that holds none.  The expansion step is `Ty.noAny_expand`. -/
 theorem resolve_noAny {s : Sig} {Λ : LabelTable} {nv : NameEnv s} {P : CaptureSet s} {e : STm}
     {a : ATm s} (hP : CaptureSet.noAny P = true) (h : resolveTm Λ nv P e = some a) :
     ATm.NoAnyAnn a = true :=
@@ -1236,8 +1233,8 @@ theorem resolve_noAny {s : Sig} {Λ : LabelTable} {nv : NameEnv s} {P : CaptureS
 
 /-! ## Platform sets hold no `any`
 
-`resolve_noAny` asks the platform set to hold no `any`.  Every platform built
-by `PlatformNames.ofList` does. -/
+`resolve_noAny` needs a platform set with no `any`.  Every platform built by
+`PlatformNames.ofList` has one. -/
 
 /-- Pushing capabilities keeps a platform set free of `any`. -/
 theorem PlatformNames.pushAll_set_noAny : ∀ (ys : List String) (π : PlatformNames),
@@ -1253,7 +1250,7 @@ theorem PlatformNames.ofList_set_noAny (ys : List String) :
     CaptureSet.noAny (PlatformNames.ofList ys).set = true :=
   PlatformNames.pushAll_set_noAny ys _ rfl
 
-/-! ## The two spine equations and the no insertion property -/
+/-! ## Spine equations and the no insertion property -/
 
 /-- Plugging into an appended spine is plugging twice. -/
 theorem Spine.plug_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine s' s'')
@@ -1280,16 +1277,16 @@ theorem atomize_var {s : Sig} (nv : NameEnv s) (i : BVar s .var) :
 
 /-! ## The programs
 
-Each program of `Notation.lean` is resolved over the platform `k1, k2`, the
-version's `κ₁` and `κ₂`, with the labels of the version's examples, and its
+Each program of `Notation.lean` is resolved over the platform `k1, k2` (the
+version's `κ₁` and `κ₂`) with the labels of the version's examples.  Its
 erasure is compared with the version's own term by `decide`.  Resolution is
 structural, so the kernel reduces it. -/
 
 open Captures.DotMNF.Examples (C7tm C2tm S3tm S1tm S2tm S1TyAny S1Ty S2MkTyAny S2MkTy platSet
   k1 unitTy lA lB lT la lb lv)
 
-/-- The labels of the version's examples (`DotMNF/Examples.lean`): the type
-labels `A`, `B`, `T` and the capture member `C`, and the term labels. -/
+/-- The labels of the version's examples: the type labels `A`, `B`, `T`, the
+capture member `C`, and the term labels. -/
 def Λc : LabelTable :=
   [("A", .typ 0), ("B", .typ 1), ("T", .typ 2), ("C", .typ 3),
    ("a", .trm 0), ("b", .trm 1), ("v", .trm 2), ("elem", .trm 3), ("run", .trm 4),
@@ -1306,12 +1303,12 @@ example : πc.set = platSet := by decide
 /-- C7 with its boxes and its unboxing written is the version's `C7tm`. -/
 example : (resolveTop Λc πc C7src).map ATm.erase = some C7tm := by decide
 
-/-- C2, its call `x.run u` in direct style, is the version's `C2tm`: the
+/-- C2, with its call `x.run u` in direct style, is the version's `C2tm`.  The
 inserted binding is the version's `let g = x.run in g u`. -/
 example : (resolveTop Λc πc C2src).map ATm.erase = some C2tm := by decide
 
-/-- S3, its member bound written at a capturing type and boxed by the
-resolver, is the version's `S3tm`. -/
+/-- S3, whose member bound is a capturing type boxed by the resolver, is the
+version's `S3tm`. -/
 example : (resolveTop Λc πc S3src).map ATm.erase = some S3tm := by decide
 
 /-- S1, `withFile` bound by an ascription at its `any` signature, is the
@@ -1330,14 +1327,14 @@ example : (resolveTop Λc πc C7nbSrc).map ATm.skel = (resolveTop Λc πc C7src)
 example : (resolveTop Λc πc S3nbSrc).map ATm.skel = (resolveTop Λc πc S3src).map ATm.skel := by
   decide
 
-/-- The box free programs differ from the boxed ones: the boxes are what box
-inference has to supply. -/
+/-- The box-free programs differ from the boxed ones.  Box inference has to
+supply the boxes. -/
 example : (resolveTop Λc πc C7nbSrc).map ATm.erase ≠ some C7tm := by decide
 
 /-! ### The annotations of S1 and S2
 
-The ascription that binds `withFile` and `mk` is resolved to the version's
-written signature and expanded at the platform set, which reads the result
+The ascription that binds `withFile` and `mk` resolves to the version's
+written signature and is expanded at the platform set, which reads the result
 `any` as the arrow's own set with its binder. -/
 
 /-- The type of the ascription a leading `let` binds. -/
@@ -1394,22 +1391,21 @@ example :
         (fun | .obj _ U _ => U | _ => none) =
       some (some [CapAtom.cvar k1]) := by decide
 
-/-- The totality theorem applies to the capture examples on the four decided
-side conditions. -/
+/-- The totality theorem applies to the capture examples. -/
 example : (resolveTop Λc πc S1src).isSome = true :=
   resolveTm_isSome Λc πc.names πc.set S1src (by decide) (by decide) (by decide) (by decide)
 
-/-- And `resolve_noAny` says that what came out holds no `any`. -/
+/-- By `resolve_noAny`, what comes out holds no `any`. -/
 example : ∀ a, resolveTop Λc πc S2src = some a → a.NoAnyAnn = true :=
   fun _ h => resolve_noAny (PlatformNames.ofList_set_noAny _) h
 
 /-! ### E1 to E10, the vanilla examples
 
 The vanilla programs are the version's programs at pure types.  They are
-resolved over the empty platform, and every type of the vanilla terms
-becomes a shape at the empty set.  E1 to E9 are in monadic normal form, so
-`atomize` inserts nothing.  E10 is a nested application in direct style and
-is compared against its let expanded form. -/
+resolved over the empty platform, and every type becomes a shape at the empty
+set.  E1 to E9 are in monadic normal form, so `atomize` inserts nothing.  E10
+is a nested application in direct style and is compared with its let-expanded
+form. -/
 
 /-- `⊤` as a pure type. -/
 private abbrev pTop {s : Sig} : Ty s := .capt [] .top
@@ -1501,8 +1497,8 @@ def E9ann : ATm [] :=
 
 example : resolveTop Λc .empty E9src = some E9ann := by decide
 
-/-- The let expanded form of E10, `λ(f). λ(g). let % = g f in f %`.  The
-operand `g f` is not a variable, so `atomize` binds it. -/
+/-- The let-expanded form of E10, `λ(f). λ(g). let % = g f in f %`.  The operand
+`g f` is not a variable, so `atomize` binds it. -/
 def E10ann : ATm [] :=
   .lam pTop
     (.lam pTop
@@ -1511,8 +1507,7 @@ def E10ann : ATm [] :=
 
 example : resolveTop Λc .empty E10src = some E10ann := by decide
 
-/-- Erasure lands in the frozen syntax.  The inserted `let` is a `let` of
-`DotMNF.Tm`, nothing more. -/
+/-- The inserted `let` erases to a plain `let` of `DotMNF.Tm`. -/
 example : E10ann.erase =
     (Tm.val (.lam pTop (.val (.lam pTop
       (.let (.app .here (.there .here)) (.app (.there (.there .here)) .here)))))) := by decide

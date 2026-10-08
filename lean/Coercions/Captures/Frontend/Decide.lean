@@ -2,38 +2,29 @@ import Coercions.Captures.DotMNF.Typing
 import Coercions.Captures.FCdot.Checker
 
 /-!
-# The decided side conditions
+# Decided side conditions
 
-The typer of this front end discharges four kinds of side condition by
-decision procedures, and computes capture sets by a few total functions.
+Decision procedures and total functions the typer uses.
 
-- Well-formedness of a shape and of a type, `shapeWf?` and `tyWf?`.  The
-  only premise of `Shape.Wf` that is not structural is the `Shape.Decl` of
-  `Wf.mu`, which the frozen `Shape.isDecl` already decides.
-- Distinctness of the labels of a definition block, `defsDistinct?`, over
-  the three definition kinds by the frozen `Defs.labels`.
-- Strengthening, the inverse of weakening, over capture sets, shapes and
-  types.  The avoidance ladder of the typer climbs it.
+- Well-formedness of shapes and types, `shapeWf?` and `tyWf?`.  The only
+  non-structural premise of `Shape.Wf` is `Shape.Decl` under `μ`, which
+  `Shape.isDecl` decides.
+- Distinctness of the labels of a definition block, `defsDistinct?`.
+- Strengthening, the inverse of weakening, on capture sets, shapes and types.
+  The typer uses it to move a capture set out of a binder's scope.  It reuses
+  `PartialRename` and `Inverts` of `FCdot/Checker.lean`, which are generic in
+  `Sig`, `Kind` and `BVar`.  Only the traversals over the source's atoms,
+  shapes and types are new.
 - `capJoin`, the union of two capture sets without repeated atoms, and the
   candidate sets a binder leaves behind when it goes out of scope.
 
-Strengthening reuses the target's partial renaming as it stands:
-`PartialRename`, `PartialRename.lift`, `PartialRename.unshift`, `Inverts`,
-`Inverts.lift`, `unshift_inverts` and `witness?` of
-`lean/Coercions/Captures/FCdot/Checker.lean`.  That machinery is generic over
-`Sig`, `Kind` and `BVar`, which the two calculi share.  Only the traversals
-over the source's capture atoms, shapes and types are new.  They copy the
-shape of the target's own `rename?` functions.
+A candidate set is never trusted.  The typer follows each one with a decided
+inclusion or a subcapturing derivation, so the functions that compute
+candidates carry no lemma.
 
-A candidate set is never trusted.  The typer follows each one with evidence,
-a decided inclusion or a subcapturing derivation from the search, so the
-functions that compute candidates carry no lemma.
-
-Every name here is a plain name in `namespace CapturesFrontend`, never a
-member of a namespace of the version, so the functions are written as
-applications and not with dot notation.  Every recursive definition says
-`termination_by structural`, so all of this reduces in the kernel and the
-tests at the end are `by decide`.
+Every definition is structural, so it reduces in the kernel and the tests at
+the end are `by decide`.  The names are plain names in `CapturesFrontend`, so
+the functions are applied, not used with dot notation.
 -/
 
 namespace CapturesFrontend
@@ -43,10 +34,8 @@ open Captures.DotMNF (Path CapAtom CaptureSet Shape Ty Defs Ctx)
 
 /-! ## Well-formedness of shapes and types
 
-`shapeWf?` mirrors `Shape.Wf` clause for clause.  A capture member is well
-formed outright, a box is well formed when the type inside it is, and a
-type when its shape is.  `Wf.typ` relates its two bounds not at all, so
-`{A : ⊤..⊥}` is well formed. -/
+`shapeWf?` mirrors `Shape.Wf`.  The two bounds of a type member are
+unrelated, so `{A : ⊤..⊥}` is well formed. -/
 
 mutual
 /-- The decision procedure for `Shape.Wf`. -/
@@ -140,10 +129,9 @@ instance instDecidableShapeWf {s : Sig} (S : Shape s) : Decidable (Shape.Wf S) :
 instance instDecidableTyWf {s : Sig} (T : Ty s) : Decidable (Ty.Wf T) :=
   decidable_of_iff _ (tyWf?_iff T)
 
-/-! ## Distinctness of the labels of a definition block
+/-! ## Distinct labels
 
-`Defs.labels` is frozen and covers the three definition kinds, type, capture
-and term.  `Label` has decidable equality, so the test is list membership. -/
+`Defs.labels` covers type, capture and term definitions. -/
 
 /-- No label of the left block is a label of the right block. -/
 def labelsDisjoint? (d e : Defs s) : Bool :=
@@ -179,12 +167,11 @@ theorem defsDistinct?_iff : ∀ {s : Sig} (d : Defs s), defsDistinct? d = true �
 instance instDecidableDefsDistinct {s : Sig} (d : Defs s) : Decidable (Defs.Distinct d) :=
   decidable_of_iff _ (defsDistinct?_iff d)
 
-/-! ## Partial renaming of capture sets, paths, shapes and types
+/-! ## Partial renaming
 
-Each traversal fails exactly when some variable it meets is outside the
-domain of the renaming.  `any` holds no variable and is mapped to itself, as
-`CapAtom.rename` maps it.  Soundness and completeness are stated against a
-total renaming the partial one inverts, as the target states its own. -/
+Each traversal fails exactly when it meets a variable outside the domain of
+the renaming.  `any` maps to itself.  Soundness and completeness are stated
+against a total renaming that the partial one inverts. -/
 
 /-- A capture atom under a partial renaming. -/
 def capAtomRename? {s1 s2 : Sig} : CapAtom s1 → PartialRename s1 s2 → Option (CapAtom s2)
@@ -254,7 +241,9 @@ def tyRename? {s1 s2 : Sig} (T : Ty s1) (ρ : PartialRename s1 s2) : Option (Ty 
 termination_by structural T
 end
 
-/-! ### Completeness: a renamed object comes back -/
+/-! ### Completeness
+
+Renaming by `σ` and then partially renaming gives the object back. -/
 
 theorem capAtomRename?_complete {s1 s2 : Sig} (a : CapAtom s2) (ρ : PartialRename s1 s2)
     (σ : Rename s2 s1) (h : ρ.Inverts σ) : capAtomRename? (a.rename σ) ρ = some a := by
@@ -323,7 +312,9 @@ theorem tyRename?_complete :
       rw [capRename?_complete C ρ σ h, shapeRename?_complete S ρ σ h]
 end
 
-/-! ### Soundness: a result renames back to the input -/
+/-! ### Soundness
+
+A result of the partial renaming renames back to the input. -/
 
 theorem capAtomRename?_sound {s1 s2 : Sig} (a : CapAtom s1) (b : CapAtom s2)
     (ρ : PartialRename s1 s2) (σ : Rename s2 s1) (h : ρ.Inverts σ)
@@ -501,11 +492,9 @@ end
 
 /-! ## Strengthening
 
-Strengthening is the action of `PartialRename.unshift`, the partial inverse
-of `Rename.succ`.  It undoes one weakening exactly when the innermost binder
-does not occur.  The binder may be of either kind: the avoidance ladder
-strengthens past a term binder, and a capture binder of the platform is
-passed the same way. -/
+Strengthening is `PartialRename.unshift`, the partial inverse of
+`Rename.succ`.  It undoes one weakening exactly when the innermost binder,
+of either kind, does not occur. -/
 
 /-- Undo one weakening of a capture set. -/
 def capStrengthen? {s : Sig} {k : Kind} (C : CaptureSet (s,,k)) : Option (CaptureSet s) :=
@@ -566,8 +555,7 @@ theorem tyStrengthen?_iff {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s} :
 
 /-! ### Strengthening with its equation
 
-The second rung of the avoidance ladder rewrites the body's typing along the
-equation, so the equation comes back with the result. -/
+The result carries the equation `C = weaken D`, for rewriting a typing along it. -/
 
 /-- Strengthening of a capture set, carrying the equation it establishes. -/
 def capStrengthenW? {s : Sig} {k : Kind} (C : CaptureSet (s,,k)) :
@@ -618,12 +606,9 @@ instance instDecidableIsWeakening {s : Sig} {k : Kind} (T : Ty (s,,k)) :
 
 /-! ## Joining capture sets
 
-A capture set is a list read as a finite set, and `∪` is concatenation.
-The typer joins the sets of the premises of a rule with `capJoin` instead,
-which keeps the first set and adds the atoms of the second that the first
-lacks, so that a set does not grow by repetition along a derivation.  Both
-sets are included in the join, which is all a rule needs: each inclusion is
-a `Subcap.elem`. -/
+A capture set is a list read as a finite set.  `capJoin` keeps the first set
+and adds the atoms of the second that it lacks, so a set does not grow by
+repetition along a derivation.  Both sets are included in the join. -/
 
 /-- `C` followed by the atoms of `D` that `C` lacks. -/
 def capJoin {s : Sig} (C D : CaptureSet s) : CaptureSet s :=
@@ -647,19 +632,16 @@ termination_by structural Cs
 
 /-! ## Candidate sets for a binder that goes out of scope
 
-Three rules drop a term binder `x` from a set over `(s,x)`.  `All-I` asks
-the body's use set `V` to be below `U↑ ∪ {x}`, `{}-I` asks the same of the
-definitions with the self, and `let` asks the body's use set and the
-body's type to be below sets over `s`, weakened.  In each case the typer
-builds a candidate over `s` and then proves the inclusion it needs.
+`All-I`, `{}-I` and `let` drop a term binder `x` from a set over `(s,x)`.
+The typer builds a candidate over `s` and then proves the inclusion it needs.
 
-`capReplaceHere R sel V` replaces the atom `{x}` of `V` by the set `R` and
-each atom `{x.C}` by `sel C` when that is known.  For `All-I` and `{}-I`,
-`R` is empty, since the rule adds `{x}` back itself.  For `let`, `R` is the
-capture set of the bound term's type, which is what `sc-var` reads at the
-binder.  `sel C` is the upper bound of the capture member `C` of `x`, which
-`sc-sel-upper` reads.  An atom `{x.C}` with no known bound stays, and then
-the candidate fails to strengthen.  `capAvoid?` strengthens the result. -/
+`capReplaceHere R sel V` replaces the atom `{x}` of `V` by `R` and each atom
+`{x.C}` by `sel C` when that is known.  For `All-I` and `{}-I`, `R` is empty,
+since the rule adds `{x}` back.  For `let`, `R` is the capture set of the
+bound term's type (`sc-var`).  `sel C` is the upper bound of the capture
+member `C` of `x` (`sc-sel-upper`).  An atom `{x.C}` with no known bound
+stays, and then the candidate fails to strengthen.  `capAvoid?` strengthens
+the result. -/
 
 /-- The image of one atom over `(s,x)` under the replacement of the binder. -/
 def hereImage {s : Sig} (R : CaptureSet (s,x)) (sel : Label → Option (CaptureSet (s,x))) :
@@ -694,10 +676,8 @@ def noSel {s : Sig} : Label → Option (CaptureSet s) := fun _ => none
 
 /-! ## The variables of a context
 
-`Ctx` has four constructors.  `consSelf`, the binder of an object literal, is
-a term binder like `cons`, so its variable is in the list.  `consC`, a
-capture binder of the platform, binds no term variable, so it only shifts
-the ones below it. -/
+`consSelf`, the binder of an object literal, is a term binder like `cons`.
+`consC`, a capture binder of the platform, binds no term variable. -/
 
 /-- Every term variable of a context, newest binder first. -/
 def ctxVars {s : Sig} (Γ : Ctx s) : List (BVar s .var) :=
@@ -717,10 +697,7 @@ def ctxCaps {s : Sig} (Γ : Ctx s) : List (BVar s .cap) :=
   | .consC Γ => .here :: (ctxCaps Γ).map .there
 termination_by structural Γ
 
-/-! ## Tests
-
-Every procedure of this module is structural, so each test below reduces in
-the kernel. -/
+/-! ## Tests -/
 
 section Tests
 
@@ -752,10 +729,10 @@ example : defsDistinct?
     (Defs.and (Defs.cap (Label.typ 0) []) (Defs.and (Defs.typ (Label.typ 1) .top)
       (Defs.cap (Label.typ 0) [])) : Defs []) = false := by decide
 
-/-- The capture binder of a platform strengthens past a term binder. -/
+/-- A capture binder strengthens past a term binder. -/
 example : capStrengthen? (s := ([] : Sig),c) (k := .var)
     [.cvar (.there .here), .any] = some [.cvar .here, .any] := by decide
-/-- A set that names the binder does not strengthen, nor does one of its members. -/
+/-- A set that names the binder, or one of its members, does not strengthen. -/
 example : capStrengthen? (s := ([] : Sig),c) (k := .var) [.var .here] = none := by decide
 example : capStrengthen? (s := ([] : Sig),c) (k := .var)
     [.sel .here (Label.typ 0)] = none := by decide

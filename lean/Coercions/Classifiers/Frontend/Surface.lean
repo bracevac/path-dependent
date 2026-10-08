@@ -5,55 +5,42 @@ import Lean
 /-!
 # The surface syntax of the Classifiers front end
 
-The elaborator of `Notation.lean` produces a value of one of the named
-inductives below and nothing else.  Every `Sig`-indexed construction happens
-afterwards, in the ordinary Lean functions of `Resolve.lean`.  The named
-syntax, the label table, and the two side conditions `Scoped` and `LabelsIn`
-follow the vanilla ones of `lean/Coercions/Frontend/Surface.lean`.
+The elaborator of `Notation.lean` produces a value of one of the inductives
+below and nothing else.  Resolution into the typed calculus happens afterwards
+in `Resolve.lean`.  The named syntax, the label table and the side conditions
+`Scoped` and `LabelsIn` follow `lean/Coercions/Frontend/Surface.lean`.
 
-Shapes, capturing types and answers are three separate sorts here, not one.
-A shape is the plain type former: a declaration, a selection, an
-intersection, an arrow or a box.  A type is a shape paired with a capture
-set, written `S ^ C`.  An answer is a type, or a type under one capture
-binder bounded by a set of the enclosing scope, the shape an existential
-reading of `fresh` needs.  Keeping the three apart means a written `∃` can
-only sit where an answer is expected: the codomain of an arrow and nowhere
-else.
+There are three sorts.  A shape is the plain type former: a declaration, a
+selection, an intersection, an arrow or a box.  A type is a shape with a
+capture set, written `S ^ C`.  An answer is a type, or a type under one capture
+binder bounded by a set of the enclosing scope, written `∃[c ⊑ C] T`.  A
+written `∃` is the codomain of an arrow or the annotation of a `let`.
 
-An arrow carries an optional name for its own capture binder, written
-`∀[c](x : T) U` when named and `∀(x : T) U` otherwise, and a lambda carries
-the same optional name for the arrow it occurs at, `λ[c](x : T). t`.  An
-object literal is just a shape and its definitions: it carries no capture
-set of its own, since the calculus reads an object's set off its class
-root, not off a written annotation.  `letex ⟨c, x⟩ = t in u` unpacks an
-existential answer by hand, opening a capture binder for the witness and a
-term binder for the payload.  The ascription `(t : T)` is kept, a checking
-point the calculus itself has no term for.
+An arrow may name its own capture binder, `∀[c](x : T) U`, and a lambda may
+name the binder of its arrow, `λ[c](x : T). t`.  An object literal has a shape
+and definitions but no capture set, since its set is read off its class root.
+`letex ⟨c, x⟩ = t in u` unpacks an existential answer by hand.  The ascription
+`(t : T)` is a checking point and has no term in the calculus.
 
-Labels are strings here, interned by a `LabelTable` the caller supplies, as
-in the vanilla line.  A capture member sits at a type label, the same slot a
-type-member bound sits at, since the version desugars a capture-set
-parameter to a type parameter.
+Labels are strings, interned by a `LabelTable` the caller supplies.  A capture
+member sits at a type label, like a type-member bound, since a capture-set
+parameter is desugared to a type parameter.
 
-The capture atom `any` stands for the receiver's own outer set and `fresh`
-for a freshly allocated one.  Both are inert in resolution, carried through
-unread, since what each one reads back to is a function of the
-context the typer builds, not of the surface term alone.
+The capture atom `any` stands for the capabilities of the enclosing scope and
+`fresh` for a newly allocated one.  Resolution carries both through unread.
+The typer gives them a meaning by position, see `readAt` in `Decide.lean`.
 
-A capture atom may also be projected to a classifier kind, `a.only[K]` or
-`a.except[K]`, and a capture member may be bounded by a kind directly,
-`{C^ : K}`, beside the set-bounded `{C^ : lo..hi}` it already has.  A
-classifier kind is `only`, `except`, or their union and intersection.
-These names are a third namespace, apart from the term and capture
-binders `Scoped` tracks: a program declares its classifiers by name, and
-`ClassifiersIn` checks that every name a kind mentions is among them.  A
-program also carries the classifier declarations themselves, the
-platform's binders each with an optional classifier, and an optional
-declared use set and kind for its body.
+A capture atom may be projected to a classifier kind, `a.only[K]` or
+`a.except[K]`.  A capture member may be bounded by a kind, `{C^ : K}`, beside
+the set-bounded `{C^ : lo..hi}`.  A kind is `only`, `except`, or their union
+and intersection.  Classifier names are a third namespace beside the term and
+capture binders that `Scoped` tracks, and `ClassifiersIn` checks that every
+name a kind mentions is declared.  A program (`SProg`) carries its classifier
+declarations, the platform's binders each with an optional classifier, and an
+optional declared use set and kind for its body.
 
-Every mutual block here carries `termination_by structural`, so the kernel
-reduces every function of this module and the sanity checks below are all
-`by decide`.
+Every mutual block is structural, so the kernel reduces every function here
+and the checks at the end are all `by decide`.
 -/
 
 namespace ClassifiersFrontend
@@ -62,9 +49,9 @@ open Classifiers.FCdot (Label)
 
 /-! ## The named abstract syntax -/
 
-/-- A classifier kind: `only[K₁, …]` names the classifiers it keeps and
-`except[K₁, …]` the classifiers it excludes, so `except []` keeps every
-classifier and `only []` keeps none.  `∪` and `∩` combine two kinds. -/
+/-- A classifier kind.  `only[K₁, …]` keeps the named classifiers and
+`except[K₁, …]` drops them, so `except []` keeps every classifier and
+`only []` keeps none.  `∪` and `∩` combine two kinds. -/
 inductive SKind : Type where
   | only (cs : List String)
   | except (cs : List String)
@@ -72,10 +59,8 @@ inductive SKind : Type where
   | inter (K L : SKind)
 deriving DecidableEq, Repr, Inhabited
 
-/-- A capture atom: a name, written `x`, `κ`, or the two-part `x.C`, the
-atom `any` standing for the receiver's own outer set, the atom `fresh`
-standing for a freshly allocated one, or an atom projected to a
-classifier kind, `a.only[K]` or `a.except[K]`. -/
+/-- A capture atom: a name `x` or `κ`, a member selection `x.C`, `any`,
+`fresh`, or an atom projected to a kind, `a.only[K]` or `a.except[K]`. -/
 inductive SAtom : Type where
   /-- A term variable or a platform capability, by name. -/
   | name (x : String)
@@ -92,17 +77,15 @@ deriving DecidableEq, Repr, Inhabited
 /-- A capture set, written `{a₁, …, aₙ}`. -/
 abbrev SCap := List SAtom
 
-/-- Add a name to the front of a list of names, only when the name is
-written.  Used to open an arrow's own capture binder, which a program may
-leave anonymous. -/
+/-- Add a name to the front of a list when it is written.  Opens an arrow's
+own capture binder, which a program may leave anonymous. -/
 def optCons (o : Option String) (l : List String) : List String :=
   match o with
   | none => l
   | some n => n :: l
 
 mutual
-/-- Surface shapes, with binders and labels as strings.  Bounds of a type
-member and of a capture member are shapes, as the calculus reads them. -/
+/-- Surface shapes, with binders and labels as strings. -/
 inductive SShape : Type where
   /-- `⊤`. -/
   | top
@@ -120,13 +103,12 @@ inductive SShape : Type where
   | sel (x : String) (A : String)
   /-- `μ(x. S)`, a recursive self shape. -/
   | mu (x : String) (S : SShape)
-  /-- `∀(x : T) U` or `∀[c](x : T) U`, a dependent arrow on a capturing
-  domain and an answer codomain.  `κ` names the arrow's own capture binder
-  when the program writes it. -/
+  /-- `∀(x : T) U` or `∀[c](x : T) U`, a dependent arrow.  `κ` names the
+  arrow's own capture binder when the program writes it. -/
   | all (κ : Option String) (x : String) (T : SType) (U : SAns)
   /-- `S ∧ T`, an intersection of shapes. -/
   | and (S T : SShape)
-  /-- `□ T`, the box former.  Inert, not a declaration. -/
+  /-- `□ T`, the box former. -/
   | box (T : SType)
 /-- A capturing type: a shape with a written capture set, `S ^ C`. -/
 inductive SType : Type where
@@ -145,17 +127,15 @@ instance : Inhabited SType := ⟨.capt .top []⟩
 instance : Inhabited SAns := ⟨.ty default⟩
 
 mutual
-/-- Surface terms.  Application and selection take arbitrary terms, which is
-the point of a direct style front end.  Let insertion of `Resolve.lean` puts
-them back into monadic normal form. -/
+/-- Surface terms.  Application and selection take arbitrary terms.  Let
+insertion in `Resolve.lean` brings them to monadic normal form. -/
 inductive STm : Type where
   /-- A variable, by name. -/
   | var (x : String)
   /-- `λ(x : T). t` or `λ[c](x : T). t`, `κ` naming the arrow's own capture
-  binder when the program writes it. -/
+  binder when written. -/
   | lam (κ : Option String) (x : String) (T : SType) (t : STm)
-  /-- `ν(x : S. d)`, an object literal: the self shape and its definitions,
-  no capture set of its own. -/
+  /-- `ν(x : S. d)`, an object literal: the self shape and its definitions. -/
   | obj (x : String) (S : SShape) (d : SDefs)
   /-- `t u`, direct style. -/
   | app (t u : STm)
@@ -163,15 +143,14 @@ inductive STm : Type where
   | proj (t : STm) (a : String)
   /-- `let x = t in u`, with an optional result answer. -/
   | «let» (x : String) (ann : Option SAns) (t u : STm)
-  /-- `let ⟨c, x⟩ = t in u`, an explicit unpacking of an existential
-  answer: a capture binder for the witness, then a term binder for the
-  payload. -/
+  /-- `letex ⟨c, x⟩ = t in u`, an explicit unpacking of an existential
+  answer. -/
   | letex (κ x : String) (t u : STm)
-  /-- `□ t`, direct style, a box value written by hand. -/
+  /-- `□ t`, a box value written by hand. -/
   | box (t : STm)
-  /-- `C ⊸ t`, direct style, an unboxing written by hand. -/
+  /-- `C ⊸ t`, an unboxing written by hand. -/
   | unbox (C : SCap) (t : STm)
-  /-- `(t : T)`, a checking point.  Erased, the calculus has no such term. -/
+  /-- `(t : T)`, a checking point.  Erased. -/
   | asc (t : STm) (T : SType)
 /-- Surface definition members. -/
 inductive SDefs : Type where
@@ -190,18 +169,17 @@ deriving instance DecidableEq, Repr for STm, SDefs
 instance : Inhabited STm := ⟨.var ""⟩
 instance : Inhabited SDefs := ⟨.typ "" .top⟩
 
-/-- A classifier declaration list: each name paired with the parent it
-extends, `none` when it extends nothing. -/
+/-- A classifier declaration list: each name with the parent it extends, or
+`none`. -/
 abbrev SClsDecls := List (String × Option String)
 
-/-- A platform binder list: each capability name paired with the
-classifier it is declared at, `none` when the binder carries none. -/
+/-- A platform binder list: each capability name with its classifier, or
+`none`. -/
 abbrev SPlatform := List (String × Option String)
 
-/-- A whole program: the classifiers it declares, the platform
-capabilities with their classifiers, outermost first, an optional
-declared use set and an optional declared kind for the body, and the body
-itself. -/
+/-- A whole program: the classifiers it declares, the platform capabilities
+with their classifiers (outermost first), an optional declared use set and
+kind for the body, and the body. -/
 structure SProg where
   classifiers : SClsDecls
   platform : SPlatform
@@ -212,13 +190,11 @@ deriving DecidableEq, Repr
 
 /-! ## The label table
 
-Type labels and term labels are disjoint in the target
-(`lean/Coercions/Classifiers/FCdot/Debruijn.lean`), so a lookup that wants one
-sort has to say so.  `labelTyp?` and `labelTrm?` are those two lookups.  A
-capture member's label sits at the type sort, the same slot a type-member
-bound sits at. -/
+Type labels and term labels are disjoint in FCdot
+(`lean/Coercions/Classifiers/FCdot/Debruijn.lean`), so `labelTyp?` and
+`labelTrm?` look up one sort each. -/
 
-/-- A label table maps surface names to target labels, first entry first. -/
+/-- A label table maps surface names to labels, first entry first. -/
 abbrev LabelTable := List (String × Label)
 
 /-- The first entry for a name, at whatever sort it was interned. -/
@@ -238,18 +214,13 @@ def labelTrm? (Λ : LabelTable) (a : String) : Option Label :=
   | some (.trm n) => some (.trm n)
   | _ => none
 
-/-! ## Capture sets: scoping and labelling
-
-A capture set binds no name of its own, so these two functions are plain
-list recursions, used from the shape, type, answer and term side conditions
-below. -/
+/-! ## Capture sets: scoping and labelling -/
 
 /-- Every name of a capture atom is in scope.  `K` lists the capture
-binders, `Γ` the term variables.  A plain name may be either kind, the
-receiver of `x.C` must be a term variable, `any` and `fresh` name
-nothing, and a projected atom's scoping is its base atom's: the kind
-names no term-level name, only classifiers, which `ClassifiersIn` below
-checks. -/
+binders and `Γ` the term variables.  A plain name may be either, the receiver
+of `x.C` must be a term variable, and `any` and `fresh` name nothing.  A
+projected atom scopes as its base atom does, since its kind names only
+classifiers, which `ClassifiersIn` checks. -/
 def SAtom.Scoped (K Γ : List String) : SAtom → Bool
   | .name x => Γ.contains x || K.contains x
   | .sel x _ => Γ.contains x
@@ -257,10 +228,7 @@ def SAtom.Scoped (K Γ : List String) : SAtom → Bool
   | .fresh => true
   | .proj a _ => SAtom.Scoped K Γ a
 
-/-- Every name of a capture set is in scope.  The four plain atoms keep
-the vanilla per-atom equations.  A projected atom defers to
-`SAtom.Scoped`, which reads its base atom under any number of
-projections. -/
+/-- Every name of a capture set is in scope. -/
 def SCap.Scoped (K Γ : List String) : SCap → Bool
   | [] => true
   | .name x :: c => (Γ.contains x || K.contains x) && SCap.Scoped K Γ c
@@ -269,10 +237,8 @@ def SCap.Scoped (K Γ : List String) : SCap → Bool
   | .fresh :: c => SCap.Scoped K Γ c
   | .proj a _ :: c => SAtom.Scoped K Γ a && SCap.Scoped K Γ c
 
-/-- Every capture-member selection of a capture atom is at a type label.
-`any`, `fresh` and a plain name name no label, and a projected atom's
-labelling is its base atom's: the kind holds classifier names, not
-labels. -/
+/-- Every capture-member selection of a capture atom is at a type label.  A
+projected atom is labelled as its base atom is. -/
 def SAtom.LabelsIn (Λ : LabelTable) : SAtom → Bool
   | .name _ => true
   | .sel _ C => (labelTyp? Λ C).isSome
@@ -280,9 +246,7 @@ def SAtom.LabelsIn (Λ : LabelTable) : SAtom → Bool
   | .fresh => true
   | .proj a _ => SAtom.LabelsIn Λ a
 
-/-- Every capture-member selection of a capture set is at a type label,
-the four plain atoms keeping the vanilla per-atom equations and a
-projected atom deferring to `SAtom.LabelsIn`. -/
+/-- Every capture-member selection of a capture set is at a type label. -/
 def SCap.LabelsIn (Λ : LabelTable) : SCap → Bool
   | [] => true
   | .name _ :: c => SCap.LabelsIn Λ c
@@ -293,16 +257,12 @@ def SCap.LabelsIn (Λ : LabelTable) : SCap → Bool
 
 /-! ## Classifier names
 
-Classifier names are strings here, mapped to the version's classifiers by
-a `ClsTable`, as labels are mapped by a `LabelTable`.  `Resolve.lean`
-builds the table from a program's declarations.  `ClassifiersIn κt` holds
-when every classifier name a phrase mentions, in `only`, `except` or a
-platform binder, is in the table.  It is the one side condition the
-classifier layer adds beside `Scoped` and `LabelsIn`, structural like
-both. -/
+Classifier names are strings, mapped to classifiers by a `ClsTable` as labels
+are by a `LabelTable`.  `Resolve.lean` builds the table from a program's
+declarations.  `ClassifiersIn κt` holds when every classifier name a phrase
+mentions, in `only`, `except` or a platform binder, is in the table. -/
 
-/-- A classifier table maps surface names to the version's classifiers,
-first entry first. -/
+/-- A classifier table maps surface names to classifiers, first entry first. -/
 abbrev ClsTable := List (String × Classifiers.Cls.Classifier)
 
 /-- The first entry for a classifier name. -/
@@ -321,8 +281,7 @@ def SKind.ClassifiersIn (κt : ClsTable) (K : SKind) : Bool :=
   | .inter K L => SKind.ClassifiersIn κt K && SKind.ClassifiersIn κt L
 termination_by structural K
 
-/-- Every classifier name a capture atom mentions, through a projection,
-is in the table. -/
+/-- Every classifier name a capture atom mentions is in the table. -/
 def SAtom.ClassifiersIn (κt : ClsTable) (a : SAtom) : Bool :=
   match a with
   | .name _ => true
@@ -332,8 +291,7 @@ def SAtom.ClassifiersIn (κt : ClsTable) (a : SAtom) : Bool :=
   | .proj a K => SAtom.ClassifiersIn κt a && SKind.ClassifiersIn κt K
 termination_by structural a
 
-/-- Every classifier name a capture set mentions is in the table, atom by
-atom. -/
+/-- Every classifier name a capture set mentions is in the table. -/
 def SCap.ClassifiersIn (κt : ClsTable) (c : SCap) : Bool :=
   c.all (SAtom.ClassifiersIn κt)
 
@@ -346,22 +304,19 @@ def SPlatform.ClassifiersIn (κt : ClsTable) (ps : SPlatform) : Bool :=
 
 /-! ## Scoping
 
-`Scoped K Γ` holds when every free name of the phrase is in scope at the
-kind its position needs.  `K` lists the capture binders, the platform
-capabilities among them, and `Γ` the term variables.  A name in term
-position, the receiver of a selection `x.A` and the receiver of a capture
-member `x.C` must be term variables.  A plain name in a capture set may be
-either kind.
+`Scoped K Γ` holds when every free name of the phrase is in scope at the kind
+its position needs.  `K` lists the capture binders, the platform capabilities
+among them, and `Γ` the term variables.  A name in term position, the
+receiver of `x.A` and the receiver of `x.C` must be term variables.  A plain
+name in a capture set may be either.
 
 An arrow's own capture binder, named or not, scopes over its domain and, with
-the parameter, over its codomain: `optCons κ K` is the capture context
-either way, naming the binder when the program does.  The existential
-binder of an answer scopes over its type alone, and its own bound is read
-in the outer scope.  The binder of a `let` does not scope over the `let`'s
-annotation, and an unpacking's two binders scope only over its own payload.
-None of `typ`, `cap`, `fld` or the definition forms binds a name over a
-body.  Only `mu`, `all`, the capture binder of `all` and of `ex`, the self
-of `obj`, and the two binders of `let` and `letex` do. -/
+the parameter, over its codomain.  The existential binder of an answer scopes
+over its type alone, and its bound is read in the outer scope.  The binder of
+a `let` does not scope over the `let`'s annotation.  The two binders of a
+`letex` scope only over its body.  The forms that bind a name are `mu`, `all`,
+the capture binder of `all` and of `ex`, the self of `obj`, and `let` and
+`letex`. -/
 
 mutual
 /-- Every free name of a surface shape is in scope. -/
@@ -423,8 +378,7 @@ end
 /-! ## Labelling
 
 `LabelsIn Λ` holds when every name in label position is in the table at the
-sort its position demands.  A capture member's own label, like a
-type-member bound's, is a type label. -/
+sort its position demands. -/
 
 mutual
 /-- Every label of a surface shape is in the table at the right sort. -/
@@ -482,13 +436,11 @@ def SDefs.LabelsIn (Λ : LabelTable) (d : SDefs) : Bool :=
 termination_by structural d
 end
 
-/-! ## Classifier names, through a shape, type, answer, term or
-definitions
+/-! ## Classifier names in shapes, types, answers, terms and definitions
 
-A classifier name sits in two places of a phrase: the kind of a
-kind-bounded member `capk`, and the kind of a projected atom inside a
-capture set, which `SCap.ClassifiersIn` above covers.  Every other form
-passes the check through to its parts, as `LabelsIn` does. -/
+A classifier name sits in the kind of a kind-bounded member `capk` and in the
+kind of a projected atom in a capture set.  Every other form passes the check
+to its parts. -/
 
 mutual
 /-- Every classifier name of a surface shape is in the table. -/
@@ -548,10 +500,7 @@ end
 
 /-! ## The test helper
 
-A check that runs compiled code instead of reducing in the kernel is
-written `#eval expect ...`, where a false result throws and so fails the
-build.  Every check of this module is structural and reduces, so these are
-all `by decide`. -/
+`#eval expect ...` runs compiled code, and a false result fails the build. -/
 
 /-- Fail the build, from `#eval`, when a check comes out false. -/
 def expect (b : Bool) (msg : String) : IO Unit :=
@@ -559,19 +508,16 @@ def expect (b : Bool) (msg : String) : IO Unit :=
 
 /-! ## `#assert_no_wf`
 
-Every recursive definition of this front end is meant to compile by
-structural recursion, so that the kernel reduces it and a per-example fact
-is a `decide` theorem.  A clause a later edit adds without a matching
-`termination_by structural` case can make Lean fall back to well founded
-recursion silently.  This command catches that at `lake build` time instead
-of at the much later point where `decide` stops reducing. -/
+Every recursive definition of this front end is meant to be structural, so
+that the kernel reduces it.  A clause added without a matching
+`termination_by structural` case can make Lean fall back to well-founded
+recursion silently.  This command reports that at build time. -/
 
 open Lean Elab Command in
 /-- Fails when a definition under the namespace `ns` is compiled by
-well-founded recursion.  The compiler picks a specialised combinator for the
-measure's type, `WellFounded.Nat.fix` for a `Nat` measure rather than the
-generic `WellFounded.fix`, so the test is membership in the whole
-`WellFounded` namespace, not equality with one constant. -/
+well-founded recursion.  Lean picks a specialised combinator for the
+measure's type, such as `WellFounded.Nat.fix`, so the test is membership in
+the `WellFounded` namespace, not equality with one constant. -/
 elab "#assert_no_wf " ns:ident : command => do
   let env ← getEnv
   let bad := env.constants.fold (init := #[]) fun acc n ci =>
@@ -585,11 +531,10 @@ elab "#assert_no_wf " ns:ident : command => do
 
 /-! ## Sanity
 
-Everything above is structural, so these reduce in the kernel.  The sample
-program is `λ[c](f : ⊤). ν(s : {a : ⊤} ∧ {C^ : {}..{f}}. {a = f} ∧ {C^ =
-{f}})`, and its label table names `a` a term label and `C` a type label. -/
+The sample program is `λ[c](f : ⊤). ν(s : {a : ⊤} ∧ {C^ : {}..{f}}. {a = f} ∧
+{C^ = {f}})`.  Its label table names `a` a term label and `C` a type label. -/
 
-/-- A small hand table: `a` a term label, `C` a type label. -/
+/-- `a` is a term label and `C` a type label. -/
 private def Λ0 : LabelTable := [("a", .trm 0), ("C", .typ 0)]
 
 /-- The sample program of the checks below. -/
@@ -630,13 +575,12 @@ example : SType.Scoped [] [] (.capt .top [SAtom.name "f"]) = false := by decide
 /-- `fresh` names nothing, so a set holding only it is scoped anywhere. -/
 example : SCap.Scoped [] [] [SAtom.fresh] = true := by decide
 
-/-- `all`: an anonymous arrow binder scopes its domain under `K` alone, and
+/-- `all`: an anonymous arrow binder scopes its domain under `K` alone and
 its codomain under `K` and the parameter. -/
 example : SShape.Scoped [] [] (.all none "x" (.capt .top []) (.ty (.capt (.sel "x" "A") []))) =
     true := by decide
 
-/-- `all`: a named arrow binder is in scope in the domain's set, and stays
-in scope for the codomain. -/
+/-- `all`: a named arrow binder is in scope in the domain and the codomain. -/
 example :
     SShape.Scoped [] [] (.all (some "c") "x" (.capt .top [SAtom.name "c"])
       (.ty (.capt .top [SAtom.name "c"]))) = true := by decide
@@ -644,8 +588,8 @@ example :
 example : SShape.Scoped [] [] (.all none "x" (.capt .top [SAtom.name "c"]) (.ty (.capt .top []))) =
     false := by decide
 
-/-- `ex`: the binder scopes over the type, and the written bound is read in
-the outer scope, not under its own binder. -/
+/-- `ex`: the binder scopes over the type, and the bound is read in the outer
+scope. -/
 example : SAns.Scoped [] [] (.ex "c" [] (.capt .top [SAtom.name "c"])) = true := by decide
 
 example : SAns.Scoped [] [] (.ex "c" [SAtom.name "c"] (.capt .top [])) = false := by decide
@@ -702,8 +646,8 @@ example :
     SShape.LabelsIn Λ0 (.all none "x" (.capt .top [SAtom.sel "s" "g"]) (.ty (.capt .top []))) =
       false := by decide
 
-/-- `ex`: the type under the binder is labelled.  The written bound is not a
-label position. -/
+/-- `ex`: the type under the binder is labelled.  The bound is not a label
+position. -/
 example : SAns.LabelsIn Λ0 (.ex "c" [] (.capt .top [SAtom.sel "s" "C"])) = true := by decide
 
 example : SAns.LabelsIn Λ0 (.ex "c" [] (.capt .top [SAtom.sel "s" "g"])) = false := by decide
@@ -728,7 +672,7 @@ example :
     STm.LabelsIn Λ0 (.letex "c" "x" (.var "e") (.unbox [SAtom.sel "s" "g"] (.var "x"))) =
       false := by decide
 
-/-- `SDefs.cap`: the member's own label is in the table, and its value
+/-- `SDefs.cap`: the member's label is in the table and its value is
 labelled. -/
 example : SDefs.LabelsIn Λ0 (.cap "C" [SAtom.sel "s" "C"]) = true := by decide
 
@@ -789,9 +733,8 @@ example : SAtom.ClassifiersIn κ1 (.proj (.name "x") (.only ["K1"])) = true := b
 
 example : SAtom.ClassifiersIn [] (.proj (.name "x") (.only ["K1"])) = false := by decide
 
-/-- `ClassifiersIn`: a kind-bounded member reads its kind's names, a
-set-bounded one reads none, and labelling and scoping are unaffected by
-either. -/
+/-- `ClassifiersIn`: a kind-bounded member reads its kind's names and a
+set-bounded one reads none. -/
 example : SShape.ClassifiersIn κ1 (.capk "C" (.only ["K1"])) = true := by decide
 
 example : SShape.ClassifiersIn [] (.cap "C" [] [SAtom.name "k1"]) = true := by decide

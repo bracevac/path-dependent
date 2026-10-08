@@ -15,15 +15,14 @@ import Coercions.Captures.Frontend.Examples
 /-!
 # The front end of `Captures`
 
-The root of the `CapturesFrontend` library: a way to write, type and run
-programs of the `Captures` version (capture checking the DOT way) without assembling
-derivations by hand.  A program in the version's notation is resolved, typed
-by a search that returns the version's derivation, translated, checked and
-run.  The source is DOT-MNF with capture sets, translated to FCdot.
+The root of the `CapturesFrontend` library.  A program in the version's
+notation (capture checking the DOT way) is resolved, typed by a search that
+returns the version's derivation, translated to FCdot, checked and run.  The
+source is DOT-MNF with capture sets.
 
 The library imports the version and changes nothing in it.  It is not a
 default target.
 -/
 
-/-! Every definition of the front end is structural, so the kernel reduces it. -/
+/-! Every definition of the front end is structural, so the kernel can reduce it. -/
 #assert_no_wf CapturesFrontend

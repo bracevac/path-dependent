@@ -7,28 +7,23 @@ import Coercions.CapturesCC.DotMNF.Examples
 
 The functions of this module take a surface phrase to the annotated de Bruijn
 syntax of `Ann.lean`: `resolveShape`, `resolveTy` and `resolveAns` for the
-three sorts of type, `resolveTm` for a term and `resolveDefs` for a
-definition list.  They are the only place where a surface name becomes an
-index.
+three sorts of type, `resolveTm` for a term and `resolveDefs` for a definition
+list.  They are the only place where a surface name becomes an index.
 
 ## Names of two kinds
 
-A signature of the version has term binders and capture binders.  A name
-environment records one surface name per binder, innermost first, with its
-kind.  A name in term position, the receiver of a type selection `x.A` and
-the receiver of a capture member `x.C` are looked up among the term binders
-only.  A plain name in a capture set takes the innermost binder of either
-kind, and becomes the atom of a term variable or of a capture binder by the
-kind it finds.  The platform capabilities are the outermost capture binders,
-in the order given, so `["k1", "k2"]` gives `k1` at `.there .here` and `k2`
-at `.here`, the version's own `k1` and `k2`
-(`lean/Coercions/CapturesCC/DotMNF/Examples.lean`).
+A signature has term binders and capture binders.  A name environment records
+one surface name per binder, innermost first, with its kind.  A term name, the
+receiver of a type selection `x.A` and the receiver of a capture member `x.C`
+are looked up among the term binders only.  A plain name in a capture set takes
+the innermost binder of either kind.  The platform capabilities are the
+outermost capture binders, in the order given, so `["k1", "k2"]` gives `k1` at
+`.there .here` and `k2` at `.here`.
 
 ## Binders the program does not write
 
-The calculus has binders that no surface phrase writes.  The resolver
-inserts them, so that the name environment stays in step with the
-signature.
+The resolver inserts the binders the calculus has and no surface phrase
+writes, so that the name environment stays in step with the signature.
 
 - A lambda: the body root, then the arrow's own capture binder, then the
   parameter.  The domain is read under the arrow binder alone.
@@ -36,48 +31,38 @@ signature.
   parameter, which with it scopes over the codomain.
 - An object: the class root, then the self, over the definitions.  The self
   shape is read under the self alone.
-- An existential answer `∃[c ⊑ C] T`: one capture binder over `T`.  The
-  bound `C` is read outside it.
+- An existential answer `∃[c ⊑ C] T`: one capture binder over `T`.  The bound
+  `C` is read outside it.
 - A written unpacking `let ⟨c, x⟩ = t in u`: the witness binder, then the
   payload, over `u`.
 
 A root and an anonymous arrow binder are named `"%"`, which no identifier of
-the notation can equal.  So no surface name ever refers to a root, and `any`
-is the only way to speak of one, which is the compiler's discipline.  An
-arrow binder the program names, `∀[c]` or `λ[c]`, is in scope under its
-name.
+the notation can equal.  So no surface name refers to a root, and `any` is the
+only way to speak of one.  An arrow binder the program names, `∀[c]` or
+`λ[c]`, is in scope under its name.
 
 ## The atoms `any` and `fresh`
 
-The resolver does not read `any` and `fresh`.  It turns them into the frozen
-atoms `CapAtom.any` and `CapAtom.fresh` and leaves them where the program
-wrote them.  What each one stands for is a function of the context the typer
-builds, so the typer reads them, with the frozen `Ty.expand`,
-`Ty.expandFresh` and `Ctx.reading`.  One placement is refused here.  A
-lambda domain holding `fresh` does not resolve: the version reads a domain
-by `Value.expand`, which reads `any` only, and its `FreshOk` keeps `fresh`
-out of every parameter type.
+The resolver turns `any` and `fresh` into `CapAtom.any` and `CapAtom.fresh`
+and leaves them where the program wrote them.  The typer reads them, with
+`Ty.expand`, `Ty.expandFresh` and `Ctx.reading`.  One placement is refused.  A
+lambda domain holding `fresh` does not resolve, because the version reads a
+domain by `Value.expand`, which reads `any` only, and its `FreshOk` keeps
+`fresh` out of every parameter type.
 
 ## Let insertion
 
-Let insertion uses an explicit spine of bindings, as the vanilla front end
-does, which keeps the resolvers structural on the surface phrase.  The two
-vanilla direct style forms, application and projection, atomize their
-operands, and so do the two box forms, `□ t` and `C ⊸ t`.  The inserted
-binder is named `"%"`.  Every inserted binding is a plain `let`.  Whether a
-`let` unpacks an existential answer is decided by the typer, from the
-answer of the bound term.
+An explicit spine of bindings keeps the resolvers structural on the surface
+phrase.  Application, projection, `□ t` and `C ⊸ t` atomize their operands.
+The inserted binder is named `"%"`.  Every inserted binding is a plain `let`.
+The typer decides whether a `let` unpacks an existential answer.
 
-An unboxing written with the empty set, `{} ⊸ t`, leaves its set to the
-typer.  With a nonempty set the set is kept as written.
+An unboxing written with the empty set, `{} ⊸ t`, leaves its set to the typer.
+A nonempty set is kept as written.
 
-This module imports `Notation.lean` for the programs at the end, and Lean's
-token table is global.  So the Greek nu that opens an object literal is a
-keyword here and cannot be a local name.  The name environment is written
-`nv` below for that reason.
-
-Nothing in this module is part of the metatheory.  No definition here lives
-in a namespace of the version.
+This module imports `Notation.lean`, and Lean's token table is global.  So the
+Greek nu that opens an object literal is a keyword here and cannot be a local
+name.  The name environment is written `nv` for that reason.
 -/
 
 namespace CapturesCCFrontend
@@ -138,8 +123,7 @@ def binderName (o : Option String) : String := o.getD "%"
 
 A platform is a prefix of capture binders.  `PlatformNames` carries the
 signature, the version's evidence that it is a platform prefix, the names of
-its capabilities and its own capture set, every capability once, outermost
-first.  That set is the version's `platSet` for `["k1", "k2"]`. -/
+the capabilities and the platform's capture set, every capability once. -/
 
 /-- A platform: its capture binders, their names and their set. -/
 structure PlatformNames where
@@ -170,13 +154,11 @@ termination_by structural ys
 /-- The platform of the given capability names, the first one outermost. -/
 def PlatformNames.ofList (ys : List String) : PlatformNames := PlatformNames.empty.pushAll ys
 
-/-! ## Covering, the monotonicity of scoping
+/-! ## Covering
 
-The resolver reads a phrase under an environment that may hold more names
-than the surface scoping asks for: the binders it inserts, `"%"` for a root
-or an anonymous arrow binder, and the binder `atomize` adds.  So the
-totality proof needs scoping to survive larger lists of names, of both
-kinds. -/
+The resolver reads a phrase under an environment that may hold more names than
+the surface scoping asks for: the inserted binders and the binder `atomize`
+adds.  So the totality proof needs scoping to survive larger lists of names. -/
 
 /-- Every name of the first list is a name of the second. -/
 def Covers (Γ Γ' : List String) : Prop :=
@@ -212,8 +194,8 @@ theorem Covers.underOpt {Γ Γ' : List String} (h : Covers Γ Γ') (o : Option S
   | none => exact h
   | some n => exact h.cons n
 
-/-- The capture names a surface arrow binder opens are covered by the ones
-the resolver opens, written name or `"%"`. -/
+/-- The capture names of a surface arrow binder are covered by the resolver's,
+the written name or `"%"`. -/
 theorem Covers.binder (K : List String) (o : Option String) :
     Covers (optCons o K) (binderName o :: K) := by
   cases o with
@@ -361,8 +343,7 @@ theorem NameEnv.find?_isSome : ∀ {s : Sig} (nv : NameEnv s) (x : String),
 
 A `Spine s s'` is a stack of `let` bindings that takes a term of the inner
 signature `s'` back to a term of the outer signature `s`.  `Spine.rename` is
-the weakening that moves a variable of `s` into `s'`.  `Rename.comp f g` is
-`g ∘ f`, so the composition below is in the order it is printed. -/
+the weakening that moves a variable of `s` into `s'`. -/
 
 /-- A stack of inserted `let` bindings. -/
 inductive Spine : Sig → Sig → Type where
@@ -392,8 +373,8 @@ def Spine.append {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine s' s'') : Spine
   | .cons t sp => .cons t (sp.append sp')
 termination_by structural sp
 
-/-- A resolved term brought into variable position: the bindings that had to be
-inserted, the environment they extend, and the variable that stands for it. -/
+/-- A resolved term in variable position: the inserted bindings, their
+environment and the variable. -/
 structure Atomic (s : Sig) where
   /-- The signature after the insertions. -/
   sig : Sig
@@ -404,8 +385,8 @@ structure Atomic (s : Sig) where
   /-- The variable standing for the term. -/
   var : BVar sig .var
 
-/-- Bring a resolved term into variable position.  A variable is already there
-and nothing is inserted.  Anything else is bound by one fresh `let`. -/
+/-- Bring a resolved term into variable position.  A variable needs nothing.
+Anything else is bound by one `let`. -/
 def atomize {s : Sig} (nv : NameEnv s) (t : ATm s) : Atomic s :=
   match t with
   | .path (.var i) => ⟨s, .nil, nv, i⟩
@@ -435,9 +416,8 @@ theorem atomize_capNames {s : Sig} (nv : NameEnv s) (t : ATm s) :
 
 /-! ## Capture sets -/
 
-/-- Resolve a capture atom.  A plain name takes the innermost binder of
-either kind, the receiver of `x.C` a term binder.  `any` and `fresh` are
-kept as the frozen atoms. -/
+/-- Resolve a capture atom.  A plain name takes the innermost binder of either
+kind, the receiver of `x.C` a term binder. -/
 def resolveCapAtom {s : Sig} (Λ : LabelTable) (nv : NameEnv s) : SAtom → Option (CapAtom s)
   | .name x =>
       match nv.find? x with
@@ -463,11 +443,9 @@ termination_by structural c
 
 /-! ## Shapes, types and answers
 
-The three sorts of the surface are the three sorts of the calculus, so each
-is read into its own.  An arrow opens its capture binder, under its written
-name or `"%"`, for the domain, and the parameter on top of it for the
-codomain.  An existential opens its binder for the type and reads its bound
-outside. -/
+An arrow opens its capture binder, under its written name or `"%"`, for the
+domain, and the parameter on top of it for the codomain.  An existential opens
+its binder for the type and reads its bound outside. -/
 
 mutual
 /-- Resolve a surface shape. -/
@@ -531,17 +509,15 @@ end
 
 /-! ## Terms -/
 
-/-- The set an unboxing keeps: none when the program writes the empty set,
-which leaves it to the typer, else the resolved set. -/
+/-- The set an unboxing keeps: none for the empty set, else the resolved set. -/
 def unboxSet {s : Sig} (C : SCap) (C' : CaptureSet s) : Option (CaptureSet s) :=
   match C with
   | [] => none
   | _ => some C'
 
 mutual
-/-- Resolve a surface term, inserting the binders the program does not
-write and `let` bindings for the four direct style forms.  The result is in
-monadic normal form by construction. -/
+/-- Resolve a surface term, inserting the binders the program does not write
+and `let` bindings for the four direct style forms. -/
 def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (ATm s) :=
   match e with
   | .var x => do
@@ -591,8 +567,7 @@ def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (A
       let T' ← resolveTy Λ nv T
       pure (.asc t' T')
 termination_by structural e
-/-- Resolve a surface definition list.  The environment is the one the
-definitions live in, under the class root and the self. -/
+/-- Resolve a surface definition list, under the class root and the self. -/
 def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Option (ADefs s) :=
   match d with
   | .typ A S => do
@@ -614,8 +589,7 @@ def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Optio
 termination_by structural d
 end
 
-/-- Resolve a surface term at a given environment, the entry point for a
-term that sits under a context. -/
+/-- Resolve a surface term at a given environment. -/
 def resolveIn {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (ATm s) :=
   resolveTm Λ nv e
 
@@ -631,8 +605,8 @@ def resolveProg (Λ : LabelTable) (p : SProg) :
 /-! ## Surface side conditions about atoms
 
 `Avoids a` says that the atom `a` occurs in no capture set of the phrase,
-annotations included.  `FreshPlaced` says that no lambda domain of a term
-holds `fresh`, the one placement the resolver refuses. -/
+annotations included.  `FreshPlaced` says that no lambda domain of a term holds
+`fresh`. -/
 
 /-- The atom occurs in no position of the set. -/
 def SCap.Avoids (a : SAtom) : SCap → Bool
@@ -723,11 +697,9 @@ end
 
 Resolution succeeds on a phrase whose free names are in scope at the kind
 their position needs, whose labels are in the table, and, for a term, whose
-lambda domains hold no `fresh`.  The proof is by structural recursion on the
-surface phrase.  Every binder the resolver inserts only adds names, so the
-written scoping carries over by covering.  In the direct style clauses the
-operand is resolved under the environment `atomize` returns, and
-`atomize_names_covers` carries the scoping across. -/
+lambda domains hold no `fresh`.  The proof is by structural recursion.  The
+inserted binders only add names, so the written scoping carries over by
+covering. -/
 
 /-- A scoped and labelled capture set resolves. -/
 theorem resolveCap_isSome : ∀ (c : SCap) {s : Sig} (Λ : LabelTable) (nv : NameEnv s),
@@ -754,8 +726,7 @@ theorem resolveCap_isSome : ∀ (c : SCap) {s : Sig} (Λ : LabelTable) (nv : Nam
       obtain ⟨c', hc⟩ := Option.isSome_iff_exists.mp (resolveCap_isSome c Λ nv hs hl)
       simp [resolveCap, resolveCapAtom, hc]
 
-/-- An arrow's domain, read under the binder the resolver opens, keeps the
-scoping the surface asks of it. -/
+/-- An arrow's domain keeps its scoping under the binder the resolver opens. -/
 theorem Scoped_arrowDom {s : Sig} (nv : NameEnv s) (κ : Option String) (T : SType)
     (h : SType.Scoped (optCons κ nv.capNames) nv.names T = true) :
     SType.Scoped (nv.consC (binderName κ)).capNames (nv.consC (binderName κ)).names T = true :=
@@ -838,9 +809,7 @@ end
 
 /-! ## What a resolved type holds of `any` and `fresh`
 
-The resolver turns `any` into `CapAtom.any`, `fresh` into `CapAtom.fresh`,
-and every other atom into a variable atom.  So a resolved phrase holds one
-of the two only where the written one does. -/
+A resolved phrase holds `any` or `fresh` only where the written one does. -/
 
 /-- A resolved capture set holds `any` or `fresh` only where the written one
 does. -/
@@ -1031,16 +1000,16 @@ theorem SCap.Scoped_atomize {s : Sig} (nv : NameEnv s) (t₀ : ATm s) (C : SCap)
   rw [atomize_capNames]
   exact SCap.Scoped_covers C (Covers.rfl' _) (atomize_names_covers nv t₀) h
 
-/-- A lambda body, read under the three binders the resolver opens, keeps
-the scoping the surface asks of it. -/
+/-- A lambda body keeps its scoping under the three binders the resolver
+opens. -/
 theorem Scoped_lamBody {s : Sig} (nv : NameEnv s) (κ : Option String) (x : String) (t : STm)
     (h : STm.Scoped (optCons κ nv.capNames) (x :: nv.names) t = true) :
     STm.Scoped (((nv.consC "%").consC (binderName κ)).cons x).capNames
       (((nv.consC "%").consC (binderName κ)).cons x).names t = true :=
   STm.Scoped_covers t ((Covers.binder _ κ).trans ((Covers.tail _ "%").cons _)) (Covers.rfl' _) h
 
-/-- Object definitions, read under the class root and the self, keep the
-scoping the surface asks of them. -/
+/-- Object definitions keep their scoping under the class root and the
+self. -/
 theorem Scoped_objDefs {s : Sig} (nv : NameEnv s) (x : String) (d : SDefs)
     (h : SDefs.Scoped nv.capNames (x :: nv.names) d = true) :
     SDefs.Scoped ((nv.consC "%").cons x).capNames ((nv.consC "%").cons x).names d = true :=
@@ -1150,9 +1119,8 @@ end
 
 /-! ## No `any` of the resolver's own
 
-The resolver keeps every `any` the program writes and adds none: the binders
-it inserts and the bindings of the spine carry no annotation of their own.
-So a program that writes no `any` resolves to a term with none. -/
+The inserted binders and the bindings of the spine carry no annotation, so a
+program that writes no `any` resolves to a term with none. -/
 
 /-- No `any` in the bindings of a spine. -/
 def Spine.NoAnyAnn {s s' : Sig} (sp : Spine s s') : Bool :=
@@ -1305,15 +1273,14 @@ theorem resolveDefs_noAny : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d 
         resolveDefs_noAny Λ nv e e' ha.2 he]
 end
 
-/-- The resolver adds no `any` of its own: a program that writes none
-resolves to a term with none in an annotation, a set or a type
-definition. -/
+/-- A program that writes no `any` resolves to a term with none in an
+annotation, a set or a type definition. -/
 theorem resolve_noAny {s : Sig} {Λ : LabelTable} {nv : NameEnv s} {e : STm} {a : ATm s}
     (he : STm.Avoids .any e = true) (h : resolveTm Λ nv e = some a) :
     ATm.NoAnyAnn a = true :=
   resolveTm_noAny Λ nv e a he h
 
-/-! ## The two spine equations and the no insertion property -/
+/-! ## Spine equations -/
 
 /-- Plugging into an appended spine is plugging twice. -/
 theorem Spine.plug_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine s' s'')
@@ -1333,34 +1300,29 @@ theorem Spine.rename_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spin
       rw [Spine.rename_append sp sp']
       exact Rename.funext' (fun _ => rfl)
 
-/-- The no insertion property: a resolved term that is already a variable is
-brought into variable position with no binding inserted. -/
+/-- A variable is already in variable position, so no binding is inserted. -/
 theorem atomize_var {s : Sig} (nv : NameEnv s) (i : BVar s .var) :
     atomize nv (.path (.var i)) = ⟨s, .nil, nv, i⟩ := rfl
 
 /-! ## The programs
 
-The programs of `Notation.lean` are resolved with the labels of the
-version's examples and compared with hand-written annotated terms, or with
-the version's own types and terms, by `decide`.  Resolution is structural,
-so the kernel reduces it.  The atoms `any` and `fresh` come out as
-`CapAtom.any` and `CapAtom.fresh`, where the program wrote them. -/
+The programs of `Notation.lean` are resolved with the labels of the version's
+examples and compared by `decide` with hand-written annotated terms, or with
+the version's own types and terms. -/
 
 open CapturesCC.DotMNF.Examples (k1 k2 platSet fileS unitTy unitTm arrowS lread lC
   W2TyAny W2Ty Z1TyF Z1Ty S1TyAny)
 
-/-- The labels of the version's examples (`DotMNF/Examples.lean`): the type
-labels `A`, `B`, `T` and the capture member `C`, and the term labels. -/
+/-- The labels of the version's examples (`DotMNF/Examples.lean`). -/
 def Λc : LabelTable :=
   [("A", .typ 0), ("B", .typ 1), ("T", .typ 2), ("C", .typ 3),
    ("a", .trm 0), ("b", .trm 1), ("v", .trm 2), ("elem", .trm 3), ("run", .trm 4),
    ("e1", .trm 5), ("e2", .trm 6), ("read", .trm 7), ("next", .trm 8)]
 
-/-- The platform `k1, k2`, the version's `κ₁` and `κ₂`. -/
+/-- The platform `k1, k2`. -/
 def πc : PlatformNames := PlatformNames.ofList ["k1", "k2"]
 
-/-- The platform `fs, k2`: the file system is the version's `κ₁`, the one
-its `Z1` and `S1` examples name. -/
+/-- The platform `fs, k2`, as in the version's `Z1` and `S1`. -/
 def πz : PlatformNames := PlatformNames.ofList ["fs", "k2"]
 
 /-- The platform set is the version's `platSet`. -/
@@ -1368,36 +1330,29 @@ example : πc.set = platSet := by decide
 
 /-! ### The written types keep `any` and `fresh` -/
 
-/-- `process` of W2 resolves to the version's `W2TyAny`, its parameter `any`
-kept as the atom. -/
+/-- `process` of W2 resolves to the version's `W2TyAny`. -/
 example : resolveTy Λc πc.names W2src = some W2TyAny := by decide
 
-/-- The version reads that `any` as the arrow's own binder, at every reading
-of the enclosing scope (`W2_expand`). -/
+/-- The version reads that `any` as the arrow's own binder (`W2_expand`). -/
 example : (resolveTy Λc πc.names W2src).map (·.expand platSet) = some W2Ty := by decide
 
-/-- `freshCell` of Z1 resolves to the version's `Z1TyF`, its result
-`fresh` kept as the atom. -/
+/-- `freshCell` of Z1 resolves to the version's `Z1TyF`. -/
 example : resolveTy Λc πz.names Z1src = some (Z1TyF k1) := by decide
 
 /-- The version reads that `fresh` as an existential (`Z1_expandFresh`). -/
 example : (resolveTy Λc πz.names Z1src).map Ty.expandFresh = some (Z1Ty k1) := by decide
 
-/-- `withFile` of S1 resolves to the version's `S1TyAny`: the capture
-member's bound, the member selection `cp.C` and the result `any` at their
-places. -/
+/-- `withFile` of S1 resolves to the version's `S1TyAny`. -/
 example : resolveTy Λc πz.names S1src = some (S1TyAny k1) := by decide
 
-/-! ### Lambdas: the inserted binders, `any` and `fresh` in a domain -/
+/-! ### Lambdas -/
 
-/-- `any` in a lambda domain is kept.  The version reads it as the arrow's
-own binder. -/
+/-- `any` in a lambda domain is kept. -/
 example :
     resolveTop Λc πc (cc% λ(x : ⊤ ^ {any}). x) =
       some (.lam (.capt [CapAtom.any] .top) (.path (.var .here))) := by decide
 
-/-- `fresh` in a lambda domain does not resolve: the version keeps `fresh`
-out of every parameter type. -/
+/-- `fresh` in a lambda domain does not resolve. -/
 example : (resolveTop Λc πc (cc% λ(x : ⊤ ^ {fresh}). x)).isNone = true := by decide
 
 /-- Nor does `fresh` deeper in a domain. -/
@@ -1405,8 +1360,8 @@ example :
     (resolveTop Λc πc (cc% λ(h : (∀(u : ⊤) ⊤ ^ {fresh}) ^ {k1}). h)).isNone = true := by
   decide
 
-/-- A named arrow binder is the domain's `.here` and, in the body, sits
-between the body root and the parameter. -/
+/-- A named arrow binder is the domain's `.here`.  In the body it sits between
+the body root and the parameter. -/
 example :
     resolveTop Λc πc (cc% λ[c](x : ⊤ ^ {c}). let y : ⊤ ^ {c} = x in y) =
       some (.lam (.capt [CapAtom.cvar .here] .top)
@@ -1416,9 +1371,7 @@ example :
 /-- An anonymous arrow binder has no name the program can write. -/
 example : (resolveTop Λc πc (cc% λ(x : ⊤ ^ {c}). x)).isNone = true := by decide
 
-/-- A platform capability, read in a domain and in a body: past the arrow
-binder in the first, past the body root, the arrow binder and the
-parameter in the second. -/
+/-- A platform capability, read in a domain and in a body. -/
 example :
     resolveTop Λc πc (cc% λ(x : ⊤ ^ {k1}). let y : ⊤ ^ {k1} = x in y) =
       some (.lam (.capt [CapAtom.cvar (.there k1)] .top)
@@ -1427,9 +1380,8 @@ example :
 
 /-! ### Objects: the class root -/
 
-/-- The self shape is read under the self alone, the definitions under the
-class root and the self, so the outer `y` is one step out in the shape and
-two in the definitions. -/
+/-- The outer `y` is one step out in the self shape and two in the
+definitions. -/
 example :
     resolveTop Λc πc
         (cc% λ(y : ⊤). ν(z : {a : ⊤} ∧ {C^ : {}..{y}}. {a = y} ∧ {C^ = {y}})) =
@@ -1440,8 +1392,7 @@ example :
 
 /-! ### Answers, unpacking and unboxing -/
 
-/-- An existential `let` annotation: its binder over the type, its bound
-read outside. -/
+/-- An existential `let` annotation. -/
 example :
     resolveTop Λc πc (cc% λ(u : ⊤). let r : ∃[w ⊑ {u}] ⊤ ^ {w} = u in r) =
       some (.lam unitTy
@@ -1464,10 +1415,9 @@ example :
 /-! ### Let insertion
 
 `λ(f : ⊤). λ(g : ⊤). f (g f)`.  The operand `g f` is not a variable, so
-`atomize` binds it.  Between `f` and `g` sit the inner lambda's body root
-and arrow binder. -/
+`atomize` binds it. -/
 
-/-- The let expanded form of the nested application. -/
+/-- The nested application with its inserted `let`. -/
 def nestedAppAnn : ATm πc.sig :=
   .lam unitTy (.lam unitTy
     (.let none (.app .here (.there (.there (.there .here))))
@@ -1475,15 +1425,13 @@ def nestedAppAnn : ATm πc.sig :=
 
 example : resolveTop Λc πc (cc% λ(f : ⊤). λ(g : ⊤). f (g f)) = some nestedAppAnn := by decide
 
-/-- Its skeleton is that of the two lambdas around the application, the
-inserted binding counted as one `let`. -/
+/-- Its skeleton counts the inserted binding as one `let`. -/
 example :
     nestedAppAnn.skel = .lam (.lam (.let (.app 0 1) (.app 2 0))) := by decide
 
 /-! ### W2, the call of a capture-parameter arrow
 
-`p f` under `p : process, f : File ^ {κ₁}`, the context `W2CallCtx` of the
-version. -/
+`p f` under the version's context `W2CallCtx`. -/
 
 example :
     (resolveIn Λc ((πc.names.cons "p").cons "f") (cc% p f)).map ATm.erase =
@@ -1491,9 +1439,9 @@ example :
 
 /-! ### A capture parameter that is called
 
-`P1src` names `unit`, a term variable bound around it here.  Its domain keeps
-the written `any`.  Erased and read by the version's `Tm.expand`, the domain
-is `(∀(u : ⊤) ⊤) ^ {κ}`, with `κ` the arrow's own binder. -/
+`P1src` names `unit`, a term variable bound around it.  Its domain keeps the
+written `any`.  Under the version's `Tm.expand`, the domain is
+`(∀(u : ⊤) ⊤) ^ {κ}`, with `κ` the arrow's own binder. -/
 
 /-- The term `P1src` resolves to, under `unit`. -/
 def P1ann : ATm (πc.sig,x) :=
@@ -1512,7 +1460,7 @@ example :
 /-! ### The escape
 
 `EscSrc` resolves.  Its `let` keeps the written answer with every `any` in
-place, for the typer to read at the scope it opens. -/
+place. -/
 
 /-- The annotation of the escape's `let`. -/
 def EscTy {s : Sig} : Ty s :=
@@ -1529,20 +1477,18 @@ def EscAnn : ATm πc.sig :=
 
 example : resolveTop Λc πc EscSrc = some EscAnn := by decide
 
-/-- The totality theorem applies to the escape on the three decided side
-conditions. -/
+/-- The totality theorem applies to the escape. -/
 example : (resolveTop Λc πc EscSrc).isSome = true :=
   resolveTm_isSome Λc πc.names EscSrc (by decide) (by decide) (by decide)
 
 /-! ### Z1, the caller of `freshCell`, and two calls in a row
 
 The version types the caller's body at `Z1Ctx`, the platform with
-`fc : freshCell` and `un : ⊤` on top (`Z1_caller`).  It is resolved there,
-through `resolveIn`, and so is `let c1 = fc un in fc un`, whose answer is the
-second call's existential.  The resolver inserts a plain `let`.  The typer
-makes it a `letex`, whose body is the `let`'s body renamed past the witness
-binder.  That unpacking erases to the term the version types, and its
-skeleton is the `let`'s. -/
+`fc : freshCell` and `un : ⊤` on top (`Z1_caller`).  The body is resolved
+there, and so is `let c1 = fc un in fc un`.  The resolver inserts a plain
+`let`.  The typer makes it a `letex`, whose body is the `let`'s body renamed
+past the witness binder.  That unpacking erases to the term the version types,
+and its skeleton is the `let`'s. -/
 
 /-- The names of `Z1Ctx`. -/
 def z1Names : NameEnv (πz.sig,x,x) := (πz.names.cons "fc").cons "un"
@@ -1568,7 +1514,7 @@ example :
     (letexOf Z1callerAnn).map ATm.erase =
       some (Tm.letex (.app (.there .here) .here) (.let (.path (.var .here)) unitTm)) := by decide
 
-/-- And it has the skeleton of the `let`, by `ATm.skel_rename_succLift`. -/
+/-- It has the skeleton of the `let`, by `ATm.skel_rename_succLift`. -/
 example : (letexOf Z1callerAnn).map ATm.skel = some Z1callerAnn.skel :=
   congrArg some (ATm.skel_letex_of_let _ _ _)
 
@@ -1578,8 +1524,7 @@ def Z1TailAnn : ATm (πz.sig,x,x) :=
 
 example : resolveIn Λc z1Names Z1TailSrc = some Z1TailAnn := by decide
 
-/-- Its unpacking erases to `letex ⟨c, c1⟩ = fc un in fc un`, the second
-call under the witness and the payload binders. -/
+/-- Its unpacking erases to `letex ⟨c, c1⟩ = fc un in fc un`. -/
 example :
     (letexOf Z1TailAnn).map ATm.erase =
       some (Tm.letex (.app (.there .here) .here)
@@ -1590,20 +1535,19 @@ example : (letexOf Z1TailAnn).map ATm.skel = some Z1TailAnn.skel := by decide
 /-! ### The caller as a closed program
 
 `Z1callerSrc` binds `fc` by a lambda whose domain writes `fresh`, so it does
-not resolve.  Written with the domain the version gives `fc`, the
-existential that `fresh` reads as, it does. -/
+not resolve.  Written with the existential that `fresh` reads as, it does. -/
 
 example : (resolveProg Λc Z1callerSrc).isNone = true := by decide
 
-/-- The caller over the platform `fs, k2`, `fc`'s domain written as the
+/-- The caller over the platform `fs, k2`, with `fc`'s domain written as the
 version's `Z1Ty`. -/
 def Z1callerExSrc : SProg :=
   ccProg% [fs, k2]
     λ(fc : (∀(u : ⊤) ∃[c ⊑ {fs, u}] μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {c}) ^ {fs}).
       λ(un : ⊤). let c = fc un in let w = c in λ(v : ⊤). v
 
-/-- Its domain is `Z1Ty` past the arrow binder, and its inner body is the
-caller's body under the two lambdas: `fc` three binders out of `un`. -/
+/-- Its domain is `Z1Ty` past the arrow binder.  In the inner body, `fc` is
+three binders out of `un`. -/
 example :
     resolveProg Λc Z1callerExSrc =
       some (.lam (Z1Ty (.there k1))

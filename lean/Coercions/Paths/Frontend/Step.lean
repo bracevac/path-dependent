@@ -3,40 +3,29 @@ import Coercions.Paths.DotMNF.Machine
 /-!
 # The executable DOT-MNF machine with paths
 
-The frozen tree gives the source machine as a relation
+The version gives the source machine as a relation
 (`lean/Coercions/Paths/DotMNF/Machine.lean`).  This module gives it as a
-function, so that a resolved program runs.
+function `step?`, so that a resolved program runs.
 
-The machine is the one of the base DOT-MNF line with a single change of
-shape.  `Paths.DotMNF.Tm.path` takes a variable, not a path, so the `rename`
-clause of `step?` matches `.path y` with `y` a variable.  A deeper path occurs
-only inside a type, and the machine never looks at a type.  A selection
-`x.a.b` in term position is a chain of `let`s, and each link runs as one
-`proj` step.
+`Tm.path` takes a variable, not a path, so the `rename` clause matches `.path y`
+with `y` a variable.  A deeper path occurs only inside a type, which the
+machine never reads.  A selection `x.a.b` in term position is a chain of
+`let`s, and each link runs as one `proj` step.
 
-The machine needs no search.  Every side condition of a rule is a pattern
-match on a total lookup, `Paths.DotMNF.Store.lookup` for the store and
-`Paths.DotMNF.Defs.lookupTrm` for the members of an object.  So `step?` takes
-no fuel, it is structural, and it reduces in the kernel.  That is why the
-examples at the end of the module are closed by `rfl` and not by the `expect`
-helper that the subtyping search needs.
+The machine needs no search.  Every side condition is a pattern match on a
+total lookup (`Store.lookup`, `Defs.lookupTrm`).  So `step?` takes no fuel, is
+structural and reduces in the kernel, and the examples are closed by `rfl`.
 
-`alloc` is the only rule that extends the signature, which is why the result
-of one step is a sigma type over signatures.
+`alloc` is the only rule that extends the signature, so one step returns a
+sigma type over signatures.
 
-Finality is decided by `final?` rather than by a case split on the
-proposition `Paths.DotMNF.State.Final`.  A classification proof that went
-through `Classical.em` would leave `Classical.choice` in the axiom list of
-`step?_none_classify`.  With `final?` and `final?_iff` the classification
-stays constructive.
+`final?` decides finality.  A case split on `State.Final` would put
+`Classical.choice` into the axioms of `step?_none_classify`.
 
-The one recursive definition, `run`, recurses on its step budget and carries
-`termination_by structural`, so that an edit that would fall back to well
-founded recursion fails the build.
+`run` recurses on its step budget with `termination_by structural`, so it
+reduces in the kernel.
 
-Everything here lives in `namespace PathsFrontend`.  No definition is placed in
-the `Paths.DotMNF` or `Paths.FCdot` namespaces, and no file of the version is
-touched.
+Nothing here belongs to the metatheory.
 -/
 
 namespace PathsFrontend
@@ -46,9 +35,8 @@ open Paths.DotMNF (Path Ty Tm Value Defs Store Cont State Step Steps)
 
 /-! ## Finality, decided -/
 
-/-- The decision procedure for `Paths.DotMNF.State.Final`.
-`Paths.DotMNF.Cont` carries no `DecidableEq`, so the continuation is matched
-on rather than compared. -/
+/-- The decision procedure for `State.Final`.  `Cont` has no `DecidableEq`, so
+the continuation is matched, not compared. -/
 def final? : State s → Bool
   | ⟨_, .nil, .val _⟩ => true
   | ⟨_, .nil, .path _⟩ => true
@@ -77,11 +65,10 @@ theorem final?_iff (st : State s) : final? st = true ↔ State.Final st := by
 
 /-! ## One step
 
-The clause order is the rule order of `Paths.DotMNF.Step`.  The two `none`
-branches under `app` and `proj` are the stuck shapes, where the store holds a
-value of the wrong kind or the object has no member at the label.  The last
-two clauses are the answers with an empty continuation, which are final and
-not stuck. -/
+The clause order is the rule order of `Paths.DotMNF.Step`.  The `none` branches
+under `app` and `proj` are the stuck shapes: the store holds a value of the
+wrong kind, or the object has no member at the label.  The last two clauses are
+answers with an empty continuation, which are final. -/
 
 /-- One step of the machine, or `none` when the state has no step. -/
 def step? : State s → Option ((s' : Sig) × State s')
@@ -111,10 +98,9 @@ termination_by structural m _ _ => m
 
 /-! ## The two clauses whose side condition is a lookup
 
-The `app` and `proj` clauses do not reduce on their own, because the value the
-store holds is not a constructor until the lookup is known.  These two
-equations expose the lookup as the discriminant of a match, so that the proofs
-below split on it or rewrite by it. -/
+The `app` and `proj` clauses do not reduce until the lookup is known.  These
+equations expose the lookup as the discriminant of a match, so proofs can split
+on it or rewrite by it. -/
 
 theorem step?_app_eq (σ : Store s) (K : Cont s) (x y : BVar s .var) :
     step? ⟨σ, K, .app x y⟩ =
@@ -128,9 +114,7 @@ theorem step?_proj_eq (σ : Store s) (K : Cont s) (x : BVar s .var) (a : Label) 
        | .obj d => (d.lookupTrm a).map (fun t => ⟨s, ⟨σ, K, t.substVar x⟩⟩)
        | .lam _ _ => none) := rfl
 
-/-- The `proj` clause with both of its side conditions supplied.  The match on
-the looked up value is reduced away by the first rewrite, and the member lookup
-by the second. -/
+/-- The `proj` clause with both side conditions supplied. -/
 theorem step?_proj_of_member (σ : Store s) (K : Cont s) (x : BVar s .var) (a : Label)
     (d : Defs (s,x)) (t : Tm (s,x)) (hl : σ.lookup x = .obj d)
     (hd : d.lookupTrm a = some t) :
@@ -143,8 +127,7 @@ theorem step?_proj_of_member (σ : Store s) (K : Cont s) (x : BVar s .var) (a : 
 /-! ## Agreement with the relation -/
 
 /-- Transport a step along an equation of the sigma type that `step?` returns.
-The signature and the state travel together, so the transport takes the
-signature equation by `injection` and the state equation by `eq_of_heq`. -/
+The signature and the state travel together. -/
 theorem step_of_some {s s' : Sig} {a : State s} {b : State s'}
     {r : Sig} {c : State r}
     (h : (some ⟨s, a⟩ : Option ((z : Sig) × State z)) = some ⟨s', b⟩)
@@ -182,9 +165,9 @@ theorem step?_sound {st : State s} {st' : State s'}
           | some t => rw [hd] at h; exact step_of_some h (.proj hl hd)
       next S t hl => nomatch h
 
-/-- The full converse.  It holds because `Paths.DotMNF.Step` is deterministic:
-each of the five rules is selected by the shape of the state alone, and the
-two premises that are not shapes are functional lookups. -/
+/-- The converse.  It holds because `Paths.DotMNF.Step` is deterministic: the
+state's shape selects the rule, and the other premises are functional
+lookups. -/
 theorem step?_complete {st : State s} {st' : State s'}
     (h : Step st st') : step? st = some ⟨s', st'⟩ := by
   cases h with
@@ -207,8 +190,7 @@ theorem step?_eq_none_iff {st : State s} :
     | none => rfl
     | some r => exact absurd ⟨r.1, r.2, step?_sound hs⟩ h
 
-/-- A state with no step is final or stuck.  The split is on the decided
-`final?`, so no excluded middle on `State.Final` is used. -/
+/-- A state with no step is final or stuck.  The split is on `final?`. -/
 theorem step?_none_classify {st : State s} (h : step? st = none) :
     State.Final st ∨ State.Stuck st := by
   cases hf : final? st with
@@ -218,8 +200,8 @@ theorem step?_none_classify {st : State s} (h : step? st = none) :
       rw [(final?_iff st).mpr hfin] at hf
       exact Bool.noConfusion hf
 
-/-- Prefix a step to a run.  `Paths.DotMNF.Steps` appends at the end, so this
-is the missing direction and it is an induction on the run. -/
+/-- Prefix a step to a run.  `Steps` appends at the end, so this is an induction
+on the run. -/
 theorem steps_head {st : State s} {st' : State s'} {st'' : State s''}
     (h : Step st st') (hs : Steps st' st'') : Steps st st'' := by
   revert h
@@ -238,13 +220,10 @@ theorem run_steps (m : Nat) (st : State s) : Steps st (run m s st).2 := by
 
 /-! ## The machine on concrete states
 
-One example per branch of `step?`, on a state small enough to read.  The five
-rules of `Paths.DotMNF.Step` come first, then the three stuck shapes, then the
-two final ones.  Every one of them is closed by `rfl`, so the clause order is
-tested by the kernel and not only proved.  Two runs follow.  The second runs
-the `let` chain that a selection `x.a.b` in term position resolves to, on an
-object whose member is an object, and passes a closure whose parameter has a
-singleton type.  The machine never reads that type. -/
+One example per branch of `step?`: the five rules, then the three stuck shapes,
+then the two final ones.  Each is closed by `rfl`.  Two runs follow.  The second
+runs the `let` chain that `x.a.b` resolves to, on an object whose member is an
+object, and passes a closure whose parameter has a singleton type. -/
 
 section Examples
 
@@ -272,8 +251,7 @@ example :
     step? (s := sig0) ⟨.nil, .cons .nil (.path .here), .val exLam⟩
       = some ⟨sig1, ⟨.cons .nil exLam, .nil, .path .here⟩⟩ := rfl
 
-/-- Rule `rename`: a variable answer under a frame is consumed by a
-substitution. -/
+/-- Rule `rename`: a variable answer under a frame is substituted. -/
 example :
     step? (s := sig1)
         ⟨.cons .nil exLam, .cons .nil (.path .here), .path .here⟩
@@ -328,22 +306,20 @@ parameter has the singleton type of the outermost variable `x`. -/
 private def exSnglLam : Value sig3 := .lam (.sngl (.var (.there (.there .here)))) (.path .here)
 
 /-- `let x = exNested in let y = x.a in let z = y.b in let f = λ(w : x.type) w
-in f x`, written with de Bruijn indices.  The two `let`s that bind `y` and `z`
-are what the resolver makes of the selection `x.a.b` in term position, one
-`proj` per field step. -/
+in f x`, with de Bruijn indices.  The `let`s for `y` and `z` are what the
+resolver makes of `x.a.b`. -/
 private def exChain : Tm sig0 :=
   .let (.val exNested)
     (.let (.proj .here (.trm 0))
       (.let (.proj .here (.trm 1))
         (.let (.val exSnglLam) (.app .here (.there (.there (.there .here)))))))
 
-/-- The run of `exChain`.  The steps are, in order: `let`, `alloc` of the outer
-object, `let`, `proj` at `a`, `alloc` of the inner object, `let`, `proj` at
-`b`, `rename` of the answer `y` for `z`, `let`, `alloc` of the closure, `app`.
-`z` is never allocated, so in the store the closure's parameter type names `x` with
-one index less.  The application returns `x`, a variable answer with an empty
-continuation.  So the state is final after eleven steps and a larger budget
-changes nothing. -/
+/-- The run of `exChain`.  The steps are `let`, `alloc` of the outer object,
+`let`, `proj` at `a`, `alloc` of the inner object, `let`, `proj` at `b`,
+`rename` of the answer `y` for `z`, `let`, `alloc` of the closure, `app`.  `z`
+is never allocated, so in the store the closure's parameter type names `x` with
+one index less.  The application returns `x`.  The state is final after eleven
+steps. -/
 example :
     run 11 sig0 ⟨.nil, .nil, exChain⟩
       = ⟨sig3, ⟨.cons (.cons (.cons .nil exNested) (.obj (.trm (.trm 1) (.path .here))))

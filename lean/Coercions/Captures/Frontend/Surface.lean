@@ -2,47 +2,44 @@ import Coercions.Captures.FCdot.Debruijn
 import Lean
 
 /-!
-# The surface syntax of the Captures front end
+# Surface syntax
 
-The elaborator of `Notation.lean` produces a value of one of the five named
-inductives below and nothing else.  Every `Sig`-indexed construction happens
-afterwards, in the ordinary Lean functions of `Resolve.lean`.  The named
-syntax, the label table, and the two side conditions `Scoped` and `LabelsIn`
-follow the vanilla ones of `lean/Coercions/Frontend/Surface.lean`.  The
-version adds capture atoms and sets, the box former, the unboxing term, the
-ascription and the capture-member definition, so each of the two side
-conditions grows one clause per added form.  `Scoped` also tells the two
-kinds of binder apart, term variables and capture binders, since a name in
-term position has to be a term variable.
+The elaborator of `Notation.lean` produces one of the inductives `SCapAtom`,
+`SType`, `STm`, `SDefs` and the abbreviation `SCap`, and nothing else.
+Names and labels are strings.  `Resolve.lean` does the `Sig`-indexed work.
 
-Labels are strings here, interned by a `LabelTable` the caller supplies, as
-in the vanilla line.  A capture member sits at a type label, the same slot a
-type-member bound sits at, since the version desugars a capture-set
-parameter to a type parameter.
+The syntax, the label table and the side conditions `Scoped` and `LabelsIn`
+follow `lean/Coercions/Frontend/Surface.lean`, with a clause for each added
+form: capture atoms and sets, the box, the unboxing, the ascription and the
+capture member definition.  `Scoped` also tells term variables from capture
+binders, since a name in term position must be a term variable.
 
-A third side condition is new: `AnyPlaced`.  The capture atom `any` stands
-for the receiver's own outer set, read back by the frozen `Ty.expand` of the
-version, and only at a position that expansion reaches: the outer set of a
-parameter type, a field's type, a `let` type, an ascription, and the
-codomain of a function.  It is rejected at a type-member bound, at the lower
-bound of a capture member, and under a box, matching the frozen
-`Shape.anyOk`/`Ty.anyOk` of `Captures/DotMNF/Syntax.lean:534-573`.  `NoAny`
-is the stricter condition those two positions need: no `any` at all, not
-even at an admitted position further in.  Both are decided, by construction.
+A capture member sits at a type label, the slot of a type-member bound, since
+a capture-set parameter desugars to a type parameter.  A caller supplies the
+`LabelTable` that interns labels.
 
-Every mutual block here carries `termination_by structural`, so the kernel
-reduces every function of this module and the sanity checks below are all
-`by decide`.
+Two further conditions are decided here.
+
+* `AnyPlaced`.  The atom `any` stands for the receiver's own outer set, which
+  `Ty.expand` reads back.  It is allowed only where that expansion reaches:
+  the outer set of a parameter type, a field type, a `let` type, an ascription
+  and a function codomain.  It is rejected at a type-member bound, at the
+  lower bound of a capture member and under a box, as in `Shape.anyOk` and
+  `Ty.anyOk` of `DotMNF/Syntax.lean`.
+* `CaptPlaced`.  A written `S ^ C` may stand only where the resolver reads it.
+
+`NoAny` is the stricter condition: no `any` at all.
+
+Every definition is structural, so the checks at the end are `by decide`.
 -/
 
 namespace CapturesFrontend
 
 open Captures.FCdot (Label)
 
-/-! ## The named abstract syntax -/
+/-! ## Syntax -/
 
-/-- A capture atom: a name, written `x`, `κ`, or the two-part `x.C`, or the
-atom `any`, standing for the receiver's own outer set. -/
+/-- A capture atom: a name `x` or `κ`, a selection `x.C`, or `any`. -/
 inductive SCapAtom : Type where
   /-- A term variable or a platform capability, by name. -/
   | name (x : String)
@@ -55,9 +52,8 @@ deriving DecidableEq, Repr, Inhabited
 /-- A capture set, written `{a₁, …, aₙ}`. -/
 abbrev SCap := List SCapAtom
 
-/-- Surface types, with binders and labels as strings.  A plain constructor
-reads as a shape, at an implicit empty capture set.  `capt` is the only
-constructor that carries a written set. -/
+/-- Surface types.  A plain constructor reads as a shape.  Only `capt` carries
+a written capture set. -/
 inductive SType : Type where
   /-- `⊤`. -/
   | top
@@ -84,16 +80,15 @@ inductive SType : Type where
 deriving DecidableEq, Repr, Inhabited
 
 mutual
-/-- Surface terms.  Application and selection take arbitrary terms, which is
-the point of a direct style front end.  Let insertion of `Resolve.lean` puts
-them back into monadic normal form. -/
+/-- Surface terms.  Application and selection take arbitrary terms.  Let
+insertion in `Resolve.lean` restores monadic normal form. -/
 inductive STm : Type where
   /-- A variable, by name. -/
   | var (x : String)
   /-- `λ(x : T). t`. -/
   | lam (x : String) (T : SType) (t : STm)
   /-- `ν(x : T. d)`.  If `T` is written `S ^ U`, `U` is the object's own
-  capture set.  Otherwise the set is left to the typer. -/
+  capture set.  Otherwise the typer chooses it. -/
   | obj (x : String) (T : SType) (d : SDefs)
   /-- `t u`, direct style. -/
   | app (t u : STm)
@@ -101,11 +96,11 @@ inductive STm : Type where
   | proj (t : STm) (a : String)
   /-- `let x = t in u`, with an optional result type. -/
   | «let» (x : String) (ann : Option SType) (t u : STm)
-  /-- `□ t`, direct style, a box value written by hand. -/
+  /-- `□ t`, a box value. -/
   | box (t : STm)
-  /-- `C ⊸ t`, direct style, an unboxing written by hand. -/
+  /-- `C ⊸ t`, an unboxing. -/
   | unbox (C : SCap) (t : STm)
-  /-- `(t : T)`, a checking point.  Erased, the calculus has no such term. -/
+  /-- `(t : T)`, a checking point.  Erased. -/
   | asc (t : STm) (T : SType)
 /-- Surface definition members. -/
 inductive SDefs : Type where
@@ -127,47 +122,41 @@ instance : Inhabited SDefs := ⟨.typ "" .top⟩
 /-! ## The label table
 
 Type labels and term labels are disjoint in the target
-(`lean/Coercions/Captures/FCdot/Debruijn.lean`), so a lookup that wants one
-sort has to say so.  `labelTyp?` and `labelTrm?` are those two lookups.  A
-capture member's label sits at the type sort, the same slot a type-member
-bound sits at. -/
+(`FCdot/Debruijn.lean`), so a lookup names the sort it wants.  `labelTyp?` and
+`labelTrm?` are the two lookups. -/
 
 /-- A label table maps surface names to target labels, first entry first. -/
 abbrev LabelTable := List (String × Label)
 
-/-- The first entry for a name, at whatever sort it was interned. -/
+/-- The first entry for a name, of either sort. -/
 def labelFind? : LabelTable → String → Option Label
   | [], _ => none
   | (y, l) :: Λ, x => if x = y then some l else labelFind? Λ x
 
-/-- The entry for a name, and `none` unless it is a type label. -/
+/-- The entry for a name, if it is a type label. -/
 def labelTyp? (Λ : LabelTable) (A : String) : Option Label :=
   match labelFind? Λ A with
   | some (.typ n) => some (.typ n)
   | _ => none
 
-/-- The entry for a name, and `none` unless it is a term label. -/
+/-- The entry for a name, if it is a term label. -/
 def labelTrm? (Λ : LabelTable) (a : String) : Option Label :=
   match labelFind? Λ a with
   | some (.trm n) => some (.trm n)
   | _ => none
 
-/-! ## Capture sets: scoping, labelling, no `any`
+/-! ## Capture sets -/
 
-A capture set binds no name of its own, so these three functions are plain
-list recursions, used from the type and term side conditions below. -/
-
-/-- Every name of a capture set is in scope.  `K` lists the capture
-binders, `Γ` the term variables.  A plain name may be either kind, the
-receiver of `x.C` must be a term variable, and `any` names nothing. -/
+/-- Every name of a capture set is in scope.  `K` lists the capture binders and
+`Γ` the term variables.  A plain name may be either kind, the receiver of `x.C`
+must be a term variable, and `any` names nothing. -/
 def SCap.Scoped (K Γ : List String) : SCap → Bool
   | [] => true
   | .name x :: c => (Γ.contains x || K.contains x) && SCap.Scoped K Γ c
   | .sel x _ :: c => Γ.contains x && SCap.Scoped K Γ c
   | .any :: c => SCap.Scoped K Γ c
 
-/-- Every capture-member selection of a capture set is at a type label.
-`any` and a plain name name no label. -/
+/-- Every selection `x.C` of a capture set has a type label `C`. -/
 def SCap.LabelsIn (Λ : LabelTable) : SCap → Bool
   | [] => true
   | .name _ :: c => SCap.LabelsIn Λ c
@@ -183,20 +172,16 @@ def SCap.NoAny : SCap → Bool
 
 /-! ## Scoping
 
-`Scoped K Γ` holds when every free name of the phrase is in scope at the
-kind its position needs.  `K` lists the capture binders, the platform
-capabilities among them, and `Γ` the term variables.  A name in term
-position, the receiver of a selection `x.A` and the receiver of a capture
-member `x.C` must be term variables.  A plain name in a capture set may be
-either kind.  Every binder of the surface syntax binds a term variable, so
-`K` stays fixed and only `Γ` grows.
+`Scoped K Γ` holds when every free name is in scope at the kind its position
+needs.  `K` lists the capture binders, the platform capabilities among them,
+and `Γ` the term variables.  A name in term position and the receiver of
+`x.A` or `x.C` must be term variables.  Every surface binder binds a term
+variable, so `K` is fixed and only `Γ` grows.
 
-The self binder of `ν(x : T. d)` scopes over its own self shape, but not
-over a capture set written on the whole annotation, `ν(x : S ^ U. d)`: the
-set `U` is the object's own and is read outside the binder.  The binder of
-a `let` does not scope over the `let`'s annotation.  None of `typ`, `cap`,
-`fld` or the definition forms binds a name over a body.  Only `mu`, `all`,
-the self of `obj` and the bound of `let` do. -/
+The self binder of `ν(x : S ^ U. d)` scopes over the self shape `S` but not
+over `U`, the object's own set.  The binder of a `let` does not scope over its
+annotation.  Binders are `mu`, `all`, the self of `obj` and the variable of
+`let`. -/
 
 /-- Every free name of a surface type is in scope. -/
 def SType.Scoped (K : List String) : List String → SType → Bool
@@ -258,8 +243,7 @@ end
 /-! ## Labelling
 
 `LabelsIn Λ` holds when every name in label position is in the table at the
-sort its position demands.  A capture member's own label, like a
-type-member bound's, is a type label. -/
+sort its position demands.  A capture member's label is a type label. -/
 
 /-- Every label of a surface type is in the table at the right sort. -/
 def SType.LabelsIn : LabelTable → SType → Bool
@@ -303,20 +287,16 @@ def SDefs.LabelsIn (Λ : LabelTable) (d : SDefs) : Bool :=
 termination_by structural d
 end
 
-/-! ## `any`, tested in its position
+/-! ## `any` in its position
 
-`Ty.anyOk` of the version ignores the outer set of the type it tests, while
-`Shape.anyOk` of an arrow asks `noAny` of the domain's own outer set, and
-`Shape.anyOk` of a type-member bound or a capture member's lower bound asks
-the stronger `noAny` of the bound itself, and of a box the stronger `noAny`
-of its whole operand.  A plain constructor of `SType` reads as a shape.  Only
-`capt` carries a written set, so it alone is read as a type and its own set
-is ignored except where a position above asks for it.
+`Ty.anyOk` ignores the outer set of the type it tests.  `Shape.anyOk` of an
+arrow asks `noAny` of the domain's own outer set.  For a type-member bound, a
+capture member's lower bound and a box, it asks `noAny` of the whole operand.
+Only `capt` of `SType` carries a set, so only it is read as a type, and its
+set is ignored unless a position above asks for it.
 
-`NoAny` is the proposition that no `any` occurs anywhere, the condition a
-type-member bound, a capture member's lower bound, and a box each need of
-their operand.  `AnyPlaced` is the weaker condition every other position
-needs: every `any` it holds is where a position above reads it. -/
+`NoAny` says no `any` occurs anywhere.  `AnyPlaced` is weaker: every `any` is
+where a position above reads it. -/
 
 mutual
 /-- No `any` anywhere in the type. -/
@@ -334,9 +314,9 @@ def SType.NoAny (T : SType) : Bool :=
   | .box T => SType.NoAny T
   | .capt S C => SCap.NoAny C && SType.NoAny S
 termination_by structural T
-/-- Every `any` of the type is at a position the resolver's expansion
-reads.  The domain of `all` also asks `NoAny` of its own written set, the
-arrow clause of `Shape.anyOk`. -/
+/-- Every `any` of the type is where the expansion reads it.  The domain of
+`all` also asks `NoAny` of its own written set, the arrow clause of
+`Shape.anyOk`. -/
 def SType.AnyPlaced (T : SType) : Bool :=
   match T with
   | .top => true
@@ -356,12 +336,10 @@ termination_by structural T
 end
 
 mutual
-/-- Every `any` of a surface term's annotations is where it is read.  A
-capture set outside an annotation, an unboxing's set or a capture
-definition's own value, is not an annotation `expand` ever sees, so it
-holds no `any` at all.  A lambda's own domain is a function's domain, so it
-also asks `NoAny` of its own written set, the arrow clause.  The self shape
-of `obj` is not a domain, so it is read like a field or a `let` type. -/
+/-- Every `any` of a term's annotations is where it is read.  A set outside an
+annotation, such as an unboxing's set or a capture definition's value, is
+never expanded, so it holds no `any`.  A lambda's domain also asks `NoAny` of
+its own written set.  The self shape of `obj` is read like a field type. -/
 def STm.AnyPlaced (e : STm) : Bool :=
   match e with
   | .var _ => true
@@ -378,9 +356,9 @@ def STm.AnyPlaced (e : STm) : Bool :=
   | .unbox C t => SCap.NoAny C && STm.AnyPlaced t
   | .asc t T => STm.AnyPlaced t && SType.AnyPlaced T
 termination_by structural e
-/-- Every `any` of surface definitions' annotations is where it is read.  A
-type definition sits where a type-member bound sits, so it holds no `any`,
-and neither does a capture definition's own value. -/
+/-- Every `any` of definitions' annotations is where it is read.  A type
+definition is like a type-member bound, so it holds no `any`, and neither
+does a capture definition's value. -/
 def SDefs.AnyPlaced (d : SDefs) : Bool :=
   match d with
   | .typ _ T => SType.NoAny T
@@ -390,24 +368,22 @@ def SDefs.AnyPlaced (d : SDefs) : Bool :=
 termination_by structural d
 end
 
-/-! ## Capturing types, only where they are read
+/-! ## Capturing types
 
 A written `S ^ C` is a capturing type.  The resolver reads it at a type
-position: a function's domain or codomain, a field's type, a `let` type, an
-ascription, the operand of a box and the whole self annotation of an
-object.  At a type-member bound and at a type definition it boxes it, the
-compiler's rule that a type argument is boxed.  At every other shape
-position, the body of a `μ`, an operand of `∧` and the shape under a written
-`^`, it is a resolution failure.  `CaptPlaced` is the decided surface
-condition that no `S ^ C` sits at such a position. -/
+position: a function's domain or codomain, a field type, a `let` type, an
+ascription, a box operand and the self annotation of an object.  At a
+type-member bound and at a type definition it boxes it, since a type argument
+is boxed.  Elsewhere, in the body of a `μ`, an operand of `∧` or under a
+written `^`, resolution fails.  `CaptPlaced` says no `S ^ C` sits at such a
+position. -/
 
 /-- The phrase is written `S ^ C`. -/
 def SType.isCapt : SType → Bool
   | .capt _ _ => true
   | _ => false
 
-/-- No written `S ^ C` sits at a shape position other than a type-member
-bound. -/
+/-- No written `S ^ C` sits at a shape position where resolution fails. -/
 def SType.CaptPlaced (T : SType) : Bool :=
   match T with
   | .top => true
@@ -424,8 +400,7 @@ def SType.CaptPlaced (T : SType) : Bool :=
 termination_by structural T
 
 mutual
-/-- No written `S ^ C` of a term's annotations sits at a shape position
-other than a type-member bound or a type definition. -/
+/-- No written `S ^ C` of a term's annotations sits where resolution fails. -/
 def STm.CaptPlaced (e : STm) : Bool :=
   match e with
   | .var _ => true
@@ -440,8 +415,7 @@ def STm.CaptPlaced (e : STm) : Bool :=
   | .unbox _ t => STm.CaptPlaced t
   | .asc t T => STm.CaptPlaced t && SType.CaptPlaced T
 termination_by structural e
-/-- No written `S ^ C` of definitions sits at a shape position other than a
-type-member bound or a type definition. -/
+/-- No written `S ^ C` of definitions sits where resolution fails. -/
 def SDefs.CaptPlaced (d : SDefs) : Bool :=
   match d with
   | .typ _ T => SType.CaptPlaced T
@@ -451,32 +425,23 @@ def SDefs.CaptPlaced (d : SDefs) : Bool :=
 termination_by structural d
 end
 
-/-! ## The test helper
+/-! ## Test helper -/
 
-A check that runs compiled code instead of reducing in the kernel is
-written `#eval expect ...`, where a false result throws and so fails the
-build.  Every check of this module is structural and reduces, so these are
-all `by decide`. -/
-
-/-- Fail the build, from `#eval`, when a check comes out false. -/
+/-- Fail the build, from `#eval`, when a check is false. -/
 def expect (b : Bool) (msg : String) : IO Unit :=
   if b then pure () else throw (IO.userError msg)
 
 /-! ## `#assert_no_wf`
 
-Every recursive definition of this front end is meant to compile by
-structural recursion, so that the kernel reduces it and a per-example fact
-is a `decide` theorem.  A clause a later edit adds without a matching
-`termination_by structural` case can make Lean fall back to well founded
-recursion silently.  This command catches that at `lake build` time instead
-of at the much later point where `decide` stops reducing. -/
+Every recursive definition of the front end is structural, so the kernel
+reduces it.  Lean can fall back to well-founded recursion silently.  This
+command catches that at build time. -/
 
 open Lean Elab Command in
 /-- Fails when a definition under the namespace `ns` is compiled by
-well-founded recursion.  The compiler picks a specialised combinator for the
-measure's type, `WellFounded.Nat.fix` for a `Nat` measure rather than the
-generic `WellFounded.fix`, so the test is membership in the whole
-`WellFounded` namespace, not equality with one constant. -/
+well-founded recursion.  Lean picks a combinator specialised to the measure,
+such as `WellFounded.Nat.fix`, so the test is membership in the `WellFounded`
+namespace. -/
 elab "#assert_no_wf " ns:ident : command => do
   let env ← getEnv
   let bad := env.constants.fold (init := #[]) fun acc n ci =>
@@ -488,16 +453,16 @@ elab "#assert_no_wf " ns:ident : command => do
     | _ => acc
   unless bad.isEmpty do throwError "well-founded definitions: {bad}"
 
-/-! ## Sanity
+/-! ## Checks
 
-Everything above is structural, so these reduce in the kernel.  The sample
-program is `λ(f : ⊤). ν(s : {a : ⊤} ∧ {C^ : {}..{f}}. {a = f} ∧ {C^ =
-{f}})`, and its label table names `a` a term label and `C` a type label. -/
+The sample program is `λ(f : ⊤). ν(s : {a : ⊤} ∧ {C^ : {}..{f}}. {a = f} ∧
+{C^ = {f}})`.  Its label table has `a` as a term label and `C` as a type
+label. -/
 
-/-- A small hand table: `a` a term label, `C` a type label. -/
+/-- `a` is a term label, `C` a type label. -/
 private def Λ0 : LabelTable := [("a", .trm 0), ("C", .typ 0)]
 
-/-- The sample program of the checks below. -/
+/-- The sample program. -/
 private def sampleProgram : STm :=
   .lam "f" .top
     (.obj "s"
@@ -519,37 +484,37 @@ example :
     STm.Scoped [] [] (.«let» "x" (some (.sel "x" "A")) (.var "y") (.var "x")) = false := by
   decide
 
-/-- `cap`: a capture member's bounds are scoped as capture sets. -/
+/-- A capture member's bounds are scoped as capture sets. -/
 example : SType.Scoped ["k1"] [] (.cap "C" [SCapAtom.name "k1"] [SCapAtom.name "k1"]) = true := by
   decide
 
 example : SType.Scoped [] [] (.cap "C" [SCapAtom.name "k1"] []) = false := by decide
 
-/-- `box`: scoping passes through. -/
+/-- Scoping passes through a box. -/
 example : SType.Scoped [] ["f"] (.box (.capt .top [SCapAtom.name "f"])) = true := by decide
 
-/-- `capt`: both the shape and the written set are scoped. -/
+/-- Both the shape and the written set are scoped. -/
 example : SType.Scoped [] ["f"] (.capt .top [SCapAtom.name "f"]) = true := by decide
 
 example : SType.Scoped [] [] (.capt .top [SCapAtom.name "f"]) = false := by decide
 
-/-- `STm.box`: scoping passes through. -/
+/-- Scoping passes through `STm.box`. -/
 example : STm.Scoped [] ["f"] (.box (.var "f")) = true := by decide
 
-/-- `STm.unbox`: the set and the operand are both scoped. -/
+/-- The set and the operand of an unboxing are scoped. -/
 example : STm.Scoped ["k1"] ["e"] (.unbox [SCapAtom.name "k1"] (.var "e")) = true := by decide
 
 example : STm.Scoped [] ["e"] (.unbox [SCapAtom.name "k1"] (.var "e")) = false := by decide
 
-/-- `STm.asc`: the term and the type are both scoped. -/
+/-- The term and the type of an ascription are scoped. -/
 example : STm.Scoped [] ["e"] (.asc (.var "e") .top) = true := by decide
 
-/-- `SDefs.cap`: the value is scoped as a capture set. -/
+/-- The value of a capture definition is scoped as a capture set. -/
 example : SDefs.Scoped ["k1"] [] (.cap "C" [SCapAtom.name "k1"]) = true := by decide
 
 example : SDefs.Scoped [] [] (.cap "C" [SCapAtom.name "k1"]) = false := by decide
 
-/-- `cap`: the member's own label is in the table, at the type sort. -/
+/-- A capture member's label is in the table at the type sort. -/
 example : SType.LabelsIn Λ0 (.cap "C" [] []) = true := by decide
 
 example : SType.LabelsIn [] (.cap "C" [] []) = false := by decide
@@ -559,25 +524,24 @@ example : SType.LabelsIn Λ0 (.capt .top [SCapAtom.sel "s" "C"]) = true := by de
 
 example : SType.LabelsIn Λ0 (.capt .top [SCapAtom.sel "s" "g"]) = false := by decide
 
-/-- `box`: labelling passes through. -/
+/-- Labelling passes through a box. -/
 example : SType.LabelsIn Λ0 (.box (.capt .top [SCapAtom.name "f"])) = true := by decide
 
-/-- `capt`: the shape and the written set are both labelled. -/
+/-- The shape and the written set are both labelled. -/
 example : SType.LabelsIn Λ0 (.capt .top [SCapAtom.sel "s" "C"]) = true := by decide
 
-/-- `STm.box`: labelling passes through. -/
+/-- Labelling passes through `STm.box`. -/
 example : STm.LabelsIn Λ0 (.box (.var "f")) = true := by decide
 
-/-- `STm.unbox`: the set is labelled too. -/
+/-- The set of an unboxing is labelled. -/
 example : STm.LabelsIn Λ0 (.unbox [SCapAtom.sel "s" "C"] (.var "e")) = true := by decide
 
 example : STm.LabelsIn Λ0 (.unbox [SCapAtom.sel "s" "g"] (.var "e")) = false := by decide
 
-/-- `STm.asc`: the term and the type are both labelled. -/
+/-- The term and the type of an ascription are labelled. -/
 example : STm.LabelsIn Λ0 (.asc (.var "e") (.capt .top [SCapAtom.name "f"])) = true := by decide
 
-/-- `SDefs.cap`: the member's own label is in the table, and its value
-labelled. -/
+/-- A capture definition's label is in the table and its value is labelled. -/
 example : SDefs.LabelsIn Λ0 (.cap "C" [SCapAtom.sel "s" "C"]) = true := by decide
 
 example : SDefs.LabelsIn [] (.cap "C" []) = false := by decide
@@ -585,47 +549,43 @@ example : SDefs.LabelsIn [] (.cap "C" []) = false := by decide
 /-- `any` at the outer set of a field's type is where `Ty.anyOk` reads it. -/
 example : SType.AnyPlaced (.fld "a" (.capt .top [.any])) = true := by decide
 
-/-- `any` at a type-member bound is rejected: `NoAny`, not `AnyPlaced`. -/
+/-- `any` at a type-member bound is rejected. -/
 example : SType.AnyPlaced (.typ "A" (.capt .top [.any]) .top) = false := by decide
 
-/-- `any` at a capture member's lower bound is rejected.  At the upper bound
-it is unchecked, matching the frozen `Shape.anyOk`. -/
+/-- `any` at a capture member's lower bound is rejected.  The upper bound is
+unchecked, as in `Shape.anyOk`. -/
 example : SType.AnyPlaced (.cap "C" [.any] []) = false := by decide
 example : SType.AnyPlaced (.cap "C" [] [.any]) = true := by decide
 
 /-- `any` under a box is rejected. -/
 example : SType.AnyPlaced (.box (.capt .top [.any])) = false := by decide
 
-/-- `any` at the outer set of a function's domain is rejected.  At its own
-shape, read as a field or a codomain further in, it is admitted. -/
+/-- `any` at the outer set of a function's domain is rejected.  Further in, at
+a field or a codomain, it is admitted. -/
 example : SType.AnyPlaced (.all "u" (.capt .top [.any]) .top) = false := by decide
 example :
     SType.AnyPlaced (.all "u" .top (.capt (.fld "a" (.capt .top [.any])) [])) = true := by
   decide
 
-/-- `any` at the outer set of a lambda's own domain is rejected the same
-way, the arrow clause again. -/
+/-- `any` at the outer set of a lambda's domain is rejected. -/
 example : STm.AnyPlaced (.lam "x" (.capt .top [.any]) (.var "x")) = false := by decide
 
-/-- `any` at the outer set of a `capt` node elsewhere, a field's type, a
-codomain or an ascription, is admitted, `Ty.anyOk` ignoring its own set. -/
+/-- `any` at the outer set of a `capt` node elsewhere is admitted. -/
 example : SType.AnyPlaced (.capt .top [.any]) = true := by decide
 
-/-- `STm.box`/`unbox`/`asc`: `any` passes through an annotation inside them
-the same way, and an unboxing's own set holds none. -/
+/-- `any` passes through `box` and `asc`.  An unboxing's own set holds none. -/
 example : STm.AnyPlaced (.box (.var "f")) = true := by decide
 example : STm.AnyPlaced (.unbox [.any] (.var "e")) = false := by decide
 example : STm.AnyPlaced (.asc (.var "e") (.capt .top [.any])) = true := by decide
 
-/-- `SDefs.cap`: a capture definition's own value holds no `any`. -/
+/-- A capture definition's value holds no `any`. -/
 example : SDefs.AnyPlaced (.cap "C" [.any]) = false := by decide
 example : SDefs.AnyPlaced (.cap "C" []) = true := by decide
 
-/-- A type definition sits where a bound sits: no `any` at all. -/
+/-- A type definition, like a bound, holds no `any`. -/
 example : SDefs.AnyPlaced (.typ "A" (.fld "a" (.capt .top [.any]))) = false := by decide
 
-/-- A capture binder is no term variable: `k1` is in scope in a capture set
-and out of scope in term position. -/
+/-- A capture binder is no term variable. -/
 example : STm.Scoped ["k1"] [] (.var "k1") = false := by decide
 example : SType.Scoped ["k1"] [] (.capt .top [SCapAtom.name "k1"]) = true := by decide
 
@@ -643,13 +603,13 @@ example : SType.CaptPlaced (.typ "A" (.capt .top [.name "f"]) (.capt .top [.name
   decide
 
 /-- `S ^ C` as an operand of `∧`, as the body of a `μ` or under another `^`
-is not. -/
+is not placed. -/
 example : SType.CaptPlaced (.and (.capt .top [.name "f"]) .top) = false := by decide
 example : SType.CaptPlaced (.mu "z" (.capt .top [.name "f"])) = false := by decide
 example : SType.CaptPlaced (.capt (.capt .top [.name "f"]) []) = false := by decide
 
-/-- A self annotation written `S ^ U` is placed, and so is a type definition
-at a capturing type. -/
+/-- A self annotation `S ^ U` and a type definition at a capturing type are
+placed. -/
 example : STm.CaptPlaced (.obj "s" (.capt (.fld "a" .top) [.name "f"])
     (.typ "A" (.capt .top [.name "f"]))) = true := by decide
 

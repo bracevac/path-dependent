@@ -3,79 +3,54 @@ import Coercions.Paths.Frontend.Decide
 /-!
 # The path table
 
-A *view* of a path is a type the path has, carried with its path typing
-derivation.  The typer needs views of paths, not only of variables.  A field is
-read off a path view (`HasTy.projP`), and a selection `p.A` is bounded through a
-type member that the path `p` has (`Sub.selUpper`, `Sub.selLower`).  The *path
-table* of a context holds those views.  It is a list of rows, one row per path,
-each with the views found for that path so far.  The *declarations* of the table
-are its views of the form `{A : S..T}`, keyed by their path.  They are the
-middles the subtyping search tries for `Sub.trans`, whose middle is otherwise
-undetermined.
+A *view* of a path is a type the path has, with its path typing derivation.
+The typer needs views of paths and not only of variables.  A field is read off
+a path view (`HasTy.projP`), and a selection `p.A` is bounded through a type
+member of `p` (`Sub.selUpper`, `Sub.selLower`).  The *path table* of a context
+is a list of rows, one per path, each with the views found for it.  Its
+*declarations* are the views of the form `{A : S..T}`, keyed by path.  The
+subtyping search tries them as the middle of `Sub.trans`.
 
-## How the table grows
+The table starts with one row per context variable at its declared type
+(`PathTy.var`).  A round applies ten steps to each view of each row.  Six add a
+view to the same row.
 
-The table starts with one row per context variable, at the variable's declared
-type (`PathTy.var`).  It then grows in rounds.  One round applies ten steps to
-each view of each row.  Six of them add a view to the same row.
+* open: `μ(z. T)` with `Ty.Decl T` decided gives `T[z := p]` (`PathTy.recE`).
+* left, right: `S ∧ T` gives `S` and `T`.
+* field: `{val a : T}` gives `{a : T}`.
+* upper: a view `q.A` that is the selection of a declaration `{A : S..U}` at
+  `q` gives `U`.
+* detour: a view `T` that the search puts below the lower bound of a
+  declaration gives its upper bound.
+* alias: `q.type` gives every view of the row `q` (`PathTy.snglTrans`).
 
-| step | view at `p` | new view at `p` | rule |
-|---|---|---|---|
-| open | `μ(z. T)`, `Ty.Decl T` decided | `T[z := p]` | `PathTy.recE` |
-| left, right | `S ∧ T` | `S` and `T` | `PathTy.sub` with `Sub.and1`, `Sub.and2` |
-| field | `{val a : T}` | `{a : T}` | `PathTy.sub` with `Sub.vfldToFld` |
-| upper | `q.A`, a declaration of the table at `q.A` | its upper bound | `PathTy.sub` with `Sub.selUpper` |
-| detour | `T`, a declaration whose lower bound the search puts above `T` | its upper bound | `PathTy.sub` with `Sub.trans`, `Sub.selLower`, `Sub.selUpper` |
-| alias | `q.type` | every view of the row `q` | `PathTy.snglTrans` |
+Four add a view to another row, which may be new.
 
-The other four add a view to another row, which may be new.
-
-| step | view at `p` | new view | rule |
-|---|---|---|---|
-| child | `{val a : T}` | `T` at `p.a` | `PathTy.sel` |
-| reverse | `q.type` | `p.type` at `q` | `PathTy.snglSym` with `PathTy.snglInv` |
-| aliased | `q.type` | `⊤` at `q` | `PathTy.snglInv` |
-| alias field | `q.type` and `{val a : T}` | `(q.a).type` at `p.a` | `PathTy.snglSel` |
-
-The reverse step needs a view of `q` as its second premise.  It takes `⊤`, the
-view the aliased step builds, so it does not wait for a row of `q`.
-
-## Bounds
+* child: `{val a : T}` at `p` gives `T` at `p.a` (`PathTy.sel`).
+* reverse: `q.type` at `p` gives `p.type` at `q` (`PathTy.snglSym`).
+* aliased: `q.type` gives `⊤` at `q` (`PathTy.snglInv`).  Reverse uses this
+  view as its second premise, so it does not wait for a row of `q`.
+* alias field: `q.type` and `{val a : T}` at `p` give `(q.a).type` at `p.a`
+  (`PathTy.snglSel`).
 
 Three things bound the table.  Views are deduplicated by type after every
-round, and the first view of each type is kept.  The number of rounds is a
-counter of its own, `Budget.table`.  And the new rows one round may add are
-capped by `Budget.rows`.  A view aimed at an existing row is always merged, cap
-or not.
+round, keeping the first.  The number of rounds is `Budget.table`.  The new
+rows of one round are capped by `Budget.rows`, and a view for an existing row
+is always merged.  Deduplication does not bound the rows.  Under
+`x : μ(z. {val a : z.type})` the row `x.a` aliases `x` and grows the row
+`x.a.a`, one new row every two rounds.  Only the round counter stops that.
 
-Deduplication does not bound the rows.  Under `x : μ(z. {val a : z.type})` the
-row `x.a` aliases `x`, copies its stable field and grows the row `x.a.a`, and
-so on, one new row every two rounds.  Every new row has a new path, so no type
-is ever a duplicate there.  Only the round counter stops that growth.  The cap
-bounds the rows a single round adds, in any context.
+The detour step calls a subtyping search that lives in a later module.  So
+every definition here takes the search as an argument, a function from the
+declarations of the table to a search over the context.  `noSub` is the search
+that finds nothing.
 
-## The search the detour step consults
+`table_mono` says more rounds never lose a type at a path.  It speaks of types
+and not derivations, since deduplication may keep another derivation of the
+same type.
 
-The detour step asks a subtyping search.  The search lives in a later module
-and takes the declarations of the table as its own parameter.  So every
-definition here takes the search as an argument, as a function from the
-declarations of the current table to a search over the context.  The later
-module instantiates it at the real search.  It also instantiates it at the
-search that finds nothing, `noSub`, for the table it rebuilds under an
-extended context when it compares two function types.
-
-## Monotonicity
-
-A round keeps every row and every type of every row.  The steps only append,
-merging only appends, and deduplication keeps the first view of each type.  So
-more rounds never lose a type at a path, which is `table_mono`.  The statement
-is about types, not derivations.  Deduplication may keep another derivation of
-the same type at a larger budget.
-
-Every recursive definition is structural, so the table reduces in the kernel
-and the tests at the end are `by decide`.  Nothing here is part of the
-metatheory, and no definition lives in the `Paths.DotMNF` or `Paths.FCdot`
-namespaces.
+Every recursive definition is structural, so the tests at the end are
+`by decide`.  Nothing here is part of the metatheory.
 -/
 
 namespace PathsFrontend
@@ -116,8 +91,7 @@ def PTable.viewsAt {s : Sig} {Γ : Ctx s} : PTable Γ → (q : Path s) → List 
       (if h : r.path = q then r.views.map (castView h) else []) ++ PTable.viewsAt rs q
 termination_by structural tbl _ => tbl
 
-/-- A type member a path has, with the path typing.  The four data fields are
-what the search compares. -/
+/-- A type member of a path, with the path typing. -/
 structure PDecl {s : Sig} (Γ : Ctx s) where
   /-- The path the member is read off. -/
   path : Path s
@@ -158,7 +132,7 @@ def declsOf {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) : List (PDecl Γ) :=
 
 /-- The five counters of the typer.  `table` and `rows` bound the path table,
 `views` the views of a variable at term level, `sub` the subtyping search and
-`typer` the typer.  The defaults are a starting point, not a measurement. -/
+`typer` the typer. -/
 structure Budget where
   /-- Rounds of the path table. -/
   table : Nat := 5
@@ -209,8 +183,7 @@ def aliasSteps {s : Sig} {Γ : Ctx s} {p : Path s} (tbl : PTable Γ) (v : PView 
   | .sngl q => (tbl.viewsAt q).map fun w => ⟨w.ty, .snglTrans (hv ▸ v.deriv) w.deriv⟩
   | _ => []
 
-/-- The six steps that add a view to the row of `p`, in the order of the
-table in the module comment. -/
+/-- The six steps that add a view to the row of `p`. -/
 def localSteps {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (D : List (PDecl Γ)) (tbl : PTable Γ)
     (p : Path s) (v : PView Γ p) : List (PView Γ p) :=
   shapeSteps v ++ upperSteps D v ++ detourSteps sub D v ++ aliasSteps tbl v
@@ -236,8 +209,7 @@ def aliasedSteps {s : Sig} {Γ : Ctx s} {p : Path s} (v : PView Γ p) : List (Ro
   | _ => []
 
 /-- Alias field: `p : q.type` and a stable field `a` of `p` give
-`p.a : (q.a).type`.  `vs` is the whole row of `p`, where the stable field is
-looked for. -/
+`p.a : (q.a).type`.  `vs` is the row of `p`. -/
 def aliasFieldSteps {s : Sig} {Γ : Ctx s} {p : Path s} (vs : List (PView Γ p))
     (v : PView Γ p) : List (Row Γ) :=
   match hv : v.ty with
@@ -249,15 +221,14 @@ def aliasFieldSteps {s : Sig} {Γ : Ctx s} {p : Path s} (vs : List (PView Γ p))
         | _ => none
   | _ => []
 
-/-- The four steps that reach another row, in the order of the table in the
-module comment. -/
+/-- The four steps that reach another row. -/
 def remoteSteps {s : Sig} {Γ : Ctx s} (p : Path s) (vs : List (PView Γ p)) (v : PView Γ p) :
     List (Row Γ) :=
   childSteps v ++ reverseSteps v ++ aliasedSteps v ++ aliasFieldSteps vs v
 
 /-! ## Deduplication, merging and the row cap -/
 
-/-- Membership of a type in a list of types, as a decision. -/
+/-- Decide membership of a type in a list. -/
 def tyMem? {s : Sig} (T : Ty s) : List (Ty s) → Bool
   | [] => false
   | U :: Us => if U = T then true else tyMem? T Us
@@ -292,9 +263,8 @@ def mergeRow? {s : Sig} {Γ : Ctx s} : PTable Γ → Row Γ → Option (PTable �
       else (mergeRow? rs r).map (r0 :: ·)
 termination_by structural tbl _ => tbl
 
-/-- Add rows to a table.  A row whose path the table has is merged into it.  A
-row with a new path is appended while the allowance `k` lasts and dropped
-after. -/
+/-- Add rows to a table.  A row of a known path is merged.  A row of a new path
+is appended while the allowance `k` lasts and dropped after. -/
 def addRows {s : Sig} {Γ : Ctx s} : Nat → PTable Γ → List (Row Γ) → PTable Γ
   | _, tbl, [] => tbl
   | k, tbl, r :: rs =>
@@ -314,9 +284,8 @@ def seed {s : Sig} (Γ : Ctx s) : PTable Γ :=
   (ctxVars Γ).map fun x => ⟨.var x, [⟨Γ.lookup x, .var⟩]⟩
 
 /-- One round.  Every row gets its local steps appended, computed against the
-table and the declarations at the start of the round.  The views the remote
-steps produce are then merged into their rows, new rows within the cap `rows`.
-Last, every row is deduplicated by type. -/
+table at the start of the round.  The remote views are then merged, new rows
+within the cap `rows`.  Last, every row is deduplicated by type. -/
 def roundOf {s : Sig} {Γ : Ctx s} (srch : List (PDecl Γ) → SubSearch Γ) (rows : Nat)
     (tbl : PTable Γ) : PTable Γ :=
   let D := declsOf tbl
@@ -332,15 +301,13 @@ def tableOf {s : Sig} {Γ : Ctx s} (srch : List (PDecl Γ) → SubSearch Γ) (ro
   | k + 1 => roundOf srch rows (tableOf srch rows k)
 termination_by structural k => k
 
-/-- The table at a budget, against a family of searches indexed by their fuel.
-The search module instantiates the family at its own search. -/
+/-- The table at a budget, for a family of searches indexed by fuel. -/
 def tableAt {s : Sig} {Γ : Ctx s} (srch : Nat → List (PDecl Γ) → SubSearch Γ) (b : Budget) :
     PTable Γ :=
   tableOf (srch b.sub) b.rows b.table
 
-/-- The table without the detour step, at a budget.  It is the table the search
-rebuilds under an extended context, where calling the search itself would be
-circular. -/
+/-- The table without the detour step.  The search uses it under an extended
+context, where calling the search would be circular. -/
 def baseTable {s : Sig} (b : Budget) (Γ : Ctx s) : PTable Γ :=
   tableOf (fun _ => noSub) b.rows b.table
 
@@ -515,9 +482,8 @@ theorem tableOf_mono {s : Sig} {Γ : Ctx s} (srch : List (PDecl Γ) → SubSearc
   | refl => exact rowsLe_refl _
   | step _ ih => exact rowsLe_trans ih (roundOf_rowsLe srch rows _)
 
-/-- More rounds of the path table never lose a type at a path.  The search
-fuel and the row cap are the same on both sides.  A different fuel changes
-what the detour step finds, and a different cap changes which rows exist. -/
+/-- More rounds never lose a type at a path.  Search fuel and row cap must
+agree, since they change what the detour finds and which rows exist. -/
 theorem table_mono {s : Sig} {Γ : Ctx s} (srch : Nat → List (PDecl Γ) → SubSearch Γ)
     {b b' : Budget} (h : b.table ≤ b'.table) (hs : b.sub = b'.sub) (hr : b.rows = b'.rows) :
     ∀ (p : Path s) (v : PView Γ p), v ∈ (tableAt srch b).viewsAt p →
@@ -537,8 +503,8 @@ theorem baseTable_mono {s : Sig} (Γ : Ctx s) {b b' : Budget} (h : b.table ≤ b
 
 /-! ## Tests
 
-Every test is `by decide`, so the table reduces in the kernel.  Each one names
-the types at a path, or the paths of the rows, after a number of rounds. -/
+Each test names the types at a path, or the paths of the rows, after some
+rounds. -/
 
 section Tests
 
@@ -554,8 +520,8 @@ def topSub {s : Sig} {Γ : Ctx s} : SubSearch Γ := fun _ T =>
 example : (tableOf (Γ := (Ctx.nil.cons Ty.top).cons Ty.bot) (fun _ => noSub) 4 0).map Row.tys
     = [[Ty.bot], [Ty.top]] := by decide
 
-/-- `x : μ(z. {val a : μ(w. {B : ⊥..⊤})})`.  Open at `x` in round one, the child
-row `x.a` in round two, open at `x.a` and its declaration in round three. -/
+/-- `x : μ(z. {val a : μ(w. {B : ⊥..⊤})})`.  Round one opens `x`, round two adds
+the row `x.a`, round three opens `x.a` and gives its declaration. -/
 def nestCtx : Ctx ([],x) :=
   Ctx.nil.cons (.mu (.vfld (Label.trm 0) (.mu (.typ (Label.typ 0) .bot .top))))
 
@@ -580,8 +546,7 @@ example : tysAt (tableOf (Γ := aliasCtx) (fun _ => noSub) 4 1) (.var .here)
     = [.sngl (.var (.there .here)), .typ (Label.typ 0) .bot .top] := by decide
 example : tysAt (tableOf (Γ := aliasCtx) (fun _ => noSub) 4 1) (.var (.there .here))
     = [.typ (Label.typ 0) .bot .top, .sngl (.var .here), .top] := by decide
-/-- In the second round `y` reads its own singleton and `⊤` back through `x`.
-Each type is kept once. -/
+/-- In round two `y` reads its own singleton and `⊤` back through `x`. -/
 example : tysAt (tableOf (Γ := aliasCtx) (fun _ => noSub) 4 2) (.var .here)
     = [.sngl (.var (.there .here)), .typ (Label.typ 0) .bot .top, .sngl (.var .here), .top] := by
   decide
@@ -594,9 +559,8 @@ example : tysAt (tableOf (Γ := aliasFieldCtx) (fun _ => noSub) 4 2)
       (.sel (.var .here) (Label.trm 0))
     = [.sngl (.sel (.var (.there .here)) (Label.trm 0)), .top] := by decide
 
-/-- `x : {A : ⊤..{a : ⊤}}, y : {b : ⊤}`.  The detour step puts `y` below the
-lower bound `⊤` and gives it the upper bound `{a : ⊤}`, only if the search
-answers. -/
+/-- `x : {A : ⊤..{a : ⊤}}, y : {b : ⊤}`.  If the search puts `y` below the lower
+bound `⊤`, the detour step gives it the upper bound `{a : ⊤}`. -/
 def detourCtx : Ctx (([],x),x) :=
   (Ctx.nil.cons (.typ (Label.typ 0) .top (.fld (Label.trm 0) .top))).cons
     (.fld (Label.trm 1) .top)

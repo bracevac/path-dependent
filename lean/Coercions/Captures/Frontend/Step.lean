@@ -3,32 +3,26 @@ import Coercions.Captures.DotMNF.Machine
 /-!
 # The executable DOT-MNF machine with capture sets
 
-The version gives the source machine as a relation
-(`lean/Coercions/Captures/DotMNF/Machine.lean`).  This module gives it as a
-function, so that a resolved program runs.  It follows the vanilla
-`lean/Coercions/Frontend/Step.lean` and adds what the version adds: the
-unboxing step `C ⊸ x`, and the box `□ y` as a third kind of stored value.
+The version gives the source machine as a relation (`DotMNF/Machine.lean`).
+This module gives it as a function, so that a resolved program runs.  It
+follows the vanilla `Frontend/Step.lean` and adds the unboxing step `C ⊸ x`
+and the box `□ y` as a third kind of stored value.
 
-The source machine needs no search.  Every side condition of a rule is a
-pattern match on a total lookup, `DotMNF.Store.lookup` for the store and
-`DotMNF.Defs.lookupTrm` for the members of an object.  So `step?` is fuel
-free and structural, and it reduces in the kernel.  That is why the examples
-at the end of the module are closed by `rfl` and not by the `expect` helper
-that the subtyping search needs.
+Every side condition of a rule is a pattern match on a total lookup, so
+`step?` needs no search and no fuel, and the kernel reduces it.  The examples
+at the end are closed by `rfl` for that reason.
 
-`alloc` is the only rule that extends the signature, which is why the result
-of one step is a sigma type over signatures.  A box is a value, so `alloc`
-stores it as it stores a closure or an object.  A store also holds a
-data-free slot per capture binder, which a lookup passes through.
-
-Finality is decided by `final?` rather than by a case split on the
-proposition `DotMNF.State.Final`.  A classification proof that went through
-`Classical.em` would leave `Classical.choice` in the axiom list of
-`step?_none_classify`.  With `final?` and `final?_iff` the classification
-stays constructive instead.
-
-Everything here lives in `namespace CapturesFrontend`.  No definition is
-placed in a namespace of the version, and no file of the version is touched.
+- `step?` is one step.  Only `alloc` extends the signature, so the result is
+  a sigma type over signatures.  A box is stored as a closure or an object is.
+  A store also holds a data-free slot per capture binder, which a lookup
+  passes through.
+- `run` repeats `step?` within a step budget.
+- `final?` decides finality.  A case split on the proposition `State.Final`
+  would use `Classical.em` and leave `Classical.choice` in the axioms of
+  `step?_none_classify`.
+- `step?_sound`, `step?_complete` and `step?_eq_none_iff` relate `step?` to
+  the relation `Step`.  `step?_none_classify` shows that a state without a
+  step is final or stuck.  `run_steps` shows that `run` follows `Steps`.
 -/
 
 namespace CapturesFrontend
@@ -69,11 +63,10 @@ theorem final?_iff (st : State s) : final? st = true ↔ State.Final st := by
 
 /-! ## One step
 
-The clause order is the rule order of `DotMNF.Step`.  The `none` branches
-under `app`, `proj` and `unbox` are the stuck shapes, where the store holds a
-value of the wrong kind or the object has no member at the label.  The last
-two clauses are the answers with an empty continuation, which are final and
-not stuck. -/
+The clauses follow the order of the rules of `DotMNF.Step`.  A `none` under
+`app`, `proj` or `unbox` is a stuck shape: the store holds a value of the
+wrong kind, or the object has no member at the label.  The last two clauses
+are answers with an empty continuation, which are final. -/
 
 def step? : State s → Option ((s' : Sig) × State s')
   | ⟨σ, K, .let t u⟩ => some ⟨s, ⟨σ, .cons K u, t⟩⟩
@@ -97,7 +90,7 @@ def step? : State s → Option ((s' : Sig) × State s')
   | ⟨_, .nil, .val _⟩ => none
   | ⟨_, .nil, .path _⟩ => none
 
-/-- The driver.  `m` is a step budget, and a state with no step is returned
+/-- The driver.  `m` is a step budget.  A state with no step is returned
 unchanged. -/
 def run : Nat → (s : Sig) → State s → (s' : Sig) × State s'
   | 0, s, st => ⟨s, st⟩
@@ -107,12 +100,11 @@ def run : Nat → (s : Sig) → State s → (s' : Sig) × State s'
       | none => ⟨s, st⟩
 termination_by structural m => m
 
-/-! ## The three clauses whose side condition is a lookup
+/-! ## The clauses with a lookup
 
-The `app`, `proj` and `unbox` clauses do not reduce on their own, because the
-value the store holds is not a constructor until the lookup is known.  These
-equations expose the lookup as the discriminant of a match, so that the proofs
-below split on it or rewrite by it. -/
+The `app`, `proj` and `unbox` clauses do not reduce until the lookup is
+known.  These equations expose the lookup as the discriminant of a match, so
+that proofs can split on it or rewrite by it. -/
 
 theorem step?_app_eq (σ : Store s) (K : Cont s) (x y : BVar s .var) :
     step? ⟨σ, K, .app x y⟩ =
@@ -135,9 +127,7 @@ theorem step?_unbox_eq (σ : Store s) (K : Cont s) (C : CaptureSet s) (x : BVar 
        | .lam _ _ => none
        | .obj _ => none) := rfl
 
-/-- The `proj` clause with both of its side conditions supplied.  The match on
-the looked up value is reduced away by the first rewrite, and the member lookup
-by the second. -/
+/-- The `proj` clause with both side conditions supplied. -/
 theorem step?_proj_of_member (σ : Store s) (K : Cont s) (x : BVar s .var) (a : Label)
     (d : Defs (s,x)) (t : Tm (s,x)) (hl : σ.lookup x = .obj d)
     (hd : d.lookupTrm a = some t) :
@@ -150,9 +140,7 @@ theorem step?_proj_of_member (σ : Store s) (K : Cont s) (x : BVar s .var) (a : 
 
 /-! ## Agreement with the relation -/
 
-/-- Transport a step along an equation of the sigma type that `step?` returns.
-The signature and the state travel together, so the transport takes the
-signature equation by `injection` and the state equation by `eq_of_heq`. -/
+/-- Transport a step along an equation of the sigma type that `step?` returns. -/
 theorem step_of_some {s s' : Sig} {a : State s} {b : State s'}
     {r : Sig} {c : State r}
     (h : (some ⟨s, a⟩ : Option ((z : Sig) × State z)) = some ⟨s', b⟩)
@@ -200,9 +188,9 @@ theorem step?_sound {st : State s} {st' : State s'}
       next S t hl => nomatch h
       next d hl => nomatch h
 
-/-- The full converse.  It holds because `DotMNF.Step` is deterministic: each of
-the six rules is selected by the shape of the state alone, and the premises
-that are not shapes are functional lookups. -/
+/-- The converse of `step?_sound`.  It holds because `DotMNF.Step` is
+deterministic: the shape of the state selects the rule, and the other premises
+are functional lookups. -/
 theorem step?_complete {st : State s} {st' : State s'}
     (h : Step st st') : step? st = some ⟨s', st'⟩ := by
   cases h with
@@ -235,8 +223,7 @@ theorem step?_none_classify {st : State s} (h : step? st = none) :
       rw [(final?_iff st).mpr hfin] at hf
       exact Bool.noConfusion hf
 
-/-- Prefix a step to a run.  `DotMNF.Steps` appends at the end, so this is the
-missing direction and it is an induction on the run. -/
+/-- Prefix a step to a run.  `DotMNF.Steps` appends at the end. -/
 theorem steps_head {st : State s} {st' : State s'} {st'' : State s''}
     (h : Step st st') (hs : Steps st' st'') : Steps st st'' := by
   revert h
@@ -255,21 +242,19 @@ theorem run_steps (m : Nat) (st : State s) : Steps st (run m s st).2 := by
 
 /-! ## The machine on concrete states
 
-One example per branch of `step?`, on a state small enough to read.  The six
-rules of `DotMNF.Step` come first, then the stuck shapes, then the two final
-ones.  Every one of them is closed by `rfl`, so the clause order is tested by
-the kernel and not only proved.  The last examples start from a platform
-store, whose capture slots a lookup passes through. -/
+One example per branch of `step?`: the six rules of `DotMNF.Step`, the stuck
+shapes, then the final states.  The last examples start from a platform store,
+whose capture slots a lookup passes through. -/
 
 section Examples
 
 /-- The empty signature. -/
 private abbrev sig0 : Sig := []
-/-- The signature with one store binder. -/
+/-- One store binder. -/
 private abbrev sig1 : Sig := sig0,x
-/-- The signature with two store binders. -/
+/-- Two store binders. -/
 private abbrev sig2 : Sig := sig1,x
-/-- The signature of a platform with one capability. -/
+/-- A platform with one capability. -/
 private abbrev sigP : Sig := sig0,c
 
 /-- `λ(z : ⊤ ^ {}) z`. -/
@@ -313,8 +298,8 @@ example :
     step? (s := sig1) ⟨.cons .nil exObj, .nil, .proj .here (.trm 0)⟩
       = some ⟨sig1, ⟨.cons .nil exObj, .nil, .path (.var .here)⟩⟩ := rfl
 
-/-- Rule `unbox`: the store holds a box, and the step continues at its
-content, the closure one slot further out. -/
+/-- Rule `unbox`: the store holds a box, and the step continues at its content,
+the closure one slot further out. -/
 example :
     step? (s := sig2) ⟨σBox, .nil, .unbox [] .here⟩
       = some ⟨sig2, ⟨σBox, .nil, .path (.var (.there .here))⟩⟩ := rfl
@@ -322,7 +307,7 @@ example :
 /-- Stuck: application of an object. -/
 example : step? (s := sig1) ⟨.cons .nil exObj, .nil, .app .here .here⟩ = none := rfl
 
-/-- Stuck: application of a box.  A box has to be unboxed before the call. -/
+/-- Stuck: application of a box, which must be unboxed first. -/
 example : step? (s := sig2) ⟨σBox, .nil, .app .here .here⟩ = none := rfl
 
 /-- Stuck: selection on a closure. -/
@@ -354,8 +339,8 @@ example : final? (s := sig1) ⟨.cons .nil exLam, .nil, .path (.var .here)⟩ = 
 /-- A state with a frame is not final. -/
 example : final? (s := sig0) ⟨.nil, .cons .nil (.path (.var .here)), .val exLam⟩ = false := rfl
 
-/-- The driver runs `let x = λ(z : ⊤ ^ {}) z in x` to its answer in two steps
-and then stays there. -/
+/-- `run` takes `let x = λ(z : ⊤ ^ {}) z in x` to its answer in two steps and
+stays there. -/
 example :
     run 2 sig0 ⟨.nil, .nil, .let (.val exLam) (.path (.var .here))⟩
       = ⟨sig1, ⟨.cons .nil exLam, .nil, .path (.var .here)⟩⟩ := rfl
@@ -364,22 +349,22 @@ example :
     run 7 sig0 ⟨.nil, .nil, .let (.val exLam) (.path (.var .here))⟩
       = ⟨sig1, ⟨.cons .nil exLam, .nil, .path (.var .here)⟩⟩ := rfl
 
-/-- A run from the store of a platform with one capability.  `alloc` puts the
-closure after the capture slot. -/
+/-- A run from a platform store.  `alloc` puts the closure after the capture
+slot. -/
 example :
     run 2 sigP ⟨Platform.store (.cons .nil), .nil, .let (.val exLam) (.path (.var .here))⟩
       = ⟨sigP,x, ⟨.cons (.consC .nil) exLam, .nil, .path (.var .here)⟩⟩ := rfl
 
-/-- A lookup passes through a capture slot: the closure sits one binder out,
-behind the slot of a capability bound after it. -/
+/-- A lookup passes through a capture slot of a capability bound after the
+closure. -/
 example :
     step? (s := sig1,c) ⟨.consC (.cons .nil exLam), .nil, .app (.there .here) (.there .here)⟩
       = some ⟨sig1,c, ⟨.consC (.cons .nil exLam), .nil, .path (.var (.there .here))⟩⟩ := rfl
 
 /-- Boxing, unboxing, then calling the content, in a store that holds `f`:
-`let b = □ f in let g = {} ⊸ b in g f` reaches the answer `f` in six steps:
-`let`, `alloc`, `let`, `unbox`, `rename`, `app`.  Five steps stop short of it,
-and a larger budget changes nothing. -/
+`let b = □ f in let g = {} ⊸ b in g f` reaches the answer `f` in six steps
+(`let`, `alloc`, `let`, `unbox`, `rename`, `app`).  Five steps stop short, and
+a larger budget changes nothing. -/
 example :
     (run 5 sig1 ⟨.cons .nil exLam, .nil,
         .let (.val (.box .here))

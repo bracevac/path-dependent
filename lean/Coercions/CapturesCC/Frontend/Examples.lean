@@ -4,76 +4,65 @@ import Coercions.CapturesCC.Frontend.Pretty
 /-!
 # The examples end to end
 
-The programs of the version's `DotMNF/Examples.lean` are written in the
-front end's notation, taken through the whole front end, and compared with
-the version's hand written derivations.  The pure programs E1 to E8 run over
-the empty platform.  The capture programs run over the platform `πc` of
-`Resolve.lean`, two capabilities `k1` and `k2`, or over `πz`, the same two
+The programs of the version's `DotMNF/Examples.lean` are written in the front
+end's notation, taken through the whole front end, and compared with the
+version's hand written derivations.  The pure programs E1 to E8 run over the
+empty platform.  The capture programs run over the platform `πc` of
+`Resolve.lean`, with capabilities `k1` and `k2`, or over `πz`, the same two
 binders named `fs` and `k2`, for the programs whose capability is a file
 system.  Both are the version's `platCtx`.
 
 ## What is compared
 
-The term the resolver returns, or the erasure of the term the typer
-elaborated when the typer inserted something.  The use set and the type the
-typer found.  The verdict of the target checker on the translation of the
-derivation, and its verdict on the use set evidence the translation emits.
-Derivations are not compared.  `DotMNF.HasTy` is data with no decidable
-equality, and the typer may reach a judgment by another route than the
-version's derivation.  No term, use set or type of the version is copied.
-`tmOfDeriv`, `usesOfDeriv` and `tyOfDeriv` read them off the version's
-derivations.
+For each program, the term the resolver returns, or the erasure of the
+elaborated term when the typer inserted something.  The use set and the type
+the typer found.  The verdict of the target checker on the translation of the
+derivation, and on the use set evidence the translation emits.  Derivations
+are not compared, because `DotMNF.HasTy` is data with no decidable equality.
+`tmOfDeriv`, `usesOfDeriv` and `tyOfDeriv` read the term, use set and type off
+the version's derivations.
 
 ## The checks of a program
 
-Every function of the front end is structural, so the kernel reduces
-resolution, the typer and the machine.  The term is compared by `decide`,
-or by `decide +kernel` when it is the elaborated one.  The use set and the
-type are compared by `decide +kernel`.  The two checker runs go through
-`expect`.  The theorem `Ek_compiles` says that the program compiles, by
-`decide +kernel`, and `Ek_checks` is `compile_checks_get` at it, so the
-checker accepts the translation with no hypothesis.
+Every function of the front end is structural, so the kernel reduces it.  The
+term is compared by `decide`, or by `decide +kernel` when it is the elaborated
+one.  The use set and the type are compared by `decide +kernel`.  The two
+checker runs go through `expect`.  The theorem `Ek_compiles` says that the
+program compiles, and `Ek_checks` is `compile_checks_get` at it, so the
+checker accepts the translation.
 
 A program the version types under a context is typed there, through
-`synthIn?`, and its checker theorem is composed from the same two results
-that `compile_checks` composes.  E6, C5, the caller of `freshCell`, the
-call of `process`, the capture parameter that is called, and the
-unpackings at `Z1Ctx` are such programs.
+`synthIn?`.  E6, C5, the caller of `freshCell`, the call of `process`, the
+capture parameter that is called and the unpackings at `Z1Ctx` are such
+programs.
 
-## The budgets
-
-A budget is one at which the program is found.  Each was found by taking the
-least typer fuel with the other counters at their defaults and then
-lowering each other counter on its own.  A budget is not claimed least.
+A `Budget` bounds the search.  The budget of each program is one at which the
+program is found.  It is not claimed least.
 
 ## Where the typer finds a smaller judgment
 
-Without an ascription that names the version's type, the typer finds the
-least use set and type the rules allow.  C2 types at `{k2}` against the
-version's `{k1, k2}`, C5 at `{it, it.C}` against `{fs, k2}`, and the caller
-of `freshCell` at `{fc, fs, un}` against `{fs, un, fs, un}`.  Each time the
+Without an ascription that names the version's type, the typer finds the least
+use set and type the rules allow.  C2 types at `{k2}` against the version's
+`{k1, k2}`, C5 at `{it, it.C}` against `{fs, k2}`, and the caller of
+`freshCell` at `{fc, fs, un}` against `{fs, un, fs, un}`.  Each time the
 version's judgment is reached from the typer's by one `sub` that the search
-finds, which `reachesAt` decides.  `C2_never_reads_k1` rests on the smaller
-use set of C2.
+finds, which `reachesAt` decides.
 
 ## Rejections and levels
 
-A rejection by a written type is a kernel fact.  A rejection by a level
-escape carries a certificate that reads `Ctx.caps`, which is defined by
-well-founded recursion and which the kernel does not reduce, so the verdict
-is an `expect` test.  The certificate at the goal the typer reached is then
-a theorem of its own, `Esc_rejected'` for the escape and
-`top_escape_rejected` for the escape at the top of a program.  Each is
-`escape_rejected_at` with every premise decided.  The probes W1 and W5 ask
-the subcapturing search for the steps of the level order at the version's
-contexts.
+A rejection by a written type is a kernel fact.  A rejection by a level escape
+carries a certificate that reads `Ctx.caps`, which the kernel does not reduce,
+so the verdict is an `expect` test.  The certificate at the goal the typer
+reached is a theorem of its own, `Esc_rejected'` for the escape and
+`top_escape_rejected` for the escape at the top of a program.  The checks W1
+and W5 ask the subcapturing search for the steps of the level order at the
+version's contexts.
 
 ## The run tests
 
-The file closes with the machine.  S2 and C2 are run from the platform's
-initial store, printed with the platform's own names, and pinned at the
-step count at which they become final.  E2 is run beside them over the
-empty platform.
+S2 and C2 are run from the platform's initial store, printed with the
+platform's own names, and pinned at the step count at which they become final.
+E2 is run beside them over the empty platform.
 -/
 
 namespace CapturesCCFrontend
@@ -118,15 +107,15 @@ def compiledJudgment (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : ST
     Option (CaptureSet π.sig × Ty π.sig) :=
   (compile b Λ π e).toOption.map fun r => (r.2.use, r.2.ty)
 
-/-- The target checker's verdict on the translation of the derivation, and
-`false` when the front end returned no derivation. -/
+/-- The target checker's verdict on the translation of the derivation.  It is
+`false` when the front end returns no derivation. -/
 def compiledVerdict (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm) : Bool :=
   match compile b Λ π e with
   | .ok r => FCdot.checkTm π.plat.ctx.translate r.2.deriv.translate r.2.ty.translate
   | _ => false
 
 /-- The target checker's verdict on the use set evidence the translation
-emits, and `false` when the front end returned no derivation. -/
+emits. -/
 def compiledUsesVerdict (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm) : Bool :=
   match compile b Λ π e with
   | .ok r =>
@@ -148,20 +137,19 @@ def openVerdicts {s : Sig} {Γ : Ctx s} (v : Verdict (Elab Γ)) : Bool × Bool :
         FCdot.checkCap Γ.translate r.deriv.translateUses r.deriv.translate.uses r.uses.translate)
   | _ => (false, false)
 
-/-- **The target checker accepts a typing found at an open context.**  The
-open twin of `compile_checks_get`: `FCdot.checkTm_complete` at
-`HasTy.translate_typed`, at a well formed context. -/
+/-- **The target checker accepts a typing found at an open context.**  The open
+twin of `compile_checks_get`. -/
 theorem synthIn_checks_get {s : Sig} {Γ : Ctx s} {b : Budget} {ps : CaptureSet s} {a : ATm s}
     (hwf : Γ.Wf) (h : (synthIn? b Γ ps a).isOk = true) :
     FCdot.checkTmE Γ.translate ((synthIn? b Γ ps a).get h).deriv.translate
       ((synthIn? b Γ ps a).get h).ans.translate = true :=
   FCdot.checkTmE_complete (DotMNF.HasTy.translate_typed _ hwf)
 
-/-- The subcapturing search at a context, the probe of a level step. -/
+/-- The subcapturing search at a context. -/
 def subcapFound {s : Sig} (b : Budget) (Γ : Ctx s) (C D : CaptureSet s) : Bool :=
   (subcap? (decls b Γ) b.cap C D).isSome
 
-/-- Two contexts with the same binders, compared binder by binder. -/
+/-- Two contexts are equal binder by binder. -/
 def ctxEq {s : Sig} (Γ Δ : Ctx s) : Bool :=
   match Γ, Δ with
   | .nil, .nil => true
@@ -341,9 +329,8 @@ theorem E5_checks : CheckerAccepts bE5 Λc .empty E5src E5_compiles :=
 
 /-! ## E6: a field typed at its own literal's member
 
-The version types E6 at `E6Ctx1`, which binds `n : {a : ⊤}` by a `let`, not
-by a lambda.  So the literal is resolved under the name `n` and typed at
-that context. -/
+The version types E6 at `E6Ctx1`, which binds `n : {a : ⊤}`.  So the literal
+is resolved under the name `n` and typed at that context. -/
 
 /-- `ν(x : {T : {a : ⊤}..{a : ⊤}} ∧ {v : x.T}. {type T = {a : ⊤}} ∧ {v = n})`. -/
 def E6src : STm :=
@@ -382,7 +369,7 @@ theorem E6_checks :
 
 /-! ## E7: two type members that name each other
 
-Nothing is searched.  The version's derivation is `E7`. -/
+The version's derivation is `E7`.  Nothing is searched. -/
 
 /-- `ν(x : {A : x.B..x.B} ∧ {B : x.A..x.A}. {type A = x.B} ∧ {type B = x.A})`. -/
 def E7src : STm :=
@@ -482,9 +469,8 @@ theorem C7box_checks : CheckerAccepts bC7box Λc πc C7boxSrc C7box_compiles :=
 
 /-! ## C7 with no box in any term
 
-`C7src` of `Typer.lean`.  The typer inserts `□ f1` and `□ f2` at the fields
-and `{k1} ⊸ e` at the ascription, in two passes of the object rule, and the
-elaborated term is the version's. -/
+`C7src` of `Typer.lean`.  The typer inserts `□ f1` and `□ f2` at the fields and
+`{k1} ⊸ e` at the ascription.  The elaborated term is the version's. -/
 
 example : compiledTm Λc πc C7src ≠ some (tmOfDeriv C7_typed) := by decide
 
@@ -510,9 +496,9 @@ theorem C7_checks : CheckerAccepts bC7 Λc πc C7src C7_compiles :=
 
 /-! ## S3: a type member at a boxed capturing type
 
-The bounds of a type member are shapes, so the program writes the box in
-the member.  The client unboxes through the upper bound of `o.A`.  The
-version's derivation is `S3_typed`. -/
+The bounds of a type member are shapes, so the program writes the box in the
+member.  The client unboxes through the upper bound of `o.A`.  The version's
+derivation is `S3_typed`. -/
 
 /-- S3, its box and its unboxing written. -/
 def S3src : STm :=
@@ -545,13 +531,11 @@ theorem S3_checks : CheckerAccepts bS3 Λc πc S3src S3_compiles :=
 
 /-! ## C2: capture polymorphism by a capture member
 
-The client reads `x.run`, whose set is `{x.C}`.  With no ascription the
-typer finds the least judgment, `{k2}` and `(⊤ → ⊤) ^ {k2}`, since the
-answer is the client at `b`, whose member is `{k2}`.  The version's
-`{k1, k2}` is reached by one `sub`. -/
+The client reads `x.run`, whose set is `{x.C}`.  The typer finds the judgment
+`{k2}` and `(⊤ → ⊤) ^ {k2}`, since the answer is the client at `b`, whose
+member is `{k2}`.  The version's `{k1, k2}` is reached by one `sub`. -/
 
-/-- C2, the call `x.run u` written in direct style, let inserted by the
-resolver. -/
+/-- C2, with the call `x.run u` in direct style. -/
 def C2src : STm :=
   cc% let c = λ(x : μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}) ^ {k1, k2}).
                 λ(u : ⊤). x.run u in
@@ -591,10 +575,10 @@ theorem C2_checks : CheckerAccepts bC2 Λc πc C2src C2_compiles :=
 
 /-! ## S1: `withFile` with an explicit capture parameter
 
-`withFile` is bound by an ascription at its signature, whose result `any`
-is read at the top of the program, where the source has no root, as the
-platform set.  The judgment is the version's `S1_typed`, `{fs, k2}` and
-`⊤ ^ {fs, k2}`.  The program runs over `πz`. -/
+`withFile` is bound by an ascription at its signature.  Its result `any` is
+read at the top of the program as the platform set.  The judgment is the
+version's `S1_typed`, `{fs, k2}` and `⊤ ^ {fs, k2}`.  The program runs over
+`πz`. -/
 
 /-- S1. -/
 def S1progSrc : STm :=
@@ -636,8 +620,8 @@ theorem S1_checks : CheckerAccepts bS1 Λc πz S1progSrc S1_compiles :=
 /-! ## S2: a class with a capture set parameter
 
 `mk` is bound by an ascription at its signature, with `any` in its result,
-read as the platform set.  The caller's answer leaves scope at the upper
-bound of the member, `{fs}`.  The judgment is the version's `S2_typed`. -/
+read as the platform set.  The caller's answer leaves scope at the upper bound
+of the member, `{fs}`.  The judgment is the version's `S2_typed`. -/
 
 /-- S2. -/
 def S2src : STm :=
@@ -673,8 +657,8 @@ theorem S2_checks : CheckerAccepts bS2 Λc πz S2src S2_compiles :=
 /-! ## C5: the caller of `mk`, at the version's own context
 
 The version types C5 at `S2Ctx3`, where `mk`, `un` and `it` are bound.  The
-typer finds the least judgment, `{it, it.C}` and `⊤ ^ {it.C}`, and the
-version's `{fs, k2}` and `⊤ ^ {fs}` are reached by one `sub`. -/
+typer finds `{it, it.C}` and `⊤ ^ {it.C}`.  The version's `{fs, k2}` and
+`⊤ ^ {fs}` are reached by one `sub`. -/
 
 /-- `let n = it.next in let r = n un in r`. -/
 def C5src : STm := cc% let n = it.next in let r = n un in r
@@ -717,8 +701,8 @@ theorem C5_checks :
 /-! ## Z1: `freshCell`
 
 The signature writes `fresh` in the result.  The typer reads it as the
-version's `Z1Ty`, an existential bounded by `{fs, u}`, and the arrow rule
-packs the cell.  The term and the judgment are the version's `Z1_plat`. -/
+version's `Z1Ty`, an existential bounded by `{fs, u}`, and the arrow rule packs
+the cell.  The term and the judgment are the version's `Z1_plat`. -/
 
 /-- `freshCell`, bound by an ascription. -/
 def Z1progSrc : STm :=
@@ -734,9 +718,8 @@ example : compiledJudgment bZ1prog Λc πz Z1progSrc =
     some (usesOfDeriv Z1_plat, tyOfDeriv Z1_plat) := by
   decide +kernel
 
-/-- The written type, read the compiler's way: `readAt` expands the `any`s,
-of which there is none, and then reads `fresh` as the existential.  This is
-the version's W4. -/
+/-- `readAt` expands the `any`s, of which there are none, and reads `fresh` as
+the existential.  This is the version's W4. -/
 example : readAt platCtx platSet (Z1TyF k1) = Z1Ty k1 := by decide
 
 #eval expect (compiledVerdict bZ1prog Λc πz Z1progSrc)
@@ -756,8 +739,8 @@ theorem Z1_checks : CheckerAccepts bZ1prog Λc πz Z1progSrc Z1_compiles :=
 
 `Z1callerAnn` of `Resolve.lean`, at the budget `bZ1` of `Typer.lean`.  The
 `let` becomes a `letex`, and the elaborated term erases to the term of the
-version's `Z1_caller`.  The typer charges the call `{fc, un}`, and the
-version's `Z1Use ∪ Z1Use` is reached by one `sub`. -/
+version's `Z1_caller`.  The typer finds `{fc, un}`, and the version's
+`Z1Use ∪ Z1Use` is reached by one `sub`. -/
 
 example : erasedOf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn) = some (tmOfDeriv Z1_caller) := by
   decide +kernel
@@ -789,8 +772,8 @@ theorem Z1caller_checks :
 /-! ## An unpacking whose answer is existential, at `Z1Ctx`
 
 `let c1 = fc un in fc un`, `Z1TailAnn` of `Resolve.lean`.  The answer is the
-second call's existential, strengthened past the witness and the payload of
-the first. -/
+second call's existential, moved past the witness and the payload of the
+first. -/
 
 example : judgmentOf (synthIn? bTail Z1Ctx ps2z Z1TailAnn) =
     some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here],
@@ -815,9 +798,8 @@ theorem Z1tail_checks :
 /-! ## Two calls of `freshCell`, at `Z1Ctx`
 
 Each call is unpacked by a `letex` of its own, so the body runs under two
-opened capture binders.  Neither is a root, and the search relates neither
-to the other, which is the version's `Z_two_calls_no_level` seen from the
-search. -/
+opened capture binders.  Neither is a root, and the search relates neither to
+the other.  This is the version's `Z_two_calls_no_level`. -/
 
 /-- `let c1 = fc un in let c2 = fc un in un`, as resolved. -/
 def twoCallsAnn : ATm ([],c,c,x,x) :=
@@ -843,10 +825,9 @@ example : subcapFound {} Z1BodyCtxSrc [CapAtom.cvar Zk2'] [CapAtom.cvar Zk1'] = 
 
 /-! ## Z2 and W3: `makeLogger`
 
-The parameter is written `any`, which a parameter reads as the arrow's own
-binder, and the result is `fresh`.  The written type resolves to the
-version's `W3TyAny`, and the typer reaches `Z2Ty`, whose witness is the
-parameter. -/
+The parameter is written `any`, which reads as the arrow's own binder, and the
+result is `fresh`.  The written type resolves to the version's `W3TyAny`, and
+the typer reaches `Z2Ty`, whose witness is the parameter. -/
 
 /-- `makeLogger`, bound by an ascription. -/
 def Z2src : STm :=
@@ -882,11 +863,10 @@ theorem Z2_checks : CheckerAccepts bZ2 Λc πz Z2src Z2_compiles :=
 
 /-! ## Z3: `mk` with a `fresh` result
 
-S2's `mk` with the result written `fresh`.  The typer packs a payload at
-the payload's own type, and the literal's precise type is not the iterator
-type.  So the body ascribes the literal's variable at the iterator type,
-which the typer reaches by retyping the variable, and the pack is then
-found.  The term, the use set and the type are the version's `Z3_plat`. -/
+S2's `mk` with the result written `fresh`.  The typer packs a payload at the
+payload's own type, and the literal's precise type is not the iterator type.
+So the body ascribes the literal's variable at the iterator type.  The term,
+the use set and the type are the version's `Z3_plat`. -/
 
 /-- `mk` with a `fresh` result, its body ascribed. -/
 def Z3src : STm :=
@@ -920,8 +900,8 @@ theorem Z3_checks : CheckerAccepts bZ3 Λc πz Z3src Z3_compiles :=
 /-! ## W2: `process` and its call
 
 `W2defSrc` of `Typer.lean` writes the parameter `any`, which reads as the
-arrow's own binder.  It elaborates to the version's `W2Tm`, and its least
-type reaches `W2Ty` by one `sub`.  The call `p f` is typed at the version's
+arrow's own binder.  It elaborates to the version's `W2Tm`, and its type
+reaches `W2Ty` by one `sub`.  The call `p f` is typed at the version's
 `W2CallCtx` at the use set `{f}` and the type `⊤`. -/
 
 /-- The budget of `process`. -/
@@ -974,8 +954,8 @@ theorem W2call_checks :
 /-! ## W2 deep: `any` below a field of a domain
 
 `deepSrc` of `Typer.lean`.  The version's `W2_deep_rejected` says that the
-written type is not one the version reads, and the front end rejects it with
-that reason, in the kernel. -/
+written type is not one the version reads.  The front end rejects it with that
+reason. -/
 
 example : (compile {} Λc πc deepSrc).reason?.map Reason.name = some "anyNotOk" := by
   decide +kernel
@@ -986,7 +966,7 @@ example : (compile {} Λc πc deepSrc).reason?.map Reason.name = some "anyNotOk"
 /-! ## A: a capture parameter that is called
 
 `P1ann` of `Resolve.lean`, under `unit : ⊤`.  The call is charged to the
-function and to the argument, and the closure is pure. -/
+function and to the argument.  The closure is pure. -/
 
 /-- The budget of the call of a capture parameter. -/
 def bP1 : Budget := { decls := 0, views := 0, sub := 0, cap := 1, typer := 4, obj := 0 }
@@ -1019,12 +999,12 @@ theorem P1_checks :
 
 /-! ## W1: the levels of two nested bodies
 
-At `W1Ctx2`, the body of a lambda inside the body of another, the search
-finds the level steps the version's `W1` derives: the outer root below the
-inner one, and both parameters below the inner root.  It does not find the
-inner root below the outer one.  The inner parameter is found below the
-outer root too, but by `sc-var`, since the parameter is at the pure type
-`⊤`, and not by the level rule, which `W1_outer_not_inner` denies. -/
+At `W1Ctx2`, the body of a lambda inside the body of another, the search finds
+the level steps the version's `W1` derives: the outer root below the inner
+one, and both parameters below the inner root.  It does not find the inner
+root below the outer one.  The inner parameter is found below the outer root
+by `sc-var`, since the parameter has the pure type `⊤`, and not by the level
+rule, which `W1_outer_not_inner` denies. -/
 
 example : subcapFound { cap := 1 } W1Ctx2 [CapAtom.cvar W1outRoot] [CapAtom.cvar W1inRoot] =
     true := by
@@ -1043,10 +1023,10 @@ example : subcapFound {} W1Ctx2 [CapAtom.cvar W1inRoot] [CapAtom.cvar W1outRoot]
 
 /-! ## W5: the escape of a callback, at the version's context
 
-At `W5Ctx`, the body of a callback under an older root, the search finds
-the callback's parameter below its own body root, the version's
-`W5_level_own`, and does not find it below the older root.  The certificate
-builder rejects that goal, and `W5_escape_rejected` is the certificate. -/
+At `W5Ctx`, the body of a callback under an older root, the search finds the
+callback's parameter below its own body root, the version's `W5_level_own`,
+and does not find it below the older root.  The certificate builder rejects
+that goal, and `W5_escape_rejected` is the certificate. -/
 
 example : subcapFound {} W5Ctx [CapAtom.var W5f] [CapAtom.cvar W5kb] = true := by decide +kernel
 
@@ -1078,11 +1058,10 @@ theorem W5_escape_rejected :
 
 `EscSrc` of `Notation.lean`: `λ(g : ⊤). let cb : A = λ(f : File ^ {any}).
 λ(u : ⊤). f in cb`, where the annotation `A` reads its result `any`s as the
-root of `g`'s body.  The annotation is binding.  The callback is typed at
-its own type, bound to `cb`, and moved to `A` by the arrow rule, which
-opens the callback's scope and reaches `{f} <: {κ_g}`.  The certificate
-builder rejects that goal.  The goal sits in `EscGoalCtx`, nine binders
-deep, which binds `cb`. -/
+root of `g`'s body.  The callback is typed at its own type, bound to `cb`, and
+moved to `A` by the arrow rule, which opens the callback's scope and reaches
+`{f} <: {κ_g}`.  The certificate builder rejects that goal.  The goal sits in
+`EscGoalCtx`, which binds `cb`. -/
 
 /-- The callback's own type, `∀(f : File ^ {κ}) (∀(u : ⊤) File ^ {f}) ^ {f}`. -/
 def cbTy {s : Sig} : Ty s :=
@@ -1091,7 +1070,7 @@ def cbTy {s : Sig} : Ty s :=
       [CapAtom.var .here]))) ^ []
 
 /-- The context of the goal: the body of `λ(g : ⊤)`, then `cb`, then the
-callback's scope opened by the arrow rule. -/
+callback's scope. -/
 def EscGoalCtx : Ctx (Sig.body (Sig.body ([],c,c),x)) :=
   ((platCtx.body unitTy).cons cbTy).body (fileS ^ [CapAtom.cvar .here])
 
@@ -1129,8 +1108,8 @@ theorem Esc_rejected' :
 
 `TopEscSrc` of `Typer.lean` binds the same callback at the top, where the
 result `any` reads as the platform set and the source has no root.  The goal
-is `{f} <: {fs, k2}` in `TopGoalCtx`, six binders deep, and the certificate's
-root is the universal one, which the source cannot name. -/
+is `{f} <: {fs, k2}` in `TopGoalCtx`, and the certificate's root is the
+universal one, which the source cannot name. -/
 
 /-- The context of the goal at the top. -/
 def TopGoalCtx : Ctx (Sig.body ([],c,c,x)) :=
@@ -1166,12 +1145,11 @@ theorem top_escape_rejected :
 
 /-! ## The effect theorem
 
-`compile_effect_safety_get` at C2.  The subject is a run `r` of the
-version's term from the platform's initial store, and a variable `x` the
-reached state reads.  The capability is `k1`.  Its premise, that the use set
-the typer found does not hold `k1`, is decided by the kernel.  The run is
-moved onto the elaborated term by the decided equation between that term
-and the version's. -/
+`compile_effect_safety_get` at C2, for a run of the version's term from the
+platform's initial store and a variable `x` the reached state reads.  The
+capability is `k1`.  The premise, that the use set the typer found does not
+hold `k1`, is decided by the kernel.  The elaborated term equals the version's
+term, so the run transfers. -/
 
 /-- **C2 never reads `k1`.**  Along any run of `C2tm` from the platform's
 initial store, a variable the reached state reads is not rooted at `k1` in
@@ -1189,8 +1167,8 @@ theorem C2_never_reads_k1 {s : Sig} {st : State s}
 
 /-! ## The log of a compiled program
 
-`compile_lvl_safety` speaks of each entry of the log `levelSteps` reads off
-the derivation.  On C2 it has 126 entries, on S1 92. -/
+`compile_lvl_safety` speaks of each entry of the log `levelSteps` reads off the
+derivation.  C2 has 126 entries and S1 has 92. -/
 
 example : (compileLog bC2 Λc πc C2src).length = 126 := by decide +kernel
 
@@ -1198,10 +1176,8 @@ example : (compileLog bS1 Λc πz S1progSrc).length = 92 := by decide +kernel
 
 /-! ## The run tests
 
-`compileAndRun` at a step budget of 40, printed with the platform's own
-names.  Each run is printed and then pinned at the step count at which it
-becomes final, so that a change to the machine or to the printer fails the
-build rather than changing a line of the log.
+`compileAndRun` at a step budget of 40, printed with the platform's own names.
+Each run is pinned at the step count at which it becomes final.
 
 S2 answers with `un`, the identity it passed to the iterator, in fifteen
 steps.  C2 answers with the client at `b` in twelve.  E2 answers with the
@@ -1210,8 +1186,8 @@ identity at the literal's member in six. -/
 /-- The step budget of the runs. -/
 def runBudget : Nat := 40
 
-/-- Whether the driver's answer is a final state, and `false` when the
-program did not compile. -/
+/-- Whether the driver's answer is a final state.  It is `false` when the
+program does not compile. -/
 def runFinal? (b : Budget) (m : Nat) (π : PlatformNames) (e : STm) : Bool :=
   match compileAndRun b m Λc π e with
   | .ok r => final? r.2

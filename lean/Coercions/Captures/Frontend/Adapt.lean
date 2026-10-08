@@ -2,30 +2,28 @@ import Coercions.Captures.Frontend.Search
 import Coercions.Captures.Frontend.Ann
 
 /-!
-# The result types of the typer, and the cases of variables, boxes and unboxings
+# Result types of the typer, and box inference at a variable
 
-The typer of this front end elaborates: it returns the term it typed, which
-may hold boxes and unboxings the program did not write.  So a result
-carries the annotated term beside its use set, its type and the derivation
-of the version's `HasTy` about the term's erasure.  Soundness is the result
-type, and there is no soundness theorem to prove.
+The typer elaborates: it returns the term it typed, which may contain boxes
+and unboxings the program did not write.  A result holds the elaborated term,
+its use set, its type, and a derivation of the version's `HasTy` for the
+term's erasure.  Soundness is therefore the result type, and no soundness
+theorem is needed.
 
-This module holds the result types and the cases that the typer calls and
-that do not recurse.
+This module defines the result types and the typer's cases that do not
+recurse.
 
-- `varSynth`, a variable at the least use set and the least capture set the
-  rules give it.  It is the first view of the search, `varView`.
-- `boxCheck?`, the `Box` rule in checking mode.  Against a goal `(□ T) ^ C`
+- `varSynth`: a variable at the least use set and capture set the rules give it.
+- `boxCheck?`: the `Box` rule in checking mode.  Against a goal `(□ T) ^ C`
   the variable is checked at `T` by a checker the typer passes in.
-- `unboxSynth?`, the `Unbox` rule in synthesis mode.  It reads the first view
-  of the variable that is a box of a type whose capture set is the unboxing's
-  own, and charges that set to the use set.
-- `adaptVar?`, box inference at a variable checked against a goal.
+- `unboxSynth?`: the `Unbox` rule in synthesis mode.  It takes the first view
+  of the variable that is a box of a type with the unboxing's capture set, and
+  charges that set to the use set.
+- `adaptVar?`: box inference at a variable checked against a goal.
 
-The views a variable has come from the search
-(`lean/Coercions/Captures/Frontend/Search.lean`), so an unboxing reaches a
-box through the upper bound of a type member as well as through the
-declared type.
+The views of a variable come from the search in `Search.lean`, so an
+unboxing reaches a box through the upper bound of a type member as well as
+through the declared type.
 
 ## Box inference
 
@@ -33,27 +31,24 @@ A program need not write its boxes.  Where a variable `x` is checked against
 a goal `G`, `adaptVar?` tries three rules in order.
 
 1. Plain checking.  A program that needs no box is not changed.
-2. If no view of `x` is a box, the value `□ x` is checked against `G`:
-   against a box goal by `boxCheck?`, otherwise by synthesis and the
-   subtyping search.  The search reaches `G` through the lower bound of a
-   type member, so a field declared at `z.A` with `A` bounded by a box takes
-   a box.
+2. If no view of `x` is a box, `□ x` is checked against `G`.  A box goal uses
+   `boxCheck?`.  Any other goal uses synthesis and the subtyping search, which
+   reaches `G` through the lower bound of a type member, so a field declared
+   at `z.A` with `A` bounded by a box takes a box.
 3. If a view of `x` is a box `□(S ^ C)`, the unboxing `C ⊸ x` is synthesized
-   and moved to `G` by the search.  The unboxing charges `C` to the use set.
+   and moved to `G` by the search.  It charges `C` to the use set.
 
-The inserted term is `□ x` or `C ⊸ x`, which the typer returns in place of
-`x`.  A fourth rule, in synthesis, is `unboxFirst?`: a receiver or a function
-whose views have a box and no field or function type is unboxed at the set
-of its first box view.  Where the inserted term is not in a position that
-takes a term, the typer binds it by a `let`.
+A fourth rule, in synthesis, is `unboxFirst?`.  A receiver or function whose
+views include a box but no field or function type is unboxed at the set of
+its first box view.
 
-These are the places where the Scala compiler adapts a box, at an expected
-type, and in its order: plain first, then a box where the actual type is not
-boxed, an unboxing where it is.  An insertion the rules do not license is a
-`none`, never an ill-typed term, since every result carries its derivation.
+The typer returns the inserted term `□ x` or `C ⊸ x` in place of `x`.  Where
+the position does not take a term, it binds the inserted term by a `let`.
+This is the order in which the Scala compiler adapts a box at an expected
+type.  An insertion the
+rules do not license gives `none`, never an ill-typed term.
 
-Nothing of this module is part of the metatheory and no definition here lives
-in a namespace of the version.
+Nothing here belongs to the metatheory.
 -/
 
 namespace CapturesFrontend
@@ -65,8 +60,8 @@ open scoped Captures.DotMNF
 
 /-! ## The result types -/
 
-/-- A synthesized typing: the elaborated term, its use set, its type, and the
-derivation about its erasure. -/
+/-- A synthesized typing: the elaborated term, its use set, its type, and a
+derivation for its erasure. -/
 structure Elab {s : Sig} (Γ : Ctx s) where
   /-- The elaborated term. -/
   tm : ATm s
@@ -77,8 +72,8 @@ structure Elab {s : Sig} (Γ : Ctx s) where
   /-- The derivation. -/
   deriv : HasTy uses Γ tm.erase ty
 
-/-- A typing at a given type: the elaborated term, its use set, and the
-derivation about its erasure. -/
+/-- A typing at a given type: the elaborated term, its use set, and a
+derivation for its erasure. -/
 structure Checked {s : Sig} (Γ : Ctx s) (T : Ty s) where
   /-- The elaborated term. -/
   tm : ATm s
@@ -125,18 +120,17 @@ def widenRight {s : Sig} {Γ : Ctx s} {V : CaptureSet s} {t : Tm s} {T : Ty s}
 /-! ## A variable -/
 
 /-- A variable at the least sets: `{}` and its declared type for a binder
-declared at the empty set, `{x}` and its declared shape at `{x}` otherwise.
-This is the first view of the variable. -/
+declared at the empty set, `{x}` and its declared shape otherwise.  This is
+the variable's first view. -/
 def varSynth {s : Sig} (Γ : Ctx s) (x : BVar s .var) : Elab Γ :=
   let v := varView Γ x
   ⟨.path (.var x), v.uses, v.ty, v.deriv⟩
 
 /-! ## A box value in checking mode -/
 
-/-- `Box` against a goal `(□ T) ^ C`: the variable is checked at `T` by
-`chk`, and the box is pure, so the goal's set is reached from `{}`
-(`lean/Coercions/Captures/DotMNF/Typing.lean`, `HasTy.box`).  Any other
-goal is `none`. -/
+/-- `Box` against a goal `(□ T) ^ C`.  The variable is checked at `T` by `chk`.
+The box is pure, so the goal's set is reached from `{}` (`HasTy.box`).  Any
+other goal gives `none`. -/
 def boxCheck? {s : Sig} {Γ : Ctx s} {x : BVar s .var}
     (chk : (T : Ty s) → Option (VarChecked Γ x T)) (G : Ty s) :
     Option (HasTy [] Γ (.val (.box x)) G) :=
@@ -147,9 +141,9 @@ def boxCheck? {s : Sig} {Γ : Ctx s} {x : BVar s .var}
 
 /-! ## An unboxing in synthesis mode -/
 
-/-- An unboxing read off one view: the view must be a box of a type whose
-capture set is `C`.  The use set is `C` joined with the view's own, the least
-set the `Unbox` rule allows. -/
+/-- An unboxing read off one view, which must be a box of a type with capture
+set `C`.  The use set is `C` joined with the view's own, the least set `Unbox`
+allows. -/
 def unboxOfView {s : Sig} {Γ : Ctx s} {x : BVar s .var} (C : CaptureSet s) (v : View Γ x) :
     Option (Elab Γ) :=
   match hv : v.ty with
@@ -160,17 +154,17 @@ def unboxOfView {s : Sig} {Γ : Ctx s} {x : BVar s .var} (C : CaptureSet s) (v :
       else none
   | _ => none
 
-/-- `Unbox` at the first view of the list that is a box of a type at the
-capture set `C`.  The views of the search include the upper bound of a
-selection, so `C ⊸ e` with `e : o.A` reaches the box `o.A` stands for. -/
+/-- `Unbox` at the first view that is a box of a type with capture set `C`.
+Views include the upper bound of a selection, so `C ⊸ e` with `e : o.A`
+reaches the box that `o.A` stands for. -/
 def unboxSynth? {s : Sig} {Γ : Ctx s} {x : BVar s .var} (C : CaptureSet s)
     (vs : List (View Γ x)) : Option (Elab Γ) :=
   firstSome (unboxOfView C) vs
 
 /-! ## Moving a typing to a goal -/
 
-/-- A synthesized typing moved to a goal by a decided equality or by the
-subtyping search. -/
+/-- A synthesized typing moved to a goal by equality or by the subtyping
+search. -/
 def subsume? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (n : Nat) (r : Elab Γ) (T : Ty s) :
     Option (Checked Γ T) :=
   if h : r.ty = T then some ⟨r.tm, r.uses, h ▸ r.deriv⟩
@@ -178,8 +172,7 @@ def subsume? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (n : Nat) (r : Elab Γ) (
 
 /-! ## Box inference at a variable -/
 
-/-- The capture set of the boxed type of the first view that is a box.
-`none` when no view of the variable is a box. -/
+/-- The capture set of the boxed type of the first box view, or `none`. -/
 def firstBoxSet? {s : Sig} {Γ : Ctx s} {x : BVar s .var} (vs : List (View Γ x)) :
     Option (CaptureSet s) :=
   firstSome (fun v =>
@@ -188,17 +181,17 @@ def firstBoxSet? {s : Sig} {Γ : Ctx s} {x : BVar s .var} (vs : List (View Γ x)
     | _ => none) vs
 
 /-- The value `□ x` at a goal.  Against a box goal the variable is checked at
-the boxed type by `chk`.  Otherwise the box of the first view, which `Box`
-types at the empty use set, is moved to the goal by the search. -/
+the boxed type by `chk`.  Otherwise the box of the first view, typed at the
+empty use set, is moved to the goal by the search. -/
 def boxAt? {s : Sig} {Γ : Ctx s} {x : BVar s .var} (D : DeclTable Γ) (n : Nat)
     (chk : (T : Ty s) → Option (VarChecked Γ x T)) (G : Ty s) : Option (Checked Γ G) :=
   ((boxCheck? chk G).map fun d => (⟨.box x, [], d⟩ : Checked Γ G)).orElse fun _ =>
     let v := varView Γ x
     subsume? D n ⟨.box x, [], (Shape.box v.ty) ^ [], HasTy.box v.deriv⟩ G
 
-/-- Rules two and three of box inference, with plain checking already
-failed: `□ x` when no view of `x` is a box, `C ⊸ x` at the set of the first
-box view otherwise. -/
+/-- Rules 2 and 3 of box inference, after plain checking has failed.  This is
+`□ x` when no view of `x` is a box, and `C ⊸ x` at the set of the first box
+view otherwise. -/
 def adaptInsert? {s : Sig} {Γ : Ctx s} {x : BVar s .var} (D : DeclTable Γ) (n : Nat)
     (chk : (T : Ty s) → Option (VarChecked Γ x T)) (vs : List (View Γ x)) (G : Ty s) :
     Option (Checked Γ G) :=
@@ -207,18 +200,17 @@ def adaptInsert? {s : Sig} {Γ : Ctx s} {x : BVar s .var} (D : DeclTable Γ) (n 
   | some C => (unboxSynth? C vs).bind fun r => subsume? D n r G
 
 /-- Box inference at a variable checked against a goal: plain checking by
-`chk`, then `adaptInsert?`.  `chk` is the variable checker of the typer and
-`vs` the views of the variable, so the module needs no typer.  The result
-holds the variable itself, `□ x` or `C ⊸ x`. -/
+`chk`, then `adaptInsert?`.  `chk` is the typer's variable checker and `vs`
+the variable's views, so this module needs no typer.  The result holds `x`,
+`□ x` or `C ⊸ x`. -/
 def adaptVar? {s : Sig} {Γ : Ctx s} {x : BVar s .var} (D : DeclTable Γ) (n : Nat)
     (chk : (T : Ty s) → Option (VarChecked Γ x T)) (vs : List (View Γ x)) (G : Ty s) :
     Option (Checked Γ G) :=
   ((chk G).map fun r => (⟨.path (.var x), r.uses, r.deriv⟩ : Checked Γ G)).orElse fun _ =>
     adaptInsert? D n chk vs G
 
-/-- Rule four of box inference: a variable unboxed at the set of its first
-box view.  The typer uses it at a receiver or a function whose views have
-no field or function type. -/
+/-- Rule 4 of box inference: a variable unboxed at the set of its first box
+view. -/
 def unboxFirst? {s : Sig} {Γ : Ctx s} {x : BVar s .var} (vs : List (View Γ x)) :
     Option (Elab Γ) :=
   (firstBoxSet? vs).bind fun C => unboxSynth? C vs
@@ -226,21 +218,21 @@ def unboxFirst? {s : Sig} {Γ : Ctx s} {x : BVar s .var} (vs : List (View Γ x))
 /-! ## Tests
 
 The two judgments of C7 that the version derives with a box and with an
-unboxing (`lean/Coercions/Captures/DotMNF/Examples.lean`, `C7box1` and
-`C7unbox`), and the rejections of the same cases. -/
+unboxing (`C7box1` and `C7unbox` in `DotMNF/Examples.lean`), and the
+rejections of the same cases. -/
 
 section Tests
 
 open Captures.DotMNF.Examples
 
-/-- `κ₁` at the signature of `C7Ctxe`. -/
+/-- `κ₁` in `C7Ctxe`. -/
 private abbrev k1e : BVar ([],c,c,x,x,x,x) .cap := .there (.there (.there (.there (.there .here))))
 
-/-- `κ₁` at the signature of `C7Ctxz`. -/
+/-- `κ₁` in `C7Ctxz`. -/
 private abbrev k1z : BVar ([],c,c,x,x,x) .cap := .there (.there (.there (.there .here)))
 
 /-- A variable checked at a goal by its first view, exactly or through the
-search, at one unit of the table and of the search. -/
+search, with a small budget. -/
 private def checkFirst {s : Sig} (Γ : Ctx s) (x : BVar s .var) (T : Ty s) :
     Option (VarChecked Γ x T) :=
   let v := varView Γ x
@@ -248,8 +240,7 @@ private def checkFirst {s : Sig} (Γ : Ctx s) (x : BVar s .var) (T : Ty s) :
   else (sub? (decls { decls := 1, views := 1, sub := 2 } Γ) 2 v.ty T).map
     fun e => ⟨v.uses, HasTy.sub v.deriv e .refl⟩
 
-/-- The unboxing of C7's client synthesizes the use set and the type of the
-version's `C7unbox`. -/
+/-- The unboxing of C7's client gets the use set and type of `C7unbox`. -/
 example : (unboxSynth? [CapAtom.cvar k1e] [varView C7Ctxe .here]).map (fun r => (r.uses, r.ty))
     = some ([CapAtom.cvar k1e], arrowS ^ [CapAtom.cvar k1e]) := by decide
 
@@ -282,23 +273,23 @@ example : ((varSynth C7Ctxe .here).uses, (varSynth C7Ctxe .here).ty) =
 example : (varSynth C7Ctxe (.there (.there (.there .here)))).uses =
     [CapAtom.var (.there (.there (.there .here)))] := by decide
 
-/-- One unit of the table and of the view closure. -/
+/-- A small budget. -/
 private def b1 : Budget := { decls := 1, views := 1, sub := 2 }
 
-/-- Box inference at one variable of a context, with `checkFirst` as the
-plain checker: the inserted term and its use set. -/
+/-- Box inference at a variable, with `checkFirst` as the plain checker.  It
+returns the inserted term and its use set. -/
 private def adaptAt {s : Sig} (Γ : Ctx s) (x : BVar s .var) (G : Ty s) :
     Option (ATm s × CaptureSet s) :=
   (adaptVar? (decls b1 Γ) 2 (checkFirst Γ x) (views (decls b1 Γ) b1 x) G).map
     fun r => (r.tm, r.uses)
 
-/-- The field `e₁ = f₁` of C7 with no box written, checked at its declared
-type: the second rule inserts `□ f₁`, at the empty use set. -/
+/-- The field `e₁ = f₁` of C7 with no box written: rule 2 inserts `□ f₁` at the
+empty use set. -/
 example : adaptAt C7Ctxz (.there (.there .here)) ((Shape.box (capTy k1z)) ^ []) =
     some (.box (.there (.there .here)), []) := by decide +kernel
 
-/-- The client's `(e : (⊤ → ⊤) ^ {κ₁})`: the third rule inserts
-`{κ₁} ⊸ e`, which charges `{κ₁}`. -/
+/-- The client's `(e : (⊤ → ⊤) ^ {κ₁})`: rule 3 inserts `{κ₁} ⊸ e`, which
+charges `{κ₁}`. -/
 example : adaptAt C7Ctxe .here (capTy k1e) =
     some (.unbox [CapAtom.cvar k1e] .here, [CapAtom.cvar k1e]) := by decide +kernel
 
@@ -308,18 +299,18 @@ example : adaptAt C7Ctxe (.there (.there (.there .here))) (capTy k1e) =
       [CapAtom.var (.there (.there (.there .here)))]) := by decide +kernel
 
 /-- Boxing `f₁` at a box of the other capability is rejected, and so is
-unboxing `e` at a capability of the other one. -/
+unboxing `e` at the other capability. -/
 example : adaptAt C7Ctxz (.there (.there .here))
     ((Shape.box (capTy (.there (.there (.there .here))))) ^ []) = none := by decide +kernel
 
 example : adaptAt C7Ctxe .here (capTy (.there (.there (.there (.there .here))))) = none := by
   decide +kernel
 
-/-- The fourth rule at `e`: the unboxing at the set of its first box view. -/
+/-- Rule 4 at `e`: the unboxing at the set of its first box view. -/
 example : (unboxFirst? (views (decls b1 C7Ctxe) b1 .here)).map (fun r => (r.tm, r.uses, r.ty)) =
     some (.unbox [CapAtom.cvar k1e] .here, [CapAtom.cvar k1e], capTy k1e) := by decide +kernel
 
-/-- A closure has no box view, so the fourth rule does not apply to it. -/
+/-- A closure has no box view, so rule 4 does not apply. -/
 example : (unboxFirst? (views (decls b1 C7Ctxe) b1 (.there (.there (.there .here))))).isSome =
     false := by decide +kernel
 

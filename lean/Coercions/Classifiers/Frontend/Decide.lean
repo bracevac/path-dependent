@@ -6,55 +6,49 @@ import Coercions.Classifiers.DotMNF.Examples
 /-!
 # The decided side conditions
 
-The typer of this front end discharges six kinds of side condition by
-decision procedures, and computes capture sets and written types by a few
-total functions.
+The typer discharges side conditions of the typing rules by decision
+procedures, and computes capture sets and written types by a few total
+functions.
 
-- Well-formedness of a shape, a type and an answer, `shapeWf?`, `tyWf?` and
-  `eTyWf?`.  The only premise of `Shape.Wf` that is not structural is the
-  `Shape.Decl` of `Wf.mu`, which the frozen `Shape.isDecl` already decides.
-  An arrow's domain sits under the arrow's capture binder and its codomain
-  under that binder and the parameter, so the procedures are stated over
-  every signature at once.  A capture member bounded by a classifier kind,
-  `{C : φ}`, is well formed outright.
-- Distinctness of the labels of a definition block, `defsDistinct?`, over
-  the three definition kinds by the frozen `Defs.labels`.
-- The two label facts a well-formed context asks of the self shape of an
-  object literal, `literalShape?` and `distinctLabels?`.  A literal's shape
+- Well-formedness of a shape, a type and an answer: `shapeWf?`, `tyWf?` and
+  `eTyWf?`.  The only premise of `Shape.Wf` that is not structural is
+  `Shape.Decl` in `Wf.mu`, which `Shape.isDecl` decides.  An arrow's
+  domain sits under the arrow's capture binder and its codomain under that
+  binder and the parameter, so the procedures are stated over every signature.
+- Distinctness of the labels of a definition block: `defsDistinct?`.
+- The two label facts that a well-formed context asks of the self shape of an
+  object literal: `literalShape?` and `distinctLabels?`.  A literal's shape
   has equal bounds at every member, and its member labels are pairwise
-  distinct.  A member bounded by a kind is never part of a literal's shape.
-- Strengthening, the inverse of weakening, over capture sets, shapes, types
-  and answers, past a binder of either kind.  The avoidance ladder of the
-  typer climbs it, and the way out through an unpacking strengthens an
-  answer past a capture binder and a term binder.
+  distinct.
+- Strengthening, the inverse of weakening, over capture sets, shapes, types and
+  answers, past a binder of either kind.  The typer climbs it when it avoids a
+  binder, and the way out through an unpacking strengthens an answer past a
+  capture binder and a term binder.
 - `capJoin`, the union of two capture sets without repeated atoms, and the
   candidate sets a binder leaves behind when it goes out of scope.
-- Projected capture sets.  `noProj?` decides that a set filters no atom by
-  a kind, and `unprojSet?` reads a set as the projection of another set at
-  one kind, confirmed by a decided equation in `unprojSetW?`.
+- Projected capture sets.  `noProj?` decides that a set filters no atom by a
+  kind.  `unprojSet?` reads a set as the projection of another set at one
+  kind, confirmed by a decided equation in `unprojSetW?`.
 
-Two total functions read contexts.  `ctxVars` and `ctxCaps` list the term
-variables and the capture binders.  `readAt` gives a written type the
-reading of `any` and `fresh` the version prescribes at the position it is
-written at.
+`ctxVars` and `ctxCaps` list the term variables and the capture binders of a
+context.  `readAt` gives a written type the reading of `any` and `fresh` that
+its position prescribes.
 
-Strengthening reuses the target's partial renaming as it stands:
-`PartialRename`, `PartialRename.lift`, `PartialRename.unshift`, `Inverts`,
-`Inverts.lift`, `unshift_inverts` and `witness?` of
-`lean/Coercions/Classifiers/FCdot/Checker.lean`.  That machinery is generic
-over `Sig`, `Kind` and `BVar`, which the two calculi share.  Only the
-traversals over the source's capture atoms, shapes, types and answers are
-new.  They copy the shape of the target's own `rename?` functions.
+Strengthening reuses the partial renaming of the FCdot checker: `PartialRename`,
+`PartialRename.lift`, `PartialRename.unshift`, `Inverts`, `Inverts.lift`,
+`unshift_inverts` and `witness?` of
+`lean/Coercions/Classifiers/FCdot/Checker.lean`.  Only the traversals over the
+capture atoms, shapes, types and answers of DOT-MNF are written here.  They
+copy the checker's own `rename?` functions.
 
-A candidate set is never trusted.  The typer follows each one with evidence,
-a decided inclusion or a subcapturing derivation from the search, so the
-functions that compute candidates carry no lemma.
+A candidate set is never trusted.  The typer follows each one with evidence, a
+decided inclusion or a subcapturing derivation, so the functions that compute
+candidates carry no lemma.
 
-Every name here is a plain name in `namespace ClassifiersFrontend`, never a
-member of a namespace of the version, so the functions are written as
-applications and not with dot notation.  Every recursive definition says
-`termination_by structural`, so all of this reduces in the kernel and the
-tests at the end are `by decide`.
+Every name is a plain name in `namespace ClassifiersFrontend`, so the functions
+are written as applications and not with dot notation.  Every recursive
+definition is structural, so all of this reduces in the kernel and the tests at
+the end are `by decide`.
 -/
 
 namespace ClassifiersFrontend
@@ -66,10 +60,9 @@ open Classifiers
 /-! ## Well-formedness of shapes, types and answers
 
 `shapeWf?` mirrors `Shape.Wf` clause for clause.  A capture member is well
-formed outright, a box is well formed when the type inside it is, and a
-type when its shape is.  An arrow asks it of its domain and its codomain,
-and an answer of the type it holds, under the witness binder for an
-existential.  `Wf.typ` relates its two bounds not at all, so `{A : ⊤..⊥}` is
+formed outright.  A box is well formed when its type is, and a type when its
+shape is.  An arrow asks it of its domain and codomain, and an answer of the
+type it holds.  `Wf.typ` relates its two bounds not at all, so `{A : ⊤..⊥}` is
 well formed. -/
 
 mutual
@@ -192,8 +185,8 @@ instance instDecidableETyWf {s : Sig} (E : ETy s) : Decidable (ETy.Wf E) :=
 
 /-! ## Distinctness of the labels of a definition block
 
-`Defs.labels` is frozen and covers the three definition kinds, type, capture
-and term.  `Label` has decidable equality, so the test is list membership. -/
+`Defs.labels` covers type, capture and term definitions.  `Label` has
+decidable equality, so the test is list membership. -/
 
 /-- No label of the left block is a label of the right block. -/
 def labelsDisjoint? (d e : Defs s) : Bool :=
@@ -231,16 +224,16 @@ instance instDecidableDefsDistinct {s : Sig} (d : Defs s) : Decidable (Defs.Dist
 
 /-! ## The self shape of an object literal
 
-A context binds the self of an object literal at a shape that the
-translation reads as the literal's own precise type.  So a well-formed
-context asks two facts of that shape.  `Shape.LiteralShape`: every member
-is a type member or a capture member with equal bounds, or a field, and
-the members are joined by intersections.  `Shape.DistinctLabels`: the
-member labels, read by the frozen `Shape.declLabels`, are pairwise
-distinct.  Both are structural, so both are decided clause for clause. -/
+A context binds the self of an object literal at a shape that the translation
+reads as the literal's own precise type.  A well-formed context asks two facts
+of that shape.  `Shape.LiteralShape`: every member is a type member or a
+capture member with equal bounds, or a field, and the members are joined by
+intersections.  `Shape.DistinctLabels`: the member labels, read by
+`Shape.declLabels`, are pairwise distinct.  A member bounded by a kind is never
+part of a literal's shape.  Both are decided clause for clause. -/
 
 /-- The decision procedure for `Shape.LiteralShape`.  The bounds of a member
-are compared by the decidable equality of shapes and of capture sets. -/
+are compared by decidable equality. -/
 def literalShape? {s : Sig} (S : Shape s) : Bool :=
   match S with
   | .typ _ T U => decide (T = U)
@@ -295,8 +288,8 @@ theorem declLabelsDisjoint?_iff (S T : Shape s) :
   simp [declLabelsDisjoint?]
 
 /-- The decision procedure for `Shape.DistinctLabels`.  A single member is
-distinct outright, an intersection when both sides are and share no label,
-and any other shape is not a declaration of members at all. -/
+distinct.  An intersection is distinct when both sides are and share no label.
+Any other shape is not a block of members. -/
 def distinctLabels? {s : Sig} (S : Shape s) : Bool :=
   match S with
   | .typ _ _ _ | .cap _ _ _ | .fld _ _ => true
@@ -333,15 +326,13 @@ instance instDecidableDistinctLabels {s : Sig} (S : Shape s) : Decidable S.Disti
 
 /-! ## Partial renaming of capture sets, paths, shapes, types and answers
 
-Each traversal fails exactly when some variable it meets is outside the
-domain of the renaming.  `any` and `fresh` hold no variable and are mapped
-to themselves, as `CapAtom.rename` maps them.  A projection renames the atom
-under it and keeps its kind, again as `CapAtom.rename` does.  A kind-bounded
-capture member `{C : φ}` holds no variable and is kept as it is.  An arrow lifts the renaming
-once for its domain, past its capture binder, and twice for its codomain,
-past that binder and the parameter.  An existential lifts it once for its
-body, past the witness.  Soundness and completeness are stated against a
-total renaming the partial one inverts, as the target states its own. -/
+Each traversal fails exactly when it meets a variable outside the domain of
+the renaming.  `any`, `fresh` and a kind-bounded capture member `{C : φ}` hold
+no variable and are kept.  A projection renames the atom under it and keeps its
+kind.  An arrow lifts the renaming once for its domain and twice for its
+codomain.  An existential lifts it once for its body.  Soundness and
+completeness are stated against a total renaming that the partial one inverts,
+as in the FCdot checker. -/
 
 /-- A capture atom under a partial renaming. -/
 def capAtomRename? {s1 s2 : Sig} (a : CapAtom s1) (ρ : PartialRename s1 s2) :
@@ -735,12 +726,10 @@ end
 
 /-! ## Strengthening
 
-Strengthening is the action of `PartialRename.unshift`, the partial inverse
-of `Rename.succ`.  It undoes one weakening exactly when the innermost binder
-does not occur.  The binder may be of either kind: the avoidance ladder
-strengthens past a term binder, and an unpacking leaves a capture binder
-for its witness behind it as well. -/
-
+Strengthening is the action of `PartialRename.unshift`, the partial inverse of
+`Rename.succ`.  It undoes one weakening exactly when the innermost binder does
+not occur.  The binder may be a term binder or a capture binder, since an
+unpacking leaves a capture binder for its witness. -/
 /-- Undo one weakening of a capture set. -/
 def capStrengthen? {s : Sig} {k : Kind} (C : CaptureSet (s,,k)) : Option (CaptureSet s) :=
   capRename? C PartialRename.unshift
@@ -819,8 +808,8 @@ theorem eTyStrengthen?_iff {s : Sig} {k : Kind} {E : ETy (s,,k)} {F : ETy s} :
 
 /-! ### Strengthening with its equation
 
-The second rung of the avoidance ladder rewrites the body's typing along the
-equation, so the equation comes back with the result. -/
+The typer rewrites a body's typing along the equation, so the equation comes
+back with the result. -/
 
 /-- Strengthening of a capture set, carrying the equation it establishes. -/
 def capStrengthenW? {s : Sig} {k : Kind} (C : CaptureSet (s,,k)) :
@@ -883,12 +872,11 @@ instance instDecidableIsWeakening {s : Sig} {k : Kind} (T : Ty (s,,k)) :
 
 /-! ## Joining capture sets
 
-A capture set is a list read as a finite set, and `∪` is concatenation.
-The typer joins the sets of the premises of a rule with `capJoin` instead,
-which keeps the first set and adds the atoms of the second that the first
-lacks, so that a set does not grow by repetition along a derivation.  Both
-sets are included in the join, which is all a rule needs: each inclusion is
-a `Subcap.elem`. -/
+A capture set is a list read as a finite set, and `∪` is concatenation.  The
+typer joins the sets of the premises of a rule with `capJoin` instead.  It
+keeps the first set and adds the atoms of the second that the first lacks, so
+that a set does not grow by repetition.  Both sets are included in the join,
+which is all a rule needs: each inclusion is a `Subcap.elem`. -/
 
 /-- `C` followed by the atoms of `D` that `C` lacks. -/
 def capJoin {s : Sig} (C D : CaptureSet s) : CaptureSet s :=
@@ -912,25 +900,24 @@ termination_by structural Cs
 
 /-! ## Candidate sets for a binder that goes out of scope
 
-Three rules drop a term binder `x` from a set over `(s,x)`.  `All-I` asks
-the body's use set `V` to be below `U↑ ∪ {x}`, `{}-I` asks the same of the
-definitions with the self, and `let` asks the body's use set and the
-body's type to be below sets over `s`, weakened.  In each case the typer
-builds a candidate over `s` and then proves the inclusion it needs.
+Three rules drop a term binder `x` from a set over `(s,x)`.  `All-I` asks the
+body's use set `V` to be below `U↑ ∪ {x}`.  `{}-I` asks the same of the
+definitions with the self.  `let` asks the body's use set and the body's type
+to be below weakened sets over `s`.  In each case the typer builds a candidate
+over `s` and then proves the inclusion it needs.
 
-`capReplaceHere R sel V` replaces the atom `{x}` of `V` by the set `R` and
-each atom `{x.C}` by `sel C` when that is known.  For `All-I` and `{}-I`,
-`R` is empty, since the rule adds `{x}` back itself.  For `let`, `R` is the
-capture set of the bound term's type, which is what `sc-var` reads at the
-binder.  `sel C` is the upper bound of the capture member `C` of `x`, which
-`sc-sel-upper` reads.  An atom `{x.C}` with no known bound stays, and then
-the candidate fails to strengthen.  `capAvoid?` strengthens the result.
+`capReplaceHere R sel V` replaces the atom `{x}` of `V` by the set `R` and each
+atom `{x.C}` by `sel C` when that is known.  For `All-I` and `{}-I`, `R` is
+empty, since the rule adds `{x}` back itself.  For `let`, `R` is the capture
+set of the bound term's type, which `sc-var` reads at the binder.  `sel C` is
+the upper bound of the capture member `C` of `x`, which `sc-sel-upper` reads.
+An atom `{x.C}` with no known bound stays, and then the candidate fails to
+strengthen.  `capAvoid?` strengthens the result.
 
 A projected atom of the binder, `{x ↾ φ}` or `{x.C ↾ φ}`, is replaced as the
-atom under the projection is.  The projection is dropped, since
-`Subcap.unproj` puts `{x ↾ φ}` below `{x}`, and from there `sc-var` or
-`sc-sel-upper` reaches the replacement.  A projected atom of the binder whose
-member has no known bound stays, projection and all. -/
+atom under the projection is, and the projection is dropped.  `Subcap.unproj`
+puts `{x ↾ φ}` below `{x}`, and from there `sc-var` or `sc-sel-upper` reaches
+the replacement.  If the member has no known bound, the atom stays projected. -/
 
 /-- The image of one atom over `(s,x)` under the replacement of the binder. -/
 def hereImage {s : Sig} (R : CaptureSet (s,x)) (sel : Label → Option (CaptureSet (s,x))) :
@@ -967,28 +954,23 @@ def noSel {s : Sig} : Label → Option (CaptureSet s) := fun _ => none
 
 /-! ## Projected capture sets
 
-A capture set may filter its atoms by a classifier kind: `{x ↾ φ}` is the
-part of `{x}` whose capabilities have a classifier in `φ`.  The version
-builds such a set with `CaptureSet.proj`, which projects atom by atom through
-the smart constructor `CapAtom.projBy`.  Two facts about a set are decided
-here.
+A capture set may filter its atoms by a classifier kind.  `{x ↾ φ}` is the
+part of `{x}` whose capabilities have a classifier in `φ`.  `CaptureSet.proj`
+builds such a set atom by atom through `CapAtom.projBy`.  Two facts about a set
+are decided here.
 
-`noProj?` decides `CaptureSet.NoProj`, the premise under which a set's
-translation has no projected atom (`CaptureSet.base_of_mem_translate`).
-It looks at the outermost former of each atom, which is exactly what
-`CapAtom.base` sees: the base of an atom is the atom itself when the atom is
-not a projection, and a projection never is its own base.
+`noProj?` decides `CaptureSet.NoProj`, the premise under which the translation
+of a set has no projected atom (`CaptureSet.base_of_mem_translate`).  It looks
+at the outermost former of each atom, as `CapAtom.base` does.
 
 `unprojSet?` recognises a set as `CaptureSet.proj C₀ φ`.  It strips one
-projection of a common kind from every atom.  The recognition is a guess,
-and `unprojSetW?` confirms it by deciding the equation
-`CaptureSet.proj C₀ φ = L` with the decidable equality of capture atoms.
-So a wrong guess costs a `none`, never a wrong derivation.  A set with a
-nested projection is not recognised, because `CapAtom.projBy` intersects the
-kinds there instead of nesting.  The resolver never builds one
-(`resolve_noNestedProj`).  The empty set is not recognised either, since its
-kind cannot be read off.  `unprojSet?_proj` shows that every set the resolver
-does build is recognised. -/
+projection of a common kind from every atom.  The recognition is a guess, and
+`unprojSetW?` confirms it by deciding the equation `CaptureSet.proj C₀ φ = L`.
+So a wrong guess costs a `none`, never a wrong derivation.  A set with a nested
+projection is not recognised, since `CapAtom.projBy` intersects the kinds there
+instead of nesting.  The resolver never builds one (`resolve_noNestedProj`).
+The empty set is not recognised either, since its kind cannot be read off.
+`unprojSet?_proj` shows that every set the resolver builds is recognised. -/
 
 /-- The decision procedure for `CaptureSet.NoProj`: no atom is a projection. -/
 def noProj? {s : Sig} (C : CaptureSet s) : Bool :=
@@ -1103,11 +1085,10 @@ theorem unprojSetW?_proj {s : Sig} (φ : Cls.Kind) (C : CaptureSet s) (hne : C �
 /-! ## The binders of a context
 
 `Ctx` has seven constructors.  `cons` and `consSelf` bind a term variable.
-`consSelf`, the binder of an object literal, is a term binder like `cons`,
-so its variable is in the list of variables.  `consC` (a platform
+`consSelf` is the binder of an object literal.  `consC` (a platform
 capability), `consCls` (a platform capability with a declared classifier),
-`consRoot` (a scope root) and `consInst` (the witness of a pack) bind a
-capture variable, so each only shifts the term variables below it. -/
+`consRoot` (a scope root) and `consInst` (the witness of a pack) bind a capture
+variable, so each only shifts the term variables below it. -/
 
 /-- Every term variable of a context, newest binder first. -/
 def ctxVars {s : Sig} (Γ : Ctx s) : List (BVar s .var) :=
@@ -1121,9 +1102,7 @@ def ctxVars {s : Sig} (Γ : Ctx s) : List (BVar s .var) :=
   | .consCls Γ _ => (ctxVars Γ).map .there
 termination_by structural Γ
 
-/-- Every capture binder of a context, newest binder first: the platform
-capabilities with or without a classifier, the scope roots and the witnesses
-alike. -/
+/-- Every capture binder of a context, newest binder first. -/
 def ctxCaps {s : Sig} (Γ : Ctx s) : List (BVar s .cap) :=
   match Γ with
   | .nil => []
@@ -1137,24 +1116,21 @@ termination_by structural Γ
 
 /-! ## Reading a written type
 
-A program writes `any` and `fresh` and never a root or a witness.  The
-version gives each a meaning by position, with two frozen functions applied
-in a fixed order.  `Ty.expand` replaces every `any` by the reading of the
-position, and `Ty.expandFresh` turns a `fresh` in the result of an arrow
-into an existential.  `expandFresh` copies the arrow's own set into the
-bound of that existential, so that set must be read first.  The reading of
-a position is `Ctx.reading`: the innermost scope root of the context, or
-the program's platform set where the context has no root. -/
+A program writes `any` and `fresh` and never a root or a witness.  Two
+functions of the Classifiers development give them a meaning by position.
+`Ty.expand` replaces every `any` by the reading of the position.
+`Ty.expandFresh` turns a `fresh` in the result of an arrow into an
+existential.  It copies the arrow's own set into the bound of that existential,
+so `any` must be read first.  The reading of a position is `Ctx.reading`: the
+innermost scope root of the context, or the program's platform set where the
+context has no root. -/
 
 /-- A written type read at a context: `any` at the reading of the context,
 with `P` the platform set the outermost position reads, then `fresh`. -/
 def readAt {s : Sig} (Γ : Ctx s) (P : CaptureSet s) (T : Ty s) : Ty s :=
   (T.expand (Γ.reading P)).expandFresh
 
-/-! ## Tests
-
-Every procedure of this module is structural, so each test below reduces in
-the kernel. -/
+/-! ## Tests -/
 
 section Tests
 
@@ -1325,9 +1301,8 @@ example : ctxCaps (Ctx.objBody (Ctx.scopeInst (Ctx.cons Ctx.nil (Ty.capt [] .top
     (Defs.typ (Label.typ 0) .top) (.typ (Label.typ 0) .top .top) [])
     = [.there .here, .there (.there .here), .there (.there (.there .here))] := by decide
 
-/-- `freshCell` written with `fresh`, read at the top of its program: no
-`any` to read, and the result `fresh` becomes the existential the version
-writes. -/
+/-- `freshCell` written with `fresh`, read at the top of its program: there is
+no `any` to read, and the result `fresh` becomes the existential. -/
 example : readAt platCtx platSet (Z1TyF k1) = Z1Ty k1 := by decide
 /-- At the top of a program `any` reads as the platform set. -/
 example : readAt platCtx platSet (Ty.capt [.any] fileS) = Ty.capt platSet fileS := by decide
@@ -1339,8 +1314,8 @@ example : readAt (Ctx.body platCtx unitTy) (CaptureSet.weaken (CaptureSet.weaken
     = Ty.capt [.cvar (.there (.there .here))]
       (.all (Ty.capt [.cvar .here] .top)
         (.ty (Ty.capt [.cvar (.there (.there (.there (.there .here))))] .top))) := by decide
-/-- The order is the version's: the arrow's set is read before `fresh` copies
-it into the bound of the existential. -/
+/-- The arrow's set is read before `fresh` copies it into the bound of the
+existential. -/
 example : readAt platCtx platSet
     (Ty.capt [.any] (.all (Ty.capt [] .top) (.ty (Ty.capt [.fresh] fileS))))
     = Ty.capt platSet (.all (Ty.capt [] .top)
@@ -1403,7 +1378,7 @@ example : ctxCaps E1PlatCtx = [.here, .there .here] := by decide
 example : ctxCaps (Ctx.cons E1PlatCtx (Ty.capt E1Filt .top))
     = [.there .here, .there (.there .here)] := by decide
 
-/-- `noProj?` against the version's `CaptureSet.NoProj`. -/
+/-- `noProj?` against `CaptureSet.NoProj`. -/
 example : noProj? ([.cvar E1ctl, .cvar E1io, .any, .fresh] : CaptureSet ([],c,c)) = true := by
   decide
 example : noProj? E1Filt = false := by decide

@@ -5,50 +5,32 @@ import Coercions.Paths.DotMNF.Examples
 /-!
 # Name resolution and let insertion
 
-Four functions take a surface phrase to the annotated de Bruijn syntax of
-`Ann.lean`, and they are the only place where a surface name becomes an
-index.  `resolvePath` resolves a path, `resolveTy` a type, and `resolveTm` and
-`resolveDefs` a term and a definition list.
+`resolvePath`, `resolveTy`, `resolveTm` and `resolveDefs` take a surface phrase
+to the annotated de Bruijn syntax of `Ann.lean`.  They are the only place where
+a name becomes an index.
 
-Name environments are innermost binder first, one name per binder of the
-signature, so shadowing is innermost wins by construction.  User names are
-data in a `NameEnv`, never Lean identifiers, so Lean's macro hygiene never
-touches them.
+A `NameEnv` lists one name per binder, innermost first, so the innermost
+binding wins.  A path resolves its root by the name environment and its field
+steps by the label table at the term sort.  A type label is read at the type
+sort.
 
-A surface path resolves its root by the name environment and every field step
-by the label table, at the term sort.  A type label is read at the type sort.
-The sort of a label is fixed by its position and never by its case.
+Direct style terms become monadic normal form by let insertion.  The inserted
+bindings form an explicit `Spine`, not a continuation, which keeps the
+resolvers structural.  The inserted binder is named `"%"`, which nothing looks
+up, so no freshness counter is needed.  A path `x.a.b` in term position
+resolves to `let % = x.a in %.b`.  The binder `%` has the type of `x.a`, not
+the singleton of the path.
 
-Let insertion is written with an explicit spine of bindings rather than with a
-continuation.  That is what keeps the resolvers structural on the surface
-phrase, which in turn is what makes the checks at the end of this module reduce
-in the kernel.  The inserted binder is named `"%"`, which no Lean identifier can
-equal and which nothing ever looks up, so repeated insertions need no freshness
-counter.
+`ATm.app`, `ATm.proj` and `ATm.path` take bare variables, so normal form needs
+no predicate.  The module proves totality on scoped, well labelled phrases, the
+two spine equations and the no insertion property.  It relates a surface
+program to its resolved term only by the examples at the end.
 
-A path in term position is nested projections, and let insertion binds every
-prefix.  So `x.a.b` resolves to `let % = x.a in %.b`.  The inserted binder is
-opaque: it gets the type of `x.a`, not the singleton of the path `x.a`.  That
-is what the version's monadic normal form gives a deep path in term position,
-and it loses what a member of `x.a` says in terms of `x.a`.
+`Notation.lean` is imported for those examples.  Its tokens are global, so
+`type`, `let`, `in` and the Greek nu are keywords here.  The name environment is
+written `nv` for that reason.
 
-Monadic normal form is by construction and needs no predicate: `ATm.app`,
-`ATm.proj` and `ATm.path` take bare variables, exactly as
-`Paths.DotMNF.Tm.app`, `Tm.proj` and `Tm.path` do.  What is stated below is
-totality on scoped well labelled phrases, the two spine equations, and the no
-insertion property.  No semantic relation between the surface program and the
-term it resolves to is claimed here.  A direct style calculus with its own type
-preservation theorem would be a separate development, not covered here.
-
-This module imports `Notation.lean`, for the programs at the end, and Lean's
-token table is global.  So the words `type`, `let`, `in` and the single letters
-that `Notation.lean` made atoms, among them the Greek nu that opens an object
-literal, are keywords here and none of them can be a local name.  The Greek nu
-would be the natural name for a name environment, but it is already a keyword,
-so it is written `nv` below instead.
-
-Nothing in this module is part of the metatheory.  No definition here lives in
-the `Paths.DotMNF` or `Paths.FCdot` namespaces.
+Nothing here belongs to the metatheory.
 -/
 
 namespace PathsFrontend
@@ -79,10 +61,10 @@ termination_by structural _ nv => nv
 
 /-! ## Covering, the monotonicity of scoping
 
-The two direct style clauses of `resolveTm` resolve the operand under the
-environment that `atomize` returns, which is the one it was given or that one
-with a single inserted name on the front.  So the totality proof needs scoping
-to survive a larger name list, and that is this section. -/
+`resolveTm` resolves the operand of an application or projection under the
+environment that `atomize` returns, which is the given one plus at most one
+name.  The totality proof therefore needs scoping to survive a larger name
+list. -/
 
 /-- Every name of the first list is a name of the second. -/
 def Covers (Γ Γ' : List String) : Prop :=
@@ -104,7 +86,7 @@ theorem Covers.cons {Γ Γ' : List String} (h : Covers Γ Γ') (x : String) :
       simp only [hzx, Bool.false_or] at hz ⊢
       exact h z hz
 
-/-- Scoping of a path survives a larger name list.  Only the root is asked. -/
+/-- Scoping of a path survives a larger name list. -/
 theorem SPath.Scoped_covers : ∀ (p : SPath) {Γ Γ' : List String}, Covers Γ Γ' →
     SPath.Scoped Γ p = true → SPath.Scoped Γ' p = true
   | .var x, _, _, h, hs => h x hs
@@ -181,10 +163,9 @@ theorem NameEnv.find?_isSome : ∀ {s : Sig} (nv : NameEnv s) (x : String),
 
 /-! ## The spine of inserted bindings
 
-A `Spine s s'` is a stack of `let` bindings that takes a term of the inner
-signature `s'` back to a term of the outer signature `s`.  `Spine.rename` is
-the weakening that moves a variable of `s` into `s'`.  `Rename.comp f g` is
-`g ∘ f`, so the composition below is in the order it is printed. -/
+A `Spine s s'` is a stack of `let` bindings that takes a term over `s'` to a
+term over `s`.  `Spine.rename` moves a variable of `s` into `s'`.
+`Rename.comp f g` is `g ∘ f`. -/
 
 /-- A stack of inserted `let` bindings. -/
 inductive Spine : Sig → Sig → Type where
@@ -211,8 +192,8 @@ def Spine.append : {s s' s'' : Sig} → Spine s s' → Spine s' s'' → Spine s 
   | _, _, _, .cons t sp, sp' => .cons t (sp.append sp')
 termination_by structural _ _ _ sp => sp
 
-/-- A resolved term brought into variable position: the bindings that had to be
-inserted, the environment they extend, and the variable that stands for it. -/
+/-- A term in variable position: the inserted bindings, the extended
+environment and the variable that stands for the term. -/
 structure Atomic (s : Sig) where
   /-- The signature after the insertions. -/
   sig : Sig
@@ -223,8 +204,7 @@ structure Atomic (s : Sig) where
   /-- The variable standing for the term. -/
   var : BVar sig .var
 
-/-- Bring a resolved term into variable position.  A variable is already there
-and nothing is inserted.  Anything else is bound by one fresh `let`. -/
+/-- A variable stays.  Any other term is bound by one fresh `let`. -/
 def atomize {s : Sig} (nv : NameEnv s) (t : ATm s) : Atomic s :=
   match t with
   | .path i => ⟨s, .nil, nv, i⟩
@@ -244,13 +224,11 @@ theorem atomize_names_covers {s : Sig} (nv : NameEnv s) (t : ATm s) :
 /-! ## The resolvers
 
 Each is structural on the surface phrase.  The clause order matches
-`SType.Scoped` and `SType.LabelsIn` conjunct for conjunct, so the totality
-proofs take the conjunctions apart in the order the `Option`s are produced.
+`SType.Scoped` and `SType.LabelsIn`.
 
-`ν(x : T. d)` resolves its annotation under the self binder, as `Defs (s,x)`
-requires.  `let x : U = t in u` resolves `U` at the outer signature, matching
-the `U.weaken` of the typing rule.  Evaluation order is left to right and
-matches the machine's, since the two spines are appended in that order. -/
+`ν(x : T. d)` resolves its annotation under the self binder.
+`let x : U = t in u` resolves `U` at the outer signature.  Operands are
+evaluated left to right, as the spines are appended in that order. -/
 
 /-- Resolve a surface path: the root by the environment, every field step by
 the table at the term sort. -/
@@ -356,8 +334,7 @@ def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Optio
 termination_by structural d
 end
 
-/-- Resolve a surface program under the names of a context, innermost first.
-This is the entry point for a program the version types under a context. -/
+/-- Resolve a program under the names of a context, innermost first. -/
 def resolveIn {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (ATm s) :=
   resolveTm Λ nv e
 
@@ -366,11 +343,9 @@ def resolve (Λ : LabelTable) (e : STm) : Option (ATm []) := resolveIn Λ .nil e
 
 /-! ## Totality
 
-Resolution succeeds on a phrase whose free names are all in the environment and
-whose labels are all in the table at the sort their position demands.  The
-proof is by structural recursion on the surface phrase.  In the two direct
-style clauses the operand is resolved under the environment `atomize` returns,
-and `atomize_names_covers` is what carries the scoping hypothesis across. -/
+Resolution succeeds on a phrase whose free names are in the environment and
+whose labels are in the table at the right sort.  In the two direct style
+clauses, `atomize_names_covers` carries the scoping hypothesis across. -/
 
 /-- A scoped path whose field steps are term labels of the table resolves. -/
 theorem resolvePath_isSome {s : Sig} (Λ : LabelTable) (nv : NameEnv s) : ∀ (p : SPath),
@@ -620,27 +595,23 @@ theorem Spine.rename_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spin
       rw [Spine.rename_append sp sp']
       exact Rename.funext' (fun _ => rfl)
 
-/-- The no insertion property: a resolved term that is already a variable is
-brought into variable position with no binding inserted. -/
+/-- No insertion: a variable is not bound again. -/
 theorem atomize_var {s : Sig} (nv : NameEnv s) (i : BVar s .var) :
     atomize nv (.path i) = ⟨s, .nil, nv, i⟩ := rfl
 
 /-! ## The version's programs
 
 Every program of `Notation.lean` resolves, and its erasure is the term of the
-version's own derivation in `lean/Coercions/Paths/DotMNF/Examples.lean`.  Each
-comparison is a `decide`: resolution is structural, so the kernel reduces it.
+version's derivation in `lean/Coercions/Paths/DotMNF/Examples.lean`.  Each
+check is a `decide`.
 
-The label table is written out.  The version gives two names one label in
-places (`lC` and `X4_lType` are both `.typ 3`, `lf` and `X4_lnewTypeTop` are
-both `.trm 4`), so a table interned from the program would not reproduce the
-version's terms.  The label of gDOT Fig. 2 keeps its own name, `Type`, which
-the notation writes `«Type»`. -/
+The label table is written out because the version gives two names one label in
+places (`lC` and `X4_lType` are both `.typ 3`).  The label of gDOT Fig. 2 is
+named `Type`, written `«Type»` in the notation. -/
 
 open Paths.DotMNF.Examples
 
-/-- The labels of `lean/Coercions/Paths/DotMNF/Examples.lean`, by the names
-the programs below write. -/
+/-- The labels of the version's examples, by the names the programs write. -/
 def pathsTable : LabelTable :=
   [("A", lA), ("B", lB), ("T", lT), ("a", la), ("b", lb), ("v", lv),
    ("f", lf), ("c", lc), ("C", lC),
@@ -662,15 +633,15 @@ example : (resolve pathsTable E1p_src).map ATm.erase = some (versionTerm E1p) :=
 example : resolveTy pathsTable .nil (pdotTy% {val f : {A : ⊤..⊥}}) = some (E1p_Dom (s := [])) := by
   decide
 
-/-- The totality theorem applies to E1p, on the two decided side conditions. -/
+/-- Totality applies to E1p. -/
 example : (resolveTm pathsTable .nil E1p_src).isSome = true :=
   resolveTm_isSome E1p_src pathsTable .nil (by decide) (by decide)
 
 /-! ### X3, with `x` bound by a lambda
 
 The version types X3 in the context `x : {val a : {val b : ⊤}}`.  Written
-closed, the context entry becomes a lambda.  The direct-style `x.a.b` inserts
-the `let` that X3 writes by hand, so both resolve to the same term. -/
+closed, that entry becomes a lambda.  The direct-style `x.a.b` inserts the
+`let` that X3 writes by hand. -/
 
 example : (resolve pathsTable X3_src).map ATm.erase =
     some (.val (.lam X3_A (versionTerm X3))) := by decide
@@ -681,8 +652,7 @@ example : (resolve pathsTable X3d_src).map ATm.erase =
 /-- The direct-style path and the hand written `let` resolve to one term. -/
 example : resolve pathsTable X3d_src = resolve pathsTable X3_src := by decide
 
-/-- X3 written open, under the version's own context: resolved at the name of
-that context's one entry, it is the version's term. -/
+/-- X3 written open, resolved under the name of its one context entry. -/
 example : (resolveIn pathsTable (.cons .nil "x") (pdot% let y = x.a in y.b)).map ATm.erase =
     some (versionTerm X3) := by decide
 
@@ -716,7 +686,7 @@ example : (resolve pathsTable E4_src).map ATm.erase = some (versionTerm E4) := b
 example : (resolve pathsTable E5_src).map ATm.erase = some (versionTerm E5) := by decide
 
 /-- The version types E6 under `n : {a : ⊤}`.  Written closed, that entry is a
-lambda's binder. -/
+lambda. -/
 example : (resolve pathsTable E6_src).map ATm.erase =
     some (.val (.lam E6Int (versionTerm E6))) := by decide
 
@@ -744,20 +714,20 @@ example : (resolve pathsTable X2_src).map ATm.erase =
     some (versionTerm (X2_lit (Γ := Paths.DotMNF.Ctx.nil))) := by decide
 
 /-- The version types X4 under `pcore : ⊤`.  Written closed, that entry is a
-lambda's binder. -/
+lambda. -/
 example : (resolve pathsTable X4_src).map ATm.erase =
     some (.val (.lam .top (versionTerm X4_lit0))) := by decide
 
-/-- P3e's third member is the term label 2, which the table calls `v`. -/
+/-- P3e's third member is the term label 2, named `v` in the table. -/
 example : (resolve pathsTable P3e_src).map ATm.erase = some (versionTerm P3e_lit) := by decide
 
 /-! ### gDOT Fig. 2 and pDOT Fig. 1 -/
 
-/-- The surface program resolves, and its erasure is the version's `Fig2_prog`. -/
+/-- The program resolves to the version's `Fig2_prog`. -/
 example : (resolve pathsTable Fig2_src).map ATm.erase = some Fig2_prog := by decide
 
-/-- The two nested literals carry exactly the bodies of the two stable fields
-of `pcore`'s self type, which is the side condition of `DefsTy.trmObj`. -/
+/-- The two nested literals carry the bodies of the two stable fields of
+`pcore`'s self type, as `DefsTy.trmObj` requires. -/
 example : (match resolve pathsTable Fig2_src with
     | some (.let _ _ (.let _ (.obj T (.and (.trm _ (.obj Tt _)) (.trm _ (.obj Ty _)))) _)) =>
         decide (T = .and (.vfld Fig2_ltypes (.mu Tt)) (.vfld X4_lsymbols (.mu Ty)))
@@ -768,16 +738,14 @@ example : (match resolve pathsTable Fig2_src with
     | some (.let _ _ (.let _ (.obj T _) _)) => decide (T = Fig2_pBody)
     | _ => false) = true := by decide
 
-/-- Fig. 1 is Fig. 2 with `tpe : p.types.Type`, and its erasure is the
-version's `Fig1_prog`. -/
+/-- Fig. 1 is Fig. 2 with `tpe : p.types.Type`.  It resolves to `Fig1_prog`. -/
 example : (resolve pathsTable Fig1_src).map ATm.erase = some Fig1_prog := by decide
 
-/-! ### Three programs of the restriction account
+/-! ### R1, R2 and R7
 
 R1 and R2 reach a singleton's alias through a type member whose bounds are
-singletons, which the version's subtyping relates.  R7 is the direct-style
-path whose inserted binder is opaque.  Here the claim is only that all three
-resolve.  Whether they type is the typer's question. -/
+singletons.  R7 is the direct-style path whose inserted binder is opaque.  Here
+they only resolve.  Typing them is the typer's question. -/
 
 example : (resolve pathsTable R1_src).isSome = true := by decide
 

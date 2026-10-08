@@ -16,15 +16,13 @@ import Coercions.Classifiers.Frontend.Examples
 /-!
 # The front end of `Classifiers`
 
-The root of the `ClassifiersFrontend` library: a way to write, type and run
-programs of the `Classifiers` version (capability classifiers) without assembling
-derivations by hand.  A program in the version's notation is resolved, typed
-by a search that returns the version's derivation, translated, checked and
-run.  The source is DOT-MNF with classifiers, translated to FCdot.
-
-The library imports the version and changes nothing in it.  It is not a
-default target.
+The root of the `ClassifiersFrontend` library.  It lets one write, type and run
+programs of the `Classifiers` version (capability classifiers) without
+assembling derivations by hand.  A program in the version's notation is
+resolved, typed by a search that returns the version's derivation, translated
+to FCdot, checked and run.  The library only imports the version.  It is not a
+default build target.
 -/
 
-/-! Every definition of the front end is structural, so the kernel reduces it. -/
+/-! Every definition is structural, so the kernel reduces it. -/
 #assert_no_wf ClassifiersFrontend

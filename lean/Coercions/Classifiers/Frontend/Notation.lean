@@ -1,114 +1,90 @@
 import Coercions.Classifiers.Frontend.Surface
 
 /-!
-# The surface notation of the Classifiers front end
+# The surface notation
 
-Eight syntax categories, `clsKind`, `clsAtom`, `clsSet`, `clsShape`,
-`clsTy`, `clsAns`, `clsTm` and `clsDefs`, plus `clsDecl` and `platBinder`
-for a program's header, and their entry points `clsKind%`, `clsAtom%`,
-`clsSet%`, `clsShape%`, `clsTy%`, `clsAns%`, `cls%` and `clsDefs%`, expand
-the paper's notation into a constructor application of `SKind`, `SAtom`,
-`SCap`, `SShape`, `SType`, `SAns`, `STm` or `SDefs`.  A whole program is
-`clsProg% classifiers K₁, … platform [κ₁, …] t`, with an optional `uses C`
-and an optional `kind K` before the body.  A program that declares no
-classifier leaves out the word `classifiers` as well.  Nothing else happens here:
-names stay strings, no label is interned and no de Bruijn index is
-computed, which is `Resolve.lean`'s work.
+Syntax categories `clsKind`, `clsAtom`, `clsSet`, `clsShape`, `clsTy`,
+`clsAns`, `clsTm` and `clsDefs`, with `clsDecl` and `platBinder` for a
+program's header, expand the paper's notation into constructor applications of
+`SKind`, `SAtom`, `SCap`, `SShape`, `SType`, `SAns`, `STm` and `SDefs`.  The
+entry points are `clsKind%`, `clsAtom%`, `clsSet%`, `clsShape%`, `clsTy%`,
+`clsAns%`, `cls%` and `clsDefs%`.  A whole program is
+`clsProg% classifiers K₁, … platform [κ₁, …] t`, with an optional `uses C` and
+an optional `kind K` before the body.  A program that declares no classifier
+leaves out `classifiers`.
 
-## Classifier kinds and projected atoms
+Names stay strings here.  Interning labels and computing de Bruijn indices is
+the work of `Resolve.lean`.
 
-A classifier kind (`clsKind`) is `only[K₁, …]`, the kind that keeps
-exactly those classifiers, `except[K₁, …]`, the kind that keeps every
-classifier but those, or a union or intersection of two kinds.  `except
-[]` keeps every classifier, since it excludes none, so it is the kind
-written for a set-bounded member's own kind.  `only []` keeps none.  A
-capture atom may be read at a kind, `a.only[K]` or `a.except[K]`, and so
-may a whole capture set, `{…}.only[K]`, which projects each of its atoms
-in turn: `{ctl, io}.only[K]` and `{ctl.only[K], io.only[K]}` build the
-same set.  A capture member may be bounded by a kind directly,
-`{C^ : K}`, beside the set-bounded `{C^ : lo..hi}` it already has.  The two
-forms never collide, since a kind never starts where a set does.
+## Kinds and projected atoms
+
+A kind is `only[K₁, …]`, which keeps exactly those classifiers, `except[K₁, …]`,
+which keeps all but those, or a union or intersection of two kinds.  `except[]`
+keeps every classifier and `only[]` keeps none.  A capture atom may be read at
+a kind, `a.only[K]`, and so may a set, `{…}.only[K]`, which projects each atom:
+`{ctl, io}.only[K]` and `{ctl.only[K], io.only[K]}` are the same set.  A
+capture member may be bounded by a kind, `{C^ : K}`, beside the set-bounded
+`{C^ : lo..hi}`.  The two never collide, since a kind never starts where a set
+does.
 
 ## The program header
 
 `classifiers IO, ThreadLocal, Control extends ThreadLocal` declares the
-classifiers a program uses, each either a root classifier or a child of
-one declared earlier.  `classifiers`, `extends`, `platform`, `uses` and
-`kind` are non-reserved words, read as keywords only inside a program
-header, so each stays an ordinary identifier in every importing module.  `platform [ctl : Control, io : IO]` lists the platform's
-capabilities, outermost first, each either a plain binder or one declared
-at a classifier.  The optional `uses C` and `kind K` state the body's
-use set and kind, read by the typer rather than searched.
+classifiers, each a root or a child of one declared before it.  `platform
+[ctl : Control, io : IO]` lists the platform's capabilities, outermost first,
+each a plain binder or declared at a classifier.  The optional `uses C` and
+`kind K` state the body's use set and kind, which the typer reads and does not
+search.  The header words are not reserved.  They are keywords only inside a
+header, and `only` and `except` only inside `clsKind`, `clsAtom` and `clsSet`.
 
-## Three sorts, not one
+## Shapes, types and answers
 
-A shape (`clsShape`) is the plain type former: a declaration, a selection,
-an intersection, an arrow or a box.  A type (`clsTy`) is a shape with a
-written capture set, `S ^ C`.  Writing a bare shape where a type is
-expected elaborates the empty set, the same convention the vanilla
-capture front end already applies at its single `capt` former.  An answer
-(`clsAns`) is a type, or a type read under one capture binder bounded by a
-set of the enclosing scope, `∃[c ⊑ C] T`, the shape an existential reading
-of `fresh` needs.  Only a `let`'s own annotation and an arrow's codomain
-are answer positions.  Every other type position is a plain type: a field,
-a bound, a box operand, an ascription.
+A shape (`clsShape`) is a declaration, a selection, an intersection, an arrow
+or a box.  A type (`clsTy`) is a shape with a written capture set, `S ^ C`.
+A bare shape where a type is expected has the empty set.  An answer (`clsAns`)
+is a type, or `∃[c ⊑ C] T`, a type under one capture binder bounded by a set
+of the enclosing scope.  Only a `let`'s annotation and an arrow's codomain are
+answer positions.  Every other type position is a plain type.
 
-## The arrow's own capture binder
+## Arrows, lambdas and unpacking
 
-An arrow carries an optional name for its own capture binder:
-`∀(x : T) U` leaves it anonymous, `∀[c](x : T) U` names it `c`.  A lambda
-carries the same pair, `λ(x : T). t` and `λ[c](x : T). t`.  `let ⟨c, x⟩ = t
-in u` is the explicit counterpart at term level: it unpacks an existential
-answer by hand, opening a capture binder for the witness and a term binder
-for the payload, both read only in `u`.
+`∀(x : T) U` leaves the arrow's own capture binder anonymous and
+`∀[c](x : T) U` names it.  Lambdas are the same, `λ(x : T). t` and
+`λ[c](x : T). t`.  `let ⟨c, x⟩ = t in u` unpacks an existential answer by hand,
+with a capture binder for the witness and a term binder for the payload, both
+visible only in `u`.
 
 ## Precedence
 
-`^` sits looser than the arrow and the box, and the written shape of an
-arrow's codomain or a box's operand needs parentheses to carry a set of
-its own.  `∀(x : ⊤) ⊤ ^ {c}` is an arrow whose codomain carries `{c}`.
-`(∀(x : ⊤) ⊤) ^ {c}` is the whole arrow under `{c}` instead.  `□` takes
-its operand at the tightest level, so a capturing operand needs its own
-parentheses, `□(⊤ ^ {f})`.  A bare `□⊤` is a type formed with no set, the
-box of the capture-free shape `⊤`, written without parentheses for that
-reason alone.  `∧` keeps its vanilla precedence, closing tighter than `^`,
-so `{a : ⊤} ∧ {b : ⊤} ^ {k1}` sets the whole intersection.
+`^` is looser than the arrow and the box.  `∀(x : ⊤) ⊤ ^ {c}` is an arrow whose
+codomain carries `{c}`, and `(∀(x : ⊤) ⊤) ^ {c}` puts the whole arrow under
+`{c}`.  `□` takes its operand at the tightest level, so a capturing operand
+needs parentheses, `□(⊤ ^ {f})`.  A bare `□⊤` is the box of a shape with no
+set.  `∧` closes tighter than `^`.
 
-## Capture atoms, no new keyword
+## Capture atoms
 
-A capture set is a comma separated list of identifiers, read apart by
-`nameParts`, the same splitting the vanilla file uses for a dotted name.
-One component named `any` is the atom `any`, naming the receiver's own
-outer set.  One component named `fresh` is the atom `fresh`, naming a
-freshly allocated one.  Any other one component is a plain name.  Two
-components `x.C` are a capture member selection.  Three or more are
-rejected, unless a trailing bracket follows: then the last component must
-be `only` or `except`, and the rest, with as many components as it needs,
-is read again as the base atom.  Neither `any` nor `fresh` ever enters Lean's token table, so
-`List.any` and every other ordinary use of either word stay available in
-every importing module, and a surface program is free to use them as
-ordinary variable names anywhere outside a capture set.  The member
-spelling `{C^ : lo..hi}` and `{C^ = c}` is the one of the Captures
-front end, since a capture-set parameter desugars to a type
-parameter at the same label slot.  The only reserved word beyond the
-vanilla `type` is none: `cap`, `unbox` and `letex` are never tokens, since
-the surface and the target both write them as plain identifiers
-(`.cap`, `.unbox`, `.letex`), and a keyword there would break every module
-that imports this one.
+A capture set is a comma separated list of identifiers, split by `nameParts`.
+The name `any` is the atom `any` and `fresh` is the atom `fresh`.  Another
+single name is a plain name.  Two components `x.C` select a capture member.
+Three or more are rejected, unless a trailing bracket follows.  Then the last
+component must be `only` or `except` and the rest is read as the base atom.
+Neither `any` nor `fresh` enters Lean's token table, and neither do `cap`,
+`unbox` and `letex`, so `List.any` and the like stay usable in importing
+modules.  The member spellings `{C^ : lo..hi}` and `{C^ = c}` are those of the
+Captures front end.
 
 ## The ascription
 
-`(t : T)` is the one of the Captures front end, a checking point with no
-term of its own in either calculus.  It is the parenthesis form of a term
-followed by a colon and a type, read only after the plain parenthesised
-term fails to match.
+`(t : T)` is a checking point with no term of its own in either calculus.  It
+is read only after the plain parenthesised term fails to match.
 -/
 
 namespace ClassifiersFrontend
 
 open Lean
 
-/-! ## The six categories -/
+/-! ## The categories -/
 
 declare_syntax_cat clsSet
 declare_syntax_cat clsShape
@@ -118,9 +94,8 @@ declare_syntax_cat clsTm
 declare_syntax_cat clsDefs
 
 /-- A classifier kind: `only[K₁, …]`, `except[K₁, …]`, or a union or
-intersection of two.  `only` and `except` are read as keywords inside this
-category alone (`behavior := both`), so a bare `only` or `except` stays an
-ordinary identifier everywhere else, including as a kind's own name. -/
+intersection of two.  `only` and `except` are keywords inside this category
+alone (`behavior := both`) and ordinary identifiers elsewhere. -/
 declare_syntax_cat clsKind (behavior := both)
 /-- `only[K₁, …]`, the empty kind when the list is empty. -/
 syntax:max &"only" "[" ident,* "]" : clsKind
@@ -267,7 +242,7 @@ declared use set, an optional declared kind, and the body. -/
 syntax:max "clsProg% " (&"classifiers" clsDecl,+)? &"platform" "[" platBinder,* "]"
   (&"uses" clsSet)? (&"kind" clsKind)? clsTm : term
 
-/-! ## Taking a hierarchical identifier apart, as in the vanilla file -/
+/-! ## Taking a hierarchical identifier apart -/
 
 /-- The components of a name, outermost first, as strings. -/
 def nameParts : Name → List String → List String
@@ -276,8 +251,7 @@ def nameParts : Name → List String → List String
   | .num p i, acc => nameParts p (toString i :: acc)
 
 /-- The receiver and the label of a name in shape position.  Only a two
-component name is a shape, since the one shape a name can build is the
-selection `x.A`. -/
+component name is a shape, the selection `x.A`. -/
 def tySelName (n : Name) : Option (String × String) :=
   match nameParts n [] with
   | [recv, lbl] => some (recv, lbl)
@@ -327,9 +301,8 @@ private def str (x : Ident) : TSyntax `term := quote x.getId.toString
 private def strs (xs : Array Ident) : TSyntax `term :=
   quote (xs.toList.map (·.getId.toString))
 
-/-- A projected atom from an identifier and its bracket: the identifier's
-last component must be `only` or `except`, and the rest, read as an
-identifier of its own, is the base atom. -/
+/-- A projected atom from an identifier and its bracket.  The last component
+must be `only` or `except` and the rest is the base atom. -/
 private def projAtomOfIdent (x : Ident) (ks : Array Ident) : MacroM (TSyntax `term) := do
   let parts := nameParts x.getId []
   let base (rest : List String) : Ident :=
@@ -455,10 +428,10 @@ macro_rules
         | none => `((none : Option SKind))
       `(SProg.mk [$dsTerms,*] [$psTerms,*] $usesTerm $kindTerm (cls% $t))
 
-/-! ## One check per new or changed surface form
+/-! ## Checks
 
-Every check reduces in the kernel, so `by decide` is the right tactic, as
-it is throughout `Surface.lean`. -/
+One check per surface form.  Each reduces in the kernel, so `by decide`
+proves it. -/
 
 example : (clsSet% {}) = ([] : SCap) := by decide
 
@@ -472,15 +445,15 @@ example : (clsTy% ⊤) = SType.capt SShape.top [] := by decide
 /-- `S ^ C`, a shape under a written set. -/
 example : (clsTy% ⊤ ^ {f}) = SType.capt SShape.top [SAtom.name "f"] := by decide
 
-/-- `∀(x : T) U`, the arrow binder left anonymous, its codomain carrying
-the written set since the arrow itself is not parenthesised. -/
+/-- `∀(x : T) U`, the arrow binder anonymous.  The written set belongs to the
+codomain, since the arrow is not parenthesised. -/
 example :
     (clsTy% ∀(x : ⊤) ⊤ ^ {c}) =
       SType.capt (SShape.all none "x" (SType.capt SShape.top []) (SAns.ty (SType.capt SShape.top [SAtom.name "c"])))
         [] := by
   decide
 
-/-- The same arrow parenthesised: the set now sits on the whole arrow. -/
+/-- The same arrow parenthesised: the set sits on the whole arrow. -/
 example :
     (clsTy% (∀(x : ⊤) ⊤) ^ {c}) =
       SType.capt (SShape.all none "x" (SType.capt SShape.top []) (SAns.ty (SType.capt SShape.top []))) [SAtom.name "c"] := by
@@ -597,10 +570,9 @@ example :
         (STm.lam none "u" (SType.capt SShape.top []) (STm.var "u")) := by
   decide
 
-/-- `only` and `except` are non-reserved and read as keywords only inside
-`clsKind`, `clsAtom` and `clsSet`'s own grammar, so a plain `only` stays
-an ordinary identifier everywhere else, and `simp only […]` still
-elaborates after this module is imported. -/
+/-- `only` and `except` are keywords only inside `clsKind`, `clsAtom` and
+`clsSet`, so `only` stays an identifier elsewhere and `simp only […]` still
+elaborates. -/
 def only : Nat := 0
 
 example : only = 0 := rfl
@@ -612,9 +584,8 @@ example (classifiers platform uses kind : Nat) :
     classifiers + platform + uses + kind = kind + uses + platform + classifiers := by
   omega
 
-/-- `{C^ : K}`, `{C^ : lo..hi}` and `{a : T}` parse to three different
-shapes: a kind never starts where a set does, and a field whose type is
-a capturing type is a field, not a member. -/
+/-- `{C^ : K}`, `{C^ : lo..hi}` and `{a : T}` are three different shapes.  A
+field whose type is a capturing type is a field, not a member. -/
 example : (clsShape% {C^ : only[Control]}) = SShape.capk "C" (.only ["Control"]) := by decide
 
 example :
@@ -624,9 +595,7 @@ example :
     (clsShape% {run : ⊤ ^ {z.C}}) = SShape.fld "run" (SType.capt SShape.top [SAtom.sel "z" "C"]) := by
   decide
 
-/-- `any` and `fresh` are names to the lexer and atoms to the macro: no
-new keyword, so `List.any` and the word `fresh` stay usable in every
-importing module. -/
+/-- `any` and `fresh` are names to the lexer and atoms to the macro. -/
 example : atomOfName `any = some .any := by decide
 
 example : atomOfName `fresh = some .fresh := by decide
@@ -648,8 +617,7 @@ example : (cls% ( f x ).a) = STm.proj (.app (.var "f") (.var "x")) "a" := by dec
 
 example : (clsShape% x.A) = SShape.sel "x" "A" := by decide
 
-/-- A bare `x` is never a shape: writing `clsShape% x` fails at this
-message. -/
+/-- A bare `x` is never a shape. -/
 example : tySelName `x = none := by decide
 
 example : tySelName `x.a.A = none := by decide
@@ -664,7 +632,7 @@ example : nameParts `x.a.b [] = ["x", "a", "b"] := by decide
 
 /-! ## The version's programs
 
-`File` abbreviates `μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}})` throughout. -/
+`File` abbreviates `μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}})`. -/
 
 /-- `File`. -/
 def fileShape : SShape :=
@@ -685,16 +653,15 @@ def S1src : SType :=
             (∀(op : (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {fs}) ⊤) ^ {cp.C}) ⊤ ^ {any})
               ^ {fs, cp}) ^ {fs}
 
-/-- **The caller of `freshCell`**, a plain `let` the typer reads as a
-`letex`, over the platform `k1, fs`. -/
+/-- **The caller of `freshCell`**, a plain `let` that the typer reads as a
+`letex`. -/
 def Z1callerSrc : SProg :=
   clsProg% platform [k1, fs]
     λ(fc : (∀(u : ⊤) μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {fresh}) ^ {fs}).
     λ(un : ⊤). let c = fc un in let w = c in λ(v : ⊤). v
 
-/-- **The `withFile` escape**, written inside an enclosing scope so that
-the callback's result `any` reads as that scope's root, the escape the
-front end rejects. -/
+/-- **The `withFile` escape**, written inside an enclosing scope so that the
+callback's result `any` reads as that scope's root.  The front end rejects it. -/
 def EscSrc : STm :=
   cls% λ(g : ⊤).
     let cb : (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any})
@@ -702,26 +669,21 @@ def EscSrc : STm :=
       = λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}). λ(u : ⊤). f
     in cb
 
-/-- **A capture parameter that is called**, a plain use of a capture-parameter
-arrow. -/
+/-- **A capture parameter that is called.** -/
 def P1src : STm :=
   cls% λ(h : (∀(u : ⊤) ⊤) ^ {any}). let z = unit in h z
 
-/-- **`Z1_tail`**, the capture parameter applied twice through a `let`,
-the `letex` way out at an existential answer. -/
+/-- **`Z1_tail`**, the capture parameter applied twice through a `let`, which
+needs the `letex` way out at an existential answer. -/
 def Z1TailSrc : STm :=
   cls% let c1 = fc un in fc un
 
-/-! ## The classifier examples
+/-! ## The classifier examples -/
 
-`U⇒U` abbreviates `∀(u : ⊤ ^ {}) ⊤ ^ {}` in the docstrings below.  It
-is not a surface form, so every occurrence is written out. -/
-
-/-- **CE1**, `Try.apply`: a declared use set and kind, both the
-projection of the platform to `Control`, and a codomain whose own member
-is bounded by the same projection.  The types of `b` and `f` are written
-as ascriptions of the bound terms, since a `let` annotation is the answer
-of the whole `let`. -/
+/-- **CE1**, `Try.apply`: a declared use set and kind, both the projection of
+the platform to `Control`, and a codomain whose own member is bounded by the
+same projection.  The types of `b` and `f` are ascriptions, since a `let`
+annotation is the answer of the whole `let`. -/
 def CE1src : SProg :=
   clsProg% classifiers IO, ThreadLocal, Control extends ThreadLocal
     platform [ctl : Control, io : IO]
@@ -735,9 +697,8 @@ def CE1src : SProg :=
     let r = f b in
     r
 
-/-- **CE2**, `Future.apply`: the domain writes `any` under a filter, read
-as the arrow's own binder under the same filter once resolved.  The types
-of `b` and `f` are ascriptions, as in CE1. -/
+/-- **CE2**, `Future.apply`: the domain writes `any` under a filter, which
+resolves to the arrow's own binder under the same filter. -/
 def CE2src : SProg :=
   clsProg% classifiers IO, ThreadLocal, Control extends ThreadLocal
     platform [tl : ThreadLocal, ctl : Control, io : IO]
@@ -751,9 +712,9 @@ def CE2src : SProg :=
     let r = f b in
     r
 
-/-- **CE3**, a client against a kind-bounded member: two literals, each
-with the member set to a single platform capability, both pass through
-`c`, whose parameter bounds the member by kind alone. -/
+/-- **CE3**, a client of a kind-bounded member.  Two literals, each with the
+member set to one platform capability, both pass through `c`, whose parameter
+bounds the member by kind alone. -/
 def CE3src : SProg :=
   clsProg% classifiers IO, ThreadLocal, Control extends ThreadLocal
     platform [k1 : Control, k2 : Control]

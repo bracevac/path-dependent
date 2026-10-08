@@ -4,114 +4,104 @@ import Coercions.Classifiers.Frontend.Pretty
 /-!
 # The examples end to end
 
-The programs of the version's `DotMNF/Examples.lean` are written in the
-front end's notation, taken through the whole front end, and compared with
-the version's hand written derivations.
+The programs of `DotMNF/Examples.lean` are written in the front end's notation,
+taken through the whole front end, and compared with the derivations written by
+hand there.
 
 The capture programs come first.  They declare no classifier, so each is a
-whole program over plain platform binders, built by `SProg.plain`.  The pure
-programs E1 to E8 run over the empty platform.  The others run over two
-capabilities `k1` and `k2`, or over `fs` and `k2` for the programs whose
-capability is a file system.  Both are the version's `platCtx`.
+whole program over plain platform binders, built by `SProg.plain`.  E1 to E8
+run over the empty platform.  The others run over `platCtx`, with two
+capabilities `k1` and `k2`, or over `fs` and `k2` where the capability is a
+file system.
 
-The classifier programs follow.  CE1 to CE3 are the version's E1, E2 and
-E3: `Try.apply`, `Future.apply`, and a client against a member bounded by a
-kind.  Each declares its classifiers, a platform whose binders carry them,
-a use set and a kind.  CE3 is run again over three capabilities.  CE4 reads
-a closure off a kind-bounded member and hands it to a filtered domain.  CE5
-passes a thread-local body to `Future.apply`, which the version refuses.
+The classifier programs follow.  CE1 to CE3 are E1, E2 and E3 of the classifier
+examples: `Try.apply`, `Future.apply`, and a client against a member bounded by
+a kind.  Each declares its classifiers, a platform whose binders carry them, a
+use set and a kind.  CE3 is run again over three capabilities.  CE4 reads a
+closure off a kind-bounded member and hands it to a filtered domain.  CE5
+passes a thread-local body to `Future.apply`, which the calculus refuses.
 
 ## What is compared
 
-The term the resolver returns, or the erasure of the term the typer
-elaborated when the typer inserted something.  The use set and the type the
-typer found.  The verdict of the target checker on the translation of the
-derivation, and its verdict on the use set evidence the translation emits.
-For a classifier program, also the kinding of its use set: the rules the
-search took, and its translation against the version's kinding of the same
-judgment.  `FCdot.KindCo` and `FCdot.CapCo` have decidable equality, so two
-kindings or two subcapturings are compared on their translations.  A typing
-derivation is not compared.  `DotMNF.HasTy` and `FCdot.Tm` have no
-decidable equality, and the typer may reach a judgment by another route
-than the version's derivation.  No term, use set or type of the version is
-copied.  `tmOfDeriv`, `usesOfDeriv` and `tyOfDeriv` read them off the
-version's derivations.
+The term the resolver returns, or the erasure of the elaborated term when the
+typer inserted something.  The use set and the type the typer found.  The
+verdict of the FCdot checker, the checker of the calculus the programs are
+translated into, on the translation of the derivation and on the use set
+evidence.  For a classifier program, also the kinding of its use set: the
+rules the search took, and its translation against the written kinding of the
+same judgment.  `FCdot.KindCo` and `FCdot.CapCo` have decidable equality, so
+kindings and subcapturings are compared on their translations.  Typing
+derivations are not compared, since `DotMNF.HasTy` and `FCdot.Tm` have no
+decidable equality and the typer may reach a judgment by another route.
+`tmOfDeriv`, `usesOfDeriv` and `tyOfDeriv` read the term, use set and type off
+the written derivations.
 
 ## The checks of a program
 
 Every function of the front end is structural, so the kernel reduces
 resolution, the typer, the kinding search and the machine.  The term is
 compared by `decide`, or by `decide +kernel` when it is the elaborated one.
-The use set, the type and the kindings are compared by `decide +kernel`.
-The two checker runs on a typing go through `expect`.  The theorem
-`Ek_compiles` says that the program compiles, by `decide +kernel`, and
-`Ek_checks` is `compile_checks_get` at it, so the checker accepts the
-translation with no hypothesis.
+The use set, the type and the kindings are compared by `decide +kernel`.  The
+two checker runs on a typing go through `expect`.  `Ek_compiles` says that the
+program compiles, and `Ek_checks` is `compile_checks_get` at it, so the checker
+accepts the translation with no hypothesis.
 
-A program the version types under a context is typed there, through
-`synthIn?`, and its checker theorem is composed from the same two results
-that `compile_checks` composes.  E6, C5, the caller of `freshCell`, the
-call of `process`, the capture parameter that is called, the unpackings at
-`Z1Ctx`, and the retyping of a literal at a kind bound are such programs.
+A program that the written derivation types under a context is typed there,
+through `synthIn?`.  Its checker theorem is composed from the same two results
+as `compile_checks`.  E6, C5, the caller of `freshCell`, the call of `process`,
+the capture parameter that is called, the unpackings at `Z1Ctx` and the
+retyping of a literal at a kind bound are such programs.
 
 ## The budgets
 
-A budget is one at which the program is found.  Each budget of a capture
-program was found by taking the least typer fuel with the other counters at
-their defaults and then lowering each other counter on its own.  The
-budgets of the classifier programs start from CE1's budget of `Typer.lean`.
-Their typer fuel and kinding fuel are the least found with the other
-counters fixed.  A budget is not claimed least.
+Each program carries the typer budget at which it compiles.  The budgets are not minimal.
 
 ## Where the typer finds a smaller judgment
 
-Without an ascription that names the version's type, the typer finds the
-least use set and type the rules allow.  C2 types at `{k2}` against the
-version's `{k1, k2}`, C5 at `{it, it.C}` against `{fs, k2}`, and the caller
-of `freshCell` at `{fc, fs, un}` against `{fs, un, fs, un}`.  Each time the
-version's judgment is reached from the typer's by one `sub` that the search
-finds, which `reachesAt` decides.  `C2_never_reads_k1` rests on the smaller
-use set of C2.  A classifier program declares its use set, and the typer
-reaches the declared set.
+Without an ascription that names the written type, the typer finds the least
+use set and type the rules allow.  C2 types at `{k2}` against `{k1, k2}`, C5 at
+`{it, it.C}` against `{fs, k2}`, and the caller of `freshCell` at
+`{fc, fs, un}` against `{fs, un, fs, un}`.  Each time the written judgment is
+reached from the typer's by one `sub` that the search finds, which `reachesAt`
+decides.  `C2_never_reads_k1` rests on the smaller use set of C2.  A classifier
+program declares its use set, and the typer reaches the declared set.
 
 ## Where the search takes another rule
 
-The kinding search tries `kproj` first, so a projected use set is kinded
-atom by atom by `kproj`.  The version kinds the use sets of E1 and E2 by
-`kcls` at each atom.  Both derivations are accepted by the target checker,
-and the classified theorems hold of either.  The kinding of E3's use set,
-its kinding over three capabilities, and the subcapturing a call of
-`Future.apply` asks for at the version's `E2IoCtx` are the version's to the
-letter.
+The kinding search tries `kproj` first, so it kinds a projected use set atom by
+atom with `kproj`.  The written kindings of E1 and E2 use `kcls` at each atom.
+The FCdot checker accepts both, and the classified theorems hold of either.
+The kinding of E3's use set, its kinding over three capabilities, and the
+subcapturing a call of `Future.apply` asks for at `E2IoCtx` are the written
+ones.
 
 ## Rejections and levels
 
-A rejection by a written type is a kernel fact.  A rejection by a level
-escape carries a certificate that reads `Ctx.caps`, which is defined by
-well-founded recursion and which the kernel does not reduce, so the verdict
-is an `expect` test.  The certificate at the goal the typer reached is then
-a theorem of its own, `Esc_rejected'` for the escape and
-`top_escape_rejected` for the escape at the top of a program.  Each is
-`escape_rejected_at` with every premise decided.  The probes W1 and W5 ask
-the subcapturing search for the steps of the level order at the version's
-contexts.  CE5 is not a rejection with a reason.  The typer finds no
-derivation, and the version proves that the set the argument's kinding
-descends to is kinded by no derivation.
+A rejection by a written type is a kernel fact.  A rejection by a level escape
+carries a certificate that reads `Ctx.caps`.  That function is defined by
+well-founded recursion and the kernel does not reduce it, so the verdict is an
+`expect` test.  The certificate at the goal the typer reached is a theorem of
+its own, `Esc_rejected'` for the escape and `top_escape_rejected` for the
+escape at the top of a program.  Each is `escape_rejected_at` with every
+premise decided.  The probes W1 and W5 ask the subcapturing search for the
+steps of the level order.  CE5 is not a rejection with a reason.  The typer
+finds no derivation, and no derivation kinds the set that the argument's
+kinding descends to.
 
 ## The effect theorems
 
-`C2_never_reads_k1` is the plain effect theorem at C2.  `CE1_reads_only_control`,
-`CE2_no_thread_local` and `CE3_reads_only_control` are the classified ones:
-every root of a variable a run reads carries a classifier the declared kind
-admits.  CE1 and CE2 take the filtered route, CE3 the kinded one.  Each is
-stated over the version's platform and term, which the kernel shows equal
-to the compiled ones.
+`C2_never_reads_k1` is the plain effect theorem at C2.
+`CE1_reads_only_control`, `CE2_no_thread_local` and `CE3_reads_only_control`
+are the classified ones: every root of a variable a run reads carries a
+classifier the declared kind admits.  CE1 and CE2 take the filtered route, CE3
+the kinded one.  Each is stated over the written platform and term, which the
+kernel shows equal to the compiled ones.
 
 ## The run tests
 
-The file closes with the machine.  S2, C2, E2, CE1, CE2 and CE3 are run
-from their platform's initial store, printed with the platform's own names,
-and pinned at the step count at which they become final.
+The file closes with the machine.  S2, C2, E2, CE1, CE2 and CE3 are run from
+their platform's initial store, printed with the platform's own names, and
+pinned at the step count at which they become final.
 -/
 
 namespace ClassifiersFrontend
@@ -126,17 +116,17 @@ section Examples
 
 open Classifiers.DotMNF.Examples
 
-/-! ## Reading a derivation of the version -/
+/-! ## Reading a written derivation -/
 
-/-- The term a derivation of the version is about. -/
+/-- The term a written derivation is about. -/
 def tmOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
     (_ : HasTyP U Γ t T) : Tm s := t
 
-/-- The use set a derivation of the version is about. -/
+/-- The use set a written derivation is about. -/
 def usesOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
     (_ : HasTyP U Γ t T) : CaptureSet s := U
 
-/-- The type a derivation of the version is about. -/
+/-- The type a written derivation is about. -/
 def tyOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
     (_ : HasTyP U Γ t T) : Ty s := T
 
@@ -148,7 +138,7 @@ no kind.  It runs over plain platform binders. -/
 /-- A program over the empty platform. -/
 def onE (e : STm) : SProg := SProg.plain [] e
 
-/-- A program over the platform `k1, k2`, the version's `platCtx`. -/
+/-- A program over the platform `k1, k2`, `platCtx`. -/
 def onC (e : STm) : SProg := SProg.plain ["k1", "k2"] e
 
 /-- A program over the platform `fs, k2`, the same two binders. -/
@@ -156,7 +146,7 @@ def onZ (e : STm) : SProg := SProg.plain ["fs", "k2"] e
 
 /-! ## The decidable things -/
 
-/-- The resolved body, erased into the version's syntax. -/
+/-- The resolved body, erased into the syntax of the calculus. -/
 def compiledTm (Λ : LabelTable) (p : SProg) : Option (Tm p.platNames.sig) :=
   (resolveProg Λ p).map fun r => r.body.erase
 
@@ -170,14 +160,14 @@ def compiledJudgment (b : Budget) (Λ : LabelTable) (p : SProg) :
     Option (CaptureSet p.platNames.sig × Ty p.platNames.sig) :=
   (compile b Λ p).toOption.map fun r => (r.2.use, r.2.ty)
 
-/-- The target checker's verdict on the translation of the derivation, and
+/-- The FCdot checker's verdict on the translation of the derivation, and
 `false` when the front end returned no derivation. -/
 def compiledVerdict (b : Budget) (Λ : LabelTable) (p : SProg) : Bool :=
   match compile b Λ p with
   | .ok r => FCdot.checkTm r.1.plat.ctx.translate r.2.deriv.translate r.2.ty.translate
   | _ => false
 
-/-- The target checker's verdict on the use set evidence the translation
+/-- The FCdot checker's verdict on the use set evidence the translation
 emits, and `false` when the front end returned no derivation. -/
 def compiledUsesVerdict (b : Budget) (Λ : LabelTable) (p : SProg) : Bool :=
   match compile b Λ p with
@@ -200,7 +190,7 @@ def openVerdicts {s : Sig} {Γ : Ctx s} (v : Verdict (Elab Γ)) : Bool × Bool :
         FCdot.checkCap Γ.translate r.deriv.translateUses r.deriv.translate.uses r.uses.translate)
   | _ => (false, false)
 
-/-- **The target checker accepts a typing found at an open context.**  The
+/-- **The FCdot checker accepts a typing found at an open context.**  The
 open twin of `compile_checks_get`: `FCdot.checkTm_complete` at
 `HasTy.translate_typed`, at a well formed context. -/
 theorem synthIn_checks_get {s : Sig} {Γ : Ctx s} {b : Budget} {ps : CaptureSet s} {a : ATm s}
@@ -258,7 +248,7 @@ def escapesAt {α : Type} {s : Sig} (v : Verdict α) (Γ : Ctx s) (C D : Capture
 
 /-! ## E1: bad bounds under a lambda
 
-The annotated `let` is retyped through the bad bounds chain.  The version's
+The annotated `let` is retyped through the bad bounds chain.  The written
 derivation is `E1`. -/
 
 /-- `λ(x : {A : ⊤..⊥}). let y : {B : {a : ⊤}..{a : ⊤}} = x in y`. -/
@@ -281,13 +271,13 @@ example : compiledJudgment bE1 Λc (onE E1src) = some (usesOfDeriv E1, tyOfDeriv
 /-- E1 compiles. -/
 theorem E1_compiles : (compile bE1 Λc (onE E1src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of E1. -/
+/-- The FCdot checker accepts the translation of E1. -/
 theorem E1_checks : CheckerAccepts bE1 Λc (onE E1src) E1_compiles :=
   compile_checks_get E1_compiles
 
 /-! ## E2: a recursive object with a self referential member
 
-The outer `let` avoids `x.A` at `⊤`.  The version's derivation is `E2`. -/
+The outer `let` avoids `x.A` at `⊤`.  The written derivation is `E2`. -/
 
 /-- `let x = ν(s : {A : E2A..E2A} ∧ {a : E2A}. {type A = E2A} ∧ {a = λ(y : s.A). y})
 in let f = x.a in f f`, with `E2A` the shape `∀(y : s.A) s.A`. -/
@@ -313,13 +303,13 @@ example : compiledJudgment bE2 Λc (onE E2src) = some (usesOfDeriv E2, tyOfDeriv
 /-- E2 compiles. -/
 theorem E2_compiles : (compile bE2 Λc (onE E2src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of E2. -/
+/-- The FCdot checker accepts the translation of E2. -/
 theorem E2_checks : CheckerAccepts bE2 Λc (onE E2src) E2_compiles :=
   compile_checks_get E2_compiles
 
 /-! ## E3: an intersection with a shared member
 
-Two declarations of one variable at one label.  The version's derivation is
+Two declarations of one variable at one label.  The written derivation is
 `E3`. -/
 
 /-- `λ(x : {A : ⊥..{a : ⊤}} ∧ {A : {b : ⊤}..⊤}). λ(z : {b : ⊤}). let y : {a : ⊤} = z in y`. -/
@@ -344,13 +334,13 @@ example : compiledJudgment bE3 Λc (onE E3src) = some (usesOfDeriv E3, tyOfDeriv
 /-- E3 compiles. -/
 theorem E3_compiles : (compile bE3 Λc (onE E3src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of E3. -/
+/-- The FCdot checker accepts the translation of E3. -/
 theorem E3_checks : CheckerAccepts bE3 Λc (onE E3src) E3_compiles :=
   compile_checks_get E3_compiles
 
 /-! ## E4: typing with no realizer
 
-Two rounds of the declaration table.  The version's derivation is `E4`. -/
+Two rounds of the declaration table.  The written derivation is `E4`. -/
 
 /-- `λ(x : {B : {A : ⊥..⊤}..{A : {a : ⊤}..⊤}}). λ(w : {A : ⊥..⊤}). λ(n : {a : ⊤}).
 let g = λ(y : w.A). y in g n`. -/
@@ -375,14 +365,14 @@ example : compiledJudgment bE4 Λc (onE E4src) = some (usesOfDeriv E4, tyOfDeriv
 /-- E4 compiles. -/
 theorem E4_compiles : (compile bE4 Λc (onE E4src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of E4. -/
+/-- The FCdot checker accepts the translation of E4. -/
 theorem E4_checks : CheckerAccepts bE4 Λc (onE E4src) E4_compiles :=
   compile_checks_get E4_compiles
 
 /-! ## E5: an object returned from a function
 
 The application renames the result's member to `w`, and the outer `let`
-keeps `w.A`.  The version's derivation is `E5`. -/
+keeps `w.A`.  The written derivation is `E5`. -/
 
 /-- `λ(w : {A : ⊤..⊤}). let f = λ(v : {A : ⊤..⊤}). ν(z : {a : v.A}. {a = v})
 in let o = f w in o.a`. -/
@@ -408,13 +398,13 @@ example : compiledJudgment bE5 Λc (onE E5src) = some (usesOfDeriv E5, tyOfDeriv
 /-- E5 compiles. -/
 theorem E5_compiles : (compile bE5 Λc (onE E5src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of E5. -/
+/-- The FCdot checker accepts the translation of E5. -/
 theorem E5_checks : CheckerAccepts bE5 Λc (onE E5src) E5_compiles :=
   compile_checks_get E5_compiles
 
 /-! ## E6: a field typed at its own literal's member
 
-The version types E6 at `E6Ctx1`, which binds `n : {a : ⊤}` by a `let`, not
+E6 is typed at `E6Ctx1`, which binds `n : {a : ⊤}` by a `let`, not
 by a lambda.  So the literal is resolved under the name `n` and typed at
 that context. -/
 
@@ -446,7 +436,7 @@ example : judgmentOf (synthIn? bE6 E6Ctx1 [] E6ann) =
 /-- E6 is typed at `E6Ctx1`. -/
 theorem E6_compiles : (synthIn? bE6 E6Ctx1 [] E6ann).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of E6 at the translation of
+/-- The FCdot checker accepts the translation of E6 at the translation of
 `E6Ctx1`. -/
 theorem E6_checks :
     FCdot.checkTmE E6Ctx1.translate ((synthIn? bE6 E6Ctx1 [] E6ann).get E6_compiles).deriv.translate
@@ -455,7 +445,7 @@ theorem E6_checks :
 
 /-! ## E7: two type members that name each other
 
-Nothing is searched.  The version's derivation is `E7`. -/
+Nothing is searched.  The written derivation is `E7`. -/
 
 /-- `ν(x : {A : x.B..x.B} ∧ {B : x.A..x.A}. {type A = x.B} ∧ {type B = x.A})`. -/
 def E7src : STm :=
@@ -478,13 +468,13 @@ example : compiledJudgment bE7 Λc (onE E7src) = some (usesOfDeriv E7, tyOfDeriv
 /-- E7 compiles. -/
 theorem E7_compiles : (compile bE7 Λc (onE E7src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of E7. -/
+/-- The FCdot checker accepts the translation of E7. -/
 theorem E7_checks : CheckerAccepts bE7 Λc (onE E7src) E7_compiles :=
   compile_checks_get E7_compiles
 
 /-! ## E8: refining an abstract type
 
-The version gives one term two derivations, `E8` and `E8b`, at one
+One term has two written derivations, `E8` and `E8b`, at one
 judgment.  The typer finds that judgment. -/
 
 /-- `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a`. -/
@@ -512,14 +502,14 @@ example : compiledJudgment bE8 Λc (onE E8src) = some (usesOfDeriv E8b, tyOfDeri
 /-- E8 compiles. -/
 theorem E8_compiles : (compile bE8 Λc (onE E8src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of E8. -/
+/-- The FCdot checker accepts the translation of E8. -/
 theorem E8_checks : CheckerAccepts bE8 Λc (onE E8src) E8_compiles :=
   compile_checks_get E8_compiles
 
 /-! ## C7: a container of boxed capabilities, boxes written
 
 The fields check by the box rule, and the client unboxes at `{k1}`.  The
-version's derivation is `C7_typed`. -/
+written derivation is `C7_typed`. -/
 
 /-- C7 with its boxes and its unboxing written. -/
 def C7boxSrc : STm :=
@@ -548,7 +538,7 @@ example : compiledJudgment bC7box Λc (onC C7boxSrc) =
 /-- C7 with its boxes written compiles. -/
 theorem C7box_compiles : (compile bC7box Λc (onC C7boxSrc)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of C7 with its boxes
+/-- The FCdot checker accepts the translation of C7 with its boxes
 written. -/
 theorem C7box_checks : CheckerAccepts bC7box Λc (onC C7boxSrc) C7box_compiles :=
   compile_checks_get C7box_compiles
@@ -557,7 +547,7 @@ theorem C7box_checks : CheckerAccepts bC7box Λc (onC C7boxSrc) C7box_compiles :
 
 `C7src` of `Typer.lean`.  The typer inserts `□ f1` and `□ f2` at the fields
 and `{k1} ⊸ e` at the ascription, in two passes of the object rule, and the
-elaborated term is the version's. -/
+elaborated term is the written one. -/
 
 example : compiledTm Λc (onC C7src) ≠ some (tmOfDeriv C7_typed) := by decide
 
@@ -576,7 +566,7 @@ example : compiledJudgment bC7 Λc (onC C7src) =
 /-- C7 with no box in any term compiles. -/
 theorem C7_compiles : (compile bC7 Λc (onC C7src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of C7 with no box in any
+/-- The FCdot checker accepts the translation of C7 with no box in any
 term. -/
 theorem C7_checks : CheckerAccepts bC7 Λc (onC C7src) C7_compiles :=
   compile_checks_get C7_compiles
@@ -585,7 +575,7 @@ theorem C7_checks : CheckerAccepts bC7 Λc (onC C7src) C7_compiles :=
 
 The bounds of a type member are shapes, so the program writes the box in
 the member.  The client unboxes through the upper bound of `o.A`.  The
-version's derivation is `S3_typed`. -/
+written derivation is `S3_typed`. -/
 
 /-- S3, its box and its unboxing written. -/
 def S3src : STm :=
@@ -612,7 +602,7 @@ example : compiledJudgment bS3 Λc (onC S3src) =
 /-- S3 compiles. -/
 theorem S3_compiles : (compile bS3 Λc (onC S3src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of S3. -/
+/-- The FCdot checker accepts the translation of S3. -/
 theorem S3_checks : CheckerAccepts bS3 Λc (onC S3src) S3_compiles :=
   compile_checks_get S3_compiles
 
@@ -620,7 +610,7 @@ theorem S3_checks : CheckerAccepts bS3 Λc (onC S3src) S3_compiles :=
 
 The client reads `x.run`, whose set is `{x.C}`.  With no ascription the
 typer finds the least judgment, `{k2}` and `(⊤ → ⊤) ^ {k2}`, since the
-answer is the client at `b`, whose member is `{k2}`.  The version's
+answer is the client at `b`, whose member is `{k2}`.  The written
 `{k1, k2}` is reached by one `sub`. -/
 
 /-- C2, the call `x.run u` written in direct style, let inserted by the
@@ -658,15 +648,15 @@ example : topReaches { bC2 with sub := 2 } πc (resolveTop Λc [] πc C2src) (us
 /-- C2 compiles. -/
 theorem C2_compiles : (compile bC2 Λc (onC C2src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of C2. -/
+/-- The FCdot checker accepts the translation of C2. -/
 theorem C2_checks : CheckerAccepts bC2 Λc (onC C2src) C2_compiles :=
   compile_checks_get C2_compiles
 
 /-! ## S1: `withFile` with an explicit capture parameter
 
 `withFile` is bound by an ascription at its signature, whose result `any`
-is read at the top of the program, where the source has no root, as the
-platform set.  The judgment is the version's `S1_typed`, `{fs, k2}` and
+is read at the top of the program, where the context has no root, as the
+platform set.  The judgment is `S1_typed`, `{fs, k2}` and
 `⊤ ^ {fs, k2}`.  The program runs over `πz`. -/
 
 /-- S1. -/
@@ -702,7 +692,7 @@ example : compiledJudgment bS1 Λc (onZ S1progSrc) =
 /-- S1 compiles. -/
 theorem S1_compiles : (compile bS1 Λc (onZ S1progSrc)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of S1. -/
+/-- The FCdot checker accepts the translation of S1. -/
 theorem S1_checks : CheckerAccepts bS1 Λc (onZ S1progSrc) S1_compiles :=
   compile_checks_get S1_compiles
 
@@ -710,7 +700,7 @@ theorem S1_checks : CheckerAccepts bS1 Λc (onZ S1progSrc) S1_compiles :=
 
 `mk` is bound by an ascription at its signature, with `any` in its result,
 read as the platform set.  The caller's answer leaves scope at the upper
-bound of the member, `{fs}`.  The judgment is the version's `S2_typed`. -/
+bound of the member, `{fs}`.  The judgment is `S2_typed`. -/
 
 /-- S2. -/
 def S2src : STm :=
@@ -739,15 +729,15 @@ example : compiledJudgment bS2 Λc (onZ S2src) =
 /-- S2 compiles. -/
 theorem S2_compiles : (compile bS2 Λc (onZ S2src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of S2. -/
+/-- The FCdot checker accepts the translation of S2. -/
 theorem S2_checks : CheckerAccepts bS2 Λc (onZ S2src) S2_compiles :=
   compile_checks_get S2_compiles
 
-/-! ## C5: the caller of `mk`, at the version's own context
+/-! ## C5: the caller of `mk`, at its written context
 
-The version types C5 at `S2Ctx3`, where `mk`, `un` and `it` are bound.  The
+C5 is typed at `S2Ctx3`, where `mk`, `un` and `it` are bound.  The
 typer finds the least judgment, `{it, it.C}` and `⊤ ^ {it.C}`, and the
-version's `{fs, k2}` and `⊤ ^ {fs}` are reached by one `sub`. -/
+written `{fs, k2}` and `⊤ ^ {fs}` are reached by one `sub`. -/
 
 /-- `let n = it.next in let r = n un in r`. -/
 def C5src : STm := cls% let n = it.next in let r = n un in r
@@ -780,7 +770,7 @@ example : reachesAt { bC5 with sub := 1, decls := 1 } S2Ctx3 platSet3 C5ann (use
 /-- C5 is typed at `S2Ctx3`. -/
 theorem C5_compiles : (synthIn? bC5 S2Ctx3 platSet3 C5ann).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of C5 at the translation of
+/-- The FCdot checker accepts the translation of C5 at the translation of
 `S2Ctx3`. -/
 theorem C5_checks :
     FCdot.checkTmE S2Ctx3.translate ((synthIn? bC5 S2Ctx3 platSet3 C5ann).get C5_compiles).deriv.translate
@@ -790,8 +780,8 @@ theorem C5_checks :
 /-! ## Z1: `freshCell`
 
 The signature writes `fresh` in the result.  The typer reads it as the
-version's `Z1Ty`, an existential bounded by `{fs, u}`, and the arrow rule
-packs the cell.  The term and the judgment are the version's `Z1_plat`. -/
+written `Z1Ty`, an existential bounded by `{fs, u}`, and the arrow rule
+packs the cell.  The term and the judgment are `Z1_plat`. -/
 
 /-- `freshCell`, bound by an ascription. -/
 def Z1progSrc : STm :=
@@ -809,7 +799,7 @@ example : compiledJudgment bZ1prog Λc (onZ Z1progSrc) =
 
 /-- The written type, read the compiler's way: `readAt` expands the `any`s,
 of which there is none, and then reads `fresh` as the existential.  This is
-the version's W4. -/
+W4. -/
 example : readAt platCtx platSet (Z1TyF k1) = Z1Ty k1 := by decide
 
 #eval expect (compiledVerdict bZ1prog Λc (onZ Z1progSrc))
@@ -821,7 +811,7 @@ example : readAt platCtx platSet (Z1TyF k1) = Z1Ty k1 := by decide
 /-- Z1 compiles. -/
 theorem Z1_compiles : (compile bZ1prog Λc (onZ Z1progSrc)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of Z1. -/
+/-- The FCdot checker accepts the translation of Z1. -/
 theorem Z1_checks : CheckerAccepts bZ1prog Λc (onZ Z1progSrc) Z1_compiles :=
   compile_checks_get Z1_compiles
 
@@ -829,8 +819,8 @@ theorem Z1_checks : CheckerAccepts bZ1prog Λc (onZ Z1progSrc) Z1_compiles :=
 
 `Z1callerAnn` of `Resolve.lean`, at the budget `bZ1` of `Typer.lean`.  The
 `let` becomes a `letex`, and the elaborated term erases to the term of the
-version's `Z1_caller`.  The typer charges the call `{fc, un}`, and the
-version's `Z1Use ∪ Z1Use` is reached by one `sub`. -/
+written `Z1_caller`.  The typer charges the call `{fc, un}`, and the
+written `Z1Use ∪ Z1Use` is reached by one `sub`. -/
 
 example : erasedOf (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn) = some (tmOfDeriv Z1_caller) := by
   decide +kernel
@@ -851,7 +841,7 @@ example : reachesAt { bZ1 with cap := 4, sub := 1 } Z1Ctx ps2z Z1callerAnn
 theorem Z1caller_compiles : (synthIn? bZ1 Z1Ctx ps2z Z1callerAnn).isOk = true := by
   decide +kernel
 
-/-- The target checker accepts the translation of the caller of `freshCell`
+/-- The FCdot checker accepts the translation of the caller of `freshCell`
 at the translation of `Z1Ctx`. -/
 theorem Z1caller_checks :
     FCdot.checkTmE Z1Ctx.translate
@@ -877,7 +867,7 @@ example : judgmentOf (synthIn? bTail Z1Ctx ps2z Z1TailAnn) =
 theorem Z1tail_compiles : (synthIn? bTail Z1Ctx ps2z Z1TailAnn).isOk = true := by
   decide +kernel
 
-/-- The target checker accepts the translation of the unpacking at the
+/-- The FCdot checker accepts the translation of the unpacking at the
 translation of `Z1Ctx`. -/
 theorem Z1tail_checks :
     FCdot.checkTmE Z1Ctx.translate
@@ -889,7 +879,7 @@ theorem Z1tail_checks :
 
 Each call is unpacked by a `letex` of its own, so the body runs under two
 opened capture binders.  Neither is a root, and the search relates neither
-to the other, which is the version's `Z_two_calls_no_level` seen from the
+to the other, which is `Z_two_calls_no_level` seen from the
 search. -/
 
 /-- `let c1 = fc un in let c2 = fc un in un`, as resolved. -/
@@ -918,7 +908,7 @@ example : subcapFound {} Z1BodyCtxSrc [CapAtom.cvar Zk2'] [CapAtom.cvar Zk1'] = 
 
 The parameter is written `any`, which a parameter reads as the arrow's own
 binder, and the result is `fresh`.  The written type resolves to the
-version's `W3TyAny`, and the typer reaches `Z2Ty`, whose witness is the
+written `W3TyAny`, and the typer reaches `Z2Ty`, whose witness is the
 parameter. -/
 
 /-- `makeLogger`, bound by an ascription. -/
@@ -949,7 +939,7 @@ example : compiledJudgment bZ2 Λc (onZ Z2src) = some (usesOfDeriv Z2_plat, tyOf
 /-- Z2 compiles. -/
 theorem Z2_compiles : (compile bZ2 Λc (onZ Z2src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of Z2. -/
+/-- The FCdot checker accepts the translation of Z2. -/
 theorem Z2_checks : CheckerAccepts bZ2 Λc (onZ Z2src) Z2_compiles :=
   compile_checks_get Z2_compiles
 
@@ -959,7 +949,7 @@ S2's `mk` with the result written `fresh`.  The typer packs a payload at
 the payload's own type, and the literal's precise type is not the iterator
 type.  So the body ascribes the literal's variable at the iterator type,
 which the typer reaches by retyping the variable, and the pack is then
-found.  The term, the use set and the type are the version's `Z3_plat`. -/
+found.  The term, the use set and the type are `Z3_plat`. -/
 
 /-- `mk` with a `fresh` result, its body ascribed. -/
 def Z3src : STm :=
@@ -986,15 +976,15 @@ example : compiledJudgment bZ3 Λc (onZ Z3src) = some (usesOfDeriv Z3_plat, tyOf
 /-- Z3 compiles. -/
 theorem Z3_compiles : (compile bZ3 Λc (onZ Z3src)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of Z3. -/
+/-- The FCdot checker accepts the translation of Z3. -/
 theorem Z3_checks : CheckerAccepts bZ3 Λc (onZ Z3src) Z3_compiles :=
   compile_checks_get Z3_compiles
 
 /-! ## W2: `process` and its call
 
 `W2defSrc` of `Typer.lean` writes the parameter `any`, which reads as the
-arrow's own binder.  It elaborates to the version's `W2Tm`, and its least
-type reaches `W2Ty` by one `sub`.  The call `p f` is typed at the version's
+arrow's own binder.  It elaborates to the written `W2Tm`, and its least
+type reaches `W2Ty` by one `sub`.  The call `p f` is typed at the written
 `W2CallCtx` at the use set `{f}` and the type `⊤`. -/
 
 /-- The budget of `process`. -/
@@ -1017,7 +1007,7 @@ example : topReaches { bW2 with sub := 2 } πc (resolveTop Λc [] πc W2defSrc) 
 /-- `process` compiles. -/
 theorem W2_compiles : (compile bW2 Λc (onC W2defSrc)).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of `process`. -/
+/-- The FCdot checker accepts the translation of `process`. -/
 theorem W2_checks : CheckerAccepts bW2 Λc (onC W2defSrc) W2_compiles :=
   compile_checks_get W2_compiles
 
@@ -1034,7 +1024,7 @@ theorem W2call_compiles :
     (synthIn? bW2call W2CallCtx ps2c (.app (.there .here) .here)).isOk = true := by
   decide +kernel
 
-/-- The target checker accepts the translation of the call of `process` at
+/-- The FCdot checker accepts the translation of the call of `process` at
 the translation of `W2CallCtx`. -/
 theorem W2call_checks :
     FCdot.checkTmE W2CallCtx.translate
@@ -1046,8 +1036,8 @@ theorem W2call_checks :
 
 /-! ## W2 deep: `any` below a field of a domain
 
-`deepSrc` of `Typer.lean`.  The version's `W2_deep_rejected` says that the
-written type is not one the version reads, and the front end rejects it with
+`deepSrc` of `Typer.lean`.  `W2_deep_rejected` says that the
+written type is not one the calculus reads, and the front end rejects it with
 that reason, in the kernel. -/
 
 example : (compile {} Λc (onC deepSrc)).reason?.map Reason.name = some "anyNotOk" := by
@@ -1082,7 +1072,7 @@ example : judgmentOf (synthIn? bP1 P1Ctx (CaptureSet.weaken πc.set) P1ann) =
 theorem P1_compiles : (synthIn? bP1 P1Ctx (CaptureSet.weaken πc.set) P1ann).isOk = true := by
   decide +kernel
 
-/-- The target checker accepts its translation. -/
+/-- The FCdot checker accepts its translation. -/
 theorem P1_checks :
     FCdot.checkTmE P1Ctx.translate
       ((synthIn? bP1 P1Ctx (CaptureSet.weaken πc.set) P1ann).get P1_compiles).deriv.translate
@@ -1093,7 +1083,7 @@ theorem P1_checks :
 /-! ## W1: the levels of two nested bodies
 
 At `W1Ctx2`, the body of a lambda inside the body of another, the search
-finds the level steps the version's `W1` derives: the outer root below the
+finds the level steps `W1` derives: the outer root below the
 inner one, and both parameters below the inner root.  It does not find the
 inner root below the outer one.  The inner parameter is found below the
 outer root too, but by `sc-var`, since the parameter is at the pure type
@@ -1114,10 +1104,10 @@ example : subcapFound { cap := 1 } W1Ctx2 [CapAtom.var W1inParam] [CapAtom.cvar 
 example : subcapFound {} W1Ctx2 [CapAtom.cvar W1inRoot] [CapAtom.cvar W1outRoot] = false := by
   decide +kernel
 
-/-! ## W5: the escape of a callback, at the version's context
+/-! ## W5: the escape of a callback, at its written context
 
 At `W5Ctx`, the body of a callback under an older root, the search finds
-the callback's parameter below its own body root, the version's
+the callback's parameter below its own body root, which is
 `W5_level_own`, and does not find it below the older root.  The certificate
 builder rejects that goal, and `W5_escape_rejected` is the certificate. -/
 
@@ -1201,9 +1191,9 @@ theorem Esc_rejected' :
 /-! ## The escape at the top of a program
 
 `TopEscSrc` of `Typer.lean` binds the same callback at the top, where the
-result `any` reads as the platform set and the source has no root.  The goal
+result `any` reads as the platform set and the context has no root.  The goal
 is `{f} <: {fs, k2}` in `TopGoalCtx`, six binders deep, and the certificate's
-root is the universal one, which the source cannot name. -/
+root is the universal one of FCdot, which DOT-MNF cannot name. -/
 
 /-- The context of the goal at the top. -/
 def TopGoalCtx : Ctx (Sig.body ([],c,c,x)) :=
@@ -1240,11 +1230,11 @@ theorem top_escape_rejected :
 /-! ## The effect theorem
 
 `compile_effect_safety_get` at C2.  The subject is a run `r` of the
-version's term from the platform's initial store, and a variable `x` the
+written term from the platform's initial store, and a variable `x` the
 reached state reads.  The capability is `k1`.  Its two premises, that the
 use set the typer found writes no projection and does not hold `k1`, are
 decided by the kernel.  The run is moved onto the compiled program by two
-decided equations: the elaborated term is the version's, and the platform
+decided equations: the elaborated term is the written one, and the platform
 the program resolves to is `πc.plat`. -/
 
 /-- **Effect safety at a named platform and term.**  `compile_effect_safety_get`
@@ -1267,7 +1257,7 @@ theorem compile_effect_safety_at {b : Budget} {Λ : LabelTable} {p : SProg}
 
 /-- **C2 never reads `k1`.**  Along any run of `C2tm` from the platform's
 initial store, a variable the reached state reads is not rooted at `k1` in
-the matched target state. -/
+the matched FCdot state. -/
 theorem C2_never_reads_k1 {s : Sig} {st : State s}
     (r : Steps (⟨πc.plat.store, .nil, C2tm⟩ : State πc.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
@@ -1291,10 +1281,10 @@ example : (compileLog bS1 Λc (onZ S1progSrc)).length = 92 := by decide +kernel
 
 The programs below declare classifiers, a platform whose binders carry
 them, and a use set and a kind for the whole program.  They are the
-version's E1, E2 and E3 of `DotMNF/Examples.lean`, written CE1 to CE3 in
+E1, E2 and E3 of `DotMNF/Examples.lean`, written CE1 to CE3 in
 `Notation.lean`, the E3 program over three capabilities, and two more: a
-client that hands a closure to a filtered domain, and a program the version
-refuses.  `Λk` is the label table of the version's classifier examples.
+client that hands a closure to a filtered domain, and a program the calculus
+refuses.  `Λk` is the label table of the classifier examples.
 
 A program declares a use set and a kind.  The use set is binding, and
 `compile` moves the derivation to it.  The kind is what the two classified
@@ -1332,14 +1322,14 @@ def kindedAgrees (b : Budget) (Λ : LabelTable) (p : SProg) (φ : Cls.Kind)
       if h : p.platNames.sig = s then decide (h ▸ r.2.2.kind.translate = g.translate) else false
   | _ => false
 
-/-- The target checker's verdict on the translation of the kinding
+/-- The FCdot checker's verdict on the translation of the kinding
 `compileKinded` found. -/
 def kindedVerdict (b : Budget) (Λ : LabelTable) (p : SProg) (φ : Cls.Kind) : Bool :=
   match compileKinded b Λ p φ with
   | .ok r => FCdot.checkKindCo r.1.plat.ctx.translate r.2.2.kind.translate r.2.1.use.translate φ
   | _ => false
 
-/-- **The target checker accepts the kinding of a program that kinds.**
+/-- **The FCdot checker accepts the kinding of a program that kinds.**
 `compile_kind_checks` at the record `compileKinded` returns, for a program
 whose kinded compile succeeds by a decided test. -/
 theorem compile_kind_checks_get {b : Budget} {Λ : LabelTable} {p : SProg} {φ : Cls.Kind}
@@ -1393,11 +1383,11 @@ synthesizes exactly that set, so `compile` keeps it, and the filtered entry
 point reads it as a projection.  The call `f b` returns at
 `{b ↾ only[Control]}`, and the `let` of `b` avoids `b` by replacing the
 projected atom with the set `b` is declared at.  The term, the use set and
-the type are the version's `E1_typed`.
+the type are `E1_typed`.
 
 The kinding search kinds the use set at `only[Control]` too, found at
-kinding fuel 3.  It takes `kproj` at both atoms, where the version's
-`E1_kind` takes `kcls`.  The two derivations differ, and the target checker
+kinding fuel 3.  It takes `kproj` at both atoms, where the written
+`E1_kind` takes `kcls`.  The two derivations differ, and the FCdot checker
 accepts the searched one. -/
 
 /-- The budget of CE1's kinded compile. -/
@@ -1419,7 +1409,7 @@ example : compiledJudgment bCE1 Λk CE1src = some (usesOfDeriv E1_typed, tyOfDer
 /-- CE1 compiles. -/
 theorem CE1_compiles : (compile bCE1 Λk CE1src).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of CE1. -/
+/-- The FCdot checker accepts the translation of CE1. -/
 theorem CE1_checks : CheckerAccepts bCE1 Λk CE1src CE1_compiles :=
   compile_checks_get CE1_compiles
 
@@ -1443,7 +1433,7 @@ example : (compileKinded { bCE1 with kind := 2 } Λk CE1src (Cls.only Cls.Contro
 
 example : kindedVerdict bCE1k Λk CE1src (Cls.only Cls.Control) = true := by decide +kernel
 
-/-- The target checker accepts the translation of the kinding of CE1's use
+/-- The FCdot checker accepts the translation of the kinding of CE1's use
 set. -/
 theorem CE1_kind_checks :
     FCdot.checkKindCo ((compileKinded bCE1k Λk CE1src (Cls.only Cls.Control)).get CE1_kinded).1.plat.ctx.translate
@@ -1453,8 +1443,8 @@ theorem CE1_kind_checks :
   compile_kind_checks_get CE1_kinded
 
 /-- **CE1 reads only `Control` capabilities.**  Along any run of the
-version's `E1tm` from the initial store of `E1Plat`, every root of a
-variable the reached state reads, in the matched target state, carries a
+written `E1tm` from the initial store of `E1Plat`, every root of a
+variable the reached state reads, in the matched FCdot state, carries a
 classifier `only[Control]` admits.  So the run never reads `io`.  This is
 `compile_filtered_effect_safety` at CE1, with the platform and the term
 compared by the kernel. -/
@@ -1479,8 +1469,8 @@ The platform is `tl : ThreadLocal, ctl : Control, io : IO`.  The domain of
 binder under the filter.  The call asks for `{b}` below
 `{b ↾ except[ThreadLocal]}`, which the search finds by `proj` over a kinding
 of `{b}`, found at kinding fuel 5.  The elaborated term, the use set and the
-type are the version's `E2_typed`.  The kinding search kinds the use set by
-`kproj` at each of its three atoms, where the version's `E2_kind` takes
+type are `E2_typed`.  The kinding search kinds the use set by
+`kproj` at each of its three atoms, where the written `E2_kind` takes
 `kcls`. -/
 
 /-- The budget of CE2. -/
@@ -1504,7 +1494,7 @@ example : (compile { bCE1 with kind := 4 } Λk CE2src).isOk = false := by decide
 /-- CE2 compiles. -/
 theorem CE2_compiles : (compile bCE2 Λk CE2src).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of CE2. -/
+/-- The FCdot checker accepts the translation of CE2. -/
 theorem CE2_checks : CheckerAccepts bCE2 Λk CE2src CE2_compiles :=
   compile_checks_get CE2_compiles
 
@@ -1522,9 +1512,9 @@ example : kindedAgrees bCE2 Λk CE2src (Cls.except Cls.ThreadLocal) E2_kind = fa
 
 example : kindedVerdict bCE2 Λk CE2src (Cls.except Cls.ThreadLocal) = true := by decide +kernel
 
-/-- The subcapturing of the call, at the version's `E2IoCtx`, where the
+/-- The subcapturing of the call, at `E2IoCtx`, where the
 argument is charged to `io`: the search's derivation has the translation of
-the version's `E2_io_arg`. -/
+`E2_io_arg`. -/
 example : (match subcap? (decls bCE2 E2IoCtx) bCE2.cap [CapAtom.var .here]
     (CaptureSet.proj [CapAtom.var .here] (Cls.except Cls.ThreadLocal)) with
     | some e => decide (e.translate = E2_io_arg.translate)
@@ -1532,7 +1522,7 @@ example : (match subcap? (decls bCE2 E2IoCtx) bCE2.cap [CapAtom.var .here]
   decide +kernel
 
 /-- **CE2 never reads a thread-local capability.**  Along any run of the
-version's `E2tm` from the initial store of `E2PlatIO`, every root of a
+written `E2tm` from the initial store of `E2PlatIO`, every root of a
 variable the reached state reads carries a classifier `except[ThreadLocal]`
 admits.  `compile_filtered_effect_safety` at CE2. -/
 theorem CE2_no_thread_local {s : Sig} {st : State s}
@@ -1553,9 +1543,9 @@ object whose member `C` is bounded by the kind `only[Control]` alone.  Two
 literals define `C` as `{k1}` and as `{k2}`, and each is retyped at the
 client's domain through `capkI`.  The declared use set `{k1, k2}` is not a
 projection, so the filtered entry point does not apply, and the kinding
-search kinds it by `kcls` twice, the version's `E3_kind` to the letter.
+search kinds it by `kcls` twice, `E3_kind` to the letter.
 
-The retyping of a literal is compared at the version's own judgment.  At
+The retyping of a literal is compared at its written judgment.  At
 `E3CtxB`, where `a` is bound, the ascription `(a : E3AbsTy ..)` is typed at
 the judgment of `E3_abstract_a`. -/
 
@@ -1578,7 +1568,7 @@ example : compiledJudgment bCE3 Λk CE3src = some (usesOfDeriv E3_typed, tyOfDer
 /-- CE3 compiles. -/
 theorem CE3_compiles : (compile bCE3 Λk CE3src).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of CE3. -/
+/-- The FCdot checker accepts the translation of CE3. -/
 theorem CE3_checks : CheckerAccepts bCE3 Λk CE3src CE3_compiles :=
   compile_checks_get CE3_compiles
 
@@ -1594,7 +1584,7 @@ example : (compileFiltered bCE3 Λk CE3src (Cls.only Cls.Control)).isOk = false 
   decide +kernel
 
 /-- **CE3 reads only `Control` capabilities.**  Along any run of the
-version's `E3tm` from the initial store of `E3Plat`, every root of a
+written `E3tm` from the initial store of `E3Plat`, every root of a
 variable the reached state reads carries a classifier `only[Control]`
 admits.  `compile_classified_effect_safety` at the kinding the search
 found. -/
@@ -1638,7 +1628,7 @@ example : judgmentOf (synthIn? bRetype E3CtxB psE3B E3aAsc) =
 theorem E3retype_compiles : (synthIn? bRetype E3CtxB psE3B E3aAsc).isOk = true := by
   decide +kernel
 
-/-- The target checker accepts the translation of the retyping of `a` at
+/-- The FCdot checker accepts the translation of the retyping of `a` at
 the translation of `E3CtxB`. -/
 theorem E3retype_checks :
     FCdot.checkTmE E3CtxB.translate
@@ -1651,10 +1641,9 @@ example : (compileLog bCE3 Λk CE3src).length = 106 := by decide +kernel
 
 /-! ## CE3 over three `Control` capabilities
 
-The point of the version's E3: a third `Control` capability changes no
-bound.  The program gains `k3`, a third literal `d` with `C` defined as
+A third `Control` capability changes no bound.  The program gains `k3`, a third literal `d` with `C` defined as
 `{k3}`, and its call.  The client's domain is read at `{k1, k2, k3}`, and
-the kinding of the use set is the version's `E3_kind3` to the letter.  At
+the kinding of the use set is `E3_kind3` to the letter.  At
 `E3CtxD`, where `d` is bound, the ascription of `d` at the client's domain is
 typed at the judgment of `E3_abstract_c`. -/
 
@@ -1694,7 +1683,7 @@ def bCE3s : Budget := { bCE3 with typer := 11 }
 /-- CE3 over three capabilities compiles. -/
 theorem CE3s_compiles : (compile bCE3s Λk CE3sSrc).isOk = true := by decide +kernel
 
-/-- The target checker accepts its translation. -/
+/-- The FCdot checker accepts its translation. -/
 theorem CE3s_checks : CheckerAccepts bCE3s Λk CE3sSrc CE3s_compiles :=
   compile_checks_get CE3s_compiles
 
@@ -1724,8 +1713,8 @@ CE3's client with one more step.  `h` takes a closure at the domain
 `{any.only[Control]}`, and the client hands it `g`, the closure it read off
 `x.run` at `{x.C}`.  The call asks for `{g}` below `{g ↾ only[Control]}`.
 The search finds it by `proj` over a kinding of `{g}`: `kvar` to `{x.C}`,
-then `ksel` at the typing of `x` the declaration table holds.  The version
-writes that kinding, at the client's context, as `E3_client_kind`.  The
+then `ksel` at the typing of `x` the declaration table holds.  The Classifiers examples
+write that kinding, at the client's context, as `E3_client_kind`.  The
 table needs one round, so with no round CE4 is not found. -/
 
 /-- CE4. -/
@@ -1761,7 +1750,7 @@ example : (compiledJudgment bCE4 Λk CE4src).map (·.1) = some E3Uses := by deci
 /-- CE4 compiles. -/
 theorem CE4_compiles : (compile bCE4 Λk CE4src).isOk = true := by decide +kernel
 
-/-- The target checker accepts the translation of CE4. -/
+/-- The FCdot checker accepts the translation of CE4. -/
 theorem CE4_checks : CheckerAccepts bCE4 Λk CE4src CE4_compiles :=
   compile_checks_get CE4_compiles
 
@@ -1769,7 +1758,7 @@ example : (compile { bCE4 with decls := 0 } Λk CE4src).isOk = false := by decid
 
 example : kindedAgrees bCE4 Λk CE4src (Cls.only Cls.Control) E3_kind = true := by decide +kernel
 
-/-- At the version's `E3ClientCtx`, the table of CE4's budget kinds `{x.C}`
+/-- At `E3ClientCtx`, the table of CE4's budget kinds `{x.C}`
 at `only[Control]` by `ksel`, the rule of `E3_client_kind`. -/
 example : ((decls bCE4 E3ClientCtx).kind? E3ClosureSet (Cls.only Cls.Control)).map kindRules =
     some ["ksel"] := by
@@ -1789,7 +1778,7 @@ example : subcapFound bCE4 E3ClientCtx [CapAtom.var .here]
 
 CE2's `f` applied to a body at `{tl}`.  The call asks for `{b}` below
 `{b ↾ except[ThreadLocal]}`, which needs `{tl}` kinded at
-`except[ThreadLocal]`.  The version proves that the set `kvar` descends to
+`except[ThreadLocal]`.  It is proved that the set `kvar` descends to
 from `{b}` is kinded at `except[ThreadLocal]` by no derivation
 (`FCdot.Examples.E2_tl_descent_not_capKind`), and the front end finds no
 derivation at the budgets below.  The same program with the body at `{io}`

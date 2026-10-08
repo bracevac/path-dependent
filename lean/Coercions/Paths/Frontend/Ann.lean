@@ -3,38 +3,23 @@ import Coercions.Paths.DotMNF.Syntax
 /-!
 # Annotated DOT-MNF terms with paths
 
-`ATm` is `Paths.DotMNF.Tm` (`lean/Coercions/Paths/DotMNF/Syntax.lean`) with two
-extra fields and nothing else: the self type of an object literal, and the
-optional result type of a `let`.
+`ATm` is `Paths.DotMNF.Tm` with two extra fields: the self type of an object
+literal and the optional result type of a `let`.
 
-The path term takes a variable, as `Tm.path` does in the version.  A path of
-the version reaches deeper only inside a type, in a selection `p.A` or a
-singleton `p.type`.  A deeper path in term position is written with a `let`
-that names each prefix, which `Resolve.lean` inserts.
+The self type must be carried because `HasTy.obj` checks the definitions of a
+literal against a context entry that already holds it.  It cannot be
+synthesized from the definitions.  `Value.obj` has no slot for it, so the
+annotation lives in the front end's own syntax.  The `let` type is optional
+because an unannotated `let` has its type strengthened or widened to `⊤` by the
+typer.
 
-Why the self type has to be carried.  `HasTy.obj` types the definitions of a
-literal against a context entry that already holds the self type
-(`lean/Coercions/Paths/DotMNF/Typing.lean`), so the self type cannot be
-synthesized from the definitions, and a `DefsTy` that synthesized it would be
-circular.  `Value.obj` has no slot for it and the version is frozen.  So the
-annotation lives here, in a front end only term syntax whose erasure is `Tm`.
+The path term takes a variable.  A deeper path in term position is written
+with a `let` per prefix, which `Resolve.lean` inserts.
 
-Why the `let` type is optional.  It is the first rung of the typer's avoidance
-ladder: an annotated `let` is checked at the annotation, an unannotated one has
-its type strengthened or widened to `⊤`.
-
-`ATm.erase` of `.obj _ d` is `.val (.obj d.erase)`, which is exactly the term
-`HasTy.obj` concludes about.  Nothing of this module is part of the metatheory
-and no definition here lives in the `Paths.DotMNF` or `Paths.FCdot`
-namespaces.
-
-The size functions count the nodes of a term.  They are stated and proved
-positive here, beside the definition, so that a walker in another module can
-take a fuel from them that is never zero.
-
-Every recursive definition carries `termination_by structural`, so that a
-later edit that would fall back to well founded recursion fails the build
-instead of silently stopping kernel reduction.
+`ATm.erase` drops the annotations and gives back a `Tm`.  Nothing here is part
+of the metatheory.  The size functions count nodes and are positive, so a
+walker can take a fuel from them that is never zero.  Every recursive
+definition uses `termination_by structural`.
 -/
 
 namespace PathsFrontend
@@ -45,9 +30,9 @@ open Paths.DotMNF (Ty Tm Defs)
 /-! ## The syntax -/
 
 mutual
-/-- Terms of DOT-MNF with paths and the two front end annotations.
-Application, projection and the path term take bare variables, so monadic
-normal form is by construction and no predicate can fail. -/
+/-- Terms of DOT-MNF with paths and the two annotations.  Application,
+projection and the path term take variables, so the terms are in monadic normal
+form by construction. -/
 inductive ATm : Sig → Type where
   /-- A variable.  A deeper path in term position is a chain of `let`s. -/
   | path : BVar s .var → ATm s
@@ -73,10 +58,9 @@ end
 
 deriving instance DecidableEq for ATm, ADefs
 
-/-! ## Erasure to the frozen syntax
+/-! ## Erasure
 
-The annotations are dropped and nothing else changes.  This is the only bridge
-from the front end's term syntax to `Paths.DotMNF.Tm`. -/
+Erasure drops the annotations and changes nothing else. -/
 
 mutual
 /-- Drop the annotations of a term. -/
@@ -98,11 +82,9 @@ end
 
 /-! ## Renaming
 
-The clauses mirror `Paths.DotMNF.Tm.rename` and `Paths.DotMNF.Defs.rename`
-(`lean/Coercions/Paths/DotMNF/Syntax.lean`), with the two annotations renamed
-at the signature they live in.  The self type of a literal lives under the
-self binder, so it is renamed with the lifted renaming.  The type of a `let`
-lives outside the binder, so it is renamed with the renaming itself. -/
+As `Paths.DotMNF.Tm.rename`.  The self type of a literal is under the self
+binder and takes the lifted renaming.  The type of a `let` is outside its
+binder and takes the renaming itself. -/
 
 mutual
 /-- Rename the free variables of an annotated term. -/
@@ -126,10 +108,7 @@ end
 /-- Weakening of an annotated term, under one new binder. -/
 def ATm.weaken (t : ATm s) : ATm (s,x) := t.rename Rename.succ
 
-/-! ## Erasure commutes with renaming
-
-The one lemma about `ATm` needed later to move between the two syntaxes
-under a renaming without a second induction. -/
+/-! ## Erasure commutes with renaming -/
 
 mutual
 /-- Erasure commutes with renaming. -/
@@ -159,14 +138,12 @@ theorem ADefs.erase_rename : ∀ {s1 s2 : Sig} (d : ADefs s1) (ρ : Rename s1 s2
       rw [ADefs.erase_rename d ρ, ADefs.erase_rename e ρ]; rfl
 end
 
-/-! ## The size measure
+/-! ## Size
 
-The node count of a term, with types not counted.  Both functions are at least
-one everywhere, and the body of a term member and the two parts of a `let` are
-strictly smaller than what holds them. -/
+The node count of a term.  Types do not count. -/
 
 mutual
-/-- The node count of an annotated term.  Types do not count. -/
+/-- The node count of an annotated term. -/
 def sizeATm : {s : Sig} → ATm s → Nat
   | _, .path _ => 1
   | _, .lam _ t => sizeATm t + 1

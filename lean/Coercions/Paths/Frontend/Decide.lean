@@ -4,38 +4,29 @@ import Coercions.Paths.FCdot.Checker
 /-!
 # The decided side conditions
 
-The typer discharges four kinds of side condition.  `Paths.DotMNF.Ty.Decl` is
-decided in the version already, by `Ty.isDecl`, `Ty.isDecl_iff` and its
-instance (`lean/Coercions/Paths/DotMNF/Syntax.lean`), so nothing is added for
-it.  The other three are here.  Well-formedness of a type is a premise of
-`HasTy.lam` and `HasTy.let`.  Distinctness of the labels of a definition block
-is a premise of `HasTy.obj` and `DefsTy.trmObj`.  Strengthening, the inverse of
-`Paths.DotMNF.Ty.weaken`, is what the typer's avoidance ladder climbs when a
-`let` body's type mentions the bound variable.
+Decision procedures for the side conditions of the typer.  `Ty.Decl` is
+already decided in the version (`Ty.isDecl`).  This module decides three more.
 
-Strengthening also decides the one premise of `SelfFree` that is not a
-syntactic match.  `SelfFree.closed` asks for two types that do not mention the
-self binder and for a subtyping between their strengthened forms.  `selfFree?`
-strengthens both sides and asks a subtyping search for the rest.  It takes
-that search as an argument, so that it sits here, ahead of the search that
-calls it.
+- Well-formedness of a type, a premise of `HasTy.lam` and `HasTy.let`:
+  `tyWf?`.
+- Distinctness of the labels of a definition block, a premise of `HasTy.obj`
+  and `DefsTy.trmObj`: `defsDistinct?`.
+- Strengthening, the inverse of `Ty.weaken`: `tyStrengthen?`.  The typer's
+  avoidance ladder uses it when a `let` body's type mentions the bound
+  variable.
 
-Strengthening reuses the target's partial renaming machinery as it stands:
-`FCdot.PartialRename`, `PartialRename.lift`, `PartialRename.unshift`,
-`Inverts`, `Inverts.lift`, `unshift_inverts` and `witness?`
-(`lean/Coercions/Paths/FCdot/Checker.lean`).  That machinery is generic over
-`Sig`, `Kind` and `BVar`, which the two calculi share.  Only the traversal over
-`Paths.DotMNF.Path` and `Paths.DotMNF.Ty` is new.  A path here is a variable
-followed by field steps, and a type has two path formers beyond the selection,
-the stable field `{val a : T}` and the singleton `p.type`.
+Strengthening also decides the one premise of `SelfFree` that is not a syntactic
+match.  `SelfFree.closed` needs two types that do not mention the self binder
+and a subtyping between their strengthened forms.  `selfFree?` strengthens both
+sides and asks a subtyping search for the rest.  The search is an argument, so
+this module can come before the search that calls it.
 
-Every name here is a plain name in `namespace PathsFrontend`, never a member of
-`Ty`, `Defs` or `Ctx`, so the functions are written as applications and not as
-dot notation.  Nothing of this module is part of the metatheory, and no
-definition lives in the `Paths.DotMNF` or `Paths.FCdot` namespaces.
+Strengthening reuses the partial renaming of the target
+(`lean/Coercions/Paths/FCdot/Checker.lean`).  Only the traversal of `Path` and
+`Ty` is written here.
 
-Every recursive definition carries `termination_by structural`, so all of it
-reduces in the kernel and `by decide` works on it.
+Every recursive definition carries `termination_by structural`, so it reduces
+in the kernel and `by decide` works on it.
 -/
 
 namespace PathsFrontend
@@ -45,9 +36,8 @@ open Paths.DotMNF (Path Ty Defs Ctx Sub SelfFree)
 
 /-! ## Well-formedness of a type
 
-`tyWf?` mirrors `Paths.DotMNF.Ty.Wf` clause for clause.  It keeps the
-`Ty.Decl` premise of `Wf.mu`.  It asks nothing of the two bounds of
-`Wf.typ`, so `{A : S..T}` is well formed with bad bounds.  A selection and a
+`tyWf?` mirrors `Ty.Wf` clause for clause.  Like `Wf.typ`, it asks nothing of
+the bounds, so `{A : S..T}` is well formed with bad bounds.  A selection and a
 singleton are well formed whatever their path. -/
 
 /-- The decision procedure for `Paths.DotMNF.Ty.Wf`. -/
@@ -118,9 +108,7 @@ instance instDecidableTyWf {s : Sig} (T : Ty s) : Decidable (Ty.Wf T) :=
 
 /-! ## Distinctness of the labels of a definition block
 
-`Paths.DotMNF.Defs.labels` is the version's and `FCdot.Label` has
-`DecidableEq`, so the test is a list membership test.  Every example of
-`lean/Coercions/Paths/DotMNF/Examples.lean` proves distinctness by hand. -/
+The test is list membership on `Defs.labels`. -/
 
 /-- No label of the left block is a label of the right block. -/
 def labelsDisjoint? (d e : Defs s) : Bool :=
@@ -157,22 +145,18 @@ instance instDecidableDefsDistinct {s : Sig} (d : Defs s) : Decidable (Defs.Dist
 
 /-! ## Strengthening
 
-The partial renaming and its inversion lemmas are the target's, reused as they
-stand.  What follows is the traversal of `Paths.DotMNF.Path` and
-`Paths.DotMNF.Ty` under a partial renaming, with soundness and completeness
-against a total renaming it inverts, and then strengthening as the action of
-`PartialRename.unshift`.  A path fails exactly when its root fails, since a
-field step names no variable. -/
+The traversal of `Path` and `Ty` under a partial renaming, with soundness and
+completeness against a total renaming it inverts.  Strengthening is the action
+of `PartialRename.unshift`.  A path fails exactly when its root fails. -/
 
-/-- A path under a partial renaming.  The root is renamed and the field steps
-are kept. -/
+/-- A path under a partial renaming.  The root is renamed, the steps are kept. -/
 def pathRename? : Path s1 → PartialRename s1 s2 → Option (Path s2)
   | .var x, rho => (rho.var x).map .var
   | .sel p a, rho => (pathRename? p rho).map (fun q => .sel q a)
 termination_by structural p => p
 
-/-- A type under a partial renaming.  It fails exactly when some variable of the
-type is outside the domain of the renaming. -/
+/-- A type under a partial renaming.  It fails when a variable of the type is
+outside the domain. -/
 def tyRename? : Ty s1 → PartialRename s1 s2 → Option (Ty s2)
   | .top, _ => some .top
   | .bot, _ => some .bot
@@ -376,9 +360,8 @@ theorem tyStrengthen?_iff {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s} :
   · exact tyStrengthen?_sound
   · intro h; subst h; exact tyStrengthen?_weaken U
 
-/-- Strengthening, carrying the equation it establishes.  This is the form the
-typer's avoidance ladder needs: the rung that strengthens rewrites the body's
-typing along the equation, so the equation has to come back with the type. -/
+/-- Strengthening, with the equation it establishes.  The avoidance ladder
+rewrites the body's typing along that equation. -/
 def tyStrengthenW? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option { U : Ty s // T = U.weaken } :=
   match witness? (tyStrengthen? T) with
   | some ⟨U, hU⟩ => some ⟨U, tyStrengthen?_sound hU⟩
@@ -395,9 +378,8 @@ theorem tyStrengthenW?_none {s : Sig} {k : Kind} {T : Ty (s,,k)}
   rw [tyStrengthenW?_weaken] at h
   cases h
 
-/-- A weakened type is one that strengthens.  This is the proposition the
-strengthening rung of the avoidance ladder tests, decided by
-`tyStrengthen?`. -/
+/-- Being a weakening is decided by `tyStrengthen?`.  The strengthening rung of
+the avoidance ladder tests it. -/
 instance instDecidableIsWeakening {s : Sig} {k : Kind} (T : Ty (s,,k)) :
     Decidable (∃ U : Ty s, T = U.weaken) :=
   decidable_of_iff ((tyStrengthen? T).isSome = true)
@@ -413,16 +395,15 @@ instance instDecidableIsWeakening {s : Sig} {k : Kind} (T : Ty (s,,k)) :
 
 /-! ## Self-free steps
 
-`SelfFree Γ X Y` is the step a declared bound may take inside the abstract
-view `Sub.mu`.  `X` and `Y` live under the self binder.  Three rules are
-syntactic: `refl` at equal sides, `bot` at a lower side `⊥`, `top` at an upper
-side `⊤`.  The fourth, `closed`, asks that neither side mentions the self and
-that the two strengthened sides are subtypes at the outer context `Γ`.
+`SelfFree Γ X Y` is the step a declared bound may take inside `Sub.mu`.  `X`
+and `Y` live under the self binder.  Three rules are syntactic: `refl` at equal
+sides, `bot` at a lower side `⊥`, `top` at an upper side `⊤`.  The fourth,
+`closed`, needs both sides free of the self and their strengthened forms
+related at the outer context `Γ`.
 
-`selfFree?` tries the four rules in that order.  It does not search for
-subtypings itself.  It is handed one, `sub`, at the outer context, and the
-subtyping search passes itself in.  A failure of `selfFree?` says that no rule
-applied with this `sub`, nothing more. -/
+`selfFree?` tries the rules in that order.  The subtyping `sub` for `closed` is
+passed in, and the subtyping search passes itself.  A failure means that no rule
+applied with this `sub`. -/
 
 /-- A self-free step from a closed subtyping, along the two equations that
 strengthening returns. -/
@@ -443,9 +424,8 @@ def selfFree? {s : Sig} {Γ : Ctx s} (sub : (S T : Ty s) → Option (Sub Γ S T)
     | some ⟨X', hX⟩, some ⟨Y', hY⟩ => (sub X' Y').map (selfFreeClosedOf hX hY)
     | _, _ => none
 
-/-- `selfFree?` succeeds wherever the search it is handed is stronger.  This is
-what a monotonicity proof of the subtyping search needs, since the search
-calls `selfFree?` with itself at a smaller fuel. -/
+/-- `selfFree?` succeeds wherever the search it is handed is stronger.  The
+monotonicity proof of the subtyping search uses this. -/
 theorem selfFree?_isSome_of {s : Sig} {Γ : Ctx s} {sub sub' : (S T : Ty s) → Option (Sub Γ S T)}
     (hsub : ∀ S T, (sub S T).isSome → (sub' S T).isSome) (X Y : Ty (s,x))
     (h : (selfFree? sub X Y).isSome) : (selfFree? sub' X Y).isSome := by
@@ -471,10 +451,9 @@ theorem selfFree?_isSome_of {s : Sig} {Γ : Ctx s} {sub sub' : (S T : Ty s) → 
 
 /-! ## The variables of a context
 
-`Paths.DotMNF.Ctx` has three constructors, and `consSelf`, the binder of an
-object literal, is a binder like any other for `Ctx.lookup`, so its variable is
-in the list.  Example E6 of `lean/Coercions/Paths/DotMNF/Examples.lean` needs
-it. -/
+The binder `consSelf` of an object literal is a variable like any other, so it
+is in the list.  Example E6 of `lean/Coercions/Paths/DotMNF/Examples.lean`
+needs it. -/
 
 /-- Every variable of a context, newest binder first. -/
 def ctxVars : Ctx s → List (BVar s .var)
@@ -483,10 +462,9 @@ def ctxVars : Ctx s → List (BVar s .var)
   | .consSelf Gamma _ _ => .here :: (ctxVars Gamma).map .there
 termination_by structural Gamma => Gamma
 
-/-! ## The module reduces in the kernel
+/-! ## Tests
 
-Every test below is `by decide`.  The later modules of the typer are
-structural too, so their tests can take the same form. -/
+Every test is `by decide`. -/
 
 section Tests
 
@@ -496,7 +474,7 @@ example : tyWf? (Ty.mu (Ty.and (Ty.vfld (Label.trm 0) Ty.top) (Ty.sngl (.var .he
 example : tyWf? (Ty.mu (Ty.all Ty.top Ty.top) : Ty []) = false := by decide
 /-- Below a stable field the check goes on. -/
 example : tyWf? (Ty.vfld (Label.trm 0) (Ty.mu Ty.bot) : Ty []) = false := by decide
-/-- Bad bounds are well formed: `Wf.typ` relates the two sides not at all. -/
+/-- Bad bounds are well formed. -/
 example : Ty.Wf (Ty.typ (Label.typ 0) Ty.top Ty.bot : Ty []) := by decide
 example : ¬ Ty.Wf (Ty.mu Ty.bot : Ty []) := by decide
 
@@ -511,7 +489,7 @@ example : tyStrengthen? (k := .var) ((Ty.fld (Label.trm 0) Ty.top : Ty []).weake
     = some (Ty.fld (Label.trm 0) Ty.top) := by decide
 example : tyStrengthen? (s := []) (k := .var) (Ty.sel (.var .here) (Label.typ 0)) = none := by
   decide
-/-- The traversal goes under `mu`, and the binder it strips is the outer one. -/
+/-- The traversal goes under `mu` and strips the outer binder. -/
 example : tyStrengthen? (s := ([] : Sig),x) (k := .var)
     (Ty.mu (Ty.fld (Label.trm 0) (Ty.sel (.var (.there (.there .here))) (Label.typ 0))))
     = some (Ty.mu (Ty.fld (Label.trm 0) (Ty.sel (.var (.there .here)) (Label.typ 0)))) := by
@@ -524,17 +502,16 @@ example : tyStrengthen? (s := ([] : Sig),x) (k := .var)
     (Ty.sngl (.sel (.sel (.var (.there .here)) (Label.trm 0)) (Label.trm 1)))
     = some (Ty.sngl (.sel (.sel (.var .here) (Label.trm 0)) (Label.trm 1))) := by
   decide
-/-- A path rooted at the stripped binder does not strengthen, however long. -/
+/-- A path rooted at the stripped binder does not strengthen. -/
 example : tyStrengthen? (s := ([] : Sig),x) (k := .var)
     (Ty.vfld (Label.trm 0) (Ty.sel (.sel (.var .here) (Label.trm 0)) (Label.typ 0))) = none := by
   decide
 example : (tyStrengthenW? (k := .var) ((Ty.sngl (.sel (.var .here) (Label.trm 0)) : Ty ([],x)).weaken)).isSome
     = true := by decide
 
-/-! The four rules of `SelfFree`, through a search that answers one subtyping
-only: a field at `⊥` below the same field at `⊤`. -/
+/-! The four rules of `SelfFree`, through a search that knows one subtyping. -/
 
-/-- A subtyping search for the tests: `{a : ⊥} <: {a : ⊤}` and nothing else. -/
+/-- A search that proves `{a : ⊥} <: {a : ⊤}` and nothing else. -/
 def testSub {s : Sig} {Γ : Ctx s} : (S T : Ty s) → Option (Sub Γ S T)
   | .fld a .bot, .fld b .top =>
       if h : a = b then some (h ▸ Sub.fld Sub.bot) else none

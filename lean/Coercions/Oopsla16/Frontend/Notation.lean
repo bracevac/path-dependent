@@ -3,37 +3,24 @@ import Coercions.Oopsla16.Frontend.Surface
 /-!
 # The surface notation of the Oopsla16 front end
 
-Three syntax categories, `o16Ty`, `o16Tm` and `o16Dm`, hold the paper's concrete
-syntax.  Three term level entry points, `o16Ty%`, `o16%` and `o16Dm%`, expand a
-piece of that syntax into a constructor application of `SType`, `STm`, `SDm` or
-`SDms`.  Names stay strings here, as `Surface.lean` leaves them: no label is
-looked up and no de Bruijn index is computed, which is the resolver's work.
+Three syntax categories, `o16Ty`, `o16Tm` and `o16Dm`, hold the paper's
+concrete syntax.  The entry points `o16Ty%`, `o16%` and `o16Dm%` expand it into
+constructor applications of `SType`, `STm`, `SDm` and `SDms`.  Names stay
+strings.  The resolver looks up labels and computes indices.
 
-## Precedences
+`∧` is right leaning at 65 and `∨` is right leaning at 60, so `⊤ ∧ ⊥ ∨ ⊤`
+reads `(⊤ ∧ ⊥) ∨ ⊤`.  A call on a receiver that is not a bare name sits at 80,
+so `x.m(y).n(z)` chains.
 
-`∧` is right leaning at 65 and `∨` is right leaning at 60, so `∧` binds tighter
-and a mixed chain such as `⊤ ∧ ⊥ ∨ ⊤` reads `(⊤ ∧ ⊥) ∨ ⊤`.  A call on a
-receiver that is itself a term, rather than a bare name, sits at 80, so a chain
-`x.m(y).n(z)` keeps building on the previous call.  The closed forms and the
-parenthesis forms sit at `max`.
+Lean reads `x.m` as one `ident` with two name components.  A call is the rule
+`ident "(" o16Tm ")"`, and the macro splits the name into receiver and method.
+A bare variable accepts one component and a type selection `x.L` two.  Other
+lengths are rejected.  The rule
+`o16Tm:80 "." ident "(" o16Tm ")"` covers a receiver that is not a bare name,
+for instance a literal.
 
-## Dotted identifiers
-
-Lean's lexer reads `x.m` as a single `ident` whose `Name` has two components,
-exactly as the vanilla front end found for its own dotted names.  A method call
-is therefore the rule `ident "(" o16Tm ")"`, and the macro splits the name into
-a receiver and a method label.  A name of any other length is rejected where a
-call or a selection needs exactly two parts: a bare variable accepts only one
-part, and a type selection `x.L` accepts only two.  The trailing rule
-`o16Tm:80 "." ident "(" o16Tm ")"` is for a receiver that is not itself a bare
-name, for instance a literal directly followed by a call.
-
-## No `let`
-
-The surface term has no `let` former: an ascription is the only purely front
-end construct, and it erases to its own subterm.  There is consequently no
-`let` syntax here either, unlike the general shape of the paper's notation,
-since there would be nothing for it to expand into.
+The surface term has no `let`.  An ascription is the only front end construct,
+and it erases to its subterm.
 -/
 
 namespace Oopsla16Frontend
@@ -101,10 +88,8 @@ syntax:max "o16Dm% " o16Dm : term
 
 /-! ## Taking a dotted identifier apart
 
-Splitting a name into its parts is one pure function, so the probes below test
-the decision with `decide` like every other check in this module.  The two
-`MacroM` wrappers only turn the answer into syntax, or report a bad name with
-`Macro.throwErrorAt`, which points at the offending identifier. -/
+Splitting a name is a pure function, so `decide` tests it.  The `MacroM`
+wrappers turn the answer into syntax, or report a bad name at the identifier. -/
 
 /-- The components of a name, outermost first, as strings. -/
 def nameParts : Name → List String → List String
@@ -112,9 +97,7 @@ def nameParts : Name → List String → List String
   | .str p s, acc => nameParts p (s :: acc)
   | .num p i, acc => nameParts p (toString i :: acc)
 
-/-- The receiver and the label of a two part name.  A call and a type
-selection each need exactly two parts, the one way this grammar builds a name
-of more than one component. -/
+/-- The receiver and the label of a two part name. -/
 def twoParts (n : Name) : Option (String × String) :=
   match nameParts n [] with
   | [recv, lbl] => some (recv, lbl)
@@ -192,10 +175,7 @@ macro_rules
   | `(o16Dm% def $m:ident ( $x:ident : $S:o16Ty ) : $U:o16Ty = $t:o16Tm) =>
       `(SDm.fn $(str m) $(str x) (some (o16Ty% $S)) (some (o16Ty% $U)) (o16% $t))
 
-/-! ## One check per surface form
-
-Every one of these reduces in the kernel, so `by decide` is the right tactic,
-as it is in `Surface.lean`. -/
+/-! ## One check per surface form -/
 
 /-! ### Types -/
 
@@ -245,10 +225,7 @@ example : (o16Dm% def f(x : ⊥) = x) = SDm.fn "f" "x" (some .bot) none (.var "x
 example : (o16Dm% def f(x : ⊥) : ⊤ = x) = SDm.fn "f" "x" (some .bot) (some .top) (.var "x") := by
   decide
 
-/-! ### Names
-
-The decision each category makes about a name is tested at the decision
-itself, which is a plain function and reduces like everything else here. -/
+/-! ### Names -/
 
 example : twoParts `x = none := by decide
 example : twoParts `x.A = some ("x", "A") := by decide
@@ -257,7 +234,7 @@ example : nameParts `x [] = ["x"] := by decide
 example : nameParts `x.a [] = ["x", "a"] := by decide
 example : nameParts `x.a.b [] = ["x", "a", "b"] := by decide
 
-/-! ## The version's examples, in the notation
+/-! ## Oopsla16's examples, in the notation
 
 `FunctionField`, the two self types. -/
 
@@ -279,8 +256,7 @@ example : ex0src = STm.obj "z" none .nil := by decide
 example : ex0AscSrc = STm.asc (.obj "z" none .nil) .top := by decide
 
 /-- `RecursiveArg.prog`: a Curry style caller applied to a Curry style
-argument.  Both literals carry a self type, since both methods are Curry
-style. -/
+argument.  Both literals carry a self type. -/
 def recArgSrc : STm :=
   o16% (new { c : { def apply(x : μ(z. { def f(y : ⊤) : z.B })) : ⊤ } ∧ ⊤ ⇒
               def apply(y) = y }).apply(
@@ -334,9 +310,7 @@ def ex2src : STm := o16% y.apply(new { o ⇒ type T = ⊤ })
 example : ex2src =
     STm.call (.var "y") "apply" (.obj "o" none (.cons (.typ "T" .top) .nil)) := by decide
 
-/-- A literal written twice in `CurryCall.prog`, once as the method's own
-call and once as the outer argument.  Both occurrences are the same surface
-value. -/
+/-- The literal that occurs twice in `CurryCall.prog`. -/
 private def curryInnerObjSrc : STm :=
   o16% new { i : { def apply(y : ⊤) : ⊤ } ∧ ⊤ ⇒ def apply(y) = y }
 
@@ -369,16 +343,15 @@ private def paperListTy : SType :=
       (.and (.fn "tail" "u" .top (.and (.sel "m" "List") (.typ "Elem" .bot (.sel "this" "Elem"))))
         (.typ "Elem" .bot .top)))
 
-/-- The `nil` cell's body: both methods call themselves on their argument,
-since `nil` never answers either one. -/
+/-- The `nil` cell's body: both methods call themselves, since `nil` never
+answers. -/
 private def paperNilBody : STm :=
   .obj "this" none
     (.cons (.fn "head" "u" (some .top) (some .bot) (.call (.var "this") "head" (.var "u")))
       (.cons (.fn "tail" "u" (some .top) (some .bot) (.call (.var "this") "tail" (.var "u")))
         (.cons (.typ "Elem" .bot) .nil)))
 
-/-- The innermost cell a `cons` call builds, once it holds both the head and
-the tail it was given. -/
+/-- The cell a `cons` call builds, holding the head and the tail. -/
 private def paperConsInnerBody : STm :=
   .obj "this" none
     (.cons (.fn "head" "u" (some .top) (some (.sel "t" "T")) (.var "hd"))
@@ -406,28 +379,28 @@ private def paperConsO1Body : STm :=
         paperConsO2Body)
       .nil)
 
-/-- `cons`'s own written result type, the type its body is checked at. -/
+/-- `cons`'s written result type, the type its body is checked at. -/
 private def paperConsResultTy : SType :=
   .fn "apply" "hd" (.sel "t" "T")
     (.fn "apply" "tl" (.and (.sel "m" "List") (.typ "Elem" .bot (.sel "t" "T")))
       (.and (.sel "m" "List") (.typ "Elem" (.sel "t" "T") (.sel "t" "T"))))
 
-/-- `cons`'s entry in the module's own ascribed type, weaker than the body's
-own result type at the innermost bound. -/
+/-- `cons`'s entry in the module's ascribed type, weaker than the body's
+result type at the innermost bound. -/
 private def paperModuleConsTy : SType :=
   .fn "apply" "hd" (.sel "t" "T")
     (.fn "apply" "tl" (.and (.sel "m" "List") (.typ "Elem" .bot (.sel "t" "T")))
       (.and (.sel "m" "List") (.typ "Elem" .bot (.sel "t" "T"))))
 
-/-- The module's own ascribed type. -/
+/-- The module's ascribed type. -/
 private def paperModuleTy : SType :=
   .mu "m"
     (.and (.fn "nil" "u" .top (.and (.sel "m" "List") (.typ "Elem" .bot .bot)))
       (.and (.fn "cons" "t" (.typ "T" .bot .top) paperModuleConsTy)
         (.typ "List" .bot paperListTy)))
 
-/-- `paper_lst`, the list module of the paper, ascribed at its own module
-type.  Every method is annotated, so no literal needs a self type. -/
+/-- `paper_lst`, the list module of the paper, ascribed at its module type.
+Every method is annotated, so no literal needs a self type. -/
 def paperLstSrc : STm :=
   o16% (new { m ⇒
     def nil(u : ⊤) : m.List ∧ { type Elem : ⊥ .. ⊥ } =

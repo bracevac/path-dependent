@@ -5,67 +5,62 @@ import Coercions.Paths.DotMNF.Examples
 /-!
 # The subtyping search, the term views and path checking
 
-The typer needs three things this module provides.  The *subtyping search*
-`sub?` returns a `Paths.DotMNF.Sub` derivation for two types, or nothing.  The
-*term views* of a context variable are the types the variable has as a term,
-each with its `HasTy` derivation.  *Path checking* `checkPath?` returns a
-`PathTy` derivation of a path at a goal type, read off the path table of
-`Table.lean`.
+Three things for the typer.
 
-Everything here returns the derivation, so there is no soundness theorem: the
-result type is the statement.  Nothing here is complete, and no completeness
-theorem is claimed.  Subtyping in DOT is undecidable.
+- The subtyping search `sub?` returns a `Sub` derivation for two types, or
+  nothing.
+- The term views of a context variable are the types it has as a term, each
+  with its `HasTy` derivation.
+- Path checking `checkPath?` returns a `PathTy` derivation of a path at a goal
+  type, read off the path table of `Table.lean`.
+
+Everything returns the derivation, so there is no soundness theorem: the result
+type is the statement.  There is no completeness theorem, and subtyping in DOT
+is undecidable.
 
 ## The search
 
-`sub?` tries a fixed list of rules and returns the first success.  The
-transitivity rule `Sub.trans` has a middle type that nothing in the goal
-determines.  The search tries one family of middles only: the selections
-`p.A` of the type members the path table has found.  Those members are the
-*declarations* of the table, `PDecl`, keyed by a path.  So the search takes
-the declarations as a parameter and never computes them itself.
+`sub?` tries a fixed list of rules and returns the first success.  The middle
+type of `Sub.trans` is not determined by the goal.  The search tries one family
+of middles: the selections `p.A` of the declarations (`PDecl`) that the path
+table found.  The declarations are a parameter.
 
-Three rules are new against a search for DOT without paths: a stable field
-against a stable field (`Sub.vfld`), a stable field against a plain field
-(`Sub.vfldToFld`), and a `μ` type against a `μ` type through the abstract view
-of a declaration (`Sub.mu`).  The last one reads the members of the left body
-one by one and asks for a self-free step between the bounds.  A self-free step
-may ask for a subtyping at the outer context, and `selfFree?` takes the search
-as an argument for that.
+Three rules go beyond DOT without paths: `Sub.vfld` (stable field against stable
+field), `Sub.vfldToFld` (stable field against plain field) and `Sub.mu` (`μ`
+against `μ`).  `Sub.mu` reads the members of the left body one by one and asks for
+a self-free step between the bounds.  That step may need a subtyping at the
+outer context, so `selfFree?` takes the search as an argument.
 
-## Fuel, and why every function is structural
+## Fuel
 
-`sub?` is structural on its fuel.  Every rule that needs another subtyping
-calls `sub?` at the fuel one below.  The list walkers of the selection rules,
-`subDecl?` and `selfFree?` take the search at that lower fuel as a plain
-function argument, so they are not part of the recursion and each of them is
-structural on its own list or type.  The whole module reduces in the kernel,
-and the probes at the end are `decide +kernel` facts.
+`sub?` is structural on its fuel.  Every rule that needs another subtyping calls
+`sub?` at the fuel one below.  The walkers of the selection rules, `subDecl?`
+and `selfFree?` take that call as a function argument, so each is structural on
+its own list or type.  The module reduces in the kernel, and the checks at the
+end are `decide +kernel` facts.
 
-The last alternative of `sub?` retries the whole search at the fuel one below.
-It is not a rule of the calculus and changes no answer.  It buys `sub?_le`:
-more fuel never loses an answer, by an induction on the difference.
+The last alternative of `sub?` retries at the fuel one below.  It is not a rule
+and changes no answer.  It makes `sub?_le`, that more fuel never loses an
+answer, an induction on the difference.
 
-## The function rule and the table it rebuilds
+## The function rule
 
-`Sub.all` compares the two codomains under `Γ.cons S2`.  The declarations
-there are not those of `Γ`, so the rule rebuilds a path table at the extended
-context.  It rebuilds the table without the detour step, `baseTable`, at the
-small budget `allBudget`.  The detour step would call the search from inside
-the table, which here is the search being defined.  That table is the one
-approximation of this module.
+`Sub.all` compares the codomains under `Γ.cons S2`, where the declarations are
+not those of `Γ`.  The rule rebuilds a path table there, without the detour
+step (`baseTable`) and at the small budget `allBudget`, because the detour step
+would call the search being defined.  This table is the one approximation of
+the module.
 
 ## The term views
 
-`HasTy` has rules of its own at a variable, and no rule leads from a path
-typing back to a term typing except at a singleton.  So the typer keeps a
-closure of term views per variable, apart from the path table.  It grows in
-rounds by five steps: open a `μ`, the two sides of an intersection, the upper
-bound of a declaration, and the detour through a declaration whose lower bound
-the search reaches.
+`HasTy` has its own rules at a variable, and no rule leads from a path typing
+back to a term typing except at a singleton.  So the typer keeps a closure of
+term views per variable, apart from the path table.  It grows in rounds by five
+steps: open a `μ`, the two sides of an intersection, the upper bound of a
+declaration, and the detour through a declaration whose lower bound the search
+reaches.
 
-Nothing of this module is part of the metatheory, and no definition lives in
-the `Paths.DotMNF` or `Paths.FCdot` namespaces.
+Nothing here belongs to the metatheory.
 -/
 
 namespace PathsFrontend
@@ -75,10 +70,9 @@ open Paths.DotMNF (Path Ty Ctx Sub PathTy HasTy SelfFree SubDecl)
 
 /-! ## Casts across a decided equality
 
-The derivations below move across a decided equality of labels or of a
-selection.  They are written with `cases` rather than with `▸` because the
-label of a field or a type member occurs twice in the conclusion and a rewrite
-would hit both occurrences. -/
+These derivations move across a decided equality of labels or of a selection.
+They use `cases`, not `▸`, because the label occurs twice in the conclusion and
+a rewrite would hit both. -/
 
 /-- `Sub.fld` with the two labels equal by a decision. -/
 def subFldOf {s : Sig} {Γ : Ctx s} {a b : Label} {S T : Ty s} (h : a = b)
@@ -124,9 +118,8 @@ def declPairs {s : Sig} {Γ : Ctx s} (D : List (PDecl Γ)) : List (PDecl Γ × P
 
 /-! ## The walkers of the selection rules
 
-Each walks a list of declarations, or of pairs of them, and asks the search it
-is handed for the remaining subtyping.  `sub?` hands them itself at the fuel
-one below. -/
+Each walks a list of declarations, or of pairs, and asks the search it is
+handed for the remaining subtyping.  `sub?` passes itself at the lower fuel. -/
 
 /-- The lower selection rule: a declaration whose selection is `T`. -/
 def pickLower {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) :
@@ -161,16 +154,15 @@ termination_by structural ps => ps
 /-! ## The abstract view of a declaration
 
 `SubDecl Γ L R` says that the body `L` of a `μ` has every member that `R`
-declares, each widened by a self-free step.  `R` is read proposition by
-proposition: `⊤`, a type member, a field, a stable field, or an intersection of
-those.  Each member is looked up in `L` by the version's readers
-`Ty.lookupTypDecl`, `Ty.lookupFldDecl` and `Ty.lookupVfldDecl`.  A plain field
-of `R` is matched by a plain field of `L` first and by a stable field second.
+declares, each widened by a self-free step.  `R` is `⊤`, a type member, a
+field, a stable field, or an intersection of those.  Each member is looked up
+in `L` by `Ty.lookupTypDecl`, `Ty.lookupFldDecl` and `Ty.lookupVfldDecl`.  A
+plain field of `R` is matched by a plain field of `L` first, then by a stable
+field.
 
-The bodies live under the self binder, at `Ty (s,x)`.  Lean's structural
-recursion cannot run on a type whose index is not a variable, so the descent
-through the intersections of `R` runs on a fuel, `andDepth R`, which is
-exactly enough. -/
+The bodies have type `Ty (s,x)`.  Structural recursion does not apply to a
+type whose index is not a variable, so the descent through the intersections of
+`R` runs on the fuel `andDepth R`. -/
 
 /-- The nesting depth of intersections in a type. -/
 def andDepth {s : Sig} : Ty s → Nat
@@ -220,20 +212,17 @@ def subDecl? {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (L R : Ty (s,x)) :
 
 /-! ## The subtyping search
 
-Each rule is written either as a decided equality on a constructed shape or as
-a `match` whose fall-through branch is `none`.  A `match` on `S` or on `T`
-inside a function whose result type mentions them generalizes them in the
-motive, and a fall-through that returns a derivation of the original goal then
-does not typecheck. -/
+Each rule is a decided equality or a `match` whose fall-through is `none`.  A
+`match` on `S` or `T` generalizes them in the motive, so a fall-through cannot
+return a derivation of the original goal. -/
 
-/-- The budget of the table that the function rule rebuilds under the context
-it extends.  Small on purpose: that table is rebuilt at every application of
-the rule. -/
+/-- The budget of the table that the function rule rebuilds.  It is small
+because the table is rebuilt at every application. -/
 def allBudget : Budget := { table := 2, views := 0, sub := 0, typer := 0, rows := 4 }
 
 /-- The subtyping search.  `sub? D 0 S T` is `none`.  `sub? D (n+1) S T` tries
-the rules below in order and returns the first success.  Every premise is
-searched at fuel `n`.
+the rules below in order and returns the first success.  Premises are searched
+at fuel `n`.
 
 1. `S = T`, `Sub.refl`.
 2. `T = ⊤`, `Sub.top`.
@@ -253,9 +242,8 @@ searched at fuel `n`.
 12. A pair of declarations of one path at one label, `S <: d1.lo <: p.A <:
     d2.hi <: T`.
 
-The last alternative retries the whole search at fuel `n`.  It changes no
-answer the rules give at this fuel, since every rule is tried here at more fuel
-than there.  It makes `sub?_le` an induction on the difference. -/
+The last alternative retries at fuel `n`.  It changes no answer and makes
+`sub?_le` an induction on the difference. -/
 def sub? {s : Sig} {Γ : Ctx s} (D : List (PDecl Γ)) :
     (n : Nat) → (S T : Ty s) → Option (Sub Γ S T)
   | 0, _, _ => none
@@ -323,9 +311,8 @@ termination_by structural n => n
 
 /-! ## Fuel monotonicity
 
-The statement is about `isSome` and not about derivations: more fuel may find
-another derivation of the same judgment, and `Sub` is `Type` valued with no
-decidable equality. -/
+The statement is about `isSome`, not derivations: more fuel may find another
+derivation of the same judgment. -/
 
 /-- An `orElse` succeeds when its second alternative does. -/
 theorem isSome_orElse_right {α : Type u} {a : Option α} {b : Unit → Option α}
@@ -351,17 +338,17 @@ theorem sub?_le {s : Sig} {Γ : Ctx s} {D : List (PDecl Γ)} : ∀ {n n' : Nat},
 
 /-! ## The path table at the search
 
-`Table.lean` defines the table against a family of searches.  Here it is
+`Table.lean` defines the table against an abstract search.  Here it is
 instantiated at `sub?`.  The detour step of a round consults `sub?` at the
-declarations of the table at the start of that round. -/
+declarations of the table at the start of the round. -/
 
 /-- The path table of a context at a budget, the detour step consulting
 `sub?` at fuel `b.sub`. -/
 def table {s : Sig} (b : Budget) (Γ : Ctx s) : PTable Γ :=
   tableAt (fun n D => sub? D n) b
 
-/-- More rounds of the path table never lose a type at a path, the search
-fuel and the row cap fixed. -/
+/-- More rounds never lose a type at a path, for fixed search fuel and row
+cap. -/
 theorem table_mono' {s : Sig} {Γ : Ctx s} {b b' : Budget} (h : b.table ≤ b'.table)
     (hs : b.sub = b'.sub) (hr : b.rows = b'.rows) :
     ∀ (p : Path s) (v : PView Γ p), v ∈ (table b Γ).viewsAt p →
@@ -370,10 +357,10 @@ theorem table_mono' {s : Sig} {Γ : Ctx s} {b b' : Budget} (h : b.table ≤ b'.t
 
 /-! ## Path checking
 
-`checkPath?` asks for a path typing at a goal.  Three clauses, in order: the
-singleton of the path itself by `PathTy.snglRefl`, a view of the table at
-exactly the goal, and a view the search takes to the goal by `PathTy.sub`.  No
-clause poses a `PathTy.recI` or a `PathTy.andI` goal. -/
+`checkPath?` tries three clauses in order: the singleton of the path itself by
+`PathTy.snglRefl`, a view of the table at exactly the goal, and a view the
+search takes to the goal by `PathTy.sub`.  It never uses `PathTy.recI` or
+`PathTy.andI`. -/
 
 /-- A path typing of `p` at `T`, read off the views `tbl` holds for `p`. -/
 def checkPath? {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) (D : List (PDecl Γ)) (n : Nat)
@@ -387,8 +374,7 @@ def checkPath? {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) (D : List (PDecl Γ)) (n
 /-! ## The term views
 
 A view of a context variable is a type it has as a term, with the derivation.
-The five steps of a round are written once, in `viewStepOf`, against an
-abstract search, as the steps of the path table are. -/
+`viewStepOf` defines the five steps against an abstract search. -/
 
 /-- A type a context variable has, with the derivation that it has it. -/
 structure View {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
@@ -409,10 +395,7 @@ def ViewStep {s : Sig} (Γ : Ctx s) : Type :=
 | left | `S ∧ T` | `S` | `HasTy.sub` with `Sub.and1` |
 | right | `S ∧ T` | `T` | `HasTy.sub` with `Sub.and2` |
 | upper | `v.ty = p.A` at a declaration `d` | `d.hi` | `HasTy.sub` with `Sub.selUpper` |
-| detour | `sub v.ty d.lo` succeeds at a `d` | `d.hi` | `HasTy.sub` with `Sub.trans` |
-
-The detour step's derivation carries the evidence `e` of its own side
-condition. -/
+| detour | `sub v.ty d.lo` succeeds at a `d` | `d.hi` | `HasTy.sub` with `Sub.trans` | -/
 def viewStepOf {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (D : List (PDecl Γ)) : ViewStep Γ :=
   fun x v =>
     (match hv : v.ty with
@@ -442,8 +425,8 @@ def dedupViews {s : Sig} {Γ : Ctx s} {x : BVar s .var} (vs : List (View Γ x)) 
     List (View Γ x) :=
   dedupViewsFrom [] vs
 
-/-- One round of the closure: every view of the list, plus one step from each,
-with the duplicates by type dropped. -/
+/-- One round: every view of the list plus one step from each, duplicates by
+type dropped. -/
 def viewsRoundOf {s : Sig} {Γ : Ctx s} (st : ViewStep Γ) (x : BVar s .var)
     (vs : List (View Γ x)) : List (View Γ x) :=
   dedupViews (vs ++ vs.flatMap (st x))
@@ -458,17 +441,16 @@ termination_by structural m => m
 def viewStep {s : Sig} {Γ : Ctx s} (D : List (PDecl Γ)) (n : Nat) : ViewStep Γ :=
   viewStepOf (sub? D n) D
 
-/-- The term views of a variable at a budget: `b.views` rounds, the detour
-step searching at fuel `b.sub`.  `D` is the declarations of the context's path
-table. -/
+/-- The term views of a variable: `b.views` rounds, the detour step searching at
+fuel `b.sub`.  `D` is the declarations of the context's path table. -/
 def views {s : Sig} {Γ : Ctx s} (D : List (PDecl Γ)) (b : Budget) (x : BVar s .var) :
     List (View Γ x) :=
   viewsOf (viewStep D b.sub) b.views x
 
 /-! ## Round monotonicity of the term views
 
-More rounds never lose a type.  The statement is about types, not
-derivations: deduplication keeps the first derivation of each type. -/
+More rounds never lose a type.  The statement is about types, not derivations,
+because deduplication keeps the first derivation of each type. -/
 
 /-- Every type of `l` occurs in `l'`. -/
 def ViewsLe {s : Sig} {Γ : Ctx s} {x : BVar s .var} (l l' : List (View Γ x)) : Prop :=
@@ -543,18 +525,15 @@ theorem views_mono {s : Sig} {Γ : Ctx s} {D : List (PDecl Γ)} {b b' : Budget}
 /-! ## Probes
 
 Each probe names the chain of `lean/Coercions/Paths/DotMNF/Examples.lean` it
-reproduces and the budget at which the search finds it.  Each has a negative
-probe one unit of one counter below, so that the budget measures what the probe
-is about and not an accident of the table.  The budgets are "found at", not
-lower bounds of every counter.  Every probe is a `decide +kernel` fact: the
-search reduces in the kernel. -/
+reproduces and a budget at which the search finds it.  A negative check one
+unit of one counter below shows that the counter matters.  All are
+`decide +kernel` facts. -/
 
 section Probes
 
 open Paths.DotMNF.Examples
 
-/-- The search at a budget, against the declarations of the context's path
-table at that budget. -/
+/-- The search at a budget, against the declarations of the path table. -/
 def subProbe {s : Sig} (b : Budget) (Γ : Ctx s) (S T : Ty s) : Bool :=
   (sub? (declsOf (table b Γ)) b.sub S T).isSome
 
@@ -564,8 +543,8 @@ def pathProbe {s : Sig} (b : Budget) (Γ : Ctx s) (p : Path s) (T : Ty s) : Bool
   (checkPath? tbl (declsOf tbl) b.sub p T).isSome
 
 /-- E1, the pair rule at one declaration: `{A : ⊤..⊥} <: {B : {a : ⊤}..{a : ⊤}}`
-through `⊤ <: x.A <: ⊥`, the chain of `badBounds`.  The seed of the table
-already holds the declaration, so no round is needed. -/
+through `⊤ <: x.A <: ⊥`, the chain of `badBounds`.  The seed of the table holds
+the declaration. -/
 def probeE1 : Budget := { table := 0, views := 0, sub := 2, typer := 0, rows := 0 }
 
 example : subProbe probeE1 E1Ctx (E1Dom : Ty ([],x)) E1Res = true := by decide +kernel
@@ -581,9 +560,9 @@ example : subProbe probeE3 E3Ctx2 (E3T2 : Ty ([],x,x)) E3T1 = true := by decide 
 example : subProbe { probeE3 with table := 0 } E3Ctx2 (E3T2 : Ty ([],x,x)) E3T1 = false := by
   decide +kernel
 
-/-- E4, the detour step of the table followed by the lower selection rule: `w`
-reaches `{A : Int..⊤}` through `S <: x.B <: T`, and then `Int <: w.A`, the
-chain of `E4nA`. -/
+/-- E4, the detour step of the table, then the lower selection rule: `w` reaches
+`{A : Int..⊤}` through `S <: x.B <: T`, then `Int <: w.A`, the chain of
+`E4nA`. -/
 def probeE4 : Budget := { table := 1, views := 0, sub := 2, typer := 0, rows := 0 }
 
 example : subProbe probeE4 E4Ctx4 (E4Int : Ty ([],x,x,x,x))
@@ -594,9 +573,9 @@ example : subProbe { probeE4 with table := 0 } E4Ctx4 (E4Int : Ty ([],x,x,x,x))
 example : (sub? (declsOf (baseTable probeE4 E4Ctx4)) probeE4.sub (E4Int : Ty ([],x,x,x,x))
     (.sel (.var (.there (.there .here))) lA)).isSome = false := by decide +kernel
 
-/-- E6, the lower selection rule through the self binder's own member:
-`Int <: x.T` where `x` is the literal's self binder, the chain of `E6nT`.  Two
-rounds open the `μ` and take the left side of the intersection. -/
+/-- E6, the lower selection rule at the self binder's own member: `Int <: x.T`
+where `x` is the literal's self binder, the chain of `E6nT`.  Two rounds open
+the `μ` and take the left side of the intersection. -/
 def probeE6 : Budget := { table := 2, views := 0, sub := 2, typer := 0, rows := 0 }
 
 example : subProbe probeE6 E6Ctxz (E6Int : Ty ([],x,x)) (.sel (.var .here) lT) = true := by
@@ -604,7 +583,7 @@ example : subProbe probeE6 E6Ctxz (E6Int : Ty ([],x,x)) (.sel (.var .here) lT) =
 example : subProbe { probeE6 with table := 1 } E6Ctxz (E6Int : Ty ([],x,x))
     (.sel (.var .here) lT) = false := by decide +kernel
 
-/-- E8, the right step of the term views: `y : x.A ∧ {a : ⊤}` has a view at
+/-- E8, the right step of the term views: `y : x.A ∧ {a : ⊤}` has the view
 `{a : ⊤}`, which is `E8yFld2`. -/
 def probeE8views : Budget := { table := 0, views := 1, sub := 0, typer := 0, rows := 0 }
 
@@ -626,7 +605,7 @@ example : subProbe { probeE8sub with sub := 1 } E8Ctx2
 
 /-- E1p, the pair rule at the path `w.f`: `{val f : {A : ⊤..⊥}} <: {B : …}`
 through `⊤ <: w.f.A <: ⊥`, the chain of `E1p_badBounds`.  One round makes the
-row `w.f` by the child step. -/
+row `w.f`. -/
 def probeE1p : Budget := { table := 1, views := 0, sub := 2, typer := 0, rows := 1 }
 
 example : subProbe probeE1p E1p_Ctx1 (E1p_Dom : Ty ([],x)) E1p_Res = true := by decide +kernel
@@ -636,9 +615,9 @@ example : subProbe { probeE1p with table := 0 } E1p_Ctx1 (E1p_Dom : Ty ([],x)) E
 example : subProbe { probeE1p with rows := 0 } E1p_Ctx1 (E1p_Dom : Ty ([],x)) E1p_Res
     = false := by decide +kernel
 
-/-- X1, `x.c.A <: x.B` and back, pDOT's path of length two: `x.B` is declared
-with both bounds `x.c.A`, so either selection rule closes the chain once the
-table has opened `x` and split its body. -/
+/-- X1, `x.c.A <: x.B` and back, a path of length two.  `x.B` has both bounds
+`x.c.A`, so either selection rule closes the chain once the table has opened
+`x` and split its body. -/
 def probeX1 : Budget := { table := 2, views := 0, sub := 2, typer := 0, rows := 1 }
 
 example : subProbe probeX1 X1_Ctx (.sel (.sel (.var .here) X1_lc) lA : Ty ([],x))
@@ -649,8 +628,8 @@ example : subProbe { probeX1 with table := 1 } X1_Ctx
     (.sel (.sel (.var .here) X1_lc) lA : Ty ([],x)) (.sel (.var .here) lB) = false := by
   decide +kernel
 
-/-- E9, `y.B <: N` under `y : q.type`: the alias step copies `q`'s member `B`
-to `y` in the second round, after the first has opened `q`. -/
+/-- E9, `y.B <: N` under `y : q.type`: the second round copies `q`'s member `B`
+to `y`, after the first has opened `q`. -/
 def probeE9 : Budget := { table := 2, views := 0, sub := 2, typer := 0, rows := 1 }
 
 example : subProbe probeE9 E9_Γ4 (.sel (.var (.there .here)) lB) E9_N = true := by decide +kernel
@@ -667,15 +646,14 @@ example : subProbe probeE2p E2p_Γ3 (E2p_Γ3.lookup .here) (E2p_xcA (.there (.th
 example : subProbe { probeE2p with table := 3 } E2p_Γ3 (E2p_Γ3.lookup .here)
     (E2p_xcA (.there (.there .here))) = false := by decide +kernel
 
-/-- The left side of the abstract view probe,
-`μ(z. {A : ⊥..⊤} ∧ {a : {b : ⊤} ∧ {v : ⊤}})`. -/
+/-- `μ(z. {A : ⊥..⊤} ∧ {a : {b : ⊤} ∧ {v : ⊤}})`. -/
 def probeMuL : Ty [] :=
   .mu (.and (.typ lA .bot .top) (.fld la (.and (.fld lb .top) (.fld lv .top))))
-/-- The right side of the abstract view probe, `μ(z. {a : {b : ⊤}})`. -/
+/-- `μ(z. {a : {b : ⊤}})`. -/
 def probeMuR : Ty [] := .mu (.fld la (.fld lb .top))
 
-/-- The abstract view.  The field bound takes the self-free step `closed`,
-whose subtyping needs two units of fuel below the `μ` rule. -/
+/-- The abstract view.  The field bound takes the self-free step `closed`, whose
+subtyping needs two more units of fuel. -/
 example : subProbe { table := 0, views := 0, sub := 3, typer := 0, rows := 0 } .nil
     probeMuL probeMuR = true := by decide +kernel
 example : subProbe { table := 0, views := 0, sub := 2, typer := 0, rows := 0 } .nil
@@ -686,24 +664,22 @@ example : subProbe { table := 0, views := 0, sub := 1, typer := 0, rows := 0 } .
 example : subProbe { table := 0, views := 0, sub := 4, typer := 0, rows := 0 } .nil
     (.mu (.fld la .top)) (.mu (.vfld la .top)) = false := by decide +kernel
 
-/-- The left side of the function rule probe, `∀(y : {A : ⊥..{a : ⊤}}) y.A`. -/
+/-- `∀(y : {A : ⊥..{a : ⊤}}) y.A`. -/
 def probeAllL : Ty [] := .all (.typ lA .bot (.fld la .top)) (.sel (.var .here) lA)
-/-- The right side of the function rule probe, `∀(y : {A : ⊥..{a : ⊤}}) {a : ⊤}`. -/
+/-- `∀(y : {A : ⊥..{a : ⊤}}) {a : ⊤}`. -/
 def probeAllR : Ty [] := .all (.typ lA .bot (.fld la .top)) (.fld la .top)
 
-/-- The function rule.  The codomains are compared under the extended context
-against the rebuilt table, where the upper selection rule reads `y`'s
-member. -/
+/-- The function rule.  The upper selection rule reads `y`'s member in the
+rebuilt table. -/
 example : subProbe { table := 0, views := 0, sub := 3, typer := 0, rows := 0 } .nil
     probeAllL probeAllR = true := by decide +kernel
 example : subProbe { table := 0, views := 0, sub := 2, typer := 0, rows := 0 } .nil
     probeAllL probeAllR = false := by decide +kernel
 
-/-! Path checking under X3's context `x : {val a : {val b : ⊤}}, y : (x.a).type`:
-the singleton of `y` itself by `snglRefl`, the declared singleton of `y` as a
-view at the goal, `x.a : {b : ⊤}` by the search from the view `{val b : ⊤}`
-that the child step gives, and `y : {val b : ⊤}` through the alias in the
-second round. -/
+/-! Path checking under X3's context `x : {val a : {val b : ⊤}}, y : (x.a).type`.
+The checks cover the singleton of `y` by `snglRefl`, the declared singleton of
+`y` as a view at the goal, `x.a : {b : ⊤}` by the search from the view
+`{val b : ⊤}`, and `y : {val b : ⊤}` through the alias in the second round. -/
 
 example : pathProbe { table := 0, views := 0, sub := 0, typer := 0, rows := 0 } X3_CtxY
     (.var .here) (.sngl (.var .here)) = true := by decide +kernel

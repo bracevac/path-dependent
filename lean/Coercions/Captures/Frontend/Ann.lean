@@ -1,35 +1,28 @@
 import Coercions.Captures.DotMNF.Syntax
 
 /-!
-# Annotated DOT-MNF terms with capture sets
+# Annotated DOT-MNF terms
 
-`ATm` is the version's `DotMNF.Tm` (`lean/Coercions/Captures/DotMNF/Syntax.lean`)
-with the annotations a front end needs and the calculus does not keep.
+`ATm` is `DotMNF.Tm` plus the annotations a front end needs and the calculus
+does not keep.
 
-- The self shape of an object literal, and the object's own capture set when
-  the program writes one.  `HasTy.obj` types the definitions of a literal
-  against a context entry that already holds both
-  (`lean/Coercions/Captures/DotMNF/Typing.lean`), so neither can be
-  synthesized from the definitions.  A literal with no written set leaves
+- The self shape of an object literal, and its capture set when the program
+  writes one.  `HasTy.obj` takes both from the context entry, so neither can
+  be synthesized from the definitions.  A literal with no written set leaves
   the set to the typer.
 - The optional result type of a `let`.
-- The ascription `(t : T)`, a checking point for box inference.  The
-  calculus has no such term and erasure drops it.
+- The ascription `(t : T)`, a checking point for box inference.
 
-The box value `□ x` and the unboxing `C ⊸ x` are the calculus's own and are
-kept as they are.  `ATm.erase` lands in `DotMNF.Tm`.  Application,
-projection, boxing and unboxing take bare variables, so monadic normal form
-holds by construction.
+Boxing, unboxing, application and projection are as in the calculus and take
+bare variables, so monadic normal form holds by construction.  `ATm.erase`
+lands in `DotMNF.Tm` and drops the annotations.
 
-`ATm.skel` is the skeleton of a term, the part a program and its
-elaboration must agree on.  It forgets type annotations, capture sets, the
-box former, the set of an unboxing and ascriptions.  It inlines a `let`
-whose bound term has a variable as its skeleton, so that a binding inserted
-for a box, `let y' = □ y in x y'`, has the skeleton of `x y`.  `Skel` has
-decidable equality, so two skeletons are compared by `decide`.
+`ATm.skel` is the skeleton of a term, the part a program and its elaboration
+must agree on.  It forgets types, capture sets, boxes, unboxing sets and
+ascriptions, and it inlines a `let` of a variable, so `let y' = □ y in x y'`
+has the skeleton of `x y`.  `Skel` has decidable equality.
 
-Nothing of this module is part of the metatheory and no definition here lives
-in a namespace of the version.
+Nothing here is part of the metatheory.
 -/
 
 namespace CapturesFrontend
@@ -37,7 +30,7 @@ namespace CapturesFrontend
 open Captures.FCdot (Kind Sig BVar Rename Label)
 open Captures.DotMNF (Path CapAtom CaptureSet Shape Ty Tm Value Defs)
 
-/-! ## The syntax -/
+/-! ## Syntax -/
 
 mutual
 /-- Terms of DOT-MNF with capture sets and the front end's annotations. -/
@@ -75,10 +68,9 @@ end
 
 deriving instance DecidableEq for ATm, ADefs
 
-/-! ## Erasure to the frozen syntax
+/-! ## Erasure
 
-The annotations and the ascriptions are dropped and nothing else changes.
-This is the only bridge from the front end's term syntax to `DotMNF.Tm`. -/
+The only bridge from `ATm` to `DotMNF.Tm`. -/
 
 mutual
 /-- Drop the annotations of a term. -/
@@ -106,11 +98,9 @@ end
 
 /-! ## Renaming
 
-The clauses mirror `DotMNF.Tm.rename` and `DotMNF.Defs.rename`, with the
-annotations renamed at the signature they live in.  The self shape of a
-literal lives under the self binder, so it is renamed with the lifted
-renaming.  The object's own set and the type of a `let` live outside the
-binder, so they are renamed with the renaming itself. -/
+As in `DotMNF`.  The self shape of a literal lives under the self binder and
+gets the lifted renaming.  The object's own set and the type of a `let` live
+outside it. -/
 
 mutual
 /-- Rename the free variables of an annotated term. -/
@@ -175,11 +165,9 @@ theorem ADefs.erase_rename : ∀ {s1 s2 : Sig} (d : ADefs s1) (ρ : Rename s1 s2
       rw [ADefs.erase_rename d ρ, ADefs.erase_rename e ρ]; rfl
 end
 
-/-! ## The size measure
+/-! ## Size
 
-The node count of a term, which a typer recursing on the syntax can use.
-Types and capture sets do not count.  Both functions are at least one
-everywhere. -/
+The node count of a term.  Types and capture sets do not count. -/
 
 mutual
 /-- The node count of an annotated term. -/
@@ -215,9 +203,7 @@ theorem sizeADefs_pos {s : Sig} (d : ADefs s) : 0 < sizeADefs d := by
 
 /-! ## Skeletons
 
-A skeleton keeps the binding structure, the variables as de Bruijn
-positions across both kinds of binder, the labels of projections and
-definitions, and nothing else. -/
+A skeleton keeps the binding structure, de Bruijn positions and labels. -/
 
 mutual
 /-- The skeleton of a term. -/
@@ -234,9 +220,8 @@ inductive Skel : Type where
   | proj (i : Nat) (ℓ : Label)
   /-- A `let`, one binder over the body. -/
   | «let» (t u : Skel)
-/-- The skeleton of a definition list.  A capture member definition sits at
-a type label and its value is a set, so its skeleton is that of a type
-definition. -/
+/-- The skeleton of a definition list.  A capture member definition has the
+skeleton of a type definition. -/
 inductive SkelDefs : Type where
   /-- A type or capture member definition. -/
   | typ (ℓ : Label)
@@ -255,10 +240,9 @@ def bvarPos {s : Sig} {k : Kind} (x : BVar s k) : Nat :=
   | .there y => bvarPos y + 1
 termination_by structural x
 
-/-- The position after replacing the variable at position `k` by the
-outer position `j`.  Positions below `k` are bound inside and stay, `k`
-itself becomes `j` shifted past the `k` inner binders, and positions above
-`k` lose the binder that was removed. -/
+/-- The position of `i` after replacing position `k` by the outer position
+`j`.  Inner positions stay, `k` becomes `j` shifted past the `k` inner
+binders, and outer positions lose the removed binder. -/
 def Skel.instPos (k j i : Nat) : Nat :=
   if i < k then i else if i = k then j + k else i - 1
 
@@ -290,8 +274,7 @@ def Skel.mkLet (t u : Skel) : Skel :=
   | t => .let t u
 
 mutual
-/-- The skeleton of a term: annotations, capture sets, boxes, the set of an
-unboxing and ascriptions forgotten, and a `let` of a variable inlined. -/
+/-- The skeleton of a term. -/
 def ATm.skel {s : Sig} (t : ATm s) : Skel :=
   match t with
   | .path (.var x) => .var (bvarPos x)
@@ -314,11 +297,10 @@ def ADefs.skel {s : Sig} (d : ADefs s) : SkelDefs :=
 termination_by structural d
 end
 
-/-! ## No `any` in an annotation
+/-! ## No `any`
 
-`NoAnyAnn` says that no annotation, capture set or type definition of an
-annotated term holds the atom `any`.  The resolver emits only such terms
-(`resolve_noAny` of `Resolve.lean`), so the typer never sees `any`. -/
+`NoAnyAnn` says that no annotation, capture set or type definition holds the
+atom `any`.  The resolver emits only such terms (`resolve_noAny`). -/
 
 mutual
 /-- No `any` in any annotation, set or type definition of the term. -/
@@ -346,9 +328,9 @@ def ADefs.NoAnyAnn {s : Sig} (d : ADefs s) : Bool :=
 termination_by structural d
 end
 
-/-! ## Sanity
+/-! ## Examples
 
-A binding inserted for a box has the skeleton of the plain application:
+A binding inserted for a box does not change the skeleton:
 `λ(x). λ(y). let y' = □ y in x y'` against `λ(x). λ(y). x y`. -/
 
 example :
@@ -357,12 +339,12 @@ example :
     (ATm.lam (.capt [] .top) (.lam (.capt [] .top)
       (.app (.there .here) .here)) : ATm []).skel := by decide
 
-/-- A `let` of a term that is not a variable stays. -/
+/-- A `let` of a non-variable stays. -/
 example :
     (ATm.lam (.capt [] .top) (.let none (.app .here .here) (.path (.var .here))) : ATm []).skel =
       .lam (.let (.app 0 0) (.var 0)) := by decide
 
-/-- An ascription and an unboxing are forgotten. -/
+/-- Ascriptions and unboxings are forgotten. -/
 example :
     (ATm.lam (.capt [] .top) (.asc (.unbox [] .here) (.capt [] .top)) : ATm []).skel =
       .lam (.var 0) := by decide

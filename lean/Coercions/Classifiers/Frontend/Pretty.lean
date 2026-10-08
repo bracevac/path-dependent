@@ -5,90 +5,63 @@ import Coercions.Classifiers.Frontend.Pipeline
 # The pretty printer
 
 An unparser from the four syntaxes of this library back into the paper's
-notation, so that an `#eval` of a compilation or of a run is readable.  It
-prints the capture binder an arrow opens before its parameter, the class
+notation, so that an `#eval` of a compilation or of a run is readable.  The
+syntax of the version has no `Repr` instance, so this module is the only way
+to look at a `Classifiers.DotMNF.Ty` or `Tm` as text.
+
+It prints the capture binder an arrow opens before its parameter, the class
 root an object literal opens before its self, the existential answer
-`∃[c ⊑ C] T`, the written unpacking `let ⟨c, x⟩ = t in u`, and the atom
-`fresh`, the same gaps the capture layer already has, and adds what the
-classifier layer adds: a projected atom `a.only[K]` or `a.except[K]`, a
-kind-bounded capture member `{C^ : K}`, and a kind read off a classifier
-table rather than off a written name.  The frozen inductives carry no
-`Repr` instance and cannot gain one, since the version does not change, so
-this module is the only way to look at a `Classifiers.DotMNF.Ty` or a
-`Classifiers.DotMNF.Tm` as text.
+`∃[c ⊑ C] T`, the unpacking `let ⟨c, x⟩ = t in u`, the atom `fresh`, projected
+atoms `a.only[K]` and `a.except[K]`, kind-bounded capture members `{C^ : K}`,
+and kinds read off a classifier table.
 
 ## Shapes, types and answers
 
-The version splits a plain DOT type into a *shape*, the type former, and a
-*type*, a shape with a capture set, written `S ^ C`
+A *shape* is the type former.  A *type* is a shape with a capture set, `S ^ C`
 (`lean/Coercions/Classifiers/DotMNF/Syntax.lean`).  An *answer* is a type, or
-a type read under one capture binder bounded by a set of the enclosing
-scope, `∃[c ⊑ C] T`.  So the mutual block below has three functions,
-`ppShapeAt` for `Shape`, `ppTyAt` for `Ty` and `ppETyAt` for `ETy`.  The
-surface grammar reads `S ^ C` with `S` fully closed on the left, so that a
-capturing arrow or a capturing intersection under `^` always needs its own
-parentheses there.  Printing follows that rule by testing `Shape.isAtomic`
-directly, rather than by threading a precedence number through the `^`
-case, since a general precedence bound is not tight enough to force
-parentheses around an intersection in that one spot.  Elsewhere `^` closes
-at 60 and `∧` at 65, the grammar's own numbers.
+`∃[c ⊑ C] T`.  So the mutual block has `ppShapeAt`, `ppTyAt` and `ppETyAt`.
+The grammar reads `S ^ C` with `S` closed on the left, so a capturing arrow or
+intersection under `^` needs parentheses.  `ppTyAt` tests `Shape.isAtomic`
+for this, because a precedence bound alone does not force the parentheses
+around an intersection there.  Elsewhere `^` closes at 60 and `∧` at 65.
 
 ## Classifier kinds
 
-A kind of the version is a list of holed subtrees, each one a root
-classifier minus a list of excluded classifiers
-(`lean/Coercions/Classifiers/Cls/Kind.lean`).  The elaborated syntax never
-holds a classifier's surface name, only its tree position, so printing a
-kind reads a classifier table backwards: `clsNameOf?` returns the first
-name a table gives a classifier, and `ppClsName` falls back to the raw
-tree, written as a chain of child indices off `⊤`, for a classifier the
-table does not name.  A subtree with no exclusion is `only[name]`, one
-rooted at `⊤` is `except[names]`, and any other subtree is written as a
-subtraction, `name \ {names}`, a surface form the grammar does not parse
-but that is readable all the same.  A kind of several subtrees is their
-union, `∪`.  Every function here takes the classifier table as a second
-argument, beside the label table, so the elaborated printers below read
-one more argument than the capture layer's own did, threaded the same
-way throughout the mutual blocks.
+A kind is a list of holed subtrees, each a root classifier minus excluded
+classifiers (`lean/Coercions/Classifiers/Cls/Kind.lean`).  The elaborated
+syntax holds a classifier's tree position and not its surface name.  So
+`clsNameOf?` reads a classifier table backwards, and `ppClsName` falls back to
+the raw position, a chain of child indices off `⊤`, for an unnamed classifier.
+A subtree with no exclusion is `only[name]` and one rooted at `⊤` is
+`except[names]`.  Any other subtree is a subtraction, `name \ {names}`, which
+the grammar does not parse.  A kind of several subtrees is their union.  Every
+printer takes the classifier table beside the label table.
 
-## Three kinds of invisible binder
+## Invented binder names
 
-The calculus opens binders no surface phrase writes, and the elaborated
-syntax forgets whether a program named them.  An arrow opens its own
-capture binder before its domain and its parameter.  A closure's body
-opens a further *body root* before the parameter too, a binder the bare
-arrow shape's codomain never sees.  An object literal's self shape sits
-under the self alone, but its definitions sit under a *class root* and
-the self.  A `let` with an existential answer and a written unpacking
-`letex` each open a capture binder for the witness.  None of these is in
-a name environment of `Resolve.lean`'s own kind until the printer invents
-one, so this module reads one capture binder's worth of free names from
-`capBinderNames` and one term binder's worth from `binderNames`, two
-disjoint pools so a term name and a capture name are never spelled alike
-by invention alone.  Every invented name avoids every name already in
-scope, of both kinds, so a deeper binder never shadows an outer one in the
-printed text.  The arrow's own capture binder is always printed named,
-`∀[κ](x : T) U`, since the elaborated shape keeps no record of whether the
-program left it anonymous.
+The calculus opens binders that no surface phrase writes, and elaborated
+syntax does not record names.  An arrow opens its own capture binder before
+its domain and parameter.  A closure's body opens a *body root* too.  An
+object literal's definitions sit under a *class root* and the self.  A `let`
+with an existential answer and a `letex` each open a capture binder for the
+witness.  The printer invents names for them from two disjoint pools,
+`capBinderNames` and `binderNames`.  Every invented name avoids all names in
+scope, so a deeper binder never shadows an outer one.  An arrow's capture
+binder always prints named, `∀[κ](x : T) U`.
 
 ## No round trip
 
-The output is the paper's notation for a reader, not a parser input.  Four
-gaps hold, as in the capture layer: a frozen object literal has no self
-type, a let-inserted binder takes an invented short name, a label outside
-the table prints as its sort and its number, and an arrow's own capture
-binder is always printed named.  A fifth is new here: a classifier outside
-the table prints as its raw tree position, not as a name, and a kind that
-is neither a bare `only` nor a bare `except` prints as a subtraction the
-grammar has no syntax for.  The annotated syntax of `Ann.lean` carries the
-self shape, so `ppATmWith` prints an object literal's self shape in full.
+The output is for a reader and not a parser input.  A let-inserted binder gets
+an invented name.  A label outside the table prints as its sort and number.  A
+classifier outside the table prints as its raw tree position.  A kind that is
+neither a bare `only` nor a bare `except` prints as a subtraction.  The
+annotated syntax of `Ann.lean` carries the self shape, so `ppATmWith` prints an
+object literal's self shape in full.  The syntax of the version has no self
+shape for a literal, so the binder stands alone there.
 
-## Recursion
-
-Every function here is structural and says so, so the printer reduces in
-the kernel and the checks at the end are `rfl` or `decide`.  Nothing in
-this module is part of the metatheory, and no definition here lives in a
-namespace of the version.
+Every function is structural, so the printer reduces in the kernel and the
+checks at the end are `rfl` or `decide`.  Nothing here belongs to the
+metatheory.
 -/
 
 namespace ClassifiersFrontend
@@ -106,9 +79,8 @@ form. -/
 def parenIf (b : Bool) (str : String) : String :=
   if b then "(" ++ str ++ ")" else str
 
-/-- The level an operand reads at when the position needs it closed: tighter
-than every real precedence below, so a box or an unboxing always closes a
-`∧` or a `^` it wraps. -/
+/-- The level of an operand that must be closed.  It is tighter than every
+real precedence. -/
 def atomPrec : Nat := 100
 
 /-! ## Labels -/
@@ -131,11 +103,8 @@ def ppLabel (Λ : LabelTable) (l : Label) : String :=
 /-! ## Classifier names
 
 A classifier is a path of child indices from the root
-(`lean/Coercions/Classifiers/Cls/Core.lean`), and the elaborated syntax
-carries that path alone, never the name a program declared it under.
-`clsNameOf?` reads the table backwards, as `labelName?` reads a label
-table backwards, and `ppClassifierRaw` is the fallback, a classifier with
-no name of its own. -/
+(`lean/Coercions/Classifiers/Cls/Core.lean`).  The elaborated syntax carries
+that path and not the declared name. -/
 
 /-- The first name the table gives this classifier. -/
 def clsNameOf? (κt : ClsTable) (c : Cls.Classifier) : Option String :=
@@ -144,8 +113,7 @@ def clsNameOf? (κt : ClsTable) (c : Cls.Classifier) : Option String :=
   | (x, c') :: κt' => if c' = c then some x else clsNameOf? κt' c
 termination_by structural κt
 
-/-- A classifier no table names, as the chain of child indices off `⊤`
-that it is. -/
+/-- A classifier no table names, as its chain of child indices off `⊤`. -/
 def ppClassifierRaw (c : Cls.Classifier) : String :=
   match c with
   | .top => "⊤"
@@ -157,9 +125,9 @@ tree position otherwise. -/
 def ppClsName (κt : ClsTable) (c : Cls.Classifier) : String :=
   (clsNameOf? κt c).getD (ppClassifierRaw c)
 
-/-- One holed subtree of a kind: a root with nothing excluded is
-`only[name]`, the whole tree minus a list of names is `except[names]`, and
-any other subtree is a subtraction the grammar does not parse. -/
+/-- One holed subtree of a kind.  A root with nothing excluded is `only[name]`,
+the whole tree minus names is `except[names]`, and any other subtree is a
+subtraction. -/
 def ppSubtreeWith (κt : ClsTable) (t : Cls.Subtree) : String :=
   match t.excls with
   | [] => "only[" ++ ppClsName κt t.root ++ "]"
@@ -178,16 +146,14 @@ def ppClsKindWith (κt : ClsTable) (K : Cls.Kind) : String :=
   | t :: K' => ppSubtreeWith κt t ++ " ∪ " ++ ppClsKindWith κt K'
 termination_by structural K
 
-/-- A kind in the paper's notation, with no classifier table: every
-classifier prints at its raw tree position. -/
+/-- A kind in the paper's notation, with every classifier at its raw tree
+position. -/
 def ppClsKind (K : Cls.Kind) : String := ppClsKindWith [] K
 
 /-! ## Names for binders
 
-Two disjoint pools, one per kind, so a term binder and a capture binder the
-printer invents are never spelled alike.  Each falls back to a name built
-from the count of names already used, which can never collide with a short
-name of its own pool. -/
+Two disjoint pools, one per kind.  A pool that runs out falls back to a name
+built from the count of names in use. -/
 
 /-- The short names a term binder is given, in the order they are tried. -/
 def binderNames : List String := ["x", "y", "z", "w", "u", "v", "p", "q"]
@@ -217,9 +183,7 @@ def freshCapName (used : List String) : String :=
 /-- Every name in scope, of either kind, innermost first. -/
 def NameEnv.allNames {s : Sig} (nv : NameEnv s) : List String := nv.names ++ nv.capNames
 
-/-- The name of a bound term variable.  Total, because the environment holds
-one name per term binder of the signature.  A capture binder of `nv` is
-skipped on the way. -/
+/-- The name of a bound term variable.  Capture binders are skipped. -/
 def NameEnv.nameAt {s : Sig} (nv : NameEnv s) (i : BVar s .var) : String :=
   match nv, i with
   | .cons _ y, .here => y
@@ -227,8 +191,7 @@ def NameEnv.nameAt {s : Sig} (nv : NameEnv s) (i : BVar s .var) : String :=
   | .consC nv' _, .there i' => NameEnv.nameAt nv' i'
 termination_by structural nv
 
-/-- The name of a bound capture variable, the twin of `nameAt` at the other
-kind. -/
+/-- The name of a bound capture variable. -/
 def NameEnv.capNameAt {s : Sig} (nv : NameEnv s) (i : BVar s .cap) : String :=
   match nv, i with
   | .consC _ y, .here => y
@@ -236,10 +199,8 @@ def NameEnv.capNameAt {s : Sig} (nv : NameEnv s) (i : BVar s .cap) : String :=
   | .consC nv' _, .there i' => NameEnv.capNameAt nv' i'
 termination_by structural nv
 
-/-- Names for a signature that never had any, one short name per binder,
-outermost `x0`/`k0`, each kind counted on its own.  Used for the store of a
-run, which starts at a platform of capture binders and only ever grows by
-term binders. -/
+/-- Names for a signature without any.  A binder is named `x` or `k` followed
+by the number of binders outside it. -/
 def defaultNames (s : Sig) : NameEnv s :=
   match s with
   | [] => .nil
@@ -247,9 +208,8 @@ def defaultNames (s : Sig) : NameEnv s :=
   | .cap :: s' => .consC (defaultNames s') ("k" ++ toString s'.length)
 termination_by structural s
 
-/-- Names for a signature whose outermost binders are named by `pre`,
-outermost first, and whose other binders take invented names.  This reads
-a run over a named platform, `πc`'s `k1, k2`. -/
+/-- Names for a signature whose outermost binders are named by `pre`.  The
+others take invented names.  This reads a run over a named platform. -/
 def namesOver (pre : List String) (s : Sig) : NameEnv s :=
   match s with
   | [] => .nil
@@ -259,10 +219,7 @@ termination_by structural s
 
 /-! ## Capture sets -/
 
-/-- A capture atom, through a name environment of either kind and a
-classifier table.  `any` and `fresh` are inert placeholders, read the same
-way regardless of position.  A projected atom prints its base atom, then
-its kind through the table. -/
+/-- A capture atom.  A projected atom prints its base atom, then its kind. -/
 def ppCapAtomWith {s : Sig} (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (a : CapAtom s) :
     String :=
   match a with
@@ -282,14 +239,12 @@ def ppCapEntries {s : Sig} (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (
   | a :: C' => ppCapAtomWith Λ κt nv a :: ppCapEntries Λ κt nv C'
 termination_by structural C
 
-/-- A capture set in the paper's notation, with a label table and a
-classifier table. -/
+/-- A capture set in the paper's notation. -/
 def ppCapWith {s : Sig} (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (C : CaptureSet s) :
     String :=
   "{" ++ String.intercalate ", " (ppCapEntries Λ κt nv C) ++ "}"
 
-/-- A capture set in the paper's notation, with no label table and no
-classifier table. -/
+/-- A capture set in the paper's notation, with no tables. -/
 def ppCap {s : Sig} (nv : NameEnv s) (C : CaptureSet s) : String := ppCapWith [] [] nv C
 
 /-! ## Shapes, types and answers -/
@@ -353,43 +308,34 @@ def ppETyAt (Λ : LabelTable) (κt : ClsTable) {s : Sig} (p : Nat) (nv : NameEnv
 termination_by structural E
 end
 
-/-- A type in the paper's notation, with a label table and a classifier
-table. -/
+/-- A type in the paper's notation. -/
 def ppTyWith (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (T : Ty s) : String :=
   ppTyAt Λ κt 0 nv T
 
-/-- A type in the paper's notation, with no label table and no classifier
-table. -/
+/-- A type in the paper's notation, with no tables. -/
 def ppTy (nv : NameEnv s) (T : Ty s) : String := ppTyWith [] [] nv T
 
-/-- A shape in the paper's notation, with a label table and a classifier
-table. -/
+/-- A shape in the paper's notation. -/
 def ppShapeWith (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (S : Shape s) : String :=
   ppShapeAt Λ κt 0 nv S
 
-/-- A shape in the paper's notation, with no label table and no classifier
-table. -/
+/-- A shape in the paper's notation, with no tables. -/
 def ppShape (nv : NameEnv s) (S : Shape s) : String := ppShapeWith [] [] nv S
 
-/-- An answer in the paper's notation, with a label table and a classifier
-table. -/
+/-- An answer in the paper's notation. -/
 def ppETyWith (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (E : ETy s) : String :=
   ppETyAt Λ κt 0 nv E
 
-/-- An answer in the paper's notation, with no label table and no classifier
-table. -/
+/-- An answer in the paper's notation, with no tables. -/
 def ppETy (nv : NameEnv s) (E : ETy s) : String := ppETyWith [] [] nv E
 
-/-! ## Terms of the frozen syntax
+/-! ## Terms of the version's syntax
 
-Application, projection and unboxing take variables in monadic normal form,
-so the only forms that can need parentheses are the lambda and the `let`.
-A closure's body sits under the body root and the arrow's own capture
-binder as well as the parameter, and an object's definitions sit under the
-class root as well as the self.  Both invisible binders get an invented
-name so that a use set reaching one of them still prints.  Classifier kinds
-appear only through a `Ty` or a `Shape` nested here, so these functions
-carry the classifier table along with no new case of their own. -/
+Application, projection and unboxing take variables, so only the lambda and
+the `let` can need parentheses.  A closure's body sits under the body root and
+the arrow's capture binder as well as the parameter.  An object's definitions
+sit under the class root as well as the self.  These invisible binders get
+invented names, so a use set that reaches one still prints. -/
 
 mutual
 /-- A term in the paper's notation, at the precedence of its position. -/
@@ -413,8 +359,8 @@ def ppTmAt (Λ : LabelTable) (κt : ClsTable) {s : Sig} (p : Nat) (nv : NameEnv 
         ("let ⟨" ++ κ ++ ", " ++ x ++ "⟩ = " ++ ppTmAt Λ κt 1 nv t' ++ " in "
           ++ ppTmAt Λ κt 0 ((NameEnv.consC nv κ).cons x) u)
 termination_by structural t
-/-- A value in the paper's notation.  An object literal of the frozen syntax
-has no self type, so the binder stands alone. -/
+/-- A value in the paper's notation.  An object literal has no self type, so
+the binder stands alone. -/
 def ppValueAt (Λ : LabelTable) (κt : ClsTable) {s : Sig} (p : Nat) (nv : NameEnv s) (v : Value s) :
     String :=
   match v with
@@ -433,8 +379,7 @@ def ppValueAt (Λ : LabelTable) (κt : ClsTable) {s : Sig} (p : Nat) (nv : NameE
           ++ ppTmAt Λ κt 0 (NameEnv.cons nv2 y) t)
   | .box x => "□ " ++ nv.nameAt x
 termination_by structural v
-/-- A definition list in the paper's notation.  The type member and the
-capture member are both written with their own keyword. -/
+/-- A definition list in the paper's notation. -/
 def ppDefsWith (Λ : LabelTable) (κt : ClsTable) {s : Sig} (nv : NameEnv s) (d : Defs s) : String :=
   match d with
   | .typ A S => "{type " ++ ppLabel Λ A ++ " = " ++ ppShapeWith Λ κt nv S ++ "}"
@@ -444,37 +389,28 @@ def ppDefsWith (Λ : LabelTable) (κt : ClsTable) {s : Sig} (nv : NameEnv s) (d 
 termination_by structural d
 end
 
-/-- A term in the paper's notation, with a label table and a classifier
-table. -/
+/-- A term in the paper's notation. -/
 def ppTmWith (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (t : Tm s) : String :=
   ppTmAt Λ κt 0 nv t
 
-/-- A value in the paper's notation, with a label table and a classifier
-table. -/
+/-- A value in the paper's notation. -/
 def ppValueWith (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (v : Value s) : String :=
   ppValueAt Λ κt 0 nv v
 
-/-- A term in the paper's notation, with no label table and no classifier
-table. -/
+/-- A term in the paper's notation, with no tables. -/
 def ppTm (nv : NameEnv s) (t : Tm s) : String := ppTmWith [] [] nv t
 
-/-- A value in the paper's notation, with no label table and no classifier
-table. -/
+/-- A value in the paper's notation, with no tables. -/
 def ppValue (nv : NameEnv s) (v : Value s) : String := ppValueWith [] [] nv v
 
-/-- A definition list in the paper's notation, with no label table and no
-classifier table. -/
+/-- A definition list in the paper's notation, with no tables. -/
 def ppDefs (nv : NameEnv s) (d : Defs s) : String := ppDefsWith [] [] nv d
 
 /-! ## Annotated terms
 
-The syntax of `Ann.lean` is the one a compilation returns, and it is the
-one that prints in full: the self shape of a literal, the result answer of
-a `let`, and the ascription.  An unboxing the typer has not yet filled
-prints with the empty set.  `Ann.lean` adds no term former of its own for
-the classifier layer, so these functions carry the classifier table along
-for the types and shapes nested inside, exactly as the plain term printers
-above do. -/
+The syntax of `Ann.lean` is what a compilation returns.  It prints in full,
+with the self shape of a literal, the result answer of a `let` and the
+ascription.  An unboxing without a set prints with the empty set. -/
 
 mutual
 /-- An annotated term in the paper's notation, at the precedence of its
@@ -529,27 +465,20 @@ def ppADefsWith (Λ : LabelTable) (κt : ClsTable) {s : Sig} (nv : NameEnv s) (d
 termination_by structural d
 end
 
-/-- An annotated term in the paper's notation, with a label table and a
-classifier table. -/
+/-- An annotated term in the paper's notation. -/
 def ppATmWith (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (t : ATm s) : String :=
   ppATmAt Λ κt 0 nv t
 
-/-- An annotated term in the paper's notation, with no label table and no
-classifier table. -/
+/-- An annotated term in the paper's notation, with no tables. -/
 def ppATm (nv : NameEnv s) (t : ATm s) : String := ppATmWith [] [] nv t
 
-/-- An annotated definition list in the paper's notation, with no label
-table and no classifier table. -/
+/-- An annotated definition list in the paper's notation, with no tables. -/
 def ppADefs (nv : NameEnv s) (d : ADefs s) : String := ppADefsWith [] [] nv d
 
 /-! ## Surface phrases
 
-The surface syntax carries its own names and its own labels, so these need
-neither a table nor an environment of either kind.  A classifier kind
-names its classifiers directly, by the surface string the program wrote,
-so printing one needs no table either.  An arrow's own capture binder,
-named or not, and an unpacking's two binders print with the names the
-program itself wrote. -/
+The surface syntax carries its own names, so these printers need no table and
+no name environment. -/
 
 /-- A classifier kind, at the precedence of its position: `∪` at 65, `∩` at
 70, as the grammar reads them. -/
@@ -585,8 +514,7 @@ termination_by structural c
 /-- A surface capture set in the paper's notation. -/
 def ppSCap (c : SCap) : String := "{" ++ String.intercalate ", " (ppSCapEntries c) ++ "}"
 
-/-- A surface shape that needs no parentheses as the left side of `^`:
-`Shape.isAtomic`'s syntactic twin, read before resolution. -/
+/-- The surface twin of `Shape.isAtomic`. -/
 def sShapeIsAtomic : SShape → Bool
   | .all _ _ _ _ => false
   | .and _ _ => false
@@ -614,9 +542,8 @@ def ppSShapeAt (p : Nat) (S : SShape) : String :=
   | .and S T => parenIf (p > 65) (ppSShapeAt 66 S ++ " ∧ " ++ ppSShapeAt 65 T)
   | .box T => "□ " ++ ppSTyAt atomPrec T
 termination_by structural S
-/-- A surface type, at the precedence of its position.  `^` requires its
-shape fully closed on the left, as the grammar reads it, so `sShapeIsAtomic`
-decides the parentheses directly. -/
+/-- A surface type, at the precedence of its position.  `sShapeIsAtomic`
+decides the parentheses left of `^`. -/
 def ppSTyAt (p : Nat) (T : SType) : String :=
   match T with
   | .capt S [] => ppSShapeAt p S
@@ -689,15 +616,12 @@ def ppSDefs (d : SDefs) : String := ppSDefsAt d
 
 /-! ## States of the source machine
 
-The store is printed outermost binder first, the continuation as its frames
-with a hole, and the term last.  A store slot at a capture binder carries no
-value, whether or not the binder declares a classifier, and an unpacking
-frame opens two binders over its body, a capture binder for the witness and
-a term binder for the payload. -/
+The store is printed outermost binder first, then the continuation as frames
+with a hole, then the term.  A store slot at a capture binder holds no value.
+An unpacking frame opens a capture binder and a term binder over its body. -/
 
 /-- The store as one entry per binder, outermost first.  A capture slot has
-no value to show, whichever of `Platform.cons` and `Platform.consCls` filled
-it: both leave the same data-free slot. -/
+no value to show. -/
 def storeEntries (Λ : LabelTable) (κt : ClsTable) {s : Sig} (nv : NameEnv s) (σ : Store s) :
     List String :=
   match nv, σ with
@@ -713,9 +637,7 @@ def ppStoreWith (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (σ : Store 
   | [] => "·"
   | es => String.intercalate ", " es
 
-/-- The frames of the continuation, outermost first, each with its hole.
-An unpacking frame opens a capture binder for the witness and a term binder
-for the payload, both read only in its body. -/
+/-- The frames of the continuation, outermost first, each with its hole. -/
 def contFrames (Λ : LabelTable) (κt : ClsTable) {s : Sig} (nv : NameEnv s) (K : Cont s) :
     List String :=
   match K with
@@ -743,21 +665,19 @@ def ppStateWith (Λ : LabelTable) (κt : ClsTable) {s : Sig} (nv : NameEnv s) (s
   "⟨" ++ ppStoreWith Λ κt nv st.σ ++ " | " ++ ppContWith Λ κt nv st.K ++ " | "
     ++ ppTmWith Λ κt nv st.t ++ "⟩"
 
-/-- The answer of `compileAndRun`, with the names a fresh platform and its
-allocations would be given, in full. -/
+/-- The answer of `compileAndRun`, in full, with default names. -/
 def ppRun (Λ : LabelTable) (κt : ClsTable) : Verdict ((s : Sig) × State s) → String
   | .ok ⟨s, st⟩ => ppStateWith Λ κt (defaultNames s) st
   | .rejected r => "rejected: " ++ Reason.name r
   | .unknown => "did not compile"
 
-/-- The term of the answer of `compileAndRun`, which is what the run tests
-read. -/
+/-- The term of the answer of `compileAndRun`. -/
 def ppRunTm (Λ : LabelTable) (κt : ClsTable) : Verdict ((s : Sig) × State s) → String
   | .ok ⟨s, st⟩ => ppTmWith Λ κt (defaultNames s) st.t
   | .rejected r => "rejected: " ++ Reason.name r
   | .unknown => "did not compile"
 
-/-- The answer of `compileAndRun` over a platform named by `pre`, in full. -/
+/-- The answer of `compileAndRun` over a platform named by `pre`. -/
 def ppRunOver (Λ : LabelTable) (κt : ClsTable) (pre : List String) :
     Verdict ((s : Sig) × State s) → String
   | .ok ⟨s, st⟩ => ppStateWith Λ κt (namesOver pre s) st
@@ -774,18 +694,14 @@ def ppRunTmOver (Λ : LabelTable) (κt : ClsTable) (pre : List String) :
 
 /-! ## Checks
 
-Everything above is structural, so the printer reduces in the kernel and
-the checks are `rfl`.  The small terms are built by hand to exercise one
-construct at a time.  The larger ones are the surface programs and the
-version's own examples `Resolve.lean` and `Typer.lean` already build, so a
-failure there is a failure of the printer and not of resolution or
-typing. -/
+Small terms built by hand exercise one construct at a time.  The larger ones
+are the surface programs and examples of `Resolve.lean` and `Typer.lean`. -/
 
 section Checks
 
 open Classifiers.DotMNF.Examples (E1Filt E3AbsTy E3k1 E3k2)
 
-/-- `clsNameOf?` reads the table backwards, as `labelName?` does. -/
+/-- `clsNameOf?` reads the table backwards. -/
 example : clsNameOf? exCls Cls.Control = some "Control" := rfl
 
 /-- A classifier no table names prints as its raw tree position. -/
@@ -803,25 +719,23 @@ example :
     ppClsKindWith exCls (Cls.only Cls.IO ++ Cls.only Cls.Control) = "only[IO] ∪ only[Control]" :=
   rfl
 
-/-- A kind that is neither a bare `only` nor a bare `except`, here the
-intersection of one with the other's complement, prints as a subtraction. -/
+/-- A kind that is neither a bare `only` nor a bare `except` prints as a
+subtraction. -/
 example :
     ppClsKindWith exCls [⟨Cls.ThreadLocal, [Cls.Control]⟩] = "ThreadLocal \\ {Control}" := rfl
 
-/-- A capture set holding all three kinds of atom that are not a plain
-selection, now including a projected one. -/
+/-- A capture set with a capture variable, `any` and `fresh`. -/
 example :
     ppCapWith Λc [] (NameEnv.consC .nil "k0")
       [CapAtom.cvar .here, CapAtom.any, CapAtom.fresh]
       = "{k0, any, fresh}" := rfl
 
-/-- **CE1's declared use set, `E1Filt`**, prints as the platform's two
+/-- **CE1's declared use set, `E1Filt`**, prints as the two platform
 capabilities, each projected at `only[Control]`. -/
 example : ppCapWith Λk exCls E1Names E1Filt = "{ctl.only[Control], io.only[Control]}" := rfl
 
-/-- **The kind-bounded member of `E3AbsTy`**, a classifier example's
-abstract declaration shape: a capture member bounded by a kind, beside a
-field reading it through the self. -/
+/-- **The kind-bounded member of `E3AbsTy`**: a capture member bounded by a
+kind, beside a field that reads it through the self. -/
 example :
     ppTyWith Λk exCls E3Names (E3AbsTy E3k1 E3k2) =
       "μ(x. {C^ : only[Control]} ∧ {run : (∀[k](y : ⊤) ⊤) ^ {x.C}}) ^ {k1, k2}" := rfl

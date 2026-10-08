@@ -3,54 +3,47 @@ import Coercions.Captures.Frontend.Surface
 import Coercions.Captures.DotMNF.Examples
 
 /-!
-# Views, the declaration table, and the subtyping and subcapturing search
+# Views, declarations and the search
 
-The typer needs two things this module provides.  A *view* of a context
-variable is a type the variable has, carried with its use set and its
-derivation, so the typer may read a field or a member off a variable whose
-declared type does not display it.  A *declaration* is a type member or a
-capture member a context variable has, again with its derivation.  The
-*declaration table* of a context is the family of middles the search may
-try for `SubShape.trans` and `Subcap.trans`, whose middles are otherwise
-undetermined (`lean/Coercions/Captures/DotMNF/Typing.lean:96,125`).
+The typer needs two things from this module.
 
-Everything here returns the derivation, so there is no soundness theorem.
-The result type is the statement.  Nothing here is complete, and no
-completeness theorem is claimed.
+A *view* of a context variable is a type the variable has, with its use set
+and derivation.  It lets the typer read a field or a member off a variable
+whose declared type does not display it.
 
-## The two layers
+A *declaration* is a type member or a capture member of a context variable,
+with its derivation.  The *declaration table* of a context is the family of
+middles the search tries for `SubShape.trans` and `Subcap.trans`, whose
+middles the rules leave undetermined (`DotMNF/Typing.lean`).
 
-A type of the version is a shape with a capture set, `S ^ C`, and `Sub` has
-the one rule `capt`, a `SubShape` on the shapes beside a `Subcap` on the
-sets (`Typing.lean:156-158`).  So the search is two functions, `subShape?`
-and `subcap?`, in one block, and `sub?` pairs them.  A shape rule that
-compares types (a field, a box, the domain and codomain of a function)
-pairs the two at the same fuel inline, so a type layer costs no fuel of its
-own.
+Everything here returns the derivation, so the result type is the soundness
+statement.  Nothing here is complete.
 
-## What is fuel bounded, and why
+## Two layers
 
-Five counters live in `Budget`.  `decls` counts rounds of the table,
-`views` counts rounds of the view closure, `sub` is the fuel of the search,
-`typer` is the fuel of the typer, and `obj` bounds the passes of the object
-rule.  An unbounded closure grows too fast to compute, so duplicates are
-dropped after every round, the table is computed once per context and
-passed as a parameter, and the closure and the table have small round
-counters of their own, separate from the fuel of the search.
+A type is a shape with a capture set, and `Sub` has the one rule `capt`: a
+`SubShape` on the shapes and a `Subcap` on the sets.  So the search is two
+functions in one block, `subShape?` and `subcap?`, and `sub?` pairs them.
+Shape rules that compare types pair the two at the same fuel inline.
 
-## The order of definition
+## Bounds
 
-The view closure calls the search in its detour step, and the `∀` rule of
-the search builds a table under an extended context.  Taken literally that
-is a cycle.  It is cut by making the table a parameter of the search and by
-writing the view steps once, in `viewStepOf`, against an abstract search.
-The table the `∀` rule builds is computed with `noSub`, the search that
-finds nothing, so the block of the search mentions no search but its own.
+`Budget` has five counters: `decls` (rounds of the table), `views` (rounds of
+the view closure), `sub` (fuel of the search), `typer` (fuel of the typer) and
+`obj` (passes of the object rule).  Closures grow too fast to be unbounded, so
+duplicates are dropped after every round and the table is computed once per
+context and passed as a parameter.
 
-## The kernel
+## Order of definition
 
-Every function here is structural, on a fuel or on a list, so the kernel
-reduces the search, and the probes at the end are `decide +kernel`.
+The view closure calls the search in its detour step, and the `∀` rule of the
+search builds a table under an extended context.  That would be a cycle.  The
+table is a parameter of the search, and the view steps are written once, in
+`viewStepOf`, against an abstract search.  The `∀` rule builds its table with
+`noSub`, the search that finds nothing.
+
+Every function is structural, on a fuel or a list, so the kernel reduces the
+search and the examples at the end are `decide +kernel`.
 -/
 
 namespace CapturesFrontend
@@ -71,8 +64,8 @@ structure View {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
   deriv : HasTy uses Γ (.path (.var x)) ty
 
 /-- A pure binder at its declared type, at the empty use set.  `Var`
-concludes at `{x}` for both sets, and `sc-var` takes both down to the
-declared set, which is empty (`Typing.lean:104-105,163-164`). -/
+concludes at `{x}` for both sets, and `sc-var` takes both down to the declared
+set, which is empty. -/
 def pureVar {s : Sig} (Γ : Ctx s) (x : BVar s .var) (h : (Γ.lookup x).captureSet = []) :
     HasTy [] Γ (.path (.var x)) (Γ.lookup x) := by
   have hv : Subcap Γ [CapAtom.var x] ([] : CaptureSet s) := by
@@ -87,17 +80,15 @@ def pureVar {s : Sig} (Γ : Ctx s) (x : BVar s .var) (h : (Γ.lookup x).captureS
   rw [hT] at e
   exact e
 
-/-- The first view of a variable, at the least use set and the least
-capture set the rules give it.  A binder declared at the empty set is used
+/-- The first view of a variable.  A binder declared at the empty set is used
 at the empty set and keeps its declared type.  Any other binder is used at
 `{x}` and has its declared shape at `{x}`, by `Var`. -/
 def varView {s : Sig} (Γ : Ctx s) (x : BVar s .var) : View Γ x :=
   if h : (Γ.lookup x).captureSet = [] then ⟨[], Γ.lookup x, pureVar Γ x h⟩
   else ⟨[.var x], (Γ.lookup x).shape ^ [.var x], .var⟩
 
-/-- A type member a context variable has, with the derivation.  The four
-fields `vr`, `lbl`, `lo`, `hi` are the key by which the table is
-deduplicated. -/
+/-- A type member of a context variable, with the derivation.  The fields
+`vr`, `lbl`, `lo`, `hi` are the key for deduplication. -/
 structure Decl {s : Sig} (Γ : Ctx s) where
   /-- The variable the member is read off. -/
   vr : BVar s .var
@@ -114,9 +105,8 @@ structure Decl {s : Sig} (Γ : Ctx s) where
   /-- The derivation. -/
   deriv : HasTy uses Γ (.path (.var vr)) ((Shape.typ lbl lo hi) ^ cs)
 
-/-- A capture member a context variable has, with the derivation.  The four
-fields `vr`, `lbl`, `lo`, `hi` are the key by which the table is
-deduplicated. -/
+/-- A capture member of a context variable, with the derivation.  The fields
+`vr`, `lbl`, `lo`, `hi` are the key for deduplication. -/
 structure CapDecl {s : Sig} (Γ : Ctx s) where
   /-- The variable the member is read off. -/
   vr : BVar s .var
@@ -133,8 +123,7 @@ structure CapDecl {s : Sig} (Γ : Ctx s) where
   /-- The derivation. -/
   deriv : HasTy uses Γ (.path (.var vr)) ((Shape.cap lbl lo hi) ^ cs)
 
-/-- The declaration table of a context: its type members and its capture
-members. -/
+/-- The type members and capture members of a context. -/
 structure DeclTable {s : Sig} (Γ : Ctx s) where
   /-- The type members. -/
   typs : List (Decl Γ)
@@ -170,8 +159,7 @@ def capLower {s : Sig} {Γ : Ctx s} (d : CapDecl Γ) : Subcap Γ d.lo [capSel d]
 def capUpper {s : Sig} {Γ : Ctx s} (d : CapDecl Γ) : Subcap Γ [capSel d] d.hi :=
   Subcap.selUpper d.deriv
 
-/-- The five counters.  The defaults are a starting point, not a
-measurement.  The probes below give the budget at which each was found. -/
+/-- The five counters. -/
 structure Budget where
   /-- Rounds of the declaration table. -/
   decls : Nat := 3
@@ -187,13 +175,10 @@ deriving Repr, Inhabited
 
 /-! ## Deduplication
 
-Both closures grow only by rounds, and both drop duplicates after each
-round: views by their type, declarations by their four key fields.  The
-first entry of each key is the one kept.  One procedure serves all three
-lists, generic in the key.  It is structural on the list, with the keys seen
-so far as an accumulator. -/
+Both closures drop duplicates after each round: views by their type,
+declarations by their key fields.  The first entry of each key is kept. -/
 
-/-- Membership of a key in a list of keys, as a decision. -/
+/-- Membership of a key in a list of keys. -/
 def keyMem? {κ : Type} [DecidableEq κ] (k : κ) (ks : List κ) : Bool :=
   match ks with
   | [] => false
@@ -264,30 +249,23 @@ def capDeclKey {s : Sig} {Γ : Ctx s} (d : CapDecl Γ) :
     BVar s .var × Label × CaptureSet s × CaptureSet s :=
   (d.vr, d.lbl, d.lo, d.hi)
 
-/-! ## The view closure
+/-! ## View closure
 
-A step of the closure takes one view of a variable to the views reachable
-from it in one rule.  `open` and the two `and` steps read the rules off the
-derivation alone.  The `upper` step and the `detour` step consult the
-table, and the detour step consults a search as well, which is why the step
-is written against an abstract search.  Every step keeps the use set and
-the capture set of the view it starts from: they change only the shape. -/
+A step takes one view of a variable to the views reachable from it by one
+rule.  Every step keeps the use set and the capture set and changes only the
+shape. -/
 
 /-- One step of the view closure, uniform in the variable. -/
 def ViewStep {s : Sig} (Γ : Ctx s) : Type :=
   (x : BVar s .var) → View Γ x → List (View Γ x)
 
-/-- A search on shapes over a fixed context, as the detour step consumes
-it. -/
+/-- A search on shapes over a fixed context. -/
 def SubSearch {s : Sig} (Γ : Ctx s) : Type := (S T : Shape s) → Option (SubShape Γ S T)
 
-/-- The search that finds nothing.  It is what the `∀` rule passes when it
-builds a table under an extended context, where calling the real search
-would be circular. -/
+/-- The search that finds nothing, for tables built inside the search. -/
 def noSub {s : Sig} {Γ : Ctx s} : SubSearch Γ := fun _ _ => none
 
-/-- A shape subtyping lifted to the type it starts from, the capture set
-kept. -/
+/-- A shape subtyping lifted to types, keeping the capture set. -/
 def subOfShape {s : Sig} {Γ : Ctx s} : (T : Ty s) → {S : Shape s} →
     SubShape Γ T.shape S → Sub Γ T (S ^ T.captureSet)
   | .capt _ _, _, e => .capt e .refl
@@ -296,14 +274,12 @@ def subOfShape {s : Sig} {Γ : Ctx s} : (T : Ty s) → {S : Shape s} →
 
 | step | condition on `v.ty` | new view | rule |
 |---|---|---|---|
-| open | `(μ S) ^ C` and `Shape.Decl S` | `S.substVar x ^ C` | `HasTy.recE` (`Typing.lean:210-213`) |
+| open | `(μ S) ^ C` and `Shape.Decl S` | `S.substVar x ^ C` | `HasTy.recE` |
 | left | `(S ∧ T) ^ C` | `S ^ C` | `HasTy.sub` with `SubShape.and1` |
 | right | `(S ∧ T) ^ C` | `T ^ C` | `HasTy.sub` with `SubShape.and2` |
 | upper | `y.A ^ C` at a type member `d` | `d.hi ^ C` | `HasTy.sub` with `SubShape.selUpper` |
 | detour | the search takes the shape to `d.lo` | `d.hi ^ C` | `HasTy.sub` with `SubShape.trans` |
-
-The detour step's derivation carries the evidence `e` of its own side
-condition. -/
+-/
 def viewStepOf {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (D : DeclTable Γ) : ViewStep Γ :=
   fun x v =>
     (match hv : v.ty with
@@ -327,13 +303,12 @@ def viewStepOf {s : Sig} {Γ : Ctx s} (sub : SubSearch Γ) (D : DeclTable Γ) : 
               (subOfShape v.ty (SubShape.trans e (SubShape.trans (declLower d) (declUpper d))))
               .refl⟩))
 
-/-- One round of the closure: every view of the list, plus one step from
-each, with the duplicates by type dropped. -/
+/-- Every view of the list plus one step from each, deduplicated by type. -/
 def viewsRoundOf {s : Sig} {Γ : Ctx s} (st : ViewStep Γ) (x : BVar s .var)
     (vs : List (View Γ x)) : List (View Γ x) :=
   dedupBy View.ty (vs ++ vs.flatMap (st x))
 
-/-- The closure of the first view of a variable under `m` rounds. -/
+/-- The closure of the first view of a variable after `m` rounds. -/
 def viewsOf {s : Sig} {Γ : Ctx s} (st : ViewStep Γ) (m : Nat) (x : BVar s .var) :
     List (View Γ x) :=
   match m with
@@ -341,10 +316,9 @@ def viewsOf {s : Sig} {Γ : Ctx s} (st : ViewStep Γ) (m : Nat) (x : BVar s .var
   | m + 1 => viewsRoundOf st x (viewsOf st m x)
 termination_by structural m
 
-/-! ## The declaration table -/
+/-! ## Declaration table -/
 
-/-- The members a list of views of one variable displays: its `typ` views
-as type members, its `cap` views as capture members. -/
+/-- The members displayed by views of one variable. -/
 def tableOfViews {s : Sig} {Γ : Ctx s} {y : BVar s .var} (vs : List (View Γ y)) :
     DeclTable Γ :=
   match vs with
@@ -358,8 +332,7 @@ def tableOfViews {s : Sig} {Γ : Ctx s} {y : BVar s .var} (vs : List (View Γ y)
         (tableOfViews vs)
 termination_by structural vs
 
-/-- The members the views of the listed variables display, each variable's
-closure computed once. -/
+/-- The members displayed by the views of the listed variables. -/
 def tableOfVars {s : Sig} {Γ : Ctx s} (st : ViewStep Γ) (m : Nat) (ys : List (BVar s .var)) :
     DeclTable Γ :=
   match ys with
@@ -367,16 +340,14 @@ def tableOfVars {s : Sig} {Γ : Ctx s} (st : ViewStep Γ) (m : Nat) (ys : List (
   | y :: ys => DeclTable.append (tableOfViews (viewsOf st m y)) (tableOfVars st m ys)
 termination_by structural ys
 
-/-- One round of the table: every member already in it, plus the members
-the views of every context variable display, computed against it and
-deduplicated by key. -/
+/-- Every member of the table plus the members the views of every context
+variable display against it, deduplicated by key. -/
 def declsRoundOf {s : Sig} {Γ : Ctx s} (stf : DeclTable Γ → ViewStep Γ) (m : Nat)
     (D : DeclTable Γ) : DeclTable Γ :=
   let N := tableOfVars (stf D) m (ctxVars Γ)
   ⟨dedupBy declKey (D.typs ++ N.typs), dedupBy capDeclKey (D.caps ++ N.caps)⟩
 
-/-- The table after `k` rounds, each round running `m` rounds of the
-closure. -/
+/-- The table after `k` rounds, each with `m` rounds of the view closure. -/
 def declsOf {s : Sig} {Γ : Ctx s} (stf : DeclTable Γ → ViewStep Γ) (m : Nat) (k : Nat) :
     DeclTable Γ :=
   match k with
@@ -384,24 +355,20 @@ def declsOf {s : Sig} {Γ : Ctx s} (stf : DeclTable Γ → ViewStep Γ) (m : Nat
   | k + 1 => declsRoundOf stf m (declsOf stf m k)
 termination_by structural k
 
-/-- The detour free table, the one the `∀` rule of the search builds under
-the context it extends.  Building the full table there would make the
-search mutual with the view closure. -/
+/-- The table without detour steps, which the `∀` rule builds under its
+extended context. -/
 def baseDecls {s : Sig} (b : Budget) (Γ : Ctx s) : DeclTable Γ :=
   declsOf (fun D => viewStepOf noSub D) b.views b.decls
 
-/-! ## The search
+/-! ## Search
 
-The shape rules are written either as a decidable equality on a constructed
-shape or as a `match` whose fall-through branch is `none`, never as a
-`match` whose fall-through branch returns a derivation: a `match` on `S` or
-on `T` inside a function whose result type mentions them generalizes them
-in the motive, and a fall-through that is not `none` then does not
-typecheck.
+A shape rule is either a decidable equality on a constructed shape or a
+`match` whose fall-through branch is `none`.  A fall-through that returns a
+derivation does not typecheck, because a `match` on `S` or `T` generalizes
+them in the motive.
 
-The helpers below move a derivation across a decided equality.  They are
-written with `cases` rather than with `▸` because the label of a member
-occurs twice in the conclusion and a rewrite would hit both occurrences. -/
+The helpers move a derivation across a decided equality.  They use `cases`
+and not `▸`, because the label of a member occurs twice in the conclusion. -/
 
 /-- The first success of a function along a list. -/
 def firstSome {α β : Type} (f : α → Option β) (l : List α) : Option β :=
@@ -410,7 +377,7 @@ def firstSome {α β : Type} (f : α → Option β) (l : List α) : Option β :=
   | a :: as => (f a).orElse fun _ => firstSome f as
 termination_by structural l
 
-/-- `Sub.capt` of a shape search and a set search, at two given types. -/
+/-- `Sub.capt` from a shape search and a set search. -/
 def subCapt {s : Sig} {Γ : Ctx s} (sh : (S S' : Shape s) → Option (SubShape Γ S S'))
     (sc : (C C' : CaptureSet s) → Option (Subcap Γ C C')) :
     (T U : Ty s) → Option (Sub Γ T U)
@@ -446,9 +413,8 @@ def subFromSel {s : Sig} {Γ : Ctx s} {d : Decl Γ} {S T : Shape s} (h : S = dec
     (e : SubShape Γ d.hi T) : SubShape Γ S T := by
   cases h; exact SubShape.trans (declUpper d) e
 
-/-- `S <: d1.lo <: y.A <: d2.hi <: T`, the one family of transitivity
-middles the search tries on shapes.  The two members may differ, which is
-what E3 needs (`lean/Coercions/Captures/DotMNF/Examples.lean:216`). -/
+/-- `S <: d1.lo <: y.A <: d2.hi <: T`, the family of transitivity middles the
+search tries on shapes.  The two members may differ, as E3 needs. -/
 def subThroughPair {s : Sig} {Γ : Ctx s} {d1 d2 : Decl Γ} {S T : Shape s}
     (h : declSel d2 = declSel d1) (e1 : SubShape Γ S d1.lo) (e2 : SubShape Γ d2.hi T) :
     SubShape Γ S T :=
@@ -468,16 +434,15 @@ def subcapToSel {s : Sig} {Γ : Ctx s} {d : CapDecl Γ} {C1 C2 : CaptureSet s}
 def declPairs {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) : List (Decl Γ × Decl Γ) :=
   D.typs.flatMap (fun d1 => D.typs.map (fun d2 => (d1, d2)))
 
-/-- The rounds the `∀` rule gives the detour free table it builds under the
-context it extends.  Small on purpose: the table is rebuilt at every
-application of the rule. -/
+/-- The rounds of the table the `∀` rule builds.  Small, because the table is
+rebuilt at every application. -/
 def allBudget : Budget := { decls := 1, views := 2, sub := 0, typer := 0, obj := 0 }
 
 mutual
 
 /-- The shape search.  `subShape? D 0 S T` is `none`.  `subShape? D (n+1) S T`
-tries thirteen rules in order and returns the first success.  Every premise
-is searched at fuel `n`.
+tries thirteen rules in order and returns the first success.  Premises are
+searched at fuel `n`.
 
 1. `S = T`, `SubShape.refl`.
 2. `T = ⊤`, `SubShape.top`.
@@ -496,10 +461,8 @@ is searched at fuel `n`.
 13. The one transitivity family, at a pair of type members of one variable
     at one label.
 
-The fourteenth alternative is not a rule of the calculus: it retries the
-whole search at the previous fuel.  It changes no answer the thirteen rules
-give at this fuel, and it is what makes `subShape?_le` an induction on the
-fuel alone. -/
+A fourteenth alternative, not a rule of the calculus, retries the search at
+the previous fuel.  It makes `subShape?_le` an induction on the fuel. -/
 def subShape? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (n : Nat) (S T : Shape s) :
     Option (SubShape Γ S T) :=
   match n with
@@ -588,7 +551,7 @@ termination_by structural n
 
 /-- The subcapturing search.  `subcap? D 0 C₁ C₂` is `none`.
 `subcap? D (n+1) C₁ C₂` tries five rules in order and returns the first
-success.  Every premise is searched at fuel `n`.
+success.  Premises are searched at fuel `n`.
 
 1. `C₁ ⊆ C₂`, `Subcap.elem`, decided.
 2. `C₁ = a :: C` with `C` not empty, `Subcap.union` of `[a]` and `C`.
@@ -600,8 +563,7 @@ success.  Every premise is searched at fuel `n`.
    into its lower bound, then `sc-sel-lower`, then the inclusion of
    `{y.C}` in `C₂`.
 
-The sixth alternative is the retry at the previous fuel, as in
-`subShape?`. -/
+A sixth alternative retries at the previous fuel, as in `subShape?`. -/
 def subcap? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (n : Nat) (C1 C2 : CaptureSet s) :
     Option (Subcap Γ C1 C2) :=
   match n with
@@ -640,34 +602,27 @@ termination_by structural n
 
 end
 
-/-- The search on types: `Sub.capt` of the shape search and the set search
-at the same fuel.  `Sub` has no other rule. -/
+/-- The search on types: the shape search and the set search at one fuel. -/
 def sub? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (n : Nat) (T U : Ty s) : Option (Sub Γ T U) :=
   subCapt (fun S S' => subShape? D n S S') (fun C C' => subcap? D n C C') T U
 
-/-! ## The closure at the real search
-
-Each name is the generic body above at `viewStep D n`, the five view steps
-with the detour step consulting `subShape? D n`. -/
+/-! ## The closure at the real search -/
 
 /-- The five view steps at the real search. -/
 def viewStep {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (n : Nat) : ViewStep Γ :=
   viewStepOf (fun S T => subShape? D n S T) D
 
-/-- One round of the view closure, the round `views` iterates `b.views`
-times. -/
+/-- One round of the view closure. -/
 def viewsRound {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (n : Nat) {x : BVar s .var}
     (vs : List (View Γ x)) : List (View Γ x) :=
   viewsRoundOf (viewStep D n) x vs
 
-/-- The views of a variable at a budget.  `Γ` is implicit: it is determined
-by the table, which is a table of `Γ`. -/
+/-- The views of a variable at a budget. -/
 def views {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (x : BVar s .var) :
     List (View Γ x) :=
   viewsOf (viewStep D b.sub) b.views x
 
-/-- One round of the declaration table, the round `decls` iterates
-`b.decls` times. -/
+/-- One round of the declaration table. -/
 def declsRound {s : Sig} (b : Budget) (Γ : Ctx s) (D : DeclTable Γ) : DeclTable Γ :=
   declsRoundOf (fun D => viewStep D b.sub) b.views D
 
@@ -677,10 +632,8 @@ def decls {s : Sig} (b : Budget) (Γ : Ctx s) : DeclTable Γ :=
 
 /-! ## Round monotonicity
 
-More rounds never lose a type, and never lose a member.  Both statements
-are about keys, not about derivations: deduplication drops later
-derivations of the same key, and a larger budget may find a different
-derivation of the same judgment. -/
+More rounds never lose a type or a member.  The statements are about keys,
+not derivations, because deduplication drops later derivations of a key. -/
 
 /-- Every key of `l` is a key of `l'`. -/
 def KeyLe {α κ : Type} (key : α → κ) (l l' : List α) : Prop :=
@@ -723,8 +676,7 @@ theorem views_mono {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b b' : Budget}
   rw [hs]
   exact viewsOf_mono (viewStep D b'.sub) h x
 
-/-- Every member of `D` has an entry of the same key in `D'`, for both
-kinds of member. -/
+/-- Every member of `D` has an entry of the same key in `D'`. -/
 def TableLe {s : Sig} {Γ : Ctx s} (D D' : DeclTable Γ) : Prop :=
   KeyLe declKey D.typs D'.typs ∧ KeyLe capDeclKey D.caps D'.caps
 
@@ -761,11 +713,9 @@ theorem decls_mono {s : Sig} {Γ : Ctx s} {b b' : Budget} (h : b.decls ≤ b'.de
 
 /-! ## Fuel monotonicity
 
-The last alternative of `subShape?` and of `subcap?` is the retry at the
-previous fuel, so the statements are an induction on the fuel and not a
-walk through the rules.  They are about `isSome` and not about derivations:
-more fuel may find another derivation of the same judgment, and the
-judgments are `Type` valued with no decidable equality. -/
+The last alternative of `subShape?` and `subcap?` is the retry, so these are
+inductions on the fuel.  They speak of `isSome`, because more fuel may find
+another derivation of the same judgment. -/
 
 theorem isSome_orElse_right {α : Type} {a : Option α} {b : Unit → Option α}
     (h : (b ()).isSome = true) : (a.orElse b).isSome = true := by
@@ -773,8 +723,8 @@ theorem isSome_orElse_right {α : Type} {a : Option α} {b : Unit → Option α}
   | none => simpa [Option.orElse] using h
   | some x => rfl
 
-/-- A search that never loses an answer to one more unit of fuel never
-loses it to any larger fuel. -/
+/-- A search that keeps its answer at one more unit of fuel keeps it at any
+larger fuel. -/
 theorem isSome_of_le {α : Type} (f : Nat → Option α)
     (hs : ∀ n, (f n).isSome = true → (f (n + 1)).isSome = true) {n n' : Nat} (h : n ≤ n') :
     (f n).isSome = true → (f n').isSome = true := by
@@ -826,27 +776,20 @@ theorem sub?_le {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {n n' : Nat} (h : n �
     (subcap?_le h (D := D) (C := C) (C' := C') (by rw [h2]; rfl))
   simp [sub?, subCapt, hf1, hf2]
 
-/-! ## Probes
+/-! ## Examples
 
-Three probes of `subcap?` at the capture examples, and six probes at the
-examples E1 to E8, whose capture sets are all empty.  Each names the chain of
-`lean/Coercions/Captures/DotMNF/Examples.lean` it reproduces.  Every probe
-is a `decide +kernel`: the search is structural, so the kernel runs it.
-
-The budget of each probe is one at which the search finds the chain.  A
-search may also find it at a smaller one, and the retry clauses make every
-larger fuel find it too (`subcap?_le`, `sub?_le`).  The default `Budget`
-finds all nine as well. -/
+Each reproduces a chain of `DotMNF/Examples.lean`.  C2, S1 and C5 are
+subcapturing.  E1, E3, E4, E6 and E8 are subtyping or views, with empty
+capture sets. -/
 
 section Probes
 
 open Captures.DotMNF.Examples
 
-/-- C2, `{g} <: {κ₁,κ₂}` in the client: `sc-var` takes `{g}` to `{x.C}`, and
-`sc-sel-upper` at the abstract member of `x` takes it to `{κ₁,κ₂}`
-(`C2call`, `Examples.lean:1001-1008`).  The member is read off the second
-round of `x`'s views: the first opens the `μ`, the second takes the left
-operand of the intersection. -/
+/-- C2, `{g} <: {κ₁,κ₂}` in the client (`C2call`).  `sc-var` takes `{g}` to
+`{x.C}`, and `sc-sel-upper` at the abstract member of `x` takes it to
+`{κ₁,κ₂}`.  The member comes from the second round of `x`'s views, which
+opens the `μ` and then takes the left operand of the intersection. -/
 def probeC2 : Budget := { decls := 1, views := 2, sub := 3, typer := 0, obj := 0 }
 
 example : (subcap? (decls probeC2 (C2CtxG platCtx k1 k2)) probeC2.sub [CapAtom.var .here]
@@ -854,86 +797,81 @@ example : (subcap? (decls probeC2 (C2CtxG platCtx k1 k2)) probeC2.sub [CapAtom.v
     = true := by
   decide +kernel
 
-/-- The same at one unit less fuel finds nothing, so the probe measures the
-search and not an accident of the table. -/
+/-- One unit less fuel finds nothing. -/
 example : (subcap? (decls probeC2 (C2CtxG platCtx k1 k2)) 2 [CapAtom.var .here]
     [CapAtom.cvar (.there (.there (.there k1))), CapAtom.cvar (.there (.there (.there k2)))]).isSome
     = false := by
   decide +kernel
 
-/-- The member's upper bound is `{κ₁,κ₂}`, so the search does not put `{g}`
-below `{κ₁}` alone, at the default budget either. -/
+/-- The member's upper bound is `{κ₁,κ₂}`, so `{g}` is not below `{κ₁}` alone. -/
 example : (subcap? (decls {} (C2CtxG platCtx k1 k2)) (({} : Budget).sub) [CapAtom.var .here]
     [CapAtom.cvar (.there (.there (.there k1)))]).isSome = false := by
   decide +kernel
 
-/-- S1, `{fs} <: {cp.C}` at the caller: the lower bound of the precise
-member of `cp` is `{fs}`, so `sc-sel-lower` puts `{fs}` below `{cp.C}`
-(`S1op`, `Examples.lean:1322-1327`). -/
+/-- S1, `{fs} <: {cp.C}` at the caller (`S1op`).  The lower bound of the
+precise member of `cp` is `{fs}`, so `sc-sel-lower` applies. -/
 def probeS1 : Budget := { decls := 1, views := 1, sub := 2, typer := 0, obj := 0 }
 
 example : (subcap? (decls probeS1 S1Ctx2) probeS1.sub [CapAtom.cvar fs2]
     [CapAtom.sel .here lC]).isSome = true := by
   decide +kernel
 
-/-- C5, `{n} <: {fs}` at the caller of `mk`: `sc-var` takes `{n}` to
-`{it.C}`, and `sc-sel-upper` at the abstract member of `it` takes it to
-`{fs}` (`S2nVar`, `Examples.lean:1633-1638`). -/
+/-- C5, `{n} <: {fs}` at the caller of `mk` (`S2nVar`).  `sc-var` takes `{n}`
+to `{it.C}`, and `sc-sel-upper` at the abstract member of `it` takes it to
+`{fs}`. -/
 def probeC5 : Budget := { decls := 1, views := 2, sub := 3, typer := 0, obj := 0 }
 
 example : (subcap? (decls probeC5 S2Ctx4) probeC5.sub [CapAtom.var .here]
     [CapAtom.cvar fs4]).isSome = true := by
   decide +kernel
 
-/-- E1, the transitivity family at one member: `{A : ⊤..⊥} <: {B : …}`
-through `⊤ <: x.A <: ⊥`, the chain of `badBounds` (`Examples.lean:106-110`). -/
+/-- E1, transitivity at one member: `{A : ⊤..⊥} <: {B : …}` through
+`⊤ <: x.A <: ⊥` (`badBounds`). -/
 def probeE1 : Budget := { decls := 1, views := 0, sub := 2, typer := 0, obj := 0 }
 
 example : (sub? (decls probeE1 E1Ctx) probeE1.sub (E1Dom : Ty ([],x)) E1Res).isSome = true := by
   decide +kernel
 
-/-- The same at one unit less fuel finds nothing. -/
+/-- One unit less fuel finds nothing. -/
 example : (sub? (decls probeE1 E1Ctx) 1 (E1Dom : Ty ([],x)) E1Res).isSome = false := by
   decide +kernel
 
-/-- E3, the transitivity family at two members of one variable at one label:
-`{b : ⊤} <: x.A <: {a : ⊤}`, the chain of `E3sub` (`Examples.lean:216`). -/
+/-- E3, transitivity at two members of one variable at one label:
+`{b : ⊤} <: x.A <: {a : ⊤}` (`E3sub`). -/
 def probeE3 : Budget := { decls := 1, views := 1, sub := 2, typer := 0, obj := 0 }
 
 example : (sub? (decls probeE3 E3Ctx2) probeE3.sub (E3T2 : Ty ([],x,x)) E3T1).isSome = true := by
   decide +kernel
 
-/-- E4, the detour view step followed by `<:-Sel`: `w` reaches
-`{A : Int..⊤}` through `S <: x.B <: T`, and then `Int <: w.A`, the chain of
-`E4nA` (`Examples.lean:288-291`).  Round one of the table reads `x`'s member
-`B` and `w`'s member `A` at `⊥..⊤`.  Round two runs the detour step on `w`
-and adds `w`'s member `A` at `Int..⊤`. -/
+/-- E4, the detour view step followed by `<:-Sel` (`E4nA`).  `w` reaches
+`{A : Int..⊤}` through `S <: x.B <: T`, and then `Int <: w.A`.  Round one of
+the table reads `x`'s member `B` and `w`'s member `A` at `⊥..⊤`.  Round two
+runs the detour step on `w` and adds `w`'s member `A` at `Int..⊤`. -/
 def probeE4 : Budget := { decls := 2, views := 1, sub := 2, typer := 0, obj := 0 }
 
 example : (sub? (decls probeE4 E4Ctx4) probeE4.sub (E4Int : Ty ([],x,x,x,x))
     ((Shape.sel (.var (.there (.there .here))) lA) ^ [])).isSome = true := by
   decide +kernel
 
-/-- E6, `<:-Sel` through the self binder's own member: `Int <: z.T` where `z`
-is the literal's self binder, the chain of `E6nT` (`Examples.lean:419-422`).
-Two rounds of the closure open the `μ` and then take the left operand of the
-intersection. -/
+/-- E6, `<:-Sel` through the self binder's own member (`E6nT`): `Int <: z.T`
+where `z` is the literal's self binder.  Two rounds of the closure open the
+`μ` and take the left operand of the intersection. -/
 def probeE6 : Budget := { decls := 1, views := 2, sub := 2, typer := 0, obj := 0 }
 
 example : (sub? (decls probeE6 E6Ctxz) probeE6.sub (E6Int : Ty ([],x,x))
     ((Shape.sel (.var .here) lT) ^ [])).isSome = true := by
   decide +kernel
 
-/-- E8, the right view step: `y : x.A ∧ {a : ⊤}` has a view at `{a : ⊤}`,
-which is `E8yFld2` (`Examples.lean:494-495`). -/
+/-- E8, the right view step: `y : x.A ∧ {a : ⊤}` has a view at `{a : ⊤}`
+(`E8yFld2`). -/
 def probeE8views : Budget := { decls := 0, views := 1, sub := 0, typer := 0, obj := 0 }
 
 example : ((views (decls probeE8views E8Ctx2) probeE8views (.here : BVar ([],x,x) .var)).any
     (fun v => decide (v.ty = ((Shape.fld la (.top ^ [])) ^ [] : Ty ([],x,x))))) = true := by
   decide +kernel
 
-/-- E8, `Sel-<:`: `x.A <: {a : ⊤}` by the upper bound of `x`'s member `A`,
-which is `E8Upper` (`Examples.lean:502-503`). -/
+/-- E8, `Sel-<:`: `x.A <: {a : ⊤}` by the upper bound of `x`'s member `A`
+(`E8Upper`). -/
 def probeE8sub : Budget := { decls := 1, views := 0, sub := 2, typer := 0, obj := 0 }
 
 example : (sub? (decls probeE8sub E8Ctx2) probeE8sub.sub

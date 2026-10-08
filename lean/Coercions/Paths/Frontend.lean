@@ -15,14 +15,13 @@ import Coercions.Paths.Frontend.Examples
 /-!
 # The front end of `Paths`
 
-The root of the `PathsFrontend` library: a way to write, type and run
-programs of the `Paths` version (paths and singleton types) without assembling
-derivations by hand.  A program in the version's notation is resolved, typed
-by a search that returns the version's derivation, translated, checked and
-run.  The source is DOT-MNF with paths, translated to FCdot.
+The root of the `PathsFrontend` library.  It lets you write, type and run
+programs of the `Paths` version (paths and singleton types) without building
+derivations by hand.  A program is resolved, typed by a search that returns
+the version's derivation, translated to FCdot, checked and run.
 
 The library imports the version and changes nothing in it.  It is not a
-default target.
+default build target.
 -/
 
 #assert_no_wf PathsFrontend

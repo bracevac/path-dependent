@@ -4,43 +4,31 @@ import Coercions.Paths.FCdot.Debruijn
 /-!
 # The surface syntax of the paths front end
 
-The elaborator of `Notation.lean` produces a value of one of the four
-first-order, unindexed inductives below and nothing else.  Every
-`Sig`-indexed construction happens afterwards, in the ordinary Lean functions
-of `Resolve.lean`.  Interposing this surface term is what buys resolution,
-let-insertion and typing as ordinary functions with ordinary theorems.
+The notation elaborator (`Notation.lean`) produces a value of one of the
+inductives below and nothing else.  All the work on the indexed calculus
+happens later, in the ordinary functions of `Resolve.lean`.
 
-Beyond the vanilla surface, `SPath` names a term by its root and its field
-steps, written `x.a.b`.  A path reaches into `SType` through three forms: a
-stable field declaration `{val a : T}`, a singleton `p.type` and a selection
-`p.A` at a path rather than at a bare variable.  A path in term position stays
+`SPath` names a term by its root and its field steps, `x.a.b`.  A path enters
+`SType` in three ways: a stable field declaration `{val a : T}`, a singleton
+`p.type` and a selection `p.A` at a path.  In term position a path stays
 nested projections.  `Resolve.lean` inserts the `let` that names each prefix.
 
-Labels are strings here.  They are interned by a `LabelTable`, not by the
-parser, so that the examples can pass the very table the hand-written terms of
-`lean/Coercions/Paths/DotMNF/Examples.lean` use and get literal equalities.
-The default table reads the sort off the first character, an upper case
-letter a type label and anything else a term label, which is the paper's own
-convention.
+Labels are strings.  A `LabelTable` interns them, so the examples can pass the
+table that the hand-written terms of
+`lean/Coercions/Paths/DotMNF/Examples.lean` use.  The default table reads the
+sort off the first character: upper case is a type label, anything else a term
+label.
 
-`Scoped` and `LabelsIn` are the two decidable side conditions under which
-resolution is total, which is the totality theorem proved in `Resolve.lean`.
-Both are `Bool` valued, so they are decidable by construction and need no
-instance.  `SPath.Scoped` asks that a path's root is a bound name.  A field
-step carries no name of its own, so it adds nothing to ask.  `SPath.LabelsIn`
-asks that every field step is a term label.
+`Scoped` and `LabelsIn` are the two side conditions under which resolution is
+total (the totality theorem is in `Resolve.lean`).  Both are `Bool` valued.
+`SPath.Scoped` asks that the root is a bound name.  `SPath.LabelsIn` asks that
+every field step is a term label.
 
-Every mutual block here carries `termination_by structural`.  Lean infers
-structural recursion for all of them without it, but later tests rely on
-these functions reducing in the kernel, so the annotation is written out: a
-later edit that would make Lean fall back to well founded recursion fails the
-build instead of silently costing `by decide` and `by rfl`.  `#assert_no_wf`
-checks that for a whole namespace at once: it walks the environment and fails
-when a definition under the given namespace was compiled by well founded
-recursion.
+Every recursive definition carries `termination_by structural`, so it reduces
+in the kernel and `by decide` works on it.  `#assert_no_wf` fails the build if
+a definition of a namespace falls back to well founded recursion.
 
-Nothing in this module is part of the metatheory.  No definition here lives
-in the `Paths.DotMNF` or `Paths.FCdot` namespaces.
+Nothing here belongs to the metatheory.
 -/
 
 namespace PathsFrontend
@@ -82,27 +70,24 @@ inductive SType : Type where
 deriving DecidableEq, Repr, Inhabited
 
 mutual
-/-- Surface terms.  Application and selection take arbitrary terms, which is
-the point of a direct style front end.  Let insertion of `Resolve.lean` puts
-them back into monadic normal form.  A path in term position, `x.a.b`, is
-still nested `proj`, not a new form: `Resolve.lean` is what names its
-prefixes. -/
+/-- Surface terms.  Application and selection take arbitrary terms.
+`Resolve.lean` inserts lets to restore monadic normal form.  A path `x.a.b` in
+term position is nested `proj`, not a new form. -/
 inductive STm : Type where
   /-- A variable, by name. -/
   | var (x : String)
   /-- `λ(x : T). t`. -/
   | lam (x : String) (T : SType) (t : STm)
-  /-- `ν(x : T. d)`.  The self type is annotated because `HasTy.obj` types the
-  definitions against a context entry carrying it
+  /-- `ν(x : T. d)`.  The self type is annotated because `HasTy.obj` needs it
   (`lean/Coercions/Paths/DotMNF/Typing.lean`) and `Value.obj` has no slot for
-  it (`lean/Coercions/Paths/DotMNF/Syntax.lean`). -/
+  it. -/
   | obj (x : String) (T : SType) (d : SDefs)
   /-- `t u`, direct style. -/
   | app (t u : STm)
   /-- `t.a`, direct style. -/
   | proj (t : STm) (a : String)
   /-- `let x = t in u`, with an optional result type.  The annotation is the
-  first rung of the typer's avoidance ladder. -/
+  first rung of the typer's avoidance ladder (`Typer.lean`). -/
   | «let» (x : String) (ann : Option SType) (t u : STm)
 /-- Surface definition members. -/
 inductive SDefs : Type where
@@ -121,9 +106,8 @@ instance : Inhabited SDefs := ⟨.typ "" .top⟩
 
 /-! ## The label table
 
-Type labels and term labels are disjoint in the target
-(`lean/Coercions/Paths/FCdot/Debruijn.lean`), so a lookup that wants one sort
-has to say so.  `labelTyp?` and `labelTrm?` are those two lookups. -/
+Type labels and term labels are disjoint in the target, so a lookup names its
+sort: `labelTyp?` and `labelTrm?`. -/
 
 /-- A label table maps surface names to target labels, first entry first. -/
 abbrev LabelTable := List (String × Label)
@@ -153,8 +137,8 @@ def nameIsTyp (x : String) : Bool :=
 
 /-! ### The default table of a program
 
-The names in label position, in order of first appearance, each numbered
-within its own sort. -/
+Names in label position, in order of first appearance, numbered within their
+sort. -/
 
 /-- The field steps of a surface path, with repetitions, root first. -/
 def labelNamesPath : SPath → List String
@@ -219,16 +203,12 @@ def labelsOfProgram (e : STm) : LabelTable :=
 
 /-! ## Scoping
 
-`Scoped Γ` holds when every free name of the phrase is in `Γ`.  Innermost
-binder first, matching the `NameEnv` used in `Resolve.lean`.  The self binder
-of `ν(x : T. d)` scopes over its own annotation, as `Defs (s,x)` requires
-(`lean/Coercions/Paths/DotMNF/Syntax.lean`).  The binder of a `let` does not
-scope over the `let`'s annotation, matching the `U.weaken` of the rule
-(`lean/Coercions/Paths/DotMNF/Typing.lean`).  A path's own field steps carry
-no binder, so `SPath.Scoped` asks only that its root is in `Γ`. -/
+`Scoped Γ` holds when every free name of the phrase is in `Γ`, innermost binder
+first, as in the `NameEnv` of `Resolve.lean`.  The self binder of `ν(x : T. d)`
+scopes over its own annotation.  The binder of a `let` does not scope over the
+`let`'s annotation. -/
 
-/-- Every free name of a surface path is in the list: the root is, and a
-field step adds no name of its own. -/
+/-- The root of the path is in the list.  Field steps add no names. -/
 def SPath.Scoped : List String → SPath → Bool
   | Γ, .var x => Γ.contains x
   | Γ, .sel p _ => SPath.Scoped Γ p
@@ -271,8 +251,7 @@ end
 /-! ## Labelling
 
 `LabelsIn Λ` holds when every name in label position is in the table at the
-sort its position demands.  Every field step of a path is a term label, read
-by `SPath.LabelsIn`. -/
+sort its position demands. -/
 
 /-- Every field step of a surface path is a term label of the table. -/
 def SPath.LabelsIn : LabelTable → SPath → Bool
@@ -317,13 +296,9 @@ end
 
 /-! ## The well-founded check
 
-Every recursive definition of this front end is structural.  This command
-fails the build the moment one of them is not: it walks the constants of a
-namespace and reports every one whose compiled value calls into the
-`WellFounded` namespace.  A plain `Nat` recursion compiles to
-`WellFounded.Nat.fix`, not `WellFounded.fix` itself, so the test asks for the
-namespace, not one exact name: a probe with one well-founded `Nat → Nat`
-definition is caught either way. -/
+`#assert_no_wf` reports every constant of a namespace whose compiled value uses
+the `WellFounded` namespace.  It tests the namespace, not `WellFounded.fix`,
+because `Nat` recursion compiles to `WellFounded.Nat.fix`. -/
 
 open Lean Elab Command in
 /-- Fails when a definition under the namespace `ns` is compiled by
@@ -342,10 +317,8 @@ elab "#assert_no_wf " ns:ident : command => do
 
 /-! ## The test helper
 
-A check that runs compiled code goes through `#eval expect ...`, where a
-false result throws and so fails the build.  It is the form for a check too
-slow to reduce in the kernel.  The tests of this module reduce, so they are
-`by decide`. -/
+`#eval expect ...` fails the build on a false check.  It is for checks too slow
+for the kernel.  The tests in this module are `by decide`. -/
 
 /-- Fail the build, from `#eval`, when a check comes out false. -/
 def expect (b : Bool) (msg : String) : IO Unit :=
@@ -353,10 +326,9 @@ def expect (b : Bool) (msg : String) : IO Unit :=
 
 /-! ## Sanity
 
-Everything of this module is structural, so these reduce in the kernel and
-are written in the repo's own idiom.  The program is
-`λ(f : {A : ⊤..⊥}). ν(s : {a : ⊤} ∧ {B : ⊤..⊤}. {a = f} ∧ {type B = ⊤})`,
-exactly the vanilla sample, since it touches no path. -/
+The sample program is
+`λ(f : {A : ⊤..⊥}). ν(s : {a : ⊤} ∧ {B : ⊤..⊤}. {a = f} ∧ {type B = ⊤})`.
+It uses no path. -/
 
 /-- The sample program of the checks below. -/
 private def sampleProgram : STm :=
@@ -364,8 +336,7 @@ private def sampleProgram : STm :=
     (.obj "s" (.and (.fld "a" .top) (.typ "B" .top .top))
       (.and (.trm "a" (.var "f")) (.typ "B" .top)))
 
-/-- Names in label position, once each, in order of first appearance, and the
-sort read off the first character. -/
+/-- Names in label position, once each, in order of first appearance. -/
 example : labelsOfProgram sampleProgram = [("A", .typ 0), ("a", .trm 0), ("B", .typ 1)] := by
   decide
 
@@ -383,15 +354,15 @@ example : STm.LabelsIn (labelsOfProgram sampleProgram) sampleProgram = true := b
 /-- An empty table labels nothing. -/
 example : STm.LabelsIn [] sampleProgram = false := by decide
 
-/-- A free name is out of scope, and a selection needs its receiver. -/
+/-- A free name is out of scope. -/
 example : STm.Scoped [] (.var "x") = false := by decide
 
-/-- A path's own root is what `SPath.Scoped` asks for. -/
+/-- `SPath.Scoped` asks for the root. -/
 example : SPath.Scoped ["x"] (.var "x") = true := by decide
 
 example : SPath.Scoped [] (.var "x") = false := by decide
 
-/-- A field step adds no name of its own: the root still decides it. -/
+/-- A field step adds no name: the root decides. -/
 example : SPath.Scoped ["x"] (.sel (.var "x") "a") = true := by decide
 
 example : SPath.Scoped [] (.sel (.var "x") "a") = false := by decide
@@ -401,7 +372,7 @@ example : SPath.LabelsIn [("a", .trm 0)] (.sel (.var "x") "a") = true := by deci
 
 example : SPath.LabelsIn [] (.sel (.var "x") "a") = false := by decide
 
-/-- A type selection reads its receiver from a path. -/
+/-- A type selection is scoped by its path. -/
 example : SType.Scoped ["x"] (.sel (.var "x") "A") = true := by decide
 
 example : SType.Scoped [] (.sel (.var "x") "A") = false := by decide
@@ -409,13 +380,13 @@ example : SType.Scoped [] (.sel (.var "x") "A") = false := by decide
 example : SType.LabelsIn [("A", .typ 0), ("a", .trm 0)] (.sel (.sel (.var "x") "a") "A") = true := by
   decide
 
-/-- A stable field declaration scopes and labels exactly as a term field. -/
+/-- A stable field declaration scopes and labels like a term field. -/
 example : SType.Scoped ["x"] (.vfld "a" (.sel (.var "x") "A")) = true := by decide
 
 example : SType.LabelsIn [("A", .typ 0), ("a", .trm 0)] (.vfld "a" (.sel (.var "x") "A")) = true := by
   decide
 
-/-- A singleton reads its receiver from a path, same as a type selection. -/
+/-- A singleton is scoped by its path, like a type selection. -/
 example : SType.Scoped ["x"] (.sngl (.sel (.var "x") "a")) = true := by decide
 
 example : SType.Scoped [] (.sngl (.var "x")) = false := by decide

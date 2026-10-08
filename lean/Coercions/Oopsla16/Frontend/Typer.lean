@@ -4,48 +4,43 @@ import Coercions.Oopsla16.Frontend.Resolve
 /-!
 # The typer
 
-A bidirectional typer for annotated terms.  It returns derivations of the
-version's own judgments, `Oopsla16.HasType` and `Oopsla16.DmsHasType`, so it
-is sound by its result type and has no soundness theorem.  Typing in this
-calculus is undecidable, and nothing here is complete.
+A bidirectional typer for annotated terms.  It returns derivations of
+`Oopsla16.HasType` and `Oopsla16.DmsHasType`, so it is sound by its result
+type.  Typing in this calculus is undecidable, and the typer is incomplete.
 
 * `synth? b n Γ a` synthesizes a type of `a`.
 * `check? b n Γ a T` checks `a` at `T`.
-* `checkDms? b n Γ ds T` checks a member list against a self type, in lockstep.
-* `checkVar? b k Γ x T` checks a variable, with `k` levels of packing.
+* `checkDms? b n Γ ds T` checks a member list against a self type.
+* `checkVar? b k Γ x T` checks a variable with `k` levels of packing.
 
-`n` is the typer fuel.  It drops by one at every subterm and at nothing else,
-so it bounds the depth of the term the typer can reach.  The subtyping search
-runs at the fixed fuel `b.sub`, and the view closures at `b.views` rounds.
+The typer fuel `n` drops by one at every subterm.  The subtyping search runs
+at fuel `b.sub`, and the view closures at `b.views` rounds.
 
 ## Variables
 
-A variable's *views* are the types the typer derives for it without a goal:
-its recorded type by `T_Varz`, then, round by round, `T_VarUnpack` at a
-recursive type, `T_Sub` with `stp_and11` and `stp_and12` at an intersection,
-and `T_Sub` with `stp_sel1` at a selection `y.L`, whose upper bound is read
-off a view of `y` from `Search.lean`.  So a recursive type is opened wherever
-it appears, below an intersection or behind a selection as well as at the top.
+The views of a variable are the types the typer derives for it without a goal.
+They start with its recorded type (`T_Varz`).  Each round applies
+`T_VarUnpack` at a recursive type, `stp_and11` and `stp_and12` at an
+intersection, and `stp_sel1` at a selection `y.L`, whose upper bound comes
+from a view of `y` (`Search.lean`).  So a recursive type is opened wherever it
+appears, also below an intersection or behind a selection.
 
-`checkVar?` first walks the views for one equal to the goal or below it by the
-search.  Then it packs.  The bodies it packs at are read off the goal: a
-recursive type in the goal itself, in either side of an intersection or a
-union, or as the lower bound of a selection `y.L` in a view of `y`.  Packing
-at `μ U` checks the variable at `U` opened at the variable, one level down,
-and `T_VarPack` closes it.  The packed type then meets the goal through the
-search, which supplies `stp_and2` or `stp_sel2`.
+`checkVar?` first looks for a view equal to the goal or below it.  Then it
+packs: for a recursive type `μ U` in the goal, in either side of an
+intersection or union, or as the lower bound of a selection `y.L`, it checks
+the variable at `U` opened at the variable, and `T_VarPack` closes it.  The
+search then relates the packed type to the goal.
 
 ## Calls
 
-`t.l(u)` synthesizes a typing of `t` at `V` and of `u` at `A`, then looks for
-a method type `{def l(x : S) : U}` of the receiver.  The candidates are read
-off the receiver's type: its method members at `l`, the members of either
-side of an intersection or a union, and the members of the body of a
-recursive type that do not mention its self.  A variable receiver offers the
-candidates of each of its views.  Last comes the widening candidate
-`{def l(x : A) : ⊤}`.  The search decides each candidate, so a receiver at a
-union goes through `stp_or1`, one at `⊥` through `stp_bot`, one at a
-selection through `stp_sel1`, and a recursive type through `stp_bind1`.
+`t.l(u)` synthesizes `t` at `V` and `u` at `A`, then looks for a method type
+`{def l(x : S) : U}` of the receiver.  The candidates are its method members at
+`l`, those of either side of an intersection or union, and those of the body of
+a recursive type that do not mention its self.  A variable receiver offers the
+candidates of each of its views.  The widening candidate `{def l(x : A) : ⊤}`
+comes last.  The search decides each candidate, using `stp_or1` for a union,
+`stp_bot` for `⊥`, `stp_sel1` for a selection and `stp_bind1` for a recursive
+type.
 
 A candidate gives the call a result type by the first rung that applies.
 
@@ -54,29 +49,26 @@ A candidate gives the call a result type by the first rung that applies.
 3. Narrowing.  Expose the argument's type `A`: its body when `A = μ X` and `X`
    does not mention the self, else `A`.  Replace each selection `x.L` on the
    parameter in `U` by the bound of `L` in the exposed type `A'`, the upper
-   bound at a covariant position and the lower one at a contravariant
-   position, each weakened below the binders it lands under.  If the result
-   no longer mentions the parameter, ask the search for the candidate below
-   `{def l(x : A') : U₁}` and apply `T_App`.
+   bound at a covariant position and the lower one at a contravariant one.
+   If the result no longer mentions the parameter, ask the search for the
+   candidate below `{def l(x : A') : U₁}` and apply `T_App`.
 4. `T_App` at `⊤`, through `stp_fun` with `stp_top`.
 
-The replacement in rung 3 is a guess that the search validates, so it adds no
-obligation.  In checking mode a call tries one more rung, between 3 and 4,
-with the goal as the codomain.  Every rung there is followed by a check of its
-result against the goal, and a failure moves on to the next rung and the next
-candidate.  A last candidate takes the goal as its codomain directly.
+The replacement in rung 3 is a guess that the search checks, so it adds no
+proof obligation.  In checking mode there is one more rung between 3 and 4,
+with the goal as the codomain.  Each rung's result is checked against the goal,
+and a failure moves on to the next rung and candidate.  After the widening
+candidate, a last candidate takes the goal as its codomain.
 
 ## Fuel monotonicity
 
-The candidates, the rungs and `checkVar?` call the search and the view
-closures, never the typer.  A call depends on the typer only through the
-types synthesized for the receiver and the argument.  And a synthesized type
-does not change with more fuel: `synth?_le_ty`.  So more fuel never loses an
-answer, and the proof is one induction over the three typer functions at once
-(`TyperLe`, `typerStep_le`).  The typer has no retry clause.
+Candidates, rungs and `checkVar?` call the search and the view closures, never
+the typer.  A call depends on the typer only through the types of receiver and
+argument, and a synthesized type does not change with more fuel
+(`synth?_le_ty`).  So more fuel never loses an answer.  One induction over the
+three typer functions proves it (`TyperLe`, `typerStep_le`).
 
-Nothing in this module is part of the metatheory and no definition here
-lives in the `Oopsla16` namespace.
+Nothing here is part of the metatheory.
 -/
 
 namespace Oopsla16Frontend
@@ -87,8 +79,8 @@ open Oopsla16 (Lb Vr Ty Tm Dm Dms Ctx Store Stp Htp HasType DmsHasType EqSome
 
 /-! ## Closing a typing at a goal -/
 
-/-- A typing at `S` becomes one at `T` when the two are equal, or by `T_Sub`
-when the search relates them. -/
+/-- A typing at `S` becomes one at `T` when they are equal, or by `T_Sub` when
+the search relates them. -/
 def closeTo (b : Budget) {s : Sig} (Γ : Ctx [] s) (t : Tm [] s) (S T : Ty [] s) :
     Option (HasType Store.nil Γ t S → HasType Store.nil Γ t T) :=
   if h : S = T then some fun d => h ▸ d
@@ -96,15 +88,14 @@ def closeTo (b : Budget) {s : Sig} (Γ : Ctx [] s) (t : Tm [] s) (S T : Ty [] s)
 
 /-! ## The views of a variable -/
 
-/-- A type of a context variable in the full context, with its derivation. -/
+/-- A type of a variable, with its derivation. -/
 structure TView {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) where
   /-- The type. -/
   ty : Ty [] s
   /-- The derivation. -/
   deriv : HasType Store.nil Γ (.tvar (.abs x)) ty
 
-/-- Views whose type is already in `seen` are dropped, and the first view of
-every other type is kept. -/
+/-- Drop views whose type is in `seen` or earlier in the list. -/
 def dedupTViewsFrom {s : Sig} {Γ : Ctx [] s} {x : BVar s .var} (seen : List (Ty [] s))
     (l : List (TView Γ x)) : List (TView Γ x) :=
   match l with
@@ -114,8 +105,8 @@ def dedupTViewsFrom {s : Sig} {Γ : Ctx [] s} {x : BVar s .var} (seen : List (Ty
       else v :: dedupTViewsFrom (v.ty :: seen) vs
 termination_by structural l
 
-/-- The selection step: a view `y.L` of `x` and a view of `y` with a member
-`L` give `x` the member's upper bound. -/
+/-- The selection step: a view `y.L` of `x` and a view of `y` with a member `L`
+give `x` the member's upper bound. -/
 def tselAt {s : Sig} {Γ : Ctx [] s} {x : BVar s .var} {y : BVar s .var} {l : Lb}
     (d : HasType Store.nil Γ (.tvar (.abs x)) (.TSel (.abs y) l)) (w : HView Γ y) :
     Option (TView Γ x) :=
@@ -126,8 +117,8 @@ def tselAt {s : Sig} {Γ : Ctx [] s} {x : BVar s .var} {y : BVar s .var} {l : Lb
       else none
   | _ => none
 
-/-- The views one step from a view.  `k` is the number of rounds of the
-closure of `Search.lean` used at a selection. -/
+/-- The views one step from a view.  `k` is the number of closure rounds used
+at a selection. -/
 def tstep (k : Nat) {s : Sig} {Γ : Ctx [] s} {x : BVar s .var} (v : TView Γ x) :
     List (TView Γ x) :=
   match v with
@@ -138,8 +129,7 @@ def tstep (k : Nat) {s : Sig} {Γ : Ctx [] s} {x : BVar s .var} (v : TView Γ x)
   | ⟨.TSel (.abs y) _, d⟩ => (hviews k Γ y).filterMap (tselAt d)
   | _ => []
 
-/-- The views of `x` after `r` rounds, duplicates by type dropped after every
-round. -/
+/-- The views of `x` after `r` rounds, without duplicate types. -/
 def tviews (k r : Nat) {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) : List (TView Γ x) :=
   match r with
   | 0 => [⟨Γ.lookup x, .T_Varz⟩]
@@ -153,9 +143,9 @@ where
 
 /-! ## Checking a variable -/
 
-/-- The bodies a goal asks a variable to be packed at: a recursive type in
-the goal, in either side of an intersection or a union, or as the lower
-bound of a selection in a view of its receiver. -/
+/-- The bodies a variable can be packed at for a goal: a recursive type in the
+goal, in either side of an intersection or union, or as the lower bound of a
+selection in a view of its receiver. -/
 def packTargets (b : Budget) {s : Sig} (Γ : Ctx [] s) (T : Ty [] s) : List (Ty [] (s,x)) :=
   match T with
   | .TBind U => [U]
@@ -178,8 +168,8 @@ def checkVarViews (b : Budget) {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) (T : 
     Option (HasType Store.nil Γ (.tvar (.abs x)) T) :=
   firstSome (fun v => (closeTo b Γ _ v.ty T).map fun f => f v.deriv) (tviews b.views b.views Γ x)
 
-/-- Check a variable at a goal: its views first, then packing at a body the
-goal names, with `k` levels of packing. -/
+/-- Check a variable at a goal: its views first, then packing, with `k` levels
+of packing. -/
 def checkVar? (b : Budget) (k : Nat) {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) (T : Ty [] s) :
     Option (HasType Store.nil Γ (.tvar (.abs x)) T) :=
   match k with
@@ -200,10 +190,9 @@ def andParts {s : Sig} (T : Ty [] s) : List (Ty [] s) :=
   | T => [T]
 termination_by structural T
 
-/-- The method types at `l` read off a type: a method member, the members of
-either side of an intersection or a union, and the members of the body of a
-recursive type that mention neither its self nor, in the domain, the
-parameter's binder. -/
+/-- The method types at `l` read off a type: a method member, those of either
+side of an intersection or union, and those of the body of a recursive type
+that do not mention its self. -/
 def methodCands (l : Lb) {s : Sig} (V : Ty [] s) : List (Ty [] s × Ty [] (s,x)) :=
   match V with
   | .TFun l' S U => if l' = l then [(S, U)] else []
@@ -228,15 +217,15 @@ def expose {s : Sig} (A : Ty [] s) : Ty [] s :=
       | none => .TBind X
   | _ => A
 
-/-- The bound of the type member `L` among the components of an
-intersection, the upper one when `upper` holds. -/
+/-- The bound of the type member `L` among the components of an intersection,
+the upper one when `upper` holds. -/
 def boundOf? {s : Sig} (A : Ty [] s) (L : Lb) (upper : Bool) : Option (Ty [] s) :=
   firstSome (fun P => match P with
     | .TTyp L' lo hi => if L' = L then some (if upper then hi else lo) else none
     | _ => none) (andParts A)
 
-/-- What a selection on a variable is replaced by, one binder further in:
-the variable's replacement weakened, and nothing for the new binder. -/
+/-- The replacement under one more binder: weakened, and none for the new
+binder. -/
 def liftBnd {s : Sig} (bnd : BVar s .var → Lb → Bool → Option (Ty [] s)) :
     BVar (s,x) .var → Lb → Bool → Option (Ty [] (s,x)) :=
   fun v L p =>
@@ -245,8 +234,8 @@ def liftBnd {s : Sig} (bnd : BVar s .var → Lb → Bool → Option (Ty [] s)) :
     | .there y => (bnd y L p).map Ty.weaken
 
 /-- Replace each selection `y.L` that `bnd` names by its bound.  `pos` holds at
-a covariant position and selects the upper bound.  The polarity flips at a
-method's domain and at a type member's lower bound. -/
+a covariant position and selects the upper bound.  Polarity flips at a method's
+domain and at a type member's lower bound. -/
 def narrowTy {s : Sig} (bnd : BVar s .var → Lb → Bool → Option (Ty [] s)) (pos : Bool)
     (T : Ty [] s) : Ty [] s :=
   match T with
@@ -264,8 +253,8 @@ def narrowTy {s : Sig} (bnd : BVar s .var → Lb → Bool → Option (Ty [] s)) 
   | .TOr A B => .TOr (narrowTy bnd pos A) (narrowTy bnd pos B)
 termination_by structural T
 
-/-- The replacement of a selection on a method's parameter by the bound in
-the exposed argument type `A'`. -/
+/-- Replace a selection on a method's parameter by the bound in the exposed
+argument type `A'`. -/
 def paramBnd {s : Sig} (A' : Ty [] s) : BVar (s,x) .var → Lb → Bool → Option (Ty [] (s,x)) :=
   fun v L p =>
     match v with
@@ -274,27 +263,26 @@ def paramBnd {s : Sig} (A' : Ty [] s) : BVar (s,x) .var → Lb → Bool → Opti
 
 /-! ## Calls -/
 
-/-- A way to finish a call at `R` from typings of the receiver at `V` and of
-the argument at `A`. -/
+/-- A call typed at `R`, from typings of receiver at `V` and argument at `A`. -/
 abbrev CallFin {s : Sig} (Γ : Ctx [] s) (te ue : Tm [] s) (l : Lb) (V A R : Ty [] s) : Type :=
   HasType Store.nil Γ te V → HasType Store.nil Γ ue A → HasType Store.nil Γ (.tapp te l ue) R
 
-/-- A typing of the receiver at another type, built from its typing at `V`. -/
+/-- A typing of the receiver at another type. -/
 structure RView {s : Sig} (Γ : Ctx [] s) (te : Tm [] s) (V : Ty [] s) where
   /-- The other type. -/
   ty : Ty [] s
   /-- The typing at it. -/
   recv : HasType Store.nil Γ te V → HasType Store.nil Γ te ty
 
-/-- The receiver's typings candidates are read off: the views of a variable,
-or the synthesized type of any other term. -/
+/-- The typings candidates are read off: the views of a variable, or the
+synthesized type of any other term. -/
 def recvViews (b : Budget) {s : Sig} (Γ : Ctx [] s) (t : ATm s) (V : Ty [] s) :
     List (RView Γ t.erase V) :=
   match t with
   | .var x => (tviews b.views b.views Γ x).map fun v => ⟨v.ty, fun _ => v.deriv⟩
   | _ => [⟨V, id⟩]
 
-/-- A method type of the receiver at `l` that the search has validated. -/
+/-- A method type of the receiver at `l`, validated by the search. -/
 structure Cand {s : Sig} (Γ : Ctx [] s) (te : Tm [] s) (l : Lb) (V : Ty [] s) where
   /-- The domain. -/
   dom : Ty [] s
@@ -359,8 +347,8 @@ def rungsSynth (b : Budget) {s : Sig} (Γ : Ctx [] s) {te : Tm [] s} (u : ATm s)
   rungVar b Γ u c <|> rungWeak b Γ u.erase A c <|> rungNarrow b Γ u.erase A c
     <|> rungTop b Γ u.erase A c
 
-/-- A call synthesizes the result type of the first candidate with a rung
-that applies. -/
+/-- A call gets the result type of the first candidate with a rung that
+applies. -/
 def callSynth (b : Budget) {s : Sig} (Γ : Ctx [] s) (t u : ATm s) (l : Lb) (V A : Ty [] s) :
     Option ((R : Ty [] s) × CallFin Γ t.erase u.erase l V A R) :=
   firstSome (fun rv => firstSome (fun (p : Ty [] s × Ty [] (s,x)) =>
@@ -381,9 +369,9 @@ def rungsCheck (b : Budget) {s : Sig} (Γ : Ctx [] s) {te : Tm [] s} (u : ATm s)
     <|> closeCall b Γ G (rungNarrow b Γ u.erase A c) <|> closeCall b Γ G (rungGoal b Γ u.erase A G c)
     <|> closeCall b Γ G (rungTop b Γ u.erase A c)
 
-/-- A call checked at a goal walks the candidates and their rungs until one
-result meets the goal.  The widening candidate comes next, and last the
-candidate with the goal as its codomain. -/
+/-- A call checked at a goal tries the candidates and their rungs until one
+result meets the goal, then the widening candidate, then the candidate with
+the goal as its codomain. -/
 def callCheck (b : Budget) {s : Sig} (Γ : Ctx [] s) (t u : ATm s) (l : Lb) (V A G : Ty [] s) :
     Option (CallFin Γ t.erase u.erase l V A G) :=
   firstSome (fun rv => firstSome (fun (p : Ty [] s × Ty [] (s,x)) =>
@@ -394,8 +382,8 @@ def callCheck (b : Budget) {s : Sig} (Γ : Ctx [] s) (t u : ATm s) (l : Lb) (V A
 
 /-! ## The typer -/
 
-/-- The three typer functions at one fuel, the form in which the rules
-receive their recursive calls. -/
+/-- The three typer functions at one fuel, the form in which the rules receive
+their recursive calls. -/
 structure Typer where
   /-- Synthesis. -/
   synth : ∀ {s : Sig} (Γ : Ctx [] s) (a : ATm s),
@@ -519,10 +507,8 @@ def checkDms? (b : Budget) (n : Nat) {s : Sig} (Γ : Ctx [] s) (ds : ADms s) (T 
 
 /-! ## Fuel monotonicity
 
-`TyperLe r r'` says that `r'` keeps every answer of `r`: a synthesized type
-stays the same type, and a check that succeeds still succeeds.  The rules
-preserve it, so it holds between every fuel and the next, and then between
-any fuel and a larger one. -/
+`TyperLe r r'` says that `r'` keeps every answer of `r`.  A synthesized type
+stays the same, and a successful check still succeeds. -/
 
 /-- `r'` finds every answer of `r`, and synthesizes the same types. -/
 def TyperLe (r r' : Typer) : Prop :=
@@ -795,12 +781,11 @@ def checksIn (b : Budget) {s : Sig} (Γ : Ctx [] s) (a : ATm s) (T : Ty [] s) : 
 
 /-! ## Checks
 
-Every check below runs in the kernel.  A budget is written as the fields it
-sets, `{ views := k, sub := m, typer := n }`, and each positive check states
-the budget the answer is found at.  A negative check states one budget it is
-not found at and says nothing about others.  Programs are written in the
-surface notation and resolved, and the synthesized type is compared with the
-type the version's own derivation concludes. -/
+Every check runs in the kernel.  A budget is `{ views := k, sub := m, typer := n }`,
+written `(k, m, n)` below.  A positive check states a budget where the answer
+is found.  A negative check says nothing about other budgets.  Programs are
+written in surface notation, and the synthesized type is compared with the
+type the calculus's own derivation concludes. -/
 
 namespace TyperChecks
 
@@ -808,62 +793,61 @@ namespace TyperChecks
 def typeOfSrc (b : Budget) (Λ : LabelTable) (e : STm) : Option (Ty [] []) :=
   (resolve Λ e).bind (typeIn? b Ctx.nil)
 
-/-! ### The version's programs -/
+/-! ### The calculus's programs -/
 
-/-- `ex0` at `μ(z. ⊤)`, the type of `Oopsla16.Examples.ex0_precise`, found at
+/-- `ex0` at `μ(z. ⊤)`, the type of `Oopsla16.Examples.ex0_precise`, at
 `(0, 0, 2)`. -/
 example : typeOfSrc { views := 0, sub := 0, typer := 2 } [] ex0src = some (.TBind .TTop) := by
   decide +kernel
 
-/-- `ex0` ascribed, at `⊤`, the type of `Oopsla16.Examples.ex0`, found at
+/-- `ex0` ascribed, at `⊤`, the type of `Oopsla16.Examples.ex0`, at
 `(0, 1, 3)`. -/
 example : typeOfSrc { views := 0, sub := 1, typer := 3 } [] ex0AscSrc = some .TTop := by
   decide +kernel
 
-/-- `RecursiveArg.prog` at `⊤`, the type of `FCdotR.SourceSafety.RecursiveArg.progTy`, found
-at `(2, 6, 6)`.  The caller's method is Curry style under its written self
-type, the argument goes in by `T_App` at the strengthened codomain, and its
-type is below the domain by `stp_bindx` with two `stp_sel2`. -/
+/-- `RecursiveArg.prog` at `⊤`, the type of
+`FCdotR.SourceSafety.RecursiveArg.progTy`, at `(2, 6, 6)`.  The argument goes
+in by `T_App` at the strengthened codomain, and its type is below the domain
+by `stp_bindx` with two `stp_sel2`. -/
 example : typeOfSrc { views := 2, sub := 6, typer := 6 } recArgTable recArgSrc = some .TTop := by
   decide +kernel
 
-/-- `CurryCall.prog` at `⊤`, the type of `FCdotR.CurryCall.progTy`, found at
+/-- `CurryCall.prog` at `⊤`, the type of `FCdotR.CurryCall.progTy`, at
 `(0, 3, 7)`. -/
 example : typeOfSrc { views := 0, sub := 3, typer := 7 } curryCallTable curryCallSrc
     = some .TTop := by
   decide +kernel
 
-/-- `ex1` synthesizes the self type `selfOf?` computes, found at `(0, 3, 5)`. -/
+/-- `ex1` synthesizes the self type `selfOf?` computes, at `(0, 3, 5)`. -/
 example : typeOfSrc { views := 0, sub := 3, typer := 5 } ex1Table ex1src
     = some (.TBind FCdotR.CheckerExamples.DotExs.outerSelf) := by
   decide +kernel
 
 /-- `ex1` checks at `polyId`, the type of `FCdotR.CheckerExamples.DotExs.ex1`,
-found at `(0, 3, 5)`. -/
+at `(0, 3, 5)`. -/
 example : ((resolve ex1Table ex1src).map fun a =>
     checksIn { views := 0, sub := 3, typer := 5 } Ctx.nil a FCdotR.CheckerExamples.DotExs.polyId)
     = some true := by
   decide +kernel
 
 /-- `ex2`, open in `y : polyId`, synthesizes `{def apply(x : ⊤) : ⊤}`, the type
-of `FCdotR.CheckerExamples.DotExs.ex2`, by rung 3: the codomain of `polyId`
-mentions the parameter `t`, and narrowing it to the argument's exposed type
-`{T : ⊤..⊤} ∧ ⊤` replaces `t.T` by `⊤` at both positions.  Found at
-`(1, 4, 4)`. -/
+of `FCdotR.CheckerExamples.DotExs.ex2`, at `(1, 4, 4)`.  This is rung 3:
+narrowing the codomain of `polyId` to the argument's exposed type
+`{T : ⊤..⊤} ∧ ⊤` replaces `t.T` by `⊤`. -/
 example : (resolveIn ex2Table (NameEnv.nil.cons "y") ex2src).bind
     (typeIn? { views := 1, sub := 4, typer := 4 } FCdotR.CheckerExamples.DotExs.Γy)
     = some (.TFun 0 .TTop .TTop) := by
   decide +kernel
 
-/-- With no rounds of the view closure the narrowed method type is not
-validated, and the call falls to rung 4 at `⊤`. -/
+/-- With no view rounds the narrowed method type is not validated, and the call
+falls to rung 4 at `⊤`. -/
 example : (resolveIn ex2Table (NameEnv.nil.cons "y") ex2src).bind
     (typeIn? { views := 0, sub := 4, typer := 4 } FCdotR.CheckerExamples.DotExs.Γy)
     = some .TTop := by
   decide +kernel
 
 /-- `paper_lst` at its module type, the type of
-`FCdotR.CheckerExamples.PaperLst.paper_lst`, found at `(3, 12, 13)`. -/
+`FCdotR.CheckerExamples.PaperLst.paper_lst`, at `(3, 12, 13)`. -/
 example : typeOfSrc { views := 3, sub := 12, typer := 13 } paperLstTable paperLstSrc
     = some (.TBind FCdotR.CheckerExamples.PaperLst.DeclBody) := by
   decide +kernel
@@ -872,9 +856,10 @@ example : typeOfSrc { views := 3, sub := 12, typer := 13 } paperLstTable paperLs
 example : typeOfSrc {} paperLstTable paperLstSrc = none := by
   decide +kernel
 
-/-! ### Open examples through `synthIn?` and `checkIn?`
+/-! ### Open examples
 
-`Oopsla16.Examples.FunctionField`'s context `Γz` holds the self `z : S(z)`. -/
+The context `Γz` of `Oopsla16.Examples.FunctionField` holds the self
+`z : S(z)`. -/
 
 section FunctionField
 open Oopsla16.Examples.FunctionField (Γz A B f)
@@ -883,44 +868,42 @@ open Oopsla16.Examples.FunctionField (Γz A B f)
 example : typeIn? {} Γz (.var .here) = some Oopsla16.Examples.FunctionField.Sbody := by
   decide +kernel
 
-/-- `sBound` as a typing of the variable: `z` checks at `{A : ⊥..z.B}`,
-found at `(0, 3, 1)`. -/
+/-- `sBound`: `z` checks at `{A : ⊥..z.B}`, at `(0, 3, 1)`. -/
 example : checksIn { views := 0, sub := 3, typer := 1 } Γz (.var .here)
     (.TTyp A .TBot (.TSel (.abs .here) B)) = true := by
   decide +kernel
 
-/-- `premise` as a typing of the variable: `z` checks at `T(z)`, found at
-`(1, 5, 1)`. -/
+/-- `premise`: `z` checks at `T(z)`, at `(1, 5, 1)`. -/
 example : checksIn { views := 1, sub := 5, typer := 1 } Γz (.var .here)
     Oopsla16.Examples.FunctionField.Tbody = true := by
   decide +kernel
 
-/-- `selMember` as a typing view: under the parameter, the self has
-`{A : ⊥..z.B}` after one round. -/
+/-- `selMember`: under the parameter, the self has `{A : ⊥..z.B}` after one
+round. -/
 example : ((tviews 1 1 (Γz.cons .TTop) (.there .here)).any
     fun v => decide (v.ty = .TTyp A .TBot (.TSel (.abs (.there .here)) B))) = true := by
   decide +kernel
 
-/-- A call on the self under the parameter: `z.f(x)` with `x : ⊤` has the
-result `z.A`, by `T_AppVar` at the method member of a view of `z`. -/
+/-- A call on the self under the parameter: `z.f(x)` with `x : ⊤` has the result
+`z.A`, by `T_AppVar`. -/
 example : typeIn? { views := 1 } (Γz.cons .TTop) (.app (.var (.there .here)) f (.var .here))
     = some (.TSel (.abs (.there .here)) A) := by
   decide +kernel
 
-/-- `methodCovariant` through the call: `z.f(x)` checks at `z.B`, by
-`selUnder` from the result `z.A`. -/
+/-- `methodCovariant`: `z.f(x)` checks at `z.B`, by `selUnder` from the result
+`z.A`. -/
 example : checksIn { views := 1 } (Γz.cons .TTop) (.app (.var (.there .here)) f (.var .here))
     (.TSel (.abs (.there .here)) B) = true := by
   decide +kernel
 
 end FunctionField
 
-/-! ### Coverage of the views: unpacking below an intersection and a selection
+/-! ### Unpacking below an intersection and a selection
 
-In `paper_lst`, `cons`'s innermost parameter `tl : m.List ∧ {Elem : ⊥..t.T}`.
-Its views split the intersection, widen `m.List` to the list type, unpack it,
-and split again, so the call `tl.head(tl)` finds the list's method `head` and
-answers `tl.Elem`. -/
+In `paper_lst`, the innermost parameter of `cons` is
+`tl : m.List ∧ {Elem : ⊥..t.T}`.  Its views split the intersection, widen
+`m.List` to the list type, unpack it and split again.  So `tl.head(tl)` finds
+the method `head` and answers `tl.Elem`. -/
 
 section PaperLst
 open FCdotR.CheckerExamples.PaperLst (Γ2t)
@@ -931,7 +914,7 @@ example : ((tviews 4 4 Γ2t .here).any fun v => match v.ty with
     | _ => false) = true := by
   decide +kernel
 
-/-- `tl.head(tl)` synthesizes `tl.Elem`, found at four rounds. -/
+/-- `tl.head(tl)` synthesizes `tl.Elem`, at four rounds. -/
 example : typeIn? { views := 4 } Γ2t (.app (.var .here) 2 (.var .here))
     = some (.TSel (.abs .here) 0) := by
   decide +kernel
@@ -942,7 +925,7 @@ end PaperLst
 
 `f`'s codomain `z.A` mentions the receiver's self, so no candidate reads off
 the receiver's type.  The widening candidate `{def f(x : μ(w. ⊤)) : ⊤}` is
-below the receiver by `stp_bind1`, and the call types at `⊤`. -/
+below the receiver by `stp_bind1`, so the call types at `⊤`. -/
 
 /-- The program. -/
 def selfCallSrc : STm := o16% (new { z ⇒ def f(y : ⊤) : z.A = y   type A = ⊤ }).f(new { w ⇒ })
@@ -952,15 +935,15 @@ def selfCallTable : LabelTable := [("f", 1), ("A", 0)]
 
 example : labelsOfProgram [] selfCallSrc = some selfCallTable := by decide
 
-/-- Found at `(2, 4, 5)`. -/
+/-- At `(2, 4, 5)`. -/
 example : typeOfSrc { views := 2, sub := 4, typer := 5 } selfCallTable selfCallSrc = some .TTop := by
   decide +kernel
 
-/-- The derivation the typer returns, at the default budget. -/
+/-- The derivation found at the default budget. -/
 def selfCallFound : HasType Store.nil Ctx.nil ((resolve selfCallTable selfCallSrc).get (by decide)).erase .TTop :=
   (checkIn? {} Ctx.nil ((resolve selfCallTable selfCallSrc).get (by decide)) .TTop).get (by decide +kernel)
 
-/-- The checker of the target accepts its elaboration. -/
+/-- The target checker accepts its elaboration. -/
 example : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
     (FCdotR.elabTm FCdotR.emptyStoreTy selfCallFound).tm .TTop = true := by
   decide +kernel
@@ -970,8 +953,8 @@ example : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
 `x : c.L` widens to `c.L`'s upper bound `{def f(y : ⊤) : ⊤}` by the selection
 step of its views. -/
 
-/-- The program.  `f` names a method of a type, not of a literal, so its
-label is an explicit entry. -/
+/-- The program.  `f` names a method of a type, so its label is an explicit
+entry. -/
 def selCallSrc : STm := o16% new { c ⇒ type L = { def f(y : ⊤) : ⊤ }   def g(x : c.L) : ⊤ = x.f(x) }
 
 /-- Its label table. -/
@@ -979,7 +962,7 @@ def selCallTable : LabelTable := [("f", 0), ("L", 1), ("g", 0)]
 
 example : labelsOfProgram [("f", 0)] selCallSrc = some selCallTable := by decide
 
-/-- Found at `(1, 1, 5)`, at the self type of `Search.lean`'s `selfC`. -/
+/-- At `(1, 1, 5)`, the self type `selfC` of `Search.lean`. -/
 example : typeOfSrc { views := 1, sub := 1, typer := 5 } selCallTable selCallSrc
     = some (.TBind SearchChecks.selfC) := by
   decide +kernel
@@ -987,9 +970,8 @@ example : typeOfSrc { views := 1, sub := 1, typer := 5 } selCallTable selCallSrc
 /-! ### The first candidate's answer fails the goal
 
 `x` has two method types at `f`.  The first answers `⊤`, which is not below
-the goal `{A : ⊥..⊤}`, so checking moves on to the second, which answers the
-goal.  The program types whether the search proves the first candidate's
-domain or not. -/
+the goal `{A : ⊥..⊤}`, so checking moves on to the second.  The program types
+whether or not the search proves the first candidate's domain. -/
 
 /-- The program. -/
 def twoCandSrc : STm :=
@@ -1009,12 +991,12 @@ abbrev twoMethods {s : Sig} : Ty [] s :=
 /-- The literal's self type. -/
 abbrev twoCandSelf : Ty [] ([],x) := .TAnd (.TFun 0 twoMethods memberA) .TTop
 
-/-- Found at `(0, 2, 4)`, where the search does not prove `x`'s type below
-the first domain. -/
+/-- At `(0, 2, 4)`, where the search does not prove `x`'s type below the first
+domain. -/
 example : typeOfSrc { views := 0, sub := 2, typer := 4 } twoCandTable twoCandSrc = some (.TBind twoCandSelf) := by
   decide +kernel
 
-/-- Found at `(0, 6, 4)`, where it does. -/
+/-- At `(0, 6, 4)`, where it does. -/
 example : typeOfSrc { views := 0, sub := 6, typer := 4 } twoCandTable twoCandSrc = some (.TBind twoCandSelf) := by
   decide +kernel
 
@@ -1038,12 +1020,12 @@ def unionCallTable : LabelTable := [("f", 0), ("g", 0)]
 example : labelsOfProgram [("f", 0)] unionCallSrc = some unionCallTable := by decide
 example : labelsOfProgram [("f", 0)] botCallSrc = some unionCallTable := by decide
 
-/-- The union receiver, through `stp_or1`, found at `(0, 2, 4)`. -/
+/-- The union receiver, through `stp_or1`, at `(0, 2, 4)`. -/
 example : typeOfSrc { views := 0, sub := 2, typer := 4 } unionCallTable unionCallSrc
     = some (.TBind (.TAnd (.TFun 0 (.TOr SearchChecks.F SearchChecks.F) .TTop) .TTop)) := by
   decide +kernel
 
-/-- The receiver at `⊥`, through `stp_bot`, found at `(0, 1, 4)`. -/
+/-- The receiver at `⊥`, through `stp_bot`, at `(0, 1, 4)`. -/
 example : typeOfSrc { views := 0, sub := 1, typer := 4 } unionCallTable botCallSrc
     = some (.TBind (.TAnd (.TFun 0 .TBot .TTop) .TTop)) := by
   decide +kernel
@@ -1063,12 +1045,12 @@ def packSelTable : LabelTable := [("A", 0), ("L", 1), ("g", 0)]
 
 example : labelsOfProgram [("A", 0)] packSelSrc = some packSelTable := by decide
 
-/-- Below a selection, found at `(1, 1, 4)`, at `Search.lean`'s `selfP`. -/
+/-- Below a selection, at `(1, 1, 4)`, the self type `selfP` of `Search.lean`. -/
 example : typeOfSrc { views := 1, sub := 1, typer := 4 } packSelTable packSelSrc
     = some (.TBind SearchChecks.selfP) := by
   decide +kernel
 
-/-- Below an intersection, found at `(1, 2, 3)`. -/
+/-- Below an intersection, at `(1, 2, 3)`. -/
 example : typeOfSrc { views := 1, sub := 2, typer := 3 } [("A", 0), ("g", 0)] packAndSrc
     = some (.TBind (.TAnd (.TFun 0 (.TTyp 0 .TTop .TTop) (.TAnd (.TBind (.TTyp 0 .TTop .TTop)) .TTop))
         .TTop)) := by
@@ -1090,13 +1072,13 @@ example : (checkVar? { views := 1 } 1 SearchChecks.Γp .here
     (.TAnd (.TBind (.TTyp 0 .TTop .TTop)) .TTop)).isSome = true := by
   decide +kernel
 
-/-- The derivation the typer returns for the first, at the default budget. -/
+/-- The derivation found for the first, at the default budget. -/
 def packSelFound : HasType Store.nil Ctx.nil ((resolve packSelTable packSelSrc).get (by decide)).erase
     (.TBind SearchChecks.selfP) :=
   (checkIn? {} Ctx.nil ((resolve packSelTable packSelSrc).get (by decide)) (.TBind SearchChecks.selfP)).get
     (by decide +kernel)
 
-/-- The checker of the target accepts its elaboration. -/
+/-- The target checker accepts its elaboration. -/
 example : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
     (FCdotR.elabTm FCdotR.emptyStoreTy packSelFound).tm (.TBind SearchChecks.selfP) = true := by
   decide +kernel

@@ -5,77 +5,51 @@ import Coercions.Paths.Frontend.Search
 /-!
 # The derivation producing typer
 
-This module types an annotated term of the paths line.  It is fuel bounded,
-`Option` valued, and sound by construction: `synth?` returns a `Synth`, whose
-second field is the `Paths.DotMNF.HasTy` derivation, so soundness is the
-result type and there is no soundness theorem to prove.
+This module types an annotated term.  It is fuel bounded and `Option` valued.
+It is sound by construction: `synth?` returns a `Synth`, whose second field is
+the `Paths.DotMNF.HasTy` derivation, so there is no soundness theorem to prove.
+It is incomplete, since DOT subtyping is undecidable.
 
-It is incomplete by necessity, since DOT subtyping is undecidable.  No
-completeness theorem is attempted or claimed.  What the typer will not find is
-a list, not a theorem.  It does not find a subtyping whose middle is outside
-the selections of the path table, a `Rec-I` folding other than the goal's own
-body, an `And-I` at a position where neither conjunct is checkable on its own,
-or an avoidance result other than the annotation, the strengthening or `⊤`.  It
-does not type an object literal without a self annotation, or an application
-whose function variable reaches `∀` only past the first function view.  It
-does not pose a `PathTy.recI` or a `PathTy.andI` goal at a path.  It does not
-reach a path the table does not reach within its rounds, or a goal that only
-replacement of a path by its alias would reach, since the version has no rule
-for that.  And it finds nothing past the budget.
+There are four functions.  `synth?` reads a type off a term and `check?` tests a
+term against a type.  `checkVar?` tests a variable against a type.  It is
+separate because `HasTy.andI`, `HasTy.recI` and `HasTy.sngl` conclude about a
+variable and subsumption does not reach them.  `checkDefs?` matches a
+definition list against a type in lockstep, as `DefsTy` does.
 
-## The four functions
-
-`synth?` reads a type off a term.  `check?` tests a term against a type.
-`checkVar?` tests a variable against a type.  It is a function of its own
-because three rules of the calculus conclude about a variable and are not
-reached by subsumption: `HasTy.andI`, `HasTy.recI` and `HasTy.sngl`, the
-bridge from a path typing at a singleton.  `checkDefs?` matches a definition
-list against a type in lockstep, which is what `DefsTy` does.
-
-## The path table
-
-Every function takes the path table of its context, `PTable Γ`, built once by
-the caller.  Under a binder the table is rebuilt at the extended context:
-`Γ.cons S` for a lambda and for a `let` body, `Γ.consSelf d T` for the
-definitions of a literal.  Projection reads a field off a view of the table
-(`HasTy.projP`).  A singleton goal at a variable is a path typing, asked of
-`checkPath?`.  The declarations of the table are the middles the subtyping
-search tries.
-
-## Two checking clauses
+Every function takes the path table of its context, built by the caller.  Under
+a binder the table is rebuilt at the extended context, `Γ.cons S` for a lambda
+and a `let` body and `Γ.consSelf d T` for the definitions of a literal.
+Projection reads a field off a view of the table (`HasTy.projP`).  A singleton
+goal at a variable is a path typing, asked of `checkPath?`.
 
 `check?` has two clauses that synthesis does not cover.  A lambda against
-`∀(x : S) T` with the same domain checks its body against `T` by
-`HasTy.lam`.  A `let` without annotation against a goal `U` checks its body
-against `U` weakened by `HasTy.let`.  The body then sees its own binder at the
-type the bound term synthesized, which the synthesized type of the whole term
-may have lost.  When either clause fails, the term is synthesized and moved to
-the goal, as every other term is.
+`∀(x : S) T` with the same domain checks its body against `T`.  An unannotated
+`let` against `U` checks its body against `U` weakened, so the body sees its
+binder at the type the bound term synthesized.  If a clause fails the term is
+synthesized and moved to the goal.
 
-## The avoidance ladder
+`HasTy.let` needs a body typing at `U.weaken` for a `U` the rule does not
+determine.  Three rungs are tried in order: the annotation, the strengthening
+of the body's type, and `⊤`.  Each decides `Ty.Wf` of its result.  The third
+always applies and loses information.
 
-`HasTy.let` takes `HasTy (Γ.cons T) u U.weaken` for a `U` the rule does not
-determine.  Three rungs are tried in order: the surface annotation, the
-strengthening of the body's synthesized type, and `⊤`.  Every rung decides
-`Ty.Wf` of its result, a premise of the rule.  The third always applies and
-always loses information.
+The four functions form one block, structural on the typer's fuel.  Each
+recursive call uses the fuel one below, so the fuel bounds the depth of term and
+goal together.  The subtyping search runs at its own counter `Budget.sub`.  Each
+function ends a fuel level with a retry at the level below.  The retry is not a
+rule of the calculus and changes no answer.  It makes the monotonicity theorem
+of each function an induction on the difference of fuels.
 
-## Fuel
+The typer does not find a subtyping whose middle is outside the selections of
+the path table, a `Rec-I` folding other than the goal's own body, an `And-I`
+where neither conjunct is checkable alone, or an avoidance result other than the
+annotation, the strengthening or `⊤`.  It does not type an object literal
+without a self annotation, an application whose function variable reaches `∀`
+past the first function view, or a goal that needs a path replaced by its alias.
+It does not pose a `PathTy.recI` or `PathTy.andI` goal at a path.  It finds
+nothing past the budget.
 
-The four functions form one block, structural on the typer's fuel.  Every
-recursive call is at the fuel one below, so the fuel bounds the depth of the
-term and of the goal together, and costs nothing else.  The subtyping search
-is always called at `Budget.sub`, its own counter, never at the typer's fuel.
-
-Each function ends its fuel level with a retry at the level below.  The retry
-is not a rule of the calculus and changes no answer the clauses give, since
-every clause is tried at the higher level with more fuel than at the lower
-one.  What it buys is a monotonicity theorem per function, an induction on the
-difference of the fuels.
-
-The whole block reduces in the kernel, so the checks at the end are
-`decide +kernel` facts.  Nothing of this module is part of the metatheory, and
-no definition lives in the `Paths.DotMNF` or `Paths.FCdot` namespaces.
+The block reduces in the kernel, so the checks at the end are `decide +kernel`.
 -/
 
 namespace PathsFrontend
@@ -83,10 +57,7 @@ namespace PathsFrontend
 open Paths.FCdot (Kind Sig BVar Label)
 open Paths.DotMNF (Path Ty Tm Defs Ctx Sub PathTy HasTy DefsTy)
 
-/-! ## The result of a synthesis
-
-The derivation is a field, so a caller that gets a `Synth` has the typing and
-not merely an answer. -/
+/-! ## The result of a synthesis -/
 
 /-- A type a term has, with the derivation that it has it. -/
 structure Synth {s : Sig} (Γ : Ctx s) (t : Tm s) where
@@ -97,25 +68,21 @@ structure Synth {s : Sig} (Γ : Ctx s) (t : Tm s) where
 
 /-! ## Casts across a decided equality
 
-The derivations below move across a decided equality of labels or of types.
-They are written with `cases` rather than with `▸` because a label occurs
-twice in the conclusion of the rule that carries it, and a rewrite would hit
-both occurrences. -/
+These use `cases` and not `▸`, because a label occurs twice in the conclusion
+of the rule and a rewrite would hit both. -/
 
-/-- A projection read off a path view of the receiver at the label asked for. -/
+/-- A projection read off a path view of the receiver. -/
 def projAt {s : Sig} {Γ : Ctx s} {x : BVar s .var} {a c : Label} {T : Ty s}
     (h : c = a) (d : PathTy Γ (.var x) (.fld c T)) : HasTy Γ (.proj x a) T := by
   cases h; exact .projP d
 
-/-- A projection read off a stable field of the receiver at the label asked
-for, through `Sub.vfldToFld`. -/
+/-- A projection read off a stable field of the receiver, by `Sub.vfldToFld`. -/
 def projVAt {s : Sig} {Γ : Ctx s} {x : BVar s .var} {a c : Label} {T : Ty s}
     (h : c = a) (d : PathTy Γ (.var x) (.vfld c T)) : HasTy Γ (.proj x a) T := by
   cases h; exact .projP (.sub d .vfldToFld)
 
 /-- A type member definition against a declaration whose two bounds are the
-definition's own type.  `DefsTy.typ` is the only rule for a type member and it
-concludes at exactly those bounds. -/
+definition's type, as `DefsTy.typ` requires. -/
 def defsTypAt {s : Sig} {Γ : Ctx s} {A B : Label} {S L U : Ty s}
     (hA : A = B) (hL : S = L) (hU : S = U) : DefsTy Γ (.typ A S) (.typ B L U) := by
   cases hA; cases hL; cases hU; exact .typ
@@ -125,8 +92,8 @@ def defsTrmAt {s : Sig} {Γ : Ctx s} {a c : Label} {t : Tm s} {T : Ty s}
     (h : a = c) (ht : HasTy Γ t T) : DefsTy Γ (.trm a t) (.fld c T) := by
   cases h; exact .trm ht
 
-/-- A member whose body is an object literal against a stable field declared
-at the literal's own self type, `DefsTy.trmObj`. -/
+/-- A member whose body is an object literal against a stable field declared at
+the literal's self type, by `DefsTy.trmObj`. -/
 def defsObjAt {s : Sig} {Γ : Ctx s} {a c : Label} {d : Defs (s,x)} {T U : Ty (s,x)}
     (h : a = c) (hT : T = U) (hd : DefsTy (Γ.consSelf d T) d T) (hdist : Defs.Distinct d) :
     DefsTy Γ (.trm a (.val (.obj d))) (.vfld c (.mu U)) := by
@@ -138,15 +105,12 @@ def lamAt {s : Sig} {Γ : Ctx s} {S S' : Ty s} {t : Tm (s,x)} {T : Ty (s,x)}
     HasTy Γ (.val (.lam S t)) (.all S' T) := by
   cases h; exact .lam ht hwf
 
-/-- `⊤` is its own weakening, which is what the third rung of the avoidance
-ladder needs to hand `HasTy.let` a body typing at `U.weaken`. -/
+/-- `⊤` is its own weakening.  The third rung of the ladder needs this. -/
 theorem weaken_top {s : Sig} {k : Kind} : (Ty.top : Ty s).weaken (k := k) = .top := rfl
 
 /-! ## Reading a view
 
-The typer consults the term views of `Search.lean` and the path table.  The
-readers walk a list with `List.findSome?`, none of them recurses, and none is
-part of the block. -/
+These read the term views of `Search.lean` and the path table. -/
 
 /-- A function type a variable has, with the derivation. -/
 structure AllView {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
@@ -157,9 +121,7 @@ structure AllView {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
   /-- The derivation. -/
   deriv : HasTy Γ (.path x) (.all dom cod)
 
-/-- The first term view that is a function type.  Only the first is tried: an
-application whose function variable reaches `∀` further down the list is on the
-list of what the typer will not find. -/
+/-- The first term view that is a function type.  Only the first is tried. -/
 def allView {s : Sig} {Γ : Ctx s} {x : BVar s .var} (vs : List (View Γ x)) :
     Option (AllView Γ x) :=
   vs.findSome? (fun v =>
@@ -167,8 +129,8 @@ def allView {s : Sig} {Γ : Ctx s} {x : BVar s .var} (vs : List (View Γ x)) :
     | .all S T => some ⟨S, T, hv ▸ v.deriv⟩
     | _ => none)
 
-/-- A projection `x.a`, from the first view of the row of `x` in the path table
-that is a field or a stable field at `a`. -/
+/-- A projection `x.a`, from the first view of `x` in the path table that is a
+field or a stable field at `a`. -/
 def projView {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) (x : BVar s .var) (a : Label) :
     Option (Synth Γ (.proj x a)) :=
   (tbl.viewsAt (.var x)).findSome? fun v =>
@@ -182,14 +144,12 @@ def viewAt {s : Sig} {Γ : Ctx s} {x : BVar s .var} (T : Ty s)
     (vs : List (View Γ x)) : Option (HasTy Γ (.path x) T) :=
   vs.findSome? (fun v => if h : v.ty = T then some (h ▸ v.deriv) else none)
 
-/-- The first term view that the subtyping search takes to the type asked for,
-through `HasTy.sub`. -/
+/-- The first term view that the subtyping search takes to the type asked for. -/
 def viewSub {s : Sig} {Γ : Ctx s} {x : BVar s .var} (D : List (PDecl Γ)) (n : Nat)
     (T : Ty s) (vs : List (View Γ x)) : Option (HasTy Γ (.path x) T) :=
   vs.findSome? (fun v => (sub? D n v.ty T).map (fun e => .sub v.deriv e))
 
-/-- A synthesized type moved to the goal: by a decided equality, or by the
-subtyping search through `HasTy.sub`. -/
+/-- A synthesized type moved to the goal, by equality or by the search. -/
 def toGoal {s : Sig} {Γ : Ctx s} {t : Tm s} (D : List (PDecl Γ)) (n : Nat) (T : Ty s)
     (c : Synth Γ t) : Option (HasTy Γ t T) :=
   if h : c.ty = T then some (h ▸ c.deriv)
@@ -201,15 +161,13 @@ mutual
 
 /-- Synthesis, clause by clause, every premise at the fuel one below.
 
-- A variable returns `Ctx.lookup` and `HasTy.var`, exact, nothing guessed.
-- `λ(x : S). t` decides `Ty.Wf S` and synthesizes the body under `Γ.cons S`
-  against a table rebuilt there.
-- `ν(x : T. d)` checks the definitions under `Γ.consSelf d.erase T` against a
-  table rebuilt there and decides `Defs.Distinct`.
-- `x y` reads the first function view of `x` and checks `y` against its
-  domain.
-- `x.a` reads a field of `x` off the path table, by `HasTy.projP`.
-- `let x (: U)? = t in u` climbs the three rung avoidance ladder.
+- A variable returns `Ctx.lookup` and `HasTy.var`.
+- `λ(x : S). t` decides `Ty.Wf S` and synthesizes the body under `Γ.cons S`.
+- `ν(x : T. d)` checks the definitions under `Γ.consSelf d.erase T` and decides
+  `Defs.Distinct`.
+- `x y` reads the first function view of `x` and checks `y` against its domain.
+- `x.a` reads a field of `x` off the path table.
+- `let x (: U)? = t in u` climbs the avoidance ladder.
 
 The last alternative retries at the fuel one below. -/
 def synth? {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) (b : Budget) :
@@ -235,7 +193,7 @@ def synth? {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) (b : Budget) :
         | .let ann t u =>
             (synth? tbl b n t).bind (fun c1 =>
               let tbl' := table b (Γ.cons c1.ty)
-              -- rung one: the surface annotation
+              -- rung one: the annotation
               ((match ann with
                 | some U =>
                     if hwf : Ty.Wf U then
@@ -252,7 +210,7 @@ def synth? {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) (b : Budget) :
                       else none
                   | none => none) :
                     Option (Synth Γ (ATm.let ann t u).erase)).orElse fun _ =>
-                -- rung three: `⊤`, which always applies and always loses
+                -- rung three: `⊤`
                 some ⟨.top, .let c1.deriv (weaken_top ▸ HasTy.sub c2.deriv Sub.top) .top⟩) :
                   Option (Synth Γ (ATm.let ann t u).erase)))
         : Option (Synth Γ a.erase))).orElse fun _ => synth? tbl b n a
@@ -260,14 +218,12 @@ termination_by structural n => n
 
 /-- Checking, every premise at the fuel one below.
 
-- A variable goes to `checkVar?`, which reaches the rules subsumption does
-  not.
-- A lambda against `∀(x : S') T` with `S = S'` checks its body against `T`
-  under `Γ.cons S`, by `HasTy.lam`.
-- A `let` without annotation against `U` synthesizes the bound term and checks
-  the body against `U.weaken`, by `HasTy.let`.
-- Every term, those three included when their clause fails, is synthesized
-  and moved to the goal by a decided equality or by the subtyping search.
+- A variable goes to `checkVar?`.
+- A lambda against `∀(x : S') T` with `S = S'` checks its body against `T`.
+- An unannotated `let` against `U` synthesizes the bound term and checks the
+  body against `U.weaken`.
+- Every term, those three included when their clause fails, is synthesized and
+  moved to the goal.
 
 The last alternative retries at the fuel one below. -/
 def check? {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) (b : Budget) :
@@ -296,15 +252,14 @@ termination_by structural n => n
 /-- Checking a variable, every premise at the fuel one below.  Four rules, in
 order.
 
-1. A singleton goal `q.type` is a path typing of the variable, asked of
-   `checkPath?` and bridged by `HasTy.sngl`.
-2. An intersection goal splits by `HasTy.andI`, the one rule that combines two
-   typings of a single variable.
+1. A singleton goal `q.type` is a path typing, asked of `checkPath?` and
+   bridged by `HasTy.sngl`.
+2. An intersection goal splits by `HasTy.andI`.
 3. A `μ` goal whose body is declaration shaped folds by `HasTy.recI`.  `Sub`
-   relates two `μ` types only through the abstract view, so a `μ` goal is
+   relates two `μ` types only through the abstract view, so this goal is
    otherwise out of reach from an opened type.
-4. Otherwise the term views are consulted, first for a view at exactly the
-   goal and then for a view the subtyping search takes there.
+4. Otherwise the term views are consulted, for a view at exactly the goal and
+   then for a view the subtyping search takes there.
 
 The last alternative retries at the fuel one below. -/
 def checkVar? {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) (b : Budget) :
@@ -331,14 +286,12 @@ def checkVar? {s : Sig} {Γ : Ctx s} (tbl : PTable Γ) (b : Budget) :
       checkVar? tbl b n x T
 termination_by structural n => n
 
-/-- Checking a definition list, every premise at the fuel one below.
-`DefsTy` is syntax directed on both the definitions and the type, so the two
-are matched in lockstep:
+/-- Checking a definition list, every premise at the fuel one below.  The
+definitions and the type are matched in lockstep:
 
-- A type member against a declaration with its own type on both bounds.
+- A type member against a declaration with its type on both bounds.
 - A member whose body is an object literal against a stable field declared at
-  the literal's self type, by `DefsTy.trmObj`, the literal's definitions
-  checked under its own self binder against a table rebuilt there.
+  the literal's self type, by `DefsTy.trmObj`.
 - A term member against a field declaration at the same label.
 - An intersection against an intersection.
 
@@ -373,9 +326,8 @@ termination_by structural n => n
 
 end
 
-/-- The entry point at a context.  It builds the path table of the context
-once and runs the typer at `Budget.typer`.  A program the version types under
-a context is typed here at that context. -/
+/-- The entry point at a context.  It builds the path table once and runs the
+typer at `Budget.typer`. -/
 def synthIn? {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) : Option (Synth Γ a.erase) :=
   synth? (table b Γ) b b.typer a
 
@@ -383,21 +335,17 @@ def synthIn? {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) : Option (Synth Γ 
 def synthTop? (b : Budget) (a : ATm []) : Option (Synth Ctx.nil a.erase) :=
   synthIn? b .nil a
 
-/-- Checking at a context against a given type, with the path table of the
-context built once.  Synthesis keeps the most precise type the ladder finds.
-This entry point asks for a given judgment instead, which may be weaker. -/
+/-- Checking at a context against a given type, which may be weaker than the
+synthesized one. -/
 def checkIn? {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) (T : Ty s) :
     Option (HasTy Γ a.erase T) :=
   check? (table b Γ) b b.typer a T
 
 /-! ## Fuel monotonicity
 
-One theorem per function, so that a caller may raise the typer's fuel without
-redoing the argument.  The statement is about `isSome` and not about
-derivations, because more fuel may find another derivation of the same
-judgment, and `HasTy` is `Type` valued with no decidable equality.  The retry
-at the end of each fuel level makes each an induction on the difference.
-Nothing is claimed for the other counters of the budget. -/
+One theorem per function.  Each is about `isSome` and not about derivations,
+since more fuel may find another derivation of the same judgment.  The other
+counters of the budget are not covered. -/
 
 /-- One more unit of fuel never loses a synthesis. -/
 theorem synth?_succ {s : Sig} {Γ : Ctx s} {tbl : PTable Γ} {b : Budget} {n : Nat}
@@ -464,39 +412,31 @@ theorem checkDefs?_le {s : Sig} {Γ : Ctx s} {tbl : PTable Γ} {b : Budget} :
   | refl => exact fun hs => hs
   | step _ ih => exact fun hs => checkDefs?_succ (ih hs)
 
-/-! ## The programs of the version
+/-! ## The example programs
 
-Every surface program of `Notation.lean` is resolved by `resolve` and typed by
-`synthTop?`, and the type it synthesizes is compared with the type the
-version's own derivation concludes in
-`lean/Coercions/Paths/DotMNF/Examples.lean`.  The typer returns the
-derivation, so a success here is a `Paths.DotMNF.HasTy` and not an answer.
-`Ty` has decidable equality, so the comparison is a decision on the type,
-not on the derivation.  Resolution and the typer are structural, so every
-check is a `decide +kernel` fact.
+Each surface program of `Notation.lean` is resolved and typed by `synthTop?`.
+The type is compared with the one concluded by the derivation in
+`Paths.DotMNF.Examples`.
 
-Each budget is one at which the program types.  Beside it, each counter that is
-not zero is lowered by one with the others kept, and the program does not type
-there.  So each budget is least in each counter on its own.  It is not claimed
-that no smaller budget types the program, since the counters trade off: Fig. 2
-types at views 2 and search 3, and at views 1 and search 4, and not at views 1
-and search 3.  Nor is it claimed that the program fails below the budget in
-general, since only the typer's own fuel is monotone.
+Each budget is one at which the program types.  Lowering any one nonzero
+counter by one, with the others kept, makes it fail.  A smaller budget with
+several counters changed may still succeed, since the counters trade off.
+Fig. 2 types at views 2 and search 3, and at views 1 and search 4, and not at
+views 1 and search 3.
 
-Three programs are written closed where the version types them under a
-context, X3, E6 and X4.  The context entry becomes a lambda, and the type is
-the version's type under one `∀`.  The same three are typed at the version's
-own context further below, through `synthIn?`. -/
+X3, E6 and X4 are typed in `Paths.DotMNF.Examples` under a context.  Here they
+are written closed, the context entry becomes a lambda, and the expected type
+is the original type under one `∀`.  They are also typed at their own contexts
+further below, through `synthIn?`. -/
 
 section Checks
 
 open Paths.DotMNF.Examples
 
-/-- The type a derivation of the version concludes. -/
+/-- The type a derivation concludes. -/
 def versionTy {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s} (_ : HasTy Γ t T) : Ty s := T
 
-/-- The check: the program resolves, the typer synthesizes a type at the
-budget, and that type is `T`. -/
+/-- The program resolves and the typer synthesizes `T` at the budget. -/
 def typesAt (b : Budget) (e : STm) (T : Ty []) : Bool :=
   match resolve pathsTable e with
   | some a =>
@@ -511,12 +451,12 @@ def typesSome (b : Budget) (e : STm) : Bool :=
   | some a => (synthTop? b a).isSome
   | none => false
 
-/-- The type Fig. 1 synthesizes: the self type of `pcore`, strengthened past
-the binder of `o`, which it does not mention. -/
+/-- The type Fig. 1 synthesizes: the self type of `pcore`, strengthened past the
+binder of `o`. -/
 def Fig1_ty : Ty [] := (tyStrengthen? (Ty.mu Fig1_pBody)).getD .bot
 
 /-- E1, bad bounds at a variable.  The annotated `let` is checked through the
-chain `⊤ <: x.A <: ⊥` of the one declaration of `x`. -/
+chain `⊤ <: x.A <: ⊥`. -/
 def bE1 : Budget := { table := 0, views := 1, sub := 1, typer := 4, rows := 0 }
 
 example : typesAt bE1 E1_src (versionTy E1) = true := by decide +kernel
@@ -527,8 +467,8 @@ example : typesAt { bE1 with sub := 0 } E1_src (versionTy E1) = false := by
 example : typesAt { bE1 with typer := 3 } E1_src (versionTy E1) = false := by
   decide +kernel
 
-/-- E2, a recursive literal allocated by a `let`, its member selected and
-applied to itself.  The outer `let` falls to `⊤`, as the version's does. -/
+/-- E2, a recursive literal bound by a `let`, its member selected and applied to
+itself.  The outer `let` falls to `⊤`. -/
 def bE2 : Budget := { table := 2, views := 0, sub := 2, typer := 7, rows := 0 }
 
 example : typesAt bE2 E2_src (versionTy E2) = true := by decide +kernel
@@ -551,8 +491,8 @@ example : typesAt { bE3 with sub := 1 } E3_src (versionTy E3) = false := by
 example : typesAt { bE3 with typer := 4 } E3_src (versionTy E3) = false := by
   decide +kernel
 
-/-- E4, the counterexample of the paper's first section.  The detour step of the
-table gives `w` its member `A` at `Int..⊤`. -/
+/-- E4, the counterexample of the paper's first section.  The detour step gives
+`w` its member `A` at `Int..⊤`. -/
 def bE4 : Budget := { table := 1, views := 0, sub := 2, typer := 6, rows := 0 }
 
 example : typesAt bE4 E4_src (versionTy E4) = true := by decide +kernel
@@ -575,8 +515,7 @@ example : typesAt { bE5 with sub := 1 } E5_src (versionTy E5) = false := by
 example : typesAt { bE5 with typer := 6 } E5_src (versionTy E5) = false := by
   decide +kernel
 
-/-- E6, a field typed at its own literal's type member, under the lambda that
-binds the version's context entry. -/
+/-- E6, a field typed at its own literal's type member. -/
 def bE6 : Budget := { table := 2, views := 0, sub := 2, typer := 6, rows := 0 }
 
 example : typesAt bE6 E6_src (.all E6Int (versionTy E6)) = true := by decide +kernel
@@ -587,7 +526,7 @@ example : typesAt { bE6 with sub := 1 } E6_src (.all E6Int (versionTy E6)) = fal
 example : typesAt { bE6 with typer := 5 } E6_src (.all E6Int (versionTy E6)) = false := by
   decide +kernel
 
-/-- E7, a two element alias cycle of type members.  Nothing is searched. -/
+/-- E7, a two element alias cycle of type members. -/
 def bE7 : Budget := { table := 0, views := 0, sub := 0, typer := 3, rows := 0 }
 
 example : typesAt bE7 E7_src (versionTy E7) = true := by decide +kernel
@@ -699,8 +638,7 @@ example : typesAt { bE8p with table := 0 } E8p_src (versionTy E8p) = false := by
 example : typesAt { bE8p with typer := 2 } E8p_src (versionTy E8p) = false := by
   decide +kernel
 
-/-- X1, a literal whose member is bounded by a selection at a path of length
-two. -/
+/-- X1, a literal whose member is bounded by a selection at a path of length two. -/
 def bX1 : Budget := { table := 0, views := 0, sub := 0, typer := 4, rows := 0 }
 
 example : typesAt bX1 X1_src (versionTy (X1_lit (Γ := Ctx.nil))) = true := by decide +kernel
@@ -716,16 +654,14 @@ example : typesAt { bX2 with table := 0 } X2_src (versionTy (X2_lit (Γ := Ctx.n
 example : typesAt { bX2 with typer := 3 } X2_src (versionTy (X2_lit (Γ := Ctx.nil))) = false := by
   decide +kernel
 
-/-- X3, `projP` through two stable fields, under the lambda that binds the
-version's context entry. -/
+/-- X3, `projP` through two stable fields. -/
 def bX3 : Budget := { table := 0, views := 0, sub := 0, typer := 3, rows := 0 }
 
 example : typesAt bX3 X3_src (.all X3_A (versionTy X3)) = true := by decide +kernel
 example : typesAt { bX3 with typer := 2 } X3_src (.all X3_A (versionTy X3)) = false := by
   decide +kernel
 
-/-- X4, the `types` module of gDOT Fig. 2 alone, under the lambda that binds the
-version's context entry. -/
+/-- X4, the `types` module of gDOT Fig. 2 alone. -/
 def bX4 : Budget := { table := 5, views := 2, sub := 3, typer := 10, rows := 0 }
 
 example : typesAt bX4 X4_src (.all .top (versionTy X4_lit0)) = true := by decide +kernel
@@ -764,7 +700,7 @@ example : typesAt { bP3e with typer := 5 } P3e_src (versionTy P3e_lit) = false :
   decide +kernel
 
 /-- gDOT Fig. 2, the `Option` encoding.  The type mentions the binder of `o`, so
-the outer `let` falls to `⊤`, the version's type. -/
+the outer `let` falls to `⊤`. -/
 def bFig2 : Budget := { table := 5, views := 2, sub := 3, typer := 15, rows := 0 }
 
 example : typesAt bFig2 Fig2_src (versionTy Fig2_prog_ty) = true := by decide +kernel
@@ -778,7 +714,7 @@ example : typesAt { bFig2 with typer := 14 } Fig2_src (versionTy Fig2_prog_ty) =
   decide +kernel
 
 /-- pDOT Fig. 1.  Its self type mentions neither `let` binder, so both `let`s
-take the strengthening rung and the program synthesizes `Fig1_ty`. -/
+take the strengthening rung. -/
 def bFig1 : Budget := { table := 5, views := 2, sub := 3, typer := 15, rows := 0 }
 
 example : typesAt bFig1 Fig1_src (Fig1_ty) = true := by decide +kernel
@@ -791,21 +727,19 @@ example : typesAt { bFig1 with sub := 2 } Fig1_src (Fig1_ty) = false := by
 example : typesAt { bFig1 with typer := 14 } Fig1_src (Fig1_ty) = false := by
   decide +kernel
 
-/-- The strengthening `Fig1_ty` exists: the self type of `pcore` does not
-mention `o`. -/
+/-- The strengthening exists, since the self type of `pcore` does not mention
+`o`. -/
 example : (tyStrengthen? (Ty.mu Fig1_pBody)).isSome = true := by decide +kernel
 
-/-- The version types Fig. 1 at `⊤`.  The typer reaches that judgment too, by
-checking against `⊤`, where the synthesized `Fig1_ty` is moved by `Sub.top`. -/
+/-- Fig. 1 also checks against `⊤`, where `Fig1_ty` is moved by `Sub.top`. -/
 example : (match resolve pathsTable Fig1_src with
     | some a => (checkIn? bFig1 .nil a .top).isSome
     | none => false) = true := by decide +kernel
 
-/-! ### The programs at the version's contexts
+/-! ### The programs at their contexts
 
-X3, E6 and X4 are typed by the version under a context.  Here the body of the
-closed program, under its one lambda, is typed by `synthIn?` at that context,
-and the type is the version's own. -/
+The body of the closed program is typed by `synthIn?` at the context of
+`Paths.DotMNF.Examples`. -/
 
 /-- The body of a closed program under its outer lambda, typed at a context. -/
 def bodyTypesIn (b : Budget) (Γ : Ctx ([],x)) (e : STm) (T : Ty ([],x)) : Bool :=
@@ -816,14 +750,12 @@ def bodyTypesIn (b : Budget) (Γ : Ctx ([],x)) (e : STm) (T : Ty ([],x)) : Bool 
       | none => false
   | _ => false
 
-/-- X3, E6 and X4 at the contexts of the version, each at the type of the
-version's derivation. -/
+/-- X3, E6 and X4 at their contexts. -/
 example : bodyTypesIn bX3 X3_Ctx X3_src (versionTy X3) = true := by decide +kernel
 example : bodyTypesIn bE6 E6Ctx1 E6_src (versionTy E6) = true := by decide +kernel
 example : bodyTypesIn bX4 X4_Ctx X4_src (versionTy X4_lit0) = true := by decide +kernel
 
-/-- X3 resolved open, at the name of its context's one entry, then typed at
-that context. -/
+/-- X3 resolved open at the name of its context entry, then typed there. -/
 example : (match resolveIn pathsTable (.cons .nil "x") (pdot% let y = x.a in y.b) with
     | some a =>
         match synthIn? bX3 X3_Ctx a with
@@ -831,15 +763,14 @@ example : (match resolveIn pathsTable (.cons .nil "x") (pdot% let y = x.a in y.b
         | none => false
     | none => false) = true := by decide +kernel
 
-/-! ### The restriction account
+/-! ### R1, R2 and R7
 
-R1 and R2 reach the alias of a singleton through a type member whose bounds
-are singletons.  The version relates the two by `Sub.selLower` and
-`Sub.selUpper`, and the typer finds that chain.  No rule replaces a path by
-its alias, and none is needed here.  R7 is the direct-style path whose prefix
-the `let` insertion binds opaquely: the member read through it is a selection
-at the inserted binder, which is not below the selection at `x.a` the function
-asks for. -/
+R1 and R2 reach the alias of a singleton through a type member whose bounds are
+singletons.  `Sub.selLower` and `Sub.selUpper` relate the two and the typer
+finds that chain.  No rule replaces a path by its alias.  R7 is a direct-style
+path whose prefix the `let` insertion binds opaquely.  The member read through
+it is a selection at the inserted binder, which is not below the selection at
+`x.a` that the function asks for. -/
 
 /-- `∀(f : ⊤) ∀(g : ⊤) ∀(m : {A : f.type..g.type}) ∀(x : f.type) g.type`. -/
 def R1_ty : Ty [] :=

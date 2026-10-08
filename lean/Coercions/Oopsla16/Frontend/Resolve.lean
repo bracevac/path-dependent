@@ -6,44 +6,28 @@ import Coercions.FCdotR.CheckerExamples
 /-!
 # Name resolution and label tables
 
-Three structural functions take a surface phrase to the annotated de Bruijn
-syntax of `Ann.lean`, and they are the only place where a surface name
-becomes an index or a label becomes a position.
+The resolvers take a surface phrase to the annotated de Bruijn syntax of
+`Ann.lean`.  They are where a name becomes an index and a label becomes a
+position.
 
-Name environments are innermost binder first, one name per binder of the
-signature, so shadowing is innermost wins by construction.  User names are
-data in a `NameEnv`, never Lean identifiers, so Lean's macro hygiene never
-touches them.
+A `NameEnv` holds one name per binder, innermost first, so the innermost
+binder wins.  A literal `new {z ⇒ ds}` resolves its members and written self
+type under `z`.  A method `def m(x : S) : U = t` resolves `S` outside `x` and
+`U` and `t` under `x`.  The resolver inserts no binder.
 
-The resolver inserts no binder.  A call of the version takes arbitrary terms
-on both sides, so a surface call resolves to a call, and the target's own
-elaboration does the normalisation it needs.
+A member list resolves only when each member's name has its position as label
+in the table.  A mismatch fails, and no member is renumbered.
+`labelsOfProgram` builds a table from explicit entries and the member names
+of every literal, in program order.  It fails when a name is forced to two
+positions.  A name that labels no literal member, such as a type member of a
+parameter's type, needs an explicit entry.
 
-Scopes.  A literal `new {z ⇒ ds}` resolves its members, and its written self
-type, under `z`.  A method `def m(x : S) : U = t` resolves `S` at the member's
-scope and `U` and `t` under `x`.  A method type `{def m(x : S) : U}` resolves
-`U` under `x`, and `μ(z. T)` resolves `T` under `z`.
+The theorems are totality on scoped, labelled, positioned phrases
+(`resolveTm_isSome`) and `labelsOfProgram_positioned`.  The examples at the end
+resolve the calculus's own programs and compare their erasures with its terms.
 
-Labels.  The version's label of a member is the length of the list below it.
-So a member list resolves only when every member's name has that position in
-the table, and a mismatch is a resolution failure rather than a silently
-renumbered member.  `labelsOfProgram` builds a table from a program: the
-explicit entries first, then the position of every member name of every
-literal, in program order.  It fails when one name is forced to two
-positions.  A name that labels no literal member, for instance a type member
-of a parameter's type, needs an explicit entry.
-
-What is stated below is totality on scoped, labelled, positioned phrases, and
-that a table built by `labelsOfProgram` positions its program.  The examples
-at the end resolve the version's own programs and compare their erasures with
-the version's terms.
-
-This module imports `Notation.lean` for the examples, and Lean's token table
-is global.  So `type`, `def`, `new` and `μ` are keywords here and none of them
-can be a local name.
-
-Nothing in this module is part of the metatheory.  No definition here lives
-in the `Oopsla16` or `FCdot` namespaces.
+Importing `Notation.lean` makes `type`, `def`, `new` and `μ` keywords, so none
+can be a local name.  Nothing here is part of the metatheory.
 -/
 
 namespace Oopsla16Frontend
@@ -88,12 +72,7 @@ theorem NameEnv.find?_isSome : ∀ {s : Sig} (ν : NameEnv s) (z : String),
         obtain ⟨i, hi⟩ := Option.isSome_iff_exists.mp (NameEnv.find?_isSome ν' z h')
         simp [NameEnv.find?, hzy, hi]
 
-/-! ## The resolvers
-
-Each is structural on the surface phrase.  The order in which a clause asks
-for its parts matches the order of the conjuncts of `Scoped`, `LabelsIn` and
-`Positioned`, so the totality proofs take the conjunctions apart in the order
-the `Option`s are produced. -/
+/-! ## The resolvers -/
 
 /-- Resolve a surface type. -/
 def resolveTy {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (T : SType) : Option (Ty [] s) :=
@@ -161,8 +140,7 @@ def resolveTm {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (e : STm) : Option (A
       let T' ← resolveTy Λ ν T
       pure (.asc t' T')
 termination_by structural e
-/-- Resolve a surface member.  Its label is checked by the list that holds
-it, where the position is known. -/
+/-- Resolve a surface member.  The list that holds it checks its label. -/
 def resolveDm {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (d : SDm) : Option (ADm s) :=
   match d with
   | .typ _ T => do
@@ -174,8 +152,8 @@ def resolveDm {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (d : SDm) : Option (A
       let t' ← resolveTm Λ (ν.cons x) t
       pure (.dfun S' U' t')
 termination_by structural d
-/-- Resolve a surface member list.  Every member's name must have, in the
-table, the label of its position, the length of the list below it. -/
+/-- Resolve a surface member list.  Every member's name must have in the table
+the label of its position. -/
 def resolveDms {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (ds : SDms) : Option (ADms s) :=
   match ds with
   | .nil => some .dnil
@@ -188,8 +166,7 @@ def resolveDms {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (ds : SDms) : Option
 termination_by structural ds
 end
 
-/-- Resolve a surface term in a given environment, for a program that is
-open in the variables the environment names. -/
+/-- Resolve a surface term that is open in the variables of `ν`. -/
 def resolveIn {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (e : STm) : Option (ATm s) :=
   resolveTm Λ ν e
 
@@ -198,11 +175,10 @@ def resolve (Λ : LabelTable) (e : STm) : Option (ATm []) := resolveIn Λ .nil e
 
 /-! ## Totality
 
-Resolution succeeds on a phrase whose free names are all in the environment,
-whose labels are all in the table, and whose literals' members are all
-positioned.  The proofs follow the resolvers clause by clause. -/
+Resolution succeeds on a phrase that is scoped, labelled and positioned.  The
+proofs follow the resolvers clause by clause. -/
 
-/-- A `some` from an `isSome`, the step every clause below takes. -/
+/-- A `some` from an `isSome`. -/
 private theorem some_of_isSome {α : Type} {o : Option α} (h : o.isSome = true) :
     ∃ a, o = some a :=
   Option.isSome_iff_exists.mp h
@@ -317,12 +293,11 @@ end
 
 /-! ## Label tables from a program
 
-`collectLabels` walks every literal of a phrase in program order and gives
-each member name not yet in the table the position it has where it first
-occurs.  `labelsOfProgram` starts from the explicit entries, collects, and
-accepts the table when it positions every literal of the program.  A name
-that two literals put at two positions keeps the first and then fails the
-check at the second, so the program has no table. -/
+`collectLabels` walks the literals in program order and gives each member name
+not yet in the table the position of its first occurrence.  `labelsOfProgram`
+starts from the explicit entries and accepts the result when it positions the
+program.  A name at two positions keeps the first and fails the check at the
+second. -/
 
 /-- Add a name at a position, unless the table already has the name. -/
 def addLabel (Λ : LabelTable) (x : String) (p : Nat) : LabelTable :=
@@ -354,15 +329,15 @@ def SDms.collectLabels (Λ : LabelTable) (ds : SDms) : LabelTable :=
 termination_by structural ds
 end
 
-/-- The label table of a program: the explicit entries first, then every
-member name at its position.  `none` when a name is forced to two positions,
-or an explicit entry contradicts a position. -/
+/-- The label table of a program: the explicit entries, then every member name
+at its position.  `none` when a name is forced to two positions or an explicit
+entry contradicts a position. -/
 def labelsOfProgram (explicit : LabelTable) (e : STm) : Option LabelTable :=
   let Λ := STm.collectLabels explicit e
   if STm.Positioned Λ e then some Λ else none
 
-/-- A table built from a program positions that program, so the program meets
-the third premise of `resolveTm_isSome`. -/
+/-- A table built from a program positions it, the third premise of
+`resolveTm_isSome`. -/
 theorem labelsOfProgram_positioned {Λ₀ Λ : LabelTable} {e : STm}
     (h : labelsOfProgram Λ₀ e = some Λ) : STm.Positioned Λ e = true := by
   dsimp only [labelsOfProgram] at h
@@ -372,8 +347,7 @@ theorem labelsOfProgram_positioned {Λ₀ Λ : LabelTable} {e : STm}
 
 /-! ### The explicit entries win
 
-The table only grows at its end, so an entry is never overwritten.  In
-particular an explicit entry is the entry of the result. -/
+The table only grows at its end, so an explicit entry is never overwritten. -/
 
 /-- One table extends another when every name of the first keeps its label. -/
 def Extends (Λ Λ' : LabelTable) : Prop :=
@@ -435,13 +409,10 @@ theorem labelsOfProgram_explicit {Λ₀ Λ : LabelTable} {e : STm}
   · cases h; exact STm.collectLabels_extends e Λ₀
   · cases h
 
-/-! ## The version's programs
+/-! ## The calculus's programs
 
-Each program of `Notation.lean` gets its label table from `labelsOfProgram`,
-compared by `decide` with the table written out, and resolves under it.  The
-erasure of the resolved term is compared by `rfl` with the version's term,
-since the version's terms derive no equality.  Each closed program also meets
-the three premises of `resolveTm_isSome`, decided. -/
+For each program of `Notation.lean`, `labelsOfProgram` gives the table written
+out, and the erasure of the resolved term is the calculus's own term. -/
 
 /-! ### `ex0` -/
 
@@ -483,8 +454,7 @@ example : (resolve curryCallTable curryCallSrc).map ATm.erase
 
 /-! ### `ex1`
 
-`T` is the type member of the parameter's type and labels no literal member,
-so it is an explicit entry. -/
+`T` labels no literal member, so it is an explicit entry. -/
 
 /-- The table of `ex1`. -/
 def ex1Table : LabelTable := [("T", 0), ("apply", 0)]
@@ -499,8 +469,7 @@ example : (resolve ex1Table ex1src).map ATm.erase
 
 /-! ### `ex2`, open in `y`
 
-`apply` is the method of `y`'s type and labels no literal member of the
-program, so it is an explicit entry. -/
+`apply` labels no literal member, so it is an explicit entry. -/
 
 /-- The table of `ex2`. -/
 def ex2Table : LabelTable := [("apply", 0), ("T", 0)]
@@ -513,17 +482,16 @@ example : STm.Scoped ["y"] ex2src = true ∧ STm.LabelsIn ex2Table ex2src = true
 example : (resolveIn ex2Table (NameEnv.nil.cons "y") ex2src).map ATm.erase
     = some FCdotR.CheckerExamples.DotExs.ex2Tm := rfl
 
-/-- `polyId`, the type of `y`, resolves to the version's `polyId`. -/
+/-- `polyId`, the type of `y`, resolves to the calculus's `polyId`. -/
 example : resolveTy ex2Table .nil polyId = some FCdotR.CheckerExamples.DotExs.polyId := by
   decide
 
 /-! ### `paper_lst`
 
-`T` is the type member of `cons`'s parameter type and labels no literal
-member, so it is the one explicit entry.  Every other name gets the position
-the version's derivation uses: `nil = 2`, `cons = 1`, `List = 0` in the module,
-`head = 2`, `tail = 1`, `Elem = 0` in a list cell, `apply = 0` in the curried
-layers of `cons`. -/
+`T` labels no literal member, so it is the one explicit entry.  The other
+names get the positions of the calculus's derivation: `nil = 2`, `cons = 1`,
+`List = 0` in the module, `head = 2`, `tail = 1`, `Elem = 0` in a list cell,
+and `apply = 0` in the curried layers of `cons`. -/
 
 /-- The table of `paper_lst`. -/
 def paperLstTable : LabelTable :=
@@ -532,7 +500,7 @@ def paperLstTable : LabelTable :=
 
 example : labelsOfProgram [("T", 0)] paperLstSrc = some paperLstTable := by decide
 
-/-- The positions of the version's derivation, name by name. -/
+/-- The positions of the calculus's derivation, name by name. -/
 example : ["nil", "cons", "List", "head", "tail", "Elem", "apply", "T"].map (labelOf? paperLstTable)
     = [some 2, some 1, some 0, some 2, some 1, some 0, some 0, some 0] := by decide
 
@@ -542,8 +510,7 @@ example : STm.Scoped [] paperLstSrc = true ∧ STm.LabelsIn paperLstTable paperL
 example : (resolve paperLstTable paperLstSrc).map ATm.erase
     = some FCdotR.CheckerExamples.PaperLst.lstTm := rfl
 
-/-- The totality theorem applies to `paper_lst`, with the positions taken from
-the table `labelsOfProgram` built. -/
+/-- Totality applies to `paper_lst`. -/
 example : (resolve paperLstTable paperLstSrc).isSome = true :=
   resolveTm_isSome paperLstSrc paperLstTable .nil (by decide) (by decide)
     (labelsOfProgram_positioned (Λ₀ := [("T", 0)]) (by decide))
@@ -561,7 +528,7 @@ example : resolveTy functionFieldTable (NameEnv.nil.cons "z") Tbody
 
 /-! ### `forgetSelf`, two closed types
 
-`μ(z. ⊤ ∧ {type B : ⊥ .. ⊤})` and its body, with `B = 1`, the two sides of
+`μ(z. ⊤ ∧ {type B : ⊥ .. ⊤})` and its body, with `B = 1`: the two sides of
 `Oopsla16.Examples.forgetSelf`. -/
 
 example : resolveTy [("B", 1)] .nil (o16Ty% μ(z. ⊤ ∧ { type B : ⊥ .. ⊤ }))
@@ -573,10 +540,9 @@ example : resolveTy [("B", 1)] .nil (o16Ty% ⊤ ∧ { type B : ⊥ .. ⊤ })
 /-! ### A program with no table
 
 Three literals with members `{a, b}`, `{b, c}` and `{c, a}`.  The first puts
-`a` at `1` and `b` at `0`, the second needs `b` at `1`, so no table positions
-all three. -/
+`a` at `1` and `b` at `0`, the second needs `b` at `1`, so no table fits. -/
 
-/-- The cyclic names program. -/
+/-- Three literals whose member names form a cycle. -/
 def cyclicSrc : STm :=
   o16% (new { p ⇒ type a = ⊤ type b = ⊤ }).a(
          (new { q ⇒ type b = ⊤ type c = ⊤ }).b(new { r ⇒ type c = ⊤ type a = ⊤ }))
@@ -590,7 +556,7 @@ example : cyclicSrc =
 example : labelsOfProgram [] cyclicSrc = none := by decide
 
 /-- Under the table the first literal suggests, resolution fails at the second
-literal rather than renumbering its members. -/
+literal. -/
 example : (resolve [("a", 1), ("b", 0), ("c", 0)] cyclicSrc).isSome = false := by decide
 
 end Oopsla16Frontend

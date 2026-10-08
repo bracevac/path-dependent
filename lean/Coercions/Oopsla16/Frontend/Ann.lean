@@ -3,30 +3,20 @@ import Coercions.Oopsla16.Syntax
 /-!
 # Annotated Oopsla16 terms
 
-`ATm` is the version's term syntax `Oopsla16.Tm [] s` with two front end
-annotations and nothing else: the self type of an object literal, if it was
-written, and an ascription `(t : T)`.  Members carry no label, as in the
-version, where a member's label is the length of the list below it.
+`ATm` is `Oopsla16.Tm [] s` plus two annotations the calculus does not keep.
 
-Why the self type is carried.  `T_Obj` types the members of a literal under
-the self type it concludes with (`Oopsla16.HasType.T_Obj`), so the typer
-cannot read the self type off the members once it has started typing them.
-A literal whose methods are all annotated has one anyway, and `selfOf?`
-computes it.  A literal with a Curry style method needs it written, and
-`Oopsla16.Tm.tobj` has no slot for it, so it lives here.
+- The self type of an object literal, when it is written.  `T_Obj` types the
+  members under the self type it concludes with, so a literal with a Curry
+  style method needs it written, and `Tm.tobj` has no slot for it.  A literal
+  whose methods are all annotated gets one from `selfOf?`.
+- An ascription `(t : T)`, a point where the typer checks at a stated type.
 
-Why the ascription is carried.  The version has no ascription, but a program
-often wants to state the type it should be checked at, for instance a module
-at its module type.  The typer checks the ascribed term at the type and the
-erasure drops it.
+Members carry no label.  As in the calculus, a member's label is the length of
+the list below it.  The store scope is empty throughout, since a source
+program names no store location.
 
-The store scope is the empty one throughout.  A source program mentions no
-location of the runtime store, so every type and term here sits at
-`Oopsla16.Ty [] s` and `Oopsla16.Tm [] s`, and the store scope never moves.
-
-Every recursive definition is structural on a family at a variable index, so
-the kernel reduces it.  Nothing in this module is part of the metatheory and
-no definition here lives in the `Oopsla16` namespace.
+Every definition is structural, so `decide` and `rfl` reduce it.  Nothing here
+is part of the metatheory.
 -/
 
 namespace Oopsla16Frontend
@@ -63,10 +53,10 @@ inductive ADms : Sig → Type where
   | dcons : ADm s → ADms s → ADms s
 end
 
-/-! ## Erasure to the version's syntax
+/-! ## Erasure
 
-The self type and the ascription are dropped and nothing else changes.  This
-is the only bridge from the front end's term syntax to `Oopsla16.Tm`. -/
+The only bridge from `ATm` to `Oopsla16.Tm`.  It drops the self type and the
+ascription. -/
 
 mutual
 /-- Drop the annotations of a term. -/
@@ -91,16 +81,14 @@ def ADms.erase {s : Sig} (ds : ADms s) : Dms [] s :=
 termination_by structural ds
 end
 
-/-- The number of members, the label that one more member consed onto the
-front would carry. -/
+/-- The number of members, the label of a member consed onto the front. -/
 def ADms.length {s : Sig} (ds : ADms s) : Nat :=
   match ds with
   | .dnil => 0
   | .dcons _ ds' => ds'.length + 1
 termination_by structural ds
 
-/-- Erasure keeps the number of members, so a position read off an annotated
-list is the label the version reads off its erasure. -/
+/-- Erasure keeps the number of members. -/
 theorem ADms.length_erase {s : Sig} : (ds : ADms s) → ds.erase.length = ds.length
   | .dnil => rfl
   | .dcons d ds' => by
@@ -109,15 +97,11 @@ theorem ADms.length_erase {s : Sig} : (ds : ADms s) → ds.erase.length = ds.len
 
 /-! ## The self type of a fully annotated literal
 
-`D_Nil`, `D_Typ` and `D_Fun` (`Oopsla16.DmsHasType`) give a member list one
-type, a right nested intersection ending in `⊤`, whose labels are the
-positions.  When every method carries both annotations, that type is a
-function of the list, and this is it.  A method with a missing annotation
-leaves the type undetermined, and the answer is `none`.
-
-No theorem comes with it.  The typer checks the members against whatever
-self type it proposes, so a wrong proposal is a typing failure and never an
-unsound derivation. -/
+When every method carries both annotations, `D_Nil`, `D_Typ` and `D_Fun`
+(`Oopsla16.DmsHasType`) give a member list one type: a right nested
+intersection ending in `⊤`, with the positions as labels.  `selfOf?` computes
+it and answers `none` when an annotation is missing.  A wrong proposal only
+fails to type, since the typer checks the members against it. -/
 
 /-- The precise self type of a member list whose methods are all annotated. -/
 def selfOf? {σ s : Sig} (ds : Dms σ s) : Option (Ty σ s) :=
@@ -130,7 +114,7 @@ termination_by structural ds
 
 /-! ## Sanity -/
 
-/-- The empty list has the self type `⊤`, the `D_Nil` type. -/
+/-- The empty list has the self type `⊤`. -/
 example : selfOf? (Dms.dnil : Dms [] ([],x)) = some .TTop := by decide
 
 /-- A type member at position `0`. -/
@@ -146,8 +130,7 @@ example : selfOf? (Dms.dcons (.dfun (some .TTop) (some .TTop) (.tvar (.abs .here
       (.dcons (.dty .TTop) .dnil) : Dms [] ([],x))
     = some (.TAnd (.TFun 1 .TTop .TTop) (.TAnd (.TTyp 0 .TTop .TTop) .TTop)) := by decide
 
-/-- An ascription and a written self type both erase.  The version's terms
-derive no equality, so the comparison is by `rfl`. -/
+/-- An ascription and a written self type both erase. -/
 example : (ATm.asc (.obj (some .TTop) (.dcons (.dty .TTop) .dnil)) .TTop : ATm []).erase
     = .tobj (.dcons (.dty .TTop) .dnil) := rfl
 

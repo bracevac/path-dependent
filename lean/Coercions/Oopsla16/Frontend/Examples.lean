@@ -4,82 +4,44 @@ import Coercions.Oopsla16.Frontend.Pipeline
 # The examples end to end
 
 The programs of `Notation.lean`, `Resolve.lean` and `Typer.lean` are taken
-through the whole front end.  Where the repository holds a derivation of the
-version for a program, the program is compared against it.  Those
-derivations live in `lean/Coercions/Oopsla16/Examples.lean`,
-`lean/Coercions/FCdotR/SourceSafety.lean`,
-`lean/Coercions/FCdotR/ElaborationFull.lean` and
-`lean/Coercions/FCdotR/CheckerExamples.lean`.
+through the whole front end.  Where the repository holds a derivation of
+Oopsla16 for a program, the program is compared against it.  Those derivations
+are in `Oopsla16/Examples.lean`, `FCdotR/SourceSafety.lean`,
+`FCdotR/ElaborationFull.lean` and `FCdotR/CheckerExamples.lean`.
 
-## What is compared
+What is compared is the resolved term, the synthesized type and the target
+checker's verdict on the elaboration.  Derivations are not compared, since
+`Oopsla16.HasType` is data without decidable equality.  `versionTm`,
+`versionTy`, `versionLower`, `versionUpper` and `versionView` read the subject
+and conclusion off a derivation of Oopsla16, so no term or type is copied.
 
-The term the resolver returns, the type the typer synthesizes, and the
-verdict of the target checker on the elaboration of the typer's derivation.
-Derivations themselves are not compared.  `Oopsla16.HasType` is `Type`
-valued data with no decidable equality, and the typer reaches several of the
-judgments below by another route than the hand written derivation.  Two
-source derivations of one judgment also elaborate to two target terms, so the
-target typing does not make them comparable either.
+Each closed program gets four checks.
 
-The comparison never transcribes a term or a type of the version.
-`versionTm` and `versionTy` read the subject and the conclusion off a typing
-derivation of the version, and `versionLower`, `versionUpper` and
-`versionView` read the two sides of a subtyping and the type of a view.  So
-the version's derivations are the standard of comparison and not a copy of
-them.
-
-## Four checks per closed program
-
-1. `compiledTm Λ src = some (versionTm d)`, by `rfl`.  The version's terms
-   derive no equality, and resolution is structural, so the definitional
-   check goes through.
-2. `compiledTy b Λ src = some (versionTy d)`, by `decide +kernel`.  The typer
-   is structural on its fuel, so the kernel reduces it.
-3. The checker's verdict on the elaboration, by `#eval expect`, which runs the
-   compiled checker.
+1. `compiledTm Λ src = some (versionTm d)`, by `rfl`.
+2. `compiledTy b Λ src = some (versionTy d)`, by `decide +kernel`.
+3. The checker's verdict on the elaboration, by `#eval expect`.
 4. `<program>_checks`, the theorem `compile_checks_get` at the program.  Its
-   premise `<program>_compiles` closes by `decide +kernel`, so the theorem
-   carries no hypothesis.
+   premise `<program>_compiles` closes by `decide +kernel`.
 
-Two more where they apply.  On a program in the fragment `FCdotR.TmFrag`,
-the fragment elaboration erases to the compiled term and the checker accepts
-it (`<program>_frag_erase`, `<program>_frag_checks`).  And every closed
-program runs: the source machine answers, and the target machine started from
-the elaboration reaches a final state, each at a pinned step count that is
-the first at which it does.
+A program in the fragment `FCdotR.TmFrag` also gets `<program>_frag_erase` and
+`<program>_frag_checks`.  Every closed program runs on both machines, at the
+first step count where the machine finishes.
 
-## Budgets
+Each program is compiled at a budget `{ views := k, sub := m, typer := n }`
+at which the typer answers.  It is not a threshold.
 
-Each program is compiled at the budget the typer was found to need,
-`{ views := k, sub := m, typer := n }`.  The typer's monotonicity is stated
-in its own fuel only, so a budget is a place an answer was found, not a
-threshold below which it fails.
+`ex2` is open in `y : polyId`, and the steps of `FunctionField` are open in the
+self `z`.  They have no `compile` and no run.  They use `resolveIn`,
+`typeIn?` and `sub?` at the context of Oopsla16, and the checker runs on
+their elaborations there.
 
-## Open examples
+Seven programs of `Typer.lean` exercise the typer's rules for a call and for
+a packed variable.  The repository holds no derivation of Oopsla16 for them,
+so their types are compared with the types `Typer.lean` states.
 
-`ex2` is open in `y : polyId`, and the steps of `FunctionField` are open in
-the self `z`.  They have no `compile` and no run.  They go through
-`resolveIn`, `typeIn?` and `sub?` at the context the version uses, and the
-checker is run on their elaborations at that context.
-
-## Programs for the call ladder and for packing
-
-Seven programs of `Typer.lean` exercise the parts of the typer a call and a
-packed variable go through: a receiver whose method type mentions its self, a
-receiver at a selection, two candidates of which only the second meets the
-goal, a receiver at a union and one at `⊥`, and a variable packed below a
-selection and below an intersection.  The repository holds no derivation of
-the version for them, so their synthesized types are compared with the types
-`Typer.lean` states, and resolution is checked through the label table only.
-Each still gets its checker verdict, its `_checks` theorem and its runs.
-
-## What a surface program cannot write
-
-`TwoObjectStore`, `HonestCall`, `PackingCounterexample`, `DishonestStore`,
-`CurryStore` and `UncheckedBody` of `Oopsla16` and `FCdotR` each start from a
-store with locations, and a surface program is closed over the empty store.  The hand
-written FCdotR terms of `FCdotR/Examples.lean` and `FCdotR/CheckerExamples.lean`
-are target syntax, not source programs.  None of them is here.
+Surface programs are closed over the empty store.  The examples that start
+from a store with locations (`TwoObjectStore`, `HonestCall` and the like) and
+the hand written FCdotR terms are not here.
 -/
 
 namespace Oopsla16Frontend
@@ -88,11 +50,7 @@ open FCdot (Kind Sig BVar)
 open Oopsla16 (Ty Ctx Store HasType Stp Htp scopeUpTo)
 open TyperChecks
 
-/-! ## Reading a derivation of the version
-
-A derivation of the version names its subject and its conclusion in its
-type.  These read them off, so that no term and no type of the version is
-copied into this file. -/
+/-! ## Reading a derivation of Oopsla16 -/
 
 /-- The term a typing derivation is about. -/
 def versionTm {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {t : Oopsla16.Tm σ s} {T : Ty σ s}
@@ -117,8 +75,7 @@ def versionView {σ s : Sig} {G : Store σ σ} {Γ : Ctx σ s} {x : BVar s .var}
 
 /-! ## What the front end returns -/
 
-/-- The resolved term, erased into the version's syntax.  Resolution is
-structural, so this reduces in the kernel. -/
+/-- The resolved term, erased into Oopsla16's syntax. -/
 def compiledTm (Λ : LabelTable) (e : STm) : Option (Oopsla16.Tm [] []) :=
   (resolve Λ e).map ATm.erase
 
@@ -153,22 +110,16 @@ abbrev compiledGet (b : Budget) (Λ : LabelTable) (e : STm) (h : (compile b Λ e
 
 /-! ## The fragment theorems, read off a successful compile
 
-`compile_frag_erase` and `compile_frag_checks` at the result of `compile`
-and at the fragment proof `frag?` recorded.  For a concrete program both
-premises close by `decide +kernel`. -/
+For a concrete program both premises close by `decide +kernel`. -/
 
-/-- **On the fragment, the fragment elaboration erases to the compiled term.**
-`compile_frag_erase` at the result of `compile` and at its recorded fragment
-proof. -/
+/-- On the fragment, the fragment elaboration erases to the compiled term. -/
 theorem compile_frag_erase_get {b : Budget} {Λ : LabelTable} {e : STm}
     (h : (compile b Λ e).isSome = true) (hf : (compiledGet b Λ e h).2.frag.isSome = true) :
     (FCdotR.elabHasType FCdotR.emptyStoreTy (compiledGet b Λ e h).2.deriv
       ((compiledGet b Λ e h).2.frag.get hf)).1.erase = (compiledGet b Λ e h).1.erase :=
   compile_frag_erase (Option.some_get h).symm (Option.some_get hf).symm
 
-/-- **On the fragment, the checker accepts the fragment elaboration.**
-`compile_frag_checks` at the result of `compile` and at its recorded fragment
-proof. -/
+/-- On the fragment, the checker accepts the fragment elaboration. -/
 theorem compile_frag_checks_get {b : Budget} {Λ : LabelTable} {e : STm}
     (h : (compile b Λ e).isSome = true) (hf : (compiledGet b Λ e h).2.frag.isSome = true) :
     FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
@@ -178,7 +129,7 @@ theorem compile_frag_checks_get {b : Budget} {Λ : LabelTable} {e : STm}
 
 /-! ## `ex0`: the empty object
 
-`new {z ⇒ }` at `μ(z. ⊤)`, by `T_Obj` and `D_Nil`.  The version's
+`new {z ⇒ }` at `μ(z. ⊤)`, by `T_Obj` and `D_Nil`.  Oopsla16's
 derivation is `Oopsla16.Examples.ex0_precise`. -/
 
 /-- The budget `ex0` is found at. -/
@@ -226,7 +177,7 @@ example : answersAt bEx0 1 [] ex0src = true ∧ answersAt bEx0 0 [] ex0src = fal
 /-! ## `ex0` ascribed
 
 `(new {z ⇒ } : ⊤)` at `⊤`, by `T_Sub` and `stp_top`.  The ascription erases
-to its term.  The version's derivation is `Oopsla16.Examples.ex0`. -/
+to its term.  Oopsla16's derivation is `Oopsla16.Examples.ex0`. -/
 
 /-- The budget the ascribed `ex0` is found at. -/
 def bEx0Asc : Budget := { views := 0, sub := 1, typer := 3 }
@@ -257,7 +208,7 @@ example : answersAt bEx0Asc 1 [] ex0AscSrc = true ∧ answersAt bEx0Asc 0 [] ex0
 
 A caller whose method has no annotation, under a written self type, applied
 to a literal whose type is below the parameter type by `stp_bindx` and two
-`stp_sel2`.  The version's derivation is
+`stp_sel2`.  Oopsla16's derivation is
 `FCdotR.SourceSafety.RecursiveArg.progTy`. -/
 
 /-- The budget `RecursiveArg` is found at. -/
@@ -284,7 +235,7 @@ theorem recArg_checks : FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
   compile_checks_get recArg_compiles
 
 /-- The receiver and the argument are literals, so the program is outside the
-fragment, which calls variables on variables. -/
+fragment. -/
 example : (compiledGet bRecArg recArgTable recArgSrc recArg_compiles).2.frag.isSome = false := by
   decide +kernel
 
@@ -298,8 +249,8 @@ example : answersAt bRecArg 3 recArgTable recArgSrc = true ∧
 
 /-! ## `CurryCall`: a call whose operands are literals
 
-`T_AppVar` with a literal receiver, and `T_App` with literal operands.  The
-version's derivation is `FCdotR.CurryCall.progTy`. -/
+`T_AppVar` with a literal receiver, and `T_App` with literal operands.  Oopsla16's derivation is
+`FCdotR.CurryCall.progTy`. -/
 
 /-- The budget `CurryCall` is found at. -/
 def bCurry : Budget := { views := 0, sub := 3, typer := 7 }
@@ -338,7 +289,7 @@ example : answersAt bCurry 5 curryCallTable curryCallSrc = true ∧
 /-! ## `ex1`: the polymorphic identity
 
 Two nested literals whose methods carry both annotations, and a method type
-that depends on the parameter.  The version's derivation
+that depends on the parameter.  Oopsla16's derivation
 `FCdotR.CheckerExamples.DotExs.ex1` concludes `polyId`.  The typer
 synthesizes the self type `selfOf?` computes, `μ(z. polyId ∧ ⊤)`, and checks
 the program at `polyId`. -/
@@ -352,7 +303,7 @@ example : compiledTy bEx1 ex1Table ex1src
     = some (.TBind FCdotR.CheckerExamples.DotExs.outerSelf) := by
   decide +kernel
 
-/-- The resolved program checks at the conclusion of the version's
+/-- The resolved program checks at the conclusion of Oopsla16's
 derivation. -/
 example : ((resolve ex1Table ex1src).map fun a =>
     checksIn bEx1 Ctx.nil a (versionTy FCdotR.CheckerExamples.DotExs.ex1)) = some true := by
@@ -396,7 +347,7 @@ example : answersAt bEx1 1 ex1Table ex1src = true ∧ answersAt bEx1 0 ex1Table 
 
 `y.apply(new {o ⇒ type T = ⊤})` at `{def apply(x : ⊤) : ⊤}`.  The codomain of
 `polyId` mentions its parameter, so the call takes the narrowing rung of the
-call ladder.  The version's derivation is
+typer's call rule.  Oopsla16's derivation is
 `FCdotR.CheckerExamples.DotExs.ex2`, in the context
 `FCdotR.CheckerExamples.DotExs.Γy`. -/
 
@@ -420,7 +371,7 @@ theorem ex2_resolves : (resolveIn ex2Table (NameEnv.nil.cons "y") ex2src).isSome
 /-- `ex2` resolved. -/
 abbrev ex2Ann : ATm ([],x) := (resolveIn ex2Table (NameEnv.nil.cons "y") ex2src).get ex2_resolves
 
-/-- The typer finds `ex2` at the conclusion of the version's derivation. -/
+/-- The typer finds `ex2` at the conclusion of Oopsla16's derivation. -/
 theorem ex2_types :
     (checkIn? bEx2 Γy ex2Ann (versionTy FCdotR.CheckerExamples.DotExs.ex2)).isSome = true := by
   decide +kernel
@@ -444,7 +395,7 @@ end Ex2
 /-! ## `paper_lst`: the list module of the OOPSLA 2016 paper
 
 A module with a type member `List` and the two constructors `nil` and `cons`,
-ascribed at its module type.  The version's derivation is
+ascribed at its module type.  Oopsla16's derivation is
 `FCdotR.CheckerExamples.PaperLst.paper_lst`. -/
 
 /-- The budget `paper_lst` is found at. -/
@@ -508,7 +459,7 @@ example : answersAt bLst 1 paperLstTable paperLstSrc = true ∧
 `Oopsla16.Examples.FunctionField` relates two recursive types by
 `stp_bindx`, and its steps are open in the self `z : S(z)`.  The surface
 types `Sbody` and `Tbody` of `Notation.lean` resolve to the two sides, and
-the search finds each step at the context the version uses. -/
+the search finds each step at the context Oopsla16 uses. -/
 
 section FunctionField
 open Oopsla16.Examples.FunctionField (Γz sBound selMember selUnder methodCovariant premise recursive)
@@ -518,33 +469,32 @@ example : resolveTy functionFieldTable .nil (.mu "z" Sbody) = some (versionLower
     resolveTy functionFieldTable .nil (.mu "z" Tbody) = some (versionUpper recursive) := by
   decide
 
-/-- `recursive`, from the resolved surface types: found at one round and
-fuel 5. -/
+/-- `recursive`, from the resolved surface types. -/
 example : ((resolveTy functionFieldTable .nil (.mu "z" Sbody)).bind fun S =>
     (resolveTy functionFieldTable .nil (.mu "z" Tbody)).map fun T =>
       (sub? { views := 1 } 5 Ctx.nil S T).isSome) = some true := by
   decide +kernel
 
-/-- `sBound`, found at no rounds and fuel 3. -/
+/-- The search finds `sBound`. -/
 example : (sub? { views := 0 } 3 Γz (versionLower sBound) (versionUpper sBound)).isSome = true := by
   decide +kernel
 
-/-- `selMember`: a view of the self under the parameter, after one round. -/
+/-- `selMember`: a view of the self under the parameter. -/
 example : ((hviews 1 (Γz.cons .TTop) (.there .here)).any
     fun v => decide (v.ty = versionView selMember)) = true := by
   decide +kernel
 
-/-- `selUnder`, found at one round and fuel 2. -/
+/-- The search finds `selUnder`. -/
 example : (sub? { views := 1 } 2 (Γz.cons .TTop) (versionLower selUnder)
     (versionUpper selUnder)).isSome = true := by
   decide +kernel
 
-/-- `methodCovariant`, found at one round and fuel 3. -/
+/-- The search finds `methodCovariant`. -/
 example : (sub? { views := 1 } 3 Γz (versionLower methodCovariant)
     (versionUpper methodCovariant)).isSome = true := by
   decide +kernel
 
-/-- `premise`, found at one round and fuel 5. -/
+/-- The search finds `premise`. -/
 example : (sub? { views := 1 } 5 Γz (versionLower premise) (versionUpper premise)).isSome
     = true := by
   decide +kernel
@@ -567,7 +517,7 @@ example : checksIn { views := 0, sub := 3, typer := 1 } Γz (.var .here) (versio
 end FunctionField
 
 /-- `forgetSelf`: the two surface types resolve to its two sides, and the
-search finds it at no rounds and fuel 3, by `stp_bind1`. -/
+search finds it by `stp_bind1`. -/
 example : resolveTy [("B", 1)] .nil (o16Ty% μ(z. ⊤ ∧ { type B : ⊥ .. ⊤ }))
       = some (versionLower Oopsla16.Examples.forgetSelf) ∧
     resolveTy [("B", 1)] .nil (o16Ty% ⊤ ∧ { type B : ⊥ .. ⊤ })

@@ -4,36 +4,28 @@ import Coercions.FCdotR.SourceSafety
 /-!
 # The source machine as a function
 
-The version gives its reduction as a relation, `Oopsla16.Step`: a
-substitution machine with congruence rules over a store that only grows.
-This module gives the same machine as a function, so that a program of the
-version runs.
+Oopsla16 gives its reduction as a relation, `Oopsla16.Step`: a substitution
+machine with congruence rules over a store that only grows.  This module gives
+the same machine as a function, so that a program of Oopsla16 runs.
 
-No rule of the machine needs a search or a fuel.  The only side condition is
-a member lookup in a stored object, and that lookup is a total function of
-the version.  So `step?` is structural and fuel free, and it reduces in the
-kernel.  The probes at the end are closed by `rfl` and `decide +kernel`.
+No rule needs a search or a fuel.  The only side condition is a member lookup
+in a stored object, which is total.  So `step?` is structural and reduces in
+the kernel.
 
-The term of a configuration lives at the empty local scope `[]`.  Recursion at
-a fixed index does not compile structurally, so the worker `stepS` recurses at
-a variable index `s` and carries the equation `s = []` beside the term.  The
-cases that would name a bound variable are then empty, and `noAbs` discharges
-them.
+A step may allocate, which extends the store's signature.  So `step?` returns
+a `Next`: the new signature, the growth that leads to it, the new store and the
+new term.  The term of a configuration lives at the empty local scope `[]`.
+Recursion at the fixed index `[]` is not structural, so `stepS` recurses at a
+variable index `s` and carries the equation `s = []`.  `noAbs` closes the cases
+that would name a bound variable.
 
-A step may allocate, which extends the store's signature.  So one step
-returns a `Next`: the new signature, the growth that leads to it, the new store
-and the new term.
-
-What is stated.  The function finds a step exactly when the relation has one,
-and the step it finds is the only one.  So the version's reduction is
-deterministic, which the version itself does not state.  A configuration with
-no step is an answer or stuck in the sense of `FCdotR.SrcStuck`, by a case
-split on the term and without classical reasoning.  Every configuration the
-driver `run` returns is reachable, and every reachable configuration is the
-one `run` returns at some number of steps.
-
-Nothing in this module is part of the metatheory.  No definition here lives
-in the `Oopsla16`, `FCdot` or `FCdotR` namespaces.
+Proved:
+* `step?` finds a step exactly when the relation has one (`step?_sound`,
+  `step?_complete`), and that step is the only one (`step_det`).
+* A configuration with no step is an answer or stuck in the sense of
+  `FCdotR.SrcStuck`, without classical reasoning.
+* The result of the driver `run` is reachable, and every reachable
+  configuration is the result of `run` at some number of steps.
 -/
 
 namespace Oopsla16Frontend
@@ -55,20 +47,19 @@ structure Next (σ : Sig) where
   /-- The term after the step. -/
   t' : Tm σ' []
 
-/-- The empty local scope has no variable.  A case of `stepS` that would name
-one is unreachable, and this closes it at any result type. -/
+/-- The empty local scope has no variable.  This closes the cases of `stepS`
+that would name one. -/
 def noAbs {s : Sig} {α : Sort _} (h : s = []) (z : BVar s .var) : α :=
   False.elim (by subst h; exact nomatch z)
 
 /-- One step of `Oopsla16.Step`, at a local scope `s` that the equation says
 is empty.
 
-The clauses follow the rules.  A literal allocates (`ST_Obj`).  A call whose
-receiver and argument are both locations looks the method up in the stored
-object and substitutes the argument into its body (`ST_AppAbs`).  A call
-whose receiver is a location reduces its argument (`ST_App2`).  Any other call
-reduces its receiver (`ST_App1`).  A location does not step, and neither does
-a call to a member the object lacks or to a type member. -/
+A literal allocates (`ST_Obj`).  A call on two locations looks the method up
+in the stored object and substitutes the argument into its body (`ST_AppAbs`).
+A call on a location reduces its argument (`ST_App2`).  Any other call reduces
+its receiver (`ST_App1`).  A location does not step, and neither does a call
+to a member the object lacks or to a type member. -/
 def stepS {σ : Sig} (G : Store σ σ) : {s : Sig} → Tm σ s → s = [] → Option (Next σ)
   | _, .tvar _, _ => none
   | _, .tobj D, h => some ⟨_, .snoc .refl,
@@ -170,9 +161,8 @@ theorem step?_eq_none_iff {σ : Sig} {G : Store σ σ} {t : Tm σ []} :
     | none => rfl
     | some n => exact absurd ⟨n.σ', n.g, n.G', n.t', step?_sound t n hs⟩ h
 
-/-- **Classification**: a configuration with no step is an answer, or it is
-stuck in the sense of `FCdotR.SrcStuck`.  The proof splits on the term, so it
-uses no classical reasoning. -/
+/-- **Classification**: a configuration with no step is an answer or stuck in
+the sense of `FCdotR.SrcStuck`. -/
 theorem step?_none_classify {σ : Sig} {G : Store σ σ} {t : Tm σ []} (h : step? G t = none) :
     t.IsAnswer ∨ FCdotR.SrcStuck G t := by
   have hn := step?_eq_none_iff.mp h
@@ -182,9 +172,8 @@ theorem step?_none_classify {σ : Sig} {G : Store σ σ} {t : Tm σ []} (h : ste
   | .tobj _ => exact Or.inr ⟨fun h => h.elim, hn⟩
   | .tapp _ _ _ => exact Or.inr ⟨fun h => h.elim, hn⟩
 
-/-- **Determinism of `Oopsla16.Step`**.  Two steps from one configuration
-agree on the signature, the growth, the store and the term.  It follows from
-completeness, since both are the step the function finds. -/
+/-- **Determinism of `Oopsla16.Step`**.  It follows from completeness, since
+both steps are the step the function finds. -/
 theorem step_det {σ σ1 σ2 : Sig} {g1 : Grows σ σ1} {g2 : Grows σ σ2} {G : Store σ σ}
     {t : Tm σ []} {G1 : Store σ1 σ1} {t1 : Tm σ1 []} {G2 : Store σ2 σ2} {t2 : Tm σ2 []}
     (h1 : Step g1 G t G1 t1) (h2 : Step g2 G t G2 t2) :
@@ -200,7 +189,7 @@ def isAnswer {σ : Sig} : Tm σ [] → Bool
   | .tvar (.conc _) => true
   | _ => false
 
-/-- The test decides the version's answers. -/
+/-- The test decides Oopsla16's answers. -/
 theorem isAnswer_iff {σ : Sig} (t : Tm σ []) : isAnswer t = true ↔ t.IsAnswer := by
   match t with
   | .tvar (.conc _) => exact ⟨fun _ => trivial, fun _ => rfl⟩
@@ -249,9 +238,7 @@ theorem steps_head {σ1 σ2 σ3 : Sig} {h : Grows σ1 σ2} {G : Store σ1 σ1} {
       obtain ⟨g', r'⟩ := steps_head hs r
       exact ⟨_, .tail r' s⟩
 
-/-- **The driver's result is reachable.**  The growth is left existential,
-which keeps the statement free of the order in which `run` composes the
-growths of its steps. -/
+/-- **The driver's result is reachable.**  The growth is existential. -/
 theorem run_steps : (m : Nat) → {σ : Sig} → (G : Store σ σ) → (t : Tm σ []) →
     ∃ g : Grows σ (run m G t).σ', Steps g G t (run m G t).G' (run m G t).t'
   | 0, _, _, _ => ⟨_, .refl⟩
@@ -319,14 +306,11 @@ theorem run_complete {σ1 σ2 : Sig} {g : Grows σ1 σ2} {G : Store σ1 σ1} {t 
 
 /-! ## Probes
 
-Each rule of the machine, seen through the function, on small closed terms.
-The equations hold by `rfl` and the tests by `decide +kernel`, so the kernel
-runs `step?` and `run` itself.
+Each rule of the machine on small closed terms, by `rfl` or `decide +kernel`.
 
-`idCall` is `new {def apply(x) = x}.apply(new {})`, the identity method
-called on an empty object, with `apply` at position `0`.  It takes three
-steps: the receiver allocates under `ST_App1`, the argument allocates under
-`ST_App2`, and the call returns its argument under `ST_AppAbs`. -/
+`idCall` is `new {def apply(x) = x}.apply(new {})`, with `apply` at position
+`0`.  It takes three steps: the receiver allocates (`ST_App1`), the argument
+allocates (`ST_App2`), and the call returns its argument (`ST_AppAbs`). -/
 
 /-- An object whose only member is the identity method. -/
 private abbrev idObj : Dms [] ([],x) := .dcons (.dfun none none (.tvar (.abs .here))) .dnil
@@ -343,7 +327,7 @@ example : ∃ G', step? Store.nil idCall =
     some ⟨_, .snoc .refl, G', .tapp (.tvar (.conc .here)) 0 (.tobj .dnil)⟩ := ⟨_, rfl⟩
 
 /-- `ST_App2` around `ST_Obj`: with a location as receiver the argument
-allocates, and the receiver's location is weakened past it. -/
+allocates. -/
 example : ∃ G', step? (run 1 Store.nil idCall).G' (run 1 Store.nil idCall).t' =
     some ⟨_, .snoc .refl, G', .tapp (.tvar (.conc (.there .here))) 0 (.tvar (.conc .here))⟩ :=
   ⟨_, rfl⟩
@@ -364,7 +348,7 @@ example : isAnswer (run 2 Store.nil idCall).t' = false := by decide +kernel
 /-- The driver stops at an answer: more fuel changes nothing. -/
 example : isAnswer (run 10 Store.nil idCall).t' = true := by decide +kernel
 
-/-- The program of the version's recursive argument example reaches an answer
+/-- The program of Oopsla16's recursive argument example reaches an answer
 in three steps and not in two. -/
 example : isAnswer (run 3 Store.nil FCdotR.SourceSafety.RecursiveArg.prog).t' = true ∧
     isAnswer (run 2 Store.nil FCdotR.SourceSafety.RecursiveArg.prog).t' = false := by
@@ -378,16 +362,15 @@ position `0`. -/
 private abbrev typeCall : Tm [] [] :=
   .tapp (.tobj (.dcons (.dty .TTop) .dnil)) 0 (.tobj .dnil)
 
-/-- The stuck shape: both calls allocate their two operands and then have no
-step, and neither is an answer. -/
+/-- Both calls allocate their operands and then have no step, and neither is
+an answer. -/
 example : (step? (run 2 Store.nil missingCall).G' (run 2 Store.nil missingCall).t').isNone = true ∧
     isAnswer (run 2 Store.nil missingCall).t' = false ∧
     (step? (run 2 Store.nil typeCall).G' (run 2 Store.nil typeCall).t').isNone = true ∧
     isAnswer (run 2 Store.nil typeCall).t' = false := by
   decide +kernel
 
-/-- So the configuration `missingCall` reaches is stuck in the sense of
-`FCdotR.SrcStuck`, by the classification. -/
+/-- So the configuration `missingCall` reaches is stuck. -/
 example : FCdotR.SrcStuck (run 2 Store.nil missingCall).G' (run 2 Store.nil missingCall).t' :=
   stuck_of_step?_none (Option.isNone_iff_eq_none.mp (by decide +kernel)) (by decide +kernel)
 
