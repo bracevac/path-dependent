@@ -59,7 +59,7 @@ open DotMNF (Ty Tm Ctx HasTy State Step Steps)
 /-! ## The result of a compilation -/
 
 /-- A closed term with a type and the derivation that it has it.  This is the
-`Synth` of `Typer.lean` at the empty context, restated the way `compile`
+`Cand` of `Typer.lean` at the empty context, restated the way `compile`
 writes it, so that the pipeline's own result type does not mention the
 typer. -/
 structure Compiled (t : Tm []) where
@@ -74,13 +74,13 @@ structure Compiled (t : Tm []) where
 because the derivation is about the erasure of the term the resolver returned,
 and that term is not known before the resolver runs. -/
 
-/-- The front end end to end: resolve, then type.  `none` is returned when the
-program is out of scope, out of the label table, or out of the typer's reach.
-A failure carries no reason. -/
+/-- The front end end to end: resolve, then type at the budget's fuel.  `none`
+is returned when the program is out of scope, out of the label table, or out
+of the typer's reach.  A failure carries no reason. -/
 def compile (b : Budget) (Λ : LabelTable) (e : STm) :
     Option ((a : ATm []) × Compiled a.erase) := do
   let a ← resolve Λ e
-  let c ← synthTop? b Ctx.nil a
+  let c ← synthTop? b a
   pure ⟨a, ⟨c.ty, c.deriv⟩⟩
 
 /-- The front end followed by the machine of `Step.lean` at a step budget `m`. -/

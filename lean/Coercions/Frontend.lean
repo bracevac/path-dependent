@@ -8,7 +8,7 @@ import Coercions.Frontend.Look
 import Coercions.Frontend.Sub
 import Coercions.Frontend.Alg
 import Coercions.Frontend.Limit
-import Coercions.Frontend.Search
+import Coercions.Frontend.Avoid
 import Coercions.Frontend.Typer
 import Coercions.Frontend.Step
 import Coercions.Frontend.StepFC
@@ -158,3 +158,5 @@ E11 is E10t applied to the identity, which is what carries one through the
 machine.  The file closes with three runs of `compileAndRun`, printed by the
 unparser and pinned at the step count each needs.
 -/
+
+#assert_no_wf Frontend
