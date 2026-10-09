@@ -38,6 +38,11 @@ position a name of exactly two components is a selection and any other length is
 a macro error.  Surface identifiers are therefore simple names, which is what the
 surface wants anyway.  The rule `dotTm:80 "." ident` stays for a receiver that is
 not an identifier, for instance `(f x).a`, where the dot really is its own token.
+
+The same lexer rule asks for a space after the dot of `λx. t`.  Written `λx.x`,
+the body and the dot merge into the one name `x.x`, and the rule for `λx.` never
+sees its dot.  So the lambda with its domain left to inference is written with a
+space, `λx. x`.
 -/
 
 namespace Frontend
@@ -83,6 +88,12 @@ syntax:70 dotTm:70 dotTm:71 : dotTm
 syntax:max "let" ident (" : " dotTy)? " = " dotTm " in " dotTm:60 : dotTm
 /-- Parentheses. -/
 syntax:max "(" dotTm ")" : dotTm
+/-- `λx. t`, a lambda whose domain is left to inference. -/
+syntax:max "λ" ident "." dotTm:60 : dotTm
+/-- `ν(x. d)`, an object literal whose self type is left to inference. -/
+syntax:max "ν" "(" ident "." dotDefs ")" : dotTm
+/-- `(t : T)`, an ascription. -/
+syntax:max "(" dotTm " : " dotTy ")" : dotTm
 
 /-- `{type A = T}`, a type member definition.  This is the one departure from
 the paper, noted above. -/
@@ -91,6 +102,8 @@ syntax:max "{" "type" ident " = " dotTy "}" : dotDefs
 syntax:max "{" ident " = " dotTm "}" : dotDefs
 /-- `d ∧ e`, right leaning. -/
 syntax:65 dotDefs:66 " ∧ " dotDefs:65 : dotDefs
+/-- `{a : T = t}`, a term member definition with a written type. -/
+syntax:max "{" ident " : " dotTy " = " dotTm "}" : dotDefs
 
 /-- Expand a `dotTy` into an `SType`. -/
 syntax:max "dotTy% " dotTy : term
@@ -162,9 +175,9 @@ macro_rules
 macro_rules
   | `(dot% $x:ident) => surfaceTmOfIdent x
   | `(dot% λ ( $x:ident : $T:dotTy ) . $t:dotTm) =>
-      `(STm.lam $(quote x.getId.toString) (dotTy% $T) (dot% $t))
+      `(STm.lam $(quote x.getId.toString) (some (dotTy% $T)) (dot% $t))
   | `(dot% ν ( $x:ident : $T:dotTy . $d:dotDefs )) =>
-      `(STm.obj $(quote x.getId.toString) (dotTy% $T) (dotDefs% $d))
+      `(STm.obj $(quote x.getId.toString) (some (dotTy% $T)) (dotDefs% $d))
   | `(dot% $t:dotTm . $a:ident) => `(STm.proj (dot% $t) $(quote a.getId.toString))
   | `(dot% $t:dotTm $u:dotTm) => `(STm.app (dot% $t) (dot% $u))
   | `(dot% let $x:ident = $t:dotTm in $u:dotTm) =>
@@ -172,13 +185,20 @@ macro_rules
   | `(dot% let $x:ident : $T:dotTy = $t:dotTm in $u:dotTm) =>
       `(STm.«let» $(quote x.getId.toString) (some (dotTy% $T)) (dot% $t) (dot% $u))
   | `(dot% ( $t:dotTm )) => `(dot% $t)
+  | `(dot% λ $x:ident . $t:dotTm) =>
+      `(STm.lam $(quote x.getId.toString) (none : Option SType) (dot% $t))
+  | `(dot% ν ( $x:ident . $d:dotDefs )) =>
+      `(STm.obj $(quote x.getId.toString) (none : Option SType) (dotDefs% $d))
+  | `(dot% ( $t:dotTm : $T:dotTy )) => `(STm.asc (dot% $t) (dotTy% $T))
 
 macro_rules
   | `(dotDefs% { type $A:ident = $T:dotTy }) =>
       `(SDefs.typ $(quote A.getId.toString) (dotTy% $T))
   | `(dotDefs% { $a:ident = $t:dotTm }) =>
-      `(SDefs.trm $(quote a.getId.toString) (dot% $t))
+      `(SDefs.trm $(quote a.getId.toString) (none : Option SType) (dot% $t))
   | `(dotDefs% $d:dotDefs ∧ $e:dotDefs) => `(SDefs.and (dotDefs% $d) (dotDefs% $e))
+  | `(dotDefs% { $a:ident : $T:dotTy = $t:dotTm }) =>
+      `(SDefs.trm $(quote a.getId.toString) (some (dotTy% $T)) (dot% $t))
 
 /-! ## One check per surface form
 
@@ -226,11 +246,11 @@ example : (dotTy% {A : x.A..⊤}) = SType.typ "A" (.sel "x" "A") .top := by deci
 
 example : (dot% x) = STm.var "x" := by decide
 
-example : (dot% λ ( x : ⊤ ) . x) = STm.lam "x" .top (.var "x") := by decide
+example : (dot% λ ( x : ⊤ ) . x) = STm.lam "x" (some .top) (.var "x") := by decide
 
 example :
     (dot% ν ( s : { a : ⊤ } . { a = s } )) =
-      STm.obj "s" (.fld "a" .top) (.trm "a" (.var "s")) := by
+      STm.obj "s" (some (.fld "a" .top)) (.trm "a" none (.var "s")) := by
   decide
 
 example : (dot% f x) = STm.app (.var "f") (.var "x") := by decide
@@ -252,23 +272,45 @@ example : (dot% ( x )) = STm.var "x" := by decide
 
 /-- `λ` extends as far right as it can, so the application is inside the body. -/
 example :
-    (dot% λ ( x : ⊤ ) . f x) = STm.lam "x" .top (.app (.var "f") (.var "x")) := by decide
+    (dot% λ ( x : ⊤ ) . f x) = STm.lam "x" (some .top) (.app (.var "f") (.var "x")) := by
+  decide
+
+example : (dot% λx. x) = STm.lam "x" none (.var "x") := by decide
+
+/-- The body of `λx.` extends as far right as it can, a projection included. -/
+example : (dot% λx. x.a) = STm.lam "x" none (.proj (.var "x") "a") := by decide
+
+example : (dot% λx. λy. f x y) =
+    STm.lam "x" none (.lam "y" none (.app (.app (.var "f") (.var "x")) (.var "y"))) := by decide
+
+example : (dot% ν(x. {type A = ⊤})) = STm.obj "x" none (.typ "A" .top) := by decide
+
+example : (dot% (λx. x : ∀(y : ⊤) ⊤)) =
+    STm.asc (.lam "x" none (.var "x")) (.all "y" .top .top) := by decide
+
+example : (dot% f (λx. x)) = STm.app (.var "f") (.lam "x" none (.var "x")) := by decide
+
+example : (dot% (f x : ⊤).a) = STm.proj (.asc (.app (.var "f") (.var "x")) .top) "a" := by
+  decide
 
 /-! ### Definitions -/
 
 example : (dotDefs% { type A = ⊤ }) = SDefs.typ "A" .top := by decide
 
-example : (dotDefs% { a = x }) = SDefs.trm "a" (.var "x") := by decide
+example : (dotDefs% { a = x }) = SDefs.trm "a" none (.var "x") := by decide
+
+example : (dotDefs% {a : ⊤ = x}) = SDefs.trm "a" (some .top) (.var "x") := by decide
 
 example :
     (dotDefs% { type A = ⊤ } ∧ { a = x }) =
-      SDefs.and (.typ "A" .top) (.trm "a" (.var "x")) := by
+      SDefs.and (.typ "A" .top) (.trm "a" none (.var "x")) := by
   decide
 
 /-- `∧` leans right on definitions too. -/
 example :
     (dotDefs% { a = x } ∧ { b = y } ∧ { c = z }) =
-      SDefs.and (.trm "a" (.var "x")) (.and (.trm "b" (.var "y")) (.trm "c" (.var "z"))) := by
+      SDefs.and (.trm "a" none (.var "x"))
+        (.and (.trm "b" none (.var "y")) (.trm "c" none (.var "z"))) := by
   decide
 
 /-! ### Six probes of how a dotted name parses
@@ -319,9 +361,9 @@ The sample program of `Surface.lean`, written in the notation. -/
 example :
     (dot% λ ( f : { A : ⊤ .. ⊥ } ) .
             ν ( s : { a : ⊤ } ∧ { B : ⊤ .. ⊤ } . { a = f } ∧ { type B = ⊤ } )) =
-      STm.lam "f" (.typ "A" .top .bot)
-        (.obj "s" (.and (.fld "a" .top) (.typ "B" .top .top))
-          (.and (.trm "a" (.var "f")) (.typ "B" .top))) := by
+      STm.lam "f" (some (.typ "A" .top .bot))
+        (.obj "s" (some (.and (.fld "a" .top) (.typ "B" .top .top)))
+          (.and (.trm "a" none (.var "f")) (.typ "B" .top))) := by
   decide
 
 end Frontend
