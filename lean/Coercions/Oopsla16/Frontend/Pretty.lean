@@ -337,6 +337,27 @@ example : (resolve recArgTable recArgSrc).map (ppATmWith recArgTable .nil) = som
       ++ "type A#2 = x.B#1  type B#1 = ⊤  def apply#0(y) = y})") := by
   decide +kernel
 
+/-- With its self types erased, each literal prints with an empty slot: no
+colon after the binder. -/
+example : (resolve recArgTable recArgSrc.eraseSelf).map (ppATmWith recArgTable .nil) = some
+    ("new {x ⇒ def apply#0(y) = y}.apply#0(new {x ⇒ type A#2 = x.B#1  type B#1 = ⊤  "
+      ++ "def apply#0(y) = y})") := by
+  decide +kernel
+
+/-! ### Erased sources -/
+
+/-- The Scala form of `CurryCall.prog` prints with each parameter type written
+and no other annotation. -/
+example : ppSTm curryCallSrc.scalaForm
+    = "new {c ⇒ def apply(y : ⊤) = new {i ⇒ def apply(y : ⊤) = y}.apply(y)}.apply("
+      ++ "new {i ⇒ def apply(y : ⊤) = y})" := by
+  decide +kernel
+
+/-- The printed text reads back in the notation as the same surface term. -/
+example : (o16% new {c ⇒ def apply(y : ⊤) = new {i ⇒ def apply(y : ⊤) = y}.apply(y)}.apply(
+      new {i ⇒ def apply(y : ⊤) = y})) = curryCallSrc.scalaForm := by
+  decide +kernel
+
 /-! ### Runs -/
 
 /-- The recursive argument example answers in three steps.  The caller
