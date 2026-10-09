@@ -254,7 +254,7 @@ def PTm.full? : {s : Sig} → PTm s → Option (ATm s)
       match t.full?, u.full? with
       | some a, some b => some (.let ann a b)
       | _, _ => none
-/-- The `ADefs` partial definitions stand for, when no slot is empty and no field type is
+/-- The `ADefs` that a block of partial terms stands for, when no slot is empty and no field type is
 written. -/
 def PDefs.full? : {s : Sig} → PDefs s → Option (ADefs s)
   | _, .typ A T => some (.typ A T)
