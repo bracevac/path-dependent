@@ -1,6 +1,7 @@
 import Coercions.Classifiers.Frontend.Typer
 import Coercions.Classifiers.Frontend.Step
 import Coercions.Classifiers.DotToFCdot.Prediction
+import Coercions.Classifiers.DotToFCdot.Consistency
 import Coercions.Classifiers.FCdot.CheckerCompleteness
 
 /-!
@@ -67,32 +68,35 @@ Otherwise the walk goes on into its parts.
 * `compile_checks`, `compile_uses_checks`.  The FCdot checker accepts the
   translation and its use set evidence.
 * `compile_erase`.  The translation erases to the erasure of the compiled term.
-* `compile_faithful`.  The elaborated term has the skeleton of the resolved
-  body.
+* `compile_faithful`.  `r` is the resolution of `p`.  The typer answers on
+  the resolved body with the elaborated term and the type of `c`, and the use
+  set of `c` is the typer's or the declared one.  The elaborated term has the
+  skeleton of the resolved body, so it differs from it only where `ATm.skel`
+  forgets.
 * `compile_safe`, `compile_not_stuck`, `compile_run_progress`.  Every state a
-  run of the compiled term reaches is final or has a step.
-  `DotMNF.dot_safety` is stated at the empty context only, so `compile_safe`
-  is composed at the platform from `Platform.simulatedRun`,
-  `FCdot.State.Typed.steps`, `Platform.initial_typed` and `Simulated.progress`.
+  run of the compiled term reaches is final or has a step.  `compile_safe` is
+  `DotMNF.dot_safety_platform` at the platform of the program, and
+  `compile_not_stuck` is `DotMNF.dot_not_stuck_platform`.
 * `compile_capture_prediction`.  Along any run, an FCdot state with the same
-  erasure and a typed store exists, and it uses no more than the translation of
-  the use set of the result, renamed along the store extension.
+  erasure and a typed store exists.  It is reached by a run of the FCdot
+  machine from the initial state of the translation, it is typed, and it uses
+  no more than the translation of the use set of the result, renamed along the
+  store extension.
 * `compile_effect_safety`.  A platform capability `κ` that is not in the use
   set of the result is not a root, in the matched FCdot state, of a variable a
-  run reads.  Both premises
+  run reads.  That state is reached from the initial state of the translation,
+  is typed and reads the same variable.  Both premises
   are decided: the use set writes no projection, and `κ` is not in it.  The
   first is needed because `{κ}.only[K]` does not hold `κ` and still reaches it.
 * `compile_lvl_safety`.  At every member-free subcapturing `lo <: hi` of the
   derivation, at its context `Γ`, `lo` is confined to every atom that confines
   `hi`.
-* `compile_rejected_goal`.  A program rejected by a level escape comes with a
-  goal `C <: D` at the context the typer reached, and no member-free
-  subcapturing proves that goal.  It does not say that no other derivation
-  types the program.  The conclusion is the certificate that the hypothesis
-  already carries, so the theorem holds trivially.  The content is in
-  `certify?`.
-* `compile_checks_get`, `compile_effect_safety_get`.  The same for a program
-  whose compile succeeds by a decided test.  For a concrete program the kernel
+* `compile_consistent`, `compile_realized`.  Every FCdot state a run of the
+  translation reaches from the platform's target store has a typed store.  Its
+  context proves no closed `⊤ ≤ ⊥`, and every block name of a store binder is
+  defined.
+* `compile_checks_get`, `compile_faithful_get`, `compile_effect_safety_get`.
+  The same for a program whose compile succeeds by a decided test.  For a concrete program the kernel
   reduces the compile, and the premises close by `decide +kernel`.
 
 With `h : compileKinded b Λ p φ = .ok ⟨r, c, k⟩`:
@@ -100,7 +104,8 @@ With `h : compileKinded b Λ p φ = .ok ⟨r, c, k⟩`:
 * `compile_kind_checks`.  The FCdot checker accepts the translation of the
   kinding.
 * `compile_classified_prediction`, `compile_classified_effect_safety`,
-  `compile_run_classified`.  Along any run, the FCdot state uses no more than
+  `compile_run_classified`.  Along any run, the matched FCdot state is reached
+  from the initial state of the translation, is typed, and uses no more than
   the translated use set, which is kinded at `φ`.  Every root of a variable a
   run reads carries a classifier `φ` admits.  The last holds at the state the
   driver `run` returns.
@@ -112,8 +117,15 @@ With `h : compileFiltered b Λ p φ = .ok ⟨r, c, f⟩`:
   and the two classified statements follow.
 
 Every statement has the premise `h` because it is what a caller holds.  The
-content rides on the type of `c`, `k` and `f`.  The other premises select what
-a theorem speaks of.  None of them is a hypothesis about the compiler.
+content rides on the type of `c`, `k` and `f`, except in `compile_faithful`,
+which reads `h` to say how `compile` built `r` and `c`.  The other premises
+select what a theorem speaks of.  None of them is a hypothesis about the
+compiler.
+
+A rejection for a level escape carries a certificate that no member-free
+subcapturing proves the goal the typer reached.  `certify?` builds it by
+`escape_rejected_at`, and the kernel computes it.  `compile_rejected_goal` and
+`TopEsc_compile_rejected` in `Examples` state two such verdicts of `compile`.
 -/
 
 namespace ClassifiersFrontend
@@ -505,6 +517,22 @@ def Verdict.get {α : Type} : (v : Verdict α) → v.isOk = true → α
 theorem Verdict.get_eq {α : Type} : ∀ (v : Verdict α) (h : v.isOk = true), v = .ok (v.get h)
   | .ok _, _ => rfl
 
+/-- A sequence that succeeds starts with a success. -/
+theorem Verdict.bind_eq_ok {α β : Type} {v : Verdict α} {f : α → Verdict β} {b : β}
+    (h : v.bind f = .ok b) : ∃ a, v = .ok a ∧ f a = .ok b := by
+  cases v with
+  | ok a => exact ⟨a, rfl, h⟩
+  | rejected _ => cases h
+  | unknown => cases h
+
+/-- A transformed success is the transform of a success. -/
+theorem Verdict.map_eq_ok {α β : Type} {v : Verdict α} {f : α → β} {b : β}
+    (h : v.map f = .ok b) : ∃ a, v = .ok a ∧ f a = b := by
+  cases v with
+  | ok a => exact ⟨a, rfl, Verdict.ok.inj h⟩
+  | rejected _ => cases h
+  | unknown => cases h
+
 /-! ## The effect premise in DOT-MNF terms -/
 
 /-- A capability is in the translation of a set only if it is in the set.
@@ -541,8 +569,8 @@ theorem not_root_of_elem {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} 
 
 /-! ## The theorems -/
 
--- `h` is read by no proof but the last.  It is written because it is what a
--- caller holds.
+-- `h` is read only by the proof of `compile_faithful`.  It is written because
+-- it is what a caller holds.
 set_option linter.unusedVariables false
 
 section
@@ -568,33 +596,65 @@ theorem compile_erase (h : compile b Λ p = .ok ⟨r, c⟩) :
     FCdot.Tm.erase c.deriv.translate = Tm.erase c.tm.erase :=
   DotMNF.HasTy.translate_erase c.deriv
 
-/-- **The elaborated term has the skeleton of the resolved body.**  This names
-the field `Compiled.skel`.  The check is in `compile`, which builds the record
-only when the skeletons agree.  `ATm.skel` forgets annotations, capture sets,
+/-- **What a compiled program is.**  `r` is what `resolveProg` makes of `p`.
+The typer `synthIn?` answers on the resolved body, at the platform's context,
+with the elaborated term `c.tm` and the plain type `c.ty`.  The use set is the
+typer's, or the use set the program declares.  The elaborated term has the
+skeleton of the resolved body.  `ATm.skel` forgets annotations, capture sets,
 boxes, unboxings, ascriptions and capture binders, inlines a `let` of a
-variable, and does not tell `let` from `letex`. -/
-theorem compile_faithful (h : compile b Λ p = .ok ⟨r, c⟩) : ATm.skel c.tm = ATm.skel r.body :=
-  c.skel
+variable, and does not tell `let` from `letex`.  So these are the places where
+the elaborated term may differ from the resolved one. -/
+theorem compile_faithful (h : compile b Λ p = .ok ⟨r, c⟩) :
+    resolveProg Λ p = some r ∧
+      (∃ q : Elab r.plat.ctx, synthIn? b r.plat.ctx p.platNames.set r.body = .ok q ∧
+        q.tm = c.tm ∧ q.ans = .ty c.ty ∧ (q.uses = c.use ∨ r.uses = some c.use)) ∧
+      ATm.skel c.tm = ATm.skel r.body := by
+  unfold compile at h
+  split at h
+  · cases h
+  · rename_i r' hr
+    obtain ⟨c', hc', he⟩ := Verdict.map_eq_ok h
+    cases he
+    refine ⟨hr, ?_, c.skel⟩
+    obtain ⟨c0, h0, hd⟩ := Verdict.bind_eq_ok hc'
+    unfold typeAt at h0
+    obtain ⟨e, he, hq⟩ := Verdict.bind_eq_ok h0
+    unfold synthPlat? at he
+    obtain ⟨q, hq', he'⟩ := Verdict.bind_eq_ok he
+    obtain ⟨tm, uses, ans, d⟩ := q
+    cases ans with
+    | ex C T => cases he'
+    | ty T =>
+      cases he'
+      simp only [Elab.split] at hq
+      split at hq
+      · cases hq
+        refine ⟨⟨tm, uses, .ty T, d⟩, hq', ?_⟩
+        unfold atDeclared at hd
+        split at hd
+        · cases hd; exact ⟨rfl, rfl, Or.inl rfl⟩
+        · rename_i U hU
+          split at hd
+          · cases hd; exact ⟨rfl, rfl, Or.inl rfl⟩
+          · split at hd
+            · cases hd; exact ⟨rfl, rfl, Or.inr hU⟩
+            · split at hd <;> cases hd
+      · cases hq
 
 /-- **Safety of the compiled program over its platform.**  Every state of a run
-`run'` from the platform's initial store is final or has a step.  The matched
-FCdot run of `Platform.simulatedRun` stays typed by
-`FCdot.State.Typed.steps`, and `Simulated.progress` reads progress back. -/
+`run'` from the platform's initial store is final or has a step.
+`DotMNF.dot_safety_platform`. -/
 theorem compile_safe (h : compile b Λ p = .ok ⟨r, c⟩) {s : Sig} {st : State s}
     (run' : Steps (⟨r.plat.store, .nil, c.tm.erase⟩ : State p.platNames.sig) st) :
-    State.Final st ∨ ∃ (s' : Sig) (st' : State s'), Step st st' := by
-  obtain ⟨stt, hrun, he, -⟩ := r.plat.simulatedRun c.deriv run'
-  obtain ⟨U, hU⟩ := FCdot.State.Typed.steps ⟨_, r.plat.initial_typed c.deriv⟩ hrun
-  exact DotMNF.Simulated.progress ⟨stt, U, hU, he⟩
+    State.Final st ∨ ∃ (s' : Sig) (st' : State s'), Step st st' :=
+  DotMNF.dot_safety_platform r.plat c.deriv run'
 
-/-- **No reachable state of the compiled program is stuck.** -/
+/-- **No reachable state of the compiled program is stuck.**
+`DotMNF.dot_not_stuck_platform`. -/
 theorem compile_not_stuck (h : compile b Λ p = .ok ⟨r, c⟩) {s : Sig} {st : State s}
     (run' : Steps (⟨r.plat.store, .nil, c.tm.erase⟩ : State p.platNames.sig) st) :
-    ¬ State.Stuck st := by
-  intro ⟨hnf, hns⟩
-  rcases compile_safe h run' with hf | hs
-  · exact hnf hf
-  · exact hns hs
+    ¬ State.Stuck st :=
+  DotMNF.dot_not_stuck_platform r.plat c.deriv run'
 
 /-- **The driver never answers at a stuck state.**  At every step budget the
 state `run` returns is final or the machine finds a step.  `compile_safe` at
@@ -612,30 +672,58 @@ theorem compile_run_progress (h : compile b Λ p = .ok ⟨r, c⟩) (m : Nat) :
     | none => exact absurd hstep (step?_eq_none_iff.mp hs)
 
 /-- **Capture prediction of the compiled program.**  Along a run `run'`, an
-FCdot state with the same erasure and a typed store exists.  Its store extends the
-platform's along a renaming `ρ`, and its use set is below the translation of
-the use set of the result, renamed by `ρ`.  `DotMNF.dot_capture_prediction`. -/
+FCdot state with the same erasure and a typed store exists.  It is reached by a
+run of the FCdot machine from the initial state of the translation, and it is
+typed.  Its store extends the platform's along a renaming `ρ`, and its use set
+is below the translation of the use set of the result, renamed by `ρ`.
+`DotMNF.dot_capture_prediction`. -/
 theorem compile_capture_prediction (h : compile b Λ p = .ok ⟨r, c⟩) {s : Sig}
     {st : State s} (run' : Steps (⟨r.plat.store, .nil, c.tm.erase⟩ : State p.platNames.sig) st) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
+      FCdot.Steps (⟨r.plat.targetStore, .nil, c.deriv.translate⟩ : FCdot.State p.platNames.sig) stt ∧ (∃ V, FCdot.State.Typed stt V) ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext r.plat.targetStore stt.σ ρ ∧
           FCdot.CapLe Γ' stt.uses (c.use.translate.rename ρ) :=
   DotMNF.dot_capture_prediction r.plat c.deriv run'
 
+/-- **Consistency along the run of the translation.**  Every FCdot state that
+a run of the translation reaches from the platform's target store has a typed
+store, whose context proves no closed `⊤ ≤ ⊥` at any pair of capture sets.
+`DotMNF.reachable_consistent`. -/
+theorem compile_consistent (h : compile b Λ p = .ok ⟨r, c⟩) {s : Sig} {st : FCdot.State s}
+    (run' : FCdot.Steps (⟨r.plat.targetStore, .nil, c.deriv.translate⟩ :
+      FCdot.State p.platNames.sig) st) :
+    ∃ Γ : FCdot.Ctx s, FCdot.Store.Typed st.σ Γ ∧
+      ¬ ∃ (e : FCdot.LeCo s) (C C' : FCdot.CaptureSet s),
+        FCdot.LeCo.HasType Γ e (.capt C .top) (.capt C' .bot) :=
+  DotMNF.reachable_consistent r.plat c.deriv run'
+
+/-- **Every block name is defined along the run of the translation.**  In the
+same states, every block name of every store binder has a definition, given
+by closed equality evidence.  `DotMNF.reachable_realized`. -/
+theorem compile_realized (h : compile b Λ p = .ok ⟨r, c⟩) {s : Sig} {st : FCdot.State s}
+    (run' : FCdot.Steps (⟨r.plat.targetStore, .nil, c.deriv.translate⟩ :
+      FCdot.State p.platNames.sig) st) :
+    ∃ Γ : FCdot.Ctx s, FCdot.Store.Typed st.σ Γ ∧
+      ∀ (x : BVar s .var) (ℓ : Label), ∃ W, Γ.lookupDef x ℓ = some W ∧
+        FCdot.EqCo.HasType Γ (.def x ℓ) (FCdot.Shape.sel x ℓ) W :=
+  DotMNF.reachable_realized r.plat c.deriv run'
+
 /-- **Effect safety of the compiled program.**  Take a platform capability `κ`
 with two decided facts about the use set of the result: `hp`, that it writes no
 projection, and `hκ`, that it does not hold `κ`.  Then along a run `run'`, `κ`
-is not a root of any variable `x` the reached state reads.
-`DotMNF.dot_effect_safety`, whose premise follows from `hp` and `hκ` by
-`not_root_of_elem`. -/
+is not a root of any variable `x` the reached state reads, in the matched FCdot
+state, which is reached from the initial state of the translation, is typed
+and reads `x`.  `DotMNF.dot_effect_safety`, whose premise follows from `hp` and
+`hκ` by `not_root_of_elem`. -/
 theorem compile_effect_safety (h : compile b Λ p = .ok ⟨r, c⟩) {κ : BVar p.platNames.sig .cap}
     (hp : noProj? c.use = true) (hκ : c.use.elem (.cvar κ) = false)
     {s : Sig} {st : State s}
     (run' : Steps (⟨r.plat.store, .nil, c.tm.erase⟩ : State p.platNames.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
-      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+      FCdot.Steps (⟨r.plat.targetStore, .nil, c.deriv.translate⟩ : FCdot.State p.platNames.sig) stt ∧ (∃ V, FCdot.State.Typed stt V) ∧
+      stt.inspects = some x ∧ FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext r.plat.targetStore stt.σ ρ ∧
           ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var κ)) [FCdot.CapAtom.var x] :=
   DotMNF.dot_effect_safety r.plat c.deriv (not_root_of_elem r.plat hp hκ) run' hin
@@ -652,19 +740,6 @@ theorem compile_lvl_safety (h : compile b Λ p = .ok ⟨r, c⟩) :
 
 end
 
-/-- **What a rejection by a level escape says.**  For the goal `C <: D` at the
-context the typer reached, no member-free subcapturing proves it.  The proof
-is the certificate the reason carries, built by `escape_rejected_at` from
-`source_lvl_safety`.  It is about that goal, not about every derivation of the
-program.  The conclusion is that certificate, which `h` already holds, so the
-theorem holds trivially. -/
-theorem compile_rejected_goal {b : Budget} {Λ : LabelTable} {p : SProg}
-    {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} {ρ : FCdot.CapAtom s}
-    {cert : ¬ ∃ d : Subcap Γ C D, d.MemberFree}
-    (h : compile b Λ p = .rejected (.levelEscape Γ C D ρ cert)) :
-    ¬ ∃ d : Subcap Γ C D, d.MemberFree :=
-  cert
-
 /-! ## The theorems at a decided compile
 
 A concrete program is compiled by the kernel, so its success is a decided test
@@ -680,6 +755,19 @@ theorem compile_checks_get (h : (compile b Λ p).isOk = true) :
       ((compile b Λ p).get h).2.deriv.translate ((compile b Λ p).get h).2.ty.translate = true :=
   compile_checks (Verdict.get_eq _ h)
 
+/-- **What a program that compiles is.**  `compile_faithful` at the record
+`compile` returns, for a program whose compile succeeds by a decided test. -/
+theorem compile_faithful_get (h : (compile b Λ p).isOk = true) :
+    resolveProg Λ p = some ((compile b Λ p).get h).1 ∧
+      (∃ q : Elab ((compile b Λ p).get h).1.plat.ctx,
+        synthIn? b ((compile b Λ p).get h).1.plat.ctx p.platNames.set
+          ((compile b Λ p).get h).1.body = .ok q ∧
+        q.tm = ((compile b Λ p).get h).2.tm ∧ q.ans = .ty ((compile b Λ p).get h).2.ty ∧
+        (q.uses = ((compile b Λ p).get h).2.use ∨
+          ((compile b Λ p).get h).1.uses = some ((compile b Λ p).get h).2.use)) ∧
+      ATm.skel ((compile b Λ p).get h).2.tm = ATm.skel ((compile b Λ p).get h).1.body :=
+  compile_faithful (Verdict.get_eq _ h)
+
 /-- **Effect safety of a program that compiles.**  `compile_effect_safety` at
 the record `compile` returns.  For a concrete program `h`, `hp` and `hκ` close
 by `decide +kernel`. -/
@@ -691,6 +779,9 @@ theorem compile_effect_safety_get (h : (compile b Λ p).isOk = true)
       ((compile b Λ p).get h).2.tm.erase⟩ : State p.platNames.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
+      FCdot.Steps (⟨((compile b Λ p).get h).1.plat.targetStore, .nil,
+        ((compile b Λ p).get h).2.deriv.translate⟩ : FCdot.State p.platNames.sig) stt ∧
+      (∃ V, FCdot.State.Typed stt V) ∧ stt.inspects = some x ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext ((compile b Λ p).get h).1.plat.targetStore stt.σ ρ ∧
           ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var κ)) [FCdot.CapAtom.var x] :=
@@ -722,6 +813,7 @@ theorem compile_classified_prediction {k : Kinded c φ}
     (h : compileKinded b Λ p φ = .ok ⟨r, c, k⟩) {s : Sig} {st : State s}
     (run' : Steps (⟨r.plat.store, .nil, c.tm.erase⟩ : State p.platNames.sig) st) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
+      FCdot.Steps (⟨r.plat.targetStore, .nil, c.deriv.translate⟩ : FCdot.State p.platNames.sig) stt ∧ (∃ V, FCdot.State.Typed stt V) ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext r.plat.targetStore stt.σ ρ ∧
           FCdot.CapLe Γ' stt.uses (c.use.translate.rename ρ) ∧ Γ'.KindLe stt.uses φ :=
@@ -735,7 +827,8 @@ theorem compile_classified_effect_safety {k : Kinded c φ}
     (run' : Steps (⟨r.plat.store, .nil, c.tm.erase⟩ : State p.platNames.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
-      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+      FCdot.Steps (⟨r.plat.targetStore, .nil, c.deriv.translate⟩ : FCdot.State p.platNames.sig) stt ∧ (∃ V, FCdot.State.Typed stt V) ∧
+      stt.inspects = some x ∧ FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext r.plat.targetStore stt.σ ρ ∧
           ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] → φ.Contains (Γ'.classOf a) :=
   DotMNF.dot_classified_effect_safety' r.plat c.deriv k.kind run' hin
@@ -749,6 +842,8 @@ theorem compile_run_classified {k : Kinded c φ} (h : compileKinded b Λ p φ = 
     ∃ (stt : FCdot.State (run m p.platNames.sig ⟨r.plat.store, .nil, c.tm.erase⟩).1)
       (Γ' : FCdot.Ctx (run m p.platNames.sig ⟨r.plat.store, .nil, c.tm.erase⟩).1)
       (ρ : Rename p.platNames.sig (run m p.platNames.sig ⟨r.plat.store, .nil, c.tm.erase⟩).1),
+      FCdot.Steps (⟨r.plat.targetStore, .nil, c.deriv.translate⟩ : FCdot.State p.platNames.sig) stt ∧ (∃ V, FCdot.State.Typed stt V) ∧
+      stt.inspects = some x ∧
       FCdot.State.erase stt = (run m p.platNames.sig ⟨r.plat.store, .nil, c.tm.erase⟩).2.erase ∧
         FCdot.Store.Typed stt.σ Γ' ∧ FCdot.Store.Ext r.plat.targetStore stt.σ ρ ∧
           ∀ a : FCdot.CapAtom _, Γ'.Root a [FCdot.CapAtom.var x] → φ.Contains (Γ'.classOf a) :=
@@ -769,6 +864,7 @@ theorem compile_filtered_prediction {f : Filtered c φ}
     (h : compileFiltered b Λ p φ = .ok ⟨r, c, f⟩) {s : Sig} {st : State s}
     (run' : Steps (⟨r.plat.store, .nil, c.tm.erase⟩ : State p.platNames.sig) st) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
+      FCdot.Steps (⟨r.plat.targetStore, .nil, c.deriv.translate⟩ : FCdot.State p.platNames.sig) stt ∧ (∃ V, FCdot.State.Typed stt V) ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext r.plat.targetStore stt.σ ρ ∧
           FCdot.CapLe Γ' stt.uses (c.use.translate.rename ρ) ∧ Γ'.KindLe stt.uses φ :=
@@ -781,7 +877,8 @@ theorem compile_filtered_effect_safety {f : Filtered c φ}
     (run' : Steps (⟨r.plat.store, .nil, c.tm.erase⟩ : State p.platNames.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
-      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+      FCdot.Steps (⟨r.plat.targetStore, .nil, c.deriv.translate⟩ : FCdot.State p.platNames.sig) stt ∧ (∃ V, FCdot.State.Typed stt V) ∧
+      stt.inspects = some x ∧ FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext r.plat.targetStore stt.σ ρ ∧
           ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] → φ.Contains (Γ'.classOf a) :=
   DotMNF.dot_classified_effect_safety r.plat c.deriv (compile_filtered_kindLe h) run' hin
