@@ -6,55 +6,51 @@ import Coercions.Frontend.Avoid
 
 The typer reads a type off an annotated term of DOT-MNF and returns the
 `DotMNF.HasTy` derivation with it.  The derivation is a field of the result,
-so soundness is the result type and there is no soundness theorem to prove.
+so soundness is the result type.
 
-It runs on the tank of `Fuel.lean`.  One tank is threaded through every goal
-it asks: each subtyping goal of `Sub.lean`, each member lookup of
-`Look.lean`, and each avoidance of `Avoid.lean`.  So the fuel counts the work
-of the whole typing, and a goal that finds the tank short marks it.  A marked
-tank is the recursion limit.  It is never a rejection by the rules.
+It runs on the tank of `Fuel.lean`.  One tank is threaded through every
+subtyping goal of `Sub.lean`, every member lookup of `Look.lean` and every
+avoidance of `Avoid.lean`.  A goal that finds the tank short marks it, and a
+marked tank is the recursion limit, not a rejection by the rules.
 
 ## Candidates
 
-Synthesis returns a list of candidates, each a type with its derivation,
-with no two of one type.  DOT-MNF has no rule that merges two members of one
-name, which the compiler does (`Types.scala:5759`).  So the typer keeps every
-choice instead.
+Synthesis returns a list of candidates, each a type with its derivation, with
+no two of one type.  The compiler merges two members of one name
+(`TypeBounds.&` in core/Types.scala).  DOT-MNF has no rule for that, so the
+typer keeps every choice.
 
 - A variable has the type its context declares.
 - `λ(x : S). t` has `∀(x : S) T` for every candidate `T` of the body.
 - `ν(x : T. d)` checks the definitions against `T` under the self binder.
-- `x y` tries every function type the lookup finds in `x`'s declared type,
-  and keeps each one whose domain `y` meets.
+- `x y` tries every function type the lookup finds in the declared type of
+  `x`, and keeps each one whose domain `y` meets.
 - `x.a` returns every field at `a` the lookup finds.
-- `let x = t in u` without annotation returns every pair of a candidate of
-  `t` and a candidate of `u`.  The body's type is approximated by a type free
-  of `x` (`avoidLet`), as the compiler's `avoid` does
-  (`TypeOps.scala:474-509,565-583`).
-- `let x : U = t in u` has the type `U`.  The annotation binds.  The body is
-  checked against it and is never approximated.
+- `let x = t in u` returns every pair of a candidate of `t` and a candidate of
+  `u`.  The type of the body is approximated by one free of `x` (`avoidLet`),
+  as `TypeOps.avoid` does.
+- `let x : U = t in u` has the type `U`.  The annotation binds, and the body is
+  checked against it.
 
-Checking a variable asks the `var` goal of `Sub.lean`, which reaches the two
-rules that subsumption does not, `HasTy.andI` and `HasTy.recI`.  Checking any
-other term takes the first candidate that the subtyping goal takes to the
-type asked for.
+Checking a variable asks the `var` goal of `Sub.lean`, which reaches the rules
+`HasTy.andI` and `HasTy.recI` that subsumption does not.  Checking any other
+term takes the first candidate that the subtyping goal takes to the type asked
+for.
 
 ## The theorems
 
-Every computation here is framed: it keeps a marked tank, never adds fuel,
-and does the same with more fuel (`synthF_frame`).  So a typing that ends
-unmarked gives the same answer at every larger fuel (`synthTop?_mono`,
-`synthTop?_stable`).  A rejection that ends unmarked is a rejection at every
-fuel.  The typer has no completeness theorem.  It does not find a derivation
-through a middle type the program does not write, as the compiler does not.
-It does not merge two fields, since the version has no rule for that, so a
-projection tries each field.  It does not find a judgment whose search needs
-more than the fuel.  And a lookup through a cyclic member is cut, as the
-compiler's cyclic reference.
+Every computation is framed (`synthF_framed`): it keeps a marked tank, never
+adds fuel, and does the same with more fuel.  So a typing that ends unmarked
+gives the same answer at every larger fuel (`synthTop?_mono`,
+`synthTop?_stable`), and an unmarked rejection is a rejection at every fuel.
 
-Every definition is structural on the term, so the kernel evaluates the
-typer.  The checks at the end of the module type the example programs at
-`defaultFuel` by `decide +kernel`.
+The typer has no completeness theorem.  It finds no derivation through a middle
+type the program does not write, as the compiler does not.  It does not merge
+two fields, so a projection tries each.  It does not find a judgment whose
+search needs more than the fuel.  A lookup through a cyclic member is cut.
+
+All definitions are structural on the term, so the kernel evaluates the typer.
+The checks at the end type the example programs at `defaultFuel`.
 -/
 
 namespace Frontend
@@ -63,8 +59,7 @@ open Frontend.Fuel Frontend.Core
 open FCdot (Kind Sig BVar Rename Label)
 open DotMNF (Path Ty Tm Value Defs Ctx Sub HasTy DefsTy)
 
-/-- The fuel of a typing.  One field, the size of the tank every entry point
-starts from. -/
+/-- The fuel of a typing: the size of the tank every entry point starts from. -/
 structure Budget where
   fuel : Nat := defaultFuel
 
@@ -103,10 +98,8 @@ def Core.Found.fld? {s : Sig} {Γ : Ctx s} {x : BVar s .var} {V : Ty s} (a : Lab
   | _ => none
 
 /-- A type member definition against a declaration whose two bounds are the
-definition's own type.  `DefsTy.typ` is the only rule for a type member, and
-it concludes at exactly those bounds (`lean/Coercions/DotMNF/Typing.lean:125`).
-The proof takes the equalities apart, since a label occurs twice in the
-conclusion and a rewrite would hit both. -/
+definition's own type, as `DefsTy.typ` concludes.  The proof takes the
+equalities apart, since a label occurs twice in the conclusion. -/
 def defsTypAt {s : Sig} {Γ : Ctx s} {A B : Label} {S L U : Ty s}
     (hA : A = B) (hL : S = L) (hU : S = U) : DefsTy Γ (.typ A S) (.typ B L U) := by
   cases hA; cases hL; cases hU; exact .typ
@@ -144,10 +137,9 @@ def listO {α : Type} : Option α → List α
 
 /-! ## Synthesis and checking
 
-Two functions, structural on the term.  `synthF` returns the candidates of a
-term.  `checkDefsF` matches a definition list against a type in lockstep, as
-`DefsTy` does (`lean/Coercions/DotMNF/Typing.lean:124-127`).  A field body is
-checked by `checkOf` from the candidates `synthF` gives it. -/
+`synthF` returns the candidates of a term.  `checkDefsF` matches a definition
+list against a type in lockstep, as `DefsTy` does.  A field body is checked by
+`checkOf` from the candidates of `synthF`.  Both are structural on the term. -/
 
 mutual
 
@@ -243,9 +235,9 @@ def synthTop? (b : Budget) (a : ATm []) : Option (Cand Ctx.nil a.erase) :=
 
 /-! ## The frame lemmas
 
-Each clause is built from the combinators of `Fuel.lean` and from framed
-computations of the other modules: `varF`, `subF`, `avoidLet` and the
-lookup.  So each clause is framed, by induction on the term. -/
+Each clause is built from the combinators of `Fuel.lean` and from the framed
+`varF`, `subF`, `avoidLet` and lookup.  So each clause is framed, by induction
+on the term. -/
 
 /-- The lookup from the fuel left is framed, as `declsAt` is. -/
 theorem lookVar_framed {s : Sig} (Γ : Ctx s) (x : BVar s .var) (k : Key) :
@@ -408,29 +400,25 @@ theorem synthTop?_stable {n k : Nat} {a : ATm []} {r : Option (Cand Ctx.nil a.er
 /-! ## Checks
 
 Each check types a surface program of `Resolve.lean`, or one written here, at
-`defaultFuel` in the kernel.  It states the type, or that there is none, and
-the tank left.  An unmarked tank says that the fuel played no part in the
-verdict.  A rejection with the tank unmarked holds at every fuel
-(`synthTop?_stable`). -/
+`defaultFuel`.  It states the type, or that there is none, and the tank left.
+An unmarked tank means the fuel played no part in the verdict. -/
 
 section TyperChecks
 
 open DotMNF.Examples
 
-/-- The type of a closed program after resolution, from a full tank of `n`
-units, with the tank left. -/
+/-- The type of a closed program after resolution, with the tank left. -/
 def typeAt (e : STm) (n : Nat := defaultFuel) : Option (Ty []) × Tank :=
   match resolve exampleTable e with
   | some a => ((synthTopF n a).1.map (·.ty), (synthTopF n a).2)
   | none => (none, ⟨n, true⟩)
 
-/-- E1 with the middle written.  A `let` annotation types the whole `let`, so
-`let t : T = x in t` ascribes `T` to `x`. -/
+/-- E1 with the middle written.  A `let` annotation ascribes its type. -/
 def E1ssrc : STm :=
   dot% λ(x : {A : ⊤..⊥}).
          let y : {B : {a : ⊤} .. {a : ⊤}} = (let u : x.A = (let t : ⊤ = x in t) in u) in y
 
-/-- E3 with the middle written, by the same ascription. -/
+/-- E3 with the middle written. -/
 def E3ssrc : STm :=
   dot% λ(x : {A : ⊥ .. {a : ⊤}} ∧ {A : {b : ⊤} .. ⊤}).
          λ(z : {b : ⊤}). let y : {a : ⊤} = (let u : x.A = z in u) in y
@@ -490,8 +478,8 @@ def LPsrc : STm :=
   dot% λ(p : μ(s. {A : ⊥ .. ∀(y : ⊤) s.A})). λ(q : μ(s. {B : ∀(y : ⊤) s.B .. ⊤})).
          λ(x : p.A). let r : q.B = x in r
 
--- The ten programs of `Resolve.lean`.  E1, E3 and E4 need a middle the program does not write,
--- and the typer chooses none.  E10 applies a variable at `⊤`.
+-- The ten programs of `Resolve.lean`.  E1, E3 and E4 need a middle the program does
+-- not write.  E10 applies a variable at `⊤`.
 example : typeAt E1src = (none, ⟨defaultFuel - 3, false⟩) := by decide +kernel
 example : typeAt E2src = (some (.all (.all .top .bot) .top), ⟨defaultFuel - 58, false⟩) := by
   decide +kernel
@@ -509,7 +497,7 @@ example : typeAt E9src =
   decide +kernel
 example : typeAt E10src = (none, ⟨defaultFuel - 1, false⟩) := by decide +kernel
 
--- The middles written, the typed E10 and its run, and the intersection of two function types.
+-- The middles written, E10t, E11 and P5.
 example : typeAt E1ssrc = (some (.all E1Dom E1Res), ⟨defaultFuel - 14, false⟩) := by decide +kernel
 example : typeAt E3ssrc = (some (.all E3Dom (.all E3T2 E3T1)), ⟨defaultFuel - 16, false⟩) := by
   decide +kernel
@@ -522,7 +510,7 @@ example : typeAt P5src =
       ⟨defaultFuel - 9, false⟩) := by
   decide +kernel
 
--- Every field is a candidate, so the projection reaches the field that has `b`.
+-- The projection reaches the field that has `b`.
 example : typeAt R1src =
     (some (.all (.typ lA .bot (.fld la .top))
       (.all (.and (.sel (.var .here) lA) (.fld la (.fld lb .top))) .top)),
@@ -532,18 +520,18 @@ example : typeAt R2src =
     (some (.all (.and (.fld la .top) (.fld la (.fld lb .top))) .top), ⟨defaultFuel - 8, false⟩) := by
   decide +kernel
 
--- A written annotation binds, and the middle of B1 is not written.
+-- A written annotation binds (A1), and the middle of B1 is not written.
 example : typeAt A1src = (none, ⟨defaultFuel - 3, false⟩) := by decide +kernel
 example : typeAt B1src = (none, ⟨defaultFuel - 1, false⟩) := by decide +kernel
 
--- G: avoidance meets the two upper bounds, and the member `b` is found in the meet.
+-- G: avoidance meets the two upper bounds, so the member `b` is found.
 example : typeAt Ginsrc =
     (some (.all GFun (.all .top (.and (.fld la .top) (.fld lb .top)))), ⟨defaultFuel - 41, false⟩) := by
   decide +kernel
 example : typeAt Gsrc = (some (.all GFun (.all .top .top)), ⟨defaultFuel - 47, false⟩) := by
   decide +kernel
 
--- LP ends with the tank marked: the recursion limit.
+-- LP ends with the tank marked.
 example : (typeAt LPsrc).1 = none := by decide +kernel
 example : (typeAt LPsrc).2.out = true := by decide +kernel
 

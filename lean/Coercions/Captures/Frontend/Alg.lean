@@ -3,49 +3,48 @@ import Coercions.Captures.Frontend.Sub
 /-!
 # The algorithmic judgment and completeness
 
-`Alg` states the rules of the algorithm of `Sub.lean`, one constructor per
-alternative, with no fuel and no pending goals.  There are three goal kinds:
-`shape S T`, `cap C D` and `var x V T`.  A constructor tried after an
-intersection on the right carries `isAnd T = false`, since that alternative
-is final.  A selection on the right through a lower bound carries `lo ≠ ⊥`,
-as the algorithm skips such a member.  A recursive shape opened at a variable
-carries `Shape.Decl B`, as `Rec-I` and `Rec-E` ask.  A capture member on the
-right carries the inclusion of its selection in the right set.  A member
-premise is phrased through the lookup (`Member`, `CapMember`): the lookup
-finds that member and ends within its fuel.
+`Alg` states the rules of the algorithm of `Sub.lean` as a relation, one
+constructor per alternative, with no fuel and no pending goals.  The algorithm
+follows `TypeComparer` (core/TypeComparer.scala).  The goals are `shape S T`,
+`cap C D` and `var x V T`.  Two types compare by a set goal and a shape goal,
+so `fld`, `box` and `all` each have a `cap` premise and a `shape` premise.
 
-Two types compare by a set goal and a shape goal.  So a constructor that
-compares two types, `fld`, `box` and `all`, has a `cap` premise and a `shape`
-premise for each pair of types.
+Some constructors carry a side condition that mirrors the algorithm.
+- A constructor tried after the intersection on the right carries
+  `isAnd T = false`, since that alternative is final.
+- A selection on the right through a lower bound needs `lo ≠ ⊥`, as the
+  algorithm skips such a member.
+- A recursive shape opened at a variable needs `Shape.Decl B`, as `Rec-I` and
+  `Rec-E` ask.
+- A capture member on the right (`cSelLo`) needs the inclusion of its selection
+  in the right set.
+- A member premise (`Member`, `CapMember`) says the lookup finds the member
+  within its fuel.
 
 Completeness holds up to the recursion limit.  If `Alg` derives a goal, the
-algorithm answers it at every fuel at which its run ends with the tank
-unmarked (`shape?_complete`, `subcap?_complete`).  Two types compare by two
-runs on one tank, so `sub?_complete` and `var?_complete` take one derivation
-per half.  A run that ends unmarked with no answer is a rejection by the
-rules (`shape?_reject`, `subcap?_reject`, `sub?_reject`, `var?_reject`).  The
-tank is shared by all the alternatives of a goal, and a marked tank stays
-marked.  So an alternative that never ends, tried before the one an `Alg`
-derivation uses, exhausts every tank.  `p.A ∧ ⊥ <: ∀(y : ⊤) q.B` below is such
-a goal: `Alg` derives it by the right operand, and the left operand, tried
-first, descends under a new binder at each level.  So completeness cannot say
-that some fuel suffices.
+run answers it at every fuel at which it ends with the tank unmarked
+(`shape?_complete`, `subcap?_complete`, and `sub?_complete`, `var?_complete`
+with one derivation per half).  A run that ends unmarked with no answer is a
+rejection by the rules (`shape?_reject`, `subcap?_reject`, `sub?_reject`,
+`var?_reject`).
 
-The proof needs no minimal derivation.  A derivation in which no goal repeats
-along a branch exists whenever a derivation does (`Deriv.pruneNil`): a repeat
-is cut out by using the inner derivation of the goal at the outer place.  A
-derivation without repeats is never cut by the run.  At each goal the run
-either answers by an alternative tried before or reaches the one the derivation
-uses, since the tank is unmarked at the end and so at every point before
-(`run_ans`).  Both facts are generic in the goals and the step.  They are
-stated here as in the vanilla front end, since this library does not import
-that one.
+Completeness cannot say that some fuel suffices.  The alternatives of a goal share one tank, and a marked
+tank stays marked.  So an alternative that never ends, tried before the one
+the derivation uses, exhausts every tank.  `p.A ∧ ⊥ <: ∀(y : ⊤) q.B` (LP) is
+such a goal.  `Alg` derives it by the right operand, and the left operand,
+tried first, descends under a new binder at each level.
 
-`Alg.sound_shape` and `Alg.sound_cap` are the soundness of `Alg` for the
-version.  Each constructor builds the derivation its alternative emits.
+The proof prunes derivations instead of minimizing them.  A derivation exists
+in which no goal repeats along a branch (`Deriv.pruneNil`), since a repeat is
+cut out by using the inner derivation at the outer place.  The run never cuts
+such a derivation (`run_ans`).  At each goal it either answers by an
+alternative tried before or reaches the one the derivation uses, since the
+tank is unmarked at the end and so at every point before.  Both facts are
+generic in the goals and the step.
 
-The checks at the end derive two goals by `Alg`, read E1, E3 and E4 as
-rejections by the rules, and show the goal above whose run hits the
+`Alg.sound_shape` and `Alg.sound_cap` give soundness: each constructor builds
+the derivation its alternative emits.  The checks at the end derive two goals
+by `Alg`, read E1, E3 and E4 as rejections, and show the run of LP hit the
 recursion limit.
 -/
 
@@ -59,9 +58,8 @@ open scoped Captures.DotMNF
 /-! ## Derivations without a repeated goal
 
 `Deriv Rule g` is a derivation of `g` by one-step rules: `Rule g ps` says that
-`g` follows from the premises `ps`.  `DerivP Rule P g` is a derivation whose
-goals never repeat one of `P` or one below them on the branch.  So the run with
-the pending goals `P` never cuts it. -/
+`g` follows from the premises `ps`.  `DerivP Rule P g` is a derivation in which
+no goal is in `P` or repeats a goal above it on the branch. -/
 
 section Prune
 
@@ -71,21 +69,21 @@ variable {Goal : Type} (Rule : Goal → List Goal → Prop)
 inductive Deriv : Goal → Prop
   | mk {g : Goal} {ps : List Goal} : Rule g ps → (∀ p ∈ ps, Deriv p) → Deriv g
 
-/-- Derivations by `Rule` that avoid the pending goals `P`, and in which no goal
-repeats along a branch. -/
+/-- Derivations by `Rule` that avoid the pending goals `P` and repeat no goal
+along a branch. -/
 inductive DerivP : List Goal → Goal → Prop
   | mk {P : List Goal} {g : Goal} {ps : List Goal} :
       g ∉ P → Rule g ps → (∀ p ∈ ps, DerivP (g :: P) p) → DerivP P g
 
-/-- What pruning a derivation gives under the pending goals `P`: a derivation
-that avoids them, or a derivation of one of them that avoids those below it. -/
+/-- The result of pruning under `P`: a derivation that avoids `P`, or a
+derivation of one goal of `P` that avoids the goals below it in `P`. -/
 def Pruned (P : List Goal) (g : Goal) : Prop :=
   DerivP Rule P g ∨ ∃ Q1 p Q2, P = Q1 ++ p :: Q2 ∧ DerivP Rule Q2 p
 
 variable {Rule}
 
-/-- Each member of a list gives a fact or a common fact, so either all give
-the first or one gives the second. -/
+/-- If, for every member `a` of a list, `A a` or `B` holds, then either every
+member satisfies `A` or `B` holds. -/
 theorem all_or {α : Type} {A : α → Prop} {B : Prop} :
     ∀ l : List α, (∀ a ∈ l, A a ∨ B) → (∀ a ∈ l, A a) ∨ B
   | [], _ => Or.inl fun _ h => by cases h
@@ -99,10 +97,10 @@ theorem all_or {α : Type} {A : α → Prop} {B : Prop} :
       · exact Or.inr hb
     · exact Or.inr hb
 
-/-- A derivation can be pruned under any pending goals.  At a goal outside
-`P`, the premises are pruned under `g :: P`.  If one of them repeats `g`, its
-derivation of `g` replaces this one.  At a goal inside `P`, the derivation is
-pruned under the goals below that place in `P`. -/
+/-- A derivation can be pruned under any pending goals.  At a goal `g` outside
+`P`, the premises are pruned under `g :: P`, and if one of them repeats `g`,
+its derivation of `g` replaces this one.  At a goal in `P`, the derivation is
+pruned under the goals below `g` in `P`. -/
 theorem Deriv.prune [DecidableEq Goal] {g : Goal} (h : Deriv Rule g) :
     ∀ P, Pruned Rule P g := by
   induction h with
@@ -146,7 +144,7 @@ theorem Deriv.prune [DecidableEq Goal] {g : Goal} (h : Deriv Rule g) :
         · exact Or.inr ⟨Q1 ++ g :: Q1', p, Q2', by simp, h2⟩
       · exact hcomb P hg
 
-/-- A derivation gives one in which no goal repeats along a branch. -/
+/-- A derivation gives one that repeats no goal along a branch. -/
 theorem Deriv.pruneNil [DecidableEq Goal] {g : Goal} (h : Deriv Rule g) : DerivP Rule [] g := by
   rcases h.prune [] with h | ⟨Q1, p, Q2, hQ, _⟩
   · exact h

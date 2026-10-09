@@ -3,10 +3,10 @@ import Coercions.Oopsla16.Frontend.Pipeline
 /-!
 # The pretty printer
 
-An unparser back into the paper's notation, so that an `#eval` of a resolved
-program or of a run is readable.  The inductives of `Oopsla16` have no `Repr`
-instance, so this is the way to look at a type, a term, a member list or a run
-as text.
+An unparser back into the notation of the paper, so that an `#eval` of a
+resolved program or of a run is readable.  The inductives of `Oopsla16` have
+no `Repr` instance, so this is how one looks at a type, a term, a member list
+or a run as text.
 
 A label of the calculus is a bare position, and the position restarts at zero
 inside every literal.  Different names in different literals can therefore
@@ -21,7 +21,7 @@ so `defaultLocNames` names the locations of a store `ℓ0`, `ℓ1`, … in
 allocation order.
 
 Everything is structural, so the printer reduces in the kernel and the checks
-at the end are `decide +kernel`.  Nothing here is part of the metatheory.
+at the end are `decide +kernel`.  The printer is not part of the metatheory.
 -/
 
 namespace Oopsla16Frontend

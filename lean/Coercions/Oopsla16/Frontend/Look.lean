@@ -4,28 +4,26 @@ import Coercions.Oopsla16.Frontend.Decide
 /-!
 # Member lookup on the tank
 
-The lookup asks which types carry a given member.  It follows the compiler's
-`findMember` (`Types.scala:820-870`).  There are two queries.
+The lookup asks which types carry a given member.  It follows `findMember` of
+the compiler (core/Types.scala).  There are two queries.
 
 * `h s Γ x V k` asks for the types the variable `x`, seen at `V`, has at the
   key `k`, each with an `Oopsla16.Htp` step.  `Htp` types `x` in its own
   prefix, the context cut off at `x`, and has no packing rule.  A recursive
-  type is opened at `x` by `htp_unpack` (`goRec`, `Types.scala:875-896`).
-  Both operands of an intersection are searched (`goAnd`,
-  `Types.scala:994-995`).  A selection `y.L` asks the members of `y` in the
-  prefix of `x`, as `htp_sub` demands, and goes on in their upper bounds by
-  `stp_sel1` (`Types.scala:5720`).
+  type is opened at `x` by `htp_unpack`, as `goRec` does.  Both operands of an
+  intersection are searched, as `goAnd` does.  A selection `y.L` asks the
+  members of `y` in the prefix of `x`, as `htp_sub` demands, and goes on in
+  their upper bounds by `stp_sel1`.
 * `st s Γ V k` asks for the types `V` is below at the key, each with an
   `Oopsla16.Stp` step.  It serves a receiver that is not a variable, where no
   opening is possible.  It searches intersections and selections as `h` does.
 
-An atom that fits the key is an answer.  `⊥` has no members
-(`Types.scala:827-829`).  A union has none either.  The compiler looks a
-member up in the join of a union, and the join of two structural types keeps
-no member (`TypeOps.scala:383-389`).  The compiler merges two members of one
-name (`Types.scala:5759`).  Oopsla16 has no rule for that merge, so the lookup
-returns every member it finds, in the order it finds them, and the caller
-tries each.
+An atom that fits the key is an answer.  `⊥` has no members.  A union has none
+either.  The compiler looks a member up in the join of a union
+(`TypeOps.orDominator`), and the join of two structural types keeps no member.
+The compiler merges two members of one name (`TypeBounds.&`).  Oopsla16 has no
+rule for that merge, so the lookup returns every member it finds, in the order
+it finds them, and the caller tries each.
 
 The lookup draws on the tank of `Fuel.lean`.  A query costs `cost` of the
 number of queries pending along the branch.  A query that repeats along a
@@ -36,7 +34,7 @@ else, so two queries with one key ask the same question, whatever binders
 follow `x`.  So a lookup has one answer at every binder depth.
 
 Each answer carries the derivation that takes the query's start to the type
-found.  So the lookup has no soundness theorem to prove.  What it has is the
+found, so the lookup needs no soundness theorem.  Its main theorem is the
 frame lemma of the tank: a lookup that ends with the tank unmarked gives the
 same answers with more fuel.  `hdecls` reads the type members of a variable
 off its recorded type, each with the premise that `stp_sel1` and `stp_sel2`
@@ -144,16 +142,14 @@ def typ? {s : Sig} {Γ : Ctx [] s} {x : BVar s .var} {V : Ty [] (scopeUpTo x)} (
 
 /-! ## The lookup -/
 
-/-- One level of the lookup, the cases of `findMember`'s `go`
-(`Types.scala:820-870`).  `rec` is the lookup one level down, with the query
-pending.  At an `h` query a recursive type is opened at the variable (`goRec`,
-`Types.scala:875-896`, `htp_unpack`).  At both queries an intersection is
-searched in both operands, the left one first (`goAnd`,
-`Types.scala:994-995`), and a selection goes on in the upper bounds of its
-receiver's members (`Types.scala:5720`, `stp_sel1`).  The members of the
-receiver are asked in the prefix that `htp_sub` allows.  A union, `⊥` and
-every other atom that does not fit have no answer.  Every call to `rec`
-starts from the tank the previous one left. -/
+/-- One level of the lookup, the cases of `go` in `findMember`.  `rec` is the
+lookup one level down, with the query pending.  At an `h` query a recursive
+type is opened at the variable (`goRec`, `htp_unpack`).  At both queries an
+intersection is searched in both operands, the left one first (`goAnd`), and a
+selection goes on in the upper bounds of its receiver's members (`stp_sel1`).
+The members of the receiver are asked in the prefix that `htp_sub` allows.  A
+union, `⊥` and every other atom that does not fit have no answer.  Every call
+to `rec` starts from the tank the previous one left. -/
 def lookBody (rec : (q : LQ) → Fu (List q.R)) : (q : LQ) → Fu (List q.R)
   | .h s Γ x V k =>
       if k.fits V then Fu.ret [⟨V, id⟩] else

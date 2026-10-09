@@ -1,85 +1,81 @@
 import Coercions.CapturesCC.Frontend.Sub
 
 /-!
-# Avoidance at a `let` and at an unpacking, on the tank
+# Avoidance at a `let` and at an unpacking
 
-The type of `let z = t in u` may not mention `z`.  When the body's type does,
-the compiler approximates it by a type free of `z` (`avoid`,
-`TypeOps.scala:474-509,565-583`).  This module does the same for the
-version's types, which are a shape with a capture set, and for its answers,
-which are a type or a type under a capture binder.
+The type of `let z = t in u` may not mention `z`.  When the type of the body
+does, the typer approximates it by a type free of `z`, as `TypeOps.avoid` does
+in the compiler (`core/TypeOps.scala`, its `AvoidMap`).  The types here are a
+shape with a capture set.  The answers are a type or a type under a capture
+binder.
 
 `up` approximates a shape from above and `down` from below.  `capUp` and
-`capDown` do the same for capture sets, following `mappedSet`
-(`cc/CaptureSet.scala:1361-1368`).  Each returns the new shape or set with the
-`SubShape` or `Subcap` derivation that relates it to the old one.
+`capDown` do the same for capture sets, following `CaptureSet.mappedSet`
+(`cc/CaptureSet.scala`).  Each returns the new shape or set with the `SubShape`
+or `Subcap` derivation that relates it to the old one.
 
 - A selection `z.A` at a covariant position becomes the meet of the avoided
-  upper bounds of every member `A` that `z` has, as the compiler widens a
-  selection at the merged bounds of its members (`derivedSelect` and
-  `tryWiden`, `TypeOps.scala:519-522`).  The meet is an intersection, derived
-  by `SubShape.and` of the `SubShape.selUpper` steps.  At a contravariant
-  position `z.A` becomes the avoided lower bound of the first member.  The
-  version has no union, so the lower bounds cannot be joined.
-- The atom `{z}` at a covariant position becomes the declared set of `z`,
-  by `Subcap.var`.  The compiler maps an avoided variable to
-  `range(Nothing, info)` (`TypeOps.scala:477-481`), and `mappedSet` takes the
-  set of its info at a covariant position (`cc/CaptureSet.scala:1366`).  At a
-  contravariant position `{z}` is dropped, as `mappedSet` gives the empty set
-  there (`cc/CaptureSet.scala:1367`).
+  upper bounds of every member `A` that `z` has.  The compiler widens a
+  selection at the merged bounds of its members (`AvoidMap.derivedSelect` and
+  `AvoidMap.tryWiden`, with `TypeBounds.&` in `core/Types.scala`).  The meet is
+  an intersection, derived by `SubShape.and` of the `SubShape.selUpper` steps.
+  At a contravariant position `z.A` becomes the avoided lower bound of the
+  first member.  The version has no union, so lower bounds are not joined.
+- The atom `{z}` at a covariant position becomes the declared set of `z`, by
+  `Subcap.var`.  `AvoidMap.apply` maps an avoided variable to
+  `range(Nothing, info)`, and `mappedSet` takes the set of the info at a
+  covariant position.  At a contravariant position `{z}` is dropped, as
+  `mappedSet` gives the empty set there.
 - The atom `{z.C}` becomes the avoided upper bound of the first capture member
   `C` of `z` at a covariant position and its lower bound at a contravariant
-  one, by `Subcap.selUpper` and `Subcap.selLower`.  The covariant case is
-  the bound of a `CapSet` member (`cc/Capability.scala:853-863`).  The version
-  has no meet of capture sets, so one member is read.  The compiler gives the
-  empty set at a contravariant position unless the image is exact.  The lower
-  bound is as sound and more precise.  At a covariant position a `{z.C}` with
-  no member found stays, and then the strengthening at the `let` fails.  At a
-  contravariant position it is dropped.
-- `∀` flips its domain, `{A : L..U}` flips `L`, and `{C^ : c₁..c₂}` flips
-  `c₁`.  The version's types have no invariant position, so the compiler's
-  `Range` (`Types.scala:6902`) never arises.  An arrow's domain is
-  approximated in the scope that `SubShape.all` compares domains in, and its
-  codomain in the body of the arrow at the domain `SubShape.all` asks for.
-  Both are read back past the scope's root, and an arrow whose parts do not
-  read back becomes `⊤` or `⊥`.
-- An existential answer that mentions `z` is not approximated, and the
-  arrow that holds it becomes `⊤` or `⊥`.
+  one, by `Subcap.selUpper` and `Subcap.selLower`.  The covariant case is the
+  bound of a `CapSet` member in `Capability.subsumes` (`cc/Capability.scala`).
+  The version has no meet of capture sets, so one member is read.  The compiler
+  gives the empty set at a contravariant position unless the image is exact.
+  The lower bound is as sound and more precise.  A `{z.C}` with no member found
+  stays at a covariant position, and then strengthening at the `let` fails.  At
+  a contravariant position it is dropped.
+- `∀` flips its domain, `{A : L..U}` flips `L`, and `{C^ : c₁..c₂}` flips `c₁`.
+  The version's types have no invariant position, so the compiler's `Range`
+  (`core/Types.scala`) never arises.  An arrow's domain is approximated in the
+  scope in which `SubShape.all` compares domains, and its codomain in the body
+  of the arrow at the domain `SubShape.all` asks for.  Both are read back past
+  the scope's root.  An arrow whose parts do not read back becomes `⊤` or `⊥`.
+- An existential answer that mentions `z` is not approximated, and the arrow
+  that holds it becomes `⊤` or `⊥`.
 - A selection or capture member already being expanded at the same polarity
-  becomes `⊤`, `⊥`, the atom itself or the empty set, the compiler's
-  `emptyRange` (`Types.scala:6608`).  A `μ` that mentions `z` has no
+  becomes `⊤`, `⊥`, the atom itself or the empty set, as
+  `ApproximatingTypeMap.emptyRange` does.  A `μ` that mentions `z` has no
   subtyping rule in the version and becomes `⊤` or `⊥`.
 
 All four draw on the tank of `Fuel.lean`.  A shape node costs `cost` of the
 number of members being expanded.  A capture set that mentions `z` costs the
-same, and one that does not is left as it is at no cost.  The members of a
-selection are read by `declsAt` and `capsAt` on the same tank.  A short tank
+same, and one that does not is left as it is at no cost.  `declsAt` and
+`capsAt` read the members of a selection on the same tank.  A short tank
 answers `⊤`, `⊥`, the set as it is or the empty set, and is marked.  The
-structural index starts at the fuel left, and every step down the index
-follows a draw of at least one unit, so the index never runs out before the
-tank does.
+structural index starts at the fuel left.  Every step down the index follows a
+draw of at least one unit, so the index never runs out before the tank does.
 
 `avoidLet` runs `up` and `capUp` at the binder of a `let` and strengthens the
 result.  It returns the type `U` with `Sub (Γ.cons T0) V U.weaken`, which
 `HasTy.let` takes through `HasTy.sub`.  It answers `none` when the tank ends
-marked, the recursion limit, and when the result still mentions the binder,
-a rejection.  A type that does not mention the binder comes back as itself,
-strengthened (`avoidLet_strengthen`).  So avoidance never loses what
-strengthening finds.  `avoidUses` does the same for the use set of the body,
-which `HasTy.let` asks to be a weakening too.
+marked (the recursion limit) and when the result still mentions the binder (a
+rejection).  A type that does not mention the binder comes back as itself,
+strengthened (`avoidLet_strengthen`).  `avoidUses` does the same for the use
+set of the body, which `HasTy.let` also asks to be a weakening.
 
 `avoidEx` moves the answer of an unpacking's body past the witness binder and
 the payload binder that `HasTy.letex` opens.  An answer that strengthens past
 both comes back as itself.  Otherwise a plain answer whose shape strengthens
-has its set read at the innermost root of the context: the payload, its
-capture members and the witness are at that root's level, and `subcapF`
-gives the derivation by the level rule, as the compiler's local root absorbs
-a `fresh` (`cc/Capability.scala:918`).
+has its set read at the innermost root of the context.  The payload, its
+capture members and the witness are at that root's level, and `subcapF` gives
+the derivation by the level rule.  The compiler's local root absorbs a `fresh`
+in the same way (`Capability.subsumes`, through `acceptsLevelOf`).
 
-Every computation here is framed, so a run that ends unmarked does the same
-with more fuel (`avoidLet_frame`, `avoidUses_frame`, `avoidEx_frame`).  Every
-definition is structural, so the kernel evaluates avoidance.  The checks at
-the end run it on the examples by `decide +kernel`.
+Every computation here is framed: a run that ends unmarked does the same with
+more fuel (`avoidLet_frame`, `avoidUses_frame`, `avoidEx_frame`).  Every
+definition is structural, so the kernel evaluates avoidance.  The checks at the
+end run it on the examples by `decide +kernel`.
 -/
 
 namespace CapturesCCFrontend.Core
@@ -555,7 +551,7 @@ abbrev LetTy {s : Sig} (Γ : Ctx s) (T0 : Ty s) (V : Ty (s,x)) : Type :=
 abbrev LetUses {s : Sig} (Γ : Ctx s) (T0 : Ty s) (V : CaptureSet (s,x)) : Type :=
   (U : CaptureSet s) × Subcap (Γ.cons T0) V (CaptureSet.weaken U)
 
-/-- Strengthen an approximation that no longer mentions the binder.  If it
+/-- Strengthen an approximation that does not mention the binder.  If it
 still mentions it, there is no answer. -/
 def strengthenTy {s : Sig} {Γ : Ctx s} {T0 : Ty s} {V : Ty (s,x)} (r : TyAbove (Γ.cons T0) V) :
     Option (LetTy Γ T0 V) :=
@@ -563,7 +559,7 @@ def strengthenTy {s : Sig} {Γ : Ctx s} {T0 : Ty s} {V : Ty (s,x)} (r : TyAbove 
   | some w => some ⟨w.val, w.property ▸ r.2⟩
   | none => none
 
-/-- Strengthen an approximated set that no longer mentions the binder.  If it
+/-- Strengthen an approximated set that does not mention the binder.  If it
 still mentions it, there is no answer. -/
 def strengthenSet {s : Sig} {Γ : Ctx s} {T0 : Ty s} {V : CaptureSet (s,x)}
     (r : CapAbove (Γ.cons T0) V) : Option (LetUses Γ T0 V) :=
@@ -576,7 +572,7 @@ def unlessOut {α : Type} (o : Option α) : Fu (Option α) := fun t =>
   if t.out then (none, t) else (o, t)
 
 /-- The result type of a `let` without annotation: the body's type `V`,
-approximated from above until it no longer mentions the binder, then
+approximated from above until it does not mention the binder, then
 strengthened.  `none` if the tank ends marked, or if a capture member of the
 binder has no bound to go to. -/
 def avoidLet {s : Sig} (Γ : Ctx s) (T0 : Ty s) (V : Ty (s,x)) : Fu (Option (LetTy Γ T0 V)) :=
@@ -1326,7 +1322,7 @@ def E2AvoidedTy : Ty ([] : Sig) :=
 -- E2: the outer `let` binds `x = ν(x. {A = ∀(y : x.A) x.A} ∧ {a = …})` and its body has the type
 -- `x.A`.  The alias cycle is cut once at each polarity, and the domain and the codomain of the
 -- arrow are approximated in their scope and body, so the avoided type is a function type.
--- Strengthening alone fails on `x.A`.  It uses 34 units.
+-- Strengthening alone fails on `x.A`.
 example : avoidAt Ctx.nil ((Shape.mu E2Self) ^ []) ((Shape.sel (.var .here) lA) ^ []) =
     (some E2AvoidedTy, ⟨defaultFuel - 34, false⟩) := by decide +kernel
 
@@ -1335,23 +1331,22 @@ def L3Ty : Ty ([],c,c) :=
   (Shape.mu (.typ lA .bot (.fld la (.top ^ [CapAtom.var .here])))) ^ [CapAtom.cvar k1]
 
 -- L3: a body at `o.A ^ {o}`.  The selection goes to its upper bound opened at `o`, and `{o}` to
--- the set `o` is declared at, inside the field too.  The answer is `{a : ⊤ ^ {k1}} ^ {k1}`.  It
--- uses 11 units.
+-- the set `o` is declared at, inside the field too.  The answer is `{a : ⊤ ^ {k1}} ^ {k1}`.
 example : avoidAt platCtx L3Ty ((Shape.sel (.var .here) lA) ^ [CapAtom.var .here]) =
     (some ((Shape.fld la (.top ^ [CapAtom.cvar k1])) ^ [CapAtom.cvar k1]),
       ⟨defaultFuel - 11, false⟩) := by decide +kernel
 
 -- C2's `run`: `o : C2PreTy k1`, a literal with `C = {k1}`, and the body `o.run` at
--- `(⊤ → ⊤) ^ {o.C}`.  The capture member goes to its upper bound `{k1}`.  It uses 11 units.
+-- `(⊤ → ⊤) ^ {o.C}`.  The capture member goes to its upper bound `{k1}`.
 example : avoidAt platCtx (C2PreTy k1) (arrowS ^ [CapAtom.sel .here lC]) =
     (some (arrowS ^ [CapAtom.cvar k1]), ⟨defaultFuel - 11, false⟩) := by decide +kernel
 
 -- The use set `{o, o.C}` of a body under the same binder: `{o}` goes to the declared set `{}` of
--- `o`, and `{o.C}` to `{k1}`.  It uses 10 units.
+-- `o`, and `{o.C}` to `{k1}`.
 example : usesAt platCtx (C2PreTy k1) [CapAtom.var .here, CapAtom.sel .here lC] =
     (some [CapAtom.cvar k1], ⟨defaultFuel - 10, false⟩) := by decide +kernel
 
--- L3's use set `{o}` goes to `{k1}`, at one unit.
+-- L3's use set `{o}` goes to `{k1}`.
 example : usesAt platCtx L3Ty [CapAtom.var .here] =
     (some [CapAtom.cvar k1], ⟨defaultFuel - 1, false⟩) := by decide +kernel
 
@@ -1360,12 +1355,12 @@ def GTy : Ty ([] : Sig) :=
   (Shape.and (.typ lA .bot (.fld la (.top ^ []))) (.typ lA .bot (.fld lb (.top ^ [])))) ^ []
 
 -- G: a body at `z.A`.  Avoidance meets the upper bounds of both members, `{a : ⊤} ∧ {b : ⊤}`, as
--- the compiler does.  It uses 10 units.
+-- the compiler does.
 example : avoidAt Ctx.nil GTy ((Shape.sel (.var .here) lA) ^ []) =
     (some ((Shape.and (.fld la (.top ^ [])) (.fld lb (.top ^ []))) ^ []),
       ⟨defaultFuel - 10, false⟩) := by decide +kernel
 
--- E8: a body type that does not mention the binder is strengthened, at one unit.
+-- E8: a body type that does not mention the binder is strengthened.
 example : avoidAt E8Ctx1 (E8Ref .here) ((Shape.sel (.var (.there .here)) lA) ^ []) =
     (some ((Shape.sel (.var .here) lA) ^ []), ⟨defaultFuel - 1, false⟩) := by decide +kernel
 
@@ -1374,11 +1369,11 @@ example : usesAt E8Ctx1 (E8Ref .here) [CapAtom.var (.there .here)] =
     (some [CapAtom.var .here], ⟨defaultFuel, false⟩) := by decide +kernel
 
 -- A capture member of the binder that the binder does not have has no bound to go to.  The answer
--- is `none` with the tank unmarked: a rejection, not the recursion limit.  It uses 7 units.
+-- is `none` with the tank unmarked: a rejection, not the recursion limit.
 example : avoidAt Ctx.nil GTy (.top ^ [CapAtom.sel .here lC]) = (none, ⟨defaultFuel - 7, false⟩) := by
   decide +kernel
 
--- A short tank is marked, and avoidance answers `none`: E2 at 4 units, and any type at 0.
+-- A short tank is marked and avoidance answers `none`, for E2 and for any type.
 example : avoidAt Ctx.nil ((Shape.mu E2Self) ^ []) ((Shape.sel (.var .here) lA) ^ []) 4 =
     (none, ⟨0, true⟩) := by decide +kernel
 example : avoidAt E8Ctx1 (E8Ref .here) ((Shape.sel (.var (.there .here)) lA) ^ []) 0 =
@@ -1391,12 +1386,12 @@ is the body's own. -/
 def ExBodyCtx : Ctx (Sig.body ([],c,c)) := Ctx.body platCtx unitTy
 
 -- An unpacking inside the body that hands back its payload `x`, a capability at the witness `c`.
--- `{x}` does not strengthen, and the level rule puts it at the body's root.  It uses 1 unit.
+-- `{x}` does not strengthen, and the level rule puts it at the body's root.
 example : exAt ExBodyCtx (arrowS ^ [CapAtom.cvar .here]) (.ty (arrowS ^ [CapAtom.var .here])) =
     (some (.ty (arrowS ^ [CapAtom.cvar (.there (.there .here))])), ⟨defaultFuel - 1, false⟩) := by
   decide +kernel
 
--- The same with the witness `c` itself in the answer.  It uses 1 unit.
+-- The same with the witness `c` itself in the answer.
 example : exAt ExBodyCtx (arrowS ^ [CapAtom.cvar .here]) (.ty (arrowS ^ [CapAtom.cvar (.there .here)])) =
     (some (.ty (arrowS ^ [CapAtom.cvar (.there (.there .here))])), ⟨defaultFuel - 1, false⟩) := by
   decide +kernel

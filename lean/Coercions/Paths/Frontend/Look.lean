@@ -3,61 +3,57 @@ import Coercions.Paths.DotMNF.Examples
 import Coercions.Paths.Frontend.Decide
 
 /-!
-# Member lookup on paths, on the tank
+# Member lookup on paths
 
-The lookup asks which types a path has that carry a given member.  It follows
-the compiler's `findMember` (`Types.scala:820-870`).  A recursive type is
-opened at the path (`goRec`, `Types.scala:875-896`).  Both operands of an
-intersection are searched (`goAnd`, `Types.scala:994-995`).  A selection
-continues in the upper bounds of the members of its prefix
-(`Types.scala:5720`).  An atom that fits the key is an answer.  `⊥` has no
-members (`Types.scala:827-829`).
+`lookP` finds the types a path has that carry a given member.  It follows
+`Types.findMember` and its `go`.  A recursive type is opened at the path
+(`goRec`).  Both operands of an intersection are searched (`goAnd`).  A
+selection continues in the upper bounds of the members of its prefix
+(`TypeBounds.underlying`).  An atom that fits the key is an answer.  `⊥` has
+no members.
 
 A singleton `q.type` is the case paths add.  The compiler's `go` follows the
-underlying type of a `TermRef` and keeps the prefix of the original lookup
-(`Types.scala:821-826`).  So `goRec` opens a recursive type reached through
-the singleton at the original path (`Types.scala:894`).  The lookup does the
-same.  At a path `p` seen at `q.type` it continues at `p`, seen at each
-declared type of `q`, with `PathTy.snglTrans`.  A recursive type found there
-is opened at `p` by `PathTy.recE`, not at `q`.
+underlying type of a `TermRef` and keeps the prefix of the original lookup.
+So `goRec` opens a recursive type reached through the singleton at the original
+path.  `lookP` does the same.  At a path `p` seen at `q.type` it continues at
+`p`, seen at each declared type of `q`, with `PathTy.snglTrans`.  A recursive
+type found there is opened at `p` by `PathTy.recE`, not at `q`.
 
-The declared types of a path are its `TermRef.underlying`
-(`Types.scala:2977-2980`).  A variable has its context entry.  A path `r.a`
-has every stable field `a` that the lookup finds on a declared type of `r`.
-So a deep path is reached by one lookup per field, on demand.
+The declared types of a path follow `TermRef.underlying`.  A variable has its
+context entry.  A path `r.a` has every stable field `a` that the lookup finds
+on a declared type of `r`.  So a deep path is reached by one lookup per field,
+on demand.
 
-`HasTy` has no rule that follows a singleton.  So the lookup at a variable as
-a term, `lookV`, is the path lookup without the singleton case.  The
-application needs it, since `HasTy.app` asks for a term typing of the
-function.
+`HasTy` has no rule that follows a singleton.  So `lookV`, the lookup at a
+variable as a term, is `lookP` without the singleton case.  Application needs
+it, since `HasTy.app` asks for a term typing of the function.
 
-The lookup draws on the tank of `Fuel.lean`.  Each key costs `cost` of the
-number of keys pending along the branch.  It keeps its own pending keys, and
-a key that repeats along a branch has no answer, which is the compiler's
-cyclic reference.  The compiler has one lookup for paths and terms, so both
-lookups push the same kind of key.  The compiler merges two members of one
-name (`Types.scala:5759`).  The version has no rule for that merge, so the
-lookup returns every member it finds, in the order it finds them, and the
-caller tries each.
+The lookups draw on the tank of `Fuel.lean`.  Each key costs `cost` of the
+number of keys pending along the branch.  The pending keys belong to the
+lookup.  A key that repeats along a branch has no answer, as in the compiler's
+cyclic reference.  The compiler merges two members of one name
+(`TypeBounds.&`).  The calculus has no rule for that merge.  So a lookup
+returns every member it finds, in the order it finds them, and the caller tries
+each.
 
 Each answer carries the derivation that takes the path from the view it
-started at to the type found.  So the lookup has no soundness theorem to
-prove.  What it has is the frame lemma of the tank: a lookup that ends with
-the tank unmarked gives the same answers with more fuel.
+started at to the type found.  So there is no soundness theorem.  The frame
+lemma of the tank says that a lookup that ends with the tank unmarked gives the
+same answers with more fuel.
 
-The module also holds the walker of the abstract view, which `Sub.mu` needs to
-compare two recursive types.  It reads the members of one body off the other
-and asks a subtyping only where a bound widens to a type that does not mention
-the self.  That subtyping is an argument on the tank, so the walker is framed
-when its argument is.
+The module also holds the walker of the abstract view (`subDecl?`), which
+`Sub.mu` needs to compare two recursive types.  It reads the members of one
+body off the other and asks a subtyping only where a bound widens to a type
+that does not mention the self.  That subtyping is an argument on the tank, so
+the walker is framed when its argument is.
 
-Every definition is structural, so the kernel evaluates a lookup and a walk.
-The module ends with 29 checks.  Sixteen run lookups: a singleton chain, a
-deep path, the programs E9, MuS and MuP with a singleton, an alias cycle, the
-term lookup and a run out of fuel.  Twelve run the walker, on the bodies of
-MuS, MuP and E7, and on bounds whose subtyping the lookup answers through a
-singleton.  These 28 are `decide +kernel` facts.  The last check applies the
-frame lemma of the walker to the oracle of the lookup.
+Every definition is structural, so the kernel evaluates lookups and walks.  The
+checks at the end are `decide +kernel` facts.  They run lookups through a
+singleton chain, a deep path, the programs E9, MuS and MuP, an alias cycle, the
+term lookup and a run out of fuel.  They run the walker on the bodies of MuS,
+MuP and E7, and on bounds whose subtyping the lookup answers through a
+singleton.  The last check applies the frame lemma of the walker to the oracle
+of the lookup.
 -/
 
 namespace PathsFrontend.Core
@@ -150,11 +146,10 @@ abbrev LKey (s : Sig) := Path s × Ty s × Key
 /-- A lookup at one index and one list of pending keys. -/
 abbrev Lk {s : Sig} (Γ : Ctx s) := (p : Path s) → (V : Ty s) → Key → Fu (List (FoundP Γ p V))
 
-/-- The declared types of a path (`TermRef.underlying`,
-`Types.scala:2977-2980`).  A variable has its context entry (`PathTy.var`).
-`r.a` has every stable field `a` that the lookup finds on a declared type of
-`r` (`PathTy.sel`).  The lookup is an argument, so that the lookup itself can
-call this function one index down. -/
+/-- The declared types of a path (`TermRef.underlying`).  A variable has its
+context entry (`PathTy.var`).  `r.a` has every stable field `a` that the lookup
+finds on a declared type of `r` (`PathTy.sel`).  The lookup is an argument, so
+that the lookup itself can call this function one index down. -/
 def startOf {s : Sig} {Γ : Ctx s} (lk : Lk Γ) : (q : Path s) → Fu (List (PV Γ q))
   | .var x => Fu.ret [⟨Γ.lookup x, .var⟩]
   | .sel r a =>
@@ -169,17 +164,13 @@ def declsAt {s : Sig} {Γ : Ctx s} (lk : Lk Γ) (q : Path s) (A : Label) : Fu (L
     Fu.bind (lk q w.ty (.typ A)) fun es =>
       Fu.ret (es.filterMap fun e => (e.typ? A).map fun ⟨lo, hi, g⟩ => ⟨lo, hi, g w.d⟩))
 
-/-- Member lookup on demand at a path, the cases of `findMember`'s `go`
-(`Types.scala:820-870`).  `μ` is opened at the path (`goRec`,
-`Types.scala:875-896`).  Both operands of `∧` are searched, the left one first
-(`goAnd`, `Types.scala:994-995`).  A selection continues in the upper bounds
-of the prefix's members (`Types.scala:5720`).  A singleton `q.type` continues
-at the same path, seen at each declared type of `q`, as `go` keeps the prefix
-(`Types.scala:821-826,894`).  A key that repeats along a branch has no answer,
-the compiler's cyclic reference.  `⊥` has no members
-(`Types.scala:827-829`).  A key costs `cost` of the number of keys pending.  A
-short tank answers `[]` and is marked.  Every recursive call starts from the
-tank the previous one left. -/
+/-- Member lookup at a path, with the cases of `go` in `Types.findMember`.  `μ` is
+opened at the path (`goRec`).  Both operands of `∧` are searched, the left one
+first (`goAnd`).  A selection continues in the upper bounds of the prefix's
+members.  A singleton `q.type` continues at the same path, seen at each
+declared type of `q`, as `go` keeps the prefix.  A key that repeats along a
+branch has no answer.  `⊥` has no members.  A key costs `cost` of the number of
+keys pending.  A short tank answers `[]` and is marked. -/
 def lookP {s : Sig} (Γ : Ctx s) : Nat → List (LKey s) → (p : Path s) → (V : Ty s) → Key →
     Fu (List (FoundP Γ p V))
   | 0, _, _, _, _ => fun t => ([], { t with out := true })
@@ -431,9 +422,8 @@ The walker below searches for that view.  It asks a subtyping only at the step
 an argument on the tank, so the search that calls the walker hands it its own
 oracle, and the walker spends what the oracle spends.
 
-The compiler compares the two parents with the self identified
-(`TypeComparer.scala:738-740`).  The version's relation is weaker, and the
-walker follows the version.
+In `TypeComparer.thirdTry`, `compareRec` compares the two parents with the self
+identified.  The calculus relates less, and the walker follows the calculus.
 
 The bodies have type `Ty (s,x)`.  Structural recursion does not apply to a type
 whose index is not a variable.  So the descent through the intersections of `R`
@@ -517,8 +507,8 @@ def subDecl? {s : Sig} {Γ : Ctx s} (sub : SubO Γ) (L R : Ty (s,x)) :
 /-! ## The walker on the tank
 
 The walker is framed when its oracle is.  Two oracles that agree give walkers
-that agree, and two oracles that dominate give walkers that dominate.  These
-are the facts the step of a search needs from it.  The index of the descent
+that agree, and two oracles that dominate give walkers that dominate.  The
+step of a search in `Sub.lean` needs these facts.  The index of the descent
 changes nothing once it reaches the depth of `R`. -/
 
 theorem bindO_agree {α β : Type} {c c' : Fu (Option α)} {f f' : α → Fu (Option β)}

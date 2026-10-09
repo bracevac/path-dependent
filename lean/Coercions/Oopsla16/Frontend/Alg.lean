@@ -4,43 +4,40 @@ import Coercions.Oopsla16.Frontend.Sub
 # The algorithmic judgment and completeness
 
 `Alg` states the rules of the algorithm of `Sub.lean`, one constructor per
-alternative, with no fuel and no pending goals.  Three cases of the `sub` goal
-are final: an intersection on the right, a union on the left and two
-recursive types.  A constructor tried after them carries what lets the
-algorithm pass them.  `orL` carries `isAnd T = false`.  The constructors of
-the later alternatives carry `Final S T = false` where their form does not
-already decide it.  At two recursive types the algorithm tries `stp_bindx`,
-then `stp_bind1`, so `bind1` carries only `isAnd T = false` and holds whether
-the right side is recursive or not.  A selection on the right through a lower
-bound carries `lo ≠ ⊥`, as the algorithm skips such a member.  The `var` goal
-has no final case, so its constructors carry no condition on the order.  A
-member premise is phrased through the lookup (`Member`): the lookup finds that
-member and ends within its fuel.
+alternative, with no fuel and no pending goals.
+
+Three cases of the `sub` goal are final: an intersection on the right, a union
+on the left and two recursive types.  A constructor tried after a final case
+carries the condition that lets the algorithm get past it.  `orL` carries
+`isAnd T = false`.  The later alternatives carry `Final S T = false` where
+their form does not already decide it.  At two recursive types the algorithm
+tries `stp_bindx`, then `stp_bind1`, so `bind1` carries only `isAnd T = false`.
+A selection on the right through a lower bound carries `lo ≠ ⊥`, as the
+algorithm skips such a member.  The `var` goal has no final case.  A member
+premise (`Member`) says that the lookup finds the member and ends within its
+fuel.
 
 Completeness holds up to the recursion limit.  If `Alg` derives a goal, the
 algorithm answers it at every fuel at which its run ends with the tank
 unmarked (`sub?_complete`, `var?_complete`).  So a run that ends unmarked with
-no answer is a rejection by the rules (`sub?_reject`, `var?_reject`).  The
-tank is shared by all the alternatives of a goal, and a marked tank stays
-marked.  So an alternative that never ends, tried before the one an `Alg`
-derivation uses, exhausts every tank.  `p.1 ∧ ⊥ <: q.1` below is such a goal:
-`Alg` derives it by the right operand, and the left operand, tried first,
-goes under a method's parameter at each level.  So completeness cannot say
-that some fuel suffices.
+no answer is a rejection by the rules (`sub?_reject`, `var?_reject`).
 
-The proof needs no minimal derivation.  A derivation in which no goal repeats
-along a branch exists whenever a derivation does (`Deriv.pruneNil`): a repeat
-is cut out by using the inner derivation of the goal at the outer place.  A
-derivation without repeats is never cut by the run.  At each goal the run
-either answers by an alternative tried first or reaches the one the
-derivation uses, since the tank is unmarked at the end and so at every point
-before (`run_ans`).  Both facts are generic in the goals and the step.  They
-are stated here, in the library of this front end, since the library of the
-vanilla front end brings in its own calculus.
+No fuel suffices in general.  The alternatives of a goal share the tank, and a
+marked tank stays marked.  So an alternative that never ends, tried before the
+one an `Alg` derivation uses, exhausts every tank.  The goal `p.1 ∧ ⊥ <: q.1`
+at the end of the module is one.  `Alg` derives it by the right operand, and
+the left operand, tried first, goes under a method's parameter at each level.
+
+The proof needs no minimal derivation.  Whenever a derivation exists, one
+exists in which no goal repeats along a branch (`Deriv.pruneNil`).  A repeat
+is cut out by using the inner derivation of the goal at the outer place.  The
+run never cuts a derivation without repeats.  At each goal the run either
+answers by an alternative tried first or reaches the one the derivation uses,
+since the tank is unmarked at the end and so at every point before
+(`run_ans`).  Both facts are generic in the goals and the step.
 
 `Alg.sound` is the soundness of `Alg` for Oopsla16 at the empty store.  Each
-constructor builds the derivation its alternative emits.  It says no more
-than that derivation does.
+constructor builds the derivation its alternative emits.
 -/
 
 namespace Oopsla16Frontend.Core
@@ -77,8 +74,8 @@ def Pruned (P : List Goal) (g : Goal) : Prop :=
 
 variable {Rule}
 
-/-- Each member of a list gives a fact or a common fact, so either all give
-the first or one gives the second. -/
+/-- If each member of a list satisfies `A` or `B`, then all satisfy `A` or `B`
+holds. -/
 theorem all_or {α : Type} {A : α → Prop} {B : Prop} :
     ∀ l : List α, (∀ a ∈ l, A a ∨ B) → (∀ a ∈ l, A a) ∨ B
   | [], _ => Or.inl fun _ h => by cases h
@@ -93,9 +90,9 @@ theorem all_or {α : Type} {A : α → Prop} {B : Prop} :
     · exact Or.inr hb
 
 /-- A derivation can be pruned under any pending goals.  At a goal outside
-`P`, the premises are pruned under `g :: P`.  If one of them repeats `g`, its
-derivation of `g` replaces this one.  At a goal inside `P`, the derivation is
-pruned under the goals below that place in `P`. -/
+`P`, the premises are pruned under `g :: P`, and a premise that repeats `g`
+gives its derivation of `g` in place of this one.  At a goal inside `P`, the
+derivation is pruned under the goals below that place in `P`. -/
 theorem Deriv.prune [DecidableEq Goal] {g : Goal} (h : Deriv Rule g) :
     ∀ P, Pruned Rule P g := by
   induction h with

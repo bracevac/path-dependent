@@ -4,79 +4,75 @@ import Coercions.Oopsla16.Frontend.Avoid
 /-!
 # The typer
 
-The typer reads a type off an annotated term of Oopsla16 and returns the
+The typer reads a type off an annotated term of `Oopsla16` and returns the
 `Oopsla16.HasType` derivation with it.  The derivation is a field of the
-result, so soundness is the result type and there is no soundness theorem to
-prove.
+result, so soundness is the result type and needs no theorem.
 
-It runs on the tank of `Fuel.lean`.  One tank is threaded through every goal
-it asks: each subtyping goal and each variable goal of `Sub.lean`, each member
-lookup of `Look.lean`, and each avoidance of `Avoid.lean`.  So the fuel counts
-the work of the whole typing, and a goal that finds the tank short marks it.
-A marked tank is the recursion limit.  It is never a rejection by the rules.
+It runs on the tank of `Fuel.lean`.  One tank is threaded through every
+subtyping and variable goal of `Sub.lean`, every member lookup of `Look.lean`
+and every avoidance of `Avoid.lean`.  A goal that finds the tank short marks
+it.  A marked tank is the recursion limit, never a rejection by the rules.
 
 ## Candidates
 
 Synthesis returns a list of candidates, each a type with its derivation, with
-no two of one type.  Oopsla16 has no rule that merges two members of one
-name, which the compiler does (`Types.scala:5759`).  So the typer keeps every
-choice instead.
+no two of one type.  `Oopsla16` has no rule that merges two members of one
+name, as the compiler does (`TypeBounds.&` in `core/Types.scala`).  So the
+typer keeps every choice.
 
 - A variable has the type its context records, by `T_Varz`.
-- A literal has `μ T` for its written self type `T`, or else the one
-  `selfOf?` computes, by `T_Obj`.  The members are checked against `T` in
-  lockstep, as `DmsHasType` does.
-- `(t : T)` has the type `T`.  The ascription binds and `t` is checked
-  against it.
+- A literal has `μ T` for its written self type `T`, or else the one `selfOf?`
+  computes, by `T_Obj`.  The members are checked against `T` in lockstep, as
+  `DmsHasType` does.
+- `(t : T)` has the type `T`, and `t` is checked against it.
 - A call `t.l(u)` tries every method type at `l` that the receiver has, for
   every candidate of `t`, and returns the answer of each.
 
 The method types of a variable receiver are looked up on demand in its type
-(`tlook`).  A recursive type is opened at the variable by `T_VarUnpack`, as
-the compiler's `findMember` opens it with the variable as prefix (`goRec`,
-`Types.scala:875-896`).  Both operands of an intersection are searched, and a
-selection goes on in the upper bounds of its members by `stp_sel1`.  A union
-and `⊥` have no members, as in the compiler (`TypeOps.scala:383-389`,
-`Types.scala:827-829`).  A receiver that is not a variable is looked up in its
-type by the `st` query of `Look.lean`.  At a recursive type the method is
-looked up in the body under the self, and the self is approximated away
-(`recvCands`).  This is the compiler's skolemized prefix (`Types.scala:5001`)
-followed by `deskolemized` (`Types.scala:1611-1619`).
+(`tlook`).  A recursive type is opened at the variable by `T_VarUnpack`, as the
+compiler's `findMember` opens it with the variable as prefix (`goRec` in
+`Type.findMember`, `core/Types.scala`).  Both operands of an intersection are
+searched, and a selection goes on in the upper bounds of its members by
+`stp_sel1`.  A union and `⊥` have no members, as in the compiler, where a union
+goes through its join (`goOr` in `Type.findMember` and `OrType.join`, both in
+`core/Types.scala`).  A receiver that is not a variable is
+looked up in its type by the `st` query of `Look.lean`.  At a recursive type the
+method is looked up in the body under the self, and the self is approximated
+away (`recvCands`).  The compiler does the same with the skolem it puts in the
+qualifier (`QualSkolemType` and `Type.deskolemized` in `core/Types.scala`).
 
-An argument that is a variable `y` goes in by `T_AppVar`, and the result is
-the codomain opened at `y`.  Any other argument takes the first of its
-candidates that is below the domain.  The codomain then may not mention the
-parameter, so it is approximated by a type free of it (`avoidArg`), as the
-compiler approximates a skolem when it infers a type.
+An argument that is a variable `y` goes in by `T_AppVar`, and the result is the
+codomain opened at `y`.  Any other argument takes the first of its candidates
+that is below the domain.  The codomain is then approximated by a type free of
+the parameter (`avoidArg`).
 
 ## Checking
 
 Checking a variable asks the variable goal of `Sub.lean`, which packs and
 unpacks.  A literal and an ascription are compared with the goal by the
-subtyping goal.  A call compares each candidate's codomain with the goal.  At
-a variable argument the codomain is opened at the argument.  At any other
-argument the codomain is compared under the parameter, assumed at the
-argument's type, as the compiler compares a skolem with the expected type.
-The first candidate that meets the goal is taken.
+subtyping goal.  A call compares each candidate's codomain with the goal.  At a
+variable argument the codomain is opened at the argument.  At any other
+argument it is compared under the parameter, assumed at the argument's type, as
+the compiler compares a skolem with the expected type.  The first candidate that
+meets the goal is taken.
 
 ## The theorems
 
-Every computation here is framed: it keeps a marked tank, never adds fuel,
-and does the same with more fuel (`synthF_frame`, `checkF_frame`).  So a
-typing that ends unmarked gives the same answer at every larger fuel
-(`synthTop?_mono`, `synthTop?_stable`).  A rejection that ends unmarked is a
-rejection at every fuel.  The typer has no completeness theorem.  It does not
-find a derivation through a middle type the program does not write, as the
-compiler does not.  It does not merge two members, since the calculus has no
-rule for that, so a call tries each.  It does not find a judgment whose search
-needs more than the fuel.  And a lookup through a cyclic member is cut, as the
-compiler's cyclic reference.
+Every computation is framed: it keeps a marked tank, never adds fuel, and does
+the same with more fuel (`synthF_frame`, `checkF_frame`).  So a typing that ends
+unmarked gives the same answer at every larger fuel (`synthTop?_mono`,
+`synthTop?_stable`), and a rejection that ends unmarked is a rejection at every
+fuel.
 
-Every definition is structural on the term, so the kernel evaluates the
-typer.  The checks at the end of the module type the example programs at
-`defaultFuel` by `decide +kernel`.
+The typer has no completeness theorem.  It finds no derivation through a middle
+type the program does not write, as the compiler does not.  It does not merge
+two members, so a call tries each.  It does not find a judgment whose search
+needs more than the fuel.  A lookup through a cyclic member is cut, as the
+compiler reports a cyclic reference.
 
-Nothing here is part of the metatheory.
+Every definition is structural on the term, so the kernel evaluates the typer.
+The checks at the end type the example programs at `defaultFuel` by
+`decide +kernel`.
 -/
 
 namespace Oopsla16Frontend
@@ -86,8 +82,7 @@ open FCdot (Kind Sig BVar Rename)
 open Oopsla16 (Lb Vr Ty Tm Dm Dms Ctx Store Stp Htp HasType DmsHasType EqSome
   scopeUpTo renameUpTo varUpTo)
 
-/-- The fuel of a typing.  One field, the size of the tank every entry point
-starts from. -/
+/-- The fuel of a typing: the size of the tank every entry point starts from. -/
 structure Budget where
   fuel : Nat := defaultFuel
 deriving Repr, Inhabited, DecidableEq
@@ -99,7 +94,7 @@ structure Cand {s : Sig} (Γ : Ctx [] s) (t : Tm [] s) where
   /-- The derivation. -/
   deriv : HasType Store.nil Γ t ty
 
-/-! ## Pieces the clauses use -/
+/-! ## Pieces of the clauses -/
 
 /-- Keep the first candidate of each type. -/
 def dedupTy {s : Sig} {Γ : Ctx [] s} {t : Tm [] s} : List (Cand Γ t) → List (Cand Γ t)
@@ -121,8 +116,8 @@ steps.  A type that fits the key is an answer.  A recursive type is opened at
 `x` by `T_VarUnpack`, both operands of an intersection are searched, and a
 selection goes on in the upper bounds of its members by `stp_sel1`.  `P` holds
 the types visited along the branch, and a type that repeats has no answer.
-Each node draws `cost P.length` from the tank.  The index `d` is
-structural. -/
+Each node draws `cost P.length` from the tank.  The index `d` is the structural
+measure. -/
 def tlook {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) :
     Nat → List (Ty [] s) → (V : Ty [] s) → Key → Fu (List (VFound Γ x V))
   | 0, _, _, _ => fun t => ([], { t with out := true })
@@ -150,13 +145,13 @@ def tlook {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) :
           | _ => Fu.ret []
 termination_by structural d _ _ _ => d
 
-/-- `tlook` on the tank it is handed, with the fuel left as its index. -/
+/-- `tlook` indexed by the fuel left. -/
 def tlookAt {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) (V : Ty [] s) (k : Key) :
     Fu (List (VFound Γ x V)) := fun t =>
   tlook Γ x t.left [] V k t
 
-/-- The `st` lookup of `Look.lean` on the tank it is handed: the types `V` is
-below at the key, each with the derivation.  The index is the fuel left. -/
+/-- The `st` lookup of `Look.lean` indexed by the fuel left: the types `V` is
+below at the key, each with the derivation. -/
 def stLook {s : Sig} (Γ : Ctx [] s) (V : Ty [] s) (k : Key) :
     Fu (List ((ty : Ty [] s) × SStp Γ V ty)) := fun t =>
   look t.left [] (.st s Γ V k) t
@@ -179,7 +174,7 @@ def asFun? {s : Sig} {Γ : Ctx [] s} {te : Tm [] s} (l : Lb) :
 
 /-- The method types of a receiver that is not a variable, from its type `V`.
 At a recursive type `μ X` the method is looked up in `X` under the self, the
-self is approximated away from above, and `stp_bind1` closes it. -/
+self is approximated away from above, and `stp_bind1` closes the step. -/
 def recvCands {s : Sig} (Γ : Ctx [] s) {te : Tm [] s} (l : Lb) :
     (V : Ty [] s) → HasType Store.nil Γ te V → Fu (List (MethCand Γ te l))
   | .TBind X, hV =>
@@ -206,8 +201,7 @@ def cands {s : Sig} (Γ : Ctx [] s) (l : Lb) :
 
 /-- The answer of a call in synthesis, for one method type.  A variable
 argument goes in by `T_AppVar`.  Any other argument takes its first candidate
-below the domain, and the codomain is approximated by a type free of the
-parameter, by `T_App`. -/
+below the domain, and the codomain is avoided, by `T_App`. -/
 def argSynth {s : Sig} (Γ : Ctx [] s) {te : Tm [] s} {l : Lb} :
     (u : ATm s) → List (Cand Γ u.erase) → MethCand Γ te l →
       Fu (Option (Cand Γ (.tapp te l u.erase)))
@@ -237,11 +231,10 @@ def argCheck {s : Sig} (Γ : Ctx [] s) {te : Tm [] s} {l : Lb} :
 
 /-! ## Synthesis and checking
 
-Three functions, structural on the term.  `synthF` returns the candidates of a
-term.  `checkF` checks a term against a type.  `checkDmsF` matches a member
-list against a self type in lockstep, as `DmsHasType` does: `D_Nil`, `D_Typ`
-and `D_Fun`.  A method's types come from the self type, so a Curry style
-method checks. -/
+`synthF` returns the candidates of a term.  `checkF` checks a term against a
+type.  `checkDmsF` matches a member list against a self type in lockstep, as
+`DmsHasType` does with `D_Nil`, `D_Typ` and `D_Fun`.  A method's types come
+from the self type, so a method without annotations checks. -/
 
 mutual
 
@@ -328,12 +321,12 @@ the tank left. -/
 def synthInF {s : Sig} (Γ : Ctx [] s) (a : ATm s) (n : Nat) : Option (Cand Γ a.erase) × Tank :=
   firstCand (synthF Γ a ⟨n, false⟩)
 
-/-- The first candidate of a closed term, from a full tank of `n` units, with
-the tank left. -/
+/-- The first candidate of a closed term, from a full tank of `n` units, and the
+tank left. -/
 def synthTopF (n : Nat) (a : ATm []) : Option (Cand Ctx.nil a.erase) × Tank :=
   synthInF Ctx.nil a n
 
-/-- A check of a term in `Γ`, from a full tank of `n` units, with the tank
+/-- A check of a term in `Γ`, from a full tank of `n` units, and the tank
 left. -/
 def checkInF {s : Sig} (Γ : Ctx [] s) (a : ATm s) (T : Ty [] s) (n : Nat) :
     Option (HasType Store.nil Γ a.erase T) × Tank :=
@@ -363,8 +356,8 @@ def checksIn {s : Sig} (b : Budget) (Γ : Ctx [] s) (a : ATm s) (T : Ty [] s) : 
 /-! ## The frame lemmas
 
 Each clause is built from the combinators of `Fuel.lean` and from framed
-computations of the other modules: `varF`, `subF`, `members`, `look`, `upAt`
-and `avoidArg`.  So each clause is framed, by induction on the term. -/
+computations of the other modules (`varF`, `subF`, `members`, `look`, `upAt`,
+`avoidArg`), so each is framed, by induction on the term. -/
 
 /-- `tlook` is framed at every index. -/
 theorem tlook_framed {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) :
@@ -394,7 +387,7 @@ theorem tlook_framed {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) :
       | TTyp _ _ _ => exact ret_framed _
       | TOr _ _ => exact ret_framed _
 
-/-- `tlook` at a larger index does what it does at a smaller one. -/
+/-- `tlook` at a larger index agrees with the smaller one. -/
 theorem tlook_agree {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) :
     ∀ (d d' : Nat), d ≤ d' → ∀ (P : List (Ty [] s)) (V : Ty [] s) (k : Key),
       Agree (tlook Γ x d P V k) (tlook Γ x d' P V k)
@@ -429,7 +422,7 @@ theorem tlook_agree {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) :
       | TTyp _ _ _ => exact ret_agree _
       | TOr _ _ => exact ret_agree _
 
-/-- `tlook` from the fuel left is framed. -/
+/-- `tlook` indexed by the fuel left is framed. -/
 theorem tlookAt_framed {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) (V : Ty [] s) (k : Key) :
     Framed (tlookAt Γ x V k) where
   absorbs t ht := (tlook_framed Γ x t.left [] V k).absorbs t ht
@@ -438,7 +431,7 @@ theorem tlookAt_framed {s : Sig} (Γ : Ctx [] s) (x : BVar s .var) (V : Ty [] s)
     intro t r t' h ho j
     exact (tlook_agree Γ x t.left (t.left + j) (Nat.le_add_right _ _) [] V k).sim t r t' h ho j
 
-/-- A lookup from the fuel left is framed, as `members` is. -/
+/-- The `st` lookup indexed by the fuel left is framed. -/
 theorem lookLeft_framed (q : LQ) : Framed (fun t => look t.left [] q t) where
   absorbs t ht := (look_framed t.left [] q).absorbs t ht
   spends t := (look_framed t.left [] q).spends t
@@ -635,7 +628,7 @@ theorem synthTop?_mono {n m : Nat} {a : ATm []} {c : Cand Ctx.nil a.erase}
   synthInF_mono h hnm
 
 /-- A closed typing that ends unmarked gives the same verdict at every larger
-fuel.  So a rejection that ends unmarked is a rejection by the rules. -/
+fuel.  So a rejection that ends unmarked is a rejection at every larger fuel. -/
 theorem synthTop?_stable {n k : Nat} {a : ATm []} {r : Option (Cand Ctx.nil a.erase)}
     (h : synthTopF n a = (r, ⟨k, false⟩)) (m : Nat) : (synthTopF (n + m) a).1 = r :=
   synthInF_stable h m
@@ -673,10 +666,9 @@ theorem checkInF_stable {s : Sig} {Γ : Ctx [] s} {a : ATm s} {T : Ty [] s} {n k
 /-! ## Checks
 
 Each check types a surface program of `Notation.lean`, or one written here,
-at `defaultFuel` in the kernel.  It states the type, or that there is none,
-and the tank left.  An unmarked tank says that the fuel played no part in the
-verdict.  A rejection with the tank unmarked holds at every fuel
-(`synthTop?_stable`). -/
+at `defaultFuel` in the kernel.  It states the type, or that there is none, and
+the tank left.  An unmarked tank means the fuel did not limit the verdict, and a
+rejection with the tank unmarked holds at every fuel (`synthTop?_stable`). -/
 
 namespace TyperChecks
 
@@ -703,7 +695,7 @@ def checkAt {s : Sig} (Γ : Ctx [] s) (a : ATm s) (T : Ty [] s) (n : Nat := defa
   let r := checkInF Γ a T n
   (r.1.isSome, r.2)
 
-/-! ### The calculus's programs -/
+/-! ### The programs of the calculus -/
 
 /-- `ex0` at `μ(z. ⊤)`, the type of `Oopsla16.Examples.ex0_precise`. -/
 example : typeAt [] ex0src = (some (.TBind .TTop), ⟨defaultFuel, false⟩) := by decide +kernel
@@ -747,8 +739,8 @@ example : typeAt paperLstTable paperLstSrc
     = (some (.TBind FCdotR.CheckerExamples.PaperLst.DeclBody), ⟨defaultFuel - 1229, false⟩) := by
   decide +kernel
 
-/-- An alias cycle among three literals has no label table, and resolution
-rejects it under the table the first literal suggests. -/
+/-- An alias cycle among three literals has no label table, so resolution
+rejects it. -/
 example : typeAt [("a", 1), ("b", 0), ("c", 0)] cyclicSrc = (none, ⟨defaultFuel, false⟩) := by
   decide +kernel
 
@@ -793,9 +785,9 @@ end PaperLst
 /-! ### A call on a literal whose method type mentions its self
 
 `f`'s codomain `z.A` mentions the receiver's self.  The method is looked up
-under the self, and the self is approximated away: `z.A` becomes the upper
-bound `⊤` of the member `A`.  `stp_bind1` closes it, and the call types at
-`⊤`, as scalac infers `Any`. -/
+under the self and the self is approximated away: `z.A` becomes the upper bound
+`⊤` of the member `A`.  `stp_bind1` closes the step and the call types at `⊤`,
+as scalac infers `Any`. -/
 
 /-- The program. -/
 def selfCallSrc : STm := o16% (new { z ⇒ def f(y : ⊤) : z.A = y   type A = ⊤ }).f(new { w ⇒ })
@@ -831,10 +823,10 @@ example : labelsOfProgram [("f", 0)] selCallSrc = some selCallTable := by decide
 example : typeAt selCallTable selCallSrc = (some (.TBind selfC), ⟨defaultFuel - 32, false⟩) := by
   decide +kernel
 
-/-! ### The first candidate's answer fails the goal
+/-! ### Two candidates
 
-`x` has two method types at `f`.  The first answers `⊤`, which is not below
-the goal `{A : ⊥..⊤}`, so checking moves on to the second. -/
+`x` has two method types at `f`.  The first answers `⊤`, which is not below the
+goal `{A : ⊥..⊤}`, so checking takes the second. -/
 
 /-- The program. -/
 def twoCandSrc : STm :=
@@ -859,9 +851,9 @@ example : typeAt twoCandTable twoCandSrc = (some (.TBind twoCandSelf), ⟨defaul
 
 /-! ### A receiver at a union and a receiver at `⊥`
 
-Neither has a method type.  A union has no members, as the compiler's join
-of two structural types keeps none.  `⊥` has no members either, as in the
-compiler.  Both are rejected with the tank unmarked, so at every fuel. -/
+Neither has a method type.  A union has no members, because the join of two
+structural types keeps none (`goOr` in `Type.findMember` and `OrType.join`, both
+in `core/Types.scala`).  `⊥` has none either.  Both are rejected with the tank unmarked, so at every fuel. -/
 
 /-- A union receiver. -/
 def unionCallSrc : STm :=
@@ -935,7 +927,7 @@ example : typeAt [("A", 0), ("g", 0)] packAndSrc
 
 `y : {def 1(t : {1 : ⊥..⊤}) : {def 0(a : μ(w. {1 : ⊥..t.1} ∧ {0 : ⊥..w.1})) : ⊤}}`
 applied to a literal.  The codomain mentions the parameter `t` under a
-recursive type in a method's domain.  The recursive type is kept, and `t.1`
+recursive type in a method's domain.  The recursive type is kept and `t.1`
 becomes the literal's lower bound `⊤` (`p3_avoided` of `Avoid.lean`). -/
 
 /-- `y.1(new { o ⇒ type 1 = ⊤  type 0 = ⊤ })`, resolved. -/

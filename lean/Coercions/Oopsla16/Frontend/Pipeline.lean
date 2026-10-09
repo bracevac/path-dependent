@@ -12,21 +12,20 @@ import Coercions.FCdotR.MethodInversion
 # The pipeline
 
 `compile` takes a surface program through resolver and typer.  The theorems
-below say what the result is worth.  Each one composes results of `Oopsla16`
-and `FCdotR`, so the front end proves nothing about the calculus itself.
+say what the result is worth.  Each composes results of `Oopsla16` and
+`FCdotR`, so the front end proves nothing about the calculus itself.
 
 `compile` returns the annotated term and a `Compiled`: the synthesized type,
 the `Oopsla16.HasType` derivation, and the fragment proof of the term when it
 is in `FCdotR.TmFrag`.  `elaborate` translates the derivation to an FCdotR
-term by `FCdotR.elabTm`.  `compileAndRun` and `compileAndRunFC` then run the
+term by `FCdotR.elabTm`.  `compileAndRun` and `compileAndRunFC` run the
 program on the source machine of `Step.lean` and the target machine of
 `StepFC.lean`, each at a step budget.
 
 Every theorem takes `h : compile b Λ e = some ⟨a, c⟩`.  The content is in the
-type of `c`, whose `deriv` field is a derivation for `a.erase` by
-construction.  Some theorems also take a run `r`, a budget `m` or a fragment
-proof `f`.  These name the subject of the statement.  For a concrete program
-the premise `(compile b Λ e).isSome = true` closes by `decide +kernel`.
+type of `c`, whose `deriv` field derives `a.erase`.  A run `r`, a budget `m` or
+a fragment proof `f` names the subject of the statement.  For a concrete
+program the premise `(compile b Λ e).isSome = true` closes by `decide +kernel`.
 
 ## Where the theorems come from
 
@@ -45,9 +44,9 @@ the premise `(compile b Λ e).isSome = true` closes by `decide +kernel`.
   the two drivers terminate together.
 
 The full elaboration binds every call operand with `let`, so it does not erase
-to the program in general.  On the fragment, `frag?` of `Decide.lean` decides
-membership, `compile` records the verdict in `Compiled.frag`, and the fragment
-elaboration does erase to the program.
+to the program in general.  On the fragment, which `frag?` of `Decide.lean`
+decides, the fragment elaboration does erase to the program.  `compile` records
+the verdict in `Compiled.frag`.
 -/
 
 namespace Oopsla16Frontend
@@ -69,10 +68,10 @@ structure Compiled (t : Oopsla16.Tm [] []) where
 
 /-! ## The pipeline -/
 
-/-- Resolve, then type, then decide the fragment.  The result is a dependent
-pair, since the derivation is about the erasure of the resolved term.  `none`
-means the program is out of scope, out of the label table, or out of the
-typer's reach at the fuel of the budget `b`. -/
+/-- Resolve, type, and decide the fragment.  The result is a dependent pair,
+since the derivation is about the erasure of the resolved term.  `none` means
+the program has a free name, has no label table, or has no type within the fuel
+of `b`. -/
 def compile (b : Budget) (Λ : LabelTable) (e : STm) :
     Option ((a : ATm []) × Compiled a.erase) := do
   let a ← resolve Λ e
@@ -130,8 +129,7 @@ theorem compile_frag_isSome {b : Budget} {Λ : LabelTable} {e : STm} {a : ATm []
 
 /-! ## The theorems -/
 
--- Most theorems never use `h`.  It is what a caller holds, and the content is
--- in the type of `c`.
+-- Most theorems do not use `h`.  The content is in the type of `c`.
 set_option linter.unusedVariables false
 
 section
@@ -253,12 +251,11 @@ theorem compile_checks_get {b : Budget} {Λ : LabelTable} {e : STm}
 
 /-! ## Checks
 
-The recursive argument example `FCdotR.SourceSafety.RecursiveArg.prog`, written
-as `recArgSrc` in `Notation.lean`, runs end to end in the kernel.  It compiles
-at the default fuel at type `⊤`.  The checker accepts its elaboration,
-the source driver answers in three steps, and the target driver reaches a final
-state in thirteen.  It is outside the fragment, which calls variables on
-variables only. -/
+`FCdotR.SourceSafety.RecursiveArg.prog`, written as `recArgSrc` in
+`Notation.lean`, runs end to end in the kernel.  It compiles at type `⊤`.  The
+source driver answers in three steps and the target driver is final in
+thirteen.  It is outside the fragment, which calls variables on variables
+only. -/
 
 section Checks
 
@@ -287,8 +284,8 @@ example : (compileAndRun {} 3 recArgTable recArgSrc).map
       (fun n => isAnswer n.t') = some false := by
   decide +kernel
 
-/-- The target driver reaches a final state in thirteen steps and not in
-twelve.  The extra steps are `let` and coercion steps. -/
+/-- The target driver is final in thirteen steps and not in twelve.  The extra
+steps are `let` and coercion steps. -/
 example : (compileAndRunFC {} 13 recArgTable recArgSrc).map
       (fun n => fcFinal? n.st') = some true ∧
     (compileAndRunFC {} 12 recArgTable recArgSrc).map

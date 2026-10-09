@@ -4,31 +4,22 @@ import Coercions.FCdot.Checker
 /-!
 # The decided side conditions
 
-The typer discharges two kinds of side condition, and both are here:
-distinctness of the labels of a definition block, and strengthening, the
-inverse of `DotMNF.Ty.weaken`, which avoidance at a `let` uses when the
-body's type does not mention the binder.
+The typer computes two side conditions.  Both are here.
 
-No other side condition needs a decision.  The typing rules ask for no
-well-formedness of a type, and `DotMNF.Ty.Decl` is decided by the version
-itself (`Ty.isDecl`, `Ty.isDecl_iff`).
+* `defsDistinct?` decides `DotMNF.Defs.Distinct`, the distinctness of the
+  labels of a definition block (`defsDistinct?_iff`).
+* `tyStrengthen?` is the inverse of `DotMNF.Ty.weaken` (`tyStrengthen?_iff`).
+  Avoidance at a `let` uses it when the type of the body does not mention the
+  binder.  `tyStrengthenW?` also returns the equation, and
+  `instDecidableIsWeakening` decides whether a type is a weakening.
 
-Strengthening reuses the target's partial renaming machinery verbatim rather
-than rewriting it: `FCdot.PartialRename`, `PartialRename.lift`,
-`PartialRename.unshift`, `Inverts`, `Inverts.lift`, `unshift_inverts` and
-`witness?` (`lean/Coercions/FCdot/Checker.lean`).  That machinery is generic
-over `Sig`, `Kind` and `BVar`, which the two calculi share.  Only the traversal
-over `DotMNF.Ty` is new, and it copies the shape of the target's own
-`Ty.rename?`, `Ty.strengthen?` and `Ty.strengthenW?`.
+Strengthening is `tyRename?` under the partial renaming `PartialRename.unshift`
+of `lean/Coercions/FCdot/Checker.lean`.  That machinery is generic over `Sig`,
+`Kind` and `BVar`.  Only the traversal of `DotMNF.Ty` is defined here, in the
+shape of the target's `Ty.rename?`.
 
-Every name here is a plain name in `namespace Frontend`, never a member of
-`DotMNF.Ty`, `DotMNF.Defs` or `DotMNF.Ctx`, so the functions are written as
-applications and not as dot notation.  Nothing of this module is part of
-the metatheory and no definition lives in the `DotMNF` or `FCdot` namespaces.
-
-Everything here is structural.  No function of this module uses well-founded
-recursion, so all of it reduces in the kernel and `by decide` works on it.
-The same holds for every definition of the library.
+`DotMNF.Ty.Decl` needs no function here, since `Ty.isDecl` decides it.  All
+definitions are structural, so `decide` evaluates them.
 -/
 
 namespace Frontend
@@ -38,9 +29,8 @@ open DotMNF (Path Ty Defs Ctx)
 
 /-! ## Distinctness of the labels of a definition block
 
-`DotMNF.Defs.labels` is frozen and `FCdot.Label` has `DecidableEq`, so the test
-is a list membership test.  Today every example of
-`lean/Coercions/DotMNF/Examples.lean` proves distinctness by hand. -/
+`DotMNF.Defs.labels` lists the labels of a block, and `FCdot.Label` has
+`DecidableEq`, so the test is list membership. -/
 
 /-- No label of the left block is a label of the right block. -/
 def labelsDisjoint? (d e : Defs s) : Bool :=
@@ -76,10 +66,9 @@ instance instDecidableDefsDistinct {s : Sig} (d : Defs s) : Decidable (Defs.Dist
 
 /-! ## Strengthening
 
-The partial renaming and its inversion lemmas are the target's, reused as they
-stand.  What follows is the traversal of `DotMNF.Path` and `DotMNF.Ty` under a
-partial renaming, with soundness and completeness against a total renaming it
-inverts, and then strengthening as the action of `PartialRename.unshift`. -/
+The traversal of `DotMNF.Path` and `DotMNF.Ty` under a partial renaming, with
+soundness and completeness against a total renaming it inverts.  Strengthening
+is the case `PartialRename.unshift`. -/
 
 /-- A path under a partial renaming.  A path is a variable in this calculus. -/
 def pathRename? : Path s1 → PartialRename s1 s2 → Option (Path s2)
@@ -252,9 +241,8 @@ theorem tyStrengthen?_iff {s : Sig} {k : Kind} {T : Ty (s,,k)} {U : Ty s} :
   · exact tyStrengthen?_sound
   · intro h; subst h; exact tyStrengthen?_weaken U
 
-/-- Strengthening, carrying the equation it establishes.  This is the form the
-typer needs at a `let`: the body's typing is rewritten along the equation,
-so the equation comes back with the type. -/
+/-- Strengthening with the equation it establishes.  The typer rewrites the
+typing of a `let` body along it. -/
 def tyStrengthenW? {s : Sig} {k : Kind} (T : Ty (s,,k)) : Option { U : Ty s // T = U.weaken } :=
   match witness? (tyStrengthen? T) with
   | some ⟨U, hU⟩ => some ⟨U, tyStrengthen?_sound hU⟩
@@ -264,9 +252,7 @@ theorem tyStrengthenW?_weaken {s : Sig} {k : Kind} (U : Ty s) :
     tyStrengthenW? (U.weaken (k := k)) = some ⟨U, rfl⟩ := by
   simp only [tyStrengthenW?, FCdot.witness?_eq_some (tyStrengthen?_weaken (k := k) U)]
 
-/-- A weakened type is one that strengthens.  The third instance: the
-proposition that a type strengthens past a binder, decided by
-`tyStrengthen?`. -/
+/-- Whether a type is a weakening, decided by `tyStrengthen?`. -/
 instance instDecidableIsWeakening {s : Sig} {k : Kind} (T : Ty (s,,k)) :
     Decidable (∃ U : Ty s, T = U.weaken) :=
   decidable_of_iff ((tyStrengthen? T).isSome = true)
@@ -282,9 +268,9 @@ instance instDecidableIsWeakening {s : Sig} {k : Kind} (T : Ty (s,,k)) :
 
 /-! ## The variables of a context
 
-`DotMNF.Ctx` has three constructors, and `consSelf`, the binder of an object
-literal, is a binder like any other for `Ctx.lookup`, so its variable is in the
-list.  Example E6 of `lean/Coercions/DotMNF/Examples.lean` needs it. -/
+The self binder `consSelf` of an object literal is a binder like any other for
+`Ctx.lookup`, so its variable is in the list.  Example E6 of
+`lean/Coercions/DotMNF/Examples.lean` needs it. -/
 
 /-- Every variable of a context, newest binder first. -/
 def ctxVars : Ctx s → List (BVar s .var)
@@ -292,12 +278,9 @@ def ctxVars : Ctx s → List (BVar s .var)
   | .cons Gamma _ => .here :: (ctxVars Gamma).map .there
   | .consSelf Gamma _ _ => .here :: (ctxVars Gamma).map .there
 
-/-! ## The module reduces in the kernel
+/-! ## Tests
 
-Every test below is `by decide`, which is the repo's own idiom and which the
-later modules cannot use: `sub?` and the typer are well founded, so they do not
-reduce and their tests go through `Frontend.expect` instead.  The line is
-drawn here, at the last structural module. -/
+These are checked by `decide`. -/
 
 section Tests
 

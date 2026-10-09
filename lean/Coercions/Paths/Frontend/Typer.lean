@@ -4,23 +4,22 @@ import Coercions.Paths.Frontend.Avoid
 /-!
 # The typer
 
-The typer reads a type off an annotated term of the paths version and returns
-the `Paths.DotMNF.HasTy` derivation with it.  The derivation is a field of the
-result, so soundness is the result type and there is no soundness theorem to
-prove.
+The typer reads a type off an annotated term of the calculus and returns the
+`Paths.DotMNF.HasTy` derivation with it.  The derivation is a field of the
+result, so soundness is the result type and there is no soundness theorem.
 
 It runs on the tank of `Fuel.lean`.  One tank is threaded through every goal
-it asks: each subtyping, path and variable goal of `Sub.lean`, each member
-lookup of `Look.lean`, and each avoidance of `Avoid.lean`.  So the fuel counts
-the work of the whole typing, and a goal that finds the tank short marks it.
-A marked tank is the recursion limit.  It is never a rejection by the rules.
+it asks: each goal of `Sub.lean`, each lookup of `Look.lean` and each
+avoidance of `Avoid.lean`.  So the fuel counts the work of the whole typing,
+and a goal that finds the tank short marks it.  A marked tank is the recursion
+limit.  It is never a rejection by the rules.
 
 ## Candidates
 
 Synthesis returns a list of candidates, each a type with its derivation, with
-no two of one type.  The version has no rule that merges two members of one
-name, which the compiler does (`Types.scala:5759`).  So the typer keeps every
-choice instead.
+no two of one type.  The calculus has no rule that merges two members of one
+name, which the compiler does (`TypeBounds.&`).  So the typer keeps every
+choice.
 
 - A variable has the type its context declares.
 - `λ(x : S). t` has `∀(x : S) T` for every candidate `T` of the body, if `S`
@@ -33,9 +32,8 @@ choice instead.
   field of `p : q.type`.
 - `let x = t in u` without annotation returns every pair of a candidate of
   `t` and a candidate of `u`.  The body's type is approximated by a type free
-  of `x` (`avoidLet`), as the compiler's `avoid` does
-  (`TypeOps.scala:474-509,565-583`).  If the result is not well formed, the
-  pair takes `⊤`.
+  of `x` (`avoidLet`), as `TypeOps.avoid` does.  If the result is not well
+  formed, the pair takes `⊤`.
 - `let x : U = t in u` has the type `U`.  The annotation binds.  The body is
   checked against it and is never approximated.
 
@@ -57,13 +55,19 @@ Every computation here is framed: it keeps a marked tank, never adds fuel,
 and does the same with more fuel (`synthF_frame`).  So a typing that ends
 unmarked gives the same answer at every larger fuel (`synthTop?_mono`,
 `synthTop?_stable`).  A rejection that ends unmarked is a rejection at every
-fuel.  The typer has no completeness theorem.  It does not find a derivation
-through a middle type the program does not write, as the compiler does not.
-It does not merge two fields, since the version has no rule for that, so a
-projection tries each field.  It does not widen a singleton to the type of its
-alias at a term, since `HasTy` has no rule for that.  It does not find a
-judgment whose search needs more than the fuel.  And a lookup through a
-cyclic member is cut, as the compiler's cyclic reference.
+fuel.
+
+The typer has no completeness theorem.  It misses these cases.
+
+- A derivation through a middle type the program does not write.  The compiler
+  does not find one either.
+- A projection that needs two fields merged.  The calculus has no rule for
+  that, so a projection tries each field.
+- A widening of a singleton to the type of its alias at a term.  `HasTy` has no
+  rule for that.
+- A judgment whose search needs more than the fuel.
+- A lookup through a cyclic member, which is cut as the compiler's cyclic
+  reference.
 
 Every definition is structural on the term, so the kernel evaluates the
 typer.  The checks at the end of the module type the example programs at
@@ -731,7 +735,7 @@ def Ga_src : STm :=
 def AVp_src : STm :=
   pdot% λ(q : {B : ⊥ .. ⊤}). let x = ν(x : {a : q.type}. {a = q}) in let y = x.a in λ(z : y.B). z
 
-/-- `p : q.type` and `x : p.A` used at `q.A`, `A` abstract.  The version has no
+/-- `p : q.type` and `x : p.A` used at `q.A`, `A` abstract.  The calculus has no
 rule that compares the two prefixes. -/
 def PQ_src : STm :=
   pdot% λ(q : {A : ⊥ .. ⊤}). λ(p : q.type). λ(x : p.A). let y : q.A = x in y
@@ -879,7 +883,7 @@ example : typeAt Ga_src = (some (.all GFun (.all .top .top)), ⟨defaultFuel - 4
   decide +kernel
 
 -- AVp: the member of `q` is abstract, so the domain takes its lower bound and the codomain its
--- upper bound.  PQ needs a rule the version does not have.
+-- upper bound.  PQ needs a rule the calculus does not have.
 example : typeAt AVp_src =
     (some (.all (.typ lB .bot .top) (.all .bot .top)), ⟨defaultFuel - 20, false⟩) := by
   decide +kernel

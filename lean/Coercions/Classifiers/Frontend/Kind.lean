@@ -5,24 +5,21 @@ import Coercions.Classifiers.Frontend.Alg
 
 Capture kinding `Γ ⊢ C :ᶜ φ` says that every capability in the set `C` has a
 classifier that the kind `φ` admits.  The Classifiers development states it as
-the `Type`-valued family `CapKind` (`lean/Coercions/Classifiers/DotMNF/Typing.lean`).
+the family `CapKind` (`lean/Coercions/Classifiers/DotMNF/Typing.lean`).
 
-Kinding is a goal kind of the algorithm of `Sub.lean`, beside subtyping,
-subcapturing, answers and variables.  It runs on the same tank and the same
-pending list.  `kind?` asks it from a full tank.  A member bounded by a kind,
-which `ksel` reads, and the upper bound of a capture member, which `kle`
-reads along `Subcap.selUpper`, are found by the member lookup of `Look.lean`
-on demand.  So kinding needs no fuel of its own and no table of member
-typings.  A kinding that ends with the tank unmarked has the same verdict at
-every larger fuel (`kind?_stable`), and a rejection with the tank unmarked
-has no algorithmic derivation (`kind?_reject`).
+Kinding is a goal kind of the algorithm of `Sub.lean`, beside subtyping and
+subcapturing.  `kind?` asks it from a full tank of fuel.  The rules `ksel` and
+`kle` read members, and the member lookup of `Look.lean` finds them, so kinding
+needs no fuel of its own.  A kinding that ends with the tank unmarked has the
+same verdict at every larger fuel (`kind?_stable`).  A rejection with the tank
+unmarked has no algorithmic derivation (`kind?_reject`).
 
-This module checks the kinding goal at judgments of the Classifiers examples
+This module checks kinding at judgments of the Classifiers examples
 (`lean/Coercions/Classifiers/DotMNF/Examples.lean`).  Each check states the
 rules of the derivation found, outermost first, and the tank it used, as a
 `decide +kernel` fact.  A success is also checked by the FCdot checker on its
-translation, and compared with the written derivation of the same judgment.
-Where the derivation reads a member, its translation is slow to unfold in the
+translation and compared with the written derivation of the same judgment.
+Where the derivation reads a member, the translation is slow to unfold in the
 kernel, so those two comparisons run as `#eval expect` tests.
 -/
 

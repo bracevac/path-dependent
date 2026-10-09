@@ -2,36 +2,28 @@ import Coercions.FCdot.Debruijn
 import Lean
 
 /-!
-# The surface syntax of the vanilla front end
+# The surface syntax
 
 The elaborator of `Notation.lean` produces a value of one of the three
-first-order, unindexed inductives below
-and nothing else.  Every `Sig`-indexed construction happens afterwards, in the
-ordinary Lean functions of `Resolve.lean`.  Interposing this surface term is
-what buys resolution, let-insertion and typing as ordinary functions with
-ordinary theorems.
+first-order, unindexed inductives below and nothing else.  Every
+`Sig`-indexed construction happens afterwards, in the ordinary Lean functions
+of `Resolve.lean`.  So resolution, let insertion and typing are ordinary
+functions with ordinary theorems.
 
-Labels are strings here.  They are interned by a `LabelTable`, not by the
-parser, so that the examples can pass the very table the hand-written terms of
-`lean/Coercions/DotMNF/Examples.lean` use and get literal equalities.  The
-default table reads the sort off the first character, an upper case letter a
-type label and anything else a term label, which is the paper's own convention
-(`lean/Coercions/paper/sections/source.tex`).
+Labels are strings here.  A `LabelTable` interns them, not the parser, so the
+examples can pass the table that the hand-written terms of
+`DotMNF/Examples.lean` use and get literal equalities.  The default table reads
+the sort off the first character, an upper case letter for a type label and
+anything else for a term label.
 
 `Scoped` and `LabelsIn` are the two decidable side conditions under which
-resolution is total, which is the totality theorem proved in `Resolve.lean`.
-Both are `Bool` valued, so they are decidable by construction and need no
-instance.
+resolution is total (the totality theorem of `Resolve.lean`).  Both are `Bool`
+valued.
 
-Every mutual block here carries `termination_by structural`.  Lean infers
-structural recursion for all three without it, which was measured, but later
-tests rely on these functions reducing in the kernel, so the annotation is
-written out: a later edit that would make Lean fall back to well founded
-recursion fails the build instead of silently costing `by decide` and `by
-rfl`.
+Every mutual block carries `termination_by structural`, so the kernel reduces
+these functions and a fallback to well founded recursion fails the build.
 
-Nothing in this module is part of the metatheory.  No definition here lives in
-the `DotMNF` or `FCdot` namespaces.
+Nothing in this module is part of the metatheory.
 -/
 
 namespace Frontend
@@ -61,18 +53,16 @@ inductive SType : Type where
 deriving DecidableEq, Repr, Inhabited
 
 mutual
-/-- Surface terms.  Application and selection take arbitrary terms, which is
-the point of a direct style front end.  Let insertion of `Resolve.lean` puts
-them back into monadic normal form. -/
+/-- Surface terms.  Application and selection take arbitrary terms.  Let
+insertion in `Resolve.lean` puts them into monadic normal form. -/
 inductive STm : Type where
   /-- A variable, by name. -/
   | var (x : String)
   /-- `λ(x : T). t`. -/
   | lam (x : String) (T : SType) (t : STm)
   /-- `ν(x : T. d)`.  The self type is annotated because `HasTy.obj` types the
-  definitions against a context entry carrying it
-  (`lean/Coercions/DotMNF/Typing.lean`) and `Value.obj` has no slot for it
-  (`lean/Coercions/DotMNF/Syntax.lean`). -/
+  definitions against a context entry that carries it, and `Value.obj` has no
+  slot for it. -/
   | obj (x : String) (T : SType) (d : SDefs)
   /-- `t u`, direct style. -/
   | app (t u : STm)
@@ -98,9 +88,9 @@ instance : Inhabited SDefs := ⟨.typ "" .top⟩
 
 /-! ## The label table
 
-Type labels and term labels are disjoint in the target
-(`lean/Coercions/FCdot/Debruijn.lean`), so a lookup that wants one sort has to
-say so.  `labelTyp?` and `labelTrm?` are those two lookups. -/
+Type labels and term labels are disjoint in the target (`FCdot.Label`), so a
+lookup names the sort it wants.  `labelTyp?` and `labelTrm?` are those two
+lookups. -/
 
 /-- A label table maps surface names to target labels, first entry first. -/
 abbrev LabelTable := List (String × Label)
@@ -122,7 +112,7 @@ def labelTrm? (Λ : LabelTable) (a : String) : Option Label :=
   | some (.trm n) => some (.trm n)
   | _ => none
 
-/-- The paper's convention: an upper case first character is a type label. -/
+/-- An upper case first character is a type label. -/
 def nameIsTyp (x : String) : Bool :=
   match x.toList with
   | c :: _ => c.isUpper
@@ -189,13 +179,11 @@ def labelsOfProgram (e : STm) : LabelTable :=
 
 /-! ## Scoping
 
-`Scoped Γ` holds when every free name of the phrase is in `Γ`.  Innermost
-binder first, matching the `NameEnv` used in `Resolve.lean`.  The self binder
-of `ν(x : T. d)`
-scopes over its own annotation, as `Defs (s,x)` requires
-(`lean/Coercions/DotMNF/Syntax.lean`).  The binder of a `let` does not scope
-over the `let`'s annotation, matching the `U.weaken` of the rule
-(`lean/Coercions/DotMNF/Typing.lean`). -/
+`Scoped Γ` holds when every free name of the phrase is in `Γ`.  The innermost
+binder comes first, as in the `NameEnv` of `Resolve.lean`.  The self binder of
+`ν(x : T. d)` scopes over its own annotation, as `Defs (s,x)` requires.  The
+binder of a `let` does not scope over the `let`'s annotation, as in the `U.weaken`
+of `HasTy.let`. -/
 
 /-- Every free name of a surface type is in the list. -/
 def SType.Scoped : List String → SType → Bool
@@ -271,12 +259,9 @@ end
 
 /-! ## The test helper
 
-The subtyping search is defined by well founded recursion, so it does not
-reduce in the kernel and `by decide` is unavailable on it.  Tests that touch
-it run compiled code through `#eval expect ...` instead, where a false
-result throws and so fails the build.  The tests of this module are the
-opposite case: resolution is structural and reduces, so those stay `by rfl`
-and `by decide`. -/
+Checks that need compiled code run through `#eval expect ...`, where a false
+result throws and fails the build.  Resolution is structural and reduces, so the
+checks of this module use `by rfl` and `by decide`. -/
 
 /-- Fail the build, from `#eval`, when a check comes out false. -/
 def expect (b : Bool) (msg : String) : IO Unit :=
@@ -284,8 +269,7 @@ def expect (b : Bool) (msg : String) : IO Unit :=
 
 /-! ## Sanity
 
-Everything of this module is structural, so these reduce in the kernel and are
-written in the repo's own idiom.  The program is
+These checks reduce in the kernel.  The program is
 `λ(f : {A : ⊤..⊥}). ν(s : {a : ⊤} ∧ {B : ⊤..⊤}. {a = f} ∧ {type B = ⊤})`. -/
 
 /-- The sample program of the checks below. -/
@@ -294,8 +278,8 @@ private def sampleProgram : STm :=
     (.obj "s" (.and (.fld "a" .top) (.typ "B" .top .top))
       (.and (.trm "a" (.var "f")) (.typ "B" .top)))
 
-/-- Names in label position, once each, in order of first appearance, and the
-sort read off the first character. -/
+/-- Names in label position, once each, in order of first appearance, each at the
+sort of its first character. -/
 example : labelsOfProgram sampleProgram = [("A", .typ 0), ("a", .trm 0), ("B", .typ 1)] := by
   decide
 
@@ -331,8 +315,8 @@ example :
 /-! ## `#assert_no_wf`
 
 Every recursive definition of the front end is structural, so the kernel
-reduces it.  Lean can fall back to well-founded recursion silently.  This
-command catches that at build time. -/
+reduces it.  This command fails the build when Lean compiles a definition by
+well-founded recursion instead. -/
 
 open Lean Elab Command in
 /-- Fails when a definition under the namespace `ns` is compiled by

@@ -6,40 +6,37 @@ import Coercions.Captures.DotMNF.Examples
 # Member lookup on the tank
 
 The lookup asks which shapes a variable has that carry a given member.  It
-follows the compiler's `findMember` (`Types.scala:820-870`).  A recursive
-shape is opened at the variable (`goRec`, `Types.scala:875-896`).  Both
-operands of an intersection are searched (`goAnd`, `Types.scala:994-995`).  A
-selection continues in the upper bounds of the members of its prefix
-(`Types.scala:5720`).  An atom that fits the key is an answer.  `⊥` has no
-members (`Types.scala:827-829`).
+follows `Types.findMember` in `core/Types.scala`.  A recursive shape is
+opened at the variable (`goRec`).  Both operands of an intersection are
+searched (`goAnd`).  A selection continues in the upper bounds of the members
+of its prefix (`TypeBounds.underlying`).  An atom that fits the key is an
+answer.  `⊥` has no members.
 
-A type of the version is a shape with a capture set.  The lookup walks the
-shape and leaves the capture set alone.  The compiler strips a capturing type
-before it looks a member up, and the variable rules `Rec-E` and `sub` with
-`Subcap.refl` keep the set.  So each answer carries a map from the variable at
-the view to the variable at the shape found, at every use set and every
-capture set.
+A type is a shape with a capture set.  The lookup walks the shape and leaves
+the capture set alone, because the rules `Rec-E` and `sub` with `Subcap.refl`
+keep it.  So each answer carries a map from the variable at the view to the
+variable at the shape found, at every use set and capture set.
 
 The keys are a type member, a capture member, a field, a function type and a
 box.  `decls` reads the type members of a variable off its declared shape,
-each with the premise that `SubShape.selUpper` and `SubShape.selLower` ask
-for.  `capDecls` does the same for capture members and the premise of
-`Subcap.selUpper` and `Subcap.selLower`.
+each with the premise of `SubShape.selUpper` and `SubShape.selLower`.
+`capDecls` does the same for capture members and `Subcap.selUpper` and
+`Subcap.selLower`.
 
 The lookup draws on the tank of `Fuel.lean`.  Each key costs `cost` of the
-number of keys pending along the branch.  It keeps its own pending keys, and a
-key that repeats along a branch has no answer, which is the compiler's cyclic
-reference.  The compiler merges two members of one name (`Types.scala:5759`).
-The version has no rule for that merge, so the lookup returns every member it
-finds, in the order it finds them, and the caller tries each.
+number of keys pending along the branch.  A key that repeats along a branch
+has no answer, which is the compiler's cyclic reference.  The compiler merges
+two members of one name (`TypeBounds.&` in `core/Types.scala`).  There is no
+rule for that merge here, so the lookup returns every member it finds, in the
+order it finds them, and the caller tries each.
 
-Each answer carries its derivation, so the lookup has no soundness theorem to
-prove.  What it has is the frame lemma of the tank: a lookup that ends with
-the tank unmarked gives the same answers with more fuel.
+Each answer carries its derivation, so the lookup has no soundness theorem.
+It has the frame lemma of the tank: a lookup that ends with the tank unmarked
+gives the same answers with more fuel.
 
-Every definition is structural, so the kernel evaluates a lookup.  The checks
-at the end of the module run the lookups of five examples and a run out of
-fuel by `decide +kernel`.
+The definitions are structural, so the kernel evaluates a lookup.  The checks
+at the end run the lookups of five examples and a run out of fuel by
+`decide +kernel`.
 -/
 
 namespace CapturesFrontend.Core
@@ -111,17 +108,14 @@ def Found.cap? {s : Sig} {Γ : Ctx s} {x : BVar s .var} {V : Shape s} (A : Label
 /-- A lookup key in full: the variable, the shape it is searched at, the key. -/
 abbrev LKey (s : Sig) := BVar s .var × Shape s × Key
 
-/-- Member lookup on demand, the cases of `findMember`'s `go`
-(`Types.scala:820-870`).  `μ` is opened at the variable when its body is a
-declaration shape, as `Rec-E` asks (`goRec`, `Types.scala:875-896`).  Both
-operands of `∧` are searched, the left one first (`goAnd`,
-`Types.scala:994-995`).  A selection continues in the upper bounds of the
-prefix's members (`Types.scala:5720`).  A key that repeats along a branch has
-no answer, the compiler's cyclic reference.  `⊥` has no members
-(`Types.scala:827-829`).  A key costs `cost` of the number of keys pending.
-A short tank answers `[]` and is marked.  Every recursive call starts from the
-tank the previous one left.  An answer that ends with the tank marked is
-returned as it is, and the caller treats it as a failure. -/
+/-- Member lookup on demand, the cases of `findMember`'s `go`.  `μ` is opened
+at the variable when its body is a declaration shape, as `Rec-E` asks
+(`goRec`).  Both operands of `∧` are searched, the left one first (`goAnd`).
+A selection continues in the upper bounds of the prefix's members.  A key that
+repeats along a branch has no answer.  `⊥` has no members.  A key costs `cost`
+of the number of keys pending.  A short tank answers `[]` and is marked.  Every
+recursive call starts from the tank the previous one left.  An answer that ends
+with the tank marked is a failure for the caller. -/
 def look {s : Sig} (Γ : Ctx s) : Nat → List (LKey s) → (x : BVar s .var) → (V : Shape s) → Key →
     Fu (List (Found Γ x V))
   | 0, _, _, _, _ => fun t => ([], { t with out := true })

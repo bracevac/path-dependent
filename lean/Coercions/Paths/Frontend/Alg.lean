@@ -14,8 +14,7 @@ A premise that reads a lookup says what the lookup finds (`Found`): run from
 some full tank, it ends unmarked and finds an item with the property.  The
 member of a path (`MemberP`), a declared type of a path (`StartP`), a stable
 field (`VfldP`) and a singleton (`SnglP`) are such premises.  A lookup that
-ends unmarked finds the same items at every fuel, so the run finds the item
-too.
+ends unmarked finds the same items at every fuel.
 
 Two recursive types are related through the walker of the abstract view.  The
 walker reads the members of the right body off the left one and asks a
@@ -34,13 +33,10 @@ below is such a goal: `Alg` derives it by the right operand, and the left
 operand, tried first, descends under a new binder at each level.  So
 completeness cannot say that some fuel suffices.
 
-The proof needs no minimal derivation.  A derivation in which no goal repeats
-along a branch exists whenever a derivation does (`Deriv.pruneNil`): a repeat
-is cut out by using the inner derivation of the goal at the outer place.  A
-derivation without repeats is never cut by the run.  At each goal the run
-either answers by an alternative tried before or reaches the one the derivation
-uses, since the tank is unmarked at the end and so at every point before
-(`run_ans`).  Both facts are generic in the goals and the step.
+The proof uses derivations without a repeated goal along a branch.  One exists
+whenever a derivation does (`Deriv.pruneNil`).  The run never cuts such a derivation, and at each goal it
+either answers by an alternative tried before or reaches the one the
+derivation uses (`run_ans`).
 
 `Alg.sound` is the soundness of `Alg` for the version.  Each constructor builds
 the derivation its alternative emits.
@@ -80,8 +76,8 @@ def Pruned (P : List Goal) (g : Goal) : Prop :=
 
 variable {Rule}
 
-/-- Each member of a list gives a fact or a common fact, so either all give
-the first or one gives the second. -/
+/-- If each member of a list satisfies `A` or the fixed fact `B` holds, then
+all satisfy `A` or `B` holds. -/
 theorem all_or {α : Type} {A : α → Prop} {B : Prop} :
     ∀ l : List α, (∀ a ∈ l, A a ∨ B) → (∀ a ∈ l, A a) ∨ B
   | [], _ => Or.inl fun _ h => by cases h

@@ -25,9 +25,9 @@ The proof needs no minimal derivation.  A derivation in which no goal repeats
 along a branch exists whenever a derivation does (`Deriv.pruneNil`): a repeat
 is cut out by using the inner derivation of the goal at the outer place.  A
 derivation without repeats is never cut by the run.  At each goal the run
-either answers by an earlier alternative or reaches the one the derivation
-uses, since the tank is unmarked at the end and so at every point before
-(`run_ans`).  Both facts are generic in the goals and the step.
+either answers by an alternative tried before it or reaches the one the
+derivation uses, since the tank is unmarked at the end and so at every point
+before (`run_ans`).  Both facts are generic in the goals and the step.
 
 `Alg.sound` is the soundness of `Alg` for DOT-MNF.  Each constructor builds
 the derivation its alternative emits.

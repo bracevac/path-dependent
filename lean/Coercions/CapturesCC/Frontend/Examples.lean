@@ -4,20 +4,20 @@ import Coercions.CapturesCC.Frontend.Pretty
 /-!
 # The examples end to end
 
-The programs of the version's `DotMNF/Examples.lean`, the programs of
-`Notation.lean` and `Typer.lean`, and the programs written here are taken
-through the whole front end.  Where the hand written derivations of the
-version exist, the term and the judgment are compared with them.  The pure
-programs run over the empty platform.  The capture programs run over the
-platform `πc` of `Resolve.lean`, with capabilities `k1` and `k2`, or over
-`πz`, the same two binders named `fs` and `k2`, for the programs whose
-capability is a file system.  Both are the version's `platCtx`.
+DotMNF is the calculus the typer targets.  The programs of
+`DotMNF/Examples.lean`, the programs of `Notation.lean` and `Typer.lean`, and
+the programs written here are taken through the whole front end.  Where
+`DotMNF/Examples.lean` has a hand written derivation, the term and the
+judgment are compared with it.  The pure programs run over the empty platform.
+The capture programs run over the platform `πc` of `Resolve.lean`, with
+capabilities `k1` and `k2`, or over `πz`, the same two binders named `fs` and
+`k2`, for the programs whose capability is a file system.  Both are DotMNF's
+`platCtx`.
 
 ## What is checked
 
 Every function of the front end is structural, so the kernel reduces
-resolution, the typer and the machine.  Every check runs at `defaultFuel`, the
-one field of the default budget `{}`.  No program has a budget of its own.
+resolution, the typer and the machine.  Every check runs at `defaultFuel`.
 
 For a program that compiles:
 
@@ -30,11 +30,11 @@ For a program that compiles:
 - The target checker's verdict on the translation of the derivation and on
   the use set evidence, through `expect`.
 - `Ek_compiles`, by `decide +kernel`, and `Ek_checks`, which is
-  `compile_checks_get` at the program.  So `Ek_checks` has no hypothesis.
+  `compile_checks_get` at the program.
 
-A program the version types under a context is typed there.  Its `Ek_type`
-is a fact about `judgIn`, its `Ek_compiles` about `synthIn?`, and its
-`Ek_checks` is `synthIn_checks_get`, the open twin of `compile_checks_get`.
+A program that `DotMNF/Examples.lean` types under a context is typed there.
+Its `Ek_type` is a fact about `judgIn`, its `Ek_compiles` about `synthIn?`, and
+its `Ek_checks` is `synthIn_checks_get`, the open twin of `compile_checks_get`.
 
 For a program the typer rejects:
 
@@ -47,26 +47,27 @@ For a program the typer rejects:
   order of the alternatives would find it.
 
 For a program at the recursion limit, `Ek_limit`: no answer, and the tank
-marked, by `decide +kernel`.  The verdict is the compiler's recursion limit,
-not a rejection by the rules.
+marked, by `decide +kernel`.  The verdict is the recursion limit, not a
+rejection by the rules.
 
 Derivations are not compared, since `DotMNF.HasTy` is data with no decidable
 equality and the typer may reach a judgment by another route.  No term, use
-set or type is copied from the version: `tmOfDeriv`, `usesOfDeriv` and
-`tyOfDeriv` read them off its derivations.  A judgment written here is a type
-in the notation, resolved over the program's platform (`pureAt`).
+set or type is copied from `DotMNF/Examples.lean`: `tmOfDeriv`, `usesOfDeriv`
+and `tyOfDeriv` read them off its derivations.  A judgment written here is a
+type in the notation, resolved over the program's platform (`pureAt`).
 
 ## The programs by verdict
 
-Accepted at the version's judgment: E5, E6 at `E6Ctx1`, E7, E8, C7 with its
-boxes written and with no box written, S3, S1, S2, Z1, Z2, Z3, the call of
-`process` at `W2CallCtx`, and the unpacking at `Z1Ctx` whose answer is
-existential.
+Accepted at the judgment of `DotMNF/Examples.lean`: E5, E6 at `E6Ctx1`, E7,
+E8, C7 with its boxes written and with no box written, S3, S1, S2, Z1, Z2, Z3,
+the call of `process` at `W2CallCtx`, and the unpacking at `Z1Ctx` whose
+answer is existential.
 
-Accepted at a least judgment, from which the version's judgment is reached
-by one `sub`: C2 at `{k2}`, C5 at `{it, it.C}`, the caller of `freshCell` at
+Accepted at a least judgment, from which that judgment is reached by one
+`sub`: C2 at `{k2}`, C5 at `{it, it.C}`, the caller of `freshCell` at
 `{fc, fs, un}`, and `process`.  E2 is typed at the type avoidance gives,
-`∀(y : (∀(w : ⊤) ⊥) ^ {}) ⊤`, where the version's derivation concludes `⊤`.
+`∀(y : (∀(w : ⊤) ⊥) ^ {}) ⊤`, where the hand written derivation concludes
+`⊤`.
 
 Accepted at a judgment written here: `freshCell` bound by a `let` whose
 answer is written with `fresh`, the existential annotations cov2 and cov4,
@@ -74,9 +75,9 @@ the projection cov3, a callback that keeps what it captures inside its own
 scope, a capture parameter that is called, two calls of `freshCell`, and an
 unpacking whose payload leaves by the level rule.
 
-Accepted, and found by no search over the declared types of the context:
-PA1, a function at a member selected through a recursive shape.  P4, a field
-four steps down the upper bound of a selection.  P5, an intersection of two
+Accepted, and found by no search over the declared types of the context: PA1,
+a function at a member selected through a recursive shape.  P4, a field four
+steps down the upper bound of a selection.  P5, an intersection of two
 function types applied to an argument only the second accepts.  R1 to R4, a
 projection with two fields of which only the second lets the rest of the
 program type.  E1s and E3s, which are E1 and E3 with the middle type written.
@@ -97,11 +98,10 @@ whose goal comes back under a new binder that it names.
 
 ## Levels, effects and runs
 
-The checks W1 and W5 ask subcapturing for the steps of the level order at
-the version's contexts.  `compile_effect_safety_get` at C2 says that a run of
-C2 never reads a variable rooted at `k1`.  `compile_lvl_safety` speaks of
-each entry of the log `levelSteps` reads off a derivation, and the logs of C2
-and S1 are pinned.  S2 and C2 are run from the platform's initial store,
+W1 and W5 ask subcapturing for the steps of the level order.
+`compile_effect_safety_get` at C2 says that a run of C2 never reads a variable
+rooted at `k1`.  The logs `levelSteps` reads off the derivations of C2 and S1
+are pinned in size.  S2 and C2 are run from the platform's initial store,
 printed with the platform's own names, and pinned at the step count at which
 they become final.  E2 is run beside them over the empty platform.
 -/
@@ -118,23 +118,23 @@ section Examples
 
 open CapturesCC.DotMNF.Examples
 
-/-! ## Reading a derivation of the version -/
+/-! ## Reading a derivation of DotMNF -/
 
-/-- The term a derivation of the version is about. -/
+/-- The term a derivation of DotMNF is about. -/
 def tmOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
     (_ : HasTyP U Γ t T) : Tm s := t
 
-/-- The use set a derivation of the version is about. -/
+/-- The use set a derivation of DotMNF is about. -/
 def usesOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
     (_ : HasTyP U Γ t T) : CaptureSet s := U
 
-/-- The type a derivation of the version is about. -/
+/-- The type a derivation of DotMNF is about. -/
 def tyOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
     (_ : HasTyP U Γ t T) : Ty s := T
 
 /-! ## The decidable things -/
 
-/-- The resolved term, erased into the version's syntax. -/
+/-- The resolved term, erased into DotMNF's syntax. -/
 def compiledTm (Λ : LabelTable) (π : PlatformNames) (e : STm) : Option (Tm π.sig) :=
   (resolveTop Λ π e).map ATm.erase
 
@@ -266,7 +266,7 @@ def escapesAt {α : Type} {s : Sig} (v : Verdict α) (Γ : Ctx s) (C D : Capture
 
 /-! ## E1: bad bounds under a lambda
 
-The annotated `let` is typed through the bad bounds chain in the version's
+The annotated `let` is typed through the bad bounds chain in DotMNF's
 derivation `E1`.  The chain passes the middle `x.A`, which the program does
 not write, so the typer rejects the program, as the Scala compiler does.  The
 goal it rejects is the check of the body `y` against the annotation. -/
@@ -297,8 +297,8 @@ theorem E1_not_alg : ¬ Alg ⟨_, E1yCtx, .var .here E1Dom E1Res⟩ := by
 
 The outer `let` has no annotation, and its body's type mentions the bound
 variable.  Avoidance replaces `x.A` by its upper bound with `x` avoided,
-`∀(y : (∀(w : ⊤) ⊥) ^ {}) ⊤`, as the compiler's `avoid` does.  The version's
-derivation `E2` gives `⊤`.  The term is the version's. -/
+`∀(y : (∀(w : ⊤) ⊥) ^ {}) ⊤`, as `TypeOps.avoid` does.  The hand written
+derivation `E2` gives `⊤`.  The term is the same. -/
 
 /-- `let x = ν(s : {A : E2A..E2A} ∧ {a : E2A}. {type A = E2A} ∧ {a = λ(y : s.A). y})
 in let f = x.a in f f`, with `E2A` the shape `∀(y : s.A) s.A`. -/
@@ -329,7 +329,7 @@ theorem E2_checks : CheckerAccepts {} Λc .empty E2src E2_compiles :=
 
 /-! ## E3: an intersection with a shared member
 
-Two declarations of one variable at one label.  The version's derivation `E3`
+Two declarations of one variable at one label.  DotMNF's derivation `E3`
 passes the middle `x.A`, which the program does not write, so the typer
 rejects the program, as the Scala compiler does.  The goal it rejects is the
 check of the body `y` against the annotation. -/
@@ -360,7 +360,7 @@ theorem E3_not_alg : ¬ Alg ⟨_, E3yCtx, .var .here E3T2 E3T1⟩ := by
 
 /-! ## E4: typing with no realizer
 
-The version's derivation `E4` widens `w` to `x.B`, a subsumption through a
+DotMNF's derivation `E4` widens `w` to `x.B`, a subsumption through a
 middle the program does not write, so the typer rejects the program, as the
 Scala compiler does.  The goal it rejects is the argument `n` of `g n`
 against the domain `w.A`, in `E4Ctx4`, where `g` has the type the typer gives
@@ -374,7 +374,7 @@ def E4src : STm :=
 
 example : compiledTm Λc .empty E4src = some (tmOfDeriv E4) := by decide
 
-/-- The typer gives `g` the type `E4G` of the version, so the goal of `g n`
+/-- The typer gives `g` the type `E4G`, so the goal of `g n`
 sits in `E4Ctx4`. -/
 example : judgIn E4Ctx3 [] (.lam ((Shape.sel (.var (.there (up .here))) lA) ^ [])
     (.path (.var .here))) = (some ([], .ty (E4G (up .here))), ⟨defaultFuel - 1, false⟩) := by
@@ -396,7 +396,7 @@ theorem E4_not_alg :
 /-! ## E5: an object returned from a function
 
 The application renames the result's member to `w`, and the outer `let`
-keeps `w.A`.  The version's derivation is `E5`. -/
+keeps `w.A`.  DotMNF's derivation is `E5`. -/
 
 /-- `λ(w : {A : ⊤..⊤}). let f = λ(v : {A : ⊤..⊤}). ν(z : {a : v.A}. {a = v})
 in let o = f w in o.a`. -/
@@ -407,7 +407,7 @@ def E5src : STm :=
 
 example : compiledTm Λc .empty E5src = some (tmOfDeriv E5) := by decide
 
-/-- E5 is typed at the version's judgment, from 20 units. -/
+/-- E5 is typed at DotMNF's judgment, from 20 units. -/
 theorem E5_type : judgAt .empty E5src =
     (some (usesOfDeriv E5, .ty (tyOfDeriv E5)), ⟨defaultFuel - 20, false⟩) := by
   decide +kernel
@@ -427,7 +427,7 @@ theorem E5_checks : CheckerAccepts {} Λc .empty E5src E5_compiles :=
 
 /-! ## E6: a field typed at its own literal's member
 
-The version types E6 at `E6Ctx1`, which binds `n : {a : ⊤}`.  So the literal
+DotMNF types E6 at `E6Ctx1`, which binds `n : {a : ⊤}`.  So the literal
 is resolved under the name `n` and typed at that context. -/
 
 /-- `ν(x : {T : {a : ⊤}..{a : ⊤}} ∧ {v : x.T}. {type T = {a : ⊤}} ∧ {v = n})`. -/
@@ -445,7 +445,7 @@ theorem E6Ctx1_wf : E6Ctx1.Wf := ctxWf?_sound _ (by decide +kernel)
 
 example : (resolveIn Λc E6names E6src).map ATm.erase = some (tmOfDeriv E6) := by decide
 
-/-- E6 is typed at `E6Ctx1` at the version's judgment, from 13 units. -/
+/-- E6 is typed at `E6Ctx1` at DotMNF's judgment, from 13 units. -/
 theorem E6_type : judgIn E6Ctx1 [] E6ann =
     (some (usesOfDeriv E6, .ty (tyOfDeriv E6)), ⟨defaultFuel - 13, false⟩) := by
   decide +kernel
@@ -465,7 +465,7 @@ theorem E6_checks :
 
 /-! ## E7: two type members that name each other
 
-The version's derivation is `E7`.  Nothing is compared. -/
+DotMNF's derivation is `E7`.  Nothing is compared. -/
 
 /-- `ν(x : {A : x.B..x.B} ∧ {B : x.A..x.A}. {type A = x.B} ∧ {type B = x.A})`. -/
 def E7src : STm :=
@@ -473,7 +473,7 @@ def E7src : STm :=
 
 example : compiledTm Λc .empty E7src = some (tmOfDeriv E7) := by decide
 
-/-- E7 is typed at the version's judgment, from 1 unit. -/
+/-- E7 is typed at DotMNF's judgment, from 1 unit. -/
 theorem E7_type : judgAt .empty E7src =
     (some (usesOfDeriv E7, .ty (tyOfDeriv E7)), ⟨defaultFuel - 1, false⟩) := by
   decide +kernel
@@ -493,7 +493,7 @@ theorem E7_checks : CheckerAccepts {} Λc .empty E7src E7_compiles :=
 
 /-! ## E8: refining an abstract type
 
-The version gives one term two derivations, `E8` and `E8b`, at one
+DotMNF gives one term two derivations, `E8` and `E8b`, at one
 judgment.  The typer finds that judgment. -/
 
 /-- `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a`. -/
@@ -505,7 +505,7 @@ example : tmOfDeriv E8b = tmOfDeriv E8 := rfl
 
 example : (usesOfDeriv E8b, tyOfDeriv E8b) = (usesOfDeriv E8, tyOfDeriv E8) := by decide
 
-/-- E8 is typed at the version's judgment, from 13 units. -/
+/-- E8 is typed at DotMNF's judgment, from 13 units. -/
 theorem E8_type : judgAt .empty E8src =
     (some (usesOfDeriv E8, .ty (tyOfDeriv E8)), ⟨defaultFuel - 13, false⟩) := by
   decide +kernel
@@ -527,7 +527,7 @@ theorem E8_checks : CheckerAccepts {} Λc .empty E8src E8_compiles :=
 
 E1 and E3 with the middle type `x.A` written.  A `let` annotation types the
 whole `let`, so `let u : x.A = t in u` ascribes `x.A` to `t`.  Each step is
-then one goal the typer asks, and both programs compile at the version's
+then one goal the typer asks, and both programs compile at DotMNF's
 types. -/
 
 /-- E1 with the middle written is typed at `∀(x : E1Dom) E1Res`, from 20 units. -/
@@ -570,8 +570,8 @@ theorem E3s_checks : CheckerAccepts {} Λc .empty E3ssrc E3s_compiles :=
 
 /-! ## C7: a container of boxed capabilities, boxes written
 
-The fields check by the box rule, and the client unboxes at `{k1}`.  The
-version's derivation is `C7_typed`. -/
+The fields check by the box rule, and the client unboxes at `{k1}`.  DotMNF's
+derivation is `C7_typed`. -/
 
 /-- C7 with its boxes and its unboxing written. -/
 def C7boxSrc : STm :=
@@ -584,7 +584,7 @@ example : compiledTm Λc πc C7boxSrc = some (tmOfDeriv C7_typed) := by decide
 
 example : elaboratedTm {} Λc πc C7boxSrc = some (tmOfDeriv C7_typed) := by decide +kernel
 
-/-- C7 with its boxes written is typed at the version's judgment, from 31
+/-- C7 with its boxes written is typed at DotMNF's judgment, from 31
 units. -/
 theorem C7box_type : judgAt πc C7boxSrc =
     (some (usesOfDeriv C7_typed, .ty (tyOfDeriv C7_typed)), ⟨defaultFuel - 31, false⟩) := by
@@ -607,13 +607,13 @@ theorem C7box_checks : CheckerAccepts {} Λc πc C7boxSrc C7box_compiles :=
 /-! ## C7 with no box in any term
 
 `C7src` of `Typer.lean`.  The typer inserts `□ f1` and `□ f2` at the fields and
-`{k1} ⊸ e` at the ascription.  The elaborated term is the version's. -/
+`{k1} ⊸ e` at the ascription.  The elaborated term is DotMNF's. -/
 
 example : compiledTm Λc πc C7src ≠ some (tmOfDeriv C7_typed) := by decide
 
 example : elaboratedTm {} Λc πc C7src = some (tmOfDeriv C7_typed) := by decide +kernel
 
-/-- C7 with no box written is typed at the version's judgment, from 80 units. -/
+/-- C7 with no box written is typed at DotMNF's judgment, from 80 units. -/
 theorem C7_type : judgAt πc C7src =
     (some (usesOfDeriv C7_typed, .ty (tyOfDeriv C7_typed)), ⟨defaultFuel - 80, false⟩) := by
   decide +kernel
@@ -635,7 +635,7 @@ theorem C7_checks : CheckerAccepts {} Λc πc C7src C7_compiles :=
 /-! ## S3: a type member at a boxed capturing type
 
 The bounds of a type member are shapes, so the program writes the box in the
-member.  The client unboxes through the upper bound of `o.A`.  The version's
+member.  The client unboxes through the upper bound of `o.A`.  DotMNF's
 derivation is `S3_typed`. -/
 
 /-- S3, its box and its unboxing written. -/
@@ -647,7 +647,7 @@ def S3src : STm :=
 
 example : compiledTm Λc πc S3src = some (tmOfDeriv S3_typed) := by decide
 
-/-- S3 is typed at the version's judgment, from 46 units. -/
+/-- S3 is typed at DotMNF's judgment, from 46 units. -/
 theorem S3_type : judgAt πc S3src =
     (some (usesOfDeriv S3_typed, .ty (tyOfDeriv S3_typed)), ⟨defaultFuel - 46, false⟩) := by
   decide +kernel
@@ -669,7 +669,7 @@ theorem S3_checks : CheckerAccepts {} Λc πc S3src S3_compiles :=
 
 The client reads `x.run`, whose set is `{x.C}`.  The typer finds the judgment
 `{k2}` and `(⊤ → ⊤) ^ {k2}`, since the answer is the client at `b`, whose
-member is `{k2}`.  The version's `{k1, k2}` is reached by one `sub`. -/
+member is `{k2}`.  DotMNF's `{k1, k2}` is reached by one `sub`. -/
 
 /-- C2, with the call `x.run u` in direct style. -/
 def C2src : STm :=
@@ -711,9 +711,8 @@ theorem C2_checks : CheckerAccepts {} Λc πc C2src C2_compiles :=
 /-! ## S1: `withFile` with an explicit capture parameter
 
 `withFile` is bound by an ascription at its signature.  Its result `any` is
-read at the top of the program as the platform set.  The judgment is the
-version's `S1_typed`, `{fs, k2}` and `⊤ ^ {fs, k2}`.  The program runs over
-`πz`. -/
+read at the top of the program as the platform set.  The judgment is DotMNF's
+`S1_typed`, `{fs, k2}` and `⊤ ^ {fs, k2}`.  The program runs over `πz`. -/
 
 /-- S1. -/
 def S1progSrc : STm :=
@@ -732,7 +731,7 @@ def S1progSrc : STm :=
 
 example : compiledTm Λc πz S1progSrc = some (tmOfDeriv S1_typed) := by decide
 
-/-- S1 is typed at the version's judgment, from 86 units. -/
+/-- S1 is typed at DotMNF's judgment, from 86 units. -/
 theorem S1_type : judgAt πz S1progSrc =
     (some (usesOfDeriv S1_typed, .ty (tyOfDeriv S1_typed)), ⟨defaultFuel - 86, false⟩) := by
   decide +kernel
@@ -754,7 +753,7 @@ theorem S1_checks : CheckerAccepts {} Λc πz S1progSrc S1_compiles :=
 
 `mk` is bound by an ascription at its signature, with `any` in its result,
 read as the platform set.  The caller's answer leaves scope at the upper bound
-of the member, `{fs}`.  The judgment is the version's `S2_typed`. -/
+of the member, `{fs}`.  The judgment is DotMNF's `S2_typed`. -/
 
 /-- S2. -/
 def S2src : STm :=
@@ -767,7 +766,7 @@ def S2src : STm :=
 
 example : compiledTm Λc πz S2src = some (tmOfDeriv S2_typed) := by decide
 
-/-- S2 is typed at the version's judgment, from 138 units. -/
+/-- S2 is typed at DotMNF's judgment, from 138 units. -/
 theorem S2_type : judgAt πz S2src =
     (some (usesOfDeriv S2_typed, .ty (tyOfDeriv S2_typed)), ⟨defaultFuel - 138, false⟩) := by
   decide +kernel
@@ -785,10 +784,10 @@ theorem S2_compiles : (compile {} Λc πz S2src).isOk = true := by decide +kerne
 theorem S2_checks : CheckerAccepts {} Λc πz S2src S2_compiles :=
   compile_checks_get S2_compiles
 
-/-! ## C5: the caller of `mk`, at the version's own context
+/-! ## C5: the caller of `mk`, at DotMNF's own context
 
-The version types C5 at `S2Ctx3`, where `mk`, `un` and `it` are bound.  The
-typer finds `{it, it.C}` and `⊤ ^ {it.C}`.  The version's `{fs, k2}` and
+DotMNF types C5 at `S2Ctx3`, where `mk`, `un` and `it` are bound.  The
+typer finds `{it, it.C}` and `⊤ ^ {it.C}`.  DotMNF's `{fs, k2}` and
 `⊤ ^ {fs}` are reached by one `sub`. -/
 
 /-- `let n = it.next in let r = n un in r`. -/
@@ -830,9 +829,9 @@ theorem C5_checks :
 
 /-! ## Z1: `freshCell`
 
-The signature writes `fresh` in the result.  The typer reads it as the
-version's `Z1Ty`, an existential bounded by `{fs, u}`, and the arrow rule packs
-the cell.  The term and the judgment are the version's `Z1_plat`. -/
+The signature writes `fresh` in the result.  The typer reads it as DotMNF's `Z1Ty`, an existential bounded by `{fs, u}`,
+and the arrow rule packs the cell.  The term and the judgment are DotMNF's
+`Z1_plat`. -/
 
 /-- `freshCell`, bound by an ascription. -/
 def Z1progSrc : STm :=
@@ -842,10 +841,10 @@ def Z1progSrc : STm :=
 example : compiledTm Λc πz Z1progSrc = some (tmOfDeriv Z1_plat) := by decide
 
 /-- `readAt` expands the `any`s, of which there are none, and reads `fresh` as
-the existential.  This is the version's W4. -/
+the existential.  This is DotMNF's W4. -/
 example : readAt platCtx platSet (Z1TyF k1) = Z1Ty k1 := by decide
 
-/-- Z1 is typed at the version's judgment, from 12 units. -/
+/-- Z1 is typed at DotMNF's judgment, from 12 units. -/
 theorem Z1_type : judgAt πz Z1progSrc =
     (some (usesOfDeriv Z1_plat, .ty (tyOfDeriv Z1_plat)), ⟨defaultFuel - 12, false⟩) := by
   decide +kernel
@@ -893,8 +892,8 @@ theorem Z1def_checks : CheckerAccepts {} Λc πz Z1defSrc Z1def_compiles :=
 /-! ## The caller of `freshCell`, at `Z1Ctx`
 
 `Z1callerAnn` of `Resolve.lean`.  The `let` becomes a `letex`, and the
-elaborated term erases to the term of the version's `Z1_caller`.  The typer
-finds `{fc, fs, un}`, and the version's `Z1Use ∪ Z1Use` is reached by one
+elaborated term erases to the term of DotMNF's `Z1_caller`.  The typer
+finds `{fc, fs, un}`, and DotMNF's `Z1Use ∪ Z1Use` is reached by one
 `sub`. -/
 
 example : erasedOf (synthIn? {} Z1Ctx ps2z Z1callerAnn) = some (tmOfDeriv Z1_caller) := by
@@ -957,7 +956,7 @@ theorem Z1tail_checks :
 
 Each call is unpacked by a `letex` of its own, so the body runs under two
 opened capture binders.  Neither is a root, and subcapturing relates neither to
-the other.  This is the version's `Z_two_calls_no_level`. -/
+the other.  This is DotMNF's `Z_two_calls_no_level`. -/
 
 /-- `let c1 = fc un in let c2 = fc un in un`, as resolved. -/
 def twoCallsAnn : ATm ([],c,c,x,x) :=
@@ -1040,7 +1039,7 @@ theorem absorb_checks :
 /-! ## Z2 and W3: `makeLogger`
 
 The parameter is written `any`, which reads as the arrow's own binder, and the
-result is `fresh`.  The written type resolves to the version's `W3TyAny`, and
+result is `fresh`.  The written type resolves to DotMNF's `W3TyAny`, and
 the typer reaches `Z2Ty`, whose witness is the parameter. -/
 
 /-- `makeLogger`, bound by an ascription. -/
@@ -1056,7 +1055,7 @@ example : resolveTy Λc πz.names
 
 example : elaboratedTm {} Λc πz Z2src = some (tmOfDeriv Z2_plat) := by decide +kernel
 
-/-- Z2 is typed at the version's judgment, from 12 units. -/
+/-- Z2 is typed at DotMNF's judgment, from 12 units. -/
 theorem Z2_type : judgAt πz Z2src =
     (some (usesOfDeriv Z2_plat, .ty (tyOfDeriv Z2_plat)), ⟨defaultFuel - 12, false⟩) := by
   decide +kernel
@@ -1079,7 +1078,7 @@ theorem Z2_checks : CheckerAccepts {} Λc πz Z2src Z2_compiles :=
 S2's `mk` with the result written `fresh`.  The typer packs a payload at the
 payload's own type, and the literal's precise type is not the iterator type.
 So the body ascribes the literal's variable at the iterator type.  The term,
-the use set and the type are the version's `Z3_plat`. -/
+the use set and the type are DotMNF's `Z3_plat`. -/
 
 /-- `mk` with a `fresh` result, its body ascribed. -/
 def Z3src : STm :=
@@ -1091,7 +1090,7 @@ def Z3src : STm :=
 
 example : compiledTm Λc πz Z3src = some (tmOfDeriv Z3_plat) := by decide
 
-/-- Z3 is typed at the version's judgment, from 101 units. -/
+/-- Z3 is typed at DotMNF's judgment, from 101 units. -/
 theorem Z3_type : judgAt πz Z3src =
     (some (usesOfDeriv Z3_plat, .ty (tyOfDeriv Z3_plat)), ⟨defaultFuel - 101, false⟩) := by
   decide +kernel
@@ -1112,9 +1111,9 @@ theorem Z3_checks : CheckerAccepts {} Λc πz Z3src Z3_compiles :=
 /-! ## W2: `process` and its call
 
 `W2defSrc` of `Typer.lean` writes the parameter `any`, which reads as the
-arrow's own binder.  It elaborates to the version's `W2Tm`.  Its least answer
+arrow's own binder.  It elaborates to DotMNF's `W2Tm`.  Its least answer
 has the inner closure at its own type, and `W2Ty` is reached by one `sub`.
-The call `p f` is typed at the version's `W2CallCtx` at the use set `{f}` and
+The call `p f` is typed at DotMNF's `W2CallCtx` at the use set `{f}` and
 the type `⊤`. -/
 
 example : elaboratedTm {} Λc πc W2defSrc = some W2Tm := by decide +kernel
@@ -1142,7 +1141,7 @@ theorem W2_compiles : (compile {} Λc πc W2defSrc).isOk = true := by decide +ke
 theorem W2_checks : CheckerAccepts {} Λc πc W2defSrc W2_compiles :=
   compile_checks_get W2_compiles
 
-/-- The call of `process` is typed at the version's judgment, from 2 units. -/
+/-- The call of `process` is typed at DotMNF's judgment, from 2 units. -/
 theorem W2call_type : judgIn W2CallCtx ps2c (.app (.there .here) .here) =
     (some (usesOfDeriv W2_call, .ty (tyOfDeriv W2_call)), ⟨defaultFuel - 2, false⟩) := by
   decide +kernel
@@ -1168,8 +1167,8 @@ theorem W2call_checks :
 
 /-! ## W2 deep: `any` below a field of a domain
 
-`deepSrc` of `Typer.lean`.  The version's `W2_deep_rejected` says that the
-written type is not one the version reads.  The front end rejects it with that
+`deepSrc` of `Typer.lean`.  DotMNF's `W2_deep_rejected` says that the
+written type is not one DotMNF reads.  The front end rejects it with that
 reason, before any goal is asked. -/
 
 /-- The typer rejects W2 deep from a full tank, with the tank unmarked. -/
@@ -1299,7 +1298,7 @@ theorem P1_checks :
 /-! ## W1: the levels of two nested bodies
 
 At `W1Ctx2`, the body of a lambda inside the body of another, subcapturing finds
-the level steps the version's `W1` derives: the outer root below the inner
+the level steps DotMNF's `W1` derives: the outer root below the inner
 one, and both parameters below the inner root.  It does not find the inner
 root below the outer one.  The inner parameter is found below the outer root
 by `sc-var`, since the parameter has the pure type `⊤`, and not by the level
@@ -1320,10 +1319,10 @@ example : subcapFound {} W1Ctx2 [CapAtom.var W1inParam] [CapAtom.cvar W1inRoot] 
 example : subcapFound {} W1Ctx2 [CapAtom.cvar W1inRoot] [CapAtom.cvar W1outRoot] = false := by
   decide +kernel
 
-/-! ## W5: the escape of a callback, at the version's context
+/-! ## W5: the escape of a callback, at DotMNF's context
 
 At `W5Ctx`, the body of a callback under an older root, subcapturing finds the
-callback's parameter below its own body root, the version's `W5_level_own`,
+callback's parameter below its own body root, DotMNF's `W5_level_own`,
 and does not find it below the older root.  The certificate builder rejects
 that goal, and `W5_escape_rejected` is the certificate. -/
 
@@ -1853,10 +1852,10 @@ theorem PF_limit : judgAt .empty PFsrc = (none, ⟨defaultFuel - 32693, true⟩)
 
 /-! ## The effect theorem
 
-`compile_effect_safety_get` at C2, for a run of the version's term from the
+`compile_effect_safety_get` at C2, for a run of DotMNF's term from the
 platform's initial store and a variable `x` the reached state reads.  The
 capability is `k1`.  The premise, that the use set the typer found does not
-hold `k1`, is decided by the kernel.  The elaborated term equals the version's
+hold `k1`, is decided by the kernel.  The elaborated term equals DotMNF's
 term, so the run transfers. -/
 
 /-- **C2 never reads `k1`.**  Along any run of `C2tm` from the platform's

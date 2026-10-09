@@ -5,17 +5,16 @@ import Coercions.Classifiers.Frontend.Surface
 # The first view of a variable, and the certificate of a level escape
 
 A *view* of a context variable is a type the variable has, with its use set
-and derivation.  The typer and the subtyping algorithm start from the first
-view, `varView`.  A variable declared at the empty set is used at the empty
-set and keeps its declared type.  Any other variable is used at `{x}` and has
-its declared shape at `{x}`, by `Var`.  This is the least use set and the
-least capture set the rules give a variable.
+and derivation.  `varView` is the first view, the one the typer and the
+subtyping algorithm start from.  A variable declared at the empty set is used
+at the empty set and keeps its declared type.  Any other variable is used at
+`{x}` with its declared shape at `{x}`, by `Var`.
 
-Every other type a variable has is reached from the first view on demand:
-by the member lookup of `Look.lean` and by the `var` goal of `Sub.lean`.
+Other types of a variable are reached on demand, by the member lookup of
+`Look.lean` and the `var` goal of `Sub.lean`.
 
-`escape_rejected_at` is the certificate a rejection by a level escape
-carries.  It is the contrapositive of the version's `source_lvl_safety`.
+`escape_rejected_at` is the certificate carried by a rejection for a level
+escape.  It is the contrapositive of `source_lvl_safety`.
 -/
 
 namespace ClassifiersFrontend
@@ -37,8 +36,7 @@ structure View {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
   deriv : HasTy uses Γ (.path (.var x)) (.ty ty)
 
 /-- A pure binder at its declared type, at the empty use set.  `Var` concludes
-at `{x}` for both sets, and `sc-var` takes both down to the declared set, which
-is empty. -/
+at `{x}`, and `sc-var` takes that down to the declared set, which is empty. -/
 def pureVar {s : Sig} (Γ : Ctx s) (x : BVar s .var) (h : (Γ.lookup x).captureSet = []) :
     HasTy [] Γ (.path (.var x)) (.ty (Γ.lookup x)) := by
   have hv : Subcap Γ [CapAtom.var x] ([] : CaptureSet s) := by
@@ -54,25 +52,23 @@ def pureVar {s : Sig} (Γ : Ctx s) (x : BVar s .var) (h : (Γ.lookup x).captureS
   exact e
 
 /-- The first view of a variable, at the least use set and capture set the
-rules give it.  A binder declared at the empty set is used at the empty set and
-keeps its declared type.  Any other binder is used at `{x}` and has its declared
-shape at `{x}`, by `Var`. -/
+rules give it. -/
 def varView {s : Sig} (Γ : Ctx s) (x : BVar s .var) : View Γ x :=
   if h : (Γ.lookup x).captureSet = [] then ⟨[], Γ.lookup x, pureVar Γ x h⟩
   else ⟨[.var x], (Γ.lookup x).shape ^ [.var x], .var⟩
 
 /-! ## A rejection certificate
 
-Failure of the search does not show that no derivation exists.  The level rule
-is the one rule that relates a binder to a root, and its failure has a semantic
+A failed search does not show that no derivation exists.  The level rule is the
+one rule that relates a binder to a root, and its failure has a semantic
 witness.  `source_lvl_safety`
 (`lean/Coercions/Classifiers/DotToFCdot/EvidenceTyped.lean`) says that a
 member-free subcapturing keeps every resolved atom of `C` confined to whatever
 atom `r` confines every resolved atom of `D`.  So one depth `n` at which the
 resolution of `C` is not confined to `r`, while that of `D` is at every depth,
 rules out every member-free derivation of `C <: D`.  The statement holds for
-any target set and any atom of the target, so it also decides the escape at the
-top of a program, where `r` is the target's universal root. -/
+any atom `r`, so it also decides the escape at the top of a program, where `r`
+is the universal root. -/
 
 /-- No member-free subcapturing puts `C` below `D` when `D` is confined to
 `r` at every depth and `C` is not at one depth `n`. -/

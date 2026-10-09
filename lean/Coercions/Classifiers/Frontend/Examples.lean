@@ -4,50 +4,50 @@ import Coercions.Classifiers.Frontend.Pretty
 /-!
 # The examples end to end
 
-The programs of the version's `DotMNF/Examples.lean`, the programs of
-`Notation.lean` and `Typer.lean`, and the programs written here are taken
-through the whole front end.  Where the hand written derivations of the
-version exist, the term and the judgment are compared with them.
+This module takes example programs through the whole front end and checks the
+verdicts in the kernel.  The programs come from `DotMNF/Examples.lean`,
+`Notation.lean` and `Typer.lean`, and some are written here.  "The version"
+below is the calculus `Classifiers.DotMNF`.  Where it has a hand written
+derivation of a program, the term and the judgment are compared with it.
 
 The capture programs come first.  They declare no classifier, so each is a
 whole program over plain platform binders, built by `SProg.plain`.  The pure
 programs run over the empty platform.  The others run over the platform
-`k1, k2`, the version's `platCtx`, or over `fs, k2`, the same two binders, for
-the programs whose capability is a file system.
+`k1, k2` (the version's `platCtx`), or over `fs, k2` when the capability is a
+file system.
 
 The classifier programs follow.  CE1 to CE3 are E1, E2 and E3 of the version's
-classifier examples: `Try.apply`, `Future.apply`, and a client against a
-member bounded by a kind.  Each declares its classifiers, a platform whose
-binders carry them, a use set and a kind.  CE3 is run again over three
-capabilities.  CE4 reads a closure off a kind-bounded member and hands it to a
-filtered domain.  CE5 passes a thread-local body to `Future.apply`, which the
-calculus refuses.  W ascribes a restricted variable at its restricted set.
+classifier examples: `Try.apply`, `Future.apply`, and a client against a member
+bounded by a kind.  Each declares its classifiers, a platform whose binders
+carry them, a use set and a kind.  CE3 is also run over three capabilities.
+CE4 reads a closure off a kind-bounded member and hands it to a filtered
+domain.  CE5 passes a thread-local body to `Future.apply`, which the calculus
+refuses.  W ascribes a restricted variable at its restricted set.
 
 ## What is checked
 
 Every function of the front end is structural, so the kernel reduces
 resolution, the typer, the kinding goal and the machine.  Every check runs at
-`defaultFuel`, the one field of the default budget `{}`.  No program has a
-budget of its own.
+`defaultFuel`, the one field of the default budget `{}`.
 
 For a program that compiles:
 
 - The term, by `decide`.  This is the resolved term, or the erasure of the
   elaborated term when the typer inserted a box, an unboxing or an unpacking
-  (by `decide +kernel`, since it runs the typer).
-- `Ek_type`: the use set and the answer the typer finds and the tank it
-  leaves, by `decide +kernel` (`judgProg`).  The tank left is `defaultFuel`
-  minus the units the typing used, and it is unmarked.  A program that
-  declares a use set is moved to it by `compile`, and the judgment `compile`
-  returns is checked too.
-- The target checker's verdict on the translation of the derivation and on
-  the use set evidence, through `expect`.
+  (then by `decide +kernel`, since it runs the typer).
+- `Ek_type`: the use set and the answer the typer finds and the tank it leaves,
+  by `decide +kernel` (`judgProg`).  The tank left is `defaultFuel` minus the
+  units the typing used, and it is unmarked.  A program that declares a use set
+  is moved to it by `compile`, and the judgment `compile` returns is checked
+  too.
+- The target checker's verdict on the translation of the derivation and on the
+  use set evidence, through `expect`.
 - `Ek_compiles`, by `decide +kernel`, and `Ek_checks`, which is
-  `compile_checks_get` at the program.  So `Ek_checks` has no hypothesis.
+  `compile_checks_get` at the program and has no hypothesis.
 
-A program the version types under a context is typed there.  Its `Ek_type`
-is a fact about `judgIn`, its `Ek_compiles` about `synthIn?`, and its
-`Ek_checks` is `synthIn_checks_get`, the open twin of `compile_checks_get`.
+A program the version types under a context is typed there.  Its `Ek_type` is
+a fact about `judgIn`, its `Ek_compiles` about `synthIn?`, and its `Ek_checks`
+is `synthIn_checks_get`, the open twin of `compile_checks_get`.
 
 For a program the typer rejects:
 
@@ -65,56 +65,56 @@ marked, by `decide +kernel`.  The verdict is the compiler's recursion limit,
 not a rejection by the rules.
 
 Derivations are not compared, since `DotMNF.HasTy` is data with no decidable
-equality and the typer may reach a judgment by another route.  No term, use
-set or type is copied from the version: `tmOfDeriv`, `usesOfDeriv` and
-`tyOfDeriv` read them off its derivations.  A judgment written here is a set
-and a type in the notation, resolved over the program's platform
-(`writtenAt`, `pureAt`).  Kindings and subcapturings are compared on their
-translations, since `FCdot.KindCo` and `FCdot.CapCo` have decidable equality.
+equality and the typer may reach a judgment by another route.  The terms, use
+sets and types of the version are read off its derivations by `tmOfDeriv`,
+`usesOfDeriv` and `tyOfDeriv`.  A judgment written here is a set and a type in
+the notation, resolved over the program's platform (`writtenAt`, `pureAt`).
+Kindings and subcapturings are compared on their translations, since
+`FCdot.KindCo` and `FCdot.CapCo` have decidable equality.
 
 ## The programs by verdict
 
 Accepted at the version's judgment: E5, E6 at `E6Ctx1`, E7, E8, C7 with its
 boxes written and with no box written, S3, S1, S2, Z1, Z2, Z3, the call of
-`process` at `W2CallCtx`, the unpacking at `Z1Ctx` whose answer is
-existential, CE1, CE2, and the retypings of CE3's literals at the kind bound.
+`process` at `W2CallCtx`, the unpacking at `Z1Ctx` whose answer is existential,
+CE1, CE2, and the retypings of CE3's literals at the kind bound.
 
-Accepted at a least judgment, from which the version's judgment is reached
-by one `sub`: C2 at `{k2}`, C5 at `{it, it.C}`, the caller of `freshCell` at
+Accepted at a least judgment, from which the version's judgment is reached by
+one `sub`: C2 at `{k2}`, C5 at `{it, it.C}`, the caller of `freshCell` at
 `{fc, fs, un}`, and `process`.  E2 is typed at the type avoidance gives,
 `∀(y : (∀(w : ⊤) ⊥) ^ {}) ⊤`, where the version's derivation concludes `⊤`.
 CE3 and CE4 are typed at the empty set and moved to their declared sets.
 
-Accepted at a judgment written here: `freshCell` bound by a `let` whose
-answer is written with `fresh`, the existential annotations cov2 and cov4,
-the projection cov3, a callback that keeps what it captures inside its own
-scope, a capture parameter that is called, two calls of `freshCell`, an
-unpacking whose payload leaves by the level rule, CE3 over three
-capabilities and CE5 with an input-output body.
+Accepted at a judgment written here: `freshCell` bound by a `let` whose answer
+is written with `fresh`, the existential annotations cov2 and cov4, the
+projection cov3, a callback that keeps what it captures inside its own scope, a
+capture parameter that is called, two calls of `freshCell`, an unpacking whose
+payload leaves by the level rule, CE3 over three capabilities and CE5 with an
+input-output body.
 
-Accepted, and found by no search over the declared types of the context:
-QP1, a function at a member selected through a recursive shape.  QP4, a
-field four steps down the upper bound of a selection.  QP5, an intersection
-of two function types applied to an argument only the second accepts.  R1
-to R4, a projection with two fields of which only the second lets the rest of
-the program type.  E1s and E3s, which are E1 and E3 with the middle type
-written.  The alias chains of sixteen and thirty two links.  BX2 and BX,
-where a boxed variable meets a boxed goal, unboxing fails and boxing
-succeeds.  X1 and X2, a variable at its own abstract type, which the typer
-widens whole.  W, a restricted variable widened to its restricted set.  The
-goals M1, M2 and M5 of a mixed or filtered set, and R2, a selection off a
-set-bounded member kinded through its upper bound.
+Accepted although no search over the declared types of the context finds it:
+QP1, a function at a member selected through a recursive shape.  QP4, a field
+four steps down the upper bound of a selection.  QP5, an intersection of two
+function types applied to an argument only the second accepts.  R1 to R4, a
+projection with two fields of which only the second lets the rest of the
+program type.  E1s and E3s, which are E1 and E3 with the middle type written.
+The alias chains of sixteen and thirty two links.  BX2 and BX, where a boxed
+variable meets a boxed goal, unboxing fails and boxing succeeds.  X1 and X2, a
+variable at its own abstract type, which the typer widens whole.  W, a
+restricted variable widened to its restricted set.  The goals M1, M2 and M5 of
+a mixed or filtered set, and R2, a selection off a set-bounded member kinded
+through its upper bound.
 
 Rejected, as scalac rejects them: E1, E3, E4 and B1 need a middle type the
 program does not write, and the typer chooses none.  A1 has a written `let`
-annotation the bound value does not meet, and a written annotation binds.
-CE4 with its member bounded by an unrelated classifier has no kinding of the
-closure's set.  W without the restriction on its variable reaches `io`,
-which is not `Control`.  CE5 has no kinding of its thread-local argument.
-Each has its `¬ Alg` fact.  Rejected with a reason: `any` below a field of a
-domain, an existential answer outside every scope, and the three escapes of
-a callback.  The escape and the escape at the top carry a certificate at the
-goal the typer reached.
+annotation the bound value does not meet, and a written annotation binds.  CE4
+with its member bounded by an unrelated classifier has no kinding of the
+closure's set.  W without the restriction on its variable reaches `io`, which
+is not `Control`.  CE5 has no kinding of its thread-local argument.  Each has
+its `¬ Alg` fact.  Rejected with a reason: `any` below a field of a domain, an
+existential answer outside every scope, and the three escapes of a callback.
+The escape and the escape at the top carry a certificate at the goal the typer
+reached.
 
 At the recursion limit: LP, a check through `∀` bodies that reaches the same
 goal under one more binder at every level.  PF, Pierce's divergence of F<:,
@@ -123,19 +123,19 @@ compares two arrows with a codomain at the fresh parameter at every level.
 
 ## Kindings, levels, effects and runs
 
-The kinding goal tries `kproj` first, so it kinds a restricted use set atom
-by atom with `kproj`, where the version's kindings of E1 and E2 use `kcls`.
-It kinds the last atom of a set alone, where the version's kindings add
-`nil`.  The rules it takes are pinned, and the target checker accepts each.
+The kinding goal tries `kproj` first, so it kinds a restricted use set atom by
+atom with `kproj`, where the version's kindings of E1 and E2 use `kcls`.  It
+kinds the last atom of a set alone, where the version's kindings add `nil`.
+The rules it takes are pinned, and the target checker accepts each.
 
-The checks W1 and W5 ask subcapturing for the steps of the level order at
-the version's contexts.  `C2_never_reads_k1` is the plain effect theorem at
-C2.  `CE1_reads_only_control`, `CE2_no_thread_local` and
-`CE3_reads_only_control` are the classified ones: every root of a variable a
-run reads carries a classifier the declared kind admits.  The logs of C2, S1,
-CE1, CE2 and CE3 are pinned.  S2, C2, E2, CE1, CE2 and CE3 are run from their
-platform's initial store, printed with the platform's own names, and pinned
-at the step count at which they become final.
+The checks W1 and W5 ask subcapturing for the steps of the level order at the
+version's contexts.  `C2_never_reads_k1` is the plain effect theorem at C2.
+`CE1_reads_only_control`, `CE2_no_thread_local` and `CE3_reads_only_control`
+are the classified ones: every root of a variable a run reads carries a
+classifier the declared kind admits.  The logs of C2, S1, CE1, CE2 and CE3 are
+pinned.  S2, C2, E2, CE1, CE2 and CE3 are run from their platform's initial
+store, printed with the platform's own names, and pinned at the step count at
+which they become final.
 -/
 
 namespace ClassifiersFrontend
@@ -387,7 +387,7 @@ example : compiledTm Λc (onE E1src) = some (tmOfDeriv E1) := by decide
 /-- The body of E1's lambda, then the `let` binder `y` at the type of `x`. -/
 def E1yCtx : Ctx (Sig.body ([] : Sig),x) := E1Ctx.cons E1Dom
 
-/-- The typer rejects E1 after 11 units, with the tank unmarked. -/
+/-- The typer rejects E1, with the tank unmarked. -/
 theorem E1_verdict : judgProg Λc (onE E1src) = (none, ⟨defaultFuel - 11, false⟩) := by
   decide +kernel
 
@@ -418,7 +418,7 @@ def E2src : STm :=
 
 example : compiledTm Λc (onE E2src) = some (tmOfDeriv E2) := by decide
 
-/-- E2 is typed at the avoided type, from 60 units. -/
+/-- E2 is typed at the avoided type. -/
 theorem E2_type : judgProg Λc (onE E2src) =
     (some (usesOfDeriv E2, .ty Core.E2AvoidedTy), ⟨defaultFuel - 60, false⟩) := by
   decide +kernel
@@ -453,7 +453,7 @@ example : compiledTm Λc (onE E3src) = some (tmOfDeriv E3) := by decide
 /-- The body of the inner lambda, then the `let` binder `y : {b : ⊤}`. -/
 def E3yCtx : Ctx (Sig.body (Sig.body ([] : Sig)),x) := E3Ctx2.cons E3T2
 
-/-- The typer rejects E3 after 11 units, with the tank unmarked. -/
+/-- The typer rejects E3, with the tank unmarked. -/
 theorem E3_verdict : judgProg Λc (onE E3src) = (none, ⟨defaultFuel - 11, false⟩) := by
   decide +kernel
 
@@ -490,7 +490,7 @@ example : judgIn E4Ctx3 [] (.lam ((Shape.sel (.var (.there (up .here))) lA) ^ []
     (.path (.var .here))) = (some ([], .ty (E4G (up .here))), ⟨defaultFuel - 1, false⟩) := by
   decide +kernel
 
-/-- The typer rejects E4 after 16 units, with the tank unmarked. -/
+/-- The typer rejects E4, with the tank unmarked. -/
 theorem E4_verdict : judgProg Λc (onE E4src) = (none, ⟨defaultFuel - 16, false⟩) := by
   decide +kernel
 
@@ -518,7 +518,7 @@ def E5src : STm :=
 
 example : compiledTm Λc (onE E5src) = some (tmOfDeriv E5) := by decide
 
-/-- E5 is typed at the version's judgment, from 20 units. -/
+/-- E5 is typed at the version's judgment. -/
 theorem E5_type : judgProg Λc (onE E5src) =
     (some (usesOfDeriv E5, .ty (tyOfDeriv E5)), ⟨defaultFuel - 20, false⟩) := by
   decide +kernel
@@ -556,7 +556,7 @@ theorem E6Ctx1_wf : E6Ctx1.Wf := ctxWf?_sound _ (by decide +kernel)
 
 example : (resolveIn Λc [] E6names E6src).map ATm.erase = some (tmOfDeriv E6) := by decide
 
-/-- E6 is typed at `E6Ctx1` at the version's judgment, from 13 units. -/
+/-- E6 is typed at `E6Ctx1` at the version's judgment. -/
 theorem E6_type : judgIn E6Ctx1 [] E6ann =
     (some (usesOfDeriv E6, .ty (tyOfDeriv E6)), ⟨defaultFuel - 13, false⟩) := by
   decide +kernel
@@ -584,7 +584,7 @@ def E7src : STm :=
 
 example : compiledTm Λc (onE E7src) = some (tmOfDeriv E7) := by decide
 
-/-- E7 is typed at the version's judgment, from 1 unit. -/
+/-- E7 is typed at the version's judgment. -/
 theorem E7_type : judgProg Λc (onE E7src) =
     (some (usesOfDeriv E7, .ty (tyOfDeriv E7)), ⟨defaultFuel - 1, false⟩) := by
   decide +kernel
@@ -616,7 +616,7 @@ example : tmOfDeriv E8b = tmOfDeriv E8 := rfl
 
 example : (usesOfDeriv E8b, tyOfDeriv E8b) = (usesOfDeriv E8, tyOfDeriv E8) := by decide
 
-/-- E8 is typed at the version's judgment, from 13 units. -/
+/-- E8 is typed at the version's judgment. -/
 theorem E8_type : judgProg Λc (onE E8src) =
     (some (usesOfDeriv E8, .ty (tyOfDeriv E8)), ⟨defaultFuel - 13, false⟩) := by
   decide +kernel
@@ -641,7 +641,7 @@ whole `let`, so `let u : x.A = t in u` ascribes `x.A` to `t`.  Each step is
 then one goal the typer asks, and both programs compile at the version's
 types. -/
 
-/-- E1 with the middle written is typed at `∀(x : E1Dom) E1Res`, from 20 units. -/
+/-- E1 with the middle written is typed at `∀(x : E1Dom) E1Res`. -/
 theorem E1s_type : judgProg Λc (onE E1ssrc) =
     (some ([], .ty ((Shape.all E1Dom (.ty E1Res)) ^ [])), ⟨defaultFuel - 20, false⟩) := by
   decide +kernel
@@ -659,8 +659,7 @@ theorem E1s_compiles : (compile {} Λc (onE E1ssrc)).isOk = true := by decide +k
 theorem E1s_checks : CheckerAccepts {} Λc (onE E1ssrc) E1s_compiles :=
   compile_checks_get E1s_compiles
 
-/-- E3 with the middle written is typed at `∀(x : E3Dom) ∀(z : E3T2) E3T1`,
-from 18 units. -/
+/-- E3 with the middle written is typed at `∀(x : E3Dom) ∀(z : E3T2) E3T1`. -/
 theorem E3s_type : judgProg Λc (onE E3ssrc) =
     (some ([], .ty ((Shape.all E3Dom (.ty ((Shape.all E3T2 (.ty E3T1)) ^ []))) ^ [])),
       ⟨defaultFuel - 18, false⟩) := by
@@ -695,8 +694,7 @@ example : compiledTm Λc (onC C7boxSrc) = some (tmOfDeriv C7_typed) := by decide
 
 example : elaboratedTm {} Λc (onC C7boxSrc) = some (tmOfDeriv C7_typed) := by decide +kernel
 
-/-- C7 with its boxes written is typed at the version's judgment, from 31
-units. -/
+/-- C7 with its boxes written is typed at the version's judgment. -/
 theorem C7box_type : judgProg Λc (onC C7boxSrc) =
     (some (usesOfDeriv C7_typed, .ty (tyOfDeriv C7_typed)), ⟨defaultFuel - 31, false⟩) := by
   decide +kernel
@@ -725,7 +723,7 @@ example : compiledTm Λc (onC C7src) ≠ some (tmOfDeriv C7_typed) := by decide
 
 example : elaboratedTm {} Λc (onC C7src) = some (tmOfDeriv C7_typed) := by decide +kernel
 
-/-- C7 with no box written is typed at the version's judgment, from 80 units. -/
+/-- C7 with no box written is typed at the version's judgment. -/
 theorem C7_type : judgProg Λc (onC C7src) =
     (some (usesOfDeriv C7_typed, .ty (tyOfDeriv C7_typed)), ⟨defaultFuel - 80, false⟩) := by
   decide +kernel
@@ -759,7 +757,7 @@ def S3src : STm :=
 
 example : compiledTm Λc (onC S3src) = some (tmOfDeriv S3_typed) := by decide
 
-/-- S3 is typed at the version's judgment, from 46 units. -/
+/-- S3 is typed at the version's judgment. -/
 theorem S3_type : judgProg Λc (onC S3src) =
     (some (usesOfDeriv S3_typed, .ty (tyOfDeriv S3_typed)), ⟨defaultFuel - 46, false⟩) := by
   decide +kernel
@@ -797,7 +795,7 @@ example : compiledTm Λc (onC C2src) = some (tmOfDeriv C2_typed) := by decide
 
 example : elaboratedTm {} Λc (onC C2src) = some (tmOfDeriv C2_typed) := by decide +kernel
 
-/-- C2 is typed at `{k2}` and `(⊤ → ⊤) ^ {k2}`, from 214 units. -/
+/-- C2 is typed at `{k2}` and `(⊤ → ⊤) ^ {k2}`. -/
 theorem C2_type : judgProg Λc (onC C2src) =
     (some ([CapAtom.cvar k2], .ty ((Shape.all unitTy (.ty unitTy)) ^ [CapAtom.cvar k2])),
       ⟨defaultFuel - 214, false⟩) := by
@@ -844,7 +842,7 @@ def S1progSrc : STm :=
 
 example : compiledTm Λc (onZ S1progSrc) = some (tmOfDeriv S1_typed) := by decide
 
-/-- S1 is typed at the version's judgment, from 86 units. -/
+/-- S1 is typed at the version's judgment. -/
 theorem S1_type : judgProg Λc (onZ S1progSrc) =
     (some (usesOfDeriv S1_typed, .ty (tyOfDeriv S1_typed)), ⟨defaultFuel - 86, false⟩) := by
   decide +kernel
@@ -879,7 +877,7 @@ def S2src : STm :=
 
 example : compiledTm Λc (onZ S2src) = some (tmOfDeriv S2_typed) := by decide
 
-/-- S2 is typed at the version's judgment, from 138 units. -/
+/-- S2 is typed at the version's judgment. -/
 theorem S2_type : judgProg Λc (onZ S2src) =
     (some (usesOfDeriv S2_typed, .ty (tyOfDeriv S2_typed)), ⟨defaultFuel - 138, false⟩) := by
   decide +kernel
@@ -917,7 +915,7 @@ theorem S2Ctx3_wf : S2Ctx3.Wf := ctxWf?_sound _ (by decide +kernel)
 
 example : (resolveIn Λc [] C5names C5src).map ATm.erase = some (tmOfDeriv C5_typed) := by decide
 
-/-- C5 is typed at `{it, it.C}` and `⊤ ^ {it.C}`, from 16 units. -/
+/-- C5 is typed at `{it, it.C}` and `⊤ ^ {it.C}`. -/
 theorem C5_type : judgIn S2Ctx3 platSet3 C5ann =
     (some ([CapAtom.var .here, CapAtom.sel .here lC], .ty (Shape.top ^ [CapAtom.sel .here lC])),
       ⟨defaultFuel - 16, false⟩) := by
@@ -957,7 +955,7 @@ example : compiledTm Λc (onZ Z1progSrc) = some (tmOfDeriv Z1_plat) := by decide
 the existential.  This is the version's W4. -/
 example : readAt platCtx platSet (Z1TyF k1) = Z1Ty k1 := by decide
 
-/-- Z1 is typed at the version's judgment, from 12 units. -/
+/-- Z1 is typed at the version's judgment. -/
 theorem Z1_type : judgProg Λc (onZ Z1progSrc) =
     (some (usesOfDeriv Z1_plat, .ty (tyOfDeriv Z1_plat)), ⟨defaultFuel - 12, false⟩) := by
   decide +kernel
@@ -980,7 +978,7 @@ theorem Z1_checks : CheckerAccepts {} Λc (onZ Z1progSrc) Z1_compiles :=
 `Z1defSrc` of `Typer.lean`: the annotation of the `let` writes `fresh` in the
 result, which reads as `Z1Ty`, and the closure reaches it by the arrow rule. -/
 
-/-- `freshCell` bound by a `let` is typed at `Z1Ty`, from 31 units. -/
+/-- `freshCell` bound by a `let` is typed at `Z1Ty`. -/
 theorem Z1def_type : judgProg Λc (onZ Z1defSrc) =
     (pureAt (onZ Z1defSrc)
       (clsTy% (∀(u : ⊤) ∃[c ⊑ {fs, u}] μ(y. {read : (∀(v : ⊤) ⊤) ^ {y}}) ^ {c}) ^ {fs}),
@@ -1014,7 +1012,7 @@ example : erasedOf (synthIn? {} Z1Ctx ps2z Z1callerAnn) = some (tmOfDeriv Z1_cal
   decide +kernel
 
 /-- The caller of `freshCell` is typed at `{fc, fs, un}` and the closure at
-its own type, from 8 units. -/
+its own type. -/
 theorem Z1caller_type : judgIn Z1Ctx ps2z Z1callerAnn =
     (some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here], .ty (arrowS ^ [])),
       ⟨defaultFuel - 8, false⟩) := by
@@ -1045,7 +1043,7 @@ theorem Z1caller_checks :
 second call's existential, moved past the witness and the payload of the
 first. -/
 
-/-- The unpacking is typed at an existential answer, from 5 units. -/
+/-- The unpacking is typed at an existential answer. -/
 theorem Z1tail_type : judgIn Z1Ctx ps2z Z1TailAnn =
     (some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here],
       ∃ᶜ[Z1Use] (fileS ^ [CapAtom.cvar .here])), ⟨defaultFuel - 5, false⟩) := by
@@ -1082,7 +1080,7 @@ example : erasedOf (synthIn? {} Z1Ctx ps2z twoCallsAnn) =
         (.path (.var (.there (.there (.there (.there .here)))))))) := by
   decide +kernel
 
-/-- The two calls are typed at `{fc, fs, un}` and `⊤`, from 6 units. -/
+/-- The two calls are typed at `{fc, fs, un}` and `⊤`. -/
 theorem twoCalls_type : judgIn Z1Ctx ps2z twoCallsAnn =
     (some ([CapAtom.var (.there .here), CapAtom.cvar fs2, CapAtom.var .here], .ty unitTy),
       ⟨defaultFuel - 6, false⟩) := by
@@ -1126,8 +1124,7 @@ def absorbAnn : ATm (Sig.body ([],c,c,x,x)) :=
   (resolveIn Λc [] (((z1Names.consC "%").consC "%").cons "v") (cls% let x = fc un in x)).getD
     (.path (.var .here))
 
-/-- The unpacking is typed at a file captured by the body's root, from 7
-units. -/
+/-- The unpacking is typed at a file captured by the body's root. -/
 theorem absorb_type : judgIn absorbCtx (psBody ps2z) absorbAnn =
     (some ([CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.cvar (up fs2),
         CapAtom.var (.there (.there (.there .here)))],
@@ -1169,7 +1166,7 @@ example : resolveTy Λc [] πz.names
 
 example : elaboratedTm {} Λc (onZ Z2src) = some (tmOfDeriv Z2_plat) := by decide +kernel
 
-/-- Z2 is typed at the version's judgment, from 12 units. -/
+/-- Z2 is typed at the version's judgment. -/
 theorem Z2_type : judgProg Λc (onZ Z2src) =
     (some (usesOfDeriv Z2_plat, .ty (tyOfDeriv Z2_plat)), ⟨defaultFuel - 12, false⟩) := by
   decide +kernel
@@ -1204,7 +1201,7 @@ def Z3src : STm :=
 
 example : compiledTm Λc (onZ Z3src) = some (tmOfDeriv Z3_plat) := by decide
 
-/-- Z3 is typed at the version's judgment, from 101 units. -/
+/-- Z3 is typed at the version's judgment. -/
 theorem Z3_type : judgProg Λc (onZ Z3src) =
     (some (usesOfDeriv Z3_plat, .ty (tyOfDeriv Z3_plat)), ⟨defaultFuel - 101, false⟩) := by
   decide +kernel
@@ -1232,8 +1229,7 @@ the type `⊤`. -/
 
 example : elaboratedTm {} Λc (onC W2defSrc) = some W2Tm := by decide +kernel
 
-/-- `process` is typed with its parameter at its own capture binder, from 2
-units. -/
+/-- `process` is typed with its parameter at its own capture binder. -/
 theorem W2_type : judgProg Λc (onC W2defSrc) =
     (pureAt (onC W2defSrc) (clsTy% ∀[c](x : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {c}) ∀(u : ⊤) ⊤),
       ⟨defaultFuel - 2, false⟩) := by
@@ -1255,7 +1251,7 @@ theorem W2_compiles : (compile {} Λc (onC W2defSrc)).isOk = true := by decide +
 theorem W2_checks : CheckerAccepts {} Λc (onC W2defSrc) W2_compiles :=
   compile_checks_get W2_compiles
 
-/-- The call of `process` is typed at the version's judgment, from 2 units. -/
+/-- The call of `process` is typed at the version's judgment. -/
 theorem W2call_type : judgIn W2CallCtx ps2c (.app (.there .here) .here) =
     (some (usesOfDeriv W2_call, .ty (tyOfDeriv W2_call)), ⟨defaultFuel - 2, false⟩) := by
   decide +kernel
@@ -1302,7 +1298,7 @@ example : (compile {} Λc (onC deepSrc)).reason?.map Reason.name = some "anyNotO
 outside every scope.  Its answer is an existential, and no root absorbs the
 witness. -/
 
-/-- The typer rejects the program after 19 units, with the tank unmarked. -/
+/-- The typer rejects the program, with the tank unmarked. -/
 theorem exTop_verdict : judgProg Λc (onZ exTopSrc) = (none, ⟨defaultFuel - 19, false⟩) := by
   decide +kernel
 
@@ -1320,7 +1316,7 @@ where the payload's own set is empty and is no witness, and the written bound
 `{k1}` is.  cov3 is a closure that projects its parameter, charged its
 receiver, which leaves with the parameter. -/
 
-/-- cov2 is typed at its annotation, from 14 units. -/
+/-- cov2 is typed at its annotation. -/
 theorem cov2_type : judgProg Λc (onC cov2Src) =
     (pureAt (onC cov2Src) (clsTy% ∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {k1})
         ∃[c ⊑ {f}] μ(y. {read : (∀(u : ⊤) ⊤) ^ {y}}) ^ {c}),
@@ -1340,7 +1336,7 @@ theorem cov2_compiles : (compile {} Λc (onC cov2Src)).isOk = true := by decide 
 theorem cov2_checks : CheckerAccepts {} Λc (onC cov2Src) cov2_compiles :=
   compile_checks_get cov2_compiles
 
-/-- cov4 is typed at its annotation, from 32 units. -/
+/-- cov4 is typed at its annotation. -/
 theorem cov4_type : judgProg Λc (onC cov4Src) =
     (pureAt (onC cov4Src) (clsTy% ∀(p : {a : ⊤ ^ {k1}}) ∃[c ⊑ {k1}] {a : ⊤ ^ {c}}),
       ⟨defaultFuel - 32, false⟩) := by
@@ -1359,7 +1355,7 @@ theorem cov4_compiles : (compile {} Λc (onC cov4Src)).isOk = true := by decide 
 theorem cov4_checks : CheckerAccepts {} Λc (onC cov4Src) cov4_compiles :=
   compile_checks_get cov4_compiles
 
-/-- cov3 is a pure closure, from 2 units. -/
+/-- cov3 is a pure closure. -/
 theorem cov3_type : judgProg Λc (onC cov3Src) =
     (pureAt (onC cov3Src) (clsTy% ∀(o : {a : ⊤ ^ {k1}} ^ {k1}) ⊤ ^ {k1}),
       ⟨defaultFuel - 2, false⟩) := by
@@ -1390,7 +1386,7 @@ def P1Ctx : Ctx ([],c,c,x) := platCtx.cons unitTy
 theorem P1Ctx_wf : P1Ctx.Wf := ctxWf?_sound _ (by decide +kernel)
 
 /-- The call of a capture parameter is typed at a pure closure whose domain
-reads `any` as the arrow's own binder, from 4 units. -/
+reads `any` as the arrow's own binder. -/
 theorem P1_type : judgIn P1Ctx (CaptureSet.weaken πc.set) P1ann =
     (some ([], .ty ((Shape.all (arrowS ^ [CapAtom.cvar .here]) (.ty unitTy)) ^ [])),
       ⟨defaultFuel - 4, false⟩) := by
@@ -1478,7 +1474,7 @@ moved to `A` by the arrow rule, which opens the callback's scope and reaches
 `EscGoalCtx`, which binds `cb`.  The rejection leaves the tank unmarked, so it
 holds at every budget. -/
 
-/-- The typer rejects the escape after 31 units, with the tank unmarked. -/
+/-- The typer rejects the escape, with the tank unmarked. -/
 theorem Esc_verdict : judgProg Λc (onC EscSrc) = (none, ⟨defaultFuel - 31, false⟩) := by
   decide +kernel
 
@@ -1533,8 +1529,8 @@ theorem Esc_rejected' :
 place of the `let` annotation.  An ascription binds too, so the escape is
 rejected at the callback's body. -/
 
-/-- The typer rejects the escape by an ascription after 88 units, with the
-tank unmarked. -/
+/-- The typer rejects the escape by an ascription, with the tank
+unmarked. -/
 theorem AscEsc_verdict : judgProg Λc (onC AscEscSrc) = (none, ⟨defaultFuel - 88, false⟩) := by
   decide +kernel
 
@@ -1552,7 +1548,7 @@ result `any` reads as the platform set and the source has no root.  The goal
 is `{f} <: {k1, k2}` in `TopGoalCtx`, and the certificate's root is the
 universal one, which the source cannot name. -/
 
-/-- The typer rejects the escape at the top after 31 units, with the tank
+/-- The typer rejects the escape at the top, with the tank
 unmarked. -/
 theorem TopEsc_verdict : judgProg Λc (onC TopEscSrc) = (none, ⟨defaultFuel - 31, false⟩) := by
   decide +kernel
@@ -1599,7 +1595,7 @@ theorem top_escape_rejected :
 result at its own parameter.  What it captures stays inside its own scope, so
 it is accepted. -/
 
-/-- The callback is typed at its annotation, from 4 units. -/
+/-- The callback is typed at its annotation. -/
 theorem EscOk_type : judgProg Λc (onC EscOkSrc) =
     (pureAt (onC EscOkSrc) (clsTy% ∀(g : ⊤) ∀[c](f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {c})
         (∀(u : ⊤) μ(w. {read : (∀(u : ⊤) ⊤) ^ {w}}) ^ {f}) ^ {f}),
@@ -1626,7 +1622,7 @@ with `M = μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {A : ⊥..{a : ⊤}}))`.  The two `
 compared under `y`, and the upper bound of `y.A` is read off `M` opened at
 `y`, three steps down.  Scalac accepts the same program. -/
 
-/-- QP1 is typed at the ascribed type, from 45 units. -/
+/-- QP1 is typed at the ascribed type. -/
 theorem QP1_type : judgProg Λc (onE PA1src) =
     (pureAt (onE PA1src) (clsTy% ∀(f : ∀(y : μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {A : ⊥ .. {a : ⊤}}))) y.A)
         ∀(y : μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {A : ⊥ .. {a : ⊤}}))) {a : ⊤}),
@@ -1652,7 +1648,7 @@ theorem QP1_checks : CheckerAccepts {} Λc (onE PA1src) QP1_compiles :=
 bound, the recursive type opened at `y`, and the right operand twice.
 Scalac accepts the same program. -/
 
-/-- QP4 is typed from 28 units. -/
+/-- QP4 is typed. -/
 theorem QP4_type : judgProg Λc (onE P4src) =
     (pureAt (onE P4src)
       (clsTy% ∀(x : {A : ⊥ .. μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {a : ⊤}))}) ∀(y : x.A) ⊤),
@@ -1678,7 +1674,7 @@ theorem QP4_checks : CheckerAccepts {} Λc (onE P4src) QP4_compiles :=
 tries every function type the lookup finds, and the second accepts the
 argument.  Scalac accepts the same program. -/
 
-/-- QP5 is typed from 13 units. -/
+/-- QP5 is typed. -/
 theorem QP5_type : judgProg Λc (onE P5src) =
     (pureAt (onE P5src) (clsTy% ∀(f : (∀(x : {a : ⊤}) ⊤) ∧ (∀(x : ⊤) ⊤)) ∀(y : ⊤) ⊤),
       ⟨defaultFuel - 13, false⟩) := by
@@ -1706,7 +1702,7 @@ projection at an ascription, and R4 binds it under a written `let` type.
 The typer keeps every candidate, so each compiles.  Scalac accepts R1 and
 R2. -/
 
-/-- R1 is typed from 17 units. -/
+/-- R1 is typed. -/
 theorem R1_type : judgProg Λc (onE R1src) =
     (pureAt (onE R1src) (clsTy% ∀(x : {A : ⊥ .. {a : ⊤}}) ∀(y : x.A ∧ {a : {b : ⊤}}) ⊤),
       ⟨defaultFuel - 17, false⟩) := by
@@ -1725,7 +1721,7 @@ theorem R1_compiles : (compile {} Λc (onE R1src)).isOk = true := by decide +ker
 theorem R1_checks : CheckerAccepts {} Λc (onE R1src) R1_compiles :=
   compile_checks_get R1_compiles
 
-/-- R2 is typed from 10 units. -/
+/-- R2 is typed. -/
 theorem R2_type : judgProg Λc (onE R2src) =
     (pureAt (onE R2src) (clsTy% ∀(y : {a : ⊤} ∧ {a : {b : ⊤}}) ⊤), ⟨defaultFuel - 10, false⟩) := by
   decide +kernel
@@ -1743,7 +1739,7 @@ theorem R2_compiles : (compile {} Λc (onE R2src)).isOk = true := by decide +ker
 theorem R2_checks : CheckerAccepts {} Λc (onE R2src) R2_compiles :=
   compile_checks_get R2_compiles
 
-/-- R3 is typed at the ascribed field, from 11 units. -/
+/-- R3 is typed at the ascribed field. -/
 theorem R3_type : judgProg Λc (onE R3src) =
     (pureAt (onE R3src) (clsTy% ∀(y : {a : ⊤} ∧ {a : {b : ⊤}}) {b : ⊤}),
       ⟨defaultFuel - 11, false⟩) := by
@@ -1762,7 +1758,7 @@ theorem R3_compiles : (compile {} Λc (onE R3src)).isOk = true := by decide +ker
 theorem R3_checks : CheckerAccepts {} Λc (onE R3src) R3_compiles :=
   compile_checks_get R3_compiles
 
-/-- R4 is typed from 9 units. -/
+/-- R4 is typed. -/
 theorem R4_type : judgProg Λc (onE R4src) =
     (pureAt (onE R4src) (clsTy% ∀(y : {a : ⊤} ∧ {a : {b : ⊤}}) ⊤), ⟨defaultFuel - 9, false⟩) := by
   decide +kernel
@@ -1816,7 +1812,7 @@ def chainSrc (n : Nat) : STm := .lam none (xName 0) (.capt (.typ "A" .bot .top) 
 def chainSTy (n : Nat) : SType :=
   .capt (.all none (xName 0) (.capt (.typ "A" .bot .top) []) (.ty (chainAlls n n))) []
 
-/-- The chain of sixteen links is typed at its written type, from 203 units. -/
+/-- The chain of sixteen links is typed at its written type. -/
 theorem chain16_type : judgProg Λc (onE (chainSrc 16)) =
     (pureAt (onE (chainSrc 16)) (chainSTy 16), ⟨defaultFuel - 203, false⟩) := by
   decide +kernel
@@ -1834,8 +1830,7 @@ theorem chain16_compiles : (compile {} Λc (onE (chainSrc 16))).isOk = true := b
 theorem chain16_checks : CheckerAccepts {} Λc (onE (chainSrc 16)) chain16_compiles :=
   compile_checks_get chain16_compiles
 
-/-- The chain of thirty two links is typed at its written type, from 659
-units. -/
+/-- The chain of thirty two links is typed at its written type. -/
 theorem chain32_type : judgProg Λc (onE (chainSrc 32)) =
     (pureAt (onE (chainSrc 32)) (chainSTy 32), ⟨defaultFuel - 659, false⟩) := by
   decide +kernel
@@ -1868,7 +1863,7 @@ def X1src : STm := cls% λ(q : {A : ⊥ .. ⊤}). λ(x : q.A). λ(f : ∀(y : q.
 def X2src : STm :=
   cls% λ(q : {A : ⊥ .. ⊤}). λ(p : {A : ⊥ .. q.A}). λ(x : p.A). λ(f : ∀(y : q.A) ⊤). f x
 
-/-- X1 is typed from 5 units. -/
+/-- X1 is typed. -/
 theorem X1_type : judgProg Λc (onE X1src) =
     (pureAt (onE X1src)
       (clsTy% ∀(q : {A : ⊥ .. ⊤}) ∀(x : q.A) ∀(f : ∀(y : q.A) ⊤) ⊤),
@@ -1888,7 +1883,7 @@ theorem X1_compiles : (compile {} Λc (onE X1src)).isOk = true := by decide +ker
 theorem X1_checks : CheckerAccepts {} Λc (onE X1src) X1_compiles :=
   compile_checks_get X1_compiles
 
-/-- X2 is typed from 10 units. -/
+/-- X2 is typed. -/
 theorem X2_type : judgProg Λc (onE X2src) =
     (pureAt (onE X2src)
       (clsTy% ∀(q : {A : ⊥ .. ⊤}) ∀(p : {A : ⊥ .. q.A}) ∀(x : p.A) ∀(f : ∀(y : q.A) ⊤) ⊤),
@@ -1935,7 +1930,7 @@ def B1nCtx : Ctx (Sig.body (Sig.body ([] : Sig))) :=
   Ctx.body (Ctx.body .nil ((Shape.typ lA (.fld la unitTy) (.fld lb unitTy)) ^ []))
     ((Shape.fld la unitTy) ^ [])
 
-/-- The typer rejects B1 after 2 units, with the tank unmarked. -/
+/-- The typer rejects B1, with the tank unmarked. -/
 theorem B1_verdict : judgProg Λc (onE B1src) = (none, ⟨defaultFuel - 2, false⟩) := by
   decide +kernel
 
@@ -1961,7 +1956,7 @@ the type `⊤` of `x`.  Scalac rejects the same program. -/
 /-- The body of the lambda, then the `let` binder `y : ⊤`. -/
 def A1yCtx : Ctx (Sig.body ([] : Sig),x) := (Ctx.body .nil unitTy).cons unitTy
 
-/-- The typer rejects A1 after 11 units, with the tank unmarked. -/
+/-- The typer rejects A1, with the tank unmarked. -/
 theorem A1_verdict : judgProg Λc (onE A1src) = (none, ⟨defaultFuel - 11, false⟩) := by
   decide +kernel
 
@@ -1984,7 +1979,7 @@ too: the domain `□(⊤ ^ {})` of `h` in BX2, an ascription in BX.  Both
 statuses are boxed, so `y` is unboxed first, which fails, and then boxed,
 which succeeds. -/
 
-/-- BX2 is typed from 34 units.  The inner closure captures `f`. -/
+/-- BX2 is typed.  The inner closure captures `f`. -/
 theorem BX2_type : judgProg Λc (onC BX2src) =
     (pureAt (onC BX2src)
       (clsTy% ∀(f : (∀(u : ⊤) ⊤) ^ {k1}) (∀(h : (∀(v : □(⊤ ^ {})) ⊤) ^ {}) ⊤) ^ {f}),
@@ -2004,7 +1999,7 @@ theorem BX2_compiles : (compile {} Λc (onC BX2src)).isOk = true := by decide +k
 theorem BX2_checks : CheckerAccepts {} Λc (onC BX2src) BX2_compiles :=
   compile_checks_get BX2_compiles
 
-/-- BX is typed at the ascribed box, from 29 units. -/
+/-- BX is typed at the ascribed box. -/
 theorem BX_type : judgProg Λc (onC BXsrc) =
     (pureAt (onC BXsrc) (clsTy% ∀(f : (∀(u : ⊤) ⊤) ^ {k1}) □(⊤ ^ {})),
       ⟨defaultFuel - 29, false⟩) := by
@@ -2042,15 +2037,15 @@ def LQ2src : STm :=
                  ∧ ({B : ⊥ .. ∀(z : s.T) z.B} ∧ {A : ∀(w : s.T) w.A .. ⊤}))).
         λ(v : y.B). (v : y.A)
 
-/-- LP ends with the tank marked after 32737 units. -/
+/-- LP ends with the tank marked. -/
 theorem LP_limit : judgProg Λc (onE LPsrc) = (none, ⟨defaultFuel - 32737, true⟩) := by
   decide +kernel
 
-/-- PF ends with the tank marked after 32693 units. -/
+/-- PF ends with the tank marked. -/
 theorem PF_limit : judgProg Λc (onE PFsrc) = (none, ⟨defaultFuel - 32693, true⟩) := by
   decide +kernel
 
-/-- LQ2 ends with the tank marked after 32763 units. -/
+/-- LQ2 ends with the tank marked. -/
 theorem LQ2_limit : judgProg Λc (onE LQ2src) = (none, ⟨defaultFuel - 32763, true⟩) := by
   decide +kernel
 
@@ -2219,7 +2214,7 @@ example : compiledTm Λk CE1src = some (tmOfDeriv E1_typed) := by decide
 
 example : elaboratedTm {} Λk CE1src = some (tmOfDeriv E1_typed) := by decide +kernel
 
-/-- CE1 is typed at the version's judgment, from 45 units. -/
+/-- CE1 is typed at the version's judgment. -/
 theorem CE1_type : judgProg Λk CE1src =
     (some (usesOfDeriv E1_typed, .ty (tyOfDeriv E1_typed)), ⟨defaultFuel - 45, false⟩) := by
   decide +kernel
@@ -2294,7 +2289,7 @@ platform set, the goal a program meets that charges only `ctl` and declares
 `{ctl, io}.only[Control]`.  `M5src` is such a program: the typer charges
 `{ctl}` and `compile` moves it to the declared set by that goal. -/
 
-/-- M1 holds in the version, found from 172 units. -/
+/-- M1 holds in the version, and the search finds it. -/
 theorem M1_subcap : Nonempty (Subcap E1Ctx2
     [CapAtom.proj (.var (.there .here)) (Cls.only Cls.Control), CapAtom.var .here]
     (CaptureSet.weaken (CaptureSet.weaken E1Filt))) :=
@@ -2302,7 +2297,7 @@ theorem M1_subcap : Nonempty (Subcap E1Ctx2
     [CapAtom.proj (.var (.there .here)) (Cls.only Cls.Control), CapAtom.var .here]
     (CaptureSet.weaken (CaptureSet.weaken E1Filt))) 172 = true)
 
-/-- M5 holds in the version, found from 5 units. -/
+/-- M5 holds in the version, and the search finds it. -/
 theorem M5_subcap : Nonempty (Subcap E1PlatCtx [CapAtom.cvar E1ctl] E1Filt) :=
   found_nonempty (by decide +kernel : answers (cap? E1PlatCtx [CapAtom.cvar E1ctl] E1Filt) 5 = true)
 
@@ -2315,7 +2310,7 @@ def M5src : SProg :=
     let g = ((λ(u : ⊤ ^ {}). u) : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl}) in
     let r = g g in r
 
-/-- The typer charges `M5src` the set `{ctl}`, from 21 units. -/
+/-- The typer charges `M5src` the set `{ctl}`. -/
 theorem M5_type : judgProg Λk M5src =
     (writtenAt Λk exCls M5src (clsSet% {ctl}) (clsTy% ⊤), ⟨defaultFuel - 21, false⟩) := by
   decide +kernel
@@ -2365,7 +2360,7 @@ def WnegSrc : SProg :=
       λ(g : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {f}).
         (g : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io}.only[Control])
 
-/-- W is typed at its written type, from 393 units. -/
+/-- W is typed at its written type. -/
 theorem W_type : judgProg Λk WSrc =
     (writtenAt Λk exCls WSrc (clsSet% {})
       (clsTy% ∀(f : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io})
@@ -2388,14 +2383,14 @@ theorem W_checks : CheckerAccepts {} Λk WSrc W_compiles :=
   compile_checks_get W_compiles
 
 /-- The goals of W at the contexts of `Sub.lean`, found by the widening of a
-restricted atom: the sets from 174 units, the variable from 391. -/
+restricted atom. -/
 theorem W_subcap : Nonempty (Subcap WCtx1 WL WR) :=
   found_nonempty (by decide +kernel : answers (cap? WCtx1 WL WR) 174 = true)
 
 theorem W_var : Nonempty ((U : CaptureSet ([],c,c,x,x)) × HasTy U WCtx2 (.path (.var .here)) (.ty WT2)) :=
   found_nonempty (by decide +kernel : answers (var? WCtx2 .here WT2) 391 = true)
 
-/-- The typer rejects W with `g : {f}` after 234 units, with the tank
+/-- The typer rejects W with `g : {f}`, with the tank
 unmarked. -/
 theorem Wneg_verdict : judgProg Λk WnegSrc = (none, ⟨defaultFuel - 234, false⟩) := by
   decide +kernel
@@ -2434,7 +2429,7 @@ example : (compiledTm Λk CE2src).map Tm.expand = some (tmOfDeriv E2_typed) := b
 
 example : elaboratedTm {} Λk CE2src = some (tmOfDeriv E2_typed) := by decide +kernel
 
-/-- CE2 is typed at the version's judgment, from 56 units. -/
+/-- CE2 is typed at the version's judgment. -/
 theorem CE2_type : judgProg Λk CE2src =
     (some (usesOfDeriv E2_typed, .ty (tyOfDeriv E2_typed)), ⟨defaultFuel - 56, false⟩) := by
   decide +kernel
@@ -2492,7 +2487,7 @@ example : (match (Core.cap? E2IoCtx [CapAtom.var .here]
 
 /-- M2: a mixed set on the right.  At `E2IoCtx` a domain
 `{ctl, any.except[ThreadLocal]}` reads, after the call substitutes `y`, as
-`{κ_ctl, y ↾ except[ThreadLocal]}`.  `{y}` is below it, found from 8 units. -/
+`{κ_ctl, y ↾ except[ThreadLocal]}`.  `{y}` is below it. -/
 theorem M2_subcap : Nonempty (Subcap E2IoCtx [CapAtom.var .here]
     [CapAtom.cvar (.there (.there .here)), CapAtom.proj (.var .here) (Cls.except Cls.ThreadLocal)]) :=
   found_nonempty (by decide +kernel : answers (cap? E2IoCtx [CapAtom.var .here]
@@ -2536,7 +2531,7 @@ example : compiledTm Λk CE3src = some (tmOfDeriv E3_typed) := by decide
 
 example : elaboratedTm {} Λk CE3src = some (tmOfDeriv E3_typed) := by decide +kernel
 
-/-- CE3 is typed at the empty set and the client's type, from 174 units. -/
+/-- CE3 is typed at the empty set and the client's type. -/
 theorem CE3_type : judgProg Λk CE3src =
     (some ([], .ty (tyOfDeriv E3_typed)), ⟨defaultFuel - 174, false⟩) := by
   decide +kernel
@@ -2602,7 +2597,7 @@ example : erasedOf (synthIn? {} E3CtxB psE3B E3aAsc) =
     some (tmOfDeriv (E3_abstract_a (U := []))) := by
   decide +kernel
 
-/-- The retyping of `a` is typed at the version's judgment, from 75 units. -/
+/-- The retyping of `a` is typed at the version's judgment. -/
 theorem E3retype_type : judgIn E3CtxB psE3B E3aAsc =
     (some ([], .ty (tyOfDeriv (E3_abstract_a (U := [])))), ⟨defaultFuel - 75, false⟩) := by
   decide +kernel
@@ -2627,7 +2622,7 @@ example : (compileLog {} Λk CE3src).length = 98 := by decide +kernel
 
 /-- R2: over E3's platform, C2's client has `x` with `{C : {}..{κ₁, κ₂}}`.
 `{x.C}` is kinded at `only[Control]` through the member's upper bound, whose
-two binders are `Control`, from 27 units. -/
+two binders are `Control`. -/
 theorem R2_kind : Nonempty (CapKind (C2CtxG E3PlatCtx E3k1 E3k2)
     [CapAtom.sel (.there (up .here)) lC] (Cls.only Cls.Control)) :=
   found_nonempty (by decide +kernel : answers (kind? (C2CtxG E3PlatCtx E3k1 E3k2)
@@ -2665,7 +2660,7 @@ def CE3sSrc : SProg :=
 example : resolvePlatform exCls CE3sSrc.platform = some E3Plat3 := rfl
 
 /-- CE3 over three capabilities is typed at the empty set and the written
-type of `c`, from 253 units. -/
+type of `c`. -/
 theorem CE3s_type : judgProg Λk CE3sSrc =
     (writtenAt Λk exCls CE3sSrc (clsSet% {})
       (clsTy% (∀(x : μ(z. {C^ : only[Control]} ∧ {run : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z.C}}) ^ {k1, k2, k3})
@@ -2697,7 +2692,7 @@ def psE3D : CaptureSet ([],c,c,c,x) :=
 /-- The literal `d` ascribed at the client's domain, at `E3CtxD`. -/
 def E3dAsc : ATm ([],c,c,c,x) := .asc (.path (.var .here)) (tyOfDeriv E3_abstract_c)
 
-/-- The retyping of `d` is typed at the version's judgment, from 75 units. -/
+/-- The retyping of `d` is typed at the version's judgment. -/
 theorem E3retypeD_type : judgIn E3CtxD psE3D E3dAsc =
     (some (usesOfDeriv E3_abstract_c, .ty (tyOfDeriv E3_abstract_c)),
       ⟨defaultFuel - 75, false⟩) := by
@@ -2737,8 +2732,7 @@ def CE4src : SProg :=
 
 example : (compiledTm Λk CE4src).map Tm.expand = elaboratedTm {} Λk CE4src := by decide +kernel
 
-/-- CE4 is typed at the empty set and the client's type of CE3, from 212
-units. -/
+/-- CE4 is typed at the empty set and the client's type of CE3. -/
 theorem CE4_type : judgProg Λk CE4src =
     (some ([], .ty (tyOfDeriv E3_typed)), ⟨defaultFuel - 212, false⟩) := by
   decide +kernel
@@ -2804,7 +2798,7 @@ def CE4posSrc : SProg :=
                 λ(u : ⊤ ^ {}). let g = x.run in let g2 = h g in g2 u in
     c
 
-/-- The typer rejects the client at `only[IO]` after 84 units, with the tank
+/-- The typer rejects the client at `only[IO]`, with the tank
 unmarked. -/
 theorem CE4neg_verdict : judgProg Λk CE4negSrc = (none, ⟨defaultFuel - 84, false⟩) := by
   decide +kernel
@@ -2838,7 +2832,7 @@ theorem CE4neg_call_not_alg :
   cap?_reject (rejects_eq (by decide +kernel : rejects (cap? CE4negCtx [CapAtom.var .here]
     (CaptureSet.proj [CapAtom.var .here] (Cls.only Cls.Control))) 60 = true))
 
-/-- The client at `only[Control]` is typed from 50 units. -/
+/-- The client at `only[Control]` is typed. -/
 theorem CE4pos_type : judgProg Λk CE4posSrc =
     (some ([], .ty (tyOfDeriv E3_typed)), ⟨defaultFuel - 50, false⟩) := by
   decide +kernel
@@ -2884,7 +2878,7 @@ def CE5ioSrc : SProg :=
     let r = f b in
     r
 
-/-- The typer rejects CE5 after 40 units, with the tank unmarked. -/
+/-- The typer rejects CE5, with the tank unmarked. -/
 theorem CE5_verdict : judgProg Λk CE5src = (none, ⟨defaultFuel - 40, false⟩) := by
   decide +kernel
 
@@ -2899,7 +2893,7 @@ theorem CE5_not_alg : ¬ Alg ⟨_, E2TlCtx, .cap [CapAtom.var .here]
   CE5_cap_not_alg
 
 /-- CE5 with an input-output body is typed at `{io}` and the object at
-`{io}`, from 34 units. -/
+`{io}`. -/
 theorem CE5io_type : judgProg Λk CE5ioSrc =
     (writtenAt Λk exCls CE5ioSrc (clsSet% {io})
       (clsTy% μ(z. {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}) ^ {io}),

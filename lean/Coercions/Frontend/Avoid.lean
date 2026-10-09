@@ -1,35 +1,37 @@
 import Coercions.Frontend.Sub
 
 /-!
-# Avoidance at a `let`, on the tank
+# Avoidance at a `let`
 
-The type of `let z = t in u` may not mention `z`.  When the body's type does,
-the compiler approximates it by a type free of `z` (`avoid`,
-`TypeOps.scala:474-509,565-583`).  This module does the same for DOT-MNF.
+The type of `let z = t in u` may not mention `z`.  When the type of `u` does,
+the compiler approximates it by a type free of `z` (`TypeOps.avoid` and
+`AvoidMap` in core/TypeOps.scala, over `ApproximatingTypeMap` in
+core/Types.scala).  This module does the same for DOT-MNF.
 
 `up` approximates a type from above and `down` from below.  Each returns the
-new type with the `DotMNF.Sub` derivation that relates it to the old one.  A
-selection `z.A` at a covariant position becomes the meet of the avoided upper
-bounds of every member `A` that `z` has, as the compiler widens a selection
-at the merged bounds of its members (`derivedSelect` and `tryWiden`,
-`TypeOps.scala:519-522`).  The meet is an intersection, derived by `Sub.and`
-of the `Sub.selUpper` steps.  At a contravariant position `z.A` becomes the
-avoided lower bound of the first member.  DOT-MNF has no union, so the lower
-bounds cannot be joined.  A member bound is the compiler's `expandBounds`
-(`Types.scala:6640-6645`).  `∀` flips its domain, and `{A : L..U}` flips `L`.
-DOT-MNF types have no invariant position, so the compiler's `Range`
-(`Types.scala:6902`) never arises.  A selection already being expanded at
-the same polarity becomes `⊤` or `⊥`, the compiler's `emptyRange`
-(`Types.scala:6608`).  A `μ` that mentions `z` has no subtyping rule in
-DOT-MNF and becomes `⊤` or `⊥`.  Under a `∀` the codomain is approximated in
-the context extended by the domain that `Sub.all` asks for.
+new type with the `DotMNF.Sub` derivation that relates it to the old one.
 
-Both draw on the tank of `Fuel.lean`.  Each node of the traversal costs
-`cost` of the number of selections being expanded, and the members of a
-selection are read by `declsAt` on the same tank.  A short tank answers `⊤`
-or `⊥` and is marked.  The structural index starts at the fuel left, and each
-node draws at least one unit, so the index never runs out before the tank
-does.
+* A selection `z.A` at a covariant position becomes the meet of the avoided
+  upper bounds of all members `A` of `z`, as in `AvoidMap.derivedSelect` and
+  `ApproximatingTypeMap.tryWiden`.  The meet is an intersection, built by
+  `Sub.and` from `Sub.selUpper` steps.
+* At a contravariant position `z.A` becomes the avoided lower bound of the
+  first member.  DOT-MNF has no union, so lower bounds cannot be joined.
+* A member bound is expanded as in `ApproximatingTypeMap.expandBounds`.  `∀`
+  flips its domain and `{A : L..U}` flips `L`.  DOT-MNF has no invariant
+  position, so `Types.Range` never arises.
+* A selection already being expanded at the same polarity becomes `⊤` or `⊥`,
+  as in `ApproximatingTypeMap.emptyRange`.
+* A `μ` that mentions `z` becomes `⊤` or `⊥`, since DOT-MNF has no subtyping
+  rule for it.
+* Under a `∀` the codomain is approximated in the context extended by the
+  domain that `Sub.all` asks for.
+
+Both draw on the tank of `Fuel.lean`.  A node costs `cost` of the number of
+selections being expanded, and `declsAt` reads members on the same tank.  A
+short tank answers `⊤` or `⊥` and is marked.  The structural index starts at
+the fuel left, and each node draws at least one unit, so the index never runs
+out before the tank does.
 
 `avoidLet` runs `up` at the binder of a `let` and strengthens the result.  It
 returns the type `U` with `Sub (Γ.cons T0) V U.weaken`, which `HasTy.let`
@@ -193,8 +195,8 @@ def upAt {s : Sig} (Γ : Ctx s) (z : BVar s .var) (T : Ty s) : Fu (Above Γ T) :
 abbrev LetTy {s : Sig} (Γ : Ctx s) (T0 : Ty s) (V : Ty (s,x)) : Type :=
   (U : Ty s) × Sub (Γ.cons T0) V U.weaken
 
-/-- Strengthen an approximation that no longer mentions the binder.  If it
-still mentions it, the answer is `⊤`, which is always above. -/
+/-- Strengthen an approximation that does not mention the binder.  If it does,
+the answer is `⊤`, which is always above. -/
 def strengthenAbove {s : Sig} {Γ : Ctx s} {T0 : Ty s} {V : Ty (s,x)} (r : Above (Γ.cons T0) V) :
     LetTy Γ T0 V :=
   match tyStrengthenW? r.1 with
@@ -206,7 +208,7 @@ def unlessOut {α : Type} (a : α) : Fu (Option α) := fun t =>
   if t.out then (none, t) else (some a, t)
 
 /-- The result type of a `let` without annotation: the body's type `V`,
-approximated from above until it no longer mentions the binder, then
+approximated from above until it does not mention the binder, then
 strengthened.  `none` if the tank ends marked. -/
 def avoidLet {s : Sig} (Γ : Ctx s) (T0 : Ty s) (V : Ty (s,x)) : Fu (Option (LetTy Γ T0 V)) :=
   Fu.bind (upAt (Γ.cons T0) .here V) fun r => unlessOut (strengthenAbove r)
@@ -449,8 +451,8 @@ def avoidAt {s : Sig} (Γ : Ctx s) (T0 : Ty s) (V : Ty (s,x)) (n : Nat := defaul
   (r.1.map (·.1), r.2)
 
 -- E2: the outer `let` binds `x = ν(x. {A = ∀(y : x.A) x.A} ∧ {a = …})` and its body has the type
--- `x.A`.  The alias cycle is cut once at each polarity, so the avoided type is a function type
--- `∀(y : ∀(z : ⊤) ⊥) ⊤`.  Strengthening alone fails on `x.A`.  It uses 34 units.
+-- `x.A`.  The alias cycle is cut once at each polarity, so the avoided type is
+-- `∀(y : ∀(z : ⊤) ⊥) ⊤`.  Strengthening alone fails on `x.A`.
 example : avoidAt Ctx.nil (.mu E2Self) (.sel (.var .here) lA) =
     (some (.all (.all .top .bot) .top), ⟨defaultFuel - 34, false⟩) := by decide +kernel
 
@@ -459,11 +461,11 @@ def GSelf : Ty ([] : Sig) :=
   .mu (.and (.and (.typ lA .bot (.fld la .top)) (.typ lA .bot (.fld lb .top))) (.fld lv (.sel (.var .here) lA)))
 
 -- G: the body `z.v` has the type `z.A`, and `z` has two members `A`.  Avoidance meets their upper
--- bounds, `{a : ⊤} ∧ {b : ⊤}`, as the compiler does.  It uses 22 units.
+-- bounds, `{a : ⊤} ∧ {b : ⊤}`, as the compiler does.
 example : avoidAt Ctx.nil GSelf (.sel (.var .here) lA) =
     (some (.and (.fld la .top) (.fld lb .top)), ⟨defaultFuel - 22, false⟩) := by decide +kernel
 
--- E8: a body type that does not mention the binder is strengthened, at one unit.
+-- E8: a body type that does not mention the binder is strengthened.
 example : avoidAt E8Ctx1 (E8Ref .here) (.sel (.var (.there .here)) lA) =
     (some (.sel (.var .here) lA), ⟨defaultFuel - 1, false⟩) := by decide +kernel
 
@@ -473,11 +475,11 @@ example : avoidAt Ctx.nil (.mu E2Self) (.sel (.var .here) lA) 4 = (none, ⟨0, t
 example : avoidAt E8Ctx1 (E8Ref .here) (.sel (.var (.there .here)) lA) 0 = (none, ⟨0, true⟩) := by
   decide +kernel
 
-/-- E2's inner `let`, at `x.A`, as the vanilla examples derive it. -/
+/-- E2's inner `let`, at `x.A`, derived as in the DOT-MNF examples. -/
 def E2inner : HasTy E2Ctx1 (.let (.proj .here la) (.app .here .here)) (.sel (.var .here) lA) :=
   .let E2proj E2app
 
-/-- E2's avoidance, run at the default fuel. -/
+/-- E2's avoidance at the default fuel. -/
 def E2avoid : Option (LetTy Ctx.nil (.mu E2Self) (.sel (.var .here) lA)) :=
   (avoidLet Ctx.nil (.mu E2Self) (.sel (.var .here) lA) ⟨defaultFuel, false⟩).1
 

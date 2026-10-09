@@ -6,19 +6,21 @@ import Coercions.DotMNF.Examples
 # Member lookup on the tank
 
 The lookup asks which types a variable has that carry a given member.  It
-follows the compiler's `findMember` (`Types.scala:820-870`).  A recursive type
-is opened at the variable (`goRec`, `Types.scala:875-896`).  Both operands of
-an intersection are searched (`goAnd`, `Types.scala:994-995`).  A selection
-continues in the upper bounds of the members of its prefix
-(`Types.scala:5720`).  An atom that fits the key is an answer.  `⊥` has no
-members (`Types.scala:827-829`).
+follows `Type.findMember` in core/Types.scala, in these cases.
+
+* A recursive type is opened at the variable (`goRec`).
+* Both operands of an intersection are searched (`goAnd`).
+* A selection continues in the upper bounds of the members of its prefix
+  (`TypeBounds.underlying`).
+* An atom that fits the key is an answer.
+* `⊥` has no members.
 
 The lookup draws on the tank of `Fuel.lean`.  Each key costs `cost` of the
-number of keys pending along the branch.  It keeps its own pending keys, and a
-key that repeats along a branch has no answer, which is the compiler's cyclic
-reference.  The compiler merges two members of one name (`Types.scala:5759`).
-DOT-MNF has no rule for that merge, so the lookup returns every member it
-finds, in the order it finds them, and the caller tries each.
+number of keys pending along the branch.  A key that repeats along a branch has
+no answer, which is the compiler's cyclic reference.  The compiler merges two
+members of one name (`TypeBounds.&`).  DOT-MNF has no rule for that merge, so
+the lookup returns every member it finds, in the order it finds them, and the
+caller tries each.
 
 Each answer carries the derivation that takes the variable from the view it
 started at to the type found.  So the lookup has no soundness theorem to
@@ -45,10 +47,7 @@ def cost (k : Nat) : Nat := k + 1
 theorem costOk : CostOk cost := costOk_succ
 
 /-- The fuel every entry point starts from.  It is the largest power of two at
-which the interpreter runs every divergent goal of `Limit.lean` to the end.  At
-`2 ^ 16` the search for Pierce's divergence nests deep enough to overflow the
-interpreter's stack.  The kernel needs about 3.5 s for such a goal at this fuel.
-The alias chains of `Sub.lean` use at most 625 units. -/
+which the interpreter runs every divergent goal of `Limit.lean` to the end. -/
 def defaultFuel : Nat := 2 ^ 15
 
 /-- A variable at a type. -/
@@ -85,16 +84,14 @@ def Found.typ? {s : Sig} {Γ : Ctx s} {x : BVar s .var} {V : Ty s} (A : Label)
 /-- A lookup key in full: the variable, the view it is searched at, the key. -/
 abbrev LKey (s : Sig) := BVar s .var × Ty s × Key
 
-/-- Member lookup on demand, the cases of `findMember`'s `go`
-(`Types.scala:820-870`).  `μ` is opened at the variable (`goRec`,
-`Types.scala:875-896`).  Both operands of `∧` are searched, the left one first
-(`goAnd`, `Types.scala:994-995`).  A selection continues in the upper bounds of
-the prefix's members (`Types.scala:5720`).  A key that repeats along a branch
-has no answer, the compiler's cyclic reference.  `⊥` has no members
-(`Types.scala:827-829`).  A key costs `cost` of the number of keys pending.
-A short tank answers `[]` and is marked.  Every recursive call starts from the
-tank the previous one left.  An answer that ends with the tank marked is
-returned as it is, and the caller treats it as a failure. -/
+/-- Member lookup on demand, the cases of `findMember`'s `go`.  `μ` is opened
+at the variable (`goRec`).  Both operands of `∧` are searched, the left one
+first (`goAnd`).  A selection continues in the upper bounds of the prefix's members.
+A key that repeats along a branch has no answer, the compiler's cyclic
+reference.  `⊥` has no members.  A key costs `cost` of the number of keys
+pending.  A short tank answers `[]` and is marked.  Every recursive call starts
+from the tank the previous one left.  An answer that ends with the tank marked
+is returned as it is, and the caller treats it as a failure. -/
 def look {s : Sig} (Γ : Ctx s) : Nat → List (LKey s) → (x : BVar s .var) → (V : Ty s) → Key →
     Fu (List (Found Γ x V))
   | 0, _, _, _, _ => fun t => ([], { t with out := true })
@@ -244,13 +241,13 @@ example : (lookAt E9CtxG .here .fn).2.out = false := by decide +kernel
 -- P4: the field `a` four steps down `x.A`'s upper bound.
 example : (lookAt P4Ctx .here (.fld la)).1 = [.fld la (.sel (.var .here) lB)] := by decide +kernel
 example : (lookAt P4Ctx .here (.fld la)).2.out = false := by decide +kernel
--- E7: the field `a` through the alias cycle `x.A = x.B`, `x.B = x.A`.  The key repeats, so there
--- is no answer, and the tank stays unmarked.
+-- E7: the field `a` through the alias cycle `x.A = x.B`, `x.B = x.A`.  The key repeats, so
+-- there is no answer and the tank stays unmarked.
 example : (look E7Ctx defaultFuel [] .here (.sel (.var .here) lA) (.fld la)
     ⟨defaultFuel, false⟩).2.out = false := by decide +kernel
 example : (look E7Ctx defaultFuel [] .here (.sel (.var .here) lA) (.fld la)
     ⟨defaultFuel, false⟩).1.length = 0 := by decide +kernel
--- A lookup at fuel 1 runs out on P4.
+-- P4 at fuel 1: the tank is marked.
 example : (lookAt P4Ctx .here (.fld la) 1).2.out = true := by decide +kernel
 -- The members of `x` at `A` in E8: one, `⊥ .. {a : ⊤}`.
 example : ((decls E8Ctx2 defaultFuel (.there .here) lA ⟨defaultFuel, false⟩).1.map

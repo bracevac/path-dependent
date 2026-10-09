@@ -1,7 +1,7 @@
 import Coercions.Paths.Frontend.Look
 
 /-!
-# Subtyping on paths in the compiler's case order
+# Subtyping on paths
 
 The algorithm decides three goals.
 
@@ -12,60 +12,61 @@ The algorithm decides three goals.
 - `var x V T` asks the same of the variable `x` as a term.  It is answered by
   a map between `HasTy` derivations.
 
-The version has three judgments where the compiler has one.  `Sub` has no rule
+The calculus has three judgments where the compiler has one.  `Sub` has no rule
 for a singleton.  Every singleton rule is a rule of `PathTy`, and `HasTy`
 reads `PathTy` only at a singleton goal (`HasTy.sngl`).  So a singleton on the
 left is widened in a `path` goal only, never in a `sub` or `var` goal.
 
-Each goal tries its alternatives in the compiler's order: identity
-(`TypeComparer.scala:1626`), then `firstTry` on the right (`:300`), then
-`secondTry` on the left (`:434`), then `thirdTry` on the right (`:652`), then
-`fourthTry` on the left (`:981`).  An intersection on the right is final, as
-in `firstTry` (`:401-402`).  Each alternative is a function of its own and
-emits the version's own derivation.  The middle of every transitivity step is
-a bound of a member, an operand of an intersection or a declared type of a
-path, read off a type the algorithm already holds.  No middle is chosen from
-the context.  Where the compiler tries two alternatives with `either`
-(`:2016`), each is tried in turn.
+Each goal tries its alternatives in the order of `TypeComparer.recur`.  First
+comes identity, then `firstTry` on the right, `secondTry` on the left,
+`thirdTry` on the right and `fourthTry` on the left.  An intersection on the
+right is final, as in `firstTry`.  Each alternative is a function of its own
+and emits the calculus's own derivation.  The middle of every transitivity
+step is read off a type the algorithm already holds: a bound of a member, an
+operand of an intersection or a declared type of a path.  No middle is chosen
+from the context.  Where the compiler tries two alternatives with `either`,
+each is tried in turn.
 
 A singleton `q.type` in the view of a path `p` is widened to each declared
 type of `q`, and the path `p` is kept, by `PathTy.snglTrans`.  So a recursive
 type reached through the singleton is opened at `p`, as `fixRecs` opens it at
-the anchor (`TypeComparer.scala:743-744,1990-2005`) and as `goRec` opens it at
-the prefix of the lookup (`Types.scala:894`).
+the anchor and as `goRec` of `Types.findMember` opens it at the prefix of the
+lookup.
 
-The forms the version forces to differ from the compiler are these.  The
-compiler widens a singleton on the left in any goal
-(`TypeComparer.scala:1050-1058`).  Here only a `path` goal widens it.  The
-compiler relates `p.A` and `q.A` through `isSubPrefix` for an abstract `A`
-(`:336-345`).  The version has no rule for it.  The compiler compares two
-recursive types through their parents (`:738-740`), and a recursive type on
-the left by its parent (`:1063-1064`).  The version relates two recursive
-types through the abstract view `Sub.mu`, and opens a recursive type on one
-side only at a path.  The compiler merges two members of one name
-(`Types.scala:5759`, `hasMatchingMember` at `TypeComparer.scala:2235`).  The
-version has no union, so each member is tried.  `matchAbstractTypeMember`
-(`:2251-2261`) has no rule in the version and is left out.  The compiler
-gives up after a failed alias (`:318-319`).  Here every alternative is tried,
-which only adds successes.
+The calculus differs from the compiler in these places.
+
+- The compiler widens a singleton on the left in any goal (`fourthTry`, case
+  `SingletonType`).  Here only a `path` goal widens it.
+- The compiler relates `p.A` and `q.A` through `isSubPrefix` for an abstract
+  `A` (`firstTry`, `compareNamed`).  The calculus has no rule for it.
+- The compiler compares two recursive types through their parents (`thirdTry`,
+  `compareRec`).  It compares a recursive type on the left by its parent
+  (`fourthTry`).  The calculus relates two recursive types through the abstract
+  view `Sub.mu`.  It opens a recursive type on one side only at a path.
+- The compiler merges two members of one name (`TypeBounds.&`,
+  `hasMatchingMember`).  The calculus has no rule for that, so each member is
+  tried.
+- `matchAbstractTypeMember` has no rule in the calculus and is left out.
+- The compiler gives up after a failed alias (`firstTry`, `canDropAlias`).
+  Here every alternative is tried, which only adds successes.
 
 A selection on the right skips a member whose lower bound is `⊥`, as
-`isSubApproxHi` fails at once there (`TypeComparer.scala:1606-1607`).  A left
-side that is `⊥` has already succeeded by the rule for `⊥`.
+`isSubApproxHi` fails at once there.  A left side that is `⊥` has already
+succeeded by the rule for `⊥`.
 
-Member lookups go through `lookP`, `startP` and `declsP` of `Look.lean`.
-Their structural index is the fuel left in the tank.  Each lookup level draws
-at least one unit, so the index never runs out before the tank does.  A lookup
-at a larger index does the same, so the lookups at the tank's own index are
-framed (`lookF_framed`, `startF_framed`, `declsF_framed`).
+Member lookups go through `lookP`, `startP` and `declsP` of `Look.lean`.  Their
+structural index is the fuel left in the tank.  Each lookup level draws at
+least one unit, so the index never runs out before the tank does.  A lookup at
+a larger index does the same, so the lookups at the tank's own index are framed
+(`lookF_framed`, `startF_framed`, `declsF_framed`).
 
-The run is the generic one of `Fuel.lean`, at the cost `cost`: one tank for
-the whole run, the goals pending along the branch, and a goal that repeats
-exactly fails.  A goal holds its context, so a goal under a new binder is
-never cut by a goal outside it.  `sub?`, `path?` and `var?` start a run from a
-full tank and return the answer with the tank left.  `subF`, `pathF` and
-`varF` run on a tank they are handed, for a caller that threads one tank
-through many goals.
+The run is the generic one of `Fuel.lean`, at the cost `cost`.  There is one
+tank for the whole run and one list of the goals pending along the branch.  A
+goal that repeats exactly fails.  A goal holds its context, so a goal under a
+new binder is never cut by a goal outside it.  `sub?`, `path?` and `var?`
+start a run from a full tank and return the answer with the tank left.  `subF`,
+`pathF` and `varF` run on a tank they are handed, for a caller that threads one
+tank through many goals.
 
 Every definition is structural, so the kernel evaluates the algorithm.  The
 checks at the end of the module run it on the examples by `decide +kernel`.
@@ -204,20 +205,19 @@ section SubAlts
 
 variable {s : Sig} {Γ : Ctx s}
 
-/-- Identity, `TypeComparer.scala:1626`. -/
+/-- Identity, `TypeComparer.recur`. -/
 def sRefl (S T : Ty s) : Option (Sub Γ S T) :=
   if h : S = T then some (h ▸ Sub.refl) else none
 
-/-- `Any` on the right, `thirdTryNamed`, `TypeComparer.scala:616`. -/
+/-- `Any` on the right, `thirdTryNamed`. -/
 def sTop (S T : Ty s) : Option (Sub Γ S T) :=
   if h : T = .top then some (h ▸ Sub.top) else none
 
-/-- `Nothing` on the left, `secondTry`, `TypeComparer.scala:444-445`. -/
+/-- `Nothing` on the left, `secondTry`. -/
 def sBot (S T : Ty s) : Option (Sub Γ S T) :=
   if h : S = .bot then some (h ▸ Sub.bot) else none
 
-/-- An intersection on the right, `firstTry`, `TypeComparer.scala:401-402`.
-Both operands must hold. -/
+/-- An intersection on the right, `firstTry`.  Both operands must hold. -/
 def sAndR (r : Rec Γ) (S : Ty s) : (T : Ty s) → Fu (Option (Sub Γ S T))
   | .and T1 T2 =>
       bindO (r (.sub S T1)) fun e1 =>
@@ -225,9 +225,8 @@ def sAndR (r : Rec Γ) (S : Ty s) : (T : Ty s) → Fu (Option (Sub Γ S T))
   | _ => Fu.ret none
 
 /-- A selection on the right, through the lower bound of a member,
-`thirdTryNamed`, `TypeComparer.scala:601`.  Each member is tried.  A member
-whose lower bound is `⊥` is skipped, as `isSubApproxHi` fails at once there
-(`TypeComparer.scala:1606-1607`). -/
+`thirdTryNamed`.  Each member is tried.  A member whose lower bound is `⊥` is
+skipped, as `isSubApproxHi` fails at once there. -/
 def sSelLo (r : Rec Γ) (S : Ty s) : (T : Ty s) → Fu (Option (Sub Γ S T))
   | .sel q A =>
       Fu.bind (declsF Γ q A) fun ms =>
@@ -237,14 +236,13 @@ def sSelLo (r : Rec Γ) (S : Ty s) : (T : Ty s) → Fu (Option (Sub Γ S T))
   | _ => Fu.ret none
 
 /-- Two members of one shape, `thirdTry`.  Fields and type members are
-refinements, compared by `compareRefinedSlow` and `hasMatchingMember`
-(`TypeComparer.scala:659-663,2235`), a stable field below a field as a `val`
-below a `def` (`:2307-2311`), bounds by `compareTypeBounds` (`:864-868`).
-Function types have contravariant parameters, by `isSubInfo` (`:2291-2301`),
-and the codomains are compared under the new binder at the second domain.
-Two recursive types go through the abstract view `Sub.mu`, where the compiler
-compares the parents (`:736-740`).  The walker `subDecl?` asks this oracle at
-each self-free step. -/
+refinements, compared by `compareRefinedSlow` and `hasMatchingMember`.  A stable
+field below a field is a `val` below a `def`, as in `hasMatchingMember`.  Bounds
+go by `compareTypeBounds`.  Function types have contravariant parameters, by
+`isSubInfo`, and the codomains are compared under the new binder at the second
+domain.  Two recursive types go through the abstract view `Sub.mu`, where the
+compiler compares the parents (`compareRec`).  The walker `subDecl?` asks this
+oracle at each self-free step. -/
 def sStruct (r : Rec Γ) (rAll : RecAll Γ) : (S T : Ty s) → Fu (Option (Sub Γ S T))
   | .fld a S', .fld b T' =>
       if h : a = b then mapO (r (.sub S' T')) (subFld h) else Fu.ret none
@@ -268,8 +266,8 @@ def sStruct (r : Rec Γ) (rAll : RecAll Γ) : (S T : Ty s) → Fu (Option (Sub �
       else Fu.ret none
   | _, _ => Fu.ret none
 
-/-- A selection on the left, through the upper bound of a member, `fourthTry`,
-`TypeComparer.scala:982-992`.  Each member is tried. -/
+/-- A selection on the left, through the upper bound of a member,
+`fourthTry`.  Each member is tried. -/
 def sSelHi (r : Rec Γ) (T : Ty s) : (S : Ty s) → Fu (Option (Sub Γ S T))
   | .sel q B =>
       Fu.bind (declsF Γ q B) fun ms =>
@@ -277,8 +275,8 @@ def sSelHi (r : Rec Γ) (T : Ty s) : (S : Ty s) → Fu (Option (Sub Γ S T))
           mapO (r (.sub m.hi T)) fun e => Sub.trans (Sub.selUpper m.d) e) ms
   | _ => Fu.ret none
 
-/-- An intersection on the left, `fourthTry`, `TypeComparer.scala:1077-1099`.
-The left operand first, then the right one, as `either` does (`:2016`). -/
+/-- An intersection on the left, `fourthTry`.  The left operand first,
+then the right one, as `either` does. -/
 def sAndL (r : Rec Γ) (T : Ty s) : (S : Ty s) → Fu (Option (Sub Γ S T))
   | .and S1 S2 =>
       Fu.orElse (mapO (r (.sub S1 T)) fun e => Sub.trans Sub.and1 e) fun _ =>
@@ -311,28 +309,26 @@ section PathAlts
 
 variable {s : Sig} {Γ : Ctx s}
 
-/-- Identity, `TypeComparer.scala:1626`. -/
+/-- Identity, `TypeComparer.recur`. -/
 def pRefl (p : Path s) (V T : Ty s) : Option (PathFn Γ p V T) :=
   if h : V = T then some (fun d => h ▸ d) else none
 
-/-- The path's own singleton, identity on `p.type`, `TypeComparer.scala:1626`,
-by `PathTy.snglRefl`. -/
+/-- The path's own singleton, identity on `p.type`, by
+`PathTy.snglRefl`. -/
 def pSelf (p : Path s) (V T : Ty s) : Option (PathFn Γ p V T) :=
   if h : T = .sngl p then some (fun d => h ▸ PathTy.snglRefl d) else none
 
-/-- An intersection on the right, `firstTry`, `TypeComparer.scala:401-402`,
-by `PathTy.andI`. -/
+/-- An intersection on the right, `firstTry`, by `PathTy.andI`. -/
 def pAndR (r : Rec Γ) (p : Path s) (V : Ty s) : (T : Ty s) → Fu (Option (PathFn Γ p V T))
   | .and T1 T2 =>
       bindO (r (.path p V T1)) fun f1 =>
         mapO (r (.path p V T2)) fun f2 d => PathTy.andI (f1 d) (f2 d)
   | _ => Fu.ret none
 
-/-- Two singletons of one stable field, `firstTry`: `compareNamed` with one
-member compares the prefixes (`TypeComparer.scala:336-340`, `isSubPrefix` at
-`:1164-1190`).  By `PathTy.snglSel`, `p'.a` has `(q'.a).type` when `p'` has
-`q'.type` and a stable field `a`.  The prefix is checked from each of its
-declared types. -/
+/-- Two singletons of one stable field, `firstTry`.  `compareNamed` compares
+the prefixes (`isSubPrefix`).  By `PathTy.snglSel`, `p'.a` has `(q'.a).type`
+when `p'` has `q'.type` and a stable field `a`.  The prefix is checked from each
+of its declared types. -/
 def pPre (r : Rec Γ) : (p : Path s) → (V T : Ty s) → Fu (Option (PathFn Γ p V T))
   | .sel p' b, _, .sngl (.sel q' a) =>
       if h : a = b then
@@ -345,10 +341,9 @@ def pPre (r : Rec Γ) : (p : Path s) → (V T : Ty s) → Fu (Option (PathFn Γ 
   | _, _, _ => Fu.ret none
 
 /-- A singleton on the right whose path is itself declared at a singleton,
-`fourthTry`, `comparePaths` (`TypeComparer.scala:1037-1047`).  If `q` has
-`q'.type`, then `p.type <: q.type` follows from `p.type <: q'.type`.
-`PathTy.snglSym` and `PathTy.snglInv` turn `q : q'.type` into `q' : q.type`,
-and `PathTy.snglTrans` composes. -/
+`fourthTry`, `comparePaths`.  If `q` has `q'.type`, then `p.type <: q.type`
+follows from `p.type <: q'.type`.  `PathTy.snglSym` and `PathTy.snglInv` turn
+`q : q'.type` into `q' : q.type`, and `PathTy.snglTrans` composes. -/
 def pAlias (r : Rec Γ) (p : Path s) (V : Ty s) : (T : Ty s) → Fu (Option (PathFn Γ p V T))
   | .sngl q =>
       Fu.bind (startF Γ q) (Fu.firstSome fun w =>
@@ -360,9 +355,8 @@ def pAlias (r : Rec Γ) (p : Path s) (V : Ty s) : (T : Ty s) → Fu (Option (Pat
           | none => Fu.ret none))
   | _ => Fu.ret none
 
-/-- A recursive type on the right, `thirdTry`, `TypeComparer.scala:742-744`.
-`fixRecs` (`:1990-2005`) opens the body at the anchor, the path, and so does
-`PathTy.recI`. -/
+/-- A recursive type on the right, `thirdTry`.  `fixRecs` opens the body at the
+anchor, the path, and so does `PathTy.recI`. -/
 def pMuR (r : Rec Γ) (p : Path s) (V : Ty s) : (T : Ty s) → Fu (Option (PathFn Γ p V T))
   | .mu B =>
       if hd : Ty.Decl B then mapO (r (.path p V (B.substPath p))) fun f d => PathTy.recI (f d) hd
@@ -370,8 +364,8 @@ def pMuR (r : Rec Γ) (p : Path s) (V : Ty s) : (T : Ty s) → Fu (Option (PathF
   | _ => Fu.ret none
 
 /-- A selection on the right, through the lower bound of a member, the path
-kept, `thirdTryNamed`, `TypeComparer.scala:601`.  Each member is tried.  A
-member whose lower bound is `⊥` is skipped (`TypeComparer.scala:1606-1607`). -/
+kept, `thirdTryNamed`.  Each member is tried.  A member whose lower bound is `⊥`
+is skipped, as `isSubApproxHi` fails at once there. -/
 def pSelLo (r : Rec Γ) (p : Path s) (V : Ty s) : (T : Ty s) → Fu (Option (PathFn Γ p V T))
   | .sel q A =>
       Fu.bind (declsF Γ q A) fun ms =>
@@ -380,24 +374,24 @@ def pSelLo (r : Rec Γ) (p : Path s) (V : Ty s) : (T : Ty s) → Fu (Option (Pat
           else mapO (r (.path p V m.lo)) fun f d => PathTy.sub (f d) (Sub.selLower m.d)) ms
   | _ => Fu.ret none
 
-/-- A recursive type in the view, opened at the path, as `findMember`'s
-`goRec` opens it at the prefix (`Types.scala:875-896`), by `PathTy.recE`. -/
+/-- A recursive type in the view, opened at the path, as `goRec` of
+`Types.findMember` opens it at the prefix, by `PathTy.recE`. -/
 def pMuL (r : Rec Γ) (p : Path s) (T : Ty s) : (V : Ty s) → Fu (Option (PathFn Γ p V T))
   | .mu B =>
       if hd : Ty.Decl B then mapO (r (.path p (B.substPath p) T)) fun f d => f (PathTy.recE d hd)
       else Fu.ret none
   | _ => Fu.ret none
 
-/-- An intersection in the view, `fourthTry`, `TypeComparer.scala:1077-1099`.
-The left operand first, then the right one, as `either` does (`:2016`). -/
+/-- An intersection in the view, `fourthTry`.  The left operand first, then
+the right one, as `either` does. -/
 def pAndL (r : Rec Γ) (p : Path s) (T : Ty s) : (V : Ty s) → Fu (Option (PathFn Γ p V T))
   | .and V1 V2 =>
       Fu.orElse (mapO (r (.path p V1 T)) fun f d => f (PathTy.sub d Sub.and1)) fun _ =>
         mapO (r (.path p V2 T)) fun f d => f (PathTy.sub d Sub.and2)
   | _ => Fu.ret none
 
-/-- A selection in the view, through the upper bound of a member, `fourthTry`,
-`TypeComparer.scala:982-992`.  Each member is tried. -/
+/-- A selection in the view, through the upper bound of a member,
+`fourthTry`.  Each member is tried. -/
 def pSelHi (r : Rec Γ) (p : Path s) (T : Ty s) : (V : Ty s) → Fu (Option (PathFn Γ p V T))
   | .sel q B =>
       Fu.bind (declsF Γ q B) fun ms =>
@@ -406,10 +400,9 @@ def pSelHi (r : Rec Γ) (p : Path s) (T : Ty s) : (V : Ty s) → Fu (Option (Pat
   | _ => Fu.ret none
 
 /-- A singleton `q.type` in the view, `fourthTry`: the singleton widened to its
-underlying type (`TypeComparer.scala:1050-1058`).  Each declared type of `q`
-is tried, and the path `p` is kept, by `PathTy.snglTrans`.  So a recursive
-type found there is opened at `p`, as `fixRecs` opens it at the anchor
-(`TypeComparer.scala:743-744`). -/
+underlying type (`tp1widened`).  Each declared type of `q` is tried, and the
+path `p` is kept, by `PathTy.snglTrans`.  So a recursive type found there is
+opened at `p`, as `fixRecs` opens it at the anchor. -/
 def pSnglL (r : Rec Γ) (p : Path s) (T : Ty s) : (V : Ty s) → Fu (Option (PathFn Γ p V T))
   | .sngl q =>
       Fu.bind (startF Γ q) (Fu.firstSome fun w =>
@@ -417,7 +410,7 @@ def pSnglL (r : Rec Γ) (p : Path s) (T : Ty s) : (V : Ty s) → Fu (Option (Pat
   | _ => Fu.ret none
 
 /-- An atom of the view against the goal, `fourthTry`: the widened singleton
-compared as a type (`TypeComparer.scala:1058`), by `PathTy.sub`. -/
+compared as a type (`tp1widened`), by `PathTy.sub`. -/
 def pAtom (r : Rec Γ) (p : Path s) (V T : Ty s) : Fu (Option (PathFn Γ p V T)) :=
   if isAtom V then mapO (r (.sub V T)) fun e d => PathTy.sub d e else Fu.ret none
 
@@ -450,7 +443,7 @@ section VarAlts
 
 variable {s : Sig} {Γ : Ctx s}
 
-/-- Identity, `TypeComparer.scala:1626`. -/
+/-- Identity, `TypeComparer.recur`. -/
 def vRefl (x : BVar s .var) (V T : Ty s) : Option (VarFn Γ x V T) :=
   if h : V = T then some (fun d => h ▸ d) else none
 
@@ -460,17 +453,15 @@ def vSngl (r : Rec Γ) (x : BVar s .var) (V : Ty s) : (T : Ty s) → Fu (Option 
   | .sngl q => mapO (r (.path (.var x) V (.sngl q))) fun f d => HasTy.sngl (f d.toPathTy)
   | _ => Fu.ret none
 
-/-- An intersection on the right, `firstTry`, `TypeComparer.scala:401-402`,
-by `HasTy.andI`. -/
+/-- An intersection on the right, `firstTry`, by `HasTy.andI`. -/
 def vAndR (r : Rec Γ) (x : BVar s .var) (V : Ty s) : (T : Ty s) → Fu (Option (VarFn Γ x V T))
   | .and T1 T2 =>
       bindO (r (.var x V T1)) fun f1 =>
         mapO (r (.var x V T2)) fun f2 d => HasTy.andI (f1 d) (f2 d)
   | _ => Fu.ret none
 
-/-- A recursive type on the right, `thirdTry`, `TypeComparer.scala:742-744`.
-`fixRecs` (`:1990-2005`) opens the body at the variable, and so does
-`HasTy.recI`. -/
+/-- A recursive type on the right, `thirdTry`.  `fixRecs` opens the body at the
+variable, and so does `HasTy.recI`. -/
 def vMuR (r : Rec Γ) (x : BVar s .var) (V : Ty s) : (T : Ty s) → Fu (Option (VarFn Γ x V T))
   | .mu B =>
       if hd : Ty.Decl B then mapO (r (.var x V (B.substVar x))) fun f d => HasTy.recI (f d) hd
@@ -478,9 +469,8 @@ def vMuR (r : Rec Γ) (x : BVar s .var) (V : Ty s) : (T : Ty s) → Fu (Option (
   | _ => Fu.ret none
 
 /-- A selection on the right, through the lower bound of a member, the
-variable kept, `thirdTryNamed`, `TypeComparer.scala:601`.  Each member is
-tried.  A member whose lower bound is `⊥` is skipped
-(`TypeComparer.scala:1606-1607`). -/
+variable kept, `thirdTryNamed`.  Each member is tried.  A member whose lower
+bound is `⊥` is skipped, as `isSubApproxHi` fails at once there. -/
 def vSelLo (r : Rec Γ) (x : BVar s .var) (V : Ty s) : (T : Ty s) → Fu (Option (VarFn Γ x V T))
   | .sel q A =>
       Fu.bind (declsF Γ q A) fun ms =>
@@ -489,24 +479,24 @@ def vSelLo (r : Rec Γ) (x : BVar s .var) (V : Ty s) : (T : Ty s) → Fu (Option
           else mapO (r (.var x V m.lo)) fun f d => HasTy.sub (f d) (Sub.selLower m.d)) ms
   | _ => Fu.ret none
 
-/-- A recursive type in the view, opened at the variable, as `goRec` opens it
-(`Types.scala:875-896`), by `HasTy.recE`. -/
+/-- A recursive type in the view, opened at the variable, as `goRec` of
+`Types.findMember` opens it, by `HasTy.recE`. -/
 def vMuL (r : Rec Γ) (x : BVar s .var) (T : Ty s) : (V : Ty s) → Fu (Option (VarFn Γ x V T))
   | .mu B =>
       if hd : Ty.Decl B then mapO (r (.var x (B.substVar x) T)) fun f d => f (HasTy.recE d hd)
       else Fu.ret none
   | _ => Fu.ret none
 
-/-- An intersection in the view, `fourthTry`, `TypeComparer.scala:1077-1099`.
-The left operand first, then the right one, as `either` does (`:2016`). -/
+/-- An intersection in the view, `fourthTry`.  The left operand first, then
+the right one, as `either` does. -/
 def vAndL (r : Rec Γ) (x : BVar s .var) (T : Ty s) : (V : Ty s) → Fu (Option (VarFn Γ x V T))
   | .and V1 V2 =>
       Fu.orElse (mapO (r (.var x V1 T)) fun f d => f (HasTy.sub d Sub.and1)) fun _ =>
         mapO (r (.var x V2 T)) fun f d => f (HasTy.sub d Sub.and2)
   | _ => Fu.ret none
 
-/-- A selection in the view, through the upper bound of a member, `fourthTry`,
-`TypeComparer.scala:982-992`.  Each member is tried. -/
+/-- A selection in the view, through the upper bound of a member,
+`fourthTry`.  Each member is tried. -/
 def vSelHi (r : Rec Γ) (x : BVar s .var) (T : Ty s) : (V : Ty s) → Fu (Option (VarFn Γ x V T))
   | .sel q B =>
       Fu.bind (declsF Γ q B) fun ms =>
@@ -514,9 +504,8 @@ def vSelHi (r : Rec Γ) (x : BVar s .var) (T : Ty s) : (V : Ty s) → Fu (Option
           mapO (r (.var x m.hi T)) fun f d => f (HasTy.sub d (Sub.selUpper m.d))) ms
   | _ => Fu.ret none
 
-/-- An atom of the view against the goal, `fourthTry`
-(`TypeComparer.scala:1058`), by subsumption.  A singleton is an atom here, so
-the term is never widened through it. -/
+/-- An atom of the view against the goal, `fourthTry`, by subsumption.  A
+singleton is an atom here, so the term is never widened through it. -/
 def vAtom (r : Rec Γ) (x : BVar s .var) (V T : Ty s) : Fu (Option (VarFn Γ x V T)) :=
   if isVAtom V then mapO (r (.sub V T)) fun e d => HasTy.sub d e else Fu.ret none
 
@@ -683,10 +672,9 @@ dominate.  `run_frame`, `run_index` and `cut_complete` of `Fuel.lean` ask for
 both.  Each alternative is built from `Fu.ret`, `Fu.bind`, `Fu.orElse`,
 `Fu.firstSome`, `mapO`, `bindO`, the lookups `lookF`, `startF` and `declsF`,
 the walker `subDecl?` and tests.  So each has an agreement lemma and a
-dominance lemma, each a composition of the combinator lemmas.  A lookup asks
-no oracle, so it agrees with itself and dominates itself.  An alternative at
-one oracle agrees with itself, so it is framed.  The two facts of the step
-follow by cases on the goal. -/
+dominance lemma, composed from the combinator lemmas.  A lookup asks no oracle,
+so it agrees with itself and dominates itself.  An alternative that agrees with
+itself is framed.  The two facts of the step follow by cases on the goal. -/
 
 section Tests
 

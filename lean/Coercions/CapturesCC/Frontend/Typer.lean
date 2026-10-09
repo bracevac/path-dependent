@@ -6,33 +6,28 @@ import Coercions.CapturesCC.DotToFCdot.Prediction
 /-!
 # The typer
 
-The typer reads a use set and an answer off an annotated term and returns the
-derivation of `HasTy` (`lean/Coercions/CapturesCC/DotMNF/Typing.lean`) about
-the erasure of the term it typed.  Every result carries its derivation, so
-the result type is the soundness statement.
+The typer reads a use set and an answer off an annotated term and returns a
+`HasTy` derivation (`lean/Coercions/CapturesCC/DotMNF/Typing.lean`) about the
+erasure of the term it typed.  Every result carries its derivation, so the
+result type is the soundness statement.
 
-It runs on the tank of `Fuel.lean`.  One tank is threaded through every goal
-it asks: each subtyping, subcapturing, answer and variable goal of
-`Sub.lean`, each member lookup of `Look.lean`, and each avoidance of
-`Avoid.lean`.  So the fuel counts the work of the whole typing, and a goal
-that finds the tank short marks it.  A marked tank is the recursion limit.
-It is never a rejection by the rules.
+It runs on the tank of `Fuel.lean`.  One tank is threaded through every goal it
+asks: the goals of `Sub.lean`, the member lookups of `Look.lean` and the
+avoidances of `Avoid.lean`.  A goal that finds the tank short marks it.  A
+marked tank is the recursion limit and never a rejection by the rules.
 
 ## Least sets
 
-The typer computes the least use set the rules allow.  A variable declared
-at the empty set is used at the empty set and keeps its declared type.  Any
-other variable is used at `{x}` with its declared shape at `{x}`.  A value is
-used at `{}`.  Application, projection and unboxing join the sets of their
-premises with `capJoin`.  At the binders the set is a candidate followed by
-evidence.
+The typer computes the least use set the rules allow.  A variable declared at
+the empty set is used at the empty set and keeps its declared type.  Any other
+variable is used at `{x}` with its declared shape at `{x}`.  A value is used at
+`{}`.  Application, projection and unboxing join the sets of their premises
+with `capJoin`.  At the binders the set is a candidate followed by evidence.
 
 - `λ(x : T). t` drops `{x}` from the body's set, reads `{x.C}` at the upper
-  bound of `x`'s capture member, found by the lookup, and strengthens the
-  result past the arrow's binder and the body's root.
-- `let x = t in u` approximates the body's set from above (`avoidUses`):
-  `{x}` becomes the capture set of `t`'s type (`sc-var`) and `{x.C}` the
-  member's upper bound.
+  bound of `x`'s capture member, and strengthens the result past the arrow's
+  binder and the body's root.
+- `let x = t in u` approximates the body's set from above (`avoidUses`).
 - `let ⟨c, x⟩ = t in u` charges the bound of the witness, and the body's set
   without the payload and the witness.
 - `ν(z : S. d)` is typed by a least fixpoint on its capture set (`objFixF`).
@@ -41,75 +36,71 @@ evidence.
 
 A written type is decided to be in the notation of `CapturesCC` and then read
 where it is written.  A lambda domain reads `any` as the arrow's own capture
-binder (`Value.expand`).  A `let` annotation, an ascription and an object's
-self shape read `any` at `Ctx.reading`: the innermost scope root, or the
-program's platform set if there is none.  A `fresh` in the result of an arrow
-becomes an existential (`Ty.expandFresh`).  The platform set `ps` is an
-argument of the typer for that reason.
+binder (`Value.expand`).  A `let` annotation, an ascription and an object's self
+shape read `any` at `Ctx.reading`: the innermost scope root, or the program's
+platform set `ps` if there is none.  A `fresh` in the result of an arrow becomes
+an existential (`Ty.expandFresh`).
 
 ## Candidates
 
 Synthesis returns a list of candidates, each an elaborated term with its use
 set, its answer and its derivation.  The version has no rule that merges two
-members of one name, which the compiler does (`Types.scala:5759`).  So the
-typer keeps every choice instead.
+members of one name, as the compiler does with `TypeBounds.&`
+(`core/Types.scala`).  So the typer keeps every choice.
 
 - A variable has its first view.
 - `x y` tries every function type the lookup finds in `x`, and keeps each one
   whose domain, with the arrow's binder at `y`, `y` meets.  An argument that
   fails is adapted by box adaptation and bound by a `let`.  A function with a
   box and no function type is unboxed and bound by a `let`.
-- `x.a` returns every field at `a` the lookup finds.  A receiver with a box
-  and no such field is unboxed and bound by a `let`.
-- `let x = t in u` without annotation returns every pair of a candidate of
-  `t` and a candidate of `u`.  The body's type is approximated by a type free
-  of `x` (`avoidLet`), as the compiler's `avoid` does
-  (`TypeOps.scala:474-509,565-583`).  When the candidate of `t` has an
-  existential answer, the `let` becomes an unpacking: the body is renamed past
-  the witness binder, typed under the witness and the payload, and its answer
-  leaves their scope by `avoidEx`.
-- `let x : A = t in u` has the answer `A`.  The annotation binds.  The body is
-  checked against it and is never approximated.  An existential annotation is
+- `x.a` returns every field at `a` the lookup finds.  A receiver with a box and
+  no such field is unboxed and bound by a `let`.
+- `let x = t in u` without annotation returns every pair of a candidate of `t`
+  and a candidate of `u`.  The body's type is approximated by a type free of
+  `x` (`avoidLet`), as `TypeOps.avoid` does in the compiler.  When the
+  candidate of `t` has an existential answer, the `let` is an unpacking.  The
+  body is renamed past the witness binder, typed under the witness and the
+  payload, and its answer leaves their scope by `avoidEx`.
+- `let x : A = t in u` has the answer `A`.  The annotation binds: the body is
+  checked against it and never approximated.  An existential annotation is
   reached from the plain `let` by the answer goal, which packs it.
-- `□ x` is the box of the first view, and `C ⊸ x` unboxes every box the
-  lookup finds with the boxed set `C`, read off the first box when none is
-  written.
+- `□ x` is the box of the first view.  `C ⊸ x` unboxes every box the lookup
+  finds with the boxed set `C`, read off the first box when none is written.
 - `(t : T)` checks `t` against `T`.
 
 ## Checking
 
-Synthesis and checking are one function, `inferF`, with an optional goal.  It
-is structural on an index that starts at the size of the term.  Every
-recursive call is at a subterm, or at the body of a `let` renamed past the
-witness binder of an unpacking, which has the same size.  Checking a variable
-goes through box adaptation (`adaptVarF`), whose plain checking is the `var`
-goal.  That goal reaches the rules subsumption does not, `HasTy.andI` and
-`HasTy.recI`.  Three forms are checked against the goal's form first: a `λ`
-against a function type checks its body against the codomain, a `let` with
-no annotation checks its body against the goal, and a box value against a box
-goal checks the variable against the boxed type.  Every other candidate is
-moved to the goal by the answer goal.
+Synthesis and checking are one function, `inferF`, with an optional goal.  It is
+structural on an index that starts at the size of the term.  Every recursive
+call is at a subterm, or at the body of a `let` renamed past the witness binder
+of an unpacking, which has the same size.  Checking a variable goes through box
+adaptation (`adaptVarF`), whose plain checking is the `var` goal.  That goal
+reaches the rules subsumption does not, `HasTy.andI` and `HasTy.recI`.  Three
+forms are checked against the goal's form first.  A `λ` against a function type
+checks its body against the codomain.  A `let` with no annotation checks its
+body against the goal.  A box value against a box goal checks the variable
+against the boxed type.  Every other candidate is moved to the goal by the
+answer goal.
 
 ## The object rule
 
 `HasTy.obj` types the definitions of a literal under a class root and a self
 binder that holds the same definitions and the same capture set as the
 conclusion.  Box adaptation changes the definitions, and the set of a literal
-is known only after its definitions are typed.  `objFixF` iterates: it types
-the definitions under a binder at the current definitions and set, and stops
-when the elaborated definitions erase to the ones the binder holds and their
-use set is below the current set and the self variable.  Otherwise the next
-pass takes the elaborated definitions and the current set joined with the
-atoms of the set they used that the current set does not account for: the
-self variable dropped, its capture members read at their upper bounds, and
+is known only after its definitions are typed.  `objFixF` iterates.  It types
+the definitions under a binder at the current definitions and set.  It stops
+when the elaborated definitions erase to the ones the binder holds and their use
+set is below the current set and the self variable.  Otherwise the next pass
+takes the elaborated definitions and the current set joined with the atoms of
+the used set that the current set does not account for.  Those atoms have the
+self variable dropped, their capture members read at their upper bounds, and
 the class root strengthened away.  An atom is accounted for when the
-subcapturing goal from it to the current set has an answer.  This is the
-compiler's class use set, a variable grown until it is solved
-(`cc/CheckCaptures.scala:1501-1515`, `cc/CaptureSet.scala:880-912`).  A pass
-that goes on adds an atom the set does not account for, or other
-definitions (`objFix_progress`).  The number of passes is bounded by
-`objBound`, a size of the program.  A pass that reaches the bound marks the
-tank, so the bound never causes a rejection.
+subcapturing goal from it to the current set has an answer.  The compiler grows
+a class use set in the same way (`CheckCaptures.recheckClassDef`, with
+`CaptureSet.Var.addThisElem`).  A pass that goes on adds an atom the set does
+not account for, or other definitions (`objFix_progress`).  The number of passes
+is bounded by `objBound`, a size of the program.  A pass that reaches the bound
+marks the tank, so the bound never causes a rejection.
 
 ## Verdicts
 
@@ -117,25 +108,32 @@ tank, so the bound never causes a rejection.
 `synthIn?` and `synthTop?` read that as a verdict, the form `compile` returns.
 A candidate is `ok`.  A marked tank is `unknown`.  A rejection with the tank
 unmarked is `rejected` when a reason with its proof is found, and `unknown`
-otherwise.  `whyF` looks for the reason: a written type outside the notation
-(`anyNotOk`, `freshNotOk`), a body whose answer is an existential outside
-every scope (`existentialAtTop`), or a level escape at the goal an annotation
-or an ascription reached (`levelEscape`).  The last is found by walking the
-synthesized type and the written one as the arrow rule does, and is certified
-by `escape_rejected_at`, the contrapositive of `source_lvl_safety`.  It speaks
-of the goal the typer reached, not of every derivation of the program.
+otherwise.  `whyF` looks for the reason:
+- a written type outside the notation (`anyNotOk`, `freshNotOk`),
+- a body whose answer is an existential outside every scope
+  (`existentialAtTop`),
+- a level escape at the goal an annotation or an ascription reached
+  (`levelEscape`).
+
+The last is found by walking the synthesized type and the written one as the
+arrow rule does, and is certified by `escape_rejected_at`.  It speaks of the
+goal the typer reached, not of every derivation of the program.
 
 ## The theorems
 
-Every computation here is framed: it keeps a marked tank, never adds fuel,
-and does the same with more fuel (`synthF_frame`).  So a typing that ends
-unmarked gives the same answer at every larger fuel (`synthTop?_mono`,
+Every computation here is framed: it keeps a marked tank, never adds fuel, and
+does the same with more fuel (`synthF_frame`).  So a typing that ends unmarked
+gives the same answer at every larger fuel (`synthTop?_mono`,
 `synthTop?_stable`).  A rejection that ends unmarked is a rejection at every
-fuel.  The typer has no completeness theorem.  It does not find a derivation
-through a middle type the program does not write, as the compiler does not.
-It does not merge two members, so it tries each.  It does not find a
-judgment whose search needs more than the fuel.  And a lookup through a
-cyclic member is cut, as the compiler's cyclic reference.
+fuel.
+
+The typer has no completeness theorem.
+- It does not find a derivation through a middle type the program does not
+  write, as the compiler does not.
+- It does not merge two members, so it tries each.
+- It does not find a judgment whose search needs more than the fuel.
+- A lookup through a cyclic member is cut, as the compiler cuts a cyclic
+  reference.
 
 Every definition is structural, so the kernel evaluates the typer.  The checks
 at the end of the module type the example programs at `defaultFuel` by
@@ -673,8 +671,8 @@ def newAtomF {s : Sig} (Γ : Ctx s) (U : CaptureSet s) (a : CapAtom s) : Fu (Cap
 /-- The atoms of `D` that the set `U` does not account for.  An atom of `U` is
 skipped at no cost.  Any other atom `a` is kept when the subcapturing goal
 `{a} <: U` has no answer.  The compiler adds an element to a set variable
-only when the set does not account for it (`tryInclude` and `accountsFor`,
-`cc/CaptureSet.scala:197-198,251-272`). -/
+only when the set does not account for it (`CaptureSet.tryInclude` and
+`CaptureSet.accountsFor`). -/
 def newAtomsF {s : Sig} (Γ : Ctx s) (U D : CaptureSet s) : Fu (CaptureSet s) :=
   Fu.flatMapL (newAtomF Γ U) D
 
@@ -2155,7 +2153,7 @@ example : judgIn (platCtx.cons unitTy) (CaptureSet.weaken πc.set) P1ann =
 
 /-- Inside a scope the payload's type leaves an unpacking by the level rule:
 `let x = fc un in x` under a lambda is a file captured by that body's root,
-the compiler's local root absorbing a `fresh`. -/
+the compiler's local root absorbing a `fresh` (`Capability.subsumes`). -/
 example : (resolveIn Λc (((z1Names.consC "%").consC "%").cons "v") (cc% let x = fc un in x)).map
     (fun a => judgIn (Z1Ctx.body unitTy) (psBody ps2z) a) =
     some (some ([CapAtom.var (.there (.there (.there (.there .here)))), CapAtom.cvar (up fs2),
@@ -2261,8 +2259,8 @@ example : judgAt πc BXsrc =
 
 /-! ### Every field at every `let`, and the recursion limit
 
-RK at ten lets tries both fields at each and pays for it in the tank.  LP and
-PF end with the tank marked. -/
+RK at ten lets tries both fields at each let.  LP and PF end with the tank
+marked. -/
 
 example : (judgAt πc (RK 10)).1.isSome = true := by decide +kernel
 example : (judgAt πc (RK 10)).2 = ⟨defaultFuel - 8205, false⟩ := by decide +kernel

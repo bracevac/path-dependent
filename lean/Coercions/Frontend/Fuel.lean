@@ -2,28 +2,27 @@
 # The tank
 
 Every typer of the front ends runs on one fuel, the tank.  The tank is passed
-from each goal to the next, through the whole run, and not down a branch.  So
-it counts the work of a run, not the depth of one branch.  A goal that finds
-the tank short marks it.  A marked tank stays marked, so every later goal
-fails and the run ends.  A run that ends with the tank marked hit the
-recursion limit, which is what the compiler reports as a `RecursionOverflow`
-(`TypeErrors.scala:88,133-149`).  It is never a rejection by the rules.
+from each goal to the next through the whole run, so it counts the work of the
+run and not the depth of one branch.  A goal that finds the tank short marks
+it.  A marked tank stays marked, so every later goal fails and the run ends.
+A run that ends marked hit the recursion limit, the compiler's
+`RecursionOverflow` (core/TypeErrors.scala).  It is not a rejection by the
+rules.
 
-The run keeps the goals pending along the branch, and a goal that repeats one
-of them exactly fails.  This is the compiler's set of pending subtype goals
-(`TypeComparer.scala:60,259-298`).  The tank ends the loops that this cut
-does not catch, such as a descent that never repeats a goal.
+The run keeps the goals pending along a branch, and a goal that repeats one of
+them exactly fails.  This is the pending set of `TypeComparer.monitoredIsSubType`
+(core/TypeComparer.scala).  The tank ends the loops the cut misses, such as a
+descent that never repeats a goal.
 
-The module imports only Lean core.  It holds the tank, the computations that
-draw on it, a few combinators, the run with the cut and the run without it,
-and the three facts the front ends use.  A run that ends unmarked gives the
-same answer with more fuel (`run_frame`) and with a larger index
-(`run_index`).  The cut never loses a success of the run without it
-(`cut_complete`).  The last is the argument by a minimal derivation, in tank
-form.  A front end proves that its step is framed and dominated, from the
-combinator lemmas below, and the three facts follow for its run.
+The module imports only Lean core.  It defines the tank `Tank`, the
+computations `Fu` that draw on it, their combinators, `run` with the cut and
+`run'` without it.  For a step that is framed (`FrameF`) and dominated
+(`DomF`), three facts hold.  A run that ends unmarked gives the same answer
+with more fuel (`run_frame`) and with a larger index (`run_index`).  The cut
+loses no success of the run without it (`cut_complete`).  A front end proves
+`FrameF` and `DomF` for its step from the combinator lemmas.
 
-Every definition is structural, so the kernel evaluates a run.
+All definitions are structural, so the kernel evaluates a run.
 -/
 
 namespace Frontend.Fuel
@@ -43,8 +42,7 @@ abbrev Fu (α : Type) := Tank → α × Tank
 /-- Return a value and leave the tank alone. -/
 def Fu.ret {α : Type} (a : α) : Fu α := fun t => (a, t)
 
-/-- Run `c`, then `f` on its value, from the tank `c` leaves.  The match
-evaluates `c t` once. -/
+/-- Run `c`, then `f` on its value, from the tank `c` leaves. -/
 def Fu.bind {α β : Type} (c : Fu α) (f : α → Fu β) : Fu β := fun t =>
   match c t with
   | (a, t1) => f a t1
@@ -62,8 +60,7 @@ def Fu.orElse {α : Type} (a : Fu (Option α)) (b : Unit → Fu (Option α)) : F
     | (some x, t1) => (some x, t1)
     | (none, t1) => if t1.out then (none, t1) else b () t1
 
-/-- First success over a list, the compiler's `either` over finitely many
-alternatives. -/
+/-- First success over a list, in order. -/
 def Fu.firstSome {α β : Type} (f : α → Fu (Option β)) : List α → Fu (Option β)
   | [] => Fu.ret none
   | x :: xs => Fu.orElse (f x) (fun _ => Fu.firstSome f xs)
@@ -86,9 +83,9 @@ section Run
 
 variable {G : Type} [DecidableEq G] {R : G → Type}
 
-/-- The run.  `d` is the structural index, `P` the goals pending along the
-branch.  A goal costs `cost P.length`.  A goal that repeats exactly fails.  A
-step that ends with the tank marked answers `none`. -/
+/-- The run with the cut.  `d` is the structural index and `P` the goals pending
+along the branch.  A goal costs `cost P.length`.  A goal in `P` fails.  A step
+that ends marked answers `none`. -/
 def run (cost : Nat → Nat) (F : Step G R) : Nat → List G → Oracle G R
   | 0, _, _ => fun t => (none, { t with out := true })
   | d + 1, P, g => fun t =>
@@ -101,7 +98,7 @@ def run (cost : Nat → Nat) (F : Step G R) : Nat → List G → Oracle G R
             | (r, t2) => if t2.out then (none, t2) else (r, t2)
 termination_by structural d _ _ => d
 
-/-- The run without the cut, at depth `k`. -/
+/-- The run without the cut.  `k` is the number of pending goals. -/
 def run' (cost : Nat → Nat) (F : Step G R) : Nat → Nat → Oracle G R
   | 0, _, _ => fun t => (none, { t with out := true })
   | d + 1, k, g => fun t =>
@@ -116,14 +113,13 @@ end Run
 
 /-! ## Frames and dominance
 
-`Sim c c'` says that whenever `c` ends unmarked, `c'` gives the same answer
-from any tank with more fuel, and spends exactly as much.  `Framed c` adds that
-`c` keeps a marked tank and never adds fuel.  `Agree c c'` is the pair of
-frames with the relation between them.  `Dom m c c'` is the inexact relation:
-from a tank of at most `m` units on which `c` ends unmarked, `c'` gives the
-same answer from any tank with at least as much fuel, and leaves at least as
-much extra.  The run with the cut dominates the run without it, since a cut
-goal stops at once. -/
+`Sim c c'`: whenever `c` ends unmarked, `c'` gives the same answer with more
+fuel and spends as much.  `Framed c`: `Sim c c`, and `c` keeps a marked tank
+and never adds fuel.  `Agree c c'`: both are framed and `Sim c c'`.
+`Dom m c c'`: from a tank of at most `m` units on which `c` ends unmarked, `c'`
+answers as `c` does from any unmarked tank with at least as much fuel, and
+leaves at least as much extra.  The run with the cut dominates the run without
+it, since a cut goal stops at once. -/
 
 section Frames
 
@@ -509,16 +505,15 @@ end Combinators
 
 /-! ## One level of a run
 
-A level of either run draws, stops at a cut, and otherwise runs the step and
-answers `none` if the step ends with the tank marked.  The lemmas about a
-level are the lemmas about both runs. -/
+Both runs draw, stop at a cut, and otherwise run the step.  The lemmas about
+`node` serve both. -/
 
 section Node
 
 variable {α : Type}
 
 /-- One level of a run.  Draw `c` units, answer `none` at a cut, and otherwise
-run `k`, whose answer counts only if it ends with the tank unmarked. -/
+run `k`, whose answer counts only if it ends unmarked. -/
 def node (c : Nat) (cut : Prop) [Decidable cut] (k : Fu (Option α)) : Fu (Option α) := fun t =>
   match draw c t with
   | (false, t1) => (none, t1)
@@ -550,8 +545,7 @@ theorem node_go {t : Tank} (ht : t.out = false) (hc : c ≤ t.left) (hcut : ¬cu
     simp only at hk
     simp [hk]
 
-/-- A level that ends unmarked drew its units and either cut or ran its step to
-an unmarked end. -/
+/-- A level that ends unmarked drew its units, then cut or ran its step. -/
 theorem node_inv {t : Tank} {r : Option α} {t' : Tank} (h : node c cut k t = (r, t'))
     (ho : t'.out = false) :
     t.out = false ∧ c ≤ t.left ∧
@@ -828,14 +822,12 @@ theorem cut_hit (hF : FrameF F) {d k m : Nat} {Q : List G} {p : G} (hp : p ∈ Q
       simp only [true_and]
       exact ⟨hr.symm, by omega⟩
 
-/-- The cut never loses an answer, in dominance form.  The proof is strong
-induction on the fuel.  At a goal `g` the step receives a smaller tank `t1`.
-If `g` already answers without the cut from `t1`, one level deeper, the
-induction hypothesis at `t1` gives the answer with the cut, and the frame and
-the index lift it to `t`.  If not, `g` fails without the cut from every tank of
-at most `t1` units, so the cut at `g` loses nothing below `t1`, and the step
-carries the dominance over.  The case split is on an `Option`, so the proof
-makes no choice. -/
+/-- The cut loses no answer, in dominance form.  The proof is strong induction
+on the fuel.  At a goal `g` the step receives a smaller tank `t1`.  If `g`
+answers without the cut from `t1`, the induction hypothesis gives the answer
+with the cut, and the frame and the index lift it to `t`.  Otherwise `g` fails
+without the cut from every tank of at most `t1` units, so the cut at `g` loses
+nothing there, and the step carries the dominance over. -/
 theorem cut_dom (hc : CostOk cost) (hF : FrameF F) (hD : DomF F) :
     ∀ n d (P : List G) g m, m < n → (∀ p ∈ P, FailsUpTo cost F d p P.length m) →
       Dom m (run' cost F d P.length g) (run cost F d P g) := by

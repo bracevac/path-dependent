@@ -4,95 +4,96 @@ import Coercions.Captures.Frontend.Search
 /-!
 # Subtyping and subcapturing in the compiler's case order
 
-The algorithm decides three goals.  `shape S T` asks for `S <: T` on shapes
-and is answered by a `SubShape` derivation.  `cap C D` asks for `C <: D` on
-capture sets and is answered by a `Subcap` derivation.  `var x V T` asks that
-the variable `x`, already seen at the shape `V`, have the shape `T`.  It is
-answered by a map from the variable at `V` to the variable at `T`, at every
-use set and capture set.  This is the compiler's singleton on the left: it
-keeps `x` while it widens, so a recursive shape is opened at `x`
-(`TypeComparer.scala:742-744`, `fixRecs` at `:1990-2005`).  The rules
-`Rec-I`, `Rec-E`, `And-I` and `sub` with `Subcap.refl` keep both sets, so the
-walk over the shape never touches them.
+The algorithm decides three goals.
 
-A type is a shape with a capture set, and `Sub` has the one rule `capt`.  So
-two types compare by a set goal and a shape goal side by side, the set goal
-first, as the compiler compares a capturing type: `compareCaptures` before the
-parents (`TypeComparer.scala:548-566` on the left, `:876-907` on the right).
+- `shape S T` asks for `S <: T` on shapes.  The answer is a `SubShape`
+  derivation.
+- `cap C D` asks for `C <: D` on capture sets.  The answer is a `Subcap`
+  derivation.
+- `var x V T` asks that the variable `x`, already seen at the shape `V`, have
+  the shape `T`.  The answer is a map from the variable at `V` to the variable
+  at `T`, at every use set and capture set.
 
-Each goal tries its alternatives in the compiler's order: identity
-(`TypeComparer.scala:1626`), then `firstTry` on the right (`:300`), then
-`secondTry` on the left (`:434`), then `thirdTry` on the right (`:652`), then
-`fourthTry` on the left (`:981`).  An intersection on the right is final, as
-in `firstTry` (`:401-402`).  A set includes its elements one by one
-(`subCaptures`, `cc/CaptureSet.scala:307-320`), and an element is included
-by identity, by a capture member's bounds, or by its underlying set
-(`subsumes`, `cc/Capability.scala:809-897`, and `accountsFor`,
-`cc/CaptureSet.scala:251-267`).  Each alternative is a function of its own
-and emits the version's own derivation.  The middle of every transitivity
-step is a bound of a member, an operand of an intersection or the declared
-set of a variable, read off what the algorithm already holds.  No middle is
-chosen from the context.  Where the compiler tries two alternatives with
-`either` (`TypeComparer.scala:2016`), each is tried in turn.
+The `var` goal is the compiler's singleton on the left.  It keeps `x` while it
+widens, so a recursive shape is opened at `x` (`TypeComparer.thirdTry` for
+`RecType`, `TypeComparer.fixRecs`).  The rules `Rec-I`, `Rec-E`, `And-I` and
+`sub` with `Subcap.refl` keep both sets, so the walk over the shape never
+touches them.
 
-The forms the version forces to differ from the compiler are these.
+A type is a shape with a capture set, and `Sub` has the one rule `capt`.  Two
+types compare by a set goal and a shape goal, the set goal first, as the
+compiler compares a capturing type in `secondTry` and `thirdTry`.
 
-1. The compiler compares `μ <: μ` through the parents
-   (`TypeComparer.scala:738-740`) and a `μ` on the left by its parent
-   (`:1063-1064`).  The version has no `μ` rule in `SubShape`, so a `μ` is
-   opened only at a variable.
-2. The compiler merges two members of one name (`Types.scala:5759`, and
-   `hasMatchingMember` at `TypeComparer.scala:2235`).  The version has no rule
-   for the merge, so each member is tried.
-3. The compiler lets a boxed type pass where an unboxed one is expected when
-   either capture set is empty (`isBoxCompatibleWith`,
-   `cc/CaptureOps.scala:299-302`), and heals a box difference
-   (`healBoxDifference`, `TypeComparer.scala:2971`).  `SubShape.box` relates
-   boxes to boxes only.  The typer inserts boxes instead.
-4. The root `any` subsumes every capability in the compiler
-   (`cc/Capability.scala:827`).  The version has only `Subcap.elem` for it.
-5. A capture member on the left goes to its upper bound, which is then split
-   element by element.  The compiler reaches the same verdict through the
-   fallback of `addNewElem` in an open state (`cc/CaptureSet.scala:216-225`,
-   the state test at `:219`), the one typing uses.  In a closed state it asks
-   one element of the right set to subsume the whole bound
-   (`cc/Capability.scala:853-863`).
-6. An atom below a capture member on the right is compared with the whole
-   lower bound.  The compiler asks one element of the lower bound to subsume
-   it (`cc/Capability.scala:874-881`).  This is a different route to the same
-   verdict.
-7. The compiler keeps a singleton's capture set apart from its underlying
-   type's (`TypeComparer.scala:892-895`), and widens a singleton to its
-   underlying type at the set `{x}` (`:1052-1054`).  The version has no
-   singleton types.  The `var` goal plays that part, from the view of the
-   variable: `{}` for a variable declared at `{}`, `{x}` for any other.  The
-   compiler narrows to `{x}` only under a condition
-   (`improveCaptures`, `cc/CheckCaptures.scala:2035`).  The version's `Var`
-   rule narrows always.
+## Order of the alternatives
+
+Each goal tries its alternatives in the compiler's order: identity in
+`TypeComparer.recur`, then `firstTry` on the right, `secondTry` on the left,
+`thirdTry` on the right and `fourthTry` on the left.  An intersection on
+the right is final, as in `firstTry`.  Each alternative is a function of its
+own and emits its own derivation.  The middle of every transitivity step is a
+bound of a member, an operand of an intersection or the declared set of a
+variable, read off what the algorithm already holds.  Where the compiler tries
+two alternatives with `TypeComparer.either`, each is tried in turn.
 
 A selection on the right skips a member whose lower bound is `⊥`, as
-`isSubApproxHi` fails at once there (`TypeComparer.scala:1606-1607`).  A left
-side that is `⊥` has already succeeded by the rule for `⊥`.
+`TypeComparer.isSubApproxHi` fails at once there.  A left side that is `⊥` has
+already succeeded by the rule for `⊥`.
+
+A set includes its elements one by one (`CaptureSet.subCaptures`).  An element
+is included by identity, by a capture member's bounds, or by its underlying
+set (`Capability.subsumes` and `CaptureSet.accountsFor`).
+
+## Differences from the compiler
+
+1. The compiler compares `μ <: μ` through the parents (`thirdTry`) and a `μ`
+   on the left by its parent (`fourthTry`).  `SubShape` has no `μ` rule, so a
+   `μ` is opened only at a variable.
+2. The compiler merges two members of one name (`TypeBounds.&` in
+   `core/Types.scala`, and `TypeComparer.hasMatchingMember`).  There is no
+   rule for the merge, so each member is tried.
+3. The compiler lets a boxed type pass where an unboxed one is expected when
+   either capture set is empty (`isBoxCompatibleWith` in `cc/CaptureOps.scala`),
+   and heals a box difference (`TypeComparer.healBoxDifference`).
+   `SubShape.box` relates boxes to boxes only.  The typer inserts boxes
+   instead.
+4. The root `any` subsumes every capability in the compiler
+   (`Capability.subsumes`).  Here only `Subcap.elem` does.
+5. A capture member on the left goes to its upper bound, which is then split
+   element by element.  The compiler reaches the same verdict through the
+   fallback of `CaptureSet.addNewElem` in an open state, the one typing uses.
+   In a closed state it asks one element of the right set to subsume the whole
+   bound (`Capability.subsumes`).
+6. An atom below a capture member on the right is compared with the whole
+   lower bound.  The compiler asks one element of the lower bound to subsume
+   it (`Capability.subsumes`).  The verdict is the same.
+7. The compiler keeps a singleton's capture set apart from its underlying
+   type's (the capturing case of `thirdTry`) and widens a singleton to its
+   underlying type at the set `{x}` (`fourthTry`).  There are no singleton
+   types here.  The `var` goal plays that part from
+   the view of the variable: `{}` for a variable declared at `{}`, `{x}` for
+   any other.  The compiler narrows to `{x}` only under a condition
+   (`CheckCaptures.improveCaptures`).  The `Var` rule narrows always.
+
+## Fuel
 
 Member lookups go through `decls` and `capDecls` of `Look.lean`.  Their
 structural index is the fuel left in the tank.  Each lookup level draws at
 least one unit, so the index never runs out before the tank does.
 
-The run is the generic one of `Fuel.lean`, at the cost `cost`: one tank for
-the whole run, the goals pending along the branch, and a goal that repeats
-exactly fails.  A goal holds its context, so a goal under a new binder is
-never cut by a goal outside it.  `shape?`, `subcap?`, `sub?` and `var?` start
-a run from a full tank and return the answer with the tank left.  `shapeF`,
-`subcapF`, `subF` and `varF` run on a tank they are handed, for a caller that
-threads one tank through many goals.
+The run is the generic one of `Fuel.lean`, at the cost `cost`.  It uses one
+tank for the whole run and the goals pending along the branch, and a goal that
+repeats exactly fails.  A goal holds its context, so a goal under a new binder
+is never cut by a goal outside it.  `shape?`, `subcap?`, `sub?` and `var?`
+start a run from a full tank and return the answer with the tank left.
+`shapeF`, `subcapF`, `subF` and `varF` run on a tank they are handed, for a
+caller that threads one tank through many goals.
 
 The step is framed and dominated (`step_frame`, `step_dom`), so the facts of
-`Fuel.lean` hold for the run.  `shapeF`, `subcapF`, `subF` and `varF` are
-framed, and the four entry points keep an answer at any larger fuel
-(`shape?_mono`, `subcap?_mono`, `sub?_mono`, `var?_mono`).
+`Fuel.lean` hold for the run.  The four entry points keep an answer at any
+larger fuel (`shape?_mono`, `subcap?_mono`, `sub?_mono`, `var?_mono`).
 
-Every definition is structural, so the kernel evaluates the algorithm.  The
-checks at the end of the module run it on the examples by `decide +kernel`.
+The definitions are structural, so the kernel evaluates the algorithm.  The
+checks at the end run it on the examples by `decide +kernel`.
 -/
 
 namespace CapturesFrontend.Core
@@ -203,8 +204,7 @@ def subCapM {s : Sig} {Γ : Ctx s} {A B : Label} {c1 c2 c1' c2' : CaptureSet s} 
   exact SubShape.cap e1 e2
 
 /-- Two types by `Sub.capt`: the set goal, then the shape goal, as the
-compiler compares a capturing type (`TypeComparer.scala:548-566` on the left,
-`:876-907` on the right). -/
+compiler compares a capturing type in `secondTry` and `thirdTry`. -/
 def tySub {s : Sig} {Γ : Ctx s} (r : Rec Γ) : (T U : Ty s) → Fu (Option (Sub Γ T U))
   | .capt C S, .capt C' S' =>
       bindO (r (.cap C C')) fun e2 =>
@@ -216,20 +216,19 @@ section ShapeAlts
 
 variable {s : Sig} {Γ : Ctx s}
 
-/-- Identity, `TypeComparer.scala:1626`. -/
+/-- Identity, as in `TypeComparer.recur`. -/
 def sRefl (S T : Shape s) : Option (SubShape Γ S T) :=
   if h : S = T then some (h ▸ SubShape.refl) else none
 
-/-- `Any` on the right, `thirdTryNamed`, `TypeComparer.scala:616`. -/
+/-- `Any` on the right, `thirdTryNamed`. -/
 def sTop (S T : Shape s) : Option (SubShape Γ S T) :=
   if h : T = .top then some (h ▸ SubShape.top) else none
 
-/-- `Nothing` on the left, `secondTry`, `TypeComparer.scala:444-445`. -/
+/-- `Nothing` on the left, `secondTry`. -/
 def sBot (S T : Shape s) : Option (SubShape Γ S T) :=
   if h : S = .bot then some (h ▸ SubShape.bot) else none
 
-/-- An intersection on the right, `firstTry`, `TypeComparer.scala:401-402`.
-Both operands must hold. -/
+/-- An intersection on the right, `firstTry`.  Both operands must hold. -/
 def sAndR (r : Rec Γ) (S : Shape s) : (T : Shape s) → Fu (Option (SubShape Γ S T))
   | .and T1 T2 =>
       bindO (r (.shape S T1)) fun e1 =>
@@ -237,9 +236,8 @@ def sAndR (r : Rec Γ) (S : Shape s) : (T : Shape s) → Fu (Option (SubShape Γ
   | _ => Fu.ret none
 
 /-- A selection on the right, through the lower bound of a member,
-`thirdTryNamed`, `TypeComparer.scala:601`.  Each member is tried.  A member
-whose lower bound is `⊥` is skipped, as `isSubApproxHi` fails at once there
-(`TypeComparer.scala:1606-1607`). -/
+`thirdTryNamed`.  Each member is tried.  A member whose lower bound is `⊥` is
+skipped, as `isSubApproxHi` fails at once there. -/
 def sSelLo (r : Rec Γ) (S : Shape s) : (T : Shape s) → Fu (Option (SubShape Γ S T))
   | .sel (.var p) A =>
       Fu.bind (declsAt Γ p A) fun ds =>
@@ -250,13 +248,11 @@ def sSelLo (r : Rec Γ) (S : Shape s) : (T : Shape s) → Fu (Option (SubShape �
 
 /-- Two fields, two type members, two capture members, two boxes or two
 function shapes of one form, `thirdTry`.  Refinements go by
-`compareRefinedSlow` and `hasMatchingMember` (`TypeComparer.scala:659-663,2235`).
-Bounds go by `compareTypeBounds` (`:864-868`).  A capture member's bounds are
-capture set types, so its bounds go to two set goals.  Two boxed capturing
-types compare by their types (`:548-566`, `isBoxCompatibleWith` at
-`cc/CaptureOps.scala:299-302`).  Functions have contravariant parameters, by
-`isSubInfo` (`:2291-2301`).  The codomains are compared under the new binder
-at the second domain. -/
+`compareRefinedSlow` and `hasMatchingMember`.  Bounds go by
+`compareTypeBounds`.  A capture member's bounds are capture set types, so its
+bounds go to two set goals.  Two boxed capturing types compare by their
+types.  Functions have contravariant parameters, as in `isSubInfo`.  The
+codomains are compared under the new binder at the second domain. -/
 def sStruct (r : Rec Γ) (rAll : RecAll Γ) : (S T : Shape s) → Fu (Option (SubShape Γ S T))
   | .fld a T1, .fld b T2 =>
       if h : a = b then mapO (tySub r T1 T2) (subFld h) else Fu.ret none
@@ -276,8 +272,8 @@ def sStruct (r : Rec Γ) (rAll : RecAll Γ) : (S T : Shape s) → Fu (Option (Su
         mapO (tySub (rAll T2) U1 U2) fun e2 => SubShape.all e1 e2
   | _, _ => Fu.ret none
 
-/-- A selection on the left, through the upper bound of a member, `fourthTry`,
-`TypeComparer.scala:982-992`.  Each member is tried. -/
+/-- A selection on the left, through the upper bound of a member, `fourthTry`.
+Each member is tried. -/
 def sSelHi (r : Rec Γ) (T : Shape s) : (S : Shape s) → Fu (Option (SubShape Γ S T))
   | .sel (.var q) B =>
       Fu.bind (declsAt Γ q B) fun ds =>
@@ -285,8 +281,8 @@ def sSelHi (r : Rec Γ) (T : Shape s) : (S : Shape s) → Fu (Option (SubShape �
           mapO (r (.shape d.2.1 T)) fun e => SubShape.trans (SubShape.selUpper d.2.2) e) ds
   | _ => Fu.ret none
 
-/-- An intersection on the left, `fourthTry`, `TypeComparer.scala:1077-1099`.
-The left operand first, then the right one, as `either` does (`:2016`). -/
+/-- An intersection on the left, `fourthTry`.  The left operand first, then the
+right one, as `either` does. -/
 def sAndL (r : Rec Γ) (T : Shape s) : (S : Shape s) → Fu (Option (SubShape Γ S T))
   | .and S1 S2 =>
       Fu.orElse (mapO (r (.shape S1 T)) fun e => SubShape.trans SubShape.and1 e) fun _ =>
@@ -321,13 +317,13 @@ section CapAlts
 
 variable {s : Sig} {Γ : Ctx s}
 
-/-- An inclusion, `accountsFor` by `subsumes` (`cc/CaptureSet.scala:251-259`)
-at `this eq y` (`cc/Capability.scala:826`). -/
+/-- An inclusion, `CaptureSet.accountsFor` by `Capability.subsumes` at
+`this eq y`. -/
 def cElem (C D : CaptureSet s) : Option (Subcap Γ C D) :=
   if h : CaptureSet.Subset C D then some (Subcap.elem h) else none
 
-/-- A set of two or more atoms, atom by atom: `tryInclude` with `forall`
-(`cc/CaptureSet.scala:201-204`), called from `subCaptures` (`:307-320`). -/
+/-- A set of two or more atoms, atom by atom: `CaptureSet.tryInclude` with
+`forall`, called from `CaptureSet.subCaptures`. -/
 def cUnion (r : Rec Γ) : (C D : CaptureSet s) → Fu (Option (Subcap Γ C D))
   | a :: b :: C, D =>
       bindO (r (.cap [a] D)) fun e1 =>
@@ -335,9 +331,8 @@ def cUnion (r : Rec Γ) : (C D : CaptureSet s) → Fu (Option (Subcap Γ C D))
   | _, _ => Fu.ret none
 
 /-- One atom below a capture member that the right set names, through the
-member's lower bound: `subsumes` with `this` a `CapSet` type reference
-(`cc/Capability.scala:874-881`).  Each selection of the right set and each
-member is tried. -/
+member's lower bound: `Capability.subsumes` with `this` a `CapSet` type
+reference.  Each selection of the right set and each member is tried. -/
 def cSelLo (r : Rec Γ) : (C D : CaptureSet s) → Fu (Option (Subcap Γ C D))
   | [a], D =>
       Fu.firstSome (fun p : BVar s .var × Label =>
@@ -349,10 +344,9 @@ def cSelLo (r : Rec Γ) : (C D : CaptureSet s) → Fu (Option (Subcap Γ C D))
         else Fu.ret none) (selAtoms D)
   | _, _ => Fu.ret none
 
-/-- A capture member on the left, through its upper bound: `subsumes` with
-`y` a `CapSet` type reference (`cc/Capability.scala:853-863`), and the
-fallback of `addNewElem` to the underlying set (`cc/CaptureSet.scala:216-225`).
-Each member is tried. -/
+/-- A capture member on the left, through its upper bound: `Capability.subsumes`
+with `y` a `CapSet` type reference, and the fallback of `CaptureSet.addNewElem`
+to the underlying set.  Each member is tried. -/
 def cSelHi (r : Rec Γ) : (C D : CaptureSet s) → Fu (Option (Subcap Γ C D))
   | [.sel y A], D =>
       Fu.bind (capsAt Γ y A) fun ds =>
@@ -361,8 +355,7 @@ def cSelHi (r : Rec Γ) : (C D : CaptureSet s) → Fu (Option (Subcap Γ C D))
   | _, _ => Fu.ret none
 
 /-- A term variable on the left, widened to the capture set it is declared
-at: `accountsFor` through `captureSetOfInfo` (`cc/CaptureSet.scala:262-267`,
-`cc/Capability.scala:639-656`). -/
+at: `CaptureSet.accountsFor` through `captureSetOfInfo`. -/
 def cVar (r : Rec Γ) : (C D : CaptureSet s) → Fu (Option (Subcap Γ C D))
   | [.var x], D => mapO (r (.cap (Γ.lookup x).captureSet D)) fun e => Subcap.trans Subcap.var e
   | _, _ => Fu.ret none
@@ -385,21 +378,20 @@ section VarAlts
 
 variable {s : Sig} {Γ : Ctx s}
 
-/-- Identity, `TypeComparer.scala:1626`. -/
+/-- Identity, as in `TypeComparer.recur`. -/
 def vRefl (x : BVar s .var) (V T : Shape s) : Option (VarFn Γ x V T) :=
   if h : V = T then some (fun _ _ d => h ▸ d) else none
 
-/-- An intersection on the right, `firstTry`, `TypeComparer.scala:401-402`,
-by `HasTy.andI`. -/
+/-- An intersection on the right, `firstTry`, by `HasTy.andI`. -/
 def vAndR (r : Rec Γ) (x : BVar s .var) (V : Shape s) : (T : Shape s) → Fu (Option (VarFn Γ x V T))
   | .and T1 T2 =>
       bindO (r (.var x V T1)) fun f1 =>
         mapO (r (.var x V T2)) fun f2 U C d => HasTy.andI (f1 U C d) (f2 U C d)
   | _ => Fu.ret none
 
-/-- A recursive shape on the right with a singleton on the left, `thirdTry`,
-`TypeComparer.scala:742-744`.  `fixRecs` (`:1990-2005`) opens the body at the
-variable, and so does `HasTy.recI`, for a body that is a declaration. -/
+/-- A recursive shape on the right with a singleton on the left, `thirdTry`.
+`fixRecs` opens the body at the variable, and so does `HasTy.recI`, for a body
+that is a declaration. -/
 def vMuR (r : Rec Γ) (x : BVar s .var) (V : Shape s) : (T : Shape s) → Fu (Option (VarFn Γ x V T))
   | .mu B =>
       if hB : Shape.Decl B then
@@ -408,9 +400,8 @@ def vMuR (r : Rec Γ) (x : BVar s .var) (V : Shape s) : (T : Shape s) → Fu (Op
   | _ => Fu.ret none
 
 /-- A selection on the right, through the lower bound of a member, the
-variable kept, `thirdTryNamed`, `TypeComparer.scala:601`.  Each member is
-tried.  A member whose lower bound is `⊥` is skipped
-(`TypeComparer.scala:1606-1607`). -/
+variable kept, `thirdTryNamed`.  Each member is tried.  A member whose lower
+bound is `⊥` is skipped. -/
 def vSelLo (r : Rec Γ) (x : BVar s .var) (V : Shape s) : (T : Shape s) → Fu (Option (VarFn Γ x V T))
   | .sel (.var p) A =>
       Fu.bind (declsAt Γ p A) fun ds =>
@@ -421,9 +412,8 @@ def vSelLo (r : Rec Γ) (x : BVar s .var) (V : Shape s) : (T : Shape s) → Fu (
   | _ => Fu.ret none
 
 /-- A recursive shape in the view, opened at the variable, `fourthTry`: the
-singleton widened (`TypeComparer.scala:1036-1058`), then the recursive shape
-as `findMember`'s `goRec` opens it (`Types.scala:875-896`), by `HasTy.recE`,
-for a body that is a declaration. -/
+singleton widened, then the recursive shape as `findMember`'s `goRec` opens
+it, by `HasTy.recE`, for a body that is a declaration. -/
 def vMuL (r : Rec Γ) (x : BVar s .var) (T : Shape s) : (V : Shape s) → Fu (Option (VarFn Γ x V T))
   | .mu B =>
       if hB : Shape.Decl B then
@@ -431,8 +421,8 @@ def vMuL (r : Rec Γ) (x : BVar s .var) (T : Shape s) : (V : Shape s) → Fu (Op
       else Fu.ret none
   | _ => Fu.ret none
 
-/-- An intersection in the view, `fourthTry`, `TypeComparer.scala:1077-1099`.
-The left operand first, then the right one, as `either` does (`:2016`). -/
+/-- An intersection in the view, `fourthTry`.  The left operand first, then the
+right one, as `either` does. -/
 def vAndL (r : Rec Γ) (x : BVar s .var) (T : Shape s) : (V : Shape s) → Fu (Option (VarFn Γ x V T))
   | .and V1 V2 =>
       Fu.orElse (mapO (r (.var x V1 T)) fun f U C d =>
@@ -441,8 +431,8 @@ def vAndL (r : Rec Γ) (x : BVar s .var) (T : Shape s) : (V : Shape s) → Fu (O
           f U C (HasTy.sub d (Sub.capt SubShape.and2 Subcap.refl) Subcap.refl)
   | _ => Fu.ret none
 
-/-- A selection in the view, through the upper bound of a member, `fourthTry`,
-`TypeComparer.scala:982-992`.  Each member is tried. -/
+/-- A selection in the view, through the upper bound of a member, `fourthTry`.
+Each member is tried. -/
 def vSelHi (r : Rec Γ) (x : BVar s .var) (T : Shape s) : (V : Shape s) → Fu (Option (VarFn Γ x V T))
   | .sel (.var q) B =>
       Fu.bind (declsAt Γ q B) fun ds =>
@@ -452,7 +442,7 @@ def vSelHi (r : Rec Γ) (x : BVar s .var) (T : Shape s) : (V : Shape s) → Fu (
   | _ => Fu.ret none
 
 /-- An atom of the view against the goal, `fourthTry`: the widened singleton
-compared as a shape (`TypeComparer.scala:1058`), by subsumption. -/
+compared as a shape, by subsumption. -/
 def vAtom (r : Rec Γ) (x : BVar s .var) (V T : Shape s) : Fu (Option (VarFn Γ x V T)) :=
   if isAtom V then
     mapO (r (.shape V T)) fun e _ _ d => HasTy.sub d (Sub.capt e Subcap.refl) Subcap.refl
@@ -1541,9 +1531,8 @@ example : (shape? LPCtx (.sel (.var (.there .here)) lA) (.sel (.var .here) lB)).
 example : (shape? LPw2Ctx (.sel (.var .here) lB) (.sel (.var .here) lT)).2.out = true := by
   decide +kernel
 
--- The doubled chain at 12 links: the goal that holds is found in 166 units.
--- The goal that fails, `{x12.C} <: {κ₂}`, tries both members at every link and
--- exhausts the tank: the recursion limit.
+-- The doubled chain at 12 links.  The goal that fails, `{x12.C} <: {κ₂}`, tries
+-- both members at every link and exhausts the tank: the recursion limit.
 example : answers (subcap? (dchainCtx 12) [CapAtom.sel .here lC] [CapAtom.cvar (.there (k1At 12))])
     166 = true := by decide +kernel
 example : (subcap? (dchainCtx 12) [CapAtom.sel .here lC] [CapAtom.cvar (.there (k2At 12))]).2.out

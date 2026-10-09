@@ -3,50 +3,53 @@ import Coercions.Oopsla16.Frontend.Look
 /-!
 # Subtyping in the compiler's case order
 
-The algorithm decides two goals.  `sub S T` asks for `S <: T` and is
-answered by an `Oopsla16.Stp` derivation.  `var x V T` asks that the variable
-`x`, already seen at the type `V`, have the type `T`.  It is answered by a
-map from a `HasType` derivation of `x : V` to one of `x : T`.  This is the
-compiler's singleton on the left: it keeps `x` while it widens, so a
-recursive type is opened or packed at `x` (`TypeComparer.scala:742-744`,
-`fixRecs` at `:1990-2005`).  Oopsla16 packs and unpacks only at a variable,
-so the second goal is needed.
+The algorithm decides two goals.  `sub S T` asks for `S <: T` and is answered
+by an `Oopsla16.Stp` derivation.  `var x V T` asks that the variable `x`, seen
+at the type `V`, have the type `T`.  It is answered by a map from a `HasType`
+derivation of `x : V` to one of `x : T`.  This mirrors the singleton on the left
+in the compiler.  The compiler keeps `x` while it widens, so a recursive type is
+opened or packed at `x` (`thirdTry` and `fixRecs` of core/TypeComparer.scala).
+Oopsla16 packs and unpacks only at a variable, so the second goal is needed.
 
-Each goal tries its alternatives in the compiler's order: identity
-(`TypeComparer.scala:1626`), then `firstTry` on the right (`:300`), then
-`secondTry` on the left (`:434`), then `thirdTry` on the right (`:652`), then
-`fourthTry` on the left (`:981`).  Three cases of the compiler are final.  An
-intersection on the right splits (`:401-402`).  A union on the left splits
-(`:501-523`).  Two recursive types compare their bodies (`:738-740`).  At two
-recursive types the algorithm tries `stp_bindx`, then `stp_bind1`.  The
-compiler never builds a recursive type whose self is unused
-(`RecType.closeOver`, `Types.scala:3464-3466`), and Oopsla16 does, so such a
-left side needs `stp_bind1` (`Typing.lean:149`).  Each alternative is a
-function of its own and emits the version's own derivation.  The middle of
-every transitivity step is a bound of a member found by lookup.  No middle is
-chosen from the context.  Where the compiler tries two alternatives with
-`either` (`:2016`), each is tried in turn.
+Each goal tries its alternatives in the order of the compiler: identity
+(`recur`), then `firstTry` on the right, `secondTry` on the left, `thirdTry`
+on the right and `fourthTry` on the left.  Each alternative is a function of
+its own and emits a derivation of the calculus.  The middle of every
+transitivity step is a bound of a member found by lookup.  No middle is chosen
+from the context.  Where the compiler tries two alternatives with `either`,
+each is tried in turn.
 
-The forms Oopsla16 forces to differ from the compiler are these.  `⊤` on
-the right and `⊥` on the left are tried before the final cases.  `S <: μ B`
-with `S` not recursive is final in the compiler (`:741-744`), and `Stp` has no
-rule for it, so the later alternatives go on.  The compiler meets the members
-of both operands of an intersection (`:714,724,729`, `hasMatchingMember` at
-`:2235`, `goAnd` at `Types.scala:994-995`) and keeps one merged denotation per
-name.  Oopsla16 has no rule that merges two members, so each member is tried.
-Distribution over a union (`:813-818`, `:1083-1092`) and the union
-alternatives `widenOK` and `joinOK` (`:506-530`) have no rule and are left
-out.  The early `return false` after a failed alias (`:318-319`) is not
-copied, which only adds successes.  The compiler compares two codomains under
-the left method's parameter (`:2298`), and `stp_fun` under the right one.
-`HasType` has no intersection introduction on a variable.  So at an
-intersection on the right of a `var` goal the variable is shown at one part of
-it, then the part is compared with the whole (`vAndPart`), or the variable is
-packed at the recursive type of both bodies (`vAndPack`).  Neither is final.
+Three cases are final, as in the compiler.  An intersection on the right
+splits (`firstTry`).  A union on the left splits (`secondTry`).  Two recursive
+types compare their bodies (`thirdTry`).  At two recursive types the
+algorithm tries `stp_bindx`, then `stp_bind1`.  The compiler never builds a
+recursive type whose self is unused (`RecType.closeOver` in core/Types.scala).
+Oopsla16 does, so such a left side needs `stp_bind1`.
 
-A selection on the right skips a member whose lower bound is `⊥`, as
-`isSubApproxHi` fails at once there (`TypeComparer.scala:1606-1607`).  A left
-side that is `⊥` has already succeeded by the rule for `⊥`.
+The algorithm differs from the compiler in these points.
+
+* `⊤` on the right and `⊥` on the left are tried before the final cases.
+* `S <: μ B` with `S` not recursive is final in the compiler.  `Stp` has no
+  rule for it, so the later alternatives go on.
+* The compiler meets the members of both operands of an intersection
+  (`hasMatchingMember`, and `goAnd` of `findMember`) and keeps one merged
+  denotation per name.  Oopsla16 has no rule that merges two members, so each
+  member is tried.
+* Distribution over a union (in `thirdTry` and `fourthTry`) and the union
+  alternatives `widenOK` and `joinOK` of `secondTry` have no rule and are left
+  out.
+* The early `return false` after a failed alias in `firstTry` is not copied.
+  This only adds successes.
+* The compiler compares two codomains under the left method's parameter
+  (`isSubInfo`).  `stp_fun` compares them under the right one.
+* `HasType` has no intersection introduction on a variable.  So at an
+  intersection on the right of a `var` goal the variable is shown at one part
+  of it and the part is compared with the whole (`vAndPart`), or the variable
+  is packed at the recursive type of both bodies (`vAndPack`).  Neither is
+  final.
+* A selection on the right skips a member whose lower bound is `⊥`, as
+  `isSubApproxHi` fails at once there.  A left side that is `⊥` has already
+  succeeded by the rule for `⊥`.
 
 Member lookups go through `hdecls` of `Look.lean`, at the prefix of the
 variable.  Its structural index is the fuel left in the tank.  Each lookup
@@ -157,8 +160,8 @@ def isSel {s : Sig} : Ty [] s → Bool
   | _ => false
 
 /-- The pairs at which the compiler stops at its first case: an intersection
-on the right (`TypeComparer.scala:401-402`), a union on the left (`:523`), two
-recursive types (`:738-740`). -/
+on the right (`firstTry`), a union on the left (`secondTry`), two recursive
+types (`thirdTry`). -/
 def Final {s : Sig} (S T : Ty [] s) : Bool := isAnd T || isOr S || (isMu S && isMu T)
 
 /-- `stp_fun` across a decided label equality. -/
@@ -180,53 +183,53 @@ section SubAlts
 
 variable {s : Sig} {Γ : Ctx [] s}
 
-/-- Identity, `TypeComparer.scala:1626`.  `Stp.refl` is a derived rule. -/
+/-- Identity, `recur`.  `Stp.refl` is a derived rule. -/
 def sRefl (S T : Ty [] s) : Option (SStp Γ S T) :=
   if h : S = T then some (h ▸ refl S) else none
 
-/-- `Any` on the right, `thirdTryNamed`, `TypeComparer.scala:616`. -/
+/-- `Any` on the right, `thirdTryNamed`. -/
 def sTop (S : Ty [] s) : (T : Ty [] s) → Option (SStp Γ S T)
   | .TTop => some .stp_top
   | _ => none
 
-/-- `Nothing` on the left, `secondTry`, `TypeComparer.scala:444-445`. -/
+/-- `Nothing` on the left, `secondTry`. -/
 def sBot (T : Ty [] s) : (S : Ty [] s) → Option (SStp Γ S T)
   | .TBot => some .stp_bot
   | _ => none
 
-/-- An intersection on the right, `firstTry`, `TypeComparer.scala:401-402`,
-by `stp_and2`.  Both operands must hold. -/
+/-- An intersection on the right, `firstTry`, by `stp_and2`.  Both operands
+must hold. -/
 def sAndR (r : Rec Γ) (S : Ty [] s) : (T : Ty [] s) → Fu (Option (SStp Γ S T))
   | .TAnd T1 T2 =>
       bindO (r (.sub S T1)) fun e1 =>
         mapO (r (.sub S T2)) fun e2 => .stp_and2 e1 e2
   | _ => Fu.ret none
 
-/-- A union on the left, `secondTry`, `TypeComparer.scala:501-523`, by
-`stp_or1`.  Both operands must hold. -/
+/-- A union on the left, `secondTry`, by `stp_or1`.  Both operands must
+hold. -/
 def sOrL (r : Rec Γ) (T : Ty [] s) : (S : Ty [] s) → Fu (Option (SStp Γ S T))
   | .TOr S1 S2 =>
       bindO (r (.sub S1 T)) fun e1 =>
         mapO (r (.sub S2 T)) fun e2 => .stp_or1 e1 e2
   | _ => Fu.ret none
 
-/-- Two recursive types, `thirdTry`, `TypeComparer.scala:736-740`, by
-`stp_bindx`: the bodies under the left self. -/
+/-- Two recursive types, `thirdTry`, by `stp_bindx`: the bodies under the left
+self. -/
 def sBindx (rC : RecC Γ) : (S T : Ty [] s) → Fu (Option (SStp Γ S T))
   | .TBind T1, .TBind T2 => mapO (rC T1 T1 T2) .stp_bindx
   | _, _ => Fu.ret none
 
-/-- A union on the right, `thirdTry`, `TypeComparer.scala:823`, the left
-operand first, as `either` does (`:2016`), by `stp_or21` and `stp_or22`. -/
+/-- A union on the right, `thirdTry`, by `stp_or21` and `stp_or22`.  The left
+operand comes first, as in `either`. -/
 def sOrR (r : Rec Γ) (S : Ty [] s) : (T : Ty [] s) → Fu (Option (SStp Γ S T))
   | .TOr T1 T2 =>
       Fu.orElse (mapO (r (.sub S T1)) .stp_or21) fun _ => mapO (r (.sub S T2)) .stp_or22
   | _ => Fu.ret none
 
 /-- A selection on the right, through the lower bound of a member,
-`thirdTryNamed`, `TypeComparer.scala:601`, by `stp_sel2` after `stp_trans`.
-Each member is tried.  A member whose lower bound is `⊥` is skipped, as
-`isSubApproxHi` fails at once there (`TypeComparer.scala:1606-1607`). -/
+`thirdTryNamed`, by `stp_sel2` after `stp_trans`.  Each member is tried.  A
+member whose lower bound is `⊥` is skipped, as `isSubApproxHi` fails at once
+there. -/
 def sSelLo (r : Rec Γ) (S : Ty [] s) : (T : Ty [] s) → Fu (Option (SStp Γ S T))
   | .TSel (.abs x) L =>
       Fu.bind (members Γ x L) fun ds =>
@@ -237,10 +240,9 @@ def sSelLo (r : Rec Γ) (S : Ty [] s) : (T : Ty [] s) → Fu (Option (SStp Γ S 
   | _ => Fu.ret none
 
 /-- Two methods or two type members of one label, `thirdTry`: refinements by
-`compareRefinedSlow` and `hasMatchingMember` (`TypeComparer.scala:659-663,2235`),
-bounds by `compareTypeBounds` (`:864-868`), and methods with contravariant
-parameters by `isSubInfo` (`:2291-2301`).  `stp_fun` compares the codomains
-under the right domain. -/
+`compareRefinedSlow` and `hasMatchingMember`, bounds by `compareTypeBounds`,
+and methods with contravariant parameters by `isSubInfo`.  `stp_fun` compares
+the codomains under the right domain. -/
 def sStruct (r : Rec Γ) (rC : RecC Γ) : (S T : Ty [] s) → Fu (Option (SStp Γ S T))
   | .TFun l1 T1 T2, .TFun l2 T3 T4 =>
       if h : l1 = l2 then
@@ -255,8 +257,7 @@ def sStruct (r : Rec Γ) (rC : RecC Γ) : (S T : Ty [] s) → Fu (Option (SStp �
   | _, _ => Fu.ret none
 
 /-- A selection on the left, through the upper bound of a member, `fourthTry`,
-`TypeComparer.scala:982-992`, by `stp_sel1` before `stp_trans`.  Each member
-is tried. -/
+by `stp_sel1` before `stp_trans`.  Each member is tried. -/
 def sSelHi (r : Rec Γ) (T : Ty [] s) : (S : Ty [] s) → Fu (Option (SStp Γ S T))
   | .TSel (.abs x) L =>
       Fu.bind (members Γ x L) fun ds =>
@@ -265,17 +266,15 @@ def sSelHi (r : Rec Γ) (T : Ty [] s) : (S : Ty [] s) → Fu (Option (SStp Γ S 
             .stp_trans (.stp_sel1 (lowerBot d.2.2)) e) ds
   | _ => Fu.ret none
 
-/-- An intersection on the left, `fourthTry`, `TypeComparer.scala:1077-1099`,
-by `stp_and11` and `stp_and12`.  The left operand first, then the right one,
-as `either` does (`:2016`). -/
+/-- An intersection on the left, `fourthTry`, by `stp_and11` and `stp_and12`.
+The left operand comes first, then the right one, as in `either`. -/
 def sAndL (r : Rec Γ) (T : Ty [] s) : (S : Ty [] s) → Fu (Option (SStp Γ S T))
   | .TAnd S1 S2 =>
       Fu.orElse (mapO (r (.sub S1 T)) .stp_and11) fun _ => mapO (r (.sub S2 T)) .stp_and12
   | _ => Fu.ret none
 
-/-- A recursive type on the left, `fourthTry`, `TypeComparer.scala:1063-1064`,
-by `stp_bind1`: the body under its self against the right side, which must not
-mention the self. -/
+/-- A recursive type on the left, `fourthTry`, by `stp_bind1`: the body under
+its self against the right side, which must not mention the self. -/
 def sBind1 (rC : RecC Γ) (T : Ty [] s) : (S : Ty [] s) → Fu (Option (SStp Γ S T))
   | .TBind T1 => mapO (rC T1 T1 T.weaken) .stp_bind1
   | _ => Fu.ret none
@@ -327,14 +326,14 @@ section VarAlts
 
 variable {s : Sig} {Γ : Ctx [] s}
 
-/-- Identity, `TypeComparer.scala:1626`. -/
+/-- Identity, `recur`. -/
 def vRefl (x : BVar s .var) (V T : Ty [] s) : Option (VarFn Γ x V T) :=
   if h : V = T then some (fun d => h ▸ d) else none
 
-/-- An intersection on the right, `firstTry`, `TypeComparer.scala:401-402`.
-`HasType` has no intersection introduction on a variable.  So the variable is
-shown at one operand `W`, with the variable kept, and `W` is compared with the
-whole by `T_Sub`.  Each operand is tried. -/
+/-- An intersection on the right, `firstTry`.  `HasType` has no intersection
+introduction on a variable.  So the variable is shown at one operand `W`, with
+the variable kept, and `W` is compared with the whole by `T_Sub`.  Each operand
+is tried. -/
 def vAndPart (r : Rec Γ) (x : BVar s .var) (V : Ty [] s) : (T : Ty [] s) → Fu (Option (VarFn Γ x V T))
   | .TAnd T1 T2 =>
       Fu.firstSome (fun W =>
@@ -353,15 +352,15 @@ def vAndPack (r : Rec Γ) (x : BVar s .var) (V : Ty [] s) : (T : Ty [] s) → Fu
           (.stp_bindx (.stp_and12 (refl B))))
   | _ => Fu.ret none
 
-/-- A recursive type on the right with a singleton on the left, `thirdTry`,
-`TypeComparer.scala:742-744`.  `fixRecs` (`:1990-2005`) opens the body at the
-variable, and `T_VarPack` packs it there. -/
+/-- A recursive type on the right with a singleton on the left, `thirdTry`.
+As `fixRecs` does, the body is opened at the variable, and `T_VarPack` packs it
+there. -/
 def vMuR (r : Rec Γ) (x : BVar s .var) (V : Ty [] s) : (T : Ty [] s) → Fu (Option (VarFn Γ x V T))
   | .TBind B => mapO (r (.var x V (B.substVr (.abs x)))) fun f d => .T_VarPack (f d)
   | _ => Fu.ret none
 
-/-- A union on the right, `thirdTry`, `TypeComparer.scala:823`, the variable
-kept, the left operand first (`either`, `:2016`). -/
+/-- A union on the right, `thirdTry`, the variable kept, the left operand
+first, as in `either`. -/
 def vOrR (r : Rec Γ) (x : BVar s .var) (V : Ty [] s) : (T : Ty [] s) → Fu (Option (VarFn Γ x V T))
   | .TOr T1 T2 =>
       Fu.orElse (mapO (r (.var x V T1)) fun f d => .T_Sub (f d) (.stp_or21 (refl T1))) fun _ =>
@@ -369,9 +368,8 @@ def vOrR (r : Rec Γ) (x : BVar s .var) (V : Ty [] s) : (T : Ty [] s) → Fu (Op
   | _ => Fu.ret none
 
 /-- A selection on the right, through the lower bound of a member, the
-variable kept, `thirdTryNamed`, `TypeComparer.scala:601`.  Each member is
-tried.  A member whose lower bound is `⊥` is skipped
-(`TypeComparer.scala:1606-1607`). -/
+variable kept, `thirdTryNamed`.  Each member is tried.  A member whose lower
+bound is `⊥` is skipped, as `isSubApproxHi` fails at once there. -/
 def vSelLo (r : Rec Γ) (x : BVar s .var) (V : Ty [] s) : (T : Ty [] s) → Fu (Option (VarFn Γ x V T))
   | .TSel (.abs p) L =>
       Fu.bind (members Γ p L) fun ds =>
@@ -381,23 +379,22 @@ def vSelLo (r : Rec Γ) (x : BVar s .var) (V : Ty [] s) : (T : Ty [] s) → Fu (
             .T_Sub (f e) (.stp_sel2 (upperTop d.2.2))) ds
   | _ => Fu.ret none
 
-/-- A recursive type in the view, opened at the variable, as `findMember`'s
-`goRec` opens it with the variable as prefix (`Types.scala:875-896`), by
-`T_VarUnpack`. -/
+/-- A recursive type in the view, opened at the variable by `T_VarUnpack`, as
+`goRec` of `findMember` opens it with the variable as prefix. -/
 def vMuL (r : Rec Γ) (x : BVar s .var) (T : Ty [] s) : (V : Ty [] s) → Fu (Option (VarFn Γ x V T))
   | .TBind B => mapO (r (.var x (B.substVr (.abs x)) T)) fun f d => f (.T_VarUnpack d)
   | _ => Fu.ret none
 
-/-- An intersection in the view, `fourthTry`, `TypeComparer.scala:1077-1099`.
-The left operand first, then the right one, as `either` does (`:2016`). -/
+/-- An intersection in the view, `fourthTry`.  The left operand comes first,
+then the right one, as in `either`. -/
 def vAndL (r : Rec Γ) (x : BVar s .var) (T : Ty [] s) : (V : Ty [] s) → Fu (Option (VarFn Γ x V T))
   | .TAnd V1 V2 =>
       Fu.orElse (mapO (r (.var x V1 T)) fun f d => f (.T_Sub d (.stp_and11 (refl V1)))) fun _ =>
         mapO (r (.var x V2 T)) fun f d => f (.T_Sub d (.stp_and12 (refl V2)))
   | _ => Fu.ret none
 
-/-- A selection in the view, through the upper bound of a member, `fourthTry`,
-`TypeComparer.scala:982-992`.  Each member is tried. -/
+/-- A selection in the view, through the upper bound of a member, `fourthTry`.
+Each member is tried. -/
 def vSelHi (r : Rec Γ) (x : BVar s .var) (T : Ty [] s) : (V : Ty [] s) → Fu (Option (VarFn Γ x V T))
   | .TSel (.abs q) L =>
       Fu.bind (members Γ q L) fun ds =>
@@ -406,9 +403,9 @@ def vSelHi (r : Rec Γ) (x : BVar s .var) (T : Ty [] s) : (V : Ty [] s) → Fu (
             f (.T_Sub e (.stp_sel1 (lowerBot d.2.2)))) ds
   | _ => Fu.ret none
 
-/-- The singleton widened to its view, `fourthTry`,
-`TypeComparer.scala:1036-1058`: the view against the goal, by `T_Sub`.  Not at
-a recursive type or a selection, where the variable is kept. -/
+/-- The singleton widened to its view, `fourthTry`: the view against the goal,
+by `T_Sub`.  Not at a recursive type or a selection, where the variable is
+kept. -/
 def vSub (r : Rec Γ) (x : BVar s .var) (V T : Ty [] s) : Fu (Option (VarFn Γ x V T)) :=
   if !isMu V && !isSel V then mapO (r (.sub V T)) fun e d => .T_Sub d e else Fu.ret none
 

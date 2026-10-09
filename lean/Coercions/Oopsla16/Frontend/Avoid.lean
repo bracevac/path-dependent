@@ -1,62 +1,44 @@
 import Coercions.Oopsla16.Frontend.Sub
 
 /-!
-# Avoidance at a call, on the tank
+# Avoidance at a call
 
-Oopsla16 has no `let`.  The binder a result type may not mention is the
-parameter of a method applied to an argument that is not a variable.
-`T_App` asks for a codomain that is a weakening (`Typing.lean:75-78`).  The
-compiler skolemizes such an argument (`safeSubstParam`,
-`TypeAssigner.scala:283-291`) and approximates the skolem away when the type
-is inferred (`deskolemized`, `Types.scala:1611-1619`, called from
-`Namer.scala:2312`).  This module does the same for Oopsla16.
+`Oopsla16` has no `let`.  A result type must not mention the parameter of a
+method applied to an argument that is not a variable, because `T_App` asks for
+a codomain that is a weakening.  The compiler skolemizes such an argument
+(`safeSubstParam` in `typer/TypeAssigner.scala`) and approximates the skolem
+away (`Type.deskolemized` in `core/Types.scala`).  This module does the same.
 
 `up` approximates a type from above and `down` from below.  Each returns the
 new type with the `Oopsla16.Stp` derivation that relates it to the old one.
-A selection `z.L` at a covariant position becomes the meet of the avoided
-upper bounds of every member `L` that `z` has, by `stp_and2` over the
-`stp_sel1` steps.  At a contravariant position it becomes the join of the
-avoided lower bounds, by `stp_or1` over the `stp_sel2` steps.  The compiler
-widens a selection at the bounds of the one denotation it merges from every
-member of the name (`derivedSelect` and `tryWiden`, `Types.scala:6650-6700`,
-`expandBounds` at `:6640-6645`, the merge at `:994-995`).  A method's domain
-and a type member's lower bound flip the position.  Under a method the
-codomain is approximated in the context extended by the new domain, which is
-the premise `stp_fun` asks for.  A selection already being expanded at the
-same position becomes `⊤` or `⊥`, the compiler's `emptyRange`
-(`Types.scala:6608`).
+A selection `z.L` becomes the meet of the upper bounds of the members `L` of
+`z` when approximated from above, and the join of their lower bounds when
+approximated from below.  The compiler widens a selection at the bounds of the
+one denotation it merges from those members (`ApproximatingTypeMap.derivedSelect`
+and `tryWiden` in `core/Types.scala`).  A method's domain and a type member's
+lower bound flip the direction.  Under a method, the codomain is approximated
+in the context extended by the new domain, as `stp_fun` asks.  A selection
+already being expanded in the same direction becomes `⊤` or `⊥`, the compiler's
+`emptyRange`.
 
-A recursive type that mentions the binder stays recursive, as the compiler's
-`derivedRecType` keeps a `RecType` (`Types.scala:6727-6732`).  Both
-directions close with `stp_bindx`, whose premise assumes the self at the
-left body.  From above the left body is the old one, so `up` approximates the
-body under the old self.  From below the left body is the new one, which is
-not known before the body is approximated.  `down` approximates the body
-twice.  The first pass gives the new body.  The second pass runs under the
-self assumed at the new body and must give it again.  It does whenever the
-tank lasts, since a selection that mentions the binder is looked up in the
-binder's prefix, which no self after it changes.  If the two passes differ the
-answer is `⊥`.
+A recursive type that mentions the parameter stays recursive, as in
+`ApproximatingTypeMap.derivedRecType`.  `up` closes it with `stp_bindx`.
+`down` approximates the body twice, because the premise of `stp_bindx` assumes
+the new self.  The second pass must return the body of the first, and otherwise
+the answer is `⊥`.  It does when the tank lasts, since a selection of the
+parameter is looked up in the parameter's prefix, which no later self changes.
 
-Both draw on the tank of `Fuel.lean`.  Each node of the traversal costs
-`cost` of the number of selections being expanded, and the members of a
-selection are read by `members` on the same tank.  A short tank answers `⊤`
-or `⊥` and is marked.  The structural index starts at the fuel left, and each
-node draws at least one unit, so the index never runs out before the tank
-does.
+Both run on the tank of `Fuel.lean`.  A short tank answers `⊤` or `⊥` and marks
+the tank.
 
-`avoidCod` runs `up` at the parameter of a method, assumed at the argument's
-type, and strengthens the result.  `avoidArg` turns it into the method type
-the receiver is widened to, by `stp_fun`, with a codomain that `T_App` takes.
-If the tank ends marked, either answers `none`, and the caller reports the
-recursion limit.  A codomain that does not mention the parameter comes back
-as itself (`avoidCod_strengthen`, `avoidArg_weaken`).  So avoidance never
-loses what strengthening finds.
-
-Every computation here is framed, so a run that ends unmarked does the same
-with more fuel (`avoidCod_frame`, `avoidArg_frame`).  Every definition is
-structural, so the kernel evaluates avoidance.  The checks at the end run it
-on the examples by `decide +kernel`.
+`avoidCod` approximates a codomain from above, with the parameter assumed at
+the argument's type, and strengthens the result.  `avoidArg` returns the method
+type the receiver is widened to, by `stp_fun`.  Both answer `none` on a marked
+tank, and the caller reports the recursion limit.  A codomain that does not
+mention the parameter comes back unchanged (`avoidCod_strengthen`,
+`avoidArg_weaken`).  Every computation is framed, so a run that ends unmarked
+does the same with more fuel (`avoidCod_frame`, `avoidArg_frame`).  The checks
+at the end run on the examples by `decide +kernel`.
 -/
 
 namespace Oopsla16Frontend.Core
@@ -171,8 +153,8 @@ def closeBelow {s : Sig} {Γ : Ctx [] s} {X Y Y' : Ty [] (s,x)} (e : SStp (Γ.co
 mutual
 
 /-- An approximation of `T` from above that does not mention `z`.  `P` holds
-the selections being expanded, each with its position, `true` for an upper
-bound.  The index `d` is structural. -/
+the selections being expanded, each with its direction, `true` for an upper
+bound.  The index `d` is the structural measure. -/
 def up {s : Sig} (Γ : Ctx [] s) (z : BVar s .var) :
     Nat → List (Lb × Bool) → (T : Ty [] s) → Fu (Above Γ T)
   | 0, _, _ => fun t => (⟨.TTop, .stp_top⟩, { t with out := true })
@@ -212,7 +194,7 @@ def up {s : Sig} (Γ : Ctx [] s) (z : BVar s .var) :
 termination_by structural d _ _ => d
 
 /-- An approximation of `T` from below that does not mention `z`.  `P` is as
-for `up`.  The index `d` is structural. -/
+for `up`. -/
 def down {s : Sig} (Γ : Ctx [] s) (z : BVar s .var) :
     Nat → List (Lb × Bool) → (T : Ty [] s) → Fu (Below Γ T)
   | 0, _, _ => fun t => (⟨.TBot, .stp_bot⟩, { t with out := true })
@@ -254,11 +236,11 @@ termination_by structural d _ _ => d
 
 end
 
-/-- `up` on the tank it is handed, with the fuel left as its index. -/
+/-- `up` indexed by the fuel left. -/
 def upAt {s : Sig} (Γ : Ctx [] s) (z : BVar s .var) (T : Ty [] s) : Fu (Above Γ T) := fun t =>
   up Γ z t.left [] T t
 
-/-- `down` on the tank it is handed, with the fuel left as its index. -/
+/-- `down` indexed by the fuel left. -/
 def downAt {s : Sig} (Γ : Ctx [] s) (z : BVar s .var) (T : Ty [] s) : Fu (Below Γ T) := fun t =>
   down Γ z t.left [] T t
 
@@ -276,8 +258,8 @@ abbrev ArgTy {s : Sig} (Γ : Ctx [] s) (l : Lb) (S : Ty [] s) (U : Ty [] (s,x)) 
     Type :=
   (U0 : Ty [] s) × SStp Γ (.TFun l S U) (.TFun l A U0.weaken)
 
-/-- Strengthen an approximation that no longer mentions the parameter.  If it
-still mentions it, the answer is `⊤`, which is always above. -/
+/-- Strengthen an approximation that does not mention the parameter.  If it
+does, the answer is `⊤`. -/
 def strengthenAbove {s : Sig} {Γ : Ctx [] s} {A : Ty [] s} {U : Ty [] (s,x)}
     (r : Above (Γ.cons A.weaken) U) : CodTy Γ A U :=
   match FCdotR.Ty.strengthenW? r.1 with
@@ -289,16 +271,15 @@ def unlessOut {α : Type} (a : α) : Fu (Option α) := fun t =>
   if t.out then (none, t) else (some a, t)
 
 /-- The codomain `U` of a method applied to an argument at `A` that is not a
-variable: approximated from above under the parameter assumed at `A` until it
-no longer mentions the parameter, then strengthened.  `none` if the tank ends
-marked. -/
+variable: approximated from above under the parameter assumed at `A`, then
+strengthened.  `none` if the tank ends marked. -/
 def avoidCod {s : Sig} (Γ : Ctx [] s) (A : Ty [] s) (U : Ty [] (s,x)) :
     Fu (Option (CodTy Γ A U)) :=
   Fu.bind (upAt (Γ.cons A.weaken) .here U) fun r => unlessOut (strengthenAbove r)
 
-/-- The method type for a call: the receiver's method `{def l(x : S) : U}`,
-the argument's type `A` and `A <: S` give `{def l(x : A) : U0}` with `U0` the
-avoided codomain, by `stp_fun`.  `none` if the tank ends marked. -/
+/-- The method type for a call: from `{def l(x : S) : U}` and `A <: S`,
+`{def l(x : A) : U0}` with `U0` the avoided codomain, by `stp_fun`.  `none` if
+the tank ends marked. -/
 def avoidArg {s : Sig} (Γ : Ctx [] s) (l : Lb) (S : Ty [] s) (U : Ty [] (s,x)) (A : Ty [] s)
     (eA : SStp Γ A S) : Fu (Option (ArgTy Γ l S U A)) :=
   mapO (avoidCod Γ A U) fun c => ⟨c.1, .stp_fun eA c.2⟩
@@ -344,10 +325,9 @@ theorem avoidArg_weaken {s : Sig} {Γ : Ctx [] s} {l : Lb} {S : Ty [] s} {U0 A :
 
 /-! ## The frame lemmas
 
-Every computation of this module is framed: it keeps a marked tank, never adds
-fuel, and does the same with more fuel.  `up` and `down` at a larger index do
-what they do at a smaller one, as `look` does (`look_agree`).  So `upAt`,
-whose index is the fuel left, is framed, as `members` is. -/
+A framed computation keeps a marked tank, never adds fuel, and does the same
+with more fuel.  `up` and `down` at a larger index agree with the smaller one,
+as `look` does (`look_agree`). -/
 
 /-- At index zero the approximation marks the tank. -/
 theorem out_framed {α : Type} (a : α) : Framed (fun t : Tank => (a, { t with out := true })) where
@@ -586,7 +566,7 @@ theorem avoidArg_absorbs {s : Sig} (Γ : Ctx [] s) (l : Lb) (S : Ty [] s) (U : T
 /-! ## Checks
 
 Each check runs in the kernel at the default fuel.  `argAt`, `upTyAt` and
-`downTyAt` start a full tank. -/
+`downTyAt` start from a full tank. -/
 
 section AvoidChecks
 
@@ -636,8 +616,8 @@ def ex2Avoid : Option (ArgTy Γy 0 polyDom polyCod (.TBind ex2Self)) :=
   (avoidArg Γy 0 polyDom polyCod (.TBind ex2Self) ex2Arg ⟨defaultFuel, false⟩).1
 
 -- The parameter `t` is avoided: `{def 0(x : t.0) : t.0}` becomes
--- `{def 0(x : ⊤) : ⊤}`.  The domain takes the literal's lower bound `⊤` and
--- the codomain its upper bound `⊤`.
+-- `{def 0(x : ⊤) : ⊤}`, with the literal's lower bound in the domain and its
+-- upper bound in the codomain.
 theorem ex2_avoided : ex2Avoid.map (·.1) = some (.TFun 0 .TTop .TTop) := by decide +kernel
 
 example : argAt Γy 0 polyDom polyCod (.TBind ex2Self) ex2Arg =
@@ -656,18 +636,17 @@ def ex2Typed : HasType Store.nil Γy (.tapp (.tvar (.abs .here)) 0 (.tobj ex2Lit
       hr ▸ .T_App (.T_Sub .T_Varz r.2) (.T_Obj (.D_Typ .D_Nil))
   | none => absurd ex2_avoided (by rw [h]; simp)
 
--- From a short tank the tank is marked and the answer is `none`.
+-- A short tank marks the tank and the answer is `none`.
 example : argAt Γy 0 polyDom polyCod (.TBind ex2Self) ex2Arg 3 = (none, ⟨0, true⟩) := by
   decide +kernel
 
--- A codomain that does not mention the parameter is kept, at one unit.
+-- A codomain that does not mention the parameter is kept.
 example : argAt Γy 0 polyDom (Ty.TFun 3 .TTop .TBot).weaken (.TBind ex2Self) ex2Arg =
     (some (.TFun 3 .TTop .TBot), ⟨defaultFuel - 1, false⟩) := by decide +kernel
--- A codomain that keeps the parameter under a recursive type: `μ(w. t.0)`
--- from above is `μ(w. ⊤)`, by `stp_bindx`.
+-- Under a recursive type, `μ(w. t.0)` from above is `μ(w. ⊤)`, by `stp_bindx`.
 example : (argAt Γy 0 polyDom (.TBind (.TSel (.abs (.there .here)) 0)) (.TBind ex2Self) ex2Arg).1 =
     some (.TBind .TTop) := by decide +kernel
--- From an empty tank the answer is `none`.
+-- An empty tank gives `none`.
 example : (argAt Γy 0 polyDom (Ty.TFun 3 .TTop .TBot).weaken (.TBind ex2Self) ex2Arg 0) =
     (none, ⟨0, true⟩) := by decide +kernel
 
@@ -684,18 +663,17 @@ def twoUpCtx : Ctx [] ([],x) :=
 def twoDownCtx : Ctx [] ([],x) :=
   Ctx.nil.cons (.TAnd (.TTyp 0 F9 .TTop) (.TTyp 0 (.TAnd .TTop .TTop) .TTop))
 
--- Two members of the parameter at one label: the upper bounds are met, as the
--- compiler merges them.
+-- Two members at one label: the upper bounds are met.
 theorem meet_two_members :
     (upTyAt twoUpCtx .here (.TSel (.abs .here) 0)).1 = .TAnd F9 (.TAnd .TTop .TTop) := by
   decide +kernel
 example : upTyAt twoUpCtx .here (.TSel (.abs .here) 0) =
     (.TAnd F9 (.TAnd .TTop .TTop), ⟨defaultFuel - 10, false⟩) := by decide +kernel
--- At a contravariant position the lower bounds are joined.
+-- From below the lower bounds are joined.
 theorem join_two_members :
     (downTyAt twoDownCtx .here (.TSel (.abs .here) 0)).1 = .TOr F9 (.TAnd .TTop .TTop) := by
   decide +kernel
--- In a method's domain the selection is approximated from below.
+-- A method's domain is approximated from below.
 example : (upTyAt twoDownCtx .here (.TFun 1 (.TSel (.abs .here) 0) .TTop)).1 =
     .TFun 1 (.TOr F9 (.TAnd .TTop .TTop)) .TTop := by decide +kernel
 
@@ -703,8 +681,8 @@ example : (upTyAt twoDownCtx .here (.TFun 1 (.TSel (.abs .here) 0) .TTop)).1 =
 def selfAliasCtx : Ctx [] ([],x) := Ctx.nil.cons (.TBind (.TTyp 0 (.TSel (.abs .here) 0)
   (.TSel (.abs .here) 0)))
 
--- The alias is expanded once at each position, then cut, as the compiler's
--- empty range.  The tank stays unmarked.
+-- The alias is expanded once per direction, then cut to the empty range.  The
+-- tank stays unmarked.
 example : upTyAt selfAliasCtx .here (.TSel (.abs .here) 0) =
     (.TTop, ⟨defaultFuel - 6, false⟩) := by decide +kernel
 example : downTyAt selfAliasCtx .here (.TSel (.abs .here) 0) =
@@ -748,7 +726,7 @@ def p3Avoid : Option (ArgTy ΓAM 1 (.TTyp 1 .TBot .TTop) codAM (.TBind litAMSelf
   (avoidArg ΓAM 1 (.TTyp 1 .TBot .TTop) codAM (.TBind litAMSelf) argAM ⟨defaultFuel, false⟩).1
 
 -- The recursive type in the domain of `0` is kept.  Its body is approximated
--- from below: `t.1` becomes the literal's lower bound `⊤`, and `w.1` stays.
+-- from below: `t.1` becomes the literal's lower bound `⊤` and `w.1` stays.
 theorem p3_avoided : p3Avoid.map (·.1) = some recvAM := by decide +kernel
 
 example : argAt ΓAM 1 (.TTyp 1 .TBot .TTop) codAM (.TBind litAMSelf) argAM =

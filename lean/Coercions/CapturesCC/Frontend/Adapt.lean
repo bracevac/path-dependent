@@ -13,51 +13,43 @@ derivation is the soundness proof, so there is no soundness theorem.
 This module defines the result types and the typer's cases that do not
 recurse into a term.
 
-- `varSynth`: a variable at the least use set and capture set the rules give
-  it, its first view (`varView`).
+- `varSynth`: a variable at its first view (`varView`).
 - `fnViewsF`, `fldViewsF`, `boxViewsF`: the function types, the fields at a
   label and the boxes a variable has, found by the member lookup of
-  `Look.lean` from its first view.  The lookup follows the upper bounds of
-  type members, so an unboxing reaches a box that a member stands for.
+  `Look.lean`.  The lookup follows upper bounds of type members, so an
+  unboxing reaches a box that a member stands for.
 - `boxCheckF`: the `Box` rule in checking mode.  Against a goal `(□ T) ^ C`
   the variable is checked at `T` by the `var` goal of `Sub.lean`.
-- `unboxAll`: the `Unbox` rule at every box found with the unboxing's capture
-  set.  It charges that set to the use set.
+- `unboxAll`: the `Unbox` rule at every box found with the given capture set.
 - `adaptVarF`: box adaptation at a variable checked against a goal.
 
 ## Box adaptation
 
-A program need not write its boxes.  Where a variable `x` is checked against
-a goal `G`, `adaptVarF` first checks `x` plainly by the `var` goal.  A program
-that needs no box is not changed.  Otherwise it compares the box status of
-`x` and of `G`, as the compiler's `adaptBoxed` does
-(`cc/CheckCaptures.scala:1973-2006`).  The status of `x` is boxed when the
-lookup finds a box in it.  The status of `G` is boxed when `G` is a box.
+A program need not write its boxes.  `adaptVarF` first checks the variable `x`
+plainly against the goal `G`.  If that fails, it compares the box status of
+`x` and of `G`, as `adaptBoxed` in `cc/CheckCaptures.scala` does.  The status
+of `x` is boxed when the lookup finds a box in it.  The status of `G` is
+boxed when `G` is a box.
 
 - `x` boxed and `G` not: `x` is unboxed at each box found, `C ⊸ x` at the
-  box's own set `C`, and the unboxing is moved to `G`.  This charges `C` to
-  the use set, as the compiler charges the boxed set (`:1996-2006`).
-- `G` boxed and `x` not: `x` is boxed, `□ x`.  A box goal checks `x` at the
-  boxed type.  The box of the first view is then moved to `G` by the
-  subtyping goal, which reaches `G` through the lower bound of a type member.
-- The statuses agree: both are tried, unboxing first.
+  box's own set `C`.  This charges `C` to the use set, as the compiler
+  charges the boxed set.
+- `G` boxed and `x` not: `x` is boxed, `□ x`.  The box of the first view is
+  then moved to `G` by the subtyping goal, which reaches `G` through the lower
+  bound of a type member.
+- The statuses agree: both are tried, unboxing first.  The compiler adapts
+  only when the statuses differ.  Here a box may still be needed, because the
+  calculus has no rule that lets a box pass where another box type is
+  expected.
 
-The first that checks wins.  An insertion the rules do not license gives
-`none`, never an ill-typed term.  Trying both when the statuses agree is
-where the front end does more than the compiler, which adapts only when they
-differ (`:1973`).  A variable whose avoided type holds a box may still need a
-box of its own, since the version has no rule that lets a box pass where a
-type of another box is expected.
+The first insertion that checks wins.  An insertion the rules do not license
+gives `none`, never an ill-typed term.
 
-A further rule belongs to synthesis.  A receiver or function with a box and
-no field or function type is unboxed at the set of its first box.  The typer
-writes it with `unboxAll` and `firstBoxSet`.
+A receiver or function that has a box and no field or function type is
+unboxed at the set of its first box (`unboxAll`, `firstBoxSet`).
 
-Everything here runs on the tank of `Fuel.lean` and is framed: it keeps a
-marked tank, never adds fuel, and does the same with more fuel.  So the typer
-built on it is framed too.
-
-Nothing here belongs to the metatheory.
+Everything here runs on the tank of `Fuel.lean` and is framed.  Nothing here
+belongs to the metatheory.
 -/
 
 namespace CapturesCCFrontend
@@ -97,7 +89,7 @@ structure VarChecked {s : Sig} (Γ : Ctx s) (x : BVar s .var) (T : Ty s) where
   /-- The derivation. -/
   deriv : HasTy uses Γ (.path (.var x)) (.ty T)
 
-/-- A typing of a definition list against a declaration shape.  `DefsTy` uses
+/-- A typing of a definition list against a declaration shape.  `DefsTy` has
 one use set for all definitions, so the derivation holds at every set above
 the least one. -/
 structure DefsElab {s : Sig} (Γ : Ctx s) (S : Shape s) where
@@ -173,15 +165,13 @@ def widenRight {s : Sig} {Γ : Ctx s} {V : CaptureSet s} {t : Tm s} {E : ETy s}
 
 /-! ## A variable and its first view -/
 
-/-- A variable at the least sets: `{}` and its declared type if the binder is
-declared at the empty set, `{x}` and its declared shape otherwise.  This is
-the variable's first view. -/
+/-- A variable at its first view: `{}` and its declared type if the binder is
+declared at the empty set, `{x}` and its declared shape otherwise. -/
 def varSynth {s : Sig} (Γ : Ctx s) (x : BVar s .var) : Elab Γ :=
   let v := varView Γ x
   ⟨.path (.var x), v.uses, .ty v.ty, v.deriv⟩
 
-/-- A view split into its use set, capture set and shape, the form the
-lookup's answers apply to. -/
+/-- A view split into use set, capture set and shape. -/
 structure VView {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
   /-- The use set. -/
   uses : CaptureSet s
@@ -204,7 +194,7 @@ def vview {s : Sig} (Γ : Ctx s) (x : BVar s .var) : VView Γ x :=
 /-! ## Lookups from the first view -/
 
 /-- The shapes of a variable that carry the key, looked up from the shape of
-its first view.  The index of the lookup is the fuel left. -/
+its first view. -/
 def lookVar {s : Sig} (Γ : Ctx s) (x : BVar s .var) (k : Key) :
     Fu (List (Found Γ x (vview Γ x).sh)) :=
   fun t => look Γ t.left [] x (vview Γ x).sh k t
@@ -320,7 +310,7 @@ def boxValue {s : Sig} (Γ : Ctx s) (x : BVar s .var) : Elab Γ :=
 /-! ## An unboxing -/
 
 /-- `Unbox` at a box whose boxed set is `C'`, at the set `C = C'`.  The use
-set is `C` joined with the box's own, the least set `Unbox` allows. -/
+set is `C` joined with the box's own. -/
 def unboxAt {s : Sig} {Γ : Ctx s} {x : BVar s .var} {U D C C' : CaptureSet s} {S : Shape s}
     (hc : C' = C) (d : HasTy U Γ (.path (.var x)) (.ty ((Shape.box (S ^ C')) ^ D))) :
     HasTy (capJoin C U) Γ (.unbox C x) (.ty (S ^ C)) := by
@@ -335,8 +325,7 @@ def unboxOf {s : Sig} {Γ : Ctx s} {x : BVar s .var} (C : CaptureSet s) (b : Box
   else none
 
 /-- `Unbox` at every box with the capture set `C`.  The boxes include those
-reached through the upper bound of a type member, so `C ⊸ e` with `e : o.A`
-reaches the box that `o.A` stands for. -/
+reached through the upper bound of a type member. -/
 def unboxAll {s : Sig} {Γ : Ctx s} {x : BVar s .var} (C : CaptureSet s) (bs : List (BoxView Γ x)) :
     List (PElab Γ) :=
   bs.filterMap (unboxOf C)
@@ -368,10 +357,9 @@ def unboxIntoF {s : Sig} (Γ : Ctx s) {x : BVar s .var} (bs : List (BoxView Γ x
     Fu (Option (Checked Γ (.ty G))) :=
   Fu.firstSome (fun r => subsumeF Γ r.toElab (.ty G)) (unboxEach bs)
 
-/-- Box adaptation after plain checking has failed, by the box status of the
-variable and of the goal.  A boxed variable against an unboxed goal is only
-unboxed.  Otherwise unboxing is tried first, then boxing.  An unboxed variable
-has nothing to unbox, so against a boxed goal it is only boxed. -/
+/-- Box adaptation after plain checking has failed.  A boxed variable against
+an unboxed goal is only unboxed.  Otherwise unboxing is tried first, then
+boxing. -/
 def adaptInsertF {s : Sig} (Γ : Ctx s) (x : BVar s .var) (G : Ty s) :
     Fu (Option (Checked Γ (.ty G))) :=
   Fu.bind (boxViewsF Γ x) fun bs =>
@@ -387,7 +375,7 @@ def adaptVarF {s : Sig} (Γ : Ctx s) (x : BVar s .var) (G : Ty s) :
 
 /-! ## The frame lemmas -/
 
-/-- The lookup from the fuel left is framed, as `declsAt` is. -/
+/-- The lookup is framed. -/
 theorem lookVar_framed {s : Sig} (Γ : Ctx s) (x : BVar s .var) (k : Key) :
     Framed (lookVar Γ x k) where
   absorbs t ht := (look_framed Γ t.left [] x _ k).absorbs t ht
@@ -468,8 +456,7 @@ private abbrev f1z : BVar ((Sig.body (Sig.body ([],c,c)),c),x) .var := up2 (up .
 /-- `f₁` at the signature of `C7Ctxe`. -/
 private abbrev f1e : BVar (Sig.body (Sig.body ([],c,c)),x,x) .var := .there (.there (up .here))
 
-/-- The unboxings of a variable at the set `C`, with their use sets and
-types. -/
+/-- The unboxings of a variable at the set `C`, with use sets and types. -/
 private def unboxesAt {s : Sig} (Γ : Ctx s) (x : BVar s .var) (C : CaptureSet s) :
     List (CaptureSet s × Ty s) :=
   (unboxAll C (boxViewsF Γ x ⟨defaultFuel, false⟩).1).map fun r => (r.uses, r.ty)
@@ -504,8 +491,7 @@ example : ((varSynth C7Ctxe .here).uses, (varSynth C7Ctxe .here).ans) =
 /-- A binder declared at a capability is used at its own atom. -/
 example : (varSynth C7Ctxe f1e).uses = [CapAtom.var f1e] := by decide
 
-/-- Box adaptation at a variable from a full tank.  It returns the inserted
-term and its use set. -/
+/-- Box adaptation at a variable from a full tank: the term and its use set. -/
 private def adaptAt {s : Sig} (Γ : Ctx s) (x : BVar s .var) (G : Ty s) :
     Option (ATm s × CaptureSet s) :=
   (adaptVarF Γ x G ⟨defaultFuel, false⟩).1.map fun r => (r.tm, r.uses)

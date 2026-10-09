@@ -4,11 +4,10 @@ import Coercions.Captures.Frontend.Ann
 /-!
 # Result types of the typer, and box inference at a variable
 
-The typer elaborates: it returns the term it typed, which may contain boxes
+The typer elaborates.  It returns the term it typed, which may contain boxes
 and unboxings the program did not write.  A result holds the elaborated term,
-its use set, its type, and a derivation of the version's `HasTy` for the
-term's erasure.  Soundness is therefore the result type, and no soundness
-theorem is needed.
+its use set, its type, and a derivation of `HasTy` for the term's erasure.
+Soundness is therefore the result type.
 
 This module defines the result types and the typer's cases that do not
 recurse into a term.
@@ -16,11 +15,11 @@ recurse into a term.
 - `varSynth`: a variable at the least use set and capture set the rules give
   it, its first view.
 - `fnViewsF`, `fldViewsF`, `boxViewsF`: the function types, the fields at a
-  label and the boxes a variable has, found by the member lookup of
-  `Look.lean` from its first view.  The lookup follows the upper bounds of
-  type members, so an unboxing reaches a box that a member stands for.
+  label and the boxes a variable has.  They use the member lookup of
+  `Look.lean`, which follows the upper bounds of type members, so an
+  unboxing reaches a box that a member stands for.
 - `boxCheckF`: the `Box` rule in checking mode.  Against a goal `(□ T) ^ C`
-  the variable is checked at `T` by the `var` goal of `Sub.lean`.
+  the variable is checked at `T`.
 - `unboxAll`: the `Unbox` rule at every box found with the unboxing's capture
   set.  It charges that set to the use set.
 - `adaptVarF`: box inference at a variable checked against a goal.
@@ -30,33 +29,26 @@ recurse into a term.
 A program need not write its boxes.  Where a variable `x` is checked against
 a goal `G`, `adaptVarF` tries three rules in order.
 
-1. Plain checking by the `var` goal.  A program that needs no box is not
-   changed.
+1. Plain checking by the `var` goal of `Sub.lean`.  A program that needs no
+   box is not changed.
 2. If the lookup finds no box in `x`, `□ x` is checked against `G`.  A box
    goal uses `boxCheckF`.  Any other goal uses the subtyping algorithm, which
-   reaches `G` through the lower bound of a type member, so a field declared
+   reaches `G` through the lower bound of a type member.  So a field declared
    at `z.A` with `A` bounded by a box takes a box.
 3. If the lookup finds a box `□(S ^ C)`, the unboxing `C ⊸ x` at the set `C`
-   of the first box is moved to `G`.  It charges `C` to the use set.
+   of the first box is checked against `G`.  It charges `C` to the use set.
 
-A fourth rule belongs to synthesis.  A receiver or function with a box and no
-field or function type is unboxed at the set of its first box.  The typer
-writes it with `unboxAll` and `firstBoxSet`.
+A receiver or function with a box and no field or function type is unboxed at
+the set of its first box, with `unboxAll` and `firstBoxSet`.
 
-This is the compiler's `adaptBoxed` (`cc/CheckCaptures.scala:1926-2020`): it
-adapts when the box status differs (`:1973`), inserts a box when the position
-is covariant and the value is not boxed (`:1975`), and charges the boxed set
-when it unboxes (`markFree` of the critical set, `:1996-2006`).  The
-compiler finds a boxed bound through a chain of upper bounds
-(`findImpureUpperBound`, `cc/CheckCaptures.scala:1707-1715`), as the lookup
-does.  An insertion the rules do not license gives `none`, never an
-ill-typed term.
+This follows `adaptBoxed` in `cc/CheckCaptures.scala`.  It adapts when the
+box status differs, inserts a box when the position is covariant and the value
+is not boxed, and charges the boxed set when it unboxes.  The compiler finds a
+boxed bound through a chain of upper bounds in `findImpureUpperBound`, as the
+lookup does.  An insertion the rules do not license gives `none`.
 
-Everything here runs on the tank of `Fuel.lean` and is framed: it keeps a
-marked tank, never adds fuel, and does the same with more fuel.  So the typer
-built on it is framed too.
-
-Nothing here belongs to the metatheory.
+Everything here runs on the tank of `Fuel.lean` and is framed: it keeps a marked
+tank, never adds fuel, and does the same with more fuel.
 -/
 
 namespace CapturesFrontend
@@ -382,8 +374,8 @@ theorem adaptVarF_framed {s : Sig} (Γ : Ctx s) (x : BVar s .var) (G : Ty s) :
 
 /-! ## Tests
 
-The two judgments of C7 that the version derives with a box and with an
-unboxing (`C7box1` and `C7unbox` in `DotMNF/Examples.lean`), and the
+The two hand-written judgments of C7, with a box and with an unboxing
+(`C7box1` and `C7unbox` in `DotMNF/Examples.lean`), and the
 rejections of the same cases, each from a full tank of `defaultFuel` units. -/
 
 section Tests

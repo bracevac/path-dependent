@@ -4,36 +4,34 @@ import Coercions.Captures.Frontend.Pretty
 /-!
 # The examples end to end
 
-The surface programs of `Notation.lean`, the programs of `Typer.lean`, and
-the programs written here are taken through the whole front end.  Where the
-hand-written derivations of `DotMNF/Examples.lean` exist, the term and the
-judgment are compared with them.  The pure programs run over the empty
-platform.  The capture programs run over the platform `πc` of `Resolve.lean`,
-two capabilities `k1` and `k2`, which are the version's `κ₁` and `κ₂`.  In S1
+The surface programs of `Notation.lean`, the programs of `Typer.lean` and the
+programs written here are taken through the whole front end.  Where
+`DotMNF/Examples.lean` has a hand-written derivation, the term and the judgment
+are compared with it.  The pure programs run over the empty platform.  The
+capture programs run over the platform `πc` of `Resolve.lean`, with two
+capabilities `k1` and `k2`, which are `κ₁` and `κ₂` of the calculus.  In S1
 and S2, `k1` plays the file system `fs`.
 
 ## What is checked
 
 Every function of the front end is structural, so the kernel reduces
-resolution, the typer and the machine.  Every check runs at `defaultFuel`, the
-one field of the default budget `{}`.  No program has a budget of its own.
+resolution, the typer and the machine.  Every check runs at `defaultFuel`.
 
 For a program that compiles:
 
-- The term, by `decide`.  This is the resolved term, or for a program that
-  leaves its boxes to box inference, the erasure of the elaborated term (by
-  `decide +kernel`, since it runs the typer).
+- The term, by `decide`.  This is the resolved term.  For a program that
+  leaves its boxes to box inference it is the erasure of the elaborated term,
+  by `decide +kernel`.
 - `Ek_type`: the use set and the type the typer finds and the tank it leaves,
-  by `decide +kernel`.  The tank left is `defaultFuel` minus the units the
-  typing used, and it is unmarked.
+  by `decide +kernel`.  The tank is unmarked.
 - The target checker's verdict on the translation of the derivation and on
   the use set evidence, through `expect`.
 - `Ek_compiles`, by `decide +kernel`, and `Ek_checks`, which is
-  `compile_checks_get` at the program.  So `Ek_checks` has no hypothesis.
+  `compile_checks_get` at the program.  `Ek_checks` has no hypothesis.
 
 For a program the typer rejects:
 
-- `Ek_verdict`: no type, and the tank left unmarked, by `decide +kernel`.
+- `Ek_verdict`: no type, and the tank unmarked, by `decide +kernel`.
 - `Ek_rejected`: `compile` returns nothing at every budget.  Above
   `defaultFuel` this is `synthTop?_stable`, and below it `synthTop?_mono`.
 - `Ek_not_alg`, where the rejection is at one goal of the subtyping core:
@@ -45,62 +43,65 @@ marked, by `decide +kernel`.  The verdict is the compiler's recursion limit,
 not a rejection by the rules.
 
 Derivations are not compared, since `DotMNF.HasTy` is data with no decidable
-equality and the typer may reach a judgment by another route.  No term, use
-set or type is copied from the version: `tmOfDeriv`, `usesOfDeriv` and
-`tyOfDeriv` read them off its derivations.
+equality and the typer may reach a judgment by another route.  Terms, use sets
+and types are read off the derivations (`tmOfDeriv`, `usesOfDeriv`,
+`tyOfDeriv`), not copied.
 
 ## The programs by verdict
 
-Accepted at the version's judgment: E5, E7, E8, C7 (boxes written, no box
-written), S3 (box written, no box written), C2 with its client ascribed, S1
-and S2.  C5 is typed at the version's own open context `S2Ctx3`, at the least
-judgment, and the version's judgment is reached from it.
+Accepted at the judgment of `DotMNF/Examples.lean`: E5, E7, E8, C7 (boxes
+written, and no box written), S3 (box written, and no box written), C2 with
+its client ascribed, S1 and S2.  C5 is typed at the open context `S2Ctx3` at
+the least judgment, and the hand-written judgment is reached from it.
 
-Accepted at a judgment written here: E6, E9, E10t, E11, the Scala form of
-C7, C2 as `Notation.lean` writes it, S1 with `withFile` unascribed, and box
+Accepted at a judgment written here: E6, E9, E10t, E11, the Scala form of C7,
+C2 as `Notation.lean` writes it, S1 with `withFile` unascribed, and box
 inference at an argument, a receiver and a field (argBox, argUnbox, recv,
 impure, impureIns).  E2 is typed at the type avoidance gives,
-`∀(y : ∀(z : ⊤) ⊥) ⊤`, where the version's derivation concludes `⊤`.
+`∀(y : ∀(z : ⊤) ⊥) ⊤`, where the hand-written derivation concludes `⊤`.
 
 Accepted, and found by no search over the declared types of the context:
-P1cc, a capture member three steps down a recursive type under a `∀`.  P2cc,
-an alias chain of capture members at eight links.  P4, a field four steps
-down the upper bound of a selection.  P5, an intersection of two function
-types applied to an argument only the second accepts.  R2, a projection with
-two written fields, of which only the second has the member the body reads.
-G, a `let` whose body has a type with two members of one name, approximated
-by the meet of their upper bounds.  E1s and E3s, which are E1 and E3 with the
-middle type written.  The doubled alias chain of twelve links at the goal
-that holds.
+
+- P1cc, a capture member three steps down a recursive type under a `∀`.
+- P2cc, an alias chain of capture members at eight links.
+- P4, a field four steps down the upper bound of a selection.
+- P5, an intersection of two function types applied to an argument only the
+  second accepts.
+- R2, a projection with two written fields, of which only the second has the
+  member the body reads.
+- G, a `let` whose body has a type with two members of one name, approximated
+  by the meet of their upper bounds.
+- E1s and E3s, which are E1 and E3 with the middle type written.
+- The doubled alias chain of twelve links at the goal that holds.
 
 Accepted with every candidate kept: R1, whose projection finds one field
 through a selection's upper bound and one written, and whose body needs the
-second.  R3 and R3let, where the projection that has two fields sits inside
-the bound term of another `let`, so a `let` returns every pair of candidates.
+second.  R3 and R3let, where the projection with two fields sits inside the
+bound term of another `let`, so a `let` returns every pair of candidates.
 
 Rejected, as scalac rejects them: E1, E3, E4 and B1 need a middle type the
 program does not write, and the typer chooses none.  A1 has a written `let`
-annotation the bound value does not meet, and a written annotation binds.
-The converse of P1cc asks `{κ₁}` below `{y.C}`, whose lower bound is `{}`.
-Each has its `¬ Alg` fact.  E10 applies a variable at `⊤`, and the lookup
-finds no function type in `⊤`.
+annotation the bound value does not meet, and a written annotation binds.  The
+converse of P1cc asks `{κ₁}` below `{y.C}`, whose lower bound is `{}`.  Each
+has its `¬ Alg` fact.  E10 applies a variable at `⊤`, and the lookup finds no
+function type in `⊤`.
 
-At the recursion limit: LP through a written `let` type and through an
-ascription, a check through `∀` bodies that reaches the same goal under one
-more binder at every level.  LPw2, the same loop where every goal mentions
-the newest binder.  The doubled alias chain of twelve links at a goal that
-is false, which tries both members at every link.
+At the recursion limit: LP, through a written `let` type and through an
+ascription.  The check goes through `∀` bodies and reaches the same goal under
+one more binder at every level.  LPw2, the same loop where every goal mentions
+the newest binder.  The doubled alias chain of twelve links at a goal that is
+false, which tries both members at every link.
 
 ## Least judgments and effect theorems
 
-Without the ascriptions that name the version's types, the typer finds the
-least use set.  S1 without an ascription is typed at `{}`, since its
-operation never calls the file.  C2 as `Notation.lean` writes it is typed at
-`{k2}`, since its answer is the client at `b`, whose member is `{k2}`.
+Without the ascriptions that name the hand-written types, the typer finds the
+least use set.  S1 without an ascription is typed at `{}`, since its operation
+never calls the file.  C2 as `Notation.lean` writes it is typed at `{k2}`,
+since its answer is the client at `b`, whose member is `{k2}`.
 `compile_effect_safety_get` at these programs says that a run of S1 or of C2
 never reads a variable rooted at `k1`, which is the file system in S1.  The
-theorems state this of the version's terms `S1tm` and `C2tm`, which the
-elaborated terms equal.
+theorems state this of the terms `S1tm` and `C2tm`, which the elaborated terms
+equal.
 
 ## Run tests
 
@@ -121,9 +122,9 @@ section Examples
 
 open Captures.DotMNF.Examples
 
-/-! ## Reading a derivation of the version -/
+/-! ## Reading a hand-written derivation -/
 
-/-- The term a derivation of the version is about.  `usesOfDeriv` and
+/-- The term a hand-written derivation is about.  `usesOfDeriv` and
 `tyOfDeriv` of `Typer.lean` read its use set and type. -/
 def tmOfDeriv {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {T : Ty s}
     (_ : HasTy U Γ t T) : Tm s := t
@@ -192,7 +193,7 @@ theorem judgAt_rejects {π : PlatformNames} {e : STm} {n k : Nat}
 
 /-! ## E1: bad bounds under a lambda
 
-The annotated `let` is typed through the bad bounds chain in the version's
+The annotated `let` is typed through the bad bounds chain in the hand-written
 derivation `E1`.  The chain passes the middle `x.A`, which the program does
 not write, so the typer rejects the program, as the Scala compiler does.  The
 goal it rejects is the check of the body `y` against the annotation. -/
@@ -202,7 +203,7 @@ example : compiledTm Λc .empty E1src = some (tmOfDeriv E1) := by decide
 /-- `x : {A : ⊤..⊥}` and the `let` binder `y` at the same type. -/
 def E1yCtx : Ctx ([],x,x) := E1Ctx.cons E1Dom
 
-/-- The typer rejects E1 after 7 units, with the tank unmarked. -/
+/-- The typer rejects E1, with the tank unmarked. -/
 theorem E1_verdict : judgAt .empty E1src = (none, ⟨defaultFuel - 7, false⟩) := by decide +kernel
 
 /-- E1 does not compile at any budget. -/
@@ -220,12 +221,12 @@ theorem E1_not_alg : ¬ Alg ⟨_, E1yCtx, .var .here E1DomS E1ResS⟩ := by
 /-! ## E2: a recursive object with a self referential member
 
 The outer `let` has no annotation, and its body's type mentions the bound
-variable.  Avoidance replaces it by `∀(y : ∀(z : ⊤) ⊥) ⊤`, which the version's
-derivation `E2` does not reach.  So the judgment is written out. -/
+variable.  Avoidance replaces it by `∀(y : ∀(z : ⊤) ⊥) ⊤`, which the
+hand-written derivation `E2` does not reach.  So the judgment is written out. -/
 
 example : compiledTm Λc .empty E2src = some (tmOfDeriv E2) := by decide
 
-/-- E2 is typed at the avoided type, from 64 units. -/
+/-- E2 is typed at the avoided type. -/
 theorem E2_type : judgAt .empty E2src =
     (some ([], (Shape.all ((Shape.all (.top ^ []) (.bot ^ [])) ^ []) (.top ^ [])) ^ []),
       ⟨defaultFuel - 64, false⟩) := by
@@ -246,7 +247,7 @@ theorem E2_checks : CheckerAccepts {} Λc .empty E2src E2_compiles :=
 
 /-! ## E3: an intersection with a shared member
 
-Two declarations of one variable at one label.  The version's derivation
+Two declarations of one variable at one label.  The hand-written derivation
 `E3` passes the middle `x.A`, which the program does not write, so the typer
 rejects the program, as the Scala compiler does.  The goal it rejects is the
 check of the body `y` against the annotation. -/
@@ -256,7 +257,7 @@ example : compiledTm Λc .empty E3src = some (tmOfDeriv E3) := by decide
 /-- `x`, `z : {b : ⊤}`, and the `let` binder `y : {b : ⊤}`. -/
 def E3yCtx : Ctx ([],x,x,x) := E3Ctx2.cons E3T2
 
-/-- The typer rejects E3 after 7 units, with the tank unmarked. -/
+/-- The typer rejects E3, with the tank unmarked. -/
 theorem E3_verdict : judgAt .empty E3src = (none, ⟨defaultFuel - 7, false⟩) := by decide +kernel
 
 /-- E3 does not compile at any budget. -/
@@ -272,14 +273,14 @@ theorem E3_not_alg : ¬ Alg ⟨_, E3yCtx, .var .here E3T2S E3T1S⟩ := by
 
 /-! ## E4: typing with no realizer
 
-The version's derivation `E4` reaches a member's bound through a subsumption
+The hand-written derivation `E4` reaches a member's bound through a subsumption
 the program does not write, so the typer rejects the program, as the Scala
 compiler does.  The goal it rejects is the argument `n` of `g n` against the
 domain `w.A`. -/
 
 example : compiledTm Λc .empty E4src = some (tmOfDeriv E4) := by decide
 
-/-- The typer rejects E4 after 12 units, with the tank unmarked. -/
+/-- The typer rejects E4, with the tank unmarked. -/
 theorem E4_verdict : judgAt .empty E4src = (none, ⟨defaultFuel - 12, false⟩) := by decide +kernel
 
 /-- E4 does not compile at any budget. -/
@@ -294,11 +295,11 @@ theorem E4_not_alg :
 /-! ## E5: an object returned from a function
 
 Both `let`s have bodies whose types do not mention their binders, so
-avoidance strengthens them.  The version's derivation is `E5`. -/
+avoidance strengthens them.  The hand-written derivation is `E5`. -/
 
 example : compiledTm Λc .empty E5src = some (tmOfDeriv E5) := by decide
 
-/-- E5 is typed at the version's judgment, from 19 units. -/
+/-- E5 is typed at the hand-written judgment. -/
 theorem E5_type : judgAt .empty E5src =
     (some (usesOfDeriv E5, tyOfDeriv E5), ⟨defaultFuel - 19, false⟩) := by
   decide +kernel
@@ -318,13 +319,13 @@ theorem E5_checks : CheckerAccepts {} Λc .empty E5src E5_compiles :=
 
 /-! ## E6: a field typed at its own literal's member
 
-The version types `E6` under the context that binds `n`.  The surface program
+`DotMNF/Examples.lean` types `E6` under the context that binds `n`.  The surface program
 is that term under a `λ` that binds `n`, and the comparison has the same `λ`
 on both sides. -/
 
 example : compiledTm Λc .empty E6src = some (.val (.lam E6Int (tmOfDeriv E6))) := by decide
 
-/-- E6 is typed at `∀(n : E6Int)` over the version's type, from 15 units. -/
+/-- E6 is typed at `∀(n : E6Int)` over the hand-written type. -/
 theorem E6_type : judgAt .empty E6src =
     (some ([], (Shape.all E6Int (tyOfDeriv E6)) ^ []), ⟨defaultFuel - 15, false⟩) := by
   decide +kernel
@@ -344,11 +345,11 @@ theorem E6_checks : CheckerAccepts {} Λc .empty E6src E6_compiles :=
 
 /-! ## E7: two type members that name each other
 
-Nothing is searched.  The version's derivation is `E7`. -/
+Nothing is searched.  The hand-written derivation is `E7`. -/
 
 example : compiledTm Λc .empty E7src = some (tmOfDeriv E7) := by decide
 
-/-- E7 is typed at the version's judgment, from 1 unit. -/
+/-- E7 is typed at the hand-written judgment. -/
 theorem E7_type : judgAt .empty E7src =
     (some (usesOfDeriv E7, tyOfDeriv E7), ⟨defaultFuel - 1, false⟩) := by
   decide +kernel
@@ -369,11 +370,11 @@ theorem E7_checks : CheckerAccepts {} Λc .empty E7src E7_compiles :=
 /-! ## E8: a member in the right operand
 
 The lookup finds the member in the right operand of the intersection.  The
-version's derivation is `E8`. -/
+hand-written derivation is `E8`. -/
 
 example : compiledTm Λc .empty E8src = some (tmOfDeriv E8) := by decide
 
-/-- E8 is typed at the version's judgment, from 13 units. -/
+/-- E8 is typed at the hand-written judgment. -/
 theorem E8_type : judgAt .empty E8src =
     (some (usesOfDeriv E8, tyOfDeriv E8), ⟨defaultFuel - 13, false⟩) := by
   decide +kernel
@@ -394,7 +395,7 @@ theorem E8_checks : CheckerAccepts {} Λc .empty E8src E8_compiles :=
 /-! ## E9: a field through the upper bound of a member
 
 `y : x.A`, and the field is read off the upper bound of `x`'s member `A`.
-The version has no derivation of it, so the term and the type are written
+`DotMNF/Examples.lean` has no derivation of it, so the term and the type are written
 out. -/
 
 /-- `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A). y.a`, erased. -/
@@ -407,7 +408,7 @@ def E9ty : Ty [] :=
 
 example : compiledTm Λc .empty E9src = some E9tm := by decide
 
-/-- E9 is typed at `E9ty`, from 7 units. -/
+/-- E9 is typed at `E9ty`. -/
 theorem E9_type : judgAt .empty E9src = (some ([], E9ty), ⟨defaultFuel - 7, false⟩) := by
   decide +kernel
 
@@ -433,7 +434,7 @@ the subtyping core is asked, so E10 has no `¬ Alg` fact. -/
 
 example : compiledTm Λc .empty E10src = some E10ann.erase := by decide
 
-/-- The typer rejects E10 after 2 units, with the tank unmarked. -/
+/-- The typer rejects E10, with the tank unmarked. -/
 theorem E10_verdict : judgAt .empty E10src = (none, ⟨defaultFuel - 2, false⟩) := by
   decide +kernel
 
@@ -460,7 +461,7 @@ def E10tty : Ty [] := (Shape.all E10tArr ((Shape.all E10tArr unitTy) ^ [])) ^ []
 
 example : compiledTm Λc .empty E10tsrc = some E10ttm := by decide
 
-/-- E10t is typed at `E10tty`, from 11 units. -/
+/-- E10t is typed at `E10tty`. -/
 theorem E10t_type : judgAt .empty E10tsrc = (some ([], E10tty), ⟨defaultFuel - 11, false⟩) := by
   decide +kernel
 
@@ -483,7 +484,7 @@ E10t applied twice to the identity, in direct style.  The resolver atomizes
 the operator as well as the operand, and the machine reduces through the
 inserted bindings. -/
 
-/-- E11 is typed at `⊤`, from 21 units. -/
+/-- E11 is typed at `⊤`. -/
 theorem E11_type : judgAt .empty E11src = (some ([], unitTy), ⟨defaultFuel - 21, false⟩) := by
   decide +kernel
 
@@ -504,9 +505,9 @@ theorem E11_checks : CheckerAccepts {} Λc .empty E11src E11_compiles :=
 
 E1 and E3 with the middle type `x.A` written as a `let` annotation on the
 bound value, `let u : x.A = … in u`.  The typer finds each step at a written
-type and reaches the types of the version's derivations `E1` and `E3`. -/
+type and reaches the types of the hand-written derivations `E1` and `E3`. -/
 
-/-- E1s is typed at the version's type of E1, from 18 units. -/
+/-- E1s is typed at the hand-written type of E1. -/
 theorem E1s_type : judgAt .empty E1ssrc =
     (some ([], (Shape.all E1Dom E1Res) ^ []), ⟨defaultFuel - 18, false⟩) := by
   decide +kernel
@@ -523,7 +524,7 @@ theorem E1s_compiles : (compile {} Λc .empty E1ssrc).isSome = true := by decide
 theorem E1s_checks : CheckerAccepts {} Λc .empty E1ssrc E1s_compiles :=
   compile_checks_get E1s_compiles
 
-/-- E3s is typed at the version's type of E3, from 20 units. -/
+/-- E3s is typed at the hand-written type of E3. -/
 theorem E3s_type : judgAt .empty E3ssrc =
     (some ([], (Shape.all E3Dom ((Shape.all E3T2 E3T1) ^ [])) ^ []), ⟨defaultFuel - 20, false⟩) := by
   decide +kernel
@@ -544,14 +545,14 @@ theorem E3s_checks : CheckerAccepts {} Λc .empty E3ssrc E3s_compiles :=
 /-! ## C7: a container of boxed capabilities, boxes written
 
 The fields check by the box rule, and the client unboxes at `{k1}`.  Box
-inference leaves the program unchanged.  The version's derivation is
+inference leaves the program unchanged.  The hand-written derivation is
 `C7_typed`. -/
 
 example : compiledTm Λc πc C7src = some (tmOfDeriv C7_typed) := by decide
 
 example : elaboratedTm {} Λc πc C7src = some (tmOfDeriv C7_typed) := by decide +kernel
 
-/-- C7 is typed at the version's judgment, from 23 units. -/
+/-- C7 is typed at the hand-written judgment. -/
 theorem C7_type : judgAt πc C7src =
     (some (usesOfDeriv C7_typed, tyOfDeriv C7_typed), ⟨defaultFuel - 23, false⟩) := by
   decide +kernel
@@ -573,14 +574,13 @@ theorem C7_checks : CheckerAccepts {} Λc πc C7src C7_compiles :=
 
 The fields are written `{e1 = f1}` and `{e2 = f2}` and the client is an
 ascription.  Box inference inserts `□ f1` and `□ f2` at the fields and
-`{k1} ⊸ e` at the ascription.  The elaborated term is the version's. -/
+`{k1} ⊸ e` at the ascription.  The elaborated term is the hand-written one. -/
 
 example : compiledTm Λc πc C7nbSrc ≠ some (tmOfDeriv C7_typed) := by decide
 
 example : elaboratedTm {} Λc πc C7nbSrc = some (tmOfDeriv C7_typed) := by decide +kernel
 
-/-- C7 with no box written is typed at the version's judgment, from 51
-units. -/
+/-- C7 with no box written is typed at the hand-written judgment. -/
 theorem C7nb_type : judgAt πc C7nbSrc =
     (some (usesOfDeriv C7_typed, tyOfDeriv C7_typed), ⟨defaultFuel - 51, false⟩) := by
   decide +kernel
@@ -603,7 +603,7 @@ theorem C7nb_checks : CheckerAccepts {} Λc πc C7nbSrc C7nb_compiles :=
 
 No box is written, and the element is called where it is read, `let e = o.e1
 in e u`.  The lookup finds a box in `e` and no function type, so box
-inference binds `{k1} ⊸ e` before the call.  The version has no derivation of
+inference binds `{k1} ⊸ e` before the call.  `DotMNF/Examples.lean` has no derivation of
 this form, so the term (`C7scalaTm` of `Typer.lean`) and the type are written
 out. -/
 
@@ -614,7 +614,7 @@ def C7scalaTy : Ty ([],c,c) :=
 
 example : elaboratedTm {} Λc πc C7scalaSrc = some C7scalaTm := by decide +kernel
 
-/-- The Scala form of C7 is typed at `C7scalaTy`, from 54 units. -/
+/-- The Scala form of C7 is typed at `C7scalaTy`. -/
 theorem C7scala_type : judgAt πc C7scalaSrc = (some ([], C7scalaTy), ⟨defaultFuel - 54, false⟩) := by
   decide +kernel
 
@@ -635,11 +635,11 @@ theorem C7scala_checks : CheckerAccepts {} Λc πc C7scalaSrc C7scala_compiles :
 /-! ## S3: a type member at a boxed capturing type, box written
 
 The client's unboxing reaches the box through the upper bound of the
-member.  The version's derivation is `S3_typed`. -/
+member.  The hand-written derivation is `S3_typed`. -/
 
 example : compiledTm Λc πc S3src = some (tmOfDeriv S3_typed) := by decide
 
-/-- S3 is typed at the version's judgment, from 42 units. -/
+/-- S3 is typed at the hand-written judgment. -/
 theorem S3_type : judgAt πc S3src =
     (some (usesOfDeriv S3_typed, tyOfDeriv S3_typed), ⟨defaultFuel - 42, false⟩) := by
   decide +kernel
@@ -665,8 +665,7 @@ unboxes `e` through the upper bound of `o.A`. -/
 
 example : elaboratedTm {} Λc πc S3nbSrc = some (tmOfDeriv S3_typed) := by decide +kernel
 
-/-- S3 with no box written is typed at the version's judgment, from 79
-units. -/
+/-- S3 with no box written is typed at the hand-written judgment. -/
 theorem S3nb_type : judgAt πc S3nbSrc =
     (some (usesOfDeriv S3_typed, tyOfDeriv S3_typed), ⟨defaultFuel - 79, false⟩) := by
   decide +kernel
@@ -687,13 +686,13 @@ theorem S3nb_checks : CheckerAccepts {} Λc πc S3nbSrc S3nb_compiles :=
 
 /-! ## C2 with its client ascribed
 
-The client is ascribed at the version's `C2ClientTy`, so its call is charged
+The client is ascribed at the hand-written `C2ClientTy`, so its call is charged
 to the upper bound of the abstract member, `{k1, k2}`.  The judgment is the
-version's `C2_typed`. -/
+hand-written `C2_typed`. -/
 
 example : compiledTm Λc πc C2ascSrc = some (tmOfDeriv C2_typed) := by decide
 
-/-- The ascribed C2 is typed at the version's judgment, from 177 units. -/
+/-- The ascribed C2 is typed at the hand-written judgment. -/
 theorem C2asc_type : judgAt πc C2ascSrc =
     (some (usesOfDeriv C2_typed, tyOfDeriv C2_typed), ⟨defaultFuel - 177, false⟩) := by
   decide +kernel
@@ -721,7 +720,7 @@ example : compiledTm Λc πc C2src = some (tmOfDeriv C2_typed) := by decide
 
 example : elaboratedTm {} Λc πc C2src = some C2tm := by decide +kernel
 
-/-- C2 is typed at `{k2}` and `(⊤ → ⊤) ^ {k2}`, from 175 units. -/
+/-- C2 is typed at `{k2}` and `(⊤ → ⊤) ^ {k2}`. -/
 theorem C2_type : judgAt πc C2src =
     (some ([CapAtom.cvar k2], arrowS ^ [CapAtom.cvar k2]), ⟨defaultFuel - 175, false⟩) := by
   decide +kernel
@@ -742,12 +741,12 @@ theorem C2_checks : CheckerAccepts {} Λc πc C2src C2_compiles :=
 /-! ## S1: `withFile` with an explicit capture parameter
 
 `withFile` is bound by an ascription at its signature, which has `any` in
-its result.  The judgment is the version's `S1_typed`, `{k1}` and
+its result.  The judgment is the hand-written `S1_typed`, `{k1}` and
 `⊤ ^ {k1}`. -/
 
 example : compiledTm Λc πc S1src = some (tmOfDeriv S1_typed) := by decide
 
-/-- S1 is typed at the version's judgment, from 91 units. -/
+/-- S1 is typed at the hand-written judgment. -/
 theorem S1_type : judgAt πc S1src =
     (some (usesOfDeriv S1_typed, tyOfDeriv S1_typed), ⟨defaultFuel - 91, false⟩) := by
   decide +kernel
@@ -773,7 +772,7 @@ example : compiledTm Λc πc S1bareSrc = some (tmOfDeriv S1_typed) := by decide
 
 example : elaboratedTm {} Λc πc S1bareSrc = some S1tm := by decide +kernel
 
-/-- The unascribed S1 is typed at `{}` and `⊤`, from 78 units. -/
+/-- The unascribed S1 is typed at `{}` and `⊤`. -/
 theorem S1bare_type : judgAt πc S1bareSrc = (some ([], unitTy), ⟨defaultFuel - 78, false⟩) := by
   decide +kernel
 
@@ -795,11 +794,11 @@ theorem S1bare_checks : CheckerAccepts {} Λc πc S1bareSrc S1bare_compiles :=
 `mk` is bound by an ascription at its signature, with `any` in the result.
 The literal packs against the checked `let`, and the caller's `{it.C}`
 leaves scope at the member's upper bound `{k1}`.  The judgment is the
-version's `S2_typed`. -/
+hand-written `S2_typed`. -/
 
 example : compiledTm Λc πc S2src = some (tmOfDeriv S2_typed) := by decide
 
-/-- S2 is typed at the version's judgment, from 116 units. -/
+/-- S2 is typed at the hand-written judgment. -/
 theorem S2_type : judgAt πc S2src =
     (some (usesOfDeriv S2_typed, tyOfDeriv S2_typed), ⟨defaultFuel - 116, false⟩) := by
   decide +kernel
@@ -817,12 +816,12 @@ theorem S2_compiles : (compile {} Λc πc S2src).isSome = true := by decide +ker
 theorem S2_checks : CheckerAccepts {} Λc πc S2src S2_compiles :=
   compile_checks_get S2_compiles
 
-/-! ## C5: the caller of `mk`, at the version's own context
+/-! ## C5: the caller of `mk`, at the hand-written context
 
-The version types C5 at `S2Ctx3`, where `mk`, `un` and `it` are bound.  C5
+`DotMNF/Examples.lean` types C5 at `S2Ctx3`, where `mk`, `un` and `it` are bound.  C5
 does not go through `compile`, which is closed over a platform, but through
 `synthInF` at that context.  The typer finds the least judgment, `{it, it.C}`
-and `⊤ ^ {it.C}`.  One `sub` reaches the version's judgment.  The
+and `⊤ ^ {it.C}`.  One `sub` reaches the hand-written judgment.  The
 checker theorem composes the same two results as `compile_checks`. -/
 
 /-- The resolved C5, `let n = it.next in let r = n un in r`. -/
@@ -836,7 +835,7 @@ example : resolveIn Λc C5names C5plat C5src = some C5ann := by decide
 
 example : C5ann.erase = tmOfDeriv C5_typed := by decide
 
-/-- C5 is typed at `{it, it.C}` and `⊤ ^ {it.C}`, from 17 units. -/
+/-- C5 is typed at `{it, it.C}` and `⊤ ^ {it.C}`. -/
 theorem C5_type :
     ((synthInF S2Ctx3 C5ann defaultFuel).1.map (fun r => (r.uses, r.ty)),
       (synthInF S2Ctx3 C5ann defaultFuel).2) =
@@ -844,8 +843,7 @@ theorem C5_type :
       ⟨defaultFuel - 17, false⟩) := by
   decide +kernel
 
-/-- The version's judgment of C5 is reached on the same tank, from 63
-units. -/
+/-- The hand-written judgment of C5 is reached on the same tank. -/
 theorem C5_checkIn :
     ((checkInF S2Ctx3 C5ann (usesOfDeriv C5_typed) (tyOfDeriv C5_typed) ⟨defaultFuel, false⟩).1.isSome,
       (checkInF S2Ctx3 C5ann (usesOfDeriv C5_typed) (tyOfDeriv C5_typed) ⟨defaultFuel, false⟩).2) =
@@ -889,7 +887,7 @@ inference boxes the first.  The elaborated terms are written out in
 
 example : elaboratedTm {} Λc πc argBoxSrc = some argBoxTm := by decide +kernel
 
-/-- argBox is typed from 16 units. -/
+/-- argBox is typed. -/
 theorem argBox_type : judgAt πc argBoxSrc =
     (some ([], (Shape.all (capTy k1) ((Shape.box (capTy (.there (.there .here)))) ^ [])) ^ []),
       ⟨defaultFuel - 16, false⟩) := by
@@ -910,7 +908,7 @@ theorem argBox_checks : CheckerAccepts {} Λc πc argBoxSrc argBox_compiles :=
 
 example : elaboratedTm {} Λc πc argUnboxSrc = some argUnboxTm := by decide +kernel
 
-/-- argUnbox is typed from 39 units. -/
+/-- argUnbox is typed. -/
 theorem argUnbox_type : judgAt πc argUnboxSrc =
     (some ([], (Shape.all (capTy k1) (arrowS ^ [CapAtom.cvar (.there (.there .here))])) ^
       [CapAtom.cvar k1]), ⟨defaultFuel - 39, false⟩) := by
@@ -931,7 +929,7 @@ theorem argUnbox_checks : CheckerAccepts {} Λc πc argUnboxSrc argUnbox_compile
 
 example : elaboratedTm {} Λc πc recvSrc = some recvTm := by decide +kernel
 
-/-- recv is typed from 28 units. -/
+/-- recv is typed. -/
 theorem recv_type : judgAt πc recvSrc =
     (some ([], (Shape.all ((Shape.fld la unitTy) ^ [CapAtom.cvar k1]) unitTy) ^ [CapAtom.cvar k1]),
       ⟨defaultFuel - 28, false⟩) := by
@@ -950,7 +948,7 @@ theorem recv_compiles : (compile {} Λc πc recvSrc).isSome = true := by decide 
 theorem recv_checks : CheckerAccepts {} Λc πc recvSrc recv_compiles :=
   compile_checks_get recv_compiles
 
-/-- impure is typed from 12 units.  The literal's set is `{f}`. -/
+/-- impure is typed.  The literal's set is `{f}`. -/
 theorem impure_type : judgAt πc impureSrc =
     (some ([], (Shape.all (capTy k1)
       ((Shape.mu (.fld la (arrowS ^ [CapAtom.var (.there .here)]))) ^ [CapAtom.var .here])) ^ []),
@@ -972,7 +970,7 @@ theorem impure_checks : CheckerAccepts {} Λc πc impureSrc impure_compiles :=
 
 example : elaboratedTm {} Λc πc impureInsSrc = some impureInsTm := by decide +kernel
 
-/-- impureIns is typed from 21 units. -/
+/-- impureIns is typed. -/
 theorem impureIns_type : judgAt πc impureInsSrc =
     (some ([], (Shape.all (capTy k1)
       ((Shape.mu (.and (.fld la ((Shape.box (arrowS ^ [CapAtom.var (.there .here)])) ^ []))
@@ -1006,8 +1004,8 @@ def P1ccSrc : STm :=
   cap% λ(f : ∀(y : μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {C^ : {} .. {k1}}))) ⊤ ^ {y.C}).
          let g : ∀(y : μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {C^ : {} .. {k1}}))) ⊤ ^ {k1} = f in g
 
-/-- P1cc is typed at `∀(f : ∀(y : M) ⊤ ^ {y.C}) ∀(y : M) ⊤ ^ {k1}`, from 38
-units.  `P1S` and `P1T` are the two function shapes of `Sub.lean`. -/
+/-- P1cc is typed at `∀(f : ∀(y : M) ⊤ ^ {y.C}) ∀(y : M) ⊤ ^ {k1}`.
+`P1S` and `P1T` are the two function shapes of `Sub.lean`. -/
 theorem P1cc_type : judgAt πc P1ccSrc =
     (some ([], (Shape.all (P1S ^ []) (Ty.weaken (P1T ^ []))) ^ []), ⟨defaultFuel - 38, false⟩) := by
   decide +kernel
@@ -1039,8 +1037,7 @@ def P1Tw : Shape ([],c,c,x) := P1T.weaken
 /-- The platform, `f` and the `let` binder `g`, both at `∀(y : M) ⊤ ^ {k1}`. -/
 def P1ccConvCtx : Ctx ([],c,c,x,x) := (platCtx.cons (P1T ^ [])).cons (P1Tw ^ [])
 
-/-- The typer rejects the converse of P1cc after 37 units, with the tank
-unmarked. -/
+/-- The typer rejects the converse of P1cc, with the tank unmarked. -/
 theorem P1ccConv_verdict : judgAt πc P1ccConvSrc = (none, ⟨defaultFuel - 37, false⟩) := by
   decide +kernel
 
@@ -1096,7 +1093,7 @@ def P2ccSrc : STm :=
        λ(x8 : {C^ : {x7.C} .. {x7.C}}).
        λ(f : (∀(u : ⊤) ⊤) ^ {x8.C}). (f : (∀(u : ⊤) ⊤) ^ {k1})
 
-/-- P2cc at eight links is typed from 86 units. -/
+/-- P2cc at eight links is typed. -/
 theorem P2cc_type : judgAt πc P2ccSrc =
     (some ([], chainTy aliasLink k1At 8), ⟨defaultFuel - 86, false⟩) := by
   decide +kernel
@@ -1120,7 +1117,7 @@ theorem P2cc_checks : CheckerAccepts {} Λc πc P2ccSrc P2cc_compiles :=
 bound, the recursive type opened at `y`, and the right operand twice.
 Scalac accepts the same program. -/
 
-/-- P4 is typed from 28 units. -/
+/-- P4 is typed. -/
 theorem P4_type : judgAt .empty P4src =
     (some ([], (Shape.all ((Shape.typ lA .bot (.mu (.and (.fld lb unitTy)
       (.and (.fld lv unitTy) (.fld la unitTy))))) ^ [])
@@ -1144,7 +1141,7 @@ The application tries every function type the lookup finds in `f`'s type.
 The first takes `{a : ⊤}`, which `y : ⊤` does not meet.  The second takes
 `⊤`.  Scalac accepts the same program. -/
 
-/-- P5 is typed from 13 units. -/
+/-- P5 is typed. -/
 theorem P5_type : judgAt .empty P5src =
     (some ([], (Shape.all ((Shape.and (.all ((Shape.fld la unitTy) ^ []) unitTy) (.all unitTy unitTy)) ^ [])
       ((Shape.all unitTy unitTy) ^ [])) ^ []), ⟨defaultFuel - 13, false⟩) := by
@@ -1168,7 +1165,7 @@ second is written at `{a : {b : ⊤}}`.  The body reads `b`, which only the
 second has.  R2 is the same with both fields written.  Scalac accepts R2,
 merging the two fields into one. -/
 
-/-- R1 is typed from 17 units. -/
+/-- R1 is typed. -/
 theorem R1_type : judgAt .empty R1src =
     (some ([], (Shape.all E8Dom ((Shape.all ((Shape.and (.sel (.var .here) lA)
       (.fld la ((Shape.fld lb unitTy) ^ []))) ^ []) unitTy) ^ [])) ^ []),
@@ -1185,7 +1182,7 @@ theorem R1_compiles : (compile {} Λc .empty R1src).isSome = true := by decide +
 theorem R1_checks : CheckerAccepts {} Λc .empty R1src R1_compiles :=
   compile_checks_get R1_compiles
 
-/-- R2 is typed from 10 units. -/
+/-- R2 is typed. -/
 theorem R2_type : judgAt .empty R2src =
     (some ([], (Shape.all ((Shape.and (.fld la unitTy) (.fld la ((Shape.fld lb unitTy) ^ []))) ^ [])
       unitTy) ^ []), ⟨defaultFuel - 10, false⟩) := by
@@ -1224,8 +1221,7 @@ example : (match resolveTop Λc .empty R3src with
     | _ => false) = true := by
   decide
 
-/-- R3 is typed at `∀(x : {A : ⊥..{a : {b : ⊤}}}) ∀(y : x.A ∧ {a : {b : {v : ⊤}}}) ⊤`,
-from 21 units. -/
+/-- R3 is typed at `∀(x : {A : ⊥..{a : {b : ⊤}}}) ∀(y : x.A ∧ {a : {b : {v : ⊤}}}) ⊤`. -/
 theorem R3_type : judgAt .empty R3src =
     (some ([], (Shape.all ((Shape.typ lA .bot (.fld la ((Shape.fld lb unitTy) ^ []))) ^ [])
       ((Shape.all ((Shape.and (.sel (.var .here) lA)
@@ -1243,8 +1239,7 @@ theorem R3_compiles : (compile {} Λc .empty R3src).isSome = true := by decide +
 theorem R3_checks : CheckerAccepts {} Λc .empty R3src R3_compiles :=
   compile_checks_get R3_compiles
 
-/-- R3let is typed at `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : {b : ⊤}}) ⊤`,
-from 19 units. -/
+/-- R3let is typed at `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A ∧ {a : {b : ⊤}}) ⊤`. -/
 theorem R3let_type : judgAt .empty R3letSrc =
     (some ([], (Shape.all E8Dom ((Shape.all ((Shape.and (.sel (.var .here) lA)
       (.fld la ((Shape.fld lb unitTy) ^ []))) ^ []) unitTy) ^ [])) ^ []),
@@ -1268,14 +1263,14 @@ theorem R3let_checks : CheckerAccepts {} Λc .empty R3letSrc R3let_compiles :=
 meet of the two, `{a : ⊤} ∧ {b : ⊤}`, so the outer `let` finds the member `b`.
 Scalac accepts the same program. -/
 
-/-- The inner `let` of G is typed at the meet, from 44 units. -/
+/-- The inner `let` of G is typed at the meet. -/
 theorem Gin_type : judgAt .empty Ginsrc =
     (some ([], (Shape.all GFun ((Shape.all unitTy
       ((Shape.and (.fld la unitTy) (.fld lb unitTy)) ^ [])) ^ [])) ^ []),
       ⟨defaultFuel - 44, false⟩) := by
   decide +kernel
 
-/-- G is typed from 50 units. -/
+/-- G is typed. -/
 theorem G_type : judgAt .empty Gsrc =
     (some ([], (Shape.all GFun ((Shape.all unitTy unitTy) ^ [])) ^ []), ⟨defaultFuel - 50, false⟩) := by
   decide +kernel
@@ -1300,7 +1295,7 @@ type of `x`.  Scalac rejects it too. -/
 /-- `x : ⊤` and the `let` binder `y : ⊤`. -/
 def A1Ctx : Ctx ([],x,x) := (Ctx.nil.cons (Shape.top ^ [])).cons (Shape.top ^ [])
 
-/-- The typer rejects A1 after 7 units, with the tank unmarked. -/
+/-- The typer rejects A1, with the tank unmarked. -/
 theorem A1_verdict : judgAt .empty A1src = (none, ⟨defaultFuel - 7, false⟩) := by decide +kernel
 
 /-- A1 does not compile at any budget. -/
@@ -1318,7 +1313,7 @@ theorem A1_not_alg : ¬ Alg ⟨_, A1Ctx, .var .here .top (.fld la (.top ^ []))�
 /-! ## B1: a field through a middle the program does not write
 
 `x : {A : {a : ⊤}..{b : ⊤}}` and `n : {a : ⊤}`.  Through `x.A`,
-`{a : ⊤} <: x.A <: {b : ⊤}`, so the version types `n.b`.  The middle `x.A` is
+`{a : ⊤} <: x.A <: {b : ⊤}`, so the calculus types `n.b`.  The middle `x.A` is
 not written, the lookup finds no field `b` in `{a : ⊤}`, and the typer
 rejects the program, as scalac does.  The goal that would give `n` the field
 is `n : {b : ⊤}`, and `Alg` does not derive it. -/
@@ -1328,7 +1323,7 @@ def B1Ctx : Ctx ([],x,x) :=
   (Ctx.nil.cons ((Shape.typ lA (.fld la (.top ^ [])) (.fld lb (.top ^ []))) ^ [])).cons
     ((Shape.fld la (.top ^ [])) ^ [])
 
-/-- The typer rejects B1 after 2 units, with the tank unmarked. -/
+/-- The typer rejects B1, with the tank unmarked. -/
 theorem B1_verdict : judgAt .empty B1src = (none, ⟨defaultFuel - 2, false⟩) := by decide +kernel
 
 /-- B1 does not compile at any budget. -/
@@ -1388,7 +1383,7 @@ def Doubled12k2src : STm :=
        λ(x12 : {C^ : {x11.C} .. {x11.C}} ∧ {C^ : {x11.C} .. {x11.C}}).
        λ(f : (∀(u : ⊤) ⊤) ^ {x12.C}). (f : (∀(u : ⊤) ⊤) ^ {k2})
 
-/-- The doubled chain at `{k1}` is typed from 196 units. -/
+/-- The doubled chain at `{k1}` is typed. -/
 theorem Doubled12_type : judgAt πc Doubled12src =
     (some ([], chainTy doubledLink k1At 12), ⟨defaultFuel - 196, false⟩) := by
   decide +kernel
@@ -1404,8 +1399,7 @@ theorem Doubled12_compiles : (compile {} Λc πc Doubled12src).isSome = true := 
 theorem Doubled12_checks : CheckerAccepts {} Λc πc Doubled12src Doubled12_compiles :=
   compile_checks_get Doubled12_compiles
 
-/-- The doubled chain at `{k2}` ends with the tank marked after 32767
-units. -/
+/-- The doubled chain at `{k2}` ends with the tank marked. -/
 theorem Doubled12k2_limit : judgAt πc Doubled12k2src = (none, ⟨defaultFuel - 32767, true⟩) := by
   decide +kernel
 
@@ -1413,8 +1407,6 @@ theorem Doubled12k2_limit : judgAt πc Doubled12k2src = (none, ⟨defaultFuel - 
 
 Programs whose typing exhausts the tank.  Each ends with the tank marked,
 which is the verdict "recursion limit" and not a rejection by the rules.
-The units used are the whole tank, up to the cost of the goal that found it
-short.
 
 LP checks `x : p.A` against `q.B`, with
 `p : μ(s. {A : ⊥..∀(y : ⊤) s.A})` and `q : μ(s. {B : ∀(y : ⊤) s.B..⊤})`.  Each
@@ -1424,12 +1416,11 @@ Scalac rejects both, at the declaration of the cyclic members.  LPw2 is the
 loop where the domain of each function is the variable's own member, so
 every goal of the loop mentions the newest binder. -/
 
-/-- LP through a written `let` type ends with the tank marked after 32752
-units. -/
+/-- LP through a written `let` type ends with the tank marked. -/
 theorem LPlet_limit : judgAt .empty LPletSrc = (none, ⟨defaultFuel - 32752, true⟩) := by
   decide +kernel
 
-/-- LP through an ascription ends with the tank marked after 32752 units. -/
+/-- LP through an ascription ends with the tank marked. -/
 theorem LPasc_limit : judgAt .empty LPascSrc = (none, ⟨defaultFuel - 32752, true⟩) := by
   decide +kernel
 
@@ -1440,17 +1431,17 @@ def LPw2src : STm :=
               ({B : ⊥ .. ∀(w : t.C) w.B} ∧ {T : ∀(w : t.C) w.T .. ⊤}))})).
          λ(y : p.A). λ(x : y.B). (x : y.T)
 
-/-- LPw2 ends with the tank marked after 32758 units. -/
+/-- LPw2 ends with the tank marked. -/
 theorem LPw2_limit : judgAt .empty LPw2src = (none, ⟨defaultFuel - 32758, true⟩) := by
   decide +kernel
 
 /-! ## The effect theorems
 
 `compile_effect_safety_get` at S1 unascribed and at C2.  Each statement is
-about a run of the version's term from the platform's initial store and a
+about a run of the hand-written term from the platform's initial store and a
 variable the reached state reads.  The premise, that the use set the typer
 found does not hold `k1`, is decided by the kernel.  The run moves onto the
-elaborated term by the decided equation between it and the version's. -/
+elaborated term by the decided equation between it and the hand-written term. -/
 
 /-- **S1 never reads the file system.**  Along any run of `S1tm` from the
 platform's initial store, a variable the reached state reads is not rooted
@@ -1485,9 +1476,8 @@ theorem C2_never_reads_k1 {s : Sig} {st : State s}
 `compileAndRun` at a step budget of 32, printed with the platform's names.
 Each run is pinned at the step count at which it becomes final.
 
-S2 answers with `un`, the identity it passed to the iterator, in fifteen
-steps.  C2 answers with the client at `b` in twelve.  E11 answers with the
-identity in the store in twelve. -/
+S2 answers with `un`, the identity it passed to the iterator.  C2 answers with
+the client at `b`.  E11 answers with the identity in the store. -/
 
 /-- The step budget of the runs. -/
 def runBudget : Nat := 32

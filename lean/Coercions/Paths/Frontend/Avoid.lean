@@ -4,9 +4,8 @@ import Coercions.Paths.Frontend.Sub
 # Avoidance at a `let`, on the tank
 
 The type of `let z = t in u` may not mention `z`.  When the body's type does,
-the compiler approximates it by a type free of `z` (`avoid`,
-`TypeOps.scala:474-509,565-583`).  This module does the same for the paths
-version.
+the compiler approximates it by a type free of `z` (`TypeOps.avoid` in
+core/TypeOps.scala).  This module does the same for the paths version.
 
 `up` approximates a type from above and `down` from below.  Each returns the
 new type with the `Sub` derivation that relates it to the old one.  They
@@ -15,27 +14,27 @@ follow `AvoidMap.apply` case by case.
 - A selection `q.A` with `q` rooted at `z`, at a covariant position, becomes
   the meet of the avoided upper bounds of every member `A` that the lookup
   finds on `q`.  The compiler widens a selection at the merged bounds of its
-  members (`derivedSelect` and `tryWiden`, `TypeOps.scala:519-522`).  The meet
-  is an intersection, derived by `Sub.and` of the `Sub.selUpper` steps.  At a
-  contravariant position `q.A` becomes the avoided lower bound of the first
+  members (`AvoidMap.derivedSelect` and `ApproximatingTypeMap.tryWiden`).  The
+  meet is an intersection, derived by `Sub.and` of the `Sub.selUpper` steps.  At
+  a contravariant position `q.A` becomes the avoided lower bound of the first
   member.  The version has no union, so the lower bounds cannot be joined.
   The lookup reads a member through a singleton, so `y.B` with `y : q.type`
   widens to the bounds of `q`'s member `B`.
 - A selection already being expanded at the same polarity becomes `⊤` or `⊥`,
-  the compiler's `emptyRange` (`Types.scala:6608`).  A selection is named by
-  the labels of its path after the root, which is `z`, so the name survives a
-  binder.
+  the compiler's `ApproximatingTypeMap.emptyRange` (core/Types.scala).  A
+  selection is named by the labels of its path after the root, which is `z`, so
+  the name survives a binder.
 - A singleton `p.type` rooted at `z` becomes `⊤` or `⊥`.  The compiler
-  replaces it by an alias or by a range (`TypeOps.scala:477-481`), and `Sub`
-  has no singleton rule for either.
+  replaces it by the singleton it aliases or by a range (`AvoidMap.apply`, the
+  `TermRef` case), and `Sub` has no singleton rule for either.
 - A `μ` that mentions `z` goes through the abstract view of `Sub.mu`, from
   above.  Each member of its body whose bounds do not mention `z` is kept by
   `SelfFree.refl`.  Every other bound widens to `⊥` or `⊤` by `SelfFree.bot`
   or `SelfFree.top`.  From below a `μ` that mentions `z` becomes `⊥`.
 - `∀` flips its domain and `{A : L..U}` flips `L`.  Under a `∀` the codomain is
   approximated in the context extended by the domain that `Sub.all` asks for.
-  The version's types have no invariant position, so the compiler's `Range`
-  (`Types.scala:6902`) never arises.
+  The version's types have no invariant position, so the compiler's
+  `Types.Range` never arises.
 
 Both draw on the tank of `Fuel.lean`.  Each node of the traversal costs `cost`
 of the number of selections being expanded, and the members of a selection are
@@ -278,7 +277,7 @@ def upAt {s : Sig} (Γ : Ctx s) (z : BVar s .var) (T : Ty s) : Fu (Above Γ T) :
 abbrev LetTy {s : Sig} (Γ : Ctx s) (T0 : Ty s) (V : Ty (s,x)) : Type :=
   (U : Ty s) × Sub (Γ.cons T0) V U.weaken
 
-/-- Strengthen an approximation that no longer mentions the binder.  If it
+/-- Strengthen an approximation that does not mention the binder.  If it
 still mentions it, the answer is `⊤`, which is always above. -/
 def strengthenAbove {s : Sig} {Γ : Ctx s} {T0 : Ty s} {V : Ty (s,x)} (r : Above (Γ.cons T0) V) :
     LetTy Γ T0 V :=
@@ -291,7 +290,7 @@ def unlessOut {α : Type} (a : α) : Fu (Option α) := fun t =>
   if t.out then (none, t) else (some a, t)
 
 /-- The result type of a `let` without annotation: the body's type `V`,
-approximated from above until it no longer mentions the binder, then
+approximated from above until it does not mention the binder, then
 strengthened.  `none` if the tank ends marked. -/
 def avoidLet {s : Sig} (Γ : Ctx s) (T0 : Ty s) (V : Ty (s,x)) : Fu (Option (LetTy Γ T0 V)) :=
   Fu.bind (upAt (Γ.cons T0) .here V) fun r => unlessOut (strengthenAbove r)

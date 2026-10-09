@@ -20,7 +20,7 @@ sort off the first character: upper case is a type label, anything else a term
 label.
 
 `Scoped` and `LabelsIn` are the two side conditions under which resolution is
-total (the totality theorem is in `Resolve.lean`).  Both are `Bool` valued.
+total.  The totality theorem is in `Resolve.lean`.  Both are `Bool` valued.
 `SPath.Scoped` asks that the root is a bound name.  `SPath.LabelsIn` asks that
 every field step is a term label.
 

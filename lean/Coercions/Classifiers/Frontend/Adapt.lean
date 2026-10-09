@@ -21,43 +21,41 @@ recurse into a term.
   type members, so an unboxing reaches a box that a member stands for.
 - `boxCheckF`: the `Box` rule in checking mode.  Against a goal `(□ T) ^ C`
   the variable is checked at `T` by the `var` goal of `Sub.lean`.
-- `unboxAll`: the `Unbox` rule at every box found with the unboxing's capture
+- `unboxAll`: the `Unbox` rule at every box found, with the unboxing's capture
   set.  It charges that set to the use set.
 - `adaptVarF`: box adaptation at a variable checked against a goal.
 
 ## Box adaptation
 
 A program need not write its boxes.  Where a variable `x` is checked against
-a goal `G`, `adaptVarF` first checks `x` plainly by the `var` goal.  A program
-that needs no box is not changed.  Otherwise it compares the box status of
-`x` and of `G`, as the compiler's `adaptBoxed` does
-(`cc/CheckCaptures.scala:1973-2006`).  The status of `x` is boxed when the
-lookup finds a box in it.  The status of `G` is boxed when `G` is a box.
+a goal `G`, `adaptVarF` first checks `x` plainly by the `var` goal.  If that
+fails it compares the box status of `x` and of `G`, as
+`CheckCaptures.adaptBoxed` does (`cc/CheckCaptures.scala`).  The status of `x`
+is boxed when the lookup finds a box in it.  The status of `G` is boxed when
+`G` is a box.
 
 - `x` boxed and `G` not: `x` is unboxed at each box found, `C ⊸ x` at the
-  box's own set `C`, and the unboxing is moved to `G`.  This charges `C` to
-  the use set, as the compiler charges the boxed set (`:1996-2006`).
+  box's own set `C`, and the unboxed result is moved to `G` by the subtyping
+  goal.  This charges `C` to the use set, as the compiler charges the boxed
+  set.
 - `G` boxed and `x` not: `x` is boxed, `□ x`.  A box goal checks `x` at the
   boxed type.  The box of the first view is then moved to `G` by the
   subtyping goal, which reaches `G` through the lower bound of a type member.
 - The statuses agree: both are tried, unboxing first.
 
 The first that checks wins.  An insertion the rules do not license gives
-`none`, never an ill-typed term.  Trying both when the statuses agree is
-where the front end does more than the compiler, which adapts only when they
-differ (`:1973`).  A variable whose avoided type holds a box may still need a
-box of its own, since the version has no rule that lets a box pass where a
-type of another box is expected.
+`none`, never an ill-typed term.  The compiler adapts only when the statuses
+differ.  Trying both when they agree is needed here.  A variable whose avoided
+type holds a box may still need a box of its own, since the calculus has no
+rule that lets a box pass where a type of another box is expected.
 
-A further rule belongs to synthesis.  A receiver or function with a box and
-no field or function type is unboxed at the set of its first box.  The typer
-writes it with `unboxAll` and `firstBoxSet`.
+Synthesis has one more case.  A receiver or function that has a box and no
+field or function type is unboxed at the set of its first box, by `unboxAll`
+and `firstBoxSet`.
 
 Everything here runs on the tank of `Fuel.lean` and is framed: it keeps a
 marked tank, never adds fuel, and does the same with more fuel.  So the typer
-built on it is framed too.
-
-Nothing here belongs to the metatheory.
+built on it is framed too.  Nothing here is part of the metatheory.
 -/
 
 namespace ClassifiersFrontend

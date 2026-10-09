@@ -6,21 +6,17 @@ import Coercions.CapturesCC.DotMNF.Examples
 # Member lookup on the tank
 
 The lookup asks which shapes a variable has that carry a given member.  It
-follows the compiler's `findMember` (`Types.scala:820-870`).  A recursive
-shape is opened at the variable (`goRec`, `Types.scala:875-896`).  Both
-operands of an intersection are searched (`goAnd`, `Types.scala:994-995`).  A
-selection continues in the upper bounds of the members of its prefix
-(`Types.scala:5720`).  An atom that fits the key is an answer.  `⊥` has no
-members (`Types.scala:827-829`).
+follows `Types.findMember` in `core/Types.scala`.  A recursive shape is opened
+at the variable (`goRec`).  Both operands of an intersection are searched
+(`goAnd`).  A selection continues in the upper bounds of the members of its
+prefix.  `⊥` has no members.
 
-A type of the version is a shape with a capture set, and a variable is typed
-at a plain answer `.ty (S ^ C)`.  The lookup walks the shape and leaves the
-capture set alone.  The compiler strips a capturing type before it looks a
-member up, and the variable rules `Rec-E` and `sub` with `ESub.ty`,
-`Sub.capt` and `Subcap.refl` keep the set.  So each answer carries a map from
-the variable at the view to the variable at the shape found, at every use set
-and every capture set.  The view a lookup starts from is the declared shape,
-which `HasTy.var` gives at the use set and capture set `{x}`.
+A type is a shape with a capture set, and a variable is typed at a plain
+answer `.ty (S ^ C)`.  The lookup walks the shape and leaves the capture set
+alone.  Each answer carries a map from the variable at the view to the
+variable at the shape found, at every use set and capture set.  The rules
+`Rec-E` and `sub` keep both sets.  The view a lookup starts from is the
+declared shape, which `HasTy.var` gives at the use set and capture set `{x}`.
 
 The keys are a type member, a capture member, a field, a function type and a
 box.  `decls` reads the type members of a variable off its declared shape,
@@ -28,20 +24,20 @@ each with the premise that `SubShape.selUpper` and `SubShape.selLower` ask
 for.  `capDecls` does the same for capture members and the premise of
 `Subcap.selUpper` and `Subcap.selLower`.
 
-The lookup draws on the tank of `Fuel.lean`.  Each key costs `cost` of the
-number of keys pending along the branch.  It keeps its own pending keys, and a
-key that repeats along a branch has no answer, which is the compiler's cyclic
-reference.  The compiler merges two members of one name (`Types.scala:5759`).
-The version has no rule for that merge, so the lookup returns every member it
-finds, in the order it finds them, and the caller tries each.
+The lookup draws on the tank of `Fuel.lean`.  A key costs `cost` of the number
+of keys pending along the branch.  A key that repeats along a branch has no
+answer, as in the compiler's cyclic reference check.  The compiler merges two
+members of one name (`TypeBounds.&` in `core/Types.scala`).  The calculus has
+no rule for that merge, so the lookup returns every member it finds, in the
+order it finds them, and the caller tries each.
 
-Each answer carries its derivation, so the lookup has no soundness theorem to
-prove.  What it has is the frame lemma of the tank: a lookup that ends with
-the tank unmarked gives the same answers with more fuel.
+Each answer carries its derivation, so there is no soundness theorem.  The
+frame lemma of the tank holds: a lookup that ends with the tank unmarked gives
+the same answers with more fuel.
 
 Every definition is structural, so the kernel evaluates a lookup.  The checks
-at the end of the module run the lookups of six examples and a run out of
-fuel by `decide +kernel`.
+at the end run the lookups of six examples and a run out of fuel by
+`decide +kernel`.
 -/
 
 namespace CapturesCCFrontend.Core
@@ -65,9 +61,7 @@ abbrev Var {s : Sig} (Γ : Ctx s) (x : BVar s .var) (U C : CaptureSet s) (V : Sh
   HasTy U Γ (.path (.var x)) (.ty (V ^ C))
 
 /-- A map from the variable at the shape `V` to the variable at the shape
-`T`, at every use set and capture set.  The rules `Rec-E` and `sub` with
-`Subcap.refl` on both sets keep them, so a walk over the shape never touches
-them. -/
+`T`, at every use set and capture set. -/
 abbrev VarFn {s : Sig} (Γ : Ctx s) (x : BVar s .var) (V T : Shape s) : Type :=
   (U C : CaptureSet s) → Var Γ x U C V → Var Γ x U C T
 
@@ -114,17 +108,12 @@ def Found.cap? {s : Sig} {Γ : Ctx s} {x : BVar s .var} {V : Shape s} (A : Label
 /-- A lookup key in full: the variable, the shape it is searched at, the key. -/
 abbrev LKey (s : Sig) := BVar s .var × Shape s × Key
 
-/-- Member lookup on demand, the cases of `findMember`'s `go`
-(`Types.scala:820-870`).  `μ` is opened at the variable when its body is a
-declaration shape, as `Rec-E` asks (`goRec`, `Types.scala:875-896`).  Both
-operands of `∧` are searched, the left one first (`goAnd`,
-`Types.scala:994-995`).  A selection continues in the upper bounds of the
-prefix's members (`Types.scala:5720`).  A key that repeats along a branch has
-no answer, the compiler's cyclic reference.  `⊥` has no members
-(`Types.scala:827-829`).  A key costs `cost` of the number of keys pending.
-A short tank answers `[]` and is marked.  Every recursive call starts from the
-tank the previous one left.  An answer that ends with the tank marked is
-returned as it is, and the caller treats it as a failure. -/
+/-- Member lookup, the cases of `go` in `Types.findMember`.  `μ` is opened at
+the variable when its body is a declaration shape, as `Rec-E` asks (`goRec`).
+Both operands of `∧` are searched, the left one first (`goAnd`).  A selection
+continues in the upper bounds of the prefix's members.  A key that repeats
+along a branch has no answer.  `⊥` has no members.  A short tank answers `[]`
+and is marked, and the caller treats a marked tank as a failure. -/
 def look {s : Sig} (Γ : Ctx s) : Nat → List (LKey s) → (x : BVar s .var) → (V : Shape s) → Key →
     Fu (List (Found Γ x V))
   | 0, _, _, _, _ => fun t => ([], { t with out := true })
@@ -184,8 +173,7 @@ def capDecls {s : Sig} (Γ : Ctx s) (d : Nat) (p : BVar s .var) (A : Label) :
 
 /-! ## The frame lemmas -/
 
-/-- Either branch of a test is framed, so the test is.  The proof takes the
-`Decidable` instance apart, so it needs no choice. -/
+/-- Either branch of a test is framed, so the test is. -/
 theorem ite_framed {α : Type} {p : Prop} [hp : Decidable p] {a b : Fu α} (ha : Framed a)
     (hb : Framed b) : Framed (if p then a else b) := by
   cases hp
@@ -209,8 +197,7 @@ theorem nil_framed (β : Type) : Framed (fun t : Tank => (([] : List β), { t wi
     rw [← h.2] at ho
     simp at ho
 
-/-- Every lookup is framed: it keeps a marked tank, never adds fuel, and does
-the same with more fuel. -/
+/-- Every lookup is framed. -/
 theorem look_framed {s : Sig} (Γ : Ctx s) (d : Nat) :
     ∀ (P : List (LKey s)) (x : BVar s .var) (V : Shape s) (k : Key), Framed (look Γ d P x V k) := by
   induction d with
@@ -285,18 +272,18 @@ theorem capDecls_frame {s : Sig} {Γ : Ctx s} {d : Nat} {p : BVar s .var} {A : L
 
 /-! ## Checks
 
-Each check runs in the kernel.  E6's `z` is the self binder of a literal
-whose type member `T` is `Int` and whose field `v` is declared at `z.T`.
-E8's `y` is declared at `x.A ∧ {a : ⊤}`.  `P4Ctx` puts a field four steps
-down a selection's upper bound.  `E7Ctx` is an alias cycle.  C2's `x` is an
-abstract object whose capture member `C` lies between `{}` and `{κ₁, κ₂}`.
-`CycCtx` has a capture member bounded by itself. -/
+E6's `z` is the self binder of a literal whose type member `T` is `Int` and
+whose field `v` is declared at `z.T`.  E8's `y` is declared at
+`x.A ∧ {a : ⊤}`.  `P4Ctx` puts a field four steps down a selection's upper
+bound.  `E7Ctx` is an alias cycle.  C2's `x` is an abstract object whose
+capture member `C` lies between `{}` and `{κ₁, κ₂}`.  `CycCtx` has a capture
+member bounded by itself. -/
 
 section LookChecks
 
 open CapturesCC.DotMNF.Examples
 
-/-- The start of a lookup at `x`'s declared shape, from a full tank. -/
+/-- A lookup at `x`'s declared shape. -/
 def lookAt {s : Sig} (Γ : Ctx s) (x : BVar s .var) (k : Key) (n : Nat := defaultFuel) :
     List (Shape s) × Tank :=
   let r := look Γ n [] x (Γ.lookup x).shape k ⟨n, false⟩
@@ -343,7 +330,7 @@ example : (lookAt P4Ctx .here (.fld la)).2.out = false := by decide +kernel
 -- A lookup at fuel 1 runs out on P4.
 example : (lookAt P4Ctx .here (.fld la) 1).2.out = true := by decide +kernel
 -- E7: the field `a` through the alias cycle `x.A = x.B`, `x.B = x.A`.  The key repeats, so there
--- is no answer, and the tank stays unmarked.
+-- is no answer and the tank stays unmarked.
 example : (look E7Ctx defaultFuel [] .here (.sel (.var .here) lA) (.fld la)
     ⟨defaultFuel, false⟩).2.out = false := by decide +kernel
 example : (look E7Ctx defaultFuel [] .here (.sel (.var .here) lA) (.fld la)

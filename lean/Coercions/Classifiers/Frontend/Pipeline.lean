@@ -16,21 +16,22 @@ nothing new about the calculus.
 `compile` resolves a whole program: its classifier declarations, platform,
 declared use set and kind, and body.  A platform is a prefix of capture
 binders, one per capability the program may use, each declared at a classifier
-or at none.  The body is typed at the platform's context.  The typer
-elaborates.  Box inference may insert `□ x` and `C ⊸ x`, an unpacking `letex`
-may replace a `let`, and an `unbox` gets its set filled.  So the typed term is
-not the resolved one.  `Compiled` holds the elaborated term, its use set, its
-type, the derivation about its erasure, and the proof that its skeleton is the
-skeleton of the resolved term.  `ATm.skel` forgets annotations, capture sets,
-boxes, unboxings, ascriptions and capture binders, inlines a `let` of a
-variable, and does not tell `let` from `letex`.  So equal skeletons say that
-the elaborated program is the written one up to what the typer adds.
+or at none.  The body is typed at the platform's context.
 
-The typer synthesizes the least use set it can.  A declared use set is
-binding.  When the program declares `uses C`, `compile` asks the
-subcapturing goal from the synthesized set to `C` and widens the derivation by
-one `sub`.  The goal takes projection steps, so a declared set `{..}.only[K]`
-is reached from a synthesized set that is not written as a projection.
+The typer elaborates, so the typed term is not the resolved one.  Box inference
+may insert `□ x` and `C ⊸ x`, an unpacking `letex` may replace a `let`, and an
+`unbox` gets its set filled.  `Compiled` holds the elaborated term, its use
+set, its type, the derivation about its erasure, and the proof that its
+skeleton is the skeleton of the resolved term.  `ATm.skel` forgets annotations,
+capture sets, boxes, unboxings, ascriptions and capture binders, inlines a
+`let` of a variable, and does not tell `let` from `letex`.  Equal skeletons say
+that the elaborated program is the written one up to what the typer adds.
+
+The typer synthesizes the least use set it can, and a declared use set is
+binding.  When the program declares `uses C`, `compile` asks the subcapturing
+goal from the synthesized set to `C` and widens the derivation by one `sub`.
+The goal takes projection steps, so a declared set `{..}.only[K]` is reached
+from a synthesized set that is not written as a projection.
 
 `compile` returns the typer's `Verdict`.  `ok` carries the resolved program and
 the record.  `rejected` carries a reason with its proof.  `unknown` says that
@@ -39,11 +40,11 @@ limit.  A declared use set that the subcapturing goal does not reach is
 rejected when the certificate builder finds a level escape for that goal, and
 is `unknown` otherwise.  A program that does not resolve is `unknown`.
 
-`compileKinded` follows `compile` with the kinding goal at a kind `φ`.  It
+`compileKinded` follows `compile` with the kinding goal at a kind `φ` and
 returns a `CapKind` of the use set at `φ`.  `compileFiltered` asks instead that
 the use set be a projection at `φ`, written `{..}.only[K]` or `{..}.except[K]`.
-`Ctx.kindLe_proj` kinds a projection at `φ` in FCdot, so this route needs
-no kinding goal.  `compileAndRun` follows `compile` with the machine of
+`Ctx.kindLe_proj` kinds a projection at `φ` in FCdot, so this route needs no
+kinding goal.  `compileAndRun` follows `compile` with the machine of
 `Step.lean`, from the platform's initial store, at a step budget.
 
 ## The log of level steps
@@ -51,12 +52,12 @@ no kinding goal.  `compileAndRun` follows `compile` with the machine of
 `source_lvl_safety` speaks of a member-free subcapturing at a well-formed
 context: one built from `refl`, `trans`, `elem`, `union`, `var`, `level`,
 `unproj`, `proj` and `projMono`, with no capture member, no instance binder,
-and under `proj` a kinding without `ksel`.  `levelSteps` reads off the
-derivation every such subcapturing it contains, with its context and the proof
-that the context is well formed.  It walks the derivation, its subtyping
-premises and its kindings, and opens a context where the rule does.  At each
-subcapturing premise it decides `memberFree?`.  A member-free premise is
-logged whole.  Otherwise the walk goes on into its parts.
+and under `proj` a kinding without `ksel`.  `levelSteps` reads off a derivation
+every such subcapturing it contains, with its context and the proof that the
+context is well formed.  It walks the derivation, its subtyping premises and
+its kindings, and opens a context where the rule does.  At each subcapturing
+premise it decides `memberFree?`.  A member-free premise is logged whole.
+Otherwise the walk goes on into its parts.
 
 ## The theorems
 
@@ -106,12 +107,9 @@ With `h : compileFiltered b Λ p φ = .ok ⟨r, c, f⟩`:
   `compile_filtered_effect_safety`.  The translated use set is kinded at `φ`,
   and the two classified statements follow.
 
-The premise `h` is written in every statement because it is what a caller
-holds.  The content rides on the type of `c`, `k` and `f`.  The other premises
-select what a theorem speaks of.  None of them is a hypothesis about the
-compiler.
-
-Everything lives in `namespace ClassifiersFrontend`.
+Every statement has the premise `h` because it is what a caller holds.  The
+content rides on the type of `c`, `k` and `f`.  The other premises select what
+a theorem speaks of.  None of them is a hypothesis about the compiler.
 -/
 
 namespace ClassifiersFrontend
@@ -785,15 +783,15 @@ end
 
 The log is computed in the kernel, so its length is a decided fact.  Two open
 examples have a non-empty log, so `compile_lvl_safety` says something about
-them: the caller of `freshCell` at `Z1Ctx` and the call `p f` at `W2CallCtx`,
-typed by `synthIn?` at the default fuel.
+them: the caller of `freshCell` at `Z1Ctx` and the call `p f` at `W2CallCtx`, typed
+by `synthIn?` at the default fuel.
 
 `Try.apply`, the first classifier example, goes through all three entry
 points.  Its body is the one of `Typer.lean`, with the binders' types written
-as ascriptions of the bound terms.  The header declares the use set
-`{ctl, io}.only[Control]` and the kind `only[Control]`.  The typer synthesizes
-that use set, so `compile` keeps it, and `compileFiltered` reads it as a
-projection.  The kinding goal kinds it at the default fuel. -/
+as ascriptions.  The header declares the use set `{ctl, io}.only[Control]` and
+the kind `only[Control]`.  The typer synthesizes that use set, so `compile`
+keeps it, and `compileFiltered` reads it as a projection.  The kinding goal
+kinds it at the default fuel. -/
 
 section Checks
 

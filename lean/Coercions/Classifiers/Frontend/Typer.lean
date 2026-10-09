@@ -52,9 +52,9 @@ argument of the typer for that reason.
 ## Candidates
 
 Synthesis returns a list of candidates, each an elaborated term with its use
-set, its answer and its derivation.  The version has no rule that merges two
-members of one name, which the compiler does (`Types.scala:5759`).  So the
-typer keeps every choice instead.
+set, its answer and its derivation.  The compiler merges two members of one
+name (`TypeBounds.&` in `core/Types.scala`).  The calculus has no rule for the
+merge, so the typer keeps every choice instead.
 
 - A variable has its first view.
 - `x y` tries every function type the lookup finds in `x`, and keeps each one
@@ -65,11 +65,10 @@ typer keeps every choice instead.
   and no such field is unboxed and bound by a `let`.
 - `let x = t in u` without annotation returns every pair of a candidate of
   `t` and a candidate of `u`.  The body's type is approximated by a type free
-  of `x` (`avoidLet`), as the compiler's `avoid` does
-  (`TypeOps.scala:474-509,565-583`).  When the candidate of `t` has an
-  existential answer, the `let` becomes an unpacking: the body is renamed past
-  the witness binder, typed under the witness and the payload, and its answer
-  leaves their scope by `avoidEx`.
+  of `x` (`avoidLet`), as `TypeOps.avoid` does.  When the candidate of `t` has
+  an existential answer, the `let` becomes an unpacking: the body is renamed
+  past the witness binder, typed under the witness and the payload, and its
+  answer leaves their scope by `avoidEx`.
 - `let x : A = t in u` has the answer `A`.  The annotation binds.  The body is
   checked against it and is never approximated.  An existential annotation is
   reached from the plain `let` by the answer goal, which packs it.
@@ -97,27 +96,28 @@ moved to the goal by the answer goal.
 `HasTy.obj` types the definitions of a literal under a class root and a self
 binder that holds the same definitions and the same capture set as the
 conclusion.  Box adaptation changes the definitions, and the set of a literal
-is known only after its definitions are typed.  `objFixF` iterates: it types
+is known only after its definitions are typed.  `objFixF` iterates.  It types
 the definitions under a binder at the current definitions and set, and stops
 when the elaborated definitions erase to the ones the binder holds and their
 use set is below the current set and the self variable.  Otherwise the next
 pass takes the elaborated definitions and the current set joined with the
-atoms of the set they used that the current set does not account for: the
-self variable dropped, its capture members read at their upper bounds, and
-the class root strengthened away.  An atom is accounted for when the
-subcapturing goal from it to the current set has an answer.  This is the
-compiler's class use set, a variable grown until it is solved
-(`cc/CheckCaptures.scala:1501-1515`, `cc/CaptureSet.scala:880-912`).  The
-comparison is by subcapturing, not by syntax, so a restricted atom `{a ↾ φ}`
-that the set already holds through `{a}`, or through `{a ↾ ψ}` with `φ` a
-subkind of `ψ`, is not added again.  Restricting `a ↾ φ` again at `φ`
-(`CapAtom.projBy`) appends the exclusion lists of the kind, so the result is
-a new atom as syntax, and the set that holds `a ↾ φ` accounts for it.  A
-pass that goes on adds an atom the set does not account for, or goes on with
-other definitions (`objFix_progress`).  The number of passes is bounded by
-`objBound`, a size of the program that counts each base atom once per kind
-the classifiers in scope can form.  A pass that reaches the bound marks the
-tank, so the bound never causes a rejection.
+atoms of the set they used that the current set does not account for.  Those
+atoms have the self variable dropped, their capture members read at their
+upper bounds, and the class root strengthened away.  An atom is accounted for
+when the subcapturing goal from it to the current set has an answer.
+
+This is the compiler's class use set, a variable grown until it is solved
+(`CheckCaptures.recheckClassDef`, `CaptureSet.tryInclude`).  The comparison is
+by subcapturing, not by syntax, so a restricted atom `{a ↾ φ}` that the set
+already holds through `{a}`, or through `{a ↾ ψ}` with `φ` a subkind of `ψ`, is
+not added again.  Restricting `a ↾ φ` again at `φ` (`CapAtom.projBy`) appends
+the exclusion lists of the kind, so the result is a new atom as syntax, and the
+set that holds `a ↾ φ` accounts for it.  A pass that goes on adds an atom the
+set does not account for, or goes on with other definitions
+(`objFix_progress`).  The number of passes is bounded by `objBound`, a size of
+the program that counts each base atom once per kind the classifiers in scope
+can form.  A pass that reaches the bound marks the tank, so the bound never
+causes a rejection.
 
 ## Verdicts
 
@@ -139,11 +139,13 @@ Every computation here is framed: it keeps a marked tank, never adds fuel,
 and does the same with more fuel (`synthF_frame`).  So a typing that ends
 unmarked gives the same answer at every larger fuel (`synthTop?_mono`,
 `synthTop?_stable`).  A rejection that ends unmarked is a rejection at every
-fuel.  The typer has no completeness theorem.  It does not find a derivation
-through a middle type the program does not write, as the compiler does not.
-It does not merge two members, so it tries each.  It does not find a
-judgment whose search needs more than the fuel.  And a lookup through a
-cyclic member is cut, as the compiler's cyclic reference.
+fuel.
+
+The typer has no completeness theorem.  It does not find a derivation through
+a middle type the program does not write, as the compiler does not.  It does
+not merge two members, so it tries each.  It does not find a judgment whose
+search needs more than the fuel.  A lookup through a cyclic member is cut, as
+the compiler cuts a cyclic reference.
 
 Every definition is structural, so the kernel evaluates the typer.  The checks
 at the end of the module type the example programs at `defaultFuel` by
@@ -682,9 +684,9 @@ def newAtomF {s : Sig} (Γ : Ctx s) (U : CaptureSet s) (a : CapAtom s) : Fu (Cap
 
 /-- The atoms of `D` that the set `U` does not account for.  An atom of `U` is
 skipped at no cost.  Any other atom `a` is kept when the subcapturing goal
-`{a} <: U` has no answer.  The compiler adds an element to a set variable
-only when the set does not account for it (`tryInclude` and `accountsFor`,
-`cc/CaptureSet.scala:197-198,251-272`). -/
+`{a} <: U` has no answer.  The compiler adds an element to a set variable only
+when the set does not account for it (`CaptureSet.tryInclude` and
+`CaptureSet.accountsFor`). -/
 def newAtomsF {s : Sig} (Γ : Ctx s) (U D : CaptureSet s) : Fu (CaptureSet s) :=
   Fu.flatMapL (newAtomF Γ U) D
 
@@ -927,15 +929,13 @@ insertion sites of box adaptation, plus two.  A base atom is a term variable,
 a capture binder, or a capture member of a term variable at a label of the
 program.  The set is meant to hold each base atom at most once per kind the
 classifiers in scope can form (`kindForms`), the bare atom at `⊤`.  An atom
-joins the set only when the set does not account for it, and the
-subcapturing goal compares two restrictions of one base by subkinding.
-Capless(K) proves subkinding is the inclusion of the classifier sets.  Here
-only the direction from subkinding to inclusion is proved
+joins the set only when the set does not account for it, and the subcapturing
+goal compares two restrictions of one base by subkinding.  Only the direction
+from subkinding to inclusion of classifier sets is proved
 (`Kind.Subkind.contains`).  So a restriction at a kind that denotes the same
 classifiers as one the set holds is not added again, however the kind is
-written: `a ↾ φ` restricted again at `φ` by `CapAtom.projBy` is accounted for
-by `a ↾ φ`.  The count is a size of the program, not a fuel, and it is not
-proved to bound the passes. -/
+written.  The count is a size of the program, not a fuel, and it is not proved
+to bound the passes. -/
 def objBound {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (d : ADefs ((s,c),x)) : Nat :=
   let V := (ctxVars Γ).length
   let K := (ctxCaps Γ).length

@@ -3,55 +3,50 @@ import Coercions.CapturesCC.Frontend.Sub
 /-!
 # The algorithmic judgment and completeness
 
-`Alg` states the rules of the algorithm of `Sub.lean`, one constructor per
-alternative, with no fuel and no pending goals.  There are four goal kinds:
-`shape S T`, `cap C D`, `var x V T` and `esub E F`.  A constructor tried after
-an intersection on the right carries `isAnd T = false`, since that alternative
-is final.  A selection on the right through a lower bound carries `lo ≠ ⊥`,
-as the algorithm skips such a member.  A recursive shape opened at a variable
-carries `Shape.Decl B`, as `Rec-I` and `Rec-E` ask.  A capture binder, an
-instance binder or a capture member on the right carries the inclusion of its
-atom in the right set.  A member premise is phrased through the lookup
-(`Member`, `CapMember`): the lookup finds that member and ends within its
-fuel.
+`Alg` is the inductive relation of the algorithm in `Sub.lean`, one constructor
+per alternative, with no fuel and no pending goals.  The goals are `shape S T`,
+`cap C D`, `var x V T` and `esub E F`.  `Rule` lists the premises of each
+constructor.
 
-Two types compare by a set goal and a shape goal.  So a constructor that
-compares two types has a `cap` premise and a `shape` premise for each pair of
-types.  The domains of two function shapes and the bodies of two existentials
-are premises in `Γ.scope`, the codomains in `Γ.body T2`, and the residual of a
-pack in `Γ.scopeInst W`, as the step asks them.  The witness `W` of a pack is
-one of the two sets the step tries: the answer's own capture set, or the
-bound.
+A constructor carries the side conditions of its alternative.
+- After an intersection on the right, `isAnd T = false`, since that alternative
+  is final.
+- A selection on the right through a lower bound has `lo ≠ ⊥`, since the
+  algorithm skips such a member.
+- A recursive shape opened at a variable has `Shape.Decl B`, as `Rec-I` and
+  `Rec-E` ask.
+- A capture binder, an instance binder or a capture member on the right
+  includes its atom in the right set.
+- A member premise is `Member` or `CapMember`: the lookup finds the member and
+  ends with the tank unmarked.
+
+Two types compare by a `cap` premise and a `shape` premise.  Function domains
+and existential bodies are premises in `Γ.scope`, codomains in `Γ.body T2`, and
+the residual of a pack in `Γ.scopeInst W`.  The witness `W` of a pack is the
+answer's capture set or the bound.
 
 Completeness holds up to the recursion limit.  If `Alg` derives a goal, the
-algorithm answers it at every fuel at which its run ends with the tank
-unmarked (`shape?_complete`, `subcap?_complete`, `esub?_complete`,
-`var?_complete`).  Two types compare by two runs on one tank, so
-`sub?_complete` takes one derivation per half.  A run that ends unmarked with
-no answer is a rejection by the rules (`shape?_reject`, `subcap?_reject`,
-`esub?_reject`, `sub?_reject`, `var?_reject`).  The tank is shared by all the
-alternatives of a goal, and a marked tank stays marked.  So an alternative
-that never ends, tried before the one an `Alg` derivation uses, exhausts every
-tank.  `p.A ∧ ⊥ <: ∀(y : ⊤) q.B` below is such a goal: `Alg` derives it by the
-right operand, and the left operand, tried first, descends under a new binder
-at each level.  So completeness cannot say that some fuel suffices.
+algorithm answers it at every fuel at which its run ends with the tank unmarked
+(`shape?_complete`, `subcap?_complete`, `esub?_complete`, `var?_complete`).
+Two types are two runs on one tank, so `sub?_complete` takes one derivation per
+half.  A run that ends unmarked with no answer is a rejection by the rules
+(`shape?_reject`, `subcap?_reject`, `esub?_reject`, `sub?_reject`,
+`var?_reject`).  The tank is shared by the alternatives of a goal and a marked
+tank stays marked.  An alternative that never ends, tried before the one a
+derivation uses, therefore exhausts every tank.  `p.A ∧ ⊥ <: ∀(y : ⊤) q.B` is
+such a goal (`LP_alg`).  So completeness cannot promise that some fuel suffices.
 
-The proof needs no minimal derivation.  A derivation in which no goal repeats
-along a branch exists whenever a derivation does (`Deriv.pruneNil`): a repeat
-is cut out by using the inner derivation of the goal at the outer place.  A
-derivation without repeats is never cut by the run.  At each goal the run
-either answers by an alternative tried before or reaches the one the derivation
-uses, since the tank is unmarked at the end and so at every point before
-(`run_ans`).  Both facts are generic in the goals and the step.  They are
-stated here as in the vanilla front end, since this library does not import
-that one.
+The proof needs no minimal derivation.  `Deriv.pruneNil` turns a derivation into
+one in which no goal repeats along a branch, by using the inner derivation of a
+repeated goal at the outer place.  The run never cuts such a derivation.  At
+each goal it answers by an alternative tried before the derivation's own, or
+reaches that one (`run_ans`).  Both facts are generic in the goals and the step.
 
-`Alg.sound` is the soundness of `Alg` for the version.  Each constructor
-builds the derivation its alternative emits.
+`Alg.sound` builds, for each constructor, the derivation its alternative emits.
 
 The checks at the end derive three goals by `Alg`, read E1, E3, E4 and a
-subcapturing goal of C2 as rejections by the rules, and show the goal above
-whose run hits the recursion limit.
+subcapturing goal of C2 as rejections by the rules, and show `LP`, whose run
+hits the recursion limit.
 -/
 
 namespace CapturesCCFrontend.Core
@@ -90,8 +85,8 @@ def Pruned (P : List Goal) (g : Goal) : Prop :=
 
 variable {Rule}
 
-/-- Each member of a list gives a fact or a common fact, so either all give
-the first or one gives the second. -/
+/-- If each member of a list satisfies `A` or the fact `B` holds, then all
+members satisfy `A` or `B` holds. -/
 theorem all_or {α : Type} {A : α → Prop} {B : Prop} :
     ∀ l : List α, (∀ a ∈ l, A a ∨ B) → (∀ a ∈ l, A a) ∨ B
   | [], _ => Or.inl fun _ h => by cases h

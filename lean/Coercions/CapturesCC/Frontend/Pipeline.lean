@@ -26,9 +26,9 @@ does not tell `let` from `letex`.  So the check says the elaborated program is
 the written one up to what the typer adds.
 
 `compile` returns the typer's `Verdict`.  `ok` carries the record.  `rejected`
-carries a reason with its proof.  `unknown` says no answer and no reason was found.  A program
-that does not resolve is `unknown`, and so is a program whose skeleton the
-typer changed.
+carries a reason with its proof.  `unknown` says no answer and no reason was
+found.  A program that does not resolve is `unknown`, and so is a program whose
+skeleton the typer changed.
 
 `compileAndRun` follows `compile` with the executable source machine of
 `Step.lean`, from the platform's initial store, at a step budget.
@@ -38,10 +38,9 @@ typer changed.
 `source_lvl_safety` speaks of member-free subcapturing at a well-formed
 context, built from `refl`, `trans`, `elem`, `union`, `var` and `level`.
 `levelSteps` reads off the typer's derivation every such subcapturing, with
-its context and a proof that the context is well formed.  It walks the
-derivation and its subtyping premises, and opens a context where the rule
-does.  At each subcapturing premise it decides `memberFree?`.  A member-free
-premise is logged whole.  Otherwise the walk continues into its parts.
+its context and a proof that the context is well formed.  At each subcapturing
+premise it decides `memberFree?`.  A member-free premise is logged whole.
+Otherwise the walk continues into its parts.
 
 ## The theorems
 
@@ -66,21 +65,17 @@ Except for `compile_rejected_goal` and the `_get` variants,
   is never the root of a variable a run reads.
 * `compile_lvl_safety`: at every member-free subcapturing `lo <: hi` of the
   derivation, `lo` is confined to every atom that confines `hi`, at every
-  depth of resolution.  So no set leaves the scope of a root it is checked
-  against.
+  depth of resolution.
 * `compile_rejected_goal`: a program rejected by a level escape comes with a
   goal `C <: D` that no member-free subcapturing proves.  This is about that
   goal, not about every derivation of the program.
-* `compile_checks_get` and `compile_effect_safety_get`: `compile_checks` and
-  `compile_effect_safety` for a program whose compile succeeds by a decided
-  test.  For a concrete program the kernel reduces the compile, so both
-  premises close by `decide +kernel`.
+* `compile_checks_get` and `compile_effect_safety_get`: the same for a
+  program whose compile succeeds by a decided test.  For a concrete program
+  the kernel reduces the compile, so both premises close by `decide +kernel`.
 
 The premise `h` is what a caller holds.  The content is in the type of `c`.
 The other premises select what a theorem speaks of.  None is a hypothesis
 about the compiler.
-
-Everything is in `namespace CapturesCCFrontend`.
 -/
 
 namespace CapturesCCFrontend
@@ -234,8 +229,8 @@ termination_by structural h
 
 end
 
-/-- The log of a derivation at a well-formed context: every member-free
-subcapturing it contains, at the context it sits at. -/
+/-- Every member-free subcapturing a derivation contains, at the context it
+sits at. -/
 def levelSteps {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t : Tm s} {E : ETy s} (hwf : Γ.Wf)
     (d : HasTy U Γ t E) : List LevelStep :=
   hasTySteps hwf d
@@ -263,8 +258,8 @@ structure Compiled {s₀ : Sig} (P : Platform s₀) (a : ATm s₀) where
 platform's context, and keep the result when the skeleton is the program's.
 A rejection is the typer's, with its reason.  `unknown` is returned when the
 program does not resolve, when the typer finds no answer and no reason, when
-it reaches the recursion limit, and when it changed the skeleton.  The result is a dependent pair, since the
-record speaks of the resolved term. -/
+it reaches the recursion limit, and when it changed the skeleton.  The result
+is a dependent pair, since the record speaks of the resolved term. -/
 def compile (b : Budget) (Λ : LabelTable) (π : PlatformNames) (e : STm) :
     Verdict ((a : ATm π.sig) × Compiled π.plat a) :=
   match resolveTop Λ π e with
@@ -345,8 +340,7 @@ theorem cvar_mem_translate {s : Sig} {κ : BVar s .cap} {C : CaptureSet s}
 
 /-! ## The theorems -/
 
--- The premise `h` is used only by the last proof.  It is written because it is
--- what a caller holds.
+-- The premise `h` is what a caller holds, though most proofs do not use it.
 set_option linter.unusedVariables false
 
 section
@@ -496,10 +490,9 @@ end
 
 /-! ## Checks
 
-The log is computed in the kernel, so whether it is empty is decided.  Two open
-examples show that `compile_lvl_safety` says something: the caller of
-`freshCell` at `Z1Ctx` and the call `p f` at `W2CallCtx`, typed by `synthIn?`
-at the default fuel. -/
+The log is computed in the kernel.  Two examples show that `compile_lvl_safety`
+says something: the caller of `freshCell` at `Z1Ctx` and the call `p f` at
+`W2CallCtx`, typed by `synthIn?` at the default fuel. -/
 
 section Checks
 
