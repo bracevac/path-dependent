@@ -10,7 +10,7 @@ erasure keep the base's statements, and only typing grows: a stable field declar
 |---|---|
 | `Syntax` | paths with `root`, `depth` and path substitution (`substPath`, `PathSubst`). Types with `vfld`, `sngl` and `sel` at a path. The declaration readers `lookupTypDecl`, `lookupFldDecl`, `lookupVfldDecl`. Terms, values, definitions, `Ty.Decl`, `Ty.Wf`, `Defs.Distinct` |
 | `Typing` | contexts. `Sub`, `PathTy`, `HasTy`, `DefsTy`, `SelfFree`, `SubDecl` as one mutual `Type`-valued block. `HasTy.toPathTy`, the derived forms `HasTy.letSngl`, `DefsTy.trmSngl`, `DefsTy.trmLam`, and the exactness theorems |
-| `Machine` | store, continuations, `Step`, `Steps`, `Final`, `Stuck`, unchanged from the base |
+| `Machine` | store, continuations, `Step`, `Steps`, `Final`, `Stuck`, as in the base. `Step.det`: two steps out of one state reach the same state |
 | `Erasure` | erasure to the shared runtime, `erase_step`, `erase_reflect` |
 | `Examples` | the base examples E1 to E8, the path examples X1 to X4, E1p to E8p, E9, E11, P3e, and the gDOT programs `Fig2_prog` and `Fig1_prog` |
 

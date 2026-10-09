@@ -906,9 +906,9 @@ theorem alias_blocks_of {α : AliasCo s} {p q : Path s} (h : Γ ⊢ α : p ≋ q
   rw [alias_eq_of hσ hF h]
 
 /-- The equality between the blocks of two aliased names, `EqCo.refl`
-after `alias_eq_of`. -/
+after `alias_eq_of`.  It holds at every label, declared or not. -/
 theorem EqCo.ofAlias_derivable_of {α : AliasCo s} {p q : Path s} (h : Γ ⊢ α : p ≋ q)
-    (ℓ : Label) (_hd : (Γ.lookupDefP p ℓ).isSome) :
+    (ℓ : Label) :
     ∃ φ : EqCo s, Γ ⊢ φ : p ∙ ℓ ≡ q ∙ ℓ := by
   rw [alias_eq_of hσ hF h]
   exact ⟨.refl _, .refl⟩
@@ -950,8 +950,8 @@ theorem alias_blocks (hσ : ⊢ σ : Γ) {α : AliasCo s} {p q : Path s} (h : Γ
     Γ.lookupBlock p = Γ.lookupBlock q := alias_blocks_of hσ hσ.fieldForms h
 
 theorem EqCo.ofAlias_derivable (hσ : ⊢ σ : Γ) {α : AliasCo s} {p q : Path s}
-    (h : Γ ⊢ α : p ≋ q) (ℓ : Label) (hd : (Γ.lookupDefP p ℓ).isSome) :
-    ∃ φ : EqCo s, Γ ⊢ φ : p ∙ ℓ ≡ q ∙ ℓ := EqCo.ofAlias_derivable_of hσ hσ.fieldForms h ℓ hd
+    (h : Γ ⊢ α : p ≋ q) (ℓ : Label) :
+    ∃ φ : EqCo s, Γ ⊢ φ : p ∙ ℓ ≡ q ∙ ℓ := EqCo.ofAlias_derivable_of hσ hσ.fieldForms h ℓ
 
 theorem atom_sngl_block (hσ : ⊢ σ : Γ) {a : Atom s} {q : Path s} (h : Γ ⊢ₐ a : Ty.snglOf q) :
     Γ.lookupBlock (.var a.root) = Γ.lookupBlock q := atom_sngl_block_of hσ hσ.fieldForms h

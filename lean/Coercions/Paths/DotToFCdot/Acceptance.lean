@@ -16,9 +16,10 @@ allocates the literal as the one entry of a typed store, reads `⊤ ≤ x ∙ A`
 the composite by `Store.Typed.no_top_le_bot` (`no_literal_at_bad`).  A closed
 term at the bad type exists, `diverging_at_bad_bounds` on X2's literal.  Its
 run reaches `o.a` in three steps and then steps to itself (`div_reach`,
-`div_loop`).  That run allocates only X2's literal, which does not have the bad
-type.  Nothing here proves that every run of the term behaves so.  The test
-speaks of literals.
+`div_loop`).  The machine is deterministic (`Step.det`), so this is the only
+run, and every store along it is empty or holds X2's literal alone
+(`div_stores`).  That literal does not have the bad type.  The test speaks of
+literals.
 
 **Test A, gDOT Fig. 2.**  The source is the page `Fig2` of
 `DotMNF/Examples.lean`.  The kernel decides every fact here: a checker verdict
@@ -114,9 +115,11 @@ theorem acceptance_gdot3_any {A : Label} {d : Defs ([],x)} :
 /-! ### A closed term at the bad type exists, and its run loops
 
 `let o = ν(x. {a = x.a}) in let y = o.a in y`, X2's literal.  `o.a` steps to
-itself (`div_reach`, `div_loop`), so this run never reaches a value at the bad
-type.  The theorems above are about literals, and this is why they are not
-about terms. -/
+itself (`div_reach`, `div_loop`).  The machine is deterministic, so every run
+of the term passes through the same four states, and every store on it is
+empty or holds X2's literal alone (`div_stores`).  No run reaches a value at
+the bad type.  The theorems above are about literals, and this is why they are
+not about terms. -/
 
 /-- `ν(x. {a = x.a})` at `μ(x. {a : {A : ⊤..⊥}})`, closed. -/
 def div_x2lit : HasTy Ctx.nil (.val (.obj Examples.X2_Defs)) (.mu Examples.X2_Self) :=
@@ -158,6 +161,49 @@ theorem div_loop : Step div_stLoop div_stLoop := by
   have h := Step.proj (σ := div_stLoop.σ) (K := div_stLoop.K) (x := .here) (a := Examples.la)
     (d := Examples.X2_Defs) (t := .proj .here Examples.la) rfl rfl
   exact h
+
+/-- The state after the outer `let` is pushed. -/
+def div_st1 : State [] :=
+  ⟨.nil, .cons .nil (.let (.proj .here Examples.la) (.path .here)), .val (.obj Examples.X2_Defs)⟩
+
+/-- The state after X2's literal is allocated. -/
+def div_st2 : State ([],x) :=
+  ⟨.cons .nil (.obj Examples.X2_Defs), .nil, .let (.proj .here Examples.la) (.path .here)⟩
+
+/-- The four states on the run of `div_tm`. -/
+def DivState (p : (s : Sig) × State s) : Prop :=
+  p = ⟨[], ⟨.nil, .nil, div_tm⟩⟩ ∨ p = ⟨[], div_st1⟩ ∨ p = ⟨([],x), div_st2⟩ ∨
+    p = ⟨([],x), div_stLoop⟩
+
+/-- The four states are closed under steps.  Each has one successor by
+`Step.det`, and that successor is again one of the four. -/
+theorem DivState.steps {st₀ : State s₀} {st' : State s'}
+    (h : Steps st₀ st') (h₀ : DivState ⟨s₀, st₀⟩) : DivState ⟨s', st'⟩ := by
+  induction h with
+  | refl => exact h₀
+  | tail _ hstep ih =>
+      rcases ih h₀ with h0 | h1 | h2 | h3
+      · cases h0
+        exact Or.inr (Or.inl (Step.det hstep .let))
+      · cases h1
+        exact Or.inr (Or.inr (Or.inl (Step.det hstep .alloc)))
+      · cases h2
+        exact Or.inr (Or.inr (Or.inr (Step.det hstep .let)))
+      · cases h3
+        exact Or.inr (Or.inr (Or.inr (Step.det hstep div_loop)))
+
+/-- **Every run of `div_tm` allocates X2's literal and nothing else.**  Every
+store reachable from `div_tm` is empty or holds X2's literal as its one entry.
+No closed literal has the bad type (`acceptance_gdot3_any`), so no run of the
+term allocates a value at the bad type. -/
+theorem div_stores {st' : State s'} (h : Steps (⟨.nil, .nil, div_tm⟩ : State []) st') :
+    (⟨s', st'.σ⟩ : (s : Sig) × Store s) = ⟨[], .nil⟩ ∨
+      (⟨s', st'.σ⟩ : (s : Sig) × Store s) = ⟨([],x), .cons .nil (.obj Examples.X2_Defs)⟩ := by
+  rcases DivState.steps h (Or.inl rfl) with h0 | h1 | h2 | h3
+  · cases h0; exact Or.inl rfl
+  · cases h1; exact Or.inl rfl
+  · cases h2; exact Or.inr rfl
+  · cases h3; exact Or.inr rfl
 
 /-! ## Test A: gDOT Fig. 2 -/
 
