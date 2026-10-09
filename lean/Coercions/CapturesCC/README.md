@@ -6,9 +6,9 @@ local root of its own, a capability may only be absorbed by a root whose scope e
 parameter `any` is a capture parameter, and a result `fresh` is a new capability for each call.
 This development models that reading on top of DOT and FCdot.  For the classic escape
 `withFile[() => File^]("test.txt")(f => () => f)`, the level premise fails for the callback's
-parameter (`X4_no_level`).  No member-free capture evidence puts the parameter below the universal
-root in the target (`X4_no_escape`) or below the platform capability in the source
-(`W5_no_escape`).  These are statements about one subcapturing question.  The claim that the whole
+parameter (`X4_no_level`).  No capture evidence puts the parameter below the universal root in the
+target (`X4_no_escape`), and no source subcapturing derivation puts it below the platform
+capability (`W5_no_escape`).  These are statements about one subcapturing question.  The claim that the whole
 program is rejected belongs to `Frontend/`.  Every subcapturing step is an explicit proof term
 that erases to nothing.
 
@@ -20,22 +20,29 @@ named in `BASE`.  It keeps every theorem of that base.
 - `level_inversion`: for capture evidence that reads no capture bound, if the resolution of the
   upper set is confined to an atom `r` at every depth, so is the resolution of the lower set.  So a
   capability of an inner scope does not pass for one of an outer scope.  It needs no store.
+- `level_inversion_plain`: the same for all capture evidence, in a context whose term binders are
+  opaque at shapes with no member to read and whose capture binders are not instances.
+- `root_inversion`: member-free capture evidence includes resolved roots, in every context.  It is
+  `cap_canon` for member-free evidence, with no store.
 - `source_lvl_safety`: the same for source subcapturing, through the translation.  It needs a
   well-formed context.
 - `no_ex_le_ty`: no evidence includes an existential answer in a plain answer.  A `fresh` result
   is an existential answer.
 - `two_calls_incomparable`: for `freshCell` called twice at a caller with no scope root, no
-  capture evidence puts the first opened binder below the second, and none puts the first cell
-  below the second.  The reverse direction is not stated.
+  capture evidence puts either opened binder below the other, and none puts either cell below the
+  other.  `two_calls_incomparable_rooted` says the same for member-free evidence at a caller that
+  is a lambda body.
 - `capture_prediction`, `effect_safety`: along a run from a typed state the roots of the use set
   only shrink.  `effect_safety` also asks for a typed store: a capability that is not a root of the
   initial use set is not the root of the variable a later state reads, up to the renaming of the
   store extension.
 - `dot_capture_prediction`, `dot_effect_safety`: the same through the translation, for a closed
-  source program at a plain answer over a platform prefix.  The conclusions are about the matched
-  target state, since the source machine has no use sets.
+  source program at a plain answer over a platform prefix.  The conclusions are about a typed
+  target state that the run of the translated program reaches from its initial state and whose
+  erasure is the source state's, since the source machine has no use sets.
 - `preservation'`, `progress`: type safety of the target, for a typed state.
-- `dot_safety`: a closed source program at a plain answer never gets stuck.
+- `dot_safety`, `dot_safety_platform`: a closed source program at a plain answer never gets
+  stuck, over the empty context and over a platform prefix.
   `HasTy.translate_typed` and `HasTy.translate_erase`: a source derivation over a well-formed
   context translates to a typed target term, and that term erases to the source program.
 

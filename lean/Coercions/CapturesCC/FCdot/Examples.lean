@@ -1892,13 +1892,14 @@ theorem C5_client : C5CCtx ⊢ C5clientTm : C5clientTy := checkTm_sound (by deci
 
 The three examples X1, X2 and X3.  They use no term former.  The level rule
 reads only the shape of the context, so `Ctx.isRootB` and `Ctx.lvlLeB` decide
-every side condition in the kernel, and every verdict below is a `decide`.
+every side condition in the kernel, and every level verdict below is a
+`decide`.
 
 The universal root `⊤ᶜ` is the local root of the whole program.  A binder
 that sits inside no scope is at the outermost level, so `⊤ᶜ` absorbs it (X1).
 A binder introduced inside a scope is not at the outermost level, so `⊤ᶜ`
-does not absorb it, while the scope's own root does (X2).  Nothing at all
-puts such a binder below an enclosing root (X3). -/
+does not absorb it, while the scope's own root does (X2).  No member-free
+evidence puts such a binder below an enclosing root (X3). -/
 
 /-! ### X1, inner absorbs outer
 
@@ -1977,20 +1978,27 @@ example : X2Ctx.root? = some X2κS := by decide
 
 example : X2Ctx.lvl X2κ₂ = some X2κS := by decide
 
-/-- **X2, outer does not absorb inner.**  Four parts.  The first two are
+/-- **X2, outer does not absorb inner.**  Six parts.  The first two are
 `level` derivations that go outward: what is outside the scope is put below
-the scope's root, the universal root included.  The last two say that the
+the scope's root, the universal root included.  The next two say that the
 premise of `level` fails going inward: what is inside the scope, the scope's
-own root included, is not `LvlLe` the universal root.  This refutes the
-`level` rule only.  It does not rule out evidence by other rules. -/
+own root included, is not `LvlLe` the universal root.  The last two say that
+no member-free evidence at all, by any rule, puts either of them below the
+universal root.  They are `no_inner_escape`. -/
 theorem X2_outer_not_inner :
     (X2Ctx ⊢ᶜ .level (.cvar X2κ₁) (.cvar X2κS) :
       [CapAtom.cvar X2κ₁] ⊑ [CapAtom.cvar X2κS]) ∧
     (X2Ctx ⊢ᶜ .level ⊤ᶜ (.cvar X2κS) : [⊤ᶜ] ⊑ [CapAtom.cvar X2κS]) ∧
     ¬ X2Ctx.LvlLe (CapAtom.cvar X2κS) ⊤ᶜ ∧
-    ¬ X2Ctx.LvlLe (CapAtom.cvar X2κ₂) ⊤ᶜ :=
+    ¬ X2Ctx.LvlLe (CapAtom.cvar X2κ₂) ⊤ᶜ ∧
+    (¬ ∃ f : CapCo ([],c,c,c),
+      (X2Ctx ⊢ᶜ f : [CapAtom.cvar X2κS] ⊑ [⊤ᶜ]) ∧ f.MemberFree) ∧
+    (¬ ∃ f : CapCo ([],c,c,c),
+      (X2Ctx ⊢ᶜ f : [CapAtom.cvar X2κ₂] ⊑ [⊤ᶜ]) ∧ f.MemberFree) :=
   ⟨.level (by decide) (by decide), .level (by decide) (by decide),
-    by decide, by decide⟩
+    by decide, by decide,
+    no_inner_escape (by decide) (by decide) (by decide),
+    no_inner_escape (by decide) (by decide) (by decide)⟩
 
 /-- The checker agrees on all four, in the kernel: it accepts the two that go
 outward and rejects the two that go inward. -/
@@ -2008,28 +2016,26 @@ example : checkCap X2Ctx (.level (.cvar X2κ₂) ⊤ᶜ) [CapAtom.cvar X2κ₂] 
 
 /-! ### X3, nothing escapes a scope
 
-`no_inner_escape` applied at `κ₂` and `⊤ᶜ` on the context of X2: no closed
-evidence at all, and not only no `level` step, puts the binder introduced
-inside the scope below the enclosing root.
+`no_inner_escape` applied at `κ₂` and `⊤ᶜ` on the context of X2: no
+member-free evidence, and not only no `level` step, puts the binder introduced
+inside the scope below the enclosing root.  The three premises are decided.
 
-The three level premises are decided.  The fourth premise is a typed store,
-and no store types this context: a store binds capabilities and never
-scopes, so a store context has no root binder (`Store.Typed.rootFree`), and
-X2's context has one.  That is the second part below, and it is why X3
-holds vacuously here.  The escape gets real content once a lambda body
-becomes a scope and a store slot can sit under a root the run itself
-provides; the argument run then is this one. -/
+The statement needs no store, and none could be given: a store binds
+capabilities and never scopes, so a store context has no root binder
+(`Store.Typed.rootFree`), and X2's context has one.  That is the second part
+below.  Evidence that uses `member` or `eqToLe` is not covered, because a
+lambda body may assume bad bounds and those two rules read them. -/
 
-/-- **X3, nothing escapes a scope.**  Over any store that types the nested
-context, no capture evidence puts the rigid binder introduced inside the
-scope below the universal root. -/
-theorem X3_no_escape {σ : Store ([],c,c,c)} (hσ : ⊢ σ : X2Ctx) :
-    ¬ ∃ f : CapCo ([],c,c,c), X2Ctx ⊢ᶜ f : [CapAtom.cvar X2κ₂] ⊑ [⊤ᶜ] :=
-  no_inner_escape hσ (by decide) (by decide) (by decide)
+/-- **X3, nothing escapes a scope.**  No member-free capture evidence puts
+the rigid binder introduced inside the scope below the universal root. -/
+theorem X3_no_escape :
+    ¬ ∃ f : CapCo ([],c,c,c), (X2Ctx ⊢ᶜ f : [CapAtom.cvar X2κ₂] ⊑ [⊤ᶜ]) ∧ f.MemberFree :=
+  no_inner_escape (by decide) (by decide) (by decide)
 
-/-- **X3, the second part.**  The hypothesis of `X3_no_escape` is
-unavailable for this context: a store context has no scope root, and X2's
-context opens one. -/
+/-- **X3, the second part.**  No store types this context: a store context
+has no scope root, and X2's context opens one.  So canonical forms, which read
+a store, say nothing here, and `X3_no_escape` rests on member-free evidence
+instead. -/
 theorem X3_no_store : ¬ ∃ σ : Store ([],c,c,c), ⊢ σ : X2Ctx := by
   rintro ⟨σ, hσ⟩
   have h : X2Ctx.root? = none := hσ.rootFree
@@ -2045,7 +2051,7 @@ so the parameter and the arrow binder are at one level and that level is
 the body root.  Everything below reads off that one fact.
 
 `C2_typed` is the regression test that the new binders are inert where
-nothing names them.  `X4` shows that no member-free evidence puts the
+nothing names them.  `X4` shows that no capture evidence puts the
 `withFile` callback's parameter below the universal root, and `X5` shows that
 the binder order is what makes this so.  `S2_level`
 and `C5a_level` are the two acceptance tests, the caller's side and the
@@ -2126,7 +2132,7 @@ inert here: no witness, no field and no type names either. -/
 theorem C2_typed : C2LitCtx ⊢ᵥ C2lit C2κ₁ : C2LitTy C2κ₁ :=
   checkValue_sound (by decide +kernel)
 
-/-! ### X4, the `withFile` escape: no member-free evidence
+/-! ### X4, the `withFile` escape: no evidence
 
 The program is `withFile[() => File^]("test.txt"): f => () => f`, the
 standard Scala 3 capture-checking example of an escaping capability.
@@ -2138,9 +2144,10 @@ root is `⊤ᶜ` when the call is at the top level.
 
 Two theorems, both store free.  `X4_no_level` decides that the premise of
 the level rule is false there, at `⊤ᶜ` and at an older root alike.
-`X4_no_escape` is an instance of `level_inversion`: no member-free evidence
-at all puts `{f}` below `{⊤ᶜ}`, because the binder set of `f` resolves to
-the arrow binder `κ_f`, whose level is the body root.  If the escape were
+`X4_no_escape` is an instance of `level_inversion_plain`: no capture evidence
+at all puts `{f}` below `{⊤ᶜ}`.  The callback context is plain, so `member`
+and `eqToLe` have nothing to read, and the binder set of `f` resolves to the
+arrow binder `κ_f`, whose level is the body root.  If the escape were
 allowed, calling the returned closure as `escaped().read()` would be a use
 after close.  Neither theorem states that the program is ill typed. -/
 
@@ -2193,19 +2200,23 @@ theorem X4_caps (n : Nat) : X4Ctx.caps n [CapAtom.var X4f] = [CapAtom.cvar X4κf
   rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
   rfl
 
-/-- **X4, nothing escapes the callback.**  No member-free capture evidence
-puts `{f}` below the universal root.  An instance of `level_inversion`: the
-binder set of `f` is `{κ_f}`, whose level is the body root, so it is not at
-the outermost level, and member-free evidence never lowers a level. -/
+/-- The callback context is plain: its one term binder, the file, is opaque at
+`⊤`, and its capture binders are a root and a rigid binder. -/
+theorem X4Ctx_plain : X4Ctx.plain = true := by decide
+
+/-- **X4, nothing escapes the callback.**  No capture evidence puts `{f}`
+below the universal root.  An instance of `level_inversion_plain`: the context
+is plain, so `member` and `eqToLe` have nothing to read, the binder set of `f`
+is `{κ_f}`, whose level is the body root, so it is not at the outermost level,
+and capture evidence never lowers a level there. -/
 theorem X4_no_escape :
-    ¬ ∃ g : CapCo (Sig.body []),
-        (X4Ctx ⊢ᶜ g : [CapAtom.var X4f] ⊑ [⊤ᶜ]) ∧ g.MemberFree := by
-  rintro ⟨g, hg, hgf⟩
+    ¬ ∃ g : CapCo (Sig.body []), X4Ctx ⊢ᶜ g : [CapAtom.var X4f] ⊑ [⊤ᶜ] := by
+  rintro ⟨g, hg⟩
   have hD : ∀ m, X4Ctx.Confined (X4Ctx.caps m [(⊤ᶜ : CapAtom (Sig.body []))]) ⊤ᶜ := by
     intro m
     rw [Ctx.caps_cons, Ctx.capsAtom_top, Ctx.caps_nil]
     decide
-  have hC := level_inversion hg hgf hD 0
+  have hC := level_inversion_plain X4Ctx_plain hg hD 0
   rw [X4_caps] at hC
   exact absurd hC (by decide)
 
@@ -2324,19 +2335,23 @@ theorem S2_level : S2aCtx ⊢ S2aTm : S2aTy := checkTm_sound (by decide +kernel)
 The five examples Y1 to Y5.  They use the answer sort `ETy`, the
 syntactic pack, the answer-cast coercion `ELeCo` and the `letex` former.
 
-Y1 is `freshCell` and two calls, with no evidence from the first opened binder
-to the second.  Y2 is
+Y1 is `freshCell` and two calls, with no evidence between the two opened
+binders in either direction.  Y2 is
 `makeLogger`, packed at the parameter.  Y3 is C5b, whose caller charges its
-use to the instantiated bound and never learns the witness.  Y4 restates
-`no_ex_le_ty` at the callback context and `X4_no_escape`.  Y5 is the
+use to the instantiated bound and never learns the witness.  Y4 is the body
+of `withFile` after it unpacks a callback's `fresh` result.  Y5 is the
 `fresh` half of C5a and S2.
 
-Two of the theorems are negative, and both go through `cap_canon`, which
-reads a typed store.  So each of them is stated at the context
+The negative theorems at a caller with no scope root go through `cap_canon`,
+which reads a typed store.  So each of them is stated at the context
 the `letex` rules build, transported into the transparent context a store
 types by `Ctx.Refines`: a transparent context knows everything the opaque
 one knows, so refusing the inclusion there refuses it in the opaque one, and
-the store is exhibited rather than assumed. -/
+the store is exhibited rather than assumed.  At a caller that is a lambda
+body no store types the context.  The negative theorems there go through
+`root_inversion`, which ranges over member-free evidence, or through
+`level_inversion_plain`, which covers all evidence in a context where
+`member` and `eqToLe` have nothing to read. -/
 
 /-- A binder of the ambient signature, read in a lambda body. -/
 abbrev up3 {s : Sig} {k : Kind} (y : BVar s k) : BVar (Sig.body s) k :=
@@ -2578,14 +2593,16 @@ theorem Y1_caps_x₂ (n : Nat) :
 
 /-- **Y1, two calls.**  At a caller with no scope root, the context a store
 can type, two calls of `freshCell` open two binders.  No capture evidence puts
-the first binder below the second, and none puts the first cell below the
-second.  The reverse direction is not stated.  At a caller that is a lambda
-body, with a body root, no store types the context and the argument does not
-apply. -/
+either binder below the other, and none puts either cell below the other.
+The proof reads the store through `cap_canon`.  At a caller that is a lambda
+body, with a body root, no store types the context, and
+`two_calls_incomparable_rooted` below states the member-free form. -/
 theorem two_calls_incomparable :
     (¬ ∃ f, Y1BodyCtxO ⊢ᶜ f : [CapAtom.cvar Y1κ₁'] ⊑ [CapAtom.cvar Y1κ₂']) ∧
-    (¬ ∃ f, Y1BodyCtxO ⊢ᶜ f : [CapAtom.var Y1x₁] ⊑ [CapAtom.var Y1x₂]) := by
-  constructor
+    (¬ ∃ f, Y1BodyCtxO ⊢ᶜ f : [CapAtom.var Y1x₁] ⊑ [CapAtom.var Y1x₂]) ∧
+    (¬ ∃ f, Y1BodyCtxO ⊢ᶜ f : [CapAtom.cvar Y1κ₂'] ⊑ [CapAtom.cvar Y1κ₁']) ∧
+    (¬ ∃ f, Y1BodyCtxO ⊢ᶜ f : [CapAtom.var Y1x₂] ⊑ [CapAtom.var Y1x₁]) := by
+  refine ⟨?_, ?_, ?_, ?_⟩
   · rintro ⟨f, hf⟩
     have hr : Y1BodyCtx.Root (CapAtom.cvar Y1κ₁') [CapAtom.cvar Y1κ₁'] :=
       ⟨0, by rw [Ctx.roots_eq_expand_caps, Y1_caps_κ₁']; decide⟩
@@ -2598,6 +2615,118 @@ theorem two_calls_incomparable :
     obtain ⟨m, hm⟩ := cap_canon Y1Store_typed (CapCo.HasType.refine Y1_refines hf) _ hr
     rw [Ctx.roots_eq_expand_caps, Y1_caps_x₂] at hm
     exact absurd hm (by decide)
+  · rintro ⟨f, hf⟩
+    have hr : Y1BodyCtx.Root (CapAtom.cvar Y1κ₂') [CapAtom.cvar Y1κ₂'] :=
+      ⟨0, by rw [Ctx.roots_eq_expand_caps, Y1_caps_κ₂']; decide⟩
+    obtain ⟨m, hm⟩ := cap_canon Y1Store_typed (CapCo.HasType.refine Y1_refines hf) _ hr
+    rw [Ctx.roots_eq_expand_caps, Y1_caps_κ₁'] at hm
+    exact absurd hm (by decide)
+  · rintro ⟨f, hf⟩
+    have hr : Y1BodyCtx.Root (CapAtom.cvar Y1κ₂') [CapAtom.var Y1x₂] :=
+      ⟨0, by rw [Ctx.roots_eq_expand_caps, Y1_caps_x₂]; decide⟩
+    obtain ⟨m, hm⟩ := cap_canon Y1Store_typed (CapCo.HasType.refine Y1_refines hf) _ hr
+    rw [Ctx.roots_eq_expand_caps, Y1_caps_x₁] at hm
+    exact absurd hm (by decide)
+
+/-! ### Two calls at a caller that is a lambda body
+
+The same two calls, made inside a lambda that takes a unit.  The caller's
+context is the body context `Ctx.body Y1CCtx YUnit`, which has a body root,
+so no store types it.  The two `letex`es extend it as their rule says: a rigid
+capture binder and an opaque cell, twice.
+
+The two opened binders are at one level, the body root, so the level order
+relates each to the other and `level_inversion` cannot separate them.
+`root_inversion` can: on member-free evidence it needs no store, and it
+says that the roots of the lower set are roots of the upper set.  Each opened
+binder is its own only root. -/
+
+/-- The caller, read inside the lambda body: three binders further in. -/
+def Y1callerR : Tm (Sig.body ([],c,x,x)) :=
+  Tm.weaken (k := .var) (Tm.weaken (k := .cap) (Tm.weaken (k := .cap) Y1caller))
+
+/-- The caller types in the body context, at the answer it had at the top. -/
+example : checkTm (Ctx.body Y1CCtx YUnit) Y1callerR (Ty.pure tArrow) = true := by
+  decide +kernel
+
+/-- The context the two `letex` rules build at that caller. -/
+def Y1RBodyCtx : Ctx ((Sig.body ([],c,x,x)),c,x,c,x) :=
+  ((((Ctx.body Y1CCtx YUnit).consC .star).cons (.opaque (YCell ^ [CapAtom.cvar .here]))).consC
+    .star).cons (.opaque (YCell ^ [CapAtom.cvar .here]))
+
+/-- The binder the first call opened, at the rooted caller. -/
+def Y1Rκ₁ : BVar ((Sig.body ([],c,x,x)),c,x,c,x) .cap := .there (.there (.there .here))
+/-- The binder the second call opened, at the rooted caller. -/
+def Y1Rκ₂ : BVar ((Sig.body ([],c,x,x)),c,x,c,x) .cap := .there .here
+/-- The first cell, at the rooted caller. -/
+def Y1Rx₁ : BVar ((Sig.body ([],c,x,x)),c,x,c,x) .var := .there (.there .here)
+/-- The second cell, at the rooted caller. -/
+def Y1Rx₂ : BVar ((Sig.body ([],c,x,x)),c,x,c,x) .var := .here
+
+/-- The context has a scope root, the body root of the caller. -/
+example : Y1RBodyCtx.root? = some (.there (.there (.there (.there (.there (.there .here)))))) := by
+  decide
+
+/-- The two opened binders are at one level, so the level order relates them
+both ways. -/
+example : Y1RBodyCtx.LvlLe (CapAtom.cvar Y1Rκ₁) (CapAtom.cvar Y1Rκ₂) ∧
+    Y1RBodyCtx.LvlLe (CapAtom.cvar Y1Rκ₂) (CapAtom.cvar Y1Rκ₁) := ⟨by decide, by decide⟩
+
+theorem Y1R_caps_κ₁ (n : Nat) :
+    Y1RBodyCtx.caps n [CapAtom.cvar Y1Rκ₁] = [CapAtom.cvar Y1Rκ₁] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+  rfl
+
+theorem Y1R_caps_κ₂ (n : Nat) :
+    Y1RBodyCtx.caps n [CapAtom.cvar Y1Rκ₂] = [CapAtom.cvar Y1Rκ₂] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+  rfl
+
+theorem Y1R_caps_x₁ (n : Nat) :
+    Y1RBodyCtx.caps n [CapAtom.var Y1Rx₁] = [CapAtom.cvar Y1Rκ₁] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_var, Ctx.caps_nil, List.append_nil]
+  show Y1RBodyCtx.caps n [CapAtom.cvar Y1Rκ₁] = _
+  exact Y1R_caps_κ₁ n
+
+theorem Y1R_caps_x₂ (n : Nat) :
+    Y1RBodyCtx.caps n [CapAtom.var Y1Rx₂] = [CapAtom.cvar Y1Rκ₂] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_var, Ctx.caps_nil, List.append_nil]
+  show Y1RBodyCtx.caps n [CapAtom.cvar Y1Rκ₂] = _
+  exact Y1R_caps_κ₂ n
+
+/-- Two singleton sets whose resolutions are two distinct atoms that are not
+roots are not related by member-free evidence. -/
+theorem Y1R_apart {C D : CaptureSet ((Sig.body ([],c,x,x)),c,x,c,x)}
+    {a b : BVar ((Sig.body ([],c,x,x)),c,x,c,x) .cap}
+    (hC : ∀ n, Y1RBodyCtx.caps n C = [CapAtom.cvar a])
+    (hD : ∀ n, Y1RBodyCtx.caps n D = [CapAtom.cvar b])
+    (ha : Y1RBodyCtx.isRootB (CapAtom.cvar a) = false)
+    (hb : Y1RBodyCtx.isRootB (CapAtom.cvar b) = false) (hab : a ≠ b) :
+    ¬ ∃ f, (Y1RBodyCtx ⊢ᶜ f : C ⊑ D) ∧ f.MemberFree := by
+  rintro ⟨f, hf, hmf⟩
+  have hr : Y1RBodyCtx.Root (CapAtom.cvar a) C := by
+    refine ⟨0, ?_⟩
+    rw [Ctx.roots_eq_expand_caps, hC, Ctx.expand_cons, Ctx.expand_nil, List.append_nil,
+      Ctx.expandAtom_of_not_root ha]
+    exact List.mem_singleton_self _
+  obtain ⟨m, hm⟩ := root_inversion hf hmf _ hr
+  rw [Ctx.roots_eq_expand_caps, hD, Ctx.expand_cons, Ctx.expand_nil, List.append_nil,
+    Ctx.expandAtom_of_not_root hb] at hm
+  exact hab (CapAtom.cvar.inj (List.mem_singleton.mp hm))
+
+/-- **Y1, two calls at a rooted caller.**  At a caller that is a lambda body,
+two calls of `freshCell` open two binders at one level.  No member-free
+capture evidence puts either binder below the other, and none puts either cell
+below the other. -/
+theorem two_calls_incomparable_rooted :
+    (¬ ∃ f, (Y1RBodyCtx ⊢ᶜ f : [CapAtom.cvar Y1Rκ₁] ⊑ [CapAtom.cvar Y1Rκ₂]) ∧ f.MemberFree) ∧
+    (¬ ∃ f, (Y1RBodyCtx ⊢ᶜ f : [CapAtom.var Y1Rx₁] ⊑ [CapAtom.var Y1Rx₂]) ∧ f.MemberFree) ∧
+    (¬ ∃ f, (Y1RBodyCtx ⊢ᶜ f : [CapAtom.cvar Y1Rκ₂] ⊑ [CapAtom.cvar Y1Rκ₁]) ∧ f.MemberFree) ∧
+    (¬ ∃ f, (Y1RBodyCtx ⊢ᶜ f : [CapAtom.var Y1Rx₂] ⊑ [CapAtom.var Y1Rx₁]) ∧ f.MemberFree) :=
+  ⟨Y1R_apart Y1R_caps_κ₁ Y1R_caps_κ₂ (by decide) (by decide) (by decide),
+    Y1R_apart Y1R_caps_x₁ Y1R_caps_x₂ (by decide) (by decide) (by decide),
+    Y1R_apart Y1R_caps_κ₂ Y1R_caps_κ₁ (by decide) (by decide) (by decide),
+    Y1R_apart Y1R_caps_x₂ Y1R_caps_x₁ (by decide) (by decide) (by decide)⟩
 
 
 /-! ## Y2: `makeLogger`, packed at the parameter -/
@@ -2824,7 +2953,7 @@ theorem c5b_no_witness :
   exact absurd hm (by decide)
 
 
-/-! ## Y4: isolation at the callback context -/
+/-! ## Y4: `withFile` with a `fresh` result -/
 
 /-- **Y4, a third widening step.**  A plain codomain is widened
 to an existential under `ShapeCo.pi`, which is what `ELeCo.pack` being a
@@ -2843,22 +2972,119 @@ theorem Y4_pack_under_pi : Y1Ctx ⊢ Y4packUnderPi :
       ≤ YFreshCellTy Y1κ₁ :=
   checkLe_sound (by decide +kernel)
 
-/-- **Y4, isolation.**  No coercion takes an existential answer back to a
-plain one.  This is `no_ex_le_ty` stated at the context `X4Ctx`, which plays
-no part in the proof.  No `withFile` program and no `fresh` result appear in
-the statement. -/
-theorem Y4_isolation {C₀ : CaptureSet (Sig.body [])} {T : Ty ((Sig.body []),c)}
-    {T' : Ty (Sig.body [])} :
-    ¬ ∃ g, X4Ctx ⊢ᵉ g : (∃ᶜ[C₀] T) ≤ .ty T' := by
-  rintro ⟨g, hg⟩
-  exact no_ex_le_ty hg
+/-! ### Y4 after the call: the context a `letex` builds
 
-/-- **Y4, no member-free evidence.**  This is `X4_no_escape` again.  The
-statement has no `letex` and no unpacked binder. -/
+`withFile` hands its file to the callback `f => () => f`.  Read with a `fresh`
+result, the callback has the type `Y4OpTy`: it takes the file `File ^ {κ}`,
+with `File` read as `⊤` as in X4, and returns an existential bounded by the
+file, whose body is a closure captured at the opened binder.  This is Y2's
+`makeLogger` with the file for the file system.
+
+`withFile`'s body holds the callback `op` and the file `f`.  Its context is
+the body context `Y4WithFileCtx`, with a body root.  It calls `op f` and
+unpacks the result with a `letex`, which is Y2's caller term `Y2ClientBody`
+at this context.  The `letex` rule extends the context with a rigid capture
+binder `κ'` and the unpacked closure `x : tArrow ^ {κ'}`.  That is
+`Y4LetexCtx`, and the two theorems below are stated there. -/
+
+/-- The callback with a `fresh` result:
+`(Π(File ^ {κ}) ∃ᶜ[{f}] (tArrow ^ {κ'})) ^ {}`. -/
+def Y4OpTy : Ty s :=
+  (Π(.top ^ [CapAtom.cvar .here])
+    (∃ᶜ[[CapAtom.var .here]] (tArrow ^ [CapAtom.cvar .here]))) ^ []
+
+/-- `op : Y4OpTy`. -/
+def Y4OpCtx : Ctx ([],x) := Ctx.nil.cons (.opaque Y4OpTy)
+
+/-- The body of `withFile`: `op`, then the body root `κ_b`, the arrow binder
+`κ_f` and the file `f : File ^ {κ_f}`. -/
+def Y4WithFileCtx : Ctx (Sig.body ([],x)) := Ctx.body Y4OpCtx (.top ^ [CapAtom.cvar .here])
+
+/-- The body calls `op f`, unpacks the result with a `letex`, and returns a
+pure closure. -/
+example : checkTm Y4WithFileCtx Y2ClientBody (Ty.pure tArrow) = true := by decide +kernel
+
+/-- The context the `letex` builds: `κ' ⊑ᶜ ∗, x : tArrow ^ {κ'}`. -/
+def Y4LetexCtx : Ctx ((Sig.body ([],x)),c,x) :=
+  (Y4WithFileCtx.consC .star).cons (.opaque (tArrow ^ [CapAtom.cvar .here]))
+
+/-- The body of the `letex` types in that context. -/
+example : checkTm Y4LetexCtx Y2inner (Ty.pure tArrow) = true := by decide +kernel
+
+/-- The unpacked closure `x`. -/
+def Y4x : BVar ((Sig.body ([],x)),c,x) .var := .here
+
+/-- The opened binder `κ'`. -/
+def Y4κ' : BVar ((Sig.body ([],x)),c,x) .cap := .there .here
+
+/-- The file `f`. -/
+def Y4f : BVar ((Sig.body ([],x)),c,x) .var := .there (.there .here)
+
+/-- `withFile`'s body root `κ_b`. -/
+def Y4κb : BVar ((Sig.body ([],x)),c,x) .cap := .there (.there (.there (.there .here)))
+
+/-- The opened binder is at the level of `withFile`'s body root. -/
+example : Y4LetexCtx.lvl Y4κ' = some Y4κb := by decide
+
+/-- One `level` step puts the unpacked closure below `withFile`'s own body
+root.  It is member free. -/
+example : (Y4LetexCtx ⊢ᶜ .level (.var Y4x) (.cvar Y4κb) :
+      [CapAtom.var Y4x] ⊑ [CapAtom.cvar Y4κb]) ∧
+    (CapCo.level (.var Y4x) (.cvar Y4κb)).MemberFree :=
+  ⟨.level (by decide) (by decide), .level _ _⟩
+
+theorem Y4_caps_x (n : Nat) : Y4LetexCtx.caps n [CapAtom.var Y4x] = [CapAtom.cvar Y4κ'] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_var, Ctx.caps_nil, List.append_nil]
+  show Y4LetexCtx.caps n [CapAtom.cvar Y4κ'] = _
+  rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+  rfl
+
+theorem Y4_caps_f (n : Nat) :
+    Y4LetexCtx.caps n [CapAtom.var Y4f] = [CapAtom.cvar (.there (.there (.there .here)))] := by
+  rw [Ctx.caps_cons, Ctx.capsAtom_var, Ctx.caps_nil, List.append_nil]
+  show Y4LetexCtx.caps n [CapAtom.cvar (.there (.there (.there .here)))] = _
+  rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+  rfl
+
+/-- **Y4, isolation.**  At the context the `letex` builds after the call, two
+parts.  No coercion takes an existential answer back to a plain one, which is
+`no_ex_le_ty`: the `fresh` result cannot be read at a plain type.  And no
+member-free evidence puts the opened binder below the file: the body never
+learns that the witness is `f`.  The second part is `root_inversion`, since
+the context has a body root and no store types it. -/
+theorem Y4_isolation :
+    (∀ {C₀ : CaptureSet ((Sig.body ([],x)),c,x)} {T : Ty (((Sig.body ([],x)),c,x),c)}
+      {T' : Ty ((Sig.body ([],x)),c,x)}, ¬ ∃ g, Y4LetexCtx ⊢ᵉ g : (∃ᶜ[C₀] T) ≤ .ty T') ∧
+    ¬ ∃ g, (Y4LetexCtx ⊢ᶜ g : [CapAtom.cvar Y4κ'] ⊑ [CapAtom.var Y4f]) ∧ g.MemberFree := by
+  refine ⟨fun ⟨g, hg⟩ => no_ex_le_ty hg, ?_⟩
+  rintro ⟨g, hg, hgf⟩
+  have hr : Y4LetexCtx.Root (CapAtom.cvar Y4κ') [CapAtom.cvar Y4κ'] :=
+    ⟨0, by rw [Ctx.roots_eq_expand_caps, Ctx.caps_cons, Ctx.capsAtom_cvar]; decide⟩
+  obtain ⟨m, hm⟩ := root_inversion hg hgf _ hr
+  rw [Ctx.roots_eq_expand_caps, Y4_caps_f] at hm
+  exact absurd hm (by decide)
+
+/-- The context the `letex` builds is plain: its term binders are opaque at an
+arrow, at `⊤` and at an arrow, and none of its capture binders is an
+instance. -/
+theorem Y4LetexCtx_plain : Y4LetexCtx.plain = true := by decide
+
+/-- **Y4, no escape after the `letex`.**  At the context the `letex` builds,
+no capture evidence puts the unpacked closure below the universal root.  Its
+binder set resolves to the opened binder `κ'`, whose level is `withFile`'s
+body root.  The context is plain, so `level_inversion_plain` covers every
+form of evidence, and what it puts below `⊤ᶜ` is at the outermost level. -/
 theorem Y4_no_escape :
-    ¬ ∃ g : CapCo (Sig.body []),
-        (X4Ctx ⊢ᶜ g : [CapAtom.var X4f] ⊑ [⊤ᶜ]) ∧ g.MemberFree :=
-  X4_no_escape
+    ¬ ∃ g : CapCo ((Sig.body ([],x)),c,x), Y4LetexCtx ⊢ᶜ g : [CapAtom.var Y4x] ⊑ [⊤ᶜ] := by
+  rintro ⟨g, hg⟩
+  have hD : ∀ m, Y4LetexCtx.Confined
+      (Y4LetexCtx.caps m [(⊤ᶜ : CapAtom ((Sig.body ([],x)),c,x))]) ⊤ᶜ := by
+    intro m
+    rw [Ctx.caps_cons, Ctx.capsAtom_top, Ctx.caps_nil]
+    decide
+  have hC := level_inversion_plain Y4LetexCtx_plain hg hD 0
+  rw [Y4_caps_x] at hC
+  exact absurd hC (by decide)
 
 /-! ## Y5: the `fresh` halves of S2 and C5a -/
 
@@ -3013,6 +3239,15 @@ theorem W2_translated : DotMNF.Examples.platCtx.translate ⊢
     (DotMNF.Examples.W2Ty : DotMNF.Ty ([],c,c)).translate :=
   DotMNF.Examples.W2_typed.translate_typed platWf
 
+/-- The translated type is one arrow with an empty capture set: the source
+arrow, which binds its capture parameter, becomes one target arrow by
+`Shape.translate_all`. -/
+example : ∃ (D : Dom ([],c,c)) (T : Cod ([],c,c)),
+    (DotMNF.Examples.W2Ty : DotMNF.Ty ([],c,c)).translate = (Π(D) T) ^ [] :=
+  ⟨_, _, by
+    simp only [DotMNF.Examples.W2Ty, DotMNF.Ty.translate_capt, DotMNF.Shape.translate_all]
+    rfl⟩
+
 /-- **W2 erased.**  The erasure of the translation equals the erasure of the
 source term.  This is `HasTy.translate_erase` at one derivation. -/
 theorem W2_erase :
@@ -3044,11 +3279,14 @@ theorem W4_translated : DotMNF.Examples.platCtx.translate ⊢
 
 `W5_caps` is the source twin of `X4_caps`: the binder set of the callback's
 parameter resolves to the arrow binder `κ_f`, whose level is the body root.
-`W5_no_escape` states, at `r = ⊤ᶜ`: no member-free source subcapturing puts
+`W5_no_escape` states, at `r = ⊤ᶜ`: no source subcapturing at all puts
 `{f}` below the platform capability `κ₁`, which sits at the outermost level
-because the platform prefix opens no scope.  If the escape were allowed,
-calling the returned closure as `escaped().read()` would be a use after
-close. -/
+because the platform prefix opens no scope.  Two steps.  The body context has
+no instance binder and declares its one variable at a plain shape, so every
+subcapturing there is member free (`Subcap.memberFree_of_plain`).  And no
+member-free subcapturing makes the escape, by `source_lvl_safety`.  If the
+escape were allowed, calling the returned closure as `escaped().read()` would
+be a use after close. -/
 
 /-- The callback's parameter in the body context. -/
 abbrev W5Tf : BVar (Sig.body ([],c,c)) .var := .here
@@ -3071,14 +3309,47 @@ theorem W5_caps (n : Nat) :
   rw [Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
   rfl
 
-/-- **W5, nothing escapes the callback.**  No member-free source
-subcapturing puts `{f}` below the platform capability.  This holds because
-the binder set of `f` is `{κ_f}`, whose level is the body root, so it is not
-at the outermost level, and member-free evidence never lowers a level. -/
+/-- The body context declares its one variable, the file, at a plain shape. -/
+theorem W2BodyCtx_plain : DotMNF.Ctx.Plain DotMNF.Examples.W2BodyCtx := by
+  intro x
+  cases x with
+  | here => decide
+  | there y =>
+    cases y with
+    | there y => cases y with
+      | there y => cases y with
+        | there y => cases y with
+          | there y => cases y
+
+/-- The body context has no instance binder. -/
+theorem W2BodyCtx_noInst : DotMNF.Ctx.NoInst DotMNF.Examples.W2BodyCtx := by
+  intro κ C h
+  revert h
+  cases κ with
+  | there κ => cases κ with
+    | here => simp [DotMNF.Ctx.InstOf, DotMNF.Examples.W2BodyCtx, DotMNF.Ctx.body,
+        DotMNF.Ctx.scope, DotMNF.Ctx.instSet?]
+    | there κ => cases κ with
+      | here => simp [DotMNF.Ctx.InstOf, DotMNF.Examples.W2BodyCtx, DotMNF.Ctx.body,
+          DotMNF.Ctx.scope, DotMNF.Ctx.instSet?]
+      | there κ => cases κ with
+        | here => simp [DotMNF.Ctx.InstOf, DotMNF.Examples.W2BodyCtx, DotMNF.Ctx.body,
+            DotMNF.Ctx.scope, DotMNF.Ctx.instSet?, DotMNF.Examples.platCtx]
+        | there κ => cases κ with
+          | here => simp [DotMNF.Ctx.InstOf, DotMNF.Examples.W2BodyCtx, DotMNF.Ctx.body,
+              DotMNF.Ctx.scope, DotMNF.Ctx.instSet?, DotMNF.Examples.platCtx]
+          | there κ => cases κ
+
+/-- **W5, nothing escapes the callback.**  No source subcapturing derivation
+puts `{f}` below the platform capability.  Every subcapturing in the body
+context is member free, the binder set of `f` is `{κ_f}`, whose level is the
+body root, so it is not at the outermost level, and member-free evidence
+never lowers a level. -/
 theorem W5_no_escape :
-    ¬ ∃ d : DotMNF.Subcap DotMNF.Examples.W2BodyCtx [DotMNF.CapAtom.var W5Tf]
-        [DotMNF.CapAtom.cvar W5Tk1], d.MemberFree := by
-  rintro ⟨d, hd⟩
+    ¬ Nonempty (DotMNF.Subcap DotMNF.Examples.W2BodyCtx [DotMNF.CapAtom.var W5Tf]
+        [DotMNF.CapAtom.cvar W5Tk1]) := by
+  rintro ⟨d⟩
+  have hd := DotMNF.Subcap.memberFree_of_plain W2BodyCtx_plain W2BodyCtx_noInst d
   have hD : ∀ m, DotMNF.Examples.W2BodyCtx.translate.Confined
       (DotMNF.Examples.W2BodyCtx.translate.caps m
         (DotMNF.CaptureSet.translate [DotMNF.CapAtom.cvar W5Tk1])) ⊤ᶜ := by
@@ -3094,14 +3365,51 @@ theorem W5_no_escape :
   exact absurd hC (by decide)
 
 
+/-! ### W1 in the target: the outer root does not absorb the inner one
+
+`DotMNF.Examples.W1_outer_not_inner` refutes the premise of the level rule
+only.  Through the translation, `source_lvl_safety` refutes every member-free
+source subcapturing: the inner body root resolves to itself, at the inner
+level, and the outer root confines only what is at or outside the outer
+level. -/
+
+/-- The inner body context of W1 is well formed. -/
+theorem W1Ctx2Wf : DotMNF.Ctx.Wf DotMNF.Examples.W1Ctx2 := (platWf.body _).body _
+
+/-- **W1, no member-free subcapturing inward.**  No member-free source
+subcapturing puts the inner body root below the outer body root. -/
+theorem W1_no_escape :
+    ¬ ∃ d : DotMNF.Subcap DotMNF.Examples.W1Ctx2
+        [DotMNF.CapAtom.cvar DotMNF.Examples.W1inRoot]
+        [DotMNF.CapAtom.cvar DotMNF.Examples.W1outRoot], d.MemberFree := by
+  rintro ⟨d, hd⟩
+  have hD : ∀ m, DotMNF.Examples.W1Ctx2.translate.Confined
+      (DotMNF.Examples.W1Ctx2.translate.caps m
+        (DotMNF.CaptureSet.translate [DotMNF.CapAtom.cvar DotMNF.Examples.W1outRoot]))
+      (CapAtom.cvar DotMNF.Examples.W1outRoot) := by
+    intro m
+    rw [show DotMNF.CaptureSet.translate [DotMNF.CapAtom.cvar DotMNF.Examples.W1outRoot]
+          = [CapAtom.cvar DotMNF.Examples.W1outRoot] from rfl,
+      Ctx.caps_cons, Ctx.capsAtom_cvar, Ctx.caps_nil, List.append_nil]
+    show DotMNF.Examples.W1Ctx2.translate.Confined [CapAtom.cvar DotMNF.Examples.W1outRoot]
+      (CapAtom.cvar DotMNF.Examples.W1outRoot)
+    decide
+  have hC := DotMNF.source_lvl_safety W1Ctx2Wf hd hD 0
+  rw [show DotMNF.CaptureSet.translate [DotMNF.CapAtom.cvar DotMNF.Examples.W1inRoot]
+        = [CapAtom.cvar DotMNF.Examples.W1inRoot] from rfl, Ctx.caps_cons, Ctx.capsAtom_cvar,
+      Ctx.caps_nil, List.append_nil] at hC
+  revert hC
+  decide
+
+
 /-! ## Two calls of `freshCell`, on the source side
 
 **The second half of W4: two calls.**
 `DotMNF.Examples.Z_two_calls_no_level` says
 that the level order relates neither of the two opened binders to the other.
 The stronger statement is a canonical-forms fact: no capture evidence puts
-the first binder below the second.  It is `two_calls_incomparable` above, redone over a
-translated source context, and it needs what that theorem needed, a typed
+the first binder below the second.  It is the first two parts of
+`two_calls_incomparable` above, redone over a translated source context, and it needs what that theorem needed, a typed
 store, a refinement into the transparent context the store types, the
 resolution of the two opened binders, and `cap_canon`.
 

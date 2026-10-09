@@ -67,7 +67,8 @@ Statements of the base that changed form:
 
 - `W1_inner_absorbs_outer`, `W1_outer_not_inner`: nested lambdas, where the level rule lets an
   inner root absorb the outer one and not the reverse.  The second theorem refutes the premise of
-  the level rule only.
+  the level rule only.  `W1_no_escape` in `../FCdot/Examples.lean` refutes every member-free
+  subcapturing of the inner root below the outer one.
 - `W2_typed`, `W2_call`, `W2_deep_rejected`: a parameter `any` as a capture binder, instantiated at
   the argument, and refused deeper in the domain.
 - `W5_no_level`, `W5_level_own`: the `withFile` callback's parameter is not at the level of the

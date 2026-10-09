@@ -26,10 +26,10 @@ the annotation is written in, the body of `λ(g : ⊤)`, which lies outside the
 scope of `f`. The typer rejects the program, and the rejection carries a
 certificate that no member-free subcapturing puts `{f}` below that root. A
 subcapturing is member-free when it uses no instance binder and no bound of a
-selection. `Esc_rejected'` proves that statement in the kernel at the goal the
-typer reached. That `compile` returns this rejection is checked by `#eval`,
-since the kernel does not reduce `FCdot.Ctx.caps`. With its result written at
-`{f}`, the callback is accepted.
+selection. `Esc_compile_rejected` proves in the kernel that `compile` returns
+this rejection, at the goal `{f} <: {κ_g}` in `EscGoalCtx`, with the root
+`κ_g` of the body of `λ(g : ⊤)` and the certificate `Esc_rejected'`. With its
+result written at `{f}`, the callback is accepted.
 
 A program runs over a platform, one capture binder per capability it may use,
 such as `πc` with `k1` and `k2`. `compile b Λ π e` types `e` over `π` with the
@@ -59,7 +59,7 @@ typer found no type and no reason, or reached the recursion limit.
 | `StepFC` | the FCdot machine as a function |
 | `Pipeline` | `compile`, `compileAndRun` and the pipeline theorems |
 | `Pretty` | printers back to the notation |
-| `Examples` | the programs end to end, each verdict checked in the kernel, except the reasons of level-escape rejections, which `#eval` checks |
+| `Examples` | the programs end to end, each verdict checked in the kernel |
 
 ## The typer
 
@@ -82,17 +82,16 @@ scope it is written in, and a `fresh` in an arrow's result is an existential.
 
 - `compile_checks`, `compile_uses_checks`: for a program that compiles, the FCdot checker accepts the translated derivation and its use set.
 - `compile_erase`: the translation erases to the erasure of the compiled term.
-- `compile_faithful`: it names the field `Compiled.skel`, so it holds trivially. The content is the test in `compile`, which builds the record only when the compiled term has the skeleton of the resolved program. `ATm.skel` forgets annotations, capture sets, boxes, unboxings, ascriptions and capture binders. It inlines a `let` of a variable and does not tell `let` from `letex`.
-- `compile_safe`, `compile_not_stuck`, `compile_run_progress`: no run from the platform's initial store reaches a stuck state, and `run` stops at a final state or at one that can still step.
-- `compile_capture_prediction`: along a run from the platform's initial store, an FCdot state with the same erasure and a typed store exists. Its store extends the platform's along a renaming, and it uses no more than the use set the typer found, translated to FCdot and renamed along that extension.
-- `compile_effect_safety`: let `κ` be a platform capability that the use set lacks, and `x` a variable the reached state reads. In the matched FCdot state, `κ` renamed along the store extension is not a root of `x`. Only FCdot contexts have roots. `C2_never_reads_k1` in `Examples` is the instance for C2 at `k1`.
-- `compile_lvl_safety`: for each member-free subcapturing `lo <: hi` in the log of the derivation, and each atom `ρ`, if the resolution of `hi` in the entry's context, translated to FCdot, is confined to `ρ` at every depth, so is the resolution of `lo` at every depth.
+- `compile_faithful`: for `compile b Λ π e = .ok ⟨a, c⟩`, `a` is the resolution of `e` (`resolveTop Λ π e = some a`), and the compiled term has the skeleton of `a` (`ATm.skel c.tm = ATm.skel a`). So the two differ only where `ATm.skel` forgets: annotations, capture sets, capture binders, boxes, unboxings and their sets, and ascriptions. It also inlines a `let` of a variable and does not tell `let` from `letex`. The second half is the field `Compiled.skel`, which `compile` fills only when the skeletons agree.
+- `compile_safe`, `compile_not_stuck`, `compile_run_progress`: no run from the platform's initial store reaches a stuck state, and `run` stops at a final state or at one that can still step. `compile_safe` is `dot_safety_platform`.
+- `compile_capture_prediction`: along a run from the platform's initial store, there is a typed FCdot state with the same erasure and a typed store that the run of the translated derivation reaches from its initial state. Its store extends the platform's along a renaming, and it uses no more than the use set the typer found, translated to FCdot and renamed along that extension.
+- `compile_effect_safety`: let `κ` be a platform capability that the use set lacks, and `x` a variable the reached state reads. There is such an FCdot state, and in it `κ` renamed along the store extension is not a root of `x`. Only FCdot contexts have roots. `C2_never_reads_k1` in `Examples` is the instance for C2 at `k1`. `ReadK2_never_reads_k1` is the instance at `k1` for `ReadK2Src`, whose run reads a variable declared at `{k2}` (`ReadK2f_set`) after six steps, while the store also holds a variable declared at `{k1}` (`ReadK2a_set`). Its use set is `{k2}` (`ReadK2_uses`).
+- `compile_lvl_safety`: for each member-free subcapturing `lo <: hi` in the log of the derivation, and each atom `ρ`, if the resolution of `hi` in the entry's context, translated to FCdot, is confined to `ρ` at every depth, so is the resolution of `lo` at every depth. `compile_lvl_safety_get` states the same for the entries of `compileLog` of a program that compiles by a decided test. `Examples` applies it to two entries where `lo` as written is not confined to the root `ρ`. At entry 6 of the log of C7 (`C7entry_lvl`) the premise holds at every capture binder of the context. At the first entry of the log of `NestSrc` (`NestEntry_lvl`) the premise holds at the root of an inner scope and fails at the root of an outer one (`NestEntry_separates`).
+- `certify?_sound`: when `certify? Γ C D = some R`, `R` is `.levelEscape Γ C D r cert` for a root `r` and a proof `cert` that no member-free subcapturing proves `C <: D` at `Γ`. `certify?_isSome`: if `(certify? Γ C D).isSome = true` there is no such subcapturing. `certify?` resolves capture sets with `capsS`, which `capsS_eq` shows equal to `FCdot.Ctx.caps` and which the kernel reduces. It speaks of the goal the typer reached, not of every derivation of the program. `Esc_certify` and `W5_certify` give its answer at two goals, and `Esc_compile_rejected` and `TopEsc_compile_rejected` give the rejection `compile` returns for two programs.
 - `shape?_complete`, `subcap?_complete`, `esub?_complete`, `sub?_complete`, `var?_complete`: if `Alg` derives the goal and the run ends with the tank unmarked, it is answered. For `sub?` the goal is a shape goal and a capture goal, and both must be derived.
 - `shape?_reject`, `subcap?_reject`, `esub?_reject`, `sub?_reject`, `var?_reject`: a rejection with the tank unmarked means `Alg` derives no such goal, or for `sub?` not both halves.
 - `Alg.sound`: a goal `Alg` derives has a derivation in `CapturesCC`, or for a variable goal a map from typings of the variable at the first type to typings at the second.
 - `synthTop?_mono`: an answer stays the same at more fuel. `synthTop?_stable`: a closed typing that ends with the tank unmarked, answer or rejection, gives the same verdict at more fuel.
-
-`compile_rejected_goal` is not a result. Its conclusion is the certificate that the hypothesis `compile b Λ π e = .rejected (.levelEscape Γ C D ρ cert)` already carries, so it holds trivially. The content is in `Reason.levelEscape` and in `certify?`, which builds the certificate by `escape_rejected_at`, and `Esc_rejected'` checks one such certificate in the kernel. The hypothesis holds at `EscSrc` by `#eval` only, since the kernel does not reduce `FCdot.Ctx.caps`.
 
 ## What it leaves out
 
@@ -106,8 +105,8 @@ scope it is written in, and a `fresh` in an arrow's result is an existential.
 ## Building
 
 `lake build CapturesCCFrontend`, which is not a default target. Every
-definition of the front end is structural, so the kernel runs the typer, except
-for the level-escape verdicts, which read the well-founded `FCdot.Ctx.caps` and
-are computed by compiled code. Every theorem depends
+definition of the front end is structural, so the kernel runs the typer. That
+includes the level-escape verdicts: `certify?` resolves with `capsS`, the
+structural form of the well-founded `FCdot.Ctx.caps`. Every theorem depends
 on `propext` and `Quot.sound` at most. There is no `sorry`, `axiom`,
 `native_decide` or Mathlib.

@@ -13,13 +13,13 @@ effect safety and level safety are all borrowed from the target.
 | `TypesLemmas` | renaming commutes with the translation, and `Ctx.translate` commutes with roots and levels (`Ctx.translate_lvl`, `Ctx.translate_root?`) |
 | `TypesSubst` | the type translation commutes with agreeing substitutions (`Ty.translate_subst`), which the application case needs |
 | `Evidence` | `Subcap.translate`, `SubShape.translate`, `Sub.translate`, `ESub.translate`, `HasTy.translateAtom`, `litCo`, the source predicate `Subcap.MemberFree` |
-| `EvidenceTyped` | typedness of the evidence translation, the well-formedness `Ctx.Wf`, and `source_lvl_safety` |
+| `EvidenceTyped` | typedness of the evidence translation, the well-formedness `Ctx.Wf`, `source_lvl_safety`, and `Subcap.memberFree_of_plain` |
 | `Terms` | `HasTy.translate` and `HasTy.translateUses`, the use-set evidence read in the target |
 | `TermsTyped` | `HasTy.translate_typed`, `HasTy.translate_uses`, `DefsTy.translateFields_typed` |
 | `Erasure` | `HasTy.translate_erase`, `coherence` |
 | `Safety` | the simulation invariant `Simulated`, `dot_safety`, `dot_not_stuck` |
 | `Consistency` | `reachable_consistent`, `reachable_realized` for runs of translated programs |
-| `Prediction` | the platform prefix on both sides, the matched run `Platform.simulatedRun`, `dot_capture_prediction`, `dot_effect_safety` |
+| `Prediction` | the platform prefix on both sides, the matched run `Platform.simulatedRun`, `dot_capture_prediction`, `dot_effect_safety`, `dot_safety_platform` |
 
 ## The translation
 
@@ -61,13 +61,17 @@ Both are well formed, so neither theorem has a side condition.
   derivation it starts from.
 - `dot_safety`, `dot_not_stuck`: a closed well-typed source program at a plain answer never gets
   stuck.  A closed program at an existential answer is not covered.
+- `dot_safety_platform`: the same for a program at a plain answer over a platform prefix, run
+  from the platform's initial store.
 - `reachable_consistent`, `reachable_realized`: for a closed program at a plain answer, every
   store its translation reaches is typed and consistent.
 - `dot_capture_prediction`: along a run of a program at a plain answer over the platform prefix,
-  the matched target state's use set stays below the translation of the program's declared use
-  set.
+  there is a typed target state that the run of the translated program reaches from its initial
+  state, with the source state's erasure.  Its store extends the platform's along a renaming, and
+  its use set stays below the translation of the program's declared use set, renamed.
 - `dot_effect_safety`: for a program at a plain answer whose use set does not name a platform
-  capability, the matched target state never reads a variable whose root is that capability.
+  capability, at a source state that reads a variable, there is such a target state, and in it the
+  capability, renamed, is not a root of that variable.
 - `source_lvl_safety`: over a well-formed context, for source subcapturing that reads no capture
   bound, if the resolution of the translated upper set is confined to `r` at every depth, so is the
   resolution of the translated lower set.  It is `level_inversion` applied to a translated
@@ -75,6 +79,8 @@ Both are well formed, so neither theorem has a side condition.
 
 `Subcap.MemberFree` excludes `inst`, `selLower` and `selUpper`, exactly the source rules whose
 translation uses `eqToLe` or `member`.  So `Subcap.translate_memberFree` is a walk over the rules.
+`Subcap.memberFree_of_plain`: in a context with no instance binder whose variables are declared at
+shapes with no member declaration, every subcapturing is member free.
 
 Statements of the base that changed form:
 
@@ -86,5 +92,6 @@ Statements of the base that changed form:
 
 The examples of the translation live in `../FCdot/Examples.lean`.  `W2_translated` types the
 translation of the `W2` term at the translated type, and `W2_erase` equates its erasure with the
-source term.  The translated type is one arrow (`Shape.translate_all`).  `W5_no_escape` is
-`source_lvl_safety` at the `withFile` callback.
+source term.  The translated type is one arrow (`Shape.translate_all`).  `W5_no_escape` says that
+no subcapturing derivation at the `withFile` callback puts its parameter below the platform
+capability, by `Subcap.memberFree_of_plain` and `source_lvl_safety`.
