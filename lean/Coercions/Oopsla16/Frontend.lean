@@ -8,6 +8,7 @@ import Coercions.Oopsla16.Frontend.Sub
 import Coercions.Oopsla16.Frontend.Alg
 import Coercions.Oopsla16.Frontend.Avoid
 import Coercions.Oopsla16.Frontend.Typer
+import Coercions.Oopsla16.Frontend.Infer
 import Coercions.Oopsla16.Frontend.Step
 import Coercions.Oopsla16.Frontend.StepFC
 import Coercions.Oopsla16.Frontend.Pipeline
@@ -27,8 +28,11 @@ The typer follows the case order of the Scala 3 subtype checker
 construction.  It runs on one fuel tank and reports a recursion limit when the
 tank runs out.  It is complete up to that limit with respect to its
 algorithmic judgment `Alg` (`Alg.lean`).  As in the compiler, it rejects a call on a
-receiver at a union or at `⊥`.  Every definition is structural, so each verdict
-of `Examples.lean` is a theorem the kernel checks.
+receiver at a union or at `⊥`.  In front of the typer, `Infer.lean` writes a
+self type into every literal the typer cannot take as it is, from the
+literal's goal and members, and changes no other part of the program.  Every
+definition is structural, so each verdict of `Examples.lean` is a theorem the
+kernel checks.
 -/
 
 #assert_no_wf Oopsla16Frontend
