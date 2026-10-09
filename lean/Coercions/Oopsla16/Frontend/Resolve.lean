@@ -23,7 +23,9 @@ positions.  A name that labels no literal member, such as a type member of a
 parameter's type, needs an explicit entry.
 
 The theorems are totality on scoped, labelled, positioned phrases
-(`resolveTm_isSome`) and `labelsOfProgram_positioned`.  The examples at the end
+(`resolveTm_isSome`), `labelsOfProgram_positioned`, and that resolution
+commutes with the erasures of `Surface.lean` on a program that resolves
+(`resolve_eraseSelf` and its four siblings).  The examples at the end
 resolve the calculus's own programs and compare their erasures with its terms.
 
 Importing `Notation.lean` makes `type`, `def`, `new` and `μ` keywords, so none
@@ -290,6 +292,459 @@ theorem resolveDms_isSome : ∀ (ds : SDms) {s : Sig} (Λ : LabelTable) (ν : Na
       obtain ⟨ds'', hds⟩ := some_of_isSome (resolveDms_isSome ds' Λ ν hs.2 hl.2 hp.2)
       simp [resolveDms, hpos, hd, hds]
 end
+
+/-! ## Erasures commute with resolution
+
+A written program that resolves has each of its five surface erasures
+(`Surface.lean`) resolve, to the erasure of the resolved program
+(`Ann.lean`).  An erased source written in the notation therefore stands for
+the erased program.  The converse fails: an erasure may drop the one
+annotation that does not resolve.  The Scala form copies a parameter type from
+the written self type, and the two resolve in the same scope, the literal's
+self binder. -/
+
+/-- A missing annotation resolves to a missing one. -/
+@[simp] theorem resolveTyOpt_none {s : Sig} (Λ : LabelTable) (ν : NameEnv s) :
+    resolveTyOpt Λ ν none = some none := rfl
+
+/-- Dropping every self type keeps a member's name. -/
+theorem SDm.name_eraseSelf (d : SDm) : d.eraseSelf.name = d.name := by
+  cases d <;> rfl
+/-- Dropping every self type keeps the number of members. -/
+theorem SDms.length_eraseSelf : (ds : SDms) → ds.eraseSelf.length = ds.length
+  | .nil => rfl
+  | .cons _ ds' => by simp [SDms.eraseSelf, SDms.length, SDms.length_eraseSelf ds']
+
+mutual
+/-- A term that resolves has its `S` erasure resolve to the `S` erasure of the result. -/
+theorem resolveTm_eraseSelf : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (a : ATm s),
+    resolveTm Λ ν e = some a → resolveTm Λ ν e.eraseSelf = some a.eraseSelf
+  | .var x, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨i, hi, rfl⟩ := h
+      simp [STm.eraseSelf, resolveTm, hi, ATm.eraseSelf]
+  | .obj z self ds, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨o, ho, ds', hds, rfl⟩ := h
+      simp [STm.eraseSelf, resolveTm, resolveDms_eraseSelf ds Λ _ ds' hds,
+        ATm.eraseSelf]
+  | .call t m u, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, l, hl, u', hu, rfl⟩ := h
+      simp [STm.eraseSelf, resolveTm, resolveTm_eraseSelf t Λ ν t' ht, hl,
+        resolveTm_eraseSelf u Λ ν u' hu, ATm.eraseSelf]
+  | .asc t T, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, T', hT, rfl⟩ := h
+      simp [STm.eraseSelf, resolveTm, resolveTm_eraseSelf t Λ ν t' ht, hT, ATm.eraseSelf]
+/-- The member case of `resolveTm_eraseSelf`. -/
+theorem resolveDm_eraseSelf : ∀ (d : SDm) {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (a : ADm s),
+    resolveDm Λ ν d = some a → resolveDm Λ ν d.eraseSelf = some a.eraseSelf
+  | .typ L T, _, Λ, ν, a, h => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨T', hT, rfl⟩ := h
+      simp [SDm.eraseSelf, resolveDm, hT, ADm.eraseSelf]
+  | .fn m x S U t, _, Λ, ν, a, h => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨S', hS, U', hU, t', ht, rfl⟩ := h
+      simp [SDm.eraseSelf, resolveDm, hS, hU, resolveTm_eraseSelf t Λ _ t' ht, ADm.eraseSelf]
+/-- The member list case of `resolveTm_eraseSelf`. -/
+theorem resolveDms_eraseSelf : ∀ (ds : SDms) {s : Sig} (Λ : LabelTable) (ν : NameEnv s)
+    (a : ADms s), resolveDms Λ ν ds = some a → resolveDms Λ ν ds.eraseSelf = some a.eraseSelf
+  | .nil, _, Λ, ν, a, h => by
+      simp only [resolveDms, Option.some.injEq] at h
+      subst h
+      rfl
+  | .cons d ds', _, Λ, ν, a, h => by
+      simp only [resolveDms] at h
+      split at h
+      · rename_i hpos
+        simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+          Option.some.injEq] at h
+        obtain ⟨d', hd, ds'', hds, rfl⟩ := h
+        have hpos' : (labelOf? Λ d.eraseSelf.name == some ds'.eraseSelf.length) = true := by
+          rw [SDm.name_eraseSelf, SDms.length_eraseSelf]
+          exact hpos
+        simp [SDms.eraseSelf, resolveDms, hpos', resolveDm_eraseSelf d Λ ν d' hd,
+          resolveDms_eraseSelf ds' Λ ν ds'' hds, ADms.eraseSelf]
+      · cases h
+end
+
+
+/-- Dropping every result type keeps a member's name. -/
+theorem SDm.name_eraseRes (d : SDm) : d.eraseRes.name = d.name := by
+  cases d <;> rfl
+/-- Dropping every result type keeps the number of members. -/
+theorem SDms.length_eraseRes : (ds : SDms) → ds.eraseRes.length = ds.length
+  | .nil => rfl
+  | .cons _ ds' => by simp [SDms.eraseRes, SDms.length, SDms.length_eraseRes ds']
+
+mutual
+/-- A term that resolves has its `R` erasure resolve to the `R` erasure of the result. -/
+theorem resolveTm_eraseRes : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (a : ATm s),
+    resolveTm Λ ν e = some a → resolveTm Λ ν e.eraseRes = some a.eraseRes
+  | .var x, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨i, hi, rfl⟩ := h
+      simp [STm.eraseRes, resolveTm, hi, ATm.eraseRes]
+  | .obj z self ds, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨o, ho, ds', hds, rfl⟩ := h
+      simp [STm.eraseRes, resolveTm, ho, resolveDms_eraseRes ds Λ _ ds' hds,
+        ATm.eraseRes]
+  | .call t m u, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, l, hl, u', hu, rfl⟩ := h
+      simp [STm.eraseRes, resolveTm, resolveTm_eraseRes t Λ ν t' ht, hl,
+        resolveTm_eraseRes u Λ ν u' hu, ATm.eraseRes]
+  | .asc t T, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, T', hT, rfl⟩ := h
+      simp [STm.eraseRes, resolveTm, resolveTm_eraseRes t Λ ν t' ht, hT, ATm.eraseRes]
+/-- The member case of `resolveTm_eraseRes`. -/
+theorem resolveDm_eraseRes : ∀ (d : SDm) {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (a : ADm s),
+    resolveDm Λ ν d = some a → resolveDm Λ ν d.eraseRes = some a.eraseRes
+  | .typ L T, _, Λ, ν, a, h => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨T', hT, rfl⟩ := h
+      simp [SDm.eraseRes, resolveDm, hT, ADm.eraseRes]
+  | .fn m x S U t, _, Λ, ν, a, h => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨S', hS, U', hU, t', ht, rfl⟩ := h
+      simp [SDm.eraseRes, resolveDm, hS, resolveTm_eraseRes t Λ _ t' ht, ADm.eraseRes]
+/-- The member list case of `resolveTm_eraseRes`. -/
+theorem resolveDms_eraseRes : ∀ (ds : SDms) {s : Sig} (Λ : LabelTable) (ν : NameEnv s)
+    (a : ADms s), resolveDms Λ ν ds = some a → resolveDms Λ ν ds.eraseRes = some a.eraseRes
+  | .nil, _, Λ, ν, a, h => by
+      simp only [resolveDms, Option.some.injEq] at h
+      subst h
+      rfl
+  | .cons d ds', _, Λ, ν, a, h => by
+      simp only [resolveDms] at h
+      split at h
+      · rename_i hpos
+        simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+          Option.some.injEq] at h
+        obtain ⟨d', hd, ds'', hds, rfl⟩ := h
+        have hpos' : (labelOf? Λ d.eraseRes.name == some ds'.eraseRes.length) = true := by
+          rw [SDm.name_eraseRes, SDms.length_eraseRes]
+          exact hpos
+        simp [SDms.eraseRes, resolveDms, hpos', resolveDm_eraseRes d Λ ν d' hd,
+          resolveDms_eraseRes ds' Λ ν ds'' hds, ADms.eraseRes]
+      · cases h
+end
+
+
+/-- Dropping every parameter type keeps a member's name. -/
+theorem SDm.name_eraseParam (d : SDm) : d.eraseParam.name = d.name := by
+  cases d <;> rfl
+/-- Dropping every parameter type keeps the number of members. -/
+theorem SDms.length_eraseParam : (ds : SDms) → ds.eraseParam.length = ds.length
+  | .nil => rfl
+  | .cons _ ds' => by simp [SDms.eraseParam, SDms.length, SDms.length_eraseParam ds']
+
+mutual
+/-- A term that resolves has its `P` erasure resolve to the `P` erasure of the result. -/
+theorem resolveTm_eraseParam : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (a : ATm s),
+    resolveTm Λ ν e = some a → resolveTm Λ ν e.eraseParam = some a.eraseParam
+  | .var x, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨i, hi, rfl⟩ := h
+      simp [STm.eraseParam, resolveTm, hi, ATm.eraseParam]
+  | .obj z self ds, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨o, ho, ds', hds, rfl⟩ := h
+      simp [STm.eraseParam, resolveTm, ho, resolveDms_eraseParam ds Λ _ ds' hds,
+        ATm.eraseParam]
+  | .call t m u, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, l, hl, u', hu, rfl⟩ := h
+      simp [STm.eraseParam, resolveTm, resolveTm_eraseParam t Λ ν t' ht, hl,
+        resolveTm_eraseParam u Λ ν u' hu, ATm.eraseParam]
+  | .asc t T, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, T', hT, rfl⟩ := h
+      simp [STm.eraseParam, resolveTm, resolveTm_eraseParam t Λ ν t' ht, hT, ATm.eraseParam]
+/-- The member case of `resolveTm_eraseParam`. -/
+theorem resolveDm_eraseParam : ∀ (d : SDm) {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (a : ADm s),
+    resolveDm Λ ν d = some a → resolveDm Λ ν d.eraseParam = some a.eraseParam
+  | .typ L T, _, Λ, ν, a, h => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨T', hT, rfl⟩ := h
+      simp [SDm.eraseParam, resolveDm, hT, ADm.eraseParam]
+  | .fn m x S U t, _, Λ, ν, a, h => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨S', hS, U', hU, t', ht, rfl⟩ := h
+      simp [SDm.eraseParam, resolveDm, hU, resolveTm_eraseParam t Λ _ t' ht, ADm.eraseParam]
+/-- The member list case of `resolveTm_eraseParam`. -/
+theorem resolveDms_eraseParam : ∀ (ds : SDms) {s : Sig} (Λ : LabelTable) (ν : NameEnv s)
+    (a : ADms s), resolveDms Λ ν ds = some a → resolveDms Λ ν ds.eraseParam = some a.eraseParam
+  | .nil, _, Λ, ν, a, h => by
+      simp only [resolveDms, Option.some.injEq] at h
+      subst h
+      rfl
+  | .cons d ds', _, Λ, ν, a, h => by
+      simp only [resolveDms] at h
+      split at h
+      · rename_i hpos
+        simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+          Option.some.injEq] at h
+        obtain ⟨d', hd, ds'', hds, rfl⟩ := h
+        have hpos' : (labelOf? Λ d.eraseParam.name == some ds'.eraseParam.length) = true := by
+          rw [SDm.name_eraseParam, SDms.length_eraseParam]
+          exact hpos
+        simp [SDms.eraseParam, resolveDms, hpos', resolveDm_eraseParam d Λ ν d' hd,
+          resolveDms_eraseParam ds' Λ ν ds'' hds, ADms.eraseParam]
+      · cases h
+end
+
+
+/-- Dropping the self type of every call argument keeps a member's name. -/
+theorem SDm.name_eraseArgSelf (d : SDm) : d.eraseArgSelf.name = d.name := by
+  cases d <;> rfl
+/-- Dropping the self type of every call argument keeps the number of members. -/
+theorem SDms.length_eraseArgSelf : (ds : SDms) → ds.eraseArgSelf.length = ds.length
+  | .nil => rfl
+  | .cons _ ds' => by simp [SDms.eraseArgSelf, SDms.length, SDms.length_eraseArgSelf ds']
+
+mutual
+/-- A term that resolves has its `A` erasure resolve to the `A` erasure of the
+result, in argument position or not. -/
+theorem resolveTm_eraseArgSelfAt : ∀ (arg : Bool) (e : STm) {s : Sig} (Λ : LabelTable)
+    (ν : NameEnv s) (a : ATm s),
+    resolveTm Λ ν e = some a → resolveTm Λ ν (e.eraseArgSelfAt arg) = some (a.eraseArgSelfAt arg)
+  | _, .var x, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨i, hi, rfl⟩ := h
+      simp [STm.eraseArgSelfAt, resolveTm, hi, ATm.eraseArgSelfAt]
+  | arg, .obj z self ds, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨o, ho, ds', hds, rfl⟩ := h
+      cases arg <;>
+        simp [STm.eraseArgSelfAt, resolveTm, ho, resolveDms_eraseArgSelf ds Λ _ ds' hds,
+          ATm.eraseArgSelfAt]
+  | _, .call t m u, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, l, hl, u', hu, rfl⟩ := h
+      simp [STm.eraseArgSelfAt, resolveTm, resolveTm_eraseArgSelfAt false t Λ ν t' ht, hl,
+        resolveTm_eraseArgSelfAt true u Λ ν u' hu, ATm.eraseArgSelfAt]
+  | _, .asc t T, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, T', hT, rfl⟩ := h
+      simp [STm.eraseArgSelfAt, resolveTm, resolveTm_eraseArgSelfAt false t Λ ν t' ht, hT,
+        ATm.eraseArgSelfAt]
+/-- The member case of `resolveTm_eraseArgSelfAt`. -/
+theorem resolveDm_eraseArgSelf : ∀ (d : SDm) {s : Sig} (Λ : LabelTable) (ν : NameEnv s)
+    (a : ADm s), resolveDm Λ ν d = some a → resolveDm Λ ν d.eraseArgSelf = some a.eraseArgSelf
+  | .typ L T, _, Λ, ν, a, h => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨T', hT, rfl⟩ := h
+      simp [SDm.eraseArgSelf, resolveDm, hT, ADm.eraseArgSelf]
+  | .fn m x S U t, _, Λ, ν, a, h => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨S', hS, U', hU, t', ht, rfl⟩ := h
+      simp [SDm.eraseArgSelf, resolveDm, hS, hU, resolveTm_eraseArgSelfAt false t Λ _ t' ht,
+        ADm.eraseArgSelf]
+/-- The member list case of `resolveTm_eraseArgSelfAt`. -/
+theorem resolveDms_eraseArgSelf : ∀ (ds : SDms) {s : Sig} (Λ : LabelTable) (ν : NameEnv s)
+    (a : ADms s), resolveDms Λ ν ds = some a → resolveDms Λ ν ds.eraseArgSelf = some a.eraseArgSelf
+  | .nil, _, Λ, ν, a, h => by
+      simp only [resolveDms, Option.some.injEq] at h
+      subst h
+      rfl
+  | .cons d ds', _, Λ, ν, a, h => by
+      simp only [resolveDms] at h
+      split at h
+      · rename_i hpos
+        simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+          Option.some.injEq] at h
+        obtain ⟨d', hd, ds'', hds, rfl⟩ := h
+        have hpos' : (labelOf? Λ d.eraseArgSelf.name == some ds'.eraseArgSelf.length) = true := by
+          rw [SDm.name_eraseArgSelf, SDms.length_eraseArgSelf]
+          exact hpos
+        simp [SDms.eraseArgSelf, resolveDms, hpos', resolveDm_eraseArgSelf d Λ ν d' hd,
+          resolveDms_eraseArgSelf ds' Λ ν ds'' hds, ADms.eraseArgSelf]
+      · cases h
+end
+
+/-- The Scala form keeps a member's name. -/
+theorem SDm.name_scalaForm (d : SDm) (H : Option SType) : (d.scalaForm H).name = d.name := by
+  cases d <;> cases H <;> try rfl
+  all_goals (rename_i T; cases T <;> rfl)
+/-- The Scala form keeps the number of members. -/
+theorem SDms.length_scalaForm : (ds : SDms) → (T : Option SType) →
+    (ds.scalaForm T).length = ds.length
+  | .nil, _ => rfl
+  | .cons _ ds', none => by simp [SDms.scalaForm, SDms.length, SDms.length_scalaForm ds']
+  | .cons _ ds', some T => by
+      cases T <;> simp [SDms.scalaForm, SDms.length, SDms.length_scalaForm ds']
+
+
+mutual
+/-- A term that resolves has its Scala form resolve to the Scala form of the
+result. -/
+theorem resolveTm_scalaForm : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (ν : NameEnv s) (a : ATm s),
+    resolveTm Λ ν e = some a → resolveTm Λ ν e.scalaForm = some a.scalaForm
+  | .var x, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨i, hi, rfl⟩ := h
+      simp [STm.scalaForm, resolveTm, hi, ATm.scalaForm]
+  | .obj z self ds, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨o, ho, ds', hds, rfl⟩ := h
+      simp [STm.scalaForm, resolveTm, resolveDms_scalaForm ds Λ _ ds' self o hds ho,
+        ATm.scalaForm]
+  | .call t m u, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, l, hl, u', hu, rfl⟩ := h
+      simp [STm.scalaForm, resolveTm, resolveTm_scalaForm t Λ ν t' ht, hl,
+        resolveTm_scalaForm u Λ ν u' hu, ATm.scalaForm]
+  | .asc t T, _, Λ, ν, a, h => by
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨t', ht, T', hT, rfl⟩ := h
+      simp [STm.scalaForm, resolveTm, resolveTm_scalaForm t Λ ν t' ht, hT, ATm.scalaForm]
+/-- The member case of `resolveTm_scalaForm`.  The conjunct of the self type
+resolves in the member's own scope, as a written self type does. -/
+theorem resolveDm_scalaForm : ∀ (d : SDm) {s : Sig} (Λ : LabelTable) (ν : NameEnv s)
+    (a : ADm s) (H : Option SType) (H' : Option (Ty [] s)),
+    resolveDm Λ ν d = some a → resolveTyOpt Λ ν H = some H' →
+    resolveDm Λ ν (d.scalaForm H) = some (a.scalaForm H')
+  | .typ L T, _, Λ, ν, a, _, _, h, _ => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨T', hT, rfl⟩ := h
+      simp [SDm.scalaForm, resolveDm, hT, ADm.scalaForm]
+  | .fn m x S U t, _, Λ, ν, a, H, H', h, hH => by
+      simp only [resolveDm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨S', hS, U', _, t', ht, rfl⟩ := h
+      have htt := resolveTm_scalaForm t Λ (ν.cons x) t' ht
+      cases H with
+      | none =>
+          simp only [resolveTyOpt_none, Option.some.injEq] at hH
+          subst hH
+          simp [SDm.scalaForm, resolveDm, hS, htt, ADm.scalaForm]
+      | some T =>
+          cases T
+          case fn m0 x0 S0 U0 =>
+            simp only [resolveTyOpt, resolveTy, Option.bind_eq_bind, Option.bind_eq_some_iff,
+              Option.pure_def, Option.map_eq_some_iff, Option.some.injEq] at hH
+            obtain ⟨_, ⟨l, _, S0', hS0, U0', _, rfl⟩, rfl⟩ := hH
+            cases S with
+            | none =>
+                simp only [resolveTyOpt_none, Option.some.injEq] at hS
+                subst hS
+                simp [SDm.scalaForm, resolveDm, resolveTyOpt, hS0, htt, ADm.scalaForm]
+            | some S1 =>
+                simp only [resolveTyOpt, Option.map_eq_some_iff] at hS
+                obtain ⟨S1', hS1, rfl⟩ := hS
+                simp [SDm.scalaForm, resolveDm, resolveTyOpt, hS1, htt, ADm.scalaForm]
+          all_goals
+            simp only [resolveTyOpt, resolveTy, Option.bind_eq_bind, Option.bind_eq_some_iff,
+              Option.pure_def, Option.map_eq_some_iff, Option.some.injEq] at hH
+            obtain ⟨_, hH0, rfl⟩ := hH
+            repeat' obtain ⟨_, _, hH0⟩ := hH0
+            simp [SDm.scalaForm, resolveDm, hS, htt, ADm.scalaForm]
+/-- The member list case of `resolveTm_scalaForm`, in lockstep with a self type
+that resolves. -/
+theorem resolveDms_scalaForm : ∀ (ds : SDms) {s : Sig} (Λ : LabelTable) (ν : NameEnv s)
+    (a : ADms s) (T : Option SType) (T' : Option (Ty [] s)),
+    resolveDms Λ ν ds = some a → resolveTyOpt Λ ν T = some T' →
+    resolveDms Λ ν (ds.scalaForm T) = some (a.scalaForm T')
+  | .nil, _, Λ, ν, a, T, _, h, _ => by
+      simp only [resolveDms, Option.some.injEq] at h
+      subst h
+      cases T <;> rfl
+  | .cons d ds', _, Λ, ν, a, T, T', h, hT => by
+      simp only [resolveDms] at h
+      split at h
+      · rename_i hpos
+        simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+          Option.some.injEq] at h
+        obtain ⟨d', hd, ds'', hds, rfl⟩ := h
+        have hpos' (H : Option SType) (TS : Option SType) :
+            (labelOf? Λ (d.scalaForm H).name == some (ds'.scalaForm TS).length) = true := by
+          rw [SDm.name_scalaForm, SDms.length_scalaForm]
+          exact hpos
+        cases T with
+        | none =>
+            simp only [resolveTyOpt_none, Option.some.injEq] at hT
+            subst hT
+            simp [SDms.scalaForm, resolveDms, hpos', resolveDm_scalaForm d Λ ν d' none none hd rfl,
+              resolveDms_scalaForm ds' Λ ν ds'' none none hds rfl, ADms.scalaForm]
+        | some T0 =>
+            cases T0
+            case and H TS =>
+              simp only [resolveTyOpt, resolveTy, Option.bind_eq_bind, Option.bind_eq_some_iff,
+                Option.pure_def, Option.map_eq_some_iff, Option.some.injEq] at hT
+              obtain ⟨_, ⟨H', hH, TS', hTS, rfl⟩, rfl⟩ := hT
+              simp [SDms.scalaForm, resolveDms, hpos',
+                resolveDm_scalaForm d Λ ν d' (some H) (some H') hd (by simp [resolveTyOpt, hH]),
+                resolveDms_scalaForm ds' Λ ν ds'' (some TS) (some TS') hds
+                  (by simp [resolveTyOpt, hTS]), ADms.scalaForm]
+            all_goals
+              simp only [resolveTyOpt, resolveTy, Option.bind_eq_bind, Option.bind_eq_some_iff,
+                Option.pure_def, Option.map_eq_some_iff, Option.some.injEq] at hT
+              obtain ⟨_, hT0, rfl⟩ := hT
+              repeat' obtain ⟨_, _, hT0⟩ := hT0
+              simp [SDms.scalaForm, resolveDms, hpos',
+                resolveDm_scalaForm d Λ ν d' none none hd rfl,
+                resolveDms_scalaForm ds' Λ ν ds'' none none hds rfl, ADms.scalaForm]
+      · cases h
+end
+
+/-- A program that resolves has its `S` erasure resolve to the `S` erasure. -/
+theorem resolve_eraseSelf {Λ : LabelTable} {e : STm} {a : ATm []} (h : resolve Λ e = some a) :
+    resolve Λ e.eraseSelf = some a.eraseSelf :=
+  resolveTm_eraseSelf e Λ .nil a h
+
+/-- A program that resolves has its `R` erasure resolve to the `R` erasure. -/
+theorem resolve_eraseRes {Λ : LabelTable} {e : STm} {a : ATm []} (h : resolve Λ e = some a) :
+    resolve Λ e.eraseRes = some a.eraseRes :=
+  resolveTm_eraseRes e Λ .nil a h
+
+/-- A program that resolves has its `P` erasure resolve to the `P` erasure. -/
+theorem resolve_eraseParam {Λ : LabelTable} {e : STm} {a : ATm []} (h : resolve Λ e = some a) :
+    resolve Λ e.eraseParam = some a.eraseParam :=
+  resolveTm_eraseParam e Λ .nil a h
+
+/-- A program that resolves has its `A` erasure resolve to the `A` erasure. -/
+theorem resolve_eraseArgSelf {Λ : LabelTable} {e : STm} {a : ATm []}
+    (h : resolve Λ e = some a) : resolve Λ e.eraseArgSelf = some a.eraseArgSelf :=
+  resolveTm_eraseArgSelfAt false e Λ .nil a h
+
+/-- A program that resolves has its Scala form resolve to the Scala form. -/
+theorem resolve_scalaForm {Λ : LabelTable} {e : STm} {a : ATm []} (h : resolve Λ e = some a) :
+    resolve Λ e.scalaForm = some a.scalaForm :=
+  resolveTm_scalaForm e Λ .nil a h
 
 /-! ## Label tables from a program
 
@@ -558,5 +1013,117 @@ example : labelsOfProgram [] cyclicSrc = none := by decide
 /-- Under the table the first literal suggests, resolution fails at the second
 literal. -/
 example : (resolve [("a", 1), ("b", 0), ("c", 0)] cyclicSrc).isSome = false := by decide
+
+/-! ## Erased sources
+
+The programs above with some annotations left out, written in the notation.
+Each is the surface erasure of the written program, and resolves under the
+written program's table to the erasure of its resolution.  The checks run the
+resolver, so they hold apart from `resolve_eraseSelf` and its siblings. -/
+
+/-! ### `RecursiveArg.prog` -/
+
+/-- `RecursiveArg.prog` with no self type. -/
+def recArgSrcS : STm :=
+  o16% (new { c ⇒ def apply(y) = y }).apply(
+         new { z ⇒ type A = z.B
+                   type B = ⊤
+                   def f(y) = y })
+
+/-- `RecursiveArg.prog` with no self type on the argument. -/
+def recArgSrcA : STm :=
+  o16% (new { c : { def apply(x : μ(z. { def f(y : ⊤) : z.B })) : ⊤ } ∧ ⊤ ⇒
+              def apply(y) = y }).apply(
+         new { z ⇒ type A = z.B
+                   type B = ⊤
+                   def f(y) = y })
+
+/-- `RecursiveArg.prog` as a Scala programmer writes it: each parameter type
+taken from the written self type, no self type and no result type. -/
+def recArgSrcSR : STm :=
+  o16% (new { c ⇒ def apply(y : μ(z. { def f(y : ⊤) : z.B })) = y }).apply(
+         new { z ⇒ type A = z.B
+                   type B = ⊤
+                   def f(y : ⊤) = y })
+
+example : recArgSrc.eraseSelf = recArgSrcS := by decide
+example : recArgSrc.eraseArgSelf = recArgSrcA := by decide
+example : recArgSrc.scalaForm = recArgSrcSR := by decide
+
+example : resolve recArgTable recArgSrcS
+    = (resolve recArgTable recArgSrc).map ATm.eraseSelf := rfl
+example : resolve recArgTable recArgSrcA
+    = (resolve recArgTable recArgSrc).map ATm.eraseArgSelf := rfl
+example : resolve recArgTable recArgSrcSR
+    = (resolve recArgTable recArgSrc).map ATm.scalaForm := rfl
+
+/-- The typer takes the written program as it is (`ATm.landed`), and none of
+its three erasures. -/
+example : (resolve recArgTable recArgSrc).map ATm.landed = some true ∧
+    (resolve recArgTable recArgSrcS).map ATm.landed = some false ∧
+    (resolve recArgTable recArgSrcA).map ATm.landed = some false ∧
+    (resolve recArgTable recArgSrcSR).map ATm.landed = some false := by
+  decide
+
+/-! ### `CurryCall.prog` -/
+
+/-- `CurryCall.prog` with no self type on the argument.  The inner literal is
+a receiver, so it keeps its self type. -/
+def curryCallSrcA : STm :=
+  o16% (new { c : { def apply(y : ⊤) : ⊤ } ∧ ⊤ ⇒
+              def apply(y) = (new { i : { def apply(y : ⊤) : ⊤ } ∧ ⊤ ⇒ def apply(y) = y }).apply(y) }).apply(
+         new { i ⇒ def apply(y) = y })
+
+/-- `CurryCall.prog` as a Scala programmer writes it. -/
+def curryCallSrcSR : STm :=
+  o16% (new { c ⇒ def apply(y : ⊤) = (new { i ⇒ def apply(y : ⊤) = y }).apply(y) }).apply(
+         new { i ⇒ def apply(y : ⊤) = y })
+
+example : curryCallSrc.eraseArgSelf = curryCallSrcA := by decide
+example : curryCallSrc.scalaForm = curryCallSrcSR := by decide
+
+example : resolve curryCallTable curryCallSrcA
+    = (resolve curryCallTable curryCallSrc).map ATm.eraseArgSelf := rfl
+example : resolve curryCallTable curryCallSrcSR
+    = (resolve curryCallTable curryCallSrc).map ATm.scalaForm := rfl
+
+/-! ### `ex1`
+
+`ex1` has no self type, so its `S` and `A` erasures are the program itself.
+Its Scala form is its `R` erasure. -/
+
+/-- `ex1` with no result type. -/
+def ex1SrcR : STm :=
+  o16% new { o ⇒ def apply(t : { type T : ⊥ .. ⊤ }) =
+                  new { p ⇒ def apply(x : t.T) = x } }
+
+/-- `ex1` with no parameter type. -/
+def ex1SrcP : STm :=
+  o16% new { o ⇒ def apply(t) : { def apply(x : t.T) : t.T } =
+                  new { p ⇒ def apply(x) : t.T = x } }
+
+example : ex1src.eraseSelf = ex1src ∧ ex1src.eraseArgSelf = ex1src := by decide
+example : ex1src.eraseRes = ex1SrcR ∧ ex1src.scalaForm = ex1SrcR := by decide
+example : ex1src.eraseParam = ex1SrcP := by decide
+
+example : resolve ex1Table ex1SrcR = (resolve ex1Table ex1src).map ATm.eraseRes := rfl
+example : resolve ex1Table ex1SrcP = (resolve ex1Table ex1src).map ATm.eraseParam := rfl
+
+/-! ### `paper_lst`
+
+The module is long, so its erasures are the functions applied to it. -/
+
+example : resolve paperLstTable paperLstSrc.eraseRes
+    = (resolve paperLstTable paperLstSrc).map ATm.eraseRes := rfl
+example : resolve paperLstTable paperLstSrc.eraseParam
+    = (resolve paperLstTable paperLstSrc).map ATm.eraseParam := rfl
+
+/-- The theorem gives the same for every erasure, with no run of the
+resolver on the erased source. -/
+example : ∃ a, resolve paperLstTable paperLstSrc = some a ∧
+    resolve paperLstTable paperLstSrc.scalaForm = some a.scalaForm :=
+  match h : resolve paperLstTable paperLstSrc with
+  | some a => ⟨a, rfl, resolve_scalaForm h⟩
+  | none => absurd h (by decide)
 
 end Oopsla16Frontend
