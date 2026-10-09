@@ -80,7 +80,12 @@ and the frozen trees it builds on are unchanged.
   program with every slot written is the typer's, at the same fuel
   (`elabF_toI`, `elabChkF_toI`).  The elaborator is framed (`elabF_framed`),
   and a lambda whose body has no empty slot is the typer's check of the filled
-  lambda (`lam_fill_full`).
+  lambda (`lam_fill_full`).  `formSelfF` forms a literal's self type from its
+  definitions, in rounds that type each field without a written type at its
+  least candidate, and names the cyclic reference when a round types nothing.
+  A literal without a self type and without a `μ` goal is filled at the formed
+  self type and typed by the object clause of the typer
+  (`obj_none_landed`).
 * `Step` is the DOT-MNF machine as a structural function, with agreement with
   the frozen step relation in both directions.
 * `StepFC` is the FCdot machine as a function.  It takes the fuel of the frozen
