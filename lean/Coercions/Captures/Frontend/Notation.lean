@@ -14,6 +14,15 @@ precedences.  New are the capture set, the capture member, the box `□`, the
 unboxing `⊸` and the ascription `(t : T)`, which is a term followed by a
 colon and a type in parentheses.
 
+## Slots left to inference
+
+`λx. t` leaves the domain of a lambda empty and `ν(x. d)` the self shape of a
+literal.  A domain is one slot, its shape and set together, so `λ(x : S). t`
+keeps meaning the pure `S ^ {}`.  A literal without a self shape has no syntax
+for its own set.  `{a : T = t}` writes the type of a term member.  The body of
+`λx.` extends as far right as it can.  It needs a space after the dot, since
+`λx.x` lexes `x.x` as one name.
+
 ## Precedence
 
 `^` sits at 60, looser than `∧` at 65, so a written set applies to the whole
@@ -76,6 +85,10 @@ syntax:max ident : capTm
 syntax:max "λ" "(" ident " : " capTy ")" "." capTm:60 : capTm
 /-- `ν(x : T. d)`, an object literal with its self type. -/
 syntax:max "ν" "(" ident " : " capTy "." capDefs ")" : capTm
+/-- `λx. t`, a lambda whose domain is left to inference. -/
+syntax:max "λ" ident "." capTm:60 : capTm
+/-- `ν(x. d)`, an object literal whose self shape is left to inference. -/
+syntax:max "ν" "(" ident "." capDefs ")" : capTm
 /-- `t.a` on a receiver that is not an identifier. -/
 syntax:80 capTm:80 "." ident : capTm
 /-- `t u`, application, left leaning. -/
@@ -97,6 +110,8 @@ syntax:max "{" "type" ident " = " capTy "}" : capDefs
 syntax:max "{" ident "^" " = " capCap "}" : capDefs
 /-- `{a = t}`, a term member definition. -/
 syntax:max "{" ident " = " capTm "}" : capDefs
+/-- `{a : T = t}`, a term member definition with a written type. -/
+syntax:max "{" ident " : " capTy " = " capTm "}" : capDefs
 /-- `d ∧ e`, right leaning. -/
 syntax:65 capDefs:66 " ∧ " capDefs:65 : capDefs
 
@@ -189,9 +204,13 @@ macro_rules
 macro_rules
   | `(cap% $x:ident) => surfaceTmOfIdent x
   | `(cap% λ ( $x:ident : $T:capTy ) . $t:capTm) =>
-      `(STm.lam $(quote x.getId.toString) (capTy% $T) (cap% $t))
+      `(STm.lam $(quote x.getId.toString) (some (capTy% $T)) (cap% $t))
   | `(cap% ν ( $x:ident : $T:capTy . $d:capDefs )) =>
-      `(STm.obj $(quote x.getId.toString) (capTy% $T) (capDefs% $d))
+      `(STm.obj $(quote x.getId.toString) (some (capTy% $T)) (capDefs% $d))
+  | `(cap% λ $x:ident . $t:capTm) =>
+      `(STm.lam $(quote x.getId.toString) (none : Option SType) (cap% $t))
+  | `(cap% ν ( $x:ident . $d:capDefs )) =>
+      `(STm.obj $(quote x.getId.toString) (none : Option SType) (capDefs% $d))
   | `(cap% $t:capTm . $a:ident) => `(STm.proj (cap% $t) $(quote a.getId.toString))
   | `(cap% $t:capTm $u:capTm) => `(STm.app (cap% $t) (cap% $u))
   | `(cap% let $x:ident = $t:capTm in $u:capTm) =>
@@ -209,7 +228,9 @@ macro_rules
   | `(capDefs% { $C:ident ^ = $c:capCap }) =>
       `(SDefs.cap $(quote C.getId.toString) (capCap% $c))
   | `(capDefs% { $a:ident = $t:capTm }) =>
-      `(SDefs.trm $(quote a.getId.toString) (cap% $t))
+      `(SDefs.trm $(quote a.getId.toString) (none : Option SType) (cap% $t))
+  | `(capDefs% { $a:ident : $T:capTy = $t:capTm }) =>
+      `(SDefs.trm $(quote a.getId.toString) (some (capTy% $T)) (cap% $t))
   | `(capDefs% $d:capDefs ∧ $e:capDefs) => `(SDefs.and (capDefs% $d) (capDefs% $e))
 
 /-! ## Checks -/
@@ -284,6 +305,43 @@ example : nameParts `x [] = ["x"] := by decide
 example : nameParts `x.a [] = ["x", "a"] := by decide
 
 example : nameParts `x.a.b [] = ["x", "a", "b"] := by decide
+
+/-! ### Slots left to inference -/
+
+example : (cap% λx. x) = STm.lam "x" none (.var "x") := by decide
+
+/-- The body of `λx.` extends as far right as it can, a projection included. -/
+example : (cap% λx. x.a) = STm.lam "x" none (.proj (.var "x") "a") := by decide
+
+example : (cap% λx. λy. f x y) =
+    STm.lam "x" none (.lam "y" none (.app (.app (.var "f") (.var "x")) (.var "y"))) := by decide
+
+/-- A written domain is `some`. -/
+example : (cap% λ(x : ⊤). x) = STm.lam "x" (some .top) (.var "x") := by decide
+
+example : (cap% ν(x. {a = x})) = STm.obj "x" none (.trm "a" none (.var "x")) := by decide
+
+example : (cap% ν(x. {a : ⊤ = x.b})) =
+    STm.obj "x" none (.trm "a" (some .top) (.proj (.var "x") "b")) := by decide
+
+/-- A written self shape is `some`. -/
+example : (cap% ν(x : {a : ⊤}. {a = x})) =
+    STm.obj "x" (some (.fld "a" .top)) (.trm "a" none (.var "x")) := by decide
+
+example : (capDefs% {a : ⊤ ^ {any} = x}) = SDefs.trm "a" (some (.capt .top [.any])) (.var "x") := by
+  decide
+
+example : (cap% f (λx. x)) = STm.app (.var "f") (.lam "x" none (.var "x")) := by decide
+
+example : (cap% (λx. x : ∀(y : ⊤) ⊤)) =
+    STm.asc (.lam "x" none (.var "x")) (.all "y" .top .top) := by decide
+
+/-- A field written with its type beside a field left without one. -/
+example : (cap% ν(z. {a : (∀(u : ⊤) ⊤) ^ {f} = f} ∧ {b = λu. z.a u})) =
+    STm.obj "z" none (.and
+      (.trm "a" (some (.capt (.all "u" .top .top) [.name "f"])) (.var "f"))
+      (.trm "b" none (.lam "u" none (.app (.proj (.var "z") "a") (.var "u"))))) := by
+  decide
 
 /-! ## Example programs
 
