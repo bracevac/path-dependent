@@ -21,6 +21,12 @@ table.  `Positioned` holds when every member of every literal carries the label
 of its own position, which a table built from the program guarantees and an
 explicit table may not.
 
+Five erasures drop written annotations from a surface program, as their
+namesakes in `Ann.lean` drop them from a resolved one.  When the written
+program resolves, each erasure of it resolves to the erasure of its resolution
+(`Resolve.lean`).  So an erased source written in the notation stands for the
+erased program.
+
 Every recursive definition is structural, so the kernel reduces it.
 `#assert_no_wf` checks this for a namespace.  Nothing here is part of the
 metatheory.
@@ -56,8 +62,9 @@ mutual
 inductive STm : Type where
   /-- A variable, by name. -/
   | var (x : String)
-  /-- `new {z ⇒ ds}` or `new {z : T ⇒ ds}`.  The self type is written when the
-  literal needs it to type its members. -/
+  /-- `new {z ⇒ ds}` or `new {z : T ⇒ ds}`.  The self type is optional.
+  Without one, a literal with a Curry style method is not one the typer takes
+  as it is (`ATm.landed`), and a fill writes the self type in (`ATm.fills`). -/
   | obj (z : String) (self : Option SType) (ds : SDms)
   /-- `t.m(u)`. -/
   | call (t : STm) (m : String) (u : STm)
@@ -245,6 +252,142 @@ def SDms.Positioned (Λ : LabelTable) (ds : SDms) : Bool :=
 termination_by structural ds
 end
 
+/-! ## Erasures
+
+`eraseSelf` drops every self type, `eraseRes` every method result type,
+`eraseParam` every method parameter type, and `eraseArgSelf` the self type of
+every literal that is a call argument.  `scalaForm` is the program a Scala
+programmer writes: no self type, no result type, and every parameter type
+written.  A parameter that the program left to the written self type takes the
+domain that self type declares at the member's position.  The self type is
+read in lockstep with the members, one conjunct of a right nested
+intersection per member, as `selfOf?` builds it. -/
+
+mutual
+/-- Drop every self type of a surface term. -/
+def STm.eraseSelf (e : STm) : STm :=
+  match e with
+  | .var x => .var x
+  | .obj z _ ds => .obj z none ds.eraseSelf
+  | .call t m u => .call t.eraseSelf m u.eraseSelf
+  | .asc t T => .asc t.eraseSelf T
+termination_by structural e
+/-- Drop every self type inside a surface member. -/
+def SDm.eraseSelf (d : SDm) : SDm :=
+  match d with
+  | .typ L T => .typ L T
+  | .fn m x S U t => .fn m x S U t.eraseSelf
+termination_by structural d
+/-- Drop every self type inside a surface member list. -/
+def SDms.eraseSelf (ds : SDms) : SDms :=
+  match ds with
+  | .nil => .nil
+  | .cons d ds' => .cons d.eraseSelf ds'.eraseSelf
+termination_by structural ds
+end
+
+mutual
+/-- Drop every method result type of a surface term. -/
+def STm.eraseRes (e : STm) : STm :=
+  match e with
+  | .var x => .var x
+  | .obj z self ds => .obj z self ds.eraseRes
+  | .call t m u => .call t.eraseRes m u.eraseRes
+  | .asc t T => .asc t.eraseRes T
+termination_by structural e
+/-- Drop the result type of a surface method, and every one in its body. -/
+def SDm.eraseRes (d : SDm) : SDm :=
+  match d with
+  | .typ L T => .typ L T
+  | .fn m x S _ t => .fn m x S none t.eraseRes
+termination_by structural d
+/-- Drop every method result type inside a surface member list. -/
+def SDms.eraseRes (ds : SDms) : SDms :=
+  match ds with
+  | .nil => .nil
+  | .cons d ds' => .cons d.eraseRes ds'.eraseRes
+termination_by structural ds
+end
+
+mutual
+/-- Drop every method parameter type of a surface term. -/
+def STm.eraseParam (e : STm) : STm :=
+  match e with
+  | .var x => .var x
+  | .obj z self ds => .obj z self ds.eraseParam
+  | .call t m u => .call t.eraseParam m u.eraseParam
+  | .asc t T => .asc t.eraseParam T
+termination_by structural e
+/-- Drop the parameter type of a surface method, and every one in its body. -/
+def SDm.eraseParam (d : SDm) : SDm :=
+  match d with
+  | .typ L T => .typ L T
+  | .fn m x _ U t => .fn m x none U t.eraseParam
+termination_by structural d
+/-- Drop every method parameter type inside a surface member list. -/
+def SDms.eraseParam (ds : SDms) : SDms :=
+  match ds with
+  | .nil => .nil
+  | .cons d ds' => .cons d.eraseParam ds'.eraseParam
+termination_by structural ds
+end
+
+mutual
+/-- Drop the self type of every literal that is a call argument.  `arg` says
+whether `e` itself is the argument of a call. -/
+def STm.eraseArgSelfAt (arg : Bool) (e : STm) : STm :=
+  match e with
+  | .var x => .var x
+  | .obj z self ds => .obj z (if arg then none else self) ds.eraseArgSelf
+  | .call t m u => .call (t.eraseArgSelfAt false) m (u.eraseArgSelfAt true)
+  | .asc t T => .asc (t.eraseArgSelfAt false) T
+termination_by structural e
+/-- Drop the self type of every literal that is a call argument inside a
+surface member. -/
+def SDm.eraseArgSelf (d : SDm) : SDm :=
+  match d with
+  | .typ L T => .typ L T
+  | .fn m x S U t => .fn m x S U (t.eraseArgSelfAt false)
+termination_by structural d
+/-- Drop the self type of every literal that is a call argument inside a
+surface member list. -/
+def SDms.eraseArgSelf (ds : SDms) : SDms :=
+  match ds with
+  | .nil => .nil
+  | .cons d ds' => .cons d.eraseArgSelf ds'.eraseArgSelf
+termination_by structural ds
+end
+
+/-- Drop the self type of every literal that is a call argument. -/
+def STm.eraseArgSelf (e : STm) : STm := e.eraseArgSelfAt false
+
+mutual
+/-- The surface program a Scala programmer writes. -/
+def STm.scalaForm (e : STm) : STm :=
+  match e with
+  | .var x => .var x
+  | .obj z self ds => .obj z none (ds.scalaForm self)
+  | .call t m u => .call t.scalaForm m u.scalaForm
+  | .asc t T => .asc t.scalaForm T
+termination_by structural e
+/-- A surface member in the Scala form, given the conjunct the written self
+type has at its position. -/
+def SDm.scalaForm (d : SDm) (H : Option SType) : SDm :=
+  match d, H with
+  | .fn m x S _ t, some (.fn _ _ S' _) => .fn m x (S.or (some S')) none t.scalaForm
+  | .fn m x S _ t, _ => .fn m x S none t.scalaForm
+  | .typ L T, _ => .typ L T
+termination_by structural d
+/-- A surface member list in the Scala form, read in lockstep with the written
+self type. -/
+def SDms.scalaForm (ds : SDms) (T : Option SType) : SDms :=
+  match ds, T with
+  | .nil, _ => .nil
+  | .cons d ds', some (.and H TS) => .cons (d.scalaForm (some H)) (ds'.scalaForm (some TS))
+  | .cons d ds', _ => .cons (d.scalaForm none) (ds'.scalaForm none)
+termination_by structural ds
+end
+
 /-! ## The test helper
 
 The typer's search is not structural, so tests that use it run compiled code
@@ -326,5 +469,51 @@ example : STm.Positioned [("A", 0), ("f", 1)] sampleProgram = false := by decide
 /-- A one member literal needs its member at position `0`. -/
 example : SDms.Positioned [("f", 0)] (.cons (.fn "f" "x" none none (.var "x")) .nil)
     = true := by decide
+
+/-! ### Erasures
+
+`new {z : {def f(x : ⊤) : ⊤} ∧ ⊤ ⇒ def f(x) = x}`, a Curry style method under
+a written self type. -/
+
+/-- The Curry style literal. -/
+private def curryLiteral : STm :=
+  .obj "z" (some (.and (.fn "f" "x" .top .top) .top)) (.cons (.fn "f" "x" none none (.var "x")) .nil)
+
+/-- The `S` erasure leaves the method with no annotation at all. -/
+example : curryLiteral.eraseSelf = .obj "z" none (.cons (.fn "f" "x" none none (.var "x")) .nil) := by
+  decide
+
+/-- The Scala form takes the parameter type from the self type. -/
+example : curryLiteral.scalaForm
+    = .obj "z" none (.cons (.fn "f" "x" (some .top) none (.var "x")) .nil) := by
+  decide
+
+/-- A written parameter type stays, and the result type goes. -/
+example : (STm.obj "z" (some (.and (.fn "f" "x" .top .top) .top))
+      (.cons (.fn "f" "x" (some .bot) (some .top) (.var "x")) .nil)).scalaForm
+    = .obj "z" none (.cons (.fn "f" "x" (some .bot) none (.var "x")) .nil) := by
+  decide
+
+/-- The sample self type ends in a method, not in `⊤`, so the lockstep reading
+reaches `f` at no conjunct and gives it no parameter type. -/
+example : sampleProgram.scalaForm = .obj "z" none sampleMembers := by decide
+
+/-- Only the literal that is the argument of a call loses its self type. -/
+example : (STm.call curryLiteral "f" curryLiteral).eraseArgSelf
+    = .call curryLiteral "f" curryLiteral.eraseSelf := by
+  decide
+
+/-- An ascribed argument is not itself the argument, so it keeps its self
+type. -/
+example : (STm.call (.var "y") "f" (.asc curryLiteral .top)).eraseArgSelf
+    = .call (.var "y") "f" (.asc curryLiteral .top) := by
+  decide
+
+/-- `R` and `P` drop the two annotations of a method one at a time. -/
+example : (SDm.fn "f" "x" (some .bot) (some .top) (.var "x")).eraseRes
+      = .fn "f" "x" (some .bot) none (.var "x") ∧
+    (SDm.fn "f" "x" (some .bot) (some .top) (.var "x")).eraseParam
+      = .fn "f" "x" none (some .top) (.var "x") := by
+  decide
 
 end Oopsla16Frontend
