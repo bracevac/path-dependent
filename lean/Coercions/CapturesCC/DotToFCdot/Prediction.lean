@@ -240,24 +240,27 @@ theorem Platform.simulatedRun {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s
 /-! ## The two theorems -/
 
 /-- **Capture prediction for DOT-MNF.**  Along any run of a closed program
-typed over a platform prefix at a plain answer, the matched target state's
-use set stays below
-the translation of the source's declared use set, transported along the
-store extension the run performs.  All the content is the target's
-`FCdot.capture_prediction`; the new part is the transport along the
+typed over a platform prefix at a plain answer, there is a target state `stt`
+that the translation's own run reaches from the initial target state, that is
+typed, and whose erasure is the source state's.  Its store extends the
+platform's along a renaming `ρ`, and its use set stays below the translation
+of the source's declared use set, renamed by `ρ`.  All the content is the
+target's `FCdot.capture_prediction`.  What this file adds is the transport along the
 simulation. -/
 theorem dot_capture_prediction {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
     {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {s : Sig} {st : State s}
     (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename s₀ s),
-      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+      FCdot.Steps (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s₀) stt ∧
+        (∃ V, FCdot.State.Typed stt V) ∧
+        FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext P.targetStore stt.σ ρ ∧
           FCdot.CapLe Γ' stt.uses (U.translate.rename ρ) := by
   obtain ⟨stt, hrun, he, -⟩ := P.simulatedRun d run
   obtain ⟨V₁, hT₁⟩ := FCdot.State.Typed.steps ⟨_, P.initial_typed d⟩ hrun
-  obtain ⟨Γ', T₁, hσ', ht₁, hK₁⟩ := hT₁
+  obtain ⟨Γ', T₁, hσ', ht₁, hK₁⟩ := id hT₁
   obtain ⟨ρ, hE, hpred⟩ := FCdot.capture_prediction (P.initial_typed d) hrun
-  refine ⟨stt, Γ', ρ, he, hσ', hE, ?_⟩
+  refine ⟨stt, Γ', ρ, hrun, ⟨V₁, hT₁⟩, he, hσ', hE, ?_⟩
   have hbase : FCdot.CapLe P.ctx.translate
       (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s₀).uses U.translate := by
     simp only [FCdot.State.uses_mk, FCdot.usesK_nil, FCdot.CaptureSet.union_def,
@@ -267,23 +270,28 @@ theorem dot_capture_prediction {s₀ : Sig} (P : Platform s₀) {U : CaptureSet 
 
 /-- **Effect safety for DOT-MNF.**  A closed program typed over a platform
 prefix at a plain answer, whose declared use set does not name the platform
-capability `κ`, has a matched target state that never reads, along any run, a
-root whose root is `κ`.  The source machine has no use sets, so the conclusion
-is about the target state.  The hypothesis is the roots
-condition the target asks for: over a platform prefix every atom is a capture
-variable and every binder is rigid, so a root of a set is a member of it. -/
+capability `κ`.  Along any run, at a source state that reads `x`, there is a
+target state `stt` that the translation's own run reaches from the initial
+target state, that is typed, and whose erasure is the source state's.  In it
+`κ`, renamed along the store extension, is not a root of `x`.  The source
+machine has no use sets, so the conclusion is about the target state.  The
+hypothesis is the roots condition the target asks for: over a platform prefix
+every atom is a capture variable and every binder is rigid, so a root of a set
+is a member of it. -/
 theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
     {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {κ : BVar s₀ .cap}
     (hκ : ¬ (FCdot.CapAtom.cvar κ ∈ U.translate))
     {s : Sig} {st : State s} (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename s₀ s),
-      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+      FCdot.Steps (⟨P.targetStore, .nil, d.translate⟩ : FCdot.State s₀) stt ∧
+        (∃ V, FCdot.State.Typed stt V) ∧
+        FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext P.targetStore stt.σ ρ ∧
           ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var κ)) [FCdot.CapAtom.var x] := by
   obtain ⟨stt, hrun, he, hnc⟩ := P.simulatedRun d run
   obtain ⟨V₁, hT₁⟩ := FCdot.State.Typed.steps ⟨_, P.initial_typed d⟩ hrun
-  obtain ⟨Γ', T₁, hσ', ht₁, hK₁⟩ := hT₁
+  obtain ⟨Γ', T₁, hσ', ht₁, hK₁⟩ := id hT₁
   -- The root the source reads is the root the matched target state reads.
   have hint : stt.inspects = some x := by
     refine FCdot.State.inspects_reflect hnc ?_
@@ -300,7 +308,22 @@ theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀}
     hκ ((P.root_iff _ _ (CaptureSet.top_not_mem_translate U)).mp (hbase _ hr))
   obtain ⟨ρ, hE, hne⟩ :=
     FCdot.effect_safety (P.initial_typed d) P.targetStore_typed hrun hroot hint hσ'
-  exact ⟨stt, Γ', ρ, he, hσ', hE, hne⟩
+  exact ⟨stt, Γ', ρ, hrun, ⟨V₁, hT₁⟩, he, hσ', hE, hne⟩
+
+/-! ## Safety over a platform prefix -/
+
+/-- **Safety of DOT-MNF over a platform prefix.**  `dot_safety` is stated at
+the empty context.  This is the same statement for a program typed over a
+platform prefix at a plain answer, run from the platform's initial store:
+every reachable state is final or steps.  The matched target run stays typed,
+and `Simulated.progress` reads progress back. -/
+theorem dot_safety_platform {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
+    {T : Ty s₀} (d : HasTy U P.ctx t (.ty T)) {s : Sig} {st : State s}
+    (run : Steps (⟨P.store, .nil, t⟩ : State s₀) st) :
+    st.Final ∨ ∃ (s' : Sig) (st' : State s'), Step st st' := by
+  obtain ⟨stt, hrun, he, -⟩ := P.simulatedRun d run
+  obtain ⟨V, hV⟩ := FCdot.State.Typed.steps ⟨_, P.initial_typed d⟩ hrun
+  exact Simulated.progress ⟨stt, V, hV, he⟩
 
 end DotMNF
 

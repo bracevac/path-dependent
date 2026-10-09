@@ -1,4 +1,5 @@
 import Coercions.CapturesCC.FCdot.CanonicalForms
+import Coercions.CapturesCC.FCdot.LevelInversion
 
 namespace CapturesCC
 
@@ -18,6 +19,11 @@ With self-bound propositions a coercion may also go *through* a bound of the
 source object type, or *into* an object type whose propositions are proven
 without consulting the source's view; `closed_le_shapes` has one disjunct
 for each.
+
+The file also states scope safety (`lvl_safety`, `no_inner_escape`) and root
+inversion (`root_inversion`) for member-free evidence.  These need no store,
+and they have content in a context that opens a scope, which no typed store
+does.
 -/
 
 namespace FCdot
@@ -285,34 +291,6 @@ theorem Store.Typed.confined (hσ : ⊢ σ : Γ) (C : CaptureSet s)
   rw [← hr]
   exact Γ.confined_rootAtom C
 
-/-- **`lvl_canon`.**  Closed capture evidence never lowers the level: if
-every resolution of the target is at or outside `r`, so is every resolution
-of the source.  A corollary of `cap_canon` over a typed store, not an
-induction on the evidence: as an induction on `f` alone the `capvar` case is
-false, since bad capture bounds are derivable under a lambda (example C3).
-
-Over a typed store the conclusion holds trivially for every `r`, with no
-evidence: a store context has no root binder, so every level is the outermost
-one and every set is confined at every `r`.  The content for rooted contexts
-is `level_inversion`. -/
-theorem lvl_canon (hσ : ⊢ σ : Γ) {f : CapCo s} {C₁ C₂ : CaptureSet s} {r : CapAtom s}
-    (h : Γ ⊢ᶜ f : C₁ ⊑ C₂) (n : Nat)
-    (h₂ : ∀ m, Γ.Confined (Γ.caps m C₂) r) : Γ.Confined (Γ.caps n C₁) r := by
-  intro a ha
-  obtain ⟨m, hm⟩ := cap_canon hσ h a (Ctx.Root.of_mem_caps ha)
-  rw [Ctx.roots_eq_expand_caps] at hm
-  obtain ⟨b, hb, hab⟩ := Ctx.mem_expand.mp hm
-  have hbr : Γ.LvlLe b r := h₂ m b hb
-  cases hrb : Γ.isRootB b with
-  | false =>
-      rw [Ctx.expandAtom_of_not_root hrb] at hab
-      rw [List.mem_singleton.mp hab]
-      exact hbr
-  | true =>
-      rcases Ctx.mem_expandAtom_root hrb hab with rfl | ⟨κ, rfl, _, hκ⟩
-      · exact Ctx.top_lvlLe _ _
-      · exact Ctx.LvlLe.trans hrb hκ hbr
-
 /-- **`rigid_canon`.**  A rigid binder is a root of every set closed
 evidence puts it below. -/
 theorem rigid_canon (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : CaptureSet s}
@@ -331,37 +309,100 @@ theorem rigid_target (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : C
     List.append_nil, Ctx.expandAtom_of_not_root (by rw [Ctx.isRootB, hκ]; rfl)] at hm
   exact hm
 
-/-- **Scope safety.**  What closed evidence puts below a scope root
-resolves to capabilities at or outside that root.  Over a typed store this
-holds trivially, for the reason given at `lvl_canon`: the conclusion follows
-from `hσ` and `hr` alone, for every capture set.  The content is
-`level_inversion`. -/
-theorem lvl_safety (hσ : ⊢ σ : Γ) {r : CapAtom s} {f : CapCo s} {C : CaptureSet s}
-    (hr : Γ.IsRoot r) (h : Γ ⊢ᶜ f : C ⊑ [r]) (n : Nat) :
+/-! ## Scope safety in a rooted context
+
+Over a typed store the context has no scope root, so every set is at the
+outermost level and a statement about levels says nothing there.  The
+statements below need no store.  They hold in every context, and they have
+content in a context that opens a scope, such as a lambda body.  They range
+over member-free evidence, because `member` and `eqToLe` read bounds that a
+lambda body may assume freely (example C3). -/
+
+/-- **Scope safety.**  What member-free evidence puts below a scope root
+resolves to capabilities at or outside that root.  It is `level_inversion`
+with the upper set a root, which is confined at itself. -/
+theorem lvl_safety {r : CapAtom s} {f : CapCo s} {C : CaptureSet s}
+    (hr : Γ.IsRoot r) (h : Γ ⊢ᶜ f : C ⊑ [r]) (hf : f.MemberFree) (n : Nat) :
     Γ.Confined (Γ.caps n C) r :=
-  lvl_canon hσ h n (fun m => by
+  level_inversion h hf (fun m => by
     rw [Ctx.caps_of_isRoot hr]
     intro c hc
     rw [List.mem_singleton.mp hc]
-    exact Ctx.LvlLe.refl_of_root hr)
+    exact Ctx.LvlLe.refl_of_root hr) n
 
-/-- **The escape form of scope safety.**  No closed derivation puts a capability
-introduced strictly inside a scope below that scope's root.  The conclusion
-is about what `C` resolves to and not about its syntactic atoms: a pure inner
-binder is below every set by `capvar` and `elem`, so the syntactic reading is
-false and the resolved reading is what holds.
-
-The hypotheses `hσ`, `hr` and `hout` cannot hold together.  Over a typed store
-the only root is `⊤ᶜ`, and every atom is at or outside `⊤ᶜ`, so `hout` fails.
-The theorem therefore holds trivially.  The content is `level_inversion`, used
-as in `X4_no_escape`. -/
-theorem no_inner_escape (hσ : ⊢ σ : Γ) {r : CapAtom s} {κ : BVar s .cap}
+/-- **The escape form of scope safety.**  No member-free evidence puts a
+capability introduced strictly inside a scope below that scope's root.  The
+conclusion is about what `C` resolves to and not about its syntactic atoms: a
+pure inner binder is below every set by `capvar` and `elem`, so the syntactic
+reading is false and the resolved reading is what holds.  The hypothesis
+`hout` holds only in a context with a scope root, and `X3_no_escape` is an
+instance. -/
+theorem no_inner_escape {r : CapAtom s} {κ : BVar s .cap}
     (hr : Γ.IsRoot r) (hκ : (Γ.lookupCap κ).opaque = true)
-    (hout : ¬ Γ.LvlLe (.cvar κ) r) : ¬ ∃ f : CapCo s, Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ [r] := by
-  rintro ⟨f, hf⟩
-  refine hout (lvl_safety hσ hr hf 0 (.cvar κ) ?_)
+    (hout : ¬ Γ.LvlLe (.cvar κ) r) :
+    ¬ ∃ f : CapCo s, (Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ [r]) ∧ f.MemberFree := by
+  rintro ⟨f, hf, hmf⟩
+  refine hout (lvl_safety hr hf hmf 0 (.cvar κ) ?_)
   rw [Ctx.caps_of_opaque hκ]
   exact List.mem_cons_self ..
+
+/-! ## Roots in a rooted context
+
+`cap_canon` reads a typed store, and a typed store has no scope root.  On
+member-free evidence the store is not needed: the store is read only in the
+`member` and `eqToLe` cases, and the `level` case uses none.  So member-free
+evidence includes roots in every context, which is what separates two rigid
+binders of one level, where `level_inversion` cannot. -/
+
+mutual
+
+/-- **Root inversion.**  Member-free capture evidence includes roots, in
+every context. -/
+theorem root_inversion {f : CapCo s} {C D : CaptureSet s}
+    (h : Γ ⊢ᶜ f : C ⊑ D) (hf : f.MemberFree) : CapLe Γ C D := by
+  match h, hf with
+  | .refl, _ => exact CapLe.refl _ _
+  | .trans hg hk, .trans hgf hkf =>
+      exact (root_inversion hg hgf).trans (root_inversion hk hkf)
+  | .elem hsub, _ => exact CapLe.of_subset hsub
+  | .union hg hk, .union hgf hkf =>
+      exact CapLe.union (root_inversion hg hgf) (root_inversion hk hkf)
+  | .capvar ha, .capvar haf => exact atom_root_inversion ha haf
+  | .level (e := e) (r := r) hr hle, _ =>
+      intro a ha
+      obtain ⟨n, hn⟩ := ha
+      rw [Ctx.roots_eq_expand_caps] at hn
+      obtain ⟨b, hb, hab⟩ := Ctx.mem_expand.mp hn
+      have hconf : Γ.Confined [e] r := by
+        intro c hc
+        rw [List.mem_singleton.mp hc]
+        exact hle
+      have hbr : Γ.LvlLe b r := Ctx.caps_confined Γ n [e] r hconf b hb
+      refine ⟨0, ?_⟩
+      rw [Ctx.roots_of_isRoot hr]
+      exact Ctx.expandAtom_mono hr (Ctx.caps_opaque hb) hbr a hab
+
+/-- The atom half of `root_inversion`: the root of a member-free atom has
+no root that the capture set of its type lacks. -/
+theorem atom_root_inversion {a : Atom s} {T : Ty s}
+    (h : Γ ⊢ₐ a : T) (ha : a.MemberFree) :
+    CapLe Γ [CapAtom.var a.root] T.captureSet := by
+  match h, ha with
+  | @Atom.HasType.var _ _ x, _ => exact (Ctx.Root_var Γ x).le
+  | .cast hb (.capt _ hg), .cast hbf hgf =>
+      exact (atom_root_inversion hb hbf).trans (root_inversion hg hgf)
+  | .recap _ hg, .recap _ hgf => exact root_inversion hg hgf
+  | .unfoldSelf hb, .unfoldSelf hbf =>
+      have h1 := atom_root_inversion hb hbf
+      exact h1
+  | .foldSelf hb, .foldSelf _ hbf =>
+      have h1 := atom_root_inversion hb hbf
+      exact h1
+  | .both hb _ _, .both _ _ hbf _ =>
+      have h1 := atom_root_inversion hb hbf
+      exact h1
+
+end
 
 /-- Every block name of a store binder is defined by the stored literal's
 witness, and the definition is closed equality evidence. -/
