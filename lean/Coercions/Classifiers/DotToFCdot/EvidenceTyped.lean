@@ -1854,10 +1854,10 @@ target notion, so the source's scope safety is stated through the
 translation.  It is store free, and it asks for no context
 predicate beyond `Ctx.Wf`, which `Subcap.translate_typed` already asks for.
 
-It is not a store-carrying `lvl_safety` because over a typed store the
-context is root free, so the store-carrying form is vacuous
-(`FCdot.Store.Typed.rootFree`), and the content of the sentence lives in
-rooted contexts, which no store types. -/
+It carries no store because over a typed store the context is root free
+(`FCdot.Store.Typed.rootFree`), so a form with a store would hold for want of
+a scope root, and the content of the sentence lives in rooted contexts, which
+no store types.  The target's `FCdot.lvl_safety` is stated the same way. -/
 
 theorem source_lvl_safety {s : FCdot.Sig} {Γ : Ctx s} {C D : CaptureSet s} (hwf : Γ.Wf)
     {d : Subcap Γ C D} (hd : d.MemberFree) {r : FCdot.CapAtom s}

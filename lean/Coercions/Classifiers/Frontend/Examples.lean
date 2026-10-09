@@ -27,10 +27,11 @@ refuses.  W ascribes a restricted variable at its restricted set.
 ## What is checked
 
 Every function of the front end is structural, so the kernel reduces
-resolution, the typer, the kinding goal and the machine.  The exception is a
-level escape.  `certify?` reads the well-founded `FCdot.Ctx.caps`, which the
-kernel does not reduce, so the reason of a level-escape rejection is checked by
-`#eval`, and the certificate at the goal is proved separately (`Esc_rejected'`,
+resolution, the typer, the kinding goal and the machine.  A level escape is
+included.  `certify?` reads the resolution `FCdot.Ctx.caps`, which is well
+founded, through its structural twin `capsK`, so the kernel checks those
+verdicts too (`compile_rejected_goal`, `TopEsc_compile_rejected`).  The
+certificate at the goal is also proved by hand (`Esc_rejected'`,
 `top_escape_rejected`).  Every check runs at `defaultFuel`, the one field of
 the default budget `{}`.
 
@@ -94,7 +95,8 @@ is written with `fresh`, the existential annotations cov2 and cov4, the
 projection cov3, a callback that keeps what it captures inside its own scope, a
 capture parameter that is called, two calls of `freshCell`, an unpacking whose
 payload leaves by the level rule, CE3 over three capabilities and CE5 with an
-input-output body.
+input-output body.  CE1b, CE1 with its filtered closure called, at the
+filtered set it declares.
 
 Accepted although no search over the declared types of the context finds it:
 QP1, a function at a member selected through a recursive shape.  QP4, a field
@@ -118,7 +120,7 @@ is not `Control`.  CE5 has no kinding of its thread-local argument.  Each has
 its `¬ Alg` fact.  Rejected with a reason: `any` below a field of a domain, an
 existential answer outside every scope, and the three escapes of a callback.
 The escape and the escape at the top carry a certificate at the goal the typer
-reached.
+reached, and the kernel checks the verdict of `compile` on both.
 
 At the recursion limit: LP, a check through `∀` bodies that reaches the same
 goal under one more binder at every level.  PF, Pierce's divergence of F<:,
@@ -136,7 +138,9 @@ The checks W1 and W5 ask subcapturing for the steps of the level order at the
 version's contexts.  `C2_never_reads_k1` is the plain effect theorem at C2.
 `CE1_reads_only_control`, `CE2_no_thread_local` and `CE3_reads_only_control`
 are the classified ones: every root of a variable a run reads carries a
-classifier the declared kind admits.  The logs of C2, S1, CE1, CE2 and CE3 are
+classifier the declared kind admits.  Their runs read only closures declared at
+the empty set.  `CE1b_reads_only_control` is the instance whose run reads a
+closure declared at a filtered set that names `io`.  The logs of C2, S1, CE1, CE2 and CE3 are
 pinned.  S2, C2, E2, CE1, CE2 and CE3 are run from their platform's initial
 store, printed with the platform's own names, and pinned at the step count at
 which they become final.
@@ -375,6 +379,70 @@ def escapesAt {α : Type} {s : Sig} (v : Verdict α) (Γ : Ctx s) (C D : Capture
       if h : s' = s then ctxEq (h ▸ Γ') Γ && decide (h ▸ C' = C) && decide (h ▸ D' = D)
       else false
   | _ => false
+
+/-- `ctxEq` decides equality. -/
+theorem ctxEq_sound : ∀ {s : Sig} (Γ Δ : Ctx s), ctxEq Γ Δ = true → Γ = Δ
+  | _, .nil, .nil, _ => rfl
+  | _, .cons Γ' T, .cons Δ' U, h => by
+      simp only [ctxEq, Bool.and_eq_true, decide_eq_true_eq] at h
+      rw [h.1, ctxEq_sound Γ' Δ' h.2]
+  | _, .consSelf Γ' d S U, .consSelf Δ' d' S' U', h => by
+      simp only [ctxEq, Bool.and_eq_true, decide_eq_true_eq] at h
+      rw [h.1.1.1, h.1.1.2, h.1.2, ctxEq_sound Γ' Δ' h.2]
+  | _, .consC Γ', .consC Δ', h => by
+      rw [ctxEq_sound Γ' Δ' (by simpa [ctxEq] using h)]
+  | _, .consRoot Γ', .consRoot Δ', h => by
+      rw [ctxEq_sound Γ' Δ' (by simpa [ctxEq] using h)]
+  | _, .consInst Γ' C, .consInst Δ' D, h => by
+      simp only [ctxEq, Bool.and_eq_true, decide_eq_true_eq] at h
+      rw [h.1, ctxEq_sound Γ' Δ' h.2]
+  | _, .consCls Γ' k, .consCls Δ' k', h => by
+      simp only [ctxEq, Bool.and_eq_true, decide_eq_true_eq] at h
+      rw [h.1, ctxEq_sound Γ' Δ' h.2]
+  | _, .cons _ _, .consSelf _ _ _ _, h => by simp [ctxEq] at h
+  | _, .consSelf _ _ _ _, .cons _ _, h => by simp [ctxEq] at h
+  | _, .consC _, .consRoot _, h => by simp [ctxEq] at h
+  | _, .consC _, .consInst _ _, h => by simp [ctxEq] at h
+  | _, .consC _, .consCls _ _, h => by simp [ctxEq] at h
+  | _, .consRoot _, .consC _, h => by simp [ctxEq] at h
+  | _, .consRoot _, .consInst _ _, h => by simp [ctxEq] at h
+  | _, .consRoot _, .consCls _ _, h => by simp [ctxEq] at h
+  | _, .consInst _ _, .consC _, h => by simp [ctxEq] at h
+  | _, .consInst _ _, .consRoot _, h => by simp [ctxEq] at h
+  | _, .consInst _ _, .consCls _ _, h => by simp [ctxEq] at h
+  | _, .consCls _ _, .consC _, h => by simp [ctxEq] at h
+  | _, .consCls _ _, .consRoot _, h => by simp [ctxEq] at h
+  | _, .consCls _ _, .consInst _ _, h => by simp [ctxEq] at h
+
+/-- A verdict that rejects by a level escape at the goal `C <: D` in the
+context `Γ`, with the certificate's root `r`. -/
+def rejectsAt {α : Type} {s : Sig} (v : Verdict α) (Γ : Ctx s) (C D : CaptureSet s)
+    (r : FCdot.CapAtom s) : Bool :=
+  match v with
+  | .rejected (.levelEscape (s := s') Γ' C' D' r' _) =>
+      if h : s' = s then
+        ctxEq (h ▸ Γ') Γ && decide (h ▸ C' = C) && decide (h ▸ D' = D) && decide (h ▸ r' = r)
+      else false
+  | _ => false
+
+/-- `rejectsAt` decides that the verdict is that rejection.  The certificate
+says that no member-free subcapturing proves the goal. -/
+theorem rejectsAt_sound {α : Type} {s : Sig} {v : Verdict α} {Γ : Ctx s}
+    {C D : CaptureSet s} {r : FCdot.CapAtom s} (h : rejectsAt v Γ C D r = true) :
+    ∃ cert : ¬ ∃ d : Subcap Γ C D, d.MemberFree,
+      v = .rejected (.levelEscape Γ C D r cert) := by
+  match v, h with
+  | .rejected (.levelEscape (s := s') Γ' C' D' r' cert), h =>
+      simp only [rejectsAt] at h
+      split at h
+      · rename_i hs
+        subst hs
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+        obtain ⟨⟨⟨hΓ, hC⟩, hD⟩, hr⟩ := h
+        cases ctxEq_sound _ _ hΓ
+        subst hC hD hr
+        exact ⟨cert, rfl⟩
+      · exact absurd h (by simp)
 
 /-! ## E1: bad bounds under a lambda
 
@@ -745,6 +813,27 @@ theorem C7_compiles : (compile {} Λc (onC C7src)).isOk = true := by decide +ker
 term. -/
 theorem C7_checks : CheckerAccepts {} Λc (onC C7src) C7_compiles :=
   compile_checks_get C7_compiles
+
+/-- **C7 is compiled faithfully, and not to its resolved body.**  The
+elaborated term differs from the resolved body, since the typer inserted
+`□ f1`, `□ f2` and `{k1} ⊸ e`.  The two have the same skeleton, by
+`compile_faithful_get`. -/
+theorem C7_faithful :
+    ((compile {} Λc (onC C7src)).get C7_compiles).2.tm ≠
+        ((compile {} Λc (onC C7src)).get C7_compiles).1.body ∧
+      ATm.skel ((compile {} Λc (onC C7src)).get C7_compiles).2.tm =
+        ATm.skel ((compile {} Λc (onC C7src)).get C7_compiles).1.body :=
+  ⟨by decide +kernel, (compile_faithful_get C7_compiles).2.2⟩
+
+/-- C7 with its boxes written and C7 with none have the same skeleton. -/
+example : ATm.skel ((compile {} Λc (onC C7boxSrc)).get C7box_compiles).1.body =
+    ATm.skel ((compile {} Λc (onC C7src)).get C7_compiles).1.body := by
+  decide +kernel
+
+/-- Skeletons tell programs apart: those of C7 and E2 differ. -/
+example : ATm.skel ((compile {} Λc (onC C7src)).get C7_compiles).2.tm ≠
+    ATm.skel ((compile {} Λc (onE E2src)).get E2_compiles).2.tm := by
+  decide +kernel
 
 /-! ## S3: a type member at a boxed capturing type
 
@@ -1447,9 +1536,10 @@ example : subcapFound {} W5Ctx [CapAtom.var W5f] [CapAtom.cvar W5kb] = true := b
 example : subcapFound {} W5Ctx [CapAtom.var W5f] [CapAtom.cvar W5kout] = false := by
   decide +kernel
 
-#eval expect ((certify? W5Ctx [CapAtom.var W5f] [CapAtom.cvar W5kout]).map Reason.name ==
-    some "levelEscape")
-  "W5: the escape goal is not certified"
+/-- The certificate builder certifies the escape goal. -/
+example : (certify? W5Ctx [CapAtom.var W5f] [CapAtom.cvar W5kout]).map Reason.name =
+    some "levelEscape" := by
+  decide +kernel
 
 /-- The parameter of the callback resolves to its arrow binder, at every
 depth. -/
@@ -1501,12 +1591,10 @@ def EscGoalCtx : Ctx (Sig.body (Sig.body ([],c,c),x)) :=
 def escRoot : BVar (Sig.body (Sig.body ([],c,c),x)) .cap :=
   .there (.there (.there (.there (.there (.there .here)))))
 
-#eval expect ((resolveTop Λc [] πc EscSrc).map (fun a => escapesAt (synthTop? {} πc a) EscGoalCtx
-    [CapAtom.var .here] [CapAtom.cvar escRoot]) == some true)
-  "the escape: not rejected at the goal in EscGoalCtx"
-
-#eval expect ((compile {} Λc (onC EscSrc)).reason?.map Reason.name == some "levelEscape")
-  "the escape: compile does not reject it"
+/-- The typer rejects the escape at the goal in `EscGoalCtx`. -/
+example : (resolveTop Λc [] πc EscSrc).map (fun a => escapesAt (synthTop? {} πc a) EscGoalCtx
+    [CapAtom.var .here] [CapAtom.cvar escRoot]) = some true := by
+  decide +kernel
 
 /-- The parameter of the callback resolves to its arrow binder, at every
 depth. -/
@@ -1527,6 +1615,17 @@ theorem Esc_rejected' :
     (fun m => by rw [caps_self _ (by decide +kernel) m]; decide +kernel) 0
     (by rw [Esc_caps]; decide +kernel)
 
+/-- **What the compile of the escape returns.**  At the default budget,
+`compile` rejects the escape for a level escape at the goal `{f} <: {κ_g}` in
+`EscGoalCtx`, with the root `κ_g`.  The certificate it carries says that no
+member-free subcapturing proves that goal, as `Esc_rejected'` does.  The kernel
+computes the verdict. -/
+theorem compile_rejected_goal :
+    ∃ cert : ¬ ∃ d : Subcap EscGoalCtx [CapAtom.var .here] [CapAtom.cvar escRoot], d.MemberFree,
+      compile {} Λc (onC EscSrc) = .rejected (.levelEscape EscGoalCtx [CapAtom.var .here]
+        [CapAtom.cvar escRoot] (FCdot.CapAtom.cvar escRoot) cert) :=
+  rejectsAt_sound (by decide +kernel)
+
 /-! ## The escape by an ascription
 
 `AscEscSrc` of `Typer.lean` writes the same callback with an ascription in
@@ -1542,8 +1641,9 @@ theorem AscEsc_verdict : judgProg Λc (onC AscEscSrc) = (none, ⟨defaultFuel - 
 theorem AscEsc_rejected (b : Budget) : (compile b Λc (onC AscEscSrc)).isOk = false :=
   judgProg_rejects AscEsc_verdict b
 
-#eval expect ((compile {} Λc (onC AscEscSrc)).reason?.map Reason.name == some "levelEscape")
-  "the escape by an ascription: compile does not reject it"
+/-- `compile` rejects the escape by an ascription for a level escape. -/
+example : (compile {} Λc (onC AscEscSrc)).reason?.map Reason.name = some "levelEscape" := by
+  decide +kernel
 
 /-! ## The escape at the top of a program
 
@@ -1570,9 +1670,10 @@ def topPlat : CaptureSet (Sig.body ([],c,c,x)) :=
   [CapAtom.cvar (.there (.there (.there (.there (.there .here))))),
     CapAtom.cvar (.there (.there (.there (.there .here))))]
 
-#eval expect ((resolveTop Λc [] πc TopEscSrc).map (fun a => escapesAt (synthTop? {} πc a) TopGoalCtx
-    [CapAtom.var .here] topPlat) == some true)
-  "the escape at the top: not rejected at the goal in TopGoalCtx"
+/-- The typer rejects the escape at the top at the goal in `TopGoalCtx`. -/
+example : (resolveTop Λc [] πc TopEscSrc).map (fun a => escapesAt (synthTop? {} πc a) TopGoalCtx
+    [CapAtom.var .here] topPlat) = some true := by
+  decide +kernel
 
 /-- The parameter of the callback resolves to its arrow binder, at every
 depth. -/
@@ -1592,6 +1693,15 @@ theorem top_escape_rejected :
   escape_rejected_at (ctxWf?_sound _ (by decide +kernel)) FCdot.CapAtom.top
     (fun m => by rw [caps_self _ (by decide +kernel) m]; decide +kernel) 0
     (by rw [Top_caps]; decide +kernel)
+
+/-- **What the compile of the escape at the top returns.**  At the default
+budget, `compile` rejects it for a level escape at the goal `{f} <: {k1, k2}`
+in `TopGoalCtx`, with the universal root.  The kernel computes the verdict. -/
+theorem TopEsc_compile_rejected :
+    ∃ cert : ¬ ∃ d : Subcap TopGoalCtx [CapAtom.var .here] topPlat, d.MemberFree,
+      compile {} Λc (onC TopEscSrc) = .rejected (.levelEscape TopGoalCtx [CapAtom.var .here]
+        topPlat FCdot.CapAtom.top cert) :=
+  rejectsAt_sound (by decide +kernel)
 
 /-! ## A callback that keeps its capture inside its own scope
 
@@ -2075,6 +2185,8 @@ theorem compile_effect_safety_at {b : Budget} {Λ : LabelTable} {p : SProg}
     {s : Sig} {st : State s} (run' : Steps (⟨P.store, .nil, t⟩ : State p.platNames.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
+      FCdot.Steps (⟨P.targetStore, .nil, ((compile b Λ p).get h).2.deriv.translate⟩ : FCdot.State _) stt ∧
+      (∃ V, FCdot.State.Typed stt V) ∧ stt.inspects = some x ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext P.targetStore stt.σ ρ ∧
           ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var κ)) [FCdot.CapAtom.var x] := by
@@ -2090,6 +2202,8 @@ theorem C2_never_reads_k1 {s : Sig} {st : State s}
     (r : Steps (⟨πc.plat.store, .nil, C2tm⟩ : State πc.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename πc.sig s),
+      FCdot.Steps (⟨πc.plat.targetStore, .nil, ((compile {} Λc (onC C2src)).get C2_compiles).2.deriv.translate⟩ : FCdot.State _) stt ∧
+      (∃ V, FCdot.State.Typed stt V) ∧ stt.inspects = some x ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext πc.plat.targetStore stt.σ ρ ∧
           ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var k1)) [FCdot.CapAtom.var x] :=
@@ -2178,6 +2292,8 @@ theorem compile_filtered_effect_safety_at {b : Budget} {Λ : LabelTable} {p : SP
     {s : Sig} {st : State s} (run' : Steps (⟨P.store, .nil, t⟩ : State p.platNames.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
+      FCdot.Steps (⟨P.targetStore, .nil, ((compileFiltered b Λ p φ).get h).2.1.deriv.translate⟩ : FCdot.State _) stt ∧
+      (∃ V, FCdot.State.Typed stt V) ∧ stt.inspects = some x ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext P.targetStore stt.σ ρ ∧
           ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] → φ.Contains (Γ'.classOf a) := by
@@ -2196,6 +2312,8 @@ theorem compile_classified_effect_safety_at {b : Budget} {Λ : LabelTable} {p : 
     {s : Sig} {st : State s} (run' : Steps (⟨P.store, .nil, t⟩ : State p.platNames.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename p.platNames.sig s),
+      FCdot.Steps (⟨P.targetStore, .nil, ((compileKinded b Λ p φ).get h).2.1.deriv.translate⟩ : FCdot.State _) stt ∧
+      (∃ V, FCdot.State.Typed stt V) ∧ stt.inspects = some x ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext P.targetStore stt.σ ρ ∧
           ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] → φ.Contains (Γ'.classOf a) := by
@@ -2274,11 +2392,15 @@ classifier `only[Control]` admits.  This is `compile_filtered_effect_safety`
 at CE1, with the platform and the term compared by the kernel.  The run reads
 only `f`, which the program declares at the empty capture set, so no root
 exists and the statement holds trivially here.  The program never calls
-`r.body`, so the filter is not exercised. -/
+`r.body`, so the filter is not exercised.  `CE1b_reads_only_control` is the
+instance where the run reads a filtered closure. -/
 theorem CE1_reads_only_control {s : Sig} {st : State s}
     (r : Steps (⟨E1Plat.store, .nil, E1tm⟩ : State ([],c,c)) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename ([],c,c) s),
+      FCdot.Steps (⟨E1Plat.targetStore, .nil,
+        ((compileFiltered {} Λk CE1src (Cls.only Cls.Control)).get CE1_filtered).2.1.deriv.translate⟩ : FCdot.State _) stt ∧
+      (∃ V, FCdot.State.Typed stt V) ∧ stt.inspects = some x ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext E1Plat.targetStore stt.σ ρ ∧
           ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] →
@@ -2288,6 +2410,113 @@ theorem CE1_reads_only_control {s : Sig} {st : State s}
 
 /-- The log of CE1's derivation has fifty two entries. -/
 example : (compileLog {} Λk CE1src).length = 52 := by decide +kernel
+
+/-! ## CE1b: the filtered closure, called
+
+CE1 with the closure `b` called.  `b` is declared at the filtered platform set
+`{ctl, io}.only[Control]`, which names `io`, and the program applies it to a
+pure closure `t`.  So the run reads `b`, a variable whose declared set is not
+empty, and the effect theorem speaks of a filtered set at that read. -/
+
+/-- `let b = λu.u at {ctl, io}.only[Control] in let t = λu.u in let r = b t in
+r`. -/
+def CE1bSrc : SProg :=
+  clsProg% classifiers IO, ThreadLocal, Control extends ThreadLocal
+    platform [ctl : Control, io : IO]
+    uses {ctl, io}.only[Control]
+    kind only[Control]
+    let b = ((λ(u : ⊤ ^ {}). u) : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io}.only[Control]) in
+    let t = ((λ(u : ⊤ ^ {}). u) : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {}) in
+    let r = b t in
+    r
+
+/-- CE1b's use set is the projection at `only[Control]`. -/
+theorem CE1b_filtered : (compileFiltered {} Λk CE1bSrc (Cls.only Cls.Control)).isOk = true := by
+  decide +kernel
+
+/-- CE1b is kinded at `only[Control]`. -/
+theorem CE1b_kinded : (compileKinded {} Λk CE1bSrc (Cls.only Cls.Control)).isOk = true := by
+  decide +kernel
+
+/-- The sizes of the capture sets the written types give to the binders of a
+`let` spine, outermost first. -/
+def declaredLens : {s : Sig} → ATm s → List Nat
+  | _, .let (some (.ty T)) _ u => T.captureSet.length :: declaredLens u
+  | _, .let _ (.asc _ T) u => T.captureSet.length :: declaredLens u
+  | _, .let _ _ u => 0 :: declaredLens u
+  | _, _ => []
+
+/-- The position of a binder, counted from the innermost. -/
+def bvarIdx {s : Sig} {k : Kind} : BVar s k → Nat
+  | .here => 0
+  | .there x => bvarIdx x + 1
+
+/-- The platform of the filtered compile of CE1b. -/
+def CE1bPlat : Platform CE1bSrc.platNames.sig :=
+  ((compileFiltered {} Λk CE1bSrc (Cls.only Cls.Control)).get CE1b_filtered).1.plat
+
+/-- The erased term of the filtered compile of CE1b. -/
+def CE1bTm : Tm CE1bSrc.platNames.sig :=
+  ((compileFiltered {} Λk CE1bSrc (Cls.only Cls.Control)).get CE1b_filtered).2.1.tm.erase
+
+/-- `b` is declared at the two atoms of the filtered platform set, `t` and
+`r` at none. -/
+theorem CE1b_declared :
+    declaredLens ((compileFiltered {} Λk CE1bSrc (Cls.only Cls.Control)).get CE1b_filtered).2.1.tm
+      = [2, 0, 0] := by
+  decide +kernel
+
+/-- The state of the run after five steps reads a variable. -/
+theorem CE1b_reads :
+    ((run 5 CE1bSrc.platNames.sig ⟨CE1bPlat.store, .nil, CE1bTm⟩).2.inspects).isSome = true := by
+  decide +kernel
+
+/-- That variable is `b`, the second binder from the innermost. -/
+theorem CE1b_reads_b :
+    ((run 5 CE1bSrc.platNames.sig ⟨CE1bPlat.store, .nil, CE1bTm⟩).2.inspects).map bvarIdx =
+      some 1 := by
+  decide +kernel
+
+/-- **CE1b reads only `Control` capabilities.**  Along any run of CE1b from the
+platform's initial store, every root of a variable the reached state reads, in
+the matched target state, carries a classifier `only[Control]` admits.  This
+is `compile_filtered_effect_safety` at CE1b.  The run reads `b` at step five
+(`CE1b_reads_b`), and `b` is declared at the filtered set (`CE1b_declared`),
+whose base names `io`. -/
+theorem CE1b_reads_only_control {s : Sig} {st : State s}
+    (r : Steps (⟨CE1bPlat.store, .nil, CE1bTm⟩ : State CE1bSrc.platNames.sig) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename CE1bSrc.platNames.sig s),
+      FCdot.Steps (⟨CE1bPlat.targetStore, .nil,
+        ((compileFiltered {} Λk CE1bSrc (Cls.only Cls.Control)).get
+          CE1b_filtered).2.1.deriv.translate⟩ : FCdot.State _) stt ∧
+      (∃ V, FCdot.State.Typed stt V) ∧ stt.inspects = some x ∧
+      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+        FCdot.Store.Ext CE1bPlat.targetStore stt.σ ρ ∧
+          ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] →
+            (Cls.only Cls.Control).Contains (Γ'.classOf a) :=
+  compile_filtered_effect_safety_at CE1b_filtered rfl rfl r hin
+
+/-- The theorem at the read of `b`, after five steps. -/
+example := CE1b_reads_only_control (run_steps 5 _) (Option.some_get CE1b_reads).symm
+
+/-- The platform of the kinded compile of CE1b. -/
+def CE1bkPlat : Platform CE1bSrc.platNames.sig :=
+  ((compileKinded {} Λk CE1bSrc (Cls.only Cls.Control)).get CE1b_kinded).1.plat
+
+/-- The erased term of the kinded compile of CE1b. -/
+def CE1bkTm : Tm CE1bSrc.platNames.sig :=
+  ((compileKinded {} Λk CE1bSrc (Cls.only Cls.Control)).get CE1b_kinded).2.1.tm.erase
+
+/-- The run of the kinded compile reads a variable after five steps too. -/
+theorem CE1bk_reads :
+    ((run 5 CE1bSrc.platNames.sig ⟨CE1bkPlat.store, .nil, CE1bkTm⟩).2.inspects).isSome = true := by
+  decide +kernel
+
+/-- `compile_classified_effect_safety` at the read of `b`. -/
+example := compile_classified_effect_safety_at CE1b_kinded (P := CE1bkPlat) (t := CE1bkTm) rfl rfl
+  (run_steps 5 (⟨CE1bkPlat.store, .nil, CE1bkTm⟩ : State CE1bSrc.platNames.sig))
+  (Option.some_get CE1bk_reads).symm
 
 /-! ## M1 and M5: mixed and filtered sets on the left
 
@@ -2510,6 +2739,9 @@ theorem CE2_no_thread_local {s : Sig} {st : State s}
     (r : Steps (⟨E2PlatIO.store, .nil, E2tm⟩ : State ([],c,c,c)) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename ([],c,c,c) s),
+      FCdot.Steps (⟨E2PlatIO.targetStore, .nil,
+        ((compileFiltered {} Λk CE2src (Cls.except Cls.ThreadLocal)).get CE2_filtered).2.1.deriv.translate⟩ : FCdot.State _) stt ∧
+      (∃ V, FCdot.State.Typed stt V) ∧ stt.inspects = some x ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext E2PlatIO.targetStore stt.σ ρ ∧
           ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] →
@@ -2584,6 +2816,9 @@ theorem CE3_reads_only_control {s : Sig} {st : State s}
     (r : Steps (⟨E3Plat.store, .nil, E3tm⟩ : State ([],c,c)) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename ([],c,c) s),
+      FCdot.Steps (⟨E3Plat.targetStore, .nil,
+        ((compileKinded {} Λk CE3src (Cls.only Cls.Control)).get CE3_kinded).2.1.deriv.translate⟩ : FCdot.State _) stt ∧
+      (∃ V, FCdot.State.Typed stt V) ∧ stt.inspects = some x ∧
       FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext E3Plat.targetStore stt.σ ρ ∧
           ∀ a : FCdot.CapAtom s, Γ'.Root a [FCdot.CapAtom.var x] →

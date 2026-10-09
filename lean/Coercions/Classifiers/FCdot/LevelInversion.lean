@@ -6,10 +6,10 @@ namespace Classifiers
 # Member-free capture evidence never lowers a level
 
 `level_inversion` says that member-free capture evidence never lowers a
-level.  Over a typed store the context is root free, so `lvl_safety` and
-`no_inner_escape` hold vacuously; what has content in a rooted context is
-this inversion, and it is true exactly because `member` and `eqToLe` are
-excluded.  Bad capture bounds enter capture evidence only through those two
+level.  Over a typed store the context is root free and every atom is at
+the outermost level, so a level statement has content only in a context that
+opens a scope root.  This inversion holds in every context, and it is true
+exactly because `member` and `eqToLe` are excluded.  Bad capture bounds enter capture evidence only through those two
 rules (example `C3` of `FCdot/Examples.lean`), so member-free evidence is
 the largest fragment on which the statement holds.
 
