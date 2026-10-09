@@ -23,7 +23,9 @@ the self type of a literal, and the type written on a term member.  The
 resolver produces it and the elaborator fills the empty slots.  `ATm` stays the
 elaborated term, since the typer and every theorem about it read every slot.
 `PTm.full?` and `ATm.toI` translate between the two, and `PTm.fills` says that
-an elaborated term agrees with the slots the programmer wrote.
+an elaborated term agrees with the slots the programmer wrote.  `PTm.deps`
+reads off a field of a literal the fields it projects off the self, which
+decides the order in which fields without a written type are typed.
 -/
 
 namespace Frontend
@@ -540,6 +542,46 @@ theorem sizePDefs_toI : ∀ {s : Sig} (d : ADefs s), sizePDefs d.toI = sizeADefs
   | _, .typ _ _ => rfl
   | _, .trm _ t => by simp only [ADefs.toI, sizePDefs, sizeADefs, sizePTm_toI t]
   | _, .and d e => by simp only [ADefs.toI, sizePDefs, sizeADefs, sizePDefs_toI d, sizePDefs_toI e]
+end
+
+/-! ## Dependencies on the self
+
+A field of a literal without a self type is typed once the fields it reads off
+the self are.  `PTm.deps` reads them off a right-hand side.  `vs` are the
+variables that stand for the self: the self itself, and every variable a `let`
+without a type binds to one of them.  A projection `w.a` with `w` among them
+depends on `a`.  Any other use of one of them, as a function, an argument, a
+result or a term bound at a written type, sets the flag, since it needs the
+whole self type.  A type that selects a type member of the self is no
+dependency, since type members are known at once. -/
+
+/-- The bound term of a `let` makes its variable stand for the self: no
+written type, and a variable that already does. -/
+def PTm.isAlias {s : Sig} (vs : List (BVar s .var)) : Option (Ty s) → PTm s → Bool
+  | none, .path (.var y) => vs.contains y
+  | _, _ => false
+
+mutual
+/-- The labels a term projects off the self, in term order, and whether it
+uses the self any other way. -/
+def PTm.deps : {s : Sig} → PTm s → List (BVar s .var) → List Label × Bool
+  | _, .path (.var y), vs => ([], vs.contains y)
+  | _, .lam _ t, vs => t.deps (vs.map .there)
+  | _, .obj _ d, vs => d.deps (vs.map .there)
+  | _, .app x y, vs => ([], vs.contains x || vs.contains y)
+  | _, .proj x a, vs => (if vs.contains x then [a] else [], false)
+  | _, .let _ ann t u, vs =>
+      if PTm.isAlias vs ann t then u.deps (.here :: vs.map .there)
+      else
+        match t.deps vs, u.deps (vs.map .there) with
+        | (l1, b1), (l2, b2) => (l1 ++ l2, b1 || b2)
+/-- The labels a definition list projects off the self, and the flag. -/
+def PDefs.deps : {s : Sig} → PDefs s → List (BVar s .var) → List Label × Bool
+  | _, .typ _ _, _ => ([], false)
+  | _, .trm _ _ t, vs => t.deps vs
+  | _, .and d e, vs =>
+      match d.deps vs, e.deps vs with
+      | (l1, b1), (l2, b2) => (l1 ++ l2, b1 || b2)
 end
 
 end Frontend
