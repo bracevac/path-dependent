@@ -137,8 +137,9 @@ The typer has no completeness theorem.
 
 Every definition is structural, so the kernel evaluates the typer.  The checks
 at the end of the module type the example programs at `defaultFuel` by
-`decide +kernel`.  A level escape reads the well-founded `Ctx.caps`, so those
-verdicts are computed by compiled code.
+`decide +kernel`.  A level escape resolves capture sets with `capsS`, the
+structural form of the well-founded `Ctx.caps`, so the kernel computes those
+verdicts too.
 -/
 
 namespace CapturesCCFrontend
@@ -981,8 +982,8 @@ does, and collects every set goal that subcapturing does not find.  For each
 it tries a certificate.  The certificate needs three decided facts: the
 context is well formed (`ctxWf?`), the target set resolves to itself at every
 depth (`selfAtom?`), and at one small depth the source set is not confined to
-a root the target set is confined to.  The last fact reads the well-founded
-`Ctx.caps`, so compiled code computes it, not the kernel. -/
+a root the target set is confined to.  The last fact reads `capsS`, which
+computes `Ctx.caps` by structural recursion, so the kernel computes it. -/
 
 /-- Well-formedness of a context, decided.  Only an object's self binder asks
 something, the conditions `literalShape?` and `distinctLabels?`. -/
@@ -1040,19 +1041,135 @@ theorem caps_self {s : Sig} {Γ : CapturesCC.FCdot.Ctx s} :
         caps_self D (fun b hb => h b (List.mem_cons_of_mem _ hb)) n]
       rfl
 
+/-! ## Resolution the kernel runs
+
+`FCdot.Ctx.caps` recurses on the size of the context, then on the fuel, then on
+the length of the set, so it is defined by well-founded recursion and the
+kernel does not reduce it.  `capsS` computes the same sets by structural
+recursion: on the fuel in `capsNameS`, which follows a capture name, and on the
+context in `capsAtomS`, which resolves one atom and is handed the name clause.
+`capsS_eq` says the two agree, so a test on `capsS` decides the same
+proposition and the kernel can run it. -/
+
+/-- One atom resolved at a context, by structural recursion on the context.
+The clauses are those of `FCdot.Ctx.capsAtom`.  The clause of a capture name
+is the argument `nm`. -/
+def capsAtomS
+    (nm : ∀ {s : Sig}, CapturesCC.FCdot.Ctx s → BVar s .var → Label →
+      CapturesCC.FCdot.CaptureSet s) :
+    ∀ {s : Sig}, CapturesCC.FCdot.Ctx s → CapturesCC.FCdot.CapAtom s →
+      CapturesCC.FCdot.CaptureSet s
+  | _, .cons Γ b, .var .here =>
+      CapturesCC.FCdot.CaptureSet.weaken (b.ty.captureSet.flatMap (capsAtomS nm Γ))
+  | _, .cons Γ _, .var (.there y) => (capsAtomS nm Γ (.var y)).weaken
+  | _, .consC Γ _, .var (.there y) => (capsAtomS nm Γ (.var y)).weaken
+  | _, .consC _ .root, .cvar .here => [.cvar .here]
+  | _, .consC _ .star, .cvar .here => [.cvar .here]
+  | _, .consC Γ (.upper C), .cvar .here =>
+      CapturesCC.FCdot.CaptureSet.weaken (C.flatMap (capsAtomS nm Γ))
+  | _, .consC Γ (.inst C), .cvar .here =>
+      CapturesCC.FCdot.CaptureSet.weaken (C.flatMap (capsAtomS nm Γ))
+  | _, .cons Γ _, .cvar (.there κ) => (capsAtomS nm Γ (.cvar κ)).weaken
+  | _, .consC Γ _, .cvar (.there κ) => (capsAtomS nm Γ (.cvar κ)).weaken
+  | _, _, .top => [.top]
+  | _, Γ, .name x ℓ => nm Γ x ℓ
+termination_by structural _ Γ => Γ
+
+/-- The clause of a capture name at fuel `n`: no fuel resolves to the empty
+set, and otherwise the name follows the capture witness of its block. -/
+def capsNameS : Nat → ∀ {s : Sig}, CapturesCC.FCdot.Ctx s → BVar s .var → Label →
+    CapturesCC.FCdot.CaptureSet s
+  | 0, _, _, _, _ => []
+  | n + 1, _, Γ, x, ℓ =>
+      match Γ.lookupDefC x ℓ with
+      | some D => D.flatMap (capsAtomS (capsNameS n) Γ)
+      | none => []
+termination_by structural n => n
+
+/-- `FCdot.Ctx.caps` by structural recursion: each atom resolved by
+`capsAtomS` at fuel `n`. -/
+def capsS (n : Nat) {s : Sig} (Γ : CapturesCC.FCdot.Ctx s) (C : CapturesCC.FCdot.CaptureSet s) :
+    CapturesCC.FCdot.CaptureSet s :=
+  C.flatMap (capsAtomS (capsNameS n) Γ)
+
+/-- `Ctx.caps` resolves a set atom by atom. -/
+theorem flatMap_capsAtom {s : Sig} (Γ : CapturesCC.FCdot.Ctx s) (n : Nat) :
+    ∀ C : CapturesCC.FCdot.CaptureSet s, C.flatMap (Γ.capsAtom n) = Γ.caps n C
+  | [] => by simp
+  | a :: C => by
+      rw [List.flatMap_cons, CapturesCC.FCdot.Ctx.caps_cons, flatMap_capsAtom Γ n C]
+
+/-- `capsAtomS` is `Ctx.capsAtom` at fuel `n` when its name clause is. -/
+theorem capsAtomS_eq_of (n : Nat)
+    (nm : ∀ {s : Sig}, CapturesCC.FCdot.Ctx s → BVar s .var → Label →
+      CapturesCC.FCdot.CaptureSet s)
+    (hnm : ∀ {s : Sig} (Γ : CapturesCC.FCdot.Ctx s) x ℓ, nm Γ x ℓ = Γ.capsAtom n (.name x ℓ)) :
+    ∀ {s : Sig} (Γ : CapturesCC.FCdot.Ctx s) (a : CapturesCC.FCdot.CapAtom s),
+      capsAtomS nm Γ a = Γ.capsAtom n a
+  | _, .cons Γ b, .var .here => by
+      have : b.ty.captureSet.flatMap (capsAtomS nm Γ) = Γ.caps n b.ty.captureSet := by
+        rw [← flatMap_capsAtom]
+        exact congrArg (List.flatMap · _) (funext fun a => capsAtomS_eq_of n nm hnm Γ a)
+      rw [capsAtomS, this]; simp [CapturesCC.FCdot.Ctx.capsAtom]
+  | _, .cons Γ _, .var (.there y) => by
+      rw [capsAtomS, capsAtomS_eq_of n nm hnm Γ (.var y)]; simp [CapturesCC.FCdot.Ctx.capsAtom]
+  | _, .consC Γ _, .var (.there y) => by
+      rw [capsAtomS, capsAtomS_eq_of n nm hnm Γ (.var y)]; simp [CapturesCC.FCdot.Ctx.capsAtom]
+  | _, .consC _ .root, .cvar .here => by simp [capsAtomS, CapturesCC.FCdot.Ctx.capsAtom]
+  | _, .consC _ .star, .cvar .here => by simp [capsAtomS, CapturesCC.FCdot.Ctx.capsAtom]
+  | _, .consC Γ (.upper C), .cvar .here => by
+      have : C.flatMap (capsAtomS nm Γ) = Γ.caps n C := by
+        rw [← flatMap_capsAtom]
+        exact congrArg (List.flatMap · _) (funext fun a => capsAtomS_eq_of n nm hnm Γ a)
+      rw [capsAtomS, this]; simp [CapturesCC.FCdot.Ctx.capsAtom]
+  | _, .consC Γ (.inst C), .cvar .here => by
+      have : C.flatMap (capsAtomS nm Γ) = Γ.caps n C := by
+        rw [← flatMap_capsAtom]
+        exact congrArg (List.flatMap · _) (funext fun a => capsAtomS_eq_of n nm hnm Γ a)
+      rw [capsAtomS, this]; simp [CapturesCC.FCdot.Ctx.capsAtom]
+  | _, .cons Γ _, .cvar (.there κ) => by
+      rw [capsAtomS, capsAtomS_eq_of n nm hnm Γ (.cvar κ)]; simp [CapturesCC.FCdot.Ctx.capsAtom]
+  | _, .consC Γ _, .cvar (.there κ) => by
+      rw [capsAtomS, capsAtomS_eq_of n nm hnm Γ (.cvar κ)]; simp [CapturesCC.FCdot.Ctx.capsAtom]
+  | _, Γ, .top => by cases Γ <;> simp [capsAtomS]
+  | _, Γ, .name x ℓ => by cases Γ <;> simp [capsAtomS, hnm]
+termination_by structural _ Γ => Γ
+
+/-- `capsAtomS` with the name clause `capsNameS n` is `Ctx.capsAtom` at fuel
+`n`. -/
+theorem capsAtomS_eq : ∀ (n : Nat) {s : Sig} (Γ : CapturesCC.FCdot.Ctx s)
+    (a : CapturesCC.FCdot.CapAtom s), capsAtomS (capsNameS n) Γ a = Γ.capsAtom n a
+  | 0 => capsAtomS_eq_of 0 _ (fun Γ x ℓ => by cases Γ <;> simp [capsNameS])
+  | n + 1 => capsAtomS_eq_of (n + 1) _ (fun Γ x ℓ => by
+      rw [CapturesCC.FCdot.Ctx.capsAtom_name_succ]
+      cases h : Γ.lookupDefC x ℓ with
+      | none => simp [capsNameS, h]
+      | some D =>
+          simp only [capsNameS, h, Option.elim]
+          rw [← flatMap_capsAtom]
+          exact congrArg (List.flatMap · _) (funext fun a => capsAtomS_eq n Γ a))
+
+/-- **`capsS` is `Ctx.caps`.** -/
+theorem capsS_eq (n : Nat) {s : Sig} (Γ : CapturesCC.FCdot.Ctx s)
+    (C : CapturesCC.FCdot.CaptureSet s) : capsS n Γ C = Γ.caps n C := by
+  rw [capsS, ← flatMap_capsAtom]
+  exact congrArg (List.flatMap · _) (funext fun a => capsAtomS_eq n Γ a)
+
 /-- A certificate for the goal `C <: D` at `Γ`: the first root `r` (the
 universal one, then each atom of `D`) that confines `D`, with the first depth
-below four at which `C` is not confined to it. -/
+below four at which `C` is not confined to it.  The depth test reads
+`capsS`, so the kernel runs it. -/
 def certify? {s : Sig} (Γ : Ctx s) (C D : CaptureSet s) : Option Reason :=
   if hwf : ctxWf? Γ = true then
     if hself : ∀ a ∈ D.translate, selfAtom? Γ.translate a = true then
       (CapturesCC.FCdot.CapAtom.top :: D.translate).findSome? fun r =>
         if hr : Γ.translate.Confined D.translate r then
           (List.range 4).findSome? fun n =>
-            if hn : ¬ Γ.translate.Confined (Γ.translate.caps n C.translate) r then
+            if hn : ¬ Γ.translate.Confined (capsS n Γ.translate C.translate) r then
               some (.levelEscape Γ C D r
                 (escape_rejected_at (ctxWf?_sound Γ hwf) r
-                  (fun m => by rw [caps_self _ hself m]; exact hr) n hn))
+                  (fun m => by rw [caps_self _ hself m]; exact hr) n
+                  (by rw [← capsS_eq]; exact hn)))
             else none
         else none
     else none
