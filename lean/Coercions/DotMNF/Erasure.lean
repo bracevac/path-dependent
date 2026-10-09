@@ -9,9 +9,10 @@ variables, object literals keep their term members only, and the store and
 the continuation are erased pointwise.  Erasure is the identity on
 signatures.
 
-The two theorems of milestone M2 are `DotMNF.erase_step` and
-`DotMNF.erase_reflect`: the machine of §3.5 and the runtime machine of §4
-are in lockstep, in both directions, with no administrative equivalence.
+The main theorems are `DotMNF.erase_step` and `DotMNF.erase_reflect`. The
+source machine and the runtime machine are in lockstep, in both directions,
+with no administrative equivalence. `DotMNF.final_erase` and
+`DotMNF.final_reflect` say that a state is final exactly when its erasure is.
 -/
 
 namespace DotMNF
@@ -301,5 +302,46 @@ theorem erase_reflect {s s' : Sig} {st : State s} {r : Runtime.State s'}
       cases h with
       | alloc hv => cases hv
       | «let» => exact reflect_let
+
+/-! ## Final states of the source machine
+
+A source state is final exactly when its erasure is: the continuation is
+erased frame by frame, and the running term is an answer exactly when its
+erasure is. -/
+
+/-- A final source state erases to a final runtime state. -/
+theorem final_erase {s : Sig} {st : State s} (h : st.Final) : st.erase.Final := by
+  obtain ⟨σ, K, t⟩ := st
+  obtain ⟨hK, ht⟩ := h
+  refine ⟨?_, ?_⟩
+  · simp only at hK; subst hK; rfl
+  · rcases ht with ⟨v, hv⟩ | ⟨p, hp⟩
+    · simp only at hv; subst hv
+      exact Or.inl (Value.isValue_erase v)
+    · simp only at hp; subst hp
+      exact Or.inr ⟨p.root, rfl⟩
+
+/-- Conversely, a source state whose erasure is final is itself final.
+Unlike in FCdot there is no pending-cast-frame caveat: the source machine
+has no cast frames. -/
+theorem final_reflect {s : Sig} {st : State s} (h : st.erase.Final) : st.Final := by
+  obtain ⟨σ, K, t⟩ := st
+  obtain ⟨hK, ht⟩ := h
+  refine ⟨?_, ?_⟩
+  · cases K with
+    | nil => rfl
+    | cons K u => simp [State.erase, Cont.erase] at hK
+  · cases t with
+    | val v => exact Or.inl ⟨v, rfl⟩
+    | path p => exact Or.inr ⟨p, rfl⟩
+    | app x y =>
+        simp only [State.erase, Tm.erase] at ht
+        exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
+    | proj x a =>
+        simp only [State.erase, Tm.erase] at ht
+        exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
+    | «let» t u =>
+        simp only [State.erase, Tm.erase] at ht
+        exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
 
 end DotMNF

@@ -57,11 +57,11 @@ def multiPackageType : Ty [] :=
 
 theorem multi_arguments_are_checked :
     checkArgs Ctx.nil multiTelescope multiWitnesses multiEvidence = true := by
-  native_decide
+  decide +kernel
 
 theorem multi_package_is_checked :
     synthTm Ctx.nil multiPackage = some multiPackageType := by
-  native_decide
+  decide +kernel
 
 theorem multi_package_is_well_typed :
     Nonempty (Tm.HasType Ctx.nil multiPackage multiPackageType) :=
@@ -70,7 +70,7 @@ theorem multi_package_is_well_typed :
 theorem multi_package_erases_to_payload :
     multiPackage.erase =
       (.app (.lam (.var .here)) .unit : Runtime.Tm []) := by
-  native_decide
+  decide +kernel
 
 theorem multi_package_runtime_beta :
     Runtime.Step multiPackage.erase (.unit : Runtime.Tm []) := by
@@ -100,11 +100,11 @@ def selfDischargeAttempt : Tm [] :=
 
 theorem self_discharge_arguments_rejected :
     checkArgs Ctx.nil impossibleTelescope .nil unjustifiedEvidence = false := by
-  native_decide
+  decide +kernel
 
 theorem self_discharge_package_rejected :
     synthTm Ctx.nil selfDischargeAttempt = none := by
-  native_decide
+  decide +kernel
 
 /-! ## Structural projection -/
 
@@ -121,7 +121,7 @@ def projectionIndex : Fin 2 → Fin 3
 def dropMiddleProjection :
     Telescope.Projection multiTelescope projectedTelescope where
   constraint := projectionIndex
-  preserves := by native_decide
+  preserves := by decide +kernel
 
 def projectionMorphism : TelMor [] 2 3 2 2 :=
   TelMor.ofProjection dropMiddleProjection
@@ -129,7 +129,7 @@ def projectionMorphism : TelMor [] 2 3 2 2 :=
 theorem projection_morphism_is_checked :
     synthMor Ctx.nil projectionMorphism =
       some (multiTelescope, projectedTelescope) := by
-  native_decide
+  decide +kernel
 
 theorem projection_morphism_is_well_typed :
     Nonempty (TelMor.HasType Ctx.nil projectionMorphism
@@ -149,9 +149,9 @@ def reversePermutation :
     Telescope.Permutation multiTelescope reversedTelescope where
   forward := reverseThree
   backward := reverseThree
-  forward_backward := by native_decide
-  backward_forward := by native_decide
-  preserves := by native_decide
+  forward_backward := by decide +kernel
+  backward_forward := by decide +kernel
+  preserves := by decide +kernel
 
 def permutationMorphism : TelMor [] 2 3 2 3 :=
   TelMor.ofPermutation reversePermutation
@@ -159,7 +159,7 @@ def permutationMorphism : TelMor [] 2 3 2 3 :=
 theorem permutation_morphism_is_checked :
     synthMor Ctx.nil permutationMorphism =
       some (multiTelescope, reversedTelescope) := by
-  native_decide
+  decide +kernel
 
 /-- The syntax is explicitly a composition of the forward and inverse maps. -/
 def permutationRoundTrip : TelMor [] 2 3 2 3 :=
@@ -173,7 +173,7 @@ theorem permutation_round_trip_is_composed :
 theorem composed_morphism_is_checked :
     synthMor Ctx.nil permutationRoundTrip =
       some (multiTelescope, multiTelescope) := by
-  native_decide
+  decide +kernel
 
 theorem composed_morphism_is_well_typed :
     Nonempty (TelMor.HasType Ctx.nil permutationRoundTrip
@@ -195,11 +195,11 @@ def recursiveFunctionType : Ty [] :=
 
 theorem recursive_bodies_are_guarded :
     recursiveBodies.headGuarded = true := by
-  native_decide
+  decide +kernel
 
 theorem recursive_projection_unfolds_to_arrow :
     recursiveBodies.unfoldAt recursiveIndex = recursiveFunctionType := by
-  native_decide
+  decide +kernel
 
 /-- A finite inhabitant of the unfolded arrow: it ignores its recursively
 typed argument and returns unit. -/
@@ -215,12 +215,12 @@ def unfoldedRecursiveFunction : Tm [] :=
 theorem recursive_fold_is_checked :
     synthTm Ctx.nil foldedRecursiveFunction =
       some (.recProj recursiveBodies recursiveIndex) := by
-  native_decide
+  decide +kernel
 
 theorem recursive_unfold_is_checked :
     synthTm Ctx.nil unfoldedRecursiveFunction =
       some recursiveFunctionType := by
-  native_decide
+  decide +kernel
 
 theorem recursive_unfold_fold_step :
     Tm.Step unfoldedRecursiveFunction recursiveFunction :=
@@ -256,12 +256,12 @@ def recursiveFoldCast : Tm [] :=
 
 theorem recursive_unfold_cast_is_checked :
     synthTm Ctx.nil recursiveUnfoldCast = some recursiveFunctionType := by
-  native_decide
+  decide +kernel
 
 theorem recursive_fold_cast_is_checked :
     synthTm Ctx.nil recursiveFoldCast =
       some (.recProj recursiveBodies recursiveIndex) := by
-  native_decide
+  decide +kernel
 
 theorem recursive_unfold_cast_exposes_wrapper :
     Tm.Step recursiveUnfoldCast unfoldedRecursiveFunction :=
@@ -279,10 +279,10 @@ def unguardedBodies : RecBodies [] 1 1 :=
 
 theorem unguarded_bodies_fail_guard :
     unguardedBodies.headGuarded = false := by
-  native_decide
+  decide +kernel
 
 theorem unguarded_unfold_equality_is_rejected :
     synthEq Ctx.nil (.unfoldRec unguardedBodies recursiveIndex) = none := by
-  native_decide
+  decide +kernel
 
 end FCsub.Examples
